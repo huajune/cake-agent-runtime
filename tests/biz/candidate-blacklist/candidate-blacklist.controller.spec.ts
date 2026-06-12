@@ -55,6 +55,8 @@ describe('CandidateBlacklistController', () => {
         chatId: 'chat-1',
         imContactId: undefined,
         contactName: undefined,
+        imBotId: undefined,
+        botName: undefined,
       });
       expect(result.message).toContain('c-1');
     });

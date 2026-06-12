@@ -209,6 +209,7 @@ export class CandidateBlacklistFilterRule implements MessageFilterRule {
         chatId: messageData.chatId,
         botId: messageData.imBotId,
         messageId: messageData.messageId,
+        contactName: messageData.contactName,
       });
     } catch (error) {
       this.logger.error(`候选人黑名单命中回溯落库失败 targetId=${hit.target_id}`, error);

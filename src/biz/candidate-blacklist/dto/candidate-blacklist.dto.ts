@@ -26,6 +26,15 @@ export class AddCandidateBlacklistDto {
   @IsOptional()
   @IsString()
   contactName?: string;
+
+  /** 拉黑时该候选人所在托管账号（可选，未传时由服务端反查最近会话补全） */
+  @IsOptional()
+  @IsString()
+  imBotId?: string;
+
+  @IsOptional()
+  @IsString()
+  botName?: string;
 }
 
 export class RemoveCandidateBlacklistDto {

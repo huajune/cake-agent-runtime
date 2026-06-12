@@ -171,6 +171,10 @@ export default function Users() {
     return matchedOption?.label || getUserBotLabel(user) || '-';
   };
 
+  /** 黑名单列表用：仅按配置别名解析，未命中返回 undefined 让组件回退到拉黑快照 */
+  const resolveBotName = (ids: Pick<UserData, 'botUserId' | 'imBotId'>) =>
+    botOptions.find((option) => matchesBotOption(ids, option))?.label;
+
   const filteredTodayUsers = useMemo(
     () => filterUsersByControls(todayUsers, normalizedKeyword, activeBotOption),
     [activeBotOption, normalizedKeyword, todayUsers],
@@ -241,6 +245,7 @@ export default function Users() {
             isPending={addCandidate.isPending || removeCandidate.isPending}
             onAdd={(params) => addCandidate.mutate(params)}
             onRemove={(targetId) => removeCandidate.mutate({ targetId })}
+            resolveBotName={resolveBotName}
           />
         ) : (
           <>

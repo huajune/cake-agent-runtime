@@ -13,6 +13,8 @@ function makeRecord(partial: Partial<CandidateBlacklistRecord>): CandidateBlackl
     chat_id: null,
     im_contact_id: null,
     contact_name: null,
+    im_bot_id: null,
+    bot_name: null,
     source: 'manual',
     hit_count: 0,
     last_hit_at: null,
@@ -33,6 +35,7 @@ describe('CandidateBlacklistService', () => {
     upsertItem: jest.fn(),
     deleteByTargetId: jest.fn(),
     recordHit: jest.fn(),
+    findContactSnapshot: jest.fn(),
   };
 
   const mockRedisService = {
@@ -59,6 +62,7 @@ describe('CandidateBlacklistService', () => {
     jest.clearAllMocks();
     mockRedisService.get.mockResolvedValue(null);
     mockRedisService.set.mockResolvedValue(undefined);
+    mockRepository.findContactSnapshot.mockResolvedValue(null);
 
     // Force cache to expire so tests start fresh
     (service as any).memoryCacheExpiry = 0;
@@ -180,6 +184,78 @@ describe('CandidateBlacklistService', () => {
       // 写库后缓存被刷新，命中判定立即生效
       const hit = await service.matchBlacklisted(['contact-new']);
       expect(hit).not.toBeNull();
+    });
+
+    it('should enrich missing snapshot fields from recent chat messages', async () => {
+      mockRepository.upsertItem.mockResolvedValue(undefined);
+      mockRepository.findAll.mockResolvedValue([]);
+      mockRepository.findContactSnapshot.mockResolvedValue({
+        chatId: 'chat-1',
+        imContactId: 'contact-new',
+        contactName: '张三',
+        imBotId: 'wxid-bot-1',
+        botName: '盼盼组3号',
+      });
+
+      await service.addCandidateToBlacklist({ targetId: 'contact-new', reason: '恶意刷岗' });
+
+      expect(mockRepository.findContactSnapshot).toHaveBeenCalledWith('contact-new');
+      expect(mockRepository.upsertItem).toHaveBeenCalledWith({
+        targetId: 'contact-new',
+        reason: '恶意刷岗',
+        operator: undefined,
+        chatId: 'chat-1',
+        imContactId: 'contact-new',
+        contactName: '张三',
+        imBotId: 'wxid-bot-1',
+        botName: '盼盼组3号',
+      });
+    });
+
+    it('should not override caller-provided snapshot fields', async () => {
+      mockRepository.upsertItem.mockResolvedValue(undefined);
+      mockRepository.findAll.mockResolvedValue([]);
+      mockRepository.findContactSnapshot.mockResolvedValue({
+        contactName: '反查昵称',
+        imBotId: 'wxid-bot-other',
+      });
+
+      await service.addCandidateToBlacklist({
+        targetId: 'contact-new',
+        reason: '恶意刷岗',
+        contactName: '外部系统昵称',
+      });
+
+      expect(mockRepository.upsertItem).toHaveBeenCalledWith(
+        expect.objectContaining({ contactName: '外部系统昵称', imBotId: 'wxid-bot-other' }),
+      );
+    });
+
+    it('should skip lookup when contact name and bot snapshot are both provided', async () => {
+      mockRepository.upsertItem.mockResolvedValue(undefined);
+      mockRepository.findAll.mockResolvedValue([]);
+
+      await service.addCandidateToBlacklist({
+        targetId: 'contact-new',
+        reason: '恶意刷岗',
+        contactName: '张三',
+        imBotId: 'wxid-bot-1',
+      });
+
+      expect(mockRepository.findContactSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('should still blacklist with original params when snapshot lookup fails', async () => {
+      mockRepository.upsertItem.mockResolvedValue(undefined);
+      mockRepository.findAll.mockResolvedValue([]);
+      mockRepository.findContactSnapshot.mockRejectedValue(new Error('db down'));
+
+      await service.addCandidateToBlacklist({ targetId: 'contact-new', reason: '恶意刷岗' });
+
+      expect(mockRepository.upsertItem).toHaveBeenCalledWith({
+        targetId: 'contact-new',
+        reason: '恶意刷岗',
+      });
     });
   });
 

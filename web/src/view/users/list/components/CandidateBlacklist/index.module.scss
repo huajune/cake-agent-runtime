@@ -221,6 +221,14 @@
   white-space: nowrap;
 }
 
+.botCell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
 .reasonCell {
   max-width: 280px;
   overflow: hidden;

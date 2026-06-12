@@ -14,6 +14,9 @@ export interface CandidateBlacklistRecord {
   chat_id: string | null;
   im_contact_id: string | null;
   contact_name: string | null;
+  /** 拉黑时快照：该候选人最近聊过的托管账号（wxid + 招募经理姓名） */
+  im_bot_id: string | null;
+  bot_name: string | null;
   /** 来源：manual=运营手动 / api=外部系统 */
   source: string;
   /** 命中回溯：哪个托管号最近一次聊到该候选人 */
@@ -33,10 +36,12 @@ export interface AddCandidateBlacklistParams {
   targetId: string;
   reason: string;
   operator?: string;
-  /** 拉黑时的会话快照（可选，便于回溯） */
+  /** 拉黑时的会话快照（可选，便于回溯；未传时从 chat_messages 反查补全） */
   chatId?: string;
   imContactId?: string;
   contactName?: string;
+  imBotId?: string;
+  botName?: string;
   source?: string;
 }
 
@@ -47,4 +52,17 @@ export interface CandidateBlacklistHit {
   chatId?: string;
   botId?: string;
   messageId?: string;
+  /** 命中消息里的客户名称，用于回填拉黑时缺失的昵称快照 */
+  contactName?: string;
+}
+
+/**
+ * 从 chat_messages 反查到的候选人会话快照（拉黑时补全展示信息用）
+ */
+export interface CandidateContactSnapshot {
+  chatId?: string;
+  imContactId?: string;
+  contactName?: string;
+  imBotId?: string;
+  botName?: string;
 }

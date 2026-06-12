@@ -227,11 +227,12 @@ describe('MessageFilterService', () => {
         reason: '候选人黑名单：恶意刷岗',
         source: 'candidate_blacklist',
       });
-      // 命中回溯：记录哪个托管号在哪个会话聊到了该候选人
+      // 命中回溯：记录哪个托管号在哪个会话聊到了该候选人（附客户名称供回填昵称快照）
       expect(mockCandidateBlacklistService.recordHit).toHaveBeenCalledWith('contact-123', {
         chatId: 'chat-123',
         botId: 'wxid-bot-123',
         messageId: 'msg-123',
+        contactName: undefined,
       });
       // 飞书告警：附拉黑理由
       expect(mockAlertNotifier.sendAlert).toHaveBeenCalledWith(

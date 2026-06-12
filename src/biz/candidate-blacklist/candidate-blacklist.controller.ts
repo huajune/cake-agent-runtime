@@ -30,6 +30,8 @@ export class CandidateBlacklistController {
       chatId: body.chatId,
       imContactId: body.imContactId,
       contactName: body.contactName,
+      imBotId: body.imBotId,
+      botName: body.botName,
     });
     return {
       message: `候选人 ${body.targetId} 已拉黑，托管账号再次收到其消息时将告警并取消托管`,

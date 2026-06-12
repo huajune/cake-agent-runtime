@@ -15,6 +15,9 @@ export interface CandidateBlacklistItem {
   chat_id: string | null;
   im_contact_id: string | null;
   contact_name: string | null;
+  /** 拉黑时快照：该候选人最近聊过的托管账号（wxid + 招募经理姓名） */
+  im_bot_id: string | null;
+  bot_name: string | null;
   source: string;
   /** 命中回溯 */
   hit_count: number;

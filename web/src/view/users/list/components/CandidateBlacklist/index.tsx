@@ -10,6 +10,8 @@ interface CandidateBlacklistProps {
   isPending: boolean;
   onAdd: (params: { targetId: string; reason: string; operator?: string }) => void;
   onRemove: (targetId: string) => void;
+  /** 把托管账号 wxid 解析为配置的展示名（未配置别名时返回 undefined） */
+  resolveBotName?: (ids: { botUserId?: string; imBotId?: string }) => string | undefined;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -23,10 +25,18 @@ export default function CandidateBlacklist({
   isPending,
   onAdd,
   onRemove,
+  resolveBotName,
 }: CandidateBlacklistProps) {
   const [targetId, setTargetId] = useState('');
   const [reason, setReason] = useState('');
   const [operator, setOperator] = useState('');
+
+  /** 托管账号展示名：配置的别名 > 拉黑时快照的招募经理姓名 > 原始 wxid */
+  const getBotLabel = (imBotId: string | null, botName: string | null) => {
+    if (!imBotId && !botName) return '';
+    const resolved = imBotId ? resolveBotName?.({ imBotId }) : undefined;
+    return resolved || botName || imBotId || '';
+  };
 
   const canSubmit = targetId.trim().length > 0 && reason.trim().length > 0 && !isPending;
 
@@ -88,6 +98,7 @@ export default function CandidateBlacklist({
           <thead>
             <tr>
               <th>候选人</th>
+              <th>托管账号</th>
               <th>拉黑理由</th>
               <th>操作人</th>
               <th>拉黑时间</th>
@@ -98,7 +109,7 @@ export default function CandidateBlacklist({
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className={styles.loadingCell}>
+                <td colSpan={7} className={styles.loadingCell}>
                   <div className={styles.emptyState}>
                     <p>加载中...</p>
                   </div>
@@ -106,7 +117,7 @@ export default function CandidateBlacklist({
               </tr>
             ) : candidates.length === 0 ? (
               <tr>
-                <td colSpan={6} className={styles.loadingCell}>
+                <td colSpan={7} className={styles.loadingCell}>
                   <div className={styles.emptyState}>
                     <div className={styles.emptyIconHalo}>
                       <ShieldCheck className={styles.emptyIcon} aria-hidden="true" />
@@ -130,6 +141,12 @@ export default function CandidateBlacklist({
                       {item.target_id}
                     </div>
                   </td>
+                  <td
+                    className={styles.botCell}
+                    title={[item.bot_name, item.im_bot_id].filter(Boolean).join(' / ') || undefined}
+                  >
+                    {getBotLabel(item.im_bot_id, item.bot_name) || '-'}
+                  </td>
                   <td className={styles.reasonCell} title={item.reason}>
                     {item.reason}
                   </td>
@@ -142,7 +159,7 @@ export default function CandidateBlacklist({
                         {item.last_hit_at && (
                           <div
                             className={styles.hitDetail}
-                            title={`最近命中会话：${item.last_hit_chat_id || '-'}\n托管号：${item.last_hit_bot_id || '-'}`}
+                            title={`最近命中会话：${item.last_hit_chat_id || '-'}\n托管号：${getBotLabel(item.last_hit_bot_id, null) || item.last_hit_bot_id || '-'}`}
                           >
                             最近 {formatDateTime(item.last_hit_at)}
                           </div>
