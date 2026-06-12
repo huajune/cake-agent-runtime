@@ -18,6 +18,20 @@ import { MessageType } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
 
 /**
+ * 判断 vision 描述是否表明"这张图片本身就是一份简历"（手写简历/简历拍照/简历截图）。
+ *
+ * 只认描述开头的简历标记：vision prompt 要求简历类图片以"简历图片："开头，
+ * 同时兼容模型自然写出的"手写简历…/简历照片…"。不做全文匹配，避免
+ * "Boss直聘简历列表截图"这类提到"简历"却不是简历本体的图片被误标为简历附件。
+ *
+ * 命中后由 ImageDescriptionService / save_image_description 在回写内容时追加
+ * "简历附件：URL" 行，复用 PDF 文件简历的事实提取（extractUploadResume）与报名上传链路。
+ */
+export function isResumeImageDescription(description: string): boolean {
+  return /^[「\[【]?(?:手写)?(?:简历|履历)/u.test(description.trim());
+}
+
+/**
  * 消息解析工具类
  * 提供消息数据的解析和转换功能
  */

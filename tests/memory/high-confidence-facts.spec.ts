@@ -125,6 +125,20 @@ describe('extractHighConfidenceFacts', () => {
     );
   });
 
+  it('should extract upload resume from vision-described resume image message', () => {
+    // 手写简历/简历照片：vision 描述回写时追加 "简历附件：URL" 行（图片简历支持）
+    const result = extractHighConfidenceFacts(
+      [
+        '[图片消息] 简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
+      ],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.upload_resume)).toBe(
+      'https://example.com/artwork/abc123.jpg',
+    );
+  });
+
   it('should not extract upload resume from unrelated PDF file names', () => {
     const result = extractHighConfidenceFacts(
       [
