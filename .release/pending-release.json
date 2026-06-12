@@ -64,6 +64,34 @@
       "verification": [
         "本地 pre-push CI 被另一并发会话的 WIP 文件（不在本 PR 内）的 lint 错误卡住，已 `--no-verify` 推送，以 GitHub CI 为准"
       ]
+    },
+    {
+      "number": "324",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/324",
+      "title": "转化分析页视觉与动效升级",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-12",
+      "businessUpdates": [
+        "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
+      ],
+      "summary": [
+        "转化分析页视觉与动效升级",
+        "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
+      ],
+      "features": [
+        "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "转化分析页视觉与动效升级"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc -b && vite build` 通过",
+        "Chrome 实测：demo 模式全模块渲染正常、动画逐项验证挂载、无 console 报错"
+      ]
     }
   ],
   "lastRelease": {
