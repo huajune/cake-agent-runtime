@@ -187,7 +187,9 @@ const inputSchema = z.object({
   candidateUploadResume: z
     .string()
     .optional()
-    .describe('候选人本轮发送的简历附件 URL，通常来自企微文件消息 payload.fileUrl。'),
+    .describe(
+      '候选人本轮发送的简历附件 URL。来源有二：企微文件消息 payload.fileUrl；或候选人发简历图片（含手写简历）时，图片消息描述后追加的"简历附件：URL"行。',
+    ),
   candidateHeight: z
     .union([z.string(), z.number()])
     .optional()

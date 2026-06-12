@@ -499,7 +499,12 @@ export class SpongeService {
       // Ignore invalid URL path parsing; fall back below.
     }
 
-    return contentType.includes('pdf') ? 'resume.pdf' : 'attachment';
+    if (contentType.includes('pdf')) return 'resume.pdf';
+    // 图片简历（手写简历拍照等）：企微图片 URL 的 path 通常没有可用文件名，
+    // 按 content-type 补扩展名，避免云存储 key 无后缀导致海绵侧打不开。
+    const imageExt = contentType.match(/image\/(jpeg|jpg|png|webp)/i)?.[1]?.toLowerCase();
+    if (imageExt) return `resume.${imageExt === 'jpeg' ? 'jpg' : imageExt}`;
+    return 'attachment';
   }
 
   private sanitizeFileName(value: string | undefined): string | null {

@@ -5,6 +5,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { MessageType } from '@enums/message-callback.enum';
+import { isResumeImageDescription } from '../utils/message-parser.util';
 
 /** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */
 export type VisualMessageKind = MessageType.IMAGE | MessageType.EMOTION;
@@ -47,8 +48,9 @@ export class ImageDescriptionService {
   private readonly artworkToken: string;
 
   private readonly SYSTEM_PROMPT = [
-    '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图、证件、招聘海报，也可能是微信表情。',
+    '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图、证件、简历、招聘海报，也可能是微信表情。',
     '请提取关键信息，用简洁中文输出（一般 2-4 句，证件类必须按下方结构化输出）：',
+    '\n- 简历（手写简历 / 简历文档拍照 / 简历截图，图片本身就是一份简历时）：描述必须以"简历图片："开头，再逐项提取姓名、手机号、年龄、籍贯、身高体重、学历、工作经历等图片上可见的信息；看不清的字段写"看不清"，不要猜测。注意：招聘平台的简历列表/岗位页截图不算简历，按截图类处理。',
     '\n- 健康证 / 食品健康证 / 餐饮健康证：必须按"证件类型 / 持有人 / 发证机构 / 有效期至 YYYY-MM-DD（若图片只写到月份则照写到月份）"四个字段逐项输出。日期请按图片上印刷字面照抄，不要凭印象重写月份；多次出现日期时以"有效期至"或"valid until"标注的为准；看不清时写"看不清"。不要判断证件是否过期。',
     '\n- 招聘海报 / 招聘传单 / 含二维码的招聘截图：必须明确指出"含面试二维码 / 含报名二维码 / 含进群二维码"；同时提取品牌、门店、岗位、薪资、地址等关键信息。即使二维码本身无法解码，也要在描述里写"图片含二维码"，不要回复"没有"。',
     '\n- 招聘平台截图（无二维码）：提取岗位名称、薪资、门店/公司、距离、工作要求等关键信息',
@@ -197,7 +199,16 @@ export class ImageDescriptionService {
       return;
     }
 
-    await this.chatSession.updateMessageContent(messageId, formatDescription(kind, description));
+    // 简历图片：追加 "简历附件：URL" 行，让候选人发的手写简历/简历照片走与
+    // PDF 文件简历相同的链路 —— extractUploadResume 的标注行分支会捕获该 URL，
+    // 流入会话事实 upload_resume → precheck checklist 补齐"简历附件" →
+    // booking 经 uploadAttachmentFromUrl 上传图片拿 cloudStorageKey 提交。
+    const isResumeImage = kind === MessageType.IMAGE && isResumeImageDescription(description);
+    const content = isResumeImage
+      ? `${formatDescription(kind, description)}\n简历附件：${imageUrl}`
+      : formatDescription(kind, description);
+
+    await this.chatSession.updateMessageContent(messageId, content);
 
     this.consecutiveFailures = 0;
 
