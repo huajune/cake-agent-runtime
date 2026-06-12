@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CandidateBlacklistService } from '@biz/hosting-config/services/candidate-blacklist.service';
-import { CandidateBlacklistRepository } from '@biz/hosting-config/repositories/candidate-blacklist.repository';
-import { CandidateBlacklistRecord } from '@biz/hosting-config/entities/candidate-blacklist.entity';
+import { CandidateBlacklistService } from '@biz/candidate-blacklist/services/candidate-blacklist.service';
+import { CandidateBlacklistRepository } from '@biz/candidate-blacklist/repositories/candidate-blacklist.repository';
+import { CandidateBlacklistRecord } from '@biz/candidate-blacklist/entities/candidate-blacklist.entity';
 import { RedisService } from '@infra/redis/redis.service';
 
 function makeRecord(partial: Partial<CandidateBlacklistRecord>): CandidateBlacklistRecord {

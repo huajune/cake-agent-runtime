@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatDateTime } from '@/utils/format';
-import type { CandidateBlacklistItem } from '@/api/types/config.types';
+import type { CandidateBlacklistItem } from '@/api/types/candidate-blacklist.types';
 import styles from './index.module.scss';
 
 interface CandidateBlacklistProps {
@@ -52,33 +52,21 @@ export default function CandidateBlacklist({
   };
 
   return (
-    <section className={styles.section}>
-      <div className={styles.sectionHeader}>
-        <h3>
-          候选人黑名单 <span className={styles.headerCount}>({candidates.length} 人)</span>
-        </h3>
-        <p className={styles.sectionDesc}>
-          拉黑后，任一托管账号再次收到该候选人消息时会发送飞书告警（附拉黑理由），并永久取消该会话的托管
-        </p>
-      </div>
-
+    <div className={styles.panel}>
       <div className={styles.addForm}>
         <input
-          className={styles.targetInput}
           value={targetId}
           onChange={(e) => setTargetId(e.target.value)}
           placeholder="候选人标识（会话ID / 联系人ID）"
           aria-label="候选人标识"
         />
         <input
-          className={styles.reasonInput}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="拉黑理由（必填）"
           aria-label="拉黑理由"
         />
         <input
-          className={styles.operatorInput}
           value={operator}
           onChange={(e) => setOperator(e.target.value)}
           placeholder="操作人（选填）"
@@ -171,6 +159,6 @@ export default function CandidateBlacklist({
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CandidateBlacklistRepository } from '@biz/hosting-config/repositories/candidate-blacklist.repository';
-import { CandidateBlacklistRecord } from '@biz/hosting-config/entities/candidate-blacklist.entity';
+import { CandidateBlacklistRepository } from '@biz/candidate-blacklist/repositories/candidate-blacklist.repository';
+import { CandidateBlacklistRecord } from '@biz/candidate-blacklist/entities/candidate-blacklist.entity';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 
 /**

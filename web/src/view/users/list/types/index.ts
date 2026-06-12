@@ -26,7 +26,7 @@ export interface UserData {
 /**
  * Tab 类型
  */
-export type TabType = 'today' | 'paused';
+export type TabType = 'today' | 'paused' | 'blacklist';
 
 /**
  * 用户表格属性

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageFilterService, FilterReason } from '@wecom/message/application/filter.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
-import { CandidateBlacklistService } from '@biz/hosting-config/services/candidate-blacklist.service';
+import { CandidateBlacklistService } from '@biz/candidate-blacklist/services/candidate-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';

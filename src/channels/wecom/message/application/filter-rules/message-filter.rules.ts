@@ -8,8 +8,8 @@ import {
 } from '@enums/message-callback.enum';
 import { MessageParser } from '../../utils/message-parser.util';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
-import { CandidateBlacklistService } from '@biz/hosting-config/services/candidate-blacklist.service';
-import { CandidateBlacklistRecord } from '@biz/hosting-config/entities/candidate-blacklist.entity';
+import { CandidateBlacklistService } from '@biz/candidate-blacklist/services/candidate-blacklist.service';
+import { CandidateBlacklistRecord } from '@biz/candidate-blacklist/entities/candidate-blacklist.entity';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@enums/alert.enum';
