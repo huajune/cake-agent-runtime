@@ -14,6 +14,7 @@ const DEFAULT_MAX_PAGES = 6;
 
 const DESCRIPTION = `读取候选人已发送的简历 PDF 内容。仅当你需要查看简历详情来补齐或核对报名信息时调用，例如姓名、手机号、学历、年龄、工作经历等。
 如果只是报名接口需要上传简历附件 URL，不需要调用本工具；直接使用已识别到的简历附件即可。
+候选人发的简历图片（含手写简历）内容已写在对话记录的 [图片消息] 描述里，也不需要调用本工具。
 本工具只允许读取当前会话中已识别为简历附件的文件链接，不用于读取任意 URL。`;
 
 export interface ResumeAttachment {
@@ -64,7 +65,7 @@ export function buildReadResumeAttachmentTool(attachments: ResumeAttachment[]): 
             errorType: TOOL_ERROR_TYPES.READ_RESUME_NO_ATTACHMENT,
             outcome: '读取简历失败（当前会话没有可读的简历附件）',
             replyInstruction:
-              '当前没有已识别的简历附件。若岗位确实需要简历或需要从简历补信息，请让候选人发送文件名包含“简历/履历/resume/cv”的 PDF 简历。',
+              '当前没有已识别的简历附件。若岗位确实需要简历或需要从简历补信息，请让候选人发送文件名包含“简历/履历/resume/cv”的 PDF 简历，或拍照发送简历图片（手写简历也可以）。',
             details: { availableResumeUrls: available.map((item) => item.fileUrl) },
           });
         }
@@ -286,7 +287,7 @@ function mapReadError(error: unknown, attachment: ResumeAttachment) {
       errorType: TOOL_ERROR_TYPES.READ_RESUME_NOT_PDF,
       outcome: '读取简历失败（文件不是可解析 PDF）',
       replyInstruction:
-        '当前附件不是可解析 PDF。若岗位需要简历详情，请让候选人重新发送 PDF 简历，或直接补问必要报名字段。',
+        '当前附件不是可解析 PDF。若它是候选人发的简历图片，其内容已由图片识别写在对话记录的 [图片消息] 描述里，直接使用该描述即可，报名上传不受影响；否则请让候选人重新发送 PDF 简历，或直接补问必要报名字段。',
       details,
     });
   }

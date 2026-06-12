@@ -13,9 +13,6 @@ describe('HostingConfigController', () => {
     getBlacklist: jest.fn(),
     addToBlacklist: jest.fn(),
     removeFromBlacklist: jest.fn(),
-    getCandidateBlacklist: jest.fn(),
-    addCandidateToBlacklist: jest.fn(),
-    removeCandidateFromBlacklist: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -154,43 +151,6 @@ describe('HostingConfigController', () => {
         undefined,
         undefined,
       );
-    });
-  });
-
-  describe('candidate blacklist endpoints', () => {
-    it('should return candidate blacklist from facade', async () => {
-      const mockResult = { candidates: [{ target_id: 'c-1', reason: '恶意刷岗', added_at: 1 }] };
-      mockFacadeService.getCandidateBlacklist.mockResolvedValue(mockResult);
-
-      const result = await controller.getCandidateBlacklist();
-
-      expect(facade.getCandidateBlacklist).toHaveBeenCalled();
-      expect(result).toEqual(mockResult);
-    });
-
-    it('should add candidate to blacklist via facade', async () => {
-      const body = { targetId: 'c-1', reason: '恶意刷岗', operator: '小王', chatId: 'chat-1' };
-      mockFacadeService.addCandidateToBlacklist.mockResolvedValue({ message: 'ok' });
-
-      await controller.addCandidateToBlacklist(body);
-
-      expect(facade.addCandidateToBlacklist).toHaveBeenCalledWith({
-        targetId: 'c-1',
-        reason: '恶意刷岗',
-        operator: '小王',
-        chatId: 'chat-1',
-        imContactId: undefined,
-        contactName: undefined,
-      });
-    });
-
-    it('should remove candidate from blacklist via facade', async () => {
-      const body = { targetId: 'c-1' };
-      mockFacadeService.removeCandidateFromBlacklist.mockResolvedValue({ message: 'ok' });
-
-      await controller.removeCandidateFromBlacklist(body);
-
-      expect(facade.removeCandidateFromBlacklist).toHaveBeenCalledWith('c-1');
     });
   });
 

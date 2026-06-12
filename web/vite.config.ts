@@ -61,6 +61,7 @@ export default defineConfig(({ mode }) => {
         [
           '/agent',
           '/analytics',
+          '/candidate-blacklist',
           '/config',
           '/strategy',
           '/user',

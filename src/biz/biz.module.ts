@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StrategyModule } from './strategy/strategy.module';
 import { HostingConfigModule } from './hosting-config/hosting-config.module';
+import { CandidateBlacklistModule } from './candidate-blacklist/candidate-blacklist.module';
 import { UserModule } from './user/user.module';
 import { BizMessageModule } from './message/message.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
@@ -11,6 +12,7 @@ import { ConversionAnalyticsModule } from './conversion-analytics/conversion-ana
   imports: [
     StrategyModule,
     HostingConfigModule,
+    CandidateBlacklistModule,
     UserModule,
     BizMessageModule,
     MonitoringModule,
@@ -20,6 +22,7 @@ import { ConversionAnalyticsModule } from './conversion-analytics/conversion-ana
   exports: [
     StrategyModule,
     HostingConfigModule,
+    CandidateBlacklistModule,
     UserModule,
     BizMessageModule,
     MonitoringModule,

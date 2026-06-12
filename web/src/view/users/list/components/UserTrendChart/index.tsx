@@ -43,7 +43,7 @@ export default function UserTrendChart({
   selectedDays,
   onSelectedDaysChange,
 }: UserTrendChartProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const { data: trendData = [], isLoading } = useUserTrend(selectedDays);
   const selectedRange =
     USER_RANGE_OPTIONS.find((option) => option.days === selectedDays) || USER_RANGE_OPTIONS[0];

@@ -507,6 +507,7 @@ export class AgentPreparationService {
       messages: normalizedMessages,
       thresholds,
       imageMessageIds: params.imageMessageIds,
+      imageUrls: params.imageUrls,
       visualMessageTypes: params.visualMessageTypes,
       currentStage: entryStage,
       availableStages: Object.keys(stageGoals),

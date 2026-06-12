@@ -10,6 +10,7 @@ import { AgentModule } from '@agent/agent.module';
 import { MessageSenderModule } from '../message-sender/message-sender.module';
 import { BizMessageModule } from '@biz/message/message.module';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
+import { CandidateBlacklistModule } from '@biz/candidate-blacklist/candidate-blacklist.module';
 import { UserModule } from '@biz/user/user.module';
 import { MonitoringModule } from '@biz/monitoring/monitoring.module';
 import { InterventionModule } from '@biz/intervention/intervention.module';
@@ -60,6 +61,7 @@ import {
     MessageSenderModule,
     BizMessageModule,
     HostingConfigModule,
+    CandidateBlacklistModule,
     UserModule,
     forwardRef(() => MonitoringModule),
     NotificationModule,

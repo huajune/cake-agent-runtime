@@ -65,18 +65,6 @@ export function useBlacklist() {
 }
 
 /**
- * 获取候选人黑名单列表
- */
-export function useCandidateBlacklist() {
-  return useQuery({
-    queryKey: ['candidate-blacklist'],
-    queryFn: () => configService.getCandidateBlacklist(),
-    staleTime: 1000,
-    refetchInterval: LIVE_CONFIG_REFETCH_INTERVAL_MS,
-  });
-}
-
-/**
  * 获取 Agent 回复策略配置
  */
 export function useAgentReplyConfig() {
@@ -180,42 +168,6 @@ export function useRemoveFromBlacklist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['blacklist'] });
       toast.success('已从黑名单移除');
-    },
-    onError: () => {
-      toast.error('移除失败，请重试');
-    },
-  });
-}
-
-/**
- * 拉黑候选人
- */
-export function useAddCandidateToBlacklist() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (params: configService.AddCandidateBlacklistParams) =>
-      configService.addCandidateToBlacklist(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['candidate-blacklist'] });
-      toast.success('已拉黑，托管账号再次收到其消息时将告警并取消托管');
-    },
-    onError: () => {
-      toast.error('拉黑失败，请重试');
-    },
-  });
-}
-
-/**
- * 移除候选人黑名单
- */
-export function useRemoveCandidateFromBlacklist() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (params: { targetId: string }) =>
-      configService.removeCandidateFromBlacklist(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['candidate-blacklist'] });
-      toast.success('已从黑名单移除（已暂停的会话需在用户列表手动恢复）');
     },
     onError: () => {
       toast.error('移除失败，请重试');

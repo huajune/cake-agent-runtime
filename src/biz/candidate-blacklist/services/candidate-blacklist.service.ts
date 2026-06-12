@@ -74,9 +74,13 @@ export class CandidateBlacklistService {
 
   /**
    * 拉黑候选人（记录操作人与会话快照），写库后刷新缓存
+   *
+   * 入参缺昵称/托管账号快照时（运营在 Dashboard 通常只填 ID），
+   * 先从 chat_messages 反查该候选人最近的会话补全展示信息。
    */
   async addCandidateToBlacklist(params: AddCandidateBlacklistParams): Promise<void> {
-    await this.candidateBlacklistRepository.upsertItem(params);
+    const enriched = await this.enrichContactSnapshot(params);
+    await this.candidateBlacklistRepository.upsertItem(enriched);
     await this.refreshCache();
 
     this.logger.log(
@@ -140,6 +144,37 @@ export class CandidateBlacklistService {
   }
 
   // ==================== 私有方法 ====================
+
+  /**
+   * 用 chat_messages 里的会话快照补全拉黑入参中缺失的展示字段（已有值不覆盖）。
+   * 反查失败或查不到时按原始入参拉黑，不阻塞拉黑动作本身。
+   */
+  private async enrichContactSnapshot(
+    params: AddCandidateBlacklistParams,
+  ): Promise<AddCandidateBlacklistParams> {
+    if (params.contactName && params.imBotId) {
+      return params;
+    }
+
+    try {
+      const snapshot = await this.candidateBlacklistRepository.findContactSnapshot(params.targetId);
+      if (!snapshot) {
+        return params;
+      }
+
+      return {
+        ...params,
+        chatId: params.chatId ?? snapshot.chatId,
+        imContactId: params.imContactId ?? snapshot.imContactId,
+        contactName: params.contactName ?? snapshot.contactName,
+        imBotId: params.imBotId ?? snapshot.imBotId,
+        botName: params.botName ?? snapshot.botName,
+      };
+    } catch (error) {
+      this.logger.warn(`拉黑快照补全失败，按原始入参拉黑 targetId=${params.targetId}`, error);
+      return params;
+    }
+  }
 
   private isCacheExpired(): boolean {
     return Date.now() > this.memoryCacheExpiry;

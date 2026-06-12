@@ -35,6 +35,11 @@ export interface ToolBuildContext {
   /** 图片/表情消息 ID 列表（当前轮次包含视觉消息时传入，供 save_image_description 工具使用） */
   imageMessageIds?: string[];
   /**
+   * 与 imageMessageIds 一一对应的图片/表情 URL（优先原图 artworkUrl）。
+   * 供 save_image_description 在识别到简历图片时回写 "简历附件：URL" 行。
+   */
+  imageUrls?: string[];
+  /**
    * messageId → 视觉消息类型映射。
    * 用于 save_image_description 工具按类型选用 `[图片消息]` / `[表情消息]` 前缀；
    * 缺省条目视为 IMAGE。

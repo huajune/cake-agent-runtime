@@ -28,6 +28,8 @@ interface SessionListProps {
   onSearchChange: (term: string) => void;
   isLoading: boolean;
   timeRangeLabel: string;
+  /** 刚收到新消息的会话（Realtime 推送），用于高亮闪烁 */
+  activeChatIds?: Set<string>;
 }
 
 export default function SessionList({
@@ -38,6 +40,7 @@ export default function SessionList({
   onSearchChange,
   isLoading,
   timeRangeLabel,
+  activeChatIds,
 }: SessionListProps) {
   // 过滤会话（搜索）
   const filteredSessions = sessions.filter((session) => {
@@ -100,7 +103,7 @@ export default function SessionList({
             return (
               <div
                 key={session.chatId}
-                className={`${styles.sessionItem} ${selectedChatId === session.chatId ? styles.active : ''}`}
+                className={`${styles.sessionItem} ${selectedChatId === session.chatId ? styles.active : ''} ${activeChatIds?.has(session.chatId) ? styles.flashing : ''}`}
                 onClick={() => onSelectChat(session.chatId)}
               >
                 {session.avatar ? (
