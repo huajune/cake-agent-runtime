@@ -3,7 +3,33 @@
   "nextVersion": "5.17.0",
   "updatedAt": "2026-06-12",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "319",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/319",
+      "title": "户籍/民族筛选条件禁止外显给候选人",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-12",
+      "businessUpdates": [
+        "户籍/民族筛选条件禁止外显给候选人"
+      ],
+      "summary": [
+        "户籍/民族筛选条件禁止外显给候选人"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "户籍/民族筛选条件禁止外显给候选人"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tests/tools/duliday/job-list/render.util.spec.ts` 8/8 通过（既有断言未破坏）",
+        "ESLint 通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.16.0",
     "date": "2026-06-12",
