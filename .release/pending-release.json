@@ -28,6 +28,28 @@
         "✅ `geo-mappings.spec.ts` + `geocode.tool.spec.ts` 28 个用例全过，ESLint 干净",
         "✅ 本地起服务走 `/agent/debug-chat` 真实链路（真实 LLM + 真实高德 + 真实岗位查询）复刻原对话：第二轮\"漕宝路地铁\"直接凭通识传 `city=上海` 调 geocode，高德返回徐汇区漕宝路地铁站坐标（typecode 150500），推荐\"奥乐齐 1038漕宝日月光 0.1km\"等岗位，**不再反问城市**——与原会话第 4 轮被怼后才给出的推荐一致，省两轮对话"
       ]
+    },
+    {
+      "number": "333",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/333",
+      "title": "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-12",
+      "businessUpdates": [
+        "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
+      ],
+      "summary": [
+        "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
