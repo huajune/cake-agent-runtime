@@ -356,6 +356,7 @@ describe('CandidateBlacklistRepository', () => {
       candidate_name: '张三',
       manager_name: '盼盼组3号',
       im_bot_id: 'wxid_bot_001',
+      is_self: false,
     };
 
     it('should resolve snapshot by chat_id without fallback query', async () => {
@@ -401,6 +402,32 @@ describe('CandidateBlacklistRepository', () => {
       const result = await repository.findContactSnapshot('chat_001');
 
       expect(result).toMatchObject({ contactName: '张三', imBotId: 'wxid_bot_001' });
+    });
+
+    it('should not take im_contact_id from bot-side rows (is_self=true)', async () => {
+      // 机器人发的消息行 im_contact_id 是机器人自己的 ID，候选人 ID 只能取自候选人行
+      const rows = [
+        { ...snapshotRow, im_contact_id: 'wxid_bot_001', is_self: true },
+        { ...snapshotRow, im_contact_id: 'wxid_bot_001', is_self: true },
+        { ...snapshotRow, im_contact_id: 'contact_001', is_self: false },
+      ];
+      const queryMock = makeQueryMock({ data: rows, error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.findContactSnapshot('chat_001');
+
+      expect(result).toMatchObject({ imContactId: 'contact_001', imBotId: 'wxid_bot_001' });
+    });
+
+    it('should leave imContactId undefined when only bot-side rows exist', async () => {
+      const rows = [{ ...snapshotRow, im_contact_id: 'wxid_bot_001', is_self: true }];
+      const queryMock = makeQueryMock({ data: rows, error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.findContactSnapshot('chat_001');
+
+      expect(result).toMatchObject({ contactName: '张三', imBotId: 'wxid_bot_001' });
+      expect(result?.imContactId).toBeUndefined();
     });
 
     it('should return null when no message matches', async () => {
