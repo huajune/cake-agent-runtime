@@ -532,7 +532,7 @@ export function buildInterviewBookingTool(
                 errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES,
                 outcome: '预约失败（岗位要求上传简历附件）',
                 replyInstruction:
-                  '该岗位要求上传简历附件，不能用文字经历或口述工作经历替代。请让候选人发送 PDF 简历文件；收到文件后先按附件上传链路拿到云存储 key，再重新调用 booking。',
+                  '该岗位要求上传简历附件，不能用文字经历或口述工作经历替代。请让候选人发送 PDF 简历文件，或拍照发送简历图片（手写简历也可以）；收到后系统会识别出"简历附件：URL"，再重新调用 booking。',
                 details: {
                   missingFields: ['简历附件'],
                   missingSupplementLabels:

@@ -112,6 +112,78 @@ describe('buildSaveImageDescriptionTool', () => {
     );
   });
 
+  it('should append 简历附件 line when description identifies a resume image', async () => {
+    const builder = buildSaveImageDescriptionTool(
+      mockChatSession as never,
+      imageMessageIds,
+      { 'msg-img-1': MessageType.IMAGE },
+      { 'msg-img-1': 'https://example.com/artwork/abc123.jpg' },
+    );
+    const builtTool = builder({} as never);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (builtTool as any).execute({
+      messageId: 'msg-img-1',
+      description: '简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。',
+    });
+
+    expect(result).toEqual({
+      success: true,
+      resumeAttachmentUrl: 'https://example.com/artwork/abc123.jpg',
+    });
+    expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
+      'msg-img-1',
+      '[图片消息] 简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
+    );
+  });
+
+  it('should not append 简历附件 line for non-resume descriptions or emotion messages', async () => {
+    const builder = buildSaveImageDescriptionTool(
+      mockChatSession as never,
+      ['msg-img-1', 'msg-emoji-1'],
+      { 'msg-img-1': MessageType.IMAGE, 'msg-emoji-1': MessageType.EMOTION },
+      {
+        'msg-img-1': 'https://example.com/artwork/poster.jpg',
+        'msg-emoji-1': 'https://example.com/artwork/emoji.gif',
+      },
+    );
+    const builtTool = builder({} as never);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exec = (builtTool as any).execute;
+
+    await exec({ messageId: 'msg-img-1', description: 'Boss直聘简历列表截图，展示多个候选岗位' });
+    await exec({ messageId: 'msg-emoji-1', description: '微笑' });
+
+    expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
+      'msg-img-1',
+      '[图片消息] Boss直聘简历列表截图，展示多个候选岗位',
+    );
+    expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
+      'msg-emoji-1',
+      '[表情消息] 微笑',
+    );
+  });
+
+  it('should not append 简历附件 line when image URL is unknown', async () => {
+    const builder = buildSaveImageDescriptionTool(mockChatSession as never, imageMessageIds, {
+      'msg-img-1': MessageType.IMAGE,
+    });
+    const builtTool = builder({} as never);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (builtTool as any).execute({
+      messageId: 'msg-img-1',
+      description: '手写简历，包含姓名与电话',
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
+      'msg-img-1',
+      '[图片消息] 手写简历，包含姓名与电话',
+    );
+  });
+
   it('should fall back to [图片消息] prefix when messageId is missing from visualMessageTypes', async () => {
     const builder = buildSaveImageDescriptionTool(
       mockChatSession as never,

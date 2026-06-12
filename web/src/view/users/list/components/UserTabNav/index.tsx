@@ -9,6 +9,7 @@ interface UserTabNavProps {
   activeTab: TabType;
   todayCount: number;
   pausedCount: number;
+  blacklistCount: number;
   onTabChange: (tab: TabType) => void;
 }
 
@@ -16,6 +17,7 @@ export default function UserTabNav({
   activeTab,
   todayCount,
   pausedCount,
+  blacklistCount,
   onTabChange,
 }: UserTabNavProps) {
   return (
@@ -33,6 +35,13 @@ export default function UserTabNav({
       >
         <span className={styles.tabLabel}>已禁止托管会话</span>
         <span className={styles.tabCount}>({pausedCount})</span>
+      </button>
+      <button
+        className={`${styles.tab} ${activeTab === 'blacklist' ? styles.active : ''}`}
+        onClick={() => onTabChange('blacklist')}
+      >
+        <span className={styles.tabLabel}>候选人黑名单</span>
+        <span className={styles.tabCount}>({blacklistCount})</span>
       </button>
     </div>
   );

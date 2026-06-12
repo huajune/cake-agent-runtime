@@ -165,15 +165,6 @@ export default function ConversionAnalysis() {
             onModeChange={setTrendMode}
           />
 
-          <section className={styles.conversionSection}>
-            <CohortFunnel
-              data={funnel}
-              loading={funnelLoading}
-              mode={funnelMode}
-              onModeChange={setFunnelMode}
-            />
-          </section>
-
           <BotComparisonTable
             rows={sortedBots}
             loading={botsLoading}
@@ -183,6 +174,15 @@ export default function ConversionAnalysis() {
             onModeChange={setBotsMode}
             onSort={handleSort}
           />
+
+          <section className={styles.conversionSection}>
+            <CohortFunnel
+              data={funnel}
+              loading={funnelLoading}
+              mode={funnelMode}
+              onModeChange={setFunnelMode}
+            />
+          </section>
 
           <HandoffPieChart data={handoff} loading={handoffLoading} standalone />
         </>

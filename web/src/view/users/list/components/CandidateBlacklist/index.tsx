@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { formatDateTime } from '@/utils/format';
-import type { CandidateBlacklistItem } from '@/api/types/config.types';
+import type { CandidateBlacklistItem } from '@/api/types/candidate-blacklist.types';
 import styles from './index.module.scss';
 
 interface CandidateBlacklistProps {
@@ -9,6 +10,8 @@ interface CandidateBlacklistProps {
   isPending: boolean;
   onAdd: (params: { targetId: string; reason: string; operator?: string }) => void;
   onRemove: (targetId: string) => void;
+  /** 把托管账号 wxid 解析为配置的展示名（未配置别名时返回 undefined） */
+  resolveBotName?: (ids: { botUserId?: string; imBotId?: string }) => string | undefined;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -22,10 +25,18 @@ export default function CandidateBlacklist({
   isPending,
   onAdd,
   onRemove,
+  resolveBotName,
 }: CandidateBlacklistProps) {
   const [targetId, setTargetId] = useState('');
   const [reason, setReason] = useState('');
   const [operator, setOperator] = useState('');
+
+  /** 托管账号展示名：配置的别名 > 拉黑时快照的招募经理姓名 > 原始 wxid */
+  const getBotLabel = (imBotId: string | null, botName: string | null) => {
+    if (!imBotId && !botName) return '';
+    const resolved = imBotId ? resolveBotName?.({ imBotId }) : undefined;
+    return resolved || botName || imBotId || '';
+  };
 
   const canSubmit = targetId.trim().length > 0 && reason.trim().length > 0 && !isPending;
 
@@ -52,33 +63,21 @@ export default function CandidateBlacklist({
   };
 
   return (
-    <section className={styles.section}>
-      <div className={styles.sectionHeader}>
-        <h3>
-          候选人黑名单 <span className={styles.headerCount}>({candidates.length} 人)</span>
-        </h3>
-        <p className={styles.sectionDesc}>
-          拉黑后，任一托管账号再次收到该候选人消息时会发送飞书告警（附拉黑理由），并永久取消该会话的托管
-        </p>
-      </div>
-
+    <div className={styles.panel}>
       <div className={styles.addForm}>
         <input
-          className={styles.targetInput}
           value={targetId}
           onChange={(e) => setTargetId(e.target.value)}
           placeholder="候选人标识（会话ID / 联系人ID）"
           aria-label="候选人标识"
         />
         <input
-          className={styles.reasonInput}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="拉黑理由（必填）"
           aria-label="拉黑理由"
         />
         <input
-          className={styles.operatorInput}
           value={operator}
           onChange={(e) => setOperator(e.target.value)}
           placeholder="操作人（选填）"
@@ -99,6 +98,7 @@ export default function CandidateBlacklist({
           <thead>
             <tr>
               <th>候选人</th>
+              <th>托管账号</th>
               <th>拉黑理由</th>
               <th>操作人</th>
               <th>拉黑时间</th>
@@ -109,14 +109,22 @@ export default function CandidateBlacklist({
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className={styles.loadingCell}>
-                  加载中...
+                <td colSpan={7} className={styles.loadingCell}>
+                  <div className={styles.emptyState}>
+                    <p>加载中...</p>
+                  </div>
                 </td>
               </tr>
             ) : candidates.length === 0 ? (
               <tr>
-                <td colSpan={6} className={styles.loadingCell}>
-                  暂无被拉黑的候选人
+                <td colSpan={7} className={styles.loadingCell}>
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyIconHalo}>
+                      <ShieldCheck className={styles.emptyIcon} aria-hidden="true" />
+                    </div>
+                    <p>暂无被拉黑的候选人</p>
+                    <span className={styles.emptyHint}>一切正常，没有需要拦截的候选人</span>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -133,6 +141,12 @@ export default function CandidateBlacklist({
                       {item.target_id}
                     </div>
                   </td>
+                  <td
+                    className={styles.botCell}
+                    title={[item.bot_name, item.im_bot_id].filter(Boolean).join(' / ') || undefined}
+                  >
+                    {getBotLabel(item.im_bot_id, item.bot_name) || '-'}
+                  </td>
                   <td className={styles.reasonCell} title={item.reason}>
                     {item.reason}
                   </td>
@@ -145,7 +159,7 @@ export default function CandidateBlacklist({
                         {item.last_hit_at && (
                           <div
                             className={styles.hitDetail}
-                            title={`最近命中会话：${item.last_hit_chat_id || '-'}\n托管号：${item.last_hit_bot_id || '-'}`}
+                            title={`最近命中会话：${item.last_hit_chat_id || '-'}\n托管号：${getBotLabel(item.last_hit_bot_id, null) || item.last_hit_bot_id || '-'}`}
                           >
                             最近 {formatDateTime(item.last_hit_at)}
                           </div>
@@ -171,6 +185,6 @@ export default function CandidateBlacklist({
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
   );
 }

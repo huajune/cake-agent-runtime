@@ -2,6 +2,11 @@ import { useMemo, useState } from 'react';
 import { ArrowUpDown, Bot, Info, Search, X } from 'lucide-react';
 import { useConfiguredBots } from '@/hooks/bot/useBots';
 import { useTodayUsers, useToggleUserHosting, usePausedUsers } from '@/hooks/user/useUsers';
+import {
+  useCandidateBlacklist,
+  useAddCandidateToBlacklist,
+  useRemoveCandidateFromBlacklist,
+} from '@/hooks/user/useCandidateBlacklist';
 import type { BotAccount } from '@/api/types/bot.types';
 
 // 类型导入
@@ -14,6 +19,7 @@ import { transformPausedUsers } from './utils/transformers';
 import UserTable from './components/UserTable';
 import UserTrendChart from './components/UserTrendChart';
 import UserTabNav from './components/UserTabNav';
+import CandidateBlacklist from './components/CandidateBlacklist';
 import { USER_RANGE_OPTIONS } from './constants';
 
 // 样式导入
@@ -112,6 +118,9 @@ export default function Users() {
   const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers();
   const { data: configuredBots = [], isLoading: isBotsLoading } = useConfiguredBots();
   const toggleHosting = useToggleUserHosting();
+  const { data: candidateBlacklist, isLoading: isLoadingCandidates } = useCandidateBlacklist();
+  const addCandidate = useAddCandidateToBlacklist();
+  const removeCandidate = useRemoveCandidateFromBlacklist();
 
   const handleToggleHosting = (chatId: string, enabled: boolean) => {
     toggleHosting.mutate({ chatId, enabled });
@@ -162,6 +171,10 @@ export default function Users() {
     return matchedOption?.label || getUserBotLabel(user) || '-';
   };
 
+  /** 黑名单列表用：仅按配置别名解析，未命中返回 undefined 让组件回退到拉黑快照 */
+  const resolveBotName = (ids: Pick<UserData, 'botUserId' | 'imBotId'>) =>
+    botOptions.find((option) => matchesBotOption(ids, option))?.label;
+
   const filteredTodayUsers = useMemo(
     () => filterUsersByControls(todayUsers, normalizedKeyword, activeBotOption),
     [activeBotOption, normalizedKeyword, todayUsers],
@@ -201,6 +214,7 @@ export default function Users() {
           activeTab={activeTab}
           todayCount={filteredTodayUsers.length}
           pausedCount={filteredPausedUsers.length}
+          blacklistCount={candidateBlacklist?.candidates?.length || 0}
           onTabChange={setActiveTab}
         />
 
@@ -214,74 +228,97 @@ export default function Users() {
           </div>
         )}
 
-        <div className={styles.toolbar}>
-          <label className={styles.searchControl}>
-            <Search aria-hidden="true" size={15} />
-            <input
-              value={searchKeyword}
-              onChange={(event) => setSearchKeyword(event.target.value)}
-              placeholder="搜索用户 / 会话ID"
-              aria-label="搜索用户或会话 ID"
+        {activeTab === 'blacklist' && (
+          <div className={styles.tabHint}>
+            <Info className={styles.tabHintIcon} aria-hidden="true" />
+            <span>
+              拉黑后，任一托管账号再次收到该候选人消息时会发送飞书告警（附拉黑理由），并永久取消该会话的托管；移除黑名单不会自动恢复已暂停的会话。
+            </span>
+          </div>
+        )}
+
+        {activeTab === 'blacklist' ? (
+          /* 候选人黑名单（命中后永久暂停托管，与暂停列表的"黑名单"来源对应） */
+          <CandidateBlacklist
+            candidates={candidateBlacklist?.candidates || []}
+            isLoading={isLoadingCandidates}
+            isPending={addCandidate.isPending || removeCandidate.isPending}
+            onAdd={(params) => addCandidate.mutate(params)}
+            onRemove={(targetId) => removeCandidate.mutate({ targetId })}
+            resolveBotName={resolveBotName}
+          />
+        ) : (
+          <>
+            <div className={styles.toolbar}>
+              <label className={styles.searchControl}>
+                <Search aria-hidden="true" size={15} />
+                <input
+                  value={searchKeyword}
+                  onChange={(event) => setSearchKeyword(event.target.value)}
+                  placeholder="搜索用户 / 会话ID"
+                  aria-label="搜索用户或会话 ID"
+                />
+                {searchKeyword && (
+                  <button
+                    type="button"
+                    className={styles.clearSearch}
+                    onClick={() => setSearchKeyword('')}
+                    aria-label="清空搜索"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </label>
+
+              <label className={styles.selectControl}>
+                <ArrowUpDown aria-hidden="true" size={15} />
+                <select
+                  value={sortMode}
+                  onChange={(event) => setSortMode(event.target.value as SortMode)}
+                  aria-label="排序方式"
+                >
+                  <option value="firstActiveDesc">首次活跃时间新到旧</option>
+                  <option value="lastActiveDesc">最后活跃时间新到旧</option>
+                  <option value="messageDesc">消息数多到少</option>
+                </select>
+              </label>
+
+              <label className={styles.selectControl}>
+                <Bot aria-hidden="true" size={15} />
+                <select
+                  value={activeBotFilter}
+                  onChange={(event) => setBotFilter(event.target.value)}
+                  aria-label="托管 bot 过滤"
+                  disabled={isBotsLoading || botOptions.length === 0}
+                >
+                  <option value={ALL_BOTS}>
+                    {isBotsLoading
+                      ? '正在加载托管账号'
+                      : botOptions.length === 0
+                        ? '暂无托管账号'
+                        : '全部托管账号'}
+                  </option>
+                  {botOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label} ({option.count})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {/* 用户表格 */}
+            <UserTable
+              users={displayUsers}
+              isLoading={isLoading}
+              onToggleHosting={handleToggleHosting}
+              isPausedTab={activeTab === 'paused'}
+              pendingChatId={pendingChatId}
+              emptyMessage={emptyMessage}
+              resolveBotLabel={resolveBotLabel}
             />
-            {searchKeyword && (
-              <button
-                type="button"
-                className={styles.clearSearch}
-                onClick={() => setSearchKeyword('')}
-                aria-label="清空搜索"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            )}
-          </label>
-
-          <label className={styles.selectControl}>
-            <ArrowUpDown aria-hidden="true" size={15} />
-            <select
-              value={sortMode}
-              onChange={(event) => setSortMode(event.target.value as SortMode)}
-              aria-label="排序方式"
-            >
-              <option value="firstActiveDesc">首次活跃时间新到旧</option>
-              <option value="lastActiveDesc">最后活跃时间新到旧</option>
-              <option value="messageDesc">消息数多到少</option>
-            </select>
-          </label>
-
-          <label className={styles.selectControl}>
-            <Bot aria-hidden="true" size={15} />
-            <select
-              value={activeBotFilter}
-              onChange={(event) => setBotFilter(event.target.value)}
-              aria-label="托管 bot 过滤"
-              disabled={isBotsLoading || botOptions.length === 0}
-            >
-              <option value={ALL_BOTS}>
-                {isBotsLoading
-                  ? '正在加载托管账号'
-                  : botOptions.length === 0
-                    ? '暂无托管账号'
-                    : '全部托管账号'}
-              </option>
-              {botOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label} ({option.count})
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {/* 用户表格 */}
-        <UserTable
-          users={displayUsers}
-          isLoading={isLoading}
-          onToggleHosting={handleToggleHosting}
-          isPausedTab={activeTab === 'paused'}
-          pendingChatId={pendingChatId}
-          emptyMessage={emptyMessage}
-          resolveBotLabel={resolveBotLabel}
-        />
+          </>
+        )}
       </section>
     </div>
   );

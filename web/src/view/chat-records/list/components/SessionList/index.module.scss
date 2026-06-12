@@ -138,6 +138,21 @@
     background: rgba($primary, 0.06);
     border-left: 3px solid $primary;
   }
+
+  // 刚收到新消息的会话（Realtime 推送）：绿色脉冲高亮
+  &.flashing {
+    animation: newMessagePulse 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes newMessagePulse {
+  0%,
+  100% {
+    background: rgba(16, 185, 129, 0.05);
+  }
+  50% {
+    background: rgba(16, 185, 129, 0.16);
+  }
 }
 
 .avatar {
