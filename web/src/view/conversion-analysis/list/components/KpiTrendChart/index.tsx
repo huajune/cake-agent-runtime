@@ -15,6 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import heroArt from '@/assets/images/conversion-growth-hero.png';
+import { useCountUp } from '@/hooks/useCountUp';
 import { isWeekendDate } from '@/utils/date-range';
 import MetricModeTabs from '../MetricModeTabs';
 import { KPI_DEFS } from '../../types';
@@ -114,7 +115,7 @@ export default function KpiTrendChart({ data, loading, mode, onModeChange }: Kpi
                     <span>{mode === 'cohort' ? COHORT_FORMULAS[metric.key] : metric.formula}</span>
                   </div>
                   <div className={styles.trendCardStat}>
-                    <em style={{ color: metric.color }}>{formatPercent(rate)}</em>
+                    <TrendStatValue rate={rate} color={metric.color} />
                     <small>
                       {numerator} / {denominator}
                     </small>
@@ -166,7 +167,9 @@ export default function KpiTrendChart({ data, loading, mode, onModeChange }: Kpi
                         dot={chartData.length <= 31 ? { r: 2, fill: metric.color } : false}
                         connectNulls={false}
                         activeDot={{ r: 5, fill: metric.color, strokeWidth: 2, stroke: '#fff' }}
-                        isAnimationActive={false}
+                        isAnimationActive
+                        animationDuration={1200}
+                        animationEasing="ease-out"
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -236,6 +239,12 @@ function trendDescription(mode: ConversionMetricMode) {
   return mode === 'period'
     ? '按天查看同一时段内各阶段发生量（均按人去重，已剔除周末）；与上方固定 period 名片同口径'
     : '按新增好友入列日追踪同批后续转化（按人去重，已剔除周末）；口径不同于上方固定 period 名片，近几日受时间窗右侧截断可能偏低';
+}
+
+// 卡片右上的大数：从 0 滚动到目标值，与 KPI 名片的计数动画一致。
+function TrendStatValue({ rate, color }: { rate: number | null; color: string }) {
+  const animated = useCountUp(rate ?? 0);
+  return <em style={{ color }}>{rate == null ? '—' : formatPercent(animated)}</em>;
 }
 
 function formatPercent(value?: number | null) {

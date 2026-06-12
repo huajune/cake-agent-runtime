@@ -10,6 +10,7 @@ import {
   type LucideIcon,
   Rocket,
 } from 'lucide-react';
+import { useCountUp } from '@/hooks/useCountUp';
 import { KPI_DEFS } from '../../types';
 import styles from '../../styles/index.module.scss';
 
@@ -73,6 +74,7 @@ function KpiCell({
   const change = metric?.change ?? 0;
   const changeClass =
     Math.abs(change) < 0.05 ? styles.neutral : change > 0 ? styles.up : styles.down;
+  const animatedCurrent = useCountUp(metric?.current ?? 0);
 
   return (
     <article className={`${styles.kpiCell} ${styles[tone]}`}>
@@ -83,7 +85,7 @@ function KpiCell({
         <span className={styles.kpiLabel}>{label}</span>
       </div>
       <p className={styles.kpiMeaning}>{formula}</p>
-      <strong className={styles.kpiValue}>{loading ? '-' : formatPercent(metric?.current)}</strong>
+      <strong className={styles.kpiValue}>{loading ? '-' : formatPercent(animatedCurrent)}</strong>
       <div className={styles.kpiMeta}>
         <em className={changeClass}>{loading ? '-' : formatPp(metric?.change)}</em>
         <span>{loading ? '-' : `${metric?.numerator ?? 0}/${metric?.denominator ?? 0}`}</span>
