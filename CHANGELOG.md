@@ -8,17 +8,16 @@
 
 ---
 
-## [5.16.0] - 2026-06-12
+<!-- release:pending:start -->
+## 待发布
 
+**预计版本**: `v5.17.0`
+**最近更新**: `2026-06-12`
 **来源分支**: `develop`
+**累计 PR**: 1
 
 ### 更新摘要
-- PR #308 明确拉群投递契约
-- PR #308 将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。
-- PR #308 增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。
-- PR #308 更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。
-- PR #308 明确 invite_to_group 拉群投递契约
-- PR #311 增加 AppModule 全量装配 DI 冒烟测试
+- PR #319 户籍/民族筛选条件禁止外显给候选人
 
 ### 新功能
 - 无
@@ -30,11 +29,52 @@
 - 无
 
 ### 运维与流程
+- PR #319 户籍/民族筛选条件禁止外显给候选人
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #319 `tests/tools/duliday/job-list/render.util.spec.ts` 8/8 通过（既有断言未破坏）
+- PR #319 ESLint 通过
+<!-- release:pending:end -->
+
+## [5.16.0] - 2026-06-12
+
+**来源分支**: `develop`
+
+### 更新摘要
+- PR #308 明确拉群投递契约
+- PR #308 将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。
+- PR #308 增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。
+- PR #308 更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。
+- PR #308 明确 invite_to_group 拉群投递契约
+- PR #311 增加 AppModule 全量装配 DI 冒烟测试
+- PR #313 冲突文件：`package.json` / `CHANGELOG.md` / `.release/pending-release.json`
+- PR #313 解决方式：全部保留 develop 侧（已含 v5.16.0 待发布元数据，CHANGELOG 同时保留 v5.15.0 历史记录）
+- PR #313 本 PR 请使用 **merge commit** 合入，使 master 的提交进入 develop 祖先链
+- PR #313 sync master into develop after v5.15.0
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #313 解决方式：全部保留 develop 侧（已含 v5.16.0 待发布元数据，CHANGELOG 同时保留 v5.15.0 历史记录）
+
+### 优化调整
+- 无
+
+### 运维与流程
 - PR #308 将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。
 - PR #308 增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。
 - PR #308 更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。
 - PR #308 明确拉群投递契约
 - PR #311 增加 AppModule 全量装配 DI 冒烟测试
+- PR #313 冲突文件：`package.json` / `CHANGELOG.md` / `.release/pending-release.json`
+- PR #313 本 PR 请使用 **merge commit** 合入，使 master 的提交进入 develop 祖先链
 
 ### 配置变更
 - 无

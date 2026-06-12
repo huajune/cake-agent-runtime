@@ -166,7 +166,7 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
   if (hr.household) {
     const verb = hr.household.mode === 'include' ? '仅接受' : '不接受';
     lines.push(
-      `- **户籍**：${verb} ${hr.household.regions.join('/')}（不掌握候选人户籍时先确认再 booking）`,
+      `- **户籍**：${verb} ${hr.household.regions.join('/')}（🔒 仅供内部筛选，**严禁把该户籍限制原样写进岗位介绍/要求或当拒绝理由告诉候选人**——涉地域歧视极易起纠纷；不掌握候选人户籍时按敏感门槛话术委婉了解后内部判断，不符则以排班/距离等中性理由转推其他岗位）`,
     );
   }
 
@@ -526,6 +526,14 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   pushField(lines, '籍贯要求', hometown.nativePlaceRequirementType);
   if (Array.isArray(hometown.nativePlaces) && hometown.nativePlaces.length > 0) {
     lines.push(`- **籍贯**: ${hometown.nativePlaces.join(', ')}`);
+  }
+  const hasSensitiveHometownConstraint =
+    (Array.isArray(hometown.nativePlaces) && hometown.nativePlaces.length > 0) ||
+    (Array.isArray(hometown.nations) && hometown.nations.length > 0);
+  if (hasSensitiveHometownConstraint) {
+    lines.push(
+      '- ⚠️ 上述民族/籍贯条件🔒仅供内部筛选，**严禁向候选人展示或转述**（涉地域/民族歧视，易起纠纷）',
+    );
   }
 
   const mb = asRecord(req.marriageBearingAndSocialSecurity) ?? {};
