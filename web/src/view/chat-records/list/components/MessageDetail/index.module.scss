@@ -77,9 +77,22 @@
   align-items: flex-start;
   gap: 12px;
   margin-bottom: $spacing-md;
+  // 消息入场动画：切换会话/新消息到达时柔和上浮淡入
+  animation: messageIn 0.3s ease both;
 
   &.assistant {
     flex-direction: row-reverse;
+  }
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

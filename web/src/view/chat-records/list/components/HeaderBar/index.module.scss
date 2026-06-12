@@ -44,6 +44,49 @@
   color: $text-primary;
 }
 
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: $font-weight-medium;
+  color: $text-muted;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+
+  .liveDot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #94a3b8;
+  }
+
+  &.connected {
+    color: #059669;
+    background: rgba(16, 185, 129, 0.08);
+
+    .liveDot {
+      background: #10b981;
+      animation: liveBreathe 2s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes liveBreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+    opacity: 0.7;
+  }
+}
+
 .divider {
   width: 1px;
   height: 28px;
@@ -117,8 +160,11 @@
 }
 
 .statValue {
+  display: inline-block; // 让 transform 动画生效
   font-size: $font-size-base;
   font-weight: $font-weight-extrabold;
+  // 数值变化时（key 重挂载）触发跳动动效
+  animation: statPop 0.45s $transition-timing;
 
   &.primary {
     background: linear-gradient(135deg, $primary, $accent);
@@ -133,6 +179,18 @@
 
   &.warning {
     color: $warning;
+  }
+}
+
+@keyframes statPop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 

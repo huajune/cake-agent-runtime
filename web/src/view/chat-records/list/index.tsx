@@ -17,6 +17,7 @@ import {
   useChatDailyStats,
   useChatSummaryStats,
 } from '@/hooks/chat/useChatSessions';
+import { useRealtimeChatRecords } from '@/hooks/chat/useRealtimeChatRecords';
 import { THEME_COLORS } from '@/constants';
 
 // 组件导入
@@ -93,6 +94,9 @@ export default function ChatRecords() {
   const [searchTerm, setSearchTerm] = useState('');
   const [timeRangeIndex, setTimeRangeIndex] = useState<number>(0);
   const [analyticsMonthIndex, setAnalyticsMonthIndex] = useState<number>(0);
+
+  // Supabase Realtime：chat_messages 变更时自动刷新数据，并标记刚收到消息的会话
+  const { isLive, activeChatIds } = useRealtimeChatRecords();
 
   // 根据时间范围获取会话列表数据
   const currentRange = TIME_RANGE_OPTIONS[timeRangeIndex];
@@ -247,6 +251,7 @@ export default function ChatRecords() {
         sessionStats={sessionStats}
         showAnalytics={showAnalytics}
         onToggleAnalytics={() => setShowAnalytics(!showAnalytics)}
+        isLive={isLive}
       />
 
       {/* 可展开的数据分析面板（顶部「消息趋势」按钮控制，默认折叠） */}
@@ -273,6 +278,7 @@ export default function ChatRecords() {
           onSearchChange={setSearchTerm}
           isLoading={sessionsLoading}
           timeRangeLabel={currentRange.label}
+          activeChatIds={activeChatIds}
         />
 
         {/* 右侧消息详情 */}
