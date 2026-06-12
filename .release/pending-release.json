@@ -1,127 +1,101 @@
 {
-  "baseVersion": "5.17.0",
+  "baseVersion": "5.18.0",
   "nextVersion": "5.18.0",
   "updatedAt": "2026-06-12",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "318",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/318",
-      "title": "候选人黑名单独立模块 + 聊天记录实时化 + 转化分析页改版",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-12",
-      "businessUpdates": [
-        "后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）",
-        "`biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移",
-        "前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立",
-        "新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新",
-        "HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动",
-        "KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新",
-        "聊天记录页接入 Supabase Realtime 实时刷新",
-        "支持图片格式简历（手写简历/简历拍照）识别为简历附件",
-        "托管用户页整体视觉升级与适配修复"
-      ],
-      "summary": [
-        "候选人黑名单独立为 biz/candidate-blacklist 模块",
-        "聊天记录页接入 Supabase Realtime 实时刷新",
-        "转化分析页视觉改版",
-        "vite 代理白名单补充 /candidate-blacklist 前缀",
-        "托管用户列表灵动化动效，趋势卡片默认收起",
-        "支持图片格式简历（手写简历/简历拍照）识别为简历附件",
-        "托管用户页整体视觉升级与适配修复",
-        "黑名单展示候选人昵称与所在托管账号",
-        "后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）",
-        "`biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移",
-        "前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立",
-        "新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新",
-        "HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动",
-        "KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新",
-        "候选人黑名单独立模块 + 聊天记录实时化 + 转化分析页改版"
-      ],
-      "features": [
-        "后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）",
-        "`biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移",
-        "前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立",
-        "新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新",
-        "HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动",
-        "KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新",
-        "聊天记录页接入 Supabase Realtime 实时刷新",
-        "支持图片格式简历（手写简历/简历拍照）识别为简历附件"
-      ],
-      "fixes": [
-        "托管用户页整体视觉升级与适配修复"
-      ],
-      "optimizations": [],
-      "ops": [
-        "候选人黑名单独立为 biz/candidate-blacklist 模块",
-        "转化分析页视觉改版",
-        "vite 代理白名单补充 /candidate-blacklist 前缀",
-        "托管用户列表灵动化动效，趋势卡片默认收起",
-        "黑名单展示候选人昵称与所在托管账号"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "本地 pre-push CI 被另一并发会话的 WIP 文件（不在本 PR 内）的 lint 错误卡住，已 `--no-verify` 推送，以 GitHub CI 为准"
-      ]
-    },
-    {
-      "number": "324",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/324",
-      "title": "转化分析页视觉与动效升级",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-12",
-      "businessUpdates": [
-        "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
-      ],
-      "summary": [
-        "转化分析页视觉与动效升级",
-        "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
-      ],
-      "features": [
-        "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "转化分析页视觉与动效升级"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`tsc -b && vite build` 通过",
-        "Chrome 实测：demo 模式全模块渲染正常、动画逐项验证挂载、无 console 报错"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.17.0",
+    "version": "5.18.0",
     "date": "2026-06-12",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "319",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/319",
-        "title": "户籍/民族筛选条件禁止外显给候选人",
+        "number": "318",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/318",
+        "title": "候选人黑名单独立模块 + 聊天记录实时化 + 转化分析页改版",
         "author": "ArielZhu",
         "mergedAt": "2026-06-12",
         "businessUpdates": [
-          "户籍/民族筛选条件禁止外显给候选人"
+          "后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）",
+          "`biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移",
+          "前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立",
+          "新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新",
+          "HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动",
+          "KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新",
+          "聊天记录页接入 Supabase Realtime 实时刷新",
+          "支持图片格式简历（手写简历/简历拍照）识别为简历附件",
+          "托管用户页整体视觉升级与适配修复"
         ],
         "summary": [
-          "户籍/民族筛选条件禁止外显给候选人"
+          "候选人黑名单独立为 biz/candidate-blacklist 模块",
+          "聊天记录页接入 Supabase Realtime 实时刷新",
+          "转化分析页视觉改版",
+          "vite 代理白名单补充 /candidate-blacklist 前缀",
+          "托管用户列表灵动化动效，趋势卡片默认收起",
+          "支持图片格式简历（手写简历/简历拍照）识别为简历附件",
+          "托管用户页整体视觉升级与适配修复",
+          "黑名单展示候选人昵称与所在托管账号",
+          "后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）",
+          "`biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移",
+          "前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立",
+          "新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新",
+          "HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动",
+          "KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新",
+          "候选人黑名单独立模块 + 聊天记录实时化 + 转化分析页改版"
         ],
-        "features": [],
-        "fixes": [],
+        "features": [
+          "后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）",
+          "`biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移",
+          "前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立",
+          "新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新",
+          "HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动",
+          "KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新",
+          "聊天记录页接入 Supabase Realtime 实时刷新",
+          "支持图片格式简历（手写简历/简历拍照）识别为简历附件"
+        ],
+        "fixes": [
+          "托管用户页整体视觉升级与适配修复"
+        ],
         "optimizations": [],
         "ops": [
-          "户籍/民族筛选条件禁止外显给候选人"
+          "候选人黑名单独立为 biz/candidate-blacklist 模块",
+          "转化分析页视觉改版",
+          "vite 代理白名单补充 /candidate-blacklist 前缀",
+          "托管用户列表灵动化动效，趋势卡片默认收起",
+          "黑名单展示候选人昵称与所在托管账号"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`tests/tools/duliday/job-list/render.util.spec.ts` 8/8 通过（既有断言未破坏）",
-          "ESLint 通过"
+          "本地 pre-push CI 被另一并发会话的 WIP 文件（不在本 PR 内）的 lint 错误卡住，已 `--no-verify` 推送，以 GitHub CI 为准"
+        ]
+      },
+      {
+        "number": "324",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/324",
+        "title": "转化分析页视觉与动效升级",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-12",
+        "businessUpdates": [
+          "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
+        ],
+        "summary": [
+          "转化分析页视觉与动效升级",
+          "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
+        ],
+        "features": [
+          "merge develop into feat/conversion-analysis-visual-polish，转化分析…"
+        ],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "转化分析页视觉与动效升级"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`tsc -b && vite build` 通过",
+          "Chrome 实测：demo 模式全模块渲染正常、动画逐项验证挂载、无 console 报错"
         ]
       }
     ]
