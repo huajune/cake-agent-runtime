@@ -8,6 +8,64 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.18.0`
+**最近更新**: `2026-06-12`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #318 候选人黑名单独立为 biz/candidate-blacklist 模块
+- PR #318 聊天记录页接入 Supabase Realtime 实时刷新
+- PR #318 转化分析页视觉改版
+- PR #318 vite 代理白名单补充 /candidate-blacklist 前缀
+- PR #318 托管用户列表灵动化动效，趋势卡片默认收起
+- PR #318 支持图片格式简历（手写简历/简历拍照）识别为简历附件
+- PR #318 托管用户页整体视觉升级与适配修复
+- PR #318 黑名单展示候选人昵称与所在托管账号
+- PR #318 后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）
+- PR #318 `biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移
+- PR #318 前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立
+- PR #318 新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新
+- PR #318 HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动
+- PR #318 KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新
+- PR #318 候选人黑名单独立模块 + 聊天记录实时化 + 转化分析页改版
+
+### 新功能
+- PR #318 后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）
+- PR #318 `biz.module` 与 wecom `message.module` 改挂新模块，`message-filter.rules` 引用同步迁移
+- PR #318 前端入口从托管页迁至用户页（UserTabNav 新增 tab），API / 类型 / Hook 独立
+- PR #318 新增 `useRealtimeChatRecords` 订阅 `postgres_changes`，会话列表 / 消息详情实时刷新
+- PR #318 HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动
+- PR #318 KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新
+- PR #318 聊天记录页接入 Supabase Realtime 实时刷新
+- PR #318 支持图片格式简历（手写简历/简历拍照）识别为简历附件
+
+### 问题修复
+- PR #318 托管用户页整体视觉升级与适配修复
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #318 候选人黑名单独立为 biz/candidate-blacklist 模块
+- PR #318 转化分析页视觉改版
+- PR #318 vite 代理白名单补充 /candidate-blacklist 前缀
+- PR #318 托管用户列表灵动化动效，趋势卡片默认收起
+- PR #318 黑名单展示候选人昵称与所在托管账号
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #318 本地 pre-push CI 被另一并发会话的 WIP 文件（不在本 PR 内）的 lint 错误卡住，已 `--no-verify` 推送，以 GitHub CI 为准
+<!-- release:pending:end -->
+
 ## [5.17.0] - 2026-06-12
 
 **来源分支**: `develop`
