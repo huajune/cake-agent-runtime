@@ -45,10 +45,24 @@ describe('geo-mappings', () => {
       expect(hasGenericAmbiguousSuffix('人民广场')).toBe(true);
     });
 
-    it('以黑名单条目结尾时命中', () => {
-      expect(hasGenericAmbiguousSuffix('上海火车站')).toBe(true);
-      expect(hasGenericAmbiguousSuffix('北京西站火车站')).toBe(true);
+    it('以黑名单条目结尾时命中（连锁商业体/公共设施）', () => {
       expect(hasGenericAmbiguousSuffix('合肥万达广场')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('龙湖天街')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('交通大学')).toBe(true);
+    });
+
+    it('交通站点带 ≥2 字专名前缀时不命中（badcase: 漕宝路地铁报站名被反问城市）', () => {
+      expect(hasGenericAmbiguousSuffix('漕宝路地铁站')).toBe(false);
+      expect(hasGenericAmbiguousSuffix('上海火车站')).toBe(false);
+      expect(hasGenericAmbiguousSuffix('北京西站火车站')).toBe(false);
+      expect(hasGenericAmbiguousSuffix('虹桥高铁站')).toBe(false);
+    });
+
+    it('交通站点前缀过短或本身仍是通名时照旧命中', () => {
+      expect(hasGenericAmbiguousSuffix('南地铁站')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('长途汽车站')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('中心客运站')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('汽车客运站')).toBe(true);
     });
 
     it('前后有空白时仍能匹配（自动 trim）', () => {
