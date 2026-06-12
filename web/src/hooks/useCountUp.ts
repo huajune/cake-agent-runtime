@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * 数字滚动动画：目标值变化时从当前显示值平滑过渡到新值（easeOutCubic）。
- * 尊重 prefers-reduced-motion（直接跳到目标值）。
+ * 数字滚动动画：首次挂载从 0 滚动到目标值，之后目标变化时从当前显示值
+ * 平滑过渡到新值（easeOutCubic）。尊重 prefers-reduced-motion（直接跳到目标值）。
  */
-export function useCountUp(target: number, durationMs = 900): number {
-  const [value, setValue] = useState(target);
-  const displayedRef = useRef(target);
+export function useCountUp(target: number, durationMs = 1100): number {
+  const [value, setValue] = useState(0);
+  const displayedRef = useRef(0);
   const frameRef = useRef(0);
 
   useEffect(() => {
