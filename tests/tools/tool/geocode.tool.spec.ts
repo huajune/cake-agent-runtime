@@ -142,6 +142,25 @@ describe('geocode tool', () => {
       expect(result.result).toMatchObject({ longitude: 121.41, latitude: 31.21 });
     });
 
+    it('旧缓存候选缺 typecode 字段 → 按名称兜底而不抛错（线上 case：上海九亭）', async () => {
+      // typecode 是 bb04aff4 新增字段，发版前写入 Redis 的候选反序列化后没有该字段；
+      // 必须走 poiName 兜底正常收敛，不得 TypeError 落入 geocode.failed
+      const legacy = makeCandidate({
+        poiName: '九亭镇',
+        district: '松江区',
+        township: '九亭镇',
+        longitude: 121.32,
+        latitude: 31.11,
+      });
+      delete (legacy as Partial<GeocodeCandidate>).typecode;
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([legacy]);
+
+      const result = (await execute({ address: '九亭', city: '上海' })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+      expect(result.result).toMatchObject({ longitude: 121.32, latitude: 31.11 });
+    });
+
     it('全部都是道路名（无更优候选）→ 兜底沿用首条', async () => {
       (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
         makeCandidate({ poiName: '某条路', typecode: '190301', longitude: 121.5, latitude: 31.3 }),

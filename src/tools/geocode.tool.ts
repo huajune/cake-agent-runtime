@@ -107,7 +107,7 @@ function toAmbiguousView(c: GeocodeCandidate): AmbiguousCandidateView {
  * 优先看高德 typecode（`1505*`=地铁站），缓存里的老候选无 typecode 时退回按名称"…站"兜底。
  */
 function isMetroStation(c: GeocodeCandidate): boolean {
-  return c.typecode.startsWith('1505') || c.poiName.endsWith('站');
+  return (c.typecode ?? '').startsWith('1505') || (c.poiName ?? '').endsWith('站');
 }
 
 /**
@@ -115,7 +115,7 @@ function isMetroStation(c: GeocodeCandidate): boolean {
  * 长路（如七莘路 ~10km）只返回一个代表点，可能落在远离候选人的另一端，精度最低。
  */
 function isRoadNamePoi(c: GeocodeCandidate): boolean {
-  return c.typecode.startsWith('1903');
+  return (c.typecode ?? '').startsWith('1903');
 }
 
 /**

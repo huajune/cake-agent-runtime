@@ -304,7 +304,7 @@ describe('GeocodingService', () => {
       const result = await service.searchCandidates('马陆');
 
       expect(result).toEqual(cached);
-      expect(redisService.get).toHaveBeenCalledWith('geocode:candidates:v1:马陆');
+      expect(redisService.get).toHaveBeenCalledWith('geocode:candidates:v2:马陆');
     });
 
     it('未传 city 时不设 citylimit，让高德全国搜索', async () => {
@@ -346,7 +346,7 @@ describe('GeocodingService', () => {
       expect(candidates).toHaveLength(2);
       expect(candidates.map((c) => c.city)).toEqual(['上海市', '南京市']);
       expect(redisService.setex).toHaveBeenCalledWith(
-        'geocode:candidates:v1:解放路',
+        'geocode:candidates:v2:解放路',
         30 * 24 * 3600,
         expect.any(Array),
       );

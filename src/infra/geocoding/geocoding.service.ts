@@ -6,7 +6,8 @@ import { GeocodeCandidate, GeocodeResult } from './geocoding.types';
 const AMAP_PLACE_API = 'https://restapi.amap.com/v3/place/text';
 const AMAP_GEOCODE_API = 'https://restapi.amap.com/v3/geocode/geo';
 const CACHE_PREFIX = 'geocode:v2:';
-const CANDIDATES_CACHE_PREFIX = 'geocode:candidates:v1:';
+// v2: 候选结构新增 typecode 字段（bb04aff4），升版本甩掉缺字段的旧缓存
+const CANDIDATES_CACHE_PREFIX = 'geocode:candidates:v2:';
 const CACHE_TTL_SECONDS = 30 * 24 * 3600; // 30 天
 const DEFAULT_CANDIDATES_LIMIT = 5;
 
