@@ -5,6 +5,9 @@ const config: JestConfigWithTsJest = {
   rootDir: '.',
   roots: ['<rootDir>/tests'],
   testRegex: '.*\\.spec\\.ts$',
+  // AppModule 装配冒烟测试实例化真实 Bull/ioredis 客户端，遗留重连句柄会让
+  // 默认全量跑挂住；它由专用配置 jest.di-smoke.config.ts（--forceExit）单独执行。
+  testPathIgnorePatterns: ['<rootDir>/tests/app-module.smoke.spec.ts'],
   transform: {
     '^.+\\.(t|j)s$': [
       'ts-jest',
