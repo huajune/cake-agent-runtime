@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CandidateBlacklistRepository } from '@biz/hosting-config/repositories/candidate-blacklist.repository';
-import { CandidateBlacklistRecord } from '@biz/hosting-config/entities/candidate-blacklist.entity';
+import { CandidateBlacklistRepository } from '@biz/candidate-blacklist/repositories/candidate-blacklist.repository';
+import { CandidateBlacklistRecord } from '@biz/candidate-blacklist/entities/candidate-blacklist.entity';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 
 /**
@@ -42,6 +42,8 @@ function makeRecord(overrides: Partial<CandidateBlacklistRecord> = {}): Candidat
     chat_id: 'chat_001',
     im_contact_id: 'contact_001',
     contact_name: '张三',
+    im_bot_id: null,
+    bot_name: null,
     source: 'manual',
     hit_count: 0,
     last_hit_at: null,
@@ -152,6 +154,8 @@ describe('CandidateBlacklistRepository', () => {
         chatId: 'chat_001',
         imContactId: 'contact_001',
         contactName: '张三',
+        imBotId: 'wxid_bot_001',
+        botName: '盼盼组3号',
         source: 'api',
       });
 
@@ -164,6 +168,8 @@ describe('CandidateBlacklistRepository', () => {
           chat_id: 'chat_001',
           im_contact_id: 'contact_001',
           contact_name: '张三',
+          im_bot_id: 'wxid_bot_001',
+          bot_name: '盼盼组3号',
           source: 'api',
           updated_at: expect.any(String),
         }),
@@ -185,6 +191,8 @@ describe('CandidateBlacklistRepository', () => {
           chat_id: null,
           im_contact_id: null,
           contact_name: null,
+          im_bot_id: null,
+          bot_name: null,
           source: 'manual',
         }),
         { onConflict: 'target_id' },
@@ -285,6 +293,7 @@ describe('CandidateBlacklistRepository', () => {
         chatId: 'chat_001',
         botId: 'bot_001',
         messageId: 'msg_001',
+        contactName: '张三',
       });
 
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('record_candidate_blacklist_hit', {
@@ -292,6 +301,7 @@ describe('CandidateBlacklistRepository', () => {
         p_chat_id: 'chat_001',
         p_bot_id: 'bot_001',
         p_message_id: 'msg_001',
+        p_contact_name: '张三',
       });
     });
 
@@ -305,6 +315,7 @@ describe('CandidateBlacklistRepository', () => {
         p_chat_id: null,
         p_bot_id: null,
         p_message_id: null,
+        p_contact_name: null,
       });
     });
 
@@ -333,6 +344,84 @@ describe('CandidateBlacklistRepository', () => {
       await expect(
         repository.recordHit('wmAbc_001', { chatId: 'chat_001' }),
       ).resolves.not.toThrow();
+    });
+  });
+
+  // ==================== findContactSnapshot ====================
+
+  describe('findContactSnapshot', () => {
+    const snapshotRow = {
+      chat_id: 'chat_001',
+      im_contact_id: 'contact_001',
+      candidate_name: '张三',
+      manager_name: '盼盼组3号',
+      im_bot_id: 'wxid_bot_001',
+    };
+
+    it('should resolve snapshot by chat_id without fallback query', async () => {
+      const queryMock = makeQueryMock({ data: [snapshotRow], error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.findContactSnapshot('chat_001');
+
+      expect(result).toEqual({
+        chatId: 'chat_001',
+        imContactId: 'contact_001',
+        contactName: '张三',
+        imBotId: 'wxid_bot_001',
+        botName: '盼盼组3号',
+      });
+      expect(mockSupabaseClient.from).toHaveBeenCalledTimes(1);
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('chat_messages');
+      expect(queryMock.eq).toHaveBeenCalledWith('chat_id', 'chat_001');
+    });
+
+    it('should fall back to im_contact_id/external_user_id match with time bound', async () => {
+      const emptyMock = makeQueryMock({ data: [], error: null });
+      const fallbackMock = makeQueryMock({ data: [snapshotRow], error: null });
+      mockSupabaseClient.from.mockReturnValueOnce(emptyMock).mockReturnValueOnce(fallbackMock);
+
+      const result = await repository.findContactSnapshot('contact_001');
+
+      expect(result).toMatchObject({ contactName: '张三', imBotId: 'wxid_bot_001' });
+      expect(fallbackMock.or).toHaveBeenCalledWith(
+        'im_contact_id.eq.contact_001,external_user_id.eq.contact_001',
+      );
+      expect(fallbackMock.gte).toHaveBeenCalledWith('timestamp', expect.any(String));
+    });
+
+    it('should aggregate fields across recent rows when the latest row is incomplete', async () => {
+      const rows = [
+        { ...snapshotRow, candidate_name: null, manager_name: null },
+        { ...snapshotRow, candidate_name: '张三', im_bot_id: null },
+      ];
+      const queryMock = makeQueryMock({ data: rows, error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.findContactSnapshot('chat_001');
+
+      expect(result).toMatchObject({ contactName: '张三', imBotId: 'wxid_bot_001' });
+    });
+
+    it('should return null when no message matches', async () => {
+      const emptyMock = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(emptyMock);
+
+      const result = await repository.findContactSnapshot('wmAbc_unknown');
+
+      expect(result).toBeNull();
+    });
+
+    it('should skip the or() fallback for unsafe target ids', async () => {
+      const emptyMock = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(emptyMock);
+
+      const result = await repository.findContactSnapshot('evil,id.eq.x');
+
+      expect(result).toBeNull();
+      // 只有 chat_id 主查询，没有 or() 兜底
+      expect(mockSupabaseClient.from).toHaveBeenCalledTimes(1);
+      expect(emptyMock.or).not.toHaveBeenCalled();
     });
   });
 });

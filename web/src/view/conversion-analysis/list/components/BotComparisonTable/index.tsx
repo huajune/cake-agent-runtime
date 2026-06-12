@@ -1,4 +1,4 @@
-import { Activity, ArrowDown, ArrowUp, ChevronsUpDown, CircleAlert, Trophy } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
 import type {
   ConversionBotRow,
   ConversionMetricMode,
@@ -42,12 +42,6 @@ export default function BotComparisonTable({
   onModeChange,
   onSort,
 }: BotComparisonTableProps) {
-  const bookingRateOf = (bot: ConversionBotRow) => rateValue(bot, 'booking_rate');
-  const averageBookingRate =
-    rows.length > 0 ? rows.reduce((sum, bot) => sum + bookingRateOf(bot), 0) / rows.length : 0;
-  const bestBookingRate = rows.reduce((max, bot) => Math.max(max, bookingRateOf(bot)), 0);
-  const lowCount = rows.filter((bot) => bot.status === 'bad').length;
-
   return (
     <section className={`${styles.panel} ${styles.botPanel}`}>
       <img className={styles.botPanelArt} src={heroArt} alt="" aria-hidden="true" />
@@ -64,31 +58,6 @@ export default function BotComparisonTable({
         </div>
         <div className={styles.panelHeaderActions}>
           <MetricModeTabs mode={mode} onChange={onModeChange} label="账号转化对比口径" />
-          {!loading && rows.length > 0 ? (
-            <div className={styles.botSummary}>
-              <div className={`${styles.summaryMetric} ${styles.summaryAverage}`}>
-                <span className={styles.summaryIcon} aria-hidden="true">
-                  <Activity size={15} />
-                </span>
-                <span>平均报名率</span>
-                <strong>{formatPercent(averageBookingRate)}</strong>
-              </div>
-              <div className={`${styles.summaryMetric} ${styles.summaryBest}`}>
-                <span className={styles.summaryIcon} aria-hidden="true">
-                  <Trophy size={15} />
-                </span>
-                <span>最高报名率</span>
-                <strong>{formatPercent(bestBookingRate)}</strong>
-              </div>
-              <div className={`${styles.summaryMetric} ${styles.summaryLow}`}>
-                <span className={styles.summaryIcon} aria-hidden="true">
-                  <CircleAlert size={15} />
-                </span>
-                <span>偏低账号</span>
-                <strong>{lowCount}</strong>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -136,7 +105,15 @@ export default function BotComparisonTable({
             </thead>
             <tbody>
               {rows.map((bot, index) => (
-                <tr key={bot.botImId} className={styles[statusRowClass(bot.status)]}>
+                <tr
+                  key={bot.botImId}
+                  className={joinClasses(
+                    styles[statusRowClass(bot.status)],
+                    index === 0 && styles.rowGold,
+                    index === 1 && styles.rowSilver,
+                    index === 2 && styles.rowBronze,
+                  )}
+                >
                   <td className={styles.rankCol}>{renderRankBadge(index)}</td>
                   {COLUMNS.map((col) => (
                     <td key={col.key} className={cellClass(col.type, sortKey === col.key)}>
@@ -164,30 +141,39 @@ export default function BotComparisonTable({
 function renderCell(bot: ConversionBotRow, type: ColumnType, key: BotSortKey) {
   if (type === 'account') {
     return (
-      <>
-        <strong>{bot.managerName}</strong>
-        <span className={styles.accountGroup}>{bot.groupName || '未分组'}</span>
-      </>
+      <div className={styles.accountLine}>
+        <strong title={bot.managerName}>{bot.managerName}</strong>
+        <span className={styles.accountGroup} title={bot.groupName || '未分组'}>
+          {bot.groupName || '未分组'}
+        </span>
+      </div>
     );
   }
   if (type === 'rate') {
     const value = rateValue(bot, key);
     const pct = Math.min(100, Math.max(value * 100, value > 0 ? 3 : 0));
+    const isInterview = key === 'interview_rate';
     return (
       <>
-        <strong>{formatPercent(value)}</strong>
-        <i
-          className={`${styles.rateBar} ${
-            key === 'interview_rate' ? styles.rateBarInterview : styles.rateBarBooking
-          }`}
+        <strong
+          className={joinClasses(
+            isInterview ? styles.rateValueInterview : styles.rateValueBooking,
+            value === 0 && styles.rateZero,
+          )}
         >
+          {formatPercent(value)}
+        </strong>
+        <i className={`${styles.rateBar} ${isInterview ? styles.rateBarInterview : styles.rateBarBooking}`}>
           <b style={{ width: `${pct}%` }} />
         </i>
       </>
     );
   }
+  const value = metricValue(bot, key);
   return (
-    <span className={styles.metricCount}>{metricValue(bot, key).toLocaleString('zh-CN')}</span>
+    <span className={joinClasses(styles.metricCount, value === 0 && styles.metricZero)}>
+      {value.toLocaleString('zh-CN')}
+    </span>
   );
 }
 

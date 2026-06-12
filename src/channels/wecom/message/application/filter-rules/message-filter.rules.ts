@@ -8,8 +8,8 @@ import {
 } from '@enums/message-callback.enum';
 import { MessageParser } from '../../utils/message-parser.util';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
-import { CandidateBlacklistService } from '@biz/hosting-config/services/candidate-blacklist.service';
-import { CandidateBlacklistRecord } from '@biz/hosting-config/entities/candidate-blacklist.entity';
+import { CandidateBlacklistService } from '@biz/candidate-blacklist/services/candidate-blacklist.service';
+import { CandidateBlacklistRecord } from '@biz/candidate-blacklist/entities/candidate-blacklist.entity';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@enums/alert.enum';
@@ -209,6 +209,7 @@ export class CandidateBlacklistFilterRule implements MessageFilterRule {
         chatId: messageData.chatId,
         botId: messageData.imBotId,
         messageId: messageData.messageId,
+        contactName: messageData.contactName,
       });
     } catch (error) {
       this.logger.error(`候选人黑名单命中回溯落库失败 targetId=${hit.target_id}`, error);

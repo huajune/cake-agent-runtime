@@ -950,24 +950,14 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   align-items: stretch;
 }
 
+// 不再用"图表盒子"包裹：漏斗直接漂浮在面板上（参考 3D 渲染图的开放式构图）
 .chartFrame {
   position: relative;
-  min-height: 420px;
-  overflow: hidden;
-  border: 1px solid rgba($border, 0.9);
-  border-radius: $radius-lg;
-  background: $chart-line;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
-}
-
-.chartFrame {
+  min-height: 440px;
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: $spacing-md;
-  background:
-    repeating-linear-gradient(90deg, rgba($primary, 0.035) 0 1px, transparent 1px 44px),
-    repeating-linear-gradient(0deg, rgba($accent, 0.03) 0 1px, transparent 1px 44px), $chart-line;
+  padding: $spacing-sm;
 }
 
 .funnelChart {
@@ -981,18 +971,11 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 .funnelShape {
   position: relative;
   flex: 1;
-  min-height: 340px;
+  min-height: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  border: 1px solid rgba($border, 0.72);
-  border-radius: $radius-lg;
-  background:
-    radial-gradient(circle at 16% 14%, rgba(99, 102, 241, 0.1), transparent 32%),
-    radial-gradient(circle at 82% 88%, rgba(236, 72, 153, 0.08), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.72));
-  padding: 12px;
+  padding: 4px;
 }
 
 .funnelSvg {
@@ -1000,15 +983,18 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   height: 100%;
   overflow: visible;
   filter: drop-shadow(0 14px 22px rgba(15, 23, 42, 0.12));
+}
 
-  path,
-  ellipse {
-    transition: filter $transition-fast;
-  }
+// 漏斗层：入场自上而下依次落下。
+.funnelLayer {
+  animation: funnel-drop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
 
-  g:hover path,
-  g:hover ellipse {
-    filter: brightness(1.05);
+@keyframes funnel-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
   }
 }
 
@@ -1026,6 +1012,28 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   font-weight: 600;
 }
 
+// 碗内大标题排版（参考渲染图：白色图标 + 大号「01 阶段名」+ 副标签）
+.funnelBowlTitle {
+  fill: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+// 序号与阶段名分开的 tspan：序号用等宽数字，间距由 dx 精确控制
+.funnelBowlNo {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.funnelBowlSub {
+  fill: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
 .funnelNote {
   margin: 16px 0 0;
   padding-top: 14px;
@@ -1035,6 +1043,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   line-height: $line-height-relaxed;
 }
 
+// ── 右侧：阶段统计卡（参考 3D 漏斗信息图：彩色浅底卡 + 大百分比 + 小人占比图） ──
 .stageStack,
 .reasonList {
   display: flex;
@@ -1043,176 +1052,136 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .stageStack {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba($border, 0.78);
-  border-radius: 20px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(248, 250, 252, 0.58)),
-    linear-gradient(135deg, rgba($primary, 0.06), rgba($success, 0.04));
-  padding: 16px;
-  box-shadow:
-    0 16px 32px rgba(15, 23, 42, 0.055),
-    inset 0 1px 0 rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(8px);
+  justify-content: center;
 }
 
-.stageRow {
+.stageCard {
   --stage-tone: #{$primary};
 
   position: relative;
-  z-index: 1;
-  min-height: 58px;
-  display: grid;
-  grid-template-columns: 132px minmax(120px, 1fr) 118px;
-  align-items: center;
-  gap: 13px;
-  border: 1px solid rgba($border, 0.84);
-  border-radius: $radius-lg;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--stage-tone) 4%, transparent), transparent 34%),
-    rgba(255, 255, 255, 0.88);
-  padding: 0 14px;
-  box-shadow:
-    0 8px 18px rgba(15, 23, 42, 0.045),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--stage-tone) 14%, #eef0f5);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--stage-tone) 6%, #ffffff);
+  padding: 13px 16px 13px 26px;
   transition:
     transform $transition-fast,
     border-color $transition-fast,
-    background $transition-fast;
+    box-shadow $transition-fast;
+  animation: stage-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 80ms + 120ms);
+
+  // 连接点：呼应左侧漏斗层的引线圆点
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 11px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--stage-tone);
+    transform: translateY(-50%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage-tone) 18%, transparent);
+  }
+
+  // 连接线：从卡片伸向左侧漏斗的引线（参考渲染图的 dot + line）
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -30px;
+    width: 36px;
+    height: 2px;
+    border-radius: $radius-full;
+    background: linear-gradient(90deg, transparent, var(--stage-tone) 72%);
+    opacity: 0.55;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
 
   &:hover {
     transform: translateX(3px);
     border-color: color-mix(in srgb, var(--stage-tone) 42%, #e5e7eb);
-    background: $bg-secondary;
-    box-shadow:
-      0 8px 18px rgba(15, 23, 42, 0.05),
-      0 0 0 1px color-mix(in srgb, var(--stage-tone) 18%, transparent);
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--stage-tone) 16%, rgba(15, 23, 42, 0.05));
   }
 }
 
-.stageLabel {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  span {
-    width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    border-radius: 50%;
-    background: $gradient-primary;
-    color: $text-on-primary;
-    font-size: $font-size-xs;
-    font-weight: $font-weight-bold;
-    box-shadow: 0 8px 16px color-mix(in srgb, var(--stage-tone) 28%, transparent);
-  }
-
-  strong {
-    min-width: 0;
-    overflow: hidden;
-    color: $text-primary;
-    font-size: $font-size-sm;
-    font-weight: $font-weight-bold;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+@keyframes stage-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
 
-.stageMeter {
-  height: 9px;
-  overflow: hidden;
-  border-radius: $radius-full;
-  background: $border;
-
-  i {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-  }
-}
-
-.stageMetrics {
-  text-align: right;
-
-  strong {
-    display: block;
-    color: $text-primary;
-    font-size: $font-size-base;
-    font-weight: $font-weight-extrabold;
-  }
-
-  span {
-    color: $text-muted;
-    font-size: $font-size-xs;
-    white-space: nowrap;
-    cursor: help;
-
-    em {
-      font-style: normal;
-      font-weight: $font-weight-bold;
-    }
-  }
-}
-
-// 顶部图例：一句话解释右侧两个百分比的口径。
-.stageLegend {
-  position: relative;
-  z-index: 1;
-  margin-bottom: 2px;
-  padding: 8px 12px;
-  border-radius: $radius-lg;
-  background: rgba($primary, 0.06);
+.stageCardLabel {
   color: $text-secondary;
-  font-size: $font-size-xs;
-  line-height: 1.6;
-
-  b {
-    font-weight: $font-weight-bold;
-  }
-}
-
-// 列头：把右侧两个数标注成「占总数 / 阶段率」，与数据行网格对齐。
-.stageHead {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: 132px minmax(120px, 1fr) 118px;
-  align-items: center;
-  gap: 13px;
-  padding: 0 14px 2px;
-  color: $text-muted;
   font-size: $font-size-xs;
   font-weight: $font-weight-semibold;
 
-  .stageHeadMetrics {
-    text-align: right;
-    white-space: nowrap;
-
-    em {
-      font-style: normal;
-      font-weight: $font-weight-bold;
-    }
+  em {
+    margin-right: 6px;
+    color: var(--stage-tone);
+    font-style: normal;
+    font-weight: $font-weight-extrabold;
+    font-variant-numeric: tabular-nums;
   }
 }
 
-// 两个百分比的语义配色：占总数=主色，阶段率=青绿，与漏斗主链呼应。
-.legendOverall {
-  color: $primary;
+.stageCardBody {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.legendStage {
-  color: $success;
+.stageCardRate {
+  flex: 0 0 auto;
+  color: var(--stage-tone);
+  font-size: 28px;
+  font-weight: $font-weight-extrabold;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: help;
 }
 
-.legendSlash {
-  margin: 0 4px;
+// 小人占比图：填充数量 = 占总数比例
+.stageCrowd {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: rgba($text-muted, 0.38);
+
+  svg {
+    flex: 0 0 auto;
+  }
+}
+
+.stageCrowdOn {
+  color: var(--stage-tone);
+}
+
+.stageCardMeta {
   color: $text-muted;
+  font-size: $font-size-xs;
+  cursor: help;
+
+  b {
+    color: $text-primary;
+    font-weight: $font-weight-bold;
+    font-variant-numeric: tabular-nums;
+  }
+
+  em {
+    color: color-mix(in srgb, var(--stage-tone) 64%, $text-primary);
+    font-style: normal;
+    font-weight: $font-weight-bold;
+    font-variant-numeric: tabular-nums;
+  }
 }
+
 
 .botPanel {
   padding-bottom: $spacing-lg;
@@ -1250,117 +1219,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   pointer-events: none;
 }
 
-.botSummary {
-  min-width: min(100%, 360px);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.summaryMetric {
-  --summary-tone: #{$primary};
-  --summary-next: #{$accent};
-  --summary-soft: #{$primary-10};
-
-  position: relative;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 8px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--summary-tone) 10%, #e5e7eb);
-  border-radius: 13px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.72)),
-    radial-gradient(
-      circle at 10% 6%,
-      color-mix(in srgb, var(--summary-tone) 6%, transparent),
-      transparent 46%
-    ),
-    radial-gradient(
-      circle at 90% 92%,
-      color-mix(in srgb, var(--summary-next) 5%, transparent),
-      transparent 50%
-    );
-  padding: 8px 11px 9px 9px;
-  box-shadow:
-    0 8px 18px rgba(15, 23, 42, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
-
-  &::after {
-    content: '';
-    position: absolute;
-    right: 11px;
-    bottom: 6px;
-    left: 41px;
-    height: 2px;
-    border-radius: $radius-full;
-    background: linear-gradient(90deg, var(--summary-tone), var(--summary-next));
-    opacity: 0.32;
-  }
-
-  span {
-    margin: 0;
-    color: $text-muted;
-    font-size: 10.5px;
-    font-weight: $font-weight-semibold;
-    line-height: 1.2;
-  }
-
-  strong {
-    display: block;
-    margin-top: 3px;
-    color: color-mix(in srgb, var(--summary-tone) 34%, $text-primary);
-    font-size: 15px;
-    font-weight: $font-weight-bold;
-    line-height: 1.05;
-    font-variant-numeric: tabular-nums;
-  }
-}
-
-.summaryIcon {
-  width: 24px;
-  height: 24px;
-  grid-row: 1 / span 2;
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--summary-tone) 18%, #ffffff);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.72)),
-    color-mix(in srgb, var(--summary-tone) 9%, transparent);
-  color: color-mix(in srgb, var(--summary-tone) 74%, $text-primary) !important;
-  box-shadow:
-    0 6px 14px var(--summary-soft),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
-
-  svg {
-    width: 13px;
-    height: 13px;
-    filter: none;
-  }
-}
-
-.summaryAverage {
-  --summary-tone: #0ea5e9;
-  --summary-next: #38bdf8;
-  --summary-soft: rgba(14, 165, 233, 0.1);
-}
-
-.summaryBest {
-  --summary-tone: #f59e0b;
-  --summary-next: #fb923c;
-  --summary-soft: rgba(245, 158, 11, 0.1);
-}
-
-.summaryLow {
-  --summary-tone: #ec4899;
-  --summary-next: #f472b6;
-  --summary-soft: rgba(236, 72, 153, 0.09);
-}
-
 .tableScroll {
   overflow-x: auto;
   border: 1px solid rgba($border, 0.82);
@@ -1376,15 +1234,15 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
 .botTable {
   width: 100%;
-  min-width: 820px;
+  min-width: 760px;
   table-layout: fixed;
   border-collapse: separate;
-  border-spacing: 0 6px;
+  border-spacing: 0 5px;
   font-size: $font-size-sm;
 
   th,
   td {
-    padding: 9px 10px;
+    padding: 7px 8px;
     text-align: left;
     white-space: nowrap;
   }
@@ -1470,10 +1328,56 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     border-right: 1px solid rgba($border, 0.82);
     border-radius: 0 14px 14px 0;
   }
+
+  // 当前排序列：纵向淡主色带，让"按什么排"一眼可见。
+  tbody td.numActive {
+    background:
+      linear-gradient(180deg, rgba($primary, 0.055), rgba($primary, 0.025)),
+      rgba(255, 255, 255, 0.92);
+  }
+
+  // 前三名整行氛围：与奖牌徽章同色的极淡渐变 + 左缘色条，呼应排名梯队。
+  tbody tr.rowGold {
+    --row-tone: #f59e0b;
+  }
+
+  tbody tr.rowSilver {
+    --row-tone: #0ea5e9;
+  }
+
+  tbody tr.rowBronze {
+    --row-tone: #fb923c;
+  }
+
+  // 行底色用平铺纯色而非渐变：渐变会在每个 td 内重启，形成竖向条纹。
+  tbody tr.rowGold,
+  tbody tr.rowSilver,
+  tbody tr.rowBronze {
+    td {
+      border-color: color-mix(in srgb, var(--row-tone) 20%, #e5e7eb);
+      background: color-mix(in srgb, var(--row-tone) 4.5%, #ffffff);
+    }
+
+    td:first-child {
+      box-shadow: inset 3px 0 0 color-mix(in srgb, var(--row-tone) 52%, #ffffff);
+    }
+
+    &:hover td {
+      border-color: color-mix(in srgb, var(--row-tone) 32%, #e5e7eb);
+      background: color-mix(in srgb, var(--row-tone) 8%, #ffffff);
+      box-shadow: 0 8px 18px color-mix(in srgb, var(--row-tone) 12%, transparent);
+    }
+
+    &:hover td:first-child {
+      box-shadow:
+        inset 3px 0 0 color-mix(in srgb, var(--row-tone) 62%, #ffffff),
+        0 8px 18px color-mix(in srgb, var(--row-tone) 12%, transparent);
+    }
+  }
 }
 
 .numCol {
-  width: 76px;
+  width: 66px;
   text-align: right !important;
   font-variant-numeric: tabular-nums;
 }
@@ -1496,23 +1400,23 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .rankCol {
-  width: 58px;
+  width: 50px;
   color: $text-muted;
   text-align: center !important;
   font-variant-numeric: tabular-nums;
 }
 
 .accountCol {
-  width: 156px;
-  max-width: 156px;
+  width: 190px;
+  max-width: 190px;
 }
 
 .rateCol {
-  width: 108px;
+  width: 98px;
 }
 
 .statusCol {
-  width: 76px;
+  width: 72px;
 }
 
 .rankBadge {
@@ -1613,42 +1517,45 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .accountCell {
-  width: 156px;
+  width: 190px;
   min-width: 0;
-  max-width: 156px;
+  max-width: 190px;
+}
+
+// 名字 + 小组标签同行排列：行高减半，长名字截断（hover 有 title 提示）
+.accountLine {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 
   strong {
-    display: block;
-    max-width: 136px;
+    flex: 0 1 auto;
+    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
     color: $text-primary;
     font-size: 14px;
     font-weight: $font-weight-extrabold;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
 .accountGroup {
-  width: fit-content;
-  max-width: 136px;
-  min-height: 22px;
-  display: inline-flex;
-  align-items: center;
+  flex: 0 0 auto;
+  max-width: 76px;
+  display: block;
   overflow: hidden;
   border: 1px solid rgba($border, 0.74);
-  border-radius: 9px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.82)),
     color-mix(in srgb, var(--row-tone, #{$primary}) 5%, transparent);
   color: $text-secondary;
-  padding: 0 8px;
-  margin-top: 5px;
-  font-size: $font-size-xs;
+  padding: 0 7px;
+  font-size: 11px;
   font-weight: $font-weight-bold;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
@@ -1673,6 +1580,13 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   font-variant-numeric: tabular-nums;
 }
 
+// 零值降噪：满屏的 0 退到背景，让非零数据自然浮起来。
+.metricZero {
+  color: $text-muted;
+  font-weight: $font-weight-medium;
+  opacity: 0.45;
+}
+
 .rateCell {
   min-width: 124px;
 
@@ -1682,12 +1596,26 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     font-weight: $font-weight-extrabold;
     font-variant-numeric: tabular-nums;
   }
+
+  // 百分比数字与下方进度条同色系：报名=天蓝、面试=琥珀。
+  strong.rateValueBooking {
+    color: color-mix(in srgb, #0284c7 62%, $text-primary);
+  }
+
+  strong.rateValueInterview {
+    color: color-mix(in srgb, #d97706 62%, $text-primary);
+  }
+
+  strong.rateZero {
+    color: $text-muted;
+    opacity: 0.5;
+  }
 }
 
 .rateBar {
   display: block;
   width: 86px;
-  height: 5px;
+  height: 6px;
   margin-top: 7px;
   margin-left: auto;
   overflow: hidden;
@@ -1703,14 +1631,22 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 }
 
-.rateBarBooking b {
-  background: linear-gradient(90deg, #0ea5e9, #38bdf8);
-  box-shadow: 0 0 12px rgba(14, 165, 233, 0.2);
+.rateBarBooking {
+  background: rgba(14, 165, 233, 0.12);
+
+  b {
+    background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.2);
+  }
 }
 
-.rateBarInterview b {
-  background: linear-gradient(90deg, #f59e0b, #fb923c);
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+.rateBarInterview {
+  background: rgba(245, 158, 11, 0.14);
+
+  b {
+    background: linear-gradient(90deg, #f59e0b, #fb923c);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+  }
 }
 
 .statusCell {
@@ -2003,6 +1939,182 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   font-weight: $font-weight-semibold;
 }
 
+// ===== 页面动效 =====
+// 统一用 backwards 填充：延迟期间保持初始帧，动画结束后回归自然状态，
+// 不残留 transform，避免覆盖各元素自身的 hover 位移。
+
+@keyframes conversionRiseIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes conversionBarGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+// Hero 文案逐行浮入
+.heroContent > * {
+  animation: conversionRiseIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+
+  @for $i from 1 through 4 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{($i - 1) * 90}ms;
+    }
+  }
+}
+
+// KPI 卡片错峰入场
+.kpiBand .kpiCell {
+  animation: conversionRiseIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+
+  @for $i from 1 through 5 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{($i - 1) * 70}ms;
+    }
+  }
+}
+
+// 趋势小卡错峰入场
+.trendGrid .trendCard {
+  animation: conversionRiseIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+
+  @for $i from 1 through 6 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{($i - 1) * 60}ms;
+    }
+  }
+}
+
+// 排行榜行依次滑入
+.botTable tbody tr {
+  animation: conversionRiseIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+
+  @for $i from 1 through 12 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{($i - 1) * 45}ms;
+    }
+  }
+}
+
+// 各类进度条从左向右生长；数据更新时宽度变化用过渡衔接
+.rateBar b,
+.reasonMeter i {
+  transform-origin: left center;
+  animation: conversionBarGrow 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.2s backwards;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+// ===== 数据流动感 =====
+// 周期性的高光从左向右扫过进度条，像数据在管道里流过。
+
+@keyframes conversionFlowSheen {
+  0%,
+  55% {
+    transform: translateX(-140%);
+  }
+  95%,
+  100% {
+    transform: translateX(160%);
+  }
+}
+
+@keyframes conversionIconPing {
+  0% {
+    box-shadow:
+      0 10px 20px var(--kpi-soft),
+      0 0 0 0 color-mix(in srgb, var(--kpi-tone) 32%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow:
+      0 10px 20px var(--kpi-soft),
+      0 0 0 12px transparent;
+  }
+}
+
+@keyframes conversionMedalSway {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+// 进度条流光：排行榜比率条 / 转人工原因条
+.rateBar b,
+.reasonMeter i {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 28%,
+      rgba(255, 255, 255, 0.62) 50%,
+      transparent 72%
+    );
+    transform: translateX(-140%);
+    animation: conversionFlowSheen 3.4s ease-in-out infinite;
+  }
+}
+
+// 两条进度条流光错开节奏，避免整页同频闪烁
+.reasonMeter i::after {
+  animation-duration: 3.8s;
+}
+
+// KPI 图标光环脉冲：数据"心跳"
+.kpiIcon {
+  animation: conversionIconPing 3.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+// KPI 数值渐变缓慢流动
+.kpiValue {
+  background-size: 220% 100%;
+  animation: holoTitlePan 6s ease-in-out infinite alternate;
+}
+
+// 前三名奖牌轻微摇摆
+.rankTop .rankIcon {
+  transform-origin: 50% 82%;
+  animation: conversionMedalSway 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroContent > *,
+  .kpiBand .kpiCell,
+  .trendGrid .trendCard,
+  .botTable tbody tr,
+  .rateBar b,
+  .reasonMeter i,
+  .rateBar b::after,
+  .reasonMeter i::after,
+  .stageCard,
+  .funnelLayer,
+  .funnelFlow,
+  .kpiIcon,
+  .kpiValue,
+  .rankTop .rankIcon {
+    animation: none !important;
+  }
+}
+
 @media (max-width: $breakpoint-xl) {
   .kpiBand {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2019,15 +2131,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .stageStack {
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-
-  .stageRow,
-  .stageHead {
-    min-width: 620px;
-  }
 }
 
 @media (max-width: $breakpoint-sm) {
@@ -2096,5 +2199,147 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   .panelTotal {
     width: 100%;
     text-align: left;
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+// 浅色全息主题（Light Holo）
+// 在整体浅色风格之上叠加科技感细节：粉彩极光底、全息旋转描边、
+// 渐变流光标题。所有覆盖集中在此，保持与应用奶油色调一致。
+// ════════════════════════════════════════════════════════════════════
+
+@property --holo-spin {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes holoBorderSpin {
+  to {
+    --holo-spin: 360deg;
+  }
+}
+
+@keyframes holoAurora {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, 3%, 0) scale(1.1);
+  }
+  100% {
+    transform: translate3d(-2%, 2%, 0) scale(1.04);
+  }
+}
+
+@keyframes holoTitlePan {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+// ── 页面底座：浅色底 + 粉彩流动极光 + 极淡网格 ──
+.page {
+  isolation: isolate;
+  overflow: clip; // 极光层 inset 为负值，不收口会撑出横向滚动
+
+  // 网格层（极淡，营造"数据空间"感）
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      repeating-linear-gradient(90deg, rgba(99, 102, 241, 0.035) 0 1px, transparent 1px 56px),
+      repeating-linear-gradient(0deg, rgba(99, 102, 241, 0.03) 0 1px, transparent 1px 56px);
+    mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 0%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 0%, transparent 80%);
+    pointer-events: none;
+  }
+
+  // 粉彩极光层（缓慢漂移）
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -10%;
+    z-index: -2;
+    background:
+      radial-gradient(circle at 16% 10%, rgba(99, 102, 241, 0.1), transparent 32%),
+      radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.08), transparent 30%),
+      radial-gradient(circle at 64% 78%, rgba(192, 132, 252, 0.08), transparent 34%),
+      radial-gradient(circle at 12% 88%, rgba(244, 114, 182, 0.06), transparent 30%);
+    filter: blur(56px);
+    animation: holoAurora 26s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+}
+
+// ── 面板：原 3px 顶线升级为整圈全息旋转描边（浅色、低饱和） ──
+.heroPanel,
+.panel,
+.kpiCell {
+  &::before {
+    inset: -1px;
+    height: auto;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: conic-gradient(
+      from var(--holo-spin, 0deg),
+      transparent 0deg,
+      rgba(129, 140, 248, 0.55) 48deg,
+      rgba(34, 211, 238, 0.5) 88deg,
+      transparent 150deg,
+      transparent 210deg,
+      rgba(192, 132, 252, 0.4) 266deg,
+      transparent 320deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.9;
+    animation: holoBorderSpin 9s linear infinite;
+  }
+}
+
+// ── Hero 标题：多彩渐变 + 缓慢流光 ──
+.heroContent h1 {
+  background: linear-gradient(
+    115deg,
+    #4f46e5 0%,
+    #6366f1 26%,
+    #0ea5e9 52%,
+    #8b5cf6 76%,
+    #d946ef 100%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation:
+    conversionRiseIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards,
+    holoTitlePan 8s ease-in-out infinite alternate;
+}
+
+// KPI 数值轻微光晕，呼应各自色调
+.kpiValue {
+  filter: drop-shadow(0 2px 10px var(--kpi-soft));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page::after,
+  .heroPanel::before,
+  .panel::before,
+  .kpiCell::before,
+  .heroContent h1 {
+    animation: none !important;
   }
 }

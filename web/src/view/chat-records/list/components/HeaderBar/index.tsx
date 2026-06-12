@@ -19,6 +19,7 @@ interface HeaderBarProps {
   sessionStats: SessionStats;
   showAnalytics: boolean;
   onToggleAnalytics: () => void;
+  isLive?: boolean;
 }
 
 export default function HeaderBar({
@@ -28,6 +29,7 @@ export default function HeaderBar({
   sessionStats,
   showAnalytics,
   onToggleAnalytics,
+  isLive = false,
 }: HeaderBarProps) {
   return (
     <div className={styles.headerBar}>
@@ -38,6 +40,13 @@ export default function HeaderBar({
       <div className={styles.leftSection}>
         <div className={styles.titleWrapper}>
           <h2 className={styles.title}>消息总览</h2>
+          <span
+            className={`${styles.liveBadge} ${isLive ? styles.connected : ''}`}
+            title={isLive ? '已连接实时通道，数据自动刷新' : '实时通道连接中…'}
+          >
+            <span className={styles.liveDot} />
+            {isLive ? '实时' : '连接中'}
+          </span>
         </div>
 
         <div className={styles.divider} />
@@ -62,21 +71,30 @@ export default function HeaderBar({
           <div className={`${styles.statItem} ${styles.sessions}`}>
             <span className={styles.statIcon}>💭</span>
             <span className={styles.statLabel}>会话</span>
-            <span className={`${styles.statValue} ${styles.primary}`}>
+            <span
+              key={sessionStats.totalSessions}
+              className={`${styles.statValue} ${styles.primary}`}
+            >
               {sessionStats.totalSessions}
             </span>
           </div>
           <div className={`${styles.statItem} ${styles.messages}`}>
             <span className={styles.statIcon}>✉️</span>
             <span className={styles.statLabel}>消息</span>
-            <span className={`${styles.statValue} ${styles.success}`}>
+            <span
+              key={sessionStats.totalMessages}
+              className={`${styles.statValue} ${styles.success}`}
+            >
               {sessionStats.totalMessages}
             </span>
           </div>
           <div className={`${styles.statItem} ${styles.active}`}>
             <span className={styles.statIcon}>🔥</span>
             <span className={styles.statLabel}>活跃</span>
-            <span className={`${styles.statValue} ${styles.warning}`}>
+            <span
+              key={sessionStats.activeSessions}
+              className={`${styles.statValue} ${styles.warning}`}
+            >
               {sessionStats.activeSessions}
             </span>
           </div>

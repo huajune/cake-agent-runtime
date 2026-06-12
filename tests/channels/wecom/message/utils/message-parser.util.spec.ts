@@ -1,4 +1,7 @@
-import { MessageParser } from '@wecom/message/utils/message-parser.util';
+import {
+  MessageParser,
+  isResumeImageDescription,
+} from '@wecom/message/utils/message-parser.util';
 import {
   EnterpriseMessageCallbackDto,
   LocationPayload,
@@ -483,5 +486,27 @@ describe('MessageParser', () => {
       const result = MessageParser.injectTimeContext('');
       expect(result).toMatch(/^\n\[消息发送时间：/);
     });
+  });
+});
+
+describe('isResumeImageDescription', () => {
+  it.each([
+    '简历图片：姓名陆乐，手机号13962387831，籍贯启东',
+    '手写简历，包含姓名陆乐、手机号、工作经历比业迪/中国移动',
+    '简历照片，字迹清晰可见姓名与电话',
+    '履历表照片：包含个人信息与工作经历',
+    '「简历图片」姓名张三',
+  ])('should identify resume-image description: %s', (description) => {
+    expect(isResumeImageDescription(description)).toBe(true);
+  });
+
+  it.each([
+    'Boss直聘简历列表截图，展示多个候选岗位',
+    '招聘平台截图，岗位为服务员，要求提交简历',
+    '聊天截图，对方提到稍后发简历',
+    '健康证照片：持有人张三，有效期至2026-08-01',
+    '思考',
+  ])('should not identify non-resume description: %s', (description) => {
+    expect(isResumeImageDescription(description)).toBe(false);
   });
 });

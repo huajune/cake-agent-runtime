@@ -3,6 +3,7 @@ import AnalyticsControlFilters from '@/components/AnalyticsControlFilters';
 import type { ConversionRange } from '@/api/types/conversion-analytics.types';
 import heroArt from '@/assets/images/conversion-growth-hero.png';
 import { formatDateTime } from '@/utils/format';
+import HeroParticles from '../HeroParticles';
 import { TIME_RANGE_OPTIONS } from '../../types';
 import styles from '../../styles/index.module.scss';
 
@@ -24,6 +25,7 @@ export default function ControlPanel({
   return (
     <section className={styles.heroPanel}>
       <img className={styles.heroImage} src={heroArt} alt="" aria-hidden="true" />
+      <HeroParticles />
 
       <div className={styles.heroContent}>
         <div className={styles.heroEyebrow}>

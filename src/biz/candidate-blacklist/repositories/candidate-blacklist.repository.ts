@@ -5,7 +5,22 @@ import {
   AddCandidateBlacklistParams,
   CandidateBlacklistHit,
   CandidateBlacklistRecord,
+  CandidateContactSnapshot,
 } from '../entities/candidate-blacklist.entity';
+
+/** 按 im_contact_id / external_user_id 反查时的时间下界（这两列无索引，限定扫描范围） */
+const SNAPSHOT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** 候选人标识的合法字符（chatId / imContactId / externalUserId 均为该形态） */
+const SAFE_TARGET_ID_PATTERN = /^[\w@\-.:]+$/;
+
+interface ChatMessageSnapshotRow {
+  chat_id: string | null;
+  im_contact_id: string | null;
+  candidate_name: string | null;
+  manager_name: string | null;
+  im_bot_id: string | null;
+}
 
 /**
  * 候选人黑名单 Repository
@@ -46,6 +61,8 @@ export class CandidateBlacklistRepository extends BaseRepository {
         chat_id: params.chatId ?? null,
         im_contact_id: params.imContactId ?? null,
         contact_name: params.contactName ?? null,
+        im_bot_id: params.imBotId ?? null,
+        bot_name: params.botName ?? null,
         source: params.source ?? 'manual',
         updated_at: new Date().toISOString(),
       },
@@ -91,9 +108,54 @@ export class CandidateBlacklistRepository extends BaseRepository {
         p_chat_id: hit.chatId ?? null,
         p_bot_id: hit.botId ?? null,
         p_message_id: hit.messageId ?? null,
+        p_contact_name: hit.contactName ?? null,
       });
     } catch (error) {
       this.logger.error(`记录候选人黑名单命中失败 targetId=${targetId}`, error);
     }
+  }
+
+  /**
+   * 从 chat_messages 反查候选人会话快照（昵称 / 会话 / 托管账号），拉黑时补全展示信息。
+   *
+   * targetId 可能是 chatId / imContactId / externalUserId 任一：
+   * - 先按 chat_id 等值查（有索引，运营从用户列表复制的多为会话 ID）；
+   * - 未命中再按 im_contact_id / external_user_id 匹配，这两列无索引，
+   *   用最近 30 天的时间下界兜住扫描范围。
+   * 取最近若干条消息按字段聚合，避免最新一条恰好缺昵称/托管号字段。
+   */
+  async findContactSnapshot(targetId: string): Promise<CandidateContactSnapshot | null> {
+    const columns = 'chat_id,im_contact_id,candidate_name,manager_name,im_bot_id';
+
+    let rows = await this.selectFrom<ChatMessageSnapshotRow>('chat_messages', columns, (q) =>
+      q.eq('chat_id', targetId).order('timestamp', { ascending: false }).limit(5),
+    );
+
+    // or() 过滤串不走参数化，targetId 形态异常时跳过兜底查询防注入
+    if (rows.length === 0 && SAFE_TARGET_ID_PATTERN.test(targetId)) {
+      const sinceIso = new Date(Date.now() - SNAPSHOT_LOOKBACK_MS).toISOString();
+      rows = await this.selectFrom<ChatMessageSnapshotRow>('chat_messages', columns, (q) =>
+        q
+          .or(`im_contact_id.eq.${targetId},external_user_id.eq.${targetId}`)
+          .gte('timestamp', sinceIso)
+          .order('timestamp', { ascending: false })
+          .limit(5),
+      );
+    }
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const pick = (key: keyof ChatMessageSnapshotRow): string | undefined =>
+      rows.map((row) => row[key]).find((value): value is string => Boolean(value));
+
+    return {
+      chatId: pick('chat_id'),
+      imContactId: pick('im_contact_id'),
+      contactName: pick('candidate_name'),
+      imBotId: pick('im_bot_id'),
+      botName: pick('manager_name'),
+    };
   }
 }

@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HostingConfigFacadeService } from '@biz/hosting-config/services/hosting-config-facade.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
-import { CandidateBlacklistService } from '@biz/hosting-config/services/candidate-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { DEFAULT_AGENT_REPLY_CONFIG } from '@biz/hosting-config/types/hosting-config.types';
 
@@ -24,12 +23,6 @@ describe('HostingConfigFacadeService', () => {
     removeGroupFromBlacklist: jest.fn(),
   };
 
-  const mockCandidateBlacklistService = {
-    getCandidateBlacklist: jest.fn(),
-    addCandidateToBlacklist: jest.fn(),
-    removeCandidateFromBlacklist: jest.fn(),
-  };
-
   const mockUserHostingService = {
     getPausedUsersWithProfiles: jest.fn(),
     pauseUser: jest.fn(),
@@ -42,7 +35,6 @@ describe('HostingConfigFacadeService', () => {
         HostingConfigFacadeService,
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: GroupBlacklistService, useValue: mockGroupBlacklistService },
-        { provide: CandidateBlacklistService, useValue: mockCandidateBlacklistService },
         { provide: UserHostingService, useValue: mockUserHostingService },
       ],
     }).compile();
@@ -50,7 +42,6 @@ describe('HostingConfigFacadeService', () => {
     service = module.get<HostingConfigFacadeService>(HostingConfigFacadeService);
 
     jest.clearAllMocks();
-    mockCandidateBlacklistService.getCandidateBlacklist.mockResolvedValue([]);
   });
 
   it('should be defined', () => {
@@ -144,16 +135,10 @@ describe('HostingConfigFacadeService', () => {
         { group_id: 'group2', added_at: Date.now() },
       ]);
 
-      mockCandidateBlacklistService.getCandidateBlacklist.mockResolvedValue([
-        { target_id: 'contact-1', reason: '恶意刷岗', added_at: Date.now() },
-      ]);
-
       const result = await service.getBlacklist();
 
       expect(result.chatIds).toEqual(['user1', 'user2']);
       expect(result.groupIds).toEqual(['group1', 'group2']);
-      expect(result.candidates).toHaveLength(1);
-      expect(result.candidates[0].target_id).toBe('contact-1');
     });
 
     it('should return empty arrays when no users or groups are blacklisted', async () => {
@@ -255,55 +240,6 @@ describe('HostingConfigFacadeService', () => {
       expect(result.message).toBe('小组 group1 已从黑名单移除');
       expect(mockGroupBlacklistService.removeGroupFromBlacklist).toHaveBeenCalledWith('group1');
       expect(mockUserHostingService.resumeUser).not.toHaveBeenCalled();
-    });
-  });
-
-  // ==================== 候选人黑名单 ====================
-
-  describe('candidate blacklist', () => {
-    it('should list candidate blacklist', async () => {
-      mockCandidateBlacklistService.getCandidateBlacklist.mockResolvedValue([
-        { target_id: 'contact-1', reason: '恶意刷岗', added_at: Date.now() },
-      ]);
-
-      const result = await service.getCandidateBlacklist();
-
-      expect(result.candidates).toHaveLength(1);
-    });
-
-    it('should add candidate to blacklist with reason and audit snapshot', async () => {
-      mockCandidateBlacklistService.addCandidateToBlacklist.mockResolvedValue(undefined);
-
-      const result = await service.addCandidateToBlacklist({
-        targetId: 'contact-1',
-        reason: '恶意刷岗',
-        operator: '小王',
-        chatId: 'chat-1',
-      });
-
-      expect(mockCandidateBlacklistService.addCandidateToBlacklist).toHaveBeenCalledWith({
-        targetId: 'contact-1',
-        reason: '恶意刷岗',
-        operator: '小王',
-        chatId: 'chat-1',
-      });
-      expect(result.message).toContain('contact-1');
-    });
-
-    it('should report when removing a candidate not in blacklist', async () => {
-      mockCandidateBlacklistService.removeCandidateFromBlacklist.mockResolvedValue(false);
-
-      const result = await service.removeCandidateFromBlacklist('contact-x');
-
-      expect(result.message).toContain('不在黑名单中');
-    });
-
-    it('should remove candidate from blacklist', async () => {
-      mockCandidateBlacklistService.removeCandidateFromBlacklist.mockResolvedValue(true);
-
-      const result = await service.removeCandidateFromBlacklist('contact-1');
-
-      expect(result.message).toContain('已从黑名单移除');
     });
   });
 });

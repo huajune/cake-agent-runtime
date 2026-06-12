@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
 import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
@@ -160,6 +160,34 @@ export default function MessageDetail({
     clearSuccess();
   }, [clearSuccess, selectedChatId]);
 
+  // 自动滚动：切换会话后首批消息渲染完直达底部；实时新消息到达时若已接近底部则平滑跟随
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingInitialScrollRef = useRef(false);
+  const prevMessageCountRef = useRef(0);
+
+  useEffect(() => {
+    pendingInitialScrollRef.current = true;
+    prevMessageCountRef.current = 0;
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || messages.length === 0) return;
+
+    if (pendingInitialScrollRef.current) {
+      pendingInitialScrollRef.current = false;
+      container.scrollTop = container.scrollHeight;
+    } else if (messages.length > prevMessageCountRef.current) {
+      const distanceToBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      // 用户正在回看历史消息时不打扰
+      if (distanceToBottom < 200) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      }
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages.length]);
+
   let content: React.ReactNode;
 
   if (!selectedChatId) {
@@ -185,7 +213,7 @@ export default function MessageDetail({
     );
   } else {
     content = (
-      <div className={styles.messagesContainer}>
+      <div className={styles.messagesContainer} ref={messagesContainerRef}>
         {groupedMessages.map((group) => (
           <div key={group.date} className={styles.messageGroup}>
             <div className={styles.dateDivider}>

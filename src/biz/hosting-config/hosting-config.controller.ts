@@ -6,8 +6,6 @@ import {
   UpdateGroupTaskConfigDto,
   AddToBlacklistDto,
   RemoveFromBlacklistDto,
-  AddCandidateBlacklistDto,
-  RemoveCandidateBlacklistDto,
 } from './dto/hosting-config.dto';
 
 /**
@@ -92,30 +90,5 @@ export class HostingConfigController {
   @Delete('blacklist')
   async removeFromBlacklist(@Body() body: RemoveFromBlacklistDto) {
     return this.facade.removeFromBlacklist(body.id, body.type);
-  }
-
-  // ==================== 候选人黑名单 ====================
-
-  @Get('candidate-blacklist')
-  async getCandidateBlacklist() {
-    return this.facade.getCandidateBlacklist();
-  }
-
-  @Post('candidate-blacklist')
-  @HttpCode(200)
-  async addCandidateToBlacklist(@Body() body: AddCandidateBlacklistDto) {
-    return this.facade.addCandidateToBlacklist({
-      targetId: body.targetId,
-      reason: body.reason,
-      operator: body.operator,
-      chatId: body.chatId,
-      imContactId: body.imContactId,
-      contactName: body.contactName,
-    });
-  }
-
-  @Delete('candidate-blacklist')
-  async removeCandidateFromBlacklist(@Body() body: RemoveCandidateBlacklistDto) {
-    return this.facade.removeCandidateFromBlacklist(body.targetId);
   }
 }

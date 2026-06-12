@@ -1,4 +1,12 @@
 import { api, unwrapResponse } from '../client';
+import {
+  DEMO_BOTS,
+  DEMO_HANDOFF,
+  DEMO_KPIS,
+  buildDemoFunnel,
+  buildDemoTrends,
+  isDemoMode,
+} from './conversion-analytics.demo';
 import type {
   ConversionBotsResponse,
   ConversionCohort,
@@ -20,6 +28,7 @@ function toParams(query: ConversionQuery, extra?: Record<string, string>) {
 }
 
 export async function getConversionKpis(query: ConversionQuery, mode: ConversionMetricMode) {
+  if (isDemoMode()) return DEMO_KPIS;
   const { data } = await api.get(`/analytics/conversion/kpis?${toParams(query, { mode })}`);
   return unwrapResponse<ConversionKpisResponse>(data);
 }
@@ -29,6 +38,7 @@ export async function getConversionFunnel(
   cohort: ConversionCohort,
   mode: ConversionMetricMode,
 ) {
+  if (isDemoMode()) return buildDemoFunnel(mode);
   const { data } = await api.get(
     `/analytics/conversion/funnel?${toParams(query, { cohort, mode })}`,
   );
@@ -36,16 +46,19 @@ export async function getConversionFunnel(
 }
 
 export async function getConversionBots(query: ConversionQuery, mode: ConversionMetricMode) {
+  if (isDemoMode()) return DEMO_BOTS;
   const { data } = await api.get(`/analytics/conversion/bots?${toParams(query, { mode })}`);
   return unwrapResponse<ConversionBotsResponse>(data);
 }
 
 export async function getConversionTrends(query: ConversionQuery, mode: ConversionMetricMode) {
+  if (isDemoMode()) return buildDemoTrends(mode);
   const { data } = await api.get(`/analytics/conversion/trends?${toParams(query, { mode })}`);
   return unwrapResponse<ConversionTrendResponse>(data);
 }
 
 export async function getConversionHandoff(query: ConversionQuery) {
+  if (isDemoMode()) return DEMO_HANDOFF;
   const { data } = await api.get(
     `/analytics/conversion/handoff?${toParams({ range: query.range, groups: query.groups })}`,
   );
