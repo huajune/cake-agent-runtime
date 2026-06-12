@@ -65,13 +65,17 @@ export default function UserTable({
               </td>
             </tr>
           ) : (
-            users.map((user) => {
+            users.map((user, index) => {
               const botLabel = resolveBotLabel?.(user) || getBotLabel(user);
               const botTitle = [user.botUserId, user.imBotId].filter(Boolean).join(' / ');
               const isUpdating = pendingChatId === user.chatId;
 
               return (
-                <tr key={user.chatId} className={isUpdating ? styles.updatingRow : undefined}>
+                <tr
+                  key={user.chatId}
+                  className={`${styles.dataRow} ${isUpdating ? styles.updatingRow : ''}`}
+                  style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                >
                   <td>
                     <div className={styles.userCell}>
                       <div
@@ -90,13 +94,25 @@ export default function UserTable({
                     {user.chatId}
                     {user.groupName && <span className={styles.groupBadge}>群</span>}
                   </td>
-                  {!isPausedTab && <td>{user.messageCount}</td>}
-                  {!isPausedTab && <td>{user.tokenUsage}</td>}
-                  {!isPausedTab && <td>{formatDateTime(user.firstActiveAt)}</td>}
-                  {!isPausedTab && <td>{formatDateTime(user.lastActiveAt)}</td>}
-                  {isPausedTab && <td>{formatDateTime(user.firstActiveAt)}</td>}
-                  {isPausedTab && (
+                  {!isPausedTab && (
                     <td>
+                      <span className={styles.countPill}>{user.messageCount}</span>
+                    </td>
+                  )}
+                  {!isPausedTab && (
+                    <td className={styles.tokenText}>{user.tokenUsage.toLocaleString()}</td>
+                  )}
+                  {!isPausedTab && (
+                    <td className={styles.timeCell}>{formatDateTime(user.firstActiveAt)}</td>
+                  )}
+                  {!isPausedTab && (
+                    <td className={styles.timeCell}>{formatDateTime(user.lastActiveAt)}</td>
+                  )}
+                  {isPausedTab && (
+                    <td className={styles.timeCell}>{formatDateTime(user.firstActiveAt)}</td>
+                  )}
+                  {isPausedTab && (
+                    <td className={styles.timeCell}>
                       {user.isPermanent ? (
                         <span className={styles.permanentBadge}>永久</span>
                       ) : user.pauseExpiresAt ? (
