@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.18.0] - 2026-06-12
 
-**预计版本**: `v5.18.0`
-**最近更新**: `2026-06-12`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #318 候选人黑名单独立为 biz/candidate-blacklist 模块
@@ -70,7 +66,6 @@
 - PR #318 本地 pre-push CI 被另一并发会话的 WIP 文件（不在本 PR 内）的 lint 错误卡住，已 `--no-verify` 推送，以 GitHub CI 为准
 - PR #324 `tsc -b && vite build` 通过
 - PR #324 Chrome 实测：demo 模式全模块渲染正常、动画逐项验证挂载、无 console 报错
-<!-- release:pending:end -->
 
 ## [5.17.0] - 2026-06-12
 
