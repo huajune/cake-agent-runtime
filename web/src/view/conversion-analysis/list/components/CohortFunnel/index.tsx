@@ -4,6 +4,7 @@ import type {
   ConversionMetricMode,
 } from '@/api/types/conversion-analytics.types';
 import type { CSSProperties } from 'react';
+import { useState } from 'react';
 import heroArt from '@/assets/images/conversion-growth-hero.png';
 import MetricModeTabs from '../MetricModeTabs';
 import styles from '../../styles/index.module.scss';
@@ -42,10 +43,12 @@ const CX = 180;
 const TOP_PAD = 16;
 const BODY_H = 58; // 顶层碗高度
 const HEIGHT_STEP = 5; // 自上而下每层递减的高度（顶部最高，更像漏斗）
-const GAP = 9; // 碗与碗之间的间隙
+const GAP = 14; // 碗与碗之间的间隙（留出「水流」连接带的空间）
 const MAX_HALF = 176; // 最宽阶段的半宽
 
 export default function CohortFunnel({ data, loading, mode, onModeChange }: CohortFunnelProps) {
+  // 左侧漏斗层与右侧阶段行的 hover 联动：悬停任一侧高亮对应阶段、淡化其余层。
+  const [activeStage, setActiveStage] = useState<string | null>(null);
   const chartData: FunnelChartDatum[] = (data?.stages ?? []).map((stage, index) => {
     const palette = FUNNEL_PALETTE[index % FUNNEL_PALETTE.length];
     return {
@@ -114,13 +117,63 @@ export default function CohortFunnel({ data, loading, mode, onModeChange }: Coho
                       <stop offset="100%" stopColor={stage.color} />
                     </linearGradient>
                   ))}
+                  {chartData.slice(0, -1).map((stage, index) => (
+                    <linearGradient
+                      key={`flow-${stage.stage}`}
+                      id={`funnelFlow-${index}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor={stage.color} stopOpacity="0.5" />
+                      <stop
+                        offset="100%"
+                        stopColor={chartData[index + 1].color}
+                        stopOpacity="0.34"
+                      />
+                    </linearGradient>
+                  ))}
                   <linearGradient id="funnelGloss" x1="0.18" y1="0" x2="0.62" y2="1">
                     <stop offset="0%" stopColor="#ffffff" stopOpacity="0.42" />
                     <stop offset="14%" stopColor="#ffffff" stopOpacity="0.1" />
                     <stop offset="42%" stopColor="#ffffff" stopOpacity="0" />
                     <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
                   </linearGradient>
+                  <radialGradient id="funnelGround" cx="0.5" cy="0.5" r="0.5">
+                    <stop offset="0%" stopColor="#0f172a" stopOpacity="0.14" />
+                    <stop offset="70%" stopColor="#0f172a" stopOpacity="0.05" />
+                    <stop offset="100%" stopColor="#0f172a" stopOpacity="0" />
+                  </radialGradient>
                 </defs>
+                <ellipse
+                  cx={CX}
+                  cy={viewH - 6}
+                  rx={Math.max(widths[n - 1] * MAX_HALF * 1.7, 56)}
+                  ry={6}
+                  fill="url(#funnelGround)"
+                />
+                {chartData.slice(0, -1).map((stage, index) => {
+                  const r = widths[index + 1] * MAX_HALF;
+                  const botY = layout[index].topY + layout[index].height;
+                  const nextTopY = layout[index + 1].topY;
+                  const flow = [
+                    `M ${(CX - r * 0.46).toFixed(1)} ${botY - 2}`,
+                    `L ${(CX + r * 0.46).toFixed(1)} ${botY - 2}`,
+                    `L ${(CX + r * 0.36).toFixed(1)} ${nextTopY + 4}`,
+                    `L ${(CX - r * 0.36).toFixed(1)} ${nextTopY + 4}`,
+                    'Z',
+                  ].join(' ');
+                  return (
+                    <path
+                      key={`flow-${stage.stage}`}
+                      className={styles.funnelFlow}
+                      style={{ '--i': index } as CSSProperties}
+                      d={flow}
+                      fill={`url(#funnelFlow-${index})`}
+                    />
+                  );
+                })}
                 {chartData.map((stage, index) => {
                   const topR = widths[index] * MAX_HALF;
                   const botR = (index < n - 1 ? widths[index + 1] : widths[index] * 0.7) * MAX_HALF;
@@ -135,8 +188,15 @@ export default function CohortFunnel({ data, loading, mode, onModeChange }: Coho
                     `A ${botR.toFixed(1)} ${botRy.toFixed(1)} 0 0 1 ${(CX - botR).toFixed(1)} ${botY}`,
                     'Z',
                   ].join(' ');
+                  const dimmed = activeStage !== null && activeStage !== stage.stage;
                   return (
-                    <g key={stage.stage}>
+                    <g
+                      key={stage.stage}
+                      className={`${styles.funnelLayer}${dimmed ? ` ${styles.funnelLayerDim}` : ''}`}
+                      style={{ '--i': index } as CSSProperties}
+                      onMouseEnter={() => setActiveStage(stage.stage)}
+                      onMouseLeave={() => setActiveStage(null)}
+                    >
                       <title>{`${stage.name} ${stage.count}人 · 总体 ${formatPercent(stage.overallRate)} · 阶段 ${formatPercent(stage.stageRate)}`}</title>
                       <path
                         d={body}
@@ -193,8 +253,10 @@ export default function CohortFunnel({ data, loading, mode, onModeChange }: Coho
           {chartData.map((stage, index) => (
             <div
               key={stage.stage}
-              className={styles.stageRow}
-              style={{ '--stage-tone': stage.color } as CSSProperties}
+              className={`${styles.stageRow}${activeStage === stage.stage ? ` ${styles.stageRowActive}` : ''}`}
+              style={{ '--stage-tone': stage.color, '--i': index } as CSSProperties}
+              onMouseEnter={() => setActiveStage(stage.stage)}
+              onMouseLeave={() => setActiveStage(null)}
             >
               <div className={styles.stageLabel}>
                 <span
@@ -234,6 +296,11 @@ export default function CohortFunnel({ data, loading, mode, onModeChange }: Coho
 
 // 计算每层宽度比例：跟随数值占比，但强制逐层至少收窄 MIN_STEP（杜绝直筒），并带最小宽度。
 function funnelWidths(stages: FunnelChartDatum[]): number[] {
+  // 全 0（时间窗内无数据）时按比例无意义，回退为均匀递减的占位形态，避免「顶层巨大 + 细管」的退化外观。
+  if (stages.every((stage) => stage.value === 0)) {
+    const n = stages.length;
+    return stages.map((_, i) => 1 - (n > 1 ? (i * (1 - MIN_WIDTH_RATIO)) / (n - 1) : 0));
+  }
   const base = stages[0]?.value || 1;
   const widths: number[] = [];
   let prev = 1;

@@ -123,21 +123,26 @@ export default function KpiTrendChart({ data, loading, mode, onModeChange }: Kpi
                 <div className={styles.trendChartBox}>
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={chartData} margin={{ top: 8, right: 16, left: -8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#eef0f5" vertical={false} />
+                      {/* 深空主题：网格与轴线用半透明靛蓝，避免浅灰在深底上消失 */}
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(148, 163, 255, 0.14)"
+                        vertical={false}
+                      />
                       <XAxis
                         dataKey="label"
-                        stroke="#9ca3af"
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        stroke="rgba(148, 163, 255, 0.4)"
+                        tick={{ fontSize: 11, fill: 'rgba(176, 190, 230, 0.75)' }}
                         tickLine={false}
-                        axisLine={{ stroke: '#e5e7eb' }}
+                        axisLine={{ stroke: 'rgba(148, 163, 255, 0.18)' }}
                         interval={xAxisInterval}
                         minTickGap={8}
                       />
                       <YAxis
-                        stroke="#9ca3af"
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        stroke="rgba(148, 163, 255, 0.4)"
+                        tick={{ fontSize: 11, fill: 'rgba(176, 190, 230, 0.75)' }}
                         tickLine={false}
-                        axisLine={{ stroke: '#e5e7eb' }}
+                        axisLine={{ stroke: 'rgba(148, 163, 255, 0.18)' }}
                         width={44}
                         domain={[0, 'auto']}
                         tickFormatter={(value) => formatPercent(Number(value))}
@@ -165,7 +170,7 @@ export default function KpiTrendChart({ data, loading, mode, onModeChange }: Kpi
                         strokeWidth={2.4}
                         dot={chartData.length <= 31 ? { r: 2, fill: metric.color } : false}
                         connectNulls={false}
-                        activeDot={{ r: 5, fill: metric.color, strokeWidth: 2, stroke: '#fff' }}
+                        activeDot={{ r: 5, fill: metric.color, strokeWidth: 2, stroke: '#0b1026' }}
                         isAnimationActive={false}
                       />
                     </LineChart>
