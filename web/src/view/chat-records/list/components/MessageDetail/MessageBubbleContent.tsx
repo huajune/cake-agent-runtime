@@ -372,13 +372,28 @@ export function MessageBubbleContent({ messageType, content, payload }: Props) {
       );
     }
 
+    case 'ROOM_INVITE': {
+      const groupName = pickString(payload, 'roomName', 'groupName', 'title', 'name');
+      const detail = groupName
+        ? `邀请你加入"${groupName}"`
+        : stripLeadingTag(content) || '点击卡片即可进群';
+      return (
+        <div className={styles.roomInvite}>
+          <div className={styles.roomInviteHeader}>
+            <span className={styles.roomInviteIcon}>👥</span>
+            <span className={styles.roomInviteTag}>群聊邀请</span>
+          </div>
+          <div className={styles.roomInviteDetail}>{detail}</div>
+        </div>
+      );
+    }
+
     case 'REVOKE':
     case 'SYSTEM':
     case 'WECOM_SYSTEM':
     case 'CALL_RECORD':
     case 'MONEY':
     case 'CHANNELS':
-    case 'ROOM_INVITE':
     case 'GROUP_SOLITAIRE':
     case 'CHAT_HISTORY':
     case 'UNKNOWN':

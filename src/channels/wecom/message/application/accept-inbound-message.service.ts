@@ -13,7 +13,11 @@ import { WecomMessageObservabilityService } from '../telemetry/wecom-message-obs
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
 import { isPureFriendAddGreeting } from '../utils/friend-add-greeting.util';
-import { MessageSource, getMessageSourceDescription } from '@enums/message-callback.enum';
+import {
+  MessageSource,
+  MessageType,
+  getMessageSourceDescription,
+} from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
 import { LongTermService } from '@memory/services/long-term.service';
 import type { MessageMetadata } from '@memory/types/long-term.types';
@@ -375,7 +379,10 @@ export class AcceptInboundMessageService {
 
   private async handleSelfMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     const parsed = MessageParser.parse(messageData);
-    const { chatId, content } = parsed;
+    const { chatId } = parsed;
+    // 入群邀请卡片（invite_to_group 拉群 / 经理手动发卡）没有可提取文本，
+    // 补占位内容让卡片在聊天记录页可见；其余类型保持原行为（空内容跳过）。
+    const content = parsed.content || this.buildSelfRoomInviteContent(messageData);
 
     if (!content || content.trim().length === 0) {
       this.logger.debug(`[自发消息] 消息内容为空，跳过存储 [${messageData.messageId}]`);
@@ -424,6 +431,21 @@ export class AcceptInboundMessageService {
     // 触发描述，描述完成后会通过 chat_messages.UPDATE 回写 content（带 [图片消息] 前缀）
     // 并失效短期记忆缓存。
     this.triggerSelfMessageVisionIfNeeded(messageData);
+  }
+
+  /**
+   * 自发入群邀请卡片的占位文本（仅 ROOM_INVITE，其余类型返回空串维持原跳过行为）。
+   * payload 结构平台未文档化，按常见字段尽力取群名。
+   */
+  private buildSelfRoomInviteContent(messageData: EnterpriseMessageCallbackDto): string {
+    if (messageData.messageType !== MessageType.ROOM_INVITE) return '';
+    const payload = (messageData.payload ?? {}) as Record<string, unknown>;
+    const groupName = [payload.roomName, payload.groupName, payload.title, payload.name].find(
+      (v): v is string => typeof v === 'string' && v.trim().length > 0,
+    );
+    return groupName
+      ? `[入群邀请] 邀请你加入"${groupName.trim()}"`
+      : '[入群邀请] 已发送入群邀请卡片';
   }
 
   private triggerSelfMessageVisionIfNeeded(messageData: EnterpriseMessageCallbackDto): void {

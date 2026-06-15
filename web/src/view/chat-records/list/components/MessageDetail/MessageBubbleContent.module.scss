@@ -423,6 +423,44 @@
   }
 }
 
+/* ---------- ROOM INVITE ---------- */
+.roomInvite {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: $radius-md;
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.roomInviteHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roomInviteIcon {
+  font-size: $font-size-base;
+}
+
+.roomInviteTag {
+  font-size: 10px;
+  font-weight: $font-weight-medium;
+  color: #6366f1;
+  background: rgba(99, 102, 241, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.roomInviteDetail {
+  font-size: $font-size-sm;
+  color: $text-primary;
+  line-height: $line-height-normal;
+}
+
 /* ---------- MINI PROGRAM ---------- */
 .miniProgram {
   display: flex;

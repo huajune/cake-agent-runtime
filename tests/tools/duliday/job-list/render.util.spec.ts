@@ -132,6 +132,64 @@ describe('job-list render util', () => {
     });
   });
 
+  describe('sensitive screening free-text notice', () => {
+    const detailFlags: ProgressiveDisclosureFlags = {
+      includeBasicInfo: true,
+      includeJobSalary: false,
+      includeWelfare: false,
+      includeHiringRequirement: true,
+      includeWorkTime: false,
+      includeInterviewProcess: true,
+    };
+
+    it('appends 🔒 notice when requirement free-text embeds household exclusion', () => {
+      const job = makeJob(1);
+      job.hiringRequirement = {
+        basicPersonalRequirements: { minAge: 18, maxAge: 50, genderRequirement: '不限' },
+        certificate: { healthCertificate: '食品健康证' },
+        figure: '不限',
+        remark: '能吃苦耐劳，不要新疆西藏籍',
+      } as typeof job.hiringRequirement;
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+      expect(markdown).toContain('不要新疆西藏籍');
+      expect(markdown).toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+    });
+
+    it('appends 🔒 notice when interview supplement embeds sensitive screening label', () => {
+      const job = makeJob(1) as ReturnType<typeof makeJob> & { interviewProcess?: unknown };
+      job.interviewProcess = {
+        interviewSupplement: [{ interviewSupplement: '户籍（不要新疆西藏）' }],
+      };
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+      const interviewSection = markdown.slice(markdown.indexOf('### 面试流程'));
+      expect(interviewSection).toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+    });
+
+    it('does not duplicate notice when structured hometown warning already rendered', () => {
+      const job = makeJob(1);
+      job.hiringRequirement = {
+        basicPersonalRequirements: { minAge: 18, maxAge: 50, genderRequirement: '不限' },
+        requirementsForHometown: {
+          nativePlaceRequirementType: '不要',
+          nativePlaces: ['东三省', '河南'],
+        },
+        certificate: { healthCertificate: '食品健康证' },
+        figure: '不限',
+      } as typeof job.hiringRequirement;
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+      expect(markdown).toContain('上述民族/籍贯条件🔒仅供内部筛选');
+      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+    });
+
+    it('does not append notice for ordinary jobs', () => {
+      const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, detailFlags);
+      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+    });
+  });
+
   describe('progressive disclosure (full-detail cap)', () => {
     const detailFlags: ProgressiveDisclosureFlags = {
       includeBasicInfo: true,

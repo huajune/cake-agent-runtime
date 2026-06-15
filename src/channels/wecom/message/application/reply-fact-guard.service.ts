@@ -127,6 +127,33 @@ function hasNonEmptyHolidayOrOvertimeSalary(jobListResult: unknown): boolean {
   return false;
 }
 
+/** 民族类敏感词（出站泄漏检测用，限定具体民族词避免误伤"上班族/家族"等）。 */
+const ETHNIC_TERM = '少数民族|维吾尔族|哈萨克族|蒙古族|朝鲜族|土家族|[汉回藏满苗彝壮侗瑶白傣黎]族';
+
+/**
+ * 歧视性筛选条件外露检测（窄口径）。
+ *
+ * 岗位的户籍/籍贯/民族筛选条件 🔒 仅供内部筛选（render/precheck/prompt 三层都有
+ * 勿透露标注），模型一旦违规说给候选人，此前没有任何代码层兜底。本 pattern 只匹配
+ * "把条件本身说出口"的措辞，刻意避开合规话术：
+ * - 合规（不命中）："公司这边登记需要核对下户籍信息" / 收资模板"籍贯/户籍：" /
+ *   "你的户籍是哪个省" / "户籍不限" / "没有户籍要求"
+ * - 违规（命中）："不要新疆西藏籍" / "不收东北户籍" / "仅限本地户口" / "限汉族" /
+ *   "这个岗位有户籍要求" / "你的户籍不符合"
+ */
+const DISCRIMINATORY_LEAK_PATTERN = new RegExp(
+  [
+    // 排除式条件外露："不要 X 籍 / 不收 X 户籍 / 谢绝少数民族"；籍(?!贯) 避开"不要忘了填籍贯"
+    `(?:不要|不收|不招|不接受|不考虑|谢绝|拒绝|排除)[^。！？?\\n]{0,10}?(?:户籍|户口|籍(?!贯)|${ETHNIC_TERM})`,
+    // 圈定式条件外露："仅限本地户口 / 只招上海籍 / 限汉族"；(?<!不) 排除合规的"不限户籍/民族"
+    `(?<!不)(?:仅限|只限|只招|只收|限)[^。！？?\\n]{0,8}?(?:户籍|户口|本地人|籍(?!贯)|${ETHNIC_TERM})`,
+    // 把敏感门槛当条件名说出口："这个岗位有户籍要求"；排除"没有/无户籍要求""户籍要求不限"
+    '(?<!没有)(?<!无)(?:户籍|籍贯|民族|地域)(?:要求|限制)(?!不限)',
+    // 当拒绝理由说出口："你的户籍不符合 / 民族不匹配"
+    '(?:户籍|籍贯|民族)[^。！？?\\n]{0,6}?不(?:符|匹配)',
+  ].join('|'),
+);
+
 /**
  * 单条事实矛盾规则：reply 中出现 `keywords` 任一时，要求本轮 tool 调用满足
  * `requiredToolPredicate`；否则判定为"事实矛盾"。
@@ -137,6 +164,12 @@ interface FactRule {
   keywords: RegExp;
   ignorePredicate?: (text: string, toolCalls: AgentToolCall[]) => boolean;
   requiredToolPredicate: (toolCalls: AgentToolCall[]) => boolean;
+  /**
+   * 命中即出站短路：调用方必须丢弃本轮回复（不发送给候选人），而非仅告警。
+   * 仅用于"发出去即不可挽回"的内容类规则（如歧视性筛选条件外露）；
+   * 误报代价是本轮沉默 + 飞书告警人工跟进，远低于泄漏代价。
+   */
+  block?: boolean;
 }
 
 /**
@@ -147,8 +180,12 @@ interface FactRule {
  * 上一轮 invite_to_group 已成功，本轮用户回"好的"，Agent 无 tool 调用
  * 编出"群里人数满了"。
  *
- * Phase 1：只 logger.warn + 飞书告警，不改写 reply（避免误杀真有信息的回复）。
+ * Phase 1：常规规则只 logger.warn + 飞书告警，不改写 reply（避免误杀真有信息的回复）。
  * 飞书数据积累 1-2 周后，再决定是否升级到 Phase 2（命中即静默 drop）。
+ *
+ * 例外——阻断规则（FactRule.block=true）：歧视性筛选条件外露这类"发出去即不可挽回"
+ * 的内容直接走出站短路（check 返回 blocked=true，reply-workflow 丢弃回复不发送），
+ * 不等 Phase 2。
  *
  * 规则维护：[reply-fact-guard.keywords.ts] 单独文件，独立可读。
  */
@@ -346,14 +383,28 @@ export class ReplyFactGuardService {
       requiredToolPredicate: (toolCalls) =>
         ReplyFactGuardService.inviteCalledSuccessfully(toolCalls),
     },
+    {
+      ruleId: 'discriminatory_screening_leak',
+      label:
+        '回复疑似向候选人透露户籍/籍贯/民族等歧视性筛选条件（敏感门槛 🔒 仅供内部筛选，外露涉地域/民族歧视纠纷风险）',
+      keywords: DISCRIMINATORY_LEAK_PATTERN,
+      // 没有任何工具调用能正当化把歧视性筛选条件说给候选人——命中即拦截
+      requiredToolPredicate: () => false,
+      // 歧视性内容发出去即不可挽回，必须出站短路（丢弃回复），不能像其他规则只告警
+      block: true,
+    },
   ];
 
   constructor(private readonly replyFactGuardNotifier: ReplyFactGuardNotifierService) {}
 
   /**
-   * 检查 reply 是否与本轮 tool 调用矛盾。命中即日志告警，不改写文本。
+   * 检查 reply 是否与本轮 tool 调用矛盾。
    *
-   * @returns 命中的规则；调用方可记 anomaly_flag、用于后续 phase 2 改写决策
+   * - 常规规则：命中即日志告警 + 飞书 badcase，不改写文本（Phase 1）
+   * - 阻断规则（block=true，如歧视性筛选条件外露）：额外返回 blocked=true，
+   *   调用方**必须**据此丢弃本轮回复，不得发送给候选人
+   *
+   * @returns 命中的规则与是否需要出站短路；调用方可记 anomaly_flag
    */
   check(params: {
     replyText: string;
@@ -366,18 +417,22 @@ export class ReplyFactGuardService {
     botUserName?: string;
     /** 本轮候选人输入，用于写 badcase 时构建对话上下文 */
     userMessage?: string;
-  }): { hit: boolean; contradictions: Array<{ ruleId: string; label: string }> } {
+  }): {
+    hit: boolean;
+    blocked: boolean;
+    contradictions: Array<{ ruleId: string; label: string; blocked?: boolean }>;
+  } {
     const text = params.replyText ?? '';
-    if (!text.trim()) return { hit: false, contradictions: [] };
+    if (!text.trim()) return { hit: false, blocked: false, contradictions: [] };
 
     const toolCalls = params.toolCalls ?? [];
-    const contradictions: Array<{ ruleId: string; label: string }> = [];
+    const contradictions: Array<{ ruleId: string; label: string; blocked?: boolean }> = [];
 
     for (const rule of this.rules) {
       if (!rule.keywords.test(text)) continue;
       if (rule.ignorePredicate?.(text, toolCalls)) continue;
       if (rule.requiredToolPredicate(toolCalls)) continue;
-      contradictions.push({ ruleId: rule.ruleId, label: rule.label });
+      contradictions.push({ ruleId: rule.ruleId, label: rule.label, blocked: rule.block === true });
     }
 
     const bookingFormMismatch = ReplyFactGuardService.detectBookingFormFieldMismatch(
@@ -393,15 +448,19 @@ export class ReplyFactGuardService {
       contradictions.push(salaryFabrication);
     }
 
-    if (contradictions.length === 0) return { hit: false, contradictions: [] };
+    if (contradictions.length === 0) return { hit: false, blocked: false, contradictions: [] };
+
+    const blocked = contradictions.some((c) => c.blocked);
 
     this.logger.warn(
-      `[ReplyFactGuard] 命中事实矛盾: chatId=${params.chatId ?? '-'}, userId=${params.userId ?? '-'}, rules=${contradictions
+      `[ReplyFactGuard] 命中事实矛盾: chatId=${params.chatId ?? '-'}, userId=${params.userId ?? '-'}, action=${
+        blocked ? 'block' : 'warn'
+      }, rules=${contradictions
         .map((c) => c.ruleId)
         .join(',')}, replyPreview="${text.slice(0, 80)}"`,
     );
 
-    // 飞书告警 fire-and-forget——不阻塞回复链路
+    // 飞书告警 fire-and-forget——不阻塞回复链路；阻断规则标注"已拦截"便于运营分辨
     void this.replyFactGuardNotifier
       .notifyContradiction({
         chatId: params.chatId,
@@ -412,7 +471,9 @@ export class ReplyFactGuardService {
         botUserName: params.botUserName,
         userMessage: params.userMessage,
         replyPreview: text.slice(0, 400),
-        contradictions,
+        contradictions: contradictions.map((c) =>
+          c.blocked ? { ...c, label: `【已拦截，未发送给候选人】${c.label}` } : c,
+        ),
         toolNames: toolCalls.map((c) => c.toolName),
       })
       .catch((error: unknown) => {
@@ -420,6 +481,6 @@ export class ReplyFactGuardService {
         this.logger.error(`[ReplyFactGuard] 飞书告警发送失败: ${message}`);
       });
 
-    return { hit: true, contradictions };
+    return { hit: true, blocked, contradictions };
   }
 }

@@ -39,7 +39,8 @@ docs/
 └── product/               # 产品相关文档
     ├── business-flows.md
     ├── product-definition.md
-    └── product-roadmap.md
+    ├── product-roadmap.md
+    └── sensitive-info-guardrails-for-operations.md
 ```
 
 ---
@@ -132,6 +133,12 @@ docs/
 - **[产品规划路线图](product/product-roadmap.md)**
   - 版本规划与功能优先级
   - **更新日期**：2025-11-04
+
+- **[敏感信息与安全护栏全景说明（运营版）](product/sensitive-info-guardrails-for-operations.md)** 🆕
+  - 户籍/籍贯/民族/性别/年龄等公平性保护（含出站歧视拦截）
+  - 诚信保护、个人信息保护、风险预检与黑名单、运营处置指引
+  - 三种保护强度图例（🔒 硬拦截 / 📡 检测告警 / 📜 行为规则）
+  - **更新日期**：2026-06-12
 
 ---
 

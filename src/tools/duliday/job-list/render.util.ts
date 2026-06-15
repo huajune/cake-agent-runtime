@@ -26,6 +26,10 @@ import {
   type JobPolicyAnalysis,
 } from '@tools/utils/job-policy-parser';
 import {
+  containsSensitiveScreeningText,
+  SENSITIVE_SCREENING_RENDER_NOTICE,
+} from '@tools/utils/sensitive-screening.util';
+import {
   cleanNumber,
   cleanSingleLineText,
   formatNameWithId,
@@ -580,6 +584,17 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
     policy.normalizedRequirements.remark ?? sanitizeConstraintText(asString(req.remark));
   if (sanitizedRemark) pushLongText(lines, '其他要求', sanitizedRemark);
 
+  // 自由文本（其他要求等）可能内嵌"不要 X 籍 / 限本地户口"类敏感筛选条件，
+  // 结构化字段之外的这条路径同样需要 🔒 勿透露标注兜底。
+  // 结构化 hometown 警示已输出时不再重复标注。
+  if (
+    !hasSensitiveHometownConstraint &&
+    lines.length &&
+    containsSensitiveScreeningText(lines.join('\n'))
+  ) {
+    lines.push(SENSITIVE_SCREENING_RENDER_NOTICE);
+  }
+
   return lines.length ? '### 招聘要求\n' + lines.join('\n') + '\n\n' : '';
 }
 
@@ -901,6 +916,12 @@ function renderInterviewProcessSection(
   // 面试备注：使用 policy 清洗过的 interviewRemark（已剔除过期时效等噪音）
   if (policy.normalizedRequirements.interviewRemark) {
     pushLongText(lines, '面试备注', policy.normalizedRequirements.interviewRemark);
+  }
+
+  // 面试补充项/面试描述/面试备注等自由文本可能内嵌"户籍（不要新疆西藏）"类
+  // 敏感筛选条件，命中时追加 🔒 勿透露标注兜底。
+  if (lines.length && containsSensitiveScreeningText(lines.join('\n'))) {
+    lines.push(SENSITIVE_SCREENING_RENDER_NOTICE);
   }
 
   return lines.length ? '### 面试流程\n' + lines.join('\n') + '\n\n' : '';
