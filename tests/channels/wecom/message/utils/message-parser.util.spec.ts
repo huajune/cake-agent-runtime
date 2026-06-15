@@ -1,6 +1,7 @@
 import {
   MessageParser,
   isResumeImageDescription,
+  stripResumeAttachmentLines,
 } from '@wecom/message/utils/message-parser.util';
 import {
   EnterpriseMessageCallbackDto,
@@ -508,5 +509,32 @@ describe('isResumeImageDescription', () => {
     '思考',
   ])('should not identify non-resume description: %s', (description) => {
     expect(isResumeImageDescription(description)).toBe(false);
+  });
+});
+
+describe('stripResumeAttachmentLines', () => {
+  it('removes an embedded 简历附件 line so the caller can append exactly one', () => {
+    // badcase chat 6a2fac72…：vision OCR 把卡片内嵌附件链接也转写进了描述，
+    // 再无条件追加一行会出现重复"简历附件"行。
+    const description = '简历图片：姓名徐中如\n- 工作经历：良品铺子\n简历附件：https://oss/a.jpg';
+    expect(stripResumeAttachmentLines(description)).toBe('简历图片：姓名徐中如\n- 工作经历：良品铺子');
+  });
+
+  it('is a no-op when no 简历附件 line is present', () => {
+    const description = '简历图片：姓名徐中如\n- 工作经历：良品铺子';
+    expect(stripResumeAttachmentLines(description)).toBe(description);
+  });
+
+  it('removes multiple 简历附件 lines (含半角冒号) and collapses blank gaps', () => {
+    const description = '简历图片：张三\n简历附件：https://oss/a.jpg\n简历附件: https://oss/a.jpg';
+    expect(stripResumeAttachmentLines(description)).toBe('简历图片：张三');
+  });
+
+  it('guarantees a single attachment line after the service re-appends', () => {
+    const description = '简历图片：李四\n简历附件：https://oss/old.jpg';
+    const url = 'https://oss/new.jpg';
+    const content = `[图片消息] ${stripResumeAttachmentLines(description)}\n简历附件：${url}`;
+    expect(content.match(/简历附件\s*[：:]/g)).toHaveLength(1);
+    expect(content).toContain('简历附件：https://oss/new.jpg');
   });
 });
