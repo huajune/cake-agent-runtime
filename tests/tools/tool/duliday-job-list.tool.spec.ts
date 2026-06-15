@@ -975,4 +975,60 @@ describe('buildJobListTool', () => {
       expect(result._replyInstruction).toContain('invite_to_group');
     });
   });
+
+  describe('乡镇/街道级地名误当 regionNameList (badcase batch_6a2fabf0536c9654020e6683)', () => {
+    it('候选人答"川沙"被塞进 regionNameList 查 0 条：引导先 geocode 而非拉群收口', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        regionNameList: ['川沙'],
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_REGION_NEEDS_GEOCODE);
+      expect(result._replyInstruction).toContain('geocode');
+      // 明确指示「不要直接 invite_to_group 拉群」，而非引导拉群
+      expect(result._replyInstruction).toContain('不要直接 invite_to_group');
+      expect(result.suspectedRegions).toEqual(['川沙']);
+    });
+
+    it('区名简称"浦东"同样引导 geocode 拿规范全称再查', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        regionNameList: ['浦东'],
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_REGION_NEEDS_GEOCODE);
+    });
+
+    it('规范区级名"浦东新区"命中 0 条：照旧走 noMatchScript 拉群，不再 geocode', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        regionNameList: ['浦东新区'],
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result._replyInstruction).toContain('invite_to_group');
+    });
+
+    it('乡镇级 region + 已有坐标时不触发 geocode 引导（坐标已足够定位）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        regionNameList: ['川沙'],
+        location: { longitude: 121.69, latitude: 31.19 },
+      });
+
+      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_REGION_NEEDS_GEOCODE);
+    });
+  });
 });
