@@ -41,7 +41,7 @@ export class MessageProcessingRepository extends BaseRepository {
     'queue_duration',
     'prep_duration',
     'ai_duration',
-    'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
+    'ttft_ms',
     'send_duration',
     'tool_calls',
     'agent_steps',
@@ -819,11 +819,7 @@ export class MessageProcessingRepository extends BaseRepository {
     avgTtft: number;
   }> {
     const rows = await this.select<MessageProcessingDbRecord>(
-      [
-        'status',
-        'total_duration',
-        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
-      ].join(','),
+      ['status', 'total_duration', 'ttft_ms'].join(','),
       (q) => {
         let r = q
           .gte('received_at', new Date(startTime).toISOString())
@@ -891,6 +887,7 @@ export class MessageProcessingRepository extends BaseRepository {
       ai_start_at: record.aiStartAt,
       ai_end_at: record.aiEndAt,
       ai_duration: record.aiDuration,
+      ttft_ms: record.ttftMs ?? this.extractTtftFromInvocation(record.agentInvocation),
       send_duration: record.sendDuration,
       token_usage: record.tokenUsage,
       is_fallback: record.isFallback,
@@ -949,10 +946,15 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   private extractTtftMs(record: MessageProcessingDbRecord): number | undefined {
-    const fromProjection = this.parseNumber(record.ttft_ms);
-    if (fromProjection !== undefined) return fromProjection;
+    const fromColumn = this.parseNumber(record.ttft_ms);
+    if (fromColumn !== undefined) return fromColumn;
 
-    const agentInvocation = record.agent_invocation as
+    // 兼容存量未回填 ttft_ms 的记录：详情查询带 agent_invocation 时仍可现场提取
+    return this.extractTtftFromInvocation(record.agent_invocation);
+  }
+
+  private extractTtftFromInvocation(invocation: unknown): number | undefined {
+    const agentInvocation = invocation as
       | {
           response?: {
             timings?: {
