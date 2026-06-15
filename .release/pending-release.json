@@ -1,93 +1,45 @@
 {
-  "baseVersion": "5.19.0",
-  "nextVersion": "5.20.0",
+  "baseVersion": "5.20.0",
+  "nextVersion": "5.21.0",
   "updatedAt": "2026-06-15",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "337",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/337",
-      "title": "黑名单拉黑快照反查修正 + geocode 旧缓存兼容 + 转化漏斗视觉改版",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-15",
-      "businessUpdates": [
-        "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…"
-      ],
-      "summary": [
-        "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
-        "拉黑快照反查不再误取机器人侧 im_contact_id",
-        "转化分析漏斗区改版为 3D 嵌套碗插画并约束体量",
-        "户籍/籍贯/民族敏感筛选条件全链路防外露",
-        "带专名前缀的车站不再误入通用后缀黑名单",
-        "入群邀请卡片在聊天记录页可见",
-        "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…",
-        "黑名单拉黑快照反查修正 + geocode 旧缓存兼容 + 转化漏斗视觉改版"
-      ],
-      "features": [
-        "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
-        "拉黑快照反查不再误取机器人侧 im_contact_id",
-        "转化分析漏斗区改版为 3D 嵌套碗插画并约束体量",
-        "户籍/籍贯/民族敏感筛选条件全链路防外露",
-        "带专名前缀的车站不再误入通用后缀黑名单",
-        "入群邀请卡片在聊天记录页可见"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.19.0",
-    "date": "2026-06-12",
+    "version": "5.20.0",
+    "date": "2026-06-15",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "328",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/328",
-        "title": "带专名前缀的车站不再命中通用后缀黑名单",
+        "number": "337",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/337",
+        "title": "黑名单拉黑快照反查修正 + geocode 旧缓存兼容 + 转化漏斗视觉改版",
         "author": "ArielZhu",
-        "mergedAt": "2026-06-12",
+        "mergedAt": "2026-06-15",
         "businessUpdates": [
-          "带专名前缀的车站不再命中通用后缀黑名单"
+          "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…"
         ],
         "summary": [
-          "带专名前缀的车站不再命中通用后缀黑名单"
+          "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
+          "拉黑快照反查不再误取机器人侧 im_contact_id",
+          "转化分析漏斗区改版为 3D 嵌套碗插画并约束体量",
+          "户籍/籍贯/民族敏感筛选条件全链路防外露",
+          "带专名前缀的车站不再误入通用后缀黑名单",
+          "入群邀请卡片在聊天记录页可见",
+          "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…",
+          "黑名单拉黑快照反查修正 + geocode 旧缓存兼容 + 转化漏斗视觉改版"
         ],
-        "features": [],
+        "features": [
+          "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…"
+        ],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "带专名前缀的车站不再命中通用后缀黑名单"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "✅ `geo-mappings.spec.ts` + `geocode.tool.spec.ts` 28 个用例全过，ESLint 干净",
-          "✅ 本地起服务走 `/agent/debug-chat` 真实链路（真实 LLM + 真实高德 + 真实岗位查询）复刻原对话：第二轮\"漕宝路地铁\"直接凭通识传 `city=上海` 调 geocode，高德返回徐汇区漕宝路地铁站坐标（typecode 150500），推荐\"奥乐齐 1038漕宝日月光 0.1km\"等岗位，**不再反问城市**——与原会话第 4 轮被怼后才给出的推荐一致，省两轮对话"
-        ]
-      },
-      {
-        "number": "333",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/333",
-        "title": "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
-        "author": "ArielZhu",
-        "mergedAt": "2026-06-12",
-        "businessUpdates": [
-          "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
-        ],
-        "summary": [
-          "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
+          "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
+          "拉黑快照反查不再误取机器人侧 im_contact_id",
+          "转化分析漏斗区改版为 3D 嵌套碗插画并约束体量",
+          "户籍/籍贯/民族敏感筛选条件全链路防外露",
+          "带专名前缀的车站不再误入通用后缀黑名单",
+          "入群邀请卡片在聊天记录页可见"
         ],
         "config": [],
         "envFiles": [],
