@@ -31,7 +31,7 @@ describe('ReplyFactGuardService', () => {
       chatId: 'chat-1',
     });
 
-    expect(result).toEqual({ hit: false, contradictions: [] });
+    expect(result).toEqual({ hit: false, blocked: false, contradictions: [] });
     expect(replyFactGuardNotifier.notifyContradiction).not.toHaveBeenCalled();
   });
 
@@ -44,7 +44,7 @@ describe('ReplyFactGuardService', () => {
       chatId: 'chat-1',
     });
 
-    expect(result).toEqual({ hit: false, contradictions: [] });
+    expect(result).toEqual({ hit: false, blocked: false, contradictions: [] });
     expect(replyFactGuardNotifier.notifyContradiction).not.toHaveBeenCalled();
   });
 
@@ -271,7 +271,7 @@ describe('ReplyFactGuardService', () => {
 
   it('does not throw when reply is empty', async () => {
     const result = service.check({ replyText: '', toolCalls: [] });
-    expect(result).toEqual({ hit: false, contradictions: [] });
+    expect(result).toEqual({ hit: false, blocked: false, contradictions: [] });
   });
 
   it('does not throw if ops notifier alert rejects (fire-and-forget)', async () => {

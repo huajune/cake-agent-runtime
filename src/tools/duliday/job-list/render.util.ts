@@ -26,6 +26,10 @@ import {
   type JobPolicyAnalysis,
 } from '@tools/utils/job-policy-parser';
 import {
+  containsSensitiveScreeningText,
+  SENSITIVE_SCREENING_RENDER_NOTICE,
+} from '@tools/utils/sensitive-screening.util';
+import {
   cleanNumber,
   cleanSingleLineText,
   formatNameWithId,
@@ -166,7 +170,7 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
   if (hr.household) {
     const verb = hr.household.mode === 'include' ? '仅接受' : '不接受';
     lines.push(
-      `- **户籍**：${verb} ${hr.household.regions.join('/')}（不掌握候选人户籍时先确认再 booking）`,
+      `- **户籍**：${verb} ${hr.household.regions.join('/')}（🔒 仅供内部筛选，**严禁把该户籍限制原样写进岗位介绍/要求或当拒绝理由告诉候选人**——涉地域歧视极易起纠纷；不掌握候选人户籍时按敏感门槛话术委婉了解后内部判断，不符则以排班/距离等中性理由转推其他岗位）`,
     );
   }
 
@@ -527,6 +531,14 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   if (Array.isArray(hometown.nativePlaces) && hometown.nativePlaces.length > 0) {
     lines.push(`- **籍贯**: ${hometown.nativePlaces.join(', ')}`);
   }
+  const hasSensitiveHometownConstraint =
+    (Array.isArray(hometown.nativePlaces) && hometown.nativePlaces.length > 0) ||
+    (Array.isArray(hometown.nations) && hometown.nations.length > 0);
+  if (hasSensitiveHometownConstraint) {
+    lines.push(
+      '- ⚠️ 上述民族/籍贯条件🔒仅供内部筛选，**严禁向候选人展示或转述**（涉地域/民族歧视，易起纠纷）',
+    );
+  }
 
   const mb = asRecord(req.marriageBearingAndSocialSecurity) ?? {};
   pushField(lines, '婚育要求', mb.marriageBearingType);
@@ -571,6 +583,17 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   const sanitizedRemark =
     policy.normalizedRequirements.remark ?? sanitizeConstraintText(asString(req.remark));
   if (sanitizedRemark) pushLongText(lines, '其他要求', sanitizedRemark);
+
+  // 自由文本（其他要求等）可能内嵌"不要 X 籍 / 限本地户口"类敏感筛选条件，
+  // 结构化字段之外的这条路径同样需要 🔒 勿透露标注兜底。
+  // 结构化 hometown 警示已输出时不再重复标注。
+  if (
+    !hasSensitiveHometownConstraint &&
+    lines.length &&
+    containsSensitiveScreeningText(lines.join('\n'))
+  ) {
+    lines.push(SENSITIVE_SCREENING_RENDER_NOTICE);
+  }
 
   return lines.length ? '### 招聘要求\n' + lines.join('\n') + '\n\n' : '';
 }
@@ -893,6 +916,12 @@ function renderInterviewProcessSection(
   // 面试备注：使用 policy 清洗过的 interviewRemark（已剔除过期时效等噪音）
   if (policy.normalizedRequirements.interviewRemark) {
     pushLongText(lines, '面试备注', policy.normalizedRequirements.interviewRemark);
+  }
+
+  // 面试补充项/面试描述/面试备注等自由文本可能内嵌"户籍（不要新疆西藏）"类
+  // 敏感筛选条件，命中时追加 🔒 勿透露标注兜底。
+  if (lines.length && containsSensitiveScreeningText(lines.join('\n'))) {
+    lines.push(SENSITIVE_SCREENING_RENDER_NOTICE);
   }
 
   return lines.length ? '### 面试流程\n' + lines.join('\n') + '\n\n' : '';
