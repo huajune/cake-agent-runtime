@@ -8,6 +8,41 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.21.0`
+**最近更新**: `2026-06-15`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #342 ttft_ms 落为真实列，消除消息处理页查询期 JSONB detoast
+- PR #342 **新增真实列 `ttft_ms`**:写入侧 `toDbRecord` 从 `agent_invocation` 抽取落库;读取侧(`listSelectedColumns`、`getFilteredMessageStats`)与概览 RPC 改读该列,查询期不再解压 JSONB。详情路径保留 invocation 兜底。
+- PR #342 **Migration** `20260612032136_add_ttft_ms_column.sql`:`ADD COLUMN IF NOT EXISTS ttft_ms`(可空列=元数据操作,不重写表)+ `CREATE OR REPLACE` 重建 `get_dashboard_overview_stats`(签名/返回类型不变)。
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #342 **新增真实列 `ttft_ms`**:写入侧 `toDbRecord` 从 `agent_invocation` 抽取落库;读取侧(`listSelectedColumns`、`getFilteredMessageStats`)与概览 RPC 改读该列,查询期不再解压 JSONB。详情路径保留 invocation 兜底。
+
+### 优化调整
+- PR #342 ttft_ms 落为真实列，消除消息处理页查询期 JSONB detoast
+
+### 运维与流程
+- PR #342 **Migration** `20260612032136_add_ttft_ms_column.sql`:`ADD COLUMN IF NOT EXISTS ttft_ms`(可空列=元数据操作,不重写表)+ `CREATE OR REPLACE` 重建 `get_dashboard_overview_stats`(签名/返回类型不变)。
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [5.20.0] - 2026-06-15
 
 **来源分支**: `develop`
