@@ -1,99 +1,56 @@
 {
-  "baseVersion": "5.16.0",
-  "nextVersion": "5.17.0",
+  "baseVersion": "5.19.0",
+  "nextVersion": "5.20.0",
   "updatedAt": "2026-06-12",
   "sourceBranch": "develop",
   "entries": [],
   "lastRelease": {
-    "version": "5.16.0",
+    "version": "5.19.0",
     "date": "2026-06-12",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "308",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/308",
-        "title": "明确 invite_to_group 拉群投递契约",
-        "author": "huajune",
-        "mergedAt": "2026-06-11",
-        "businessUpdates": [
-          "明确拉群投递契约",
-          "将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。",
-          "增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。",
-          "更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。",
-          "明确 invite_to_group 拉群投递契约"
-        ],
-        "summary": [
-          "明确拉群投递契约",
-          "将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。",
-          "增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。",
-          "更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。",
-          "明确 invite_to_group 拉群投递契约"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。",
-          "增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。",
-          "更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。",
-          "明确拉群投递契约"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "`pnpm test -- tests/tools/tool/invite-to-group.tool.spec.ts`",
-          "pre-push `pnpm run ci:check` passed: lint, format, typecheck, build, full Jest CI"
-        ]
-      },
-      {
-        "number": "311",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/311",
-        "title": "增加 AppModule 全量装配 DI 冒烟测试",
-        "author": "ArielZhu",
-        "mergedAt": "2026-06-11",
-        "businessUpdates": [
-          "增加 AppModule 全量装配 DI 冒烟测试"
-        ],
-        "summary": [
-          "增加 AppModule 全量装配 DI 冒烟测试"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "增加 AppModule 全量装配 DI 冒烟测试"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "✅ develop 上通过（6s，无 .env.local 的 CI 同构环境）",
-          "✅ **在引入死锁的 `b391569a`（PR #298 合入点）上按预期超时失败**——防线对真实事故有效",
-          "✅ 主测试集 `--listTests` 确认已排除冒烟文件，`test:di-smoke` 干净退出"
-        ]
-      },
-      {
-        "number": "313",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/313",
-        "title": "sync master into develop after v5.15.0",
+        "number": "328",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/328",
+        "title": "带专名前缀的车站不再命中通用后缀黑名单",
         "author": "ArielZhu",
         "mergedAt": "2026-06-12",
         "businessUpdates": [
-          "解决方式：全部保留 develop 侧（已含 v5.16.0 待发布元数据，CHANGELOG 同时保留 v5.15.0 历史记录）"
+          "带专名前缀的车站不再命中通用后缀黑名单"
         ],
         "summary": [
-          "冲突文件：`package.json` / `CHANGELOG.md` / `.release/pending-release.json`",
-          "解决方式：全部保留 develop 侧（已含 v5.16.0 待发布元数据，CHANGELOG 同时保留 v5.15.0 历史记录）",
-          "本 PR 请使用 **merge commit** 合入，使 master 的提交进入 develop 祖先链",
-          "sync master into develop after v5.15.0"
+          "带专名前缀的车站不再命中通用后缀黑名单"
         ],
         "features": [],
-        "fixes": [
-          "解决方式：全部保留 develop 侧（已含 v5.16.0 待发布元数据，CHANGELOG 同时保留 v5.15.0 历史记录）"
-        ],
+        "fixes": [],
         "optimizations": [],
         "ops": [
-          "冲突文件：`package.json` / `CHANGELOG.md` / `.release/pending-release.json`",
-          "本 PR 请使用 **merge commit** 合入，使 master 的提交进入 develop 祖先链"
+          "带专名前缀的车站不再命中通用后缀黑名单"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "✅ `geo-mappings.spec.ts` + `geocode.tool.spec.ts` 28 个用例全过，ESLint 干净",
+          "✅ 本地起服务走 `/agent/debug-chat` 真实链路（真实 LLM + 真实高德 + 真实岗位查询）复刻原对话：第二轮\"漕宝路地铁\"直接凭通识传 `city=上海` 调 geocode，高德返回徐汇区漕宝路地铁站坐标（typecode 150500），推荐\"奥乐齐 1038漕宝日月光 0.1km\"等岗位，**不再反问城市**——与原会话第 4 轮被怼后才给出的推荐一致，省两轮对话"
+        ]
+      },
+      {
+        "number": "333",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/333",
+        "title": "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-12",
+        "businessUpdates": [
+          "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
+        ],
+        "summary": [
+          "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "旧缓存候选缺 typecode 字段导致 geocode 全量失败"
         ],
         "config": [],
         "envFiles": [],
