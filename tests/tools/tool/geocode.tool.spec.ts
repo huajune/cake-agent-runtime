@@ -287,6 +287,88 @@ describe('geocode tool', () => {
     });
   });
 
+  describe('GEOCODE_DISTRICT_CITY_MISMATCH（跨城同名区被错配到异城）', () => {
+    // 线上 case：候选人答"雨花区板桥"（南京雨花台区板桥），未带 city 时高德把整串模糊匹配到
+    // 「长沙县盼盼路13号板桥小区」并以单城 unique 返回，Agent 误判长沙无岗后静默收口。
+    it('未传 city + "雨花区板桥" + 高德返回长沙县 POI → 报区/城不一致，引导中性反问城市', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({
+          city: '长沙市',
+          province: '湖南省',
+          district: '长沙县',
+          formattedAddress: '湖南省长沙市长沙县盼盼路13号板桥小区',
+          poiName: '板桥小区',
+          longitude: 113.083632,
+          latitude: 28.219622,
+        }),
+      ]);
+
+      const result = (await execute({ address: '雨花区板桥' })) as Record<string, unknown>;
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_DISTRICT_CITY_MISMATCH);
+      expect(result.resolution).toBeUndefined();
+      // 反问必须中性，不得把错城/任何具体城市名抖给候选人
+      expect(result._replyInstruction).not.toMatch(/长沙|南京/);
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('雨花区板桥', null);
+    });
+
+    it('未传 city + "雨花区板桥" + 高德返回南京雨花台区 POI → 区名一致(口语vs官方前缀包含)，正常 unique', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({
+          city: '南京市',
+          province: '江苏省',
+          district: '雨花台区',
+          formattedAddress: '江苏省南京市雨花台区板桥(地铁站)',
+          poiName: '板桥(地铁站)',
+          longitude: 118.640707,
+          latitude: 31.907893,
+        }),
+      ]);
+
+      const result = (await execute({ address: '雨花区板桥' })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+      expect((result.result as Record<string, unknown>).city).toBe('南京市');
+    });
+
+    it('已传 city + "雨花区板桥" → citylimit 已生效，跳过一致性校验直接采纳', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({
+          city: '南京市',
+          province: '江苏省',
+          district: '雨花台区',
+          formattedAddress: '江苏省南京市雨花台区板桥(地铁站)',
+          poiName: '板桥(地铁站)',
+          longitude: 118.640707,
+          latitude: 31.907893,
+        }),
+      ]);
+
+      const result = (await execute({ address: '雨花区板桥', city: '南京' })) as Record<
+        string,
+        unknown
+      >;
+
+      expect(result.resolution).toBe('unique');
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('雨花区板桥', '南京');
+    });
+
+    it('address 无"区/县"token（裸地标）→ 不触发一致性校验，保持原 unique 行为', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({
+          city: '长沙市',
+          province: '湖南省',
+          district: '长沙县',
+          poiName: '板桥小区',
+        }),
+      ]);
+
+      const result = (await execute({ address: '板桥' })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+    });
+  });
+
   describe('GEOCODE_UNRESOLVED_ADDRESS', () => {
     it('candidates 为空数组 → 返回未解析错误', async () => {
       (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([]);

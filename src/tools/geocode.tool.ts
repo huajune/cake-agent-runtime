@@ -14,7 +14,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
-import { hasGenericAmbiguousSuffix } from '@memory/facts/geo-mappings';
+import { hasGenericAmbiguousSuffix, normalizeDistrictForLookup } from '@memory/facts/geo-mappings';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
@@ -131,6 +131,30 @@ function pickAnchorCandidate(candidates: GeocodeCandidate[]): GeocodeCandidate {
   return candidates.find(isMetroStation) ?? candidates.find((c) => !isRoadNamePoi(c)) ?? top;
 }
 
+/** 抽出 address 里的"X区/X县"级行政区 token（归一化去后缀，"雨花区"→"雨花"、"长沙县"→"长沙"）。 */
+const ADMIN_DISTRICT_TOKEN_PATTERN = /[一-龥]{2,8}(?:区|县)/g;
+
+function extractDistrictStems(address: string): string[] {
+  const stems: string[] = [];
+  for (const m of address.matchAll(ADMIN_DISTRICT_TOKEN_PATTERN)) {
+    const stem = normalizeDistrictForLookup(m[0]);
+    if (stem) stems.push(stem);
+  }
+  return stems;
+}
+
+/**
+ * 用户报的区 stem 是否与高德返回 POI 的区一致。
+ *
+ * 用前缀包含双向匹配，兼容口语区名与官方区名的出入（"雨花"vs官方"雨花台"）：
+ * 命中即视为一致。高德没回区名时无从校验，按一致放行（不误拦）。
+ */
+function poiDistrictMatchesAddress(addrStems: string[], poiDistrict: string): boolean {
+  const poiStem = normalizeDistrictForLookup(poiDistrict.trim());
+  if (!poiStem) return true;
+  return addrStems.some((stem) => poiStem.includes(stem) || stem.includes(poiStem));
+}
+
 /** 把单城 GeocodeCandidate 投回旧 GeocodeResult shape，保证下游 prompt 模板兼容。 */
 function toResultPayload(c: GeocodeCandidate) {
   return {
@@ -193,9 +217,34 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
           // 单城唯一命中：按精度择优（道路名 POI 易锚偏，优先地铁站），而非无脑取第一条
           const distinctCities = new Set(candidates.map((c) => c.city).filter((c) => c.length > 0));
           if (distinctCities.size <= 1) {
+            const anchor = pickAnchorCandidate(candidates);
+
+            // 跨城同名区兜底：未传 city + address 明确报了"X区/县"，但高德选中的 POI 落在
+            // 另一个区——说明无 city 时被模糊匹配到了异城同名地点（线上 case：候选人"雨花区板桥"
+            // → 高德"长沙县板桥小区"）。单城返回会被当 unique 全盘信任，故这里改报错让 Agent
+            // 先反问城市，而不是凭错城坐标判定"无岗"后静默收口。
+            if (!normalizedCity) {
+              const addrStems = extractDistrictStems(trimmedAddress);
+              if (addrStems.length > 0 && !poiDistrictMatchesAddress(addrStems, anchor.district)) {
+                return buildToolError({
+                  errorType: TOOL_ERROR_TYPES.GEOCODE_DISTRICT_CITY_MISMATCH,
+                  replyInstruction:
+                    '候选人报的区名在多个城市同名，未带城市时本次解析可能落到错误城市，' +
+                    '禁止采用本次坐标、也禁止据此判定"该城市无岗/无群"后收口。' +
+                    '先中性反问候选人所在城市（"你这边主要在哪个城市呀"，不得带具体城市名），' +
+                    '拿到城市后带 city 参数重新调用本工具。',
+                  details: {
+                    address: trimmedAddress,
+                    resolvedCity: anchor.city,
+                    resolvedDistrict: anchor.district,
+                  },
+                });
+              }
+            }
+
             return {
               resolution: 'unique' as const,
-              result: toResultPayload(pickAnchorCandidate(candidates)),
+              result: toResultPayload(anchor),
             };
           }
 

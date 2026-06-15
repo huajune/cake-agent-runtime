@@ -68,6 +68,12 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   JOB_LIST_MISSING_CITY_CONTEXT: 'job_list.missing_city_context',
   JOB_LIST_NO_RESULTS: 'job_list.no_results',
+  /**
+   * regionNameList 传入的是乡镇/街道/新镇/地标级地名（川沙、九亭、周浦 等）而非区级行政区名。
+   * 后端只精确匹配区级 storeRegionName，乡镇名必然命中 0 ≠ 该片区无岗。引导 Agent 先 geocode
+   * 解析成区级 district + 经纬度再重查，而不是直接照 noMatchScript 拉群收口。
+   */
+  JOB_LIST_REGION_NEEDS_GEOCODE: 'job_list.region_needs_geocode',
   JOB_LIST_SCHEDULE_FILTER_EMPTY: 'job_list.schedule_filter_empty',
   JOB_LIST_FETCH_FAILED: 'job_list.fetch_failed',
 
@@ -81,6 +87,13 @@ export const TOOL_ERROR_TYPES = {
    */
   GEOCODE_CITY_REQUIRED: 'geocode.city_required',
   GEOCODE_AMBIGUOUS_SUFFIX: 'geocode.ambiguous_suffix',
+  /**
+   * 未传 city + address 含明确"X区/X县"行政区名，但高德单城返回的 POI 落在
+   * 另一个区（跨城同名区被模糊匹配到错城）。线上 case：候选人"雨花区板桥"无 city
+   * 时被高德解析成"长沙县板桥小区"并以 unique 返回，Agent 误判长沙无岗静默收口。
+   * 命中本类型时禁止采用坐标，先中性反问候选人城市再带 city 重调。
+   */
+  GEOCODE_DISTRICT_CITY_MISMATCH: 'geocode.district_city_mismatch',
   GEOCODE_UNRESOLVED_ADDRESS: 'geocode.unresolved_address',
   GEOCODE_FAILED: 'geocode.failed',
 
