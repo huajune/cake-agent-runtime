@@ -95,6 +95,12 @@ export const TOOL_ERROR_TYPES = {
   INVITE_NO_GROUP_IN_CITY: 'invite.no_group_in_city',
   INVITE_GROUP_FULL: 'invite.group_full',
   INVITE_API_REJECTED: 'invite.api_rejected',
+  /**
+   * 全部候选群都因 errcode=-8 "is not a friend" 被拒：候选人不是接客 bot 的外部联系人
+   * （已拉黑/删好友，或外部联系人关系从未建立）。这是候选人侧真实状态、人工无可作为，
+   * 故不发运维告警、也不转人工，Agent 自然收口即可。
+   */
+  INVITE_CANDIDATE_NOT_FRIEND: 'invite.candidate_not_friend',
   INVITE_API_FAILED: 'invite.api_failed',
 
   // ============================================================
