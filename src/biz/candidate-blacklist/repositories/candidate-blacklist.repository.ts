@@ -20,6 +20,7 @@ interface ChatMessageSnapshotRow {
   candidate_name: string | null;
   manager_name: string | null;
   im_bot_id: string | null;
+  is_self: boolean | null;
 }
 
 /**
@@ -123,12 +124,14 @@ export class CandidateBlacklistRepository extends BaseRepository {
    * - 未命中再按 im_contact_id / external_user_id 匹配，这两列无索引，
    *   用最近 30 天的时间下界兜住扫描范围。
    * 取最近若干条消息按字段聚合，避免最新一条恰好缺昵称/托管号字段。
+   * 机器人侧消息行（is_self=true）的 im_contact_id 是机器人自己的 ID，
+   * 候选人 ID 只能取自候选人发的行。
    */
   async findContactSnapshot(targetId: string): Promise<CandidateContactSnapshot | null> {
-    const columns = 'chat_id,im_contact_id,candidate_name,manager_name,im_bot_id';
+    const columns = 'chat_id,im_contact_id,candidate_name,manager_name,im_bot_id,is_self';
 
     let rows = await this.selectFrom<ChatMessageSnapshotRow>('chat_messages', columns, (q) =>
-      q.eq('chat_id', targetId).order('timestamp', { ascending: false }).limit(5),
+      q.eq('chat_id', targetId).order('timestamp', { ascending: false }).limit(10),
     );
 
     // or() 过滤串不走参数化，targetId 形态异常时跳过兜底查询防注入
@@ -139,7 +142,7 @@ export class CandidateBlacklistRepository extends BaseRepository {
           .or(`im_contact_id.eq.${targetId},external_user_id.eq.${targetId}`)
           .gte('timestamp', sinceIso)
           .order('timestamp', { ascending: false })
-          .limit(5),
+          .limit(10),
       );
     }
 
@@ -147,15 +150,20 @@ export class CandidateBlacklistRepository extends BaseRepository {
       return null;
     }
 
-    const pick = (key: keyof ChatMessageSnapshotRow): string | undefined =>
-      rows.map((row) => row[key]).find((value): value is string => Boolean(value));
+    const pick = (
+      source: ChatMessageSnapshotRow[],
+      key: keyof Omit<ChatMessageSnapshotRow, 'is_self'>,
+    ): string | undefined =>
+      source.map((row) => row[key]).find((value): value is string => Boolean(value));
+
+    const candidateRows = rows.filter((row) => row.is_self === false);
 
     return {
-      chatId: pick('chat_id'),
-      imContactId: pick('im_contact_id'),
-      contactName: pick('candidate_name'),
-      imBotId: pick('im_bot_id'),
-      botName: pick('manager_name'),
+      chatId: pick(rows, 'chat_id'),
+      imContactId: pick(candidateRows, 'im_contact_id'),
+      contactName: pick(rows, 'candidate_name'),
+      imBotId: pick(rows, 'im_bot_id'),
+      botName: pick(rows, 'manager_name'),
     };
   }
 }

@@ -386,10 +386,17 @@ export class ReplyWorkflowService {
 
       const processedMessageIds = allMessages.map((message) => message.messageId);
 
-      // Agent 主动沉默 / 转人工短路：跳过 WeCom 发送，但仍完成本轮流水与观测。
-      if (agentResult.isSkipped) {
-        const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
-        this.logger.log(`${logPrefix}[${contactName}] Agent 短路，跳过消息发送 (${skipReason})`);
+      // Agent 主动沉默 / 转人工短路 / 出站守卫拦截：跳过 WeCom 发送，但仍完成本轮流水与观测。
+      // 守卫拦截（如歧视性筛选条件外露）宁可本轮沉默也不可泄漏，飞书已告警人工跟进。
+      if (agentResult.isSkipped || agentResult.blockedByGuard) {
+        if (agentResult.blockedByGuard) {
+          this.logger.warn(
+            `${logPrefix}[${contactName}] 出站守卫拦截回复，跳过消息发送 (rules=${agentResult.blockedByGuard.ruleIds.join(',')})`,
+          );
+        } else {
+          const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
+          this.logger.log(`${logPrefix}[${contactName}] Agent 短路，跳过消息发送 (${skipReason})`);
+        }
         await this.wecomObservability.markReplySkipped(traceId);
         const skippedMetadata = await this.buildSuccessMetadata(
           traceId,
@@ -463,9 +470,11 @@ export class ReplyWorkflowService {
     scenario: ScenarioType,
     batchId?: string,
   ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
-    const replyPreview = agentResult.isSkipped
-      ? `[主动沉默] ${this.extractSkipReason(agentResult) || '本轮无需回复'}`
-      : agentResult.reply.content;
+    const replyPreview = agentResult.blockedByGuard
+      ? `[守卫拦截 ${agentResult.blockedByGuard.ruleIds.join(',')}] ${agentResult.reply.content}`
+      : agentResult.isSkipped
+        ? `[主动沉默] ${this.extractSkipReason(agentResult) || '本轮无需回复'}`
+        : agentResult.reply.content;
     return this.wecomObservability.buildSuccessMetadata(traceId, {
       scenario,
       batchId,
@@ -593,11 +602,13 @@ export class ReplyWorkflowService {
           return false;
         }) ?? false;
 
-      // Phase 1：reply 后置事实对账——命中即日志告警，不改写文本
+      // Reply 后置事实对账：常规规则命中即日志告警，不改写文本（Phase 1）；
+      // 阻断规则（如歧视性筛选条件外露）命中则出站短路——回复不发送，飞书告警人工跟进。
       // 历史 badcase i41pab8n：invite_to_group 成功后下一轮 Agent 无 tool 调用
-      // 自由发挥说"群已满"。规则积累 1-2 周后再决定是否升级到 phase 2 改写。
+      // 自由发挥说"群已满"。常规规则积累 1-2 周后再决定是否升级到 phase 2 改写。
+      let blockedByGuard: AgentInvokeResult['blockedByGuard'];
       if (!isSkipped && content) {
-        this.replyFactGuard.check({
+        const guardResult = this.replyFactGuard.check({
           replyText: content,
           toolCalls: result.toolCalls,
           chatId: params.sessionId,
@@ -608,12 +619,18 @@ export class ReplyWorkflowService {
           botUserName: params.botUserId,
           userMessage: params.userMessage,
         });
+        if (guardResult.blocked) {
+          blockedByGuard = {
+            ruleIds: guardResult.contradictions.filter((c) => c.blocked).map((c) => c.ruleId),
+          };
+        }
       }
 
       const invokeResult: AgentInvokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },
         isFallback: false,
         isSkipped,
+        blockedByGuard,
         processingTime,
         toolCalls: result.toolCalls,
         agentSteps: result.agentSteps,

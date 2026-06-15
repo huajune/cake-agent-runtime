@@ -53,6 +53,9 @@ describe('ReplyWorkflowService', () => {
     recordEvent: jest.fn(),
     recordEventDetailed: jest.fn(),
   };
+  const replyFactGuard = {
+    check: jest.fn(),
+  };
 
   let service: ReplyWorkflowService;
 
@@ -122,7 +125,7 @@ describe('ReplyWorkflowService', () => {
     processingFailureService.handleProcessingError.mockResolvedValue(undefined);
     preAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });
 
-    const replyFactGuard = { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) };
+    replyFactGuard.check.mockReturnValue({ hit: false, blocked: false, contradictions: [] });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
 
@@ -295,6 +298,38 @@ describe('ReplyWorkflowService', () => {
       expect.anything(),
       true,
     );
+  });
+
+  it('出站守卫阻断规则命中（歧视性筛选条件外露）→ 拦截回复不投递，仍完成本轮流水', async () => {
+    replyFactGuard.check.mockReturnValue({
+      hit: true,
+      blocked: true,
+      contradictions: [
+        { ruleId: 'discriminatory_screening_leak', label: '歧视性筛选条件外露', blocked: true },
+      ],
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
+    expect(monitoringService.recordSuccess).toHaveBeenCalled();
+    expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('出站守卫常规告警规则命中（blocked=false）→ 不拦截，正常投递', async () => {
+    replyFactGuard.check.mockReturnValue({
+      hit: true,
+      blocked: false,
+      contradictions: [
+        { ruleId: 'group_promise_without_invite', label: '空头拉群承诺', blocked: false },
+      ],
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    expect(wecomObservability.markReplySkipped).not.toHaveBeenCalled();
   });
 
   describe('投递前重跑（replay）', () => {

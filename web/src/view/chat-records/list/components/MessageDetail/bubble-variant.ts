@@ -6,6 +6,7 @@ const CARD_TYPES = new Set([
   'FILE',
   'CONTACT_CARD',
   'VOICE',
+  'ROOM_INVITE',
 ]);
 
 /**

@@ -1,9 +1,46 @@
 {
   "baseVersion": "5.19.0",
-  "nextVersion": "5.19.0",
-  "updatedAt": "2026-06-12",
+  "nextVersion": "5.20.0",
+  "updatedAt": "2026-06-15",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "337",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/337",
+      "title": "黑名单拉黑快照反查修正 + geocode 旧缓存兼容 + 转化漏斗视觉改版",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-15",
+      "businessUpdates": [
+        "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…"
+      ],
+      "summary": [
+        "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
+        "拉黑快照反查不再误取机器人侧 im_contact_id",
+        "转化分析漏斗区改版为 3D 嵌套碗插画并约束体量",
+        "户籍/籍贯/民族敏感筛选条件全链路防外露",
+        "带专名前缀的车站不再误入通用后缀黑名单",
+        "入群邀请卡片在聊天记录页可见",
+        "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…",
+        "黑名单拉黑快照反查修正 + geocode 旧缓存兼容 + 转化漏斗视觉改版"
+      ],
+      "features": [
+        "Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "旧缓存候选缺 typecode 字段导致 geocode 全量失败",
+        "拉黑快照反查不再误取机器人侧 im_contact_id",
+        "转化分析漏斗区改版为 3D 嵌套碗插画并约束体量",
+        "户籍/籍贯/民族敏感筛选条件全链路防外露",
+        "带专名前缀的车站不再误入通用后缀黑名单",
+        "入群邀请卡片在聊天记录页可见"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "5.19.0",
     "date": "2026-06-12",

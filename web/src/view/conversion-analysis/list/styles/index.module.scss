@@ -953,7 +953,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 // 不再用"图表盒子"包裹：漏斗直接漂浮在面板上（参考 3D 渲染图的开放式构图）
 .chartFrame {
   position: relative;
-  min-height: 440px;
+  min-height: 360px;
   display: flex;
   align-items: stretch;
   justify-content: center;
@@ -962,7 +962,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
 .funnelChart {
   width: 100%;
-  min-height: 420px;
+  min-height: 340px;
   display: flex;
   flex-direction: column;
   gap: $spacing-md;
@@ -971,16 +971,19 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 .funnelShape {
   position: relative;
   flex: 1;
-  min-height: 400px;
+  min-height: 320px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 4px;
 }
 
+// 限制最大尺寸：SVG 不随列宽/列高无限放大，宽屏下保持插画体量而非铺满整列
 .funnelSvg {
   width: 100%;
   height: 100%;
+  max-width: 320px;
+  max-height: 380px;
   overflow: visible;
   filter: drop-shadow(0 14px 22px rgba(15, 23, 42, 0.12));
 }

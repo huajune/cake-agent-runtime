@@ -107,6 +107,61 @@ describe('AcceptInboundMessageService', () => {
     expect(filterService.validate).not.toHaveBeenCalled();
   });
 
+  it('should store self room-invite cards with placeholder content (group name from payload)', async () => {
+    const message = createMessage({
+      isSelf: true,
+      messageId: 'msg-self-invite',
+      messageType: MessageType.ROOM_INVITE,
+      source: MessageSource.API_SEND,
+      payload: { roomName: '独立客&上海餐饮兼职⑩群' },
+    });
+
+    await expect(service.execute(message)).resolves.toEqual({
+      shouldDispatch: false,
+      response: { success: true, message: 'Self message stored' },
+    });
+    expect(chatSession.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        messageType: MessageType.ROOM_INVITE,
+        content: '[入群邀请] 邀请你加入"独立客&上海餐饮兼职⑩群"',
+      }),
+    );
+  });
+
+  it('should store self room-invite cards with generic placeholder when payload has no group name', async () => {
+    const message = createMessage({
+      isSelf: true,
+      messageId: 'msg-self-invite-2',
+      messageType: MessageType.ROOM_INVITE,
+      source: MessageSource.API_SEND,
+      payload: {},
+    });
+
+    await service.execute(message);
+
+    expect(chatSession.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        content: '[入群邀请] 已发送入群邀请卡片',
+      }),
+    );
+  });
+
+  it('should still skip self messages of other types with empty content', async () => {
+    const message = createMessage({
+      isSelf: true,
+      messageId: 'msg-self-video',
+      messageType: MessageType.VIDEO,
+      source: MessageSource.API_SEND,
+      payload: { videoUrl: 'http://example.com/v.mp4', duration: 5 },
+    });
+
+    await service.execute(message);
+
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
+  });
+
   it('should record paused-user messages to history only', async () => {
     filterService.validate.mockResolvedValueOnce({
       pass: true,

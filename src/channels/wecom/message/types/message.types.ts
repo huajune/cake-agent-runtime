@@ -44,6 +44,11 @@ export interface AgentInvokeResult {
   isFallback: boolean;
   /** Agent 本轮主动沉默（调用了 skip_reply 工具），reply.content 可能为空 */
   isSkipped?: boolean;
+  /**
+   * 出站守卫拦截（reply 命中 ReplyFactGuard 阻断规则，如歧视性筛选条件外露）：
+   * reply.content 保留供观测留痕，但**不得**发送给候选人。
+   */
+  blockedByGuard?: { ruleIds: string[] };
   processingTime: number;
   /** 扁平化的工具调用序列（含 resultCount/status/durationMs） */
   toolCalls?: AgentToolCall[];
