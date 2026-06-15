@@ -8,6 +8,51 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.20.0`
+**最近更新**: `2026-06-15`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #337 旧缓存候选缺 typecode 字段导致 geocode 全量失败
+- PR #337 拉黑快照反查不再误取机器人侧 im_contact_id
+- PR #337 转化分析漏斗区改版为 3D 嵌套碗插画并约束体量
+- PR #337 户籍/籍贯/民族敏感筛选条件全链路防外露
+- PR #337 带专名前缀的车站不再误入通用后缀黑名单
+- PR #337 入群邀请卡片在聊天记录页可见
+- PR #337 Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…
+- PR #337 黑名单拉黑快照反查修正 + geocode 旧缓存兼容 + 转化漏斗视觉改版
+
+### 新功能
+- PR #337 Merge remote-tracking branch 'origin/develop' into feat/blacklist-rea…
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #337 旧缓存候选缺 typecode 字段导致 geocode 全量失败
+- PR #337 拉黑快照反查不再误取机器人侧 im_contact_id
+- PR #337 转化分析漏斗区改版为 3D 嵌套碗插画并约束体量
+- PR #337 户籍/籍贯/民族敏感筛选条件全链路防外露
+- PR #337 带专名前缀的车站不再误入通用后缀黑名单
+- PR #337 入群邀请卡片在聊天记录页可见
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [5.19.0] - 2026-06-12
 
 **来源分支**: `develop`
