@@ -155,7 +155,13 @@ export default function SessionList({
                   <div className={styles.bottomRow}>
                     <span className={styles.preview}>{session.lastMessage || '暂无消息'}</span>
                     {session.messageCount > 0 && (
-                      <span className={styles.msgCountBadge}>{session.messageCount}</span>
+                      // key 随消息数变化 → 重新挂载 → 重放一次「跳动」动画（仅高亮态可见）
+                      <span
+                        key={`${session.chatId}-${session.messageCount}`}
+                        className={styles.msgCountBadge}
+                      >
+                        {session.messageCount}
+                      </span>
                     )}
                   </div>
                 </div>
