@@ -1,7 +1,23 @@
 import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Bug, PanelLeftClose, PanelLeftOpen, Table2, TrendingUp } from 'lucide-react';
+import {
+  Activity,
+  Bug,
+  ClipboardCheck,
+  Layers,
+  LayoutDashboard,
+  MessageSquare,
+  MessageSquareCode,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ScrollText,
+  Settings,
+  Table2,
+  ToggleRight,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { preloadRouteChunk, type AppRoutePath } from '@/routes/lazy-pages';
 import { markRouteNavigationStart } from '@/utils/perf';
 import { BADCASE_FEISHU_URL, OPERATION_METRICS_FEISHU_URL } from '@/constants';
@@ -11,173 +27,9 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
-// SVG 图标组件 - 春暖花开主题
-const DashboardIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <path d="M3 9h18" />
-    <circle cx="12" cy="15" r="4" />
-    <path d="M12 11v2" />
-    <path d="M10 12l2 1l2-1" />
-  </svg>
-);
-
-const UsersIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-    <circle cx="12" cy="7" r="4" />
-    <path d="M12 3c4 0 5 2 5 4" />
-    <path d="M16 3l-4-2l-4 2" />
-    <circle cx="17" cy="7" r="1.5" />
-  </svg>
-);
-
-const HostingIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M4 6v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6" />
-    <line x1="4" y1="12" x2="20" y2="12" />
-    <line x1="4" y1="17" x2="20" y2="17" />
-    <path d="M4 6c2 2 4-1 6 1s4-2 6 0s4 0 4 2" />
-    <path d="M4 6c0-2 2-3 4-3h8c2 0 4 1 4 3" />
-  </svg>
-);
-
-const ConfigIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0" />
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    <path d="M12 9v6" />
-    <path d="M9.5 10.5l5 3" />
-    <path d="M9.5 13.5l5-3" />
-  </svg>
-);
-
-const SystemIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M2 12h3l2-3l2 3h2" />
-    <path d="M14 12l2.5-4l2.5 4h3" />
-    <path d="M16.5 8l-1.5-2l-1.5 2" />
-    <path d="M16.5 4l1 1.5" />
-    <path d="M16.5 4l-1 1.5" />
-  </svg>
-);
-
-const AgentTestIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4" />
-    <circle cx="5" cy="9" r="1" />
-    <circle cx="5" cy="15" r="1" />
-    <path d="M12 7h6" />
-    <path d="M12 11h4" />
-    <path d="M12 15h6" />
-  </svg>
-);
-
-const StrategyIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M12 2L2 7l10 5 10-5-10-5z" />
-    <path d="M2 17l10 5 10-5" />
-    <path d="M2 12l10 5 10-5" />
-  </svg>
-);
-
-const TestSuiteIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-    <rect x="9" y="3" width="6" height="4" rx="1" />
-    <path d="M9 12l2 2 4-4" />
-  </svg>
-);
-
-const LogsIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-    <path d="M10 14v4" />
-    <path d="M10 14a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1" />
-    <path d="M10 16h2" />
-    <path d="M10 18h2" />
-  </svg>
-);
-
-const ChatRecordsIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    <path d="M8 9h8" />
-    <path d="M8 13h6" />
-  </svg>
-);
+// 统一图标尺寸与线宽，保证清爽一致的视觉
+const NAV_ICON_SIZE = 19;
+const NAV_ICON_STROKE = 1.6;
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
@@ -257,7 +109,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/')}
         >
           <span className="nav-icon">
-            <DashboardIcon />
+            <LayoutDashboard size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">仪表盘</span>}
         </NavLink>
@@ -268,7 +120,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/conversion-analysis')}
         >
           <span className="nav-icon">
-            <TrendingUp size={18} strokeWidth={1.7} />
+            <TrendingUp size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">转化分析</span>}
         </NavLink>
@@ -280,7 +132,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           rel="noreferrer"
         >
           <span className="nav-icon">
-            <Table2 size={18} strokeWidth={1.7} />
+            <Table2 size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">运营日报</span>}
         </a>
@@ -294,7 +146,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/users')}
         >
           <span className="nav-icon">
-            <UsersIcon />
+            <Users size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">托管用户</span>}
         </NavLink>
@@ -305,7 +157,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/hosting')}
         >
           <span className="nav-icon">
-            <HostingIcon />
+            <ToggleRight size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">托管开关</span>}
         </NavLink>
@@ -317,7 +169,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/chat-records')}
         >
           <span className="nav-icon">
-            <ChatRecordsIcon />
+            <MessageSquare size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">聊天记录</span>}
         </NavLink>
@@ -332,7 +184,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/strategy')}
         >
           <span className="nav-icon">
-            <StrategyIcon />
+            <Layers size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">策略配置</span>}
         </NavLink>
@@ -343,7 +195,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/agent-test')}
         >
           <span className="nav-icon">
-            <AgentTestIcon />
+            <MessageSquareCode size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">对话调试</span>}
         </NavLink>
@@ -355,7 +207,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           rel="noreferrer"
         >
           <span className="nav-icon">
-            <Bug size={18} strokeWidth={1.7} />
+            <Bug size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">BadCase</span>}
         </a>
@@ -366,7 +218,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/test-suite')}
         >
           <span className="nav-icon">
-            <TestSuiteIcon />
+            <ClipboardCheck size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">飞书评测集</span>}
         </NavLink>
@@ -381,7 +233,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/config')}
         >
           <span className="nav-icon">
-            <ConfigIcon />
+            <Settings size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">运行时配置</span>}
         </NavLink>
@@ -392,7 +244,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/message-processing')}
         >
           <span className="nav-icon">
-            <LogsIcon />
+            <ScrollText size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">消息处理流水</span>}
         </NavLink>
@@ -403,7 +255,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {...bindPreload('/system')}
         >
           <span className="nav-icon">
-            <SystemIcon />
+            <Activity size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">系统监控</span>}
         </NavLink>

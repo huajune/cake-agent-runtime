@@ -3,30 +3,71 @@
 
 .headerBar {
   @include card;
-  padding: 18px 28px;
+  padding: 16px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.9) 100%);
   position: relative;
   overflow: hidden;
   margin-bottom: $spacing-md;
+
+  // 统一基底：白色玻璃 + 极淡描边，干净素雅
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 6px 24px rgba(17, 24, 39, 0.06);
+
+  // 顶部流光高亮线（克制，缓慢扫过）
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, $primary-30, $accent-30, transparent);
+    background-size: 200% 100%;
+    animation: headerShimmer 5s linear infinite;
+    pointer-events: none;
+    z-index: 2;
+  }
 }
 
+@keyframes headerShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+// 极光光晕背景：极淡、缓慢，仅作氛围铺垫
 .decorativeBg {
   position: absolute;
-  top: -50%;
-  right: -5%;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, $primary-06 0%, transparent 70%);
+  inset: -60% -10%;
   pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(38% 60% at 15% 30%, $primary-06 0%, transparent 60%),
+    radial-gradient(34% 56% at 85% 25%, $accent-05 0%, transparent 60%);
+  animation: auroraDrift 22s ease-in-out infinite alternate;
+}
+
+@keyframes auroraDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(-2%, -1%, 0) scale(1.05);
+  }
 }
 
 .leftSection {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
   position: relative;
   z-index: 1;
 }
@@ -34,26 +75,29 @@
 .titleWrapper {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .title {
   margin: 0;
   font-size: $font-size-lg;
   font-weight: $font-weight-bold;
+  letter-spacing: 0.01em;
   color: $text-primary;
 }
 
+// 实时状态标签
 .liveBadge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px;
+  padding: 3px 9px;
   font-size: 11px;
   font-weight: $font-weight-medium;
   color: $text-muted;
   background: rgba(0, 0, 0, 0.04);
-  border-radius: 10px;
+  border: 1px solid transparent;
+  border-radius: $radius-full;
   transition: all 0.3s ease;
   white-space: nowrap;
 
@@ -66,7 +110,8 @@
 
   &.connected {
     color: #059669;
-    background: rgba(16, 185, 129, 0.08);
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.18);
 
     .liveDot {
       background: #10b981;
@@ -89,97 +134,119 @@
 
 .divider {
   width: 1px;
-  height: 28px;
+  height: 24px;
   background: linear-gradient(180deg, transparent, $border, transparent);
 }
 
+// 时间筛选：分段控件（浅灰轨道 + 白色活动块），统一克制
 .filters {
-  display: flex;
-  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: #f1f5f9;
+  border-radius: $radius-lg;
 }
 
 .filterBtn {
-  @include button-secondary;
-  padding: 8px 16px;
-  font-size: $font-size-sm;
-  letter-spacing: 0.02em;
+  padding: 8px 18px;
+  font-size: $font-size-base;
+  font-weight: $font-weight-medium;
+  color: $text-secondary;
+  background: transparent;
+  border: none;
+  border-radius: $radius-md;
+  cursor: pointer;
+  transition: all 0.2s $transition-timing;
+  white-space: nowrap;
+
+  &:hover:not(.active) {
+    color: $text-primary;
+  }
 
   &.active {
-    @include button-primary;
+    color: $primary;
+    background: #fff;
     font-weight: $font-weight-semibold;
+    box-shadow: 0 1px 3px rgba(17, 24, 39, 0.1);
   }
 }
 
 .rightSection {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   position: relative;
   z-index: 1;
 }
 
+// 统计卡片：干净白卡，与筛选/趋势按钮共用同一套描边与圆角；紧凑
 .statsGroup {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: $radius-xl;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  box-shadow: $shadow-sm;
+  gap: 4px;
+  padding: 5px 8px;
+  background: #fff;
+  border-radius: $radius-lg;
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.05);
 }
 
 .statItem {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  border-radius: 10px;
+  padding: 3px 13px 3px 3px;
+  border-radius: 9px;
 
-  &.sessions {
-    background: $primary-06;
+  // 图标块：低饱和淡色底 + 同色线性图标，素雅克制
+  .statIcon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    svg {
+      display: block;
+      width: 15px;
+      height: 15px;
+    }
   }
 
-  &.messages {
-    background: rgba(16, 185, 129, 0.06);
+  &.sessions .statIcon {
+    color: $primary;
+    background: $primary-10;
   }
 
-  &.active {
-    background: rgba(245, 158, 11, 0.06);
+  &.messages .statIcon {
+    color: #059669;
+    background: rgba(16, 185, 129, 0.1);
   }
-}
 
-.statIcon {
-  font-size: $font-size-base;
+  &.active .statIcon {
+    color: #d97706;
+    background: rgba(245, 158, 11, 0.1);
+  }
 }
 
 .statLabel {
-  font-size: 11px;
+  font-size: 12px;
   color: $text-muted;
   font-weight: $font-weight-medium;
 }
 
 .statValue {
   display: inline-block; // 让 transform 动画生效
-  font-size: $font-size-base;
-  font-weight: $font-weight-extrabold;
-  // 数值变化时（key 重挂载）触发跳动动效
-  animation: statPop 0.45s $transition-timing;
-
-  &.primary {
-    background: linear-gradient(135deg, $primary, $accent);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  &.success {
-    color: $success;
-  }
-
-  &.warning {
-    color: $warning;
-  }
+  font-size: 15px;
+  font-weight: $font-weight-bold;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  color: $text-primary; // 统一深色，素雅高级
+  // 数值变化时（key 重挂载）触发轻微跳动
+  animation: statPop 0.4s $transition-timing;
 }
 
 @keyframes statPop {
@@ -187,46 +254,45 @@
     transform: scale(1);
   }
   40% {
-    transform: scale(1.25);
+    transform: scale(1.18);
   }
   100% {
     transform: scale(1);
   }
 }
 
+// 消息趋势：幽灵按钮，与统计卡/分段控件统一的白色表面 + 描边语言
 .analyticsBtn {
-  padding: 10px 18px;
-  font-size: $font-size-sm;
-  font-weight: $font-weight-semibold;
-  color: $primary;
-  background: linear-gradient(135deg, $primary-10 0%, $accent-10 100%);
-  border: 1px solid $primary-20;
-  border-radius: $radius-lg;
-  cursor: pointer;
-  transition: all 0.3s $transition-timing;
   display: flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 2px 8px $primary-08;
-  letter-spacing: 0.02em;
+  padding: 10px 18px;
+  font-size: $font-size-base;
+  font-weight: $font-weight-semibold;
+  color: $primary;
+  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: $radius-lg;
+  cursor: pointer;
+  transition: all 0.2s $transition-timing;
+  letter-spacing: 0.01em;
 
   &:hover {
-    background: linear-gradient(135deg, $primary-15 0%, $accent-15 100%);
-    transform: translateY(-1px);
+    border-color: $primary-30;
+    background: $primary-04;
   }
 
   &.active {
-    color: #fff;
-    background: linear-gradient(135deg, $primary 0%, $accent 100%);
-    border: none;
-    box-shadow: 0 6px 20px $primary-35;
+    color: $primary;
+    background: $primary-08;
+    border-color: $primary-25;
   }
 }
 
 .analyticsArrow {
   font-size: 10px;
+  opacity: 0.6;
   transition: transform 0.3s $transition-timing;
-  opacity: 0.7;
 
   &.expanded {
     transform: rotate(180deg);

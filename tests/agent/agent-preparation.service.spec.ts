@@ -302,6 +302,47 @@ describe('AgentPreparationService', () => {
     );
   });
 
+  it('renders cross-conversation notice when long-term memory came from another session', async () => {
+    const base = await mockMemoryService.onTurnStart();
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      ...base,
+      longTerm: { ...base.longTerm, origin: { fromOtherConversation: true } },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-NEW',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('[历史背景｜来自候选人此前在本平台的咨询]');
+    expect(result.finalPrompt).toContain('另一位招聘顾问');
+    // 档案信息仍然渲染，只是被打上"来自此前会话"的口径
+    expect(result.finalPrompt).toContain('姓名: 张三');
+  });
+
+  it('does NOT render cross-conversation notice for a normal continuing session', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).not.toContain('[历史背景｜来自候选人此前在本平台的咨询]');
+  });
+
   it('keeps first-stage fallback for brand-new user (no long-term identity) when stage expired', async () => {
     const base = await mockMemoryService.onTurnStart();
     mockMemoryService.onTurnStart.mockResolvedValue({

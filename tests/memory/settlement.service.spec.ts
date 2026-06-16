@@ -374,13 +374,20 @@ describe('SettlementService', () => {
         reasoning: 'test',
       };
 
-      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', fakeFacts);
+      const result = await service.detectAndSettle(
+        'corp1',
+        'user1',
+        'sess1',
+        fakeFacts,
+        'bot-wxid-1',
+      );
 
       expect(result).toBe(true);
       expect(mockLongTermService.writeFromSettlement).toHaveBeenCalledWith(
         'corp1',
         'user1',
         fakeFacts,
+        { sessionId: 'sess1', botImId: 'bot-wxid-1' },
       );
     });
 

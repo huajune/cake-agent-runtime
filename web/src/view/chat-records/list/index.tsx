@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -91,6 +91,8 @@ export default function ChatRecords() {
   // 状态
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  // 用户尚未手动选择会话时，右侧默认联动「最新产生消息」的候选人（列表已按消息时间倒序，取第一条）
+  const [autoFollowLatest, setAutoFollowLatest] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [timeRangeIndex, setTimeRangeIndex] = useState<number>(0);
   const [analyticsMonthIndex, setAnalyticsMonthIndex] = useState<number>(0);
@@ -133,6 +135,16 @@ export default function ChatRecords() {
     () => sessions.find((s) => s.chatId === selectedChatId),
     [sessions, selectedChatId],
   );
+
+  // 列表第一条即「最新产生消息」的候选人（后端按 timestamp DESC 排序）
+  const latestChatId = sessions[0]?.chatId ?? null;
+
+  // 首次打开 / 切换时间范围且用户未手动选择时，自动选中最新消息的候选人
+  useEffect(() => {
+    if (autoFollowLatest && latestChatId) {
+      setSelectedChatId(latestChatId);
+    }
+  }, [autoFollowLatest, latestChatId]);
 
   // 会话列表统计数据（从数据库聚合查询获取）
   const sessionStats = summaryStatsData || {
@@ -236,8 +248,16 @@ export default function ChatRecords() {
     },
   };
 
+  // 用户手动选择会话后，停止自动联动最新消息
+  const handleSelectChat = (chatId: string) => {
+    setAutoFollowLatest(false);
+    setSelectedChatId(chatId);
+  };
+
   const handleTimeRangeChange = (index: number) => {
     setTimeRangeIndex(index);
+    // 切换时间范围视为重新进入，恢复默认联动最新消息
+    setAutoFollowLatest(true);
     setSelectedChatId(null);
   };
 
@@ -273,7 +293,7 @@ export default function ChatRecords() {
         <SessionList
           sessions={sessions}
           selectedChatId={selectedChatId}
-          onSelectChat={setSelectedChatId}
+          onSelectChat={handleSelectChat}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
           isLoading={sessionsLoading}

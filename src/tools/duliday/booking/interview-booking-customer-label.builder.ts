@@ -178,6 +178,13 @@ function getSupplementAnswerAliases(labelName: string): string[] {
   if (/身份/.test(labelName)) return ['身份', '是否学生'];
   if (/健康证类型/.test(labelName)) return ['健康证类型'];
   if (/健康证/.test(labelName)) return ['健康证情况', '有无健康证', '是否有健康证', '健康证'];
+  // 工作经历类标签：岗位后台 labelName 常配成"近一段工作经历"，但 precheck 把它归一成
+  // checklist 显示名"过往公司+岗位+年限"，Agent 也按显示名回答。两端名字不同会导致
+  // getSupplementAnswerValue 取不到答案、字段一直留在 missingFields、卡死 collect_fields
+  // （badcase chat 6a2fac72…）。这里把同一族的所有写法互相打通。
+  if (/(工作经历|工作经验|过往公司|过往经历|近一段|年限)/.test(labelName)) {
+    return ['过往公司+岗位+年限', '工作经历', '工作经验', '近一段工作经历', '过往经历'];
+  }
   return [];
 }
 

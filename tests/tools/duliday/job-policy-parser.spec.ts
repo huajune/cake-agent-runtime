@@ -3,6 +3,8 @@ import {
   buildJobPolicyAnalysis,
   cleanPolicyText,
   extractInterviewWindows,
+  isResumeReviewFirstInterview,
+  isWaitNoticeInterview,
   normalizePolicyText,
   sanitizeConstraintText,
 } from '@tools/utils/job-policy-parser';
@@ -267,5 +269,52 @@ describe('job-policy-parser', () => {
     expect(analysis.interviewMeta.timeHint).toBe('周一：13:30 下午-16:30 下午');
     expect(analysis.interviewMeta.registrationDeadlineHint).toContain('提交面试名单截止时间');
     expect(analysis.interviewMeta.registrationDeadlineHint).toContain('当天12:00 中午');
+  });
+
+  describe('isResumeReviewFirstInterview / isWaitNoticeInterview', () => {
+    it('flags resume-review-first addresses, ignores real physical addresses', () => {
+      expect(isResumeReviewFirstInterview('先审核简历，待简历审核通过后，告知面试地点&时间')).toBe(
+        true,
+      );
+      expect(isResumeReviewFirstInterview('简历审阅通过后通知面试时间')).toBe(true);
+      expect(isResumeReviewFirstInterview('上海市杨浦区国权路123号')).toBe(false);
+      expect(isResumeReviewFirstInterview(null)).toBe(false);
+    });
+
+    it('isWaitNoticeInterview is true for no-window jobs AND windowed-but-resume-review-first jobs', () => {
+      const noWindow = buildJobPolicyAnalysis({
+        basicInfo: { jobId: 1 },
+        interviewProcess: { firstInterview: { interviewAddress: '上海市某路1号' } },
+      } as never);
+      expect(noWindow.interviewWindows.length).toBe(0);
+      expect(isWaitNoticeInterview(noWindow)).toBe(true);
+
+      const windowedResumeReview = buildJobPolicyAnalysis({
+        basicInfo: { jobId: 2 },
+        interviewProcess: {
+          firstInterview: {
+            interviewAddress: '先审核简历，待简历审核通过后，告知面试地点&时间',
+            fixedInterviewTimes: [
+              { interviewDate: '2099-01-01', interviewStartTime: '13:00', interviewEndTime: '18:00' },
+            ],
+          },
+        },
+      } as never);
+      expect(windowedResumeReview.interviewWindows.length).toBeGreaterThan(0);
+      expect(isWaitNoticeInterview(windowedResumeReview)).toBe(true);
+
+      const windowedNormal = buildJobPolicyAnalysis({
+        basicInfo: { jobId: 3 },
+        interviewProcess: {
+          firstInterview: {
+            interviewAddress: '上海市杨浦区国权路123号',
+            fixedInterviewTimes: [
+              { interviewDate: '2099-01-01', interviewStartTime: '13:00', interviewEndTime: '18:00' },
+            ],
+          },
+        },
+      } as never);
+      expect(isWaitNoticeInterview(windowedNormal)).toBe(false);
+    });
   });
 });

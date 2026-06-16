@@ -542,6 +542,46 @@ describe('buildInviteToGroupTool', () => {
     );
   });
 
+  it('should silently close out without alert or handoff when all groups reject with errcode=-8 (candidate blocked/removed bot)', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imRoomId: 'room-1', groupName: '上海餐饮①', memberCount: 30 }),
+      makeGroup({ imRoomId: 'room-2', groupName: '上海餐饮②', memberCount: 40 }),
+    ]);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({
+      errcode: -8,
+      errmsg: 'is not a friend, wxid: cand-1',
+    });
+
+    const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CANDIDATE_NOT_FRIEND);
+    // 不发运维告警
+    expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
+    expect(mockOpsNotifier.sendGroupFullAlert).not.toHaveBeenCalled();
+    // 指令明确不转人工、不提群、自然收口
+    expect(result._replyInstruction).toContain('不要调用 request_handoff');
+    expect(result._replyInstruction).not.toContain('运维');
+    expect(mockMemoryService.saveInvitedGroup).not.toHaveBeenCalled();
+  });
+
+  it('should still alert when -8 is mixed with an actionable structural failure (400400)', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imRoomId: 'room-1', groupName: '上海餐饮①', memberCount: 30 }),
+      makeGroup({ imRoomId: 'room-2', groupName: '上海餐饮②', memberCount: 30 }),
+    ]);
+    mockRoomService.addMemberEnterprise
+      .mockResolvedValueOnce({ errcode: -8, errmsg: 'is not a friend, wxid: cand-1' })
+      .mockResolvedValueOnce({ errcode: 40003, errmsg: 'forbidden' });
+
+    const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_REJECTED);
+    expect(mockOpsNotifier.sendInviteRejectedAlert).toHaveBeenCalled();
+  });
+
   it('should add the chat bot to the group and retry when chat bot cannot see the room', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       makeGroup({

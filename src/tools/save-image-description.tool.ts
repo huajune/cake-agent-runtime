@@ -14,7 +14,10 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { MessageType } from '@enums/message-callback.enum';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { isResumeImageDescription } from '@channels/wecom/message/utils/message-parser.util';
+import {
+  isResumeImageDescription,
+  stripResumeAttachmentLines,
+} from '@channels/wecom/message/utils/message-parser.util';
 
 const logger = new Logger('save_image_description');
 
@@ -70,7 +73,7 @@ export function buildSaveImageDescriptionTool(
             ? imageUrlsByMessageId?.[messageId]
             : undefined;
         const content = resumeUrl
-          ? `${prefix} ${description}\n简历附件：${resumeUrl}`
+          ? `${prefix} ${stripResumeAttachmentLines(description)}\n简历附件：${resumeUrl}`
           : `${prefix} ${description}`;
         await chatSession.updateMessageContent(messageId, content);
 

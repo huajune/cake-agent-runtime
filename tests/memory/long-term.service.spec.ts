@@ -202,6 +202,55 @@ describe('LongTermService', () => {
       );
     });
 
+    it('should stamp origin session/bot lineage onto settled profile and preference facts', async () => {
+      const sessionFacts = toSessionFacts(
+        {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '张三',
+          },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            brands: ['肯德基'],
+          },
+          reasoning: '候选人提供了姓名与品牌意向',
+        },
+        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+      );
+
+      await service.writeFromSettlement('corp1', 'user1', sessionFacts, {
+        sessionId: 'chat-A',
+        botImId: 'bot-wxid-A',
+      });
+
+      const savedProfile = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
+      expect(savedProfile.name).toEqual(
+        expect.objectContaining({ originSessionId: 'chat-A', originBotId: 'bot-wxid-A' }),
+      );
+      const savedPrefs = mockSupabaseStore.upsertPreferenceFacts.mock.calls[0][2];
+      expect(savedPrefs.brands).toEqual(
+        expect.objectContaining({ originSessionId: 'chat-A', originBotId: 'bot-wxid-A' }),
+      );
+    });
+
+    it('should omit origin lineage fields when origin is not provided', async () => {
+      const sessionFacts = toSessionFacts(
+        {
+          ...FALLBACK_EXTRACTION,
+          interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
+          reasoning: 'x',
+        },
+        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+      );
+
+      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
+
+      const savedProfile = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
+      expect(savedProfile.name.originSessionId).toBeUndefined();
+      expect(savedProfile.name.originBotId).toBeUndefined();
+    });
+
     it('should settle stable preferences into long-term preference facts', async () => {
       const sessionFacts = toSessionFacts(
         {

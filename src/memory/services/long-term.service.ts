@@ -27,6 +27,17 @@ import {
 } from '../types/session-facts.types';
 
 /**
+ * 沉淀写入长期记忆时的数据血缘来源。
+ *
+ * sessionId（=chatId，bot 维度）与 botImId 都能映射回具体招募经理；
+ * 双 bot 服务同一候选人时，用于追溯"这条长期事实由哪次会话沉淀"。
+ */
+export interface FactOrigin {
+  sessionId?: string;
+  botImId?: string;
+}
+
+/**
  * 长期记忆服务 — Profile + Summary
  *
  * 管理跨会话持久化的记忆（Supabase 永久，每用户一行）：
@@ -134,9 +145,10 @@ export class LongTermService {
     corpId: string,
     userId: string,
     facts: EntityExtractionResult | SessionFacts,
+    origin?: FactOrigin,
   ): Promise<void> {
     try {
-      const profileFacts = this.buildProfileFactsFromSettlement(facts);
+      const profileFacts = this.buildProfileFactsFromSettlement(facts, origin);
       if (Object.keys(profileFacts).length > 0) {
         await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
         this.logger.log(
@@ -146,7 +158,7 @@ export class LongTermService {
 
       // 求职意向同样跨会话有价值（城市/品牌/岗位/班次等），此前只活在 Redis
       // session facts（TTL 2 天）里，候选人隔几天回来意向全部丢失、只剩摘要叙述。
-      const preferenceFacts = this.buildPreferenceFactsFromSettlement(facts);
+      const preferenceFacts = this.buildPreferenceFactsFromSettlement(facts, origin);
       if (Object.keys(preferenceFacts).length > 0) {
         await this.supabaseStore.upsertPreferenceFacts(corpId, userId, preferenceFacts);
         this.logger.log(
@@ -299,6 +311,7 @@ export class LongTermService {
 
   private buildProfileFactsFromSettlement(
     facts: EntityExtractionResult | SessionFacts,
+    origin?: FactOrigin,
   ): Partial<UserProfileFacts> {
     const updatedAt = new Date().toISOString();
     const profileFacts: Partial<UserProfileFacts> = {};
@@ -316,6 +329,8 @@ export class LongTermService {
         confidence: 'medium',
         evidence: this.buildSettlementEvidence(rawValue),
         updatedAt,
+        originSessionId: origin?.sessionId,
+        originBotId: origin?.botImId,
       });
     }
 
@@ -331,6 +346,7 @@ export class LongTermService {
    */
   private buildPreferenceFactsFromSettlement(
     facts: EntityExtractionResult | SessionFacts,
+    origin?: FactOrigin,
   ): LongTermPreferenceFacts {
     const updatedAt = new Date().toISOString();
     const preferenceFacts: LongTermPreferenceFacts = {};
@@ -346,6 +362,8 @@ export class LongTermService {
         confidence: 'medium',
         evidence: this.buildSettlementEvidence(rawValue),
         updatedAt,
+        originSessionId: origin?.sessionId,
+        originBotId: origin?.botImId,
       });
     }
 

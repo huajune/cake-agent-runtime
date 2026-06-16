@@ -139,9 +139,18 @@
     border-left: 3px solid $primary;
   }
 
-  // 刚收到新消息的会话（Realtime 推送）：绿色脉冲高亮
+  // 刚收到新消息的会话（Realtime 推送）：绿色脉冲高亮（保持线上原效果，勿动）
   &.flashing {
     animation: newMessagePulse 1.5s ease-in-out infinite;
+
+    // 数字徽标是独立效果：新消息到达「跳一下」（transform 单次）+ 持续光环脉冲（box-shadow，与顶部实时圆点同款）
+    // 配合 tsx 中 badge 的 key={chatId-messageCount}：消息数变化→重挂载→重放跳动；光环随 .flashing(3s) 循环后停止
+    .msgCountBadge {
+      background: #10b981;
+      animation:
+        badgeBounce 0.6s ease-out,
+        badgePulseRing 2s ease-in-out infinite;
+    }
   }
 }
 
@@ -152,6 +161,33 @@
   }
   50% {
     background: rgba(16, 185, 129, 0.16);
+  }
+}
+
+// 消息数徽标跳动（仅位移/缩放，单次）
+@keyframes badgeBounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-4px) scale(1.2);
+  }
+  60% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+// 数字徽标光环脉冲（与顶部「实时」圆点 liveBreathe 同款：外扩光环 + 轻呼吸）
+@keyframes badgePulseRing {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    opacity: 0.85;
   }
 }
 

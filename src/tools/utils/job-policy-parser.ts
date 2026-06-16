@@ -745,3 +745,32 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
     },
   };
 }
+
+/**
+ * 判断岗位是否"审简历优先"：岗位把面试地址字段配成了流程说明（如"先审核简历，待
+ * 简历审核通过后，告知面试地点&时间"），面试时间/地点要等简历审核通过后由面试官另行
+ * 通知。这类岗位候选人此刻没有可对齐的面试时段。
+ *
+ * 用"简历"+"审核/审阅/初筛"共现作为可靠标记：真实的线下面试地址不会同时出现这两类词，
+ * 避免依赖整句自由文本匹配。
+ */
+export function isResumeReviewFirstInterview(address: string | null | undefined): boolean {
+  if (!address) return false;
+  return /简历/.test(address) && /(审核|审阅|初筛)/.test(address);
+}
+
+/**
+ * 岗位是否属于"等通知"语义——候选人此刻无需、也无法对齐具体面试时间：
+ * - 岗位未配置任何面试时段（interviewWindows 为空，常见于电话面试流程）；或
+ * - 岗位配了时段但流程是"先审简历、通过后由面试官另行通知"（isResumeReviewFirstInterview）。
+ *
+ * 收敛到这一处，确保 precheck（决定 nextAction/是否收"面试时间"）与 booking（决定
+ * interviewTime 是否必填）口径一致，避免二者漂移（badcase chat 6a2fac72…：precheck 放行
+ * wait_notice 但 booking 仍按"有时段"要 interviewTime，把预约打回）。
+ */
+export function isWaitNoticeInterview(analysis: JobPolicyAnalysis): boolean {
+  return (
+    analysis.interviewWindows.length === 0 ||
+    isResumeReviewFirstInterview(analysis.interviewMeta.address)
+  );
+}
