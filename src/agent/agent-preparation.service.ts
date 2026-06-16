@@ -51,6 +51,8 @@ export interface PreparedAgentContext {
   corpId: string;
   userId: string;
   sessionId: string;
+  /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
+  botImId?: string;
   maxSteps: number;
   /** 本轮入口阶段；由 recruitmentCase + procedural currentStage 共同解析出的 effectiveStage。 */
   entryStage: string | null;
@@ -199,6 +201,7 @@ export class AgentPreparationService {
       corpId,
       userId,
       sessionId,
+      botImId: params.botImId,
       maxSteps,
       entryStage,
       turnState,
@@ -428,11 +431,27 @@ export class AgentPreparationService {
     realtimeGroups: RealtimeGroupStatus[] = [],
   ): string {
     return (
+      this.formatCrossConversationNotice(memory.longTerm.origin?.fromOtherConversation ?? false) +
       this.formatProfile(memory.longTerm.profile) +
       this.formatLongTermPreferences(memory.longTerm.preferences ?? null) +
       (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
       this.formatRealtimeGroups(realtimeGroups) +
       bookingContext
+    );
+  }
+
+  /**
+   * 跨会话来源口径。双 bot 服务同一候选人时，本轮注入的长期画像/意向可能来自
+   * 候选人此前在另一段会话（另一位招募经理）的沉淀——下面的身份/意向不是"你和
+   * TA 聊过"的记录。给模型一段泛指口径，避免假装是本会话的延续。
+   */
+  private formatCrossConversationNotice(fromOtherConversation: boolean): string {
+    if (!fromOtherConversation) return '';
+    return (
+      `\n\n[历史背景｜来自候选人此前在本平台的咨询]\n\n` +
+      `_下面的身份与求职意向，来自候选人**此前在本平台与另一位招聘顾问**的沟通沉淀，` +
+      `**不是你和 TA 本次/此前的聊天记录**。开场可自然衔接（例如"看到你之前在我们平台咨询过…"），` +
+      `但不要假装是你们之前聊过、也不要点名是哪位同事。_`
     );
   }
 

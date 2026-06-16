@@ -11,6 +11,12 @@ import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
 import { extractHighConfidenceFacts } from '../facts/high-confidence-facts';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
+import type {
+  LongTermPreferenceFacts,
+  SummaryData,
+  UserProfileFacts,
+} from '../types/long-term.types';
+import { isUserProfileFactValue } from '../types/long-term.types';
 import type { ShortTermMessage } from '../types/short-term.types';
 import { type HighConfidenceFacts, type RecommendedJobSummary } from '../types/session-facts.types';
 
@@ -19,6 +25,8 @@ export interface MemoryLifecycleTurnContext {
   userId: string;
   sessionId: string;
   messageId?: string;
+  /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
+  botImId?: string;
   normalizedMessages: ModelMessage[];
   /** 本轮工具查到的候选池；回合结束时统一写入会话记忆。 */
   candidatePool?: RecommendedJobSummary[] | null;
@@ -90,16 +98,23 @@ export class MemoryLifecycleService {
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
 
-    const [rawShortTermMessages, sessionState, proceduralState, profile, longTermPreferences] =
-      await Promise.all([
-        includeShortTerm
-          ? this.loadShortTermMessages(sessionId, options?.shortTermEndTimeInclusive)
-          : Promise.resolve([]),
-        this.session.getSessionState(corpId, userId, sessionId),
-        this.procedural.get(corpId, userId, sessionId),
-        this.longTerm.getProfile(corpId, userId),
-        this.longTerm.getPreferences(corpId, userId),
-      ]);
+    const [
+      rawShortTermMessages,
+      sessionState,
+      proceduralState,
+      profile,
+      longTermPreferences,
+      summaryData,
+    ] = await Promise.all([
+      includeShortTerm
+        ? this.loadShortTermMessages(sessionId, options?.shortTermEndTimeInclusive)
+        : Promise.resolve([]),
+      this.session.getSessionState(corpId, userId, sessionId),
+      this.procedural.get(corpId, userId, sessionId),
+      this.longTerm.getProfile(corpId, userId),
+      this.longTerm.getPreferences(corpId, userId),
+      this.longTerm.getSummaryData(corpId, userId),
+    ]);
 
     const shortTermMessages = this.applyShortTermFallback(
       rawShortTermMessages,
@@ -113,15 +128,28 @@ export class MemoryLifecycleService {
       warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
     }
 
+    const hasOwnSessionMemory = this.hasStructuredSessionMemoryState(sessionState);
+    const fromOtherConversation = this.detectCrossConversationOrigin({
+      sessionId,
+      hasOwnSessionMemory,
+      profile,
+      preferences: longTermPreferences,
+      summaryData,
+    });
+
     const snapshot: AgentMemoryContext = {
       shortTerm: {
         messageWindow: shortTermMessages,
       },
       ...(warnings.length > 0 ? { _warnings: warnings } : {}),
-      sessionMemory: this.hasStructuredSessionMemoryState(sessionState) ? sessionState : null,
+      sessionMemory: hasOwnSessionMemory ? sessionState : null,
       highConfidenceFacts,
       procedural: proceduralState,
-      longTerm: { profile, preferences: longTermPreferences },
+      longTerm: {
+        profile,
+        preferences: longTermPreferences,
+        ...(fromOtherConversation ? { origin: { fromOtherConversation: true } } : {}),
+      },
     };
 
     if (options?.enrichmentIdentity) {
@@ -216,6 +244,7 @@ export class MemoryLifecycleService {
             ctx.userId,
             ctx.sessionId,
             previousState?.facts ?? null,
+            ctx.botImId,
           );
         });
         branchNames.push(settlementTask.name);
@@ -292,6 +321,61 @@ export class MemoryLifecycleService {
         state.lastCandidatePool?.length ||
         state.presentedJobs?.length ||
         state.currentFocusJob,
+    );
+  }
+
+  /**
+   * 研判本轮注入的长期记忆是否来自候选人此前的"另一段会话"（多为另一位招募经理）。
+   *
+   * 仅在「全新 chat 首聊」时触发：当前会话已有自有会话记忆即视为延续，不提示。
+   * 判定优先用逐字段数据血缘（originSessionId）；存量事实无血缘时，回退到沉淀边界
+   * / 历史摘要里是否出现过其它会话。
+   */
+  private detectCrossConversationOrigin(input: {
+    sessionId: string;
+    hasOwnSessionMemory: boolean;
+    profile: UserProfileFacts | null;
+    preferences: LongTermPreferenceFacts | null;
+    summaryData: SummaryData | null;
+  }): boolean {
+    const { sessionId, hasOwnSessionMemory, profile, preferences, summaryData } = input;
+    if (hasOwnSessionMemory) return false;
+
+    const hasLongTerm = this.hasAnyFact(profile) || this.hasAnyFact(preferences);
+    if (!hasLongTerm) return false;
+
+    // 优先：逐字段血缘——任一长期事实标注的来源会话不是当前会话即判定跨会话。
+    if (
+      this.hasFactFromOtherSession(profile, sessionId) ||
+      this.hasFactFromOtherSession(preferences, sessionId)
+    ) {
+      return true;
+    }
+
+    // 回退：存量事实无 origin 血缘时，看沉淀边界 / 历史摘要里是否出现过其它会话。
+    const settledSessions = new Set<string>([
+      ...Object.keys(summaryData?.lastSettledBySession ?? {}),
+      ...(summaryData?.recent ?? []).map((entry) => entry.sessionId).filter(Boolean),
+    ]);
+    settledSessions.delete(sessionId);
+    return settledSessions.size > 0;
+  }
+
+  private hasAnyFact(facts: Record<string, unknown> | null | undefined): boolean {
+    if (!facts) return false;
+    return Object.values(facts).some((value) => value !== null && value !== undefined);
+  }
+
+  private hasFactFromOtherSession(
+    facts: Record<string, unknown> | null | undefined,
+    currentSessionId: string,
+  ): boolean {
+    if (!facts) return false;
+    return Object.values(facts).some(
+      (value) =>
+        isUserProfileFactValue(value) &&
+        Boolean(value.originSessionId) &&
+        value.originSessionId !== currentSessionId,
     );
   }
 

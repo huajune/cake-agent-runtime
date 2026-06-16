@@ -119,6 +119,20 @@ describe('buildCustomerLabelList', () => {
       expect(result.customerLabelList[0].value).toBe('175');
     });
 
+    it('resolves 近一段工作经历 label from supplementAnswers keyed by the checklist display name (过往公司+岗位+年限)', () => {
+      // badcase chat 6a2fac72…：label 名"近一段工作经历"，但 Agent 按 precheck checklist
+      // 显示名"过往公司+岗位+年限"回答，别名桥接前 booking 取不到值会判 MISSING。
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('近一段工作经历')],
+          supplementAnswers: { '过往公司+岗位+年限': '良品铺子 店长3年' },
+        }),
+      );
+
+      expectSuccess(result);
+      expect(result.customerLabelList[0].value).toBe('良品铺子 店长3年');
+    });
+
     it('resolves 学历 from educationId via sponge enum mapping', () => {
       const result = buildCustomerLabelList(
         baseParams({ supplementDefinitions: [def('学历')], educationId: 2 }),

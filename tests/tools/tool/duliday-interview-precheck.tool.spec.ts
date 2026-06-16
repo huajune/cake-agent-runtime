@@ -662,6 +662,131 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.missingFields).not.toContain('面试时间');
   });
 
+  it('should backfill 姓名/联系电话 from candidateName/candidatePhone when session facts are empty (跨天回访旧事实已过期)', async () => {
+    // 复刻王乐泉 case：候选人跨天回访，Redis 会话事实里姓名/电话已过期，
+    // 但本轮对话原文里 Agent 已重新收齐。姓名/电话没有专属 candidate* 入参时，
+    // buildKnownFieldMap 读不到 → 永远留在 missingFields → nextAction 卡死 collect_fields
+    // → Agent 反复让候选人"回复确认"。candidateName/candidatePhone 提供唯一回灌通道。
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          // 清掉"有餐饮经验优先"，避免引入额外的"过往公司+岗位+年限"收集字段，便于断言 missingFields 收齐为空
+          hiringRequirement: { remark: '' },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      requestedDate: '2026-04-08',
+      candidateName: '王乐泉',
+      candidatePhone: '13467029824',
+      candidateAge: 23,
+      candidateInterviewTime: '后天下午',
+      candidateGender: '男',
+      candidateEducation: '大专',
+      candidateHasHealthCertificate: '有',
+      // 关键：LLM 把 is_student 当 boolean 传成字符串 "false"
+      candidateIsStudent: 'false',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('姓名');
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('联系电话');
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+    expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.bookingChecklist.templateText).toContain('王乐泉');
+    expect(result.bookingChecklist.templateText).toContain('13467029824');
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+  });
+
+  it('should treat 审简历优先 jobs as wait_notice even when interview windows exist (不判 date_unavailable)', async () => {
+    // badcase chat 6a2fac72…：奥乐齐岗位虽配了面试时段窗口，但 interviewAddress 是
+    // "先审核简历，待简历审核通过后，告知面试地点&时间"——面试时间由面试官在简历审核
+    // 通过后另行通知。候选人给的"明天"被当普通岗位校验成 date_unavailable，导致 Agent
+    // 口头说"已递交审核"却始终没真正调 booking。修复后应识别为 wait_notice：不评估
+    // requestedDate、不收"面试时间"、资料齐即 ready_to_book。
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-15T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: {
+            firstInterview: {
+              interviewAddress: '先审核简历，待简历审核通过后，告知面试地点&时间',
+              // 岗位确实配了面试时段窗口（仅 6-09，不含候选人请求的"明天"=6-16）
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-06-09',
+                  interviewStartTime: '13:00',
+                  interviewEndTime: '18:00',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      requestedDate: '明天',
+      candidateName: '徐中如',
+      candidatePhone: '15105174081',
+      candidateAge: 28,
+      candidateInterviewTime: '明天',
+      candidateGender: '女',
+      candidateEducation: '高中',
+      candidateHasHealthCertificate: '无',
+      candidateIsStudent: 'false',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.interviewTimeMode).toBe('wait_notice');
+    // 不评估 requestedDate（resume-review-first → requestedDateCheck=null，被 stripNullish 去掉）
+    expect(result.interview.requestedDate ?? null).toBeNull();
+    // 既不判 date_unavailable，也不收"面试时间"，资料齐即可直接 booking
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('面试时间');
+  });
+
+  it('should map candidateIsStudent boolean-like strings to 身份', async () => {
+    // LLM 常把 is_student 当 boolean 传成字符串 "true"/"false"，归一化必须识别这些值，
+    // 否则"身份"永远留在 missingFields、nextAction 卡死 collect_fields。
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+
+    for (const [input, expected] of [
+      ['false', '社会人士'],
+      ['False', '社会人士'],
+      ['true', '学生'],
+      ['True', '学生'],
+    ] as const) {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [makeJob({ interviewProcess: { interviewSupplement: [] } })],
+      });
+      const result = await executeTool({ jobId: 100, candidateIsStudent: input });
+      expect(result.success).toBe(true);
+      // 归一化成功 → 身份被回灌进 knownFieldMap，模板按已知值渲染，且不会落入 missingFields
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.bookingChecklist.templateText).toContain(`身份（学生/社会人士）：${expected}`);
+    }
+  });
+
   it('should collect only missing education when candidate passes age boundary with explicit fields', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-27T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
@@ -982,7 +1107,11 @@ describe('buildInterviewPrecheckTool', () => {
         interviewProcess: {
           firstInterview: {
             fixedInterviewTimes: [
-              { interviewDate: '2026-04-08', interviewStartTime: '13:30', interviewEndTime: '16:30' },
+              {
+                interviewDate: '2026-04-08',
+                interviewStartTime: '13:30',
+                interviewEndTime: '16:30',
+              },
             ],
           },
           interviewSupplement: [
@@ -1041,6 +1170,70 @@ describe('buildInterviewPrecheckTool', () => {
     const remaining = withAnswers.bookingChecklist?.missingFields ?? [];
     expect(remaining).not.toContain('居住地址');
     expect(remaining).not.toContain('意向区域');
+    expect(remaining).toEqual([]);
+    expect(withAnswers.nextAction).toBe('ready_to_book');
+  });
+
+  it('should clear 工作经历 label even when answered under the checklist display name (近一段工作经历 ⇄ 过往公司+岗位+年限)', async () => {
+    // badcase chat 6a2fac72…：岗位后台 label 名为"近一段工作经历"，但 precheck 把它归一成
+    // checklist 显示名"过往公司+岗位+年限"，Agent 按显示名回答。两端名字不同 →
+    // getSupplementAnswerValue 取不到 → 字段一直滞留 missingFields、卡死 collect_fields。
+    const buildJob = () =>
+      makeJob({
+        hiringRequirement: { remark: '' },
+        interviewProcess: {
+          firstInterview: {
+            fixedInterviewTimes: [
+              { interviewDate: '2026-04-08', interviewStartTime: '13:30', interviewEndTime: '16:30' },
+            ],
+          },
+          interviewSupplement: [{ interviewSupplementId: 130, interviewSupplement: '近一段工作经历' }],
+        },
+      });
+    const knownStandardFields = {
+      profile: {
+        name: '徐中如',
+        phone: '15105174081',
+        gender: '女',
+        age: '28',
+        is_student: false,
+        education: '高中',
+        has_health_certificate: '有',
+      },
+      sessionFacts: {
+        interview_info: {
+          name: '徐中如',
+          phone: '15105174081',
+          gender: '女',
+          age: '28',
+          education: '高中',
+          has_health_certificate: '有',
+          interview_time: '2026-04-08 13:30:00',
+        },
+        preferences: FALLBACK_EXTRACTION.preferences,
+        reasoning: 'test',
+      },
+    };
+
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+
+    // 不传答案：工作经历 字段（显示名 过往公司+岗位+年限）滞留 missingFields
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [buildJob()] });
+    const without = await executeTool({ jobId: 100, requestedDate: '2026-04-08' }, knownStandardFields);
+    expect(without.bookingChecklist.missingFields).toContain('过往公司+岗位+年限');
+
+    // 候选人用 checklist 显示名回答（而非 label 原名）：别名桥接后应清除
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [buildJob()] });
+    const withAnswers = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+        candidateSupplementAnswers: { '过往公司+岗位+年限': '良品铺子 店长3年/销售经理主管' },
+      },
+      knownStandardFields,
+    );
+    const remaining = withAnswers.bookingChecklist?.missingFields ?? [];
+    expect(remaining).not.toContain('过往公司+岗位+年限');
     expect(remaining).toEqual([]);
     expect(withAnswers.nextAction).toBe('ready_to_book');
   });

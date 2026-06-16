@@ -18,7 +18,7 @@
 
 // ========== 侧边栏 ==========
 .sidebar {
-  width: 240px;
+  width: 216px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 249, 255, 0.9) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -29,7 +29,7 @@
   top: 16px;
   bottom: 16px;
   left: 16px;
-  padding: 24px;
+  padding: 22px 14px;
   border-radius: 24px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
   overflow: hidden;
@@ -203,8 +203,8 @@
 // ========== 内容区 ==========
 .content {
   flex: 1;
-  margin-left: 272px; // 240 + 16 + 16
-  padding: 40px 40px 80px 0;
+  margin-left: 248px; // 216 + 16 + 16
+  padding: 40px 16px 80px 0; // 右侧 16px 与侧边栏左侧 16px 对齐
   min-width: 0;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -232,8 +232,8 @@
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 13px 18px;
+  gap: 12px;
+  padding: 12px 14px;
   border-radius: 16px;
   color: $text-secondary;
   text-decoration: none;
@@ -283,19 +283,15 @@
 }
 
 .nav-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   object-fit: contain;
   transition: all 0.3s ease;
   color: currentColor;
-
-  svg {
-    width: 100%;
-    height: 100%;
-  }
+  // 由各图标自身的 size 属性决定渲染尺寸，避免被拉伸放大显得粗重
 }
 
 // Nav icon hover colors
@@ -436,8 +432,8 @@
 // 大屏桌面 (1280px 以下)
 @media (max-width: $breakpoint-xl) {
   .sidebar {
-    width: 220px;
-    padding: 20px;
+    width: 208px;
+    padding: 20px 14px;
 
     &.collapsed {
       width: 76px;
@@ -467,8 +463,8 @@
   }
 
   .content {
-    margin-left: 252px; // 220 + 16 + 16
-    padding: 32px 32px 60px 0;
+    margin-left: 240px; // 208 + 16 + 16
+    padding: 32px 16px 60px 0; // 右侧 16px 与侧边栏左侧 16px 对齐
   }
 
   .sidebar-collapsed .content {
@@ -565,7 +561,7 @@
 
   .content {
     margin-left: 232px; // 200 + 16 + 16
-    padding: 24px 24px 48px 0;
+    padding: 24px 16px 48px 0; // 右侧 16px 与侧边栏左侧 16px 对齐
   }
 
   .sidebar-collapsed .content {

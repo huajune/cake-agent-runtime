@@ -73,6 +73,7 @@ describe('MemoryLifecycleService', () => {
   const mockLongTerm = {
     getProfile: jest.fn(),
     getPreferences: jest.fn().mockResolvedValue(null),
+    getSummaryData: jest.fn().mockResolvedValue(null),
   };
 
   const mockSponge = {
@@ -157,6 +158,92 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.sessionMemory).not.toBeNull();
     expect(ctx.highConfidenceFacts).toBeNull();
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
+  });
+
+  describe('cross-conversation origin detection', () => {
+    const profileFromOtherChat = {
+      name: {
+        value: '张三',
+        confidence: 'high' as const,
+        source: 'extraction' as const,
+        evidence: '会话沉淀提取',
+        updatedAt: '2026-06-08T10:00:00.000Z',
+        originSessionId: 'chat-A',
+        originBotId: 'bot-wxid-A',
+      },
+    };
+
+    beforeEach(() => {
+      mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
+      mockProcedural.get.mockResolvedValue({
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      });
+    });
+
+    it('flags fromOtherConversation when a fresh chat recalls facts settled by another session', async () => {
+      mockLongTerm.getProfile.mockResolvedValue(profileFromOtherChat);
+
+      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
+
+      expect(ctx.longTerm.origin?.fromOtherConversation).toBe(true);
+    });
+
+    it('does NOT flag when the current session already has its own session memory', async () => {
+      mockSessionService.getSessionState.mockResolvedValue({
+        facts: { interview_info: { name: '张三' }, preferences: {}, reasoning: '' },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      });
+      mockLongTerm.getProfile.mockResolvedValue(profileFromOtherChat);
+
+      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
+
+      expect(ctx.longTerm.origin).toBeUndefined();
+    });
+
+    it('does NOT flag when recalled facts originated from the current session', async () => {
+      mockLongTerm.getProfile.mockResolvedValue({
+        name: { ...profileFromOtherChat.name, originSessionId: 'sess-NEW' },
+      });
+
+      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
+
+      expect(ctx.longTerm.origin).toBeUndefined();
+    });
+
+    it('falls back to settlement boundaries when facts lack origin lineage (legacy data)', async () => {
+      mockLongTerm.getProfile.mockResolvedValue({
+        name: {
+          value: '张三',
+          confidence: 'high',
+          source: 'booking',
+          evidence: '历史写入（无血缘）',
+          updatedAt: '2026-06-05T10:00:00.000Z',
+        },
+      });
+      mockLongTerm.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: '2026-06-08T10:00:00.000Z',
+        lastSettledBySession: { 'chat-A': '2026-06-08T10:00:00.000Z' },
+      });
+
+      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
+
+      expect(ctx.longTerm.origin?.fromOtherConversation).toBe(true);
+    });
+
+    it('does NOT flag when there is no long-term memory at all', async () => {
+      mockLongTerm.getProfile.mockResolvedValue(null);
+
+      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
+
+      expect(ctx.longTerm.origin).toBeUndefined();
+    });
   });
 
   it('should forward short-term cutoff on turn start', async () => {
@@ -408,6 +495,7 @@ describe('MemoryLifecycleService', () => {
         corpId: 'corp-1',
         userId: 'user-1',
         sessionId: 'sess-1',
+        botImId: 'bot-wxid-1',
         normalizedMessages: [
           { role: 'assistant', content: '杨浦这边有长白这家店。' },
           {
@@ -442,6 +530,7 @@ describe('MemoryLifecycleService', () => {
       'user-1',
       'sess-1',
       null, // facts is null
+      'bot-wxid-1', // botImId forwarded as fact lineage
     );
     expect(mockSessionService.saveLastCandidatePool).toHaveBeenCalledWith(
       'corp-1',

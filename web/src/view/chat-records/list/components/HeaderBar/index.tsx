@@ -1,3 +1,4 @@
+import { MessagesSquare, Mail, Flame } from 'lucide-react';
 import styles from './index.module.scss';
 
 interface TimeRangeOption {
@@ -69,32 +70,29 @@ export default function HeaderBar({
         {/* 统计卡片组 */}
         <div className={styles.statsGroup}>
           <div className={`${styles.statItem} ${styles.sessions}`}>
-            <span className={styles.statIcon}>💭</span>
+            <span className={styles.statIcon}>
+              <MessagesSquare size={16} strokeWidth={2} />
+            </span>
             <span className={styles.statLabel}>会话</span>
-            <span
-              key={sessionStats.totalSessions}
-              className={`${styles.statValue} ${styles.primary}`}
-            >
+            <span key={sessionStats.totalSessions} className={styles.statValue}>
               {sessionStats.totalSessions}
             </span>
           </div>
           <div className={`${styles.statItem} ${styles.messages}`}>
-            <span className={styles.statIcon}>✉️</span>
+            <span className={styles.statIcon}>
+              <Mail size={16} strokeWidth={2} />
+            </span>
             <span className={styles.statLabel}>消息</span>
-            <span
-              key={sessionStats.totalMessages}
-              className={`${styles.statValue} ${styles.success}`}
-            >
+            <span key={sessionStats.totalMessages} className={styles.statValue}>
               {sessionStats.totalMessages}
             </span>
           </div>
           <div className={`${styles.statItem} ${styles.active}`}>
-            <span className={styles.statIcon}>🔥</span>
+            <span className={styles.statIcon}>
+              <Flame size={16} strokeWidth={2} />
+            </span>
             <span className={styles.statLabel}>活跃</span>
-            <span
-              key={sessionStats.activeSessions}
-              className={`${styles.statValue} ${styles.warning}`}
-            >
+            <span key={sessionStats.activeSessions} className={styles.statValue}>
               {sessionStats.activeSessions}
             </span>
           </div>

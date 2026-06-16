@@ -35,7 +35,7 @@ import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
 } from '@tools/duliday/booking/booking-reply-format.util';
-import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('duliday_interview_booking');
@@ -486,9 +486,10 @@ export function buildInterviewBookingTool(
 
           // 无面试时段（等通知）岗位：平台名单录入的"预约时间"显示"等待通知"，
           // 预约提交不带 interviewTime，由面试官在报名后直接电话联系候选人。
-          // interviewTime 缺省仅对这类岗位（interviewWindows 为空）合法；
-          // 配置了时段的岗位仍然必填。
-          const interviewTimeWaitNotice = buildJobPolicyAnalysis(job).interviewWindows.length === 0;
+          // interviewTime 缺省对这类岗位合法。判定与 precheck 共用 isWaitNoticeInterview，
+          // 同时覆盖「无时段」与「有时段但先审简历后通知」两种语义，避免 precheck 放行
+          // wait_notice 而 booking 仍按"有时段"要 interviewTime 把预约打回（badcase chat 6a2fac72…）。
+          const interviewTimeWaitNotice = isWaitNoticeInterview(buildJobPolicyAnalysis(job));
           if (interviewTime == null && !interviewTimeWaitNotice) {
             return markBookingFailed(
               context,

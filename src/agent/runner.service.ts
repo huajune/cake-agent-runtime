@@ -349,7 +349,7 @@ export class AgentRunnerService {
   private async runTurnEndLifecycle(
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'normalizedMessages'
+      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
@@ -363,6 +363,7 @@ export class AgentRunnerService {
         userId: ctx.userId,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
         candidatePool: ctx.turnState.candidatePool,
       },
@@ -373,7 +374,7 @@ export class AgentRunnerService {
   private dispatchTurnEndLifecycle(
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'normalizedMessages'
+      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
@@ -397,7 +398,7 @@ export class AgentRunnerService {
     result: AgentRunResult,
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'normalizedMessages'
+      'corpId' | 'userId' | 'sessionId' | 'botImId' | 'normalizedMessages'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];

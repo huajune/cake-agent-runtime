@@ -1,6 +1,6 @@
 # Agent 记忆系统架构
 
-**最后更新**：2026-06-11
+**最后更新**：2026-06-16
 
 > 这份文档描述当前主链路中真正生效的实现。模块内部的详细职责分解参见
 > [`src/memory/README.md`](../../src/memory/README.md)。
@@ -57,9 +57,10 @@
 │  │  summary：recent[] + archive（分层压缩）+ lastSettledMessageAt   │  │
 │  │           + lastSettledBySession（按会话隔离的沉淀边界）          │  │
 │  │  → Supabase agent_long_term_memories 每用户一行 + Redis 2h 缓存   │  │
-│  │  → 来源：SettlementService 在空闲超时触发时写入                   │  │
+│  │  → 来源：SettlementService 在空闲超时触发时写入（带 bot 血缘）      │  │
 │  │  → 读取：profile_facts + preference_facts 固定注入；               │  │
 │  │         summary 通过 recall_history 按需读                       │  │
+│  │  → 跨 bot 共享，但首聊会研判来源、提示"此前与另一位顾问聊过"(2.6)   │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 ├──────────── 旁路解析（非持久化）──────────────────────────────────────┤
@@ -202,6 +203,9 @@ interface UserProfileFactValue<T> {
     | 'enrichment';
   evidence: string;
   updatedAt: string;
+  // 数据血缘（沉淀写入时打戳，存量字段缺失即 undefined，向后兼容）：
+  originSessionId?: string; // 沉淀该字段的会话 sessionId=chatId（bot 维度，可追溯到具体招募经理）
+  originBotId?: string;     // 沉淀该字段的托管账号 wxid（imBotId）
 }
 
 interface UserProfileFacts {
@@ -217,7 +221,8 @@ interface UserProfileFacts {
 
 - 读取：每回合 `onTurnStart` 固定注入 `[用户档案]`，**只保留字段值、置信度、来源、更新日期**（注入瘦身，不带 evidence 全文；evidence 是排障字段）
 - 工具消费：进入工具上下文时统一 unwrap，只传高置信字段，低/中/未知置信字段交给大模型判断是否追问
-- 写入：`SettlementService` 在沉淀时从 session facts 抽身份字段；预约成功通过 `writeFromBooking()` 写入 `booking/high`；外部补充通过 `MemoryService.saveProfile()` 写入
+- 写入：`SettlementService` 在沉淀时从 session facts 抽身份字段（并打 `originSessionId/originBotId` 血缘）；预约成功通过 `writeFromBooking()` 写入 `booking/high`；外部补充通过 `MemoryService.saveProfile()` 写入
+- 数据血缘：沉淀写入的字段带 `originSessionId`（=chatId，bot 维度）与 `originBotId`，可追溯"这条画像由哪次会话/哪位招募经理沉淀"。长期记忆按 `(corp_id, user_id)` 跨 bot 共享，血缘用于支撑下文的**跨会话来源研判**（见 [2.6](#26-跨会话来源研判-cross-conversation-origin)）
 
 #### Preference Facts（跨会话稳定求职意向）
 
@@ -279,6 +284,22 @@ interface SummaryEntry {
 
 因此它不是正式记忆层，是当前轮前置解析 sidecar。
 
+### 2.6 跨会话来源研判 (cross-conversation origin)
+
+**背景**：长期记忆按 `(corp_id, user_id)` 跨 bot 共享。同一候选人在企微同一 corp 下添加了**多位招募经理（多个 bot）**时，每个 (候选人, bot) 是独立的 chat（`sessionId=chatId`）。此前长期画像/意向会被原样注入新 bot 的会话，导致新招募经理的 Agent 开口就当成"自己之前聊过"（韩依雪 case：6-08 在 gaoyaqi 会话沉淀的"漕河泾印象城/可可牛"，6-15 被 LiHanTing 会话原样复述）。
+
+**研判**（[`memory-lifecycle.service.ts`](../../src/memory/services/memory-lifecycle.service.ts) `detectCrossConversationOrigin`）：`onTurnStart` 额外读 `summary_data`，在以下条件全部满足时置 `longTerm.origin.fromOtherConversation = true`：
+
+1. **仅全新 chat 首聊**：当前会话还没有自有会话记忆（`hasStructuredSessionMemoryState=false`），延续会话不提示
+2. 长期 `profile_facts` / `preference_facts` 非空
+3. 长期记忆来自**别的会话**：
+   - 优先用逐字段血缘——任一事实的 `originSessionId !== 当前 sessionId`
+   - 存量事实无血缘时回退——`summary_data.lastSettledBySession` / `recent[].sessionId` 去掉当前会话后仍有其它会话
+
+**口径**（[`agent-preparation.service.ts`](../../src/agent/agent-preparation.service.ts) `formatCrossConversationNotice`）：置真时在 `[用户档案]`/`[历史求职意向]` 前插一段 `[历史背景｜来自候选人此前在本平台的咨询]` 说明，让模型**泛指**"候选人此前在本平台与另一位招聘顾问沟通过"，不假装是本会话聊过、也不点名具体招募经理。
+
+**设计粒度**：数据血缘逐字段记录（可精确追溯），但展示口径是**会话级泛指**（不暴露 bot 名）。`writeFromBooking` / enrichment 路径暂不打血缘（本能力针对 settlement 路径）。
+
 ---
 
 ## 3. 读写时序
@@ -296,11 +317,14 @@ interface SummaryEntry {
   │   │   ├── short-term messages     (Redis → DB fallback)
   │   │   ├── session state           (Redis)
   │   │   ├── procedural state        (Redis)
-  │   │   └── profile_facts           (Redis cache → Supabase)
+  │   │   ├── profile_facts           (Redis cache → Supabase)
+  │   │   ├── preference_facts        (Redis cache → Supabase)
+  │   │   └── summary_data            (用于跨会话来源研判)
   │   │
   │   ├── 短期窗口空兜底：如为空且 currentUserMessage 非空，兜一条 user 消息
   │   ├── 前置高置信识别：basedOn currentUserMessage + brandList → highConfidenceFacts
   │   ├── 可选 enrichment：options.enrichmentIdentity 提供时向外部系统补全缺失字段
+  │   ├── 跨会话来源研判：全新 chat 首聊 + 长期记忆来自别的会话 → longTerm.origin（见 2.6）
   │   │
   │   └── 返回 MemoryRecallContext {
   │         shortTerm.messageWindow,
@@ -309,6 +333,7 @@ interface SummaryEntry {
   │         procedural,
   │         longTerm.profile,
   │         longTerm.preferences,
+  │         longTerm.origin?,          // { fromOtherConversation: true } 时渲染跨会话口径
   │         _warnings?
   │       }
   │
@@ -353,11 +378,12 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
   ├── 身份字段沉淀 → profile_facts
   │   使用 Redis sessionFacts 中已校验/清洗过的结构化事实
   │   从 facts.interview_info 抽 name/phone/gender/age/is_student/education/has_health_certificate
+  │   每条字段打 originSessionId(=sessionId/chatId) + originBotId(=botImId) 数据血缘
   │   → Supabase agent_long_term_memories.profile_facts 字段级合并
   │   → 已有 high 字段不会被非 high 覆盖
   │
   ├── 稳定意向沉淀 → preference_facts
-  │   从 LONG_TERM_PREFERENCE_FIELD_KEYS 抽稳定意向，整组覆盖写入
+  │   从 LONG_TERM_PREFERENCE_FIELD_KEYS 抽稳定意向，整组覆盖写入（同样打血缘）
   │
   ├── 对话摘要 → Summary
   │   读边界后到旧会话断点之间的消息（输入截尾最近 SUMMARY_MAX_MESSAGES=120 条）
@@ -470,9 +496,13 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
   "confidence": "high",
   "source": "booking",
   "evidence": "报名成功后写入",
-  "updatedAt": "2026-05-27T10:00:00.000Z"
+  "updatedAt": "2026-05-27T10:00:00.000Z",
+  "originSessionId": "6a2284a3536c965402ea3abb",
+  "originBotId": "1688855974513959"
 }
 ```
+
+> `originSessionId` / `originBotId` 是 settlement 沉淀时打的**数据血缘**（沉淀路径才有，booking/enrichment 路径与存量数据缺失即 undefined）。`originSessionId=chatId` 唯一对应一个 bot，可追溯"这条字段由哪次会话/哪位招募经理沉淀"，并支撑 [2.6 跨会话来源研判](#26-跨会话来源研判-cross-conversation-origin)。
 
 `confidence` 语义：
 

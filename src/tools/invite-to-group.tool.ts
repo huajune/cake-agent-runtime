@@ -29,6 +29,11 @@ const COMPAT_RETRY_DELAYS_MS = [3000, 5000, 8000];
 const NO_GROUP_CONTINUE_INSTRUCTION =
   '该城市/平台本就没有可对接的兼职群（注意：这不是群满，而是没有群）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
 
+// 候选人非接客 bot 的外部联系人（已拉黑/删好友），全部候选群都报 -8 "is not a friend"。
+// 这是候选人侧真实状态、人工无可作为，故不发运维告警、也不转人工，自然收口即可。
+const NOT_FRIEND_CONTINUE_INSTRUCTION =
+  '候选人当前无法被拉进群（候选人侧关系问题，多为已删除/拉黑接客账号）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容、不要承诺拉群。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
+
 const DESCRIPTION = `邀请候选人加入企微兼职群。
 
 ## 触发场景（满足任一即可）
@@ -73,7 +78,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 - success: false 时静默跳过，不向候选人提及群相关内容
 - 若 errorType=invite.invalid_city_scope，说明你把区域/区县误传给了 city。必须立即用工具返回的 expectedCity 重新调用 invite_to_group；不要调用 request_handoff，也不要说"该区域暂无兼职群"
 - 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
-  - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（errorType=invite.no_group_in_city / invite.no_group_available）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
+  - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（errorType=invite.no_group_in_city / invite.no_group_available）、或"候选人非外部联系人/已拉黑删好友"（errorType=invite.candidate_not_friend）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要承诺群相关动作
 - 严禁在未调用本工具、或本工具返回 success: false 时说"我先拉你进群/后面群里通知/已发群邀请"
 
@@ -307,6 +312,8 @@ export function buildInviteToGroupTool(
           const rejectedGroupsDuringInvite: Array<{
             group: GroupContext;
             error?: string;
+            /** 最终拒绝的 errcode；用于区分 -8(候选人非好友) 与其它结构性失败。 */
+            code: number | null;
           }> = [];
           for (const targetGroup of availableCandidates) {
             let inviteApiResult = await invokeAddMember({
@@ -391,6 +398,7 @@ export function buildInviteToGroupTool(
                   compatibilityRetryOutcome,
                   initialInviteApiResult,
                 ),
+                code: inviteApiResult.code,
               });
               continue;
             }
@@ -438,6 +446,25 @@ export function buildInviteToGroupTool(
               ? { ...group, memberCount: Math.max(group.memberCount ?? 0, memberLimit) }
               : group,
           );
+
+          // 候选人非接客 bot 的外部联系人（-8 "is not a friend"，多为拉黑/删好友）：
+          // 全部拒绝都是 -8 且无群满时，属候选人侧真实状态、人工无可作为，
+          // 不发运维告警、也不转人工，自然收口即可。
+          const allRejectionsNotFriend =
+            rejectedGroupsDuringInvite.length > 0 &&
+            fullGroupsDuringInvite.length === 0 &&
+            rejectedGroupsDuringInvite.every((entry) => entry.code === -8);
+          if (allRejectionsNotFriend) {
+            logger.log(
+              `候选人非接客 bot 外部联系人(拉黑/删好友)，静默收口不告警: ${city}/${industry ?? '全行业'} (user=${context.userId}, groups=${rejectedGroupsDuringInvite.length})`,
+            );
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.INVITE_CANDIDATE_NOT_FRIEND,
+              outcome: '候选人非外部联系人(拉黑/删好友)，无法拉群',
+              replyInstruction: NOT_FRIEND_CONTINUE_INSTRUCTION,
+              details: { city, industry: industry ?? undefined },
+            });
+          }
 
           // 候选群里出现接口拒绝（含切群主 bot 重试也失败）时，独立告警；
           // 不要被合并进"群已满"通道，运维需要区分"扩群"与"修 bot 群关系"两种动作。

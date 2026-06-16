@@ -5,7 +5,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { MessageType } from '@enums/message-callback.enum';
-import { isResumeImageDescription } from '../utils/message-parser.util';
+import { isResumeImageDescription, stripResumeAttachmentLines } from '../utils/message-parser.util';
 
 /** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */
 export type VisualMessageKind = MessageType.IMAGE | MessageType.EMOTION;
@@ -203,9 +203,11 @@ export class ImageDescriptionService {
     // PDF 文件简历相同的链路 —— extractUploadResume 的标注行分支会捕获该 URL，
     // 流入会话事实 upload_resume → precheck checklist 补齐"简历附件" →
     // booking 经 uploadAttachmentFromUrl 上传图片拿 cloudStorageKey 提交。
+    // 先剥离 OCR 描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
+    // 一行，避免重复行（badcase chat 6a2fac72…：单条简历消息出现两条相同"简历附件"）。
     const isResumeImage = kind === MessageType.IMAGE && isResumeImageDescription(description);
     const content = isResumeImage
-      ? `${formatDescription(kind, description)}\n简历附件：${imageUrl}`
+      ? `${formatDescription(kind, stripResumeAttachmentLines(description))}\n简历附件：${imageUrl}`
       : formatDescription(kind, description);
 
     await this.chatSession.updateMessageContent(messageId, content);

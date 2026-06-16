@@ -103,6 +103,64 @@ describe('OpsCardRenderer', () => {
     expect(card.content as string).toContain('group_promise_without_invite');
   });
 
+  it('should diagnose invite rejection as a friend-relationship issue for errcode=-8', () => {
+    const card = renderer.buildInviteRejectedAlertCard({
+      city: '上海',
+      industry: '餐饮',
+      chatBotImId: 'bot-im-1',
+      chatBotUserId: 'ZhuDongSheng',
+      rejectedGroups: [
+        {
+          name: '独立客&上海餐饮兼职⑩群',
+          imRoomId: 'room-1',
+          error: 'errcode=-8, errmsg=is not a friend, wxid: 7881299461958069',
+        },
+      ],
+      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+    });
+
+    expect(card).toEqual(
+      expect.objectContaining({ title: '🚨 接客 bot 拉群被拒 — 上海 / 餐饮', color: 'red' }),
+    );
+    expect(card.content as string).toContain('好友关系');
+    expect(card.content as string).toContain('errcode=-8');
+    expect(card.content as string).toContain('把 bot 拉进群无效');
+    // 不应再把 -8 误判为"接客 bot 不是群成员"
+    expect(card.content as string).not.toContain('room not found');
+  });
+
+  it('should diagnose invite rejection as a group-membership issue for errcode=400400', () => {
+    const card = renderer.buildInviteRejectedAlertCard({
+      city: '上海',
+      industry: '餐饮',
+      chatBotImId: 'bot-im-1',
+      rejectedGroups: [
+        { name: '上海餐饮1群', imRoomId: 'room-1', error: 'errcode=400400, errmsg=room not found' },
+      ],
+    });
+
+    expect(card.content as string).toContain('bot 不在群');
+    expect(card.content as string).toContain('把"接客 bot"拉进');
+  });
+
+  it('should flag mixed rejection reasons and prioritize the actionable (room) issue over -8', () => {
+    const card = renderer.buildInviteRejectedAlertCard({
+      city: '上海',
+      rejectedGroups: [
+        { name: '群A', imRoomId: 'room-a', error: 'errcode=-8, errmsg=is not a friend' },
+        { name: '群B', imRoomId: 'room-b', error: 'errcode=400400, errmsg=room not found' },
+      ],
+    });
+
+    expect(card.content as string).toContain('存在多种失败原因');
+    // 纯 -8 已在工具侧静默收口；告警里出现 -8 时必混着可处理失败，主导项取可处理的"bot 不在群"
+    expect(card.content as string).toContain('把"接客 bot"拉进');
+    expect(card.content as string).not.toContain('把 bot 拉进群无效');
+    // 明细行仍按真实 error 带类型标记
+    expect(card.content as string).toContain('[好友关系]');
+    expect(card.content as string).toContain('[bot 不在群]');
+  });
+
   it('should render group full alert cards with numbered group list', () => {
     const card = renderer.buildGroupFullAlertCard({
       city: '上海',

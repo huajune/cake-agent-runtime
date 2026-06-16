@@ -63,6 +63,14 @@ export interface UserProfileFactValue<T> {
   evidence: string;
   /** ISO timestamp，字段最后一次被写入长期记忆的时间 */
   updatedAt: string;
+  /**
+   * 数据血缘：沉淀写入该事实的会话（sessionId=chatId，bot 维度）。
+   * 双 bot 服务同一候选人时用于追溯"这条事实来自哪次会话"，并支撑跨会话口径。
+   * 存量字段缺失时为 undefined（向后兼容）。
+   */
+  originSessionId?: string;
+  /** 数据血缘：沉淀写入该事实的托管账号 wxid（imBotId）。可离线映射回招募经理。 */
+  originBotId?: string;
 }
 
 export type UserProfileFactMaybeValue<T> = UserProfileFactValue<T> | null;
@@ -103,6 +111,8 @@ export function userProfileFactValue<T>(
     source: ProfileFactSource;
     evidence: string;
     updatedAt?: string;
+    originSessionId?: string;
+    originBotId?: string;
   },
 ): UserProfileFactValue<T> {
   return {
@@ -111,6 +121,8 @@ export function userProfileFactValue<T>(
     source: meta.source,
     evidence: meta.evidence,
     updatedAt: meta.updatedAt ?? new Date().toISOString(),
+    ...(meta.originSessionId ? { originSessionId: meta.originSessionId } : {}),
+    ...(meta.originBotId ? { originBotId: meta.originBotId } : {}),
   };
 }
 

@@ -478,6 +478,58 @@ describe('buildInterviewBookingTool', () => {
       expect(result.missingFields).toEqual(['interviewTime']);
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
+
+    it('should book without interviewTime for 审简历优先 jobs even when windows exist', async () => {
+      // badcase chat 6a2fac72…：岗位配了面试时段窗口，但 interviewAddress 是"先审核简历，
+      // 待简历审核通过后，告知面试地点&时间"。precheck 已按 wait_notice 放行 ready_to_book，
+      // booking 必须用同一口径（isWaitNoticeInterview）放行不带 interviewTime 的提交，
+      // 否则会因"该岗位配置了面试时段"把预约打回 → 候选人简历石沉大海。
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            interviewProcess: {
+              interviewSupplement: [],
+              firstInterview: {
+                interviewAddress: '先审核简历，待简历审核通过后，告知面试地点&时间',
+                periodicInterviewTimes: [
+                  {
+                    interviewWeekday: '每周五',
+                    interviewTimes: [
+                      {
+                        interviewStartTime: '13:30',
+                        interviewEndTime: '16:30',
+                        cycleDeadlineDay: '当天',
+                        cycleDeadlineEnd: '12:00',
+                      },
+                    ],
+                  },
+                ],
+                fixedInterviewTimes: [],
+              },
+            },
+          }),
+        ],
+      });
+      mockSpongeService.bookInterview.mockResolvedValue({
+        success: true,
+        code: 0,
+        message: '预约成功',
+        notice: null,
+        errorList: null,
+      });
+
+      // 审简历岗策略文本含"简历审核"→ 必须带简历附件（这本身是正确约束），故提供 uploadResume
+      const { interviewTime, ...rest } = validInput;
+      void interviewTime;
+      const inputWithoutTime = { ...rest, uploadResume: 'https://oss.example.com/resume.jpg' };
+      const result = await executeTool(inputWithoutTime);
+      await flushAsyncEvents();
+
+      expect(result.success).toBe(true);
+      expect(mockSpongeService.bookInterview).toHaveBeenCalled();
+      expect(mockSpongeService.bookInterview.mock.calls[0][0].interviewTime).toBeUndefined();
+      expect(result._waitNoticeReplyGuide).toContain('保持电话畅通');
+    });
   });
 
   it('should build customerLabelList from real job supplements and candidate info', async () => {
