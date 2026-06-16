@@ -1,76 +1,47 @@
 {
-  "baseVersion": "5.21.0",
+  "baseVersion": "5.22.0",
   "nextVersion": "5.22.0",
   "updatedAt": "2026-06-16",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "348",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/348",
-      "title": "招聘链路多项修复 + 记忆跨会话来源 + 聊天记录页/侧边栏视觉优化",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-16",
-      "businessUpdates": [
-        "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
-        "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）"
-      ],
-      "summary": [
-        "区分拉群失败类型并对候选人拉黑场景静默收口",
-        "跨城同名区无city时校验高德POI区一致性，防错城静默收口",
-        "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
-        "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）",
-        "长期记忆跨会话区分来源，全新会话首聊提示\"此前与另一位招募经理沟通过\"",
-        "优化聊天记录页交互与顶部视觉",
-        "统一侧边栏图标并对齐内容区左右间距",
-        "招聘链路多项修复 + 记忆跨会话来源 + 聊天记录页/侧边栏视觉优化"
-      ],
-      "features": [],
-      "fixes": [
-        "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
-        "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）"
-      ],
-      "optimizations": [
-        "优化聊天记录页交互与顶部视觉"
-      ],
-      "ops": [
-        "区分拉群失败类型并对候选人拉黑场景静默收口",
-        "跨城同名区无city时校验高德POI区一致性，防错城静默收口",
-        "长期记忆跨会话区分来源，全新会话首聊提示\"此前与另一位招募经理沟通过\"",
-        "统一侧边栏图标并对齐内容区左右间距"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.21.0",
-    "date": "2026-06-15",
+    "version": "5.22.0",
+    "date": "2026-06-16",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "342",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/342",
-        "title": "ttft_ms 落为真实列，消除消息处理页查询期 JSONB detoast",
+        "number": "348",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/348",
+        "title": "招聘链路多项修复 + 记忆跨会话来源 + 聊天记录页/侧边栏视觉优化",
         "author": "ArielZhu",
-        "mergedAt": "2026-06-15",
+        "mergedAt": "2026-06-16",
         "businessUpdates": [
-          "**新增真实列 `ttft_ms`**:写入侧 `toDbRecord` 从 `agent_invocation` 抽取落库;读取侧(`listSelectedColumns`、`getFilteredMessageStats`)与概览 RPC 改读该列,查询期不再解压 JSONB。详情路径保留 invocation 兜底。"
+          "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
+          "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）"
         ],
         "summary": [
-          "ttft_ms 落为真实列，消除消息处理页查询期 JSONB detoast",
-          "**新增真实列 `ttft_ms`**:写入侧 `toDbRecord` 从 `agent_invocation` 抽取落库;读取侧(`listSelectedColumns`、`getFilteredMessageStats`)与概览 RPC 改读该列,查询期不再解压 JSONB。详情路径保留 invocation 兜底。",
-          "**Migration** `20260612032136_add_ttft_ms_column.sql`:`ADD COLUMN IF NOT EXISTS ttft_ms`(可空列=元数据操作,不重写表)+ `CREATE OR REPLACE` 重建 `get_dashboard_overview_stats`(签名/返回类型不变)。"
+          "区分拉群失败类型并对候选人拉黑场景静默收口",
+          "跨城同名区无city时校验高德POI区一致性，防错城静默收口",
+          "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
+          "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）",
+          "长期记忆跨会话区分来源，全新会话首聊提示\"此前与另一位招募经理沟通过\"",
+          "优化聊天记录页交互与顶部视觉",
+          "统一侧边栏图标并对齐内容区左右间距",
+          "招聘链路多项修复 + 记忆跨会话来源 + 聊天记录页/侧边栏视觉优化"
         ],
         "features": [],
         "fixes": [
-          "**新增真实列 `ttft_ms`**:写入侧 `toDbRecord` 从 `agent_invocation` 抽取落库;读取侧(`listSelectedColumns`、`getFilteredMessageStats`)与概览 RPC 改读该列,查询期不再解压 JSONB。详情路径保留 invocation 兜底。"
+          "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
+          "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）"
         ],
         "optimizations": [
-          "ttft_ms 落为真实列，消除消息处理页查询期 JSONB detoast"
+          "优化聊天记录页交互与顶部视觉"
         ],
         "ops": [
-          "**Migration** `20260612032136_add_ttft_ms_column.sql`:`ADD COLUMN IF NOT EXISTS ttft_ms`(可空列=元数据操作,不重写表)+ `CREATE OR REPLACE` 重建 `get_dashboard_overview_stats`(签名/返回类型不变)。"
+          "区分拉群失败类型并对候选人拉黑场景静默收口",
+          "跨城同名区无city时校验高德POI区一致性，防错城静默收口",
+          "长期记忆跨会话区分来源，全新会话首聊提示\"此前与另一位招募经理沟通过\"",
+          "统一侧边栏图标并对齐内容区左右间距"
         ],
         "config": [],
         "envFiles": [],
