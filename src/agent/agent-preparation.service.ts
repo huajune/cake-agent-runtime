@@ -916,9 +916,7 @@ export class AgentPreparationService {
 
   private formatBookingContext(workOrder: SignupWorkOrderItem): string {
     const displayJobName = sanitizeJobDisplayText(workOrder.jobName ?? null);
-    const lines = [
-      '当前存在一个仍在进行中的面试/上岗跟进 case（状态实时取自海绵工单系统）。',
-      `工单号: ${workOrder.workOrderId}`,
+    const businessLines = [
       workOrder.brandName ? `品牌: ${workOrder.brandName}` : null,
       workOrder.projectName ? `门店/项目: ${workOrder.projectName}` : null,
       displayJobName ? `岗位: ${displayJobName}` : null,
@@ -928,9 +926,18 @@ export class AgentPreparationService {
     ].filter((line): line is string => Boolean(line));
 
     // 仅有标题行 + 工单号（无任何业务字段）时不渲染，避免给 Agent 一个空壳 case。
-    if (lines.length <= 2) return '';
+    if (businessLines.length === 0) return '';
+
+    // 岗位ID 单独渲染：改约前 Agent 要用它调 duliday_interview_precheck 校验新日期是否可约。
+    const lines = [
+      '当前存在一个仍在进行中的面试/上岗跟进 case（状态实时取自海绵工单系统）。',
+      `工单号: ${workOrder.workOrderId}`,
+      workOrder.jobId != null ? `岗位ID: ${workOrder.jobId}` : null,
+      ...businessLines,
+    ].filter((line): line is string => Boolean(line));
+
     lines.push(
-      '候选人主动要求改约面时间时，用上面的「工单号」调 duliday_modify_interview_time 自助改约；主动要求取消时调 duliday_cancel_work_order 自助取消；这两个工具失败时再按 request_handoff(modify_appointment) 转人工。',
+      '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。主动要求取消时调 duliday_cancel_work_order 自助取消。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
       '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
     );
     return `\n\n[当前预约信息]\n\n${lines.join('\n')}`;

@@ -574,6 +574,7 @@ describe('AgentPreparationService', () => {
     });
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
       workOrderId: 88001,
+      jobId: 527349,
       brandName: '瑞幸',
       projectName: '陆家嘴店',
       jobName: '店员',
@@ -601,6 +602,8 @@ describe('AgentPreparationService', () => {
     expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88001);
     expect(result.entryStage).toBe('onboard_followup');
     expect(result.finalPrompt).toContain('工单号: 88001');
+    // 岗位ID 用于改约前先调 duliday_interview_precheck 校验新日期。
+    expect(result.finalPrompt).toContain('岗位ID: 527349');
     expect(result.finalPrompt).toContain('品牌: 瑞幸');
     expect(result.finalPrompt).toContain('当前状态: 约面成功');
   });
