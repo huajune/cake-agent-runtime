@@ -8,6 +8,46 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.23.0`
+**最近更新**: `2026-06-16`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #353 改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工
+- PR #353 **[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`
+- PR #353 **`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验
+- PR #353 **不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交
+- PR #353 **补充测试**：booking context 含「岗位ID」
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #353 **[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`
+- PR #353 **`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验
+- PR #353 **不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交
+- PR #353 **补充测试**：booking context 含「岗位ID」
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #353 改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [5.22.0] - 2026-06-16
 
 **来源分支**: `develop`
