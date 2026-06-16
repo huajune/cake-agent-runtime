@@ -1,6 +1,6 @@
 # 记忆与线索数据流
 
-**最后更新**：2026-06-11
+**最后更新**：2026-06-16
 
 本文是记忆与线索链路的独立真相文档，描述当前真实生效的数据流、字段结构、消费规则和关键边界：哪些数据只是本轮线索，哪些会进入 Redis 会话事实，哪些会沉淀到长期画像，以及大模型和工具分别如何消费。
 
@@ -80,7 +80,7 @@ flowchart TD
 
 其中 `highConfidenceFacts.reasoning` / `sessionFacts.reasoning` 是诊断说明文本，不作为业务事实字段消费。
 
-长期画像会额外带 `updatedAt`：
+长期画像会额外带 `updatedAt`，沉淀路径还带数据血缘 `originSessionId` / `originBotId`：
 
 ```json
 {
@@ -88,9 +88,13 @@ flowchart TD
   "confidence": "medium",
   "source": "extraction",
   "evidence": "会话沉淀提取；原字段来源=rule；原字段置信度=high；原证据=年龄识别：24",
-  "updatedAt": "2026-05-27T10:00:00.000Z"
+  "updatedAt": "2026-05-27T10:00:00.000Z",
+  "originSessionId": "6a2284a3536c965402ea3abb",
+  "originBotId": "1688855974513959"
 }
 ```
+
+`originSessionId`（=chatId，bot 维度）与 `originBotId`（imBotId）由 settlement 沉淀时打戳，追溯"这条长期字段由哪次会话/哪位招募经理沉淀"。booking/enrichment 路径与本次改动前的存量数据没有这两个字段（缺失即 undefined，向后兼容）。长期记忆按 `(corp_id, user_id)` 跨 bot 共享，血缘用于第 4 节的**跨会话来源研判**。
 
 `confidence` 决定是否能进入程序化判断：
 
@@ -142,14 +146,16 @@ flowchart TD
   C --> D["并行读取短期消息"]
   C --> E["读取 Redis session state"]
   C --> F["读取 Redis stage"]
-  C --> G["读取长期 profile_facts"]
+  C --> G["读取长期 profile_facts/preference_facts/summary_data"]
   C --> H["规则/别名识别 highConfidenceFacts"]
   G --> I["可选 enrichment 补充性别等低置信线索"]
+  G --> K["跨会话来源研判 → longTerm.origin"]
   D --> J["MemoryRecallContext"]
   E --> J
   F --> J
   H --> J
   I --> J
+  K --> J
 ```
 
 `onTurnStart` 返回：
@@ -160,7 +166,7 @@ flowchart TD
   sessionMemory,
   highConfidenceFacts,
   procedural,
-  longTerm: { profile, preferences }
+  longTerm: { profile, preferences, origin? } // origin = { fromOtherConversation: true } 时渲染跨会话口径
 }
 ```
 
@@ -171,6 +177,7 @@ flowchart TD
 - 长期 `profile_facts` 读取后保留 `confidence/source/updatedAt` 给模型，但**注入 prompt 时不带 evidence 全文**。
 - 长期 `preference_facts` 一并读取，注入为 `[历史求职意向]` 段。
 - 老用户回访阶段兜底：长期画像有姓名/电话且程序性阶段已过期时，`resolveReturningUserStage()` 把 `entryStage` 兜底为 `job_consultation`。
+- **跨会话来源研判**（`detectCrossConversationOrigin`）：长期记忆按 `(corp_id, user_id)` 跨 bot 共享。当①当前为全新 chat 首聊（无自有会话记忆）②长期画像/意向非空③这些记忆来自别的会话（优先看字段 `originSessionId !== 当前 sessionId`，存量无血缘回退 `summary_data.lastSettledBySession`/`recent[].sessionId`）时，置 `longTerm.origin.fromOtherConversation=true`。用于让新招募经理的 Agent 泛指"候选人此前在本平台与另一位顾问聊过"，而非假装自己聊过。
 
 ## 5. Prompt 消费
 
@@ -178,6 +185,7 @@ flowchart TD
 
 | Prompt 段 | 来源 | 内容 |
 |-----------|------|------|
+| `[历史背景｜来自候选人此前在本平台的咨询]` | `longTerm.origin.fromOtherConversation` | 仅全新 chat 首聊且长期记忆来自别的会话时渲染：泛指"候选人此前与另一位招聘顾问沟通过"，提示模型不要假装自己聊过、不点名同事 |
 | `[用户档案]` | 长期 `profile_facts` | 全字段值 + 置信度 + 来源 + 更新日期（**不带 evidence 全文**） |
 | `[历史求职意向]` | 长期 `preference_facts` | 跨会话稳定意向 + 更新日期 + “本次优先”指引；过期 `available_after` 不渲染 |
 | `[会话记忆]` | Redis `sessionMemory` | `sessionFacts`、岗位池、已展示岗位、当前焦点岗位、已邀群 |
@@ -191,10 +199,11 @@ flowchart TD
 
 `memoryBlock` 由这几部分组成：
 
-1. 长期用户档案：来自 `memory.longTerm.profile`，展示 profile field wrapper。
-2. 长期求职意向：来自 `memory.longTerm.preferences`，渲染为 `[历史求职意向]` 段（`formatLongTermPreferences`）。
-3. 会话记忆：来自 `memory.sessionMemory`，包含 `sessionFacts`、岗位池、当前焦点岗位等。
-4. 活跃 recruitment case：如存在，会附加到记忆块中。
+1. 跨会话来源说明：`memory.longTerm.origin.fromOtherConversation` 为真时，由 `formatCrossConversationNotice` 在档案/意向前插入 `[历史背景｜…]` 泛指口径。
+2. 长期用户档案：来自 `memory.longTerm.profile`，展示 profile field wrapper。
+3. 长期求职意向：来自 `memory.longTerm.preferences`，渲染为 `[历史求职意向]` 段（`formatLongTermPreferences`）。
+4. 会话记忆：来自 `memory.sessionMemory`，包含 `sessionFacts`、岗位池、当前焦点岗位等。
+5. 活跃 recruitment case：如存在，会附加到记忆块中。
 
 `sessionFacts` 和 `highConfidenceFacts` 渲染时使用统一字段列表（`fact-lines.formatter.ts`），字段行带内联 metadata 但**不含 evidence 全文**（`includeEvidence` 默认 false，仅事实提取 prompt 的 `[规则模式匹配线索]` 置 true）。注入示例：
 
@@ -415,11 +424,13 @@ flowchart TD
   G --> H["LLM 生成 summary"]
   B --> H
   H --> I["RPC append_long_term_summary_atomic（带 p_session_id）→ recent/archive + lastSettledBySession"]
-  B --> J["writeFromSettlement"]
-  J --> K["从 sessionFacts 抽身份字段 + 稳定意向"]
+  B --> J["writeFromSettlement(facts, {sessionId, botImId})"]
+  J --> K["从 sessionFacts 抽身份字段 + 稳定意向，打 originSessionId/originBotId 血缘"]
   K --> L["写 profile_facts source=extraction + preference_facts 整组覆盖"]
   K --> M["RPC mark_long_term_settled_boundary 更新边界"]
 ```
+
+> `botImId` 经 `onTurnEnd(ctx.botImId)` → `detectAndSettle(..., botImId)` → `writeFromSettlement(facts, { sessionId, botImId })` 串入；`sessionId` 即当前 chatId。两者作为数据血缘打到每条沉淀字段。
 
 沉淀画像的来源是 `sessionFacts`，不是直接重新扫描旧消息片段。原因是 `sessionFacts` 已经过 LLM 提取、规则高置信补位、姓名 sanitizer、深度合并等处理，是当前会话里被清洗/校验过的结构化事实。
 
@@ -458,12 +469,12 @@ flowchart TD
 
 ## 9. 长期画像写入路径
 
-| 路径 | 写入方法 | 目标列 | confidence | source |
-|------|----------|--------|------------|--------|
-| 预约成功 | `LongTermService.writeFromBooking` | `profile_facts` | `high` | `booking` |
-| 会话沉淀（身份） | `LongTermService.writeFromSettlement` → `upsertProfileFacts` | `profile_facts` | `medium` | `extraction` |
-| 会话沉淀（意向） | `LongTermService.writeFromSettlement` → `upsertPreferenceFacts` | `preference_facts` | — | （快照式整组覆盖） |
-| 外部补全 | `LongTermService.saveProfile` | `profile_facts` | `medium` | `enrichment` |
+| 路径 | 写入方法 | 目标列 | confidence | source | 血缘 |
+|------|----------|--------|------------|--------|------|
+| 预约成功 | `LongTermService.writeFromBooking` | `profile_facts` | `high` | `booking` | — |
+| 会话沉淀（身份） | `LongTermService.writeFromSettlement` → `upsertProfileFacts` | `profile_facts` | `medium` | `extraction` | `originSessionId/originBotId` |
+| 会话沉淀（意向） | `LongTermService.writeFromSettlement` → `upsertPreferenceFacts` | `preference_facts` | — | （快照式整组覆盖） | `originSessionId/originBotId` |
+| 外部补全 | `LongTermService.saveProfile` | `profile_facts` | `medium` | `enrichment` | — |
 
 DB 端 RPC `upsert_long_term_profile_facts` 有置信度守卫：已有 `high` 字段不会被非 `high` 覆盖。`preference_facts` 是快照式整组覆盖，不做字段级守卫（最新一段会话的意向赢）。
 

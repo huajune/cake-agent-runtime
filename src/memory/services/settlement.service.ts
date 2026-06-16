@@ -82,6 +82,7 @@ export class SettlementService {
     userId: string,
     sessionId: string,
     sessionFacts: EntityExtractionResult | SessionFacts | null,
+    botImId?: string,
   ): Promise<boolean> {
     try {
       const summaryData = await this.longTerm.getSummaryData(corpId, userId);
@@ -133,6 +134,7 @@ export class SettlementService {
         lastSettledMessageAt: lastSettledAt,
         sessionEndAt,
         messages: prevSessionMessages,
+        botImId,
       });
 
       return true;
@@ -198,10 +200,11 @@ export class SettlementService {
       lastSettledMessageAt: string | null;
       sessionEndAt: string;
       messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>;
+      botImId?: string;
     },
   ): Promise<void> {
     try {
-      const { facts, lastSettledMessageAt, sessionEndAt, messages } = params;
+      const { facts, lastSettledMessageAt, sessionEndAt, messages, botImId } = params;
 
       if (messages.length === 0) {
         await this.longTerm.markLastSettledMessageAt(corpId, userId, sessionEndAt, sessionId);
@@ -246,8 +249,9 @@ export class SettlementService {
       });
 
       // 沉淀时将已校验/清洗过的 sessionFacts 身份信息写入 Profile。
+      // 带上 sessionId/botImId 数据血缘，供跨 bot 追溯与跨会话口径使用。
       if (facts) {
-        await this.longTerm.writeFromSettlement(corpId, userId, facts);
+        await this.longTerm.writeFromSettlement(corpId, userId, facts, { sessionId, botImId });
       }
 
       this.logger.log(
