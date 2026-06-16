@@ -1,82 +1,43 @@
 {
-  "baseVersion": "5.22.0",
-  "nextVersion": "5.23.0",
+  "baseVersion": "5.23.0",
+  "nextVersion": "5.24.0",
   "updatedAt": "2026-06-16",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "353",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/353",
-      "title": "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-16",
-      "businessUpdates": [
-        "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
-        "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
-        "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
-        "**补充测试**：booking context 含「岗位ID」"
-      ],
-      "summary": [
-        "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工",
-        "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
-        "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
-        "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
-        "**补充测试**：booking context 含「岗位ID」"
-      ],
-      "features": [],
-      "fixes": [
-        "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
-        "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
-        "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
-        "**补充测试**：booking context 含「岗位ID」"
-      ],
-      "optimizations": [],
-      "ops": [
-        "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.22.0",
+    "version": "5.23.0",
     "date": "2026-06-16",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "348",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/348",
-        "title": "招聘链路多项修复 + 记忆跨会话来源 + 聊天记录页/侧边栏视觉优化",
+        "number": "353",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/353",
+        "title": "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工",
         "author": "ArielZhu",
         "mergedAt": "2026-06-16",
         "businessUpdates": [
-          "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
-          "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）"
+          "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
+          "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
+          "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
+          "**补充测试**：booking context 含「岗位ID」"
         ],
         "summary": [
-          "区分拉群失败类型并对候选人拉黑场景静默收口",
-          "跨城同名区无city时校验高德POI区一致性，防错城静默收口",
-          "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
-          "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）",
-          "长期记忆跨会话区分来源，全新会话首聊提示\"此前与另一位招募经理沟通过\"",
-          "优化聊天记录页交互与顶部视觉",
-          "统一侧边栏图标并对齐内容区左右间距",
-          "招聘链路多项修复 + 记忆跨会话来源 + 聊天记录页/侧边栏视觉优化"
+          "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工",
+          "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
+          "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
+          "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
+          "**补充测试**：booking context 含「岗位ID」"
         ],
         "features": [],
         "fixes": [
-          "乡镇/街道级地名误当 regionNameList 致误判无岗拉群",
-          "修复简历图片→约面提交链路（审简历岗静默不提交+附件去重+工作经历字段）"
+          "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
+          "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
+          "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
+          "**补充测试**：booking context 含「岗位ID」"
         ],
-        "optimizations": [
-          "优化聊天记录页交互与顶部视觉"
-        ],
+        "optimizations": [],
         "ops": [
-          "区分拉群失败类型并对候选人拉黑场景静默收口",
-          "跨城同名区无city时校验高德POI区一致性，防错城静默收口",
-          "长期记忆跨会话区分来源，全新会话首聊提示\"此前与另一位招募经理沟通过\"",
-          "统一侧边栏图标并对齐内容区左右间距"
+          "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工"
         ],
         "config": [],
         "envFiles": [],
