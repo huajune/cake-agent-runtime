@@ -1,9 +1,41 @@
 {
   "baseVersion": "5.25.0",
-  "nextVersion": "5.25.0",
+  "nextVersion": "5.26.0",
   "updatedAt": "2026-06-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "369",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/369",
+      "title": "剥离回复视觉占位符 + 真人介入卡片精简标题/增加诊断载荷",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-17",
+      "businessUpdates": [
+        "剥离回复中残留的视觉消息占位符",
+        "真人介入告警卡片精简标题并增加诊断载荷",
+        "剥离回复视觉占位符 + 真人介入卡片精简标题/增加诊断载荷"
+      ],
+      "summary": [
+        "剥离回复中残留的视觉消息占位符",
+        "真人介入告警卡片精简标题并增加诊断载荷",
+        "剥离回复视觉占位符 + 真人介入卡片精简标题/增加诊断载荷"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "剥离回复中残留的视觉消息占位符",
+        "真人介入告警卡片精简标题并增加诊断载荷"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`reply-normalizer.util.spec.ts` — 新增视觉占位符剥离用例，35 passed",
+        "`accept-inbound-message.service.spec.ts` — 更新标题断言 + 新增 diagnostics 断言，21 passed",
+        "pre-push 全量套件通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.25.0",
     "date": "2026-06-17",

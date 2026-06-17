@@ -553,8 +553,8 @@ export class AcceptInboundMessageService {
       const currentMessage = MessageParser.extractContent(messageData);
 
       await this.generalHandoffNotifier.notify({
-        // 沿用原文案：标题与说明保持不变，仅把旧版写死的「聚合聊天」按真实来源动态填充。
-        titleOverride: '🚨 真人介入聊天，已自动暂停托管 · 需要人工介入',
+        // 沿用原文案：仅把旧版写死的「聚合聊天」按真实来源动态填充。
+        titleOverride: '🚨 真人介入聊天，已自动暂停托管',
         alertLabel: '真人介入自动暂停',
         reason: `检测到真人通过${sourcePhrase}手动发送消息，系统已自动暂停该候选人托管`,
         corpId: messageData.orgId,
@@ -570,6 +570,15 @@ export class AcceptInboundMessageService {
           timestamp: m.timestamp,
         })),
         sessionState: null,
+        diagnostics: {
+          botId: messageData.botId,
+          imBotId: messageData.imBotId,
+          imContactId: messageData.imContactId,
+          externalUserId: messageData.externalUserId,
+          source: messageData.source,
+          sourceDescription: getMessageSourceDescription(messageData.source),
+          messageType: messageData.messageType,
+        },
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
