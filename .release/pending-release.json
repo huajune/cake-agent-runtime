@@ -1,88 +1,53 @@
 {
-  "baseVersion": "5.23.0",
+  "baseVersion": "5.24.0",
   "nextVersion": "5.24.0",
   "updatedAt": "2026-06-17",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "359",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/359",
-      "title": "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-17",
-      "businessUpdates": [
-        "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
-        "真人介入聊天自动暂停托管",
-        "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
-        "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
-        "风险词「坑」精细化识别，避开地名误伤",
-        "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
-      ],
-      "summary": [
-        "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
-        "真人介入聊天自动暂停托管",
-        "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
-        "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
-        "风险词「坑」精细化识别，避开地名误伤",
-        "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描"
-      ],
-      "ops": [
-        "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
-        "真人介入聊天自动暂停托管",
-        "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
-        "风险词「坑」精细化识别，避开地名误伤"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "15 个相关测试套件 325 用例全绿；`tsc --noEmit` 干净。",
-        "岗位召回 10 组真实场景经 `debug-chat` 实跑验证（qwen3.6-plus 主模型）。"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.23.0",
-    "date": "2026-06-16",
+    "version": "5.24.0",
+    "date": "2026-06-17",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "353",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/353",
-        "title": "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工",
+        "number": "359",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/359",
+        "title": "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页",
         "author": "ArielZhu",
-        "mergedAt": "2026-06-16",
+        "mergedAt": "2026-06-17",
         "businessUpdates": [
-          "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
-          "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
-          "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
-          "**补充测试**：booking context 含「岗位ID」"
+          "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
+          "真人介入聊天自动暂停托管",
+          "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
+          "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
+          "风险词「坑」精细化识别，避开地名误伤",
+          "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
         ],
         "summary": [
-          "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工",
-          "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
-          "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
-          "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
-          "**补充测试**：booking context 含「岗位ID」"
+          "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
+          "真人介入聊天自动暂停托管",
+          "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
+          "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
+          "风险词「坑」精细化识别，避开地名误伤",
+          "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
         ],
         "features": [],
-        "fixes": [
-          "**[当前预约信息] 渲染「岗位ID」**（`agent-preparation.service.ts`）：供改约前调 `duliday_interview_precheck`",
-          "**`duliday_modify_interview_time` 增加前置条件**：必须先 `duliday_interview_precheck(jobId, requestedDate)` 判 `status=available`（nextAction 不是 `date_unavailable`）才允许改约；本工具信任 precheck 时段结论，自身不再二次校验",
-          "**不可约时不转人工**：precheck 判该日期约不上时，用返回的 `scheduleRule` / `upcomingTimeOptions` 把可约时段抛回候选人继续协商重选，确认后带新日期重跑 precheck → 可约才提交",
-          "**补充测试**：booking context 含「岗位ID」"
+        "fixes": [],
+        "optimizations": [
+          "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描"
         ],
-        "optimizations": [],
         "ops": [
-          "改约前先 precheck 校验新日期可约性，不可约则继续协商不转人工"
+          "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
+          "真人介入聊天自动暂停托管",
+          "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
+          "风险词「坑」精细化识别，避开地名误伤"
         ],
         "config": [],
         "envFiles": [],
-        "verification": []
+        "verification": [
+          "15 个相关测试套件 325 用例全绿；`tsc --noEmit` 干净。",
+          "岗位召回 10 组真实场景经 `debug-chat` 实跑验证（qwen3.6-plus 主模型）。"
+        ]
       }
     ]
   }
