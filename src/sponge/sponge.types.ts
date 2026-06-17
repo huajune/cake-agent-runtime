@@ -6,6 +6,8 @@ export interface JobListQueryParams {
   regionNameList?: string[];
   brandAliasList?: string[];
   storeNameList?: string[];
+  /** 岗位名称模糊匹配（对整条 jobName 子串匹配，jobName 形如「品牌-门店-工种-用工形式」，故传门店名/地标即可按门店模糊召回） */
+  searchJobName?: string;
   jobCategoryList?: string[];
   brandIdList?: number[];
   projectNameList?: string[];

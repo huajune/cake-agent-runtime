@@ -102,6 +102,51 @@ describe('ConversationRiskDetectorService', () => {
     },
   );
 
+  it.each([
+    '你好',
+    '坪山坑梓这边',
+    '我在坑梓附近，沙坑村那边也行',
+    '前面有个大坑，路不太好走',
+    '这个游戏我早就入坑了',
+  ])('does NOT flag benign "坑" (place names / neutral words) as complaint risk: %s', (content) => {
+    // false-positive 防回归：候选人报区域"坪山坑梓"（深圳坪山区坑梓街道，地名），
+    // 早期 COMPLAINT_RISK_KEYWORDS 含 '坑' 时 substring 匹配把地名里的"坑"误判为
+    // "坑人/坑钱"投诉风险，直接暂停托管 + 飞书告警，伤害正常求职者。
+    const result = service.detect({
+      ...baseContext,
+      currentMessageContent: content,
+      recentMessages: [
+        ...baseContext.recentMessages,
+        { role: 'user', content, timestamp: 1712044920000 },
+      ],
+    });
+
+    expect(result.hit).toBe(false);
+  });
+
+  it.each(['坑', '太坑了', '你们这是坑人吧', '我被你们坑惨了', '就是坑钱的'])(
+    'should detect scam-sense "坑" as complaint risk: %s',
+    (content) => {
+      const result = service.detect({
+        ...baseContext,
+        currentMessageContent: content,
+        recentMessages: [
+          ...baseContext.recentMessages,
+          { role: 'user', content, timestamp: 1712044920000 },
+        ],
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          hit: true,
+          riskType: 'complaint_risk',
+          riskLabel: '投诉/举报风险',
+        }),
+      );
+      expect(result.reason).toContain('坑');
+    },
+  );
+
   it('should detect abuse keywords', () => {
     const result = service.detect({
       ...baseContext,

@@ -1,5 +1,10 @@
 import type { UserInfo } from '../types/user.types';
-import type { UserTrendData, TodayUserData } from '../types/user.types';
+import type {
+  PauseUserHostingParams,
+  PauseUserHostingResponse,
+  UserTrendData,
+  TodayUserData,
+} from '../types/user.types';
 import { api, unwrapResponse } from '../client';
 
 export type { UserTrendData, TodayUserData, PausedUserData } from '../types/user.types';
@@ -59,4 +64,10 @@ export async function toggleUserHosting(chatId: string, enabled: boolean) {
     enabled,
   });
   return unwrapResponse(data);
+}
+
+export async function pauseUserHosting(params: PauseUserHostingParams) {
+  const { userId, ...payload } = params;
+  const { data } = await api.post(`/user/users/${encodeURIComponent(userId)}/pause`, payload);
+  return unwrapResponse<PauseUserHostingResponse>(data);
 }

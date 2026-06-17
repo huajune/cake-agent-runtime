@@ -7,6 +7,7 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
 import {
+  detectBrandAliasHints,
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
 } from '@memory/facts/high-confidence-facts';
@@ -139,7 +140,12 @@ export class AgentPreparationService {
 
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
-    const memoryBlock = this.buildMemoryBlock(memory, bookingContext, realtimeGroups);
+    const memoryBlock = this.buildMemoryBlock(
+      memory,
+      bookingContext,
+      realtimeGroups,
+      params.contactName,
+    );
     const persistedStage = memory.procedural.currentStage ?? undefined;
     // 程序性阶段存 Redis（TTL 2 天），过期后此前隐式兜底到策略第一个阶段——
     // 已服务过的老候选人回访被当新客从 trust_building 重走（张漪 case：6-03 已
@@ -175,6 +181,7 @@ export class AgentPreparationService {
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
     const turnState: PreparedAgentContext['turnState'] = { candidatePool: null };
+    const contactBrandAliases = await this.deriveContactBrandAliases(params.contactName);
     const toolContext = this.buildToolContext({
       params,
       memory,
@@ -183,6 +190,7 @@ export class AgentPreparationService {
       stageGoals,
       thresholds,
       turnState,
+      contactBrandAliases,
     });
     const toolExecutionTimings = new Map<string, number>();
     const tools = this.wrapToolsWithTiming(
@@ -429,9 +437,11 @@ export class AgentPreparationService {
     memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
     bookingContext: string,
     realtimeGroups: RealtimeGroupStatus[] = [],
+    contactName?: string,
   ): string {
     return (
       this.formatCrossConversationNotice(memory.longTerm.origin?.fromOtherConversation ?? false) +
+      this.formatContactNamePreferenceHint(contactName) +
       this.formatProfile(memory.longTerm.profile) +
       this.formatLongTermPreferences(memory.longTerm.preferences ?? null) +
       (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
@@ -453,6 +463,57 @@ export class AgentPreparationService {
       `**不是你和 TA 本次/此前的聊天记录**。开场可自然衔接（例如"看到你之前在我们平台咨询过…"），` +
       `但不要假装是你们之前聊过、也不要点名是哪位同事。_`
     );
+  }
+
+  /**
+   * 企微显示名称/备注常被运营改成「姓名 城市品牌门店」结构，标记这位候选人是
+   * 冲着哪个品牌/门店来的——这是运营给本会话指定的目标品牌，不是可有可无的背景。
+   *
+   * 这里不做程序化解析，只把原文交给模型理解，但要求把读出的品牌当作默认目标：
+   * - 能读出品牌+门店：默认带该品牌召回，并在结果里优先该门店；
+   * - 只能读出品牌：默认带该品牌召回；
+   * - 读不出 / 候选人改口指定别的品牌 / 带该品牌召回为空：才放宽。
+   */
+  private formatContactNamePreferenceHint(contactName: string | undefined): string {
+    const normalized = contactName
+      ?.replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalized) return '';
+
+    const clipped = normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized;
+    return (
+      `\n\n[企微名称备注｜运营给本会话指定的目标品牌/门店]\n\n` +
+      `- 企微显示名称/备注：${clipped}\n` +
+      `- 运营常把「城市+品牌+门店」写进名称，标记这位候选人是冲着哪个品牌/门店来的。请结合上下文判断其中的品牌、门店、城市（可能也夹杂姓名等无关标记）。\n` +
+      `- **默认把读出的品牌当作本会话的目标品牌**：调用 duliday_job_list 召回时默认带上它（用 brandIdList/brandAliasList），推荐时优先该品牌的门店——**不要因为别的品牌门店离得更近就改推别家**。能同时读出门店的，在该品牌结果里优先挑这家门店或最近门店（备注门店名常与库内实名对不上，别直接塞 storeNameList 硬过滤，而是召回该品牌后在结果里挑）。\n` +
+      `- 例外（以候选人为准）：候选人本轮主动指定了别的品牌、明确说不想要这个品牌、或要求「看看其他品牌/所有岗位」时跟随候选人；带该品牌召回为空时再放宽到不限品牌。\n` +
+      `- 品牌名本身含城市词不代表候选人所在城市（如“成都你六姐”的“成都”是品牌名一部分），不要仅凭品牌名推断城市。\n` +
+      `- 这是内部线索：回复里禁止提及“备注/企微名称/昵称显示”，也不要称呼候选人昵称。`
+    );
+  }
+
+  /**
+   * 从企微名称备注里确定性解析目标品牌标准名。
+   *
+   * 纯提示词驱动「备注品牌优先」经实测不可靠（模型会忽略备注按距离推），故在 prep 阶段
+   * 用与候选人消息相同的品牌词典匹配器（detectBrandAliasHints）把备注里的品牌抠出来，
+   * 交给 duliday_job_list 在模型没传品牌时确定性兜底（见 ToolBuildContext.contactBrandAliases）。
+   *
+   * 失败/无命中/无备注一律返回空数组（按"无目标品牌"降级，不阻断主流程）。
+   */
+  private async deriveContactBrandAliases(contactName: string | undefined): Promise<string[]> {
+    const normalized = contactName?.trim();
+    if (!normalized) return [];
+    try {
+      const brandData = await this.spongeService.fetchBrandList();
+      if (!brandData?.length) return [];
+      const hints = detectBrandAliasHints([normalized], brandData);
+      return Array.from(new Set(hints.map((hint) => hint.brandName)));
+    } catch (error) {
+      this.logger.warn('备注品牌解析失败（按无目标品牌降级）', error);
+      return [];
+    }
   }
 
   /**
@@ -508,9 +569,18 @@ export class AgentPreparationService {
     stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
     thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
     turnState: PreparedAgentContext['turnState'];
+    contactBrandAliases: string[];
   }): ToolBuildContext {
-    const { params, memory, normalizedMessages, entryStage, stageGoals, thresholds, turnState } =
-      input;
+    const {
+      params,
+      memory,
+      normalizedMessages,
+      entryStage,
+      stageGoals,
+      thresholds,
+      turnState,
+      contactBrandAliases,
+    } = input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
     const highConfidenceSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
       minConfidence: 'high',
@@ -536,6 +606,7 @@ export class AgentPreparationService {
       },
       botUserId: params.botUserId,
       contactName: params.contactName,
+      contactBrandAliases,
       botImId: params.botImId,
       groupId: params.groupId,
       strategySource: params.strategySource,

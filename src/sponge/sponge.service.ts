@@ -148,6 +148,7 @@ export class SpongeService {
         ...(params.projectNameList?.length && { projectNameList: params.projectNameList }),
         ...(params.projectIdList?.length && { projectIdList: params.projectIdList }),
         ...(params.storeNameList?.length && { storeNameList: params.storeNameList }),
+        ...(params.searchJobName?.trim() && { searchJobName: params.searchJobName.trim() }),
         ...(params.jobCategoryList?.length && { jobCategoryList: params.jobCategoryList }),
         ...(params.jobIdList?.length && { jobIdList: params.jobIdList }),
         ...(params.salaryPeriodNameList?.length && {

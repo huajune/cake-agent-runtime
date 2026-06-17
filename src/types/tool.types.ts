@@ -55,6 +55,15 @@ export interface ToolBuildContext {
   botUserId?: string;
   /** 当前候选人微信昵称（企微回调中的 contactName） */
   contactName?: string;
+  /**
+   * 从企微名称备注里解析出的目标品牌标准名（运营常把「城市+品牌+门店」备注进名称，
+   * 标记这位候选人冲着哪个品牌来）。prep 阶段用品牌词典匹配 contactName 得到。
+   *
+   * 用途：duliday_job_list 在模型本轮没传任何品牌（brandAliasList/brandIdList 均空）时，
+   * 默认用它兜底为 brandAliasList，实现「备注品牌优先召回」。纯提示词驱动经实测不可靠
+   * （模型会忽略备注、按距离推），故在工具入参层确定性注入。
+   */
+  contactBrandAliases?: string[];
   /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */
   botImId?: string;
   /** 当前消息所属小组 ID（企业级回调有值时用于账号级配置兜底） */

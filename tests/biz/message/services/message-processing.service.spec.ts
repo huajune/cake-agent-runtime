@@ -193,6 +193,8 @@ describe('MessageProcessingService', () => {
       expect(options.managerNames).toEqual(['LiHanTing', '李涵婷']);
       expect(options.limit).toBe(20);
       expect(options.offset).toBe(0);
+      expect(options.includeTotal).toBe(false);
+      expect(options.projection).toBe('summary');
     });
 
     it('should only pass provided query fields', async () => {

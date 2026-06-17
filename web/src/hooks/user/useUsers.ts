@@ -7,7 +7,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryKey } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { PausedUserData, TodayUserData, UserInfo } from '@/api/types/user.types';
+import type {
+  PauseUserHostingParams,
+  PausedUserData,
+  TodayUserData,
+  UserInfo,
+} from '@/api/types/user.types';
 import type { DashboardData } from '@/api/types/analytics.types';
 import * as userService from '@/api/services/user.service';
 
@@ -18,10 +23,11 @@ export type { UserTrendData, TodayUserData, PausedUserData } from '@/api/service
 /**
  * 获取托管用户趋势数据
  */
-export function useUserTrend(days = 30, autoRefresh = true) {
+export function useUserTrend(days = 30, autoRefresh = true, enabled = true) {
   return useQuery({
     queryKey: ['user-trend', 'user-activity-v2', days],
     queryFn: () => userService.getUserTrend(days),
+    enabled,
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
@@ -157,6 +163,28 @@ export function useToggleUserHosting() {
       queryClient.invalidateQueries({ queryKey: ['paused-users'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+    },
+  });
+}
+
+/**
+ * 手动暂停/永久禁止指定用户托管
+ */
+export function usePauseUserHosting() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: PauseUserHostingParams) => userService.pauseUserHosting(params),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['today-users'] });
+      queryClient.invalidateQueries({ queryKey: ['paused-users'] });
+      queryClient.invalidateQueries({ queryKey: ['blacklist'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+      toast.success(data.message || (data.isPermanent ? '已永久禁止托管' : '已暂停托管'));
+    },
+    onError: () => {
+      toast.error('操作失败，请重试');
     },
   });
 }

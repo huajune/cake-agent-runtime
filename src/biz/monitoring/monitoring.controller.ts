@@ -84,7 +84,7 @@ export class AnalyticsController {
       return this.queryService.getUsersByDays(parsedDays);
     }
 
-    return this.queryService.getTodayUsersFromDatabase();
+    return this.queryService.getTodayUsers();
   }
 
   /**

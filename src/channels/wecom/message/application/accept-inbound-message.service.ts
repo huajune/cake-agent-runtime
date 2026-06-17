@@ -22,11 +22,24 @@ import { FilterReason } from '@enums/message-filter.enum';
 import { LongTermService } from '@memory/services/long-term.service';
 import type { MessageMetadata } from '@memory/types/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { AlertLevel } from '@enums/alert.enum';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 
 /** source_channel 暂不可用，统一写 'unknown'（上游接入后再带真实渠道）。 */
 const UNKNOWN_SOURCE_CHANNEL = 'unknown';
 
 const FILTERED_HISTORY_ARCHIVE_REASONS = new Set<string>([FilterReason.INVALID_SOURCE]);
+// 人工介入来源白名单：自发消息（isSelf=true）中「真人亲手打字」的来源。
+// 生产实证（近 2 个月 prod chat_messages）：真人招募经理介入的主力形态是经理在托管号
+// 手机上手打 → source=MOBILE_PUSH（is_self=true，1.3 万+ 条）；而 AGGREGATED_CHAT_MANUAL
+// （聚合聊天 web 控制台手发）实际 0 条。AI 自己的回复一律 API_SEND/AI_REPLY，不在此集合，
+// 故用白名单可精确命中真人手打、排除 AI 回复与各类自动化 SOP 来源。
+const HUMAN_INTERVENTION_SOURCES = new Set<MessageSource>([
+  MessageSource.MOBILE_PUSH,
+  MessageSource.AGGREGATED_CHAT_MANUAL,
+]);
 
 export interface AcceptInboundMessageResult {
   shouldDispatch: boolean;
@@ -49,6 +62,9 @@ export class AcceptInboundMessageService {
     private readonly llm: LlmExecutorService,
     private readonly longTerm: LongTermService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
+    private readonly userHostingService: UserHostingService,
+    private readonly alertNotifier: AlertNotifierService,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
@@ -380,6 +396,8 @@ export class AcceptInboundMessageService {
   private async handleSelfMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     const parsed = MessageParser.parse(messageData);
     const { chatId } = parsed;
+    await this.pauseHostingForHumanInterventionIfNeeded(messageData, chatId);
+
     // 入群邀请卡片（invite_to_group 拉群 / 经理手动发卡）没有可提取文本，
     // 补占位内容让卡片在聊天记录页可见；其余类型保持原行为（空内容跳过）。
     const content = parsed.content || this.buildSelfRoomInviteContent(messageData);
@@ -390,8 +408,10 @@ export class AcceptInboundMessageService {
     }
 
     if (messageData.source === MessageSource.MOBILE_PUSH) {
-      this.logger.warn(
-        `[自发消息-异常来源] isSelf=true 但 source=${messageData.source}(${getMessageSourceDescription(messageData.source)}), ` +
+      // isSelf=true + MOBILE_PUSH = 真人在托管号手机上手打（生产主力的人工介入形态）；
+      // 私聊场景已由 pauseHostingForHumanInterventionIfNeeded 暂停托管，这里仅留痕，不再当异常告警。
+      this.logger.debug(
+        `[自发消息-真人手打] isSelf=true 且 source=${messageData.source}(${getMessageSourceDescription(messageData.source)}), ` +
           `messageId=${messageData.messageId}, chatId=${chatId}, botId=${messageData.botId}, botUserId=${messageData.botUserId}`,
       );
     }
@@ -431,6 +451,111 @@ export class AcceptInboundMessageService {
     // 触发描述，描述完成后会通过 chat_messages.UPDATE 回写 content（带 [图片消息] 前缀）
     // 并失效短期记忆缓存。
     this.triggerSelfMessageVisionIfNeeded(messageData);
+  }
+
+  private async pauseHostingForHumanInterventionIfNeeded(
+    messageData: EnterpriseMessageCallbackDto,
+    chatId: string,
+  ): Promise<void> {
+    if (!this.isHumanInterventionMessage(messageData) || !chatId) {
+      return;
+    }
+
+    try {
+      const hit = await this.userHostingService.isAnyPaused([
+        chatId,
+        messageData.imContactId,
+        messageData.externalUserId,
+      ]);
+      if (hit.paused) {
+        this.logger.log(
+          `[真人介入] 会话已暂停托管，跳过重复暂停 [${messageData.messageId}], matchedId=${hit.matchedId}`,
+        );
+        return;
+      }
+
+      await this.userHostingService.pauseUser(chatId, {
+        source: 'human_intervention',
+        reason: '检测到真人介入聊天自动暂停',
+      });
+      await this.sendHumanInterventionPauseAlert(messageData, chatId);
+      this.logger.warn(
+        `[真人介入] 已自动暂停候选人托管 [${messageData.messageId}], chatId=${chatId}, source=${messageData.source}(${getMessageSourceDescription(messageData.source)})`,
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `[真人介入] 自动暂停候选人托管失败 [${messageData.messageId}], chatId=${chatId}: ${errorMessage}`,
+      );
+    }
+  }
+
+  private isHumanInterventionMessage(messageData: EnterpriseMessageCallbackDto): boolean {
+    if (messageData.isSelf !== true) {
+      return false;
+    }
+    if (messageData.imRoomId) {
+      return false;
+    }
+    return HUMAN_INTERVENTION_SOURCES.has(messageData.source);
+  }
+
+  private async sendHumanInterventionPauseAlert(
+    messageData: EnterpriseMessageCallbackDto,
+    chatId: string,
+  ): Promise<void> {
+    try {
+      const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(messageData.imBotId);
+      const contentPreview = MessageParser.extractContent(messageData);
+      const sourceDescription = getMessageSourceDescription(messageData.source);
+
+      await this.alertNotifier.sendAlert({
+        code: 'hosting.human_intervention_paused',
+        summary: '真人介入聊天，已自动暂停托管',
+        severity: AlertLevel.WARNING,
+        source: {
+          subsystem: 'wecom',
+          component: 'AcceptInboundMessageService',
+          action: 'pauseHostingForHumanIntervention',
+          trigger: 'http',
+        },
+        scope: {
+          corpId: messageData.orgId,
+          contactName: messageData.contactName,
+          managerName: messageData.botUserId,
+          chatId,
+          messageId: messageData.messageId,
+          userId: messageData.imContactId || messageData.externalUserId,
+        },
+        impact: {
+          userMessage: contentPreview,
+          userVisible: false,
+          requiresHumanIntervention: true,
+        },
+        diagnostics: {
+          errorMessage: '检测到真人通过聚合聊天手动发送消息，系统已自动暂停该候选人托管',
+          category: 'human_intervention',
+          payload: {
+            botId: messageData.botId,
+            imBotId: messageData.imBotId,
+            imContactId: messageData.imContactId,
+            externalUserId: messageData.externalUserId,
+            source: messageData.source,
+            sourceDescription,
+            messageType: messageData.messageType,
+          },
+        },
+        routing: receiver ? { atUsers: [receiver] } : undefined,
+        dedupe: {
+          key: `hosting.human_intervention_paused:${chatId}`,
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `[真人介入] 飞书通知发送失败 [${messageData.messageId}], chatId=${chatId}: ${errorMessage}`,
+      );
+    }
   }
 
   /**

@@ -177,6 +177,75 @@ describe('buildJobListTool', () => {
     expect(result.markdown).toContain('KFC');
   });
 
+  it('should not auto-apply session brand_ids when brandIdList is omitted (model decides)', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJobData({
+          basicInfo: {
+            brandId: 10239,
+            brandName: 'Levis',
+          },
+        }),
+      ],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        sessionFacts: {
+          interview_info: {},
+          preferences: { brand_ids: [10239] },
+          reasoning: '',
+        } as ToolBuildContext['sessionFacts'],
+      },
+      {
+        ...defaultInput,
+        cityNameList: ['昆明'],
+      },
+    );
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ brandIdList: [] }),
+    );
+    expect(result.queryMeta.brandIdList).toEqual([]);
+  });
+
+  it('should inject contact-remark brand into brandAliasList when model passes no brand', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      { ...mockContext, contactBrandAliases: ['KFC'] },
+      { ...defaultInput, cityNameList: ['上海'] },
+    );
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ brandAliasList: ['KFC'] }),
+    );
+    expect(result.queryMeta.brandAliasList).toEqual(['KFC']);
+    expect(result.queryMeta.brandAliasSource).toBe('contact_remark');
+  });
+
+  it('should NOT override an explicitly passed brand with the contact-remark brand', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      { ...mockContext, contactBrandAliases: ['星巴克'] },
+      { ...defaultInput, cityNameList: ['上海'], brandAliasList: ['KFC'] },
+    );
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ brandAliasList: ['KFC'] }),
+    );
+    expect(result.queryMeta.brandAliasSource).toBe('input');
+  });
+
   it('should return error when no jobs found', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 

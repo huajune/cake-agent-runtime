@@ -65,6 +65,7 @@ describe('buildSaveImageDescriptionTool', () => {
     expect((builtTool as any).description).toContain('id-a, id-b');
     expect((builtTool as any).description).toContain('4-12 个字');
     expect((builtTool as any).description).toContain('不要描述角色外观');
+    expect((builtTool as any).description).toContain('品牌ID：10239');
   });
 
   it('should handle multiple images independently', async () => {

@@ -15,4 +15,9 @@ export class DebugChatDto {
   @IsOptional()
   @IsString()
   userId?: string;
+
+  /** 企微显示名称/备注（用于调试「备注品牌门店优先」线索注入） */
+  @IsOptional()
+  @IsString()
+  contactName?: string;
 }

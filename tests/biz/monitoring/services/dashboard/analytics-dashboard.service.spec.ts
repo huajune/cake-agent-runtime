@@ -115,6 +115,7 @@ describe('AnalyticsDashboardService', () => {
 
   const mockUserHostingService = {
     getUserHostingStatus: jest.fn(),
+    getPausedUserIdSet: jest.fn(),
     getActiveUsersByDateRange: jest.fn(),
     getActiveChatIdsByGroups: jest.fn(),
     countActiveUsersByDateRange: jest.fn(),
@@ -263,6 +264,7 @@ describe('AnalyticsDashboardService', () => {
     mockUserHostingService.getActiveChatIdsByGroups.mockResolvedValue(new Set());
     mockUserHostingService.countActiveUsersByDateRange.mockResolvedValue(0);
     mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
+    mockUserHostingService.getPausedUserIdSet.mockResolvedValue(new Set());
     // 默认 daily_ops_report 不覆盖任何范围 → 预约数走 bookingService（clearAllMocks 不重置实现，需显式复位）
     mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue(null);
     mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue(undefined as never);

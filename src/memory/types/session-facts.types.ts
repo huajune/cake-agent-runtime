@@ -150,6 +150,11 @@ const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default
  */
 export const PreferencesSchema = z.object({
   brands: z.array(z.string()).nullable().describe('意向品牌'),
+  brand_ids: z
+    .array(z.number().int())
+    .nullable()
+    .optional()
+    .describe('意向品牌ID（Boss 岗位标题中的 [brand_id] 数字）'),
   salary: z.string().nullable().describe('意向薪资'),
   position: z.array(z.string()).nullable().describe('意向岗位'),
   schedule: z.string().nullable().describe('意向班次'),
@@ -190,6 +195,11 @@ export const PreferencesSchema = z.object({
  */
 export const LLMPreferencesSchema = z.object({
   brands: z.array(z.string()).nullable().describe('意向品牌'),
+  brand_ids: z
+    .array(z.number().int())
+    .nullable()
+    .optional()
+    .describe('意向品牌ID（Boss 岗位标题中的 [brand_id] 数字；如 "服装导购[10239]" → [10239]）'),
   salary: z.string().nullable().describe('意向薪资'),
   position: z.array(z.string()).nullable().describe('意向岗位'),
   schedule: z.string().nullable().describe('意向班次'),
@@ -300,6 +310,7 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
 
 export const PREFERENCE_FIELD_KEYS = [
   'brands',
+  'brand_ids',
   'salary',
   'position',
   'schedule',
@@ -412,6 +423,7 @@ export interface HighConfidenceInterviewInfo {
 
 export interface HighConfidencePreferences {
   brands: HighConfidenceMaybeValue<string[]>;
+  brand_ids?: HighConfidenceMaybeValue<number[]>;
   salary: HighConfidenceMaybeValue<string>;
   position: HighConfidenceMaybeValue<string[]>;
   schedule: HighConfidenceMaybeValue<string>;
@@ -452,6 +464,7 @@ export interface SessionInterviewInfo {
 
 export interface SessionPreferences {
   brands: SessionFactMaybeValue<string[]>;
+  brand_ids?: SessionFactMaybeValue<number[]>;
   salary: SessionFactMaybeValue<string>;
   position: SessionFactMaybeValue<string[]>;
   schedule: SessionFactMaybeValue<string>;
@@ -541,6 +554,7 @@ export const SessionInterviewInfoSchema = z.object({
 
 export const SessionPreferencesSchema = z.object({
   brands: NullableSessionFactSchema(z.array(z.string())),
+  brand_ids: NullableSessionFactSchema(z.array(z.number().int())).optional(),
   salary: NullableSessionFactSchema(z.string()),
   position: NullableSessionFactSchema(z.array(z.string())),
   schedule: NullableSessionFactSchema(z.string()),

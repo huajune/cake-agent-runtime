@@ -760,6 +760,7 @@ export function filterHighConfidenceFacts(
     },
     preferences: {
       brands: highOnly(facts.preferences.brands),
+      brand_ids: highOnly(facts.preferences.brand_ids),
       salary: highOnly(facts.preferences.salary),
       position: highOnly(facts.preferences.position),
       schedule: highOnly(facts.preferences.schedule),
@@ -834,6 +835,7 @@ export function unwrapHighConfidenceFacts(
     },
     preferences: {
       brands: unwrapHighConfidenceValue(facts.preferences.brands),
+      brand_ids: unwrapHighConfidenceValue(facts.preferences.brand_ids),
       salary: unwrapHighConfidenceValue(facts.preferences.salary),
       position: unwrapHighConfidenceValue(facts.preferences.position),
       schedule: unwrapHighConfidenceValue(facts.preferences.schedule),

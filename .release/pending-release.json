@@ -1,9 +1,50 @@
 {
   "baseVersion": "5.23.0",
-  "nextVersion": "5.23.0",
-  "updatedAt": "2026-06-16",
+  "nextVersion": "5.24.0",
+  "updatedAt": "2026-06-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "359",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/359",
+      "title": "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-17",
+      "businessUpdates": [
+        "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
+        "真人介入聊天自动暂停托管",
+        "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
+        "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
+        "风险词「坑」精细化识别，避开地名误伤",
+        "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
+      ],
+      "summary": [
+        "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
+        "真人介入聊天自动暂停托管",
+        "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
+        "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
+        "风险词「坑」精细化识别，避开地名误伤",
+        "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描"
+      ],
+      "ops": [
+        "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
+        "真人介入聊天自动暂停托管",
+        "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
+        "风险词「坑」精细化识别，避开地名误伤"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "15 个相关测试套件 325 用例全绿；`tsc --noEmit` 干净。",
+        "岗位召回 10 组真实场景经 `debug-chat` 实跑验证（qwen3.6-plus 主模型）。"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.23.0",
     "date": "2026-06-16",

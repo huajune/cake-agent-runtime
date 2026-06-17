@@ -250,6 +250,52 @@ describe('MessageProcessingRepository', () => {
       expect(result.records[0].messageId).toBe('msg_001');
     });
 
+    it('should skip exact count and heavy diagnostic fields for summary projections', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const now = Date.now();
+      const dbRow = {
+        message_id: 'msg_001',
+        chat_id: 'chat_001',
+        user_id: 'user_001',
+        user_name: 'Alice',
+        manager_name: 'Bob',
+        received_at: new Date(now).toISOString(),
+        message_preview: 'Hello',
+        reply_preview: 'Hi',
+        reply_segments: null,
+        status: 'success',
+        total_duration: 1500,
+        queue_duration: null,
+        prep_duration: null,
+        ai_duration: 1200,
+        ttft_ms: 250,
+        send_duration: null,
+        token_usage: 80,
+        is_fallback: false,
+        fallback_success: null,
+      };
+
+      const queryMock = makeQueryMock({ data: [dbRow], error: null, count: 1 });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.getMessageProcessingRecords({
+        limit: 10,
+        includeTotal: false,
+        projection: 'summary',
+      });
+
+      expect(result.records).toHaveLength(1);
+      expect(result.total).toBe(1);
+      expect(mockSupabaseClient.from).toHaveBeenCalledTimes(1);
+      expect(queryMock.select).toHaveBeenCalledTimes(1);
+      const [selectedColumns] = queryMock.select.mock.calls[0];
+      expect(selectedColumns).toContain('message_id');
+      expect(selectedColumns).not.toContain('tool_calls');
+      expect(selectedColumns).not.toContain('agent_steps');
+      expect(selectedColumns).not.toContain('memory_snapshot');
+    });
+
     it('should filter by status when provided', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
