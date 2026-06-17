@@ -563,7 +563,7 @@ export class AcceptInboundMessageService {
         contactName: candidateName,
         chatId,
         pausedUserId: chatId,
-        currentMessageContent: currentMessage || 's',
+        currentMessageContent: currentMessage || '',
         recentMessages: recentMessages.map((m) => ({
           role: m.role,
           content: m.content,

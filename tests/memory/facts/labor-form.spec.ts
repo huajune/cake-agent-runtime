@@ -3,6 +3,7 @@ import {
   SEASONAL_LABOR_FORMS,
   VALID_LABOR_FORMS,
   isFullTimeLaborForm,
+  isHardFilteredLaborForm,
   isSeasonalLaborForm,
   isValidLaborForm,
   matchesLaborForm,
@@ -133,6 +134,19 @@ describe('labor-form', () => {
       'treats %p as not full-time',
       (value) => {
         expect(isFullTimeLaborForm(value)).toBe(false);
+      },
+    );
+  });
+
+  describe('isHardFilteredLaborForm', () => {
+    it.each(['全职', '兼职', '暑假工', '寒假工'])('hard-filters %s', (value) => {
+      expect(isHardFilteredLaborForm(value)).toBe(true);
+    });
+
+    it.each(['小时工', '兼职+', '正式工', '', null, undefined])(
+      'soft-handles / rejects %p',
+      (value) => {
+        expect(isHardFilteredLaborForm(value)).toBe(false);
       },
     );
   });

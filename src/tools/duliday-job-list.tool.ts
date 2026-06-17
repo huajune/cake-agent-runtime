@@ -229,8 +229,9 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
  * 解析候选人想要的细分用工形式（兼职+/小时工/寒假工/暑假工）。
  *
  * 只从已确定性提取的会话事实读取（高置信线索优先，其次会话事实），
- * 不依赖 LLM 入参——保证季节性用工形式过滤始终生效，避免模型忘传。
- * 仅返回合法的细分值；"兼职/全职" 等平台属性词/反向词视为无效。
+ * 不依赖 LLM 入参——保证用工形式过滤始终生效，避免模型忘传。
+ * 返回合法用工形式（全职/兼职/兼职+/小时工/寒假工/暑假工）；"正式工/临时工" 等
+ * 不同轴噪音词视为无效。
  */
 function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
   const sources = [

@@ -18,6 +18,7 @@ import {
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import {
   isFullTimeLaborForm,
+  isHardFilteredLaborForm,
   isSeasonalLaborForm,
   matchesLaborForm,
   sanitizeLaborFormForDisplay,
@@ -204,7 +205,8 @@ export interface LaborFormFilterResult {
 function buildLaborFormKeepPredicate(
   wanted: string | null | undefined,
 ): ((job: any) => boolean) | null {
-  if (!wanted) return null;
+  // 仅硬过滤集（全职/兼职/暑假工/寒假工）构造谓词；其余（小时工/兼职+）软处理返回 null。
+  if (!isHardFilteredLaborForm(wanted)) return null;
   if (isFullTimeLaborForm(wanted)) {
     return (job) => isFullTimeLaborForm(job?.basicInfo?.laborForm);
   }

@@ -37,6 +37,21 @@ export function isSeasonalLaborForm(value: string | null | undefined): boolean {
 }
 
 /**
+ * 候选人想要这些用工形式时，召回结果会按岗位 laborForm 字段**硬过滤**（见
+ * `applyLaborFormConstraint`）：全职 / 兼职(统称) / 暑假工 / 寒假工。
+ * 其余细分（小时工 / 兼职+）只软处理、不硬过滤。
+ *
+ * 单一事实来源 —— 过滤实现与 prompt 注入文案共用，避免两处枚举漂移。
+ */
+export const HARD_FILTERED_LABOR_FORMS = ['全职', '兼职', '暑假工', '寒假工'] as const;
+
+/** 判断候选人想要的用工形式是否会触发 laborForm 硬过滤。 */
+export function isHardFilteredLaborForm(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return (HARD_FILTERED_LABOR_FORMS as readonly string[]).includes(value);
+}
+
+/**
  * 判断岗位 laborForm 是否严格匹配候选人想要的细分用工形式。
  *
  * 用岗位 API 返回的 laborForm 字段做"展示规整后严格相等"比对——

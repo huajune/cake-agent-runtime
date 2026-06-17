@@ -9,7 +9,7 @@ import {
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
 } from '@memory/facts/high-confidence-facts';
-import { isValidLaborForm } from '@memory/facts/labor-form';
+import { isHardFilteredLaborForm, isValidLaborForm } from '@memory/facts/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
@@ -241,11 +241,7 @@ export class HardConstraintsSection implements PromptSection {
       );
     }
     if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
-      const hardFiltered =
-        pref.labor_form === '全职' ||
-        pref.labor_form === '兼职' ||
-        pref.labor_form === '暑假工' ||
-        pref.labor_form === '寒假工';
+      const hardFiltered = isHardFilteredLaborForm(pref.labor_form);
       lines.push(
         hardFiltered
           ? `- 用工形式: ${pref.labor_form}（工具会按岗位 laborForm 字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止承诺"有/没有「${pref.labor_form}」"，过滤后为空就如实告知附近暂无该用工形式岗位）`
