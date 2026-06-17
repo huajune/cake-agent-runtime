@@ -16,6 +16,12 @@ import {
   type ScheduleSemantic,
 } from '@tools/utils/schedule-semantic.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+import {
+  isFullTimeLaborForm,
+  isSeasonalLaborForm,
+  matchesLaborForm,
+  sanitizeLaborFormForDisplay,
+} from '@memory/facts/labor-form';
 
 const EARTH_RADIUS_KM = 6371;
 
@@ -175,6 +181,77 @@ export function applyScheduleConstraint(
   }
 
   return { jobs: kept, excluded };
+}
+
+export interface LaborFormFilterResult {
+  /** 是否实际启用了硬过滤。 */
+  applied: boolean;
+  jobs: any[];
+  excluded: Array<{ jobId: number | null; brandName: string | null; laborForm: string | null }>;
+}
+
+/**
+ * 把候选人想要的用工形式映射成"保留谓词"。返回 null 表示不做硬过滤（软处理）。
+ *
+ * 硬过滤集：
+ * - 全职 → 只保留 laborForm==全职（全职必须岗位字段显式背书）；
+ * - 兼职（统称）→ 剔除全职，保留所有非全职（含细分 / 无 laborForm 的默认按兼职）；
+ * - 暑假工 / 寒假工（季节性）→ laborForm 严格相等（季节可用性必须字段背书）。
+ *
+ * 软处理（返回 null，不剔除，仅照字段如实介绍）：
+ * - 小时工 / 兼职+ —— 兼职内部细分，laborForm 字段稀疏，硬过滤易误伤。
+ */
+function buildLaborFormKeepPredicate(
+  wanted: string | null | undefined,
+): ((job: any) => boolean) | null {
+  if (!wanted) return null;
+  if (isFullTimeLaborForm(wanted)) {
+    return (job) => isFullTimeLaborForm(job?.basicInfo?.laborForm);
+  }
+  if (wanted === '兼职') {
+    // 非全职即兼职：无 laborForm 的岗位默认视为兼职类，予以保留。
+    return (job) => !isFullTimeLaborForm(job?.basicInfo?.laborForm);
+  }
+  if (isSeasonalLaborForm(wanted)) {
+    return (job) => matchesLaborForm(job?.basicInfo?.laborForm, wanted);
+  }
+  return null;
+}
+
+/**
+ * 按候选人想要的用工形式过滤岗位（仅对全职 / 兼职统称 / 季节性硬过滤；小时工/兼职+ 软处理）。
+ *
+ * 剔除项附岗位实际 laborForm，便于上层如实解释（如"附近这几家都是兼职岗，没有全职"）。
+ *
+ * 设计动机：
+ * - badcase 6a32317a：候选人问"廊坊有没有暑假工"，Agent 零查岗就承诺"有"，实际整城无暑假工。
+ * - 全职放开后，全职/兼职可用性同理必须由岗位 laborForm 字段背书，不能软推断。
+ */
+export function applyLaborFormConstraint(
+  jobs: any[],
+  wanted: string | null | undefined,
+): LaborFormFilterResult {
+  const keep = buildLaborFormKeepPredicate(wanted);
+  if (!keep) {
+    return { applied: false, jobs, excluded: [] };
+  }
+
+  const excluded: LaborFormFilterResult['excluded'] = [];
+  const kept: any[] = [];
+
+  for (const job of jobs) {
+    if (keep(job)) {
+      kept.push(job);
+    } else {
+      excluded.push({
+        jobId: typeof job?.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
+        brandName: typeof job?.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
+        laborForm: sanitizeLaborFormForDisplay(job?.basicInfo?.laborForm),
+      });
+    }
+  }
+
+  return { applied: true, jobs: kept, excluded };
 }
 
 export function filterJobsByRequestedCategories(jobs: any[], jobCategoryList: string[]): any[] {

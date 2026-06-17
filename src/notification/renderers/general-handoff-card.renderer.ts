@@ -24,7 +24,7 @@ export class GeneralHandoffCardRenderer {
       '处理完请到 Web 托管后台手动恢复托管。',
     ].filter((line): line is string => Boolean(line));
 
-    const baseTitle = `🚨 候选人需人工介入 · ${payload.alertLabel}`;
+    const baseTitle = payload.titleOverride ?? `🚨 候选人需人工介入 · ${payload.alertLabel}`;
     return this.cardBuilder.buildMarkdownCard({
       title: payload.isTest ? `${baseTitle} · 测试ing` : baseTitle,
       content: sections.join('\n\n'),

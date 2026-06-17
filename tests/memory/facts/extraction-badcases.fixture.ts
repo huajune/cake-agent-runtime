@@ -103,9 +103,14 @@ export const EXTRACTION_BADCASES: ExtractionBadcaseFixture[] = [
 
   // ==================== labor_form：平台语义 ====================
   {
-    description: 'labor_form：「找兼职」无筛选价值不得提取',
+    description: 'labor_form：「找兼职」应提取（全职放开后兼职是筛选维度）',
     input: '我想找个兼职',
-    shouldNotExtract: ['preferences.labor_form'],
+    shouldExtract: { 'preferences.labor_form': '兼职' },
+  },
+  {
+    description: 'labor_form：「找全职」应提取',
+    input: '我想找全职',
+    shouldExtract: { 'preferences.labor_form': '全职' },
   },
   {
     description: 'labor_form：「小时工」细分值应提取',

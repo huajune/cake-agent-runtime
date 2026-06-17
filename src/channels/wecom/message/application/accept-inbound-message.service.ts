@@ -23,9 +23,8 @@ import { LongTermService } from '@memory/services/long-term.service';
 import type { MessageMetadata } from '@memory/types/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { AlertNotifierService } from '@notification/services/alert-notifier.service';
-import { AlertLevel } from '@enums/alert.enum';
-import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
+import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
+import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 
 /** source_channel 暂不可用，统一写 'unknown'（上游接入后再带真实渠道）。 */
 const UNKNOWN_SOURCE_CHANNEL = 'unknown';
@@ -40,6 +39,22 @@ const HUMAN_INTERVENTION_SOURCES = new Set<MessageSource>([
   MessageSource.MOBILE_PUSH,
   MessageSource.AGGREGATED_CHAT_MANUAL,
 ]);
+
+// 人工介入信号只认「真人手打文字」。仅 TEXT 类型才算真人介入，其余一律不暂停托管：
+// 图片/语音/表情/卡片等结构化或非逐字输入都排除。典型误报：invite_to_group 成功后平台向候选人
+// 发出的「入群邀请卡片」会以自发消息回灌（isSelf=true + source=MOBILE_PUSH + messageType=ROOM_INVITE），
+// 旧逻辑只看 source 不看 messageType，把它误判成真人介入 → 误暂停托管 + 误告警（2026-06-17 李宇杭 case）。
+const HUMAN_INTERVENTION_MESSAGE_TYPE = MessageType.TEXT;
+
+/**
+ * 真人介入来源短语，用于原文案「检测到真人通过{X}手动发送消息…」。
+ * 仅把旧版写死的「聚合聊天」按真实来源替换（手机手打 = MOBILE_PUSH），其余文案不变。
+ */
+function humanInterventionSourcePhrase(source: MessageSource): string {
+  if (source === MessageSource.MOBILE_PUSH) return '手机';
+  if (source === MessageSource.AGGREGATED_CHAT_MANUAL) return '聚合聊天';
+  return getMessageSourceDescription(source);
+}
 
 export interface AcceptInboundMessageResult {
   shouldDispatch: boolean;
@@ -63,8 +78,8 @@ export class AcceptInboundMessageService {
     private readonly longTerm: LongTermService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly userHostingService: UserHostingService,
-    private readonly alertNotifier: AlertNotifierService,
-    private readonly hostingMemberConfig: HostingMemberConfigService,
+    private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
+    private readonly groupBlacklistService: GroupBlacklistService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
@@ -461,6 +476,19 @@ export class AcceptInboundMessageService {
       return;
     }
 
+    // 仅对"托管中"的小组才暂停+告警。与 Dashboard「小组托管状态」同源：
+    // 小组在 group_blacklist（已屏蔽 = 关闭托管）里时，本就不触发 AI 回复，
+    // 招募经理在该小组真人回复属正常操作，不应误暂停 + 误告警。
+    if (
+      messageData.groupId &&
+      (await this.groupBlacklistService.isGroupBlacklisted(messageData.groupId))
+    ) {
+      this.logger.debug(
+        `[真人介入] 小组未托管（已屏蔽），跳过暂停/告警 [${messageData.messageId}], groupId=${messageData.groupId}`,
+      );
+      return;
+    }
+
     try {
       const hit = await this.userHostingService.isAnyPaused([
         chatId,
@@ -478,7 +506,7 @@ export class AcceptInboundMessageService {
         source: 'human_intervention',
         reason: '检测到真人介入聊天自动暂停',
       });
-      await this.sendHumanInterventionPauseAlert(messageData, chatId);
+      await this.sendHumanInterventionHandoffAlert(messageData, chatId);
       this.logger.warn(
         `[真人介入] 已自动暂停候选人托管 [${messageData.messageId}], chatId=${chatId}, source=${messageData.source}(${getMessageSourceDescription(messageData.source)})`,
       );
@@ -497,58 +525,51 @@ export class AcceptInboundMessageService {
     if (messageData.imRoomId) {
       return false;
     }
+    // 仅真人手打文字（TEXT）才算人工介入；图片/语音/卡片/系统消息等一律不暂停托管。
+    if (messageData.messageType !== HUMAN_INTERVENTION_MESSAGE_TYPE) {
+      return false;
+    }
     return HUMAN_INTERVENTION_SOURCES.has(messageData.source);
   }
 
-  private async sendHumanInterventionPauseAlert(
+  /**
+   * 真人介入告警：复用「候选人需人工介入」通用人工介入卡片（命中原因 / 建议动作 /
+   * 聊天上下文 / 候选人信息），由 GeneralHandoffNotifier 渲染并发到蛋糕私聊监控群、@ 负责人。
+   *
+   * 字段对齐（自发消息里 messageData.contactName/botUserId 都是「托管号」自己）：
+   * - contactName（卡片「微信昵称」）= 真实候选人（从会话历史解析），无则留空
+   * - botUserName（卡片「托管账号」）= 托管号账号 botUserId
+   */
+  private async sendHumanInterventionHandoffAlert(
     messageData: EnterpriseMessageCallbackDto,
     chatId: string,
   ): Promise<void> {
     try {
-      const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(messageData.imBotId);
-      const contentPreview = MessageParser.extractContent(messageData);
-      const sourceDescription = getMessageSourceDescription(messageData.source);
+      const [recentMessages, candidateName] = await Promise.all([
+        this.chatSession.getChatHistory(chatId, 10).catch(() => []),
+        this.getCandidateNameFromHistory(chatId),
+      ]);
+      const sourcePhrase = humanInterventionSourcePhrase(messageData.source);
+      const currentMessage = MessageParser.extractContent(messageData);
 
-      await this.alertNotifier.sendAlert({
-        code: 'hosting.human_intervention_paused',
-        summary: '真人介入聊天，已自动暂停托管',
-        severity: AlertLevel.WARNING,
-        source: {
-          subsystem: 'wecom',
-          component: 'AcceptInboundMessageService',
-          action: 'pauseHostingForHumanIntervention',
-          trigger: 'http',
-        },
-        scope: {
-          corpId: messageData.orgId,
-          contactName: messageData.contactName,
-          managerName: messageData.botUserId,
-          chatId,
-          messageId: messageData.messageId,
-          userId: messageData.imContactId || messageData.externalUserId,
-        },
-        impact: {
-          userMessage: contentPreview,
-          userVisible: false,
-          requiresHumanIntervention: true,
-        },
-        diagnostics: {
-          errorMessage: '检测到真人通过聚合聊天手动发送消息，系统已自动暂停该候选人托管',
-          category: 'human_intervention',
-          payload: {
-            botId: messageData.botId,
-            imBotId: messageData.imBotId,
-            imContactId: messageData.imContactId,
-            externalUserId: messageData.externalUserId,
-            source: messageData.source,
-            sourceDescription,
-            messageType: messageData.messageType,
-          },
-        },
-        routing: receiver ? { atUsers: [receiver] } : undefined,
-        dedupe: {
-          key: `hosting.human_intervention_paused:${chatId}`,
-        },
+      await this.generalHandoffNotifier.notify({
+        // 沿用原文案：标题与说明保持不变，仅把旧版写死的「聚合聊天」按真实来源动态填充。
+        titleOverride: '🚨 真人介入聊天，已自动暂停托管 · 需要人工介入',
+        alertLabel: '真人介入自动暂停',
+        reason: `检测到真人通过${sourcePhrase}手动发送消息，系统已自动暂停该候选人托管`,
+        corpId: messageData.orgId,
+        botImId: messageData.imBotId,
+        botUserName: messageData.botUserId,
+        contactName: candidateName,
+        chatId,
+        pausedUserId: chatId,
+        currentMessageContent: currentMessage || 's',
+        recentMessages: recentMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
+        sessionState: null,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

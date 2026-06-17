@@ -17,7 +17,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
-import { stripLaborFormFromCategories } from '@memory/facts/labor-form';
+import { isValidLaborForm, stripLaborFormFromCategories } from '@memory/facts/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
@@ -26,6 +26,7 @@ import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import {
+  applyLaborFormConstraint,
   applyScheduleConstraint,
   filterJobsByRequestedCategories,
   filterJobsToRequestedBrands,
@@ -84,7 +85,7 @@ const inputSchema = z.object({
     .optional()
     .default([])
     .describe(
-      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n严禁填入"兼职"、"全职"、"小时工"、"寒假工"、"暑假工"、"兼职+"、"临时工"等用工形式词——平台所有岗位都是兼职岗位，用工形式不是岗位工种。若召回为空，先清空 jobCategoryList 放宽重查。',
+      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n严禁填入"全职"、"兼职"、"小时工"、"寒假工"、"暑假工"、"兼职+"、"临时工"等用工形式词——用工形式是岗位的 laborForm 属性、不是岗位工种，按工具的用工形式过滤处理（候选人意向已从会话事实自动读取），不要塞进 jobCategoryList。若召回为空，先清空 jobCategoryList 放宽重查。',
     ),
   brandIdList: z
     .array(z.number().int())
@@ -220,6 +221,24 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
   for (const source of sources) {
     const parsed = parseCandidateAge(source == null ? null : String(source));
     if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+/**
+ * 解析候选人想要的细分用工形式（兼职+/小时工/寒假工/暑假工）。
+ *
+ * 只从已确定性提取的会话事实读取（高置信线索优先，其次会话事实），
+ * 不依赖 LLM 入参——保证季节性用工形式过滤始终生效，避免模型忘传。
+ * 仅返回合法的细分值；"兼职/全职" 等平台属性词/反向词视为无效。
+ */
+function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
+  const sources = [
+    readHighConfidenceFactValue(context.highConfidenceFacts?.preferences?.labor_form),
+    readFactValue(context.sessionFacts?.preferences?.labor_form),
+  ];
+  for (const source of sources) {
+    if (typeof source === 'string' && isValidLaborForm(source)) return source;
   }
   return null;
 }
@@ -926,6 +945,37 @@ export function buildJobListTool(
             });
           }
 
+          // 用工形式过滤：候选人想要全职/兼职(统称)/暑假工/寒假工时，按岗位 laborForm
+          // 字段硬过滤（避免把兼职岗当全职、把常规岗当季节工承诺）；小时工/兼职+ 软处理。
+          // 候选人意向从确定性提取的会话事实读取，不依赖 LLM 入参，保证始终生效。
+          const candidateLaborForm = resolveCandidateLaborForm(context);
+          const laborFormFilterResult = applyLaborFormConstraint(jobs, candidateLaborForm);
+          if (laborFormFilterResult.applied) {
+            jobs = laborFormFilterResult.jobs;
+            total = jobs.length;
+            if (laborFormFilterResult.excluded.length > 0 && jobs.length === 0) {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY,
+                outcome: `本轮召回岗位经"${candidateLaborForm}"用工形式过滤后为空`,
+                replyInstruction:
+                  `候选人想要「${candidateLaborForm}」，但本轮附近召回的岗位经岗位 laborForm 字段核对后，` +
+                  `没有一条是「${candidateLaborForm}」。**必须如实告知"附近暂时没有${candidateLaborForm}的岗位"**，` +
+                  '不得把别的用工形式的岗位（如把兼职岗说成全职、把常规岗说成暑假工）包装回去，也不得凭通识承诺有岗。' +
+                  '可主动表示后续有匹配岗位上线会第一时间通知；若候选人愿意考虑其他用工形式，再据其意向重新查岗。',
+                details: {
+                  queryMeta: {
+                    laborFormFilter: {
+                      applied: true,
+                      candidateLaborForm,
+                      excludedCount: laborFormFilterResult.excluded.length,
+                      excludedExamples: laborFormFilterResult.excluded.slice(0, 3),
+                    },
+                  },
+                },
+              });
+            }
+          }
+
           const flags: ProgressiveDisclosureFlags = {
             includeBasicInfo,
             includeJobSalary,
@@ -979,6 +1029,14 @@ export function buildJobListTool(
                   candidateConstraint: candidateScheduleConstraint,
                   excludedCount: scheduleFilterResult.excluded.length,
                   excludedExamples: scheduleFilterResult.excluded.slice(0, 5),
+                }
+              : { applied: false },
+            laborFormFilter: laborFormFilterResult.applied
+              ? {
+                  applied: true,
+                  candidateLaborForm,
+                  excludedCount: laborFormFilterResult.excluded.length,
+                  excludedExamples: laborFormFilterResult.excluded.slice(0, 5),
                 }
               : { applied: false },
             brandNearestStores: brandGroups,
