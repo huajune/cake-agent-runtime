@@ -27,6 +27,7 @@ import { ReplyFactGuardService } from '@wecom/message/application/reply-fact-gua
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -150,6 +151,11 @@ describe('MessagePipelineService', () => {
     resolveFeishuReceiver: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockUserHostingService = {
+    isAnyPaused: jest.fn().mockResolvedValue({ paused: false }),
+    pauseUser: jest.fn().mockResolvedValue(undefined),
+  };
+
   const mockSimpleMergeService = {
     claimPendingSnapshot: jest
       .fn()
@@ -199,6 +205,7 @@ describe('MessagePipelineService', () => {
         { provide: PreAgentRiskInterceptService, useValue: mockPreAgentRiskIntercept },
         { provide: LongTermService, useValue: mockLongTermService },
         { provide: HostingMemberConfigService, useValue: mockHostingMemberConfigService },
+        { provide: UserHostingService, useValue: mockUserHostingService },
         {
           provide: ReplyFactGuardService,
           useValue: { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) },
