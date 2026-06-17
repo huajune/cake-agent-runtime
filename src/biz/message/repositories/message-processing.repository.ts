@@ -21,7 +21,31 @@ interface MessageProcessingFilters {
 export class MessageProcessingRepository extends BaseRepository {
   protected readonly tableName = 'message_processing_records';
 
-  // 列表/聚合查询用的精简投影（不拉 agent_invocation 这个 jsonb 大字段）
+  // Web 列表/最慢榜用的最小投影：只拉表格首屏展示需要的轻字段。
+  private readonly summarySelectedColumns = [
+    'message_id',
+    'chat_id',
+    'user_id',
+    'user_name',
+    'manager_name',
+    'bot_im_id',
+    'received_at',
+    'message_preview',
+    'reply_preview',
+    'reply_segments',
+    'status',
+    'total_duration',
+    'queue_duration',
+    'prep_duration',
+    'ai_duration',
+    'ttft_ms',
+    'send_duration',
+    'token_usage',
+    'is_fallback',
+    'fallback_success',
+  ].join(',');
+
+  // 内部诊断/聚合查询用投影（不拉 agent_invocation 这个最大 jsonb 字段）
   private readonly listSelectedColumns = [
     'message_id',
     'chat_id',
@@ -113,7 +137,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
     try {
       const results = await this.select<MessageProcessingDbRecord>(
-        this.listSelectedColumns,
+        this.summarySelectedColumns,
         (q) => {
           let r = q
             .eq('status', 'success')
@@ -150,6 +174,10 @@ export class MessageProcessingRepository extends BaseRepository {
     managerNames?: string[];
     limit?: number;
     offset?: number;
+    /** 前端列表已经从 message-stats 拿总数；关闭精确 count 可避免每页额外重扫。 */
+    includeTotal?: boolean;
+    /** summary 给 Web 表格用；diagnostic 保持历史内部查询需要的工具/记忆字段。 */
+    projection?: 'summary' | 'diagnostic';
   }): Promise<{
     records: MessageProcessingRecordInput[];
     total: number;
@@ -167,8 +195,8 @@ export class MessageProcessingRepository extends BaseRepository {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const buildModifier = (q: any) => {
-        let r = q.order('received_at', { ascending: false });
+      const buildFilterModifier = (q: any) => {
+        let r = q;
         if (options.startDate) r = r.gte('received_at', options.startDate.toISOString());
         else if (options.startTime)
           r = r.gte('received_at', new Date(options.startTime).toISOString());
@@ -181,18 +209,26 @@ export class MessageProcessingRepository extends BaseRepository {
           userName: options.userName,
           managerNames: options.managerNames,
         });
-        if (options.limit) {
-          const offset = options.offset ?? 0;
-          r = r.range(offset, offset + options.limit - 1);
-        }
         return r;
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const buildListModifier = (q: any) => {
+        let r = buildFilterModifier(q).order('received_at', { ascending: false });
+        if (!options.limit) return r;
+        const offset = options.offset ?? 0;
+        r = r.range(offset, offset + options.limit - 1);
+        return r;
+      };
+
+      const selectedColumns =
+        options.projection === 'summary' ? this.summarySelectedColumns : this.listSelectedColumns;
       const results = await this.select<MessageProcessingDbRecord>(
-        this.listSelectedColumns,
-        buildModifier,
+        selectedColumns,
+        buildListModifier,
       );
-      const total = await this.count(buildModifier);
+      const total =
+        options.includeTotal === false ? results.length : await this.count(buildFilterModifier);
 
       return {
         records: results.map((r) => this.fromDbRecord(r)),
@@ -223,6 +259,8 @@ export class MessageProcessingRepository extends BaseRepository {
     managerNames?: string[];
     limit?: number;
     offset?: number;
+    includeTotal?: boolean;
+    projection?: 'summary' | 'diagnostic';
   }): Promise<{ records: MessageProcessingRecordInput[]; total: number }> {
     const chatIds = options.chatIds ?? [];
     const batchSize = MessageProcessingRepository.CHAT_ID_IN_BATCH;

@@ -40,7 +40,7 @@ export interface PauseUserOptions {
   reason?: string;
   /** 操作人（运营手动暂停时记录，供回溯） */
   operator?: string;
-  /** 暂停来源：manual / candidate_blacklist / interview_booking 等 */
+  /** 暂停来源：manual / human_intervention / candidate_blacklist / interview_booking 等 */
   source?: string;
 }
 
@@ -228,19 +228,7 @@ export class UserHostingService {
   > {
     await this.ensureFreshPausedUsers();
 
-    const now = Date.now();
-    const pausedEntries = Array.from(this.pausedUsersCache.entries())
-      .filter(([, entry]) => entry.isPaused && entry.expiresAt > now)
-      .map(([userId, entry]) => ({
-        userId,
-        pausedAt: entry.pausedAt,
-        // 永久暂停无解禁时间，返回 null 避免前端渲染哨兵时间戳
-        pauseExpiresAt: entry.permanent ? null : entry.expiresAt,
-        isPermanent: entry.permanent === true,
-        pauseReason: entry.reason,
-        pauseOperator: entry.operator,
-        pauseSource: entry.source,
-      }));
+    const pausedEntries = this.getActivePausedEntries();
 
     if (pausedEntries.length === 0) {
       return [];
@@ -277,6 +265,16 @@ export class UserHostingService {
       this.logger.error('查询暂停用户资料异常', error);
       return pausedEntries;
     }
+  }
+
+  /**
+   * 获取当前仍生效的暂停托管 ID 集合。
+   *
+   * 给列表/看板这类批量读场景使用，避免对每个用户重复调用 isUserPaused。
+   */
+  async getPausedUserIdSet(): Promise<Set<string>> {
+    await this.ensureFreshPausedUsers();
+    return new Set(this.getActivePausedEntries().map((entry) => entry.userId));
   }
 
   // ==================== 活跃记录读写 ====================
@@ -456,6 +454,30 @@ export class UserHostingService {
     }
 
     await this.loadPausedUsers();
+  }
+
+  private getActivePausedEntries(): Array<{
+    userId: string;
+    pausedAt: number;
+    pauseExpiresAt: number | null;
+    isPermanent: boolean;
+    pauseReason?: string;
+    pauseOperator?: string;
+    pauseSource?: string;
+  }> {
+    const now = Date.now();
+    return Array.from(this.pausedUsersCache.entries())
+      .filter(([, entry]) => entry.isPaused && entry.expiresAt > now)
+      .map(([userId, entry]) => ({
+        userId,
+        pausedAt: entry.pausedAt,
+        // 永久暂停无解禁时间，返回 null 避免前端渲染哨兵时间戳
+        pauseExpiresAt: entry.permanent ? null : entry.expiresAt,
+        isPermanent: entry.permanent === true,
+        pauseReason: entry.reason,
+        pauseOperator: entry.operator,
+        pauseSource: entry.source,
+      }));
   }
 
   private populatePausedUsersCache(entries: SharedCacheEntry[]): void {

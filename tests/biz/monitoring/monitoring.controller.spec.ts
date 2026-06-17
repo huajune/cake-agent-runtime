@@ -23,6 +23,7 @@ describe('AnalyticsController', () => {
     getSystemMonitoringAsync: jest.fn(),
     getTrendsDataAsync: jest.fn(),
     getMetricsDataAsync: jest.fn(),
+    getTodayUsers: jest.fn(),
     getTodayUsersFromDatabase: jest.fn(),
     getUsersByDate: jest.fn(),
     getUsersByDays: jest.fn(),
@@ -165,13 +166,14 @@ describe('AnalyticsController', () => {
   });
 
   describe('getUsersByDate', () => {
-    it('should call getTodayUsersFromDatabase when no date provided', async () => {
+    it('should call cached getTodayUsers when no date provided', async () => {
       const mockResult = [{ userId: 'u-1', name: 'User 1' }];
-      mockQueryService.getTodayUsersFromDatabase.mockResolvedValue(mockResult);
+      mockQueryService.getTodayUsers.mockResolvedValue(mockResult);
 
       const result = await controller.getUsersByDate();
 
-      expect(queryService.getTodayUsersFromDatabase).toHaveBeenCalled();
+      expect(queryService.getTodayUsers).toHaveBeenCalled();
+      expect(queryService.getTodayUsersFromDatabase).not.toHaveBeenCalled();
       expect(queryService.getUsersByDate).not.toHaveBeenCalled();
       expect(queryService.getUsersByDays).not.toHaveBeenCalled();
       expect(result).toEqual(mockResult);
