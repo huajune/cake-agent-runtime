@@ -16,6 +16,11 @@ export interface GeneralHandoffNotificationMessage {
  */
 export interface GeneralHandoffNotificationPayload {
   alertLabel: string;
+  /**
+   * 可选：完整覆盖卡片标题。缺省用 `🚨 候选人需人工介入 · {alertLabel}`。
+   * 真人介入告警用它沿用原文案标题「真人介入聊天，已自动暂停托管 · 需要人工介入」。
+   */
+  titleOverride?: string;
   reason: string;
   actionAdvice?: string;
   /**

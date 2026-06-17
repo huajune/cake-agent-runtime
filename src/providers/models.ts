@@ -122,6 +122,12 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== 通义千问 (Qwen) ====================
+  'qwen/qwen3.7-plus': {
+    provider: 'qwen',
+    name: 'Qwen3.7 Plus',
+    description: '通义千问 3.7 增强版 (思考 / 工具调用 / 图文多模态)',
+    capabilities: ['thinking', 'tool-use', 'multimodal'],
+  },
   'qwen/qwen3.6-max-preview': {
     provider: 'qwen',
     name: 'qwen3.6-max-preview',

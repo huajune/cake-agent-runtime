@@ -1,22 +1,82 @@
 /**
  * 用工形式（labor_form）工具函数与常量。
  *
- * 业务前提：平台所有岗位都是兼职岗位。"兼职"/"全职" 不是筛选维度，
- * 真正有区分度的是 4 个细分类型：兼职+ / 小时工 / 寒假工 / 暑假工。
+ * 业务前提：平台**同时有全职和兼职岗位**，岗位 `laborForm` 字段是单值，合法取值含
+ * 全职 / 兼职 / 兼职+ / 小时工 / 寒假工 / 暑假工。用工形式一律按岗位 laborForm 字段
+ * 如实介绍，禁止互相改写或编造。
+ *
+ * 注意："正式工"/"临时工" 与 全职/兼职 不是同一概念轴（它们都属于"正式工"用工性质），
+ * 不在本平台招聘范围内，作为噪音词剥离/隐藏。
  *
  * 这里是所有层（事实提取、Prompt 渲染、工具入参兜底）共享的单一事实来源，
  * 避免多处硬编码导致规则漂移。
  */
 
-/** 平台支持的 labor_form 合法值。 */
-export const VALID_LABOR_FORMS = ['兼职+', '小时工', '寒假工', '暑假工'] as const;
+/** 平台支持的 labor_form 合法值（全职 + 兼职及其细分）。 */
+export const VALID_LABOR_FORMS = ['全职', '兼职', '兼职+', '小时工', '寒假工', '暑假工'] as const;
 
-/** 不应作为 labor_form 或 jobCategoryList 出现的用工形式词（平台属性词 + 反向词）。 */
-export const INVALID_LABOR_FORM_WORDS = ['兼职', '全职', '临时工', '正式工'] as const;
+/** 全职用工形式的标准值。 */
+export const FULL_TIME_LABOR_FORM = '全职';
+
+/** 判断一个 labor_form（规整后）是否为全职。 */
+export function isFullTimeLaborForm(value: string | null | undefined): boolean {
+  return sanitizeLaborFormForDisplay(value) === FULL_TIME_LABOR_FORM;
+}
+
+/**
+ * 季节性用工形式 —— 有明确可用窗口（寒假/暑假），是否在招随门店上下架强相关。
+ * 候选人想要这类岗位时，向其承诺"有/没有"前**必须**按岗位 laborForm 字段严格核对，
+ * 不能凭"平台都是兼职""排班灵活"等通识空口承诺（badcase：未查岗就说"暑假工我们有"）。
+ */
+export const SEASONAL_LABOR_FORMS = ['寒假工', '暑假工'] as const;
+
+/** 判断一个 labor_form 是否为季节性用工形式（寒假工 / 暑假工）。 */
+export function isSeasonalLaborForm(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return (SEASONAL_LABOR_FORMS as readonly string[]).includes(value);
+}
+
+/**
+ * 候选人想要这些用工形式时，召回结果会按岗位 laborForm 字段**硬过滤**（见
+ * `applyLaborFormConstraint`）：全职 / 兼职(统称) / 暑假工 / 寒假工。
+ * 其余细分（小时工 / 兼职+）只软处理、不硬过滤。
+ *
+ * 单一事实来源 —— 过滤实现与 prompt 注入文案共用，避免两处枚举漂移。
+ */
+export const HARD_FILTERED_LABOR_FORMS = ['全职', '兼职', '暑假工', '寒假工'] as const;
+
+/** 判断候选人想要的用工形式是否会触发 laborForm 硬过滤。 */
+export function isHardFilteredLaborForm(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return (HARD_FILTERED_LABOR_FORMS as readonly string[]).includes(value);
+}
+
+/**
+ * 判断岗位 laborForm 是否严格匹配候选人想要的细分用工形式。
+ *
+ * 用岗位 API 返回的 laborForm 字段做"展示规整后严格相等"比对——
+ * 不做"小时工≈暑假工""兼职+≈兼职"之类的语义放宽：平台口径要求
+ * **严格按岗位写的值介绍**，宁可不匹配也不把常规岗包装成季节工。
+ */
+export function matchesLaborForm(
+  jobLaborForm: string | null | undefined,
+  wanted: string | null | undefined,
+): boolean {
+  if (!wanted) return false;
+  const normalized = sanitizeLaborFormForDisplay(jobLaborForm);
+  if (!normalized) return false;
+  return normalized === wanted;
+}
+
+/**
+ * 噪音词：与本平台 全职/兼职 用工形式不属同一概念轴，应从展示文本/laborForm 中剥离或隐藏。
+ * "正式工"/"临时工" 都属"正式工"用工性质，不在平台招聘范围；不能把它们当成 全职/兼职 复述。
+ */
+export const INVALID_LABOR_FORM_WORDS = ['临时工', '正式工'] as const;
 
 /**
  * 判断一个 labor_form 值是否合法。
- * 兼容历史会话事实 —— 老数据里可能存了 "兼职"/"全职"，读取时应被视为无效。
+ * 兼容历史会话事实 —— 老数据里可能存了 "正式工"/"临时工"，读取时应被视为无效。
  */
 export function isValidLaborForm(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -25,22 +85,18 @@ export function isValidLaborForm(value: string | null | undefined): boolean {
 
 /**
  * 把岗位 API 返回的 jobName / jobNickName / jobCategoryName 等"可展示文本"中
- * 残留的 platform-反向词剔除掉。
+ * 残留的噪音用工性质词（正式工/临时工）剔除掉。
  *
- * 业务背景：badcase `nwr0i50f` —— 奥乐齐分拣岗的 `jobName` 中带"全职"二字，
- * Agent 看到工具结果里的"全职"，向候选人解释为"名字带全职只是招人的叫法"，
- * 暴露平台属性混乱给用户。平台所有岗位都是兼职，"全职/正式工/临时工"在岗位名里
- * 没有任何业务含义，应在渲染层统一剥离，不让 LLM 触达这些词。
+ * 业务说明：平台招的是 全职/兼职 岗，"正式工/临时工" 属另一概念轴（正式工用工性质），
+ * 不在招聘范围，出现在岗位名里是后台噪音，应在渲染层剥离，不让 LLM 触达。
+ * 注意：全职/兼职 现在都是合法用工形式，**不再剥离**，照岗位 laborForm 如实展示。
  *
- * 实现策略：纯字符串 token 替换，配合分隔符清理。可能会让原本写成
- * "蛋糕全职岗" 的字段变成 "蛋糕岗"，这正是我们想要的——平台所有岗位都是兼职，
- * 不存在"全职岗"语义。
+ * 实现策略：纯字符串 token 替换，配合分隔符清理。
  */
 export function sanitizeJobDisplayText(value: string | null | undefined): string | null {
   if (!value) return null;
   let out = value;
   for (const token of INVALID_LABOR_FORM_WORDS) {
-    if (token === '兼职') continue; // "兼职"是合法平台属性词，可以出现在 jobName 里
     out = out.split(token).join('');
   }
   // 移除因剔除产生的空括号、空连字符片段
@@ -56,15 +112,11 @@ export function sanitizeJobDisplayText(value: string | null | undefined): string
 /**
  * 把岗位 API 返回的 labor_form 值规整为"可对外展示"的口径。
  *
- * 业务前提：平台所有岗位都是兼职岗位。API 历史数据里偶尔会有 "全职"、"正式工" 等
- * 反向词（badcase #17 `recvhYumoxHRv7` —— 必胜客被工具直接渲染成"全职"，触发
- * 红线"禁止将岗位表述为全职"）。展示前必须收敛：
+ * 业务前提：平台同时有全职和兼职岗位，laborForm 按岗位字段如实展示。
  *
- * - 反向词（"全职/正式工/临时工"）→ 返回 null（不展示，让上层省掉这一行，避免
- *   LLM 透传给候选人）。
- * - 平台属性词 "兼职" → 返回 null（平台所有岗位都是兼职，没有信息量，省掉避免
- *   LLM 误把平台属性当 specific 用工形式描述）。
- * - 合法细分（兼职+ / 小时工 / 寒假工 / 暑假工）→ 原样返回。
+ * - 噪音用工性质词（"正式工/临时工"）→ 返回 null（不展示，与 全职/兼职 不同轴，
+ *   不在招聘范围，避免 LLM 误把它们当 全职/兼职 透传给候选人）。
+ * - 合法值（全职 / 兼职 / 兼职+ / 小时工 / 寒假工 / 暑假工）→ 原样返回。
  * - 其它非空值 → 原样返回（兜底，避免误删未见过的合法值）。
  */
 export function sanitizeLaborFormForDisplay(value: string | null | undefined): string | null {

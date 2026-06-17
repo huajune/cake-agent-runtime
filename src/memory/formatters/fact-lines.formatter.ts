@@ -97,7 +97,7 @@ export function formatExtractionFactLines(
   if (householdProvince)
     lines.push(`- 户籍省份: ${householdProvince}${meta(info.household_register_province)}`);
 
-  // 历史数据里可能存在 labor_form="兼职"/"全职"，读取时过滤掉（平台全为兼职，这类值无筛选价值）。
+  // 用工形式（全职/兼职/兼职+/小时工/寒假工/暑假工）是筛选维度；历史脏值（正式工/临时工）被 isValidLaborForm 过滤。
   const laborForm = readFactValue(pref.labor_form);
   if (laborForm && isValidLaborForm(laborForm)) {
     lines.push(`- 用工形式: ${laborForm}${meta(pref.labor_form)}`);

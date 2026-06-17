@@ -1,9 +1,40 @@
 {
   "baseVersion": "5.24.0",
-  "nextVersion": "5.24.0",
+  "nextVersion": "5.25.0",
   "updatedAt": "2026-06-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "364",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/364",
+      "title": "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-17",
+      "businessUpdates": [
+        "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
+        "处理 code review 反馈（全职放开 PR）"
+      ],
+      "summary": [
+        "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
+        "处理 code review 反馈（全职放开 PR）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
+        "处理 code review 反馈（全职放开 PR）"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "全量 `jest`：**3977 passed / 0 failed**（6 skipped）。",
+        "真机自测（debug-chat，qwen3.6-plus，测试库）：全职/兼职/小时工/暑假工 8 场景，口径翻转、按 laborForm 如实介绍、空结果如实告知、转正不再编造、季节性过滤不受影响，均符合预期。"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.24.0",
     "date": "2026-06-17",

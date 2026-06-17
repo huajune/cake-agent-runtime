@@ -79,8 +79,8 @@ describe('extractHighConfidenceFacts', () => {
       evidence: 'municipality_compact',
     });
     expect(unwrapHighConfidenceValue(result?.preferences.district)).toEqual(['杨浦']);
-    // 平台全为兼职岗位，"兼职"不作为 labor_form 提取（无筛选价值）。
-    expect(result?.preferences.labor_form).toBeNull();
+    // 全职放开后，"兼职"是合法用工形式筛选维度，应被提取。
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('兼职');
     expect(unwrapHighConfidenceValue(result?.preferences.position)).toEqual(['服务员']);
     expect(unwrapHighConfidenceValue(result?.preferences.schedule)).toBe('周末');
     expect(unwrapHighConfidenceValue(result?.interview_info.gender)).toBe('男');
@@ -407,22 +407,27 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.is_student)).toBe(false);
   });
 
-  it('should extract specific labor_form subtypes only (小时工 / 寒假工 / 暑假工 / 兼职+)', () => {
+  it('should extract labor_form (全职/兼职/兼职+/小时工/寒假工/暑假工)', () => {
     const hourly = extractHighConfidenceFacts(['我想做小时工'], brandData);
     expect(unwrapHighConfidenceValue(hourly?.preferences.labor_form)).toBe('小时工');
 
     const winter = extractHighConfidenceFacts(['寒假想找寒假工'], brandData);
     expect(unwrapHighConfidenceValue(winter?.preferences.labor_form)).toBe('寒假工');
 
-    // "兼职"/"全职"/"临时工" 都不是合法的 labor_form 取值。
-    // 单独一条 "我要找兼职" 没有任何可提取字段，整体返回 null。
-    expect(extractHighConfidenceFacts(['我要找兼职'], brandData)).toBeNull();
-    expect(extractHighConfidenceFacts(['我找全职'], brandData)).toBeNull();
+    // 全职放开后，"全职"/"兼职" 都是合法 labor_form 取值，应被提取。
+    const partTime = extractHighConfidenceFacts(['我要找兼职'], brandData);
+    expect(unwrapHighConfidenceValue(partTime?.preferences.labor_form)).toBe('兼职');
+    const fullTime = extractHighConfidenceFacts(['我找全职'], brandData);
+    expect(unwrapHighConfidenceValue(fullTime?.preferences.labor_form)).toBe('全职');
 
-    // 即便伴随其他信号（能触发非 null 结果），也不应把"兼职"写进 labor_form
+    // "兼职+" 含子串 "兼职"，但顺序敏感的关键词表保证提取出 "兼职+" 而非 "兼职"。
+    const plus = extractHighConfidenceFacts(['有兼职+吗'], brandData);
+    expect(unwrapHighConfidenceValue(plus?.preferences.labor_form)).toBe('兼职+');
+
+    // 伴随其他信号时，position 与 labor_form 都应提取。
     const combined = extractHighConfidenceFacts(['想找兼职服务员'], brandData);
     expect(unwrapHighConfidenceValue(combined?.preferences.position)).toEqual(['服务员']);
-    expect(combined?.preferences.labor_form).toBeNull();
+    expect(unwrapHighConfidenceValue(combined?.preferences.labor_form)).toBe('兼职');
   });
 
   it('should extract city from whitelist district even when preceded by greetings or positional verbs', () => {

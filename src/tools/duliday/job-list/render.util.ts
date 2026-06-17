@@ -218,14 +218,12 @@ function renderBasicInfoSection(basicInfo: unknown, distanceKm: number | null | 
   if (!bi) return '';
   const lines: string[] = [];
 
-  // jobName / jobNickName / jobCategoryName 在渲染前剔除 "全职/正式工/临时工" 残留
-  // （badcase nwr0i50f：奥乐齐分拣岗 jobName 含"全职"，Agent 转述给用户后产生混乱）。
-  // 平台所有岗位都是兼职，这些词在岗位名里没有业务含义。
+  // jobName / jobNickName / jobCategoryName 在渲染前剔除 "正式工/临时工" 噪音词
+  // （它们与全职/兼职不同轴、不在招聘范围）。全职/兼职 现在是合法用工形式，保留不剥。
   pushField(lines, '岗位名称', sanitizeJobDisplayText(asString(bi.jobName)));
   pushField(lines, '岗位简称', sanitizeJobDisplayText(asString(bi.jobNickName)));
   pushField(lines, '岗位类型', sanitizeJobDisplayText(asString(bi.jobCategoryName)));
-  // 渲染前 sanitize：API 偶发回 "全职/正式工" 等反向词，直接渲染会让 LLM 把岗位
-  // 描述成"全职"，违反"统一按兼职口径沟通"红线（badcase #17）。
+  // 渲染前 sanitize：全职/兼职/兼职+/小时工/寒假工/暑假工 如实展示；"正式工/临时工" 收敛为 null。
   pushField(lines, '用工形式', sanitizeLaborFormForDisplay(asString(bi.laborForm)));
   pushLongText(lines, '工作内容', bi.jobContent);
 
