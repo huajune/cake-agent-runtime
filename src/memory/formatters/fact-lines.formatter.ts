@@ -104,6 +104,8 @@ export function formatExtractionFactLines(
   }
   const brands = readFactValue(pref.brands);
   if (brands?.length) lines.push(`- 意向品牌: ${brands.join('、')}${meta(pref.brands)}`);
+  const brandIds = readFactValue(pref.brand_ids);
+  if (brandIds?.length) lines.push(`- 意向品牌ID: ${brandIds.join('、')}${meta(pref.brand_ids)}`);
   const salary = readFactValue(pref.salary);
   if (salary) lines.push(`- 意向薪资: ${salary}${meta(pref.salary)}`);
   const position = readFactValue(pref.position);

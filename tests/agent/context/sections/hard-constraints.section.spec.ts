@@ -159,6 +159,17 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('"每天/周一至周日"不等于"可只排周末"');
   });
 
+  it('renders Boss title brand ids as brandIdList hints', () => {
+    const session = cloneFallback();
+    session.preferences.brand_ids = [10239];
+
+    const output = section.build({ ...baseCtx, sessionFacts: session });
+
+    expect(output).toContain('意向品牌ID: 10239');
+    expect(output).toContain('来自 Boss 岗位标题 [brand_id]');
+    expect(output).toContain('brandIdList');
+  });
+
   it('prefers sessionFacts over highConfidenceFacts when both have a value (no merge conflict)', () => {
     const session = cloneFallback();
     session.preferences.salary = '5000+';

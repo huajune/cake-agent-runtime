@@ -68,6 +68,12 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('规则线索供参考');
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('以用户最新表述为准');
   });
+
+  it('should instruct LLM to extract Boss title bracket brand ids', () => {
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('brand_ids');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('[10239]');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('duliday_job_list.brandIdList');
+  });
 });
 
 describe('buildSessionExtractionPrompt', () => {

@@ -66,7 +66,19 @@ const inputSchema = z.object({
   cityNameList: z.array(z.string()).optional().default([]).describe('城市列表'),
   regionNameList: z.array(z.string()).optional().default([]).describe('区域列表'),
   brandAliasList: z.array(z.string()).optional().default([]).describe('品牌别名列表'),
-  storeNameList: z.array(z.string()).optional().default([]).describe('门店名称列表（模糊匹配）'),
+  storeNameList: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .describe(
+      '门店名称列表。注意：上游 API 按门店名**精确匹配**（不支持模糊），口语或运营备注里的门店名常与库内实名对不上，极易落空，**强烈不建议用**——按门店名找岗位时改用 searchJobName 做模糊匹配。',
+    ),
+  searchJobName: z
+    .string()
+    .optional()
+    .describe(
+      '岗位名称模糊匹配（子串匹配整条 jobName，jobName 形如「品牌-门店-工种-用工形式」，如「M Stand-上海长泰广场店-店员-小时工」）。**想按门店/地标找岗位时填这里**（如候选人说"想去长泰广场那家"就填"长泰广场"），比 storeNameList（精确匹配易落空）宽容得多。建议配合 cityNameList/brandIdList 收窄；不要把工种/用工形式词塞进来（那些用 jobCategoryList）。',
+    ),
   jobCategoryList: z
     .array(z.string())
     .optional()
@@ -74,7 +86,13 @@ const inputSchema = z.object({
     .describe(
       '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n严禁填入"兼职"、"全职"、"小时工"、"寒假工"、"暑假工"、"兼职+"、"临时工"等用工形式词——平台所有岗位都是兼职岗位，用工形式不是岗位工种。若召回为空，先清空 jobCategoryList 放宽重查。',
     ),
-  brandIdList: z.array(z.number().int()).optional().default([]).describe('品牌ID列表'),
+  brandIdList: z
+    .array(z.number().int())
+    .optional()
+    .default([])
+    .describe(
+      '品牌ID列表；Boss直聘岗位标题中形如 "[10239]" 的方括号纯数字是品牌ID，应填为 brandIdList=[10239]，不要当作 jobId/薪资/编号',
+    ),
   projectNameList: z.array(z.string()).optional().default([]).describe('项目名称列表'),
   projectIdList: z.array(z.number().int()).optional().default([]).describe('项目ID列表'),
   jobIdList: z.array(z.number().int()).optional().default([]).describe('岗位ID列表'),
@@ -432,11 +450,12 @@ export function buildJobListTool(
       execute: async ({
         cityNameList = [],
         regionNameList = [],
-        brandAliasList = [],
+        brandAliasList: brandAliasListInput = [],
         brandIdList = [],
         projectNameList = [],
         projectIdList = [],
         storeNameList = [],
+        searchJobName,
         jobCategoryList = [],
         jobIdList = [],
         settlementPeriodList = [],
@@ -455,6 +474,23 @@ export function buildJobListTool(
           .map((region) => region.trim())
           .filter(Boolean);
 
+        // 备注品牌确定性兜底：模型本轮没传任何品牌（brandAliasList/brandIdList 均空）时，
+        // 用 prep 从企微备注解析出的目标品牌兜底为 brandAliasList，实现「备注品牌优先召回」
+        // （纯提示词驱动经实测不可靠，模型会忽略备注按距离推）。候选人本轮点名了别的品牌时
+        // 模型会自己把 brand 传进来，brandAliasList 非空就不会触发兜底。
+        let brandAliasList = brandAliasListInput;
+        let brandAliasSource: 'input' | 'contact_remark' | 'none' =
+          brandAliasList.length > 0 ? 'input' : 'none';
+        const contactBrandAliases = context.contactBrandAliases ?? [];
+        if (
+          brandAliasList.length === 0 &&
+          brandIdList.length === 0 &&
+          contactBrandAliases.length > 0
+        ) {
+          brandAliasList = contactBrandAliases;
+          brandAliasSource = 'contact_remark';
+          logger.log(`从企微备注自动兜底 brandAliasList: ${JSON.stringify(brandAliasList)}`);
+        }
         // Phase 3.1：候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
@@ -549,6 +585,7 @@ export function buildJobListTool(
           projectNameList,
           projectIdList,
           storeNameList,
+          searchJobName: searchJobName?.trim() || undefined,
           jobCategoryList: sanitizedJobCategoryList,
           jobIdList,
           salaryPeriodNameList: settlementPeriodList.map((p) => p.trim()).filter(Boolean),
@@ -597,6 +634,7 @@ export function buildJobListTool(
               projectNameList,
               projectIdList,
               storeNameList,
+              searchJobName: searchJobName?.trim() || undefined,
               jobIdList,
               options,
             });
@@ -957,6 +995,10 @@ export function buildJobListTool(
                   }))
                 : null,
             ageScreening: ageScreeningSummary?.meta ?? null,
+            brandIdList,
+            brandAliasList,
+            brandAliasSource,
+            searchJobName: searchJobName?.trim() || null,
           };
 
           // 通知调用方已获取岗位数据
