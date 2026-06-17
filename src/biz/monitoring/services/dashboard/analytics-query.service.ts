@@ -29,6 +29,7 @@ import { MonitoringRecordRepository } from '../../repositories/record.repository
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import type { UserActivityAggregate } from '@biz/user/types/user.types';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 import * as os from 'os';
@@ -73,7 +74,7 @@ const TREND_HOURS_BY_RANGE: Record<TimeRange, number> = {
 export class AnalyticsQueryService {
   private readonly logger = new Logger(AnalyticsQueryService.name);
 
-  private todayUsersCache: { value: TodayUser[]; expireAt: number } | null = null;
+  private todayUsersCache: { value: UserActivityAggregate[]; expireAt: number } | null = null;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -243,19 +244,22 @@ export class AnalyticsQueryService {
   async getTodayUsers(): Promise<TodayUser[]> {
     const CACHE_TTL_MS = 30_000;
     const now = Date.now();
+    let dbUsers: UserActivityAggregate[];
 
     if (this.todayUsersCache && this.todayUsersCache.expireAt > now) {
       this.logger.debug(`[Cache] 命中今日用户缓存 (${this.todayUsersCache.value.length} 条记录)`);
-      return this.todayUsersCache.value;
+      dbUsers = this.todayUsersCache.value;
+    } else {
+      const todayStart = getLocalDayStart();
+      dbUsers = await this.userHostingService.getActiveUsersByDateRange(todayStart, new Date());
+
+      if (dbUsers.length > 0) {
+        this.todayUsersCache = { value: dbUsers, expireAt: now + CACHE_TTL_MS };
+      }
     }
 
-    const users = await this.getTodayUsersFromDatabase();
-
-    if (users.length > 0) {
-      this.todayUsersCache = { value: users, expireAt: now + CACHE_TTL_MS };
-    }
-
-    return users;
+    const pausedSet = await this.userHostingService.getPausedUserIdSet();
+    return this.mapTodayUsers(dbUsers, pausedSet);
   }
 
   async getTodayUsersFromDatabase(): Promise<TodayUser[]> {
@@ -312,15 +316,15 @@ export class AnalyticsQueryService {
    */
   private async buildTodayUsers(startDate: Date, endDate: Date): Promise<TodayUser[]> {
     const dbUsers = await this.userHostingService.getActiveUsersByDateRange(startDate, endDate);
+    const pausedSet = await this.userHostingService.getPausedUserIdSet();
 
-    const pausedSet = new Set<string>();
-    for (const user of dbUsers) {
-      const status = await this.userHostingService.getUserHostingStatus(user.chatId);
-      if (status.isPaused) {
-        pausedSet.add(user.chatId);
-      }
-    }
+    return this.mapTodayUsers(dbUsers, pausedSet);
+  }
 
+  private mapTodayUsers(
+    dbUsers: UserActivityAggregate[],
+    pausedSet: ReadonlySet<string>,
+  ): TodayUser[] {
     return dbUsers.map((user) => ({
       chatId: user.chatId,
       odId: user.odId || user.chatId,

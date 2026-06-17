@@ -29,12 +29,26 @@ export interface PausedUserData {
   pauseReason?: string;
   /** 操作人 */
   pauseOperator?: string;
-  /** 暂停来源：manual / candidate_blacklist / interview_booking / intervention */
+  /** 暂停来源：manual / candidate_blacklist / interview_booking / intervention / human_intervention */
   pauseSource?: string;
   odName?: string;
   groupName?: string;
   botUserId?: string;
   imBotId?: string;
+}
+
+export interface PauseUserHostingParams {
+  userId: string;
+  permanent?: boolean;
+  reason?: string;
+  operator?: string;
+}
+
+export interface PauseUserHostingResponse {
+  userId: string;
+  isPaused: boolean;
+  isPermanent: boolean;
+  message: string;
 }
 
 export interface UserInfo {

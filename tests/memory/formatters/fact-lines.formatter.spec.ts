@@ -78,6 +78,18 @@ describe('formatExtractionFactLines', () => {
     expect(formatExtractionFactLines(FALLBACK_EXTRACTION)).toEqual([]);
   });
 
+  it('should render Boss title brand ids', () => {
+    const lines = formatExtractionFactLines({
+      ...FALLBACK_EXTRACTION,
+      preferences: {
+        ...FALLBACK_EXTRACTION.preferences,
+        brand_ids: [10239],
+      },
+    });
+
+    expect(lines).toEqual(['- 意向品牌ID: 10239']);
+  });
+
   it('should render high-confidence field metadata without evidence by default', () => {
     const facts: HighConfidenceFacts = {
       ...emptyHighConfidenceFacts(),

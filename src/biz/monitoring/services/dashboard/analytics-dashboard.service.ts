@@ -876,7 +876,7 @@ export class AnalyticsDashboardService {
   }
 
   private getOverviewCacheTtlMs(timeRange: TimeRange): number {
-    return timeRange === 'today' ? 10_000 : 60_000;
+    return timeRange === 'today' ? 30_000 : 60_000;
   }
 
   private getHourStart(date: Date): Date {
@@ -1280,14 +1280,7 @@ export class AnalyticsDashboardService {
         todayStart,
         new Date(),
       );
-
-      const pausedSet = new Set<string>();
-      for (const user of dbUsers) {
-        const status = await this.userHostingService.getUserHostingStatus(user.chatId);
-        if (status.isPaused) {
-          pausedSet.add(user.chatId);
-        }
-      }
+      const pausedSet = await this.userHostingService.getPausedUserIdSet();
 
       return dbUsers.map((user) => ({
         chatId: user.chatId,

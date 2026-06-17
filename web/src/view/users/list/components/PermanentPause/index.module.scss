@@ -1,0 +1,284 @@
+// PermanentPause 组件样式（永久禁止托管 Tab 面板，视觉规范对齐 CandidateBlacklist / UserTable）
+@use '@/assets/styles/variables' as *;
+
+.panel {
+  background: #ffffff;
+}
+
+// ==================== 永久禁止表单（对齐黑名单 addForm 风格） ====================
+
+.addForm {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.2fr) minmax(260px, 1.5fr) 180px auto;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 24px;
+
+  input {
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: #f5f7fa;
+    color: #0f172a;
+    font-size: 13px;
+    outline: none;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+
+    &::placeholder {
+      color: #94a3b8;
+    }
+
+    &:hover {
+      background: #eff2f6;
+    }
+
+    &:focus {
+      background: #ffffff;
+      border-color: $primary;
+      box-shadow: 0 0 0 3px $primary-10;
+    }
+  }
+}
+
+.addButton {
+  @include button-primary;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 22px;
+  white-space: nowrap;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// ==================== 永久禁止表格（对齐 UserTable） ====================
+
+.tableWrapper {
+  overflow-x: auto;
+  padding: 10px 24px 24px;
+}
+
+.table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+  background: #ffffff;
+
+  th {
+    padding: 14px 24px;
+    text-align: left;
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 500;
+    font-size: 13px;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+
+    &:first-child {
+      border-top-left-radius: 8px;
+      border-bottom-left-radius: 8px;
+      border-left: 1px solid #e2e8f0;
+    }
+
+    &:last-child {
+      border-top-right-radius: 8px;
+      border-bottom-right-radius: 8px;
+      border-right: 1px solid #e2e8f0;
+    }
+  }
+
+  td {
+    padding: 16px 24px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
+    transition: background 0.15s ease;
+  }
+
+  tbody tr {
+    transition: background 0.2s ease;
+
+    &:hover {
+      background: #f8fafc;
+    }
+
+    &:last-child td {
+      border-bottom: none;
+    }
+  }
+}
+
+.loadingCell {
+  padding: 56px 0 !important;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+// 空状态：与用户列表同款（光晕 + 浮动图标 + 文案层次）
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+  }
+}
+
+.emptyIconHalo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgba($success, 0.14),
+    rgba($success, 0.05) 62%,
+    transparent 78%
+  );
+  animation: emptyFloat 3.2s ease-in-out infinite;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 1px dashed rgba($success, 0.25);
+  }
+}
+
+.emptyIcon {
+  width: 36px;
+  height: 36px;
+  color: rgba($success, 0.65);
+}
+
+.emptyHint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+@keyframes emptyFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emptyIconHalo {
+    animation: none;
+  }
+}
+
+// ==================== 单元格内容 ====================
+
+.targetName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.sourceTag {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.targetId {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #94a3b8;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.botCell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
+.reasonCell {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
+.timeCell {
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.removeButton {
+  border: 1px solid rgba($success, 0.4);
+  color: $success;
+  background: transparent;
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba($success, 0.08);
+    border-color: $success;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// ==================== 响应式 ====================
+
+@include respond-to(md) {
+  .addForm {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .tableWrapper {
+    padding: 10px 16px 16px;
+  }
+}

@@ -202,6 +202,9 @@ export class ConversationRiskDetectorService {
       if (normalizedKeyword === '滚') {
         return this.matchesAbusiveGun(normalized);
       }
+      if (normalizedKeyword === '坑') {
+        return this.matchesScamKeng(normalized);
+      }
       return normalized.includes(normalizedKeyword);
     });
   }
@@ -277,5 +280,48 @@ export class ConversationRiskDetectorService {
       '都',
     ];
     return new RegExp(`(?:${imperativePrefixes.join('|')})滚${suffixPattern}`).test(compact);
+  }
+
+  private matchesScamKeng(content: string): boolean {
+    const compact = content.replace(/\s+/g, '');
+    if (!compact) {
+      return false;
+    }
+
+    // "坑" flags complaint/scam risk (坑人 / 太坑了 / 被坑), but it also appears in
+    // benign place names (坑梓 / 坑口 / 沙坑 / 大坑) and neutral words (泥坑 / 火坑 /
+    // 坑洼 / 入坑). substring matching误伤地名"坪山坑梓"会暂停托管 + 飞书告警，伤害
+    // 正常求职者。Only treat "坑" as a complaint signal in its rip-off/scam sense:
+    // an intensifier prefix, a victim/object suffix, or a standalone exclamation.
+    const punctuation = '[!！?？。.,，、~～]*';
+    if (new RegExp(`^坑${punctuation}$`).test(compact)) {
+      return true;
+    }
+
+    const scamPrefixes = ['太', '真', '好', '很', '超', '忒', '巨', '老', '够', '被', '净', '专'];
+    if (new RegExp(`(?:${scamPrefixes.join('|')})坑`).test(compact)) {
+      return true;
+    }
+
+    const scamSuffixes = [
+      '人',
+      '钱',
+      '爹',
+      '货',
+      '骗',
+      '客',
+      '客户',
+      '顾客',
+      '消费者',
+      '老百姓',
+      '学生',
+      '我',
+      '我们',
+      '你',
+      '你们',
+      '死',
+      '惨',
+    ];
+    return new RegExp(`坑(?:${scamSuffixes.join('|')})`).test(compact);
   }
 }

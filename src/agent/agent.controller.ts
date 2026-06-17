@@ -63,6 +63,7 @@ export class AgentController {
         sessionId,
         scenario,
         strategySource: 'testing',
+        contactName: body.contactName,
       });
 
       return {

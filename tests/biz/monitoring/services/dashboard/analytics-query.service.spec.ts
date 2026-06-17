@@ -74,6 +74,7 @@ describe('AnalyticsQueryService', () => {
 
   const mockUserHostingService = {
     getUserHostingStatus: jest.fn(),
+    getPausedUserIdSet: jest.fn(),
     getActiveUsersByDateRange: jest.fn(),
     getDailyActivityStats: jest.fn(),
   };
@@ -181,6 +182,7 @@ describe('AnalyticsQueryService', () => {
       totalFallbackSuccess: 0,
     });
     mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: false });
+    mockUserHostingService.getPausedUserIdSet.mockResolvedValue(new Set());
     mockMessageTrackingService.getActiveRequests.mockResolvedValue(0);
     mockMessageTrackingService.getPeakActiveRequests.mockResolvedValue(0);
     mockMessageProcessor.getQueueStatus.mockResolvedValue({
@@ -502,7 +504,7 @@ describe('AnalyticsQueryService', () => {
           lastActiveAt: 2000,
         },
       ]);
-      mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: true });
+      mockUserHostingService.getPausedUserIdSet.mockResolvedValue(new Set(['chat-1']));
 
       const result = await service.getTodayUsersFromDatabase();
 
@@ -519,6 +521,8 @@ describe('AnalyticsQueryService', () => {
         tokenUsage: 200,
         isPaused: true,
       });
+      expect(mockUserHostingService.getPausedUserIdSet).toHaveBeenCalledTimes(1);
+      expect(mockUserHostingService.getUserHostingStatus).not.toHaveBeenCalled();
     });
 
     it('should fallback to chatId for missing odId and odName', async () => {

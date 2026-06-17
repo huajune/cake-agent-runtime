@@ -1,22 +1,28 @@
 // HeaderBar 组件样式
 @use '@/assets/styles/variables' as *;
 
+// 干净白卡：与「托管用户」页同一套设计语言（纯白底 + 极淡描边 + 柔和双层投影）
 .headerBar {
-  @include card;
-  padding: 16px 24px;
+  padding: 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: relative;
   overflow: hidden;
-  margin-bottom: $spacing-md;
+  margin-bottom: $spacing-lg;
+  background: $bg-card;
+  border: 1px solid #eef2f7;
+  border-radius: 16px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 32px -16px rgba(15, 23, 42, 0.1);
+  transition: box-shadow $transition-normal;
 
-  // 统一基底：白色玻璃 + 极淡描边，干净素雅
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px) saturate(130%);
-  -webkit-backdrop-filter: blur(12px) saturate(130%);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 6px 24px rgba(17, 24, 39, 0.06);
+  &:hover {
+    box-shadow:
+      0 2px 4px rgba(15, 23, 42, 0.05),
+      0 16px 40px -16px rgba(15, 23, 42, 0.14);
+  }
 
   // 顶部流光高亮线（克制，缓慢扫过）
   &::before {
@@ -26,7 +32,13 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, $primary-30, $accent-30, transparent);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(16, 185, 129, 0.5),
+      rgba(52, 211, 153, 0.6),
+      transparent
+    );
     background-size: 200% 100%;
     animation: headerShimmer 5s linear infinite;
     pointer-events: none;
@@ -43,24 +55,50 @@
   }
 }
 
-// 极光光晕背景：极淡、缓慢，仅作氛围铺垫
+// 极光光晕背景：极淡、缓慢，仅作氛围铺垫（绿色调）
+// 做成 2 倍宽、8 团等距光晕，整体匀速向左平移半个身位无缝循环，覆盖永远均匀不空
 .decorativeBg {
   position: absolute;
-  inset: -60% -10%;
+  top: -60%;
+  bottom: -60%;
+  left: 0;
+  width: 200%;
   pointer-events: none;
   z-index: 0;
-  background:
-    radial-gradient(38% 60% at 15% 30%, $primary-06 0%, transparent 60%),
-    radial-gradient(34% 56% at 85% 25%, $accent-05 0%, transparent 60%);
-  animation: auroraDrift 22s ease-in-out infinite alternate;
+  background-repeat: no-repeat;
+  // 8 团光晕，元素坐标 6/19/31/44 + 镜像 56/69/81/94（颜色对位一致以保证无缝）
+  background-image:
+    radial-gradient(15% 60% at 6% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 19% 50%, rgba(34, 197, 94, 0.09) 0%, transparent 70%),
+    radial-gradient(15% 60% at 31% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 44% 50%, rgba(16, 185, 129, 0.09) 0%, transparent 70%),
+    radial-gradient(15% 60% at 56% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 69% 50%, rgba(34, 197, 94, 0.09) 0%, transparent 70%),
+    radial-gradient(15% 60% at 81% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 94% 50%, rgba(16, 185, 129, 0.09) 0%, transparent 70%);
+  // 横向无缝平移 + 整体明暗呼吸（不同周期错开），制造若隐若现的流动感
+  animation:
+    auroraFlow 14s linear infinite,
+    auroraBreathe 5s ease-in-out infinite;
 }
 
-@keyframes auroraDrift {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
+@keyframes auroraFlow {
+  from {
+    transform: translateX(0);
   }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+// 整体透明度缓慢起伏，光晕忽隐忽现
+@keyframes auroraBreathe {
+  0%,
   100% {
-    transform: translate3d(-2%, -1%, 0) scale(1.05);
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -76,6 +114,24 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+// 标题图标块：紫色渐变方块 + 同色线性图标（对齐托管用户页风格）
+.titleIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: $primary;
+  background: linear-gradient(135deg, rgba($primary, 0.1) 0%, rgba($primary, 0.2) 100%);
+  box-shadow: inset 0 0 0 1px rgba($primary, 0.1);
+
+  svg {
+    display: block;
+  }
 }
 
 .title {
@@ -145,7 +201,7 @@
   gap: 2px;
   padding: 4px;
   background: #f1f5f9;
-  border-radius: $radius-lg;
+  border-radius: $radius-full;
 }
 
 .filterBtn {
@@ -155,7 +211,7 @@
   color: $text-secondary;
   background: transparent;
   border: none;
-  border-radius: $radius-md;
+  border-radius: $radius-full;
   cursor: pointer;
   transition: all 0.2s $transition-timing;
   white-space: nowrap;
@@ -272,7 +328,7 @@
   color: $primary;
   background: #fff;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: $radius-lg;
+  border-radius: $radius-full;
   cursor: pointer;
   transition: all 0.2s $transition-timing;
   letter-spacing: 0.01em;

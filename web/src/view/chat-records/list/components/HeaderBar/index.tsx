@@ -34,12 +34,15 @@ export default function HeaderBar({
 }: HeaderBarProps) {
   return (
     <div className={styles.headerBar}>
-      {/* 装饰性背景 */}
+      {/* 极光氛围背景 */}
       <div className={styles.decorativeBg} />
 
       {/* 左侧：标题 + 时间筛选 */}
       <div className={styles.leftSection}>
         <div className={styles.titleWrapper}>
+          <span className={styles.titleIcon}>
+            <MessagesSquare size={18} strokeWidth={2} />
+          </span>
           <h2 className={styles.title}>消息总览</h2>
           <span
             className={`${styles.liveBadge} ${isLive ? styles.connected : ''}`}

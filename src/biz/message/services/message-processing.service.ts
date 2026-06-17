@@ -83,6 +83,8 @@ export class MessageProcessingService {
     if (managerNames.length > 0) options.managerNames = managerNames;
     if (query.limit) options.limit = parseInt(query.limit, 10);
     if (query.offset) options.offset = parseInt(query.offset, 10);
+    options.includeTotal = false;
+    options.projection = 'summary';
 
     this.logger.debug(`获取消息处理记录: ${JSON.stringify(options)}`);
     const result = await this.messageProcessingRepository.getMessageProcessingRecords(options);

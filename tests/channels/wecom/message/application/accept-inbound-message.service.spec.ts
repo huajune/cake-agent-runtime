@@ -43,6 +43,16 @@ describe('AcceptInboundMessageService', () => {
     recordEvent: jest.fn().mockResolvedValue(true),
     recordCandidateMessage: jest.fn().mockResolvedValue({ messageRecorded: true, engaged: false }),
   };
+  const userHostingService = {
+    isAnyPaused: jest.fn(),
+    pauseUser: jest.fn(),
+  };
+  const alertNotifier = {
+    sendAlert: jest.fn(),
+  };
+  const hostingMemberConfig = {
+    resolveFeishuReceiver: jest.fn(),
+  };
 
   let service: AcceptInboundMessageService;
 
@@ -65,6 +75,13 @@ describe('AcceptInboundMessageService', () => {
     });
     llm.supportsVisionInput.mockReturnValue(true);
     longTerm.updateMessageMetadata.mockResolvedValue(undefined);
+    userHostingService.isAnyPaused.mockResolvedValue({ paused: false });
+    userHostingService.pauseUser.mockResolvedValue(undefined);
+    alertNotifier.sendAlert.mockResolvedValue(true);
+    hostingMemberConfig.resolveFeishuReceiver.mockResolvedValue({
+      openId: 'ou-manager-1',
+      name: '招募经理1',
+    });
     imageDescription.resolveArtworkUrl.mockImplementation((_id: string, url: string) =>
       Promise.resolve(url),
     );
@@ -79,12 +96,18 @@ describe('AcceptInboundMessageService', () => {
       llm as never,
       longTerm as never,
       opsEventsRecorder as never,
+      userHostingService as never,
+      alertNotifier as never,
+      hostingMemberConfig as never,
     );
   });
 
   it('should store self messages as assistant history and skip dispatch', async () => {
+    // AI 自己经 API 发出的回复（source=API_SEND）回显为自发消息：存为 assistant 历史、
+    // 不触发派发，且**不得**被当成真人介入而暂停托管。
     const message = createMessage({
       isSelf: true,
+      source: MessageSource.API_SEND,
       messageId: 'msg-self',
       payload: {
         text: '我先帮你确认一下',
@@ -105,6 +128,83 @@ describe('AcceptInboundMessageService', () => {
     );
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-self');
     expect(filterService.validate).not.toHaveBeenCalled();
+    expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+  });
+
+  it('检测到真人手机手打介入私聊后自动暂停该候选人托管', async () => {
+    // 生产实证：真人招募经理介入的主力形态是经理在托管号手机上手打 → isSelf=true + MOBILE_PUSH。
+    const message = createMessage({
+      isSelf: true,
+      source: MessageSource.MOBILE_PUSH,
+      messageId: 'msg-human',
+      payload: {
+        text: '我来跟进一下',
+        pureText: '我来跟进一下',
+      },
+    });
+
+    await service.execute(message);
+
+    expect(userHostingService.isAnyPaused).toHaveBeenCalledWith([
+      'chat-1',
+      'im-contact-1',
+      undefined,
+    ]);
+    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', {
+      source: 'human_intervention',
+      reason: '检测到真人介入聊天自动暂停',
+    });
+    expect(hostingMemberConfig.resolveFeishuReceiver).toHaveBeenCalledWith('im-bot-1');
+    expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'hosting.human_intervention_paused',
+        summary: '真人介入聊天，已自动暂停托管',
+        scope: expect.objectContaining({
+          corpId: 'corp-1',
+          contactName: '张三',
+          managerName: 'manager-1',
+          chatId: 'chat-1',
+          messageId: 'msg-human',
+          userId: 'im-contact-1',
+        }),
+        impact: expect.objectContaining({
+          userMessage: '我来跟进一下',
+          userVisible: false,
+          requiresHumanIntervention: true,
+        }),
+        diagnostics: expect.objectContaining({
+          category: 'human_intervention',
+          payload: expect.objectContaining({
+            imBotId: 'im-bot-1',
+            source: MessageSource.MOBILE_PUSH,
+          }),
+        }),
+        routing: { atUsers: [{ openId: 'ou-manager-1', name: '招募经理1' }] },
+        dedupe: { key: 'hosting.human_intervention_paused:chat-1' },
+      }),
+    );
+  });
+
+  it('真人手动介入命中已暂停候选人时不重复刷新暂停状态', async () => {
+    userHostingService.isAnyPaused.mockResolvedValueOnce({
+      paused: true,
+      matchedId: 'chat-1',
+    });
+
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.MOBILE_PUSH,
+        messageId: 'msg-human-paused',
+        payload: {
+          text: '我已经在处理',
+          pureText: '我已经在处理',
+        },
+      }),
+    );
+
+    expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
   it('should store self room-invite cards with placeholder content (group name from payload)', async () => {
@@ -127,6 +227,8 @@ describe('AcceptInboundMessageService', () => {
         content: '[入群邀请] 邀请你加入"独立客&上海餐饮兼职⑩群"',
       }),
     );
+    expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
   it('should store self room-invite cards with generic placeholder when payload has no group name', async () => {

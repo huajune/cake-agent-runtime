@@ -93,6 +93,10 @@ export class HardConstraintsSection implements PromptSection {
         highConfidenceSessionFacts?.preferences.brands ??
         highConfidenceValues?.preferences.brands ??
         null,
+      brand_ids:
+        highConfidenceSessionFacts?.preferences.brand_ids ??
+        highConfidenceValues?.preferences.brand_ids ??
+        null,
       salary:
         highConfidenceSessionFacts?.preferences.salary ??
         highConfidenceValues?.preferences.salary ??
@@ -224,6 +228,11 @@ export class HardConstraintsSection implements PromptSection {
     if (pref.brands?.length) {
       lines.push(
         `- 意向品牌: ${pref.brands.join('、')}（建议用 brandIdList；若搜索无结果可尝试去掉品牌限制扩大召回）`,
+      );
+    }
+    if (pref.brand_ids?.length) {
+      lines.push(
+        `- 意向品牌ID: ${pref.brand_ids.join('、')}（来自 Boss 岗位标题 [brand_id]；调用 duliday_job_list 时优先填到 brandIdList）`,
       );
     }
     if (pref.position?.length) {
