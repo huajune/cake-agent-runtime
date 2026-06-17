@@ -22,6 +22,7 @@ export class GeneralHandoffCardRenderer {
       `**聊天上下文（最近10条）**\n${this.formatRecentMessages(payload)}`,
       `**候选人信息**\n${this.formatCandidateInfo(payload)}`,
       '处理完请到 Web 托管后台手动恢复托管。',
+      this.formatDiagnostics(payload.diagnostics),
     ].filter((line): line is string => Boolean(line));
 
     const baseTitle = payload.titleOverride ?? `🚨 候选人需人工介入 · ${payload.alertLabel}`;
@@ -77,5 +78,10 @@ export class GeneralHandoffCardRenderer {
     ].filter((line): line is string => Boolean(line));
 
     return lines.join('\n');
+  }
+
+  private formatDiagnostics(diagnostics?: Record<string, unknown>): string | null {
+    if (!diagnostics || Object.keys(diagnostics).length === 0) return null;
+    return `**诊断载荷**:\n\`\`\`json\n${JSON.stringify(diagnostics, null, 2)}\n\`\`\``;
   }
 }

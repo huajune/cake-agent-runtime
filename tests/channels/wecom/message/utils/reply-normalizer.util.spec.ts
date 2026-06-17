@@ -85,6 +85,31 @@ describe('ReplyNormalizer', () => {
       // 多次调用结果稳定（防 /g lastIndex 副作用）
       expect(ReplyNormalizer.needsNormalization('</think>')).toBe(true);
     });
+
+    it('含视觉消息占位符需要规范化', () => {
+      expect(ReplyNormalizer.needsNormalization('[表情消息] 好的')).toBe(true);
+      expect(ReplyNormalizer.needsNormalization('[图片消息]收到啦')).toBe(true);
+      // 多次调用结果稳定（防 /g lastIndex 副作用）
+      expect(ReplyNormalizer.needsNormalization('[表情消息] 好的')).toBe(true);
+    });
+  });
+
+  describe('normalize - 视觉消息占位符剥离（badcase batch_6a32692a..._1781689143249）', () => {
+    it('应剥离模型复述的 [表情消息] 占位符及其后空格', () => {
+      expect(ReplyNormalizer.normalize('[表情消息] 好的')).toBe('好的');
+    });
+
+    it('应剥离 [图片消息] 占位符', () => {
+      expect(ReplyNormalizer.normalize('[图片消息]收到啦，帮你看看')).toBe('收到啦，帮你看看');
+    });
+
+    it('占位符单独成段时整体清空', () => {
+      expect(ReplyNormalizer.normalize('[表情消息]')).toBe('');
+    });
+
+    it('不影响正常文本', () => {
+      expect(ReplyNormalizer.normalize('好的，附近有岗位')).toBe('好的，附近有岗位');
+    });
   });
 
   describe('normalize - 推理/思考标签剥离（badcase recvlEM9V4vBhP）', () => {

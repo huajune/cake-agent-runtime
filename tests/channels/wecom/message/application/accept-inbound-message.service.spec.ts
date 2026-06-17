@@ -159,7 +159,7 @@ describe('AcceptInboundMessageService', () => {
     // 复用「候选人需人工介入」通用卡片，但沿用原文案标题/说明（手机手打 → 来源短语「手机」）
     expect(generalHandoffNotifier.notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        titleOverride: '🚨 真人介入聊天，已自动暂停托管 · 需要人工介入',
+        titleOverride: '🚨 真人介入聊天，已自动暂停托管',
         reason: '检测到真人通过手机手动发送消息，系统已自动暂停该候选人托管',
         corpId: 'corp-1',
         botImId: 'im-bot-1',
@@ -174,6 +174,16 @@ describe('AcceptInboundMessageService', () => {
           { role: 'assistant', content: '我来跟进一下', timestamp: 1713168001000 },
         ],
         sessionState: null,
+        // 诊断载荷：透传命中链路原始字段，便于排查
+        diagnostics: {
+          botId: 'bot-1',
+          imBotId: 'im-bot-1',
+          imContactId: 'im-contact-1',
+          externalUserId: undefined,
+          source: MessageSource.MOBILE_PUSH,
+          sourceDescription: '手机推送过来的消息',
+          messageType: MessageType.TEXT,
+        },
       }),
     );
     // 原文案无「建议动作」，不应传 actionAdvice
