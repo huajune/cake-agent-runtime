@@ -1,83 +1,42 @@
 {
-  "baseVersion": "5.24.0",
-  "nextVersion": "5.25.0",
+  "baseVersion": "5.25.0",
+  "nextVersion": "5.26.0",
   "updatedAt": "2026-06-17",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "364",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/364",
-      "title": "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-17",
-      "businessUpdates": [
-        "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
-        "处理 code review 反馈（全职放开 PR）"
-      ],
-      "summary": [
-        "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
-        "处理 code review 反馈（全职放开 PR）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
-        "处理 code review 反馈（全职放开 PR）"
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "全量 `jest`：**3977 passed / 0 failed**（6 skipped）。",
-        "真机自测（debug-chat，qwen3.6-plus，测试库）：全职/兼职/小时工/暑假工 8 场景，口径翻转、按 laborForm 如实介绍、空结果如实告知、转正不再编造、季节性过滤不受影响，均符合预期。"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.24.0",
+    "version": "5.25.0",
     "date": "2026-06-17",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "359",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/359",
-        "title": "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页",
+        "number": "364",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/364",
+        "title": "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
         "author": "ArielZhu",
         "mergedAt": "2026-06-17",
         "businessUpdates": [
-          "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
-          "真人介入聊天自动暂停托管",
-          "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
-          "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
-          "风险词「坑」精细化识别，避开地名误伤",
-          "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
+          "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
+          "处理 code review 反馈（全职放开 PR）"
         ],
         "summary": [
-          "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
-          "真人介入聊天自动暂停托管",
-          "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描",
-          "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
-          "风险词「坑」精细化识别，避开地名误伤",
-          "岗位召回精准化 + 真人介入暂停托管 + Dashboard 性能 + 永久禁止托管页"
+          "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
+          "处理 code review 反馈（全职放开 PR）"
         ],
         "features": [],
         "fixes": [],
-        "optimizations": [
-          "Dashboard 查询优化，消除暂停状态 N+1 与列表全表扫描"
-        ],
+        "optimizations": [],
         "ops": [
-          "岗位召回精准化（备注品牌优先 + Boss品牌ID链路 + 门店searchJobName模糊召回）",
-          "真人介入聊天自动暂停托管",
-          "永久禁止托管 Tab + 真人介入来源展示 + 消息总览 HeaderBar 视觉对齐",
-          "风险词「坑」精细化识别，避开地名误伤"
+          "放开全职岗位 + qwen3.7-plus + 真人介入告警标题",
+          "处理 code review 反馈（全职放开 PR）"
         ],
         "config": [],
-        "envFiles": [],
+        "envFiles": [
+          ".env.example"
+        ],
         "verification": [
-          "15 个相关测试套件 325 用例全绿；`tsc --noEmit` 干净。",
-          "岗位召回 10 组真实场景经 `debug-chat` 实跑验证（qwen3.6-plus 主模型）。"
+          "全量 `jest`：**3977 passed / 0 failed**（6 skipped）。",
+          "真机自测（debug-chat，qwen3.6-plus，测试库）：全职/兼职/小时工/暑假工 8 场景，口径翻转、按 laborForm 如实介绍、空结果如实告知、转正不再编造、季节性过滤不受影响，均符合预期。"
         ]
       }
     ]
