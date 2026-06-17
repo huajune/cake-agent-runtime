@@ -21,6 +21,7 @@ const PAUSE_SOURCE_LABELS: Record<string, string> = {
   candidate_blacklist: '黑名单',
   interview_booking: '约面',
   intervention: '人工介入',
+  human_intervention: '真人介入',
 };
 
 export default function UserTable({

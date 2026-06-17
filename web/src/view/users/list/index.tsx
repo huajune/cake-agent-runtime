@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpDown, Bot, Info, Search, X } from 'lucide-react';
 import { useConfiguredBots } from '@/hooks/bot/useBots';
-import { useTodayUsers, useToggleUserHosting, usePausedUsers } from '@/hooks/user/useUsers';
+import {
+  useTodayUsers,
+  useToggleUserHosting,
+  usePausedUsers,
+  usePauseUserHosting,
+} from '@/hooks/user/useUsers';
 import {
   useCandidateBlacklist,
   useAddCandidateToBlacklist,
@@ -20,6 +25,7 @@ import UserTable from './components/UserTable';
 import UserTrendChart from './components/UserTrendChart';
 import UserTabNav from './components/UserTabNav';
 import CandidateBlacklist from './components/CandidateBlacklist';
+import PermanentPause from './components/PermanentPause';
 import { USER_RANGE_OPTIONS } from './constants';
 
 // 样式导入
@@ -118,6 +124,7 @@ export default function Users() {
   const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers();
   const { data: configuredBots = [], isLoading: isBotsLoading } = useConfiguredBots();
   const toggleHosting = useToggleUserHosting();
+  const pauseHosting = usePauseUserHosting();
   const { data: candidateBlacklist, isLoading: isLoadingCandidates } = useCandidateBlacklist();
   const addCandidate = useAddCandidateToBlacklist();
   const removeCandidate = useRemoveCandidateFromBlacklist();
@@ -126,9 +133,30 @@ export default function Users() {
     toggleHosting.mutate({ chatId, enabled });
   };
 
-  const pausedUsersData = useMemo(() => transformPausedUsers(pausedUsers), [pausedUsers]);
+  const handlePermanentPause = (params: {
+    userId: string;
+    reason: string;
+    operator?: string;
+  }) => {
+    pauseHosting.mutate({ ...params, permanent: true });
+  };
 
-  const sourceUsers = activeTab === 'today' ? todayUsers : pausedUsersData;
+  const pausedUsersData = useMemo(() => transformPausedUsers(pausedUsers), [pausedUsers]);
+  const temporaryPausedUsersData = useMemo(
+    () => pausedUsersData.filter((user) => user.isPermanent !== true),
+    [pausedUsersData],
+  );
+  const permanentPausedUsersData = useMemo(
+    () => pausedUsersData.filter((user) => user.isPermanent === true),
+    [pausedUsersData],
+  );
+
+  const sourceUsers =
+    activeTab === 'today'
+      ? todayUsers
+      : activeTab === 'permanent'
+        ? permanentPausedUsersData
+        : temporaryPausedUsersData;
   const isLoading = activeTab === 'today' ? isTodayLoading : isPausedLoading;
   const pendingChatId = toggleHosting.isPending ? toggleHosting.variables?.chatId : undefined;
 
@@ -181,11 +209,21 @@ export default function Users() {
   );
 
   const filteredPausedUsers = useMemo(
-    () => filterUsersByControls(pausedUsersData, normalizedKeyword, activeBotOption),
-    [activeBotOption, normalizedKeyword, pausedUsersData],
+    () => filterUsersByControls(temporaryPausedUsersData, normalizedKeyword, activeBotOption),
+    [activeBotOption, normalizedKeyword, temporaryPausedUsersData],
   );
 
-  const filteredSourceUsers = activeTab === 'today' ? filteredTodayUsers : filteredPausedUsers;
+  const filteredPermanentUsers = useMemo(
+    () => filterUsersByControls(permanentPausedUsersData, normalizedKeyword, activeBotOption),
+    [activeBotOption, normalizedKeyword, permanentPausedUsersData],
+  );
+
+  const filteredSourceUsers =
+    activeTab === 'today'
+      ? filteredTodayUsers
+      : activeTab === 'permanent'
+        ? filteredPermanentUsers
+        : filteredPausedUsers;
 
   const displayUsers = useMemo(() => {
     return [...filteredSourceUsers].sort((a, b) => {
@@ -214,16 +252,29 @@ export default function Users() {
           activeTab={activeTab}
           todayCount={filteredTodayUsers.length}
           pausedCount={filteredPausedUsers.length}
+          permanentCount={filteredPermanentUsers.length}
           blacklistCount={candidateBlacklist?.candidates?.length || 0}
           onTabChange={setActiveTab}
         />
 
         {activeTab === 'paused' && (
+          <>
+            <div className={styles.tabHint}>
+              <Info className={styles.tabHintIcon} aria-hidden="true" />
+              <span>
+                临时禁止托管后，系统将在 3
+                天后自动恢复托管；如需提前恢复，请手动切换"托管状态"开关。
+              </span>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'permanent' && (
           <div className={styles.tabHint}>
             <Info className={styles.tabHintIcon} aria-hidden="true" />
             <span>
-              禁止托管后，系统将在 3
-              天后自动恢复托管（标记为"永久"的不会自动恢复，如店长微信、黑名单候选人）；如需提前恢复，请手动切换"托管状态"开关。
+              永久禁止托管不会自动恢复，适用于店长微信、客户微信等不应由 AI
+              托管的联系人；如需恢复，请点击对应行的"恢复托管"。
             </span>
           </div>
         )}
@@ -246,6 +297,17 @@ export default function Users() {
             onAdd={(params) => addCandidate.mutate(params)}
             onRemove={(targetId) => removeCandidate.mutate({ targetId })}
             resolveBotName={resolveBotName}
+          />
+        ) : activeTab === 'permanent' ? (
+          /* 永久禁止托管（与黑名单同款面板：添加表单 + 列表 + 逐行恢复） */
+          <PermanentPause
+            users={displayUsers}
+            isLoading={isLoading}
+            isAdding={pauseHosting.isPending}
+            pendingChatId={pendingChatId}
+            onAdd={handlePermanentPause}
+            onResume={(chatId) => handleToggleHosting(chatId, true)}
+            resolveBotLabel={resolveBotLabel}
           />
         ) : (
           <>

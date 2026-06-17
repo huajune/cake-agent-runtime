@@ -9,6 +9,7 @@ interface UserTabNavProps {
   activeTab: TabType;
   todayCount: number;
   pausedCount: number;
+  permanentCount: number;
   blacklistCount: number;
   onTabChange: (tab: TabType) => void;
 }
@@ -17,12 +18,14 @@ export default function UserTabNav({
   activeTab,
   todayCount,
   pausedCount,
+  permanentCount,
   blacklistCount,
   onTabChange,
 }: UserTabNavProps) {
   return (
     <div className={styles.tabNav}>
       <button
+        type="button"
         className={`${styles.tab} ${activeTab === 'today' ? styles.active : ''}`}
         onClick={() => onTabChange('today')}
       >
@@ -30,13 +33,23 @@ export default function UserTabNav({
         <span className={styles.tabCount}>({todayCount})</span>
       </button>
       <button
+        type="button"
         className={`${styles.tab} ${activeTab === 'paused' ? styles.active : ''}`}
         onClick={() => onTabChange('paused')}
       >
-        <span className={styles.tabLabel}>已禁止托管会话</span>
+        <span className={styles.tabLabel}>临时禁止托管</span>
         <span className={styles.tabCount}>({pausedCount})</span>
       </button>
       <button
+        type="button"
+        className={`${styles.tab} ${activeTab === 'permanent' ? styles.active : ''}`}
+        onClick={() => onTabChange('permanent')}
+      >
+        <span className={styles.tabLabel}>永久禁止托管</span>
+        <span className={styles.tabCount}>({permanentCount})</span>
+      </button>
+      <button
+        type="button"
         className={`${styles.tab} ${activeTab === 'blacklist' ? styles.active : ''}`}
         onClick={() => onTabChange('blacklist')}
       >

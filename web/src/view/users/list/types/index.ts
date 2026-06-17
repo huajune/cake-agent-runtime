@@ -20,13 +20,13 @@ export interface UserData {
   isPermanent?: boolean; // 是否永久暂停（不自动解禁）
   pauseReason?: string; // 暂停理由（如候选人黑名单的拉黑理由）
   pauseOperator?: string; // 操作人
-  pauseSource?: string; // 暂停来源：manual / candidate_blacklist / interview_booking / intervention
+  pauseSource?: string; // 暂停来源：manual / candidate_blacklist / interview_booking / intervention / human_intervention
 }
 
 /**
  * Tab 类型
  */
-export type TabType = 'today' | 'paused' | 'blacklist';
+export type TabType = 'today' | 'paused' | 'permanent' | 'blacklist';
 
 /**
  * 用户表格属性
