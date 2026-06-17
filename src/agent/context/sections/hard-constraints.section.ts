@@ -9,7 +9,7 @@ import {
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
 } from '@memory/facts/high-confidence-facts';
-import { isValidLaborForm } from '@memory/facts/labor-form';
+import { isHardFilteredLaborForm, isValidLaborForm } from '@memory/facts/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
@@ -241,8 +241,11 @@ export class HardConstraintsSection implements PromptSection {
       );
     }
     if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
+      const hardFiltered = isHardFilteredLaborForm(pref.labor_form);
       lines.push(
-        `- 用工形式细分: ${pref.labor_form}（仅作为结果过滤器，不要填入 jobCategoryList；开 includeWorkTime 后基于岗位排班/工时特征筛选）`,
+        hardFiltered
+          ? `- 用工形式: ${pref.labor_form}（工具会按岗位 laborForm 字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止承诺"有/没有「${pref.labor_form}」"，过滤后为空就如实告知附近暂无该用工形式岗位）`
+          : `- 用工形式: ${pref.labor_form}（不要填入 jobCategoryList；介绍岗位用工形式时严格照岗位 laborForm 字段，不要把别的用工形式的岗位说成「${pref.labor_form}」）`,
       );
     }
     if (interview.is_student !== null && interview.is_student !== undefined) {

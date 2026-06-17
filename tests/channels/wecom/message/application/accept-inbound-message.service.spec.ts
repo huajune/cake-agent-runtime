@@ -11,6 +11,7 @@ describe('AcceptInboundMessageService', () => {
   const chatSession = {
     saveMessage: jest.fn(),
     getChatSessionMessages: jest.fn(),
+    getChatHistory: jest.fn(),
   };
   const filterService = {
     validate: jest.fn(),
@@ -47,11 +48,11 @@ describe('AcceptInboundMessageService', () => {
     isAnyPaused: jest.fn(),
     pauseUser: jest.fn(),
   };
-  const alertNotifier = {
-    sendAlert: jest.fn(),
+  const generalHandoffNotifier = {
+    notify: jest.fn(),
   };
-  const hostingMemberConfig = {
-    resolveFeishuReceiver: jest.fn(),
+  const groupBlacklistService = {
+    isGroupBlacklisted: jest.fn(),
   };
 
   let service: AcceptInboundMessageService;
@@ -64,6 +65,10 @@ describe('AcceptInboundMessageService', () => {
     chatSession.getChatSessionMessages.mockResolvedValue({
       messages: [{ role: 'user', candidateName: '候选人A' }],
     });
+    chatSession.getChatHistory.mockResolvedValue([
+      { messageId: 'm1', role: 'user', content: '我还要等几天', timestamp: 1713168000000 },
+      { messageId: 'm2', role: 'assistant', content: '我来跟进一下', timestamp: 1713168001000 },
+    ]);
     filterService.validate.mockResolvedValue({ pass: true, content: '你好' });
     wecomObservability.hasTrace.mockResolvedValue(false);
     wecomObservability.startRequestTrace.mockResolvedValue(undefined);
@@ -77,11 +82,8 @@ describe('AcceptInboundMessageService', () => {
     longTerm.updateMessageMetadata.mockResolvedValue(undefined);
     userHostingService.isAnyPaused.mockResolvedValue({ paused: false });
     userHostingService.pauseUser.mockResolvedValue(undefined);
-    alertNotifier.sendAlert.mockResolvedValue(true);
-    hostingMemberConfig.resolveFeishuReceiver.mockResolvedValue({
-      openId: 'ou-manager-1',
-      name: '招募经理1',
-    });
+    generalHandoffNotifier.notify.mockResolvedValue(true);
+    groupBlacklistService.isGroupBlacklisted.mockResolvedValue(false);
     imageDescription.resolveArtworkUrl.mockImplementation((_id: string, url: string) =>
       Promise.resolve(url),
     );
@@ -97,8 +99,8 @@ describe('AcceptInboundMessageService', () => {
       longTerm as never,
       opsEventsRecorder as never,
       userHostingService as never,
-      alertNotifier as never,
-      hostingMemberConfig as never,
+      generalHandoffNotifier as never,
+      groupBlacklistService as never,
     );
   });
 
@@ -154,35 +156,92 @@ describe('AcceptInboundMessageService', () => {
       source: 'human_intervention',
       reason: '检测到真人介入聊天自动暂停',
     });
-    expect(hostingMemberConfig.resolveFeishuReceiver).toHaveBeenCalledWith('im-bot-1');
-    expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
+    // 复用「候选人需人工介入」通用卡片，但沿用原文案标题/说明（手机手打 → 来源短语「手机」）
+    expect(generalHandoffNotifier.notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        code: 'hosting.human_intervention_paused',
-        summary: '真人介入聊天，已自动暂停托管',
-        scope: expect.objectContaining({
-          corpId: 'corp-1',
-          contactName: '张三',
-          managerName: 'manager-1',
-          chatId: 'chat-1',
-          messageId: 'msg-human',
-          userId: 'im-contact-1',
-        }),
-        impact: expect.objectContaining({
-          userMessage: '我来跟进一下',
-          userVisible: false,
-          requiresHumanIntervention: true,
-        }),
-        diagnostics: expect.objectContaining({
-          category: 'human_intervention',
-          payload: expect.objectContaining({
-            imBotId: 'im-bot-1',
-            source: MessageSource.MOBILE_PUSH,
-          }),
-        }),
-        routing: { atUsers: [{ openId: 'ou-manager-1', name: '招募经理1' }] },
-        dedupe: { key: 'hosting.human_intervention_paused:chat-1' },
+        titleOverride: '🚨 真人介入聊天，已自动暂停托管 · 需要人工介入',
+        reason: '检测到真人通过手机手动发送消息，系统已自动暂停该候选人托管',
+        corpId: 'corp-1',
+        botImId: 'im-bot-1',
+        botUserName: 'manager-1',
+        // 微信昵称取自会话历史的真实候选人，而非自发消息里的托管号名
+        contactName: '候选人A',
+        chatId: 'chat-1',
+        pausedUserId: 'chat-1',
+        currentMessageContent: '我来跟进一下',
+        recentMessages: [
+          { role: 'user', content: '我还要等几天', timestamp: 1713168000000 },
+          { role: 'assistant', content: '我来跟进一下', timestamp: 1713168001000 },
+        ],
+        sessionState: null,
       }),
     );
+    // 原文案无「建议动作」，不应传 actionAdvice
+    expect(generalHandoffNotifier.notify.mock.calls[0][0].actionAdvice).toBeUndefined();
+  });
+
+  it('入群邀请卡片（ROOM_INVITE）回灌的自发消息不当人工介入处理', async () => {
+    // 回归 2026-06-17 李宇杭 case：invite_to_group 成功后平台向候选人发出的入群邀请卡片，
+    // 会以 isSelf=true + source=MOBILE_PUSH + messageType=ROOM_INVITE 回灌。仅 TEXT 才算真人介入，
+    // 卡片非文字 → 不暂停托管 + 不告警。卡片本身仍存为占位历史。
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.MOBILE_PUSH,
+        messageType: MessageType.ROOM_INVITE,
+        messageId: 'msg-human-invite',
+        payload: { roomName: '独立客&上海餐饮兼职⑩群' },
+      }),
+    );
+
+    expect(userHostingService.isAnyPaused).not.toHaveBeenCalled();
+    expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+    expect(generalHandoffNotifier.notify).not.toHaveBeenCalled();
+    expect(chatSession.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        messageType: MessageType.ROOM_INVITE,
+        content: '[入群邀请] 邀请你加入"独立客&上海餐饮兼职⑩群"',
+      }),
+    );
+  });
+
+  it('真人手发非文字消息（语音等）不暂停托管，仅 TEXT 才算人工介入', async () => {
+    // 人工介入只认真人手打文字：经理手机手发语音/图片/表情等非 TEXT 消息不触发暂停。
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.MOBILE_PUSH,
+        messageType: MessageType.VOICE,
+        messageId: 'msg-human-voice',
+        payload: { text: '[语音]', pureText: '[语音]' },
+      }),
+    );
+
+    expect(userHostingService.isAnyPaused).not.toHaveBeenCalled();
+    expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+    expect(generalHandoffNotifier.notify).not.toHaveBeenCalled();
+  });
+
+  it('未托管小组（已屏蔽）的真人回复不触发暂停/告警', async () => {
+    // 与 Dashboard「小组托管状态」同源：小组在 group_blacklist（已屏蔽=关闭托管）时，
+    // 招募经理在该小组真人回复属正常操作，不应进入暂停链路（否则误暂停 + 误告警）。
+    groupBlacklistService.isGroupBlacklisted.mockResolvedValueOnce(true);
+
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.MOBILE_PUSH,
+        groupId: 'group-blocked',
+        messageId: 'msg-human-unhosted',
+        payload: { text: '我来回一下', pureText: '我来回一下' },
+      }),
+    );
+
+    expect(groupBlacklistService.isGroupBlacklisted).toHaveBeenCalledWith('group-blocked');
+    expect(userHostingService.isAnyPaused).not.toHaveBeenCalled();
+    expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+    expect(generalHandoffNotifier.notify).not.toHaveBeenCalled();
   });
 
   it('真人手动介入命中已暂停候选人时不重复刷新暂停状态', async () => {
@@ -204,7 +263,7 @@ describe('AcceptInboundMessageService', () => {
     );
 
     expect(userHostingService.pauseUser).not.toHaveBeenCalled();
-    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+    expect(generalHandoffNotifier.notify).not.toHaveBeenCalled();
   });
 
   it('should store self room-invite cards with placeholder content (group name from payload)', async () => {
@@ -228,7 +287,7 @@ describe('AcceptInboundMessageService', () => {
       }),
     );
     expect(userHostingService.pauseUser).not.toHaveBeenCalled();
-    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+    expect(generalHandoffNotifier.notify).not.toHaveBeenCalled();
   });
 
   it('should store self room-invite cards with generic placeholder when payload has no group name', async () => {

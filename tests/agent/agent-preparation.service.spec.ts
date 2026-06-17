@@ -483,7 +483,7 @@ describe('AgentPreparationService', () => {
     expect(result.finalPrompt).toContain('禁止再次调用 invite_to_group');
   });
 
-  it('should hide full-time labor-form residue from job memory prompt block', async () => {
+  it('should show full-time labor form in job memory prompt block (全职放开)', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '这个可以自己选择一个月上几天吗' }],
@@ -542,9 +542,9 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(result.finalPrompt).toContain('岗位:奥乐齐-1082鑫都-分拣打包');
-    expect(result.finalPrompt).not.toContain('岗位:奥乐齐-1082鑫都-分拣打包-全职');
-    expect(result.finalPrompt).not.toContain('用工:全职');
+    // 全职放开后：全职作为合法用工形式如实展示，不再剥离。
+    expect(result.finalPrompt).toContain('岗位:奥乐齐-1082鑫都-分拣打包-全职');
+    expect(result.finalPrompt).toContain('用工:全职');
     expect(result.finalPrompt).toContain('用工:小时工');
   });
 

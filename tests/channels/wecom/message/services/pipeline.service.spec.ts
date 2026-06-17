@@ -28,6 +28,8 @@ import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
+import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -218,6 +220,14 @@ describe('MessagePipelineService', () => {
               .fn()
               .mockResolvedValue({ messageRecorded: true, engaged: false }),
           },
+        },
+        {
+          provide: GeneralHandoffNotifierService,
+          useValue: { notify: jest.fn().mockResolvedValue(true) },
+        },
+        {
+          provide: GroupBlacklistService,
+          useValue: { isGroupBlacklisted: jest.fn().mockResolvedValue(false) },
         },
       ],
     }).compile();
