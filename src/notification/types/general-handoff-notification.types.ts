@@ -38,4 +38,9 @@ export interface GeneralHandoffNotificationPayload {
   currentMessageContent: string;
   recentMessages: GeneralHandoffNotificationMessage[];
   sessionState: WeworkSessionState | null;
+  /**
+   * 可选：诊断载荷。以 JSON 代码块渲染在卡片末尾，便于排查命中链路
+   * （botId / imBotId / imContactId / externalUserId / source / messageType 等原始字段）。
+   */
+  diagnostics?: Record<string, unknown>;
 }
