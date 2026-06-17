@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.26.0] - 2026-06-17
 
-**预计版本**: `v5.26.0`
-**最近更新**: `2026-06-17`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #369 剥离回复中残留的视觉消息占位符
@@ -44,7 +40,6 @@
 - PR #369 `reply-normalizer.util.spec.ts` — 新增视觉占位符剥离用例，35 passed
 - PR #369 `accept-inbound-message.service.spec.ts` — 更新标题断言 + 新增 diagnostics 断言，21 passed
 - PR #369 pre-push 全量套件通过
-<!-- release:pending:end -->
 
 ## [5.25.0] - 2026-06-17
 
