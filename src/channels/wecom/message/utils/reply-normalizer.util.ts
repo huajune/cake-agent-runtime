@@ -26,12 +26,24 @@ export class ReplyNormalizer {
   private static readonly THINK_BLOCK_PATTERN = /<think>[\s\S]*?<\/think>/gi;
   private static readonly THINK_TAG_PATTERN = /<\/?think\s*>/gi;
 
+  /**
+   * 视觉消息占位符正则。
+   *
+   * 业务背景：候选人发来的图片/表情贴纸会被渲染成 `[图片消息]` / `[表情消息]` 占位前缀注入
+   * 历史（vision 识别完成后回写成 `[表情消息] {描述}`），仅用于让模型读历史时理解视觉内容。
+   * 模型偶发会把这个内部占位符原样复述进回复——badcase
+   * `batch_6a32692a536c965402728654_1781689143249`：候选人发了表情贴纸（vision 描述为「好的」），
+   * 模型把用户那句 `[表情消息] 好的` 整句鹦鹉学舌发了出去。占位符绝不能出现在发给候选人的文本里，
+   * 必须在投递层剥离（连同其后紧跟的一个空格，避免 `[表情消息] 好的` 剥离后残留前导空格）。
+   */
+  private static readonly VISUAL_PLACEHOLDER_PATTERN = /\[(?:图片|表情)消息\]\s?/g;
+
   static normalize(text: string): string {
     if (!text || typeof text !== 'string') return text;
 
-    // 首先移除推理标签、时间标记与 Markdown 装饰符（防御性处理：模型可能漏出思考块/模仿历史格式/Markdown）
+    // 首先移除推理标签、视觉占位符、时间标记与 Markdown 装饰符（防御性处理：模型可能漏出思考块/复述视觉占位符/模仿历史格式/Markdown）
     const cleaned = this.removeMarkdownDecoration(
-      this.removeTimeMarkers(this.removeThinkTags(text)),
+      this.removeTimeMarkers(this.removeVisualPlaceholders(this.removeThinkTags(text))),
     );
 
     if (this.containsListMarkers(cleaned)) return this.normalizeComplexStructure(cleaned);
@@ -51,6 +63,14 @@ export class ReplyNormalizer {
    */
   private static removeThinkTags(text: string): string {
     return text.replace(this.THINK_BLOCK_PATTERN, '').replace(this.THINK_TAG_PATTERN, '').trim();
+  }
+
+  /**
+   * 移除视觉消息占位符（`[图片消息]` / `[表情消息]`）。
+   * 这些是系统给图片/表情贴纸注入历史的内部占位前缀，仅服务于模型读历史，不应发给候选人。
+   */
+  private static removeVisualPlaceholders(text: string): string {
+    return text.replace(this.VISUAL_PLACEHOLDER_PATTERN, '').trim();
   }
 
   private static removeMarkdownDecoration(text: string): string {
@@ -195,6 +215,8 @@ export class ReplyNormalizer {
     if (!text) return false;
     // 推理/思考标签需要剥离（用非全局字面量，避免 /g 的 lastIndex 副作用）
     if (/<\/?think\s*>/i.test(text)) return true;
+    // 视觉消息占位符需要剥离（同样用非全局字面量）
+    if (/\[(?:图片|表情)消息\]/.test(text)) return true;
     // 时间标记需要清理
     if (this.TIME_MARKER_PATTERN.test(text)) return true;
     // Markdown 装饰符需要清理
