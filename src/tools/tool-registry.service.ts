@@ -109,7 +109,7 @@ export class ToolRegistryService {
         name: 'duliday_job_list',
         description:
           '查询在招岗位列表（负责推荐阶段的数据查询与摘要；传入 location 后会做位置筛选，并基于经纬度按距离排序和按业务阈值过滤）',
-        create: buildJobListTool(spongeService, opsEventsRecorder),
+        create: buildJobListTool(spongeService, opsEventsRecorder, geocodingService),
       }),
 
       duliday_interview_booking: createToolDefinition({

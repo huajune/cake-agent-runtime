@@ -133,15 +133,16 @@ describe('AcceptInboundMessageService', () => {
     expect(userHostingService.pauseUser).not.toHaveBeenCalled();
   });
 
-  it('检测到真人手机手打介入私聊后自动暂停该候选人托管', async () => {
-    // 生产实证：真人招募经理介入的主力形态是经理在托管号手机上手打 → isSelf=true + MOBILE_PUSH。
+  it('真人手机手打暗号「~」后自动暂停该候选人托管', async () => {
+    // 真人招募经理介入主力形态是经理在托管号手机上手打（isSelf=true + MOBILE_PUSH）；
+    // 仅当手打内容恰好为暂停暗号「~」时才触发自动暂停，避免日常正常回复被误判。
     const message = createMessage({
       isSelf: true,
       source: MessageSource.MOBILE_PUSH,
       messageId: 'msg-human',
       payload: {
-        text: '我来跟进一下',
-        pureText: '我来跟进一下',
+        text: '~',
+        pureText: '~',
       },
     });
 
@@ -168,7 +169,7 @@ describe('AcceptInboundMessageService', () => {
         contactName: '候选人A',
         chatId: 'chat-1',
         pausedUserId: 'chat-1',
-        currentMessageContent: '我来跟进一下',
+        currentMessageContent: '~',
         recentMessages: [
           { role: 'user', content: '我还要等几天', timestamp: 1713168000000 },
           { role: 'assistant', content: '我来跟进一下', timestamp: 1713168001000 },
@@ -188,6 +189,23 @@ describe('AcceptInboundMessageService', () => {
     );
     // 原文案无「建议动作」，不应传 actionAdvice
     expect(generalHandoffNotifier.notify.mock.calls[0][0].actionAdvice).toBeUndefined();
+  });
+
+  it('真人手机手打普通文字（非暗号「~」）不触发暂停/告警', async () => {
+    // 核心：经理日常正常回复（如"我来跟进一下"）不应被误判为介入而暂停托管，
+    // 只有恰好等于约定暗号「~」才触发（避免误暂停 + 误告警，2026-06-17 李宇杭 case）。
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.MOBILE_PUSH,
+        messageId: 'msg-human-normal',
+        payload: { text: '我来跟进一下', pureText: '我来跟进一下' },
+      }),
+    );
+
+    expect(userHostingService.isAnyPaused).not.toHaveBeenCalled();
+    expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+    expect(generalHandoffNotifier.notify).not.toHaveBeenCalled();
   });
 
   it('入群邀请卡片（ROOM_INVITE）回灌的自发消息不当人工介入处理', async () => {
@@ -244,7 +262,7 @@ describe('AcceptInboundMessageService', () => {
         source: MessageSource.MOBILE_PUSH,
         groupId: 'group-blocked',
         messageId: 'msg-human-unhosted',
-        payload: { text: '我来回一下', pureText: '我来回一下' },
+        payload: { text: '~', pureText: '~' },
       }),
     );
 
@@ -266,8 +284,8 @@ describe('AcceptInboundMessageService', () => {
         source: MessageSource.MOBILE_PUSH,
         messageId: 'msg-human-paused',
         payload: {
-          text: '我已经在处理',
-          pureText: '我已经在处理',
+          text: '~',
+          pureText: '~',
         },
       }),
     );
