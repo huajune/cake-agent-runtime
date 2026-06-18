@@ -1,76 +1,45 @@
 {
-  "baseVersion": "5.26.1",
+  "baseVersion": "5.27.0",
   "nextVersion": "5.27.0",
   "updatedAt": "2026-06-18",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "379",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/379",
-      "title": "区名就近召回 + 真人介入暗号「~」+ prompt badcase + 架构文档",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-18",
-      "businessUpdates": [
-        "新增 Agent 运行时架构可视化解读 HTML"
-      ],
-      "summary": [
-        "区名按就近距离召回，避免区级精确过滤漏掉跨区更近门店",
-        "新增 Agent 运行时架构可视化解读 HTML",
-        "更新真人介入测试以匹配「仅暗号~触发暂停」语义",
-        "buildJobListTool 测试补传 geocodingService 第三参数",
-        "区名就近召回 + 真人介入暗号「~」+ prompt badcase + 架构文档"
-      ],
-      "features": [
-        "新增 Agent 运行时架构可视化解读 HTML"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "区名按就近距离召回，避免区级精确过滤漏掉跨区更近门店",
-        "更新真人介入测试以匹配「仅暗号~触发暂停」语义",
-        "buildJobListTool 测试补传 geocodingService 第三参数"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "区名召回：**live 实测（qwen3.7-plus）30 例 / 13 类场景全过**，0 例残留旧 bug；品牌豁免、多区精确、班次/工种/用工形式/结算过滤均不回归。",
-        "全量单测 **3993 passed / 0 failed**（6 skipped）；tsc 全量 0 错。"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.26.1",
+    "version": "5.27.0",
     "date": "2026-06-18",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "374",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/374",
-        "title": "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位",
+        "number": "379",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/379",
+        "title": "区名就近召回 + 真人介入暗号「~」+ prompt badcase + 架构文档",
         "author": "ArielZhu",
         "mergedAt": "2026-06-18",
         "businessUpdates": [
-          "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位"
+          "新增 Agent 运行时架构可视化解读 HTML"
         ],
         "summary": [
-          "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位"
+          "区名按就近距离召回，避免区级精确过滤漏掉跨区更近门店",
+          "新增 Agent 运行时架构可视化解读 HTML",
+          "更新真人介入测试以匹配「仅暗号~触发暂停」语义",
+          "buildJobListTool 测试补传 geocodingService 第三参数",
+          "区名就近召回 + 真人介入暗号「~」+ prompt badcase + 架构文档"
         ],
-        "features": [],
+        "features": [
+          "新增 Agent 运行时架构可视化解读 HTML"
+        ],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位"
+          "区名按就近距离召回，避免区级精确过滤漏掉跨区更近门店",
+          "更新真人介入测试以匹配「仅暗号~触发暂停」语义",
+          "buildJobListTool 测试补传 geocodingService 第三参数"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "单测：`search.util.spec` + `labor-form.spec` 共 84 测试全过；tsc/eslint 干净",
-          "**20 个真实 case 回归**（debug-chat 真实工具循环，模型 qwen3.7-plus 与生产一致）：",
-          "暑假工/寒假工（01-07）正常出真实岗位，不再误判\"无岗\"",
-          "全职控制组（11/13）只有兼职时如实拒绝 → 过滤仍生效",
-          "兼职/小时工/无偏好（08-10/14-16）返回全部岗位",
-          "品牌诚实/反编造（17-20）：查无肯德基/瑞幸/星巴克时如实走拉群，**不再编造**",
-          "badcase 三要害场景（武进湖塘暑假工 03 / 兼职施压 05 / 肯德基编造 18）全部转正"
+          "区名召回：**live 实测（qwen3.7-plus）30 例 / 13 类场景全过**，0 例残留旧 bug；品牌豁免、多区精确、班次/工种/用工形式/结算过滤均不回归。",
+          "全量单测 **3993 passed / 0 failed**（6 skipped）；tsc 全量 0 错。"
         ]
       }
     ]
