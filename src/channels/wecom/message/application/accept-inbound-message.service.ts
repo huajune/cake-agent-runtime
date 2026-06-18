@@ -46,6 +46,9 @@ const HUMAN_INTERVENTION_SOURCES = new Set<MessageSource>([
 // 旧逻辑只看 source 不看 messageType，把它误判成真人介入 → 误暂停托管 + 误告警（2026-06-17 李宇杭 case）。
 const HUMAN_INTERVENTION_MESSAGE_TYPE = MessageType.TEXT;
 
+// 暂停托管暗号：真人手打文字内容必须恰好等于「~」才触发暂停，避免经理日常正常回复被误判为介入。
+const HUMAN_INTERVENTION_TRIGGER_TEXT = '~';
+
 /**
  * 真人介入来源短语，用于原文案「检测到真人通过{X}手动发送消息…」。
  * 仅把旧版写死的「聚合聊天」按真实来源替换（手机手打 = MOBILE_PUSH），其余文案不变。
@@ -529,7 +532,11 @@ export class AcceptInboundMessageService {
     if (messageData.messageType !== HUMAN_INTERVENTION_MESSAGE_TYPE) {
       return false;
     }
-    return HUMAN_INTERVENTION_SOURCES.has(messageData.source);
+    if (!HUMAN_INTERVENTION_SOURCES.has(messageData.source)) {
+      return false;
+    }
+    // 仅当真人手打消息内容恰好等于约定暗号「~」时才暂停托管，避免经理正常回复被误判。
+    return MessageParser.extractContent(messageData).trim() === HUMAN_INTERVENTION_TRIGGER_TEXT;
   }
 
   /**

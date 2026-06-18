@@ -74,6 +74,7 @@ describe('buildJobListTool', () => {
     const builder = buildJobListTool(
       mockSpongeService as never,
       { recordEvent: jest.fn() } as never,
+      { geocode: jest.fn().mockResolvedValue(null) } as never,
     );
     const builtTool = builder(ctx);
     return builtTool.execute(input as any, {
@@ -88,6 +89,7 @@ describe('buildJobListTool', () => {
     const builder = buildJobListTool(
       mockSpongeService as never,
       { recordEvent: jest.fn() } as never,
+      { geocode: jest.fn().mockResolvedValue(null) } as never,
     );
     const builtTool = builder(mockContext);
 
