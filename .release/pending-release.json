@@ -1,9 +1,40 @@
 {
   "baseVersion": "5.26.0",
-  "nextVersion": "5.26.0",
-  "updatedAt": "2026-06-17",
+  "nextVersion": "5.26.1",
+  "updatedAt": "2026-06-18",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "374",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/374",
+      "title": "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-18",
+      "businessUpdates": [
+        "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位"
+      ],
+      "summary": [
+        "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "用工形式过滤仅对「全职」硬过滤，其余返回全部岗位"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "单测：`search.util.spec` + `labor-form.spec` 共 84 测试全过；tsc/eslint 干净",
+        "**20 个真实 case 回归**（debug-chat 真实工具循环，模型 qwen3.7-plus 与生产一致）：",
+        "暑假工/寒假工（01-07）正常出真实岗位，不再误判\"无岗\"",
+        "全职控制组（11/13）只有兼职时如实拒绝 → 过滤仍生效",
+        "兼职/小时工/无偏好（08-10/14-16）返回全部岗位",
+        "品牌诚实/反编造（17-20）：查无肯德基/瑞幸/星巴克时如实走拉群，**不再编造**",
+        "badcase 三要害场景（武进湖塘暑假工 03 / 兼职施压 05 / 肯德基编造 18）全部转正"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.26.0",
     "date": "2026-06-17",
