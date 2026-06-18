@@ -19,8 +19,6 @@ import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import {
   isFullTimeLaborForm,
   isHardFilteredLaborForm,
-  isSeasonalLaborForm,
-  matchesLaborForm,
   sanitizeLaborFormForDisplay,
 } from '@memory/facts/labor-form';
 
@@ -192,42 +190,29 @@ export interface LaborFormFilterResult {
 }
 
 /**
- * 把候选人想要的用工形式映射成"保留谓词"。返回 null 表示不做硬过滤（软处理）。
+ * 把候选人想要的用工形式映射成"保留谓词"。返回 null 表示不做硬过滤（返回全部岗位）。
  *
- * 硬过滤集：
- * - 全职 → 只保留 laborForm==全职（全职必须岗位字段显式背书）；
- * - 兼职（统称）→ 剔除全职，保留所有非全职（含细分 / 无 laborForm 的默认按兼职）；
- * - 暑假工 / 寒假工（季节性）→ laborForm 严格相等（季节可用性必须字段背书）。
- *
- * 软处理（返回 null，不剔除，仅照字段如实介绍）：
- * - 小时工 / 兼职+ —— 兼职内部细分，laborForm 字段稀疏，硬过滤易误伤。
+ * 业务口径（2026-06 修订）：**只有「全职」触发硬过滤** —— 只保留 laborForm==全职 的岗位
+ * （全职可用性必须岗位字段显式背书）。其余一切（兼职 / 暑假工 / 寒假工 / 小时工 / 兼职+ / 未填）
+ * 都返回 null **不过滤**：找兼职/暑期工的候选人本就灵活，全职岗也可一并考虑，由其自行挑选。
  */
 function buildLaborFormKeepPredicate(
   wanted: string | null | undefined,
 ): ((job: any) => boolean) | null {
-  // 仅硬过滤集（全职/兼职/暑假工/寒假工）构造谓词；其余（小时工/兼职+）软处理返回 null。
+  // 仅「全职」触发硬过滤；其余用工形式一律不过滤（返回全部岗位）。
   if (!isHardFilteredLaborForm(wanted)) return null;
-  if (isFullTimeLaborForm(wanted)) {
-    return (job) => isFullTimeLaborForm(job?.basicInfo?.laborForm);
-  }
-  if (wanted === '兼职') {
-    // 非全职即兼职：无 laborForm 的岗位默认视为兼职类，予以保留。
-    return (job) => !isFullTimeLaborForm(job?.basicInfo?.laborForm);
-  }
-  if (isSeasonalLaborForm(wanted)) {
-    return (job) => matchesLaborForm(job?.basicInfo?.laborForm, wanted);
-  }
-  return null;
+  return (job) => isFullTimeLaborForm(job?.basicInfo?.laborForm);
 }
 
 /**
- * 按候选人想要的用工形式过滤岗位（仅对全职 / 兼职统称 / 季节性硬过滤；小时工/兼职+ 软处理）。
+ * 按候选人想要的用工形式过滤岗位（**仅对「全职」硬过滤**；其余用工形式不过滤、返回全部）。
  *
  * 剔除项附岗位实际 laborForm，便于上层如实解释（如"附近这几家都是兼职岗，没有全职"）。
  *
  * 设计动机：
- * - badcase 6a32317a：候选人问"廊坊有没有暑假工"，Agent 零查岗就承诺"有"，实际整城无暑假工。
- * - 全职放开后，全职/兼职可用性同理必须由岗位 laborForm 字段背书，不能软推断。
+ * - 候选人明确要全职时，全职可用性必须由岗位 laborForm 字段显式背书，不能软推断。
+ * - 反例 badcase（chat 6a334d26536c9654026d9316）：曾把"暑假工"当岗位 laborForm 做严格全等
+ *   硬过滤，但岗位轴没有该值，导致暑假工候选人召回必空、下游 Agent 被逼编造岗位。
  */
 export function applyLaborFormConstraint(
   jobs: any[],

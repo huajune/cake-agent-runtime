@@ -129,28 +129,25 @@ describe('job-list search util', () => {
       expect(result.excluded.map((e) => e.jobId)).toEqual([2, 6, 4]);
     });
 
-    it('兼职 (统称): excludes 全职, keeps every non-全职 (incl. null laborForm)', () => {
+    it('兼职: no longer filters — returns ALL jobs (incl. 全职)', () => {
+      // 业务口径（2026-06）：只有「全职」硬过滤；兼职候选人返回全部岗位让其自行挑选。
       const result = applyLaborFormConstraint(
         [fullTimeJob, hourlyJob, plusJob, summerJob, partTimeJob, noLaborForm],
         '兼职',
       );
-      expect(result.applied).toBe(true);
-      expect(result.jobs.map((j) => j.basicInfo.jobId)).toEqual([2, 3, 1, 6, 4]);
-      expect(result.excluded.map((e) => e.jobId)).toEqual([5]);
+      expect(result.applied).toBe(false);
+      expect(result.jobs).toHaveLength(6);
+      expect(result.excluded).toEqual([]);
     });
 
-    it('暑假工: keeps only strict laborForm match', () => {
+    it('暑假工: no longer filters — returns ALL jobs (暑假工 is candidate availability, not a job field)', () => {
       const result = applyLaborFormConstraint(
-        [summerJob, hourlyJob, plusJob, noLaborForm],
+        [fullTimeJob, summerJob, hourlyJob, plusJob, noLaborForm],
         '暑假工',
       );
-      expect(result.applied).toBe(true);
-      expect(result.jobs).toEqual([summerJob]);
-      expect(result.excluded).toEqual([
-        { jobId: 2, brandName: '麦当劳', laborForm: '小时工' },
-        { jobId: 3, brandName: '必胜客', laborForm: '兼职+' },
-        { jobId: 4, brandName: '星巴克', laborForm: null },
-      ]);
+      expect(result.applied).toBe(false);
+      expect(result.jobs).toHaveLength(5);
+      expect(result.excluded).toEqual([]);
     });
 
     it('全职: never repackages part-time as full-time (excludes all → empty)', () => {
