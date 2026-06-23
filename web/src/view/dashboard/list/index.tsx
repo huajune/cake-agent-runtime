@@ -13,7 +13,10 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { useDashboardOverview } from '@/hooks/analytics/useDashboard';
+import {
+  useDashboardOverview,
+  usePrefetchDashboardOverview,
+} from '@/hooks/analytics/useDashboard';
 import { useHealthStatus } from '@/hooks/analytics/useMetrics';
 import { useWorkerStatus } from '@/hooks/config/useWorker';
 import type { DashboardTimeRange } from '@/api/types/analytics.types';
@@ -102,6 +105,7 @@ export default function Dashboard() {
   } = useDashboardOverview(timeRange, autoRefresh, groups);
   const dashboard = rawDashboard?.timeRange === timeRange ? rawDashboard : undefined;
   const dashboardLoading = dashboardInitialLoading || !dashboard;
+  usePrefetchDashboardOverview(rawDashboard?.timeRange === 'today' && groups.length === 0, groups);
   // 刷新/加载指示：初次加载（含整页刷新）或后台刷新（已有占位数据）时，顶部显示滑动进度条。
   const showRefreshBar = dashboardLoading || (dashboardFetching && dashboardPlaceholder);
   const { data: health } = useHealthStatus(autoRefresh);

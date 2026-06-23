@@ -112,6 +112,7 @@ export class AnalyticsDashboardService {
     string,
     { expireAt: number; value: DashboardOverviewResponse }
   >();
+  private readonly projectionFreshCache = new Map<string, { expireAt: number; value: boolean }>();
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -261,11 +262,14 @@ export class AnalyticsDashboardService {
       const currentEndDate = new Date(currentEnd);
       const previousStartDate = new Date(previousStart);
       const previousEndDate = new Date(previousEnd);
+      const managedUserCountCache = new Map<string, Promise<number>>();
 
       const sevenDaysAgo = addLocalDays(getLocalDayStart(currentEndDate), -6);
       const currentHourStart = this.getHourStart(currentEndDate);
-      const hourlyProjectionFresh = await this.isHourlyProjectionFresh(currentEndDate);
-      const dailyProjectionFresh = await this.isDailyProjectionFresh(currentEndDate);
+      const [hourlyProjectionFresh, dailyProjectionFresh] = await Promise.all([
+        this.isHourlyProjectionFresh(currentEndDate),
+        this.isDailyProjectionFresh(currentEndDate),
+      ]);
 
       // 活跃用户口径：近 1 小时内有消息往来的去重用户，与所选时间范围解耦（固定 1h 滚动窗口）
       const activeUserWindowStart = new Date(Date.now() - this.ACTIVE_USER_WINDOW_MS);
@@ -284,16 +288,32 @@ export class AnalyticsDashboardService {
           currentEndDate,
           timeRange === 'today',
           dailyProjectionFresh,
+          managedUserCountCache,
         ),
         this.getOverviewStatsForRange(
           previousStartDate,
           previousEndDate,
           timeRange === 'today',
           dailyProjectionFresh,
+          managedUserCountCache,
         ),
-        this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
-        this.monitoringRepository.getDashboardFallbackStats(previousStartDate, previousEndDate),
-        this.getManualInterventionStatsFromDatabase(currentStartDate, currentEndDate),
+        this.getFallbackStatsForRange(
+          currentStartDate,
+          currentEndDate,
+          timeRange === 'today',
+          dailyProjectionFresh,
+        ),
+        this.getFallbackStatsForRange(
+          previousStartDate,
+          previousEndDate,
+          timeRange === 'today',
+          dailyProjectionFresh,
+        ),
+        this.getManualInterventionStatsFromDatabase(
+          currentStartDate,
+          currentEndDate,
+          hourlyProjectionFresh,
+        ),
         // 近 1 小时活跃用户始终走实时（1h 滚动窗口，与所选范围解耦）。
         this.monitoringRepository.getDashboardOverviewStats(
           activeUserWindowStart,
@@ -435,7 +455,24 @@ export class AnalyticsDashboardService {
       const prevStartDate = formatLocalDate(previousStartDate);
       const prevEndDate = formatLocalDate(previousEndDate);
 
-      // 并行查询：预约数（轻量索引查询）+ 业务趋势（数据库侧聚合，避免拉取原始流水）
+      const businessTrendPromise =
+        timeRange === 'today'
+          ? this.getBusinessTrendFromDatabase(
+              currentStart,
+              currentEnd,
+              currentOverview.activeUsers,
+              timeRange,
+            )
+          : this.getBusinessTrendFromDailyTrend(
+              minuteTrend as DailyTrendData[],
+              curStartDate,
+              curEndDate,
+              currentStartDate,
+              currentEndDate,
+              currentOverview.activeUsers,
+            );
+
+      // 并行查询：预约数（轻量索引查询）+ 业务趋势（复用日聚合，避免重复拉 user_activity 明细）
       const [
         currentBookings,
         previousBookings,
@@ -445,23 +482,20 @@ export class AnalyticsDashboardService {
       ] = await Promise.all([
         this.getBookingCount(curStartDate, curEndDate),
         this.getBookingCount(prevStartDate, prevEndDate),
-        this.getBusinessTrendFromDatabase(
-          currentStart,
-          currentEnd,
-          currentOverview.activeUsers,
-          timeRange,
-        ),
+        businessTrendPromise,
         this.getManagedUserCountForBusiness(
           currentStartDate,
           currentEndDate,
           currentOverview.activeUsers,
           timeRange,
+          managedUserCountCache,
         ),
         this.getManagedUserCountForBusiness(
           previousStartDate,
           previousEndDate,
           previousOverview.activeUsers,
           timeRange,
+          managedUserCountCache,
         ),
       ]);
 
@@ -997,17 +1031,23 @@ export class AnalyticsDashboardService {
 
   private async isHourlyProjectionFresh(currentEndDate: Date): Promise<boolean> {
     try {
-      const latestHourly = await this.hourlyStatsRepository.getLatestHourlyStat();
-
-      if (!latestHourly?.hour) {
-        return false;
-      }
-
       const expectedLatestCompletedHour = new Date(
         this.getHourStart(currentEndDate).getTime() - 60 * 60 * 1000,
       );
+      const cacheKey = `hourly:${expectedLatestCompletedHour.toISOString()}`;
+      const cached = this.getCachedProjectionFresh(cacheKey);
+      if (cached !== null) return cached;
 
-      return new Date(latestHourly.hour).getTime() >= expectedLatestCompletedHour.getTime();
+      const latestHourly = await this.hourlyStatsRepository.getLatestHourlyStat();
+
+      if (!latestHourly?.hour) {
+        this.setCachedProjectionFresh(cacheKey, false);
+        return false;
+      }
+
+      const fresh = new Date(latestHourly.hour).getTime() >= expectedLatestCompletedHour.getTime();
+      this.setCachedProjectionFresh(cacheKey, fresh);
+      return fresh;
     } catch (error) {
       this.logger.warn('[Dashboard] 检查小时聚合新鲜度失败，回退到原始记录查询:', error);
       return false;
@@ -1016,19 +1056,42 @@ export class AnalyticsDashboardService {
 
   private async isDailyProjectionFresh(currentEndDate: Date): Promise<boolean> {
     try {
+      const expectedLatestCompletedDay = addLocalDays(this.getDayStart(currentEndDate), -1);
+      const expectedDate = formatLocalDate(expectedLatestCompletedDay);
+      const cacheKey = `daily:${expectedDate}`;
+      const cached = this.getCachedProjectionFresh(cacheKey);
+      if (cached !== null) return cached;
+
       const latestDaily = await this.dailyStatsRepository.getLatestDailyStat();
 
       if (!latestDaily?.date) {
+        this.setCachedProjectionFresh(cacheKey, false);
         return false;
       }
 
-      const expectedLatestCompletedDay = addLocalDays(this.getDayStart(currentEndDate), -1);
-
-      return latestDaily.date >= formatLocalDate(expectedLatestCompletedDay);
+      const fresh = latestDaily.date >= expectedDate;
+      this.setCachedProjectionFresh(cacheKey, fresh);
+      return fresh;
     } catch (error) {
       this.logger.warn('[Dashboard] 检查日聚合新鲜度失败，回退到原始记录查询:', error);
       return false;
     }
+  }
+
+  private getCachedProjectionFresh(cacheKey: string): boolean | null {
+    const cached = this.projectionFreshCache.get(cacheKey);
+    if (!cached || cached.expireAt <= Date.now()) {
+      this.projectionFreshCache.delete(cacheKey);
+      return null;
+    }
+    return cached.value;
+  }
+
+  private setCachedProjectionFresh(cacheKey: string, value: boolean): void {
+    this.projectionFreshCache.set(cacheKey, {
+      value,
+      expireAt: Date.now() + 30_000,
+    });
   }
 
   private async getDailyTrendFromProjectionRange(
@@ -1225,21 +1288,70 @@ export class AnalyticsDashboardService {
       });
   }
 
+  private async getBusinessTrendFromDailyTrend(
+    dailyTrend: DailyTrendData[],
+    startDate: string,
+    endDate: string,
+    startDateTime: Date,
+    endDateTime: Date,
+    activeUsers: number,
+  ): Promise<BusinessMetricTrendPoint[]> {
+    const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
+    const bookingCountByDate = new Map<string, number>();
+    for (const item of bookingStats) {
+      bookingCountByDate.set(
+        item.date,
+        (bookingCountByDate.get(item.date) ?? 0) + item.bookingCount,
+      );
+    }
+
+    const dates = new Set<string>([
+      ...dailyTrend.map((item) => item.date),
+      ...bookingStats.map((item) => item.date),
+    ]);
+
+    const dailyByDate = new Map(dailyTrend.map((item) => [item.date, item]));
+    const trend = Array.from(dates)
+      .sort((a, b) => a.localeCompare(b))
+      .map((date) => {
+        const consultations = dailyByDate.get(date)?.uniqueUsers ?? 0;
+        const successfulBookings = bookingCountByDate.get(date) ?? 0;
+        const bookingAttempts = successfulBookings;
+
+        return {
+          minute: date,
+          consultations,
+          bookingAttempts,
+          successfulBookings,
+          conversionRate:
+            consultations > 0
+              ? parseFloat(((successfulBookings / consultations) * 100).toFixed(2))
+              : 0,
+          bookingSuccessRate: bookingAttempts > 0 ? 100 : 0,
+        };
+      });
+
+    if (trend.some((point) => point.consultations > 0) || activeUsers === 0) {
+      return trend;
+    }
+
+    this.logger.warn('[Dashboard] 日聚合趋势缺少 uniqueUsers，回退到 user_activity 业务趋势聚合');
+    return this.getDailyBusinessTrendFromAggregates(startDateTime, endDateTime);
+  }
+
   private async getManagedUserCountForBusiness(
     startDate: Date,
     endDate: Date,
     fallbackCount: number,
     range: TimeRange,
+    cache?: Map<string, Promise<number>>,
   ): Promise<number> {
     if (range === 'today') {
       return fallbackCount;
     }
 
     try {
-      const userCount = await this.userHostingService.countActiveUsersByDateRange(
-        startDate,
-        endDate,
-      );
+      const userCount = await this.countManagedUsersByDateRange(startDate, endDate, cache);
       if (userCount > 0 || fallbackCount === 0) {
         return userCount;
       }
@@ -1408,10 +1520,11 @@ export class AnalyticsDashboardService {
   private async getManualInterventionStatsFromDatabase(
     startDate: Date,
     endDate: Date,
+    hourlyFresh?: boolean,
   ): Promise<DashboardManualInterventionStats> {
     try {
-      const hourlyFresh = await this.isHourlyProjectionFresh(endDate);
-      if (!hourlyFresh) {
+      const fresh = hourlyFresh ?? (await this.isHourlyProjectionFresh(endDate));
+      if (!fresh) {
         return this.getManualInterventionStatsFromRecords(startDate, endDate);
       }
 
@@ -1461,6 +1574,7 @@ export class AnalyticsDashboardService {
     endDate: Date,
     isToday: boolean,
     dailyFresh: boolean,
+    managedUserCountCache?: Map<string, Promise<number>>,
   ): Promise<DashboardOverviewStats> {
     if (isToday || !dailyFresh) {
       return this.monitoringRepository.getDashboardOverviewStats(startDate, endDate);
@@ -1469,7 +1583,7 @@ export class AnalyticsDashboardService {
     try {
       const [rows, managedCount] = await Promise.all([
         this.dailyStatsRepository.getDailyStatsByDateRange(startDate, endDate),
-        this.userHostingService.countActiveUsersByDateRange(startDate, endDate),
+        this.countManagedUsersByDateRange(startDate, endDate, managedUserCountCache),
       ]);
 
       let totalMessages = 0;
@@ -1503,6 +1617,62 @@ export class AnalyticsDashboardService {
       this.logger.warn('[Dashboard] 概览聚合查询失败，回退原始查询:', error);
       return this.monitoringRepository.getDashboardOverviewStats(startDate, endDate);
     }
+  }
+
+  private async getFallbackStatsForRange(
+    startDate: Date,
+    endDate: Date,
+    isToday: boolean,
+    dailyFresh: boolean,
+  ): Promise<DashboardFallbackStats> {
+    if (isToday || !dailyFresh) {
+      return this.monitoringRepository.getDashboardFallbackStats(startDate, endDate);
+    }
+
+    try {
+      const rows = await this.dailyStatsRepository.getDailyStatsByDateRange(startDate, endDate);
+
+      let totalCount = 0;
+      let successCount = 0;
+      let affectedUsers = 0;
+      for (const row of rows) {
+        totalCount += row.fallbackCount;
+        successCount += row.fallbackSuccessCount;
+        affectedUsers += row.fallbackAffectedUsers;
+      }
+
+      return {
+        totalCount,
+        successCount,
+        successRate:
+          totalCount > 0 ? parseFloat(((successCount / totalCount) * 100).toFixed(2)) : 0,
+        affectedUsers,
+      };
+    } catch (error) {
+      this.logger.warn('[Dashboard] 降级聚合查询失败，回退原始查询:', error);
+      return this.monitoringRepository.getDashboardFallbackStats(startDate, endDate);
+    }
+  }
+
+  private countManagedUsersByDateRange(
+    startDate: Date,
+    endDate: Date,
+    cache?: Map<string, Promise<number>>,
+  ): Promise<number> {
+    const cacheKey = `${startDate.toISOString()}..${endDate.toISOString()}`;
+    const cached = cache?.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const promise = this.userHostingService
+      .countActiveUsersByDateRange(startDate, endDate)
+      .catch((error) => {
+        cache?.delete(cacheKey);
+        throw error;
+      });
+    cache?.set(cacheKey, promise);
+    return promise;
   }
 
   /** 原始查询路径（聚合断更/异常时回退）：扫 message_processing_records.tool_calls。 */
