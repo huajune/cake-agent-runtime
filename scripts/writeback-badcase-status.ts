@@ -21,7 +21,236 @@ type Plan = {
   reason: string;
 };
 
+// === 2026-06-22 第六批：裁判 v2（补工具语义）判已修复 + 人工复核（7 条）===
 const PLANS: Plan[] = [
+  { badcaseId: '2ol2dhcl', recordId: 'recvm1EYTDILDa', current: '待分析', target: '已解决', reason: '裁判v2+复核：新回复文本不再出现候选人名字' },
+  { badcaseId: 'goryw5og', recordId: 'recvmB2NLos0wm', current: '待分析', target: '已解决', reason: '裁判v2+复核：文本纠正定位（龙之梦在长宁非宝山），重查宝山门店' },
+  { badcaseId: 'mvy56jvf', recordId: 'recvmRdt5xuzui', current: '待分析', target: '已解决', reason: '裁判v2+复核：如实说无暑假工岗位，不再把小时工硬推成暑假工' },
+  { badcaseId: 'j5mlfw9n', recordId: 'recvkMTj9fRKM1', current: '待分析', target: '已解决', reason: '裁判v2+复核：走 precheck 校验+确认时间的规范流程，非旧版"好的"空转' },
+  { badcaseId: 'n680d3qx', recordId: 'recvlWm8i5BtHw', current: '待分析', target: '已解决', reason: '裁判v2+复核：不再乱称帮报名/群里有报名表，改为拉群+转人工' },
+  { badcaseId: 'xj1z4or5', recordId: 'recvmj9uX0Erwo', current: '待分析', target: '已解决', reason: '裁判v2+复核：不再直说"北京籍不要"敏感话，改为拉群+转人工避免投诉' },
+  { badcaseId: 'imnmcg8g', recordId: 'recvmdsAg7RgMO', current: '待分析', target: '已解决', reason: '裁判v2+复核：不再硬推远距离门店，改为转人工/拉群' },
+];
+
+// === 2026-06-22 第五批：图片/证件识别类（8 条，已 apply）===
+const _BATCH5_PLANS: Plan[] = [
+  { badcaseId: '7wk374o4', recordId: 'recvkk5JNFKXiG', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：图片识别城市错误（天津识别成上海）' },
+  { badcaseId: 'nabk4q48', recordId: 'recvkkfZm9U2RE', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：图片未识别出来' },
+  { badcaseId: 'fnbkiop2', recordId: 'recvkB9HbgOSsS', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：简历图片/链接识别' },
+  { badcaseId: 'pmdqeyvv', recordId: 'recvkIllMuSEwD', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：截图岗位识别错误（MStand 识别成麦当劳）' },
+  { badcaseId: '13ocfowi', recordId: 'recvkYs2cpTfrj', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：健康证识别错误（误说过期）' },
+  { badcaseId: 'tolv8yg8', recordId: 'recvln2Xhbpesq', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：图片识别' },
+  { badcaseId: 'qth0tl3g', recordId: 'recvm1I0H4vj6G', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：健康证识别（误说过期）' },
+  { badcaseId: 'o9i2mzfr', recordId: 'recvmjydmBLHxe', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：订单截图识别/话术' },
+];
+
+// === 2026-06-22 第四批：qwen3.7-plus 裁判判「已修复」、用户认可（4 条，已 apply）===
+const _BATCH4_PLANS: Plan[] = [
+  {
+    badcaseId: 'uavevvdl',
+    recordId: 'recvkU1tu9wEnH',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+用户认可：不再"先说没岗位又推岗位"自相矛盾，改为执行拉群/转人工',
+  },
+  {
+    badcaseId: '1uu1uqz7',
+    recordId: 'recvllPvRhFTLI',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+用户认可：不再声称"只有兼职岗位"，改为拉群/转人工，不再传错误口径',
+  },
+  {
+    badcaseId: 'csku0c1g',
+    recordId: 'recvlfZYXA1bJD',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+用户认可：主动询问城市并调 geocode 定位，改善旧版定位识别不清',
+  },
+  {
+    badcaseId: 'a8bxjhzv',
+    recordId: 'recvmcIb825T7r',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+用户认可：不再直接发链接，改为调 invite_to_group 拉群',
+  },
+];
+
+// === 2026-06-22 第三批：qwen3.7-plus 裁判+人工复核认同（5 条，已 apply）===
+const _BATCH3_PLANS: Plan[] = [
+  {
+    badcaseId: 'yctrzr4p',
+    recordId: 'recvln39ySVHP5',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+复核：旧版只问位置不推荐，现在主动推荐附近匹配岗位（成都你六姐晚班）',
+  },
+  {
+    badcaseId: 'f6axr87z',
+    recordId: 'recvlVRbjemSL5',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+复核：删除"报名成功后会有后续通知"措辞，改为预约成功+明确下一步',
+  },
+  {
+    badcaseId: '2wfw0czz',
+    recordId: 'recvmBdA0mHj2b',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+复核：旧版城市识别错误，现在正确纠正为南京雨花区并推荐对应岗位',
+  },
+  {
+    badcaseId: '1918x32y',
+    recordId: 'recvmctHaVyXZO',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+复核：不再"先说没岗位再推岗位"自相矛盾，一致表示惠南有岗位在招',
+  },
+  {
+    badcaseId: 'odkjqlgn',
+    recordId: 'recvm7veedtteL',
+    current: '待分析',
+    target: '已解决',
+    reason: '裁判+复核：二次约面不再无反馈，现在明确约好电话面试并告知留意接听',
+  },
+];
+
+// === 2026-06-22 第二批：忠实重放新确认已修复（5 条，已 apply）===
+const _BATCH2_PLANS: Plan[] = [
+  {
+    badcaseId: 'mzXMuJA9eJ',
+    recordId: 'recvmzXMuJA9eJ',
+    current: '待分析',
+    target: '已解决',
+    reason: '忠实重放：候选人不想找必胜客，现在不再假设必胜客、开放询问想找的工作类型',
+  },
+  {
+    badcaseId: 'mAJT47Uafq',
+    recordId: 'recvmAJT47Uafq',
+    current: '待分析',
+    target: '已解决',
+    reason: '忠实重放：收到"确认"直接走约面动作（precheck/booking），不再反复要候选人确认',
+  },
+  {
+    badcaseId: 'mAOYFYWiwj',
+    recordId: 'recvmAOYFYWiwj',
+    current: '待分析',
+    target: '已解决',
+    reason: '忠实重放：旧版被报名阈值 system_blocked 假阻断，现在正常推进收资约面，无虚假"阈值满"',
+  },
+  {
+    badcaseId: 'mGAG7qaFuC',
+    recordId: 'recvmGAG7qaFuC',
+    current: '待分析',
+    target: '已解决',
+    reason: '忠实重放：附近无合适岗位时，如实说明其他品牌都在 20km 外并询问偏好，不再盲目硬推远店',
+  },
+  {
+    badcaseId: 'mLGmGeJUYq',
+    recordId: 'recvmLGmGeJUYq',
+    current: '待分析',
+    target: '已解决',
+    reason: '忠实重放：不再把日结说成月结，正确说明必胜客是日结（基础按天日结+阶梯月补）',
+  },
+];
+
+// === 2026-06-22 第一批：单轮复测验证已修复（13 条，已 apply）===
+const _BATCH1_PLANS: Plan[] = [
+  {
+    badcaseId: 'zx6g64gt',
+    recordId: 'recvkOe86DYWaC',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：旧回"推荐岗位失败"占位语，现已正常召回带距离的真实岗位',
+  },
+  {
+    badcaseId: 'f2ijz8y1',
+    recordId: 'recvlrsb6Y1c65',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：删除"系统显示你已有门店对接，一次只能跟进一家"诡异话术，改为清楚说明班次不匹配',
+  },
+  {
+    badcaseId: '417s0u8f',
+    recordId: 'recvltg4XU4LPc',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：不再自己发面试二维码，改为"帮你确认后回复"',
+  },
+  {
+    badcaseId: 'y68b7ngv',
+    recordId: 'recvm0Xh5nZXdI',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：现在准确说明"必胜客周六日须出勤、一周三天含周末"，不再含糊为可协商',
+  },
+  {
+    badcaseId: '7j7bgkpx',
+    recordId: 'recvmisMPOSmSt',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：正确识别为全职岗并确认五险一金，不再错说"兼职不缴社保"',
+  },
+  {
+    badcaseId: '504e50ua',
+    recordId: 'recvmjZAwd3ezI',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：岗位推荐现在带公里数距离',
+  },
+  {
+    badcaseId: '57r0hzkx',
+    recordId: 'recvmAXL4tTgxN',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：岗位推荐显示距离（0.1km），不再"距离再确认下"',
+  },
+  {
+    badcaseId: 'q9l0z11v',
+    recordId: 'recvmB3RFDfraG',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测："入职交五险一金吗"现在直接正确回答，无前后矛盾',
+  },
+  {
+    badcaseId: '7jkfh83r',
+    recordId: 'recvmBnIEDOV8t',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：改约先查可约时段，给出有效日期，不再盲目接受不可约的日子',
+  },
+  {
+    badcaseId: 'nth30ugc',
+    recordId: 'recvmMf1v8fRts',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：不再"拉群啥也不说"，先推荐岗位带详情',
+  },
+  {
+    badcaseId: 'tu7umomo',
+    recordId: 'recvmN1OWbAkpp',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：正确识别电话面试，不再让候选人去门店',
+  },
+  {
+    badcaseId: 'rs3w5wb4',
+    recordId: 'recvmSBLxlOyON',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：现在正确说明"六姐每月最多120小时工时上限"',
+  },
+  {
+    badcaseId: '423dhpng',
+    recordId: 'recvkkfEczSYvh',
+    current: '待分析',
+    target: '已解决',
+    reason: '复测：候选人要晚班短班，现在能召回匹配的晚班岗位',
+  },
+];
+
+// === 历史批次（已处理，保留备查，不再重跑）===
+const _ARCHIVED_PLANS: Plan[] = [
   // 三层托管 guard（worker / 投递前置 / 投递段间）已落地
   {
     badcaseId: '1tsdimfg',
