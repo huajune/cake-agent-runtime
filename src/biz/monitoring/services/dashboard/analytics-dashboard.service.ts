@@ -306,7 +306,8 @@ export class AnalyticsDashboardService {
         this.getFallbackStatsForRange(
           previousStartDate,
           previousEndDate,
-          timeRange === 'today',
+          // 上一周期始终是已结算的完整日（timeRange=today 时即昨天），不应按 isToday 走原始记录慢路径
+          false,
           dailyProjectionFresh,
         ),
         this.getManualInterventionStatsFromDatabase(
@@ -1088,6 +1089,14 @@ export class AnalyticsDashboardService {
   }
 
   private setCachedProjectionFresh(cacheKey: string, value: boolean): void {
+    // 时间型 key（hourly:<ts> / daily:<date>）过期后不再被访问，会无限累积；写入时超过上限先清掉
+    // 已过期项，把 map 体量兜在常数级。
+    if (this.projectionFreshCache.size > 200) {
+      const now = Date.now();
+      for (const [key, entry] of this.projectionFreshCache) {
+        if (entry.expireAt <= now) this.projectionFreshCache.delete(key);
+      }
+    }
     this.projectionFreshCache.set(cacheKey, {
       value,
       expireAt: Date.now() + 30_000,
@@ -1634,12 +1643,17 @@ export class AnalyticsDashboardService {
 
       let totalCount = 0;
       let successCount = 0;
-      let affectedUsers = 0;
       for (const row of rows) {
         totalCount += row.fallbackCount;
         successCount += row.fallbackSuccessCount;
-        affectedUsers += row.fallbackAffectedUsers;
       }
+
+      // fallbackCount/successCount 是事件计数、可按日累加；但 affectedUsers 必须是整段区间的
+      // COUNT(DISTINCT user_id)——按日 distinct 计数跨天相加会把同一用户重复计入，故仍走 RPC 取整段去重值。
+      const { affectedUsers } = await this.monitoringRepository.getDashboardFallbackStats(
+        startDate,
+        endDate,
+      );
 
       return {
         totalCount,
