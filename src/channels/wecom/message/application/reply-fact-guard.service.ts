@@ -154,6 +154,8 @@ const DISCRIMINATORY_LEAK_PATTERN = new RegExp(
   ].join('|'),
 );
 
+const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
+
 /**
  * 单条事实矛盾规则：reply 中出现 `keywords` 任一时，要求本轮 tool 调用满足
  * `requiredToolPredicate`；否则判定为"事实矛盾"。
@@ -318,6 +320,27 @@ export class ReplyFactGuardService {
   }
 
   /**
+   * 保险/社保属于敏感政策：候选人没主动问时，reply 不应主动提。
+   *
+   * 兼职岗位字段里的"保险"多指雇主责任险/意外险，候选人容易理解成社保/五险；
+   * 与歧视性筛选外露一样，发出去就会形成聊天证据，所以命中时直接阻断。
+   */
+  private static detectProactiveInsurancePolicyMention(
+    text: string,
+    userMessage?: string,
+  ): { ruleId: string; label: string; blocked: boolean } | null {
+    if (!INSURANCE_POLICY_TERM_PATTERN.test(text)) return null;
+    if (userMessage && INSURANCE_POLICY_TERM_PATTERN.test(userMessage)) return null;
+
+    return {
+      ruleId: 'proactive_insurance_policy_mention',
+      label:
+        '候选人本轮未主动询问保险/社保，但回复主动提及保险/社保/五险等敏感政策（兼职保险易被误解为社保/五险，需拦截）',
+      blocked: true,
+    };
+  }
+
+  /**
    * 检测 reply 中的收资模板字段是否与本轮 duliday_interview_precheck 返回的
    * requiredFieldsToCollectNow（或 starterFields 降级集合）一致。
    *
@@ -446,6 +469,14 @@ export class ReplyFactGuardService {
     const salaryFabrication = ReplyFactGuardService.detectSalaryFabrication(text, toolCalls);
     if (salaryFabrication) {
       contradictions.push(salaryFabrication);
+    }
+
+    const proactiveInsuranceMention = ReplyFactGuardService.detectProactiveInsurancePolicyMention(
+      text,
+      params.userMessage,
+    );
+    if (proactiveInsuranceMention) {
+      contradictions.push(proactiveInsuranceMention);
     }
 
     if (contradictions.length === 0) return { hit: false, blocked: false, contradictions: [] };

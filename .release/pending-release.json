@@ -1,9 +1,42 @@
 {
   "baseVersion": "5.27.2",
-  "nextVersion": "5.27.2",
+  "nextVersion": "5.27.3",
   "updatedAt": "2026-06-24",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "397",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/397",
+      "title": "禁止主动提保险社保口径",
+      "author": "huajune",
+      "mergedAt": "2026-06-24",
+      "businessUpdates": [
+        "禁止主动提保险社保口径"
+      ],
+      "summary": [
+        "禁止主动提保险社保口径"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "禁止主动提保险社保口径"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`jest tests/channels/wecom/message/application/reply-fact-guard.service.spec.ts tests/tools/duliday/job-list/welfare-facts.util.spec.ts tests/tools/duliday/job-list/render.util.spec.ts --watchman=false`",
+        "`prettier --check` on touched files",
+        "pre-push `ci:check` passed:",
+        "lint",
+        "format",
+        "typecheck",
+        "web build",
+        "backend build",
+        "`jest --coverage --watchman=false`: 292 passed, 1 skipped"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.27.2",
     "date": "2026-06-24",
