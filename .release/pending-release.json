@@ -3,7 +3,51 @@
   "nextVersion": "5.27.2",
   "updatedAt": "2026-06-24",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "391",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/391",
+      "title": "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-24",
+      "businessUpdates": [
+        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
+        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
+        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
+        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
+        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
+        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
+        "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
+      ],
+      "summary": [
+        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
+        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
+        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
+        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
+        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
+        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
+        "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
+        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
+        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）"
+      ],
+      "ops": [
+        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
+        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
+        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc --noEmit` ✅",
+        "受影响 jest 套件 36/36 通过（sponge.service / sponge-status-poll.cron / sponge-token-context.util / seed-hosting-member-config）"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.27.1",
     "date": "2026-06-24",
