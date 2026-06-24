@@ -79,6 +79,18 @@ export interface ToolBuildContext {
   /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
   currentFocusJob?: RecommendedJobSummary | null;
   /**
+   * 本会话是否召回/展示过任何岗位（turn-start 的 presentedJobs ∪ lastCandidatePool ∪
+   * currentFocusJob，并实时并入本轮 onJobsFetched 抓取的候选池——故自救闭环里"先 job_list
+   * 再 precheck"的二次调用能看到本轮刚召回的岗位）。
+   *
+   * 用途：duliday_interview_precheck / duliday_interview_booking 的 jobId provenance 闸门。
+   * **成员判定**（非"是否召回过任意岗位"的布尔）：传入 jobId 是否出自本会话真实召回集。
+   * 返回 false 时该 jobId 无合法来源——典型幻觉簇：空会话候选人只发"应聘"模型凭空编 jobId；
+   * 或"召回了 A 岗位、模型另编一个恰好真实的 B 岗位 jobId"绕过（P0）。工具直接拒绝并要求先 job_list。
+   * 缺省（test/debug 链路未注入）时工具跳过该闸门，保持向后兼容。
+   */
+  isRecalledJobId?: (jobId: number) => boolean;
+  /**
    * 本会话最近推荐过的品牌名集合（去重）。
    *
    * 来源：sessionMemory.presentedJobs ∪ sessionMemory.lastCandidatePool 的 brandName。

@@ -212,6 +212,41 @@ describe('buildInterviewBookingTool', () => {
     });
   });
 
+  describe('jobId provenance 闸门', () => {
+    it('jobId 无召回出处时拦截，不打 Sponge、不下预约', async () => {
+      // 模型伪造 prechecked 直接进 booking、且 jobId 本会话从未召回（凭空/串改命中真岗位）
+      const { result, context } = await executeToolWithContext(validInput, {
+        isRecalledJobId: () => false,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
+      expect(context.bookingSucceeded).toBe(false);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('jobId 有召回出处时放行闸门（继续走后续校验/下单）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({ success: true, data: { id: 1 } });
+
+      await executeTool(validInput, { isRecalledJobId: () => true });
+
+      // 放行闸门后落到既有 fetchJobs 路径（不再被 job_not_provided 短路）
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+
+    it('未注入 isRecalledJobId（test/debug 链路）时跳过闸门，向后兼容', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({ success: true, data: { id: 1 } });
+
+      const result = await executeTool(validInput);
+
+      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+  });
+
   it('should return error for invalid time format', async () => {
     const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
 
