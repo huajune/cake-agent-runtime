@@ -26,24 +26,9 @@ export type AgentThinkingConfig = LlmThinkingConfig;
  */
 export type ToolMode = 'scenario' | 'readonly' | 'none';
 
-/**
- * 出站守卫给出的单条违规意见（HC-1 revise 回路注入用）。
- *
- * 中立形态，便于 guardrail 层产出后回传 generator 重写。type 取语义类别，
- * evidence 指出问题原文，suggestion 给出应如何改。
- */
-export interface GuardViolation {
-  type:
-    | 'hallucinated_fact'
-    | 'unsupported_commitment'
-    | 'policy_violation'
-    | 'bad_tone'
-    | 'wrong_stage'
-    | 'intent_mismatch'
-    | (string & {});
-  evidence: string;
-  suggestion: string;
-}
+// HC-1 revise 回路注入用的违规意见，单一数据源在中立 Guardrail 契约里。
+export type { GuardViolation } from '@shared-types/guardrail.contract';
+import type { GuardViolation } from '@shared-types/guardrail.contract';
 
 export interface AgentInputMessage {
   role: string;
