@@ -8,6 +8,50 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.27.2`
+**最近更新**: `2026-06-24`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #391 海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…
+- PR #391 address review — token 解析只按 botImId，收窄 SpongeTokenR…
+- PR #391 保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由
+- PR #391 `sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖
+- PR #391 `sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`
+- PR #391 测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）
+- PR #391 海绵 token 收口到 hosting_member_config，废弃 sponge_token_config
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- PR #391 `sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖
+- PR #391 `sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`
+- PR #391 测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）
+
+### 运维与流程
+- PR #391 海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…
+- PR #391 address review — token 解析只按 botImId，收窄 SpongeTokenR…
+- PR #391 保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #391 `tsc --noEmit` ✅
+- PR #391 受影响 jest 套件 36/36 通过（sponge.service / sponge-status-poll.cron / sponge-token-context.util / seed-hosting-member-config）
+<!-- release:pending:end -->
+
 ## [5.27.1] - 2026-06-24
 
 **来源分支**: `develop`
