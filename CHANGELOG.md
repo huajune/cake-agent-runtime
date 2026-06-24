@@ -8,6 +8,46 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.27.1`
+**最近更新**: `2026-06-23`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #384 用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName
+- PR #384 日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优
+- PR #384 补充 writeback 批次计划数据
+- PR #384 修正 fallback affectedUsers 跨天重复计数（AI review）
+- PR #384 用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #384 修正 fallback affectedUsers 跨天重复计数（AI review）
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #384 用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName
+- PR #384 日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优
+- PR #384 补充 writeback 批次计划数据
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #384 `tsc --noEmit` 通过
+- PR #384 render.util 单测通过
+<!-- release:pending:end -->
+
 ## [5.27.0] - 2026-06-18
 
 **来源分支**: `develop`

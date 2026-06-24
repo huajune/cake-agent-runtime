@@ -1,9 +1,43 @@
 {
   "baseVersion": "5.27.0",
-  "nextVersion": "5.27.0",
-  "updatedAt": "2026-06-18",
+  "nextVersion": "5.27.1",
+  "updatedAt": "2026-06-23",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "384",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/384",
+      "title": "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-23",
+      "businessUpdates": [
+        "修正 fallback affectedUsers 跨天重复计数（AI review）"
+      ],
+      "summary": [
+        "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
+        "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
+        "补充 writeback 批次计划数据",
+        "修正 fallback affectedUsers 跨天重复计数（AI review）",
+        "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）"
+      ],
+      "features": [],
+      "fixes": [
+        "修正 fallback affectedUsers 跨天重复计数（AI review）"
+      ],
+      "optimizations": [],
+      "ops": [
+        "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
+        "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
+        "补充 writeback 批次计划数据"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc --noEmit` 通过",
+        "render.util 单测通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.27.0",
     "date": "2026-06-18",
