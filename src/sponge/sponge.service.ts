@@ -754,11 +754,7 @@ export class SpongeService {
     // 内部已归一化 prod-sync: 前缀）。查不到返回 null，由调用方回退 DULIDAY_API_TOKEN。
     // 注：daily_ops_report.bot_im_id 历史上可能落 wecomUserId，但调用方（运营日报 cron）
     // 已在调用前归一化为当前托管账号的数字 wxid，故此处只按 botImId 解析即可命中。
-    for (const key of [tokenContext?.botImId, tokenContext?.botUserId]) {
-      const memberToken = await this.hostingMemberConfig.resolveDulidayToken(key);
-      if (memberToken) return memberToken;
-    }
-    return null;
+    return this.hostingMemberConfig.resolveDulidayToken(tokenContext?.botImId);
   }
 
   private errorMessage(error: unknown): string {

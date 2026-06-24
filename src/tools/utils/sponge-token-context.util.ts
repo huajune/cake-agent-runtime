@@ -4,13 +4,6 @@ import type { ToolBuildContext } from '@shared-types/tool.types';
 export function buildSpongeTokenContext(
   context: ToolBuildContext,
 ): SpongeTokenResolveContext | undefined {
-  const tokenContext: SpongeTokenResolveContext = {
-    botImId: context.botImId,
-    botUserId: context.botUserId,
-    groupId: context.groupId,
-  };
-
-  return tokenContext.botImId || tokenContext.botUserId || tokenContext.groupId
-    ? tokenContext
-    : undefined;
+  // token 唯一按 botImId（数字 wxid）解析；botUserId/groupId 已不参与 token 路由。
+  return context.botImId ? { botImId: context.botImId } : undefined;
 }
