@@ -62,6 +62,36 @@ describe('ReplyFactGuardService', () => {
   });
 
   describe('existing rules regression', () => {
+    it('blocks proactive insurance policy mention when candidate did not ask', () => {
+      const result = service.check({
+        replyText: '这家早班 7:00-10:00，时薪 24 元，兼职岗位公司购买保险。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '24',
+      });
+
+      expect(result.hit).toBe(true);
+      expect(result.blocked).toBe(true);
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('allows insurance policy answer when candidate explicitly asked this turn', () => {
+      const result = service.check({
+        replyText: '兼职岗位这里是意外险，不是五险一金，具体以门店入职通知为准。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '兼职也有保险吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
     it('flags group-full claim without invite_to_group call but does not block', () => {
       const result = check('不好意思，群里人数满了，拉不进去');
       expect(result.contradictions.map((c) => c.ruleId)).toContain('group_full_without_invite');

@@ -441,7 +441,12 @@ function renderWelfareSection(welfareInput: unknown): string {
   const lines: string[] = [];
 
   if (hasValue(welfare.haveInsurance)) {
-    pushField(lines, '保险', welfare.haveInsurance);
+    const insuranceText = cleanSingleLineText(String(welfare.haveInsurance));
+    if (insuranceText) {
+      lines.push(
+        `- **保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: ${insuranceText}`,
+      );
+    }
   }
 
   if (hasValue(welfare.accommodation)) {
@@ -490,7 +495,7 @@ function renderWelfareSection(welfareInput: unknown): string {
 
   if (lines.length === 0) return '';
   // 福利速览 banner 放在 section 头部：把"员工自理/不购买"这类易被压缩成"有"的
-  // 字面值显式标 ❌ 无；让 LLM 在 reply 时只引用 ✅/💵 项，不编造工具未返回的福利。
+  // 字面值显式标 ❌ 无；保险是敏感政策，只给内部判断，不能作为普通福利主动引用。
   const factsBanner = renderWelfareFactsBanner(extractWelfareFacts(welfare));
   return '### 福利信息\n' + factsBanner + lines.join('\n') + '\n\n';
 }
