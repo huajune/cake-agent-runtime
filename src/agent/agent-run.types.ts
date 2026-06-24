@@ -85,6 +85,12 @@ export interface AgentInvokeParams {
    * 既不声称未发生、也不重复执行。
    */
   committedSideEffects?: string;
+  /**
+   * reengagement 主动回合的跟进目标（喂给生成方的 directive）。
+   * 注入 system prompt 末尾，告诉模型"本回合是系统发起的主动跟进，目标是 X"，
+   * 由模型按记忆/上下文实时生成话术（不固化模板）。被动回合不传。
+   */
+  proactiveDirective?: string;
   /** 图片/表情 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
   imageUrls?: string[];
   /** 图片/表情消息 ID 列表（供 save_image_description 工具回写 DB） */
