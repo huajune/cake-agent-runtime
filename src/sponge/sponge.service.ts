@@ -33,15 +33,8 @@ import {
 import { SpongeBiService } from './sponge-bi.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { stripNullish } from '@infra/utils/object.util';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
-import {
-  SPONGE_TOKEN_CONFIG_KEY,
-  SpongeTokenAccountConfig,
-  SpongeTokenConfig,
-  SpongeTokenResolveContext,
-  SpongeTokenValue,
-} from './sponge-token.config';
+import { SpongeTokenResolveContext } from './sponge-token.config';
 
 // 报名/上传仍走旧的 supplier 域（a/supplier/*，非 海绵2.0 ai接口，未随网关迁移）。
 const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/entryUser';
@@ -60,8 +53,6 @@ const FAILURE_REASONS_CACHE_MAX_ENTRIES = 50;
 /** Agent 上下文按 workOrderId 查工单的 Redis 缓存 TTL（秒）。 */
 const WORKORDER_CACHE_TTL_SECONDS = 5 * 60;
 const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
-const TOKEN_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
-const SYNC_BOT_PREFIX = 'prod-sync:';
 
 /**
  * 海绵网关在每个响应头里下发的链路追踪 ID。
@@ -96,8 +87,6 @@ export class SpongeService {
   private readonly cancelWorkOrderApi: string;
   private readonly modifyInterviewTimeApi: string;
   private readonly failureReasonsApi: string;
-  private tokenConfigCache: { value: SpongeTokenConfig | null; expiresAt: number } | null = null;
-  private tokenConfigLoadPromise: Promise<SpongeTokenConfig | null> | null = null;
   private brandListCache: { data: BrandItem[]; fetchedAt: number } | null = null;
   private brandListFetchPromise: Promise<BrandItem[]> | null = null;
   /** 失败原因字典缓存（key=排序后的 pidList），字典稳定，缓存避免每次取消都打接口。 */
@@ -110,7 +99,6 @@ export class SpongeService {
     private readonly configService: ConfigService,
     private readonly biService: SpongeBiService,
     private readonly redisService: RedisService,
-    private readonly systemConfigService: SystemConfigService,
     private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {
     this.fallbackToken = this.configService.get<string>('DULIDAY_API_TOKEN', '');
@@ -749,9 +737,7 @@ export class SpongeService {
     options?: { allowMissing?: boolean; allowDefaultToken?: boolean },
   ): Promise<string> {
     const allowDefaultToken = options?.allowDefaultToken !== false;
-    const configuredToken = await this.resolveConfiguredDulidayToken(tokenContext, {
-      allowDefaultToken,
-    });
+    const configuredToken = await this.resolveConfiguredDulidayToken(tokenContext);
     const token = configuredToken ?? (allowDefaultToken ? this.fallbackToken.trim() : '');
 
     if (!token && !options?.allowMissing) {
@@ -763,151 +749,16 @@ export class SpongeService {
 
   private async resolveConfiguredDulidayToken(
     tokenContext?: SpongeTokenResolveContext,
-    options?: { allowDefaultToken?: boolean },
   ): Promise<string | null> {
-    // 主配置源：system_config.sponge_token_config（按 botImId / botUserId / groupId）。
-    // hosting_member_config 仅作为旧配置兜底，避免两个来源同时存在时覆盖 sponge_token_config。
-    const config = await this.loadSpongeTokenConfig();
-
-    const botImIdKeys = this.buildTokenLookupKeys(tokenContext?.botImId);
-    const botUserIdKeys = this.mergeTokenLookupKeys(
-      this.buildTokenLookupKeys(tokenContext?.botUserId),
-      // daily_ops_report.bot_im_id may store either numeric wxid or Stride wecomUserId.
-      botImIdKeys,
-    );
-    const groupIdKeys = this.buildTokenLookupKeys(tokenContext?.groupId);
-
-    const mappedToken = config
-      ? (this.resolveAccountToken(config, 'botImId', botImIdKeys) ??
-        this.resolveMappedToken(config.byBotImId, botImIdKeys) ??
-        this.resolveAccountToken(config, 'botUserId', botUserIdKeys) ??
-        this.resolveMappedToken(config.byBotUserId, botUserIdKeys) ??
-        this.resolveAccountToken(config, 'groupId', groupIdKeys) ??
-        this.resolveMappedToken(config.byGroupId, groupIdKeys))
-      : null;
-
-    if (mappedToken) return mappedToken;
-
-    for (const key of botImIdKeys) {
+    // 单一配置源：system_config.hosting_member_config（按 botImId 数字 wxid 索引，
+    // 内部已归一化 prod-sync: 前缀）。查不到返回 null，由调用方回退 DULIDAY_API_TOKEN。
+    // 注：daily_ops_report.bot_im_id 历史上可能落 wecomUserId，但调用方（运营日报 cron）
+    // 已在调用前归一化为当前托管账号的数字 wxid，故此处只按 botImId 解析即可命中。
+    for (const key of [tokenContext?.botImId, tokenContext?.botUserId]) {
       const memberToken = await this.hostingMemberConfig.resolveDulidayToken(key);
       if (memberToken) return memberToken;
     }
-
-    if (options?.allowDefaultToken === false) return null;
-
-    return this.resolveTokenValue({
-      token: config?.defaultToken,
-      tokenEnv: config?.defaultTokenEnv,
-    });
-  }
-
-  private async loadSpongeTokenConfig(): Promise<SpongeTokenConfig | null> {
-    if (this.tokenConfigCache && Date.now() < this.tokenConfigCache.expiresAt) {
-      return this.tokenConfigCache.value;
-    }
-
-    if (this.tokenConfigLoadPromise) {
-      return this.tokenConfigLoadPromise;
-    }
-
-    this.tokenConfigLoadPromise = this.reloadSpongeTokenConfig();
-    try {
-      return await this.tokenConfigLoadPromise;
-    } finally {
-      this.tokenConfigLoadPromise = null;
-    }
-  }
-
-  private async reloadSpongeTokenConfig(): Promise<SpongeTokenConfig | null> {
-    try {
-      const value = await this.systemConfigService.getConfigValue<unknown>(SPONGE_TOKEN_CONFIG_KEY);
-      const config = this.normalizeSpongeTokenConfig(value);
-      this.tokenConfigCache = {
-        value: config,
-        expiresAt: Date.now() + TOKEN_CONFIG_CACHE_TTL_MS,
-      };
-      return config;
-    } catch (error) {
-      this.logger.warn(
-        `读取海绵 token 配置失败，回退 DULIDAY_API_TOKEN: ${this.errorMessage(error)}`,
-      );
-      this.tokenConfigCache = {
-        value: null,
-        expiresAt: Date.now() + TOKEN_CONFIG_CACHE_TTL_MS,
-      };
-      return null;
-    }
-  }
-
-  private normalizeSpongeTokenConfig(value: unknown): SpongeTokenConfig | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return null;
-    }
-    return value as SpongeTokenConfig;
-  }
-
-  private buildTokenLookupKeys(value: string | null | undefined): string[] {
-    const trimmed = value?.trim();
-    if (!trimmed) return [];
-
-    const normalized = trimmed.startsWith(SYNC_BOT_PREFIX)
-      ? trimmed.slice(SYNC_BOT_PREFIX.length).trim()
-      : trimmed;
-
-    return this.mergeTokenLookupKeys([trimmed], normalized ? [normalized] : []);
-  }
-
-  private mergeTokenLookupKeys(...groups: string[][]): string[] {
-    const keys: string[] = [];
-    for (const group of groups) {
-      for (const key of group) {
-        if (key && !keys.includes(key)) keys.push(key);
-      }
-    }
-    return keys;
-  }
-
-  private resolveAccountToken(
-    config: SpongeTokenConfig,
-    field: 'botImId' | 'botUserId' | 'groupId',
-    values: string[],
-  ): string | null {
-    if (values.length === 0 || !Array.isArray(config.accounts)) return null;
-    const account = config.accounts.find((item) => {
-      if (!item || item.enabled === false) return false;
-      const candidate = item[field]?.trim();
-      return Boolean(candidate) && values.includes(candidate);
-    });
-    return this.resolveTokenValue(account);
-  }
-
-  private resolveMappedToken(
-    map: Record<string, SpongeTokenValue> | undefined,
-    keys: string[],
-  ): string | null {
-    if (!map || keys.length === 0) return null;
-    for (const key of keys) {
-      const token = this.resolveTokenValue(map[key]);
-      if (token) return token;
-    }
     return null;
-  }
-
-  private resolveTokenValue(
-    value: SpongeTokenValue | SpongeTokenAccountConfig | undefined | null,
-  ): string | null {
-    if (!value) return null;
-    if (typeof value === 'string') {
-      return value.trim() || null;
-    }
-
-    const token = value.token?.trim();
-    if (token) return token;
-
-    const tokenEnv = value.tokenEnv?.trim();
-    if (!tokenEnv) return null;
-
-    return this.configService.get<string>(tokenEnv, '')?.trim() || null;
   }
 
   private errorMessage(error: unknown): string {

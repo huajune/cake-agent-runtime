@@ -44,7 +44,7 @@ export class HostingMemberConfigService {
     return botImId ? BOT_TO_RECEIVER[botImId] : undefined;
   }
 
-  /** 海绵 token：DB 配置优先；查不到返回 null，由调用方回退既有 sponge_token_config / env。 */
+  /** 海绵 token：按 botImId 取（唯一配置源）；查不到返回 null，由调用方回退 DULIDAY_API_TOKEN。 */
   async resolveDulidayToken(botImId: string | null | undefined): Promise<string | null> {
     const entry = await this.getByBotImId(botImId);
     return entry?.dulidayToken?.trim() || null;

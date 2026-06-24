@@ -1,32 +1,9 @@
-export const SPONGE_TOKEN_CONFIG_KEY = 'sponge_token_config';
-
-export type SpongeTokenValue =
-  | string
-  | {
-      token?: string;
-      tokenEnv?: string;
-    };
-
-export interface SpongeTokenAccountConfig {
-  name?: string;
-  groupId?: string;
-  groupName?: string;
-  botImId?: string;
-  botUserId?: string;
-  token?: string;
-  tokenEnv?: string;
-  enabled?: boolean;
-}
-
-export interface SpongeTokenConfig {
-  accounts?: SpongeTokenAccountConfig[];
-  byBotImId?: Record<string, SpongeTokenValue>;
-  byBotUserId?: Record<string, SpongeTokenValue>;
-  byGroupId?: Record<string, SpongeTokenValue>;
-  defaultToken?: string;
-  defaultTokenEnv?: string;
-}
-
+/**
+ * 海绵 Duliday token 解析上下文。
+ *
+ * token 配置已统一收口到 system_config.hosting_member_config（按 botImId 数字 wxid 索引），
+ * 旧的 sponge_token_config 表已废弃。此处仅保留解析入参的上下文形状。
+ */
 export interface SpongeTokenResolveContext {
   botImId?: string | null;
   botUserId?: string | null;
