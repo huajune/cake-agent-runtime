@@ -26,6 +26,25 @@ export type AgentThinkingConfig = LlmThinkingConfig;
  */
 export type ToolMode = 'scenario' | 'readonly' | 'none';
 
+/**
+ * 出站守卫给出的单条违规意见（HC-1 revise 回路注入用）。
+ *
+ * 中立形态，便于 guardrail 层产出后回传 generator 重写。type 取语义类别，
+ * evidence 指出问题原文，suggestion 给出应如何改。
+ */
+export interface GuardViolation {
+  type:
+    | 'hallucinated_fact'
+    | 'unsupported_commitment'
+    | 'policy_violation'
+    | 'bad_tone'
+    | 'wrong_stage'
+    | 'intent_mismatch'
+    | (string & {});
+  evidence: string;
+  suggestion: string;
+}
+
 export interface AgentInputMessage {
   role: string;
   content: string;
@@ -70,6 +89,17 @@ export interface AgentInvokeParams {
   maxSteps?: number;
   /** 本轮物理工具集模式；默认 scenario，见 ToolMode。 */
   toolMode?: ToolMode;
+  /**
+   * HC-1 revise 回路：带上一版回复被出站守卫拦下的违规意见重生成，
+   * 注入 system prompt 让模型只修正这些问题、不重跑业务逻辑。
+   */
+  reviseFeedback?: GuardViolation[];
+  /**
+   * HC-1：本轮已提交且不可撤销的副作用摘要（如「已为候选人预约 X 门店面试」）。
+   * 配合 `toolMode:'none'` 的无工具文本重写：让模型知晓既成事实、只改措辞，
+   * 既不声称未发生、也不重复执行。
+   */
+  committedSideEffects?: string;
   /** 图片/表情 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
   imageUrls?: string[];
   /** 图片/表情消息 ID 列表（供 save_image_description 工具回写 DB） */

@@ -213,9 +213,10 @@ export class AgentPreparationService {
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
     const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
+    const reviseNotice = this.buildReviseNotice(params);
 
     return {
-      finalPrompt: systemPrompt + guardSuffix + criticalTurnGuard,
+      finalPrompt: systemPrompt + guardSuffix + criticalTurnGuard + reviseNotice,
       normalizedMessages,
       memoryLoadWarning: memory._warnings?.join('; '),
       tools,
@@ -381,6 +382,41 @@ export class AgentPreparationService {
     if (guards.length === 0) return '';
 
     return `\n\n# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`;
+  }
+
+  /**
+   * HC-1：把 revise 回路的违规意见 / 已提交副作用摘要拼到 system prompt 末尾。
+   *
+   * - committedSideEffects（配 toolMode:'none' 无工具重写）：告知模型副作用已生效、
+   *   只改措辞，既不声称未发生也不重复执行；
+   * - reviseFeedback：把出站守卫的违规意见喂回，让模型只修正这些问题。
+   *
+   * 二者均为可选；都缺省时返回空串，不影响普通回合。
+   */
+  private buildReviseNotice(params: AgentInvokeParams): string {
+    const parts: string[] = [];
+
+    const committed = params.committedSideEffects?.trim();
+    if (committed) {
+      parts.push(
+        `本轮的副作用动作已经执行并生效（${committed}），既成事实，不可撤销也不可重复执行。` +
+          `请基于这一事实重写本轮回复：只修正措辞与合规问题，` +
+          `严禁声称未发生、严禁再次执行任何操作（系统本轮已物理移除相关工具）。`,
+      );
+    }
+
+    if (params.reviseFeedback?.length) {
+      const lines = params.reviseFeedback.map(
+        (v) => `- [${v.type}] 问题：${v.evidence}；应改为：${v.suggestion}`,
+      );
+      parts.push(
+        `上一版回复被出站守卫拦下，存在以下需修正的问题。请只针对这些问题重写一版回复，` +
+          `不要改变已确认的事实、不要新增承诺：\n${lines.join('\n')}`,
+      );
+    }
+
+    if (parts.length === 0) return '';
+    return `\n\n# 回复重写要求（HC-1）\n${parts.join('\n\n')}`;
   }
 
   /**

@@ -284,6 +284,48 @@ describe('AgentPreparationService', () => {
     expect(result.tools).toEqual({});
   });
 
+  it('omits the HC-1 revise notice for a normal turn', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).not.toContain('回复重写要求（HC-1）');
+  });
+
+  it('injects committedSideEffects + reviseFeedback into finalPrompt (HC-1)', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '帮我约面试' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'none',
+        committedSideEffects: '已为候选人预约奥乐齐长白门店面试',
+        reviseFeedback: [
+          {
+            type: 'unsupported_commitment',
+            evidence: '回复声称"名额已留"，但本轮无对应工具结果',
+            suggestion: '只确认已提交预约，不要承诺保留名额',
+          },
+        ],
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('回复重写要求（HC-1）');
+    expect(result.finalPrompt).toContain('已为候选人预约奥乐齐长白门店面试');
+    expect(result.finalPrompt).toContain('[unsupported_commitment]');
+    expect(result.finalPrompt).toContain('只确认已提交预约');
+  });
+
   it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       { imRoomId: 'room-1', groupName: '上海餐饮兼职群1群', city: '上海' },
