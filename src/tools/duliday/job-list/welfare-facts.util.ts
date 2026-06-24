@@ -9,6 +9,8 @@
  *
  * 让 LLM 在 render 顶部就看到"福利速览"：明确"有什么/没什么"对照表，
  * 把"工具没说有就不能说"这件事从 prompt 红线层下沉到数据契约层。
+ * 保险字段只做内部事实判断；兼职场景主动提"公司买保险"容易被理解成社保/五险，
+ * 所以不能把保险归入普通可主动引用福利。
  *
  * 同时保留 raw field 渲染（renderWelfareSection 继续输出 detail），banner 只是
  * 高优先级的"先看这里"提示。
@@ -23,7 +25,7 @@ export interface WelfareFacts {
   meals: WelfareKind;
   /** 住宿：公司提供宿舍 / 仅给房补 / 员工自理或明确无 / 未明确 */
   accommodation: WelfareKind;
-  /** 保险：公司购买 / 员工自理 / 明确不购买 / 未明确 */
+  /** 保险：公司购买 / 员工自理 / 明确不购买 / 未明确（敏感，仅候选人主动问时可答） */
   insurance: WelfareKind;
   /** 交通补贴：是否存在 trafficAllowanceSalary */
   hasTrafficAllowance: boolean;
@@ -157,6 +159,13 @@ const KIND_LABEL: Record<WelfareKind, string> = {
   unspecified: '❓ 未明确',
 };
 
+const INSURANCE_LABEL: Record<WelfareKind, string> = {
+  company: '内部事实：公司购买（敏感，禁止主动提及）',
+  allowance: '内部事实：仅补贴（敏感，禁止主动提及）',
+  self_or_none: '内部事实：无（敏感，禁止主动提及）',
+  unspecified: '未明确（敏感，禁止主动提及）',
+};
+
 /**
  * 把 WelfareFacts 渲染成给 Agent 看的紧凑速览——把"员工自理/不购买"这类
  * 易被压缩成"有"的字面值，显式标注为 ❌ 无；把工具未提的字段标 ❓ 未明确，
@@ -177,11 +186,11 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
 
   const lines: string[] = [];
   lines.push(
-    '> 🎁 **福利字段速览**（reply 时只能引用"✅ 公司提供"和"💵 仅补贴"项目，"❌ 无"项目不得包装成"有"）',
+    '> 🎁 **福利字段速览**（reply 时只能主动引用员工餐/住宿/交通补贴/晋升/其它福利里的"✅ 公司提供"和"💵 仅补贴"项目；"❌ 无"项目不得包装成"有"；保险/社保严禁主动提及）',
   );
   lines.push(`> - 员工餐：${KIND_LABEL[facts.meals]}`);
   lines.push(`> - 住宿：${KIND_LABEL[facts.accommodation]}`);
-  lines.push(`> - 保险：${KIND_LABEL[facts.insurance]}`);
+  lines.push(`> - 保险（敏感，仅候选人主动问时可答）：${INSURANCE_LABEL[facts.insurance]}`);
   lines.push(`> - 交通补贴：${facts.hasTrafficAllowance ? '💵 有' : '❓ 未明确'}`);
   if (facts.hasPromotionWelfare) {
     lines.push('> - 晋升福利：✅ 有说明');
