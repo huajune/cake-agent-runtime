@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.27.2] - 2026-06-24
 
-**预计版本**: `v5.27.2`
-**最近更新**: `2026-06-24`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #391 海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…
@@ -50,7 +46,6 @@
 ### 验证记录
 - PR #391 `tsc --noEmit` ✅
 - PR #391 受影响 jest 套件 36/36 通过（sponge.service / sponge-status-poll.cron / sponge-token-context.util / seed-hosting-member-config）
-<!-- release:pending:end -->
 
 ## [5.27.1] - 2026-06-24
 
