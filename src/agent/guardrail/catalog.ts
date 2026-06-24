@@ -112,21 +112,21 @@ export const GUARDRAIL_CATALOG: readonly GuardrailCatalogEntry[] = [
     exogenousSignal: '岗位用工形式=兼职（ground truth）',
     status: 'active',
   },
-  // ---- output（规划中） ----
   {
     id: 'candidate_name_echo',
     layer: 'output',
-    source: 'reply-fact-guard.service.ts（PR-D）',
-    exogenousSignal: 'contactName（候选人昵称，ground truth）',
-    status: 'planned',
+    source: 'reply-fact-guard.service.ts（detectCandidateNameEcho）',
+    exogenousSignal: 'contactName 企微备注（候选人昵称，ground truth）',
+    status: 'active',
   },
   {
     id: 'distance_missing',
     layer: 'output',
-    source: 'reply-fact-guard.service.ts（PR-D）',
-    exogenousSignal: '岗位推荐结构是否带公里数（ground truth）',
-    status: 'planned',
+    source: 'reply-fact-guard.service.ts（detectDistanceMissing）',
+    exogenousSignal: '本轮 job_list 结果是否带 distanceKm（ground truth）',
+    status: 'active',
   },
+  // ---- output（规划中） ----
   {
     id: 'output_llm_reviewer',
     layer: 'output',

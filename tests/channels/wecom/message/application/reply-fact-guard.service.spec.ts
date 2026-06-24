@@ -104,4 +104,66 @@ describe('ReplyFactGuardService', () => {
       expect(result.hit).toBe(false);
     });
   });
+
+  describe('candidate_name_echo (51 条新规则)', () => {
+    it('flags addressing the candidate by a nickname found in contactName', () => {
+      const result = service.check({
+        replyText: '小晴你好，咱们这边有几个岗位很合适',
+        toolCalls: [],
+        contactName: '上海奥乐齐 小晴',
+      });
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('candidate_name_echo');
+      expect(result.blocked).toBe(false);
+    });
+
+    it('does not flag a plain greeting when the token is not in contactName', () => {
+      const result = service.check({
+        replyText: '你好，咱们这边有几个岗位很合适',
+        toolCalls: [],
+        contactName: '上海奥乐齐',
+      });
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('candidate_name_echo');
+    });
+
+    it('does not flag when contactName is absent', () => {
+      const result = service.check({ replyText: '小晴你好', toolCalls: [] });
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('candidate_name_echo');
+    });
+  });
+
+  describe('distance_missing (51 条新规则)', () => {
+    const jobListWithDistance = [
+      {
+        toolName: 'duliday_job_list',
+        result: { result: [{ jobId: 1, storeName: '长白店', distanceKm: 2.3 }] },
+      },
+    ];
+
+    it('flags a store recommendation that omits distance when recall had distanceKm', () => {
+      const result = service.check({
+        replyText: '给你推荐奥乐齐长白门店，待遇不错，要不要约面试',
+        toolCalls: jobListWithDistance as never,
+      });
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('distance_missing');
+      expect(result.blocked).toBe(false);
+    });
+
+    it('does not flag when the reply already gives a distance', () => {
+      const result = service.check({
+        replyText: '给你推荐奥乐齐长白门店，离你2.3公里，要不要约面试',
+        toolCalls: jobListWithDistance as never,
+      });
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('distance_missing');
+    });
+
+    it('does not flag when recall had no distanceKm', () => {
+      const result = service.check({
+        replyText: '给你推荐奥乐齐长白门店，要不要约面试',
+        toolCalls: [
+          { toolName: 'duliday_job_list', result: { result: [{ jobId: 1, storeName: '长白店' }] } },
+        ] as never,
+      });
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('distance_missing');
+    });
+  });
 });

@@ -127,6 +127,25 @@ function hasNonEmptyHolidayOrOvertimeSalary(jobListResult: unknown): boolean {
   return false;
 }
 
+/** 本轮 duliday_job_list 召回结果里是否有任一岗位带 distanceKm（候选人发过定位/查附近）。 */
+function jobListHasDistance(jobListResult: unknown): boolean {
+  if (typeof jobListResult !== 'object' || jobListResult === null) return false;
+  const rawData = (jobListResult as Record<string, unknown>).rawData as
+    | Record<string, unknown>
+    | undefined;
+  const jobs = (rawData?.result ?? (jobListResult as Record<string, unknown>).result) as
+    | unknown[]
+    | undefined;
+  if (!Array.isArray(jobs)) return false;
+  return jobs.some((job) => {
+    const d = (job as Record<string, unknown> | undefined)?.distanceKm;
+    return typeof d === 'number' && Number.isFinite(d);
+  });
+}
+
+/** 距离表述 token（公里数）；命中即认为回复已给出距离。 */
+const DISTANCE_TOKEN_PATTERN = /公里|千米|[0-9.]+\s*k?m\b/i;
+
 /** 民族类敏感词（出站泄漏检测用，限定具体民族词避免误伤"上班族/家族"等）。 */
 const ETHNIC_TERM = '少数民族|维吾尔族|哈萨克族|蒙古族|朝鲜族|土家族|[汉回藏满苗彝壮侗瑶白傣黎]族';
 
@@ -341,6 +360,59 @@ export class ReplyFactGuardService {
   }
 
   /**
+   * candidate_name_echo（51 条新规则，warn）：回复用候选人昵称/姓名直接称呼。
+   *
+   * 企微名称备注是内部线索（运营写的「城市品牌门店姓名」），prompt 已要求"禁止称呼候选人
+   * 昵称"。这里做确定性兜底：reply 里出现"X你好/你好X/Hi X"等称呼语，且 X 是企微备注
+   * （contactName）的子串时判定回声。只在 contactName 含该 token 时命中，避免误伤普通问候。
+   */
+  private static detectCandidateNameEcho(
+    text: string,
+    contactName?: string,
+  ): { ruleId: string; label: string } | null {
+    const cleaned = contactName?.replace(/[ -]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!cleaned) return null;
+
+    const vocatives = [
+      /([一-龥A-Za-z]{2,6})\s*[，,]?\s*(?:你好|您好|在吗)/,
+      /(?:你好|您好)[，,]?\s*([一-龥A-Za-z]{2,6})/,
+      /\bhi[, ]\s*([一-龥A-Za-z]{2,6})/i,
+    ];
+    for (const re of vocatives) {
+      const token = re.exec(text)?.[1]?.trim();
+      if (token && token.length >= 2 && cleaned.includes(token)) {
+        return {
+          ruleId: 'candidate_name_echo',
+          label: `回复疑似用候选人昵称/姓名直接称呼（"${token}" 命中企微备注），禁止称呼候选人昵称（51 条 candidate_name_echo）`,
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * distance_missing（51 条新规则，warn）：本轮召回带 distanceKm（候选人发过定位/查附近），
+   * 但回复推荐了具体门店却没给出公里数——候选人最关心远近，漏距离体验差。
+   */
+  private static detectDistanceMissing(
+    text: string,
+    toolCalls: AgentToolCall[],
+  ): { ruleId: string; label: string } | null {
+    const jobListCall = toolCalls.find(
+      (call) => call.toolName === 'duliday_job_list' && call.result,
+    );
+    if (!jobListCall || !jobListHasDistance(jobListCall.result)) return null;
+    const looksLikeRecommendation = /门店|这家|地址|位于|附近|推荐/.test(text);
+    if (!looksLikeRecommendation) return null;
+    if (DISTANCE_TOKEN_PATTERN.test(text)) return null;
+    return {
+      ruleId: 'distance_missing',
+      label:
+        '本轮召回结果带 distanceKm，但回复推荐了门店却未给出距离（公里数）（51 条 distance_missing）',
+    };
+  }
+
+  /**
    * 检测 reply 中的收资模板字段是否与本轮 duliday_interview_precheck 返回的
    * requiredFieldsToCollectNow（或 starterFields 降级集合）一致。
    *
@@ -477,6 +549,19 @@ export class ReplyFactGuardService {
     );
     if (proactiveInsuranceMention) {
       contradictions.push(proactiveInsuranceMention);
+    }
+
+    const candidateNameEcho = ReplyFactGuardService.detectCandidateNameEcho(
+      text,
+      params.contactName,
+    );
+    if (candidateNameEcho) {
+      contradictions.push(candidateNameEcho);
+    }
+
+    const distanceMissing = ReplyFactGuardService.detectDistanceMissing(text, toolCalls);
+    if (distanceMissing) {
+      contradictions.push(distanceMissing);
     }
 
     if (contradictions.length === 0) return { hit: false, blocked: false, contradictions: [] };
