@@ -1,79 +1,45 @@
 {
-  "baseVersion": "5.27.0",
-  "nextVersion": "5.27.1",
-  "updatedAt": "2026-06-23",
+  "baseVersion": "5.27.1",
+  "nextVersion": "5.27.2",
+  "updatedAt": "2026-06-24",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "384",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/384",
-      "title": "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-23",
-      "businessUpdates": [
-        "修正 fallback affectedUsers 跨天重复计数（AI review）"
-      ],
-      "summary": [
-        "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
-        "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
-        "补充 writeback 批次计划数据",
-        "修正 fallback affectedUsers 跨天重复计数（AI review）",
-        "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）"
-      ],
-      "features": [],
-      "fixes": [
-        "修正 fallback affectedUsers 跨天重复计数（AI review）"
-      ],
-      "optimizations": [],
-      "ops": [
-        "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
-        "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
-        "补充 writeback 批次计划数据"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`tsc --noEmit` 通过",
-        "render.util 单测通过"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.27.0",
-    "date": "2026-06-18",
+    "version": "5.27.1",
+    "date": "2026-06-24",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "379",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/379",
-        "title": "区名就近召回 + 真人介入暗号「~」+ prompt badcase + 架构文档",
+        "number": "384",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/384",
+        "title": "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）",
         "author": "ArielZhu",
-        "mergedAt": "2026-06-18",
+        "mergedAt": "2026-06-23",
         "businessUpdates": [
-          "新增 Agent 运行时架构可视化解读 HTML"
+          "修正 fallback affectedUsers 跨天重复计数（AI review）"
         ],
         "summary": [
-          "区名按就近距离召回，避免区级精确过滤漏掉跨区更近门店",
-          "新增 Agent 运行时架构可视化解读 HTML",
-          "更新真人介入测试以匹配「仅暗号~触发暂停」语义",
-          "buildJobListTool 测试补传 geocodingService 第三参数",
-          "区名就近召回 + 真人介入暗号「~」+ prompt badcase + 架构文档"
+          "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
+          "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
+          "补充 writeback 批次计划数据",
+          "修正 fallback affectedUsers 跨天重复计数（AI review）",
+          "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）"
         ],
-        "features": [
-          "新增 Agent 运行时架构可视化解读 HTML"
+        "features": [],
+        "fixes": [
+          "修正 fallback affectedUsers 跨天重复计数（AI review）"
         ],
-        "fixes": [],
         "optimizations": [],
         "ops": [
-          "区名按就近距离召回，避免区级精确过滤漏掉跨区更近门店",
-          "更新真人介入测试以匹配「仅暗号~触发暂停」语义",
-          "buildJobListTool 测试补传 geocodingService 第三参数"
+          "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
+          "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
+          "补充 writeback 批次计划数据"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "区名召回：**live 实测（qwen3.7-plus）30 例 / 13 类场景全过**，0 例残留旧 bug；品牌豁免、多区精确、班次/工种/用工形式/结算过滤均不回归。",
-          "全量单测 **3993 passed / 0 failed**（6 skipped）；tsc 全量 0 错。"
+          "`tsc --noEmit` 通过",
+          "render.util 单测通过"
         ]
       }
     ]
