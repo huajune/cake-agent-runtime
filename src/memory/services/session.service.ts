@@ -34,6 +34,7 @@ import {
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
 import type { AuthoritativeSessionState } from '../types/authoritative-session-state.types';
+import { parseCandidateFieldsFromText } from '@tools/shared/candidate-field-parser';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import {
   buildSessionExtractionPrompt,
@@ -132,9 +133,10 @@ export class SessionService {
     corpId: string,
     userId: string,
     sessionId: string,
+    options?: { currentUserMessages?: readonly string[]; now?: number },
   ): Promise<AuthoritativeSessionState> {
     const state = await this.getSessionState(corpId, userId, sessionId);
-    return this.deriveAuthoritativeState(state);
+    return this.deriveAuthoritativeState(state, options);
   }
 
   /**
@@ -236,7 +238,10 @@ export class SessionService {
     return merged;
   }
 
-  private deriveAuthoritativeState(state: WeworkSessionState): AuthoritativeSessionState {
+  private deriveAuthoritativeState(
+    state: WeworkSessionState,
+    options?: { currentUserMessages?: readonly string[]; now?: number },
+  ): AuthoritativeSessionState {
     const recalledJobIds = new Set<number>();
     for (const job of [
       ...(state.presentedJobs ?? []),
@@ -246,11 +251,15 @@ export class SessionService {
       if (Number.isFinite(job.jobId)) recalledJobIds.add(job.jobId);
     }
 
+    // HC-2：collectedFields 只接受**确定性来源**。当前轮候选人原文经 parser 解析为
+    // user_text provenance；LLM 抽取的 session facts / 模型工具参数一律不写入权威态，
+    // 防止模型靠"换字段自证"绕过 BookingGuard 准入。
+    const collectedFields = options?.currentUserMessages?.length
+      ? parseCandidateFieldsFromText(options.currentUserMessages, options.now ?? Date.now())
+      : {};
+
     return {
-      // Later parser/writeback phases will populate collectedFields. Keeping it
-      // empty here prevents LLM-extracted session facts from being treated as
-      // booking-authoritative evidence.
-      collectedFields: {},
+      collectedFields,
       recalledJobIds,
       hardConstraints: [],
       presentedStores: (state.presentedJobs ?? []).map((job) => ({ jobId: job.jobId })),

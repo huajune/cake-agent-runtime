@@ -380,6 +380,50 @@ describe('SessionService', () => {
     });
   });
 
+  describe('getAuthoritativeState (HC-2 collectedFields provenance)', () => {
+    it('keeps collectedFields empty without current user messages (no LLM-fact leakage)', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三', age: '24' },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
+
+      // session facts (LLM 抽取) 不得进权威态
+      expect(state.collectedFields).toEqual({});
+    });
+
+    it('populates collectedFields from current-turn user text as user_text provenance', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: null,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1', {
+        currentUserMessages: ['姓名：王建国 电话13912345678'],
+        now: 5000,
+      });
+
+      expect(state.collectedFields.name).toMatchObject({
+        value: '王建国',
+        provenance: 'user_text',
+        at: 5000,
+      });
+      expect(state.collectedFields.phone?.value).toBe('13912345678');
+    });
+  });
+
   describe('pure-acknowledgment gate', () => {
     const existingFactsState = () => ({
       content: {
