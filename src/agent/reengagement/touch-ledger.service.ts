@@ -1,0 +1,79 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { RedisService } from '@infra/redis/redis.service';
+import type { ReserveResult, TouchSlotState } from './reengagement.types';
+
+/**
+ * 触达底账（频控 + outbox 幂等状态机）。
+ *
+ * 状态机：reserved → delivery_attempted → sent | failed | unknown。
+ * - `reserve()` 用 Redis SET NX 原子占位；命中 `sent` → duplicate_sent（真已发，跳过）；
+ *   命中其它（reserved/attempted）→ duplicate_inflight（上次未确认，可恢复）。
+ * - 频控 24h ≤ 2 **只数 sent**（reserved/failed/unknown 不计——否则投递失败重投会被误算成多次触达）。
+ * - 一旦进入 delivery_attempted，就处于"外部平台可能已发出"区间，不得盲目重投，
+ *   必须靠 ChannelDeliveryPort 的渠道侧幂等或补偿（见 agent-reengagement-design.md §4）。
+ */
+@Injectable()
+export class TouchLedgerService {
+  private readonly logger = new Logger(TouchLedgerService.name);
+
+  /** 触达槽 TTL：覆盖单次复聊生命周期，远小于频控窗口。 */
+  private readonly SLOT_TTL_S = 3 * 24 * 60 * 60;
+  /** 频控窗口。 */
+  private readonly FREQ_WINDOW_MS = 24 * 60 * 60 * 1000;
+  /** 频控上限。 */
+  readonly MAX_TOUCHES_PER_24H = 2;
+
+  constructor(private readonly redis: RedisService) {}
+
+  private slotKey(key: string): string {
+    return `reengagement:touch:${key}`;
+  }
+
+  private sentListKey(sessionId: string): string {
+    return `reengagement:sent:${sessionId}`;
+  }
+
+  /** 原子占位。已存在则按当前状态区分 duplicate_sent / duplicate_inflight。 */
+  async reserve(key: string): Promise<ReserveResult> {
+    const ok = await this.redis.setNx(this.slotKey(key), 'reserved', this.SLOT_TTL_S);
+    if (ok) return 'reserved';
+    const state = await this.getState(key);
+    return state === 'sent' ? 'duplicate_sent' : 'duplicate_inflight';
+  }
+
+  async getState(key: string): Promise<TouchSlotState | null> {
+    return (await this.redis.get<TouchSlotState>(this.slotKey(key))) ?? null;
+  }
+
+  async markDeliveryAttempted(key: string): Promise<void> {
+    await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, 'delivery_attempted');
+  }
+
+  async markSent(key: string, sessionId: string, now: number): Promise<void> {
+    await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, 'sent');
+    // 频控只数 sent：把本次 sent 时间戳追加到会话触达列表
+    await this.redis.rpush(this.sentListKey(sessionId), now);
+    await this.redis.expire(this.sentListKey(sessionId), Math.ceil(this.FREQ_WINDOW_MS / 1000) * 2);
+  }
+
+  /** markSent 落库失败等"状态不明" → unknown（不可盲重投，交补偿/告警）。 */
+  async markFailedOrUnknown(key: string, state: 'failed' | 'unknown'): Promise<void> {
+    await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, state);
+    if (state === 'unknown') {
+      this.logger.error(`[TouchLedger] 触达状态不明，置 unknown 待补偿: key=${key}`);
+    }
+  }
+
+  /** 近 24h 已 **sent** 的触达次数（频控用）。 */
+  async countSentIn24h(sessionId: string, now: number): Promise<number> {
+    const raw = await this.redis.lrange<number | string>(this.sentListKey(sessionId), 0, -1);
+    const cutoff = now - this.FREQ_WINDOW_MS;
+    return raw.map((v) => Number(v)).filter((ts) => Number.isFinite(ts) && ts >= cutoff).length;
+  }
+
+  /** 频控是否已达上限。 */
+  async isOverFrequencyLimit(sessionId: string, now: number): Promise<boolean> {
+    const count = await this.countSentIn24h(sessionId, now);
+    return count >= this.MAX_TOUCHES_PER_24H;
+  }
+}
