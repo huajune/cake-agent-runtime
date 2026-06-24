@@ -8,6 +8,43 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.27.4`
+**最近更新**: `2026-06-24`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #396 为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #396 新增 isRecalledJobId provenance 闸门：jobId 必须出自当前会话召回集（presentedJobs / lastCandidatePool / currentFocusJob ∪ 本轮 job_list 实时候选池），否则返回 precheck.job_not_provided / booking.job_not_provided 并要求先调用 duliday_job_list
+- PR #396 改约场景：将进行中工单的 jobId 并入召回集，避免改约路径被误拦
+- PR #396 修复 formatBookingContext 展示字段全空时仍将工单 jobId 注入 provenance 集的静默绕过漏洞
+- PR #396 归一 provenance jobId 类型为 number（兼容数字串），与 system prompt 渲染口径对齐，防止 Upstash 缓存反序列化为字符串时改约被永久卡死
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #396 precheck / booking / agent-preparation 测试全绿（103 passed，含新增 6 个回归测试）
+- PR #396 覆盖场景：幻觉 jobId 被拦截且不打 Sponge、真实召回 jobId 正常放行、未注入闸门向后兼容、改约工单 jobId 放行、展示字段缺失时工单 jobId 不作 provenance、缓存数字串 jobId 正确识别
+<!-- release:pending:end -->
+
 ## [5.27.3] - 2026-06-24
 
 **来源分支**: `develop`
