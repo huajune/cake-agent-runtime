@@ -18,8 +18,21 @@ export interface ScheduleFollowUpInput {
   /** 锚点事件唯一 id（幂等键的一部分）。 */
   anchorEventId: string;
   anchorAt: number;
-  state: AuthoritativeSessionState;
+  /**
+   * 权威状态（可选）。提供时做排程前停止条件预检 + 动态延迟（如 interview_reminder
+   * 依赖 interviewTime）；缺省时跳过预检、用常量延迟（processor 到点会再读权威态做
+   * 完整 shouldStop，不漏判）。
+   */
+  state?: AuthoritativeSessionState;
 }
+
+const EMPTY_STATE: AuthoritativeSessionState = {
+  collectedFields: {},
+  recalledJobIds: new Set<number>(),
+  hardConstraints: [],
+  presentedStores: [],
+  stage: null,
+};
 
 export interface ScheduleFollowUpResult {
   scheduled: boolean;
@@ -55,11 +68,16 @@ export class FollowUpSchedulerService {
     const scenario = getScenario(input.scenarioCode);
     if (!scenario) return { scheduled: false, reason: 'unknown_scenario' };
 
-    // 排程前停止条件预检（terminal/已回/场景不成立）——能省一个无效 delayed job
-    const stop = shouldStop(scenario, input.state, input.anchorAt);
-    if (stop.stop) return { scheduled: false, reason: stop.reason };
+    const state = input.state ?? EMPTY_STATE;
 
-    const fireAt = computeFireAt(scenario, { anchorAt: input.anchorAt, state: input.state });
+    // 排程前停止条件预检（仅当提供了 state）——能省一个无效 delayed job；
+    // 缺 state 时跳过预检，processor 到点会读权威态再做完整 shouldStop。
+    if (input.state) {
+      const stop = shouldStop(scenario, input.state, input.anchorAt);
+      if (stop.stop) return { scheduled: false, reason: stop.reason };
+    }
+
+    const fireAt = computeFireAt(scenario, { anchorAt: input.anchorAt, state });
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = `${input.sessionRef.sessionId}:${input.scenarioCode}:${input.anchorEventId}`;
 

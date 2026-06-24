@@ -3,6 +3,7 @@ import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { TurnRunnerService } from '@agent/runner/turn-runner.service';
+import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 import { MessageParser } from '../utils/message-parser.util';
@@ -101,6 +102,7 @@ export class ReplyWorkflowService {
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly interventionService: InterventionService,
     private readonly handoffRecorder: HandoffRecorderService,
+    private readonly followUpScheduler: FollowUpSchedulerService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -889,6 +891,23 @@ export class ReplyWorkflowService {
 
         const isOpening = openingResult === 'inserted';
         if (isOpening) {
+          // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
+          // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态
+          // 做 shouldStop——候选人已回则丢弃）。fire-and-forget，失败不影响主漏斗。
+          void this.followUpScheduler
+            .scheduleFollowUp({
+              sessionRef: { corpId, userId, sessionId: chatId },
+              scenarioCode: 'opening_no_reply',
+              anchorEventId: 'opening',
+              anchorAt: Date.now(),
+            })
+            .catch((error: unknown) => {
+              this.logger.warn(
+                `[reengagement] opening 锚点排程失败 [${traceId}]: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            });
           // 开场白已记录（agent.opening_sent），本轮无需再记 agent.replied
           return;
         }

@@ -156,6 +156,7 @@ describe('ReplyWorkflowService', () => {
       opsEventsRecorder as never,
       interventionService as never,
       handoffRecorder as never,
+      { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) } as never,
     );
   });
 
