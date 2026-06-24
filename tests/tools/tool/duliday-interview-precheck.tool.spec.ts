@@ -160,6 +160,56 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.detailedReason).toContain('jobId=999');
   });
 
+  describe('jobId provenance 闸门', () => {
+    it('jobId 不在本会话召回集时拦截幻觉，不打 Sponge 接口', async () => {
+      // 空会话约面意向幻觉簇：候选人只发"应聘"，模型凭空编出 jobId + 候选人报名表
+      const result = await executeTool(
+        { jobId: 3545431, candidateName: '王宇', candidatePhone: '13513516745' },
+        { isRecalledJobId: () => false },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED);
+      // 闸门必须在打 Sponge 之前短路，避免走 job_not_found 让模型脑补"岗位下架了"
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+
+    it('召回过 A 岗位但传入未召回的 B 岗位 jobId 时仍拦截（成员判定，非"召回过任意岗位"）', async () => {
+      // P0：模型召回 A 后另编一个恰好真实的 B 岗位 jobId 绕过——成员判定必须拦住
+      const recalled = new Set<number>([528339]); // 仅召回过 A=528339
+      const result = await executeTool(
+        { jobId: 999001, requestedDate: '2026-04-08' }, // B=999001 不在召回集
+        { isRecalledJobId: (id: number) => recalled.has(id) },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+
+    it('jobId 命中本会话召回集时放行（自救闭环：先 job_list 再 precheck）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
+
+      const result = await executeTool(
+        { jobId: 528339, requestedDate: '2026-04-08' },
+        { isRecalledJobId: (id: number) => id === 528339 },
+      );
+
+      // 放行后落到既有 fetchJobs 路径
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    });
+
+    it('未注入 isRecalledJobId（test/debug 链路）时跳过闸门，向后兼容', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
+
+      const result = await executeTool({ jobId: 528339, requestedDate: '2026-04-08' });
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    });
+  });
+
   it('should mark future fixed interview dates as available', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2029-12-01T02:00:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({

@@ -298,6 +298,23 @@ export function buildInterviewBookingTool(
             }),
           );
         }
+        // jobId provenance 闸门（成员判定，precheck 同型，booking 侧 defense-in-depth）：传入 jobId
+        // 不在本会话真实召回集时必是凭空生成或"召回 A 岗另编真实 B 岗 jobId"。precheck 已拦一次，
+        // 但模型可能伪造 prechecked 直接进 booking，故这里再拦一道——避免"臆造/串改 jobId 命中真岗位
+        // → 用假身份给真岗位下真预约"的 P0。
+        if (context.isRecalledJobId && !context.isRecalledJobId(jobId)) {
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED,
+              outcome: '预约失败（jobId 无召回出处）',
+              replyInstruction:
+                '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 booking。' +
+                '先调 duliday_job_list 召回岗位拿真实 jobId，再走 duliday_interview_precheck，nextAction=ready_to_book 后才能调本工具。',
+              details: { jobId },
+            }),
+          );
+        }
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
         // recruitment_cases 已废弃：不再用 active case 查重。重复预约由海绵侧约束 +

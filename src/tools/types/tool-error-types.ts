@@ -32,6 +32,8 @@ export const TOOL_ERROR_TYPES = {
   BOOKING_INVALID_HEALTH_CERTIFICATE: 'booking.invalid_health_certificate',
   BOOKING_INVALID_HEALTH_CERTIFICATE_TYPES: 'booking.invalid_health_certificate_types',
   BOOKING_JOB_NOT_FOUND: 'booking.job_not_found',
+  /** jobId 无召回出处：本会话从未召回过任何岗位（precheck 同型闸门的 booking 侧 defense-in-depth）。 */
+  BOOKING_JOB_NOT_PROVIDED: 'booking.job_not_provided',
   BOOKING_REJECTED: 'booking.rejected',
   BOOKING_REQUEST_FAILED: 'booking.request_failed',
   BOOKING_MISSING_CUSTOMER_LABEL_VALUES: 'booking.missing_customer_label_values',
@@ -42,6 +44,12 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   PRECHECK_INVALID_REQUESTED_DATE: 'precheck.invalid_requested_date',
   PRECHECK_JOB_NOT_FOUND: 'precheck.job_not_found',
+  /**
+   * jobId 无召回出处：本会话（含本轮 job_list）从未召回/展示过任何岗位，模型却传入了 jobId。
+   * 典型幻觉簇——空会话里候选人只发"应聘/约面试"，模型凭空编出 jobId + 整张候选人报名表直接 precheck。
+   * 与 job_not_found 区别开：后者"未找到岗位"措辞会被模型脑补成"岗位下架了"，本类型明确要求先走 job_list。
+   */
+  PRECHECK_JOB_NOT_PROVIDED: 'precheck.job_not_provided',
   PRECHECK_FAILED: 'precheck.failed',
 
   // ============================================================

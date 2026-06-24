@@ -582,6 +582,9 @@ export class AgentPreparationService {
       contactBrandAliases,
     } = input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
+    // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 本轮 job_list 抓取的候选池
+    // （turnState.candidatePool 由 onJobsFetched 实时写入），供 precheck/booking 判定 jobId 是否有出处。
+    const turnStartRecalledJobIds = this.collectRecentJobIds(memory.sessionMemory);
     const highConfidenceSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
       minConfidence: 'high',
     });
@@ -615,6 +618,9 @@ export class AgentPreparationService {
       highConfidenceFacts: memory.highConfidenceFacts,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
       recentBrandPool,
+      isRecalledJobId: (jobId: number) =>
+        turnStartRecalledJobIds.has(jobId) ||
+        (turnState.candidatePool?.some((j) => j.jobId === jobId) ?? false),
       token: params.token,
       imContactId: params.imContactId,
       imRoomId: params.imRoomId,
@@ -689,6 +695,27 @@ export class AgentPreparationService {
       result.push(brand);
     }
     return result;
+  }
+
+  /**
+   * 汇总本会话 turn-start 已召回/展示过的全部 jobId（presentedJobs ∪ lastCandidatePool ∪
+   * currentFocusJob，去重）。供 precheck/booking 的 jobId provenance 闸门判定"模型传入的 jobId
+   * 是否有合法来源"——集合为空即本会话从未召回任何岗位，此时任何 jobId 都属凭空生成。
+   */
+  private collectRecentJobIds(
+    session: Awaited<ReturnType<MemoryService['onTurnStart']>>['sessionMemory'],
+  ): Set<number> {
+    const ids = new Set<number>();
+    if (!session) return ids;
+    const ordered = [
+      ...(session.presentedJobs ?? []),
+      ...(session.lastCandidatePool ?? []),
+      ...(session.currentFocusJob ? [session.currentFocusJob] : []),
+    ];
+    for (const job of ordered) {
+      if (typeof job?.jobId === 'number') ids.add(job.jobId);
+    }
+    return ids;
   }
 
   /**
