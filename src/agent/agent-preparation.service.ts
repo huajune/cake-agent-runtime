@@ -142,7 +142,7 @@ export class AgentPreparationService {
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
     const memoryBlock = this.buildMemoryBlock(
       memory,
-      bookingContext,
+      bookingContext.block,
       realtimeGroups,
       params.contactName,
     );
@@ -191,6 +191,7 @@ export class AgentPreparationService {
       thresholds,
       turnState,
       contactBrandAliases,
+      bookingWorkOrderJobId: bookingContext.jobId,
     });
     const toolExecutionTimings = new Map<string, number>();
     const tools = this.wrapToolsWithTiming(
@@ -570,6 +571,8 @@ export class AgentPreparationService {
     thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
     turnState: PreparedAgentContext['turnState'];
     contactBrandAliases: string[];
+    /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
+    bookingWorkOrderJobId: number | null;
   }): ToolBuildContext {
     const {
       params,
@@ -580,11 +583,14 @@ export class AgentPreparationService {
       thresholds,
       turnState,
       contactBrandAliases,
+      bookingWorkOrderJobId,
     } = input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
-    // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 本轮 job_list 抓取的候选池
-    // （turnState.candidatePool 由 onJobsFetched 实时写入），供 precheck/booking 判定 jobId 是否有出处。
+    // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 进行中预约工单 jobId（改约路径）
+    // + 本轮 job_list 抓取的候选池（turnState.candidatePool 由 onJobsFetched 实时写入），
+    // 供 precheck/booking 判定 jobId 是否有出处。
     const turnStartRecalledJobIds = this.collectRecentJobIds(memory.sessionMemory);
+    if (bookingWorkOrderJobId != null) turnStartRecalledJobIds.add(bookingWorkOrderJobId);
     const highConfidenceSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
       minConfidence: 'high',
     });
@@ -992,23 +998,29 @@ export class AgentPreparationService {
     corpId: string,
     userId: string,
     tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
-  ): Promise<string> {
+  ): Promise<{ block: string; jobId: number | null }> {
     try {
       const latestBooking = await this.longTermService.getLatestBooking(corpId, userId);
       const workOrderId = latestBooking?.latest_work_order_id;
-      if (workOrderId == null) return '';
+      if (workOrderId == null) return { block: '', jobId: null };
 
       const workOrder = tokenContext
         ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
         : await this.spongeService.getCachedWorkOrderById(workOrderId);
-      if (!workOrder) return '';
+      if (!workOrder) return { block: '', jobId: null };
 
-      return this.formatBookingContext(workOrder);
+      // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
+      // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集，
+      // 否则 isRecalledJobId 恒 false 把每次改约都误拦成 job_not_provided。
+      return {
+        block: this.formatBookingContext(workOrder),
+        jobId: typeof workOrder.jobId === 'number' ? workOrder.jobId : null,
+      };
     } catch (error) {
       this.logger.warn(
         `加载预约上下文失败: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return '';
+      return { block: '', jobId: null };
     }
   }
 
