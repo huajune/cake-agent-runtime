@@ -2,7 +2,6 @@ import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
-import { CallerKind } from '@/enums/agent.enum';
 import { SessionService } from '@memory/services/session.service';
 import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from '../ports/channel-delivery.port';
 import { TurnRunnerService } from '../runner/turn-runner.service';

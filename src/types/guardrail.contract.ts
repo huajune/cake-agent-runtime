@@ -40,7 +40,7 @@ export interface GuardViolation {
     | 'wrong_stage'
     | 'intent_mismatch'
     // 允许 catalog 外的规则 id 透传，又保留上面字面量的提示。
-    | (string & {});
+    | (string & Record<never, never>);
   evidence: string;
   suggestion: string;
 }
