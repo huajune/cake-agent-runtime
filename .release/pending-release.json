@@ -1,89 +1,55 @@
 {
-  "baseVersion": "5.27.1",
+  "baseVersion": "5.27.2",
   "nextVersion": "5.27.2",
   "updatedAt": "2026-06-24",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "391",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/391",
-      "title": "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-24",
-      "businessUpdates": [
-        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
-        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
-        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
-        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
-        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
-        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
-        "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
-      ],
-      "summary": [
-        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
-        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
-        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
-        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
-        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
-        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
-        "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
-        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
-        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）"
-      ],
-      "ops": [
-        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
-        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
-        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`tsc --noEmit` ✅",
-        "受影响 jest 套件 36/36 通过（sponge.service / sponge-status-poll.cron / sponge-token-context.util / seed-hosting-member-config）"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.27.1",
+    "version": "5.27.2",
     "date": "2026-06-24",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "384",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/384",
-        "title": "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）",
+        "number": "391",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/391",
+        "title": "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config",
         "author": "ArielZhu",
-        "mergedAt": "2026-06-23",
+        "mergedAt": "2026-06-24",
         "businessUpdates": [
-          "修正 fallback affectedUsers 跨天重复计数（AI review）"
+          "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
+          "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
+          "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
+          "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
+          "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
+          "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
+          "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
         ],
         "summary": [
-          "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
-          "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
-          "补充 writeback 批次计划数据",
-          "修正 fallback affectedUsers 跨天重复计数（AI review）",
-          "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）"
+          "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
+          "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
+          "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
+          "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
+          "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
+          "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
+          "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
         ],
         "features": [],
-        "fixes": [
-          "修正 fallback affectedUsers 跨天重复计数（AI review）"
+        "fixes": [],
+        "optimizations": [
+          "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
+          "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
+          "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）"
         ],
-        "optimizations": [],
         "ops": [
-          "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
-          "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
-          "补充 writeback 批次计划数据"
+          "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
+          "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
+          "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`tsc --noEmit` 通过",
-          "render.util 单测通过"
+          "`tsc --noEmit` ✅",
+          "受影响 jest 套件 36/36 通过（sponge.service / sponge-status-poll.cron / sponge-token-context.util / seed-hosting-member-config）"
         ]
       }
     ]
