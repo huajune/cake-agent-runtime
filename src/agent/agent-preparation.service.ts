@@ -1013,12 +1013,22 @@ export class AgentPreparationService {
       // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集，
       // 否则 isRecalledJobId 恒 false 把每次改约都误拦成 job_not_provided。
       const block = this.formatBookingContext(workOrder);
+      // jobId 口径必须与 formatBookingContext 渲染「岗位ID」时一致（它用 != null，接受数字串）：
+      // Upstash 反序列化旧缓存可能把 jobId 给成字符串，若这里只认 number 会出现「prompt 里渲染了
+      // 岗位ID: 5678、但 provenance 判 null」→ isRecalledJobId(5678)=false 把改约永久卡死。
+      // 故统一归一为 number（数字串也接受），再受 block 非空约束。
+      const normalizedJobId =
+        typeof workOrder.jobId === 'number'
+          ? workOrder.jobId
+          : typeof workOrder.jobId === 'string' && /^\d+$/.test(workOrder.jobId)
+            ? Number(workOrder.jobId)
+            : null;
       return {
         block,
         // 仅当 block 非空（[当前预约信息] 真进了 system prompt、模型能看到「岗位ID」）才把 jobId
         // 当 provenance：block 为空（工单展示字段全缺）时模型根本看不到该 jobId，放行它等于留下
         // 一个静默绕过闸门的口子（模型若恰好编中该 jobId 就被误判为有出处）。
-        jobId: block && typeof workOrder.jobId === 'number' ? workOrder.jobId : null,
+        jobId: block ? normalizedJobId : null,
       };
     } catch (error) {
       this.logger.warn(

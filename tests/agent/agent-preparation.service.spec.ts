@@ -686,6 +686,43 @@ describe('AgentPreparationService', () => {
     expect(toolContext.isRecalledJobId?.(527350)).toBe(false);
   });
 
+  it('改约场景：缓存把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
+    // Upstash 反序列化旧缓存可能把 jobId 给成字符串；formatBookingContext 用 != null 照样渲染
+    // 「岗位ID: 527351」让模型用，故 provenance 必须归一数字串、与之同口径，否则改约被永久误拦。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88003,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88003,
+      jobId: '527351', // 缓存返回字符串
+      brandName: '瑞幸',
+      currentStatus: '约面成功',
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '改到后天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // 模型 precheck 传 number 527351，provenance 归一后应匹配放行
+    expect(toolContext.isRecalledJobId?.(527351)).toBe(true);
+  });
+
   it('should trim passed messages when they exceed max chars', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
