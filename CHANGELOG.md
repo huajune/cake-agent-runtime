@@ -8,6 +8,47 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.27.3`
+**最近更新**: `2026-06-24`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #397 禁止主动提保险社保口径
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #397 禁止主动提保险社保口径
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #397 `jest tests/channels/wecom/message/application/reply-fact-guard.service.spec.ts tests/tools/duliday/job-list/welfare-facts.util.spec.ts tests/tools/duliday/job-list/render.util.spec.ts --watchman=false`
+- PR #397 `prettier --check` on touched files
+- PR #397 pre-push `ci:check` passed:
+- PR #397 lint
+- PR #397 format
+- PR #397 typecheck
+- PR #397 web build
+- PR #397 backend build
+- PR #397 `jest --coverage --watchman=false`: 292 passed, 1 skipped
+<!-- release:pending:end -->
+
 ## [5.27.2] - 2026-06-24
 
 **来源分支**: `develop`
