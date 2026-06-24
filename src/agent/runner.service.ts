@@ -29,17 +29,11 @@ import {
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
 
 /**
- * 转人工工具名。短路与否由其返回值的 `shortCircuited` 决定（见 shortCircuitByToolResult）：
- * - 正常 handoff → 返回 `{ shortCircuited: true }` → runtime 停（禁止 Agent 收口回复）
- * - HANDOFF_NO_BOOKING 等拒绝 → 返回 `{ shortCircuited: false }` → runtime 继续，Agent 接着对话
- */
-const REQUEST_HANDOFF_TOOL_NAME = 'request_handoff';
-
-/**
  * 判断某工具调用的返回值是否标记了短路。
  *
- * skip_reply 仍走无条件短路（hasToolCall）；request_handoff 改为按返回值短路，
- * 这样 HANDOFF_NO_BOOKING（shortCircuited:false）不会误停本轮、Agent 可继续对话。
+ * skip_reply 仍走无条件短路（hasToolCall）；其他工具统一按返回值短路。
+ * 这样 HANDOFF_NO_BOOKING（shortCircuited:false）不会误停本轮，未来 booking gate
+ * hard-reject 返回 shortCircuited:true 时也能由 runtime 强制停 loop。
  */
 const isShortCircuitedToolResult = (result: unknown): boolean =>
   typeof result === 'object' &&
@@ -47,21 +41,18 @@ const isShortCircuitedToolResult = (result: unknown): boolean =>
   (result as { shortCircuited?: unknown }).shortCircuited === true;
 
 /**
- * stopWhen 条件：当指定工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。
+ * stopWhen 条件：当任意工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。
  *
  * ⚠️ AI SDK 的 toolResult 取值用 `.output` 而非 `.result`（与 buildRunResult 中的取法一致）。
  */
-const shortCircuitByToolResult =
-  (toolName: string) =>
-  ({
-    steps,
-  }: {
-    steps: Array<{ toolResults?: Array<{ toolName?: string; output?: unknown }> }>;
-  }): boolean => {
-    const lastStep = steps[steps.length - 1];
-    const tr = lastStep?.toolResults?.find((r) => r.toolName === toolName);
-    return isShortCircuitedToolResult(tr?.output);
-  };
+const shortCircuitByAnyToolResult = ({
+  steps,
+}: {
+  steps: Array<{ toolResults?: Array<{ output?: unknown }> }>;
+}): boolean => {
+  const lastStep = steps[steps.length - 1];
+  return (lastStep?.toolResults ?? []).some((r) => isShortCircuitedToolResult(r.output));
+};
 
 /** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
 type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
@@ -138,7 +129,7 @@ export class AgentRunnerService {
         stopWhen: [
           stepCountIs(ctx.maxSteps),
           hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
-          shortCircuitByToolResult(REQUEST_HANDOFF_TOOL_NAME), // request_handoff 看返回值
+          shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
         ],
         prepareStep: this.buildPrepareStep(ctx),
         onStepFinish: () => {
@@ -217,7 +208,7 @@ export class AgentRunnerService {
         stopWhen: [
           stepCountIs(ctx.maxSteps),
           hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
-          shortCircuitByToolResult(REQUEST_HANDOFF_TOOL_NAME), // request_handoff 看返回值
+          shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
         ],
         prepareStep: this.buildPrepareStep(ctx),
         onStepFinish: () => {
@@ -555,14 +546,11 @@ export class AgentRunnerService {
     if (result.text.trim().length > 0) return result;
     // 已短路则不做空文本恢复（短路语义=本轮不再对外投递回复）：
     // - skip_reply：无条件短路
-    // - request_handoff：仅当返回值标记 shortCircuited 时算短路；HANDOFF_NO_BOOKING（false）
-    //   不算短路，此时允许恢复一条回复让 Agent 继续对话。
+    // - 其他工具：仅当返回值标记 shortCircuited 时算短路；HANDOFF_NO_BOOKING（false）
+    //   不算短路，booking gate hard-reject（true）算短路。
     const didShortCircuit = result.toolCalls.some((call) => {
       if (call.toolName === SKIP_REPLY_TOOL_NAME) return true;
-      if (call.toolName === REQUEST_HANDOFF_TOOL_NAME) {
-        return isShortCircuitedToolResult(call.result);
-      }
-      return false;
+      return isShortCircuitedToolResult(call.result);
     });
     if (didShortCircuit) {
       return result;

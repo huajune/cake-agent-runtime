@@ -3,6 +3,8 @@
  *
  * 读取侧（转人工原因/阶段分析）由 conversion-analytics 模块独立实现。
  */
+export type HandoffWriteOutcome = 'inserted' | 'duplicate' | 'failed';
+
 export interface RecordHandoffInput {
   corpId: string;
   chatId: string;

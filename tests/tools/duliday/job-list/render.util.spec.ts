@@ -72,6 +72,27 @@ describe('job-list render util', () => {
     expect(markdown.indexOf('⚠️ 同品牌多门店')).toBeLessThan(markdown.indexOf('## 1. 服务员'));
   });
 
+  it('marks insurance as sensitive in welfare markdown instead of ordinary active welfare', () => {
+    const flags: ProgressiveDisclosureFlags = {
+      ...minimalFlags,
+      includeWelfare: true,
+    };
+    const job = makeJob(1) as ReturnType<typeof makeJob> & { welfare?: unknown };
+    job.welfare = {
+      haveInsurance: '公司购买',
+      catering: '包吃',
+    };
+
+    const markdown = formatJobsToMarkdown([job], 1, 1, 10, flags);
+
+    expect(markdown).toContain('保险/社保严禁主动提及');
+    expect(markdown).toContain(
+      '- **保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: 公司购买',
+    );
+    expect(markdown).toContain('- **餐饮**: 包吃');
+    expect(markdown).not.toContain('- **保险**: 公司购买');
+  });
+
   describe('hard-requirements banner', () => {
     const detailFlags: ProgressiveDisclosureFlags = {
       includeBasicInfo: true,

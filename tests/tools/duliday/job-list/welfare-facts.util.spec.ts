@@ -24,12 +24,12 @@ describe('extractWelfareFacts', () => {
     });
 
     it('promotes self_or_none to allowance when 餐补 numeric present', () => {
-      expect(
-        extractWelfareFacts({ catering: '不包吃', cateringSalary: 15 }).meals,
-      ).toBe('allowance');
-      expect(
-        extractWelfareFacts({ catering: '员工自理', cateringSalary: '500元/月' }).meals,
-      ).toBe('allowance');
+      expect(extractWelfareFacts({ catering: '不包吃', cateringSalary: 15 }).meals).toBe(
+        'allowance',
+      );
+      expect(extractWelfareFacts({ catering: '员工自理', cateringSalary: '500元/月' }).meals).toBe(
+        'allowance',
+      );
     });
 
     it('classifies unrecognized text as unspecified', () => {
@@ -87,9 +87,9 @@ describe('extractWelfareFacts', () => {
     });
 
     it('flags hasPromotionWelfare on non-empty string', () => {
-      expect(
-        extractWelfareFacts({ promotionWelfare: '半年晋升一次' }).hasPromotionWelfare,
-      ).toBe(true);
+      expect(extractWelfareFacts({ promotionWelfare: '半年晋升一次' }).hasPromotionWelfare).toBe(
+        true,
+      );
       expect(extractWelfareFacts({ promotionWelfare: '' }).hasPromotionWelfare).toBe(false);
     });
 
@@ -108,13 +108,12 @@ describe('renderWelfareFactsBanner', () => {
   });
 
   it('renders all 4 main slots even when only one has signal', () => {
-    const banner = renderWelfareFactsBanner(
-      extractWelfareFacts({ catering: '包吃' }),
-    );
+    const banner = renderWelfareFactsBanner(extractWelfareFacts({ catering: '包吃' }));
     expect(banner).toContain('福利字段速览');
     expect(banner).toContain('员工餐：✅ 公司提供');
     expect(banner).toContain('住宿：❓ 未明确');
-    expect(banner).toContain('保险：❓ 未明确');
+    expect(banner).toContain('保险（敏感，仅候选人主动问时可答）：未明确');
+    expect(banner).toContain('保险/社保严禁主动提及');
     expect(banner).toContain('交通补贴：❓ 未明确');
     expect(banner).not.toContain('禁止在 reply 里声称');
   });
@@ -129,8 +128,20 @@ describe('renderWelfareFactsBanner', () => {
     );
     expect(banner).toContain('员工餐：❌ 无');
     expect(banner).toContain('住宿：❌ 无');
-    expect(banner).toContain('保险：❌ 无');
+    expect(banner).toContain('保险（敏感，仅候选人主动问时可答）：内部事实：无');
     expect(banner).toContain('不得包装成"有"');
+  });
+
+  it('marks company insurance as sensitive internal fact instead of active welfare', () => {
+    const banner = renderWelfareFactsBanner(
+      extractWelfareFacts({
+        haveInsurance: '公司购买',
+      }),
+    );
+    expect(banner).toContain(
+      '保险（敏感，仅候选人主动问时可答）：内部事实：公司购买（敏感，禁止主动提及）',
+    );
+    expect(banner).toContain('保险/社保严禁主动提及');
   });
 
   it('renders 仅补贴 path correctly', () => {
@@ -156,9 +167,7 @@ describe('renderWelfareFactsBanner', () => {
   });
 
   it('always includes free-text precedence rule', () => {
-    const banner = renderWelfareFactsBanner(
-      extractWelfareFacts({ catering: '员工自理' }),
-    );
+    const banner = renderWelfareFactsBanner(extractWelfareFacts({ catering: '员工自理' }));
     expect(banner).not.toContain('禁止在 reply 里声称');
     expect(banner).not.toContain('禁止在 reply 里声称');
   });

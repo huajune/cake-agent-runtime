@@ -212,6 +212,23 @@ describe('buildInterviewBookingTool', () => {
     });
   });
 
+  it('short-circuits when booking jobId is not recalled in this session', async () => {
+    const result = await executeTool(validInput, {
+      isRecalledJobId: () => false,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      shortCircuited: true,
+      gateRejected: true,
+      reasonCode: 'job_id_not_recalled',
+      errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED,
+    });
+    expect(result._replyInstruction).toContain('runtime 已短路本轮');
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
   it('should return error for invalid time format', async () => {
     const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
 

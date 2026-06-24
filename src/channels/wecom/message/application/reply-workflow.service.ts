@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
-import { AgentRunnerService } from '@agent/runner.service';
+import { TurnRunnerService } from '@agent/runner/turn-runner.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 import { MessageParser } from '../utils/message-parser.util';
@@ -19,6 +19,9 @@ import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service
 import { ReplyFactGuardService } from './reply-fact-guard.service';
 import { ImageDescriptionService } from './image-description.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
+import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
+import type { HandoffWriteOutcome } from '@biz/handoff-events/handoff-events.types';
 import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
 /**
@@ -64,6 +67,21 @@ function collectBlockingTools(toolCalls: AgentInvokeResult['toolCalls']): string
   return Array.from(hit);
 }
 
+function isShortCircuitedToolCall(
+  call: NonNullable<AgentInvokeResult['toolCalls']>[number],
+): boolean {
+  if (call.toolName === 'skip_reply') return true;
+  return (call.result as { shortCircuited?: unknown } | undefined)?.shortCircuited === true;
+}
+
+function isBookingGateRejectedToolCall(
+  call: NonNullable<AgentInvokeResult['toolCalls']>[number],
+): boolean {
+  if (call.toolName !== 'duliday_interview_booking') return false;
+  const result = call.result as { shortCircuited?: unknown; gateRejected?: unknown } | undefined;
+  return result?.shortCircuited === true && result.gateRejected === true;
+}
+
 @Injectable()
 export class ReplyWorkflowService {
   private readonly logger = new Logger(ReplyWorkflowService.name);
@@ -71,7 +89,7 @@ export class ReplyWorkflowService {
   constructor(
     private readonly deduplicationService: MessageDeduplicationService,
     private readonly deliveryService: MessageDeliveryService,
-    private readonly runner: AgentRunnerService,
+    private readonly runner: TurnRunnerService,
     private readonly monitoringService: MessageTrackingService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
@@ -81,6 +99,8 @@ export class ReplyWorkflowService {
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
+    private readonly interventionService: InterventionService,
+    private readonly handoffRecorder: HandoffRecorderService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -385,6 +405,16 @@ export class ReplyWorkflowService {
       }
 
       const processedMessageIds = allMessages.map((message) => message.messageId);
+      await this.dispatchBookingGateHandoffIfNeeded(agentResult, {
+        traceId,
+        chatId,
+        userId: agentCallParams.userId,
+        corpId: agentCallParams.corpId,
+        contactName,
+        botImId: agentCallParams.botImId,
+        botUserId: agentCallParams.botUserId,
+        userMessage: content,
+      });
 
       // Agent 主动沉默 / 转人工短路 / 出站守卫拦截：跳过 WeCom 发送，但仍完成本轮流水与观测。
       // 守卫拦截（如歧视性筛选条件外露）宁可本轮沉默也不可泄漏，飞书已告警人工跟进。
@@ -497,7 +527,115 @@ export class ReplyWorkflowService {
     }
     const skipCall = agentResult.toolCalls?.find((tc) => tc.toolName === 'skip_reply');
     const reason = (skipCall?.args as { reason?: unknown } | undefined)?.reason;
-    return typeof reason === 'string' && reason.trim().length > 0 ? reason.trim() : undefined;
+    if (typeof reason === 'string' && reason.trim().length > 0) return reason.trim();
+
+    const shortCircuitCall = agentResult.toolCalls?.find(isShortCircuitedToolCall);
+    if (shortCircuitCall) {
+      const result = shortCircuitCall.result as
+        | { reasonCode?: unknown; errorType?: unknown; _outcome?: unknown }
+        | undefined;
+      const reasonCode = typeof result?.reasonCode === 'string' ? result.reasonCode : '';
+      const errorType = typeof result?.errorType === 'string' ? result.errorType : '';
+      const outcome = typeof result?._outcome === 'string' ? result._outcome : '';
+      const detail = reasonCode || errorType || outcome;
+      return detail ? `${shortCircuitCall.toolName}:${detail}` : shortCircuitCall.toolName;
+    }
+
+    return undefined;
+  }
+
+  private async dispatchBookingGateHandoffIfNeeded(
+    agentResult: AgentInvokeResult,
+    context: {
+      traceId: string;
+      chatId: string;
+      userId: string;
+      corpId: string;
+      contactName?: string;
+      botImId?: string;
+      botUserId?: string;
+      userMessage: string;
+    },
+  ): Promise<void> {
+    const gateCall = agentResult.toolCalls?.find(isBookingGateRejectedToolCall);
+    if (!gateCall) return;
+
+    const gateResult = gateCall.result as
+      | { reasonCode?: unknown; errorType?: unknown; _outcome?: unknown; details?: unknown }
+      | undefined;
+    const gateReasonCode =
+      typeof gateResult?.reasonCode === 'string' ? gateResult.reasonCode : 'booking_gate_rejected';
+    const gateErrorType = typeof gateResult?.errorType === 'string' ? gateResult.errorType : '';
+    const gateOutcome = typeof gateResult?._outcome === 'string' ? gateResult._outcome : '';
+    const reason = [gateReasonCode, gateErrorType, gateOutcome].filter(Boolean).join(' | ');
+    const occurredAt = new Date();
+    const idempotencyKey = `${context.chatId}:handoff:${context.traceId}`;
+
+    let writeOutcome: HandoffWriteOutcome = 'failed';
+    try {
+      writeOutcome = await this.handoffRecorder.record({
+        corpId: context.corpId,
+        chatId: context.chatId,
+        userId: context.userId,
+        reasonCode: 'system_blocked',
+        reason: reason || 'booking runtime guard rejected this turn',
+        actionAdvice: '人工确认 jobId 来源与候选人真实意向；必要时手动补录或重新推荐岗位。',
+        stage: null,
+        botImId: context.botImId,
+        idempotencyKey,
+        occurredAt,
+      });
+    } catch (error) {
+      this.logger.error(
+        `[BookingGateHandoff] handoff 底账写入异常，继续 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}, error=${error instanceof Error ? error.message : String(error)}`,
+      );
+      writeOutcome = 'failed';
+    }
+
+    if (writeOutcome === 'duplicate') {
+      this.logger.warn(
+        `[BookingGateHandoff] duplicate handoff，跳过重复 dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
+      );
+      return;
+    }
+    if (writeOutcome === 'failed') {
+      this.logger.error(
+        `[BookingGateHandoff] handoff 底账写入失败，执行 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
+      );
+    }
+
+    try {
+      const result = await this.interventionService.dispatch({
+        kind: 'general_handoff',
+        source: 'agent_tool',
+        alertLabel: 'Booking runtime guard 拦截',
+        reason: reason || 'booking runtime guard rejected this turn',
+        actionAdvice: '人工确认 jobId 来源与候选人真实意向；必要时手动补录或重新推荐岗位。',
+        chatId: context.chatId,
+        corpId: context.corpId,
+        userId: context.userId,
+        pauseTargetId: context.chatId,
+        botImId: context.botImId,
+        botUserName: context.botUserId,
+        contactName: context.contactName,
+        currentMessageContent: context.userMessage,
+        recentMessages: [
+          {
+            role: 'user',
+            content: context.userMessage,
+            timestamp: occurredAt.getTime(),
+          },
+        ],
+        sessionState: null,
+      });
+      this.logger.warn(
+        `[BookingGateHandoff] dispatched: chatId=${context.chatId}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[BookingGateHandoff] dispatch 失败: chatId=${context.chatId}, error=${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private async markMessagesAsProcessed(messageIds: string[]): Promise<void> {
@@ -588,19 +726,10 @@ export class ReplyWorkflowService {
       const content = this.normalizeContent(result.text);
       // 短路判定必须与 runner 的 stopWhen 一致（见 runner.service shortCircuitByToolResult）：
       // - skip_reply：无条件短路 → 跳过发送
-      // - request_handoff：仅当工具返回 shortCircuited===true 才短路；HANDOFF_NO_BOOKING
-      //   返回 shortCircuited:false（不短路），此时 Agent 已按首次约面继续生成了回复，
-      //   必须正常投递，不能因为"调用过 request_handoff"就吞掉回复。
-      const isSkipped =
-        result.toolCalls?.some((call) => {
-          if (call.toolName === 'skip_reply') return true;
-          if (call.toolName === 'request_handoff') {
-            return (
-              (call.result as { shortCircuited?: unknown } | undefined)?.shortCircuited === true
-            );
-          }
-          return false;
-        }) ?? false;
+      // - 任意工具 result.shortCircuited===true：运行时硬短路 → 跳过发送。
+      //   request_handoff 的 HANDOFF_NO_BOOKING 返回 shortCircuited:false（不短路），
+      //   此时 Agent 已按首次约面继续生成回复，必须正常投递。
+      const isSkipped = result.toolCalls?.some(isShortCircuitedToolCall) ?? false;
 
       // Reply 后置事实对账：常规规则命中即日志告警，不改写文本（Phase 1）；
       // 阻断规则（如歧视性筛选条件外露）命中则出站短路——回复不发送，飞书告警人工跟进。

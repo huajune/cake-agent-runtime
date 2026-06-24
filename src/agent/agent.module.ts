@@ -10,6 +10,7 @@ import { NotificationModule } from '@notification/notification.module';
 import { CustomerModule } from '@wecom/customer/customer.module';
 import { ObservabilityModule } from '@/observability/observability.module';
 import { AgentRunnerService } from './runner.service';
+import { TurnRunnerService } from './runner/turn-runner.service';
 import { AgentPreparationService } from './agent-preparation.service';
 import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
@@ -34,9 +35,16 @@ import { InputGuardService } from './input-guard.service';
     ContextService,
     AgentPreparationService,
     AgentRunnerService,
+    TurnRunnerService,
     AgentHealthService,
     InputGuardService,
   ],
-  exports: [ContextService, AgentPreparationService, AgentRunnerService, InputGuardService],
+  exports: [
+    ContextService,
+    AgentPreparationService,
+    AgentRunnerService,
+    TurnRunnerService,
+    InputGuardService,
+  ],
 })
 export class AgentModule {}

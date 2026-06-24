@@ -232,6 +232,58 @@ describe('AgentPreparationService', () => {
     ]);
   });
 
+  it('filters side-effect tools in readonly toolMode', async () => {
+    mockToolRegistry.buildForScenario.mockReturnValue({
+      duliday_job_list: {},
+      recall_history: {},
+      duliday_interview_booking: {},
+      duliday_modify_interview_time: {},
+      invite_to_group: {},
+      request_handoff: {},
+      skip_reply: {},
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '提醒一下' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'readonly',
+      },
+      'invoke',
+    );
+
+    expect(Object.keys(result.tools).sort()).toEqual([
+      'duliday_job_list',
+      'recall_history',
+      'skip_reply',
+    ]);
+  });
+
+  it('builds an empty toolset in none toolMode', async () => {
+    mockToolRegistry.buildForScenario.mockReturnValue({
+      duliday_job_list: {},
+      recall_history: {},
+      skip_reply: {},
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '只改文案' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'none',
+      },
+      'invoke',
+    );
+
+    expect(result.tools).toEqual({});
+  });
+
   it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       { imRoomId: 'room-1', groupName: '上海餐饮兼职群1群', city: '上海' },
@@ -606,6 +658,48 @@ describe('AgentPreparationService', () => {
     expect(result.finalPrompt).toContain('岗位ID: 527349');
     expect(result.finalPrompt).toContain('品牌: 瑞幸');
     expect(result.finalPrompt).toContain('当前状态: 约面成功');
+  });
+
+  it('改约场景：进行中工单的 jobId 并入 provenance 集，isRecalledJobId 放行', async () => {
+    // 空会话召回（无 presentedJobs/lastCandidatePool/currentFocusJob），仅有一个进行中预约工单。
+    // 改约路径 system prompt 把 workOrder.jobId 作为「岗位ID」让模型先 precheck，但改约不调
+    // job_list——若不把它并入召回集，isRecalledJobId 恒 false 会把每次改约误拦成 job_not_provided。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88001,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88001,
+      jobId: 527349,
+      brandName: '瑞幸',
+      projectName: '陆家嘴店',
+      jobName: '店员',
+      currentStatus: '约面成功',
+      signUpTime: '2026-04-15 16:00:00',
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '能不能帮我改到明天面试' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // 工单 jobId 放行；其它凭空编的 jobId 仍被拦
+    expect(toolContext.isRecalledJobId?.(527349)).toBe(true);
+    expect(toolContext.isRecalledJobId?.(999999)).toBe(false);
   });
 
   it('should trim passed messages when they exceed max chars', async () => {

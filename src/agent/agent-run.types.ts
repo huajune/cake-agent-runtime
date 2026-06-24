@@ -17,6 +17,15 @@ export type {
 
 export type AgentThinkingConfig = LlmThinkingConfig;
 
+/**
+ * Controls which tools are physically exposed to the model for this turn.
+ *
+ * - scenario: normal scenario toolset
+ * - readonly: only tools without external side effects
+ * - none: no tools at all
+ */
+export type ToolMode = 'scenario' | 'readonly' | 'none';
+
 export interface AgentInputMessage {
   role: string;
   content: string;
@@ -59,6 +68,8 @@ export interface AgentInvokeParams {
   scenario?: string;
   /** 最大工具循环步数，默认 5 */
   maxSteps?: number;
+  /** 本轮物理工具集模式；默认 scenario，见 ToolMode。 */
+  toolMode?: ToolMode;
   /** 图片/表情 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
   imageUrls?: string[];
   /** 图片/表情消息 ID 列表（供 save_image_description 工具回写 DB） */

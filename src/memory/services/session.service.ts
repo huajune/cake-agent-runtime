@@ -33,6 +33,7 @@ import {
   truncateEvidence,
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
+import type { AuthoritativeSessionState } from '../types/authoritative-session-state.types';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import {
   buildSessionExtractionPrompt,
@@ -125,6 +126,15 @@ export class SessionService {
   async getFacts(corpId: string, userId: string, sessionId: string): Promise<SessionFacts | null> {
     const state = await this.getSessionState(corpId, userId, sessionId);
     return state.facts;
+  }
+
+  async getAuthoritativeState(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+  ): Promise<AuthoritativeSessionState> {
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    return this.deriveAuthoritativeState(state);
   }
 
   /**
@@ -224,6 +234,28 @@ export class SessionService {
     }
 
     return merged;
+  }
+
+  private deriveAuthoritativeState(state: WeworkSessionState): AuthoritativeSessionState {
+    const recalledJobIds = new Set<number>();
+    for (const job of [
+      ...(state.presentedJobs ?? []),
+      ...(state.lastCandidatePool ?? []),
+      ...(state.currentFocusJob ? [state.currentFocusJob] : []),
+    ]) {
+      if (Number.isFinite(job.jobId)) recalledJobIds.add(job.jobId);
+    }
+
+    return {
+      // Later parser/writeback phases will populate collectedFields. Keeping it
+      // empty here prevents LLM-extracted session facts from being treated as
+      // booking-authoritative evidence.
+      collectedFields: {},
+      recalledJobIds,
+      hardConstraints: [],
+      presentedStores: (state.presentedJobs ?? []).map((job) => ({ jobId: job.jobId })),
+      stage: null,
+    };
   }
 
   async saveLastCandidatePool(

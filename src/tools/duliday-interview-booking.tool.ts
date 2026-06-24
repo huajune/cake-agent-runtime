@@ -303,17 +303,19 @@ export function buildInterviewBookingTool(
         // 但模型可能伪造 prechecked 直接进 booking，故这里再拦一道——避免"臆造/串改 jobId 命中真岗位
         // → 用假身份给真岗位下真预约"的 P0。
         if (context.isRecalledJobId && !context.isRecalledJobId(jobId)) {
-          return markBookingFailed(
-            context,
-            buildToolError({
-              errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED,
-              outcome: '预约失败（jobId 无召回出处）',
-              replyInstruction:
-                '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 booking。' +
-                '先调 duliday_job_list 召回岗位拿真实 jobId，再走 duliday_interview_precheck，nextAction=ready_to_book 后才能调本工具。',
-              details: { jobId },
-            }),
-          );
+          return markBookingFailed(context, {
+            success: false,
+            shortCircuited: true,
+            gateRejected: true,
+            reasonCode: 'job_id_not_recalled',
+            errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED,
+            _outcome: '预约拦截（jobId 无召回出处）',
+            _replyInstruction:
+              'runtime 已短路本轮，禁止继续生成回复或调用其他工具；该会话需要人工确认 jobId 来源。' +
+              '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 booking。' +
+              '先调 duliday_job_list 召回岗位拿真实 jobId，再走 duliday_interview_precheck，nextAction=ready_to_book 后才能调本工具。',
+            details: { jobId },
+          });
         }
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
