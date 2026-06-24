@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { SpongeService } from '@sponge/sponge.service';
 import { SpongeBiService } from '@sponge/sponge-bi.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 
 describe('SpongeService', () => {
@@ -13,18 +12,12 @@ describe('SpongeService', () => {
     refreshBIDataSource: jest.Mock;
     refreshBIDataSourceAndWait: jest.Mock;
   };
-  let systemConfigService: {
-    getConfigValue: jest.Mock;
-  };
   let hostingMemberConfigService: {
     resolveDulidayToken: jest.Mock;
   };
   let redisService: { get: jest.Mock; setex: jest.Mock; del: jest.Mock };
 
   beforeEach(async () => {
-    systemConfigService = {
-      getConfigValue: jest.fn().mockResolvedValue(null),
-    };
     hostingMemberConfigService = {
       resolveDulidayToken: jest.fn().mockResolvedValue(null),
     };
@@ -53,11 +46,7 @@ describe('SpongeService', () => {
           },
         },
         {
-          provide: SystemConfigService,
-          useValue: systemConfigService,
-        },
-        {
-          // token→null：保持走既有 sponge_token_config / env 解析链不变。
+          // token→null：默认回退 DULIDAY_API_TOKEN（ConfigService mock 返回 'test-token'）。
           provide: HostingMemberConfigService,
           useValue: hostingMemberConfigService,
         },
@@ -191,95 +180,8 @@ describe('SpongeService', () => {
       expect(result).toEqual({ jobs: [], total: 0 });
     });
 
-    it('should prefer system_config token mapped by botImId', async () => {
-      systemConfigService.getConfigValue.mockResolvedValue({
-        accounts: [{ botImId: 'bot-im-1', token: 'mapped-token' }],
-      });
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          code: 0,
-          data: { result: [], total: 0 },
-        }),
-      };
-      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
-
-      await service.fetchJobs({}, { botImId: 'bot-im-1' });
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('job/list'),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Duliday-Token': 'mapped-token',
-          }),
-        }),
-      );
-    });
-
-    it('should resolve botUserId aliases stored in bot_im_id with prod sync prefix', async () => {
-      systemConfigService.getConfigValue.mockResolvedValue({
-        accounts: [
-          {
-            botImId: '1688855171908166',
-            botUserId: 'CongLingKaiShiDeXianShiShiJie',
-            token: 'alias-token',
-          },
-        ],
-      });
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          code: 0,
-          data: { result: [], total: 0 },
-        }),
-      };
-      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
-
-      await service.fetchJobs({}, { botImId: 'prod-sync:CongLingKaiShiDeXianShiShiJie' });
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('job/list'),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Duliday-Token': 'alias-token',
-          }),
-        }),
-      );
-    });
-
-    it('should prefer sponge_token_config before hosting_member_config token', async () => {
+    it('resolves the Duliday token from hosting_member_config by botImId', async () => {
       hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
-      systemConfigService.getConfigValue.mockResolvedValue({
-        accounts: [{ botImId: 'bot-im-1', token: 'sponge-token' }],
-      });
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          code: 0,
-          data: { result: [], total: 0 },
-        }),
-      };
-      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
-
-      await service.fetchJobs({}, { botImId: 'bot-im-1' });
-
-      expect(systemConfigService.getConfigValue).toHaveBeenCalled();
-      expect(hostingMemberConfigService.resolveDulidayToken).not.toHaveBeenCalled();
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('job/list'),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Duliday-Token': 'sponge-token',
-          }),
-        }),
-      );
-    });
-
-    it('should fall back to hosting_member_config when sponge_token_config has no match', async () => {
-      hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
-      systemConfigService.getConfigValue.mockResolvedValue({
-        accounts: [{ botImId: 'other-bot', token: 'sponge-token' }],
-      });
       const mockResponse = {
         ok: true,
         json: jest.fn().mockResolvedValue({
@@ -302,10 +204,8 @@ describe('SpongeService', () => {
       );
     });
 
-    it('should cache sponge token config for repeated requests', async () => {
-      systemConfigService.getConfigValue.mockResolvedValue({
-        accounts: [{ botImId: 'bot-im-1', token: 'cached-token' }],
-      });
+    it('falls back to DULIDAY_API_TOKEN when hosting_member_config has no token', async () => {
+      // hostingMemberConfigService.resolveDulidayToken 默认 mock 返回 null
       const mockResponse = {
         ok: true,
         json: jest.fn().mockResolvedValue({
@@ -316,65 +216,14 @@ describe('SpongeService', () => {
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
       await service.fetchJobs({}, { botImId: 'bot-im-1' });
-      await service.fetchJobs({}, { botImId: 'bot-im-1' });
 
-      expect(systemConfigService.getConfigValue).toHaveBeenCalledTimes(1);
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-      expect(global.fetch).toHaveBeenNthCalledWith(
-        2,
+      expect(hostingMemberConfigService.resolveDulidayToken).toHaveBeenCalledWith('bot-im-1');
+      expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('job/list'),
         expect.objectContaining({
           headers: expect.objectContaining({
-            'Duliday-Token': 'cached-token',
-          }),
-        }),
-      );
-    });
-
-    it('should share a pending sponge token config load across concurrent requests', async () => {
-      let resolveConfig!: (value: unknown) => void;
-      systemConfigService.getConfigValue.mockReturnValue(
-        new Promise((resolve) => {
-          resolveConfig = resolve;
-        }),
-      );
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          code: 0,
-          data: { result: [], total: 0 },
-        }),
-      };
-      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
-
-      const first = service.fetchJobs({}, { botImId: 'bot-im-1' });
-      const second = service.fetchJobs({}, { botImId: 'bot-im-1' });
-
-      await Promise.resolve();
-      expect(systemConfigService.getConfigValue).toHaveBeenCalledTimes(1);
-
-      resolveConfig({
-        accounts: [{ botImId: 'bot-im-1', token: 'shared-token' }],
-      });
-
-      await Promise.all([first, second]);
-
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-      expect(global.fetch).toHaveBeenNthCalledWith(
-        1,
-        expect.stringContaining('job/list'),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Duliday-Token': 'shared-token',
-          }),
-        }),
-      );
-      expect(global.fetch).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('job/list'),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Duliday-Token': 'shared-token',
+            // ConfigService mock 对所有 key 返回 'test-token'（即 DULIDAY_API_TOKEN 兜底）
+            'Duliday-Token': 'test-token',
           }),
         }),
       );

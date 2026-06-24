@@ -2,7 +2,7 @@ import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util'
 import type { ToolBuildContext } from '@shared-types/tool.types';
 
 describe('buildSpongeTokenContext', () => {
-  it('returns only the token routing identifiers from tool context', () => {
+  it('returns the token routing identifiers from tool context', () => {
     expect(
       buildSpongeTokenContext({
         botImId: 'bot-im-1',
