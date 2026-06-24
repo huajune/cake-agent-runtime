@@ -1012,9 +1012,13 @@ export class AgentPreparationService {
       // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
       // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集，
       // 否则 isRecalledJobId 恒 false 把每次改约都误拦成 job_not_provided。
+      const block = this.formatBookingContext(workOrder);
       return {
-        block: this.formatBookingContext(workOrder),
-        jobId: typeof workOrder.jobId === 'number' ? workOrder.jobId : null,
+        block,
+        // 仅当 block 非空（[当前预约信息] 真进了 system prompt、模型能看到「岗位ID」）才把 jobId
+        // 当 provenance：block 为空（工单展示字段全缺）时模型根本看不到该 jobId，放行它等于留下
+        // 一个静默绕过闸门的口子（模型若恰好编中该 jobId 就被误判为有出处）。
+        jobId: block && typeof workOrder.jobId === 'number' ? workOrder.jobId : null,
       };
     } catch (error) {
       this.logger.warn(

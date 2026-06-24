@@ -650,6 +650,42 @@ describe('AgentPreparationService', () => {
     expect(toolContext.isRecalledJobId?.(999999)).toBe(false);
   });
 
+  it('改约场景：工单展示字段全缺(block 为空)时不把 jobId 当 provenance', async () => {
+    // formatBookingContext 在 6 个展示字段全缺时返回 ''，[当前预约信息] 不进 system prompt，
+    // 模型根本看不到「岗位ID」。此时不得把该 jobId 放进召回集——否则留下静默绕过闸门的口子。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88002,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    // 仅有 workOrderId + jobId，无任何展示字段 → formatBookingContext 返回 ''
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88002,
+      jobId: 527350,
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '改到明天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // block 为空 → 模型看不到该 jobId → 不放行
+    expect(toolContext.isRecalledJobId?.(527350)).toBe(false);
+  });
+
   it('should trim passed messages when they exceed max chars', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
