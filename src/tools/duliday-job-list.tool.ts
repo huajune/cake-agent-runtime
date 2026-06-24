@@ -79,7 +79,7 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe(
-      '岗位名称模糊匹配（子串匹配整条 jobName，jobName 形如「品牌-门店-工种-用工形式」，如「M Stand-上海长泰广场店-店员-小时工」）。**想按门店/地标找岗位时填这里**（如候选人说"想去长泰广场那家"就填"长泰广场"），比 storeNameList（精确匹配易落空）宽容得多。建议配合 cityNameList/brandIdList 收窄；不要把工种/用工形式词塞进来（那些用 jobCategoryList）。',
+      '岗位名称模糊匹配（子串匹配整条 jobName，jobName 形如「品牌-门店-工种-用工形式」，如「M Stand-上海长泰广场店-店员-小时工」）。**想按门店/地标找岗位时填这里**（如候选人说"想去长泰广场那家"就填"长泰广场"），比 storeNameList（精确匹配易落空）宽容得多。建议配合 cityNameList/brandIdList 收窄；不要把工种/用工形式词塞进来（那些用 jobCategoryList）。\n**也不要把品类/行业词（"咖啡""奶茶""茶饮""火锅"等）塞进来**——品类词是品牌指向、不会出现在 jobName 子串里（如咖啡品牌的 jobName 是「M Stand-…-店员-小时工」，不含"咖啡"），按品类词查 searchJobName 必然落空；品类词应展开为相关品牌走 brandIdList/brandAliasList 召回，或直接留空按位置召回。',
     ),
   jobCategoryList: z
     .array(z.string())

@@ -24,6 +24,7 @@ import {
 type JsonPayload = Record<string, unknown> | null;
 
 interface DailyOpsReportRow {
+  report_date: string;
   bot_im_id: string | null;
   manager_name: string | null;
   group_name: string | null;
@@ -89,6 +90,7 @@ const RANGE_DAYS: Record<ConversionRange, number> = {
 };
 
 const DAILY_COLUMNS = [
+  'report_date',
   'bot_im_id',
   'manager_name',
   'group_name',
@@ -247,6 +249,9 @@ export class ConversionAnalyticsService {
     period: ConversionPeriod,
     scope: 'current' | 'previous',
   ): Promise<ConversionTrendCounts> {
+    const snapshotCounts = await this.computeDailySnapshotCounts(filter, period, scope);
+    if (snapshotCounts) return snapshotCounts;
+
     const events = await this.fetchOpsEvents(
       filter,
       period,
@@ -467,6 +472,9 @@ export class ConversionAnalyticsService {
    */
   private async getPeriodTrends(filter: ConversionFilter): Promise<ConversionTrendResponse> {
     const period = this.getPeriod(filter.range);
+    const snapshotTrends = await this.getDailySnapshotTrends(filter, period);
+    if (snapshotTrends) return snapshotTrends;
+
     const events = await this.fetchOpsEvents(
       filter,
       period,
@@ -603,6 +611,67 @@ export class ConversionAnalyticsService {
       interviewPass: sets.interviewPass.size,
       groupInvite: sets.groupInvite.size,
     };
+  }
+
+  /**
+   * 非今日 period 口径优先使用 daily_ops_report 快照：
+   * - 避免近 7/30 天为了 KPI/趋势把 ops_events 全量分页拉回 Node；
+   * - 今日仍走事件表，保证控制台实时性；
+   * - 渠道筛选目前没有日报维度，保留事件级路径。
+   *
+   * daily_ops_report 是按日/账号投影，跨日累加不是事件级去重；但作为 period 发生量快照
+   * 与页面的多日趋势/账号对比口径一致，且比事件表超时后清零更可靠。
+   */
+  private shouldUseDailySnapshot(filter: ConversionFilter): boolean {
+    return filter.range !== 'today' && filter.channels.length === 0;
+  }
+
+  private async computeDailySnapshotCounts(
+    filter: ConversionFilter,
+    period: ConversionPeriod,
+    scope: 'current' | 'previous',
+  ): Promise<ConversionTrendCounts | null> {
+    if (!this.shouldUseDailySnapshot(filter)) return null;
+
+    const rows = await this.fetchDailyRows(filter, period, scope);
+    if (rows.length === 0) return null;
+    return this.sumDailyRows(rows);
+  }
+
+  private async getDailySnapshotTrends(
+    filter: ConversionFilter,
+    period: ConversionPeriod,
+  ): Promise<ConversionTrendResponse | null> {
+    if (!this.shouldUseDailySnapshot(filter)) return null;
+
+    const rows = await this.fetchDailyRows(filter, period, 'current');
+    if (rows.length === 0) return null;
+
+    const buckets = new Map<string, DailyOpsReportRow[]>();
+    for (const row of rows) {
+      const bucket = buckets.get(row.report_date) ?? [];
+      bucket.push(row);
+      buckets.set(row.report_date, bucket);
+    }
+
+    const points = this.enumerateDates(period.startInstant, period.endInstant).map((date) =>
+      this.toTrendPoint(date, this.sumDailyRows(buckets.get(date) ?? [])),
+    );
+
+    return { mode: 'period', summary: this.sumDailyRows(rows), points };
+  }
+
+  private sumDailyRows(rows: DailyOpsReportRow[]): ConversionTrendCounts {
+    return rows.reduce<ConversionTrendCounts>(
+      (acc, row) => ({
+        friendAdded: acc.friendAdded + (row.friends_added_count ?? 0),
+        breakIce: acc.breakIce + (row.break_ice_count ?? 0),
+        booking: acc.booking + (row.booking_success_count ?? 0),
+        interviewPass: acc.interviewPass + (row.interview_pass_count ?? 0),
+        groupInvite: acc.groupInvite + (row.group_invite_count ?? 0),
+      }),
+      { friendAdded: 0, breakIce: 0, booking: 0, interviewPass: 0, groupInvite: 0 },
+    );
   }
 
   private async computeFriendAddedCohortCounts(
