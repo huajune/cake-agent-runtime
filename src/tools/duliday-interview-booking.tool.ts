@@ -37,6 +37,7 @@ import {
 } from '@tools/duliday/booking/booking-reply-format.util';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { evaluateBookingNameGate } from '@tools/shared/precheck-core';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -348,6 +349,24 @@ export function buildInterviewBookingTool(
                 requiredPayloadFields: [...API_BOOKING_REQUIRED_PAYLOAD_FIELDS],
                 detailedReason: `缺少预约接口必填字段：${missingFields.join('、')}`,
               },
+            }),
+          );
+        }
+
+        // HC-2 姓名权威闸门（booking 侧 defense-in-depth，负向证据）：name 在原文里仅以
+        // "我是X"打招呼语昵称出现时拒——这是 runBookingGuards.checkRealName 纯形态校验拦不住的
+        // 缺口（2-4 字昵称形态合法但只是微信打招呼昵称）。先确认真名再约，不得拿昵称下真预约。
+        const nameGate = evaluateBookingNameGate(name, context.messages ?? []);
+        if (nameGate.decision === 'reject_collect') {
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS,
+              outcome: '预约失败（姓名疑似打招呼语昵称）',
+              replyInstruction:
+                `${nameGate.reason}。请用"门店登记需要本名"等自然话术先向候选人确认真实姓名，` +
+                '拿到真名后再调 duliday_interview_precheck/本工具；禁止把微信昵称或"我是XX"里的昵称当姓名提交。',
+              details: { suspiciousName: name },
             }),
           );
         }
