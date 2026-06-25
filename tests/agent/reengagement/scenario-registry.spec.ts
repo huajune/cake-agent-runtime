@@ -70,6 +70,12 @@ describe('scenario-registry', () => {
       expect(r.stop).toBe(false);
     });
 
+    it('allows handed_off booking.succeeded scenarios to run', () => {
+      const s = getScenario('interview_reminder')!;
+      const r = shouldStop(s, baseState({ terminal: 'handed_off' }), anchorAt);
+      expect(r.stop).toBe(false);
+    });
+
     it('still stops booking.succeeded scenarios on rejected terminal', () => {
       const s = getScenario('interview_reminder')!;
       const r = shouldStop(s, baseState({ terminal: 'rejected' }), anchorAt);

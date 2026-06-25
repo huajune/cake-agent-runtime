@@ -200,7 +200,7 @@ describe('FollowUpProcessor', () => {
     expect(runner.runTurn).not.toHaveBeenCalled();
     expect(queue.add).toHaveBeenCalledWith(
       REENGAGEMENT_JOB_NAME,
-      expect.objectContaining({ anchorAt: now }),
+      expect.objectContaining({ anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0) }),
       expect.objectContaining({
         jobId: `late-job:rw:${expectedFireAt}`,
         delay: expectedFireAt - now,

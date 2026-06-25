@@ -39,21 +39,12 @@ import {
   type AgentMemorySnapshot,
   type ToolMode,
 } from './agent-run.types';
+import { SIDE_EFFECT_TOOLS } from './tool-call-analysis';
 
 interface RealtimeGroupStatus {
   groupName: string;
   city: string;
 }
-
-const SIDE_EFFECT_TOOL_NAMES = new Set([
-  'duliday_interview_booking',
-  'duliday_cancel_work_order',
-  'duliday_modify_interview_time',
-  'invite_to_group',
-  'send_store_location',
-  'raise_risk_alert',
-  'request_handoff',
-]);
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -278,7 +269,7 @@ export class AgentPreparationService {
 
     const readonlyTools: ToolSet = {};
     for (const [name, toolDef] of Object.entries(tools)) {
-      if (!SIDE_EFFECT_TOOL_NAMES.has(name)) {
+      if (!SIDE_EFFECT_TOOLS.has(name)) {
         readonlyTools[name] = toolDef;
       }
     }

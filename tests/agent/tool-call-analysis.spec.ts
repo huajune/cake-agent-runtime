@@ -283,6 +283,9 @@ describe('tool-call-analysis', () => {
       expect(findSucceededSideEffectTools(steps)).toEqual(['invite_to_group']);
       expect(SIDE_EFFECT_TOOLS.has('duliday_cancel_work_order')).toBe(true);
       expect(SIDE_EFFECT_TOOLS.has('duliday_modify_interview_time')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('send_store_location')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('raise_risk_alert')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('request_handoff')).toBe(true);
     });
   });
 
@@ -326,6 +329,10 @@ describe('tool-call-analysis', () => {
 
     it('treats workOrderId presence alone as success', () => {
       expect(isToolSuccess({ workOrderId: 456 })).toBe(true);
+    });
+
+    it('does not treat zero workOrderId as success', () => {
+      expect(isToolSuccess({ workOrderId: 0 })).toBe(false);
     });
 
     it('treats accepted/dispatched true as success', () => {

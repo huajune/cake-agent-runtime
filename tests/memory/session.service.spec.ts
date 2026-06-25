@@ -381,7 +381,7 @@ describe('SessionService', () => {
   });
 
   describe('getAuthoritativeState (HC-2 collectedFields provenance)', () => {
-    it('keeps collectedFields empty without current user messages (no LLM-fact leakage)', async () => {
+    it('projects persisted session facts into collectedFields for cross-turn stop checks', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
           facts: {
@@ -396,8 +396,11 @@ describe('SessionService', () => {
 
       const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
 
-      // session facts (LLM 抽取) 不得进权威态
-      expect(state.collectedFields).toEqual({});
+      expect(state.collectedFields.name).toMatchObject({
+        value: '张三',
+        provenance: 'llm_extract',
+      });
+      expect(state.collectedFields.age?.value).toBe('24');
     });
 
     it('populates collectedFields from current-turn user text as user_text provenance', async () => {

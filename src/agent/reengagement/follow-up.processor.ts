@@ -166,7 +166,7 @@ export class FollowUpProcessor implements OnModuleInit {
     const fireAt = computeFireAt(scenario, { anchorAt: nextAnchorAt, state });
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = `${job.id}:rw:${fireAt}`;
-    const rescheduledData: FollowUpJob = { ...job.data, anchorAt: nextAnchorAt };
+    const rescheduledData: FollowUpJob = { ...job.data };
     await this.queue.add(REENGAGEMENT_JOB_NAME, rescheduledData, {
       jobId,
       delay,

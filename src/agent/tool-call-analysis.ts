@@ -138,6 +138,9 @@ export const SIDE_EFFECT_TOOLS = new Set([
   'invite_to_group',
   'duliday_cancel_work_order',
   'duliday_modify_interview_time',
+  'send_store_location',
+  'raise_risk_alert',
+  'request_handoff',
 ]);
 
 /**
@@ -156,7 +159,7 @@ export function isToolSuccess(result: unknown): boolean {
   if (typeof r.errorType === 'string') return false;
   if (r.success === false || r.accepted === false || r.dispatched === false) return false;
   if (r.success === true || r.accepted === true || r.dispatched === true) return true;
-  if (r.workOrderId !== null && r.workOrderId !== undefined) return true;
+  if (typeof r.workOrderId === 'number' && r.workOrderId > 0) return true;
   return false;
 }
 
