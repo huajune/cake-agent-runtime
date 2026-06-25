@@ -1,17 +1,17 @@
-import { ReplyFactGuardService } from '@channels/wecom/message/application/reply-fact-guard.service';
+import { RuleGuardrailService } from '@agent/guardrail/output/rule/rule-guardrail.service';
 import type { AgentToolCall } from '@/types/agent-telemetry.types';
 
-describe('ReplyFactGuardService', () => {
+describe('RuleGuardrailService', () => {
   const replyFactGuardNotifier = {
     notifyContradiction: jest.fn(),
   };
 
-  let service: ReplyFactGuardService;
+  let service: RuleGuardrailService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     replyFactGuardNotifier.notifyContradiction.mockResolvedValue(true);
-    service = new ReplyFactGuardService(replyFactGuardNotifier as never);
+    service = new RuleGuardrailService(replyFactGuardNotifier as never);
   });
 
   const flushAsync = () => new Promise((resolve) => setImmediate(resolve));

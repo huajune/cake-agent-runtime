@@ -24,7 +24,7 @@ import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-agent-risk-intercept.service';
-import { ReplyFactGuardService } from '@wecom/message/application/reply-fact-guard.service';
+import { RuleGuardrailService } from '@agent/guardrail/output/rule/rule-guardrail.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
@@ -224,7 +224,7 @@ describe('MessagePipelineService', () => {
         { provide: InterventionService, useValue: mockInterventionService },
         { provide: HandoffRecorderService, useValue: mockHandoffRecorder },
         {
-          provide: ReplyFactGuardService,
+          provide: RuleGuardrailService,
           useValue: { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) },
         },
         {

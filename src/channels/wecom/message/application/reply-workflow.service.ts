@@ -18,7 +18,7 @@ import { SimpleMergeService } from '../runtime/simple-merge.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
-import { ReplyFactGuardService } from './reply-fact-guard.service';
+import { RuleGuardrailService } from '@agent/guardrail/output/rule/rule-guardrail.service';
 import { ImageDescriptionService } from './image-description.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
@@ -82,7 +82,7 @@ export class ReplyWorkflowService {
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly processingFailureService: MessageProcessingFailureService,
     private readonly preAgentRiskIntercept: PreAgentRiskInterceptService,
-    private readonly replyFactGuard: ReplyFactGuardService,
+    private readonly replyFactGuard: RuleGuardrailService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,

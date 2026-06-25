@@ -211,8 +211,8 @@ interface FactRule {
  * 规则维护：[reply-fact-guard.keywords.ts] 单独文件，独立可读。
  */
 @Injectable()
-export class ReplyFactGuardService {
-  private readonly logger = new Logger(ReplyFactGuardService.name);
+export class RuleGuardrailService {
+  private readonly logger = new Logger(RuleGuardrailService.name);
 
   /**
    * "要不要/还是先拉你进群？" 属于征求候选人选择，不是声称本轮已经完成拉群。
@@ -460,7 +460,7 @@ export class ReplyFactGuardService {
       keywords:
         /群已满|群里人数满|群人数已满|邀请暂时发不过去|拉不进群|拉群没成功|群已解散|群里满了/,
       requiredToolPredicate: (toolCalls) =>
-        ReplyFactGuardService.inviteCalledSuccessfully(toolCalls),
+        RuleGuardrailService.inviteCalledSuccessfully(toolCalls),
     },
     {
       ruleId: 'group_promise_without_invite',
@@ -476,10 +476,10 @@ export class ReplyFactGuardService {
       keywords:
         /拉(?:你|您)[^。，,；！？\s]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。，,；！？\s]{0,15}?群|加(?:你|您)[^。，,；！？\s]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请/,
       ignorePredicate: (text) =>
-        ReplyFactGuardService.isConditionalGroupInviteQuestion(text) ||
-        ReplyFactGuardService.isPastTenseGroupReference(text),
+        RuleGuardrailService.isConditionalGroupInviteQuestion(text) ||
+        RuleGuardrailService.isPastTenseGroupReference(text),
       requiredToolPredicate: (toolCalls) =>
-        ReplyFactGuardService.inviteCalledSuccessfully(toolCalls),
+        RuleGuardrailService.inviteCalledSuccessfully(toolCalls),
     },
     {
       ruleId: 'discriminatory_screening_leak',
@@ -533,7 +533,7 @@ export class ReplyFactGuardService {
       contradictions.push({ ruleId: rule.ruleId, label: rule.label, blocked: rule.block === true });
     }
 
-    const bookingFormMismatch = ReplyFactGuardService.detectBookingFormFieldMismatch(
+    const bookingFormMismatch = RuleGuardrailService.detectBookingFormFieldMismatch(
       text,
       toolCalls,
     );
@@ -541,12 +541,12 @@ export class ReplyFactGuardService {
       contradictions.push(bookingFormMismatch);
     }
 
-    const salaryFabrication = ReplyFactGuardService.detectSalaryFabrication(text, toolCalls);
+    const salaryFabrication = RuleGuardrailService.detectSalaryFabrication(text, toolCalls);
     if (salaryFabrication) {
       contradictions.push(salaryFabrication);
     }
 
-    const proactiveInsuranceMention = ReplyFactGuardService.detectProactiveInsurancePolicyMention(
+    const proactiveInsuranceMention = RuleGuardrailService.detectProactiveInsurancePolicyMention(
       text,
       params.userMessage,
     );
@@ -554,7 +554,7 @@ export class ReplyFactGuardService {
       contradictions.push(proactiveInsuranceMention);
     }
 
-    const candidateNameEcho = ReplyFactGuardService.detectCandidateNameEcho(
+    const candidateNameEcho = RuleGuardrailService.detectCandidateNameEcho(
       text,
       params.contactName,
     );
@@ -562,7 +562,7 @@ export class ReplyFactGuardService {
       contradictions.push(candidateNameEcho);
     }
 
-    const distanceMissing = ReplyFactGuardService.detectDistanceMissing(text, toolCalls);
+    const distanceMissing = RuleGuardrailService.detectDistanceMissing(text, toolCalls);
     if (distanceMissing) {
       contradictions.push(distanceMissing);
     }

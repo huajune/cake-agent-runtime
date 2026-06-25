@@ -1,13 +1,13 @@
-import { ReplyFactGuardService } from '@channels/wecom/message/application/reply-fact-guard.service';
+import { RuleGuardrailService } from '@agent/guardrail/output/rule/rule-guardrail.service';
 import type { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 
-describe('ReplyFactGuardService', () => {
-  let service: ReplyFactGuardService;
+describe('RuleGuardrailService', () => {
+  let service: RuleGuardrailService;
   let notifier: { notifyContradiction: jest.Mock };
 
   beforeEach(() => {
     notifier = { notifyContradiction: jest.fn().mockResolvedValue(undefined) };
-    service = new ReplyFactGuardService(notifier as unknown as ReplyFactGuardNotifierService);
+    service = new RuleGuardrailService(notifier as unknown as ReplyFactGuardNotifierService);
   });
 
   const check = (replyText: string) =>

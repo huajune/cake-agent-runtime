@@ -17,6 +17,7 @@ import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
 import { InputGuardrailService } from './guardrail/input/input-guard.service';
+import { RuleGuardrailService } from './guardrail/output/rule/rule-guardrail.service';
 import { REENGAGEMENT_QUEUE } from './reengagement/reengagement.types';
 import { FollowUpSchedulerService } from './reengagement/follow-up-scheduler.service';
 import { FollowUpProcessor } from './reengagement/follow-up.processor';
@@ -50,6 +51,7 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
     TurnRunnerService,
     AgentHealthService,
     InputGuardrailService,
+    RuleGuardrailService,
     // reengagement（复聊 shadow）
     FollowUpSchedulerService,
     FollowUpProcessor,
@@ -61,6 +63,7 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
     GeneratorService,
     TurnRunnerService,
     InputGuardrailService,
+    RuleGuardrailService,
     FollowUpSchedulerService,
   ],
 })
