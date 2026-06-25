@@ -153,6 +153,8 @@ export const SIDE_EFFECT_TOOLS = new Set([
 export function isToolSuccess(result: unknown): boolean {
   const r = asRecord(result);
   if (!r) return false;
+  if (typeof r.errorType === 'string') return false;
+  if (r.success === false || r.accepted === false || r.dispatched === false) return false;
   if (r.success === true || r.accepted === true || r.dispatched === true) return true;
   if (r.workOrderId !== null && r.workOrderId !== undefined) return true;
   return false;

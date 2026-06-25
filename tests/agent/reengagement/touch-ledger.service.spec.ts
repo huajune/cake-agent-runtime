@@ -10,6 +10,7 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     rpush: jest.Mock;
     expire: jest.Mock;
     lrange: jest.Mock;
+    eval: jest.Mock;
   };
   let ledger: TouchLedgerService;
 
@@ -34,6 +35,13 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
       }),
       expire: jest.fn(async () => 1),
       lrange: jest.fn(async (key: string) => lists.get(key) ?? []),
+      eval: jest.fn(async (_script: string, keys: string[], args: (string | number)[]) => {
+        store.set(keys[0], 'sent');
+        const arr = lists.get(keys[1]) ?? [];
+        arr.push(args[1]);
+        lists.set(keys[1], arr);
+        return 1;
+      }),
     };
     ledger = new TouchLedgerService(redis as never);
   });
@@ -47,6 +55,18 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     await ledger.reserve('k1');
     await ledger.markSent('k1', 's1', 1000);
     expect(await ledger.reserve('k1')).toBe('duplicate_sent');
+  });
+
+  it('marks sent atomically through redis eval', async () => {
+    await ledger.markSent('k1', 's1', 1000);
+
+    expect(redis.eval).toHaveBeenCalledWith(expect.stringContaining('SETEX'), expect.any(Array), [
+      expect.any(Number),
+      1000,
+      expect.any(Number),
+    ]);
+    expect(await ledger.getState('k1')).toBe('sent');
+    expect(await ledger.countSentIn24h('s1', 1001)).toBe(1);
   });
 
   it('countSentIn24h only counts sent timestamps within the window', async () => {

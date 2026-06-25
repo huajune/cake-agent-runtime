@@ -133,9 +133,9 @@ describe('tool-call-analysis', () => {
         ),
       ).toBe('empty');
       // 系统级失败仍是 error
-      expect(computeToolCallStatus({ success: false, errorType: 'job_list.fetch_failed' }, undefined)).toBe(
-        'error',
-      );
+      expect(
+        computeToolCallStatus({ success: false, errorType: 'job_list.fetch_failed' }, undefined),
+      ).toBe('error');
     });
 
     it('maps success flags to ok when count is not inferable', () => {
@@ -337,6 +337,10 @@ describe('tool-call-analysis', () => {
       expect(isToolSuccess({ success: false, errorType: 'booking.missing_fields' })).toBe(false);
     });
 
+    it('treats explicit success:false as non-success even when workOrderId is present', () => {
+      expect(isToolSuccess({ success: false, workOrderId: 123 })).toBe(false);
+    });
+
     it('returns false for non-objects and missing signals', () => {
       expect(isToolSuccess(null)).toBe(false);
       expect(isToolSuccess(undefined)).toBe(false);
@@ -358,7 +362,10 @@ describe('tool-call-analysis', () => {
     it('returns false when the side-effect tool failed (allows full re-run)', () => {
       expect(
         hasCommittedSideEffect([
-          { toolName: 'duliday_interview_booking', result: { errorType: 'booking.missing_fields' } },
+          {
+            toolName: 'duliday_interview_booking',
+            result: { errorType: 'booking.missing_fields' },
+          },
         ]),
       ).toBe(false);
     });

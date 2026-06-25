@@ -129,6 +129,12 @@ export class FollowUpProcessor implements OnModuleInit {
     const slot = await this.touchLedger.reserve(key);
     if (slot === 'duplicate_sent') {
       this.logger.log(`[reengagement] 已发过，跳过 key=${key}`);
+      if (outcome.runTurnEnd) await outcome.runTurnEnd();
+      return;
+    }
+    if (slot === 'duplicate_inflight') {
+      this.logger.warn(`[reengagement] 触达已在途/状态不明，跳过重投 key=${key}`);
+      if (outcome.runTurnEnd) await outcome.runTurnEnd();
       return;
     }
     try {
@@ -139,7 +145,11 @@ export class FollowUpProcessor implements OnModuleInit {
       this.logger.log(`[reengagement] 已投递 key=${key}`);
     } catch (error) {
       // deliver 后状态不明 → unknown，交补偿，不盲重投
-      await this.touchLedger.markFailedOrUnknown(key, 'unknown');
+      try {
+        await this.touchLedger.markFailedOrUnknown(key, 'unknown');
+      } finally {
+        if (outcome.runTurnEnd) await outcome.runTurnEnd();
+      }
       throw error;
     }
   }
@@ -156,7 +166,8 @@ export class FollowUpProcessor implements OnModuleInit {
     const fireAt = computeFireAt(scenario, { anchorAt: nextAnchorAt, state });
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = `${job.id}:rw:${fireAt}`;
-    await this.queue.add(REENGAGEMENT_JOB_NAME, job.data, {
+    const rescheduledData: FollowUpJob = { ...job.data, anchorAt: nextAnchorAt };
+    await this.queue.add(REENGAGEMENT_JOB_NAME, rescheduledData, {
       jobId,
       delay,
       attempts: 2,

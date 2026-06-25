@@ -131,6 +131,65 @@ describe('FollowUpProcessor', () => {
     expect(runTurnEnd).toHaveBeenCalledTimes(1);
   });
 
+  it('does not re-deliver duplicate inflight slots and still runs turn-end lifecycle', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    configService.get.mockReturnValue('false');
+    touchLedger.reserve.mockResolvedValue('duplicate_inflight');
+    runner.runTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '还想看看附近岗位吗？' },
+      toolCalls: [],
+      scenarioCode: 'opening_no_reply',
+      runTurnEnd,
+    });
+
+    await buildProcessor().process(makeJob());
+
+    expect(touchLedger.markDeliveryAttempted).not.toHaveBeenCalled();
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs turn-end lifecycle when a duplicate sent slot is skipped', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    configService.get.mockReturnValue('false');
+    touchLedger.reserve.mockResolvedValue('duplicate_sent');
+    runner.runTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '还想看看附近岗位吗？' },
+      toolCalls: [],
+      scenarioCode: 'opening_no_reply',
+      runTurnEnd,
+    });
+
+    await buildProcessor().process(makeJob());
+
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs turn-end lifecycle when delivery fails and marks the touch unknown', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    const error = new Error('delivery down');
+    configService.get.mockReturnValue('false');
+    delivery.deliver.mockRejectedValue(error);
+    runner.runTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '还想看看附近岗位吗？' },
+      toolCalls: [],
+      scenarioCode: 'opening_no_reply',
+      runTurnEnd,
+    });
+
+    await expect(buildProcessor().process(makeJob())).rejects.toThrow('delivery down');
+
+    expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+      'sess-1:opening_no_reply:1782266400000',
+      'unknown',
+    );
+    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+  });
+
   it('reschedules directly to the next delivery window when fired outside the window', async () => {
     const now = Date.UTC(2026, 5, 24, 14, 0, 0); // 22:00 Shanghai
     jest.spyOn(Date, 'now').mockReturnValue(now);
@@ -141,7 +200,7 @@ describe('FollowUpProcessor', () => {
     expect(runner.runTurn).not.toHaveBeenCalled();
     expect(queue.add).toHaveBeenCalledWith(
       REENGAGEMENT_JOB_NAME,
-      expect.any(Object),
+      expect.objectContaining({ anchorAt: now }),
       expect.objectContaining({
         jobId: `late-job:rw:${expectedFireAt}`,
         delay: expectedFireAt - now,

@@ -50,10 +50,17 @@ export class TouchLedgerService {
   }
 
   async markSent(key: string, sessionId: string, now: number): Promise<void> {
-    await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, 'sent');
-    // 频控只数 sent：把本次 sent 时间戳追加到会话触达列表
-    await this.redis.rpush(this.sentListKey(sessionId), now);
-    await this.redis.expire(this.sentListKey(sessionId), Math.ceil(this.FREQ_WINDOW_MS / 1000) * 2);
+    // 频控只数 sent：slot 状态、sent 时间戳、频控 TTL 必须一起提交，避免部分成功低估触达次数。
+    await this.redis.eval(
+      `
+redis.call('SETEX', KEYS[1], ARGV[1], 'sent')
+redis.call('RPUSH', KEYS[2], ARGV[2])
+redis.call('EXPIRE', KEYS[2], ARGV[3])
+return 1
+`,
+      [this.slotKey(key), this.sentListKey(sessionId)],
+      [this.SLOT_TTL_S, now, Math.ceil(this.FREQ_WINDOW_MS / 1000) * 2],
+    );
   }
 
   /** markSent 落库失败等"状态不明" → unknown（不可盲重投，交补偿/告警）。 */

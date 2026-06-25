@@ -17,8 +17,7 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 });
 
 // 某日 10:00 Shanghai = 02:00 UTC
-const at = (utcHour: number, minute = 0): number =>
-  Date.UTC(2026, 5, 24, utcHour, minute, 0);
+const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
   describe('inWindow (9-21 Shanghai)', () => {
@@ -63,6 +62,19 @@ describe('scenario-registry', () => {
       const r = shouldStop(scenario, baseState({ terminal: 'booked' }), anchorAt);
       expect(r.stop).toBe(true);
       expect(r.reason).toContain('terminal');
+    });
+
+    it('allows booked booking.succeeded scenarios to run', () => {
+      const s = getScenario('interview_reminder')!;
+      const r = shouldStop(s, baseState({ terminal: 'booked' }), anchorAt);
+      expect(r.stop).toBe(false);
+    });
+
+    it('still stops booking.succeeded scenarios on rejected terminal', () => {
+      const s = getScenario('interview_reminder')!;
+      const r = shouldStop(s, baseState({ terminal: 'rejected' }), anchorAt);
+      expect(r.stop).toBe(true);
+      expect(r.reason).toBe('terminal:rejected');
     });
 
     it('stops when candidate replied after anchor', () => {

@@ -170,6 +170,7 @@ export function computeFireAt(scenario: FollowUpScenario, ctx: FollowUpScenarioC
  * 调 LLM 之前的代码停止条件（读权威状态）。
  *
  * - terminal ∈ {booked, handed_off, rejected, onboarded} → 停
+ *   booking.succeeded 锚点允许 terminal:booked 继续，由场景 stopUnless 自己判断。
  * - lastCandidateMessageAt > anchorAt（候选人在锚点后已回话）→ 停
  * - 场景特定 stopUnless 不成立 → 停
  */
@@ -178,7 +179,11 @@ export function shouldStop(
   state: AuthoritativeSessionState,
   anchorAt: number,
 ): ShouldStopResult {
-  if (state.terminal) return { stop: true, reason: `terminal:${state.terminal}` };
+  const bookedFollowUp =
+    scenario.anchorEvent === 'booking.succeeded' && state.terminal === 'booked';
+  if (state.terminal && !bookedFollowUp) {
+    return { stop: true, reason: `terminal:${state.terminal}` };
+  }
   if (state.lastCandidateMessageAt != null && state.lastCandidateMessageAt > anchorAt) {
     return { stop: true, reason: 'candidate_replied_after_anchor' };
   }
