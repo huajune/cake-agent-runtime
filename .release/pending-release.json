@@ -1,89 +1,74 @@
 {
-  "baseVersion": "5.27.1",
-  "nextVersion": "5.27.2",
+  "baseVersion": "5.27.3",
+  "nextVersion": "5.27.4",
   "updatedAt": "2026-06-24",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "391",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/391",
-      "title": "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config",
+      "number": "396",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/396",
+      "title": "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
       "author": "ArielZhu",
       "mergedAt": "2026-06-24",
       "businessUpdates": [
-        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
-        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
-        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
-        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
-        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
-        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
-        "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
+        "修复 Agent 在空会话约面意向下凭空编造岗位 ID 及候选人报名表直接触发预检/预约的幻觉问题（生产近 30 天发现 10 例，5 例同时捏造姓名和电话）",
+        "预检（duliday_interview_precheck）与预约（duliday_interview_booking）现在要求 jobId 必须来自本会话真实召回集，否则中止并引导候选人先查询真实岗位"
       ],
       "summary": [
-        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
-        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
-        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由",
-        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
-        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
-        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）",
-        "海绵 token 收口到 hosting_member_config，废弃 sponge_token_config"
+        "为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路"
       ],
       "features": [],
-      "fixes": [],
-      "optimizations": [
-        "`sponge.service.ts`：`resolveConfiguredDulidayToken` 简化为只查 `hosting_member_config`；删除 `loadSpongeTokenConfig`/`reloadSpongeTokenConfig`/`normalizeSpongeTokenConfig`/`resolveAccountToken`/`resolveMappedToken`/`resolveTokenValue`/`buildTokenLookupKeys`/`mergeTokenLookupKeys`、token 缓存字段、`SystemConfigService` 依赖",
-        "`sponge-token.config.ts`：仅保留 `SpongeTokenResolveContext`",
-        "测试改写为 hosting_member_config-only 行为（命中 / 回退默认 token）"
+      "fixes": [
+        "新增 isRecalledJobId provenance 闸门：jobId 必须出自当前会话召回集（presentedJobs / lastCandidatePool / currentFocusJob ∪ 本轮 job_list 实时候选池），否则返回 precheck.job_not_provided / booking.job_not_provided 并要求先调用 duliday_job_list",
+        "改约场景：将进行中工单的 jobId 并入召回集，避免改约路径被误拦",
+        "修复 formatBookingContext 展示字段全空时仍将工单 jobId 注入 provenance 集的静默绕过漏洞",
+        "归一 provenance jobId 类型为 number（兼容数字串），与 system prompt 渲染口径对齐，防止 Upstash 缓存反序列化为字符串时改约被永久卡死"
       ],
-      "ops": [
-        "海绵 token 解析收口到 hosting_member_config，废弃 sponge_toke…",
-        "address review — token 解析只按 botImId，收窄 SpongeTokenR…",
-        "保留 token 上下文三字段，仅以文档说明 botUserId/groupId 不参与路由"
-      ],
+      "optimizations": [],
+      "ops": [],
       "config": [],
       "envFiles": [],
       "verification": [
-        "`tsc --noEmit` ✅",
-        "受影响 jest 套件 36/36 通过（sponge.service / sponge-status-poll.cron / sponge-token-context.util / seed-hosting-member-config）"
+        "precheck / booking / agent-preparation 测试全绿（103 passed，含新增 6 个回归测试）",
+        "覆盖场景：幻觉 jobId 被拦截且不打 Sponge、真实召回 jobId 正常放行、未注入闸门向后兼容、改约工单 jobId 放行、展示字段缺失时工单 jobId 不作 provenance、缓存数字串 jobId 正确识别"
       ]
     }
   ],
   "lastRelease": {
-    "version": "5.27.1",
+    "version": "5.27.3",
     "date": "2026-06-24",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "384",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/384",
-        "title": "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）",
-        "author": "ArielZhu",
-        "mergedAt": "2026-06-23",
+        "number": "397",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/397",
+        "title": "禁止主动提保险社保口径",
+        "author": "huajune",
+        "mergedAt": "2026-06-24",
         "businessUpdates": [
-          "修正 fallback affectedUsers 跨天重复计数（AI review）"
+          "禁止主动提保险社保口径"
         ],
         "summary": [
-          "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
-          "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
-          "补充 writeback 批次计划数据",
-          "修正 fallback affectedUsers 跨天重复计数（AI review）",
-          "用工类型口径/暑假工展示 + 看板转化趋势 + badcase writeback（2026-06-23）"
+          "禁止主动提保险社保口径"
         ],
         "features": [],
-        "fixes": [
-          "修正 fallback affectedUsers 跨天重复计数（AI review）"
-        ],
+        "fixes": [],
         "optimizations": [],
         "ops": [
-          "用工类型按 laborForm 字段、暑假工不当岗位类型，品类词不入 searchJobName",
-          "日快照转化趋势 + projection 新鲜度缓存 + overview 预取调优",
-          "补充 writeback 批次计划数据"
+          "禁止主动提保险社保口径"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`tsc --noEmit` 通过",
-          "render.util 单测通过"
+          "`jest tests/channels/wecom/message/application/reply-fact-guard.service.spec.ts tests/tools/duliday/job-list/welfare-facts.util.spec.ts tests/tools/duliday/job-list/render.util.spec.ts --watchman=false`",
+          "`prettier --check` on touched files",
+          "pre-push `ci:check` passed:",
+          "lint",
+          "format",
+          "typecheck",
+          "web build",
+          "backend build",
+          "`jest --coverage --watchman=false`: 292 passed, 1 skipped"
         ]
       }
     ]

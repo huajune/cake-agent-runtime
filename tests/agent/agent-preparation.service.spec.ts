@@ -744,6 +744,79 @@ describe('AgentPreparationService', () => {
     expect(toolContext.isRecalledJobId?.(999999)).toBe(false);
   });
 
+  it('改约场景：工单展示字段全缺(block 为空)时不把 jobId 当 provenance', async () => {
+    // formatBookingContext 在 6 个展示字段全缺时返回 ''，[当前预约信息] 不进 system prompt，
+    // 模型根本看不到「岗位ID」。此时不得把该 jobId 放进召回集——否则留下静默绕过闸门的口子。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88002,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    // 仅有 workOrderId + jobId，无任何展示字段 → formatBookingContext 返回 ''
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88002,
+      jobId: 527350,
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '改到明天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // block 为空 → 模型看不到该 jobId → 不放行
+    expect(toolContext.isRecalledJobId?.(527350)).toBe(false);
+  });
+
+  it('改约场景：缓存把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
+    // Upstash 反序列化旧缓存可能把 jobId 给成字符串；formatBookingContext 用 != null 照样渲染
+    // 「岗位ID: 527351」让模型用，故 provenance 必须归一数字串、与之同口径，否则改约被永久误拦。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88003,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88003,
+      jobId: '527351', // 缓存返回字符串
+      brandName: '瑞幸',
+      currentStatus: '约面成功',
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '改到后天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // 模型 precheck 传 number 527351，provenance 归一后应匹配放行
+    expect(toolContext.isRecalledJobId?.(527351)).toBe(true);
+  });
+
   it('should trim passed messages when they exceed max chars', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {

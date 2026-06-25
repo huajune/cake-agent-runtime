@@ -370,7 +370,10 @@ export class ReplyFactGuardService {
     text: string,
     contactName?: string,
   ): { ruleId: string; label: string } | null {
-    const cleaned = contactName?.replace(/[ -]/g, ' ').replace(/\s+/g, ' ').trim();
+    const cleaned = contactName
+      ?.replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (!cleaned) return null;
 
     const vocatives = [
