@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { BusinessMetricRuleEngine } from '@analytics/rules/business-metric-rule.engine';
 import { AnalyticsAlertService } from '@biz/monitoring/services/alerts/analytics-alert.service';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
@@ -71,6 +72,7 @@ describe('AnalyticsAlertService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: ConfigService, useValue: { get: jest.fn((_k: string, d?: unknown) => d) } },
         AnalyticsAlertService,
         BusinessMetricRuleEngine,
         { provide: AnalyticsDashboardService, useValue: mockAnalyticsDashboardService },

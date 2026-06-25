@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
@@ -117,6 +118,7 @@ describe('AnalyticsMaintenanceService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: ConfigService, useValue: { get: jest.fn((_k: string, d?: unknown) => d) } },
         AnalyticsMaintenanceService,
         {
           provide: MessageProcessingService,
