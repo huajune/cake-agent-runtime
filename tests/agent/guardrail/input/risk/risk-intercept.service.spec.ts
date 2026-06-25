@@ -1,32 +1,28 @@
-import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-agent-risk-intercept.service';
-import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
-import type { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
+import {
+  RiskInterceptService,
+  type RiskInterceptInput,
+} from '@agent/guardrail/input/risk/risk-intercept.service';
 
-describe('PreAgentRiskInterceptService', () => {
+describe('RiskInterceptService', () => {
   const detector = { detect: jest.fn() };
   const interventionService = { dispatch: jest.fn() };
   const chatSessionService = { getChatHistory: jest.fn() };
   const sessionService = { getSessionState: jest.fn() };
 
-  let service: PreAgentRiskInterceptService;
+  let service: RiskInterceptService;
 
-  const message: EnterpriseMessageCallbackDto = {
-    orgId: 'org-1',
-    token: 'tk-1',
-    botId: 'bot-1',
-    botUserId: 'mgr-bob',
-    imBotId: 'wxid-bot',
+  const baseInput = (over: Partial<RiskInterceptInput> = {}): RiskInterceptInput => ({
+    corpId: 'org-1',
     chatId: 'chat-1',
-    messageType: MessageType.TEXT,
+    userId: 'ct-1',
+    pauseTargetId: 'chat-1',
+    scanContent: '滚',
     messageId: 'msg-1',
-    timestamp: '1700000000000',
-    isSelf: false,
-    source: MessageSource.MOBILE_PUSH,
-    contactType: ContactType.PERSONAL_WECHAT,
-    imContactId: 'ct-1',
     contactName: 'Alice',
-    payload: { text: '滚' },
-  };
+    botImId: 'wxid-bot',
+    botUserName: 'mgr-bob',
+    ...over,
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -35,13 +31,9 @@ describe('PreAgentRiskInterceptService', () => {
     ]);
     sessionService.getSessionState.mockResolvedValue(null);
     detector.detect.mockReturnValue({ hit: false });
-    interventionService.dispatch.mockResolvedValue({
-      dispatched: true,
-      paused: true,
-      alerted: true,
-    });
+    interventionService.dispatch.mockResolvedValue({ dispatched: true, paused: true, alerted: true });
 
-    service = new PreAgentRiskInterceptService(
+    service = new RiskInterceptService(
       detector as never,
       interventionService as never,
       chatSessionService as never,
@@ -49,8 +41,8 @@ describe('PreAgentRiskInterceptService', () => {
     );
   });
 
-  it('returns hit:false early when content is empty', async () => {
-    const result = await service.precheck({ messageData: message, content: '   ' });
+  it('returns hit:false early when scanContent is empty (channel filtered it)', async () => {
+    const result = await service.precheck(baseInput({ scanContent: '   ' }));
 
     expect(result).toEqual({ hit: false });
     expect(detector.detect).not.toHaveBeenCalled();
@@ -59,10 +51,7 @@ describe('PreAgentRiskInterceptService', () => {
   });
 
   it('returns hit:false early when chatId is missing', async () => {
-    const result = await service.precheck({
-      messageData: { ...message, chatId: '' },
-      content: '滚',
-    });
+    const result = await service.precheck(baseInput({ chatId: '' }));
 
     expect(result).toEqual({ hit: false });
     expect(detector.detect).not.toHaveBeenCalled();
@@ -72,32 +61,14 @@ describe('PreAgentRiskInterceptService', () => {
   it('returns hit:false without dispatching when detector misses', async () => {
     detector.detect.mockReturnValue({ hit: false });
 
-    const result = await service.precheck({ messageData: message, content: '你好' });
+    const result = await service.precheck(baseInput({ scanContent: '你好' }));
 
     expect(result).toEqual({ hit: false });
     expect(detector.detect).toHaveBeenCalledTimes(1);
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('skips visual-only image descriptions before keyword risk detection', async () => {
-    const imageMessage: EnterpriseMessageCallbackDto = {
-      ...message,
-      messageType: MessageType.IMAGE,
-      payload: { imageUrl: 'https://example.com/job-list.png' },
-    };
-
-    const result = await service.precheck({
-      messageData: imageMessage,
-      content: '[图片消息] 这是一张招聘平台职位列表截图，整体为垂直滚动列表',
-    });
-
-    expect(result).toEqual({ hit: false });
-    expect(detector.detect).not.toHaveBeenCalled();
-    expect(chatSessionService.getChatHistory).not.toHaveBeenCalled();
-    expect(interventionService.dispatch).not.toHaveBeenCalled();
-  });
-
-  it('filters image descriptions out of merged-message risk context', async () => {
+  it('filters visual image descriptions out of the recent-message risk context', async () => {
     chatSessionService.getChatHistory.mockResolvedValue([
       {
         role: 'user',
@@ -107,23 +78,8 @@ describe('PreAgentRiskInterceptService', () => {
       { role: 'user', content: '你好', timestamp: 1_700_000_001_000 },
     ]);
     detector.detect.mockReturnValue({ hit: false });
-    const imageMessage: EnterpriseMessageCallbackDto = {
-      ...message,
-      messageType: MessageType.IMAGE,
-      messageId: 'msg-image',
-      payload: { imageUrl: 'https://example.com/job-list.png' },
-    };
-    const textMessage: EnterpriseMessageCallbackDto = {
-      ...message,
-      messageId: 'msg-text',
-      payload: { text: '你好' },
-    };
 
-    await service.precheck({
-      messageData: textMessage,
-      content: '[图片消息] 这是一张招聘平台职位列表截图，整体为垂直滚动列表\n你好',
-      messages: [imageMessage, textMessage],
-    });
+    await service.precheck(baseInput({ scanContent: '你好' }));
 
     expect(detector.detect).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -142,7 +98,7 @@ describe('PreAgentRiskInterceptService', () => {
       reason: '命中辱骂关键词',
     });
 
-    const result = await service.precheck({ messageData: message, content: '滚' });
+    const result = await service.precheck(baseInput({ scanContent: '滚' }));
 
     expect(interventionService.dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -174,7 +130,7 @@ describe('PreAgentRiskInterceptService', () => {
     });
     interventionService.dispatch.mockRejectedValue(new Error('redis down'));
 
-    await expect(service.precheck({ messageData: message, content: '滚' })).resolves.toEqual({
+    await expect(service.precheck(baseInput({ scanContent: '滚' }))).resolves.toEqual({
       hit: true,
       riskType: 'abuse',
       reason: '命中辱骂关键词',
@@ -187,14 +143,11 @@ describe('PreAgentRiskInterceptService', () => {
     sessionService.getSessionState.mockRejectedValue(new Error('db down'));
     detector.detect.mockReturnValue({ hit: false });
 
-    const result = await service.precheck({ messageData: message, content: '你好' });
+    const result = await service.precheck(baseInput({ scanContent: '你好' }));
 
     expect(result).toEqual({ hit: false });
     expect(detector.detect).toHaveBeenCalledWith(
-      expect.objectContaining({
-        recentMessages: [],
-        sessionState: null,
-      }),
+      expect.objectContaining({ recentMessages: [], sessionState: null }),
     );
   });
 });

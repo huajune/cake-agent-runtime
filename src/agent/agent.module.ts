@@ -16,7 +16,10 @@ import { AgentPreparationService } from './agent-preparation.service';
 import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
+import { InterventionModule } from '@biz/intervention/intervention.module';
+import { ConversationRiskModule } from '@/conversation-risk/conversation-risk.module';
 import { InputGuardrailService } from './guardrail/input/input-guard.service';
+import { RiskInterceptService } from './guardrail/input/risk/risk-intercept.service';
 import { RuleGuardrailService } from './guardrail/output/rule/rule-guardrail.service';
 import { REENGAGEMENT_QUEUE } from './reengagement/reengagement.types';
 import { FollowUpSchedulerService } from './reengagement/follow-up-scheduler.service';
@@ -35,6 +38,8 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
     NotificationModule,
     CustomerModule,
     ObservabilityModule,
+    InterventionModule,
+    ConversationRiskModule,
     BullModule.registerQueue({
       name: REENGAGEMENT_QUEUE,
       defaultJobOptions: {
@@ -51,6 +56,7 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
     TurnRunnerService,
     AgentHealthService,
     InputGuardrailService,
+    RiskInterceptService,
     RuleGuardrailService,
     // reengagement（复聊 shadow）
     FollowUpSchedulerService,
@@ -63,6 +69,7 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
     GeneratorService,
     TurnRunnerService,
     InputGuardrailService,
+    RiskInterceptService,
     RuleGuardrailService,
     FollowUpSchedulerService,
   ],

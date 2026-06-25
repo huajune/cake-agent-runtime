@@ -7,8 +7,7 @@
  * （tool guardrail 因分层物理留 tools/，仅在此登记引用，不反向依赖 agent）。
  *
  * 注意：本目录是**登记/审计**用途，不在此执行 guardrail（执行仍在各自的 in-loop / 出站
- * 调用点）。input guard 已物理归并进 agent/guardrail/input/；output 的 reply-fact-guard
- * 与 risk-intercept 在 channels/wecom，跨模块迁入待后续。
+ * 调用点）。input guard 已物理归并进 agent/guardrail/input/；output rule(reply-fact-guard) 与 input risk(risk-intercept) 已迁入 agent/guardrail/。
  */
 
 import type { GuardrailLayer } from '@shared-types/guardrail.contract';
@@ -36,7 +35,7 @@ export const GUARDRAIL_CATALOG: readonly GuardrailCatalogEntry[] = [
   {
     id: 'pre_agent_risk_intercept',
     layer: 'input',
-    source: 'channels/wecom/.../reply-workflow（preAgentRiskIntercept）',
+    source: 'agent/guardrail/input/risk/risk-intercept.service.ts',
     exogenousSignal: 'conversation-risk 高危关键词信号',
     status: 'active',
   },

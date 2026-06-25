@@ -17,7 +17,7 @@ import { MessageDeliveryService } from '../delivery/delivery.service';
 import { SimpleMergeService } from '../runtime/simple-merge.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
-import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
+import { RiskInterceptService } from '@agent/guardrail/input/risk/risk-intercept.service';
 import { RuleGuardrailService } from '@agent/guardrail/output/rule/rule-guardrail.service';
 import { ImageDescriptionService } from './image-description.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
@@ -81,7 +81,7 @@ export class ReplyWorkflowService {
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly processingFailureService: MessageProcessingFailureService,
-    private readonly preAgentRiskIntercept: PreAgentRiskInterceptService,
+    private readonly preAgentRiskIntercept: RiskInterceptService,
     private readonly replyFactGuard: RuleGuardrailService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
@@ -233,10 +233,17 @@ export class ReplyWorkflowService {
     // 前置风险同步预检：命中高置信度关键词即同步执行暂停+告警，
     // 但不短路 Agent——本轮安抚回复仍由 Agent 以招募者身份自主生成，
     // 避免任何预设话术暴露机器人/托管身份。
+    const riskUserId = this.resolveAgentUserId(params.primaryMessage, parsed);
     const precheckResult = await this.preAgentRiskIntercept.precheck({
-      messageData: params.primaryMessage,
-      content,
-      messages: allMessages,
+      corpId: this.resolveCorpId(params.primaryMessage),
+      chatId,
+      userId: riskUserId,
+      pauseTargetId: chatId || riskUserId,
+      scanContent: this.buildRiskScanContent(params.primaryMessage, content, allMessages),
+      messageId: parsed.messageId,
+      contactName: parsed.contactName,
+      botImId: parsed.imBotId,
+      botUserName: parsed.managerName,
     });
     if (precheckResult.hit) {
       this.logger.warn(
@@ -829,6 +836,34 @@ export class ReplyWorkflowService {
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
     return messageData.orgId || 'default';
+  }
+
+  /**
+   * 把入站 DTO 解析成 RiskInterceptService 的纯文本扫描内容（渠道侧职责，依赖倒置）。
+   * 过滤图片/表情占位，多消息按行拼接；全是视觉内容则返回空串（不扫描）。
+   */
+  private buildRiskScanContent(
+    primaryMessage: EnterpriseMessageCallbackDto,
+    content: string,
+    messages: EnterpriseMessageCallbackDto[],
+  ): string {
+    const fallback = content?.trim() ?? '';
+    if (!fallback) return '';
+
+    const list = messages?.length ? messages : [primaryMessage];
+    const textParts = list
+      .filter((message) => !MessageParser.extractVisualMessageType(message))
+      .map((message) => MessageParser.extractContent(message).trim())
+      .filter((text) => text && !this.isVisualGeneratedContent(text));
+
+    if (textParts.length > 0) return textParts.join('\n');
+    if (MessageParser.extractVisualMessageType(primaryMessage)) return '';
+    if (this.isVisualGeneratedContent(fallback)) return '';
+    return fallback;
+  }
+
+  private isVisualGeneratedContent(content: string | undefined): boolean {
+    return /^\s*\[(?:图片|表情)消息\]/.test(content ?? '');
   }
 
   /**
