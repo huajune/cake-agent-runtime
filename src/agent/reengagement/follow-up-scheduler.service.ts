@@ -26,13 +26,15 @@ export interface ScheduleFollowUpInput {
   state?: AuthoritativeSessionState;
 }
 
-const EMPTY_STATE: AuthoritativeSessionState = {
-  collectedFields: {},
-  recalledJobIds: new Set<number>(),
-  hardConstraints: [],
-  presentedStores: [],
-  stage: null,
-};
+function createEmptyState(): AuthoritativeSessionState {
+  return {
+    collectedFields: {},
+    recalledJobIds: new Set<number>(),
+    hardConstraints: [],
+    presentedStores: [],
+    stage: null,
+  };
+}
 
 export interface ScheduleFollowUpResult {
   scheduled: boolean;
@@ -68,7 +70,7 @@ export class FollowUpSchedulerService {
     const scenario = getScenario(input.scenarioCode);
     if (!scenario) return { scheduled: false, reason: 'unknown_scenario' };
 
-    const state = input.state ?? EMPTY_STATE;
+    const state = input.state ?? createEmptyState();
 
     // 排程前停止条件预检（仅当提供了 state）——能省一个无效 delayed job；
     // 缺 state 时跳过预检，processor 到点会读权威态再做完整 shouldStop。

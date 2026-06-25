@@ -6,8 +6,14 @@ import { SessionService } from '@memory/services/session.service';
 import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from '../ports/channel-delivery.port';
 import { TurnRunnerService } from '../runner/turn-runner.service';
 import type { TurnOutcome } from '../runner/turn-runner.types';
-import { REENGAGEMENT_QUEUE, type FollowUpJob } from './reengagement.types';
-import { getScenario, inWindow, resolveDelayMs, shouldStop } from './scenario-registry';
+import { REENGAGEMENT_JOB_NAME, REENGAGEMENT_QUEUE, type FollowUpJob } from './reengagement.types';
+import {
+  computeFireAt,
+  getScenario,
+  inWindow,
+  resolveDelayMs,
+  shouldStop,
+} from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
 
 /**
@@ -33,7 +39,7 @@ export class FollowUpProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.queue.process('follow-up', 2, (job: Job<FollowUpJob>) => this.process(job));
+    this.queue.process(REENGAGEMENT_JOB_NAME, 2, (job: Job<FollowUpJob>) => this.process(job));
     this.logger.log(
       `[reengagement] processor 已注册（shadow=${this.isShadow()}, delivery=${this.delivery ? 'bound' : 'none'}）`,
     );
@@ -94,6 +100,7 @@ export class FollowUpProcessor implements OnModuleInit {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
+      if (outcome.runTurnEnd) await outcome.runTurnEnd();
       return;
     }
 
@@ -103,6 +110,7 @@ export class FollowUpProcessor implements OnModuleInit {
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
           `text="${outcome.reply.text.slice(0, 60)}"（shadow=${shadow}, rollout=${scenario.rolloutEnabled}）`,
       );
+      if (outcome.runTurnEnd) await outcome.runTurnEnd();
       return;
     }
 
@@ -143,19 +151,21 @@ export class FollowUpProcessor implements OnModuleInit {
     state: Parameters<typeof resolveDelayMs>[1]['state'],
     anchorAt: number,
   ): Promise<void> {
-    void scenario;
-    void state;
-    void anchorAt;
-    // 简化：推迟到约 1 小时后再判（届时 inWindow 二次确认）。避免复杂的"下一个 9:00"精算。
-    const delay = 60 * 60 * 1000;
-    await this.queue.add('follow-up', job.data, {
-      jobId: `${job.id}:rw:${Math.floor(Date.now() / (60 * 60 * 1000))}`,
+    if (!scenario) return;
+    const nextAnchorAt = Math.max(Date.now(), anchorAt);
+    const fireAt = computeFireAt(scenario, { anchorAt: nextAnchorAt, state });
+    const delay = Math.max(0, fireAt - Date.now());
+    const jobId = `${job.id}:rw:${fireAt}`;
+    await this.queue.add(REENGAGEMENT_JOB_NAME, job.data, {
+      jobId,
       delay,
       attempts: 2,
       backoff: { type: 'fixed', delay: 30_000 },
       removeOnComplete: { age: 3 * 24 * 60 * 60, count: 200 },
       removeOnFail: { age: 3 * 24 * 60 * 60, count: 200 },
     });
-    this.logger.log(`[reengagement] 非投递窗口，推迟 ${delay}ms 重判 jobId=${job.id}`);
+    this.logger.log(
+      `[reengagement] 非投递窗口，推迟到 ${new Date(fireAt).toISOString()} 重判 jobId=${job.id} rescheduledJobId=${jobId}`,
+    );
   }
 }

@@ -1,12 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
 import { AgentRunnerService } from '../runner.service';
-import type {
-  AgentInvokeParams,
-  AgentRunResult,
-  AgentStreamResult,
-  AgentToolCall,
-} from '../agent-run.types';
+import type { AgentInvokeParams, AgentRunResult, AgentStreamResult } from '../agent-run.types';
+import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '../tool-call-analysis';
 import type { TurnOutcome, TurnRequest, TurnTrigger } from './turn-runner.types';
 
 export type {
@@ -19,17 +15,6 @@ export type {
 
 /** 主动回合的占位 user 文本：WECOM callerKind 下被 memory 历史覆盖，仅为满足非空入参。 */
 const PROACTIVE_TRIGGER_PLACEHOLDER = '[系统主动跟进]';
-
-function isShortCircuited(call: AgentToolCall): boolean {
-  if (call.toolName === 'skip_reply') return true;
-  return (call.result as { shortCircuited?: unknown } | undefined)?.shortCircuited === true;
-}
-
-function isBookingGateRejected(call: AgentToolCall): boolean {
-  if (call.toolName !== 'duliday_interview_booking') return false;
-  const result = call.result as { shortCircuited?: unknown; gateRejected?: unknown } | undefined;
-  return result?.shortCircuited === true && result.gateRejected === true;
-}
 
 /**
  * Turn-level runner seam.
@@ -116,7 +101,7 @@ export class TurnRunnerService {
 
     // handoff：request_handoff（工具内已 dispatch）或 booking gate hard-reject（outcome 层 dispatch）
     const requestHandoff = toolCalls.find((c) => c.toolName === 'request_handoff');
-    const bookingGateReject = toolCalls.find(isBookingGateRejected);
+    const bookingGateReject = toolCalls.find(isBookingGateRejectedToolCall);
     const handoffCall = requestHandoff ?? bookingGateReject;
     if (handoffCall) {
       const args = handoffCall.args as { reasonCode?: unknown; reason?: unknown } | undefined;
@@ -143,7 +128,7 @@ export class TurnRunnerService {
     }
 
     const text = (result.text ?? '').trim();
-    const shortCircuited = toolCalls.some(isShortCircuited);
+    const shortCircuited = toolCalls.some(isShortCircuitedToolCall);
     if (shortCircuited || text.length === 0) {
       return { kind: 'skipped', toolCalls, scenarioCode, runTurnEnd };
     }

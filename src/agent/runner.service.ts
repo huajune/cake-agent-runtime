@@ -16,6 +16,7 @@ import {
   computeToolCallStatus,
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
+  isShortCircuitedToolResult,
   MAX_SAME_TOOL_CALLS_PER_TURN,
 } from './tool-call-analysis';
 
@@ -27,18 +28,6 @@ import {
  * - 一旦被调用，stopWhen 立即结束本轮 loop，不再进入下一步
  */
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
-
-/**
- * 判断某工具调用的返回值是否标记了短路。
- *
- * skip_reply 仍走无条件短路（hasToolCall）；其他工具统一按返回值短路。
- * 这样 HANDOFF_NO_BOOKING（shortCircuited:false）不会误停本轮，未来 booking gate
- * hard-reject 返回 shortCircuited:true 时也能由 runtime 强制停 loop。
- */
-const isShortCircuitedToolResult = (result: unknown): boolean =>
-  typeof result === 'object' &&
-  result !== null &&
-  (result as { shortCircuited?: unknown }).shortCircuited === true;
 
 /**
  * stopWhen 条件：当任意工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。

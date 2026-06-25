@@ -3,6 +3,7 @@ import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { TurnRunnerService } from '@agent/runner/turn-runner.service';
+import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '@agent/tool-call-analysis';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
@@ -66,21 +67,6 @@ function collectBlockingTools(toolCalls: AgentInvokeResult['toolCalls']): string
     }
   }
   return Array.from(hit);
-}
-
-function isShortCircuitedToolCall(
-  call: NonNullable<AgentInvokeResult['toolCalls']>[number],
-): boolean {
-  if (call.toolName === 'skip_reply') return true;
-  return (call.result as { shortCircuited?: unknown } | undefined)?.shortCircuited === true;
-}
-
-function isBookingGateRejectedToolCall(
-  call: NonNullable<AgentInvokeResult['toolCalls']>[number],
-): boolean {
-  if (call.toolName !== 'duliday_interview_booking') return false;
-  const result = call.result as { shortCircuited?: unknown; gateRejected?: unknown } | undefined;
-  return result?.shortCircuited === true && result.gateRejected === true;
 }
 
 @Injectable()
