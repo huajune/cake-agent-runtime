@@ -37,7 +37,9 @@ import {
   type AgentInputMessage,
   type AgentInvokeParams,
   type AgentMemorySnapshot,
+  type ToolMode,
 } from './agent-run.types';
+import { SIDE_EFFECT_TOOLS } from './tool-call-analysis';
 
 interface RealtimeGroupStatus {
   groupName: string;
@@ -194,16 +196,20 @@ export class AgentPreparationService {
       bookingWorkOrderJobId: bookingContext.jobId,
     });
     const toolExecutionTimings = new Map<string, number>();
+    const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
     const tools = this.wrapToolsWithTiming(
-      this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet,
+      this.resolveToolsForMode(scenarioTools, params.toolMode ?? 'scenario'),
       toolExecutionTimings,
     );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
     const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
+    const reviseNotice = this.buildReviseNotice(params);
+    const proactiveDirective = this.buildProactiveDirective(params);
 
     return {
-      finalPrompt: systemPrompt + guardSuffix + criticalTurnGuard,
+      finalPrompt:
+        systemPrompt + guardSuffix + criticalTurnGuard + reviseNotice + proactiveDirective,
       normalizedMessages,
       memoryLoadWarning: memory._warnings?.join('; '),
       tools,
@@ -255,6 +261,19 @@ export class AgentPreparationService {
       } as ToolSet[string];
     }
     return wrapped;
+  }
+
+  private resolveToolsForMode(tools: ToolSet, mode: ToolMode): ToolSet {
+    if (mode === 'scenario') return tools;
+    if (mode === 'none') return {};
+
+    const readonlyTools: ToolSet = {};
+    for (const [name, toolDef] of Object.entries(tools)) {
+      if (!SIDE_EFFECT_TOOLS.has(name)) {
+        readonlyTools[name] = toolDef;
+      }
+    }
+    return readonlyTools;
   }
 
   /**
@@ -356,6 +375,60 @@ export class AgentPreparationService {
     if (guards.length === 0) return '';
 
     return `\n\n# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`;
+  }
+
+  /**
+   * HC-1：把 revise 回路的违规意见 / 已提交副作用摘要拼到 system prompt 末尾。
+   *
+   * - committedSideEffects（配 toolMode:'none' 无工具重写）：告知模型副作用已生效、
+   *   只改措辞，既不声称未发生也不重复执行；
+   * - reviseFeedback：把出站守卫的违规意见喂回，让模型只修正这些问题。
+   *
+   * 二者均为可选；都缺省时返回空串，不影响普通回合。
+   */
+  private buildReviseNotice(params: AgentInvokeParams): string {
+    const parts: string[] = [];
+
+    const committed = params.committedSideEffects?.trim();
+    if (committed) {
+      parts.push(
+        `本轮的副作用动作已经执行并生效（${committed}），既成事实，不可撤销也不可重复执行。` +
+          `请基于这一事实重写本轮回复：只修正措辞与合规问题，` +
+          `严禁声称未发生、严禁再次执行任何操作（系统本轮已物理移除相关工具）。`,
+      );
+    }
+
+    if (params.reviseFeedback?.length) {
+      const lines = params.reviseFeedback.map(
+        (v) => `- [${v.type}] 问题：${v.evidence}；应改为：${v.suggestion}`,
+      );
+      parts.push(
+        `上一版回复被出站守卫拦下，存在以下需修正的问题。请只针对这些问题重写一版回复，` +
+          `不要改变已确认的事实、不要新增承诺：\n${lines.join('\n')}`,
+      );
+    }
+
+    if (parts.length === 0) return '';
+    return `\n\n# 回复重写要求（HC-1）\n${parts.join('\n\n')}`;
+  }
+
+  /**
+   * reengagement 主动回合 directive 注入。
+   *
+   * 告诉模型本回合是系统发起的主动跟进、目标是什么；话术由模型按记忆/上下文实时生成。
+   * 强调主动回合的边界：只提醒/答疑，不替候选人报名/拉群（副作用工具已由 toolMode:'readonly'
+   * 物理移除，这里再用 prompt 重申，双保险）。被动回合不传，返回空串。
+   */
+  private buildProactiveDirective(params: AgentInvokeParams): string {
+    const directive = params.proactiveDirective?.trim();
+    if (!directive) return '';
+    return (
+      `\n\n# 主动跟进回合（reengagement）\n` +
+      `本回合不是候选人发来的消息，而是系统按既定场景发起的主动跟进。跟进目标：${directive}\n` +
+      `要求：① 自然、简短、不骚扰，像真人招募经理顺手关心一句；② 只做提醒/答疑，` +
+      `严禁替候选人报名/拉群/改约（这些动作只能由候选人本人在后续对话里推进）；` +
+      `③ 若记忆显示候选人已报名/已转人工/已明确拒绝，则不要发起跟进。`
+    );
   }
 
   /**

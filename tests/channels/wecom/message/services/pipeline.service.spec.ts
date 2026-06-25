@@ -14,7 +14,8 @@ import { ImageDescriptionService } from '@wecom/message/application/image-descri
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { AgentRunnerService } from '@agent/runner.service';
+import { TurnRunnerService } from '@agent/runner/turn-runner.service';
+import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { DeliveryFailureError } from '@wecom/message/types';
@@ -28,6 +29,8 @@ import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
+import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 
@@ -158,6 +161,16 @@ describe('MessagePipelineService', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockInterventionService = {
+    dispatch: jest
+      .fn()
+      .mockResolvedValue({ dispatched: true, paused: true, alerted: true }),
+  };
+
+  const mockHandoffRecorder = {
+    record: jest.fn().mockResolvedValue('inserted'),
+  };
+
   const mockSimpleMergeService = {
     claimPendingSnapshot: jest
       .fn()
@@ -198,7 +211,7 @@ describe('MessagePipelineService', () => {
         { provide: ImageDescriptionService, useValue: mockImageDescriptionService },
         { provide: LlmExecutorService, useValue: mockLlmService },
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
-        { provide: AgentRunnerService, useValue: mockRunnerService },
+        { provide: TurnRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
@@ -208,6 +221,8 @@ describe('MessagePipelineService', () => {
         { provide: LongTermService, useValue: mockLongTermService },
         { provide: HostingMemberConfigService, useValue: mockHostingMemberConfigService },
         { provide: UserHostingService, useValue: mockUserHostingService },
+        { provide: InterventionService, useValue: mockInterventionService },
+        { provide: HandoffRecorderService, useValue: mockHandoffRecorder },
         {
           provide: ReplyFactGuardService,
           useValue: { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) },
@@ -228,6 +243,10 @@ describe('MessagePipelineService', () => {
         {
           provide: GroupBlacklistService,
           useValue: { isGroupBlacklisted: jest.fn().mockResolvedValue(false) },
+        },
+        {
+          provide: FollowUpSchedulerService,
+          useValue: { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) },
         },
       ],
     }).compile();

@@ -6,6 +6,7 @@
  */
 
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
+import type { AgentToolCall } from './agent-run.types';
 
 /**
  * 单轮内同名工具调用上限。
@@ -137,7 +138,72 @@ export const SIDE_EFFECT_TOOLS = new Set([
   'invite_to_group',
   'duliday_cancel_work_order',
   'duliday_modify_interview_time',
+  'send_store_location',
+  'raise_risk_alert',
+  'request_handoff',
 ]);
+
+/**
+ * 判定单个工具返回值是否表示「副作用已成功提交」。
+ *
+ * ⚠️ 必须用**正向成功信号**判定，不能用 `'errorType' in result`：booking 成功结果
+ * 显式带 `errorType: null`（见 duliday-interview-booking.tool），`'errorType' in r`
+ * 对成功也为 true，会把成功预约误判成"无副作用"→ HC-1 revise 走全量重跑 → 重复 booking。
+ *
+ * 正向信号：success/accepted/dispatched===true，或带 workOrderId（booking 成功回执）。
+ * 其余（含 buildToolError 的 `typeof errorType === 'string'`）一律非成功。
+ */
+export function isToolSuccess(result: unknown): boolean {
+  const r = asRecord(result);
+  if (!r) return false;
+  if (typeof r.errorType === 'string') return false;
+  if (r.success === false || r.accepted === false || r.dispatched === false) return false;
+  if (r.success === true || r.accepted === true || r.dispatched === true) return true;
+  if (typeof r.workOrderId === 'number' && r.workOrderId > 0) return true;
+  return false;
+}
+
+/**
+ * HC-1：本轮（扁平化 toolCalls）是否已提交过任一副作用工具且成功。
+ *
+ * 与 `findSucceededSideEffectTools`（基于 steps，prepareStep 内屏蔽用）区别：本函数
+ * 作用于 runner/turn 层的 `AgentToolCall[]`（含 `.result`），供 revise 分支判定
+ * "是否只能无工具文本重写"。
+ */
+export function hasCommittedSideEffect(
+  toolCalls: Array<{ toolName: string; result?: unknown }>,
+): boolean {
+  return toolCalls.some((tc) => SIDE_EFFECT_TOOLS.has(tc.toolName) && isToolSuccess(tc.result));
+}
+
+/**
+ * 工具返回结果是否要求运行时短路。
+ *
+ * AI SDK 原始 toolResult 使用 `.output`，归一后的 AgentToolCall 使用 `.result`；
+ * 两处都必须共享同一语义，避免 HANDOFF_NO_BOOKING(shortCircuited:false) 与
+ * booking gate hard-reject(shortCircuited:true) 在不同链路被误判。
+ */
+export function isShortCircuitedToolResult(result: unknown): boolean {
+  const r = asRecord(result);
+  return r?.shortCircuited === true;
+}
+
+/** 归一后的 AgentToolCall 是否短路；skip_reply 是无条件沉默工具。 */
+export function isShortCircuitedToolCall(
+  call: Pick<AgentToolCall, 'toolName' | 'result'>,
+): boolean {
+  if (call.toolName === 'skip_reply') return true;
+  return isShortCircuitedToolResult(call.result);
+}
+
+/** booking provenance gate hard-reject 会在 outcome 层转人工。 */
+export function isBookingGateRejectedToolCall(
+  call: Pick<AgentToolCall, 'toolName' | 'result'>,
+): boolean {
+  if (call.toolName !== 'duliday_interview_booking') return false;
+  const r = asRecord(call.result);
+  return r?.shortCircuited === true && r.gateRejected === true;
+}
 
 /** prepareStep 入参中 step 的最小子集；这里只关心 toolCalls 的 toolName。 */
 interface StepLike {

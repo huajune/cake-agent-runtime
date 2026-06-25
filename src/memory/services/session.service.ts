@@ -22,6 +22,7 @@ import {
   SessionFactsSchema,
   SessionFactsRedisContentSchema,
   type SessionFacts,
+  type SessionFactSource,
   type SessionFactValue,
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
@@ -33,6 +34,12 @@ import {
   truncateEvidence,
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
+import type {
+  AuthoritativeSessionState,
+  CollectedField,
+  FieldProvenance,
+} from '../types/authoritative-session-state.types';
+import { parseCandidateFieldsFromText } from '@tools/shared/candidate-field-parser';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import {
   buildSessionExtractionPrompt,
@@ -125,6 +132,16 @@ export class SessionService {
   async getFacts(corpId: string, userId: string, sessionId: string): Promise<SessionFacts | null> {
     const state = await this.getSessionState(corpId, userId, sessionId);
     return state.facts;
+  }
+
+  async getAuthoritativeState(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    options?: { currentUserMessages?: readonly string[]; now?: number },
+  ): Promise<AuthoritativeSessionState> {
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    return this.deriveAuthoritativeState(state, options);
   }
 
   /**
@@ -224,6 +241,69 @@ export class SessionService {
     }
 
     return merged;
+  }
+
+  private deriveAuthoritativeState(
+    state: WeworkSessionState,
+    options?: { currentUserMessages?: readonly string[]; now?: number },
+  ): AuthoritativeSessionState {
+    const recalledJobIds = new Set<number>();
+    for (const job of [
+      ...(state.presentedJobs ?? []),
+      ...(state.lastCandidatePool ?? []),
+      ...(state.currentFocusJob ? [state.currentFocusJob] : []),
+    ]) {
+      if (Number.isFinite(job.jobId)) recalledJobIds.add(job.jobId);
+    }
+
+    // HC-2：当前轮候选人原文经 parser 解析为 user_text provenance；持久化 session facts
+    // 仅用于跨轮状态判断（如 booking_incomplete 复聊停止条件），不作为模型工具参数自证。
+    const persistedCollectedFields = this.projectCollectedFieldsFromSessionFacts(
+      state.facts,
+      options?.now ?? Date.now(),
+    );
+    const currentCollectedFields = options?.currentUserMessages?.length
+      ? parseCandidateFieldsFromText(options.currentUserMessages, options.now ?? Date.now())
+      : {};
+    const collectedFields = { ...persistedCollectedFields, ...currentCollectedFields };
+
+    return {
+      collectedFields,
+      recalledJobIds,
+      hardConstraints: [],
+      presentedStores: (state.presentedJobs ?? []).map((job) => ({ jobId: job.jobId })),
+      stage: null,
+    };
+  }
+
+  private projectCollectedFieldsFromSessionFacts(
+    facts: SessionFacts | null | undefined,
+    now: number,
+  ): AuthoritativeSessionState['collectedFields'] {
+    if (!facts) return {};
+    const collectedFields: AuthoritativeSessionState['collectedFields'] = {};
+    for (const key of ['name', 'phone', 'age', 'gender'] as const) {
+      const fact = facts.interview_info[key];
+      const value = unwrapSessionFactValue(fact);
+      if (!hasMeaningfulValue(value)) continue;
+      const extractedAt =
+        isSessionFactValue(fact) && fact.extractedAt ? Date.parse(fact.extractedAt) : NaN;
+      collectedFields[key] = {
+        value: String(value),
+        provenance: this.toCollectedFieldProvenance(
+          isSessionFactValue(fact) ? fact.source : undefined,
+        ),
+        evidence: isSessionFactValue(fact) ? fact.evidence : undefined,
+        at: Number.isFinite(extractedAt) ? extractedAt : now,
+      } satisfies CollectedField;
+    }
+    return collectedFields;
+  }
+
+  private toCollectedFieldProvenance(source?: SessionFactSource): FieldProvenance {
+    if (source === 'candidate' || source === 'rule') return 'user_text';
+    if (source === 'system') return 'booking_writeback';
+    return 'llm_extract';
   }
 
   async saveLastCandidatePool(

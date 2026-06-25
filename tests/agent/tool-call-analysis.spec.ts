@@ -7,6 +7,8 @@ import {
   countToolCallsByName,
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
+  hasCommittedSideEffect,
+  isToolSuccess,
   MAX_SAME_TOOL_CALLS_PER_TURN,
   SIDE_EFFECT_TOOLS,
 } from '@agent/tool-call-analysis';
@@ -131,9 +133,9 @@ describe('tool-call-analysis', () => {
         ),
       ).toBe('empty');
       // 系统级失败仍是 error
-      expect(computeToolCallStatus({ success: false, errorType: 'job_list.fetch_failed' }, undefined)).toBe(
-        'error',
-      );
+      expect(
+        computeToolCallStatus({ success: false, errorType: 'job_list.fetch_failed' }, undefined),
+      ).toBe('error');
     });
 
     it('maps success flags to ok when count is not inferable', () => {
@@ -281,6 +283,9 @@ describe('tool-call-analysis', () => {
       expect(findSucceededSideEffectTools(steps)).toEqual(['invite_to_group']);
       expect(SIDE_EFFECT_TOOLS.has('duliday_cancel_work_order')).toBe(true);
       expect(SIDE_EFFECT_TOOLS.has('duliday_modify_interview_time')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('send_store_location')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('raise_risk_alert')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('request_handoff')).toBe(true);
     });
   });
 
@@ -313,6 +318,73 @@ describe('tool-call-analysis', () => {
     it('uses default limit when not provided', () => {
       const notice = buildToolCallLimitNotice(['a']);
       expect(notice).toContain(String(MAX_SAME_TOOL_CALLS_PER_TURN));
+    });
+  });
+
+  describe('isToolSuccess (HC-1 正向信号)', () => {
+    it('treats booking success (errorType:null + workOrderId) as success', () => {
+      // 关键回归：成功 booking 显式带 errorType:null，不能被误判为无副作用
+      expect(isToolSuccess({ success: true, errorType: null, workOrderId: 123 })).toBe(true);
+    });
+
+    it('treats workOrderId presence alone as success', () => {
+      expect(isToolSuccess({ workOrderId: 456 })).toBe(true);
+    });
+
+    it('does not treat zero workOrderId as success', () => {
+      expect(isToolSuccess({ workOrderId: 0 })).toBe(false);
+    });
+
+    it('treats accepted/dispatched true as success', () => {
+      expect(isToolSuccess({ accepted: true })).toBe(true);
+      expect(isToolSuccess({ dispatched: true })).toBe(true);
+    });
+
+    it('treats buildToolError (errorType string) as non-success', () => {
+      expect(isToolSuccess({ success: false, errorType: 'booking.missing_fields' })).toBe(false);
+    });
+
+    it('treats explicit success:false as non-success even when workOrderId is present', () => {
+      expect(isToolSuccess({ success: false, workOrderId: 123 })).toBe(false);
+    });
+
+    it('returns false for non-objects and missing signals', () => {
+      expect(isToolSuccess(null)).toBe(false);
+      expect(isToolSuccess(undefined)).toBe(false);
+      expect(isToolSuccess('ok')).toBe(false);
+      expect(isToolSuccess({ foo: 'bar' })).toBe(false);
+    });
+  });
+
+  describe('hasCommittedSideEffect', () => {
+    it('returns true when a side-effect tool succeeded', () => {
+      expect(
+        hasCommittedSideEffect([
+          { toolName: 'duliday_job_list', result: { resultCount: 3 } },
+          { toolName: 'duliday_interview_booking', result: { success: true, workOrderId: 1 } },
+        ]),
+      ).toBe(true);
+    });
+
+    it('returns false when the side-effect tool failed (allows full re-run)', () => {
+      expect(
+        hasCommittedSideEffect([
+          {
+            toolName: 'duliday_interview_booking',
+            result: { errorType: 'booking.missing_fields' },
+          },
+        ]),
+      ).toBe(false);
+    });
+
+    it('ignores non-side-effect tool successes', () => {
+      expect(
+        hasCommittedSideEffect([{ toolName: 'duliday_job_list', result: { success: true } }]),
+      ).toBe(false);
+    });
+
+    it('returns false for empty tool calls', () => {
+      expect(hasCommittedSideEffect([])).toBe(false);
     });
   });
 });

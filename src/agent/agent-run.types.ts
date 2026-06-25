@@ -17,6 +17,19 @@ export type {
 
 export type AgentThinkingConfig = LlmThinkingConfig;
 
+/**
+ * Controls which tools are physically exposed to the model for this turn.
+ *
+ * - scenario: normal scenario toolset
+ * - readonly: only tools without external side effects
+ * - none: no tools at all
+ */
+export type ToolMode = 'scenario' | 'readonly' | 'none';
+
+// HC-1 revise 回路注入用的违规意见，单一数据源在中立 Guardrail 契约里。
+export type { GuardViolation } from '@shared-types/guardrail.contract';
+import type { GuardViolation } from '@shared-types/guardrail.contract';
+
 export interface AgentInputMessage {
   role: string;
   content: string;
@@ -59,6 +72,25 @@ export interface AgentInvokeParams {
   scenario?: string;
   /** 最大工具循环步数，默认 5 */
   maxSteps?: number;
+  /** 本轮物理工具集模式；默认 scenario，见 ToolMode。 */
+  toolMode?: ToolMode;
+  /**
+   * HC-1 revise 回路：带上一版回复被出站守卫拦下的违规意见重生成，
+   * 注入 system prompt 让模型只修正这些问题、不重跑业务逻辑。
+   */
+  reviseFeedback?: GuardViolation[];
+  /**
+   * HC-1：本轮已提交且不可撤销的副作用摘要（如「已为候选人预约 X 门店面试」）。
+   * 配合 `toolMode:'none'` 的无工具文本重写：让模型知晓既成事实、只改措辞，
+   * 既不声称未发生、也不重复执行。
+   */
+  committedSideEffects?: string;
+  /**
+   * reengagement 主动回合的跟进目标（喂给生成方的 directive）。
+   * 注入 system prompt 末尾，告诉模型"本回合是系统发起的主动跟进，目标是 X"，
+   * 由模型按记忆/上下文实时生成话术（不固化模板）。被动回合不传。
+   */
+  proactiveDirective?: string;
   /** 图片/表情 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
   imageUrls?: string[];
   /** 图片/表情消息 ID 列表（供 save_image_description 工具回写 DB） */

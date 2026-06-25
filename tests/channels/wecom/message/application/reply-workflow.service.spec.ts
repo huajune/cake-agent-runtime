@@ -53,6 +53,12 @@ describe('ReplyWorkflowService', () => {
     recordEvent: jest.fn(),
     recordEventDetailed: jest.fn(),
   };
+  const interventionService = {
+    dispatch: jest.fn(),
+  };
+  const handoffRecorder = {
+    record: jest.fn(),
+  };
   const replyFactGuard = {
     check: jest.fn(),
   };
@@ -128,6 +134,12 @@ describe('ReplyWorkflowService', () => {
     replyFactGuard.check.mockReturnValue({ hit: false, blocked: false, contradictions: [] });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
+    interventionService.dispatch.mockResolvedValue({
+      dispatched: true,
+      paused: true,
+      alerted: true,
+    });
+    handoffRecorder.record.mockResolvedValue('inserted');
 
     service = new ReplyWorkflowService(
       deduplicationService as never,
@@ -142,6 +154,9 @@ describe('ReplyWorkflowService', () => {
       simpleMergeService as never,
       imageDescription as never,
       opsEventsRecorder as never,
+      interventionService as never,
+      handoffRecorder as never,
+      { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) } as never,
     );
   });
 
@@ -270,6 +285,81 @@ describe('ReplyWorkflowService', () => {
 
     await service.processSingleMessage(createMessage());
 
+    expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+  });
+
+  it('runtime gate 短路（任意工具 shortCircuited:true）→ 跳过发送', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100 },
+          result: {
+            success: false,
+            shortCircuited: true,
+            gateRejected: true,
+            reasonCode: 'job_id_not_recalled',
+          },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(handoffRecorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        corpId: 'corp-1',
+        chatId: 'chat-1',
+        userId: 'im-contact-1',
+        reasonCode: 'system_blocked',
+        reason: expect.stringContaining('job_id_not_recalled'),
+        idempotencyKey: 'chat-1:handoff:msg-1',
+      }),
+    );
+    expect(interventionService.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'general_handoff',
+        alertLabel: 'Booking runtime guard 拦截',
+        chatId: 'chat-1',
+        pauseTargetId: 'chat-1',
+        reason: expect.stringContaining('job_id_not_recalled'),
+      }),
+    );
+    expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+  });
+
+  it('runtime gate handoff duplicate → skips repeated dispatch but still skips reply', async () => {
+    handoffRecorder.record.mockResolvedValueOnce('duplicate');
+    runner.invoke.mockResolvedValueOnce({
+      text: '',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100 },
+          result: {
+            success: false,
+            shortCircuited: true,
+            gateRejected: true,
+            reasonCode: 'job_id_not_recalled',
+          },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(handoffRecorder.record).toHaveBeenCalled();
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
     expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
   });
