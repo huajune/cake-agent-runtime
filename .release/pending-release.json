@@ -1,149 +1,116 @@
 {
-  "baseVersion": "5.27.3",
+  "baseVersion": "5.28.0",
   "nextVersion": "5.28.0",
   "updatedAt": "2026-06-25",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "396",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/396",
-      "title": "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-24",
-      "businessUpdates": [
-        "修复 Agent 在空会话约面意向下凭空编造岗位 ID 及候选人报名表直接触发预检/预约的幻觉问题（生产近 30 天发现 10 例，5 例同时捏造姓名和电话）",
-        "预检（duliday_interview_precheck）与预约（duliday_interview_booking）现在要求 jobId 必须来自本会话真实召回集，否则中止并引导候选人先查询真实岗位"
-      ],
-      "summary": [
-        "为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路"
-      ],
-      "features": [],
-      "fixes": [
-        "新增 isRecalledJobId provenance 闸门：jobId 必须出自当前会话召回集（presentedJobs / lastCandidatePool / currentFocusJob ∪ 本轮 job_list 实时候选池），否则返回 precheck.job_not_provided / booking.job_not_provided 并要求先调用 duliday_job_list",
-        "改约场景：将进行中工单的 jobId 并入召回集，避免改约路径被误拦",
-        "修复 formatBookingContext 展示字段全空时仍将工单 jobId 注入 provenance 集的静默绕过漏洞",
-        "归一 provenance jobId 类型为 number（兼容数字串），与 system prompt 渲染口径对齐，防止 Upstash 缓存反序列化为字符串时改约被永久卡死"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "precheck / booking / agent-preparation 测试全绿（103 passed，含新增 6 个回归测试）",
-        "覆盖场景：幻觉 jobId 被拦截且不打 Sponge、真实召回 jobId 正常放行、未注入闸门向后兼容、改约工单 jobId 放行、展示字段缺失时工单 jobId 不作 provenance、缓存数字串 jobId 正确识别"
-      ]
-    },
-    {
-      "number": "404",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/404",
-      "title": "Agent reliability runtime on precheck",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-25",
-      "businessUpdates": [
-        "reengagement 接入 opening 锚点 (shadow 端到端激活)",
-        "Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.",
-        "修复 reengagement lint 问题",
-        "修复复聊评审问题",
-        "修复复聊状态机评审问题",
-        "修复复聊跨轮停止条件"
-      ],
-      "summary": [
-        "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
-        "Phase 0a seams + HC-2/3 jobId gate + handoff 三态 baseline",
-        "可靠性重构 + 复聊 逐块实施路线图",
-        "HC-1 revise 回路接缝 (isToolSuccess/hasCommittedSideEffect +…",
-        "HC-2 候选人原文确定性 parser + normalizer + 权威字段准入",
-        "HC-2 precheck-core 共享原语 + booking 姓名负向证据闸门",
-        "guardrail 中立契约 + 可审计 catalog",
-        "output rule 补 candidate_name_echo/distance_missing +…",
-        "TurnOutcome 抽象 + runner.runTurn + proactive 入口",
-        "reengagement 复聊模块 (shadow mode)",
-        "reengagement 接入 opening 锚点 (shadow 端到端激活)",
-        "补 pipeline spec 运行时依赖 mock",
-        "修复 reengagement lint 问题",
-        "更新可靠性改造落地进展",
-        "Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…",
-        "修复复聊评审问题",
-        "修复复聊状态机评审问题",
-        "修复复聊跨轮停止条件",
-        "Adds the agent reliability runtime/precheck refactor stack, including HC precheck provenance gates, guardrail contracts/catalog, TurnRunner abstractions, and reengagement shadow-mode plumbing.",
-        "Wires opening-sent reengagement scheduling and keeps proactive delivery shadowed by default.",
-        "Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.",
-        "Agent reliability runtime on precheck"
-      ],
-      "features": [
-        "reengagement 接入 opening 锚点 (shadow 端到端激活)"
-      ],
-      "fixes": [
-        "Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.",
-        "修复 reengagement lint 问题",
-        "修复复聊评审问题",
-        "修复复聊状态机评审问题",
-        "修复复聊跨轮停止条件"
-      ],
-      "optimizations": [
-        "Adds the agent reliability runtime/precheck refactor stack, including HC precheck provenance gates, guardrail contracts/catalog, TurnRunner abstractions, and reengagement shadow-mode plumbing.",
-        "可靠性重构 + 复聊 逐块实施路线图"
-      ],
-      "ops": [
-        "Wires opening-sent reengagement scheduling and keeps proactive delivery shadowed by default.",
-        "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
-        "Phase 0a seams + HC-2/3 jobId gate + handoff 三态 baseline",
-        "HC-1 revise 回路接缝 (isToolSuccess/hasCommittedSideEffect +…",
-        "HC-2 候选人原文确定性 parser + normalizer + 权威字段准入",
-        "HC-2 precheck-core 共享原语 + booking 姓名负向证据闸门",
-        "guardrail 中立契约 + 可审计 catalog",
-        "output rule 补 candidate_name_echo/distance_missing +…",
-        "TurnOutcome 抽象 + runner.runTurn + proactive 入口",
-        "reengagement 复聊模块 (shadow mode)",
-        "补 pipeline spec 运行时依赖 mock",
-        "更新可靠性改造落地进展",
-        "Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "pnpm run typecheck",
-        "pnpm test -- --watchman=false",
-        "pre-push pnpm run ci:check passed, including lint:check, format:check, typecheck, build:ci, and test:ci coverage."
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.27.3",
-    "date": "2026-06-24",
+    "version": "5.28.0",
+    "date": "2026-06-25",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "397",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/397",
-        "title": "禁止主动提保险社保口径",
-        "author": "huajune",
+        "number": "396",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/396",
+        "title": "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
+        "author": "ArielZhu",
         "mergedAt": "2026-06-24",
         "businessUpdates": [
-          "禁止主动提保险社保口径"
+          "修复 Agent 在空会话约面意向下凭空编造岗位 ID 及候选人报名表直接触发预检/预约的幻觉问题（生产近 30 天发现 10 例，5 例同时捏造姓名和电话）",
+          "预检（duliday_interview_precheck）与预约（duliday_interview_booking）现在要求 jobId 必须来自本会话真实召回集，否则中止并引导候选人先查询真实岗位"
         ],
         "summary": [
-          "禁止主动提保险社保口径"
+          "为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路"
         ],
         "features": [],
-        "fixes": [],
+        "fixes": [
+          "新增 isRecalledJobId provenance 闸门：jobId 必须出自当前会话召回集（presentedJobs / lastCandidatePool / currentFocusJob ∪ 本轮 job_list 实时候选池），否则返回 precheck.job_not_provided / booking.job_not_provided 并要求先调用 duliday_job_list",
+          "改约场景：将进行中工单的 jobId 并入召回集，避免改约路径被误拦",
+          "修复 formatBookingContext 展示字段全空时仍将工单 jobId 注入 provenance 集的静默绕过漏洞",
+          "归一 provenance jobId 类型为 number（兼容数字串），与 system prompt 渲染口径对齐，防止 Upstash 缓存反序列化为字符串时改约被永久卡死"
+        ],
         "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "precheck / booking / agent-preparation 测试全绿（103 passed，含新增 6 个回归测试）",
+          "覆盖场景：幻觉 jobId 被拦截且不打 Sponge、真实召回 jobId 正常放行、未注入闸门向后兼容、改约工单 jobId 放行、展示字段缺失时工单 jobId 不作 provenance、缓存数字串 jobId 正确识别"
+        ]
+      },
+      {
+        "number": "404",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/404",
+        "title": "Agent reliability runtime on precheck",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-25",
+        "businessUpdates": [
+          "reengagement 接入 opening 锚点 (shadow 端到端激活)",
+          "Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.",
+          "修复 reengagement lint 问题",
+          "修复复聊评审问题",
+          "修复复聊状态机评审问题",
+          "修复复聊跨轮停止条件"
+        ],
+        "summary": [
+          "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
+          "Phase 0a seams + HC-2/3 jobId gate + handoff 三态 baseline",
+          "可靠性重构 + 复聊 逐块实施路线图",
+          "HC-1 revise 回路接缝 (isToolSuccess/hasCommittedSideEffect +…",
+          "HC-2 候选人原文确定性 parser + normalizer + 权威字段准入",
+          "HC-2 precheck-core 共享原语 + booking 姓名负向证据闸门",
+          "guardrail 中立契约 + 可审计 catalog",
+          "output rule 补 candidate_name_echo/distance_missing +…",
+          "TurnOutcome 抽象 + runner.runTurn + proactive 入口",
+          "reengagement 复聊模块 (shadow mode)",
+          "reengagement 接入 opening 锚点 (shadow 端到端激活)",
+          "补 pipeline spec 运行时依赖 mock",
+          "修复 reengagement lint 问题",
+          "更新可靠性改造落地进展",
+          "Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…",
+          "修复复聊评审问题",
+          "修复复聊状态机评审问题",
+          "修复复聊跨轮停止条件",
+          "Adds the agent reliability runtime/precheck refactor stack, including HC precheck provenance gates, guardrail contracts/catalog, TurnRunner abstractions, and reengagement shadow-mode plumbing.",
+          "Wires opening-sent reengagement scheduling and keeps proactive delivery shadowed by default.",
+          "Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.",
+          "Agent reliability runtime on precheck"
+        ],
+        "features": [
+          "reengagement 接入 opening 锚点 (shadow 端到端激活)"
+        ],
+        "fixes": [
+          "Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.",
+          "修复 reengagement lint 问题",
+          "修复复聊评审问题",
+          "修复复聊状态机评审问题",
+          "修复复聊跨轮停止条件"
+        ],
+        "optimizations": [
+          "Adds the agent reliability runtime/precheck refactor stack, including HC precheck provenance gates, guardrail contracts/catalog, TurnRunner abstractions, and reengagement shadow-mode plumbing.",
+          "可靠性重构 + 复聊 逐块实施路线图"
+        ],
         "ops": [
-          "禁止主动提保险社保口径"
+          "Wires opening-sent reengagement scheduling and keeps proactive delivery shadowed by default.",
+          "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
+          "Phase 0a seams + HC-2/3 jobId gate + handoff 三态 baseline",
+          "HC-1 revise 回路接缝 (isToolSuccess/hasCommittedSideEffect +…",
+          "HC-2 候选人原文确定性 parser + normalizer + 权威字段准入",
+          "HC-2 precheck-core 共享原语 + booking 姓名负向证据闸门",
+          "guardrail 中立契约 + 可审计 catalog",
+          "output rule 补 candidate_name_echo/distance_missing +…",
+          "TurnOutcome 抽象 + runner.runTurn + proactive 入口",
+          "reengagement 复聊模块 (shadow mode)",
+          "补 pipeline spec 运行时依赖 mock",
+          "更新可靠性改造落地进展",
+          "Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`jest tests/channels/wecom/message/application/reply-fact-guard.service.spec.ts tests/tools/duliday/job-list/welfare-facts.util.spec.ts tests/tools/duliday/job-list/render.util.spec.ts --watchman=false`",
-          "`prettier --check` on touched files",
-          "pre-push `ci:check` passed:",
-          "lint",
-          "format",
-          "typecheck",
-          "web build",
-          "backend build",
-          "`jest --coverage --watchman=false`: 292 passed, 1 skipped"
+          "pnpm run typecheck",
+          "pnpm test -- --watchman=false",
+          "pre-push pnpm run ci:check passed, including lint:check, format:check, typecheck, build:ci, and test:ci coverage."
         ]
       }
     ]
