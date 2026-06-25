@@ -11,6 +11,25 @@
 
 ---
 
+## 实施进展（2026-06-24，本分支已落地）
+
+逐块已落地（每块独立 commit，全量 298 suites / 4082 tests 绿）：
+
+| 块 | commit | 落地内容 | 显式延后 |
+|---|---|---|---|
+| PR-A | `fc0219c0` | `isToolSuccess`(正向信号)/`hasCommittedSideEffect` + `reviseFeedback`/`committedSideEffects` + preparation 注入 | revise **orchestration**（decide→loop≤1）随 output-guard-in-runner 后续 |
+| PR-B | `395731f7` | `candidate-field-parser`(parser+normalizer 对齐 Sponge) + `getAuthoritativeState` 填 collectedFields(user_text) | — |
+| PR-B2 | `7b79a892` | `precheck-core` 共享原语 + booking 姓名**负向证据**闸门(只补 checkRealName 拦不住的打招呼昵称缺口) | 完整 `evaluatePrecheck` 抽离 + 模型 `prechecked` 废弃（耦合直连预约路径，风险高） |
+| PR-C | `81b51227` | `types/guardrail.contract` 中立契约 + `agent/guardrail/catalog`(exogenousSignal 审计) | input-guard/reply-fact-guard/risk-intercept **物理目录归并**（纯搬家，低风险窗口做） |
+| PR-D | `3d37a799` | output rule `candidate_name_echo`/`distance_missing`(warn) + `ModelRole.Review` | `LlmReviewer` 完整服务 + wiring（需延迟预算与灰度，§9） |
+| PR-E | `1fa5c0f2` | `TurnOutcome`/`TurnRequest` + `runTurn`(inbound/proactive) + `proactiveDirective` 注入 | output-guard/revise 编排移入 runner（被动路径仍走 invoke，零行为变化） |
+| PR-F | `0c975d34` | reengagement 全模块: scenario-registry(7场景+computeFireAt+shouldStop) + touch-ledger(outbox) + scheduler + processor + **shadow 默认开** | — |
+| PR-G | `ceb23ddd` | scheduler 接入 `agent.opening_sent` 锚点（opening_no_reply shadow 端到端激活） | `store_presented`/`collection_started` 新 ops_events + `booking.succeeded` 接入 + **真发**（阻塞：平台主动发消息配额核实） |
+
+**真发前剩余阻塞**（与 reengagement §8 一致）：① 平台主动发消息配额/时间窗核实；② 补 `store_presented`/`booking_incomplete` 锚点事件 + booking.succeeded 接入；③ shadow 命中/停止/拦截观测验证通过后按场景灰度关 shadow。
+
+---
+
 ## 0. 当前已落地基线（开工前对账）
 
 按代码实测（非文档声明），以下已在 `codex/agent-reliability-runtime-on-precheck` 分支落地：
