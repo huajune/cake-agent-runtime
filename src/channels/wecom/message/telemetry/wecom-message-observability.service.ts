@@ -113,7 +113,7 @@ export class WecomMessageObservabilityService {
       context.userId,
       context.userName,
       context.content,
-      { scenario: context.scenario },
+      { scenario: context.scenario, batchId: context.batchId },
       context.managerName,
       acceptedAt,
       {

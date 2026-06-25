@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { CallerKind } from '@enums/agent.enum';
-import { AgentRunnerService } from './runner.service';
+import { GeneratorService } from './generator/generator.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
 import { DebugChatDto } from './dto/debug-chat.dto';
@@ -12,7 +12,7 @@ export class AgentController {
   private readonly logger = new Logger(AgentController.name);
 
   constructor(
-    private readonly runner: AgentRunnerService,
+    private readonly runner: GeneratorService,
     private readonly alertService: AlertNotifierService,
     private readonly registry: RegistryService,
     private readonly healthService: AgentHealthService,

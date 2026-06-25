@@ -10,13 +10,13 @@ import { LlmModule } from '@/llm/llm.module';
 import { NotificationModule } from '@notification/notification.module';
 import { CustomerModule } from '@wecom/customer/customer.module';
 import { ObservabilityModule } from '@/observability/observability.module';
-import { AgentRunnerService } from './runner.service';
+import { GeneratorService } from './generator/generator.service';
 import { TurnRunnerService } from './runner/turn-runner.service';
 import { AgentPreparationService } from './agent-preparation.service';
 import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
-import { InputGuardService } from './input-guard.service';
+import { InputGuardrailService } from './guardrail/input/input-guard.service';
 import { REENGAGEMENT_QUEUE } from './reengagement/reengagement.types';
 import { FollowUpSchedulerService } from './reengagement/follow-up-scheduler.service';
 import { FollowUpProcessor } from './reengagement/follow-up.processor';
@@ -46,10 +46,10 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
   providers: [
     ContextService,
     AgentPreparationService,
-    AgentRunnerService,
+    GeneratorService,
     TurnRunnerService,
     AgentHealthService,
-    InputGuardService,
+    InputGuardrailService,
     // reengagement（复聊 shadow）
     FollowUpSchedulerService,
     FollowUpProcessor,
@@ -58,9 +58,9 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
   exports: [
     ContextService,
     AgentPreparationService,
-    AgentRunnerService,
+    GeneratorService,
     TurnRunnerService,
-    InputGuardService,
+    InputGuardrailService,
     FollowUpSchedulerService,
   ],
 })

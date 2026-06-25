@@ -71,6 +71,23 @@ describe('DailyOpsReportRepository', () => {
     });
   });
 
+  it('sums booking success by report date', async () => {
+    jest.spyOn(repository as RepositoryWithSelectAllPaged, 'selectAllPaged').mockResolvedValue([
+      { report_date: '2026-06-01', booking_success_count: 2 },
+      { report_date: '2026-06-01', booking_success_count: 3 },
+      { report_date: '2026-06-02', booking_success_count: null },
+      { report_date: '2026-06-03', booking_success_count: 4 },
+    ]);
+
+    await expect(
+      repository.sumBookingSuccessByDateRange('2026-06-01', '2026-06-03'),
+    ).resolves.toEqual([
+      { date: '2026-06-01', bookingSuccess: 5 },
+      { date: '2026-06-02', bookingSuccess: 0 },
+      { date: '2026-06-03', bookingSuccess: 4 },
+    ]);
+  });
+
   it('uses paged stable reads for report rows and earliest date lookup', async () => {
     const selectAllPagedSpy = jest
       .spyOn(repository as RepositoryWithSelectAllPaged, 'selectAllPaged')

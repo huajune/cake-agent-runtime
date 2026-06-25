@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import {
@@ -36,6 +37,8 @@ export class ChatRecordSyncService {
     private readonly chatSessionService: ChatSessionService,
     private readonly bitableApi: FeishuBitableApiService,
     @Optional()
+    private readonly configService?: ConfigService,
+    @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {}
 
@@ -44,6 +47,8 @@ export class ChatRecordSyncService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async syncYesterdayChatRecords(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
     this.logger.log('[ChatRecordSync] 开始同步前一日聊天记录到飞书多维表格...');
 
     const chatConfig = this.bitableApi.getTableConfig('chat');
@@ -333,5 +338,9 @@ export class ChatRecordSyncService {
     );
 
     return result;
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService?.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 }

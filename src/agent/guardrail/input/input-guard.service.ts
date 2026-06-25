@@ -14,8 +14,8 @@ export interface GuardResult {
  * 2. 发送飞书告警
  */
 @Injectable()
-export class InputGuardService {
-  private readonly logger = new Logger(InputGuardService.name);
+export class InputGuardrailService {
+  private readonly logger = new Logger(InputGuardrailService.name);
 
   /** 角色劫持模式 */
   private readonly ROLE_HIJACK_PATTERNS = [

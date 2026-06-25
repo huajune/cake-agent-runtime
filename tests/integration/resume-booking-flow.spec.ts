@@ -29,10 +29,6 @@ describe('resume booking flow', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockBookingService = {
-    incrementBookingCount: jest.fn().mockResolvedValue(undefined),
-  };
-
   const mockLongTermService = {
     writeFromBooking: jest.fn().mockResolvedValue(undefined),
     setLatestBooking: jest.fn().mockResolvedValue(undefined),
@@ -256,7 +252,6 @@ describe('resume booking flow', () => {
       mockSpongeService as never,
       mockPrivateChatNotifier as never,
       mockUserHostingService as never,
-      mockBookingService as never,
       mockLongTermService as never,
       mockOpsEventsRecorder as never,
     )(context);

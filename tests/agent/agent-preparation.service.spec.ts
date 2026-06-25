@@ -1,5 +1,5 @@
 import { AgentPreparationService } from '@agent/agent-preparation.service';
-import { InputGuardService } from '@agent/input-guard.service';
+import { InputGuardrailService } from '@agent/guardrail/input/input-guard.service';
 import { CallerKind } from '@enums/agent.enum';
 import {
   FALLBACK_EXTRACTION,
@@ -1004,7 +1004,7 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(result.finalPrompt).toContain(InputGuardService.GUARD_SUFFIX);
+    expect(result.finalPrompt).toContain(InputGuardrailService.GUARD_SUFFIX);
     expect(mockInputGuard.alertInjection).toHaveBeenCalledWith(
       'user-1',
       '角色劫持',

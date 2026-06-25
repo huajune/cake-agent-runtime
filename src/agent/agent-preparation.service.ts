@@ -32,7 +32,7 @@ import {
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
 import { ContextService } from './context/context.service';
-import { InputGuardService } from './input-guard.service';
+import { InputGuardrailService } from './guardrail/input/input-guard.service';
 import {
   type AgentInputMessage,
   type AgentInvokeParams,
@@ -83,7 +83,7 @@ export class AgentPreparationService {
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
     private readonly context: ContextService,
-    private readonly inputGuard: InputGuardService,
+    private readonly inputGuard: InputGuardrailService,
     private readonly longTermService: LongTermService,
     private readonly spongeService: SpongeService,
     private readonly groupResolver: GroupResolverService,
@@ -501,7 +501,7 @@ export class AgentPreparationService {
     this.inputGuard
       .alertInjection(userId, guardResult.reason!, currentUserMessage ?? '')
       .catch(() => {});
-    return InputGuardService.GUARD_SUFFIX;
+    return InputGuardrailService.GUARD_SUFFIX;
   }
 
   /**

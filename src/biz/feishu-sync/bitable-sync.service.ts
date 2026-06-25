@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MessageProcessingRecord } from '@shared-types/tracking.types';
@@ -115,6 +116,8 @@ export class FeishuBitableSyncService {
     private readonly bitableApi: FeishuBitableApiService,
     private readonly feedbackSourceTraceService: FeedbackSourceTraceService,
     @Optional()
+    private readonly configService?: ConfigService,
+    @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {}
 
@@ -123,6 +126,8 @@ export class FeishuBitableSyncService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async syncYesterday(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
     const chatConfig = this.bitableApi.getTableConfig('chat');
     if (!chatConfig.appToken || !chatConfig.tableId) {
       this.logger.warn('[FeishuSync] 未配置完整的飞书表格参数，跳过同步');
@@ -604,5 +609,9 @@ export class FeishuBitableSyncService {
       .trim();
 
     return normalized || undefined;
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService?.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 }

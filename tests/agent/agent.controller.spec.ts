@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException } from '@nestjs/common';
 import { AgentController } from '@agent/agent.controller';
-import { AgentRunnerService } from '@agent/runner.service';
+import { GeneratorService } from '@agent/generator/generator.service';
 import { AgentHealthService } from '@agent/agent-health.service';
 import { CallerKind } from '@enums/agent.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
@@ -66,7 +66,7 @@ describe('AgentController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AgentController],
       providers: [
-        { provide: AgentRunnerService, useValue: mockLoop },
+        { provide: GeneratorService, useValue: mockLoop },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: RegistryService, useValue: mockRegistry },
         { provide: AgentHealthService, useValue: mockHealthService },
@@ -152,7 +152,7 @@ describe('AgentController', () => {
   });
 
   describe('debugChat', () => {
-    it('should call AgentRunnerService.invoke with correct parameters', async () => {
+    it('should call GeneratorService.invoke with correct parameters', async () => {
       mockLoop.invoke.mockResolvedValue({
         text: '你好！',
         steps: 1,
@@ -202,7 +202,7 @@ describe('AgentController', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should throw HttpException when AgentRunnerService fails', async () => {
+    it('should throw HttpException when GeneratorService fails', async () => {
       mockLoop.invoke.mockRejectedValue(new Error('Agent failed'));
       mockAlertService.sendAlert.mockResolvedValue(true);
 

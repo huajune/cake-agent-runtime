@@ -31,7 +31,6 @@ import {
 } from './read-resume-attachment.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { BookingService } from '@biz/message/services/booking.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { RoomService } from '@channels/wecom/room/room.service';
@@ -78,7 +77,6 @@ export class ToolRegistryService {
     opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
-    bookingService: BookingService,
     userHostingService: UserHostingService,
     configService: ConfigService,
     interventionService: InterventionService,
@@ -119,7 +117,6 @@ export class ToolRegistryService {
           spongeService,
           privateChatMonitorNotifier,
           userHostingService,
-          bookingService,
           longTermService,
           opsEventsRecorder,
         ),

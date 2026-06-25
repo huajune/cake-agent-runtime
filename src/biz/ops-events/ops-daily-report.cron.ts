@@ -88,12 +88,14 @@ const REPORT_COLUMNS: ReportColumn[] = [
   { fieldName: '开口数', kind: 'number', value: (r) => r.agent_opening_sent_count },
   { fieldName: '破冰数', kind: 'number', value: (r) => r.break_ice_count },
   { fieldName: '推荐岗位数', kind: 'number', value: (r) => r.job_recommend_count },
+  { fieldName: '今日报名成功数', kind: 'number', value: (r) => r.booking_success_count },
   { fieldName: '成功报名数', kind: 'number', value: (r) => r.booking_success_count },
   { fieldName: '报名成功数', kind: 'number', value: (r) => r.booking_success_count },
   { fieldName: '报名失败数', kind: 'number', value: (r) => r.booking_fail_count },
   { fieldName: '邀请进群数', kind: 'number', value: (r) => r.group_invite_count },
   { fieldName: '进群数', kind: 'number', value: (r) => r.group_invite_count },
   { fieldName: '转人工数', kind: 'number', value: (r) => r.handoff_count },
+  { fieldName: '今日面试通过数', kind: 'number', value: (r) => r.interview_pass_count },
   { fieldName: '通过数', kind: 'number', value: (r) => r.interview_pass_count },
   { fieldName: '面试通过数', kind: 'number', value: (r) => r.interview_pass_count },
   { fieldName: '候选人基本信息', kind: 'text', value: (r) => r.candidate_summary },
@@ -164,6 +166,8 @@ export class OpsDailyReportCronService {
 
   @Cron('0 21 * * *', { timeZone: 'Asia/Shanghai' })
   async run(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
     if (this.running) {
       this.logger.warn('上一轮运营日报推送尚未结束，跳过本次');
       return;
@@ -366,7 +370,7 @@ export class OpsDailyReportCronService {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          return this.clearSpongeFields(row);
+          return this.fallbackToProjectedMetrics(row);
         }
       }),
     );
@@ -393,11 +397,11 @@ export class OpsDailyReportCronService {
     };
   }
 
-  private clearSpongeFields(row: DailyOpsReportRow): OpsDailyReportOutputRow {
+  private fallbackToProjectedMetrics(row: DailyOpsReportRow): OpsDailyReportOutputRow {
     return {
       ...row,
-      booking_success_count: null,
-      interview_pass_count: null,
+      booking_success_count: row.booking_success_count,
+      interview_pass_count: row.interview_pass_count,
       candidate_summary: null,
       booking_brands: null,
     };
@@ -537,5 +541,9 @@ export class OpsDailyReportCronService {
         .split(/[、,\n]/)
         .map((item) => item.trim()),
     );
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 }

@@ -107,6 +107,7 @@ export class MessageTrackingService {
       status: 'processing',
       messagePreview: messageContent ? messageContent.substring(0, 50) : undefined,
       scenario: metadata?.scenario,
+      batchId: metadata?.batchId,
     };
 
     this.cacheService.incrementActiveRequests(1).catch((err) => {
@@ -272,6 +273,9 @@ export class MessageTrackingService {
       );
 
       await this.saveRecordToDatabase(finalRecord);
+      if (finalRecord.status === 'success') {
+        await this.markSupersededProcessingRecords(finalRecord);
+      }
 
       if (finalRecord.tokenUsage && finalRecord.tokenUsage > 0) {
         this.saveUserActivity({
@@ -512,6 +516,37 @@ export class MessageTrackingService {
       await this.cacheService.incrementActiveRequests(-1);
     } catch (err) {
       this.logger.warn(`更新 activeRequests 失败 [${messageId}]:`, err);
+    }
+  }
+
+  private async markSupersededProcessingRecords(
+    finalRecord: MessageProcessingRecordInput,
+  ): Promise<void> {
+    try {
+      const updatedCount = await this.messageProcessingService.markSupersededProcessingRecords({
+        currentMessageId: finalRecord.messageId,
+        replacementMessageId: finalRecord.messageId,
+        chatId: finalRecord.chatId,
+        receivedAt: finalRecord.receivedAt,
+        messagePreview: finalRecord.messagePreview,
+      });
+
+      if (updatedCount <= 0) return;
+
+      await this.cacheService.incrementActiveRequests(-updatedCount).catch((err) => {
+        this.logger.warn(
+          `[Monitoring] 扣减被接管 processing 计数失败 [${finalRecord.messageId}]:`,
+          err,
+        );
+      });
+      this.logger.warn(
+        `[Monitoring] 已将 ${updatedCount} 条旧 processing 标记为已由 ${finalRecord.messageId} 接管`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[Monitoring] 标记旧 processing 接管状态失败 [${finalRecord.messageId}]:`,
+        err,
+      );
     }
   }
 

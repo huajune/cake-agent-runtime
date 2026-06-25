@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import {
   formatLocalDate,
@@ -40,11 +41,16 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly cacheService: MonitoringCacheService,
     private readonly monitoringRepository: MonitoringRecordRepository,
+    private readonly configService: ConfigService,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {}
 
   onModuleInit(): void {
+    if (this.isReadOnlyPreview()) {
+      this.logger.warn('READ_ONLY_PREVIEW=true，跳过启动统计聚合');
+      return;
+    }
     // 启动后异步补齐缺失小时，避免因单次漏跑导致投影长期断更。
     void this.catchUpHourlyStats('startup');
     void this.catchUpDailyStats('startup');
@@ -109,6 +115,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
     timeZone: 'Asia/Shanghai',
   })
   async aggregateHourlyStats(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
     await this.catchUpHourlyStats('cron');
   }
 
@@ -121,7 +128,12 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
     timeZone: 'Asia/Shanghai',
   })
   async aggregateDailyStats(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
     await this.catchUpDailyStats('cron');
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 
   private async catchUpHourlyStats(trigger: 'startup' | 'cron'): Promise<void> {

@@ -6,7 +6,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
+import { AgentPreparationService, type PreparedAgentContext } from '../agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import {
   buildSideEffectBlockNotice,
@@ -18,7 +18,7 @@ import {
   findToolsExceedingLimit,
   isShortCircuitedToolResult,
   MAX_SAME_TOOL_CALLS_PER_TURN,
-} from './tool-call-analysis';
+} from '../tool-call-analysis';
 
 /**
  * 跳过本轮回复的沉默工具名。
@@ -52,7 +52,7 @@ import type {
   AgentStepDetail,
   AgentStreamResult,
   AgentToolCall,
-} from './agent-run.types';
+} from '../agent-run.types';
 export type {
   AgentInputMessage,
   AgentInvokeParams,
@@ -61,11 +61,11 @@ export type {
   AgentStreamResult,
   AgentToolCall,
   AgentToolCallStatus,
-} from './agent-run.types';
+} from '../agent-run.types';
 
 @Injectable()
-export class AgentRunnerService {
-  private readonly logger = new Logger(AgentRunnerService.name);
+export class GeneratorService {
+  private readonly logger = new Logger(GeneratorService.name);
 
   /** thinking token 预算，>0 时启用 extended thinking */
   private readonly thinkingBudgetTokens: number;

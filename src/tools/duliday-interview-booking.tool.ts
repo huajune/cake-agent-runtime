@@ -23,7 +23,6 @@ import {
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { BookingService } from '@biz/message/services/booking.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
@@ -70,27 +69,6 @@ function pauseUserHostingAsync(
     .catch((error: unknown) => {
       const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
       logger.error(`[自动暂停] 暂停托管失败: chatId=${chatId}`, errorMessage);
-    });
-}
-
-function recordBookingCountAsync(
-  bookingService: BookingService,
-  context: ToolBuildContext,
-  booking: { brandName?: string; storeName?: string },
-): void {
-  void bookingService
-    .incrementBookingCount({
-      brandName: booking.brandName,
-      storeName: booking.storeName,
-      chatId: context.chatId ?? context.sessionId,
-      userId: context.userId,
-      userName: context.contactName,
-      managerId: context.botUserId ?? context.botImId,
-      managerName: context.botUserId,
-    })
-    .catch((error: unknown) => {
-      const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
-      logger.error(`[预约统计] 写入失败: chatId=${context.sessionId}`, errorMessage);
     });
 }
 
@@ -219,7 +197,6 @@ export function buildInterviewBookingTool(
   spongeService: SpongeService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
   userHostingService: UserHostingService,
-  bookingService: BookingService,
   longTermService: LongTermService,
   opsEventsRecorder: OpsEventsRecorderService,
 ): ToolBuilder {
@@ -772,11 +749,6 @@ export function buildInterviewBookingTool(
                   `[booking] writeFromBooking 失败，不影响主流程: ${err instanceof Error ? err.message : String(err)}`,
                 );
               });
-
-            recordBookingCountAsync(bookingService, context, {
-              brandName: resolvedBrandName,
-              storeName: resolvedStoreName,
-            });
 
             // 预约信息挂候选人画像：latest_booking 极简指针 + booking.succeeded 事件底账。
             // 不再写 recruitment_cases（已废弃，状态全部实时查海绵）。

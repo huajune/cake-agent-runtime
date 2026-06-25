@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { InputGuardService } from '@agent/input-guard.service';
+import { InputGuardrailService } from '@agent/guardrail/input/input-guard.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 
-describe('InputGuardService', () => {
-  let service: InputGuardService;
+describe('InputGuardrailService', () => {
+  let service: InputGuardrailService;
   let mockAlertService: { sendAlert: jest.Mock; createPromptInjectionAlert: jest.Mock };
 
   beforeEach(async () => {
@@ -17,7 +17,7 @@ describe('InputGuardService', () => {
         severity: 'warning',
         source: {
           subsystem: 'security',
-          component: 'InputGuardService',
+          component: 'InputGuardrailService',
           action: 'alertInjection',
           trigger: 'http',
         },
@@ -39,12 +39,12 @@ describe('InputGuardService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        InputGuardService,
+        InputGuardrailService,
         { provide: AlertNotifierService, useValue: mockAlertService },
       ],
     }).compile();
 
-    service = module.get<InputGuardService>(InputGuardService);
+    service = module.get<InputGuardrailService>(InputGuardrailService);
   });
 
   it('should be defined', () => {
@@ -366,7 +366,7 @@ describe('InputGuardService', () => {
           code: 'security.prompt_injection_detected',
           source: expect.objectContaining({
             subsystem: 'security',
-            component: 'InputGuardService',
+            component: 'InputGuardrailService',
             action: 'alertInjection',
           }),
           scope: expect.objectContaining({
@@ -422,12 +422,12 @@ describe('InputGuardService', () => {
 
   describe('GUARD_SUFFIX', () => {
     it('should be defined as a non-empty string', () => {
-      expect(typeof InputGuardService.GUARD_SUFFIX).toBe('string');
-      expect(InputGuardService.GUARD_SUFFIX.length).toBeGreaterThan(0);
+      expect(typeof InputGuardrailService.GUARD_SUFFIX).toBe('string');
+      expect(InputGuardrailService.GUARD_SUFFIX.length).toBeGreaterThan(0);
     });
 
     it('should contain a security warning hint', () => {
-      expect(InputGuardService.GUARD_SUFFIX).toMatch(/安全提示/);
+      expect(InputGuardrailService.GUARD_SUFFIX).toMatch(/安全提示/);
     });
   });
 });

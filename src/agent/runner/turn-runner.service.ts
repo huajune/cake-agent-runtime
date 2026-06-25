@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
-import { AgentRunnerService } from '../runner.service';
+import { GeneratorService } from '../generator/generator.service';
 import type { AgentInvokeParams, AgentRunResult, AgentStreamResult } from '../agent-run.types';
 import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '../tool-call-analysis';
 import type { TurnOutcome, TurnRequest, TurnTrigger } from './turn-runner.types';
@@ -22,13 +22,13 @@ const PROACTIVE_TRIGGER_PLACEHOLDER = '[系统主动跟进]';
  * - `invoke`/`stream`：Phase 0a 薄委托，被动主链路（reply-workflow）继续用，行为不变。
  * - `runTurn`：Phase 0b/PR-E 新增的渠道无关回合编排入口。被动（inbound）与主动
  *   （proactive / reengagement 复聊）汇入同一处，产出 `TurnOutcome`（不投递）。
- *   目前 generation 仍委托 AgentRunnerService；output 守卫/revise 编排后续逐步移入。
+ *   目前 generation 仍委托 GeneratorService；output 守卫/revise 编排后续逐步移入。
  */
 @Injectable()
 export class TurnRunnerService {
   private readonly logger = new Logger(TurnRunnerService.name);
 
-  constructor(private readonly generator: AgentRunnerService) {}
+  constructor(private readonly generator: GeneratorService) {}
 
   invoke(params: AgentInvokeParams): Promise<AgentRunResult> {
     return this.generator.invoke(params);

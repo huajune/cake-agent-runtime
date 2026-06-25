@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
+import { GeneratorService, type AgentRunResult } from '@agent/generator/generator.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { type EvaluationDimensions } from '@evaluation/evaluation.types';
@@ -75,7 +75,7 @@ export class ConversationTestService {
   private readonly conversationConcurrency: number;
 
   constructor(
-    private readonly runner: AgentRunnerService,
+    private readonly runner: GeneratorService,
     private readonly llmEvaluationService: LlmEvaluationService,
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,

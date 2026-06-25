@@ -13,7 +13,7 @@ finalPrompt =
 其中：
 
 - `systemPrompt`：`ContextService.compose()`
-- `optionalGuardSuffix`：仅在命中 prompt injection 风险时，由 `InputGuardService.GUARD_SUFFIX` 追加
+- `optionalGuardSuffix`：仅在命中 prompt injection 风险时，由 `InputGuardrailService.GUARD_SUFFIX` 追加
 
 正常情况下没有 `optionalGuardSuffix`。
 

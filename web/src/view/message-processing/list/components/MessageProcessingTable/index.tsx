@@ -2,8 +2,20 @@ import { formatDateTime, formatDuration } from '@/utils/format';
 import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
-function getStatusLabel(status: MessageRecord['status']): string {
-  switch (status) {
+const SUPERSEDED_SUCCESS_MARKER = '补处理成功';
+
+function isSupersededTimeout(record: MessageRecord): boolean {
+  return (
+    record.status === 'timeout' &&
+    typeof record.error === 'string' &&
+    record.error.includes(SUPERSEDED_SUCCESS_MARKER)
+  );
+}
+
+function getStatusLabel(record: MessageRecord): string {
+  if (isSupersededTimeout(record)) return '已接管';
+
+  switch (record.status) {
     case 'success':
       return '成功';
     case 'failure':
@@ -14,8 +26,17 @@ function getStatusLabel(status: MessageRecord['status']): string {
     case 'processing':
       return '处理中';
     default:
-      return String(status);
+      return String(record.status);
   }
+}
+
+function getStatusTone(record: MessageRecord): 'success' | 'danger' | 'warning' | 'info' {
+  if (isSupersededTimeout(record)) return 'info';
+  if (record.status === 'success') return 'success';
+  if (record.status === 'failure' || record.status === 'failed' || record.status === 'timeout') {
+    return 'danger';
+  }
+  return 'warning';
 }
 
 interface MessageProcessingTableProps {
@@ -146,6 +167,10 @@ export default function MessageProcessingTable({
           <tbody>
             {data.map((record, i) => {
               const botLabel = resolveBotLabel?.(record) || record.managerName || '-';
+              const statusTone = getStatusTone(record);
+              const statusTitle = isSupersededTimeout(record)
+                ? record.error
+                : getStatusLabel(record);
 
               return (
                 <tr
@@ -169,17 +194,10 @@ export default function MessageProcessingTable({
                   <td>
                     <div className={styles.statusCell}>
                       <span
-                        className={`status-badge ${
-                          record.status === 'success'
-                            ? 'success'
-                            : record.status === 'failure' ||
-                                record.status === 'failed' ||
-                                record.status === 'timeout'
-                              ? 'danger'
-                              : 'warning'
-                        }`}
+                        className={`status-badge ${statusTone}`}
+                        title={statusTitle}
                       >
-                        {getStatusLabel(record.status)}
+                        {getStatusLabel(record)}
                       </span>
                       {record.isFallback && (
                         <span

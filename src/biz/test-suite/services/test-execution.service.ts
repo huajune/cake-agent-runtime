@@ -2,11 +2,11 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Readable } from 'stream';
 import { createHash } from 'node:crypto';
 import {
-  AgentRunnerService,
+  GeneratorService,
   type AgentInputMessage,
   type AgentRunResult,
   type AgentStreamResult,
-} from '@agent/runner.service';
+} from '@agent/generator/generator.service';
 import { CallerKind } from '@enums/agent.enum';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
@@ -87,7 +87,7 @@ export class TestExecutionService {
   private readonly logger = new Logger(TestExecutionService.name);
 
   constructor(
-    private readonly runner: AgentRunnerService,
+    private readonly runner: GeneratorService,
     private readonly executionRepository: TestExecutionRepository,
     private readonly chatSessionService: ChatSessionService,
     @Optional() private readonly memoryFixtureService?: MemoryFixtureService,

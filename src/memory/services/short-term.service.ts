@@ -16,7 +16,7 @@ import {
  * 从 chat_messages（Supabase 永久存储）中读取最近 N 条消息，
  * 按窗口策略（条数 + 时间 + 字符上限）裁剪后输出给 Agent。
  *
- * 统一了原先分散在 MessageHistoryService.getHistory() + AgentRunnerService.trimMessages() 中的逻辑。
+ * 统一了原先分散在 MessageHistoryService.getHistory() + GeneratorService.trimMessages() 中的逻辑。
  */
 @Injectable()
 export class ShortTermService {

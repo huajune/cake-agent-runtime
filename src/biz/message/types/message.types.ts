@@ -49,34 +49,6 @@ export interface ChatSessionSummary {
 }
 
 /**
- * 预约记录输入
- */
-export interface BookingRecordInput {
-  brandName?: string;
-  storeName?: string;
-  chatId?: string;
-  userId?: string;
-  userName?: string;
-  managerId?: string;
-  managerName?: string;
-}
-
-/**
- * 预约统计数据
- */
-export interface BookingStats {
-  date: string;
-  brandName: string | null;
-  storeName: string | null;
-  bookingCount: number;
-  chatId: string | null;
-  userId: string | null;
-  userName: string | null;
-  managerId: string | null;
-  managerName: string | null;
-}
-
-/**
  * 消息处理记录输入
  */
 export interface MessageProcessingRecordInput {

@@ -7,8 +7,8 @@
  * （tool guardrail 因分层物理留 tools/，仅在此登记引用，不反向依赖 agent）。
  *
  * 注意：本目录是**登记/审计**用途，不在此执行 guardrail（执行仍在各自的 in-loop / 出站
- * 调用点）。物理目录归并（input-guard/reply-fact-guard/risk-intercept 迁入 agent/guardrail/）
- * 属纯搬家，待后续低风险窗口做；本表先把契约与审计落地。
+ * 调用点）。input guard 已物理归并进 agent/guardrail/input/；output 的 reply-fact-guard
+ * 与 risk-intercept 在 channels/wecom，跨模块迁入待后续。
  */
 
 import type { GuardrailLayer } from '@shared-types/guardrail.contract';
@@ -29,7 +29,7 @@ export const GUARDRAIL_CATALOG: readonly GuardrailCatalogEntry[] = [
   {
     id: 'input_prompt_injection',
     layer: 'input',
-    source: 'agent/input-guard.service.ts',
+    source: 'agent/guardrail/input/input-guard.service.ts',
     exogenousSignal: 'prompt-injection 模式库（外生检测器）',
     status: 'active',
   },

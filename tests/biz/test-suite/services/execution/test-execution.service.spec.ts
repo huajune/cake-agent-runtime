@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
-import { AgentRunnerService } from '@agent/runner.service';
+import { GeneratorService } from '@agent/generator/generator.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
@@ -9,7 +9,7 @@ import { MessageRole } from '@enums/message.enum';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;
-  let loop: jest.Mocked<AgentRunnerService>;
+  let loop: jest.Mocked<GeneratorService>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
 
   const mockLoop = {
@@ -41,14 +41,14 @@ describe('TestExecutionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TestExecutionService,
-        { provide: AgentRunnerService, useValue: mockLoop },
+        { provide: GeneratorService, useValue: mockLoop },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
         { provide: ChatSessionService, useValue: mockChatSessionService },
       ],
     }).compile();
 
     service = module.get<TestExecutionService>(TestExecutionService);
-    loop = module.get(AgentRunnerService);
+    loop = module.get(GeneratorService);
     executionRepository = module.get(TestExecutionRepository);
 
     jest.clearAllMocks();
