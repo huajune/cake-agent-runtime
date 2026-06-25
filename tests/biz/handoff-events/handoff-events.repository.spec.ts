@@ -2,8 +2,13 @@ import { HandoffEventsRepository } from '@biz/handoff-events/handoff-events.repo
 import { SupabaseService } from '@infra/supabase/supabase.service';
 
 type UpsertOptions = { onConflict?: string; ignoreDuplicates?: boolean };
-type RepositoryWithUpsert = HandoffEventsRepository & {
-  upsert<T>(data: Partial<T>, options?: UpsertOptions): Promise<T | null>;
+type SelectMock = jest.Mock<Promise<{ data: unknown[] | null; error: unknown }>, [string]>;
+type UpsertMock = jest.Mock<{ select: SelectMock }, [Record<string, unknown>, UpsertOptions]>;
+type ClientMock = {
+  from: jest.Mock<{ upsert: UpsertMock }, [string]>;
+};
+type RepositoryWithClient = HandoffEventsRepository & {
+  getClient(): ClientMock;
 };
 
 describe('HandoffEventsRepository', () => {
@@ -16,10 +21,19 @@ describe('HandoffEventsRepository', () => {
     jest.restoreAllMocks();
   });
 
+  function mockClient(response: { data: unknown[] | null; error: unknown }) {
+    const select = jest.fn<Promise<{ data: unknown[] | null; error: unknown }>, [string]>();
+    select.mockResolvedValue(response);
+    const upsert = jest.fn<{ select: SelectMock }, [Record<string, unknown>, UpsertOptions]>();
+    upsert.mockReturnValue({ select });
+    const from = jest.fn<{ upsert: UpsertMock }, [string]>();
+    from.mockReturnValue({ upsert });
+    jest.spyOn(repository as RepositoryWithClient, 'getClient').mockReturnValue({ from });
+    return { from, upsert, select };
+  }
+
   it('upserts handoff_events with the expected idempotency key and nullable fields', async () => {
-    const upsertSpy = jest
-      .spyOn(repository as RepositoryWithUpsert, 'upsert')
-      .mockResolvedValue({ idempotency_key: 'trace-1' });
+    const { upsert } = mockClient({ data: [{ idempotency_key: 'trace-1' }], error: null });
     const occurredAt = new Date('2026-06-05T03:00:00.000Z');
 
     const inserted = await repository.insertHandoffEvent({
@@ -36,8 +50,8 @@ describe('HandoffEventsRepository', () => {
       occurredAt,
     });
 
-    expect(inserted).toBe(true);
-    expect(upsertSpy).toHaveBeenCalledWith(
+    expect(inserted).toBe('inserted');
+    expect(upsert).toHaveBeenCalledWith(
       {
         corp_id: 'corp-1',
         chat_id: 'chat-1',
@@ -55,8 +69,8 @@ describe('HandoffEventsRepository', () => {
     );
   });
 
-  it('returns false when the idempotent upsert is skipped or unavailable', async () => {
-    jest.spyOn(repository as RepositoryWithUpsert, 'upsert').mockResolvedValue(null);
+  it('returns duplicate when the idempotent upsert is skipped by conflict', async () => {
+    mockClient({ data: [], error: null });
 
     await expect(
       repository.insertHandoffEvent({
@@ -66,6 +80,20 @@ describe('HandoffEventsRepository', () => {
         idempotencyKey: 'trace-1',
         occurredAt: new Date('2026-06-05T03:00:00.000Z'),
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('duplicate');
+  });
+
+  it('returns failed when the database write fails', async () => {
+    mockClient({ data: null, error: { message: 'db unavailable' } });
+
+    await expect(
+      repository.insertHandoffEvent({
+        corpId: 'corp-1',
+        chatId: 'chat-1',
+        reasonCode: 'other',
+        idempotencyKey: 'trace-1',
+        occurredAt: new Date('2026-06-05T03:00:00.000Z'),
+      }),
+    ).resolves.toBe('failed');
   });
 });

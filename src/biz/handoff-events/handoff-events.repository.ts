@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import type { RecordHandoffInput } from './handoff-events.types';
+import type { HandoffWriteOutcome, RecordHandoffInput } from './handoff-events.types';
 
 interface HandoffEventRow {
   corp_id: string;
@@ -32,11 +32,11 @@ export class HandoffEventsRepository extends BaseRepository {
 
   /**
    * 写入一条转人工底账（幂等：同 corp_id + idempotency_key 跳过）。
-   * @returns 是否真正插入（false=重复或失败）。
+   * @returns 三态写入结果：只有 duplicate 可被调用方用于跳过后续派发；failed 应 fail-safe。
    */
-  async insertHandoffEvent(input: RecordHandoffInput & { occurredAt: Date }): Promise<boolean> {
-    // 走 BaseRepository.upsert：受熔断器保护（ignoreDuplicates 命中冲突时返回 null）。
-    // 非 null 即真正插入了一行 → true；null = 重复/不可用/熔断/出错 → false。
+  async insertHandoffEvent(
+    input: RecordHandoffInput & { occurredAt: Date },
+  ): Promise<HandoffWriteOutcome> {
     const payload: HandoffEventRow = {
       corp_id: input.corpId,
       chat_id: input.chatId,
@@ -51,11 +51,35 @@ export class HandoffEventsRepository extends BaseRepository {
       created_at: input.occurredAt.toISOString(),
     };
 
-    const row = await this.upsert<HandoffEventRow>(payload, {
-      onConflict: 'corp_id,idempotency_key',
-      ignoreDuplicates: true,
-    });
+    if (!this.isAvailable()) {
+      this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} upsert`);
+      return 'failed';
+    }
+    if (this.circuitBlocked('UPSERT')) {
+      return 'failed';
+    }
 
-    return row !== null;
+    try {
+      // BaseRepository.upsert() returns null for both conflict and failures. This path needs to
+      // preserve that distinction for outcome-layer handoff idempotency.
+      const { data, error } = await this.getClient()
+        .from(this.tableName)
+        .upsert(payload as unknown as Record<string, unknown>, {
+          onConflict: 'corp_id,idempotency_key',
+          ignoreDuplicates: true,
+        })
+        .select('idempotency_key');
+
+      if (error) {
+        this.handleError('UPSERT', error);
+        return 'failed';
+      }
+
+      const insertedRows = (data as Array<Pick<HandoffEventRow, 'idempotency_key'>> | null) ?? [];
+      return insertedRows.length > 0 ? 'inserted' : 'duplicate';
+    } catch (error) {
+      this.handleError('UPSERT', error);
+      return 'failed';
+    }
   }
 }

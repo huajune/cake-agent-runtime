@@ -369,6 +369,22 @@ export function buildInterviewPrecheckTool(
           });
         }
 
+        // jobId provenance 闸门（成员判定）：传入 jobId 不在本会话（含本轮 job_list）真实召回集时，
+        // 必是模型凭空生成或"召回 A 岗、另编真实 B 岗 jobId 绕过"（约面意向幻觉簇）。
+        // 此时不打 sponge 接口、也不回 job_not_found（"未找到岗位"会被模型脑补成"岗位下架了"，
+        // 进而沿错误叙事继续推进），直接要求先 duliday_job_list 召回拿真实 jobId。
+        if (context.isRecalledJobId && !context.isRecalledJobId(jobId)) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED,
+            outcome: '前置校验拦截（jobId 无召回出处）',
+            replyInstruction:
+              '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 precheck。' +
+              '先和候选人确认意向品牌/城市/门店，调 duliday_job_list 召回岗位，再用召回结果里的真实 jobId 调本工具。' +
+              '严禁凭印象或历史拼 jobId，也严禁把候选人姓名/电话/年龄等字段编造进来——这些只能来自候选人本轮亲口提供。',
+            details: { jobId },
+          });
+        }
+
         try {
           const { jobs } = await spongeService.fetchJobs(
             {

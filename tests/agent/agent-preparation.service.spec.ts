@@ -232,6 +232,100 @@ describe('AgentPreparationService', () => {
     ]);
   });
 
+  it('filters side-effect tools in readonly toolMode', async () => {
+    mockToolRegistry.buildForScenario.mockReturnValue({
+      duliday_job_list: {},
+      recall_history: {},
+      duliday_interview_booking: {},
+      duliday_modify_interview_time: {},
+      invite_to_group: {},
+      request_handoff: {},
+      skip_reply: {},
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '提醒一下' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'readonly',
+      },
+      'invoke',
+    );
+
+    expect(Object.keys(result.tools).sort()).toEqual([
+      'duliday_job_list',
+      'recall_history',
+      'skip_reply',
+    ]);
+  });
+
+  it('builds an empty toolset in none toolMode', async () => {
+    mockToolRegistry.buildForScenario.mockReturnValue({
+      duliday_job_list: {},
+      recall_history: {},
+      skip_reply: {},
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '只改文案' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'none',
+      },
+      'invoke',
+    );
+
+    expect(result.tools).toEqual({});
+  });
+
+  it('omits the HC-1 revise notice for a normal turn', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).not.toContain('回复重写要求（HC-1）');
+  });
+
+  it('injects committedSideEffects + reviseFeedback into finalPrompt (HC-1)', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '帮我约面试' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'none',
+        committedSideEffects: '已为候选人预约奥乐齐长白门店面试',
+        reviseFeedback: [
+          {
+            type: 'unsupported_commitment',
+            evidence: '回复声称"名额已留"，但本轮无对应工具结果',
+            suggestion: '只确认已提交预约，不要承诺保留名额',
+          },
+        ],
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('回复重写要求（HC-1）');
+    expect(result.finalPrompt).toContain('已为候选人预约奥乐齐长白门店面试');
+    expect(result.finalPrompt).toContain('[unsupported_commitment]');
+    expect(result.finalPrompt).toContain('只确认已提交预约');
+  });
+
   it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       { imRoomId: 'room-1', groupName: '上海餐饮兼职群1群', city: '上海' },
@@ -606,6 +700,121 @@ describe('AgentPreparationService', () => {
     expect(result.finalPrompt).toContain('岗位ID: 527349');
     expect(result.finalPrompt).toContain('品牌: 瑞幸');
     expect(result.finalPrompt).toContain('当前状态: 约面成功');
+  });
+
+  it('改约场景：进行中工单的 jobId 并入 provenance 集，isRecalledJobId 放行', async () => {
+    // 空会话召回（无 presentedJobs/lastCandidatePool/currentFocusJob），仅有一个进行中预约工单。
+    // 改约路径 system prompt 把 workOrder.jobId 作为「岗位ID」让模型先 precheck，但改约不调
+    // job_list——若不把它并入召回集，isRecalledJobId 恒 false 会把每次改约误拦成 job_not_provided。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88001,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88001,
+      jobId: 527349,
+      brandName: '瑞幸',
+      projectName: '陆家嘴店',
+      jobName: '店员',
+      currentStatus: '约面成功',
+      signUpTime: '2026-04-15 16:00:00',
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '能不能帮我改到明天面试' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // 工单 jobId 放行；其它凭空编的 jobId 仍被拦
+    expect(toolContext.isRecalledJobId?.(527349)).toBe(true);
+    expect(toolContext.isRecalledJobId?.(999999)).toBe(false);
+  });
+
+  it('改约场景：工单展示字段全缺(block 为空)时不把 jobId 当 provenance', async () => {
+    // formatBookingContext 在 6 个展示字段全缺时返回 ''，[当前预约信息] 不进 system prompt，
+    // 模型根本看不到「岗位ID」。此时不得把该 jobId 放进召回集——否则留下静默绕过闸门的口子。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88002,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    // 仅有 workOrderId + jobId，无任何展示字段 → formatBookingContext 返回 ''
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88002,
+      jobId: 527350,
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '改到明天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // block 为空 → 模型看不到该 jobId → 不放行
+    expect(toolContext.isRecalledJobId?.(527350)).toBe(false);
+  });
+
+  it('改约场景：缓存把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
+    // Upstash 反序列化旧缓存可能把 jobId 给成字符串；formatBookingContext 用 != null 照样渲染
+    // 「岗位ID: 527351」让模型用，故 provenance 必须归一数字串、与之同口径，否则改约被永久误拦。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88003,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88003,
+      jobId: '527351', // 缓存返回字符串
+      brandName: '瑞幸',
+      currentStatus: '约面成功',
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '改到后天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    // 模型 precheck 传 number 527351，provenance 归一后应匹配放行
+    expect(toolContext.isRecalledJobId?.(527351)).toBe(true);
   });
 
   it('should trim passed messages when they exceed max chars', async () => {

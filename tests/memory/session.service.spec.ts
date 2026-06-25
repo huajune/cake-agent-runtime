@@ -380,6 +380,53 @@ describe('SessionService', () => {
     });
   });
 
+  describe('getAuthoritativeState (HC-2 collectedFields provenance)', () => {
+    it('projects persisted session facts into collectedFields for cross-turn stop checks', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三', age: '24' },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
+
+      expect(state.collectedFields.name).toMatchObject({
+        value: '张三',
+        provenance: 'llm_extract',
+      });
+      expect(state.collectedFields.age?.value).toBe('24');
+    });
+
+    it('populates collectedFields from current-turn user text as user_text provenance', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: null,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1', {
+        currentUserMessages: ['姓名：王建国 电话13912345678'],
+        now: 5000,
+      });
+
+      expect(state.collectedFields.name).toMatchObject({
+        value: '王建国',
+        provenance: 'user_text',
+        at: 5000,
+      });
+      expect(state.collectedFields.phone?.value).toBe('13912345678');
+    });
+  });
+
   describe('pure-acknowledgment gate', () => {
     const existingFactsState = () => ({
       content: {

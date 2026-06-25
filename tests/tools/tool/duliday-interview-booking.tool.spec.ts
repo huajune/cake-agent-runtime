@@ -212,6 +212,47 @@ describe('buildInterviewBookingTool', () => {
     });
   });
 
+  describe('jobId provenance 闸门', () => {
+    it('jobId 无召回出处时拦截，不打 Sponge、不下预约', async () => {
+      // 模型伪造 prechecked 直接进 booking、且 jobId 本会话从未召回（凭空/串改命中真岗位）
+      const { result, context } = await executeToolWithContext(validInput, {
+        isRecalledJobId: () => false,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result).toMatchObject({
+        shortCircuited: true,
+        gateRejected: true,
+        reasonCode: 'job_id_not_recalled',
+      });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
+      expect(result._replyInstruction).toContain('runtime 已短路本轮');
+      expect(context.bookingSucceeded).toBe(false);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('jobId 有召回出处时放行闸门（继续走后续校验/下单）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({ success: true, data: { id: 1 } });
+
+      await executeTool(validInput, { isRecalledJobId: () => true });
+
+      // 放行闸门后落到既有 fetchJobs 路径（不再被 job_not_provided 短路）
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+
+    it('未注入 isRecalledJobId（test/debug 链路）时跳过闸门，向后兼容', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({ success: true, data: { id: 1 } });
+
+      const result = await executeTool(validInput);
+
+      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+  });
+
   it('should return error for invalid time format', async () => {
     const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
 
@@ -291,6 +332,33 @@ describe('buildInterviewBookingTool', () => {
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
     expect(result._replyInstruction).toContain('真实姓名');
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('HC-2 name gate: rejects a format-valid name that only appears as an auto-greeting nickname', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    // "小王" 形态合法（checkRealName 放行），但原文里只是"我是小王"打招呼昵称
+    const result = await executeTool(
+      { ...validInput, name: '小王' },
+      { messages: [{ role: 'user', content: '我是小王' }] },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
+    expect(result._replyInstruction).toContain('真实姓名');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('HC-2 name gate: does NOT fire for a name with a structured user_text source', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    // 有结构化出处 → name gate 放行；即便后续别的环节失败，也不应是 name gate 的拒绝理由
+    const result = await executeTool(
+      { ...validInput, name: '小王' },
+      { messages: [{ role: 'user', content: '姓名：小王' }] },
+    );
+
+    expect(result._replyInstruction ?? '').not.toContain('打招呼语昵称');
   });
 
   it('booking guard: should reject when interviewTime falls outside the job windows', async () => {

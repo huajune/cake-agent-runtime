@@ -374,6 +374,51 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should not recover empty text after any tool returns shortCircuited=true', async () => {
+    mockLlm.generate.mockResolvedValueOnce({
+      text: '',
+      response: {
+        messages: [{ role: 'assistant', content: [{ type: 'reasoning', text: 'gate reject' }] }],
+      },
+      steps: [
+        {
+          reasoningText: 'booking gate rejected hard',
+          finishReason: 'tool-calls',
+          toolCalls: [
+            {
+              toolCallId: 'tool-1',
+              toolName: 'duliday_interview_booking',
+              input: { jobId: 123 },
+            },
+          ],
+          toolResults: [
+            {
+              toolCallId: 'tool-1',
+              output: {
+                shortCircuited: true,
+                gateRejected: true,
+                reasonCode: 'job_id_not_recalled',
+              },
+            },
+          ],
+          usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+        },
+      ],
+      usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+    });
+
+    const result = await service.invoke(invokeParams);
+
+    expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('');
+    expect(result.toolCalls).toEqual([
+      expect.objectContaining({
+        toolName: 'duliday_interview_booking',
+        result: expect.objectContaining({ shortCircuited: true, gateRejected: true }),
+      }),
+    ]);
+  });
+
   it('should enrich thrown model errors with agent metadata', async () => {
     mockLlm.generate.mockRejectedValue(new Error('Network timeout'));
 

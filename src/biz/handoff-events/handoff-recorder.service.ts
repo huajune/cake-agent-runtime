@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HandoffEventsRepository } from './handoff-events.repository';
-import type { RecordHandoffInput } from './handoff-events.types';
+import type { HandoffWriteOutcome, RecordHandoffInput } from './handoff-events.types';
 
 /**
  * 转人工记录统一入口。
@@ -21,15 +21,22 @@ export class HandoffRecorderService {
     private readonly opsEventsRecorder: OpsEventsRecorderService,
   ) {}
 
-  async record(input: RecordHandoffInput): Promise<void> {
+  async record(input: RecordHandoffInput): Promise<HandoffWriteOutcome> {
     const occurredAt = input.occurredAt ?? new Date();
+    let handoffWriteOutcome: HandoffWriteOutcome = 'failed';
 
     try {
-      await this.repository.insertHandoffEvent({ ...input, occurredAt });
+      handoffWriteOutcome = await this.repository.insertHandoffEvent({ ...input, occurredAt });
+      if (handoffWriteOutcome === 'failed') {
+        this.logger.error(
+          `写入 handoff_events 失败 chat=${input.chatId} code=${input.reasonCode} key=${input.idempotencyKey}`,
+        );
+      }
     } catch (error) {
       this.logger.warn(
         `写入 handoff_events 失败 chat=${input.chatId} code=${input.reasonCode}: ${this.errorMessage(error)}`,
       );
+      handoffWriteOutcome = 'failed';
     }
 
     // handoff.triggered 事件底账 + 日报投影（manager/group 由 OpsEventsRecorder 反范式带出）。
@@ -48,6 +55,8 @@ export class HandoffRecorderService {
         work_order_id: input.workOrderId ?? null,
       },
     });
+
+    return handoffWriteOutcome;
   }
 
   private errorMessage(error: unknown): string {

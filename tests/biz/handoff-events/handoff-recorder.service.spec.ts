@@ -10,7 +10,7 @@ describe('HandoffRecorderService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    repository.insertHandoffEvent.mockResolvedValue(true);
+    repository.insertHandoffEvent.mockResolvedValue('inserted');
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
   });
 
@@ -18,7 +18,7 @@ describe('HandoffRecorderService', () => {
     const occurredAt = new Date('2026-06-05T03:00:00.000Z');
     const service = new HandoffRecorderService(repository as never, opsEventsRecorder as never);
 
-    await service.record({
+    const outcome = await service.record({
       corpId: 'corp-1',
       chatId: 'chat-1',
       userId: 'user-1',
@@ -32,6 +32,7 @@ describe('HandoffRecorderService', () => {
       occurredAt,
     });
 
+    expect(outcome).toBe('inserted');
     expect(repository.insertHandoffEvent).toHaveBeenCalledWith({
       corpId: 'corp-1',
       chatId: 'chat-1',
@@ -66,13 +67,14 @@ describe('HandoffRecorderService', () => {
     repository.insertHandoffEvent.mockRejectedValueOnce(new Error('db unavailable'));
     const service = new HandoffRecorderService(repository as never, opsEventsRecorder as never);
 
-    await service.record({
+    const outcome = await service.record({
       corpId: 'corp-1',
       chatId: 'chat-1',
       reasonCode: 'system_blocked',
       idempotencyKey: 'trace-2',
     });
 
+    expect(outcome).toBe('failed');
     expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         corpId: 'corp-1',
