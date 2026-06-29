@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.29.0] - 2026-06-29
 
-**预计版本**: `v5.29.0`
-**最近更新**: `2026-06-29`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #410 恢复工具调用前生成的候选人正文
@@ -42,7 +38,6 @@
 - PR #410 `pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/utils/output-leak-guard.util.spec.ts --watchman=false`
 - PR #410 `pnpm run typecheck`
 - PR #410 pre-push `pnpm run ci:check` 通过：lint、format、typecheck、web build、Nest build、全量 Jest coverage；最新 `origin/develop` 上结果 `300 passed / 1 skipped` suites，`4107 passed / 6 skipped` tests。
-<!-- release:pending:end -->
 
 ## [5.28.0] - 2026-06-25
 
