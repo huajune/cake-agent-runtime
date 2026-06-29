@@ -1,9 +1,38 @@
 {
   "baseVersion": "5.28.0",
   "nextVersion": "5.29.0",
-  "updatedAt": "2026-06-25",
+  "updatedAt": "2026-06-29",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "410",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/410",
+      "title": "修复工具调用前正文未投递问题",
+      "author": "huajune",
+      "mergedAt": "2026-06-29",
+      "businessUpdates": [
+        "恢复工具调用前生成的候选人正文",
+        "修复工具调用前正文未投递问题"
+      ],
+      "summary": [
+        "恢复工具调用前生成的候选人正文",
+        "修复工具调用前正文未投递问题"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "恢复工具调用前生成的候选人正文"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/utils/output-leak-guard.util.spec.ts --watchman=false`",
+        "`pnpm run typecheck`",
+        "pre-push `pnpm run ci:check` 通过：lint、format、typecheck、web build、Nest build、全量 Jest coverage；最新 `origin/develop` 上结果 `300 passed / 1 skipped` suites，`4107 passed / 6 skipped` tests。"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.28.0",
     "date": "2026-06-25",
@@ -112,6 +141,28 @@
           "pnpm test -- --watchman=false",
           "pre-push pnpm run ci:check passed, including lint:check, format:check, typecheck, build:ci, and test:ci coverage."
         ]
+      },
+      {
+        "number": "406",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/406",
+        "title": "sync master into develop for v5.28.0",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-25",
+        "businessUpdates": [
+          "sync master into develop for v5.28.0"
+        ],
+        "summary": [
+          "sync master into develop for v5.28.0"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "sync master into develop for v5.28.0"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
       }
     ]
   }

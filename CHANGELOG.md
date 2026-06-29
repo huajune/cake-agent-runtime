@@ -8,6 +8,42 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.29.0`
+**最近更新**: `2026-06-29`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #410 恢复工具调用前生成的候选人正文
+- PR #410 修复工具调用前正文未投递问题
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #410 恢复工具调用前生成的候选人正文
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #410 `pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/utils/output-leak-guard.util.spec.ts --watchman=false`
+- PR #410 `pnpm run typecheck`
+- PR #410 pre-push `pnpm run ci:check` 通过：lint、format、typecheck、web build、Nest build、全量 Jest coverage；最新 `origin/develop` 上结果 `300 passed / 1 skipped` suites，`4107 passed / 6 skipped` tests。
+<!-- release:pending:end -->
+
 ## [5.28.0] - 2026-06-25
 
 **来源分支**: `develop`
@@ -36,6 +72,7 @@
 - PR #404 Wires opening-sent reengagement scheduling and keeps proactive delivery shadowed by default.
 - PR #404 Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.
 - PR #404 Agent reliability runtime on precheck
+- PR #406 sync master into develop for v5.28.0
 
 ### 新功能
 - PR #404 reengagement 接入 opening 锚点 (shadow 端到端激活)
@@ -69,6 +106,7 @@
 - PR #404 补 pipeline spec 运行时依赖 mock
 - PR #404 更新可靠性改造落地进展
 - PR #404 Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…
+- PR #406 sync master into develop for v5.28.0
 
 ### 配置变更
 - 无
