@@ -2,9 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
-import { TurnRunnerService } from '@agent/runner/turn-runner.service';
-import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '@agent/tool-call-analysis';
+import { AgentRunnerService } from '@agent/runner/agent-runner.service';
+import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
+import {
+  isBookingGateRejectedToolCall,
+  isShortCircuitedToolCall,
+} from '@agent/generator/tool-call-analysis';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
+import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 import { MessageParser } from '../utils/message-parser.util';
@@ -17,14 +22,12 @@ import { MessageDeliveryService } from '../delivery/delivery.service';
 import { SimpleMergeService } from '../runtime/simple-merge.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
-import { RiskInterceptService } from '@agent/guardrail/input/risk/risk-intercept.service';
-import { RuleGuardrailService } from '@agent/guardrail/output/rule/rule-guardrail.service';
 import { ImageDescriptionService } from './image-description.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import type { HandoffWriteOutcome } from '@biz/handoff-events/handoff-events.types';
-import type { AgentThinkingConfig } from '@agent/agent-run.types';
+import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 
 /**
  * Vision 描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
@@ -76,19 +79,18 @@ export class ReplyWorkflowService {
   constructor(
     private readonly deduplicationService: MessageDeduplicationService,
     private readonly deliveryService: MessageDeliveryService,
-    private readonly runner: TurnRunnerService,
+    private readonly runner: AgentRunnerService,
     private readonly monitoringService: MessageTrackingService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly processingFailureService: MessageProcessingFailureService,
-    private readonly preAgentRiskIntercept: RiskInterceptService,
-    private readonly replyFactGuard: RuleGuardrailService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly interventionService: InterventionService,
     private readonly handoffRecorder: HandoffRecorderService,
     private readonly followUpScheduler: FollowUpSchedulerService,
+    private readonly reengagementAnchors: ReengagementAnchorService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -230,11 +232,13 @@ export class ReplyWorkflowService {
 
     const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
 
-    // 前置风险同步预检：命中高置信度关键词即同步执行暂停+告警，
-    // 但不短路 Agent——本轮安抚回复仍由 Agent 以招募者身份自主生成，
-    // 避免任何预设话术暴露机器人/托管身份。
+    // 前置风险同步预检（input guardrail）：命中即「确定性静默 + 暂停托管转人工」。短路决策由
+    // runner 收口成 `intercepted` 终态（guardrail 内部已 dispatch 暂停，覆盖后续轮次），渠道这里
+    // 只负责把这个终态**渲染**成 WeCom 侧的静默收尾（记跳过观测/去重/ack），不再继续跑 Agent。
+    // 此前的设计是「不短路 Agent、仍发一条安抚回复」，但安抚回复会与投递前的 isAnyPaused 检查
+    // 竞态、大概率被丢弃，行为不确定；改为命中即静默，行为确定。
     const riskUserId = this.resolveAgentUserId(params.primaryMessage, parsed);
-    const precheckResult = await this.preAgentRiskIntercept.precheck({
+    const intercepted = await this.runner.precheckInboundOutcome({
       corpId: this.resolveCorpId(params.primaryMessage),
       chatId,
       userId: riskUserId,
@@ -245,10 +249,22 @@ export class ReplyWorkflowService {
       botImId: parsed.imBotId,
       botUserName: parsed.managerName,
     });
-    if (precheckResult.hit) {
+    if (intercepted) {
+      const label = intercepted.intercept?.label ?? intercepted.intercept?.reason ?? '命中风险规则';
       this.logger.warn(
-        `${logPrefix}[${contactName}] 前置风险预检命中: label=${precheckResult.label}, chatId=${chatId}`,
+        `${logPrefix}[${contactName}] 前置风险预检命中: label=${label}, chatId=${chatId}，本轮静默并转人工`,
       );
+      await this.wecomObservability.markReplySkipped(traceId);
+      const riskSkippedMetadata = await this.wecomObservability.buildSuccessMetadata(traceId, {
+        scenario,
+        batchId: batchContext?.batchId,
+        replyPreview: `[风险预检静默] ${label}`,
+        replySegments: 0,
+      });
+      this.monitoringService.recordSuccess(traceId, riskSkippedMetadata);
+      await this.markMessagesAsProcessed(allMessages.map((message) => message.messageId));
+      await this.ackPendingIfMerged(chatId, consumedPending);
+      return;
     }
 
     const agentCallParams = {
@@ -294,15 +310,22 @@ export class ReplyWorkflowService {
         `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
     );
 
-    // 回合收尾（记忆投影/事实提取/沉淀）与后续投递并行执行，但必须在本方法返回前
-    // 完成（见末尾 finally）：方法返回即 MessageProcessor 释放 chat 处理锁，若收尾
-    // 仍在异步写 session state，会与下一个 job 的读写并发，整份覆盖写互相丢更新。
+    // 回合收尾（记忆投影/事实提取/沉淀）必须在本方法返回前完成（见末尾 finally）：方法返回即
+    // MessageProcessor 释放 chat 处理锁，若收尾仍在异步写 session state，会与下一个 job 的读写
+    // 并发，整份覆盖写互相丢更新。
+    //
+    // 触发点统一收敛到「已知本轮投递结局」之后（守卫拦截/沉默分支 与 投递完成分支各一次），
+    // 而非生成结束就立即触发——否则被守卫拦截、托管暂停丢弃或投递失败的回复仍会被写进 session
+    // 记忆，造成下一轮以为「已对候选人说过」的幽灵复聊。`includeAssistantText` 由投递结局决定。
     let turnEndPromise: Promise<void> | undefined;
-    const startTurnEnd = (result: { runTurnEnd?: () => Promise<void> }) => {
+    const startTurnEnd = (
+      result: { runTurnEnd?: (opts?: { includeAssistantText?: boolean }) => Promise<void> },
+      opts?: { includeAssistantText?: boolean },
+    ) => {
       const run = result.runTurnEnd;
       if (!run) return;
       result.runTurnEnd = undefined;
-      turnEndPromise = run().catch((err) => {
+      turnEndPromise = run(opts).catch((err) => {
         const errorMessage = err instanceof Error ? err.message : String(err);
         this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
       });
@@ -324,7 +347,6 @@ export class ReplyWorkflowService {
             ',',
           )}]，跳过 replay 检测，直接投递首次回复 (chatId=${chatId})`,
         );
-        startTurnEnd(agentResult);
       } else {
         // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
         // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
@@ -379,11 +401,8 @@ export class ReplyWorkflowService {
             `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
               `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
           );
-          startTurnEnd(agentResult);
-        } else {
-          // 首次结果被最终采纳，触发 turn-end lifecycle（与投递并行，方法返回前 await）。
-          startTurnEnd(agentResult);
         }
+        // turn-end 触发推迟到投递结局已知之后（见下方守卫/投递分支），此处不再立即触发。
       }
 
       if (agentResult.isFallback) {
@@ -410,14 +429,35 @@ export class ReplyWorkflowService {
         botUserId: agentCallParams.botUserId,
         userMessage: content,
       });
+      this.reengagementAnchors.handleToolAnchors(agentResult, {
+        traceId,
+        chatId,
+        userId: agentCallParams.userId,
+        corpId: agentCallParams.corpId,
+        isGroupChat: Boolean(params.primaryMessage.imRoomId),
+      });
 
-      // Agent 主动沉默 / 转人工短路 / 出站守卫拦截：跳过 WeCom 发送，但仍完成本轮流水与观测。
-      // 守卫拦截（如歧视性筛选条件外露）宁可本轮沉默也不可泄漏，飞书已告警人工跟进。
-      if (agentResult.isSkipped || agentResult.blockedByGuard) {
+      // 非 reply 终态（skipped 沉默 / blocked 守卫拦截 / handoff 转人工）：跳过 WeCom 发送，
+      // 但仍完成本轮流水与观测。终态由 runner 共享分类器给出（agentResult.outcome），与主动复聊同源；
+      // 守卫拦截（如歧视性筛选条件外露）宁可本轮沉默也不可泄漏。
+      if (agentResult.outcome?.kind !== 'reply') {
         if (agentResult.blockedByGuard) {
           this.logger.warn(
             `${logPrefix}[${contactName}] 出站守卫拦截回复，跳过消息发送 (rules=${agentResult.blockedByGuard.ruleIds.join(',')})`,
           );
+          // 非 rule 档拦截（llm 严重违规 / reviewer 降级 output_review_unavailable）守卫内不发飞书、
+          // 也不暂停托管——本轮静默后无人接手，候选人悬空。统一转人工告警（rule 档已在守卫内告警，
+          // 此处不重复）。
+          await this.dispatchOutputGuardHandoffIfNeeded(agentResult, {
+            traceId,
+            chatId,
+            userId: agentCallParams.userId,
+            corpId: agentCallParams.corpId,
+            contactName,
+            botImId: agentCallParams.botImId,
+            botUserId: agentCallParams.botUserId,
+            userMessage: content,
+          });
         } else {
           const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
           this.logger.log(`${logPrefix}[${contactName}] Agent 短路，跳过消息发送 (${skipReason})`);
@@ -431,6 +471,8 @@ export class ReplyWorkflowService {
           batchContext?.batchId,
         );
         this.monitoringService.recordSuccess(traceId, skippedMetadata);
+        // 回复未送达给候选人：记用户侧记忆但不投影助手轮次，避免下一轮幽灵复聊。
+        startTurnEnd(agentResult, { includeAssistantText: false });
         await this.markMessagesAsProcessed(processedMessageIds);
         await this.ackPendingIfMerged(chatId, consumedPending);
         return;
@@ -443,9 +485,24 @@ export class ReplyWorkflowService {
         true,
       );
 
-      // Agent 回复成功投递 → agent.replied（仅个人单聊；fire-and-forget）。
-      // 已过 skip_reply/handoff 短路早返回，到这里一定是真实对外回复。
-      this.recordAgentReplied(params.primaryMessage, parsed, traceId);
+      // Agent 回复真实投递 → agent.replied（仅个人单聊；fire-and-forget）。
+      // deliverReply 可能因托管暂停/内部泄漏保护返回 skipped=true，此时不能生成
+      // delivered-reply 锚点，否则会排出候选人没收到上一条时的幽灵复聊。
+      const replyDelivered = this.wasReplyActuallyDelivered(deliveryResult);
+      if (replyDelivered) {
+        this.recordAgentReplied(params.primaryMessage, parsed, traceId);
+        this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
+          traceId,
+          chatId,
+          userId: agentCallParams.userId,
+          corpId: agentCallParams.corpId,
+          isGroupChat: Boolean(params.primaryMessage.imRoomId),
+        });
+      }
+
+      // 投递结局已知：仅当回复真实送达才把助手轮次投影进记忆；托管暂停/失败丢弃时
+      // 只记用户侧记忆（includeAssistantText=false），与上方守卫拦截分支对称。
+      startTurnEnd(agentResult, { includeAssistantText: replyDelivered });
 
       const successMetadata = await this.buildSuccessMetadata(
         traceId,
@@ -633,6 +690,92 @@ export class ReplyWorkflowService {
     }
   }
 
+  /**
+   * 出站守卫「非 rule 档」拦截（llm 严重违规 / reviewer 故障降级 output_review_unavailable /
+   * revise 死循环）转人工。
+   *
+   * rule 档命中已在 ReplyFactGuard 内发飞书告警，这里只兜非 rule 档：否则本轮沉默后候选人悬空、
+   * 无人接手。统一走 intervention → 暂停托管 + 飞书告警，并写 handoff 底账便于运营追溯。
+   * 全程 fail-safe，不阻塞主流水。
+   */
+  private async dispatchOutputGuardHandoffIfNeeded(
+    agentResult: AgentInvokeResult,
+    context: {
+      traceId: string;
+      chatId: string;
+      userId: string;
+      corpId: string;
+      contactName?: string;
+      botImId?: string;
+      botUserId?: string;
+      userMessage: string;
+    },
+  ): Promise<void> {
+    const blocked = agentResult.blockedByGuard;
+    // 仅兜非 rule 档拦截；rule 档已在守卫内告警，避免重复转人工。
+    if (!blocked || blocked.ruleBlocked) return;
+
+    const reasonCode = blocked.reasonCode ?? blocked.ruleIds.join(',') ?? 'output_blocked';
+    const replyPreview = agentResult.reply.content.slice(0, 400);
+    const reason = `出站守卫拦截（非 rule 档）：${reasonCode}`;
+    const actionAdvice =
+      '本轮回复被出站守卫拦截、未发送给候选人。人工核对候选人最近消息与被拦截回复，必要时人工接管回复。';
+    const occurredAt = new Date();
+    const idempotencyKey = `${context.chatId}:handoff:${context.traceId}:output_guard`;
+
+    try {
+      await this.handoffRecorder.record({
+        corpId: context.corpId,
+        chatId: context.chatId,
+        userId: context.userId,
+        reasonCode: 'system_blocked',
+        reason,
+        actionAdvice,
+        stage: null,
+        botImId: context.botImId,
+        idempotencyKey,
+        occurredAt,
+      });
+    } catch (error) {
+      this.logger.error(
+        `[OutputGuardHandoff] handoff 底账写入异常，继续 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}, error=${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    try {
+      const result = await this.interventionService.dispatch({
+        kind: 'general_handoff',
+        source: 'agent_tool',
+        alertLabel: '出站守卫拦截（非 rule 档）',
+        reason: `${reason}；replyPreview="${replyPreview}"`,
+        actionAdvice,
+        chatId: context.chatId,
+        corpId: context.corpId,
+        userId: context.userId,
+        pauseTargetId: context.chatId,
+        botImId: context.botImId,
+        botUserName: context.botUserId,
+        contactName: context.contactName,
+        currentMessageContent: context.userMessage,
+        recentMessages: [
+          {
+            role: 'user',
+            content: context.userMessage,
+            timestamp: occurredAt.getTime(),
+          },
+        ],
+        sessionState: null,
+      });
+      this.logger.warn(
+        `[OutputGuardHandoff] dispatched: chatId=${context.chatId}, reasonCode=${reasonCode}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[OutputGuardHandoff] dispatch 失败: chatId=${context.chatId}, error=${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   private async markMessagesAsProcessed(messageIds: string[]): Promise<void> {
     await Promise.all(
       messageIds.map(async (messageId) => {
@@ -664,7 +807,7 @@ export class ReplyWorkflowService {
     imRoomId?: string;
     apiType?: 'enterprise' | 'group';
     modelId?: string;
-    thinking?: AgentThinkingConfig;
+    thinking?: GeneratorThinkingConfig;
     shortTermEndTimeInclusive?: number;
     /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
     deferTurnEnd?: boolean;
@@ -688,34 +831,46 @@ export class ReplyWorkflowService {
         shouldRecordAiEnd = true;
       }
 
-      const result = await this.runner.invoke({
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: userMessage }],
-        userId,
-        corpId,
-        sessionId: params.sessionId,
-        messageId,
-        scenario,
-        contactName: params.contactName,
-        imageUrls: params.imageUrls,
-        imageMessageIds: params.imageMessageIds,
-        visualMessageTypes: params.visualMessageTypes,
-        botUserId: params.botUserId,
-        botImId: params.botImId,
-        externalUserId: params.externalUserId,
-        token: params.token,
-        imContactId: params.imContactId,
-        imRoomId: params.imRoomId,
-        apiType: params.apiType,
-        modelId: params.modelId,
-        thinking: params.thinking,
-        shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-        deferTurnEnd,
-        onPreparedRequest:
-          recordMonitoring && messageId
-            ? (agentRequest) => this.wecomObservability.recordAgentRequest(messageId, agentRequest)
-            : undefined,
-      });
+      const result = await this.runner.invokeReviewed(
+        {
+          callerKind: CallerKind.WECOM,
+          messages: [{ role: 'user', content: userMessage }],
+          userId,
+          corpId,
+          sessionId: params.sessionId,
+          messageId,
+          scenario,
+          contactName: params.contactName,
+          imageUrls: params.imageUrls,
+          imageMessageIds: params.imageMessageIds,
+          visualMessageTypes: params.visualMessageTypes,
+          botUserId: params.botUserId,
+          botImId: params.botImId,
+          externalUserId: params.externalUserId,
+          token: params.token,
+          imContactId: params.imContactId,
+          imRoomId: params.imRoomId,
+          apiType: params.apiType,
+          modelId: params.modelId,
+          thinking: params.thinking,
+          shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+          deferTurnEnd,
+          onPreparedRequest:
+            recordMonitoring && messageId
+              ? (agentRequest) =>
+                  this.wecomObservability.recordAgentRequest(messageId, agentRequest)
+              : undefined,
+        },
+        {
+          userMessage: params.userMessage,
+          chatId: params.sessionId,
+          userId,
+          traceId: messageId,
+          contactName: params.contactName,
+          botImId: params.botImId,
+          botUserName: params.botUserId,
+        },
+      );
 
       const processingTime = Date.now() - startTime;
       const content = this.normalizeContent(result.text);
@@ -726,35 +881,38 @@ export class ReplyWorkflowService {
       //   此时 Agent 已按首次约面继续生成回复，必须正常投递。
       const isSkipped = result.toolCalls?.some(isShortCircuitedToolCall) ?? false;
 
-      // Reply 后置事实对账：常规规则命中即日志告警，不改写文本（Phase 1）；
-      // 阻断规则（如歧视性筛选条件外露）命中则出站短路——回复不发送，飞书告警人工跟进。
-      // 历史 badcase i41pab8n：invite_to_group 成功后下一轮 Agent 无 tool 调用
-      // 自由发挥说"群已满"。常规规则积累 1-2 周后再决定是否升级到 phase 2 改写。
+      // 出站守卫裁决已由 runner.invokeReviewed 内部完成（rule 档确定性 + 高风险 llm 档 + 一次 revise
+      // 重写，见 OutputGuardrailService）。decision='block' 时本轮回复不发送，飞书告警/转人工归因已在
+      // 守卫内处理；此处仅把 block 归一成 blockedByGuard 供后续跳过发送与观测。
+      const outputDecision = result.outputDecision;
       let blockedByGuard: AgentInvokeResult['blockedByGuard'];
-      if (!isSkipped && content) {
-        const guardResult = this.replyFactGuard.check({
-          replyText: content,
-          toolCalls: result.toolCalls,
-          chatId: params.sessionId,
-          userId,
-          traceId: messageId,
-          contactName: params.contactName,
-          botImId: params.botImId,
-          botUserName: params.botUserId,
-          userMessage: params.userMessage,
-        });
-        if (guardResult.blocked) {
-          blockedByGuard = {
-            ruleIds: guardResult.contradictions.filter((c) => c.blocked).map((c) => c.ruleId),
-          };
-        }
+      if (!isSkipped && content && outputDecision.decision === 'block') {
+        const ruleBlocked = outputDecision.blockedRuleIds.length > 0;
+        const blockedRuleIds = ruleBlocked
+          ? outputDecision.blockedRuleIds
+          : [outputDecision.reasonCode ?? 'output_blocked'];
+        blockedByGuard = {
+          ruleIds: blockedRuleIds,
+          reasonCode: outputDecision.reasonCode,
+          ruleBlocked,
+        };
       }
+
+      // 终态分类走 runner 共享纯函数（与主动复聊同源）：投递/沉默分支据 outcome.kind 判定，
+      // 不再在渠道侧重复推导 isSkipped/handoff。isSkipped/blockedByGuard 仅保留供观测/告警留痕。
+      const outcome = classifyReviewedOutcome(
+        result,
+        { kind: 'inbound', userMessage: params.userMessage },
+        { corpId, userId, sessionId: params.sessionId },
+        messageId,
+      );
 
       const invokeResult: AgentInvokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },
         isFallback: false,
         isSkipped,
         blockedByGuard,
+        outcome,
         processingTime,
         toolCalls: result.toolCalls,
         agentSteps: result.agentSteps,
@@ -839,7 +997,8 @@ export class ReplyWorkflowService {
   }
 
   /**
-   * 把入站 DTO 解析成 RiskInterceptService 的纯文本扫描内容（渠道侧职责，依赖倒置）。
+   * 把入站 DTO 解析成入站风险守卫的纯文本扫描内容（渠道侧职责，依赖倒置）。
+   * 守卫由 runner.precheckInboundOutcome 编排，渠道只构造中立扫描文本。
    * 过滤图片/表情占位，多消息按行拼接；全是视觉内容则返回空串（不扫描）。
    */
   private buildRiskScanContent(
@@ -864,6 +1023,15 @@ export class ReplyWorkflowService {
 
   private isVisualGeneratedContent(content: string | undefined): boolean {
     return /^\s*\[(?:图片|表情)消息\]/.test(content ?? '');
+  }
+
+  private wasReplyActuallyDelivered(deliveryResult: {
+    segmentCount: number;
+    deliveredSegments?: number;
+    skipped?: boolean;
+  }): boolean {
+    if (deliveryResult.skipped) return false;
+    return (deliveryResult.deliveredSegments ?? deliveryResult.segmentCount) > 0;
   }
 
   /**
