@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.28.0] - 2026-06-25
 
-**预计版本**: `v5.28.0`
-**最近更新**: `2026-06-25`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #396 为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路
@@ -86,7 +82,6 @@
 - PR #404 pnpm run typecheck
 - PR #404 pnpm test -- --watchman=false
 - PR #404 pre-push pnpm run ci:check passed, including lint:check, format:check, typecheck, build:ci, and test:ci coverage.
-<!-- release:pending:end -->
 
 ## [5.27.3] - 2026-06-24
 
