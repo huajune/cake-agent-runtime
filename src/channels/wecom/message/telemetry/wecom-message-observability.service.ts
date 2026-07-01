@@ -432,6 +432,8 @@ export class WecomMessageObservabilityService {
       replySegments?: number;
       replyPreview?: string;
       extraResponse?: Record<string, unknown>;
+      guardrailInput?: MonitoringMetadata['guardrailInput'];
+      guardrailOutput?: MonitoringMetadata['guardrailOutput'];
     },
   ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
     const trace = await this.traceStore.get<WecomTraceContext>(messageId);
@@ -477,6 +479,8 @@ export class WecomMessageObservabilityService {
             isFallback: agentResult?.isFallback ?? false,
           }
         : undefined,
+      guardrailInput: options.guardrailInput,
+      guardrailOutput: options.guardrailOutput,
     };
 
     await this.cleanup(messageId);

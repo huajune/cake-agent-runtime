@@ -2,10 +2,13 @@ import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail
 
 describe('OutputGuardrailService', () => {
   const makeRuleResult = (
-    contradictions: Array<{ ruleId: string; label: string; blocked?: boolean }> = [],
+    contradictions: Array<{
+      ruleId: string;
+      label: string;
+      action: 'observe' | 'revise' | 'block';
+    }> = [],
   ) => ({
     hit: contradictions.length > 0,
-    blocked: contradictions.some((c) => c.blocked),
     contradictions,
   });
 
@@ -37,7 +40,7 @@ describe('OutputGuardrailService', () => {
     const reviewer = { review: jest.fn() };
     const { service } = build(
       false,
-      makeRuleResult([{ ruleId: 'group_promise_without_invite', label: 'x', blocked: false }]),
+      makeRuleResult([{ ruleId: 'group_promise_without_invite', label: 'x', action: 'observe' }]),
       reviewer,
     );
 
@@ -48,11 +51,31 @@ describe('OutputGuardrailService', () => {
     expect(reviewer.review).not.toHaveBeenCalled();
   });
 
+  it('flag 关闭：rule action=revise → revise，且不调用 llm', async () => {
+    const reviewer = { review: jest.fn() };
+    const { service } = build(
+      false,
+      makeRuleResult([
+        { ruleId: 'booking_form_field_mismatch', label: 'missing field', action: 'revise' },
+      ]),
+      reviewer,
+    );
+
+    const decision = await service.check(baseInput());
+
+    expect(decision.decision).toBe('revise');
+    expect(decision.ruleIds).toEqual(['booking_form_field_mismatch']);
+    expect(decision.violations).toEqual([
+      expect.objectContaining({ type: 'booking_form_field_mismatch' }),
+    ]);
+    expect(reviewer.review).not.toHaveBeenCalled();
+  });
+
   it('rule 硬 block（歧视外露）→ block，且不调用 llm', async () => {
     const reviewer = { review: jest.fn() };
     const { service } = build(
       true,
-      makeRuleResult([{ ruleId: 'discriminatory_screening_leak', label: 'leak', blocked: true }]),
+      makeRuleResult([{ ruleId: 'discriminatory_screening_leak', label: 'leak', action: 'block' }]),
       reviewer,
     );
 

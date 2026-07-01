@@ -93,7 +93,7 @@ invoke(params) / stream(params)
 
 ### 3.2 AgentPreparationService.prepare()
 
-[src/agent/agent-preparation.service.ts](src/agent/agent-preparation.service.ts)
+[src/agent/generator/preparation.service.ts](src/agent/generator/preparation.service.ts)
 
 单次 prepare 内部步骤：
 
@@ -211,7 +211,7 @@ supportsVisionInput(options): boolean
 
 ## 4. Context System — Prompt 组装
 
-入口：[src/agent/context/context.service.ts](src/agent/context/context.service.ts)
+入口：[src/agent/generator/context.service.ts](src/agent/generator/context.service.ts)
 
 `ContextService.compose()` 输出 `{ systemPrompt, stageGoals, thresholds }`。
 
@@ -228,7 +228,7 @@ interface PromptSection {
 
 ### 4.2 场景注册表
 
-[src/agent/context/scenarios/scenario.registry.ts](src/agent/context/scenarios/scenario.registry.ts)
+[src/agent/generator/context/scenarios/scenario.registry.ts](src/agent/generator/context/scenarios/scenario.registry.ts)
 
 ```typescript
 SCENARIO_SECTIONS = {
@@ -247,7 +247,7 @@ SCENARIO_SECTIONS = {
 
 ### 4.3 Section 清单
 
-[src/agent/context/sections/](src/agent/context/sections/)
+[src/agent/generator/context/sections/](src/agent/generator/context/sections/)
 
 **顶层结构（candidate-consultation 使用）**：
 
@@ -486,7 +486,6 @@ ingress/             回调入口（Controller + DTO + Schema）
 application/         业务逻辑
   ├─ accept-inbound-message.service.ts   管线入口（去重/过滤/写历史/监控）
   ├─ reply-workflow.service.ts           Agent 调用 + Replay + 投递
-  ├─ pre-agent-risk-intercept.service.ts 前置风险同步预检
   ├─ image-description.service.ts        图片/表情描述处理
   ├─ message-processing-failure.service.ts 错误分类 + 飞书告警
   ├─ pipeline.service.ts                 薄门面，转发到 accept/reply
@@ -495,6 +494,8 @@ delivery/            打字延迟 + 分段发送
 runtime/             dedup / merge / processor / worker / redis-keys
 telemetry/           observability / trace store
 ```
+
+前置风险同步预检已归位到 `src/agent/guardrail/input/risk-intercept.service.ts`，高置信关键词检测内聚在该服务内。
 
 ### 8.1 回调处理流程
 
@@ -643,14 +644,19 @@ AppModule
 │   ├── AgentPreparationService    prepare 流程
 │   ├── ContextService             prompt 组装
 │   ├── AgentController / AgentHealthService
-│   └── InputGuardService          prompt injection 检测
+│   └── guardrail/
+│       ├── input/InputGuardrailService      input guardrail 编排入口
+│       ├── input/PromptInjectionService     prompt injection 检测
+│       ├── input/RiskInterceptService       高置信风险预检
+│       ├── output/OutputGuardrailService    出站 rule/llm 组合裁决
+│       ├── output/HardRulesService          确定性出站规则调度
+│       └── output/LlmReviewerService        高风险语义 reviewer
 │
 ├── ChannelsModule
 │   └── WecomModule
 │       └── MessageModule
 │           ├── AcceptInboundMessageService
 │           ├── ReplyWorkflowService
-│           ├── PreAgentRiskInterceptService
 │           ├── MessageProcessingFailureService
 │           ├── MessageDeliveryService
 │           ├── MessageDeduplicationService
@@ -706,8 +712,8 @@ AppModule
    │
 4. ReplyWorkflowService.processMessageCore()
    │
-5. PreAgentRiskInterceptService.precheck()
-   └─ 不命中，继续
+5. RiskInterceptService.evaluate()
+   └─ 不命中继续；命中则返回 guardrail_blocked 并由统一出口执行暂停/告警
    │
 6. callAgent({ deferTurnEnd: true })
    │
@@ -856,8 +862,8 @@ AppModule
 | 模块       | 入口                                                                       |
 | ---------- | -------------------------------------------------------------------------- |
 | Agent 编排 | [src/agent/runner.service.ts](src/agent/runner.service.ts)                 |
-| Prepare    | [src/agent/agent-preparation.service.ts](src/agent/agent-preparation.service.ts) |
-| Context    | [src/agent/context/context.service.ts](src/agent/context/context.service.ts) |
+| Prepare    | [src/agent/generator/preparation.service.ts](src/agent/generator/preparation.service.ts) |
+| Context    | [src/agent/generator/context.service.ts](src/agent/generator/context.service.ts) |
 | LLM        | [src/llm/llm-executor.service.ts](src/llm/llm-executor.service.ts)         |
 | Providers  | [src/providers/router.service.ts](src/providers/router.service.ts)         |
 | Memory     | [src/memory/memory.service.ts](src/memory/memory.service.ts)               |

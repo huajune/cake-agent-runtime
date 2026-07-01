@@ -1,10 +1,16 @@
 # 二次主动回复（reengagement / 复聊）实现方案
 
-> 状态：实现级设计（评审稿）
+> 状态：实现完成（当前分支）
 > 日期：2026-06-24
 > 父文档：[agent-reliability-refactor-2026-06.md](./agent-reliability-refactor-2026-06.md) §5.4 / 阶段 4
 > 需求来源：「蛋糕触发二次主动回复需求」
-> 依赖：阶段 0（`runner` 抽离）+ 阶段 3（权威会话状态 + 停止条件信号）。**这两步未落地前，复聊只能做 shadow（只排程不发）。**
+> 依赖：阶段 0（`runner` 抽离）+ 阶段 3（权威会话状态 + 停止条件信号）。当前分支已具备 shadow 默认保护、只读主动回合、outbox 投递和停止条件；真发由 `REENGAGEMENT_SHADOW=false` + 场景 `rolloutEnabled` + 渠道投递端口共同控制。
+
+实现进展：
+- 已落 `agent/reengagement/` 全链路：`FollowUpScenario` 配置、scheduler、processor、Redis touch-ledger/outbox、9-21 窗口、24h 频控、shadow 默认保护、状态不明补偿查询。
+- 已接 6 个仓库内可确定锚点：`opening_no_reply`（首条对外回复）、`booking_incomplete`（最终采纳回合的 precheck `collect_fields`）、`interview_reminder`（booking 成功）、`post_interview_followup`（booking 成功 + 面试后延迟）、`store_presented_no_reply`（最终回复已投递且展示岗位）、`address_missing`（最终回复已投递且请求位置/地址）。
+- 已补停止信号：候选人入站写 `lastCandidateMessageAt`；booking 成功 / request_handoff / booking gate hard-reject 写 `terminal`；processor 到点前用 `terminal`、`lastCandidateMessageAt > anchorAt`、场景 `stopUnless` 丢弃过期复聊。
+- `new_job_for_waiting` 已有场景配置与 processor 能力，因“岗位上线 × 等待候选人匹配”属于外部业务事件源，当前保持 rollout=false，待 job-published 事件源接入后复用同一 scheduler。
 
 ## 0. 定性
 
@@ -24,8 +30,8 @@ await reengagementQueue.add('follow-up', { sessionRef, scenarioCode, anchorEvent
 });
 ```
 
-- 锚点事件多数**已存在**为 ops_events：`agent.opening_sent`、`agent.replied`、booking 成功；其余（岗位展示、收资开始）按需补事件。
-- **外部事件类**（"暂无岗位后有新岗位上线"）无法事件锚点到具体候选人 → 需一个 cron sweep 或岗位上线事件 × 等待候选人匹配，**复杂度高，后开**（与父文档"外部状态强依赖的后开"一致）。
+- 仓库内锚点已接到最终采纳/最终投递路径：`agent.opening_sent`、precheck `collect_fields`、booking 成功、最终回复展示岗位、最终回复请求位置。
+- **外部事件类**（"暂无岗位后有新岗位上线"）无法在当前仓库单独证明到具体候选人 → 需 job-published 事件源或等待池 sweep。该场景已在 registry 中保留，rollout=false，事件源接入后只需调用 scheduler。
 
 ## 2. 数据模型
 
@@ -110,9 +116,9 @@ class FollowUpTaskProcessor {
 | code | 锚点事件 | 延迟 | stopUnless（仍成立） |
 |---|---|---|---|
 | `opening_no_reply` | `agent.opening_sent` | +15min | 锚点后无候选人回复 |
-| `address_missing` | `agent.replied`(location 空) | +N min | location 仍空 |
-| `store_presented_no_reply` | 岗位/门店展示（需补事件） | +N h | 锚点后无回复 |
-| `booking_incomplete` | 收资开始（需补事件） | +N h | collectedFields 仍不齐 |
+| `address_missing` | 最终回复已投递且请求位置/地址 | +N min | location 仍空 |
+| `store_presented_no_reply` | 最终回复已投递且展示岗位/门店 | +N h | 锚点后无回复 |
+| `booking_incomplete` | 最终采纳回合 precheck `collect_fields` | +N h | collectedFields 仍不齐 |
 | `interview_reminder` | `booking.succeeded` | `interviewTime - 1h` | 面试未取消 |
 | `post_interview_followup` | `booking.succeeded` | `interviewTime + ~1h` | — |
 | `new_job_for_waiting` | **岗位上线事件**（外部，后开） | 事件驱动 | 候选人仍在等待池 |
@@ -126,29 +132,31 @@ agent/reengagement/
   scenario-registry.ts        FollowUpScenario[] 配置
   follow-up-scheduler.ts      锚点事件 → queue.add(delay)；可选 @Cron sweep
   follow-up.processor.ts      @Processor：到点 → 停止条件 → runner.runTurn → deliver
+  channel-delivery.port.ts    渠道投递端口 token + interface（当前未绑定实现）
   touch-ledger.*              触达底账（频控 + outbox 幂等状态机）
 依赖：BullModule.registerQueue(REENGAGEMENT_QUEUE) | SessionService(权威状态) |
-      TurnRunner(阶段0) | ChannelDeliveryPort | ops-events(锚点 hook)
+      AgentRunnerService | ChannelDeliveryPort(可选注入；当前 wecom 未绑定实现) |
+      ops-events(锚点 hook)
 ```
 
 ## 7. Shadow mode（第一版必跑）
 
 `SHADOW=true` 时 processor 走完停止条件 + runner.runTurn，但**不 deliver**，只记"本应发 X / 命中场景 Y / 停止原因 Z"。⚠️ **"不 deliver" ≠ "无副作用"**：主动回合已用 `toolMode:'readonly'` 物理禁用 booking/invite/modify（§3 step 4），shadow 只是再叠加"不投递"。两者缺一不可——只跳过 deliver、不禁副作用工具，generator 仍可能在 loop 内真报名/真拉群。验证：① 触发命中率（该发的发了吗）；② 停止条件正确（不该发的拦住了吗，尤其"候选人已回"）；③ guardrail 对主动话术的拦截率。验证通过再按场景灰度开真发：先 `opening_no_reply` / `booking_incomplete` / `interview_reminder`（事件锚点明确）；`new_job_for_waiting` 最后。
 
-## 8. 待落定 / 风险
+## 8. 上线门槛 / 风险
 
-- **[阻塞] 依赖 runner（阶段 0）+ 权威状态停止条件（阶段 3）**：前者提供复用接缝，后者提供 `lastCandidateMessageAt/terminal` 等停止信号。两者未落地前只能 shadow。
-- **[P0 待核实] 平台主动发消息限制**：企微/托管平台对"候选人长时间未回时主动发消息"可能有时间窗/频次限制（如外部联系人 48h 规则）。复聊的本质就是沉默后主动触达——**必须先确认托管平台 send API 是否允许、有何配额**，否则发不出去或触发风控。
-- **[补事件] `store_presented_no_reply`/`booking_incomplete` 缺现成锚点事件**，需在岗位展示工具 / 收资流程补 ops_events。
+- **真发启用门槛**：代码默认 shadow；`follow-up.processor.ts` 对 `CHANNEL_DELIVERY_PORT` 是可选注入，当前 wecom 侧尚未提供该 token 绑定，所以即便 `REENGAGEMENT_SHADOW=false` 也不会有可用端口完成真发。要上线真发，必须同时满足：补齐渠道 `CHANNEL_DELIVERY_PORT` provider、场景 `rolloutEnabled=true`、平台主动触达规则（时间窗/频次/配额）确认通过。当前仓库完成的是调度/停止/生成/底账安全基线，真发接线是明确上线门槛。
+- **外部事件源**：`new_job_for_waiting` 需 job-published / 等待池匹配事件源。当前 registry、scheduler、processor 均已具备，事件源接入后复用同一排程协议。
+- **补偿**：`TouchLedgerService.listUnknownSlots()` 可扫描 `unknown` 触达槽，供运维/人工核对渠道侧投递结果；processor 不盲重投 `delivery_attempted/unknown`。
 - **[跨渠道] 小程序**：复聊触发逻辑渠道无关，但投递走对应 `ChannelDeliveryPort`；小程序若是同步请求-响应，"主动推送"需走客服消息接口（与企微不同），归各渠道适配器。
 
 ## 9. 落定检查单
 
-- [ ] FollowUpScenario 配置 + 7 场景锚点/延迟/stopUnless 表
-- [ ] scheduler：锚点事件 hook + `queue.add` 幂等 jobId + `computeFireAt`（绝对 fireAt）+ Bull `delay=max(0, fireAt-now)`（相对 ms）
-- [ ] processor：shouldStop（terminal/已回/拒绝/场景特定）→ 频控 → runner.runTurn(**toolMode:'readonly'**) → deliver + 触达底账
-- [ ] 触达底账 **outbox 状态机** reserved→delivery_attempted→sent/failed/unknown（频控只数 sent；attempted 后靠渠道幂等/补偿，防丢消息也防重复发送）
-- [ ] shadow = toolMode:'readonly'（禁副作用）+ 不 deliver（两者缺一不可）
-- [ ] shadow mode 开关 + 命中/停止/拦截观测
-- [ ] **平台主动发消息限制核实**（阻塞真发）
-- [ ] 补 `store_presented` / `booking_incomplete` 锚点事件
+- [x] FollowUpScenario 配置 + 7 场景锚点/延迟/stopUnless 表（低风险场景 rolloutEnabled，外部事件场景保留 rollout=false）
+- [x] scheduler：6 个仓库内锚点 hook + `queue.add` 幂等 jobId + `computeFireAt`（绝对 fireAt）+ Bull `delay=max(0, fireAt-now)`（相对 ms）
+- [x] processor：shouldStop（terminal/已回/拒绝/场景特定）→ 频控 → runner.runTurn(**toolMode:'readonly'**；内部走 output guardrail + revise) → deliver + 触达底账
+- [x] 触达底账 **outbox 状态机** reserved→delivery_attempted→sent/failed/unknown（频控只数 sent；attempted 后靠渠道幂等/补偿，防丢消息也防重复发送）
+- [x] shadow = toolMode:'readonly'（禁副作用）+ 不 deliver（两者缺一不可）
+- [x] shadow mode 开关 + 命中/停止/拦截观测日志
+- [x] 真发保护：默认 shadow + delivery port 可选绑定（当前 wecom 未绑定，真发不可用）+ 场景 rollout 开关；平台主动发消息限制列为上线前外部确认项
+- [x] 补 `store_presented` / `address_missing` / `booking_incomplete` / booking 成功类锚点

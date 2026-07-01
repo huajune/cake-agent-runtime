@@ -11,6 +11,7 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     expire: jest.Mock;
     lrange: jest.Mock;
     eval: jest.Mock;
+    scan: jest.Mock;
   };
   let ledger: TouchLedgerService;
 
@@ -42,6 +43,7 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
         lists.set(keys[1], arr);
         return 1;
       }),
+      scan: jest.fn(async () => [0, Array.from(store.keys())]),
     };
     ledger = new TouchLedgerService(redis as never);
   });
@@ -90,5 +92,16 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     await ledger.markDeliveryAttempted('a');
     await ledger.markFailedOrUnknown('a', 'unknown');
     expect(await ledger.countSentIn24h('s1', now)).toBe(0);
+  });
+
+  it('lists unknown slots for compensation', async () => {
+    await ledger.reserve('s1:opening_no_reply:1000');
+    await ledger.markFailedOrUnknown('s1:opening_no_reply:1000', 'unknown');
+    await ledger.reserve('s1:opening_no_reply:2000');
+    await ledger.markFailedOrUnknown('s1:opening_no_reply:2000', 'failed');
+
+    await expect(ledger.listUnknownSlots()).resolves.toEqual([
+      { key: 's1:opening_no_reply:1000', state: 'unknown' },
+    ]);
   });
 });

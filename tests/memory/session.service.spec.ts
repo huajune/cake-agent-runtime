@@ -91,6 +91,7 @@ describe('SessionService', () => {
       expect(state.lastCandidatePool).toBeNull();
       expect(state.presentedJobs).toBeNull();
       expect(state.currentFocusJob).toBeNull();
+      expect(state.terminal).toBeNull();
     });
 
     it('should return stored session state', async () => {
@@ -129,6 +130,8 @@ describe('SessionService', () => {
         presentedJobs: null,
         currentFocusJob: null,
         invitedGroups: null,
+        lastCandidateMessageAt: null,
+        terminal: null,
       });
     });
 

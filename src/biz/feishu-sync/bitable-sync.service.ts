@@ -1,6 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MessageProcessingRecord } from '@shared-types/tracking.types';
 import {
@@ -122,9 +121,11 @@ export class FeishuBitableSyncService {
   ) {}
 
   /**
-   * 每日 0 点同步前一日数据
+   * 旧版消息处理片段同步，仅保留为手动维护入口。
+   *
+   * 当前飞书「聊天记录」表由 ChatRecordSyncService 负责每日同步完整会话；
+   * 这里不再注册 cron，避免用 message_processing_records 的片段数据覆盖/重复写入 chat 表。
    */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async syncYesterday(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
 

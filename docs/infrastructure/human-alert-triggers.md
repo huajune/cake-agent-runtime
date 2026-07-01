@@ -24,10 +24,10 @@
 
 ### 1. 规则前置拦截
 
-- **位置**：[pre-agent-risk-intercept.service.ts](../../src/channels/wecom/message/application/pre-agent-risk-intercept.service.ts)
+- **位置**：[risk-intercept.service.ts](../../src/agent/guardrail/input/risk-intercept.service.ts)
 - **来源**：`source=regex_intercept`
 - **条件**：用户消息命中高置信关键词正则（辱骂 / 投诉 / 举报 / 情绪升级）
-- **效果**：Agent 仍继续生成回复，dispatch 异步暂停托管 + 发卡
+- **效果**：命中 input guardrail 后本轮静默拦截，并通过统一出口暂停托管 + 发卡
 
 ### 2. Agent 主动告警（`raise_risk_alert` 工具）
 

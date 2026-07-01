@@ -304,7 +304,7 @@ describe('GeocodingService', () => {
       const result = await service.searchCandidates('马陆');
 
       expect(result).toEqual(cached);
-      expect(redisService.get).toHaveBeenCalledWith('geocode:candidates:v2:马陆');
+      expect(redisService.get).toHaveBeenCalledWith('geocode:candidates:v3:马陆');
     });
 
     it('未传 city 时不设 citylimit，让高德全国搜索', async () => {
@@ -334,19 +334,21 @@ describe('GeocodingService', () => {
 
     it('多 POI 返回 → 全部映射为 GeocodeCandidate 并写缓存', async () => {
       redisService.get.mockResolvedValue(null);
-      global.fetch = jest.fn().mockResolvedValue(
-        mockPlaceResponse([
-          makePoi({ name: '解放路上海店', cityname: '上海市' }),
-          makePoi({ name: '解放路南京店', cityname: '南京市', pname: '江苏省' }),
-        ]),
-      );
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          mockPlaceResponse([
+            makePoi({ name: '解放路上海店', cityname: '上海市' }),
+            makePoi({ name: '解放路南京店', cityname: '南京市', pname: '江苏省' }),
+          ]),
+        );
 
       const candidates = await service.searchCandidates('解放路');
 
       expect(candidates).toHaveLength(2);
       expect(candidates.map((c) => c.city)).toEqual(['上海市', '南京市']);
       expect(redisService.setex).toHaveBeenCalledWith(
-        'geocode:candidates:v2:解放路',
+        'geocode:candidates:v3:解放路',
         30 * 24 * 3600,
         expect.any(Array),
       );
@@ -356,11 +358,17 @@ describe('GeocodingService', () => {
       redisService.get.mockResolvedValue(null);
       global.fetch = jest
         .fn()
-        .mockResolvedValue(mockPlaceResponse([makePoi({ name: '七莘路(地铁站)', typecode: '150500' })]));
+        .mockResolvedValueOnce(
+          mockPlaceResponse([makePoi({ name: '七莘路(地铁站)', typecode: '150500' })]),
+        )
+        .mockResolvedValueOnce(mockGeocodeResponse([]));
 
       const candidates = await service.searchCandidates('七莘路', '上海');
 
       expect(candidates[0].typecode).toBe('150500');
+      expect(candidates[0].source).toBe('poi');
+      expect(candidates[0].precision).toBe('metro_station');
+      expect(candidates[0].confidence).toBe('high');
     });
 
     it('高德缺省 typecode 时映射为空字符串', async () => {
@@ -374,13 +382,15 @@ describe('GeocodingService', () => {
 
     it('location 字段非法的 POI 会被跳过', async () => {
       redisService.get.mockResolvedValue(null);
-      global.fetch = jest.fn().mockResolvedValue(
-        mockPlaceResponse([
-          makePoi({ name: '好数据' }),
-          makePoi({ name: '坏数据', location: 'not-a-coord' }),
-          makePoi({ name: '无坐标', location: '' }),
-        ]),
-      );
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          mockPlaceResponse([
+            makePoi({ name: '好数据' }),
+            makePoi({ name: '坏数据', location: 'not-a-coord' }),
+            makePoi({ name: '无坐标', location: '' }),
+          ]),
+        );
 
       const candidates = await service.searchCandidates('测试');
 
@@ -423,6 +433,175 @@ describe('GeocodingService', () => {
       global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([]));
 
       const candidates = await service.searchCandidates('不存在');
+
+      expect(candidates).toEqual([]);
+      expect(redisService.setex).not.toHaveBeenCalled();
+    });
+
+    it('已传 city 且 POI 为空时，降级结构化 geocode 解析道路/街道', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(mockPlaceResponse([]))
+        .mockResolvedValueOnce(
+          mockGeocodeResponse([
+            {
+              formatted_address: '上海市浦东新区花木路',
+              province: '上海市',
+              city: [],
+              district: '浦东新区',
+              township: [],
+              location: '121.556545,31.212537',
+              level: '道路',
+            },
+          ]),
+        );
+
+      const candidates = await service.searchCandidates('浦东新区花木路', '上海');
+
+      expect(candidates).toEqual([
+        {
+          formattedAddress: '上海市浦东新区花木路',
+          province: '上海市',
+          city: '上海市',
+          district: '浦东新区',
+          township: '',
+          longitude: 121.556545,
+          latitude: 31.212537,
+          poiName: '',
+          typecode: '',
+          source: 'structured',
+          precision: 'road',
+          confidence: 'medium',
+        },
+      ]);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/v3/place/text');
+      expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain('/v3/geocode/geo');
+      expect(redisService.setex).toHaveBeenCalledWith(
+        'geocode:candidates:v3:上海:浦东新区花木路',
+        30 * 24 * 3600,
+        candidates,
+      );
+    });
+
+    it('已传 city 且 POI 为空时，也能用结构化 geocode 解析街道/乡镇短词', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(mockPlaceResponse([]))
+        .mockResolvedValueOnce(
+          mockGeocodeResponse([
+            {
+              formatted_address: '上海市浦东新区花木街道',
+              province: '上海市',
+              city: [],
+              district: '浦东新区',
+              township: [],
+              location: '121.546406,31.207986',
+              level: '乡镇',
+            },
+          ]),
+        );
+
+      const candidates = await service.searchCandidates('花木', '上海');
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toMatchObject({
+        formattedAddress: '上海市浦东新区花木街道',
+        source: 'structured',
+        precision: 'township',
+        confidence: 'medium',
+        longitude: 121.546406,
+        latitude: 31.207986,
+      });
+    });
+
+    it('地址文本自带城市线索时，未传 city 也会结构化解析行政区', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(mockPlaceResponse([]))
+        .mockResolvedValueOnce(
+          mockGeocodeResponse([
+            {
+              formatted_address: '江苏省南京市六合区',
+              province: '江苏省',
+              city: '南京市',
+              district: '六合区',
+              township: [],
+              location: '118.822241,32.323235',
+              level: '区县',
+            },
+          ]),
+        );
+
+      const candidates = await service.searchCandidates('南京六合');
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toMatchObject({
+        formattedAddress: '江苏省南京市六合区',
+        city: '南京市',
+        district: '六合区',
+        source: 'structured',
+        precision: 'district',
+        confidence: 'medium',
+      });
+    });
+
+    it('已传 city 且通用商业体带明确前缀时，POI 为空后允许结构化兜底', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(mockPlaceResponse([]))
+        .mockResolvedValueOnce(
+          mockGeocodeResponse([
+            {
+              formatted_address: '上海市宝山区宝龙广场(东北门)',
+              province: '上海市',
+              city: [],
+              district: '宝山区',
+              township: [],
+              location: '121.359959,31.389843',
+              level: '兴趣点',
+            },
+          ]),
+        );
+
+      const candidates = await service.searchCandidates('宝山宝龙广场', '上海');
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toMatchObject({
+        formattedAddress: '上海市宝山区宝龙广场(东北门)',
+        city: '上海市',
+        district: '宝山区',
+        source: 'structured',
+        precision: 'poi',
+        confidence: 'high',
+      });
+    });
+
+    it('地址包含区县时，不接受结构化 geocode 退化成城市级结果', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(mockPlaceResponse([]))
+        .mockResolvedValueOnce(mockGeocodeResponse([]))
+        .mockResolvedValueOnce(
+          mockGeocodeResponse([
+            {
+              formatted_address: '江苏省南京市',
+              province: '江苏省',
+              city: '南京市',
+              district: [],
+              township: [],
+              location: '118.796624,32.059344',
+              level: '市',
+            },
+          ]),
+        );
+
+      const candidates = await service.searchCandidates('雨花区', '南京');
 
       expect(candidates).toEqual([]);
       expect(redisService.setex).not.toHaveBeenCalled();

@@ -16,6 +16,9 @@ function makeCandidate(overrides: Partial<GeocodeCandidate> = {}): GeocodeCandid
     latitude: 31.32,
     poiName: '马陆镇',
     typecode: '',
+    source: 'poi',
+    precision: 'poi',
+    confidence: 'high',
     ...overrides,
   };
 }

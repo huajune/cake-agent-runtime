@@ -2,12 +2,26 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
 import { GeocodeCandidate, GeocodeResult } from './geocoding.types';
+import {
+  classifyGeocodeQuery,
+  hasContextualGenericPoiPrefix,
+  hasEmbeddedCityHint,
+  shouldTryStructuredGeocode,
+} from './geocoding-query-classifier.util';
+import {
+  confidenceForPrecision,
+  candidateDistrictMatchesAddress,
+  extractDistrictStems,
+  inferPoiPrecision,
+  inferStructuredPrecision,
+  mergeAndRankCandidates,
+} from './geocoding-candidate-ranker.util';
 
 const AMAP_PLACE_API = 'https://restapi.amap.com/v3/place/text';
 const AMAP_GEOCODE_API = 'https://restapi.amap.com/v3/geocode/geo';
 const CACHE_PREFIX = 'geocode:v2:';
-// v2: 候选结构新增 typecode 字段（bb04aff4），升版本甩掉缺字段的旧缓存
-const CANDIDATES_CACHE_PREFIX = 'geocode:candidates:v2:';
+// v3: 候选结构新增 source/precision/confidence，并合并 structured geocode 候选
+const CANDIDATES_CACHE_PREFIX = 'geocode:candidates:v3:';
 const CACHE_TTL_SECONDS = 30 * 24 * 3600; // 30 天
 const DEFAULT_CANDIDATES_LIMIT = 5;
 
@@ -74,16 +88,17 @@ export class GeocodingService {
   }
 
   /**
-   * 多候选 POI 搜索 — 用于歧义判定（同名地名命中几个城市）。
+   * 多候选地理搜索 — 用于歧义判定（同名地名命中几个城市）。
    *
    * 调用方（geocode 工具）按返回 candidates 的 city 分布决定：
    * - 单一城市 → 直接采纳第一条
    * - 多城市 → 把候选清单回给 Agent，由 Agent 反问候选人确认
-   * - 空 → 走结构化 geocode 兜底（沿用 `geocode()`）或反问"换个地名"
+   * - 空 → 反问"换个地名"
    *
    * 与单结果 `geocode()` 的差异：
-   * - 不调用结构化 geocode 兜底（兜底默认返回 1 条，无法反映歧义）
-   * - 不强制 `citylimit`，city 为空时高德全国搜索
+   * - city 为空时不调用结构化 geocode（结构化兜底默认返回 1 条，无法反映跨城歧义）
+   * - city 已明确时，POI + structured 合并，覆盖道路/街道这类 POI 搜不到的地址
+   * - POI 搜索不强制 `citylimit`，city 为空时高德全国搜索
    * - 缓存独立 key（candidates vs single result 不互通）
    *
    * @param address 地名或地址文本
@@ -107,7 +122,25 @@ export class GeocodingService {
     const cached = await this.redisService.get<GeocodeCandidate[]>(cacheKey);
     if (cached) return cached;
 
-    const candidates = await this.fetchPoiCandidates(address, normalizedCity, limit);
+    const queryKind = classifyGeocodeQuery(address);
+    const poiCandidates = await this.fetchPoiCandidates(address, normalizedCity, limit);
+    const structuredCandidates: GeocodeCandidate[] = [];
+    const shouldTryStructured =
+      (Boolean(normalizedCity) &&
+        (shouldTryStructuredGeocode(queryKind, normalizedCity) ||
+          (poiCandidates.length === 0 &&
+            (queryKind === 'unknown' ||
+              queryKind === 'road' ||
+              queryKind === 'admin_area' ||
+              queryKind === 'metro_station' ||
+              hasContextualGenericPoiPrefix(address))))) ||
+      (!normalizedCity && poiCandidates.length === 0 && hasEmbeddedCityHint(address));
+
+    if (shouldTryStructured) {
+      structuredCandidates.push(...(await this.fetchStructuredCandidates(address, normalizedCity)));
+    }
+
+    const candidates = mergeAndRankCandidates([...poiCandidates, ...structuredCandidates]);
 
     if (candidates.length === 0) {
       this.logger.debug(`多候选搜索无结果: "${address}" city="${normalizedCity}"`);
@@ -166,6 +199,8 @@ export class GeocodingService {
         const poiName = str(poi.name);
         const poiAddress = str(poi.address);
 
+        const precision = inferPoiPrecision(poiName, str(poi.typecode));
+
         candidates.push({
           formattedAddress: `${province}${cityName === province ? '' : cityName}${district}${poiAddress}${poiName}`,
           province,
@@ -176,6 +211,9 @@ export class GeocodingService {
           latitude: lat,
           poiName,
           typecode: str(poi.typecode),
+          source: 'poi',
+          precision,
+          confidence: confidenceForPrecision(precision),
         });
       }
 
@@ -184,6 +222,46 @@ export class GeocodingService {
       this.logger.error('高德 POI 多候选失败', err);
       return [];
     }
+  }
+
+  private async fetchStructuredCandidates(
+    address: string,
+    city: string,
+  ): Promise<GeocodeCandidate[]> {
+    const variants = [address];
+    const normalizedCity = city.trim();
+    if (
+      normalizedCity &&
+      !address.includes(normalizedCity) &&
+      !address.includes(`${normalizedCity}市`)
+    ) {
+      variants.push(`${normalizedCity}${address}`);
+    }
+
+    const candidates: GeocodeCandidate[] = [];
+    const districtStems = extractDistrictStems(address);
+    for (const variant of variants) {
+      const result = await this.geocodeStructuredWithLevel(variant, city);
+      if (!result) continue;
+      if (
+        districtStems.length > 0 &&
+        (!result.result.district ||
+          !candidateDistrictMatchesAddress(districtStems, result.result.district))
+      ) {
+        continue;
+      }
+      const precision = inferStructuredPrecision(result.level);
+      candidates.push({
+        ...result.result,
+        poiName: '',
+        typecode: '',
+        source: 'structured',
+        precision,
+        confidence: confidenceForPrecision(precision),
+      });
+      break;
+    }
+    return candidates;
   }
 
   /**
@@ -249,6 +327,14 @@ export class GeocodingService {
    * 文档：https://lbs.amap.com/api/webservice/guide/api/georegeo#geo
    */
   private async geocodeStructured(address: string, city?: string): Promise<GeocodeResult | null> {
+    const structured = await this.geocodeStructuredWithLevel(address, city);
+    return structured?.result ?? null;
+  }
+
+  private async geocodeStructuredWithLevel(
+    address: string,
+    city?: string,
+  ): Promise<{ result: GeocodeResult; level: string } | null> {
     try {
       const params = new URLSearchParams({
         key: this.apiKey,
@@ -278,13 +364,16 @@ export class GeocodingService {
       const province = str(geo.province);
 
       return {
-        formattedAddress: str(geo.formatted_address),
-        province,
-        city: str(geo.city) || province,
-        district: str(geo.district),
-        township: str(geo.township),
-        longitude: lng,
-        latitude: lat,
+        result: {
+          formattedAddress: str(geo.formatted_address),
+          province,
+          city: str(geo.city) || province,
+          district: str(geo.district),
+          township: str(geo.township),
+          longitude: lng,
+          latitude: lat,
+        },
+        level: str(geo.level),
       };
     } catch (err) {
       this.logger.error('高德 geocode 失败', err);

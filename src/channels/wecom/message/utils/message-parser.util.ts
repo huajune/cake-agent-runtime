@@ -34,8 +34,8 @@ export function isResumeImageDescription(description: string): boolean {
 /**
  * 剥离描述文本里已存在的「简历附件：…」行。
  *
- * vision OCR 偶发会把简历卡片里内嵌的附件链接也转写进描述（badcase chat
- * 6a2fac72…：候选人发简历卡片，OCR 文本末尾已带一行"简历附件：URL"），此时
+ * 视觉描述偶发会把简历卡片里内嵌的附件链接也转写进描述（badcase chat
+ * 6a2fac72…：候选人发简历卡片，描述文本末尾已带一行"简历附件：URL"），此时
  * ImageDescriptionService / save_image_description 再无条件追加一行就会出现重复行，
  * 污染历史与会话事实。统一先剥离描述里的旧附件行，再以解析到的权威 URL 追加唯一一行。
  */

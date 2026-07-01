@@ -1,16 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
-import { SIDE_EFFECT_TOOLS, isToolSuccess } from '@agent/generator/tool-call-analysis';
-import type { GuardViolation, GuardrailRiskLevel } from '@shared-types/guardrail.contract';
-import { RuleGuardrailService } from './rule-guardrail.service';
+import { hasCommittedSideEffect } from '@agent/generator/tool-call-analysis';
+import type {
+  GuardVerdict,
+  GuardViolation,
+  GuardrailRiskLevel,
+  OutputDecision,
+} from '@shared-types/guardrail.contract';
+import { HardRulesService } from './hard-rules.service';
+import type { RuleContradiction } from './output-rule.types';
 import { LlmReviewerService } from './llm-reviewer.service';
 
 /**
  * 出站守卫组合器（§5.2 / §7）。
  *
  * 把确定性 rule 档与高风险才触发的 llm 档汇成一个最终裁决 `pass | revise | block`：
- * - rule 档（{@link RuleGuardrailService}）：先跑、确定性、可硬 block（如歧视性筛选外露）；
+ * - rule 档（{@link HardRulesService}）：先跑、确定性、可硬 block（如歧视性筛选外露）；
  *   命中即由 rule 服务内部告警（飞书 badcase），行为与现状一致。
  * - llm 档（{@link LlmReviewerService}）：仅在高风险（含承诺/事实陈述，或紧跟副作用工具）
  *   且 `OUTPUT_GUARDRAIL_LLM_ENABLED=true` 时触发，带 grounding 审查语义/语气/意图。
@@ -33,7 +39,7 @@ export class OutputGuardrailService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly ruleGuard: RuleGuardrailService,
+    private readonly ruleGuard: HardRulesService,
     private readonly llmReviewer: LlmReviewerService,
   ) {
     this.llmEnabled = this.configService.get('OUTPUT_GUARDRAIL_LLM_ENABLED', 'false') === 'true';
@@ -73,7 +79,12 @@ export class OutputGuardrailService {
       userMessage: input.userMessage,
     });
     const ruleIds = ruleResult.contradictions.map((c) => c.ruleId);
-    const blockedRuleIds = ruleResult.contradictions.filter((c) => c.blocked).map((c) => c.ruleId);
+    const blockedRuleIds = ruleResult.contradictions
+      .filter((c) => c.action === 'block')
+      .map((c) => c.ruleId);
+    const reviseRuleIds = ruleResult.contradictions
+      .filter((c) => c.action === 'revise')
+      .map((c) => c.ruleId);
 
     // rule 硬 block（如歧视性筛选外露）：发出去不可挽回，直接 block，不必再问 llm。
     if (blockedRuleIds.length > 0) {
@@ -81,7 +92,7 @@ export class OutputGuardrailService {
         decision: 'block',
         riskLevel: 'high',
         violations: ruleResult.contradictions
-          .filter((c) => c.blocked)
+          .filter((c) => c.action === 'block')
           .map((c) => this.ruleToViolation(c.ruleId, c.label)),
         ruleIds,
         blockedRuleIds,
@@ -91,7 +102,18 @@ export class OutputGuardrailService {
     // ---- llm 档（高风险才触发；flag 关闭时直接放行，等价现状） ----
     const llmTrigger = this.resolveLlmTrigger(reply, input.toolCalls);
     if (!this.llmEnabled || llmTrigger === 'none') {
-      // 非 block 的 rule 命中保持 Phase 1 语义：仅告警、不拦截。
+      if (reviseRuleIds.length > 0) {
+        return {
+          decision: 'revise',
+          riskLevel: 'medium',
+          violations: ruleResult.contradictions
+            .filter((c) => c.action === 'revise')
+            .map((c) => this.ruleToViolation(c.ruleId, c.label)),
+          ruleIds,
+          blockedRuleIds,
+        };
+      }
+      // observe 规则保持 Phase 1 语义：仅告警、不拦截。
       return { decision: 'pass', riskLevel: 'low', violations: [], ruleIds, blockedRuleIds };
     }
 
@@ -130,7 +152,7 @@ export class OutputGuardrailService {
     }
 
     // 汇总：rule 命中 + llm 裁决，取更严重者。
-    const decision = this.mergeDecision(llmDecision, ruleResult.hit);
+    const decision = this.mergeDecision(llmDecision, ruleResult.contradictions);
     return {
       decision,
       riskLevel: llmRisk,
@@ -153,20 +175,19 @@ export class OutputGuardrailService {
     reply: string,
     toolCalls: AgentToolCall[],
   ): 'none' | 'side_effect' | 'commitment_or_fact' {
-    const committedSideEffect = toolCalls.some(
-      (c) => SIDE_EFFECT_TOOLS.has(c.toolName) && isToolSuccess(c.result),
-    );
-    if (committedSideEffect) return 'side_effect';
+    if (hasCommittedSideEffect(toolCalls)) return 'side_effect';
     return OutputGuardrailService.COMMITMENT_OR_FACT_PATTERN.test(reply)
       ? 'commitment_or_fact'
       : 'none';
   }
 
-  /** rule 命中（非 block）按 Phase 1 仅告警，不升级；故合并时只让 llm 决定 revise/block。 */
+  /** rule action 与 llm 裁决合并：block > revise > pass。 */
   private mergeDecision(
     llmDecision: OutputGuardDecision['decision'],
-    _ruleHit: boolean,
+    rules: RuleContradiction[],
   ): OutputGuardDecision['decision'] {
+    if (llmDecision === 'block') return 'block';
+    if (rules.some((c) => c.action === 'revise')) return 'revise';
     return llmDecision;
   }
 
@@ -191,8 +212,8 @@ export interface OutputGuardInput {
   botUserName?: string;
 }
 
-export interface OutputGuardDecision {
-  decision: 'pass' | 'revise' | 'block';
+export interface OutputGuardDecision extends GuardVerdict {
+  decision: OutputDecision;
   riskLevel: GuardrailRiskLevel;
   violations: GuardViolation[];
   /** 本轮命中的全部 rule id（含非 block，供观测）。 */

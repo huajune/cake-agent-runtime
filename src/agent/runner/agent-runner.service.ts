@@ -9,8 +9,8 @@ import type {
 } from '../generator/generator.types';
 import {
   isShortCircuitedToolCall,
+  isSideEffectTool,
   isToolSuccess,
-  SIDE_EFFECT_TOOLS,
 } from '../generator/tool-call-analysis';
 import { classifyReviewedOutcome } from './turn-outcome';
 import {
@@ -18,11 +18,12 @@ import {
   type OutputGuardDecision,
 } from '../guardrail/output/output-guardrail.service';
 import {
-  RiskInterceptService,
   type RiskInterceptInput,
   type PreAgentRiskPrecheckResult,
 } from '../guardrail/input/risk-intercept.service';
-import type { TurnOutcome, TurnRequest } from './agent-runner.types';
+import { InputGuardrailService } from '../guardrail/input/input-guard.service';
+import type { SessionRef, TurnOutcome, TurnRequest, TurnTrigger } from './agent-runner.types';
+import { TurnFinalizer } from './turn-finalizer';
 
 export type {
   SessionRef,
@@ -48,11 +49,21 @@ const PASS_DECISION: OutputGuardDecision = {
   blockedRuleIds: [],
 };
 
+const VISUAL_GENERATED_CONTENT_PATTERN = /^\s*\[(?:图片|表情)消息\]/;
+
 /** 一次「已审生成」的结果：在 GeneratorRunResult 上叠加出站裁决与是否经过 revise 重写。 */
 export interface ReviewedRunResult extends GeneratorRunResult {
   outputDecision: OutputGuardDecision;
   /** 是否经过一次 revise 重写（true 时 text/toolCalls 来自重写版）。 */
   revised: boolean;
+}
+
+/** 一次已审回合结果：生成结果 + 统一 outcome + agent 层 turn-end finalizer。 */
+export interface ReviewedTurnRunResult extends Omit<ReviewedRunResult, 'runTurnEnd'> {
+  outcome: TurnOutcome;
+  turnFinalizer: TurnFinalizer;
+  /** runTurnEnd 已被 turnFinalizer 接管，避免渠道层直接编排记忆收尾。 */
+  runTurnEnd?: undefined;
 }
 
 /** 出站审查所需的接地/观测上下文（runner 从 TurnRequest 或调用方拼装）。 */
@@ -72,7 +83,7 @@ export interface ReviewContext {
  * Agent runner seam.
  *
  * - `invoke`/`stream`：兼容旧调用方的薄委托，直接跑 generator。
- * - `invokeReviewed`：generator → output guardrail → 必要时一次无工具 revise。
+ * - `invokeReviewed`：generator → output guardrail → 必要时一次 revise。
  * - `runTurn`：渠道无关回合编排入口。被动 inbound 与主动 reengagement 汇入同一处，
  *   产出 `TurnOutcome`，runner 不负责投递。
  */
@@ -83,7 +94,7 @@ export class AgentRunnerService {
   constructor(
     private readonly generator: GeneratorService,
     private readonly outputGuard: OutputGuardrailService,
-    private readonly inputRiskGuard: RiskInterceptService,
+    private readonly inputGuard: InputGuardrailService,
   ) {}
 
   invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
@@ -91,42 +102,41 @@ export class AgentRunnerService {
   }
 
   /**
-   * 入站风险预检（input guardrail）。被动渠道在生成前调用一次：命中高置信度风险关键词
-   * 即同步触发人工介入副作用（暂停托管 + 飞书告警，fire-and-forget）并返回 `{ hit: true }`。
-   * 本方法只产出风险信号 + 触发介入副作用，**是否短路本轮**由调用渠道按 `hit` 决定（当前
-   * WeCom 入站命中即静默并转人工，不再跑 Agent）。
+   * 入站风险预检（input guardrail）薄委托。正常被动回合由 runTurn 在进入 generator 前调用，
+   * 命中高置信度风险关键词即由 outcome sideEffects 统一出口触发人工介入副作用。
    *
    * 注意这只是 input 守卫的「pre-agent 拦截」一环；prompt-injection 硬化（扫注入→告警→
-   * 追加 system 防护 suffix）仍在 generator 内的 PreparationService.applyInputGuard 执行，
-   * 不经此入口。
-   *
-   * 渠道侧只负责把入站 DTO 解析成中立 `RiskInterceptInput`（依赖倒置，DTO/parser 留渠道），
-   * pre-agent 拦截的「何时调、调哪个守卫」编排权收敛在 runner，与出站守卫（invokeReviewed）
-   * 对称——渠道不再直接注入 `RiskInterceptService`。
+   * 追加 system 防护 suffix）仍在 generator 内的 PreparationService.applyInputGuard 执行。
    */
   precheckInput(input: RiskInterceptInput): Promise<PreAgentRiskPrecheckResult> {
-    return this.inputRiskGuard.precheck(input);
+    return this.inputGuard.precheckInputRisk(input);
   }
 
   /**
    * 入站风险预检 → 收口成 `TurnOutcome`（input guardrail 的**短路决策**归位到 runner，与出站
-   * 守卫产出 `blocked`/`handoff` 对称）。
+   * 守卫统一产出 `guardrail_blocked`）。
    *
-   * - 命中：guardrail 内部已 fire-and-forget dispatch 人工介入（暂停托管 + 飞书告警），这里收成
-   *   `intercepted` 终态（本轮不跑 Agent）。渠道只负责静默收尾（记跳过观测/去重/ack），不再自己
-   *   判断「hit 了该怎么办」。
+   * - 命中：这里收成 `guardrail_blocked/inbound` 终态并携带 sideEffects（本轮不跑 Agent）。
+   *   渠道只消费最终 outcome；副作用由 outcome commit 统一出口执行。
    * - 未命中：返回 `null`，调用方继续走正常生成。
    */
   async precheckInboundOutcome(input: RiskInterceptInput): Promise<TurnOutcome | null> {
-    const result = await this.inputRiskGuard.precheck(input);
-    if (!result.hit) return null;
+    const decision = await this.inputGuard.evaluate(input);
+    if (decision.decision === 'pass') return null;
+
     return {
-      kind: 'intercepted',
+      kind: 'guardrail_blocked',
       toolCalls: [],
-      intercept: {
-        riskType: result.riskType,
-        label: result.label,
-        reason: result.reason,
+      disposition: decision.disposition,
+      sideEffects: decision.sideEffects,
+      guardrail: {
+        phase: 'inbound',
+        source: 'input_guardrail',
+        riskType: decision.riskType,
+        riskLabel: decision.riskLabel,
+        reason: decision.reason,
+        reasonCode: decision.reasonCode,
+        inspectedText: decision.inspectedText,
       },
     };
   }
@@ -135,8 +145,8 @@ export class AgentRunnerService {
    * 已审生成：generator.invoke → 出站守卫 → 需要时一次 revise 重写（§5.3 / §7）。
    *
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
-   * - decision='revise'：丢弃首版，带 violations + 既成副作用做 `toolMode:'none'` 无工具重写，
-   *   再审一次；二次仍 revise 则按 §9「revise 死循环硬上限 1」收敛为 block。
+   * - decision='revise'：丢弃首版，带 violations + 既成副作用做 `toolMode:'none'`
+   *   无工具重写；二次仍 revise 则按 §9「revise 死循环硬上限 1」收敛为 block。
    * - decision='block'：调用方据此不投递（rule 硬拦 / llm 严重违规 / 降级）。
    *
    * turn-end 语义：内部两次生成都强制 `deferTurnEnd`，确保被丢弃的首版不写记忆；最终采纳版的
@@ -204,6 +214,36 @@ export class AgentRunnerService {
     );
   }
 
+  /**
+   * 渠道入站路径的已审回合入口：`invokeReviewed` + 统一 outcome 分类 + turn-end finalizer 接管。
+   *
+   * 渠道只需要在投递结局已知后调用 `turnFinalizer.settle({ delivered })`，不再直接持有
+   * `runTurnEnd`，也不需要理解 `includeAssistantText` 这条记忆领域规则。
+   */
+  async invokeReviewedTurn(params: {
+    invoke: GeneratorInvokeParams;
+    review: ReviewContext;
+    trigger: TurnTrigger;
+    sessionRef: SessionRef;
+    messageId?: string;
+    onTurnEndError?: (error: unknown) => void;
+  }): Promise<ReviewedTurnRunResult> {
+    const result = await this.invokeReviewed(params.invoke, params.review);
+    const outcome = classifyReviewedOutcome(
+      result,
+      params.trigger,
+      params.sessionRef,
+      params.messageId,
+    );
+    const turnFinalizer = TurnFinalizer.from(result.runTurnEnd, params.onTurnEndError);
+    return {
+      ...result,
+      runTurnEnd: undefined,
+      outcome: { ...outcome, runTurnEnd: undefined },
+      turnFinalizer,
+    };
+  }
+
   private buildGuardInput(
     result: GeneratorRunResult,
     ctx: ReviewContext,
@@ -236,7 +276,7 @@ export class AgentRunnerService {
     const names = [
       ...new Set(
         toolCalls
-          .filter((c) => SIDE_EFFECT_TOOLS.has(c.toolName) && isToolSuccess(c.result))
+          .filter((c) => isSideEffectTool(c.toolName) && isToolSuccess(c.result))
           .map((c) => c.toolName),
       ),
     ];
@@ -280,6 +320,21 @@ export class AgentRunnerService {
     const isProactive = trigger.kind === 'proactive';
     const scenarioCode = isProactive ? trigger.scenarioCode : undefined;
 
+    if (trigger.kind === 'inbound') {
+      const guardrailBlocked = await this.precheckInboundOutcome({
+        corpId: sessionRef.corpId,
+        chatId: sessionRef.sessionId,
+        userId: sessionRef.userId,
+        pauseTargetId: sessionRef.sessionId || sessionRef.userId,
+        scanContent: this.buildInputGuardScanContent(trigger),
+        messageId: context?.messageId,
+        contactName: context?.contactName,
+        botImId: context?.botImId,
+        botUserName: context?.botUserId,
+      });
+      if (guardrailBlocked) return guardrailBlocked;
+    }
+
     const params: GeneratorInvokeParams = {
       callerKind: context?.callerKind ?? CallerKind.WECOM,
       userId: sessionRef.userId,
@@ -288,19 +343,35 @@ export class AgentRunnerService {
       messageId: context?.messageId,
       messages:
         trigger.kind === 'inbound'
-          ? [{ role: 'user', content: trigger.userMessage, imageUrls: trigger.images }]
+          ? [
+              {
+                role: 'user',
+                content: trigger.userMessage,
+                imageUrls: trigger.images,
+                imageMessageIds: context?.imageMessageIds,
+              },
+            ]
           : [{ role: 'user', content: PROACTIVE_TRIGGER_PLACEHOLDER }],
       toolMode: req.toolMode ?? (isProactive ? 'readonly' : 'scenario'),
       proactiveDirective: isProactive ? trigger.directive : undefined,
       deferTurnEnd: true,
+      scenario: context?.scenario,
+      imageUrls: trigger.kind === 'inbound' ? trigger.images : undefined,
+      imageMessageIds: context?.imageMessageIds,
+      visualMessageTypes: context?.visualMessageTypes,
       contactName: context?.contactName,
       botImId: context?.botImId,
       botUserId: context?.botUserId,
+      groupId: context?.groupId,
+      externalUserId: context?.externalUserId,
       token: context?.token,
       imContactId: context?.imContactId,
       imRoomId: context?.imRoomId,
       apiType: context?.apiType,
       modelId: req.modelId,
+      thinking: context?.thinking,
+      shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
+      onPreparedRequest: context?.onPreparedRequest,
     };
 
     let result: ReviewedRunResult;
@@ -328,10 +399,10 @@ export class AgentRunnerService {
       throw err;
     }
 
-    // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：block→blocked、
+    // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：block→guardrail_blocked/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
     const outcome = classifyReviewedOutcome(result, trigger, sessionRef, context?.messageId);
-    if (outcome.kind === 'blocked') {
+    if (outcome.kind === 'guardrail_blocked' && outcome.guardrail?.phase === 'outbound') {
       this.logger.warn(
         `[runTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
           `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
@@ -339,5 +410,18 @@ export class AgentRunnerService {
       );
     }
     return outcome;
+  }
+
+  private buildInputGuardScanContent(trigger: TurnTrigger): string {
+    if (trigger.kind !== 'inbound') return '';
+    const content = trigger.userMessage?.trim() ?? '';
+    if (!content) return '';
+
+    const textLines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !VISUAL_GENERATED_CONTENT_PATTERN.test(line));
+
+    return textLines.join('\n');
   }
 }

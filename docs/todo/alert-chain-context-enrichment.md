@@ -20,7 +20,7 @@ LLM Provider (HTTP 429/500) → reliable.service → runner.service → pipeline
 | 3 | `src/memory/services/short-term.service.ts` | 暴露 lastLoadError 标记 | +5 |
 | 4 | `src/memory/types/memory-runtime.types.ts` | MemoryRecallContext 加 `_warnings` | +3 |
 | 5 | `src/memory/services/memory-lifecycle.service.ts` | 传播 shortTerm 加载失败警告 | +5 |
-| 6 | `src/agent/agent-preparation.service.ts` | PreparedAgentContext 加 `memoryLoadWarning`；空消息抛出诊断信息 | +10 |
+| 6 | `src/agent/generator/preparation.service.ts` | PreparedAgentContext 加 `memoryLoadWarning`；空消息抛出诊断信息 | +10 |
 | 7 | `src/channels/wecom/message/services/pipeline.service.ts` | 修复 isAgentError 分类 + 补全 extra 字段 | +20 |
 | 8 | `src/infra/feishu/services/alert.service.ts` | 两种卡片模板补字段 + extra 结构化渲染 | +30 |
 
@@ -135,7 +135,7 @@ return {
 };
 ```
 
-### 6. `src/agent/agent-preparation.service.ts` — 暴露 memoryLoadWarning
+### 6. `src/agent/generator/preparation.service.ts` — 暴露 memoryLoadWarning
 
 PreparedAgentContext 接口新增：
 ```typescript

@@ -56,7 +56,7 @@ describe('ImageDescriptionService', () => {
         text: description,
         usage: { totalTokens: 100 },
       });
-      mockChatSessionService.updateMessageContent.mockResolvedValue(undefined);
+      mockChatSessionService.updateMessageContent.mockResolvedValue(true);
 
       service.describeAndUpdateAsync('msg-123', 'https://example.com/image.jpg');
 
@@ -120,13 +120,36 @@ describe('ImageDescriptionService', () => {
       expect(mockChatSessionService.updateMessageContent).not.toHaveBeenCalled();
     });
 
+    it('回写命中「无匹配行」时退避重试，行落库后成功写入（不静默丢描述）', async () => {
+      const description = '招聘平台截图，餐厅服务员岗位';
+      mockLlm.generate.mockResolvedValue({
+        text: description,
+        usage: { totalTokens: 100 },
+      });
+      // 首次：历史 insert 尚未落库（无匹配行 → false）；重试一次后命中 → true
+      mockChatSessionService.updateMessageContent
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+
+      service.describeAndUpdateAsync('msg-retry', 'https://example.com/image.jpg');
+
+      // 退避基准 500ms，等待足够覆盖一次重试
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      expect(mockChatSessionService.updateMessageContent).toHaveBeenCalledTimes(2);
+      expect(mockChatSessionService.updateMessageContent).toHaveBeenLastCalledWith(
+        'msg-retry',
+        `[图片消息] ${description}`,
+      );
+    });
+
     it('should use [表情消息] prefix when kind is EMOTION', async () => {
       const description = '微笑表情';
       mockLlm.generate.mockResolvedValue({
         text: description,
         usage: { totalTokens: 50 },
       });
-      mockChatSessionService.updateMessageContent.mockResolvedValue(undefined);
+      mockChatSessionService.updateMessageContent.mockResolvedValue(true);
 
       service.describeAndUpdateAsync(
         'msg-emoji-1',

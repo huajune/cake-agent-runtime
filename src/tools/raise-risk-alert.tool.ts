@@ -1,11 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { SessionService } from '@memory/services/session.service';
-import { InterventionService } from '@biz/intervention/intervention.service';
+import type { ConversationRiskSideEffectIntent } from '@agent/runner/turn-side-effect.types';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { extractLatestUserMessage } from './utils/chat-history.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('raise_risk_alert');
@@ -42,37 +39,50 @@ const inputSchema = z.object({
   summary: z.string().optional().describe('风险摘要：1 句话概括当前局面，供人工快速了解'),
 });
 
-const RISK_TYPE_LABELS: Record<string, string> = {
+type ToolRiskType = ConversationRiskSideEffectIntent['riskType'];
+
+const RISK_TYPE_LABELS: Record<ToolRiskType, string> = {
   abuse: '辱骂/攻击',
   complaint_risk: '投诉/举报风险',
   escalation: '情绪升级',
+  interview_result_inquiry: '面试结果追问',
 };
+
+function extractLatestUserMessageFromToolContext(messages: unknown[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== 'object') {
+      continue;
+    }
+
+    const candidate = message as { role?: unknown; content?: unknown };
+    if (candidate.role !== 'user') {
+      continue;
+    }
+
+    if (typeof candidate.content === 'string') {
+      return candidate.content;
+    }
+  }
+
+  return '';
+}
 
 /**
  * raise_risk_alert 工具
  *
- * 当 Agent 在推理过程中识别到以下任一情况时调用：
- * - 候选人出现辱骂、粗俗表达
- * - 候选人明确投诉、举报或威胁维权
- * - 候选人情绪连续升级、反复追问或出现软负向表达
- *
- * 本工具仅触发副作用：异步暂停托管 + 异步飞书告警（fire-and-forget，不阻塞回复）。
- * 返回值只表示本轮告警任务已接收，不代表异步暂停/飞书发送的最终结果。
- * 安抚话术由 Agent 基于候选人语境自行组织，不使用预设模板，
- * 并且严格禁止在回复中暴露“机器人 / 托管 / 系统”等身份字眼。
+ * 这是 Agent 语义判断后的风险升级工具，不是 input guardrail 的二次关键词拦截。
+ * 高置信关键词风险在生成前由 input guardrail 处理；能走到这里，说明模型需要基于
+ * 当前可见上下文主动升级人工介入。本工具只声明 side-effect intent，最终由 outcome
+ * 统一出口执行暂停托管 + 飞书告警。
  */
-export function buildRaiseRiskAlertTool(
-  interventionService: InterventionService,
-  chatSessionService: ChatSessionService,
-  sessionService: SessionService,
-): ToolBuilder {
+export function buildRaiseRiskAlertTool(): ToolBuilder {
   return (context) => {
     return tool({
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ riskType, reason, summary }) => {
         const chatId = context.chatId ?? context.sessionId;
-        const pauseTargetId = chatId || context.imContactId || context.userId;
 
         if (!chatId) {
           logger.warn(`raise_risk_alert 缺少 chatId (user=${context.userId})`);
@@ -85,50 +95,20 @@ export function buildRaiseRiskAlertTool(
           });
         }
 
-        const [recentMessages, sessionState] = await Promise.all([
-          chatSessionService.getChatHistory(chatId, 10).catch(() => []),
-          sessionService
-            .getSessionState(context.corpId, context.userId, context.sessionId)
-            .catch(() => null),
-        ]);
-
-        void interventionService
-          .dispatch({
-            kind: 'conversation_risk',
-            source: 'agent_tool',
-            riskType,
-            riskLabel: RISK_TYPE_LABELS[riskType] ?? '交流异常',
-            summary: summary?.trim() || '候选人对话出现异常风险',
-            reason: reason?.trim() || `命中 ${riskType}`,
-            chatId,
-            corpId: context.corpId,
-            userId: context.userId,
-            pauseTargetId,
-            botImId: context.botImId,
-            botUserName: context.botUserId,
-            contactName: context.contactName,
-            currentMessageContent: extractLatestUserMessage(recentMessages),
-            recentMessages: recentMessages.map((m) => ({
-              role: m.role as 'user' | 'assistant',
-              content: m.content,
-              timestamp: m.timestamp,
-            })),
-            sessionState,
-          })
-          .then((result) => {
-            logger.warn(
-              `raise_risk_alert dispatched: chatId=${chatId}, type=${riskType}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
-            );
-          })
-          .catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            logger.error(
-              `raise_risk_alert dispatch 异步执行失败: chatId=${chatId}, type=${riskType}, ${message}`,
-            );
-          });
+        const currentMessageContent = extractLatestUserMessageFromToolContext(context.messages);
+        const finalRiskType = riskType as ToolRiskType;
 
         return {
           accepted: true,
+          sideEffect: {
+            kind: 'conversation_risk',
+            source: 'agent_tool',
+            riskType: finalRiskType,
+            riskLabel: RISK_TYPE_LABELS[finalRiskType] ?? '交流异常',
+            summary: summary?.trim() || '候选人对话出现异常风险',
+            reason: reason.trim() || `命中 ${finalRiskType}`,
+            currentMessageContent,
+          },
           instruction:
             '请在本轮回复中以招募者身份共情候选人情绪，避免继续推进任务；严禁使用“机器人/托管/系统/自动”等字眼。',
         };

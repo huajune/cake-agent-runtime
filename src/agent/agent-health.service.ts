@@ -4,7 +4,7 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { RegistryService } from '@providers/registry.service';
 import { RouterService } from '@providers/router.service';
-import { ContextService } from './context/context.service';
+import { ContextService } from './generator/context/context.service';
 
 export interface DependencyCheck {
   ok: boolean;

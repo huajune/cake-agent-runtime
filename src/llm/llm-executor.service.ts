@@ -62,10 +62,15 @@ export class LlmExecutorService {
     const plan = this.resolveExecutionPlan(routeOptions);
     const attempts: string[] = [];
     let lastRawError: unknown = null;
+    const requiresVisionInput = this.hasVisionInput(routeOptions.messages);
 
     await this.emitPreparedRequest(plan, routeOptions, thinking, onPreparedRequest);
 
     for (const modelId of this.iterateCandidateModels(plan)) {
+      if (requiresVisionInput && !supportsVision(modelId)) {
+        attempts.push(`${modelId}: 模型不支持图片输入`);
+        continue;
+      }
       if (!this.reliable.isModelAvailable(modelId)) {
         attempts.push(`${modelId}: provider未注册`);
         continue;
@@ -129,10 +134,15 @@ export class LlmExecutorService {
   async stream(options: LlmStreamOptions): Promise<ReturnType<typeof streamText>> {
     const { onPreparedRequest, thinking, ...routeOptions } = options;
     const plan = this.resolveExecutionPlan(routeOptions);
+    const requiresVisionInput = this.hasVisionInput(routeOptions.messages);
     await this.emitPreparedRequest(plan, routeOptions, thinking, onPreparedRequest);
 
     let lastError: Error | undefined;
     for (const modelId of this.iterateCandidateModels(plan)) {
+      if (requiresVisionInput && !supportsVision(modelId)) {
+        lastError = new Error(`模型不支持图片输入: ${modelId}`);
+        continue;
+      }
       if (!this.reliable.isModelAvailable(modelId)) {
         lastError = new Error(`模型不可用: ${modelId}`);
         continue;
@@ -184,7 +194,11 @@ export class LlmExecutorService {
     disableFallbacks?: boolean;
   }): boolean {
     const plan = this.resolveExecutionPlan(options);
-    return this.iterateCandidateModels(plan).every((modelId) => supportsVision(modelId));
+    // Whether to build the primary request as multimodal should be decided by the
+    // primary model. Requiring every fallback to support vision disables image
+    // parts whenever a text-only fallback is configured, forcing unnecessary
+    // pre-agent image description even though the normal path can see images directly.
+    return supportsVision(plan.primaryModelId);
   }
 
   private resolveExecutionPlan(options: {
@@ -210,6 +224,15 @@ export class LlmExecutorService {
 
   private iterateCandidateModels(plan: ExecutionPlan): string[] {
     return Array.from(new Set([plan.primaryModelId, ...plan.fallbackModelIds].filter(Boolean)));
+  }
+
+  private hasVisionInput(messages: LlmGenerateOptions['messages']): boolean {
+    if (!Array.isArray(messages)) return false;
+    return messages.some((message) => {
+      const content = message.content;
+      if (!Array.isArray(content)) return false;
+      return content.some((part) => part && typeof part === 'object' && part.type === 'image');
+    });
   }
 
   private buildProviderOptions(

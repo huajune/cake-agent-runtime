@@ -465,7 +465,10 @@
       "Bash(python3 -c \"import json; d=json.load\\(open\\('.release/pending-release.json'\\)\\); print\\('✅ JSON 合法; next:', d['nextVersion'], '; entries:', [e['number'] for e in d['entries']], '; lastRelease:', d['lastRelease']['version']\\)\")",
       "Bash(git check-ignore *)",
       "Bash(perl -0pi -e 's/\\\\n      const redisService = module\\\\.get\\\\\\(RedisService\\\\\\);//g' tests/sponge/sponge/sponge.service.spec.ts)",
-      "Bash(git --no-pager log --oneline -1)"
+      "Bash(git --no-pager log --oneline -1)",
+      "Bash(git --no-pager diff --cached --name-status)",
+      "Bash(git --no-pager diff --cached --name-only)",
+      "Bash(nvm use *)"
     ],
     "deny": [
       "Bash(git restore:*)",

@@ -1,5 +1,16 @@
 import type { CallerKind } from '@/enums/agent.enum';
-import type { AgentToolCall, GeneratorToolMode } from '../generator/generator.types';
+import type {
+  AgentToolCall,
+  GeneratorInvokeParams,
+  GeneratorRunResult,
+  GeneratorToolMode,
+} from '../generator/generator.types';
+import type {
+  GuardrailRiskLevel,
+  InputRiskType,
+  OutputDecision,
+} from '@shared-types/guardrail.contract';
+import type { TurnSideEffectIntent } from './turn-side-effect.types';
 
 /** 会话三元组（记忆隔离键）。 */
 export interface SessionRef {
@@ -9,7 +20,18 @@ export interface SessionRef {
 }
 
 /** 回合运行所需的渠道/身份上下文（透传给 generator）。 */
-export interface TurnContext {
+export interface TurnContext
+  extends Pick<
+    GeneratorInvokeParams,
+    | 'scenario'
+    | 'imageMessageIds'
+    | 'visualMessageTypes'
+    | 'externalUserId'
+    | 'groupId'
+    | 'thinking'
+    | 'shortTermEndTimeInclusive'
+    | 'onPreparedRequest'
+  > {
   callerKind?: CallerKind;
   contactName?: string;
   botImId?: string;
@@ -44,20 +66,55 @@ export interface TurnRequest {
  *
  * - reply       ：可对外投递的回复
  * - skipped     ：本轮沉默（空文本/短路/skip_reply）——不投递、不告警
- * - blocked     ：出站守卫拦下普通话术问题——不投递、记观测，不暂停托管
- * - handoff     ：出站高危/结构性——不投递 + 转人工（pause+告警，由 outcome 层 dispatch）
- * - intercepted ：**入站**风险预检命中（input guardrail）——本轮根本不跑 Agent，guardrail 内部
- *                 已 dispatch 人工介入（暂停+告警），渠道只需静默收尾。与 handoff 的区别：handoff
- *                 是「跑完 Agent 后」的出站转人工，intercepted 是「跑 Agent 前」的入站拦截。
+ * - guardrail_blocked：入站/出站守卫拦截——不投递，处置策略由 sideEffects/disposition 显式表达
+ * - handoff     ：非 guardrail 的业务/工具转人工——不投递 + 转人工（pause+告警，由 outcome sideEffects 统一出口执行）
  */
 export interface TurnOutcome {
-  kind: 'reply' | 'skipped' | 'blocked' | 'handoff' | 'intercepted';
+  kind: 'reply' | 'skipped' | 'guardrail_blocked' | 'handoff';
   reply?: { text: string };
   toolCalls: AgentToolCall[];
+  /** 审查后的生成文本；reply 时等于 reply.text，非投递终态时供观测留痕。 */
+  generatedText?: string;
+  reasoning?: GeneratorRunResult['reasoning'];
+  usage?: GeneratorRunResult['usage'];
+  agentSteps?: GeneratorRunResult['agentSteps'];
+  memorySnapshot?: GeneratorRunResult['memorySnapshot'];
+  responseMessages?: GeneratorRunResult['responseMessages'];
+  /** 本 outcome 被最终采纳后才允许执行的副作用意图（暂停托管、告警、handoff 底账等）。 */
+  sideEffects?: TurnSideEffectIntent[];
+  /**
+   * guardrail_blocked 的处置意图。默认不允许裸静默；如未来确需静默，必须显式置 silent。
+   * 当前线上策略：入站/出站守卫拦截均通过 sideEffects 触发人工兜底。
+   */
+  disposition?: 'side_effects' | 'silent';
   /** reengagement/观测用：本回合命中的主动场景码。 */
   scenarioCode?: string;
-  /** kind==='intercepted' 时携带命中的风险归因（guardrail 内已据此 dispatch 介入）。 */
-  intercept?: { riskType?: string; label?: string; reason?: string };
+  /** kind==='guardrail_blocked' 时携带守卫归因，phase 区分入站/出站。 */
+  guardrail?: {
+    phase: 'inbound' | 'outbound';
+    source: 'input_guardrail' | 'output_guardrail';
+    ruleIds?: string[];
+    reasonCode?: string;
+    reason?: string;
+    riskType?: InputRiskType;
+    riskLabel?: string;
+    inspectedText?: string;
+    /** 是否由确定性 rule 档拦截；guardrail_blocked 总是显式携带处置策略。 */
+    ruleBlocked?: boolean;
+  };
+  /**
+   * 出站守卫裁决摘要（所有 outcome 均携带，pass/revise/block 都记录，供观测层全量感知）。
+   * 入站被拦截（guardrail_blocked/inbound）时不会产生出站决策，此字段为空。
+   */
+  outputGuardrail?: {
+    decision: OutputDecision;
+    riskLevel: GuardrailRiskLevel;
+    ruleIds: string[];
+    blockedRuleIds: string[];
+    reasonCode?: string;
+    /** 本回合是否触发了 revise 重写（最终 pass 也记录）。 */
+    revised: boolean;
+  };
   /**
    * deferTurnEnd 时暴露给调用方，投递成功后显式触发记忆收尾。
    * `includeAssistantText=false`（默认 true）：回复未真实送达（守卫拦截/沉默/投递失败）时，
@@ -70,7 +127,7 @@ export interface TurnOutcome {
     sourceToolCall: string;
     /** `${chatId}:handoff:${turnId}` —— 与现有 request_handoff 一致。 */
     idempotencyKey: string;
-    /** 迁移期：request_handoff 在工具内已 dispatch → true，outcome 层不再 dispatch。 */
+    /** 兼容旧工具结果：若副作用已在工具内执行，outcome 出口不再重复执行。 */
     alreadyDispatched?: boolean;
   };
 }

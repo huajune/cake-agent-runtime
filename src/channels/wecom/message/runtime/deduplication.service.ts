@@ -64,7 +64,7 @@ export class MessageDeduplicationService implements OnModuleInit {
     );
 
     if (!acquired) {
-      this.logger.debug(`[去重] 消息 [${messageId}] 已被其他进程处理`);
+      this.logger.debug(`[去重] 消息 [${messageId}] 已被其他流程接手或处理`);
       return false;
     }
 

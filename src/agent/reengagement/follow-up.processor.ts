@@ -3,9 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 import { SessionService } from '@memory/services/session.service';
-import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from '../ports/channel-delivery.port';
-import { TurnRunnerService } from '../runner/turn-runner.service';
-import type { TurnOutcome } from '../runner/turn-runner.types';
+import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from './channel-delivery.port';
+import { AgentRunnerService } from '../runner/agent-runner.service';
+import type { TurnOutcome } from '../runner/agent-runner.types';
+import { TurnOutcomeInterventionService } from '../runner/turn-outcome-intervention.service';
 import { REENGAGEMENT_JOB_NAME, REENGAGEMENT_QUEUE, type FollowUpJob } from './reengagement.types';
 import {
   computeFireAt,
@@ -30,9 +31,10 @@ export class FollowUpProcessor implements OnModuleInit {
   constructor(
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
     private readonly session: SessionService,
-    private readonly runner: TurnRunnerService,
+    private readonly runner: AgentRunnerService,
     private readonly touchLedger: TouchLedgerService,
     private readonly configService: ConfigService,
+    private readonly outcomeFinalizer: TurnOutcomeInterventionService,
     @Optional()
     @Inject(CHANNEL_DELIVERY_PORT)
     private readonly delivery?: ChannelDeliveryPort<TurnOutcome>,
@@ -87,71 +89,86 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    // 4) 复用 runner 构造主动回合（toolMode:'readonly' 物理禁副作用）
-    const directive = `${scenario.objective}。生成要求：${scenario.generationPolicy}`;
-    const outcome = await this.runner.runTurn({
-      sessionRef,
-      trigger: { kind: 'proactive', directive, scenarioCode },
-      toolMode: 'readonly',
-    });
-
-    // 5) 投递 + 触达底账（shadow 只记不发）
-    if (outcome.kind !== 'reply' || !outcome.reply) {
-      this.logger.log(
-        `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
-      );
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
-      return;
-    }
-
+    // 4) 投递 + 触达底账（shadow 只记不发）
     const shadow = this.isShadow();
     if (shadow || !scenario.rolloutEnabled || !this.delivery) {
+      const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario);
       this.logger.log(
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
-          `text="${outcome.reply.text.slice(0, 60)}"（shadow=${shadow}, rollout=${scenario.rolloutEnabled}）`,
+          `text="${outcome.kind === 'reply' ? outcome.reply?.text.slice(0, 60) : `[${outcome.kind}]`}"` +
+          `（shadow=${shadow}, rollout=${scenario.rolloutEnabled}）`,
       );
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
       return;
     }
 
-    await this.outboxDeliver(outcome, sessionRef.sessionId, scenarioCode, anchorAt, now);
-  }
-
-  /** outbox 状态机投递：reserve → attempted → sent / unknown。 */
-  private async outboxDeliver(
-    outcome: TurnOutcome,
-    sessionId: string,
-    scenarioCode: string,
-    anchorAt: number,
-    now: number,
-  ): Promise<void> {
-    const key = `${sessionId}:${scenarioCode}:${anchorAt}`;
+    const key = `${sessionRef.sessionId}:${scenarioCode}:${anchorAt}`;
     const slot = await this.touchLedger.reserve(key);
     if (slot === 'duplicate_sent') {
       this.logger.log(`[reengagement] 已发过，跳过 key=${key}`);
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
       return;
     }
     if (slot === 'duplicate_inflight') {
       this.logger.warn(`[reengagement] 触达已在途/状态不明，跳过重投 key=${key}`);
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
       return;
     }
+
+    const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario);
+    if (outcome.kind !== 'reply' || !outcome.reply) {
+      this.logger.log(
+        `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
+      );
+      await this.outcomeFinalizer.commit(outcome, {
+        traceId: key,
+        chatId: sessionRef.sessionId,
+        userId: sessionRef.userId,
+        corpId: sessionRef.corpId,
+        userMessage: `[系统主动跟进:${scenarioCode}]`,
+      });
+      await this.touchLedger.markFailedOrUnknown(key, 'failed');
+      return;
+    }
+
+    await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now);
+  }
+
+  private runProactiveTurn(
+    sessionRef: FollowUpJob['sessionRef'],
+    scenarioCode: string,
+    scenario: NonNullable<ReturnType<typeof getScenario>>,
+  ): Promise<TurnOutcome> {
+    const directive = `${scenario.objective}。生成要求：${scenario.generationPolicy}`;
+    return this.runner.runTurn({
+      sessionRef,
+      trigger: { kind: 'proactive', directive, scenarioCode },
+      toolMode: 'readonly',
+    });
+  }
+
+  /** outbox 状态机投递：reserved → attempted → sent / unknown。 */
+  private async outboxDeliverReserved(
+    outcome: TurnOutcome,
+    key: string,
+    sessionId: string,
+    now: number,
+  ): Promise<void> {
     try {
       await this.touchLedger.markDeliveryAttempted(key);
       await this.delivery!.deliver(outcome, { idempotencyKey: key });
       await this.touchLedger.markSent(key, sessionId, now);
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
-      this.logger.log(`[reengagement] 已投递 key=${key}`);
     } catch (error) {
       // deliver 后状态不明 → unknown，交补偿，不盲重投
-      try {
-        await this.touchLedger.markFailedOrUnknown(key, 'unknown');
-      } finally {
-        if (outcome.runTurnEnd) await outcome.runTurnEnd();
-      }
+      await this.touchLedger.markFailedOrUnknown(key, 'unknown');
       throw error;
     }
+
+    try {
+      await outcome.runTurnEnd?.({ includeAssistantText: true });
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] turn-end lifecycle 执行失败，不改写触达状态: key=${key}, error=${this.errorMessage(error)}`,
+      );
+    }
+    this.logger.log(`[reengagement] 已投递 key=${key}`);
   }
 
   /** 不在窗口：推到下一个 9-21 窗口重排（不消费 attempts）。 */
@@ -178,5 +195,9 @@ export class FollowUpProcessor implements OnModuleInit {
     this.logger.log(
       `[reengagement] 非投递窗口，推迟到 ${new Date(fireAt).toISOString()} 重判 jobId=${job.id} rescheduledJobId=${jobId}`,
     );
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

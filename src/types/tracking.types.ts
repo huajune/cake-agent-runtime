@@ -9,6 +9,11 @@ import type {
   AgentStepDetail,
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
+import type {
+  GuardrailRiskLevel,
+  InputRiskType,
+  OutputDecision,
+} from '@shared-types/guardrail.contract';
 
 /**
  * 告警错误类型
@@ -80,6 +85,23 @@ export interface MonitoringMetadata {
   anomalyFlags?: AnomalyFlag[];
   /** Agent 调用记录（完整的请求/响应，用于排障） */
   agentInvocation?: AgentInvocationRecord;
+  /** 入站守卫裁决摘要（仅 block 时携带）。 */
+  guardrailInput?: {
+    decision: 'block';
+    riskType?: InputRiskType;
+    riskLabel?: string;
+    reasonCode?: string;
+    reason?: string;
+  };
+  /** 出站守卫裁决摘要（pass/revise/block 全量记录）。 */
+  guardrailOutput?: {
+    decision: OutputDecision;
+    riskLevel: GuardrailRiskLevel;
+    ruleIds: string[];
+    blockedRuleIds: string[];
+    reasonCode?: string;
+    revised: boolean;
+  };
 }
 
 /**
@@ -143,6 +165,10 @@ export interface MessageProcessingRecord {
 
   /** Agent 调用记录 */
   agentInvocation?: AgentInvocationRecord;
+  /** 入站守卫裁决摘要（仅 block 时非空）。 */
+  guardrailInput?: MonitoringMetadata['guardrailInput'];
+  /** 出站守卫裁决摘要（pass/revise/block 全量，入站被拦截时为空）。 */
+  guardrailOutput?: MonitoringMetadata['guardrailOutput'];
 }
 
 /**

@@ -14,6 +14,31 @@
 
 export type GuardrailLayer = 'input' | 'tool' | 'output';
 
+/** Guardrail 生效点：用于审计是否存在绕过路径。 */
+export type GuardrailStage =
+  | 'input_pre_agent'
+  | 'agent_reasoning'
+  | 'tool_runtime'
+  | 'output_pre_send'
+  | 'memory_write'
+  | 'ops_handoff';
+
+/** 运营/验收视角的执行动作。 */
+export type GuardrailAction =
+  | 'prompt_only'
+  | 'observe'
+  | 'revise'
+  | 'block'
+  | 'pause_hosting'
+  | 'reject_collect'
+  | 'reject_hard';
+
+/** 护栏缺口治理优先级：P0 会形成合规/资金/信任硬风险，P2 多为体验或观测增强。 */
+export type GuardrailPriority = 'P0' | 'P1' | 'P2';
+
+/** 覆盖来源：避免把 prompt-only 误算成代码兜底。 */
+export type GuardrailCoverage = 'code' | 'hybrid' | 'prompt_only' | 'planned';
+
 /**
  * 统一决策枚举（按层取子集）：
  * - input：`pass | block`
@@ -23,12 +48,34 @@ export type GuardrailLayer = 'input' | 'tool' | 'output';
 export type GuardrailDecision =
   | 'pass'
   | 'revise'
+  | 'replan'
   | 'block'
   | 'allow'
   | 'reject_collect'
   | 'reject_hard';
 
+/** Input 层决策子集。 */
+export type InputDecision = Extract<GuardrailDecision, 'pass' | 'block'>;
+
+/** Output 层决策子集。 */
+export type OutputDecision = Extract<GuardrailDecision, 'pass' | 'revise' | 'replan' | 'block'>;
+
+/** Input 层风险类型码（对应 risk-intercept.service 的检测分类）。 */
+export type InputRiskType = 'abuse' | 'complaint_risk' | 'interview_result_inquiry';
+
 export type GuardrailRiskLevel = 'low' | 'medium' | 'high';
+
+/** 被命中内容本身的数据敏感等级；不要和风险严重度混用。 */
+export type GuardrailDataSensitivity = 'none' | 'normal' | 'high';
+
+/** 命中后是否能通过受控修复继续本回合。 */
+export type GuardrailRecoverability = 'recoverable' | 'non_recoverable';
+
+/** 反馈给 generator 时的脱敏策略。 */
+export type GuardrailFeedbackPolicy = 'none' | 'plain_policy' | 'redacted';
+
+/** 修复方式：纯文案重写，或允许重新规划并调用只读工具。 */
+export type GuardrailRepairMode = 'rewrite' | 'replan';
 
 /** 单条违规意见（HC-1 revise 回路注入用）。 */
 export interface GuardViolation {
@@ -43,6 +90,12 @@ export interface GuardViolation {
     | (string & Record<never, never>);
   evidence: string;
   suggestion: string;
+  severity?: GuardrailPriority;
+  dataSensitivity?: GuardrailDataSensitivity;
+  recoverability?: GuardrailRecoverability;
+  currentReplySendable?: boolean;
+  feedbackPolicy?: GuardrailFeedbackPolicy;
+  repairMode?: GuardrailRepairMode;
 }
 
 export interface GuardVerdict {

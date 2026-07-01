@@ -27,7 +27,6 @@ import { MessagePipelineService } from './application/pipeline.service';
 import { ImageDescriptionService } from './application/image-description.service';
 import { WecomMessageObservabilityService } from './telemetry/wecom-message-observability.service';
 import { NotificationModule } from '@notification/notification.module';
-import { ConversationRiskModule } from '@/conversation-risk/conversation-risk.module';
 import { MessageRuntimeConfigService } from './runtime/message-runtime-config.service';
 import { MessageTraceStoreService } from './telemetry/message-trace-store.service';
 import { MessageWorkerManagerService } from './runtime/message-worker-manager.service';
@@ -65,7 +64,6 @@ import {
     NotificationModule,
     InterventionModule,
     MemoryModule,
-    ConversationRiskModule,
     // 注册消息聚合队列
     BullModule.registerQueue({
       name: 'message-merge',
