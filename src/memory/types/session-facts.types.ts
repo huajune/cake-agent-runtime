@@ -864,6 +864,10 @@ export interface WeworkSessionState {
   currentFocusJob: RecommendedJobSummary | null;
   /** 本会话中已邀入的兼职群 */
   invitedGroups: InvitedGroupRecord[] | null;
+  /** 最近一条候选人入站消息时间戳（毫秒），复聊停止条件使用。 */
+  lastCandidateMessageAt: number | null;
+  /** 本会话终态信号，复聊停止条件使用。 */
+  terminal: 'booked' | 'handed_off' | 'rejected' | 'onboarded' | null;
 }
 
 export const InvitedGroupRecordSchema = z.object({
@@ -879,6 +883,8 @@ export const WeworkSessionStateSchema = z.object({
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
+  lastCandidateMessageAt: z.number().nullable(),
+  terminal: z.enum(['booked', 'handed_off', 'rejected', 'onboarded']).nullable(),
 });
 
 /** 当前会话没有任何结构化记忆时的空状态。 */
@@ -888,6 +894,8 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   presentedJobs: null,
   currentFocusJob: null,
   invitedGroups: null,
+  lastCandidateMessageAt: null,
+  terminal: null,
 };
 
 // ==================== 3. Redis 持久化结构 ====================

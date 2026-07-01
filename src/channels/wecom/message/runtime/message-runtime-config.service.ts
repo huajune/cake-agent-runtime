@@ -5,7 +5,7 @@ import {
   AgentReplyConfig,
   AgentThinkingMode,
 } from '@biz/hosting-config/types/hosting-config.types';
-import type { AgentThinkingConfig } from '@agent/agent-run.types';
+import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 
 export interface MessageTypingConfig {
   typingSpeedCharsPerSec: number;
@@ -15,7 +15,7 @@ export interface MessageTypingConfig {
 interface WecomChatSelection {
   overrideModelId?: string;
   thinkingMode: AgentThinkingMode;
-  thinking: AgentThinkingConfig;
+  thinking: GeneratorThinkingConfig;
 }
 
 @Injectable()

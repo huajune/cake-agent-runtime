@@ -5,7 +5,7 @@ import { CallerKind } from '@enums/agent.enum';
 import { GeneratorService } from './generator/generator.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
-import { DebugChatDto } from './dto/debug-chat.dto';
+import { DebugChatDto } from './debug-chat.dto';
 
 @Controller('agent')
 export class AgentController {

@@ -36,9 +36,9 @@
 
 | 能力 | 现状 | 位点 |
 |---|---|---|
-| `runner` seam | `TurnRunnerService` 薄委托 `AgentRunnerService`，行为不变 | [turn-runner.service.ts](../../src/agent/runner/turn-runner.service.ts) |
-| `ChannelDeliveryPort` | 接口已定义（`deliver(outcome, {idempotencyKey})`） | [channel-delivery.port.ts](../../src/agent/ports/channel-delivery.port.ts) |
-| `toolMode` 接缝 | `AgentInvokeParams.toolMode: scenario\|readonly\|none`，preparation 物理过滤工具 | [agent-run.types.ts:27](../../src/agent/agent-run.types.ts#L27)、agent-preparation.service.ts |
+| `runner` seam | `AgentRunnerService` 薄委托 `AgentRunnerService`，行为不变 | [agent-runner.service.ts](../../src/agent/runner/agent-runner.service.ts) |
+| `ChannelDeliveryPort` | 接口已定义（`deliver(outcome, {idempotencyKey})`） | [channel-delivery.port.ts](../../src/agent/reengagement/channel-delivery.port.ts) |
+| `toolMode` 接缝 | `AgentInvokeParams.toolMode: scenario\|readonly\|none`，preparation 物理过滤工具 | [generator.types.ts:27](../../src/agent/generator.types.ts#L27)、agent-preparation.service.ts |
 | 权威状态骨架 | `AuthoritativeSessionState` 类型 + `SessionService.getAuthoritativeState()`（派生只读） | [authoritative-session-state.types.ts](../../src/memory/types/authoritative-session-state.types.ts)、session.service.ts:131 |
 | HC-2 jobId 闸门 | `recalledJobIds:Set` 成员判定 `isRecalledJobId`，booking 无召回出处 → `{shortCircuited,gateRejected,reasonCode:'job_id_not_recalled'}` | precheck/booking tool、tool.types.ts |
 | HC-3 booking-gate handoff | runner any-tool 短路 + outcome 层 `dispatchBookingGateHandoffIfNeeded`（先写底账→duplicate跳过→failed仍fail-safe dispatch） | [reply-workflow.service.ts:548](../../src/channels/wecom/message/application/reply-workflow.service.ts#L548) |
@@ -74,7 +74,7 @@
         └── PR-G  补锚点事件（store_presented / booking_incomplete ops_events） ← reengagement 真发前
 ```
 
-**关键洞察**：reengagement（新需求 headline）依赖 `runner.runTurn` 支持 **proactive trigger**（从 directive 而非 user message 起一个回合）。当前 `TurnRunnerService` 只透传 `invoke(AgentInvokeParams)`，没有 proactive 入口 —— 这是 PR-E 必须先补的接缝。故 **reengagement 不能跳过 PR-E 直接做**。
+**关键洞察**：reengagement（新需求 headline）依赖 `runner.runTurn` 支持 **proactive trigger**（从 directive 而非 user message 起一个回合）。当前 `AgentRunnerService` 只透传 `invoke(AgentInvokeParams)`，没有 proactive 入口 —— 这是 PR-E 必须先补的接缝。故 **reengagement 不能跳过 PR-E 直接做**。
 
 ---
 
@@ -110,7 +110,7 @@
 ### PR-C — guardrail/ 目录归并（纯搬家）
 
 - **依赖**：无（建议早做，给 PR-D 腾位）。
-- **改动面**：建 `types/guardrail.contract.ts` 中立契约；`agent/guardrail/{input,output,catalog}`；迁 `input-guard`→input、`reply-fact-guard`→output/rule、`pre-agent-risk-intercept`→input/risk。**tool guardrail 物理留 tools/**（分层防环），仅登 catalog。
+- **改动面**：建 `types/guardrail.contract.ts` 中立契约；`agent/guardrail/{input,output,catalog}`；迁 `input-guard`→input、`reply-fact-guard`→output/rule、`pre-agent-risk-intercept`→input/risk，并把原 `conversation-risk` 收敛进 `agent/guardrail/input/risk-intercept.service.ts` 高置信关键词风险拦截。**tool guardrail 物理留 tools/**（分层防环），仅登 catalog。
 - **验证点**：行为等价 —— 全量跑现有 guard 相关测试，断言无行为差异（纯 import 路径 + DI 迁移）。
 - **回滚边界**：纯结构迁移，易回滚；与语义变更分开提交。
 
@@ -125,7 +125,7 @@
 - **依赖**：PR-A。
 - **改动面**：
   - `TurnOutcome { kind: 'reply'|'skipped'|'blocked'|'handoff'; reply?; toolCalls; guardDecision?; runTurnEnd?; handoff?{reasonCode,sourceToolCall,idempotencyKey,alreadyDispatched} }`。
-  - `TurnRunnerService.runTurn(TurnRequest)`：`trigger: {kind:'inbound', userMessage} | {kind:'proactive', directive, scenarioCode}`；proactive 把 directive 合成为输入起回合，透传 `toolMode`。
+  - `AgentRunnerService.runTurn(TurnRequest)`：`trigger: {kind:'inbound', userMessage} | {kind:'proactive', directive, scenarioCode}`；proactive 把 directive 合成为输入起回合，透传 `toolMode`。
   - reply-workflow 改调 `runTurn`，把现有 `block/handoff` 映射收口进 outcome（`block` 带 `severity` → `blocked` vs `handoff`）。**迁移期 request_handoff 仍工具内 dispatch、标 `alreadyDispatched`，不进 outcome dispatch**（防双派发，已是现状）。
 - **验证点**：被动路径行为等价（现有 reply-workflow 测试全绿）；proactive 入口能起一个 readonly 回合产出 outcome（不投递）。
 - **回滚边界**：被动路径必须零行为差异；proactive 是纯新增路径。

@@ -9,7 +9,7 @@ import type {
   SummaryData,
   SummaryEntry,
   MessageMetadata,
-  LatestBooking,
+  ActiveBooking,
   LongTermPreferenceFacts,
 } from '../types/long-term.types';
 import {
@@ -247,29 +247,44 @@ export class LongTermService {
     }
   }
 
-  // ==================== latest_booking ====================
+  // ==================== active_booking ====================
 
   /**
-   * 读取候选人最近一次预约工单指针。
+   * 读取候选人当前有效/待处理预约工单指针。
    * Agent 上下文渲染 / request_handoff(modify_appointment) 守卫使用。
    */
-  async getLatestBooking(corpId: string, userId: string): Promise<LatestBooking | null> {
+  async getActiveBooking(corpId: string, userId: string): Promise<ActiveBooking | null> {
     try {
-      return await this.supabaseStore.getLatestBooking(corpId, userId);
+      return await this.supabaseStore.getActiveBooking(corpId, userId);
     } catch (error) {
-      this.logger.warn('获取 latest_booking 失败', error);
+      this.logger.warn('获取 active_booking 失败', error);
       return null;
     }
   }
 
   /**
-   * 预约成功时写入最近预约工单指针（永不清空，新预约覆盖）。
+   * 预约成功时写入当前有效/待处理预约工单指针（新预约覆盖）。
    */
-  async setLatestBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
+  async setActiveBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
     try {
-      await this.supabaseStore.setLatestBooking(corpId, userId, workOrderId);
+      await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId);
     } catch (error) {
-      this.logger.warn('写入 latest_booking 失败', error);
+      this.logger.warn('写入 active_booking 失败', error);
+    }
+  }
+
+  /**
+   * 取消当前工单成功时清空 active_booking。
+   */
+  async clearActiveBooking(
+    corpId: string,
+    userId: string,
+    expectedWorkOrderId?: number,
+  ): Promise<void> {
+    try {
+      await this.supabaseStore.clearActiveBooking(corpId, userId, expectedWorkOrderId);
+    } catch (error) {
+      this.logger.warn('清空 active_booking 失败', error);
     }
   }
 

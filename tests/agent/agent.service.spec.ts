@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { GeneratorService } from '@agent/generator/generator.service';
-import { AgentPreparationService } from '@agent/agent-preparation.service';
+import { PreparationService } from '@agent/generator/preparation.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { MemoryService } from '@memory/memory.service';
@@ -59,7 +59,7 @@ describe('GeneratorService', () => {
       providers: [
         GeneratorService,
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: AgentPreparationService, useValue: mockPreparation },
+        { provide: PreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
         { provide: LlmExecutorService, useValue: mockLlm },
       ],
@@ -157,7 +157,7 @@ describe('GeneratorService', () => {
       providers: [
         GeneratorService,
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: AgentPreparationService, useValue: mockPreparation },
+        { provide: PreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
         { provide: LlmExecutorService, useValue: mockLlm },
       ],

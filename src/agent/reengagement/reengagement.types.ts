@@ -1,5 +1,5 @@
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
-import type { SessionRef } from '../runner/turn-runner.types';
+import type { SessionRef } from '../runner/agent-runner.types';
 
 export const REENGAGEMENT_QUEUE = 'reengagement';
 export const REENGAGEMENT_JOB_NAME = 'follow-up';

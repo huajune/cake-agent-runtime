@@ -1,6 +1,6 @@
 import { ArgumentMetadata } from '@nestjs/common';
 import { createGlobalValidationPipe } from '@infra/server/validation/global-validation-pipe';
-import { DebugChatDto } from '@agent/dto/debug-chat.dto';
+import { DebugChatDto } from '@agent/debug-chat.dto';
 import { VercelAIChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 
 describe('createGlobalValidationPipe', () => {

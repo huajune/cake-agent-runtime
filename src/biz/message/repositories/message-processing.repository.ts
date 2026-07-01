@@ -997,6 +997,8 @@ export class MessageProcessingRepository extends BaseRepository {
       anomaly_flags: record.anomalyFlags,
       memory_snapshot: record.memorySnapshot,
       post_processing_status: record.postProcessingStatus,
+      guardrail_input: record.guardrailInput,
+      guardrail_output: record.guardrailOutput,
     };
   }
 
@@ -1040,6 +1042,8 @@ export class MessageProcessingRepository extends BaseRepository {
       memorySnapshot: record.memory_snapshot as MessageProcessingRecordInput['memorySnapshot'],
       postProcessingStatus:
         record.post_processing_status as MessageProcessingRecordInput['postProcessingStatus'],
+      guardrailInput: record.guardrail_input as MessageProcessingRecordInput['guardrailInput'],
+      guardrailOutput: record.guardrail_output as MessageProcessingRecordInput['guardrailOutput'],
     };
   }
 

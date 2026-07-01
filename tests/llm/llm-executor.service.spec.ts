@@ -224,6 +224,36 @@ describe('LlmExecutorService', () => {
       expect(mockReliable.getBackoffMs).not.toHaveBeenCalled();
     });
 
+    it('should skip text-only fallbacks for image input requests', async () => {
+      mockSupportsVision.mockImplementation((modelId: string) => modelId === primaryModelId);
+      mockGenerateText
+        .mockRejectedValueOnce(new Error('HTTP 500 primary vision failed'))
+        .mockRejectedValueOnce(new Error('HTTP 500 primary vision failed again'));
+
+      await expect(
+        service.generate({
+          role: ModelRole.Chat,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image', image: new URL('https://example.com/image.jpg') },
+                { type: 'text', text: '看下这张图' },
+              ],
+            },
+          ],
+          config: { maxRetries: 2 },
+        }),
+      ).rejects.toMatchObject({
+        isAgentError: true,
+        agentMeta: expect.objectContaining({
+          modelsAttempted: [primaryModelId, fallbackModelId],
+        }),
+      });
+
+      expect(getGenerateModelIds()).toEqual([primaryModelId, primaryModelId]);
+    });
+
     it('should not use fallbacks when disableFallbacks is true', async () => {
       mockGenerateText
         .mockRejectedValueOnce(new Error('HTTP 500 attempt 1'))
@@ -303,7 +333,7 @@ describe('LlmExecutorService', () => {
   });
 
   describe('supportsVisionInput', () => {
-    it('should return true when all models in the route support vision', () => {
+    it('should return true when the primary model supports vision', () => {
       mockSupportsVision.mockReturnValue(true);
 
       expect(
@@ -313,11 +343,24 @@ describe('LlmExecutorService', () => {
       ).toBe(true);
 
       expect(mockSupportsVision).toHaveBeenNthCalledWith(1, primaryModelId);
-      expect(mockSupportsVision).toHaveBeenNthCalledWith(2, fallbackModelId);
+      expect(mockSupportsVision).toHaveBeenCalledTimes(1);
     });
 
-    it('should return false when any model in the route lacks vision support', () => {
+    it('should ignore text-only fallbacks when the primary model supports vision', () => {
       mockSupportsVision.mockImplementation((modelId: string) => modelId === primaryModelId);
+
+      expect(
+        service.supportsVisionInput({
+          role: ModelRole.Vision,
+        }),
+      ).toBe(true);
+
+      expect(mockSupportsVision).toHaveBeenCalledTimes(1);
+      expect(mockSupportsVision).toHaveBeenCalledWith(primaryModelId);
+    });
+
+    it('should return false when the primary model lacks vision support', () => {
+      mockSupportsVision.mockImplementation((modelId: string) => modelId !== primaryModelId);
 
       expect(
         service.supportsVisionInput({

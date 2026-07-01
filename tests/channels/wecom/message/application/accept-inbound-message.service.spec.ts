@@ -40,6 +40,9 @@ describe('AcceptInboundMessageService', () => {
   const longTerm = {
     updateMessageMetadata: jest.fn(),
   };
+  const session = {
+    saveLastCandidateMessageAt: jest.fn(),
+  };
   const opsEventsRecorder = {
     recordEvent: jest.fn().mockResolvedValue(true),
     recordCandidateMessage: jest.fn().mockResolvedValue({ messageRecorded: true, engaged: false }),
@@ -59,7 +62,7 @@ describe('AcceptInboundMessageService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    deduplicationService.markMessageAsProcessedAsync.mockResolvedValue(undefined);
+    deduplicationService.markMessageAsProcessedAsync.mockResolvedValue(true);
     deduplicationService.isMessageProcessedAsync.mockResolvedValue(false);
     chatSession.saveMessage.mockResolvedValue(undefined);
     chatSession.getChatSessionMessages.mockResolvedValue({
@@ -80,6 +83,7 @@ describe('AcceptInboundMessageService', () => {
     });
     llm.supportsVisionInput.mockReturnValue(true);
     longTerm.updateMessageMetadata.mockResolvedValue(undefined);
+    session.saveLastCandidateMessageAt.mockResolvedValue(undefined);
     userHostingService.isAnyPaused.mockResolvedValue({ paused: false });
     userHostingService.pauseUser.mockResolvedValue(undefined);
     generalHandoffNotifier.notify.mockResolvedValue(true);
@@ -97,6 +101,7 @@ describe('AcceptInboundMessageService', () => {
       runtimeConfig as never,
       llm as never,
       longTerm as never,
+      session as never,
       opsEventsRecorder as never,
       userHostingService as never,
       generalHandoffNotifier as never,
@@ -131,6 +136,18 @@ describe('AcceptInboundMessageService', () => {
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-self');
     expect(filterService.validate).not.toHaveBeenCalled();
     expect(userHostingService.pauseUser).not.toHaveBeenCalled();
+  });
+
+  it('records last candidate message timestamp for reengagement stop conditions', async () => {
+    const result = await service.execute(createMessage({ timestamp: '1713168001234' }));
+
+    expect(result.shouldDispatch).toBe(true);
+    expect(session.saveLastCandidateMessageAt).toHaveBeenCalledWith(
+      'corp-1',
+      'im-contact-1',
+      'chat-1',
+      1713168001234,
+    );
   });
 
   it('真人手机手打暗号「~」后自动暂停该候选人托管', async () => {
@@ -189,6 +206,52 @@ describe('AcceptInboundMessageService', () => {
     );
     // 原文案无「建议动作」，不应传 actionAdvice
     expect(generalHandoffNotifier.notify.mock.calls[0][0].actionAdvice).toBeUndefined();
+  });
+
+  it('真人手机手打全角波浪线「～」也按暂停暗号处理', async () => {
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.MOBILE_PUSH,
+        messageId: 'msg-human-fullwidth-tilde',
+        payload: {
+          text: '～',
+          pureText: '～',
+        },
+      }),
+    );
+
+    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', {
+      source: 'human_intervention',
+      reason: '检测到真人介入聊天自动暂停',
+    });
+  });
+
+  it('真人引用消息后回复暗号「~」仍应暂停托管', async () => {
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.MOBILE_PUSH,
+        messageId: 'msg-human-quoted-trigger',
+        payload: {
+          text: '~',
+          pureText: '~',
+          quoteMessage: {
+            messageId: 'quoted-1',
+            wxid: 'im-bot-1',
+            nickname: 'manager-1',
+            type: String(MessageType.TEXT),
+            content: { text: '你是愿意继续考虑这个岗位吗？' },
+            timestamp: '1713167999000',
+          },
+        },
+      }),
+    );
+
+    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', {
+      source: 'human_intervention',
+      reason: '检测到真人介入聊天自动暂停',
+    });
   });
 
   it('真人手机手打普通文字（非暗号「~」）不触发暂停/告警', async () => {
@@ -503,7 +566,7 @@ describe('AcceptInboundMessageService', () => {
   });
 
   it('should ignore duplicate inbound messages before dispatching', async () => {
-    deduplicationService.isMessageProcessedAsync.mockResolvedValueOnce(true);
+    deduplicationService.markMessageAsProcessedAsync.mockResolvedValueOnce(false);
 
     await expect(service.execute(createMessage())).resolves.toEqual({
       shouldDispatch: false,

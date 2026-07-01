@@ -34,13 +34,13 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     provider: 'anthropic',
     name: 'Claude Sonnet 4.6',
     description: 'Anthropic 综合最强 (Claude Code 默认首选)',
-    capabilities: ['tool-use', 'multimodal', 'thinking'],
+    capabilities: ['tool-use', 'multimodal', 'thinking', 'long-context'],
   },
   'anthropic/claude-haiku-4-5': {
     provider: 'anthropic',
     name: 'Claude Haiku 4.5',
     description: 'Anthropic 极速模型 (适合简单代码补全)',
-    capabilities: ['tool-use'],
+    capabilities: ['tool-use', 'multimodal', 'thinking', 'long-context'],
   },
 
   // ==================== OpenAI ====================
@@ -53,26 +53,26 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   'openai/gpt-5.4-thinking': {
     provider: 'openai',
     name: 'GPT-5.4 Thinking',
-    description: 'OpenAI 深度推理版 (解决 Hard 级 Bug/复杂逻辑调研)',
-    capabilities: ['thinking', 'tool-use', 'long-context'],
+    description: 'OpenAI 深度推理版 (ChatGPT 命名；API 通常使用 gpt-5.4 + reasoning_effort)',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'openai/gpt-5.4': {
     provider: 'openai',
     name: 'GPT-5.4',
     description: 'OpenAI 通用旗舰 (全能表现)',
-    capabilities: ['tool-use', 'multimodal'],
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'openai/gpt-5.3-chat-latest': {
     provider: 'openai',
     name: 'GPT-5.3 Chat (Latest)',
-    description: 'OpenAI GPT-5.3 稳定快照',
-    capabilities: ['tool-use'],
+    description: 'OpenAI GPT-5.3 Chat 快照（旧版快照；优先迁移到最新 GPT-5.x）',
+    capabilities: ['tool-use', 'multimodal'],
   },
   'openai/gpt-5.4-mini': {
     provider: 'openai',
     name: 'GPT-5.4 Mini',
     description: 'OpenAI 高性价比小模型',
-    capabilities: ['tool-use'],
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
 
   // ==================== Google ====================
@@ -80,31 +80,31 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     provider: 'google',
     name: 'Gemini 3.1 Pro',
     description: 'Google 正式版 (2M 超长上下文 / 极强代码分析能力)',
-    capabilities: ['long-context', 'tool-use', 'multimodal'],
+    capabilities: ['thinking', 'long-context', 'tool-use', 'multimodal'],
   },
   'google/gemini-3-flash': {
     provider: 'google',
     name: 'Gemini 3 Flash',
     description: 'Google 多模态极速版',
-    capabilities: ['tool-use', 'multimodal'],
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'google/gemini-3.5-flash': {
     provider: 'google',
     name: 'Gemini 3.5 Flash',
     description: 'Google 新一代极速版 (2026-05 I/O 发布)',
-    capabilities: ['tool-use', 'multimodal'],
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'google/gemini-3.1-flash-lite-preview': {
     provider: 'google',
     name: 'Gemini 3.1 Flash-Lite Preview',
-    description: 'Google 低成本轻量版 Preview (当前 evaluate 角色在用；GA 后迁正式 id)',
-    capabilities: ['tool-use'],
+    description: 'Google 低成本轻量版 Preview（官方已下线，迁移到 gemini-3.1-flash-lite）',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'google/gemini-3.1-flash-lite': {
     provider: 'google',
     name: 'Gemini 3.1 Flash-Lite',
     description: 'Google 低成本轻量版',
-    capabilities: ['tool-use'],
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
 
   // ==================== DeepSeek ====================
@@ -126,25 +126,25 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     provider: 'qwen',
     name: 'Qwen3.7 Plus',
     description: '通义千问 3.7 增强版 (思考 / 工具调用 / 图文多模态)',
-    capabilities: ['thinking', 'tool-use', 'multimodal'],
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'qwen/qwen3.6-max-preview': {
     provider: 'qwen',
     name: 'qwen3.6-max-preview',
-    description: '通义千问 3.6 旗舰正式版',
-    capabilities: ['tool-use', 'multimodal', 'thinking'],
+    description: '通义千问 3.6 Max Preview（纯文本 / 思考 / 工具调用 / 256K 上下文）',
+    capabilities: ['tool-use', 'thinking', 'long-context'],
   },
   'qwen/qwen3.6-plus': {
     provider: 'qwen',
     name: 'Qwen3.6 Plus',
     description: '通义千问 3.6 增强版 (原生支持思考模式)',
-    capabilities: ['thinking', 'tool-use', 'multimodal'],
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'qwen/qwen3-vl-plus': {
     provider: 'qwen',
     name: 'Qwen3 VL Plus',
     description: '通义千问视觉理解专用 (图片/文档/OCR 多模态)',
-    capabilities: ['multimodal', 'tool-use'],
+    capabilities: ['multimodal', 'tool-use', 'thinking', 'long-context'],
   },
 
   // ==================== MoonshotAI / Kimi ====================
@@ -152,19 +152,19 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     provider: 'moonshotai',
     name: 'Kimi K2.6',
     description: 'Kimi K2.6 (Vibe Coding / Agent Swarm 协作) ¥6.5/27',
-    capabilities: ['tool-use', 'long-context', 'thinking'],
+    capabilities: ['tool-use', 'multimodal', 'long-context', 'thinking'],
   },
   'moonshotai/kimi-k2.5': {
     provider: 'moonshotai',
     name: 'Kimi K2.5',
     description: 'Kimi K2.5 (256K / 长文本处理专精) ¥4/21',
-    capabilities: ['long-context', 'tool-use'],
+    capabilities: ['long-context', 'tool-use', 'multimodal', 'thinking'],
   },
   'moonshotai/kimi-k2-thinking': {
     provider: 'moonshotai',
     name: 'Kimi K2 Thinking',
-    description: 'Kimi K2 思考版 (深度逻辑推理 / 300+ 步工具调用)',
-    capabilities: ['thinking', 'tool-use'],
+    description: 'Kimi K2 Thinking（已废弃，建议迁移 Kimi K2.6）',
+    capabilities: ['thinking', 'tool-use', 'long-context'],
   },
 };
 

@@ -4,6 +4,11 @@ import type {
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
 import type {
+  GuardrailRiskLevel,
+  InputRiskType,
+  OutputDecision,
+} from '@shared-types/guardrail.contract';
+import type {
   AlertErrorType,
   AnomalyFlag,
   PostProcessingStatus,
@@ -90,4 +95,21 @@ export interface MessageProcessingRecordInput {
   memorySnapshot?: AgentMemorySnapshot;
   /** turn-end 后处理状态 */
   postProcessingStatus?: PostProcessingStatus;
+  /** 入站守卫裁决摘要（仅 block 时非空）。 */
+  guardrailInput?: {
+    decision: 'block';
+    riskType?: InputRiskType;
+    riskLabel?: string;
+    reasonCode?: string;
+    reason?: string;
+  };
+  /** 出站守卫裁决摘要（pass/revise/block 全量）。 */
+  guardrailOutput?: {
+    decision: OutputDecision;
+    riskLevel: GuardrailRiskLevel;
+    ruleIds: string[];
+    blockedRuleIds: string[];
+    reasonCode?: string;
+    revised: boolean;
+  };
 }

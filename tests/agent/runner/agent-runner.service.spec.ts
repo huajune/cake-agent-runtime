@@ -1,10 +1,11 @@
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
+import { CallerKind } from '@enums/agent.enum';
 
 describe('AgentRunnerService.runTurn', () => {
   let generator: { invoke: jest.Mock };
   let outputGuard: { check: jest.Mock };
-  let inputRiskGuard: { precheck: jest.Mock };
+  let inputGuard: { precheckInputRisk: jest.Mock; evaluate: jest.Mock };
   let service: AgentRunnerService;
 
   const passDecision = {
@@ -29,11 +30,14 @@ describe('AgentRunnerService.runTurn', () => {
   beforeEach(() => {
     generator = { invoke: jest.fn() };
     outputGuard = { check: jest.fn().mockResolvedValue(passDecision) };
-    inputRiskGuard = { precheck: jest.fn().mockResolvedValue({ hit: false }) };
+    inputGuard = {
+      precheckInputRisk: jest.fn().mockResolvedValue({ hit: false }),
+      evaluate: jest.fn().mockResolvedValue({ decision: 'pass' }),
+    };
     service = new AgentRunnerService(
       generator as never,
       outputGuard as never,
-      inputRiskGuard as never,
+      inputGuard as never,
     );
   });
 
@@ -74,7 +78,7 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('skipped');
   });
 
-  it('request_handoff maps to handoff with alreadyDispatched=true', async () => {
+  it('request_handoff maps to handoff with an outcome-layer sideEffect', async () => {
     generator.invoke.mockResolvedValue(
       makeResult({
         text: '需要人工',
@@ -82,7 +86,18 @@ describe('AgentRunnerService.runTurn', () => {
           {
             toolName: 'request_handoff',
             args: { reasonCode: 'modify_appointment', reason: '冲突' },
-            result: { dispatched: true, shortCircuited: true },
+            result: {
+              dispatched: true,
+              shortCircuited: true,
+              sideEffect: {
+                kind: 'general_handoff',
+                source: 'agent_tool',
+                alertLabel: '候选人要求改期/取消已预约面试',
+                reasonCode: 'modify_appointment',
+                reason: '冲突',
+                recordHandoff: true,
+              },
+            },
           },
         ],
       }),
@@ -97,8 +112,95 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('handoff');
     expect(outcome.handoff?.sourceToolCall).toBe('request_handoff');
     expect(outcome.handoff?.reasonCode).toBe('modify_appointment');
-    expect(outcome.handoff?.alreadyDispatched).toBe(true);
+    expect(outcome.handoff?.alreadyDispatched).toBe(false);
     expect(outcome.handoff?.idempotencyKey).toBe('s1:handoff:m1');
+    expect(outcome.sideEffects).toEqual([
+      expect.objectContaining({
+        kind: 'general_handoff',
+        reasonCode: 'modify_appointment',
+        recordHandoff: true,
+      }),
+    ]);
+  });
+
+  it('inbound input guard hit returns guardrail_blocked before generator runs', async () => {
+    inputGuard.evaluate.mockResolvedValue({
+      decision: 'block',
+      source: 'input_risk',
+      disposition: 'side_effects',
+      reasonCode: 'abuse',
+      riskType: 'abuse',
+      riskLabel: '辱骂',
+      reason: '命中辱骂关键词',
+      inspectedText: '你们就是骗子',
+      sideEffects: [
+        {
+          kind: 'conversation_risk',
+          source: 'regex_intercept',
+          riskType: 'abuse',
+          riskLabel: '辱骂',
+          summary: '候选人消息命中高置信度风险关键词',
+          reason: '命中辱骂关键词',
+        },
+      ],
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '你们就是骗子' },
+      context: {
+        messageId: 'm-risk',
+        contactName: '张三',
+        botImId: 'bot-im',
+        botUserId: 'manager-1',
+      },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual({
+      phase: 'inbound',
+      source: 'input_guardrail',
+      riskType: 'abuse',
+      riskLabel: '辱骂',
+      reason: '命中辱骂关键词',
+      reasonCode: 'abuse',
+      inspectedText: '你们就是骗子',
+    });
+    expect(outcome.sideEffects).toEqual([
+      expect.objectContaining({
+        kind: 'conversation_risk',
+        source: 'regex_intercept',
+        riskType: 'abuse',
+      }),
+    ]);
+    expect(inputGuard.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        corpId: 'c1',
+        chatId: 's1',
+        userId: 'u1',
+        pauseTargetId: 's1',
+        scanContent: '你们就是骗子',
+        messageId: 'm-risk',
+        contactName: '张三',
+        botImId: 'bot-im',
+        botUserName: 'manager-1',
+      }),
+    );
+    expect(generator.invoke).not.toHaveBeenCalled();
+  });
+
+  it('inbound input guard scan text filters visual placeholder lines inside runner', async () => {
+    generator.invoke.mockResolvedValue(makeResult({ text: '收到' }));
+
+    await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '[图片消息]\n你好\n[表情消息]' },
+    });
+
+    expect(inputGuard.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({ scanContent: '你好' }),
+    );
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
   });
 
   it('request_handoff with shortCircuited=false stays a reply outcome', async () => {
@@ -178,7 +280,7 @@ describe('AgentRunnerService.runTurn', () => {
     ).rejects.toThrow('llm down');
   });
 
-  it('output guard block maps to blocked outcome (not delivered)', async () => {
+  it('output guard block maps to outbound guardrail_blocked outcome (not delivered)', async () => {
     generator.invoke.mockResolvedValue(makeResult({ text: '不要新疆户籍的' }));
     outputGuard.check.mockResolvedValue({
       decision: 'block',
@@ -193,7 +295,23 @@ describe('AgentRunnerService.runTurn', () => {
       trigger: { kind: 'inbound', userMessage: '有什么岗位' },
     });
 
-    expect(outcome.kind).toBe('blocked');
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual({
+      phase: 'outbound',
+      source: 'output_guardrail',
+      ruleIds: ['discriminatory_screening_leak'],
+      reasonCode: undefined,
+      ruleBlocked: true,
+      inspectedText: '不要新疆户籍的',
+    });
+    expect(outcome.sideEffects).toEqual([
+      expect.objectContaining({
+        kind: 'general_handoff',
+        alertLabel: '出站守卫拦截（rule 档）',
+        reasonCode: 'system_blocked',
+        recordHandoff: true,
+      }),
+    ]);
     expect(generator.invoke).toHaveBeenCalledTimes(1); // 无重写
   });
 
@@ -264,6 +382,33 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.toolCalls).toEqual([bookingCall]);
   });
 
+  it('invokeReviewedTurn wraps runTurnEnd in an agent-layer finalizer', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    generator.invoke.mockResolvedValue(makeResult({ text: '可以的', runTurnEnd }));
+
+    const result = await service.invokeReviewedTurn({
+      invoke: {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'u1',
+        corpId: 'c1',
+        sessionId: 's1',
+        deferTurnEnd: true,
+      },
+      review: { userMessage: '你好', chatId: 's1', userId: 'u1' },
+      trigger: { kind: 'inbound', userMessage: '你好' },
+      sessionRef,
+      messageId: 'm1',
+    });
+
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.runTurnEnd).toBeUndefined();
+    expect(result.outcome.runTurnEnd).toBeUndefined();
+    result.turnFinalizer.settle({ delivered: false });
+    await result.turnFinalizer.whenSettled();
+    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+  });
+
   describe('precheckInboundOutcome', () => {
     const riskInput = {
       corpId: 'c1',
@@ -273,27 +418,48 @@ describe('AgentRunnerService.runTurn', () => {
       scanContent: '你们就是骗子',
     };
 
-    it('hit maps to an intercepted outcome carrying the risk attribution', async () => {
-      inputRiskGuard.precheck.mockResolvedValue({
-        hit: true,
+    it('hit maps to an inbound guardrail_blocked outcome carrying the risk attribution', async () => {
+      inputGuard.evaluate.mockResolvedValue({
+        decision: 'block',
+        source: 'input_risk',
+        disposition: 'side_effects',
+        reasonCode: 'abuse',
         riskType: 'abuse',
-        label: '辱骂',
+        riskLabel: '辱骂',
         reason: '命中辱骂关键词',
+        inspectedText: '你们就是骗子',
+        sideEffects: [
+          {
+            kind: 'conversation_risk',
+            source: 'regex_intercept',
+            riskType: 'abuse',
+            riskLabel: '辱骂',
+            summary: '候选人消息命中高置信度风险关键词',
+            reason: '命中辱骂关键词',
+          },
+        ],
       });
 
       const outcome = await service.precheckInboundOutcome(riskInput);
 
       expect(outcome).not.toBeNull();
-      expect(outcome?.kind).toBe('intercepted');
-      expect(outcome?.intercept).toEqual({
+      expect(outcome?.kind).toBe('guardrail_blocked');
+      expect(outcome?.guardrail).toEqual({
+        phase: 'inbound',
+        source: 'input_guardrail',
         riskType: 'abuse',
-        label: '辱骂',
+        riskLabel: '辱骂',
         reason: '命中辱骂关键词',
+        reasonCode: 'abuse',
+        inspectedText: '你们就是骗子',
       });
+      expect(outcome?.sideEffects).toEqual([
+        expect.objectContaining({ kind: 'conversation_risk', source: 'regex_intercept' }),
+      ]);
     });
 
     it('miss returns null so the channel keeps generating', async () => {
-      inputRiskGuard.precheck.mockResolvedValue({ hit: false });
+      inputGuard.evaluate.mockResolvedValue({ decision: 'pass' });
 
       const outcome = await service.precheckInboundOutcome(riskInput);
 
@@ -301,7 +467,7 @@ describe('AgentRunnerService.runTurn', () => {
     });
   });
 
-  it('revise still failing after the hard cap collapses to blocked', async () => {
+  it('revise still failing after the hard cap collapses to outbound guardrail_blocked', async () => {
     generator.invoke
       .mockResolvedValueOnce(makeResult({ text: 'v1' }))
       .mockResolvedValueOnce(makeResult({ text: 'v2 仍有问题' }));
@@ -319,7 +485,14 @@ describe('AgentRunnerService.runTurn', () => {
       trigger: { kind: 'inbound', userMessage: '约面试' },
     });
 
-    expect(outcome.kind).toBe('blocked');
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual(
+      expect.objectContaining({
+        phase: 'outbound',
+        source: 'output_guardrail',
+        reasonCode: 'revise_exhausted',
+      }),
+    );
     expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 1
   });
 });

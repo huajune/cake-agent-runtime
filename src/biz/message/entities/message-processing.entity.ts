@@ -41,4 +41,8 @@ export interface MessageProcessingDbRecord {
   memory_snapshot?: unknown;
   /** turn-end 后处理状态 JSONB */
   post_processing_status?: unknown;
+  /** 入站守卫裁决摘要 JSONB（仅 block 时非空） */
+  guardrail_input?: unknown;
+  /** 出站守卫裁决摘要 JSONB（pass/revise/block 全量） */
+  guardrail_output?: unknown;
 }

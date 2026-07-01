@@ -435,6 +435,8 @@ export class MessageTrackingService {
         params.metadata?.batchId ??
         this.asString(request?.batchId) ??
         params.existingRecord?.batchId,
+      guardrailInput: params.metadata?.guardrailInput ?? params.existingRecord?.guardrailInput,
+      guardrailOutput: params.metadata?.guardrailOutput ?? params.existingRecord?.guardrailOutput,
     };
   }
 

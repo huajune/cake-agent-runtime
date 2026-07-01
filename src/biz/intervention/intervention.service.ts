@@ -25,7 +25,7 @@ export interface InterventionBase {
 
 export interface RiskInterventionPayload extends InterventionBase {
   kind: 'conversation_risk';
-  riskType: 'abuse' | 'complaint_risk' | 'escalation';
+  riskType: 'abuse' | 'complaint_risk' | 'escalation' | 'interview_result_inquiry';
   riskLabel: string;
   summary: string;
   reason: string;

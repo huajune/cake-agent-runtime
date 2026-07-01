@@ -37,6 +37,7 @@ describe('FollowUpProcessor', () => {
     markFailedOrUnknown: jest.Mock;
   };
   let configService: { get: jest.Mock };
+  let outcomeFinalizer: { commit: jest.Mock };
   let delivery: { deliver: jest.Mock };
 
   beforeEach(() => {
@@ -52,6 +53,7 @@ describe('FollowUpProcessor', () => {
       markFailedOrUnknown: jest.fn().mockResolvedValue(undefined),
     };
     configService = { get: jest.fn().mockReturnValue('true') };
+    outcomeFinalizer = { commit: jest.fn().mockResolvedValue(undefined) };
     delivery = { deliver: jest.fn().mockResolvedValue(undefined) };
   });
 
@@ -62,6 +64,7 @@ describe('FollowUpProcessor', () => {
       runner as never,
       touchLedger as never,
       configService as never,
+      outcomeFinalizer as never,
       withDelivery ? (delivery as never) : undefined,
     );
 
@@ -71,7 +74,7 @@ describe('FollowUpProcessor', () => {
     expect(queue.process).toHaveBeenCalledWith(REENGAGEMENT_JOB_NAME, 2, expect.any(Function));
   });
 
-  it('calls runTurnEnd in shadow mode without delivering', async () => {
+  it('does not run turn-end in shadow mode because the reply was not delivered', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     runner.runTurn.mockResolvedValue({
       kind: 'reply',
@@ -85,10 +88,10 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+    expect(runTurnEnd).not.toHaveBeenCalled();
   });
 
-  it('calls runTurnEnd for skipped outcomes', async () => {
+  it('does not run turn-end for skipped shadow outcomes', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     runner.runTurn.mockResolvedValue({
       kind: 'skipped',
@@ -100,7 +103,7 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+    expect(runTurnEnd).not.toHaveBeenCalled();
   });
 
   it('delivers non-shadow replies through the outbox and then runs turn-end lifecycle', async () => {
@@ -128,10 +131,77 @@ describe('FollowUpProcessor', () => {
       'sess-1',
       now,
     );
-    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: true });
   });
 
-  it('does not re-deliver duplicate inflight slots and still runs turn-end lifecycle', async () => {
+  it('commits side effects for non-shadow non-reply outcomes before marking the touch failed', async () => {
+    configService.get.mockReturnValue('false');
+    const sideEffect = {
+      kind: 'general_handoff',
+      source: 'agent_tool',
+      alertLabel: '出站守卫拦截（rule 档）',
+      reasonCode: 'system_blocked',
+      reason: '出站守卫拦截',
+      recordHandoff: true,
+    };
+    const outcome = {
+      kind: 'guardrail_blocked',
+      toolCalls: [],
+      scenarioCode: 'opening_no_reply',
+      disposition: 'side_effects',
+      sideEffects: [sideEffect],
+      guardrail: { phase: 'outbound', source: 'output_guardrail' },
+    };
+    runner.runTurn.mockResolvedValue(outcome);
+
+    await buildProcessor().process(makeJob());
+
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(outcomeFinalizer.commit).toHaveBeenCalledWith(
+      outcome,
+      expect.objectContaining({
+        traceId: 'sess-1:opening_no_reply:1782266400000',
+        chatId: 'sess-1',
+        userId: 'user-1',
+        corpId: 'corp-1',
+        userMessage: '[系统主动跟进:opening_no_reply]',
+      }),
+    );
+    expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+      'sess-1:opening_no_reply:1782266400000',
+      'failed',
+    );
+    expect(outcomeFinalizer.commit.mock.invocationCallOrder[0]).toBeLessThan(
+      touchLedger.markFailedOrUnknown.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('keeps a sent touch sent when turn-end lifecycle fails after delivery', async () => {
+    const now = Date.UTC(2026, 5, 24, 2, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    const runTurnEnd = jest.fn().mockRejectedValue(new Error('memory down'));
+    configService.get.mockReturnValue('false');
+    runner.runTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '还想看看附近岗位吗？' },
+      toolCalls: [],
+      scenarioCode: 'opening_no_reply',
+      runTurnEnd,
+    });
+
+    await buildProcessor().process(makeJob());
+
+    expect(delivery.deliver).toHaveBeenCalled();
+    expect(touchLedger.markSent).toHaveBeenCalledWith(
+      'sess-1:opening_no_reply:1782266400000',
+      'sess-1',
+      now,
+    );
+    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: true });
+    expect(touchLedger.markFailedOrUnknown).not.toHaveBeenCalled();
+  });
+
+  it('does not generate or deliver duplicate inflight slots', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     configService.get.mockReturnValue('false');
     touchLedger.reserve.mockResolvedValue('duplicate_inflight');
@@ -146,11 +216,12 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(touchLedger.markDeliveryAttempted).not.toHaveBeenCalled();
+    expect(runner.runTurn).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+    expect(runTurnEnd).not.toHaveBeenCalled();
   });
 
-  it('runs turn-end lifecycle when a duplicate sent slot is skipped', async () => {
+  it('does not generate or run turn-end when a duplicate sent slot is skipped', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     configService.get.mockReturnValue('false');
     touchLedger.reserve.mockResolvedValue('duplicate_sent');
@@ -164,11 +235,12 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
+    expect(runner.runTurn).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+    expect(runTurnEnd).not.toHaveBeenCalled();
   });
 
-  it('runs turn-end lifecycle when delivery fails and marks the touch unknown', async () => {
+  it('does not run turn-end when delivery fails and marks the touch unknown', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     const error = new Error('delivery down');
     configService.get.mockReturnValue('false');
@@ -187,7 +259,7 @@ describe('FollowUpProcessor', () => {
       'sess-1:opening_no_reply:1782266400000',
       'unknown',
     );
-    expect(runTurnEnd).toHaveBeenCalledTimes(1);
+    expect(runTurnEnd).not.toHaveBeenCalled();
   });
 
   it('reschedules directly to the next delivery window when fired outside the window', async () => {

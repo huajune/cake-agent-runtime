@@ -273,6 +273,8 @@ export class SessionService {
       hardConstraints: [],
       presentedStores: (state.presentedJobs ?? []).map((job) => ({ jobId: job.jobId })),
       stage: null,
+      lastCandidateMessageAt: state.lastCandidateMessageAt ?? undefined,
+      terminal: state.terminal ?? undefined,
     };
   }
 
@@ -324,6 +326,43 @@ export class SessionService {
         string,
         unknown
       >,
+      this.config.sessionTtl,
+      false,
+    );
+  }
+
+  async saveLastCandidateMessageAt(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    timestamp: number,
+  ): Promise<void> {
+    if (!Number.isFinite(timestamp)) return;
+    const key = this.buildKey(corpId, userId, sessionId);
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    const previous = state.lastCandidateMessageAt ?? 0;
+    await this.redisStore.set(
+      key,
+      this.serializeStateContent({
+        ...state,
+        lastCandidateMessageAt: Math.max(previous, timestamp),
+      }) as Record<string, unknown>,
+      this.config.sessionTtl,
+      false,
+    );
+  }
+
+  async saveTerminalState(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    terminal: NonNullable<WeworkSessionState['terminal']>,
+  ): Promise<void> {
+    const key = this.buildKey(corpId, userId, sessionId);
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    await this.redisStore.set(
+      key,
+      this.serializeStateContent({ ...state, terminal }) as Record<string, unknown>,
       this.config.sessionTtl,
       false,
     );

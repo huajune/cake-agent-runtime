@@ -2,6 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import type { ReserveResult, TouchSlotState } from './reengagement.types';
 
+export interface UnknownTouchSlot {
+  key: string;
+  state: 'unknown';
+}
+
 /**
  * 触达底账（频控 + outbox 幂等状态机）。
  *
@@ -82,5 +87,32 @@ return 1
   async isOverFrequencyLimit(sessionId: string, now: number): Promise<boolean> {
     const count = await this.countSentIn24h(sessionId, now);
     return count >= this.MAX_TOUCHES_PER_24H;
+  }
+
+  /**
+   * 补偿查询入口：扫描状态不明的触达槽，供运维/人工核对外部平台投递状态。
+   *
+   * 返回的 key 是业务幂等键（`${sessionId}:${scenarioCode}:${anchorAt}`），不含 Redis 前缀。
+   */
+  async listUnknownSlots(limit = 100): Promise<UnknownTouchSlot[]> {
+    const result: UnknownTouchSlot[] = [];
+    let cursor: string | number = 0;
+    do {
+      const [next, keys] = await this.redis.scan(cursor, {
+        match: 'reengagement:touch:*',
+        count: Math.min(Math.max(limit, 10), 500),
+      });
+      cursor = next;
+      for (const redisKey of keys) {
+        const state = await this.redis.get<TouchSlotState>(redisKey);
+        if (state !== 'unknown') continue;
+        result.push({
+          key: redisKey.replace(/^reengagement:touch:/, ''),
+          state,
+        });
+        if (result.length >= limit) return result;
+      }
+    } while (String(cursor) !== '0');
+    return result;
   }
 }
