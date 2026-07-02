@@ -533,7 +533,8 @@ export default function Config() {
               <div>
                 <h3 className={styles.moduleTitle}>主动复聊（跟进触达）</h3>
                 <p className={styles.moduleDescription}>
-                  候选人沉默后由 Agent 主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
+                  候选人沉默后由 Agent
+                  主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
                   开关即时生效；灰度期先开演练模式看"本应发什么"，达标后再关演练真实发送。
                 </p>
               </div>
@@ -567,7 +568,9 @@ export default function Config() {
                       type="checkbox"
                       checked={reengagementEnabled}
                       disabled={updateConfig.isPending}
-                      onChange={(e) => updateConfig.mutate({ reengagementEnabled: e.target.checked })}
+                      onChange={(e) =>
+                        updateConfig.mutate({ reengagementEnabled: e.target.checked })
+                      }
                     />
                     <span className={styles.switchTrack}>
                       <span className={styles.switchThumb} />
@@ -594,7 +597,8 @@ export default function Config() {
                   </div>
                   <p className={styles.settingDescription}>
                     开启时，到点走完全部停止判断并生成跟进文案，但不发给候选人，只记录"本应发什么"。
-                    关闭后，已放开灰度的场景（开场未回 / 报名未完成 / 面试提醒）会真实发送，其余场景仍只记录。
+                    关闭后，已放开灰度的场景（开场未回 / 报名未完成 /
+                    面试提醒）会真实发送，其余场景仍只记录。
                   </p>
                   <div className={styles.settingMeta}>
                     <span>该开关即时生效</span>
@@ -607,7 +611,9 @@ export default function Config() {
                       type="checkbox"
                       checked={reengagementShadow}
                       disabled={updateConfig.isPending}
-                      onChange={(e) => updateConfig.mutate({ reengagementShadow: e.target.checked })}
+                      onChange={(e) =>
+                        updateConfig.mutate({ reengagementShadow: e.target.checked })
+                      }
                     />
                     <span className={styles.switchTrack}>
                       <span className={styles.switchThumb} />
