@@ -1,8 +1,5 @@
-import type { AgentToolCall, GeneratorRunResult } from '../generator/generator.types';
-import {
-  isBookingGateRejectedToolCall,
-  isShortCircuitedToolCall,
-} from '../generator/tool-call-analysis';
+import type { AgentRunResult as GeneratorRunResult, AgentToolCall } from '../agent-run.types';
+import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '../tool-call-analysis';
 import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.service';
 import type { SessionRef, TurnOutcome, TurnTrigger } from './agent-runner.types';
 

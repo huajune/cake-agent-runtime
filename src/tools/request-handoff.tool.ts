@@ -131,13 +131,13 @@ export function buildRequestHandoffTool(
         const latestBooking = await longTermService
           .getLatestBooking(context.corpId, context.userId)
           .catch(() => null);
-        const workOrderId = latestBooking?.latest_work_order_id ?? null;
+        const workOrderId = latestBooking?.work_order_id ?? null;
 
         // 守卫：候选人要求"改期/取消"但根本没有已确认预约 → 这其实是首次约面意向。
         // 返回 shortCircuited:false（不短路），让 runtime 继续、Agent 按首次约面流程推进。
         if (reasonCode === 'modify_appointment' && workOrderId == null) {
           logger.log(
-            `request_handoff(modify_appointment) 但无 latest_booking，按首次约面继续: chatId=${chatId}`,
+            `request_handoff(modify_appointment) 但无 active_booking，按首次约面继续: chatId=${chatId}`,
           );
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.HANDOFF_NO_BOOKING,

@@ -15,17 +15,19 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 
 describe('FollowUpSchedulerService', () => {
   let queue: { add: jest.Mock };
-  let configService: { get: jest.Mock };
+  let systemConfig: { getAgentReplyConfig: jest.Mock };
   let service: FollowUpSchedulerService;
 
   beforeEach(() => {
     queue = { add: jest.fn().mockResolvedValue(undefined) };
-    configService = { get: jest.fn().mockReturnValue('true') };
-    service = new FollowUpSchedulerService(queue as never, configService as never);
+    systemConfig = {
+      getAgentReplyConfig: jest.fn().mockResolvedValue({ reengagementEnabled: true }),
+    };
+    service = new FollowUpSchedulerService(queue as never, systemConfig as never);
   });
 
   it('does not schedule when reengagement is disabled', async () => {
-    configService.get.mockReturnValue('false');
+    systemConfig.getAgentReplyConfig.mockResolvedValue({ reengagementEnabled: false });
 
     const result = await service.scheduleFollowUp({
       sessionRef,

@@ -129,6 +129,8 @@ describe('SessionService', () => {
         presentedJobs: null,
         currentFocusJob: null,
         invitedGroups: null,
+        terminal: null,
+        lastCandidateMessageAt: null,
       });
     });
 
@@ -424,6 +426,53 @@ describe('SessionService', () => {
         at: 5000,
       });
       expect(state.collectedFields.phone?.value).toBe('13912345678');
+    });
+
+    it('derives terminal and lastCandidateMessageAt for reengagement stop conditions', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: null,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+          terminal: 'booked',
+          lastCandidateMessageAt: '2026-07-02T10:00:00.000Z',
+        },
+      });
+
+      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
+
+      expect(state.terminal).toBe('booked');
+      expect(state.lastCandidateMessageAt).toBe(Date.parse('2026-07-02T10:00:00.000Z'));
+    });
+  });
+
+  describe('reengagement stop signals persistence', () => {
+    it('saveTerminalState persists terminal into session state', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+
+      await service.saveTerminalState('corp1', 'user1', 'session1', 'booked');
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.stringContaining('session1'),
+        expect.objectContaining({ terminal: 'booked' }),
+        expect.anything(),
+        false,
+      );
+    });
+
+    it('recordCandidateActivity persists lastCandidateMessageAt as ISO string', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      const at = new Date('2026-07-02T12:34:56.000Z');
+
+      await service.recordCandidateActivity('corp1', 'user1', 'session1', at);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.stringContaining('session1'),
+        expect.objectContaining({ lastCandidateMessageAt: at.toISOString() }),
+        expect.anything(),
+        false,
+      );
     });
   });
 

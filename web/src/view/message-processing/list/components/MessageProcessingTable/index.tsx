@@ -39,6 +39,34 @@ function getStatusTone(record: MessageRecord): 'success' | 'danger' | 'warning' 
   return 'warning';
 }
 
+/** 守卫徽标：入站拦截 / 出站拦截 / 经受控修复后放行，其余（pass/observe）不加噪音。 */
+function getGuardrailBadge(
+  record: MessageRecord,
+): { tone: 'blocked' | 'repaired' | 'intercepted'; title: string } | null {
+  if (record.guardrailInput) {
+    const label = record.guardrailInput.riskLabel || record.guardrailInput.riskType || '风险命中';
+    return { tone: 'intercepted', title: `入站守卫拦截：${label}（本轮未跑 Agent）` };
+  }
+  const output = record.guardrailOutput;
+  if (!output) return null;
+  if (output.finalDecision === 'block') {
+    const rules = output.steps.flatMap((s) => s.blockedRuleIds);
+    const reason = output.reasonCode ? `（${output.reasonCode}）` : '';
+    return {
+      tone: 'blocked',
+      title: `出站守卫拦截，未发送${reason}：${[...new Set(rules)].join('、') || '-'}`,
+    };
+  }
+  if (output.repaired) {
+    const rules = output.steps[0]?.ruleIds ?? [];
+    return {
+      tone: 'repaired',
+      title: `首版被守卫要求修复（${output.steps[0]?.decision ?? '-'}），修复后已发送：${rules.join('、') || '-'}`,
+    };
+  }
+  return null;
+}
+
 interface MessageProcessingTableProps {
   data: MessageRecord[];
   loading?: boolean;
@@ -207,6 +235,18 @@ export default function MessageProcessingTable({
                           ⚡
                         </span>
                       )}
+                      {(() => {
+                        const badge = getGuardrailBadge(record);
+                        if (!badge) return null;
+                        return (
+                          <span
+                            title={badge.title}
+                            className={`${styles.guardrailIcon} ${styles[badge.tone]}`}
+                          >
+                            🛡
+                          </span>
+                        );
+                      })()}
                     </div>
                   </td>
                 </tr>

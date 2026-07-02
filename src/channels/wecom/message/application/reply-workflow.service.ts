@@ -4,10 +4,7 @@ import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
-import {
-  isBookingGateRejectedToolCall,
-  isShortCircuitedToolCall,
-} from '@agent/generator/tool-call-analysis';
+import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '@agent/tool-call-analysis';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -27,7 +24,7 @@ import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.se
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import type { HandoffWriteOutcome } from '@biz/handoff-events/handoff-events.types';
-import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
+import type { AgentThinkingConfig as GeneratorThinkingConfig } from '@agent/agent-run.types';
 
 /**
  * Vision 描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
@@ -260,6 +257,12 @@ export class ReplyWorkflowService {
         batchId: batchContext?.batchId,
         replyPreview: `[风险预检静默] ${label}`,
         replySegments: 0,
+        guardrailInput: {
+          decision: 'block',
+          riskType: intercepted.intercept?.riskType,
+          riskLabel: intercepted.intercept?.label,
+          reason: intercepted.intercept?.reason,
+        },
       });
       this.monitoringService.recordSuccess(traceId, riskSkippedMetadata);
       await this.markMessagesAsProcessed(allMessages.map((message) => message.messageId));
@@ -445,9 +448,9 @@ export class ReplyWorkflowService {
           this.logger.warn(
             `${logPrefix}[${contactName}] 出站守卫拦截回复，跳过消息发送 (rules=${agentResult.blockedByGuard.ruleIds.join(',')})`,
           );
-          // 非 rule 档拦截（llm 严重违规 / reviewer 降级 output_review_unavailable）守卫内不发飞书、
-          // 也不暂停托管——本轮静默后无人接手，候选人悬空。统一转人工告警（rule 档已在守卫内告警，
-          // 此处不重复）。
+          // 任何 block 终态（rule 硬拦 / repair_exhausted / llm 严重违规 / reviewer 降级）都意味着
+          // 本轮静默后无人接手，候选人悬空——统一转人工：暂停托管 + 飞书告警 + handoff 底账。
+          // rule 档守卫内的飞书 badcase 通知只是观测，不能替代接管。
           await this.dispatchOutputGuardHandoffIfNeeded(agentResult, {
             traceId,
             chatId,
@@ -519,6 +522,12 @@ export class ReplyWorkflowService {
       if (!batchContext) {
         this.logger.debug(`[${contactName}] 请求流水 [${traceId}] 已标记为已处理`);
       }
+    } catch (error) {
+      // 投递/观测异常：回复未确认送达，但本轮用户消息的记忆收尾（事实提取等）不能一并丢——
+      // 否则候选人已提供的姓名/手机号/意向在重试外的路径上永久丢失。只记用户侧，不投影助手轮次。
+      // startTurnEnd 幂等：若前面已按投递结局触发过，这里是 no-op。
+      startTurnEnd(agentResult, { includeAssistantText: false });
+      throw error;
     } finally {
       // 在方法返回（→ MessageProcessor 释放 chat 处理锁）前等待回合收尾落盘，
       // 保证同一 chat 的记忆写入相对处理锁串行，杜绝跨 job 并发覆盖。
@@ -691,11 +700,12 @@ export class ReplyWorkflowService {
   }
 
   /**
-   * 出站守卫「非 rule 档」拦截（llm 严重违规 / reviewer 故障降级 output_review_unavailable /
-   * revise 死循环）转人工。
+   * 出站守卫拦截（rule 硬拦 / llm 严重违规 / reviewer 故障降级 output_review_unavailable /
+   * revise 死循环 repair_exhausted）统一转人工。
    *
-   * rule 档命中已在 ReplyFactGuard 内发飞书告警，这里只兜非 rule 档：否则本轮沉默后候选人悬空、
-   * 无人接手。统一走 intervention → 暂停托管 + 飞书告警，并写 handoff 底账便于运营追溯。
+   * 不区分 rule/非 rule 档：rule 档命中虽已在守卫内发飞书 badcase 通知，但那只是观测告警，
+   * 不暂停托管也不派人接管——本轮沉默后候选人悬空。任何 block 终态都必须走
+   * intervention → 暂停托管 + 飞书告警，并写 handoff 底账便于运营追溯。
    * 全程 fail-safe，不阻塞主流水。
    */
   private async dispatchOutputGuardHandoffIfNeeded(
@@ -712,12 +722,14 @@ export class ReplyWorkflowService {
     },
   ): Promise<void> {
     const blocked = agentResult.blockedByGuard;
-    // 仅兜非 rule 档拦截；rule 档已在守卫内告警，避免重复转人工。
-    if (!blocked || blocked.ruleBlocked) return;
+    if (!blocked) return;
 
-    const reasonCode = blocked.reasonCode ?? blocked.ruleIds.join(',') ?? 'output_blocked';
+    const tier = blocked.ruleBlocked ? 'rule 档' : '非 rule 档';
+    const reasonCode =
+      blocked.reasonCode ??
+      (blocked.ruleIds.length > 0 ? blocked.ruleIds.join(',') : 'output_blocked');
     const replyPreview = agentResult.reply.content.slice(0, 400);
-    const reason = `出站守卫拦截（非 rule 档）：${reasonCode}`;
+    const reason = `出站守卫拦截（${tier}）：${reasonCode}`;
     const actionAdvice =
       '本轮回复被出站守卫拦截、未发送给候选人。人工核对候选人最近消息与被拦截回复，必要时人工接管回复。';
     const occurredAt = new Date();
@@ -746,7 +758,7 @@ export class ReplyWorkflowService {
       const result = await this.interventionService.dispatch({
         kind: 'general_handoff',
         source: 'agent_tool',
-        alertLabel: '出站守卫拦截（非 rule 档）',
+        alertLabel: `出站守卫拦截（${tier}）`,
         reason: `${reason}；replyPreview="${replyPreview}"`,
         actionAdvice,
         chatId: context.chatId,
@@ -916,6 +928,7 @@ export class ReplyWorkflowService {
         processingTime,
         toolCalls: result.toolCalls,
         agentSteps: result.agentSteps,
+        guardrailOutput: result.guardrailTrace,
         memorySnapshot: result.memorySnapshot,
         responseMessages: result.responseMessages,
         runTurnEnd: result.runTurnEnd,

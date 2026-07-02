@@ -208,6 +208,16 @@ export class AiStreamTraceContentStore {
     return this.getPreview(this.replyPreviewParts);
   }
 
+  /** 完整回复正文（非 preview），供流末出站守卫 advisory 审查。 */
+  getReplyText(): string {
+    return this.collectOrderedText('text', '');
+  }
+
+  /** 完整工具调用（含 output/state），供流末出站守卫 advisory 审查。 */
+  getStoredToolCalls(): StoredToolCall[] {
+    return this.buildStoredToolCalls();
+  }
+
   getReasoningPreview(): string | undefined {
     return this.getPreview(this.reasoningPreviewParts);
   }

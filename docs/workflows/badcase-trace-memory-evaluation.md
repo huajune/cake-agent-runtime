@@ -2,6 +2,8 @@
 
 使用时间：2026-04-29 起
 
+> 本文是 [反馈修复测试验证链路 V2](./feedback-repair-test-validation-v2.md) 的**技术附录**——定义 `sourceTrace / memorySetup / memoryAssertions / memoryTrace` 等字段契约；工作流全貌见该文。
+
 ## 目标
 
 这次改造要把 BadCase 从“人工描述的问题样本”升级成可排障、可复现、可回归、可评测记忆能力的正式证据链。

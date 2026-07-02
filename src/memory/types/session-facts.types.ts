@@ -853,6 +853,9 @@ export interface InvitedGroupRecord {
   invitedAt: string;
 }
 
+/** 会话终态（复聊停止条件的权威信号）。 */
+export type SessionTerminalState = 'booked' | 'handed_off' | 'rejected' | 'onboarded';
+
 /** 会话事实层 — 当前这次求职会话的结构化状态 */
 export interface WeworkSessionState {
   facts: SessionFacts | null;
@@ -864,6 +867,10 @@ export interface WeworkSessionState {
   currentFocusJob: RecommendedJobSummary | null;
   /** 本会话中已邀入的兼职群 */
   invitedGroups: InvitedGroupRecord[] | null;
+  /** 会话终态（已约面/已转人工/已拒绝/已入职）；复聊 shouldStop 据此停发。可选：旧数据无此键。 */
+  terminal?: SessionTerminalState | null;
+  /** 候选人最后一次入站消息时间（ISO）；复聊 shouldStop 用「锚点后已回话」停发。可选：旧数据无此键。 */
+  lastCandidateMessageAt?: string | null;
 }
 
 export const InvitedGroupRecordSchema = z.object({
@@ -879,6 +886,8 @@ export const WeworkSessionStateSchema = z.object({
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
+  terminal: z.enum(['booked', 'handed_off', 'rejected', 'onboarded']).nullable().optional(),
+  lastCandidateMessageAt: z.string().nullable().optional(),
 });
 
 /** 当前会话没有任何结构化记忆时的空状态。 */
@@ -888,6 +897,8 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   presentedJobs: null,
   currentFocusJob: null,
   invitedGroups: null,
+  terminal: null,
+  lastCandidateMessageAt: null,
 };
 
 // ==================== 3. Redis 持久化结构 ====================

@@ -10,7 +10,7 @@
 
 ### 1. `ReplyFactGuard` 升级为阻断模式
 
-**当前状态**：`src/channels/wecom/message/application/reply-fact-guard.service.ts` Phase 1 仅告警，坏回复仍会下发。
+**当前状态**：`src/agent/guardrail/output/hard-rules.service.ts` Phase 1 仅告警，坏回复仍会下发。
 
 **目标**：在配置中增加 `blockOnViolation` 开关（默认 `false`，灰度开启），命中规则时拦截发送并触发 fallback 安全回复（如"稍等，我帮你确认一下"）。
 

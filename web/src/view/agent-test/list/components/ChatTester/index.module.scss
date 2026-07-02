@@ -790,6 +790,32 @@
   }
 }
 
+// ==================== 出站守卫 advisory ====================
+.guardrailSection {
+  margin-top: $spacing-md;
+
+  .sectionHeader {
+    display: flex;
+    align-items: center;
+    margin-bottom: $spacing-sm;
+
+    h4 {
+      display: flex;
+      align-items: center;
+      gap: $spacing-sm;
+      font-size: $font-size-sm;
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
+      margin: 0;
+
+      svg {
+        color: $accent;
+        opacity: 0.7;
+      }
+    }
+  }
+}
+
 // ==================== 可折叠区块 ====================
 .collapsibleSection {
   border: 1px solid $accent-10;

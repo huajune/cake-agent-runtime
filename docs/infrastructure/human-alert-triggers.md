@@ -6,7 +6,7 @@
 >
 > 配套查阅：
 > - 飞书群组与 webhook 配置：[feishu-alert-system.md](./feishu-alert-system.md)
-> - 按目标群组聚合的简表：[feishu-notification-catalog.md](./feishu-notification-catalog.md)
+> - 按目标群组聚合的简表：[feishu-alert-system.md](./feishu-alert-system.md) 的「通知分布」
 
 ## 人工介入路径对比
 
@@ -24,7 +24,7 @@
 
 ### 1. 规则前置拦截
 
-- **位置**：[pre-agent-risk-intercept.service.ts](../../src/channels/wecom/message/application/pre-agent-risk-intercept.service.ts)
+- **位置**：[pre-agent-risk-intercept.service.ts](../../src/agent/guardrail/input/risk-intercept.service.ts)
 - **来源**：`source=regex_intercept`
 - **条件**：用户消息命中高置信关键词正则（辱骂 / 投诉 / 举报 / 情绪升级）
 - **效果**：Agent 仍继续生成回复，dispatch 异步暂停托管 + 发卡
@@ -38,7 +38,7 @@
 
 ### 3. 转人工短路（`request_handoff` 工具）
 
-- **位置**：[request-handoff.tool.ts](../../src/tools/request-handoff.tool.ts)、runner 短路：[runner.service.ts](../../src/agent/runner.service.ts)（`SHORT_CIRCUIT_TOOL_NAMES`）
+- **位置**：[request-handoff.tool.ts](../../src/tools/request-handoff.tool.ts)、runner 短路：[runner.service.ts](../../src/agent/runner/agent-runner.service.ts)（`SHORT_CIRCUIT_TOOL_NAMES`）
 - **来源**：Agent 工具调用
 - **条件**：面试 / 入职跟进阶段需人工，原因码：
   - `cannot_find_store`
@@ -83,7 +83,7 @@
 
 ### 7. Prompt 注入检测
 
-- **位置**：[input-guard.service.ts:124](../../src/agent/input-guard.service.ts#L124)
+- **位置**：[input-guard.service.ts:124](../../src/agent/guardrail/input/input-guard.service.ts#L124)
 - **code**：`prompt_injection`
 - **条件**：用户输入命中 prompt injection 检测
 

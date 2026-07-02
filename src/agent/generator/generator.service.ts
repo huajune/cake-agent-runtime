@@ -395,10 +395,16 @@ export class GeneratorService {
     }
 
     let consumed = false;
-    result.runTurnEnd = async () => {
+    result.runTurnEnd = async (opts?: { includeAssistantText?: boolean }) => {
       if (consumed) return;
       consumed = true;
-      await this.runTurnEndLifecycle(lifecycleCtx, assistantText);
+      // includeAssistantText=false：回复未真实送达（守卫拦截/沉默/投递失败），
+      // 只跑用户侧收尾（事实提取等），不把未送达文本投影成助手轮次。
+      const includeAssistantText = opts?.includeAssistantText !== false;
+      await this.runTurnEndLifecycle(
+        lifecycleCtx,
+        includeAssistantText ? assistantText : undefined,
+      );
     };
   }
 

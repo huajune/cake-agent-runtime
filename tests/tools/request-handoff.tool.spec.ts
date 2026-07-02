@@ -82,7 +82,7 @@ describe('buildRequestHandoffTool', () => {
 
   it('records handoff (底账 + ops event) on a real dispatch', async () => {
     longTermService.getLatestBooking.mockResolvedValue({
-      latest_work_order_id: 5001,
+      work_order_id: 5001,
       linked_at: '2026-04-15T00:00:00Z',
     });
 

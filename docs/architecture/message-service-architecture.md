@@ -138,7 +138,7 @@ src/channels/wecom/message/
 | [`MessageDeduplicationService`](../../src/channels/wecom/message/runtime/deduplication.service.ts) | Redis `SET NX EX`（默认 TTL 300s）原子标记，支持多实例 | `isMessageProcessedAsync`, `markMessageAsProcessedAsync` |
 | [`MessageFilterService`](../../src/channels/wecom/message/application/filter.service.ts) | 按顺序执行 8 条过滤规则，返回第一条命中的结果 | `validate` |
 | [`MessageDeliveryService`](../../src/channels/wecom/message/delivery/delivery.service.ts) | 单条 or 分段发送；为每段计算打字延迟；失败抛 `DeliveryFailureError` | `deliverReply` |
-| [`PreAgentRiskInterceptService`](../../src/channels/wecom/message/application/pre-agent-risk-intercept.service.ts) | 高置信度风险关键词预检 → 同步暂停托管 + 告警，但不短路 Agent | `precheck` |
+| [`PreAgentRiskInterceptService`](../../src/agent/guardrail/input/risk-intercept.service.ts) | 高置信度风险关键词预检 → 同步暂停托管 + 告警，但不短路 Agent | `precheck` |
 | [`MessageRuntimeConfigService`](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts) | `hosting_config` 30s 拉取一次快照；暴露 aiReply/merge/typing/模型选择 | `syncSnapshot`, `getMergeDelayMs`, `resolveWecomChatModelSelection` |
 | [`MessageWorkerManagerService`](../../src/channels/wecom/message/runtime/message-worker-manager.service.ts) | `currentConcurrency` semaphore（默认 4，上限 20） | `acquireExecutionSlot`, `setConcurrency` |
 | [`WecomMessageObservabilityService`](../../src/channels/wecom/message/telemetry/wecom-message-observability.service.ts) | 请求 trace 从回调入口贯穿到投递完成的阶段打点 | `startRequestTrace`, `markWorkerStart`, `markAiStart`, `markDeliveryEnd` |
@@ -356,7 +356,7 @@ const REPLAY_BLOCKING_TOOL_NAMES: ReadonlySet<string> = new Set([
 
 ### 5.3 前置风险预检
 
-位置：[pre-agent-risk-intercept.service.ts](../../src/channels/wecom/message/application/pre-agent-risk-intercept.service.ts)
+位置：[pre-agent-risk-intercept.service.ts](../../src/agent/guardrail/input/risk-intercept.service.ts)
 
 在进入 `callAgent` 前同步跑高置信度关键词检测（自杀/自残/投诉举报等）：
 

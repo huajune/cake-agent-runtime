@@ -1,5 +1,5 @@
 import type { CallerKind } from '@/enums/agent.enum';
-import type { AgentToolCall, GeneratorToolMode } from '../generator/generator.types';
+import type { AgentToolCall, ToolMode as GeneratorToolMode } from '../agent-run.types';
 
 /** 会话三元组（记忆隔离键）。 */
 export interface SessionRef {

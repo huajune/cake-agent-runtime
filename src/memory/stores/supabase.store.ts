@@ -325,21 +325,21 @@ export class SupabaseStore implements MemoryStore {
     await this.upsertRow(corpId, userId, { message_metadata: cleanMetadata });
   }
 
-  // ==================== latest_booking 操作 ====================
+  // ==================== active_booking 操作 ====================
 
-  /** 读取候选人最近预约工单指针。 */
+  /** 读取候选人当前有效预约工单指针。 */
   async getLatestBooking(corpId: string, userId: string): Promise<LatestBooking | null> {
     const row = await this.getRow(corpId, userId);
-    return (row?.latest_booking as LatestBooking | null) ?? null;
+    return (row?.active_booking as LatestBooking | null) ?? null;
   }
 
-  /** 写入候选人最近预约工单指针（永不清空，新预约 UPSERT 覆盖）。 */
+  /** 写入候选人当前有效预约工单指针（新预约 UPSERT 覆盖）。 */
   async setLatestBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
     const latestBooking: LatestBooking = {
-      latest_work_order_id: workOrderId,
+      work_order_id: workOrderId,
       linked_at: new Date().toISOString(),
     };
-    await this.upsertRow(corpId, userId, { latest_booking: latestBooking });
+    await this.upsertRow(corpId, userId, { active_booking: latestBooking });
   }
 
   // ==================== 旧接口（v1 兼容，Phase 6 删除） ====================

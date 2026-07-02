@@ -36,7 +36,7 @@ describe('FollowUpProcessor', () => {
     markSent: jest.Mock;
     markFailedOrUnknown: jest.Mock;
   };
-  let configService: { get: jest.Mock };
+  let systemConfig: { getAgentReplyConfig: jest.Mock };
   let delivery: { deliver: jest.Mock };
 
   beforeEach(() => {
@@ -51,7 +51,11 @@ describe('FollowUpProcessor', () => {
       markSent: jest.fn().mockResolvedValue(undefined),
       markFailedOrUnknown: jest.fn().mockResolvedValue(undefined),
     };
-    configService = { get: jest.fn().mockReturnValue('true') };
+    systemConfig = {
+      getAgentReplyConfig: jest
+        .fn()
+        .mockResolvedValue({ reengagementEnabled: true, reengagementShadow: true }),
+    };
     delivery = { deliver: jest.fn().mockResolvedValue(undefined) };
   });
 
@@ -61,7 +65,7 @@ describe('FollowUpProcessor', () => {
       session as never,
       runner as never,
       touchLedger as never,
-      configService as never,
+      systemConfig as never,
       withDelivery ? (delivery as never) : undefined,
     );
 
@@ -69,6 +73,19 @@ describe('FollowUpProcessor', () => {
     buildProcessor().onModuleInit();
 
     expect(queue.process).toHaveBeenCalledWith(REENGAGEMENT_JOB_NAME, 2, expect.any(Function));
+  });
+
+  it('drops in-flight jobs without generating when the master switch is off', async () => {
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: false,
+      reengagementShadow: true,
+    });
+
+    await buildProcessor().process(makeJob());
+
+    expect(runner.runTurn).not.toHaveBeenCalled();
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('calls runTurnEnd in shadow mode without delivering', async () => {
@@ -80,7 +97,10 @@ describe('FollowUpProcessor', () => {
       scenarioCode: 'opening_no_reply',
       runTurnEnd,
     });
-    configService.get.mockReturnValue('true');
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: true,
+    });
 
     await buildProcessor().process(makeJob());
 
@@ -107,7 +127,10 @@ describe('FollowUpProcessor', () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    configService.get.mockReturnValue('false');
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+    });
     runner.runTurn.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
@@ -133,7 +156,10 @@ describe('FollowUpProcessor', () => {
 
   it('does not re-deliver duplicate inflight slots and still runs turn-end lifecycle', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    configService.get.mockReturnValue('false');
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+    });
     touchLedger.reserve.mockResolvedValue('duplicate_inflight');
     runner.runTurn.mockResolvedValue({
       kind: 'reply',
@@ -152,7 +178,10 @@ describe('FollowUpProcessor', () => {
 
   it('runs turn-end lifecycle when a duplicate sent slot is skipped', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    configService.get.mockReturnValue('false');
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+    });
     touchLedger.reserve.mockResolvedValue('duplicate_sent');
     runner.runTurn.mockResolvedValue({
       kind: 'reply',
@@ -171,7 +200,10 @@ describe('FollowUpProcessor', () => {
   it('runs turn-end lifecycle when delivery fails and marks the touch unknown', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     const error = new Error('delivery down');
-    configService.get.mockReturnValue('false');
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+    });
     delivery.deliver.mockRejectedValue(error);
     runner.runTurn.mockResolvedValue({
       kind: 'reply',

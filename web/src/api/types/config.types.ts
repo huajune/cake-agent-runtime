@@ -39,6 +39,14 @@ export interface AgentReplyConfig {
   avgDurationCritical: number;
   queueDepthCritical: number;
   errorRateCritical: number;
+
+  // 出站守卫 llm 档（语义审查）灰度开关
+  outputGuardrailLlmEnabled: boolean;
+  outputGuardrailSemanticShadowEnabled: boolean;
+
+  // 主动复聊（reengagement）开关
+  reengagementEnabled: boolean;
+  reengagementShadow: boolean;
 }
 
 export interface GroupTaskConfig {

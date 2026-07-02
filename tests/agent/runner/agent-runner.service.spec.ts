@@ -1,5 +1,5 @@
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
-import type { GeneratorRunResult } from '@agent/generator/generator.types';
+import type { AgentRunResult as GeneratorRunResult } from '@agent/agent-run.types';
 
 describe('AgentRunnerService.runTurn', () => {
   let generator: { invoke: jest.Mock };
@@ -13,6 +13,7 @@ describe('AgentRunnerService.runTurn', () => {
     violations: [],
     ruleIds: [],
     blockedRuleIds: [],
+    repairMode: 'rewrite' as const,
   };
 
   const sessionRef = { corpId: 'c1', userId: 'u1', sessionId: 's1' };
@@ -186,6 +187,7 @@ describe('AgentRunnerService.runTurn', () => {
       violations: [],
       ruleIds: ['discriminatory_screening_leak'],
       blockedRuleIds: ['discriminatory_screening_leak'],
+      repairMode: 'rewrite',
     });
 
     const outcome = await service.runTurn({
@@ -208,6 +210,7 @@ describe('AgentRunnerService.runTurn', () => {
         violations: [{ type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' }],
         ruleIds: [],
         blockedRuleIds: [],
+        repairMode: 'rewrite',
       })
       .mockResolvedValueOnce(passDecision);
 
@@ -221,9 +224,109 @@ describe('AgentRunnerService.runTurn', () => {
     expect(generator.invoke).toHaveBeenCalledTimes(2);
     const revisePass = generator.invoke.mock.calls[1][0];
     expect(revisePass.toolMode).toBe('none');
+    expect(revisePass.guardrailRepair).toMatchObject({
+      originalReply: '原始回复（语气僵硬）',
+      ruleIds: [],
+    });
     expect(revisePass.reviseFeedback).toEqual([
       { type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' },
     ]);
+  });
+
+  it('recoverable rule veto repairs with no tools, then adopts the safe reply', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '这个岗位不要某地户籍，你报不了' }))
+      .mockResolvedValueOnce(
+        makeResult({ text: '我先帮你看看更合适的岗位，需要同事确认后再回复你。' }),
+      );
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'discriminatory_screening_leak',
+            evidence: '命中高敏感出站规则，证据已脱敏',
+            suggestion: '不要提及户籍、籍贯、民族等门槛，改为中性承接。',
+            severity: 'P0',
+            dataSensitivity: 'high',
+            recoverability: 'recoverable',
+            currentReplySendable: false,
+            feedbackPolicy: 'redacted',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['discriminatory_screening_leak'],
+        blockedRuleIds: ['discriminatory_screening_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '我能报名吗' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toContain('更合适');
+    expect(generator.invoke).toHaveBeenCalledTimes(2);
+    expect(generator.invoke.mock.calls[1][0].toolMode).toBe('none');
+    expect(generator.invoke.mock.calls[1][0].guardrailRepair).toMatchObject({
+      originalReply: '这个岗位不要某地户籍，你报不了',
+      ruleIds: ['discriminatory_screening_leak'],
+    });
+    expect(generator.invoke.mock.calls[1][0].reviseFeedback[0]).toMatchObject({
+      type: 'discriminatory_screening_leak',
+      feedbackPolicy: 'redacted',
+      repairMode: 'rewrite',
+    });
+  });
+
+  it('recoverable replan guard lets the repair pass use readonly tools', async () => {
+    const readonlyLookup = {
+      toolName: 'duliday_job_list',
+      args: { city: '上海' },
+      result: { jobs: [{ storeName: '静安门店', distanceKm: 1.2 }] },
+    };
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '推荐静安门店，距离 1.2km' }))
+      .mockResolvedValueOnce(
+        makeResult({ text: '这边重新查到静安门店，距离约 1.2km。', toolCalls: [readonlyLookup] }),
+      );
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'replan',
+        riskLevel: 'medium',
+        violations: [
+          {
+            type: 'ungrounded_job_recommendation',
+            evidence: '未接地岗位事实',
+            suggestion: '只能用只读工具重新查岗，或先中性追问。',
+            severity: 'P1',
+            recoverability: 'recoverable',
+            currentReplySendable: false,
+            repairMode: 'replan',
+          },
+        ],
+        ruleIds: ['ungrounded_job_recommendation'],
+        blockedRuleIds: ['ungrounded_job_recommendation'],
+        repairMode: 'replan',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '附近有什么岗位' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toContain('重新查到');
+    expect(generator.invoke).toHaveBeenCalledTimes(2);
+    expect(generator.invoke.mock.calls[1][0].toolMode).toBe('readonly');
+    expect(generator.invoke.mock.calls[1][0].reviseFeedback[0]).toMatchObject({
+      type: 'ungrounded_job_recommendation',
+      repairMode: 'replan',
+    });
   });
 
   it('keeps draft side-effect toolCalls when reviewing and returning a revised reply', async () => {
@@ -246,6 +349,7 @@ describe('AgentRunnerService.runTurn', () => {
         violations: [{ type: 'bad_tone', evidence: '需要修', suggestion: '改自然' }],
         ruleIds: [],
         blockedRuleIds: [],
+        repairMode: 'rewrite',
       })
       .mockResolvedValueOnce(passDecision);
 
@@ -257,6 +361,9 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe('已帮你约好面试，稍后按通知到店就行');
     expect(generator.invoke.mock.calls[1][0].toolMode).toBe('none');
+    expect(generator.invoke.mock.calls[1][0].guardrailRepair).toMatchObject({
+      originalReply: '已经约好了，但话术需要修',
+    });
     expect(generator.invoke.mock.calls[1][0].committedSideEffects).toContain(
       'duliday_interview_booking',
     );
@@ -311,6 +418,7 @@ describe('AgentRunnerService.runTurn', () => {
       violations: [{ type: 'hallucinated_fact', evidence: 'x', suggestion: 'y' }],
       ruleIds: [],
       blockedRuleIds: [],
+      repairMode: 'rewrite' as const,
     };
     outputGuard.check.mockResolvedValue(reviseDecision);
 

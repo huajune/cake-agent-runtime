@@ -80,6 +80,15 @@ export interface AgentInvokeParams {
    */
   reviseFeedback?: GuardViolation[];
   /**
+   * Guardrail Repair Writer 模式：用于 output guardrail 的 rewrite 修复。
+   * 与 reviseFeedback 配合，要求模型只按允许事实和规则反馈改写上一版候选人可见回复。
+   */
+  guardrailRepair?: {
+    originalReply: string;
+    ruleIds: string[];
+    feedbackToGenerator?: string;
+  };
+  /**
    * HC-1：本轮已提交且不可撤销的副作用摘要（如「已为候选人预约 X 门店面试」）。
    * 配合 `toolMode:'none'` 的无工具文本重写：让模型知晓既成事实、只改措辞，
    * 既不声称未发生、也不重复执行。
@@ -177,8 +186,11 @@ export interface AgentRunResult {
    * 调用方对本次生成结果「最终采纳」后需要显式调用一次，以触发 turn-end 生命周期
    * （记忆投影/事实提取/活跃时间刷新）。若本次结果被丢弃（如 replay 首次调用），
    * 直接忽略即可。
+   *
+   * `includeAssistantText=false`（默认 true）：回复未真实送达（守卫拦截/沉默/投递失败）时
+   * 只记用户侧记忆，不把未送达文本投影成助手轮次。
    */
-  runTurnEnd?: () => Promise<void>;
+  runTurnEnd?: (opts?: { includeAssistantText?: boolean }) => Promise<void>;
 }
 
 /** stream() 返回结果：流 + 元数据 */

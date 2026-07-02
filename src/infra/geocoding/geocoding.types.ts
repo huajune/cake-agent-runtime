@@ -16,6 +16,27 @@ export interface GeocodeResult {
   latitude: number;
 }
 
+export type GeocodeCandidateSource = 'poi' | 'structured';
+
+export type GeocodeCandidatePrecision =
+  | 'metro_station'
+  | 'poi'
+  | 'road'
+  | 'township'
+  | 'district'
+  | 'city'
+  | 'unknown';
+
+export type GeocodeCandidateConfidence = 'high' | 'medium' | 'low';
+
+export type GeocodeQueryKind =
+  | 'metro_station'
+  | 'specific_poi'
+  | 'generic_poi'
+  | 'road'
+  | 'admin_area'
+  | 'unknown';
+
 /**
  * 地理编码候选项（用于 `searchCandidates` 多候选返回）。
  *
@@ -32,4 +53,10 @@ export interface GeocodeCandidate extends GeocodeResult {
    * 结构化兜底分支无 POI 分类时为空字符串。
    */
   typecode: string;
+  /** 候选来源：POI 搜索或结构化地理编码。 */
+  source?: GeocodeCandidateSource;
+  /** 已推断的候选精度；未提供时按 poiName/typecode 临时推断。 */
+  precision?: GeocodeCandidatePrecision;
+  /** 已推断的候选置信度；未提供时可按 precision 推断。 */
+  confidence?: GeocodeCandidateConfidence;
 }

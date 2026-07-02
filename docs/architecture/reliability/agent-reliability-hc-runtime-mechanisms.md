@@ -6,10 +6,10 @@
 > 目的：把 §12 的三条硬约束（声明）变成**可实现的 runtime 机制**——具体到改哪个函数、数据形状、控制流、边界。三者落定后方可进入实现。
 
 前置事实（已核实）：
-- runner `stopWhen` 已改为 any-tool 短路：任意 tool result `output.shortCircuited===true` 即停 loop，`skip_reply` 仍保留无条件短路（[runner.service.ts](../../src/agent/runner.service.ts)）。
-- `request_handoff` 工具**在工具内** `interventionService.dispatch(...)`（pause+告警）并返回 `{dispatched:true, shortCircuited:true}`（[request-handoff.tool.ts:194-228](../../src/tools/request-handoff.tool.ts#L194)）。
-- booking 现在信任模型入参 `prechecked.nextAction`（[booking.tool.ts:273](../../src/tools/duliday-interview-booking.tool.ts#L273)）；候选人字段经 `buildKnownFieldMap`（profile/sessionFacts）+ `applyCandidateFieldOverride`（**模型入参** candidateName 等）合成（[precheck.tool.ts:480-495](../../src/tools/duliday-interview-precheck.tool.ts#L480)）。
-- 副作用工具集（replay 阻断）= `{invite_to_group, duliday_interview_booking}`（[reply-workflow.service.ts:51](../../src/channels/wecom/message/application/reply-workflow.service.ts#L51)）。
+- runner `stopWhen` 已改为 any-tool 短路：任意 tool result `output.shortCircuited===true` 即停 loop，`skip_reply` 仍保留无条件短路（[runner.service.ts](../../../src/agent/runner/agent-runner.service.ts)）。
+- `request_handoff` 工具**在工具内** `interventionService.dispatch(...)`（pause+告警）并返回 `{dispatched:true, shortCircuited:true}`（[request-handoff.tool.ts:194-228](../../../src/tools/request-handoff.tool.ts#L194)）。
+- booking 现在信任模型入参 `prechecked.nextAction`（[booking.tool.ts:273](../../../src/tools/duliday-interview-booking.tool.ts#L273)）；候选人字段经 `buildKnownFieldMap`（profile/sessionFacts）+ `applyCandidateFieldOverride`（**模型入参** candidateName 等）合成（[precheck.tool.ts:480-495](../../../src/tools/duliday-interview-precheck.tool.ts#L480)）。
+- 副作用工具集（replay 阻断）= `{invite_to_group, duliday_interview_booking}`（[reply-workflow.service.ts:51](../../../src/channels/wecom/message/application/reply-workflow.service.ts#L51)）。
 
 实现进展（2026-06-24）：
 - 已新增 `AgentInvokeParams.toolMode: 'scenario' | 'readonly' | 'none'`，`AgentPreparationService` 物理过滤工具；`readonly` 禁副作用工具，`none` 返回空 toolset。
@@ -31,7 +31,7 @@ const SIDE_EFFECT_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking
   'duliday_modify_interview_time', 'duliday_cancel_work_order']);  // 凡真改外部系统的
 
 // ⚠️ 不能用 key presence 判失败：booking 成功结果**显式带 `errorType: null`**
-// （[booking.tool.ts:794](../../src/tools/duliday-interview-booking.tool.ts#L794)），`'errorType' in r` 对成功也为 true，
+// （[booking.tool.ts:794](../../../src/tools/duliday-interview-booking.tool.ts#L794)），`'errorType' in r` 对成功也为 true，
 // 会把成功预约误判成"无副作用"→ revise 走全量重跑 → 重复 booking。必须用正向成功信号判定。
 function isToolSuccess(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false;
@@ -65,7 +65,7 @@ if (decision === 'revise') {
 ```
 
 ### 接缝（需新增，否则会退化成 prompt 约束）
-现 `AgentInvokeParams`（[agent-run.types.ts:29](../../src/agent/agent-run.types.ts#L29)）**没有** tools/reviseFeedback/committedSideEffects，toolset 是 `AgentPreparationService` 内按 scenario 物理构建的。HC-1 必须落到真实接缝：
+现 `AgentInvokeParams`（[agent-run.types.ts:29](../../../src/agent/agent-run.types.ts#L29)）**没有** tools/reviseFeedback/committedSideEffects，toolset 是 `AgentPreparationService` 内按 scenario 物理构建的。HC-1 必须落到真实接缝：
 - 新增 `toolMode: 'scenario' | 'readonly' | 'none'`（或更细 `allowedTools?: string[]`）：`AgentPreparationService` 据此**物理构建完整/只读/空 toolset**——`'readonly'` 仅保留查岗位/读状态等无副作用工具，禁 `booking/invite/modify/cancel`；`'none'` 不注册任何工具，模型即使想调也无工具可调。
 - 新增 `reviseFeedback?: GuardViolation[]` / `committedSideEffects?: string`：注入提示让模型只改措辞、知晓"已约/已拉群"。
 - **关键**：空 toolset 由 preparation 层物理保证，**不能**只在 prompt 写"不要再调工具"——那又回到模型自证。
@@ -107,12 +107,12 @@ function isFieldAuthoritative(f?: CollectedField): boolean { return !!f && AUTHO
 
 **4. `jobId` 也必须有 provenance（不止候选人字段）**
 生产实例 [[project_precheck_jobid_hallucination]]：空会话约面意向下 precheck/booking **凭空编 jobId**，靠 `job_not_found` 侥幸接住，臆造号一旦撞真岗位即 P0（近 30 天越界 10 次）。这与候选人字段是**同一自证类**，HC-2 必须覆盖：
-- ⚠️ 现有接缝只有 `hasRecalledJobs(): boolean`（"召回过**任意**岗位"，[tool.types.ts:81](../../src/types/tool.types.ts#L81)），booking 也只拦"一个岗位都没召回过"（[booking.tool.ts:301](../../src/tools/duliday-interview-booking.tool.ts#L301)）——**只要本会话召回过任意岗位，模型仍可另编一个真实 jobId 通过**。
+- ⚠️ 现有接缝只有 `hasRecalledJobs(): boolean`（"召回过**任意**岗位"，[tool.types.ts:81](../../../src/types/tool.types.ts#L81)），booking 也只拦"一个岗位都没召回过"（[booking.tool.ts:301](../../../src/tools/duliday-interview-booking.tool.ts#L301)）——**只要本会话召回过任意岗位，模型仍可另编一个真实 jobId 通过**。
 - 必须把接缝升级成**成员判定**：`isRecalledJobId(jobId): boolean` / `recalledJobIds: Set<number>`（turn-start presentedJobs ∪ lastCandidatePool ∪ currentFocusJob ∪ 本轮 onJobsFetched）。
 - `!isRecalledJobId(jobId)` → 视为**模型臆造 → reject_hard（转人工）**，不得用它重算 precheck 后放行。**阶段 1a 依赖里补这项状态切片**。
 
 ### 字段映射表（到可构造 booking payload 的粒度）
-仅判"缺不缺"不够——`allow` 分支要能生成 booking 真实 payload（Sponge 枚举化字段 + 岗位补充标签，见 [booking.tool.ts:134](../../src/tools/duliday-interview-booking.tool.ts#L134)）。每个字段定义 parser（原文→值）+ normalizer（值→Sponge 枚举）+ evidence + booking arg：
+仅判"缺不缺"不够——`allow` 分支要能生成 booking 真实 payload（Sponge 枚举化字段 + 岗位补充标签，见 [booking.tool.ts:134](../../../src/tools/duliday-interview-booking.tool.ts#L134)）。每个字段定义 parser（原文→值）+ normalizer（值→Sponge 枚举）+ evidence + booking arg：
 
 | CandidateFieldKey | parser（user_text） | normalizer → booking arg | 备注 |
 |---|---|---|---|
@@ -121,8 +121,8 @@ function isFieldAuthoritative(f?: CollectedField): boolean { return !!f && AUTHO
 | age | 数字 | int → `age` | LLM 仅草稿；allow 需 user_text |
 | gender | 男/女 | enum → `genderId`(1=男,2=女) | normalizer 必需 |
 | education | 学历词 | Sponge enum → `educationId` | 自由文本→枚举映射 |
-| healthCert | 有/无但接受办/无且不接受 | Sponge enum → `hasHealthCertificate`(**1/2/3，非 0/1**) | [sponge.enums.ts:60](../../src/sponge/sponge.enums.ts#L60) |
-| householdProvince | 户籍省名 | **省名→ID** → `householdRegisterProvinceId`(**数字 ID，非字符串**) | [booking.tool.ts:155](../../src/tools/duliday-interview-booking.tool.ts#L155)；红线筛选关键 |
+| healthCert | 有/无但接受办/无且不接受 | Sponge enum → `hasHealthCertificate`(**1/2/3，非 0/1**) | [sponge.enums.ts:60](../../../src/sponge/sponge.enums.ts#L60) |
+| householdProvince | 户籍省名 | **省名→ID** → `householdRegisterProvinceId`(**数字 ID，非字符串**) | [booking.tool.ts:155](../../../src/tools/duliday-interview-booking.tool.ts#L155)；红线筛选关键 |
 | height/weight | 数字 | int → `height`/`weight` | 部分岗位要求 |
 | supplementAnswers | 岗位补充标签问答 | Record → `supplementAnswers` | 按岗位 customerLabel 动态，[[feedback_screening_label_vs_collection_field]] |
 
@@ -180,7 +180,7 @@ const shortCircuitOnAnyToolResult = ({ steps }) =>
 - 关键不变量：**短路是 runtime 强制的**（stopWhen 见 `shortCircuited` 即停），模型无法在 hard-reject 后继续生成绕过——这正是"不交给模型"。
 
 ### handoff 的元数据与幂等契约（必须补，否则重放会重复 pause+告警）
-现 `request_handoff` 用稳定 turnId 做幂等键 `${chatId}:handoff:${turnId}`，保证 Bull retry / 崩溃重放只 pause+告警一次（[request-handoff.tool.ts:159](../../src/tools/request-handoff.tool.ts#L159)）。outcome 层新路径必须用**同等幂等键**，否则重复暂停托管+告警。
+现 `request_handoff` 用稳定 turnId 做幂等键 `${chatId}:handoff:${turnId}`，保证 Bull retry / 崩溃重放只 pause+告警一次（[request-handoff.tool.ts:159](../../../src/tools/request-handoff.tool.ts#L159)）。outcome 层新路径必须用**同等幂等键**，否则重复暂停托管+告警。
 ```ts
 // TurnOutcome 扩展（父文档 §5.3 同步）
 interface TurnOutcome {
@@ -194,7 +194,7 @@ interface TurnOutcome {
   };
 }
 ```
-**幂等落点**：`InterventionService.dispatch` 本身**不接收/不消费幂等键**，只查 `alreadyPaused`（[intervention.service.ts:75](../../src/biz/intervention/intervention.service.ts#L75)）——不足以防重放。真正幂等的是 `HandoffEventsRepository.insertHandoffEvent`（按 `corp_id + idempotency_key` upsert）。
+**幂等落点**：`InterventionService.dispatch` 本身**不接收/不消费幂等键**，只查 `alreadyPaused`（[intervention.service.ts:75](../../../src/biz/intervention/intervention.service.ts#L75)）——不足以防重放。真正幂等的是 `HandoffEventsRepository.insertHandoffEvent`（按 `corp_id + idempotency_key` upsert）。
 
 `handoff_events` 写入结果必须保持三态，不能退回布尔 `false=重复/失败/熔断/DB不可用` 混合语义。若按"false 就跳过 dispatch"实现，**Supabase 故障时会静默不暂停、不告警**（漏人工介入，P0）：
 ```ts
@@ -206,7 +206,7 @@ if (r === 'failed') logger.error('handoff 底账写入失败，已 fail-safe dis
 ```
 即 **duplicate 才跳过；failed 一律 fail-safe dispatch（宁可重复也不漏人工）+ 打高危日志/指标**。当前实现已用原生 `upsert(... ignoreDuplicates).select('idempotency_key')` 区分 inserted/duplicate/error。
 
-**迁移期防双 dispatch（P0）**：现有 `request_handoff` 工具**已在工具内 dispatch**（[request-handoff.tool.ts:194](../../src/tools/request-handoff.tool.ts#L194)）。outcome 层 **只处理 `sourceToolCall==='duliday_interview_booking'`（gate hard-reject）路径**；`sourceToolCall==='request_handoff'` 标记 `alreadyDispatched`、**不进入 outcome dispatch**，否则会重复 pause+告警。待后续把 request_handoff 也收敛到 outcome 层时再统一。
+**迁移期防双 dispatch（P0）**：现有 `request_handoff` 工具**已在工具内 dispatch**（[request-handoff.tool.ts:194](../../../src/tools/request-handoff.tool.ts#L194)）。outcome 层 **只处理 `sourceToolCall==='duliday_interview_booking'`（gate hard-reject）路径**；`sourceToolCall==='request_handoff'` 标记 `alreadyDispatched`、**不进入 outcome dispatch**，否则会重复 pause+告警。待后续把 request_handoff 也收敛到 outcome 层时再统一。
 
 ---
 

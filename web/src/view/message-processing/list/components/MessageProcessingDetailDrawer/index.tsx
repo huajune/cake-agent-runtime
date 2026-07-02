@@ -6,6 +6,7 @@ import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import ChatSection from './ChatSection';
+import GuardrailSection from './GuardrailSection';
 import {
   getRecordStatusLabel,
   getRecordStatusTone,
@@ -259,6 +260,9 @@ export default function MessageProcessingDetailDrawer({
                 </div>
               ))}
             </div>
+
+            {/* Guardrail runtime（入站拦截 / 出站首审→修复→二审） */}
+            <GuardrailSection message={message} />
 
             {/* Latency breakdown */}
             {latencyRows.length > 0 && (

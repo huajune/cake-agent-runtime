@@ -663,7 +663,7 @@ describe('AgentPreparationService', () => {
     }));
     // [当前预约信息] 现由 latest_booking 指针 + 海绵工单实时状态渲染（不再来自 recruitment_cases）。
     mockLongTermService.getLatestBooking.mockResolvedValue({
-      latest_work_order_id: 88001,
+      work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
@@ -714,7 +714,7 @@ describe('AgentPreparationService', () => {
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockLongTermService.getLatestBooking.mockResolvedValue({
-      latest_work_order_id: 88001,
+      work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
@@ -755,7 +755,7 @@ describe('AgentPreparationService', () => {
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockLongTermService.getLatestBooking.mockResolvedValue({
-      latest_work_order_id: 88002,
+      work_order_id: 88002,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
     // 仅有 workOrderId + jobId，无任何展示字段 → formatBookingContext 返回 ''
@@ -791,7 +791,7 @@ describe('AgentPreparationService', () => {
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockLongTermService.getLatestBooking.mockResolvedValue({
-      latest_work_order_id: 88003,
+      work_order_id: 88003,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue({

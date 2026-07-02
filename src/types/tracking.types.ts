@@ -9,6 +9,7 @@ import type {
   AgentStepDetail,
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
+import type { GuardrailInputTrace, GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 
 /**
  * 告警错误类型
@@ -72,6 +73,10 @@ export interface MonitoringMetadata {
   toolCalls?: AgentToolCall[];
   /** 每步循环快照（写入 message_processing_records.agent_steps 列） */
   agentSteps?: AgentStepDetail[];
+  /** 入站守卫拦截摘要（写入 message_processing_records.guardrail_input 列，仅拦截时非空） */
+  guardrailInput?: GuardrailInputTrace;
+  /** 出站守卫全程 trace（写入 message_processing_records.guardrail_output 列，紧凑 KB 级） */
+  guardrailOutput?: GuardrailTurnTrace;
   /** 本轮记忆上下文快照（写入 message_processing_records.memory_snapshot 列） */
   memorySnapshot?: AgentMemorySnapshot;
   /** turn-end 后处理状态（写入 message_processing_records.post_processing_status 列） */
@@ -135,6 +140,8 @@ export interface MessageProcessingRecord {
   toolCalls?: AgentToolCall[];
   agentSteps?: AgentStepDetail[];
   anomalyFlags?: AnomalyFlag[];
+  guardrailInput?: GuardrailInputTrace;
+  guardrailOutput?: GuardrailTurnTrace;
   memorySnapshot?: AgentMemorySnapshot;
   postProcessingStatus?: PostProcessingStatus;
 

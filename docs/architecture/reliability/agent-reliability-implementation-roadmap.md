@@ -36,12 +36,12 @@
 
 | 能力 | 现状 | 位点 |
 |---|---|---|
-| `runner` seam | `TurnRunnerService` 薄委托 `AgentRunnerService`，行为不变 | [turn-runner.service.ts](../../src/agent/runner/turn-runner.service.ts) |
-| `ChannelDeliveryPort` | 接口已定义（`deliver(outcome, {idempotencyKey})`） | [channel-delivery.port.ts](../../src/agent/ports/channel-delivery.port.ts) |
-| `toolMode` 接缝 | `AgentInvokeParams.toolMode: scenario\|readonly\|none`，preparation 物理过滤工具 | [agent-run.types.ts:27](../../src/agent/agent-run.types.ts#L27)、agent-preparation.service.ts |
-| 权威状态骨架 | `AuthoritativeSessionState` 类型 + `SessionService.getAuthoritativeState()`（派生只读） | [authoritative-session-state.types.ts](../../src/memory/types/authoritative-session-state.types.ts)、session.service.ts:131 |
+| `runner` seam | `TurnRunnerService` 薄委托 `AgentRunnerService`，行为不变 | [turn-runner.service.ts](../../../src/agent/runner/turn-runner.service.ts) |
+| `ChannelDeliveryPort` | 接口已定义（`deliver(outcome, {idempotencyKey})`） | [channel-delivery.port.ts](../../../src/agent/ports/channel-delivery.port.ts) |
+| `toolMode` 接缝 | `AgentInvokeParams.toolMode: scenario\|readonly\|none`，preparation 物理过滤工具 | [agent-run.types.ts:27](../../../src/agent/agent-run.types.ts#L27)、agent-preparation.service.ts |
+| 权威状态骨架 | `AuthoritativeSessionState` 类型 + `SessionService.getAuthoritativeState()`（派生只读） | [authoritative-session-state.types.ts](../../../src/memory/types/authoritative-session-state.types.ts)、session.service.ts:131 |
 | HC-2 jobId 闸门 | `recalledJobIds:Set` 成员判定 `isRecalledJobId`，booking 无召回出处 → `{shortCircuited,gateRejected,reasonCode:'job_id_not_recalled'}` | precheck/booking tool、tool.types.ts |
-| HC-3 booking-gate handoff | runner any-tool 短路 + outcome 层 `dispatchBookingGateHandoffIfNeeded`（先写底账→duplicate跳过→failed仍fail-safe dispatch） | [reply-workflow.service.ts:548](../../src/channels/wecom/message/application/reply-workflow.service.ts#L548) |
+| HC-3 booking-gate handoff | runner any-tool 短路 + outcome 层 `dispatchBookingGateHandoffIfNeeded`（先写底账→duplicate跳过→failed仍fail-safe dispatch） | [reply-workflow.service.ts:548](../../../src/channels/wecom/message/application/reply-workflow.service.ts#L548) |
 | handoff 底账三态 | `HandoffRecorderService.record()` → `inserted\|duplicate\|failed`（upsert ignoreDuplicates） | handoff-recorder.service.ts、handoff-events.repository.ts |
 | output rule 新规则（部分） | `proactive_insurance_policy_mention`（兼职提保险）已加 | reply-fact-guard.service.ts:336 |
 

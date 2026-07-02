@@ -1765,11 +1765,14 @@ export class AnalyticsDashboardService {
   private async getBookingCount(startDate: string, endDate: string): Promise<number> {
     try {
       const earliest = await this.dailyOpsReportRepository.getEarliestReportDate();
-      if (!earliest || earliest > startDate) {
+      if (!earliest || earliest > endDate) {
         return 0;
       }
 
-      const sums = await this.dailyOpsReportRepository.sumByDateRange(startDate, endDate);
+      // 查询起点早于投影最早日期时裁剪到 earliest：只统计有数据的日期。
+      // 不能因区间头部缺数据把整段返回 0——例如"近 90 天"里 6 月有真实数据。
+      const effectiveStart = earliest > startDate ? earliest : startDate;
+      const sums = await this.dailyOpsReportRepository.sumByDateRange(effectiveStart, endDate);
       return sums.bookingSuccess;
     } catch (error) {
       this.logger.warn('[业务指标] 获取预约统计失败，使用默认值 0:', error);
@@ -1783,11 +1786,13 @@ export class AnalyticsDashboardService {
   ): Promise<Array<{ date: string; bookingSuccess: number }>> {
     try {
       const earliest = await this.dailyOpsReportRepository.getEarliestReportDate();
-      if (!earliest || earliest > startDate) {
+      if (!earliest || earliest > endDate) {
         return [];
       }
 
-      return this.dailyOpsReportRepository.sumBookingSuccessByDateRange(startDate, endDate);
+      // 同 getBookingCount：起点裁剪到投影最早日期，避免整段趋势归零。
+      const effectiveStart = earliest > startDate ? earliest : startDate;
+      return this.dailyOpsReportRepository.sumBookingSuccessByDateRange(effectiveStart, endDate);
     } catch (error) {
       this.logger.warn('[业务指标] daily_ops_report 预约趋势失败，使用空预约趋势:', error);
       return [];

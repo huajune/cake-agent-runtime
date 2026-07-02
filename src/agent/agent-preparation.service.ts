@@ -398,13 +398,34 @@ export class AgentPreparationService {
       );
     }
 
+    const repair = params.guardrailRepair;
+    if (repair) {
+      const feedback = repair.feedbackToGenerator?.trim();
+      parts.push(
+        `本次是 Guardrail Repair Writer 模式。上一版候选人可见回复已被丢弃，原文如下：\n` +
+          `"""${repair.originalReply.slice(0, 1200)}"""\n` +
+          `请只输出一版新的候选人可见回复，严格满足：\n` +
+          `- 只修复命中规则的问题，不扩写、不新增未接地事实、不改变已提交副作用事实。\n` +
+          `- 不提“规则/守卫/拦截/系统/工具/模型”。\n` +
+          `- 不输出分析过程，不输出 JSON，不输出多方案。\n` +
+          `- 命中规则：${repair.ruleIds.length > 0 ? repair.ruleIds.join('、') : '未提供'}。` +
+          (feedback ? `\n- 聚合修复要求：${feedback}` : ''),
+      );
+    }
+
     if (params.reviseFeedback?.length) {
       const lines = params.reviseFeedback.map(
-        (v) => `- [${v.type}] 问题：${v.evidence}；应改为：${v.suggestion}`,
+        (v) =>
+          `- [${v.type}] ${v.feedbackPolicy === 'redacted' ? '证据已脱敏' : `问题：${v.evidence}`}；修复要求：${v.suggestion}`,
       );
+      const hasReplan = params.reviseFeedback.some((v) => v.repairMode === 'replan');
       parts.push(
-        `上一版回复被出站守卫拦下，存在以下需修正的问题。请只针对这些问题重写一版回复，` +
-          `不要改变已确认的事实、不要新增承诺：\n${lines.join('\n')}`,
+        `上一版回复不可发送，存在以下需修正的问题。请只针对这些问题生成一版新的候选人可见回复，` +
+          `不要解释或提到出站守卫/规则/拦截，不要复述高敏感条件，不要新增未接地承诺。` +
+          (hasReplan
+            ? `本次允许使用只读工具重新获取事实；严禁执行报名、拉群、取消、改期、发定位等副作用工具。`
+            : `本次只做文案修复，严禁调用工具。`) +
+          `\n${lines.join('\n')}`,
       );
     }
 
@@ -1074,7 +1095,7 @@ export class AgentPreparationService {
   ): Promise<{ block: string; jobId: number | null }> {
     try {
       const latestBooking = await this.longTermService.getLatestBooking(corpId, userId);
-      const workOrderId = latestBooking?.latest_work_order_id;
+      const workOrderId = latestBooking?.work_order_id;
       if (workOrderId == null) return { block: '', jobId: null };
 
       const workOrder = tokenContext

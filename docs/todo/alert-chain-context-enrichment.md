@@ -16,7 +16,7 @@ LLM Provider (HTTP 429/500) → reliable.service → runner.service → pipeline
 | # | 文件 | 改什么 | 预估行数 |
 |---|------|--------|---------|
 | 1 | `src/providers/reliable.service.ts` | 抛出错误时附加结构化元数据 | +15 |
-| 2 | `src/agent/runner.service.ts` | catch 中富化错误上下文 | +15 |
+| 2 | `src/agent/runner/agent-runner.service.ts` | catch 中富化错误上下文 | +15 |
 | 3 | `src/memory/services/short-term.service.ts` | 暴露 lastLoadError 标记 | +5 |
 | 4 | `src/memory/types/memory-runtime.types.ts` | MemoryRecallContext 加 `_warnings` | +3 |
 | 5 | `src/memory/services/memory-lifecycle.service.ts` | 传播 shortTerm 加载失败警告 | +5 |
@@ -60,7 +60,7 @@ const error = new Error(`所有模型均失败:\n  ${trail}`);
 throw error;
 ```
 
-### 2. `src/agent/runner.service.ts` — 富化执行上下文
+### 2. `src/agent/runner/agent-runner.service.ts` — 富化执行上下文
 
 **invoke 方法**：替换空消息校验，附加诊断：
 ```typescript

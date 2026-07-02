@@ -221,6 +221,7 @@ describe('MessagePipelineService', () => {
           useValue: {
             saveLastCandidateMessageAt: jest.fn().mockResolvedValue(undefined),
             saveTerminalState: jest.fn().mockResolvedValue(undefined),
+            recordCandidateActivity: jest.fn().mockResolvedValue(undefined),
           },
         },
         { provide: HostingMemberConfigService, useValue: mockHostingMemberConfigService },

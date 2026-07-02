@@ -6,16 +6,21 @@
  * guardrail 登记成一张表，`exogenousSignal` 字段是审计抓手；`source` 标注物理位置
  * （tool guardrail 因分层物理留 tools/，仅在此登记引用，不反向依赖 agent）。
  *
- * 注意：本目录是**登记/审计**用途，不在此执行 guardrail（执行仍在各自的 in-loop / 出站
- * 调用点）。input guard 已物理归并进 agent/guardrail/input/；output rule(reply-fact-guard) 与 input risk(risk-intercept) 已迁入 agent/guardrail/。
+ * 注意：本目录是**聚合后的登记/审计视图**，不在此执行 guardrail（执行仍在各自的
+ * in-loop / 出站调用点）。output/tool 的详细目录分别由各自子域维护，本文件只派生汇总，
+ * 避免同一个 rule id 在多处手写后漂移。
  */
 
-import type { GuardrailLayer } from '@shared-types/guardrail.contract';
+import { GUARDRAIL_LAYER, type GuardrailLayer } from '@shared-types/guardrail.contract';
+import { OUTPUT_RULE_CATALOG } from './output/rules/output-rule-catalog';
+import { TOOL_GUARDRAIL_CATALOG } from './tool/tool-guardrail.catalog';
 
 export interface GuardrailCatalogEntry {
   /** 稳定 id（rule id / service 名）。 */
   id: string;
   layer: GuardrailLayer;
+  /** 面向运营/审计/文档的人读中文说明。 */
+  description: string;
   /** 物理位置（文件/服务）。 */
   source: string;
   /** 该 guardrail 对齐/带入的"新外生信号"——审计核心字段。 */
@@ -23,116 +28,75 @@ export interface GuardrailCatalogEntry {
   status: 'active' | 'planned';
 }
 
-export const GUARDRAIL_CATALOG: readonly GuardrailCatalogEntry[] = [
-  // ---- input ----
+const INPUT_GUARDRAIL_CATALOG = [
   {
     id: 'input_prompt_injection',
-    layer: 'input',
+    layer: GUARDRAIL_LAYER.INPUT,
+    description: '识别候选人输入中的提示注入、越权指令或试图操控系统行为的文本。',
     source: 'agent/guardrail/input/input-guard.service.ts',
     exogenousSignal: 'prompt-injection 模式库（外生检测器）',
     status: 'active',
   },
   {
     id: 'pre_agent_risk_intercept',
-    layer: 'input',
+    layer: GUARDRAIL_LAYER.INPUT,
+    description: '在 Agent 生成前拦截辱骂、投诉风险、面试结果追问等需要人工介入的入站风险。',
     source: 'agent/guardrail/input/risk/risk-intercept.service.ts',
     exogenousSignal: 'conversation-risk 高危关键词信号',
     status: 'active',
   },
-  // ---- tool（物理留 tools/，仅登记） ----
+] as const satisfies readonly GuardrailCatalogEntry[];
+
+const OUTPUT_GUARDRAIL_CATALOG = OUTPUT_RULE_CATALOG.map(
+  (rule): GuardrailCatalogEntry => ({
+    id: rule.id,
+    layer: GUARDRAIL_LAYER.OUTPUT,
+    description: rule.description,
+    source: 'agent/guardrail/output/hard-rules.service.ts + agent/guardrail/output/rules/*.rule.ts',
+    exogenousSignal: rule.exogenousSignal,
+    status: 'active',
+  }),
+);
+
+const TOOL_GUARDRAIL_CATALOG_ENTRIES = TOOL_GUARDRAIL_CATALOG.map(
+  (entry): GuardrailCatalogEntry => ({
+    id: entry.id,
+    layer: GUARDRAIL_LAYER.TOOL,
+    description: entry.description,
+    source: entry.source,
+    exogenousSignal: entry.exogenousSignal,
+    status: entry.status,
+  }),
+);
+
+const OUTPUT_LLM_GUARDRAIL_CATALOG = [
   {
-    id: 'booking_jobid_provenance',
-    layer: 'tool',
-    source: 'tools/duliday-interview-booking.tool.ts（isRecalledJobId 闸门）',
-    exogenousSignal: '本会话真实召回集 recalledJobIds（ground truth 成员判定）',
+    id: 'output_semantic_reviewer',
+    layer: GUARDRAIL_LAYER.OUTPUT,
+    description:
+      '出站 llm 档唯一语义 reviewer：基于证据包审查岗位推荐、地理品牌歧义、预约状态三类问题；' +
+      'enforce flag 开启时参与裁决（低置信强制降级 observe），shadow flag 开启时只观测。',
+    source:
+      'agent/guardrail/output/llm/semantic-reviewer.service.ts + agent/guardrail/output/llm/review-packet.builder.ts',
+    exogenousSignal: 'jobList/precheck/booking/geocode 工具证据包 + 候选人本轮消息',
     status: 'active',
   },
   {
-    id: 'booking_real_name',
-    layer: 'tool',
-    source: 'tools/duliday/booking/booking-guards.util.ts（checkRealName）',
-    exogenousSignal: '中文真名形态校验（确定性）',
+    id: 'output_repair_writer_mode',
+    layer: GUARDRAIL_LAYER.OUTPUT,
+    description:
+      '在 output guardrail rewrite 修复时注入受控 Repair Writer 指令，只按规则反馈改写上一版回复。',
+    source: 'agent/runner/agent-runner.service.ts + agent/agent-preparation.service.ts',
+    exogenousSignal: 'output rule violations + feedbackToGenerator + 已提交副作用摘要',
     status: 'active',
   },
-  {
-    id: 'booking_name_authority',
-    layer: 'tool',
-    source: 'tools/shared/precheck-core.ts（evaluateBookingNameGate）',
-    exogenousSignal: '候选人原文 user_text 出处（"我是X"打招呼昵称负向证据）',
-    status: 'active',
-  },
-  {
-    id: 'booking_screening_answers',
-    layer: 'tool',
-    source: 'tools/duliday/booking/booking-guards.util.ts（findScreeningFailure）',
-    exogenousSignal: '岗位 supplement label failSignals（ground truth）',
-    status: 'active',
-  },
-  {
-    id: 'booking_hard_requirements',
-    layer: 'tool',
-    source: 'tools/duliday/booking/booking-guards.util.ts（性别/健康证硬约束）',
-    exogenousSignal: '岗位 policy 派生硬约束 vs 候选人入参',
-    status: 'active',
-  },
-  // ---- output（rule，确定性，对齐 ground truth） ----
-  {
-    id: 'discriminatory_screening_leak',
-    layer: 'output',
-    source: 'agent/guardrail/output/rule/rule-guardrail.service.ts',
-    exogenousSignal: '歧视筛选词词库（block）',
-    status: 'active',
-  },
-  {
-    id: 'group_promise_without_invite',
-    layer: 'output',
-    source: 'rule-guardrail.service.ts',
-    exogenousSignal: '本轮 invite_to_group 是否成功（toolCalls.result 接地）',
-    status: 'active',
-  },
-  {
-    id: 'salary_fabrication',
-    layer: 'output',
-    source: 'rule-guardrail.service.ts',
-    exogenousSignal: '岗位数据里的薪资字段（ground truth）',
-    status: 'active',
-  },
-  {
-    id: 'booking_form_field_mismatch',
-    layer: 'output',
-    source: 'rule-guardrail.service.ts',
-    exogenousSignal: 'precheck.requiredFieldsToCollectNow（ground truth）',
-    status: 'active',
-  },
-  {
-    id: 'proactive_insurance_policy_mention',
-    layer: 'output',
-    source: 'rule-guardrail.service.ts',
-    exogenousSignal: '岗位用工形式=兼职（ground truth）',
-    status: 'active',
-  },
-  {
-    id: 'candidate_name_echo',
-    layer: 'output',
-    source: 'rule-guardrail.service.ts（detectCandidateNameEcho）',
-    exogenousSignal: 'contactName 企微备注（候选人昵称，ground truth）',
-    status: 'active',
-  },
-  {
-    id: 'distance_missing',
-    layer: 'output',
-    source: 'rule-guardrail.service.ts（detectDistanceMissing）',
-    exogenousSignal: '本轮 job_list 结果是否带 distanceKm（ground truth）',
-    status: 'active',
-  },
-  // ---- output（规划中） ----
-  {
-    id: 'output_llm_reviewer',
-    layer: 'output',
-    source: 'agent/guardrail/output/llm-reviewer.service.ts（PR-D）',
-    exogenousSignal: 'toolCalls.result + 岗位数据 + memory（接地才有信号）',
-    status: 'planned',
-  },
+] as const satisfies readonly GuardrailCatalogEntry[];
+
+export const GUARDRAIL_CATALOG: readonly GuardrailCatalogEntry[] = [
+  ...INPUT_GUARDRAIL_CATALOG,
+  ...TOOL_GUARDRAIL_CATALOG_ENTRIES,
+  ...OUTPUT_GUARDRAIL_CATALOG,
+  ...OUTPUT_LLM_GUARDRAIL_CATALOG,
 ];
 
 /** 按层取 catalog 条目（审计/测试用）。 */

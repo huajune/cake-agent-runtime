@@ -8,6 +8,7 @@ import type {
   AnomalyFlag,
   PostProcessingStatus,
 } from '@shared-types/tracking.types';
+import type { GuardrailInputTrace, GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 
 /**
  * 聊天消息输入格式
@@ -86,6 +87,10 @@ export interface MessageProcessingRecordInput {
   agentSteps?: AgentStepDetail[];
   /** 异常信号标签（由 tracking 自动计算） */
   anomalyFlags?: AnomalyFlag[];
+  /** 入站守卫拦截摘要（仅拦截命中时非空） */
+  guardrailInput?: GuardrailInputTrace;
+  /** 出站守卫全程 trace（首审→repair→二审，紧凑摘要） */
+  guardrailOutput?: GuardrailTurnTrace;
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;
   /** turn-end 后处理状态 */

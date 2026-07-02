@@ -247,7 +247,7 @@ export class LongTermService {
     }
   }
 
-  // ==================== latest_booking ====================
+  // ==================== active_booking ====================
 
   /**
    * 读取候选人最近一次预约工单指针。
@@ -257,7 +257,7 @@ export class LongTermService {
     try {
       return await this.supabaseStore.getLatestBooking(corpId, userId);
     } catch (error) {
-      this.logger.warn('获取 latest_booking 失败', error);
+      this.logger.warn('获取 active_booking 失败', error);
       return null;
     }
   }
@@ -269,7 +269,7 @@ export class LongTermService {
     try {
       await this.supabaseStore.setLatestBooking(corpId, userId, workOrderId);
     } catch (error) {
-      this.logger.warn('写入 latest_booking 失败', error);
+      this.logger.warn('写入 active_booking 失败', error);
     }
   }
 

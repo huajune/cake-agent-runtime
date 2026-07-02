@@ -3,6 +3,7 @@ import type {
   AgentStepDetail,
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
+import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import type { TurnOutcome } from '@agent/runner/agent-runner.types';
 
 export { AlertErrorType } from '@shared-types/tracking.types';
@@ -61,6 +62,8 @@ export interface AgentInvokeResult {
   toolCalls?: AgentToolCall[];
   /** 每步循环快照 */
   agentSteps?: AgentStepDetail[];
+  /** 出站守卫全程 trace（首审→repair→二审，写入 message_processing_records.guardrail_output 列） */
+  guardrailOutput?: GuardrailTurnTrace;
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;
   responseMessages?: Array<Record<string, unknown>>;

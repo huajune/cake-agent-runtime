@@ -2,16 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
 import { GeneratorService } from '../generator/generator.service';
 import type {
-  GeneratorInvokeParams,
-  GeneratorRunResult,
-  GeneratorStreamResult,
+  AgentInvokeParams as GeneratorInvokeParams,
+  AgentRunResult as GeneratorRunResult,
+  AgentStreamResult as GeneratorStreamResult,
   AgentToolCall,
-} from '../generator/generator.types';
-import {
-  isShortCircuitedToolCall,
-  isToolSuccess,
-  SIDE_EFFECT_TOOLS,
-} from '../generator/tool-call-analysis';
+} from '../agent-run.types';
+import { isShortCircuitedToolCall, isToolSuccess, SIDE_EFFECT_TOOLS } from '../tool-call-analysis';
+import type {
+  GuardrailReviewStepTrace,
+  GuardrailTurnTrace,
+} from '@shared-types/guardrail.contract';
 import { classifyReviewedOutcome } from './turn-outcome';
 import {
   OutputGuardrailService,
@@ -46,6 +46,7 @@ const PASS_DECISION: OutputGuardDecision = {
   violations: [],
   ruleIds: [],
   blockedRuleIds: [],
+  repairMode: 'rewrite',
 };
 
 /** 一次「已审生成」的结果：在 GeneratorRunResult 上叠加出站裁决与是否经过 revise 重写。 */
@@ -53,6 +54,11 @@ export interface ReviewedRunResult extends GeneratorRunResult {
   outputDecision: OutputGuardDecision;
   /** 是否经过一次 revise 重写（true 时 text/toolCalls 来自重写版）。 */
   revised: boolean;
+  /**
+   * 出站守卫全程 trace（首审→repair→二审），供流水落库与调试页展示。
+   * 短路/空文本未过守卫时为 undefined。
+   */
+  guardrailTrace?: GuardrailTurnTrace;
 }
 
 /** 出站审查所需的接地/观测上下文（runner 从 TurnRequest 或调用方拼装）。 */
@@ -72,7 +78,7 @@ export interface ReviewContext {
  * Agent runner seam.
  *
  * - `invoke`/`stream`：兼容旧调用方的薄委托，直接跑 generator。
- * - `invokeReviewed`：generator → output guardrail → 必要时一次无工具 revise。
+ * - `invokeReviewed`：generator → output guardrail → 必要时一次受控 repair。
  * - `runTurn`：渠道无关回合编排入口。被动 inbound 与主动 reengagement 汇入同一处，
  *   产出 `TurnOutcome`，runner 不负责投递。
  */
@@ -132,18 +138,20 @@ export class AgentRunnerService {
   }
 
   /**
-   * 已审生成：generator.invoke → 出站守卫 → 需要时一次 revise 重写（§5.3 / §7）。
+   * 已审生成：generator.invoke → 出站守卫 → 需要时一次受控 repair（§5.3 / §7）。
    *
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
-   * - decision='revise'：丢弃首版，带 violations + 既成副作用做 `toolMode:'none'` 无工具重写，
-   *   再审一次；二次仍 revise 则按 §9「revise 死循环硬上限 1」收敛为 block。
+   * - decision='revise'：丢弃首版，带 violations + 既成副作用做 `toolMode:'none'` 无工具重写；
+   * - decision='replan'：丢弃首版，带 violations + 既成副作用做 `toolMode:'readonly'`
+   *   允许只读工具重新规划；
+   *   再审一次；二次仍 revise/replan 则按 §9「repair 死循环硬上限 1」收敛为 block。
    * - decision='block'：调用方据此不投递（rule 硬拦 / llm 严重违规 / 降级）。
    *
    * turn-end 语义：内部两次生成都强制 `deferTurnEnd`，确保被丢弃的首版不写记忆；最终采纳版的
    * `runTurnEnd` 按调用方意图处理——调用方原本要自动收尾（未显式 defer）时，pass 即 fire-and-forget
    * 触发、block 则丢弃（不写「对用户说过」记忆，呼应 HC-4）。
    *
-   * **flag 关闭时**（默认）：守卫只跑 rule 档，decision 仅 pass / 硬 block，无重写——等价现状。
+   * **flag 关闭时**（默认）：守卫只跑 rule 档；可恢复 veto 会先进一次受控 repair。
    */
   async invokeReviewed(
     params: GeneratorInvokeParams,
@@ -159,31 +167,53 @@ export class AgentRunnerService {
     }
 
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
-    if (decision.decision !== 'revise') {
-      return this.finalizeReviewed(first, decision, false, wantDefer);
+    const firstStep = this.toGuardrailStep('first', decision);
+    const shouldRepair = decision.decision === 'revise' || decision.decision === 'replan';
+    if (!shouldRepair) {
+      return this.finalizeReviewed(
+        first,
+        decision,
+        false,
+        wantDefer,
+        this.buildGuardrailTrace([firstStep], false, decision),
+      );
     }
 
-    // revise（hard cap 1）：丢弃首版，带违规意见 + 既成副作用做无工具重写。
+    // repair（hard cap 1）：丢弃首版，带违规意见 + 既成副作用做受控修复。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
-      `[invokeReviewed] output=revise，触发一次重写: rules=${decision.ruleIds.join(',') || '-'}, ` +
+      `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}`,
     );
     const revised = await this.generator.invoke({
       ...params,
       deferTurnEnd: true,
-      toolMode: 'none',
+      toolMode: decision.repairMode === 'replan' ? 'readonly' : 'none',
       reviseFeedback: decision.violations,
+      guardrailRepair:
+        decision.repairMode === 'rewrite'
+          ? {
+              originalReply: firstText,
+              ruleIds: decision.ruleIds,
+              feedbackToGenerator: decision.feedbackToGenerator,
+            }
+          : undefined,
       committedSideEffects: committed || undefined,
     });
 
     const revisedText = (revised.text ?? '').trim();
     if (!revisedText) {
+      const emptyDecision: OutputGuardDecision = {
+        ...decision,
+        decision: 'block',
+        reasonCode: 'revise_empty',
+      };
       return this.finalizeReviewed(
         revised,
-        { ...decision, decision: 'block', reasonCode: 'revise_empty' },
+        emptyDecision,
         true,
         wantDefer,
+        this.buildGuardrailTrace([firstStep], true, emptyDecision),
       );
     }
 
@@ -191,17 +221,52 @@ export class AgentRunnerService {
     const decision2 = await this.outputGuard.check(
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
-    // §9：revise 死循环硬上限 1 —— 二次仍 revise 则 block。
+    // §9：repair 死循环硬上限 1 —— 二次仍 revise/replan 则 block。
     const finalDecision: OutputGuardDecision =
-      decision2.decision === 'revise'
-        ? { ...decision2, decision: 'block', reasonCode: 'revise_exhausted' }
+      decision2.decision === 'revise' || decision2.decision === 'replan'
+        ? { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
         : decision2;
     return this.finalizeReviewed(
       { ...revised, toolCalls: reviewedToolCalls },
       finalDecision,
       true,
       wantDefer,
+      this.buildGuardrailTrace(
+        [firstStep, this.toGuardrailStep('revised', decision2)],
+        true,
+        finalDecision,
+      ),
     );
+  }
+
+  /** 把一次出站裁决压成紧凑 trace step（不带证据全文，落库体积可控）。 */
+  private toGuardrailStep(
+    stage: GuardrailReviewStepTrace['stage'],
+    decision: OutputGuardDecision,
+  ): GuardrailReviewStepTrace {
+    return {
+      stage,
+      decision: decision.decision,
+      riskLevel: decision.riskLevel,
+      ruleIds: decision.ruleIds,
+      blockedRuleIds: decision.blockedRuleIds,
+      violationTypes: decision.violations.map((v) => v.type),
+      repairMode: decision.repairMode,
+      reasonCode: decision.reasonCode,
+    };
+  }
+
+  private buildGuardrailTrace(
+    steps: GuardrailReviewStepTrace[],
+    repaired: boolean,
+    finalDecision: OutputGuardDecision,
+  ): GuardrailTurnTrace {
+    return {
+      steps,
+      repaired,
+      finalDecision: finalDecision.decision,
+      reasonCode: finalDecision.reasonCode,
+    };
   }
 
   private buildGuardInput(
@@ -249,14 +314,22 @@ export class AgentRunnerService {
     decision: OutputGuardDecision,
     revised: boolean,
     wantDefer: boolean,
+    guardrailTrace?: GuardrailTurnTrace,
   ): ReviewedRunResult {
     const blocked = decision.decision === 'block';
     if (!wantDefer) {
-      // 调用方原本要自动收尾：pass→fire-and-forget 触发；block→丢弃（不写"对用户说过"记忆）。
-      if (!blocked) void result.runTurnEnd?.();
-      return { ...result, runTurnEnd: undefined, outputDecision: decision, revised };
+      // 调用方原本要自动收尾：pass→fire-and-forget 触发；block→只记用户侧
+      // （不投影助手轮次，不写"对用户说过"记忆，但保留本轮用户事实提取）。
+      void result.runTurnEnd?.(blocked ? { includeAssistantText: false } : undefined);
+      return {
+        ...result,
+        runTurnEnd: undefined,
+        outputDecision: decision,
+        revised,
+        guardrailTrace,
+      };
     }
-    return { ...result, outputDecision: decision, revised };
+    return { ...result, outputDecision: decision, revised, guardrailTrace };
   }
 
   stream(

@@ -941,7 +941,7 @@ describe('buildInterviewBookingTool', () => {
       },
       {
         latestBooking: {
-          latest_work_order_id: 438358,
+          work_order_id: 438358,
           linked_at: new Date().toISOString(),
         },
       },
@@ -970,7 +970,7 @@ describe('buildInterviewBookingTool', () => {
       {},
       {
         latestBooking: {
-          latest_work_order_id: 438358,
+          work_order_id: 438358,
           linked_at: new Date().toISOString(),
         },
       },

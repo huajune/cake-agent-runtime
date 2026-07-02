@@ -425,6 +425,17 @@ export class AiStreamTrace {
   }
 
   /**
+   * 流末出站守卫 advisory 审查入参：完整回复正文 + 工具调用（转成 AgentToolCall）。
+   * 调试页在流结束后据此跑一次 silent 守卫，展示"守卫会怎么判"，不参与真实发送裁决。
+   */
+  getReviewInput(): { reply: string; toolCalls: MonitoringMetadata['toolCalls'] } {
+    return {
+      reply: this.content.getReplyText(),
+      toolCalls: this.toAgentToolCalls(this.content.getStoredToolCalls()) ?? [],
+    };
+  }
+
+  /**
    * 把 stream 路径捕获的 StoredToolCall 转成 AgentToolCall，供 tracking 层落入 tool_calls jsonb。
    *
    * stream 路径没有 generateText steps 那样精细的 per-step 时序，durationMs 留空；

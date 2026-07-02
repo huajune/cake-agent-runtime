@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
+import type { GuardrailInputTrace } from '@shared-types/guardrail.contract';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
 import {
@@ -432,6 +433,8 @@ export class WecomMessageObservabilityService {
       replySegments?: number;
       replyPreview?: string;
       extraResponse?: Record<string, unknown>;
+      /** 入站守卫拦截摘要（intercepted 静默收尾时由渠道传入，写 guardrail_input 列）。 */
+      guardrailInput?: GuardrailInputTrace;
     },
   ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
     const trace = await this.traceStore.get<WecomTraceContext>(messageId);
@@ -449,6 +452,8 @@ export class WecomMessageObservabilityService {
       tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
       toolCalls: agentResult?.toolCalls,
       agentSteps: agentResult?.agentSteps,
+      guardrailInput: options.guardrailInput,
+      guardrailOutput: agentResult?.guardrailOutput,
       memorySnapshot: agentResult?.memorySnapshot,
       isFallback: agentResult?.isFallback ?? false,
       fallbackSuccess: agentResult?.isFallback ? true : undefined,
@@ -521,6 +526,7 @@ export class WecomMessageObservabilityService {
       tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
       toolCalls: agentResult?.toolCalls,
       agentSteps: agentResult?.agentSteps,
+      guardrailOutput: agentResult?.guardrailOutput,
       memorySnapshot: agentResult?.memorySnapshot,
       isFallback: agentResult?.isFallback ?? Boolean(trace?.fallbackDelivery),
       fallbackSuccess: trace?.fallbackDelivery?.success,

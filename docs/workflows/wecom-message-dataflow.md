@@ -200,7 +200,7 @@ Bull 的 `jobId = {chatId}:{messageId}`，去重保证同 messageId 只会有一
 | Worker | [`src/channels/wecom/message/runtime/message.processor.ts`](../../src/channels/wecom/message/runtime/message.processor.ts) |
 | 主编排（含 replay） | [`src/channels/wecom/message/application/reply-workflow.service.ts`](../../src/channels/wecom/message/application/reply-workflow.service.ts) |
 | 观测 trace | [`src/channels/wecom/message/telemetry/wecom-message-observability.service.ts`](../../src/channels/wecom/message/telemetry/wecom-message-observability.service.ts) |
-| Agent runner（`deferTurnEnd`） | [`src/agent/runner.service.ts`](../../src/agent/runner.service.ts) |
+| Agent runner（`deferTurnEnd`） | [`src/agent/runner/agent-runner.service.ts`](../../src/agent/runner/agent-runner.service.ts) |
 | Agent 预备（`trailingUserContent`） | [`src/agent/agent-preparation.service.ts`](../../src/agent/agent-preparation.service.ts) |
 | 流水写入 | [`src/biz/monitoring/services/tracking/message-tracking.service.ts`](../../src/biz/monitoring/services/tracking/message-tracking.service.ts) |
 | 记忆 lifecycle | [`src/memory/services/memory-lifecycle.service.ts`](../../src/memory/services/memory-lifecycle.service.ts) |

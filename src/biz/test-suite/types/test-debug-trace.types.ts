@@ -103,6 +103,10 @@ export interface TestExecutionTraceBundle {
     toolCalls?: unknown[];
     steps?: unknown[];
     usage?: unknown;
+    outputDecision?: unknown;
+    revised?: boolean;
+    /** 出站守卫全程 trace（首审→repair→二审），调试页 runtime 过程展示用。 */
+    guardrailTrace?: unknown;
   };
 }
 

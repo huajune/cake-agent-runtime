@@ -1,7 +1,8 @@
+import { Readable } from 'stream';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
-import { GeneratorService } from '@agent/generator/generator.service';
+import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
@@ -9,11 +10,11 @@ import { MessageRole } from '@enums/message.enum';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;
-  let loop: jest.Mocked<GeneratorService>;
+  let loop: jest.Mocked<AgentRunnerService>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
 
   const mockLoop = {
-    invoke: jest.fn(),
+    invokeReviewed: jest.fn(),
     stream: jest.fn(),
   };
 
@@ -35,20 +36,29 @@ describe('TestExecutionService', () => {
     steps: 1,
     toolCalls: [],
     usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+    outputDecision: {
+      decision: 'pass',
+      riskLevel: 'low',
+      violations: [],
+      ruleIds: [],
+      blockedRuleIds: [],
+      repairMode: 'rewrite',
+    },
+    revised: false,
   });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TestExecutionService,
-        { provide: GeneratorService, useValue: mockLoop },
+        { provide: AgentRunnerService, useValue: mockLoop },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
         { provide: ChatSessionService, useValue: mockChatSessionService },
       ],
     }).compile();
 
     service = module.get<TestExecutionService>(TestExecutionService);
-    loop = module.get(GeneratorService);
+    loop = module.get(AgentRunnerService);
     executionRepository = module.get(TestExecutionRepository);
 
     jest.clearAllMocks();
@@ -79,7 +89,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should execute test and return response with SUCCESS status', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult('AI回复'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -90,7 +100,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should persist prior history into production chat storage before preprocessing', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult('AI回复'));
 
       await service.executeTest({
         ...baseRequest,
@@ -121,7 +131,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should keep same-turn user history while removing only duplicated current message', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult('AI回复'));
 
       await service.executeTest({
         ...baseRequest,
@@ -133,7 +143,7 @@ describe('TestExecutionService', () => {
         ],
       });
 
-      expect(loop.invoke).toHaveBeenCalledWith(
+      expect(loop.invokeReviewed).toHaveBeenCalledWith(
         expect.objectContaining({
           messages: [
             {
@@ -145,11 +155,12 @@ describe('TestExecutionService', () => {
             { role: 'user', content: '王静怡，38，13816246197，大专', imageUrls: undefined },
           ],
         }),
+        expect.anything(),
       );
     });
 
     it('should drop future history after the selected current message', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult('AI回复'));
 
       await service.executeTest({
         ...baseRequest,
@@ -162,7 +173,7 @@ describe('TestExecutionService', () => {
         ],
       });
 
-      expect(loop.invoke).toHaveBeenCalledWith(
+      expect(loop.invokeReviewed).toHaveBeenCalledWith(
         expect.objectContaining({
           messages: [
             {
@@ -177,11 +188,12 @@ describe('TestExecutionService', () => {
             },
           ],
         }),
+        expect.anything(),
       );
     });
 
     it('should return TIMEOUT status when timeout error is thrown', async () => {
-      mockLoop.invoke.mockRejectedValue(new Error('Request timeout exceeded'));
+      mockLoop.invokeReviewed.mockRejectedValue(new Error('Request timeout exceeded'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -189,7 +201,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should return FAILURE status for non-timeout errors', async () => {
-      mockLoop.invoke.mockRejectedValue(new Error('Network error'));
+      mockLoop.invokeReviewed.mockRejectedValue(new Error('Network error'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -197,7 +209,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should mark empty non-skip replies as failure', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult(''));
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult(''));
 
       const result = await service.executeTest(baseRequest);
 
@@ -212,7 +224,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should allow intentional skip_reply to produce an empty success', async () => {
-      mockLoop.invoke.mockResolvedValue({
+      mockLoop.invokeReviewed.mockResolvedValue({
         ...makeSuccessResult(''),
         toolCalls: [
           {
@@ -231,7 +243,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should save execution record when saveExecution is true', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-1' } as any);
 
       const request = { ...baseRequest, saveExecution: true, batchId: 'batch-1' };
@@ -242,7 +254,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should not save execution record when saveExecution is false', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
 
       await service.executeTest({ ...baseRequest, saveExecution: false });
 
@@ -250,7 +262,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should save execution record by default when saveExecution is not set', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-2' } as any);
 
       const request = { ...baseRequest };
@@ -261,21 +273,22 @@ describe('TestExecutionService', () => {
     });
 
     it('should call loop.invoke with correct params', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
 
       await service.executeTest(baseRequest);
 
-      expect(loop.invoke).toHaveBeenCalledWith(
+      expect(loop.invokeReviewed).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-001',
           corpId: 'test',
           scenario: 'candidate-consultation',
         }),
+        expect.anything(),
       );
     });
 
     it('should switch to released strategy when bot ids are provided', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
 
       await service.executeTest({
         ...baseRequest,
@@ -283,28 +296,30 @@ describe('TestExecutionService', () => {
         botImId: 'im-bot-1',
       });
 
-      expect(loop.invoke).toHaveBeenCalledWith(
+      expect(loop.invokeReviewed).toHaveBeenCalledWith(
         expect.objectContaining({
           strategySource: 'released',
           botUserId: 'bot-user-1',
           botImId: 'im-bot-1',
         }),
+        expect.anything(),
       );
     });
 
     it('should use default scenario when none is provided', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
 
       const request = { ...baseRequest, scenario: undefined };
       await service.executeTest(request);
 
-      expect(loop.invoke).toHaveBeenCalledWith(
+      expect(loop.invokeReviewed).toHaveBeenCalledWith(
         expect.objectContaining({ scenario: 'candidate-consultation' }),
+        expect.anything(),
       );
     });
 
     it('should preserve non-duplicated history and append current message', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
 
       const history = [
         { role: MessageRole.USER, content: 'h1' },
@@ -314,7 +329,7 @@ describe('TestExecutionService', () => {
       ];
       await service.executeTest({ ...baseRequest, history });
 
-      const callArgs = loop.invoke.mock.calls[0][0];
+      const callArgs = loop.invokeReviewed.mock.calls[0][0];
       expect(callArgs.messages).toHaveLength(5);
       expect(callArgs.messages.slice(0, -1)).toEqual([
         { role: 'user', content: 'h1', imageUrls: undefined },
@@ -330,7 +345,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should include token usage in metrics', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
 
       const result = await service.executeTest(baseRequest);
 
@@ -342,7 +357,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should return zero token usage when loop throws', async () => {
-      mockLoop.invoke.mockRejectedValue(new Error('fail'));
+      mockLoop.invokeReviewed.mockRejectedValue(new Error('fail'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -367,8 +382,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should return a readable stream', async () => {
-      const { Readable } = require('stream');
-      const mockNodeStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
+      const mockNodeStream = { pipe: jest.fn() } as unknown as Readable;
       const fromWebSpy = jest.spyOn(Readable, 'fromWeb').mockReturnValue(mockNodeStream);
 
       mockLoop.stream.mockResolvedValue({

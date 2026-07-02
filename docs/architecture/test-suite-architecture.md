@@ -727,7 +727,15 @@ CREATE INDEX idx_conversation_snapshots_batch_id ON test_conversation_snapshots(
 
 ## 相关文档
 
-- [用例测试工作流程](../workflows/scenario-test-workflow.md)
-- [回归验证工作流程](../workflows/conversation-test-workflow.md)
+测试文档族（架构 → 指南 → 工作流 → 契约）：
+
+- [质量评测系统设计与使用指南](../guides/test-suite-guide.md) — 场景解释与最佳实践
+- [用例测试工作流程](../workflows/scenario-test-workflow.md) — 导入→执行→评审→回写
+- [回归验证工作流程](../workflows/conversation-test-workflow.md) — 多轮对话回归数据流
+- [反馈修复测试验证链路 V2](../workflows/feedback-repair-test-validation-v2.md) — 反馈→样本池→策展→正式资产
+- [BadCase Trace 与记忆评测改造](../workflows/badcase-trace-memory-evaluation.md) — 排障/记忆评测字段契约
+
+其他：
+
 - [Bull Queue 使用指南](../technical/bull-queue-guide.md)
 - [NestJS 最佳实践](../../.claude/agents/code-standards.md)

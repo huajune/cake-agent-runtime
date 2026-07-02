@@ -104,12 +104,12 @@
 |---|---|
 | 户籍/民族渲染标注 | `src/tools/duliday/job-list/render.util.ts`、`src/tools/utils/sensitive-screening.util.ts` |
 | precheck 敏感提示 | `src/tools/duliday-interview-precheck.tool.ts`（`sensitiveScreeningNotice`） |
-| 出站歧视拦截 | `src/channels/wecom/message/application/reply-fact-guard.service.ts`（`discriminatory_screening_leak`，block 级） |
+| 出站歧视拦截 | `src/agent/guardrail/output/hard-rules.service.ts`（`discriminatory_screening_leak`，block 级） |
 | 出站编造检测 | 同上（拉群/薪资/收资字段三类，告警级） |
 | 敏感话术红线 | `src/agent/context/prompts/candidate-consultation.md` |
-| 风险预检 | `src/channels/wecom/message/application/pre-agent-risk-intercept.service.ts` + `src/conversation-risk/` |
+| 风险预检 | `src/agent/guardrail/input/risk-intercept.service.ts` + `src/conversation-risk/` |
 | 候选人黑名单 | `src/biz/candidate-blacklist/` |
-| 指令注入防护 | `src/agent/input-guard.service.ts` |
+| 指令注入防护 | `src/agent/guardrail/input/input-guard.service.ts` |
 | 真名校验 | `src/memory/facts/name-guard.ts` + booking guards |
 
 > 注：户籍/民族四道防线中的"出站强拦"与部分标注强化为 2026-06-12 新增（`feat/blacklist-realtime-conversion` 分支），随下一次发版生效；其余护栏线上已在运行。发版后请删除本注。

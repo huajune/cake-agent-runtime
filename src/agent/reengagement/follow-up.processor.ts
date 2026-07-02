@@ -1,11 +1,11 @@
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { SessionService } from '@memory/services/session.service';
 import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from '../ports/channel-delivery.port';
-import { TurnRunnerService } from '../runner/turn-runner.service';
-import type { TurnOutcome } from '../runner/turn-runner.types';
+import { AgentRunnerService } from '../runner/agent-runner.service';
+import type { TurnOutcome } from '../runner/agent-runner.types';
 import { REENGAGEMENT_JOB_NAME, REENGAGEMENT_QUEUE, type FollowUpJob } from './reengagement.types';
 import {
   computeFireAt,
@@ -19,9 +19,11 @@ import { TouchLedgerService } from './touch-ledger.service';
 /**
  * 复聊 TaskProcessor：到点 → 代码校验停止条件 → 复用 runner（继承 guardrail/记忆/观测）→ 投递。
  *
- * Shadow（第一版必跑）：REENGAGEMENT_SHADOW=true 时走完 shouldStop + runner.runTurn 但**不 deliver**，
- * 只记"本应发 X / 命中场景 Y / 停止原因 Z"。⚠️ shadow ≠ 无副作用：主动回合已 toolMode:'readonly'
- * 物理禁副作用工具（见 runner.runTurn），shadow 再叠加"不投递"，两者缺一不可。
+ * 开关走 Dashboard 运行时配置（DB 动态读，即时生效）：`reengagementEnabled` 是急刹车——
+ * 关闭后在途 job 到点直接丢弃；`reengagementShadow`（第一版必跑）走完 shouldStop +
+ * runner.runTurn 但**不 deliver**，只记"本应发 X / 命中场景 Y / 停止原因 Z"。
+ * ⚠️ shadow ≠ 无副作用：主动回合已 toolMode:'readonly' 物理禁副作用工具（见 runner.runTurn），
+ * shadow 再叠加"不投递"，两者缺一不可。
  */
 @Injectable()
 export class FollowUpProcessor implements OnModuleInit {
@@ -30,9 +32,9 @@ export class FollowUpProcessor implements OnModuleInit {
   constructor(
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
     private readonly session: SessionService,
-    private readonly runner: TurnRunnerService,
+    private readonly runner: AgentRunnerService,
     private readonly touchLedger: TouchLedgerService,
-    private readonly configService: ConfigService,
+    private readonly systemConfig: SystemConfigService,
     @Optional()
     @Inject(CHANNEL_DELIVERY_PORT)
     private readonly delivery?: ChannelDeliveryPort<TurnOutcome>,
@@ -41,14 +43,8 @@ export class FollowUpProcessor implements OnModuleInit {
   onModuleInit(): void {
     this.queue.process(REENGAGEMENT_JOB_NAME, 2, (job: Job<FollowUpJob>) => this.process(job));
     this.logger.log(
-      `[reengagement] processor 已注册（shadow=${this.isShadow()}, delivery=${this.delivery ? 'bound' : 'none'}）`,
+      `[reengagement] processor 已注册（delivery=${this.delivery ? 'bound' : 'none'}，enabled/shadow 由运行时配置动态控制）`,
     );
-  }
-
-  private isShadow(): boolean {
-    // 默认 shadow（只排程不发），且无投递端口绑定时强制 shadow
-    if (!this.delivery) return true;
-    return this.configService.get<string>('REENGAGEMENT_SHADOW', 'true') !== 'false';
   }
 
   async process(job: Job<FollowUpJob>): Promise<void> {
@@ -56,6 +52,15 @@ export class FollowUpProcessor implements OnModuleInit {
     const scenario = getScenario(scenarioCode);
     if (!scenario) {
       this.logger.warn(`[reengagement] 未知场景 ${scenarioCode}，跳过`);
+      return;
+    }
+
+    // 0) 总开关急刹车：Dashboard 关闭后，在途 job 到点直接丢弃（不生成、不投递、不重排）
+    const runtime = await this.systemConfig.getAgentReplyConfig();
+    if (!runtime.reengagementEnabled) {
+      this.logger.log(
+        `[reengagement] 总开关关闭，丢弃到点任务 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
+      );
       return;
     }
 
@@ -96,21 +101,24 @@ export class FollowUpProcessor implements OnModuleInit {
     });
 
     // 5) 投递 + 触达底账（shadow 只记不发）
+    // 所有未投递分支的 runTurnEnd 一律 includeAssistantText:false：候选人没收到这条文本，
+    // 若照常投影成助手轮次，下一轮真实对话会引用一段候选人从未见过的"跟进"（HC-4 幽灵回复）。
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
+      if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       return;
     }
 
-    const shadow = this.isShadow();
+    // 无投递端口绑定时强制 shadow；否则读运行时配置（与开头的总开关同一次读取）
+    const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !scenario.rolloutEnabled || !this.delivery) {
       this.logger.log(
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
           `text="${outcome.reply.text.slice(0, 60)}"（shadow=${shadow}, rollout=${scenario.rolloutEnabled}）`,
       );
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
+      if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       return;
     }
 
@@ -128,27 +136,29 @@ export class FollowUpProcessor implements OnModuleInit {
     const key = `${sessionId}:${scenarioCode}:${anchorAt}`;
     const slot = await this.touchLedger.reserve(key);
     if (slot === 'duplicate_sent') {
+      // 之前那次触达已送达，但**本次生成的文本**没发出去——不投影本次文本。
       this.logger.log(`[reengagement] 已发过，跳过 key=${key}`);
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
+      if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       return;
     }
     if (slot === 'duplicate_inflight') {
       this.logger.warn(`[reengagement] 触达已在途/状态不明，跳过重投 key=${key}`);
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
+      if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       return;
     }
     try {
       await this.touchLedger.markDeliveryAttempted(key);
       await this.delivery!.deliver(outcome, { idempotencyKey: key });
       await this.touchLedger.markSent(key, sessionId, now);
-      if (outcome.runTurnEnd) await outcome.runTurnEnd();
+      if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: true });
       this.logger.log(`[reengagement] 已投递 key=${key}`);
     } catch (error) {
-      // deliver 后状态不明 → unknown，交补偿，不盲重投
+      // deliver 后状态不明 → unknown，交补偿，不盲重投。送达与否未知时按未送达处理：
+      // 宁可下一轮重复跟进语气，也不能让记忆引用候选人可能没收到的文本。
       try {
         await this.touchLedger.markFailedOrUnknown(key, 'unknown');
       } finally {
-        if (outcome.runTurnEnd) await outcome.runTurnEnd();
+        if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       }
       throw error;
     }

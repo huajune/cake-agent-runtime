@@ -81,6 +81,7 @@ describe('ReplyWorkflowService', () => {
   };
   const session = {
     saveTerminalState: jest.fn(),
+    recordCandidateActivity: jest.fn(),
   };
 
   let service: ReplyWorkflowService;
@@ -162,6 +163,7 @@ describe('ReplyWorkflowService', () => {
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
     followUpScheduler.scheduleFollowUp.mockResolvedValue({ scheduled: true });
     session.saveTerminalState.mockResolvedValue(undefined);
+    session.recordCandidateActivity.mockResolvedValue(undefined);
     interventionService.dispatch.mockResolvedValue({
       dispatched: true,
       paused: true,
@@ -640,6 +642,22 @@ describe('ReplyWorkflowService', () => {
       expect(deliveryService.deliverReply).not.toHaveBeenCalled();
       expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
     });
+
+    it('投递抛异常 → 仍以 includeAssistantText:false 完成用户侧 turn-end（事实提取不丢）', async () => {
+      const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+      runner.invoke.mockResolvedValueOnce({
+        text: '好的，帮你约明天下午',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        toolCalls: [],
+        runTurnEnd,
+      });
+      deliveryService.deliverReply.mockRejectedValueOnce(new Error('WeCom send 5xx'));
+
+      await service.processSingleMessage(createMessage());
+
+      expect(runTurnEnd).toHaveBeenCalledTimes(1);
+      expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    });
   });
 
   describe('前置风险预检命中 → 确定性静默 + 暂停', () => {
@@ -685,7 +703,7 @@ describe('ReplyWorkflowService', () => {
       );
     });
 
-    it('rule 档 block → 不重复转人工（守卫内已告警）', async () => {
+    it('rule 档 block → 同样转人工（守卫内飞书通知只是观测，候选人不能悬空）', async () => {
       currentOutputDecision = {
         decision: 'block',
         riskLevel: 'high',
@@ -702,8 +720,15 @@ describe('ReplyWorkflowService', () => {
       await service.processSingleMessage(createMessage());
 
       expect(deliveryService.deliverReply).not.toHaveBeenCalled();
-      expect(interventionService.dispatch).not.toHaveBeenCalled();
-      expect(handoffRecorder.record).not.toHaveBeenCalled();
+      expect(handoffRecorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({ reasonCode: 'system_blocked' }),
+      );
+      expect(interventionService.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'general_handoff',
+          alertLabel: expect.stringContaining('rule 档'),
+        }),
+      );
     });
   });
 

@@ -1,7 +1,7 @@
 import {
   RiskInterceptService,
   type RiskInterceptInput,
-} from '@agent/guardrail/input/risk/risk-intercept.service';
+} from '@agent/guardrail/input/risk-intercept.service';
 
 describe('RiskInterceptService', () => {
   const detector = { detect: jest.fn() };

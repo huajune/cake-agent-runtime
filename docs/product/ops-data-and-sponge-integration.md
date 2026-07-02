@@ -1,15 +1,16 @@
 # 蛋糕运营数据体系 + 海绵工单集成 产品设计
 
 **创建时间**: 2026-05-28
-**状态**: 待评审
+**状态**: 已落地（2026-06 实现，2026-07-02 按代码复核）
+**运营使用说明**：日报 / Web 转化分析 / 埋点三出口的口径与用法见 [ops-data-spec-for-operations.md](./ops-data-spec-for-operations.md)（运营向）
 
 ---
 
-> ## ⚠️ 实现校准（2026-06-04，以 `codex/fix-bug` 分支代码为准）
+> ## ✅ 实现要点（2026-07-02 已按代码逐条复核，与初版设计的差异）
 >
-> 本设计主体已落地，但以下几处**最终实现与本文不一致**，以代码为准（下文相关段落已就地标注）：
+> 本设计主体已落地。以下几处**最终实现与初版设计不同，下述为准**（正文相关段落已就地标注；均已对照当前代码确认仍生效）：
 >
-> 1. **入职 `candidate.hired` 不再采集**：15min 海绵轮询收口到 `interview.passed`，不写 `candidate.hired`（[`sponge-status-poll.cron.ts:20`](../../src/biz/ops-events/sponge-status-poll.cron.ts#L20)）。因此「整体转化率」= **面试通过数 / 新增好友**（不再是"入职/加好友"）；cohort 漏斗、KPI 均**无「入职」阶段**。
+> 1. **入职 `candidate.hired` 不再采集**：15min 海绵轮询收口到 `interview.passed`，不写 `candidate.hired`（[`sponge-status-poll.cron.ts:21`](../../src/biz/ops-events/sponge-status-poll.cron.ts#L21)）。因此「整体转化率」= **面试通过数 / 新增好友**（不再是"入职/加好友"）；cohort 漏斗、KPI 均**无「入职」阶段**。
 > 2. **KPI 无 `hireRate` 字段**：后端 `ConversionKpisResponse` 实际返回 `breakIceRate / bookingRate / groupInviteRate / passRate / overallRate`，**没有 `hireRate`**（[`conversion-analytics.types.ts:37-44`](../../src/biz/conversion-analytics/types/conversion-analytics.types.ts#L37-L44)）。第三张卡是**加群率 = 破冰后加群人数 / 破冰人数**（分母是破冰，不是报名）。
 > 3. **handoff 接口无 `byStage`**：`/analytics/conversion/handoff` 只返回 `reasons[]`（reason_code 聚合），未实现按 `stage` 的分布（stage 字段在 `handoff_events` 表里有，分析接口未消费）。
 > 4. **`is_synthetic` 列实际加了、但没用**：迁移 `20260529150000` 仍 `ADD COLUMN message_processing_records.is_synthetic`（+部分索引），而 TS 代码**零引用**——孤儿列（破冰改走 `isPureFriendAddGreeting` 文本识别）。下文"已废弃不加"的说法不准。
@@ -156,7 +157,7 @@ CREATE INDEX idx_ops_events_corp_channel ON ops_events (corp_id, source_channel,
 | `group.invited` | `chat_id + ":group:" + group_name + ":" + turn_id` |
 | `handoff.triggered` | `chat_id + ":handoff:" + turn_id` |
 | `interview.passed` | `String(workOrderId) + ":pass"` ⚠️ 不带 interviewPassTime（海绵修正时间不会重复计数）|
-| `candidate.hired` | `String(workOrderId) + ":hired"` |
+| ~~`candidate.hired`~~ | ⚠️ **已废弃不采集**（见顶部实现要点 #1）|
 
 > **turn_id 说明**：`turn_id` = 触发本轮的企微 `messageId`（聚合时为 `batchId`），即 `agent.replied` 复用的 traceId，由 `ToolBuildContext.turnId` 透传给工具。它**按轮**而非**按候选人终身**去重：daily_ops_report 是「当天事件数」，若用 `user_id` 终身键，同一候选人后续天数再次推荐/预检/进群会被压成 0。turn_id 同批重跑保持不变，故 Bull 重试时仍能去重、不会重复 +1。工具在 turn_id 缺省（test/debug 链路）时回退时间戳。
 
@@ -164,7 +165,7 @@ CREATE INDEX idx_ops_events_corp_channel ON ops_events (corp_id, source_channel,
 - `booking.succeeded`: `{ candidate_name, phone, brand_name, store_name, job_name, interview_time }`
 - `handoff.triggered`: `{ reason_code, reason, action_advice, stage }`
 - `interview.passed`: `{ interview_pass_time }`（时间放 payload，不进幂等键）
-- `candidate.hired`: `{ hired_at? }`（如果海绵能提供）
+- ~~`candidate.hired`: `{ hired_at? }`~~ ⚠️ 已废弃不采集（顶部实现要点 #1）
 - `friend.added`: `{ source_channel, add_way?, state? }`（来源渠道；add_way/state 为企微原始添加方式，留作回溯）
 - 其他事件：可选附加上下文（如 message_id、step_id、job_id 等）
 
@@ -222,7 +223,7 @@ CREATE TABLE daily_ops_report (
   - 用 `UPSERT (corp_id, report_date, bot_im_id) ON CONFLICT DO UPDATE SET 字段 = 字段 + 1`
   - 出问题可直接从 ops_events 全量重算覆盖（**真·自愈，无副作用**——表里没有飞书同步状态/人工备注会被冲掉）
 - candidate_summary / booking_brands 也是从 ops_events.payload 投影
-- ~~**入职数（hired）不存这里**，Web 分析页用 `ops_events.candidate.hired` 取数~~ ⚠️ 入职已不采集（顶部校准 #1），无此数据
+- ~~**入职数（hired）不存这里**，Web 分析页用 `ops_events.candidate.hired` 取数~~ ⚠️ 入职已不采集（顶部实现要点 #1），无此数据
 - **不存飞书同步状态**：飞书日报每日定时读一次推一次（见六-F），不回写、不增量
 
 ### 3.5 handoff_events 表（11 字段）
@@ -233,7 +234,7 @@ CREATE TABLE handoff_events (
   chat_id text NOT NULL,
   corp_id text NOT NULL,
   user_id text,                        -- ⚡ 新增：候选人维度复盘
-  reason_code text NOT NULL,           -- 原因代码（当前 8 类，见 request-handoff.tool.ts）；text 不设约束，可扩展
+  reason_code text NOT NULL,           -- 原因代码（当前 10 类，见 request-handoff.tool.ts）；text 不设约束，可扩展
   reason text,                         -- Agent 给的原话
   action_advice text,                  -- ⚡ 新增：Agent 给的建议动作
   stage text,                          -- ⚡ 新增：触发时会话阶段（程序性阶段），定位 handoff 卡在哪一步
@@ -287,7 +288,7 @@ CREATE INDEX IF NOT EXISTS idx_mpr_received_at_manager
 | `group.invited` | invite_to_group 工具成功 | `group_invite_count` | ✅ 邀请进群数 | |
 | `handoff.triggered` | request_handoff 工具 | `handoff_count` | — | `handoff_events` 表写入（详情）|
 | `interview.passed` | 海绵 15min poll 写 ops_events | `interview_pass_count`（投影 +1）| ✅ 通过数 | |
-| ~~`candidate.hired`~~ | ⚠️ **已废弃，不采集**（见顶部校准 #1：轮询收口到 interview.passed，不写 hired）| — | — | — |
+| ~~`candidate.hired`~~ | ⚠️ **已废弃，不采集**（见顶部实现要点 #1：轮询收口到 interview.passed，不写 hired）| — | — | — |
 
 > ⚠️ 上表标"13 个"，但 `candidate.hired` 已废弃不采集，**实际生效 12 个事件**。
 
@@ -449,7 +450,7 @@ handoff.triggered         → handoff_count +1
 1. SELECT 所有 booking.succeeded 事件的 (corp_id, user_id, workOrderId, phone, bot_im_id)
    FROM ops_events
    WHERE event_name = 'booking.succeeded'
-   AND report_date >= today - 60 days        -- 实际 lookbackDays = 60（顶部校准 #6），非 30
+   AND report_date >= today - 60 days        -- 实际 lookbackDays = 60（顶部实现要点 #6），非 30
 
 2. 按 phone 去重，逐候选人调海绵 fetchSignupWorkOrders({ phone })
    （一次拿回该候选人全部工单，省调用；详见「海绵工单查询 signup/list — 按场景参数设计」）
@@ -464,7 +465,7 @@ handoff.triggered         → handoff_count +1
        → RPC 内部按 occurred_at 算 report_date，落到正确日期
        → 投影 daily_ops_report.interview_pass_count +1
    - ⚠️ ~~若 currentStatus = '上岗成功' → INSERT candidate.hired~~
-     **已废弃，不实现**（见顶部校准 #1）：轮询只补 interview.passed，不再采集入职。
+     **已废弃，不实现**（见顶部实现要点 #1）：轮询只补 interview.passed，不再采集入职。
 
    ⚠️ 关键约束：
      - idempotency_key 保证同一工单只触发一次 interview.passed / candidate.hired
@@ -489,7 +490,7 @@ Block 2: Cohort 漏斗（独立查询）
   来源渠道筛选: 选定渠道后，cohort 取数与各阶段命中都加 `AND source_channel = 选定值`
                （source_channel 已反范式到每条 ops_events，直接过滤即可，无需 join 画像）
 
-  ⚠️ 实际阶段见顶部校准 #7（无"入职"级；进群为破冰侧支，分母=破冰）：
+  ⚠️ 实际阶段见顶部实现要点 #7（无"入职"级；进群为破冰侧支，分母=破冰）：
   ─ 加好友 cohort: 本期加好友 N 人里
     → 后续 破冰/邀请进群/报名/面试通过 命中数
 
@@ -515,7 +516,7 @@ Block 2: Cohort 漏斗（独立查询）
       - 报名:   ops_events WHERE event_name='booking.succeeded' AND ...
       - 进群:   ops_events WHERE event_name='group.invited' AND ...
       - 通过:   ops_events WHERE event_name='interview.passed' AND ...
-      - ~~入职:   event_name='candidate.hired'~~ 已废弃（顶部校准 #1，不采集）
+      - ~~入职:   event_name='candidate.hired'~~ 已废弃（顶部实现要点 #1，不采集）
 
       ⚠️ 报名 cohort 特殊处理：通过/入职阶段建议**按 workOrderId 串**（cohort 取的就是
         booking 事件，每条带 workOrderId）。后续 interview.passed / candidate.hired
@@ -533,7 +534,7 @@ Block 3: 对比表（维度可切：小组 / 账号 / 来源渠道）
     → 看哪个渠道不只是量大、而是**获客质量高**（破冰率/报名率/通过率）
 
 Block 4: Handoff 原因分布
-  饼图（当前 8 类 reason_code，可扩展）+ 总触发数
+  饼图（当前 10 类 reason_code，可扩展）+ 总触发数
   + 按阶段（stage）分布：handoff 集中在对话哪一步，定位待优化环节
   数据源: handoff_events
 ```
@@ -725,7 +726,7 @@ data: {
 ### request_handoff + runtime 短路语义
 
 ```typescript
-// src/agent/runner.service.ts 新增 helper
+// src/agent/runner/agent-runner.service.ts 新增 helper
 // ⚠️ 注意：AI SDK 的 toolResult 用 .output 而不是 .result
 //    参考现有 runner.service.ts:427-428 的取值方式
 function shortCircuitByResult(toolName: string): StopCondition<any> {
@@ -760,7 +761,7 @@ stopWhen: [
 > ⚠ **已废弃**：原计划"放行 CONTACT_CARD/WECOM_SYSTEM + 合成 `[新好友添加]` + `is_synthetic` 列"
 > **未实施**。生产实测加好友是微信以普通 user 消息（MOBILE_PUSH）推送握手语、Agent 直接回它即开场白，
 > 无需放行新消息类型、无需合成消息。
-> ⚠️ 注意：`is_synthetic` 列与部分索引**迁移里仍建了**（顶部校准 #4），但代码零引用，是孤儿列。
+> ⚠️ 注意：`is_synthetic` 列与部分索引**迁移里仍建了**（顶部实现要点 #4），但代码零引用，是孤儿列。
 
 - `friend.added`（accept-inbound）：任何候选人首条消息都代表新好友（含握手语），幂等 `user_id:friend_added`；
   首次插入时开户长期记忆元数据。
@@ -794,7 +795,7 @@ P0-1. Supabase 迁移（数据底座）
   - 新建 handoff_events 表（**12 字段**：含 stage、created_at、idempotency_key UNIQUE）
   - agent_long_term_memories.latest_booking 加列
   - ⚠️ message_processing_records.is_synthetic 列：**迁移实际加了**（含部分索引 idx_mpr_synthetic），
-    但破冰最终改用文本识别（isPureFriendAddGreeting），**该列代码零引用 = 孤儿列**（顶部校准 #4，待清理）
+    但破冰最终改用文本识别（isPureFriendAddGreeting），**该列代码零引用 = 孤儿列**（顶部实现要点 #4，待清理）
   - RPC 函数：
     - `upsert_ops_event(corp_id, event_name, occurred_at, ...)` — 内部算 report_date + INSERT ops_events + UPSERT daily_ops_report 投影
     - `check_and_record_first_engaged(corp_id, chat_id, message_id, occurred_at)` — 原子检测 + 写入破冰事件
@@ -805,7 +806,7 @@ P0-2. SpongeService booking schema 修复
   - 让 booking 成功后能拿到真正的 workOrderId
 
 P0-3. runtime 短路语义改造
-  - src/agent/runner.service.ts 新增 shortCircuitByResult helper
+  - src/agent/runner/agent-runner.service.ts 新增 shortCircuitByResult helper
   - ⚠️ 取值用 .output 而非 .result（参考 runner.service.ts:427-428）
   - invoke + stream 两处 stopWhen 配置改造
   - 同步修 recoverEmptyTextResult 判断逻辑
@@ -865,7 +866,7 @@ P1-9. 海绵 15min cron poll（✅ 已实施，sponge-status-poll.cron.ts）
   - 按工单逐个查海绵（getCachedWorkOrderById，按 botImId 解析 token），只处理底账记录过的 workOrderId
   - 若 interviewPassTime 非空（按字段判定，不限当前态）:
     → INSERT ops_events(interview.passed, occurred_at=interviewPassTime) + 投影 daily_ops_report.interview_pass_count +1
-  - ⚠️ ~~若 currentStatus='上岗成功' → INSERT candidate.hired~~ **已废弃不实现**（顶部校准 #1，收口到面试通过）
+  - ⚠️ ~~若 currentStatus='上岗成功' → INSERT candidate.hired~~ **已废弃不实现**（顶部实现要点 #1，收口到面试通过）
 ```
 
 ### P2：深度分析 + 跨系统埋点
@@ -902,7 +903,7 @@ P2-3. 测试 + 废弃标记 recruitment_cases
    - 业务字段全部实时查海绵（Redis 缓存 5min）
    - 简单可靠，无僵尸数据问题
 
-2. **不统计入职（最终实现，顶部校准 #1）**
+2. **不统计入职（最终实现，顶部实现要点 #1）**
    - 飞书表头没入职列；统计收口到"面试通过"
    - ~~Web cohort / KPI 读 `ops_events.candidate.hired`~~ → candidate.hired 不再采集，整体转化率改用"面试通过/加好友"
    - 避免"累计快照"语义歧义 + 海绵无上岗时间字段
@@ -1039,8 +1040,8 @@ Block 4: Handoff 原因分布饼图
 | 整体转化率 | `overallRate` | **面试通过 / 新增好友**（收口到面试通过，不统计入职）| 端到端漏斗效率 |
 
 > ⚠ KPI 卡 5 张：破冰率 / 报名转化率 / 加群率 / 面试通过率 / 整体转化率。后端 `ConversionKpisResponse`
-> **没有 `hireRate` 字段**（见顶部校准 #2），第三张是 `groupInviteRate`（加群率，分母=破冰）。
-> 入职数已不再采集（顶部校准 #1），前端/后端都不读 `candidate.hired`。
+> **没有 `hireRate` 字段**（见顶部实现要点 #2），第三张是 `groupInviteRate`（加群率，分母=破冰）。
+> 入职数已不再采集（顶部实现要点 #1），前端/后端都不读 `candidate.hired`。
 
 每张卡显示：
 - 主数字（百分比）
@@ -1062,7 +1063,7 @@ Cohort 维度：[加好友] [报名]   ← Tab 切换
 
 - 图表库：`recharts` 的 `FunnelChart`（已在依赖里）
 - 维度切换 Tab：加好友 cohort（5 级：新增好友→破冰→邀请进群→报名→面试通过）/ 报名 cohort（**2 级：报名→面试通过**）
-- ⚠️ **均无"入职"级**（顶部校准 #1/#7）；进群是破冰后的运营侧支，不进线性单调链
+- ⚠️ **均无"入职"级**（顶部实现要点 #1/#7）；进群是破冰后的运营侧支，不进线性单调链
 - 显示双转化率：整体率（vs cohort 总数）+ 阶段率（vs 上一阶段）
 
 ### 15.5 Block 3 — 账号维度对比表
@@ -1104,8 +1105,8 @@ Handoff 触发总数：45 次     │ 原因饼图
 
 - 数据源：`handoff_events` 按 `reason_code` 聚合
 - 图表库：chart.js Pie + 右侧 legend 列表
-- ⚡ ~~**按阶段（stage）分布** `byStage[]`~~ **未实现**（顶部校准 #3）：`stage` 字段已落在 `handoff_events` 表，但 `/analytics/conversion/handoff` 接口当前只返回 `reasons[]`，未做 `GROUP BY stage`。如需阶段分布需补后端聚合。
-- ⚡ **reason_code 可扩展**：当前**10 类**（顶部校准 #5：在初期 8 类基础上新增 `no_match_or_group_full`、`system_blocked`），后续随产品形态会增删。底层 `reason_code` 是 `text`（无 CHECK/enum 约束），饼图 `GROUP BY reason_code` 动态聚合，新增原因**无需数据库迁移**。增删一个原因只改两处代码：
+- ⚡ ~~**按阶段（stage）分布** `byStage[]`~~ **未实现**（顶部实现要点 #3）：`stage` 字段已落在 `handoff_events` 表，但 `/analytics/conversion/handoff` 接口当前只返回 `reasons[]`，未做 `GROUP BY stage`。如需阶段分布需补后端聚合。
+- ⚡ **reason_code 可扩展**：当前**10 类**（顶部实现要点 #5：在初期 8 类基础上新增 `no_match_or_group_full`、`system_blocked`），后续随产品形态会增删。底层 `reason_code` 是 `text`（无 CHECK/enum 约束），饼图 `GROUP BY reason_code` 动态聚合，新增原因**无需数据库迁移**。增删一个原因只改两处代码：
   - `src/tools/request-handoff.tool.ts`：`reasonCode` 的 `z.enum([...])` + `HANDOFF_REASON_LABELS` 各加/删一行
   - 前端饼图 legend 的 `reasonCode → displayName` 映射各加/删一行
 - ⚠️ 未知 reason_code 兜底：`HANDOFF_REASON_LABELS[code] ?? '需人工跟进'`，即便前端漏配映射也不会崩，会以代码原文或兜底文案展示
@@ -1123,7 +1124,7 @@ GET /analytics/conversion/kpis?range=&groups=&channel=
     groupInviteRate: { ... },   // ⚠️ 实际字段（加群率），非 hireRate
     passRate: { ... },
     overallRate: { ... }        // = 面试通过 / 新增好友（不含入职）
-    // ⚠️ 无 hireRate 字段（顶部校准 #2）
+    // ⚠️ 无 hireRate 字段（顶部实现要点 #2）
   }
 
 // 2. Cohort 漏斗
@@ -1168,7 +1169,7 @@ GET /analytics/conversion/handoff?range=&groups=
       { reasonCode: 'cannot_find_store', displayName: '找不到门店', count: 15, percent: 0.33 },
       ...
     ]
-    // ⚠️ byStage 未实现（顶部校准 #3）：接口只返回 reasons[]，无按 stage 的分布
+    // ⚠️ byStage 未实现（顶部实现要点 #3）：接口只返回 reasons[]，无按 stage 的分布
   }
 ```
 

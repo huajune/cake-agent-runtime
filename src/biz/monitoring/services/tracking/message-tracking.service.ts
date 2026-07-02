@@ -414,6 +414,8 @@ export class MessageTrackingService {
         params.metadata?.memorySnapshot ??
         this.extractMemorySnapshot(response?.memorySnapshot) ??
         params.existingRecord?.memorySnapshot,
+      guardrailInput: params.metadata?.guardrailInput ?? params.existingRecord?.guardrailInput,
+      guardrailOutput: params.metadata?.guardrailOutput ?? params.existingRecord?.guardrailOutput,
       postProcessingStatus: params.existingRecord?.postProcessingStatus,
       anomalyFlags: this.computeAnomalyFlags(
         params.metadata?.toolCalls ??

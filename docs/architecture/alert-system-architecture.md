@@ -675,7 +675,7 @@ curl -X POST http://localhost:8585/alert/test/error \
 ## 相关文档
 
 - [监控系统架构](./monitoring-system-architecture.md)
-- [Redis 与 Supabase 资源使用指南](../infrastructure/redis-supabase-usage.md)
+- [Redis Key 设计与使用说明](../db/redis-schema.md)
 - [消息服务架构](./message-service-architecture.md)
 
 ---

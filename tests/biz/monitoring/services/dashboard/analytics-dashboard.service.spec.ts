@@ -975,7 +975,7 @@ describe('AnalyticsDashboardService', () => {
       expect(result.business.bookings.successRate).toBe(100);
     });
 
-    it('should not backfill legacy booking gap before daily ops coverage', async () => {
+    it('clamps range start to daily ops coverage instead of zeroing covered days (仍不回填老表缺口)', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-06-04T10:00:00+08:00'));
       mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-06-03' });
       mockMonitoringRecordRepository.getDashboardOverviewStats
@@ -1007,9 +1007,14 @@ describe('AnalyticsDashboardService', () => {
       try {
         const result = await service.getDashboardOverviewAsync('twoMonths');
 
-        expect(mockDailyOpsReportRepository.sumByDateRange).not.toHaveBeenCalled();
-        expect(result.business.bookings.successful).toBe(0);
-        expect(result.business.bookings.attempts).toBe(0);
+        // 起点早于投影最早日期（2026-04-27）→ 裁剪到 earliest 再聚合：
+        // 只统计有覆盖的日期（不回填老表缺口），但绝不能把有数据的日期一起归零。
+        expect(mockDailyOpsReportRepository.sumByDateRange).toHaveBeenCalledWith(
+          '2026-04-27',
+          expect.any(String),
+        );
+        expect(result.business.bookings.successful).toBe(115);
+        expect(result.business.bookings.attempts).toBe(115);
       } finally {
         jest.useRealTimers();
       }
