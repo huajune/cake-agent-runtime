@@ -6,7 +6,7 @@
 DROP FUNCTION IF EXISTS append_summary_atomic(text, text, jsonb, text, int);
 DROP FUNCTION IF EXISTS upsert_profile_with_confidence_guard(text, text, jsonb, jsonb, jsonb);
 
-DROP TRIGGER IF EXISTS trigger_agent_memories_updated_at ON agent_memories;
-DROP FUNCTION IF EXISTS update_agent_memories_updated_at();
-
+-- 先删表（连带删除表上 trigger），再删 trigger 函数；
+-- 不能 DROP TRIGGER ... ON agent_memories：表已不存在时 IF EXISTS 只管 trigger、不管表，会直接报错。
 DROP TABLE IF EXISTS agent_memories;
+DROP FUNCTION IF EXISTS update_agent_memories_updated_at();
