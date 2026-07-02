@@ -45,6 +45,9 @@ export class MessageProcessingRepository extends BaseRepository {
     'is_fallback',
     'fallback_success',
     'batch_id',
+    // 守卫徽标（表格"处理状态"列）依赖这两个紧凑摘要列；体积远小于 agent_invocation，可进首屏投影。
+    'guardrail_input',
+    'guardrail_output',
   ].join(',');
 
   // 内部诊断/聚合查询用投影（不拉 agent_invocation 这个最大 jsonb 字段）
@@ -72,6 +75,8 @@ export class MessageProcessingRepository extends BaseRepository {
     'tool_calls',
     'agent_steps',
     'anomaly_flags',
+    'guardrail_input',
+    'guardrail_output',
     'memory_snapshot',
     'post_processing_status',
     'token_usage',
@@ -995,6 +1000,8 @@ export class MessageProcessingRepository extends BaseRepository {
       tool_calls: record.toolCalls,
       agent_steps: record.agentSteps,
       anomaly_flags: record.anomalyFlags,
+      guardrail_input: record.guardrailInput,
+      guardrail_output: record.guardrailOutput,
       memory_snapshot: record.memorySnapshot,
       post_processing_status: record.postProcessingStatus,
     };
@@ -1037,6 +1044,8 @@ export class MessageProcessingRepository extends BaseRepository {
       toolCalls: record.tool_calls as MessageProcessingRecordInput['toolCalls'],
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
       anomalyFlags: record.anomaly_flags as MessageProcessingRecordInput['anomalyFlags'],
+      guardrailInput: record.guardrail_input as MessageProcessingRecordInput['guardrailInput'],
+      guardrailOutput: record.guardrail_output as MessageProcessingRecordInput['guardrailOutput'],
       memorySnapshot: record.memory_snapshot as MessageProcessingRecordInput['memorySnapshot'],
       postProcessingStatus:
         record.post_processing_status as MessageProcessingRecordInput['postProcessingStatus'],
