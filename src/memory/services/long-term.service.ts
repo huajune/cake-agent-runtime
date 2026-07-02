@@ -263,13 +263,28 @@ export class LongTermService {
   }
 
   /**
-   * 预约成功时写入最近预约工单指针（永不清空，新预约覆盖）。
+   * 预约成功时写入最近预约工单指针（新预约覆盖）。
    */
   async setLatestBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
     try {
       await this.supabaseStore.setLatestBooking(corpId, userId, workOrderId);
     } catch (error) {
       this.logger.warn('写入 active_booking 失败', error);
+    }
+  }
+
+  /**
+   * 取消当前工单成功后清空预约指针；expectedWorkOrderId 存在时只清匹配的当前工单。
+   */
+  async clearLatestBooking(
+    corpId: string,
+    userId: string,
+    expectedWorkOrderId?: number,
+  ): Promise<void> {
+    try {
+      await this.supabaseStore.clearLatestBooking(corpId, userId, expectedWorkOrderId);
+    } catch (error) {
+      this.logger.warn('清空 active_booking 失败', error);
     }
   }
 

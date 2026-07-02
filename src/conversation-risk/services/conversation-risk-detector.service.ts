@@ -3,6 +3,7 @@ import {
   ABUSE_KEYWORDS,
   COMPLAINT_RISK_KEYWORDS,
   ESCALATION_KEYWORDS,
+  INTERVIEW_RESULT_INQUIRY_KEYWORDS,
   SOFT_NEGATIVE_KEYWORDS,
 } from '../rules/conversation-risk.rules';
 import {
@@ -35,6 +36,17 @@ export class ConversationRiskDetectorService {
     );
     if (complaintResult.hit) {
       return complaintResult;
+    }
+
+    const interviewResult = this.detectKeywordRisk(
+      context,
+      INTERVIEW_RESULT_INQUIRY_KEYWORDS,
+      'interview_result_inquiry',
+      '历史面试结果追问',
+      '候选人询问历史面试结果，Agent 无权限获取该信息，需立即转人工处理',
+    );
+    if (interviewResult.hit) {
+      return interviewResult;
     }
 
     return { hit: false };

@@ -1,6 +1,10 @@
 import type { WeworkSessionState } from '@memory/types/session-facts.types';
 
-export type ConversationRiskType = 'abuse' | 'complaint_risk' | 'escalation';
+export type ConversationRiskType =
+  | 'abuse'
+  | 'complaint_risk'
+  | 'escalation'
+  | 'interview_result_inquiry';
 
 export interface ConversationRiskMessage {
   role: 'user' | 'assistant';

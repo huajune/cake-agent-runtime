@@ -56,6 +56,15 @@ describe('GroupResolverService', () => {
       expect(result).toEqual({ type: '兼职群', city: '上海', industry: '零售' });
     });
 
+    it('应兼容兼职群行业和城市标签反序', () => {
+      const result = service.parseLabels([
+        { id: '1', name: '兼职群' },
+        { id: '2', name: '餐饮' },
+        { id: '3', name: '常州' },
+      ]);
+      expect(result).toEqual({ type: '兼职群', city: '常州', industry: '餐饮' });
+    });
+
     it('应解析店长群标签', () => {
       const result = service.parseLabels([
         { id: '1', name: '店长群' },
@@ -116,7 +125,7 @@ describe('GroupResolverService', () => {
       expect(mockRoomService.getRoomSimpleList).toHaveBeenCalledTimes(2);
     });
 
-    it('应仅对苏州餐饮兼职群的已知错序标签做兼容', async () => {
+    it('应解析小组接口返回的兼职群错序标签', async () => {
       mockRoomService.getRoomSimpleList.mockResolvedValueOnce({
         data: {
           data: [

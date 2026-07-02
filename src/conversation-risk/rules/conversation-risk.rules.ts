@@ -48,6 +48,21 @@ export const ESCALATION_KEYWORDS = [
   '马上回',
 ] as const;
 
+/**
+ * 历史面试结果追问：候选人问上次面试过没过、结果何时出。Agent 无权限查面试评价，
+ * 凭空回答要么编造要么显得漠视候选人关切，产品要求立即转人工（stash 捞回：确定性检测落地，
+ * 与 guardrail.contract INPUT_RISK_TYPES.INTERVIEW_RESULT_INQUIRY / catalog 声明对齐）。
+ */
+export const INTERVIEW_RESULT_INQUIRY_KEYWORDS = [
+  '为什么没通过',
+  '为什么没过面试',
+  '面试没通过',
+  '面试失败了',
+  '上次面试结果',
+  '面试结果怎么样',
+  '没收到面试结果',
+] as const;
+
 export const SOFT_NEGATIVE_KEYWORDS = [
   '不靠谱',
   '离谱',

@@ -30,6 +30,9 @@ export class SimpleMergeService implements OnModuleInit {
   private readonly PROCESSING_LOCK_TTL_SECONDS = 300;
   private readonly QUIET_WINDOW_FOLLOWUP_DELAY_MS = 200;
   private readonly LOCK_RETRY_DELAY_MS = 30000;
+  // 静默窗口检查任务创建失败时的本地重试（兜 Redis/队列瞬时抖动），耗尽后上抛交由上游记录失败。
+  private readonly QUEUE_ADD_MAX_ATTEMPTS = 3;
+  private readonly QUEUE_ADD_RETRY_DELAY_MS = 200;
 
   constructor(
     private readonly redisService: RedisService,
@@ -71,31 +74,55 @@ export class SimpleMergeService implements OnModuleInit {
     this.logger.debug(`[${chatId}] 消息已加入聚合队列，当前队列长度: ${queueLength}`);
 
     // 3. 为本条消息创建一次“静默窗口检查”任务
-    try {
-      await this.messageQueue.add(
-        'process',
-        { chatId },
-        {
-          jobId: `${chatId}:${messageData.messageId}`,
-          delay: mergeDelayMs,
-          removeOnComplete: true,
-          removeOnFail: false, // 失败时保留用于调试
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
+    //
+    // 不能吞掉 queue.add 失败：消息虽已在 Redis pending，但若这是本会话最后一条消息，
+    // 「下一条消息会再次创建任务」不成立，pending 只会等 TTL 过期后被静默丢弃。先重试若干次，
+    // 仍失败则上抛——由上游 dispatchMessage 的 catch 记录 failure 流水/告警，转为「可见的失败」
+    // 而非静默丢消息。
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= this.QUEUE_ADD_MAX_ATTEMPTS; attempt++) {
+      try {
+        await this.messageQueue.add(
+          'process',
+          { chatId },
+          {
+            jobId: `${chatId}:${messageData.messageId}`,
+            delay: mergeDelayMs,
+            removeOnComplete: true,
+            removeOnFail: false, // 失败时保留用于调试
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 2000,
+            },
           },
-        },
-      );
-      this.logger.debug(
-        `[${chatId}] 静默窗口检查任务已创建，jobId=${chatId}:${messageData.messageId}, delay=${mergeDelayMs}ms`,
-      );
-      await this.wecomObservability.markQueueAdd(messageData.messageId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[${chatId}] 创建延迟任务失败: ${errorMessage}`);
-      // 即使任务创建失败，消息已经在 Redis 中，不会丢失；下一条消息会再次创建检查任务
+        );
+        this.logger.debug(
+          `[${chatId}] 静默窗口检查任务已创建，jobId=${chatId}:${messageData.messageId}, delay=${mergeDelayMs}ms`,
+        );
+        await this.wecomObservability.markQueueAdd(messageData.messageId);
+        return;
+      } catch (error) {
+        lastError = error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `[${chatId}] 创建延迟任务失败（第 ${attempt}/${this.QUEUE_ADD_MAX_ATTEMPTS} 次）: ${errorMessage}`,
+        );
+        if (attempt < this.QUEUE_ADD_MAX_ATTEMPTS) {
+          await this.delay(this.QUEUE_ADD_RETRY_DELAY_MS * attempt);
+        }
+      }
     }
+
+    const finalMessage = lastError instanceof Error ? lastError.message : String(lastError);
+    this.logger.error(
+      `[${chatId}] 创建延迟任务最终失败（已重试 ${this.QUEUE_ADD_MAX_ATTEMPTS} 次），上抛交由上游记录失败: ${finalMessage}`,
+    );
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

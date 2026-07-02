@@ -33,11 +33,9 @@ export class ReengagementAnchorService {
 
   handleToolAnchors(result: AnchorAgentResult, context: AnchorContext): void {
     if (context.isGroupChat) return;
-    // 每个入站轮都是候选人活动：刷新 lastCandidateMessageAt，让 shouldStop 的
-    // 「锚点后已回话」停止条件有真实信号（主动复聊轮不走本方法，不会误刷）。
-    void this.session
-      .recordCandidateActivity(context.corpId, context.userId, context.chatId)
-      .catch((error) => this.logFailure('record candidate activity', context, error));
+    // lastCandidateMessageAt（「锚点后已回话」停止信号）由入站接收层刷新：
+    // accept-inbound-message.service 在消息进入时按回调时间戳调 recordCandidateActivity，
+    // 比在这里（Agent 生成完成后）更早且带真实消息时间，此处不再重复写。
     const toolCalls = result.toolCalls ?? [];
     const deliverable = this.isDeliverable(result);
     if (deliverable && toolCalls.some((call) => this.isCollectionStarted(call))) {

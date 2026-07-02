@@ -187,6 +187,25 @@ describe('ConversationRiskDetectorService', () => {
     expect(result.reason).toContain('投诉');
   });
 
+  it('should detect interview result inquiry keywords (转人工，Agent 无权限查面试结果)', () => {
+    const result = service.detect({
+      ...baseContext,
+      currentMessageContent: '我上次面试结果怎么样，为什么没通过',
+      recentMessages: [
+        ...baseContext.recentMessages,
+        { role: 'user', content: '我上次面试结果怎么样，为什么没通过', timestamp: 1712044920000 },
+      ],
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        hit: true,
+        riskType: 'interview_result_inquiry',
+        riskLabel: '历史面试结果追问',
+      }),
+    );
+  });
+
   it('should ignore historical risk keywords outside the current unresponded turn', () => {
     const result = service.detect({
       ...baseContext,

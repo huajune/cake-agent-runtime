@@ -342,6 +342,31 @@ export class SupabaseStore implements MemoryStore {
     await this.upsertRow(corpId, userId, { active_booking: latestBooking });
   }
 
+  /**
+   * 清空当前有效预约工单指针（取消工单成功后调用）。
+   *
+   * expectedWorkOrderId 存在时只清匹配的当前工单，避免并发新预约刚写入后被旧取消回调误清。
+   */
+  async clearLatestBooking(
+    corpId: string,
+    userId: string,
+    expectedWorkOrderId?: number,
+  ): Promise<void> {
+    if (expectedWorkOrderId != null) {
+      const activeBooking = await this.getLatestBooking(corpId, userId);
+      const rawWorkOrderId = (activeBooking as { work_order_id?: unknown } | null)?.work_order_id;
+      const activeWorkOrderId =
+        typeof rawWorkOrderId === 'number'
+          ? rawWorkOrderId
+          : typeof rawWorkOrderId === 'string' && /^\d+$/.test(rawWorkOrderId)
+            ? Number(rawWorkOrderId)
+            : null;
+      if (activeWorkOrderId !== expectedWorkOrderId) return;
+    }
+
+    await this.upsertRow(corpId, userId, { active_booking: null });
+  }
+
   // ==================== 旧接口（v1 兼容，Phase 6 删除） ====================
 
   async get(key: string): Promise<MemoryEntry | null> {

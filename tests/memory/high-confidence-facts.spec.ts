@@ -129,7 +129,7 @@ describe('extractHighConfidenceFacts', () => {
     // 手写简历/简历照片：vision 描述回写时追加 "简历附件：URL" 行（图片简历支持）
     const result = extractHighConfidenceFacts(
       [
-        '[图片消息] 简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
+        '[图片消息] 简历图片：姓名兮兮，手机号18271421690，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
       ],
       brandData,
     );

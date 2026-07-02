@@ -13,6 +13,9 @@ import { SpongeService } from '@sponge/sponge.service';
 import type { FailureReasonItem } from '@sponge/sponge.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { LongTermService } from '@memory/services/long-term.service';
+import { AlertLevel } from '@enums/alert.enum';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
@@ -47,6 +50,7 @@ const DESCRIPTION = `取消工单。候选人**主动**要求取消一个**已�
 - workOrderId：必填，取自 [当前预约信息] 的「工单号」
 - cancelReasonId：第二步必填，取自第一步返回的 availableReasons
 - cancelReasonDesc：可选，结合候选人原话简述取消原因（如"候选人当天有事去不了"）
+- candidateName / phone / brandName / storeName / jobName / interviewTime：可选；若 [当前预约信息] 中有这些字段，尽量原样带上，用于取消告警提醒人工判断是否需要通知门店
 
 ## 成功/失败处理硬规则
 - **只有当本工具返回 success 后**，才能向候选人确认"已帮你取消这次面试预约"
@@ -61,6 +65,30 @@ const inputSchema = z.object({
     .optional()
     .describe('取消原因 ID：取自第一步返回的 availableReasons，按候选人原话挑选；首次调用可不传'),
   cancelReasonDesc: z.string().optional().describe('取消原因描述：结合候选人原话简述（可选）'),
+  candidateName: z
+    .string()
+    .optional()
+    .describe('候选人姓名：若 [当前预约信息] 中存在则原样带上，用于告警展示'),
+  phone: z
+    .string()
+    .optional()
+    .describe('候选人手机号：若 [当前预约信息] 中存在则原样带上，用于告警展示'),
+  brandName: z
+    .string()
+    .optional()
+    .describe('品牌名称：若 [当前预约信息] 中存在则原样带上，用于告警展示'),
+  storeName: z
+    .string()
+    .optional()
+    .describe('门店名称：若 [当前预约信息] 中存在则原样带上，用于告警展示'),
+  jobName: z
+    .string()
+    .optional()
+    .describe('岗位名称：若 [当前预约信息] 中存在则原样带上，用于告警展示'),
+  interviewTime: z
+    .string()
+    .optional()
+    .describe('原面试时间：若 [当前预约信息] 中存在则原样带上，用于告警展示'),
 });
 
 /**
@@ -73,12 +101,24 @@ const inputSchema = z.object({
 export function buildCancelWorkOrderTool(
   spongeService: SpongeService,
   opsEventsRecorder: OpsEventsRecorderService,
+  longTermService: LongTermService,
+  alertNotifier: AlertNotifierService,
 ): ToolBuilder {
   return (context) => {
     return tool({
       description: DESCRIPTION,
       inputSchema,
-      execute: async ({ workOrderId, cancelReasonId, cancelReasonDesc }) => {
+      execute: async ({
+        workOrderId,
+        cancelReasonId,
+        cancelReasonDesc,
+        candidateName,
+        phone,
+        brandName,
+        storeName,
+        jobName,
+        interviewTime,
+      }) => {
         const chatId = context.chatId ?? context.sessionId;
 
         if (!Number.isInteger(workOrderId) || workOrderId <= 0) {
@@ -182,7 +222,30 @@ export function buildCancelWorkOrderTool(
               cancel_reason_id: matched.id,
               cancel_reason: matched.info || null,
               cancel_reason_desc: cancelReasonDesc?.trim() || null,
+              candidate_name: normalizeOptionalText(candidateName),
+              phone: normalizeOptionalText(phone),
+              brand_name: normalizeOptionalText(brandName),
+              store_name: normalizeOptionalText(storeName),
+              job_name: normalizeOptionalText(jobName),
+              interview_time: normalizeOptionalText(interviewTime),
             },
+          });
+
+          await longTermService.clearLatestBooking(context.corpId, context.userId, workOrderId);
+
+          void sendCancelWorkOrderAlert({
+            alertNotifier,
+            context,
+            workOrderId,
+            cancelReasonId: matched.id,
+            cancelReason: matched.info,
+            cancelReasonDesc,
+            candidateName,
+            phone,
+            brandName,
+            storeName,
+            jobName,
+            interviewTime,
           });
 
           return {
@@ -213,4 +276,90 @@ export function buildCancelWorkOrderTool(
       },
     });
   };
+}
+
+function normalizeOptionalText(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed || null;
+}
+
+function extractLatestUserMessage(messages: unknown[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== 'object') continue;
+
+    const record = message as { role?: unknown; content?: unknown };
+    if (record.role !== 'user') continue;
+    if (typeof record.content === 'string') return record.content;
+  }
+  return '';
+}
+
+async function sendCancelWorkOrderAlert(params: {
+  alertNotifier: AlertNotifierService;
+  context: Parameters<ToolBuilder>[0];
+  workOrderId: number;
+  cancelReasonId: number;
+  cancelReason?: string;
+  cancelReasonDesc?: string;
+  candidateName?: string;
+  phone?: string;
+  brandName?: string;
+  storeName?: string;
+  jobName?: string;
+  interviewTime?: string;
+}): Promise<void> {
+  const { alertNotifier, context } = params;
+  try {
+    await alertNotifier.sendAlert({
+      code: 'booking.canceled',
+      summary: '面试预约取消提醒',
+      severity: AlertLevel.WARNING,
+      source: {
+        subsystem: 'booking',
+        component: 'duliday_cancel_work_order',
+        action: 'cancelWorkOrder',
+        trigger: 'tool',
+      },
+      scope: {
+        scenario: 'candidate-consultation',
+        corpId: context.corpId,
+        userId: context.userId,
+        contactName: context.contactName,
+        managerName: context.botUserId,
+        chatId: context.chatId ?? context.sessionId,
+        sessionId: context.sessionId,
+      },
+      impact: {
+        userMessage: extractLatestUserMessage(context.messages),
+        requiresHumanIntervention: true,
+      },
+      diagnostics: {
+        category: 'booking_cancel',
+        errorMessage: '候选人已取消面试预约，请确认是否需要同步门店',
+        payload: {
+          workOrderId: params.workOrderId,
+          cancelReasonId: params.cancelReasonId,
+          cancelReason: normalizeOptionalText(params.cancelReason),
+          cancelReasonDesc: normalizeOptionalText(params.cancelReasonDesc),
+          candidateName: normalizeOptionalText(params.candidateName),
+          phone: normalizeOptionalText(params.phone),
+          brandName: normalizeOptionalText(params.brandName),
+          storeName: normalizeOptionalText(params.storeName),
+          jobName: normalizeOptionalText(params.jobName),
+          interviewTime: normalizeOptionalText(params.interviewTime),
+          actionRequired: '请人工确认是否需要通知门店取消面试安排',
+        },
+      },
+      dedupe: {
+        key: `booking.canceled:${params.workOrderId}`,
+      },
+    });
+  } catch (error) {
+    logger.error(
+      `取消工单告警发送异常: workOrderId=${params.workOrderId}, error=${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }

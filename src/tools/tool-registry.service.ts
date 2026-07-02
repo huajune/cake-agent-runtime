@@ -41,6 +41,7 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 
@@ -84,6 +85,7 @@ export class ToolRegistryService {
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
+    alertNotifier: AlertNotifierService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -133,7 +135,12 @@ export class ToolRegistryService {
         name: 'duliday_cancel_work_order',
         description:
           '取消工单（候选人主动要求取消已确认的面试预约时调用，真正调海绵取消接口；workOrderId 取自 [当前预约信息]）',
-        create: buildCancelWorkOrderTool(spongeService, opsEventsRecorder),
+        create: buildCancelWorkOrderTool(
+          spongeService,
+          opsEventsRecorder,
+          longTermService,
+          alertNotifier,
+        ),
       }),
 
       duliday_modify_interview_time: createToolDefinition({
