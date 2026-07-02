@@ -929,4 +929,29 @@ describe('buildInviteToGroupTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE);
     });
   });
+
+  describe('testing strategy source (test-suite 重放链路)', () => {
+    it('returns simulated success without touching enterprise APIs', async () => {
+      const result = await executeTool({ city: '上海' }, { strategySource: 'testing' });
+
+      expect(result.success).toBe(true);
+      expect(result.simulated).toBe(true);
+      expect(result.inviteDelivery).toBe('invite_card');
+      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('still enforces the city provenance gate before simulating', async () => {
+      const result = await executeTool({ city: '杭州' }, { strategySource: 'testing' });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
+    });
+
+    it('still rejects district-level city input before simulating', async () => {
+      const result = await executeTool({ city: '静安区' }, { strategySource: 'testing' });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE);
+    });
+  });
 });

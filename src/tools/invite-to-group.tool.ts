@@ -174,26 +174,6 @@ export function buildInviteToGroupTool(
             });
           }
 
-          const normalizedEnterpriseToken = enterpriseToken?.trim();
-          if (!normalizedEnterpriseToken) {
-            logger.error(`STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${context.userId})`);
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
-              outcome: '企业 Token 未配置',
-              replyInstruction: `拉群配置缺失，本次不向候选人提及群相关内容；这是部署侧配置问题，不应反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
-              details: { detailedReason: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群' },
-            });
-          }
-          if (!context.botImId || !context.botUserId) {
-            logger.warn(`缺少 bot 身份信息，无法拉群 (user=${context.userId})`);
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.INVITE_MISSING_BOT_IDENTITY,
-              outcome: '缺少 bot 身份信息',
-              replyInstruction: `拉群所需的 bot 身份不完整，本次不向候选人提及群相关内容；这是上下文缺失问题，不要反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
-              details: { detailedReason: '缺少 botImId / botUserId，无法执行企业级拉群' },
-            });
-          }
-
           const districtResolvedCity = resolveCityFromDistrict(city.trim());
           if (districtResolvedCity) {
             logger.warn(
@@ -261,6 +241,44 @@ export function buildInviteToGroupTool(
               replyInstruction:
                 '该城市在会话记忆和候选人原文里都找不到依据，不能据此拉群。请先向候选人确认所在城市（例如"方便说下你现在在哪个城市吗"），得到明确回复后再调用本工具；本轮不要提群相关内容，也不要调用 request_handoff。',
               details: { city, industry: industry ?? undefined },
+            });
+          }
+
+          // testing 链路（test-suite 重放/调试）：确定性校验（区县、城市 gate）已在上方
+          // 真实跑完，这里返回模拟成功、不触达企业接口——否则测试环境缺 bot 身份必失败，
+          // prompt 的"invite 失败转人工"指引会把重放全部推进 handoff，拉群链路永远测不到。
+          if (context.strategySource === 'testing') {
+            logger.log(`testing 链路模拟拉群成功: city=${city} (user=${context.userId})`);
+            return {
+              success: true,
+              simulated: true,
+              groupName: `${city}兼职群（测试模拟）`,
+              city,
+              industry: industry ?? undefined,
+              inviteDelivery: 'invite_card',
+              _outcome: '【测试链路模拟】已向候选人发送入群邀请卡片（未触达真实企业接口）',
+              _replyInstruction:
+                '企微已向候选人发送入群邀请卡片。回复时只能说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何群链接 / URL。',
+            };
+          }
+
+          const normalizedEnterpriseToken = enterpriseToken?.trim();
+          if (!normalizedEnterpriseToken) {
+            logger.error(`STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${context.userId})`);
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
+              outcome: '企业 Token 未配置',
+              replyInstruction: `拉群配置缺失，本次不向候选人提及群相关内容；这是部署侧配置问题，不应反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
+              details: { detailedReason: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群' },
+            });
+          }
+          if (!context.botImId || !context.botUserId) {
+            logger.warn(`缺少 bot 身份信息，无法拉群 (user=${context.userId})`);
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.INVITE_MISSING_BOT_IDENTITY,
+              outcome: '缺少 bot 身份信息',
+              replyInstruction: `拉群所需的 bot 身份不完整，本次不向候选人提及群相关内容；这是上下文缺失问题，不要反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
+              details: { detailedReason: '缺少 botImId / botUserId，无法执行企业级拉群' },
             });
           }
 

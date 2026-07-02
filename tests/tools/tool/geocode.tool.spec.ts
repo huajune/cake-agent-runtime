@@ -403,4 +403,43 @@ describe('geocode tool', () => {
       expect(result._replyInstruction).not.toContain('API down');
     });
   });
+
+  describe('areaLevelQuery（区/市级粗粒度查询标记）', () => {
+    it('marks areaLevelQuery=true when address is just the district name (badcase recvjyv0SKiqe3)', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '松江区', district: '松江区', township: '' }),
+      ]);
+
+      const result = (await execute({ address: '松江', city: '上海' })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+      expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(true);
+    });
+
+    it('marks areaLevelQuery=true when address matches the city name', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ city: '常州市', district: '新北区', township: '' }),
+      ]);
+
+      const result = (await execute({ address: '常州', city: '常州' })) as Record<
+        string,
+        unknown
+      >;
+
+      expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(true);
+    });
+
+    it('marks areaLevelQuery=false for POI / township level queries', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '九亭镇', district: '松江区', township: '九亭镇' }),
+      ]);
+
+      const result = (await execute({ address: '九亭', city: '上海' })) as Record<
+        string,
+        unknown
+      >;
+
+      expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(false);
+    });
+  });
 });

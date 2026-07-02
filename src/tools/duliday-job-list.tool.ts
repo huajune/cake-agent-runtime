@@ -502,7 +502,7 @@ export function buildJobListTool(
         // （纯提示词驱动经实测不可靠，模型会忽略备注按距离推）。候选人本轮点名了别的品牌时
         // 模型会自己把 brand 传进来，brandAliasList 非空就不会触发兜底。
         let brandAliasList = brandAliasListInput;
-        let brandAliasSource: 'input' | 'contact_remark' | 'none' =
+        let brandAliasSource: 'input' | 'contact_remark' | 'session_facts' | 'none' =
           brandAliasList.length > 0 ? 'input' : 'none';
         const contactBrandAliases = context.contactBrandAliases ?? [];
         if (
@@ -513,6 +513,18 @@ export function buildJobListTool(
           brandAliasList = contactBrandAliases;
           brandAliasSource = 'contact_remark';
           logger.log(`从企微备注自动兜底 brandAliasList: ${JSON.stringify(brandAliasList)}`);
+        }
+        // 会话品牌事实兜底（badcase recvjFFKcZPsiC 想找大米先生却被跨品牌推荐）：
+        // 候选人早前轮次点名的品牌已被 fact-extraction 持久化到 sessionFacts.preferences.brands，
+        // 模型本轮忘带品牌入参时确定性拉回，与 Phase 3.1 的 schedule_constraint 兜底同模式。
+        // 备注品牌优先级更高（引流来源，已实测校准）；候选人本轮点名新品牌时模型会自己传参，不触发兜底。
+        const sessionBrands = (context.sessionFacts?.preferences?.brands ?? []).filter(
+          (brand): brand is string => typeof brand === 'string' && brand.trim().length > 0,
+        );
+        if (brandAliasList.length === 0 && brandIdList.length === 0 && sessionBrands.length > 0) {
+          brandAliasList = sessionBrands;
+          brandAliasSource = 'session_facts';
+          logger.log(`从会话品牌事实自动兜底 brandAliasList: ${JSON.stringify(brandAliasList)}`);
         }
         // Phase 3.1：候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式

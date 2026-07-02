@@ -156,7 +156,7 @@ function poiDistrictMatchesAddress(addrStems: string[], poiDistrict: string): bo
 }
 
 /** 把单城 GeocodeCandidate 投回旧 GeocodeResult shape，保证下游 prompt 模板兼容。 */
-function toResultPayload(c: GeocodeCandidate) {
+function toResultPayload(c: GeocodeCandidate, queryAddress?: string) {
   return {
     formattedAddress: c.formattedAddress,
     province: c.province,
@@ -165,7 +165,23 @@ function toResultPayload(c: GeocodeCandidate) {
     township: c.township,
     longitude: c.longitude,
     latitude: c.latitude,
+    // 区/城市级粗粒度查询标记：候选人只报了区名/市名时，锚点坐标是行政区代表点，
+    // 与候选人真实位置可能相差数公里——下游据此禁止输出精确距离（badcase recvjyv0SKiqe3）。
+    areaLevelQuery: isAreaLevelQuery(queryAddress, c),
   };
+}
+
+/**
+ * 查询词是否只是区/县/市级行政区名（如"松江"、"浦东新区"、"常州"）。
+ * 这类查询即使命中 unique 锚点，代表的也只是"整个行政区"，
+ * 基于锚点算出的门店距离不能当候选人的真实距离说给候选人。
+ */
+function isAreaLevelQuery(queryAddress: string | undefined, c: GeocodeCandidate): boolean {
+  const normalized = (queryAddress ?? '').trim().replace(/(?:新区|市|区|县)$/, '');
+  if (normalized.length < 2) return false;
+  const district = (c.district ?? '').replace(/(?:新区|市|区|县)$/, '');
+  const city = (c.city ?? '').replace(/(?:新区|市|区|县)$/, '');
+  return normalized === district || normalized === city;
 }
 
 export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilder {
@@ -244,7 +260,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
 
             return {
               resolution: 'unique' as const,
-              result: toResultPayload(anchor),
+              result: toResultPayload(anchor, trimmedAddress),
             };
           }
 
