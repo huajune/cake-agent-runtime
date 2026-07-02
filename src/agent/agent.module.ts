@@ -12,12 +12,12 @@ import { CustomerModule } from '@wecom/customer/customer.module';
 import { ObservabilityModule } from '@/observability/observability.module';
 import { GeneratorService } from './generator/generator.service';
 import { AgentRunnerService } from './runner/agent-runner.service';
+import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
 import { AgentPreparationService } from './agent-preparation.service';
 import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
 import { InterventionModule } from '@biz/intervention/intervention.module';
-import { ConversationRiskModule } from '@/conversation-risk/conversation-risk.module';
 import { GuardrailModule } from './guardrail/guardrail.module';
 import { REENGAGEMENT_QUEUE } from './reengagement/reengagement.types';
 import { FollowUpSchedulerService } from './reengagement/follow-up-scheduler.service';
@@ -38,7 +38,6 @@ import { ReengagementAnchorService } from './reengagement/anchor.service';
     CustomerModule,
     ObservabilityModule,
     InterventionModule,
-    ConversationRiskModule,
     GuardrailModule,
     BullModule.registerQueue({
       name: REENGAGEMENT_QUEUE,
@@ -54,6 +53,7 @@ import { ReengagementAnchorService } from './reengagement/anchor.service';
     AgentPreparationService,
     GeneratorService,
     AgentRunnerService,
+    TurnOutcomeInterventionService,
     AgentHealthService,
     // reengagement（复聊 shadow）
     FollowUpSchedulerService,
@@ -66,6 +66,7 @@ import { ReengagementAnchorService } from './reengagement/anchor.service';
     AgentPreparationService,
     GeneratorService,
     AgentRunnerService,
+    TurnOutcomeInterventionService,
     GuardrailModule,
     FollowUpSchedulerService,
     ReengagementAnchorService,

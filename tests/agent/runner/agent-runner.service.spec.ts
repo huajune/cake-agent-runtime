@@ -4,7 +4,7 @@ import type { AgentRunResult as GeneratorRunResult } from '@agent/agent-run.type
 describe('AgentRunnerService.runTurn', () => {
   let generator: { invoke: jest.Mock };
   let outputGuard: { check: jest.Mock };
-  let inputRiskGuard: { precheck: jest.Mock };
+  let inputGuard: { evaluate: jest.Mock };
   let service: AgentRunnerService;
 
   const passDecision = {
@@ -30,11 +30,11 @@ describe('AgentRunnerService.runTurn', () => {
   beforeEach(() => {
     generator = { invoke: jest.fn() };
     outputGuard = { check: jest.fn().mockResolvedValue(passDecision) };
-    inputRiskGuard = { precheck: jest.fn().mockResolvedValue({ hit: false }) };
+    inputGuard = { evaluate: jest.fn().mockResolvedValue({ decision: 'pass' }) };
     service = new AgentRunnerService(
       generator as never,
       outputGuard as never,
-      inputRiskGuard as never,
+      inputGuard as never,
     );
   });
 
@@ -381,11 +381,26 @@ describe('AgentRunnerService.runTurn', () => {
     };
 
     it('hit maps to an intercepted outcome carrying the risk attribution', async () => {
-      inputRiskGuard.precheck.mockResolvedValue({
-        hit: true,
+      inputGuard.evaluate.mockResolvedValue({
+        decision: 'block',
+        source: 'input_risk',
+        disposition: 'side_effects',
+        reasonCode: 'abuse',
         riskType: 'abuse',
-        label: '辱骂',
+        riskLabel: '辱骂',
         reason: '命中辱骂关键词',
+        inspectedText: '你们就是骗子',
+        sideEffects: [
+          {
+            kind: 'conversation_risk',
+            source: 'regex_intercept',
+            riskType: 'abuse',
+            riskLabel: '辱骂',
+            summary: '候选人消息命中高置信度风险关键词',
+            reason: '命中辱骂关键词',
+            currentMessageContent: '你们就是骗子',
+          },
+        ],
       });
 
       const outcome = await service.precheckInboundOutcome(riskInput);
@@ -397,10 +412,13 @@ describe('AgentRunnerService.runTurn', () => {
         label: '辱骂',
         reason: '命中辱骂关键词',
       });
+      // 守卫只声明副作用意图，执行由渠道经 TurnOutcomeInterventionService.commit 统一出口
+      expect(outcome?.sideEffects).toHaveLength(1);
+      expect(outcome?.sideEffects?.[0]).toMatchObject({ kind: 'conversation_risk', riskType: 'abuse' });
     });
 
     it('miss returns null so the channel keeps generating', async () => {
-      inputRiskGuard.precheck.mockResolvedValue({ hit: false });
+      inputGuard.evaluate.mockResolvedValue({ decision: 'pass' });
 
       const outcome = await service.precheckInboundOutcome(riskInput);
 

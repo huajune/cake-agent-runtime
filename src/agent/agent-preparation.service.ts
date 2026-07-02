@@ -32,7 +32,7 @@ import {
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
 import { ContextService } from './context/context.service';
-import { InputGuardrailService } from './guardrail/input/input-guard.service';
+import { PromptInjectionService } from './guardrail/input/prompt-injection.service';
 import {
   type AgentInputMessage,
   type AgentInvokeParams,
@@ -83,7 +83,7 @@ export class AgentPreparationService {
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
     private readonly context: ContextService,
-    private readonly inputGuard: InputGuardrailService,
+    private readonly promptInjection: PromptInjectionService,
     private readonly longTermService: LongTermService,
     private readonly spongeService: SpongeService,
     private readonly groupResolver: GroupResolverService,
@@ -517,12 +517,12 @@ export class AgentPreparationService {
     currentUserMessage: string | undefined,
     userId: string,
   ): string {
-    const guardResult = this.inputGuard.detectMessages(normalizedMessages);
+    const guardResult = this.promptInjection.detectMessages(normalizedMessages);
     if (guardResult.safe) return '';
-    this.inputGuard
+    this.promptInjection
       .alertInjection(userId, guardResult.reason!, currentUserMessage ?? '')
       .catch(() => {});
-    return InputGuardrailService.GUARD_SUFFIX;
+    return PromptInjectionService.GUARD_SUFFIX;
   }
 
   /**

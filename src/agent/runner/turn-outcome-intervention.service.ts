@@ -71,8 +71,12 @@ export class TurnOutcomeInterventionService {
     outcome: TurnOutcome,
     context: TurnOutcomeCommitContext,
   ): TurnSideEffectIntent[] {
-    if (outcome.kind !== 'handoff' || !outcome.handoff) return [];
+    // 守卫显式声明的意图优先（如入站拦截的 conversation_risk 暂停/告警）。
+    const declared = outcome.sideEffects ?? [];
+
+    if (outcome.kind !== 'handoff' || !outcome.handoff) return declared;
     return [
+      ...declared,
       {
         kind: 'general_handoff',
         source: 'agent_tool',

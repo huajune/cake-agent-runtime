@@ -17,10 +17,10 @@ import {
   OutputGuardrailService,
   type OutputGuardDecision,
 } from '../guardrail/output/output-guardrail.service';
-import {
-  RiskInterceptService,
-  type RiskInterceptInput,
-  type PreAgentRiskPrecheckResult,
+import { InputGuardrailService } from '../guardrail/input/input-guard.service';
+import type {
+  RiskInterceptInput,
+  PreAgentRiskPrecheckResult,
 } from '../guardrail/input/risk-intercept.service';
 import type { TurnOutcome, TurnRequest } from './agent-runner.types';
 
@@ -89,7 +89,7 @@ export class AgentRunnerService {
   constructor(
     private readonly generator: GeneratorService,
     private readonly outputGuard: OutputGuardrailService,
-    private readonly inputRiskGuard: RiskInterceptService,
+    private readonly inputGuard: InputGuardrailService,
   ) {}
 
   invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
@@ -98,42 +98,43 @@ export class AgentRunnerService {
 
   /**
    * 入站风险预检（input guardrail）。被动渠道在生成前调用一次：命中高置信度风险关键词
-   * 即同步触发人工介入副作用（暂停托管 + 飞书告警，fire-and-forget）并返回 `{ hit: true }`。
-   * 本方法只产出风险信号 + 触发介入副作用，**是否短路本轮**由调用渠道按 `hit` 决定（当前
-   * WeCom 入站命中即静默并转人工，不再跑 Agent）。
+   * 即返回 `{ hit: true }` + 风险归因。守卫本身**只判定不执行副作用**——人工介入
+   * （暂停托管 + 飞书告警）以 sideEffect intent 挂在 outcome 上，由渠道在 replay 定局后
+   * 经 TurnOutcomeInterventionService.commit 统一出口执行，避免被 replay 丢弃的首版
+   * 误触发暂停/告警。
    *
    * 注意这只是 input 守卫的「pre-agent 拦截」一环；prompt-injection 硬化（扫注入→告警→
-   * 追加 system 防护 suffix）仍在 generator 内的 PreparationService.applyInputGuard 执行，
-   * 不经此入口。
+   * 追加 system 防护 suffix）由 PromptInjectionService 在 preparation 阶段执行，不经此入口。
    *
    * 渠道侧只负责把入站 DTO 解析成中立 `RiskInterceptInput`（依赖倒置，DTO/parser 留渠道），
    * pre-agent 拦截的「何时调、调哪个守卫」编排权收敛在 runner，与出站守卫（invokeReviewed）
-   * 对称——渠道不再直接注入 `RiskInterceptService`。
+   * 对称。
    */
   precheckInput(input: RiskInterceptInput): Promise<PreAgentRiskPrecheckResult> {
-    return this.inputRiskGuard.precheck(input);
+    return this.inputGuard.precheckInputRisk(input);
   }
 
   /**
    * 入站风险预检 → 收口成 `TurnOutcome`（input guardrail 的**短路决策**归位到 runner，与出站
    * 守卫产出 `blocked`/`handoff` 对称）。
    *
-   * - 命中：guardrail 内部已 fire-and-forget dispatch 人工介入（暂停托管 + 飞书告警），这里收成
-   *   `intercepted` 终态（本轮不跑 Agent）。渠道只负责静默收尾（记跳过观测/去重/ack），不再自己
-   *   判断「hit 了该怎么办」。
+   * - 命中：收成 `intercepted` 终态（本轮不跑 Agent），人工介入意图（暂停托管 + 飞书告警）
+   *   挂在 `sideEffects` 上，由渠道在 replay 定局后经 TurnOutcomeInterventionService.commit
+   *   统一执行。渠道只负责静默收尾（commit 副作用/记跳过观测/去重/ack）。
    * - 未命中：返回 `null`，调用方继续走正常生成。
    */
   async precheckInboundOutcome(input: RiskInterceptInput): Promise<TurnOutcome | null> {
-    const result = await this.inputRiskGuard.precheck(input);
-    if (!result.hit) return null;
+    const decision = await this.inputGuard.evaluate(input);
+    if (decision.decision === 'pass') return null;
     return {
       kind: 'intercepted',
       toolCalls: [],
       intercept: {
-        riskType: result.riskType,
-        label: result.label,
-        reason: result.reason,
+        riskType: decision.riskType,
+        label: decision.riskLabel,
+        reason: decision.reason,
       },
+      sideEffects: decision.sideEffects,
     };
   }
 

@@ -15,6 +15,7 @@ import { MessageTrackingService } from '@biz/monitoring/services/tracking/messag
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
+import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
@@ -210,6 +211,10 @@ describe('MessagePipelineService', () => {
         { provide: LlmExecutorService, useValue: mockLlmService },
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
         { provide: AgentRunnerService, useValue: mockRunnerService },
+        {
+          provide: TurnOutcomeInterventionService,
+          useValue: { commit: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },

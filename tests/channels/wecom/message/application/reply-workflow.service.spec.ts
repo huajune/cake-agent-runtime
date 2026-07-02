@@ -79,6 +79,9 @@ describe('ReplyWorkflowService', () => {
   const followUpScheduler = {
     scheduleFollowUp: jest.fn(),
   };
+  const turnOutcomeIntervention = {
+    commit: jest.fn().mockResolvedValue(undefined),
+  };
   const session = {
     saveTerminalState: jest.fn(),
     recordCandidateActivity: jest.fn(),
@@ -191,6 +194,7 @@ describe('ReplyWorkflowService', () => {
       handoffRecorder as never,
       followUpScheduler as never,
       reengagementAnchors,
+      turnOutcomeIntervention as never,
     );
   });
 

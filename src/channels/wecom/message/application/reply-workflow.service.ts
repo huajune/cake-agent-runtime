@@ -3,6 +3,7 @@ import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
+import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
 import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '@agent/tool-call-analysis';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
@@ -88,6 +89,7 @@ export class ReplyWorkflowService {
     private readonly handoffRecorder: HandoffRecorderService,
     private readonly followUpScheduler: FollowUpSchedulerService,
     private readonly reengagementAnchors: ReengagementAnchorService,
+    private readonly turnOutcomeIntervention: TurnOutcomeInterventionService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -230,8 +232,9 @@ export class ReplyWorkflowService {
     const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
 
     // 前置风险同步预检（input guardrail）：命中即「确定性静默 + 暂停托管转人工」。短路决策由
-    // runner 收口成 `intercepted` 终态（guardrail 内部已 dispatch 暂停，覆盖后续轮次），渠道这里
-    // 只负责把这个终态**渲染**成 WeCom 侧的静默收尾（记跳过观测/去重/ack），不再继续跑 Agent。
+    // runner 收口成 `intercepted` 终态；守卫只判定不执行，人工介入意图挂在 outcome.sideEffects，
+    // 由渠道经 turnOutcomeIntervention.commit 统一出口执行（暂停托管 + 飞书告警），随后把终态
+    // **渲染**成 WeCom 侧的静默收尾（记跳过观测/去重/ack），不再继续跑 Agent。
     // 此前的设计是「不短路 Agent、仍发一条安抚回复」，但安抚回复会与投递前的 isAnyPaused 检查
     // 竞态、大概率被丢弃，行为不确定；改为命中即静默，行为确定。
     const riskUserId = this.resolveAgentUserId(params.primaryMessage, parsed);
@@ -251,6 +254,17 @@ export class ReplyWorkflowService {
       this.logger.warn(
         `${logPrefix}[${contactName}] 前置风险预检命中: label=${label}, chatId=${chatId}，本轮静默并转人工`,
       );
+      // 执行守卫声明的介入副作用（暂停托管 + 飞书告警）——入站拦截无 replay，命中即定局。
+      await this.turnOutcomeIntervention.commit(intercepted, {
+        traceId,
+        chatId,
+        userId: riskUserId,
+        corpId: this.resolveCorpId(params.primaryMessage),
+        contactName: parsed.contactName,
+        botImId: parsed.imBotId,
+        botUserId: parsed.managerName,
+        userMessage: content,
+      });
       await this.wecomObservability.markReplySkipped(traceId);
       const riskSkippedMetadata = await this.wecomObservability.buildSuccessMetadata(traceId, {
         scenario,

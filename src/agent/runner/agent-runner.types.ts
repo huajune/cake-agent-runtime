@@ -1,5 +1,6 @@
 import type { CallerKind } from '@/enums/agent.enum';
 import type { AgentToolCall, ToolMode as GeneratorToolMode } from '../agent-run.types';
+import type { TurnSideEffectIntent } from './turn-side-effect.types';
 
 /** 会话三元组（记忆隔离键）。 */
 export interface SessionRef {
@@ -56,8 +57,14 @@ export interface TurnOutcome {
   toolCalls: AgentToolCall[];
   /** reengagement/观测用：本回合命中的主动场景码。 */
   scenarioCode?: string;
-  /** kind==='intercepted' 时携带命中的风险归因（guardrail 内已据此 dispatch 介入）。 */
+  /** kind==='intercepted' 时携带命中的风险归因。 */
   intercept?: { riskType?: string; label?: string; reason?: string };
+  /**
+   * 守卫声明的副作用意图（人工介入暂停/告警等）。守卫只判定不执行；
+   * 渠道在 replay 定局后经 TurnOutcomeInterventionService.commit 统一出口执行，
+   * 避免被 replay 丢弃的首版误触发暂停托管/告警。
+   */
+  sideEffects?: TurnSideEffectIntent[];
   /**
    * deferTurnEnd 时暴露给调用方，投递成功后显式触发记忆收尾。
    * `includeAssistantText=false`（默认 true）：回复未真实送达（守卫拦截/沉默/投递失败）时，

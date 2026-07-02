@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { LlmModule } from '@/llm/llm.module';
-import { ConversationRiskModule } from '@/conversation-risk/conversation-risk.module';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { InterventionModule } from '@biz/intervention/intervention.module';
 import { BizMessageModule } from '@biz/message/message.module';
@@ -19,7 +18,6 @@ import { SemanticReviewerService } from './output/llm/semantic-reviewer.service'
   imports: [
     ConfigModule,
     LlmModule,
-    ConversationRiskModule,
     HostingConfigModule,
     InterventionModule,
     BizMessageModule,
