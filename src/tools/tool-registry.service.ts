@@ -167,6 +167,7 @@ export class ToolRegistryService {
           memberLimit,
           enterpriseToken,
           groupMembershipService,
+          sessionService,
         ),
       }),
 

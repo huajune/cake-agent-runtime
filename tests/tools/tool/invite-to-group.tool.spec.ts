@@ -8,7 +8,8 @@ describe('buildInviteToGroupTool', () => {
     userId: 'user-1',
     corpId: 'corp-1',
     sessionId: 'sess-1',
-    messages: [],
+    // 城市 provenance gate 要求 city 有出处：默认让候选人原文提到上海
+    messages: [{ role: 'user', content: '你好，我在上海找兼职' }],
     botUserId: 'chat-bot-weixin',
     botImId: 'chat-bot-im-id',
   };
@@ -829,5 +830,103 @@ describe('buildInviteToGroupTool', () => {
     expect(result._replyInstruction).toContain('request_handoff');
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+  });
+
+  describe('city provenance gate (badcase recvk28F1xrsKj)', () => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const executeToolWithSession = async (
+      input: { city: string; industry?: string },
+      sessionService: unknown,
+      overrideContext?: Partial<ToolBuildContext>,
+    ) => {
+      const builder = buildInviteToGroupTool(
+        mockGroupResolver as any,
+        mockRoomService as any,
+        mockOpsNotifier as any,
+        mockMemoryService as any,
+        mockOpsEventsRecorder as any,
+        MEMBER_LIMIT,
+        'enterprise-token-test',
+        undefined,
+        sessionService as any,
+      );
+      const builtTool = builder({ ...mockContext, ...overrideContext });
+      return builtTool.execute(input as any, {
+        toolCallId: 'test',
+        messages: [],
+        abortSignal: undefined as any,
+      }) as any;
+    };
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const makeSessionService = (cityValue: string | null, confidence: 'high' | 'low' = 'high') => ({
+      getFacts: jest.fn().mockResolvedValue(
+        cityValue
+          ? {
+              preferences: {
+                city: { value: cityValue, confidence, source: 'rule', evidence: 'explicit_city' },
+              },
+            }
+          : { preferences: { city: null } },
+      ),
+    });
+
+    it('rejects with city_unverified when city has no source (no session fact, not in user text)', async () => {
+      const result = await executeTool({ city: '杭州' });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
+      expect(result._replyInstruction).toContain('确认所在城市');
+      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    });
+
+    it('rejects with city_conflict and expectedCity when session fact disagrees', async () => {
+      const sessionService = makeSessionService('上海');
+      const result = await executeToolWithSession({ city: '杭州' }, sessionService);
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT);
+      expect(result.expectedCity).toBe('上海');
+      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    });
+
+    it('allows via session fact when candidate never typed the city this session', async () => {
+      const sessionService = makeSessionService('杭州');
+      mockGroupResolver.resolveGroups.mockResolvedValue([]);
+
+      const result = await executeToolWithSession({ city: '杭州市' }, sessionService, {
+        messages: [{ role: 'user', content: '在吗' }],
+      });
+
+      // gate 放行后进入正常流程（无群数据 → no_group_available），证明未被 gate 拦截
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE);
+      expect(mockGroupResolver.resolveGroups).toHaveBeenCalled();
+    });
+
+    it('ignores low-confidence session city and falls back to user text grounding', async () => {
+      const sessionService = makeSessionService('北京', 'low');
+      mockGroupResolver.resolveGroups.mockResolvedValue([]);
+
+      const result = await executeToolWithSession({ city: '上海' }, sessionService);
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE);
+    });
+
+    it('degrades to user-text-only grounding when session facts read fails', async () => {
+      const sessionService = {
+        getFacts: jest.fn().mockRejectedValue(new Error('redis down')),
+      };
+      mockGroupResolver.resolveGroups.mockResolvedValue([]);
+
+      const result = await executeToolWithSession({ city: '上海' }, sessionService);
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE);
+    });
+
+    it('keeps district-scope rejection ahead of the provenance gate', async () => {
+      const result = await executeTool({ city: '静安区' });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE);
+    });
   });
 });
