@@ -193,7 +193,7 @@ export class PreparationService {
       thresholds,
       turnState,
       contactBrandAliases,
-      bookingWorkOrderJobId: bookingContext.jobId,
+      bookingWorkOrderJobIds: bookingContext.jobIds,
     });
     const toolExecutionTimings = new Map<string, number>();
     const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
@@ -669,7 +669,7 @@ export class PreparationService {
     turnState: PreparedAgentContext['turnState'];
     contactBrandAliases: string[];
     /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
-    bookingWorkOrderJobId: number | null;
+    bookingWorkOrderJobIds: number[];
   }): ToolBuildContext {
     const {
       params,
@@ -680,14 +680,16 @@ export class PreparationService {
       thresholds,
       turnState,
       contactBrandAliases,
-      bookingWorkOrderJobId,
+      bookingWorkOrderJobIds,
     } = input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
     // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 进行中预约工单 jobId（改约路径）
     // + 本轮 job_list 抓取的候选池（turnState.candidatePool 由 onJobsFetched 实时写入），
     // 供 precheck/booking 判定 jobId 是否有出处。
     const turnStartRecalledJobIds = this.collectRecentJobIds(memory.sessionMemory);
-    if (bookingWorkOrderJobId != null) turnStartRecalledJobIds.add(bookingWorkOrderJobId);
+    for (const bookingWorkOrderJobId of bookingWorkOrderJobIds) {
+      turnStartRecalledJobIds.add(bookingWorkOrderJobId);
+    }
     const highConfidenceSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
       minConfidence: 'high',
     });
@@ -1095,47 +1097,64 @@ export class PreparationService {
     corpId: string,
     userId: string,
     tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
-  ): Promise<{ block: string; jobId: number | null }> {
+  ): Promise<{ block: string; jobIds: number[] }> {
     try {
-      const activeBooking = await this.longTermService.getActiveBooking(corpId, userId);
-      const workOrderId = activeBooking?.work_order_id;
-      if (workOrderId == null) return { block: '', jobId: null };
+      const activeBookings = await this.longTermService.getActiveBookings(corpId, userId);
+      if (activeBookings.length === 0) return { block: '', jobIds: [] };
 
-      const workOrder = tokenContext
-        ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
-        : await this.spongeService.getCachedWorkOrderById(workOrderId);
-      if (!workOrder) return { block: '', jobId: null };
+      const contexts: Array<{ block: string; jobId: number | null }> = [];
+      for (const activeBooking of activeBookings) {
+        const workOrderId = activeBooking.work_order_id;
+        let workOrder: Awaited<ReturnType<typeof this.spongeService.getCachedWorkOrderById>>;
+        try {
+          workOrder = tokenContext
+            ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
+            : await this.spongeService.getCachedWorkOrderById(workOrderId);
+        } catch (error) {
+          this.logger.warn(
+            `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          continue;
+        }
+        if (!workOrder) continue;
 
-      // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
-      // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集，
-      // 否则 isRecalledJobId 恒 false 把每次改约都误拦成 job_not_provided。
-      const block = this.formatBookingContext(workOrder);
-      // jobId 口径必须与 formatBookingContext 渲染「岗位ID」时一致（它用 != null，接受数字串）：
-      // Upstash 反序列化旧缓存可能把 jobId 给成字符串，若这里只认 number 会出现「prompt 里渲染了
-      // 岗位ID: 5678、但 provenance 判 null」→ isRecalledJobId(5678)=false 把改约永久卡死。
-      // 故统一归一为 number（数字串也接受），再受 block 非空约束。
-      const normalizedJobId =
-        typeof workOrder.jobId === 'number'
-          ? workOrder.jobId
-          : typeof workOrder.jobId === 'string' && /^\d+$/.test(workOrder.jobId)
-            ? Number(workOrder.jobId)
-            : null;
+        // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
+        // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集。
+        const block = this.formatBookingContext(workOrder, contexts.length + 1);
+        const normalizedJobId =
+          typeof workOrder.jobId === 'number'
+            ? workOrder.jobId
+            : typeof workOrder.jobId === 'string' && /^\d+$/.test(workOrder.jobId)
+              ? Number(workOrder.jobId)
+              : null;
+        if (block) contexts.push({ block, jobId: normalizedJobId });
+      }
+
+      const block =
+        contexts.length > 0
+          ? `\n\n[当前预约信息]\n\n${contexts.map((context) => context.block).join('\n\n')}`
+          : '';
       return {
         block,
         // 仅当 block 非空（[当前预约信息] 真进了 system prompt、模型能看到「岗位ID」）才把 jobId
-        // 当 provenance：block 为空（工单展示字段全缺）时模型根本看不到该 jobId，放行它等于留下
-        // 一个静默绕过闸门的口子（模型若恰好编中该 jobId 就被误判为有出处）。
-        jobId: block ? normalizedJobId : null,
+        // 当 provenance：block 为空（工单展示字段全缺）时模型根本看不到该 jobId。
+        jobIds: block
+          ? contexts
+              .map((context) => context.jobId)
+              .filter((jobId): jobId is number => jobId != null)
+          : [],
       };
     } catch (error) {
       this.logger.warn(
         `加载预约上下文失败: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { block: '', jobId: null };
+      return { block: '', jobIds: [] };
     }
   }
 
-  private formatBookingContext(workOrder: SignupWorkOrderItem): string {
+  private formatBookingContext(workOrder: SignupWorkOrderItem, index = 1): string {
     const displayJobName = sanitizeJobDisplayText(workOrder.jobName ?? null);
     const businessLines = [
       workOrder.brandName ? `品牌: ${workOrder.brandName}` : null,
@@ -1151,17 +1170,18 @@ export class PreparationService {
 
     // 岗位ID 单独渲染：改约前 Agent 要用它调 duliday_interview_precheck 校验新日期是否可约。
     const lines = [
-      '当前存在一个仍在进行中的面试/上岗跟进 case（状态实时取自海绵工单系统）。',
+      `预约 ${index}：当前存在一个仍在进行中的面试/上岗跟进 case（状态实时取自海绵工单系统）。`,
       `工单号: ${workOrder.workOrderId}`,
       workOrder.jobId != null ? `岗位ID: ${workOrder.jobId}` : null,
       ...businessLines,
     ].filter((line): line is string => Boolean(line));
 
     lines.push(
+      '候选人可同时报名多个不同岗位；已预约 A 岗不代表不能继续报名 B 岗。但同一工单/同一岗位不要重复提交报名。',
       '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。主动要求取消时调 duliday_cancel_work_order 自助取消。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
       '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
     );
-    return `\n\n[当前预约信息]\n\n${lines.join('\n')}`;
+    return lines.join('\n');
   }
 
   private formatJobMemoryLine(job: RecommendedJobSummary, index?: number): string {

@@ -52,7 +52,12 @@ export function detectPrecheckBlockedBookingClaim(
   const nameFieldGuard = asRecord(result.nameFieldGuard);
   const hardAgeReject = nextAction === 'age_rejected' || ageBoundary?.severity === 'hard_reject';
   const nameMustHandoff = nameFieldGuard?.mustHandoff === true;
-  const nextActionBlocksBooking = Boolean(nextAction && nextAction !== 'ready_to_book');
+  // 只有真正阻断 booking 的终态才算冲突。collect_fields / confirm_date 是正常推进态——
+  // “填一下资料我帮你约面”正是收资阶段的标准话术，不能当成功口径冲突拦。
+  // 上线首日 badcase（batch_6a475a42…935）：collect_fields 被当阻断态触发无谓 repair，
+  // 重写版漏收资字段又被 booking_form_field_mismatch 正确拦下，连锁成 repair_exhausted 丢弃整轮。
+  const nextActionBlocksBooking =
+    nextAction === 'age_rejected' || nextAction === 'date_unavailable';
 
   // 只有 precheck 明确不允许进入 booking，才认为 reply 成功口径冲突。
   if (!hardAgeReject && !nameMustHandoff && !nextActionBlocksBooking) return null;

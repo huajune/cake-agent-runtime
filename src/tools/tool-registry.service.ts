@@ -42,7 +42,7 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 
 /**

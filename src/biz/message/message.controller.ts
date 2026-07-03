@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ChatSessionService } from './services/chat-session.service';
+import { GuardrailReviewService } from './services/guardrail-review.service';
 import { MessageProcessingService } from './services/message-processing.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 
@@ -12,6 +13,7 @@ export class MessageController {
   constructor(
     private readonly chatSessionService: ChatSessionService,
     private readonly messageProcessingService: MessageProcessingService,
+    private readonly guardrailReviewService: GuardrailReviewService,
     private readonly analyticsQueryService: AnalyticsQueryService,
   ) {}
 
@@ -126,5 +128,10 @@ export class MessageController {
   @Get('message-processing-records/:messageId')
   async getMessageProcessingRecordDetail(@Param('messageId') messageId: string) {
     return this.messageProcessingService.getMessageProcessingRecordById(messageId);
+  }
+
+  @Get('guardrail-reviews/:traceId')
+  async getGuardrailReview(@Param('traceId') traceId: string) {
+    return this.guardrailReviewService.findByTraceId(traceId);
   }
 }

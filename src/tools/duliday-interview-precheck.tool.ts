@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { extractInterviewSupplementDefinitions } from '@sponge/sponge-job.util';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { stripNullish } from '@infra/utils/object.util';
 import { API_BOOKING_USER_REQUIRED_FIELDS } from '@tools/duliday/booking/job-booking.contract';

@@ -5,7 +5,7 @@ import {
   BOT_ACCOUNT_PROVIDER,
   type BotAccountInfo,
   type BotAccountProvider,
-} from './bot-account.provider';
+} from '../providers/bot-account.provider';
 import {
   FeishuBitableApiService,
   type BitableField,
@@ -13,9 +13,9 @@ import {
 import { formatLocalDate, getLocalDayStart, parseLocalDateStart } from '@infra/utils/date.util';
 import { SpongeService } from '@sponge/sponge.service';
 import type { SignupWorkOrderItem, SignupWorkOrdersResult } from '@sponge/sponge.types';
-import { DailyOpsReportRepository } from './daily-ops-report.repository';
-import { normalizeBotImId } from './bot-group-resolver.service';
-import type { DailyOpsReportRow } from './ops-events.types';
+import type { DailyOpsReportRow } from '../entities/daily-ops-report.entity';
+import { normalizeBotImId } from '../services/bot-group-resolver.service';
+import { DailyOpsReportService } from '../services/daily-ops-report.service';
 
 /** 飞书多维表格字段类型枚举（仅用到的）。 */
 const FEISHU_FIELD_TYPE = {
@@ -149,7 +149,7 @@ export class OpsDailyReportCronService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly dailyOpsReportRepository: DailyOpsReportRepository,
+    private readonly dailyOpsReportService: DailyOpsReportService,
     private readonly bitableApi: FeishuBitableApiService,
     private readonly spongeService: SpongeService,
     @Inject(BOT_ACCOUNT_PROVIDER) private readonly botAccountProvider: BotAccountProvider,
@@ -190,7 +190,7 @@ export class OpsDailyReportCronService {
       return { rows: 0, written: 0 };
     }
 
-    const rawRows = await this.dailyOpsReportRepository.findByReportDate(reportDate);
+    const rawRows = await this.dailyOpsReportService.findByReportDate(reportDate);
     const rows = await this.canonicalizeRowsByCurrentBots(rawRows);
     if (rows.length === 0) {
       this.logger.log(`运营日报: ${reportDate} 无数据，跳过`);

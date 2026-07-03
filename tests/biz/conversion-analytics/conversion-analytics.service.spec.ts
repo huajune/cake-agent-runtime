@@ -1,6 +1,6 @@
 import { ConversionAnalyticsService } from '@biz/conversion-analytics/conversion-analytics.service';
 import { OpsEventsAnalyticsRepository } from '@biz/conversion-analytics/repositories/ops-events-analytics.repository';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import type { ConversionFilter } from '@biz/conversion-analytics/types/conversion-analytics.types';
 import { addLocalDays, formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';

@@ -22,7 +22,7 @@ import { FilterReason } from '@enums/message-filter.enum';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SessionService } from '@memory/services/session.service';
 import type { MessageMetadata } from '@memory/types/long-term.types';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';

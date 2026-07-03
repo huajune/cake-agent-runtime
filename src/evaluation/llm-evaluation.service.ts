@@ -285,21 +285,22 @@ ${actualOutput}
   private normalizeDimensions(
     dimensions: EvaluationStructuredOutput['dimensions'],
   ): EvaluationDimensions {
+    const clampScore = (value: number): number => Math.max(0, Math.min(100, Math.round(value)));
     return {
       factualAccuracy: {
-        score: Math.round(dimensions.factualAccuracy.score),
+        score: clampScore(dimensions.factualAccuracy.score),
         reason: dimensions.factualAccuracy.reason.slice(0, 80),
       },
       responseEfficiency: {
-        score: Math.round(dimensions.responseEfficiency.score),
+        score: clampScore(dimensions.responseEfficiency.score),
         reason: dimensions.responseEfficiency.reason.slice(0, 80),
       },
       processCompliance: {
-        score: Math.round(dimensions.processCompliance.score),
+        score: clampScore(dimensions.processCompliance.score),
         reason: dimensions.processCompliance.reason.slice(0, 80),
       },
       toneNaturalness: {
-        score: Math.round(dimensions.toneNaturalness.score),
+        score: clampScore(dimensions.toneNaturalness.score),
         reason: dimensions.toneNaturalness.reason.slice(0, 80),
       },
     };

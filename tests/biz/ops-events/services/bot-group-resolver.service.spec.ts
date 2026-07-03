@@ -1,4 +1,4 @@
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import type { BotService } from '@channels/wecom/bot/bot.service';
 
 describe('BotGroupResolverService', () => {

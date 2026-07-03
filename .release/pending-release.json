@@ -1,9 +1,78 @@
 {
   "baseVersion": "5.30.0",
-  "nextVersion": "5.30.0",
+  "nextVersion": "5.31.0",
   "updatedAt": "2026-07-03",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "420",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/420",
+      "title": "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-03",
+      "businessUpdates": [
+        "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束"
+      ],
+      "summary": [
+        "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束"
+      ],
+      "features": [
+        "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "tsc 0 错误",
+        "`tests/evaluation` 2 套件 / 34 测试全过（pre-push 全量 ci:check 亦通过）"
+      ]
+    },
+    {
+      "number": "421",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/421",
+      "title": "守卫上线首日误伤修复 + 多岗位报名 + 出站守卫审查全程档案",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-03",
+      "businessUpdates": [
+        "支持多岗位并行报名，软查重收敛到同岗位维度",
+        "移除 Anthropic 结构化输出不支持的 schema 约束",
+        "上线首日误伤修复 + 工具调用文本泄漏封堵"
+      ],
+      "summary": [
+        "上线首日误伤修复 + 工具调用文本泄漏封堵",
+        "precheck_blocked_booking_claim 只认真正阻断态",
+        "支持多岗位并行报名，软查重收敛到同岗位维度",
+        "移除 Anthropic 结构化输出不支持的 schema 约束",
+        "出站守卫审查全程档案落库并在详情页还原全过程",
+        "收紧误伤豁免正则，裸词豁免改语境锚定（PR #421 review）",
+        "收口分层边界并补 guardrail 审查档案",
+        "守卫上线首日误伤修复 + 多岗位报名 + 出站守卫审查全程档案"
+      ],
+      "features": [
+        "支持多岗位并行报名，软查重收敛到同岗位维度",
+        "移除 Anthropic 结构化输出不支持的 schema 约束"
+      ],
+      "fixes": [
+        "上线首日误伤修复 + 工具调用文本泄漏封堵"
+      ],
+      "optimizations": [],
+      "ops": [
+        "precheck_blocked_booking_claim 只认真正阻断态",
+        "出站守卫审查全程档案落库并在详情页还原全过程",
+        "收紧误伤豁免正则，裸词豁免改语境锚定（PR #421 review）",
+        "收口分层边界并补 guardrail 审查档案"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 jest：304 套件 / 4374 通过",
+        "后端 `tsc --noEmit` 与 web `tsc -b` 通过",
+        "守卫档案链路已在本地 + 测试库端到端验证（写入 → 详情 API → Dashboard 渲染）"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.30.0",
     "date": "2026-07-03",
