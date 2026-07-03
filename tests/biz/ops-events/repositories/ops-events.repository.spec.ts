@@ -1,4 +1,4 @@
-import { OpsEventsRepository } from '@biz/ops-events/ops-events.repository';
+import { OpsEventsRepository } from '@biz/ops-events/repositories/ops-events.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 
 describe('OpsEventsRepository', () => {

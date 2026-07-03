@@ -3,6 +3,27 @@ import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
 
 /**
+ * 任职要求语境：岗位把"社保证明/劳动合同"当作应聘门槛（典型是"第二职业"类岗位要求
+ * 提供第一份工作的社保证明），此时提社保是资格预筛，不是福利承诺。
+ * 上线首日误伤（2026-07-03 青岛哈根达斯单）：Agent 问"需要提供劳动合同和社保证明，
+ * 你有交本地社保的工作吗"被当成主动外抛政策拦截。
+ *
+ * 豁免必须锚定在"提供/出示 + 证明材料"的动宾结构或"你有交社保吗"的资格提问上，
+ * 不能用"合同/证明/材料"裸词：中文招聘话术里"签合同交五险一金"是最常见的主动福利
+ * 承诺组合，裸词豁免会把这条 P0 规则要拦的典型场景整句放行（PR #421 review）。
+ */
+const REQUIREMENT_CONTEXT_PATTERN =
+  /(?:提供|出示|提交|准备|带上?)[^。！？\n]{0,12}(?:证明|材料|合同)|(?:证明|材料|合同)[^。！？\n]{0,6}(?:提供|出示|提交|准备)|第二职业|(?:你|您)[^。！？\n]{0,4}有[^。！？\n]{0,8}(?:交|缴|买)[^。！？\n]{0,8}(?:社保|保险)/;
+
+/** 按句切分，与其它规则的句粒度判定口径一致。 */
+function splitSentences(text: string): string[] {
+  return text
+    .split(/[。！？?!\n；;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
  * 保险/社保主动提及规则。
  *
  * 职责：
@@ -32,6 +53,15 @@ export function detectProactiveInsurancePolicyMention(
   if (userMessage && INSURANCE_POLICY_TERM_PATTERN.test(userMessage)) return null;
   // 候选人近几轮提过保险/社保：本轮回复视为对候选人问题的作答，放行。
   if (recentUserTexts?.some((m) => INSURANCE_POLICY_TERM_PATTERN.test(m))) return null;
+  // 每一句含保险词的句子都处于任职要求语境（社保证明/劳动合同/第二职业门槛）时放行：
+  // 这是资格预筛必须问的问题，不是福利承诺。只要有一句是纯福利性提及仍拦截。
+  const policySentences = splitSentences(text).filter((s) => INSURANCE_POLICY_TERM_PATTERN.test(s));
+  if (
+    policySentences.length > 0 &&
+    policySentences.every((s) => REQUIREMENT_CONTEXT_PATTERN.test(s))
+  ) {
+    return null;
+  }
 
   return {
     ruleId: 'proactive_insurance_policy_mention',

@@ -6,28 +6,23 @@ import {
   Body,
   Param,
   Query,
-  Logger,
   HttpException,
   HttpStatus,
   Res,
   Header,
 } from '@nestjs/common';
-import { createUIMessageStream, pipeUIMessageStreamToResponse, type UIMessageChunk } from 'ai';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { Response } from 'express';
-import { randomUUID } from 'node:crypto';
 import { TestExecutionService } from './services/test-execution.service';
 import { TestBatchService } from './services/test-batch.service';
 import { TestImportService } from './services/test-import.service';
 import { TestWriteBackService } from './services/test-write-back.service';
 import { ConversationTestService } from './services/conversation-test.service';
-import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
-import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail.service';
-import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
+import { TestSuiteStreamingService } from './services/test-suite-streaming.service';
+import { TestSuiteQueueService } from './services/test-suite-queue.service';
+import { TestFeedbackService } from './services/test-feedback.service';
+import { TestSuiteSessionService } from './services/test-suite-session.service';
 import { CuratedDatasetImportService } from './services/curated-dataset-import.service';
-import { TestSuiteProcessor } from './test-suite.processor';
-import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
-import { MemoryService } from '@memory/memory.service';
 import {
   TestChatRequestDto,
   BatchTestRequestDto,
@@ -49,14 +44,7 @@ import {
   ExecuteConversationDto,
   SyncConversationTestsDto,
 } from './dto/conversation-test.dto';
-import {
-  BatchSource,
-  BatchStatus,
-  ExecutionStatus,
-  ReviewStatus,
-  TestType,
-} from './enums/test.enum';
-import { SSEStreamHandler } from './utils/sse-stream-handler';
+import { BatchSource, ExecutionStatus, ReviewStatus, TestType } from './enums/test.enum';
 
 /**
  * 测试套件控制器
@@ -64,20 +52,17 @@ import { SSEStreamHandler } from './utils/sse-stream-handler';
 @ApiTags('测试套件')
 @Controller('test-suite')
 export class TestSuiteController {
-  private readonly logger = new Logger(TestSuiteController.name);
-
   constructor(
     private readonly executionService: TestExecutionService,
     private readonly batchService: TestBatchService,
     private readonly importService: TestImportService,
     private readonly writeBackService: TestWriteBackService,
     private readonly conversationTestService: ConversationTestService,
-    private readonly aiStreamObservability: AiStreamObservabilityService,
-    private readonly outputGuard: OutputGuardrailService,
+    private readonly streamingService: TestSuiteStreamingService,
+    private readonly queueService: TestSuiteQueueService,
+    private readonly feedbackService: TestFeedbackService,
+    private readonly sessionService: TestSuiteSessionService,
     private readonly curatedDatasetImportService: CuratedDatasetImportService,
-    private readonly testProcessor: TestSuiteProcessor,
-    private readonly feishuBitableService: FeishuBitableSyncService,
-    private readonly memoryService: MemoryService,
   ) {}
 
   // ==================== 单条测试 ====================
@@ -97,249 +82,19 @@ export class TestSuiteController {
   @Header('Connection', 'keep-alive')
   @ApiOperation({ summary: '执行流式测试（SSE）' })
   async testChatStream(@Body() request: TestChatRequestDto, @Res() res: Response) {
-    const handler = new SSEStreamHandler(res, '[Stream]');
-    handler.setupHeaders();
-
-    try {
-      handler.sendStart();
-      const stream = await this.executionService.executeTestStream(request);
-
-      stream.on('data', (chunk: Buffer) => handler.processChunk(chunk));
-      stream.on('end', () => {
-        handler.sendDone();
-        handler.end();
-      });
-      stream.on('error', (error: Error) => {
-        this.logger.error(`[Stream] 流式处理错误: ${error.message}`);
-        handler.sendError(error.message);
-        handler.end();
-      });
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      handler.sendError(errorMessage);
-      handler.end();
-    }
+    return this.streamingService.testChatStream(request, res);
   }
 
   @Post('chat/ai-stream')
   @ApiOperation({ summary: '执行流式测试（Vercel AI SDK UI Message Stream 格式）' })
   async testChatAIStream(@Body() request: VercelAIChatRequestDto, @Res() res: Response) {
-    const transportMessages = Array.isArray(request.messages) ? request.messages : [];
-    const { testRequest, messageText } =
-      this.executionService.convertVercelAIToTestRequest(request);
-    const sessionId = testRequest.sessionId ?? `test-${randomUUID()}`;
-    const normalizedRequest = {
-      ...testRequest,
-      sessionId,
-    };
-    const requestBody = {
-      transportRequest: {
-        scenario: request.scenario,
-        sessionId: request.sessionId,
-        userId: request.userId,
-        botUserId: request.botUserId,
-        botImId: request.botImId,
-        thinking: request.thinking,
-        saveExecution: request.saveExecution ?? false,
-        messages: transportMessages,
-        modelId: request.modelId,
-      },
-      normalizedRequest: {
-        scenario: normalizedRequest.scenario,
-        sessionId,
-        userId: normalizedRequest.userId,
-        botUserId: normalizedRequest.botUserId,
-        botImId: normalizedRequest.botImId,
-        thinking: normalizedRequest.thinking,
-        saveExecution: normalizedRequest.saveExecution ?? false,
-        skipHistoryTrim: normalizedRequest.skipHistoryTrim ?? false,
-        message: normalizedRequest.message,
-        history: normalizedRequest.history,
-        imageUrls: normalizedRequest.imageUrls,
-        modelId: normalizedRequest.modelId,
-      },
-    };
-    const trace = this.aiStreamObservability.startTrace({
-      chatId: sessionId,
-      userId: normalizedRequest.userId,
-      scenario: normalizedRequest.scenario,
-      messageText,
-      requestBody,
-      // agent-test UI 发起的调试流量不能污染生产观测（message_processing_records /
-      // user_activity / 今日托管看板）；SSE 仍通过 data-observability 把 trace 送回前端。
-      source: 'testing',
-    });
-
-    this.logger.log(
-      `[AI-Stream] 执行流式测试: ${messageText.substring(0, 50)}... (共 ${transportMessages.length} 条消息)`,
-    );
-
-    try {
-      trace.markAiStart();
-      const { streamResult, entryStage, agentRequest } =
-        await this.executionService.executeTestStreamWithMeta(normalizedRequest);
-      if (agentRequest) {
-        trace.mergeRequestBody({ agentRequest });
-      }
-      trace.markStreamReady(entryStage);
-      res.setHeader('X-Agent-Trace-Id', trace.messageId);
-
-      // 包装流：注入元数据（入口阶段 + token usage）
-      const uiStream = createUIMessageStream({
-        execute: async ({ writer }) => {
-          try {
-            // 在流开始前发送入口阶段信息，前端 onData 监听 type === 'data-entryStage'
-            if (entryStage) {
-              writer.write({
-                type: 'data-entryStage',
-                data: entryStage,
-              } as UIMessageChunk);
-            }
-
-            trace.markResponsePipeStart();
-
-            const reader = streamResult.toUIMessageStream({ sendReasoning: true }).getReader();
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                trace.observeChunk(value);
-                writer.write(value);
-              }
-            } finally {
-              reader.releaseLock();
-            }
-
-            if (trace.hasStreamError()) {
-              const streamError = trace.getStreamErrorMessage() || 'AI stream returned error chunk';
-              writer.write({
-                type: 'data-observability',
-                data: trace.getClientPayload('failure', streamError),
-              } as UIMessageChunk);
-              trace.finalizeFailure(streamError);
-              return;
-            }
-
-            // streamResult.usage 在流完成后 resolve，确保 data-tokenUsage 在 finish 之前发出
-            const usage = await streamResult.usage;
-            trace.recordUsage({
-              inputTokens: usage.inputTokens ?? 0,
-              outputTokens: usage.outputTokens ?? 0,
-              totalTokens: usage.totalTokens,
-            });
-            writer.write({
-              type: 'data-tokenUsage',
-              data: {
-                inputTokens: usage.inputTokens,
-                outputTokens: usage.outputTokens,
-                totalTokens: usage.totalTokens,
-              },
-            } as UIMessageChunk);
-
-            // 出站守卫 advisory：流结束后对完整回复跑一次 silent 守卫（不 fire 告警、不参与真实
-            // 发送裁决），把「守卫会怎么判」通过 data-guardrail 送回调试页。守卫故障不影响流。
-            const guardrailTrace = await this.buildAdvisoryGuardrail(trace, messageText);
-            if (guardrailTrace) {
-              writer.write({
-                type: 'data-guardrail',
-                data: guardrailTrace,
-              } as UIMessageChunk);
-            }
-
-            writer.write({
-              type: 'data-observability',
-              data: trace.getClientPayload('success'),
-            } as UIMessageChunk);
-
-            trace.finalizeSuccess();
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            writer.write({
-              type: 'data-observability',
-              data: trace.getClientPayload('failure', errorMessage),
-            } as UIMessageChunk);
-            trace.finalizeFailure(error);
-            throw error;
-          }
-        },
-      });
-
-      pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      trace.finalizeFailure(error);
-      if (!res.headersSent) {
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.flushHeaders();
-      }
-      res.write(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`);
-      res.end();
-    }
-  }
-
-  /**
-   * 流末对完整回复跑一次 silent 出站守卫，产出单步 advisory trace（复用生产页 GuardrailSection 形状）。
-   * silent=true 保证不 fire 飞书 badcase / 语义 verdict，避免调试流量污染生产判例池。
-   * 守卫故障或空回复返回 null（不影响流），异常吞掉只记日志。
-   */
-  private async buildAdvisoryGuardrail(
-    trace: ReturnType<AiStreamObservabilityService['startTrace']>,
-    userMessage: string,
-  ): Promise<GuardrailTurnTrace | null> {
-    try {
-      const { reply, toolCalls } = trace.getReviewInput();
-      if (!reply.trim()) return null;
-
-      const decision = await this.outputGuard.check({
-        reply,
-        toolCalls: toolCalls ?? [],
-        userMessage,
-        silent: true,
-      });
-
-      return {
-        steps: [
-          {
-            stage: 'first',
-            decision: decision.decision,
-            riskLevel: decision.riskLevel,
-            ruleIds: decision.ruleIds,
-            blockedRuleIds: decision.blockedRuleIds,
-            violationTypes: decision.violations.map((v) => v.type),
-            repairMode: decision.repairMode,
-            reasonCode: decision.reasonCode,
-          },
-        ],
-        repaired: false,
-        finalDecision: decision.decision,
-        reasonCode: decision.reasonCode,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`[AI-Stream] advisory 守卫审查失败（忽略）: ${message}`);
-      return null;
-    }
+    return this.streamingService.testChatAIStream(request, res);
   }
 
   @Post('chat/reset-session')
   @ApiOperation({ summary: '重置测试会话并清理长期画像' })
   async resetChatSession(@Body() request: ResetChatSessionRequestDto) {
-    const userId = request.userId?.trim();
-    if (!userId) {
-      throw new HttpException('userId 不能为空', HttpStatus.BAD_REQUEST);
-    }
-
-    const corpId = request.corpId?.trim() || 'test';
-    const cleared = await this.memoryService.clearLongTermMemory(corpId, userId);
-
-    return {
-      success: true,
-      data: {
-        userId,
-        corpId,
-        cleared,
-      },
-    };
+    return this.sessionService.resetChatSession(request);
   }
 
   // ==================== 批量测试 ====================
@@ -452,26 +207,14 @@ export class TestSuiteController {
   @ApiOperation({ summary: '获取批次执行进度' })
   @ApiParam({ name: 'id', description: '批次ID' })
   async getBatchProgress(@Param('id') id: string) {
-    return { success: true, data: await this.testProcessor.getBatchProgress(id) };
+    return this.queueService.getBatchProgress(id);
   }
 
   @Post('batches/:id/cancel')
   @ApiOperation({ summary: '取消批次执行' })
   @ApiParam({ name: 'id', description: '批次ID' })
   async cancelBatch(@Param('id') id: string) {
-    const cancelled = await this.testProcessor.cancelBatchJobs(id);
-    await this.batchService.updateBatchStatus(id, BatchStatus.CANCELLED);
-    const totalCancelled = cancelled.waiting + cancelled.delayed + cancelled.active;
-
-    return {
-      success: true,
-      data: {
-        batchId: id,
-        cancelled,
-        totalCancelled,
-        message: `已取消 ${totalCancelled} 个任务（等待=${cancelled.waiting}, 延迟=${cancelled.delayed}, 执行中=${cancelled.active}）`,
-      },
-    };
+    return this.queueService.cancelBatch(id);
   }
 
   @Get('batches/:id/category-stats')
@@ -594,17 +337,13 @@ export class TestSuiteController {
   @Get('queue/status')
   @ApiOperation({ summary: '获取测试队列状态' })
   async getQueueStatus() {
-    return { success: true, data: await this.testProcessor.getQueueStatus() };
+    return this.queueService.getQueueStatus();
   }
 
   @Post('queue/clean-failed')
   @ApiOperation({ summary: '清理失败的任务' })
   async cleanFailedJobs() {
-    const removedCount = await this.testProcessor.cleanFailedJobs();
-    return {
-      success: true,
-      data: { removedCount, message: `已清理 ${removedCount} 个失败任务` },
-    };
+    return this.queueService.cleanFailedJobs();
   }
 
   // ==================== 反馈管理 ====================
@@ -612,34 +351,7 @@ export class TestSuiteController {
   @Post('feedback')
   @ApiOperation({ summary: '提交测试反馈' })
   async submitFeedback(@Body() request: SubmitFeedbackRequestDto) {
-    const feedback: AgentTestFeedback = {
-      type: request.type,
-      chatHistory: request.chatHistory,
-      userMessage: request.userMessage,
-      errorType: request.errorType,
-      remark: request.remark,
-      chatId: request.chatId,
-      messageId: request.messageId,
-      traceId: request.traceId,
-      batchId: request.batchId,
-      sourceTrace: request.sourceTrace,
-      candidateName: request.candidateName,
-      managerName: request.managerName,
-    };
-
-    const result = await this.feishuBitableService.writeAgentTestFeedback(feedback);
-    if (!result.success) {
-      throw new Error(result.error || '写入飞书表格失败');
-    }
-
-    return {
-      success: true,
-      data: {
-        recordId: result.recordId,
-        type: request.type,
-        message: `${request.type === 'goodcase' ? 'GoodCase' : 'BadCase'} 已成功写入飞书表格`,
-      },
-    };
+    return this.feedbackService.submitFeedback(request);
   }
 
   // ==================== 回归验证 ====================

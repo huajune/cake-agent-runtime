@@ -5,6 +5,7 @@ import { LlmModule } from '@/llm/llm.module';
 import { RoomModule } from '@channels/wecom/room/room.module';
 import { MessageSenderModule } from '@channels/wecom/message-sender/message-sender.module';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
+import { GroupTaskAdminService } from './services/group-task-admin.service';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupResolverService } from './services/group-resolver.service';
 import { GroupMembershipService } from './services/group-membership.service';
@@ -43,6 +44,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
   controllers: [GroupTaskController],
   providers: [
     GroupTaskSchedulerService,
+    GroupTaskAdminService,
     GroupTaskProcessor,
     GroupResolverService,
     GroupMembershipService,
@@ -53,6 +55,11 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
     StoreManagerStrategy,
     WorkTipsStrategy,
   ],
-  exports: [GroupTaskSchedulerService, GroupResolverService, GroupMembershipService],
+  exports: [
+    GroupTaskSchedulerService,
+    GroupTaskAdminService,
+    GroupResolverService,
+    GroupMembershipService,
+  ],
 })
 export class GroupTaskModule {}

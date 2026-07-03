@@ -89,6 +89,9 @@ describe('buildInterviewBookingTool', () => {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
       setActiveBooking: jest.fn().mockResolvedValue(undefined),
       getActiveBooking: jest.fn().mockResolvedValue(options.activeBooking ?? null),
+      getActiveBookings: jest
+        .fn()
+        .mockResolvedValue(options.activeBooking ? [options.activeBooking] : []),
     };
     const mockOpsEventsRecorder = {
       recordEvent: jest.fn().mockResolvedValue(undefined),
@@ -981,6 +984,57 @@ describe('buildInterviewBookingTool', () => {
     expect(result._replyInstruction).toContain('modify_appointment');
     expect(result.pendingUploadResume).toBeUndefined();
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('allows booking a different job when another recent active booking exists', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          basicInfo: {
+            jobId: 200,
+            brandName: '必胜客',
+            jobName: '内场',
+            jobNickName: '内场',
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      workOrderId: 445999,
+    });
+
+    const { result, mocks } = await executeToolWithContext(
+      {
+        ...validInput,
+        jobId: 200,
+        educationId: 3,
+        householdRegisterProvinceId: 310000,
+        height: 170,
+      },
+      {},
+      {
+        activeBooking: {
+          work_order_id: 445383,
+          job_id: 100,
+          linked_at: new Date().toISOString(),
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 200 }),
+      expect.anything(),
+    );
+    expect(mocks.mockLongTermService.setActiveBooking).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      445999,
+      expect.objectContaining({ job_id: 200 }),
+    );
   });
 
   it('should return missing_customer_label_values when supplements require unknown answers', async () => {

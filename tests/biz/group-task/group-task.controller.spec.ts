@@ -1,225 +1,70 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException, HttpStatus } from '@nestjs/common';
-import { getQueueToken } from '@nestjs/bull';
-import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { GroupTaskController } from '@biz/group-task/group-task.controller';
-import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
-import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
+import { GroupTaskAdminService } from '@biz/group-task/services/group-task-admin.service';
 import { GroupTaskType } from '@biz/group-task/group-task.types';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
-import {
-  GROUP_TASK_QUEUE_NAME,
-  GroupTaskJobName,
-} from '@biz/group-task/queue/group-task-queue.constants';
 
 describe('GroupTaskController', () => {
   let controller: GroupTaskController;
-  let mockSchedulerService: Partial<GroupTaskSchedulerService>;
-  const mockGroupResolverService = { findGroupByName: jest.fn() };
-  const mockNotificationSenderService = { sendToGroup: jest.fn(), sendTextToGroup: jest.fn() };
-  const mockLlm = { generateSimple: jest.fn() };
-  let queueMock: {
-    getFailed: jest.Mock;
-    getWaiting: jest.Mock;
-    getActive: jest.Mock;
-    getDelayed: jest.Mock;
-    getCompleted: jest.Mock;
+
+  const adminService = {
+    trigger: jest.fn(),
+    retry: jest.fn(),
+    status: jest.fn(),
+    testSend: jest.fn(),
   };
 
   beforeEach(async () => {
-    mockSchedulerService = {
-      getStrategy: jest.fn(),
-      executeTask: jest.fn(),
-    };
-
-    queueMock = {
-      getFailed: jest.fn().mockResolvedValue([]),
-      getWaiting: jest.fn().mockResolvedValue([]),
-      getActive: jest.fn().mockResolvedValue([]),
-      getDelayed: jest.fn().mockResolvedValue([]),
-      getCompleted: jest.fn().mockResolvedValue([]),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GroupTaskController],
-      providers: [
-        {
-          provide: GroupTaskSchedulerService,
-          useValue: mockSchedulerService as unknown as GroupTaskSchedulerService,
-        },
-        { provide: GroupResolverService, useValue: mockGroupResolverService },
-        { provide: NotificationSenderService, useValue: mockNotificationSenderService },
-        { provide: LlmExecutorService, useValue: mockLlm },
-        { provide: getQueueToken(GROUP_TASK_QUEUE_NAME), useValue: queueMock },
-      ],
+      providers: [{ provide: GroupTaskAdminService, useValue: adminService }],
     })
       .overrideGuard(ApiTokenGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
     controller = module.get<GroupTaskController>(GroupTaskController);
+    jest.clearAllMocks();
   });
 
-  describe('trigger', () => {
-    it('should call scheduler.executeTask with forceEnabled + manual trigger', async () => {
-      const mockStrategy = { type: GroupTaskType.ORDER_GRAB };
-      (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(mockStrategy);
-      (mockSchedulerService.executeTask as jest.Mock).mockResolvedValue({
-        execId: 'exec-123',
-      });
+  it('delegates trigger to admin service', async () => {
+    adminService.trigger.mockResolvedValueOnce({ success: true, execId: 'exec-1' });
 
-      const result = await controller.trigger(GroupTaskType.ORDER_GRAB);
-
-      expect(mockSchedulerService.getStrategy).toHaveBeenCalledWith(GroupTaskType.ORDER_GRAB);
-      expect(mockSchedulerService.executeTask).toHaveBeenCalledWith(mockStrategy, {
-        forceEnabled: true,
-        trigger: 'manual',
-      });
-      expect(result).toMatchObject({
-        success: true,
-        execId: 'exec-123',
-        type: GroupTaskType.ORDER_GRAB,
-      });
+    await expect(controller.trigger(GroupTaskType.ORDER_GRAB)).resolves.toEqual({
+      success: true,
+      execId: 'exec-1',
     });
 
-    it('should return skipped=disabled when scheduler returns disabled', async () => {
-      const mockStrategy = { type: GroupTaskType.ORDER_GRAB };
-      (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(mockStrategy);
-      (mockSchedulerService.executeTask as jest.Mock).mockResolvedValue({
-        execId: null,
-        skipped: 'disabled',
-      });
-
-      const result = await controller.trigger(GroupTaskType.ORDER_GRAB);
-
-      expect(result).toMatchObject({
-        success: false,
-        skipped: 'disabled',
-      });
-    });
-
-    it('should throw HttpException BAD_REQUEST with invalid type', async () => {
-      (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(null);
-
-      await expect(controller.trigger('invalid-type' as GroupTaskType)).rejects.toThrow(
-        HttpException,
-      );
-
-      try {
-        await controller.trigger('invalid-type' as GroupTaskType);
-      } catch (error) {
-        expect((error as HttpException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
-      }
-    });
+    expect(adminService.trigger).toHaveBeenCalledWith(GroupTaskType.ORDER_GRAB);
   });
 
-  describe('retry', () => {
-    it('should retry failed send jobs of the requested type', async () => {
-      const retryFnA = jest.fn().mockResolvedValue(undefined);
-      const retryFnB = jest.fn().mockResolvedValue(undefined);
-      queueMock.getFailed.mockResolvedValue([
-        {
-          id: 'send-A',
-          name: GroupTaskJobName.SEND,
-          data: { type: GroupTaskType.PART_TIME_JOB, group: { groupName: '群A' } },
-          retry: retryFnA,
-        },
-        {
-          id: 'plan-B',
-          name: GroupTaskJobName.PLAN,
-          data: { type: GroupTaskType.PART_TIME_JOB },
-          retry: jest.fn(),
-        },
-        {
-          id: 'send-C',
-          name: GroupTaskJobName.SEND,
-          data: { type: GroupTaskType.ORDER_GRAB, group: { groupName: '群C' } },
-          retry: jest.fn(),
-        },
-        {
-          id: 'send-D',
-          name: GroupTaskJobName.SEND,
-          data: { type: GroupTaskType.PART_TIME_JOB, group: { groupName: '群D' } },
-          retry: retryFnB,
-        },
-      ]);
+  it('delegates retry to admin service', async () => {
+    adminService.retry.mockResolvedValueOnce({ success: true, retriedCount: 1 });
 
-      const result = await controller.retry(GroupTaskType.PART_TIME_JOB);
-
-      expect(retryFnA).toHaveBeenCalledTimes(1);
-      expect(retryFnB).toHaveBeenCalledTimes(1);
-      expect(result).toMatchObject({
-        success: true,
-        retriedCount: 2,
-        failedToRetryCount: 0,
-      });
-      expect(result.retried.map((r) => r.groupName)).toEqual(['群A', '群D']);
+    await expect(controller.retry(GroupTaskType.PART_TIME_JOB)).resolves.toEqual({
+      success: true,
+      retriedCount: 1,
     });
 
-    it('should report per-job failures without aborting the whole retry sweep', async () => {
-      queueMock.getFailed.mockResolvedValue([
-        {
-          id: 'send-ok',
-          name: GroupTaskJobName.SEND,
-          data: { type: GroupTaskType.PART_TIME_JOB, group: { groupName: '群OK' } },
-          retry: jest.fn().mockResolvedValue(undefined),
-        },
-        {
-          id: 'send-bad',
-          name: GroupTaskJobName.SEND,
-          data: { type: GroupTaskType.PART_TIME_JOB, group: { groupName: '群BAD' } },
-          retry: jest.fn().mockRejectedValue(new Error('bull busy')),
-        },
-      ]);
-
-      const result = await controller.retry(GroupTaskType.PART_TIME_JOB);
-
-      expect(result).toMatchObject({
-        success: false,
-        retriedCount: 1,
-        failedToRetryCount: 1,
-      });
-      expect(result.errors[0]).toMatchObject({ jobId: 'send-bad', error: 'bull busy' });
-    });
+    expect(adminService.retry).toHaveBeenCalledWith(GroupTaskType.PART_TIME_JOB);
   });
 
-  describe('status', () => {
-    it('should aggregate per-state counts and list failed send groups', async () => {
-      queueMock.getWaiting.mockResolvedValue([
-        {
-          id: 'w-1',
-          name: GroupTaskJobName.PREPARE,
-          data: { type: GroupTaskType.PART_TIME_JOB },
-        },
-      ]);
-      queueMock.getDelayed.mockResolvedValue([
-        { id: 'd-1', name: GroupTaskJobName.SEND, data: { type: GroupTaskType.PART_TIME_JOB } },
-        { id: 'd-2', name: GroupTaskJobName.SEND, data: { type: GroupTaskType.ORDER_GRAB } },
-      ]);
-      queueMock.getFailed.mockResolvedValue([
-        {
-          id: 'f-1',
-          name: GroupTaskJobName.SEND,
-          data: { type: GroupTaskType.PART_TIME_JOB, group: { groupName: '群F' } },
-          failedReason: '企微限流',
-          attemptsMade: 3,
-        },
-      ]);
+  it('delegates status to admin service', async () => {
+    adminService.status.mockResolvedValueOnce({ type: GroupTaskType.WORK_TIPS });
 
-      const result = await controller.status(GroupTaskType.PART_TIME_JOB);
-
-      expect(result.counts.waiting).toBe(1);
-      expect(result.counts.delayed).toBe(1);
-      expect(result.counts.failed).toBe(1);
-      expect(result.failedSendGroups).toEqual([
-        {
-          jobId: 'f-1',
-          groupName: '群F',
-          failedReason: '企微限流',
-          attemptsMade: 3,
-        },
-      ]);
+    await expect(controller.status(GroupTaskType.WORK_TIPS)).resolves.toEqual({
+      type: GroupTaskType.WORK_TIPS,
     });
+
+    expect(adminService.status).toHaveBeenCalledWith(GroupTaskType.WORK_TIPS);
+  });
+
+  it('delegates test-send to admin service', async () => {
+    const body = { type: GroupTaskType.ORDER_GRAB, groupName: '测试群' };
+    adminService.testSend.mockResolvedValueOnce({ success: true });
+
+    await expect(controller.testSend(body)).resolves.toEqual({ success: true });
+
+    expect(adminService.testSend).toHaveBeenCalledWith(body);
   });
 });

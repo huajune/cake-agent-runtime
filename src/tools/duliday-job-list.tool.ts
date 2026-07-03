@@ -19,7 +19,7 @@ import { SpongeService } from '@sponge/sponge.service';
 import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
 import { isValidLaborForm, stripLaborFormFromCategories } from '@memory/facts/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { buildNoMatchScript } from '@tools/duliday/job-list/no-match-script.util';

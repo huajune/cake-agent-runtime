@@ -1,4 +1,4 @@
-import { OpsDailyReportCronService } from '@biz/ops-events/ops-daily-report.cron';
+import { OpsDailyReportCronService } from '@biz/ops-events/crons/ops-daily-report.cron';
 
 const sampleRow = {
   report_date: '2026-06-09',
@@ -25,7 +25,7 @@ function buildService(overrides: Record<string, string>) {
   const configService = {
     get: jest.fn((key: string, def?: string) => overrides[key] ?? def),
   };
-  const dailyOpsReportRepository = { findByReportDate: jest.fn() };
+  const dailyOpsReportService = { findByReportDate: jest.fn() };
   const bitableApi = { getFields: jest.fn(), batchCreateRecords: jest.fn() };
   const spongeService = {
     fetchSelfSignupWorkOrders: jest.fn().mockResolvedValue({ total: 0, workOrders: [] }),
@@ -36,20 +36,20 @@ function buildService(overrides: Record<string, string>) {
   };
   const service = new OpsDailyReportCronService(
     configService as never,
-    dailyOpsReportRepository as never,
+    dailyOpsReportService as never,
     bitableApi as never,
     spongeService as never,
     botService as never,
   );
-  return { service, dailyOpsReportRepository, bitableApi, spongeService, botService };
+  return { service, dailyOpsReportService, bitableApi, spongeService, botService };
 }
 
 describe('OpsDailyReportCronService.pushReport', () => {
   it('dry-runs (no feishu write) when not enabled', async () => {
-    const { service, dailyOpsReportRepository, bitableApi, spongeService } = buildService({
+    const { service, dailyOpsReportService, bitableApi, spongeService } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'false',
     });
-    dailyOpsReportRepository.findByReportDate.mockResolvedValue([sampleRow]);
+    dailyOpsReportService.findByReportDate.mockResolvedValue([sampleRow]);
 
     const result = await service.pushReport('2026-06-09');
 
@@ -60,10 +60,10 @@ describe('OpsDailyReportCronService.pushReport', () => {
   });
 
   it('returns early on empty data', async () => {
-    const { service, dailyOpsReportRepository, bitableApi } = buildService({
+    const { service, dailyOpsReportService, bitableApi } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'true',
     });
-    dailyOpsReportRepository.findByReportDate.mockResolvedValue([]);
+    dailyOpsReportService.findByReportDate.mockResolvedValue([]);
 
     const result = await service.pushReport('2026-06-09');
 
@@ -72,7 +72,7 @@ describe('OpsDailyReportCronService.pushReport', () => {
   });
 
   it('skips weekend dates without querying the repository or feishu', async () => {
-    const { service, dailyOpsReportRepository, bitableApi } = buildService({
+    const { service, dailyOpsReportService, bitableApi } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'true',
       FEISHU_OPS_REPORT_APP_TOKEN: 'app-1',
       FEISHU_OPS_REPORT_TABLE_ID: 'tbl-1',
@@ -82,17 +82,17 @@ describe('OpsDailyReportCronService.pushReport', () => {
     const result = await service.pushReport('2026-06-07');
 
     expect(result).toEqual({ rows: 0, written: 0 });
-    expect(dailyOpsReportRepository.findByReportDate).not.toHaveBeenCalled();
+    expect(dailyOpsReportService.findByReportDate).not.toHaveBeenCalled();
     expect(bitableApi.getFields).not.toHaveBeenCalled();
   });
 
   it('writes only fields matching the real table headers when enabled', async () => {
-    const { service, dailyOpsReportRepository, bitableApi, spongeService } = buildService({
+    const { service, dailyOpsReportService, bitableApi, spongeService } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'true',
       FEISHU_OPS_REPORT_APP_TOKEN: 'app-1',
       FEISHU_OPS_REPORT_TABLE_ID: 'tbl-1',
     });
-    dailyOpsReportRepository.findByReportDate.mockResolvedValue([sampleRow]);
+    dailyOpsReportService.findByReportDate.mockResolvedValue([sampleRow]);
     spongeService.fetchSelfSignupWorkOrders
       .mockResolvedValueOnce({
         total: 2,
@@ -134,7 +134,7 @@ describe('OpsDailyReportCronService.pushReport', () => {
   });
 
   it('merges wxid/wecomUserId/prod-sync rows for the same current bot before writing', async () => {
-    const { service, dailyOpsReportRepository, bitableApi, botService } = buildService({
+    const { service, dailyOpsReportService, bitableApi, botService } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'true',
       FEISHU_OPS_REPORT_APP_TOKEN: 'app-1',
       FEISHU_OPS_REPORT_TABLE_ID: 'tbl-1',
@@ -147,7 +147,7 @@ describe('OpsDailyReportCronService.pushReport', () => {
         groupName: '宇航组',
       },
     ]);
-    dailyOpsReportRepository.findByReportDate.mockResolvedValue([
+    dailyOpsReportService.findByReportDate.mockResolvedValue([
       {
         ...sampleRow,
         bot_im_id: '1688855171908166',
@@ -188,12 +188,12 @@ describe('OpsDailyReportCronService.pushReport', () => {
   });
 
   it('overrides booking/pass counts and candidate info from sponge self signup data', async () => {
-    const { service, dailyOpsReportRepository, bitableApi, spongeService } = buildService({
+    const { service, dailyOpsReportService, bitableApi, spongeService } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'true',
       FEISHU_OPS_REPORT_APP_TOKEN: 'app-1',
       FEISHU_OPS_REPORT_TABLE_ID: 'tbl-1',
     });
-    dailyOpsReportRepository.findByReportDate.mockResolvedValue([sampleRow]);
+    dailyOpsReportService.findByReportDate.mockResolvedValue([sampleRow]);
     spongeService.fetchSelfSignupWorkOrders
       .mockResolvedValueOnce({
         total: 2,
@@ -268,12 +268,12 @@ describe('OpsDailyReportCronService.pushReport', () => {
   });
 
   it('falls back to projected booking/pass counts when sponge lookup fails', async () => {
-    const { service, dailyOpsReportRepository, bitableApi, spongeService } = buildService({
+    const { service, dailyOpsReportService, bitableApi, spongeService } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'true',
       FEISHU_OPS_REPORT_APP_TOKEN: 'app-1',
       FEISHU_OPS_REPORT_TABLE_ID: 'tbl-1',
     });
-    dailyOpsReportRepository.findByReportDate.mockResolvedValue([sampleRow]);
+    dailyOpsReportService.findByReportDate.mockResolvedValue([sampleRow]);
     spongeService.fetchSelfSignupWorkOrders.mockRejectedValue(new Error('缺少 DULIDAY_API_TOKEN'));
     bitableApi.getFields.mockResolvedValue([
       { field_id: 'f1', field_name: '今日报名成功数', type: 2 },

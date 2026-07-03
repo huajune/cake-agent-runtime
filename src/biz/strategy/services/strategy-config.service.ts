@@ -1,4 +1,9 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '../repositories/strategy-changelog.repository';
 import { StrategyConfigRecord, StrategyConfigStatus } from '../entities/strategy-config.entity';
@@ -8,6 +13,8 @@ import {
   StrategyRedLines,
   StrategyRoleSetting,
 } from '../types/strategy.types';
+
+const VALID_STATUS_VALUES: StrategyConfigStatus[] = ['testing', 'released', 'archived'];
 
 /**
  * 策略配置 Service
@@ -60,6 +67,15 @@ export class StrategyConfigService {
     return this.getActiveConfig('released');
   }
 
+  async getConfigForStatus(status?: string): Promise<StrategyConfigRecord> {
+    if (status && !VALID_STATUS_VALUES.includes(status as StrategyConfigStatus)) {
+      throw new BadRequestException(
+        `无效的 status 值: ${status}，可选: ${VALID_STATUS_VALUES.join(', ')}`,
+      );
+    }
+    return status === 'released' ? this.getReleasedConfig() : this.getTestingConfig();
+  }
+
   // ==================== 更新（只改 testing）====================
 
   async updatePersona(persona: StrategyPersona): Promise<StrategyConfigRecord> {
@@ -80,6 +96,9 @@ export class StrategyConfigService {
   }
 
   async updateRoleSetting(roleSetting: StrategyRoleSetting): Promise<StrategyConfigRecord> {
+    if (!roleSetting || typeof roleSetting.content !== 'string') {
+      throw new BadRequestException('content 必须是字符串');
+    }
     const config = await this.getTestingConfig();
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, {
       role_setting: roleSetting,

@@ -63,6 +63,18 @@ const PATTERNS: RegExp[] = [
   /(?:已发送岗位推荐|已给出岗位信息|岗位推荐已发送)[，,。；;\s]*(?:现在)?等待候选人(?:回应|回复|确认)/,
   // 工具调用回显
   new RegExp(`(?:调用|call|invoke)\\s*(?:${TOOL_NAMES.map(escapeRegex).join('|')})`, 'i'),
+  // 工具名标识符出现在候选人可见文本的任何位置都属于泄漏（覆盖 `[duliday_job_list]`、
+  // `["geocode", {...}]`、`{"name":"geocode",...}` 等一切携带已注册工具名的形态。
+  // 上线首日 badcase：repair 以 toolMode:'none' 重写时模型把工具调用写成文本，
+  // 3 条 JSON 原文穿透旧词库发给了候选人（06:14/06:40/06:41 三单）
+  new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`),
+  // 工具调用 JSON 骨架（未注册工具名/MCP 动态工具也能兜住）
+  /<\/?tool_call>/i,
+  /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
+  /["']arguments["']\s*:\s*\{/,
+  // 整条回复以 JSON 开头（`{"`、`[{`、`["`）——自然语言回复不存在这种开头
+  /^\s*(?:\[\s*)?\{\s*["']/,
+  /^\s*\[\s*["']/,
   // 工具结果 JSON 残片直接外抛（{"success":true,...}）
   /["']success["']\s*:\s*(?:true|false)/,
   // 代码块（Agent 不应该给候选人发 markdown code fence）

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageController } from '@biz/message/message.controller';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 
@@ -8,6 +9,7 @@ describe('MessageController (biz/message)', () => {
   let controller: MessageController;
   let chatSessionService: ChatSessionService;
   let messageProcessingService: MessageProcessingService;
+  let guardrailReviewService: GuardrailReviewService;
   let analyticsQueryService: AnalyticsQueryService;
 
   const mockChatSessionService = {
@@ -26,6 +28,10 @@ describe('MessageController (biz/message)', () => {
     getMessageProcessingRecordById: jest.fn(),
   };
 
+  const mockGuardrailReviewService = {
+    findByTraceId: jest.fn(),
+  };
+
   const mockAnalyticsQueryService = {
     getChatTrend: jest.fn(),
   };
@@ -36,6 +42,7 @@ describe('MessageController (biz/message)', () => {
       providers: [
         { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: MessageProcessingService, useValue: mockMessageProcessingService },
+        { provide: GuardrailReviewService, useValue: mockGuardrailReviewService },
         { provide: AnalyticsQueryService, useValue: mockAnalyticsQueryService },
       ],
     }).compile();
@@ -43,6 +50,7 @@ describe('MessageController (biz/message)', () => {
     controller = module.get<MessageController>(MessageController);
     chatSessionService = module.get<ChatSessionService>(ChatSessionService);
     messageProcessingService = module.get<MessageProcessingService>(MessageProcessingService);
+    guardrailReviewService = module.get<GuardrailReviewService>(GuardrailReviewService);
     analyticsQueryService = module.get<AnalyticsQueryService>(AnalyticsQueryService);
     jest.clearAllMocks();
   });
@@ -374,6 +382,24 @@ describe('MessageController (biz/message)', () => {
       await expect(controller.getMessageProcessingRecordDetail('nonexistent')).rejects.toThrow(
         'Record not found',
       );
+    });
+  });
+
+  describe('getGuardrailReview', () => {
+    it('should call guardrailReviewService with traceId', async () => {
+      const mockReview = { traceId: 'msg-uuid-001', firstReply: '首版全文' };
+      mockGuardrailReviewService.findByTraceId.mockResolvedValue(mockReview);
+
+      const result = await controller.getGuardrailReview('msg-uuid-001');
+
+      expect(guardrailReviewService.findByTraceId).toHaveBeenCalledWith('msg-uuid-001');
+      expect(result).toEqual(mockReview);
+    });
+
+    it('should return null when review record does not exist', async () => {
+      mockGuardrailReviewService.findByTraceId.mockResolvedValue(null);
+
+      await expect(controller.getGuardrailReview('missing')).resolves.toBeNull();
     });
   });
 });

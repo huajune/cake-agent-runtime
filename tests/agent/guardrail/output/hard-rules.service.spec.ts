@@ -172,6 +172,34 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain('internal_output_leak');
     });
 
+    // 上线首日（2026-07-03）：repair 以 toolMode:'none' 重写时模型把工具调用写成文本，
+    // 以下三种形态穿透旧词库真实发给了候选人，必须全部拦住。
+    it.each([
+      [
+        'JSON 数组工具调用',
+        '[{"name":"geocode","arguments":{"address":"深圳市龙华区","city":"深圳"}},{"name":"duliday_job_list","arguments":{"cityNameList":["深圳"]}}]',
+      ],
+      ['元组式工具调用', '["geocode", {"city": "上海", "address": "静安区"}]'],
+      [
+        'tool_call 标签',
+        '<tool_call>\n{"name": "duliday_job_list", "arguments": {"cityNameList":["上海"]}}\n</tool_call>',
+      ],
+      ['方括号工具名回显', '[duliday_job_list]\njson\n{"cityNameList": ["上海"]}'],
+      ['自然语言夹带工具名', '稍等哈，我用 geocode 帮你定位一下。'],
+    ])('blocks tool-call artifact leaked as reply text: %s', (_shape, reply) => {
+      const result = check(reply);
+
+      expect(result.hit).toBe(true);
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('internal_output_leak');
+      expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(true);
+    });
+
+    it('does not flag a normal reply that starts with a bracketed Chinese note', () => {
+      const result = check('【面试提醒】明天上午10点百联奥特莱斯店面试，别迟到哈。');
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('internal_output_leak');
+    });
+
     it('blocks proactive insurance policy mention when candidate did not ask', () => {
       const result = service.check({
         replyText: '这家早班 7:00-10:00，时薪 24 元，兼职岗位公司购买保险。',
@@ -225,6 +253,63 @@ describe('HardRulesService', () => {
         userId: 'user-1',
         userMessage: '多少钱一小时',
         recentUserTexts: ['有夜班吗', '多少钱一小时'],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('allows insurance terms in requirement context (第二职业资格预筛，上线首日青岛哈根达斯误伤)', () => {
+      const result = service.check({
+        replyText:
+          '青岛这边目前有两个哈根达斯的兼职岗位在招。不过这两个岗位都要求是"第二职业"，需要提供第一份工作的劳动合同和社保证明。你有交本地社保的工作吗？',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '山东青岛',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('still blocks when reply mixes requirement context with a benefit promise', () => {
+      const result = service.check({
+        replyText: '这个岗位需要提供社保证明。另外公司还给你买五险一金，福利很好。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '好的',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('blocks 签合同+五险一金 benefit promise (bare 合同 must not trigger requirement exemption)', () => {
+      const result = service.check({
+        replyText: '转正后签合同，公司给你交五险一金，福利很好。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '好的',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('blocks 给你交社保 benefit promise (qualification exemption requires 你有…交…社保 question form)', () => {
+      const result = service.check({
+        replyText: '放心，公司给你交社保的。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '多少钱一小时',
       });
 
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
@@ -1086,6 +1171,65 @@ describe('HardRulesService', () => {
             action: GUARDRAIL_ACTION.REVISE,
           }),
         ]),
+      );
+    });
+
+    it('asks for revision when requested date is unavailable but reply still claims bookable', () => {
+      const result = service.check({
+        replyText: '可以约的，我帮你报名。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: { nextAction: 'date_unavailable' },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
+    it('does not flag the normal collect_fields pitch "填一下资料我帮你约面" (上线首日 batch_6a475a42…935 误伤)', () => {
+      const result = service.check({
+        replyText:
+          '没有健康证没关系哈，先面试就行，录用后上岗前再去办也不迟。你把下面信息填一下发我，我帮你预约面试。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: {
+              nextAction: 'collect_fields',
+              healthCertGate: 'before_onboard',
+              ageBoundary: { severity: 'unknown' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
+    it('does not flag bookable claim while precheck asks to confirm date (confirm_date 是推进态)', () => {
+      const result = service.check({
+        replyText: '可以约的，这几天都有场次，你想约哪天？',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: { nextAction: 'confirm_date' },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'precheck_blocked_booking_claim',
       );
     });
 
@@ -2180,6 +2324,67 @@ describe('HardRulesService', () => {
           result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
         ).toBeUndefined();
       });
+
+      it('skips requirement echo + future promise (上线首日 repair_exhausted 告别话术误伤)', () => {
+        const result = service.check({
+          replyText:
+            '行，那我这边先不硬推了哈。后续有离你近点、或者符合晚班日结要求的岗位上线，我再同步给你。你先忙，有需要随时找我。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 周结（每周三发）')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeUndefined();
+      });
+
+      it('still flags a real settlement claim even alongside a requirement echo', () => {
+        const result = service.check({
+          replyText: '你想找日结的对吧？这家就是日结的哦。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeDefined();
+      });
+
+      it('flags 岗位要求日结 as a job-fact claim (bare 要求 must not trigger the echo exemption)', () => {
+        const result = service.check({
+          replyText: '这个岗位要求日结上岗。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeDefined();
+      });
+
+      it('flags 当前岗位满足日结要求 as a real settlement claim', () => {
+        const result = service.check({
+          replyText: '这个岗位满足你的日结要求。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeDefined();
+      });
+
+      it('keeps exempting first-person requirement echo (你的日结要求)', () => {
+        const result = service.check({
+          replyText: '你的日结要求我记下了，有合适的再喊你。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeUndefined();
+      });
     });
   });
 
@@ -2354,7 +2559,8 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
+      // replan（给只读工具）：rewrite 档禁工具曾诱导模型把工具调用写成文本外发（上线首日 badcase）
+      expect(hit?.action).toBe('replan');
     });
 
     it('passes when reply asks for a more specific location instead', () => {

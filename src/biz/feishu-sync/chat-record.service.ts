@@ -167,6 +167,30 @@ export class ChatRecordSyncService {
     }
   }
 
+  async syncByDateRange(
+    startDate?: string,
+    endDate?: string,
+  ): Promise<{ success: boolean; message: string; recordCount?: number; error?: string }> {
+    if (!startDate || !endDate) {
+      return {
+        success: false,
+        message: '请提供 startDate 和 endDate 参数（格式：YYYY-MM-DD）',
+      };
+    }
+
+    const start = new Date(`${startDate}T00:00:00+08:00`).getTime();
+    const end = new Date(`${endDate}T23:59:59+08:00`).getTime();
+
+    if (isNaN(start) || isNaN(end)) {
+      return {
+        success: false,
+        message: '日期格式错误，请使用 YYYY-MM-DD 格式',
+      };
+    }
+
+    return this.syncByTimeRange(start, end);
+  }
+
   // ==================== 私有方法 ====================
 
   private async syncWindow(

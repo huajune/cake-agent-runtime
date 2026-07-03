@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { BOT_ACCOUNT_PROVIDER, type BotAccountProvider } from './bot-account.provider';
+import { BOT_ACCOUNT_PROVIDER, type BotAccountProvider } from '../providers/bot-account.provider';
 
 export interface BotGroupInfo {
   managerName: string;

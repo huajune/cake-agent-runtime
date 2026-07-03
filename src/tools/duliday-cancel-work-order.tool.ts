@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { FailureReasonItem } from '@sponge/sponge.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';

@@ -262,12 +262,29 @@ export class LongTermService {
     }
   }
 
-  /**
-   * 预约成功时写入当前有效/待处理预约工单指针（新预约覆盖）。
-   */
-  async setActiveBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
+  /** 读取候选人当前有效/待处理预约工单列表。 */
+  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBooking[]> {
     try {
-      await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId);
+      return await this.supabaseStore.getActiveBookings(corpId, userId);
+    } catch (error) {
+      this.logger.warn('获取 active_bookings 失败', error);
+      return [];
+    }
+  }
+
+  /**
+   * 预约成功时写入当前有效/待处理预约工单指针。
+   */
+  async setActiveBooking(
+    corpId: string,
+    userId: string,
+    workOrderId: number,
+    metadata?: Partial<
+      Pick<ActiveBooking, 'job_id' | 'interview_time' | 'brand_name' | 'store_name' | 'job_name'>
+    >,
+  ): Promise<void> {
+    try {
+      await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, metadata);
     } catch (error) {
       this.logger.warn('写入 active_booking 失败', error);
     }

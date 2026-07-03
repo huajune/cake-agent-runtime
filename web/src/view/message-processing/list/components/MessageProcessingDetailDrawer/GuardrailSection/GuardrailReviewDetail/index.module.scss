@@ -1,0 +1,163 @@
+/* 与共享 GuardrailTrace 同一浅色奶油视觉；在时间线骨架上增加全文块（首版/重写版/证据） */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.94) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 12px 30px rgba(31, 41, 55, 0.05),
+    0 0 22px rgba(139, 92, 246, 0.05);
+}
+
+.stepRow {
+  padding: 9px 13px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stepHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepStage {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  min-width: 40px;
+}
+
+.discardHint {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.replyText {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #334155;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(139, 92, 246, 0.04);
+  border: 1px solid rgba(139, 92, 246, 0.09);
+  border-radius: 10px;
+  padding: 8px 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.emptyReply {
+  color: #94a3b8;
+}
+
+.ruleList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ruleTag {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 11px;
+  color: #7c3aed;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.16);
+  border-radius: 6px;
+  padding: 1px 6px;
+  word-break: break-all;
+}
+
+.violationList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.violation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 10px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.14);
+  border-radius: 10px;
+}
+
+.violationHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.severity {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.violationLine {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #334155;
+  word-break: break-word;
+}
+
+.violationLabel {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-right: 6px;
+}
+
+.feedback {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #334155;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.repairNote {
+  padding: 7px 13px;
+  font-size: 11px;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.07);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
+}
+
+.sideEffectNote {
+  margin-top: 4px;
+  color: #92400e;
+}
+
+.finalRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.reasonCode {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.blockHint {
+  font-size: 11px;
+  color: #ef4444;
+  white-space: nowrap;
+}

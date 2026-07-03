@@ -256,15 +256,22 @@ export interface LongTermMemoryState {
 
 /** agent_long_term_memories 表行类型（每用户一行，Profile facts + Summary jsonb）。 */
 /**
- * 候选人当前有效/待处理预约工单指针（极简，取消成功时清空，新预约 UPSERT 覆盖）。
+ * 候选人当前有效/待处理预约工单指针。
  *
  * 对应 agent_long_term_memories.active_booking 列（迁移 20260630120000 由 latest_booking 改名，
  * JSONB 键 latest_work_order_id 同步改为 work_order_id）。
- * 业务字段（状态/品牌/门店/岗位/面试时间）不冗余，每次实时查海绵（Redis 5min 缓存）。
+ * 业务状态每次实时查海绵（Redis 5min 缓存）。同一候选人可同时报名多个岗位，因此新数据会在
+ * `bookings` 中保留多个工单；顶层字段仍指向最近一笔，兼容旧调用方。
  */
 export interface ActiveBooking {
   work_order_id: number;
   linked_at: string;
+  job_id?: number | null;
+  interview_time?: string | null;
+  brand_name?: string | null;
+  store_name?: string | null;
+  job_name?: string | null;
+  bookings?: ActiveBooking[];
 }
 
 export interface AgentLongTermMemoryRow {

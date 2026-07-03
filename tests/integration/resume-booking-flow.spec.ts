@@ -33,6 +33,7 @@ describe('resume booking flow', () => {
     writeFromBooking: jest.fn().mockResolvedValue(undefined),
     setActiveBooking: jest.fn().mockResolvedValue(undefined),
     getActiveBooking: jest.fn().mockResolvedValue(null),
+    getActiveBookings: jest.fn().mockResolvedValue([]),
   };
 
   const mockOpsEventsRecorder = {

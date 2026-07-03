@@ -1,11 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 import { SpongeModule } from '@sponge/sponge.module';
-import { OpsEventsRecorderService } from './ops-events-recorder.service';
-import { OpsEventsRepository } from './ops-events.repository';
-import { BotGroupResolverService } from './bot-group-resolver.service';
-import { SpongeStatusPollService } from './sponge-status-poll.cron';
-import { DailyOpsReportRepository } from './daily-ops-report.repository';
-import { OpsDailyReportCronService } from './ops-daily-report.cron';
+import { OpsDailyReportCronService } from './crons/ops-daily-report.cron';
+import { SpongeStatusPollService } from './crons/sponge-status-poll.cron';
+import { DailyOpsReportRepository } from './repositories/daily-ops-report.repository';
+import { OpsEventsRepository } from './repositories/ops-events.repository';
+import { BotGroupResolverService } from './services/bot-group-resolver.service';
+import { DailyOpsReportService } from './services/daily-ops-report.service';
+import { OpsEventsRecorderService } from './services/ops-events-recorder.service';
 
 /**
  * 运营事件底账模块（写入侧）。
@@ -15,7 +16,7 @@ import { OpsDailyReportCronService } from './ops-daily-report.cron';
  *
  * imports SpongeModule：SpongeStatusPollService 轮询海绵工单状态补记 interview.passed/hired。
  *
- * 托管 bot 账号列表通过 BOT_ACCOUNT_PROVIDER 令牌注入（依赖倒置，见 bot-account.provider.ts），
+ * 托管 bot 账号列表通过 BOT_ACCOUNT_PROVIDER 令牌注入（依赖倒置，见 providers/bot-account.provider.ts），
  * 由 @Global 的 BotModule 绑定到 wecom 的 BotService —— 故本模块不再 import channels/wecom。
  */
 @Global()
@@ -27,8 +28,9 @@ import { OpsDailyReportCronService } from './ops-daily-report.cron';
     BotGroupResolverService,
     SpongeStatusPollService,
     DailyOpsReportRepository,
+    DailyOpsReportService,
     OpsDailyReportCronService,
   ],
-  exports: [OpsEventsRecorderService, BotGroupResolverService, DailyOpsReportRepository],
+  exports: [OpsEventsRecorderService, BotGroupResolverService, DailyOpsReportService],
 })
 export class OpsEventsModule {}

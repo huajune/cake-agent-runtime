@@ -28,7 +28,7 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SessionService } from '@memory/services/session.service';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { InterventionService } from '@biz/intervention/intervention.service';

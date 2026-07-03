@@ -179,6 +179,47 @@ export interface GuardrailTurnTrace {
   reasonCode?: string;
 }
 
+/** 出站守卫违规意见全文（guardrail_review_records 档案里的 GuardViolation） */
+export interface GuardrailReviewViolation {
+  type: string;
+  evidence: string;
+  suggestion: string;
+  severity?: string;
+}
+
+/** 出站守卫单次审查全文详情（档案版，含紧凑摘要裁掉的证据/反馈全文） */
+export interface GuardrailReviewStepDetail {
+  decision: GuardrailDecision;
+  riskLevel: 'low' | 'medium' | 'high';
+  ruleIds: string[];
+  blockedRuleIds: string[];
+  violations: GuardrailReviewViolation[];
+  /** 注入重写 prompt 的违规反馈聚合文本 */
+  feedback?: string;
+}
+
+/**
+ * 出站守卫审查全程档案（guardrail_review_records 表，按 trace_id 关联）。
+ * 仅守卫命中的回合存在；含首版全文/重写版全文，支撑详情页还原完整过程。
+ */
+export interface GuardrailReviewRecord {
+  traceId: string;
+  userMessage?: string;
+  /** 首版回复全文（触发 revise/replan 时被丢弃重写的那一版） */
+  firstReply: string;
+  first: GuardrailReviewStepDetail;
+  repairMode?: 'rewrite' | 'replan';
+  repaired: boolean;
+  /** 受控修复后的重写版全文 */
+  revisedReply?: string;
+  revised?: GuardrailReviewStepDetail;
+  /** 重写时注入的既成副作用提示 */
+  committedSideEffects?: string;
+  finalDecision: GuardrailDecision;
+  reasonCode?: string;
+  createdAt?: string;
+}
+
 export interface MessageRecord {
   messageId?: string;
   receivedAt: string | number;
@@ -217,4 +258,6 @@ export interface MessageRecord {
   guardrailInput?: GuardrailInputTrace;
   /** 出站守卫全程 trace（首审→repair→二审） */
   guardrailOutput?: GuardrailTurnTrace;
+  /** 出站守卫审查全程档案（详情接口附带；仅守卫命中回合非空，历史数据无） */
+  guardrailReview?: GuardrailReviewRecord;
 }

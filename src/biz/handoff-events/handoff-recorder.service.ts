@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffEventsRepository } from './handoff-events.repository';
 import type { HandoffWriteOutcome, RecordHandoffInput } from './handoff-events.types';
 

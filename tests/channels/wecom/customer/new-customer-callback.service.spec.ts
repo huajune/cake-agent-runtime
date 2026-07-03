@@ -1,5 +1,5 @@
 import { NewCustomerCallbackService } from '@wecom/customer/new-customer-callback.service';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { BotService } from '@wecom/bot/bot.service';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));

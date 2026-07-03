@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException } from '@nestjs/common';
 import { StrategyController } from '@biz/strategy/strategy.controller';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 
@@ -11,6 +10,7 @@ describe('StrategyController', () => {
     getActiveConfig: jest.fn(),
     getTestingConfig: jest.fn(),
     getReleasedConfig: jest.fn(),
+    getConfigForStatus: jest.fn(),
     updatePersona: jest.fn(),
     updateStageGoals: jest.fn(),
     updateRedLines: jest.fn(),
@@ -48,31 +48,34 @@ describe('StrategyController', () => {
         redLines: { rules: [] },
       };
 
-      mockStrategyConfigService.getTestingConfig.mockResolvedValue(mockConfig);
+      mockStrategyConfigService.getConfigForStatus.mockResolvedValue(mockConfig);
 
       const result = await controller.getActiveConfig();
 
-      expect(strategyConfigService.getTestingConfig).toHaveBeenCalled();
+      expect(strategyConfigService.getConfigForStatus).toHaveBeenCalledWith(undefined);
       expect(result).toEqual(mockConfig);
     });
 
     it('should return released config when status=released', async () => {
       const mockConfig = { id: 'config-released' };
-      mockStrategyConfigService.getReleasedConfig.mockResolvedValue(mockConfig);
+      mockStrategyConfigService.getConfigForStatus.mockResolvedValue(mockConfig);
 
       const result = await controller.getActiveConfig('released');
 
-      expect(strategyConfigService.getReleasedConfig).toHaveBeenCalled();
+      expect(strategyConfigService.getConfigForStatus).toHaveBeenCalledWith('released');
       expect(result).toEqual(mockConfig);
     });
 
-    it('should throw HttpException for invalid status value', async () => {
-      await expect(controller.getActiveConfig('foo')).rejects.toThrow(HttpException);
+    it('should propagate validation errors from strategyConfigService', async () => {
+      mockStrategyConfigService.getConfigForStatus.mockRejectedValue(
+        new Error('无效的 status 值'),
+      );
+
       await expect(controller.getActiveConfig('foo')).rejects.toThrow('无效的 status 值');
     });
 
     it('should propagate errors from strategyConfigService', async () => {
-      mockStrategyConfigService.getTestingConfig.mockRejectedValue(new Error('Config not found'));
+      mockStrategyConfigService.getConfigForStatus.mockRejectedValue(new Error('Config not found'));
 
       await expect(controller.getActiveConfig()).rejects.toThrow('Config not found');
     });

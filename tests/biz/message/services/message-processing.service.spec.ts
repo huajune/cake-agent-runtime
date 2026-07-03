@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 
 describe('MessageProcessingService', () => {
   let service: MessageProcessingService;
@@ -14,6 +15,10 @@ describe('MessageProcessingService', () => {
     markSupersededProcessingRecords: jest.fn(),
   };
 
+  const mockGuardrailReviewService = {
+    findByTraceId: jest.fn().mockResolvedValue(null),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -21,6 +26,10 @@ describe('MessageProcessingService', () => {
         {
           provide: MessageProcessingRepository,
           useValue: mockMessageProcessingRepository,
+        },
+        {
+          provide: GuardrailReviewService,
+          useValue: mockGuardrailReviewService,
         },
       ],
     }).compile();
@@ -305,6 +314,18 @@ describe('MessageProcessingService', () => {
       const result = await service.getMessageProcessingRecordById('nonexistent');
 
       expect(result).toBeNull();
+    });
+
+    it('should attach guardrail review record when the turn hit the output guard', async () => {
+      const mockRecord = { id: 'msg-123', status: 'success' };
+      const mockReview = { traceId: 'msg-123', firstReply: '首版全文', repaired: true };
+      mockMessageProcessingRepository.getMessageProcessingRecordById.mockResolvedValue(mockRecord);
+      mockGuardrailReviewService.findByTraceId.mockResolvedValueOnce(mockReview);
+
+      const result = await service.getMessageProcessingRecordById('msg-123');
+
+      expect(result).toEqual({ ...mockRecord, guardrailReview: mockReview });
+      expect(mockGuardrailReviewService.findByTraceId).toHaveBeenCalledWith('msg-123');
     });
 
     it('should pass through repository errors', async () => {

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MessageProcessingRepository } from '../repositories/message-processing.repository';
 import { MessageProcessingRecordInput } from '../types/message.types';
+import { GuardrailReviewService } from './guardrail-review.service';
 
 /**
  * 消息处理记录服务
@@ -10,7 +11,10 @@ import { MessageProcessingRecordInput } from '../types/message.types';
 export class MessageProcessingService {
   private readonly logger = new Logger(MessageProcessingService.name);
 
-  constructor(private readonly messageProcessingRepository: MessageProcessingRepository) {}
+  constructor(
+    private readonly messageProcessingRepository: MessageProcessingRepository,
+    private readonly guardrailReviewService: GuardrailReviewService,
+  ) {}
 
   /**
    * 获取消息统计数据（聚合查询）
@@ -92,11 +96,20 @@ export class MessageProcessingService {
   }
 
   /**
-   * 获取单条消息处理记录详情
+   * 获取单条消息处理记录详情。
+   *
+   * 附带出站守卫审查档案（guardrail_review_records，按 trace_id=messageId 关联）：
+   * 守卫命中的回合返回首版全文/违规证据/重写版全文，供详情页还原
+   * 「首版 → 首审意见 → 重写版 → 二审」全过程；未命中或历史数据为 undefined。
    */
   async getMessageProcessingRecordById(messageId: string) {
     this.logger.debug(`获取消息处理记录详情: ${messageId}`);
-    return this.messageProcessingRepository.getMessageProcessingRecordById(messageId);
+    const [record, guardrailReview] = await Promise.all([
+      this.messageProcessingRepository.getMessageProcessingRecordById(messageId),
+      this.guardrailReviewService.findByTraceId(messageId),
+    ]);
+    if (!record) return null;
+    return { ...record, guardrailReview: guardrailReview ?? undefined };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { DailyOpsReportRepository } from '@biz/ops-events/daily-ops-report.repository';
+import { DailyOpsReportRepository } from '@biz/ops-events/repositories/daily-ops-report.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 
 type RepositoryWithSelectAllPaged = DailyOpsReportRepository & {

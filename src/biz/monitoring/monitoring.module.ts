@@ -16,6 +16,7 @@ import { MonitoringCacheService } from './services/tracking/monitoring-cache.ser
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { DailyStatsAggregatorService } from './services/projections/daily-stats-aggregator.service';
 import { HourlyStatsAggregatorService } from './services/projections/hourly-stats-aggregator.service';
 import { AnalyticsAlertService } from './services/alerts/analytics-alert.service';
@@ -79,6 +80,7 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
     AnalyticsDashboardService,
     AnalyticsQueryService,
     AnalyticsMaintenanceService,
+    MonitoringProbeService,
     DailyStatsAggregatorService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
@@ -92,6 +94,7 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
     AnalyticsDashboardService,
     AnalyticsQueryService,
     AnalyticsMaintenanceService,
+    MonitoringProbeService,
     DailyStatsAggregatorService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,

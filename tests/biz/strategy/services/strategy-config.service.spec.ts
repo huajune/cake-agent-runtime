@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import { StrategyConfigRepository } from '@biz/strategy/repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '@biz/strategy/repositories/strategy-changelog.repository';
@@ -139,6 +139,33 @@ describe('StrategyConfigService', () => {
     });
   });
 
+  describe('getConfigForStatus', () => {
+    it('should return testing config by default', async () => {
+      const testingRecord = makeRecord({ id: 'testing-default', status: 'testing' });
+      mockStrategyConfigRepository.findByStatus.mockResolvedValue(testingRecord);
+
+      const result = await service.getConfigForStatus();
+
+      expect(result).toEqual(testingRecord);
+      expect(mockStrategyConfigRepository.findByStatus).toHaveBeenCalledWith('testing');
+    });
+
+    it('should return released config when status is released', async () => {
+      const releasedRecord = makeRecord({ id: 'released-requested', status: 'released' });
+      mockStrategyConfigRepository.findByStatus.mockResolvedValue(releasedRecord);
+
+      const result = await service.getConfigForStatus('released');
+
+      expect(result).toEqual(releasedRecord);
+      expect(mockStrategyConfigRepository.findByStatus).toHaveBeenCalledWith('released');
+    });
+
+    it('should reject invalid status values', async () => {
+      await expect(service.getConfigForStatus('foo')).rejects.toThrow(BadRequestException);
+      expect(mockStrategyConfigRepository.findByStatus).not.toHaveBeenCalled();
+    });
+  });
+
   // ==================== updatePersona ====================
 
   describe('updatePersona', () => {
@@ -237,6 +264,11 @@ describe('StrategyConfigService', () => {
       await expect(service.updateRoleSetting({ content: 'test' })).rejects.toThrow(
         InternalServerErrorException,
       );
+    });
+
+    it('should throw BadRequestException when content is missing', async () => {
+      await expect(service.updateRoleSetting({} as any)).rejects.toThrow(BadRequestException);
+      expect(mockStrategyConfigRepository.updateConfigField).not.toHaveBeenCalled();
     });
   });
 
