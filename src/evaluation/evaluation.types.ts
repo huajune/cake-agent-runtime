@@ -93,14 +93,18 @@ export interface LlmEvaluationResult {
  * - `dimensions`
  *
  * `score` 与 `passed` 由服务端根据维度权重统一推导，避免模型返回自相矛盾的数据。
+ *
+ * 范围/长度约束不能写进 schema：Anthropic 结构化输出不支持 integer 的
+ * minimum/maximum 与字符串长度关键字，带上会被 API 整次拒绝；
+ * score 的 0-100 范围由服务端 normalizeDimensions clamp 保证。
  */
 const EvaluationDimensionSchema = z.object({
-  score: z.number().int().min(0).max(100),
-  reason: z.string().min(1).max(80),
+  score: z.number().int(),
+  reason: z.string(),
 });
 
 export const EvaluationStructuredOutputSchema = z.object({
-  summary: z.string().min(1).max(120),
+  summary: z.string(),
   dimensions: z.object({
     factualAccuracy: EvaluationDimensionSchema,
     responseEfficiency: EvaluationDimensionSchema,
