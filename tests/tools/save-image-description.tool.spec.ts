@@ -127,7 +127,7 @@ describe('buildSaveImageDescriptionTool', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (builtTool as any).execute({
       messageId: 'msg-img-1',
-      description: '简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。',
+      description: '简历图片：姓名兮兮，手机号18271421690，籍贯启东，身高163cm。',
     });
 
     expect(result).toEqual({
@@ -136,7 +136,7 @@ describe('buildSaveImageDescriptionTool', () => {
     });
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
-      '[图片消息] 简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
+      '[图片消息] 简历图片：姓名兮兮，手机号18271421690，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
     );
   });
 
