@@ -289,9 +289,7 @@ describe('GroupTaskSchedulerService', () => {
 
     it.each(cronMethodNames)('should skip %s outside production', async (methodName) => {
       currentNodeEnv = Environment.Test;
-      const executeTaskSpy = jest
-        .spyOn(service, 'executeTask')
-        .mockResolvedValue({ execId: 'x' });
+      const executeTaskSpy = jest.spyOn(service, 'executeTask').mockResolvedValue({ execId: 'x' });
 
       await service[methodName]();
 

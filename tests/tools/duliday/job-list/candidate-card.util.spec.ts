@@ -160,7 +160,17 @@ describe('renderCandidateCardsBanner', () => {
   });
 
   it('renders all jobs as quoted block with header', () => {
-    const banner = renderCandidateCardsBanner([makeJob(), makeJob({ basicInfo: { jobId: 102, brandName: '麦当劳', jobName: '服务员', storeInfo: { storeName: '日月光店' } } })]);
+    const banner = renderCandidateCardsBanner([
+      makeJob(),
+      makeJob({
+        basicInfo: {
+          jobId: 102,
+          brandName: '麦当劳',
+          jobName: '服务员',
+          storeInfo: { storeName: '日月光店' },
+        },
+      }),
+    ]);
     expect(banner).toContain('推荐对话用模板');
     expect(banner).toContain('不得删除或合并');
     expect(banner).toMatch(/> .*1\..*肯德基/);

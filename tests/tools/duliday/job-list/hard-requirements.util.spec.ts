@@ -19,7 +19,9 @@ describe('extractHardRequirements', () => {
       ['', 'unspecified'],
       ['未填写', 'unspecified'],
     ])('classifies "%s" as %s', (input, expected) => {
-      const result = extractHardRequirements({ hiringRequirement: { basicPersonalRequirements: { genderRequirement: input } } });
+      const result = extractHardRequirements({
+        hiringRequirement: { basicPersonalRequirements: { genderRequirement: input } },
+      });
       expect(result.gender).toBe(expected);
     });
 

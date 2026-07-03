@@ -39,7 +39,13 @@ describe('MemoryService', () => {
 
       const ctx = await service.onTurnStart('corp1', 'user1', 'sess1');
 
-      expect(mockLifecycle.onTurnStart).toHaveBeenCalledWith('corp1', 'user1', 'sess1', undefined, undefined);
+      expect(mockLifecycle.onTurnStart).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        'sess1',
+        undefined,
+        undefined,
+      );
       expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
     });
 

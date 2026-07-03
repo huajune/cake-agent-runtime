@@ -179,12 +179,14 @@ describe('OrderGrabStrategy', () => {
         orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
       });
       expect(result.payload.city).toBe('荆州');
-      expect(strategy.resolveOrderGrabGroupKey({
-        ...mockContext,
-        city: '武汉',
-        groupName: '随便什么群名',
-        labels: ['抢单群', '荆州'],
-      })).toBe('荆州');
+      expect(
+        strategy.resolveOrderGrabGroupKey({
+          ...mockContext,
+          city: '武汉',
+          groupName: '随便什么群名',
+          labels: ['抢单群', '荆州'],
+        }),
+      ).toBe('荆州');
     });
 
     it('应支持从群标签解析多地区并分别查询', async () => {

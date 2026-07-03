@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
+import type { GuardrailInputTrace, GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
 import {
@@ -113,7 +114,7 @@ export class WecomMessageObservabilityService {
       context.userId,
       context.userName,
       context.content,
-      { scenario: context.scenario },
+      { scenario: context.scenario, batchId: context.batchId },
       context.managerName,
       acceptedAt,
       {
@@ -432,6 +433,10 @@ export class WecomMessageObservabilityService {
       replySegments?: number;
       replyPreview?: string;
       extraResponse?: Record<string, unknown>;
+      /** 入站守卫拦截摘要（guardrail_blocked 静默收尾时由渠道传入，写 guardrail_input 列）。 */
+      guardrailInput?: GuardrailInputTrace;
+      /** 出站守卫全程 trace（渠道显式传入时优先；否则回退 agentResult.guardrailOutput）。 */
+      guardrailOutput?: GuardrailTurnTrace;
     },
   ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
     const trace = await this.traceStore.get<WecomTraceContext>(messageId);
@@ -449,6 +454,8 @@ export class WecomMessageObservabilityService {
       tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
       toolCalls: agentResult?.toolCalls,
       agentSteps: agentResult?.agentSteps,
+      guardrailInput: options.guardrailInput,
+      guardrailOutput: options.guardrailOutput ?? agentResult?.guardrailOutput,
       memorySnapshot: agentResult?.memorySnapshot,
       isFallback: agentResult?.isFallback ?? false,
       fallbackSuccess: agentResult?.isFallback ? true : undefined,
@@ -521,6 +528,7 @@ export class WecomMessageObservabilityService {
       tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
       toolCalls: agentResult?.toolCalls,
       agentSteps: agentResult?.agentSteps,
+      guardrailOutput: agentResult?.guardrailOutput,
       memorySnapshot: agentResult?.memorySnapshot,
       isFallback: agentResult?.isFallback ?? Boolean(trace?.fallbackDelivery),
       fallbackSuccess: trace?.fallbackDelivery?.success,

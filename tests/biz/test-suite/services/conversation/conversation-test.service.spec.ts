@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ConversationTestService } from '@biz/test-suite/services/conversation-test.service';
-import { AgentRunnerService } from '@agent/runner.service';
-import { ContextService } from '@agent/context/context.service';
+import { GeneratorService } from '@agent/generator/generator.service';
+import { ContextService } from '@agent/generator/context/context.service';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
@@ -20,7 +20,7 @@ import { ConversationSnapshotRecord } from '@biz/test-suite/entities/conversatio
 
 describe('ConversationTestService', () => {
   let service: ConversationTestService;
-  let orchestrator: jest.Mocked<AgentRunnerService>;
+  let orchestrator: jest.Mocked<GeneratorService>;
   let llmEvaluationService: jest.Mocked<LlmEvaluationService>;
   let parserService: jest.Mocked<ConversationParserService>;
   let conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
@@ -110,7 +110,7 @@ describe('ConversationTestService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConversationTestService,
-        { provide: AgentRunnerService, useValue: mockOrchestrator },
+        { provide: GeneratorService, useValue: mockOrchestrator },
         { provide: ContextService, useValue: mockContext },
         { provide: LlmEvaluationService, useValue: mockLlmEvaluationService },
         { provide: ConversationParserService, useValue: mockParserService },
@@ -122,7 +122,7 @@ describe('ConversationTestService', () => {
     }).compile();
 
     service = module.get<ConversationTestService>(ConversationTestService);
-    orchestrator = module.get(AgentRunnerService);
+    orchestrator = module.get(GeneratorService);
     llmEvaluationService = module.get(LlmEvaluationService);
     parserService = module.get(ConversationParserService);
     conversationSnapshotRepository = module.get(ConversationSnapshotRepository);

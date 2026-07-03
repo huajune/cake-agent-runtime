@@ -17,10 +17,6 @@ describe('buildInterviewBookingTool', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockBookingService = {
-    incrementBookingCount: jest.fn().mockResolvedValue(undefined),
-  };
-
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
@@ -87,12 +83,12 @@ describe('buildInterviewBookingTool', () => {
   const executeToolWithContext = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
-    options: { latestBooking?: Record<string, unknown> | null } = {},
+    options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const mockLongTermService = {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
-      setLatestBooking: jest.fn().mockResolvedValue(undefined),
-      getLatestBooking: jest.fn().mockResolvedValue(options.latestBooking ?? null),
+      setActiveBooking: jest.fn().mockResolvedValue(undefined),
+      getActiveBooking: jest.fn().mockResolvedValue(options.activeBooking ?? null),
     };
     const mockOpsEventsRecorder = {
       recordEvent: jest.fn().mockResolvedValue(undefined),
@@ -101,7 +97,6 @@ describe('buildInterviewBookingTool', () => {
       mockSpongeService as never,
       mockPrivateChatNotifier as never,
       mockUserHostingService as never,
-      mockBookingService as never,
       mockLongTermService as never,
       mockOpsEventsRecorder as never,
     );
@@ -128,7 +123,7 @@ describe('buildInterviewBookingTool', () => {
   const executeTool = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
-    options: { latestBooking?: Record<string, unknown> | null } = {},
+    options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const { result } = await executeToolWithContext(input, contextOverride, options);
     return result;
@@ -623,7 +618,7 @@ describe('buildInterviewBookingTool', () => {
       errorList: null,
     });
 
-    const result = await executeTool({
+    const { result, mocks } = await executeToolWithContext({
       ...validInput,
       educationId: 2,
       householdRegisterProvinceId: 310000,
@@ -727,15 +722,15 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockUserHostingService.pauseUser).not.toHaveBeenCalled();
-    expect(mockBookingService.incrementBookingCount).toHaveBeenCalledWith({
-      brandName: '成都你六姐',
-      storeName: '上海浦江城市生活广场店',
-      chatId: 'sess-1',
-      userId: 'user-1',
-      userName: '候选人微信名',
-      managerId: 'manager-1',
-      managerName: 'manager-1',
-    });
+    expect(mocks.mockOpsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: 'booking.succeeded',
+        payload: expect.objectContaining({
+          brand_name: '成都你六姐',
+          store_name: '上海浦江城市生活广场店',
+        }),
+      }),
+    );
   });
 
   it('should upload resume URL first and pass cloudStorageKey to entryUser', async () => {
@@ -945,8 +940,8 @@ describe('buildInterviewBookingTool', () => {
         } as never,
       },
       {
-        latestBooking: {
-          latest_work_order_id: 438358,
+        activeBooking: {
+          work_order_id: 438358,
           linked_at: new Date().toISOString(),
         },
       },
@@ -974,8 +969,8 @@ describe('buildInterviewBookingTool', () => {
       },
       {},
       {
-        latestBooking: {
-          latest_work_order_id: 438358,
+        activeBooking: {
+          work_order_id: 438358,
           linked_at: new Date().toISOString(),
         },
       },
@@ -1067,7 +1062,6 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1', expect.any(Object));
-    expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
   });
 
   it('should not fail the booking result when async pauseUser rejects', async () => {

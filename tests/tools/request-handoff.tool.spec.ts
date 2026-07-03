@@ -6,7 +6,7 @@ describe('buildRequestHandoffTool', () => {
   const interventionService = { dispatch: jest.fn() };
   const chatSessionService = { getChatHistory: jest.fn() };
   const sessionService = { getSessionState: jest.fn() };
-  const longTermService = { getLatestBooking: jest.fn() };
+  const longTermService = { getActiveBooking: jest.fn() };
   const handoffRecorder = { record: jest.fn() };
 
   const mockContext: ToolBuildContext = {
@@ -29,15 +29,13 @@ describe('buildRequestHandoffTool', () => {
       handoffRecorder as never,
     )(ctx);
 
-  const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
-
   beforeEach(() => {
     jest.clearAllMocks();
     chatSessionService.getChatHistory.mockResolvedValue([
       { role: 'user', content: '找不到门店啊', timestamp: 1_700_000_000_000 },
     ]);
     sessionService.getSessionState.mockResolvedValue(null);
-    longTermService.getLatestBooking.mockResolvedValue(null);
+    longTermService.getActiveBooking.mockResolvedValue(null);
     handoffRecorder.record.mockResolvedValue(undefined);
     interventionService.dispatch.mockResolvedValue({
       dispatched: true,
@@ -61,8 +59,8 @@ describe('buildRequestHandoffTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('does NOT short-circuit on modify_appointment when no latest_booking exists', async () => {
-    longTermService.getLatestBooking.mockResolvedValue(null);
+  it('does NOT short-circuit on modify_appointment when no active_booking exists', async () => {
+    longTermService.getActiveBooking.mockResolvedValue(null);
 
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,29 +78,37 @@ describe('buildRequestHandoffTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('records handoff (底账 + ops event) on a real dispatch', async () => {
-    longTermService.getLatestBooking.mockResolvedValue({
-      latest_work_order_id: 5001,
+  it('returns a handoff sideEffect intent for outcome-layer dispatch', async () => {
+    longTermService.getActiveBooking.mockResolvedValue({
+      work_order_id: 5001,
       linked_at: '2026-04-15T00:00:00Z',
     });
 
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (tool as any).execute({ reasonCode: 'cannot_find_store', reason: '门店导航错了' });
+    const result = await (tool as any).execute({
+      reasonCode: 'cannot_find_store',
+      reason: '门店导航错了',
+    });
 
-    await flushMicrotasks();
-    expect(handoffRecorder.record).toHaveBeenCalledWith(
+    expect(result.sideEffect).toEqual(
       expect.objectContaining({
-        corpId: 'corp-1',
-        chatId: 'chat-1',
+        kind: 'general_handoff',
+        source: 'agent_tool',
+        alertLabel: '找不到门店',
         reasonCode: 'cannot_find_store',
+        reason: '门店导航错了',
         workOrderId: 5001,
         botImId: 'bot-im-1',
+        idempotencyKey: expect.stringContaining('chat-1:handoff:'),
+        recordHandoff: true,
       }),
     );
+    expect(handoffRecorder.record).not.toHaveBeenCalled();
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('short-circuits and dispatches general_handoff (no onboard/general split anymore)', async () => {
+  it('short-circuits and returns general_handoff intent (no onboard/general split anymore)', async () => {
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
@@ -117,25 +123,22 @@ describe('buildRequestHandoffTool', () => {
     expect(result).not.toHaveProperty('paused');
     expect(result).not.toHaveProperty('alerted');
 
-    // recruitment_cases 已废弃：统一走 general_handoff（暂停托管 + 飞书告警）
-    await flushMicrotasks();
-    expect(interventionService.dispatch).toHaveBeenCalledWith(
+    expect(result.sideEffect).toEqual(
       expect.objectContaining({
         kind: 'general_handoff',
         source: 'agent_tool',
         alertLabel: '找不到门店',
         reason: '候选人反馈导航错',
         actionAdvice: '已发过位置仍无法到店',
-        chatId: 'chat-1',
-        pauseTargetId: 'chat-1',
         botImId: 'bot-im-1',
-        botUserName: 'mgr-bob',
         currentMessageContent: '找不到门店啊',
       }),
     );
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
+    expect(handoffRecorder.record).not.toHaveBeenCalled();
   });
 
-  it('does not throw even if async dispatch rejects (fire-and-forget)', async () => {
+  it('does not call intervention even if the injected dispatcher would reject', async () => {
     interventionService.dispatch.mockRejectedValue(new Error('supabase down'));
 
     const tool = buildTool();
@@ -146,6 +149,7 @@ describe('buildRequestHandoffTool', () => {
     });
 
     expect(result).toMatchObject({ dispatched: true, shortCircuited: true });
-    await flushMicrotasks();
+    expect(result.sideEffect).toEqual(expect.objectContaining({ kind: 'general_handoff' }));
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 });

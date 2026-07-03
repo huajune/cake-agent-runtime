@@ -31,13 +31,13 @@ import {
 } from './read-resume-attachment.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { BookingService } from '@biz/message/services/booking.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
@@ -78,7 +78,6 @@ export class ToolRegistryService {
     opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
-    bookingService: BookingService,
     userHostingService: UserHostingService,
     configService: ConfigService,
     interventionService: InterventionService,
@@ -86,6 +85,7 @@ export class ToolRegistryService {
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
+    alertNotifier: AlertNotifierService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -119,7 +119,6 @@ export class ToolRegistryService {
           spongeService,
           privateChatMonitorNotifier,
           userHostingService,
-          bookingService,
           longTermService,
           opsEventsRecorder,
         ),
@@ -136,7 +135,12 @@ export class ToolRegistryService {
         name: 'duliday_cancel_work_order',
         description:
           '取消工单（候选人主动要求取消已确认的面试预约时调用，真正调海绵取消接口；workOrderId 取自 [当前预约信息]）',
-        create: buildCancelWorkOrderTool(spongeService, opsEventsRecorder),
+        create: buildCancelWorkOrderTool(
+          spongeService,
+          opsEventsRecorder,
+          longTermService,
+          alertNotifier,
+        ),
       }),
 
       duliday_modify_interview_time: createToolDefinition({
@@ -170,6 +174,7 @@ export class ToolRegistryService {
           memberLimit,
           enterpriseToken,
           groupMembershipService,
+          sessionService,
         ),
       }),
 
@@ -178,11 +183,7 @@ export class ToolRegistryService {
         name: 'raise_risk_alert',
         description:
           '候选人出现辱骂/投诉/情绪升级时调用，异步触发人工介入（暂停托管+飞书告警，不阻塞回复）。调用后请以招募者身份自主组织共情/安抚话术，不使用预设模板，也不得暴露机器人/托管/系统等字眼。',
-        create: buildRaiseRiskAlertTool(
-          interventionService,
-          this.chatSessionService,
-          sessionService,
-        ),
+        create: buildRaiseRiskAlertTool(),
       }),
 
       request_handoff: createToolDefinition({

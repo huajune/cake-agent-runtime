@@ -574,11 +574,11 @@ GET /test-suite/conversation/turns?sourceId=source-001
 
 ### 评估原理
 
-使用 LLM (GPT-4o-mini) 作为评估器,对比 Agent 回复与真人回复的质量。
+使用 LLM 作为评估器,对比 Agent 回复与真人回复的质量。
 
 **关键设计**:
 
-- **模型选择**: `openai/gpt-4o-mini` (速度快、成本低)
+- **模型选择**: 由 `ModelRole.Evaluate` 路由（环境变量 `AGENT_EVALUATE_MODEL` 配置，当前 `openai/gpt-5-mini`）；下文代码/env 里出现的 `openai/gpt-4o-mini` 仅为历史示例，实际以角色路由为准
 - **禁用工具**: 评估时关闭所有工具,确保纯文本输出
 - **结构化输出**: 强制 JSON 格式输出评分和理由
 
@@ -724,7 +724,7 @@ FEISHU_APP_SECRET=xxx
 ### 代码常量
 
 ```typescript
-// src/test-suite/services/llm-evaluation.service.ts
+// src/evaluation/llm-evaluation.service.ts
 const EVALUATION_MODEL = 'openai/gpt-4o-mini'; // 评估模型
 const PASS_THRESHOLD = 60; // 及格分数线
 
@@ -800,7 +800,7 @@ export const validationSetFieldNames = {
 ### Q3: 如何调整评分标准?
 
 **A**:
-修改 [llm-evaluation.service.ts](../../src/test-suite/services/llm-evaluation.service.ts) 的评估 prompt 和权重配置。
+修改 [llm-evaluation.service.ts](../../src/evaluation/llm-evaluation.service.ts) 的评估 prompt 和权重配置。
 
 ### Q4: 批次统计如何计算?
 

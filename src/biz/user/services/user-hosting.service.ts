@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { RedisService } from '@infra/redis/redis.service';
 import { UserHostingRepository } from '../repositories/user-hosting.repository';
@@ -80,6 +81,7 @@ export class UserHostingService {
   constructor(
     private readonly repository: UserHostingRepository,
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
   ) {}
 
   // ==================== 托管状态查询 ====================
@@ -356,6 +358,8 @@ export class UserHostingService {
    */
   @Cron(CronExpression.EVERY_MINUTE)
   async expireOverduePausedUsers(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
     const lockToken = await this.acquireExpireCronLock();
     if (!lockToken) {
       this.logger.debug('跳过过期暂停扫描：其他副本正在执行');
@@ -377,6 +381,10 @@ export class UserHostingService {
     } finally {
       await this.releaseExpireCronLock(lockToken);
     }
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 
   // ==================== 缓存管理 ====================

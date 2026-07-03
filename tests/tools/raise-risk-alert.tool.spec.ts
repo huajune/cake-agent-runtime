@@ -3,42 +3,18 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildRaiseRiskAlertTool', () => {
-  const interventionService = { dispatch: jest.fn() };
-  const chatSessionService = { getChatHistory: jest.fn() };
-  const sessionService = { getSessionState: jest.fn() };
-
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
     sessionId: 'sess-1',
     chatId: 'chat-1',
-    messages: [],
+    messages: [{ role: 'user', content: '你说啥呢' }],
     botUserId: 'mgr-bob',
     botImId: 'bot-im-1',
     contactName: 'Alice',
   };
 
-  const buildTool = (ctx: ToolBuildContext = mockContext) =>
-    buildRaiseRiskAlertTool(
-      interventionService as never,
-      chatSessionService as never,
-      sessionService as never,
-    )(ctx);
-
-  const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    chatSessionService.getChatHistory.mockResolvedValue([
-      { role: 'user', content: '你说啥呢', timestamp: 1_700_000_000_000 },
-    ]);
-    sessionService.getSessionState.mockResolvedValue(null);
-    interventionService.dispatch.mockResolvedValue({
-      dispatched: true,
-      paused: true,
-      alerted: true,
-    });
-  });
+  const buildTool = (ctx: ToolBuildContext = mockContext) => buildRaiseRiskAlertTool()(ctx);
 
   it('returns missing_chat_id when chatId and sessionId are both absent', async () => {
     const tool = buildTool({ ...mockContext, chatId: undefined, sessionId: '' });
@@ -52,10 +28,9 @@ describe('buildRaiseRiskAlertTool', () => {
       accepted: false,
       errorType: TOOL_ERROR_TYPES.MISSING_CHAT_ID,
     });
-    expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('fires intervention dispatch async and returns immediately with instruction', async () => {
+  it('returns a conversation_risk sideEffect intent from the model semantic decision', async () => {
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
@@ -64,66 +39,56 @@ describe('buildRaiseRiskAlertTool', () => {
       summary: '情绪升级',
     });
 
-    expect(interventionService.dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(result).toMatchObject({
+      accepted: true,
+      sideEffect: {
         kind: 'conversation_risk',
         source: 'agent_tool',
         riskType: 'escalation',
+        riskLabel: '情绪升级',
         reason: '候选人连续催促',
         summary: '情绪升级',
-        chatId: 'chat-1',
-        pauseTargetId: 'chat-1',
-        botImId: 'bot-im-1',
-        botUserName: 'mgr-bob',
-        contactName: 'Alice',
         currentMessageContent: '你说啥呢',
-      }),
-    );
-    // 工具立即返回，只表示异步任务已被接收，不再透传 dispatch 的 paused/alerted/suppressed
-    expect(result).toMatchObject({ accepted: true });
-    expect(result).not.toHaveProperty('dispatched');
-    expect(result).not.toHaveProperty('paused');
-    expect(result).not.toHaveProperty('alerted');
-    expect(result).not.toHaveProperty('suppressed');
-    expect(typeof result.instruction).toBe('string');
-    await flushMicrotasks();
-  });
-
-  it('does not throw even if async dispatch rejects (fire-and-forget)', async () => {
-    interventionService.dispatch.mockRejectedValue(new Error('supabase down'));
-
-    const tool = buildTool();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (tool as any).execute({
-      riskType: 'abuse',
-      reason: '再次辱骂',
+      },
     });
-
-    expect(result).toMatchObject({ accepted: true });
-    expect(result).not.toHaveProperty('dispatched');
-    await flushMicrotasks();
+    expect(result.sideEffect).not.toHaveProperty('recentMessages');
+    expect(result.sideEffect).not.toHaveProperty('sessionState');
   });
 
-  it('swallows history/session lookup failures and still fires dispatch', async () => {
-    chatSessionService.getChatHistory.mockRejectedValue(new Error('redis down'));
-    sessionService.getSessionState.mockRejectedValue(new Error('db down'));
-
-    const tool = buildTool();
+  it('uses sessionId as chatId fallback without changing the sideEffect shape', async () => {
+    const tool = buildTool({ ...mockContext, chatId: undefined });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
       riskType: 'complaint_risk',
-      reason: '威胁举报',
+      reason: '候选人威胁投诉',
     });
 
-    expect(interventionService.dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        recentMessages: [],
-        currentMessageContent: '',
-        sessionState: null,
-      }),
-    );
-    expect(result).toMatchObject({ accepted: true });
-    expect(result).not.toHaveProperty('dispatched');
-    await flushMicrotasks();
+    expect(result).toMatchObject({
+      accepted: true,
+      sideEffect: {
+        kind: 'conversation_risk',
+        source: 'agent_tool',
+        riskType: 'complaint_risk',
+      },
+    });
+  });
+
+  it('keeps the latest user message from the current model-visible context', async () => {
+    const tool = buildTool({
+      ...mockContext,
+      messages: [
+        { role: 'user', content: '在吗' },
+        { role: 'assistant', content: '我在的' },
+        { role: 'user', content: '怎么还不回' },
+      ],
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tool as any).execute({
+      riskType: 'escalation',
+      reason: '连续追问',
+    });
+
+    expect(result.sideEffect.currentMessageContent).toBe('怎么还不回');
   });
 });

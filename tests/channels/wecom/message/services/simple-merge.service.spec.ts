@@ -138,10 +138,21 @@ describe('SimpleMergeService', () => {
       );
     });
 
-    it('should handle job creation failure gracefully', async () => {
+    it('job 创建持续失败时重试若干次后上抛（不再静默吞掉，交由上游记录失败）', async () => {
       mockMessageQueue.add.mockRejectedValue(new Error('Queue error'));
 
-      await expect(service.addMessage(validMessageData)).resolves.not.toThrow();
+      await expect(service.addMessage(validMessageData)).rejects.toThrow('Queue error');
+      // 重试到上限：本地多次尝试都打到队列
+      expect(mockMessageQueue.add).toHaveBeenCalledTimes(3);
+    });
+
+    it('job 创建瞬时失败后重试成功 → 不上抛', async () => {
+      mockMessageQueue.add
+        .mockRejectedValueOnce(new Error('transient'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(service.addMessage(validMessageData)).resolves.toBeUndefined();
+      expect(mockMessageQueue.add).toHaveBeenCalledTimes(2);
     });
   });
 

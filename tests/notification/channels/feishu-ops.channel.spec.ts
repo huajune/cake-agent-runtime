@@ -30,9 +30,6 @@ describe('FeishuOpsChannel', () => {
 
     await channel.sendOrThrow(card);
 
-    expect(webhookService.sendMessageOrThrow).toHaveBeenCalledWith(
-      'MESSAGE_NOTIFICATION',
-      card,
-    );
+    expect(webhookService.sendMessageOrThrow).toHaveBeenCalledWith('MESSAGE_NOTIFICATION', card);
   });
 });

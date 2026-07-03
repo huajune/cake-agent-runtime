@@ -2,10 +2,10 @@ import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { CallerKind } from '@enums/agent.enum';
-import { AgentRunnerService } from './runner.service';
+import { AgentRunnerService } from './runner/agent-runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
-import { DebugChatDto } from './dto/debug-chat.dto';
+import { DebugChatDto } from './debug-chat.dto';
 
 @Controller('agent')
 export class AgentController {
@@ -55,16 +55,26 @@ export class AgentController {
     const scenario = body.scenario || 'candidate-consultation';
 
     try {
-      const result = await this.runner.invoke({
-        callerKind: CallerKind.DEBUG,
-        messages: [{ role: 'user', content: body.message }],
-        userId: body.userId || 'debug-user',
-        corpId: 'debug',
-        sessionId,
-        scenario,
-        strategySource: 'testing',
-        contactName: body.contactName,
-      });
+      // 走 invokeReviewed 而非裸 generator：调试页需要看到与生产一致的
+      // guardrail runtime 过程（rule/llm 裁决 → 受控 repair → 最终 veto）。
+      const result = await this.runner.invokeReviewed(
+        {
+          callerKind: CallerKind.DEBUG,
+          messages: [{ role: 'user', content: body.message }],
+          userId: body.userId || 'debug-user',
+          corpId: 'debug',
+          sessionId,
+          scenario,
+          strategySource: 'testing',
+          contactName: body.contactName,
+        },
+        {
+          userMessage: body.message,
+          chatId: sessionId,
+          userId: body.userId || 'debug-user',
+          contactName: body.contactName,
+        },
+      );
 
       return {
         success: true,
@@ -74,6 +84,12 @@ export class AgentController {
         text: result.text,
         usage: result.usage,
         steps: result.steps,
+        // 调试专用：完整出站裁决（含 violations 证据/建议全文）+ 全程 trace。
+        guardrail: {
+          decision: result.outputDecision,
+          revised: result.revised,
+          trace: result.guardrailTrace,
+        },
       };
     } catch (error) {
       this.logger.error('调试聊天失败:', error);

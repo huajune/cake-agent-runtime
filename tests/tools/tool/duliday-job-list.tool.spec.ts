@@ -231,6 +231,51 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.brandAliasSource).toBe('contact_remark');
   });
 
+  it('should fall back to session-facts brands when model and remark carry no brand (badcase recvjFFKcZPsiC)', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData({ basicInfo: { brandName: '大米先生' } })],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        sessionFacts: {
+          preferences: { brands: ['大米先生'] },
+        } as ToolBuildContext['sessionFacts'],
+      },
+      { ...defaultInput, cityNameList: ['南京'] },
+    );
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ brandAliasList: ['大米先生'] }),
+    );
+    expect(result.queryMeta.brandAliasSource).toBe('session_facts');
+  });
+
+  it('should prefer contact-remark brand over session-facts brands', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        contactBrandAliases: ['KFC'],
+        sessionFacts: {
+          preferences: { brands: ['大米先生'] },
+        } as ToolBuildContext['sessionFacts'],
+      },
+      { ...defaultInput, cityNameList: ['上海'] },
+    );
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ brandAliasList: ['KFC'] }),
+    );
+    expect(result.queryMeta.brandAliasSource).toBe('contact_remark');
+  });
+
   it('should NOT override an explicitly passed brand with the contact-remark brand', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],

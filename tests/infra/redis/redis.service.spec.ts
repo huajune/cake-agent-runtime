@@ -201,7 +201,10 @@ describe('RedisService', () => {
     it('scans without match pattern', async () => {
       mockRedisClient.scan.mockResolvedValue(['0', []]);
       await service.scan('0');
-      expect(mockRedisClient.scan).toHaveBeenCalledWith('0', { match: undefined, count: undefined });
+      expect(mockRedisClient.scan).toHaveBeenCalledWith('0', {
+        match: undefined,
+        count: undefined,
+      });
     });
   });
 

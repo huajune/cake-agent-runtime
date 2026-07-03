@@ -13,7 +13,10 @@ describe('precheck-core', () => {
       const messages = [
         asstMsg('你好'),
         userMsg('我叫王建国'),
-        userMsg([{ type: 'text', text: '电话13800000000' }, { type: 'image', image: 'x' }]),
+        userMsg([
+          { type: 'text', text: '电话13800000000' },
+          { type: 'image', image: 'x' },
+        ]),
       ];
       expect(extractUserTexts(messages)).toEqual(['我叫王建国', '电话13800000000 ']);
     });

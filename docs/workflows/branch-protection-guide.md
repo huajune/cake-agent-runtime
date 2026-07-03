@@ -250,7 +250,7 @@ jobs:
 - [GitHub 分支保护规则官方文档](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
 - [CI 工作流配置](../../.github/workflows/ci.yml)
 - [AI 代码审查配置](./ai-code-review-guide.md)
-- [自动化版本管理](./auto-version-changelog.md)
+- [版本与发布指南](./version-release-guide.md)
 
 ## 🎉 完成
 

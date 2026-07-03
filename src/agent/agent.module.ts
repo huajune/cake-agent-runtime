@@ -10,17 +10,22 @@ import { LlmModule } from '@/llm/llm.module';
 import { NotificationModule } from '@notification/notification.module';
 import { CustomerModule } from '@wecom/customer/customer.module';
 import { ObservabilityModule } from '@/observability/observability.module';
-import { AgentRunnerService } from './runner.service';
-import { TurnRunnerService } from './runner/turn-runner.service';
-import { AgentPreparationService } from './agent-preparation.service';
-import { ContextService } from './context/context.service';
+import { OpsEventsModule } from '@biz/ops-events/ops-events.module';
+import { HandoffEventsModule } from '@biz/handoff-events/handoff-events.module';
+import { GeneratorService } from './generator/generator.service';
+import { AgentRunnerService } from './runner/agent-runner.service';
+import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
+import { PreparationService } from './generator/preparation.service';
+import { ContextService } from './generator/context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
-import { InputGuardService } from './input-guard.service';
+import { InterventionModule } from '@biz/intervention/intervention.module';
+import { GuardrailModule } from './guardrail/guardrail.module';
 import { REENGAGEMENT_QUEUE } from './reengagement/reengagement.types';
 import { FollowUpSchedulerService } from './reengagement/follow-up-scheduler.service';
 import { FollowUpProcessor } from './reengagement/follow-up.processor';
 import { TouchLedgerService } from './reengagement/touch-ledger.service';
+import { ReengagementAnchorService } from './reengagement/anchor.service';
 
 @Module({
   imports: [
@@ -34,6 +39,10 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
     NotificationModule,
     CustomerModule,
     ObservabilityModule,
+    OpsEventsModule,
+    HandoffEventsModule,
+    InterventionModule,
+    GuardrailModule,
     BullModule.registerQueue({
       name: REENGAGEMENT_QUEUE,
       defaultJobOptions: {
@@ -45,23 +54,26 @@ import { TouchLedgerService } from './reengagement/touch-ledger.service';
   controllers: [AgentController],
   providers: [
     ContextService,
-    AgentPreparationService,
+    PreparationService,
+    GeneratorService,
     AgentRunnerService,
-    TurnRunnerService,
+    TurnOutcomeInterventionService,
     AgentHealthService,
-    InputGuardService,
     // reengagement（复聊 shadow）
     FollowUpSchedulerService,
     FollowUpProcessor,
     TouchLedgerService,
+    ReengagementAnchorService,
   ],
   exports: [
     ContextService,
-    AgentPreparationService,
+    PreparationService,
+    GeneratorService,
     AgentRunnerService,
-    TurnRunnerService,
-    InputGuardService,
+    TurnOutcomeInterventionService,
+    GuardrailModule,
     FollowUpSchedulerService,
+    ReengagementAnchorService,
   ],
 })
 export class AgentModule {}

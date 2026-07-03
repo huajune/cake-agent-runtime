@@ -66,6 +66,8 @@ describe('buildSaveImageDescriptionTool', () => {
     expect((builtTool as any).description).toContain('4-12 个字');
     expect((builtTool as any).description).toContain('不要描述角色外观');
     expect((builtTool as any).description).toContain('品牌ID：10239');
+    expect((builtTool as any).description).toContain('薪资及阶梯规则');
+    expect((builtTool as any).description).toContain('班次时间');
   });
 
   it('should handle multiple images independently', async () => {
@@ -125,7 +127,7 @@ describe('buildSaveImageDescriptionTool', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (builtTool as any).execute({
       messageId: 'msg-img-1',
-      description: '简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。',
+      description: '简历图片：姓名兮兮，手机号18271421690，籍贯启东，身高163cm。',
     });
 
     expect(result).toEqual({
@@ -134,7 +136,7 @@ describe('buildSaveImageDescriptionTool', () => {
     });
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
-      '[图片消息] 简历图片：姓名陆乐，手机号13962387831，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
+      '[图片消息] 简历图片：姓名兮兮，手机号18271421690，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
     );
   });
 

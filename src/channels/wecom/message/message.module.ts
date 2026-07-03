@@ -27,15 +27,12 @@ import { MessagePipelineService } from './application/pipeline.service';
 import { ImageDescriptionService } from './application/image-description.service';
 import { WecomMessageObservabilityService } from './telemetry/wecom-message-observability.service';
 import { NotificationModule } from '@notification/notification.module';
-import { ConversationRiskModule } from '@/conversation-risk/conversation-risk.module';
 import { MessageRuntimeConfigService } from './runtime/message-runtime-config.service';
 import { MessageTraceStoreService } from './telemetry/message-trace-store.service';
 import { MessageWorkerManagerService } from './runtime/message-worker-manager.service';
 import { AcceptInboundMessageService } from './application/accept-inbound-message.service';
 import { ReplyWorkflowService } from './application/reply-workflow.service';
 import { MessageProcessingFailureService } from './application/message-processing-failure.service';
-import { PreAgentRiskInterceptService } from './application/pre-agent-risk-intercept.service';
-import { ReplyFactGuardService } from './application/reply-fact-guard.service';
 import { TypingPolicyService } from './delivery/typing-policy.service';
 import {
   CandidateBlacklistFilterRule,
@@ -67,7 +64,6 @@ import {
     NotificationModule,
     InterventionModule,
     MemoryModule,
-    ConversationRiskModule,
     // 注册消息聚合队列
     BullModule.registerQueue({
       name: 'message-merge',
@@ -111,8 +107,6 @@ import {
     WecomMessageObservabilityService, // 企微消息链路观测（阶段时延 + 结构化调试上下文）
     AcceptInboundMessageService, // 入站预处理（过滤、去重、写历史）
     ReplyWorkflowService, // 回复工作流（调用 Agent → 发送回复）
-    PreAgentRiskInterceptService, // Agent 前置风险同步拦截
-    ReplyFactGuardService, // Reply 后置事实对账（phase 1：仅告警）
     MessageProcessingFailureService, // 失败兜底（告警、降级回复）
   ],
   exports: [MessageService, MessageFilterService, MessageProcessor],

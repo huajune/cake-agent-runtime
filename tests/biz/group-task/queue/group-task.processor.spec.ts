@@ -288,9 +288,7 @@ describe('GroupTaskProcessor', () => {
       expect(sendCalls[0][2].delay).toBe(0);
       expect(sendCalls[1][2].delay).toBe(60_000);
       // 每个 send 的 msgRedisKey 相同，读同一份缓存
-      expect(sendCalls[0][1].msgRedisKey).toBe(
-        groupTaskMsgKey('exec-1', '上海_餐饮'),
-      );
+      expect(sendCalls[0][1].msgRedisKey).toBe(groupTaskMsgKey('exec-1', '上海_餐饮'));
       expect(sendCalls[0][1].msgRedisKey).toBe(sendCalls[1][1].msgRedisKey);
 
       // 消息缓存也写了 Redis
@@ -356,12 +354,7 @@ describe('GroupTaskProcessor', () => {
         false,
       );
       expect(redisMock.setex).toHaveBeenCalledWith(
-        groupTaskDailySentKey(
-          GroupTaskType.PART_TIME_JOB,
-          '20260420',
-          undefined,
-          'r-1',
-        ),
+        groupTaskDailySentKey(GroupTaskType.PART_TIME_JOB, '20260420', undefined, 'r-1'),
         expect.any(Number),
         '1',
       );
@@ -392,9 +385,7 @@ describe('GroupTaskProcessor', () => {
       redisMock.exists.mockResolvedValue(0);
       redisMock.get.mockResolvedValue(null);
 
-      await expect(invokeHandler(GroupTaskJobName.SEND, baseSend)).rejects.toThrow(
-        /消息缓存丢失/,
-      );
+      await expect(invokeHandler(GroupTaskJobName.SEND, baseSend)).rejects.toThrow(/消息缓存丢失/);
     });
   });
 

@@ -466,7 +466,9 @@ export function getStatusLabel(status: MessageRecord['status']): string {
   }
 }
 
-export function getStatusTone(status: MessageRecord['status']): 'success' | 'danger' | 'warning' {
+export function getStatusTone(
+  status: MessageRecord['status'],
+): 'success' | 'danger' | 'warning' | 'info' {
   switch (status) {
     case 'success':
       return 'success';
@@ -477,6 +479,26 @@ export function getStatusTone(status: MessageRecord['status']): 'success' | 'dan
     default:
       return 'warning';
   }
+}
+
+const SUPERSEDED_SUCCESS_MARKER = '补处理成功';
+
+export function isSupersededTimeout(message: Pick<MessageRecord, 'status' | 'error'>): boolean {
+  return (
+    message.status === 'timeout' &&
+    typeof message.error === 'string' &&
+    message.error.includes(SUPERSEDED_SUCCESS_MARKER)
+  );
+}
+
+export function getRecordStatusLabel(message: MessageRecord): string {
+  return isSupersededTimeout(message) ? '已接管' : getStatusLabel(message.status);
+}
+
+export function getRecordStatusTone(
+  message: MessageRecord,
+): 'success' | 'danger' | 'warning' | 'info' {
+  return isSupersededTimeout(message) ? 'info' : getStatusTone(message.status);
 }
 
 export function getInvocationRequest(message: MessageRecord): AnyRecord | undefined {

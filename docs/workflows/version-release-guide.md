@@ -1,27 +1,29 @@
-# 版本发布指南
+# 版本与发布指南
 
-## 现在的发布流
-
-发布流程调整为：
-
-1. 日常开发通过 PR 合并到 `develop`
-2. 合并后自动创建或更新一个机器人“版本元数据 PR”到 `develop`
-3. 合并机器人“版本元数据 PR”后，自动创建或更新 `develop -> master` release PR
-4. release PR 合并后，自动创建或更新一个机器人“正式发布固化 PR”到 `master`
-5. 正式发布固化 PR 合并后自动打 tag、创建 GitHub Release，并触发生产部署
-
-这意味着：
-
-- `develop` 负责准备待发布版本
-- `master` 负责正式发布
+> 本文合并了「发布操作流程」与「版本自动化机制」两部分（原 `auto-version-changelog.md` 已并入）。
+> 上半部分是**怎么操作**（日常开发 / 正式发布），下半部分是**机制参考**（workflow、文件职责、版本号规则、FAQ）。
 
 ---
 
-## 日常开发怎么走
+## 一、发布流概览
+
+PR 驱动的两段式自动化：
+
+1. 日常开发通过 PR 合并到 `develop`
+2. 合并后自动创建或更新机器人「版本元数据 PR」到 `develop`
+3. 合并「版本元数据 PR」后，自动创建或更新 `develop → master` release PR
+4. release PR 合并后，自动创建或更新机器人「正式发布固化 PR」到 `master`
+5. 固化 PR 合并后自动打 tag、创建 GitHub Release、触发生产部署、发飞书通知
+
+含义：`develop` 负责准备待发布版本，`master` 负责正式发布。
+
+---
+
+## 二、日常开发怎么走
 
 ### 第一步：提交功能 PR 到 develop
 
-推荐继续使用 Conventional Commits 风格的 PR 标题，例如：
+PR 标题用 Conventional Commits 风格（方便自动算版本号）：
 
 ```bash
 feat(group-task): 支持群任务发布卡片
@@ -29,159 +31,117 @@ fix(ci): 修复 UTC 环境下的日期测试失败
 chore(release): 调整版本自动化流程
 ```
 
-PR 正文请按模板填写中文说明，特别是这些部分：
-
-- `更新摘要`
-- `新功能`
-- `问题修复`
-- `优化调整`
-- `运维与流程`
-- `配置变更`
-- `验证记录`
+PR 正文按模板填中文说明，重点这些小节（自动化脚本按中文标题提取，**不要改名**）：
+`更新摘要`、`新功能`、`问题修复`、`优化调整`、`运维与流程`、`配置变更`、`验证记录`。
 
 ### 第二步：PR 合并到 develop
 
-合并后 GitHub Actions 会自动：
-
-- 计算下一版本号
-- 更新 `package.json`
-- 更新 `CHANGELOG.md` 顶部“待发布”区块
-- 创建或更新一个机器人 PR 到 `develop`
-
-你不需要手工改版本号，但需要把这个机器人 PR 合并进 `develop`。
+合并后 GitHub Actions 自动：计算下一版本号 → 更新 `package.json` → 更新 `CHANGELOG.md` 顶部「待发布」区 → 创建/更新机器人 PR 到 `develop`。你不用手改版本号，但需把这个机器人 PR 合并进 `develop`。
 
 ---
 
-## 正式发布怎么走
+## 三、正式发布怎么走
 
-### 第一步：从 develop 创建 release PR 到 master
+1. 确认 `develop` 上 `CHANGELOG.md` 待发布内容正确
+2. 合并机器人「版本元数据 PR」
+3. 等系统自动创建/更新 `develop → master` release PR（也可 `pnpm release:pr:create` 手动创建、`pnpm release:pr:preview` 预览）
+4. 审核版本说明 / 配置影响 / 验证情况 → 合并 release PR
+5. 合并后系统创建机器人「正式发布固化 PR」到 `master`；**该 PR 合并后**才继续：打 `vX.Y.Z` tag → 创建 GitHub Release → 触发部署 → 发飞书企微私域监控群通知
 
-当你准备发版时：
-
-1. 确认 `develop` 上的 `CHANGELOG.md` 待发布内容正确
-2. 合并机器人创建的“版本元数据 PR”
-3. 等系统自动创建或更新 `develop -> master` release PR
-4. 审核本次版本说明、配置影响、验证情况
-
-### 第二步：合并 release PR
-
-合并到 `master` 后，系统不会直接改受保护分支，而是会自动：
-
-- 创建一个机器人“正式发布固化 PR”到 `master`
-
-这个 PR 合并后，系统才会继续：
-
-- 打 `vX.Y.Z` tag
-- 创建 GitHub Release
-- 触发部署
-- 发送飞书发布通知到企微私域监控群
+> 手动在网页建 `develop → master` PR 时不用填通用模板，填个临时标题即可，`Release PR Autofill` workflow 会从 `CHANGELOG.md` 待发布区生成标题正文。
 
 ---
 
-## CHANGELOG 里会记录什么
+## 四、注意事项
 
-版本管理文件使用中文，主要包括：
+**不要手工改**：`package.json` 版本号、`.release/pending-release.json`（除非在改自动化本身）。
 
-- 版本号
-- 发布时间 / 最近更新时间
-- 来源分支
-- 更新摘要
-- 新功能
-- 问题修复
-- 优化调整
-- 运维与流程
-- 配置变更
-- 验证记录
-
-示例：
-
-```md
-## [4.0.1] - 2026-04-08
-
-**来源分支**: `develop`
-
-### 更新摘要
-
-- PR #118 支持飞书消息通知群发布卡片
-- PR #119 修复 UTC CI 下的日期断言失败
-- PR #120 调整版本和部署流
-
-### 新功能
-
-- PR #118 支持飞书消息通知群发布卡片
-
-### 问题修复
-
-- PR #119 修复 UTC CI 下的日期断言失败
-
-### 运维与流程
-
-- PR #120 CI 覆盖 develop/master 的 PR 校验
-- PR #120 发布成功后自动发送飞书企微私域监控群通知
-```
-
----
-
-## 注意事项
-
-### 不要手工改这些文件
-
-- `package.json` 里的版本号
-- `.release/pending-release.json`
-
-除非你在改自动化本身。
-
-### 现在会多出两类机器人 PR
-
+**两类机器人 PR**（都是自动化的一部分，按正常流程合并）：
 - `chore(release): 更新待发布版本信息（vX.Y.Z）`
 - `chore(release): 固化正式版本记录（vX.Y.Z）`
 
-这两类 PR 都是自动化流程的一部分，建议保留并按正常 PR 流程合并。
+**PR 正文不按模板写**：自动化仍跑，但中文说明退化成只记 PR 标题，信息变少。
 
-### 如果 PR 正文不按模板写，会发生什么？
+**飞书通知没发出**：先查 GitHub Secrets `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET`，再查部署 workflow 日志。
 
-自动化仍然会跑，但中文版本说明会退化成只记录 PR 标题，信息会明显变少。
+---
 
-### 如果飞书企微私域监控群通知没发出来，要查什么？
+# 机制参考
 
-先检查 GitHub Secrets：
+## 五、触发流程
 
-- `PRIVATE_CHAT_MONITOR_WEBHOOK_URL`
-- `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET`
+触发文件：[`.github/workflows/version-changelog.yml`](../../.github/workflows/version-changelog.yml)
 
-再检查对应的部署 workflow 日志。
+### PR 合并到 develop（`pull_request_target: closed`, branch `develop`）
 
-### 为什么机器人 PR 不会无限循环？
+读取最近 release tag → 分析 commit 算下一版本号 → 读 PR 中文说明 → 更新 `package.json` → 更新 `CHANGELOG.md` 待发布区 → 写 [`.release/pending-release.json`](../../.release/pending-release.json) 累计状态 → 创建/更新机器人 PR 到 `develop`。
 
-因为 workflow 只在“PR 被合并”时触发，而且会跳过：
+### release PR 合并到 master（`pull_request_target: closed`, branch `master`）
 
-- 分支名以 `chore/release-metadata/` 开头的 PR
-- 标题以 `chore(release):` 对应版本元数据模板开头的 PR
-- body 里带 `<!-- release-metadata-pr -->` 标记的 PR
+读 `master` 已带过去的待发布内容 → 固化为正式版本记录 → 创建/更新机器人 PR 到 `master` → 该 PR 合并后创建 `vX.Y.Z` tag → 创建 GitHub Release → 由 tag 触发部署。
+
+## 六、文件职责
+
+| 文件 | 职责 |
+|---|---|
+| `package.json` | 当前待发布版本号；在 `develop` 体现"下次发哪个版本" |
+| `CHANGELOG.md` | 面向团队的中文版本记录；顶部「待发布」区，发布后固化成正式版本区 |
+| `.release/pending-release.json` | 机器读写的待发布状态；存累计 PR 条目避免重复追加；不建议手改 |
+| `.github/pull_request_template.md` | 规范 PR 中文说明；CHANGELOG 内容优先从这里提取 |
+
+## 七、版本号规则
+
+语义化版本，基于 commit 历史计算：`BREAKING CHANGE`/`feat!:` → major+1；`feat:` → minor+1；其他有效提交 → patch+1。注意版本号按 commit 算，但 CHANGELOG 文案不照抄 commit，优先取 PR 模板中文说明。
+
+## 八、CHANGELOG 结构
+
+**develop 待发布区**：
+
+```md
+## 待发布
+**预计版本**: `v4.0.1`
+**最近更新**: `2026-04-08`
+**来源分支**: `develop`
+**累计 PR**: 3
+
+### 更新摘要
+- PR #101 修复群任务时区问题
+### 新功能 / 问题修复 / 优化调整 / 运维与流程 / 配置变更 / 验证记录
+- ...
+```
+
+**master 正式版本区**：
+
+```md
+## [4.0.1] - 2026-04-08
+**来源分支**: `develop`
+### 更新摘要
+- PR #101 修复群任务时区问题
+```
+
+## 九、配置要求
+
+- GitHub Actions 权限：`contents: write`（提交版本文件 + 创建 tag/release）。开启严格分支保护时**不需要**给 Actions 开直推 bypass——本方案通过机器人 PR 兼容受保护分支。
+- 飞书部署通知 Secrets：`PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET`。
+
+## 十、机器人 PR 约定 & 防循环
+
+- `develop` 元数据 PR 分支：`chore/release-metadata/develop`
+- `master` 固化 PR 分支：`chore/release-metadata/master`
+- PR body 隐藏标记：`<!-- release-metadata-pr -->`
+
+workflow 只在 PR 合并时触发，且显式跳过：`head.ref` 以 `chore/release-metadata/` 开头 / 标题为 `chore(release): ...` / body 含 `<!-- release-metadata-pr -->`。所以机器人 PR 只承载版本文件变更，不会再触发自己。
+
+## 十一、常见问题
+
+- **为什么不直接用 commit message 生成 CHANGELOG？** commit 适合机判 major/minor/patch，不适合给团队看；中文 PR 描述更稳定。
+- **为什么 develop 要先生成待发布信息？** release PR 打开前团队就能看到"当前准备上线的版本号和内容"。
+- **master 已发布但 develop 没同步？** 下次 `develop` 自动更新时，脚本按最新 tag 把旧待发布内容转成历史版本记录，再累计新内容。
 
 ---
 
 ## 推荐团队习惯
 
 - PR 标题用规范前缀，方便自动算版本号
-- PR 正文用中文写清楚变更，方便自动生成版本说明
-- `更新摘要` 写成可直接发群的中文，不要依赖 `feat:` / `fix:` / `chore:` 解释语义；脚本会兜底清理这些前缀
+- PR 正文用中文写清变更；`更新摘要` 写成可直接发群的中文，不依赖 `feat:`/`fix:` 前缀（脚本会兜底清理）
 - release PR 打开后，先看 `CHANGELOG.md` 再决定是否合并
-
-## develop → master 发版 PR
-
-正常情况下，合并机器人“版本元数据 PR”到 `develop` 后，系统会自动创建或更新 `develop` → `master` release PR，并从 `CHANGELOG.md` 的待发布区生成标题和正文。
-
-如果你在网页上手动创建 `develop` → `master` PR，不需要手填通用 PR 模板。填一个临时标题并创建即可，`Release PR Autofill` workflow 会自动从 `CHANGELOG.md` 的待发布区生成标题和正文。
-
-如果自动创建没有触发，也可以用本地命令直接创建或更新发版 PR。这个命令只创建或更新 PR，不会合并、不打 tag、也不会发布：
-
-```bash
-pnpm release:pr:create
-```
-
-本地也可以预览自动生成的内容：
-
-```bash
-pnpm release:pr:preview
-```

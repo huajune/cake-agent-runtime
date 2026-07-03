@@ -15,6 +15,7 @@ import {
   IdCard,
   ChevronDown,
   Settings2,
+  ShieldCheck,
 } from 'lucide-react';
 import { TestChatResponse } from '@/api/services/agent-test.service';
 import type { ModelOption } from '@/api/services/agent.service';
@@ -26,6 +27,7 @@ import { FeedbackButtons } from '../FeedbackButtons';
 import { CandidateSelector } from '../CandidateSelector';
 import { GroupInviteIdModal } from '../GroupInviteIdModal';
 import { ModelSelector } from '@/components/ModelSelector';
+import GuardrailTrace from '@/components/GuardrailTrace';
 import { HISTORY_PLACEHOLDER } from '../../constants';
 import styles from './index.module.scss';
 
@@ -344,6 +346,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     elapsedMs,
     isLoading,
     latestAssistantMessage,
+    guardrail,
     imagePreviews,
     addImages,
     removeImage,
@@ -501,6 +504,17 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                   tokenUsage={result.metrics.tokenUsage}
                   showDetails={true}
                 />
+
+                {guardrail && (
+                  <div className={styles.guardrailSection}>
+                    <div className={styles.sectionHeader}>
+                      <h4>
+                        <ShieldCheck size={16} /> 出站守卫（advisory）
+                      </h4>
+                    </div>
+                    <GuardrailTrace trace={guardrail} advisory />
+                  </div>
+                )}
 
                 <div className={styles.replySection}>
                   <div className={styles.sectionHeader}>

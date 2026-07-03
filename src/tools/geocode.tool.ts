@@ -14,7 +14,13 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
-import { hasGenericAmbiguousSuffix, normalizeDistrictForLookup } from '@memory/facts/geo-mappings';
+import {
+  candidateDistrictMatchesAddress,
+  extractDistrictStems,
+  groupCandidatesByCity,
+  pickAnchorCandidate,
+} from '@infra/geocoding/geocoding-candidate-ranker.util';
+import { hasGenericAmbiguousSuffix } from '@memory/facts/geo-mappings';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
@@ -102,61 +108,8 @@ function toAmbiguousView(c: GeocodeCandidate): AmbiguousCandidateView {
   };
 }
 
-/**
- * 是否地铁站 POI。地铁站坐标即站点真实位置，是口语化位置线索（"七莘路"="七莘路站"）的最佳锚点。
- * 优先看高德 typecode（`1505*`=地铁站），缓存里的老候选无 typecode 时退回按名称"…站"兜底。
- */
-function isMetroStation(c: GeocodeCandidate): boolean {
-  return (c.typecode ?? '').startsWith('1505') || (c.poiName ?? '').endsWith('站');
-}
-
-/**
- * 是否"道路名/路口"类 POI（高德 typecode `1903*` 交通地名）。
- * 长路（如七莘路 ~10km）只返回一个代表点，可能落在远离候选人的另一端，精度最低。
- */
-function isRoadNamePoi(c: GeocodeCandidate): boolean {
-  return (c.typecode ?? '').startsWith('1903');
-}
-
-/**
- * 同城多候选时挑选锚点。
- *
- * 高德按相关度排序，首条通常够用，直接采纳；但当首条是「道路名」POI 时——长路只有一个
- * 代表点、易锚到远端（线上 case：候选人说"七莘路"指 12 号线七莘路站，高德却把首条排成道路
- * 北端华漕，距真实位置 ~10km）——改优先取同名地铁站，其次任意更具体的非道路 POI，兜底才用首条。
- */
-function pickAnchorCandidate(candidates: GeocodeCandidate[]): GeocodeCandidate {
-  const top = candidates[0];
-  if (!isRoadNamePoi(top)) return top;
-  return candidates.find(isMetroStation) ?? candidates.find((c) => !isRoadNamePoi(c)) ?? top;
-}
-
-/** 抽出 address 里的"X区/X县"级行政区 token（归一化去后缀，"雨花区"→"雨花"、"长沙县"→"长沙"）。 */
-const ADMIN_DISTRICT_TOKEN_PATTERN = /[一-龥]{2,8}(?:区|县)/g;
-
-function extractDistrictStems(address: string): string[] {
-  const stems: string[] = [];
-  for (const m of address.matchAll(ADMIN_DISTRICT_TOKEN_PATTERN)) {
-    const stem = normalizeDistrictForLookup(m[0]);
-    if (stem) stems.push(stem);
-  }
-  return stems;
-}
-
-/**
- * 用户报的区 stem 是否与高德返回 POI 的区一致。
- *
- * 用前缀包含双向匹配，兼容口语区名与官方区名的出入（"雨花"vs官方"雨花台"）：
- * 命中即视为一致。高德没回区名时无从校验，按一致放行（不误拦）。
- */
-function poiDistrictMatchesAddress(addrStems: string[], poiDistrict: string): boolean {
-  const poiStem = normalizeDistrictForLookup(poiDistrict.trim());
-  if (!poiStem) return true;
-  return addrStems.some((stem) => poiStem.includes(stem) || stem.includes(poiStem));
-}
-
 /** 把单城 GeocodeCandidate 投回旧 GeocodeResult shape，保证下游 prompt 模板兼容。 */
-function toResultPayload(c: GeocodeCandidate) {
+function toResultPayload(c: GeocodeCandidate, queryAddress?: string) {
   return {
     formattedAddress: c.formattedAddress,
     province: c.province,
@@ -165,7 +118,23 @@ function toResultPayload(c: GeocodeCandidate) {
     township: c.township,
     longitude: c.longitude,
     latitude: c.latitude,
+    // 区/城市级粗粒度查询标记：候选人只报了区名/市名时，锚点坐标是行政区代表点，
+    // 与候选人真实位置可能相差数公里——下游据此禁止输出精确距离（badcase recvjyv0SKiqe3）。
+    areaLevelQuery: isAreaLevelQuery(queryAddress, c),
   };
+}
+
+/**
+ * 查询词是否只是区/县/市级行政区名（如"松江"、"浦东新区"、"常州"）。
+ * 这类查询即使命中 unique 锚点，代表的也只是"整个行政区"，
+ * 基于锚点算出的门店距离不能当候选人的真实距离说给候选人。
+ */
+function isAreaLevelQuery(queryAddress: string | undefined, c: GeocodeCandidate): boolean {
+  const normalized = (queryAddress ?? '').trim().replace(/(?:新区|市|区|县)$/, '');
+  if (normalized.length < 2) return false;
+  const district = (c.district ?? '').replace(/(?:新区|市|区|县)$/, '');
+  const city = (c.city ?? '').replace(/(?:新区|市|区|县)$/, '');
+  return normalized === district || normalized === city;
 }
 
 export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilder {
@@ -215,8 +184,8 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
           }
 
           // 单城唯一命中：按精度择优（道路名 POI 易锚偏，优先地铁站），而非无脑取第一条
-          const distinctCities = new Set(candidates.map((c) => c.city).filter((c) => c.length > 0));
-          if (distinctCities.size <= 1) {
+          const uniqueByCity = groupCandidatesByCity(candidates);
+          if (uniqueByCity.size <= 1) {
             const anchor = pickAnchorCandidate(candidates);
 
             // 跨城同名区兜底：未传 city + address 明确报了"X区/县"，但高德选中的 POI 落在
@@ -225,7 +194,10 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             // 先反问城市，而不是凭错城坐标判定"无岗"后静默收口。
             if (!normalizedCity) {
               const addrStems = extractDistrictStems(trimmedAddress);
-              if (addrStems.length > 0 && !poiDistrictMatchesAddress(addrStems, anchor.district)) {
+              if (
+                addrStems.length > 0 &&
+                !candidateDistrictMatchesAddress(addrStems, anchor.district)
+              ) {
                 return buildToolError({
                   errorType: TOOL_ERROR_TYPES.GEOCODE_DISTRICT_CITY_MISMATCH,
                   replyInstruction:
@@ -244,15 +216,11 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
 
             return {
               resolution: 'unique' as const,
-              result: toResultPayload(anchor),
+              result: toResultPayload(anchor, trimmedAddress),
             };
           }
 
           // 多城歧义：列出候选，由 Agent 反问
-          const uniqueByCity = new Map<string, GeocodeCandidate>();
-          for (const c of candidates) {
-            if (!uniqueByCity.has(c.city)) uniqueByCity.set(c.city, c);
-          }
           const candidatesView = Array.from(uniqueByCity.values()).slice(0, 3).map(toAmbiguousView);
 
           return {

@@ -387,21 +387,15 @@ describe('FeishuBitableSyncService', () => {
 
     it('should fail when badcase table config is missing', async () => {
       mockBitableApi.getTableConfig.mockReturnValueOnce({ appToken: '', tableId: '' });
-      const result = await service.updateBadcaseStatuses([
-        { recordId: 'rec_a', status: '已解决' },
-      ]);
+      const result = await service.updateBadcaseStatuses([{ recordId: 'rec_a', status: '已解决' }]);
       expect(result.failed).toBe(1);
       expect(result.errors[0]).toContain('badcase 表配置不完整');
       expect(updateRecord).not.toHaveBeenCalled();
     });
 
     it('should skip when 状态 field is absent', async () => {
-      mockBitableApi.getFields.mockResolvedValueOnce([
-        { field_name: '问题ID' },
-      ] as any);
-      const result = await service.updateBadcaseStatuses([
-        { recordId: 'rec_a', status: '已解决' },
-      ]);
+      mockBitableApi.getFields.mockResolvedValueOnce([{ field_name: '问题ID' }] as any);
+      const result = await service.updateBadcaseStatuses([{ recordId: 'rec_a', status: '已解决' }]);
       expect(result.failed).toBe(1);
       expect(result.errors[0]).toContain('状态字段');
       expect(updateRecord).not.toHaveBeenCalled();

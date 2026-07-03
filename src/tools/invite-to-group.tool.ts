@@ -9,6 +9,9 @@ import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
+import { SessionService } from '@memory/services/session.service';
+import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
+import { extractUserTexts } from '@tools/shared/precheck-core';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
@@ -77,6 +80,8 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 ## 失败处理
 - success: false 时静默跳过，不向候选人提及群相关内容
 - 若 errorType=invite.invalid_city_scope，说明你把区域/区县误传给了 city。必须立即用工具返回的 expectedCity 重新调用 invite_to_group；不要调用 request_handoff，也不要说"该区域暂无兼职群"
+- 若 errorType=invite.city_conflict，说明你传的城市与会话记忆中的城市不一致。候选人没明确说换城市时，改用返回的 expectedCity 重新调用；否则先向候选人确认城市，不要转人工
+- 若 errorType=invite.city_unverified，说明该城市没有出处依据（会话记忆和候选人原文都没有）。先向候选人确认所在城市再调用；本轮不要提群相关内容，不要转人工
 - 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
   - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（errorType=invite.no_group_in_city / invite.no_group_available）、或"候选人非外部联系人/已拉黑删好友"（errorType=invite.candidate_not_friend）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要承诺群相关动作
@@ -133,6 +138,7 @@ export function buildInviteToGroupTool(
   memberLimit: number,
   enterpriseToken?: string | null,
   groupMembership?: GroupMembershipService,
+  sessionService?: SessionService,
 ): ToolBuilder {
   return (context) =>
     tool({
@@ -168,6 +174,94 @@ export function buildInviteToGroupTool(
             });
           }
 
+          const districtResolvedCity = resolveCityFromDistrict(city.trim());
+          if (districtResolvedCity) {
+            logger.warn(
+              `invite_to_group city 入参误传为区域: city=${city}, expectedCity=${districtResolvedCity} (user=${context.userId})`,
+            );
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE,
+              outcome: 'city 入参误传为区域/区县',
+              replyInstruction:
+                'invite_to_group 的 city 必须是城市级名称，不能传区域/区县/镇。请立即使用 expectedCity 字段重新调用 invite_to_group，并保留原 industry；不要调用 request_handoff，也不要说"该区域暂无兼职群"。',
+              details: {
+                city,
+                expectedCity: districtResolvedCity,
+                industry: industry ?? undefined,
+              },
+            });
+          }
+
+          // 城市 provenance gate（badcase recvk28F1xrsKj 拉错城市群）：
+          // city 入参必须能追溯到会话城市事实或候选人原文，模型自报不构成依据。
+          // 会话事实读取失败按 null 降级（gate 仍可凭候选人原文放行），不让 Redis 抖动挡住拉群。
+          let sessionCity: string | null = null;
+          if (sessionService) {
+            try {
+              const facts = await sessionService.getFacts(
+                context.corpId,
+                context.userId,
+                context.sessionId,
+              );
+              const cityFact = facts?.preferences?.city ?? null;
+              sessionCity = cityFact && cityFact.confidence === 'high' ? cityFact.value : null;
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : String(error);
+              logger.warn(`读取会话城市事实失败（gate 按无事实降级）: ${message}`);
+            }
+          }
+          const cityGateVerdict = evaluateInviteCityGate({
+            requestedCity: city,
+            sessionCity,
+            userTexts: extractUserTexts(context.messages),
+          });
+          if (cityGateVerdict.decision === 'reject') {
+            if (cityGateVerdict.reason === 'city_conflict') {
+              logger.warn(
+                `invite_to_group city 与会话城市事实冲突: city=${city}, expectedCity=${cityGateVerdict.expectedCity} (user=${context.userId})`,
+              );
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT,
+                outcome: 'city 入参与会话记忆中的城市不一致',
+                replyInstruction:
+                  '你传入的 city 与候选人会话记忆中的城市不一致。若候选人本轮没有明确说换城市，请改用 expectedCity 重新调用 invite_to_group；若你认为候选人换了城市，先向候选人确认所在城市，本轮不要提群相关内容，也不要调用 request_handoff。',
+                details: {
+                  city,
+                  expectedCity: cityGateVerdict.expectedCity,
+                  industry: industry ?? undefined,
+                },
+              });
+            }
+            logger.warn(
+              `invite_to_group city 缺少出处依据（模型凭空指定）: city=${city} (user=${context.userId})`,
+            );
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED,
+              outcome: 'city 入参在会话记忆与候选人原文中均无依据',
+              replyInstruction:
+                '该城市在会话记忆和候选人原文里都找不到依据，不能据此拉群。请先向候选人确认所在城市（例如"方便说下你现在在哪个城市吗"），得到明确回复后再调用本工具；本轮不要提群相关内容，也不要调用 request_handoff。',
+              details: { city, industry: industry ?? undefined },
+            });
+          }
+
+          // testing 链路（test-suite 重放/调试）：确定性校验（区县、城市 gate）已在上方
+          // 真实跑完，这里返回模拟成功、不触达企业接口——否则测试环境缺 bot 身份必失败，
+          // prompt 的"invite 失败转人工"指引会把重放全部推进 handoff，拉群链路永远测不到。
+          if (context.strategySource === 'testing') {
+            logger.log(`testing 链路模拟拉群成功: city=${city} (user=${context.userId})`);
+            return {
+              success: true,
+              simulated: true,
+              groupName: `${city}兼职群（测试模拟）`,
+              city,
+              industry: industry ?? undefined,
+              inviteDelivery: 'invite_card',
+              _outcome: '【测试链路模拟】已向候选人发送入群邀请卡片（未触达真实企业接口）',
+              _replyInstruction:
+                '企微已向候选人发送入群邀请卡片。回复时只能说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何群链接 / URL。',
+            };
+          }
+
           const normalizedEnterpriseToken = enterpriseToken?.trim();
           if (!normalizedEnterpriseToken) {
             logger.error(`STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${context.userId})`);
@@ -185,24 +279,6 @@ export function buildInviteToGroupTool(
               outcome: '缺少 bot 身份信息',
               replyInstruction: `拉群所需的 bot 身份不完整，本次不向候选人提及群相关内容；这是上下文缺失问题，不要反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
               details: { detailedReason: '缺少 botImId / botUserId，无法执行企业级拉群' },
-            });
-          }
-
-          const districtResolvedCity = resolveCityFromDistrict(city.trim());
-          if (districtResolvedCity) {
-            logger.warn(
-              `invite_to_group city 入参误传为区域: city=${city}, expectedCity=${districtResolvedCity} (user=${context.userId})`,
-            );
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE,
-              outcome: 'city 入参误传为区域/区县',
-              replyInstruction:
-                'invite_to_group 的 city 必须是城市级名称，不能传区域/区县/镇。请立即使用 expectedCity 字段重新调用 invite_to_group，并保留原 industry；不要调用 request_handoff，也不要说"该区域暂无兼职群"。',
-              details: {
-                city,
-                expectedCity: districtResolvedCity,
-                industry: industry ?? undefined,
-              },
             });
           }
 

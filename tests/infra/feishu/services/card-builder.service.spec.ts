@@ -40,12 +40,13 @@ describe('FeishuCardBuilderService', () => {
       ],
     });
 
-    const elements = ((card.card as Record<string, unknown>).elements ||
-      []) as Array<Record<string, unknown>>;
+    const elements = ((card.card as Record<string, unknown>).elements || []) as Array<
+      Record<string, unknown>
+    >;
     expect(elements).toHaveLength(3);
     expect(elements[2].tag).toBe('div');
-    expect(((elements[2].text as Record<string, unknown>).content as string)).toContain('ou_1');
-    expect(((elements[2].text as Record<string, unknown>).content as string)).toContain('ou_2');
+    expect((elements[2].text as Record<string, unknown>).content as string).toContain('ou_1');
+    expect((elements[2].text as Record<string, unknown>).content as string).toContain('ou_2');
   });
 
   it('should append @all when atAll is true', () => {
@@ -55,10 +56,11 @@ describe('FeishuCardBuilderService', () => {
       atAll: true,
     });
 
-    const elements = ((card.card as Record<string, unknown>).elements ||
-      []) as Array<Record<string, unknown>>;
+    const elements = ((card.card as Record<string, unknown>).elements || []) as Array<
+      Record<string, unknown>
+    >;
     expect(elements).toHaveLength(3);
-    expect(((elements[2].text as Record<string, unknown>).content as string)).toContain(
+    expect((elements[2].text as Record<string, unknown>).content as string).toContain(
       '<at id=all></at>',
     );
   });
@@ -71,10 +73,11 @@ describe('FeishuCardBuilderService', () => {
       atUsers: [{ openId: 'ou_1', name: '高雅琪' }],
     });
 
-    const elements = ((card.card as Record<string, unknown>).elements ||
-      []) as Array<Record<string, unknown>>;
-    expect(((elements[2].text as Record<string, unknown>).content as string)).toContain('ou_1');
-    expect(((elements[2].text as Record<string, unknown>).content as string)).not.toContain(
+    const elements = ((card.card as Record<string, unknown>).elements || []) as Array<
+      Record<string, unknown>
+    >;
+    expect((elements[2].text as Record<string, unknown>).content as string).toContain('ou_1');
+    expect((elements[2].text as Record<string, unknown>).content as string).not.toContain(
       '<at id=all></at>',
     );
   });

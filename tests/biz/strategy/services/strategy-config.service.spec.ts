@@ -26,8 +26,24 @@ describe('StrategyConfigService', () => {
     name: '测试策略',
     description: '测试用策略配置',
     role_setting: { content: '你是招聘经理' },
-    persona: { textDimensions: [{ key: 'test', label: '测试', value: '测试值', placeholder: '', group: 'style' as const }] },
-    stage_goals: { stages: [{ stage: 'trust_building', label: '建立信任', description: '', primaryGoal: '', successCriteria: [], ctaStrategy: [], disallowedActions: [] }] },
+    persona: {
+      textDimensions: [
+        { key: 'test', label: '测试', value: '测试值', placeholder: '', group: 'style' as const },
+      ],
+    },
+    stage_goals: {
+      stages: [
+        {
+          stage: 'trust_building',
+          label: '建立信任',
+          description: '',
+          primaryGoal: '',
+          successCriteria: [],
+          ctaStrategy: [],
+          disallowedActions: [],
+        },
+      ],
+    },
     red_lines: { rules: ['测试规则'], thresholds: [] },
     industry_skills: { skills: [] },
     is_active: true,
@@ -186,9 +202,7 @@ describe('StrategyConfigService', () => {
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
-      await expect(service.updatePersona(newPersona)).rejects.toThrow(
-        InternalServerErrorException,
-      );
+      await expect(service.updatePersona(newPersona)).rejects.toThrow(InternalServerErrorException);
     });
   });
 
@@ -315,7 +329,10 @@ describe('StrategyConfigService', () => {
   describe('refreshCache', () => {
     it('should clear memory cache', async () => {
       (service as any).cache.set('testing', { config: makeRecord(), expiry: Date.now() + 60_000 });
-      (service as any).cache.set('released', { config: makeRecord({ status: 'released' }), expiry: Date.now() + 60_000 });
+      (service as any).cache.set('released', {
+        config: makeRecord({ status: 'released' }),
+        expiry: Date.now() + 60_000,
+      });
 
       await service.refreshCache();
 

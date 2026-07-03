@@ -43,14 +43,14 @@ describe('BookingCardRenderer', () => {
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
-    expect((result.card.content as string)).toContain('**候选人信息**');
-    expect((result.card.content as string)).toContain('微信昵称：wx_alice');
-    expect((result.card.content as string)).toContain('姓名：Alice');
-    expect((result.card.content as string)).toContain('电话：13800138000');
-    expect((result.card.content as string)).toContain('托管账号：招募经理A');
-    expect((result.card.content as string)).toContain('面试时间：2026-04-13 07:30');
-    expect((result.card.content as string)).toContain('预约编号：BK-1001');
-    expect((result.card.content as string)).toContain('**结果**：预约成功');
+    expect(result.card.content as string).toContain('**候选人信息**');
+    expect(result.card.content as string).toContain('微信昵称：wx_alice');
+    expect(result.card.content as string).toContain('姓名：Alice');
+    expect(result.card.content as string).toContain('电话：13800138000');
+    expect(result.card.content as string).toContain('托管账号：招募经理A');
+    expect(result.card.content as string).toContain('面试时间：2026-04-13 07:30');
+    expect(result.card.content as string).toContain('预约编号：BK-1001');
+    expect(result.card.content as string).toContain('**结果**：预约成功');
   });
 
   it('should append interview type to the success title when provided', () => {
@@ -62,9 +62,7 @@ describe('BookingCardRenderer', () => {
       toolOutput: { success: true },
     });
 
-    expect(result.card).toEqual(
-      expect.objectContaining({ title: '🎉 面试预约成功 · AI面试' }),
-    );
+    expect(result.card).toEqual(expect.objectContaining({ title: '🎉 面试预约成功 · AI面试' }));
   });
 
   it('should append interview type to the failure title when provided', () => {
@@ -106,14 +104,14 @@ describe('BookingCardRenderer', () => {
         atAll: true,
       }),
     );
-    expect((result.card.content as string)).toContain('预约失败，请尽快跟进处理');
-    expect((result.card.content as string)).toContain('⚠️ 该用户已暂停托管');
-    expect((result.card.content as string)).toContain('微信昵称：wx_bob');
-    expect((result.card.content as string)).toContain('托管账号：招募经理B');
-    expect((result.card.content as string)).toContain('原因：名额已满');
-    expect((result.card.content as string)).toContain('返回信息：请人工跟进');
-    expect((result.card.content as string)).toContain('门店无可约时间');
-    expect((result.card.content as string)).toContain('CAPACITY_FULL');
-    expect((result.card.content as string)).toContain('traceId：trace-xyz-789');
+    expect(result.card.content as string).toContain('预约失败，请尽快跟进处理');
+    expect(result.card.content as string).toContain('⚠️ 该用户已暂停托管');
+    expect(result.card.content as string).toContain('微信昵称：wx_bob');
+    expect(result.card.content as string).toContain('托管账号：招募经理B');
+    expect(result.card.content as string).toContain('原因：名额已满');
+    expect(result.card.content as string).toContain('返回信息：请人工跟进');
+    expect(result.card.content as string).toContain('门店无可约时间');
+    expect(result.card.content as string).toContain('CAPACITY_FULL');
+    expect(result.card.content as string).toContain('traceId：trace-xyz-789');
   });
 });

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
 import { RedisService } from '@infra/redis/redis.service';
@@ -22,6 +23,7 @@ describe('UserHostingService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: ConfigService, useValue: { get: jest.fn((_k: string, d?: unknown) => d) } },
         UserHostingService,
         { provide: UserHostingRepository, useValue: mockUserHostingRepository },
         { provide: RedisService, useValue: mockRedisService },

@@ -124,7 +124,13 @@ export class ReplyNormalizer {
       }
     }
 
-    if (!this.canCompactListItems(listItems)) {
+    // 卡片式岗位列表（编号行是店名/岗位名，班次/薪资/要求等明细换行另起）不做口语化压缩：
+    // 压缩会把明细行黏成一句并丢失编号行括号里的店名（badcase 6a470fddce406a6aeee03d0d，
+    // 「必胜客（顺德大润发店）」被剥成「必胜客」，三家门店下发成三条一模一样的消息）
+    if (
+      !this.canCompactListItems(listItems) ||
+      this.containsJobDetailSignal(trailingLines.join(''))
+    ) {
       return lines.join('\n');
     }
 
@@ -160,7 +166,9 @@ export class ReplyNormalizer {
     if (normalized.length > 24) return false;
     if (/[。；;：:]/.test(normalized)) return false;
     if (/[，,]/.test(normalized) && this.containsJobDetailSignal(normalized)) return false;
-    if (/[（）()]/.test(normalized) && this.containsJobDetailSignal(normalized)) return false;
+    // 括号内容会被 extractOptionCore 整体删除，而括号里往往是区分选项的关键信息（店名/班别），
+    // 剥掉后多个选项会退化成同一个词——含括号的选项一律不压缩，保留原文
+    if (/[（）()]/.test(normalized)) return false;
     if (/\d+\s*(?:元|岁|km|公里|小时|点|:|：)/i.test(normalized)) return false;
     return true;
   }

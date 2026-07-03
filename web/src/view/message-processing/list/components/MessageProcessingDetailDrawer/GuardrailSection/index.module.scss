@@ -1,0 +1,40 @@
+/* 与父级抽屉右栏的 sideTitle 视觉保持一致（浅色奶油主题）；trace 时间线复用共享组件样式 */
+
+.sideTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+  margin-top: 18px;
+}
+
+.inputCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 13px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.94) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 16px;
+}
+
+.inputHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepStage {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  min-width: 28px;
+}
+
+.inputDetail {
+  font-size: 12px;
+  color: #334155;
+  word-break: break-all;
+}

@@ -550,8 +550,8 @@ pnpm run test -- -u
 ## 相关文档
 
 - [README.md](../README.md) - 项目概览和快速开始
-- [消息服务架构](./message-service-architecture.md)
-- [自动版本和 Changelog 管理](./auto-version-changelog.md)
+- [消息服务架构](../architecture/message-service-architecture.md)
+- [版本与发布指南](../workflows/version-release-guide.md)
 
 ---
 

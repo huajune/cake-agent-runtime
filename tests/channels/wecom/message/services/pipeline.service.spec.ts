@@ -14,24 +14,31 @@ import { ImageDescriptionService } from '@wecom/message/application/image-descri
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { TurnRunnerService } from '@agent/runner/turn-runner.service';
+import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
+import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { DeliveryFailureError } from '@wecom/message/types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
+import { CallerKind } from '@enums/agent.enum';
 import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-agent-risk-intercept.service';
-import { ReplyFactGuardService } from '@wecom/message/application/reply-fact-guard.service';
+import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import { SessionService } from '@memory/services/session.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
+import type { GeneratorInvokeParams } from '@agent/generator/generator.types';
+import type { SessionRef, TurnRequest, TurnTrigger } from '@agent/runner/agent-runner.types';
+import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
+import { TurnFinalizer } from '@agent/runner/turn-finalizer';
+import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 
 describe('MessagePipelineService', () => {
@@ -66,6 +73,10 @@ describe('MessagePipelineService', () => {
 
   const mockRunnerService = {
     invoke: jest.fn(),
+    invokeReviewed: jest.fn(),
+    invokeReviewedTurn: jest.fn(),
+    runTurn: jest.fn(),
+    precheckInboundOutcome: jest.fn().mockResolvedValue(null),
   };
 
   const mockConfigService = {
@@ -144,10 +155,6 @@ describe('MessagePipelineService', () => {
       ),
   };
 
-  const mockPreAgentRiskIntercept = {
-    precheck: jest.fn(),
-  };
-
   const mockLongTermService = {
     updateMessageMetadata: jest.fn(),
   };
@@ -162,9 +169,7 @@ describe('MessagePipelineService', () => {
   };
 
   const mockInterventionService = {
-    dispatch: jest
-      .fn()
-      .mockResolvedValue({ dispatched: true, paused: true, alerted: true }),
+    dispatch: jest.fn().mockResolvedValue({ dispatched: true, paused: true, alerted: true }),
   };
 
   const mockHandoffRecorder = {
@@ -211,20 +216,32 @@ describe('MessagePipelineService', () => {
         { provide: ImageDescriptionService, useValue: mockImageDescriptionService },
         { provide: LlmExecutorService, useValue: mockLlmService },
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
-        { provide: TurnRunnerService, useValue: mockRunnerService },
+        { provide: AgentRunnerService, useValue: mockRunnerService },
+        {
+          provide: TurnOutcomeInterventionService,
+          useValue: { commit: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
-        { provide: PreAgentRiskInterceptService, useValue: mockPreAgentRiskIntercept },
         { provide: LongTermService, useValue: mockLongTermService },
+        {
+          provide: SessionService,
+          useValue: {
+            saveLastCandidateMessageAt: jest.fn().mockResolvedValue(undefined),
+            saveTerminalState: jest.fn().mockResolvedValue(undefined),
+            recordCandidateActivity: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: HostingMemberConfigService, useValue: mockHostingMemberConfigService },
         { provide: UserHostingService, useValue: mockUserHostingService },
         { provide: InterventionService, useValue: mockInterventionService },
         { provide: HandoffRecorderService, useValue: mockHandoffRecorder },
+        TurnOutcomeInterventionService,
         {
-          provide: ReplyFactGuardService,
+          provide: HardRulesService,
           useValue: { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) },
         },
         {
@@ -248,6 +265,9 @@ describe('MessagePipelineService', () => {
           provide: FollowUpSchedulerService,
           useValue: { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) },
         },
+        // ReplyWorkflowService 第 14 个构造依赖；其自身依赖（FollowUpScheduler/SessionService）
+        // 已在上面提供，直接注册真实类即可解析。
+        ReengagementAnchorService,
       ],
     }).compile();
 
@@ -261,7 +281,7 @@ describe('MessagePipelineService', () => {
       messages: [{ role: 'user', candidateName: 'Alice' }],
     });
     mockFilterService.validate.mockResolvedValue({ pass: true, content: 'Hello!' });
-    mockPreAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });
+    mockRunnerService.precheckInboundOutcome.mockResolvedValue(null);
     mockDeliveryService.deliverReply.mockResolvedValue({
       success: true,
       segmentCount: 1,
@@ -274,6 +294,107 @@ describe('MessagePipelineService', () => {
       steps: 1,
       usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
       toolCalls: [],
+    });
+    // ReplyWorkflowService 现走 runner.runTurn；mock 内部委托给 invoke，保留既有参数断言。
+    mockRunnerService.invokeReviewed.mockImplementation(async (params: unknown) => ({
+      ...(await mockRunnerService.invoke(params)),
+      outputDecision: {
+        decision: 'pass',
+        riskLevel: 'low',
+        violations: [],
+        ruleIds: [],
+        blockedRuleIds: [],
+      },
+      revised: false,
+    }));
+    type ReviewedTurnMockParams = {
+      invoke: GeneratorInvokeParams;
+      trigger: TurnTrigger;
+      sessionRef: SessionRef;
+      messageId?: string;
+      onTurnEndError?: (error: unknown) => void;
+    };
+    mockRunnerService.invokeReviewedTurn.mockImplementation(
+      async (params: ReviewedTurnMockParams) => {
+        const raw = await mockRunnerService.invoke(params.invoke);
+        const reviewed = {
+          ...raw,
+          outputDecision: raw.outputDecision ?? {
+            decision: 'pass',
+            riskLevel: 'low',
+            violations: [],
+            ruleIds: [],
+            blockedRuleIds: [],
+          },
+          revised: raw.revised ?? false,
+        };
+        const outcome =
+          raw.outcome ??
+          classifyReviewedOutcome(reviewed, params.trigger, params.sessionRef, params.messageId);
+        return {
+          ...reviewed,
+          runTurnEnd: undefined,
+          outcome: { ...outcome, runTurnEnd: undefined },
+          turnFinalizer:
+            raw.turnFinalizer ?? TurnFinalizer.from(raw.runTurnEnd, params.onTurnEndError),
+        };
+      },
+    );
+    mockRunnerService.runTurn.mockImplementation(async (req: TurnRequest) => {
+      const invokeParams: GeneratorInvokeParams = {
+        callerKind: req.context?.callerKind ?? CallerKind.WECOM,
+        userId: req.sessionRef.userId,
+        corpId: req.sessionRef.corpId,
+        sessionId: req.sessionRef.sessionId,
+        messageId: req.context?.messageId,
+        messages:
+          req.trigger.kind === 'inbound'
+            ? [
+                {
+                  role: 'user',
+                  content: req.trigger.userMessage,
+                  imageUrls: req.trigger.images,
+                  imageMessageIds: req.context?.imageMessageIds,
+                },
+              ]
+            : [{ role: 'user', content: '[系统主动跟进]' }],
+        toolMode: req.toolMode ?? (req.trigger.kind === 'proactive' ? 'readonly' : 'scenario'),
+        proactiveDirective: req.trigger.kind === 'proactive' ? req.trigger.directive : undefined,
+        deferTurnEnd: true,
+        scenario: req.context?.scenario,
+        imageUrls: req.trigger.kind === 'inbound' ? req.trigger.images : undefined,
+        imageMessageIds: req.context?.imageMessageIds,
+        visualMessageTypes: req.context?.visualMessageTypes,
+        contactName: req.context?.contactName,
+        botImId: req.context?.botImId,
+        botUserId: req.context?.botUserId,
+        groupId: req.context?.groupId,
+        externalUserId: req.context?.externalUserId,
+        token: req.context?.token,
+        imContactId: req.context?.imContactId,
+        imRoomId: req.context?.imRoomId,
+        apiType: req.context?.apiType,
+        modelId: req.modelId,
+        thinking: req.context?.thinking,
+        shortTermEndTimeInclusive: req.context?.shortTermEndTimeInclusive,
+        onPreparedRequest: req.context?.onPreparedRequest,
+      };
+      const raw = await mockRunnerService.invoke(invokeParams);
+      const reviewed = {
+        ...raw,
+        outputDecision: raw.outputDecision ?? {
+          decision: 'pass',
+          riskLevel: 'low',
+          violations: [],
+          ruleIds: [],
+          blockedRuleIds: [],
+        },
+        revised: raw.revised ?? false,
+      };
+      return (
+        raw.outcome ??
+        classifyReviewedOutcome(reviewed, req.trigger, req.sessionRef, req.context?.messageId)
+      );
     });
     mockAlertService.sendAlert.mockResolvedValue(undefined);
   });
@@ -331,8 +452,9 @@ describe('MessagePipelineService', () => {
         response: { success: true, message: 'Message received' },
         content: 'Hello!',
       });
-      // Pre-Agent 风险预检位于 ReplyWorkflow 内部，execute() 阶段不触发
-      expect(mockPreAgentRiskIntercept.precheck).not.toHaveBeenCalled();
+      // Pre-Agent 风险预检已收进 AgentRunner.runTurn；execute() 阶段只做入站分发准备。
+      expect(mockRunnerService.precheckInboundOutcome).not.toHaveBeenCalled();
+      expect(mockRunnerService.runTurn).not.toHaveBeenCalled();
       expect(mockImageDescriptionService.describeAndUpdateAsync).not.toHaveBeenCalled();
       expect(mockRunnerService.invoke).not.toHaveBeenCalled();
     });

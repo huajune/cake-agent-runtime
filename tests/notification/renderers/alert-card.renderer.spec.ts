@@ -61,7 +61,9 @@ describe('AlertCardRenderer', () => {
     expect(payload.content).toContain('**蛋糕已回复（降级）**: 我确认下哈，马上回你~');
     expect(payload.content).toContain('**异常消息**: 所有模型均失败');
     expect(payload.content).toContain('**会话 ID**: chat-123');
-    expect(payload.content).toContain('**来源**: wecom/MessagePipelineService.handleProcessingFailure [http]');
+    expect(payload.content).toContain(
+      '**来源**: wecom/MessagePipelineService.handleProcessingFailure [http]',
+    );
     expect(payload.content).toContain('**投递状态**: none');
     expect(payload.content).toContain('📎 错误分类: retryable');
     expect(payload.content).toContain('模型链: anthropic/claude-sonnet-4 -> openai/gpt-4o');

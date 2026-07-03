@@ -184,7 +184,11 @@ describe('TestWriteBackService', () => {
     it('should write PASSED status to feishu record', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      const result = await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED, 'batch-1');
+      const result = await service.writeBackResult(
+        'recvifeishu01',
+        FeishuTestStatus.PASSED,
+        'batch-1',
+      );
 
       expect(bitableApi.getTableConfig).toHaveBeenCalledWith('testSuite');
       expect(bitableApi.updateRecord).toHaveBeenCalledWith(
@@ -212,7 +216,12 @@ describe('TestWriteBackService', () => {
     it('should NOT include errorReason field for PASSED status', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED, undefined, '某个原因');
+      await service.writeBackResult(
+        'recvifeishu01',
+        FeishuTestStatus.PASSED,
+        undefined,
+        '某个原因',
+      );
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['错误原因']).toBeUndefined();
@@ -221,7 +230,12 @@ describe('TestWriteBackService', () => {
     it('should include errorReason field only for FAILED status', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackResult('recvifeishu01', FeishuTestStatus.FAILED, undefined, '回答内容错误');
+      await service.writeBackResult(
+        'recvifeishu01',
+        FeishuTestStatus.FAILED,
+        undefined,
+        '回答内容错误',
+      );
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['错误原因']).toBe('回答内容错误');

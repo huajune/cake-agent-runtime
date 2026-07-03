@@ -20,10 +20,7 @@ describe('AiStreamObservabilityService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AiStreamObservabilityService(
-      mockTrackingService as never,
-      mockObserver as never,
-    );
+    service = new AiStreamObservabilityService(mockTrackingService as never, mockObserver as never);
   });
 
   it('should persist full ai-stream request, reply, reasoning, tool calls and renderable messages', () => {

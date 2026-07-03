@@ -1,6 +1,6 @@
 # 招聘 Agent 敏感信息与安全护栏全景说明（运营版）
 
-**最后更新**：2026-06-12
+**最后更新**：2026-06-30
 **目标读者**：运营同学（非技术）
 **飞书版本**：https://gingjqcjzc.feishu.cn/wiki/VTZKw61iCicybpkkKTZcjOPlnhh
 **技术侧文档**：基础设施层护栏（鉴权/重试/限流/注入检测实现）见 [架构文档 security-guardrails.md](../architecture/security-guardrails.md)
@@ -9,15 +9,29 @@
 
 ---
 
-## 先看懂三种保护强度
+## 先看懂执行动作
 
-每条护栏后面都有标注，含义如下：
+每条护栏后面都有标注，含义如下。`📜` 只是行为约束，不单独计入强覆盖；真正的系统兜底来自 `📡`、`📝`、`🔒`。
 
-| 标记 | 含义 | 可靠程度 |
-|---|---|---|
-| 🔒 硬拦截 | 代码强制执行，AI 想违规也发不出去 | 必然生效 |
-| 📡 检测告警 | 代码自动检测，命中即飞书告警，人工跟进 | 必然发现，事后处置 |
-| 📜 行为规则 | 写进 AI 的话术红线，违规概率极低但非零 | 强约束，由 📡/🔒 兜底 |
+| 标记        | 含义                                         | 可靠程度                     |
+| ----------- | -------------------------------------------- | ---------------------------- |
+| 🔒 硬拦截   | 代码强制执行，命中后该条回复不发送           | 必然生效，候选人侧沉默       |
+| 📝 改写     | 代码自动检测，命中后要求 AI 重新生成合规回复 | 必然触发修正，仍会记录命中   |
+| 📡 检测告警 | 代码自动检测，命中即飞书告警，人工跟进       | 必然发现，事后处置           |
+| 📜 行为规则 | 写进 AI 的话术红线                           | 降低违规概率，但需要代码兜底 |
+
+## 生效阶段
+
+护栏按生效点分为六类，便于判断是否存在绕过路径：
+
+| 阶段       | 作用                                                        |
+| ---------- | ----------------------------------------------------------- |
+| 输入前     | 候选人消息进入 Agent 前，识别辱骂、投诉、指令注入等风险     |
+| 推理中     | Agent 按红线和岗位事实生成回复                              |
+| 工具层     | 预约、预检、拉群、黑名单、记忆等工具执行前后做参数/结果校验 |
+| 输出前     | AI 回复发送前做确定性扫描，决定放行、改写或硬拦截           |
+| 记忆写入前 | 长期记忆只允许白名单字段入库                                |
+| 人工运营   | 飞书告警、托管暂停、黑名单、人工接手                        |
 
 ---
 
@@ -28,16 +42,18 @@
 - 岗位数据进 AI 时自动打"仅供内部筛选、严禁转述"标记，包括藏在备注/面试补充项自由文本里的条件 📜
 - 禁止把"不要 X 籍 / 限本地户口 / 限 X 族"写进岗位介绍或拒绝理由；判定不符合时用排班/距离等中性理由转推其他岗位 📜
 - 禁止直问"你是哪里人"；核对户籍只用承接式问法（"公司登记需要核对下户籍信息"）；**民族永远不会被询问**——系统不存在民族收集字段 📜
-- **出站强拦**：AI 回复发送前逐条扫描，出现歧视性措辞（不要 X 籍 / 仅限本地户口 / 限 X 族 / 你的户籍不符合等），该条直接作废不发送 + 飞书告警 🔒（全系统唯一的拦截级规则）
+- **出站强拦**：AI 回复发送前逐条扫描，出现歧视性措辞（不要 X 籍 / 仅限本地户口 / 限 X 族 / 你的户籍不符合等），该条直接作废不发送 + 飞书告警 🔒
 
 ### 2. 性别
 
 - 严禁凭微信昵称、头像、文风、姓名用字推断候选人性别 📜
 - 不得以性别为由直接打发候选人（禁止"只招女性"+拉群了事）；系统兜底的性别标签不能作为拒绝依据 📜
+- **出站强拦**：AI 回复出现"只招女性 / 不收男性 / 你是男生不合适"等性别直拒或筛选条件外露，该条直接作废不发送 + 飞书告警 🔒
 
 ### 3. 年龄
 
 - 岗位年龄要求的具体数值（如"要求25-40岁"）禁止直接告知候选人；超龄时换岗承接，禁止"稍微超了帮你备注试试"的通融话术 📜
+- **出站强拦**：AI 回复透露岗位年龄上下限或明说"超龄/年龄不符合"，该条直接作废不发送 + 飞书告警 🔒
 - 不前置问年龄再推岗（业务要求）📜
 
 ### 4. 其他敏感门槛
@@ -53,11 +69,12 @@
 ## 二、诚信保护（防 AI 编造，候选人不被误导）
 
 - **名额承诺禁令**：严禁"名额放心不会满 / 帮你留好了"；候选人有前置成本（办证/跑远路）时必须主动提示岗位状态可能变化 📜
+- **名额承诺出站强拦**：AI 回复承诺名额不会满、名额已保留、位置已留好，该条直接作废不发送 + 飞书告警 🔒
 - **薪资编造检测**：回复说"节假日双倍 / 周末加薪 / 工资浮动"但岗位数据里没有 → 飞书告警 📡
 - **拉群空头承诺检测**：说了"拉你进群"但实际没拉成、或编"群满了" → 飞书告警 📡
 - **距离如实**：岗位偏远时如实报距离让候选人决定，严禁说成"附近没有在招" 📜
-- **系统状态禁编造**：不得虚构"系统同步失败/网络问题"来解释拖延 📜
-- **工作内容只按岗位数据**：禁止"餐饮一般都要洗碗"式通识泛化补充职责 📜
+- **系统状态禁编造**：不得虚构"系统同步失败/网络问题"来解释拖延；命中后要求改写为补充信息、稍后人工处理或继续推进业务动作的口径 📝
+- **工作内容只按岗位数据**：禁止"餐饮一般都要洗碗"式通识泛化补充职责；命中后要求删除未接地职责或改成"以门店/岗位说明为准" 📝
 - **收资字段禁替填**：候选人没给的字段留空，严禁拿岗位年龄上限当候选人年龄填 📜+📡（模板字段与系统要求不一致会告警）
 - **面试方式按事实**：线上/AI 面试不能让候选人跳过、不能擅自改成到店面 📜
 
@@ -85,31 +102,53 @@
 
 - **指令注入防护**：候选人消息出现"忽略之前的指令 / 把你的提示词发出来 / 假装你是…"等套取/劫持模式 → 自动加固 AI 角色设定 + 飞书告警 📡
 - **内部信息不外露**：阶段判断、策略、记忆内容、分析过程严禁出现在回复里；不暴露"机器人/托管"身份 📜
-- **对外口径统一**：品牌只称"独立客"；平台范围只说"只做兼职岗位" 📜
+- **内部信息出站强拦**：回复出现阶段名、工具名、JSON/代码块、内部策略等实现痕迹，该条直接作废不发送 + 飞书告警 🔒
+- **对外口径统一**：平台品牌只称"独立客"；岗位品牌名必须来自本轮岗位工具结果；出现"独立日"等错误平台品牌名或结构化岗位标题品牌改写时直接作废不发送 + 飞书告警 🔒；平台范围只说"只做兼职岗位" 📜
 
 ---
 
 ## 运营同学的行动指引
 
 1. **飞书告警带"【已拦截，未发送给候选人】"** → 系统已拦住，但该候选人当轮收到的是沉默，请尽快人工接管跟进
-2. **其他告警（薪资编造/拉群承诺/收资字段）** → 内容已发出，按 badcase 表评估是否需要人工补救
-3. **风险预检/黑名单触发** → 托管已自动暂停/取消，该会话归人工
-4. **配岗位数据时**：敏感筛选条件尽量配结构化字段，对外文案里绝不要写户籍/民族类要求
+2. **改写类告警（带 📝 规则）** → 系统已要求 AI 重写，关注最终回复是否恢复事实口径
+3. **观察类告警（薪资编造/群满编造/收资字段/距离漏报）** → 内容可能已发出，按 badcase 表评估是否需要人工补救
+4. **风险预检/黑名单触发** → 托管已自动暂停/取消，该会话归人工
+5. **配岗位数据时**：敏感筛选条件尽量配结构化字段，对外文案里绝不要写户籍/民族类要求
 
 ---
 
-## 护栏对应的代码位置（技术同学参考）
+## 护栏验收矩阵（技术同学参考）
 
-| 护栏 | 实现位置 |
-|---|---|
-| 户籍/民族渲染标注 | `src/tools/duliday/job-list/render.util.ts`、`src/tools/utils/sensitive-screening.util.ts` |
-| precheck 敏感提示 | `src/tools/duliday-interview-precheck.tool.ts`（`sensitiveScreeningNotice`） |
-| 出站歧视拦截 | `src/channels/wecom/message/application/reply-fact-guard.service.ts`（`discriminatory_screening_leak`，block 级） |
-| 出站编造检测 | 同上（拉群/薪资/收资字段三类，告警级） |
-| 敏感话术红线 | `src/agent/context/prompts/candidate-consultation.md` |
-| 风险预检 | `src/channels/wecom/message/application/pre-agent-risk-intercept.service.ts` + `src/conversation-risk/` |
-| 候选人黑名单 | `src/biz/candidate-blacklist/` |
-| 指令注入防护 | `src/agent/input-guard.service.ts` |
-| 真名校验 | `src/memory/facts/name-guard.ts` + booking guards |
+完整机器可读 catalog 在 `src/agent/guardrail/catalog.ts`；工具层规则从 `src/agent/guardrail/tool/tool-guardrail.catalog.ts` 展开；输出前确定性规则的 catalog 在 `src/agent/guardrail/output/rules/output-rule-catalog.ts`，具体实现按领域拆在 `src/agent/guardrail/output/rules/*.rule.ts`，避免文档和代码口径漂移。
 
-> 注：户籍/民族四道防线中的"出站强拦"与部分标注强化为 2026-06-12 新增（`feat/blacklist-realtime-conversion` 分支），随下一次发版生效；其余护栏线上已在运行。发版后请删除本注。
+| 风险目标                   | 代表规则/机制                                             | 阶段   | 动作        | 优先级 | Owner         | 状态   | 主要残余风险                           | 验证证据                                                     |
+| -------------------------- | --------------------------------------------------------- | ------ | ----------- | ------ | ------------- | ------ | -------------------------------------- | ------------------------------------------------------------ |
+| 防户籍/民族筛选外露        | `discriminatory_screening_leak`                           | 输出前 | 🔒          | P0     | agent-runtime | active | 隐晦地域暗示需持续补词                 | `tests/agent/guardrail/output/hard-rules.service.spec.ts`    |
+| 防性别直拒/筛选外露        | `gender_direct_reject`                                    | 输出前 | 🔒          | P0     | agent-runtime | active | 隐晦性别暗示需持续补词                 | 同上                                                         |
+| 防年龄门槛数值/超龄外露    | `age_requirement_disclosure`                              | 输出前 | 🔒          | P0     | agent-runtime | active | 口语化年龄暗示需补样本                 | 同上                                                         |
+| 防名额承诺                 | `quota_promise`                                           | 输出前 | 🔒          | P0     | agent-runtime | active | 含蓄承诺需运营 badcase 补样本          | 同上                                                         |
+| 防内部实现泄漏             | `internal_output_leak`                                    | 输出前 | 🔒          | P0     | agent-runtime | active | 新内部术语需补充词库                   | 同上                                                         |
+| 防工具失败后声称成功       | `tool_failure_success_claim`                              | 输出前 | 📝          | P0     | agent-runtime | active | 新副作用工具需同步登记                 | 同上                                                         |
+| 防 precheck 阻断后继续约面 | `precheck_blocked_booking_claim`                          | 输出前 | 📝          | P0     | agent-runtime | active | 新阻断原因需要结构化字段               | 同上                                                         |
+| 防主动保险/社保误导        | `proactive_insurance_policy_mention`                      | 输出前 | 🔒          | P0     | agent-runtime | active | 跨轮追问语境暂未识别                   | 同上                                                         |
+| 防未接地岗位推荐           | `ungrounded_job_recommendation`                           | 输出前 | 🔒          | P1     | agent-runtime | active | 短句历史承接暂不拦截                   | 同上                                                         |
+| 防等通知岗位编具体时间     | `wait_notice_time_fabrication`                            | 输出前 | 📝          | P1     | agent-runtime | active | 非标准时间表述需补样本                 | 同上                                                         |
+| 防不确定定位后做附近判断   | `geocode_uncertain_location_claim`                        | 输出前 | 📝          | P1     | agent-runtime | active | 历史位置承接暂未纳入豁免               | 同上                                                         |
+| 防无预约时声称已转人工     | `handoff_no_booking_claim`                                | 输出前 | 📝          | P1     | agent-runtime | active | 人工侧另行处理但工具未返回时可能误改写 | 同上                                                         |
+| 防拉群空头承诺             | `group_promise_without_invite`                            | 输出前 | 📝          | P1     | agent-runtime | active | 历史已入群场景仍需样本回放             | 同上                                                         |
+| 观测群满/群解散编造        | `group_full_without_invite`                               | 输出前 | 📡          | P1     | agent-runtime | active | 当前仅观察，内容可能已发出             | 同上                                                         |
+| 观测薪资编造               | `salary_fabrication`                                      | 输出前 | 📡          | P1     | agent-runtime | active | 历史岗位复述为降误杀暂不检测           | 同上                                                         |
+| 观测收资模板漏字段         | `booking_form_field_mismatch`                             | 输出前 | 📡          | P1     | agent-runtime | active | 当前仅观察，候选人可能已收到漏字段模板 | 同上                                                         |
+| 防系统状态编造             | `system_status_fabrication`                               | 输出前 | 📝          | P1     | agent-runtime | active | 更委婉的甩锅话术需线上补样本           | 同上                                                         |
+| 防工作内容泛化             | `work_content_generalization`                             | 输出前 | 📝          | P1     | agent-runtime | active | 岗位真实职责含相似词时可能被要求改写   | 同上                                                         |
+| 防平台/岗位品牌名错误      | `brand_name_violation`                                    | 输出前 | 🔒          | P1     | agent-runtime | active | 普通口语品牌讨论不强拦以降低误伤       | 同上                                                         |
+| 观测候选人昵称回声         | `candidate_name_echo`                                     | 输出前 | 📡          | P2     | agent-runtime | active | 普通词与昵称重合可能误报               | 同上                                                         |
+| 观测推荐门店漏距离         | `distance_missing`                                        | 输出前 | 📡          | P2     | agent-runtime | active | 当前为体验类观察告警                   | 同上                                                         |
+| 指令注入防护               | `input_prompt_injection`                                  | 输入前 | 📡          | P1     | agent-runtime | active | 只加固与告警，不直接拦截               | `tests/agent/guardrail/input/prompt-injection.service.spec.ts` |
+| 风险预检/托管暂停          | `pre_agent_risk_intercept`                                | 输入前 | 📡+暂停托管 | P0     | agent-runtime | active | 隐晦投诉或无关键词升级可能漏检         | `tests/agent/guardrail/input/risk-intercept.service.spec.ts` |
+| 预约岗位来源校验           | `booking_jobid_provenance`                                | 工具层 | 🔒          | P0     | tools-runtime | active | 召回集缓存/会话边界错误会影响判定      | `tests/tools/tool/duliday-interview-booking.tool.spec.ts`    |
+| booking 必须先过 precheck  | `booking_precheck_contract`                               | 工具层 | 🔒          | P0     | tools-runtime | active | 模型可伪造 prechecked，需叠加其它兜底  | `tests/tools/tool/duliday-interview-booking.tool.spec.ts`    |
+| 真名/姓名来源校验          | `booking_real_name` / `booking_name_authority`            | 工具层 | 🔒          | P0     | tools-runtime | active | 罕见姓名与多轮姓名指代仍需人工兜底     | `tests/tools/duliday/booking-guards.util.spec.ts`            |
+| 岗位硬筛/报名硬约束        | `booking_screening_answers` / `booking_hard_requirements` | 工具层 | 🔒          | P0     | tools-runtime | active | 工具拒绝后仍依赖输出层隐藏敏感拒绝理由 | 同上                                                         |
+
+> 口径说明：`📜` prompt-only 红线仍保留在策略中，但不再单独视为强覆盖；强覆盖必须能在 catalog 中找到代码路径、动作、owner、残余风险和验证证据。

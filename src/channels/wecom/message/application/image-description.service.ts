@@ -41,6 +41,12 @@ export class ImageDescriptionService {
   private consecutiveFailures = 0;
   private readonly ALERT_THRESHOLD = 3;
 
+  // 回写重试：入站历史 insert 是 fire-and-forget（约 500ms-2s），vision 描述完成时目标行可能尚未
+  // 落库，updateContentByMessageId 找不到行会静默丢失描述。命中「无匹配行」时退避重试，给 insert
+  // 兜底时间。
+  private readonly WRITEBACK_MAX_ATTEMPTS = 4;
+  private readonly WRITEBACK_RETRY_BASE_DELAY_MS = 500;
+
   /** 进行中的描述任务：messageId → 描述完成后 settle 的 Promise */
   private readonly inFlight = new Map<string, Promise<void>>();
 
@@ -203,20 +209,56 @@ export class ImageDescriptionService {
     // PDF 文件简历相同的链路 —— extractUploadResume 的标注行分支会捕获该 URL，
     // 流入会话事实 upload_resume → precheck checklist 补齐"简历附件" →
     // booking 经 uploadAttachmentFromUrl 上传图片拿 cloudStorageKey 提交。
-    // 先剥离 OCR 描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
+    // 先剥离视觉描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
     // 一行，避免重复行（badcase chat 6a2fac72…：单条简历消息出现两条相同"简历附件"）。
     const isResumeImage = kind === MessageType.IMAGE && isResumeImageDescription(description);
     const content = isResumeImage
       ? `${formatDescription(kind, stripResumeAttachmentLines(description))}\n简历附件：${imageUrl}`
       : formatDescription(kind, description);
 
-    await this.chatSession.updateMessageContent(messageId, content);
+    await this.writeBackDescription(messageId, content, kind);
 
     this.consecutiveFailures = 0;
 
     this.logger.log(
       `${this.kindLabel(kind)}描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${result.usage.totalTokens}`,
     );
+  }
+
+  /**
+   * 把 vision 描述回写到 chat_messages.content。命中「无匹配行」（updateMessageContent 返回 false）
+   * 时退避重试——历史 insert 是 fire-and-forget，回写时目标行可能尚未落库；不重试会静默丢描述，
+   * 导致 Agent 只看到 "[图片消息]" 占位文本。
+   */
+  private async writeBackDescription(
+    messageId: string,
+    content: string,
+    kind: VisualMessageKind,
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= this.WRITEBACK_MAX_ATTEMPTS; attempt++) {
+      let updated = false;
+      try {
+        updated = await this.chatSession.updateMessageContent(messageId, content);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `${this.kindLabel(kind)}描述回写异常（第 ${attempt}/${this.WRITEBACK_MAX_ATTEMPTS} 次）[${messageId}]: ${errorMessage}`,
+        );
+      }
+      if (updated) return;
+
+      if (attempt < this.WRITEBACK_MAX_ATTEMPTS) {
+        await this.delay(this.WRITEBACK_RETRY_BASE_DELAY_MS * attempt);
+      }
+    }
+
+    this.logger.error(
+      `${this.kindLabel(kind)}描述回写失败：chat_messages 无匹配行或更新异常（已重试 ${this.WRITEBACK_MAX_ATTEMPTS} 次，历史可能始终未落库）[${messageId}]`,
+    );
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

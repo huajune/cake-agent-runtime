@@ -51,14 +51,20 @@ describe('姓名提取完整数据流 (15 cases)', () => {
 
   describe('第一组：结构化表单姓名提取', () => {
     it('Case 1: 标准结构化表单 (姓名：赵堤)', () => {
-      const { ruleFacts, prompt } = pipeline(['姓名：赵堤\n联系电话：18800001111\n年龄：24\n性别：男']);
+      const { ruleFacts, prompt } = pipeline([
+        '姓名：赵堤\n联系电话：18800001111\n年龄：24\n性别：男',
+      ]);
 
-      expect(ruleFacts?.interview_info.name).toEqual(expect.objectContaining(highRuleValue('赵堤')));
+      expect(ruleFacts?.interview_info.name).toEqual(
+        expect.objectContaining(highRuleValue('赵堤')),
+      );
       expect(ruleFacts?.interview_info.phone).toEqual(
         expect.objectContaining(highRuleValue('18800001111')),
       );
       expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('24')));
-      expect(ruleFacts?.interview_info.gender).toEqual(expect.objectContaining(highRuleValue('男')));
+      expect(ruleFacts?.interview_info.gender).toEqual(
+        expect.objectContaining(highRuleValue('男')),
+      );
       expect(prompt).toContain('姓名：赵堤');
       expect(prompt).toContain('联系方式: 18800001111');
     });
@@ -106,7 +112,9 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(messages);
 
       // 高置信层应提取结构化表单中的赵堤，不受昵称干扰
-      expect(ruleFacts?.interview_info.name).toEqual(expect.objectContaining(highRuleValue('赵堤')));
+      expect(ruleFacts?.interview_info.name).toEqual(
+        expect.objectContaining(highRuleValue('赵堤')),
+      );
       expect(prompt).toContain('姓名：赵堤');
 
       // sanitizer 验证：LLM 也提取了赵堤 → 不应被 drop
@@ -128,7 +136,9 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       ];
       const { ruleFacts } = pipeline(messages);
 
-      expect(ruleFacts?.interview_info.name).toEqual(expect.objectContaining(highRuleValue('赵堤')));
+      expect(ruleFacts?.interview_info.name).toEqual(
+        expect.objectContaining(highRuleValue('赵堤')),
+      );
 
       // sanitizer：打招呼语"我是赵堤"命中 → 但结构化表单确认 → 应保留
       const llmFacts: EntityExtractionResult = {
@@ -201,7 +211,9 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       ];
       const { ruleFacts, prompt } = pipeline(messages);
 
-      expect(ruleFacts?.interview_info.name).toEqual(expect.objectContaining(highRuleValue('张伟')));
+      expect(ruleFacts?.interview_info.name).toEqual(
+        expect.objectContaining(highRuleValue('张伟')),
+      );
       expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('28')));
       expect(prompt).toContain('姓名：张伟');
     });
@@ -219,7 +231,9 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       expect(ruleFacts?.preferences.city).toEqual(expect.objectContaining(highRuleValue('上海')));
       expect(unwrapHighConfidenceValue(ruleFacts?.preferences.district)).toContain('浦东');
       expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('25')));
-      expect(ruleFacts?.interview_info.gender).toEqual(expect.objectContaining(highRuleValue('男')));
+      expect(ruleFacts?.interview_info.gender).toEqual(
+        expect.objectContaining(highRuleValue('男')),
+      );
       expect(ruleFacts?.interview_info.is_student).toEqual(
         expect.objectContaining(highRuleValue(true)),
       );
@@ -290,11 +304,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
     });
 
     it('Case 15: 多轮累积（城市 + 区域 + 结构化表单）', () => {
-      const messages = [
-        '我在上海',
-        '浦东这边有吗',
-        '姓名：陈晓华\n电话：15000150000\n年龄：30',
-      ];
+      const messages = ['我在上海', '浦东这边有吗', '姓名：陈晓华\n电话：15000150000\n年龄：30'];
       const { ruleFacts, prompt } = pipeline(messages);
 
       // 跨消息累积

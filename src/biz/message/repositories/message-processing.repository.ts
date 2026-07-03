@@ -34,6 +34,7 @@ export class MessageProcessingRepository extends BaseRepository {
     'reply_preview',
     'reply_segments',
     'status',
+    'error',
     'total_duration',
     'queue_duration',
     'prep_duration',
@@ -43,6 +44,10 @@ export class MessageProcessingRepository extends BaseRepository {
     'token_usage',
     'is_fallback',
     'fallback_success',
+    'batch_id',
+    // 守卫徽标（表格"处理状态"列）依赖这两个紧凑摘要列；体积远小于 agent_invocation，可进首屏投影。
+    'guardrail_input',
+    'guardrail_output',
   ].join(',');
 
   // 内部诊断/聚合查询用投影（不拉 agent_invocation 这个最大 jsonb 字段）
@@ -70,6 +75,8 @@ export class MessageProcessingRepository extends BaseRepository {
     'tool_calls',
     'agent_steps',
     'anomaly_flags',
+    'guardrail_input',
+    'guardrail_output',
     'memory_snapshot',
     'post_processing_status',
     'token_usage',
@@ -761,6 +768,64 @@ export class MessageProcessingRepository extends BaseRepository {
     }
   }
 
+  /**
+   * 成功重放后，标记同一输入遗留的旧 processing 行。
+   *
+   * 发版强杀可能发生在 worker 已创建 batch trace、但尚未 ack pending 之前。
+   * 新实例会从 pending 重放并生成新的 batch_id；旧 batch 行不会再收到终态回写，
+   * 因此这里在新 batch 成功后，把相同 chat/receivedAt/preview 的旧 processing
+   * 行改成 timeout，并在 error/batch_id 中记录被哪个 batch 接管。
+   */
+  async markSupersededProcessingRecords(params: {
+    currentMessageId: string;
+    replacementMessageId: string;
+    chatId: string;
+    receivedAt: number;
+    messagePreview?: string;
+  }): Promise<number> {
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      const dbUpdates = {
+        status: 'timeout',
+        error: `发布/重试中断遗留记录，已由 ${params.replacementMessageId} 补处理成功`,
+        batch_id: params.replacementMessageId,
+      };
+
+      let query = this.getClient()
+        .from(this.tableName)
+        .update(dbUpdates)
+        .eq('status', 'processing')
+        .eq('chat_id', params.chatId)
+        .eq('received_at', new Date(params.receivedAt).toISOString())
+        .neq('message_id', params.currentMessageId);
+
+      if (params.messagePreview) {
+        query = query.eq('message_preview', params.messagePreview);
+      }
+
+      const { data, error } = await query.select('message_id');
+
+      if (error) {
+        this.logger.error(
+          `[消息处理记录] 标记旧 processing 接管失败 [${params.currentMessageId}]:`,
+          error,
+        );
+        return 0;
+      }
+
+      return Array.isArray(data) ? data.length : 0;
+    } catch (error) {
+      this.logger.error(
+        `[消息处理记录] 标记旧 processing 接管异常 [${params.currentMessageId}]:`,
+        error,
+      );
+      return 0;
+    }
+  }
+
   async updatePostProcessingStatus(
     messageId: string,
     status: MessageProcessingRecordInput['postProcessingStatus'],
@@ -935,6 +1000,8 @@ export class MessageProcessingRepository extends BaseRepository {
       tool_calls: record.toolCalls,
       agent_steps: record.agentSteps,
       anomaly_flags: record.anomalyFlags,
+      guardrail_input: record.guardrailInput,
+      guardrail_output: record.guardrailOutput,
       memory_snapshot: record.memorySnapshot,
       post_processing_status: record.postProcessingStatus,
     };
@@ -977,6 +1044,8 @@ export class MessageProcessingRepository extends BaseRepository {
       toolCalls: record.tool_calls as MessageProcessingRecordInput['toolCalls'],
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
       anomalyFlags: record.anomaly_flags as MessageProcessingRecordInput['anomalyFlags'],
+      guardrailInput: record.guardrail_input as MessageProcessingRecordInput['guardrailInput'],
+      guardrailOutput: record.guardrail_output as MessageProcessingRecordInput['guardrailOutput'],
       memorySnapshot: record.memory_snapshot as MessageProcessingRecordInput['memorySnapshot'],
       postProcessingStatus:
         record.post_processing_status as MessageProcessingRecordInput['postProcessingStatus'],

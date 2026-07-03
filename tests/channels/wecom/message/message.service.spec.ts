@@ -174,7 +174,10 @@ describe('MessageService', () => {
       expect(mockWecomObservabilityService.startRequestTrace).toHaveBeenCalledWith(
         expect.objectContaining({ traceId: 'msg-123' }),
       );
-      expect(mockWecomObservabilityService.updateDispatch).toHaveBeenCalledWith('msg-123', 'merged');
+      expect(mockWecomObservabilityService.updateDispatch).toHaveBeenCalledWith(
+        'msg-123',
+        'merged',
+      );
       expect(mockWecomObservabilityService.buildFailureMetadata).toHaveBeenCalledWith(
         'msg-123',
         expect.objectContaining({ errorType: 'merge', errorMessage: 'redis down' }),

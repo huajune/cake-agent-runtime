@@ -464,10 +464,7 @@ describe('MonitoringRecordRepository', () => {
       query.range.mockResolvedValue({
         data: [
           {
-            tool_calls: [
-              { toolName: 'request_handoff' },
-              { toolName: 'raise_risk_alert' },
-            ],
+            tool_calls: [{ toolName: 'request_handoff' }, { toolName: 'raise_risk_alert' }],
           },
           {
             tool_calls: [

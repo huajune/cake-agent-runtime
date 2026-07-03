@@ -17,8 +17,8 @@
 - [核心业务表](#核心业务表)
   - [chat_messages](#1-chat_messages---聊天消息记录)
   - [message_processing_records](#2-message_processing_records---消息处理记录)
-  - [interview_booking_records](#3-interview_booking_records---面试预约记录)
-  - [recruitment_cases](#4-recruitment_cases---招聘案件)
+  - [interview_booking_records](#3-interview_booking_records---面试预约记录) 🗄️ 已删除
+  - [recruitment_cases](#4-recruitment_cases---招聘案件) 🗄️ 已删除
 - [记忆/画像表](#记忆画像表)
   - [agent_long_term_memories](#5-agent_long_term_memories---用户长期记忆)
 - [用户管理表](#用户管理表)
@@ -47,8 +47,8 @@
 |---|------|--------|---------|---------|---------|
 | 1 | `chat_messages` | 消息 | upsert | select / RPC | 90 天 |
 | 2 | `message_processing_records` | 消息 | insert / upsert | select / RPC | 30 天（7 天后清空 agent_invocation） |
-| 3 | `interview_booking_records` | 消息 | RPC upsert | select | 永久 |
-| 4 | `recruitment_cases` | 消息 | insert / update | select | 永久（按 status 归档） |
+| ~~3~~ | ~~`interview_booking_records`~~ 🗄️ 已删除 | — | — | — | 迁移 20260625111500 移除 |
+| ~~4~~ | ~~`recruitment_cases`~~ 🗄️ 已删除 | — | — | — | 迁移 20260610170000 移除 |
 | 5 | `agent_long_term_memories` | 记忆 | RPC upsert / select | select | 永久 |
 | 6 | `user_activity` | 用户 | RPC upsert | select | 30 天 |
 | 7 | `user_hosting_status` | 用户 | upsert / update | select | 永久 |
@@ -231,12 +231,12 @@
 
 ### 3. interview_booking_records - 面试预约记录
 
+> **🗄️ 已删除**（迁移 `20260625111500_drop_legacy_interview_booking_records.sql`）。预约统计已切到 `ops_events`，
+> 见 [ops-data-and-sponge-integration.md](../product/ops-data-and-sponge-integration.md)。以下为历史 schema 记录，代码已移除。
+
 **用途**：记录 AI 预约面试的统计数据，按品牌/门店/日期聚合
 
-**代码位置**：
-
-- Repository: [src/biz/message/repositories/booking.repository.ts](../../src/biz/message/repositories/booking.repository.ts)
-- Entity: [src/biz/message/entities/booking.entity.ts](../../src/biz/message/entities/booking.entity.ts)
+**代码位置**：已随表删除（原 `src/biz/message/repositories/booking.repository.ts` / `booking.entity.ts`）
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
@@ -266,12 +266,12 @@
 
 ### 4. recruitment_cases - 招聘案件
 
+> **🗄️ 已删除**（迁移 `20260610170000_drop_recruitment_cases.sql`）。跟进/预约状态改以海绵工单为 source of truth +
+> `ops_events` 事件底账，见 [ops-data-and-sponge-integration.md](../product/ops-data-and-sponge-integration.md)。以下为历史 schema 记录，代码已移除。
+
 **用途**：跟踪约面后的 Case 生命周期（目前仅 `onboard_followup`），驱动后续跟进触达
 
-**代码位置**：
-
-- Repository: [src/biz/recruitment-case/repositories/recruitment-case.repository.ts](../../src/biz/recruitment-case/repositories/recruitment-case.repository.ts)
-- Entity: [src/biz/recruitment-case/entities/recruitment-case.entity.ts](../../src/biz/recruitment-case/entities/recruitment-case.entity.ts)
+**代码位置**：已随表删除（原 `src/biz/recruitment-case/` 模块）
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|

@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { BusinessMetricRuleEngine } from '@analytics/rules/business-metric-rule.engine';
 import { AnalyticsDashboardService } from '../dashboard/analytics-dashboard.service';
@@ -37,6 +38,7 @@ export class AnalyticsAlertService implements OnModuleInit {
     private readonly alertService: AlertNotifierService,
     private readonly businessMetricRuleEngine: BusinessMetricRuleEngine,
     private readonly systemConfigService: SystemConfigService,
+    private readonly configService: ConfigService,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {
@@ -46,6 +48,12 @@ export class AnalyticsAlertService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    if (this.isReadOnlyPreview()) {
+      this.enabled = false;
+      this.logger.warn('READ_ONLY_PREVIEW=true，业务指标告警服务已禁用');
+      return;
+    }
+
     try {
       const config = await this.systemConfigService.getAgentReplyConfig();
       this.applyConfig(config);
@@ -83,6 +91,7 @@ export class AnalyticsAlertService implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async checkBusinessMetrics(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
     if (!this.enabled) return;
 
     try {
@@ -130,5 +139,9 @@ export class AnalyticsAlertService implements OnModuleInit {
 
   private recordAlertSent(key: string): void {
     this.lastAlertTimestamps.set(key, Date.now());
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 }

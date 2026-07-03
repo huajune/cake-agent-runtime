@@ -5,7 +5,10 @@
  */
 import { isLikelyRealChineseName, sanitizeInterviewName } from '@/memory/facts/name-guard';
 import { extractStructuredName } from '@memory/facts/high-confidence-facts';
-import { FALLBACK_EXTRACTION, type EntityExtractionResult } from '@memory/types/session-facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  type EntityExtractionResult,
+} from '@memory/types/session-facts.types';
 
 function buildFacts(name: string | null): EntityExtractionResult {
   return {

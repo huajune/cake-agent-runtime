@@ -100,8 +100,40 @@ export class DailyOpsReportRepository extends BaseRepository {
   }
 
   /**
+   * 按 report_date 汇总预约成功数，供 Dashboard 业务趋势使用。
+   */
+  async sumBookingSuccessByDateRange(
+    startReportDate: string,
+    endReportDate: string,
+  ): Promise<Array<{ date: string; bookingSuccess: number }>> {
+    const rows = await this.selectAllPaged<{
+      report_date: string;
+      booking_success_count: number | null;
+    }>(this.tableName, 'report_date,booking_success_count', (q) =>
+      q
+        .gte('report_date', startReportDate)
+        .lte('report_date', endReportDate)
+        .order('report_date', { ascending: true })
+        .order('id', { ascending: true }),
+    );
+
+    const byDate = new Map<string, number>();
+    for (const row of rows) {
+      byDate.set(
+        row.report_date,
+        (byDate.get(row.report_date) ?? 0) + (row.booking_success_count ?? 0),
+      );
+    }
+
+    return Array.from(byDate.entries()).map(([date, bookingSuccess]) => ({
+      date,
+      bookingSuccess,
+    }));
+  }
+
+  /**
    * 最早的 report_date（整表）。用于仪表盘判断"运营投影是否已覆盖某查询范围"：
-   * 仅当 earliest <= 范围起点时才用 daily_ops_report，否则回退旧数据源（避免前向累积导致少算）。
+   * 仅当 earliest <= 范围起点时才用 daily_ops_report，避免前向累积导致少算。
    */
   async getEarliestReportDate(): Promise<string | null> {
     // selectOne：受熔断器保护（内部已 limit(1)）。

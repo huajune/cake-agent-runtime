@@ -37,6 +37,10 @@ export interface MessageProcessingDbRecord {
   agent_steps?: unknown;
   /** 异常信号数组 */
   anomaly_flags?: string[];
+  /** 入站守卫拦截摘要 JSONB（仅拦截命中时非空） */
+  guardrail_input?: unknown;
+  /** 出站守卫全程 trace JSONB（紧凑摘要，KB 级；独立列避免挤进 agent_invocation 大 blob） */
+  guardrail_output?: unknown;
   /** 记忆上下文快照 JSONB */
   memory_snapshot?: unknown;
   /** turn-end 后处理状态 JSONB */

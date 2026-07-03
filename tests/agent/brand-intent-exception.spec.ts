@@ -6,7 +6,7 @@ describe('agent-recommended brand intent exception', () => {
 
   it('keeps agent-recommended jobs from being treated as candidate hard brand intent', () => {
     const candidatePrompt = readFileSync(
-      join(root, 'src/agent/context/prompts/candidate-consultation.md'),
+      join(root, 'src/agent/generator/context/prompts/candidate-consultation.md'),
       'utf8',
     );
     const jobListTool = readFileSync(join(root, 'src/tools/duliday-job-list.tool.ts'), 'utf8');

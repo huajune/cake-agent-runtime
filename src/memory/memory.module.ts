@@ -39,6 +39,6 @@ import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
     MemoryLifecycleService,
     MemoryService,
   ],
-  exports: [MemoryConfig, MemoryService, SessionService, LongTermService],
+  exports: [MemoryConfig, MemoryService, SessionService, LongTermService, ShortTermService],
 })
 export class MemoryModule {}

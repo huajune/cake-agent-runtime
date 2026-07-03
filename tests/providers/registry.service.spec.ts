@@ -59,10 +59,7 @@ describe('RegistryService', () => {
     };
 
     return Test.createTestingModule({
-      providers: [
-        RegistryService,
-        { provide: ConfigService, useValue: mockConfigService },
-      ],
+      providers: [RegistryService, { provide: ConfigService, useValue: mockConfigService }],
     }).compile();
   }
 
@@ -193,10 +190,7 @@ describe('RegistryService', () => {
 
     it('should call createProviderRegistry with separator /', () => {
       const { createProviderRegistry } = require('ai');
-      expect(createProviderRegistry).toHaveBeenCalledWith(
-        expect.any(Object),
-        { separator: '/' },
-      );
+      expect(createProviderRegistry).toHaveBeenCalledWith(expect.any(Object), { separator: '/' });
     });
 
     it('should skip deepseek in compatible loop (already registered natively)', async () => {

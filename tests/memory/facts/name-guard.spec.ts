@@ -103,10 +103,7 @@ describe('name-guard', () => {
 
     it('keeps name when greeting xx is later confirmed via checklist with 名字 key', () => {
       const facts = buildFacts('李爱国');
-      const result = sanitizeInterviewName(facts, [
-        '我是李爱国',
-        '名字: 李爱国\n年龄：58',
-      ]);
+      const result = sanitizeInterviewName(facts, ['我是李爱国', '名字: 李爱国\n年龄：58']);
       expect(result.droppedName).toBeNull();
       expect(result.sanitized.interview_info.name).toBe('李爱国');
     });
@@ -126,7 +123,6 @@ describe('name-guard', () => {
       expect(result.sanitized.interview_info.phone).toBe('13800138000');
       expect(result.sanitized.interview_info.age).toBe('28');
     });
-
   });
 
   describe('hasStructuredNameSubmission', () => {
@@ -201,30 +197,24 @@ describe('name-guard', () => {
       expect(isLikelyRealChineseName('执子之魂')).toBe(true);
     });
 
-    it.each([
-      '测' + '试姓名',
-      '测' + '试用户',
-      '用户张三',
-      '昵称小明',
-      '游客小李',
-      '客户A真',
-    ])('rejects placeholder prefix %p', (value) => {
-      expect(isLikelyRealChineseName(value)).toBe(false);
-    });
+    it.each(['测' + '试姓名', '测' + '试用户', '用户张三', '昵称小明', '游客小李', '客户A真'])(
+      'rejects placeholder prefix %p',
+      (value) => {
+        expect(isLikelyRealChineseName(value)).toBe(false);
+      },
+    );
 
     it('keeps real names even if they contain blacklist words in the middle', () => {
       expect(isLikelyRealChineseName('张测试')).toBe(true);
     });
 
     describe('6+ 字一律拒绝', () => {
-      it.each([
-        '小晴早点睡觉',
-        '加油宝贝吖呀',
-        '阿不力克木江',
-        '玛依拉古丽娜',
-      ])('rejects 6+ char string %p', (value) => {
-        expect(isLikelyRealChineseName(value)).toBe(false);
-      });
+      it.each(['小晴早点睡觉', '加油宝贝吖呀', '阿不力克木江', '玛依拉古丽娜'])(
+        'rejects 6+ char string %p',
+        (value) => {
+          expect(isLikelyRealChineseName(value)).toBe(false);
+        },
+      );
 
       it.each(['布买日也木', '艾尔肯江尔'])('boundary: 5 char %p', (value) => {
         expect(isLikelyRealChineseName(value)).toBe(value.length <= 5);

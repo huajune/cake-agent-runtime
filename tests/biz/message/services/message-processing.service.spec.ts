@@ -11,6 +11,7 @@ describe('MessageProcessingService', () => {
     getMessageProcessingRecords: jest.fn(),
     getMessageProcessingRecordById: jest.fn(),
     interruptStalePostProcessing: jest.fn(),
+    markSupersededProcessingRecords: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -31,6 +32,25 @@ describe('MessageProcessingService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('markSupersededProcessingRecords', () => {
+    it('should delegate superseded processing cleanup to repository', async () => {
+      mockMessageProcessingRepository.markSupersededProcessingRecords.mockResolvedValue(2);
+
+      const params = {
+        currentMessageId: 'batch-new',
+        replacementMessageId: 'batch-new',
+        chatId: 'chat-1',
+        receivedAt: 1700000000000,
+        messagePreview: 'hello',
+      };
+
+      await expect(service.markSupersededProcessingRecords(params)).resolves.toBe(2);
+      expect(mockMessageProcessingRepository.markSupersededProcessingRecords).toHaveBeenCalledWith(
+        params,
+      );
+    });
   });
 
   // ==================== getMessageStats ====================

@@ -267,12 +267,20 @@ export class SessionService {
       : {};
     const collectedFields = { ...persistedCollectedFields, ...currentCollectedFields };
 
+    const lastCandidateMessageAt = state.lastCandidateMessageAt
+      ? Date.parse(state.lastCandidateMessageAt)
+      : NaN;
+
     return {
       collectedFields,
       recalledJobIds,
       hardConstraints: [],
       presentedStores: (state.presentedJobs ?? []).map((job) => ({ jobId: job.jobId })),
       stage: null,
+      terminal: state.terminal ?? undefined,
+      lastCandidateMessageAt: Number.isFinite(lastCandidateMessageAt)
+        ? lastCandidateMessageAt
+        : undefined,
     };
   }
 
@@ -398,6 +406,57 @@ export class SessionService {
     await this.redisStore.set(
       key,
       this.serializeStateContent({ ...state, invitedGroups: merged }) as Record<string, unknown>,
+      this.config.sessionTtl,
+      false,
+    );
+  }
+
+  /**
+   * 持久化会话终态（复聊 shouldStop 的权威停发信号）。
+   * 幂等覆盖写：新终态直接覆盖旧值（如 booked → handed_off）。
+   */
+  async saveTerminalState(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    terminal: AuthoritativeSessionState['terminal'],
+  ): Promise<void> {
+    const key = this.buildKey(corpId, userId, sessionId);
+    const state = await this.getSessionState(corpId, userId, sessionId);
+
+    await this.redisStore.set(
+      key,
+      this.serializeStateContent({ ...state, terminal: terminal ?? null }) as Record<
+        string,
+        unknown
+      >,
+      this.config.sessionTtl,
+      false,
+    );
+    this.logger.log(
+      `[saveTerminalState] terminal=${terminal ?? '-'} corpId=${corpId} userId=${userId} sessionId=${sessionId}`,
+    );
+  }
+
+  /**
+   * 记录候选人入站活动时间（复聊 shouldStop 的「锚点后已回话」停发信号）。
+   * 每个入站轮调用一次；主动复聊轮不得调用（占位 user 文本不是候选人活动）。
+   */
+  async recordCandidateActivity(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    at: Date = new Date(),
+  ): Promise<void> {
+    const key = this.buildKey(corpId, userId, sessionId);
+    const state = await this.getSessionState(corpId, userId, sessionId);
+
+    await this.redisStore.set(
+      key,
+      this.serializeStateContent({
+        ...state,
+        lastCandidateMessageAt: at.toISOString(),
+      }) as Record<string, unknown>,
       this.config.sessionTtl,
       false,
     );

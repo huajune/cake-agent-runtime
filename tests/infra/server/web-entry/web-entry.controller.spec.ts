@@ -4,7 +4,10 @@ jest.mock('fs', () => ({
 
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
-import { RootRedirectController, WebEntryController } from '@infra/server/web-entry/web-entry.controller';
+import {
+  RootRedirectController,
+  WebEntryController,
+} from '@infra/server/web-entry/web-entry.controller';
 
 function createResponse() {
   return {

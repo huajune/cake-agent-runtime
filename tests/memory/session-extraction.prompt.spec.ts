@@ -145,13 +145,7 @@ describe('buildSessionExtractionPrompt', () => {
   });
 
   it('should show "无" when ruleFacts is null', () => {
-    const prompt = buildSessionExtractionPrompt(
-      brandData,
-      '用户: 你好',
-      [],
-      [],
-      null,
-    );
+    const prompt = buildSessionExtractionPrompt(brandData, '用户: 你好', [], [], null);
 
     expect(prompt).toContain('[规则模式匹配线索');
     expect(prompt).toContain('\n无\n');
@@ -205,11 +199,7 @@ describe('buildSessionExtractionPrompt', () => {
   });
 
   it('should be backwards-compatible when ruleFacts is omitted', () => {
-    const prompt = buildSessionExtractionPrompt(
-      brandData,
-      '用户: 你好',
-      ['用户: 之前的消息'],
-    );
+    const prompt = buildSessionExtractionPrompt(brandData, '用户: 你好', ['用户: 之前的消息']);
 
     expect(prompt).toContain('[规则模式匹配线索');
     expect(prompt).toContain('无');

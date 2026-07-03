@@ -20,6 +20,7 @@ describe('MessageTrackingService', () => {
   const mockMessageProcessingService = {
     saveRecord: jest.fn().mockResolvedValue(true),
     getMessageProcessingRecordById: jest.fn().mockResolvedValue(null),
+    markSupersededProcessingRecords: jest.fn().mockResolvedValue(0),
   };
 
   const mockErrorLogRepository = {
@@ -72,6 +73,7 @@ describe('MessageTrackingService', () => {
     peakActiveRequests = 0;
     mockMessageProcessingService.saveRecord.mockResolvedValue(true);
     mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue(null);
+    mockMessageProcessingService.markSupersededProcessingRecords.mockResolvedValue(0);
     mockErrorLogRepository.saveErrorLog.mockResolvedValue(undefined);
     mockUserHostingService.upsertActivity.mockResolvedValue(undefined);
     mockCacheService.incrementCounter.mockResolvedValue(undefined);
@@ -116,6 +118,23 @@ describe('MessageTrackingService', () => {
         imBotId: undefined,
         messageCount: 1,
         totalTokens: 0,
+      }),
+    );
+  });
+
+  it('should persist batchId on the initial processing record when provided', async () => {
+    service.recordMessageReceived('batch-1', 'chat-1', 'user-1', 'User One', 'Hello World', {
+      scenario: ScenarioType.CANDIDATE_CONSULTATION,
+      batchId: 'batch-1',
+    });
+
+    await flushPromises();
+
+    expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'batch-1',
+        status: 'processing',
+        batchId: 'batch-1',
       }),
     );
   });
@@ -248,6 +267,53 @@ describe('MessageTrackingService', () => {
         totalTokens: 200,
       }),
     );
+  });
+
+  it('should mark stale processing siblings as superseded after a retry batch succeeds', async () => {
+    mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
+      messageId: 'batch-new',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      userName: 'User One',
+      receivedAt: 1700000000000,
+      status: 'processing',
+      messagePreview: 'Hello',
+    });
+    mockMessageProcessingService.markSupersededProcessingRecords.mockResolvedValue(1);
+
+    service.recordSuccess('batch-new', {
+      scenario: ScenarioType.CANDIDATE_CONSULTATION,
+      replyPreview: 'Hi',
+      agentInvocation: {
+        request: {
+          chatId: 'chat-1',
+          userId: 'user-1',
+          userName: 'User One',
+          content: 'Hello',
+          acceptedAt: 1700000000000,
+          batchId: 'batch-new',
+        },
+        response: {
+          timings: {
+            timestamps: { acceptedAt: 1700000000000 },
+            durations: { totalMs: 1000 },
+          },
+          reply: { content: 'Hi' },
+        },
+        isFallback: false,
+      },
+    });
+
+    await flushPromises();
+
+    expect(messageProcessingService.markSupersededProcessingRecords).toHaveBeenCalledWith({
+      currentMessageId: 'batch-new',
+      replacementMessageId: 'batch-new',
+      chatId: 'chat-1',
+      receivedAt: 1700000000000,
+      messagePreview: 'Hello',
+    });
+    expect(cacheService.incrementActiveRequests).toHaveBeenCalledWith(-1);
   });
 
   it('should persist alertType on failure terminal records', async () => {

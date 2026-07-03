@@ -15,6 +15,7 @@ import { GeneralHandoffNotifierService } from './services/general-handoff-notifi
 import { OpsNotifierService } from './services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from './services/private-chat-monitor-notifier.service';
 import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notifier.service';
+import { SemanticReviewNotifierService } from './services/semantic-review-notifier.service';
 
 @Global()
 @Module({
@@ -34,6 +35,7 @@ import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notif
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
     ReplyFactGuardNotifierService,
+    SemanticReviewNotifierService,
   ],
   exports: [
     AlertNotifierService,
@@ -42,6 +44,7 @@ import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notif
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
     ReplyFactGuardNotifierService,
+    SemanticReviewNotifierService,
   ],
 })
 export class NotificationModule {}
