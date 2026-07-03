@@ -187,7 +187,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'district_level_distance_claim',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住候选人只报了区/市名，回复却按行政区代表点直接输出精确公里数的情况。',
     riskGoal: '区级粗定位下的距离与候选人真实位置可能差数公里，直接报精确距离会误导到店。',
@@ -195,7 +195,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk: '候选人报的商圈名恰与区名同名时可能误判；已请求定位/声明估算口径的回复已豁免。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '候选人目前只提供了区/市级位置，本轮距离是按行政区代表点估算的，当前文本不可发送。请改写为：不输出精确公里数，先向候选人确认具体位置（哪条路/哪个商圈/地铁站，或请发定位）；如需先展示岗位，只说门店所在商圈/路段，不说"离你X公里"。',
+      '候选人目前只提供了区/市级位置，本轮距离是按行政区代表点估算的，当前文本不可发送。请重新规划：不输出精确公里数，先向候选人确认具体位置（哪条路/哪个商圈/地铁站，或请发定位）；如需先展示岗位，可用只读工具重查岗位后只说门店所在商圈/路段，不说"离你X公里"。',
   },
   {
     id: 'farther_job_recommended',
@@ -416,19 +416,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
-    id: 'age_requirement_disclosure',
-    action: GUARDRAIL_ACTION.BLOCK,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住把年龄上限、年龄下限或“你超龄了”这类筛选口径直接说给候选人的回复。',
-    riskGoal: '防止岗位年龄上下限或超龄原因外露。',
-    exogenousSignal: '年龄要求/超龄外露词库。',
-    residualRisk: '口语化年龄暗示仍需补词。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    dataSensitivity: GUARDRAIL_DATA_SENSITIVITY.NORMAL,
-    feedbackToGenerator:
-      '上一版回复直接暴露年龄筛选口径或用了超龄直拒表达，当前文本不可发送。请改为不直拒、不展开年龄门槛，转为推荐其他岗位、继续收集必要信息，或请同事确认。',
-  },
-  {
     id: 'brand_name_violation',
     action: GUARDRAIL_ACTION.BLOCK,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -508,19 +495,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal: '行业常识泛化职责词库。',
     residualRisk: '若岗位数据真实包含职责但回复用了泛化词，可能被要求改写为更接地口径。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'gender_direct_reject',
-    action: GUARDRAIL_ACTION.BLOCK,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住以性别为理由直接拒绝候选人，或者把岗位性别筛选口径说出口的回复。',
-    riskGoal: '防止以性别为由直接拒绝或透露性别筛选条件。',
-    exogenousSignal: '性别歧视拒绝词库。',
-    residualRisk: '隐晦性别暗示需要 badcase 持续补词。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    dataSensitivity: GUARDRAIL_DATA_SENSITIVITY.NORMAL,
-    feedbackToGenerator:
-      '上一版回复直接暴露性别筛选口径或用了性别直拒表达，当前文本不可发送。请改为不直拒、不展开性别门槛，转为推荐其他岗位、继续收集必要信息，或请同事确认。',
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 

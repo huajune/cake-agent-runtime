@@ -56,8 +56,6 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
   wait_notice_time_collection:
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
-  age_requirement_disclosure:
-    'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   booking_form_field_mismatch:
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
   brand_name_violation:
@@ -68,8 +66,6 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   distance_missing:
     'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
-  gender_direct_reject:
-    'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   geocode_uncertain_location_claim:
     'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
   group_full_without_invite:

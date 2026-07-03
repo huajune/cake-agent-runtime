@@ -126,6 +126,9 @@ export function detectDistrictLevelDistanceClaim(
     ruleId: 'district_level_distance_claim',
     label:
       '候选人只提供了区/市级位置（geocode areaLevelQuery=true，锚点为行政区代表点），但回复直接输出精确距离；应先追问具体位置/商圈/定位，或声明距离为区域估算',
-    action: GUARDRAIL_ACTION.REVISE,
+    // replan 而非 revise：修复口径要求重组岗位展示（去距离、留商圈），常需重看岗位数据；
+    // rewrite 档禁工具会诱导模型把工具调用写成文本（上线首日 13 次 repair 里 5 次产出
+    // 工具语法文本、3 条穿透词库发给候选人），replan 给只读工具从根上消除该诱因
+    action: GUARDRAIL_ACTION.REPLAN,
   };
 }
