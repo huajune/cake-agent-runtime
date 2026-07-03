@@ -82,6 +82,7 @@ describe('PreparationService', () => {
 
   const mockLongTermService = {
     getActiveBooking: jest.fn(),
+    getActiveBookings: jest.fn(),
   };
 
   const mockSpongeService = {
@@ -102,6 +103,7 @@ describe('PreparationService', () => {
     jest.clearAllMocks();
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
     mockLongTermService.getActiveBooking.mockResolvedValue(null);
+    mockLongTermService.getActiveBookings.mockResolvedValue([]);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
@@ -165,6 +167,11 @@ describe('PreparationService', () => {
       mockGroupMembership as never,
     );
   });
+
+  const mockActiveBooking = (booking: Record<string, unknown> | null) => {
+    mockLongTermService.getActiveBooking.mockResolvedValue(booking);
+    mockLongTermService.getActiveBookings.mockResolvedValue(booking ? [booking] : []);
+  };
 
   it('should compose prompt from memory and build tools for userMessage path', async () => {
     const result = await service.prepare(
@@ -662,7 +669,7 @@ describe('PreparationService', () => {
       thresholds: [],
     }));
     // [当前预约信息] 现由 active_booking 指针 + 海绵工单实时状态渲染（不再来自 recruitment_cases）。
-    mockLongTermService.getActiveBooking.mockResolvedValue({
+    mockActiveBooking({
       work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
@@ -713,7 +720,7 @@ describe('PreparationService', () => {
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
-    mockLongTermService.getActiveBooking.mockResolvedValue({
+    mockActiveBooking({
       work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
@@ -754,7 +761,7 @@ describe('PreparationService', () => {
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
-    mockLongTermService.getActiveBooking.mockResolvedValue({
+    mockActiveBooking({
       work_order_id: 88002,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
@@ -790,7 +797,7 @@ describe('PreparationService', () => {
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
-    mockLongTermService.getActiveBooking.mockResolvedValue({
+    mockActiveBooking({
       work_order_id: 88003,
       linked_at: '2026-04-15T08:00:00.000Z',
     });

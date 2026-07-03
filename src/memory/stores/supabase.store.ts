@@ -53,6 +53,67 @@ function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserP
   return hasValue ? facts : null;
 }
 
+function normalizeActiveBookingEntry(value: unknown): ActiveBooking | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const workOrderId =
+    typeof raw.work_order_id === 'number'
+      ? raw.work_order_id
+      : typeof raw.work_order_id === 'string' && /^\d+$/.test(raw.work_order_id)
+        ? Number(raw.work_order_id)
+        : null;
+  if (workOrderId == null) return null;
+
+  const linkedAt = typeof raw.linked_at === 'string' ? raw.linked_at : new Date(0).toISOString();
+  const jobId =
+    typeof raw.job_id === 'number'
+      ? raw.job_id
+      : typeof raw.job_id === 'string' && /^\d+$/.test(raw.job_id)
+        ? Number(raw.job_id)
+        : null;
+
+  return {
+    work_order_id: workOrderId,
+    linked_at: linkedAt,
+    job_id: jobId,
+    interview_time: typeof raw.interview_time === 'string' ? raw.interview_time : null,
+    brand_name: typeof raw.brand_name === 'string' ? raw.brand_name : null,
+    store_name: typeof raw.store_name === 'string' ? raw.store_name : null,
+    job_name: typeof raw.job_name === 'string' ? raw.job_name : null,
+  };
+}
+
+function normalizeActiveBookings(value: unknown): ActiveBooking[] {
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  const entries = [...(Array.isArray(raw?.bookings) ? raw.bookings : []), value];
+  const byWorkOrder = new Map<number, ActiveBooking>();
+
+  for (const entry of entries) {
+    const booking = normalizeActiveBookingEntry(entry);
+    if (!booking) continue;
+    const existing = byWorkOrder.get(booking.work_order_id);
+    byWorkOrder.set(booking.work_order_id, {
+      ...existing,
+      ...booking,
+    });
+  }
+
+  return Array.from(byWorkOrder.values()).sort((a, b) => {
+    const bMs = Date.parse(b.linked_at);
+    const aMs = Date.parse(a.linked_at);
+    return (Number.isFinite(bMs) ? bMs : 0) - (Number.isFinite(aMs) ? aMs : 0);
+  });
+}
+
+function buildActiveBookingState(bookings: ActiveBooking[]): ActiveBooking | null {
+  const [latest, ...rest] = bookings;
+  if (!latest) return null;
+  return {
+    ...latest,
+    bookings: [latest, ...rest].map(({ bookings: _bookings, ...booking }) => booking),
+  };
+}
+
 /**
  * Supabase 存储后端 — 长期记忆（每用户一行）
  *
@@ -329,17 +390,40 @@ export class SupabaseStore implements MemoryStore {
 
   /** 读取候选人当前有效/待处理预约工单指针。 */
   async getActiveBooking(corpId: string, userId: string): Promise<ActiveBooking | null> {
-    const row = await this.getRow(corpId, userId);
-    return (row?.active_booking as ActiveBooking | null) ?? null;
+    const bookings = await this.getActiveBookings(corpId, userId);
+    return bookings[0] ?? null;
   }
 
-  /** 写入候选人当前有效/待处理预约工单指针（新预约 UPSERT 覆盖）。 */
-  async setActiveBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
+  /** 读取候选人当前有效/待处理预约工单列表。 */
+  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBooking[]> {
+    const row = await this.getRow(corpId, userId);
+    return normalizeActiveBookings(row?.active_booking ?? null);
+  }
+
+  /** 写入候选人当前有效/待处理预约工单指针（同候选人可保留多岗位工单）。 */
+  async setActiveBooking(
+    corpId: string,
+    userId: string,
+    workOrderId: number,
+    metadata?: Partial<
+      Pick<ActiveBooking, 'job_id' | 'interview_time' | 'brand_name' | 'store_name' | 'job_name'>
+    >,
+  ): Promise<void> {
+    const existing = await this.getActiveBookings(corpId, userId);
     const activeBooking: ActiveBooking = {
       work_order_id: workOrderId,
       linked_at: new Date().toISOString(),
+      job_id: metadata?.job_id ?? null,
+      interview_time: metadata?.interview_time ?? null,
+      brand_name: metadata?.brand_name ?? null,
+      store_name: metadata?.store_name ?? null,
+      job_name: metadata?.job_name ?? null,
     };
-    await this.upsertRow(corpId, userId, { active_booking: activeBooking });
+    const bookings = [
+      activeBooking,
+      ...existing.filter((booking) => booking.work_order_id !== workOrderId),
+    ].slice(0, 10);
+    await this.upsertRow(corpId, userId, { active_booking: buildActiveBookingState(bookings) });
   }
 
   /**
@@ -353,15 +437,11 @@ export class SupabaseStore implements MemoryStore {
     expectedWorkOrderId?: number,
   ): Promise<void> {
     if (expectedWorkOrderId != null) {
-      const activeBooking = await this.getActiveBooking(corpId, userId);
-      const rawWorkOrderId = (activeBooking as { work_order_id?: unknown } | null)?.work_order_id;
-      const activeWorkOrderId =
-        typeof rawWorkOrderId === 'number'
-          ? rawWorkOrderId
-          : typeof rawWorkOrderId === 'string' && /^\d+$/.test(rawWorkOrderId)
-            ? Number(rawWorkOrderId)
-            : null;
-      if (activeWorkOrderId !== expectedWorkOrderId) return;
+      const bookings = await this.getActiveBookings(corpId, userId);
+      const remaining = bookings.filter((booking) => booking.work_order_id !== expectedWorkOrderId);
+      if (remaining.length === bookings.length) return;
+      await this.upsertRow(corpId, userId, { active_booking: buildActiveBookingState(remaining) });
+      return;
     }
 
     await this.upsertRow(corpId, userId, { active_booking: null });
