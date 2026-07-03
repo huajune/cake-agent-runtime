@@ -709,6 +709,54 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('当前状态: 约面成功');
   });
 
+  it('keeps other active booking contexts when one sponge lookup fails', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [{ role: 'user', content: '我想改面试时间' }] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'onboard_followup',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+    mockLongTermService.getActiveBookings.mockResolvedValue([
+      { work_order_id: 88001, linked_at: '2026-04-15T08:00:00.000Z' },
+      { work_order_id: 88002, linked_at: '2026-04-15T08:10:00.000Z' },
+    ]);
+    mockSpongeService.getCachedWorkOrderById.mockImplementation(async (workOrderId: number) => {
+      if (workOrderId === 88001) throw new Error('sponge down');
+      return {
+        workOrderId: 88002,
+        jobId: 527350,
+        brandName: '奥乐齐',
+        projectName: '长白店',
+        jobName: '理货员',
+        currentStatus: '约面成功',
+      };
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '我想改面试时间' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('[当前预约信息]');
+    expect(result.finalPrompt).toContain('工单号: 88002');
+    expect(result.finalPrompt).toContain('品牌: 奥乐齐');
+    expect(result.finalPrompt).not.toContain('工单号: 88001');
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.isRecalledJobId?.(527350)).toBe(true);
+  });
+
   it('改约场景：进行中工单的 jobId 并入 provenance 集，isRecalledJobId 放行', async () => {
     // 空会话召回（无 presentedJobs/lastCandidatePool/currentFocusJob），仅有一个进行中预约工单。
     // 改约路径 system prompt 把 workOrder.jobId 作为「岗位ID」让模型先 precheck，但改约不调

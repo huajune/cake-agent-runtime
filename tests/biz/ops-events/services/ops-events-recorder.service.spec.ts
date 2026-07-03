@@ -1,4 +1,4 @@
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 
 describe('OpsEventsRecorderService', () => {
   const repository = {

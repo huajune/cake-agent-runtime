@@ -1,4 +1,4 @@
-import { SpongeStatusPollService } from '@biz/ops-events/sponge-status-poll.cron';
+import { SpongeStatusPollService } from '@biz/ops-events/crons/sponge-status-poll.cron';
 
 describe('SpongeStatusPollService.runOnce', () => {
   const opsEventsRepository = { findWorkOrdersPendingPass: jest.fn() };

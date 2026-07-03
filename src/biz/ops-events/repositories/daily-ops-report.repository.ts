@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import type { DailyOpsReportRow, DailyOpsReportSums } from './ops-events.types';
+import type { DailyOpsReportRow } from '../entities/daily-ops-report.entity';
+import type { DailyOpsReportSums } from '../types/ops-events.types';
 
 const EMPTY_SUMS: DailyOpsReportSums = {
   friendsAdded: 0,

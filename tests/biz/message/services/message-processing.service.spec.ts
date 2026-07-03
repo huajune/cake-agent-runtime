@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { GuardrailReviewRepository } from '@biz/message/repositories/guardrail-review.repository';
+import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 
 describe('MessageProcessingService', () => {
   let service: MessageProcessingService;
@@ -15,7 +15,7 @@ describe('MessageProcessingService', () => {
     markSupersededProcessingRecords: jest.fn(),
   };
 
-  const mockGuardrailReviewRepository = {
+  const mockGuardrailReviewService = {
     findByTraceId: jest.fn().mockResolvedValue(null),
   };
 
@@ -28,8 +28,8 @@ describe('MessageProcessingService', () => {
           useValue: mockMessageProcessingRepository,
         },
         {
-          provide: GuardrailReviewRepository,
-          useValue: mockGuardrailReviewRepository,
+          provide: GuardrailReviewService,
+          useValue: mockGuardrailReviewService,
         },
       ],
     }).compile();
@@ -320,12 +320,12 @@ describe('MessageProcessingService', () => {
       const mockRecord = { id: 'msg-123', status: 'success' };
       const mockReview = { traceId: 'msg-123', firstReply: '首版全文', repaired: true };
       mockMessageProcessingRepository.getMessageProcessingRecordById.mockResolvedValue(mockRecord);
-      mockGuardrailReviewRepository.findByTraceId.mockResolvedValueOnce(mockReview);
+      mockGuardrailReviewService.findByTraceId.mockResolvedValueOnce(mockReview);
 
       const result = await service.getMessageProcessingRecordById('msg-123');
 
       expect(result).toEqual({ ...mockRecord, guardrailReview: mockReview });
-      expect(mockGuardrailReviewRepository.findByTraceId).toHaveBeenCalledWith('msg-123');
+      expect(mockGuardrailReviewService.findByTraceId).toHaveBeenCalledWith('msg-123');
     });
 
     it('should pass through repository errors', async () => {

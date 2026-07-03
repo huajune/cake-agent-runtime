@@ -6,7 +6,7 @@ describe('AgentRunnerService.runTurn', () => {
   let generator: { invoke: jest.Mock };
   let outputGuard: { check: jest.Mock };
   let inputGuard: { precheckInputRisk: jest.Mock; evaluate: jest.Mock };
-  let reviewRecords: { record: jest.Mock };
+  let guardrailReviews: { recordReview: jest.Mock };
   let service: AgentRunnerService;
 
   const passDecision = {
@@ -36,12 +36,12 @@ describe('AgentRunnerService.runTurn', () => {
       precheckInputRisk: jest.fn().mockResolvedValue({ hit: false }),
       evaluate: jest.fn().mockResolvedValue({ decision: 'pass' }),
     };
-    reviewRecords = { record: jest.fn().mockResolvedValue(undefined) };
+    guardrailReviews = { recordReview: jest.fn().mockResolvedValue('inserted') };
     service = new AgentRunnerService(
       generator as never,
       outputGuard as never,
       inputGuard as never,
-      reviewRecords as never,
+      guardrailReviews as never,
     );
   });
 
@@ -630,8 +630,8 @@ describe('AgentRunnerService.runTurn', () => {
         context: { messageId: 'msg-1' },
       });
 
-      expect(reviewRecords.record).toHaveBeenCalledTimes(1);
-      expect(reviewRecords.record).toHaveBeenCalledWith(
+      expect(guardrailReviews.recordReview).toHaveBeenCalledTimes(1);
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
         expect.objectContaining({
           traceId: 'msg-1',
           chatId: 's1',
@@ -665,12 +665,11 @@ describe('AgentRunnerService.runTurn', () => {
         context: { messageId: 'msg-2' },
       });
 
-      expect(reviewRecords.record).toHaveBeenCalledWith(
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
         expect.objectContaining({
           traceId: 'msg-2',
           firstReply: '违规首版',
           repaired: false,
-          revisedReply: undefined,
           finalDecision: 'block',
         }),
       );
@@ -685,7 +684,7 @@ describe('AgentRunnerService.runTurn', () => {
         trigger: { kind: 'inbound', userMessage: 'hi' },
         context: { messageId: 'msg-3' },
       });
-      expect(reviewRecords.record).not.toHaveBeenCalled();
+      expect(guardrailReviews.recordReview).not.toHaveBeenCalled();
 
       // 守卫命中但无 traceId（debug-chat / test-suite）：不写档案
       generator.invoke
@@ -693,7 +692,7 @@ describe('AgentRunnerService.runTurn', () => {
         .mockResolvedValueOnce(makeResult({ text: '重写版' }));
       outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
       await service.runTurn({ sessionRef, trigger: { kind: 'inbound', userMessage: 'hi' } });
-      expect(reviewRecords.record).not.toHaveBeenCalled();
+      expect(guardrailReviews.recordReview).not.toHaveBeenCalled();
     });
 
     it('repair exhausted persists both steps with the collapsed block verdict', async () => {
@@ -708,7 +707,7 @@ describe('AgentRunnerService.runTurn', () => {
         context: { messageId: 'msg-4' },
       });
 
-      expect(reviewRecords.record).toHaveBeenCalledWith(
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
         expect.objectContaining({
           traceId: 'msg-4',
           firstReply: 'v1',

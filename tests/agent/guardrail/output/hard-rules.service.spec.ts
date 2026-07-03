@@ -2362,6 +2362,18 @@ describe('HardRulesService', () => {
         ).toBeDefined();
       });
 
+      it('flags 当前岗位满足日结要求 as a real settlement claim', () => {
+        const result = service.check({
+          replyText: '这个岗位满足你的日结要求。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeDefined();
+      });
+
       it('keeps exempting first-person requirement echo (你的日结要求)', () => {
         const result = service.check({
           replyText: '你的日结要求我记下了，有合适的再喊你。',

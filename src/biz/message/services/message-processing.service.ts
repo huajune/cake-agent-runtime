@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GuardrailReviewRepository } from '../repositories/guardrail-review.repository';
 import { MessageProcessingRepository } from '../repositories/message-processing.repository';
 import { MessageProcessingRecordInput } from '../types/message.types';
+import { GuardrailReviewService } from './guardrail-review.service';
 
 /**
  * 消息处理记录服务
@@ -13,7 +13,7 @@ export class MessageProcessingService {
 
   constructor(
     private readonly messageProcessingRepository: MessageProcessingRepository,
-    private readonly guardrailReviewRepository: GuardrailReviewRepository,
+    private readonly guardrailReviewService: GuardrailReviewService,
   ) {}
 
   /**
@@ -106,7 +106,7 @@ export class MessageProcessingService {
     this.logger.debug(`获取消息处理记录详情: ${messageId}`);
     const [record, guardrailReview] = await Promise.all([
       this.messageProcessingRepository.getMessageProcessingRecordById(messageId),
-      this.guardrailReviewRepository.findByTraceId(messageId),
+      this.guardrailReviewService.findByTraceId(messageId),
     ]);
     if (!record) return null;
     return { ...record, guardrailReview: guardrailReview ?? undefined };

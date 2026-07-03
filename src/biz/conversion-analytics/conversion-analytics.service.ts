@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { addLocalDays, formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';
 import { OpsEventsAnalyticsRepository } from './repositories/ops-events-analytics.repository';

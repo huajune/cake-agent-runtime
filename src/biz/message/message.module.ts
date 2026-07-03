@@ -4,6 +4,7 @@ import { GuardrailReviewRepository } from './repositories/guardrail-review.repos
 import { MessageProcessingRepository } from './repositories/message-processing.repository';
 import { MessageController } from './message.controller';
 import { ChatSessionService } from './services/chat-session.service';
+import { GuardrailReviewService } from './services/guardrail-review.service';
 import { MessageProcessingService } from './services/message-processing.service';
 
 @Module({
@@ -15,9 +16,10 @@ import { MessageProcessingService } from './services/message-processing.service'
     MessageProcessingRepository,
     // services
     ChatSessionService,
+    GuardrailReviewService,
     MessageProcessingService,
   ],
-  // GuardrailReviewRepository 导出给 agent runner（invokeReviewed 落审查档案）使用。
-  exports: [ChatSessionService, MessageProcessingService, GuardrailReviewRepository],
+  // GuardrailReviewService 导出给 agent runner（invokeReviewed 落审查档案）使用。
+  exports: [ChatSessionService, MessageProcessingService, GuardrailReviewService],
 })
 export class BizMessageModule {}

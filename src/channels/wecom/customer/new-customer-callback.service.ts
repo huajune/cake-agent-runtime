@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { NewCustomerCallbackPayload } from './dto/new-customer-callback.dto';
 import { BotService } from '../bot/bot.service';
 

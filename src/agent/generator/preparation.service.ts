@@ -1105,9 +1105,19 @@ export class PreparationService {
       const contexts: Array<{ block: string; jobId: number | null }> = [];
       for (const activeBooking of activeBookings) {
         const workOrderId = activeBooking.work_order_id;
-        const workOrder = tokenContext
-          ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
-          : await this.spongeService.getCachedWorkOrderById(workOrderId);
+        let workOrder: Awaited<ReturnType<typeof this.spongeService.getCachedWorkOrderById>>;
+        try {
+          workOrder = tokenContext
+            ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
+            : await this.spongeService.getCachedWorkOrderById(workOrderId);
+        } catch (error) {
+          this.logger.warn(
+            `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          continue;
+        }
         if (!workOrder) continue;
 
         // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」

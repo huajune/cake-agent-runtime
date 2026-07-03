@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { normalizeBotImId } from '@biz/ops-events/bot-group-resolver.service';
+import { normalizeBotImId } from '@biz/ops-events/services/bot-group-resolver.service';
 import { BOT_TO_RECEIVER, type FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { HostingMemberConfigRepository } from '../repositories/hosting-member-config.repository';
 import { HostingMemberConfig, HostingMemberEntry } from '../types/hosting-member-config.types';

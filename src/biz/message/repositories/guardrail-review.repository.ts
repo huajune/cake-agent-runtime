@@ -1,78 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import {
+import type {
   GuardrailRepairMode,
   GuardrailRiskLevel,
-  GuardViolation,
   OutputDecision,
 } from '@shared-types/guardrail.contract';
-
-/** 出站守卫单次审查的全文详情（首审必有；二审仅 repaired 时存在）。 */
-export interface GuardrailReviewStepDetail {
-  decision: OutputDecision;
-  riskLevel: GuardrailRiskLevel;
-  ruleIds: string[];
-  blockedRuleIds: string[];
-  /** 违规意见全文（type/evidence/suggestion/severity…），紧凑摘要里被裁掉的部分。 */
-  violations: GuardViolation[];
-  /** feedbackToGenerator 聚合文本，即注入重写 prompt 的违规反馈。 */
-  feedback?: string;
-}
-
-/** 一条出站守卫审查档案（写入/读取共用形状，camelCase）。 */
-export interface GuardrailReviewRecord {
-  traceId: string;
-  chatId?: string;
-  userId?: string;
-  botImId?: string;
-  botUserName?: string;
-  contactName?: string;
-  userMessage?: string;
-  /** 首版回复全文（触发 revise/replan 时被丢弃重写的那一版）。 */
-  firstReply: string;
-  first: GuardrailReviewStepDetail;
-  repairMode?: GuardrailRepairMode;
-  repaired: boolean;
-  /** 受控修复后的重写版全文；repaired=false 时为 undefined。 */
-  revisedReply?: string;
-  revised?: GuardrailReviewStepDetail;
-  /** 重写时注入的既成副作用提示。 */
-  committedSideEffects?: string;
-  finalDecision: OutputDecision;
-  reasonCode?: string;
-  createdAt?: string;
-}
-
-/** guardrail_review_records 行（snake_case）。 */
-interface GuardrailReviewDbRecord {
-  created_at: string;
-  trace_id: string;
-  chat_id: string | null;
-  user_id: string | null;
-  bot_im_id: string | null;
-  bot_user_name: string | null;
-  contact_name: string | null;
-  user_message: string | null;
-  first_reply: string;
-  first_decision: string;
-  first_risk_level: string | null;
-  first_rule_ids: string[] | null;
-  first_blocked_rule_ids: string[] | null;
-  first_violations: GuardViolation[] | null;
-  first_feedback: string | null;
-  repair_mode: string | null;
-  repaired: boolean;
-  revised_reply: string | null;
-  revised_decision: string | null;
-  revised_risk_level: string | null;
-  revised_rule_ids: string[] | null;
-  revised_blocked_rule_ids: string[] | null;
-  revised_violations: GuardViolation[] | null;
-  committed_side_effects: string | null;
-  final_decision: string;
-  reason_code: string | null;
-}
+import type { GuardrailReviewDbRecord } from '../entities/guardrail-review.entity';
+import type {
+  GuardrailReviewInsertInput,
+  GuardrailReviewRecord,
+  GuardrailReviewWriteOutcome,
+} from '../types/guardrail-review.types';
 
 /**
  * 出站守卫审查档案 Repository。
@@ -89,9 +28,43 @@ export class GuardrailReviewRepository extends BaseRepository {
     super(supabaseService);
   }
 
-  /** 写入一条审查档案（fire-and-forget 场景使用；失败仅记日志，不抛出）。 */
-  async record(input: GuardrailReviewRecord): Promise<void> {
-    await this.insert<GuardrailReviewDbRecord>(this.toDbRecord(input), { returnData: false });
+  /**
+   * 写入一条审查档案（按 trace_id 幂等）。
+   *
+   * 该表是 message_processing_records 的 1:0..1 稀疏附属表；写入口必须保留
+   * inserted / duplicate / failed 三态，调用方才能把重复消费和真实落库失败区分开。
+   */
+  async insertReviewRecord(
+    input: GuardrailReviewInsertInput,
+  ): Promise<GuardrailReviewWriteOutcome> {
+    if (!this.isAvailable()) {
+      this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 写入`);
+      return 'failed';
+    }
+    if (this.circuitBlocked('UPSERT')) {
+      return 'failed';
+    }
+
+    try {
+      const { data, error } = await this.getClient()
+        .from(this.tableName)
+        .upsert(this.toDbRecord(input) as unknown as Record<string, unknown>, {
+          onConflict: 'trace_id',
+          ignoreDuplicates: true,
+        })
+        .select('trace_id');
+
+      if (error) {
+        this.handleError('UPSERT', error);
+        return 'failed';
+      }
+
+      const rows = (data as Array<Pick<GuardrailReviewDbRecord, 'trace_id'>> | null) ?? [];
+      return rows.length > 0 ? 'inserted' : 'duplicate';
+    } catch (error) {
+      this.handleError('UPSERT', error);
+      return 'failed';
+    }
   }
 
   /** 按 trace_id（= message_id）取审查档案；未命中守卫的回合返回 null。 */
@@ -102,7 +75,7 @@ export class GuardrailReviewRepository extends BaseRepository {
     return row ? this.fromDbRecord(row) : null;
   }
 
-  private toDbRecord(input: GuardrailReviewRecord): Partial<GuardrailReviewDbRecord> {
+  private toDbRecord(input: GuardrailReviewInsertInput): Partial<GuardrailReviewDbRecord> {
     return {
       trace_id: input.traceId,
       chat_id: input.chatId ?? null,

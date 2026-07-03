@@ -5,7 +5,7 @@ import { ScenarioType } from '@enums/agent.enum';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
-import { DailyOpsReportRepository } from '@biz/ops-events/daily-ops-report.repository';
+import { DailyOpsReportService } from '@biz/ops-events/services/daily-ops-report.service';
 import { MonitoringDailyStatsRepository } from '@biz/monitoring/repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
@@ -135,7 +135,7 @@ describe('AnalyticsDashboardService', () => {
   };
 
   // 默认 getEarliestReportDate→null：daily_ops_report 尚无覆盖时预约数返回 0。
-  const mockDailyOpsReportRepository = {
+  const mockDailyOpsReportService = {
     getEarliestReportDate: jest.fn().mockResolvedValue(null),
     sumByDateRange: jest.fn(),
     sumBookingSuccessByDateRange: jest.fn(),
@@ -221,8 +221,8 @@ describe('AnalyticsDashboardService', () => {
         AnalyticsMetricsService,
         AnalyticsTrendBuilderService,
         {
-          provide: DailyOpsReportRepository,
-          useValue: mockDailyOpsReportRepository,
+          provide: DailyOpsReportService,
+          useValue: mockDailyOpsReportService,
         },
       ],
     }).compile();
@@ -256,8 +256,8 @@ describe('AnalyticsDashboardService', () => {
     mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
     mockUserHostingService.getPausedUserIdSet.mockResolvedValue(new Set());
     // 默认 daily_ops_report 不覆盖任何范围 → 预约数走 bookingService（clearAllMocks 不重置实现，需显式复位）
-    mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue(null);
-    mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue(undefined as never);
+    mockDailyOpsReportService.getEarliestReportDate.mockResolvedValue(null);
+    mockDailyOpsReportService.sumByDateRange.mockResolvedValue(undefined as never);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: yesterday });
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
@@ -861,8 +861,8 @@ describe('AnalyticsDashboardService', () => {
         })
         .mockResolvedValueOnce(defaultOverview);
       // 预约走 daily_ops_report，但业务趋势查询为空时，触发业务汇总非 0 的单点合成。
-      mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue('2026-01-01');
-      mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue({
+      mockDailyOpsReportService.getEarliestReportDate.mockResolvedValue('2026-01-01');
+      mockDailyOpsReportService.sumByDateRange.mockResolvedValue({
         friendsAdded: 0,
         openingSent: 0,
         breakIce: 0,
@@ -877,7 +877,7 @@ describe('AnalyticsDashboardService', () => {
         interviewPass: 0,
         rowCount: 1,
       });
-      mockDailyOpsReportRepository.sumBookingSuccessByDateRange.mockResolvedValue([]);
+      mockDailyOpsReportService.sumBookingSuccessByDateRange.mockResolvedValue([]);
 
       try {
         const result = await service.getDashboardOverviewAsync('week');
@@ -950,8 +950,8 @@ describe('AnalyticsDashboardService', () => {
           activeUsers: 2,
         })
         .mockResolvedValueOnce(defaultOverview);
-      mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue('2026-04-27');
-      mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue({
+      mockDailyOpsReportService.getEarliestReportDate.mockResolvedValue('2026-04-27');
+      mockDailyOpsReportService.sumByDateRange.mockResolvedValue({
         friendsAdded: 0,
         openingSent: 0,
         breakIce: 0,
@@ -987,8 +987,8 @@ describe('AnalyticsDashboardService', () => {
       mockUserHostingService.countActiveUsersByDateRange
         .mockResolvedValueOnce(10)
         .mockResolvedValueOnce(0);
-      mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue('2026-04-27');
-      mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue({
+      mockDailyOpsReportService.getEarliestReportDate.mockResolvedValue('2026-04-27');
+      mockDailyOpsReportService.sumByDateRange.mockResolvedValue({
         friendsAdded: 0,
         openingSent: 0,
         breakIce: 0,
@@ -1009,7 +1009,7 @@ describe('AnalyticsDashboardService', () => {
 
         // 起点早于投影最早日期（2026-04-27）→ 裁剪到 earliest 再聚合：
         // 只统计有覆盖的日期（不回填老表缺口），但绝不能把有数据的日期一起归零。
-        expect(mockDailyOpsReportRepository.sumByDateRange).toHaveBeenCalledWith(
+        expect(mockDailyOpsReportService.sumByDateRange).toHaveBeenCalledWith(
           '2026-04-27',
           expect.any(String),
         );
@@ -1035,8 +1035,8 @@ describe('AnalyticsDashboardService', () => {
       mockUserHostingService.getDailyActivityStats.mockResolvedValue([
         { date: '2026-05-21', userCount: 10, messageCount: 30, tokenUsage: 3000 },
       ]);
-      mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue('2026-05-01');
-      mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue({
+      mockDailyOpsReportService.getEarliestReportDate.mockResolvedValue('2026-05-01');
+      mockDailyOpsReportService.sumByDateRange.mockResolvedValue({
         friendsAdded: 0,
         openingSent: 0,
         breakIce: 0,
@@ -1051,7 +1051,7 @@ describe('AnalyticsDashboardService', () => {
         interviewPass: 0,
         rowCount: 1,
       });
-      mockDailyOpsReportRepository.sumBookingSuccessByDateRange.mockResolvedValue([
+      mockDailyOpsReportService.sumBookingSuccessByDateRange.mockResolvedValue([
         { date: '2026-05-21', bookingSuccess: 2 },
       ]);
 

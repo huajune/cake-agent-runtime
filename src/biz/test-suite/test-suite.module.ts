@@ -14,6 +14,10 @@ import { TestWriteBackService } from './services/test-write-back.service';
 import { ConversationTestService } from './services/conversation-test.service';
 import { CuratedDatasetImportService } from './services/curated-dataset-import.service';
 import { CuratedDatasetPayloadBuilderService } from './services/curated-dataset-payload-builder.service';
+import { TestFeedbackService } from './services/test-feedback.service';
+import { TestSuiteQueueService } from './services/test-suite-queue.service';
+import { TestSuiteSessionService } from './services/test-suite-session.service';
+import { TestSuiteStreamingService } from './services/test-suite-streaming.service';
 import { AgentModule } from '@agent/agent.module';
 import { BizModule } from '@biz/biz.module';
 import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
@@ -34,6 +38,9 @@ import { MemoryFixtureService } from './services/memory-fixture.service';
  * - TestImportService: 飞书导入 + 表格解析
  * - TestWriteBackService: 飞书回写
  * - ConversationTestService: 回归验证执行
+ * - TestSuiteStreamingService: 流式测试编排
+ * - TestSuiteQueueService: 队列状态 / 取消 / 清理编排
+ * - TestFeedbackService: goodcase / badcase 反馈回写
  * - TestSuiteProcessor: Bull Queue 任务处理器
  */
 @Module({
@@ -83,6 +90,10 @@ import { MemoryFixtureService } from './services/memory-fixture.service';
     LineageSyncService,
     MemoryFixtureService,
     CuratedDatasetImportService,
+    TestSuiteStreamingService,
+    TestSuiteQueueService,
+    TestFeedbackService,
+    TestSuiteSessionService,
     TestSuiteProcessor,
     TestImportService,
     AiStreamObservabilityService,
@@ -96,6 +107,10 @@ import { MemoryFixtureService } from './services/memory-fixture.service';
     ConversationTestService,
     CuratedDatasetImportService,
     MemoryFixtureService,
+    TestSuiteStreamingService,
+    TestSuiteQueueService,
+    TestFeedbackService,
+    TestSuiteSessionService,
   ],
 })
 export class TestSuiteModule {}

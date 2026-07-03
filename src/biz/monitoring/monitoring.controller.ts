@@ -3,9 +3,9 @@ import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
-import { MessageTrackingService } from './services/tracking/message-tracking.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
 import { DeliverySkipReason } from '@shared-types/tracking.types';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
@@ -157,12 +157,10 @@ export class AnalyticsController {
  */
 @Controller('monitoring')
 export class MonitoringController {
-  private readonly logger = new Logger(MonitoringController.name);
-
   constructor(
     private readonly dashboardService: AnalyticsDashboardService,
     private readonly cacheService: MonitoringCacheService,
-    private readonly messageTrackingService: MessageTrackingService,
+    private readonly probeService: MonitoringProbeService,
     private readonly extractionAccuracyService: ExtractionAccuracyService,
   ) {}
 
@@ -233,14 +231,6 @@ export class MonitoringController {
   @Post('global-counters/probe-skip')
   @HttpCode(200)
   async probeReplySkipped(@Body() body?: { messageId?: string; reason?: DeliverySkipReason }) {
-    const reason: DeliverySkipReason = 'output_leak';
-    const messageId = body?.messageId?.trim() || `monitoring-probe-${Date.now()}`;
-
-    this.logger.warn(
-      `[MonitoringProbe] recordReplySkipped messageId=${messageId} reason=${reason}`,
-    );
-    this.messageTrackingService.recordReplySkipped(messageId, reason);
-
-    return this.cacheService.getCounters();
+    return this.probeService.recordReplySkippedProbe(body);
   }
 }

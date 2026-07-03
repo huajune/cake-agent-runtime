@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OpsEventsRepository } from './ops-events.repository';
 import { BotGroupResolverService } from './bot-group-resolver.service';
+import { OpsEventsRepository } from '../repositories/ops-events.repository';
 import type {
   CandidateMessageResult,
   OpsEventWriteResult,
   RecordCandidateMessageInput,
   RecordOpsEventInput,
-} from './ops-events.types';
+} from '../types/ops-events.types';
 
 /**
  * 运营事件记录统一入口。

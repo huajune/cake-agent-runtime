@@ -7,7 +7,7 @@ import type {
   PendingHireWorkOrder,
   RecordCandidateMessageInput,
   RecordOpsEventInput,
-} from './ops-events.types';
+} from '../types/ops-events.types';
 
 /**
  * ops_events 写入侧仓储：只调两个 RPC，写底账 + 投影日报全在 PG 内原子完成。

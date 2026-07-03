@@ -4,8 +4,8 @@ import { AnalyticsController, MonitoringController } from '@biz/monitoring/monit
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
+import { MonitoringProbeService } from '@biz/monitoring/services/maintenance/monitoring-probe.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
-import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ExtractionAccuracyService } from '@biz/monitoring/services/dashboard/extraction-accuracy.service';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
@@ -358,8 +358,8 @@ describe('MonitoringController', () => {
     getCounters: jest.fn(),
   };
 
-  const mockMessageTrackingService = {
-    recordReplySkipped: jest.fn(),
+  const mockProbeService = {
+    recordReplySkippedProbe: jest.fn(),
   };
 
   const mockExtractionAccuracyService = {
@@ -372,7 +372,7 @@ describe('MonitoringController', () => {
       providers: [
         { provide: AnalyticsDashboardService, useValue: mockDashboardService },
         { provide: MonitoringCacheService, useValue: mockCacheService },
-        { provide: MessageTrackingService, useValue: mockMessageTrackingService },
+        { provide: MonitoringProbeService, useValue: mockProbeService },
         { provide: ExtractionAccuracyService, useValue: mockExtractionAccuracyService },
       ],
     })
@@ -414,17 +414,16 @@ describe('MonitoringController', () => {
   });
 
   it('records a probe skip and returns updated counters', async () => {
-    mockCacheService.getCounters.mockResolvedValue({ ...counters, totalOutputLeakSkipped: 3 });
-
-    const result = await controller.probeReplySkipped({
+    const updated = { ...counters, totalOutputLeakSkipped: 3 };
+    mockProbeService.recordReplySkippedProbe.mockResolvedValue(updated);
+    const body = {
       messageId: 'msg-1',
-      reason: 'output_leak',
-    });
+      reason: 'output_leak' as const,
+    };
 
-    expect(mockMessageTrackingService.recordReplySkipped).toHaveBeenCalledWith(
-      'msg-1',
-      'output_leak',
-    );
+    const result = await controller.probeReplySkipped(body);
+
+    expect(mockProbeService.recordReplySkippedProbe).toHaveBeenCalledWith(body);
     expect(result.totalOutputLeakSkipped).toBe(3);
   });
 

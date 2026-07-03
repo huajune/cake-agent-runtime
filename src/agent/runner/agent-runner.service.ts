@@ -16,10 +16,11 @@ import type {
   GuardrailReviewStepTrace,
   GuardrailTurnTrace,
 } from '@shared-types/guardrail.contract';
-import {
-  GuardrailReviewRepository,
-  type GuardrailReviewStepDetail,
-} from '@biz/message/repositories/guardrail-review.repository';
+import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
+import type {
+  GuardrailReviewInsertInput,
+  GuardrailReviewStepDetail,
+} from '@biz/message/types/guardrail-review.types';
 import { classifyReviewedOutcome } from './turn-outcome';
 import {
   OutputGuardrailService,
@@ -109,7 +110,7 @@ export class AgentRunnerService {
     private readonly generator: GeneratorService,
     private readonly outputGuard: OutputGuardrailService,
     private readonly inputGuard: InputGuardrailService,
-    private readonly reviewRecords: GuardrailReviewRepository,
+    private readonly guardrailReviews: GuardrailReviewService,
   ) {}
 
   invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
@@ -296,7 +297,7 @@ export class AgentRunnerService {
    *
    * - 仅生产回合写（有 traceId；debug-chat / test-suite 不带 traceId，天然隔离）；
    * - 仅守卫有信号时写（非 pass 或有 rule 观测命中），放行回合不产生行；
-   * - fire-and-forget：Repository 内部吞错，绝不阻塞/拖垮回复链路。
+   * - fire-and-forget：三态写入结果只用于观测告警，绝不阻塞/拖垮回复链路。
    */
   private persistReviewRecord(
     ctx: ReviewContext,
@@ -314,25 +315,45 @@ export class AgentRunnerService {
     const hasSignal =
       data.firstDecision.decision !== 'pass' || data.firstDecision.ruleIds.length > 0;
     if (!hasSignal) return;
+    if (data.repaired && (!data.revisedReply || !data.revisedDecision)) {
+      this.logger.warn(`[invokeReviewed] 审查档案缺少修复后内容，跳过落库: traceId=${ctx.traceId}`);
+      return;
+    }
 
-    void this.reviewRecords
-      .record({
-        traceId: ctx.traceId,
-        chatId: ctx.chatId,
-        userId: ctx.userId,
-        botImId: ctx.botImId,
-        botUserName: ctx.botUserName,
-        contactName: ctx.contactName,
-        userMessage: ctx.userMessage,
-        firstReply: data.firstReply,
-        first: this.toReviewStepDetail(data.firstDecision),
-        repairMode: data.repaired ? data.firstDecision.repairMode : undefined,
-        repaired: data.repaired,
-        revisedReply: data.revisedReply,
-        revised: data.revisedDecision ? this.toReviewStepDetail(data.revisedDecision) : undefined,
-        committedSideEffects: data.committedSideEffects,
-        finalDecision: data.finalDecision.decision,
-        reasonCode: data.finalDecision.reasonCode,
+    const baseRecord = {
+      traceId: ctx.traceId,
+      chatId: ctx.chatId,
+      userId: ctx.userId,
+      botImId: ctx.botImId,
+      botUserName: ctx.botUserName,
+      contactName: ctx.contactName,
+      userMessage: ctx.userMessage,
+      firstReply: data.firstReply,
+      first: this.toReviewStepDetail(data.firstDecision),
+      finalDecision: data.finalDecision.decision,
+      reasonCode: data.finalDecision.reasonCode,
+    };
+    const reviewRecord: GuardrailReviewInsertInput = data.repaired
+      ? {
+          ...baseRecord,
+          repairMode: data.firstDecision.repairMode,
+          repaired: true,
+          revisedReply: data.revisedReply,
+          revised: this.toReviewStepDetail(data.revisedDecision),
+          committedSideEffects: data.committedSideEffects,
+        }
+      : {
+          ...baseRecord,
+          repaired: false,
+          committedSideEffects: data.committedSideEffects,
+        };
+
+    void this.guardrailReviews
+      .recordReview(reviewRecord)
+      .then((outcome) => {
+        if (outcome === 'failed') {
+          this.logger.warn(`[invokeReviewed] 审查档案落库失败: traceId=${ctx.traceId}`);
+        }
       })
       .catch((error: unknown) => {
         this.logger.warn(

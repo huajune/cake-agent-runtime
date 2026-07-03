@@ -3,7 +3,7 @@ import { BotController } from './bot.controller';
 import { BotService } from './bot.service';
 import { HttpModule } from '@infra/client-http/http.module';
 import { ApiConfigModule } from '@infra/config/api-config.module';
-import { BOT_ACCOUNT_PROVIDER } from '@biz/ops-events/bot-account.provider';
+import { BOT_ACCOUNT_PROVIDER } from '@biz/ops-events/providers/bot-account.provider';
 
 /**
  * @Global：除企微渠道内部使用外，运营事件域（biz/ops-events）通过 BOT_ACCOUNT_PROVIDER

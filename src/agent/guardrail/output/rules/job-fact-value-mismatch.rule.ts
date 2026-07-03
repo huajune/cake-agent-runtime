@@ -54,12 +54,19 @@ const QUESTION_PATTERN = /[？?]|[吗呢么]\s*[。！~]*\s*$/;
  * "这个岗位要求日结"是在声称岗位结算口径，若与真实数据矛盾正是本规则要拦的
  * 值级矛盾场景（PR #421 review）。
  */
+const CURRENT_JOB_SETTLEMENT_ASSERTION_PATTERN =
+  /(?:这个|这家|该|当前|本|门店|岗位)[^。！？\n]{0,16}(?:符合|满足|支持|可以|能|是|要求)/;
 const SETTLEMENT_REQUIREMENT_ECHO_PATTERN =
-  /(?:符合|满足|按你|按您|想找|想做|想要|偏好|(?:你|您)的?(?:要求|需求|条件))[^。！？\n]{0,10}(?:日结|周结|月结|当日结|当天结)|(?:日结|周结|月结)[^。！？\n]{0,4}(?:要求|需求|的条件)/;
+  /(?:按你|按您|想找|想做|想要|偏好|(?:你|您)的?(?:要求|需求|条件))[^。！？\n]{0,10}(?:日结|周结|月结|当日结|当天结)|(?:你|您)的?[^。！？\n]{0,8}(?:日结|周结|月结|当日结|当天结)[^。！？\n]{0,4}(?:要求|需求|条件)/;
 
 /** 未来承诺句（"后续有…上线再同步你"）：不构成对当前岗位事实的声称。 */
 const FUTURE_PROMISE_PATTERN =
   /(?:后续|以后|之后|回头|到时|等有|一旦有)[^。！？\n]*(?:上线|再(?:同步|通知|告诉|联系|喊|找)|留意|帮你留意)/;
+
+function isSettlementRequirementEcho(sentence: string): boolean {
+  if (CURRENT_JOB_SETTLEMENT_ASSERTION_PATTERN.test(sentence)) return false;
+  return SETTLEMENT_REQUIREMENT_ECHO_PATTERN.test(sentence);
+}
 
 /**
  * 拼出本轮岗位事实的 ground truth 文本（markdown + rawData JSON）。
@@ -225,7 +232,7 @@ export function detectSettlementCycleMismatch(
       (sentence) =>
         assertsPattern(sentence, group.claim) &&
         // 复述候选人要求 / 未来上新承诺不算对当前岗位结算方式的声称
-        !SETTLEMENT_REQUIREMENT_ECHO_PATTERN.test(sentence) &&
+        !isSettlementRequirementEcho(sentence) &&
         !FUTURE_PROMISE_PATTERN.test(sentence),
     );
     if (claimingSentences.length === 0) continue;
