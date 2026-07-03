@@ -57,8 +57,8 @@ describe('ConversationRiskCardRenderer', () => {
             short_term: null,
             open_position: null,
             time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
+            schedule_constraint: null,
+            available_after: null,
           },
           reasoning: 'test',
         }) as SessionFacts,
@@ -87,18 +87,18 @@ describe('ConversationRiskCardRenderer', () => {
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
-    expect((card.content as string)).not.toContain('风险类型：');
-    expect((card.content as string)).not.toContain('**风险摘要**：候选人出现明确投诉风险');
-    expect((card.content as string)).toContain(
+    expect(card.content as string).not.toContain('风险类型：');
+    expect(card.content as string).not.toContain('**风险摘要**：候选人出现明确投诉风险');
+    expect(card.content as string).toContain(
       "> <font color='red'>**命中原因**：命中关键词：投诉、骗子</font>",
     );
-    expect((card.content as string)).toContain('**当前消息**：\n> 你们是不是骗子，我要投诉');
-    expect((card.content as string)).toContain('微信昵称：Alice');
-    expect((card.content as string)).toContain('姓名：Alice');
-    expect((card.content as string)).toContain('托管账号：招募经理A');
-    expect((card.content as string)).toContain('品牌：蜀地源');
-    expect((card.content as string)).toContain('处理完请到 Web 托管后台手动恢复托管。');
-    expect((card.content as string)).not.toContain('暂停ID：');
+    expect(card.content as string).toContain('**当前消息**：\n> 你们是不是骗子，我要投诉');
+    expect(card.content as string).toContain('微信昵称：Alice');
+    expect(card.content as string).toContain('姓名：Alice');
+    expect(card.content as string).toContain('托管账号：招募经理A');
+    expect(card.content as string).toContain('品牌：蜀地源');
+    expect(card.content as string).toContain('处理完请到 Web 托管后台手动恢复托管。');
+    expect(card.content as string).not.toContain('暂停ID：');
   });
 
   it('should render contactName as wechat nickname and hide empty job section', () => {
@@ -139,8 +139,8 @@ describe('ConversationRiskCardRenderer', () => {
             short_term: null,
             open_position: null,
             time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
+            schedule_constraint: null,
+            available_after: null,
           },
           reasoning: 'test',
         }) as SessionFacts,
@@ -151,8 +151,8 @@ describe('ConversationRiskCardRenderer', () => {
       },
     });
 
-    expect((card.content as string)).toContain('微信昵称：7881300085910772');
-    expect((card.content as string)).not.toContain('**岗位信息**');
+    expect(card.content as string).toContain('微信昵称：7881300085910772');
+    expect(card.content as string).not.toContain('**岗位信息**');
   });
 
   it('should hide age ranges that look like job requirements', () => {
@@ -164,7 +164,9 @@ describe('ConversationRiskCardRenderer', () => {
       chatId: 'chat-123',
       pausedUserId: 'chat-123',
       currentMessageContent: '滚犊子，要我这么多信息',
-      recentMessages: [{ role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 }],
+      recentMessages: [
+        { role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 },
+      ],
       sessionState: {
         facts: SessionFactsSchema.parse({
           interview_info: {
@@ -193,8 +195,8 @@ describe('ConversationRiskCardRenderer', () => {
             short_term: null,
             open_position: null,
             time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
+            schedule_constraint: null,
+            available_after: null,
           },
           reasoning: 'test',
         }) as SessionFacts,
@@ -205,9 +207,9 @@ describe('ConversationRiskCardRenderer', () => {
       },
     });
 
-    expect((card.content as string)).not.toContain('年龄：18到35岁');
-    expect((card.content as string)).toContain('城市：上海');
-    expect((card.content as string)).toContain('区域：杨浦');
+    expect(card.content as string).not.toContain('年龄：18到35岁');
+    expect(card.content as string).toContain('城市：上海');
+    expect(card.content as string).toContain('区域：杨浦');
   });
 
   it('should hide generic summary and duplicated system action block', () => {
@@ -219,7 +221,9 @@ describe('ConversationRiskCardRenderer', () => {
       chatId: 'chat-123',
       pausedUserId: 'chat-123',
       currentMessageContent: '滚犊子，要我这么多信息',
-      recentMessages: [{ role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 }],
+      recentMessages: [
+        { role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 },
+      ],
       sessionState: {
         facts: SessionFactsSchema.parse({
           interview_info: {
@@ -248,8 +252,8 @@ describe('ConversationRiskCardRenderer', () => {
             short_term: null,
             open_position: null,
             time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
+            schedule_constraint: null,
+            available_after: null,
           },
           reasoning: 'test',
         }) as SessionFacts,
@@ -261,9 +265,9 @@ describe('ConversationRiskCardRenderer', () => {
     });
 
     expect((card as { title: string }).title).toBe('🚨 交流异常 · 辱骂/攻击');
-    expect((card.content as string)).not.toContain('风险类型：');
-    expect((card.content as string)).not.toContain('**风险摘要**：候选人出现明显辱骂或攻击性表达');
-    expect((card.content as string)).not.toContain('**系统动作**');
-    expect((card.content as string)).not.toContain('AI 已停止回复');
+    expect(card.content as string).not.toContain('风险类型：');
+    expect(card.content as string).not.toContain('**风险摘要**：候选人出现明显辱骂或攻击性表达');
+    expect(card.content as string).not.toContain('**系统动作**');
+    expect(card.content as string).not.toContain('AI 已停止回复');
   });
 });

@@ -139,7 +139,7 @@ describe('SpongeBiService', () => {
         }),
       );
 
-      expect(result).toEqual([{ '城市': '上海', '门店': '门店A' }]);
+      expect(result).toEqual([{ 城市: '上海', 门店: '门店A' }]);
     });
 
     it('should use cached token on second call (sign-in called only once)', async () => {
@@ -222,8 +222,8 @@ describe('SpongeBiService', () => {
       // sign-in + 2 pages = 3 calls
       expect(mockFetch).toHaveBeenCalledTimes(3);
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ '城市': '上海' });
-      expect(result[1]).toEqual({ '城市': '北京' });
+      expect(result[0]).toEqual({ 城市: '上海' });
+      expect(result[1]).toEqual({ 城市: '北京' });
     });
 
     it('should sort orders by specified field', async () => {
@@ -315,9 +315,9 @@ describe('SpongeBiService', () => {
 
   describe('refreshBIDataSource', () => {
     it('should return true on success', async () => {
-      const mockFetch = jest.fn().mockResolvedValueOnce(
-        makeRefreshResponse() as unknown as Response,
-      );
+      const mockFetch = jest
+        .fn()
+        .mockResolvedValueOnce(makeRefreshResponse() as unknown as Response);
       global.fetch = mockFetch;
 
       const result = await service.refreshBIDataSource();

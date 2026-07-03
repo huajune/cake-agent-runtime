@@ -649,14 +649,14 @@ export function buildInterviewBookingTool(
           // 这里补一道本地兜底——若候选人窗口内已有 active_booking，本次极可能是 Bull 重试或 Agent
           // 同会话重复调用导致的重复提交，直接拦截，避免在海绵再生成一张工单。候选人若要改时间/取消，
           // 走 request_handoff(modify_appointment) 人工改约，不再走本工具。
-          const existingBooking = await longTermService
-            .getLatestBooking(context.corpId, context.userId)
+          const activeBooking = await longTermService
+            .getActiveBooking(context.corpId, context.userId)
             .catch(() => null);
-          if (existingBooking?.work_order_id != null) {
-            const linkedAtMs = Date.parse(existingBooking.linked_at);
+          if (activeBooking?.work_order_id != null) {
+            const linkedAtMs = Date.parse(activeBooking.linked_at);
             if (Number.isFinite(linkedAtMs) && Date.now() - linkedAtMs < BOOKING_DEDUP_WINDOW_MS) {
               logger.warn(
-                `[booking] 命中近期 active_booking 软查重，跳过重复提交: chatId=${context.sessionId}, workOrderId=${existingBooking.work_order_id}`,
+                `[booking] 命中近期 active_booking 软查重，跳过重复提交: chatId=${context.sessionId}, workOrderId=${activeBooking.work_order_id}`,
               );
               // 候选人确已预约 → bookingSucceeded 置 true（不阻断后续拉群等流程）。
               context.bookingSucceeded = true;
@@ -673,11 +673,11 @@ export function buildInterviewBookingTool(
                   ? '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。' +
                     '但候选人本轮补发了简历文件，系统无法把简历补挂到已有工单上：请调用 ' +
                     'request_handoff(reasonCode="system_blocked")，reason 写明"候选人预约后补发简历，' +
-                    `需人工将简历补传到工单 ${existingBooking.work_order_id}"。` +
+                    `需人工将简历补传到工单 ${activeBooking.work_order_id}"。` +
                     '对候选人只说简历已收到、会帮他跟进，不要说简历已提交成功。'
                   : '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；否则按已预约状态正常衔接（可复述面试安排）。',
                 details: {
-                  existingWorkOrderId: existingBooking.work_order_id,
+                  existingWorkOrderId: activeBooking.work_order_id,
                   ...(freshResumeThisTurn
                     ? { pendingUploadResume: bookingUploadResume ?? freshResumeThisTurn }
                     : {}),
@@ -764,10 +764,10 @@ export function buildInterviewBookingTool(
 
             if (workOrderId != null) {
               void longTermService
-                .setLatestBooking(context.corpId, context.userId, workOrderId)
+                .setActiveBooking(context.corpId, context.userId, workOrderId)
                 .catch((err: unknown) => {
                   logger.warn(
-                    `[booking] setLatestBooking 失败，不影响主流程: ${err instanceof Error ? err.message : String(err)}`,
+                    `[booking] setActiveBooking 失败，不影响主流程: ${err instanceof Error ? err.message : String(err)}`,
                   );
                 });
             } else {

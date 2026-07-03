@@ -321,7 +321,7 @@ export interface InterviewBookingResult {
    *
    * ⚠️ 历史 bug：旧 schema 未解析 `data.workOrder`，导致 recruitment_cases.booking_id
    * 全部为 NULL、本地状态与海绵脱节。修复后这里携带真正的 workOrderId，
-   * 供 latest_booking 指针与 ops_events(booking.succeeded) 使用。
+   * 供 active_booking 指针与 ops_events(booking.succeeded) 使用。
    */
   workOrderId?: number | null;
   /**

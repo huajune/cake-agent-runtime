@@ -67,9 +67,9 @@ describe('session-job-matching', () => {
   });
 
   it('should match hierarchical jobCategoryName segments when user describes a role', () => {
-    expect(resolveCurrentFocusJob('我想去零售店员那个岗位', [], [], [chaoneiJob, retailJob])).toEqual(
-      retailJob,
-    );
+    expect(
+      resolveCurrentFocusJob('我想去零售店员那个岗位', [], [], [chaoneiJob, retailJob]),
+    ).toEqual(retailJob);
   });
 
   it('should derive focus job from assistant template when one job is clearly dominant', () => {

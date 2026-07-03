@@ -1,5 +1,5 @@
-import { PromptContext } from '@agent/context/sections/section.interface';
-import { TurnHintsSection } from '@agent/context/sections/turn-hints.section';
+import { PromptContext } from '@agent/generator/context/sections/section.interface';
+import { TurnHintsSection } from '@agent/generator/context/sections/turn-hints.section';
 import {
   FALLBACK_EXTRACTION,
   type HighConfidenceFacts,

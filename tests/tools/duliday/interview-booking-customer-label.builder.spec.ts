@@ -64,9 +64,7 @@ describe('buildCustomerLabelList', () => {
 
     it('returns BOOKING_MISSING_CUSTOMER_LABEL_VALUES when a label cannot be resolved', () => {
       const definitions = [def('完全不认识的字段')];
-      const result = buildCustomerLabelList(
-        baseParams({ supplementDefinitions: definitions }),
-      );
+      const result = buildCustomerLabelList(baseParams({ supplementDefinitions: definitions }));
 
       expectFailure(result);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
@@ -143,9 +141,7 @@ describe('buildCustomerLabelList', () => {
     });
 
     it('returns missing when 学历 label appears but educationId is absent', () => {
-      const result = buildCustomerLabelList(
-        baseParams({ supplementDefinitions: [def('学历')] }),
-      );
+      const result = buildCustomerLabelList(baseParams({ supplementDefinitions: [def('学历')] }));
 
       expectFailure(result);
       expect(result.missingSupplementLabels).toEqual(['学历']);

@@ -13,17 +13,21 @@ describe('ProcessExceptionMonitorService', () => {
     service = new ProcessExceptionMonitorService(incidentReporter);
     jest
       .spyOn(
-        ((service as unknown as {
-          logger: { error: (...args: unknown[]) => void; log: (...args: unknown[]) => void };
-        }).logger),
+        (
+          service as unknown as {
+            logger: { error: (...args: unknown[]) => void; log: (...args: unknown[]) => void };
+          }
+        ).logger,
         'error',
       )
       .mockImplementation();
     jest
       .spyOn(
-        ((service as unknown as {
-          logger: { error: (...args: unknown[]) => void; log: (...args: unknown[]) => void };
-        }).logger),
+        (
+          service as unknown as {
+            logger: { error: (...args: unknown[]) => void; log: (...args: unknown[]) => void };
+          }
+        ).logger,
         'log',
       )
       .mockImplementation();
@@ -55,7 +59,8 @@ describe('ProcessExceptionMonitorService', () => {
     expect(offSpy).toHaveBeenNthCalledWith(
       1,
       'uncaughtException',
-      (service as unknown as { handleUncaughtException: (err: Error) => void }).handleUncaughtException,
+      (service as unknown as { handleUncaughtException: (err: Error) => void })
+        .handleUncaughtException,
     );
     expect(offSpy).toHaveBeenNthCalledWith(
       2,
@@ -79,7 +84,9 @@ describe('ProcessExceptionMonitorService', () => {
   it('should report uncaught exceptions as critical incidents', () => {
     const error = new Error('boom');
 
-    (service as unknown as { handleUncaughtException: (err: Error) => void }).handleUncaughtException(error);
+    (
+      service as unknown as { handleUncaughtException: (err: Error) => void }
+    ).handleUncaughtException(error);
 
     expect(incidentReporter.notifyAsync).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -101,7 +108,9 @@ describe('ProcessExceptionMonitorService', () => {
   });
 
   it('should wrap non-Error rejection reasons before reporting', () => {
-    (service as unknown as { handleUnhandledRejection: (reason: unknown) => void }).handleUnhandledRejection('promise failed');
+    (
+      service as unknown as { handleUnhandledRejection: (reason: unknown) => void }
+    ).handleUnhandledRejection('promise failed');
 
     expect(incidentReporter.notifyAsync).toHaveBeenCalledWith(
       expect.objectContaining({

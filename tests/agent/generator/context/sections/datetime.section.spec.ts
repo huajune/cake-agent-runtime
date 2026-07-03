@@ -1,4 +1,4 @@
-import { DateTimeSection } from '@/agent/context/sections/datetime.section';
+import { DateTimeSection } from '@/agent/generator/context/sections/datetime.section';
 
 describe('DateTimeSection', () => {
   beforeEach(() => {

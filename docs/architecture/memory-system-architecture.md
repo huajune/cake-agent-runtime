@@ -296,7 +296,7 @@ interface SummaryEntry {
    - 优先用逐字段血缘——任一事实的 `originSessionId !== 当前 sessionId`
    - 存量事实无血缘时回退——`summary_data.lastSettledBySession` / `recent[].sessionId` 去掉当前会话后仍有其它会话
 
-**口径**（[`agent-preparation.service.ts`](../../src/agent/agent-preparation.service.ts) `formatCrossConversationNotice`）：置真时在 `[用户档案]`/`[历史求职意向]` 前插一段 `[历史背景｜来自候选人此前在本平台的咨询]` 说明，让模型**泛指**"候选人此前在本平台与另一位招聘顾问沟通过"，不假装是本会话聊过、也不点名具体招募经理。
+**口径**（[`agent-preparation.service.ts`](../../src/agent/generator/preparation.service.ts) `formatCrossConversationNotice`）：置真时在 `[用户档案]`/`[历史求职意向]` 前插一段 `[历史背景｜来自候选人此前在本平台的咨询]` 说明，让模型**泛指**"候选人此前在本平台与另一位招聘顾问沟通过"，不假装是本会话聊过、也不点名具体招募经理。
 
 **设计粒度**：数据血缘逐字段记录（可精确追溯），但展示口径是**会话级泛指**（不暴露 bot 名）。`writeFromBooking` / enrichment 路径暂不打血缘（本能力针对 settlement 路径）。
 
@@ -652,7 +652,7 @@ await this.memory.clearLongTermMemory(corpId, userId);
 - [`src/memory/services/memory-lifecycle.service.ts`](../../src/memory/services/memory-lifecycle.service.ts) — onTurnStart / onTurnEnd 编排
 - [`src/memory/services/settlement.service.ts`](../../src/memory/services/settlement.service.ts) — 沉淀逻辑
 - [`src/memory/memory.config.ts`](../../src/memory/memory.config.ts) — 时间常量
-- [`src/agent/agent-preparation.service.ts`](../../src/agent/agent-preparation.service.ts) — Agent 侧消费 onTurnStart 结果
+- [`src/agent/generator/preparation.service.ts`](../../src/agent/generator/preparation.service.ts) — Agent 侧消费 onTurnStart 结果
 - [`src/tools/advance-stage.tool.ts`](../../src/tools/advance-stage.tool.ts) — 阶段推进
 - [`src/tools/recall-history.tool.ts`](../../src/tools/recall-history.tool.ts) — 按需检索摘要
 - [`src/tools/invite-to-group.tool.ts`](../../src/tools/invite-to-group.tool.ts) — 群邀请副作用登记

@@ -3,6 +3,7 @@ import type {
   AgentStepDetail,
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
+import type {} from '@shared-types/guardrail.contract';
 import type {
   AlertErrorType,
   AnomalyFlag,

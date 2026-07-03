@@ -75,6 +75,14 @@ export class TurnOutcomeInterventionService {
     const declared = outcome.sideEffects ?? [];
 
     if (outcome.kind !== 'handoff' || !outcome.handoff) return declared;
+    // classifyReviewedOutcome 已把 handoff 意图放进 sideEffects 时不再追加，
+    // 否则同一转人工会被 record+dispatch 两次（幂等键相同也会多打一次告警）。
+    const handoffAlreadyDeclared = declared.some(
+      (intent) =>
+        intent.kind === 'general_handoff' &&
+        intent.idempotencyKey === outcome.handoff?.idempotencyKey,
+    );
+    if (handoffAlreadyDeclared) return declared;
     return [
       ...declared,
       {

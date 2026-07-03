@@ -98,15 +98,11 @@ describe('interview-window.util', () => {
     });
 
     it('does not block when current time is still before deadline', () => {
-      expect(
-        findSameDayCutoffViolation('2026-04-29', [window], NOW_BEFORE_CUTOFF),
-      ).toBeNull();
+      expect(findSameDayCutoffViolation('2026-04-29', [window], NOW_BEFORE_CUTOFF)).toBeNull();
     });
 
     it('does not block when interviewDate is in the future', () => {
-      expect(
-        findSameDayCutoffViolation('2026-04-30', [window], NOW_AFTER_CUTOFF),
-      ).toBeNull();
+      expect(findSameDayCutoffViolation('2026-04-30', [window], NOW_AFTER_CUTOFF)).toBeNull();
     });
 
     it('returns null when no matching window for the date', () => {
@@ -122,9 +118,7 @@ describe('interview-window.util', () => {
         startTime: '13:30',
         endTime: '17:00',
       };
-      expect(
-        findSameDayCutoffViolation('2026-04-29', [noDeadline], NOW_AFTER_CUTOFF),
-      ).toBeNull();
+      expect(findSameDayCutoffViolation('2026-04-29', [noDeadline], NOW_AFTER_CUTOFF)).toBeNull();
     });
 
     it('handles fixed-date windows', () => {

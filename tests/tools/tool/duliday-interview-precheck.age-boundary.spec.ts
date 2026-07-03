@@ -52,7 +52,9 @@ describe('detectAgeBoundary', () => {
   // ── pass ──
 
   it('returns pass when candidate already meets the min', () => {
-    expect(detectAgeBoundary({ candidateAge: 25, range: { min: 25, max: 50 } }).severity).toBe('pass');
+    expect(detectAgeBoundary({ candidateAge: 25, range: { min: 25, max: 50 } }).severity).toBe(
+      'pass',
+    );
   });
 
   // ── boundary ──
@@ -60,18 +62,29 @@ describe('detectAgeBoundary', () => {
   it('flags 24 vs [25,50] as under_min boundary', () => {
     const result = detectAgeBoundary({ candidateAge: 24, range: { min: 25, max: 50 } });
     expect(result).toEqual(
-      expect.objectContaining({ candidateAge: 24, requiredMin: 25, side: 'under_min', severity: 'boundary' }),
+      expect.objectContaining({
+        candidateAge: 24,
+        requiredMin: 25,
+        side: 'under_min',
+        severity: 'boundary',
+      }),
     );
   });
 
   it('flags 23 vs [25,50] as under_min boundary (anchor floor)', () => {
-    const result = detectAgeBoundary({ candidateAge: AGE_BOUNDARY_HANDOFF_FLOOR, range: { min: 25, max: 50 } });
+    const result = detectAgeBoundary({
+      candidateAge: AGE_BOUNDARY_HANDOFF_FLOOR,
+      range: { min: 25, max: 50 },
+    });
     expect(result.side).toBe('under_min');
     expect(result.severity).toBe('boundary');
   });
 
   it('flags candidateAge = max + UPPER_TOLERANCE as over_max boundary', () => {
-    const result = detectAgeBoundary({ candidateAge: 50 + AGE_BOUNDARY_UPPER_TOLERANCE_YEARS, range: { min: 18, max: 50 } });
+    const result = detectAgeBoundary({
+      candidateAge: 50 + AGE_BOUNDARY_UPPER_TOLERANCE_YEARS,
+      range: { min: 18, max: 50 },
+    });
     expect(result.side).toBe('over_max');
     expect(result.severity).toBe('boundary');
   });
@@ -84,7 +97,10 @@ describe('detectAgeBoundary', () => {
   });
 
   it('flags candidateAge = max + UPPER_TOLERANCE + 1 as over_max hard_reject', () => {
-    const result = detectAgeBoundary({ candidateAge: 50 + AGE_BOUNDARY_UPPER_TOLERANCE_YEARS + 1, range: { min: 18, max: 50 } });
+    const result = detectAgeBoundary({
+      candidateAge: 50 + AGE_BOUNDARY_UPPER_TOLERANCE_YEARS + 1,
+      range: { min: 18, max: 50 },
+    });
     expect(result.side).toBe('over_max');
     expect(result.severity).toBe('hard_reject');
   });
@@ -92,7 +108,12 @@ describe('detectAgeBoundary', () => {
   it('flags 48 vs [25,40] as over_max hard_reject (badcase: 通融式推荐)', () => {
     const result = detectAgeBoundary({ candidateAge: 48, range: { min: 25, max: 40 } });
     expect(result).toEqual(
-      expect.objectContaining({ candidateAge: 48, requiredMax: 40, side: 'over_max', severity: 'hard_reject' }),
+      expect.objectContaining({
+        candidateAge: 48,
+        requiredMax: 40,
+        side: 'over_max',
+        severity: 'hard_reject',
+      }),
     );
   });
 
@@ -112,10 +133,14 @@ describe('detectAgeBoundary', () => {
   // ── one-sided ranges ──
 
   it('handles single-sided range (only min set)', () => {
-    expect(detectAgeBoundary({ candidateAge: 24, range: { min: 25, max: null } }).side).toBe('under_min');
+    expect(detectAgeBoundary({ candidateAge: 24, range: { min: 25, max: null } }).side).toBe(
+      'under_min',
+    );
   });
 
   it('handles single-sided range (only max set)', () => {
-    expect(detectAgeBoundary({ candidateAge: 51, range: { min: null, max: 50 } }).side).toBe('over_max');
+    expect(detectAgeBoundary({ candidateAge: 51, range: { min: null, max: 50 } }).side).toBe(
+      'over_max',
+    );
   });
 });

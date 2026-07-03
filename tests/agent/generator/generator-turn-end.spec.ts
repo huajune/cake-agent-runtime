@@ -1,5 +1,5 @@
 import { GeneratorService } from '@agent/generator/generator.service';
-import type { AgentRunResult } from '@agent/agent-run.types';
+import type { GeneratorRunResult } from '@agent/generator/generator.types';
 
 /**
  * attachTurnEnd 闭包契约：deferTurnEnd 时暴露的 runTurnEnd 必须透传
@@ -24,11 +24,11 @@ describe('GeneratorService attachTurnEnd (runTurnEnd contract)', () => {
     turnState: { candidatePool: undefined },
   };
 
-  const attach = (service: GeneratorService, result: AgentRunResult) => {
+  const attach = (service: GeneratorService, result: GeneratorRunResult) => {
     (
       service as unknown as {
         attachTurnEnd: (
-          result: AgentRunResult,
+          result: GeneratorRunResult,
           ctx: unknown,
           messageId: string | undefined,
           assistantText: string,
@@ -38,7 +38,7 @@ describe('GeneratorService attachTurnEnd (runTurnEnd contract)', () => {
     ).attachTurnEnd(result, ctx, 'm1', '给候选人的回复', true);
   };
 
-  const makeResult = (): AgentRunResult => ({
+  const makeResult = (): GeneratorRunResult => ({
     text: '给候选人的回复',
     steps: 1,
     agentSteps: [],

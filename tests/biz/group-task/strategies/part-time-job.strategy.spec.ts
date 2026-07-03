@@ -46,9 +46,7 @@ describe('PartTimeJobStrategy', () => {
       storeInfo: { storeName: '测试门店', storeCityName: '上海' },
     },
     jobSalary: {
-      salaryScenarioList: [
-        { basicSalary: { basicSalary: 20, basicSalaryUnit: '元/小时' } },
-      ],
+      salaryScenarioList: [{ basicSalary: { basicSalary: 20, basicSalaryUnit: '元/小时' } }],
     },
   });
 
@@ -74,15 +72,14 @@ describe('PartTimeJobStrategy', () => {
 
     it('零售群应只保留零售岗位', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJob('必胜客', '餐饮/中餐/普通服务员'),
-          makeJob('奥乐齐', '零售/食品/导购'),
-        ],
+        jobs: [makeJob('必胜客', '餐饮/中餐/普通服务员'), makeJob('奥乐齐', '零售/食品/导购')],
         total: 2,
       });
       mockBrandRotation.getNextBrand.mockResolvedValue('奥乐齐');
 
-      const result = await strategy.fetchData(makeGroup({ industry: '零售', tag: '兼职群_上海_零售' }));
+      const result = await strategy.fetchData(
+        makeGroup({ industry: '零售', tag: '兼职群_上海_零售' }),
+      );
 
       expect(mockBrandRotation.getNextBrand).toHaveBeenCalledWith('room-1', ['奥乐齐']);
       expect(result.hasData).toBe(true);
@@ -100,7 +97,9 @@ describe('PartTimeJobStrategy', () => {
       });
       mockBrandRotation.getNextBrand.mockResolvedValue('奥乐齐');
 
-      const result = await strategy.fetchData(makeGroup({ industry: '零售', tag: '兼职群_上海_零售' }));
+      const result = await strategy.fetchData(
+        makeGroup({ industry: '零售', tag: '兼职群_上海_零售' }),
+      );
 
       expect(mockBrandRotation.getNextBrand).toHaveBeenCalledWith('room-1', ['奥乐齐', '全家']);
       expect(result.hasData).toBe(true);
@@ -109,10 +108,7 @@ describe('PartTimeJobStrategy', () => {
 
     it('不符合层级契约的 jobCategoryName 应被忽略', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJob('必胜客', '普通服务员'),
-          makeJob('奥乐齐', '导购'),
-        ],
+        jobs: [makeJob('必胜客', '普通服务员'), makeJob('奥乐齐', '导购')],
         total: 2,
       });
 
@@ -146,7 +142,11 @@ describe('PartTimeJobStrategy', () => {
   describe('buildPrompt', () => {
     it('应包含品牌名和城市', () => {
       const prompt = strategy.buildPrompt(
-        { hasData: true, payload: { brand: '必胜客', jobs: [makeJob('必胜客', '餐饮/中餐/服务员')] }, summary: '' },
+        {
+          hasData: true,
+          payload: { brand: '必胜客', jobs: [makeJob('必胜客', '餐饮/中餐/服务员')] },
+          summary: '',
+        },
         makeGroup(),
       );
 

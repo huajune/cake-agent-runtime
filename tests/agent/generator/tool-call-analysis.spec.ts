@@ -1,6 +1,7 @@
 import {
   buildSideEffectBlockNotice,
   buildToolCallLimitNotice,
+  blocksReplay,
   collectCalledToolNames,
   computeResultCount,
   computeToolCallStatus,
@@ -8,10 +9,18 @@ import {
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
   hasCommittedSideEffect,
+  isForbiddenDuringRevise,
+  isForbiddenForProactive,
+  isGuardrailRejected,
+  isSideEffectCommitted,
+  isSideEffectTool,
   isToolSuccess,
   MAX_SAME_TOOL_CALLS_PER_TURN,
+  REPLAY_BLOCKING_TOOLS,
+  REVISION_FORBIDDEN_TOOLS,
   SIDE_EFFECT_TOOLS,
-} from '@agent/tool-call-analysis';
+  TOOL_GUARDRAIL_IDS,
+} from '@agent/generator/tool-call-analysis';
 
 describe('tool-call-analysis', () => {
   describe('computeResultCount', () => {
@@ -286,6 +295,26 @@ describe('tool-call-analysis', () => {
       expect(SIDE_EFFECT_TOOLS.has('send_store_location')).toBe(true);
       expect(SIDE_EFFECT_TOOLS.has('raise_risk_alert')).toBe(true);
       expect(SIDE_EFFECT_TOOLS.has('request_handoff')).toBe(true);
+    });
+  });
+
+  describe('centralized tool risk semantics', () => {
+    it('keeps side-effect, replay, revise, and proactive policy in one helper module', () => {
+      expect(isSideEffectTool('duliday_interview_booking')).toBe(true);
+      expect(REPLAY_BLOCKING_TOOLS.has('duliday_interview_booking')).toBe(true);
+      expect(blocksReplay({ toolName: 'duliday_interview_booking', result: {} })).toBe(true);
+      expect(blocksReplay({ toolName: 'advance_stage', result: { success: true } })).toBe(false);
+      expect(REVISION_FORBIDDEN_TOOLS.has('duliday_interview_booking')).toBe(true);
+      expect(isForbiddenDuringRevise('duliday_interview_booking')).toBe(true);
+      expect(isForbiddenForProactive('invite_to_group')).toBe(true);
+    });
+
+    it('reads the minimal side-effect and guardrail result fields when tools provide them', () => {
+      expect(isSideEffectCommitted({ sideEffectCommitted: true })).toBe(true);
+      expect(isToolSuccess({ sideEffectCommitted: true })).toBe(true);
+      expect(isGuardrailRejected({ guardrailRejected: true })).toBe(true);
+      expect(isGuardrailRejected({ gateRejected: true })).toBe(true);
+      expect(TOOL_GUARDRAIL_IDS).toContain('booking_jobid_provenance');
     });
   });
 

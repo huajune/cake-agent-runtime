@@ -46,7 +46,9 @@ describe('LlmEvaluationService', () => {
     };
 
     it('should return evaluation result with correct score and passed flag', async () => {
-      mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult('回复内容基本一致', 85));
+      mockCompletion.generateStructured.mockResolvedValue(
+        makeCompletionResult('回复内容基本一致', 85),
+      );
 
       const result = await service.evaluate(input);
 

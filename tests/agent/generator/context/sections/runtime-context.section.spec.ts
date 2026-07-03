@@ -1,5 +1,5 @@
-import { RuntimeContextSection } from '@agent/context/sections/runtime-context.section';
-import { PromptContext, PromptSection } from '@agent/context/sections/section.interface';
+import { RuntimeContextSection } from '@agent/generator/context/sections/runtime-context.section';
+import { PromptContext, PromptSection } from '@agent/generator/context/sections/section.interface';
 
 describe('RuntimeContextSection', () => {
   const baseCtx: PromptContext = {

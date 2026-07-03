@@ -4,8 +4,8 @@ import { ModelRole } from '@/llm/llm.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { ShortTermService } from '@memory/services/short-term.service';
 import { SemanticReviewNotifierService } from '@notification/services/semantic-review-notifier.service';
-import type { AgentMemorySnapshot, AgentToolCall } from '@agent/agent-run.types';
-import { SIDE_EFFECT_TOOLS, isToolSuccess } from '@agent/tool-call-analysis';
+import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
+import { hasCommittedSideEffect } from '@agent/generator/tool-call-analysis';
 import type {
   GuardViolation,
   GuardrailRepairMode,
@@ -441,10 +441,7 @@ export class OutputGuardrailService {
     reply: string,
     toolCalls: AgentToolCall[],
   ): 'none' | 'side_effect' | 'commitment_or_fact' {
-    const committedSideEffect = toolCalls.some(
-      (c) => SIDE_EFFECT_TOOLS.has(c.toolName) && isToolSuccess(c.result),
-    );
-    if (committedSideEffect) return 'side_effect';
+    if (hasCommittedSideEffect(toolCalls)) return 'side_effect';
     return OutputGuardrailService.COMMITMENT_OR_FACT_PATTERN.test(reply)
       ? 'commitment_or_fact'
       : 'none';

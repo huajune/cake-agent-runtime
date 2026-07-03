@@ -85,8 +85,16 @@ describe('AiStreamTrace', () => {
 
     trace.markAiStart();
     trace.markResponsePipeStart();
-    trace.observeChunk({ type: 'tool-input-start', toolCallId: 'tool-1', toolName: 'search' } as const);
-    trace.observeChunk({ type: 'tool-input-delta', toolCallId: 'tool-1', inputTextDelta: '{"q":"abc"}' } as const);
+    trace.observeChunk({
+      type: 'tool-input-start',
+      toolCallId: 'tool-1',
+      toolName: 'search',
+    } as const);
+    trace.observeChunk({
+      type: 'tool-input-delta',
+      toolCallId: 'tool-1',
+      inputTextDelta: '{"q":"abc"}',
+    } as const);
     trace.finalizeFailure(new Error('boom'));
 
     expect(mockTrackingService.recordFailure).toHaveBeenCalledTimes(1);

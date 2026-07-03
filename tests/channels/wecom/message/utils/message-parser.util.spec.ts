@@ -517,7 +517,9 @@ describe('stripResumeAttachmentLines', () => {
     // badcase chat 6a2fac72…：vision OCR 把卡片内嵌附件链接也转写进了描述，
     // 再无条件追加一行会出现重复"简历附件"行。
     const description = '简历图片：姓名徐中如\n- 工作经历：良品铺子\n简历附件：https://oss/a.jpg';
-    expect(stripResumeAttachmentLines(description)).toBe('简历图片：姓名徐中如\n- 工作经历：良品铺子');
+    expect(stripResumeAttachmentLines(description)).toBe(
+      '简历图片：姓名徐中如\n- 工作经历：良品铺子',
+    );
   });
 
   it('is a no-op when no 简历附件 line is present', () => {

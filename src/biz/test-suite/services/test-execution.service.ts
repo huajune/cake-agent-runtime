@@ -2,7 +2,11 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Readable } from 'stream';
 import { createHash } from 'node:crypto';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
-import type { AgentInputMessage, AgentRunResult, AgentStreamResult } from '@agent/agent-run.types';
+import type {
+  GeneratorInputMessage,
+  GeneratorRunResult,
+  GeneratorStreamResult,
+} from '@agent/generator/generator.types';
 import { CallerKind } from '@enums/agent.enum';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
@@ -115,7 +119,7 @@ export class TestExecutionService {
       `执行测试: ${request.caseName || this.buildInputPreview(request.message, request.imageUrls)}...`,
     );
 
-    let agentResult: AgentRunResult | null = null;
+    let agentResult: GeneratorRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
     const sessionId = request.sessionId ?? `test-${Date.now()}`;
@@ -300,7 +304,7 @@ export class TestExecutionService {
   /**
    * 执行流式测试（返回 Vercel AI SDK StreamTextResult + 元数据）
    */
-  async executeTestStreamWithMeta(request: TestChatRequestDto): Promise<AgentStreamResult> {
+  async executeTestStreamWithMeta(request: TestChatRequestDto): Promise<GeneratorStreamResult> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
 
     if (!request.userId) {
@@ -487,7 +491,7 @@ export class TestExecutionService {
     return { testRequest, messageText };
   }
 
-  private async runDeferredTurnEnd(agentResult: AgentRunResult | null): Promise<TurnEndTrace> {
+  private async runDeferredTurnEnd(agentResult: GeneratorRunResult | null): Promise<TurnEndTrace> {
     if (!agentResult?.runTurnEnd) {
       return { status: 'skipped' };
     }
@@ -521,7 +525,7 @@ export class TestExecutionService {
     sourceTrace: TestSourceTrace | null;
     runtimeScope: TestRuntimeScope;
     monitoringInfo: MonitoringContextInfo | null;
-    agentResult: AgentRunResult | null;
+    agentResult: GeneratorRunResult | null;
     extracted: ExtractedResult;
     startedAt: number;
     completedAt: number;
@@ -570,7 +574,7 @@ export class TestExecutionService {
     runtimeScope: TestRuntimeScope;
     memorySetup: MemoryFixtureSetup | null;
     memoryAssertions: MemoryAssertions | null;
-    agentResult: AgentRunResult | null;
+    agentResult: GeneratorRunResult | null;
     postTurnState: unknown;
     turnEnd: TurnEndTrace;
   }): TestMemoryTraceBundle {
@@ -802,7 +806,7 @@ export class TestExecutionService {
     history: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>,
     message?: string,
     imageUrls?: string[],
-  ): AgentInputMessage[] {
+  ): GeneratorInputMessage[] {
     return [
       ...history.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -853,7 +857,7 @@ export class TestExecutionService {
     return `[图片消息${imageUrls?.length ? ` x${imageUrls.length}` : ''}]`;
   }
 
-  private extractResult(result: AgentRunResult | null): ExtractedResult {
+  private extractResult(result: GeneratorRunResult | null): ExtractedResult {
     if (!result) {
       return {
         actualOutput: '',
@@ -873,7 +877,7 @@ export class TestExecutionService {
     };
   }
 
-  private isIntentionalNoReply(result: AgentRunResult | null): boolean {
+  private isIntentionalNoReply(result: GeneratorRunResult | null): boolean {
     return Boolean(
       result?.toolCalls?.some((toolCall) =>
         ['skip_reply', 'request_handoff'].includes(toolCall.toolName),

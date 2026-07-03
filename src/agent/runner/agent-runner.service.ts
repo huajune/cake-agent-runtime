@@ -2,12 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
 import { GeneratorService } from '../generator/generator.service';
 import type {
-  AgentInvokeParams as GeneratorInvokeParams,
-  AgentRunResult as GeneratorRunResult,
-  AgentStreamResult as GeneratorStreamResult,
+  GeneratorInvokeParams as GeneratorInvokeParams,
+  GeneratorRunResult,
+  GeneratorStreamResult,
   AgentToolCall,
-} from '../agent-run.types';
-import { isShortCircuitedToolCall, isToolSuccess, SIDE_EFFECT_TOOLS } from '../tool-call-analysis';
+} from '../generator/generator.types';
+import {
+  isShortCircuitedToolCall,
+  isSideEffectTool,
+  isToolSuccess,
+} from '../generator/tool-call-analysis';
 import type {
   GuardrailReviewStepTrace,
   GuardrailTurnTrace,
@@ -17,12 +21,13 @@ import {
   OutputGuardrailService,
   type OutputGuardDecision,
 } from '../guardrail/output/output-guardrail.service';
-import { InputGuardrailService } from '../guardrail/input/input-guard.service';
-import type {
-  RiskInterceptInput,
-  PreAgentRiskPrecheckResult,
+import {
+  type RiskInterceptInput,
+  type PreAgentRiskPrecheckResult,
 } from '../guardrail/input/risk-intercept.service';
-import type { TurnOutcome, TurnRequest } from './agent-runner.types';
+import { InputGuardrailService } from '../guardrail/input/input-guard.service';
+import type { SessionRef, TurnOutcome, TurnRequest, TurnTrigger } from './agent-runner.types';
+import { TurnFinalizer } from './turn-finalizer';
 
 export type {
   SessionRef,
@@ -49,6 +54,8 @@ const PASS_DECISION: OutputGuardDecision = {
   repairMode: 'rewrite',
 };
 
+const VISUAL_GENERATED_CONTENT_PATTERN = /^\s*\[(?:图片|表情)消息\]/;
+
 /** 一次「已审生成」的结果：在 GeneratorRunResult 上叠加出站裁决与是否经过 revise 重写。 */
 export interface ReviewedRunResult extends GeneratorRunResult {
   outputDecision: OutputGuardDecision;
@@ -59,6 +66,14 @@ export interface ReviewedRunResult extends GeneratorRunResult {
    * 短路/空文本未过守卫时为 undefined。
    */
   guardrailTrace?: GuardrailTurnTrace;
+}
+
+/** 一次已审回合结果：生成结果 + 统一 outcome + agent 层 turn-end finalizer。 */
+export interface ReviewedTurnRunResult extends Omit<ReviewedRunResult, 'runTurnEnd'> {
+  outcome: TurnOutcome;
+  turnFinalizer: TurnFinalizer;
+  /** runTurnEnd 已被 turnFinalizer 接管，避免渠道层直接编排记忆收尾。 */
+  runTurnEnd?: undefined;
 }
 
 /** 出站审查所需的接地/观测上下文（runner 从 TurnRequest 或调用方拼装）。 */
@@ -116,23 +131,29 @@ export class AgentRunnerService {
 
   /**
    * 入站风险预检 → 收口成 `TurnOutcome`（input guardrail 的**短路决策**归位到 runner，与出站
-   * 守卫产出 `blocked`/`handoff` 对称）。
+   * 守卫统一产出 `guardrail_blocked`）。
    *
-   * - 命中：收成 `intercepted` 终态（本轮不跑 Agent），人工介入意图（暂停托管 + 飞书告警）
-   *   挂在 `sideEffects` 上，由渠道在 replay 定局后经 TurnOutcomeInterventionService.commit
-   *   统一执行。渠道只负责静默收尾（commit 副作用/记跳过观测/去重/ack）。
+   * - 命中：这里收成 `guardrail_blocked/inbound` 终态并携带 sideEffects（本轮不跑 Agent），
+   *   由渠道在 replay 定局后经 TurnOutcomeInterventionService.commit 统一执行副作用。
+   *   渠道只负责静默收尾（commit 副作用/记跳过观测/去重/ack）。
    * - 未命中：返回 `null`，调用方继续走正常生成。
    */
   async precheckInboundOutcome(input: RiskInterceptInput): Promise<TurnOutcome | null> {
     const decision = await this.inputGuard.evaluate(input);
     if (decision.decision === 'pass') return null;
+
     return {
-      kind: 'intercepted',
+      kind: 'guardrail_blocked',
       toolCalls: [],
-      intercept: {
+      disposition: decision.disposition,
+      guardrail: {
+        phase: 'inbound',
+        source: 'input_guardrail',
         riskType: decision.riskType,
-        label: decision.riskLabel,
+        riskLabel: decision.riskLabel,
         reason: decision.reason,
+        reasonCode: decision.reasonCode,
+        inspectedText: decision.inspectedText,
       },
       sideEffects: decision.sideEffects,
     };
@@ -270,6 +291,36 @@ export class AgentRunnerService {
     };
   }
 
+  /**
+   * 渠道入站路径的已审回合入口：`invokeReviewed` + 统一 outcome 分类 + turn-end finalizer 接管。
+   *
+   * 渠道只需要在投递结局已知后调用 `turnFinalizer.settle({ delivered })`，不再直接持有
+   * `runTurnEnd`，也不需要理解 `includeAssistantText` 这条记忆领域规则。
+   */
+  async invokeReviewedTurn(params: {
+    invoke: GeneratorInvokeParams;
+    review: ReviewContext;
+    trigger: TurnTrigger;
+    sessionRef: SessionRef;
+    messageId?: string;
+    onTurnEndError?: (error: unknown) => void;
+  }): Promise<ReviewedTurnRunResult> {
+    const result = await this.invokeReviewed(params.invoke, params.review);
+    const outcome = classifyReviewedOutcome(
+      result,
+      params.trigger,
+      params.sessionRef,
+      params.messageId,
+    );
+    const turnFinalizer = TurnFinalizer.from(result.runTurnEnd, params.onTurnEndError);
+    return {
+      ...result,
+      runTurnEnd: undefined,
+      outcome: { ...outcome, runTurnEnd: undefined },
+      turnFinalizer,
+    };
+  }
+
   private buildGuardInput(
     result: GeneratorRunResult,
     ctx: ReviewContext,
@@ -302,7 +353,7 @@ export class AgentRunnerService {
     const names = [
       ...new Set(
         toolCalls
-          .filter((c) => SIDE_EFFECT_TOOLS.has(c.toolName) && isToolSuccess(c.result))
+          .filter((c) => isSideEffectTool(c.toolName) && isToolSuccess(c.result))
           .map((c) => c.toolName),
       ),
     ];
@@ -354,6 +405,21 @@ export class AgentRunnerService {
     const isProactive = trigger.kind === 'proactive';
     const scenarioCode = isProactive ? trigger.scenarioCode : undefined;
 
+    if (trigger.kind === 'inbound') {
+      const guardrailBlocked = await this.precheckInboundOutcome({
+        corpId: sessionRef.corpId,
+        chatId: sessionRef.sessionId,
+        userId: sessionRef.userId,
+        pauseTargetId: sessionRef.sessionId || sessionRef.userId,
+        scanContent: this.buildInputGuardScanContent(trigger),
+        messageId: context?.messageId,
+        contactName: context?.contactName,
+        botImId: context?.botImId,
+        botUserName: context?.botUserId,
+      });
+      if (guardrailBlocked) return guardrailBlocked;
+    }
+
     const params: GeneratorInvokeParams = {
       callerKind: context?.callerKind ?? CallerKind.WECOM,
       userId: sessionRef.userId,
@@ -362,19 +428,35 @@ export class AgentRunnerService {
       messageId: context?.messageId,
       messages:
         trigger.kind === 'inbound'
-          ? [{ role: 'user', content: trigger.userMessage, imageUrls: trigger.images }]
+          ? [
+              {
+                role: 'user',
+                content: trigger.userMessage,
+                imageUrls: trigger.images,
+                imageMessageIds: context?.imageMessageIds,
+              },
+            ]
           : [{ role: 'user', content: PROACTIVE_TRIGGER_PLACEHOLDER }],
       toolMode: req.toolMode ?? (isProactive ? 'readonly' : 'scenario'),
       proactiveDirective: isProactive ? trigger.directive : undefined,
       deferTurnEnd: true,
+      scenario: context?.scenario,
+      imageUrls: trigger.kind === 'inbound' ? trigger.images : undefined,
+      imageMessageIds: context?.imageMessageIds,
+      visualMessageTypes: context?.visualMessageTypes,
       contactName: context?.contactName,
       botImId: context?.botImId,
       botUserId: context?.botUserId,
+      groupId: context?.groupId,
+      externalUserId: context?.externalUserId,
       token: context?.token,
       imContactId: context?.imContactId,
       imRoomId: context?.imRoomId,
       apiType: context?.apiType,
       modelId: req.modelId,
+      thinking: context?.thinking,
+      shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
+      onPreparedRequest: context?.onPreparedRequest,
     };
 
     let result: ReviewedRunResult;
@@ -402,10 +484,10 @@ export class AgentRunnerService {
       throw err;
     }
 
-    // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：block→blocked、
+    // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：block→guardrail_blocked/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
     const outcome = classifyReviewedOutcome(result, trigger, sessionRef, context?.messageId);
-    if (outcome.kind === 'blocked') {
+    if (outcome.kind === 'guardrail_blocked' && outcome.guardrail?.phase === 'outbound') {
       this.logger.warn(
         `[runTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
           `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
@@ -413,5 +495,18 @@ export class AgentRunnerService {
       );
     }
     return outcome;
+  }
+
+  private buildInputGuardScanContent(trigger: TurnTrigger): string {
+    if (trigger.kind !== 'inbound') return '';
+    const content = trigger.userMessage?.trim() ?? '';
+    if (!content) return '';
+
+    const textLines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !VISUAL_GENERATED_CONTENT_PATTERN.test(line));
+
+    return textLines.join('\n');
   }
 }

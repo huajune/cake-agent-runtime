@@ -1,5 +1,5 @@
-import { HardConstraintsSection } from '@agent/context/sections/hard-constraints.section';
-import type { PromptContext } from '@agent/context/sections/section.interface';
+import { HardConstraintsSection } from '@agent/generator/context/sections/hard-constraints.section';
+import type { PromptContext } from '@agent/generator/context/sections/section.interface';
 import {
   FALLBACK_EXTRACTION,
   type EntityExtractionResult,

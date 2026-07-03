@@ -83,12 +83,12 @@ describe('buildInterviewBookingTool', () => {
   const executeToolWithContext = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
-    options: { latestBooking?: Record<string, unknown> | null } = {},
+    options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const mockLongTermService = {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
-      setLatestBooking: jest.fn().mockResolvedValue(undefined),
-      getLatestBooking: jest.fn().mockResolvedValue(options.latestBooking ?? null),
+      setActiveBooking: jest.fn().mockResolvedValue(undefined),
+      getActiveBooking: jest.fn().mockResolvedValue(options.activeBooking ?? null),
     };
     const mockOpsEventsRecorder = {
       recordEvent: jest.fn().mockResolvedValue(undefined),
@@ -123,7 +123,7 @@ describe('buildInterviewBookingTool', () => {
   const executeTool = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
-    options: { latestBooking?: Record<string, unknown> | null } = {},
+    options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const { result } = await executeToolWithContext(input, contextOverride, options);
     return result;
@@ -940,7 +940,7 @@ describe('buildInterviewBookingTool', () => {
         } as never,
       },
       {
-        latestBooking: {
+        activeBooking: {
           work_order_id: 438358,
           linked_at: new Date().toISOString(),
         },
@@ -969,7 +969,7 @@ describe('buildInterviewBookingTool', () => {
       },
       {},
       {
-        latestBooking: {
+        activeBooking: {
           work_order_id: 438358,
           linked_at: new Date().toISOString(),
         },

@@ -1,4 +1,4 @@
-import { AgentPreparationService } from '@agent/agent-preparation.service';
+import { PreparationService } from '@agent/generator/preparation.service';
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
 import {
@@ -46,7 +46,7 @@ function emptyHighConfidenceFacts(): HighConfidenceFacts {
   };
 }
 
-describe('AgentPreparationService', () => {
+describe('PreparationService', () => {
   const mockToolRegistry = {
     buildForScenario: jest.fn().mockReturnValue({ duliday_job_list: {} }),
   };
@@ -81,7 +81,7 @@ describe('AgentPreparationService', () => {
   };
 
   const mockLongTermService = {
-    getLatestBooking: jest.fn(),
+    getActiveBooking: jest.fn(),
   };
 
   const mockSpongeService = {
@@ -96,12 +96,12 @@ describe('AgentPreparationService', () => {
     listUserRooms: jest.fn().mockResolvedValue([]),
   };
 
-  let service: AgentPreparationService;
+  let service: PreparationService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
-    mockLongTermService.getLatestBooking.mockResolvedValue(null);
+    mockLongTermService.getActiveBooking.mockResolvedValue(null);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
@@ -153,7 +153,7 @@ describe('AgentPreparationService', () => {
     }));
     mockInputGuard.detectMessages.mockReturnValue({ safe: true });
 
-    service = new AgentPreparationService(
+    service = new PreparationService(
       mockToolRegistry as never,
       mockMemoryService as never,
       mockMemoryConfig as never,
@@ -642,7 +642,7 @@ describe('AgentPreparationService', () => {
     expect(result.finalPrompt).toContain('用工:小时工');
   });
 
-  it('uses procedural stage + renders [当前预约信息] from latest_booking + sponge', async () => {
+  it('uses procedural stage + renders [当前预约信息] from active_booking + sponge', async () => {
     // 阶段直接取程序性记忆（onboard_followup 不再由 recruitment_cases 推导）。
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
@@ -661,8 +661,8 @@ describe('AgentPreparationService', () => {
       stageGoals: { onboard_followup: { stage: 'onboard_followup' } },
       thresholds: [],
     }));
-    // [当前预约信息] 现由 latest_booking 指针 + 海绵工单实时状态渲染（不再来自 recruitment_cases）。
-    mockLongTermService.getLatestBooking.mockResolvedValue({
+    // [当前预约信息] 现由 active_booking 指针 + 海绵工单实时状态渲染（不再来自 recruitment_cases）。
+    mockLongTermService.getActiveBooking.mockResolvedValue({
       work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
@@ -713,7 +713,7 @@ describe('AgentPreparationService', () => {
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
-    mockLongTermService.getLatestBooking.mockResolvedValue({
+    mockLongTermService.getActiveBooking.mockResolvedValue({
       work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
@@ -754,7 +754,7 @@ describe('AgentPreparationService', () => {
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
-    mockLongTermService.getLatestBooking.mockResolvedValue({
+    mockLongTermService.getActiveBooking.mockResolvedValue({
       work_order_id: 88002,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
@@ -790,7 +790,7 @@ describe('AgentPreparationService', () => {
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
-    mockLongTermService.getLatestBooking.mockResolvedValue({
+    mockLongTermService.getActiveBooking.mockResolvedValue({
       work_order_id: 88003,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
@@ -1098,6 +1098,51 @@ describe('AgentPreparationService', () => {
         { type: 'text', text: '帮我看看这张图' },
       ],
     });
+  });
+
+  it('should inject images at visual placeholder position in the current user turn', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: {
+        messageWindow: [
+          { role: 'assistant', content: '想找什么岗位' },
+          { role: 'user', content: '你好啊' },
+          { role: 'user', content: '[图片消息]' },
+          { role: 'user', content: '我是看信息来的' },
+        ],
+      },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好啊\n[图片消息]\n我是看信息来的' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        imageUrls: ['https://example.com/job.png'],
+        imageMessageIds: ['img-job-1'],
+      },
+      'stream',
+      { enableVision: true },
+    );
+
+    expect(result.normalizedMessages).toEqual([
+      { role: 'assistant', content: '想找什么岗位' },
+      { role: 'user', content: '你好啊' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '[图片 messageId=img-job-1]' },
+          { type: 'image', image: new URL('https://example.com/job.png') },
+          { type: 'text', text: '[图片消息]' },
+        ],
+      },
+      { role: 'user', content: '我是看信息来的' },
+    ]);
   });
 
   it('should expose memory load warning from memory lifecycle', async () => {

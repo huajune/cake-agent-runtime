@@ -307,11 +307,33 @@ describe('buildOrderGrabMessage', () => {
       it('shows the order with the earliest date first', () => {
         // Need > MAX_ORDERS(4) orders to trigger time-slot-based selection
         const orders = [
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '远期门店', [BI_FIELD_NAMES.ORDER_DATE]: '2026-05-01', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '2000', [BI_FIELD_NAMES.SERVICE_CONTENT]: '远期内容' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '近期门店', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-02', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '500', [BI_FIELD_NAMES.SERVICE_CONTENT]: '近期内容' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店C', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-10', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '800' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店D', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-15', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '700' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店E', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-20', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '600' }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '远期门店',
+            [BI_FIELD_NAMES.ORDER_DATE]: '2026-05-01',
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '2000',
+            [BI_FIELD_NAMES.SERVICE_CONTENT]: '远期内容',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '近期门店',
+            [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-02',
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '500',
+            [BI_FIELD_NAMES.SERVICE_CONTENT]: '近期内容',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '门店C',
+            [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-10',
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '800',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '门店D',
+            [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-15',
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '700',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '门店E',
+            [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-20',
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '600',
+          }),
         ];
 
         const result = buildOrderGrabMessage({
@@ -334,11 +356,33 @@ describe('buildOrderGrabMessage', () => {
         const sameDate = '2026-04-10';
         // Need > MAX_ORDERS(4) to trigger EVENING sorting
         const orders = [
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '低收入同日门店', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '1000', [BI_FIELD_NAMES.SERVICE_CONTENT]: '低收入同日' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '高收入同日门店', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '3000', [BI_FIELD_NAMES.SERVICE_CONTENT]: '高收入同日' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店C', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '800' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店D', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '700' }),
-          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店E', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '600' }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '低收入同日门店',
+            [BI_FIELD_NAMES.ORDER_DATE]: sameDate,
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '1000',
+            [BI_FIELD_NAMES.SERVICE_CONTENT]: '低收入同日',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '高收入同日门店',
+            [BI_FIELD_NAMES.ORDER_DATE]: sameDate,
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '3000',
+            [BI_FIELD_NAMES.SERVICE_CONTENT]: '高收入同日',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '门店C',
+            [BI_FIELD_NAMES.ORDER_DATE]: sameDate,
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '800',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '门店D',
+            [BI_FIELD_NAMES.ORDER_DATE]: sameDate,
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '700',
+          }),
+          makeOrder({
+            [BI_FIELD_NAMES.STORE_NAME]: '门店E',
+            [BI_FIELD_NAMES.ORDER_DATE]: sameDate,
+            [BI_FIELD_NAMES.EXPECTED_REVENUE]: '600',
+          }),
         ];
 
         const result = buildOrderGrabMessage({

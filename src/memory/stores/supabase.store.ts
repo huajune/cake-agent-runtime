@@ -11,7 +11,7 @@ import type {
   SummaryEntry,
   MessageMetadata,
   AgentLongTermMemoryRow,
-  LatestBooking,
+  ActiveBooking,
   LongTermPreferenceFacts,
 } from '../types/long-term.types';
 import {
@@ -327,33 +327,33 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== active_booking 操作 ====================
 
-  /** 读取候选人当前有效预约工单指针。 */
-  async getLatestBooking(corpId: string, userId: string): Promise<LatestBooking | null> {
+  /** 读取候选人当前有效/待处理预约工单指针。 */
+  async getActiveBooking(corpId: string, userId: string): Promise<ActiveBooking | null> {
     const row = await this.getRow(corpId, userId);
-    return (row?.active_booking as LatestBooking | null) ?? null;
+    return (row?.active_booking as ActiveBooking | null) ?? null;
   }
 
-  /** 写入候选人当前有效预约工单指针（新预约 UPSERT 覆盖）。 */
-  async setLatestBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
-    const latestBooking: LatestBooking = {
+  /** 写入候选人当前有效/待处理预约工单指针（新预约 UPSERT 覆盖）。 */
+  async setActiveBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
+    const activeBooking: ActiveBooking = {
       work_order_id: workOrderId,
       linked_at: new Date().toISOString(),
     };
-    await this.upsertRow(corpId, userId, { active_booking: latestBooking });
+    await this.upsertRow(corpId, userId, { active_booking: activeBooking });
   }
 
   /**
-   * 清空当前有效预约工单指针（取消工单成功后调用）。
+   * 清空当前有效预约工单指针。
    *
    * expectedWorkOrderId 存在时只清匹配的当前工单，避免并发新预约刚写入后被旧取消回调误清。
    */
-  async clearLatestBooking(
+  async clearActiveBooking(
     corpId: string,
     userId: string,
     expectedWorkOrderId?: number,
   ): Promise<void> {
     if (expectedWorkOrderId != null) {
-      const activeBooking = await this.getLatestBooking(corpId, userId);
+      const activeBooking = await this.getActiveBooking(corpId, userId);
       const rawWorkOrderId = (activeBooking as { work_order_id?: unknown } | null)?.work_order_id;
       const activeWorkOrderId =
         typeof rawWorkOrderId === 'number'

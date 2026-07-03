@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ConversationTestService } from '@biz/test-suite/services/conversation-test.service';
 import { GeneratorService } from '@agent/generator/generator.service';
-import { ContextService } from '@agent/context/context.service';
+import { ContextService } from '@agent/generator/context/context.service';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';

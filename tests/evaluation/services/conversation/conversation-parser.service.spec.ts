@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
-import type { AgentRunResult } from '@agent/generator/generator.service';
+import type { GeneratorRunResult } from '@agent/generator/generator.service';
 
 describe('ConversationParserService', () => {
   let service: ConversationParserService;
@@ -257,8 +257,8 @@ describe('ConversationParserService', () => {
   // ========== extractResponseText ==========
 
   describe('extractResponseText', () => {
-    it('should return text from AgentRunResult', () => {
-      const result: AgentRunResult = {
+    it('should return text from GeneratorRunResult', () => {
+      const result: GeneratorRunResult = {
         text: 'Hello World',
         steps: 1,
         agentSteps: [],
@@ -270,7 +270,7 @@ describe('ConversationParserService', () => {
     });
 
     it('should return empty string when text is empty', () => {
-      const result: AgentRunResult = {
+      const result: GeneratorRunResult = {
         text: '',
         steps: 0,
         agentSteps: [],
@@ -286,7 +286,7 @@ describe('ConversationParserService', () => {
 
   describe('extractToolCalls', () => {
     it('should return empty array (new architecture does not expose tool calls)', () => {
-      const result: AgentRunResult = {
+      const result: GeneratorRunResult = {
         text: 'Response with tools used internally',
         steps: 3,
         agentSteps: [],

@@ -45,11 +45,7 @@ describe('BrandRotationService', () => {
     });
 
     it('全部推完后应重置轮转并返回第一个', async () => {
-      store['group-task:brand-history:group-1'] = JSON.stringify([
-        '必胜客',
-        '麦当劳',
-        '大米先生',
-      ]);
+      store['group-task:brand-history:group-1'] = JSON.stringify(['必胜客', '麦当劳', '大米先生']);
 
       const result = await service.getNextBrand('group-1', ['必胜客', '麦当劳', '大米先生']);
       expect(result).toBe('必胜客');

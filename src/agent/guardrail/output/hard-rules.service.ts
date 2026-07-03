@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AgentToolCall } from '@agent/agent-run.types';
+import { AgentToolCall } from '@agent/generator/generator.types';
 import {
   GUARDRAIL_ACTION,
   GUARDRAIL_DATA_SENSITIVITY,

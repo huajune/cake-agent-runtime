@@ -138,7 +138,9 @@ console.log(buildMarkdown({ releaseTag: 'v5.10.1', deployResult: 'success' }));
     expect(markdown).toContain('图片识别只降级到支持视觉的模型，避免落到纯文本模型误判');
     expect(markdown).toContain('图片消息改用高清原图识别，解决收银小票等图片文字识别不准的问题');
     expect(markdown).toContain('图片原图只获取一次并在识别、Agent 对话和后台展示中复用');
-    expect(markdown).toContain('降低回复事实校验误报，补齐 Dashboard 趋势日期轴，并修复拉群人数判断');
+    expect(markdown).toContain(
+      '降低回复事实校验误报，补齐 Dashboard 趋势日期轴，并修复拉群人数判断',
+    );
   });
 
   it('falls back to a readable Chinese summary instead of sending raw English', () => {

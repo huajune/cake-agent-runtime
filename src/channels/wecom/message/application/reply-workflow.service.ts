@@ -3,9 +3,9 @@ import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
-import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
-import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
-import { isBookingGateRejectedToolCall, isShortCircuitedToolCall } from '@agent/tool-call-analysis';
+import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
+import { isShortCircuitedToolCall } from '@agent/generator/tool-call-analysis';
+import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -22,52 +22,42 @@ import { WecomMessageObservabilityService } from '../telemetry/wecom-message-obs
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { ImageDescriptionService } from './image-description.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
-import { InterventionService } from '@biz/intervention/intervention.service';
-import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
-import type { HandoffWriteOutcome } from '@biz/handoff-events/handoff-events.types';
-import type { AgentThinkingConfig as GeneratorThinkingConfig } from '@agent/agent-run.types';
+import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
+import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 
 /**
- * Vision 描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
- * 超时仍未完成时放行，Agent 用占位文本继续——避免单次 vision 卡死整个回合。
+ * 兼容图片描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
+ * 超时仍未完成时放行，避免单次图片描述卡死整个回合。
  */
 const VISION_AWAIT_TIMEOUT_MS = 15_000;
 
-/**
- * 触发后会产生不可逆副作用的工具集合。
- *
- * 首次 Agent 调用若命中其中任一工具（无论 result.success 如何），
- * 视为"本轮副作用已固化"，直接投递首次回复，跳过 replay 检测：
- * - `invite_to_group` 企业级 addMember 外部 API + session facts 直写 invitedGroups
- * - `duliday_interview_booking` 杜力岱预约外部 API + recruitment_cases 建行 + 失败侧暂停托管
- *
- * 若 replay 丢弃首次回复，上述副作用已落地但用户未收到回复，会造成严重错乱：
- * - 阶段错位（procedural 被推进但 Agent 二次生成以为还在前一阶段）
- * - 群邀请已发但无解释
- * - 面试已预约但 Agent 二次生成重复尝试
- *
- * Agent 生成期间到达的新消息会留在 Redis pending list 里，
- * 由 MessageProcessor.handleProcessJob 末尾的 `checkAndProcessNewMessages`
- * 补建 follow-up job 在下一轮独立处理。
- *
- * 注意：`advance_stage` 不属于这里的不可逆副作用。阶段推进只影响内部程序记忆；
- * 如果因此跳过 replay，会把 Agent 生成期间到达的候选人补充信息拆成下一轮，
- * 造成先回复旧问题、再处理新约束的错位体验。
- */
-const REPLAY_BLOCKING_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'invite_to_group',
-  'duliday_interview_booking',
-]);
+type VisualMessageTypes = Record<string, MessageType.IMAGE | MessageType.EMOTION>;
 
-function collectBlockingTools(toolCalls: AgentInvokeResult['toolCalls']): string[] {
-  if (!toolCalls || toolCalls.length === 0) return [];
-  const hit = new Set<string>();
-  for (const call of toolCalls) {
-    if (REPLAY_BLOCKING_TOOL_NAMES.has(call.toolName)) {
-      hit.add(call.toolName);
-    }
-  }
-  return Array.from(hit);
+interface AgentCallParams {
+  sessionId: string;
+  userMessage: string;
+  scenario?: string;
+  messageId?: string;
+  recordMonitoring?: boolean;
+  userId: string;
+  corpId: string;
+  imageUrls?: string[];
+  imageMessageIds?: string[];
+  visualMessageTypes?: VisualMessageTypes;
+  botUserId?: string;
+  contactName?: string;
+  botImId?: string;
+  groupId?: string;
+  externalUserId?: string;
+  token?: string;
+  imContactId?: string;
+  imRoomId?: string;
+  apiType?: 'enterprise' | 'group';
+  modelId?: string;
+  thinking?: GeneratorThinkingConfig;
+  shortTermEndTimeInclusive?: number;
+  /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
+  deferTurnEnd?: boolean;
 }
 
 @Injectable()
@@ -85,11 +75,9 @@ export class ReplyWorkflowService {
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
-    private readonly interventionService: InterventionService,
-    private readonly handoffRecorder: HandoffRecorderService,
+    private readonly outcomeFinalizer: TurnOutcomeInterventionService,
     private readonly followUpScheduler: FollowUpSchedulerService,
     private readonly reengagementAnchors: ReengagementAnchorService,
-    private readonly turnOutcomeIntervention: TurnOutcomeInterventionService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -192,7 +180,10 @@ export class ReplyWorkflowService {
         processedMessageIds: messages.map((message) => message.messageId),
       });
 
-      throw error;
+      // handleProcessingError 会发送降级回复/告警并把本批 messageId 置为终态。
+      // 此时若继续向 Bull 抛错，pending list 尚未 ack，会被 retry 重放，轻则重复告警，
+      // 重则给候选人再发一条降级回复。单实例部署下这里按“失败已兜底”为终态处理。
+      await this.ackPendingIfMerged(chatId, initialSnapshotSize);
     }
   }
 
@@ -231,59 +222,6 @@ export class ReplyWorkflowService {
 
     const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
 
-    // 前置风险同步预检（input guardrail）：命中即「确定性静默 + 暂停托管转人工」。短路决策由
-    // runner 收口成 `intercepted` 终态；守卫只判定不执行，人工介入意图挂在 outcome.sideEffects，
-    // 由渠道经 turnOutcomeIntervention.commit 统一出口执行（暂停托管 + 飞书告警），随后把终态
-    // **渲染**成 WeCom 侧的静默收尾（记跳过观测/去重/ack），不再继续跑 Agent。
-    // 此前的设计是「不短路 Agent、仍发一条安抚回复」，但安抚回复会与投递前的 isAnyPaused 检查
-    // 竞态、大概率被丢弃，行为不确定；改为命中即静默，行为确定。
-    const riskUserId = this.resolveAgentUserId(params.primaryMessage, parsed);
-    const intercepted = await this.runner.precheckInboundOutcome({
-      corpId: this.resolveCorpId(params.primaryMessage),
-      chatId,
-      userId: riskUserId,
-      pauseTargetId: chatId || riskUserId,
-      scanContent: this.buildRiskScanContent(params.primaryMessage, content, allMessages),
-      messageId: parsed.messageId,
-      contactName: parsed.contactName,
-      botImId: parsed.imBotId,
-      botUserName: parsed.managerName,
-    });
-    if (intercepted) {
-      const label = intercepted.intercept?.label ?? intercepted.intercept?.reason ?? '命中风险规则';
-      this.logger.warn(
-        `${logPrefix}[${contactName}] 前置风险预检命中: label=${label}, chatId=${chatId}，本轮静默并转人工`,
-      );
-      // 执行守卫声明的介入副作用（暂停托管 + 飞书告警）——入站拦截无 replay，命中即定局。
-      await this.turnOutcomeIntervention.commit(intercepted, {
-        traceId,
-        chatId,
-        userId: riskUserId,
-        corpId: this.resolveCorpId(params.primaryMessage),
-        contactName: parsed.contactName,
-        botImId: parsed.imBotId,
-        botUserId: parsed.managerName,
-        userMessage: content,
-      });
-      await this.wecomObservability.markReplySkipped(traceId);
-      const riskSkippedMetadata = await this.wecomObservability.buildSuccessMetadata(traceId, {
-        scenario,
-        batchId: batchContext?.batchId,
-        replyPreview: `[风险预检静默] ${label}`,
-        replySegments: 0,
-        guardrailInput: {
-          decision: 'block',
-          riskType: intercepted.intercept?.riskType,
-          riskLabel: intercepted.intercept?.label,
-          reason: intercepted.intercept?.reason,
-        },
-      });
-      this.monitoringService.recordSuccess(traceId, riskSkippedMetadata);
-      await this.markMessagesAsProcessed(allMessages.map((message) => message.messageId));
-      await this.ackPendingIfMerged(chatId, consumedPending);
-      return;
-    }
-
     const agentCallParams = {
       sessionId: chatId,
       scenario,
@@ -304,14 +242,13 @@ export class ReplyWorkflowService {
       thinking,
     } as const;
 
-    // Vision 描述同步等待：accept-inbound 已 fire-and-forget 触发了 vision，
-    // 此时若描述还没回写到 chat_messages.content，Agent 读短期记忆只能拿到占位文本。
-    // awaitVision 等待本批所有图片/表情的描述 settle 后再调 Agent。超时则放行。
-    await this.ensureVisionDescriptionsReady(imageMessageIds, contactName, logPrefix);
+    // 兼容描述等待：只有主聊天模型不支持 vision 时，accept-inbound 才会提前触发图片描述。
+    // 多模态主路径没有 in-flight 任务，这里会立即返回；文本兼容路径则等描述写回后再进 Agent。
+    await this.ensureCompatibilityDescriptionsReady(imageMessageIds, contactName, logPrefix);
 
     // 首次调用延迟 turn-end：若随后检测到新消息会走 replay 丢弃本次回复，
     // 记忆投影/事实提取也必须一同被丢弃，否则会把「未发出的回复」污染到 session 记忆里。
-    let agentResult = await this.callAgent({
+    let agentResult = await this.callAgentWithVisualCompatibilityFallback({
       ...agentCallParams,
       userMessage: content,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
@@ -327,42 +264,23 @@ export class ReplyWorkflowService {
         `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
     );
 
-    // 回合收尾（记忆投影/事实提取/沉淀）必须在本方法返回前完成（见末尾 finally）：方法返回即
-    // MessageProcessor 释放 chat 处理锁，若收尾仍在异步写 session state，会与下一个 job 的读写
-    // 并发，整份覆盖写互相丢更新。
-    //
-    // 触发点统一收敛到「已知本轮投递结局」之后（守卫拦截/沉默分支 与 投递完成分支各一次），
+    // 回合收尾（记忆投影/事实提取/沉淀）由 agentResult.turnFinalizer（agent 层）封装：触发点
+    // 统一收敛到「已知本轮投递结局」之后（守卫拦截/沉默分支 与 投递完成分支各一次 settle），
     // 而非生成结束就立即触发——否则被守卫拦截、托管暂停丢弃或投递失败的回复仍会被写进 session
-    // 记忆，造成下一轮以为「已对候选人说过」的幽灵复聊。`includeAssistantText` 由投递结局决定。
-    let turnEndPromise: Promise<void> | undefined;
-    const startTurnEnd = (
-      result: { runTurnEnd?: (opts?: { includeAssistantText?: boolean }) => Promise<void> },
-      opts?: { includeAssistantText?: boolean },
-    ) => {
-      const run = result.runTurnEnd;
-      if (!run) return;
-      result.runTurnEnd = undefined;
-      turnEndPromise = run(opts).catch((err) => {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
-      });
-    };
-
+    // 记忆，造成下一轮以为「已对候选人说过」的幽灵复聊。是否投影助手轮次由 `delivered` 决定。
+    // finalizer 内部保证「锁释放前 await 落盘 / replay 丢弃首版 / delivered→includeAssistantText」
+    // 这些记忆领域不变式，渠道只负责上报投递结局（见末尾 finally 的 whenSettled）。
     try {
-      // 副作用工具短路：首次调用若命中 advance_stage / invite_to_group /
-      // duliday_interview_booking 中任一个，就视为本轮已经在外部系统留下了
-      // 不可撤销的痕迹——不去 drain pending，直接投递首次回复。
-      // Agent 生成期间到达的新消息仍留在 Redis pending list 里，由
-      // MessageProcessor 末尾的 checkAndProcessNewMessages 补建 follow-up
-      // job 在下一轮独立处理。
-      const blockingTools = collectBlockingTools(agentResult.toolCalls);
-      const replayBlocked = blockingTools.length > 0;
+      // 非 reply outcome（skipped/guardrail_blocked/handoff）与已固化副作用工具均是
+      // agent/outcome 层给出的终态：不再拿通道 pending 变化重写这类结果。Agent 生成期间到达的
+      // 新消息仍留在 Redis pending list 里，由 MessageProcessor 末尾补建 follow-up job 处理。
+      const replaySkip = resolveReplaySkipDecision(agentResult.outcome, agentResult.toolCalls);
 
-      if (replayBlocked) {
+      if (replaySkip.skip) {
         this.logger.warn(
-          `${logPrefix}[${contactName}][Replay-Skip] 首次调用命中不可逆工具 [${blockingTools.join(
+          `${logPrefix}[${contactName}][Replay-Skip] ${replaySkip.reasons.join(
             ',',
-          )}]，跳过 replay 检测，直接投递首次回复 (chatId=${chatId})`,
+          )}，跳过 replay 检测，直接采用首次 outcome (chatId=${chatId})`,
         );
       } else {
         // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
@@ -376,9 +294,9 @@ export class ReplyWorkflowService {
           this.logger.warn(
             `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
           );
-          // 丢弃首次的 runTurnEnd——它承载了将首次回复写入 session 记忆的副作用。
-          // 第二次 callAgent 同样 deferTurnEnd，结果必然被采纳，返回后立即 startTurnEnd。
-          agentResult.runTurnEnd = undefined;
+          // 丢弃首次的记忆收尾——它承载了将首次回复写入 session 记忆的副作用。
+          // 第二次 callAgent 同样 deferTurnEnd，结果必然被采纳，返回后由 settle 触发。
+          agentResult.turnFinalizer?.discard();
 
           allMessages = [...allMessages, ...newMessages];
           content = this.wecomObservability.buildMergedRequestContent(allMessages);
@@ -400,10 +318,10 @@ export class ReplyWorkflowService {
             newMessages.map((message) => message.messageId),
           );
 
-          // 等 replay 合入的新消息（可能含图片）的 vision 描述完成后再重跑 Agent
-          await this.ensureVisionDescriptionsReady(imageMessageIds, contactName, logPrefix);
+          // Replay 合入的新消息也可能走文本兼容描述；多模态主路径这里通常是 no-op。
+          await this.ensureCompatibilityDescriptionsReady(imageMessageIds, contactName, logPrefix);
 
-          agentResult = await this.callAgent({
+          agentResult = await this.callAgentWithVisualCompatibilityFallback({
             ...agentCallParams,
             userMessage: content,
             imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
@@ -436,7 +354,7 @@ export class ReplyWorkflowService {
       }
 
       const processedMessageIds = allMessages.map((message) => message.messageId);
-      await this.dispatchBookingGateHandoffIfNeeded(agentResult, {
+      const sideEffectContext = {
         traceId,
         chatId,
         userId: agentCallParams.userId,
@@ -445,7 +363,10 @@ export class ReplyWorkflowService {
         botImId: agentCallParams.botImId,
         botUserId: agentCallParams.botUserId,
         userMessage: content,
-      });
+      };
+      if (agentResult.outcome?.kind !== 'reply') {
+        await this.outcomeFinalizer.commit(agentResult.outcome, sideEffectContext);
+      }
       this.reengagementAnchors.handleToolAnchors(agentResult, {
         traceId,
         chatId,
@@ -454,27 +375,16 @@ export class ReplyWorkflowService {
         isGroupChat: Boolean(params.primaryMessage.imRoomId),
       });
 
-      // 非 reply 终态（skipped 沉默 / blocked 守卫拦截 / handoff 转人工）：跳过 WeCom 发送，
+      // 非 reply 终态（skipped 沉默 / guardrail_blocked 守卫拦截 / handoff 转人工）：跳过 WeCom 发送，
       // 但仍完成本轮流水与观测。终态由 runner 共享分类器给出（agentResult.outcome），与主动复聊同源；
       // 守卫拦截（如歧视性筛选条件外露）宁可本轮沉默也不可泄漏。
       if (agentResult.outcome?.kind !== 'reply') {
-        if (agentResult.blockedByGuard) {
+        if (agentResult.guardrailBlocked) {
+          const guardrail = agentResult.guardrailBlocked;
+          const phaseLabel = guardrail.phase === 'inbound' ? '入站' : '出站';
           this.logger.warn(
-            `${logPrefix}[${contactName}] 出站守卫拦截回复，跳过消息发送 (rules=${agentResult.blockedByGuard.ruleIds.join(',')})`,
+            `${logPrefix}[${contactName}] ${phaseLabel}守卫拦截，跳过消息发送 (rules=${guardrail.ruleIds?.join(',') || '-'})`,
           );
-          // 任何 block 终态（rule 硬拦 / repair_exhausted / llm 严重违规 / reviewer 降级）都意味着
-          // 本轮静默后无人接手，候选人悬空——统一转人工：暂停托管 + 飞书告警 + handoff 底账。
-          // rule 档守卫内的飞书 badcase 通知只是观测，不能替代接管。
-          await this.dispatchOutputGuardHandoffIfNeeded(agentResult, {
-            traceId,
-            chatId,
-            userId: agentCallParams.userId,
-            corpId: agentCallParams.corpId,
-            contactName,
-            botImId: agentCallParams.botImId,
-            botUserId: agentCallParams.botUserId,
-            userMessage: content,
-          });
         } else {
           const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
           this.logger.log(`${logPrefix}[${contactName}] Agent 短路，跳过消息发送 (${skipReason})`);
@@ -489,7 +399,7 @@ export class ReplyWorkflowService {
         );
         this.monitoringService.recordSuccess(traceId, skippedMetadata);
         // 回复未送达给候选人：记用户侧记忆但不投影助手轮次，避免下一轮幽灵复聊。
-        startTurnEnd(agentResult, { includeAssistantText: false });
+        agentResult.turnFinalizer?.settle({ delivered: false });
         await this.markMessagesAsProcessed(processedMessageIds);
         await this.ackPendingIfMerged(chatId, consumedPending);
         return;
@@ -501,6 +411,7 @@ export class ReplyWorkflowService {
         deliveryContext,
         true,
       );
+      await this.commitReplyOutcomeSideEffects(agentResult.outcome, sideEffectContext);
 
       // Agent 回复真实投递 → agent.replied（仅个人单聊；fire-and-forget）。
       // deliverReply 可能因托管暂停/内部泄漏保护返回 skipped=true，此时不能生成
@@ -518,8 +429,8 @@ export class ReplyWorkflowService {
       }
 
       // 投递结局已知：仅当回复真实送达才把助手轮次投影进记忆；托管暂停/失败丢弃时
-      // 只记用户侧记忆（includeAssistantText=false），与上方守卫拦截分支对称。
-      startTurnEnd(agentResult, { includeAssistantText: replyDelivered });
+      // 只记用户侧记忆（delivered=false），与上方守卫拦截分支对称。
+      agentResult.turnFinalizer?.settle({ delivered: replyDelivered });
 
       const successMetadata = await this.buildSuccessMetadata(
         traceId,
@@ -539,14 +450,25 @@ export class ReplyWorkflowService {
     } catch (error) {
       // 投递/观测异常：回复未确认送达，但本轮用户消息的记忆收尾（事实提取等）不能一并丢——
       // 否则候选人已提供的姓名/手机号/意向在重试外的路径上永久丢失。只记用户侧，不投影助手轮次。
-      // startTurnEnd 幂等：若前面已按投递结局触发过，这里是 no-op。
-      startTurnEnd(agentResult, { includeAssistantText: false });
+      // settle 幂等：若前面已按投递结局触发过，这里是 no-op。
+      agentResult.turnFinalizer?.settle({ delivered: false });
       throw error;
     } finally {
       // 在方法返回（→ MessageProcessor 释放 chat 处理锁）前等待回合收尾落盘，
       // 保证同一 chat 的记忆写入相对处理锁串行，杜绝跨 job 并发覆盖。
-      if (turnEndPromise) await turnEndPromise;
+      await agentResult.turnFinalizer?.whenSettled();
     }
+  }
+
+  private async commitReplyOutcomeSideEffects(
+    outcome: AgentInvokeResult['outcome'],
+    context: Parameters<TurnOutcomeInterventionService['commit']>[1],
+  ): Promise<void> {
+    if (outcome?.kind !== 'reply' || !outcome.sideEffects?.length) return;
+    await this.outcomeFinalizer.commit(outcome, context).catch((error: unknown) => {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[ReplyOutcomeSideEffect] dispatch failed: ${errorMessage}`);
+    });
   }
 
   /**
@@ -575,11 +497,22 @@ export class ReplyWorkflowService {
     scenario: ScenarioType,
     batchId?: string,
   ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
-    const replyPreview = agentResult.blockedByGuard
-      ? `[守卫拦截 ${agentResult.blockedByGuard.ruleIds.join(',')}] ${agentResult.reply.content}`
+    const replyPreview = agentResult.guardrailBlocked
+      ? this.buildGuardrailBlockedPreview(agentResult)
       : agentResult.isSkipped
         ? `[主动沉默] ${this.extractSkipReason(agentResult) || '本轮无需回复'}`
         : agentResult.reply.content;
+    const guardrailInput: MonitoringMetadata['guardrailInput'] =
+      agentResult.guardrailBlocked?.phase === 'inbound'
+        ? {
+            decision: 'block',
+            riskType: agentResult.guardrailBlocked.riskType,
+            riskLabel: agentResult.guardrailBlocked.riskLabel,
+            reasonCode: agentResult.guardrailBlocked.reasonCode,
+            reason: agentResult.guardrailBlocked.reason,
+          }
+        : undefined;
+    const guardrailOutput = agentResult.outcome?.guardrailTrace;
     return this.wecomObservability.buildSuccessMetadata(traceId, {
       scenario,
       batchId,
@@ -588,7 +521,19 @@ export class ReplyWorkflowService {
       extraResponse: {
         processingTimeMs: agentResult.processingTime,
       },
+      guardrailInput,
+      guardrailOutput,
     });
+  }
+
+  private buildGuardrailBlockedPreview(agentResult: AgentInvokeResult): string {
+    const guardrail = agentResult.guardrailBlocked;
+    if (!guardrail) return agentResult.reply.content;
+    if (guardrail.phase === 'inbound') {
+      return `[入站守卫拦截] ${guardrail.riskLabel ?? guardrail.reason ?? '命中风险规则'}`;
+    }
+    const ruleText = guardrail.ruleIds?.join(',') || guardrail.reasonCode || 'output_guardrail';
+    return `[出站守卫拦截 ${ruleText}] ${agentResult.reply.content}`;
   }
 
   private extractSkipReason(agentResult: AgentInvokeResult): string | undefined {
@@ -619,189 +564,6 @@ export class ReplyWorkflowService {
     return undefined;
   }
 
-  private async dispatchBookingGateHandoffIfNeeded(
-    agentResult: AgentInvokeResult,
-    context: {
-      traceId: string;
-      chatId: string;
-      userId: string;
-      corpId: string;
-      contactName?: string;
-      botImId?: string;
-      botUserId?: string;
-      userMessage: string;
-    },
-  ): Promise<void> {
-    const gateCall = agentResult.toolCalls?.find(isBookingGateRejectedToolCall);
-    if (!gateCall) return;
-
-    const gateResult = gateCall.result as
-      | { reasonCode?: unknown; errorType?: unknown; _outcome?: unknown; details?: unknown }
-      | undefined;
-    const gateReasonCode =
-      typeof gateResult?.reasonCode === 'string' ? gateResult.reasonCode : 'booking_gate_rejected';
-    const gateErrorType = typeof gateResult?.errorType === 'string' ? gateResult.errorType : '';
-    const gateOutcome = typeof gateResult?._outcome === 'string' ? gateResult._outcome : '';
-    const reason = [gateReasonCode, gateErrorType, gateOutcome].filter(Boolean).join(' | ');
-    const occurredAt = new Date();
-    const idempotencyKey = `${context.chatId}:handoff:${context.traceId}`;
-
-    let writeOutcome: HandoffWriteOutcome = 'failed';
-    try {
-      writeOutcome = await this.handoffRecorder.record({
-        corpId: context.corpId,
-        chatId: context.chatId,
-        userId: context.userId,
-        reasonCode: 'system_blocked',
-        reason: reason || 'booking runtime guard rejected this turn',
-        actionAdvice: '人工确认 jobId 来源与候选人真实意向；必要时手动补录或重新推荐岗位。',
-        stage: null,
-        botImId: context.botImId,
-        idempotencyKey,
-        occurredAt,
-      });
-    } catch (error) {
-      this.logger.error(
-        `[BookingGateHandoff] handoff 底账写入异常，继续 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}, error=${error instanceof Error ? error.message : String(error)}`,
-      );
-      writeOutcome = 'failed';
-    }
-
-    if (writeOutcome === 'duplicate') {
-      this.logger.warn(
-        `[BookingGateHandoff] duplicate handoff，跳过重复 dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
-      );
-      return;
-    }
-    if (writeOutcome === 'failed') {
-      this.logger.error(
-        `[BookingGateHandoff] handoff 底账写入失败，执行 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
-      );
-    }
-
-    try {
-      const result = await this.interventionService.dispatch({
-        kind: 'general_handoff',
-        source: 'agent_tool',
-        alertLabel: 'Booking runtime guard 拦截',
-        reason: reason || 'booking runtime guard rejected this turn',
-        actionAdvice: '人工确认 jobId 来源与候选人真实意向；必要时手动补录或重新推荐岗位。',
-        chatId: context.chatId,
-        corpId: context.corpId,
-        userId: context.userId,
-        pauseTargetId: context.chatId,
-        botImId: context.botImId,
-        botUserName: context.botUserId,
-        contactName: context.contactName,
-        currentMessageContent: context.userMessage,
-        recentMessages: [
-          {
-            role: 'user',
-            content: context.userMessage,
-            timestamp: occurredAt.getTime(),
-          },
-        ],
-        sessionState: null,
-      });
-      this.logger.warn(
-        `[BookingGateHandoff] dispatched: chatId=${context.chatId}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `[BookingGateHandoff] dispatch 失败: chatId=${context.chatId}, error=${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  /**
-   * 出站守卫拦截（rule 硬拦 / llm 严重违规 / reviewer 故障降级 output_review_unavailable /
-   * revise 死循环 repair_exhausted）统一转人工。
-   *
-   * 不区分 rule/非 rule 档：rule 档命中虽已在守卫内发飞书 badcase 通知，但那只是观测告警，
-   * 不暂停托管也不派人接管——本轮沉默后候选人悬空。任何 block 终态都必须走
-   * intervention → 暂停托管 + 飞书告警，并写 handoff 底账便于运营追溯。
-   * 全程 fail-safe，不阻塞主流水。
-   */
-  private async dispatchOutputGuardHandoffIfNeeded(
-    agentResult: AgentInvokeResult,
-    context: {
-      traceId: string;
-      chatId: string;
-      userId: string;
-      corpId: string;
-      contactName?: string;
-      botImId?: string;
-      botUserId?: string;
-      userMessage: string;
-    },
-  ): Promise<void> {
-    const blocked = agentResult.blockedByGuard;
-    if (!blocked) return;
-
-    const tier = blocked.ruleBlocked ? 'rule 档' : '非 rule 档';
-    const reasonCode =
-      blocked.reasonCode ??
-      (blocked.ruleIds.length > 0 ? blocked.ruleIds.join(',') : 'output_blocked');
-    const replyPreview = agentResult.reply.content.slice(0, 400);
-    const reason = `出站守卫拦截（${tier}）：${reasonCode}`;
-    const actionAdvice =
-      '本轮回复被出站守卫拦截、未发送给候选人。人工核对候选人最近消息与被拦截回复，必要时人工接管回复。';
-    const occurredAt = new Date();
-    const idempotencyKey = `${context.chatId}:handoff:${context.traceId}:output_guard`;
-
-    try {
-      await this.handoffRecorder.record({
-        corpId: context.corpId,
-        chatId: context.chatId,
-        userId: context.userId,
-        reasonCode: 'system_blocked',
-        reason,
-        actionAdvice,
-        stage: null,
-        botImId: context.botImId,
-        idempotencyKey,
-        occurredAt,
-      });
-    } catch (error) {
-      this.logger.error(
-        `[OutputGuardHandoff] handoff 底账写入异常，继续 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}, error=${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    try {
-      const result = await this.interventionService.dispatch({
-        kind: 'general_handoff',
-        source: 'agent_tool',
-        alertLabel: `出站守卫拦截（${tier}）`,
-        reason: `${reason}；replyPreview="${replyPreview}"`,
-        actionAdvice,
-        chatId: context.chatId,
-        corpId: context.corpId,
-        userId: context.userId,
-        pauseTargetId: context.chatId,
-        botImId: context.botImId,
-        botUserName: context.botUserId,
-        contactName: context.contactName,
-        currentMessageContent: context.userMessage,
-        recentMessages: [
-          {
-            role: 'user',
-            content: context.userMessage,
-            timestamp: occurredAt.getTime(),
-          },
-        ],
-        sessionState: null,
-      });
-      this.logger.warn(
-        `[OutputGuardHandoff] dispatched: chatId=${context.chatId}, reasonCode=${reasonCode}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `[OutputGuardHandoff] dispatch 失败: chatId=${context.chatId}, error=${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
   private async markMessagesAsProcessed(messageIds: string[]): Promise<void> {
     await Promise.all(
       messageIds.map(async (messageId) => {
@@ -813,39 +575,75 @@ export class ReplyWorkflowService {
     );
   }
 
-  private async callAgent(params: {
-    sessionId: string;
-    userMessage: string;
-    scenario?: string;
-    messageId?: string;
-    recordMonitoring?: boolean;
-    userId: string;
-    corpId: string;
-    imageUrls?: string[];
-    imageMessageIds?: string[];
-    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
-    botUserId?: string;
-    contactName?: string;
-    botImId?: string;
-    externalUserId?: string;
-    token?: string;
-    imContactId?: string;
-    imRoomId?: string;
-    apiType?: 'enterprise' | 'group';
-    modelId?: string;
-    thinking?: GeneratorThinkingConfig;
-    shortTermEndTimeInclusive?: number;
-    /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
-    deferTurnEnd?: boolean;
-  }): Promise<AgentInvokeResult> {
+  private async callAgentWithVisualCompatibilityFallback(
+    params: AgentCallParams,
+  ): Promise<AgentInvokeResult> {
+    try {
+      return await this.callAgent(params);
+    } catch (error) {
+      const imageUrls = params.imageUrls ?? [];
+      const imageMessageIds = params.imageMessageIds ?? [];
+      if (imageUrls.length === 0 || imageMessageIds.length === 0) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `[${params.contactName ?? params.sessionId}] 多模态 Agent 调用失败，尝试图片描述文本兼容重跑: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      const prepared = await this.prepareRuntimeCompatibilityDescriptions({
+        imageUrls,
+        imageMessageIds,
+        visualMessageTypes: params.visualMessageTypes,
+        contactName: params.contactName ?? params.sessionId,
+      });
+      if (!prepared) {
+        throw error;
+      }
+
+      return this.callAgent({
+        ...params,
+        imageUrls: undefined,
+        imageMessageIds: undefined,
+        visualMessageTypes: undefined,
+      });
+    }
+  }
+
+  private async prepareRuntimeCompatibilityDescriptions(params: {
+    imageUrls: string[];
+    imageMessageIds: string[];
+    visualMessageTypes?: VisualMessageTypes;
+    contactName: string;
+  }): Promise<boolean> {
+    const triggeredIds: string[] = [];
+    params.imageMessageIds.forEach((messageId, index) => {
+      const imageUrl = params.imageUrls[index];
+      if (!messageId || !imageUrl) return;
+      const kind = params.visualMessageTypes?.[messageId] ?? MessageType.IMAGE;
+      this.imageDescription.describeAndUpdateAsync(messageId, imageUrl, kind);
+      triggeredIds.push(messageId);
+    });
+
+    if (triggeredIds.length === 0) return false;
+    await this.ensureCompatibilityDescriptionsReady(
+      triggeredIds,
+      params.contactName,
+      '',
+      '运行时 vision 降级',
+    );
+    return true;
+  }
+
+  private async callAgent(params: AgentCallParams): Promise<AgentInvokeResult> {
     const {
-      userMessage,
       scenario = 'candidate-consultation',
       messageId,
       recordMonitoring = true,
       userId,
       corpId,
-      deferTurnEnd,
     } = params;
 
     const startTime = Date.now();
@@ -857,101 +655,65 @@ export class ReplyWorkflowService {
         shouldRecordAiEnd = true;
       }
 
-      const result = await this.runner.invokeReviewed(
-        {
+      const outcome = await this.runner.runTurn({
+        trigger: { kind: 'inbound', userMessage: params.userMessage, images: params.imageUrls },
+        sessionRef: { corpId, userId, sessionId: params.sessionId },
+        context: {
           callerKind: CallerKind.WECOM,
-          messages: [{ role: 'user', content: userMessage }],
-          userId,
-          corpId,
-          sessionId: params.sessionId,
           messageId,
           scenario,
           contactName: params.contactName,
-          imageUrls: params.imageUrls,
-          imageMessageIds: params.imageMessageIds,
-          visualMessageTypes: params.visualMessageTypes,
           botUserId: params.botUserId,
           botImId: params.botImId,
+          groupId: params.groupId,
           externalUserId: params.externalUserId,
           token: params.token,
           imContactId: params.imContactId,
           imRoomId: params.imRoomId,
           apiType: params.apiType,
-          modelId: params.modelId,
+          imageMessageIds: params.imageMessageIds,
+          visualMessageTypes: params.visualMessageTypes,
           thinking: params.thinking,
           shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-          deferTurnEnd,
           onPreparedRequest:
             recordMonitoring && messageId
               ? (agentRequest) =>
                   this.wecomObservability.recordAgentRequest(messageId, agentRequest)
               : undefined,
         },
-        {
-          userMessage: params.userMessage,
-          chatId: params.sessionId,
-          userId,
-          traceId: messageId,
-          contactName: params.contactName,
-          botImId: params.botImId,
-          botUserName: params.botUserId,
-        },
-      );
+        modelId: params.modelId,
+      });
 
       const processingTime = Date.now() - startTime;
-      const content = this.normalizeContent(result.text);
-      // 短路判定必须与 runner 的 stopWhen 一致（见 runner.service shortCircuitByToolResult）：
-      // - skip_reply：无条件短路 → 跳过发送
-      // - 任意工具 result.shortCircuited===true：运行时硬短路 → 跳过发送。
-      //   request_handoff 的 HANDOFF_NO_BOOKING 返回 shortCircuited:false（不短路），
-      //   此时 Agent 已按首次约面继续生成回复，必须正常投递。
-      const isSkipped = result.toolCalls?.some(isShortCircuitedToolCall) ?? false;
-
-      // 出站守卫裁决已由 runner.invokeReviewed 内部完成（rule 档确定性 + 高风险 llm 档 + 一次 revise
-      // 重写，见 OutputGuardrailService）。decision='block' 时本轮回复不发送，飞书告警/转人工归因已在
-      // 守卫内处理；此处仅把 block 归一成 blockedByGuard 供后续跳过发送与观测。
-      const outputDecision = result.outputDecision;
-      let blockedByGuard: AgentInvokeResult['blockedByGuard'];
-      if (!isSkipped && content && outputDecision.decision === 'block') {
-        const ruleBlocked = outputDecision.blockedRuleIds.length > 0;
-        const blockedRuleIds = ruleBlocked
-          ? outputDecision.blockedRuleIds
-          : [outputDecision.reasonCode ?? 'output_blocked'];
-        blockedByGuard = {
-          ruleIds: blockedRuleIds,
-          reasonCode: outputDecision.reasonCode,
-          ruleBlocked,
-        };
-      }
-
-      // 终态分类走 runner 共享纯函数（与主动复聊同源）：投递/沉默分支据 outcome.kind 判定，
-      // 不再在渠道侧重复推导 isSkipped/handoff。isSkipped/blockedByGuard 仅保留供观测/告警留痕。
-      const outcome = classifyReviewedOutcome(
-        result,
-        { kind: 'inbound', userMessage: params.userMessage },
-        { corpId, userId, sessionId: params.sessionId },
-        messageId,
-      );
+      const content = this.normalizeContent(outcome.reply?.text ?? outcome.generatedText ?? '');
+      const isSkipped = outcome.kind !== 'reply';
+      const guardrailBlocked: AgentInvokeResult['guardrailBlocked'] =
+        outcome.kind === 'guardrail_blocked' ? outcome.guardrail : undefined;
+      const turnFinalizer = TurnFinalizer.from(outcome.runTurnEnd, (err) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[${params.contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
+      });
 
       const invokeResult: AgentInvokeResult = {
-        reply: { content, reasoning: result.reasoning, usage: result.usage },
+        reply: { content, reasoning: outcome.reasoning, usage: outcome.usage },
         isFallback: false,
         isSkipped,
-        blockedByGuard,
-        outcome,
+        guardrailBlocked,
+        outcome: { ...outcome, runTurnEnd: undefined },
         processingTime,
-        toolCalls: result.toolCalls,
-        agentSteps: result.agentSteps,
-        guardrailOutput: result.guardrailTrace,
-        memorySnapshot: result.memorySnapshot,
-        responseMessages: result.responseMessages,
-        runTurnEnd: result.runTurnEnd,
+        toolCalls: outcome.toolCalls,
+        agentSteps: outcome.agentSteps,
+        guardrailOutput: outcome.guardrailTrace,
+        memorySnapshot: outcome.memorySnapshot,
+        responseMessages: outcome.responseMessages,
+        turnFinalizer,
       };
       if (recordMonitoring && messageId) {
         await this.wecomObservability.recordAgentResult(messageId, invokeResult);
       }
 
-      if (!content && !isSkipped) {
+      const shortCircuitedByTool = (outcome.toolCalls ?? []).some(isShortCircuitedToolCall);
+      if (!content && outcome.kind === 'skipped' && !shortCircuitedByTool) {
         const emptyResponseError = new Error('Agent 返回空响应') as AgentError;
         emptyResponseError.isAgentError = true;
         emptyResponseError.agentMeta = {
@@ -964,7 +726,7 @@ export class ReplyWorkflowService {
       }
 
       this.logger.log(
-        `Agent 调用成功，耗时 ${processingTime}ms，tokens=${result.usage?.totalTokens || 'N/A'}${
+        `Agent 调用成功，耗时 ${processingTime}ms，tokens=${outcome.usage?.totalTokens || 'N/A'}${
           isSkipped ? '，本轮主动沉默' : ''
         }`,
       );
@@ -1021,35 +783,6 @@ export class ReplyWorkflowService {
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
     return messageData.orgId || 'default';
-  }
-
-  /**
-   * 把入站 DTO 解析成入站风险守卫的纯文本扫描内容（渠道侧职责，依赖倒置）。
-   * 守卫由 runner.precheckInboundOutcome 编排，渠道只构造中立扫描文本。
-   * 过滤图片/表情占位，多消息按行拼接；全是视觉内容则返回空串（不扫描）。
-   */
-  private buildRiskScanContent(
-    primaryMessage: EnterpriseMessageCallbackDto,
-    content: string,
-    messages: EnterpriseMessageCallbackDto[],
-  ): string {
-    const fallback = content?.trim() ?? '';
-    if (!fallback) return '';
-
-    const list = messages?.length ? messages : [primaryMessage];
-    const textParts = list
-      .filter((message) => !MessageParser.extractVisualMessageType(message))
-      .map((message) => MessageParser.extractContent(message).trim())
-      .filter((text) => text && !this.isVisualGeneratedContent(text));
-
-    if (textParts.length > 0) return textParts.join('\n');
-    if (MessageParser.extractVisualMessageType(primaryMessage)) return '';
-    if (this.isVisualGeneratedContent(fallback)) return '';
-    return fallback;
-  }
-
-  private isVisualGeneratedContent(content: string | undefined): boolean {
-    return /^\s*\[(?:图片|表情)消息\]/.test(content ?? '');
   }
 
   private wasReplyActuallyDelivered(deliveryResult: {
@@ -1146,16 +879,16 @@ export class ReplyWorkflowService {
   }
 
   /**
-   * 等待本批所有图片/表情的 vision 描述完成（已完成的立即返回；超时则放行）。
+   * 等待文本兼容路径的图片/表情描述完成（已完成的立即返回；超时则放行）。
    *
-   * 必须在 callAgent 之前调用——Agent 读短期记忆时会从 chat_messages.content 取
-   * vision 描述，若描述还没回写，模型只能拿到 "[图片消息]" 这种占位文本，
-   * 相当于看不到图片内容。
+   * 正常多模态路径由主模型直接读取 image part，这里不会有 in-flight 描述任务。
+   * 只有主模型不支持 vision，或多模态调用失败后进入运行时降级，才依赖图片描述回写短期记忆。
    */
-  private async ensureVisionDescriptionsReady(
+  private async ensureCompatibilityDescriptionsReady(
     visualMessageIds: string[],
     contactName: string,
     logPrefix: string,
+    reason = '文本兼容',
   ): Promise<void> {
     if (visualMessageIds.length === 0) return;
     const startedAt = Date.now();
@@ -1163,7 +896,7 @@ export class ReplyWorkflowService {
     const waitedMs = Date.now() - startedAt;
     if (waitedMs > 50) {
       this.logger.log(
-        `${logPrefix}[${contactName}] 等待 vision 描述完成: ${waitedMs}ms (${visualMessageIds.length} 张)`,
+        `${logPrefix}[${contactName}] 等待图片描述完成(${reason}): ${waitedMs}ms (${visualMessageIds.length} 张)`,
       );
     }
   }

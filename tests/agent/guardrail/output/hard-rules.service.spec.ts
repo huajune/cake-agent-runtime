@@ -356,9 +356,7 @@ describe('HardRulesService', () => {
         ] as never,
       });
 
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'requested_brand_mismatch',
-      );
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('requested_brand_mismatch');
     });
 
     it('asks for revision when high-confidence brand alias fuzzy match is ignored', () => {
@@ -494,9 +492,7 @@ describe('HardRulesService', () => {
         ] as never,
       });
 
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'farther_job_recommended',
-      );
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('farther_job_recommended');
     });
 
     it('asks for revision when schedule-filtered job list is followed by a recommendation', () => {
@@ -2018,7 +2014,9 @@ describe('HardRulesService', () => {
       it('passes when tool facts contain both polarities (union semantics)', () => {
         const result = service.check({
           replyText: '这家主要是早班。',
-          toolCalls: [makeMarkdownJobListCall('- **工作班次**: 早班 7:00-12:00 / 晚班 18:00-23:00')],
+          toolCalls: [
+            makeMarkdownJobListCall('- **工作班次**: 早班 7:00-12:00 / 晚班 18:00-23:00'),
+          ],
           chatId: 'chat-1',
         });
 
@@ -2361,7 +2359,8 @@ describe('HardRulesService', () => {
 
     it('passes when reply asks for a more specific location instead', () => {
       const result = service.check({
-        replyText: '松江这边有几家在招，你平时在哪条路或者哪个商圈附近？方便的话发个定位，我帮你算下距离。',
+        replyText:
+          '松江这边有几家在招，你平时在哪条路或者哪个商圈附近？方便的话发个定位，我帮你算下距离。',
         toolCalls: [makeAreaGeocodeCall(true)],
         chatId: 'chat-1',
       });

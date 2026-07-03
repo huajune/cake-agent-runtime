@@ -44,8 +44,8 @@ function buildSessionState(
         short_term: null,
         open_position: null,
         time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
+        schedule_constraint: null,
+        available_after: null,
       },
       reasoning: 'test',
     }) as SessionFacts,
@@ -104,9 +104,7 @@ describe('GeneralHandoffCardRenderer', () => {
       expect((card as { title: string }).title).toBe(
         '🚨 候选人需人工介入 · 无活跃 case 但需介入 · 测试ing',
       );
-      expect(card.content as string).toContain(
-        '测试ing（来自回归批次，无需 @ 招募经理）',
-      );
+      expect(card.content as string).toContain('测试ing（来自回归批次，无需 @ 招募经理）');
     });
 
     it('highlights reason / actionAdvice and renders bolded inline labels', () => {
@@ -117,9 +115,7 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(content).toContain(
         "> <font color='red'>**命中原因**：候选人触发 request_handoff（no_active_case 分支）</font>",
       );
-      expect(content).toContain(
-        "> <font color='red'>**建议动作**：建议联系候选人确认意向</font>",
-      );
+      expect(content).toContain("> <font color='red'>**建议动作**：建议联系候选人确认意向</font>");
       expect(content).toContain('**当前消息**：我想找人帮忙');
       expect(content).toContain('会话ID：chat-123');
       expect(content).toContain('暂停ID：chat-123');

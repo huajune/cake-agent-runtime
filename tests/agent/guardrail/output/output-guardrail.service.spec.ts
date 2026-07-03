@@ -57,7 +57,9 @@ describe('OutputGuardrailService', () => {
     };
     const shortTerm = { getMessages: jest.fn().mockResolvedValue([]) };
     const router = {
-      getModelIdByRole: jest.fn().mockReturnValue(options.reviewModelConfigured === false ? '' : 'anthropic/claude-x'),
+      getModelIdByRole: jest
+        .fn()
+        .mockReturnValue(options.reviewModelConfigured === false ? '' : 'anthropic/claude-x'),
     };
     const service = new OutputGuardrailService(
       systemConfig as never,
@@ -68,7 +70,15 @@ describe('OutputGuardrailService', () => {
       shortTerm as never,
       router as never,
     );
-    return { service, ruleGuard, packetBuilder, semanticReviewer, semanticNotifier, shortTerm, router };
+    return {
+      service,
+      ruleGuard,
+      packetBuilder,
+      semanticReviewer,
+      semanticNotifier,
+      shortTerm,
+      router,
+    };
   };
 
   const noTriggerReviewer = () => ({

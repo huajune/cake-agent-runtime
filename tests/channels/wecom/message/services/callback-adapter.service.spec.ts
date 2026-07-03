@@ -1,9 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException } from '@nestjs/common';
 import { MessageCallbackAdapterService } from '@wecom/message/ingress/callback-adapter.service';
-import {
-  GroupMessageCallbackDto,
-} from '@wecom/message/ingress/message-callback.dto';
+import { GroupMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { MessageSource, MessageType, ContactType } from '@enums/message-callback.enum';
 
 describe('MessageCallbackAdapterService', () => {

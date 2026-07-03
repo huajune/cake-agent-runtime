@@ -459,25 +459,27 @@ describe('AnalyticsMaintenanceService', () => {
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
       );
-      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(buildHourlyAggregate({
-        messageCount: 20,
-        successCount: 18,
-        failureCount: 2,
-        successRate: 90,
-        avgDuration: 4000,
-        minDuration: 500,
-        maxDuration: 20000,
-        p50Duration: 3500,
-        p95Duration: 15000,
-        p99Duration: 19000,
-        avgAiDuration: 2500,
-        avgSendDuration: 1000,
-        activeUsers: 8,
-        activeChats: 6,
-        totalTokenUsage: 1500,
-        fallbackCount: 1,
-        fallbackSuccessCount: 1,
-      }));
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(
+        buildHourlyAggregate({
+          messageCount: 20,
+          successCount: 18,
+          failureCount: 2,
+          successRate: 90,
+          avgDuration: 4000,
+          minDuration: 500,
+          maxDuration: 20000,
+          p50Duration: 3500,
+          p95Duration: 15000,
+          p99Duration: 19000,
+          avgAiDuration: 2500,
+          avgSendDuration: 1000,
+          activeUsers: 8,
+          activeChats: 6,
+          totalTokenUsage: 1500,
+          fallbackCount: 1,
+          fallbackSuccessCount: 1,
+        }),
+      );
 
       await service.aggregateHourlyStats();
 

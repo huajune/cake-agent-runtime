@@ -253,7 +253,7 @@ describe('MessageDeliveryService', () => {
       ).rejects.toBeInstanceOf(DeliveryFailureError);
     });
 
-    it('silently drops reply when output leak detected (badcase vllg7hlu)', async () => {
+    it('does not own output-leak blocking (guardrail handles badcase vllg7hlu before delivery)', async () => {
       const reply: AgentReply = {
         content: '阶段已切换到 job_consultation，等待候选人回复年龄信息。',
       };
@@ -261,14 +261,10 @@ describe('MessageDeliveryService', () => {
       const result = await service.deliverReply(reply, deliveryContext, true);
 
       expect(result.success).toBe(true);
-      expect(result.skipped).toBe(true);
-      expect(result.skipReason).toBe('output_leak');
-      expect(result.segmentCount).toBe(0);
-      expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
-      expect(mockMonitoringService.recordReplySkipped).toHaveBeenCalledWith(
-        'msg-123',
-        'output_leak',
-      );
+      expect(result.skipped).toBeUndefined();
+      expect(result.segmentCount).toBe(1);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockMonitoringService.recordReplySkipped).not.toHaveBeenCalled();
     });
 
     it('sends same-brand collapse content instead of silently dropping it', async () => {

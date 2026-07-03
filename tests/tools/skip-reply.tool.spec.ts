@@ -40,8 +40,9 @@ describe('buildSkipReplyTool', () => {
 
   it('rejects empty reason via Zod schema', async () => {
     const tool = buildTool();
-    const schema = (tool as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean } } })
-      .inputSchema;
+    const schema = (
+      tool as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean } } }
+    ).inputSchema;
     expect(schema.safeParse({ reason: '' }).success).toBe(false);
     expect(schema.safeParse({ reason: '候选人说好的' }).success).toBe(true);
   });

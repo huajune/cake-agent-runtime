@@ -15,7 +15,7 @@ export type {
   AgentToolCallStatus,
 } from '@shared-types/agent-telemetry.types';
 
-export type AgentThinkingConfig = LlmThinkingConfig;
+export type GeneratorThinkingConfig = LlmThinkingConfig;
 
 /**
  * Controls which tools are physically exposed to the model for this turn.
@@ -24,13 +24,13 @@ export type AgentThinkingConfig = LlmThinkingConfig;
  * - readonly: only tools without external side effects
  * - none: no tools at all
  */
-export type ToolMode = 'scenario' | 'readonly' | 'none';
+export type GeneratorToolMode = 'scenario' | 'readonly' | 'none';
 
 // HC-1 revise 回路注入用的违规意见，单一数据源在中立 Guardrail 契约里。
 export type { GuardViolation } from '@shared-types/guardrail.contract';
 import type { GuardViolation } from '@shared-types/guardrail.contract';
 
-export interface AgentInputMessage {
+export interface GeneratorInputMessage {
   role: string;
   content: string;
   /** 该条 user message 关联的图片 URL 列表（test-suite/dashboard 路径） */
@@ -39,7 +39,7 @@ export interface AgentInputMessage {
   imageMessageIds?: string[];
 }
 
-export interface AgentInvokeParams {
+export interface GeneratorInvokeParams {
   /** 调用方身份；决定是否加载短期记忆、默认 strategySource 等运行时行为。 */
   callerKind: CallerKind;
   /**
@@ -49,7 +49,7 @@ export interface AgentInvokeParams {
    *   完整历史由 memory 层从 Redis/DB 加载
    * - TEST_SUITE / DEBUG：一次性传入完整历史 + 当前消息
    */
-  messages: AgentInputMessage[];
+  messages: GeneratorInputMessage[];
   /** 外部用户 ID */
   userId: string;
   /** 企业 ID */
@@ -72,8 +72,8 @@ export interface AgentInvokeParams {
   scenario?: string;
   /** 最大工具循环步数，默认 5 */
   maxSteps?: number;
-  /** 本轮物理工具集模式；默认 scenario，见 ToolMode。 */
-  toolMode?: ToolMode;
+  /** 本轮物理工具集模式；默认 scenario，见 GeneratorToolMode。 */
+  toolMode?: GeneratorToolMode;
   /**
    * HC-1 revise 回路：带上一版回复被出站守卫拦下的违规意见重生成，
    * 注入 system prompt 让模型只修正这些问题、不重跑业务逻辑。
@@ -90,8 +90,7 @@ export interface AgentInvokeParams {
   };
   /**
    * HC-1：本轮已提交且不可撤销的副作用摘要（如「已为候选人预约 X 门店面试」）。
-   * 配合 `toolMode:'none'` 的无工具文本重写：让模型知晓既成事实、只改措辞，
-   * 既不声称未发生、也不重复执行。
+   * 用于 revise 回路：让模型知晓既成事实，既不声称未发生、也不重复执行。
    */
   committedSideEffects?: string;
   /**
@@ -142,7 +141,7 @@ export interface AgentInvokeParams {
    */
   disableFallbacks?: boolean;
   /** 覆盖本次调用使用的思考模式 */
-  thinking?: AgentThinkingConfig;
+  thinking?: GeneratorThinkingConfig;
   /**
    * 在真正调用模型前，暴露一份“实际 LLM 请求快照”给调用方做观测。
    * 仅用于埋点/调试，不参与模型请求语义。
@@ -153,14 +152,14 @@ export interface AgentInvokeParams {
    *
    * 默认 false：模型返回后 runner 内部 fire-and-forget 触发 onTurnEnd（记忆投影/事实提取）。
    *
-   * 开启后：runner 不再自动触发，`AgentRunResult.runTurnEnd` 暴露一个 dispatcher 给调用方。
+   * 开启后：runner 不再自动触发，`GeneratorRunResult.runTurnEnd` 暴露一个 dispatcher 给调用方。
    * 适用于 replay 场景——首次生成的回复需要被丢弃，其记忆副作用也不能执行；
    * 若首次结果最终被采纳，再由调用方手动触发。
    */
   deferTurnEnd?: boolean;
 }
 
-export interface AgentRunResult {
+export interface GeneratorRunResult {
   text: string;
   /** 模型思考过程（需启用 AGENT_THINKING_BUDGET_TOKENS） */
   reasoning?: string;
@@ -181,20 +180,22 @@ export interface AgentRunResult {
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;
   /**
-   * 仅当 `AgentInvokeParams.deferTurnEnd=true` 时返回。
+   * 仅当 `GeneratorInvokeParams.deferTurnEnd=true` 时返回。
    *
    * 调用方对本次生成结果「最终采纳」后需要显式调用一次，以触发 turn-end 生命周期
    * （记忆投影/事实提取/活跃时间刷新）。若本次结果被丢弃（如 replay 首次调用），
    * 直接忽略即可。
    *
-   * `includeAssistantText=false`（默认 true）：回复未真实送达（守卫拦截/沉默/投递失败）时
-   * 只记用户侧记忆，不把未送达文本投影成助手轮次。
+   * `includeAssistantText`（默认 true）：本轮回复是否真实投递给了用户。被出站守卫拦截、
+   * 主动沉默、或投递阶段因托管暂停/失败而未送达时，调用方应传 `false`——此时仍记录
+   * 用户侧记忆（事实提取/活跃刷新），但不把「用户没看到的回复」投影成助手轮次，避免
+   * 污染下一轮 recall 与复聊判定。
    */
   runTurnEnd?: (opts?: { includeAssistantText?: boolean }) => Promise<void>;
 }
 
 /** stream() 返回结果：流 + 元数据 */
-export interface AgentStreamResult {
+export interface GeneratorStreamResult {
   streamResult: ReturnType<typeof streamText>;
   entryStage: string | null;
   agentRequest?: Record<string, unknown>;

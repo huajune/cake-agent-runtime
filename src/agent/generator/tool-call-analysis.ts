@@ -6,7 +6,7 @@
  */
 
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
-import type { AgentToolCall } from './agent-run.types';
+import type { AgentToolCall } from './generator.types';
 
 /**
  * 单轮内同名工具调用上限。
@@ -143,6 +143,33 @@ export const SIDE_EFFECT_TOOLS = new Set([
   'request_handoff',
 ]);
 
+/** 触发后会产生不可逆外部动作，本轮 replay 必须跳过的工具。 */
+export const REPLAY_BLOCKING_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking']);
+
+/** revise 是纯文本修复阶段：这些工具绝不允许在 revise 中暴露。 */
+export const REVISION_FORBIDDEN_TOOLS = new Set([...SIDE_EFFECT_TOOLS]);
+
+/** 主动复聊默认只读；这些工具在 proactive 触发源下默认禁用。 */
+export const PROACTIVE_FORBIDDEN_TOOLS = new Set([...SIDE_EFFECT_TOOLS]);
+
+/**
+ * @deprecated Tool guardrail 审计入口已迁到 agent/guardrail/tool。
+ * 保留 re-export 兼容旧引用，避免这里和 guardrail/tool 维护两份列表。
+ */
+export { TOOL_GUARDRAIL_IDS } from '@agent/guardrail/tool/tool-guardrail.catalog';
+
+export function isSideEffectTool(toolName: string): boolean {
+  return SIDE_EFFECT_TOOLS.has(toolName);
+}
+
+export function isForbiddenDuringRevise(toolName: string): boolean {
+  return REVISION_FORBIDDEN_TOOLS.has(toolName);
+}
+
+export function isForbiddenForProactive(toolName: string): boolean {
+  return PROACTIVE_FORBIDDEN_TOOLS.has(toolName);
+}
+
 /**
  * 判定单个工具返回值是否表示「副作用已成功提交」。
  *
@@ -158,9 +185,16 @@ export function isToolSuccess(result: unknown): boolean {
   if (!r) return false;
   if (typeof r.errorType === 'string') return false;
   if (r.success === false || r.accepted === false || r.dispatched === false) return false;
+  if (r.sideEffectCommitted === true) return true;
   if (r.success === true || r.accepted === true || r.dispatched === true) return true;
   if (typeof r.workOrderId === 'number' && r.workOrderId > 0) return true;
+  if (typeof r.workOrderId === 'string' && r.workOrderId.trim().length > 0) return true;
   return false;
+}
+
+/** 单个工具结果是否明确表示副作用已提交。 */
+export function isSideEffectCommitted(result: unknown): boolean {
+  return isToolSuccess(result);
 }
 
 /**
@@ -173,7 +207,7 @@ export function isToolSuccess(result: unknown): boolean {
 export function hasCommittedSideEffect(
   toolCalls: Array<{ toolName: string; result?: unknown }>,
 ): boolean {
-  return toolCalls.some((tc) => SIDE_EFFECT_TOOLS.has(tc.toolName) && isToolSuccess(tc.result));
+  return toolCalls.some((tc) => isSideEffectTool(tc.toolName) && isSideEffectCommitted(tc.result));
 }
 
 /**
@@ -202,7 +236,19 @@ export function isBookingGateRejectedToolCall(
 ): boolean {
   if (call.toolName !== 'duliday_interview_booking') return false;
   const r = asRecord(call.result);
-  return r?.shortCircuited === true && r.gateRejected === true;
+  return r?.shortCircuited === true && (r.gateRejected === true || r.guardrailRejected === true);
+}
+
+/** 工具结果是否明确被 runtime/tool guardrail 拒绝。 */
+export function isGuardrailRejected(result: unknown): boolean {
+  const r = asRecord(result);
+  return r?.guardrailRejected === true || r?.gateRejected === true;
+}
+
+/** 归一后的 AgentToolCall 是否会阻断 replay。 */
+export function blocksReplay(call: Pick<AgentToolCall, 'toolName' | 'result'>): boolean {
+  if (!REPLAY_BLOCKING_TOOLS.has(call.toolName)) return false;
+  return true;
 }
 
 /** prepareStep 入参中 step 的最小子集；这里只关心 toolCalls 的 toolName。 */
@@ -257,7 +303,11 @@ export function findSucceededSideEffectTools(steps: StepLike[]): string[] {
     if (!Array.isArray(results)) continue;
     for (const tr of results) {
       const name = tr.toolName;
-      if (typeof name !== 'string' || !SIDE_EFFECT_TOOLS.has(name)) continue;
+      if (typeof name !== 'string' || !isSideEffectTool(name)) continue;
+      if (isSideEffectCommitted(tr.output)) {
+        succeeded.add(name);
+        continue;
+      }
       const status = computeToolCallStatus(tr.output, computeResultCount(tr.output));
       if (status === 'ok' || status === 'narrow') succeeded.add(name);
     }

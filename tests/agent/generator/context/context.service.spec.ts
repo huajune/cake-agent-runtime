@@ -1,4 +1,4 @@
-import { ContextService } from '@agent/context/context.service';
+import { ContextService } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 
 describe('ContextService', () => {
@@ -131,7 +131,9 @@ describe('ContextService', () => {
     expect(prompt).not.toContain('若本轮做了具体岗位推荐');
     // 16/17 约面前必跑 precheck — 已下沉到 duliday_interview_booking 工具描述（## 调用契约），主 prompt 改为引用「以工具描述为准」
     expect(prompt).not.toContain('进入收资/约面流程前必须先做面试预检');
-    expect(prompt).toContain('以 [`duliday_interview_precheck`] 与 [`duliday_interview_booking`] 工具描述为准');
+    expect(prompt).toContain(
+      '以 [`duliday_interview_precheck`] 与 [`duliday_interview_booking`] 工具描述为准',
+    );
     // 15/16 已沉淀到 DB 红线（自动注入），不再出现在 candidate-consultation.md
     expect(prompt).not.toContain('healthCertGate');
     expect(prompt).not.toContain('candidateScheduleConstraint');
@@ -231,8 +233,8 @@ describe('ContextService', () => {
           short_term: null,
           open_position: null,
           time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
+          schedule_constraint: null,
+          available_after: null,
         },
         reasoning: '',
       },

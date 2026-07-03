@@ -1,5 +1,5 @@
-import { MemorySection } from '@agent/context/sections/memory.section';
-import { PromptContext } from '@agent/context/sections/section.interface';
+import { MemorySection } from '@agent/generator/context/sections/memory.section';
+import { PromptContext } from '@agent/generator/context/sections/section.interface';
 
 describe('MemorySection', () => {
   const section = new MemorySection();

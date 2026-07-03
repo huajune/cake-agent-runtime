@@ -5,7 +5,7 @@ import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 describe('buildCancelWorkOrderTool', () => {
   const spongeService = { cancelWorkOrder: jest.fn(), fetchFailureReasonsByPids: jest.fn() };
   const opsEventsRecorder = { recordEvent: jest.fn() };
-  const longTermService = { clearLatestBooking: jest.fn() };
+  const longTermService = { clearActiveBooking: jest.fn() };
   const alertNotifier = { sendAlert: jest.fn() };
 
   const mockContext: ToolBuildContext = {
@@ -38,7 +38,7 @@ describe('buildCancelWorkOrderTool', () => {
     ]);
     spongeService.cancelWorkOrder.mockResolvedValue({ success: true, code: 0, message: 'ok' });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
-    longTermService.clearLatestBooking.mockResolvedValue(undefined);
+    longTermService.clearActiveBooking.mockResolvedValue(undefined);
     alertNotifier.sendAlert.mockResolvedValue(true);
   });
 
@@ -100,7 +100,7 @@ describe('buildCancelWorkOrderTool', () => {
         }),
       }),
     );
-    expect(longTermService.clearLatestBooking).toHaveBeenCalledWith('corp-1', 'user-1', 123);
+    expect(longTermService.clearActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 123);
     expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'booking.canceled',
@@ -195,7 +195,7 @@ describe('buildCancelWorkOrderTool', () => {
       errorType: TOOL_ERROR_TYPES.CANCEL_REJECTED,
     });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
-    expect(longTermService.clearLatestBooking).not.toHaveBeenCalled();
+    expect(longTermService.clearActiveBooking).not.toHaveBeenCalled();
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 

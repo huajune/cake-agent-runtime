@@ -32,14 +32,14 @@ import {
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
 import { ContextService } from './context/context.service';
-import { PromptInjectionService } from './guardrail/input/prompt-injection.service';
+import { PromptInjectionService } from '../guardrail/input/prompt-injection.service';
 import {
-  type AgentInputMessage,
-  type AgentInvokeParams,
+  type GeneratorInputMessage,
+  type GeneratorInvokeParams,
   type AgentMemorySnapshot,
-  type ToolMode,
-} from './agent-run.types';
-import { SIDE_EFFECT_TOOLS } from './tool-call-analysis';
+  type GeneratorToolMode,
+} from '../generator/generator.types';
+import { SIDE_EFFECT_TOOLS } from '../generator/tool-call-analysis';
 
 interface RealtimeGroupStatus {
   groupName: string;
@@ -75,8 +75,8 @@ export interface PreparedAgentContext {
 }
 
 @Injectable()
-export class AgentPreparationService {
-  private readonly logger = new Logger(AgentPreparationService.name);
+export class PreparationService {
+  private readonly logger = new Logger(PreparationService.name);
 
   constructor(
     private readonly toolRegistry: ToolRegistryService,
@@ -91,7 +91,7 @@ export class AgentPreparationService {
   ) {}
 
   async prepare(
-    params: AgentInvokeParams,
+    params: GeneratorInvokeParams,
     mode: 'invoke' | 'stream',
     options?: { enableVision?: boolean },
   ): Promise<PreparedAgentContext> {
@@ -121,7 +121,7 @@ export class AgentPreparationService {
         shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
         enrichmentIdentity: this.buildEnrichmentIdentity(params),
       }),
-      // [当前预约信息] 改由 latest_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
+      // [当前预约信息] 改由 active_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
       this.loadBookingContext(corpId, userId, this.buildSpongeTokenContext(params)),
       this.loadRealtimeGroupStatus(params),
     ]);
@@ -263,7 +263,7 @@ export class AgentPreparationService {
     return wrapped;
   }
 
-  private resolveToolsForMode(tools: ToolSet, mode: ToolMode): ToolSet {
+  private resolveToolsForMode(tools: ToolSet, mode: GeneratorToolMode): ToolSet {
     if (mode === 'scenario') return tools;
     if (mode === 'none') return {};
 
@@ -283,7 +283,7 @@ export class AgentPreparationService {
    * 末尾可能连续多条 user 且尚未有 assistant 打断。只取最后一条会让下游的
    * 高置信事实提取、阶段推断、guard 告警文本漏掉前面几条的内容。
    */
-  private trailingUserContent(messages: AgentInputMessage[]): string | undefined {
+  private trailingUserContent(messages: GeneratorInputMessage[]): string | undefined {
     const collected: string[] = [];
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const role = messages[i].role;
@@ -305,7 +305,7 @@ export class AgentPreparationService {
    */
   private buildCriticalTurnGuard(
     currentUserMessage: string | undefined,
-    messages: AgentInputMessage[],
+    messages: GeneratorInputMessage[],
   ): string {
     const current = currentUserMessage ?? '';
     const recent = messages
@@ -380,21 +380,20 @@ export class AgentPreparationService {
   /**
    * HC-1：把 revise 回路的违规意见 / 已提交副作用摘要拼到 system prompt 末尾。
    *
-   * - committedSideEffects（配 toolMode:'none' 无工具重写）：告知模型副作用已生效、
-   *   只改措辞，既不声称未发生也不重复执行；
+   * - committedSideEffects：告知模型副作用已生效，既不声称未发生也不重复执行；
    * - reviseFeedback：把出站守卫的违规意见喂回，让模型只修正这些问题。
    *
    * 二者均为可选；都缺省时返回空串，不影响普通回合。
    */
-  private buildReviseNotice(params: AgentInvokeParams): string {
+  private buildReviseNotice(params: GeneratorInvokeParams): string {
     const parts: string[] = [];
 
     const committed = params.committedSideEffects?.trim();
     if (committed) {
       parts.push(
         `本轮的副作用动作已经执行并生效（${committed}），既成事实，不可撤销也不可重复执行。` +
-          `请基于这一事实重写本轮回复：只修正措辞与合规问题，` +
-          `严禁声称未发生、严禁再次执行任何操作（系统本轮已物理移除相关工具）。`,
+          `请基于这一事实重写本轮回复：修正措辞与合规问题，` +
+          `严禁声称未发生、严禁重复执行已经生效的操作。`,
       );
     }
 
@@ -440,7 +439,7 @@ export class AgentPreparationService {
    * 强调主动回合的边界：只提醒/答疑，不替候选人报名/拉群（副作用工具已由 toolMode:'readonly'
    * 物理移除，这里再用 prompt 重申，双保险）。被动回合不传，返回空串。
    */
-  private buildProactiveDirective(params: AgentInvokeParams): string {
+  private buildProactiveDirective(params: GeneratorInvokeParams): string {
     const directive = params.proactiveDirective?.trim();
     if (!directive) return '';
     return (
@@ -456,7 +455,9 @@ export class AgentPreparationService {
    * 装配候选人画像富化所需的身份标识。
    * 仅在 candidate-consultation 场景 + 有 token 时触发外部补全。
    */
-  private buildEnrichmentIdentity(params: AgentInvokeParams): CandidateIdentityHint | undefined {
+  private buildEnrichmentIdentity(
+    params: GeneratorInvokeParams,
+  ): CandidateIdentityHint | undefined {
     const scenario = params.scenario ?? 'candidate-consultation';
     if (scenario !== 'candidate-consultation' || !params.token) return undefined;
     return {
@@ -469,7 +470,7 @@ export class AgentPreparationService {
   }
 
   private buildSpongeTokenContext(
-    params: AgentInvokeParams,
+    params: GeneratorInvokeParams,
   ): { botImId?: string; botUserId?: string; groupId?: string } | undefined {
     if (!params.botImId && !params.botUserId && !params.groupId) return undefined;
     return {
@@ -487,8 +488,8 @@ export class AgentPreparationService {
    */
   private normalizeConversation(input: {
     callerKind: CallerKind;
-    memoryWindow: AgentInputMessage[];
-    passedMessages: AgentInputMessage[];
+    memoryWindow: GeneratorInputMessage[];
+    passedMessages: GeneratorInputMessage[];
     enableVision: boolean;
     imageUrls?: string[];
     imageMessageIds?: string[];
@@ -619,7 +620,9 @@ export class AgentPreparationService {
    * （GroupMembershipService，10 分钟缓存）是唯一可靠事实源——这里与记忆召回
    * 并行加载，失败返回空（按"未知"降级，不阻断主流程）。
    */
-  private async loadRealtimeGroupStatus(params: AgentInvokeParams): Promise<RealtimeGroupStatus[]> {
+  private async loadRealtimeGroupStatus(
+    params: GeneratorInvokeParams,
+  ): Promise<RealtimeGroupStatus[]> {
     const contactId = params.imContactId || params.userId;
     if (!contactId || params.callerKind !== CallerKind.WECOM) return [];
 
@@ -657,7 +660,7 @@ export class AgentPreparationService {
    * onJobsFetched 回调把本轮候选池暂存到 turnState，交给 onTurnEnd 落盘。
    */
   private buildToolContext(input: {
-    params: AgentInvokeParams;
+    params: GeneratorInvokeParams;
     memory: Awaited<ReturnType<MemoryService['onTurnStart']>>;
     normalizedMessages: ModelMessage[];
     entryStage: string | null;
@@ -902,7 +905,7 @@ export class AgentPreparationService {
   private resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {
     if (!profile) return undefined;
     const hasIdentity = Boolean(profile.name?.value || profile.phone?.value);
-    return hasIdentity ? AgentPreparationService.RETURNING_USER_ENTRY_STAGE : undefined;
+    return hasIdentity ? PreparationService.RETURNING_USER_ENTRY_STAGE : undefined;
   }
 
   /** 把长期档案渲染成 prompt 片段。 */
@@ -1083,7 +1086,7 @@ export class AgentPreparationService {
   }
 
   /**
-   * 渲染 [当前预约信息]：latest_booking 指针 + 海绵工单实时状态。
+   * 渲染 [当前预约信息]：active_booking 指针 + 海绵工单实时状态。
    *
    * 不再读 recruitment_cases 本地字段（历史 booking_id 全 NULL、状态与海绵脱节）。
    * 任意一步失败/无指针/查不到工单时返回空串（优雅降级，不阻断本轮）。
@@ -1094,8 +1097,8 @@ export class AgentPreparationService {
     tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
   ): Promise<{ block: string; jobId: number | null }> {
     try {
-      const latestBooking = await this.longTermService.getLatestBooking(corpId, userId);
-      const workOrderId = latestBooking?.work_order_id;
+      const activeBooking = await this.longTermService.getActiveBooking(corpId, userId);
+      const workOrderId = activeBooking?.work_order_id;
       if (workOrderId == null) return { block: '', jobId: null };
 
       const workOrder = tokenContext
@@ -1210,7 +1213,10 @@ export class AgentPreparationService {
   }
 
   /** 转成 AI SDK 的 ModelMessage，并兼容图片回退文本。 */
-  private toModelMessages(messages: AgentInputMessage[], enableVision: boolean): ModelMessage[] {
+  private toModelMessages(
+    messages: GeneratorInputMessage[],
+    enableVision: boolean,
+  ): ModelMessage[] {
     return messages.map((message) => {
       const textContent = this.extractTextFromContent(message.content);
       if (message.role === 'user' && message.imageUrls?.length) {
@@ -1256,27 +1262,83 @@ export class AgentPreparationService {
     });
   }
 
-  /** 把顶层图片/表情参数挂到最后一条 user message。 */
+  /**
+   * 把顶层图片/表情参数挂回本轮视觉消息所在的位置。
+   *
+   * WECOM 路径的短期记忆来自 chat_messages，图片刚入库时只有 `[图片消息]`
+   * 占位；本轮 imageUrls/imageMessageIds 则来自原始回调 DTO。优先把 image
+   * part 注入到末尾连续 user 块里的视觉占位消息，保留「文字 -> 图片 -> 文字」
+   * 的真实顺序；如果找不到占位，再兜底挂到最后一条 user message。
+   */
   private injectImageParts(
     messages: ModelMessage[],
     imageUrls: string[],
     imageMessageIds?: string[],
     visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>,
   ): void {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        const textContent = this.extractTextFromContent(messages[i].content);
-        const imageParts = this.buildImageParts(imageUrls, imageMessageIds, visualMessageTypes);
-        if (imageParts.length === 0) return;
-        const textPart = textContent ? [{ type: 'text' as const, text: String(textContent) }] : [];
-        messages[i] = {
-          role: 'user',
-          content: [...imageParts, ...textPart],
-        };
-        this.logger.log(`注入 ${imageUrls.length} 张图片/表情到 user message（多模态 vision）`);
-        return;
-      }
+    const imagePartGroups = this.buildImagePartGroups(
+      imageUrls,
+      imageMessageIds,
+      visualMessageTypes,
+    );
+    if (imagePartGroups.length === 0) return;
+
+    const trailingUserIndexes = this.collectTrailingUserIndexes(messages);
+    const visualPlaceholderIndexes = trailingUserIndexes.filter((index) =>
+      this.isVisualPlaceholderText(this.extractTextFromContent(messages[index].content)),
+    );
+
+    let nextGroupIndex = 0;
+    for (const messageIndex of visualPlaceholderIndexes) {
+      const group = imagePartGroups[nextGroupIndex];
+      if (!group) break;
+      messages[messageIndex] = this.withImageParts(messages[messageIndex], group);
+      nextGroupIndex += 1;
     }
+
+    const remainingGroups = imagePartGroups.slice(nextGroupIndex);
+    if (remainingGroups.length > 0) {
+      const fallbackIndex = trailingUserIndexes.at(-1) ?? this.findLastUserIndex(messages);
+      if (fallbackIndex == null) return;
+      messages[fallbackIndex] = this.withImageParts(
+        messages[fallbackIndex],
+        remainingGroups.flat(),
+      );
+    }
+
+    this.logger.log(`注入 ${imagePartGroups.length} 张图片/表情到 user message（多模态 vision）`);
+  }
+
+  private collectTrailingUserIndexes(messages: ModelMessage[]): number[] {
+    const indexes: number[] = [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role !== 'user') break;
+      indexes.unshift(i);
+    }
+    return indexes;
+  }
+
+  private findLastUserIndex(messages: ModelMessage[]): number | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') return i;
+    }
+    return null;
+  }
+
+  private isVisualPlaceholderText(text: string): boolean {
+    return /^\s*\[(?:图片|表情)消息\]/.test(text);
+  }
+
+  private withImageParts(
+    message: ModelMessage,
+    imageParts: ReturnType<typeof this.buildImageParts>,
+  ) {
+    const textContent = this.extractTextFromContent(message.content);
+    const textPart = textContent ? [{ type: 'text' as const, text: String(textContent) }] : [];
+    return {
+      role: 'user' as const,
+      content: [...imageParts, ...textPart],
+    };
   }
 
   /** 构建 image parts，并附带可选的图片/表情 messageId 标签。 */
@@ -1315,11 +1377,30 @@ export class AgentPreparationService {
     });
   }
 
+  private buildImagePartGroups(
+    imageUrls: string[],
+    imageMessageIds?: string[],
+    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>,
+  ) {
+    const flat = this.buildImageParts(imageUrls, imageMessageIds, visualMessageTypes);
+    const groups: Array<typeof flat> = [];
+    let current: typeof flat = [];
+    for (const part of flat) {
+      if (part.type === 'text' && /^\[(?:图片|表情) messageId=/.test(part.text) && current.length) {
+        groups.push(current);
+        current = [];
+      }
+      current.push(part);
+    }
+    if (current.length) groups.push(current);
+    return groups;
+  }
+
   /**
    * 按字符预算裁剪消息窗口：总字符数超限时，从最早的消息开始丢弃，保留最新的若干条，
    * 直到剩余消息总字符数 ≤ sessionWindowMaxChars。
    */
-  private truncateToCharBudget(messages: AgentInputMessage[]): AgentInputMessage[] {
+  private truncateToCharBudget(messages: GeneratorInputMessage[]): GeneratorInputMessage[] {
     const maxChars = this.memoryConfig.sessionWindowMaxChars;
     const totalChars = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
     if (totalChars <= maxChars) return messages;

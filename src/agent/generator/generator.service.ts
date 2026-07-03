@@ -6,7 +6,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { AgentPreparationService, type PreparedAgentContext } from '../agent-preparation.service';
+import { PreparationService, type PreparedAgentContext } from './preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import {
   buildSideEffectBlockNotice,
@@ -18,7 +18,7 @@ import {
   findToolsExceedingLimit,
   isShortCircuitedToolResult,
   MAX_SAME_TOOL_CALLS_PER_TURN,
-} from '../tool-call-analysis';
+} from './tool-call-analysis';
 
 /**
  * 跳过本轮回复的沉默工具名。
@@ -56,22 +56,22 @@ const shortCircuitByAnyToolResult = ({
 /** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
 type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
 import type {
-  AgentThinkingConfig,
-  AgentInvokeParams,
-  AgentRunResult,
+  GeneratorThinkingConfig,
+  GeneratorInvokeParams,
+  GeneratorRunResult,
   AgentStepDetail,
-  AgentStreamResult,
+  GeneratorStreamResult,
   AgentToolCall,
-} from '../agent-run.types';
+} from './generator.types';
 export type {
-  AgentInputMessage,
-  AgentInvokeParams,
-  AgentRunResult,
+  GeneratorInputMessage,
+  GeneratorInvokeParams,
+  GeneratorRunResult,
   AgentStepDetail,
-  AgentStreamResult,
+  GeneratorStreamResult,
   AgentToolCall,
   AgentToolCallStatus,
-} from '../agent-run.types';
+} from './generator.types';
 
 @Injectable()
 export class GeneratorService {
@@ -84,7 +84,7 @@ export class GeneratorService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly preparation: AgentPreparationService,
+    private readonly preparation: PreparationService,
     private readonly memoryService: MemoryService,
     private readonly llm: LlmExecutorService,
   ) {
@@ -100,7 +100,7 @@ export class GeneratorService {
   }
 
   /** 非流式执行入口。 */
-  async invoke(params: AgentInvokeParams): Promise<AgentRunResult> {
+  async invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
     const enableVision = this.llm.supportsVisionInput({
       role: ModelRole.Chat,
       modelId: params.modelId,
@@ -179,8 +179,10 @@ export class GeneratorService {
 
   /** 流式执行入口。 */
   async stream(
-    params: AgentInvokeParams & { onFinish?: (result: AgentRunResult) => Promise<void> | void },
-  ): Promise<AgentStreamResult> {
+    params: GeneratorInvokeParams & {
+      onFinish?: (result: GeneratorRunResult) => Promise<void> | void;
+    },
+  ): Promise<GeneratorStreamResult> {
     const enableVision = this.llm.supportsVisionInput({
       role: ModelRole.Chat,
       modelId: params.modelId,
@@ -255,7 +257,7 @@ export class GeneratorService {
     }
   }
 
-  private resolveThinkingConfig(requestThinking?: AgentThinkingConfig) {
+  private resolveThinkingConfig(requestThinking?: GeneratorThinkingConfig) {
     if (requestThinking) return requestThinking;
     if (this.thinkingBudgetTokens <= 0) return undefined;
     return {
@@ -387,7 +389,7 @@ export class GeneratorService {
    * 污染下一轮 recall。
    */
   private attachTurnEnd(
-    result: AgentRunResult,
+    result: GeneratorRunResult,
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
       'corpId' | 'userId' | 'sessionId' | 'botImId' | 'normalizedMessages'
@@ -437,9 +439,9 @@ export class GeneratorService {
       toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
       toolResults?: Array<{ toolCallId: string; output?: unknown }>;
     }>;
-    usage: AgentRunResult['usage'];
+    usage: GeneratorRunResult['usage'];
     agentRequest?: Record<string, unknown>;
-    memorySnapshot?: AgentRunResult['memorySnapshot'];
+    memorySnapshot?: GeneratorRunResult['memorySnapshot'];
     /**
      * 本轮 generate/stream 开始的 wallclock 时间（`Date.now()`）。
      * 作为第 0 步的"上一步结束时间"锚点。
@@ -456,7 +458,7 @@ export class GeneratorService {
      * 命中时 AgentToolCall.durationMs 用真实执行时间；缺失时退回步骤墙钟近似。
      */
     toolExecutionTimings?: Map<string, number>;
-  }): AgentRunResult {
+  }): GeneratorRunResult {
     const agentSteps: AgentStepDetail[] = [];
     const toolCalls: AgentToolCall[] = [];
 
@@ -544,7 +546,7 @@ export class GeneratorService {
    *
    * 这里把“足够长的中间候选人正文”恢复进最终 text，并丢弃明显的内部阶段状态回声。
    */
-  private restoreDroppedCandidateText(result: AgentRunResult): AgentRunResult {
+  private restoreDroppedCandidateText(result: GeneratorRunResult): GeneratorRunResult {
     if (result.agentSteps.length <= 1) return result;
 
     const fragments: string[] = [];
@@ -609,10 +611,10 @@ export class GeneratorService {
    * - 恢复失败时保留原空结果，让上层按既有异常链路处理
    */
   private async recoverEmptyTextResult(
-    result: AgentRunResult,
+    result: GeneratorRunResult,
     ctx: PreparedAgentContext,
-    params: AgentInvokeParams,
-  ): Promise<AgentRunResult> {
+    params: GeneratorInvokeParams,
+  ): Promise<GeneratorRunResult> {
     if (result.text.trim().length > 0) return result;
     // 已短路则不做空文本恢复（短路语义=本轮不再对外投递回复）：
     // - skip_reply：无条件短路
@@ -695,7 +697,10 @@ export class GeneratorService {
     }
   }
 
-  private buildEmptyTextRecoveryPrompt(result: AgentRunResult, ctx: PreparedAgentContext): string {
+  private buildEmptyTextRecoveryPrompt(
+    result: GeneratorRunResult,
+    ctx: PreparedAgentContext,
+  ): string {
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
       finishReason: step.finishReason,

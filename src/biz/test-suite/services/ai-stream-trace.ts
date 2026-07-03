@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { Observer } from '@observability/observer.interface';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
-import { computeResultCount, computeToolCallStatus } from '@agent/tool-call-analysis';
+import { computeResultCount, computeToolCallStatus } from '@agent/generator/tool-call-analysis';
 import { AiStreamTraceContentStore } from './ai-stream-trace-content-store';
 import { AiStreamTraceTiming } from './ai-stream-trace-timing';
 

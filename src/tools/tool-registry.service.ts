@@ -37,11 +37,11 @@ import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
-import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 
@@ -183,11 +183,7 @@ export class ToolRegistryService {
         name: 'raise_risk_alert',
         description:
           '候选人出现辱骂/投诉/情绪升级时调用，异步触发人工介入（暂停托管+飞书告警，不阻塞回复）。调用后请以招募者身份自主组织共情/安抚话术，不使用预设模板，也不得暴露机器人/托管/系统等字眼。',
-        create: buildRaiseRiskAlertTool(
-          interventionService,
-          this.chatSessionService,
-          sessionService,
-        ),
+        create: buildRaiseRiskAlertTool(),
       }),
 
       request_handoff: createToolDefinition({

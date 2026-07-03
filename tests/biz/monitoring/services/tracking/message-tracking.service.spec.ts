@@ -123,14 +123,10 @@ describe('MessageTrackingService', () => {
   });
 
   it('should persist batchId on the initial processing record when provided', async () => {
-    service.recordMessageReceived(
-      'batch-1',
-      'chat-1',
-      'user-1',
-      'User One',
-      'Hello World',
-      { scenario: ScenarioType.CANDIDATE_CONSULTATION, batchId: 'batch-1' },
-    );
+    service.recordMessageReceived('batch-1', 'chat-1', 'user-1', 'User One', 'Hello World', {
+      scenario: ScenarioType.CANDIDATE_CONSULTATION,
+      batchId: 'batch-1',
+    });
 
     await flushPromises();
 

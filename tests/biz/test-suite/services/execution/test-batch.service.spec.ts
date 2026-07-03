@@ -820,9 +820,7 @@ describe('TestBatchService', () => {
       ] as any);
       mockFeishuBitableSync.updateBadcaseStatuses.mockRejectedValueOnce(new Error('boom'));
 
-      await expect(
-        service.propagateBadcaseStatusOnCompletion('batch-9'),
-      ).resolves.toBeUndefined();
+      await expect(service.propagateBadcaseStatusOnCompletion('batch-9')).resolves.toBeUndefined();
     });
 
     it('should aggregate conversation snapshots when batch is conversation type', async () => {

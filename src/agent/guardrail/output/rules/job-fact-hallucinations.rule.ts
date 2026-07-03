@@ -1,4 +1,4 @@
-import type { AgentToolCall } from '@agent/agent-run.types';
+import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
 import type { FactRule, RuleContradiction } from '../output-rule.types';

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { AgentToolCall } from '@agent/agent-run.types';
+import type { AgentToolCall } from '@agent/generator/generator.types';
 import type {
   BookingEvidence,
   GeocodeEvidence,

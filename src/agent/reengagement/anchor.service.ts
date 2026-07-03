@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { AgentToolCall } from '@agent/agent-run.types';
+import type { AgentToolCall } from '@agent/generator/generator.types';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import { SessionService } from '@memory/services/session.service';
 import { FollowUpSchedulerService } from './follow-up-scheduler.service';

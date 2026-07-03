@@ -16,6 +16,9 @@ function makeCandidate(overrides: Partial<GeocodeCandidate> = {}): GeocodeCandid
     latitude: 31.32,
     poiName: '马陆镇',
     typecode: '',
+    source: 'poi',
+    precision: 'poi',
+    confidence: 'high',
     ...overrides,
   };
 }
@@ -421,10 +424,7 @@ describe('geocode tool', () => {
         makeCandidate({ city: '常州市', district: '新北区', township: '' }),
       ]);
 
-      const result = (await execute({ address: '常州', city: '常州' })) as Record<
-        string,
-        unknown
-      >;
+      const result = (await execute({ address: '常州', city: '常州' })) as Record<string, unknown>;
 
       expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(true);
     });
@@ -434,10 +434,7 @@ describe('geocode tool', () => {
         makeCandidate({ poiName: '九亭镇', district: '松江区', township: '九亭镇' }),
       ]);
 
-      const result = (await execute({ address: '九亭', city: '上海' })) as Record<
-        string,
-        unknown
-      >;
+      const result = (await execute({ address: '九亭', city: '上海' })) as Record<string, unknown>;
 
       expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(false);
     });

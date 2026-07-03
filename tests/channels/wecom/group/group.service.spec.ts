@@ -58,10 +58,9 @@ describe('GroupService', () => {
       const result = await service.getGroupList({});
 
       expect(mockApiConfig.endpoints.group.list).toHaveBeenCalled();
-      expect(mockHttpService.get).toHaveBeenCalledWith(
-        'https://api.example.com/group/list',
-        { token: 'enterprise-token' },
-      );
+      expect(mockHttpService.get).toHaveBeenCalledWith('https://api.example.com/group/list', {
+        token: 'enterprise-token',
+      });
       expect(result).toEqual(mockResult);
     });
 

@@ -231,7 +231,7 @@ export function buildCancelWorkOrderTool(
             },
           });
 
-          await longTermService.clearLatestBooking(context.corpId, context.userId, workOrderId);
+          await longTermService.clearActiveBooking(context.corpId, context.userId, workOrderId);
 
           void sendCancelWorkOrderAlert({
             alertNotifier,

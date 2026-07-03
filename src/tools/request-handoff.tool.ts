@@ -98,7 +98,7 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
  *
  * 行为约定（与 skip_reply 同属「短路工具」）：
  * - 调用即由 runtime 立即结束本轮 loop，本轮不再生成任何对外回复
- * - 副作用全部 fire-and-forget：异步暂停托管 + 异步飞书告警 + 异步 case 状态变更
+ * - 工具返回 sideEffect intent；最终 outcome 被采纳后，由统一出口执行暂停托管 + 飞书告警 + handoff 底账
  * - 即便没有 active case，也会异步暂停托管，避免 Agent 继续与候选人对话
  *
  * Agent 调用前不要再尝试组织安抚/收口话术——本轮就是沉默。
@@ -108,7 +108,7 @@ export function buildRequestHandoffTool(
   chatSessionService: ChatSessionService,
   sessionService: SessionService,
   longTermService: LongTermService,
-  handoffRecorder: HandoffRecorderService,
+  _handoffRecorder: HandoffRecorderService,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -116,7 +116,6 @@ export function buildRequestHandoffTool(
       inputSchema,
       execute: async ({ reasonCode, reason, actionAdvice }) => {
         const chatId = context.chatId ?? context.sessionId;
-        const pauseTargetId = chatId || context.imContactId || context.userId;
 
         if (!chatId) {
           return buildToolError({
@@ -128,10 +127,10 @@ export function buildRequestHandoffTool(
           });
         }
 
-        const latestBooking = await longTermService
-          .getLatestBooking(context.corpId, context.userId)
+        const activeBooking = await longTermService
+          .getActiveBooking(context.corpId, context.userId)
           .catch(() => null);
-        const workOrderId = latestBooking?.work_order_id ?? null;
+        const workOrderId = activeBooking?.work_order_id ?? null;
 
         // 守卫：候选人要求"改期/取消"但根本没有已确认预约 → 这其实是首次约面意向。
         // 返回 shortCircuited:false（不短路），让 runtime 继续、Agent 按首次约面流程推进。
@@ -156,31 +155,12 @@ export function buildRequestHandoffTool(
           );
         }
 
-        // 转人工底账 + handoff.triggered 事件（两者共用幂等键）。fire-and-forget。
+        // 转人工底账 + handoff.triggered 事件（两者共用幂等键）。
         // 幂等键用本轮稳定 turnId 而非 occurredAt.getTime()：handoff 会短路本轮 → 一轮至多一次 handoff，
-        // 故 Bull 重试 / 进程在副作用后、消息去重前崩溃重跑时，同一逻辑 handoff 仍得到同一 key，
+        // 故 Bull 重试 / 进程在副作用执行后、消息去重前崩溃重跑时，同一逻辑 handoff 仍得到同一 key，
         // 不会重复写 handoff_events 与 daily_ops_report.handoff_count。turnId 缺省（test/debug）回退时间戳。
         const occurredAt = new Date();
         const handoffIdempotencyKey = `${chatId}:handoff:${context.turnId ?? occurredAt.getTime()}`;
-        void handoffRecorder
-          .record({
-            corpId: context.corpId,
-            chatId,
-            userId: context.userId,
-            reasonCode,
-            reason: reason?.trim() || null,
-            actionAdvice: actionAdvice?.trim() || null,
-            stage: context.currentStage ?? null,
-            botImId: context.botImId,
-            workOrderId,
-            idempotencyKey: handoffIdempotencyKey,
-            occurredAt,
-          })
-          .catch((err: unknown) => {
-            logger.warn(
-              `记录 handoff 事件失败: chatId=${chatId}, ${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
 
         const [recentMessages, sessionState] = await Promise.all([
           chatSessionService.getChatHistory(chatId, 10).catch(() => []),
@@ -189,22 +169,16 @@ export function buildRequestHandoffTool(
             .catch(() => null),
         ]);
 
-        // recruitment_cases 已废弃：handoff 统一走 general_handoff（暂停托管 + 飞书告警），
-        // 不再区分 onboard/general。触发分析价值沉到 handoff_events + ops_events.handoff.triggered。
-        void interventionService
-          .dispatch({
+        return {
+          dispatched: true,
+          shortCircuited: true,
+          sideEffect: {
             kind: 'general_handoff',
             source: 'agent_tool',
             alertLabel: HANDOFF_REASON_LABELS[reasonCode] ?? '需人工跟进',
+            reasonCode,
             reason: reason?.trim() || HANDOFF_REASON_LABELS[reasonCode] || '需要人工协助',
             actionAdvice: actionAdvice?.trim(),
-            chatId,
-            corpId: context.corpId,
-            userId: context.userId,
-            pauseTargetId,
-            botImId: context.botImId,
-            botUserName: context.botUserId,
-            contactName: context.contactName,
             currentMessageContent: extractLatestUserMessage(recentMessages),
             recentMessages: recentMessages.map((m) => ({
               role: m.role as 'user' | 'assistant',
@@ -212,20 +186,12 @@ export function buildRequestHandoffTool(
               timestamp: m.timestamp,
             })),
             sessionState,
-          })
-          .then((result) => {
-            logger.warn(
-              `request_handoff dispatched: chatId=${chatId}, code=${reasonCode}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
-            );
-          })
-          .catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            logger.error(`request_handoff dispatch 异步执行失败: chatId=${chatId}, ${message}`);
-          });
-
-        return {
-          dispatched: true,
-          shortCircuited: true,
+            stage: context.currentStage ?? null,
+            botImId: context.botImId,
+            workOrderId,
+            idempotencyKey: handoffIdempotencyKey,
+            recordHandoff: true,
+          },
           instruction:
             '本轮 runtime 已自动结束，托管将异步暂停，飞书人工告警将异步发送。禁止再生成任何文本或调用其他工具。',
         };
