@@ -1,74 +1,40 @@
 {
-  "baseVersion": "5.27.3",
-  "nextVersion": "5.27.4",
-  "updatedAt": "2026-06-24",
+  "baseVersion": "5.29.0",
+  "nextVersion": "5.30.0",
+  "updatedAt": "2026-06-29",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "396",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/396",
-      "title": "给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-24",
-      "businessUpdates": [
-        "修复 Agent 在空会话约面意向下凭空编造岗位 ID 及候选人报名表直接触发预检/预约的幻觉问题（生产近 30 天发现 10 例，5 例同时捏造姓名和电话）",
-        "预检（duliday_interview_precheck）与预约（duliday_interview_booking）现在要求 jobId 必须来自本会话真实召回集，否则中止并引导候选人先查询真实岗位"
-      ],
-      "summary": [
-        "为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路"
-      ],
-      "features": [],
-      "fixes": [
-        "新增 isRecalledJobId provenance 闸门：jobId 必须出自当前会话召回集（presentedJobs / lastCandidatePool / currentFocusJob ∪ 本轮 job_list 实时候选池），否则返回 precheck.job_not_provided / booking.job_not_provided 并要求先调用 duliday_job_list",
-        "改约场景：将进行中工单的 jobId 并入召回集，避免改约路径被误拦",
-        "修复 formatBookingContext 展示字段全空时仍将工单 jobId 注入 provenance 集的静默绕过漏洞",
-        "归一 provenance jobId 类型为 number（兼容数字串），与 system prompt 渲染口径对齐，防止 Upstash 缓存反序列化为字符串时改约被永久卡死"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "precheck / booking / agent-preparation 测试全绿（103 passed，含新增 6 个回归测试）",
-        "覆盖场景：幻觉 jobId 被拦截且不打 Sponge、真实召回 jobId 正常放行、未注入闸门向后兼容、改约工单 jobId 放行、展示字段缺失时工单 jobId 不作 provenance、缓存数字串 jobId 正确识别"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.27.3",
-    "date": "2026-06-24",
+    "version": "5.29.0",
+    "date": "2026-06-29",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "397",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/397",
-        "title": "禁止主动提保险社保口径",
+        "number": "410",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/410",
+        "title": "修复工具调用前正文未投递问题",
         "author": "huajune",
-        "mergedAt": "2026-06-24",
+        "mergedAt": "2026-06-29",
         "businessUpdates": [
-          "禁止主动提保险社保口径"
+          "恢复工具调用前生成的候选人正文",
+          "修复工具调用前正文未投递问题"
         ],
         "summary": [
-          "禁止主动提保险社保口径"
+          "恢复工具调用前生成的候选人正文",
+          "修复工具调用前正文未投递问题"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "禁止主动提保险社保口径"
+          "恢复工具调用前生成的候选人正文"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`jest tests/channels/wecom/message/application/reply-fact-guard.service.spec.ts tests/tools/duliday/job-list/welfare-facts.util.spec.ts tests/tools/duliday/job-list/render.util.spec.ts --watchman=false`",
-          "`prettier --check` on touched files",
-          "pre-push `ci:check` passed:",
-          "lint",
-          "format",
-          "typecheck",
-          "web build",
-          "backend build",
-          "`jest --coverage --watchman=false`: 292 passed, 1 skipped"
+          "`pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/utils/output-leak-guard.util.spec.ts --watchman=false`",
+          "`pnpm run typecheck`",
+          "pre-push `pnpm run ci:check` 通过：lint、format、typecheck、web build、Nest build、全量 Jest coverage；最新 `origin/develop` 上结果 `300 passed / 1 skipped` suites，`4107 passed / 6 skipped` tests。"
         ]
       }
     ]

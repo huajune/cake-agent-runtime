@@ -11,6 +11,7 @@ describe('detectOutputLeak', () => {
     expect(
       detectOutputLeak('阶段已切换到 job_consultation，等待候选人回复年龄信息。'),
     ).not.toBeNull();
+    expect(detectOutputLeak('（已切换到岗位咨询阶段，等待候选人反馈意向）')).not.toBeNull();
     expect(detectOutputLeak('阶段切换到 interview_scheduling')).not.toBeNull();
     expect(detectOutputLeak('阶段推进到 booking_confirmation')).not.toBeNull();
   });

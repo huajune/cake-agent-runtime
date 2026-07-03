@@ -8,31 +8,100 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.29.0] - 2026-06-29
 
-**预计版本**: `v5.27.4`
-**最近更新**: `2026-06-24`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
-- PR #396 为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路
+- PR #410 恢复工具调用前生成的候选人正文
+- PR #410 修复工具调用前正文未投递问题
 
 ### 新功能
 - 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #410 恢复工具调用前生成的候选人正文
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #410 `pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/utils/output-leak-guard.util.spec.ts --watchman=false`
+- PR #410 `pnpm run typecheck`
+- PR #410 pre-push `pnpm run ci:check` 通过：lint、format、typecheck、web build、Nest build、全量 Jest coverage；最新 `origin/develop` 上结果 `300 passed / 1 skipped` suites，`4107 passed / 6 skipped` tests。
+
+## [5.28.0] - 2026-06-25
+
+**来源分支**: `develop`
+
+### 更新摘要
+- PR #396 为 precheck 和 booking 工具新增 jobId provenance 闸门（isRecalledJobId），阻断模型在无岗位上下文时自由编造 jobId + 候选人信息的 P0 幻觉链路
+- PR #404 给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位
+- PR #404 Phase 0a seams + HC-2/3 jobId gate + handoff 三态 baseline
+- PR #404 可靠性重构 + 复聊 逐块实施路线图
+- PR #404 HC-1 revise 回路接缝 (isToolSuccess/hasCommittedSideEffect +…
+- PR #404 HC-2 候选人原文确定性 parser + normalizer + 权威字段准入
+- PR #404 HC-2 precheck-core 共享原语 + booking 姓名负向证据闸门
+- PR #404 guardrail 中立契约 + 可审计 catalog
+- PR #404 output rule 补 candidate_name_echo/distance_missing +…
+- PR #404 TurnOutcome 抽象 + runner.runTurn + proactive 入口
+- PR #404 reengagement 复聊模块 (shadow mode)
+- PR #404 reengagement 接入 opening 锚点 (shadow 端到端激活)
+- PR #404 补 pipeline spec 运行时依赖 mock
+- PR #404 修复 reengagement lint 问题
+- PR #404 更新可靠性改造落地进展
+- PR #404 Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…
+- PR #404 修复复聊评审问题
+- PR #404 修复复聊状态机评审问题
+- PR #404 修复复聊跨轮停止条件
+- PR #404 Adds the agent reliability runtime/precheck refactor stack, including HC precheck provenance gates, guardrail contracts/catalog, TurnRunner abstractions, and reengagement shadow-mode plumbing.
+- PR #404 Wires opening-sent reengagement scheduling and keeps proactive delivery shadowed by default.
+- PR #404 Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.
+- PR #404 Agent reliability runtime on precheck
+- PR #406 sync master into develop for v5.28.0
+
+### 新功能
+- PR #404 reengagement 接入 opening 锚点 (shadow 端到端激活)
 
 ### 问题修复
 - PR #396 新增 isRecalledJobId provenance 闸门：jobId 必须出自当前会话召回集（presentedJobs / lastCandidatePool / currentFocusJob ∪ 本轮 job_list 实时候选池），否则返回 precheck.job_not_provided / booking.job_not_provided 并要求先调用 duliday_job_list
 - PR #396 改约场景：将进行中工单的 jobId 并入召回集，避免改约路径被误拦
 - PR #396 修复 formatBookingContext 展示字段全空时仍将工单 jobId 注入 provenance 集的静默绕过漏洞
 - PR #396 归一 provenance jobId 类型为 number（兼容数字串），与 system prompt 渲染口径对齐，防止 Upstash 缓存反序列化为字符串时改约被永久卡死
+- PR #404 Fixes the pipeline service spec module wiring for the new TurnRunner/FollowUp/Handoff dependencies and resolves pre-push lint issues.
+- PR #404 修复 reengagement lint 问题
+- PR #404 修复复聊评审问题
+- PR #404 修复复聊状态机评审问题
+- PR #404 修复复聊跨轮停止条件
 
 ### 优化调整
-- 无
+- PR #404 Adds the agent reliability runtime/precheck refactor stack, including HC precheck provenance gates, guardrail contracts/catalog, TurnRunner abstractions, and reengagement shadow-mode plumbing.
+- PR #404 可靠性重构 + 复聊 逐块实施路线图
 
 ### 运维与流程
-- 无
+- PR #404 Wires opening-sent reengagement scheduling and keeps proactive delivery shadowed by default.
+- PR #404 给 precheck/booking 加 jobId provenance 闸门拦截幻觉岗位
+- PR #404 Phase 0a seams + HC-2/3 jobId gate + handoff 三态 baseline
+- PR #404 HC-1 revise 回路接缝 (isToolSuccess/hasCommittedSideEffect +…
+- PR #404 HC-2 候选人原文确定性 parser + normalizer + 权威字段准入
+- PR #404 HC-2 precheck-core 共享原语 + booking 姓名负向证据闸门
+- PR #404 guardrail 中立契约 + 可审计 catalog
+- PR #404 output rule 补 candidate_name_echo/distance_missing +…
+- PR #404 TurnOutcome 抽象 + runner.runTurn + proactive 入口
+- PR #404 reengagement 复聊模块 (shadow mode)
+- PR #404 补 pipeline spec 运行时依赖 mock
+- PR #404 更新可靠性改造落地进展
+- PR #404 Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…
+- PR #406 sync master into develop for v5.28.0
 
 ### 配置变更
 - 无
@@ -43,7 +112,9 @@
 ### 验证记录
 - PR #396 precheck / booking / agent-preparation 测试全绿（103 passed，含新增 6 个回归测试）
 - PR #396 覆盖场景：幻觉 jobId 被拦截且不打 Sponge、真实召回 jobId 正常放行、未注入闸门向后兼容、改约工单 jobId 放行、展示字段缺失时工单 jobId 不作 provenance、缓存数字串 jobId 正确识别
-<!-- release:pending:end -->
+- PR #404 pnpm run typecheck
+- PR #404 pnpm test -- --watchman=false
+- PR #404 pre-push pnpm run ci:check passed, including lint:check, format:check, typecheck, build:ci, and test:ci coverage.
 
 ## [5.27.3] - 2026-06-24
 
