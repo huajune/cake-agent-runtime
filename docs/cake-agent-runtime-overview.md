@@ -5,6 +5,8 @@
 
 **最后更新**：2026-04-23 ｜ **维护者**：DuLiDay Team
 
+> 本文是**工程视角**的系统宣讲（怎么构建）。产品视角（做什么、给谁、价值）见 [产品定义](product/product-definition.md)。
+
 ---
 
 ## 0. 阅读指引
@@ -101,7 +103,7 @@
 
 ## 3. Agent 编排层 — 一回合（Turn）的解剖
 
-入口：[`src/agent/runner.service.ts`](../src/agent/runner.service.ts)
+入口：[`src/agent/runner/agent-runner.service.ts`](../src/agent/runner/agent-runner.service.ts)
 
 ```
 onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd

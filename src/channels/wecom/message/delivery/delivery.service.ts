@@ -5,7 +5,6 @@ import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MESSAGE_SPLIT_MAX_SEGMENTS } from '@infra/config/constants/message.constants';
 import { MessageSplitter } from '../utils/message-splitter.util';
-import { detectOutputLeak } from '../utils/output-leak-guard.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from './typing-policy.service';
@@ -59,28 +58,6 @@ export class MessageDeliveryService implements OnModuleInit {
       if (recordMonitoring) {
         this.monitoringService.recordSendStart(messageId);
         await this.wecomObservability.markDeliveryStart(messageId);
-      }
-
-      // 投递前只拦截内部实现泄漏。内容质量问题不能在这里静默吞掉，
-      // 否则会造成"监控成功但候选人没收到"的假成功。
-      const skipReason = this.findSkipReason(reply.content, contactName);
-      if (skipReason) {
-        const totalTime = Date.now() - startTime;
-        const skippedResult: DeliveryResult = {
-          success: true,
-          segmentCount: 0,
-          failedSegments: 0,
-          deliveredSegments: 0,
-          totalTime,
-          skipped: true,
-          skipReason,
-        };
-        if (recordMonitoring) {
-          this.monitoringService.recordReplySkipped(messageId, skipReason);
-          this.monitoringService.recordSendEnd(messageId);
-          await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
-        }
-        return skippedResult;
       }
 
       // 入口/worker 复查后，Agent 推理 + 工具调用还会再消耗 10-30s。
@@ -318,26 +295,5 @@ export class MessageDeliveryService implements OnModuleInit {
 
   private truncate(text: string, maxLength: number = 50): string {
     return text.length <= maxLength ? text : `${text.substring(0, maxLength)}...`;
-  }
-
-  /**
-   * 投递前回复内容兜底检查。
-   *
-   * 这里只保留内部实现泄漏拦截：阶段术语、工具调用、JSON/代码块等内容一旦发给
-   * 候选人会暴露系统实现。其他质量问题不能静默丢弃，必须正常下发或在 Agent 层修正。
-   */
-  private findSkipReason(
-    content: string,
-    contactName: string,
-  ): DeliveryResult['skipReason'] | null {
-    const leakedPattern = detectOutputLeak(content);
-    if (leakedPattern) {
-      this.logger.warn(
-        `[${contactName}] 检测到内部状态泄漏，丢弃回复 (pattern=${leakedPattern.source}): "${this.truncate(content)}"`,
-      );
-      return 'output_leak';
-    }
-
-    return null;
   }
 }

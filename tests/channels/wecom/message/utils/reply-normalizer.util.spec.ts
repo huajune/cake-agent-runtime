@@ -239,6 +239,47 @@ describe('ReplyNormalizer', () => {
       expect(result).not.toContain('可以选');
     });
 
+    it('不应改写卡片式岗位列表（编号行只有店名，明细换行另起）（badcase 6a470fddce406a6aeee03d0d）', () => {
+      const input = `帮你查到了，陈村附近有几家必胜客在招，都在顺德大良那边，离你不远。
+
+1. 必胜客（顺德大润发店）- 餐厅服务员
+班次：10:00-23:00（排班窗口，实际按门店排班）
+薪资：12.8 元/时起，做满 100 小时 14.9 元/时，满 190 小时 17.2 元/时
+要求：18-50 岁
+
+2. 必胜客（顺德欢乐海岸店）- 餐厅服务员
+班次：10:00-23:00（排班窗口，实际按门店排班）
+薪资：12.8 元/时起，做满 100 小时 14.9 元/时，满 190 小时 17.2 元/时
+要求：18-50 岁
+
+3. 必胜客（顺德山姆店）- 餐厅服务员
+班次：10:00-23:00（排班窗口，实际按门店排班）
+薪资：12.8 元/时起，做满 100 小时 14.9 元/时，满 190 小时 17.2 元/时
+要求：18-50 岁
+
+这几家都是做排班的，10 点到 23 点是可排时段，不是要上满一整天。你看哪家离你更方便，或者想先面哪家？`;
+
+      const result = ReplyNormalizer.normalize(input);
+
+      expect(result).toBe(input);
+      expect(result).toContain('必胜客（顺德大润发店）');
+      expect(result).toContain('必胜客（顺德欢乐海岸店）');
+      expect(result).toContain('必胜客（顺德山姆店）');
+      expect(result).not.toContain('可以选');
+    });
+
+    it('不应剥离短选项列表中括号里的店名', () => {
+      const input = `有这几家可以看看：
+1. 必胜客（大润发店）
+2. 必胜客（山姆店）`;
+
+      const result = ReplyNormalizer.normalize(input);
+
+      expect(result).toContain('必胜客（大润发店）');
+      expect(result).toContain('必胜客（山姆店）');
+      expect(result).not.toContain('必胜客、必胜客');
+    });
+
     it('应该简化列表前的问句', () => {
       const input = `你想找什么类型的工作，另外有什么要求吗？
 - 服务员

@@ -110,10 +110,7 @@ describe('IncidentReporterService', () => {
 
   it('should swallow async notify failures and log them', async () => {
     const loggerErrorSpy = jest
-      .spyOn(
-        ((service as unknown as { logger: { error: (msg: string) => void } }).logger),
-        'error',
-      )
+      .spyOn((service as unknown as { logger: { error: (msg: string) => void } }).logger, 'error')
       .mockImplementation();
     alertNotifier.sendAlert.mockRejectedValueOnce(new Error('webhook rejected'));
 

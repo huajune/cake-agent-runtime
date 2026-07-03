@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { SpongeService } from '@sponge/sponge.service';
 import {
@@ -29,10 +30,13 @@ export class SpongeStatusPollService {
     private readonly opsEventsRepository: OpsEventsRepository,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly spongeService: SpongeService,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   @Cron('*/15 * * * *', { timeZone: 'Asia/Shanghai' })
   async poll(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
     if (this.running) {
       this.logger.warn('上一轮海绵状态轮询尚未结束，跳过本次');
       return;
@@ -81,6 +85,10 @@ export class SpongeStatusPollService {
 
     this.logger.log(`海绵状态轮询完成: 扫描=${pending.length}, 新通过=${passed}`);
     return { scanned: pending.length, passed };
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService?.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 
   /**

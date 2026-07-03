@@ -14,10 +14,10 @@ function buildRegistry() {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
     {
       get: jest.fn((_key: string, defaultValue?: string) => defaultValue),
     } as never,
+    {} as never,
     {} as never,
     {} as never,
     {} as never,

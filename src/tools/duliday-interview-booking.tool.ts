@@ -23,7 +23,6 @@ import {
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { BookingService } from '@biz/message/services/booking.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
@@ -43,7 +42,7 @@ const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
 /**
- * 预约软查重时间窗：候选人在此窗口内已有 latest_booking 时，再次提交视为重复（Bull 重试 /
+ * 预约软查重时间窗：候选人在此窗口内已有 active_booking 时，再次提交视为重复（Bull 重试 /
  * Agent 同会话重复调用），直接拦截，避免在海绵生成第二张工单。
  * 用时间窗而非「只要存在就拦」：避免永久阻断候选人日后合理的重新预约（真正改约走 request_handoff）。
  */
@@ -70,27 +69,6 @@ function pauseUserHostingAsync(
     .catch((error: unknown) => {
       const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
       logger.error(`[自动暂停] 暂停托管失败: chatId=${chatId}`, errorMessage);
-    });
-}
-
-function recordBookingCountAsync(
-  bookingService: BookingService,
-  context: ToolBuildContext,
-  booking: { brandName?: string; storeName?: string },
-): void {
-  void bookingService
-    .incrementBookingCount({
-      brandName: booking.brandName,
-      storeName: booking.storeName,
-      chatId: context.chatId ?? context.sessionId,
-      userId: context.userId,
-      userName: context.contactName,
-      managerId: context.botUserId ?? context.botImId,
-      managerName: context.botUserId,
-    })
-    .catch((error: unknown) => {
-      const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
-      logger.error(`[预约统计] 写入失败: chatId=${context.sessionId}`, errorMessage);
     });
 }
 
@@ -219,7 +197,6 @@ export function buildInterviewBookingTool(
   spongeService: SpongeService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
   userHostingService: UserHostingService,
-  bookingService: BookingService,
   longTermService: LongTermService,
   opsEventsRecorder: OpsEventsRecorderService,
 ): ToolBuilder {
@@ -322,7 +299,7 @@ export function buildInterviewBookingTool(
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
         // recruitment_cases 已废弃：不再用 active case 查重。重复预约由海绵侧约束 +
-        // latest_booking 指针体现；提交前的本地软查重见下方 spongeService.bookInterview 调用前。
+        // active_booking 指针体现；提交前的本地软查重见下方 spongeService.bookInterview 调用前。
 
         // interviewTime 不在这里查缺：是否必填取决于岗位有没有配置面试时段
         // （等通知岗位合法缺省），要等拿到岗位详情后再判（见下方 interviewTimeWaitNotice）。
@@ -668,18 +645,18 @@ export function buildInterviewBookingTool(
             logId,
           };
 
-          // 提交前软查重：recruitment_cases 废弃后，重复预约仅靠海绵约束 + latest_booking 指针体现。
-          // 这里补一道本地兜底——若候选人窗口内已有 latest_booking，本次极可能是 Bull 重试或 Agent
+          // 提交前软查重：recruitment_cases 废弃后，重复预约仅靠海绵约束 + active_booking 指针体现。
+          // 这里补一道本地兜底——若候选人窗口内已有 active_booking，本次极可能是 Bull 重试或 Agent
           // 同会话重复调用导致的重复提交，直接拦截，避免在海绵再生成一张工单。候选人若要改时间/取消，
           // 走 request_handoff(modify_appointment) 人工改约，不再走本工具。
-          const existingBooking = await longTermService
-            .getLatestBooking(context.corpId, context.userId)
+          const activeBooking = await longTermService
+            .getActiveBooking(context.corpId, context.userId)
             .catch(() => null);
-          if (existingBooking?.latest_work_order_id != null) {
-            const linkedAtMs = Date.parse(existingBooking.linked_at);
+          if (activeBooking?.work_order_id != null) {
+            const linkedAtMs = Date.parse(activeBooking.linked_at);
             if (Number.isFinite(linkedAtMs) && Date.now() - linkedAtMs < BOOKING_DEDUP_WINDOW_MS) {
               logger.warn(
-                `[booking] 命中近期 latest_booking 软查重，跳过重复提交: chatId=${context.sessionId}, workOrderId=${existingBooking.latest_work_order_id}`,
+                `[booking] 命中近期 active_booking 软查重，跳过重复提交: chatId=${context.sessionId}, workOrderId=${activeBooking.work_order_id}`,
               );
               // 候选人确已预约 → bookingSucceeded 置 true（不阻断后续拉群等流程）。
               context.bookingSucceeded = true;
@@ -696,11 +673,11 @@ export function buildInterviewBookingTool(
                   ? '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。' +
                     '但候选人本轮补发了简历文件，系统无法把简历补挂到已有工单上：请调用 ' +
                     'request_handoff(reasonCode="system_blocked")，reason 写明"候选人预约后补发简历，' +
-                    `需人工将简历补传到工单 ${existingBooking.latest_work_order_id}"。` +
+                    `需人工将简历补传到工单 ${activeBooking.work_order_id}"。` +
                     '对候选人只说简历已收到、会帮他跟进，不要说简历已提交成功。'
                   : '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；否则按已预约状态正常衔接（可复述面试安排）。',
                 details: {
-                  existingWorkOrderId: existingBooking.latest_work_order_id,
+                  existingWorkOrderId: activeBooking.work_order_id,
                   ...(freshResumeThisTurn
                     ? { pendingUploadResume: bookingUploadResume ?? freshResumeThisTurn }
                     : {}),
@@ -773,17 +750,12 @@ export function buildInterviewBookingTool(
                 );
               });
 
-            recordBookingCountAsync(bookingService, context, {
-              brandName: resolvedBrandName,
-              storeName: resolvedStoreName,
-            });
-
-            // 预约信息挂候选人画像：latest_booking 极简指针 + booking.succeeded 事件底账。
+            // 预约信息挂候选人画像：active_booking 极简指针 + booking.succeeded 事件底账。
             // 不再写 recruitment_cases（已废弃，状态全部实时查海绵）。
             //
             // booking.succeeded 幂等键：优先用 workOrderId（跨 Bull 重试稳定）；海绵偶发「成功但
             // 未返回 workOrderId」（结构漂移）时回退会话级稳定键，确保成功事件仍照常记录，
-            // 不因缺字段把整笔成功预约漏计（KPI undercount）。latest_booking 指针本身依赖 workOrderId，
+            // 不因缺字段把整笔成功预约漏计（KPI undercount）。active_booking 指针本身依赖 workOrderId，
             // 仅在可用时写。
             const bookingSuccessKey =
               workOrderId != null
@@ -792,15 +764,15 @@ export function buildInterviewBookingTool(
 
             if (workOrderId != null) {
               void longTermService
-                .setLatestBooking(context.corpId, context.userId, workOrderId)
+                .setActiveBooking(context.corpId, context.userId, workOrderId)
                 .catch((err: unknown) => {
                   logger.warn(
-                    `[booking] setLatestBooking 失败，不影响主流程: ${err instanceof Error ? err.message : String(err)}`,
+                    `[booking] setActiveBooking 失败，不影响主流程: ${err instanceof Error ? err.message : String(err)}`,
                   );
                 });
             } else {
               logger.warn(
-                '[booking] 预约成功但缺少 workOrderId，跳过 latest_booking 指针写入（ops_events 仍照常记录）',
+                '[booking] 预约成功但缺少 workOrderId，跳过 active_booking 指针写入（ops_events 仍照常记录）',
               );
             }
 

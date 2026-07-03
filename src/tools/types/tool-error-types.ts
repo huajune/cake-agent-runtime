@@ -118,6 +118,16 @@ export const TOOL_ERROR_TYPES = {
   INVITE_ENTERPRISE_TOKEN_MISSING: 'invite.enterprise_token_missing',
   INVITE_MISSING_BOT_IDENTITY: 'invite.missing_bot_identity',
   INVITE_INVALID_CITY_SCOPE: 'invite.invalid_city_scope',
+  /**
+   * 城市 provenance gate：city 入参与会话记忆中的高置信城市不一致。
+   * 模型应改用 expectedCity 重新调用，或先与候选人确认后再拉群。
+   */
+  INVITE_CITY_CONFLICT: 'invite.city_conflict',
+  /**
+   * 城市 provenance gate：city 入参在会话记忆与候选人原文中都找不到依据（模型凭空指定）。
+   * 模型应先向候选人确认所在城市，得到明确回复后再调用本工具。
+   */
+  INVITE_CITY_UNVERIFIED: 'invite.city_unverified',
   INVITE_NO_GROUP_AVAILABLE: 'invite.no_group_available',
   INVITE_NO_GROUP_IN_CITY: 'invite.no_group_in_city',
   INVITE_GROUP_FULL: 'invite.group_full',

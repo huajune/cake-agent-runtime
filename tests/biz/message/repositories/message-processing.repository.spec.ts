@@ -777,6 +777,60 @@ describe('MessageProcessingRepository', () => {
     });
   });
 
+  // ==================== markSupersededProcessingRecords ====================
+
+  describe('markSupersededProcessingRecords', () => {
+    it('should return 0 when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.markSupersededProcessingRecords({
+        currentMessageId: 'batch-new',
+        replacementMessageId: 'batch-new',
+        chatId: 'chat-1',
+        receivedAt: 1700000000000,
+        messagePreview: 'hello',
+      });
+
+      expect(result).toBe(0);
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    });
+
+    it('should mark stale processing siblings as superseded by the replacement batch', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const updateResult = makeQueryMock({
+        data: [{ message_id: 'batch-old-1' }, { message_id: 'batch-old-2' }],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(updateResult);
+
+      const result = await repository.markSupersededProcessingRecords({
+        currentMessageId: 'batch-new',
+        replacementMessageId: 'batch-new',
+        chatId: 'chat-1',
+        receivedAt: 1700000000000,
+        messagePreview: 'hello',
+      });
+
+      expect(result).toBe(2);
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('message_processing_records');
+      expect(updateResult.update).toHaveBeenCalledWith({
+        status: 'timeout',
+        error: '发布/重试中断遗留记录，已由 batch-new 补处理成功',
+        batch_id: 'batch-new',
+      });
+      expect(updateResult.eq).toHaveBeenCalledWith('status', 'processing');
+      expect(updateResult.eq).toHaveBeenCalledWith('chat_id', 'chat-1');
+      expect(updateResult.eq).toHaveBeenCalledWith(
+        'received_at',
+        new Date(1700000000000).toISOString(),
+      );
+      expect(updateResult.eq).toHaveBeenCalledWith('message_preview', 'hello');
+      expect(updateResult.neq).toHaveBeenCalledWith('message_id', 'batch-new');
+      expect(updateResult.select).toHaveBeenCalledWith('message_id');
+    });
+  });
+
   // ==================== clearAllRecords ====================
 
   describe('clearAllRecords', () => {

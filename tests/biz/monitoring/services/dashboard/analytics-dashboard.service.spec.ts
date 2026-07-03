@@ -5,7 +5,6 @@ import { ScenarioType } from '@enums/agent.enum';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
-import { BookingService } from '@biz/message/services/booking.service';
 import { DailyOpsReportRepository } from '@biz/ops-events/daily-ops-report.repository';
 import { MonitoringDailyStatsRepository } from '@biz/monitoring/repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
@@ -87,7 +86,6 @@ describe('AnalyticsDashboardService', () => {
   let _userHostingService: jest.Mocked<UserHostingService>;
   let _cacheService: jest.Mocked<MonitoringCacheService>;
   let monitoringRepository: jest.Mocked<MonitoringRecordRepository>;
-  let _bookingService: jest.Mocked<BookingService>;
   let dailyStatsAggregator: jest.Mocked<DailyStatsAggregatorService>;
   let hourlyStatsAggregator: jest.Mocked<HourlyStatsAggregatorService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
@@ -136,14 +134,11 @@ describe('AnalyticsDashboardService', () => {
     getDashboardToolStats: jest.fn(),
   };
 
-  const mockBookingService = {
-    getBookingStats: jest.fn(),
-  };
-
-  // 默认 getEarliestReportDate→null：覆盖判定不通过 → 预约数回退 bookingService（保持既有断言）。
+  // 默认 getEarliestReportDate→null：daily_ops_report 尚无覆盖时预约数返回 0。
   const mockDailyOpsReportRepository = {
     getEarliestReportDate: jest.fn().mockResolvedValue(null),
     sumByDateRange: jest.fn(),
+    sumBookingSuccessByDateRange: jest.fn(),
   };
 
   const mockHourlyStatsAggregator = {
@@ -208,10 +203,6 @@ describe('AnalyticsDashboardService', () => {
           useValue: mockMonitoringRecordRepository,
         },
         {
-          provide: BookingService,
-          useValue: mockBookingService,
-        },
-        {
           provide: DailyStatsAggregatorService,
           useValue: mockDailyStatsAggregator,
         },
@@ -244,7 +235,6 @@ describe('AnalyticsDashboardService', () => {
     _userHostingService = module.get(UserHostingService);
     _cacheService = module.get(MonitoringCacheService);
     monitoringRepository = module.get(MonitoringRecordRepository);
-    _bookingService = module.get(BookingService);
     dailyStatsAggregator = module.get(DailyStatsAggregatorService);
     hourlyStatsAggregator = module.get(HourlyStatsAggregatorService);
     _messageTrackingService = module.get(MessageTrackingService);
@@ -283,7 +273,6 @@ describe('AnalyticsDashboardService', () => {
       totalFallbackSuccess: 0,
     });
     mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: false });
-    mockBookingService.getBookingStats.mockResolvedValue([]);
     mockDailyStatsAggregator.getDailyTrendFromDaily.mockResolvedValue([]);
     mockHourlyStatsAggregator.getOverviewFromHourly.mockResolvedValue(defaultOverview);
     mockHourlyStatsAggregator.getFallbackFromHourly.mockResolvedValue(defaultFallback);
@@ -499,7 +488,6 @@ describe('AnalyticsDashboardService', () => {
         totalFallbackSuccess: 0,
       });
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(null);
-      mockBookingService.getBookingStats.mockResolvedValue([]);
 
       const resultWeek = await service.getDashboardDataAsync('week');
       expect(resultWeek.todayUsers).toHaveLength(0);
@@ -872,8 +860,7 @@ describe('AnalyticsDashboardService', () => {
           totalTokenUsage: 1200,
         })
         .mockResolvedValueOnce(defaultOverview);
-      // 预约走 daily_ops_report（覆盖该范围）→ 业务趋势聚合的 getBookingStats 恒空，
-      // 触发"业务汇总非 0 但趋势为空"的单点合成（consultations 来自概览 activeUsers 兜底）。
+      // 预约走 daily_ops_report，但业务趋势查询为空时，触发业务汇总非 0 的单点合成。
       mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue('2026-01-01');
       mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue({
         friendsAdded: 0,
@@ -890,7 +877,7 @@ describe('AnalyticsDashboardService', () => {
         interviewPass: 0,
         rowCount: 1,
       });
-      mockBookingService.getBookingStats.mockResolvedValue([]);
+      mockDailyOpsReportRepository.sumBookingSuccessByDateRange.mockResolvedValue([]);
 
       try {
         const result = await service.getDashboardOverviewAsync('week');
@@ -963,19 +950,22 @@ describe('AnalyticsDashboardService', () => {
           activeUsers: 2,
         })
         .mockResolvedValueOnce(defaultOverview);
-      mockBookingService.getBookingStats.mockResolvedValue([
-        {
-          date: '2026-04-27',
-          brandName: 'BrandA',
-          storeName: 'StoreA',
-          bookingCount: 3,
-          chatId: null,
-          userId: null,
-          userName: null,
-          managerId: null,
-          managerName: null,
-        },
-      ]);
+      mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue('2026-04-27');
+      mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue({
+        friendsAdded: 0,
+        openingSent: 0,
+        breakIce: 0,
+        candidateMessage: 0,
+        agentReply: 0,
+        jobRecommend: 0,
+        precheckPass: 0,
+        bookingSuccess: 3,
+        bookingFail: 0,
+        groupInvite: 0,
+        handoff: 0,
+        interviewPass: 0,
+        rowCount: 1,
+      });
 
       const result = await service.getDashboardOverviewAsync('today');
 
@@ -985,7 +975,7 @@ describe('AnalyticsDashboardService', () => {
       expect(result.business.bookings.successRate).toBe(100);
     });
 
-    it('should combine legacy booking gap before partial daily ops coverage', async () => {
+    it('clamps range start to daily ops coverage instead of zeroing covered days (仍不回填老表缺口)', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-06-04T10:00:00+08:00'));
       mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-06-03' });
       mockMonitoringRecordRepository.getDashboardOverviewStats
@@ -1013,43 +1003,24 @@ describe('AnalyticsDashboardService', () => {
         interviewPass: 0,
         rowCount: 69,
       });
-      mockBookingService.getBookingStats.mockImplementation(async ({ startDate, endDate }) =>
-        startDate === '2026-04-06' && endDate === '2026-04-26'
-          ? [
-              {
-                date: '2026-04-20',
-                brandName: 'BrandA',
-                storeName: 'StoreA',
-                bookingCount: 4,
-                chatId: null,
-                userId: null,
-                userName: null,
-                managerId: null,
-                managerName: null,
-              },
-            ]
-          : [],
-      );
 
       try {
         const result = await service.getDashboardOverviewAsync('twoMonths');
 
+        // 起点早于投影最早日期（2026-04-27）→ 裁剪到 earliest 再聚合：
+        // 只统计有覆盖的日期（不回填老表缺口），但绝不能把有数据的日期一起归零。
         expect(mockDailyOpsReportRepository.sumByDateRange).toHaveBeenCalledWith(
           '2026-04-27',
-          '2026-06-04',
+          expect.any(String),
         );
-        expect(mockBookingService.getBookingStats).toHaveBeenCalledWith({
-          startDate: '2026-04-06',
-          endDate: '2026-04-26',
-        });
-        expect(result.business.bookings.successful).toBe(119);
-        expect(result.business.bookings.attempts).toBe(119);
+        expect(result.business.bookings.successful).toBe(115);
+        expect(result.business.bookings.attempts).toBe(115);
       } finally {
         jest.useRealTimers();
       }
     });
 
-    it('should build non-today business trend from user_activity and booking aggregates', async () => {
+    it('should build non-today business trend from user_activity and daily ops aggregates', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-05-27T11:00:00+08:00'));
       mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-26' });
       mockMonitoringRecordRepository.getDashboardOverviewStats
@@ -1064,23 +1035,25 @@ describe('AnalyticsDashboardService', () => {
       mockUserHostingService.getDailyActivityStats.mockResolvedValue([
         { date: '2026-05-21', userCount: 10, messageCount: 30, tokenUsage: 3000 },
       ]);
-      mockBookingService.getBookingStats.mockImplementation(async ({ startDate }) =>
-        startDate === '2026-05-21'
-          ? [
-              {
-                date: '2026-05-21',
-                brandName: 'BrandA',
-                storeName: 'StoreA',
-                bookingCount: 2,
-                chatId: null,
-                userId: null,
-                userName: null,
-                managerId: null,
-                managerName: null,
-              },
-            ]
-          : [],
-      );
+      mockDailyOpsReportRepository.getEarliestReportDate.mockResolvedValue('2026-05-01');
+      mockDailyOpsReportRepository.sumByDateRange.mockResolvedValue({
+        friendsAdded: 0,
+        openingSent: 0,
+        breakIce: 0,
+        candidateMessage: 0,
+        agentReply: 0,
+        jobRecommend: 0,
+        precheckPass: 0,
+        bookingSuccess: 2,
+        bookingFail: 0,
+        groupInvite: 0,
+        handoff: 0,
+        interviewPass: 0,
+        rowCount: 1,
+      });
+      mockDailyOpsReportRepository.sumBookingSuccessByDateRange.mockResolvedValue([
+        { date: '2026-05-21', bookingSuccess: 2 },
+      ]);
 
       try {
         const result = await service.getDashboardOverviewAsync('week');

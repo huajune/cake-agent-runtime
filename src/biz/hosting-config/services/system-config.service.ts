@@ -126,6 +126,24 @@ export class SystemConfigService {
         typeof config?.errorRateCritical === 'number'
           ? config.errorRateCritical
           : DEFAULT_AGENT_REPLY_CONFIG.errorRateCritical,
+      // DB 未持久化过该字段时回退环境变量（部署期 bootstrap 默认），页面保存后以 DB 为准
+      outputGuardrailLlmEnabled:
+        typeof config?.outputGuardrailLlmEnabled === 'boolean'
+          ? config.outputGuardrailLlmEnabled
+          : this.configService.get('OUTPUT_GUARDRAIL_LLM_ENABLED', 'false') === 'true',
+      outputGuardrailSemanticShadowEnabled:
+        typeof config?.outputGuardrailSemanticShadowEnabled === 'boolean'
+          ? config.outputGuardrailSemanticShadowEnabled
+          : this.configService.get('OUTPUT_GUARDRAIL_SEMANTIC_SHADOW_ENABLED', 'false') === 'true',
+      // 复聊开关同守卫开关：DB 未持久化过时回退环境变量（bootstrap 默认），页面保存后以 DB 为准
+      reengagementEnabled:
+        typeof config?.reengagementEnabled === 'boolean'
+          ? config.reengagementEnabled
+          : this.configService.get('REENGAGEMENT_ENABLED', 'false') === 'true',
+      reengagementShadow:
+        typeof config?.reengagementShadow === 'boolean'
+          ? config.reengagementShadow
+          : this.configService.get('REENGAGEMENT_SHADOW', 'true') !== 'false',
     };
   }
 

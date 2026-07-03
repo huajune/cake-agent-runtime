@@ -218,8 +218,8 @@ describe('OpsDailyReportCronService.pushReport', () => {
         workOrders: [{ workOrderId: 1002 }],
       });
     bitableApi.getFields.mockResolvedValue([
-      { field_id: 'f1', field_name: '成功报名数', type: 2 },
-      { field_id: 'f2', field_name: '通过数', type: 2 },
+      { field_id: 'f1', field_name: '今日报名成功数', type: 2 },
+      { field_id: 'f2', field_name: '今日面试通过数', type: 2 },
       { field_id: 'f3', field_name: '候选人基本信息', type: 1 },
       { field_id: 'f4', field_name: '报名品牌', type: 1 },
     ]);
@@ -260,14 +260,14 @@ describe('OpsDailyReportCronService.pushReport', () => {
     );
     const records = bitableApi.batchCreateRecords.mock.calls[0][2];
     expect(records[0].fields).toEqual({
-      成功报名数: 2,
-      通过数: 1,
+      今日报名成功数: 2,
+      今日面试通过数: 1,
       候选人基本信息: '海绵张三\n海绵李四',
       报名品牌: '瑞幸、奥乐齐',
     });
   });
 
-  it('does not write local booking fields when sponge lookup fails', async () => {
+  it('falls back to projected booking/pass counts when sponge lookup fails', async () => {
     const { service, dailyOpsReportRepository, bitableApi, spongeService } = buildService({
       FEISHU_OPS_REPORT_ENABLED: 'true',
       FEISHU_OPS_REPORT_APP_TOKEN: 'app-1',
@@ -276,8 +276,8 @@ describe('OpsDailyReportCronService.pushReport', () => {
     dailyOpsReportRepository.findByReportDate.mockResolvedValue([sampleRow]);
     spongeService.fetchSelfSignupWorkOrders.mockRejectedValue(new Error('缺少 DULIDAY_API_TOKEN'));
     bitableApi.getFields.mockResolvedValue([
-      { field_id: 'f1', field_name: '成功报名数', type: 2 },
-      { field_id: 'f2', field_name: '通过数', type: 2 },
+      { field_id: 'f1', field_name: '今日报名成功数', type: 2 },
+      { field_id: 'f2', field_name: '今日面试通过数', type: 2 },
       { field_id: 'f3', field_name: '候选人基本信息', type: 1 },
       { field_id: 'f4', field_name: '报名品牌', type: 1 },
       { field_id: 'f5', field_name: '添加好友数', type: 2 },
@@ -287,6 +287,12 @@ describe('OpsDailyReportCronService.pushReport', () => {
     await service.pushReport('2026-06-09');
 
     const records = bitableApi.batchCreateRecords.mock.calls[0][2];
-    expect(records[0].fields).toEqual({ 添加好友数: 10 });
+    expect(records[0].fields).toEqual({
+      今日报名成功数: 3,
+      今日面试通过数: 1,
+      添加好友数: 10,
+    });
+    expect(records[0].fields).not.toHaveProperty('候选人基本信息');
+    expect(records[0].fields).not.toHaveProperty('报名品牌');
   });
 });

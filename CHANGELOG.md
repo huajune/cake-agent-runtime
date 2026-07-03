@@ -8,6 +8,90 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.30.0`
+**最近更新**: `2026-07-03`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #415 结构归位到 §7 目标树 (generator/ + guardrail/input/)
+- PR #415 reply-fact-guard 迁入 agent/guardrail/output/rule/
+- PR #415 risk-intercept 依赖倒置 + 迁入 agent/guardrail/input/r…
+- PR #415 补 ConfigService mock 修复 READ_ONLY_PREVIEW 引入的 DI 失败
+- PR #415 入站终态收口到 runner 共享分类器 + 修出站守卫副作用误判
+- PR #415 index on agent-reliability-runtime-on-precheck: aa347257 refactor(age…
+- PR #415 WIP on agent-reliability-runtime-on-precheck: aa347257 refactor(agent…
+- PR #415 清理 pipeline spec 对已删除 rule-guardrail 的残留引用
+- PR #415 invite_to_group 城市 provenance gate 拦截模型自报城市
+- PR #415 补交 5 个迁移文件 (legacy 清理/blacklist RLS/active_booking 改名/guar…
+- PR #415 drop_legacy_agent_memories 迁移改为真幂等 (表缺失时 DROP TRIGGER ON 会报错)
+- PR #415 supabase CLI 2.77.1 → 2.109.0 (修多语句迁移 prepared statement…
+- PR #415 MemoryModule 导出 ShortTermService
+- PR #415 jobList args 白名单投影进证据包 + 补 SemanticReviewer 独立单测
+- PR #415 列表 summary 投影补 guardrail 两列 + 修 trace 提示竖排样式
+- PR #415 GuardrailTrace 修复说明插到首审与二审之间 (时间线因果顺序)
+- PR #415 回归复测三项修复——区级定位标记/testing拉群模拟/会话品牌兜底
+- PR #415 可靠性收口主体——guardrail 模块化 + runner/复聊 + 发版前 review 修复
+- PR #415 补交 runner/复聊配套新文件——anchor/turn-finalizer/干预/副作用类型 + turn…
+- PR #415 查询分类器 + 候选排序 util（区级定位标记配套）
+- PR #415 消息处理详情 GuardrailSection 守卫裁决展示 + 配置页收尾
+- PR #415 补交 handoff 事件飞书同步脚本 + guardrail llm 层设计/运营文档
+- PR #415 捞回 stash 中 8 项未入库可靠性修复（并入本次发版）
+- PR #415 恢复入站守卫既定架构——纯评估器 + 副作用意图统一出口，下线 conversation-ris…
+- PR #415 岗位卡片列表不做口语化压缩，保留括号内店名/班别（badcase 6a470fddce406a6aeee03d0d）
+- PR #415 Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…
+- PR #415 恢复 7-01 Codex runner/generator 架构重构，与可靠性专项二期定向合并
+- PR #415 可靠性专项二期 × 7-01 runner/generator 架构重构 定向合并版
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #415 补 ConfigService mock 修复 READ_ONLY_PREVIEW 引入的 DI 失败
+- PR #415 入站终态收口到 runner 共享分类器 + 修出站守卫副作用误判
+- PR #415 GuardrailTrace 修复说明插到首审与二审之间 (时间线因果顺序)
+- PR #415 回归复测三项修复——区级定位标记/testing拉群模拟/会话品牌兜底
+- PR #415 可靠性收口主体——guardrail 模块化 + runner/复聊 + 发版前 review 修复
+- PR #415 捞回 stash 中 8 项未入库可靠性修复（并入本次发版）
+
+### 优化调整
+- PR #415 index on agent-reliability-runtime-on-precheck: aa347257 refactor(age…
+- PR #415 WIP on agent-reliability-runtime-on-precheck: aa347257 refactor(agent…
+- PR #415 恢复 7-01 Codex runner/generator 架构重构，与可靠性专项二期定向合并
+
+### 运维与流程
+- PR #415 结构归位到 §7 目标树 (generator/ + guardrail/input/)
+- PR #415 reply-fact-guard 迁入 agent/guardrail/output/rule/
+- PR #415 risk-intercept 依赖倒置 + 迁入 agent/guardrail/input/r…
+- PR #415 清理 pipeline spec 对已删除 rule-guardrail 的残留引用
+- PR #415 invite_to_group 城市 provenance gate 拦截模型自报城市
+- PR #415 补交 5 个迁移文件 (legacy 清理/blacklist RLS/active_booking 改名/guar…
+- PR #415 drop_legacy_agent_memories 迁移改为真幂等 (表缺失时 DROP TRIGGER ON 会报错)
+- PR #415 supabase CLI 2.77.1 → 2.109.0 (修多语句迁移 prepared statement…
+- PR #415 MemoryModule 导出 ShortTermService
+- PR #415 jobList args 白名单投影进证据包 + 补 SemanticReviewer 独立单测
+- PR #415 列表 summary 投影补 guardrail 两列 + 修 trace 提示竖排样式
+- PR #415 补交 runner/复聊配套新文件——anchor/turn-finalizer/干预/副作用类型 + turn…
+- PR #415 查询分类器 + 候选排序 util（区级定位标记配套）
+- PR #415 消息处理详情 GuardrailSection 守卫裁决展示 + 配置页收尾
+- PR #415 补交 handoff 事件飞书同步脚本 + guardrail llm 层设计/运营文档
+- PR #415 恢复入站守卫既定架构——纯评估器 + 副作用意图统一出口，下线 conversation-ris…
+- PR #415 岗位卡片列表不做口语化压缩，保留括号内店名/班别（badcase 6a470fddce406a6aeee03d0d）
+- PR #415 Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #415 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [5.29.0] - 2026-06-29
 
 **来源分支**: `develop`

@@ -21,9 +21,9 @@ describe('formatInterviewTimeForReply', () => {
 
 describe('buildOnSiteScript', () => {
   it('embeds candidate name + job name and 独立客 self-reference (badcase keciu6u6)', () => {
-    expect(
-      buildOnSiteScript({ candidateName: '李紫兰', jobName: '前厅服务员' }),
-    ).toBe('到店跟前台/店长说"独立客招聘介绍来的，姓名 李紫兰，应聘 前厅服务员"');
+    expect(buildOnSiteScript({ candidateName: '李紫兰', jobName: '前厅服务员' })).toBe(
+      '到店跟前台/店长说"独立客招聘介绍来的，姓名 李紫兰，应聘 前厅服务员"',
+    );
   });
 
   it('uses 独立客 not 独立日 (memory: brand-name canon)', () => {

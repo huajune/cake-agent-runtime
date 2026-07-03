@@ -22,6 +22,8 @@ import { TestImportService } from './services/test-import.service';
 import { TestWriteBackService } from './services/test-write-back.service';
 import { ConversationTestService } from './services/conversation-test.service';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
+import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail.service';
+import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import { CuratedDatasetImportService } from './services/curated-dataset-import.service';
 import { TestSuiteProcessor } from './test-suite.processor';
 import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
@@ -71,6 +73,7 @@ export class TestSuiteController {
     private readonly writeBackService: TestWriteBackService,
     private readonly conversationTestService: ConversationTestService,
     private readonly aiStreamObservability: AiStreamObservabilityService,
+    private readonly outputGuard: OutputGuardrailService,
     private readonly curatedDatasetImportService: CuratedDatasetImportService,
     private readonly testProcessor: TestSuiteProcessor,
     private readonly feishuBitableService: FeishuBitableSyncService,
@@ -233,6 +236,16 @@ export class TestSuiteController {
               },
             } as UIMessageChunk);
 
+            // 出站守卫 advisory：流结束后对完整回复跑一次 silent 守卫（不 fire 告警、不参与真实
+            // 发送裁决），把「守卫会怎么判」通过 data-guardrail 送回调试页。守卫故障不影响流。
+            const guardrailTrace = await this.buildAdvisoryGuardrail(trace, messageText);
+            if (guardrailTrace) {
+              writer.write({
+                type: 'data-guardrail',
+                data: guardrailTrace,
+              } as UIMessageChunk);
+            }
+
             writer.write({
               type: 'data-observability',
               data: trace.getClientPayload('success'),
@@ -261,6 +274,50 @@ export class TestSuiteController {
       }
       res.write(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`);
       res.end();
+    }
+  }
+
+  /**
+   * 流末对完整回复跑一次 silent 出站守卫，产出单步 advisory trace（复用生产页 GuardrailSection 形状）。
+   * silent=true 保证不 fire 飞书 badcase / 语义 verdict，避免调试流量污染生产判例池。
+   * 守卫故障或空回复返回 null（不影响流），异常吞掉只记日志。
+   */
+  private async buildAdvisoryGuardrail(
+    trace: ReturnType<AiStreamObservabilityService['startTrace']>,
+    userMessage: string,
+  ): Promise<GuardrailTurnTrace | null> {
+    try {
+      const { reply, toolCalls } = trace.getReviewInput();
+      if (!reply.trim()) return null;
+
+      const decision = await this.outputGuard.check({
+        reply,
+        toolCalls: toolCalls ?? [],
+        userMessage,
+        silent: true,
+      });
+
+      return {
+        steps: [
+          {
+            stage: 'first',
+            decision: decision.decision,
+            riskLevel: decision.riskLevel,
+            ruleIds: decision.ruleIds,
+            blockedRuleIds: decision.blockedRuleIds,
+            violationTypes: decision.violations.map((v) => v.type),
+            repairMode: decision.repairMode,
+            reasonCode: decision.reasonCode,
+          },
+        ],
+        repaired: false,
+        finalDecision: decision.decision,
+        reasonCode: decision.reasonCode,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[AI-Stream] advisory 守卫审查失败（忽略）: ${message}`);
+      return null;
     }
   }
 

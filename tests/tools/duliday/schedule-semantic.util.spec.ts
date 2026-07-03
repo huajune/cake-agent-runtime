@@ -67,7 +67,11 @@ describe('classifyScheduleSemantic', () => {
     const workTimeText = JSON.stringify({
       dayWorkTime: {
         arrangementType: '灵活排班',
-        fixedTime: { shiftCodes: ['通宵班'], goToWorkStartTime: '22:00', goOffWorkEndTime: '07:00' },
+        fixedTime: {
+          shiftCodes: ['通宵班'],
+          goToWorkStartTime: '22:00',
+          goOffWorkEndTime: '07:00',
+        },
       },
     });
 

@@ -146,6 +146,39 @@ export interface MessageRecordMemorySnapshot {
   profileKeys: string[] | null;
 }
 
+// ==================== 出站/入站守卫 trace ====================
+
+export type GuardrailDecision = 'pass' | 'observe' | 'revise' | 'replan' | 'block';
+
+/** 入站守卫拦截摘要（guardrail_input 列，仅拦截命中时非空） */
+export interface GuardrailInputTrace {
+  decision: 'pass' | 'block';
+  riskType?: string;
+  riskLabel?: string;
+  reason?: string;
+  reasonCode?: string;
+}
+
+/** 出站守卫单次审查摘要（first=首审，revised=修复后二审） */
+export interface GuardrailReviewStepTrace {
+  stage: 'first' | 'revised';
+  decision: GuardrailDecision;
+  riskLevel: 'low' | 'medium' | 'high';
+  ruleIds: string[];
+  blockedRuleIds: string[];
+  violationTypes: string[];
+  repairMode: 'rewrite' | 'replan';
+  reasonCode?: string;
+}
+
+/** 出站守卫全程 trace（guardrail_output 列）：首审 → 受控修复 → 二审 */
+export interface GuardrailTurnTrace {
+  steps: GuardrailReviewStepTrace[];
+  repaired: boolean;
+  finalDecision: GuardrailDecision;
+  reasonCode?: string;
+}
+
 export interface MessageRecord {
   messageId?: string;
   receivedAt: string | number;
@@ -180,4 +213,8 @@ export interface MessageRecord {
   memorySnapshot?: MessageRecordMemorySnapshot;
   /** turn-end 后处理状态 */
   postProcessingStatus?: Record<string, unknown>;
+  /** 入站守卫拦截摘要（仅拦截命中时非空） */
+  guardrailInput?: GuardrailInputTrace;
+  /** 出站守卫全程 trace（首审→repair→二审） */
+  guardrailOutput?: GuardrailTurnTrace;
 }

@@ -35,7 +35,9 @@ describe('buildRecallHistoryTool', () => {
 
   it('should return formatted summaries when available', async () => {
     mockMemoryService.getSummaryData.mockResolvedValue({
-      recent: [{ summary: '找上海兼职', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' }],
+      recent: [
+        { summary: '找上海兼职', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
+      ],
       archive: null,
     });
 

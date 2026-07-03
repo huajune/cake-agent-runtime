@@ -87,6 +87,22 @@ export class UpdateAgentReplyConfigDto {
   @IsNumber()
   @Min(0)
   errorRateCritical?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  outputGuardrailLlmEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  outputGuardrailSemanticShadowEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reengagementEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reengagementShadow?: boolean;
 }
 
 // ==================== 群任务通知配置 ====================

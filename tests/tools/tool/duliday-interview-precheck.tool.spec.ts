@@ -1234,10 +1234,16 @@ describe('buildInterviewPrecheckTool', () => {
         interviewProcess: {
           firstInterview: {
             fixedInterviewTimes: [
-              { interviewDate: '2026-04-08', interviewStartTime: '13:30', interviewEndTime: '16:30' },
+              {
+                interviewDate: '2026-04-08',
+                interviewStartTime: '13:30',
+                interviewEndTime: '16:30',
+              },
             ],
           },
-          interviewSupplement: [{ interviewSupplementId: 130, interviewSupplement: '近一段工作经历' }],
+          interviewSupplement: [
+            { interviewSupplementId: 130, interviewSupplement: '近一段工作经历' },
+          ],
         },
       });
     const knownStandardFields = {
@@ -1269,7 +1275,10 @@ describe('buildInterviewPrecheckTool', () => {
 
     // 不传答案：工作经历 字段（显示名 过往公司+岗位+年限）滞留 missingFields
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [buildJob()] });
-    const without = await executeTool({ jobId: 100, requestedDate: '2026-04-08' }, knownStandardFields);
+    const without = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      knownStandardFields,
+    );
     expect(without.bookingChecklist.missingFields).toContain('过往公司+岗位+年限');
 
     // 候选人用 checklist 显示名回答（而非 label 原名）：别名桥接后应清除

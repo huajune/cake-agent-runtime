@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { Observer } from '@observability/observer.interface';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
-import { computeResultCount, computeToolCallStatus } from '@agent/tool-call-analysis';
+import { computeResultCount, computeToolCallStatus } from '@agent/generator/tool-call-analysis';
 import { AiStreamTraceContentStore } from './ai-stream-trace-content-store';
 import { AiStreamTraceTiming } from './ai-stream-trace-timing';
 
@@ -421,6 +421,17 @@ export class AiStreamTrace {
         response: storedResponse,
         isFallback: false,
       },
+    };
+  }
+
+  /**
+   * 流末出站守卫 advisory 审查入参：完整回复正文 + 工具调用（转成 AgentToolCall）。
+   * 调试页在流结束后据此跑一次 silent 守卫，展示"守卫会怎么判"，不参与真实发送裁决。
+   */
+  getReviewInput(): { reply: string; toolCalls: MonitoringMetadata['toolCalls'] } {
+    return {
+      reply: this.content.getReplyText(),
+      toolCalls: this.toAgentToolCalls(this.content.getStoredToolCalls()) ?? [],
     };
   }
 

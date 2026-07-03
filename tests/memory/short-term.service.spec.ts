@@ -188,7 +188,7 @@ describe('ShortTermService', () => {
     const oneDay = SESSION_TTL * 1000;
     const sevenDays = HISTORY_WINDOW_SECONDS * 1000;
     const distanceFromNow = after - startTimeInclusive;
-    expect(distanceFromNow).toBeGreaterThan(oneDay);  // not 1-day window
+    expect(distanceFromNow).toBeGreaterThan(oneDay); // not 1-day window
     expect(distanceFromNow).toBeLessThanOrEqual(sevenDays + 1000); // ≤ 7-day window
   });
 

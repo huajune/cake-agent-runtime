@@ -82,6 +82,10 @@ export class EnvironmentVariables {
   @IsString({ message: 'API_GUARD_TOKEN 必须是字符串' })
   API_GUARD_TOKEN?: string;
 
+  @IsOptional()
+  @IsString({ message: 'READ_ONLY_PREVIEW 必须是字符串' })
+  READ_ONLY_PREVIEW?: string;
+
   // ==================== 测试集执行配置 ====================
   @IsOptional()
   @IsNumber({}, { message: 'TEST_SUITE_WORKER_CONCURRENCY 必须是数字' })

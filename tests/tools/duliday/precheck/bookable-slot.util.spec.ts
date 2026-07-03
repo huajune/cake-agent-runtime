@@ -118,9 +118,9 @@ describe('bookable-slot.util', () => {
   describe('buildScheduleRule', () => {
     it('returns "" when there are no periodic windows', () => {
       expect(buildScheduleRule([])).toBe('');
-      expect(buildScheduleRule([{ date: '2026-05-22', startTime: '10:00', endTime: '11:00' }])).toBe(
-        '',
-      );
+      expect(
+        buildScheduleRule([{ date: '2026-05-22', startTime: '10:00', endTime: '11:00' }]),
+      ).toBe('');
     });
 
     it('compresses 3+ consecutive weekdays as "周X至周Y"', () => {

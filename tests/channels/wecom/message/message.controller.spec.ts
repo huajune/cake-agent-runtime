@@ -120,7 +120,9 @@ describe('MessageController', () => {
 
       mockMessageService.handleMessage.mockRejectedValue(error);
 
-      await expect(ingressController.receiveMessage(mockBody as any)).rejects.toThrow('Service error');
+      await expect(ingressController.receiveMessage(mockBody as any)).rejects.toThrow(
+        'Service error',
+      );
     });
   });
 

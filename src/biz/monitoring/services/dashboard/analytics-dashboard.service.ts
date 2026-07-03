@@ -7,7 +7,6 @@ import {
   formatLocalMinute,
   getLocalDayStart,
   getLocalHourStart,
-  parseLocalDateStart,
 } from '@infra/utils/date.util';
 import {
   MessageProcessingRecord,
@@ -33,7 +32,6 @@ import {
 } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
-import { BookingService } from '@biz/message/services/booking.service';
 import { DailyOpsReportRepository } from '@biz/ops-events/daily-ops-report.repository';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import { MonitoringDailyStatsRepository } from '../../repositories/daily-stats.repository';
@@ -122,7 +120,6 @@ export class AnalyticsDashboardService {
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
     private readonly monitoringRepository: MonitoringRecordRepository,
-    private readonly bookingService: BookingService,
     private readonly dailyStatsAggregator: DailyStatsAggregatorService,
     private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
     private readonly messageTrackingService: MessageTrackingService,
@@ -1253,20 +1250,16 @@ export class AnalyticsDashboardService {
     startDate: Date,
     endDate: Date,
   ): Promise<BusinessMetricTrendPoint[]> {
+    const startDateText = formatLocalDate(startDate);
+    const endDateText = formatLocalDate(endDate);
     const [activityTrend, bookingStats] = await Promise.all([
       this.userHostingService.getDailyActivityStats(startDate, endDate),
-      this.bookingService.getBookingStats({
-        startDate: formatLocalDate(startDate),
-        endDate: formatLocalDate(endDate),
-      }),
+      this.getOpsBookingTrend(startDateText, endDateText),
     ]);
 
     const bookingCountByDate = new Map<string, number>();
     for (const item of bookingStats) {
-      bookingCountByDate.set(
-        item.date,
-        (bookingCountByDate.get(item.date) ?? 0) + item.bookingCount,
-      );
+      bookingCountByDate.set(item.date, item.bookingSuccess);
     }
 
     const dates = new Set<string>([
@@ -1305,13 +1298,10 @@ export class AnalyticsDashboardService {
     endDateTime: Date,
     activeUsers: number,
   ): Promise<BusinessMetricTrendPoint[]> {
-    const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
+    const bookingStats = await this.getOpsBookingTrend(startDate, endDate);
     const bookingCountByDate = new Map<string, number>();
     for (const item of bookingStats) {
-      bookingCountByDate.set(
-        item.date,
-        (bookingCountByDate.get(item.date) ?? 0) + item.bookingCount,
-      );
+      bookingCountByDate.set(item.date, item.bookingSuccess);
     }
 
     const dates = new Set<string>([
@@ -1719,13 +1709,7 @@ export class AnalyticsDashboardService {
   ) {
     const users = new Set(records.filter((r) => r.userId).map((r) => r.userId!));
 
-    let successfulBookings = 0;
-    try {
-      const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
-      successfulBookings = bookingStats.reduce((sum, item) => sum + item.bookingCount, 0);
-    } catch (error) {
-      this.logger.warn('[业务指标] 获取预约统计失败，使用默认值 0:', error);
-    }
+    const successfulBookings = await this.getBookingCount(startDate, endDate);
 
     const bookingAttempts = successfulBookings;
     const bookingSuccessRate = bookingAttempts > 0 ? 100 : 0;
@@ -1759,7 +1743,7 @@ export class AnalyticsDashboardService {
     activeUsers: number,
     bookingCount: number,
   ): BusinessMetricsSnapshot {
-    // interview_booking_records 只在预约接口返回 success 后写入，所以这里的统计即成功预约数。
+    // bookingCount 来自 daily_ops_report.booking_success_count，即预约成功事件投影。
     const conversionRate = activeUsers > 0 ? (bookingCount / activeUsers) * 100 : 0;
     const successRate = bookingCount > 0 ? 100 : 0;
     return {
@@ -1775,64 +1759,44 @@ export class AnalyticsDashboardService {
   }
 
   /**
-   * 轻量查询：获取指定日期范围的预约总数
-   */
-  /**
-   * 预约成功数。
-   *
-   * 优先使用 daily_ops_report.booking_success_count（与转化分析页同源）。
-   * 当运营投影只覆盖查询区间后半段时，用 interview_booking_records 填补投影最早日期
-   * 之前的缺口，避免整个区间回退旧源导致新投影数据失效。
+   * 预约成功数：统一使用 daily_ops_report.booking_success_count。
+   * daily_ops_report 由 ops_events 投影写入，与转化分析页和飞书日报同源。
    */
   private async getBookingCount(startDate: string, endDate: string): Promise<number> {
     try {
-      const opsBooking = await this.getOpsBookingCountWithLegacyGap(startDate, endDate);
-      if (opsBooking !== null) {
-        return opsBooking;
+      const earliest = await this.dailyOpsReportRepository.getEarliestReportDate();
+      if (!earliest || earliest > endDate) {
+        return 0;
       }
-      return this.getLegacyBookingCount(startDate, endDate);
+
+      // 查询起点早于投影最早日期时裁剪到 earliest：只统计有数据的日期。
+      // 不能因区间头部缺数据把整段返回 0——例如"近 90 天"里 6 月有真实数据。
+      const effectiveStart = earliest > startDate ? earliest : startDate;
+      const sums = await this.dailyOpsReportRepository.sumByDateRange(effectiveStart, endDate);
+      return sums.bookingSuccess;
     } catch (error) {
       this.logger.warn('[业务指标] 获取预约统计失败，使用默认值 0:', error);
       return 0;
     }
   }
 
-  /**
-   * 若 daily_ops_report 与查询范围有交集，则返回「旧源缺口 + 投影覆盖段」的预约成功数。
-   * 若投影表不可用或完全晚于查询范围，则返回 null（上层回退旧源全量范围）。
-   */
-  private async getOpsBookingCountWithLegacyGap(
+  private async getOpsBookingTrend(
     startDate: string,
     endDate: string,
-  ): Promise<number | null> {
+  ): Promise<Array<{ date: string; bookingSuccess: number }>> {
     try {
       const earliest = await this.dailyOpsReportRepository.getEarliestReportDate();
       if (!earliest || earliest > endDate) {
-        return null;
+        return [];
       }
 
-      const opsStartDate = earliest > startDate ? earliest : startDate;
-      const [opsSums, legacyGapCount] = await Promise.all([
-        this.dailyOpsReportRepository.sumByDateRange(opsStartDate, endDate),
-        earliest > startDate
-          ? this.getLegacyBookingCount(startDate, this.getPreviousLocalDate(earliest))
-          : Promise.resolve(0),
-      ]);
-
-      return legacyGapCount + opsSums.bookingSuccess;
+      // 同 getBookingCount：起点裁剪到投影最早日期，避免整段趋势归零。
+      const effectiveStart = earliest > startDate ? earliest : startDate;
+      return this.dailyOpsReportRepository.sumBookingSuccessByDateRange(effectiveStart, endDate);
     } catch (error) {
-      this.logger.warn('[业务指标] daily_ops_report 预约汇总失败，回退旧源全量范围:', error);
-      return null;
+      this.logger.warn('[业务指标] daily_ops_report 预约趋势失败，使用空预约趋势:', error);
+      return [];
     }
-  }
-
-  private async getLegacyBookingCount(startDate: string, endDate: string): Promise<number> {
-    const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
-    return bookingStats.reduce((sum, item) => sum + item.bookingCount, 0);
-  }
-
-  private getPreviousLocalDate(date: string): string {
-    return formatLocalDate(addLocalDays(parseLocalDateStart(date), -1));
   }
 
   private calculateBusinessDelta(

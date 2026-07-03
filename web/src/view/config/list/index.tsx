@@ -209,6 +209,14 @@ export default function Config() {
     getDefaultValue('wecomCallbackThinkingMode') ?? 'fast',
   ) as AgentReplyThinkingMode;
   const currentMergeWindow = Number(getCurrentValue('initialMergeWindowMs') ?? 0);
+  // 出站守卫开关直接读服务端最新值（3s 轮询），不进 editingConfig 表单态——切换即保存
+  const guardrailLlmEnabled = Boolean(agentConfigData?.config.outputGuardrailLlmEnabled);
+  const guardrailShadowEnabled = Boolean(
+    agentConfigData?.config.outputGuardrailSemanticShadowEnabled,
+  );
+  // 主动复聊开关同守卫开关：直接读服务端最新值，切换即保存
+  const reengagementEnabled = Boolean(agentConfigData?.config.reengagementEnabled);
+  const reengagementShadow = Boolean(agentConfigData?.config.reengagementShadow ?? true);
   const e2eSamples =
     recentMessageRecords?.filter(
       (record) => Number.isFinite(record.totalDuration) && record.totalDuration > 0,
@@ -418,6 +426,201 @@ export default function Config() {
                 onApply={handleApplyConcurrency}
                 onCancel={() => setEditingConcurrency(null)}
               />
+            </div>
+          </section>
+
+          <section className={styles.moduleSection}>
+            <div className={styles.moduleHeader}>
+              <div>
+                <h3 className={styles.moduleTitle}>出站守卫（LLM 语义审查）</h3>
+                <p className={styles.moduleDescription}>
+                  回复发出前的最后一道语义审查：核对岗位推荐、地理品牌、预约状态与工具证据是否一致。
+                  开关即时生效，无需保存；灰度期先开
+                  Shadow，判例达标后再开拦截，拦截出问题可随时在这里熔断。
+                </p>
+              </div>
+            </div>
+
+            <div className={styles.settingsPanel}>
+              <div className={styles.settingRow}>
+                <div className={styles.settingBody}>
+                  <div className={styles.settingHeading}>
+                    <span className={styles.settingLabel}>LLM 审查拦截（enforce）</span>
+                    <span
+                      className={`${styles.statusBadge} ${
+                        guardrailLlmEnabled ? styles.statusOn : styles.statusOff
+                      }`}
+                    >
+                      {guardrailLlmEnabled ? '已启用' : '已关闭'}
+                    </span>
+                  </div>
+                  <p className={styles.settingDescription}>
+                    开启后，语义审查的结论会真正参与出站裁决：高风险回复（已提交预约等副作用、含承诺性措辞）
+                    会被打回重写或拦截不发。关闭时仅确定性规则档生效。
+                  </p>
+                  <div className={styles.settingMeta}>
+                    <span>该开关即时生效</span>
+                    <span>审查故障时高风险回复按 fail-close 拦截</span>
+                  </div>
+                </div>
+                <div className={styles.toggleControl}>
+                  <label className={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={guardrailLlmEnabled}
+                      disabled={updateConfig.isPending}
+                      onChange={(e) =>
+                        updateConfig.mutate({ outputGuardrailLlmEnabled: e.target.checked })
+                      }
+                    />
+                    <span className={styles.switchTrack}>
+                      <span className={styles.switchThumb} />
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className={styles.settingRow}>
+                <div className={styles.settingBody}>
+                  <div className={styles.settingHeading}>
+                    <span className={styles.settingLabel}>Shadow 观测</span>
+                    <span
+                      className={`${styles.statusBadge} ${
+                        guardrailShadowEnabled && !guardrailLlmEnabled
+                          ? styles.statusOn
+                          : styles.statusOff
+                      }`}
+                    >
+                      {guardrailLlmEnabled
+                        ? '拦截开启时不生效'
+                        : guardrailShadowEnabled
+                          ? '观测中'
+                          : '已关闭'}
+                    </span>
+                  </div>
+                  <p className={styles.settingDescription}>
+                    开启后，语义审查跟随真实流量试运行，结论只写入飞书 badcase
+                    表和流水记录，不影响任何回复的发送。用于灰度期评估"如果它说了算，会拦哪些回复"。
+                  </p>
+                  <div className={styles.settingMeta}>
+                    <span>该开关即时生效</span>
+                    <span>命中判例见飞书 badcase 多维表</span>
+                  </div>
+                </div>
+                <div className={styles.toggleControl}>
+                  <label className={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={guardrailShadowEnabled}
+                      disabled={updateConfig.isPending || guardrailLlmEnabled}
+                      onChange={(e) =>
+                        updateConfig.mutate({
+                          outputGuardrailSemanticShadowEnabled: e.target.checked,
+                        })
+                      }
+                    />
+                    <span className={styles.switchTrack}>
+                      <span className={styles.switchThumb} />
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className={styles.moduleSection}>
+            <div className={styles.moduleHeader}>
+              <div>
+                <h3 className={styles.moduleTitle}>主动复聊（跟进触达）</h3>
+                <p className={styles.moduleDescription}>
+                  候选人沉默后由 Agent
+                  主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
+                  开关即时生效；灰度期先开演练模式看"本应发什么"，达标后再关演练真实发送。
+                </p>
+              </div>
+            </div>
+
+            <div className={styles.settingsPanel}>
+              <div className={styles.settingRow}>
+                <div className={styles.settingBody}>
+                  <div className={styles.settingHeading}>
+                    <span className={styles.settingLabel}>复聊排程（总开关）</span>
+                    <span
+                      className={`${styles.statusBadge} ${
+                        reengagementEnabled ? styles.statusOn : styles.statusOff
+                      }`}
+                    >
+                      {reengagementEnabled ? '已启用' : '已关闭'}
+                    </span>
+                  </div>
+                  <p className={styles.settingDescription}>
+                    开启后，锚点事件（候选人开场未回复、报名中断、面试临近等）会排程延时跟进任务。
+                    关闭是急刹车：不再产生新任务，已排程的任务到点也会直接丢弃。
+                  </p>
+                  <div className={styles.settingMeta}>
+                    <span>该开关即时生效</span>
+                    <span>频控 24h ≤ 2 条 · 仅 9-21 点投递</span>
+                  </div>
+                </div>
+                <div className={styles.toggleControl}>
+                  <label className={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={reengagementEnabled}
+                      disabled={updateConfig.isPending}
+                      onChange={(e) =>
+                        updateConfig.mutate({ reengagementEnabled: e.target.checked })
+                      }
+                    />
+                    <span className={styles.switchTrack}>
+                      <span className={styles.switchThumb} />
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className={styles.settingRow}>
+                <div className={styles.settingBody}>
+                  <div className={styles.settingHeading}>
+                    <span className={styles.settingLabel}>演练模式（Shadow）</span>
+                    <span
+                      className={`${styles.statusBadge} ${
+                        reengagementShadow ? styles.statusOn : styles.statusOff
+                      }`}
+                    >
+                      {!reengagementEnabled
+                        ? '排程未启用'
+                        : reengagementShadow
+                          ? '演练中（不发送）'
+                          : '真实发送'}
+                    </span>
+                  </div>
+                  <p className={styles.settingDescription}>
+                    开启时，到点走完全部停止判断并生成跟进文案，但不发给候选人，只记录"本应发什么"。
+                    关闭后，已放开灰度的场景（开场未回 / 报名未完成 /
+                    面试提醒）会真实发送，其余场景仍只记录。
+                  </p>
+                  <div className={styles.settingMeta}>
+                    <span>该开关即时生效</span>
+                    <span>场景级灰度由代码控制，命中记录见服务日志</span>
+                  </div>
+                </div>
+                <div className={styles.toggleControl}>
+                  <label className={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={reengagementShadow}
+                      disabled={updateConfig.isPending}
+                      onChange={(e) =>
+                        updateConfig.mutate({ reengagementShadow: e.target.checked })
+                      }
+                    />
+                    <span className={styles.switchTrack}>
+                      <span className={styles.switchThumb} />
+                    </span>
+                  </label>
+                </div>
+              </div>
             </div>
           </section>
 

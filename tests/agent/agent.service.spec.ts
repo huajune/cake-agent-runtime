@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { AgentRunnerService } from '@agent/runner.service';
-import { AgentPreparationService } from '@agent/agent-preparation.service';
+import { GeneratorService } from '@agent/generator/generator.service';
+import { PreparationService } from '@agent/generator/preparation.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { MemoryService } from '@memory/memory.service';
@@ -11,8 +11,8 @@ jest.mock('ai', () => ({
   hasToolCall: jest.fn().mockReturnValue(() => false),
 }));
 
-describe('AgentRunnerService', () => {
-  let service: AgentRunnerService;
+describe('GeneratorService', () => {
+  let service: GeneratorService;
 
   const mockPreparation = {
     prepare: jest.fn(),
@@ -57,15 +57,15 @@ describe('AgentRunnerService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        AgentRunnerService,
+        GeneratorService,
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: AgentPreparationService, useValue: mockPreparation },
+        { provide: PreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
         { provide: LlmExecutorService, useValue: mockLlm },
       ],
     }).compile();
 
-    service = module.get<AgentRunnerService>(AgentRunnerService);
+    service = module.get<GeneratorService>(GeneratorService);
     jest.clearAllMocks();
 
     mockLlm.supportsVisionInput.mockReturnValue(true);
@@ -155,14 +155,14 @@ describe('AgentRunnerService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        AgentRunnerService,
+        GeneratorService,
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: AgentPreparationService, useValue: mockPreparation },
+        { provide: PreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
         { provide: LlmExecutorService, useValue: mockLlm },
       ],
     }).compile();
-    service = module.get<AgentRunnerService>(AgentRunnerService);
+    service = module.get<GeneratorService>(GeneratorService);
 
     await service.invoke(invokeParams);
 

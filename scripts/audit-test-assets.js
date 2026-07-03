@@ -14,7 +14,7 @@ const FIELD_ALIASES = {
   category: ['分类'],
 };
 
-const TEST_PHONE_NUMBERS = new Set(['13800000000']);
+const TEST_PHONE_NUMBERS = new Set(['13800000000', '18271421690']);
 
 function parseArgs(argv) {
   const args = {

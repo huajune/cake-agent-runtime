@@ -1,9 +1,94 @@
 {
   "baseVersion": "5.29.0",
-  "nextVersion": "5.29.0",
-  "updatedAt": "2026-06-29",
+  "nextVersion": "5.30.0",
+  "updatedAt": "2026-07-03",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "415",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/415",
+      "title": "可靠性专项二期 × 7-01 runner/generator 架构重构 定向合并版",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-03",
+      "businessUpdates": [
+        "补 ConfigService mock 修复 READ_ONLY_PREVIEW 引入的 DI 失败",
+        "入站终态收口到 runner 共享分类器 + 修出站守卫副作用误判",
+        "GuardrailTrace 修复说明插到首审与二审之间 (时间线因果顺序)",
+        "回归复测三项修复——区级定位标记/testing拉群模拟/会话品牌兜底",
+        "可靠性收口主体——guardrail 模块化 + runner/复聊 + 发版前 review 修复",
+        "捞回 stash 中 8 项未入库可靠性修复（并入本次发版）"
+      ],
+      "summary": [
+        "结构归位到 §7 目标树 (generator/ + guardrail/input/)",
+        "reply-fact-guard 迁入 agent/guardrail/output/rule/",
+        "risk-intercept 依赖倒置 + 迁入 agent/guardrail/input/r…",
+        "补 ConfigService mock 修复 READ_ONLY_PREVIEW 引入的 DI 失败",
+        "入站终态收口到 runner 共享分类器 + 修出站守卫副作用误判",
+        "index on agent-reliability-runtime-on-precheck: aa347257 refactor(age…",
+        "WIP on agent-reliability-runtime-on-precheck: aa347257 refactor(agent…",
+        "清理 pipeline spec 对已删除 rule-guardrail 的残留引用",
+        "invite_to_group 城市 provenance gate 拦截模型自报城市",
+        "补交 5 个迁移文件 (legacy 清理/blacklist RLS/active_booking 改名/guar…",
+        "drop_legacy_agent_memories 迁移改为真幂等 (表缺失时 DROP TRIGGER ON 会报错)",
+        "supabase CLI 2.77.1 → 2.109.0 (修多语句迁移 prepared statement…",
+        "MemoryModule 导出 ShortTermService",
+        "jobList args 白名单投影进证据包 + 补 SemanticReviewer 独立单测",
+        "列表 summary 投影补 guardrail 两列 + 修 trace 提示竖排样式",
+        "GuardrailTrace 修复说明插到首审与二审之间 (时间线因果顺序)",
+        "回归复测三项修复——区级定位标记/testing拉群模拟/会话品牌兜底",
+        "可靠性收口主体——guardrail 模块化 + runner/复聊 + 发版前 review 修复",
+        "补交 runner/复聊配套新文件——anchor/turn-finalizer/干预/副作用类型 + turn…",
+        "查询分类器 + 候选排序 util（区级定位标记配套）",
+        "消息处理详情 GuardrailSection 守卫裁决展示 + 配置页收尾",
+        "补交 handoff 事件飞书同步脚本 + guardrail llm 层设计/运营文档",
+        "捞回 stash 中 8 项未入库可靠性修复（并入本次发版）",
+        "恢复入站守卫既定架构——纯评估器 + 副作用意图统一出口，下线 conversation-ris…",
+        "岗位卡片列表不做口语化压缩，保留括号内店名/班别（badcase 6a470fddce406a6aeee03d0d）",
+        "Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…",
+        "恢复 7-01 Codex runner/generator 架构重构，与可靠性专项二期定向合并",
+        "可靠性专项二期 × 7-01 runner/generator 架构重构 定向合并版"
+      ],
+      "features": [],
+      "fixes": [
+        "补 ConfigService mock 修复 READ_ONLY_PREVIEW 引入的 DI 失败",
+        "入站终态收口到 runner 共享分类器 + 修出站守卫副作用误判",
+        "GuardrailTrace 修复说明插到首审与二审之间 (时间线因果顺序)",
+        "回归复测三项修复——区级定位标记/testing拉群模拟/会话品牌兜底",
+        "可靠性收口主体——guardrail 模块化 + runner/复聊 + 发版前 review 修复",
+        "捞回 stash 中 8 项未入库可靠性修复（并入本次发版）"
+      ],
+      "optimizations": [
+        "index on agent-reliability-runtime-on-precheck: aa347257 refactor(age…",
+        "WIP on agent-reliability-runtime-on-precheck: aa347257 refactor(agent…",
+        "恢复 7-01 Codex runner/generator 架构重构，与可靠性专项二期定向合并"
+      ],
+      "ops": [
+        "结构归位到 §7 目标树 (generator/ + guardrail/input/)",
+        "reply-fact-guard 迁入 agent/guardrail/output/rule/",
+        "risk-intercept 依赖倒置 + 迁入 agent/guardrail/input/r…",
+        "清理 pipeline spec 对已删除 rule-guardrail 的残留引用",
+        "invite_to_group 城市 provenance gate 拦截模型自报城市",
+        "补交 5 个迁移文件 (legacy 清理/blacklist RLS/active_booking 改名/guar…",
+        "drop_legacy_agent_memories 迁移改为真幂等 (表缺失时 DROP TRIGGER ON 会报错)",
+        "supabase CLI 2.77.1 → 2.109.0 (修多语句迁移 prepared statement…",
+        "MemoryModule 导出 ShortTermService",
+        "jobList args 白名单投影进证据包 + 补 SemanticReviewer 独立单测",
+        "列表 summary 投影补 guardrail 两列 + 修 trace 提示竖排样式",
+        "补交 runner/复聊配套新文件——anchor/turn-finalizer/干预/副作用类型 + turn…",
+        "查询分类器 + 候选排序 util（区级定位标记配套）",
+        "消息处理详情 GuardrailSection 守卫裁决展示 + 配置页收尾",
+        "补交 handoff 事件飞书同步脚本 + guardrail llm 层设计/运营文档",
+        "恢复入站守卫既定架构——纯评估器 + 副作用意图统一出口，下线 conversation-ris…",
+        "岗位卡片列表不做口语化压缩，保留括号内店名/班别（badcase 6a470fddce406a6aeee03d0d）",
+        "Merge remote-tracking branch 'origin/develop' into codex/agent-reliab…"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "5.29.0",
     "date": "2026-06-29",

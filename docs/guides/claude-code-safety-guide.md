@@ -211,7 +211,7 @@ git checkout -b feature/new-feature
 
 ## 🔗 相关文档
 
-- **安全防护脚本**：[../.claude/scripts/README.md](../../.claude/scripts/README.md)
+- **安全防护脚本（hooks）**：[../.claude/hooks/README.md](../../.claude/hooks/README.md)
 - **Claude Code配置**：[../.claude/settings.local.json](../../.claude/settings.local.json)
 - **开发工作流**：[development-guide.md](development-guide.md)
 
@@ -221,7 +221,7 @@ git checkout -b feature/new-feature
 
 如果遇到问题：
 
-1. 查看 `.claude/scripts/README.md` 了解技术细节
+1. 查看 `.claude/hooks/README.md` 了解技术细节
 2. 检查 `git status` 和 `git log` 了解当前状态
 3. 联系团队成员获取帮助
 

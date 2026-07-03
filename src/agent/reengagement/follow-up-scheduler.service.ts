@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
-import type { SessionRef } from '../runner/turn-runner.types';
+import type { SessionRef } from '../runner/agent-runner.types';
 import {
   REENGAGEMENT_JOB_NAME,
   REENGAGEMENT_QUEUE,
@@ -56,16 +56,20 @@ export class FollowUpSchedulerService {
 
   constructor(
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
-    private readonly configService: ConfigService,
+    private readonly systemConfig: SystemConfigService,
   ) {}
 
-  /** 总开关：默认开启排程（投递与否由 shadow 控制，见 processor）。 */
-  private isEnabled(): boolean {
-    return this.configService.get<string>('REENGAGEMENT_ENABLED', 'true') !== 'false';
+  /**
+   * 总开关：Dashboard 运行时配置 `reengagementEnabled`（DB 动态读，1s 热缓存，即时生效；
+   * DB 未持久化过时回退环境变量 REENGAGEMENT_ENABLED）。投递与否由 shadow 控制，见 processor。
+   */
+  private async isEnabled(): Promise<boolean> {
+    const config = await this.systemConfig.getAgentReplyConfig();
+    return config.reengagementEnabled;
   }
 
   async scheduleFollowUp(input: ScheduleFollowUpInput): Promise<ScheduleFollowUpResult> {
-    if (!this.isEnabled()) return { scheduled: false, reason: 'disabled' };
+    if (!(await this.isEnabled())) return { scheduled: false, reason: 'disabled' };
 
     const scenario = getScenario(input.scenarioCode);
     if (!scenario) return { scheduled: false, reason: 'unknown_scenario' };

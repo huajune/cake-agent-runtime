@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ParsedMessage, ConversationTurn, ConversationParseResult } from './evaluation.types';
-import type { AgentRunResult } from '@agent/runner.service';
+import type { GeneratorRunResult } from '@agent/generator/generator.service';
 
 /**
  * 对话解析正则表达式
@@ -133,17 +133,17 @@ export class ConversationParserService {
   }
 
   /**
-   * 从 AgentRunResult 提取响应文本
+   * 从 GeneratorRunResult 提取响应文本
    */
-  extractResponseText(result: AgentRunResult): string {
+  extractResponseText(result: GeneratorRunResult): string {
     return result.text || '';
   }
 
   /**
-   * 从 AgentRunResult 提取工具调用
-   * 新架构下 AgentRunResult 不包含工具调用明细，返回空数组
+   * 从 GeneratorRunResult 提取工具调用
+   * 新架构下 GeneratorRunResult 不包含工具调用明细，返回空数组
    */
-  extractToolCalls(_result: AgentRunResult): unknown[] {
+  extractToolCalls(_result: GeneratorRunResult): unknown[] {
     return [];
   }
 

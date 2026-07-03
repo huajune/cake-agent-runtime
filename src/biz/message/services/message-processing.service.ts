@@ -221,6 +221,19 @@ export class MessageProcessingService {
     return this.messageProcessingRepository.timeoutStuckRecords(stuckMinutes);
   }
 
+  /**
+   * 重试 batch 成功后，把同一输入遗留的旧 processing 行标成已被新 batch 接管。
+   */
+  async markSupersededProcessingRecords(params: {
+    currentMessageId: string;
+    replacementMessageId: string;
+    chatId: string;
+    receivedAt: number;
+    messagePreview?: string;
+  }): Promise<number> {
+    return this.messageProcessingRepository.markSupersededProcessingRecords(params);
+  }
+
   // ==================== 内部工具方法 ====================
 
   private toStartTimestamp(dateStr?: string, defaultDaysAgo = 0): number {

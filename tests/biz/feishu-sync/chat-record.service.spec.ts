@@ -10,11 +10,33 @@ describe('ChatRecordSyncService', () => {
 
   const chatTableConfig = { appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb', tableId: 'tblKNwN8aquh2JAy' };
 
+  function buildMessages(chatId = 'chat_001') {
+    return [
+      {
+        role: 'user' as const,
+        content: '你好，我想找工作',
+        timestamp: Date.now() - 3600000,
+        messageId: 'msg_001',
+        chatId,
+        candidateName: '张三',
+        managerName: '李经理',
+      },
+      {
+        role: 'assistant' as const,
+        content: '您好！很高兴为您服务',
+        timestamp: Date.now() - 3500000,
+        messageId: 'msg_002',
+        chatId,
+      },
+    ];
+  }
+
   beforeEach(async () => {
     mockBitableApi = {
       getTableConfig: jest.fn(),
       getAllRecords: jest.fn(),
       batchCreateRecords: jest.fn(),
+      batchUpdateRecords: jest.fn(),
       truncateText: jest.fn((text: string, max = 2000) =>
         text && text.length > max ? `${text.slice(0, max)}...(truncated)` : text || '',
       ),
@@ -22,6 +44,10 @@ describe('ChatRecordSyncService', () => {
 
     mockChatSessionService = {
       getChatMessagesByTimeRange: jest.fn(),
+      getChatSessionMessages: jest.fn(async (chatId: string) => ({
+        chatId,
+        messages: buildMessages(chatId),
+      })),
     } as unknown as jest.Mocked<ChatSessionService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -38,25 +64,6 @@ describe('ChatRecordSyncService', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
-
-  const buildMessages = (chatId = 'chat_001') => [
-    {
-      role: 'user' as const,
-      content: '你好，我想找工作',
-      timestamp: Date.now() - 3600000,
-      messageId: 'msg_001',
-      chatId,
-      candidateName: '张三',
-      managerName: '李经理',
-    },
-    {
-      role: 'assistant' as const,
-      content: '您好！很高兴为您服务',
-      timestamp: Date.now() - 3500000,
-      messageId: 'msg_002',
-      chatId,
-    },
-  ];
 
   describe('syncYesterdayChatRecords', () => {
     it('should skip sync when chat config is incomplete (no appToken)', async () => {
@@ -91,13 +98,14 @@ describe('ChatRecordSyncService', () => {
       ]);
       mockBitableApi.getAllRecords.mockResolvedValue([]);
       mockBitableApi.batchCreateRecords.mockResolvedValue({ created: 1, failed: 0 });
+      mockBitableApi.batchUpdateRecords.mockResolvedValue({ success: 0, failed: 0 });
 
       await service.syncYesterdayChatRecords();
 
       expect(mockBitableApi.batchCreateRecords).toHaveBeenCalled();
     });
 
-    it('should deduplicate records that already exist in feishu', async () => {
+    it('should create new chats and update chats that already exist in feishu', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
       mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_existing', messages: buildMessages('chat_existing') },
@@ -108,17 +116,31 @@ describe('ChatRecordSyncService', () => {
         { record_id: 'rec_001', fields: { chatId: 'chat_existing' } },
       ]);
       mockBitableApi.batchCreateRecords.mockResolvedValue({ created: 1, failed: 0 });
+      mockBitableApi.batchUpdateRecords.mockResolvedValue({ success: 1, failed: 0 });
 
       await service.syncYesterdayChatRecords();
 
       const createCall = mockBitableApi.batchCreateRecords.mock.calls[0];
       const records = createCall[2] as Array<{ fields: Record<string, unknown> }>;
-      // Should only include chat_new
       expect(records).toHaveLength(1);
       expect(records[0].fields.chatId).toBe('chat_new');
+
+      expect(mockBitableApi.batchUpdateRecords).toHaveBeenCalledWith(
+        chatTableConfig.appToken,
+        chatTableConfig.tableId,
+        [
+          expect.objectContaining({
+            record_id: 'rec_001',
+            fields: expect.objectContaining({
+              chatId: 'chat_existing',
+              聊天记录: expect.any(String),
+            }),
+          }),
+        ],
+      );
     });
 
-    it('should skip write when all records already exist', async () => {
+    it('should update records when all active chats already exist', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
       mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
@@ -126,10 +148,12 @@ describe('ChatRecordSyncService', () => {
       mockBitableApi.getAllRecords.mockResolvedValue([
         { record_id: 'rec_001', fields: { chatId: 'chat_001' } },
       ]);
+      mockBitableApi.batchUpdateRecords.mockResolvedValue({ success: 1, failed: 0 });
 
       await service.syncYesterdayChatRecords();
 
       expect(mockBitableApi.batchCreateRecords).not.toHaveBeenCalled();
+      expect(mockBitableApi.batchUpdateRecords).toHaveBeenCalledTimes(1);
     });
 
     it('should handle sync failure gracefully', async () => {
@@ -140,18 +164,30 @@ describe('ChatRecordSyncService', () => {
       await expect(service.syncYesterdayChatRecords()).resolves.toBeUndefined();
     });
 
-    it('should continue when getExistingChatIds fails (skip deduplication)', async () => {
+    it('should not write when existing record lookup fails', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
       mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
       ]);
       mockBitableApi.getAllRecords.mockRejectedValue(new Error('API error'));
-      mockBitableApi.batchCreateRecords.mockResolvedValue({ created: 1, failed: 0 });
 
-      // Should not throw and should still call batchCreate
       await service.syncYesterdayChatRecords();
 
-      expect(mockBitableApi.batchCreateRecords).toHaveBeenCalled();
+      expect(mockBitableApi.batchCreateRecords).not.toHaveBeenCalled();
+      expect(mockBitableApi.batchUpdateRecords).not.toHaveBeenCalled();
+    });
+
+    it('should use an Asia/Shanghai yesterday window', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-01T03:00:00.000Z'));
+
+      const window = (
+        service as unknown as { getYesterdayWindow: () => { start: number; end: number } }
+      ).getYesterdayWindow();
+
+      expect(new Date(window.start).toISOString()).toBe('2026-06-29T16:00:00.000Z');
+      expect(new Date(window.end).toISOString()).toBe('2026-06-30T16:00:00.000Z');
+
+      jest.useRealTimers();
     });
   });
 
@@ -208,6 +244,7 @@ describe('ChatRecordSyncService', () => {
       ]);
       mockBitableApi.getAllRecords.mockResolvedValue([]);
       mockBitableApi.batchCreateRecords.mockResolvedValue({ created: 1, failed: 0 });
+      mockBitableApi.batchUpdateRecords.mockResolvedValue({ success: 0, failed: 0 });
 
       const result = await service.syncByTimeRange(startTime, endTime);
 
@@ -215,7 +252,7 @@ describe('ChatRecordSyncService', () => {
       expect(result.recordCount).toBe(1);
     });
 
-    it('should return success when all records already exist', async () => {
+    it('should update when all records already exist', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
       mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
@@ -223,11 +260,12 @@ describe('ChatRecordSyncService', () => {
       mockBitableApi.getAllRecords.mockResolvedValue([
         { record_id: 'rec_001', fields: { chatId: 'chat_001' } },
       ]);
+      mockBitableApi.batchUpdateRecords.mockResolvedValue({ success: 1, failed: 0 });
 
       const result = await service.syncByTimeRange(startTime, endTime);
 
       expect(result.success).toBe(true);
-      expect(result.message).toBe('所有记录均已存在');
+      expect(result.message).toContain('更新: 1');
     });
 
     it('should handle errors and return failure', async () => {

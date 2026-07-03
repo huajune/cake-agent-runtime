@@ -181,7 +181,7 @@ memory.onTurnEnd
 - 旧：最后一条 user（依赖上层合并）
 - 新：末尾连续 user 块 `\n` 合并（上层合不合并都对）
 
-实现：[`trailingUserContent`](../../src/agent/agent-preparation.service.ts)。
+实现：[`trailingUserContent`](../../src/agent/generator/preparation.service.ts)。
 
 ### 5. Replay 最多一次
 
@@ -200,7 +200,7 @@ Bull 的 `jobId = {chatId}:{messageId}`，去重保证同 messageId 只会有一
 | Worker | [`src/channels/wecom/message/runtime/message.processor.ts`](../../src/channels/wecom/message/runtime/message.processor.ts) |
 | 主编排（含 replay） | [`src/channels/wecom/message/application/reply-workflow.service.ts`](../../src/channels/wecom/message/application/reply-workflow.service.ts) |
 | 观测 trace | [`src/channels/wecom/message/telemetry/wecom-message-observability.service.ts`](../../src/channels/wecom/message/telemetry/wecom-message-observability.service.ts) |
-| Agent runner（`deferTurnEnd`） | [`src/agent/runner.service.ts`](../../src/agent/runner.service.ts) |
-| Agent 预备（`trailingUserContent`） | [`src/agent/agent-preparation.service.ts`](../../src/agent/agent-preparation.service.ts) |
+| Agent runner（`deferTurnEnd`） | [`src/agent/runner/agent-runner.service.ts`](../../src/agent/runner/agent-runner.service.ts) |
+| Agent 预备（`trailingUserContent`） | [`src/agent/generator/preparation.service.ts`](../../src/agent/generator/preparation.service.ts) |
 | 流水写入 | [`src/biz/monitoring/services/tracking/message-tracking.service.ts`](../../src/biz/monitoring/services/tracking/message-tracking.service.ts) |
 | 记忆 lifecycle | [`src/memory/services/memory-lifecycle.service.ts`](../../src/memory/services/memory-lifecycle.service.ts) |

@@ -492,8 +492,8 @@ describe('MessageParser', () => {
 
 describe('isResumeImageDescription', () => {
   it.each([
-    '简历图片：姓名陆乐，手机号13962387831，籍贯启东',
-    '手写简历，包含姓名陆乐、手机号、工作经历比业迪/中国移动',
+    '简历图片：姓名兮兮，手机号18271421690，籍贯启东',
+    '手写简历，包含姓名兮兮、手机号、工作经历比业迪/中国移动',
     '简历照片，字迹清晰可见姓名与电话',
     '履历表照片：包含个人信息与工作经历',
     '「简历图片」姓名张三',
@@ -517,7 +517,9 @@ describe('stripResumeAttachmentLines', () => {
     // badcase chat 6a2fac72…：vision OCR 把卡片内嵌附件链接也转写进了描述，
     // 再无条件追加一行会出现重复"简历附件"行。
     const description = '简历图片：姓名徐中如\n- 工作经历：良品铺子\n简历附件：https://oss/a.jpg';
-    expect(stripResumeAttachmentLines(description)).toBe('简历图片：姓名徐中如\n- 工作经历：良品铺子');
+    expect(stripResumeAttachmentLines(description)).toBe(
+      '简历图片：姓名徐中如\n- 工作经历：良品铺子',
+    );
   });
 
   it('is a no-op when no 简历附件 line is present', () => {

@@ -96,9 +96,7 @@ describe('collection-strategy.util', () => {
     });
 
     it('reports detected=false when no signals match', () => {
-      const result = detectCollectionResistance([
-        { role: 'user', content: '我先看看后厨岗位' },
-      ]);
+      const result = detectCollectionResistance([{ role: 'user', content: '我先看看后厨岗位' }]);
       expect(result.detected).toBe(false);
       expect(result.matchedSignals).toEqual([]);
       expect(result.latestUserMessage).toBe('我先看看后厨岗位');

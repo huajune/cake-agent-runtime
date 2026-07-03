@@ -16,7 +16,7 @@ function makeParams(
     supplementDefinitions: [],
     context: {} as ToolBuildContext,
     name: '王玉凯',
-    phone: '15669826812',
+    phone: '18271421690',
     age: 32,
     genderId: 1,
     interviewTime: '2026-04-21 16:00:00',

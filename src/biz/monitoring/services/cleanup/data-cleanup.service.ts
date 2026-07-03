@@ -68,6 +68,11 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.isReadOnlyPreview()) {
+      this.logger.warn('READ_ONLY_PREVIEW=true，跳过启动数据清理');
+      return;
+    }
+
     if (!this.supabaseService.isAvailable()) {
       this.logger.warn('⚠️ 数据清理服务已禁用 (Supabase 不可用)');
       return;
@@ -97,6 +102,8 @@ export class DataCleanupService implements OnModuleInit {
    */
   @Cron('0 3 * * *')
   async cleanupExpiredData(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
     if (!this.supabaseService.isAvailable()) {
       return;
     }
@@ -126,6 +133,8 @@ export class DataCleanupService implements OnModuleInit {
    */
   @Cron('0 * * * *')
   async timeoutStuckRecordsHourly(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
     if (!this.supabaseService.isAvailable()) {
       return;
     }
@@ -290,6 +299,11 @@ export class DataCleanupService implements OnModuleInit {
     let userActivity = 0;
     let errorLogs = 0;
 
+    if (this.isReadOnlyPreview()) {
+      this.logger.warn('[数据清理] READ_ONLY_PREVIEW=true，跳过手动清理');
+      return { agentInvocations, chatMessages, processingRecords, userActivity, errorLogs };
+    }
+
     if (!this.supabaseService.isAvailable()) {
       this.logger.warn('[数据清理] Supabase 不可用，跳过清理');
       return { agentInvocations, chatMessages, processingRecords, userActivity, errorLogs };
@@ -334,6 +348,10 @@ export class DataCleanupService implements OnModuleInit {
     );
 
     return { agentInvocations, chatMessages, processingRecords, userActivity, errorLogs };
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 
   private notifyCleanupFailure(source: string, title: string, error: unknown): void {

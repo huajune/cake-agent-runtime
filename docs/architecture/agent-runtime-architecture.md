@@ -2,7 +2,7 @@
 
 **最后更新**：2026-04-23
 **面向**：研发同学
-**运营/产品视角**：[agent-runtime-architecture-product-view.md](agent-runtime-architecture-product-view.md)
+**运营/产品视角**：[agent-for-operations.md](../product/agent-for-operations.md)
 
 ---
 
@@ -65,9 +65,15 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 
 ## 3. Agent 编排层
 
-入口：[src/agent/runner.service.ts](src/agent/runner.service.ts)
+> **命名更新（2026-06 可靠性重构后）**：原单一 `AgentRunnerService`（旧路径 `src/agent/runner/agent-runner.service.ts`）已拆成两层：
+> - **`GeneratorService`**（`src/agent/generator/generator.service.ts`）——负责调 LLM 与收尾（本节下文描述的"调 LLM/收尾"职责现归属它）。
+> - **`AgentRunnerService`**（`src/agent/runner/agent-runner.service.ts`）——回合编排接缝：`invokeReviewed`（generator → 出站守卫 → 受控 repair）、`runTurn`（渠道无关终态分类）、`precheckInboundOutcome`（入站风险预检）。
+>
+> 出站守卫见 [security-guardrails.md](./security-guardrails.md)。本节下文的 `AgentRunnerService.invoke` 语义现由 `GeneratorService.invoke` 承担；代码行号引用可能随重构漂移，以文件名 + 方法名为准。
 
-`AgentRunnerService` 只做两件事：**调 LLM**、**收尾**。所有准备工作下放到独立的 `AgentPreparationService`，所有 LLM 请求统一走 `LlmExecutorService`。
+入口：[src/agent/generator/generator.service.ts](src/agent/generator/generator.service.ts)（生成）、[src/agent/runner/agent-runner.service.ts](src/agent/runner/agent-runner.service.ts)（编排）
+
+生成层只做两件事：**调 LLM**、**收尾**。所有准备工作下放到独立的 `AgentPreparationService`，所有 LLM 请求统一走 `LlmExecutorService`。
 
 ### 3.1 调用链
 
@@ -93,7 +99,7 @@ invoke(params) / stream(params)
 
 ### 3.2 AgentPreparationService.prepare()
 
-[src/agent/agent-preparation.service.ts](src/agent/agent-preparation.service.ts)
+[src/agent/generator/preparation.service.ts](src/agent/generator/preparation.service.ts)
 
 单次 prepare 内部步骤：
 
@@ -183,7 +189,7 @@ interface AgentRunResult {
 
 ### 3.6 prepareStep 动态工具屏蔽
 
-[runner.service.ts:241](src/agent/runner.service.ts#L241) `buildPrepareStep()` 在每一步开始前基于历史 steps 收紧 `activeTools`：
+[runner.service.ts:241](src/agent/runner/agent-runner.service.ts#L241) `buildPrepareStep()` 在每一步开始前基于历史 steps 收紧 `activeTools`：
 
 - **同名工具超限**：单轮同一工具 ≥ `MAX_SAME_TOOL_CALLS_PER_TURN` 次 → 屏蔽后续调用（典型场景：`duliday_job_list` 不断换参扩面）
 - **skip_reply 互斥**：本轮已有任一业务工具调用 → 屏蔽 `skip_reply`（沉默只允许在无业务动作的轮次）
@@ -192,7 +198,7 @@ interface AgentRunResult {
 
 ### 3.7 空文本恢复
 
-工具链偶发以"有 reasoning、有 tool results，但最终文本为空"结束。[runner.service.ts:476](src/agent/runner.service.ts#L476) `recoverEmptyTextResult()` 在这种情况下关闭工具、把已执行工具结果压缩成 transcript，让模型再补一条候选人可见回复。恢复失败则保留原空结果交上层兜底。
+工具链偶发以"有 reasoning、有 tool results，但最终文本为空"结束。[runner.service.ts:476](src/agent/runner/agent-runner.service.ts#L476) `recoverEmptyTextResult()` 在这种情况下关闭工具、把已执行工具结果压缩成 transcript，让模型再补一条候选人可见回复。恢复失败则保留原空结果交上层兜底。
 
 ### 3.8 LlmExecutorService — 共享 LLM 入口
 
@@ -211,7 +217,7 @@ supportsVisionInput(options): boolean
 
 ## 4. Context System — Prompt 组装
 
-入口：[src/agent/context/context.service.ts](src/agent/context/context.service.ts)
+入口：[src/agent/generator/context.service.ts](src/agent/generator/context.service.ts)
 
 `ContextService.compose()` 输出 `{ systemPrompt, stageGoals, thresholds }`。
 
@@ -228,7 +234,7 @@ interface PromptSection {
 
 ### 4.2 场景注册表
 
-[src/agent/context/scenarios/scenario.registry.ts](src/agent/context/scenarios/scenario.registry.ts)
+[src/agent/generator/context/scenarios/scenario.registry.ts](src/agent/generator/context/scenarios/scenario.registry.ts)
 
 ```typescript
 SCENARIO_SECTIONS = {
@@ -247,7 +253,7 @@ SCENARIO_SECTIONS = {
 
 ### 4.3 Section 清单
 
-[src/agent/context/sections/](src/agent/context/sections/)
+[src/agent/generator/context/sections/](src/agent/generator/context/sections/)
 
 **顶层结构（candidate-consultation 使用）**：
 
@@ -486,7 +492,6 @@ ingress/             回调入口（Controller + DTO + Schema）
 application/         业务逻辑
   ├─ accept-inbound-message.service.ts   管线入口（去重/过滤/写历史/监控）
   ├─ reply-workflow.service.ts           Agent 调用 + Replay + 投递
-  ├─ pre-agent-risk-intercept.service.ts 前置风险同步预检
   ├─ image-description.service.ts        图片/表情描述处理
   ├─ message-processing-failure.service.ts 错误分类 + 飞书告警
   ├─ pipeline.service.ts                 薄门面，转发到 accept/reply
@@ -495,6 +500,8 @@ delivery/            打字延迟 + 分段发送
 runtime/             dedup / merge / processor / worker / redis-keys
 telemetry/           observability / trace store
 ```
+
+前置风险同步预检已归位到 `src/agent/guardrail/input/risk-intercept.service.ts`，高置信关键词检测内聚在该服务内。
 
 ### 8.1 回调处理流程
 
@@ -643,14 +650,19 @@ AppModule
 │   ├── AgentPreparationService    prepare 流程
 │   ├── ContextService             prompt 组装
 │   ├── AgentController / AgentHealthService
-│   └── InputGuardService          prompt injection 检测
+│   └── guardrail/
+│       ├── input/InputGuardrailService      input guardrail 编排入口
+│       ├── input/PromptInjectionService     prompt injection 检测
+│       ├── input/RiskInterceptService       高置信风险预检
+│       ├── output/OutputGuardrailService    出站 rule/llm 组合裁决
+│       ├── output/HardRulesService          确定性出站规则调度
+│       └── output/LlmReviewerService        高风险语义 reviewer
 │
 ├── ChannelsModule
 │   └── WecomModule
 │       └── MessageModule
 │           ├── AcceptInboundMessageService
 │           ├── ReplyWorkflowService
-│           ├── PreAgentRiskInterceptService
 │           ├── MessageProcessingFailureService
 │           ├── MessageDeliveryService
 │           ├── MessageDeduplicationService
@@ -706,8 +718,8 @@ AppModule
    │
 4. ReplyWorkflowService.processMessageCore()
    │
-5. PreAgentRiskInterceptService.precheck()
-   └─ 不命中，继续
+5. RiskInterceptService.evaluate()
+   └─ 不命中继续；命中则返回 guardrail_blocked 并由统一出口执行暂停/告警
    │
 6. callAgent({ deferTurnEnd: true })
    │
@@ -855,9 +867,9 @@ AppModule
 
 | 模块       | 入口                                                                       |
 | ---------- | -------------------------------------------------------------------------- |
-| Agent 编排 | [src/agent/runner.service.ts](src/agent/runner.service.ts)                 |
-| Prepare    | [src/agent/agent-preparation.service.ts](src/agent/agent-preparation.service.ts) |
-| Context    | [src/agent/context/context.service.ts](src/agent/context/context.service.ts) |
+| Agent 编排 | [src/agent/runner/agent-runner.service.ts](src/agent/runner/agent-runner.service.ts)                 |
+| Prepare    | [src/agent/generator/preparation.service.ts](src/agent/generator/preparation.service.ts) |
+| Context    | [src/agent/generator/context/context.service.ts](src/agent/generator/context/context.service.ts) |
 | LLM        | [src/llm/llm-executor.service.ts](src/llm/llm-executor.service.ts)         |
 | Providers  | [src/providers/router.service.ts](src/providers/router.service.ts)         |
 | Memory     | [src/memory/memory.service.ts](src/memory/memory.service.ts)               |

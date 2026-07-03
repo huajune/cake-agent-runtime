@@ -295,7 +295,11 @@ describe('job-policy-parser', () => {
           firstInterview: {
             interviewAddress: '先审核简历，待简历审核通过后，告知面试地点&时间',
             fixedInterviewTimes: [
-              { interviewDate: '2099-01-01', interviewStartTime: '13:00', interviewEndTime: '18:00' },
+              {
+                interviewDate: '2099-01-01',
+                interviewStartTime: '13:00',
+                interviewEndTime: '18:00',
+              },
             ],
           },
         },
@@ -309,7 +313,11 @@ describe('job-policy-parser', () => {
           firstInterview: {
             interviewAddress: '上海市杨浦区国权路123号',
             fixedInterviewTimes: [
-              { interviewDate: '2099-01-01', interviewStartTime: '13:00', interviewEndTime: '18:00' },
+              {
+                interviewDate: '2099-01-01',
+                interviewStartTime: '13:00',
+                interviewEndTime: '18:00',
+              },
             ],
           },
         },

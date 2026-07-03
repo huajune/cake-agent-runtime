@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException } from '@nestjs/common';
 import { AgentController } from '@agent/agent.controller';
-import { AgentRunnerService } from '@agent/runner.service';
+import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { AgentHealthService } from '@agent/agent-health.service';
 import { CallerKind } from '@enums/agent.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
@@ -10,8 +10,17 @@ import { RegistryService } from '@providers/registry.service';
 describe('AgentController', () => {
   let controller: AgentController;
 
-  const mockLoop = {
-    invoke: jest.fn(),
+  const mockRunner = {
+    invokeReviewed: jest.fn(),
+  };
+
+  const passDecision = {
+    decision: 'pass',
+    riskLevel: 'low',
+    violations: [],
+    ruleIds: [],
+    blockedRuleIds: [],
+    repairMode: 'rewrite',
   };
 
   const mockAlertService = {
@@ -66,7 +75,7 @@ describe('AgentController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AgentController],
       providers: [
-        { provide: AgentRunnerService, useValue: mockLoop },
+        { provide: AgentRunnerService, useValue: mockRunner },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: RegistryService, useValue: mockRegistry },
         { provide: AgentHealthService, useValue: mockHealthService },
@@ -152,11 +161,14 @@ describe('AgentController', () => {
   });
 
   describe('debugChat', () => {
-    it('should call AgentRunnerService.invoke with correct parameters', async () => {
-      mockLoop.invoke.mockResolvedValue({
+    it('should call AgentRunnerService.invokeReviewed with correct parameters', async () => {
+      mockRunner.invokeReviewed.mockResolvedValue({
         text: '你好！',
         steps: 1,
         usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+        outputDecision: passDecision,
+        revised: false,
+        guardrailTrace: { steps: [], repaired: false, finalDecision: 'pass' },
       });
 
       const result = await controller.debugChat({
@@ -166,30 +178,42 @@ describe('AgentController', () => {
         userId: 'user-1',
       });
 
-      expect(mockLoop.invoke).toHaveBeenCalledWith({
-        callerKind: CallerKind.DEBUG,
-        messages: [{ role: 'user', content: '你好' }],
-        userId: 'user-1',
-        corpId: 'debug',
-        sessionId: 'conv123',
-        scenario: 'candidate-consultation',
-        strategySource: 'testing',
-      });
+      expect(mockRunner.invokeReviewed).toHaveBeenCalledWith(
+        {
+          callerKind: CallerKind.DEBUG,
+          messages: [{ role: 'user', content: '你好' }],
+          userId: 'user-1',
+          corpId: 'debug',
+          sessionId: 'conv123',
+          scenario: 'candidate-consultation',
+          strategySource: 'testing',
+          contactName: undefined,
+        },
+        expect.objectContaining({
+          userMessage: '你好',
+          chatId: 'conv123',
+          userId: 'user-1',
+        }),
+      );
       expect(result.success).toBe(true);
       expect(result.text).toBe('你好！');
       expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 20, totalTokens: 30 });
+      expect(result.guardrail.decision).toEqual(passDecision);
+      expect(result.guardrail.trace).toEqual({ steps: [], repaired: false, finalDecision: 'pass' });
     });
 
     it('should use defaults when optional params not provided', async () => {
-      mockLoop.invoke.mockResolvedValue({
+      mockRunner.invokeReviewed.mockResolvedValue({
         text: 'response',
         steps: 1,
         usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+        outputDecision: passDecision,
+        revised: false,
       });
 
       const result = await controller.debugChat({ message: '测试' });
 
-      expect(mockLoop.invoke).toHaveBeenCalledWith(
+      expect(mockRunner.invokeReviewed).toHaveBeenCalledWith(
         expect.objectContaining({
           callerKind: CallerKind.DEBUG,
           messages: [{ role: 'user', content: '测试' }],
@@ -198,12 +222,13 @@ describe('AgentController', () => {
           scenario: 'candidate-consultation',
           strategySource: 'testing',
         }),
+        expect.objectContaining({ userMessage: '测试', userId: 'debug-user' }),
       );
       expect(result.success).toBe(true);
     });
 
-    it('should throw HttpException when AgentRunnerService fails', async () => {
-      mockLoop.invoke.mockRejectedValue(new Error('Agent failed'));
+    it('should throw HttpException when runner fails', async () => {
+      mockRunner.invokeReviewed.mockRejectedValue(new Error('Agent failed'));
       mockAlertService.sendAlert.mockResolvedValue(true);
 
       await expect(controller.debugChat({ message: '测试' })).rejects.toThrow(HttpException);

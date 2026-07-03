@@ -18,7 +18,7 @@ export interface RecordHandoffInput {
   /** 触发时会话阶段（程序性 currentStage）。 */
   stage?: string | null;
   botImId?: string | null;
-  /** modify_appointment 等场景关联的工单 ID（来自 latest_booking）。 */
+  /** modify_appointment 等场景关联的工单 ID（来自 active_booking）。 */
   workOrderId?: number | null;
   /** 去重键：同 (corpId, idempotencyKey) 仅记一次。 */
   idempotencyKey: string;

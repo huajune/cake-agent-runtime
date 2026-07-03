@@ -5,7 +5,7 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RegistryService } from '@providers/registry.service';
 import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { ContextService } from '@agent/context/context.service';
+import { ContextService } from '@agent/generator/context/context.service';
 
 describe('AgentHealthService', () => {
   let service: AgentHealthService;

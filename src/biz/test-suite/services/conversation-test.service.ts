@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
+import { GeneratorService, type GeneratorRunResult } from '@agent/generator/generator.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { type EvaluationDimensions } from '@evaluation/evaluation.types';
@@ -75,7 +75,7 @@ export class ConversationTestService {
   private readonly conversationConcurrency: number;
 
   constructor(
-    private readonly runner: AgentRunnerService,
+    private readonly runner: GeneratorService,
     private readonly llmEvaluationService: LlmEvaluationService,
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
@@ -576,7 +576,7 @@ export class ConversationTestService {
       };
     }
 
-    let loopResult: AgentRunResult | null = null;
+    let loopResult: GeneratorRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
 
@@ -795,7 +795,7 @@ export class ConversationTestService {
   }
 
   private async runDeferredTurnEnd(
-    loopResult: AgentRunResult | null,
+    loopResult: GeneratorRunResult | null,
   ): Promise<TestMemoryTraceBundle['turnEnd']> {
     if (!loopResult?.runTurnEnd) {
       return { status: 'skipped' };
@@ -829,7 +829,7 @@ export class ConversationTestService {
     source: ConversationSnapshotRecord;
     turn: ConversationTurn;
     runtimeScope: TestRuntimeScope;
-    loopResult: AgentRunResult | null;
+    loopResult: GeneratorRunResult | null;
     toolCalls: unknown[];
     tokenUsage: unknown;
     startedAt: number;
@@ -864,7 +864,7 @@ export class ConversationTestService {
   private buildConversationMemoryTrace(params: {
     runtimeScope: TestRuntimeScope;
     source: ConversationSnapshotRecord;
-    loopResult: AgentRunResult | null;
+    loopResult: GeneratorRunResult | null;
     postTurnState: unknown;
     turnEnd: TestMemoryTraceBundle['turnEnd'];
   }): TestMemoryTraceBundle {

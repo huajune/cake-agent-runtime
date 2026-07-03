@@ -1,6 +1,13 @@
 import { ReplyWorkflowService } from '@channels/wecom/message/application/reply-workflow.service';
 import { EnterpriseMessageCallbackDto } from '@channels/wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
+import { CallerKind } from '@enums/agent.enum';
+import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import type { GeneratorInvokeParams } from '@agent/generator/generator.types';
+import type { SessionRef, TurnRequest, TurnTrigger } from '@agent/runner/agent-runner.types';
+import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
+import { TurnFinalizer } from '@agent/runner/turn-finalizer';
+import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 
 describe('ReplyWorkflowService', () => {
   const deduplicationService = {
@@ -11,7 +18,29 @@ describe('ReplyWorkflowService', () => {
   };
   const runner = {
     invoke: jest.fn(),
+    invokeReviewed: jest.fn(),
+    invokeReviewedTurn: jest.fn(),
+    runTurn: jest.fn(),
+    precheckInboundOutcome: jest.fn(),
   };
+  // 出站守卫裁决（reply-workflow 读 result.outputDecision）；默认 pass，个别用例改写。
+  type OutputDecisionLike = {
+    decision: 'pass' | 'revise' | 'block';
+    riskLevel: 'low' | 'medium' | 'high';
+    violations: unknown[];
+    ruleIds: string[];
+    blockedRuleIds: string[];
+    reasonCode?: string;
+  };
+  const passOutputDecision: OutputDecisionLike = {
+    decision: 'pass',
+    riskLevel: 'low',
+    violations: [],
+    ruleIds: [],
+    blockedRuleIds: [],
+  };
+  let currentOutputDecision: OutputDecisionLike = passOutputDecision;
+  type RunTurnMockParams = TurnRequest;
   const monitoringService = {
     recordSuccess: jest.fn(),
   };
@@ -39,14 +68,12 @@ describe('ReplyWorkflowService', () => {
     handleProcessingError: jest.fn(),
     sendFallbackAlert: jest.fn(),
   };
-  const preAgentRiskIntercept = {
-    precheck: jest.fn(),
-  };
   const simpleMergeService = {
     claimPendingSnapshot: jest.fn(),
     ackPendingMessages: jest.fn().mockResolvedValue(undefined),
   };
   const imageDescription = {
+    describeAndUpdateAsync: jest.fn(),
     awaitVision: jest.fn().mockResolvedValue(undefined),
   };
   const opsEventsRecorder = {
@@ -59,14 +86,103 @@ describe('ReplyWorkflowService', () => {
   const handoffRecorder = {
     record: jest.fn(),
   };
-  const replyFactGuard = {
-    check: jest.fn(),
+  const followUpScheduler = {
+    scheduleFollowUp: jest.fn(),
+  };
+  const session = {
+    saveTerminalState: jest.fn(),
+    recordCandidateActivity: jest.fn(),
   };
 
   let service: ReplyWorkflowService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // invokeReviewedTurn 委托给 invoke（保留既有 runner.invoke 断言），并叠加统一 outcome/finalizer。
+    currentOutputDecision = passOutputDecision;
+    runner.invokeReviewed.mockImplementation(async (params: GeneratorInvokeParams) => {
+      const raw = await runner.invoke(params);
+      return {
+        ...raw,
+        outputDecision: raw.outputDecision ?? currentOutputDecision,
+        revised: raw.revised ?? false,
+      };
+    });
+    type ReviewedTurnMockParams = {
+      invoke: GeneratorInvokeParams;
+      trigger: TurnTrigger;
+      sessionRef: SessionRef;
+      messageId?: string;
+      onTurnEndError?: (error: unknown) => void;
+    };
+    runner.invokeReviewedTurn.mockImplementation(async (params: ReviewedTurnMockParams) => {
+      const raw = await runner.invoke(params.invoke);
+      const reviewed = {
+        ...raw,
+        outputDecision: raw.outputDecision ?? currentOutputDecision,
+        revised: raw.revised ?? false,
+      };
+      const outcome =
+        raw.outcome ??
+        classifyReviewedOutcome(reviewed, params.trigger, params.sessionRef, params.messageId);
+      return {
+        ...reviewed,
+        runTurnEnd: undefined,
+        outcome: { ...outcome, runTurnEnd: undefined },
+        turnFinalizer:
+          raw.turnFinalizer ?? TurnFinalizer.from(raw.runTurnEnd, params.onTurnEndError),
+      };
+    });
+    runner.runTurn.mockImplementation(async (req: RunTurnMockParams) => {
+      const invokeParams: GeneratorInvokeParams = {
+        callerKind: req.context?.callerKind ?? CallerKind.WECOM,
+        userId: req.sessionRef.userId,
+        corpId: req.sessionRef.corpId,
+        sessionId: req.sessionRef.sessionId,
+        messageId: req.context?.messageId,
+        messages:
+          req.trigger.kind === 'inbound'
+            ? [
+                {
+                  role: 'user',
+                  content: req.trigger.userMessage,
+                  imageUrls: req.trigger.images,
+                  imageMessageIds: req.context?.imageMessageIds,
+                },
+              ]
+            : [{ role: 'user', content: '[系统主动跟进]' }],
+        toolMode: req.toolMode ?? (req.trigger.kind === 'proactive' ? 'readonly' : 'scenario'),
+        proactiveDirective: req.trigger.kind === 'proactive' ? req.trigger.directive : undefined,
+        deferTurnEnd: true,
+        scenario: req.context?.scenario,
+        imageUrls: req.trigger.kind === 'inbound' ? req.trigger.images : undefined,
+        imageMessageIds: req.context?.imageMessageIds,
+        visualMessageTypes: req.context?.visualMessageTypes,
+        contactName: req.context?.contactName,
+        botImId: req.context?.botImId,
+        botUserId: req.context?.botUserId,
+        groupId: req.context?.groupId,
+        externalUserId: req.context?.externalUserId,
+        token: req.context?.token,
+        imContactId: req.context?.imContactId,
+        imRoomId: req.context?.imRoomId,
+        apiType: req.context?.apiType,
+        modelId: req.modelId,
+        thinking: req.context?.thinking,
+        shortTermEndTimeInclusive: req.context?.shortTermEndTimeInclusive,
+        onPreparedRequest: req.context?.onPreparedRequest,
+      };
+      const raw = await runner.invoke(invokeParams);
+      const reviewed = {
+        ...raw,
+        outputDecision: raw.outputDecision ?? currentOutputDecision,
+        revised: raw.revised ?? false,
+      };
+      const outcome =
+        raw.outcome ??
+        classifyReviewedOutcome(reviewed, req.trigger, req.sessionRef, req.context?.messageId);
+      return outcome;
+    });
     deduplicationService.markMessageAsProcessedAsync.mockResolvedValue(undefined);
     deliveryService.deliverReply.mockResolvedValue({
       success: true,
@@ -129,17 +245,28 @@ describe('ReplyWorkflowService', () => {
     runtimeConfig.getMergeDelayMs.mockReturnValue(3500);
     processingFailureService.inferErrorType.mockReturnValue('message');
     processingFailureService.handleProcessingError.mockResolvedValue(undefined);
-    preAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });
+    runner.precheckInboundOutcome.mockResolvedValue(null);
 
-    replyFactGuard.check.mockReturnValue({ hit: false, blocked: false, contradictions: [] });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
+    followUpScheduler.scheduleFollowUp.mockResolvedValue({ scheduled: true });
+    session.saveTerminalState.mockResolvedValue(undefined);
+    session.recordCandidateActivity.mockResolvedValue(undefined);
     interventionService.dispatch.mockResolvedValue({
       dispatched: true,
       paused: true,
       alerted: true,
     });
     handoffRecorder.record.mockResolvedValue('inserted');
+
+    const reengagementAnchors = new ReengagementAnchorService(
+      followUpScheduler as never,
+      session as never,
+    );
+    const outcomeInterventions = new TurnOutcomeInterventionService(
+      interventionService as never,
+      handoffRecorder as never,
+    );
 
     service = new ReplyWorkflowService(
       deduplicationService as never,
@@ -149,14 +276,12 @@ describe('ReplyWorkflowService', () => {
       wecomObservability as never,
       runtimeConfig as never,
       processingFailureService as never,
-      preAgentRiskIntercept as never,
-      replyFactGuard as never,
       simpleMergeService as never,
       imageDescription as never,
       opsEventsRecorder as never,
-      interventionService as never,
-      handoffRecorder as never,
-      { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) } as never,
+      outcomeInterventions as never,
+      followUpScheduler as never,
+      reengagementAnchors,
     );
   });
 
@@ -207,6 +332,79 @@ describe('ReplyWorkflowService', () => {
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('should pass image urls to Agent directly without pre-describing on successful multimodal path', async () => {
+    const message = createMessage({
+      messageType: MessageType.IMAGE,
+      payload: {
+        imageUrl: 'https://example.com/job-card.jpg',
+        artworkUrl: 'https://example.com/original-job-card.jpg',
+      },
+    });
+
+    await service.processSingleMessage(message);
+
+    expect(runner.invoke).toHaveBeenCalledTimes(1);
+    expect(runner.invoke.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        imageUrls: ['https://example.com/original-job-card.jpg'],
+        imageMessageIds: ['msg-1'],
+        messages: [
+          expect.objectContaining({
+            role: 'user',
+            content: '[图片消息]',
+            imageUrls: ['https://example.com/original-job-card.jpg'],
+            imageMessageIds: ['msg-1'],
+          }),
+        ],
+      }),
+    );
+    expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
+  });
+
+  it('should describe images and retry text-only when multimodal Agent call fails', async () => {
+    const message = createMessage({
+      messageType: MessageType.IMAGE,
+      payload: {
+        imageUrl: 'https://example.com/job-card.jpg',
+        artworkUrl: 'https://example.com/original-job-card.jpg',
+      },
+    });
+    runner.invoke.mockRejectedValueOnce(new Error('vision provider failed')).mockResolvedValueOnce({
+      text: '文本兼容重跑成功',
+      reasoning: undefined,
+      responseMessages: [],
+      usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+    });
+
+    await service.processSingleMessage(message);
+
+    expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
+      'msg-1',
+      'https://example.com/original-job-card.jpg',
+      MessageType.IMAGE,
+    );
+    expect(imageDescription.awaitVision).toHaveBeenCalledWith(['msg-1'], 15_000);
+    expect(runner.invoke).toHaveBeenCalledTimes(2);
+    expect(runner.invoke.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        imageUrls: ['https://example.com/original-job-card.jpg'],
+        imageMessageIds: ['msg-1'],
+      }),
+    );
+    expect(runner.invoke.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        imageUrls: undefined,
+        imageMessageIds: undefined,
+        visualMessageTypes: undefined,
+      }),
+    );
+    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: '文本兼容重跑成功' }),
+      expect.anything(),
+      true,
+    );
   });
 
   it('should persist empty Agent telemetry before delegating failure handling', async () => {
@@ -388,16 +586,207 @@ describe('ReplyWorkflowService', () => {
       expect.anything(),
       true,
     );
+    expect(session.saveTerminalState).not.toHaveBeenCalled();
   });
 
-  it('出站守卫阻断规则命中（歧视性筛选条件外露）→ 拦截回复不投递，仍完成本轮流水', async () => {
-    replyFactGuard.check.mockReturnValue({
-      hit: true,
-      blocked: true,
-      contradictions: [
-        { ruleId: 'discriminatory_screening_leak', label: '歧视性筛选条件外露', blocked: true },
+  it('reply outcome 携带风险 sideEffect → 先投递安抚回复，再等待介入落地', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '我理解你的着急，我这边先帮你确认一下情况。',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'raise_risk_alert',
+          args: { riskType: 'escalation', reason: '候选人连续催促' },
+          result: {
+            accepted: true,
+            sideEffect: {
+              kind: 'conversation_risk',
+              source: 'agent_tool',
+              riskType: 'escalation',
+              riskLabel: '情绪升级',
+              summary: '候选人连续催促',
+              reason: '候选人连续催促',
+              currentMessageContent: '怎么还不回',
+              recentMessages: [],
+              sessionState: null,
+            },
+          },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 5, totalTokens: 6 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: '我理解你的着急，我这边先帮你确认一下情况。' }),
+      expect.anything(),
+      true,
+    );
+    expect(interventionService.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'conversation_risk',
+        source: 'agent_tool',
+        riskType: 'escalation',
+      }),
+    );
+    expect(deliveryService.deliverReply.mock.invocationCallOrder[0]).toBeLessThan(
+      interventionService.dispatch.mock.invocationCallOrder[0],
+    );
+    expect(interventionService.dispatch.mock.invocationCallOrder[0]).toBeLessThan(
+      deduplicationService.markMessageAsProcessedAsync.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('schedules booking_incomplete follow-up when accepted precheck still needs fields', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '还差学历，补一下我帮你约',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_precheck',
+          args: { jobId: 100 },
+          result: {
+            success: true,
+            nextAction: 'collect_fields',
+            bookingChecklist: { missingFields: ['学历'] },
+          },
+        },
       ],
     });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
+        scenarioCode: 'booking_incomplete',
+        anchorEventId: 'msg-1:collection_started',
+      }),
+    );
+  });
+
+  it('schedules interview_reminder follow-up when booking succeeds', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '约好了，明天 13:30 面试',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100, interviewTime: '2026-06-27 13:30:00' },
+          result: {
+            success: true,
+            workOrderId: 123,
+            errorType: null,
+          },
+        },
+      ],
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
+        scenarioCode: 'interview_reminder',
+        anchorEventId: 'msg-1:booking_succeeded',
+        state: expect.objectContaining({
+          terminal: 'booked',
+          interviewAt: Date.parse('2026-06-27T13:30:00+08:00'),
+        }),
+      }),
+    );
+    expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
+        scenarioCode: 'post_interview_followup',
+        anchorEventId: 'msg-1:post_interview_followup',
+      }),
+    );
+    expect(session.saveTerminalState).toHaveBeenCalledWith(
+      'corp-1',
+      'im-contact-1',
+      'chat-1',
+      'booked',
+    );
+  });
+
+  it('schedules store_presented_no_reply after a delivered job recommendation reply', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '杨浦奥乐齐长白店有分拣打包岗位，薪资 25 元/时。',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: {},
+          result: {
+            resultCount: 1,
+            markdown: '## 1. 分拣打包\n**品牌**: 奥乐齐\n**门店**: 长白店',
+          },
+        },
+      ],
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
+        scenarioCode: 'store_presented_no_reply',
+        anchorEventId: 'msg-1:store_presented',
+      }),
+    );
+  });
+
+  it('schedules address_missing after a delivered reply asks for location', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '你可以发个位置，我帮你看附近合适的门店。',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [],
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
+        scenarioCode: 'address_missing',
+        anchorEventId: 'msg-1:address_missing',
+      }),
+    );
+  });
+
+  it('does not schedule delivered-reply follow-ups when delivery is skipped', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '你可以发个位置，我帮你看附近合适的门店。',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [],
+    });
+    deliveryService.deliverReply.mockResolvedValueOnce({
+      success: true,
+      segmentCount: 0,
+      failedSegments: 0,
+      deliveredSegments: 0,
+      totalTime: 1,
+      skipped: true,
+      skipReason: 'hosting_paused',
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(opsEventsRecorder.recordEventDetailed).not.toHaveBeenCalled();
+    expect(followUpScheduler.scheduleFollowUp).not.toHaveBeenCalled();
+  });
+
+  it('出站守卫 block（歧视性筛选条件外露）→ 拦截回复不投递，仍完成本轮流水', async () => {
+    currentOutputDecision = {
+      decision: 'block',
+      riskLevel: 'high',
+      violations: [],
+      ruleIds: ['discriminatory_screening_leak'],
+      blockedRuleIds: ['discriminatory_screening_leak'],
+    };
 
     await service.processSingleMessage(createMessage());
 
@@ -407,14 +796,245 @@ describe('ReplyWorkflowService', () => {
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
   });
 
-  it('出站守卫常规告警规则命中（blocked=false）→ 不拦截，正常投递', async () => {
-    replyFactGuard.check.mockReturnValue({
-      hit: true,
-      blocked: false,
-      contradictions: [
-        { ruleId: 'group_promise_without_invite', label: '空头拉群承诺', blocked: false },
+  describe('turn-end 投影闸门（仅真实送达才写助手轮次）', () => {
+    it('回复真实投递 → turn-end 投影助手轮次（includeAssistantText:true）', async () => {
+      const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+      runner.invoke.mockResolvedValueOnce({
+        text: '我来帮你看一下',
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        toolCalls: [],
+        runTurnEnd,
+      });
+
+      await service.processSingleMessage(createMessage());
+
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: true });
+    });
+
+    it('投递因托管暂停被丢弃 → turn-end 不投影助手轮次（includeAssistantText:false）', async () => {
+      const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+      runner.invoke.mockResolvedValueOnce({
+        text: '你可以发个位置，我帮你看附近门店。',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        toolCalls: [],
+        runTurnEnd,
+      });
+      deliveryService.deliverReply.mockResolvedValueOnce({
+        success: true,
+        segmentCount: 0,
+        failedSegments: 0,
+        deliveredSegments: 0,
+        totalTime: 1,
+        skipped: true,
+        skipReason: 'hosting_paused',
+      });
+
+      await service.processSingleMessage(createMessage());
+
+      expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    });
+
+    it('出站守卫拦截 → turn-end 只记用户侧（includeAssistantText:false），不投递', async () => {
+      currentOutputDecision = {
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [],
+        ruleIds: ['discriminatory_screening_leak'],
+        blockedRuleIds: ['discriminatory_screening_leak'],
+      };
+      const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+      runner.invoke.mockResolvedValueOnce({
+        text: '被拦截的回复',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        toolCalls: [],
+        runTurnEnd,
+      });
+
+      await service.processSingleMessage(createMessage());
+
+      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    });
+
+    it('投递抛异常 → 仍以 includeAssistantText:false 完成用户侧 turn-end（事实提取不丢）', async () => {
+      const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+      runner.invoke.mockResolvedValueOnce({
+        text: '好的，帮你约明天下午',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        toolCalls: [],
+        runTurnEnd,
+      });
+      deliveryService.deliverReply.mockRejectedValueOnce(new Error('WeCom send 5xx'));
+
+      await service.processSingleMessage(createMessage());
+
+      expect(runTurnEnd).toHaveBeenCalledTimes(1);
+      expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    });
+  });
+
+  describe('前置风险预检命中 → 确定性静默 + 暂停', () => {
+    it('命中即跳过 Agent 与投递，仍标记已处理与跳过观测', async () => {
+      simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+        messages: [
+          createMessage({
+            messageId: 'msg-late-risk',
+            payload: { text: '后补一句', pureText: '后补一句' },
+          }),
+        ],
+        snapshotSize: 1,
+        batchId: 'batch-late',
+      });
+      runner.runTurn.mockResolvedValueOnce({
+        kind: 'guardrail_blocked',
+        toolCalls: [],
+        disposition: 'side_effects',
+        guardrail: {
+          phase: 'inbound',
+          source: 'input_guardrail',
+          riskType: 'abuse',
+          riskLabel: '辱骂',
+          reason: '命中辱骂关键词',
+          inspectedText: '你们就是骗子',
+        },
+        sideEffects: [
+          {
+            kind: 'conversation_risk',
+            source: 'regex_intercept',
+            riskType: 'abuse',
+            riskLabel: '辱骂',
+            summary: '候选人消息命中高置信度风险关键词',
+            reason: '命中辱骂关键词',
+            currentMessageContent: '你们就是骗子',
+            recentMessages: [],
+            sessionState: null,
+          },
+        ],
+      });
+
+      await service.processSingleMessage(createMessage());
+
+      expect(runner.invoke).not.toHaveBeenCalled();
+      expect(runner.precheckInboundOutcome).not.toHaveBeenCalled();
+      expect(simpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
+      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(interventionService.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'conversation_risk',
+          source: 'regex_intercept',
+          riskType: 'abuse',
+          chatId: 'chat-1',
+          pauseTargetId: 'chat-1',
+        }),
+      );
+      expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
+      expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
+      expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+      expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalledWith(
+        'msg-late-risk',
+      );
+    });
+  });
+
+  describe('出站拦截 → 转人工兜底', () => {
+    it('llm/降级 block（无 blockedRuleIds）→ dispatch general_handoff + 写 handoff 底账', async () => {
+      currentOutputDecision = {
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [],
+        ruleIds: [],
+        blockedRuleIds: [],
+        reasonCode: 'output_review_unavailable',
+      };
+      runner.invoke.mockResolvedValueOnce({
+        text: '未经审定的高风险回复',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        toolCalls: [],
+      });
+
+      await service.processSingleMessage(createMessage());
+
+      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(handoffRecorder.record).toHaveBeenCalledTimes(1);
+      expect(interventionService.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'general_handoff', source: 'agent_tool' }),
+      );
+    });
+
+    it('rule 档 block → 不投递 + dispatch general_handoff + 写 handoff 底账', async () => {
+      currentOutputDecision = {
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [],
+        ruleIds: ['discriminatory_screening_leak'],
+        blockedRuleIds: ['discriminatory_screening_leak'],
+      };
+      runner.invoke.mockResolvedValueOnce({
+        text: '命中 rule 档的回复',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        toolCalls: [],
+      });
+
+      await service.processSingleMessage(createMessage());
+
+      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(handoffRecorder.record).toHaveBeenCalledTimes(1);
+      expect(interventionService.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'general_handoff',
+          source: 'agent_tool',
+          alertLabel: '出站守卫拦截（rule 档）',
+        }),
+      );
+    });
+  });
+
+  it('booking succeeds but output is blocked → persists booked terminal without scheduling reminders', async () => {
+    currentOutputDecision = {
+      decision: 'block',
+      riskLevel: 'high',
+      violations: [],
+      ruleIds: ['proactive_insurance_policy_mention'],
+      blockedRuleIds: ['proactive_insurance_policy_mention'],
+    };
+    runner.invoke.mockResolvedValueOnce({
+      text: '约好了，另外这个有五险',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100, interviewTime: '2026-06-27 13:30:00' },
+          result: { success: true, workOrderId: 123 },
+        },
       ],
     });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(session.saveTerminalState).toHaveBeenCalledWith(
+      'corp-1',
+      'im-contact-1',
+      'chat-1',
+      'booked',
+    );
+    expect(followUpScheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'interview_reminder' }),
+    );
+    expect(followUpScheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'post_interview_followup' }),
+    );
+  });
+
+  it('出站守卫常规告警规则命中（decision=pass）→ 不拦截，正常投递', async () => {
+    currentOutputDecision = {
+      decision: 'pass',
+      riskLevel: 'low',
+      violations: [],
+      ruleIds: ['group_promise_without_invite'],
+      blockedRuleIds: [],
+    };
 
     await service.processSingleMessage(createMessage());
 
@@ -704,7 +1324,7 @@ describe('ReplyWorkflowService', () => {
       expect(firstRunTurnEnd).toHaveBeenCalledTimes(1);
     });
 
-    it('Case D: 首次 skip_reply 但重跑产生真实回复 → 正常投递，不进主动沉默分支', async () => {
+    it('Case D: 首次 skip_reply 是 Agent 终态 → 跳过 replay，新消息留到下一轮', async () => {
       const primary = createMessage();
       const late1 = createMessage({
         messageId: 'msg-late-1',
@@ -715,34 +1335,28 @@ describe('ReplyWorkflowService', () => {
         snapshotSize: 1,
         batchId: 'batch-late',
       });
-      runner.invoke
-        .mockResolvedValueOnce({
-          text: '',
-          reasoning: undefined,
-          responseMessages: [],
-          toolCalls: [{ toolName: 'skip_reply', args: { reason: '候选人仅确认' } }],
-          usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
-        })
-        .mockResolvedValueOnce({
-          text: '重跑后的真实回复',
-          reasoning: undefined,
-          responseMessages: [],
-          usage: { inputTokens: 2, outputTokens: 4, totalTokens: 6 },
-        });
+      runner.invoke.mockResolvedValueOnce({
+        text: '',
+        reasoning: undefined,
+        responseMessages: [],
+        toolCalls: [{ toolName: 'skip_reply', args: { reason: '候选人仅确认' } }],
+        usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+      });
 
       await service.processSingleMessage(primary);
 
-      expect(wecomObservability.markReplySkipped).not.toHaveBeenCalled();
-      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
-      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
-        expect.objectContaining({ content: '重跑后的真实回复' }),
-        expect.anything(),
-        true,
+      expect(simpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
+      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+      expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalledWith(
+        'msg-late-1',
       );
     });
   });
 
-  it('should delegate merged-message failures and rethrow the original error', async () => {
+  it('should delegate merged-message failures and ack pending after terminal fallback handling', async () => {
     const error = new Error('agent boom');
     runner.invoke.mockRejectedValueOnce(error);
     processingFailureService.inferErrorType.mockReturnValueOnce('merge');
@@ -758,9 +1372,9 @@ describe('ReplyWorkflowService', () => {
       }),
     ];
 
-    await expect(
-      service.processMergedMessages(messages, 'batch-1', messages.length),
-    ).rejects.toThrow('agent boom');
+    await expect(service.processMergedMessages(messages, 'batch-1', messages.length)).resolves.toBe(
+      undefined,
+    );
 
     expect(processingFailureService.inferErrorType).toHaveBeenCalledWith(error, 'merge');
     expect(processingFailureService.handleProcessingError).toHaveBeenCalledWith(
@@ -775,6 +1389,7 @@ describe('ReplyWorkflowService', () => {
         processedMessageIds: ['msg-1', 'msg-2'],
       }),
     );
+    expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', messages.length);
   });
 });
 

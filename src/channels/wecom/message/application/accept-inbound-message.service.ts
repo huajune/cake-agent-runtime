@@ -10,7 +10,7 @@ import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.s
 import { FilterResult, MessageFilterService } from './filter.service';
 import { ImageDescriptionService } from './image-description.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
-import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
+import { EnterpriseMessageCallbackDto, isTextPayload } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
 import { isPureFriendAddGreeting } from '../utils/friend-add-greeting.util';
 import {
@@ -20,6 +20,7 @@ import {
 } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
 import { LongTermService } from '@memory/services/long-term.service';
+import { SessionService } from '@memory/services/session.service';
 import type { MessageMetadata } from '@memory/types/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -47,7 +48,9 @@ const HUMAN_INTERVENTION_SOURCES = new Set<MessageSource>([
 const HUMAN_INTERVENTION_MESSAGE_TYPE = MessageType.TEXT;
 
 // 暂停托管暗号：真人手打文字内容必须恰好等于「~」才触发暂停，避免经理日常正常回复被误判为介入。
+// 企微不同客户端可能把键盘输入的波浪线回调为全角/波浪线变体，统一归一化后再判断。
 const HUMAN_INTERVENTION_TRIGGER_TEXT = '~';
+const HUMAN_INTERVENTION_TRIGGER_ALIASES = new Set(['~', '～', '〜', '∼', '˜']);
 
 /**
  * 真人介入来源短语，用于原文案「检测到真人通过{X}手动发送消息…」。
@@ -79,6 +82,7 @@ export class AcceptInboundMessageService {
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly llm: LlmExecutorService,
     private readonly longTerm: LongTermService,
+    private readonly session: SessionService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly userHostingService: UserHostingService,
     private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
@@ -103,10 +107,13 @@ export class AcceptInboundMessageService {
       };
     }
 
-    const isProcessed = await this.deduplicationService.isMessageProcessedAsync(
+    // 入站即 claim：企微超时/网络抖动可能在本轮 Agent 尚未结束时补推同一 messageId。
+    // 如果只在投递完成后标记 processed，重复回调会再次进入 pending list，聚合后重复回复。
+    // 这里用 Redis SET NX 抢占 messageId，失败说明已有同进程/前序回调接手处理。
+    const claimed = await this.deduplicationService.markMessageAsProcessedAsync(
       messageData.messageId,
     );
-    if (isProcessed) {
+    if (!claimed) {
       this.logger.log(`[消息去重] 消息 [${messageData.messageId}] 已处理过，跳过重复处理`);
       return {
         shouldDispatch: false,
@@ -117,6 +124,7 @@ export class AcceptInboundMessageService {
     // 候选人入站事件（非 self、过滤通过、非重复、非群聊）：friend.added（首次插入时开户长期记忆）
     // + candidate.message_received + 原子检测首条破冰（candidate.engaged）。
     // 微信「加好友纯默认招呼语」不计候选人消息/破冰。全部 fire-and-forget。
+    this.recordLastCandidateMessageAt(messageData);
     this.recordInboundCandidateEvents(messageData, filterResult.content);
 
     return this.prepareForDispatch(messageData, filterResult);
@@ -234,6 +242,24 @@ export class AcceptInboundMessageService {
 
   private resolveLongTermUserId(messageData: EnterpriseMessageCallbackDto): string | null {
     return messageData.imContactId || messageData.externalUserId || messageData.chatId || null;
+  }
+
+  private recordLastCandidateMessageAt(messageData: EnterpriseMessageCallbackDto): void {
+    if (messageData.imRoomId) return;
+    const userId = this.resolveLongTermUserId(messageData);
+    if (!userId) return;
+    const timestamp = Number(messageData.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+
+    const corpId = messageData.orgId || 'default';
+    void this.session
+      .recordCandidateActivity(corpId, userId, messageData.chatId, new Date(timestamp))
+      .catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `[reengagement] lastCandidateMessageAt 写入失败 [${messageData.messageId}]: ${errorMessage}`,
+        );
+      });
   }
 
   /**
@@ -536,7 +562,21 @@ export class AcceptInboundMessageService {
       return false;
     }
     // 仅当真人手打消息内容恰好等于约定暗号「~」时才暂停托管，避免经理正常回复被误判。
-    return MessageParser.extractContent(messageData).trim() === HUMAN_INTERVENTION_TRIGGER_TEXT;
+    return (
+      this.normalizeHumanInterventionTriggerText(messageData) === HUMAN_INTERVENTION_TRIGGER_TEXT
+    );
+  }
+
+  private normalizeHumanInterventionTriggerText(messageData: EnterpriseMessageCallbackDto): string {
+    const text = this.extractDirectTextContent(messageData).trim().normalize('NFKC');
+    return HUMAN_INTERVENTION_TRIGGER_ALIASES.has(text) ? HUMAN_INTERVENTION_TRIGGER_TEXT : text;
+  }
+
+  private extractDirectTextContent(messageData: EnterpriseMessageCallbackDto): string {
+    if (isTextPayload(messageData.messageType, messageData.payload)) {
+      return messageData.payload.pureText ?? messageData.payload.text;
+    }
+    return MessageParser.extractContent(messageData);
   }
 
   /**

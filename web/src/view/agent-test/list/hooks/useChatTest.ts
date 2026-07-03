@@ -8,6 +8,7 @@ import {
   resetChatSessionMemory,
 } from '@/api/services/agent-test.service';
 import { getAvailableModels, type ModelOption } from '@/api/services/agent.service';
+import type { GuardrailTurnTrace } from '@/api/types/chat.types';
 import { CHAT_API_ENDPOINT, DEFAULT_GROUP_INVITE_IDS, DEFAULT_SCENARIO } from '../constants';
 import { generateUUID } from '@/utils/uuid';
 import {
@@ -54,6 +55,8 @@ export interface UseChatTestReturn {
   latestAssistantMessage: UIMessage | undefined;
   entryStage: string | null;
   currentStage: string | null;
+  /** 出站守卫 advisory trace（流末 silent 审查，仅展示"守卫会怎么判"，不参与真实发送） */
+  guardrail: GuardrailTurnTrace | null;
   userId: string;
   botUserId: string;
   botImId: string;
@@ -250,6 +253,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const entryStageRef = useRef<string | null>(null);
   const [entryStage, setEntryStage] = useState<string | null>(null);
   const [currentStage, setCurrentStage] = useState<string | null>(null);
+  const [guardrail, setGuardrail] = useState<GuardrailTurnTrace | null>(null);
 
   const persistHistoryImages = useCallback((images: ImagePreview[]): string[] => {
     if (images.length === 0) return [];
@@ -327,6 +331,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       if (part?.type === 'data-entryStage' && typeof part.data === 'string') {
         entryStageRef.current = part.data;
         setEntryStage(part.data);
+      }
+      if (part?.type === 'data-guardrail' && part.data) {
+        setGuardrail(part.data as GuardrailTurnTrace);
       }
     },
     onError: (err: Error) => {
@@ -637,6 +644,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     entryStageRef.current = null;
     setEntryStage(null);
     setCurrentStage(null);
+    setGuardrail(null);
     setIsRequesting(true);
     setLocalError(null);
     setMetrics(null);
@@ -695,6 +703,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     entryStageRef.current = null;
     setEntryStage(null);
     setCurrentStage(null);
+    setGuardrail(null);
     submittedImagesRef.current = [];
     setSessionId(nextSessionId);
     setUserId(currentUserId || DEFAULT_GROUP_INVITE_IDS.userId);
@@ -731,6 +740,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     latestAssistantMessage,
     entryStage,
     currentStage,
+    guardrail,
     userId,
     botUserId,
     botImId,
