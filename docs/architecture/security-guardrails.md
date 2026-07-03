@@ -109,7 +109,7 @@ HTTP 请求
 
 位置：`hard-rules.service.ts`（检测逻辑按领域拆在 `output/rules/*.rule.ts`），元数据登记在 `output/rules/output-rule-catalog.ts`。先跑、同步、可 veto，命中即飞书 badcase 告警。当前约 30 条规则，按 action 分三档：
 
-- **block**（不可发送直接拦）：`internal_output_leak`、`discriminatory_screening_leak`、`proactive_insurance_policy_mention`、`quota_promise`、`age_requirement_disclosure`、`gender_direct_reject` 等。
+- **block**（不可发送直接拦）：`internal_output_leak`、`discriminatory_screening_leak`、`proactive_insurance_policy_mention`、`quota_promise` 等。（`age_requirement_disclosure` 与 `gender_direct_reject` 已于 2026-07-03 按运营裁决删除：性别/年龄要求属岗位公开信息，非歧视外露。）
 - **revise / replan**（丢首版走受控修复）：`booking_form_field_mismatch`、`salary_fabrication`、`tool_failure_success_claim`、`precheck_blocked_booking_claim`、`wait_notice_time_*`、`confirmed_booking_time_missing`、`confirmed_booking_onsite_script_missing`、`geocode_*`、`farther_job_recommended`、`schedule_filtered_job_recommended`、`handoff_no_booking_claim`、`group_*`、`ungrounded_job_recommendation`(replan)、`requested_brand_mismatch`(replan) 等。
 - **observe**（只告警不拦）：`candidate_name_echo`、`distance_missing` 等体验类。
 

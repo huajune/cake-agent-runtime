@@ -195,7 +195,7 @@ describe('HardRulesService', () => {
     });
 
     it('does not flag a normal reply that starts with a bracketed Chinese note', () => {
-      const result = check('好的，帮你记下了，明天上午10点面试别迟到哈。');
+      const result = check('【面试提醒】明天上午10点百联奥特莱斯店面试，别迟到哈。');
 
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain('internal_output_leak');
     });
@@ -282,6 +282,34 @@ describe('HardRulesService', () => {
         chatId: 'chat-1',
         userId: 'user-1',
         userMessage: '好的',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('blocks 签合同+五险一金 benefit promise (bare 合同 must not trigger requirement exemption)', () => {
+      const result = service.check({
+        replyText: '转正后签合同，公司给你交五险一金，福利很好。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '好的',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('blocks 给你交社保 benefit promise (qualification exemption requires 你有…交…社保 question form)', () => {
+      const result = service.check({
+        replyText: '放心，公司给你交社保的。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '多少钱一小时',
       });
 
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
@@ -2320,6 +2348,30 @@ describe('HardRulesService', () => {
         expect(
           result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
         ).toBeDefined();
+      });
+
+      it('flags 岗位要求日结 as a job-fact claim (bare 要求 must not trigger the echo exemption)', () => {
+        const result = service.check({
+          replyText: '这个岗位要求日结上岗。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeDefined();
+      });
+
+      it('keeps exempting first-person requirement echo (你的日结要求)', () => {
+        const result = service.check({
+          replyText: '你的日结要求我记下了，有合适的再喊你。',
+          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeUndefined();
       });
     });
   });
