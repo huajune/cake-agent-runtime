@@ -1146,6 +1146,65 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('asks for revision when requested date is unavailable but reply still claims bookable', () => {
+      const result = service.check({
+        replyText: '可以约的，我帮你报名。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: { nextAction: 'date_unavailable' },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
+    it('does not flag the normal collect_fields pitch "填一下资料我帮你约面" (上线首日 batch_6a475a42…935 误伤)', () => {
+      const result = service.check({
+        replyText:
+          '没有健康证没关系哈，先面试就行，录用后上岗前再去办也不迟。你把下面信息填一下发我，我帮你预约面试。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: {
+              nextAction: 'collect_fields',
+              healthCertGate: 'before_onboard',
+              ageBoundary: { severity: 'unknown' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
+    it('does not flag bookable claim while precheck asks to confirm date (confirm_date 是推进态)', () => {
+      const result = service.check({
+        replyText: '可以约的，这几天都有场次，你想约哪天？',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: { nextAction: 'confirm_date' },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
     it('asks for revision when wait_notice precheck is followed by a concrete interview time', () => {
       const result = service.check({
         replyText: '明天10点到店面试，面试官会联系你。',
