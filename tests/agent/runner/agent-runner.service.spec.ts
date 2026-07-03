@@ -6,6 +6,7 @@ describe('AgentRunnerService.runTurn', () => {
   let generator: { invoke: jest.Mock };
   let outputGuard: { check: jest.Mock };
   let inputGuard: { precheckInputRisk: jest.Mock; evaluate: jest.Mock };
+  let reviewRecords: { record: jest.Mock };
   let service: AgentRunnerService;
 
   const passDecision = {
@@ -35,7 +36,13 @@ describe('AgentRunnerService.runTurn', () => {
       precheckInputRisk: jest.fn().mockResolvedValue({ hit: false }),
       evaluate: jest.fn().mockResolvedValue({ decision: 'pass' }),
     };
-    service = new AgentRunnerService(generator as never, outputGuard as never, inputGuard as never);
+    reviewRecords = { record: jest.fn().mockResolvedValue(undefined) };
+    service = new AgentRunnerService(
+      generator as never,
+      outputGuard as never,
+      inputGuard as never,
+      reviewRecords as never,
+    );
   });
 
   it('proactive turn injects directive + readonly toolMode and returns a reply outcome', async () => {
@@ -598,5 +605,120 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     );
     expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 1
+  });
+
+  describe('guardrail review record persistence (guardrail_review_records)', () => {
+    const reviseDecision = {
+      decision: 'revise' as const,
+      riskLevel: 'medium' as const,
+      violations: [{ type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' }],
+      ruleIds: ['district_level_distance_claim'],
+      blockedRuleIds: ['district_level_distance_claim'],
+      repairMode: 'rewrite' as const,
+      feedbackToGenerator: '不要给区级距离结论',
+    };
+
+    it('revise flow persists first draft full text, violations and revised reply', async () => {
+      generator.invoke
+        .mockResolvedValueOnce(makeResult({ text: '首版（含区级距离断言）' }))
+        .mockResolvedValueOnce(makeResult({ text: '重写后的回复' }));
+      outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
+
+      await service.runTurn({
+        sessionRef,
+        trigger: { kind: 'inbound', userMessage: '西城区' },
+        context: { messageId: 'msg-1' },
+      });
+
+      expect(reviewRecords.record).toHaveBeenCalledTimes(1);
+      expect(reviewRecords.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-1',
+          chatId: 's1',
+          userMessage: '西城区',
+          firstReply: '首版（含区级距离断言）',
+          first: expect.objectContaining({
+            decision: 'revise',
+            ruleIds: ['district_level_distance_claim'],
+            violations: reviseDecision.violations,
+            feedback: '不要给区级距离结论',
+          }),
+          repaired: true,
+          repairMode: 'rewrite',
+          revisedReply: '重写后的回复',
+          revised: expect.objectContaining({ decision: 'pass' }),
+          finalDecision: 'pass',
+        }),
+      );
+    });
+
+    it('first-review block (no repair) persists a first-only record', async () => {
+      generator.invoke.mockResolvedValue(makeResult({ text: '违规首版' }));
+      outputGuard.check.mockResolvedValue({
+        ...reviseDecision,
+        decision: 'block' as const,
+      });
+
+      await service.runTurn({
+        sessionRef,
+        trigger: { kind: 'inbound', userMessage: 'hi' },
+        context: { messageId: 'msg-2' },
+      });
+
+      expect(reviewRecords.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-2',
+          firstReply: '违规首版',
+          repaired: false,
+          revisedReply: undefined,
+          finalDecision: 'block',
+        }),
+      );
+    });
+
+    it('clean pass does not persist; missing traceId (debug/test traffic) does not persist', async () => {
+      // pass 且无 rule 命中：不写档案
+      generator.invoke.mockResolvedValueOnce(makeResult({ text: '正常回复' }));
+      outputGuard.check.mockResolvedValueOnce(passDecision);
+      await service.runTurn({
+        sessionRef,
+        trigger: { kind: 'inbound', userMessage: 'hi' },
+        context: { messageId: 'msg-3' },
+      });
+      expect(reviewRecords.record).not.toHaveBeenCalled();
+
+      // 守卫命中但无 traceId（debug-chat / test-suite）：不写档案
+      generator.invoke
+        .mockResolvedValueOnce(makeResult({ text: '首版' }))
+        .mockResolvedValueOnce(makeResult({ text: '重写版' }));
+      outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
+      await service.runTurn({ sessionRef, trigger: { kind: 'inbound', userMessage: 'hi' } });
+      expect(reviewRecords.record).not.toHaveBeenCalled();
+    });
+
+    it('repair exhausted persists both steps with the collapsed block verdict', async () => {
+      generator.invoke
+        .mockResolvedValueOnce(makeResult({ text: 'v1' }))
+        .mockResolvedValueOnce(makeResult({ text: 'v2 仍有问题' }));
+      outputGuard.check.mockResolvedValue(reviseDecision);
+
+      await service.runTurn({
+        sessionRef,
+        trigger: { kind: 'inbound', userMessage: '约面试' },
+        context: { messageId: 'msg-4' },
+      });
+
+      expect(reviewRecords.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-4',
+          firstReply: 'v1',
+          repaired: true,
+          revisedReply: 'v2 仍有问题',
+          revised: expect.objectContaining({ decision: 'revise' }),
+          finalDecision: 'block',
+          reasonCode: 'repair_exhausted',
+        }),
+      );
+    });
   });
 });

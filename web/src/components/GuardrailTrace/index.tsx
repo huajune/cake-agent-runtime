@@ -1,26 +1,7 @@
 import { Fragment } from 'react';
-import type { GuardrailDecision, GuardrailTurnTrace } from '@/api/types/chat.types';
+import type { GuardrailTurnTrace } from '@/api/types/chat.types';
+import { decisionBadge } from './decision';
 import styles from './index.module.scss';
-
-const DECISION_LABELS: Record<GuardrailDecision, string> = {
-  pass: '放行',
-  observe: '观察',
-  revise: '要求重写',
-  replan: '要求重查',
-  block: '拦截',
-};
-
-const DECISION_TONES: Record<GuardrailDecision, 'success' | 'warning' | 'danger' | 'info'> = {
-  pass: 'success',
-  observe: 'info',
-  revise: 'warning',
-  replan: 'warning',
-  block: 'danger',
-};
-
-function decisionBadge(decision: GuardrailDecision) {
-  return <span className={`status-badge ${DECISION_TONES[decision]}`}>{DECISION_LABELS[decision]}</span>;
-}
 
 export interface GuardrailTraceProps {
   trace: GuardrailTurnTrace;

@@ -16,6 +16,10 @@ import type {
   GuardrailReviewStepTrace,
   GuardrailTurnTrace,
 } from '@shared-types/guardrail.contract';
+import {
+  GuardrailReviewRepository,
+  type GuardrailReviewStepDetail,
+} from '@biz/message/repositories/guardrail-review.repository';
 import { classifyReviewedOutcome } from './turn-outcome';
 import {
   OutputGuardrailService,
@@ -105,6 +109,7 @@ export class AgentRunnerService {
     private readonly generator: GeneratorService,
     private readonly outputGuard: OutputGuardrailService,
     private readonly inputGuard: InputGuardrailService,
+    private readonly reviewRecords: GuardrailReviewRepository,
   ) {}
 
   invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
@@ -192,6 +197,12 @@ export class AgentRunnerService {
     const firstStep = this.toGuardrailStep('first', decision);
     const shouldRepair = decision.decision === 'revise' || decision.decision === 'replan';
     if (!shouldRepair) {
+      this.persistReviewRecord(ctx, {
+        firstReply: firstText,
+        firstDecision: decision,
+        finalDecision: decision,
+        repaired: false,
+      });
       return this.finalizeReviewed(
         first,
         decision,
@@ -230,6 +241,14 @@ export class AgentRunnerService {
         decision: 'block',
         reasonCode: 'revise_empty',
       };
+      this.persistReviewRecord(ctx, {
+        firstReply: firstText,
+        firstDecision: decision,
+        finalDecision: emptyDecision,
+        repaired: true,
+        revisedReply: '',
+        committedSideEffects: committed || undefined,
+      });
       return this.finalizeReviewed(
         revised,
         emptyDecision,
@@ -248,6 +267,15 @@ export class AgentRunnerService {
       decision2.decision === 'revise' || decision2.decision === 'replan'
         ? { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
         : decision2;
+    this.persistReviewRecord(ctx, {
+      firstReply: firstText,
+      firstDecision: decision,
+      finalDecision,
+      repaired: true,
+      revisedReply: revisedText,
+      revisedDecision: decision2,
+      committedSideEffects: committed || undefined,
+    });
     return this.finalizeReviewed(
       { ...revised, toolCalls: reviewedToolCalls },
       finalDecision,
@@ -259,6 +287,70 @@ export class AgentRunnerService {
         finalDecision,
       ),
     );
+  }
+
+  /**
+   * 落一条出站守卫审查档案（guardrail_review_records，稀疏附属表）：
+   * 首版全文 + 违规证据全文 + 重写版全文——紧凑摘要（guardrail_output 列）刻意不带、
+   * 但详情页复盘必需的部分。
+   *
+   * - 仅生产回合写（有 traceId；debug-chat / test-suite 不带 traceId，天然隔离）；
+   * - 仅守卫有信号时写（非 pass 或有 rule 观测命中），放行回合不产生行；
+   * - fire-and-forget：Repository 内部吞错，绝不阻塞/拖垮回复链路。
+   */
+  private persistReviewRecord(
+    ctx: ReviewContext,
+    data: {
+      firstReply: string;
+      firstDecision: OutputGuardDecision;
+      finalDecision: OutputGuardDecision;
+      repaired: boolean;
+      revisedReply?: string;
+      revisedDecision?: OutputGuardDecision;
+      committedSideEffects?: string;
+    },
+  ): void {
+    if (!ctx.traceId) return;
+    const hasSignal =
+      data.firstDecision.decision !== 'pass' || data.firstDecision.ruleIds.length > 0;
+    if (!hasSignal) return;
+
+    void this.reviewRecords
+      .record({
+        traceId: ctx.traceId,
+        chatId: ctx.chatId,
+        userId: ctx.userId,
+        botImId: ctx.botImId,
+        botUserName: ctx.botUserName,
+        contactName: ctx.contactName,
+        userMessage: ctx.userMessage,
+        firstReply: data.firstReply,
+        first: this.toReviewStepDetail(data.firstDecision),
+        repairMode: data.repaired ? data.firstDecision.repairMode : undefined,
+        repaired: data.repaired,
+        revisedReply: data.revisedReply,
+        revised: data.revisedDecision ? this.toReviewStepDetail(data.revisedDecision) : undefined,
+        committedSideEffects: data.committedSideEffects,
+        finalDecision: data.finalDecision.decision,
+        reasonCode: data.finalDecision.reasonCode,
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `[invokeReviewed] 审查档案落库失败: traceId=${ctx.traceId}, ` +
+            `err=${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+  }
+
+  private toReviewStepDetail(decision: OutputGuardDecision): GuardrailReviewStepDetail {
+    return {
+      decision: decision.decision,
+      riskLevel: decision.riskLevel,
+      ruleIds: decision.ruleIds,
+      blockedRuleIds: decision.blockedRuleIds,
+      violations: decision.violations,
+      feedback: decision.feedbackToGenerator,
+    };
   }
 
   /** 把一次出站裁决压成紧凑 trace step（不带证据全文，落库体积可控）。 */
