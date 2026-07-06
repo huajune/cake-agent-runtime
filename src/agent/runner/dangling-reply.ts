@@ -1,0 +1,33 @@
+/**
+ * 悬空查岗承接句检测：识别"只承接、不给结果"的最终回复。
+ *
+ * 出站守卫 repair 是本轮最后一次生成——rewrite 模式下工具已被物理移除，replan 模式
+ * 下产出的文本也是终版。此时任何"我帮你查下 X"式的将来时承诺都不可能兑现，投递出去
+ * 就是空头承诺（badcase batch_6a4790c7ce406a6aeee9c102：候选人问"花桥中骏有岗位吗"，
+ * repair 模型无视重写指令重新规划任务，最终只投递了一句"我帮你查下花桥中骏附近的岗位"，
+ * 之后永远没有下文）。
+ *
+ * 判定刻意保守（宁可漏判也不误杀）：短文本 + 含将来时"查/看/核实"承诺 + 不含任何
+ * 结果性/推进性内容标记（否定结论、数字事实、反问、转人工话术等）才算悬空。
+ */
+
+/** 将来时"我来查/看"式承诺。 */
+const PROMISE_PATTERN =
+  /(?:帮|给)你(?:查|看|核实|核对|确认|问)|(?:我|这边)(?:先|这就|马上|现在|去)(?:帮你|给你)?(?:查|看|核实|核对|确认|问)|(?:查|看|核实|核对|确认)一?下/;
+
+/**
+ * 结果性/推进性内容标记：出现任一说明回复里带了实质结论或把对话推进给了候选人
+ * （否定结论、在招状态、薪资/距离数字、反问收集信息、转人工衔接），不算悬空。
+ */
+const GROUNDED_PATTERN =
+  /没|暂|无|已|在招|元|块|公里|千米|km|KM|群|同事|人工|吗|？|\?|哪|多少|几点|什么时候|方便/;
+
+/** 归一化后超过该长度的回复默认视为带实质内容，不参与悬空判定。 */
+const MAX_DANGLING_LENGTH = 30;
+
+export function isDanglingCheckReply(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '');
+  if (!normalized || normalized.length > MAX_DANGLING_LENGTH) return false;
+  if (!PROMISE_PATTERN.test(normalized)) return false;
+  return !GROUNDED_PATTERN.test(normalized);
+}
