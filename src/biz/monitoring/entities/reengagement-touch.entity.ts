@@ -85,6 +85,12 @@ export interface ReengagementTouchDbRecord {
   error?: string | null;
   /** 投递该触达的主动回合批次 ID（= message_processing_records.message_id），未投递分支为空 */
   batch_id?: string | null;
+  /** 候选人微信昵称（排程时冻结的渠道身份快照） */
+  candidate_name?: string | null;
+  /** 接管 bot 显示名 */
+  manager_name?: string | null;
+  /** 接管 bot 系统 wxid */
+  bot_im_id?: string | null;
   events?: ReengagementTouchEvent[];
 }
 
@@ -110,6 +116,10 @@ export interface RecordReengagementTouchInput {
   reserveResult?: string;
   error?: string;
   batchId?: string;
+  /** 渠道身份快照（排程时冻结，查询免关联 chat_messages） */
+  candidateName?: string;
+  managerName?: string;
+  botImId?: string;
   event?: { event: string; detail?: Record<string, unknown> };
 }
 

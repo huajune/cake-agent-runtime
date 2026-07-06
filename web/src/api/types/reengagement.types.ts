@@ -31,6 +31,8 @@ export interface ReengagementTouchRecord {
   error?: string | null;
   created_at?: string;
   updated_at?: string;
+  /** 投递该触达的主动回合批次 ID（= message_processing_records.message_id），未投递为空 */
+  batch_id?: string | null;
   // 仅详情接口返回：
   generated_text?: string | null;
   events?: ReengagementEvent[];
@@ -61,6 +63,12 @@ export interface ReengagementCandidateSummary {
   sessionId: string;
   userId?: string | null;
   corpId?: string | null;
+  /** 候选人微信昵称（可能为空，回退显示 userId/sessionId） */
+  candidateName?: string | null;
+  /** 接管 bot 显示名（招募经理名） */
+  managerName?: string | null;
+  /** 接管 bot 系统 wxid */
+  botImId?: string | null;
   /** 全场景最新活动时间（ISO，候选人排序键） */
   latestAt: string;
   /** 最近的一个待发任务（scheduled/rescheduled 且 fire_at 未到）；无则 null */

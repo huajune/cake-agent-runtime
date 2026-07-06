@@ -6,7 +6,7 @@ import {
 } from '../../entities/reengagement-touch.entity';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
 
-/** 触达身份（写入侧各埋点共用） */
+/** 触达身份（写入侧各埋点共用）。昵称/bot 为渠道身份快照，随记录冗余落库，查询免关联。 */
 export interface ReengagementTouchIdentity {
   sessionId: string;
   userId?: string;
@@ -14,6 +14,12 @@ export interface ReengagementTouchIdentity {
   scenarioCode: string;
   anchorEventId: string;
   anchorAt: number;
+  /** 候选人微信昵称（排程时冻结，存量任务可能缺失） */
+  candidateName?: string;
+  /** 接管 bot 显示名 */
+  managerName?: string;
+  /** 接管 bot 系统 wxid */
+  botImId?: string;
 }
 
 /**
@@ -162,12 +168,17 @@ export class ReengagementTrackingService {
   }
 
   /** 主动回合结果非 reply，不投递 */
-  trackOutcomeNotReply(identity: ReengagementTouchIdentity, outcomeKind: string): void {
+  trackOutcomeNotReply(
+    identity: ReengagementTouchIdentity,
+    outcomeKind: string,
+    batchId?: string,
+  ): void {
     this.persist({
       ...this.base(identity),
       status: ReengagementTouchStatus.Failed,
       decisionReason: ReengagementTouchEventName.OutcomeNotReply,
       outcomeKind,
+      batchId,
       event: { event: ReengagementTouchEventName.OutcomeNotReply, detail: { outcomeKind } },
     });
   }
@@ -180,25 +191,27 @@ export class ReengagementTrackingService {
     });
   }
 
-  /** 投递成功 */
-  trackSent(identity: ReengagementTouchIdentity, generatedText?: string): void {
+  /** 投递成功（batchId 关联主动回合的消息处理流水行） */
+  trackSent(identity: ReengagementTouchIdentity, generatedText?: string, batchId?: string): void {
     this.persist({
       ...this.base(identity),
       status: ReengagementTouchStatus.Sent,
       shadow: false,
       outcomeKind: 'reply',
       generatedText,
+      batchId,
       sentAt: Date.now(),
-      event: { event: ReengagementTouchEventName.Sent },
+      event: { event: ReengagementTouchEventName.Sent, detail: batchId ? { batchId } : undefined },
     });
   }
 
   /** 投递后状态不明（渠道异常，不可盲重投，需人工核对） */
-  trackDeliveryUnknown(identity: ReengagementTouchIdentity, error: string): void {
+  trackDeliveryUnknown(identity: ReengagementTouchIdentity, error: string, batchId?: string): void {
     this.persist({
       ...this.base(identity),
       status: ReengagementTouchStatus.Unknown,
       error,
+      batchId,
       event: { event: ReengagementTouchEventName.DeliveryUnknown, detail: { error } },
     });
   }
@@ -229,6 +242,9 @@ export class ReengagementTrackingService {
       scenarioCode: identity.scenarioCode,
       anchorEventId: identity.anchorEventId,
       anchorAt: identity.anchorAt,
+      candidateName: identity.candidateName,
+      managerName: identity.managerName,
+      botImId: identity.botImId,
     };
   }
 

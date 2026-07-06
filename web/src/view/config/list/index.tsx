@@ -78,7 +78,7 @@ function getThinkingModeLabel(value?: string): string {
   return thinkingModeOptions.find((option) => option.value === value)?.label ?? '极速模式';
 }
 
-/** 功能模块运行状态三态：关闭 → 演练/观测（只记录）→ 真实生效 */
+/** 功能模块运行状态三态：关闭 → Shadow 观测（只记录）→ 真实生效 */
 type ModuleRunState = 'off' | 'shadow' | 'live';
 
 export default function Config() {
@@ -234,14 +234,14 @@ export default function Config() {
   const isScenarioOn = (scenario: ReengagementScenario) =>
     scenarioRollout[scenario.code] ?? scenario.defaultRolloutEnabled;
 
-  // 场景实际投递状态 = 场景开关 × 报名后大开关 × 总开关 × 演练模式 叠加
+  // 场景实际投递状态 = 场景开关 × 报名后大开关 × 总开关 × Shadow 观测 叠加
   const getScenarioStatus = (scenario: ReengagementScenario) => {
     if (!isScenarioOn(scenario)) return { label: '已关闭', className: styles.statusOff };
     if (scenario.phase === 'post_booking' && !reengagementPostBookingEnabled) {
       return { label: '报名后开关关闭', className: styles.statusWarn };
     }
     if (!reengagementEnabled) return { label: '待生效 · 总开关关闭', className: styles.statusWarn };
-    if (reengagementShadow) return { label: '待生效 · 演练中', className: styles.statusWarn };
+    if (reengagementShadow) return { label: '待生效 · Shadow 观测中', className: styles.statusWarn };
     return { label: '真实发送', className: styles.statusOn };
   };
 
@@ -254,7 +254,7 @@ export default function Config() {
     });
   };
 
-  // ===== 三态运行状态：两个布尔开关（总开关 × shadow）收敛成 关闭/演练/生效 =====
+  // ===== 三态运行状态：两个布尔开关（总开关 × shadow）收敛成 关闭/Shadow 观测/生效 =====
   const guardrailState: ModuleRunState = guardrailLlmEnabled
     ? 'live'
     : guardrailShadowEnabled
@@ -648,7 +648,7 @@ export default function Config() {
                 <p className={styles.moduleDescription}>
                   候选人沉默后由 Agent
                   主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
-                  开关即时生效；灰度期先开演练模式看"本应发什么"，达标后再关演练真实发送。
+                  开关即时生效；灰度期先开 Shadow 观测看"本应发什么"，达标后再切真实发送。
                 </p>
               </div>
             </div>
@@ -662,7 +662,7 @@ export default function Config() {
                   <p className={styles.settingDescription}>
                     <strong>关闭</strong>
                     ：急刹车，不再排程新跟进任务，已排程的任务到点也直接丢弃。
-                    <strong>演练</strong>：锚点事件正常排程，到点走完停止判断并生成跟进文案，
+                    <strong>Shadow 观测</strong>：锚点事件正常排程，到点走完停止判断并生成跟进文案，
                     但不发给候选人，只记录"本应发什么"。
                     <strong>真实发送</strong>
                     ：下方场景清单里开关打开的场景会真正发送，其余场景仍只记录。
@@ -676,7 +676,7 @@ export default function Config() {
                 <div className={styles.controlBlock}>
                   {renderRunStateControl(reengagementState, setReengagementState, {
                     off: '关闭',
-                    shadow: '演练',
+                    shadow: 'Shadow 观测',
                     live: '真实发送',
                   })}
                 </div>
@@ -753,7 +753,7 @@ export default function Config() {
                     </div>
 
                     <p className={styles.scenarioFootnote}>
-                      「真实发送」需同时满足：总开关开启 + 演练关闭 + 场景开关开启（报名后场景还需
+                      「真实发送」需同时满足：总开关开启 + Shadow 观测关闭 + 场景开关开启（报名后场景还需
                       报名后大开关开启）；其余组合到点只走判断与生成、记录「本应发什么」。
                       候选人已回话、会话已终态或场景条件不再成立时，到点任务会自动取消。
                     </p>

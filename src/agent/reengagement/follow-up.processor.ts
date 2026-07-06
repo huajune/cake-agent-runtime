@@ -6,6 +6,8 @@ import {
   ReengagementTrackingService,
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
@@ -58,6 +60,7 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly systemConfig: SystemConfigService,
     private readonly outcomeFinalizer: TurnOutcomeInterventionService,
     private readonly tracking: ReengagementTrackingService,
+    private readonly messageTracking: MessageTrackingService,
     private readonly sponge: SpongeService,
     private readonly longTerm: LongTermService,
     private readonly scheduler: FollowUpSchedulerService,
@@ -87,6 +90,7 @@ export class FollowUpProcessor implements OnModuleInit {
       scenarioCode,
       anchorEventId,
       anchorAt,
+      ...job.data.channelIdentity,
     };
 
     // 0) 总开关急刹车：Dashboard 关闭后，在途 job 到点直接丢弃（不生成、不投递、不重排）
@@ -186,12 +190,27 @@ export class FollowUpProcessor implements OnModuleInit {
     }
     this.tracking.trackReserved(identity);
 
-    const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario);
+    // 投递路径的主动回合在消息处理流水落一行（message_id = batchId），
+    // 追溯页凭触达记录上的 batch_id 直接跳到该回合的完整生成轨迹。
+    const batchId = `batch_${sessionRef.sessionId}_${now}`;
+    const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
-      this.tracking.trackOutcomeNotReply(identity, outcome.kind);
+      this.tracking.trackOutcomeNotReply(identity, outcome.kind, batchId);
+      this.messageTracking.recordProactiveTurn(
+        this.buildProactiveTurnRecord({
+          batchId,
+          sessionRef,
+          scenario,
+          outcome,
+          receivedAt: now,
+          status: 'success',
+          replyPreview: `[未投递:${outcome.kind}]`,
+          channelIdentity: job.data.channelIdentity,
+        }),
+      );
       await this.outcomeFinalizer.commit(outcome, {
         traceId: key,
         chatId: sessionRef.sessionId,
@@ -203,7 +222,7 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now, identity);
+    await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now, identity, batchId);
   }
 
   /**
@@ -303,13 +322,50 @@ export class FollowUpProcessor implements OnModuleInit {
     sessionRef: FollowUpJob['sessionRef'],
     scenarioCode: string,
     scenario: NonNullable<ReturnType<typeof getScenario>>,
+    messageId?: string,
   ): Promise<TurnOutcome> {
     const directive = `${scenario.objective}。生成要求：${scenario.generationPolicy}`;
     return this.runner.runTurn({
       sessionRef,
       trigger: { kind: 'proactive', directive, scenarioCode },
       toolMode: 'readonly',
+      context: messageId ? { messageId } : undefined,
     });
+  }
+
+  /** 主动回合的消息处理流水行（message_id = batchId，供追溯页跳转排障） */
+  private buildProactiveTurnRecord(params: {
+    batchId: string;
+    sessionRef: FollowUpJob['sessionRef'];
+    scenario: NonNullable<ReturnType<typeof getScenario>>;
+    outcome: TurnOutcome;
+    receivedAt: number;
+    status: 'success' | 'failure';
+    replyPreview?: string;
+    error?: string;
+    channelIdentity?: FollowUpJob['channelIdentity'];
+  }): MessageProcessingRecordInput {
+    const { batchId, sessionRef, scenario, outcome } = params;
+    return {
+      messageId: batchId,
+      batchId,
+      chatId: sessionRef.sessionId,
+      userId: sessionRef.userId,
+      userName: params.channelIdentity?.candidateName,
+      managerName: params.channelIdentity?.managerName,
+      botImId: params.channelIdentity?.botImId,
+      receivedAt: params.receivedAt,
+      status: params.status,
+      scenario: `reengagement:${scenario.code}`,
+      messagePreview: `[主动跟进] ${scenario.displayName}`,
+      replyPreview: params.replyPreview,
+      error: params.error,
+      toolCalls: outcome.toolCalls,
+      agentSteps: outcome.agentSteps,
+      memorySnapshot: outcome.memorySnapshot,
+      guardrailOutput: outcome.guardrailTrace,
+      tokenUsage: outcome.usage?.totalTokens,
+    };
   }
 
   /** outbox 状态机投递：reserved → attempted → sent / unknown。 */
@@ -319,17 +375,54 @@ export class FollowUpProcessor implements OnModuleInit {
     sessionId: string,
     now: number,
     identity: ReengagementTouchIdentity,
+    batchId: string,
   ): Promise<void> {
+    const sessionRef = { sessionId, userId: identity.userId ?? '', corpId: identity.corpId ?? '' };
+    const scenario = getScenario(identity.scenarioCode as FollowUpJob['scenarioCode']);
+    const channelIdentity: FollowUpJob['channelIdentity'] = {
+      candidateName: identity.candidateName,
+      managerName: identity.managerName,
+      botImId: identity.botImId,
+    };
     try {
       await this.touchLedger.markDeliveryAttempted(key);
       this.tracking.trackDeliveryAttempted(identity);
       await this.delivery!.deliver(outcome, { idempotencyKey: key });
       await this.touchLedger.markSent(key, sessionId, now);
-      this.tracking.trackSent(identity, outcome.reply?.text);
+      this.tracking.trackSent(identity, outcome.reply?.text, batchId);
+      if (scenario) {
+        this.messageTracking.recordProactiveTurn(
+          this.buildProactiveTurnRecord({
+            batchId,
+            sessionRef,
+            scenario,
+            outcome,
+            receivedAt: now,
+            status: 'success',
+            replyPreview: outcome.reply?.text,
+            channelIdentity,
+          }),
+        );
+      }
     } catch (error) {
       // deliver 后状态不明 → unknown，交补偿，不盲重投。送达与否未知时按未送达处理：
       // 宁可下一轮重复跟进语气，也不能让记忆引用候选人可能没收到的文本（HC-4）。
-      this.tracking.trackDeliveryUnknown(identity, this.errorMessage(error));
+      this.tracking.trackDeliveryUnknown(identity, this.errorMessage(error), batchId);
+      if (scenario) {
+        this.messageTracking.recordProactiveTurn(
+          this.buildProactiveTurnRecord({
+            batchId,
+            sessionRef,
+            scenario,
+            outcome,
+            receivedAt: now,
+            status: 'failure',
+            replyPreview: outcome.reply?.text,
+            error: this.errorMessage(error),
+            channelIdentity,
+          }),
+        );
+      }
       try {
         await this.touchLedger.markFailedOrUnknown(key, 'unknown');
       } finally {

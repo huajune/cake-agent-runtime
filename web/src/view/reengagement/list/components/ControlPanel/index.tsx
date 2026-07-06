@@ -98,7 +98,7 @@ export default function ControlPanel({
     {
       label: '状态不明',
       value: String(stats.unknown),
-      toneClass: stats.unknown > 0 ? styles.badgeDanger : '',
+      toneClass: stats.unknown > 0 ? styles.badgeDanger : styles.badgeIdle,
     },
   ];
 
@@ -177,9 +177,11 @@ export default function ControlPanel({
           <button
             type="button"
             onClick={() => onPendingOnlyChange(!pendingOnly)}
-            className={`${styles.segBtn} ${pendingOnly ? styles.segBtnActive : ''}`}
+            className={`${styles.toggleBtn} ${pendingOnly ? styles.toggleBtnActive : ''}`}
             title="只看有待发复聊任务的候选人"
+            aria-pressed={pendingOnly}
           >
+            <span className={styles.toggleDot} aria-hidden="true" />
             仅看待发
           </button>
         )}

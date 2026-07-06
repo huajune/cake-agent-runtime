@@ -46,7 +46,10 @@ export default function ReengagementTable({
             <tbody>
               <tr>
                 <td colSpan={8} className={styles.loading}>
-                  加载中...
+                  <div className={styles.emptyStateContainer}>
+                    <div className={styles.spinner} />
+                    <p>加载中...</p>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -147,6 +150,7 @@ export default function ReengagementTable({
                   key={record.touch_key || i}
                   onClick={() => onRowClick(record)}
                   className={styles.clickableRow}
+                  style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
                 >
                   <td>{record.created_at ? formatDateTime(record.created_at) : '-'}</td>
                   <td className={styles.cellMono} title={record.session_id}>

@@ -4,7 +4,7 @@ import type { AuthoritativeSessionState } from '@memory/types/authoritative-sess
 import { SessionService } from '@memory/services/session.service';
 import { FollowUpSchedulerService } from './follow-up-scheduler.service';
 import { bookingFollowUpAnchorId, parseInterviewTimestamp } from './scenario-registry';
-import type { FollowUpScenarioCode } from './reengagement.types';
+import type { FollowUpScenarioCode, ReengagementChannelIdentity } from './reengagement.types';
 
 interface AnchorContext {
   traceId: string;
@@ -12,6 +12,8 @@ interface AnchorContext {
   userId: string;
   corpId: string;
   isGroupChat?: boolean;
+  /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
+  channelIdentity?: ReengagementChannelIdentity;
 }
 
 interface AnchorAgentResult {
@@ -163,6 +165,7 @@ export class ReengagementAnchorService {
         state: { ...state, ...stateOverride },
         workOrderId: verification?.workOrderId,
         expectedInterviewAt: verification?.expectedInterviewAt,
+        channelIdentity: context.channelIdentity,
       });
     } catch (error) {
       this.logFailure(`schedule ${scenarioCode}`, context, error);

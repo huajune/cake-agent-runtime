@@ -13,6 +13,7 @@ import {
   REENGAGEMENT_QUEUE,
   type FollowUpJob,
   type FollowUpScenarioCode,
+  type ReengagementChannelIdentity,
 } from './reengagement.types';
 import { computeFireAt, getScenario, shouldStop } from './scenario-registry';
 
@@ -32,6 +33,8 @@ export interface ScheduleFollowUpInput {
   workOrderId?: number;
   /** 排程时冻结的期望面试时间（毫秒，改期比对基准）。 */
   expectedInterviewAt?: number;
+  /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
+  channelIdentity?: ReengagementChannelIdentity;
 }
 
 function createEmptyState(): AuthoritativeSessionState {
@@ -92,6 +95,7 @@ export class FollowUpSchedulerService {
       scenarioCode: input.scenarioCode,
       anchorEventId: input.anchorEventId,
       anchorAt: input.anchorAt,
+      ...input.channelIdentity,
     };
 
     // 排程前停止条件预检（仅当提供了 state）——能省一个无效 delayed job；
@@ -122,6 +126,7 @@ export class FollowUpSchedulerService {
           ...(input.expectedInterviewAt != null
             ? { expectedInterviewAt: input.expectedInterviewAt }
             : {}),
+          ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
         },
         {
           jobId,

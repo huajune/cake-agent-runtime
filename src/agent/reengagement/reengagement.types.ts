@@ -56,12 +56,24 @@ export interface FollowUpScenario {
   defaultRolloutEnabled: boolean;
 }
 
+/**
+ * 渠道身份快照（排程时冻结）：候选人微信昵称 + 接管 bot。
+ * 随任务落到 reengagement_touch_records，追溯页直读列，不做查询期关联。
+ */
+export interface ReengagementChannelIdentity {
+  candidateName?: string;
+  managerName?: string;
+  botImId?: string;
+}
+
 /** Bull job payload。 */
 export interface FollowUpJob {
   sessionRef: SessionRef;
   scenarioCode: FollowUpScenarioCode;
   anchorEventId: string;
   anchorAt: number;
+  /** 渠道身份快照（排程时冻结，观测用；存量任务可能缺失） */
+  channelIdentity?: ReengagementChannelIdentity;
   /**
    * 报名后场景（booking.succeeded 锚点）携带的工单 ID：processor 到点凭它向海绵核验
    * 工单现状（外部取消/已面试）。缺失（存量任务/提取失败）时跳过核验，回退旧停止规则。

@@ -373,6 +373,11 @@ export class ReplyWorkflowService {
         userId: agentCallParams.userId,
         corpId: agentCallParams.corpId,
         isGroupChat: Boolean(params.primaryMessage.imRoomId),
+        channelIdentity: {
+          candidateName: parsed.contactName,
+          managerName: params.primaryMessage.botUserId,
+          botImId: params.primaryMessage.imBotId,
+        },
       });
 
       // 非 reply 终态（skipped 沉默 / guardrail_blocked 守卫拦截 / handoff 转人工）：跳过 WeCom 发送，
@@ -425,6 +430,11 @@ export class ReplyWorkflowService {
           userId: agentCallParams.userId,
           corpId: agentCallParams.corpId,
           isGroupChat: Boolean(params.primaryMessage.imRoomId),
+          channelIdentity: {
+            candidateName: parsed.contactName,
+            managerName: params.primaryMessage.botUserId,
+            botImId: params.primaryMessage.imBotId,
+          },
         });
       }
 
@@ -849,6 +859,11 @@ export class ReplyWorkflowService {
               scenarioCode: 'opening_no_reply',
               anchorEventId: 'opening',
               anchorAt: Date.now(),
+              channelIdentity: {
+                candidateName: parsed.contactName,
+                managerName: primaryMessage.botUserId,
+                botImId,
+              },
             })
             .catch((error: unknown) => {
               this.logger.warn(

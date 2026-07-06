@@ -1,9 +1,15 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ExternalLink } from 'lucide-react';
 import { formatDateTime, formatJson } from '@/utils/format';
 import { useReengagementRecordDetail } from '@/hooks/reengagement/useReengagementRecords';
+import { useChatSessionMessages } from '@/hooks/chat/useChatSessions';
 import type { ReengagementEvent } from '@/api/types/reengagement.types';
 import StatusBadge from '../StatusBadge';
 import styles from './index.module.scss';
+
+/** 详情里只看触达前后的语境，最近 10 条足够 */
+const RECENT_CHAT_LIMIT = 10;
 
 interface ReengagementDetailDrawerProps {
   touchKey: string;
@@ -36,9 +42,19 @@ export default function ReengagementDetailDrawer({
   onClose,
   scenarioLabels,
 }: ReengagementDetailDrawerProps) {
+  const navigate = useNavigate();
   const { data: record, isLoading } = useReengagementRecordDetail(touchKey);
 
   const events = useMemo(() => sortEventsAsc(record?.events || []), [record?.events]);
+
+  // 最近 10 条聊天记录：还原触达前后的会话语境
+  const { data: chatData, isLoading: chatLoading } = useChatSessionMessages(
+    record?.session_id ?? null,
+  );
+  const recentMessages = useMemo(
+    () => (chatData?.messages ?? []).slice(-RECENT_CHAT_LIMIT),
+    [chatData?.messages],
+  );
 
   const identityFacts = useMemo<InfoFact[]>(() => {
     if (!record) return [];
@@ -51,6 +67,7 @@ export default function ReengagementDetailDrawer({
       { label: '决策原因', value: record.decision_reason || '-' },
       { label: 'Outcome', value: record.outcome_kind || '-' },
       { label: 'Reserve', value: record.reserve_result || '-' },
+      { label: 'Batch', value: record.batch_id || '-', mono: true },
     ];
   }, [record, scenarioLabels]);
 
@@ -99,7 +116,7 @@ export default function ReengagementDetailDrawer({
           <div className={styles.headerTop}>
             <h3 className={styles.headerTitle}>触达记录详情</h3>
             <StatusBadge status={record.status} title={record.error || undefined} />
-            {record.shadow && (
+            {record.shadow && record.status !== 'shadow' && (
               <span className={styles.shadowFlag} title="Shadow：生成了文案但未投递">
                 Shadow
               </span>
@@ -164,9 +181,64 @@ export default function ReengagementDetailDrawer({
                 </div>
               )}
             </div>
+
+            {/* Recent chat context */}
+            <div>
+              <div className={styles.sectionTitle}>
+                最近聊天记录
+                <span className={styles.sectionNote}>近 {RECENT_CHAT_LIMIT} 条</span>
+              </div>
+              {chatLoading ? (
+                <div className={styles.emptyText}>加载中...</div>
+              ) : recentMessages.length === 0 ? (
+                <div className={styles.emptyText}>暂无聊天记录</div>
+              ) : (
+                <div className={styles.historyCard}>
+                  <div className={styles.historyList}>
+                    {recentMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`${styles.historyItem} ${
+                          msg.role === 'assistant' ? styles.historyAssistant : styles.historyUser
+                        }`}
+                      >
+                        <div className={styles.historyMeta}>
+                          <span className={styles.historyRole}>
+                            {msg.role === 'assistant' ? 'Agent' : '用户'}
+                          </span>
+                          <span className={styles.historyName}>
+                            {msg.role === 'assistant'
+                              ? msg.managerName || '接管账号'
+                              : msg.candidateName || '候选人'}
+                          </span>
+                          <span className={styles.historyTime}>
+                            {formatDateTime(msg.timestamp)}
+                          </span>
+                        </div>
+                        <div className={styles.historyContent}>{msg.content}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className={styles.rightCol}>
+            {/* 该触达由哪个主动回合投递：跳消息处理流水详情 */}
+            {record.batch_id && (
+              <button
+                type="button"
+                className={styles.batchLink}
+                onClick={() =>
+                  navigate(`/message-processing?messageId=${encodeURIComponent(record.batch_id!)}`)
+                }
+                title={`Batch: ${record.batch_id}`}
+              >
+                <ExternalLink aria-hidden="true" size={13} />
+                查看消息处理流水
+              </button>
+            )}
             {/* Identity facts */}
             <div className={styles.sideTitle}>基本信息</div>
             <div className={styles.factList}>

@@ -366,3 +366,108 @@
   color: $text-secondary;
   font-size: 13px;
 }
+
+/* ── Section note（sectionTitle 右侧的小注） ── */
+.sectionNote {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+/* ── 最近聊天记录（复用消息处理详情的「聊天记录」卡片样式）── */
+.historyCard {
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(251, 250, 255, 0.94) 100%);
+  overflow: hidden;
+  box-shadow:
+    0 12px 30px rgba(31, 41, 55, 0.05),
+    0 0 22px rgba(139, 92, 246, 0.05);
+}
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.historyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px dashed rgba(139, 92, 246, 0.13);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.historyUser {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.historyAssistant {
+  background: rgba(99, 102, 241, 0.025);
+}
+
+.historyMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.historyRole {
+  color: $text-muted;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.historyName {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.historyTime {
+  margin-left: auto;
+  font-size: 10px;
+  color: #b6c2d4;
+  font-variant-numeric: tabular-nums;
+}
+
+.historyContent {
+  color: $text-primary;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── 跳转消息处理流水 ── */
+.batchLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+  height: 32px;
+  margin-bottom: 14px;
+  padding: 0 12px;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.06);
+  color: #4f46e5;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    background: rgba(99, 102, 241, 0.12);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.14);
+  }
+}

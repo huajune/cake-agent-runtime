@@ -39,6 +39,7 @@ describe('FollowUpProcessor', () => {
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let outcomeFinalizer: { commit: jest.Mock };
   let tracking: Record<string, jest.Mock>;
+  let messageTracking: { recordProactiveTurn: jest.Mock };
   let sponge: { getCachedWorkOrderById: jest.Mock };
   let longTerm: { getActiveBookings: jest.Mock };
   let scheduler: { scheduleFollowUp: jest.Mock };
@@ -78,6 +79,7 @@ describe('FollowUpProcessor', () => {
       trackSent: jest.fn(),
       trackDeliveryUnknown: jest.fn(),
     };
+    messageTracking = { recordProactiveTurn: jest.fn() };
     delivery = { deliver: jest.fn().mockResolvedValue(undefined) };
   });
 
@@ -90,6 +92,7 @@ describe('FollowUpProcessor', () => {
       systemConfig as never,
       outcomeFinalizer as never,
       tracking as never,
+      messageTracking as never,
       sponge as never,
       longTerm as never,
       scheduler as never,
@@ -485,7 +488,21 @@ describe('FollowUpProcessor', () => {
 
       expect(tracking.trackReserved).toHaveBeenCalledWith(expectedIdentity);
       expect(tracking.trackDeliveryAttempted).toHaveBeenCalledWith(expectedIdentity);
-      expect(tracking.trackSent).toHaveBeenCalledWith(expectedIdentity, '明天见！');
+      expect(tracking.trackSent).toHaveBeenCalledWith(
+        expectedIdentity,
+        '明天见！',
+        expect.stringMatching(/^batch_sess-1_\d+$/),
+      );
+      // 投递成功的主动回合落一行消息处理流水（message_id = batchId）
+      expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'sess-1',
+          status: 'success',
+          replyPreview: '明天见！',
+          messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
+          batchId: expect.stringMatching(/^batch_sess-1_\d+$/),
+        }),
+      );
     });
 
     it('tracks unknown when delivery throws', async () => {
@@ -507,8 +524,13 @@ describe('FollowUpProcessor', () => {
       expect(tracking.trackDeliveryUnknown).toHaveBeenCalledWith(
         expectedIdentity,
         'gateway timeout',
+        expect.stringMatching(/^batch_sess-1_\d+$/),
       );
       expect(tracking.trackSent).not.toHaveBeenCalled();
+      // 投递状态不明也落流水（failure），排障时能看到该回合的完整生成轨迹
+      expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ chatId: 'sess-1', status: 'failure', error: 'gateway timeout' }),
+      );
     });
 
     it('tracks duplicate when the touch slot is already taken', async () => {
