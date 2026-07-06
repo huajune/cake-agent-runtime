@@ -35,6 +35,10 @@ describe('sensitive-screening util', () => {
     // "专业"的形容词用法不算筛选条件
     expect(containsSensitiveScreeningText('提供专业培训，专业的带教团队')).toBe(false);
     expect(containsSensitiveScreeningText('团队非常专业，氛围好')).toBe(false);
+    // "非"字打头的良性备注不应连带"专业"形容词误报（2026-07-06 review）
+    expect(containsSensitiveScreeningText('非全日制排班 专业带教')).toBe(false);
+    expect(containsSensitiveScreeningText('非工作日也有专业培训')).toBe(false);
+    expect(containsSensitiveScreeningText('非高峰时段有专业指导')).toBe(false);
     expect(containsSensitiveScreeningText(null)).toBe(false);
     expect(containsSensitiveScreeningText('')).toBe(false);
   });

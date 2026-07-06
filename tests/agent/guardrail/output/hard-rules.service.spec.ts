@@ -65,6 +65,13 @@ describe('HardRulesService', () => {
       '不要紧张，我们有专业的带教团队',
       '我们很专业，不是中介哈',
       '这个岗位专业不限，放心报',
+      // 安抚候选人"不卡专业"的合规话术（2026-07-06 review：误杀修复）
+      '这个岗位不看专业要求的',
+      '专业要求：不限',
+      '这个岗位专业要求不高，放心报',
+      '不考虑专业背景，大家都能做',
+      '不要求专业对口，放心报名',
+      '这家对专业要求不高',
     ];
     it.each(passCases)('does not flag compliant phrasing: %s', (reply) => {
       const result = check(reply);
