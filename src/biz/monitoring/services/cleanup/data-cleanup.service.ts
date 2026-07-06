@@ -13,7 +13,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * 数据清理服务（分层存储策略）
  *
  * 清理顺序（每日凌晨 3 点）:
- * 1. NULL agent_invocation（>N 天）— 释放 TOAST 空间，保留记录本身
+ * 1. NULL agent_invocation/agent_steps/tool_calls（>N 天）— 释放 TOAST 空间，保留记录本身
  * 2. DELETE chat_messages（>N 天）
  * 3. DELETE message_processing_records（>N 天）— 历史数据已聚合到 monitoring_hourly_stats
  * 4. DELETE monitoring_error_logs（>N 天）
@@ -108,13 +108,13 @@ export class DataCleanupService implements OnModuleInit {
       return;
     }
 
-    // 1. NULL agent_invocation（>7 天）— 释放 TOAST 空间
+    // 1. NULL agent_invocation/agent_steps/tool_calls（>7 天）— 释放 TOAST 空间
     await this.nullAgentInvocations();
 
     // 2. 清理过期聊天消息（>60 天）
     await this.cleanupChatMessages();
 
-    // 3. 清理过期消息处理记录（>14 天）
+    // 3. 清理过期消息处理记录（>30 天）
     await this.cleanupMessageProcessingRecords();
 
     // 4. 清理过期错误日志（>30 天）
@@ -143,7 +143,7 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
-   * 将过期 agent_invocation 置为 NULL（释放 TOAST 空间）
+   * 将过期 turn 级重字段（agent_invocation/agent_steps/tool_calls）置为 NULL（释放 TOAST 空间）
    */
   private async nullAgentInvocations(): Promise<void> {
     try {
