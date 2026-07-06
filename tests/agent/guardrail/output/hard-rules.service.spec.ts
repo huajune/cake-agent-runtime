@@ -2504,7 +2504,9 @@ describe('HardRulesService', () => {
         const result = service.check({
           replyText:
             '我看了一下，附近目前只有两个夜班岗位，暂时没有白班\n\n1. 成都你六姐（嘉定同济园店，7km）：23:30-01:30，24元/时起\n\n你看夜班能接受吗？要是只找白班，我先把需求记下，后续有白班岗位上线了第一时间叫你',
-          toolCalls: [makeMarkdownJobListCall('- **工作班次**: 夜班 23:30-01:30\n- 晚班补货 22:00-07:00')],
+          toolCalls: [
+            makeMarkdownJobListCall('- **工作班次**: 夜班 23:30-01:30\n- 晚班补货 22:00-07:00'),
+          ],
           chatId: 'chat-1',
         });
 
@@ -2516,7 +2518,9 @@ describe('HardRulesService', () => {
       it('skips 不要早班 preference field line（守卫档案 id=62：收资字段复述候选人偏好不算班次声称）', () => {
         const result = service.check({
           replyText: '姓名：\n联系方式：\n不要早班要周末和全天：\n周末两天是否在：',
-          toolCalls: [makeMarkdownJobListCall('- **工作班次**: 10:00-20:00 或 15:00-23:00（中班/下午班）')],
+          toolCalls: [
+            makeMarkdownJobListCall('- **工作班次**: 10:00-20:00 或 15:00-23:00（中班/下午班）'),
+          ],
           chatId: 'chat-1',
         });
 
