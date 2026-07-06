@@ -108,8 +108,12 @@ export class AnalyticsDashboardService {
   private readonly ACTIVE_USER_WINDOW_MS = 60 * 60 * 1000;
   private readonly overviewCache = new Map<
     string,
-    { expireAt: number; value: DashboardOverviewResponse }
+    { freshUntil: number; staleUntil: number; value: DashboardOverviewResponse }
   >();
+  /** 正在后台刷新的缓存 key，避免同一 key 并发重算 */
+  private readonly overviewRefreshing = new Set<string>();
+  /** 缓存过期后仍可返回旧值（同时触发后台刷新）的窗口 = TTL × 该倍数 */
+  private static readonly OVERVIEW_STALE_MULTIPLIER = 10;
   private readonly projectionFreshCache = new Map<string, { expireAt: number; value: boolean }>();
 
   constructor(
@@ -241,17 +245,16 @@ export class AnalyticsDashboardService {
     timeRange: TimeRange = 'today',
     groups: string[] = [],
   ): Promise<DashboardOverviewResponse> {
+    const normalizedGroups = this.normalizeGroups(groups);
+    const compute =
+      normalizedGroups.length > 0
+        ? () => this.computeDashboardOverviewByGroups(timeRange, normalizedGroups)
+        : () => this.computeDashboardOverview(timeRange);
+    return this.resolveOverviewWithCache(timeRange, normalizedGroups, compute);
+  }
+
+  private async computeDashboardOverview(timeRange: TimeRange): Promise<DashboardOverviewResponse> {
     try {
-      const normalizedGroups = this.normalizeGroups(groups);
-      if (normalizedGroups.length > 0) {
-        return this.getDashboardOverviewByGroups(timeRange, normalizedGroups);
-      }
-
-      const cached = this.getCachedDashboardOverview(timeRange, normalizedGroups);
-      if (cached) {
-        return cached;
-      }
-
       const timeRanges = calculateDashboardTimeRanges(timeRange);
       const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
 
@@ -594,7 +597,6 @@ export class AnalyticsDashboardService {
         fallbackDelta,
         manualIntervention,
       };
-      this.setCachedDashboardOverview(timeRange, normalizedGroups, response);
       return response;
     } catch (error) {
       this.logger.error('获取Dashboard概览数据失败:', error);
@@ -602,16 +604,52 @@ export class AnalyticsDashboardService {
     }
   }
 
-  private getCachedDashboardOverview(
+  /**
+   * 概览缓存（stale-while-revalidate）：
+   * - 新鲜期内直接命中；
+   * - 过期但在可服务窗口（TTL × OVERVIEW_STALE_MULTIPLIER）内：立即返回旧值，
+   *   后台异步重算刷新（同 key 去重）——大范围（近2月/近3月）全量聚合要 2~10s，
+   *   不能让每个访问者都同步等；
+   * - 超出可服务窗口或从未算过：同步计算，仅冷启动首个访问者等待。
+   */
+  private async resolveOverviewWithCache(
     timeRange: TimeRange,
-    groups: string[] = [],
-  ): DashboardOverviewResponse | null {
-    const cached = this.overviewCache.get(this.getOverviewCacheKey(timeRange, groups));
-    if (!cached || cached.expireAt <= Date.now()) {
-      this.overviewCache.delete(this.getOverviewCacheKey(timeRange, groups));
-      return null;
+    groups: string[],
+    compute: () => Promise<DashboardOverviewResponse>,
+  ): Promise<DashboardOverviewResponse> {
+    const key = this.getOverviewCacheKey(timeRange, groups);
+    const cached = this.overviewCache.get(key);
+    const now = Date.now();
+
+    if (cached && now < cached.freshUntil) {
+      return cached.value;
     }
-    return cached.value;
+
+    if (cached && now < cached.staleUntil) {
+      this.refreshOverviewInBackground(key, timeRange, groups, compute);
+      return cached.value;
+    }
+
+    this.overviewCache.delete(key);
+    const value = await compute();
+    this.setCachedDashboardOverview(timeRange, groups, value);
+    return value;
+  }
+
+  private refreshOverviewInBackground(
+    key: string,
+    timeRange: TimeRange,
+    groups: string[],
+    compute: () => Promise<DashboardOverviewResponse>,
+  ): void {
+    if (this.overviewRefreshing.has(key)) {
+      return;
+    }
+    this.overviewRefreshing.add(key);
+    void compute()
+      .then((value) => this.setCachedDashboardOverview(timeRange, groups, value))
+      .catch((error) => this.logger.warn(`[Dashboard] 概览缓存后台刷新失败 [${key}]:`, error))
+      .finally(() => this.overviewRefreshing.delete(key));
   }
 
   private setCachedDashboardOverview(
@@ -619,9 +657,12 @@ export class AnalyticsDashboardService {
     groups: string[],
     value: DashboardOverviewResponse,
   ): void {
+    const ttlMs = this.getOverviewCacheTtlMs(timeRange);
+    const now = Date.now();
     this.overviewCache.set(this.getOverviewCacheKey(timeRange, groups), {
       value,
-      expireAt: Date.now() + this.getOverviewCacheTtlMs(timeRange),
+      freshUntil: now + ttlMs,
+      staleUntil: now + ttlMs * AnalyticsDashboardService.OVERVIEW_STALE_MULTIPLIER,
     });
   }
 
@@ -629,15 +670,10 @@ export class AnalyticsDashboardService {
     return groups.length > 0 ? `${timeRange}:${groups.join('|')}` : timeRange;
   }
 
-  private async getDashboardOverviewByGroups(
+  private async computeDashboardOverviewByGroups(
     timeRange: TimeRange,
     groups: string[],
   ): Promise<DashboardOverviewResponse> {
-    const cached = this.getCachedDashboardOverview(timeRange, groups);
-    if (cached) {
-      return cached;
-    }
-
     const timeRanges = calculateDashboardTimeRanges(timeRange);
     const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
     const currentStartDate = new Date(currentStart);
@@ -723,7 +759,6 @@ export class AnalyticsDashboardService {
       manualIntervention,
     };
 
-    this.setCachedDashboardOverview(timeRange, groups, response);
     return response;
   }
 
@@ -908,7 +943,14 @@ export class AnalyticsDashboardService {
   }
 
   private getOverviewCacheTtlMs(timeRange: TimeRange): number {
-    return timeRange === 'today' ? 30_000 : 60_000;
+    if (timeRange === 'today') {
+      return 30_000;
+    }
+    // 近2月/近3月几乎全是历史数据，60s 缓存毫无意义且全量聚合要 2~10s，放宽到 5 分钟
+    if (timeRange === 'twoMonths' || timeRange === 'threeMonths') {
+      return 300_000;
+    }
+    return 60_000;
   }
 
   private getHourStart(date: Date): Date {

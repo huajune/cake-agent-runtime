@@ -10,6 +10,7 @@ export type AppRoutePath =
   | '/config'
   | '/system'
   | '/message-processing'
+  | '/reengagement'
   | '/chat-records'
   | '/agent-test'
   | '/test-suite'
@@ -22,6 +23,7 @@ const hostingLoader = () => import('@/view/hosting/list');
 const configLoader = () => import('@/view/config/list');
 const systemLoader = () => import('@/view/system/list');
 const messageProcessingLoader = () => import('@/view/message-processing/list');
+const reengagementLoader = () => import('@/view/reengagement/list');
 const chatRecordsLoader = () => import('@/view/chat-records/list');
 const agentTestLoader = () => import('@/view/agent-test/list');
 const testSuiteLoader = () => import('@/view/test-suite/list');

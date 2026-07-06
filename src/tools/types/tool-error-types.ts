@@ -84,9 +84,8 @@ export const TOOL_ERROR_TYPES = {
   JOB_LIST_REGION_NEEDS_GEOCODE: 'job_list.region_needs_geocode',
   JOB_LIST_SCHEDULE_FILTER_EMPTY: 'job_list.schedule_filter_empty',
   /**
-   * 候选人想要季节性用工形式（暑假工/寒假工），但本轮召回的岗位经 laborForm 严格匹配后为空
-   * ——即附近确实没有该季节性岗位。引导 Agent 如实告知"暂无暑假工/寒假工岗位"，不得把
-   * 常规兼职/小时工包装成季节工，也不得凭"平台都是兼职"空口承诺有岗。
+   * 候选人想要某个合法用工形式，但本轮召回的岗位经 laborForm 严格匹配后为空。
+   * 引导 Agent 如实告知附近暂无该用工形式岗位，不得把别的用工形式包装回去。
    */
   JOB_LIST_LABOR_FORM_FILTER_EMPTY: 'job_list.labor_form_filter_empty',
   JOB_LIST_FETCH_FAILED: 'job_list.fetch_failed',

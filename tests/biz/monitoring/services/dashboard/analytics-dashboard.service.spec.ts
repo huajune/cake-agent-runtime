@@ -1112,6 +1112,106 @@ describe('AnalyticsDashboardService', () => {
   });
 
   // ========================================
+  // 概览缓存 stale-while-revalidate
+  // ========================================
+
+  describe('overview cache (stale-while-revalidate)', () => {
+    // 只假 Date（控制缓存新鲜度判定），保留真实定时器/微任务，方便 flush 后台刷新
+    const useDateOnlyFakeTimers = (iso: string) => {
+      jest.useFakeTimers({
+        doNotFake: ['setTimeout', 'setInterval', 'setImmediate', 'nextTick', 'queueMicrotask'],
+      });
+      jest.setSystemTime(new Date(iso));
+    };
+    const flushBackgroundRefresh = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('新鲜期内命中缓存，不重复查询', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockClear();
+
+      jest.setSystemTime(new Date('2026-07-06T10:00:30+08:00'));
+      const second = await service.getDashboardOverviewAsync('week');
+
+      expect(second).toBe(first);
+      expect(mockMonitoringRecordRepository.getDashboardOverviewStats).not.toHaveBeenCalled();
+    });
+
+    it('过期但在可服务窗口内：立即返回旧值并后台刷新', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+      expect(first.overview.activeUsers).toBe(0);
+
+      // week TTL 60s：61s 后过期但仍在 10 倍窗口内
+      jest.setSystemTime(new Date('2026-07-06T10:01:01+08:00'));
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        ...defaultOverview,
+        activeUsers: 42,
+      });
+
+      const stale = await service.getDashboardOverviewAsync('week');
+      expect(stale).toBe(first); // 旧值立即返回，不等重算
+
+      await flushBackgroundRefresh();
+      const refreshed = await service.getDashboardOverviewAsync('week');
+      expect(refreshed.overview.activeUsers).toBe(42);
+    });
+
+    it('超出可服务窗口：同步重算，不再返回旧值', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+
+      // week TTL 60s × 10 倍窗口 = 600s，再往后就彻底失效
+      jest.setSystemTime(new Date('2026-07-06T10:11:00+08:00'));
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        ...defaultOverview,
+        activeUsers: 42,
+      });
+
+      const recomputed = await service.getDashboardOverviewAsync('week');
+      expect(recomputed).not.toBe(first);
+      expect(recomputed.overview.activeUsers).toBe(42);
+    });
+
+    it('twoMonths TTL 放宽到 5 分钟：61s 后仍新鲜', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('twoMonths');
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockClear();
+
+      jest.setSystemTime(new Date('2026-07-06T10:01:01+08:00'));
+      const second = await service.getDashboardOverviewAsync('twoMonths');
+
+      expect(second).toBe(first);
+      expect(mockMonitoringRecordRepository.getDashboardOverviewStats).not.toHaveBeenCalled();
+    });
+
+    it('后台刷新失败不影响返回旧值，也不缓存失败结果', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+
+      jest.setSystemTime(new Date('2026-07-06T10:01:01+08:00'));
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockRejectedValue(new Error('boom'));
+
+      const stale = await service.getDashboardOverviewAsync('week');
+      expect(stale).toBe(first);
+
+      await flushBackgroundRefresh();
+      // 刷新失败后旧值仍可继续服务（仍在可服务窗口内）
+      const again = await service.getDashboardOverviewAsync('week');
+      expect(again).toBe(first);
+    });
+  });
+
+  // ========================================
   // buildBusinessTrend (public method)
   // ========================================
 

@@ -2,6 +2,10 @@ import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/comm
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import {
+  ReengagementTrackingService,
+  type ReengagementTouchIdentity,
+} from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import { SessionService } from '@memory/services/session.service';
 import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from './channel-delivery.port';
 import { AgentRunnerService } from '../runner/agent-runner.service';
@@ -37,6 +41,7 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly touchLedger: TouchLedgerService,
     private readonly systemConfig: SystemConfigService,
     private readonly outcomeFinalizer: TurnOutcomeInterventionService,
+    private readonly tracking: ReengagementTrackingService,
     @Optional()
     @Inject(CHANNEL_DELIVERY_PORT)
     private readonly delivery?: ChannelDeliveryPort<TurnOutcome>,
@@ -50,12 +55,20 @@ export class FollowUpProcessor implements OnModuleInit {
   }
 
   async process(job: Job<FollowUpJob>): Promise<void> {
-    const { sessionRef, scenarioCode, anchorAt } = job.data;
+    const { sessionRef, scenarioCode, anchorAt, anchorEventId } = job.data;
     const scenario = getScenario(scenarioCode);
     if (!scenario) {
       this.logger.warn(`[reengagement] 未知场景 ${scenarioCode}，跳过`);
       return;
     }
+    const identity: ReengagementTouchIdentity = {
+      sessionId: sessionRef.sessionId,
+      userId: sessionRef.userId,
+      corpId: sessionRef.corpId,
+      scenarioCode,
+      anchorEventId,
+      anchorAt,
+    };
 
     // 0) 总开关急刹车：Dashboard 关闭后，在途 job 到点直接丢弃（不生成、不投递、不重排）
     const runtime = await this.systemConfig.getAgentReplyConfig();
@@ -63,6 +76,7 @@ export class FollowUpProcessor implements OnModuleInit {
       this.logger.log(
         `[reengagement] 总开关关闭，丢弃到点任务 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
+      this.tracking.trackDisabledAtFire(identity);
       return;
     }
 
@@ -79,12 +93,14 @@ export class FollowUpProcessor implements OnModuleInit {
       this.logger.log(
         `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${stop.reason}`,
       );
+      this.tracking.trackStopped(identity, stop.reason ?? 'stopped');
       return;
     }
 
     // 2) 频控：24h ≤ 2（只数 sent）
     if (await this.touchLedger.isOverFrequencyLimit(sessionRef.sessionId, now)) {
       this.logger.log(`[reengagement] 频控丢弃 ${scenarioCode} sessionId=${sessionRef.sessionId}`);
+      this.tracking.trackFrequencyBlocked(identity);
       return;
     }
 
@@ -106,6 +122,15 @@ export class FollowUpProcessor implements OnModuleInit {
           `text="${outcome.kind === 'reply' ? outcome.reply?.text.slice(0, 60) : `[${outcome.kind}]`}"` +
           `（shadow=${shadow}, rollout=${scenario.rolloutEnabled}）`,
       );
+      this.tracking.trackShadow(identity, {
+        outcomeKind: outcome.kind,
+        generatedText: outcome.kind === 'reply' ? outcome.reply?.text : undefined,
+        reason: !this.delivery
+          ? 'no_delivery_port'
+          : !scenario.rolloutEnabled
+            ? 'rollout_disabled'
+            : 'shadow_mode',
+      });
       if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       return;
     }
@@ -115,18 +140,22 @@ export class FollowUpProcessor implements OnModuleInit {
     if (slot === 'duplicate_sent') {
       // 之前那次触达已送达，但**本次生成的文本**没发出去——不投影本次文本。
       this.logger.log(`[reengagement] 已发过，跳过 key=${key}`);
+      this.tracking.trackDuplicate(identity, slot);
       return;
     }
     if (slot === 'duplicate_inflight') {
       this.logger.warn(`[reengagement] 触达已在途/状态不明，跳过重投 key=${key}`);
+      this.tracking.trackDuplicate(identity, slot);
       return;
     }
+    this.tracking.trackReserved(identity);
 
     const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario);
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
+      this.tracking.trackOutcomeNotReply(identity, outcome.kind);
       await this.outcomeFinalizer.commit(outcome, {
         traceId: key,
         chatId: sessionRef.sessionId,
@@ -138,7 +167,7 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now);
+    await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now, identity);
   }
 
   private runProactiveTurn(
@@ -160,14 +189,18 @@ export class FollowUpProcessor implements OnModuleInit {
     key: string,
     sessionId: string,
     now: number,
+    identity: ReengagementTouchIdentity,
   ): Promise<void> {
     try {
       await this.touchLedger.markDeliveryAttempted(key);
+      this.tracking.trackDeliveryAttempted(identity);
       await this.delivery!.deliver(outcome, { idempotencyKey: key });
       await this.touchLedger.markSent(key, sessionId, now);
+      this.tracking.trackSent(identity, outcome.reply?.text);
     } catch (error) {
       // deliver 后状态不明 → unknown，交补偿，不盲重投。送达与否未知时按未送达处理：
       // 宁可下一轮重复跟进语气，也不能让记忆引用候选人可能没收到的文本（HC-4）。
+      this.tracking.trackDeliveryUnknown(identity, this.errorMessage(error));
       try {
         await this.touchLedger.markFailedOrUnknown(key, 'unknown');
       } finally {
@@ -209,6 +242,18 @@ export class FollowUpProcessor implements OnModuleInit {
     });
     this.logger.log(
       `[reengagement] 非投递窗口，推迟到 ${new Date(fireAt).toISOString()} 重判 jobId=${job.id} rescheduledJobId=${jobId}`,
+    );
+    this.tracking.trackRescheduled(
+      {
+        sessionId: job.data.sessionRef.sessionId,
+        userId: job.data.sessionRef.userId,
+        corpId: job.data.sessionRef.corpId,
+        scenarioCode: job.data.scenarioCode,
+        anchorEventId: job.data.anchorEventId,
+        anchorAt: job.data.anchorAt,
+      },
+      fireAt,
+      jobId,
     );
   }
 

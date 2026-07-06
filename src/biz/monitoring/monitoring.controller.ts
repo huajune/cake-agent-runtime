@@ -3,6 +3,7 @@ import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { ReengagementQueryService } from './services/dashboard/reengagement-query.service';
 import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
@@ -22,7 +23,57 @@ export class AnalyticsController {
     private readonly dashboardService: AnalyticsDashboardService,
     private readonly queryService: AnalyticsQueryService,
     private readonly maintenanceService: AnalyticsMaintenanceService,
+    private readonly reengagementQueryService: ReengagementQueryService,
   ) {}
+
+  /**
+   * 二次触发（复聊）追溯记录列表
+   * GET /analytics/reengagement-records?startDate=&endDate=&status=&scenarioCode=&sessionId=&limit=&offset=
+   */
+  @Get('reengagement-records')
+  async getReengagementRecords(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('status') status?: string,
+    @Query('scenarioCode') scenarioCode?: string,
+    @Query('sessionId') sessionId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.reengagementQueryService.getRecords({
+      startDate,
+      endDate,
+      status,
+      scenarioCode,
+      sessionId,
+      limit,
+      offset,
+    });
+  }
+
+  /**
+   * 二次触发追溯统计（按 status + scenario 分组计数）
+   * GET /analytics/reengagement-stats?startDate=&endDate=
+   */
+  @Get('reengagement-stats')
+  async getReengagementStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const end = endDate ?? new Date().toISOString().slice(0, 10);
+    const start = startDate ?? end;
+    return this.reengagementQueryService.getStats(start, end);
+  }
+
+  /**
+   * 二次触发追溯详情（含生成文案与 events 全轨迹）
+   * GET /analytics/reengagement-records/detail?touchKey=...
+   * touchKey 含冒号，走 query 参数避免路径转义问题
+   */
+  @Get('reengagement-records/detail')
+  async getReengagementRecordDetail(@Query('touchKey') touchKey: string) {
+    return this.reengagementQueryService.getRecordByTouchKey(touchKey);
+  }
 
   /**
    * 获取 Dashboard 概览数据

@@ -16,6 +16,7 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 describe('FollowUpSchedulerService', () => {
   let queue: { add: jest.Mock };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
+  let tracking: Record<string, jest.Mock>;
   let service: FollowUpSchedulerService;
 
   beforeEach(() => {
@@ -23,7 +24,16 @@ describe('FollowUpSchedulerService', () => {
     systemConfig = {
       getAgentReplyConfig: jest.fn().mockResolvedValue({ reengagementEnabled: true }),
     };
-    service = new FollowUpSchedulerService(queue as never, systemConfig as never);
+    tracking = {
+      trackScheduled: jest.fn(),
+      trackScheduleSkipped: jest.fn(),
+      trackScheduleError: jest.fn(),
+    };
+    service = new FollowUpSchedulerService(
+      queue as never,
+      systemConfig as never,
+      tracking as never,
+    );
   });
 
   it('does not schedule when reengagement is disabled', async () => {

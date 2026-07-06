@@ -579,7 +579,7 @@ export function buildJobListTool(
         }
 
         // 兜底：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
-        // 平台所有岗位都是兼职岗位，用工形式不是岗位工种，不应作为 category 查询条件。
+        // 用工形式是岗位 laborForm 属性，不是岗位工种，不应作为 category 查询条件。
         const { cleaned: sanitizedJobCategoryList, removed: removedCategoryWords } =
           stripLaborFormFromCategories(jobCategoryList);
         if (removedCategoryWords.length > 0) {
@@ -1054,8 +1054,8 @@ export function buildJobListTool(
             });
           }
 
-          // 用工形式过滤：候选人想要全职/兼职(统称)/暑假工/寒假工时，按岗位 laborForm
-          // 字段硬过滤（避免把兼职岗当全职、把常规岗当季节工承诺）；小时工/兼职+ 软处理。
+          // 用工形式过滤：候选人想要任一合法用工形式时，按岗位 laborForm 字段硬过滤。
+          // 避免把别的用工形式包装成候选人想要的类型。
           // 候选人意向从确定性提取的会话事实读取，不依赖 LLM 入参，保证始终生效。
           const candidateLaborForm = resolveCandidateLaborForm(context);
           const laborFormFilterResult = applyLaborFormConstraint(jobs, candidateLaborForm);

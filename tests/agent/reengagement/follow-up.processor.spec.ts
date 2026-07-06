@@ -38,6 +38,7 @@ describe('FollowUpProcessor', () => {
   };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let outcomeFinalizer: { commit: jest.Mock };
+  let tracking: Record<string, jest.Mock>;
   let delivery: { deliver: jest.Mock };
 
   beforeEach(() => {
@@ -58,6 +59,19 @@ describe('FollowUpProcessor', () => {
         .mockResolvedValue({ reengagementEnabled: true, reengagementShadow: true }),
     };
     outcomeFinalizer = { commit: jest.fn().mockResolvedValue(undefined) };
+    tracking = {
+      trackDisabledAtFire: jest.fn(),
+      trackStopped: jest.fn(),
+      trackFrequencyBlocked: jest.fn(),
+      trackRescheduled: jest.fn(),
+      trackShadow: jest.fn(),
+      trackDuplicate: jest.fn(),
+      trackReserved: jest.fn(),
+      trackOutcomeNotReply: jest.fn(),
+      trackDeliveryAttempted: jest.fn(),
+      trackSent: jest.fn(),
+      trackDeliveryUnknown: jest.fn(),
+    };
     delivery = { deliver: jest.fn().mockResolvedValue(undefined) };
   });
 
@@ -69,6 +83,7 @@ describe('FollowUpProcessor', () => {
       touchLedger as never,
       systemConfig as never,
       outcomeFinalizer as never,
+      tracking as never,
       withDelivery ? (delivery as never) : undefined,
     );
 
@@ -317,5 +332,129 @@ describe('FollowUpProcessor', () => {
         delay: expectedFireAt - now,
       }),
     );
+    expect(tracking.trackRescheduled).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'sess-1', scenarioCode: 'opening_no_reply' }),
+      expectedFireAt,
+      `late-job:rw:${expectedFireAt}`,
+    );
+  });
+
+  describe('二次触发追溯落库埋点', () => {
+    const expectedIdentity = expect.objectContaining({
+      sessionId: 'sess-1',
+      scenarioCode: 'opening_no_reply',
+      anchorEventId: 'evt-1',
+    });
+
+    beforeEach(() => {
+      // 前序用例可能把 Date.now mock 在 9-21 窗口外，先恢复再固定到窗口内（10:00 上海）
+      jest.restoreAllMocks();
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 0, 0));
+    });
+
+    it('tracks disabled when the master switch is off at fire time', async () => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: false,
+        reengagementShadow: true,
+      });
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.trackDisabledAtFire).toHaveBeenCalledWith(expectedIdentity);
+    });
+
+    it('tracks stopped with reason when stop condition hits', async () => {
+      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(expectedIdentity, 'terminal:booked');
+      expect(runner.runTurn).not.toHaveBeenCalled();
+    });
+
+    it('tracks frequency block', async () => {
+      touchLedger.isOverFrequencyLimit.mockResolvedValue(true);
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.trackFrequencyBlocked).toHaveBeenCalledWith(expectedIdentity);
+    });
+
+    it('tracks shadow with generated text', async () => {
+      runner.runTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '还在考虑吗？' },
+        toolCalls: [],
+        scenarioCode: 'opening_no_reply',
+        runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      });
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.trackShadow).toHaveBeenCalledWith(
+        expectedIdentity,
+        expect.objectContaining({
+          outcomeKind: 'reply',
+          generatedText: '还在考虑吗？',
+          reason: 'shadow_mode',
+        }),
+      );
+    });
+
+    it('tracks reserved → attempted → sent along the real delivery path', async () => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+      });
+      runner.runTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '明天见！' },
+        toolCalls: [],
+        scenarioCode: 'opening_no_reply',
+        runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      });
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.trackReserved).toHaveBeenCalledWith(expectedIdentity);
+      expect(tracking.trackDeliveryAttempted).toHaveBeenCalledWith(expectedIdentity);
+      expect(tracking.trackSent).toHaveBeenCalledWith(expectedIdentity, '明天见！');
+    });
+
+    it('tracks unknown when delivery throws', async () => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+      });
+      runner.runTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: 'hi' },
+        toolCalls: [],
+        scenarioCode: 'opening_no_reply',
+        runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      });
+      delivery.deliver.mockRejectedValue(new Error('gateway timeout'));
+
+      await expect(buildProcessor().process(makeJob())).rejects.toThrow('gateway timeout');
+
+      expect(tracking.trackDeliveryUnknown).toHaveBeenCalledWith(
+        expectedIdentity,
+        'gateway timeout',
+      );
+      expect(tracking.trackSent).not.toHaveBeenCalled();
+    });
+
+    it('tracks duplicate when the touch slot is already taken', async () => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+      });
+      touchLedger.reserve.mockResolvedValue('duplicate_sent');
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.trackDuplicate).toHaveBeenCalledWith(expectedIdentity, 'duplicate_sent');
+      expect(runner.runTurn).not.toHaveBeenCalled();
+    });
   });
 });

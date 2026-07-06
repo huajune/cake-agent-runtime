@@ -139,12 +139,12 @@ describe('labor-form', () => {
   });
 
   describe('isHardFilteredLaborForm', () => {
-    it('hard-filters only 全职', () => {
-      expect(isHardFilteredLaborForm('全职')).toBe(true);
+    it.each([...VALID_LABOR_FORMS])('hard-filters valid labor form %s', (value) => {
+      expect(isHardFilteredLaborForm(value)).toBe(true);
     });
 
-    it.each(['兼职', '暑假工', '寒假工', '小时工', '兼职+', '正式工', '', null, undefined])(
-      'does NOT hard-filter %p (returns all jobs)',
+    it.each(['正式工', '临时工', '', null, undefined])(
+      'does NOT hard-filter invalid labor form %p',
       (value) => {
         expect(isHardFilteredLaborForm(value)).toBe(false);
       },

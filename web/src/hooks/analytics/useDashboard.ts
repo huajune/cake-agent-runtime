@@ -14,10 +14,14 @@ export type {
 } from '@/api/services/analytics.service';
 
 function getOverviewRefetchInterval(timeRange: string): number {
-  return timeRange === 'today' ? 15000 : 60000;
+  if (timeRange === 'today') return 15000;
+  // 近2月/近3月几乎全是历史数据，与服务端 5 分钟缓存对齐，避免无意义的重查
+  if (timeRange === 'twoMonths' || timeRange === 'threeMonths') return 300000;
+  return 60000;
 }
 
 function getOverviewStaleTime(timeRange: string, autoRefresh: boolean): number {
+  if (timeRange === 'twoMonths' || timeRange === 'threeMonths') return 300000;
   if (!autoRefresh) return 60000;
   return timeRange === 'today' ? 10000 : 60000;
 }
@@ -52,11 +56,13 @@ export function usePrefetchDashboardOverview(enabled: boolean, groups: string[] 
   useEffect(() => {
     if (!enabled || groups.length > 0) return;
 
-    for (const range of ['week', 'month']) {
+    // twoMonths/threeMonths 一并预取：这两个范围冷启动最慢（2~10s），
+    // 提前触发让服务端算好并进缓存，用户切过去时即刻命中
+    for (const range of ['week', 'month', 'twoMonths', 'threeMonths']) {
       queryClient.prefetchQuery({
         queryKey: ['dashboard-overview', range, groups],
         queryFn: () => analyticsService.getDashboardOverview(range, groups),
-        staleTime: 60000,
+        staleTime: getOverviewStaleTime(range, true),
       });
     }
     // groupKey keeps the effect stable while still responding to group content changes.

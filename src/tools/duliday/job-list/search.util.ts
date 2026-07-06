@@ -17,8 +17,8 @@ import {
 } from '@tools/utils/schedule-semantic.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import {
-  isFullTimeLaborForm,
   isHardFilteredLaborForm,
+  matchesLaborForm,
   sanitizeLaborFormForDisplay,
 } from '@memory/facts/labor-form';
 
@@ -190,29 +190,21 @@ export interface LaborFormFilterResult {
 }
 
 /**
- * 把候选人想要的用工形式映射成"保留谓词"。返回 null 表示不做硬过滤（返回全部岗位）。
+ * 把候选人想要的用工形式映射成"保留谓词"。返回 null 表示不做硬过滤（未提供合法偏好）。
  *
- * 业务口径（2026-06 修订）：**只有「全职」触发硬过滤** —— 只保留 laborForm==全职 的岗位
- * （全职可用性必须岗位字段显式背书）。其余一切（兼职 / 暑假工 / 寒假工 / 小时工 / 兼职+ / 未填）
- * 都返回 null **不过滤**：找兼职/暑期工的候选人本就灵活，全职岗也可一并考虑，由其自行挑选。
+ * 业务口径：候选人指定任一合法用工形式时，都按岗位 laborForm 字段严格匹配。
  */
 function buildLaborFormKeepPredicate(
   wanted: string | null | undefined,
 ): ((job: any) => boolean) | null {
-  // 仅「全职」触发硬过滤；其余用工形式一律不过滤（返回全部岗位）。
   if (!isHardFilteredLaborForm(wanted)) return null;
-  return (job) => isFullTimeLaborForm(job?.basicInfo?.laborForm);
+  return (job) => matchesLaborForm(job?.basicInfo?.laborForm, wanted);
 }
 
 /**
- * 按候选人想要的用工形式过滤岗位（**仅对「全职」硬过滤**；其余用工形式不过滤、返回全部）。
+ * 按候选人想要的用工形式过滤岗位（对所有合法用工形式均严格匹配）。
  *
- * 剔除项附岗位实际 laborForm，便于上层如实解释（如"附近这几家都是兼职岗，没有全职"）。
- *
- * 设计动机：
- * - 候选人明确要全职时，全职可用性必须由岗位 laborForm 字段显式背书，不能软推断。
- * - 反例 badcase（chat 6a334d26536c9654026d9316）：曾把"暑假工"当岗位 laborForm 做严格全等
- *   硬过滤，但岗位轴没有该值，导致暑假工候选人召回必空、下游 Agent 被逼编造岗位。
+ * 剔除项附岗位实际 laborForm，便于上层如实解释（如"附近这几家都是兼职岗，没有暑假工"）。
  */
 export function applyLaborFormConstraint(
   jobs: any[],

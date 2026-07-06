@@ -23,14 +23,7 @@ export function isFullTimeLaborForm(value: string | null | undefined): boolean {
   return sanitizeLaborFormForDisplay(value) === FULL_TIME_LABOR_FORM;
 }
 
-/**
- * 季节性用工形式 —— 描述的是**候选人可用性**（寒假/暑假可工作），不是岗位 `laborForm`
- * 轴上的取值：门店几乎从不把岗位标成"暑假工/寒假工"（岗位轴只有 全职/兼职 及细分）。
- * 因此季节性候选人不做用工形式硬过滤，按 全职+兼职 全部岗位召回（暑期能做的兼职岗都合适）；
- * "有没有岗"仍以工具查岗结果为准（承诺前必须先查岗，见 prompt 规则），而非按岗位字段死筛。
- *
- * 注：这两个值仍是合法的会话事实/展示值，仅"不再触发 laborForm 硬过滤"。
- */
+/** 季节性用工形式，也是岗位 `laborForm` 轴上的明确合法取值。 */
 export const SEASONAL_LABOR_FORMS = ['寒假工', '暑假工'] as const;
 
 /** 判断一个 labor_form 是否为季节性用工形式（寒假工 / 暑假工）。 */
@@ -40,18 +33,12 @@ export function isSeasonalLaborForm(value: string | null | undefined): boolean {
 }
 
 /**
- * 触发 laborForm **硬过滤**的用工形式集 —— **仅「全职」**（见 `applyLaborFormConstraint`）。
+ * 触发 laborForm **硬过滤**的用工形式集（见 `applyLaborFormConstraint`）。
  *
- * 业务口径（2026-06 修订）：只有候选人明确要"全职"时才按岗位 laborForm 硬过滤（只留全职岗，
- * 全职可用性必须岗位字段显式背书）；其余一切（兼职 / 暑假工 / 寒假工 / 小时工 / 兼职+ / 未填）
- * 都**不过滤**，返回全部岗位让候选人自行挑选——找兼职/暑期工的本就灵活，全职岗也可考虑。
- *
- * 历史教训：曾把 暑假工/寒假工 当作岗位 laborForm 取值做"严格全等"硬过滤，但岗位轴根本没有
- * 这两个值，导致每个暑假工候选人都被误判"附近没有岗位"（badcase chat 6a334d26536c9654026d9316）。
- *
- * 单一事实来源 —— 过滤实现与 prompt 注入文案共用，避免两处枚举漂移。
+ * 业务口径：岗位 `laborForm` 有明确取值，候选人指定任一合法用工形式时，都必须按岗位字段
+ * 严格匹配，不能把别的用工形式包装成候选人想要的类型。
  */
-export const HARD_FILTERED_LABOR_FORMS = ['全职'] as const;
+export const HARD_FILTERED_LABOR_FORMS = VALID_LABOR_FORMS;
 
 /** 判断候选人想要的用工形式是否会触发 laborForm 硬过滤。 */
 export function isHardFilteredLaborForm(value: string | null | undefined): boolean {
