@@ -56,9 +56,10 @@ export function usePrefetchDashboardOverview(enabled: boolean, groups: string[] 
   useEffect(() => {
     if (!enabled || groups.length > 0) return;
 
-    // twoMonths/threeMonths 一并预取：这两个范围冷启动最慢（2~10s），
-    // 提前触发让服务端算好并进缓存，用户切过去时即刻命中
-    for (const range of ['week', 'month', 'twoMonths', 'threeMonths']) {
+    // 只预取 week/month：twoMonths/threeMonths 是 2~10s 的全量扫描管线，
+    // 发版后缓存全冷时每个访客 mount 都预取会形成 4N 并发重查询
+    //（2026-06-04 连接池耗尽宕机同型），长范围改为用户切换 tab 时按需计算
+    for (const range of ['week', 'month']) {
       queryClient.prefetchQuery({
         queryKey: ['dashboard-overview', range, groups],
         queryFn: () => analyticsService.getDashboardOverview(range, groups),

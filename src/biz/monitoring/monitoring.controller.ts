@@ -11,6 +11,7 @@ import { MonitoringCacheService } from './services/tracking/monitoring-cache.ser
 import { MetricsData, TimeRange } from './types/analytics.types';
 import { DeliverySkipReason } from '@shared-types/tracking.types';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
+import { formatLocalDate } from '@infra/utils/date.util';
 
 /**
  * Analytics API 控制器
@@ -81,7 +82,8 @@ export class AnalyticsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const end = endDate ?? new Date().toISOString().slice(0, 10);
+    // 默认"今天"用上海口径：UTC 容器里 toISOString 在上海 0-8 点会给出昨天
+    const end = endDate ?? formatLocalDate(new Date());
     const start = startDate ?? end;
     return this.reengagementQueryService.getStats(start, end);
   }

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { addLocalDays, parseLocalDateStart } from '@infra/utils/date.util';
 import {
   ReengagementTouchFilters,
   ReengagementTouchStatus,
@@ -47,15 +48,13 @@ export class ReengagementQueryService {
     return this.repository.getStats(this.dayStart(startDate), this.dayEnd(endDate));
   }
 
+  // 日界必须用 Asia/Shanghai 口径（date.util 统一封装）——生产容器时区是 UTC，
+  // 直接 setHours 会把"今天"算成上海 08:00 起，凌晨的记录整段查不到。
   private dayStart(date: string): string {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
+    return parseLocalDateStart(date).toISOString();
   }
 
   private dayEnd(date: string): string {
-    const d = new Date(date);
-    d.setHours(23, 59, 59, 999);
-    return d.toISOString();
+    return new Date(addLocalDays(parseLocalDateStart(date), 1).getTime() - 1).toISOString();
   }
 }

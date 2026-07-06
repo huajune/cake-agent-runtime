@@ -125,6 +125,8 @@ export class AnalyticsDashboardService {
   >();
   /** 正在后台刷新的缓存 key，避免同一 key 并发重算 */
   private readonly overviewRefreshing = new Set<string>();
+  /** 冷路径 in-flight 去重：发版后缓存全空时并发访客共享同一次计算，防查询风暴打满连接池 */
+  private readonly overviewInflight = new Map<string, Promise<DashboardOverviewResponse>>();
   /** 缓存过期后仍可返回旧值（同时触发后台刷新）的窗口 = TTL × 该倍数 */
   private static readonly OVERVIEW_STALE_MULTIPLIER = 10;
   private readonly projectionFreshCache = new Map<string, { expireAt: number; value: boolean }>();
@@ -657,9 +659,21 @@ export class AnalyticsDashboardService {
     }
 
     this.overviewCache.delete(key);
-    const value = await compute();
-    this.setCachedDashboardOverview(timeRange, groups, value);
-    return value;
+    // 冷路径 single-flight：同 key 并发请求共享一次 compute。没有这层去重，
+    // 发版后缓存全冷时 N 个访客 × 预取范围 = 并发全量聚合，正是 2026-06-04
+    // 连接池（max_conns=60）耗尽宕机的查询风暴形态。
+    const inflight = this.overviewInflight.get(key);
+    if (inflight) {
+      return inflight;
+    }
+    const computing = compute()
+      .then((value) => {
+        this.setCachedDashboardOverview(timeRange, groups, value);
+        return value;
+      })
+      .finally(() => this.overviewInflight.delete(key));
+    this.overviewInflight.set(key, computing);
+    return computing;
   }
 
   private refreshOverviewInBackground(
