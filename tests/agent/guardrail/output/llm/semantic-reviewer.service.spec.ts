@@ -41,6 +41,44 @@ describe('SemanticReviewerService', () => {
       expect(service.shouldReview(packet)).toBe(false);
     });
 
+    it('结构化 jobs 为空但有 markdownExcerpt（工具只回 markdown）→ 仍触发 job 推荐档', () => {
+      const packet = makePacket({
+        draftReply: '推荐你去静安寺店，薪资 24 元/小时',
+        evidence: {
+          jobList: {
+            args: {},
+            jobs: [],
+            requestedBrands: [],
+            markdownExcerpt: '# 在招岗位（共 1 个）\n\n## 瑞幸咖啡（静安寺店）',
+          },
+        },
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('jobs 为空且无 markdownExcerpt → 跳过（与有 excerpt 的对照）', () => {
+      const packet = makePacket({
+        draftReply: '推荐你去静安寺店，薪资 24 元/小时',
+        evidence: { jobList: { args: {}, jobs: [], requestedBrands: [] } },
+      });
+      expect(service.shouldReview(packet)).toBe(false);
+    });
+
+    it('有 markdownExcerpt 但回复是纯寒暄 → 不触发（措辞条件仍然生效）', () => {
+      const packet = makePacket({
+        draftReply: '好的，祝你顺利',
+        evidence: {
+          jobList: {
+            args: {},
+            jobs: [],
+            requestedBrands: [],
+            markdownExcerpt: '# 在招岗位（共 1 个）',
+          },
+        },
+      });
+      expect(service.shouldReview(packet)).toBe(false);
+    });
+
     it('geocode 证据 + 位置结论措辞 → 触发', () => {
       const packet = makePacket({
         draftReply: '你附近有门店',
