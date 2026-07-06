@@ -35,6 +35,12 @@ describe('HardRulesService', () => {
       '不好意思，门店不接受少数民族',
       '这个岗位有户籍要求，你可能不行',
       '你的户籍不符合门店要求，看看别的吧',
+      // 专业类筛选条件外露（badcase 2026-07-06：与籍贯/民族同样处理）
+      '专业不是新媒体或食品相关的吧？',
+      '你不会是食品相关专业吧',
+      '这家不招新媒体或食品相关专业',
+      '岗位有专业限制，你这个专业不符',
+      '筛选项：专业（非新媒、食品）',
     ];
     it.each(hitCases)('flags and blocks discriminatory disclosure: %s', (reply) => {
       const result = check(reply);
@@ -54,6 +60,11 @@ describe('HardRulesService', () => {
       '这家对户籍没有要求，放心报名',
       // 催收资料场景误用"不要"
       '麻烦把籍贯发我一下哈，不要发错啦',
+      // 专业的合规开放式核对与形容词用法
+      '方便说下你学的什么专业吗？',
+      '不要紧张，我们有专业的带教团队',
+      '我们很专业，不是中介哈',
+      '这个岗位专业不限，放心报',
     ];
     it.each(passCases)('does not flag compliant phrasing: %s', (reply) => {
       const result = check(reply);

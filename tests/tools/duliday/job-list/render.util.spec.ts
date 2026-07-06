@@ -174,7 +174,7 @@ describe('job-list render util', () => {
       const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
 
       expect(markdown).toContain('不要新疆西藏籍');
-      expect(markdown).toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+      expect(markdown).toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
     });
 
     it('appends 🔒 notice when interview supplement embeds sensitive screening label', () => {
@@ -185,7 +185,7 @@ describe('job-list render util', () => {
       const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
 
       const interviewSection = markdown.slice(markdown.indexOf('### 面试流程'));
-      expect(interviewSection).toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+      expect(interviewSection).toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
     });
 
     it('does not duplicate notice when structured hometown warning already rendered', () => {
@@ -202,12 +202,12 @@ describe('job-list render util', () => {
       const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
 
       expect(markdown).toContain('上述民族/籍贯条件🔒仅供内部筛选');
-      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
     });
 
     it('does not append notice for ordinary jobs', () => {
       const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, detailFlags);
-      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族等敏感筛选信息');
+      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
     });
   });
 
