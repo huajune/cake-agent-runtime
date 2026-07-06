@@ -322,6 +322,36 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('allows noun-phrase requirement line 需第一职业劳动合同及社保（守卫档案 id=80 假阳回归：第二职业岗位否则永远推不出去）', () => {
+      const result = service.check({
+        replyText:
+          '哈根达斯（亦庄龙湖店）- 店员，5.7km\n班次：09:00-23:00\n薪资：25 元/小时\n要求：23-30 岁，需第一职业劳动合同及社保，入职前办食品健康证\n\n这个岗位有点特殊，只要已经有正式工作想利用业余时间赚外快的（需提供第一职业的劳动合同和社保证明）。你目前有在职交社保的工作吗？',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '大兴区亦庄',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
+    it('allows 要求有本地社保和劳动合同 phrasing（守卫档案 id=97 假阳回归）', () => {
+      const result = service.check({
+        replyText:
+          '这两个都要求有本地社保和劳动合同，你目前方便提供吗？如果暂时不符合，我再帮你看看其他普通兼职或全职岗。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userMessage: '目前在市南区',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'proactive_insurance_policy_mention',
+      );
+    });
+
     it('still blocks when reply mixes requirement context with a benefit promise', () => {
       const result = service.check({
         replyText: '这个岗位需要提供社保证明。另外公司还给你买五险一金，福利很好。',
@@ -1066,6 +1096,26 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('does not flag the honest failure wording "暂时没能提交成功"（守卫档案 id=104 假阳回归：诚实修复版被否定盲区连坐）', () => {
+      const result = service.check({
+        replyText:
+          '两份资料都收到了哈。\n周二下午1点这个时段已经约满了，暂时没能提交成功。\n你们看周三或周四下午1点哪个更方便？确认后我马上帮你们重新登记。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {},
+            result: { success: false, errorType: 'booking.slot_full' },
+            status: 'error',
+          },
+        ] as never,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'tool_failure_success_claim',
+      );
+    });
+
     it('does not flag tool failure success claim when the latest side-effect call succeeded', () => {
       const result = service.check({
         replyText: '已帮你预约成功，明天10点到店面试，记得带身份证。',
@@ -1263,6 +1313,28 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('does not flag the rejection relay "没法帮你登记报名"（守卫档案 id=51 假阳回归：正确转达 precheck 拒绝被否定盲区拦成 P0）', () => {
+      const result = service.check({
+        replyText:
+          '资料收到了。不过刚帮你核对了一下，肯德基这个岗对年龄和身份有硬性要求，你这边暂时不太符合，没法帮你登记报名哈。\n\n要不我先看看有没有匹配你条件的其他岗位？',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: {
+              nextAction: 'age_rejected',
+              ageBoundary: { severity: 'hard_reject' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
     it('does not flag date_unavailable ack + alternative slot（守卫档案 id=9 假阳回归：规定动作是"说明原因并给替代时段"）', () => {
       const result = service.check({
         replyText:
@@ -1344,6 +1416,28 @@ describe('HardRulesService', () => {
 
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
         'precheck_blocked_booking_claim',
+      );
+    });
+
+    it('does not flag shift/commute times in a collect-fields template（守卫档案 id=102 假阳回归：意向班次 08:00-15:00 被当成编造的面试时间）', () => {
+      const result = service.check({
+        replyText:
+          '收到啦。还有这几个信息帮门店登记核对一下：\n\n学历：\n健康证：（有/无，没有录用后再办就行）\n通勤时间（住哪里/大概多久到店）：\n能做到几月：\n意向班次：08:00-15:00（已记）\n\n麻烦一起发我哈～ 这家面试是店长后续电话通知你的，留意手机就行',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: {
+              nextAction: 'collect_fields',
+              interview: { interviewTimeMode: 'wait_notice' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'wait_notice_time_fabrication',
       );
     });
 
@@ -2398,6 +2492,31 @@ describe('HardRulesService', () => {
         const result = service.check({
           replyText: '这家不用上早班的。',
           toolCalls: [makeMarkdownJobListCall('- **工作班次**: 晚班 18:00-23:00')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'job_shift_polarity_mismatch'),
+        ).toBeUndefined();
+      });
+
+      it('skips requirement echo + future promise（守卫档案 id=39 假阳回归：如实告知只有夜班被判说成白班）', () => {
+        const result = service.check({
+          replyText:
+            '我看了一下，附近目前只有两个夜班岗位，暂时没有白班\n\n1. 成都你六姐（嘉定同济园店，7km）：23:30-01:30，24元/时起\n\n你看夜班能接受吗？要是只找白班，我先把需求记下，后续有白班岗位上线了第一时间叫你',
+          toolCalls: [makeMarkdownJobListCall('- **工作班次**: 夜班 23:30-01:30\n- 晚班补货 22:00-07:00')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'job_shift_polarity_mismatch'),
+        ).toBeUndefined();
+      });
+
+      it('skips 不要早班 preference field line（守卫档案 id=62：收资字段复述候选人偏好不算班次声称）', () => {
+        const result = service.check({
+          replyText: '姓名：\n联系方式：\n不要早班要周末和全天：\n周末两天是否在：',
+          toolCalls: [makeMarkdownJobListCall('- **工作班次**: 10:00-20:00 或 15:00-23:00（中班/下午班）')],
           chatId: 'chat-1',
         });
 

@@ -1,5 +1,6 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { assertsClaim, splitClaimSentences } from './claim-assertion.util';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**
@@ -41,8 +42,7 @@ const HOURLY_SALARY_SUFFIX_PATTERN =
 // ground truth 里的薪资区间："20-25元"、"20~25 元"
 const SALARY_RANGE_PATTERN = /(\d+(?:\.\d+)?)\s*[-~—～至]\s*(\d+(?:\.\d+)?)/g;
 
-const NEGATION_PATTERN = /不是|不算|没有|不用|无需|不需要|并非|别的|错/;
-const QUESTION_PATTERN = /[？?]|[吗呢么]\s*[。！~]*\s*$/;
+// 否定/疑问/切句判定已下沉到 claim-assertion.util（承诺类规则共用同一口径）。
 
 /**
  * 结算词的"要求复述"语境：句子是在转述候选人的求职条件（"符合晚班日结要求的岗位"、
@@ -100,24 +100,23 @@ function safeStringify(value: unknown): string {
   }
 }
 
-/** 切句：疑问/否定判定按句子粒度做，避免整段误杀。疑问句被 ？切开后靠句尾 吗/呢/么 兜底识别。 */
-function splitSentences(text: string): string[] {
-  return text
-    .split(/(?<=[？?])|[。！!\n；;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+/**
+ * 班次的"需求复述"语境：句子是在转述候选人的班次偏好（"只找白班""不要早班"），
+ * 不是在声称某个岗位的班次。生产假阳（2026-07-06 守卫档案 id=39/62）：候选人问
+ * "白班没有吗"，Agent 如实回答"只有夜班……要是只找白班，后续有白班岗上线叫你"，
+ * "后续有白班岗上线"被当成把岗位说成白班，两版全杀整轮静默。
+ */
+const SHIFT_REQUIREMENT_ECHO_PATTERN =
+  /(?:只找|只做|只考虑|只要|想找|想做|想要|倾向|偏好|接受)[^。！？\n]{0,6}(?:早班|白班|日班|晚班|夜班|通宵)/;
 
-/** 该句是否构成对 pattern 的"声称"（非疑问、非否定）。 */
-function assertsPattern(sentence: string, pattern: RegExp): boolean {
-  if (!pattern.test(sentence)) return false;
-  if (QUESTION_PATTERN.test(sentence)) return false;
-  if (NEGATION_PATTERN.test(sentence)) return false;
-  return true;
-}
-
-function textAssertsPattern(text: string, pattern: RegExp): boolean {
-  return splitSentences(text).some((sentence) => assertsPattern(sentence, pattern));
+/** 班次声称句过滤：需求复述 / 未来上新承诺不算对当前岗位班次的声称。 */
+function textAssertsShiftClaim(text: string, pattern: RegExp): boolean {
+  return splitClaimSentences(text).some(
+    (sentence) =>
+      assertsClaim(sentence, pattern) &&
+      !SHIFT_REQUIREMENT_ECHO_PATTERN.test(sentence) &&
+      !FUTURE_PROMISE_PATTERN.test(sentence),
+  );
 }
 
 /**
@@ -130,8 +129,8 @@ export function detectJobShiftPolarityMismatch(
   const truth = readJobFactGroundTruth(toolCalls);
   if (!truth) return null;
 
-  const claimsEarly = textAssertsPattern(text, EARLY_SHIFT_PATTERN);
-  const claimsLate = textAssertsPattern(text, LATE_SHIFT_PATTERN);
+  const claimsEarly = textAssertsShiftClaim(text, EARLY_SHIFT_PATTERN);
+  const claimsLate = textAssertsShiftClaim(text, LATE_SHIFT_PATTERN);
   // 同时提两种极性 = 枚举/对比语境（"早晚班都有"），不判
   if (claimsEarly === claimsLate) return null;
 
@@ -235,9 +234,9 @@ export function detectSettlementCycleMismatch(
   if (!truthHasAnySettlement) return null;
 
   for (const group of SETTLEMENT_GROUPS) {
-    const claimingSentences = splitSentences(text).filter(
+    const claimingSentences = splitClaimSentences(text).filter(
       (sentence) =>
-        assertsPattern(sentence, group.claim) &&
+        assertsClaim(sentence, group.claim) &&
         // 复述候选人要求 / 未来上新承诺不算对当前岗位结算方式的声称
         !isSettlementRequirementEcho(sentence) &&
         !FUTURE_PROMISE_PATTERN.test(sentence),

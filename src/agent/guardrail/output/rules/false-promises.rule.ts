@@ -1,5 +1,6 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { textAssertsClaim } from './claim-assertion.util';
 import { asRecord, type FactRule, type RuleContradiction } from '../output-rule.types';
 
 /**
@@ -209,7 +210,10 @@ export function detectToolFailureSuccessClaim(
   ];
 
   for (const { toolName, pattern, label } of toolClaimPatterns) {
-    if (!pattern.test(text)) continue;
+    // 句粒度声称判定（否定/疑问句豁免）："暂时没能提交成功，你看周三方便吗"是工具失败后
+    // 的诚实纠错口径，不是成功宣称——全文裸匹配曾把这种修复版再次拦死（2026-07-06
+    // 守卫档案 id=104：首版谎称已登记被正确拦下，诚实修复版因"提交成功"字样连坐）。
+    if (!textAssertsClaim(text, pattern)) continue;
     const latestCall = [...toolCalls].reverse().find((call) => call.toolName === toolName);
     if (!latestCall || !isFailedToolCall(latestCall)) continue;
     const result = asRecord(latestCall.result);

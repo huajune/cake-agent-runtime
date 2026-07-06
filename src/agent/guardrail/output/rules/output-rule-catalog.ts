@@ -127,7 +127,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     description: '拦住等通知岗位里凭空编出具体面试时间、到店时间或面试官联系时间的回复。',
     riskGoal: '等通知岗位不得编造具体面试/到店时间。',
     exogenousSignal: 'duliday_interview_precheck.interview.interviewTimeMode=wait_notice。',
-    residualRisk: '非标准时间表述依赖正则持续补样本。',
+    residualRisk:
+      '非标准时间表述依赖正则持续补样本；约面语境与时间要求同句共现（班次/通勤时间已豁免），跨句编造可能漏判。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
@@ -314,7 +315,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     description: '拦住本轮岗位数据只有晚班/夜班，回复却把岗位说成早班/白班的情况（反向同理）。',
     riskGoal: '班次极性只能按本轮岗位工具结果表述，晚班说成早班会导致候选人错误决策甚至错误报名。',
     exogenousSignal: '本轮 duliday_job_list 返回的班次事实文本（markdown/rawData）。',
-    residualRisk: '中班等非极性班次、以及具体时间段（22:00-7:00）与班次名的换算不在检测范围。',
+    residualRisk:
+      '中班等非极性班次、以及具体时间段（22:00-7:00）与班次名的换算不在检测范围；' +
+      '需求复述/未来上新承诺已豁免，藏在这类句式里的真实班次错报会漏判。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复的班次极性与本轮岗位工具结果矛盾（如把晚班岗位说成早班），当前文本不可发送。请严格按 duliday_job_list 返回的班次信息重写，不确定时引用工具里的原始班次表述。',
@@ -354,7 +357,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal:
       '候选人本轮 userMessage 或近几轮消息（recentUserTexts）是否主动询问保险/社保。',
     residualRisk:
-      '跨轮豁免窗口为近 3 条候选人消息；更久之前问过、间隔多轮闲聊后再作答的场景仍可能误拦。',
+      '跨轮豁免窗口为近 3 条候选人消息；更久之前问过、间隔多轮闲聊后再作答的场景仍可能误拦。' +
+      '任职要求豁免（第一/第二职业、要求+持有动词、合同及社保并列）可能放过个别措辞异常的福利承诺。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {

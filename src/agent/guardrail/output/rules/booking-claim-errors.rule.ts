@@ -1,5 +1,6 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { splitClaimSentences, textAssertsClaim } from './claim-assertion.util';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**
@@ -42,8 +43,10 @@ export function detectPrecheckBlockedBookingClaim(
   text: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  // 先看 reply 是否说了“可约/已约/已安排”，没有成功口径就不需要读工具结果。
-  if (!PRECHECK_BLOCKED_BOOKING_CLAIM_PATTERN.test(text)) return null;
+  // 先看 reply 是否"声称"可约/已约/已安排（句粒度，否定/疑问句不算）：
+  // "没法帮你登记报名"是转达拒绝的正确口径，不是可约声称（2026-07-06 守卫档案 id=51：
+  // precheck 正确拒绝 + Agent 正确转达，却因全文裸匹配"帮你…报名"被 P0 拦成整轮静默）。
+  if (!textAssertsClaim(text, PRECHECK_BLOCKED_BOOKING_CLAIM_PATTERN)) return null;
 
   // 取最后一次 precheck，避免同一轮多次尝试时拿到旧判断。
   const precheckCall = [...toolCalls]
@@ -72,7 +75,10 @@ export function detectPrecheckBlockedBookingClaim(
   // 明天下午1点"就是在转述工具给的替代时段，属于 stage 策略要求的标准动作，放行；
   // 但完成时态的"已约好/预约成功"仍然是编造，不豁免。
   if (nextAction === 'date_unavailable' && !hardAgeReject && !nameMustHandoff) {
-    if (DATE_UNAVAILABLE_ACK_PATTERN.test(text) && !BOOKING_SUCCESS_CLAIM_PATTERN.test(text)) {
+    if (
+      DATE_UNAVAILABLE_ACK_PATTERN.test(text) &&
+      !textAssertsClaim(text, BOOKING_SUCCESS_CLAIM_PATTERN)
+    ) {
       return null;
     }
   }
@@ -89,13 +95,25 @@ export function detectPrecheckBlockedBookingClaim(
   };
 }
 
+/** 时间数字属于班次/通勤/营业等工作时间语境，不是面试时间（"意向班次：08:00-15:00"）。 */
+const SHIFT_OR_COMMUTE_TIME_CONTEXT_PATTERN =
+  /班次|排班|上班|下班|营业|通勤|工作时间|可(?:以)?出勤|意向时段|时段[:：]/;
+
 export function detectWaitNoticeTimeFabrication(
   text: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  // 必须同时出现约面语境和具体时间，避免把“等通知”本身误判。
-  if (!/面试|到店|预约|报到/.test(text)) return null;
-  if (!CONCRETE_INTERVIEW_TIME_PATTERN.test(text)) return null;
+  // 约面语境和具体时间必须出现在**同一句**里，且该句不是班次/通勤语境：
+  // 收资模板"意向班次：08:00-15:00（已记）"+"大概多久到店"分属两句，全文级
+  // 共现判定会把班次数字当成编造的面试时间（2026-07-06 守卫档案 id=102：
+  // 修复版已改成"店长电话通知"仍因班次数字连杀两版，整轮静默）。
+  const fabricatedTimeSentence = splitClaimSentences(text).some(
+    (sentence) =>
+      /面试|到店|预约|报到/.test(sentence) &&
+      CONCRETE_INTERVIEW_TIME_PATTERN.test(sentence) &&
+      !SHIFT_OR_COMMUTE_TIME_CONTEXT_PATTERN.test(sentence),
+  );
+  if (!fabricatedTimeSentence) return null;
 
   const precheckCall = [...toolCalls]
     .reverse()
