@@ -35,8 +35,9 @@ export class SemanticReviewerService {
 
   shouldReview(packet: GuardrailReviewPacket): boolean {
     const reply = packet.draftReply;
+    const jobList = packet.evidence.jobList;
     const hasJobRecommendation =
-      Boolean(packet.evidence.jobList?.jobs.length) &&
+      Boolean(jobList?.jobs.length || jobList?.markdownExcerpt) &&
       /推荐|这家|这个岗位|门店|距离|班次|薪资|地址|报名|预约/.test(reply);
     const hasGeoOrBrandAmbiguity =
       Boolean(packet.evidence.geocode) && /附近|地址|位置|门店|距离|城市|区|路/.test(reply);
@@ -56,6 +57,7 @@ export class SemanticReviewerService {
           content: [
             '你是招聘对话的语义出站守卫，负责最终确认候选人可见回复是否忠实、可发送。',
             '只基于输入里的 evidence packet 判断，不要凭常识补事实。',
+            'jobList.markdownExcerpt 是岗位工具返回的 markdown 原文摘录（结构化 jobs 为空时它就是岗位事实的 ground truth，其中"品牌（门店）"格式里括号前是品牌名、括号内是门店名，不要把品牌名误读为城市）。',
             '只检查三类问题：',
             '1. job_recommendation_not_best_supported：岗位推荐与 jobList 证据、距离排序、候选人指定品牌或班次明显冲突。',
             '2. brand_or_geo_ambiguity_ignored：地理或品牌证据不确定，但回复直接下结论。',

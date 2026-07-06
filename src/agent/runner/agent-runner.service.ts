@@ -295,11 +295,29 @@ export class AgentRunnerService {
     const decision2 = await this.outputGuard.check(
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
-    // §9：repair 死循环硬上限 1 —— 二次仍 revise/replan 则 block。
-    const finalDecision: OutputGuardDecision =
-      decision2.decision === 'revise' || decision2.decision === 'replan'
-        ? { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
-        : decision2;
+    // §9：repair 死循环硬上限 1 —— 二次仍 revise/replan 时按风险分级收敛：
+    // - P0（riskLevel=high）或含不可恢复违规：block（静默 + 档案），发出去即不可挽回；
+    // - 仅 P1/P2 可恢复违规：fail-open 投递修复版 + 档案标注 repair_exhausted_fail_open。
+    //   依据 2026-07-06 生产守卫档案首日复盘：假阳 × repair_exhausted 静默的组合杀伤最大
+    //   （候选人在约面/收资节点整轮收不到回复），P1 级假阳的代价应是"多一条告警"而不是丢单。
+    //   注意 revise 档规则本就定义为"可改写修复"的口径问题，修复版即使仍有残留，
+    //   其风险也低于关键转化节点的整轮静默。
+    const wantsRepairAgain = decision2.decision === 'revise' || decision2.decision === 'replan';
+    const failOpenEligible =
+      wantsRepairAgain &&
+      decision2.riskLevel !== 'high' &&
+      decision2.violations.every((v) => v.recoverability !== 'non_recoverable');
+    if (failOpenEligible) {
+      this.logger.warn(
+        `[invokeReviewed] repair 上限用尽但仅剩 P1/P2 可恢复违规，fail-open 投递修复版: ` +
+          `rules=${decision2.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
+      );
+    }
+    const finalDecision: OutputGuardDecision = wantsRepairAgain
+      ? failOpenEligible
+        ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
+        : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
+      : decision2;
     this.persistReviewRecord(ctx, {
       firstReply: firstText,
       firstDecision: decision,

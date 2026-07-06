@@ -607,6 +607,77 @@ describe('AgentRunnerService.runTurn', () => {
     expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 1
   });
 
+  it('repair exhausted with only recoverable P1 violations fails open and delivers the revised reply', async () => {
+    // 2026-07-06 生产复盘：假阳 × repair_exhausted 静默是杀伤最大的组合。
+    // 仅 P1/P2 可恢复违规时投递修复版（reasonCode 标注），只有 P0/不可恢复才保持静默。
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: 'v1' }))
+      .mockResolvedValueOnce(makeResult({ text: 'v2 修复版（仍有 P1 残留）' }));
+    const p1ReviseDecision = {
+      decision: 'revise' as const,
+      riskLevel: 'medium' as const,
+      violations: [
+        {
+          type: 'district_level_distance_claim',
+          evidence: '区级位置报精确距离',
+          suggestion: '不输出精确公里数',
+          recoverability: 'recoverable' as const,
+        },
+      ],
+      ruleIds: ['district_level_distance_claim'],
+      blockedRuleIds: ['district_level_distance_claim'],
+      repairMode: 'rewrite' as const,
+    };
+    outputGuard.check.mockResolvedValue(p1ReviseDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '我在江宁区' },
+      context: { messageId: 'msg-failopen' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 不变
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-failopen',
+        repaired: true,
+        revisedReply: 'v2 修复版（仍有 P1 残留）',
+        finalDecision: 'pass',
+        reasonCode: 'repair_exhausted_fail_open',
+      }),
+    );
+  });
+
+  it('repair exhausted with a non-recoverable violation still blocks even at medium risk', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: 'v1' }))
+      .mockResolvedValueOnce(makeResult({ text: 'v2 仍有问题' }));
+    outputGuard.check.mockResolvedValue({
+      decision: 'revise' as const,
+      riskLevel: 'medium' as const,
+      violations: [
+        {
+          type: 'internal_output_leak',
+          evidence: '泄漏内部实现',
+          suggestion: '删除内部内容',
+          recoverability: 'non_recoverable' as const,
+        },
+      ],
+      ruleIds: ['internal_output_leak'],
+      blockedRuleIds: ['internal_output_leak'],
+      repairMode: 'rewrite' as const,
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '约面试' },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual(expect.objectContaining({ reasonCode: 'repair_exhausted' }));
+  });
+
   it('dangling repair reply ("我帮你查下X") collapses to block instead of being delivered (badcase batch_6a4790c7)', async () => {
     // repair 模型无视重写指令、重新规划任务时只会产出一句悬空承接句——
     // rewrite 模式下工具已被移除，该承诺永远不会兑现，不能投递。
@@ -617,7 +688,11 @@ describe('AgentRunnerService.runTurn', () => {
       decision: 'revise',
       riskLevel: 'medium',
       violations: [
-        { type: 'group_promise_without_invite', evidence: '承诺拉群未调用', suggestion: '删除拉群承诺' },
+        {
+          type: 'group_promise_without_invite',
+          evidence: '承诺拉群未调用',
+          suggestion: '删除拉群承诺',
+        },
       ],
       ruleIds: ['group_promise_without_invite'],
       blockedRuleIds: ['group_promise_without_invite'],
@@ -740,11 +815,11 @@ describe('AgentRunnerService.runTurn', () => {
       expect(guardrailReviews.recordReview).not.toHaveBeenCalled();
     });
 
-    it('repair exhausted persists both steps with the collapsed block verdict', async () => {
+    it('repair exhausted persists both steps with the collapsed block verdict (P0 高风险不 fail-open)', async () => {
       generator.invoke
         .mockResolvedValueOnce(makeResult({ text: 'v1' }))
         .mockResolvedValueOnce(makeResult({ text: 'v2 仍有问题' }));
-      outputGuard.check.mockResolvedValue(reviseDecision);
+      outputGuard.check.mockResolvedValue({ ...reviseDecision, riskLevel: 'high' as const });
 
       await service.runTurn({
         sessionRef,

@@ -25,6 +25,13 @@ export interface JobListEvidence {
   status?: string;
   jobs: JobListEvidenceItem[];
   requestedBrands: string[];
+  /**
+   * 岗位工具 markdown 原文摘录（截断）。duliday_job_list 默认只返回 markdown
+   * （rawData 需显式请求），此时结构化 jobs 解析为空，本字段就是岗位事实的
+   * ground truth——没有它 reviewer 会把已接地的推荐误判成无证据（2026-07-03 回归
+   * 发现的 enforce 前必修项）。结构化 jobs 可用时不带，避免证据重复烧 token。
+   */
+  markdownExcerpt?: string;
 }
 
 export interface JobListEvidenceItem {

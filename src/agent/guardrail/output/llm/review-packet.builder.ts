@@ -39,20 +39,32 @@ export class GuardrailReviewPacketBuilder {
   }
 
   private buildJobListEvidence(toolCalls: AgentToolCall[]): JobListEvidence | undefined {
-    const call = [...toolCalls]
+    const jobListCalls = toolCalls.filter(
+      (item) => item.toolName === 'duliday_job_list' && item.result,
+    );
+    if (jobListCalls.length === 0) return undefined;
+
+    // 优先取最后一次"可用"结果：Agent 常见动作链是"近查空→扩面有果→复核空"，
+    // 岗位事实接地在中间那次；只看最后一次会让 reviewer 拿到空证据误判未接地
+    // （与 rule 档 2026-07-06 修复同口径）。全空时保留最后一次，让 reviewer 看到空态。
+    const usable = [...jobListCalls]
       .reverse()
-      .find((item) => item.toolName === 'duliday_job_list' && item.result);
-    if (!call) return undefined;
+      .find((item) => item.resultCount !== 0 && item.status !== 'error' && item.status !== 'empty');
+    const call = usable ?? jobListCalls[jobListCalls.length - 1];
 
     const requestedBrands = readStringArray(call.args.brandAliasList);
+    const jobs = readJobListJobs(call.result)
+      .slice(0, 8)
+      .map((job) => this.toJobEvidenceItem(job));
     return {
       args: pickJobListQueryIntent(call.args),
       resultCount: call.resultCount,
       status: call.status,
       requestedBrands,
-      jobs: readJobListJobs(call.result)
-        .slice(0, 8)
-        .map((job) => this.toJobEvidenceItem(job)),
+      jobs,
+      // 默认返回形态是 markdown-only（无 rawData 数组）：结构化解析为空时，
+      // markdown 摘录就是岗位事实的唯一 ground truth。
+      markdownExcerpt: jobs.length === 0 ? readMarkdownExcerpt(call.result) : undefined,
     };
   }
 
@@ -196,6 +208,18 @@ function readJobListJobs(result: unknown): unknown[] {
   const rawData = readRecord(record?.rawData);
   const jobs = rawData?.result ?? record?.result ?? record?.jobs ?? record?.items;
   return Array.isArray(jobs) ? jobs : [];
+}
+
+/** markdown 证据摘录上限：开头的岗位卡片汇总区（推荐对话用模板）通常在前 4000 字内。 */
+const MARKDOWN_EXCERPT_MAX_CHARS = 4000;
+
+function readMarkdownExcerpt(result: unknown): string | undefined {
+  const record = readRecord(result);
+  const markdown = readString(record?.markdown);
+  if (!markdown) return undefined;
+  return markdown.length > MARKDOWN_EXCERPT_MAX_CHARS
+    ? `${markdown.slice(0, MARKDOWN_EXCERPT_MAX_CHARS)}\n…（岗位详情已截断）`
+    : markdown;
 }
 
 function readDistanceKm(record: Record<string, unknown>): number | undefined {
