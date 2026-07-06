@@ -74,6 +74,31 @@ export class AnalyticsController {
   }
 
   /**
+   * 二次触发候选人视角：一行一个候选人，带各场景当前态与下一次待发任务
+   * GET /analytics/reengagement-candidates?startDate=&endDate=&scenarioCode=&sessionId=&pendingOnly=&limit=&offset=
+   */
+  @Get('reengagement-candidates')
+  async getReengagementCandidates(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('scenarioCode') scenarioCode?: string,
+    @Query('sessionId') sessionId?: string,
+    @Query('pendingOnly') pendingOnly?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.reengagementQueryService.getCandidateOverview({
+      startDate,
+      endDate,
+      scenarioCode,
+      sessionId,
+      pendingOnly,
+      limit,
+      offset,
+    });
+  }
+
+  /**
    * 二次触发追溯统计（按 status + scenario 分组计数）
    * GET /analytics/reengagement-stats?startDate=&endDate=
    */

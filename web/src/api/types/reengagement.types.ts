@@ -43,6 +43,37 @@ export interface ReengagementStatsItem {
   cnt: number;
 }
 
+/** 候选人某场景的当前态（该场景最新一次触达） */
+export interface ReengagementCandidateScenario {
+  scenarioCode: string;
+  touchKey: string;
+  status: string;
+  decisionReason?: string | null;
+  shadow?: boolean | null;
+  fireAt?: string | null;
+  sentAt?: string | null;
+  outcomeKind?: string | null;
+  updatedAt: string;
+}
+
+/** 候选人视角行：一行一个候选人（session），带各场景当前态与下一次待发任务 */
+export interface ReengagementCandidateSummary {
+  sessionId: string;
+  userId?: string | null;
+  corpId?: string | null;
+  /** 全场景最新活动时间（ISO，候选人排序键） */
+  latestAt: string;
+  /** 最近的一个待发任务（scheduled/rescheduled 且 fire_at 未到）；无则 null */
+  nextTouch: { scenarioCode: string; touchKey: string; fireAt: string } | null;
+  scenarios: ReengagementCandidateScenario[];
+}
+
+/** 候选人视角分页响应 */
+export interface ReengagementCandidateOverview {
+  total: number;
+  candidates: ReengagementCandidateSummary[];
+}
+
 /** 复聊场景注册表条目（只读，来自后端 scenario-registry） */
 export interface ReengagementScenario {
   code: string;

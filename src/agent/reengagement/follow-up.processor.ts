@@ -7,20 +7,35 @@ import {
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import { SessionService } from '@memory/services/session.service';
+import { LongTermService } from '@memory/services/long-term.service';
+import { SpongeService } from '@sponge/sponge.service';
+import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from './channel-delivery.port';
+import { FollowUpSchedulerService } from './follow-up-scheduler.service';
 import { AgentRunnerService } from '../runner/agent-runner.service';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import { TurnOutcomeInterventionService } from '../runner/turn-outcome-intervention.service';
 import { REENGAGEMENT_JOB_NAME, REENGAGEMENT_QUEUE, type FollowUpJob } from './reengagement.types';
 import {
+  bookingFollowUpAnchorId,
   computeFireAt,
   getScenario,
   inWindow,
+  parseInterviewTimestamp,
   resolveDelayMs,
   resolveRolloutEnabled,
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
+
+/** 海绵工单 currentStatus（9 态中文）里代表报名已失效的状态（对所有报名后场景生效）。 */
+const BOOKING_CANCELLED_STATUSES = new Set(['约面取消', '约面失败']);
+
+/** 面试/上岗已发生的状态：面试提醒无意义应停；面试后回访不受影响（面试完成正是回访前提）。 */
+const INTERVIEW_DONE_STATUSES = new Set(['面试成功', '面试失败', '上岗成功', '上岗失败', '已离职']);
+
+/** 改期比对容差：active_booking.interview_time 与排程冻结时间差超过 1 分钟视为已改约。 */
+const INTERVIEW_TIME_DRIFT_TOLERANCE_MS = 60_000;
 
 /**
  * 复聊 TaskProcessor：到点 → 代码校验停止条件 → 复用 runner（继承 guardrail/记忆/观测）→ 投递。
@@ -43,6 +58,9 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly systemConfig: SystemConfigService,
     private readonly outcomeFinalizer: TurnOutcomeInterventionService,
     private readonly tracking: ReengagementTrackingService,
+    private readonly sponge: SpongeService,
+    private readonly longTerm: LongTermService,
+    private readonly scheduler: FollowUpSchedulerService,
     @Optional()
     @Inject(CHANNEL_DELIVERY_PORT)
     private readonly delivery?: ChannelDeliveryPort<TurnOutcome>,
@@ -89,13 +107,28 @@ export class FollowUpProcessor implements OnModuleInit {
     );
 
     // 1) 停止条件（代码，调 LLM 之前）
-    const stop = shouldStop(scenario, state, anchorAt);
+    const stop = shouldStop(scenario, state, anchorAt, {
+      externallyVerifiable: job.data.workOrderId != null,
+    });
     if (stop.stop) {
       this.logger.log(
         `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${stop.reason}`,
       );
       this.tracking.trackStopped(identity, stop.reason ?? 'stopped');
       return;
+    }
+
+    // 1.5) 报名后场景到点核验：向海绵查工单现状（外部取消/已面试）+ 比对面试时间是否改约。
+    // 会话内检测不到的后台操作在这里兜底；核验数据拿不到时按现状放行（不静默丢提醒）。
+    if (scenario.anchorEvent === 'booking.succeeded' && job.data.workOrderId != null) {
+      const invalidReason = await this.checkBookingInvalidAtFire(job.data, state);
+      if (invalidReason) {
+        this.logger.log(
+          `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${invalidReason}`,
+        );
+        this.tracking.trackStopped(identity, invalidReason);
+        return;
+      }
     }
 
     // 2) 频控：24h ≤ 2（只数 sent）
@@ -171,6 +204,99 @@ export class FollowUpProcessor implements OnModuleInit {
     }
 
     await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now, identity);
+  }
+
+  /**
+   * 报名后场景到点核验（shouldStop 之后、生成之前）。返回失效原因；仍有效返回 null。
+   *
+   * - 海绵工单现状（source of truth，5min 缓存）：约面取消/约面失败 → 报名已失效；
+   *   面试提醒额外拦已面试/已上岗（提醒已无意义），面试后回访不拦（面试完成正是回访前提）。
+   * - 改期比对：当前约面时间优先取海绵下发的 interviewTime（后台改时间也能发现，
+   *   2026-07 与海绵约定新增；老响应无此字段），缺失时回退本地 active_booking.interview_time
+   *   （只覆盖聊天改约）。与排程时冻结的 expectedInterviewAt 不一致 → 先按新时间排
+   *   替代任务（幂等锚点，与聊天改约锚点排的任务同 jobId 去重），再停旧任务。
+   * - 任何核验数据拿不到（海绵异常/无指针/无字段）→ 放行：宁可按现状发，不静默丢提醒。
+   */
+  private async checkBookingInvalidAtFire(
+    jobData: FollowUpJob,
+    state: AuthoritativeSessionState,
+  ): Promise<string | null> {
+    const { sessionRef, scenarioCode, workOrderId, expectedInterviewAt } = jobData;
+    if (workOrderId == null) return null;
+
+    // getCachedWorkOrderById 内部吞错返回 null，此处再兜一层防御
+    let currentStatus: string | null = null;
+    let spongeInterviewAt: number | undefined;
+    try {
+      const workOrder = await this.sponge.getCachedWorkOrderById(workOrderId);
+      currentStatus = workOrder?.currentStatus ?? null;
+      spongeInterviewAt = parseInterviewTimestamp(workOrder?.interviewTime);
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 工单现状核验失败，按现状放行 workOrderId=${workOrderId}: ${this.errorMessage(error)}`,
+      );
+    }
+    if (currentStatus) {
+      if (BOOKING_CANCELLED_STATUSES.has(currentStatus)) {
+        return `external_cancelled:${currentStatus}`;
+      }
+      if (scenarioCode === 'interview_reminder' && INTERVIEW_DONE_STATUSES.has(currentStatus)) {
+        return `interview_already_done:${currentStatus}`;
+      }
+    }
+
+    if (expectedInterviewAt == null) return null;
+    let currentInterviewAt = spongeInterviewAt;
+    if (currentInterviewAt == null) {
+      const bookings = await this.longTerm.getActiveBookings(sessionRef.corpId, sessionRef.userId);
+      const target = bookings.find((booking) => booking.work_order_id === workOrderId);
+      currentInterviewAt = parseInterviewTimestamp(target?.interview_time);
+    }
+    if (
+      currentInterviewAt != null &&
+      Math.abs(currentInterviewAt - expectedInterviewAt) > INTERVIEW_TIME_DRIFT_TOLERANCE_MS
+    ) {
+      await this.scheduleTimeChangedReplacement(jobData, state, currentInterviewAt);
+      return 'interview_time_changed';
+    }
+    return null;
+  }
+
+  /**
+   * 改期后的替代任务：按新面试时间重排同场景跟进。
+   *
+   * 锚点用 bookingFollowUpAnchorId（wo:iv:scenario）——聊天改约走 anchor.service 已排过时
+   * Bull 同 jobId 去重，本次排程 no-op；后台改时间（无聊天锚点）时这里是唯一的补排入口。
+   * 面试提醒仅在新时间未过期时补排（给已过期的面试发提醒有害无益）；回访不受此限
+   * （面试已发生正是回访时机）。排程失败只告警不阻断停止决策：宁可少发不误发。
+   */
+  private async scheduleTimeChangedReplacement(
+    jobData: FollowUpJob,
+    state: AuthoritativeSessionState,
+    newInterviewAt: number,
+  ): Promise<void> {
+    const { sessionRef, scenarioCode, workOrderId } = jobData;
+    if (workOrderId == null) return;
+    if (scenarioCode === 'interview_reminder' && newInterviewAt <= Date.now()) return;
+    try {
+      await this.scheduler.scheduleFollowUp({
+        sessionRef,
+        scenarioCode,
+        anchorEventId: bookingFollowUpAnchorId(workOrderId, newInterviewAt, scenarioCode),
+        anchorAt: Date.now(),
+        state: {
+          ...state,
+          terminal: 'booked',
+          interviewAt: newInterviewAt,
+        } as AuthoritativeSessionState,
+        workOrderId,
+        expectedInterviewAt: newInterviewAt,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 改期替代任务排程失败 workOrderId=${workOrderId} scenario=${scenarioCode}: ${this.errorMessage(error)}`,
+      );
+    }
   }
 
   private runProactiveTurn(

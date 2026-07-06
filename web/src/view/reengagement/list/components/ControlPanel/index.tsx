@@ -10,8 +10,12 @@ export interface ReengagementStatsSummary {
   unknown: number;
 }
 
+export type ReengagementViewMode = 'ledger' | 'candidates';
+
 interface ControlPanelProps {
   stats: ReengagementStatsSummary;
+  viewMode: ReengagementViewMode;
+  onViewModeChange: (mode: ReengagementViewMode) => void;
   timeRange: 'today' | 'week' | 'month';
   onTimeRangeChange: (range: 'today' | 'week' | 'month') => void;
   statusFilter: string;
@@ -20,6 +24,9 @@ interface ControlPanelProps {
   onScenarioFilterChange: (value: string) => void;
   searchSessionId: string;
   onSearchSessionIdChange: (sessionId: string) => void;
+  /** 候选人视角：只看有待发任务的候选人 */
+  pendingOnly: boolean;
+  onPendingOnlyChange: (value: boolean) => void;
   allValue: string;
   /** 场景筛选项：由页面从场景注册表接口构建（displayName 单一来源） */
   scenarioOptions: Array<{ value: string; label: string }>;
@@ -31,8 +38,15 @@ const TIME_RANGE_OPTIONS = [
   { key: 'month' as const, label: '近30天' },
 ];
 
+const VIEW_MODE_OPTIONS = [
+  { key: 'candidates' as const, label: '候选人' },
+  { key: 'ledger' as const, label: '触达流水' },
+];
+
 export default function ControlPanel({
   stats,
+  viewMode,
+  onViewModeChange,
   timeRange,
   onTimeRangeChange,
   statusFilter,
@@ -41,6 +55,8 @@ export default function ControlPanel({
   onScenarioFilterChange,
   searchSessionId,
   onSearchSessionIdChange,
+  pendingOnly,
+  onPendingOnlyChange,
   allValue,
   scenarioOptions,
 }: ControlPanelProps) {
@@ -92,6 +108,19 @@ export default function ControlPanel({
         <h3 className={styles.title}>二次触发追溯</h3>
 
         <div className={styles.timeRangeGroup}>
+          {VIEW_MODE_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onViewModeChange(option.key)}
+              className={`${styles.segBtn} ${viewMode === option.key ? styles.segBtnActive : ''}`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div className={styles.timeRangeGroup}>
           {TIME_RANGE_OPTIONS.map((option) => (
             <button
               key={option.key}
@@ -127,22 +156,33 @@ export default function ControlPanel({
           )}
         </div>
 
-        <label className={styles.selectWrap}>
-          <Filter aria-hidden="true" size={14} />
-          <select
-            value={statusFilter}
-            onChange={(event) => onStatusFilterChange(event.target.value)}
-            className={styles.selectInput}
-            aria-label="状态筛选"
+        {viewMode === 'ledger' ? (
+          <label className={styles.selectWrap}>
+            <Filter aria-hidden="true" size={14} />
+            <select
+              value={statusFilter}
+              onChange={(event) => onStatusFilterChange(event.target.value)}
+              className={styles.selectInput}
+              aria-label="状态筛选"
+            >
+              <option value={allValue}>全部状态</option>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onPendingOnlyChange(!pendingOnly)}
+            className={`${styles.segBtn} ${pendingOnly ? styles.segBtnActive : ''}`}
+            title="只看有待发复聊任务的候选人"
           >
-            <option value={allValue}>全部状态</option>
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            仅看待发
+          </button>
+        )}
 
         <label className={styles.selectWrap}>
           <Workflow aria-hidden="true" size={14} />

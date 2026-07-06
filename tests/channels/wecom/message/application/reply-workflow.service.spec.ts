@@ -690,7 +690,9 @@ describe('ReplyWorkflowService', () => {
       expect.objectContaining({
         sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
         scenarioCode: 'interview_reminder',
-        anchorEventId: 'msg-1:booking_succeeded',
+        anchorEventId: `wo123:iv${Date.parse('2026-06-27T13:30:00+08:00')}:interview_reminder`,
+        workOrderId: 123,
+        expectedInterviewAt: Date.parse('2026-06-27T13:30:00+08:00'),
         state: expect.objectContaining({
           terminal: 'booked',
           interviewAt: Date.parse('2026-06-27T13:30:00+08:00'),
@@ -701,7 +703,8 @@ describe('ReplyWorkflowService', () => {
       expect.objectContaining({
         sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
         scenarioCode: 'post_interview_followup',
-        anchorEventId: 'msg-1:post_interview_followup',
+        anchorEventId: `wo123:iv${Date.parse('2026-06-27T13:30:00+08:00')}:post_interview_followup`,
+        workOrderId: 123,
       }),
     );
     expect(session.saveTerminalState).toHaveBeenCalledWith(

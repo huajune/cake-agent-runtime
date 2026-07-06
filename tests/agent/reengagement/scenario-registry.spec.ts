@@ -90,17 +90,40 @@ describe('scenario-registry', () => {
       expect(r.reason).toBe('candidate_replied_after_anchor');
     });
 
+    it('exempts externally verifiable booking follow-ups from the replied rule', () => {
+      // 报名后回一句"好的"不该杀掉面试提醒——带 workOrderId 的任务由到点核验判失效
+      const s = getScenario('interview_reminder')!;
+      const state = baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 });
+      expect(shouldStop(s, state, anchorAt, { externallyVerifiable: true }).stop).toBe(false);
+    });
+
+    it('keeps the replied rule for booking follow-ups without verification capability', () => {
+      const s = getScenario('interview_reminder')!;
+      const state = baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 });
+      expect(shouldStop(s, state, anchorAt).stop).toBe(true);
+      expect(shouldStop(s, state, anchorAt, { externallyVerifiable: false }).stop).toBe(true);
+    });
+
+    it('never exempts pre-booking scenarios from the replied rule', () => {
+      const state = baseState({ lastCandidateMessageAt: anchorAt + 1 });
+      const r = shouldStop(scenario, state, anchorAt, { externallyVerifiable: true });
+      expect(r.stop).toBe(true);
+      expect(r.reason).toBe('candidate_replied_after_anchor');
+    });
+
     it('does not stop when scenario still holds and no reply', () => {
       const r = shouldStop(scenario, baseState({ lastCandidateMessageAt: anchorAt - 1 }), anchorAt);
       expect(r.stop).toBe(false);
     });
 
-    it('address_missing stops once location is present', () => {
+    it('address_missing has no scenario-specific stop; generic replied rule covers it', () => {
       const s = getScenario('address_missing')!;
-      const withLocation = baseState({
-        location: { raw: '陆家嘴', confidence: 'high' },
+      // 候选人发定位=一条入站消息 → 通用 candidate_replied_after_anchor 停发
+      const replied = baseState({ lastCandidateMessageAt: anchorAt + 1 });
+      expect(shouldStop(s, replied, anchorAt)).toEqual({
+        stop: true,
+        reason: 'candidate_replied_after_anchor',
       });
-      expect(shouldStop(s, withLocation, anchorAt).stop).toBe(true);
       expect(shouldStop(s, baseState(), anchorAt).stop).toBe(false);
     });
 

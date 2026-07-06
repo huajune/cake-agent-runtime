@@ -127,3 +127,59 @@ export interface ReengagementTouchStatsRow {
   scenario_code: string;
   cnt: number;
 }
+
+/** 候选人视角查询筛选条件 */
+export interface ReengagementCandidateFilters {
+  startDate?: string;
+  endDate?: string;
+  scenarioCode?: string;
+  sessionId?: string;
+  /** 只看有待发任务（scheduled/rescheduled 且 fire_at 未到）的候选人 */
+  pendingOnly?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/** 候选人视角 RPC 返回行：每 (session, scenario) 最新一次触达 + 分页元信息 */
+export interface ReengagementCandidateOverviewRow {
+  session_id: string;
+  user_id: string | null;
+  corp_id: string | null;
+  scenario_code: string;
+  touch_key: string;
+  status: string;
+  decision_reason: string | null;
+  shadow: boolean | null;
+  fire_at: string | null;
+  sent_at: string | null;
+  anchor_at: string | null;
+  outcome_kind: string | null;
+  updated_at: string;
+  /** 该候选人全场景的最新活动时间（候选人排序键） */
+  session_latest_at: string;
+  /** 满足筛选的候选人总数（窗口计数，每行相同） */
+  total_sessions: number;
+}
+
+/** 候选人视角聚合结果（服务层按 session 分组后的形态） */
+export interface ReengagementCandidateSummary {
+  sessionId: string;
+  userId: string | null;
+  corpId: string | null;
+  /** 全场景最新活动时间（ISO） */
+  latestAt: string;
+  /** 最近的一个待发任务（scheduled/rescheduled 且 fire_at 未到）；无则 null */
+  nextTouch: { scenarioCode: string; touchKey: string; fireAt: string } | null;
+  /** 各场景当前态（每场景最新一次触达），按场景 code 排序 */
+  scenarios: Array<{
+    scenarioCode: string;
+    touchKey: string;
+    status: string;
+    decisionReason: string | null;
+    shadow: boolean | null;
+    fireAt: string | null;
+    sentAt: string | null;
+    outcomeKind: string | null;
+    updatedAt: string;
+  }>;
+}

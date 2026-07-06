@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { addLocalDays, parseLocalDateStart } from '@infra/utils/date.util';
 import {
+  ReengagementCandidateOverviewRow,
+  ReengagementCandidateSummary,
   ReengagementTouchFilters,
   ReengagementTouchStatus,
 } from '../../entities/reengagement-touch.entity';
@@ -46,6 +48,81 @@ export class ReengagementQueryService {
   /** 时间范围内按 status + scenario 分组计数 */
   async getStats(startDate: string, endDate: string) {
     return this.repository.getStats(this.dayStart(startDate), this.dayEnd(endDate));
+  }
+
+  /**
+   * 候选人视角：一行一个候选人（session），带各场景当前态与"下一次待发任务"。
+   * RPC 返回每 (session, scenario) 最新触达的行集，这里按 session 分组组装。
+   */
+  async getCandidateOverview(query: {
+    startDate?: string;
+    endDate?: string;
+    scenarioCode?: string;
+    sessionId?: string;
+    pendingOnly?: string;
+    limit?: string;
+    offset?: string;
+  }): Promise<{ total: number; candidates: ReengagementCandidateSummary[] }> {
+    const rows = await this.repository.getCandidateOverview({
+      startDate: query.startDate ? this.dayStart(query.startDate) : undefined,
+      endDate: query.endDate ? this.dayEnd(query.endDate) : undefined,
+      scenarioCode: query.scenarioCode,
+      sessionId: query.sessionId,
+      pendingOnly: query.pendingOnly === 'true',
+      limit: query.limit ? parseInt(query.limit, 10) : undefined,
+      offset: query.offset ? parseInt(query.offset, 10) : undefined,
+    });
+    return this.groupCandidates(rows);
+  }
+
+  private groupCandidates(rows: ReengagementCandidateOverviewRow[]): {
+    total: number;
+    candidates: ReengagementCandidateSummary[];
+  } {
+    const bySession = new Map<string, ReengagementCandidateSummary>();
+    const now = Date.now();
+    for (const row of rows) {
+      let candidate = bySession.get(row.session_id);
+      if (!candidate) {
+        candidate = {
+          sessionId: row.session_id,
+          userId: row.user_id,
+          corpId: row.corp_id,
+          latestAt: row.session_latest_at,
+          nextTouch: null,
+          scenarios: [],
+        };
+        bySession.set(row.session_id, candidate);
+      }
+      candidate.scenarios.push({
+        scenarioCode: row.scenario_code,
+        touchKey: row.touch_key,
+        status: row.status,
+        decisionReason: row.decision_reason,
+        shadow: row.shadow,
+        fireAt: row.fire_at,
+        sentAt: row.sent_at,
+        outcomeKind: row.outcome_kind,
+        updatedAt: row.updated_at,
+      });
+      // 下一次待发 = 各场景中 scheduled/rescheduled 且 fire_at 未到者取最早
+      const pending =
+        (row.status === 'scheduled' || row.status === 'rescheduled') &&
+        row.fire_at != null &&
+        Date.parse(row.fire_at) > now;
+      if (
+        pending &&
+        (!candidate.nextTouch || Date.parse(row.fire_at!) < Date.parse(candidate.nextTouch.fireAt))
+      ) {
+        candidate.nextTouch = {
+          scenarioCode: row.scenario_code,
+          touchKey: row.touch_key,
+          fireAt: row.fire_at!,
+        };
+      }
+    }
+    // 行序即 RPC 的候选人排序（latest_at 倒序），Map 保序
+    return { total: rows[0]?.total_sessions ?? 0, candidates: Array.from(bySession.values()) };
   }
 
   // 日界必须用 Asia/Shanghai 口径（date.util 统一封装）——生产容器时区是 UTC，

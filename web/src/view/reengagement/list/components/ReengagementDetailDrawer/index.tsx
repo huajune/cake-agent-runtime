@@ -23,7 +23,8 @@ function formatMaybeTime(value?: string | null): string {
 }
 
 function sortEventsAsc(events: ReengagementEvent[]): ReengagementEvent[] {
-  return [...events].sort((a, b) => {
+  // 防御 events 数组里的 null 元素（record RPC 旧版本在无 event 写入时会落 [null]）
+  return events.filter(Boolean).sort((a, b) => {
     const at = Date.parse(a.at);
     const bt = Date.parse(b.at);
     return (Number.isFinite(at) ? at : 0) - (Number.isFinite(bt) ? bt : 0);

@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
+import { LongTermService } from '@memory/services/long-term.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
@@ -64,6 +65,7 @@ const inputSchema = z.object({
 export function buildModifyInterviewTimeTool(
   spongeService: SpongeService,
   opsEventsRecorder: OpsEventsRecorderService,
+  longTermService: LongTermService,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -115,6 +117,15 @@ export function buildModifyInterviewTimeTool(
 
           logger.log(
             `修改约面时间成功: chatId=${chatId}, workOrderId=${workOrderId}, newInterviewTime=${trimmedTime}`,
+          );
+
+          // 同步 active_booking 面试时间：[当前预约信息] 与复聊到点改期核验都以该指针为准，
+          // 不更新会导致旧面试提醒无从发现已改约。await 保证锚点排程（回合收尾）前已落库。
+          await longTermService.updateActiveBookingInterviewTime(
+            context.corpId,
+            context.userId,
+            workOrderId,
+            trimmedTime,
           );
 
           // 运营事件底账：booking.interview_modified。幂等键含新时间，允许同一工单多次改约，

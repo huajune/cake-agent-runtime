@@ -54,6 +54,27 @@ export function useReengagementScenarios() {
 }
 
 /**
+ * 获取候选人视角聚合（一行一个候选人，各场景当前态 + 下一次待发任务）
+ */
+export function useReengagementCandidates(options?: {
+  startDate?: string;
+  endDate?: string;
+  scenarioCode?: string;
+  sessionId?: string;
+  pendingOnly?: boolean;
+  limit?: number;
+  offset?: number;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: ['reengagement-candidates', options],
+    queryFn: () => reengagementService.getReengagementCandidates(options),
+    enabled: options?.enabled ?? true,
+    staleTime: 10000,
+  });
+}
+
+/**
  * 获取二次触发分组统计（status x scenario_code 计数）
  */
 export function useReengagementStats(options?: { startDate?: string; endDate?: string }) {

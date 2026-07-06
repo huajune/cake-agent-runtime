@@ -147,7 +147,7 @@ export class ToolRegistryService {
         name: 'duliday_modify_interview_time',
         description:
           '修改约面时间（候选人主动要求把已确认的面试改到新时间时调用，真正调海绵改约接口；workOrderId 取自 [当前预约信息]）',
-        create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder),
+        create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder, longTermService),
       }),
 
       geocode: createToolDefinition({

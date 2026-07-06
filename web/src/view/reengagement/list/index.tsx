@@ -1,19 +1,25 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import {
+  useReengagementCandidates,
   useReengagementRecords,
   useReengagementScenarios,
   useReengagementStats,
 } from '@/hooks/reengagement/useReengagementRecords';
 import { buildScenarioLabels, buildScenarioOptions } from './constants';
-import ControlPanel from './components/ControlPanel';
+import ControlPanel, { type ReengagementViewMode } from './components/ControlPanel';
 import ReengagementTable from './components/ReengagementTable';
+import CandidateTable from './components/CandidateTable';
 import ReengagementDetailDrawer from './components/ReengagementDetailDrawer';
-import type { ReengagementTouchRecord } from '@/api/types/reengagement.types';
+import type {
+  ReengagementCandidateSummary,
+  ReengagementTouchRecord,
+} from '@/api/types/reengagement.types';
 import { addDays, formatDateKey } from '@/utils/date-range';
 
 const ALL_VALUE = '__all__';
 const PAGE_SIZE = 50;
+const CANDIDATE_PAGE_SIZE = 30;
 
 function toTimestamp(value?: string): number {
   if (!value) return 0;
@@ -22,16 +28,26 @@ function toTimestamp(value?: string): number {
 }
 
 export default function ReengagementPage() {
+  // 默认候选人视角：运营主问题是"接下来会给谁发什么"，流水视图用于排查单次触达
+  const [viewMode, setViewMode] = useState<ReengagementViewMode>('candidates');
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('week');
   const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
   const [scenarioFilter, setScenarioFilter] = useState<string>(ALL_VALUE);
   const [searchSessionId, setSearchSessionId] = useState<string>('');
+  const [pendingOnly, setPendingOnly] = useState(false);
   const [selectedTouchKey, setSelectedTouchKey] = useState<string | null>(null);
 
   // 分页状态：offset 分页 + 无限滚动累加
   const [page, setPage] = useState(1);
   const [accumulatedRecords, setAccumulatedRecords] = useState<ReengagementTouchRecord[]>([]);
   const [hasMore, setHasMore] = useState(true);
+
+  // 候选人视角独立分页累加（与流水视图互不干扰）
+  const [candidatePage, setCandidatePage] = useState(1);
+  const [accumulatedCandidates, setAccumulatedCandidates] = useState<
+    ReengagementCandidateSummary[]
+  >([]);
+  const [candidatesHasMore, setCandidatesHasMore] = useState(true);
 
   // 计算时间范围（本地日期口径：toISOString 是 UTC 日期，凌晨 0-8 点会算成昨天）
   const dateRange = useMemo(() => {
@@ -65,7 +81,26 @@ export default function ReengagementPage() {
     setPage(1);
     setAccumulatedRecords([]);
     setHasMore(true);
+    setCandidatePage(1);
+    setAccumulatedCandidates([]);
+    setCandidatesHasMore(true);
   }, []);
+
+  const handleViewModeChange = useCallback(
+    (mode: ReengagementViewMode) => {
+      setViewMode(mode);
+      resetPaging();
+    },
+    [resetPaging],
+  );
+
+  const handlePendingOnlyChange = useCallback(
+    (value: boolean) => {
+      setPendingOnly(value);
+      resetPaging();
+    },
+    [resetPaging],
+  );
 
   const handleTimeRangeChange = useCallback(
     (newRange: 'today' | 'week' | 'month') => {
@@ -121,7 +156,7 @@ export default function ReengagementPage() {
     return summary;
   }, [statsItems]);
 
-  // 当前页数据
+  // 当前页数据（流水视图）
   const { data: pageRecords, isLoading: pageLoading } = useReengagementRecords({
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
@@ -130,6 +165,19 @@ export default function ReengagementPage() {
     sessionId: activeSessionId,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
+    enabled: viewMode === 'ledger',
+  });
+
+  // 当前页数据（候选人视角）
+  const { data: candidatePageData, isLoading: candidatesLoading } = useReengagementCandidates({
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    scenarioCode: activeScenario,
+    sessionId: activeSessionId,
+    pendingOnly,
+    limit: CANDIDATE_PAGE_SIZE,
+    offset: (candidatePage - 1) * CANDIDATE_PAGE_SIZE,
+    enabled: viewMode === 'candidates',
   });
 
   // 累加分页数据：用 Map 按 touch_key 覆盖，避免翻页边界重复
@@ -145,6 +193,23 @@ export default function ReengagementPage() {
     // filterKey 变化时也需要重新合并（React Query 命中缓存时 pageRecords 引用可能不变）
   }, [pageRecords, filterKey]);
 
+  // 候选人视角累加：按 sessionId 覆盖去重，保持最新活动倒序
+  useEffect(() => {
+    if (!candidatePageData) return;
+    setCandidatesHasMore(
+      (candidatePage - 1) * CANDIDATE_PAGE_SIZE + candidatePageData.candidates.length <
+        candidatePageData.total,
+    );
+    setAccumulatedCandidates((prev) => {
+      const map = new Map<string, ReengagementCandidateSummary>();
+      for (const candidate of prev) map.set(candidate.sessionId, candidate);
+      for (const candidate of candidatePageData.candidates) map.set(candidate.sessionId, candidate);
+      return Array.from(map.values()).sort(
+        (a, b) => toTimestamp(b.latestAt) - toTimestamp(a.latestAt),
+      );
+    });
+  }, [candidatePageData, candidatePage, filterKey]);
+
   // 按创建时间倒序渲染
   const records = useMemo(
     () =>
@@ -152,19 +217,33 @@ export default function ReengagementPage() {
     [accumulatedRecords],
   );
 
-  const isLoading = pageLoading && records.length === 0;
-  const isLoadingMore = pageLoading && page > 1;
+  const isCandidateView = viewMode === 'candidates';
+  const isLoading = isCandidateView
+    ? candidatesLoading && accumulatedCandidates.length === 0
+    : pageLoading && records.length === 0;
+  const isLoadingMore = isCandidateView
+    ? candidatesLoading && candidatePage > 1
+    : pageLoading && page > 1;
 
   const handleLoadMore = useCallback(() => {
+    if (isCandidateView) {
+      if (!candidatesLoading) setCandidatePage((prev) => prev + 1);
+      return;
+    }
     if (!pageLoading) {
       setPage((prev) => prev + 1);
     }
-  }, [pageLoading]);
+  }, [isCandidateView, candidatesLoading, pageLoading]);
+
+  const scrollLength = isCandidateView ? accumulatedCandidates.length : records.length;
+  const scrollHasMore = isCandidateView ? candidatesHasMore : hasMore;
 
   return (
     <div id="page-reengagement" className="page-section active">
       <ControlPanel
         stats={stats}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
         timeRange={timeRange}
         onTimeRangeChange={handleTimeRangeChange}
         statusFilter={statusFilter}
@@ -173,14 +252,16 @@ export default function ReengagementPage() {
         onScenarioFilterChange={handleScenarioFilterChange}
         searchSessionId={searchSessionId}
         onSearchSessionIdChange={handleSearchSessionIdChange}
+        pendingOnly={pendingOnly}
+        onPendingOnlyChange={handlePendingOnlyChange}
         allValue={ALL_VALUE}
         scenarioOptions={scenarioOptions}
       />
 
       <InfiniteScroll
-        dataLength={records.length}
+        dataLength={scrollLength}
         next={handleLoadMore}
-        hasMore={hasMore && records.length > 0}
+        hasMore={scrollHasMore && scrollLength > 0}
         loader={
           isLoadingMore ? (
             <div
@@ -212,7 +293,7 @@ export default function ReengagementPage() {
           ) : null
         }
         endMessage={
-          records.length > 0 ? (
+          scrollLength > 0 ? (
             <div
               style={{
                 padding: '24px 20px',
@@ -227,20 +308,31 @@ export default function ReengagementPage() {
               }}
             >
               <span style={{ color: '#c7d2fe' }}>—</span>
-              已加载全部 {records.length} 条触达记录
+              {isCandidateView
+                ? `已加载全部 ${scrollLength} 个候选人`
+                : `已加载全部 ${scrollLength} 条触达记录`}
               <span style={{ color: '#c7d2fe' }}>—</span>
             </div>
           ) : null
         }
       >
-        <ReengagementTable
-          data={records}
-          loading={isLoading}
-          scenarioLabels={scenarioLabels}
-          onRowClick={(record: ReengagementTouchRecord) =>
-            setSelectedTouchKey(record.touch_key || null)
-          }
-        />
+        {isCandidateView ? (
+          <CandidateTable
+            data={accumulatedCandidates}
+            loading={isLoading}
+            scenarioLabels={scenarioLabels}
+            onTouchClick={(touchKey) => setSelectedTouchKey(touchKey)}
+          />
+        ) : (
+          <ReengagementTable
+            data={records}
+            loading={isLoading}
+            scenarioLabels={scenarioLabels}
+            onRowClick={(record: ReengagementTouchRecord) =>
+              setSelectedTouchKey(record.touch_key || null)
+            }
+          />
+        )}
       </InfiniteScroll>
 
       {selectedTouchKey && (

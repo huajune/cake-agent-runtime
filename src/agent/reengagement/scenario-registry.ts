@@ -58,8 +58,11 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     triggerDelayMs: 30 * MINUTE,
     delayLabel: '30 分钟',
     objective: '此前对话缺定位/地址，提醒候选人发一下位置以便就近推荐岗位',
-    requiredEvidence: ['location'],
-    stopUnless: (state) => !state.location,
+    requiredEvidence: ['lastCandidateMessageAt'],
+    // 无场景专属停止条件：候选人发定位就是一条入站消息，由通用
+    // candidate_replied_after_anchor 规则停发。曾有 state.location 检查，但该字段
+    // 全链路无生产者（微信定位消息只被解析成文本进对话流），恒 undefined 属死代码，已删。
+    stopUnless: () => true,
     generationPolicy: '说明发位置的好处（就近推荐），不施压',
     defaultRolloutEnabled: false,
   },
@@ -157,6 +160,33 @@ function resolveInterviewAt(state: AuthoritativeSessionState): number | null {
 }
 
 /**
+ * 报名后跟进任务的幂等锚点 ID：同一工单同一面试时间只存在一个任务。
+ *
+ * 聊天改约锚点（anchor.service）与到点改期发现（processor 排替代任务）共用此 ID，
+ * 两条路径撞同一个 Bull jobId 自然去重，不会给候选人重复发提醒。
+ * 已知取舍：同工单改回曾用过的时间，若旧 job 仍在 removeOnComplete 保留期内会被去重吞掉。
+ */
+export function bookingFollowUpAnchorId(
+  workOrderId: number,
+  interviewAtMs: number,
+  scenarioCode: string,
+): string {
+  return `wo${workOrderId}:iv${interviewAtMs}:${scenarioCode}`;
+}
+
+/**
+ * 面试时间原始值 → 毫秒时间戳。接受数字时间戳或 `YYYY-MM-DD HH:mm`（海绵格式，按 Asia/Shanghai 解析）。
+ * anchor 锚点提取与 processor 到点改期比对共用，保证两端解析口径一致。
+ */
+export function parseInterviewTimestamp(raw: unknown): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw !== 'string' || raw.trim().length === 0) return undefined;
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + '+08:00';
+  const ts = Date.parse(normalized);
+  return Number.isFinite(ts) ? ts : undefined;
+}
+
+/**
  * 场景当前是否放开真发（场景级灰度 × 报名后大开关叠加）。
  *
  * - 场景开关：托管配置 reengagementScenarioRollout[code]，未配置回退 defaultRolloutEnabled
@@ -225,12 +255,17 @@ export function computeFireAt(scenario: FollowUpScenario, ctx: FollowUpScenarioC
  * - terminal ∈ {booked, handed_off, rejected, onboarded} → 停
  *   booking.succeeded 锚点允许 booked/handed_off 继续，由场景 stopUnless 自己判断。
  * - lastCandidateMessageAt > anchorAt（候选人在锚点后已回话）→ 停
+ *   例外：booking.succeeded 锚点且任务带 workOrderId（opts.externallyVerifiable）时豁免——
+ *   候选人报名后回一句"好的"不该杀掉面试提醒；报名是否仍有效改由 processor 到点向
+ *   海绵工单现状 + active_booking 面试时间核验（external_cancelled / interview_time_changed）。
+ *   不带 workOrderId 的存量任务无核验能力，保留回话即停的旧行为。
  * - 场景特定 stopUnless 不成立 → 停
  */
 export function shouldStop(
   scenario: FollowUpScenario,
   state: AuthoritativeSessionState,
   anchorAt: number,
+  opts?: { externallyVerifiable?: boolean },
 ): ShouldStopResult {
   const bookingSucceededFollowUp =
     scenario.anchorEvent === 'booking.succeeded' &&
@@ -238,7 +273,13 @@ export function shouldStop(
   if (state.terminal && !bookingSucceededFollowUp) {
     return { stop: true, reason: `terminal:${state.terminal}` };
   }
-  if (state.lastCandidateMessageAt != null && state.lastCandidateMessageAt > anchorAt) {
+  const repliedRuleExempt =
+    scenario.anchorEvent === 'booking.succeeded' && opts?.externallyVerifiable === true;
+  if (
+    !repliedRuleExempt &&
+    state.lastCandidateMessageAt != null &&
+    state.lastCandidateMessageAt > anchorAt
+  ) {
     return { stop: true, reason: 'candidate_replied_after_anchor' };
   }
   if (!scenario.stopUnless(state)) {

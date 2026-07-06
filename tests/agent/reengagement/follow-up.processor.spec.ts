@@ -39,6 +39,9 @@ describe('FollowUpProcessor', () => {
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let outcomeFinalizer: { commit: jest.Mock };
   let tracking: Record<string, jest.Mock>;
+  let sponge: { getCachedWorkOrderById: jest.Mock };
+  let longTerm: { getActiveBookings: jest.Mock };
+  let scheduler: { scheduleFollowUp: jest.Mock };
   let delivery: { deliver: jest.Mock };
 
   beforeEach(() => {
@@ -59,6 +62,9 @@ describe('FollowUpProcessor', () => {
         .mockResolvedValue({ reengagementEnabled: true, reengagementShadow: true }),
     };
     outcomeFinalizer = { commit: jest.fn().mockResolvedValue(undefined) };
+    sponge = { getCachedWorkOrderById: jest.fn().mockResolvedValue(null) };
+    longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
+    scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
     tracking = {
       trackDisabledAtFire: jest.fn(),
       trackStopped: jest.fn(),
@@ -84,6 +90,9 @@ describe('FollowUpProcessor', () => {
       systemConfig as never,
       outcomeFinalizer as never,
       tracking as never,
+      sponge as never,
+      longTerm as never,
+      scheduler as never,
       withDelivery ? (delivery as never) : undefined,
     );
 
@@ -512,6 +521,210 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(makeJob());
 
       expect(tracking.trackDuplicate).toHaveBeenCalledWith(expectedIdentity, 'duplicate_sent');
+      expect(runner.runTurn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('报名后到点核验（外部取消/已面试/改期）', () => {
+    const anchorAt = Date.UTC(2026, 5, 24, 2, 0, 0);
+    // 期望面试时间：2026-06-25 14:00 Shanghai
+    const expectedInterviewAt = Date.UTC(2026, 5, 25, 6, 0, 0);
+
+    const bookingJob = (over: Partial<Record<string, unknown>> = {}) =>
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'evt-b',
+          anchorAt,
+          workOrderId: 555,
+          expectedInterviewAt,
+          ...over,
+        },
+      });
+
+    beforeEach(() => {
+      jest.restoreAllMocks();
+      // 10:30 Shanghai，投递窗口内
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 30, 0));
+      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      runner.runTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '面试提醒' },
+        toolCalls: [],
+        scenarioCode: 'interview_reminder',
+        runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      });
+    });
+
+    it('stops with external_cancelled when the work order was cancelled outside the chat', async () => {
+      sponge.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面取消',
+      });
+
+      await buildProcessor().process(bookingJob());
+
+      expect(sponge.getCachedWorkOrderById).toHaveBeenCalledWith(555);
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.objectContaining({ scenarioCode: 'interview_reminder' }),
+        'external_cancelled:约面取消',
+      );
+      expect(runner.runTurn).not.toHaveBeenCalled();
+    });
+
+    it('stops the reminder when the interview already happened', async () => {
+      sponge.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '面试成功',
+      });
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'interview_already_done:面试成功',
+      );
+      expect(runner.runTurn).not.toHaveBeenCalled();
+    });
+
+    it('lets post_interview_followup proceed when the interview is done', async () => {
+      sponge.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '面试成功',
+      });
+
+      await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
+
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
+      expect(runner.runTurn).toHaveBeenCalled();
+    });
+
+    it('stops with interview_time_changed when active_booking carries a different time', async () => {
+      // active_booking 已改到 16:00（聊天改约路径），旧任务停 + 按新时间补排替代任务
+      longTerm.getActiveBookings.mockResolvedValue([
+        { work_order_id: 555, linked_at: 'x', interview_time: '2026-06-25 16:00' },
+      ]);
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'interview_time_changed',
+      );
+      expect(runner.runTurn).not.toHaveBeenCalled();
+      // 替代任务锚点幂等（wo:iv:scenario）：与聊天改约锚点排的任务同 jobId，Bull 去重
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scenarioCode: 'interview_reminder',
+          anchorEventId: `wo555:iv${Date.UTC(2026, 5, 25, 8, 0, 0)}:interview_reminder`,
+          workOrderId: 555,
+          expectedInterviewAt: Date.UTC(2026, 5, 25, 8, 0, 0),
+        }),
+      );
+    });
+
+    it('detects backend time changes via the sponge interviewTime field', async () => {
+      // 后台改时间：海绵 interviewTime 已变，本地 active_booking 还是旧时间——以海绵为准
+      sponge.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-25 16:00',
+      });
+      longTerm.getActiveBookings.mockResolvedValue([
+        { work_order_id: 555, linked_at: 'x', interview_time: '2026-06-25 14:00' },
+      ]);
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'interview_time_changed',
+      );
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          anchorEventId: `wo555:iv${Date.UTC(2026, 5, 25, 8, 0, 0)}:interview_reminder`,
+        }),
+      );
+    });
+
+    it('trusts a matching sponge interviewTime over a stale local pointer', async () => {
+      sponge.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-25 14:00',
+      });
+      longTerm.getActiveBookings.mockResolvedValue([
+        { work_order_id: 555, linked_at: 'x', interview_time: '2026-06-25 16:00' },
+      ]);
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
+      expect(runner.runTurn).toHaveBeenCalled();
+    });
+
+    it('does not schedule a reminder replacement when the new time is already past', async () => {
+      sponge.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-20 10:00',
+      });
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'interview_time_changed',
+      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when active_booking time matches the frozen expectation', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([
+        { work_order_id: 555, linked_at: 'x', interview_time: '2026-06-25 14:00' },
+      ]);
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
+      expect(runner.runTurn).toHaveBeenCalled();
+    });
+
+    it('fails open when neither sponge nor active_booking yields verification data', async () => {
+      sponge.getCachedWorkOrderById.mockResolvedValue(null);
+      longTerm.getActiveBookings.mockResolvedValue([]);
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
+      expect(runner.runTurn).toHaveBeenCalled();
+    });
+
+    it('exempts verifiable booking follow-ups from the replied-after-anchor rule', async () => {
+      session.getAuthoritativeState.mockResolvedValue(
+        baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 }),
+      );
+
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
+      expect(runner.runTurn).toHaveBeenCalled();
+    });
+
+    it('keeps the replied-after-anchor rule for legacy jobs without workOrderId', async () => {
+      session.getAuthoritativeState.mockResolvedValue(
+        baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 }),
+      );
+
+      await buildProcessor().process(
+        bookingJob({ workOrderId: undefined, expectedInterviewAt: undefined }),
+      );
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'candidate_replied_after_anchor',
+      );
       expect(runner.runTurn).not.toHaveBeenCalled();
     });
   });

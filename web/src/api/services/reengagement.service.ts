@@ -1,4 +1,5 @@
 import type {
+  ReengagementCandidateOverview,
   ReengagementScenario,
   ReengagementStatsItem,
   ReengagementTouchRecord,
@@ -6,6 +7,9 @@ import type {
 import { api, unwrapResponse } from '../client';
 
 export type {
+  ReengagementCandidateOverview,
+  ReengagementCandidateScenario,
+  ReengagementCandidateSummary,
   ReengagementEvent,
   ReengagementScenario,
   ReengagementStatsItem,
@@ -46,6 +50,27 @@ export async function getReengagementRecordDetail(touchKey: string) {
 export async function getReengagementScenarios() {
   const { data } = await api.get('/analytics/reengagement-scenarios');
   return unwrapResponse<ReengagementScenario[]>(data);
+}
+
+export async function getReengagementCandidates(options?: {
+  startDate?: string;
+  endDate?: string;
+  scenarioCode?: string;
+  sessionId?: string;
+  pendingOnly?: boolean;
+  limit?: number;
+  offset?: number;
+}) {
+  const params = new URLSearchParams();
+  if (options?.startDate) params.set('startDate', options.startDate);
+  if (options?.endDate) params.set('endDate', options.endDate);
+  if (options?.scenarioCode) params.set('scenarioCode', options.scenarioCode);
+  if (options?.sessionId) params.set('sessionId', options.sessionId);
+  if (options?.pendingOnly) params.set('pendingOnly', 'true');
+  if (options?.limit) params.set('limit', String(options.limit));
+  if (options?.offset) params.set('offset', String(options.offset));
+  const { data } = await api.get(`/analytics/reengagement-candidates?${params.toString()}`);
+  return unwrapResponse<ReengagementCandidateOverview>(data);
 }
 
 export async function getReengagementStats(options?: { startDate?: string; endDate?: string }) {

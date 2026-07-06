@@ -3,6 +3,7 @@ import type { AgentToolCall } from '@agent/generator/generator.types';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import { SessionService } from '@memory/services/session.service';
 import { FollowUpSchedulerService } from './follow-up-scheduler.service';
+import { bookingFollowUpAnchorId, parseInterviewTimestamp } from './scenario-registry';
 import type { FollowUpScenarioCode } from './reengagement.types';
 
 interface AnchorContext {
@@ -42,6 +43,20 @@ export class ReengagementAnchorService {
       void this.schedule('booking_incomplete', `${context.traceId}:collection_started`, context);
     }
 
+    // 取消工单成功：booked 终态回退（候选人回到求职中，报名前场景恢复可排程）。
+    // 在途的旧面试提醒不在这里清（Bull 不支持按会话检索），由 processor 到点向海绵
+    // 核验工单现状兜底（external_cancelled）。不依赖 deliverable：工单已实际取消。
+    if (toolCalls.some((call) => this.isCancelSucceeded(call))) {
+      void this.clearBookedTerminal(context);
+    }
+
+    // 改约成功：按新面试时间排新的提醒/回访（新锚点）。旧任务携带的 expectedInterviewAt
+    // 与更新后的 active_booking.interview_time 不再一致，到点被 interview_time_changed 停掉。
+    const modified = toolCalls.find((call) => this.isInterviewModified(call));
+    if (modified && deliverable) {
+      this.scheduleBookingFollowUps(modified, `${context.traceId}:interview_modified`, context);
+    }
+
     const booking = toolCalls.find((call) => this.isBookingSucceeded(call));
     if (!booking) return;
     void this.session
@@ -49,21 +64,65 @@ export class ReengagementAnchorService {
       .catch((error) => this.logFailure('save booked terminal', context, error));
 
     if (!deliverable) return;
-    const interviewAt = this.extractInterviewAt(booking);
+    this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
+  }
+
+  /**
+   * booking / 改约共用：按工具调用里的面试时间与工单号排面试提醒 + 面试后回访。
+   *
+   * 有工单号+面试时间时用幂等锚点（wo:iv:scenario）：同一工单同一时间只存在一个任务，
+   * 与 processor 到点发现改期后排的替代任务共用 jobId 自然去重。
+   * 缺任一（等通知报名/提取失败）回退 traceId 锚点。
+   */
+  private scheduleBookingFollowUps(
+    call: AgentToolCall,
+    anchorEventBase: string,
+    context: AnchorContext,
+  ): void {
+    const interviewAt = this.extractInterviewAt(call);
+    const workOrderId = this.extractWorkOrderId(call);
     const stateOverride: Partial<ReengagementState> | undefined =
       interviewAt === undefined ? undefined : { terminal: 'booked', interviewAt };
+    const verification = { workOrderId, expectedInterviewAt: interviewAt };
+    const anchorIdFor = (scenarioCode: FollowUpScenarioCode): string =>
+      workOrderId != null && interviewAt != null
+        ? bookingFollowUpAnchorId(workOrderId, interviewAt, scenarioCode)
+        : `${anchorEventBase}:${scenarioCode}`;
     void this.schedule(
       'interview_reminder',
-      `${context.traceId}:booking_succeeded`,
+      anchorIdFor('interview_reminder'),
       context,
       stateOverride,
+      verification,
     );
     void this.schedule(
       'post_interview_followup',
-      `${context.traceId}:post_interview_followup`,
+      anchorIdFor('post_interview_followup'),
       context,
       stateOverride,
+      verification,
     );
+  }
+
+  /**
+   * 取消工单后回退 booked 终态（只在当前是 booked 时清，避免误清 handed_off 等其他终态）。
+   * 注意多工单并存时的取舍：任一工单取消都会回退终态，报名后场景的有效性由到点核验按
+   * workOrderId 精确判断，不受此影响。
+   */
+  private async clearBookedTerminal(context: AnchorContext): Promise<void> {
+    try {
+      const state = await this.loadState(context);
+      if (state.terminal !== 'booked') return;
+      // saveTerminalState 内部 `terminal ?? null`：传 undefined 即清空落库
+      await this.session.saveTerminalState(
+        context.corpId,
+        context.userId,
+        context.chatId,
+        undefined,
+      );
+    } catch (error) {
+      this.logFailure('clear booked terminal after cancel', context, error);
+    }
   }
 
   handleDeliveredReplyAnchors(result: AnchorAgentResult, context: AnchorContext): void {
@@ -88,6 +147,7 @@ export class ReengagementAnchorService {
     anchorEventId: string,
     context: AnchorContext,
     stateOverride?: Partial<ReengagementState>,
+    verification?: { workOrderId?: number; expectedInterviewAt?: number },
   ): Promise<void> {
     try {
       const state = await this.loadState(context);
@@ -101,6 +161,8 @@ export class ReengagementAnchorService {
         anchorEventId,
         anchorAt: Date.now(),
         state: { ...state, ...stateOverride },
+        workOrderId: verification?.workOrderId,
+        expectedInterviewAt: verification?.expectedInterviewAt,
       });
     } catch (error) {
       this.logFailure(`schedule ${scenarioCode}`, context, error);
@@ -142,6 +204,23 @@ export class ReengagementAnchorService {
     return result?.success === true || typeof result?.workOrderId === 'number';
   }
 
+  private isCancelSucceeded(call: AgentToolCall): boolean {
+    if (call.toolName !== 'duliday_cancel_work_order') return false;
+    return this.asRecord(call.result)?.success === true;
+  }
+
+  private isInterviewModified(call: AgentToolCall): boolean {
+    if (call.toolName !== 'duliday_modify_interview_time') return false;
+    return this.asRecord(call.result)?.success === true;
+  }
+
+  private extractWorkOrderId(call: AgentToolCall): number | undefined {
+    const args = this.asRecord(call.args);
+    const result = this.asRecord(call.result);
+    const raw = result?.workOrderId ?? args?.workOrderId;
+    return typeof raw === 'number' && Number.isInteger(raw) && raw > 0 ? raw : undefined;
+  }
+
   private presentedStore(call: AgentToolCall): boolean {
     if (call.toolName !== 'duliday_job_list') return false;
     const result = this.asRecord(call.result);
@@ -160,12 +239,14 @@ export class ReengagementAnchorService {
   private extractInterviewAt(call: AgentToolCall): number | undefined {
     const args = this.asRecord(call.args);
     const result = this.asRecord(call.result);
-    const raw = args?.interviewTime ?? result?.interviewTime ?? result?.interviewAt;
-    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-    if (typeof raw !== 'string' || raw.trim().length === 0) return undefined;
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + '+08:00';
-    const ts = Date.parse(normalized);
-    return Number.isFinite(ts) ? ts : undefined;
+    // newInterviewTime：duliday_modify_interview_time 改约工具的入参/返回字段
+    const raw =
+      args?.interviewTime ??
+      args?.newInterviewTime ??
+      result?.interviewTime ??
+      result?.newInterviewTime ??
+      result?.interviewAt;
+    return parseInterviewTimestamp(raw);
   }
 
   private asRecord(value: unknown): Record<string, unknown> | undefined {

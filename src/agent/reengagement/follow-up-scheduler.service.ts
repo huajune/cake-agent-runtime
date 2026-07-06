@@ -28,6 +28,10 @@ export interface ScheduleFollowUpInput {
    * 完整 shouldStop，不漏判）。
    */
   state?: AuthoritativeSessionState;
+  /** 报名后场景的工单 ID（processor 到点向海绵核验工单现状用）。 */
+  workOrderId?: number;
+  /** 排程时冻结的期望面试时间（毫秒，改期比对基准）。 */
+  expectedInterviewAt?: number;
 }
 
 function createEmptyState(): AuthoritativeSessionState {
@@ -93,7 +97,9 @@ export class FollowUpSchedulerService {
     // 排程前停止条件预检（仅当提供了 state）——能省一个无效 delayed job；
     // 缺 state 时跳过预检，processor 到点会读权威态再做完整 shouldStop。
     if (input.state) {
-      const stop = shouldStop(scenario, input.state, input.anchorAt);
+      const stop = shouldStop(scenario, input.state, input.anchorAt, {
+        externallyVerifiable: input.workOrderId != null,
+      });
       if (stop.stop) {
         this.tracking.trackScheduleSkipped(identity, stop.reason ?? 'precheck_stop');
         return { scheduled: false, reason: stop.reason };
@@ -112,6 +118,10 @@ export class FollowUpSchedulerService {
           scenarioCode: input.scenarioCode,
           anchorEventId: input.anchorEventId,
           anchorAt: input.anchorAt,
+          ...(input.workOrderId != null ? { workOrderId: input.workOrderId } : {}),
+          ...(input.expectedInterviewAt != null
+            ? { expectedInterviewAt: input.expectedInterviewAt }
+            : {}),
         },
         {
           jobId,

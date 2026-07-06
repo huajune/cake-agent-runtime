@@ -3,6 +3,8 @@ import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import {
   RecordReengagementTouchInput,
+  ReengagementCandidateFilters,
+  ReengagementCandidateOverviewRow,
   ReengagementTouchDbRecord,
   ReengagementTouchFilters,
   ReengagementTouchStatsRow,
@@ -108,6 +110,28 @@ export class ReengagementTouchRepository extends BaseRepository {
       p_start: startDate,
       p_end: endDate,
     });
+    return rows ?? [];
+  }
+
+  /**
+   * 候选人视角：每 (session, scenario) 最新一次触达，按候选人分页（DB 侧 DISTINCT ON + 窗口计数）。
+   * 返回行集由服务层按 session 分组组装。
+   */
+  async getCandidateOverview(
+    filters: ReengagementCandidateFilters,
+  ): Promise<ReengagementCandidateOverviewRow[]> {
+    const rows = await this.rpc<ReengagementCandidateOverviewRow[]>(
+      'get_reengagement_candidate_overview',
+      {
+        p_start: filters.startDate ?? null,
+        p_end: filters.endDate ?? null,
+        p_scenario_code: filters.scenarioCode ?? null,
+        p_session_id: filters.sessionId ?? null,
+        p_pending_only: filters.pendingOnly ?? false,
+        p_limit: Math.min(filters.limit ?? 50, 200),
+        p_offset: filters.offset ?? 0,
+      },
+    );
     return rows ?? [];
   }
 }
