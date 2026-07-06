@@ -2719,6 +2719,18 @@ describe('HardRulesService', () => {
         ).toBeUndefined();
       });
 
+      it('容差只认薪资语境数值：距离 17.6km 不为编造的时薪17元背书（2026-07-06 review）', () => {
+        const result = service.check({
+          replyText: '这家时薪17元。',
+          toolCalls: [makeMarkdownJobListCall('- **薪资**: 54 元/时\n- **距离**: 17.6km')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'hourly_salary_value_mismatch'),
+        ).toBeDefined();
+      });
+
       it('grounds against ALL usable job-list calls, not only the latest（复核空结果不清空事实）', () => {
         const result = service.check({
           replyText: '这家时薪54元。',

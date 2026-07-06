@@ -42,6 +42,12 @@ const HOURLY_SALARY_SUFFIX_PATTERN =
   /(\d+(?:\.\d+)?)\s*(?:元|块)\s*(?:[/每]|一)\s*(?:个?小时|时(?![间段]))/g;
 // ground truth 里的薪资区间："20-25元"、"20~25 元"
 const SALARY_RANGE_PATTERN = /(\d+(?:\.\d+)?)\s*[-~—～至]\s*(\d+(?:\.\d+)?)/g;
+// ground truth 里的薪资语境数值：跟在 薪/工资/salary 后（markdown 字段行、rawData JSON
+// 键均覆盖），或紧邻 元/块 的数字。仅这些参与舍入/取整容差——精确匹配保持全文宽口径
+// （宁可漏判）不动，但容差若吃全文数字，岗位列表必然出现的"距离: 17.6km"会经 trunc
+// 背书编造的"时薪17元"，数值对账形同虚设（2026-07-06 review）。
+const SALARY_CONTEXT_VALUE_PATTERN =
+  /(?:薪|工资|[sS]alary)[^\d\n]{0,12}(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?=元|块)/g;
 
 // 否定/疑问/切句判定已下沉到 claim-assertion.util（承诺类规则共用同一口径）。
 
@@ -180,11 +186,14 @@ export function detectHourlySalaryValueMismatch(
   if (claimed.size === 0) return null;
 
   const truthNumbers = new Set<string>();
-  const truthValues: number[] = [];
   for (const match of truth.matchAll(/\d+(?:\.\d+)?/g)) {
     truthNumbers.add(normalizeNumberToken(match[0]));
-    const value = Number(match[0]);
-    if (Number.isFinite(value)) truthValues.push(value);
+  }
+  const salaryContextValues: number[] = [];
+  SALARY_CONTEXT_VALUE_PATTERN.lastIndex = 0;
+  for (const match of truth.matchAll(SALARY_CONTEXT_VALUE_PATTERN)) {
+    const value = Number(match[1] ?? match[2]);
+    if (Number.isFinite(value)) salaryContextValues.push(value);
   }
   const truthRanges: Array<[number, number]> = [];
   SALARY_RANGE_PATTERN.lastIndex = 0;
@@ -203,7 +212,10 @@ export function detectHourlySalaryValueMismatch(
     if (truthRanges.some(([low, high]) => value >= low && value <= high)) continue;
     // 舍入/取整容差：工具数据 46.38 被口语化成 46 不是编造（生产假阳 2026-07-06
     // 守卫档案 id=4）。四舍五入（差值 ≤0.5）或直接抹零头（trunc）都算同一数值。
-    if (truthValues.some((t) => Math.abs(value - t) <= 0.5 || Math.trunc(t) === value)) continue;
+    // 仅对薪资语境数值放容差，见 SALARY_CONTEXT_VALUE_PATTERN 注释。
+    if (salaryContextValues.some((t) => Math.abs(value - t) <= 0.5 || Math.trunc(t) === value)) {
+      continue;
+    }
     return {
       ruleId: 'hourly_salary_value_mismatch',
       label: `回复声称时薪 ${token} 元，但该数值在本轮 duliday_job_list 返回的岗位数据里不存在（badcase recvi9UoI6jAiE 节假日时薪 54 说成 17）`,

@@ -126,7 +126,11 @@ export class FollowUpProcessor implements OnModuleInit {
     // 1.5) 报名后场景到点核验：向海绵查工单现状（外部取消/已面试）+ 比对面试时间是否改约。
     // 会话内检测不到的后台操作在这里兜底；核验数据拿不到时按现状放行（不静默丢提醒）。
     if (scenario.anchorEvent === 'booking.succeeded' && job.data.workOrderId != null) {
-      const invalidReason = await this.checkBookingInvalidAtFire(job.data, state);
+      const invalidReason = await this.checkBookingInvalidAtFire(
+        job.data,
+        state,
+        channelIdentity?.botImId,
+      );
       if (invalidReason) {
         this.logger.log(
           `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${invalidReason}`,
@@ -268,15 +272,20 @@ export class FollowUpProcessor implements OnModuleInit {
   private async checkBookingInvalidAtFire(
     jobData: FollowUpJob,
     state: AuthoritativeSessionState,
+    botImId?: string,
   ): Promise<string | null> {
     const { sessionRef, scenarioCode, workOrderId, expectedInterviewAt } = jobData;
     if (workOrderId == null) return null;
 
-    // getCachedWorkOrderById 内部吞错返回 null，此处再兜一层防御
+    // getCachedWorkOrderById 内部吞错返回 null，此处再兜一层防御。
+    // 必须带 botImId：多 bot 企业 per-bot token 与全局 fallback 不同，
+    // 不传则工单查不到 → 核验静默失效，外部取消照发提醒（2026-07-06 review）。
     let currentStatus: string | null = null;
     let spongeInterviewAt: number | undefined;
     try {
-      const workOrder = await this.sponge.getCachedWorkOrderById(workOrderId);
+      const workOrder = botImId
+        ? await this.sponge.getCachedWorkOrderById(workOrderId, { botImId })
+        : await this.sponge.getCachedWorkOrderById(workOrderId);
       currentStatus = workOrder?.currentStatus ?? null;
       spongeInterviewAt = parseInterviewTimestamp(workOrder?.interviewTime);
     } catch (error) {

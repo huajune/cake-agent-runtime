@@ -666,6 +666,25 @@ describe('FollowUpProcessor', () => {
       expect(runner.runTurn).not.toHaveBeenCalled();
     });
 
+    it('passes the per-bot token context to the sponge work-order lookup', async () => {
+      // 多 bot 企业 per-bot token ≠ 全局 fallback，不带 botImId 查工单会静默 miss，
+      // 外部取消检测整条失效（2026-07-06 review）
+      sponge.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面取消',
+      });
+
+      await buildProcessor().process(
+        bookingJob({ channelIdentity: { botImId: 'bot-1', candidateName: '张三' } }),
+      );
+
+      expect(sponge.getCachedWorkOrderById).toHaveBeenCalledWith(555, { botImId: 'bot-1' });
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'external_cancelled:约面取消',
+      );
+    });
+
     it('stops the reminder when the interview already happened', async () => {
       sponge.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 555,
