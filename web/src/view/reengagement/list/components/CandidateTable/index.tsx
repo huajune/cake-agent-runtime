@@ -1,16 +1,9 @@
-import { Clock, BellRing } from 'lucide-react';
-import { formatDateTime, formatRelativeTime } from '@/utils/format';
+import { Clock, BellRing, AlertTriangle } from 'lucide-react';
+import { formatDateTime, formatRelativeTime, truncateSessionId } from '@/utils/format';
 import type { ReengagementCandidateSummary } from '@/api/types/reengagement.types';
-import { AVATAR_GRADIENTS } from '@/view/users/list/constants';
-import { getAvatarStyle, getUserInitial } from '@/view/users/list/utils/helpers';
+import { AVATAR_GRADIENTS, getAvatarStyle, getUserInitial } from '@/utils/avatar';
 import { getStatusMeta } from '../../constants';
 import styles from './index.module.scss';
-
-function truncateSessionId(sessionId: string, maxLength = 18): string {
-  if (!sessionId) return '-';
-  if (sessionId.length <= maxLength) return sessionId;
-  return `${sessionId.slice(0, maxLength)}…`;
-}
 
 /** 未来时间的相对表述（fire_at 倒计时）；已过期/无效返回 null */
 function formatCountdown(fireAt: string): string | null {
@@ -37,6 +30,8 @@ function primaryTouchKey(candidate: ReengagementCandidateSummary): string | null
 interface CandidateTableProps {
   data: ReengagementCandidateSummary[];
   loading?: boolean;
+  /** 接口失败时置位：错误必须与"真实无数据"在 UI 上可区分，否则故障被空态文案掩盖 */
+  error?: boolean;
   /** code→displayName，由页面从场景注册表接口构建（与流水视图同源） */
   scenarioLabels: Record<string, string>;
   /** 点场景芯片打开对应触达的详情抽屉 */
@@ -51,6 +46,7 @@ interface CandidateTableProps {
 export default function CandidateTable({
   data,
   loading,
+  error,
   scenarioLabels,
   onTouchClick,
 }: CandidateTableProps) {
@@ -64,7 +60,7 @@ export default function CandidateTable({
     </tr>
   );
 
-  if (loading || data.length === 0) {
+  if (loading || error || data.length === 0) {
     return (
       <section className={styles.section}>
         <div className={styles.tableWrapper}>
@@ -77,6 +73,14 @@ export default function CandidateTable({
                     <div className={styles.emptyStateContainer}>
                       <div className={styles.spinner} />
                       <p>加载中...</p>
+                    </div>
+                  ) : error ? (
+                    <div className={styles.emptyStateContainer}>
+                      <div className={styles.emptyIconHalo}>
+                        <AlertTriangle className={styles.emptyIcon} aria-hidden="true" />
+                      </div>
+                      <p>候选人数据加载失败</p>
+                      <span className={styles.emptyHint}>请刷新页面重试，持续失败请联系研发排查</span>
                     </div>
                   ) : (
                     <div className={styles.emptyStateContainer}>

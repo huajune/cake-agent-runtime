@@ -1,18 +1,15 @@
-import { formatDateTime } from '@/utils/format';
+import { AlertTriangle } from 'lucide-react';
+import { formatDateTime, truncateSessionId } from '@/utils/format';
 import type { ReengagementTouchRecord } from '@/api/types/reengagement.types';
 import { getStatusMeta } from '../../constants';
 import StatusBadge from '../StatusBadge';
 import styles from './index.module.scss';
 
-function truncateSessionId(sessionId: string, maxLength = 18): string {
-  if (!sessionId) return '-';
-  if (sessionId.length <= maxLength) return sessionId;
-  return `${sessionId.slice(0, maxLength)}…`;
-}
-
 interface ReengagementTableProps {
   data: ReengagementTouchRecord[];
   loading?: boolean;
+  /** 接口失败时置位：错误必须与"真实无数据"在 UI 上可区分，否则故障被空态文案掩盖 */
+  error?: boolean;
   onRowClick: (record: ReengagementTouchRecord) => void;
   /** code→displayName，由页面从场景注册表接口构建（与 /config 页同源） */
   scenarioLabels: Record<string, string>;
@@ -21,6 +18,7 @@ interface ReengagementTableProps {
 export default function ReengagementTable({
   data,
   loading,
+  error,
   onRowClick,
   scenarioLabels,
 }: ReengagementTableProps) {
@@ -49,6 +47,30 @@ export default function ReengagementTable({
                   <div className={styles.emptyStateContainer}>
                     <div className={styles.spinner} />
                     <p>加载中...</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className={styles.section}>
+        <div className={styles.tableWrapper}>
+          <table className={styles.table}>
+            <thead>{tableHeaders}</thead>
+            <tbody>
+              <tr>
+                <td colSpan={8} className={styles.loading}>
+                  <div className={styles.emptyStateContainer}>
+                    <div className={styles.emptyIconWrapper}>
+                      <AlertTriangle className={styles.emptyIcon} aria-hidden="true" />
+                    </div>
+                    <p>触达记录加载失败，请刷新页面重试</p>
                   </div>
                 </td>
               </tr>

@@ -545,4 +545,90 @@ describe('OutputGuardrailService', () => {
     expect(decision.decision).toBe('block');
     expect(semanticNotifier.notifyReviewerFailure).not.toHaveBeenCalled();
   });
+
+  // riskLevel 是 runner §9 repair 上限用尽后 fail-open 闸门的档位信号：
+  // P0（high）必须 block，不能被语义档 revise=medium 的口径吞掉（2026-07-06 review Critical）。
+  describe('riskLevel 组合（fail-open 闸门信号）', () => {
+    const llmReviseReviewer = (finding: Record<string, unknown> = makeFinding()) => ({
+      shouldReview: jest.fn().mockReturnValue(false),
+      review: jest.fn().mockResolvedValue({
+        decision: 'revise',
+        confidence: 'high',
+        findings: [finding],
+      }),
+    });
+
+    it('rule P0（action=revise）+ llm revise → riskLevel high，P0 信号不被语义档吞掉', async () => {
+      const { service } = build(
+        true,
+        makeRuleResult([
+          {
+            ruleId: 'tool_failure_success_claim',
+            label: '工具失败但声称成功',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            recoverability: 'recoverable',
+            repairMode: 'rewrite',
+            severity: 'P0',
+          },
+        ]),
+        llmReviseReviewer(),
+      );
+
+      const decision = await service.check(baseInput({ reply: '已帮你约好明天面试' }));
+
+      expect(decision.decision).toBe('revise');
+      expect(decision.riskLevel).toBe('high');
+    });
+
+    it('rule P1（action=revise）+ llm revise → riskLevel medium，fail-open 仍可用', async () => {
+      const { service } = build(
+        true,
+        makeRuleResult([
+          {
+            ruleId: 'wait_notice_time_fabrication',
+            label: '等通知岗位编造时间',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            recoverability: 'recoverable',
+            repairMode: 'rewrite',
+            severity: 'P1',
+          },
+        ]),
+        llmReviseReviewer(makeFinding({ code: 'job_recommendation_not_best_supported' })),
+      );
+
+      const decision = await service.check(baseInput({ reply: '已帮你约好明天面试' }));
+
+      expect(decision.decision).toBe('revise');
+      expect(decision.riskLevel).toBe('medium');
+    });
+
+    it('无 rule 命中 + llm revise 含 P0 finding（booking 状态冲突）→ riskLevel high', async () => {
+      const { service } = build(true, makeRuleResult(), llmReviseReviewer());
+
+      const decision = await service.check(baseInput({ reply: '已帮你约好明天面试' }));
+
+      expect(decision.decision).toBe('revise');
+      expect(decision.riskLevel).toBe('high');
+      expect(decision.violations[0].severity).toBe('P0');
+      // 语义 finding 的 recoverability 必须显式赋值——undefined 会让 runner 的
+      // fail-open 闸门（!== 'non_recoverable'）恒为真
+      expect(decision.violations[0].recoverability).toBe('recoverable');
+    });
+
+    it('无 rule 命中 + llm revise 仅 P2 finding（推荐非最优）→ riskLevel medium', async () => {
+      const { service } = build(
+        true,
+        makeRuleResult(),
+        llmReviseReviewer(makeFinding({ code: 'job_recommendation_not_best_supported' })),
+      );
+
+      const decision = await service.check(baseInput({ reply: '已帮你约好明天面试' }));
+
+      expect(decision.decision).toBe('revise');
+      expect(decision.riskLevel).toBe('medium');
+      expect(decision.violations[0].severity).toBe('P2');
+    });
+  });
 });

@@ -18,8 +18,22 @@
 export const CLAIM_NEGATION_PATTERN =
   /不是|不算|没有|没能|没法|无法|未能|不能|不用|不要|无需|不需要|并非|别的|错/;
 
-/** 疑问语境：问句是征询不是声称。句尾 吗/呢/么 兜底（？被切句保留）。 */
-export const CLAIM_QUESTION_PATTERN = /[？?]|[吗呢么]\s*[。！~]*\s*$/;
+/** 疑问语境：问句是征询不是声称。句尾 吗/么 兜底（？被切句保留）。 */
+export const CLAIM_QUESTION_PATTERN = /[？?]|[吗么]\s*[。！~]*\s*$/;
+
+/**
+ * 呢 不能单凭句尾判问句——"已经帮你登记好了呢"是带语气词的成功宣称（2026-07-06 review：
+ * 句尾呢兜底曾把这类陈述误豁免，削弱 P0 假成功口径）。仅当句内另有疑问词时按问句豁免
+ * （"你想约几点呢""哪天方便呢"）。
+ */
+const TRAILING_NE_PATTERN = /呢\s*[。！~]*\s*$/;
+const INTERROGATIVE_WORD_PATTERN =
+  /什么|哪|几点|几号|多少|怎么|怎样|如何|是否|要不要|能不能|可不可以|行不行|好不好|方不方便|有没有/;
+
+function isQuestionSentence(sentence: string): boolean {
+  if (CLAIM_QUESTION_PATTERN.test(sentence)) return true;
+  return TRAILING_NE_PATTERN.test(sentence) && INTERROGATIVE_WORD_PATTERN.test(sentence);
+}
 
 /** 切句：疑问/否定判定按句子粒度做，避免整段误杀。疑问句被 ？切开后靠句尾语气词兜底识别。 */
 export function splitClaimSentences(text: string): string[] {
@@ -43,7 +57,7 @@ function splitClaimClauses(sentence: string): string[] {
 /**
  * 该句是否构成对 pattern 的"声称"（非疑问、非否定）。
  *
- * 疑问豁免保持句粒度：句尾语气词（吗/呢/么）作用于整句。
+ * 疑问豁免保持句粒度：句尾语气词（吗/么，呢 需另有疑问词）作用于整句。
  * 否定豁免收敛到小句（逗号）粒度：否定词必须与声称词落在同一小句才豁免。
  * 生产反例（2026-07-06 review）：booking 失败后"不用担心，已经帮你报名成功了"——
  * 前小句的"不用"曾把后小句的成功宣称整句洗白，P0 假成功口径因此漏拦；
@@ -51,7 +65,7 @@ function splitClaimClauses(sentence: string): string[] {
  */
 export function assertsClaim(sentence: string, pattern: RegExp): boolean {
   if (!pattern.test(sentence)) return false;
-  if (CLAIM_QUESTION_PATTERN.test(sentence)) return false;
+  if (isQuestionSentence(sentence)) return false;
   return splitClaimClauses(sentence).some(
     (clause) => pattern.test(clause) && !CLAIM_NEGATION_PATTERN.test(clause),
   );

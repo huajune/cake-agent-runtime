@@ -30,7 +30,8 @@ export class ReengagementQueryService {
     const filters: ReengagementTouchFilters = {};
     if (query.startDate) filters.startDate = this.dayStart(query.startDate);
     if (query.endDate) filters.endDate = this.dayEnd(query.endDate);
-    if (query.status) filters.status = query.status as ReengagementTouchStatus;
+    const status = this.parseStatus(query.status);
+    if (status) filters.status = status;
     if (query.scenarioCode) filters.scenarioCode = query.scenarioCode;
     if (query.sessionId) filters.sessionId = query.sessionId;
     const limit = this.parsePositiveInt(query.limit);
@@ -135,6 +136,14 @@ export class ReengagementQueryService {
    * Controller 层无 ParseIntPipe，parseInt('abc') 的 NaN 会穿透 `??` 直达
    * .range(NaN, ...) / p_limit，被 PostgREST 拒绝为 500。
    */
+  /** status 白名单校验：非枚举值按未过滤处理，不把任意字符串透传进 PostgREST .eq()。 */
+  private parseStatus(value: string | undefined): ReengagementTouchStatus | undefined {
+    if (!value) return undefined;
+    return (Object.values(ReengagementTouchStatus) as string[]).includes(value)
+      ? (value as ReengagementTouchStatus)
+      : undefined;
+  }
+
   private parsePositiveInt(value: string | undefined): number | undefined {
     if (value === undefined || value === '') return undefined;
     const parsed = parseInt(value, 10);

@@ -157,7 +157,11 @@ export default function ReengagementPage() {
   }, [statsItems]);
 
   // 当前页数据（流水视图）
-  const { data: pageRecords, isLoading: pageLoading } = useReengagementRecords({
+  const {
+    data: pageRecords,
+    isLoading: pageLoading,
+    isError: pageError,
+  } = useReengagementRecords({
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
     status: activeStatus,
@@ -169,7 +173,11 @@ export default function ReengagementPage() {
   });
 
   // 当前页数据（候选人视角）
-  const { data: candidatePageData, isLoading: candidatesLoading } = useReengagementCandidates({
+  const {
+    data: candidatePageData,
+    isLoading: candidatesLoading,
+    isError: candidatesError,
+  } = useReengagementCandidates({
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
     scenarioCode: activeScenario,
@@ -320,6 +328,7 @@ export default function ReengagementPage() {
           <CandidateTable
             data={accumulatedCandidates}
             loading={isLoading}
+            error={candidatesError && accumulatedCandidates.length === 0}
             scenarioLabels={scenarioLabels}
             onTouchClick={(touchKey) => setSelectedTouchKey(touchKey)}
           />
@@ -327,6 +336,7 @@ export default function ReengagementPage() {
           <ReengagementTable
             data={records}
             loading={isLoading}
+            error={pageError && records.length === 0}
             scenarioLabels={scenarioLabels}
             onRowClick={(record: ReengagementTouchRecord) =>
               setSelectedTouchKey(record.touch_key || null)

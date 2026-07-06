@@ -43,7 +43,7 @@ export default function ReengagementDetailDrawer({
   scenarioLabels,
 }: ReengagementDetailDrawerProps) {
   const navigate = useNavigate();
-  const { data: record, isLoading } = useReengagementRecordDetail(touchKey);
+  const { data: record, isLoading, isError } = useReengagementRecordDetail(touchKey);
 
   const events = useMemo(() => sortEventsAsc(record?.events || []), [record?.events]);
 
@@ -102,7 +102,9 @@ export default function ReengagementDetailDrawer({
               </button>
             </div>
           </div>
-          <div className={styles.loadingBody}>{isLoading ? '加载中...' : '未找到触达详情'}</div>
+          <div className={styles.loadingBody}>
+            {isLoading ? '加载中...' : isError ? '详情加载失败，请关闭后重试' : '未找到触达详情'}
+          </div>
         </div>
       </div>
     );

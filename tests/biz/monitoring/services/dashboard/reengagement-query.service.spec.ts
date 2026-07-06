@@ -49,6 +49,14 @@ describe('ReengagementQueryService', () => {
     expect(repository.getRecords).toHaveBeenCalledWith({});
   });
 
+  it('drops non-enum status instead of passing arbitrary strings to PostgREST', async () => {
+    repository.getRecords.mockResolvedValue([]);
+
+    await service.getRecords({ status: 'not-a-status' });
+
+    expect(repository.getRecords).toHaveBeenCalledWith({});
+  });
+
   it('keeps valid pagination while dropping only the invalid param', async () => {
     repository.getRecords.mockResolvedValue([]);
 
