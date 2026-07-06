@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   RecordReengagementTouchInput,
+  ReengagementTouchEventName,
   ReengagementTouchStatus,
 } from '../../entities/reengagement-touch.entity';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
@@ -41,10 +42,10 @@ export class ReengagementTrackingService {
     this.persist({
       ...this.base(identity),
       jobId,
-      status: 'scheduled',
+      status: ReengagementTouchStatus.Scheduled,
       fireAt,
       scheduledAt: Date.now(),
-      event: { event: 'scheduled', detail: { jobId, fireAt } },
+      event: { event: ReengagementTouchEventName.Scheduled, detail: { jobId, fireAt } },
     });
   }
 
@@ -52,10 +53,10 @@ export class ReengagementTrackingService {
   trackScheduleSkipped(identity: ReengagementTouchIdentity, reason: string): void {
     this.persist({
       ...this.base(identity),
-      status: 'skipped',
+      status: ReengagementTouchStatus.Skipped,
       decisionReason: reason,
       scheduledAt: Date.now(),
-      event: { event: 'schedule_precheck_stopped', detail: { reason } },
+      event: { event: ReengagementTouchEventName.SchedulePrecheckStopped, detail: { reason } },
     });
   }
 
@@ -63,26 +64,41 @@ export class ReengagementTrackingService {
   trackScheduleError(identity: ReengagementTouchIdentity, error: string): void {
     this.persist({
       ...this.base(identity),
-      status: 'failed',
-      decisionReason: 'enqueue_error',
+      status: ReengagementTouchStatus.Failed,
+      decisionReason: ReengagementTouchEventName.EnqueueError,
       error,
-      event: { event: 'enqueue_error', detail: { error } },
+      event: { event: ReengagementTouchEventName.EnqueueError, detail: { error } },
     });
   }
 
   /** 到点时总开关关闭，任务丢弃 */
   trackDisabledAtFire(identity: ReengagementTouchIdentity): void {
-    this.markFired(identity, 'disabled', 'reengagement_disabled', 'fired_but_disabled');
+    this.markFired(
+      identity,
+      ReengagementTouchStatus.Disabled,
+      'reengagement_disabled',
+      ReengagementTouchEventName.FiredButDisabled,
+    );
   }
 
   /** 到点停止条件命中 */
   trackStopped(identity: ReengagementTouchIdentity, reason: string): void {
-    this.markFired(identity, 'stopped', reason, 'stopped');
+    this.markFired(
+      identity,
+      ReengagementTouchStatus.Stopped,
+      reason,
+      ReengagementTouchEventName.Stopped,
+    );
   }
 
   /** 频控丢弃 */
   trackFrequencyBlocked(identity: ReengagementTouchIdentity): void {
-    this.markFired(identity, 'frequency_blocked', 'over_frequency_limit_24h', 'frequency_blocked');
+    this.markFired(
+      identity,
+      ReengagementTouchStatus.FrequencyBlocked,
+      'over_frequency_limit_24h',
+      ReengagementTouchEventName.FrequencyBlocked,
+    );
   }
 
   /** 9-21 窗口外改期 */
@@ -93,10 +109,13 @@ export class ReengagementTrackingService {
   ): void {
     this.persist({
       ...this.base(identity),
-      status: 'rescheduled',
+      status: ReengagementTouchStatus.Rescheduled,
       fireAt: nextFireAt,
       firedAt: Date.now(),
-      event: { event: 'rescheduled_out_of_window', detail: { nextFireAt, rescheduledJobId } },
+      event: {
+        event: ReengagementTouchEventName.RescheduledOutOfWindow,
+        detail: { nextFireAt, rescheduledJobId },
+      },
     });
   }
 
@@ -107,14 +126,14 @@ export class ReengagementTrackingService {
   ): void {
     this.persist({
       ...this.base(identity),
-      status: 'shadow',
+      status: ReengagementTouchStatus.Shadow,
       shadow: true,
       decisionReason: params.reason,
       outcomeKind: params.outcomeKind,
       generatedText: params.generatedText,
       firedAt: Date.now(),
       event: {
-        event: 'shadow_generated',
+        event: ReengagementTouchEventName.ShadowGenerated,
         detail: { outcomeKind: params.outcomeKind, reason: params.reason },
       },
     });
@@ -124,11 +143,11 @@ export class ReengagementTrackingService {
   trackDuplicate(identity: ReengagementTouchIdentity, reserveResult: string): void {
     this.persist({
       ...this.base(identity),
-      status: 'duplicate',
+      status: ReengagementTouchStatus.Duplicate,
       decisionReason: reserveResult,
       reserveResult,
       firedAt: Date.now(),
-      event: { event: 'reserve_duplicate', detail: { reserveResult } },
+      event: { event: ReengagementTouchEventName.ReserveDuplicate, detail: { reserveResult } },
     });
   }
 
@@ -138,7 +157,7 @@ export class ReengagementTrackingService {
       ...this.base(identity),
       reserveResult: 'reserved',
       firedAt: Date.now(),
-      event: { event: 'reserved' },
+      event: { event: ReengagementTouchEventName.Reserved },
     });
   }
 
@@ -146,10 +165,10 @@ export class ReengagementTrackingService {
   trackOutcomeNotReply(identity: ReengagementTouchIdentity, outcomeKind: string): void {
     this.persist({
       ...this.base(identity),
-      status: 'failed',
-      decisionReason: 'outcome_not_reply',
+      status: ReengagementTouchStatus.Failed,
+      decisionReason: ReengagementTouchEventName.OutcomeNotReply,
       outcomeKind,
-      event: { event: 'outcome_not_reply', detail: { outcomeKind } },
+      event: { event: ReengagementTouchEventName.OutcomeNotReply, detail: { outcomeKind } },
     });
   }
 
@@ -157,7 +176,7 @@ export class ReengagementTrackingService {
   trackDeliveryAttempted(identity: ReengagementTouchIdentity): void {
     this.persist({
       ...this.base(identity),
-      event: { event: 'delivery_attempted' },
+      event: { event: ReengagementTouchEventName.DeliveryAttempted },
     });
   }
 
@@ -165,12 +184,12 @@ export class ReengagementTrackingService {
   trackSent(identity: ReengagementTouchIdentity, generatedText?: string): void {
     this.persist({
       ...this.base(identity),
-      status: 'sent',
+      status: ReengagementTouchStatus.Sent,
       shadow: false,
       outcomeKind: 'reply',
       generatedText,
       sentAt: Date.now(),
-      event: { event: 'sent' },
+      event: { event: ReengagementTouchEventName.Sent },
     });
   }
 
@@ -178,9 +197,9 @@ export class ReengagementTrackingService {
   trackDeliveryUnknown(identity: ReengagementTouchIdentity, error: string): void {
     this.persist({
       ...this.base(identity),
-      status: 'unknown',
+      status: ReengagementTouchStatus.Unknown,
       error,
-      event: { event: 'delivery_unknown', detail: { error } },
+      event: { event: ReengagementTouchEventName.DeliveryUnknown, detail: { error } },
     });
   }
 
@@ -190,7 +209,7 @@ export class ReengagementTrackingService {
     identity: ReengagementTouchIdentity,
     status: ReengagementTouchStatus,
     reason: string,
-    eventName: string,
+    eventName: ReengagementTouchEventName,
   ): void {
     this.persist({
       ...this.base(identity),

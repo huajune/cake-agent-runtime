@@ -5,26 +5,56 @@
  * events 数组保留全轨迹。对应表 reengagement_touch_records。
  */
 
-/** 生命周期状态（列表页终态摘要） */
-export type ReengagementTouchStatus =
-  | 'scheduled' // 已排程，等待到点
-  | 'skipped' // 排程前预检停止（未入队）
-  | 'disabled' // 到点时总开关关闭，丢弃
-  | 'stopped' // 到点时停止条件命中（候选人已回话/已终态/场景不再成立）
-  | 'frequency_blocked' // 频控丢弃（24h 已达上限）
-  | 'rescheduled' // 9-21 窗口外，改期等待新到点
-  | 'duplicate' // Redis 触达槽撞重（已发过/在途），跳过
-  | 'shadow' // shadow 分支：生成了文案但不投递（终态）
-  | 'sent' // 已投递
-  | 'failed' // 生成非 reply、入队失败或投递明确失败
-  | 'unknown'; // 投递后状态不明，需人工核对渠道侧
+/** 生命周期状态（列表页终态摘要，值与 DB status 列一致） */
+export enum ReengagementTouchStatus {
+  /** 已排程，等待到点 */
+  Scheduled = 'scheduled',
+  /** 排程前预检停止（未入队） */
+  Skipped = 'skipped',
+  /** 到点时总开关关闭，丢弃 */
+  Disabled = 'disabled',
+  /** 到点时停止条件命中（候选人已回话/已终态/场景不再成立） */
+  Stopped = 'stopped',
+  /** 频控丢弃（24h 已达上限） */
+  FrequencyBlocked = 'frequency_blocked',
+  /** 9-21 窗口外，改期等待新到点 */
+  Rescheduled = 'rescheduled',
+  /** Redis 触达槽撞重（已发过/在途），跳过 */
+  Duplicate = 'duplicate',
+  /** shadow 分支：生成了文案但不投递（终态） */
+  Shadow = 'shadow',
+  /** 已投递 */
+  Sent = 'sent',
+  /** 生成非 reply、入队失败或投递明确失败 */
+  Failed = 'failed',
+  /** 投递后状态不明，需人工核对渠道侧 */
+  Unknown = 'unknown',
+}
+
+/** 状态流转事件名（events 数组元素的 event 字段，值与 DB 落库一致） */
+export enum ReengagementTouchEventName {
+  Scheduled = 'scheduled',
+  SchedulePrecheckStopped = 'schedule_precheck_stopped',
+  EnqueueError = 'enqueue_error',
+  FiredButDisabled = 'fired_but_disabled',
+  Stopped = 'stopped',
+  FrequencyBlocked = 'frequency_blocked',
+  RescheduledOutOfWindow = 'rescheduled_out_of_window',
+  ShadowGenerated = 'shadow_generated',
+  ReserveDuplicate = 'reserve_duplicate',
+  Reserved = 'reserved',
+  OutcomeNotReply = 'outcome_not_reply',
+  DeliveryAttempted = 'delivery_attempted',
+  Sent = 'sent',
+  DeliveryUnknown = 'delivery_unknown',
+}
 
 /** 状态流转轨迹项（events jsonb 数组元素） */
 export interface ReengagementTouchEvent {
   /** ISO 时间戳 */
   at: string;
-  /** 事件名：scheduled / fired / stopped / delivery_attempted / sent ... */
-  event: string;
+  /** 事件名（见 ReengagementTouchEventName） */
+  event: ReengagementTouchEventName | string;
   /** 附加信息（原因、新 fireAt、reserve 结果等） */
   detail?: Record<string, unknown>;
 }
