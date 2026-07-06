@@ -2,12 +2,15 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import {
   useReengagementRecords,
+  useReengagementScenarios,
   useReengagementStats,
 } from '@/hooks/reengagement/useReengagementRecords';
+import { buildScenarioLabels, buildScenarioOptions } from './constants';
 import ControlPanel from './components/ControlPanel';
 import ReengagementTable from './components/ReengagementTable';
 import ReengagementDetailDrawer from './components/ReengagementDetailDrawer';
 import type { ReengagementTouchRecord } from '@/api/types/reengagement.types';
+import { addDays, formatDateKey } from '@/utils/date-range';
 
 const ALL_VALUE = '__all__';
 const PAGE_SIZE = 50;
@@ -30,24 +33,14 @@ export default function ReengagementPage() {
   const [accumulatedRecords, setAccumulatedRecords] = useState<ReengagementTouchRecord[]>([]);
   const [hasMore, setHasMore] = useState(true);
 
-  // 计算时间范围
+  // 计算时间范围（本地日期口径：toISOString 是 UTC 日期，凌晨 0-8 点会算成昨天）
   const dateRange = useMemo(() => {
     const now = new Date();
-    const endDate = now.toISOString().split('T')[0];
-    let startDate: string;
-
-    if (timeRange === 'today') {
-      startDate = endDate;
-    } else if (timeRange === 'week') {
-      const weekAgo = new Date(now);
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      startDate = weekAgo.toISOString().split('T')[0];
-    } else {
-      const monthAgo = new Date(now);
-      monthAgo.setDate(monthAgo.getDate() - 30);
-      startDate = monthAgo.toISOString().split('T')[0];
-    }
-
+    const endDate = formatDateKey(now);
+    const startDate =
+      timeRange === 'today'
+        ? endDate
+        : formatDateKey(addDays(now, timeRange === 'week' ? -7 : -30));
     return { startDate, endDate };
   }, [timeRange]);
 
@@ -105,6 +98,11 @@ export default function ReengagementPage() {
     },
     [resetPaging],
   );
+
+  // 场景中文名以注册表接口为单一来源（与 /config 页同名），接口未返回时用本地兜底
+  const { data: scenarioRegistry } = useReengagementScenarios();
+  const scenarioLabels = useMemo(() => buildScenarioLabels(scenarioRegistry), [scenarioRegistry]);
+  const scenarioOptions = useMemo(() => buildScenarioOptions(scenarioLabels), [scenarioLabels]);
 
   // 统计数据：分组计数（status x scenario_code）
   const { data: statsItems } = useReengagementStats({
@@ -176,6 +174,7 @@ export default function ReengagementPage() {
         searchSessionId={searchSessionId}
         onSearchSessionIdChange={handleSearchSessionIdChange}
         allValue={ALL_VALUE}
+        scenarioOptions={scenarioOptions}
       />
 
       <InfiniteScroll
@@ -237,6 +236,7 @@ export default function ReengagementPage() {
         <ReengagementTable
           data={records}
           loading={isLoading}
+          scenarioLabels={scenarioLabels}
           onRowClick={(record: ReengagementTouchRecord) =>
             setSelectedTouchKey(record.touch_key || null)
           }
@@ -246,6 +246,7 @@ export default function ReengagementPage() {
       {selectedTouchKey && (
         <ReengagementDetailDrawer
           touchKey={selectedTouchKey}
+          scenarioLabels={scenarioLabels}
           onClose={() => setSelectedTouchKey(null)}
         />
       )}

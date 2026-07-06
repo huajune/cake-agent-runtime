@@ -1,6 +1,6 @@
 import { formatDateTime } from '@/utils/format';
 import type { ReengagementTouchRecord } from '@/api/types/reengagement.types';
-import { getScenarioLabel, getStatusMeta } from '../../constants';
+import { getStatusMeta } from '../../constants';
 import StatusBadge from '../StatusBadge';
 import styles from './index.module.scss';
 
@@ -14,9 +14,16 @@ interface ReengagementTableProps {
   data: ReengagementTouchRecord[];
   loading?: boolean;
   onRowClick: (record: ReengagementTouchRecord) => void;
+  /** code→displayName，由页面从场景注册表接口构建（与 /config 页同源） */
+  scenarioLabels: Record<string, string>;
 }
 
-export default function ReengagementTable({ data, loading, onRowClick }: ReengagementTableProps) {
+export default function ReengagementTable({
+  data,
+  loading,
+  onRowClick,
+  scenarioLabels,
+}: ReengagementTableProps) {
   const tableHeaders = (
     <tr>
       <th>创建时间</th>
@@ -146,7 +153,7 @@ export default function ReengagementTable({ data, loading, onRowClick }: Reengag
                     {truncateSessionId(record.session_id)}
                   </td>
                   <td className={styles.scenarioCell} title={record.scenario_code}>
-                    {getScenarioLabel(record.scenario_code)}
+                    {scenarioLabels[record.scenario_code] ?? record.scenario_code ?? '-'}
                   </td>
                   <td>
                     <StatusBadge status={record.status} title={statusTitle} />

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Filter, Workflow } from 'lucide-react';
-import { SCENARIO_OPTIONS, STATUS_OPTIONS } from '../../constants';
+import { STATUS_OPTIONS } from '../../constants';
 import styles from './index.module.scss';
 
 export interface ReengagementStatsSummary {
@@ -21,6 +21,8 @@ interface ControlPanelProps {
   searchSessionId: string;
   onSearchSessionIdChange: (sessionId: string) => void;
   allValue: string;
+  /** 场景筛选项：由页面从场景注册表接口构建（displayName 单一来源） */
+  scenarioOptions: Array<{ value: string; label: string }>;
 }
 
 const TIME_RANGE_OPTIONS = [
@@ -40,6 +42,7 @@ export default function ControlPanel({
   searchSessionId,
   onSearchSessionIdChange,
   allValue,
+  scenarioOptions,
 }: ControlPanelProps) {
   const [inputValue, setInputValue] = useState(searchSessionId);
 
@@ -150,7 +153,7 @@ export default function ControlPanel({
             aria-label="场景筛选"
           >
             <option value={allValue}>全部场景</option>
-            {SCENARIO_OPTIONS.map((option) => (
+            {scenarioOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

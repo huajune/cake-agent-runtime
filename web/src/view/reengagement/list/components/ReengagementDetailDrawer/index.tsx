@@ -2,13 +2,14 @@ import { useMemo } from 'react';
 import { formatDateTime, formatJson } from '@/utils/format';
 import { useReengagementRecordDetail } from '@/hooks/reengagement/useReengagementRecords';
 import type { ReengagementEvent } from '@/api/types/reengagement.types';
-import { getScenarioLabel } from '../../constants';
 import StatusBadge from '../StatusBadge';
 import styles from './index.module.scss';
 
 interface ReengagementDetailDrawerProps {
   touchKey: string;
   onClose: () => void;
+  /** code→displayName，由页面从场景注册表接口构建（与 /config 页同源） */
+  scenarioLabels: Record<string, string>;
 }
 
 interface InfoFact {
@@ -32,6 +33,7 @@ function sortEventsAsc(events: ReengagementEvent[]): ReengagementEvent[] {
 export default function ReengagementDetailDrawer({
   touchKey,
   onClose,
+  scenarioLabels,
 }: ReengagementDetailDrawerProps) {
   const { data: record, isLoading } = useReengagementRecordDetail(touchKey);
 
@@ -44,12 +46,12 @@ export default function ReengagementDetailDrawer({
       { label: 'Session', value: record.session_id || '-', mono: true },
       { label: 'User', value: record.user_id || '-', mono: true },
       { label: 'Corp', value: record.corp_id || '-', mono: true },
-      { label: '场景', value: getScenarioLabel(record.scenario_code) },
+      { label: '场景', value: scenarioLabels[record.scenario_code] ?? record.scenario_code ?? '-' },
       { label: '决策原因', value: record.decision_reason || '-' },
       { label: 'Outcome', value: record.outcome_kind || '-' },
       { label: 'Reserve', value: record.reserve_result || '-' },
     ];
-  }, [record]);
+  }, [record, scenarioLabels]);
 
   const timeFacts = useMemo<InfoFact[]>(() => {
     if (!record) return [];

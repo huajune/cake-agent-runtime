@@ -245,10 +245,12 @@ export default function Config() {
     return { label: '真实发送', className: styles.statusOn };
   };
 
-  // 每次切换都回传完整 map：后端是浅合并，传增量会把其他场景的配置冲掉
+  // 只传本次切换的增量：后端对 scenarioRollout 按 key 合并。回传整表反而危险——
+  // 本地快照可能过期（后台标签页暂停轮询/查询失败兜底 {}），整表覆盖会把
+  // 其他场景的紧急停用配置静默冲掉。
   const toggleScenario = (code: string, next: boolean) => {
     updateConfig.mutate({
-      reengagementScenarioRollout: { ...scenarioRollout, [code]: next },
+      reengagementScenarioRollout: { [code]: next },
     });
   };
 
@@ -281,7 +283,9 @@ export default function Config() {
       : 'live';
   const setReengagementState = (next: ModuleRunState) => {
     if (next === 'off') {
-      updateConfig.mutate({ reengagementEnabled: false });
+      // 关闭时把 shadow 复位为 true：否则从 live 关掉后留下 shadow=false，
+      // 将来任何绕过本页的重新启用（脚本/裸 PATCH）会直接跳到真实触达
+      updateConfig.mutate({ reengagementEnabled: false, reengagementShadow: true });
     } else if (next === 'shadow') {
       updateConfig.mutate({ reengagementEnabled: true, reengagementShadow: true });
     } else {
