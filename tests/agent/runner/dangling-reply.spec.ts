@@ -40,4 +40,14 @@ describe('isDanglingCheckReply', () => {
     expect(isDanglingCheckReply('好的哈')).toBe(false);
     expect(isDanglingCheckReply('嗯嗯，理解你的想法')).toBe(false);
   });
+
+  it('放行让候选人自己看的祈使句（非第一人称承诺）', () => {
+    expect(isDanglingCheckReply('你先看一下上面的岗位介绍哈')).toBe(false);
+    expect(isDanglingCheckReply('你看一下这几家哪个方便')).toBe(false);
+  });
+
+  it('放行完成态的结果陈述（查已发生，不是空头承诺）', () => {
+    expect(isDanglingCheckReply('帮你查到啦，门店就在你家附近')).toBe(false);
+    expect(isDanglingCheckReply('帮你核实过了，这家周末能排班')).toBe(false);
+  });
 });

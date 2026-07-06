@@ -253,6 +253,18 @@ export class AgentRunnerService {
         decision: 'block',
         reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
       };
+      // 悬空文本刻意不送二审，没有针对修复文本的真实裁决——revised 步骤必须用
+      // 干净的 decision 归档，不能 spread 首审对象：否则首版回复的 ruleIds/
+      // violations 会被错误归到重写文本名下，污染守卫档案的取证价值。
+      const danglingStepDecision: OutputGuardDecision = {
+        decision: 'block',
+        riskLevel: 'low',
+        violations: [],
+        ruleIds: [],
+        blockedRuleIds: [],
+        repairMode: decision.repairMode,
+        reasonCode: 'revise_dangling',
+      };
       this.persistReviewRecord(ctx, {
         firstReply: firstText,
         firstDecision: decision,
@@ -261,7 +273,7 @@ export class AgentRunnerService {
         revisedReply: revisedText,
         // 悬空场景有真实修复文本，补 revisedDecision 让档案落库（空文本场景
         // 维持原跳过行为：无修复内容可归档）。
-        revisedDecision: danglingRepair ? emptyDecision : undefined,
+        revisedDecision: danglingRepair ? danglingStepDecision : undefined,
         committedSideEffects: committed || undefined,
       });
       return this.finalizeReviewed(
@@ -271,7 +283,7 @@ export class AgentRunnerService {
         wantDefer,
         this.buildGuardrailTrace(
           danglingRepair
-            ? [firstStep, this.toGuardrailStep('revised', emptyDecision)]
+            ? [firstStep, this.toGuardrailStep('revised', danglingStepDecision)]
             : [firstStep],
           true,
           emptyDecision,
