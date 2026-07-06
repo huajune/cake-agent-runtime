@@ -79,6 +79,9 @@ describe('ReengagementQueryService', () => {
         updated_at: '2026-07-06T05:00:00.000Z',
         session_latest_at: '2026-07-06T05:00:00.000Z',
         total_sessions: 2,
+        candidate_name: '候选人A',
+        manager_name: '招聘顾问一号',
+        bot_im_id: 'bot-1',
       },
       {
         session_id: 'sess-1',
@@ -96,6 +99,9 @@ describe('ReengagementQueryService', () => {
         updated_at: '2026-07-06T05:30:00.000Z',
         session_latest_at: '2026-07-06T05:30:00.000Z',
         total_sessions: 2,
+        candidate_name: '候选人A',
+        manager_name: '招聘顾问一号',
+        bot_im_id: 'bot-1',
       },
       {
         session_id: 'sess-2',
@@ -113,6 +119,9 @@ describe('ReengagementQueryService', () => {
         updated_at: '2026-07-06T04:00:10.000Z',
         session_latest_at: '2026-07-06T04:00:10.000Z',
         total_sessions: 2,
+        candidate_name: null,
+        manager_name: null,
+        bot_im_id: null,
       },
     ];
     repository.getCandidateOverview.mockResolvedValue(rows);
@@ -143,6 +152,9 @@ describe('ReengagementQueryService', () => {
         sessionId: 'sess-1',
         userId: 'user-1',
         corpId: 'corp-1',
+        candidateName: '候选人A',
+        managerName: '招聘顾问一号',
+        botImId: 'bot-1',
         nextTouch: {
           scenarioCode: 'interview_reminder',
           touchKey: 'touch-2',

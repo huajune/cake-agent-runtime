@@ -78,6 +78,7 @@ export class ReengagementTouchRepository extends BaseRepository {
       p_reserve_result: input.reserveResult ?? null,
       p_error: input.error ?? null,
       p_event: event,
+      p_batch_id: input.batchId ?? null,
     });
     // RPC RETURNS VOID → data 为 null；错误路径 BaseRepository 已记日志并返回 null，
     // 这里无法区分，仅作 best-effort 观测写入，不影响调用方。

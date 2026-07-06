@@ -83,6 +83,8 @@ export interface ReengagementTouchDbRecord {
   generated_text?: string | null;
   reserve_result?: string | null;
   error?: string | null;
+  /** 投递该触达的主动回合批次 ID（= message_processing_records.message_id），未投递分支为空 */
+  batch_id?: string | null;
   events?: ReengagementTouchEvent[];
 }
 
@@ -107,6 +109,7 @@ export interface RecordReengagementTouchInput {
   generatedText?: string;
   reserveResult?: string;
   error?: string;
+  batchId?: string;
   event?: { event: string; detail?: Record<string, unknown> };
 }
 
@@ -159,6 +162,12 @@ export interface ReengagementCandidateOverviewRow {
   session_latest_at: string;
   /** 满足筛选的候选人总数（窗口计数，每行相同） */
   total_sessions: number;
+  /** 候选人微信昵称（chat_messages 最新一条的会话级身份，可能为空） */
+  candidate_name: string | null;
+  /** 接管 bot 显示名（招募经理名） */
+  manager_name: string | null;
+  /** 接管 bot 系统 wxid */
+  bot_im_id: string | null;
 }
 
 /** 候选人视角聚合结果（服务层按 session 分组后的形态） */
@@ -166,6 +175,12 @@ export interface ReengagementCandidateSummary {
   sessionId: string;
   userId: string | null;
   corpId: string | null;
+  /** 候选人微信昵称（可能为空，前端回退显示 userId/sessionId） */
+  candidateName: string | null;
+  /** 接管 bot 显示名 */
+  managerName: string | null;
+  /** 接管 bot 系统 wxid */
+  botImId: string | null;
   /** 全场景最新活动时间（ISO） */
   latestAt: string;
   /** 最近的一个待发任务（scheduled/rescheduled 且 fire_at 未到）；无则 null */
