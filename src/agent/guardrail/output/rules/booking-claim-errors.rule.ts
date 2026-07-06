@@ -32,6 +32,11 @@ const WAIT_NOTICE_COMPLIANT_PATTERN =
   /不用|不需要|无需|等通知|电话(?:联系|通知)|面试官[^。！？\n]{0,12}(?:联系|通知)|保持电话|留意(?:电话|来电)/;
 const HANDOFF_NO_BOOKING_CLAIM_PATTERN =
   /(?:已|已经|帮你|给你)[^。！？\n]{0,16}(?:转人工|反馈给人工|通知人工|改期|取消)|(?:改期|取消)[^。！？\n]{0,8}(?:成功|好了|完成)|人工[^。！？\n]{0,12}(?:联系你|处理)/;
+// date_unavailable 的"规定动作"口径：说明所约日期约不上的原因（截止/来不及/已过点），
+// 再给替代时段。stage 策略明文要求"unavailable 说明原因并给替代时段"，这种回复不是
+// 违规而是标准答案（生产假阳 2026-07-06 守卫档案 id=9："今天已截止…最近能约明天下午1点"）。
+const DATE_UNAVAILABLE_ACK_PATTERN =
+  /截止|赶不上|来不及|约不了|约不上|报不上|错过|已经?过(?:了|点|时)|(?:今天|当天|这个时间|那天)[^。！？\n]{0,10}(?:不行|没法|约满|排满|满了)/;
 
 export function detectPrecheckBlockedBookingClaim(
   text: string,
@@ -61,6 +66,16 @@ export function detectPrecheckBlockedBookingClaim(
 
   // 只有 precheck 明确不允许进入 booking，才认为 reply 成功口径冲突。
   if (!hardAgeReject && !nameMustHandoff && !nextActionBlocksBooking) return null;
+
+  // date_unavailable 仅指"所约那一天约不上"，不是整个 booking 被阻断——precheck 同时
+  // 返回 bookableSlots 替代时段。回复只要承认了原日期约不上（说明原因），"最近能约
+  // 明天下午1点"就是在转述工具给的替代时段，属于 stage 策略要求的标准动作，放行；
+  // 但完成时态的"已约好/预约成功"仍然是编造，不豁免。
+  if (nextAction === 'date_unavailable' && !hardAgeReject && !nameMustHandoff) {
+    if (DATE_UNAVAILABLE_ACK_PATTERN.test(text) && !BOOKING_SUCCESS_CLAIM_PATTERN.test(text)) {
+      return null;
+    }
+  }
 
   const reason = hardAgeReject
     ? 'age hard_reject/age_rejected'
@@ -305,7 +320,15 @@ function normalizeFieldName(name: string): string {
   if (/经验|过往|经历|公司.*岗位/.test(trimmed)) return '经验';
   if (/健康证/.test(trimmed)) return '健康证';
   if (/学历/.test(trimmed)) return '学历';
-  if (/面试时间/.test(trimmed)) return '面试时间';
+  // "你想约哪天面试""想约哪天去面试""什么时候方便面试"都是面试时间字段的口语化写法。
+  // 字面匹配曾把带同义标题的完整模板判成漏字段并连杀两版（2026-07-06 守卫档案 id=25）。
+  if (
+    /面试时间|(?:约|选|挑|定)[^。：:\n]{0,6}(?:哪天|哪一天|什么时候|时间)|哪天[^。：:\n]{0,8}(?:去)?面试|面试[^。：:\n]{0,8}哪天|什么时候[^。：:\n]{0,6}(?:去)?面试/.test(
+      trimmed,
+    )
+  ) {
+    return '面试时间';
+  }
   if (/籍贯|户籍/.test(trimmed)) return '籍贯';
   if (/身份证(号)?/.test(trimmed)) return '身份证号';
   return trimmed;

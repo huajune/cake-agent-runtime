@@ -142,7 +142,9 @@ describe('HardRulesService', () => {
       expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(false);
     });
 
-    it('uses the latest job-list result when checking whether job facts are grounded', () => {
+    it('treats ANY usable job-list call this turn as grounding, not only the latest (2026-07-06 守卫档案 id=3 假阳回归)', () => {
+      // 常见动作链：近距离查（有结果）→ 带 jobId 复核（空）。岗位事实接地在前一次调用，
+      // 只看最后一次会把真实推荐误杀。
       const result = service.check({
         replyText:
           'M Stand-北京海淀大悦城店-店员-兼职\n距离：0.2km\n班次：早班07:00-15:00\n薪资：25元/小时\n要求：18-35岁',
@@ -158,6 +160,33 @@ describe('HardRulesService', () => {
             toolName: 'duliday_job_list',
             args: {},
             result: { result: [], errorType: 'job_list.empty' },
+            resultCount: 0,
+            status: 'empty',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'ungrounded_job_recommendation',
+      );
+    });
+
+    it('still replans when ALL job-list calls this turn are empty/error', () => {
+      const result = service.check({
+        replyText:
+          'M Stand-北京海淀大悦城店-店员-兼职\n距离：0.2km\n班次：早班07:00-15:00\n薪资：25元/小时\n要求：18-35岁',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: {},
+            result: { result: [], errorType: 'job_list.no_results' },
+            resultCount: 0,
+            status: 'empty',
+          },
+          {
+            toolName: 'duliday_job_list',
+            args: {},
+            result: { result: [], errorType: 'job_list.no_results' },
             resultCount: 0,
             status: 'empty',
           },
@@ -636,6 +665,30 @@ describe('HardRulesService', () => {
     it('allows compliant no-match wording after schedule filter emptied the list', () => {
       const result = service.check({
         replyText: '目前没有符合晚班时段的岗位，你看是否可以放宽一下时间？',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { candidateScheduleConstraint: { onlyEvenings: true } },
+            result: {
+              success: false,
+              errorType: 'job_list.schedule_filter_empty',
+            },
+            status: 'error',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'schedule_filtered_job_recommended',
+      );
+    });
+
+    it('allows transparent shift-mismatch disclosure with consent question（守卫档案 id=8 偏严回归）', () => {
+      // "只有白班……不是夜班……你看这个白班能做吗"本质就是规则要求的放宽询问，
+      // 只是带了具体岗位，不应拦。
+      const result = service.check({
+        replyText:
+          '泗泾这家目前在招，但只有白班/全天排班（早上 7 点到晚上 10 点），不是夜班。附近确实没有夜班岗了。你看这个白班能做吗？不行的话只能先留意着。',
         toolCalls: [
           {
             toolName: 'duliday_job_list',
@@ -1210,6 +1263,49 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('does not flag date_unavailable ack + alternative slot（守卫档案 id=9 假阳回归：规定动作是"说明原因并给替代时段"）', () => {
+      const result = service.check({
+        replyText:
+          '今天已经截止报名啦，这家截止时间是上午 10:45，现在已经赶不上了哈。最近能约的是明天下午 1 点，你看明天方便吗',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: { requestedDate: '今天' },
+            result: {
+              nextAction: 'date_unavailable',
+              interview: {
+                requestedDate: { status: 'unavailable', reason: '已超过报名截止时间' },
+                upcomingTimeOptions: ['2026-07-07 周二 13:00-13:00（报名截止 2026-07-07 10:45）'],
+              },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
+    it('still flags date_unavailable when reply claims booking already completed', () => {
+      const result = service.check({
+        replyText: '今天约不上了，不过我已经帮你约好明天下午1点的面试了。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: { nextAction: 'date_unavailable' },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
     it('does not flag the normal collect_fields pitch "填一下资料我帮你约面" (上线首日 batch_6a475a42…935 误伤)', () => {
       const result = service.check({
         replyText:
@@ -1400,19 +1496,16 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('asks for revision on strong group invite promise without successful invite_to_group', () => {
+    it('does NOT flag future-tense invite promise（征询/承诺式是场景 2/3 设计内的前置轮）', () => {
+      // 2026-07-06 口径校准：先承接意向、候选人同意后下一轮实调 invite 是设计内动作链，
+      // 未来式承诺不再要求本轮已成功拉群。
       const result = service.check({
         replyText: '我先拉你进群，后续群里会同步通知。',
         toolCalls: [],
       });
 
-      expect(result.contradictions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            ruleId: 'group_promise_without_invite',
-            action: GUARDRAIL_ACTION.REVISE,
-          }),
-        ]),
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'group_promise_without_invite',
       );
     });
 
@@ -1553,14 +1646,51 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('flags contradiction when reply promises 拉群/群里通知 but no invite_to_group success this turn', async () => {
+    it('does NOT flag future-tense 拉群 promise（本轮先承接、下一轮实调是设计内动作链）', async () => {
       const result = service.check({
         replyText: '行，那我拉你进咱们餐饮兼职群，后面有合适的岗位我直接群里通知你。',
         toolCalls: [],
         chatId: 'chat-1',
       });
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'group_promise_without_invite',
+      );
+    });
+
+    it('flags completed-claim "群邀请已经发你了" without any invite_to_group call', async () => {
+      const result = service.check({
+        replyText: '群邀请已经发你了，点一下卡片就能进群。',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
       expect(result.hit).toBe(true);
-      expect(result.contradictions[0].ruleId).toBe('group_promise_without_invite');
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('group_promise_without_invite');
+    });
+
+    it('passes "入群邀请已经发你了" when invite_to_group succeeded this turn', async () => {
+      const result = service.check({
+        replyText: '入群邀请已经发你了，点一下卡片就能进群。有新岗位群里第一时间通知你。',
+        toolCalls: [makeInviteCall()],
+        chatId: 'chat-1',
+      });
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'group_promise_without_invite',
+      );
+    });
+
+    it('does NOT flag completed-claim when invite was called but status/result got lost（流水 status=unknown 缺口）', async () => {
+      // 生产已知缺口：invite_to_group 被真实调用但 status=unknown 且 result 未落。
+      // 无法证伪时宁可放过，不误拦正确的"邀请已发"话术（2026-07-06 守卫档案 id=3）。
+      const result = service.check({
+        replyText: '群邀请发你了，点一下就能进群。',
+        toolCalls: [
+          { toolName: 'invite_to_group', args: { city: '北京' }, status: 'unknown' },
+        ] as never,
+        chatId: 'chat-1',
+      });
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'group_promise_without_invite',
+      );
     });
 
     it('does NOT flag conditional invite questions before the candidate agrees', async () => {
@@ -1862,6 +1992,63 @@ describe('HardRulesService', () => {
         (c) => c.ruleId === 'booking_form_field_mismatch',
       );
       expect(mismatch).toBeUndefined();
+    });
+
+    it('recognizes "你想约哪天面试" as the 面试时间 field（守卫档案 id=25 假阳回归）', () => {
+      // 字面匹配曾把带同义标题的完整模板判成漏"面试时间"并连杀两版
+      const replyText = [
+        '先把资料发我，我帮你登记约面：',
+        '',
+        '姓名：',
+        '联系方式：',
+        '性别：',
+        '年龄：',
+        '你想约哪天面试（明天或后天下午 1 点都可以）：',
+        '健康证（有/无）：',
+        '过往公司+岗位+年限：',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [
+          makePrecheckCall(
+            ['姓名', '联系电话', '性别', '年龄', '面试时间', '健康证情况', '过往公司+岗位+年限'],
+            { starterFields: ['姓名', '联系电话', '性别', '年龄', '面试时间'] },
+          ),
+        ],
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'booking_form_field_mismatch',
+      );
+    });
+
+    it('recognizes "想约哪天去面试" as the 面试时间 field（id=25 修复版同样被误杀的形态）', () => {
+      const replyText = [
+        '姓名：',
+        '电话：',
+        '年龄：',
+        '性别：',
+        '健康证情况（有/无）：',
+        '过往经验：',
+        '想约哪天去面试：',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [
+          makePrecheckCall(
+            ['姓名', '联系电话', '性别', '年龄', '面试时间', '健康证情况', '过往公司+岗位+年限'],
+            { starterFields: ['姓名', '联系电话', '性别', '年龄', '面试时间'] },
+          ),
+        ],
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'booking_form_field_mismatch',
+      );
     });
 
     it('does not flag when precheck was not called this turn', () => {
@@ -2257,6 +2444,41 @@ describe('HardRulesService', () => {
         ).toBeUndefined();
       });
 
+      it('tolerates rounding: 节假日46.38 说成 46 不算编造（守卫档案 id=4 假阳回归）', () => {
+        const result = service.check({
+          replyText: '基础时薪30元，节假日时薪46元。',
+          toolCalls: [
+            makeMarkdownJobListCall('- **基础薪资**: 30 元/时\n- **节假日薪资**: 46.38 元/时'),
+          ],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'hourly_salary_value_mismatch'),
+        ).toBeUndefined();
+      });
+
+      it('grounds against ALL usable job-list calls, not only the latest（复核空结果不清空事实）', () => {
+        const result = service.check({
+          replyText: '这家时薪54元。',
+          toolCalls: [
+            makeMarkdownJobListCall('- **薪资**: 22元/时，节假日 54元/时'),
+            {
+              toolName: 'duliday_job_list',
+              args: {},
+              result: { success: false, errorType: 'job_list.no_results' },
+              resultCount: 0,
+              status: 'empty',
+            } as AgentToolCall,
+          ],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'hourly_salary_value_mismatch'),
+        ).toBeUndefined();
+      });
+
       it('supports the suffix claim form (30元/小时)', () => {
         const result = service.check({
           replyText: '这家给到30元/小时。',
@@ -2311,6 +2533,22 @@ describe('HardRulesService', () => {
         const result = service.check({
           replyText: '这家是月结。',
           toolCalls: [makeMarkdownJobListCall('- **结算周期**: 次月10日发放')],
+          chatId: 'chat-1',
+        });
+
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
+        ).toBeUndefined();
+      });
+
+      it('unions settlement facts across multiple usable job-list calls', () => {
+        // 第一次全市扩面查到周结岗，第二次近距离复查只剩月结岗——"周结"仍是本轮接地事实
+        const result = service.check({
+          replyText: '这家是周结，每周三发薪。',
+          toolCalls: [
+            makeMarkdownJobListCall('- **结算周期**: 周结算, 每周三发薪'),
+            makeMarkdownJobListCall('- **结算周期**: 月结算, 15号发薪'),
+          ],
           chatId: 'chat-1',
         });
 
@@ -2530,10 +2768,49 @@ describe('HardRulesService', () => {
     });
   });
 
-  describe('group_promise "帮你进群" 形态 (回归复测 recvnBYuVLIQsV 逃逸发现)', () => {
-    it('flags 帮你进餐饮兼职群 promise without invite call', () => {
+  describe('group_promise 口径（2026-07-06 校准：只拦完成时态，征询/承诺式放行）', () => {
+    it('does NOT flag 帮你进餐饮兼职群 future promise（noMatchScript.candidateMessage 脚本原文）', () => {
+      // job_list 无结果时工具指示照念这句话再拉群；承诺式话术是设计内前置轮，不拦。
       const result = service.check({
         replyText: '我先帮你进餐饮兼职群，后续有合适的我会第一时间@你。',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
+      ).toBeUndefined();
+    });
+
+    it('does NOT flag conditional proposal "确认后我拉你进兼职群"（守卫档案 id=23 假阳回归）', () => {
+      const result = service.check({
+        replyText:
+          '方便确认下你是在南京吗？确认后我拉你进兼职群，后续有合适的岗位我第一时间通知你。',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
+      ).toBeUndefined();
+    });
+
+    it('does NOT flag "或者我先帮你进餐饮兼职群…？"（守卫档案 id=11 假阳回归）', () => {
+      const result = service.check({
+        replyText:
+          '海淀目前就这几家在招，要是觉得远，或者我先帮你进餐饮兼职群，有新岗第一时间通知你？',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
+      ).toBeUndefined();
+    });
+
+    it('flags completed-claim 发了群邀请 without invite call', () => {
+      const result = service.check({
+        replyText: '刚帮你发了群邀请，注意查收。',
         toolCalls: [],
         chatId: 'chat-1',
       });
@@ -2543,9 +2820,9 @@ describe('HardRulesService', () => {
       ).toBeDefined();
     });
 
-    it('passes the same phrasing when invite_to_group succeeded this turn', () => {
+    it('passes completed-claim when invite_to_group succeeded this turn', () => {
       const result = service.check({
-        replyText: '我先帮你进餐饮兼职群，后续有合适的我会第一时间@你。',
+        replyText: '刚帮你发了群邀请，注意查收。',
         toolCalls: [
           { toolName: 'invite_to_group', args: {}, result: { success: true } } as AgentToolCall,
         ],

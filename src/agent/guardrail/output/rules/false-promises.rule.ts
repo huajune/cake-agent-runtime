@@ -7,7 +7,9 @@ import { asRecord, type FactRule, type RuleContradiction } from '../output-rule.
  *
  * 职责：
  * - 管“Agent 对候选人承诺了一个动态状态或副作用动作，但本轮没有可靠外部信号支撑”的场景；
- * - 典型包括：名额不会满、会拉群/已经拉群、工具失败却说预约/取消/改期/发定位成功；
+ * - 典型包括：名额不会满、声称已拉群/邀请已发、工具失败却说预约/取消/改期/发定位成功；
+ * - 拉群的征询/承诺式话术（"要不我拉你进群？"）是 invite_to_group 场景 2/3 设计内的
+ *   前置轮（先问意向、候选人同意后下一轮实调），不属于虚假承诺；
  * - 这类问题的风险不是敏感信息外泄，而是给候选人制造了可以追责的承诺。
  *
  * 不负责：
@@ -100,16 +102,21 @@ function isPastTenseGroupReference(text: string): boolean {
 /**
  * 判断“本轮确实完成拉群副作用”。
  * 有些工具返回用 status=ok，有些返回 result.success=true，因此两个口径都接住。
+ *
+ * 结果缺失按“无法证伪”放行：生产流水里 invite_to_group 存在 status=unknown 且 result
+ * 未落的记录缺口（2026-07-06 守卫档案 id=3：同轮真调了 invite 仍被判“未成功”）。
+ * 工具确实被调用但结果拿不到时，宁可放过“邀请已发”话术，也不能把正确路径误拦。
  */
 function inviteCalledSuccessfully(toolCalls: AgentToolCall[]): boolean {
-  return toolCalls.some(
-    (call) =>
-      call.toolName === 'invite_to_group' &&
-      (call.status === 'ok' ||
-        (typeof call.result === 'object' &&
-          call.result !== null &&
-          (call.result as Record<string, unknown>).success === true)),
-  );
+  return toolCalls.some((call) => {
+    if (call.toolName !== 'invite_to_group') return false;
+    if (call.status === 'ok') return true;
+    if (typeof call.result === 'object' && call.result !== null) {
+      return (call.result as Record<string, unknown>).success === true;
+    }
+    // 已调用但 status/result 双缺失：无法证伪，不据此判假承诺。
+    return call.status !== 'error';
+  });
 }
 
 export const FALSE_PROMISE_RULES: FactRule[] = [
@@ -122,9 +129,16 @@ export const FALSE_PROMISE_RULES: FactRule[] = [
   },
   {
     ruleId: 'group_promise_without_invite',
-    label: '承诺"拉/邀请进群"但本轮未成功调 invite_to_group（badcase gay6j94c）',
+    label:
+      '声称"已拉群/群邀请已发"（完成口径）但本轮没有成功的 invite_to_group 调用（badcase gay6j94c）',
+    // 口径（2026-07-06 校准，对齐 invite_to_group 场景 2/3 的两轮动作链）：
+    // - 征询/承诺式（"要不我拉你进群？""我先帮你进群，后续有岗通知你"）是设计内的
+    //   前置轮——先承接候选人意向，候选人同意后下一轮实调工具（场景 3），不拦；
+    //   job_list noMatchScript.candidateMessage 的脚本原文也是这种形态。
+    // - 只有"完成时态"的宣称（已拉你进群 / 群邀请发你了 / 发了群邀请）必须由本轮
+    //   invite_to_group 成功结果接地，否则就是编造已发生的副作用。
     keywords:
-      /拉(?:你|您)[^。，,；！？\s]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。，,；！？\s]{0,15}?群|加(?:你|您)[^。，,；！？\s]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请|帮(?:你|您)(?:先)?[^。，,；！？\s]{0,10}?(?:进|加入|入)[^。，,；！？\s]{0,15}?群/,
+      /已经?(?:帮你|给你)?[^。，,；！？\s]{0,8}?(?:拉|加)(?:你|您)?[^。，,；！？\s]{0,12}?群|(?:拉|加)(?:你|您)[^。，,；！？\s]{0,12}?群了|发(?:了|过)(?:入)?群邀请|(?:入)?群邀请(?:已经?|刚刚?)?发(?:给)?(?:你|您)|邀请已经?(?:发(?:出|过去)?|发送)/,
     ignorePredicate: (text) =>
       isConditionalGroupInviteQuestion(text) || isPastTenseGroupReference(text),
     requiredToolPredicate: inviteCalledSuccessfully,

@@ -38,8 +38,11 @@ const DISTANCE_TRADEOFF_REASON_PATTERN =
 const FARTHER_DISTANCE_GAP_KM = 2;
 const JOB_RECOMMEND_OR_BOOKING_PATTERN =
   /(?:推荐|这家|这个岗位|门店)[^。！？\n]{0,24}(?:适合|可以|能做|在招|报名|预约|面试)|(?:可以|能|帮你|给你)[^。！？\n]{0,16}(?:约|预约|报名|安排面试)/;
+// 合规口径除了“没有符合班次的岗/问放宽”外，还包括“透明披露班次不符 + 征询能否接受”：
+// 生产偏严案例（2026-07-06 守卫档案 id=8）“只有白班……不是夜班……你看这个白班能做吗”
+// 本质就是规则要求的放宽询问，只是带了具体岗位，不应拦。
 const SCHEDULE_NO_MATCH_COMPLIANT_PATTERN =
-  /(?:暂时|目前)?(?:没有|没找到|暂无)[^。！？\n]{0,24}(?:符合|匹配)[^。！？\n]{0,24}(?:班次|时段|时间)|(?:放宽|调整)[^。！？\n]{0,12}(?:班次|时段|时间)/;
+  /(?:暂时|目前)?(?:没有|没找到|暂无)[^。！？\n]{0,24}(?:符合|匹配)[^。！？\n]{0,24}(?:班次|时段|时间)|(?:放宽|调整)[^。！？\n]{0,12}(?:班次|时段|时间)|(?:不是|不算|并非)[^。！？\n]{0,8}(?:夜班|晚班|早班|白班)|(?:只有|只剩|都是)[^。！？\n]{0,10}(?:白班|早班|日班|晚班|夜班|全天)|(?:白班|早班|晚班|夜班|全天班?)[^。！？\n]{0,12}(?:能做吗|能接受吗|可以吗|行吗|接受吗|考虑吗|做得来吗)/;
 
 export const JOB_FACT_HALLUCINATION_RULES: FactRule[] = [
   {
@@ -104,7 +107,7 @@ export function detectSalaryFabrication(
 ): RuleContradiction | null {
   if (!SALARY_FABRICATION_PATTERN.test(text)) return null;
 
-  const jobListCall = readLatestJobListCall(toolCalls);
+  const jobListCall = readLatestUsableJobListCall(toolCalls);
   if (!jobListCall) return null;
 
   const hasHolidayOrOvertimeSalary = hasNonEmptyHolidayOrOvertimeSalary(jobListCall.result);
@@ -124,7 +127,7 @@ export function detectFartherJobRecommended(
 ): RuleContradiction | null {
   if (DISTANCE_TRADEOFF_REASON_PATTERN.test(text)) return null;
 
-  const jobListCall = readLatestJobListCall(toolCalls);
+  const jobListCall = readLatestUsableJobListCall(toolCalls);
   if (!jobListCall) return null;
 
   const jobs = readJobListJobs(jobListCall.result)
@@ -181,7 +184,7 @@ export function detectDistanceMissing(
   text: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  const jobListCall = readLatestJobListCall(toolCalls);
+  const jobListCall = readLatestUsableJobListCall(toolCalls);
   if (!jobListCall || !jobListHasDistance(jobListCall.result)) return null;
   const looksLikeRecommendation = /门店|这家|地址|位于|附近|推荐/.test(text);
   if (!looksLikeRecommendation) return null;
@@ -197,13 +200,32 @@ export function detectDistanceMissing(
 /**
  * 是否有“可用”的岗位列表结果。
  * empty/error/status=empty 不算接地，否则模型可能拿空结果继续编岗位。
+ *
+ * 必须扫描本轮**全部** job_list 调用，不能只看最后一次：Agent 常见动作链是
+ * “近距离查（空）→ 全市扩面查（有结果）→ 带 jobId 复核（空）”，岗位事实接地在
+ * 中间那次。生产假阳（2026-07-06 守卫档案 id=3）：全市查询真实返回了必胜客/肯德基，
+ * 却因最后一次调用为空被判未接地，整轮推荐被杀。
  */
 function hasUsableJobListResult(toolCalls: AgentToolCall[]): boolean {
-  const call = readLatestJobListCall(toolCalls);
-  if (!call?.result) return false;
+  return toolCalls.some(
+    (call) => call.toolName === 'duliday_job_list' && isUsableJobListCall(call),
+  );
+}
+
+function isUsableJobListCall(call: AgentToolCall): boolean {
+  if (!call.result) return false;
   if (call.resultCount === 0) return false;
   if (call.status === 'error' || call.status === 'empty') return false;
   return true;
+}
+
+/** 最后一次“可用”的 job_list 结果：事实对账类规则应对齐它，而不是最后一次调用（可能为空）。 */
+function readLatestUsableJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
+  for (let i = toolCalls.length - 1; i >= 0; i--) {
+    const call = toolCalls[i];
+    if (call?.toolName === 'duliday_job_list' && isUsableJobListCall(call)) return call;
+  }
+  return null;
 }
 
 /**

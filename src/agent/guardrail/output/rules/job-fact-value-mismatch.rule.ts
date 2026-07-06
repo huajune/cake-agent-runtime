@@ -70,25 +70,26 @@ function isSettlementRequirementEcho(sentence: string): boolean {
 
 /**
  * 拼出本轮岗位事实的 ground truth 文本（markdown + rawData JSON）。
- * 结果不可用（空/错误）时返回 null，调用方跳过检查。
+ * 没有任何可用结果（全空/错误）时返回 null，调用方跳过检查。
+ *
+ * 合并本轮**全部可用**的 job_list 结果，不只取最后一次：Agent 常见动作链是
+ * “近距离查（空）→ 扩面查（有结果）→ 复核查（空）”，只看最后一次会把已接地的
+ * 事实误判成矛盾（与 job-fact-hallucinations 的接地口径同源，多岗位并集语义不变）。
  */
 function readJobFactGroundTruth(toolCalls: AgentToolCall[]): string | null {
-  const call = readLatestJobListCall(toolCalls);
-  if (!call?.result) return null;
-  if (call.resultCount === 0) return null;
-  if (call.status === 'error' || call.status === 'empty') return null;
-  const record = call.result as Record<string, unknown>;
-  const markdown = typeof record.markdown === 'string' ? record.markdown : '';
-  const rawData = record.rawData ? safeStringify(record.rawData) : '';
-  const combined = `${markdown}\n${rawData}`.trim();
-  return combined || null;
-}
-
-function readLatestJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
-  for (let i = toolCalls.length - 1; i >= 0; i--) {
-    if (toolCalls[i]?.toolName === 'duliday_job_list') return toolCalls[i];
+  const parts: string[] = [];
+  for (const call of toolCalls) {
+    if (call?.toolName !== 'duliday_job_list') continue;
+    if (!call.result) continue;
+    if (call.resultCount === 0) continue;
+    if (call.status === 'error' || call.status === 'empty') continue;
+    const record = call.result as Record<string, unknown>;
+    const markdown = typeof record.markdown === 'string' ? record.markdown : '';
+    const rawData = record.rawData ? safeStringify(record.rawData) : '';
+    const combined = `${markdown}\n${rawData}`.trim();
+    if (combined) parts.push(combined);
   }
-  return null;
+  return parts.length > 0 ? parts.join('\n') : null;
 }
 
 function safeStringify(value: unknown): string {
@@ -181,8 +182,11 @@ export function detectHourlySalaryValueMismatch(
   if (claimed.size === 0) return null;
 
   const truthNumbers = new Set<string>();
+  const truthValues: number[] = [];
   for (const match of truth.matchAll(/\d+(?:\.\d+)?/g)) {
     truthNumbers.add(normalizeNumberToken(match[0]));
+    const value = Number(match[0]);
+    if (Number.isFinite(value)) truthValues.push(value);
   }
   const truthRanges: Array<[number, number]> = [];
   SALARY_RANGE_PATTERN.lastIndex = 0;
@@ -199,6 +203,9 @@ export function detectHourlySalaryValueMismatch(
     if (truthNumbers.has(normalized)) continue;
     const value = Number(normalized);
     if (truthRanges.some(([low, high]) => value >= low && value <= high)) continue;
+    // 舍入/取整容差：工具数据 46.38 被口语化成 46 不是编造（生产假阳 2026-07-06
+    // 守卫档案 id=4）。四舍五入（差值 ≤0.5）或直接抹零头（trunc）都算同一数值。
+    if (truthValues.some((t) => Math.abs(value - t) <= 0.5 || Math.trunc(t) === value)) continue;
     return {
       ruleId: 'hourly_salary_value_mismatch',
       label: `回复声称时薪 ${token} 元，但该数值在本轮 duliday_job_list 返回的岗位数据里不存在（badcase recvi9UoI6jAiE 节假日时薪 54 说成 17）`,
