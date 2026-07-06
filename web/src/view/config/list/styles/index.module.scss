@@ -300,17 +300,102 @@
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
-.scenarioPanelHeader {
+.scenarioPanelToggle {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: $spacing-md;
-  flex-wrap: wrap;
-  margin-bottom: $spacing-md;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  &[aria-expanded='true'] {
+    margin-bottom: $spacing-md;
+  }
+
+  &[aria-expanded='false'] .scenarioPanelChevron {
+    transform: rotate(-90deg);
+  }
+
+  &:hover .scenarioPanelChevron {
+    background: $primary-soft;
+    border-color: $primary;
+    color: $primary;
+  }
+}
+
+.scenarioPanelChevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid $border;
+  background: $bg-secondary;
+  font-size: 16px;
+  line-height: 1;
+  color: $text-secondary;
+  transition: transform $transition-fast, background $transition-fast,
+    border-color $transition-fast, color $transition-fast;
 }
 
 .scenarioPanelHint {
   font-size: 11px;
   color: $text-muted;
+}
+
+.segmented {
+  display: inline-flex;
+  align-self: flex-end;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid $border;
+  border-radius: $radius-full;
+  background: $bg-secondary;
+}
+
+.segmentedOption {
+  padding: 8px 14px;
+  border: none;
+  border-radius: $radius-full;
+  background: transparent;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast, box-shadow $transition-fast;
+
+  &:hover:not(:disabled) {
+    color: $text-primary;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.segmentedActive {
+  background: $bg-card;
+  box-shadow: $shadow-sm;
+}
+
+.segmentedActiveOff {
+  color: $text-primary;
+}
+
+.segmentedActiveWarn {
+  color: $warning;
+}
+
+.segmentedActiveOn {
+  color: $success;
 }
 
 .scenarioGroup {
