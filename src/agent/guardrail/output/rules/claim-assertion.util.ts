@@ -29,12 +29,32 @@ export function splitClaimSentences(text: string): string[] {
     .filter(Boolean);
 }
 
-/** 该句是否构成对 pattern 的"声称"（非疑问、非否定）。 */
+/**
+ * 切小句：否定豁免的判定粒度。只切逗号——顿号是并列不是转折，句号级切分在
+ * splitClaimSentences 已完成。
+ */
+function splitClaimClauses(sentence: string): string[] {
+  return sentence
+    .split(/[，,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 该句是否构成对 pattern 的"声称"（非疑问、非否定）。
+ *
+ * 疑问豁免保持句粒度：句尾语气词（吗/呢/么）作用于整句。
+ * 否定豁免收敛到小句（逗号）粒度：否定词必须与声称词落在同一小句才豁免。
+ * 生产反例（2026-07-06 review）：booking 失败后"不用担心，已经帮你报名成功了"——
+ * 前小句的"不用"曾把后小句的成功宣称整句洗白，P0 假成功口径因此漏拦；
+ * "暂时没能提交成功""没法帮你登记报名"否定与声称同小句，豁免不受影响。
+ */
 export function assertsClaim(sentence: string, pattern: RegExp): boolean {
   if (!pattern.test(sentence)) return false;
   if (CLAIM_QUESTION_PATTERN.test(sentence)) return false;
-  if (CLAIM_NEGATION_PATTERN.test(sentence)) return false;
-  return true;
+  return splitClaimClauses(sentence).some(
+    (clause) => pattern.test(clause) && !CLAIM_NEGATION_PATTERN.test(clause),
+  );
 }
 
 /** 全文任一句构成声称即为 true。 */

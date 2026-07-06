@@ -1,6 +1,11 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
+import {
+  hasUsableJobListResult,
+  readLatestJobListCall,
+  readLatestUsableJobListCall,
+} from './job-list-call.util';
 import type { FactRule, RuleContradiction } from '../output-rule.types';
 
 /**
@@ -41,8 +46,20 @@ const JOB_RECOMMEND_OR_BOOKING_PATTERN =
 // 合规口径除了“没有符合班次的岗/问放宽”外，还包括“透明披露班次不符 + 征询能否接受”：
 // 生产偏严案例（2026-07-06 守卫档案 id=8）“只有白班……不是夜班……你看这个白班能做吗”
 // 本质就是规则要求的放宽询问，只是带了具体岗位，不应拦。
+// 注意：“只有/只剩/都是 + 班次”那一支已拆出去单独按极性判定（见
+// SCHEDULE_ONLY_SHIFT_DECLARATION_PATTERN），不能留在无条件豁免里——它对班次
+// 真值是盲的，“这几家都是夜班，我帮你报名？”曾靠它逃逸（2026-07-06 review）。
 const SCHEDULE_NO_MATCH_COMPLIANT_PATTERN =
-  /(?:暂时|目前)?(?:没有|没找到|暂无)[^。！？\n]{0,24}(?:符合|匹配)[^。！？\n]{0,24}(?:班次|时段|时间)|(?:放宽|调整)[^。！？\n]{0,12}(?:班次|时段|时间)|(?:不是|不算|并非)[^。！？\n]{0,8}(?:夜班|晚班|早班|白班)|(?:只有|只剩|都是)[^。！？\n]{0,10}(?:白班|早班|日班|晚班|夜班|全天)|(?:白班|早班|晚班|夜班|全天班?)[^。！？\n]{0,12}(?:能做吗|能接受吗|可以吗|行吗|接受吗|考虑吗|做得来吗)/;
+  /(?:暂时|目前)?(?:没有|没找到|暂无)[^。！？\n]{0,24}(?:符合|匹配)[^。！？\n]{0,24}(?:班次|时段|时间)|(?:放宽|调整)[^。！？\n]{0,12}(?:班次|时段|时间)|(?:不是|不算|并非)[^。！？\n]{0,8}(?:夜班|晚班|早班|白班)|(?:白班|早班|晚班|夜班|全天班?)[^。！？\n]{0,12}(?:能做吗|能接受吗|可以吗|行吗|接受吗|考虑吗|做得来吗)/;
+// 岗位班次陈述句：“只有白班 / 都是夜班”。捕获陈述的班次词，与候选人所求班次对账：
+// 极性不同是诚实披露（“你要夜班，这边只有白班”），极性相同则是把被班次过滤剔除的
+// 岗位包装成候选人要的班次，恰是本规则要拦的编造。
+const SCHEDULE_ONLY_SHIFT_DECLARATION_PATTERN =
+  /(?:只有|只剩|都是)[^。！？\n]{0,10}(白班|早班|日班|晚班|夜班|全天)/;
+// 需求复述（候选人口吻动词）：“只找白班”是转述候选人偏好，不是岗位班次陈述
+// （与 job-fact-value-mismatch 的 SHIFT_REQUIREMENT_ECHO 同口径）。
+const SCHEDULE_SHIFT_REQUIREMENT_ECHO_PATTERN =
+  /(?:只找|只做|只考虑|只要|想找|想做|想要|倾向|偏好|接受)[^。！？\n]{0,6}(?:早班|白班|日班|晚班|夜班|通宵|全天)/;
 
 export const JOB_FACT_HALLUCINATION_RULES: FactRule[] = [
   {
@@ -161,10 +178,36 @@ export function detectScheduleFilteredJobRecommended(
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
   if (!JOB_RECOMMEND_OR_BOOKING_PATTERN.test(text)) return null;
-  if (SCHEDULE_NO_MATCH_COMPLIANT_PATTERN.test(text)) return null;
 
+  // 先对账工具事实（errorType），再谈豁免：豁免必须知道"候选人要的是什么班次"才能
+  // 区分诚实披露和真值盲逃逸——原先豁免短路在事实检查之前，"这几家都是夜班，很适合
+  // 你，我帮你报名？"在 schedule_filter_empty 后靠"都是夜班"字样整段放行
+  // （2026-07-06 review）。
   const latestJobListCall = readLatestJobListCall(toolCalls);
   if (readErrorType(latestJobListCall?.result) !== 'job_list.schedule_filter_empty') return null;
+
+  // 无条件合规口径：没有符合班次的岗 / 问放宽 / "不是夜班"披露 / "白班能做吗"征询。
+  if (SCHEDULE_NO_MATCH_COMPLIANT_PATTERN.test(text)) return null;
+
+  // "只有/只剩/都是 + 班次"陈述按极性判定，不再是无条件豁免。
+  const declaredShift = SCHEDULE_ONLY_SHIFT_DECLARATION_PATTERN.exec(text)?.[1] ?? null;
+  if (declaredShift) {
+    // "只找白班"式需求复述不是岗位班次陈述，保持豁免。
+    if (SCHEDULE_SHIFT_REQUIREMENT_ECHO_PATTERN.test(text)) return null;
+
+    const declaredPolarity = readShiftPolarity(declaredShift);
+    const requestedPolarity = readRequestedShiftPolarity(latestJobListCall?.args);
+    // 陈述班次与候选人所求班次极性不同 = 诚实披露（"你要夜班，这边只有白班"），放行；
+    // 极性相同（或全天等读不出极性）= 把被过滤剔除的岗位说成候选人要的班次，不豁免。
+    // args 里读不出所求班次时同样不豁免：本函数入口已确认回复带推荐/催报名动作。
+    if (
+      requestedPolarity !== null &&
+      declaredPolarity !== null &&
+      declaredPolarity !== requestedPolarity
+    ) {
+      return null;
+    }
+  }
 
   return {
     ruleId: 'schedule_filtered_job_recommended',
@@ -172,6 +215,30 @@ export function detectScheduleFilteredJobRecommended(
       'duliday_job_list 返回 job_list.schedule_filter_empty（班次硬约束过滤后无匹配岗位），但回复仍推荐岗位或承诺可约',
     action: GUARDRAIL_ACTION.REVISE,
   };
+}
+
+type ShiftPolarity = 'day' | 'night';
+
+/** 班次词 → 早晚极性。"全天"两头都占，读不出单一极性，返回 null。 */
+function readShiftPolarity(shiftWord: string): ShiftPolarity | null {
+  if (/白班|早班|日班/.test(shiftWord)) return 'day';
+  if (/晚班|夜班|通宵/.test(shiftWord)) return 'night';
+  return null;
+}
+
+/**
+ * 从产生 schedule_filter_empty 的 job_list 调用 args 里读候选人所求班次极性。
+ * candidateScheduleConstraint.onlyEvenings/onlyMornings 是工具入参 schema 里的班次
+ * 硬约束字段；onlyWeekends/maxDaysPerWeek 不含早晚极性，读不出时返回 null。
+ */
+function readRequestedShiftPolarity(args: unknown): ShiftPolarity | null {
+  if (!args || typeof args !== 'object') return null;
+  const constraint = (args as Record<string, unknown>).candidateScheduleConstraint;
+  if (!constraint || typeof constraint !== 'object') return null;
+  const record = constraint as Record<string, unknown>;
+  if (record.onlyEvenings === true) return 'night';
+  if (record.onlyMornings === true) return 'day';
+  return null;
 }
 
 /**
@@ -197,36 +264,7 @@ export function detectDistanceMissing(
   };
 }
 
-/**
- * 是否有“可用”的岗位列表结果。
- * empty/error/status=empty 不算接地，否则模型可能拿空结果继续编岗位。
- *
- * 必须扫描本轮**全部** job_list 调用，不能只看最后一次：Agent 常见动作链是
- * “近距离查（空）→ 全市扩面查（有结果）→ 带 jobId 复核（空）”，岗位事实接地在
- * 中间那次。生产假阳（2026-07-06 守卫档案 id=3）：全市查询真实返回了必胜客/肯德基，
- * 却因最后一次调用为空被判未接地，整轮推荐被杀。
- */
-function hasUsableJobListResult(toolCalls: AgentToolCall[]): boolean {
-  return toolCalls.some(
-    (call) => call.toolName === 'duliday_job_list' && isUsableJobListCall(call),
-  );
-}
-
-function isUsableJobListCall(call: AgentToolCall): boolean {
-  if (!call.result) return false;
-  if (call.resultCount === 0) return false;
-  if (call.status === 'error' || call.status === 'empty') return false;
-  return true;
-}
-
-/** 最后一次“可用”的 job_list 结果：事实对账类规则应对齐它，而不是最后一次调用（可能为空）。 */
-function readLatestUsableJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
-  for (let i = toolCalls.length - 1; i >= 0; i--) {
-    const call = toolCalls[i];
-    if (call?.toolName === 'duliday_job_list' && isUsableJobListCall(call)) return call;
-  }
-  return null;
-}
+// "可用" job_list 判定与最后一次可用/裸调用读取已收敛到 job-list-call.util（多规则共用）。
 
 /**
  * 从岗位工具返回的多层结构里读取薪资事实。
@@ -322,8 +360,4 @@ function readErrorType(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const errorType = (value as Record<string, unknown>).errorType;
   return typeof errorType === 'string' ? errorType : null;
-}
-
-function readLatestJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
-  return [...toolCalls].reverse().find((call) => call.toolName === 'duliday_job_list') ?? null;
 }

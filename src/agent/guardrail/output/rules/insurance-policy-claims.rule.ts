@@ -1,4 +1,5 @@
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { splitClaimSentences } from './claim-assertion.util';
 
 const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
 
@@ -22,13 +23,8 @@ const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险
 const REQUIREMENT_CONTEXT_PATTERN =
   /(?:提供|出示|提交|准备|带上?)[^。！？\n]{0,12}(?:证明|材料|合同)|(?:证明|材料|合同)[^。！？\n]{0,6}(?:提供|出示|提交|准备)|第二职业|第一职业|(?:需|须|需要|要求)(?:提供|出示|有|持有?)[^。！？\n]{0,8}(?:社保|保险|劳动合同)|(?:劳动)?合同[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:社保|保险)|(?:社保|保险)[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:劳动)?合同|(?:你|您)[^。！？\n]{0,4}有[^。！？\n]{0,8}(?:交|缴|买)[^。！？\n]{0,8}(?:社保|保险)/;
 
-/** 按句切分，与其它规则的句粒度判定口径一致。 */
-function splitSentences(text: string): string[] {
-  return text
-    .split(/[。！？?!\n；;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+// 切句直接用 claim-assertion.util 的共享原语：此前本地实现把 ？丢弃、与共享口径
+// 悄悄分叉（2026-07-06 review），删除本地版防止再漂移。
 
 /**
  * 保险/社保主动提及规则。
@@ -62,7 +58,9 @@ export function detectProactiveInsurancePolicyMention(
   if (recentUserTexts?.some((m) => INSURANCE_POLICY_TERM_PATTERN.test(m))) return null;
   // 每一句含保险词的句子都处于任职要求语境（社保证明/劳动合同/第二职业门槛）时放行：
   // 这是资格预筛必须问的问题，不是福利承诺。只要有一句是纯福利性提及仍拦截。
-  const policySentences = splitSentences(text).filter((s) => INSURANCE_POLICY_TERM_PATTERN.test(s));
+  const policySentences = splitClaimSentences(text).filter((s) =>
+    INSURANCE_POLICY_TERM_PATTERN.test(s),
+  );
   if (
     policySentences.length > 0 &&
     policySentences.every((s) => REQUIREMENT_CONTEXT_PATTERN.test(s))

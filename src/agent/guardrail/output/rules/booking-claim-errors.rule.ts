@@ -99,20 +99,34 @@ export function detectPrecheckBlockedBookingClaim(
 const SHIFT_OR_COMMUTE_TIME_CONTEXT_PATTERN =
   /班次|排班|上班|下班|营业|通勤|工作时间|可(?:以)?出勤|意向时段|时段[:：]/;
 
+/** 约面语境关键词：判定某句话是在谈面试/到店安排。 */
+const INTERVIEW_CONTEXT_PATTERN = /面试|到店|预约|报到/;
+
 export function detectWaitNoticeTimeFabrication(
   text: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  // 约面语境和具体时间必须出现在**同一句**里，且该句不是班次/通勤语境：
-  // 收资模板"意向班次：08:00-15:00（已记）"+"大概多久到店"分属两句，全文级
-  // 共现判定会把班次数字当成编造的面试时间（2026-07-06 守卫档案 id=102：
-  // 修复版已改成"店长电话通知"仍因班次数字连杀两版，整轮静默）。
-  const fabricatedTimeSentence = splitClaimSentences(text).some(
-    (sentence) =>
-      /面试|到店|预约|报到/.test(sentence) &&
-      CONCRETE_INTERVIEW_TIME_PATTERN.test(sentence) &&
-      !SHIFT_OR_COMMUTE_TIME_CONTEXT_PATTERN.test(sentence),
-  );
+  // 共现判定按"约面句 ± 1 句"的相邻窗口做，不是全文级也不是死板的同一句：
+  // - 全文级会把收资模板"意向班次：08:00-15:00（已记）"+"大概多久到店"的班次数字
+  //   当成编造的面试时间（2026-07-06 守卫档案 id=102：修复版已改成"店长电话通知"
+  //   仍因班次数字连杀两版，整轮静默）；
+  // - 严格同句则漏掉拆句编造"面试已经帮你安排好了。明天下午2点过去就行。"
+  //   （2026-07-06 review 盲区）。
+  // 班次/通勤语境豁免只对"本身不含约面关键词"的载时句成立："面试就定明天早上8点，
+  // 正好赶你上班前"里的"上班"不是豁免理由（同 review 盲区）。
+  const carriesFabricatedTime = (sentence: string): boolean =>
+    CONCRETE_INTERVIEW_TIME_PATTERN.test(sentence) &&
+    !(
+      SHIFT_OR_COMMUTE_TIME_CONTEXT_PATTERN.test(sentence) &&
+      !INTERVIEW_CONTEXT_PATTERN.test(sentence)
+    );
+  const sentences = splitClaimSentences(text);
+  const fabricatedTimeSentence = sentences.some((sentence, index) => {
+    if (!INTERVIEW_CONTEXT_PATTERN.test(sentence)) return false;
+    return [sentences[index - 1], sentence, sentences[index + 1]]
+      .filter((s): s is string => Boolean(s))
+      .some(carriesFabricatedTime);
+  });
   if (!fabricatedTimeSentence) return null;
 
   const precheckCall = [...toolCalls]

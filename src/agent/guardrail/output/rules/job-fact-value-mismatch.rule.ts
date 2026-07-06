@@ -1,6 +1,7 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { assertsClaim, splitClaimSentences } from './claim-assertion.util';
+import { isUsableJobListCall } from './job-list-call.util';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**
@@ -79,10 +80,8 @@ function isSettlementRequirementEcho(sentence: string): boolean {
 function readJobFactGroundTruth(toolCalls: AgentToolCall[]): string | null {
   const parts: string[] = [];
   for (const call of toolCalls) {
-    if (call?.toolName !== 'duliday_job_list') continue;
-    if (!call.result) continue;
-    if (call.resultCount === 0) continue;
-    if (call.status === 'error' || call.status === 'empty') continue;
+    // "可用"口径共享自 job-list-call.util，与 job-fact-hallucinations 的接地判定同源。
+    if (!isUsableJobListCall(call)) continue;
     const record = call.result as Record<string, unknown>;
     const markdown = typeof record.markdown === 'string' ? record.markdown : '';
     const rawData = record.rawData ? safeStringify(record.rawData) : '';

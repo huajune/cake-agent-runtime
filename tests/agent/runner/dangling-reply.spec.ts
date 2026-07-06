@@ -50,4 +50,15 @@ describe('isDanglingCheckReply', () => {
     expect(isDanglingCheckReply('帮你查到啦，门店就在你家附近')).toBe(false);
     expect(isDanglingCheckReply('帮你核实过了，这家周末能排班')).toBe(false);
   });
+
+  it('放行提示词钦定的字段缺失兜底话术（candidate-consultation.md L105/L133）', () => {
+    expect(isDanglingCheckReply('这个我帮你确认下')).toBe(false);
+    expect(isDanglingCheckReply('这个我帮你确认一下哈')).toBe(false);
+    expect(isDanglingCheckReply('这个帮你问下~')).toBe(false);
+  });
+
+  it('钦定兜底豁免不放行查岗类承诺', () => {
+    expect(isDanglingCheckReply('这个我帮你查下')).toBe(true);
+    expect(isDanglingCheckReply('我帮你确认下')).toBe(true);
+  });
 });

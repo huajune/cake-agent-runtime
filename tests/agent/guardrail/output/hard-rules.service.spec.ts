@@ -41,6 +41,8 @@ describe('HardRulesService', () => {
       '这家不招新媒体或食品相关专业',
       '岗位有专业限制，你这个专业不符',
       '筛选项：专业（非新媒、食品）',
+      // 倒序拒斥式：专业后紧跟拒绝后果（2026-07-06 review：收窄倒序支后保留的真阳）
+      '不是相关专业的做不了',
     ];
     it.each(hitCases)('flags and blocks discriminatory disclosure: %s', (reply) => {
       const result = check(reply);
@@ -72,6 +74,9 @@ describe('HardRulesService', () => {
       '不考虑专业背景，大家都能做',
       '不要求专业对口，放心报名',
       '这家对专业要求不高',
+      // 倒序安抚式："不是相关专业"后接宽慰而非拒绝后果（2026-07-06 review 误杀修复）
+      '不是相关专业也没关系，这个岗位不卡专业',
+      '不是相关专业也能做的，放心报',
     ];
     it.each(passCases)('does not flag compliant phrasing: %s', (reply) => {
       const result = check(reply);
@@ -737,6 +742,34 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('flags same-polarity shift declaration after schedule filter emptied the list（2026-07-06 review：真值盲豁免逃逸）', () => {
+      // 候选人只做夜班且班次过滤后为 0 岗，"这几家都是夜班"是把被剔除的岗位包装成
+      // 候选人要的班次——与诚实披露"只有白班"极性相反，不得豁免。
+      const result = service.check({
+        replyText: '这几家都是夜班，很适合你，我帮你报名？',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { candidateScheduleConstraint: { onlyEvenings: true } },
+            result: {
+              success: false,
+              errorType: 'job_list.schedule_filter_empty',
+            },
+            status: 'error',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'schedule_filtered_job_recommended',
+            action: GUARDRAIL_ACTION.REVISE,
+          }),
+        ]),
+      );
+    });
+
     it('asks for revision when group-full claim is not grounded by invite_to_group', () => {
       const result = check('不好意思，群里人数满了，拉不进去');
       expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(false);
@@ -1116,6 +1149,33 @@ describe('HardRulesService', () => {
       );
     });
 
+    it.each(['不用担心，已经帮你报名成功了，等门店通知就行。', '不要着急，报名已经提交成功了。'])(
+      'flags cross-clause success claim after booking failure: %s（2026-07-06 review：前小句否定词曾洗白后小句成功宣称）',
+      (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [
+            {
+              toolName: 'duliday_interview_booking',
+              args: {},
+              result: { success: false, errorType: 'booking.rejected' },
+              status: 'error',
+            },
+          ] as never,
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ruleId: 'tool_failure_success_claim',
+              action: GUARDRAIL_ACTION.REVISE,
+            }),
+          ]),
+        );
+      },
+    );
+
     it('does not flag tool failure success claim when the latest side-effect call succeeded', () => {
       const result = service.check({
         replyText: '已帮你预约成功，明天10点到店面试，记得带身份证。',
@@ -1335,6 +1395,32 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('flags cross-clause booked claim after precheck hard reject（2026-07-06 review：前小句"没错"曾把成功宣称整句洗白）', () => {
+      const result = service.check({
+        replyText: '没错，已经帮你约好面试了。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: {
+              nextAction: 'age_rejected',
+              ageBoundary: { severity: 'hard_reject' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'precheck_blocked_booking_claim',
+            action: GUARDRAIL_ACTION.REVISE,
+          }),
+        ]),
+      );
+    });
+
     it('does not flag date_unavailable ack + alternative slot（守卫档案 id=9 假阳回归：规定动作是"说明原因并给替代时段"）', () => {
       const result = service.check({
         replyText:
@@ -1438,6 +1524,58 @@ describe('HardRulesService', () => {
 
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
         'wait_notice_time_fabrication',
+      );
+    });
+
+    it('flags adjacent-sentence time fabrication under wait_notice（2026-07-06 review：约面句与时间句拆两句曾逃逸）', () => {
+      const result = service.check({
+        replyText: '面试已经帮你安排好了。明天下午2点过去就行。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: {
+              nextAction: 'ready_to_book',
+              interview: { interviewTimeMode: 'wait_notice' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'wait_notice_time_fabrication',
+            action: GUARDRAIL_ACTION.REVISE,
+          }),
+        ]),
+      );
+    });
+
+    it('flags interview-time fabrication even when the sentence also mentions 上班（2026-07-06 review：班次/通勤豁免不适用于含约面关键词的句子）', () => {
+      const result = service.check({
+        replyText: '面试就定明天早上8点，正好赶你上班前',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: {
+              nextAction: 'ready_to_book',
+              interview: { interviewTimeMode: 'wait_notice' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'wait_notice_time_fabrication',
+            action: GUARDRAIL_ACTION.REVISE,
+          }),
+        ]),
       );
     });
 
