@@ -43,6 +43,26 @@ export class ReengagementTrackingService {
     return `${identity.sessionId}:${identity.scenarioCode}:${identity.anchorEventId}`;
   }
 
+  /**
+   * 存量 Bull 任务（payload 无 channelIdentity）到点身份兜底：查 chat_messages 最新快照。
+   * 不兜底则该触达行 candidate_name 恒为 NULL 且无法自愈——后续事件同样来自无身份的
+   * job.data，record_reengagement_touch 的 COALESCE 只认非空入参。失败返回 null 不抛。
+   */
+  async resolveChannelIdentity(
+    sessionId: string,
+  ): Promise<Pick<ReengagementTouchIdentity, 'candidateName' | 'managerName' | 'botImId'> | null> {
+    try {
+      return await this.repository.getLatestChatChannelIdentity(sessionId);
+    } catch (error) {
+      this.logger.warn(
+        `[二次触发追溯] 渠道身份兜底查询失败 sessionId=${sessionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
   /** 排程成功入队 */
   trackScheduled(identity: ReengagementTouchIdentity, jobId: string, fireAt: number): void {
     this.persist({

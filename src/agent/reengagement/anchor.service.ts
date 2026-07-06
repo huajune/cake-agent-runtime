@@ -48,9 +48,23 @@ export class ReengagementAnchorService {
     // 取消工单成功：booked 终态回退（候选人回到求职中，报名前场景恢复可排程）。
     // 在途的旧面试提醒不在这里清（Bull 不支持按会话检索），由 processor 到点向海绵
     // 核验工单现状兜底（external_cancelled）。不依赖 deliverable：工单已实际取消。
-    if (toolCalls.some((call) => this.isCancelSucceeded(call))) {
-      void this.clearBookedTerminal(context);
+    const cancelSucceeded = toolCalls.some((call) => this.isCancelSucceeded(call));
+    const booking = toolCalls.find((call) => this.isBookingSucceeded(call));
+    // 终态写入必须串行：同回合先取消旧工单再报新岗位（换岗）时，clear 的读-判-写
+    // 若与新 booked 写入并发，可能落在其后抹掉刚写的终态，导致带活面试的会话被
+    // 报名前场景继续骚扰。链上顺序 = 工具调用顺序（先 clear 后 booked）。
+    let terminalChain: Promise<void> = Promise.resolve();
+    if (cancelSucceeded) {
+      terminalChain = terminalChain.then(() => this.clearBookedTerminal(context));
     }
+    if (booking) {
+      terminalChain = terminalChain.then(() =>
+        this.session
+          .saveTerminalState(context.corpId, context.userId, context.chatId, 'booked')
+          .catch((error) => this.logFailure('save booked terminal', context, error)),
+      );
+    }
+    void terminalChain;
 
     // 改约成功：按新面试时间排新的提醒/回访（新锚点）。旧任务携带的 expectedInterviewAt
     // 与更新后的 active_booking.interview_time 不再一致，到点被 interview_time_changed 停掉。
@@ -59,13 +73,7 @@ export class ReengagementAnchorService {
       this.scheduleBookingFollowUps(modified, `${context.traceId}:interview_modified`, context);
     }
 
-    const booking = toolCalls.find((call) => this.isBookingSucceeded(call));
-    if (!booking) return;
-    void this.session
-      .saveTerminalState(context.corpId, context.userId, context.chatId, 'booked')
-      .catch((error) => this.logFailure('save booked terminal', context, error));
-
-    if (!deliverable) return;
+    if (!booking || !deliverable) return;
     this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
   }
 

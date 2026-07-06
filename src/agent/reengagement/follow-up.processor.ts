@@ -83,6 +83,7 @@ export class FollowUpProcessor implements OnModuleInit {
       this.logger.warn(`[reengagement] 未知场景 ${scenarioCode}，跳过`);
       return;
     }
+    const channelIdentity = await this.resolveJobChannelIdentity(job.data);
     const identity: ReengagementTouchIdentity = {
       sessionId: sessionRef.sessionId,
       userId: sessionRef.userId,
@@ -90,7 +91,7 @@ export class FollowUpProcessor implements OnModuleInit {
       scenarioCode,
       anchorEventId,
       anchorAt,
-      ...job.data.channelIdentity,
+      ...channelIdentity,
     };
 
     // 0) 总开关急刹车：Dashboard 关闭后，在途 job 到点直接丢弃（不生成、不投递、不重排）
@@ -208,7 +209,7 @@ export class FollowUpProcessor implements OnModuleInit {
           receivedAt: now,
           status: 'success',
           replyPreview: `[未投递:${outcome.kind}]`,
-          channelIdentity: job.data.channelIdentity,
+          channelIdentity,
         }),
       );
       await this.outcomeFinalizer.commit(outcome, {
@@ -223,6 +224,34 @@ export class FollowUpProcessor implements OnModuleInit {
     }
 
     await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now, identity, batchId);
+  }
+
+  /**
+   * 渠道身份：优先 job payload（排程时冻结）；存量任务（部署窗口前入队）payload 缺失时
+   * 到点兜底查 chat_messages 最新快照（与 20260706160000 迁移回填同源）。不兜底则该
+   * 触达行 candidate_name 恒为 NULL 且无法自愈——后续所有事件同样来自无身份的 job.data，
+   * record_reengagement_touch 的 COALESCE 只认非空入参。兜底失败按空身份放行不阻断。
+   */
+  private async resolveJobChannelIdentity(
+    jobData: FollowUpJob,
+  ): Promise<FollowUpJob['channelIdentity']> {
+    const fromJob = jobData.channelIdentity;
+    if (fromJob && (fromJob.candidateName || fromJob.managerName || fromJob.botImId)) {
+      return fromJob;
+    }
+    try {
+      const resolved = await this.tracking.resolveChannelIdentity(jobData.sessionRef.sessionId);
+      if (resolved) return resolved;
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 渠道身份兜底查询失败，按空身份落库 sessionId=${jobData.sessionRef.sessionId}: ${this.errorMessage(error)}`,
+      );
+      return fromJob;
+    }
+    this.logger.warn(
+      `[reengagement] 渠道身份兜底无结果，按空身份落库 sessionId=${jobData.sessionRef.sessionId}`,
+    );
+    return fromJob;
   }
 
   /**

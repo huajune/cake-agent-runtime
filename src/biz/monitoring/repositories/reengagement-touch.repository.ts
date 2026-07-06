@@ -88,6 +88,32 @@ export class ReengagementTouchRepository extends BaseRepository {
     return result !== undefined;
   }
 
+  /**
+   * 会话渠道身份兜底查询：chat_messages 最新一条消息的身份快照。
+   * 与 20260706160000 迁移的存量回填同源（DISTINCT ON chat_id ORDER BY timestamp DESC），
+   * 供存量 Bull 任务（payload 无 channelIdentity）到点补身份。无消息/查询失败返回 null。
+   */
+  async getLatestChatChannelIdentity(sessionId: string): Promise<{
+    candidateName?: string;
+    managerName?: string;
+    botImId?: string;
+  } | null> {
+    const rows = await this.selectFrom<{
+      candidate_name: string | null;
+      manager_name: string | null;
+      im_bot_id: string | null;
+    }>('chat_messages', 'candidate_name,manager_name,im_bot_id', (q) =>
+      q.eq('chat_id', sessionId).order('timestamp', { ascending: false }).limit(1),
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      candidateName: row.candidate_name ?? undefined,
+      managerName: row.manager_name ?? undefined,
+      botImId: row.im_bot_id ?? undefined,
+    };
+  }
+
   /** 分页列表（默认 created_at 倒序） */
   async getRecords(filters: ReengagementTouchFilters): Promise<ReengagementTouchDbRecord[]> {
     const limit = Math.min(filters.limit ?? 50, 200);
@@ -115,6 +141,42 @@ export class ReengagementTouchRepository extends BaseRepository {
       p_end: endDate,
     });
     return rows ?? [];
+  }
+
+  /**
+   * NULL 化过期行的 generated_text（最大的单列文本）。
+   * 状态摘要 + events 轨迹继续保留（审计底账），文案本体到期释放。
+   * @returns 本次 NULL 化的行数
+   */
+  async nullExpiredGeneratedText(retentionDays: number): Promise<number> {
+    const cutoffIso = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const updated = await this.update<ReengagementTouchDbRecord>({ generated_text: null }, (q) =>
+      q.lt('created_at', cutoffIso).not('generated_text', 'is', null),
+    );
+    const count = updated.length;
+    if (count > 0) {
+      this.logger.log(
+        `[二次触发追溯] 已 NULL 化 ${count} 条 ${retentionDays} 天前触达记录的 generated_text`,
+      );
+    }
+    return count;
+  }
+
+  /**
+   * 删除过期触达行。审计底账保留期比原始流水（message_processing_records 30 天）更长。
+   * @returns 删除的行数
+   */
+  async cleanupExpiredRecords(retentionDays: number): Promise<number> {
+    const cutoffIso = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const deleted = await this.delete<ReengagementTouchDbRecord>(
+      (q) => q.lt('created_at', cutoffIso),
+      true,
+    );
+    const count = deleted.length;
+    if (count > 0) {
+      this.logger.log(`[二次触发追溯] 已删除 ${count} 条 ${retentionDays} 天前的触达记录`);
+    }
+    return count;
   }
 
   /**

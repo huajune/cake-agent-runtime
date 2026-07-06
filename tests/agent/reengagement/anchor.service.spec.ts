@@ -89,6 +89,40 @@ describe('ReengagementAnchorService', () => {
     expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
   });
 
+  it('writes booked last when cancel and booking succeed in the same turn', async () => {
+    // 换岗回合：先取消旧工单再报新岗位。clearBookedTerminal 的状态读取被拖慢，
+    // 复现竞态——若清空与写 booked 不串行，clear 的写会落在 booked 之后抹掉新终态。
+    session.getAuthoritativeState.mockImplementation(
+      () =>
+        new Promise((resolve) => setTimeout(() => resolve(baseState({ terminal: 'booked' })), 20)),
+    );
+    const terminalWrites: Array<string | undefined> = [];
+    session.saveTerminalState.mockImplementation(
+      (_corpId: string, _userId: string, _chatId: string, terminal?: string) => {
+        terminalWrites.push(terminal);
+        return Promise.resolve();
+      },
+    );
+
+    buildService().handleToolAnchors(
+      {
+        toolCalls: [
+          {
+            toolName: 'duliday_cancel_work_order',
+            args: { workOrderId: 111 },
+            result: { success: true },
+          },
+          bookingCall,
+        ],
+      },
+      context,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    // 串行链保证顺序：先清旧终态、后写新 booked，最终终态必须是 booked
+    expect(terminalWrites).toEqual([undefined, 'booked']);
+  });
+
   it('does not touch other terminals on cancel', async () => {
     session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'handed_off' }));
 

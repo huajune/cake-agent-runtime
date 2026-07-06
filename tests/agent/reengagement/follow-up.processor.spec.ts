@@ -67,6 +67,7 @@ describe('FollowUpProcessor', () => {
     longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
     scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
     tracking = {
+      resolveChannelIdentity: jest.fn().mockResolvedValue(null),
       trackDisabledAtFire: jest.fn(),
       trackStopped: jest.fn(),
       trackFrequencyBlocked: jest.fn(),
@@ -544,6 +545,76 @@ describe('FollowUpProcessor', () => {
 
       expect(tracking.trackDuplicate).toHaveBeenCalledWith(expectedIdentity, 'duplicate_sent');
       expect(runner.runTurn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('存量任务渠道身份兜底', () => {
+    beforeEach(() => {
+      jest.restoreAllMocks();
+      // 10:00 上海，投递窗口内
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 0, 0));
+      runner.runTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '还在考虑吗？' },
+        toolCalls: [],
+        scenarioCode: 'opening_no_reply',
+        runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      });
+    });
+
+    it('resolves identity from chat history when the job payload has none', async () => {
+      tracking.resolveChannelIdentity.mockResolvedValue({
+        candidateName: '张三',
+        managerName: 'bot-user-1',
+        botImId: 'wxid-bot-1',
+      });
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.resolveChannelIdentity).toHaveBeenCalledWith('sess-1');
+      expect(tracking.trackShadow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'sess-1',
+          candidateName: '张三',
+          managerName: 'bot-user-1',
+          botImId: 'wxid-bot-1',
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('skips the fallback lookup when the job payload already carries identity', async () => {
+      await buildProcessor().process(
+        makeJob({
+          data: {
+            sessionRef,
+            scenarioCode: 'opening_no_reply',
+            anchorEventId: 'evt-1',
+            anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+            channelIdentity: { candidateName: '李四', managerName: 'bot-2', botImId: 'wxid-2' },
+          },
+        }),
+      );
+
+      expect(tracking.resolveChannelIdentity).not.toHaveBeenCalled();
+      expect(tracking.trackShadow).toHaveBeenCalledWith(
+        expect.objectContaining({ candidateName: '李四' }),
+        expect.anything(),
+      );
+    });
+
+    it('still records the touch with null identity when the fallback lookup fails', async () => {
+      tracking.resolveChannelIdentity.mockRejectedValue(new Error('db down'));
+
+      await buildProcessor().process(makeJob());
+
+      expect(tracking.trackShadow).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: 'sess-1', scenarioCode: 'opening_no_reply' }),
+        expect.anything(),
+      );
+      const identityArg = tracking.trackShadow.mock.calls[0][0] as Record<string, unknown>;
+      expect(identityArg.candidateName).toBeUndefined();
+      expect(identityArg.botImId).toBeUndefined();
     });
   });
 

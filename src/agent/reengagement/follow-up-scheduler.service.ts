@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { Job, Queue } from 'bull';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   ReengagementTrackingService,
@@ -113,6 +113,21 @@ export class FollowUpSchedulerService {
     const fireAt = computeFireAt(scenario, { anchorAt: input.anchorAt, state });
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = `${input.sessionRef.sessionId}:${input.scenarioCode}:${input.anchorEventId}`;
+
+    // Bull 同 jobId 的重复 add 是静默 no-op（幂等锚点刻意依赖这点），但 trackScheduled
+    // 会无条件把底账 fire_at/scheduled_at 覆写成一个不会触发的新时间（已完成的任务上
+    // 表现为 status=sent 却挂着未来的幽灵 fire_at）。存量任务已在（在途/保留期内已完成）
+    // → 排程与落库一并跳过；存量查询失败按不存在放行，去重仍由 Bull 兜底。
+    let existingJob: Job<FollowUpJob> | null = null;
+    try {
+      existingJob = await this.queue.getJob(jobId);
+    } catch {
+      existingJob = null;
+    }
+    if (existingJob) {
+      this.logger.debug(`[reengagement] jobId=${jobId} 已存在，跳过重复排程与底账写入`);
+      return { scheduled: false, reason: 'duplicate_job', jobId };
+    }
 
     try {
       await this.queue.add(

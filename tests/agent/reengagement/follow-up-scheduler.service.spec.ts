@@ -14,13 +14,16 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 });
 
 describe('FollowUpSchedulerService', () => {
-  let queue: { add: jest.Mock };
+  let queue: { add: jest.Mock; getJob: jest.Mock };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
   let service: FollowUpSchedulerService;
 
   beforeEach(() => {
-    queue = { add: jest.fn().mockResolvedValue(undefined) };
+    queue = {
+      add: jest.fn().mockResolvedValue(undefined),
+      getJob: jest.fn().mockResolvedValue(null),
+    };
     systemConfig = {
       getAgentReplyConfig: jest.fn().mockResolvedValue({ reengagementEnabled: true }),
     };
@@ -109,6 +112,50 @@ describe('FollowUpSchedulerService', () => {
         delay: 15 * 60_000,
       }),
     );
+    // 无存量任务：排程 + 底账落库都发生
+    expect(tracking.trackScheduled).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'sess-1', scenarioCode: 'opening_no_reply' }),
+      'sess-1:opening_no_reply:evt-1',
+      expectedFireAt,
+    );
+  });
+
+  it('skips both enqueue and ledger write when the same jobId already exists', async () => {
+    // Bull 同 jobId add 是静默 no-op；若仍 trackScheduled 会把底账 fire_at
+    // 覆写成一个不会触发的幽灵时间（已完成任务上 status=sent 却挂未来 fire_at）
+    queue.getJob.mockResolvedValue({ id: 'sess-1:opening_no_reply:evt-1' });
+
+    const result = await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'opening_no_reply',
+      anchorEventId: 'evt-1',
+      anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+      state: baseState(),
+    });
+
+    expect(result).toEqual({
+      scheduled: false,
+      reason: 'duplicate_job',
+      jobId: 'sess-1:opening_no_reply:evt-1',
+    });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(tracking.trackScheduled).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Bull-level dedup when the existing-job lookup fails', async () => {
+    queue.getJob.mockRejectedValue(new Error('redis down'));
+
+    const result = await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'opening_no_reply',
+      anchorEventId: 'evt-1',
+      anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+      state: baseState(),
+    });
+
+    expect(result.scheduled).toBe(true);
+    expect(queue.add).toHaveBeenCalled();
+    expect(tracking.trackScheduled).toHaveBeenCalled();
   });
 
   it('uses a fresh empty state when state is omitted', async () => {
