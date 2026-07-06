@@ -144,7 +144,28 @@ export class SystemConfigService {
         typeof config?.reengagementShadow === 'boolean'
           ? config.reengagementShadow
           : this.configService.get('REENGAGEMENT_SHADOW', 'true') !== 'false',
+      reengagementPostBookingEnabled:
+        typeof config?.reengagementPostBookingEnabled === 'boolean'
+          ? config.reengagementPostBookingEnabled
+          : DEFAULT_AGENT_REPLY_CONFIG.reengagementPostBookingEnabled,
+      reengagementScenarioRollout: this.sanitizeScenarioRollout(
+        config?.reengagementScenarioRollout,
+      ),
     };
+  }
+
+  /** 场景级灰度 map 只保留 boolean 值项，其余丢弃（防脏数据把开关搞成 truthy 字符串）。 */
+  private sanitizeScenarioRollout(value: unknown): Record<string, boolean> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return {};
+    }
+    const result: Record<string, boolean> = {};
+    for (const [key, raw] of Object.entries(value)) {
+      if (typeof raw === 'boolean') {
+        result[key] = raw;
+      }
+    }
+    return result;
   }
 
   // ==================== AI 回复开关 ====================

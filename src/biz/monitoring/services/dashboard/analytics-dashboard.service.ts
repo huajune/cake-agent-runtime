@@ -55,6 +55,18 @@ export interface BusinessMetricsSnapshot {
   conversion: { consultationToBooking: number };
 }
 
+/**
+ * 数据覆盖标注：系统上线前（日聚合最早 stat_date）/ 原始表保留期外没有任何数据，
+ * 当所选周期或环比对比周期的起点早于覆盖起点时标记为未覆盖，
+ * 前端据此隐藏环比，避免「部分周期 vs 完整周期」的失真对比。
+ */
+type DashboardDataCoverage = {
+  /** 数据覆盖起点（YYYY-MM-DD），未知时为 null */
+  startDate: string | null;
+  currentPeriodCovered: boolean;
+  previousPeriodCovered: boolean;
+};
+
 type DashboardOverviewResponse = {
   timeRange: string;
   overview: DashboardOverviewStats & { activeUsers: number; activeChats: number };
@@ -72,6 +84,7 @@ type DashboardOverviewResponse = {
   fallback: DashboardFallbackStats;
   fallbackDelta: { totalCount: number; successRate: number };
   manualIntervention: DashboardManualInterventionStats;
+  dataCoverage: DashboardDataCoverage;
 };
 
 const EMPTY_MANUAL_INTERVENTION_STATS: DashboardManualInterventionStats = {
@@ -115,6 +128,12 @@ export class AnalyticsDashboardService {
   /** 缓存过期后仍可返回旧值（同时触发后台刷新）的窗口 = TTL × 该倍数 */
   private static readonly OVERVIEW_STALE_MULTIPLIER = 10;
   private readonly projectionFreshCache = new Map<string, { expireAt: number; value: boolean }>();
+  /** 数据覆盖起点缓存（只会随保留期清理缓慢前移，1h 内视为不变） */
+  private readonly coverageFloorCache = new Map<
+    string,
+    { expireAt: number; value: string | null }
+  >();
+  private static readonly COVERAGE_FLOOR_TTL_MS = 60 * 60 * 1000;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -583,6 +602,12 @@ export class AnalyticsDashboardService {
         business,
       );
 
+      const dataCoverage = await this.buildDataCoverage(
+        'daily',
+        currentStartDate,
+        previousStartDate,
+      );
+
       const response: DashboardOverviewResponse = {
         timeRange,
         overview,
@@ -596,6 +621,7 @@ export class AnalyticsDashboardService {
         fallback,
         fallbackDelta,
         manualIntervention,
+        dataCoverage,
       };
       return response;
     } catch (error) {
@@ -732,6 +758,13 @@ export class AnalyticsDashboardService {
       previousBusinessTrend,
     );
 
+    // 小组路径直接扫原始流水表，覆盖起点受保留期清理约束（比日聚合表短得多）
+    const dataCoverage = await this.buildDataCoverage(
+      'records',
+      currentStartDate,
+      previousStartDate,
+    );
+
     const response: DashboardOverviewResponse = {
       timeRange,
       overview: currentOverview,
@@ -757,9 +790,58 @@ export class AnalyticsDashboardService {
       fallback: currentFallback,
       fallbackDelta: this.calculateFallbackDelta(currentFallback, previousFallback),
       manualIntervention,
+      dataCoverage,
     };
 
     return response;
+  }
+
+  /**
+   * 计算数据覆盖标注。周期起点按本地日粒度与覆盖起点比较：
+   * 起点日早于覆盖起点日即视为未覆盖（该周期前段无数据，指标被低估、环比失真）。
+   */
+  private async buildDataCoverage(
+    source: 'daily' | 'records',
+    currentStartDate: Date,
+    previousStartDate: Date,
+  ): Promise<DashboardDataCoverage> {
+    const floorDate = await this.getCoverageFloorDate(source);
+    if (!floorDate) {
+      return { startDate: null, currentPeriodCovered: true, previousPeriodCovered: true };
+    }
+
+    return {
+      startDate: floorDate,
+      currentPeriodCovered: formatLocalDate(currentStartDate) >= floorDate,
+      previousPeriodCovered: formatLocalDate(previousStartDate) >= floorDate,
+    };
+  }
+
+  private async getCoverageFloorDate(source: 'daily' | 'records'): Promise<string | null> {
+    const cached = this.coverageFloorCache.get(source);
+    if (cached && cached.expireAt > Date.now()) {
+      return cached.value;
+    }
+
+    let value: string | null = null;
+    try {
+      if (source === 'daily') {
+        value = await this.dailyStatsRepository.getEarliestStatDate();
+      } else {
+        const earliest = await this.monitoringRepository.getEarliestRecordDate();
+        value = earliest ? formatLocalDate(earliest) : null;
+      }
+    } catch (error) {
+      // 查询失败按"覆盖"处理（fail-open），避免误隐藏环比
+      this.logger.warn(`[Dashboard] 获取数据覆盖起点失败 [${source}]:`, error);
+      value = null;
+    }
+
+    this.coverageFloorCache.set(source, {
+      value,
+      expireAt: Date.now() + AnalyticsDashboardService.COVERAGE_FLOOR_TTL_MS,
+    });
+    return value;
   }
 
   private normalizeGroups(groups: string[]): string[] {

@@ -17,6 +17,7 @@ import {
   getScenario,
   inWindow,
   resolveDelayMs,
+  resolveRolloutEnabled,
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
@@ -114,20 +115,22 @@ export class FollowUpProcessor implements OnModuleInit {
     // 无投递端口绑定时强制 shadow；否则读运行时配置（与开头的总开关同一次读取）。
     // 所有未投递分支的 runTurnEnd 一律 includeAssistantText:false：候选人没收到这条文本，
     // 若照常投影成助手轮次，下一轮真实对话会引用一段候选人从未见过的"跟进"（HC-4 幽灵回复）。
+    // 场景级灰度（Dashboard 可配）：场景开关 × 报名后大开关叠加
+    const rolloutEnabled = resolveRolloutEnabled(scenario, runtime);
     const shadow = !this.delivery || runtime.reengagementShadow;
-    if (shadow || !scenario.rolloutEnabled || !this.delivery) {
+    if (shadow || !rolloutEnabled || !this.delivery) {
       const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario);
       this.logger.log(
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
           `text="${outcome.kind === 'reply' ? outcome.reply?.text.slice(0, 60) : `[${outcome.kind}]`}"` +
-          `（shadow=${shadow}, rollout=${scenario.rolloutEnabled}）`,
+          `（shadow=${shadow}, rollout=${rolloutEnabled}）`,
       );
       this.tracking.trackShadow(identity, {
         outcomeKind: outcome.kind,
         generatedText: outcome.kind === 'reply' ? outcome.reply?.text : undefined,
         reason: !this.delivery
           ? 'no_delivery_port'
-          : !scenario.rolloutEnabled
+          : !rolloutEnabled
             ? 'rollout_disabled'
             : 'shadow_mode',
       });

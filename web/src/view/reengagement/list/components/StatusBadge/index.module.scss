@@ -1,0 +1,11 @@
+/* StatusBadge — 补充全局 status-badge 缺失的灰色系变体 */
+
+.neutral {
+  border-color: rgba(100, 116, 139, 0.4) !important;
+  color: #64748b !important;
+}
+
+.muted {
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  color: #94a3b8 !important;
+}

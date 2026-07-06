@@ -106,6 +106,64 @@ describe('FollowUpProcessor', () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
+  it('shadows with rollout_disabled when the scenario is switched off in runtime config', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    runner.runTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '还在考虑吗？' },
+      toolCalls: [],
+      scenarioCode: 'opening_no_reply',
+      runTurnEnd,
+    });
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+      reengagementScenarioRollout: { opening_no_reply: false },
+    });
+
+    await buildProcessor().process(makeJob());
+
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(tracking.trackShadow).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: 'rollout_disabled' }),
+    );
+    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+  });
+
+  it('shadows post-booking scenarios when the post-booking master switch is off', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    runner.runTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '面试提醒' },
+      toolCalls: [],
+      scenarioCode: 'interview_reminder',
+      runTurnEnd,
+    });
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+      reengagementPostBookingEnabled: false,
+    });
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'evt-1',
+          anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+        },
+      }),
+    );
+
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(tracking.trackShadow).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: 'rollout_disabled' }),
+    );
+  });
+
   it('runs turn-end with includeAssistantText=false in shadow mode without delivering', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     runner.runTurn.mockResolvedValue({

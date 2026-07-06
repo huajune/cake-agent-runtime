@@ -607,6 +607,51 @@ describe('AgentRunnerService.runTurn', () => {
     expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 1
   });
 
+  it('dangling repair reply ("我帮你查下X") collapses to block instead of being delivered (badcase batch_6a4790c7)', async () => {
+    // repair 模型无视重写指令、重新规划任务时只会产出一句悬空承接句——
+    // rewrite 模式下工具已被移除，该承诺永远不会兑现，不能投递。
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '花桥附近没岗哈，我拉你进餐饮兼职群' }))
+      .mockResolvedValueOnce(makeResult({ text: '我帮你查下花桥中骏附近的岗位' }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'revise',
+      riskLevel: 'medium',
+      violations: [
+        { type: 'group_promise_without_invite', evidence: '承诺拉群未调用', suggestion: '删除拉群承诺' },
+      ],
+      ruleIds: ['group_promise_without_invite'],
+      blockedRuleIds: ['group_promise_without_invite'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '花桥中骏有岗位吗' },
+      context: { messageId: 'msg-dangling' },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual(
+      expect.objectContaining({
+        phase: 'outbound',
+        source: 'output_guardrail',
+        reasonCode: 'revise_dangling',
+      }),
+    );
+    // 悬空产物不送二审（二审只查规则违规，会误放行）
+    expect(outputGuard.check).toHaveBeenCalledTimes(1);
+    // 审查档案落库，留存悬空文本供观测
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-dangling',
+        repaired: true,
+        revisedReply: '我帮你查下花桥中骏附近的岗位',
+        finalDecision: 'block',
+        reasonCode: 'revise_dangling',
+      }),
+    );
+  });
+
   describe('guardrail review record persistence (guardrail_review_records)', () => {
     const reviseDecision = {
       decision: 'revise' as const,

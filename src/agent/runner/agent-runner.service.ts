@@ -22,6 +22,7 @@ import type {
   GuardrailReviewStepDetail,
 } from '@biz/message/types/guardrail-review.types';
 import { classifyReviewedOutcome } from './turn-outcome';
+import { isDanglingCheckReply } from './dangling-reply';
 import {
   OutputGuardrailService,
   type OutputGuardDecision,
@@ -236,18 +237,31 @@ export class AgentRunnerService {
     });
 
     const revisedText = (revised.text ?? '').trim();
-    if (!revisedText) {
+    // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的
+    // 将来时承诺不可能兑现，投递即空头承诺（badcase batch_6a4790c7…：候选人
+    // 只收到一句"我帮你查下花桥中骏附近的岗位"，之后再无下文）。与空文本同样
+    // 收敛为 block（沉默 + 落审查档案），不送二审——二审只查规则违规，会放行。
+    const danglingRepair = revisedText !== '' && isDanglingCheckReply(revisedText);
+    if (!revisedText || danglingRepair) {
+      if (danglingRepair) {
+        this.logger.warn(
+          `[invokeReviewed] repair 产物为悬空承接句，收敛为 block: text="${revisedText}"`,
+        );
+      }
       const emptyDecision: OutputGuardDecision = {
         ...decision,
         decision: 'block',
-        reasonCode: 'revise_empty',
+        reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
       };
       this.persistReviewRecord(ctx, {
         firstReply: firstText,
         firstDecision: decision,
         finalDecision: emptyDecision,
         repaired: true,
-        revisedReply: '',
+        revisedReply: revisedText,
+        // 悬空场景有真实修复文本，补 revisedDecision 让档案落库（空文本场景
+        // 维持原跳过行为：无修复内容可归档）。
+        revisedDecision: danglingRepair ? emptyDecision : undefined,
         committedSideEffects: committed || undefined,
       });
       return this.finalizeReviewed(
@@ -255,7 +269,13 @@ export class AgentRunnerService {
         emptyDecision,
         true,
         wantDefer,
-        this.buildGuardrailTrace([firstStep], true, emptyDecision),
+        this.buildGuardrailTrace(
+          danglingRepair
+            ? [firstStep, this.toGuardrailStep('revised', emptyDecision)]
+            : [firstStep],
+          true,
+          emptyDecision,
+        ),
       );
     }
 

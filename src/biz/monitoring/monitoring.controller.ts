@@ -4,6 +4,7 @@ import { AnalyticsDashboardService } from './services/dashboard/analytics-dashbo
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
 import { ReengagementQueryService } from './services/dashboard/reengagement-query.service';
+import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/scenario-registry';
 import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
@@ -25,6 +26,26 @@ export class AnalyticsController {
     private readonly maintenanceService: AnalyticsMaintenanceService,
     private readonly reengagementQueryService: ReengagementQueryService,
   ) {}
+
+  /**
+   * 复聊场景注册表（只读；Dashboard 配置页展示）。
+   * 场景级灰度的运行时值在托管配置 reengagementScenarioRollout 里，这里只给静态元数据与默认值。
+   * GET /analytics/reengagement-scenarios
+   */
+  @Get('reengagement-scenarios')
+  getReengagementScenarios() {
+    return FOLLOW_UP_SCENARIOS.map((scenario) => ({
+      code: scenario.code,
+      phase: scenario.phase,
+      displayName: scenario.displayName,
+      anchorEvent: scenario.anchorEvent,
+      anchorLabel: scenario.anchorLabel,
+      delayLabel: scenario.delayLabel,
+      objective: scenario.objective,
+      generationPolicy: scenario.generationPolicy,
+      defaultRolloutEnabled: scenario.defaultRolloutEnabled,
+    }));
+  }
 
   /**
    * 二次触发（复聊）追溯记录列表

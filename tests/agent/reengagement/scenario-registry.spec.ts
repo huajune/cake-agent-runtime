@@ -4,6 +4,7 @@ import {
   FOLLOW_UP_SCENARIOS,
   getScenario,
   inWindow,
+  resolveRolloutEnabled,
   shouldStop,
 } from '@agent/reengagement/scenario-registry';
 
@@ -119,12 +120,45 @@ describe('scenario-registry', () => {
   });
 
   describe('rollout gating', () => {
-    it('only event-anchored scenarios are rollout-enabled first', () => {
-      const enabled = FOLLOW_UP_SCENARIOS.filter((s) => s.rolloutEnabled).map((s) => s.code);
+    it('only event-anchored scenarios are rollout-enabled by default', () => {
+      const enabled = FOLLOW_UP_SCENARIOS.filter((s) => s.defaultRolloutEnabled).map((s) => s.code);
       expect(enabled).toEqual(
         expect.arrayContaining(['opening_no_reply', 'booking_incomplete', 'interview_reminder']),
       );
       expect(enabled).not.toContain('new_job_for_waiting');
+    });
+
+    it('resolveRolloutEnabled falls back to defaults when config is empty', () => {
+      expect(resolveRolloutEnabled(getScenario('opening_no_reply')!, {})).toBe(true);
+      expect(resolveRolloutEnabled(getScenario('new_job_for_waiting')!, {})).toBe(false);
+    });
+
+    it('scenario map overrides the code default in both directions', () => {
+      expect(
+        resolveRolloutEnabled(getScenario('opening_no_reply')!, {
+          reengagementScenarioRollout: { opening_no_reply: false },
+        }),
+      ).toBe(false);
+      expect(
+        resolveRolloutEnabled(getScenario('new_job_for_waiting')!, {
+          reengagementScenarioRollout: { new_job_for_waiting: true },
+        }),
+      ).toBe(true);
+    });
+
+    it('post-booking master switch gates post-booking scenarios only', () => {
+      const config = {
+        reengagementPostBookingEnabled: false,
+        reengagementScenarioRollout: { interview_reminder: true, opening_no_reply: true },
+      };
+      expect(resolveRolloutEnabled(getScenario('interview_reminder')!, config)).toBe(false);
+      expect(resolveRolloutEnabled(getScenario('post_interview_followup')!, config)).toBe(false);
+      // 报名前场景不受大开关影响
+      expect(resolveRolloutEnabled(getScenario('opening_no_reply')!, config)).toBe(true);
+    });
+
+    it('missing post-booking switch is treated as open', () => {
+      expect(resolveRolloutEnabled(getScenario('interview_reminder')!, {})).toBe(true);
     });
   });
 });

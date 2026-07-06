@@ -6,8 +6,10 @@ import {
   useAvailableModels,
 } from '@/hooks/config/useSystemConfig';
 import { useWorkerStatus, useSetWorkerConcurrency } from '@/hooks/config/useWorker';
+import { useReengagementScenarios } from '@/hooks/reengagement/useReengagementRecords';
 import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
 import type { AgentReplyConfig, AgentReplyThinkingMode } from '@/api/types/config.types';
+import type { ReengagementScenario } from '@/api/types/reengagement.types';
 
 import { ModelSelector } from '@/components/ModelSelector';
 import ControlBar from './components/ControlBar';
@@ -217,6 +219,94 @@ export default function Config() {
   // 主动复聊开关同守卫开关：直接读服务端最新值，切换即保存
   const reengagementEnabled = Boolean(agentConfigData?.config.reengagementEnabled);
   const reengagementShadow = Boolean(agentConfigData?.config.reengagementShadow ?? true);
+  const { data: reengagementScenarios } = useReengagementScenarios();
+  const reengagementPostBookingEnabled = Boolean(
+    agentConfigData?.config.reengagementPostBookingEnabled ?? true,
+  );
+  const scenarioRollout = agentConfigData?.config.reengagementScenarioRollout ?? {};
+
+  // 场景开关：托管配置里配过用配置值，没配过回退代码默认值
+  const isScenarioOn = (scenario: ReengagementScenario) =>
+    scenarioRollout[scenario.code] ?? scenario.defaultRolloutEnabled;
+
+  // 场景实际投递状态 = 场景开关 × 报名后大开关 × 总开关 × 演练模式 叠加
+  const getScenarioStatus = (scenario: ReengagementScenario) => {
+    if (!isScenarioOn(scenario)) return { label: '已关闭', className: styles.statusOff };
+    if (scenario.phase === 'post_booking' && !reengagementPostBookingEnabled) {
+      return { label: '报名后开关关闭', className: styles.statusWarn };
+    }
+    if (!reengagementEnabled) return { label: '待生效 · 总开关关闭', className: styles.statusWarn };
+    if (reengagementShadow) return { label: '待生效 · 演练中', className: styles.statusWarn };
+    return { label: '真实发送', className: styles.statusOn };
+  };
+
+  // 每次切换都回传完整 map：后端是浅合并，传增量会把其他场景的配置冲掉
+  const toggleScenario = (code: string, next: boolean) => {
+    updateConfig.mutate({
+      reengagementScenarioRollout: { ...scenarioRollout, [code]: next },
+    });
+  };
+
+  const preBookingScenarios = (reengagementScenarios ?? []).filter(
+    (s) => s.phase === 'pre_booking',
+  );
+  const postBookingScenarios = (reengagementScenarios ?? []).filter(
+    (s) => s.phase === 'post_booking',
+  );
+
+  const renderScenarioTable = (scenarios: ReengagementScenario[]) => (
+    <div className={styles.scenarioTableWrap}>
+      <table className={styles.scenarioTable}>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>锚点事件</th>
+            <th>触发延迟</th>
+            <th>目的</th>
+            <th>场景开关</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scenarios.map((scenario) => {
+            const status = getScenarioStatus(scenario);
+            return (
+              <tr key={scenario.code}>
+                <td>
+                  <div className={styles.scenarioName}>{scenario.displayName}</div>
+                  <div className={styles.scenarioCode}>{scenario.code}</div>
+                </td>
+                <td>
+                  <div>{scenario.anchorLabel}</div>
+                  <div className={styles.scenarioCode}>{scenario.anchorEvent}</div>
+                </td>
+                <td>{scenario.delayLabel}</td>
+                <td className={styles.scenarioObjective}>{scenario.objective}</td>
+                <td>
+                  <label className={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={isScenarioOn(scenario)}
+                      disabled={updateConfig.isPending}
+                      onChange={(e) => toggleScenario(scenario.code, e.target.checked)}
+                    />
+                    <span className={styles.switchTrack}>
+                      <span className={styles.switchThumb} />
+                    </span>
+                  </label>
+                </td>
+                <td>
+                  <span className={`${styles.statusBadge} ${status.className}`}>
+                    {status.label}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
   const e2eSamples =
     recentMessageRecords?.filter(
       (record) => Number.isFinite(record.totalDuration) && record.totalDuration > 0,
@@ -597,12 +687,11 @@ export default function Config() {
                   </div>
                   <p className={styles.settingDescription}>
                     开启时，到点走完全部停止判断并生成跟进文案，但不发给候选人，只记录"本应发什么"。
-                    关闭后，已放开灰度的场景（开场未回 / 报名未完成 /
-                    面试提醒）会真实发送，其余场景仍只记录。
+                    关闭后，下方场景清单里开关打开的场景会真实发送，其余场景仍只记录。
                   </p>
                   <div className={styles.settingMeta}>
                     <span>该开关即时生效</span>
-                    <span>场景级灰度由代码控制，命中记录见服务日志</span>
+                    <span>场景级灰度见下方场景清单，触达明细见「二次触发」页</span>
                   </div>
                 </div>
                 <div className={styles.toggleControl}>
@@ -620,6 +709,74 @@ export default function Config() {
                     </span>
                   </label>
                 </div>
+              </div>
+            </div>
+
+            <div className={styles.subPanel}>
+              <div className={styles.scenarioPanel}>
+                <div className={styles.scenarioPanelHeader}>
+                  <span className={styles.settingLabel}>场景清单与场景级开关</span>
+                  <span className={styles.scenarioPanelHint}>
+                    开关即时生效 · 全部场景仅在 9-21 点投递
+                  </span>
+                </div>
+                {reengagementScenarios && reengagementScenarios.length > 0 ? (
+                  <>
+                    <div className={styles.scenarioGroup}>
+                      <div className={styles.scenarioGroupHeader}>
+                        <div className={styles.scenarioGroupInfo}>
+                          <span className={styles.scenarioGroupTitle}>报名前</span>
+                          <span className={styles.scenarioPanelHint}>
+                            从开场到收资的跟进场景，逐个场景独立开关
+                          </span>
+                        </div>
+                      </div>
+                      {renderScenarioTable(preBookingScenarios)}
+                    </div>
+
+                    <div className={styles.scenarioGroup}>
+                      <div className={styles.scenarioGroupHeader}>
+                        <div className={styles.scenarioGroupInfo}>
+                          <span className={styles.scenarioGroupTitle}>报名后</span>
+                          <span
+                            className={`${styles.statusBadge} ${
+                              reengagementPostBookingEnabled ? styles.statusOn : styles.statusOff
+                            }`}
+                          >
+                            {reengagementPostBookingEnabled ? '大开关已开' : '大开关已关'}
+                          </span>
+                          <span className={styles.scenarioPanelHint}>
+                            报名成功之后的跟进流程较复杂，这里的大开关可整体熔断（关闭后下方场景全部只记录不发送）
+                          </span>
+                        </div>
+                        <label className={styles.switch}>
+                          <input
+                            type="checkbox"
+                            checked={reengagementPostBookingEnabled}
+                            disabled={updateConfig.isPending}
+                            onChange={(e) =>
+                              updateConfig.mutate({
+                                reengagementPostBookingEnabled: e.target.checked,
+                              })
+                            }
+                          />
+                          <span className={styles.switchTrack}>
+                            <span className={styles.switchThumb} />
+                          </span>
+                        </label>
+                      </div>
+                      {renderScenarioTable(postBookingScenarios)}
+                    </div>
+
+                    <p className={styles.scenarioFootnote}>
+                      「真实发送」需同时满足：总开关开启 + 演练关闭 + 场景开关开启（报名后场景还需
+                      报名后大开关开启）；其余组合到点只走判断与生成、记录「本应发什么」。
+                      候选人已回话、会话已终态或场景条件不再成立时，到点任务会自动取消。
+                    </p>
+                  </>
+                ) : (
+                  <div className={styles.loadingText}>加载场景清单中...</div>
+                )}
               </div>
             </div>
           </section>

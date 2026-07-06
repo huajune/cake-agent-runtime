@@ -9,6 +9,7 @@ import {
   Dashboard,
   Hosting,
   MessageProcessing,
+  Reengagement,
   Strategy,
   System,
   TestSuite,
@@ -50,6 +51,7 @@ function App() {
           <Route path="config" element={<Config />} />
           <Route path="system" element={<System />} />
           <Route path="message-processing" element={<MessageProcessing />} />
+          <Route path="reengagement" element={<Reengagement />} />
           <Route path="chat-records" element={<ChatRecords />} />
           <Route path="agent-test" element={<AgentTest />} />
           <Route path="test-suite" element={<TestSuite />} />

@@ -34,6 +34,15 @@ export class MonitoringDailyStatsRepository extends BaseRepository {
     return result ? this.fromDbRecord(result) : null;
   }
 
+  /** 最早的统计日（数据覆盖起点，早于该日系统无任何聚合数据）；表为空返回 null */
+  async getEarliestStatDate(): Promise<string | null> {
+    const result = await this.selectOne<Pick<DailyStatsDbRecord, 'stat_date'>>('stat_date', (q) =>
+      q.order('stat_date', { ascending: true }),
+    );
+
+    return result?.stat_date ?? null;
+  }
+
   async getDailyStatsByDateRange(startDate: Date, endDate: Date): Promise<DailyStatsRecord[]> {
     const start = formatLocalDate(startDate);
     const end = formatLocalDate(endDate);

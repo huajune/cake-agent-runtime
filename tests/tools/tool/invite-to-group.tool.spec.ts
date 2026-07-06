@@ -55,6 +55,7 @@ describe('buildInviteToGroupTool', () => {
   const executeTool = async (
     input: { city: string; industry?: string },
     overrideContext?: Partial<ToolBuildContext>,
+    deps?: { groupMembership?: unknown; sessionService?: unknown },
   ) => {
     const builder = buildInviteToGroupTool(
       mockGroupResolver as any,
@@ -64,6 +65,8 @@ describe('buildInviteToGroupTool', () => {
       mockOpsEventsRecorder as any,
       MEMBER_LIMIT,
       'enterprise-token-test',
+      deps?.groupMembership as any,
+      deps?.sessionService as any,
     );
     const builtTool = builder({ ...mockContext, ...overrideContext });
     return builtTool.execute(input as any, {
@@ -221,8 +224,10 @@ describe('buildInviteToGroupTool', () => {
     expect(result.success).toBe(true);
     expect(result.alreadyInGroup).toBe(true);
     expect(result.groupName).toBe('上海兼职群1号');
-    expect(result._replyInstruction).toContain('不向候选人提及');
+    expect(result._replyInstruction).toContain('不要承诺拉群');
+    expect(result._replyInstruction).toContain('你已经在上海兼职群1号里了');
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalled();
+    expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
   });
 
   it('should alert and return group_full when all groups are full', async () => {
@@ -927,6 +932,84 @@ describe('buildInviteToGroupTool', () => {
       const result = await executeTool({ city: '静安区' });
 
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE);
+    });
+  });
+
+  describe('前置已在群闸门 (badcase batch_6a4790c7)', () => {
+    // badcase 场景：候选人已在苏州群，模型无视注入调用 invite_to_group(city=苏州)，
+    // 且"苏州"在会话记忆/候选人原文中均无出处。旧行为：city_unverified 引导模型
+    // 追问城市继续推进拉群；新行为：已在群实时核验短路成功，不再要求城市出处。
+    const noCityContext = { messages: [{ role: 'user' as const, content: '花桥中骏有岗位吗' }] };
+
+    it('candidate already in requested-city group short-circuits success even without city provenance', async () => {
+      mockGroupResolver.resolveGroups.mockResolvedValue([
+        makeGroup({ imRoomId: 'room-sz', groupName: '独立客&苏州餐饮兼职群', city: '苏州' }),
+      ]);
+      const groupMembership = {
+        listUserRooms: jest.fn().mockResolvedValue(['room-sz']),
+      };
+
+      const result = await executeTool({ city: '苏州', industry: '餐饮' }, noCityContext, {
+        groupMembership,
+      });
+      await flushAsyncEvents();
+
+      expect(result.success).toBe(true);
+      expect(result.alreadyInGroup).toBe(true);
+      expect(result.groupName).toBe('独立客&苏州餐饮兼职群');
+      expect(result._replyInstruction).toContain('不要承诺拉群');
+      expect(groupMembership.listUserRooms).toHaveBeenCalledWith('user-1', ['room-sz']);
+      // 短路发生在企业接口之前
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+      // 记忆写入，防同会话重复触发
+      expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
+    });
+
+    it('candidate not in any group falls through to the provenance gate (city_unverified preserved)', async () => {
+      mockGroupResolver.resolveGroups.mockResolvedValue([
+        makeGroup({ imRoomId: 'room-sz', groupName: '独立客&苏州餐饮兼职群', city: '苏州' }),
+      ]);
+      const groupMembership = {
+        listUserRooms: jest.fn().mockResolvedValue([]),
+      };
+
+      const result = await executeTool({ city: '苏州' }, noCityContext, { groupMembership });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('membership check failure degrades silently to the original flow', async () => {
+      mockGroupResolver.resolveGroups.mockResolvedValue([
+        makeGroup({ imRoomId: 'room-sz', groupName: '独立客&苏州餐饮兼职群', city: '苏州' }),
+      ]);
+      const groupMembership = {
+        listUserRooms: jest.fn().mockRejectedValue(new Error('redis down')),
+      };
+
+      const result = await executeTool({ city: '苏州' }, noCityContext, { groupMembership });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
+    });
+
+    it('membership in another city does not bypass the provenance gate', async () => {
+      // 候选人在上海群，但模型请求的是苏州——跨城市在群不构成"目标城市已达成"
+      mockGroupResolver.resolveGroups.mockResolvedValue([
+        makeGroup({ imRoomId: 'room-sh', groupName: '上海兼职群1号', city: '上海' }),
+        makeGroup({ imRoomId: 'room-sz', groupName: '独立客&苏州餐饮兼职群', city: '苏州' }),
+      ]);
+      const groupMembership = {
+        listUserRooms: jest.fn().mockResolvedValue([]),
+      };
+
+      const result = await executeTool({ city: '苏州' }, noCityContext, { groupMembership });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
+      // 只用苏州群的 roomId 做核验，不把上海群算进来
+      expect(groupMembership.listUserRooms).toHaveBeenCalledWith('user-1', ['room-sz']);
     });
   });
 

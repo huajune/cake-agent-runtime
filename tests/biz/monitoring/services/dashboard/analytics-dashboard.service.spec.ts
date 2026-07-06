@@ -105,6 +105,7 @@ describe('AnalyticsDashboardService', () => {
 
   const mockDailyStatsRepository = {
     getLatestDailyStat: jest.fn(),
+    getEarliestStatDate: jest.fn(),
   };
 
   const mockErrorLogRepository = {
@@ -132,6 +133,7 @@ describe('AnalyticsDashboardService', () => {
     getDashboardHourlyTrend: jest.fn(),
     getDashboardBusinessTrend: jest.fn(),
     getDashboardToolStats: jest.fn(),
+    getEarliestRecordDate: jest.fn(),
   };
 
   // 默认 getEarliestReportDate→null：daily_ops_report 尚无覆盖时预约数返回 0。
@@ -260,6 +262,9 @@ describe('AnalyticsDashboardService', () => {
     mockDailyOpsReportService.sumByDateRange.mockResolvedValue(undefined as never);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: yesterday });
+    // 默认覆盖起点未知 → 按全覆盖处理（fail-open）
+    mockDailyStatsRepository.getEarliestStatDate.mockResolvedValue(null);
+    mockMonitoringRecordRepository.getEarliestRecordDate.mockResolvedValue(null);
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
     mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(buildHourlyStatsRow());
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
@@ -1208,6 +1213,85 @@ describe('AnalyticsDashboardService', () => {
       // 刷新失败后旧值仍可继续服务（仍在可服务窗口内）
       const again = await service.getDashboardOverviewAsync('week');
       expect(again).toBe(first);
+    });
+  });
+
+  // ========================================
+  // 数据覆盖标注（dataCoverage）
+  // ========================================
+
+  describe('dataCoverage', () => {
+    beforeEach(() => {
+      jest.useFakeTimers({
+        doNotFake: ['setTimeout', 'setInterval', 'setImmediate', 'nextTick', 'queueMicrotask'],
+      });
+      jest.setSystemTime(new Date('2026-07-06T12:00:00+08:00'));
+      mockDailyStatsRepository.getEarliestStatDate.mockResolvedValue('2026-04-15');
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('twoMonths：对比周期起点早于覆盖起点 → previousPeriodCovered=false', async () => {
+      // current: 05-08 起（≥04-15 覆盖）；previous: 03-09 起（<04-15 未覆盖）
+      const result = await service.getDashboardOverviewAsync('twoMonths');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-04-15',
+        currentPeriodCovered: true,
+        previousPeriodCovered: false,
+      });
+    });
+
+    it('threeMonths：当前周期起点也早于覆盖起点 → 两个标记都为 false', async () => {
+      // current: 04-08 起（<04-15）；previous: 01-08 起（<04-15）
+      const result = await service.getDashboardOverviewAsync('threeMonths');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-04-15',
+        currentPeriodCovered: false,
+        previousPeriodCovered: false,
+      });
+    });
+
+    it('week：两个周期都在覆盖范围内 → 全部为 true', async () => {
+      const result = await service.getDashboardOverviewAsync('week');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-04-15',
+        currentPeriodCovered: true,
+        previousPeriodCovered: true,
+      });
+    });
+
+    it('覆盖起点查询失败 → fail-open 按全覆盖处理', async () => {
+      mockDailyStatsRepository.getEarliestStatDate.mockRejectedValue(new Error('db down'));
+
+      const result = await service.getDashboardOverviewAsync('twoMonths');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: null,
+        currentPeriodCovered: true,
+        previousPeriodCovered: true,
+      });
+    });
+
+    it('小组路径用原始流水表覆盖起点判断', async () => {
+      // 原始表只保留 30 天：twoMonths 连当前周期都未完全覆盖
+      mockMonitoringRecordRepository.getEarliestRecordDate.mockResolvedValue(
+        new Date('2026-06-05T00:00:00+08:00'),
+      );
+
+      const result = await service.getDashboardOverviewAsync('twoMonths', ['A组']);
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-06-05',
+        currentPeriodCovered: false,
+        previousPeriodCovered: false,
+      });
+      // 小组路径不应误用日聚合表的覆盖起点
+      expect(mockDailyStatsRepository.getEarliestStatDate).not.toHaveBeenCalled();
     });
   });
 

@@ -171,6 +171,15 @@ export class MonitoringRecordRepository extends BaseRepository {
     });
   }
 
+  /** 最早的流水记录时间（原始表数据覆盖起点，受保留期清理影响前移）；表为空返回 null */
+  async getEarliestRecordDate(): Promise<Date | null> {
+    const row = await this.selectOne<{ received_at: string }>('received_at', (q) =>
+      q.order('received_at', { ascending: true }),
+    );
+
+    return row ? new Date(row.received_at) : null;
+  }
+
   /**
    * 获取 Dashboard 降级统计
    */

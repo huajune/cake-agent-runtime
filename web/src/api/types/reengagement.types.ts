@@ -1,0 +1,59 @@
+// ==================== 二次触发追溯类型 ====================
+
+/** 生命周期事件（仅详情接口返回） */
+export interface ReengagementEvent {
+  at: string;
+  event: string;
+  detail?: Record<string, unknown>;
+}
+
+/** 二次触发触达记录 */
+export interface ReengagementTouchRecord {
+  /** 幂等键 sessionId:scenarioCode:anchorEventId */
+  touch_key: string;
+  session_id: string;
+  user_id?: string | null;
+  corp_id?: string | null;
+  scenario_code: string;
+  /** 锚点时间（ISO） */
+  anchor_at?: string | null;
+  status: string;
+  decision_reason?: string | null;
+  shadow?: boolean | null;
+  /** 计划触发时间 */
+  fire_at?: string | null;
+  scheduled_at?: string | null;
+  fired_at?: string | null;
+  sent_at?: string | null;
+  /** reply / skipped / guardrail_blocked / handoff */
+  outcome_kind?: string | null;
+  reserve_result?: string | null;
+  error?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  // 仅详情接口返回：
+  generated_text?: string | null;
+  events?: ReengagementEvent[];
+}
+
+/** 分组统计项（status x scenario_code） */
+export interface ReengagementStatsItem {
+  status: string;
+  scenario_code: string;
+  cnt: number;
+}
+
+/** 复聊场景注册表条目（只读，来自后端 scenario-registry） */
+export interface ReengagementScenario {
+  code: string;
+  /** 所属大阶段：报名后场景受 reengagementPostBookingEnabled 大开关额外约束 */
+  phase: 'pre_booking' | 'post_booking';
+  displayName: string;
+  anchorEvent: string;
+  anchorLabel: string;
+  delayLabel: string;
+  objective: string;
+  generationPolicy: string;
+  /** 场景级灰度默认值：运行时以托管配置 reengagementScenarioRollout 为准 */
+  defaultRolloutEnabled: boolean;
+}
