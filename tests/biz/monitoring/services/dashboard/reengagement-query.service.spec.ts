@@ -40,6 +40,33 @@ describe('ReengagementQueryService', () => {
     });
   });
 
+  it('drops non-numeric or non-positive pagination params so repository defaults apply', async () => {
+    repository.getRecords.mockResolvedValue([]);
+
+    // limit='abc' → NaN 不得穿透到 .range()；offset='-5' → 回落 Repository 默认 0
+    await service.getRecords({ limit: 'abc', offset: '-5' });
+
+    expect(repository.getRecords).toHaveBeenCalledWith({});
+  });
+
+  it('keeps valid pagination while dropping only the invalid param', async () => {
+    repository.getRecords.mockResolvedValue([]);
+
+    await service.getRecords({ limit: '25', offset: 'abc' });
+
+    expect(repository.getRecords).toHaveBeenCalledWith({ limit: 25 });
+  });
+
+  it('sanitizes candidate overview pagination the same way', async () => {
+    repository.getCandidateOverview.mockResolvedValue([]);
+
+    await service.getCandidateOverview({ limit: 'abc', offset: '-5' });
+
+    expect(repository.getCandidateOverview).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: undefined, offset: undefined }),
+    );
+  });
+
   it('queries stats using the same local-day boundary convention', async () => {
     repository.getStats.mockResolvedValue([]);
 

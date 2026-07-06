@@ -5,6 +5,7 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
+import { ReengagementTouchRepository } from '@biz/monitoring/repositories/reengagement-touch.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 describe('DataCleanupService', () => {
@@ -42,6 +43,11 @@ describe('DataCleanupService', () => {
     cleanupErrorLogs: jest.fn(),
   };
 
+  const mockReengagementTouchRepository = {
+    nullExpiredGeneratedText: jest.fn().mockResolvedValue(0),
+    cleanupExpiredRecords: jest.fn().mockResolvedValue(0),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -73,6 +79,10 @@ describe('DataCleanupService', () => {
         {
           provide: MonitoringErrorLogRepository,
           useValue: mockErrorLogRepository,
+        },
+        {
+          provide: ReengagementTouchRepository,
+          useValue: mockReengagementTouchRepository,
         },
       ],
     }).compile();
@@ -126,6 +136,9 @@ describe('DataCleanupService', () => {
       expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(30);
       // 5. DELETE user_activity (>365 天)
       expect(mockUserHostingService.cleanupActivity).toHaveBeenCalledWith(365);
+      // 6. reengagement_touch_records: NULL generated_text (>30 天) + DELETE (>90 天)
+      expect(mockReengagementTouchRepository.nullExpiredGeneratedText).toHaveBeenCalledWith(30);
+      expect(mockReengagementTouchRepository.cleanupExpiredRecords).toHaveBeenCalledWith(90);
     });
 
     it('should skip cleanup when Supabase is not available', async () => {
@@ -138,6 +151,8 @@ describe('DataCleanupService', () => {
       expect(messageProcessingService.cleanupRecords).not.toHaveBeenCalled();
       expect(mockErrorLogRepository.cleanupErrorLogs).not.toHaveBeenCalled();
       expect(mockUserHostingService.cleanupActivity).not.toHaveBeenCalled();
+      expect(mockReengagementTouchRepository.nullExpiredGeneratedText).not.toHaveBeenCalled();
+      expect(mockReengagementTouchRepository.cleanupExpiredRecords).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully during agent_invocation cleanup', async () => {
@@ -153,6 +168,23 @@ describe('DataCleanupService', () => {
       await expect(service.cleanupExpiredData()).resolves.not.toThrow();
       // Should continue to next steps even after error
       expect(chatSessionService.cleanupChatMessages).toHaveBeenCalled();
+    });
+
+    it('should continue deleting expired touch rows when generated_text nulling fails', async () => {
+      mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(0);
+      mockChatSessionService.cleanupChatMessages.mockResolvedValue(0);
+      mockMessageProcessingService.cleanupRecords.mockResolvedValue(0);
+      mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(0);
+      mockUserHostingService.cleanupActivity.mockResolvedValue(0);
+      mockReengagementTouchRepository.nullExpiredGeneratedText.mockRejectedValueOnce(
+        new Error('DB error'),
+      );
+      mockReengagementTouchRepository.cleanupExpiredRecords.mockResolvedValueOnce(4);
+
+      await expect(service.cleanupExpiredData()).resolves.not.toThrow();
+
+      expect(mockReengagementTouchRepository.cleanupExpiredRecords).toHaveBeenCalledWith(90);
     });
   });
 
@@ -210,6 +242,8 @@ describe('DataCleanupService', () => {
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(8);
       mockUserHostingService.cleanupActivity.mockResolvedValue(3);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(5);
+      mockReengagementTouchRepository.nullExpiredGeneratedText.mockResolvedValueOnce(6);
+      mockReengagementTouchRepository.cleanupExpiredRecords.mockResolvedValueOnce(2);
 
       const result = await service.triggerCleanup();
 
@@ -219,6 +253,8 @@ describe('DataCleanupService', () => {
         processingRecords: 8,
         userActivity: 3,
         errorLogs: 5,
+        reengagementTouchTexts: 6,
+        reengagementTouchRecords: 2,
       });
     });
 
@@ -233,9 +269,12 @@ describe('DataCleanupService', () => {
         processingRecords: 0,
         userActivity: 0,
         errorLogs: 0,
+        reengagementTouchTexts: 0,
+        reengagementTouchRecords: 0,
       });
       expect(messageProcessingService.nullAgentInvocations).not.toHaveBeenCalled();
       expect(chatSessionService.cleanupChatMessages).not.toHaveBeenCalled();
+      expect(mockReengagementTouchRepository.nullExpiredGeneratedText).not.toHaveBeenCalled();
     });
 
     it('should handle partial failures gracefully', async () => {
@@ -245,6 +284,10 @@ describe('DataCleanupService', () => {
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(4);
       mockUserHostingService.cleanupActivity.mockResolvedValue(2);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(1);
+      mockReengagementTouchRepository.nullExpiredGeneratedText.mockRejectedValueOnce(
+        new Error('Error'),
+      );
+      mockReengagementTouchRepository.cleanupExpiredRecords.mockResolvedValueOnce(3);
 
       const result = await service.triggerCleanup();
 
@@ -254,6 +297,8 @@ describe('DataCleanupService', () => {
         processingRecords: 4,
         userActivity: 2,
         errorLogs: 1,
+        reengagementTouchTexts: 0,
+        reengagementTouchRecords: 3,
       });
     });
   });

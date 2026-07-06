@@ -5,6 +5,7 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
+import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { AlertLevel } from '@enums/alert.enum';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
@@ -13,11 +14,15 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * 数据清理服务（分层存储策略）
  *
  * 清理顺序（每日凌晨 3 点）:
- * 1. NULL agent_invocation/agent_steps/tool_calls（>N 天）— 释放 TOAST 空间，保留记录本身
+ * 1. NULL agent_invocation（>N 天）— 释放 TOAST 空间，保留记录本身；
+ *    agent_steps/tool_calls 不提前 NULL（工具统计兜底 RPC + badcase 证据需要 30 天窗口），
+ *    随第 3 步行删除统一回收
  * 2. DELETE chat_messages（>N 天）
  * 3. DELETE message_processing_records（>N 天）— 历史数据已聚合到 monitoring_hourly_stats
  * 4. DELETE monitoring_error_logs（>N 天）
  * 5. DELETE user_activity（>N 天）
+ * 6. reengagement_touch_records：NULL generated_text（>N 天）+ DELETE 整行（>M 天）
+ *    — 审计底账保留期比原始流水长
  *
  * monitoring_hourly_stats — 永久保留（~8760 行/年，约 5MB）
  *
@@ -27,6 +32,8 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * - DATA_CLEANUP_CHAT_DAYS             (默认 60)
  * - DATA_CLEANUP_USER_ACTIVITY_DAYS    (默认 365)
  * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认 30)
+ * - DATA_CLEANUP_TOUCH_TEXT_DAYS       (默认 30)
+ * - DATA_CLEANUP_TOUCH_RECORDS_DAYS    (默认 90)
  */
 @Injectable()
 export class DataCleanupService implements OnModuleInit {
@@ -37,6 +44,8 @@ export class DataCleanupService implements OnModuleInit {
   private readonly chatRetentionDays: number;
   private readonly userActivityRetentionDays: number;
   private readonly errorLogsRetentionDays: number;
+  private readonly touchTextRetentionDays: number;
+  private readonly touchRecordsRetentionDays: number;
 
   constructor(
     private readonly configService: ConfigService,
@@ -45,6 +54,7 @@ export class DataCleanupService implements OnModuleInit {
     private readonly messageProcessingService: MessageProcessingService,
     private readonly userHostingService: UserHostingService,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
+    private readonly reengagementTouchRepository: ReengagementTouchRepository,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {
@@ -63,6 +73,14 @@ export class DataCleanupService implements OnModuleInit {
     );
     this.errorLogsRetentionDays = parseInt(
       this.configService.get('DATA_CLEANUP_ERROR_LOGS_DAYS', '30'),
+      10,
+    );
+    this.touchTextRetentionDays = parseInt(
+      this.configService.get('DATA_CLEANUP_TOUCH_TEXT_DAYS', '30'),
+      10,
+    );
+    this.touchRecordsRetentionDays = parseInt(
+      this.configService.get('DATA_CLEANUP_TOUCH_RECORDS_DAYS', '90'),
       10,
     );
   }
@@ -108,7 +126,8 @@ export class DataCleanupService implements OnModuleInit {
       return;
     }
 
-    // 1. NULL agent_invocation/agent_steps/tool_calls（>7 天）— 释放 TOAST 空间
+    // 1. NULL agent_invocation（>7 天）— 释放 TOAST 空间
+    //    agent_steps/tool_calls 随第 3 步 30 天行删除回收（30 天窗口消费方依赖）
     await this.nullAgentInvocations();
 
     // 2. 清理过期聊天消息（>60 天）
@@ -122,6 +141,9 @@ export class DataCleanupService implements OnModuleInit {
 
     // 5. 清理过期用户活跃记录（默认 >365 天）
     await this.cleanupUserActivity();
+
+    // 6. 二次触发触达底账：NULL generated_text（>30 天）+ DELETE 整行（>90 天）
+    await this.cleanupReengagementTouches();
   }
 
   /**
@@ -143,7 +165,9 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
-   * 将过期 turn 级重字段（agent_invocation/agent_steps/tool_calls）置为 NULL（释放 TOAST 空间）
+   * 将过期 agent_invocation 置为 NULL（释放 TOAST 空间）。
+   * agent_steps/tool_calls 不在此提前清理：工具统计兜底 RPC（get_dashboard_tool_stats）
+   * 与 badcase 分析需要完整 30 天窗口，随行删除统一回收。
    */
   private async nullAgentInvocations(): Promise<void> {
     try {
@@ -247,6 +271,56 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
+   * 清理二次触发触达底账（reengagement_touch_records）
+   * - >30 天：NULL generated_text（单列大文本，事后追溯价值随时间衰减）
+   * - >90 天：DELETE 整行（审计底账保留期比 30 天原始流水更长）
+   * 两步独立 try/catch：NULL 化失败不阻断行删除。
+   */
+  private async cleanupReengagementTouches(): Promise<{
+    textsNulled: number;
+    recordsDeleted: number;
+  }> {
+    let textsNulled = 0;
+    let recordsDeleted = 0;
+
+    try {
+      textsNulled = await this.reengagementTouchRepository.nullExpiredGeneratedText(
+        this.touchTextRetentionDays,
+      );
+      if (textsNulled > 0) {
+        this.logger.log(
+          `[数据清理] 已 NULL 化 ${textsNulled} 条触达记录的 generated_text (${this.touchTextRetentionDays} 天前)`,
+        );
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[数据清理] NULL 化触达记录 generated_text 失败: ${message}`);
+      this.notifyCleanupFailure(
+        'null-reengagement-touch-texts',
+        'NULL 化触达记录 generated_text 失败',
+        error,
+      );
+    }
+
+    try {
+      recordsDeleted = await this.reengagementTouchRepository.cleanupExpiredRecords(
+        this.touchRecordsRetentionDays,
+      );
+      if (recordsDeleted > 0) {
+        this.logger.log(
+          `[数据清理] 已清理 ${recordsDeleted} 条过期触达记录 (${this.touchRecordsRetentionDays} 天前)`,
+        );
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[数据清理] 清理触达记录失败: ${message}`);
+      this.notifyCleanupFailure('cleanup-reengagement-touch-records', '清理触达记录失败', error);
+    }
+
+    return { textsNulled, recordsDeleted };
+  }
+
+  /**
    * 将卡住的 processing 记录标记为 timeout
    * 用于兜底修正长期未终态化的请求记录
    */
@@ -292,21 +366,41 @@ export class DataCleanupService implements OnModuleInit {
     processingRecords: number;
     userActivity: number;
     errorLogs: number;
+    reengagementTouchTexts: number;
+    reengagementTouchRecords: number;
   }> {
     let agentInvocations = 0;
     let chatMessages = 0;
     let processingRecords = 0;
     let userActivity = 0;
     let errorLogs = 0;
+    let reengagementTouchTexts = 0;
+    let reengagementTouchRecords = 0;
 
     if (this.isReadOnlyPreview()) {
       this.logger.warn('[数据清理] READ_ONLY_PREVIEW=true，跳过手动清理');
-      return { agentInvocations, chatMessages, processingRecords, userActivity, errorLogs };
+      return {
+        agentInvocations,
+        chatMessages,
+        processingRecords,
+        userActivity,
+        errorLogs,
+        reengagementTouchTexts,
+        reengagementTouchRecords,
+      };
     }
 
     if (!this.supabaseService.isAvailable()) {
       this.logger.warn('[数据清理] Supabase 不可用，跳过清理');
-      return { agentInvocations, chatMessages, processingRecords, userActivity, errorLogs };
+      return {
+        agentInvocations,
+        chatMessages,
+        processingRecords,
+        userActivity,
+        errorLogs,
+        reengagementTouchTexts,
+        reengagementTouchRecords,
+      };
     }
 
     try {
@@ -343,11 +437,24 @@ export class DataCleanupService implements OnModuleInit {
       this.logger.warn(`[数据清理] 手动清理错误日志失败: ${String(error)}`);
     }
 
+    // 内部已按步 try/catch，失败计 0 不抛出
+    const touches = await this.cleanupReengagementTouches();
+    reengagementTouchTexts = touches.textsNulled;
+    reengagementTouchRecords = touches.recordsDeleted;
+
     this.logger.log(
-      `[数据清理] 手动清理完成: agent_invocation ${agentInvocations} 条, 聊天消息 ${chatMessages} 条, 处理记录 ${processingRecords} 条, 用户活跃记录 ${userActivity} 条, 错误日志 ${errorLogs} 条`,
+      `[数据清理] 手动清理完成: agent_invocation ${agentInvocations} 条, 聊天消息 ${chatMessages} 条, 处理记录 ${processingRecords} 条, 用户活跃记录 ${userActivity} 条, 错误日志 ${errorLogs} 条, 触达文案 ${reengagementTouchTexts} 条, 触达记录 ${reengagementTouchRecords} 条`,
     );
 
-    return { agentInvocations, chatMessages, processingRecords, userActivity, errorLogs };
+    return {
+      agentInvocations,
+      chatMessages,
+      processingRecords,
+      userActivity,
+      errorLogs,
+      reengagementTouchTexts,
+      reengagementTouchRecords,
+    };
   }
 
   private isReadOnlyPreview(): boolean {

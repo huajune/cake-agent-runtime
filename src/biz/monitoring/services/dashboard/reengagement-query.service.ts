@@ -33,8 +33,10 @@ export class ReengagementQueryService {
     if (query.status) filters.status = query.status as ReengagementTouchStatus;
     if (query.scenarioCode) filters.scenarioCode = query.scenarioCode;
     if (query.sessionId) filters.sessionId = query.sessionId;
-    if (query.limit) filters.limit = parseInt(query.limit, 10);
-    if (query.offset) filters.offset = parseInt(query.offset, 10);
+    const limit = this.parsePositiveInt(query.limit);
+    if (limit !== undefined) filters.limit = limit;
+    const offset = this.parsePositiveInt(query.offset);
+    if (offset !== undefined) filters.offset = offset;
 
     this.logger.debug(`获取二次触发追溯记录: ${JSON.stringify(filters)}`);
     return this.repository.getRecords(filters);
@@ -69,8 +71,8 @@ export class ReengagementQueryService {
       scenarioCode: query.scenarioCode,
       sessionId: query.sessionId,
       pendingOnly: query.pendingOnly === 'true',
-      limit: query.limit ? parseInt(query.limit, 10) : undefined,
-      offset: query.offset ? parseInt(query.offset, 10) : undefined,
+      limit: this.parsePositiveInt(query.limit),
+      offset: this.parsePositiveInt(query.offset),
     });
     return this.groupCandidates(rows);
   }
@@ -126,6 +128,17 @@ export class ReengagementQueryService {
     }
     // 行序即 RPC 的候选人排序（latest_at 倒序），Map 保序
     return { total: rows[0]?.total_sessions ?? 0, candidates: Array.from(bySession.values()) };
+  }
+
+  /**
+   * 分页参数安全解析：非数字（NaN）或 <=0 时返回 undefined，由 Repository 兜底默认值。
+   * Controller 层无 ParseIntPipe，parseInt('abc') 的 NaN 会穿透 `??` 直达
+   * .range(NaN, ...) / p_limit，被 PostgREST 拒绝为 500。
+   */
+  private parsePositiveInt(value: string | undefined): number | undefined {
+    if (value === undefined || value === '') return undefined;
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
   // 日界必须用 Asia/Shanghai 口径（date.util 统一封装）——生产容器时区是 UTC，
