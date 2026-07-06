@@ -47,6 +47,23 @@ export function isHardFilteredLaborForm(value: string | null | undefined): boole
 }
 
 /**
+ * 兼职形态家族：候选人要"兼职"而附近岗位只标了 兼职+/小时工/暑假工 等细分标签时，
+ * 这些岗位对候选人而言是同一类工作形态，不该被严格匹配一刀切成"附近暂无兼职岗位"
+ * （badcase 6a334d26：季节工标签在岗位轴上稀缺，严格过滤会清空整个召回池）。
+ *
+ * 注意与"严格按岗位写的值介绍"口径的边界：家族放宽只影响**召回**（别让候选人错过
+ * 同形态岗位），不影响**介绍**——放宽命中的岗位必须按各自真实 laborForm 说明，
+ * 不得包装成候选人原话里的用工形式。全职不在家族内，仍然严格匹配。
+ */
+export const PART_TIME_LABOR_FORM_FAMILY = ['兼职', '兼职+', '小时工', '寒假工', '暑假工'] as const;
+
+/** 判断一个用工形式是否属于兼职形态家族（可参与空结果家族放宽）。 */
+export function isPartTimeFamilyLaborForm(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return (PART_TIME_LABOR_FORM_FAMILY as readonly string[]).includes(value);
+}
+
+/**
  * 判断岗位 laborForm 是否严格匹配候选人想要的细分用工形式。
  *
  * 用岗位 API 返回的 laborForm 字段做"展示规整后严格相等"比对——

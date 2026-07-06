@@ -154,6 +154,39 @@ describe('job-list search util', () => {
       expect(result.applied).toBe(true);
       expect(result.jobs).toEqual([]);
       expect(result.excluded).toHaveLength(3);
+      expect(result.relaxedToFamily).toBe(false);
+    });
+
+    it('兼职: strict-empty relaxes to part-time family instead of returning nothing', () => {
+      // 附近只有 兼职+/小时工/暑假工 标签：不能告诉要"兼职"的候选人附近没岗
+      const result = applyLaborFormConstraint(
+        [fullTimeJob, hourlyJob, plusJob, summerJob, noLaborForm],
+        '兼职',
+      );
+      expect(result.applied).toBe(true);
+      expect(result.relaxedToFamily).toBe(true);
+      expect(result.jobs).toEqual([hourlyJob, plusJob, summerJob]);
+      expect(result.excluded.map((e) => e.jobId)).toEqual([5, 4]);
+    });
+
+    it('暑假工: strict-empty relaxes to part-time family (badcase 6a334d26)', () => {
+      const result = applyLaborFormConstraint([fullTimeJob, partTimeJob, hourlyJob], '暑假工');
+      expect(result.applied).toBe(true);
+      expect(result.relaxedToFamily).toBe(true);
+      expect(result.jobs).toEqual([partTimeJob, hourlyJob]);
+    });
+
+    it('全职: strict-empty does NOT relax (full-time is not in the family)', () => {
+      const result = applyLaborFormConstraint([hourlyJob, partTimeJob], '全职');
+      expect(result.jobs).toEqual([]);
+      expect(result.relaxedToFamily).toBe(false);
+    });
+
+    it('兼职: family relax still empty when nearby jobs are all full-time', () => {
+      const result = applyLaborFormConstraint([fullTimeJob, noLaborForm], '兼职');
+      expect(result.applied).toBe(true);
+      expect(result.jobs).toEqual([]);
+      expect(result.relaxedToFamily).toBe(false);
     });
   });
 
