@@ -1,195 +1,126 @@
 {
-  "baseVersion": "5.31.0",
-  "nextVersion": "5.32.0",
+  "baseVersion": "5.32.0",
+  "nextVersion": "5.33.0",
   "updatedAt": "2026-07-07",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "426",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/426",
-      "title": "release/v5.32 再触达核验与追溯视图",
-      "author": "huajune",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "审查档案落库失败告警 + trace_id 唯一索引修复迁移",
-        "专业类规则误拦合规安抚话术修复",
-        "出站守卫假阳修复——拉群口径改完成时态+接地扫描全轮job_list+值对账容差",
-        "声称判定句粒度化，修复否定/疑问盲区五类假阳",
-        "review修复——否定豁免句内绕过/班次豁免真伪不分/专业安抚误拦/等通知相邻句盲区/悬空检测误杀钦定兜底",
-        "review修复——同轮取消改约竞态/Bull去重幻影fire_at/过渡期渠道身份补愈",
-        "review修复——重字段保留口径回拆/触达账本保留策略/分页NaN防御"
-      ],
-      "summary": [
-        "二次触发全生命周期落库追溯",
-        "二次触发追溯观测页面 /reengagement",
-        "专业筛选条件纳入敏感信息，与籍贯/民族同口径",
-        "审查档案落库失败告警 + trace_id 唯一索引修复迁移",
-        "补交悬空查岗承接句检测文件",
-        "配置页守卫/二次触发三态运行状态控件",
-        "追溯状态与事件名提取为枚举",
-        "专业类规则误拦合规安抚话术修复",
-        "悬空检测正则收窄 + 悬空档案干净归档",
-        "流水表 anon 列权限收紧 + 孤儿列/死索引清理 + NULL 化扩展到重字段",
-        "labor_form 严格过滤清空召回时按兼职家族放宽",
-        "触达状态机守卫 + 场景灰度按 key 合并",
-        "观测查询时区统一上海口径 + 看板冷启动防查询风暴",
-        "场景标签同源注册表 + 日期本地口径 + 配置页安全写入",
-        "出站守卫假阳修复——拉群口径改完成时态+接地扫描全轮job_list+值对账容差",
-        "语义档证据包读懂 markdown + repair 上限 P1 级 fail-open",
-        "完善报名后复聊核验与追溯视图",
-        "收紧追溯权限并补查询覆盖",
-        "补齐候选人身份映射",
-        "声称判定句粒度化，修复否定/疑问盲区五类假阳",
-        "渠道身份冗余落库 + 主动回合流水与追溯跳转",
-        "下午批次假阳四连修——否定盲区/班次需求复述/社保要求行/班次数字误当面试时间",
-        "review修复——否定豁免句内绕过/班次豁免真伪不分/专业安抚误拦/等通知相邻句盲区/悬空检测误杀钦定兜底",
-        "review修复——同轮取消改约竞态/Bull去重幻影fire_at/过渡期渠道身份补愈",
-        "review修复——重字段保留口径回拆/触达账本保留策略/分页NaN防御",
-        "补齐 v5.32 六处无覆盖改动的行为级测试",
-        "补齐 review 三处遗留——工单核验带 per-bot token/薪资容差限语境/duplicate 不覆…",
-        "收敛发版阻断问题",
-        "release/v5.32 再触达核验与追溯视图"
-      ],
-      "features": [],
-      "fixes": [
-        "审查档案落库失败告警 + trace_id 唯一索引修复迁移",
-        "专业类规则误拦合规安抚话术修复",
-        "出站守卫假阳修复——拉群口径改完成时态+接地扫描全轮job_list+值对账容差",
-        "声称判定句粒度化，修复否定/疑问盲区五类假阳",
-        "review修复——否定豁免句内绕过/班次豁免真伪不分/专业安抚误拦/等通知相邻句盲区/悬空检测误杀钦定兜底",
-        "review修复——同轮取消改约竞态/Bull去重幻影fire_at/过渡期渠道身份补愈",
-        "review修复——重字段保留口径回拆/触达账本保留策略/分页NaN防御"
-      ],
-      "optimizations": [
-        "触达状态机守卫 + 场景灰度按 key 合并"
-      ],
-      "ops": [
-        "二次触发全生命周期落库追溯",
-        "二次触发追溯观测页面 /reengagement",
-        "专业筛选条件纳入敏感信息，与籍贯/民族同口径",
-        "补交悬空查岗承接句检测文件",
-        "配置页守卫/二次触发三态运行状态控件",
-        "追溯状态与事件名提取为枚举",
-        "悬空检测正则收窄 + 悬空档案干净归档",
-        "流水表 anon 列权限收紧 + 孤儿列/死索引清理 + NULL 化扩展到重字段",
-        "labor_form 严格过滤清空召回时按兼职家族放宽",
-        "观测查询时区统一上海口径 + 看板冷启动防查询风暴",
-        "场景标签同源注册表 + 日期本地口径 + 配置页安全写入",
-        "语义档证据包读懂 markdown + repair 上限 P1 级 fail-open",
-        "完善报名后复聊核验与追溯视图",
-        "收紧追溯权限并补查询覆盖",
-        "补齐候选人身份映射",
-        "渠道身份冗余落库 + 主动回合流水与追溯跳转",
-        "下午批次假阳四连修——否定盲区/班次需求复述/社保要求行/班次数字误当面试时间",
-        "补齐 v5.32 六处无覆盖改动的行为级测试",
-        "补齐 review 三处遗留——工单核验带 per-bot token/薪资容差限语境/duplicate 不覆…",
-        "收敛发版阻断问题"
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`jest tests/agent/guardrail/output/hard-rules.service.spec.ts tests/agent/reengagement/follow-up.processor.spec.ts` — 233 passed",
-        "前后端 `tsc --noEmit` 通过",
-        "pre-push 钩子全量 ci:check 通过"
-      ]
-    },
-    {
-      "number": "429",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/429",
-      "title": "sync master into develop for v5.32.0",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "sync master into develop for v5.32.0"
-      ],
-      "summary": [
-        "sync master into develop for v5.32.0"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "sync master into develop for v5.32.0"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.31.0",
-    "date": "2026-07-03",
+    "version": "5.32.0",
+    "date": "2026-07-07",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "420",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/420",
-        "title": "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束",
-        "author": "ArielZhu",
-        "mergedAt": "2026-07-03",
+        "number": "426",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/426",
+        "title": "release/v5.32 再触达核验与追溯视图",
+        "author": "huajune",
+        "mergedAt": "2026-07-07",
         "businessUpdates": [
-          "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束"
+          "审查档案落库失败告警 + trace_id 唯一索引修复迁移",
+          "专业类规则误拦合规安抚话术修复",
+          "出站守卫假阳修复——拉群口径改完成时态+接地扫描全轮job_list+值对账容差",
+          "声称判定句粒度化，修复否定/疑问盲区五类假阳",
+          "review修复——否定豁免句内绕过/班次豁免真伪不分/专业安抚误拦/等通知相邻句盲区/悬空检测误杀钦定兜底",
+          "review修复——同轮取消改约竞态/Bull去重幻影fire_at/过渡期渠道身份补愈",
+          "review修复——重字段保留口径回拆/触达账本保留策略/分页NaN防御"
         ],
         "summary": [
-          "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束"
+          "二次触发全生命周期落库追溯",
+          "二次触发追溯观测页面 /reengagement",
+          "专业筛选条件纳入敏感信息，与籍贯/民族同口径",
+          "审查档案落库失败告警 + trace_id 唯一索引修复迁移",
+          "补交悬空查岗承接句检测文件",
+          "配置页守卫/二次触发三态运行状态控件",
+          "追溯状态与事件名提取为枚举",
+          "专业类规则误拦合规安抚话术修复",
+          "悬空检测正则收窄 + 悬空档案干净归档",
+          "流水表 anon 列权限收紧 + 孤儿列/死索引清理 + NULL 化扩展到重字段",
+          "labor_form 严格过滤清空召回时按兼职家族放宽",
+          "触达状态机守卫 + 场景灰度按 key 合并",
+          "观测查询时区统一上海口径 + 看板冷启动防查询风暴",
+          "场景标签同源注册表 + 日期本地口径 + 配置页安全写入",
+          "出站守卫假阳修复——拉群口径改完成时态+接地扫描全轮job_list+值对账容差",
+          "语义档证据包读懂 markdown + repair 上限 P1 级 fail-open",
+          "完善报名后复聊核验与追溯视图",
+          "收紧追溯权限并补查询覆盖",
+          "补齐候选人身份映射",
+          "声称判定句粒度化，修复否定/疑问盲区五类假阳",
+          "渠道身份冗余落库 + 主动回合流水与追溯跳转",
+          "下午批次假阳四连修——否定盲区/班次需求复述/社保要求行/班次数字误当面试时间",
+          "review修复——否定豁免句内绕过/班次豁免真伪不分/专业安抚误拦/等通知相邻句盲区/悬空检测误杀钦定兜底",
+          "review修复——同轮取消改约竞态/Bull去重幻影fire_at/过渡期渠道身份补愈",
+          "review修复——重字段保留口径回拆/触达账本保留策略/分页NaN防御",
+          "补齐 v5.32 六处无覆盖改动的行为级测试",
+          "补齐 review 三处遗留——工单核验带 per-bot token/薪资容差限语境/duplicate 不覆…",
+          "收敛发版阻断问题",
+          "release/v5.32 再触达核验与追溯视图"
         ],
-        "features": [
-          "结构化输出 schema 去掉 Anthropic 不支持的范围/长度约束"
+        "features": [],
+        "fixes": [
+          "审查档案落库失败告警 + trace_id 唯一索引修复迁移",
+          "专业类规则误拦合规安抚话术修复",
+          "出站守卫假阳修复——拉群口径改完成时态+接地扫描全轮job_list+值对账容差",
+          "声称判定句粒度化，修复否定/疑问盲区五类假阳",
+          "review修复——否定豁免句内绕过/班次豁免真伪不分/专业安抚误拦/等通知相邻句盲区/悬空检测误杀钦定兜底",
+          "review修复——同轮取消改约竞态/Bull去重幻影fire_at/过渡期渠道身份补愈",
+          "review修复——重字段保留口径回拆/触达账本保留策略/分页NaN防御"
         ],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [],
+        "optimizations": [
+          "触达状态机守卫 + 场景灰度按 key 合并"
+        ],
+        "ops": [
+          "二次触发全生命周期落库追溯",
+          "二次触发追溯观测页面 /reengagement",
+          "专业筛选条件纳入敏感信息，与籍贯/民族同口径",
+          "补交悬空查岗承接句检测文件",
+          "配置页守卫/二次触发三态运行状态控件",
+          "追溯状态与事件名提取为枚举",
+          "悬空检测正则收窄 + 悬空档案干净归档",
+          "流水表 anon 列权限收紧 + 孤儿列/死索引清理 + NULL 化扩展到重字段",
+          "labor_form 严格过滤清空召回时按兼职家族放宽",
+          "观测查询时区统一上海口径 + 看板冷启动防查询风暴",
+          "场景标签同源注册表 + 日期本地口径 + 配置页安全写入",
+          "语义档证据包读懂 markdown + repair 上限 P1 级 fail-open",
+          "完善报名后复聊核验与追溯视图",
+          "收紧追溯权限并补查询覆盖",
+          "补齐候选人身份映射",
+          "渠道身份冗余落库 + 主动回合流水与追溯跳转",
+          "下午批次假阳四连修——否定盲区/班次需求复述/社保要求行/班次数字误当面试时间",
+          "补齐 v5.32 六处无覆盖改动的行为级测试",
+          "补齐 review 三处遗留——工单核验带 per-bot token/薪资容差限语境/duplicate 不覆…",
+          "收敛发版阻断问题"
+        ],
         "config": [],
-        "envFiles": [],
+        "envFiles": [
+          ".env.example"
+        ],
         "verification": [
-          "tsc 0 错误",
-          "`tests/evaluation` 2 套件 / 34 测试全过（pre-push 全量 ci:check 亦通过）"
+          "`jest tests/agent/guardrail/output/hard-rules.service.spec.ts tests/agent/reengagement/follow-up.processor.spec.ts` — 233 passed",
+          "前后端 `tsc --noEmit` 通过",
+          "pre-push 钩子全量 ci:check 通过"
         ]
       },
       {
-        "number": "421",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/421",
-        "title": "守卫上线首日误伤修复 + 多岗位报名 + 出站守卫审查全程档案",
+        "number": "429",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/429",
+        "title": "sync master into develop for v5.32.0",
         "author": "ArielZhu",
-        "mergedAt": "2026-07-03",
+        "mergedAt": "2026-07-07",
         "businessUpdates": [
-          "支持多岗位并行报名，软查重收敛到同岗位维度",
-          "移除 Anthropic 结构化输出不支持的 schema 约束",
-          "上线首日误伤修复 + 工具调用文本泄漏封堵"
+          "sync master into develop for v5.32.0"
         ],
         "summary": [
-          "上线首日误伤修复 + 工具调用文本泄漏封堵",
-          "precheck_blocked_booking_claim 只认真正阻断态",
-          "支持多岗位并行报名，软查重收敛到同岗位维度",
-          "移除 Anthropic 结构化输出不支持的 schema 约束",
-          "出站守卫审查全程档案落库并在详情页还原全过程",
-          "收紧误伤豁免正则，裸词豁免改语境锚定（PR #421 review）",
-          "收口分层边界并补 guardrail 审查档案",
-          "守卫上线首日误伤修复 + 多岗位报名 + 出站守卫审查全程档案"
+          "sync master into develop for v5.32.0"
         ],
-        "features": [
-          "支持多岗位并行报名，软查重收敛到同岗位维度",
-          "移除 Anthropic 结构化输出不支持的 schema 约束"
-        ],
-        "fixes": [
-          "上线首日误伤修复 + 工具调用文本泄漏封堵"
-        ],
+        "features": [],
+        "fixes": [],
         "optimizations": [],
         "ops": [
-          "precheck_blocked_booking_claim 只认真正阻断态",
-          "出站守卫审查全程档案落库并在详情页还原全过程",
-          "收紧误伤豁免正则，裸词豁免改语境锚定（PR #421 review）",
-          "收口分层边界并补 guardrail 审查档案"
+          "sync master into develop for v5.32.0"
         ],
         "config": [],
         "envFiles": [],
-        "verification": [
-          "全量 jest：304 套件 / 4374 通过",
-          "后端 `tsc --noEmit` 与 web `tsc -b` 通过",
-          "守卫档案链路已在本地 + 测试库端到端验证（写入 → 详情 API → Dashboard 渲染）"
-        ]
+        "verification": []
       }
     ]
   }
