@@ -14,12 +14,13 @@
 **预计版本**: `v9.0.0`
 **最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #464 发版链路 bot PR 自动放行，CI/AI review 并发去重
 - PR #464 发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**
 - PR #464 CI 与 AI review 增加并发去重，同分支旧 run 自动取消
+- PR #467 放开版本元数据 PR 的 CI 触发
 
 ### 新功能
 - 无
@@ -43,6 +44,7 @@
 - PR #464 **未配置 `RELEASE_BOT_TOKEN` 时行为与现状完全一致**（dispatch 兜底 + 人工合并）
 - PR #464 CI 与 AI review 增加并发去重，同分支旧 run 自动取消
 - PR #464 发版链路 bot PR 自动放行，CI/AI review 并发去重
+- PR #467 放开版本元数据 PR 的 CI 触发
 
 ### 配置变更
 - 无
@@ -54,6 +56,11 @@
 - PR #464 三个 workflow YAML 语法校验通过
 - PR #464 无 PAT 回退路径逐段核对与现行为一致
 - PR #464 预期效果：发版全链路（feature PR 合并 → 生产部署完成）从多次人工盯梳收敛为 1 次合并操作 + ~15 分钟自动级联
+- PR #467 `git diff --check`
+- PR #467 `pnpm install --frozen-lockfile`
+- PR #467 pre-push `pnpm run ci:check` 通过
+- PR #467 327/328 test suites（1 skipped）
+- PR #467 4682 passed / 4688 total（6 skipped）
 <!-- release:pending:end -->
 
 ## [8.0.0] - 2026-07-07

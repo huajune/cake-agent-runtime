@@ -46,6 +46,34 @@
         "无 PAT 回退路径逐段核对与现行为一致",
         "预期效果：发版全链路（feature PR 合并 → 生产部署完成）从多次人工盯梳收敛为 1 次合并操作 + ~15 分钟自动级联"
       ]
+    },
+    {
+      "number": "467",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/467",
+      "title": "放开版本元数据 PR 的 CI 触发",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-07",
+      "businessUpdates": [
+        "放开版本元数据 PR 的 CI 触发"
+      ],
+      "summary": [
+        "放开版本元数据 PR 的 CI 触发"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "放开版本元数据 PR 的 CI 触发"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`git diff --check`",
+        "`pnpm install --frozen-lockfile`",
+        "pre-push `pnpm run ci:check` 通过",
+        "327/328 test suites（1 skipped）",
+        "4682 passed / 4688 total（6 skipped）"
+      ]
     }
   ],
   "lastRelease": {
