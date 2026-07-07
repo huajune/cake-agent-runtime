@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [6.0.0] - 2026-07-07
 
-**预计版本**: `v6.0.0`
-**最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #441 调整功能发布升大版本规则
@@ -56,7 +52,6 @@
 - PR #443 `pnpm exec jest tests/agent/reengagement/follow-up.processor.spec.ts tests/biz/monitoring/services/tracking/reengagement-tracking.service.spec.ts --runInBand`
 - PR #443 `pnpm run typecheck`
 - PR #443 pre-push `pnpm run ci:check` 全量通过：320 个 test suites passed，4637 个 tests passed。
-<!-- release:pending:end -->
 
 ## [5.33.0] - 2026-07-07
 
