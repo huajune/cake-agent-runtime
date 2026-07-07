@@ -75,12 +75,13 @@ export class AnalyticsController {
 
   /**
    * 二次触发候选人视角：一行一个候选人，带各场景当前态与下一次待发任务
-   * GET /analytics/reengagement-candidates?startDate=&endDate=&scenarioCode=&sessionId=&pendingOnly=&limit=&offset=
+   * GET /analytics/reengagement-candidates?startDate=&endDate=&status=&scenarioCode=&sessionId=&pendingOnly=&limit=&offset=
    */
   @Get('reengagement-candidates')
   async getReengagementCandidates(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('status') status?: string,
     @Query('scenarioCode') scenarioCode?: string,
     @Query('sessionId') sessionId?: string,
     @Query('pendingOnly') pendingOnly?: string,
@@ -90,6 +91,7 @@ export class AnalyticsController {
     return this.reengagementQueryService.getCandidateOverview({
       startDate,
       endDate,
+      status,
       scenarioCode,
       sessionId,
       pendingOnly,

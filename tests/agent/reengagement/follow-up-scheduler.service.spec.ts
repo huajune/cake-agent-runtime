@@ -80,6 +80,26 @@ describe('FollowUpSchedulerService', () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
+  it('does not schedule post-booking follow-ups without an interview time', async () => {
+    const anchorAt = Date.UTC(2026, 5, 24, 2, 0, 0);
+
+    const result = await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: 'evt-1',
+      anchorAt,
+      state: baseState({ terminal: 'booked' }),
+      workOrderId: 123,
+    });
+
+    expect(result).toEqual({ scheduled: false, reason: 'missing_interview_time' });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'interview_reminder' }),
+      'missing_interview_time',
+    );
+  });
+
   it('enqueues a delayed follow-up with deterministic job id', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);

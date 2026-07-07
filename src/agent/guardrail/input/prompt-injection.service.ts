@@ -20,7 +20,7 @@ export class PromptInjectionService {
     /ignore\s+(all\s+)?above/i,
     /disregard\s+(all\s+)?previous/i,
     /forget\s+(all\s+)?(your\s+)?instructions/i,
-    /你现在是(?!.*(?:求职者|候选人|面试者))/,
+    /你现在是(?:一个|一名|位)?(?:黑客|DAN|开发者模式|无限制|无约束|没有限制|不受限制|无需遵守|无视规则)/i,
     /从现在起你(的角色|是)/,
     /假装你是/,
     /扮演一个/,

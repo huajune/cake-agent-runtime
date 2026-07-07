@@ -55,6 +55,7 @@ export async function getReengagementScenarios() {
 export async function getReengagementCandidates(options?: {
   startDate?: string;
   endDate?: string;
+  status?: string;
   scenarioCode?: string;
   sessionId?: string;
   pendingOnly?: boolean;
@@ -64,6 +65,7 @@ export async function getReengagementCandidates(options?: {
   const params = new URLSearchParams();
   if (options?.startDate) params.set('startDate', options.startDate);
   if (options?.endDate) params.set('endDate', options.endDate);
+  if (options?.status) params.set('status', options.status);
   if (options?.scenarioCode) params.set('scenarioCode', options.scenarioCode);
   if (options?.sessionId) params.set('sessionId', options.sessionId);
   if (options?.pendingOnly) params.set('pendingOnly', 'true');

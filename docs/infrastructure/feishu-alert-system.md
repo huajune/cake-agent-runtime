@@ -7,11 +7,11 @@
 
 ## 飞书群组
 
-| 群名 | Channel Key | 用途 | 环境变量 |
-|------|-------------|------|----------|
-| 蛋糕异常告警群 | `ALERT` | 系统异常、投递失败、Prompt注入、业务指标告警 | `FEISHU_ALERT_WEBHOOK_URL` / `FEISHU_ALERT_SECRET` |
-| 蛋糕群运营通知群 | `MESSAGE_NOTIFICATION` | 群满员、群任务预览/汇总 | `MESSAGE_NOTIFICATION_WEBHOOK_URL` / `MESSAGE_NOTIFICATION_WEBHOOK_SECRET` |
-| 蛋糕私聊监控群 | `PRIVATE_CHAT_MONITOR` | 面试预约成功/失败 | `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET` |
+| 群名             | Channel Key            | 用途                                         | 环境变量                                                                   |
+| ---------------- | ---------------------- | -------------------------------------------- | -------------------------------------------------------------------------- |
+| 蛋糕异常告警群   | `ALERT`                | 系统异常、投递失败、Prompt注入、业务指标告警 | `FEISHU_ALERT_WEBHOOK_URL` / `FEISHU_ALERT_SECRET`                         |
+| 蛋糕群运营通知群 | `MESSAGE_NOTIFICATION` | 群满员、群任务预览/汇总                      | `MESSAGE_NOTIFICATION_WEBHOOK_URL` / `MESSAGE_NOTIFICATION_WEBHOOK_SECRET` |
+| 蛋糕私聊监控群   | `PRIVATE_CHAT_MONITOR` | 面试预约成功/失败/取消                       | `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET` |
 
 配置文件：`src/infra/feishu/constants/constants.ts`
 
@@ -19,33 +19,34 @@
 
 ### 蛋糕异常告警群（ALERT）
 
-| 通知类型 | @人 | 触发场景 | 代码位置 |
-|----------|-----|----------|----------|
-| 降级兜底响应 | @对应负责人（fallback @all） | Agent 返回降级响应 | `pipeline.service.ts` → `sendFallbackAlert()` |
-| 投递彻底失败 | @all | 用户完全收不到回复（CRITICAL） | `pipeline.service.ts` → 降级发送失败的 catch |
-| Agent 调试报错 | 无 | `/agent/debug-chat` 异常 | `agent.controller.ts` |
-| Prompt 注入检测 | 无 | 用户消息命中注入模式 | `input-guard.service.ts` |
-| 消息处理异常 | 无 | Agent/消息处理失败（投递前） | `pipeline.service.ts` → `handleProcessingError()` |
-| 图片识别失败 | 无 | Vision 模型连续 3 次失败 | `image-description.service.ts` |
-| 成功率告警 | 无 | 成功率低于 80% | `analytics-alert.service.ts` |
-| 响应时间告警 | 无 | 平均响应 >60s | `analytics-alert.service.ts` |
-| 队列深度告警 | 无 | 队列积压 >20 | `analytics-alert.service.ts` |
-| 错误率告警 | 无 | 每小时错误 >10 | `analytics-alert.service.ts` |
+| 通知类型        | @人                          | 触发场景                       | 代码位置                                          |
+| --------------- | ---------------------------- | ------------------------------ | ------------------------------------------------- |
+| 降级兜底响应    | @对应负责人（fallback @all） | Agent 返回降级响应             | `pipeline.service.ts` → `sendFallbackAlert()`     |
+| 投递彻底失败    | @all                         | 用户完全收不到回复（CRITICAL） | `pipeline.service.ts` → 降级发送失败的 catch      |
+| Agent 调试报错  | 无                           | `/agent/debug-chat` 异常       | `agent.controller.ts`                             |
+| Prompt 注入检测 | 无                           | 用户消息命中注入模式           | `input-guard.service.ts`                          |
+| 消息处理异常    | 无                           | Agent/消息处理失败（投递前）   | `pipeline.service.ts` → `handleProcessingError()` |
+| 图片识别失败    | 无                           | Vision 模型连续 3 次失败       | `image-description.service.ts`                    |
+| 成功率告警      | 无                           | 成功率低于 80%                 | `analytics-alert.service.ts`                      |
+| 响应时间告警    | 无                           | 平均响应 >60s                  | `analytics-alert.service.ts`                      |
+| 队列深度告警    | 无                           | 队列积压 >20                   | `analytics-alert.service.ts`                      |
+| 错误率告警      | 无                           | 每小时错误 >10                 | `analytics-alert.service.ts`                      |
 
 ### 蛋糕群运营通知群（MESSAGE_NOTIFICATION）
 
-| 通知类型 | @人 | 触发场景 | 代码位置 |
-|----------|-----|----------|----------|
-| 群满员告警 | @高雅琪 | 群成员 >=40 或 API 返回 -10 | `invite-to-group.tool.ts` |
-| 群任务预览 | 无 | 群发前 dry-run | `notification-sender.service.ts` → `sendFeishuPreview()` |
-| 群任务执行汇总 | @高雅琪 | 群发完成后 | `notification-sender.service.ts` → `reportToFeishu()` |
+| 通知类型       | @人     | 触发场景                    | 代码位置                                                 |
+| -------------- | ------- | --------------------------- | -------------------------------------------------------- |
+| 群满员告警     | @高雅琪 | 群成员 >=40 或 API 返回 -10 | `invite-to-group.tool.ts`                                |
+| 群任务预览     | 无      | 群发前 dry-run              | `notification-sender.service.ts` → `sendFeishuPreview()` |
+| 群任务执行汇总 | @高雅琪 | 群发完成后                  | `notification-sender.service.ts` → `reportToFeishu()`    |
 
 ### 蛋糕私聊监控群（PRIVATE_CHAT_MONITOR）
 
-| 通知类型 | @人 | 触发场景 | 代码位置 |
-|----------|-----|----------|----------|
-| 面试预约成功 | @对应负责人（fallback @all） | 预约 API 返回成功 | `duliday-interview-booking.tool.ts` |
-| 面试预约失败 | @对应负责人（fallback @all） | 预约 API 失败或异常 | `duliday-interview-booking.tool.ts` |
+| 通知类型     | @人                          | 触发场景                                                         | 代码位置                            |
+| ------------ | ---------------------------- | ---------------------------------------------------------------- | ----------------------------------- |
+| 面试预约成功 | @对应负责人（fallback @all） | 预约 API 返回成功                                                | `duliday-interview-booking.tool.ts` |
+| 面试预约失败 | @对应负责人（fallback @all） | 预约 API 失败或异常                                              | `duliday-interview-booking.tool.ts` |
+| 面试预约取消 | @对应负责人（fallback @all） | 候选人主动取消已确认预约，取消工单成功后提醒人工确认是否同步门店 | `duliday-cancel-work-order.tool.ts` |
 
 ## @人处理流程
 
@@ -69,16 +70,16 @@
 
 配置文件：`src/infra/feishu/constants/receivers.ts`
 
-| bot wxid | 小组 | bot 昵称 | @飞书用户 |
-|----------|------|----------|-----------|
-| `1688855974513959` | 琪琪组 | 高雅琪 | GAO_YAQI |
-| `1688854747775509` | 艾酱组 | 朱洁 | AI_JIANG |
-| `1688855171908166` | 宇航组 | 李宇杭 | LI_YUHANG |
-| `1688854363869800` | 东升组 | 祝东升 | ZHU_DONGSHENG |
-| `1688857592548257` | 东升组 | HeMin | ZHU_DONGSHENG |
-| `1688854359801821` | 南瓜组 | 李涵婷 | NAN_GUA |
-| `1688854263771949` | 盼盼组 | 吴盼盼 | PAN_PAN |
-| `1688855753660960` | 艾酱测试组 | 郭晓阳 | GUO_XIAOYANG |
+| bot wxid           | 小组       | bot 昵称 | @飞书用户     |
+| ------------------ | ---------- | -------- | ------------- |
+| `1688855974513959` | 琪琪组     | 高雅琪   | GAO_YAQI      |
+| `1688854747775509` | 艾酱组     | 朱洁     | AI_JIANG      |
+| `1688855171908166` | 宇航组     | 李宇杭   | LI_YUHANG     |
+| `1688854363869800` | 东升组     | 祝东升   | ZHU_DONGSHENG |
+| `1688857592548257` | 东升组     | HeMin    | ZHU_DONGSHENG |
+| `1688854359801821` | 南瓜组     | 李涵婷   | NAN_GUA       |
+| `1688854263771949` | 盼盼组     | 吴盼盼   | PAN_PAN       |
+| `1688855753660960` | 艾酱测试组 | 郭晓阳   | GUO_XIAOYANG  |
 
 ### 使用此映射的场景
 
@@ -98,15 +99,15 @@
 
 配置文件：`src/infra/feishu/constants/receivers.ts`
 
-| Key | open_id | 姓名 |
-|-----|---------|------|
-| `AI_JIANG` | `ou_72e8d17db5dab36e4feeddfccaa6568d` | 艾酱 |
-| `GAO_YAQI` | `ou_54b8b053840d689ae42d3ab6b61800d8` | 高雅琪 |
-| `NAN_GUA` | `ou_954fb7341fd7fdd320de2d419d26df19` | 南瓜 |
-| `LI_YUHANG` | `ou_e6868065cb0baa3c0304441a6a8c16e7` | 李宇航 |
+| Key             | open_id                               | 姓名   |
+| --------------- | ------------------------------------- | ------ |
+| `AI_JIANG`      | `ou_72e8d17db5dab36e4feeddfccaa6568d` | 艾酱   |
+| `GAO_YAQI`      | `ou_54b8b053840d689ae42d3ab6b61800d8` | 高雅琪 |
+| `NAN_GUA`       | `ou_954fb7341fd7fdd320de2d419d26df19` | 南瓜   |
+| `LI_YUHANG`     | `ou_e6868065cb0baa3c0304441a6a8c16e7` | 李宇航 |
 | `ZHU_DONGSHENG` | `ou_9834f6ccffb3abdbeeabbc28581af6df` | 祝东升 |
-| `PAN_PAN` | `ou_12cf003c378f89299f8ccf32252c22c0` | 盼盼 |
-| `GUO_XIAOYANG` | `ou_6d3f217a88b5033ff256c64492e52ae7` | 小阳 |
+| `PAN_PAN`       | `ou_12cf003c378f89299f8ccf32252c22c0` | 盼盼   |
+| `GUO_XIAOYANG`  | `ou_6d3f217a88b5033ff256c64492e52ae7` | 小阳   |
 
 ### 获取 open_id
 
@@ -131,10 +132,10 @@ curl -X POST 'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?use
 
 防止告警刷屏，对 ALERT 通道的告警做节流控制：
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `ALERT_THROTTLE.WINDOW_MS` | 5 分钟 | 节流窗口时长 |
-| `ALERT_THROTTLE.MAX_COUNT` | 3 次 | 窗口内最大发送次数 |
+| 配置项                     | 默认值 | 说明               |
+| -------------------------- | ------ | ------------------ |
+| `ALERT_THROTTLE.WINDOW_MS` | 5 分钟 | 节流窗口时长       |
+| `ALERT_THROTTLE.MAX_COUNT` | 3 次   | 窗口内最大发送次数 |
 
 **节流键**：`${errorType}:${scenario}`，例如同一个 `agent_fallback:candidate-consultation` 类型的告警，5 分钟内最多发送 3 次。
 
@@ -142,18 +143,18 @@ curl -X POST 'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?use
 
 ## 相关代码
 
-| 文件 | 职责 |
-|------|------|
-| `src/infra/feishu/constants/constants.ts` | Webhook 群通道配置、节流配置 |
-| `src/infra/feishu/constants/receivers.ts` | 接收人配置、BOT_TO_RECEIVER 映射 |
-| `src/infra/feishu/services/alert.service.ts` | 告警发送、节流控制 |
-| `src/infra/feishu/services/webhook.service.ts` | Webhook 签名、HTTP 发送 |
-| `src/infra/feishu/services/card-builder.service.ts` | 飞书卡片构建（Markdown、@人） |
-| `src/channels/wecom/message/services/pipeline.service.ts` | 降级告警、投递失败告警触发点 |
-| `src/tools/duliday-interview-booking.tool.ts` | 面试预约通知 |
-| `src/tools/invite-to-group.tool.ts` | 群满员告警 |
-| `src/biz/group-task/services/notification-sender.service.ts` | 群任务预览/汇总通知 |
-| `src/biz/monitoring/services/analytics/analytics-alert.service.ts` | 业务指标告警 |
+| 文件                                                               | 职责                             |
+| ------------------------------------------------------------------ | -------------------------------- |
+| `src/infra/feishu/constants/constants.ts`                          | Webhook 群通道配置、节流配置     |
+| `src/infra/feishu/constants/receivers.ts`                          | 接收人配置、BOT_TO_RECEIVER 映射 |
+| `src/infra/feishu/services/alert.service.ts`                       | 告警发送、节流控制               |
+| `src/infra/feishu/services/webhook.service.ts`                     | Webhook 签名、HTTP 发送          |
+| `src/infra/feishu/services/card-builder.service.ts`                | 飞书卡片构建（Markdown、@人）    |
+| `src/channels/wecom/message/services/pipeline.service.ts`          | 降级告警、投递失败告警触发点     |
+| `src/tools/duliday-interview-booking.tool.ts`                      | 面试预约通知                     |
+| `src/tools/invite-to-group.tool.ts`                                | 群满员告警                       |
+| `src/biz/group-task/services/notification-sender.service.ts`       | 群任务预览/汇总通知              |
+| `src/biz/monitoring/services/analytics/analytics-alert.service.ts` | 业务指标告警                     |
 
 ## 故障排查
 

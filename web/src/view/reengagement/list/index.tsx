@@ -34,7 +34,6 @@ export default function ReengagementPage() {
   const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
   const [scenarioFilter, setScenarioFilter] = useState<string>(ALL_VALUE);
   const [searchSessionId, setSearchSessionId] = useState<string>('');
-  const [pendingOnly, setPendingOnly] = useState(false);
   const [selectedTouchKey, setSelectedTouchKey] = useState<string | null>(null);
 
   // 分页状态：offset 分页 + 无限滚动累加
@@ -89,14 +88,6 @@ export default function ReengagementPage() {
   const handleViewModeChange = useCallback(
     (mode: ReengagementViewMode) => {
       setViewMode(mode);
-      resetPaging();
-    },
-    [resetPaging],
-  );
-
-  const handlePendingOnlyChange = useCallback(
-    (value: boolean) => {
-      setPendingOnly(value);
       resetPaging();
     },
     [resetPaging],
@@ -180,9 +171,9 @@ export default function ReengagementPage() {
   } = useReengagementCandidates({
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
+    status: activeStatus,
     scenarioCode: activeScenario,
     sessionId: activeSessionId,
-    pendingOnly,
     limit: CANDIDATE_PAGE_SIZE,
     offset: (candidatePage - 1) * CANDIDATE_PAGE_SIZE,
     enabled: viewMode === 'candidates',
@@ -260,8 +251,6 @@ export default function ReengagementPage() {
         onScenarioFilterChange={handleScenarioFilterChange}
         searchSessionId={searchSessionId}
         onSearchSessionIdChange={handleSearchSessionIdChange}
-        pendingOnly={pendingOnly}
-        onPendingOnlyChange={handlePendingOnlyChange}
         allValue={ALL_VALUE}
         scenarioOptions={scenarioOptions}
       />
@@ -349,6 +338,7 @@ export default function ReengagementPage() {
         <ReengagementDetailDrawer
           touchKey={selectedTouchKey}
           scenarioLabels={scenarioLabels}
+          onTouchSelect={setSelectedTouchKey}
           onClose={() => setSelectedTouchKey(null)}
         />
       )}
