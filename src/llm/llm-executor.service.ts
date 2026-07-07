@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Output, generateText, streamText } from 'ai';
 import { RegistryService } from '@providers/registry.service';
 import { ReliableService } from '@providers/reliable.service';
 import { RouterService } from '@providers/router.service';
 import { supportsVision, type ReliableConfig } from '@providers/types';
 import type { AgentError } from '@shared-types/agent-error.types';
+import { AgentTracerService } from '@observability/agent-tracer.service';
 import { z } from 'zod';
 import { type LlmThinkingConfig, ModelRole } from './llm.types';
 
@@ -55,6 +56,8 @@ export class LlmExecutorService {
     private readonly router: RouterService,
     private readonly registry: RegistryService,
     private readonly reliable: ReliableService,
+    @Optional()
+    private readonly tracer?: AgentTracerService,
   ) {}
 
   async generate(options: LlmGenerateOptions): Promise<Awaited<ReturnType<typeof generateText>>> {
@@ -66,6 +69,7 @@ export class LlmExecutorService {
 
     await this.emitPreparedRequest(plan, routeOptions, thinking, onPreparedRequest);
 
+    let previousModelId: string | undefined;
     for (const modelId of this.iterateCandidateModels(plan)) {
       if (requiresVisionInput && !supportsVision(modelId)) {
         attempts.push(`${modelId}: 模型不支持图片输入`);
@@ -80,6 +84,9 @@ export class LlmExecutorService {
       const providerOptions = this.buildProviderOptions(modelId, thinking);
       const params = this.buildGenerateParams(routeOptions, providerOptions);
       const retryConfig = this.reliable.getRetryConfig(config);
+
+      this.emitModelAttempt(plan, modelId, previousModelId, attempts.at(-1));
+      previousModelId = modelId;
 
       for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt += 1) {
         try {
@@ -138,6 +145,7 @@ export class LlmExecutorService {
     await this.emitPreparedRequest(plan, routeOptions, thinking, onPreparedRequest);
 
     let lastError: Error | undefined;
+    let previousModelId: string | undefined;
     for (const modelId of this.iterateCandidateModels(plan)) {
       if (requiresVisionInput && !supportsVision(modelId)) {
         lastError = new Error(`模型不支持图片输入: ${modelId}`);
@@ -149,6 +157,8 @@ export class LlmExecutorService {
       }
 
       try {
+        this.emitModelAttempt(plan, modelId, previousModelId, lastError?.message);
+        previousModelId = modelId;
         return streamText({
           ...this.buildStreamParams(routeOptions, this.buildProviderOptions(modelId, thinking)),
           model: this.registry.resolve(modelId),
@@ -224,6 +234,27 @@ export class LlmExecutorService {
 
   private iterateCandidateModels(plan: ExecutionPlan): string[] {
     return Array.from(new Set([plan.primaryModelId, ...plan.fallbackModelIds].filter(Boolean)));
+  }
+
+  private emitModelAttempt(
+    plan: ExecutionPlan,
+    modelId: string,
+    previousModelId: string | undefined,
+    reason?: string,
+  ): void {
+    this.tracer?.emit({
+      type: 'model_call',
+      modelId,
+      role: String(plan.role),
+    });
+
+    if (modelId === plan.primaryModelId) return;
+    this.tracer?.emit({
+      type: 'model_fallback',
+      fromModel: previousModelId ?? plan.primaryModelId,
+      toModel: modelId,
+      reason: reason ?? 'previous_model_failed',
+    });
   }
 
   private hasVisionInput(messages: LlmGenerateOptions['messages']): boolean {

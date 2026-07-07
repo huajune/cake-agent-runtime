@@ -40,6 +40,10 @@ export class GuardrailReviewService {
     return this.repository.findByTraceId(traceId);
   }
 
+  async cleanupExpiredReviews(retentionDays: number): Promise<number> {
+    return this.repository.cleanupExpiredReviews(retentionDays);
+  }
+
   /**
    * 落库失败必须可见（守卫命中档案是低频高价值数据，静默丢失过一次坏 3 天没人发现）：
    * 发飞书告警群 + 落 monitoring_error_logs（AlertNotifier 自带 5 分钟/3 次节流与持久化）。

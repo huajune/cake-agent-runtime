@@ -19,7 +19,7 @@ import { MessageProcessingService } from './services/message-processing.service'
     GuardrailReviewService,
     MessageProcessingService,
   ],
-  // GuardrailReviewService 导出给 agent runner（invokeReviewed 落审查档案）使用。
+  // GuardrailReviewService 导出给 agent runner（invokeReviewed 落审查档案）和清理任务使用。
   exports: [ChatSessionService, MessageProcessingService, GuardrailReviewService],
 })
 export class BizMessageModule {}

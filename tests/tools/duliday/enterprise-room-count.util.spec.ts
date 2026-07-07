@@ -123,4 +123,23 @@ describe('enterprise-room-count.util', () => {
 
     expect(refreshed[0].memberCount).toBe(50);
   });
+
+  it('should keep original counts when syncRoom returns a failure code', async () => {
+    const roomService = {
+      getEnterpriseGroupChatList: jest.fn().mockResolvedValue({
+        data: [{ imRoomId: 'room-1', member_count: 200 }],
+      }),
+      syncRoom: jest.fn().mockResolvedValue({ errcode: -1, errmsg: 'sync failed' }),
+    };
+    const groups = [makeGroup({ imRoomId: 'room-1', memberCount: 185 })];
+
+    const refreshed = await refreshMemberCountsFromEnterpriseList({
+      groups,
+      roomService,
+      enterpriseToken: 'token',
+    });
+
+    expect(refreshed[0].memberCount).toBe(185);
+    expect(roomService.getEnterpriseGroupChatList).not.toHaveBeenCalled();
+  });
 });

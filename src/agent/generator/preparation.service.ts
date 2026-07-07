@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
@@ -39,7 +39,12 @@ import {
   type AgentMemorySnapshot,
   type GeneratorToolMode,
 } from '../generator/generator.types';
-import { SIDE_EFFECT_TOOLS } from '../generator/tool-call-analysis';
+import {
+  computeResultCount,
+  computeToolCallStatus,
+  SIDE_EFFECT_TOOLS,
+} from '../generator/tool-call-analysis';
+import { AgentTracerService } from '@observability/agent-tracer.service';
 
 interface RealtimeGroupStatus {
   groupName: string;
@@ -88,6 +93,8 @@ export class PreparationService {
     private readonly spongeService: SpongeService,
     private readonly groupResolver: GroupResolverService,
     private readonly groupMembership: GroupMembershipService,
+    @Optional()
+    private readonly tracer?: AgentTracerService,
   ) {}
 
   async prepare(
@@ -252,24 +259,55 @@ export class PreparationService {
         ...toolDef,
         execute: async (...args: unknown[]) => {
           const startedAt = Date.now();
+          const options = args[1] as { toolCallId?: string } | undefined;
           try {
-            return await (execute as (...callArgs: unknown[]) => unknown).apply(toolDef, args);
-          } finally {
-            const options = args[1] as { toolCallId?: string } | undefined;
-            if (options?.toolCallId) {
-              timings.set(options.toolCallId, Date.now() - startedAt);
-            } else {
-              // AI SDK execute(input, options) 签名变更会走到这里：计时静默失效，
-              // durationMs 退回墙钟近似。打日志便于升级 SDK 后发现。
-              this.logger.warn(
-                `[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`,
-              );
-            }
+            const result = await (execute as (...callArgs: unknown[]) => unknown).apply(
+              toolDef,
+              args,
+            );
+            const durationMs = Date.now() - startedAt;
+            this.recordToolTiming(name, timings, options, durationMs);
+            const resultCount = computeResultCount(result);
+            this.tracer?.emit({
+              type: 'tool_call',
+              toolName: name,
+              durationMs,
+              resultCount,
+              status: computeToolCallStatus(result, resultCount, undefined, undefined, name),
+              sideEffect: SIDE_EFFECT_TOOLS.has(name),
+            });
+            return result;
+          } catch (error) {
+            const durationMs = Date.now() - startedAt;
+            this.recordToolTiming(name, timings, options, durationMs);
+            this.tracer?.emit({
+              type: 'tool_error',
+              toolName: name,
+              durationMs,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
           }
         },
       } as ToolSet[string];
     }
     return wrapped;
+  }
+
+  private recordToolTiming(
+    name: string,
+    timings: Map<string, number>,
+    options: { toolCallId?: string } | undefined,
+    durationMs: number,
+  ): void {
+    if (options?.toolCallId) {
+      timings.set(options.toolCallId, durationMs);
+      return;
+    }
+
+    // AI SDK execute(input, options) 签名变更会走到这里：计时静默失效，
+    // durationMs 退回墙钟近似。打日志便于升级 SDK 后发现。
+    this.logger.warn(`[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`);
   }
 
   private resolveToolsForMode(tools: ToolSet, mode: GeneratorToolMode): ToolSet {

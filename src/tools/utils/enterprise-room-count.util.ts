@@ -43,14 +43,31 @@ export async function refreshMemberCountsFromEnterpriseList(params: {
   // Step 1: 按 imBotId 去重，触发 syncRoom 确保企业 API 侧成员数据是最新的
   // syncRoom 只影响企业 API（groupChat/list、groupChat/detail），不影响小组 API（simpleList）
   const uniqueBotIds = [...new Set(params.groups.map((g) => g.imBotId).filter(Boolean))];
-  await Promise.allSettled(
-    uniqueBotIds.map((botId) =>
-      params.roomService.syncRoom(params.enterpriseToken, botId).catch((error: unknown) => {
+  const syncResults = await Promise.all(
+    uniqueBotIds.map(async (botId) => {
+      try {
+        const result = await params.roomService.syncRoom(params.enterpriseToken, botId);
+        const accepted = isSuccessfulSyncResult(result);
+        if (!accepted) {
+          logger.warn(
+            `syncRoom 返回失败 (imBotId=${botId})，跳过企业级人数覆盖，避免使用过期群人数`,
+          );
+        }
+        return { botId, accepted };
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.warn(`syncRoom 失败 (imBotId=${botId})，继续使用可能过期的数据: ${message}`);
-      }),
-    ),
+        logger.warn(`syncRoom 失败 (imBotId=${botId})，继续使用原始人数: ${message}`);
+        return { botId, accepted: false };
+      }
+    }),
   );
+  const syncedBotIds = new Set(
+    syncResults.filter((result) => result.accepted).map((result) => result.botId),
+  );
+  if (uniqueBotIds.length > 0 && !syncedBotIds.has(uniqueBotIds[0])) {
+    logger.warn('企业级群同步未成功，跳过 groupChat/list 人数刷新，交由拉群接口做最终容量判定');
+    return params.groups;
+  }
 
   // Step 2: 调企业级 groupChat/list 批量获取同步后的真实 memberCount
   // 传 imBotId 过滤，避免同一群因多个 bot 返回多条记录导致人数被覆盖为错误值
@@ -185,4 +202,18 @@ export function parseCount(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
+}
+
+function isSuccessfulSyncResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return true;
+
+  const record = result as Record<string, unknown>;
+  const errcode = parseCount(record.errcode);
+  if (errcode !== undefined) return errcode === 0;
+
+  const code = parseCount(record.code);
+  if (code !== undefined) return code === 0;
+
+  if (record.success === false) return false;
+  return true;
 }

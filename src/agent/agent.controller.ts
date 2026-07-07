@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Logger,
+  HttpException,
+  HttpStatus,
+  Optional,
+} from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { CallerKind } from '@enums/agent.enum';
@@ -6,6 +15,8 @@ import { AgentRunnerService } from './runner/agent-runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
 import { DebugChatDto } from './debug-chat.dto';
+import { AgentTracerService } from '@observability/agent-tracer.service';
+import { RequestContextService } from '@observability/context/request-context.service';
 
 @Controller('agent')
 export class AgentController {
@@ -16,6 +27,10 @@ export class AgentController {
     private readonly alertService: AlertNotifierService,
     private readonly registry: RegistryService,
     private readonly healthService: AgentHealthService,
+    @Optional()
+    private readonly requestContext?: RequestContextService,
+    @Optional()
+    private readonly tracer?: AgentTracerService,
   ) {}
 
   /**
@@ -53,28 +68,54 @@ export class AgentController {
     this.logger.log(`【调试模式】测试聊天: ${body.message}`);
     const sessionId = body.sessionId || `debug-${Date.now()}`;
     const scenario = body.scenario || 'candidate-consultation';
+    const traceId = `${sessionId}:${Date.now()}`;
 
     try {
+      const startedAt = Date.now();
       // 走 invokeReviewed 而非裸 generator：调试页需要看到与生产一致的
       // guardrail runtime 过程（rule/llm 裁决 → 受控 repair → 最终 veto）。
-      const result = await this.runner.invokeReviewed(
-        {
-          callerKind: CallerKind.DEBUG,
-          messages: [{ role: 'user', content: body.message }],
-          userId: body.userId || 'debug-user',
-          corpId: 'debug',
-          sessionId,
-          scenario,
-          strategySource: 'testing',
-          contactName: body.contactName,
-        },
-        {
-          userMessage: body.message,
-          chatId: sessionId,
-          userId: body.userId || 'debug-user',
-          contactName: body.contactName,
-        },
-      );
+      const runDebugTurn = async () => {
+        this.tracer?.emit({ type: 'agent_start' });
+        const result = await this.runner.invokeReviewed(
+          {
+            callerKind: CallerKind.DEBUG,
+            messages: [{ role: 'user', content: body.message }],
+            userId: body.userId || 'debug-user',
+            corpId: 'debug',
+            sessionId,
+            scenario,
+            strategySource: 'testing',
+            contactName: body.contactName,
+          },
+          {
+            userMessage: body.message,
+            chatId: sessionId,
+            userId: body.userId || 'debug-user',
+            traceId,
+            contactName: body.contactName,
+          },
+        );
+        this.tracer?.emit({
+          type: 'agent_end',
+          steps: result.steps,
+          totalTokens: result.usage.totalTokens,
+          durationMs: Date.now() - startedAt,
+        });
+        return result;
+      };
+      const result = this.requestContext
+        ? await this.requestContext.run(
+            {
+              traceId,
+              chatId: sessionId,
+              userId: body.userId || 'debug-user',
+              corpId: 'debug',
+              scenario,
+              callerKind: CallerKind.DEBUG,
+            },
+            runDebugTurn,
+          )
+        : await runDebugTurn();
 
       return {
         success: true,
@@ -92,6 +133,16 @@ export class AgentController {
         },
       };
     } catch (error) {
+      this.tracer?.emit({
+        type: 'agent_error',
+        traceId,
+        chatId: sessionId,
+        userId: body.userId || 'debug-user',
+        corpId: 'debug',
+        scenario,
+        callerKind: CallerKind.DEBUG,
+        error: error instanceof Error ? error.message : String(error),
+      });
       this.logger.error('调试聊天失败:', error);
 
       this.alertService

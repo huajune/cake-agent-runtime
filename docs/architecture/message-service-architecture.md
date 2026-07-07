@@ -337,7 +337,7 @@ t=8 Agent 生成完毕
 const REPLAY_BLOCKING_TOOL_NAMES: ReadonlySet<string> = new Set([
   'advance_stage',              // procedural memory 直写 currentStage
   'invite_to_group',            // 企微级别 addMember 外部 API + session facts 写 invitedGroups
-  'duliday_interview_booking',  // 杜力岱外部预约 API + recruitment_cases 建行
+  'duliday_interview_booking',  // 杜力岱外部预约 API + latest_booking 指针/ops_events 落账
 ]);
 ```
 
