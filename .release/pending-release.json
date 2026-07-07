@@ -1,127 +1,55 @@
 {
-  "baseVersion": "6.0.0",
+  "baseVersion": "7.0.0",
   "nextVersion": "7.0.0",
   "updatedAt": "2026-07-07",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "450",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/450",
-      "title": "降低语义护栏 shadow 误报",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
-        "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
-        "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
-        "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
-        "补充 packet builder 与 semantic reviewer 单测。"
-      ],
-      "summary": [
-        "降低语义护栏 shadow 误报",
-        "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
-        "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
-        "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
-        "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
-        "补充 packet builder 与 semantic reviewer 单测。"
-      ],
-      "features": [],
-      "fixes": [
-        "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
-        "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
-        "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
-        "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
-        "补充 packet builder 与 semantic reviewer 单测。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "降低语义护栏 shadow 误报"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm jest tests/agent/guardrail/output/review-packet.builder.spec.ts tests/agent/guardrail/output/llm/semantic-reviewer.service.spec.ts --watchman=false`",
-        "`pnpm exec tsc --noEmit`",
-        "`pnpm jest tests/agent/guardrail/output --watchman=false`",
-        "`pnpm run build`",
-        "pre-push `pnpm run ci:check` passed: lint, format, typecheck, build:ci, test:ci"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "6.0.0",
+    "version": "7.0.0",
     "date": "2026-07-07",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "441",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/441",
-        "title": "调整功能发布升大版本规则",
+        "number": "450",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/450",
+        "title": "降低语义护栏 shadow 误报",
         "author": "ArielZhu",
         "mergedAt": "2026-07-07",
         "businessUpdates": [
-          "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。",
-          "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
-          "更新发版文档，并补脚本单测锁定规则。"
+          "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
+          "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
+          "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
+          "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
+          "补充 packet builder 与 semantic reviewer 单测。"
         ],
         "summary": [
-          "调整功能发布升大版本规则",
-          "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
-          "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。",
-          "更新发版文档，并补脚本单测锁定规则。"
-        ],
-        "features": [
-          "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。"
-        ],
-        "fixes": [
-          "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
-          "更新发版文档，并补脚本单测锁定规则。"
-        ],
-        "optimizations": [],
-        "ops": [
-          "调整功能发布升大版本规则"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "`pnpm jest tests/scripts/update-version-changelog.spec.ts --watchman=false`",
-          "pre-push `pnpm run ci:check`：lint / format / typecheck / build / 全量 jest coverage 通过（319 passed suites，4625 passed tests）"
-        ]
-      },
-      {
-        "number": "443",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/443",
-        "title": "增加暑假工临时防护与复聊追踪修复",
-        "author": "huajune",
-        "mergedAt": "2026-07-07",
-        "businessUpdates": [
-          "增加暑假工临时防护",
-          "补齐复聊 shadow batch 追踪",
-          "响应暑假工防护 review",
-          "增加暑假工临时防护与复聊追踪修复"
-        ],
-        "summary": [
-          "增加暑假工临时防护",
-          "补齐复聊 shadow batch 追踪",
-          "响应暑假工防护 review",
-          "增加暑假工临时防护与复聊追踪修复"
+          "降低语义护栏 shadow 误报",
+          "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
+          "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
+          "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
+          "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
+          "补充 packet builder 与 semantic reviewer 单测。"
         ],
         "features": [],
-        "fixes": [],
+        "fixes": [
+          "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
+          "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
+          "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
+          "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
+          "补充 packet builder 与 semantic reviewer 单测。"
+        ],
         "optimizations": [],
         "ops": [
-          "增加暑假工临时防护",
-          "补齐复聊 shadow batch 追踪",
-          "响应暑假工防护 review"
+          "降低语义护栏 shadow 误报"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm exec jest tests/tools/duliday/job-list/search.util.spec.ts tests/tools/tool/duliday-job-list.tool.spec.ts tests/tools/duliday/precheck/checklist.util.spec.ts tests/tools/tool/duliday-interview-precheck.tool.spec.ts --runInBand`",
-          "`pnpm exec jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/integration/resume-booking-flow.spec.ts --runInBand`",
-          "`pnpm exec jest tests/agent/reengagement/follow-up.processor.spec.ts tests/biz/monitoring/services/tracking/reengagement-tracking.service.spec.ts --runInBand`",
-          "`pnpm run typecheck`",
-          "pre-push `pnpm run ci:check` 全量通过：320 个 test suites passed，4637 个 tests passed。"
+          "`pnpm jest tests/agent/guardrail/output/review-packet.builder.spec.ts tests/agent/guardrail/output/llm/semantic-reviewer.service.spec.ts --watchman=false`",
+          "`pnpm exec tsc --noEmit`",
+          "`pnpm jest tests/agent/guardrail/output --watchman=false`",
+          "`pnpm run build`",
+          "pre-push `pnpm run ci:check` passed: lint, format, typecheck, build:ci, test:ci"
         ]
       }
     ]
