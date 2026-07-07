@@ -56,15 +56,18 @@ export class GuardrailReviewPacketBuilder {
     const jobs = readJobListJobs(call.result)
       .slice(0, 8)
       .map((job) => this.toJobEvidenceItem(job));
+    const markdownExcerpt = jobs.length === 0 ? readMarkdownExcerpt(call.result) : undefined;
     return {
       args: pickJobListQueryIntent(call.args),
       resultCount: call.resultCount,
       status: call.status,
+      hasEvidence: jobs.length > 0 || Boolean(markdownExcerpt),
       requestedBrands,
       jobs,
       // 默认返回形态是 markdown-only（无 rawData 数组）：结构化解析为空时，
       // markdown 摘录就是岗位事实的唯一 ground truth。
-      markdownExcerpt: jobs.length === 0 ? readMarkdownExcerpt(call.result) : undefined,
+      markdownExcerpt,
+      markdownExcerptChars: markdownExcerpt?.length,
     };
   }
 
@@ -152,14 +155,34 @@ export class GuardrailReviewPacketBuilder {
     const call = [...toolCalls]
       .reverse()
       .find((item) => item.toolName === 'geocode' && item.result);
-    const result = readRecord(call?.result);
-    if (!result) return undefined;
+    const outer = readRecord(call?.result);
+    if (!outer) return undefined;
 
-    const candidateRecords = readArray(result.candidates ?? result.candidateAddresses);
+    // 线上 geocode 工具常见形态：
+    // { result: { latitude, longitude, formattedAddress, areaLevelQuery }, resolution: 'unique' }。
+    // candidates 为空不等于解析失败；有坐标就是有效解析。
+    const result = readRecord(outer.result) ?? outer;
+    const candidateRecords = readArray(
+      outer.candidates ??
+        outer.candidateAddresses ??
+        result.candidates ??
+        result.candidateAddresses,
+    );
+    const latitude = readNumber(result.latitude);
+    const longitude = readNumber(result.longitude);
     return {
-      resolution: readString(result.resolution),
-      errorType: readString(result.errorType),
-      confidence: readString(result.confidence) ?? readNumber(result.confidence),
+      resolution: readString(outer.resolution) ?? readString(result.resolution),
+      errorType: readString(outer.errorType) ?? readString(result.errorType),
+      confidence:
+        readString(outer.confidence) ??
+        readNumber(outer.confidence) ??
+        readString(result.confidence) ??
+        readNumber(result.confidence),
+      formattedAddress: readString(result.formattedAddress) ?? readString(outer.formattedAddress),
+      latitude,
+      longitude,
+      areaLevelQuery: readBoolean(result.areaLevelQuery) ?? readBoolean(outer.areaLevelQuery),
+      hasResolvedCoordinate: latitude != null && longitude != null,
       candidates: candidateRecords
         .map((candidate) => {
           const record = readRecord(candidate);
@@ -248,6 +271,10 @@ function readString(value: unknown): string | undefined {
 function readNumber(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   return value;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 function readStringArray(value: unknown): string[] {

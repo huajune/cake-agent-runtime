@@ -1,9 +1,53 @@
 {
   "baseVersion": "6.0.0",
-  "nextVersion": "6.0.0",
+  "nextVersion": "7.0.0",
   "updatedAt": "2026-07-07",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "450",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/450",
+      "title": "降低语义护栏 shadow 误报",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-07",
+      "businessUpdates": [
+        "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
+        "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
+        "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
+        "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
+        "补充 packet builder 与 semantic reviewer 单测。"
+      ],
+      "summary": [
+        "降低语义护栏 shadow 误报",
+        "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
+        "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
+        "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
+        "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
+        "补充 packet builder 与 semantic reviewer 单测。"
+      ],
+      "features": [],
+      "fixes": [
+        "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
+        "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
+        "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
+        "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
+        "补充 packet builder 与 semantic reviewer 单测。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "降低语义护栏 shadow 误报"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/agent/guardrail/output/review-packet.builder.spec.ts tests/agent/guardrail/output/llm/semantic-reviewer.service.spec.ts --watchman=false`",
+        "`pnpm exec tsc --noEmit`",
+        "`pnpm jest tests/agent/guardrail/output --watchman=false`",
+        "`pnpm run build`",
+        "pre-push `pnpm run ci:check` passed: lint, format, typecheck, build:ci, test:ci"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "6.0.0",
     "date": "2026-07-07",
