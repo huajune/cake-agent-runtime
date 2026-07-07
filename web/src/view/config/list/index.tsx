@@ -6,8 +6,10 @@ import {
   useAvailableModels,
 } from '@/hooks/config/useSystemConfig';
 import { useWorkerStatus, useSetWorkerConcurrency } from '@/hooks/config/useWorker';
+import { useReengagementScenarios } from '@/hooks/reengagement/useReengagementRecords';
 import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
 import type { AgentReplyConfig, AgentReplyThinkingMode } from '@/api/types/config.types';
+import type { ReengagementScenario } from '@/api/types/reengagement.types';
 
 import { ModelSelector } from '@/components/ModelSelector';
 import ControlBar from './components/ControlBar';
@@ -76,10 +78,15 @@ function getThinkingModeLabel(value?: string): string {
   return thinkingModeOptions.find((option) => option.value === value)?.label ?? '极速模式';
 }
 
+/** 功能模块运行状态三态：关闭 → Shadow 观测（只记录）→ 真实生效 */
+type ModuleRunState = 'off' | 'shadow' | 'live';
+
 export default function Config() {
   const [editingConfig, setEditingConfig] = useState<Partial<AgentReplyConfig>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [editingConcurrency, setEditingConcurrency] = useState<number | null>(null);
+  // 场景清单属于低频配置，默认折叠，主开关操作路径保持清爽
+  const [scenariosExpanded, setScenariosExpanded] = useState(false);
 
   const { data: agentConfigData, isLoading: isLoadingConfig } = useAgentReplyConfig();
   const updateConfig = useUpdateAgentReplyConfig();
@@ -217,6 +224,170 @@ export default function Config() {
   // 主动复聊开关同守卫开关：直接读服务端最新值，切换即保存
   const reengagementEnabled = Boolean(agentConfigData?.config.reengagementEnabled);
   const reengagementShadow = Boolean(agentConfigData?.config.reengagementShadow ?? true);
+  const { data: reengagementScenarios } = useReengagementScenarios();
+  const reengagementPostBookingEnabled = Boolean(
+    agentConfigData?.config.reengagementPostBookingEnabled ?? true,
+  );
+  const scenarioRollout = agentConfigData?.config.reengagementScenarioRollout ?? {};
+
+  // 场景开关：托管配置里配过用配置值，没配过回退代码默认值
+  const isScenarioOn = (scenario: ReengagementScenario) =>
+    scenarioRollout[scenario.code] ?? scenario.defaultRolloutEnabled;
+
+  // 场景实际投递状态 = 场景开关 × 报名后大开关 × 总开关 × Shadow 观测 叠加
+  const getScenarioStatus = (scenario: ReengagementScenario) => {
+    if (!isScenarioOn(scenario)) return { label: '已关闭', className: styles.statusOff };
+    if (scenario.phase === 'post_booking' && !reengagementPostBookingEnabled) {
+      return { label: '报名后开关关闭', className: styles.statusWarn };
+    }
+    if (!reengagementEnabled) return { label: '待生效 · 总开关关闭', className: styles.statusWarn };
+    if (reengagementShadow) return { label: '待生效 · Shadow 观测中', className: styles.statusWarn };
+    return { label: '真实发送', className: styles.statusOn };
+  };
+
+  // 只传本次切换的增量：后端对 scenarioRollout 按 key 合并。回传整表反而危险——
+  // 本地快照可能过期（后台标签页暂停轮询/查询失败兜底 {}），整表覆盖会把
+  // 其他场景的紧急停用配置静默冲掉。
+  const toggleScenario = (code: string, next: boolean) => {
+    updateConfig.mutate({
+      reengagementScenarioRollout: { [code]: next },
+    });
+  };
+
+  // ===== 三态运行状态：两个布尔开关（总开关 × shadow）收敛成 关闭/Shadow 观测/生效 =====
+  const guardrailState: ModuleRunState = guardrailLlmEnabled
+    ? 'live'
+    : guardrailShadowEnabled
+      ? 'shadow'
+      : 'off';
+  const setGuardrailState = (next: ModuleRunState) => {
+    if (next === 'off') {
+      updateConfig.mutate({
+        outputGuardrailLlmEnabled: false,
+        outputGuardrailSemanticShadowEnabled: false,
+      });
+    } else if (next === 'shadow') {
+      updateConfig.mutate({
+        outputGuardrailLlmEnabled: false,
+        outputGuardrailSemanticShadowEnabled: true,
+      });
+    } else {
+      updateConfig.mutate({ outputGuardrailLlmEnabled: true });
+    }
+  };
+
+  const reengagementState: ModuleRunState = !reengagementEnabled
+    ? 'off'
+    : reengagementShadow
+      ? 'shadow'
+      : 'live';
+  const setReengagementState = (next: ModuleRunState) => {
+    if (next === 'off') {
+      // 关闭时把 shadow 复位为 true：否则从 live 关掉后留下 shadow=false，
+      // 将来任何绕过本页的重新启用（脚本/裸 PATCH）会直接跳到真实触达
+      updateConfig.mutate({ reengagementEnabled: false, reengagementShadow: true });
+    } else if (next === 'shadow') {
+      updateConfig.mutate({ reengagementEnabled: true, reengagementShadow: true });
+    } else {
+      updateConfig.mutate({ reengagementEnabled: true, reengagementShadow: false });
+    }
+  };
+
+  const renderRunStateControl = (
+    current: ModuleRunState,
+    onSelect: (next: ModuleRunState) => void,
+    labels: Record<ModuleRunState, string>,
+  ) => (
+    <div className={styles.segmented} role="radiogroup">
+      {(['off', 'shadow', 'live'] as const).map((value) => {
+        const active = current === value;
+        const activeClass =
+          value === 'off'
+            ? styles.segmentedActiveOff
+            : value === 'shadow'
+              ? styles.segmentedActiveWarn
+              : styles.segmentedActiveOn;
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            className={`${styles.segmentedOption} ${active ? `${styles.segmentedActive} ${activeClass}` : ''}`}
+            disabled={updateConfig.isPending}
+            onClick={() => {
+              if (!active) onSelect(value);
+            }}
+          >
+            {labels[value]}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const scenarioOnCount = (reengagementScenarios ?? []).filter(isScenarioOn).length;
+
+  const preBookingScenarios = (reengagementScenarios ?? []).filter(
+    (s) => s.phase === 'pre_booking',
+  );
+  const postBookingScenarios = (reengagementScenarios ?? []).filter(
+    (s) => s.phase === 'post_booking',
+  );
+
+  const renderScenarioTable = (scenarios: ReengagementScenario[]) => (
+    <div className={styles.scenarioTableWrap}>
+      <table className={styles.scenarioTable}>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>锚点事件</th>
+            <th>触发延迟</th>
+            <th>目的</th>
+            <th>场景开关</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scenarios.map((scenario) => {
+            const status = getScenarioStatus(scenario);
+            return (
+              <tr key={scenario.code}>
+                <td>
+                  <div className={styles.scenarioName}>{scenario.displayName}</div>
+                  <div className={styles.scenarioCode}>{scenario.code}</div>
+                </td>
+                <td>
+                  <div>{scenario.anchorLabel}</div>
+                  <div className={styles.scenarioCode}>{scenario.anchorEvent}</div>
+                </td>
+                <td>{scenario.delayLabel}</td>
+                <td className={styles.scenarioObjective}>{scenario.objective}</td>
+                <td>
+                  <label className={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={isScenarioOn(scenario)}
+                      disabled={updateConfig.isPending}
+                      onChange={(e) => toggleScenario(scenario.code, e.target.checked)}
+                    />
+                    <span className={styles.switchTrack}>
+                      <span className={styles.switchThumb} />
+                    </span>
+                  </label>
+                </td>
+                <td>
+                  <span className={`${styles.statusBadge} ${status.className}`}>
+                    {status.label}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
   const e2eSamples =
     recentMessageRecords?.filter(
       (record) => Number.isFinite(record.totalDuration) && record.totalDuration > 0,
@@ -445,84 +616,26 @@ export default function Config() {
               <div className={styles.settingRow}>
                 <div className={styles.settingBody}>
                   <div className={styles.settingHeading}>
-                    <span className={styles.settingLabel}>LLM 审查拦截（enforce）</span>
-                    <span
-                      className={`${styles.statusBadge} ${
-                        guardrailLlmEnabled ? styles.statusOn : styles.statusOff
-                      }`}
-                    >
-                      {guardrailLlmEnabled ? '已启用' : '已关闭'}
-                    </span>
+                    <span className={styles.settingLabel}>运行状态</span>
                   </div>
                   <p className={styles.settingDescription}>
-                    开启后，语义审查的结论会真正参与出站裁决：高风险回复（已提交预约等副作用、含承诺性措辞）
-                    会被打回重写或拦截不发。关闭时仅确定性规则档生效。
+                    <strong>关闭</strong>：仅确定性规则档生效，语义审查不运行。
+                    <strong>Shadow 观测</strong>：审查跟随真实流量试跑，结论只写入飞书 badcase
+                    表和流水记录，不影响发送，用于评估"如果它说了算，会拦哪些回复"。
+                    <strong>拦截生效</strong>：审查结论真正参与出站裁决，高风险回复（已提交预约等副作用、含承诺性措辞）会被打回重写或拦截不发。
                   </p>
                   <div className={styles.settingMeta}>
-                    <span>该开关即时生效</span>
-                    <span>审查故障时高风险回复按 fail-close 拦截</span>
-                  </div>
-                </div>
-                <div className={styles.toggleControl}>
-                  <label className={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={guardrailLlmEnabled}
-                      disabled={updateConfig.isPending}
-                      onChange={(e) =>
-                        updateConfig.mutate({ outputGuardrailLlmEnabled: e.target.checked })
-                      }
-                    />
-                    <span className={styles.switchTrack}>
-                      <span className={styles.switchThumb} />
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              <div className={styles.settingRow}>
-                <div className={styles.settingBody}>
-                  <div className={styles.settingHeading}>
-                    <span className={styles.settingLabel}>Shadow 观测</span>
-                    <span
-                      className={`${styles.statusBadge} ${
-                        guardrailShadowEnabled && !guardrailLlmEnabled
-                          ? styles.statusOn
-                          : styles.statusOff
-                      }`}
-                    >
-                      {guardrailLlmEnabled
-                        ? '拦截开启时不生效'
-                        : guardrailShadowEnabled
-                          ? '观测中'
-                          : '已关闭'}
-                    </span>
-                  </div>
-                  <p className={styles.settingDescription}>
-                    开启后，语义审查跟随真实流量试运行，结论只写入飞书 badcase
-                    表和流水记录，不影响任何回复的发送。用于灰度期评估"如果它说了算，会拦哪些回复"。
-                  </p>
-                  <div className={styles.settingMeta}>
-                    <span>该开关即时生效</span>
+                    <span>切换即时生效</span>
+                    <span>拦截生效时审查故障按 fail-close 拦截</span>
                     <span>命中判例见飞书 badcase 多维表</span>
                   </div>
                 </div>
-                <div className={styles.toggleControl}>
-                  <label className={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={guardrailShadowEnabled}
-                      disabled={updateConfig.isPending || guardrailLlmEnabled}
-                      onChange={(e) =>
-                        updateConfig.mutate({
-                          outputGuardrailSemanticShadowEnabled: e.target.checked,
-                        })
-                      }
-                    />
-                    <span className={styles.switchTrack}>
-                      <span className={styles.switchThumb} />
-                    </span>
-                  </label>
+                <div className={styles.controlBlock}>
+                  {renderRunStateControl(guardrailState, setGuardrailState, {
+                    off: '关闭',
+                    shadow: 'Shadow 观测',
+                    live: '拦截生效',
+                  })}
                 </div>
               </div>
             </div>
@@ -535,7 +648,7 @@ export default function Config() {
                 <p className={styles.moduleDescription}>
                   候选人沉默后由 Agent
                   主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
-                  开关即时生效；灰度期先开演练模式看"本应发什么"，达标后再关演练真实发送。
+                  开关即时生效；灰度期先开 Shadow 观测看"本应发什么"，达标后再切真实发送。
                 </p>
               </div>
             </div>
@@ -544,82 +657,110 @@ export default function Config() {
               <div className={styles.settingRow}>
                 <div className={styles.settingBody}>
                   <div className={styles.settingHeading}>
-                    <span className={styles.settingLabel}>复聊排程（总开关）</span>
-                    <span
-                      className={`${styles.statusBadge} ${
-                        reengagementEnabled ? styles.statusOn : styles.statusOff
-                      }`}
-                    >
-                      {reengagementEnabled ? '已启用' : '已关闭'}
-                    </span>
+                    <span className={styles.settingLabel}>运行状态</span>
                   </div>
                   <p className={styles.settingDescription}>
-                    开启后，锚点事件（候选人开场未回复、报名中断、面试临近等）会排程延时跟进任务。
-                    关闭是急刹车：不再产生新任务，已排程的任务到点也会直接丢弃。
+                    <strong>关闭</strong>
+                    ：急刹车，不再排程新跟进任务，已排程的任务到点也直接丢弃。
+                    <strong>Shadow 观测</strong>：锚点事件正常排程，到点走完停止判断并生成跟进文案，
+                    但不发给候选人，只记录"本应发什么"。
+                    <strong>真实发送</strong>
+                    ：下方场景清单里开关打开的场景会真正发送，其余场景仍只记录。
                   </p>
                   <div className={styles.settingMeta}>
-                    <span>该开关即时生效</span>
+                    <span>切换即时生效</span>
                     <span>频控 24h ≤ 2 条 · 仅 9-21 点投递</span>
+                    <span>触达明细见「二次触发」页</span>
                   </div>
                 </div>
-                <div className={styles.toggleControl}>
-                  <label className={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={reengagementEnabled}
-                      disabled={updateConfig.isPending}
-                      onChange={(e) =>
-                        updateConfig.mutate({ reengagementEnabled: e.target.checked })
-                      }
-                    />
-                    <span className={styles.switchTrack}>
-                      <span className={styles.switchThumb} />
-                    </span>
-                  </label>
+                <div className={styles.controlBlock}>
+                  {renderRunStateControl(reengagementState, setReengagementState, {
+                    off: '关闭',
+                    shadow: 'Shadow 观测',
+                    live: '真实发送',
+                  })}
                 </div>
               </div>
+            </div>
 
-              <div className={styles.settingRow}>
-                <div className={styles.settingBody}>
-                  <div className={styles.settingHeading}>
-                    <span className={styles.settingLabel}>演练模式（Shadow）</span>
-                    <span
-                      className={`${styles.statusBadge} ${
-                        reengagementShadow ? styles.statusOn : styles.statusOff
-                      }`}
-                    >
-                      {!reengagementEnabled
-                        ? '排程未启用'
-                        : reengagementShadow
-                          ? '演练中（不发送）'
-                          : '真实发送'}
+            <div className={styles.subPanel}>
+              <div className={styles.scenarioPanel}>
+                <button
+                  type="button"
+                  className={styles.scenarioPanelToggle}
+                  aria-expanded={scenariosExpanded}
+                  onClick={() => setScenariosExpanded((v) => !v)}
+                >
+                  <span className={styles.settingLabel}>场景清单与场景级开关</span>
+                  {reengagementScenarios && reengagementScenarios.length > 0 ? (
+                    <span className={styles.scenarioPanelHint}>
+                      {reengagementScenarios.length} 个场景 · {scenarioOnCount} 个已放开 · 报名后大开关
+                      {reengagementPostBookingEnabled ? '已开' : '已关'}
                     </span>
-                  </div>
-                  <p className={styles.settingDescription}>
-                    开启时，到点走完全部停止判断并生成跟进文案，但不发给候选人，只记录"本应发什么"。
-                    关闭后，已放开灰度的场景（开场未回 / 报名未完成 /
-                    面试提醒）会真实发送，其余场景仍只记录。
-                  </p>
-                  <div className={styles.settingMeta}>
-                    <span>该开关即时生效</span>
-                    <span>场景级灰度由代码控制，命中记录见服务日志</span>
-                  </div>
-                </div>
-                <div className={styles.toggleControl}>
-                  <label className={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={reengagementShadow}
-                      disabled={updateConfig.isPending}
-                      onChange={(e) =>
-                        updateConfig.mutate({ reengagementShadow: e.target.checked })
-                      }
-                    />
-                    <span className={styles.switchTrack}>
-                      <span className={styles.switchThumb} />
-                    </span>
-                  </label>
-                </div>
+                  ) : (
+                    <span className={styles.scenarioPanelHint}>加载中...</span>
+                  )}
+                  <span className={styles.scenarioPanelChevron} aria-hidden>
+                    ▾
+                  </span>
+                </button>
+                {scenariosExpanded && reengagementScenarios && reengagementScenarios.length > 0 ? (
+                  <>
+                    <div className={styles.scenarioGroup}>
+                      <div className={styles.scenarioGroupHeader}>
+                        <div className={styles.scenarioGroupInfo}>
+                          <span className={styles.scenarioGroupTitle}>报名前</span>
+                          <span className={styles.scenarioPanelHint}>
+                            从开场到收资的跟进场景，逐个场景独立开关
+                          </span>
+                        </div>
+                      </div>
+                      {renderScenarioTable(preBookingScenarios)}
+                    </div>
+
+                    <div className={styles.scenarioGroup}>
+                      <div className={styles.scenarioGroupHeader}>
+                        <div className={styles.scenarioGroupInfo}>
+                          <span className={styles.scenarioGroupTitle}>报名后</span>
+                          <span
+                            className={`${styles.statusBadge} ${
+                              reengagementPostBookingEnabled ? styles.statusOn : styles.statusOff
+                            }`}
+                          >
+                            {reengagementPostBookingEnabled ? '大开关已开' : '大开关已关'}
+                          </span>
+                          <span className={styles.scenarioPanelHint}>
+                            报名成功之后的跟进流程较复杂，这里的大开关可整体熔断（关闭后下方场景全部只记录不发送）
+                          </span>
+                        </div>
+                        <label className={styles.switch}>
+                          <input
+                            type="checkbox"
+                            checked={reengagementPostBookingEnabled}
+                            disabled={updateConfig.isPending}
+                            onChange={(e) =>
+                              updateConfig.mutate({
+                                reengagementPostBookingEnabled: e.target.checked,
+                              })
+                            }
+                          />
+                          <span className={styles.switchTrack}>
+                            <span className={styles.switchThumb} />
+                          </span>
+                        </label>
+                      </div>
+                      {renderScenarioTable(postBookingScenarios)}
+                    </div>
+
+                    <p className={styles.scenarioFootnote}>
+                      「真实发送」需同时满足：总开关开启 + Shadow 观测关闭 + 场景开关开启（报名后场景还需
+                      报名后大开关开启）；其余组合到点只走判断与生成、记录「本应发什么」。
+                      候选人已回话、会话已终态或场景条件不再成立时，到点任务会自动取消。
+                    </p>
+                  </>
+                ) : scenariosExpanded ? (
+                  <div className={styles.loadingText}>加载场景清单中...</div>
+                ) : null}
               </div>
             </div>
           </section>

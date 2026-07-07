@@ -330,6 +330,125 @@ describe('SystemConfigService', () => {
 
       await expect(service.setAgentReplyConfig({})).resolves.not.toThrow();
     });
+
+    it('force-reloads the merge baseline from source (loader) instead of the in-memory cache', async () => {
+      // 内存缓存是"旧"配置（模拟重启后/多实例落后的本地基线），且仍在有效期内
+      (service as any).agentReplyConfig = {
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        paragraphGapMs: 1111,
+      };
+      (service as any).agentReplyConfigExpiry = Date.now() + 60_000;
+      // 回源链路：Redis 共享缓存 miss → DB 里是别的实例写入的最新配置
+      mockRedisService.get.mockResolvedValue(null);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        paragraphGapMs: 9999,
+        reengagementScenarioRollout: { sceneA: true },
+      });
+      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+
+      const result = await service.setAgentReplyConfig({ initialMergeWindowMs: 4321 });
+
+      // 保存路径必须回源（读了 agent_reply_config），而不是拿内存缓存当基线
+      expect(mockSystemConfigRepository.getConfigValue).toHaveBeenCalledWith('agent_reply_config');
+      // 基线字段来自 DB（9999），而不是过期风险的内存值（1111）
+      expect(result.paragraphGapMs).toBe(9999);
+      expect(result.initialMergeWindowMs).toBe(4321);
+      // DB 里已有的场景灰度不能被这次不相关的保存冲掉
+      expect(result.reengagementScenarioRollout).toEqual({ sceneA: true });
+    });
+
+    it('merges reengagementScenarioRollout per-key: partial {sceneB} preserves existing sceneA', async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        reengagementScenarioRollout: { sceneA: true },
+      });
+      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+
+      const result = await service.setAgentReplyConfig({
+        reengagementScenarioRollout: { sceneB: true },
+      });
+
+      expect(result.reengagementScenarioRollout).toEqual({ sceneA: true, sceneB: true });
+      // 持久化的也是合并后的完整 map，不是调用方传的增量
+      expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
+        'agent_reply_config',
+        expect.objectContaining({
+          reengagementScenarioRollout: { sceneA: true, sceneB: true },
+        }),
+        expect.any(String),
+      );
+    });
+
+    it('allows a partial rollout update to flip an existing scenario off without touching others', async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        reengagementScenarioRollout: { sceneA: true, sceneB: true },
+      });
+      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+
+      const result = await service.setAgentReplyConfig({
+        reengagementScenarioRollout: { sceneA: false },
+      });
+
+      expect(result.reengagementScenarioRollout).toEqual({ sceneA: false, sceneB: true });
+    });
+  });
+
+  // ==================== sanitizeScenarioRollout（经 normalize 生效） ====================
+
+  describe('reengagementScenarioRollout sanitization', () => {
+    it('drops non-boolean values from DB rows (truthy strings must not become true)', async () => {
+      (service as any).agentReplyConfig = null;
+      (service as any).agentReplyConfigExpiry = 0;
+      mockRedisService.get.mockResolvedValue(null);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        reengagementScenarioRollout: {
+          dirtyString: 'true',
+          dirtyNumber: 1,
+          dirtyNull: null,
+          cleanOn: true,
+          cleanOff: false,
+        },
+      });
+
+      const result = await service.getAgentReplyConfig();
+
+      expect(result.reengagementScenarioRollout).toEqual({ cleanOn: true, cleanOff: false });
+    });
+
+    it('normalizes a non-object rollout (array/string/missing) to an empty map', async () => {
+      (service as any).agentReplyConfig = null;
+      (service as any).agentReplyConfigExpiry = 0;
+      mockRedisService.get.mockResolvedValue(null);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        reengagementScenarioRollout: ['sceneA'],
+      });
+
+      const result = await service.getAgentReplyConfig();
+
+      expect(result.reengagementScenarioRollout).toEqual({});
+    });
+
+    it('strips dirty values from the caller-provided rollout on save', async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        reengagementScenarioRollout: { sceneA: true },
+      });
+      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+
+      const result = await service.setAgentReplyConfig({
+        reengagementScenarioRollout: { dirty: 'yes', sceneB: true } as never,
+      });
+
+      expect(result.reengagementScenarioRollout).toEqual({ sceneA: true, sceneB: true });
+      expect(result.reengagementScenarioRollout).not.toHaveProperty('dirty');
+    });
   });
 
   // ==================== onAgentReplyConfigChange ====================

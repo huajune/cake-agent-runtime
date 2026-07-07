@@ -30,8 +30,10 @@ export async function getDashboard(timeRange: string, groups?: string[]) {
 }
 
 export async function getDashboardOverview(timeRange: string, groups?: string[]) {
+  // 大范围（近2月/近3月）冷启动全量聚合可能超过默认 10s，放宽到 30s 避免超时后卡在加载中
   const { data } = await api.get(
     `/analytics/dashboard/overview?${buildDashboardParams(timeRange, groups)}`,
+    { timeout: 30000 },
   );
   return unwrapResponse<DashboardOverviewData>(data);
 }

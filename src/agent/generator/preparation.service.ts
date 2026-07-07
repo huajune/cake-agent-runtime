@@ -207,6 +207,15 @@ export class PreparationService {
     const reviseNotice = this.buildReviseNotice(params);
     const proactiveDirective = this.buildProactiveDirective(params);
 
+    // HC-1 repair/revise 回合：重写指令同时追加为对话末尾的 user 消息。
+    // 只拼在超长 system 末尾时弱模型会无视它、把本轮当新对话重新规划任务
+    // （badcase batch_6a4790c7ce406a6aeee9c102：repair 模型重新计划查岗、
+    // 想调 geocode，工具已被物理移除，最终只发出一句悬空的"我帮你查下"）。
+    const reviseUserDirective = this.buildReviseUserDirective(params);
+    if (reviseUserDirective) {
+      normalizedMessages.push({ role: 'user', content: reviseUserDirective });
+    }
+
     return {
       finalPrompt:
         systemPrompt + guardSuffix + criticalTurnGuard + reviseNotice + proactiveDirective,
@@ -430,6 +439,49 @@ export class PreparationService {
 
     if (parts.length === 0) return '';
     return `\n\n# 回复重写要求（HC-1）\n${parts.join('\n\n')}`;
+  }
+
+  /**
+   * HC-1 重写指令的对话末尾版：拼成一条追加在 messages 末尾的 user 消息。
+   *
+   * 动机：system HC-1 位于 ~16K token 大 prompt 的最尾部，而对话仍以候选人的
+   * 原问题收尾，弱模型（qwen 等 fallback 链路）会无视 system 指令、把 repair
+   * 回合当新对话重新执行任务。对话末尾的显式指令是模型注意力最强的位置，
+   * 与 system HC-1 双保险。内容自包含（含被丢弃原文与违规清单），不依赖模型
+   * 回头翻 system。
+   */
+  private buildReviseUserDirective(params: GeneratorInvokeParams): string | null {
+    const repair = params.guardrailRepair;
+    const violations = params.reviseFeedback ?? [];
+    if (!repair && violations.length === 0) return null;
+
+    const hasReplan = violations.some((v) => v.repairMode === 'replan');
+    const lines: string[] = [
+      '【系统重写指令｜本条不是候选人消息，候选人看不到本条，也不要回应本条】',
+      '你上一版发给候选人的回复未通过发送前审查，已被丢弃。本轮任务不是回答候选人的新消息，' +
+        '而是重写上一版回复。' +
+        (hasReplan
+          ? '允许调用只读工具重新核实事实；严禁执行报名、拉群、取消、改期、发定位等副作用工具。'
+          : '严禁调用任何工具，严禁重新规划查岗/拉群/约面等任务——本轮工具动作已全部执行完毕，只做文案修复。' +
+            '本轮没有工具可用，严禁把工具调用写成文本输出（如 {"name": "geocode", ...}、tool_call:xxx(...) 等形态，' +
+            '这类文本会被当成事故直接拦截）；某个事实没有本轮工具结果支持时，删掉该事实或改为不确定表述。'),
+    ];
+    if (repair) {
+      lines.push(`被丢弃的上一版回复原文：\n"""${repair.originalReply.slice(0, 1200)}"""`);
+    }
+    if (violations.length > 0) {
+      lines.push(
+        `需修正的问题：\n${violations.map((v) => `- [${v.type}] ${v.suggestion}`).join('\n')}`,
+      );
+    }
+    lines.push(
+      '现在直接输出修正后的候选人可见回复正文：保留上一版中符合事实、未违规的内容，只删除或改写违规部分；' +
+        '不输出分析过程、前言、JSON 或多个方案；不提"规则/守卫/拦截/系统/工具/模型"。' +
+        (hasReplan
+          ? ''
+          : '严禁输出"我帮你查下/我先看看"这类只承接不给结果的话——本轮不会再有任何查询，回复必须直接给出结论或下一步。'),
+    );
+    return lines.join('\n\n');
   }
 
   /**

@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { Job, Queue } from 'bull';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import {
+  ReengagementTrackingService,
+  type ReengagementTouchIdentity,
+} from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import type { SessionRef } from '../runner/agent-runner.types';
 import {
@@ -9,6 +13,7 @@ import {
   REENGAGEMENT_QUEUE,
   type FollowUpJob,
   type FollowUpScenarioCode,
+  type ReengagementChannelIdentity,
 } from './reengagement.types';
 import { computeFireAt, getScenario, shouldStop } from './scenario-registry';
 
@@ -24,6 +29,12 @@ export interface ScheduleFollowUpInput {
    * 完整 shouldStop，不漏判）。
    */
   state?: AuthoritativeSessionState;
+  /** 报名后场景的工单 ID（processor 到点向海绵核验工单现状用）。 */
+  workOrderId?: number;
+  /** 排程时冻结的期望面试时间（毫秒，改期比对基准）。 */
+  expectedInterviewAt?: number;
+  /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
+  channelIdentity?: ReengagementChannelIdentity;
 }
 
 function createEmptyState(): AuthoritativeSessionState {
@@ -57,6 +68,7 @@ export class FollowUpSchedulerService {
   constructor(
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
     private readonly systemConfig: SystemConfigService,
+    private readonly tracking: ReengagementTrackingService,
   ) {}
 
   /**
@@ -76,16 +88,46 @@ export class FollowUpSchedulerService {
 
     const state = input.state ?? createEmptyState();
 
+    const identity: ReengagementTouchIdentity = {
+      sessionId: input.sessionRef.sessionId,
+      userId: input.sessionRef.userId,
+      corpId: input.sessionRef.corpId,
+      scenarioCode: input.scenarioCode,
+      anchorEventId: input.anchorEventId,
+      anchorAt: input.anchorAt,
+      ...input.channelIdentity,
+    };
+
     // 排程前停止条件预检（仅当提供了 state）——能省一个无效 delayed job；
     // 缺 state 时跳过预检，processor 到点会读权威态再做完整 shouldStop。
     if (input.state) {
-      const stop = shouldStop(scenario, input.state, input.anchorAt);
-      if (stop.stop) return { scheduled: false, reason: stop.reason };
+      const stop = shouldStop(scenario, input.state, input.anchorAt, {
+        externallyVerifiable: input.workOrderId != null,
+      });
+      if (stop.stop) {
+        this.tracking.trackScheduleSkipped(identity, stop.reason ?? 'precheck_stop');
+        return { scheduled: false, reason: stop.reason };
+      }
     }
 
     const fireAt = computeFireAt(scenario, { anchorAt: input.anchorAt, state });
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = `${input.sessionRef.sessionId}:${input.scenarioCode}:${input.anchorEventId}`;
+
+    // Bull 同 jobId 的重复 add 是静默 no-op（幂等锚点刻意依赖这点），但 trackScheduled
+    // 会无条件把底账 fire_at/scheduled_at 覆写成一个不会触发的新时间（已完成的任务上
+    // 表现为 status=sent 却挂着未来的幽灵 fire_at）。存量任务已在（在途/保留期内已完成）
+    // → 排程与落库一并跳过；存量查询失败按不存在放行，去重仍由 Bull 兜底。
+    let existingJob: Job<FollowUpJob> | null = null;
+    try {
+      existingJob = await this.queue.getJob(jobId);
+    } catch {
+      existingJob = null;
+    }
+    if (existingJob) {
+      this.logger.debug(`[reengagement] jobId=${jobId} 已存在，跳过重复排程与底账写入`);
+      return { scheduled: false, reason: 'duplicate_job', jobId };
+    }
 
     try {
       await this.queue.add(
@@ -95,6 +137,11 @@ export class FollowUpSchedulerService {
           scenarioCode: input.scenarioCode,
           anchorEventId: input.anchorEventId,
           anchorAt: input.anchorAt,
+          ...(input.workOrderId != null ? { workOrderId: input.workOrderId } : {}),
+          ...(input.expectedInterviewAt != null
+            ? { expectedInterviewAt: input.expectedInterviewAt }
+            : {}),
+          ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
         },
         {
           jobId,
@@ -108,10 +155,15 @@ export class FollowUpSchedulerService {
       this.logger.log(
         `[reengagement] 已排程 jobId=${jobId} fireAt=${new Date(fireAt).toISOString()} delay=${delay}ms`,
       );
+      this.tracking.trackScheduled(identity, jobId, fireAt);
       return { scheduled: true, fireAt, jobId };
     } catch (error) {
       this.logger.error(
         `[reengagement] 排程失败 jobId=${jobId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      this.tracking.trackScheduleError(
+        identity,
+        error instanceof Error ? error.message : String(error),
       );
       return { scheduled: false, reason: 'enqueue_error' };
     }

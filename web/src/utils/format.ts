@@ -103,6 +103,15 @@ export function formatRelativeTime(timestamp: string | number): string {
   });
 }
 
+/**
+ * 会话 ID 截断展示（表格窄列用），超长补省略号
+ */
+export function truncateSessionId(sessionId: string, maxLength = 18): string {
+  if (!sessionId) return '-';
+  if (sessionId.length <= maxLength) return sessionId;
+  return `${sessionId.slice(0, maxLength)}…`;
+}
+
 // ==================== JSON 格式化工具 ====================
 
 /**

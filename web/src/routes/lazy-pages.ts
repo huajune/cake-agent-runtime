@@ -10,6 +10,7 @@ export type AppRoutePath =
   | '/config'
   | '/system'
   | '/message-processing'
+  | '/reengagement'
   | '/chat-records'
   | '/agent-test'
   | '/test-suite'
@@ -22,6 +23,7 @@ const hostingLoader = () => import('@/view/hosting/list');
 const configLoader = () => import('@/view/config/list');
 const systemLoader = () => import('@/view/system/list');
 const messageProcessingLoader = () => import('@/view/message-processing/list');
+const reengagementLoader = () => import('@/view/reengagement/list');
 const chatRecordsLoader = () => import('@/view/chat-records/list');
 const agentTestLoader = () => import('@/view/agent-test/list');
 const testSuiteLoader = () => import('@/view/test-suite/list');
@@ -34,6 +36,7 @@ export const Hosting = lazy(hostingLoader);
 export const Config = lazy(configLoader);
 export const System = lazy(systemLoader);
 export const MessageProcessing = lazy(messageProcessingLoader);
+export const Reengagement = lazy(reengagementLoader);
 export const ChatRecords = lazy(chatRecordsLoader);
 export const AgentTest = lazy(agentTestLoader);
 export const TestSuite = lazy(testSuiteLoader);
@@ -47,6 +50,7 @@ export const ALL_ROUTE_PATHS: AppRoutePath[] = [
   '/config',
   '/system',
   '/message-processing',
+  '/reengagement',
   '/chat-records',
   '/agent-test',
   '/test-suite',
@@ -61,6 +65,7 @@ const routeLoaders: Record<AppRoutePath, RouteLoader> = {
   '/config': configLoader,
   '/system': systemLoader,
   '/message-processing': messageProcessingLoader,
+  '/reengagement': reengagementLoader,
   '/chat-records': chatRecordsLoader,
   '/agent-test': agentTestLoader,
   '/test-suite': testSuiteLoader,

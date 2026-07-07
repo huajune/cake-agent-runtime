@@ -4,6 +4,7 @@ import { AnalyticsController, MonitoringController } from '@biz/monitoring/monit
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
+import { ReengagementQueryService } from '@biz/monitoring/services/dashboard/reengagement-query.service';
 import { MonitoringProbeService } from '@biz/monitoring/services/maintenance/monitoring-probe.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { ExtractionAccuracyService } from '@biz/monitoring/services/dashboard/extraction-accuracy.service';
@@ -37,6 +38,13 @@ describe('AnalyticsController', () => {
     clearCacheAsync: jest.fn(),
   };
 
+  const mockReengagementQueryService = {
+    getRecords: jest.fn(),
+    getRecordByTouchKey: jest.fn(),
+    getStats: jest.fn(),
+    getCandidateOverview: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AnalyticsController],
@@ -44,6 +52,7 @@ describe('AnalyticsController', () => {
         { provide: AnalyticsDashboardService, useValue: mockDashboardService },
         { provide: AnalyticsQueryService, useValue: mockQueryService },
         { provide: AnalyticsMaintenanceService, useValue: mockMaintenanceService },
+        { provide: ReengagementQueryService, useValue: mockReengagementQueryService },
       ],
     }).compile();
 
@@ -56,6 +65,97 @@ describe('AnalyticsController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('reengagement endpoints', () => {
+    it('should return registered reengagement scenarios', () => {
+      const result = controller.getReengagementScenarios();
+
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0]).toEqual(
+        expect.objectContaining({
+          code: expect.any(String),
+          phase: expect.any(String),
+          displayName: expect.any(String),
+          defaultRolloutEnabled: expect.any(Boolean),
+        }),
+      );
+    });
+
+    it('should pass record filters to reengagement query service', async () => {
+      const mockResult = [{ touch_key: 'touch-1' }];
+      mockReengagementQueryService.getRecords.mockResolvedValue(mockResult);
+
+      const result = await controller.getReengagementRecords(
+        '2026-07-06',
+        '2026-07-07',
+        'scheduled',
+        'opening_no_reply',
+        'sess-1',
+        '25',
+        '50',
+      );
+
+      expect(mockReengagementQueryService.getRecords).toHaveBeenCalledWith({
+        startDate: '2026-07-06',
+        endDate: '2026-07-07',
+        status: 'scheduled',
+        scenarioCode: 'opening_no_reply',
+        sessionId: 'sess-1',
+        limit: '25',
+        offset: '50',
+      });
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should pass candidate filters to reengagement query service', async () => {
+      const mockResult = { total: 1, candidates: [] };
+      mockReengagementQueryService.getCandidateOverview.mockResolvedValue(mockResult);
+
+      const result = await controller.getReengagementCandidates(
+        '2026-07-06',
+        '2026-07-07',
+        'opening_no_reply',
+        'sess-1',
+        'true',
+        '20',
+        '40',
+      );
+
+      expect(mockReengagementQueryService.getCandidateOverview).toHaveBeenCalledWith({
+        startDate: '2026-07-06',
+        endDate: '2026-07-07',
+        scenarioCode: 'opening_no_reply',
+        sessionId: 'sess-1',
+        pendingOnly: 'true',
+        limit: '20',
+        offset: '40',
+      });
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should pass explicit stats dates to reengagement query service', async () => {
+      const mockResult = [{ status: 'sent', scenario_code: 'opening_no_reply', cnt: 2 }];
+      mockReengagementQueryService.getStats.mockResolvedValue(mockResult);
+
+      const result = await controller.getReengagementStats('2026-07-06', '2026-07-07');
+
+      expect(mockReengagementQueryService.getStats).toHaveBeenCalledWith(
+        '2026-07-06',
+        '2026-07-07',
+      );
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should pass touch key to detail lookup', async () => {
+      const mockResult = { touch_key: 'touch-1', events: [] };
+      mockReengagementQueryService.getRecordByTouchKey.mockResolvedValue(mockResult);
+
+      const result = await controller.getReengagementRecordDetail('touch-1');
+
+      expect(mockReengagementQueryService.getRecordByTouchKey).toHaveBeenCalledWith('touch-1');
+      expect(result).toEqual(mockResult);
+    });
   });
 
   describe('getDashboardOverview', () => {

@@ -378,10 +378,18 @@ export default function Dashboard() {
   const successfulBookings = business?.bookings?.successful ?? 0;
   const hideEmptyDelta = (current: number, delta?: number) =>
     dashboardLoading || (current === 0 && Math.abs(delta ?? 0) < 0.05) ? undefined : delta;
+  // 对比周期早于数据覆盖起点（系统上线前无数据）时环比失真，直接隐藏
+  const dataCoverage = dashboard?.dataCoverage;
+  const previousPeriodCovered = dataCoverage?.previousPeriodCovered !== false;
+  const gateDelta = (delta?: number) => (previousPeriodCovered ? delta : undefined);
+  const coverageNote =
+    dataCoverage?.currentPeriodCovered === false && dataCoverage.startDate
+      ? `数据自 ${dataCoverage.startDate} 起`
+      : null;
   const requestSubtitle = dashboardLoading
     ? '加载中'
     : totalMessages > 0
-      ? `成功 ${successCount} / 异常 ${failureCount}`
+      ? `成功 ${successCount} / 异常 ${failureCount}${coverageNote ? ` · ${coverageNote}` : ''}`
       : '暂无请求';
   const successRateSubtitle = dashboardLoading
     ? '加载中'
@@ -454,7 +462,7 @@ export default function Dashboard() {
           label="处理请求数"
           value={dashboardLoading ? '-' : totalMessages}
           subtitle={requestSubtitle}
-          delta={hideEmptyDelta(totalMessages, overviewDelta?.totalMessages)}
+          delta={hideEmptyDelta(totalMessages, gateDelta(overviewDelta?.totalMessages))}
           deltaLabel={comparisonLabel}
           variant="primary"
           timeRangeBadge={timeRangeBadge}
@@ -463,7 +471,7 @@ export default function Dashboard() {
           label="成功率"
           value={dashboardLoading ? '-' : `${(overview?.successRate ?? 0).toFixed(1)}%`}
           subtitle={successRateSubtitle}
-          delta={hideEmptyDelta(totalMessages, overviewDelta?.successRate)}
+          delta={hideEmptyDelta(totalMessages, gateDelta(overviewDelta?.successRate))}
           deltaLabel={comparisonLabel}
           deltaUnit="points"
           variant="success"
@@ -472,7 +480,7 @@ export default function Dashboard() {
           label="平均响应"
           value={dashboardLoading ? '-' : formatDuration(overview?.avgDuration ?? 0)}
           subtitle={responseSubtitle}
-          delta={hideEmptyDelta(overview?.avgDuration ?? 0, overviewDelta?.avgDuration)}
+          delta={hideEmptyDelta(overview?.avgDuration ?? 0, gateDelta(overviewDelta?.avgDuration))}
           deltaLabel={comparisonLabel}
           deltaInverse
         />
@@ -496,7 +504,7 @@ export default function Dashboard() {
           label="托管用户数"
           value={dashboardLoading ? '-' : managedUsers}
           subtitle={<>独立用户，同一人仅算 1 个</>}
-          delta={hideEmptyDelta(managedUsers, businessDelta?.consultations)}
+          delta={hideEmptyDelta(managedUsers, gateDelta(businessDelta?.consultations))}
           deltaLabel={comparisonLabel}
           timeRangeBadge={timeRangeBadge}
           className="border-primary-soft"

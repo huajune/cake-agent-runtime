@@ -1147,4 +1147,92 @@ describe('buildJobListTool', () => {
       expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_REGION_NEEDS_GEOCODE);
     });
   });
+
+  describe('用工形式家族放宽提示 laborFormRelaxNotice', () => {
+    const contextWithLaborForm = (laborForm: string): ToolBuildContext => ({
+      ...mockContext,
+      sessionFacts: {
+        interview_info: {},
+        preferences: { labor_form: laborForm },
+      } as ToolBuildContext['sessionFacts'],
+    });
+
+    it('严格匹配为空、按兼职家族放宽命中：markdown 注入强制提示且 metadata 带 relaxedToFamily', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职+' } }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '小时工' } }),
+          makeJobData({ basicInfo: { jobId: 3, brandName: '奥乐齐', laborForm: '全职' } }),
+        ],
+        total: 3,
+      });
+
+      const result = await executeTool(contextWithLaborForm('兼职'));
+
+      // 强制提示：禁止把家族岗位包装成候选人原话里的用工形式
+      expect(result.markdown).toContain('附近暂无岗位字段严格标注为「兼职」的岗位');
+      expect(result.markdown).toContain('必须按每个岗位真实的用工形式说明');
+      expect(result.markdown).toContain('不得把它们统称或包装成「兼职」');
+      expect(result.queryMeta.laborFormFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateLaborForm: '兼职',
+          relaxedToFamily: true,
+        }),
+      );
+      // 家族放宽只扩到兼职形态：全职岗仍被剔除
+      expect(result.resultCount).toBe(2);
+      expect(result.markdown).not.toContain('奥乐齐');
+    });
+
+    it('严格匹配有结果时不注入放宽提示，relaxedToFamily=false', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职' } }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '兼职+' } }),
+        ],
+        total: 2,
+      });
+
+      const result = await executeTool(contextWithLaborForm('兼职'));
+
+      expect(result.markdown).not.toContain('附近暂无岗位字段严格标注为');
+      expect(result.queryMeta.laborFormFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateLaborForm: '兼职',
+          relaxedToFamily: false,
+        }),
+      );
+      // 严格匹配命中时只保留严格匹配岗位
+      expect(result.resultCount).toBe(1);
+    });
+
+    it('候选人无用工形式偏好时不过滤也不注入提示', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职+' } })],
+        total: 1,
+      });
+
+      const result = await executeTool();
+
+      expect(result.markdown).not.toContain('附近暂无岗位字段严格标注为');
+      expect(result.queryMeta.laborFormFilter).toEqual({ applied: false });
+    });
+
+    it('要全职时不参与家族放宽：附近只有兼职形态岗位应返回过滤后为空的错误', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职+' } }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '小时工' } }),
+        ],
+        total: 2,
+      });
+
+      const result = await executeTool(contextWithLaborForm('全职'));
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY);
+      expect(result._replyInstruction).toContain('附近暂时没有全职的岗位');
+    });
+  });
 });

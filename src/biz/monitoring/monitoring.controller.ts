@@ -3,12 +3,15 @@ import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { ReengagementQueryService } from './services/dashboard/reengagement-query.service';
+import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/scenario-registry';
 import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
 import { DeliverySkipReason } from '@shared-types/tracking.types';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
+import { formatLocalDate } from '@infra/utils/date.util';
 
 /**
  * Analytics API 控制器
@@ -22,7 +25,103 @@ export class AnalyticsController {
     private readonly dashboardService: AnalyticsDashboardService,
     private readonly queryService: AnalyticsQueryService,
     private readonly maintenanceService: AnalyticsMaintenanceService,
+    private readonly reengagementQueryService: ReengagementQueryService,
   ) {}
+
+  /**
+   * 复聊场景注册表（只读；Dashboard 配置页展示）。
+   * 场景级灰度的运行时值在托管配置 reengagementScenarioRollout 里，这里只给静态元数据与默认值。
+   * GET /analytics/reengagement-scenarios
+   */
+  @Get('reengagement-scenarios')
+  getReengagementScenarios() {
+    return FOLLOW_UP_SCENARIOS.map((scenario) => ({
+      code: scenario.code,
+      phase: scenario.phase,
+      displayName: scenario.displayName,
+      anchorEvent: scenario.anchorEvent,
+      anchorLabel: scenario.anchorLabel,
+      delayLabel: scenario.delayLabel,
+      objective: scenario.objective,
+      generationPolicy: scenario.generationPolicy,
+      defaultRolloutEnabled: scenario.defaultRolloutEnabled,
+    }));
+  }
+
+  /**
+   * 二次触发（复聊）追溯记录列表
+   * GET /analytics/reengagement-records?startDate=&endDate=&status=&scenarioCode=&sessionId=&limit=&offset=
+   */
+  @Get('reengagement-records')
+  async getReengagementRecords(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('status') status?: string,
+    @Query('scenarioCode') scenarioCode?: string,
+    @Query('sessionId') sessionId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.reengagementQueryService.getRecords({
+      startDate,
+      endDate,
+      status,
+      scenarioCode,
+      sessionId,
+      limit,
+      offset,
+    });
+  }
+
+  /**
+   * 二次触发候选人视角：一行一个候选人，带各场景当前态与下一次待发任务
+   * GET /analytics/reengagement-candidates?startDate=&endDate=&scenarioCode=&sessionId=&pendingOnly=&limit=&offset=
+   */
+  @Get('reengagement-candidates')
+  async getReengagementCandidates(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('scenarioCode') scenarioCode?: string,
+    @Query('sessionId') sessionId?: string,
+    @Query('pendingOnly') pendingOnly?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.reengagementQueryService.getCandidateOverview({
+      startDate,
+      endDate,
+      scenarioCode,
+      sessionId,
+      pendingOnly,
+      limit,
+      offset,
+    });
+  }
+
+  /**
+   * 二次触发追溯统计（按 status + scenario 分组计数）
+   * GET /analytics/reengagement-stats?startDate=&endDate=
+   */
+  @Get('reengagement-stats')
+  async getReengagementStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    // 默认"今天"用上海口径：UTC 容器里 toISOString 在上海 0-8 点会给出昨天
+    const end = endDate ?? formatLocalDate(new Date());
+    const start = startDate ?? end;
+    return this.reengagementQueryService.getStats(start, end);
+  }
+
+  /**
+   * 二次触发追溯详情（含生成文案与 events 全轨迹）
+   * GET /analytics/reengagement-records/detail?touchKey=...
+   * touchKey 含冒号，走 query 参数避免路径转义问题
+   */
+  @Get('reengagement-records/detail')
+  async getReengagementRecordDetail(@Query('touchKey') touchKey: string) {
+    return this.reengagementQueryService.getRecordByTouchKey(touchKey);
+  }
 
   /**
    * 获取 Dashboard 概览数据

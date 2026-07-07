@@ -493,6 +493,11 @@ export interface SignupWorkOrderItem {
   candidateName?: string | null;
   phone?: string | null;
   signUpTime?: string | null;
+  /**
+   * 当前约面时间（yyyy-MM-dd HH:mm，2026-07 与海绵约定新增下发）。
+   * 复聊到点核验用它比对改期（后台改时间也能发现）；老版本响应无此字段，读取方必须容缺。
+   */
+  interviewTime?: string | null;
   /** 面试通过时间；非空即视为"面试成功"（interview.passed 判定依据）。 */
   interviewPassTime?: string | null;
   brandId?: number | null;
@@ -528,6 +533,7 @@ export const SignupWorkOrderItemSchema = z
     candidateName: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
     signUpTime: z.string().nullable().optional(),
+    interviewTime: z.string().nullable().optional(),
     interviewPassTime: z.string().nullable().optional(),
     brandId: z.number().nullable().optional(),
     brandName: z.string().nullable().optional(),

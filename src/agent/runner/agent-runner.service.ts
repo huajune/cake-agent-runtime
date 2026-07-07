@@ -22,6 +22,7 @@ import type {
   GuardrailReviewStepDetail,
 } from '@biz/message/types/guardrail-review.types';
 import { classifyReviewedOutcome } from './turn-outcome';
+import { isDanglingCheckReply } from './dangling-reply';
 import {
   OutputGuardrailService,
   type OutputGuardDecision,
@@ -236,18 +237,43 @@ export class AgentRunnerService {
     });
 
     const revisedText = (revised.text ?? '').trim();
-    if (!revisedText) {
+    // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的
+    // 将来时承诺不可能兑现，投递即空头承诺（badcase batch_6a4790c7…：候选人
+    // 只收到一句"我帮你查下花桥中骏附近的岗位"，之后再无下文）。与空文本同样
+    // 收敛为 block（沉默 + 落审查档案），不送二审——二审只查规则违规，会放行。
+    const danglingRepair = revisedText !== '' && isDanglingCheckReply(revisedText);
+    if (!revisedText || danglingRepair) {
+      if (danglingRepair) {
+        this.logger.warn(
+          `[invokeReviewed] repair 产物为悬空承接句，收敛为 block: text="${revisedText}"`,
+        );
+      }
       const emptyDecision: OutputGuardDecision = {
         ...decision,
         decision: 'block',
-        reasonCode: 'revise_empty',
+        reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
+      };
+      // 悬空文本刻意不送二审，没有针对修复文本的真实裁决——revised 步骤必须用
+      // 干净的 decision 归档，不能 spread 首审对象：否则首版回复的 ruleIds/
+      // violations 会被错误归到重写文本名下，污染守卫档案的取证价值。
+      const danglingStepDecision: OutputGuardDecision = {
+        decision: 'block',
+        riskLevel: 'low',
+        violations: [],
+        ruleIds: [],
+        blockedRuleIds: [],
+        repairMode: decision.repairMode,
+        reasonCode: 'revise_dangling',
       };
       this.persistReviewRecord(ctx, {
         firstReply: firstText,
         firstDecision: decision,
         finalDecision: emptyDecision,
         repaired: true,
-        revisedReply: '',
+        revisedReply: revisedText,
+        // 悬空场景有真实修复文本，补 revisedDecision 让档案落库（空文本场景
+        // 维持原跳过行为：无修复内容可归档）。
+        revisedDecision: danglingRepair ? danglingStepDecision : undefined,
         committedSideEffects: committed || undefined,
       });
       return this.finalizeReviewed(
@@ -255,7 +281,13 @@ export class AgentRunnerService {
         emptyDecision,
         true,
         wantDefer,
-        this.buildGuardrailTrace([firstStep], true, emptyDecision),
+        this.buildGuardrailTrace(
+          danglingRepair
+            ? [firstStep, this.toGuardrailStep('revised', danglingStepDecision)]
+            : [firstStep],
+          true,
+          emptyDecision,
+        ),
       );
     }
 
@@ -263,11 +295,29 @@ export class AgentRunnerService {
     const decision2 = await this.outputGuard.check(
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
-    // §9：repair 死循环硬上限 1 —— 二次仍 revise/replan 则 block。
-    const finalDecision: OutputGuardDecision =
-      decision2.decision === 'revise' || decision2.decision === 'replan'
-        ? { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
-        : decision2;
+    // §9：repair 死循环硬上限 1 —— 二次仍 revise/replan 时按风险分级收敛：
+    // - P0（riskLevel=high）或含不可恢复违规：block（静默 + 档案），发出去即不可挽回；
+    // - 仅 P1/P2 可恢复违规：fail-open 投递修复版 + 档案标注 repair_exhausted_fail_open。
+    //   依据 2026-07-06 生产守卫档案首日复盘：假阳 × repair_exhausted 静默的组合杀伤最大
+    //   （候选人在约面/收资节点整轮收不到回复），P1 级假阳的代价应是"多一条告警"而不是丢单。
+    //   注意 revise 档规则本就定义为"可改写修复"的口径问题，修复版即使仍有残留，
+    //   其风险也低于关键转化节点的整轮静默。
+    const wantsRepairAgain = decision2.decision === 'revise' || decision2.decision === 'replan';
+    const failOpenEligible =
+      wantsRepairAgain &&
+      decision2.riskLevel !== 'high' &&
+      decision2.violations.every((v) => v.recoverability !== 'non_recoverable');
+    if (failOpenEligible) {
+      this.logger.warn(
+        `[invokeReviewed] repair 上限用尽但仅剩 P1/P2 可恢复违规，fail-open 投递修复版: ` +
+          `rules=${decision2.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
+      );
+    }
+    const finalDecision: OutputGuardDecision = wantsRepairAgain
+      ? failOpenEligible
+        ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
+        : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
+      : decision2;
     this.persistReviewRecord(ctx, {
       firstReply: firstText,
       firstDecision: decision,

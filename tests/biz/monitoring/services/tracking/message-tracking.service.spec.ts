@@ -505,4 +505,84 @@ describe('MessageTrackingService', () => {
       expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalHostingPausedSkipped', 1);
     });
   });
+
+  describe('recordProactiveTurn', () => {
+    it('persists a terminal row keyed by batchId without touching intake stats or user_activity', async () => {
+      service.recordProactiveTurn({
+        messageId: 'proactive-batch-1',
+        batchId: 'proactive-batch-1',
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userName: 'User One',
+        receivedAt: 1700000000000,
+        status: 'success',
+        messagePreview: '[主动触达] 面试前提醒',
+        replyPreview: '明天下午两点的面试别忘了哦',
+      });
+
+      await flushPromises();
+
+      // 直接 upsert 终态行，message_id = batchId
+      expect(messageProcessingService.saveRecord).toHaveBeenCalledTimes(1);
+      const saved = mockMessageProcessingService.saveRecord.mock.calls[0][0];
+      expect(saved).toEqual(
+        expect.objectContaining({
+          messageId: 'proactive-batch-1',
+          batchId: 'proactive-batch-1',
+          chatId: 'chat-1',
+          status: 'success',
+          messagePreview: '[主动触达] 面试前提醒',
+        }),
+      );
+      expect(saved.messageId).toBe(saved.batchId);
+
+      // 与被动 intake 不同：不计 activeRequests / totalMessages 等计数
+      expect(cacheService.incrementActiveRequests).not.toHaveBeenCalled();
+      expect(cacheService.incrementCounter).not.toHaveBeenCalled();
+      expect(cacheService.incrementCounters).not.toHaveBeenCalled();
+      expect(await service.getActiveRequests()).toBe(0);
+
+      // 主动触达 ≠ 候选人活跃信号：不写 user_activity
+      expect(userHostingService.upsertActivity).not.toHaveBeenCalled();
+    });
+
+    it('computes anomalyFlags from toolCalls on the persisted row', async () => {
+      service.recordProactiveTurn({
+        messageId: 'proactive-batch-2',
+        batchId: 'proactive-batch-2',
+        chatId: 'chat-2',
+        receivedAt: 1700000001000,
+        status: 'success',
+        toolCalls: [
+          { toolName: 'duliday_job_list', args: {}, resultCount: 0, status: 'empty' },
+          { toolName: 'duliday_job_list', args: {}, resultCount: 3, status: 'ok' },
+          { toolName: 'duliday_job_list', args: {}, resultCount: 3, status: 'ok' },
+        ],
+      });
+
+      await flushPromises();
+
+      expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'proactive-batch-2',
+          anomalyFlags: expect.arrayContaining(['tool_loop', 'tool_empty_result']),
+        }),
+      );
+    });
+
+    it('leaves anomalyFlags undefined when there are no toolCalls', async () => {
+      service.recordProactiveTurn({
+        messageId: 'proactive-batch-3',
+        batchId: 'proactive-batch-3',
+        chatId: 'chat-3',
+        receivedAt: 1700000002000,
+        status: 'success',
+      });
+
+      await flushPromises();
+
+      const saved = mockMessageProcessingService.saveRecord.mock.calls[0][0];
+      expect(saved.anomalyFlags).toBeUndefined();
+    });
+  });
 });

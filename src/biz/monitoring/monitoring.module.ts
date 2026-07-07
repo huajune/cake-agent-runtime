@@ -11,10 +11,12 @@ import { HostingConfigModule } from '../hosting-config/hosting-config.module';
 // Tracking (采集写入)
 import { MessageTrackingService } from './services/tracking/message-tracking.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
+import { ReengagementTrackingService } from './services/tracking/reengagement-tracking.service';
 
 // Dashboard / Alerts / Maintenance / Projections (应用编排)
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
+import { ReengagementQueryService } from './services/dashboard/reengagement-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
 import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { DailyStatsAggregatorService } from './services/projections/daily-stats-aggregator.service';
@@ -34,6 +36,7 @@ import { MonitoringDailyStatsRepository } from './repositories/daily-stats.repos
 import { MonitoringHourlyStatsRepository } from './repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from './repositories/error-log.repository';
 import { ExtractionAccuracyRepository } from './repositories/extraction-accuracy.repository';
+import { ReengagementTouchRepository } from './repositories/reengagement-touch.repository';
 import { AlertLogPersisterService } from './services/tracking/alert-log.persister';
 import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.interface';
 
@@ -68,9 +71,11 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
     MonitoringHourlyStatsRepository,
     MonitoringErrorLogRepository,
     ExtractionAccuracyRepository,
+    ReengagementTouchRepository,
     // Tracking
     MonitoringCacheService,
     MessageTrackingService,
+    ReengagementTrackingService,
     // 告警持久化：把 AlertNotifierService 的告警写入 monitoring_error_logs。
     // 接口 token 在 @Global 模块导出，AlertNotifierService（notification 层）
     // 通过 @Optional() @Inject(ALERT_LOG_PERSISTER) 解析，保持 notification 对 biz 零依赖。
@@ -79,6 +84,7 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
     // Dashboard / Alerts / Maintenance / Projections
     AnalyticsDashboardService,
     AnalyticsQueryService,
+    ReengagementQueryService,
     AnalyticsMaintenanceService,
     MonitoringProbeService,
     DailyStatsAggregatorService,
@@ -90,6 +96,7 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
   ],
   exports: [
     MessageTrackingService,
+    ReengagementTrackingService,
     MonitoringCacheService,
     AnalyticsDashboardService,
     AnalyticsQueryService,

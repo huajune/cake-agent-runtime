@@ -35,11 +35,6 @@ export interface AuthoritativeSessionState {
   }>;
   presentedStores: PresentedStore[];
   stage: string | null;
-  location?: {
-    raw: string;
-    geocoded?: unknown;
-    confidence: 'high' | 'low' | 'ambiguous';
-  };
   lastCandidateMessageAt?: number;
   terminal?: 'booked' | 'handed_off' | 'rejected' | 'onboarded';
 }

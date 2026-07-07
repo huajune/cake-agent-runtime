@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AlertLevel } from '@enums/alert.enum';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { GuardrailReviewRepository } from '../repositories/guardrail-review.repository';
 import type {
   GuardrailReviewInsertInput,
@@ -16,18 +18,66 @@ import type {
 export class GuardrailReviewService {
   private readonly logger = new Logger(GuardrailReviewService.name);
 
-  constructor(private readonly repository: GuardrailReviewRepository) {}
+  constructor(
+    private readonly repository: GuardrailReviewRepository,
+    private readonly alertNotifier: AlertNotifierService,
+  ) {}
 
   async recordReview(input: GuardrailReviewInsertInput): Promise<GuardrailReviewWriteOutcome> {
     if (!this.isWritableReview(input)) {
       this.logger.warn(`[guardrailReview] 非法审查档案写入被拒绝: traceId=${input.traceId}`);
+      this.alertPersistFailure(input, 'invalid_review_input');
       return 'failed';
     }
-    return this.repository.insertReviewRecord(input);
+    const outcome = await this.repository.insertReviewRecord(input);
+    if (outcome === 'failed') {
+      this.alertPersistFailure(input, 'db_write_failed');
+    }
+    return outcome;
   }
 
   async findByTraceId(traceId: string): Promise<GuardrailReviewRecord | null> {
     return this.repository.findByTraceId(traceId);
+  }
+
+  /**
+   * 落库失败必须可见（守卫命中档案是低频高价值数据，静默丢失过一次坏 3 天没人发现）：
+   * 发飞书告警群 + 落 monitoring_error_logs（AlertNotifier 自带 5 分钟/3 次节流与持久化）。
+   * fire-and-forget，告警自身失败不反噬回复链路。
+   */
+  private alertPersistFailure(input: GuardrailReviewInsertInput, reason: string): void {
+    void this.alertNotifier
+      .sendAlert({
+        code: 'guardrail_review_persist_failed',
+        severity: AlertLevel.ERROR,
+        summary: '出站守卫审查档案落库失败，该回合的首版/重写版全文将无法在详情页还原',
+        source: {
+          subsystem: 'agent',
+          component: 'output-guardrail',
+          action: 'persist_review_record',
+        },
+        scope: {
+          messageId: input.traceId,
+          chatId: input.chatId,
+          userId: input.userId,
+          contactName: input.contactName,
+        },
+        diagnostics: {
+          category: reason,
+          payload: {
+            firstDecision: input.first?.decision,
+            finalDecision: input.finalDecision,
+            ruleIds: input.first?.ruleIds,
+            repaired: input.repaired,
+          },
+        },
+        dedupe: { key: `guardrail_review_persist_failed:${reason}` },
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `[guardrailReview] 落库失败告警发送异常: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
   }
 
   private isWritableReview(input: GuardrailReviewInsertInput): boolean {

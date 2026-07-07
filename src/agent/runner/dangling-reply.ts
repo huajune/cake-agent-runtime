@@ -1,0 +1,47 @@
+/**
+ * 悬空查岗承接句检测：识别"只承接、不给结果"的最终回复。
+ *
+ * 出站守卫 repair 是本轮最后一次生成——rewrite 模式下工具已被物理移除，replan 模式
+ * 下产出的文本也是终版。此时任何"我帮你查下 X"式的将来时承诺都不可能兑现，投递出去
+ * 就是空头承诺（badcase batch_6a4790c7ce406a6aeee9c102：候选人问"花桥中骏有岗位吗"，
+ * repair 模型无视重写指令重新规划任务，最终只投递了一句"我帮你查下花桥中骏附近的岗位"，
+ * 之后永远没有下文）。
+ *
+ * 判定刻意保守（宁可漏判也不误杀）：短文本 + 含将来时"查/看/核实"承诺 + 不含任何
+ * 结果性/推进性内容标记（否定结论、数字事实、反问、转人工话术等）才算悬空。
+ */
+
+/**
+ * 将来时"我来查/看"式承诺。三个分支都要求第一人称/为你服务语境——
+ * 裸"查一下/看一下"会把「你先看一下上面的岗位介绍」这类祈使句误判成承诺。
+ */
+const PROMISE_PATTERN =
+  /(?:帮|给)你(?:查|看|核实|核对|确认|问)|(?:我|这边)(?:先|这就|马上|现在|去)(?:帮你|给你)?(?:查|看|核实|核对|确认|问)|(?:我|这边)(?:来|去)?(?:帮你|给你)?(?:查|看|核实|核对|确认)一?下/;
+
+/**
+ * 结果性/推进性内容标记：出现任一说明回复里带了实质结论或把对话推进给了候选人
+ * （否定结论、在招状态、薪资/距离数字、反问收集信息、转人工衔接），不算悬空。
+ * 完成态（了/到/啦/过/已经）说明"查"已经发生并有下文，是结果陈述不是空头承诺。
+ */
+const GROUNDED_PATTERN =
+  /没|暂|无|已|了|到|啦|过|在招|元|块|公里|千米|km|KM|群|同事|人工|吗|？|\?|哪|多少|几点|什么时候|方便/;
+
+/** 归一化后超过该长度的回复默认视为带实质内容，不参与悬空判定。 */
+const MAX_DANGLING_LENGTH = 30;
+
+/**
+ * 提示词钦定的兜底话术豁免（candidate-consultation.md L105/L133："没有字段就如实回
+ * '这个我帮你确认下'"）。该句是对具体字段缺失的诚实延后，不是 repair 后无法兑现的
+ * 查岗承诺；不豁免会把按提示词改写的合规 repair 整轮 block（2026-07-06 review）。
+ * 锚定"这个"指代 + 确认/核实/问 的完整短句，"帮你查下XX岗位"类查岗承诺不受影响。
+ */
+const MANDATED_DEFERRAL_PATTERN =
+  /^这个(?:我|这边)?(?:帮|给)你(?:确认|核实|问)一?下[哈呢哦呀嘛~～。！!]*$/;
+
+export function isDanglingCheckReply(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '');
+  if (!normalized || normalized.length > MAX_DANGLING_LENGTH) return false;
+  if (MANDATED_DEFERRAL_PATTERN.test(normalized)) return false;
+  if (!PROMISE_PATTERN.test(normalized)) return false;
+  return !GROUNDED_PATTERN.test(normalized);
+}

@@ -120,6 +120,11 @@
   color: $text-muted;
 }
 
+.statusWarn {
+  background: $warning-soft;
+  color: $warning;
+}
+
 .settingDescription {
   margin: 0;
   font-size: $font-size-sm;
@@ -285,6 +290,209 @@
   border-radius: 50%;
   box-shadow: $shadow-sm;
   transition: transform $transition-normal, box-shadow $transition-normal;
+}
+
+.scenarioPanel {
+  padding: $spacing-lg $spacing-xl;
+  border-radius: 20px;
+  border: 1px solid $border;
+  background: $bg-card;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.scenarioPanelToggle {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  &[aria-expanded='true'] {
+    margin-bottom: $spacing-md;
+  }
+
+  &[aria-expanded='false'] .scenarioPanelChevron {
+    transform: rotate(-90deg);
+  }
+
+  &:hover .scenarioPanelChevron {
+    background: $primary-soft;
+    border-color: $primary;
+    color: $primary;
+  }
+}
+
+.scenarioPanelChevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid $border;
+  background: $bg-secondary;
+  font-size: 16px;
+  line-height: 1;
+  color: $text-secondary;
+  transition: transform $transition-fast, background $transition-fast,
+    border-color $transition-fast, color $transition-fast;
+}
+
+.scenarioPanelHint {
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.segmented {
+  display: inline-flex;
+  align-self: flex-end;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid $border;
+  border-radius: $radius-full;
+  background: $bg-secondary;
+}
+
+.segmentedOption {
+  padding: 8px 14px;
+  border: none;
+  border-radius: $radius-full;
+  background: transparent;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast, box-shadow $transition-fast;
+
+  &:hover:not(:disabled) {
+    color: $text-primary;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.segmentedActive {
+  background: $bg-card;
+  box-shadow: $shadow-sm;
+}
+
+.segmentedActiveOff {
+  color: $text-primary;
+}
+
+.segmentedActiveWarn {
+  color: $warning;
+}
+
+.segmentedActiveOn {
+  color: $success;
+}
+
+.scenarioGroup {
+  margin-bottom: $spacing-lg;
+
+  &:last-of-type {
+    margin-bottom: 0;
+  }
+}
+
+.scenarioGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: $spacing-sm;
+  padding: 10px 12px;
+  border-radius: $radius-md;
+  background: $bg-secondary;
+}
+
+.scenarioGroupInfo {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.scenarioGroupTitle {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-bold;
+  color: $text-primary;
+}
+
+.scenarioTableWrap {
+  overflow-x: auto;
+}
+
+.scenarioTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $font-size-sm;
+
+  th {
+    padding: 10px 12px;
+    text-align: left;
+    white-space: nowrap;
+    font-weight: $font-weight-semibold;
+    color: $text-secondary;
+    background: $bg-secondary;
+    border-bottom: 1px solid $border;
+
+    &:first-child {
+      border-top-left-radius: $radius-md;
+    }
+
+    &:last-child {
+      border-top-right-radius: $radius-md;
+    }
+  }
+
+  td {
+    padding: 12px;
+    vertical-align: top;
+    color: $text-primary;
+    border-bottom: 1px solid $border;
+    line-height: 1.55;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.scenarioName {
+  font-weight: $font-weight-semibold;
+  white-space: nowrap;
+}
+
+.scenarioCode {
+  margin-top: 2px;
+  font-family: $font-family-mono;
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.scenarioObjective {
+  min-width: 220px;
+  color: $text-secondary;
+}
+
+.scenarioFootnote {
+  margin: $spacing-md 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: $text-muted;
 }
 
 .saveDock {

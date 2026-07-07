@@ -1,6 +1,7 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
+import { readLatestJobListCall, readLatestUsableJobListCall } from './job-list-call.util';
 
 /**
  * 品牌名错误：
@@ -93,12 +94,17 @@ function detectJobBrandMismatch(text: string, toolCalls: AgentToolCall[]) {
 }
 
 /**
- * 收集最后一次岗位工具返回的品牌名。
+ * 收集最后一次**可用**岗位工具结果里的品牌名。
  * 只从 duliday_job_list 读，避免其它工具里的自由文本污染品牌白名单。
+ *
+ * 必须取"最后一次可用"而不是裸最后一次（2026-07-06 review）：动作链"扩面查（有结果）
+ * → 复核查（空/错）"下，裸最后一次读到的是错误结果——错误 details 里的
+ * aliasFuzzyMatch.suggestions[].brandName 会被当成接地品牌，把上一次真实接地的推荐
+ * 误判成品牌改写直接 block。
  */
 function collectGroundedJobBrands(toolCalls: AgentToolCall[]): Set<string> {
   const brands = new Set<string>();
-  const latestJobListCall = readLatestJobListCall(toolCalls);
+  const latestJobListCall = readLatestUsableJobListCall(toolCalls);
   if (latestJobListCall) collectBrandNames(latestJobListCall.result, brands);
   return brands;
 }
@@ -124,6 +130,8 @@ function isAskingBeforeAlternativeBrandRecommendation(text: string): boolean {
 }
 
 function readHighConfidenceBrandAliasSuggestion(toolCalls: AgentToolCall[]): string | null {
+  // 这里必须读裸最后一次调用：aliasFuzzyMatch 恰恰长在 0 结果/错误返回的 details 上，
+  // 换成"可用"口径会永远读不到高置信品牌回指。
   const call = readLatestJobListCall(toolCalls);
   const result = call?.result;
   if (!result || typeof result !== 'object') return null;
@@ -137,10 +145,6 @@ function readHighConfidenceBrandAliasSuggestion(toolCalls: AgentToolCall[]): str
   if (!first || typeof first !== 'object') return null;
   const brandName = (first as Record<string, unknown>).brandName;
   return typeof brandName === 'string' && brandName.trim() ? brandName.trim() : null;
-}
-
-function readLatestJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
-  return [...toolCalls].reverse().find((call) => call.toolName === 'duliday_job_list') ?? null;
 }
 
 function isNoMatchClaimAboutBrand(text: string, brandName: string): boolean {

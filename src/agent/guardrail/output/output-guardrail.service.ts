@@ -12,10 +12,12 @@ import type {
   GuardrailRiskLevel,
   OutputDecision,
 } from '@shared-types/guardrail.contract';
+import type { GuardrailPriority } from '@shared-types/guardrail.contract';
 import {
   GUARDRAIL_DECISION,
   GUARDRAIL_FEEDBACK_POLICY,
   GUARDRAIL_PRIORITY,
+  GUARDRAIL_RECOVERABILITY,
   GUARDRAIL_REPAIR_MODE,
   GUARDRAIL_RISK_LEVEL,
 } from '@shared-types/guardrail.contract';
@@ -310,7 +312,11 @@ export class OutputGuardrailService {
       .join('\n');
     return {
       decision,
-      riskLevel: this.resolveLlmRiskLevel(llmDecision, actionableRules),
+      riskLevel: this.resolveLlmRiskLevel(
+        llmDecision,
+        actionableRules,
+        enforcedLlm ? llmViolations : [],
+      ),
       violations: [
         ...actionableRules.map((c) => this.ruleToViolation(c)),
         ...(enforcedLlm ? llmViolations : []),
@@ -502,6 +508,21 @@ export class OutputGuardrailService {
     };
   }
 
+  /**
+   * 语义 finding 的风险优先级。booking 状态冲突与 rule 档"工具失败假成功/预检阻断仍承诺"
+   * 同属 P0 域（发出去即误导候选人预约状态，不可挽回）；品牌/地理歧义是强业务风险 P1；
+   * 推荐非最优是质量问题 P2。该优先级经 resolveLlmRiskLevel 传导到 riskLevel，
+   * 决定 repair 上限用尽后能否 fail-open（runner §9）。
+   */
+  private static readonly SEMANTIC_FINDING_SEVERITY: Record<
+    SemanticReviewVerdict['findings'][number]['code'],
+    GuardrailPriority
+  > = {
+    job_recommendation_not_best_supported: GUARDRAIL_PRIORITY.P2,
+    brand_or_geo_ambiguity_ignored: GUARDRAIL_PRIORITY.P1,
+    active_booking_state_conflict: GUARDRAIL_PRIORITY.P0,
+  };
+
   /** 把 semantic finding 映射成 GuardViolation（喂回 repair prompt）。 */
   private findingToViolation(finding: SemanticReviewVerdict['findings'][number]): GuardViolation {
     return {
@@ -512,6 +533,12 @@ export class OutputGuardrailService {
       suggestion:
         finding.feedbackToGenerator?.trim() ||
         `修正以消除「${finding.code}」问题，只输出候选人可见回复`,
+      severity:
+        OutputGuardrailService.SEMANTIC_FINDING_SEVERITY[finding.code] ?? GUARDRAIL_PRIORITY.P1,
+      // 语义 finding 只经 revise/replan 进入 violations（block 在上游即收敛为最终裁决），
+      // 按定义可改写修复；P0 finding 禁 fail-open 的信号由 severity → riskLevel 承载，
+      // 不能留 undefined——runner 的 fail-open 闸门按 !== 'non_recoverable' 判定。
+      recoverability: GUARDRAIL_RECOVERABILITY.RECOVERABLE,
       repairMode:
         finding.repairMode === 'replan'
           ? GUARDRAIL_REPAIR_MODE.REPLAN
@@ -529,15 +556,28 @@ export class OutputGuardrailService {
     return GUARDRAIL_RISK_LEVEL.LOW;
   }
 
+  /**
+   * llm 档参与裁决时的组合 riskLevel。
+   *
+   * revise/replan 不能短路成 medium：riskLevel=high 是 runner §9 repair 上限用尽后
+   * 禁止 fail-open 的唯一档位信号。rule 档 P0（如工具失败假成功，action=revise 但
+   * severity=P0）或语义档 P0 finding 命中时必须传导 high，否则语义档恰好同轮 revise
+   * 会把 P0 违规"洗"成 medium → repair 两轮未净即 fail-open 发出（2026-07-06 review Critical）。
+   */
   private resolveLlmRiskLevel(
     llmDecision: OutputDecision,
     actionableRules: RuleContradiction[],
+    enforcedLlmViolations: GuardViolation[],
   ): GuardrailRiskLevel {
     if (llmDecision === GUARDRAIL_DECISION.BLOCK) return GUARDRAIL_RISK_LEVEL.HIGH;
+    const ruleLevel = this.resolveRuleRiskLevel(actionableRules);
     if (llmDecision === GUARDRAIL_DECISION.REVISE || llmDecision === GUARDRAIL_DECISION.REPLAN) {
-      return GUARDRAIL_RISK_LEVEL.MEDIUM;
+      const hasP0 =
+        ruleLevel === GUARDRAIL_RISK_LEVEL.HIGH ||
+        enforcedLlmViolations.some((v) => v.severity === GUARDRAIL_PRIORITY.P0);
+      return hasP0 ? GUARDRAIL_RISK_LEVEL.HIGH : GUARDRAIL_RISK_LEVEL.MEDIUM;
     }
-    return this.resolveRuleRiskLevel(actionableRules);
+    return ruleLevel;
   }
 
   private buildFeedbackToGenerator(rules: RuleContradiction[]): string {

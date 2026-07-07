@@ -1,5 +1,6 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { splitClaimSentences, textAssertsClaim } from './claim-assertion.util';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**
@@ -32,13 +33,20 @@ const WAIT_NOTICE_COMPLIANT_PATTERN =
   /不用|不需要|无需|等通知|电话(?:联系|通知)|面试官[^。！？\n]{0,12}(?:联系|通知)|保持电话|留意(?:电话|来电)/;
 const HANDOFF_NO_BOOKING_CLAIM_PATTERN =
   /(?:已|已经|帮你|给你)[^。！？\n]{0,16}(?:转人工|反馈给人工|通知人工|改期|取消)|(?:改期|取消)[^。！？\n]{0,8}(?:成功|好了|完成)|人工[^。！？\n]{0,12}(?:联系你|处理)/;
+// date_unavailable 的"规定动作"口径：说明所约日期约不上的原因（截止/来不及/已过点），
+// 再给替代时段。stage 策略明文要求"unavailable 说明原因并给替代时段"，这种回复不是
+// 违规而是标准答案（生产假阳 2026-07-06 守卫档案 id=9："今天已截止…最近能约明天下午1点"）。
+const DATE_UNAVAILABLE_ACK_PATTERN =
+  /截止|赶不上|来不及|约不了|约不上|报不上|错过|已经?过(?:了|点|时)|(?:今天|当天|这个时间|那天)[^。！？\n]{0,10}(?:不行|没法|约满|排满|满了)/;
 
 export function detectPrecheckBlockedBookingClaim(
   text: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  // 先看 reply 是否说了“可约/已约/已安排”，没有成功口径就不需要读工具结果。
-  if (!PRECHECK_BLOCKED_BOOKING_CLAIM_PATTERN.test(text)) return null;
+  // 先看 reply 是否"声称"可约/已约/已安排（句粒度，否定/疑问句不算）：
+  // "没法帮你登记报名"是转达拒绝的正确口径，不是可约声称（2026-07-06 守卫档案 id=51：
+  // precheck 正确拒绝 + Agent 正确转达，却因全文裸匹配"帮你…报名"被 P0 拦成整轮静默）。
+  if (!textAssertsClaim(text, PRECHECK_BLOCKED_BOOKING_CLAIM_PATTERN)) return null;
 
   // 取最后一次 precheck，避免同一轮多次尝试时拿到旧判断。
   const precheckCall = [...toolCalls]
@@ -62,6 +70,19 @@ export function detectPrecheckBlockedBookingClaim(
   // 只有 precheck 明确不允许进入 booking，才认为 reply 成功口径冲突。
   if (!hardAgeReject && !nameMustHandoff && !nextActionBlocksBooking) return null;
 
+  // date_unavailable 仅指"所约那一天约不上"，不是整个 booking 被阻断——precheck 同时
+  // 返回 bookableSlots 替代时段。回复只要承认了原日期约不上（说明原因），"最近能约
+  // 明天下午1点"就是在转述工具给的替代时段，属于 stage 策略要求的标准动作，放行；
+  // 但完成时态的"已约好/预约成功"仍然是编造，不豁免。
+  if (nextAction === 'date_unavailable' && !hardAgeReject && !nameMustHandoff) {
+    if (
+      DATE_UNAVAILABLE_ACK_PATTERN.test(text) &&
+      !textAssertsClaim(text, BOOKING_SUCCESS_CLAIM_PATTERN)
+    ) {
+      return null;
+    }
+  }
+
   const reason = hardAgeReject
     ? 'age hard_reject/age_rejected'
     : nameMustHandoff
@@ -74,13 +95,39 @@ export function detectPrecheckBlockedBookingClaim(
   };
 }
 
+/** 时间数字属于班次/通勤/营业等工作时间语境，不是面试时间（"意向班次：08:00-15:00"）。 */
+const SHIFT_OR_COMMUTE_TIME_CONTEXT_PATTERN =
+  /班次|排班|上班|下班|营业|通勤|工作时间|可(?:以)?出勤|意向时段|时段[:：]/;
+
+/** 约面语境关键词：判定某句话是在谈面试/到店安排。 */
+const INTERVIEW_CONTEXT_PATTERN = /面试|到店|预约|报到/;
+
 export function detectWaitNoticeTimeFabrication(
   text: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  // 必须同时出现约面语境和具体时间，避免把“等通知”本身误判。
-  if (!/面试|到店|预约|报到/.test(text)) return null;
-  if (!CONCRETE_INTERVIEW_TIME_PATTERN.test(text)) return null;
+  // 共现判定按"约面句 ± 1 句"的相邻窗口做，不是全文级也不是死板的同一句：
+  // - 全文级会把收资模板"意向班次：08:00-15:00（已记）"+"大概多久到店"的班次数字
+  //   当成编造的面试时间（2026-07-06 守卫档案 id=102：修复版已改成"店长电话通知"
+  //   仍因班次数字连杀两版，整轮静默）；
+  // - 严格同句则漏掉拆句编造"面试已经帮你安排好了。明天下午2点过去就行。"
+  //   （2026-07-06 review 盲区）。
+  // 班次/通勤语境豁免只对"本身不含约面关键词"的载时句成立："面试就定明天早上8点，
+  // 正好赶你上班前"里的"上班"不是豁免理由（同 review 盲区）。
+  const carriesFabricatedTime = (sentence: string): boolean =>
+    CONCRETE_INTERVIEW_TIME_PATTERN.test(sentence) &&
+    !(
+      SHIFT_OR_COMMUTE_TIME_CONTEXT_PATTERN.test(sentence) &&
+      !INTERVIEW_CONTEXT_PATTERN.test(sentence)
+    );
+  const sentences = splitClaimSentences(text);
+  const fabricatedTimeSentence = sentences.some((sentence, index) => {
+    if (!INTERVIEW_CONTEXT_PATTERN.test(sentence)) return false;
+    return [sentences[index - 1], sentence, sentences[index + 1]]
+      .filter((s): s is string => Boolean(s))
+      .some(carriesFabricatedTime);
+  });
+  if (!fabricatedTimeSentence) return null;
 
   const precheckCall = [...toolCalls]
     .reverse()
@@ -305,7 +352,15 @@ function normalizeFieldName(name: string): string {
   if (/经验|过往|经历|公司.*岗位/.test(trimmed)) return '经验';
   if (/健康证/.test(trimmed)) return '健康证';
   if (/学历/.test(trimmed)) return '学历';
-  if (/面试时间/.test(trimmed)) return '面试时间';
+  // "你想约哪天面试""想约哪天去面试""什么时候方便面试"都是面试时间字段的口语化写法。
+  // 字面匹配曾把带同义标题的完整模板判成漏字段并连杀两版（2026-07-06 守卫档案 id=25）。
+  if (
+    /面试时间|(?:约|选|挑|定)[^。：:\n]{0,6}(?:哪天|哪一天|什么时候|时间)|哪天[^。：:\n]{0,8}(?:去)?面试|面试[^。：:\n]{0,8}哪天|什么时候[^。：:\n]{0,6}(?:去)?面试/.test(
+      trimmed,
+    )
+  ) {
+    return '面试时间';
+  }
   if (/籍贯|户籍/.test(trimmed)) return '籍贯';
   if (/身份证(号)?/.test(trimmed)) return '身份证号';
   return trimmed;

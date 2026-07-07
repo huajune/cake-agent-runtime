@@ -188,6 +188,21 @@ export class MessageTrackingService {
   }
 
   /**
+   * 复聊主动回合流水：一行 = 一次主动跟进回合（message_id = batch_id）。
+   *
+   * 与被动消息 intake 不同：不计 activeRequests/totalMessages、不写 user_activity
+   * （主动触达不是候选人活跃信号），直接 upsert 终态行，供追溯页按 batch_id 跳转排障。
+   */
+  recordProactiveTurn(record: MessageProcessingRecordInput): void {
+    void this.saveRecordToDatabase({
+      ...record,
+      anomalyFlags: this.computeAnomalyFlags(record.toolCalls),
+    }).catch((err) => {
+      this.logger.warn(`保存主动回合流水失败 [${record.messageId}]:`, err);
+    });
+  }
+
+  /**
    * 聚合时回收源消息的 processing 流水
    *
    * 聚合路径下，每条入站消息在 intake 时已写入一条 processing 行（recordMessageReceived），
