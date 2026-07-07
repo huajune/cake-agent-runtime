@@ -187,7 +187,7 @@ jobs:
           SOURCE_PR_LABEL="$(printf '%s\n' "${RELEASE_METADATA_PR_NUMBERS}" | sed '/^$/d' | awk '{printf "%s#%s", sep, $1; sep=", "}')"
 
           git add package.json CHANGELOG.md .release/pending-release.json
-          git commit -m "chore(release): 更新待发布版本信息 [skip ci]"
+          git commit -m "chore(release): 更新待发布版本信息"
           # 显式重设 push 凭证：上游 claude-code-action（OIDC 模式）会覆写
           # checkout 持久化的凭证，补偿模式实测 push 报 "Invalid username or
           # token"（2026-06-10）。注意必须仍推送到 origin 而不是裸 URL——
