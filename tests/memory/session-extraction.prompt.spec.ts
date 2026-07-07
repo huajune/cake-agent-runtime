@@ -74,6 +74,53 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('[10239]');
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('duliday_job_list.brandIdList');
   });
+
+  describe('labor_form 提取口径（2026-07 反转：找兼职/要全职 必须提取）', () => {
+    it('should list the 6 legal labor_form values (expanded from 4)', () => {
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '仅允许以下合法值之一："全职"、"兼职"、"兼职+"、"小时工"、"寒假工"、"暑假工"',
+      );
+    });
+
+    it('should REQUIRE extracting 找兼职 → "兼职" and 要全职 → "全职"', () => {
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '候选人说"找兼职"/"有没有兼职" → labor_form: "兼职"',
+      );
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '候选人说"要全职"/"找全职" → labor_form: "全职"',
+      );
+      // few-shot 示例也要同口径
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '用户说"我想找兼职" / "有兼职吗" → labor_form: "兼职"',
+      );
+    });
+
+    it('should state platform has both full-time and part-time jobs as filter dimension', () => {
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('平台同时有全职、兼职及细分岗位');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '候选人明确表达任一合法用工形式时都应提取',
+      );
+    });
+
+    it('should NOT contain the reversed old wording (平台全是兼职 / 不提取口径)', () => {
+      // 旧口径：平台属性论（所有岗位都是兼职、全职不存在）
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('本平台所有岗位');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('都是兼职岗位');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('在本平台不存在');
+      // 旧口径：找兼职/要全职 → 不提取
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('**不提取** labor_form');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('平台全是兼职');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('这个词没有筛选价值');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('"兼职"/"全职"无区分度');
+      // 旧口径：合法值只有四个细分
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('四个细分值');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('"有空做兼职"是平台默认属性');
+    });
+
+    it('should still forbid inferring labor_form from availability alone', () => {
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不要仅凭可用时间推理 labor_form');
+    });
+  });
 });
 
 describe('buildSessionExtractionPrompt', () => {

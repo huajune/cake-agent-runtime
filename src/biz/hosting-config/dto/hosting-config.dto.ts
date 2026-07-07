@@ -1,4 +1,13 @@
-import { IsBoolean, IsOptional, IsNumber, IsString, IsIn, Min, Max } from 'class-validator';
+import {
+  IsBoolean,
+  IsObject,
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsIn,
+  Min,
+  Max,
+} from 'class-validator';
 
 // ==================== 运行时开关 ====================
 
@@ -103,6 +112,15 @@ export class UpdateAgentReplyConfigDto {
   @IsOptional()
   @IsBoolean()
   reengagementShadow?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reengagementPostBookingEnabled?: boolean;
+
+  /** 场景级灰度 map（key=场景 code，value=是否放开）；值非 boolean 的项会被服务端丢弃 */
+  @IsOptional()
+  @IsObject()
+  reengagementScenarioRollout?: Record<string, boolean>;
 }
 
 // ==================== 群任务通知配置 ====================

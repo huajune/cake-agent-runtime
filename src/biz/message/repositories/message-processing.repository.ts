@@ -577,8 +577,10 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
-   * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间）
+   * 将过期的 agent_invocation 置为 NULL（释放 TOAST 空间）
    *
+   * 仅清理 agent_invocation 一列（20260706171000）：agent_steps/tool_calls 有 30 天窗口
+   * 消费方（get_dashboard_tool_stats 回退路径、badcase 分析证据），随 30 天行删除一并清理。
    * 分批执行：PostgREST 连接角色 authenticator 有 statement_timeout=8s，
    * 单次全量 UPDATE 数千行 TOAST 大字段必然超时（生产曾因此积压数周未清理）。
    * 每批 p_limit 行，循环到一批不满即清完；maxBatches 防御 RPC 异常时死循环。

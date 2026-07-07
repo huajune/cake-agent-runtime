@@ -333,6 +333,72 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('只确认已提交预约');
   });
 
+  it('appends the HC-1 rewrite directive as a trailing user message (badcase batch_6a4790c7)', async () => {
+    // 只拼在超长 system 末尾时弱模型会无视重写指令、把 repair 回合当新对话重跑任务，
+    // 最终投递悬空的"我帮你查下"。指令必须同时出现在对话末尾（注意力最强位置）。
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '花桥中骏有岗位吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'none',
+        guardrailRepair: {
+          originalReply: '花桥附近暂时没合适的岗位哈，我拉你对应的餐饮兼职群',
+          ruleIds: ['group_promise_without_invite'],
+        },
+        reviseFeedback: [
+          {
+            type: 'group_promise_without_invite',
+            evidence: '承诺拉群但本轮未成功调 invite_to_group',
+            suggestion: '删除拉群承诺，按业务事实重写',
+            repairMode: 'rewrite',
+          },
+        ],
+      },
+      'invoke',
+    );
+
+    const last = result.normalizedMessages[result.normalizedMessages.length - 1];
+    expect(last.role).toBe('user');
+    const content = last.content as string;
+    expect(content).toContain('系统重写指令');
+    expect(content).toContain('花桥附近暂时没合适的岗位哈，我拉你对应的餐饮兼职群');
+    expect(content).toContain('[group_promise_without_invite]');
+    expect(content).toContain('严禁调用任何工具');
+    // rewrite 模式明确禁止悬空承接句
+    expect(content).toContain('只承接不给结果');
+  });
+
+  it('rewrite directive allows readonly tools (not "no tools") for replan repair', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '附近有岗吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'readonly',
+        reviseFeedback: [
+          {
+            type: 'hallucinated_fact',
+            evidence: '距离数字无工具依据',
+            suggestion: '重新查岗后按工具结果重写',
+            repairMode: 'replan',
+          },
+        ],
+      },
+      'invoke',
+    );
+
+    const last = result.normalizedMessages[result.normalizedMessages.length - 1];
+    expect(last.role).toBe('user');
+    const content = last.content as string;
+    expect(content).toContain('允许调用只读工具');
+    expect(content).not.toContain('严禁调用任何工具');
+  });
+
   it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       { imRoomId: 'room-1', groupName: '上海餐饮兼职群1群', city: '上海' },

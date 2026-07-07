@@ -291,6 +291,33 @@ export class LongTermService {
   }
 
   /**
+   * 改约成功时原地更新指定工单的面试时间（保留 job_id/brand/store 等已有元数据）。
+   *
+   * setActiveBooking 是整条覆盖写（缺省字段会被冲成 null），这里先读出目标工单
+   * 已有元数据再合并回写；指针不存在时也写入（仅带新时间），保证复聊到点核验有比对基准。
+   */
+  async updateActiveBookingInterviewTime(
+    corpId: string,
+    userId: string,
+    workOrderId: number,
+    interviewTime: string,
+  ): Promise<void> {
+    try {
+      const bookings = await this.supabaseStore.getActiveBookings(corpId, userId);
+      const target = bookings.find((booking) => booking.work_order_id === workOrderId);
+      await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, {
+        job_id: target?.job_id ?? null,
+        interview_time: interviewTime,
+        brand_name: target?.brand_name ?? null,
+        store_name: target?.store_name ?? null,
+        job_name: target?.job_name ?? null,
+      });
+    } catch (error) {
+      this.logger.warn('更新 active_booking 面试时间失败', error);
+    }
+  }
+
+  /**
    * 取消当前工单成功时清空 active_booking。
    */
   async clearActiveBooking(

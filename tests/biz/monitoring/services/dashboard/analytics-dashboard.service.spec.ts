@@ -105,6 +105,7 @@ describe('AnalyticsDashboardService', () => {
 
   const mockDailyStatsRepository = {
     getLatestDailyStat: jest.fn(),
+    getEarliestStatDate: jest.fn(),
   };
 
   const mockErrorLogRepository = {
@@ -132,6 +133,7 @@ describe('AnalyticsDashboardService', () => {
     getDashboardHourlyTrend: jest.fn(),
     getDashboardBusinessTrend: jest.fn(),
     getDashboardToolStats: jest.fn(),
+    getEarliestRecordDate: jest.fn(),
   };
 
   // 默认 getEarliestReportDate→null：daily_ops_report 尚无覆盖时预约数返回 0。
@@ -260,6 +262,9 @@ describe('AnalyticsDashboardService', () => {
     mockDailyOpsReportService.sumByDateRange.mockResolvedValue(undefined as never);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: yesterday });
+    // 默认覆盖起点未知 → 按全覆盖处理（fail-open）
+    mockDailyStatsRepository.getEarliestStatDate.mockResolvedValue(null);
+    mockMonitoringRecordRepository.getEarliestRecordDate.mockResolvedValue(null);
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
     mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(buildHourlyStatsRow());
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
@@ -1108,6 +1113,185 @@ describe('AnalyticsDashboardService', () => {
       );
 
       await expect(service.getDashboardOverviewAsync('today')).rejects.toThrow('Aggregator error');
+    });
+  });
+
+  // ========================================
+  // 概览缓存 stale-while-revalidate
+  // ========================================
+
+  describe('overview cache (stale-while-revalidate)', () => {
+    // 只假 Date（控制缓存新鲜度判定），保留真实定时器/微任务，方便 flush 后台刷新
+    const useDateOnlyFakeTimers = (iso: string) => {
+      jest.useFakeTimers({
+        doNotFake: ['setTimeout', 'setInterval', 'setImmediate', 'nextTick', 'queueMicrotask'],
+      });
+      jest.setSystemTime(new Date(iso));
+    };
+    const flushBackgroundRefresh = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('新鲜期内命中缓存，不重复查询', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockClear();
+
+      jest.setSystemTime(new Date('2026-07-06T10:00:30+08:00'));
+      const second = await service.getDashboardOverviewAsync('week');
+
+      expect(second).toBe(first);
+      expect(mockMonitoringRecordRepository.getDashboardOverviewStats).not.toHaveBeenCalled();
+    });
+
+    it('过期但在可服务窗口内：立即返回旧值并后台刷新', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+      expect(first.overview.activeUsers).toBe(0);
+
+      // week TTL 60s：61s 后过期但仍在 10 倍窗口内
+      jest.setSystemTime(new Date('2026-07-06T10:01:01+08:00'));
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        ...defaultOverview,
+        activeUsers: 42,
+      });
+
+      const stale = await service.getDashboardOverviewAsync('week');
+      expect(stale).toBe(first); // 旧值立即返回，不等重算
+
+      await flushBackgroundRefresh();
+      const refreshed = await service.getDashboardOverviewAsync('week');
+      expect(refreshed.overview.activeUsers).toBe(42);
+    });
+
+    it('超出可服务窗口：同步重算，不再返回旧值', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+
+      // week TTL 60s × 10 倍窗口 = 600s，再往后就彻底失效
+      jest.setSystemTime(new Date('2026-07-06T10:11:00+08:00'));
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        ...defaultOverview,
+        activeUsers: 42,
+      });
+
+      const recomputed = await service.getDashboardOverviewAsync('week');
+      expect(recomputed).not.toBe(first);
+      expect(recomputed.overview.activeUsers).toBe(42);
+    });
+
+    it('twoMonths TTL 放宽到 5 分钟：61s 后仍新鲜', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('twoMonths');
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockClear();
+
+      jest.setSystemTime(new Date('2026-07-06T10:01:01+08:00'));
+      const second = await service.getDashboardOverviewAsync('twoMonths');
+
+      expect(second).toBe(first);
+      expect(mockMonitoringRecordRepository.getDashboardOverviewStats).not.toHaveBeenCalled();
+    });
+
+    it('后台刷新失败不影响返回旧值，也不缓存失败结果', async () => {
+      useDateOnlyFakeTimers('2026-07-06T10:00:00+08:00');
+
+      const first = await service.getDashboardOverviewAsync('week');
+
+      jest.setSystemTime(new Date('2026-07-06T10:01:01+08:00'));
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockRejectedValue(new Error('boom'));
+
+      const stale = await service.getDashboardOverviewAsync('week');
+      expect(stale).toBe(first);
+
+      await flushBackgroundRefresh();
+      // 刷新失败后旧值仍可继续服务（仍在可服务窗口内）
+      const again = await service.getDashboardOverviewAsync('week');
+      expect(again).toBe(first);
+    });
+  });
+
+  // ========================================
+  // 数据覆盖标注（dataCoverage）
+  // ========================================
+
+  describe('dataCoverage', () => {
+    beforeEach(() => {
+      jest.useFakeTimers({
+        doNotFake: ['setTimeout', 'setInterval', 'setImmediate', 'nextTick', 'queueMicrotask'],
+      });
+      jest.setSystemTime(new Date('2026-07-06T12:00:00+08:00'));
+      mockDailyStatsRepository.getEarliestStatDate.mockResolvedValue('2026-04-15');
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('twoMonths：对比周期起点早于覆盖起点 → previousPeriodCovered=false', async () => {
+      // current: 05-08 起（≥04-15 覆盖）；previous: 03-09 起（<04-15 未覆盖）
+      const result = await service.getDashboardOverviewAsync('twoMonths');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-04-15',
+        currentPeriodCovered: true,
+        previousPeriodCovered: false,
+      });
+    });
+
+    it('threeMonths：当前周期起点也早于覆盖起点 → 两个标记都为 false', async () => {
+      // current: 04-08 起（<04-15）；previous: 01-08 起（<04-15）
+      const result = await service.getDashboardOverviewAsync('threeMonths');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-04-15',
+        currentPeriodCovered: false,
+        previousPeriodCovered: false,
+      });
+    });
+
+    it('week：两个周期都在覆盖范围内 → 全部为 true', async () => {
+      const result = await service.getDashboardOverviewAsync('week');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-04-15',
+        currentPeriodCovered: true,
+        previousPeriodCovered: true,
+      });
+    });
+
+    it('覆盖起点查询失败 → fail-open 按全覆盖处理', async () => {
+      mockDailyStatsRepository.getEarliestStatDate.mockRejectedValue(new Error('db down'));
+
+      const result = await service.getDashboardOverviewAsync('twoMonths');
+
+      expect(result.dataCoverage).toEqual({
+        startDate: null,
+        currentPeriodCovered: true,
+        previousPeriodCovered: true,
+      });
+    });
+
+    it('小组路径用原始流水表覆盖起点判断', async () => {
+      // 原始表只保留 30 天：twoMonths 连当前周期都未完全覆盖
+      mockMonitoringRecordRepository.getEarliestRecordDate.mockResolvedValue(
+        new Date('2026-06-05T00:00:00+08:00'),
+      );
+
+      const result = await service.getDashboardOverviewAsync('twoMonths', ['A组']);
+
+      expect(result.dataCoverage).toEqual({
+        startDate: '2026-06-05',
+        currentPeriodCovered: false,
+        previousPeriodCovered: false,
+      });
+      // 小组路径不应误用日聚合表的覆盖起点
+      expect(mockDailyStatsRepository.getEarliestStatDate).not.toHaveBeenCalled();
     });
   });
 

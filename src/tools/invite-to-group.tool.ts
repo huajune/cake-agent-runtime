@@ -84,12 +84,12 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 - 若 errorType=invite.city_unverified，说明该城市没有出处依据（会话记忆和候选人原文都没有）。先向候选人确认所在城市再调用；本轮不要提群相关内容，不要转人工
 - 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
   - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（errorType=invite.no_group_in_city / invite.no_group_available）、或"候选人非外部联系人/已拉黑删好友"（errorType=invite.candidate_not_friend）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
-- 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要承诺群相关动作
-- 严禁在未调用本工具、或本工具返回 success: false 时说"我先拉你进群/后面群里通知/已发群邀请"
+- 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要用**完成口径**声称群相关动作已发生
 
-## 空头承诺禁忌
-- 本轮回复中只要出现"拉你进群 / 把你加进群 / 进我们群 / 发个群邀请 / 后面群里通知"等表述，**必须**本轮实调本工具且返回 success: true
-- 已说要拉群但没调本工具 = 空头承诺；候选人下轮看到没动静会立刻流失
+## 拉群口径（两轮动作链，与场景 2/3 一致）
+- **征询/承诺式**（"要不我拉你进群？""我先帮你进兼职群，后续有岗通知你"）是合法的前置轮话术：先承接候选人意向，**不要求**本轮已调本工具
+- 候选人对拉群提议回复"好/可以/嗯"等同意词后，**下一轮必须实调本工具**（场景 3）；提了拉群却一直不调 = 空头承诺，候选人看到没动静会立刻流失
+- **完成口径**（"已拉你进群 / 群邀请已经发你了 / 发了群邀请"）**必须**本轮实调本工具且返回 success: true，否则严禁使用
 - 拉群成功后，本轮必须停止继续推荐其他岗位；后续轮也不要再向候选人推岗位，转为群内运营`;
 
 const inputSchema = z.object({
@@ -163,6 +163,36 @@ export function buildInviteToGroupTool(
           });
         };
 
+        // 已在群统一短路：写记忆（防同会话重调慢接口）→ 记事件 → 返回 success。
+        // 供"前置已在群闸门"与"invite 前实时预检"两处复用。
+        const respondAlreadyInGroup = async (groupName: string, via: string) => {
+          await memoryService
+            .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
+              groupName,
+              city,
+              industry: industry ?? undefined,
+              invitedAt: new Date().toISOString(),
+            })
+            .catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
+            });
+          logger.log(`${via}：候选人已在群 ${groupName}，跳过拉群 (user=${context.userId})`);
+          recordGroupInvited(groupName);
+          return {
+            success: true,
+            alreadyInGroup: true,
+            groupName,
+            city,
+            industry: industry ?? undefined,
+            _outcome: '候选人已在该群中（实时核验）',
+            _replyInstruction:
+              `候选人已经在「${groupName}」里，不要承诺拉群、不要再次发起邀请；` +
+              `候选人主动问群相关问题时按"你已经在${groupName}里了"口径回应，其余情况不主动提及群。` +
+              `记忆已写入，同会话后续不再重复触发本工具。`,
+          };
+        };
+
         try {
           if (context.bookingSucceeded === false) {
             logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.userId}`);
@@ -190,6 +220,38 @@ export function buildInviteToGroupTool(
                 industry: industry ?? undefined,
               },
             });
+          }
+
+          // 前置已在群闸门（badcase batch_6a4790c7ce406a6aeee9c102）：候选人已在
+          // 目标城市兼职群时，业务目标已达成，直接短路成功——不再要求城市出处。
+          // 此前该核验排在城市 provenance gate 之后：模型无视"已在群"注入调用本
+          // 工具、city 又缺出处时，工具回 city_unverified 并引导模型追问城市继续
+          // 推进拉群，候选人被反复纠缠。实时群成员关系本身就是该城市的最强依据。
+          // 群列表走缓存（不 forceRefresh），任何失败静默降级回原流程。
+          if (groupMembership) {
+            try {
+              const cachedGroups = await groupResolver.resolveGroups('兼职群');
+              const normalizedRequestedCity = normalizeCity(city);
+              const requestedCityRooms = cachedGroups.filter(
+                (group) => normalizeCity(group.city) === normalizedRequestedCity && group.imRoomId,
+              );
+              if (requestedCityRooms.length > 0) {
+                const roomsUserIn = await groupMembership.listUserRooms(
+                  context.userId,
+                  requestedCityRooms.map((group) => group.imRoomId),
+                );
+                const existingGroup =
+                  roomsUserIn.length > 0
+                    ? requestedCityRooms.find((group) => group.imRoomId === roomsUserIn[0])
+                    : undefined;
+                if (existingGroup) {
+                  return await respondAlreadyInGroup(existingGroup.groupName, '前置已在群闸门');
+                }
+              }
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : String(error);
+              logger.warn(`前置已在群闸门核验失败（降级回原流程）: ${message}`);
+            }
           }
 
           // 城市 provenance gate（badcase recvk28F1xrsKj 拉错城市群）：
@@ -308,10 +370,11 @@ export function buildInviteToGroupTool(
             });
           }
 
-          // 实时成员预检：候选人已在该城市任一兼职群 → 业务目标已达成，直接短路。
-          // 此前只能靠拉群接口的 -9 错误码事后发现（实测单次 20-30s），且拉群记忆
-          // 存会话层（TTL 2 天）过期后会重复发起邀请；实时成员关系（10 分钟缓存）
-          // 是唯一可靠事实源，候选人退群后缓存过期也会自然恢复可邀请状态。
+          // 实时成员预检（兜底档）：前置闸门走缓存群列表，这里用 forceRefresh 后的
+          // 群列表再核一次，覆盖缓存缺群的窗口。此前只能靠拉群接口的 -9 错误码事后
+          // 发现（实测单次 20-30s），且拉群记忆存会话层（TTL 2 天）过期后会重复发起
+          // 邀请；实时成员关系（10 分钟缓存）是唯一可靠事实源，候选人退群后缓存过期
+          // 也会自然恢复可邀请状态。
           if (groupMembership) {
             const cityRoomIds = cityGroups.map((group) => group.imRoomId).filter(Boolean);
             const roomsUserIn = await groupMembership.listUserRooms(context.userId, cityRoomIds);
@@ -320,31 +383,7 @@ export function buildInviteToGroupTool(
                 ? cityGroups.find((group) => group.imRoomId === roomsUserIn[0])
                 : undefined;
             if (existingGroup) {
-              await memoryService
-                .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
-                  groupName: existingGroup.groupName,
-                  city,
-                  industry: industry ?? undefined,
-                  invitedAt: new Date().toISOString(),
-                })
-                .catch((err: unknown) => {
-                  const msg = err instanceof Error ? err.message : String(err);
-                  logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
-                });
-              logger.log(
-                `实时预检命中：候选人已在群 ${existingGroup.groupName}，跳过拉群 (user=${context.userId})`,
-              );
-              recordGroupInvited(existingGroup.groupName);
-              return {
-                success: true,
-                alreadyInGroup: true,
-                groupName: existingGroup.groupName,
-                city,
-                industry: industry ?? undefined,
-                _outcome: '候选人已在该群中（实时核验）',
-                _replyInstruction:
-                  '候选人已在目标群里，本次不向候选人提及群相关内容，也不要承诺拉群；记忆已写入，同会话后续不再重复触发本工具。',
-              };
+              return await respondAlreadyInGroup(existingGroup.groupName, '实时预检命中');
             }
           }
 
@@ -421,33 +460,7 @@ export function buildInviteToGroupTool(
                 // 按 success 返回。不走 buildToolError，避免 prompt 里"invite 失败分支
                 // 统一调 request_handoff 兜底"规则误把这种正常路径当失败处理（badcase
                 // i41pab8n / gay6j94c 引入兜底时未区分"群拉不上"和"已在群"）。
-                // 同时写入 invitedGroups 记忆，避免同会话后续再触发本工具重调慢接口
-                // （实测每次 20-30s）。
-                await memoryService
-                  .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
-                    groupName: targetGroup.groupName,
-                    city,
-                    industry: industry ?? undefined,
-                    invitedAt: new Date().toISOString(),
-                  })
-                  .catch((err: unknown) => {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
-                  });
-                logger.log(
-                  `用户已在群中，记入记忆并静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
-                );
-                recordGroupInvited(targetGroup.groupName);
-                return {
-                  success: true,
-                  alreadyInGroup: true,
-                  groupName: targetGroup.groupName,
-                  city,
-                  industry: industry ?? undefined,
-                  _outcome: '候选人已在该群中',
-                  _replyInstruction:
-                    '候选人已在目标群里，本次不向候选人提及群相关内容；记忆已写入，同会话后续不再重复触发本工具。',
-                };
+                return await respondAlreadyInGroup(targetGroup.groupName, '接口返回已在群');
               }
 
               if (inviteApiResult.code === -10) {

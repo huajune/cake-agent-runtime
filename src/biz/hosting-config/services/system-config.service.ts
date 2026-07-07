@@ -144,7 +144,28 @@ export class SystemConfigService {
         typeof config?.reengagementShadow === 'boolean'
           ? config.reengagementShadow
           : this.configService.get('REENGAGEMENT_SHADOW', 'true') !== 'false',
+      reengagementPostBookingEnabled:
+        typeof config?.reengagementPostBookingEnabled === 'boolean'
+          ? config.reengagementPostBookingEnabled
+          : DEFAULT_AGENT_REPLY_CONFIG.reengagementPostBookingEnabled,
+      reengagementScenarioRollout: this.sanitizeScenarioRollout(
+        config?.reengagementScenarioRollout,
+      ),
     };
+  }
+
+  /** 场景级灰度 map 只保留 boolean 值项，其余丢弃（防脏数据把开关搞成 truthy 字符串）。 */
+  private sanitizeScenarioRollout(value: unknown): Record<string, boolean> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return {};
+    }
+    const result: Record<string, boolean> = {};
+    for (const [key, raw] of Object.entries(value)) {
+      if (typeof raw === 'boolean') {
+        result[key] = raw;
+      }
+    }
+    return result;
   }
 
   // ==================== AI 回复开关 ====================
@@ -270,9 +291,23 @@ export class SystemConfigService {
    * 更新 Agent 回复策略配置
    */
   async setAgentReplyConfig(config: Partial<AgentReplyConfig>): Promise<AgentReplyConfig> {
+    // 合并基线强制回源（Redis → DB）：实例重启后内存基线可能还是默认值，
+    // 多实例下也可能落后其他实例的写入——拿默认值当基线做整体覆盖会静默
+    // 冲掉别人已保存的配置（如紧急停用的场景灰度）。
+    const base = await this.loadAgentReplyConfig();
     const newConfig = this.normalizeAgentReplyConfig({
-      ...(this.agentReplyConfig || DEFAULT_AGENT_REPLY_CONFIG),
+      ...base,
       ...config,
+      // 场景灰度 map 按 key 合并而非整体替换：调用方只需传增量
+      // { 场景: 开关 }，不会把快照里没带到的其他场景配置冲掉。
+      ...(config.reengagementScenarioRollout
+        ? {
+            reengagementScenarioRollout: {
+              ...base.reengagementScenarioRollout,
+              ...config.reengagementScenarioRollout,
+            },
+          }
+        : {}),
     });
 
     this.setAgentReplyConfigCache(newConfig);

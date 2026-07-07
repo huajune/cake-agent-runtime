@@ -1,5 +1,7 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { assertsClaim, splitClaimSentences } from './claim-assertion.util';
+import { isUsableJobListCall } from './job-list-call.util';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**
@@ -40,9 +42,14 @@ const HOURLY_SALARY_SUFFIX_PATTERN =
   /(\d+(?:\.\d+)?)\s*(?:元|块)\s*(?:[/每]|一)\s*(?:个?小时|时(?![间段]))/g;
 // ground truth 里的薪资区间："20-25元"、"20~25 元"
 const SALARY_RANGE_PATTERN = /(\d+(?:\.\d+)?)\s*[-~—～至]\s*(\d+(?:\.\d+)?)/g;
+// ground truth 里的薪资语境数值：跟在 薪/工资/salary 后（markdown 字段行、rawData JSON
+// 键均覆盖），或紧邻 元/块 的数字。仅这些参与舍入/取整容差——精确匹配保持全文宽口径
+// （宁可漏判）不动，但容差若吃全文数字，岗位列表必然出现的"距离: 17.6km"会经 trunc
+// 背书编造的"时薪17元"，数值对账形同虚设（2026-07-06 review）。
+const SALARY_CONTEXT_VALUE_PATTERN =
+  /(?:薪|工资|[sS]alary)[^\d\n]{0,12}(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?=元|块)/g;
 
-const NEGATION_PATTERN = /不是|不算|没有|不用|无需|不需要|并非|别的|错/;
-const QUESTION_PATTERN = /[？?]|[吗呢么]\s*[。！~]*\s*$/;
+// 否定/疑问/切句判定已下沉到 claim-assertion.util（承诺类规则共用同一口径）。
 
 /**
  * 结算词的"要求复述"语境：句子是在转述候选人的求职条件（"符合晚班日结要求的岗位"、
@@ -70,25 +77,24 @@ function isSettlementRequirementEcho(sentence: string): boolean {
 
 /**
  * 拼出本轮岗位事实的 ground truth 文本（markdown + rawData JSON）。
- * 结果不可用（空/错误）时返回 null，调用方跳过检查。
+ * 没有任何可用结果（全空/错误）时返回 null，调用方跳过检查。
+ *
+ * 合并本轮**全部可用**的 job_list 结果，不只取最后一次：Agent 常见动作链是
+ * “近距离查（空）→ 扩面查（有结果）→ 复核查（空）”，只看最后一次会把已接地的
+ * 事实误判成矛盾（与 job-fact-hallucinations 的接地口径同源，多岗位并集语义不变）。
  */
 function readJobFactGroundTruth(toolCalls: AgentToolCall[]): string | null {
-  const call = readLatestJobListCall(toolCalls);
-  if (!call?.result) return null;
-  if (call.resultCount === 0) return null;
-  if (call.status === 'error' || call.status === 'empty') return null;
-  const record = call.result as Record<string, unknown>;
-  const markdown = typeof record.markdown === 'string' ? record.markdown : '';
-  const rawData = record.rawData ? safeStringify(record.rawData) : '';
-  const combined = `${markdown}\n${rawData}`.trim();
-  return combined || null;
-}
-
-function readLatestJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
-  for (let i = toolCalls.length - 1; i >= 0; i--) {
-    if (toolCalls[i]?.toolName === 'duliday_job_list') return toolCalls[i];
+  const parts: string[] = [];
+  for (const call of toolCalls) {
+    // "可用"口径共享自 job-list-call.util，与 job-fact-hallucinations 的接地判定同源。
+    if (!isUsableJobListCall(call)) continue;
+    const record = call.result as Record<string, unknown>;
+    const markdown = typeof record.markdown === 'string' ? record.markdown : '';
+    const rawData = record.rawData ? safeStringify(record.rawData) : '';
+    const combined = `${markdown}\n${rawData}`.trim();
+    if (combined) parts.push(combined);
   }
-  return null;
+  return parts.length > 0 ? parts.join('\n') : null;
 }
 
 function safeStringify(value: unknown): string {
@@ -99,24 +105,23 @@ function safeStringify(value: unknown): string {
   }
 }
 
-/** 切句：疑问/否定判定按句子粒度做，避免整段误杀。疑问句被 ？切开后靠句尾 吗/呢/么 兜底识别。 */
-function splitSentences(text: string): string[] {
-  return text
-    .split(/(?<=[？?])|[。！!\n；;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+/**
+ * 班次的"需求复述"语境：句子是在转述候选人的班次偏好（"只找白班""不要早班"），
+ * 不是在声称某个岗位的班次。生产假阳（2026-07-06 守卫档案 id=39/62）：候选人问
+ * "白班没有吗"，Agent 如实回答"只有夜班……要是只找白班，后续有白班岗上线叫你"，
+ * "后续有白班岗上线"被当成把岗位说成白班，两版全杀整轮静默。
+ */
+const SHIFT_REQUIREMENT_ECHO_PATTERN =
+  /(?:只找|只做|只考虑|只要|想找|想做|想要|倾向|偏好|接受)[^。！？\n]{0,6}(?:早班|白班|日班|晚班|夜班|通宵)/;
 
-/** 该句是否构成对 pattern 的"声称"（非疑问、非否定）。 */
-function assertsPattern(sentence: string, pattern: RegExp): boolean {
-  if (!pattern.test(sentence)) return false;
-  if (QUESTION_PATTERN.test(sentence)) return false;
-  if (NEGATION_PATTERN.test(sentence)) return false;
-  return true;
-}
-
-function textAssertsPattern(text: string, pattern: RegExp): boolean {
-  return splitSentences(text).some((sentence) => assertsPattern(sentence, pattern));
+/** 班次声称句过滤：需求复述 / 未来上新承诺不算对当前岗位班次的声称。 */
+function textAssertsShiftClaim(text: string, pattern: RegExp): boolean {
+  return splitClaimSentences(text).some(
+    (sentence) =>
+      assertsClaim(sentence, pattern) &&
+      !SHIFT_REQUIREMENT_ECHO_PATTERN.test(sentence) &&
+      !FUTURE_PROMISE_PATTERN.test(sentence),
+  );
 }
 
 /**
@@ -129,8 +134,8 @@ export function detectJobShiftPolarityMismatch(
   const truth = readJobFactGroundTruth(toolCalls);
   if (!truth) return null;
 
-  const claimsEarly = textAssertsPattern(text, EARLY_SHIFT_PATTERN);
-  const claimsLate = textAssertsPattern(text, LATE_SHIFT_PATTERN);
+  const claimsEarly = textAssertsShiftClaim(text, EARLY_SHIFT_PATTERN);
+  const claimsLate = textAssertsShiftClaim(text, LATE_SHIFT_PATTERN);
   // 同时提两种极性 = 枚举/对比语境（"早晚班都有"），不判
   if (claimsEarly === claimsLate) return null;
 
@@ -184,6 +189,12 @@ export function detectHourlySalaryValueMismatch(
   for (const match of truth.matchAll(/\d+(?:\.\d+)?/g)) {
     truthNumbers.add(normalizeNumberToken(match[0]));
   }
+  const salaryContextValues: number[] = [];
+  SALARY_CONTEXT_VALUE_PATTERN.lastIndex = 0;
+  for (const match of truth.matchAll(SALARY_CONTEXT_VALUE_PATTERN)) {
+    const value = Number(match[1] ?? match[2]);
+    if (Number.isFinite(value)) salaryContextValues.push(value);
+  }
   const truthRanges: Array<[number, number]> = [];
   SALARY_RANGE_PATTERN.lastIndex = 0;
   for (const match of truth.matchAll(SALARY_RANGE_PATTERN)) {
@@ -199,6 +210,12 @@ export function detectHourlySalaryValueMismatch(
     if (truthNumbers.has(normalized)) continue;
     const value = Number(normalized);
     if (truthRanges.some(([low, high]) => value >= low && value <= high)) continue;
+    // 舍入/取整容差：工具数据 46.38 被口语化成 46 不是编造（生产假阳 2026-07-06
+    // 守卫档案 id=4）。四舍五入（差值 ≤0.5）或直接抹零头（trunc）都算同一数值。
+    // 仅对薪资语境数值放容差，见 SALARY_CONTEXT_VALUE_PATTERN 注释。
+    if (salaryContextValues.some((t) => Math.abs(value - t) <= 0.5 || Math.trunc(t) === value)) {
+      continue;
+    }
     return {
       ruleId: 'hourly_salary_value_mismatch',
       label: `回复声称时薪 ${token} 元，但该数值在本轮 duliday_job_list 返回的岗位数据里不存在（badcase recvi9UoI6jAiE 节假日时薪 54 说成 17）`,
@@ -228,9 +245,9 @@ export function detectSettlementCycleMismatch(
   if (!truthHasAnySettlement) return null;
 
   for (const group of SETTLEMENT_GROUPS) {
-    const claimingSentences = splitSentences(text).filter(
+    const claimingSentences = splitClaimSentences(text).filter(
       (sentence) =>
-        assertsPattern(sentence, group.claim) &&
+        assertsClaim(sentence, group.claim) &&
         // 复述候选人要求 / 未来上新承诺不算对当前岗位结算方式的声称
         !isSettlementRequirementEcho(sentence) &&
         !FUTURE_PROMISE_PATTERN.test(sentence),

@@ -150,6 +150,12 @@ export interface DashboardOverviewData {
   fallback: any;
   fallbackDelta: any;
   manualIntervention?: ManualInterventionStats;
+  /** 数据覆盖标注：周期起点早于数据覆盖起点时对应标记为 false，前端隐藏环比 */
+  dataCoverage?: {
+    startDate: string | null;
+    currentPeriodCovered: boolean;
+    previousPeriodCovered: boolean;
+  };
 }
 
 export interface SystemMonitoringData {

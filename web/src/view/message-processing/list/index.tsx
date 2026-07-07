@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import {
   useMessageProcessingRecords,
@@ -80,6 +81,26 @@ export default function MessageProcessingPage() {
 
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+
+  // 深链支持：?messageId=xxx 直接打开对应流水详情（如二次触发追溯页跳转过来）。
+  // 延迟到下一个宏任务再开抽屉：SPA 跳转时触发跳转的那次点击仍在派发中，
+  // 立刻挂载抽屉会被同一次点击命中遮罩层直接关掉。
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const deepLinkMessageId = searchParams.get('messageId');
+    if (!deepLinkMessageId) return;
+    const timer = setTimeout(() => setSelectedMessageId(deepLinkMessageId), 0);
+    // 消费后清掉参数，避免关闭抽屉后刷新又弹出来
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('messageId');
+        return next;
+      },
+      { replace: true },
+    );
+    return () => clearTimeout(timer);
+  }, [searchParams, setSearchParams]);
   const [activeTab, setActiveTab] = useState<'realtime' | 'slowest'>('realtime');
   const [searchUserName, setSearchUserName] = useState<string>('');
   const [botFilter, setBotFilter] = useState<string>(ALL_BOTS);

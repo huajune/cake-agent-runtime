@@ -3,6 +3,7 @@ import logoIcon from '@/assets/images/cake_recruiter_icon.png';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
+  BellRing,
   Bug,
   ClipboardCheck,
   Layers,
@@ -247,6 +248,17 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             <ScrollText size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
           </span>
           {!isCollapsed && <span className="nav-text">消息处理流水</span>}
+        </NavLink>
+        <NavLink
+          to="/reengagement"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title={isCollapsed ? '二次触发追溯' : undefined}
+          {...bindPreload('/reengagement')}
+        >
+          <span className="nav-icon">
+            <BellRing size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+          </span>
+          {!isCollapsed && <span className="nav-text">二次触发追溯</span>}
         </NavLink>
         <NavLink
           to="/system"

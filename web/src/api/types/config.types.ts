@@ -47,6 +47,10 @@ export interface AgentReplyConfig {
   // 主动复聊（reengagement）开关
   reengagementEnabled: boolean;
   reengagementShadow: boolean;
+  // 报名后大场景独立开关：关闭后报名后场景（面试提醒/回访）只 shadow
+  reengagementPostBookingEnabled: boolean;
+  // 场景级灰度 map（key=场景 code）；未配置的场景回退代码默认值
+  reengagementScenarioRollout: Record<string, boolean>;
 }
 
 export interface GroupTaskConfig {

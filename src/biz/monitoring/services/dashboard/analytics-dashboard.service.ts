@@ -55,6 +55,18 @@ export interface BusinessMetricsSnapshot {
   conversion: { consultationToBooking: number };
 }
 
+/**
+ * 数据覆盖标注：系统上线前（日聚合最早 stat_date）/ 原始表保留期外没有任何数据，
+ * 当所选周期或环比对比周期的起点早于覆盖起点时标记为未覆盖，
+ * 前端据此隐藏环比，避免「部分周期 vs 完整周期」的失真对比。
+ */
+type DashboardDataCoverage = {
+  /** 数据覆盖起点（YYYY-MM-DD），未知时为 null */
+  startDate: string | null;
+  currentPeriodCovered: boolean;
+  previousPeriodCovered: boolean;
+};
+
 type DashboardOverviewResponse = {
   timeRange: string;
   overview: DashboardOverviewStats & { activeUsers: number; activeChats: number };
@@ -72,6 +84,7 @@ type DashboardOverviewResponse = {
   fallback: DashboardFallbackStats;
   fallbackDelta: { totalCount: number; successRate: number };
   manualIntervention: DashboardManualInterventionStats;
+  dataCoverage: DashboardDataCoverage;
 };
 
 const EMPTY_MANUAL_INTERVENTION_STATS: DashboardManualInterventionStats = {
@@ -108,9 +121,21 @@ export class AnalyticsDashboardService {
   private readonly ACTIVE_USER_WINDOW_MS = 60 * 60 * 1000;
   private readonly overviewCache = new Map<
     string,
-    { expireAt: number; value: DashboardOverviewResponse }
+    { freshUntil: number; staleUntil: number; value: DashboardOverviewResponse }
   >();
+  /** 正在后台刷新的缓存 key，避免同一 key 并发重算 */
+  private readonly overviewRefreshing = new Set<string>();
+  /** 冷路径 in-flight 去重：发版后缓存全空时并发访客共享同一次计算，防查询风暴打满连接池 */
+  private readonly overviewInflight = new Map<string, Promise<DashboardOverviewResponse>>();
+  /** 缓存过期后仍可返回旧值（同时触发后台刷新）的窗口 = TTL × 该倍数 */
+  private static readonly OVERVIEW_STALE_MULTIPLIER = 10;
   private readonly projectionFreshCache = new Map<string, { expireAt: number; value: boolean }>();
+  /** 数据覆盖起点缓存（只会随保留期清理缓慢前移，1h 内视为不变） */
+  private readonly coverageFloorCache = new Map<
+    string,
+    { expireAt: number; value: string | null }
+  >();
+  private static readonly COVERAGE_FLOOR_TTL_MS = 60 * 60 * 1000;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -241,17 +266,16 @@ export class AnalyticsDashboardService {
     timeRange: TimeRange = 'today',
     groups: string[] = [],
   ): Promise<DashboardOverviewResponse> {
+    const normalizedGroups = this.normalizeGroups(groups);
+    const compute =
+      normalizedGroups.length > 0
+        ? () => this.computeDashboardOverviewByGroups(timeRange, normalizedGroups)
+        : () => this.computeDashboardOverview(timeRange);
+    return this.resolveOverviewWithCache(timeRange, normalizedGroups, compute);
+  }
+
+  private async computeDashboardOverview(timeRange: TimeRange): Promise<DashboardOverviewResponse> {
     try {
-      const normalizedGroups = this.normalizeGroups(groups);
-      if (normalizedGroups.length > 0) {
-        return this.getDashboardOverviewByGroups(timeRange, normalizedGroups);
-      }
-
-      const cached = this.getCachedDashboardOverview(timeRange, normalizedGroups);
-      if (cached) {
-        return cached;
-      }
-
       const timeRanges = calculateDashboardTimeRanges(timeRange);
       const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
 
@@ -580,6 +604,12 @@ export class AnalyticsDashboardService {
         business,
       );
 
+      const dataCoverage = await this.buildDataCoverage(
+        'daily',
+        currentStartDate,
+        previousStartDate,
+      );
+
       const response: DashboardOverviewResponse = {
         timeRange,
         overview,
@@ -593,8 +623,8 @@ export class AnalyticsDashboardService {
         fallback,
         fallbackDelta,
         manualIntervention,
+        dataCoverage,
       };
-      this.setCachedDashboardOverview(timeRange, normalizedGroups, response);
       return response;
     } catch (error) {
       this.logger.error('获取Dashboard概览数据失败:', error);
@@ -602,16 +632,64 @@ export class AnalyticsDashboardService {
     }
   }
 
-  private getCachedDashboardOverview(
+  /**
+   * 概览缓存（stale-while-revalidate）：
+   * - 新鲜期内直接命中；
+   * - 过期但在可服务窗口（TTL × OVERVIEW_STALE_MULTIPLIER）内：立即返回旧值，
+   *   后台异步重算刷新（同 key 去重）——大范围（近2月/近3月）全量聚合要 2~10s，
+   *   不能让每个访问者都同步等；
+   * - 超出可服务窗口或从未算过：同步计算，仅冷启动首个访问者等待。
+   */
+  private async resolveOverviewWithCache(
     timeRange: TimeRange,
-    groups: string[] = [],
-  ): DashboardOverviewResponse | null {
-    const cached = this.overviewCache.get(this.getOverviewCacheKey(timeRange, groups));
-    if (!cached || cached.expireAt <= Date.now()) {
-      this.overviewCache.delete(this.getOverviewCacheKey(timeRange, groups));
-      return null;
+    groups: string[],
+    compute: () => Promise<DashboardOverviewResponse>,
+  ): Promise<DashboardOverviewResponse> {
+    const key = this.getOverviewCacheKey(timeRange, groups);
+    const cached = this.overviewCache.get(key);
+    const now = Date.now();
+
+    if (cached && now < cached.freshUntil) {
+      return cached.value;
     }
-    return cached.value;
+
+    if (cached && now < cached.staleUntil) {
+      this.refreshOverviewInBackground(key, timeRange, groups, compute);
+      return cached.value;
+    }
+
+    this.overviewCache.delete(key);
+    // 冷路径 single-flight：同 key 并发请求共享一次 compute。没有这层去重，
+    // 发版后缓存全冷时 N 个访客 × 预取范围 = 并发全量聚合，正是 2026-06-04
+    // 连接池（max_conns=60）耗尽宕机的查询风暴形态。
+    const inflight = this.overviewInflight.get(key);
+    if (inflight) {
+      return inflight;
+    }
+    const computing = compute()
+      .then((value) => {
+        this.setCachedDashboardOverview(timeRange, groups, value);
+        return value;
+      })
+      .finally(() => this.overviewInflight.delete(key));
+    this.overviewInflight.set(key, computing);
+    return computing;
+  }
+
+  private refreshOverviewInBackground(
+    key: string,
+    timeRange: TimeRange,
+    groups: string[],
+    compute: () => Promise<DashboardOverviewResponse>,
+  ): void {
+    if (this.overviewRefreshing.has(key)) {
+      return;
+    }
+    this.overviewRefreshing.add(key);
+    void compute()
+      .then((value) => this.setCachedDashboardOverview(timeRange, groups, value))
+      .catch((error) => this.logger.warn(`[Dashboard] 概览缓存后台刷新失败 [${key}]:`, error))
+      .finally(() => this.overviewRefreshing.delete(key));
   }
 
   private setCachedDashboardOverview(
@@ -619,9 +697,12 @@ export class AnalyticsDashboardService {
     groups: string[],
     value: DashboardOverviewResponse,
   ): void {
+    const ttlMs = this.getOverviewCacheTtlMs(timeRange);
+    const now = Date.now();
     this.overviewCache.set(this.getOverviewCacheKey(timeRange, groups), {
       value,
-      expireAt: Date.now() + this.getOverviewCacheTtlMs(timeRange),
+      freshUntil: now + ttlMs,
+      staleUntil: now + ttlMs * AnalyticsDashboardService.OVERVIEW_STALE_MULTIPLIER,
     });
   }
 
@@ -629,15 +710,10 @@ export class AnalyticsDashboardService {
     return groups.length > 0 ? `${timeRange}:${groups.join('|')}` : timeRange;
   }
 
-  private async getDashboardOverviewByGroups(
+  private async computeDashboardOverviewByGroups(
     timeRange: TimeRange,
     groups: string[],
   ): Promise<DashboardOverviewResponse> {
-    const cached = this.getCachedDashboardOverview(timeRange, groups);
-    if (cached) {
-      return cached;
-    }
-
     const timeRanges = calculateDashboardTimeRanges(timeRange);
     const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
     const currentStartDate = new Date(currentStart);
@@ -696,6 +772,13 @@ export class AnalyticsDashboardService {
       previousBusinessTrend,
     );
 
+    // 小组路径直接扫原始流水表，覆盖起点受保留期清理约束（比日聚合表短得多）
+    const dataCoverage = await this.buildDataCoverage(
+      'records',
+      currentStartDate,
+      previousStartDate,
+    );
+
     const response: DashboardOverviewResponse = {
       timeRange,
       overview: currentOverview,
@@ -721,10 +804,58 @@ export class AnalyticsDashboardService {
       fallback: currentFallback,
       fallbackDelta: this.calculateFallbackDelta(currentFallback, previousFallback),
       manualIntervention,
+      dataCoverage,
     };
 
-    this.setCachedDashboardOverview(timeRange, groups, response);
     return response;
+  }
+
+  /**
+   * 计算数据覆盖标注。周期起点按本地日粒度与覆盖起点比较：
+   * 起点日早于覆盖起点日即视为未覆盖（该周期前段无数据，指标被低估、环比失真）。
+   */
+  private async buildDataCoverage(
+    source: 'daily' | 'records',
+    currentStartDate: Date,
+    previousStartDate: Date,
+  ): Promise<DashboardDataCoverage> {
+    const floorDate = await this.getCoverageFloorDate(source);
+    if (!floorDate) {
+      return { startDate: null, currentPeriodCovered: true, previousPeriodCovered: true };
+    }
+
+    return {
+      startDate: floorDate,
+      currentPeriodCovered: formatLocalDate(currentStartDate) >= floorDate,
+      previousPeriodCovered: formatLocalDate(previousStartDate) >= floorDate,
+    };
+  }
+
+  private async getCoverageFloorDate(source: 'daily' | 'records'): Promise<string | null> {
+    const cached = this.coverageFloorCache.get(source);
+    if (cached && cached.expireAt > Date.now()) {
+      return cached.value;
+    }
+
+    let value: string | null = null;
+    try {
+      if (source === 'daily') {
+        value = await this.dailyStatsRepository.getEarliestStatDate();
+      } else {
+        const earliest = await this.monitoringRepository.getEarliestRecordDate();
+        value = earliest ? formatLocalDate(earliest) : null;
+      }
+    } catch (error) {
+      // 查询失败按"覆盖"处理（fail-open），避免误隐藏环比
+      this.logger.warn(`[Dashboard] 获取数据覆盖起点失败 [${source}]:`, error);
+      value = null;
+    }
+
+    this.coverageFloorCache.set(source, {
+      value,
+      expireAt: Date.now() + AnalyticsDashboardService.COVERAGE_FLOOR_TTL_MS,
+    });
+    return value;
   }
 
   private normalizeGroups(groups: string[]): string[] {
@@ -908,7 +1039,14 @@ export class AnalyticsDashboardService {
   }
 
   private getOverviewCacheTtlMs(timeRange: TimeRange): number {
-    return timeRange === 'today' ? 30_000 : 60_000;
+    if (timeRange === 'today') {
+      return 30_000;
+    }
+    // 近2月/近3月几乎全是历史数据，60s 缓存毫无意义且全量聚合要 2~10s，放宽到 5 分钟
+    if (timeRange === 'twoMonths' || timeRange === 'threeMonths') {
+      return 300_000;
+    }
+    return 60_000;
   }
 
   private getHourStart(date: Date): Date {

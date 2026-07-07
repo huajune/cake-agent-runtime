@@ -108,4 +108,68 @@ describe('GuardrailReviewPacketBuilder', () => {
     });
     expect(packet.policies.outputRuleHits).toEqual(['confirmed_booking_time_missing']);
   });
+
+  it('falls back to markdown excerpt when job_list returns markdown-only (enforce 前必修：readJobListJobs 读不懂 markdown)', () => {
+    const markdown =
+      '# 在招岗位（共 2 个）\n\n> 📣 推荐对话用模板\n> 1. **成都你六姐（亚繁亚乐城店） - 后厨，9km**\n>    薪资：24元/时起\n';
+    const packet = builder.build({
+      reply: '给你推荐成都你六姐后厨，24元/时起',
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: { cityNameList: ['上海'] },
+          result: { markdown },
+          resultCount: 2,
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.jobList?.jobs).toEqual([]);
+    expect(packet.evidence.jobList?.markdownExcerpt).toContain('成都你六姐（亚繁亚乐城店）');
+  });
+
+  it('prefers the latest USABLE job_list call over a trailing empty recheck（守卫档案 id=3 同型链路）', () => {
+    const packet = builder.build({
+      reply: '有必胜客在招',
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: { cityNameList: ['佛山'] },
+          result: { markdown: '# 在招岗位（共 1 个）\n必胜客（丹灶店）- 服务员，11.4元/时' },
+          resultCount: 1,
+          status: 'ok',
+        },
+        {
+          toolName: 'duliday_job_list',
+          args: { cityNameList: ['佛山'] },
+          result: { success: false, errorType: 'job_list.no_results' },
+          resultCount: 0,
+          status: 'empty',
+        },
+      ],
+    });
+
+    expect(packet.evidence.jobList?.status).toBe('ok');
+    expect(packet.evidence.jobList?.markdownExcerpt).toContain('必胜客（丹灶店）');
+  });
+
+  it('truncates oversized markdown evidence', () => {
+    const packet = builder.build({
+      reply: '推荐岗位',
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: {},
+          result: { markdown: `# 在招岗位\n${'岗'.repeat(6000)}` },
+          resultCount: 1,
+          status: 'ok',
+        },
+      ],
+    });
+
+    const excerpt = packet.evidence.jobList?.markdownExcerpt ?? '';
+    expect(excerpt.length).toBeLessThan(4100);
+    expect(excerpt).toContain('（岗位详情已截断）');
+  });
 });

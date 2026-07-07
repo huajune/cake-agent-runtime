@@ -579,7 +579,7 @@ export function buildJobListTool(
         }
 
         // 兜底：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
-        // 平台所有岗位都是兼职岗位，用工形式不是岗位工种，不应作为 category 查询条件。
+        // 用工形式是岗位 laborForm 属性，不是岗位工种，不应作为 category 查询条件。
         const { cleaned: sanitizedJobCategoryList, removed: removedCategoryWords } =
           stripLaborFormFromCategories(jobCategoryList);
         if (removedCategoryWords.length > 0) {
@@ -1054,11 +1054,16 @@ export function buildJobListTool(
             });
           }
 
-          // 用工形式过滤：候选人想要全职/兼职(统称)/暑假工/寒假工时，按岗位 laborForm
-          // 字段硬过滤（避免把兼职岗当全职、把常规岗当季节工承诺）；小时工/兼职+ 软处理。
+          // 用工形式过滤：候选人想要任一合法用工形式时，按岗位 laborForm 字段硬过滤。
+          // 避免把别的用工形式包装成候选人想要的类型。
           // 候选人意向从确定性提取的会话事实读取，不依赖 LLM 入参，保证始终生效。
           const candidateLaborForm = resolveCandidateLaborForm(context);
           const laborFormFilterResult = applyLaborFormConstraint(jobs, candidateLaborForm);
+          const laborFormRelaxNotice = laborFormFilterResult.relaxedToFamily
+            ? `⚠️ 附近暂无岗位字段严格标注为「${candidateLaborForm}」的岗位；以下是同为兼职形态` +
+              '（兼职+/小时工/寒暑假工等）的岗位。介绍时**必须按每个岗位真实的用工形式说明**，' +
+              `不得把它们统称或包装成「${candidateLaborForm}」；可向候选人说明工作形态相近、由其自行决定。`
+            : null;
           if (laborFormFilterResult.applied) {
             jobs = laborFormFilterResult.jobs;
             total = jobs.length;
@@ -1114,11 +1119,12 @@ export function buildJobListTool(
               flags,
               brandGroups,
             );
-            result.markdown = sanitizeBrandName(
-              ageScreeningSummary
-                ? `${ageScreeningSummary.markdown}\n\n${jobsMarkdown}`
-                : jobsMarkdown,
-            );
+            const markdownSections = [
+              laborFormRelaxNotice,
+              ageScreeningSummary?.markdown,
+              jobsMarkdown,
+            ].filter((section): section is string => Boolean(section));
+            result.markdown = sanitizeBrandName(markdownSections.join('\n\n'));
           }
           if (formatSet.has('rawData')) {
             result.rawData = { result: jobs, total };
@@ -1147,6 +1153,8 @@ export function buildJobListTool(
               ? {
                   applied: true,
                   candidateLaborForm,
+                  // 严格匹配为空、按兼职家族放宽命中：介绍必须按岗位真实 laborForm
+                  relaxedToFamily: laborFormFilterResult.relaxedToFamily,
                   excludedCount: laborFormFilterResult.excluded.length,
                   excludedExamples: laborFormFilterResult.excluded.slice(0, 5),
                 }

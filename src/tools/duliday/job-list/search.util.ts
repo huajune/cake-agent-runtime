@@ -17,8 +17,10 @@ import {
 } from '@tools/utils/schedule-semantic.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import {
-  isFullTimeLaborForm,
   isHardFilteredLaborForm,
+  isPartTimeFamilyLaborForm,
+  matchesLaborForm,
+  PART_TIME_LABOR_FORM_FAMILY,
   sanitizeLaborFormForDisplay,
 } from '@memory/facts/labor-form';
 
@@ -187,32 +189,34 @@ export interface LaborFormFilterResult {
   applied: boolean;
   jobs: any[];
   excluded: Array<{ jobId: number | null; brandName: string | null; laborForm: string | null }>;
+  /**
+   * 严格匹配清空召回后按兼职家族放宽命中。为 true 时 jobs 里是 兼职+/小时工 等
+   * 同形态岗位，上层必须提示模型按岗位真实 laborForm 介绍，不得包装成候选人原话。
+   */
+  relaxedToFamily: boolean;
 }
 
 /**
- * 把候选人想要的用工形式映射成"保留谓词"。返回 null 表示不做硬过滤（返回全部岗位）。
+ * 把候选人想要的用工形式映射成"保留谓词"。返回 null 表示不做硬过滤（未提供合法偏好）。
  *
- * 业务口径（2026-06 修订）：**只有「全职」触发硬过滤** —— 只保留 laborForm==全职 的岗位
- * （全职可用性必须岗位字段显式背书）。其余一切（兼职 / 暑假工 / 寒假工 / 小时工 / 兼职+ / 未填）
- * 都返回 null **不过滤**：找兼职/暑期工的候选人本就灵活，全职岗也可一并考虑，由其自行挑选。
+ * 业务口径：候选人指定任一合法用工形式时，都按岗位 laborForm 字段严格匹配。
  */
 function buildLaborFormKeepPredicate(
   wanted: string | null | undefined,
 ): ((job: any) => boolean) | null {
-  // 仅「全职」触发硬过滤；其余用工形式一律不过滤（返回全部岗位）。
   if (!isHardFilteredLaborForm(wanted)) return null;
-  return (job) => isFullTimeLaborForm(job?.basicInfo?.laborForm);
+  return (job) => matchesLaborForm(job?.basicInfo?.laborForm, wanted);
 }
 
 /**
- * 按候选人想要的用工形式过滤岗位（**仅对「全职」硬过滤**；其余用工形式不过滤、返回全部）。
+ * 按候选人想要的用工形式过滤岗位（对所有合法用工形式均严格匹配）。
  *
- * 剔除项附岗位实际 laborForm，便于上层如实解释（如"附近这几家都是兼职岗，没有全职"）。
+ * 严格匹配清空召回、且候选人要的是兼职形态时，按兼职家族（兼职/兼职+/小时工/
+ * 寒假工/暑假工）放宽重筛：岗位轴上细分标签分布不均（badcase 6a334d26），
+ * 不能因为附近只有"兼职+"标签就告诉要"兼职"的候选人附近没岗。放宽只扩召回，
+ * 介绍口径仍按岗位真实 laborForm（relaxedToFamily 信号交由上层提示模型）。
  *
- * 设计动机：
- * - 候选人明确要全职时，全职可用性必须由岗位 laborForm 字段显式背书，不能软推断。
- * - 反例 badcase（chat 6a334d26536c9654026d9316）：曾把"暑假工"当岗位 laborForm 做严格全等
- *   硬过滤，但岗位轴没有该值，导致暑假工候选人召回必空、下游 Agent 被逼编造岗位。
+ * 剔除项附岗位实际 laborForm，便于上层如实解释（如"附近这几家都是兼职岗，没有暑假工"）。
  */
 export function applyLaborFormConstraint(
   jobs: any[],
@@ -220,25 +224,40 @@ export function applyLaborFormConstraint(
 ): LaborFormFilterResult {
   const keep = buildLaborFormKeepPredicate(wanted);
   if (!keep) {
-    return { applied: false, jobs, excluded: [] };
+    return { applied: false, jobs, excluded: [], relaxedToFamily: false };
   }
 
-  const excluded: LaborFormFilterResult['excluded'] = [];
-  const kept: any[] = [];
-
-  for (const job of jobs) {
-    if (keep(job)) {
-      kept.push(job);
-    } else {
-      excluded.push({
-        jobId: typeof job?.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
-        brandName: typeof job?.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
-        laborForm: sanitizeLaborFormForDisplay(job?.basicInfo?.laborForm),
-      });
+  const partition = (predicate: (job: any) => boolean) => {
+    const excluded: LaborFormFilterResult['excluded'] = [];
+    const kept: any[] = [];
+    for (const job of jobs) {
+      if (predicate(job)) {
+        kept.push(job);
+      } else {
+        excluded.push({
+          jobId: typeof job?.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
+          brandName: typeof job?.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
+          laborForm: sanitizeLaborFormForDisplay(job?.basicInfo?.laborForm),
+        });
+      }
     }
+    return { kept, excluded };
+  };
+
+  const strict = partition(keep);
+  if (strict.kept.length > 0 || !isPartTimeFamilyLaborForm(wanted)) {
+    return { applied: true, jobs: strict.kept, excluded: strict.excluded, relaxedToFamily: false };
   }
 
-  return { applied: true, jobs: kept, excluded };
+  const familySet = new Set<string>(PART_TIME_LABOR_FORM_FAMILY);
+  const family = partition((job) => {
+    const normalized = sanitizeLaborFormForDisplay(job?.basicInfo?.laborForm);
+    return normalized !== null && familySet.has(normalized);
+  });
+  if (family.kept.length === 0) {
+    return { applied: true, jobs: [], excluded: strict.excluded, relaxedToFamily: false };
+  }
+  return { applied: true, jobs: family.kept, excluded: family.excluded, relaxedToFamily: true };
 }
 
 export function filterJobsByRequestedCategories(jobs: any[], jobCategoryList: string[]): any[] {

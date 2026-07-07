@@ -14,10 +14,14 @@ export type {
 } from '@/api/services/analytics.service';
 
 function getOverviewRefetchInterval(timeRange: string): number {
-  return timeRange === 'today' ? 15000 : 60000;
+  if (timeRange === 'today') return 15000;
+  // 近2月/近3月几乎全是历史数据，与服务端 5 分钟缓存对齐，避免无意义的重查
+  if (timeRange === 'twoMonths' || timeRange === 'threeMonths') return 300000;
+  return 60000;
 }
 
 function getOverviewStaleTime(timeRange: string, autoRefresh: boolean): number {
+  if (timeRange === 'twoMonths' || timeRange === 'threeMonths') return 300000;
   if (!autoRefresh) return 60000;
   return timeRange === 'today' ? 10000 : 60000;
 }
@@ -52,11 +56,14 @@ export function usePrefetchDashboardOverview(enabled: boolean, groups: string[] 
   useEffect(() => {
     if (!enabled || groups.length > 0) return;
 
+    // 只预取 week/month：twoMonths/threeMonths 是 2~10s 的全量扫描管线，
+    // 发版后缓存全冷时每个访客 mount 都预取会形成 4N 并发重查询
+    //（2026-06-04 连接池耗尽宕机同型），长范围改为用户切换 tab 时按需计算
     for (const range of ['week', 'month']) {
       queryClient.prefetchQuery({
         queryKey: ['dashboard-overview', range, groups],
         queryFn: () => analyticsService.getDashboardOverview(range, groups),
-        staleTime: 60000,
+        staleTime: getOverviewStaleTime(range, true),
       });
     }
     // groupKey keeps the effect stable while still responding to group content changes.
