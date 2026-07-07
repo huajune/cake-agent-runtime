@@ -199,6 +199,7 @@ describe('SupabaseStore', () => {
         p_user_id: 'user1',
         p_profile_facts: { name, phone },
         p_message_metadata: { botId: 'bot-1' },
+        p_preference_facts: null,
       });
     });
 

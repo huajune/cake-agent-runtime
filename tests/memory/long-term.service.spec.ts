@@ -10,7 +10,6 @@ describe('LongTermService', () => {
     getProfile: jest.fn(),
     upsertProfileFacts: jest.fn().mockResolvedValue(undefined),
     getPreferenceFacts: jest.fn(),
-    upsertPreferenceFacts: jest.fn().mockResolvedValue(undefined),
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
@@ -230,7 +229,7 @@ describe('LongTermService', () => {
       expect(savedProfile.name).toEqual(
         expect.objectContaining({ originSessionId: 'chat-A', originBotId: 'bot-wxid-A' }),
       );
-      const savedPrefs = mockSupabaseStore.upsertPreferenceFacts.mock.calls[0][2];
+      const savedPrefs = mockSupabaseStore.upsertProfileFacts.mock.calls[0][4];
       expect(savedPrefs.brands).toEqual(
         expect.objectContaining({ originSessionId: 'chat-A', originBotId: 'bot-wxid-A' }),
       );
@@ -276,8 +275,8 @@ describe('LongTermService', () => {
 
       await service.writeFromSettlement('corp1', 'user1', sessionFacts);
 
-      expect(mockSupabaseStore.upsertPreferenceFacts).toHaveBeenCalledTimes(1);
-      const saved = mockSupabaseStore.upsertPreferenceFacts.mock.calls[0][2];
+      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledTimes(1);
+      const saved = mockSupabaseStore.upsertProfileFacts.mock.calls[0][4];
       expect(saved.brands).toEqual(
         expect.objectContaining({
           value: ['肯德基', '必胜客'],
@@ -307,7 +306,8 @@ describe('LongTermService', () => {
 
       await service.writeFromSettlement('corp1', 'user1', sessionFacts);
 
-      expect(mockSupabaseStore.upsertPreferenceFacts).not.toHaveBeenCalled();
+      // preferences 走 upsertProfileFacts 第 5 参；无稳定意向时传空对象（store 层判空不发 RPC 字段）
+      expect(mockSupabaseStore.upsertProfileFacts.mock.calls[0][4]).toEqual({});
     });
   });
 

@@ -145,12 +145,16 @@ export class SupabaseStore implements MemoryStore {
    *
    * 置信度守卫由 DB 端 RPC `upsert_long_term_profile_facts` 原子保证：
    * 已有 high 时，incoming 非 high 不得覆盖。
+   *
+   * 可选同时携带 preferenceFacts（沉淀路径）：两列在同一 RPC 事务/行锁内写入，
+   * 消除"profile 落库而意向丢失"的半写状态。preference 维持快照式整列覆盖语义。
    */
   async upsertProfileFacts(
     corpId: string,
     userId: string,
     profileFacts: Partial<UserProfileFacts>,
     metadata?: MessageMetadata,
+    preferenceFacts?: LongTermPreferenceFacts,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
     if (!client) {
@@ -165,13 +169,15 @@ export class SupabaseStore implements MemoryStore {
         profileFactsJson[key] = fact;
       }
     }
-    if (Object.keys(profileFactsJson).length === 0 && !metadata) return;
+    const hasPreferences = Boolean(preferenceFacts && Object.keys(preferenceFacts).length > 0);
+    if (Object.keys(profileFactsJson).length === 0 && !metadata && !hasPreferences) return;
 
     const { data, error } = await client.rpc('upsert_long_term_profile_facts', {
       p_corp_id: corpId,
       p_user_id: userId,
       p_profile_facts: profileFactsJson,
       p_message_metadata: metadata ?? null,
+      p_preference_facts: hasPreferences ? preferenceFacts : null,
     });
 
     if (error) {
@@ -200,21 +206,6 @@ export class SupabaseStore implements MemoryStore {
     const facts = row?.preference_facts;
     if (!facts || typeof facts !== 'object') return null;
     return Object.keys(facts).length > 0 ? facts : null;
-  }
-
-  /**
-   * 写入长期求职意向 — 快照式整列覆盖（最新一段会话的意向赢）。
-   *
-   * 不做字段级 merge/数组累积：累积语义会让错值与错字变体永远清不掉。
-   * settlement 是唯一写方，且同 chat 的回合收尾已被处理锁串行化。
-   */
-  async upsertPreferenceFacts(
-    corpId: string,
-    userId: string,
-    preferenceFacts: LongTermPreferenceFacts,
-  ): Promise<void> {
-    if (Object.keys(preferenceFacts).length === 0) return;
-    await this.upsertRow(corpId, userId, { preference_facts: preferenceFacts });
   }
 
   // ==================== Summary 操作 ====================
