@@ -1,4 +1,5 @@
 import { formatDateTime, formatDuration } from '@/utils/format';
+import { guardrailReasonLabel, guardrailRuleListLabel } from '@/components/GuardrailTrace/labels';
 import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
@@ -51,17 +52,17 @@ function getGuardrailBadge(
   if (!output) return null;
   if (output.finalDecision === 'block') {
     const rules = output.steps.flatMap((s) => s.blockedRuleIds);
-    const reason = output.reasonCode ? `（${output.reasonCode}）` : '';
+    const reason = output.reasonCode ? `（${guardrailReasonLabel(output.reasonCode)}）` : '';
     return {
       tone: 'blocked',
-      title: `出站守卫拦截，未发送${reason}：${[...new Set(rules)].join('、') || '-'}`,
+      title: `出站守卫拦截，未发送${reason}：${guardrailRuleListLabel(rules)}`,
     };
   }
   if (output.repaired) {
     const rules = output.steps[0]?.ruleIds ?? [];
     return {
       tone: 'repaired',
-      title: `首版被守卫要求修复（${output.steps[0]?.decision ?? '-'}），修复后已发送：${rules.join('、') || '-'}`,
+      title: `首版被守卫要求修复，修复后已发送：${guardrailRuleListLabel(rules)}`,
     };
   }
   return null;

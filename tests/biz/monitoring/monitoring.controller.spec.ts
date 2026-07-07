@@ -115,6 +115,7 @@ describe('AnalyticsController', () => {
       const result = await controller.getReengagementCandidates(
         '2026-07-06',
         '2026-07-07',
+        'scheduled',
         'opening_no_reply',
         'sess-1',
         'true',
@@ -125,6 +126,7 @@ describe('AnalyticsController', () => {
       expect(mockReengagementQueryService.getCandidateOverview).toHaveBeenCalledWith({
         startDate: '2026-07-06',
         endDate: '2026-07-07',
+        status: 'scheduled',
         scenarioCode: 'opening_no_reply',
         sessionId: 'sess-1',
         pendingOnly: 'true',

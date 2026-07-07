@@ -15,7 +15,7 @@ import {
   type FollowUpScenarioCode,
   type ReengagementChannelIdentity,
 } from './reengagement.types';
-import { computeFireAt, getScenario, shouldStop } from './scenario-registry';
+import { computeFireAt, getScenario, hasInterviewAt, shouldStop } from './scenario-registry';
 
 export interface ScheduleFollowUpInput {
   sessionRef: SessionRef;
@@ -97,6 +97,13 @@ export class FollowUpSchedulerService {
       anchorAt: input.anchorAt,
       ...input.channelIdentity,
     };
+
+    // 报名后触达必须绑定明确面试时间。等通知/无面试时间岗位没有可提醒或回访的时间点，
+    // 不生成主动触达任务，避免按报名成功锚点兜底骚扰候选人。
+    if (scenario.phase === 'post_booking' && !hasInterviewAt(state)) {
+      this.tracking.trackScheduleSkipped(identity, 'missing_interview_time');
+      return { scheduled: false, reason: 'missing_interview_time' };
+    }
 
     // 排程前停止条件预检（仅当提供了 state）——能省一个无效 delayed job；
     // 缺 state 时跳过预检，processor 到点会读权威态再做完整 shouldStop。

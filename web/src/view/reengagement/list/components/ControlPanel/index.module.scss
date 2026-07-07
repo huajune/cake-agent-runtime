@@ -108,51 +108,6 @@
   cursor: pointer;
 }
 
-/* ── Pending-only toggle: 与筛选控件同规格的开关胶囊 ── */
-.toggleBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid rgba(161, 173, 255, 0.2);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.76);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease,
-    color 0.15s ease;
-
-  &:hover {
-    border-color: rgba(91, 87, 255, 0.35);
-    color: var(--text-primary);
-  }
-}
-
-.toggleDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #cbd5e1;
-  transition: background 0.15s ease;
-}
-
-.toggleBtnActive {
-  border-color: rgba(91, 87, 255, 0.45);
-  background: rgba(99, 102, 241, 0.08);
-  color: var(--primary);
-
-  .toggleDot {
-    background: var(--primary);
-  }
-}
-
 /* ── Filter selects ── */
 .selectWrap {
   display: inline-flex;

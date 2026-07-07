@@ -82,7 +82,7 @@ export class ReengagementAnchorService {
    *
    * 有工单号+面试时间时用幂等锚点（wo:iv:scenario）：同一工单同一时间只存在一个任务，
    * 与 processor 到点发现改期后排的替代任务共用 jobId 自然去重。
-   * 缺任一（等通知报名/提取失败）回退 traceId 锚点。
+   * 缺面试时间（等通知报名/提取失败）时不排报名后主动触达；缺工单号时回退 traceId 锚点。
    */
   private scheduleBookingFollowUps(
     call: AgentToolCall,
@@ -90,9 +90,9 @@ export class ReengagementAnchorService {
     context: AnchorContext,
   ): void {
     const interviewAt = this.extractInterviewAt(call);
+    if (interviewAt == null) return;
     const workOrderId = this.extractWorkOrderId(call);
-    const stateOverride: Partial<ReengagementState> | undefined =
-      interviewAt === undefined ? undefined : { terminal: 'booked', interviewAt };
+    const stateOverride: Partial<ReengagementState> = { terminal: 'booked', interviewAt };
     const verification = { workOrderId, expectedInterviewAt: interviewAt };
     const anchorIdFor = (scenarioCode: FollowUpScenarioCode): string =>
       workOrderId != null && interviewAt != null
@@ -140,8 +140,14 @@ export class ReengagementAnchorService {
     const reply = (result.reply?.content ?? result.text ?? '').trim();
     const toolCalls = result.toolCalls ?? [];
 
-    if (toolCalls.some((call) => this.presentedStore(call))) {
-      void this.schedule('store_presented_no_reply', `${context.traceId}:store_presented`, context);
+    const presentedStoreCalls = toolCalls.filter((call) => this.presentedStore(call));
+    if (presentedStoreCalls.length > 0) {
+      void this.schedule(
+        'store_presented_no_reply',
+        `${context.traceId}:store_presented`,
+        context,
+        { presentedStores: this.extractPresentedStores(presentedStoreCalls) },
+      );
     }
     if (this.asksForLocation(reply)) {
       void this.schedule('address_missing', `${context.traceId}:address_missing`, context);
@@ -243,8 +249,38 @@ export class ReengagementAnchorService {
     });
   }
 
+  private extractPresentedStores(
+    calls: AgentToolCall[],
+  ): AuthoritativeSessionState['presentedStores'] {
+    const jobIds = new Set<number>();
+    for (const call of calls) {
+      this.collectJobIds(call.result, jobIds);
+    }
+    const stores = [...jobIds].map((jobId) => ({ jobId }));
+    // 本轮工具调用已经证明发生了推店；即使工具结果没有结构化 jobId，也要让排程预检通过。
+    return stores.length > 0 ? stores : [{ jobId: -1 }];
+  }
+
+  private collectJobIds(value: unknown, out: Set<number>, depth = 0): void {
+    if (depth > 6 || value == null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) this.collectJobIds(item, out, depth + 1);
+      return;
+    }
+    if (typeof value !== 'object') return;
+    const record = value as Record<string, unknown>;
+    for (const [key, nested] of Object.entries(record)) {
+      if ((key === 'jobId' || key === 'job_id') && typeof nested === 'number' && nested > 0) {
+        out.add(nested);
+      }
+      this.collectJobIds(nested, out, depth + 1);
+    }
+  }
+
   private asksForLocation(reply: string): boolean {
-    return /发.*(?:位置|地址)|(?:位置|地址).*发|附近|就近/.test(reply);
+    return /(?:你|您|方便|可以|麻烦|这边|这儿|那里|那边)?.{0,8}(?:发|给我发|提供|说下|说一下|告知|填).{0,12}(?:位置|地址|定位|地标|商圈|地铁站)|(?:位置|地址|定位|地标).{0,8}(?:发|给).{0,8}(?:我|这边)|(?:在哪|哪里).*?(?:城市|区|区域|商圈|地铁站|位置|地址|地标)|(?:城市|区|区域|商圈|地铁站|位置|地址|地标).*?(?:在哪|哪里)/.test(
+      reply,
+    );
   }
 
   private extractInterviewAt(call: AgentToolCall): number | undefined {

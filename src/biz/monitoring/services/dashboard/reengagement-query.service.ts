@@ -60,6 +60,7 @@ export class ReengagementQueryService {
   async getCandidateOverview(query: {
     startDate?: string;
     endDate?: string;
+    status?: string;
     scenarioCode?: string;
     sessionId?: string;
     pendingOnly?: string;
@@ -69,6 +70,7 @@ export class ReengagementQueryService {
     const rows = await this.repository.getCandidateOverview({
       startDate: query.startDate ? this.dayStart(query.startDate) : undefined,
       endDate: query.endDate ? this.dayEnd(query.endDate) : undefined,
+      status: this.parseStatus(query.status),
       scenarioCode: query.scenarioCode,
       sessionId: query.sessionId,
       pendingOnly: query.pendingOnly === 'true',

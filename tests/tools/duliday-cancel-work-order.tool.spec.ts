@@ -6,7 +6,7 @@ describe('buildCancelWorkOrderTool', () => {
   const spongeService = { cancelWorkOrder: jest.fn(), fetchFailureReasonsByPids: jest.fn() };
   const opsEventsRecorder = { recordEvent: jest.fn() };
   const longTermService = { clearActiveBooking: jest.fn() };
-  const alertNotifier = { sendAlert: jest.fn() };
+  const privateChatNotifier = { notifyInterviewCancellation: jest.fn() };
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
@@ -24,7 +24,7 @@ describe('buildCancelWorkOrderTool', () => {
       spongeService as never,
       opsEventsRecorder as never,
       longTermService as never,
-      alertNotifier as never,
+      privateChatNotifier as never,
     )(ctx);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,7 +39,7 @@ describe('buildCancelWorkOrderTool', () => {
     spongeService.cancelWorkOrder.mockResolvedValue({ success: true, code: 0, message: 'ok' });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     longTermService.clearActiveBooking.mockResolvedValue(undefined);
-    alertNotifier.sendAlert.mockResolvedValue(true);
+    privateChatNotifier.notifyInterviewCancellation.mockResolvedValue(true);
   });
 
   it('returns CANCEL_REASON_REQUIRED with available reasons when reasonId is omitted', async () => {
@@ -101,42 +101,27 @@ describe('buildCancelWorkOrderTool', () => {
       }),
     );
     expect(longTermService.clearActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 123);
-    expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
+    expect(privateChatNotifier.notifyInterviewCancellation).toHaveBeenCalledWith(
       expect.objectContaining({
-        code: 'booking.canceled',
-        summary: '面试预约取消提醒',
-        impact: expect.objectContaining({
-          requiresHumanIntervention: true,
-          userMessage: '那个面试我不去了，帮我取消吧',
-        }),
-        scope: expect.objectContaining({
-          contactName: '候选人微信名',
-          managerName: 'mgr-bob',
-          chatId: 'chat-1',
-        }),
-        diagnostics: expect.objectContaining({
-          errorMessage: '候选人已取消面试预约，请确认是否需要同步门店',
-          payload: expect.objectContaining({
-            workOrderId: 123,
-            cancelReasonId: 12010,
-            cancelReason: '候选人主动取消',
-            cancelReasonDesc: '当天有事去不了',
-            candidateName: '张三',
-            phone: '13800000000',
-            brandName: '喜茶',
-            storeName: '西湖银泰店',
-            jobName: '店员',
-            interviewTime: '2026-07-02 14:00',
-            actionRequired: '请人工确认是否需要通知门店取消面试安排',
-          }),
-        }),
-        dedupe: { key: 'booking.canceled:123' },
+        botImId: 'bot-im-1',
+        contactName: '候选人微信名',
+        botUserName: 'mgr-bob',
+        userMessage: '那个面试我不去了，帮我取消吧',
+        workOrderId: 123,
+        cancelReason: '候选人主动取消',
+        cancelReasonDesc: '当天有事去不了',
+        candidateName: '张三',
+        phone: '13800000000',
+        brandName: '喜茶',
+        storeName: '西湖银泰店',
+        jobName: '店员',
+        interviewTime: '2026-07-02 14:00',
       }),
     );
   });
 
-  it('keeps cancellation successful when alert delivery throws', async () => {
-    alertNotifier.sendAlert.mockRejectedValue(new Error('feishu down'));
+  it('keeps cancellation successful when private-chat notification delivery throws', async () => {
+    privateChatNotifier.notifyInterviewCancellation.mockRejectedValue(new Error('feishu down'));
     const tool = buildTool();
     const result = await exec(tool, { workOrderId: 123, cancelReasonId: 12010 });
 
@@ -146,7 +131,7 @@ describe('buildCancelWorkOrderTool', () => {
       cancelReasonId: 12010,
       errorType: null,
     });
-    expect(alertNotifier.sendAlert).toHaveBeenCalled();
+    expect(privateChatNotifier.notifyInterviewCancellation).toHaveBeenCalled();
   });
 
   it('returns CANCEL_REASON_REQUIRED when reasonId is not in the dictionary', async () => {
@@ -154,7 +139,7 @@ describe('buildCancelWorkOrderTool', () => {
     const result = await exec(tool, { workOrderId: 123, cancelReasonId: 99999 });
 
     expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
-    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+    expect(privateChatNotifier.notifyInterviewCancellation).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       success: false,
       errorType: TOOL_ERROR_TYPES.CANCEL_REASON_REQUIRED,
@@ -196,7 +181,7 @@ describe('buildCancelWorkOrderTool', () => {
     });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
     expect(longTermService.clearActiveBooking).not.toHaveBeenCalled();
-    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+    expect(privateChatNotifier.notifyInterviewCancellation).not.toHaveBeenCalled();
   });
 
   it('returns CANCEL_REQUEST_FAILED when the cancel API throws', async () => {

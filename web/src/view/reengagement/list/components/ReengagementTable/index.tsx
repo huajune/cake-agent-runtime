@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
-import { formatDateTime, truncateSessionId } from '@/utils/format';
+import { formatDateTime } from '@/utils/format';
 import type { ReengagementTouchRecord } from '@/api/types/reengagement.types';
 import { getStatusMeta } from '../../constants';
 import StatusBadge from '../StatusBadge';
@@ -176,7 +176,7 @@ export default function ReengagementTable({
                 >
                   <td>{record.created_at ? formatDateTime(record.created_at) : '-'}</td>
                   <td className={styles.cellMono} title={record.session_id}>
-                    {truncateSessionId(record.session_id)}
+                    {record.session_id || '-'}
                   </td>
                   <td className={styles.scenarioCell} title={record.scenario_code}>
                     {scenarioLabels[record.scenario_code] ?? record.scenario_code ?? '-'}

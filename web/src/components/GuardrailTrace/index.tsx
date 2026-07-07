@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import type { GuardrailTurnTrace } from '@/api/types/chat.types';
 import { decisionBadge } from './decision';
+import { guardrailReasonLabel, guardrailRuleLabel, guardrailRuleListTitle } from './labels';
 import styles from './index.module.scss';
 
 export interface GuardrailTraceProps {
@@ -26,13 +27,17 @@ export default function GuardrailTrace({ trace, advisory }: GuardrailTraceProps)
                   {step.stage === 'first' ? '首审' : '二审'}
                 </span>
                 {decisionBadge(step.decision)}
-                {step.reasonCode && <span className={styles.reasonCode}>{step.reasonCode}</span>}
+                {step.reasonCode && (
+                  <span className={styles.reasonCode} title={step.reasonCode}>
+                    {guardrailReasonLabel(step.reasonCode)}
+                  </span>
+                )}
               </div>
               {rules.length > 0 && (
-                <div className={styles.ruleList} title={rules.join('\n')}>
+                <div className={styles.ruleList} title={guardrailRuleListTitle(rules)}>
                   {rules.map((rule) => (
-                    <code key={rule} className={styles.ruleTag}>
-                      {rule}
+                    <code key={rule} className={styles.ruleTag} title={rule}>
+                      {guardrailRuleLabel(rule)}
                     </code>
                   ))}
                 </div>
@@ -53,7 +58,11 @@ export default function GuardrailTrace({ trace, advisory }: GuardrailTraceProps)
       <div className={styles.finalRow}>
         <span className={styles.stepStage}>最终</span>
         {decisionBadge(trace.finalDecision)}
-        {trace.reasonCode && <span className={styles.reasonCode}>{trace.reasonCode}</span>}
+        {trace.reasonCode && (
+          <span className={styles.reasonCode} title={trace.reasonCode}>
+            {guardrailReasonLabel(trace.reasonCode)}
+          </span>
+        )}
         {advisory ? (
           <span className={styles.advisoryHint}>advisory（不代表真实拦截）</span>
         ) : (

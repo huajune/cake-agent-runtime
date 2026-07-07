@@ -9,6 +9,7 @@ describe('PrivateChatMonitorNotifierService', () => {
 
   const mockRenderer = {
     buildInterviewBookingCard: jest.fn(),
+    buildInterviewCancellationCard: jest.fn(),
   } as unknown as jest.Mocked<BookingCardRenderer>;
 
   const mockHostingMemberConfig = {
@@ -26,6 +27,7 @@ describe('PrivateChatMonitorNotifierService', () => {
       isFailure: false,
       card: { kind: 'booking-card' },
     });
+    mockRenderer.buildInterviewCancellationCard.mockReturnValue({ kind: 'cancellation-card' });
     service = new PrivateChatMonitorNotifierService(
       mockPrivateChatChannel as never,
       mockRenderer,
@@ -68,5 +70,29 @@ describe('PrivateChatMonitorNotifierService', () => {
         atAll: true,
       }),
     );
+  });
+
+  it('should send interview cancellation notifications to private-chat monitor', async () => {
+    const botImId = '1688855974513959';
+
+    const success = await service.notifyInterviewCancellation({
+      botImId,
+      contactName: 'wx_alice',
+      candidateName: '张三',
+      phone: '13800000000',
+      workOrderId: 123,
+      cancelReason: '候选人主动取消',
+    });
+
+    expect(success).toBe(true);
+    expect(mockRenderer.buildInterviewCancellationCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        atUsers: [BOT_TO_RECEIVER[botImId]],
+        contactName: 'wx_alice',
+        candidateName: '张三',
+        workOrderId: 123,
+      }),
+    );
+    expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'cancellation-card' });
   });
 });

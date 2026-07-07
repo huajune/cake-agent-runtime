@@ -105,11 +105,20 @@ export class FollowUpProcessor implements OnModuleInit {
     }
 
     const now = Date.now();
-    const state = await this.session.getAuthoritativeState(
+    const loadedState = await this.session.getAuthoritativeState(
       sessionRef.corpId,
       sessionRef.userId,
       sessionRef.sessionId,
     );
+    // 报名后任务的面试时间冻结在 job payload 中；会话状态可能因沉淀/兼容字段缺失
+    // 不再携带 interviewAt。用冻结值补给停止条件，避免有明确面试时间的存量任务误停。
+    const state =
+      job.data.expectedInterviewAt != null
+        ? ({
+            ...loadedState,
+            interviewAt: job.data.expectedInterviewAt,
+          } as AuthoritativeSessionState)
+        : loadedState;
 
     // 1) 停止条件（代码，调 LLM 之前）
     const stop = shouldStop(scenario, state, anchorAt, {
@@ -169,7 +178,8 @@ export class FollowUpProcessor implements OnModuleInit {
       );
       this.tracking.trackShadow(identity, {
         outcomeKind: outcome.kind,
-        generatedText: outcome.kind === 'reply' ? outcome.reply?.text : undefined,
+        generatedText:
+          outcome.generatedText ?? (outcome.kind === 'reply' ? outcome.reply?.text : undefined),
         reason: !this.delivery
           ? 'no_delivery_port'
           : !rolloutEnabled

@@ -24,9 +24,6 @@ interface ControlPanelProps {
   onScenarioFilterChange: (value: string) => void;
   searchSessionId: string;
   onSearchSessionIdChange: (sessionId: string) => void;
-  /** 候选人视角：只看有待发任务的候选人 */
-  pendingOnly: boolean;
-  onPendingOnlyChange: (value: boolean) => void;
   allValue: string;
   /** 场景筛选项：由页面从场景注册表接口构建（displayName 单一来源） */
   scenarioOptions: Array<{ value: string; label: string }>;
@@ -55,8 +52,6 @@ export default function ControlPanel({
   onScenarioFilterChange,
   searchSessionId,
   onSearchSessionIdChange,
-  pendingOnly,
-  onPendingOnlyChange,
   allValue,
   scenarioOptions,
 }: ControlPanelProps) {
@@ -156,36 +151,6 @@ export default function ControlPanel({
           )}
         </div>
 
-        {viewMode === 'ledger' ? (
-          <label className={styles.selectWrap}>
-            <Filter aria-hidden="true" size={14} />
-            <select
-              value={statusFilter}
-              onChange={(event) => onStatusFilterChange(event.target.value)}
-              className={styles.selectInput}
-              aria-label="状态筛选"
-            >
-              <option value={allValue}>全部状态</option>
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onPendingOnlyChange(!pendingOnly)}
-            className={`${styles.toggleBtn} ${pendingOnly ? styles.toggleBtnActive : ''}`}
-            title="只看有待发复聊任务的候选人"
-            aria-pressed={pendingOnly}
-          >
-            <span className={styles.toggleDot} aria-hidden="true" />
-            仅看待发
-          </button>
-        )}
-
         <label className={styles.selectWrap}>
           <Workflow aria-hidden="true" size={14} />
           <select
@@ -196,6 +161,23 @@ export default function ControlPanel({
           >
             <option value={allValue}>全部场景</option>
             {scenarioOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={styles.selectWrap}>
+          <Filter aria-hidden="true" size={14} />
+          <select
+            value={statusFilter}
+            onChange={(event) => onStatusFilterChange(event.target.value)}
+            className={styles.selectInput}
+            aria-label="状态筛选"
+          >
+            <option value={allValue}>全部状态</option>
+            {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

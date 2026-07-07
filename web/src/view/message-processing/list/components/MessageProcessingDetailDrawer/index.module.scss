@@ -99,12 +99,12 @@
 }
 
 .rightCol {
-  flex: 0 0 280px;
+  flex: 0 0 clamp(320px, 24vw, 380px);
   background:
     radial-gradient(circle at 50% 2%, rgba(139, 92, 246, 0.07), transparent 36%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(248, 250, 252, 0.82) 100%);
   border-left: 1px solid rgba(139, 92, 246, 0.12);
-  padding: 20px 18px;
+  padding: 18px 20px;
   overflow-y: auto;
 
   &::-webkit-scrollbar {
@@ -120,6 +120,13 @@
     border: 2px solid transparent;
     border-radius: 999px;
     background-clip: padding-box;
+  }
+}
+
+@media (max-width: 960px) {
+  .rightCol {
+    flex-basis: 300px;
+    padding: 16px;
   }
 }
 

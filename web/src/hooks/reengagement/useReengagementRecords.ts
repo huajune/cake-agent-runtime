@@ -59,6 +59,7 @@ export function useReengagementScenarios() {
 export function useReengagementCandidates(options?: {
   startDate?: string;
   endDate?: string;
+  status?: string;
   scenarioCode?: string;
   sessionId?: string;
   pendingOnly?: boolean;
