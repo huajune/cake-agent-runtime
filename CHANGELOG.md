@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [8.0.0] - 2026-07-07
 
-**预计版本**: `v8.0.0`
-**最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #455 删除 ReliableService 未使用的私有 sleep 方法
@@ -87,7 +83,6 @@
 - PR #457 `jest tests/agent/guardrail/output/outbound-reply-sanitizer.spec.ts tests/agent/runner/agent-runner.service.spec.ts --runInBand --watchman=false`
 - PR #457 `tsc --noEmit --pretty false`
 - PR #457 Full pre-push `ci:check` passed: lint, format, typecheck, web build, backend build, and full Jest coverage run.
-<!-- release:pending:end -->
 
 ## [7.0.0] - 2026-07-07
 
