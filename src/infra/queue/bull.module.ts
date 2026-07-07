@@ -1,6 +1,42 @@
-import { Module, Logger } from '@nestjs/common';
+import { Injectable, Module, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import type { Redis as IORedisClient } from 'ioredis';
+
+/**
+ * Bull 用自定义 createClient 时，queue.close() 不会关闭我们创建的 ioredis 连接
+ * （Bull 约定：谁创建谁负责关闭）。这里登记所有创建的连接，应用关停时统一优雅退出，
+ * 避免滚动发版期间旧实例的 TCP 连接挂到进程死亡才被 OS 回收、推高 Upstash 连接数。
+ */
+const createdRedisClients: IORedisClient[] = [];
+
+@Injectable()
+export class BullRedisLifecycleService implements OnApplicationShutdown {
+  private readonly logger = new Logger(BullRedisLifecycleService.name);
+
+  /** OnApplicationShutdown 在所有 onModuleDestroy（含队列 drain）之后触发，此时关连接是安全的。 */
+  async onApplicationShutdown(): Promise<void> {
+    if (createdRedisClients.length === 0) return;
+    this.logger.log(`[Shutdown] 关闭 ${createdRedisClients.length} 个 Bull Redis 连接...`);
+    await Promise.allSettled(
+      createdRedisClients.map(async (client) => {
+        try {
+          // quit 是优雅关闭（等待挂起命令）；3s 未完成则强制 disconnect。
+          await Promise.race([
+            client.quit(),
+            new Promise((resolve) => setTimeout(resolve, 3000).unref()),
+          ]);
+        } catch {
+          // quit 对已断开的连接会抛错，直接落到 disconnect
+        } finally {
+          client.disconnect();
+        }
+      }),
+    );
+    createdRedisClients.length = 0;
+    this.logger.log('[Shutdown] ✅ Bull Redis 连接已关闭');
+  }
+}
 
 function parseRedisUrl(redisUrl: string): {
   protocol: string;
@@ -66,6 +102,7 @@ function createBullQueueOptions(configService: ConfigService) {
       };
       const sharedClient = new Redis(baseRedisOpts);
       const sharedSubscriber = new Redis(baseRedisOpts);
+      createdRedisClients.push(sharedClient, sharedSubscriber);
 
       return {
         prefix,
@@ -75,8 +112,11 @@ function createBullQueueOptions(configService: ConfigService) {
               return sharedClient;
             case 'subscriber':
               return sharedSubscriber;
-            case 'bclient':
-              return new Redis(baseRedisOpts);
+            case 'bclient': {
+              const bclient = new Redis(baseRedisOpts);
+              createdRedisClients.push(bclient);
+              return bclient;
+            }
             default:
               throw new Error(`Unknown Redis connection type: ${type}`);
           }
@@ -150,6 +190,7 @@ function createBullQueueOptions(configService: ConfigService) {
       inject: [ConfigService],
     }),
   ],
+  providers: [BullRedisLifecycleService],
   exports: [BullModule],
 })
 export class BullQueueModule {}
