@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.32.0] - 2026-07-07
 
-**预计版本**: `v5.32.0`
-**最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #426 二次触发全生命周期落库追溯
@@ -96,7 +92,6 @@
 - PR #426 `jest tests/agent/guardrail/output/hard-rules.service.spec.ts tests/agent/reengagement/follow-up.processor.spec.ts` — 233 passed
 - PR #426 前后端 `tsc --noEmit` 通过
 - PR #426 pre-push 钩子全量 ci:check 通过
-<!-- release:pending:end -->
 
 ## [5.31.0] - 2026-07-03
 
