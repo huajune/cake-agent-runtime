@@ -3,7 +3,51 @@
   "nextVersion": "9.0.0",
   "updatedAt": "2026-07-07",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "464",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/464",
+      "title": "发版链路 bot PR 自动放行，CI/AI review 并发去重",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-07",
+      "businessUpdates": [
+        "发版链路 bot PR 自动放行，CI/AI review 并发去重",
+        "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**",
+        "CI 与 AI review 增加并发去重，同分支旧 run 自动取消"
+      ],
+      "summary": [
+        "发版链路 bot PR 自动放行，CI/AI review 并发去重",
+        "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**",
+        "CI 与 AI review 增加并发去重，同分支旧 run 自动取消"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**"
+      ],
+      "ops": [
+        "`ci.yml`：新增 `concurrency`（按分支取消旧 run）",
+        "`ai-code-review.yml`：新增按 PR 号的 concurrency；跳过 `chore/release-metadata/*` bot PR（纯脚本生成的版本元数据）",
+        "`version-changelog.yml`：",
+        "所有 checkout/gh 操作 token 改为 `RELEASE_BOT_TOKEN || GITHUB_TOKEN`。PAT push/建 PR 会正常触发 `pull_request` 事件（CI 原生跑），PAT 合并的 merged 事件能继续触发下一段 workflow——这是旧流程所有 dispatch 补丁的根因",
+        "元数据 PR：github-actions[bot] 补 approve（满足 develop 的 1 review + last-push-approval，approve 者与 push 者是不同 actor）+ PAT 开 auto-merge（squash）",
+        "固化 PR：master 无 required check，PAT 直接 squash 合并（人工决策点已前移到 release PR）",
+        "回同步 PR：approve + auto-merge（**merge commit**，squash 会导致下轮发版元数据冲突）",
+        "安全闸：自动 approve 前校验 PR 变更文件仅限 `package.json` / `CHANGELOG.md` / `.release/pending-release.json`，含其他文件则跳过自动放行",
+        "移除对 bot 元数据 PR 的 AI review dispatch",
+        "**未配置 `RELEASE_BOT_TOKEN` 时行为与现状完全一致**（dispatch 兜底 + 人工合并）",
+        "CI 与 AI review 增加并发去重，同分支旧 run 自动取消",
+        "发版链路 bot PR 自动放行，CI/AI review 并发去重"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "三个 workflow YAML 语法校验通过",
+        "无 PAT 回退路径逐段核对与现行为一致",
+        "预期效果：发版全链路（feature PR 合并 → 生产部署完成）从多次人工盯梳收敛为 1 次合并操作 + ~15 分钟自动级联"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "8.0.0",
     "date": "2026-07-07",
