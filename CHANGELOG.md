@@ -8,6 +8,52 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v7.0.0`
+**最近更新**: `2026-07-07`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #450 降低语义护栏 shadow 误报
+- PR #450 在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。
+- PR #450 在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。
+- PR #450 强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。
+- PR #450 增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。
+- PR #450 补充 packet builder 与 semantic reviewer 单测。
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #450 在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。
+- PR #450 在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。
+- PR #450 强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。
+- PR #450 增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。
+- PR #450 补充 packet builder 与 semantic reviewer 单测。
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #450 降低语义护栏 shadow 误报
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #450 `pnpm jest tests/agent/guardrail/output/review-packet.builder.spec.ts tests/agent/guardrail/output/llm/semantic-reviewer.service.spec.ts --watchman=false`
+- PR #450 `pnpm exec tsc --noEmit`
+- PR #450 `pnpm jest tests/agent/guardrail/output --watchman=false`
+- PR #450 `pnpm run build`
+- PR #450 pre-push `pnpm run ci:check` passed: lint, format, typecheck, build:ci, test:ci
+<!-- release:pending:end -->
+
 ## [6.0.0] - 2026-07-07
 
 **来源分支**: `develop`
