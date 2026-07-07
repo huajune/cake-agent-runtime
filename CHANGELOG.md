@@ -8,6 +8,44 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.33.0`
+**最近更新**: `2026-07-07`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #436 优化复聊控制与追溯视图
+- PR #436 删除复聊候选视图旧函数签名
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- PR #436 优化复聊控制与追溯视图
+
+### 运维与流程
+- PR #436 删除复聊候选视图旧函数签名
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #436 `pnpm jest tests/agent/reengagement/follow-up.processor.spec.ts tests/agent/reengagement/scenario-registry.spec.ts tests/agent/reengagement/anchor.service.spec.ts tests/agent/reengagement/tasks/reengagement-start.tool.spec.ts tests/agent/reengagement/tasks/reengagement-follow-up.tool.spec.ts tests/biz/monitoring/reengagement-monitoring.service.spec.ts tests/web/reengagement-page.spec.ts tests/web/guardrail-trace.spec.ts tests/agent/tools/duliday-cancel-work-order.tool.spec.ts --watchman=false`
+- PR #436 `pnpm jest tests/biz/monitoring/monitoring.controller.spec.ts --watchman=false`
+- PR #436 `pnpm run ci:check`
+- PR #436 push 前 husky pre-push 自动再次执行 `pnpm run ci:check`，已通过。
+- PR #436 GitHub `CI Checks` 已通过上一轮；最新 push 后等待远端检查重新完成。
+<!-- release:pending:end -->
+
 ## [5.32.0] - 2026-07-07
 
 **来源分支**: `develop`

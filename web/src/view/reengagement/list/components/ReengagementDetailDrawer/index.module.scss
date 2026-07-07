@@ -197,6 +197,75 @@
 }
 
 /* ── Timeline ── */
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.taskItem {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 11px 13px;
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-color: rgba(99, 102, 241, 0.32);
+    background: rgba(248, 250, 255, 0.98);
+    box-shadow: 0 8px 22px rgba(31, 41, 55, 0.06);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.taskItemActive {
+  border-color: rgba(99, 102, 241, 0.42);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.taskMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.taskScenario {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.currentTaskMark {
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.taskMeta,
+.taskReason {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.taskReason {
+  color: #94a3b8;
+}
+
 .timeline {
   display: flex;
   flex-direction: column;
@@ -254,15 +323,19 @@
   font-size: 13px;
   font-weight: 700;
   color: #334155;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-    monospace;
 }
 
 .timelineTime {
   font-size: 12px;
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
+}
+
+.timelineSummary {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
 }
 
 .timelineDetail {

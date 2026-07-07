@@ -715,6 +715,39 @@ describe('ReplyWorkflowService', () => {
     );
   });
 
+  it('does not schedule post-booking follow-ups when booking succeeds without interview time', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '报名成功，面试官会电话联系你',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100 },
+          result: {
+            success: true,
+            workOrderId: 123,
+            errorType: null,
+          },
+        },
+      ],
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(followUpScheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'interview_reminder' }),
+    );
+    expect(followUpScheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'post_interview_followup' }),
+    );
+    expect(session.saveTerminalState).toHaveBeenCalledWith(
+      'corp-1',
+      'im-contact-1',
+      'chat-1',
+      'booked',
+    );
+  });
+
   it('schedules store_presented_no_reply after a delivered job recommendation reply', async () => {
     runner.invoke.mockResolvedValueOnce({
       text: '杨浦奥乐齐长白店有分拣打包岗位，薪资 25 元/时。',

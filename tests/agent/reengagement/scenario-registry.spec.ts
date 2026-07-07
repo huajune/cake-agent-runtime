@@ -67,14 +67,33 @@ describe('scenario-registry', () => {
 
     it('allows booked booking.succeeded scenarios to run', () => {
       const s = getScenario('interview_reminder')!;
-      const r = shouldStop(s, baseState({ terminal: 'booked' }), anchorAt);
+      const state = baseState({ terminal: 'booked', interviewAt: anchorAt + 3_600_000 } as never);
+      const r = shouldStop(s, state, anchorAt);
       expect(r.stop).toBe(false);
     });
 
     it('allows handed_off booking.succeeded scenarios to run', () => {
       const s = getScenario('interview_reminder')!;
-      const r = shouldStop(s, baseState({ terminal: 'handed_off' }), anchorAt);
+      const r = shouldStop(
+        s,
+        baseState({ terminal: 'handed_off', interviewAt: anchorAt + 3_600_000 } as never),
+        anchorAt,
+      );
       expect(r.stop).toBe(false);
+    });
+
+    it('stops booking follow-ups when there is no interview time', () => {
+      const reminder = getScenario('interview_reminder')!;
+      const followup = getScenario('post_interview_followup')!;
+
+      expect(shouldStop(reminder, baseState({ terminal: 'booked' }), anchorAt)).toEqual({
+        stop: true,
+        reason: 'scenario_no_longer_holds',
+      });
+      expect(shouldStop(followup, baseState({ terminal: 'booked' }), anchorAt)).toEqual({
+        stop: true,
+        reason: 'scenario_no_longer_holds',
+      });
     });
 
     it('still stops booking.succeeded scenarios on rejected terminal', () => {
@@ -93,7 +112,11 @@ describe('scenario-registry', () => {
     it('exempts externally verifiable booking follow-ups from the replied rule', () => {
       // 报名后回一句"好的"不该杀掉面试提醒——带 workOrderId 的任务由到点核验判失效
       const s = getScenario('interview_reminder')!;
-      const state = baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 });
+      const state = baseState({
+        terminal: 'booked',
+        lastCandidateMessageAt: anchorAt + 1,
+        interviewAt: anchorAt + 3_600_000,
+      } as never);
       expect(shouldStop(s, state, anchorAt, { externallyVerifiable: true }).stop).toBe(false);
     });
 

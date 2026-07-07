@@ -114,4 +114,43 @@ describe('BookingCardRenderer', () => {
     expect(result.card.content as string).toContain('CAPACITY_FULL');
     expect(result.card.content as string).toContain('traceId：trace-xyz-789');
   });
+
+  it('should render cancellation cards as private-chat operation notifications', () => {
+    const card = renderer.buildInterviewCancellationCard({
+      contactName: 'wx_cancel',
+      candidateName: 'Eve',
+      phone: '13500135000',
+      botUserName: '招募经理C',
+      brandName: '奥乐齐',
+      storeName: '凯德晶萃广场',
+      jobName: '分拣打包',
+      interviewTime: '2026-07-07 13:00:00',
+      workOrderId: 446652,
+      cancelReason: '面试距离远',
+      cancelReasonDesc: '候选人觉得距离有点远，不考虑了',
+      userMessage: '不考虑了',
+      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+    });
+
+    expect(card).toEqual(
+      expect.objectContaining({
+        title: '⚠️ 面试预约已取消 · 需要人工确认',
+        color: 'orange',
+        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      }),
+    );
+    expect(card.content as string).toContain('候选人已取消面试预约');
+    expect(card.content as string).toContain('**候选人信息**');
+    expect(card.content as string).toContain('微信昵称：wx_cancel');
+    expect(card.content as string).toContain('姓名：Eve');
+    expect(card.content as string).toContain('**岗位信息**');
+    expect(card.content as string).toContain('原面试时间：2026-07-07 13:00');
+    expect(card.content as string).toContain('工单号：446652');
+    expect(card.content as string).toContain('**取消信息**');
+    expect(card.content as string).toContain('取消原因：面试距离远');
+    expect(card.content as string).toContain('用户消息：不考虑了');
+    expect(card.content as string).not.toContain('异常消息');
+    expect(card.content as string).not.toContain('错误分类');
+    expect(card.content as string).not.toContain('诊断载荷');
+  });
 });

@@ -2,18 +2,23 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import { formatDateTime, formatJson } from '@/utils/format';
-import { useReengagementRecordDetail } from '@/hooks/reengagement/useReengagementRecords';
+import {
+  useReengagementRecordDetail,
+  useReengagementRecords,
+} from '@/hooks/reengagement/useReengagementRecords';
 import { useChatSessionMessages } from '@/hooks/chat/useChatSessions';
-import type { ReengagementEvent } from '@/api/types/reengagement.types';
+import type { ReengagementEvent, ReengagementTouchRecord } from '@/api/types/reengagement.types';
+import { getStatusMeta } from '../../constants';
 import StatusBadge from '../StatusBadge';
 import styles from './index.module.scss';
 
-/** 详情里只看触达前后的语境，最近 10 条足够 */
-const RECENT_CHAT_LIMIT = 10;
+/** 详情里展示更完整的触达前后语境 */
+const RECENT_CHAT_LIMIT = 50;
 
 interface ReengagementDetailDrawerProps {
   touchKey: string;
   onClose: () => void;
+  onTouchSelect?: (touchKey: string) => void;
   /** code→displayName，由页面从场景注册表接口构建（与 /config 页同源） */
   scenarioLabels: Record<string, string>;
 }
@@ -24,8 +29,63 @@ interface InfoFact {
   mono?: boolean;
 }
 
+const EVENT_LABELS: Record<string, string> = {
+  scheduled: '已创建待发任务',
+  schedule_precheck_stopped: '排程前已停止',
+  enqueue_error: '入队失败',
+  fired_but_disabled: '到点时开关关闭',
+  stopped: '到点时停止',
+  frequency_blocked: '被频控拦截',
+  rescheduled_out_of_window: '不在可发送时段，已改期',
+  shadow_generated: 'Shadow 回合完成（未投递）',
+  reserve_duplicate: '撞重跳过',
+  reserved: '已占用触达槽',
+  outcome_not_reply: '生成结果不是可发送回复',
+  delivery_attempted: '开始投递',
+  sent: '投递成功',
+  delivery_unknown: '投递状态不明',
+};
+
+const DETAIL_REASON_LABELS: Record<string, string> = {
+  no_delivery_port: '没有实际投递通道',
+  shadow_mode: 'Shadow 模式只生成不发送',
+  rollout_disabled: '灰度未开启',
+  reengagement_disabled: '复聊总开关关闭',
+  over_frequency_limit_24h: '24 小时频控已达上限',
+};
+
+const OUTCOME_LABELS: Record<string, string> = {
+  reply: '生成了可发送回复',
+  skipped: '未产出可发送回复',
+  guardrail_blocked: '被安全规则拦截',
+  handoff: '转人工',
+};
+
 function formatMaybeTime(value?: string | null): string {
   return value ? formatDateTime(value) : '-';
+}
+
+function readString(detail: Record<string, unknown> | undefined, key: string): string | null {
+  const value = detail?.[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function readNumber(detail: Record<string, unknown> | undefined, key: string): number | null {
+  const value = detail?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function formatMaybeEpoch(value: number | null): string | null {
+  return value ? formatDateTime(new Date(value).toISOString()) : null;
+}
+
+function extractBatchIdFromEvents(events: ReengagementEvent[]): string | null {
+  for (const event of events) {
+    const jobId = readString(event.detail, 'jobId');
+    const match = jobId?.match(/batch_[^:\s]+/);
+    if (match) return match[0];
+  }
+  return null;
 }
 
 function sortEventsAsc(events: ReengagementEvent[]): ReengagementEvent[] {
@@ -37,17 +97,84 @@ function sortEventsAsc(events: ReengagementEvent[]): ReengagementEvent[] {
   });
 }
 
+function sortRecordsByCreatedAt(records: ReengagementTouchRecord[]): ReengagementTouchRecord[] {
+  return [...records].sort((a, b) => {
+    const at = Date.parse(a.created_at || '');
+    const bt = Date.parse(b.created_at || '');
+    return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
+  });
+}
+
+function getEventLabel(event: ReengagementEvent): string {
+  return EVENT_LABELS[event.event] ?? event.event;
+}
+
+function getEventSummary(event: ReengagementEvent): string {
+  const reason = readString(event.detail, 'reason');
+  const outcomeKind = readString(event.detail, 'outcomeKind');
+  const fireAt = formatMaybeEpoch(readNumber(event.detail, 'fireAt'));
+  const nextFireAt = formatMaybeEpoch(readNumber(event.detail, 'nextFireAt'));
+
+  if (event.event === 'scheduled') {
+    return fireAt ? `系统创建了一次复聊任务，计划在 ${fireAt} 触发。` : '系统创建了一次复聊任务。';
+  }
+
+  if (event.event === 'schedule_precheck_stopped') {
+    return reason ? `创建任务前预检没通过：${DETAIL_REASON_LABELS[reason] || reason}。` : '创建任务前预检没通过。';
+  }
+
+  if (event.event === 'rescheduled_out_of_window') {
+    return nextFireAt
+      ? `到点时不在 9:00-21:00 可发送时段，已改到 ${nextFireAt}。`
+      : '到点时不在 9:00-21:00 可发送时段，已改期。';
+  }
+
+  if (event.event === 'shadow_generated') {
+    const reasonText = reason ? DETAIL_REASON_LABELS[reason] || reason : '未投递';
+    const outcomeText = outcomeKind ? OUTCOME_LABELS[outcomeKind] || outcomeKind : '已生成结果';
+    return `${outcomeText}，但因为「${reasonText}」，所以没有发给用户。`;
+  }
+
+  if (event.event === 'reserved') return '系统已锁定这次发送机会，避免并发任务重复触达。';
+  if (event.event === 'reserve_duplicate') return '同一触达槽已经有任务或发送记录，这次被幂等保护跳过。';
+  if (event.event === 'delivery_attempted') return '文案已进入外部渠道发送流程。';
+  if (event.event === 'sent') return '复聊消息已通过渠道发出。';
+  if (event.event === 'delivery_unknown') return '渠道侧返回异常，不能盲目重发，需要人工核对。';
+  if (event.event === 'frequency_blocked') return '为了避免同一候选人被过度打扰，这次触达被频控拦截。';
+  if (event.event === 'fired_but_disabled') return '任务到了触发时间，但复聊总开关已关闭，所以没有继续执行。';
+  if (event.event === 'stopped') return '任务到点后发现候选人已回复、状态已变化，或场景不再成立。';
+  if (event.event === 'outcome_not_reply') return '主动回合没有产出可投递的回复，因此没有给候选人发消息。';
+  if (event.event === 'enqueue_error') return '任务写入队列失败，需要看技术明细里的错误。';
+  if (reason) return DETAIL_REASON_LABELS[reason] || reason;
+  if (outcomeKind) return OUTCOME_LABELS[outcomeKind] || outcomeKind;
+  return '系统记录了这一步的处理状态。';
+}
+
 export default function ReengagementDetailDrawer({
   touchKey,
   onClose,
+  onTouchSelect,
   scenarioLabels,
 }: ReengagementDetailDrawerProps) {
   const navigate = useNavigate();
   const { data: record, isLoading, isError } = useReengagementRecordDetail(touchKey);
 
   const events = useMemo(() => sortEventsAsc(record?.events || []), [record?.events]);
+  const detailBatchId = useMemo(
+    () => record?.batch_id || extractBatchIdFromEvents(events),
+    [events, record?.batch_id],
+  );
+  const { data: sessionRecords, isLoading: sessionRecordsLoading } = useReengagementRecords({
+    sessionId: record?.session_id ?? undefined,
+    limit: 50,
+    enabled: !!record?.session_id,
+  });
+  const sameSessionRecords = useMemo(
+    () => sortRecordsByCreatedAt(sessionRecords ?? []),
+    [sessionRecords],
+  );
 
-  // 最近 10 条聊天记录：还原触达前后的会话语境
+  // 最近聊天记录：还原触达前后的会话语境
   const { data: chatData, isLoading: chatLoading } = useChatSessionMessages(
     record?.session_id ?? null,
   );
@@ -67,9 +194,9 @@ export default function ReengagementDetailDrawer({
       { label: '决策原因', value: record.decision_reason || '-' },
       { label: 'Outcome', value: record.outcome_kind || '-' },
       { label: 'Reserve', value: record.reserve_result || '-' },
-      { label: 'Batch', value: record.batch_id || '-', mono: true },
+      { label: 'Batch', value: detailBatchId || '-', mono: true },
     ];
-  }, [record, scenarioLabels]);
+  }, [detailBatchId, record, scenarioLabels]);
 
   const timeFacts = useMemo<InfoFact[]>(() => {
     if (!record) return [];
@@ -140,50 +267,6 @@ export default function ReengagementDetailDrawer({
               </div>
             )}
 
-            {/* Generated text */}
-            <div>
-              <div className={styles.sectionTitle}>
-                生成文案
-                {record.shadow && <span className={styles.shadowNote}>本应发（未投递）</span>}
-              </div>
-              {record.generated_text ? (
-                <div className={styles.generatedText}>{record.generated_text}</div>
-              ) : (
-                <div className={styles.emptyText}>未生成文案</div>
-              )}
-            </div>
-
-            {/* Lifecycle timeline */}
-            <div>
-              <div className={styles.sectionTitle}>生命周期时间线</div>
-              {events.length === 0 ? (
-                <div className={styles.emptyText}>暂无事件轨迹</div>
-              ) : (
-                <div className={styles.timeline}>
-                  {events.map((event, index) => (
-                    <div
-                      key={`${event.at}-${event.event}-${index}`}
-                      className={styles.timelineItem}
-                    >
-                      <div className={styles.timelineDot} />
-                      <div className={styles.timelineContent}>
-                        <div className={styles.timelineHead}>
-                          <span className={styles.timelineEvent}>{event.event}</span>
-                          <span className={styles.timelineTime}>{formatDateTime(event.at)}</span>
-                        </div>
-                        {event.detail && Object.keys(event.detail).length > 0 && (
-                          <details className={styles.timelineDetail}>
-                            <summary>detail</summary>
-                            <pre>{formatJson(event.detail)}</pre>
-                          </details>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Recent chat context */}
             <div>
               <div className={styles.sectionTitle}>
@@ -224,18 +307,118 @@ export default function ReengagementDetailDrawer({
                 </div>
               )}
             </div>
+
+            {/* Generated text */}
+            <div>
+              <div className={styles.sectionTitle}>
+                生成文案
+                {record.shadow && <span className={styles.shadowNote}>本应发（未投递）</span>}
+              </div>
+              {record.generated_text ? (
+                <div className={styles.generatedText}>{record.generated_text}</div>
+              ) : (
+                <div className={styles.emptyText}>
+                  {record.outcome_kind === 'skipped'
+                    ? '未产出可发送文案（Outcome=skipped）'
+                    : '未生成文案'}
+                </div>
+              )}
+            </div>
+
+            {/* Same session tasks */}
+            <div>
+              <div className={styles.sectionTitle}>
+                同候选人复聊任务
+                {!sessionRecordsLoading && (
+                  <span className={styles.sectionNote}>共 {sameSessionRecords.length} 条</span>
+                )}
+              </div>
+              {sessionRecordsLoading ? (
+                <div className={styles.emptyText}>加载中...</div>
+              ) : sameSessionRecords.length === 0 ? (
+                <div className={styles.emptyText}>暂无同候选人任务</div>
+              ) : (
+                <div className={styles.taskList}>
+                  {sameSessionRecords.map((task) => {
+                    const statusMeta = getStatusMeta(task.status);
+                    const isCurrent = task.touch_key === record.touch_key;
+                    return (
+                      <button
+                        key={task.touch_key}
+                        type="button"
+                        className={`${styles.taskItem} ${isCurrent ? styles.taskItemActive : ''}`}
+                        disabled={isCurrent || !onTouchSelect}
+                        onClick={() => onTouchSelect?.(task.touch_key)}
+                        title={task.touch_key}
+                      >
+                        <span className={styles.taskMain}>
+                          <span className={styles.taskScenario}>
+                            {scenarioLabels[task.scenario_code] ?? task.scenario_code}
+                          </span>
+                          <StatusBadge
+                            status={task.status}
+                            title={task.decision_reason || statusMeta.label}
+                          />
+                          {isCurrent && <span className={styles.currentTaskMark}>当前查看</span>}
+                        </span>
+                        <span className={styles.taskMeta}>
+                          {task.fire_at
+                            ? `计划触发 ${formatDateTime(task.fire_at)}`
+                            : '无计划触发时间'}
+                        </span>
+                        {task.decision_reason && (
+                          <span className={styles.taskReason}>原因：{task.decision_reason}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Lifecycle timeline */}
+            <div>
+              <div className={styles.sectionTitle}>当前任务流转</div>
+              {events.length === 0 ? (
+                <div className={styles.emptyText}>暂无事件轨迹</div>
+              ) : (
+                <div className={styles.timeline}>
+                  {events.map((event, index) => (
+                    <div
+                      key={`${event.at}-${event.event}-${index}`}
+                      className={styles.timelineItem}
+                    >
+                      <div className={styles.timelineDot} />
+                      <div className={styles.timelineContent}>
+                        <div className={styles.timelineHead}>
+                          <span className={styles.timelineEvent}>{getEventLabel(event)}</span>
+                          <span className={styles.timelineTime}>{formatDateTime(event.at)}</span>
+                        </div>
+                        <div className={styles.timelineSummary}>{getEventSummary(event)}</div>
+                        {event.detail && Object.keys(event.detail).length > 0 && (
+                          <details className={styles.timelineDetail}>
+                            <summary>技术明细</summary>
+                            <pre>{formatJson(event.detail)}</pre>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className={styles.rightCol}>
             {/* 该触达由哪个主动回合投递：跳消息处理流水详情 */}
-            {record.batch_id && (
+            {detailBatchId && (
               <button
                 type="button"
                 className={styles.batchLink}
                 onClick={() =>
-                  navigate(`/message-processing?messageId=${encodeURIComponent(record.batch_id!)}`)
+                  navigate(`/message-processing?messageId=${encodeURIComponent(detailBatchId)}`)
                 }
-                title={`Batch: ${record.batch_id}`}
+                title={`Batch: ${detailBatchId}`}
               >
                 <ExternalLink aria-hidden="true" size={13} />
                 查看消息处理流水

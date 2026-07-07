@@ -145,6 +145,7 @@ export interface ReengagementTouchStatsRow {
 export interface ReengagementCandidateFilters {
   startDate?: string;
   endDate?: string;
+  status?: ReengagementTouchStatus;
   scenarioCode?: string;
   sessionId?: string;
   /** 只看有待发任务（scheduled/rescheduled 且 fire_at 未到）的候选人 */

@@ -68,6 +68,25 @@ describe('ReengagementAnchorService', () => {
     );
   });
 
+  it('does not schedule booking follow-ups when the booking has no interview time', async () => {
+    buildService().handleToolAnchors(
+      {
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { jobId: 100 },
+            result: { success: true, workOrderId: 555 },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(session.saveTerminalState).toHaveBeenCalledWith('corp-1', 'user-1', 'chat-1', 'booked');
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+  });
+
   it('clears the booked terminal when a cancel succeeds', async () => {
     session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
 
@@ -176,6 +195,25 @@ describe('ReengagementAnchorService', () => {
     expect(session.saveTerminalState).not.toHaveBeenCalled();
   });
 
+  it('does not schedule modify-anchored follow-ups without a new interview time', async () => {
+    buildService().handleToolAnchors(
+      {
+        toolCalls: [
+          {
+            toolName: 'duliday_modify_interview_time',
+            args: { workOrderId: 555 },
+            result: { success: true, workOrderId: 555 },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+    expect(session.saveTerminalState).not.toHaveBeenCalled();
+  });
+
   it('ignores failed cancel/modify tool calls', async () => {
     buildService().handleToolAnchors(
       {
@@ -228,5 +266,108 @@ describe('ReengagementAnchorService', () => {
 
     expect(session.saveTerminalState).not.toHaveBeenCalled();
     expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+  });
+
+  it('passes current turn job-list evidence when scheduling store-presented follow-up', async () => {
+    session.getAuthoritativeState.mockResolvedValue(baseState({ presentedStores: [] }));
+
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '奥乐齐（1044 凯德晶萃广场）- 分拣打包，8.1km',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: {},
+            result: {
+              resultCount: 1,
+              queryMeta: {
+                brandNearestStores: [
+                  {
+                    nearestStores: [{ jobId: 516221, storeName: '1044 凯德晶萃广场' }],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'store_presented_no_reply',
+        state: expect.objectContaining({
+          presentedStores: [{ jobId: 516221 }],
+        }),
+      }),
+    );
+  });
+
+  it('does not treat nearby-store recommendation copy as asking for location', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '查到了，芳芯路附近有几家奥乐齐在招，分拣打包和理货岗都有。',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'address_missing' }),
+    );
+  });
+
+  it('does not treat sent-navigation copy as asking the candidate for location', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '门店位置我发你了，你点开就能看导航。',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'address_missing' }),
+    );
+  });
+
+  it('still schedules address-missing when asking for a business district or metro station', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '我帮你看看附近在招的岗位，你平时大概在哪个商圈或地铁站附近呀？',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'address_missing',
+        anchorEventId: 'trace-1:address_missing',
+      }),
+    );
+  });
+
+  it('still schedules address-missing for inverted send-location phrasing', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '你方便的话位置发我一下，我帮你看最近的门店。',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'address_missing',
+        anchorEventId: 'trace-1:address_missing',
+      }),
+    );
   });
 });

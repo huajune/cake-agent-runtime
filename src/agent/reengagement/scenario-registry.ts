@@ -100,16 +100,16 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     displayName: '面试提醒',
     anchorEvent: 'booking.succeeded',
     anchorLabel: '报名成功',
-    // 面试前 1h 提醒（依赖 interviewTime；缺失时回退到锚点 +1h）
+    // 面试前 1h 提醒（依赖 interviewTime；无面试时间的等通知岗位不排主动触达）
     triggerDelayMs: (ctx: FollowUpScenarioContext) => {
       const interviewAt = resolveInterviewAt(ctx.state);
-      if (interviewAt == null) return HOUR;
+      if (interviewAt == null) return 0;
       return Math.max(0, interviewAt - HOUR - ctx.anchorAt);
     },
-    delayLabel: '面试前 1 小时（无面试时间则锚点 +1 小时）',
+    delayLabel: '面试前 1 小时（无面试时间不触发）',
     objective: '面试前提醒候选人准时参加、带好证件',
-    requiredEvidence: ['terminal'],
-    stopUnless: (state) => state.terminal !== 'rejected',
+    requiredEvidence: ['terminal', 'interviewAt'],
+    stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
     generationPolicy: '提醒时间地点、带身份证/健康证；不索取新资料',
     defaultRolloutEnabled: true,
   },
@@ -121,13 +121,13 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     anchorLabel: '报名成功',
     triggerDelayMs: (ctx: FollowUpScenarioContext) => {
       const interviewAt = resolveInterviewAt(ctx.state);
-      if (interviewAt == null) return 25 * HOUR;
+      if (interviewAt == null) return 0;
       return Math.max(0, interviewAt + HOUR - ctx.anchorAt);
     },
-    delayLabel: '面试后 1 小时（无面试时间则锚点 +25 小时）',
+    delayLabel: '面试后 1 小时（无面试时间不触发）',
     objective: '面试后回访，了解面试结果、是否需要后续协助',
-    requiredEvidence: [],
-    stopUnless: () => true,
+    requiredEvidence: ['interviewAt'],
+    stopUnless: hasInterviewAt,
     generationPolicy: '关心面试体验、是否有问题需要协助；不施压入职',
     defaultRolloutEnabled: false,
   },
@@ -154,9 +154,13 @@ export function getScenario(code: FollowUpScenarioCode): FollowUpScenario | unde
 }
 
 /** interviewTime（毫秒）从权威态推断；缺失返回 null。 */
-function resolveInterviewAt(state: AuthoritativeSessionState): number | null {
+export function resolveInterviewAt(state: AuthoritativeSessionState): number | null {
   const raw = (state as { interviewAt?: unknown }).interviewAt;
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
+}
+
+export function hasInterviewAt(state: AuthoritativeSessionState): boolean {
+  return resolveInterviewAt(state) != null;
 }
 
 /**

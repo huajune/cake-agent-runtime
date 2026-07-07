@@ -13,9 +13,14 @@ function formatCountdown(fireAt: string): string | null {
   if (diffMin < 0) return null;
   if (diffMin < 1) return '即将触发';
   if (diffMin < 60) return `${diffMin} 分钟后`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} 小时后`;
-  return `${Math.floor(diffHour / 24)} 天后`;
+  const hours = Math.floor(diffMin / 60);
+  const minutes = diffMin % 60;
+  if (hours < 24) {
+    return minutes > 0 ? `${hours} 小时 ${minutes} 分钟后` : `${hours} 小时后`;
+  }
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours > 0 ? `${days} 天 ${remainingHours} 小时后` : `${days} 天后`;
 }
 
 /** 行点击的默认目标：优先待发任务，否则最近更新的场景触达 */
@@ -108,6 +113,9 @@ export default function CandidateTable({
           <tbody>
             {data.map((candidate, index) => {
               const rowTouchKey = primaryTouchKey(candidate);
+              const nextTouchCountdown = candidate.nextTouch
+                ? formatCountdown(candidate.nextTouch.fireAt)
+                : null;
               return (
                 <tr
                   key={candidate.sessionId}
@@ -165,10 +173,8 @@ export default function CandidateTable({
                           {scenarioLabels[candidate.nextTouch.scenarioCode] ??
                             candidate.nextTouch.scenarioCode}
                         </span>
-                        {formatCountdown(candidate.nextTouch.fireAt) && (
-                          <span className={styles.nextTouchCountdown}>
-                            {formatCountdown(candidate.nextTouch.fireAt)}
-                          </span>
+                        {nextTouchCountdown && (
+                          <span className={styles.nextTouchCountdown}>{nextTouchCountdown}</span>
                         )}
                         <span className={styles.nextTouchTime}>
                           {formatDateTime(candidate.nextTouch.fireAt)}

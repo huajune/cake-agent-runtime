@@ -166,6 +166,7 @@ describe('FollowUpProcessor', () => {
           scenarioCode: 'interview_reminder',
           anchorEventId: 'evt-1',
           anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+          expectedInterviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
         },
       }),
     );
@@ -201,6 +202,7 @@ describe('FollowUpProcessor', () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     runner.runTurn.mockResolvedValue({
       kind: 'skipped',
+      generatedText: '候选人不可见草稿',
       toolCalls: [],
       scenarioCode: 'opening_no_reply',
       runTurnEnd,
@@ -208,6 +210,13 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
+    expect(tracking.trackShadow).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        outcomeKind: 'skipped',
+        generatedText: '候选人不可见草稿',
+      }),
+    );
     expect(delivery.deliver).not.toHaveBeenCalled();
     expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
   });
@@ -836,6 +845,20 @@ describe('FollowUpProcessor', () => {
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
         'candidate_replied_after_anchor',
+      );
+      expect(runner.runTurn).not.toHaveBeenCalled();
+    });
+
+    it('stops legacy booking follow-ups that have no frozen interview time', async () => {
+      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+      await buildProcessor().process(
+        bookingJob({ workOrderId: undefined, expectedInterviewAt: undefined }),
+      );
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'scenario_no_longer_holds',
       );
       expect(runner.runTurn).not.toHaveBeenCalled();
     });

@@ -1,4 +1,9 @@
 import { decisionBadge } from '@/components/GuardrailTrace/decision';
+import {
+  guardrailReasonLabel,
+  guardrailRuleLabel,
+  guardrailRuleTitle,
+} from '@/components/GuardrailTrace/labels';
 import type { GuardrailReviewRecord, GuardrailReviewStepDetail } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
@@ -8,8 +13,8 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
       {step.ruleIds.length > 0 && (
         <div className={styles.ruleList}>
           {step.ruleIds.map((rule) => (
-            <code key={rule} className={styles.ruleTag}>
-              {rule}
+            <code key={rule} className={styles.ruleTag} title={guardrailRuleTitle(rule)}>
+              {guardrailRuleLabel(rule)}
             </code>
           ))}
         </div>
@@ -19,19 +24,21 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
           {step.violations.map((v, i) => (
             <div key={`${v.type}-${i}`} className={styles.violation}>
               <div className={styles.violationHead}>
-                <code className={styles.ruleTag}>{v.type}</code>
+                <code className={styles.ruleTag} title={guardrailRuleTitle(v.type)}>
+                  {guardrailRuleLabel(v.type)}
+                </code>
                 {v.severity && <span className={styles.severity}>{v.severity}</span>}
               </div>
               {v.evidence && (
                 <div className={styles.violationLine}>
                   <span className={styles.violationLabel}>证据</span>
-                  {v.evidence}
+                  <span className={styles.violationContent}>{v.evidence}</span>
                 </div>
               )}
               {v.suggestion && (
                 <div className={styles.violationLine}>
                   <span className={styles.violationLabel}>建议</span>
-                  {v.suggestion}
+                  <span className={styles.violationContent}>{v.suggestion}</span>
                 </div>
               )}
             </div>
@@ -41,7 +48,7 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
       {step.feedback && (
         <div className={styles.feedback}>
           <span className={styles.violationLabel}>重写反馈</span>
-          {step.feedback}
+          <span className={styles.violationContent}>{step.feedback}</span>
         </div>
       )}
     </>
@@ -105,7 +112,11 @@ export default function GuardrailReviewDetail({ review }: { review: GuardrailRev
       <div className={styles.finalRow}>
         <span className={styles.stepStage}>最终</span>
         {decisionBadge(review.finalDecision)}
-        {review.reasonCode && <span className={styles.reasonCode}>{review.reasonCode}</span>}
+        {review.reasonCode && (
+          <span className={styles.reasonCode} title={review.reasonCode}>
+            {guardrailReasonLabel(review.reasonCode)}
+          </span>
+        )}
         {review.finalDecision === 'block' && (
           <span className={styles.blockHint}>本轮回复未发送</span>
         )}

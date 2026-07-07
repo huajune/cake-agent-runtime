@@ -20,6 +20,23 @@ export interface InterviewBookingNotificationPayload {
   atAll?: boolean;
 }
 
+export interface InterviewCancellationNotificationPayload {
+  contactName?: string;
+  candidateName?: string;
+  phone?: string;
+  botUserName?: string;
+  brandName?: string;
+  storeName?: string;
+  jobName?: string;
+  interviewTime?: string;
+  workOrderId: number;
+  cancelReason?: string;
+  cancelReasonDesc?: string;
+  userMessage?: string;
+  atUsers?: FeishuReceiver[];
+  atAll?: boolean;
+}
+
 @Injectable()
 export class BookingCardRenderer {
   constructor(private readonly cardBuilder: FeishuCardBuilderService) {}
@@ -96,6 +113,56 @@ export class BookingCardRenderer {
         atAll: payload.atAll,
       }),
     };
+  }
+
+  buildInterviewCancellationCard(
+    payload: InterviewCancellationNotificationPayload,
+  ): Record<string, unknown> {
+    const sections: string[] = [];
+
+    sections.push('候选人已取消面试预约，请人工确认是否需要同步门店取消面试安排。');
+
+    const candidateLines = [
+      payload.contactName ? `微信昵称：${payload.contactName}` : null,
+      payload.candidateName ? `姓名：${payload.candidateName}` : null,
+      payload.phone ? `电话：${payload.phone}` : null,
+      payload.botUserName ? `托管账号：${payload.botUserName}` : null,
+    ].filter((line): line is string => Boolean(line));
+    if (candidateLines.length > 0) {
+      sections.push(`**候选人信息**\n${candidateLines.join('\n')}`);
+    }
+
+    const interviewLines = [
+      payload.brandName ? `品牌：${payload.brandName}` : null,
+      payload.storeName ? `门店：${payload.storeName}` : null,
+      payload.jobName ? `面试岗位：${payload.jobName}` : null,
+      payload.interviewTime
+        ? `原面试时间：${this.formatInterviewTimeForDisplay(payload.interviewTime)}`
+        : null,
+      `工单号：${payload.workOrderId}`,
+    ].filter((line): line is string => Boolean(line));
+    sections.push(`**岗位信息**\n${interviewLines.join('\n')}`);
+
+    const cancelLines = [
+      payload.cancelReason ? `取消原因：${payload.cancelReason}` : null,
+      payload.cancelReasonDesc ? `原因描述：${payload.cancelReasonDesc}` : null,
+      payload.userMessage ? `用户消息：${payload.userMessage}` : null,
+    ].filter((line): line is string => Boolean(line));
+    if (cancelLines.length > 0) {
+      sections.push(`**取消信息**\n${cancelLines.join('\n')}`);
+    }
+
+    sections.push(
+      `**通知时间**：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+    );
+
+    return this.cardBuilder.buildMarkdownCard({
+      title: '⚠️ 面试预约已取消 · 需要人工确认',
+      content: sections.join('\n\n'),
+      color: 'orange',
+      atUsers: payload.atUsers,
+      atAll: payload.atAll,
+    });
   }
 
   private stringifyErrorList(value: unknown): string | undefined {

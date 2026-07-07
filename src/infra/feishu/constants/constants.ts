@@ -21,7 +21,7 @@ export const FEISHU_WEBHOOK_CHANNELS = {
     ENV_URL_KEY: 'MESSAGE_NOTIFICATION_WEBHOOK_URL',
     ENV_SECRET_KEY: 'MESSAGE_NOTIFICATION_WEBHOOK_SECRET',
   },
-  // 蛋糕私聊监控群（面试预约成功/失败、降级兜底等）
+  // 蛋糕私聊监控群（面试预约成功/失败/取消、降级兜底等）
   PRIVATE_CHAT_MONITOR: {
     URL: 'https://open.feishu.cn/open-apis/bot/v2/hook/0bc0deea-b656-4413-8d2e-2dc25720168e',
     SECRET: 'Q0UcTiCMnrLIYx1LBxxZnb',
