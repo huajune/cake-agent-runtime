@@ -1,3 +1,5 @@
+import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
+
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
  *
@@ -50,7 +52,7 @@ export type AgentEvent = AgentEventContext &
         toolName: string;
         userId?: string;
         durationMs?: number;
-        status?: string;
+        status?: AgentToolCallStatus;
         resultCount?: number;
         sideEffect?: boolean;
       }

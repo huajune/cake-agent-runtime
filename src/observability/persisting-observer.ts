@@ -49,7 +49,6 @@ export class PersistingObserver implements Observer, OnApplicationBootstrap {
     return (
       event.sideEffect === true ||
       event.status === 'error' ||
-      event.status === 'failed' ||
       (event.durationMs ?? 0) >= SLOW_TOOL_THRESHOLD_MS
     );
   }
