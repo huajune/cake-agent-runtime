@@ -6,6 +6,7 @@ import {
   isShortCircuitedToolCall,
 } from '../generator/tool-call-analysis';
 import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.service';
+import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
 import type { SessionRef, TurnOutcome, TurnTrigger } from './agent-runner.types';
 import type {
   GeneralHandoffSideEffectIntent,
@@ -86,7 +87,7 @@ export function classifyReviewedOutcome(
 ): TurnOutcome {
   const toolCalls = result.toolCalls ?? [];
   const scenarioCode = trigger.kind === 'proactive' ? trigger.scenarioCode : undefined;
-  const text = (result.text ?? '').trim();
+  const text = OutboundReplySanitizer.sanitize(result.text ?? '').trim();
   const runTurnEnd = result.runTurnEnd;
   const toolSideEffects = collectToolSideEffectIntents(toolCalls);
   const metadata = {
@@ -95,7 +96,7 @@ export function classifyReviewedOutcome(
     usage: result.usage,
     agentSteps: result.agentSteps,
     memorySnapshot: result.memorySnapshot,
-    responseMessages: result.responseMessages,
+    responseMessages: sanitizeResponseMessages(result.responseMessages),
     guardrailTrace: result.guardrailTrace,
   };
   const outputGuardrail: TurnOutcome['outputGuardrail'] = {
@@ -221,6 +222,30 @@ export function classifyReviewedOutcome(
     sideEffects: toolSideEffects,
     outputGuardrail,
   };
+}
+
+function sanitizeResponseMessages(
+  responseMessages: Array<Record<string, unknown>> | undefined,
+): Array<Record<string, unknown>> | undefined {
+  if (!responseMessages) return undefined;
+
+  return responseMessages.map((message) => {
+    const next: Record<string, unknown> = { ...message };
+    if (Array.isArray(message.parts)) {
+      next.parts = message.parts.map((part) => sanitizeTextPart(part));
+    }
+    if (Array.isArray(message.content)) {
+      next.content = message.content.map((part) => sanitizeTextPart(part));
+    }
+    return next;
+  });
+}
+
+function sanitizeTextPart(part: unknown): unknown {
+  if (!part || typeof part !== 'object' || Array.isArray(part)) return part;
+  const record = part as Record<string, unknown>;
+  if (record.type !== 'text' || typeof record.text !== 'string') return part;
+  return { ...record, text: OutboundReplySanitizer.sanitize(record.text) };
 }
 
 function collectToolSideEffectIntents(toolCalls: AgentToolCall[]): TurnSideEffectIntent[] {

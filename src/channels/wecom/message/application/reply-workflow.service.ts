@@ -9,7 +9,6 @@ import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { DeliveryContext, AgentInvokeResult } from '../types';
@@ -711,7 +710,7 @@ export class ReplyWorkflowService {
       });
 
       const processingTime = Date.now() - startTime;
-      const content = this.normalizeContent(outcome.reply?.text ?? outcome.generatedText ?? '');
+      const content = outcome.reply?.text ?? outcome.generatedText ?? '';
       const isSkipped = outcome.kind !== 'reply';
       const guardrailBlocked: AgentInvokeResult['guardrailBlocked'] =
         outcome.kind === 'guardrail_blocked' ? outcome.guardrail : undefined;
@@ -787,17 +786,6 @@ export class ReplyWorkflowService {
       return message._receivedAtMs;
     }
     return undefined;
-  }
-
-  private normalizeContent(rawContent: string): string {
-    if (ReplyNormalizer.needsNormalization(rawContent)) {
-      const normalized = ReplyNormalizer.normalize(rawContent);
-      this.logger.debug(
-        `[ReplyNormalizer] 已清洗回复: "${rawContent.substring(0, 50)}..." → "${normalized.substring(0, 50)}..."`,
-      );
-      return normalized;
-    }
-    return rawContent;
   }
 
   private resolveAgentUserId(
