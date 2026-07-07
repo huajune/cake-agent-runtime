@@ -84,9 +84,23 @@ export class RedisStore implements MemoryStore {
 
   /** 原子写入 patch 中的字段（其余字段不受影响），并续期 TTL。 */
   async patchHash(key: string, patch: Record<string, unknown>, ttl?: number): Promise<void> {
-    if (Object.keys(patch).length === 0) return;
-    await this.redis.hset(key, patch);
-    if (ttl) await this.redis.expire(key, ttl);
+    const args = this.toHashEvalArgs(patch, ttl);
+    if (args.length <= 1) return;
+
+    await this.redis.eval(
+      `
+        local changed = 0
+        for i = 2, #ARGV, 2 do
+          changed = changed + redis.call("hset", KEYS[1], ARGV[i], ARGV[i + 1])
+        end
+        if tonumber(ARGV[1]) > 0 then
+          redis.call("expire", KEYS[1], ARGV[1])
+        end
+        return changed
+      `,
+      [key],
+      args,
+    );
     this.logger.debug(`记忆已按字段更新: ${key} [${Object.keys(patch).join(',')}]`);
   }
 
@@ -95,10 +109,43 @@ export class RedisStore implements MemoryStore {
    * 用于旧版单 blob → hash 的惰性迁移：并发迁移/并发新写入都不会被回填覆盖。
    */
   async backfillHash(key: string, fields: Record<string, unknown>, ttl?: number): Promise<void> {
+    const args = this.toHashEvalArgs(fields, ttl);
+    if (args.length <= 1) return;
+
+    await this.redis.eval(
+      `
+        local changed = 0
+        for i = 2, #ARGV, 2 do
+          changed = changed + redis.call("hsetnx", KEYS[1], ARGV[i], ARGV[i + 1])
+        end
+        if tonumber(ARGV[1]) > 0 then
+          redis.call("expire", KEYS[1], ARGV[1])
+        end
+        return changed
+      `,
+      [key],
+      args,
+    );
+  }
+
+  private toHashEvalArgs(fields: Record<string, unknown>, ttl?: number): (string | number)[] {
+    const args: (string | number)[] = [ttl ?? 0];
     for (const [field, value] of Object.entries(fields)) {
       if (value === undefined) continue;
-      await this.redis.hsetnx(key, field, value);
+      args.push(field, this.serializeRedisValue(value));
     }
-    if (ttl) await this.redis.expire(key, ttl);
+    return args;
+  }
+
+  private serializeRedisValue(value: unknown): string | number {
+    switch (typeof value) {
+      case 'number':
+      case 'string':
+        return value;
+      case 'boolean':
+        return String(value);
+      default:
+        return JSON.stringify(value);
+    }
   }
 }
