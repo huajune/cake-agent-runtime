@@ -22,6 +22,10 @@ describe('SessionService', () => {
   const mockRedisStore = {
     get: jest.fn(),
     set: jest.fn().mockResolvedValue(undefined),
+    getHash: jest.fn().mockResolvedValue(null),
+    patchHash: jest.fn().mockResolvedValue(undefined),
+    backfillHash: jest.fn().mockResolvedValue(undefined),
+    del: jest.fn().mockResolvedValue(true),
   };
 
   const mockConfig = {
@@ -177,7 +181,7 @@ describe('SessionService', () => {
 
       await service.saveFacts('corp1', 'user1', 'session1', newFacts);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -188,7 +192,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -214,7 +217,7 @@ describe('SessionService', () => {
 
       await service.saveFacts('corp1', 'user1', 'session1', newFacts);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -229,7 +232,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -262,7 +264,7 @@ describe('SessionService', () => {
         forceNullFields: ['name'],
       });
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -276,7 +278,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -318,7 +319,7 @@ describe('SessionService', () => {
 
       await service.saveFacts('corp1', 'user1', 'session1', incoming as never);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -328,7 +329,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -368,7 +368,7 @@ describe('SessionService', () => {
 
       await service.saveFacts('corp1', 'user1', 'session1', incoming as never);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -378,7 +378,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
   });
@@ -454,11 +453,10 @@ describe('SessionService', () => {
 
       await service.saveTerminalState('corp1', 'user1', 'session1', 'booked');
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('session1'),
         expect.objectContaining({ terminal: 'booked' }),
         expect.anything(),
-        false,
       );
     });
 
@@ -468,11 +466,10 @@ describe('SessionService', () => {
 
       await service.recordCandidateActivity('corp1', 'user1', 'session1', at);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('session1'),
         expect.objectContaining({ lastCandidateMessageAt: at.toISOString() }),
         expect.anything(),
-        false,
       );
     });
   });
@@ -500,7 +497,7 @@ describe('SessionService', () => {
       ]);
 
       expect(mockLlm.generateStructured).not.toHaveBeenCalled();
-      expect(mockRedisStore.set).not.toHaveBeenCalled();
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
     });
 
     it('still extracts when acknowledgment carries a rule signal (e.g. brand mention)', async () => {
@@ -555,7 +552,7 @@ describe('SessionService', () => {
     });
 
     const savedInterviewInfo = () => {
-      const saved = mockRedisStore.set.mock.calls.at(-1)?.[1] as {
+      const saved = mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as {
         facts: { interview_info: Record<string, { confidence: string; source: string } | null> };
       };
       return saved.facts.interview_info;
@@ -734,13 +731,12 @@ describe('SessionService', () => {
         assistantText: '杨浦奥乐齐这边有长白这家店，做分拣打包全职。',
       });
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           presentedJobs: [expect.objectContaining({ jobId: 519709, storeName: '长白' })],
         }),
         86400,
-        false,
       );
     });
 
@@ -762,13 +758,12 @@ describe('SessionService', () => {
         assistantText: '可以，我先帮你确认下长白这边的面试要求。',
       });
 
-      expect(mockRedisStore.set).toHaveBeenLastCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenLastCalledWith(
         expect.any(String),
         expect.objectContaining({
           currentFocusJob: expect.objectContaining({ jobId: 519709, storeName: '长白' }),
         }),
         86400,
-        false,
       );
     });
 
@@ -790,13 +785,12 @@ describe('SessionService', () => {
         assistantText: '行，我再给你看看别的岗位。',
       });
 
-      expect(mockRedisStore.set).toHaveBeenLastCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenLastCalledWith(
         expect.any(String),
         expect.objectContaining({
           currentFocusJob: null,
         }),
         86400,
-        false,
       );
     });
 
@@ -818,7 +812,7 @@ describe('SessionService', () => {
         assistantText: '长白和控江都有分拣打包全职。',
       });
 
-      const lockedFocusWrites = mockRedisStore.set.mock.calls.filter(([, payload]) => {
+      const lockedFocusWrites = mockRedisStore.patchHash.mock.calls.filter(([, payload]) => {
         if (!payload || typeof payload !== 'object' || !('currentFocusJob' in payload)) {
           return false;
         }
@@ -879,7 +873,7 @@ describe('SessionService', () => {
           prompt: expect.stringContaining('用户: 第一轮问候'),
         }),
       );
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -889,7 +883,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -942,7 +935,7 @@ describe('SessionService', () => {
       const llmPrompt = mockLlm.generateStructured.mock.calls[0]?.[0]?.prompt as string;
       expect(llmPrompt).toContain('用户: 历史消息3');
       expect(llmPrompt).not.toContain('用户: 历史消息1\n');
-      expect(mockRedisStore.set).toHaveBeenCalled();
+      expect(mockRedisStore.patchHash).toHaveBeenCalled();
     });
 
     it('should use fallback on LLM failure', async () => {
@@ -951,7 +944,7 @@ describe('SessionService', () => {
 
       await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -959,7 +952,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -971,7 +963,7 @@ describe('SessionService', () => {
         { role: 'user', content: '我的电话是13800138000' },
       ]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -982,7 +974,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -1008,7 +999,7 @@ describe('SessionService', () => {
         { role: 'user', content: '我是大三本科在读，我在苏州市，只周末上班' },
       ]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1031,7 +1022,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -1055,7 +1045,7 @@ describe('SessionService', () => {
         { role: 'user', content: '我叫张三，电话13800138000' },
       ]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1066,7 +1056,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -1091,7 +1080,7 @@ describe('SessionService', () => {
         { role: 'user', content: '姓名：赵堤' },
       ]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1101,7 +1090,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -1141,7 +1129,7 @@ describe('SessionService', () => {
         { role: 'user', content: '你好我在青浦区' },
       ]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1156,7 +1144,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
     it('should not overwrite city when LLM already filled it', async () => {
@@ -1193,7 +1180,7 @@ describe('SessionService', () => {
         { role: 'user', content: '北京但有亲戚在青浦' },
       ]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1203,7 +1190,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -1213,7 +1199,7 @@ describe('SessionService', () => {
 
       await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1221,7 +1207,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -1369,7 +1354,7 @@ describe('SessionService', () => {
       expect(callArgs.prompt).toContain('[品牌别名命中提示]');
       expect(callArgs.prompt).toContain('来一份');
       expect(callArgs.prompt).toContain('来伊份');
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1380,7 +1365,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
 
@@ -1418,7 +1402,7 @@ describe('SessionService', () => {
         { role: 'user', content: '给我来一份工作' },
       ]);
 
-      expect(mockRedisStore.set).toHaveBeenCalledWith(
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
@@ -1428,7 +1412,6 @@ describe('SessionService', () => {
           }),
         }),
         86400,
-        false,
       );
     });
   });
