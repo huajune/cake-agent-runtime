@@ -76,6 +76,7 @@ describe('GuardrailReviewPacketBuilder', () => {
       messageType: 'text',
     });
     expect(packet.evidence.jobList?.requestedBrands).toEqual(['肯德基']);
+    expect(packet.evidence.jobList?.hasEvidence).toBe(true);
     // args 只保留查询意图白名单：分页/坐标不透传，空数组剔除，距离召回压成布尔标记。
     expect(packet.evidence.jobList?.args).toEqual({
       brandAliasList: ['肯德基'],
@@ -104,6 +105,7 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(packet.evidence.geocode).toMatchObject({
       resolution: 'ambiguous',
       confidence: 'low',
+      hasResolvedCoordinate: false,
       candidates: ['上海市静安寺'],
     });
     expect(packet.policies.outputRuleHits).toEqual(['confirmed_booking_time_missing']);
@@ -126,7 +128,42 @@ describe('GuardrailReviewPacketBuilder', () => {
     });
 
     expect(packet.evidence.jobList?.jobs).toEqual([]);
+    expect(packet.evidence.jobList?.hasEvidence).toBe(true);
     expect(packet.evidence.jobList?.markdownExcerpt).toContain('成都你六姐（亚繁亚乐城店）');
+    expect(packet.evidence.jobList?.markdownExcerptChars).toBeGreaterThan(0);
+  });
+
+  it('keeps resolved geocode coordinates even when candidates are empty', () => {
+    const packet = builder.build({
+      reply: '顺德这边有岗位',
+      toolCalls: [
+        {
+          toolName: 'geocode',
+          args: {},
+          result: {
+            result: {
+              city: '佛山市',
+              district: '顺德区',
+              latitude: 22.805413,
+              longitude: 113.293197,
+              areaLevelQuery: true,
+              formattedAddress: '广东省佛山市顺德区顺德区顺德区',
+            },
+            resolution: 'unique',
+          },
+        },
+      ],
+    });
+
+    expect(packet.evidence.geocode).toMatchObject({
+      resolution: 'unique',
+      formattedAddress: '广东省佛山市顺德区顺德区顺德区',
+      latitude: 22.805413,
+      longitude: 113.293197,
+      areaLevelQuery: true,
+      hasResolvedCoordinate: true,
+      candidates: [],
+    });
   });
 
   it('prefers the latest USABLE job_list call over a trailing empty recheck（守卫档案 id=3 同型链路）', () => {
@@ -151,6 +188,7 @@ describe('GuardrailReviewPacketBuilder', () => {
     });
 
     expect(packet.evidence.jobList?.status).toBe('ok');
+    expect(packet.evidence.jobList?.hasEvidence).toBe(true);
     expect(packet.evidence.jobList?.markdownExcerpt).toContain('必胜客（丹灶店）');
   });
 

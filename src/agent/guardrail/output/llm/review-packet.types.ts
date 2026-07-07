@@ -23,6 +23,8 @@ export interface JobListEvidence {
   args: Record<string, unknown>;
   resultCount?: number;
   status?: string;
+  /** 结构化岗位数组或 markdown 摘录是否提供了可核验岗位证据。 */
+  hasEvidence: boolean;
   jobs: JobListEvidenceItem[];
   requestedBrands: string[];
   /**
@@ -32,6 +34,7 @@ export interface JobListEvidence {
    * 发现的 enforce 前必修项）。结构化 jobs 可用时不带，避免证据重复烧 token。
    */
   markdownExcerpt?: string;
+  markdownExcerptChars?: number;
 }
 
 export interface JobListEvidenceItem {
@@ -67,5 +70,11 @@ export interface GeocodeEvidence {
   resolution?: string;
   errorType?: string;
   confidence?: string | number;
+  formattedAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  areaLevelQuery?: boolean;
+  /** unique 解析常没有 candidates 数组；有坐标即代表地理解析成功。 */
+  hasResolvedCoordinate: boolean;
   candidates: string[];
 }
