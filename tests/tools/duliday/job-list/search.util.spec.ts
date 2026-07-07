@@ -176,6 +176,13 @@ describe('job-list search util', () => {
       expect(result.jobs).toEqual([]);
     });
 
+    it('寒假工: strict-empty still relaxes to part-time family outside the summer-only guard', () => {
+      const result = applyLaborFormConstraint([fullTimeJob, partTimeJob, hourlyJob], '寒假工');
+      expect(result.applied).toBe(true);
+      expect(result.relaxedToFamily).toBe(true);
+      expect(result.jobs).toEqual([partTimeJob, hourlyJob]);
+    });
+
     it('全职: strict-empty does NOT relax (full-time is not in the family)', () => {
       const result = applyLaborFormConstraint([hourlyJob, partTimeJob], '全职');
       expect(result.jobs).toEqual([]);

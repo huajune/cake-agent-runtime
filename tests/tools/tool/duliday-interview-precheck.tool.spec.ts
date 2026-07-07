@@ -916,6 +916,33 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.temporarySummerWorkerGuard).toBeUndefined();
     });
 
+    it('18-22 岁候选人含糊说不知道是不是暑假工时，仍按未知处理并追问', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+
+      const result = await executeTool({
+        ...readyInput,
+        candidateLaborForm: '不知道是不是暑假工',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.nextAction).toBe('collect_fields');
+      expect(result.bookingChecklist.missingFields).toContain('是否暑假工');
+      expect(result.temporarySummerWorkerGuard).toEqual(
+        expect.objectContaining({
+          status: 'needs_confirmation',
+          field: '是否暑假工',
+        }),
+      );
+    });
+
     it('候选人明确是暑假工但当前岗位未标注暑假工时，拦住当前岗位约面', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
