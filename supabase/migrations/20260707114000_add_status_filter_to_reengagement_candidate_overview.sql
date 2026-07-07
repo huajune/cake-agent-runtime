@@ -1,6 +1,10 @@
 -- 候选人视角增加状态筛选：按候选人当前场景态过滤，仍返回候选人的全场景当前态。
 -- 语义与 p_scenario_code 对齐：命中条件用于筛候选人，不裁剪该候选人的场景芯片。
 
+DROP FUNCTION IF EXISTS public.get_reengagement_candidate_overview(
+  TIMESTAMPTZ, TIMESTAMPTZ, TEXT, TEXT, BOOLEAN, INT, INT
+);
+
 CREATE OR REPLACE FUNCTION get_reengagement_candidate_overview(
   p_start TIMESTAMPTZ DEFAULT NULL,
   p_end TIMESTAMPTZ DEFAULT NULL,
