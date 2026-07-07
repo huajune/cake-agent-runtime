@@ -32,6 +32,7 @@ import { AnalyticsController, MonitoringController } from './monitoring.controll
 
 // Repositories
 import { MonitoringRecordRepository } from './repositories/record.repository';
+import { AgentExecutionEventRepository } from './repositories/agent-execution-event.repository';
 import { MonitoringDailyStatsRepository } from './repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from './repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from './repositories/error-log.repository';
@@ -39,6 +40,8 @@ import { ExtractionAccuracyRepository } from './repositories/extraction-accuracy
 import { ReengagementTouchRepository } from './repositories/reengagement-touch.repository';
 import { AlertLogPersisterService } from './services/tracking/alert-log.persister';
 import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.interface';
+import { AgentExecutionEventPersisterService } from './services/tracking/agent-execution-event.persister';
+import { AGENT_EVENT_PERSISTER } from '@observability/persistence/agent-event-persister.interface';
 
 /**
  * 业务监控模块 (Business Layer)
@@ -67,6 +70,7 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
   providers: [
     // Monitoring Repositories (biz message repos come from BizMessageModule)
     MonitoringRecordRepository,
+    AgentExecutionEventRepository,
     MonitoringDailyStatsRepository,
     MonitoringHourlyStatsRepository,
     MonitoringErrorLogRepository,
@@ -81,6 +85,9 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
     // 通过 @Optional() @Inject(ALERT_LOG_PERSISTER) 解析，保持 notification 对 biz 零依赖。
     AlertLogPersisterService,
     { provide: ALERT_LOG_PERSISTER, useExisting: AlertLogPersisterService },
+    // Agent 执行事件持久化：observability 定义 token，monitoring 实现写表。
+    AgentExecutionEventPersisterService,
+    { provide: AGENT_EVENT_PERSISTER, useExisting: AgentExecutionEventPersisterService },
     // Dashboard / Alerts / Maintenance / Projections
     AnalyticsDashboardService,
     AnalyticsQueryService,
@@ -107,6 +114,7 @@ import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.int
     AnalyticsAlertService,
     DataCleanupService,
     ALERT_LOG_PERSISTER,
+    AGENT_EVENT_PERSISTER,
   ],
 })
 export class MonitoringModule {}

@@ -75,6 +75,29 @@ export class GuardrailReviewRepository extends BaseRepository {
     return row ? this.fromDbRecord(row) : null;
   }
 
+  /**
+   * 清理过期守卫审查档案。
+   *
+   * guardrail_review_records 是 message_processing_records 的 trace 附属证据，
+   * 保留期应跟处理流水一致，避免主账本删除后留下孤儿全文证据。
+   */
+  async cleanupExpiredReviews(retentionDays: number): Promise<number> {
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      const result = await this.rpc<Array<{ deleted_count: string }>>(
+        'cleanup_guardrail_review_records',
+        { days_to_keep: retentionDays },
+      );
+      return parseInt(result?.[0]?.deleted_count ?? '0', 10);
+    } catch (error) {
+      this.logger.error(`[守卫审查档案] 清理失败:`, error);
+      throw error;
+    }
+  }
+
   private toDbRecord(input: GuardrailReviewInsertInput): Partial<GuardrailReviewDbRecord> {
     return {
       trace_id: input.traceId,

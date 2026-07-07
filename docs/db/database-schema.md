@@ -71,13 +71,10 @@
 │                        核心业务表                                │
 │                                                                 │
 │  chat_messages ──────> message_processing_records               │
-│       │                    │        (message_id 关联)            │
-│       │                    │                                    │
-│       │                    ├─── 每小时 ──> monitoring_hourly_stats │
-│       │                    └─── 每天  ──> monitoring_daily_stats  │
-│       │                                                         │
-│       ├──> interview_booking_records (chat_id 关联)              │
-│       └──> recruitment_cases       (chat_id/corp_id 关联)        │
+│                            │        (message_id 关联)            │
+│                            │                                    │
+│                            ├─── 每小时 ──> monitoring_hourly_stats │
+│                            └─── 每天  ──> monitoring_daily_stats  │
 ├─────────────────────────────────────────────────────────────────┤
 │                        记忆/画像                                 │
 │                                                                 │
@@ -785,13 +782,9 @@
   │       ├── 每小时 ──► monitoring_hourly_stats（永久）
   │       └── 每天   ──► monitoring_daily_stats（永久）
   │
-  ├──► user_activity（保留 30 天）
+  ├──► user_activity（保留 365 天）
   │
   ├──► monitoring_error_logs（保留 30 天，异常时写入）
-  │
-  ├──► interview_booking_records（AI 预约面试时 upsert）
-  │
-  ├──► recruitment_cases（约面后跟进 Case，状态驱动）
   │
   └──► agent_long_term_memories（跨会话长期记忆，永久）
 ```

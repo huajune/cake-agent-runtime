@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { DataCleanupService } from '@biz/monitoring/services/cleanup/data-cleanup.service';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { AgentExecutionEventRepository } from '@biz/monitoring/repositories/agent-execution-event.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { ReengagementTouchRepository } from '@biz/monitoring/repositories/reengagement-touch.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -32,6 +34,14 @@ describe('DataCleanupService', () => {
     cleanupMessageProcessingRecords: cleanupRecordsMock,
     timeoutStuckRecords: jest.fn(),
     interruptStalePostProcessing: jest.fn().mockResolvedValue(0),
+  };
+
+  const mockGuardrailReviewService = {
+    cleanupExpiredReviews: jest.fn(),
+  };
+
+  const mockAgentExecutionEventRepository = {
+    cleanupExpiredEvents: jest.fn(),
   };
 
   const mockUserHostingService = {
@@ -73,8 +83,16 @@ describe('DataCleanupService', () => {
           useValue: mockMessageProcessingService,
         },
         {
+          provide: GuardrailReviewService,
+          useValue: mockGuardrailReviewService,
+        },
+        {
           provide: UserHostingService,
           useValue: mockUserHostingService,
+        },
+        {
+          provide: AgentExecutionEventRepository,
+          useValue: mockAgentExecutionEventRepository,
         },
         {
           provide: MonitoringErrorLogRepository,
@@ -120,6 +138,8 @@ describe('DataCleanupService', () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
       mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(20);
       mockChatSessionService.cleanupChatMessages.mockResolvedValue(10);
+      mockGuardrailReviewService.cleanupExpiredReviews.mockResolvedValue(4);
+      mockAgentExecutionEventRepository.cleanupExpiredEvents.mockResolvedValue(6);
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(5);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(3);
       mockUserHostingService.cleanupActivity.mockResolvedValue(2);
@@ -130,13 +150,17 @@ describe('DataCleanupService', () => {
       expect(messageProcessingService.nullAgentInvocations).toHaveBeenCalledWith(7);
       // 2. DELETE chat_messages (>60 天)
       expect(chatSessionService.cleanupChatMessages).toHaveBeenCalledWith(60);
-      // 3. DELETE message_processing_records (>30 天，默认 DATA_CLEANUP_PROCESSING_DAYS)
-      expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(30);
-      // 4. DELETE monitoring_error_logs (>30 天)
+      // 3. DELETE guardrail_review_records (>60 天，默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
+      expect(mockGuardrailReviewService.cleanupExpiredReviews).toHaveBeenCalledWith(60);
+      // 4. DELETE agent_execution_events (>60 天，默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
+      expect(mockAgentExecutionEventRepository.cleanupExpiredEvents).toHaveBeenCalledWith(60);
+      // 5. DELETE message_processing_records (>60 天，默认 DATA_CLEANUP_PROCESSING_DAYS)
+      expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(60);
+      // 6. DELETE monitoring_error_logs (>30 天)
       expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(30);
-      // 5. DELETE user_activity (>365 天)
+      // 7. DELETE user_activity (>365 天)
       expect(mockUserHostingService.cleanupActivity).toHaveBeenCalledWith(365);
-      // 6. reengagement_touch_records: NULL generated_text (>30 天) + DELETE (>90 天)
+      // 8. reengagement_touch_records: NULL generated_text (>30 天) + DELETE (>90 天)
       expect(mockReengagementTouchRepository.nullExpiredGeneratedText).toHaveBeenCalledWith(30);
       expect(mockReengagementTouchRepository.cleanupExpiredRecords).toHaveBeenCalledWith(90);
     });
@@ -148,6 +172,8 @@ describe('DataCleanupService', () => {
 
       expect(messageProcessingService.nullAgentInvocations).not.toHaveBeenCalled();
       expect(chatSessionService.cleanupChatMessages).not.toHaveBeenCalled();
+      expect(mockGuardrailReviewService.cleanupExpiredReviews).not.toHaveBeenCalled();
+      expect(mockAgentExecutionEventRepository.cleanupExpiredEvents).not.toHaveBeenCalled();
       expect(messageProcessingService.cleanupRecords).not.toHaveBeenCalled();
       expect(mockErrorLogRepository.cleanupErrorLogs).not.toHaveBeenCalled();
       expect(mockUserHostingService.cleanupActivity).not.toHaveBeenCalled();
@@ -161,6 +187,8 @@ describe('DataCleanupService', () => {
         new Error('Database error'),
       );
       mockChatSessionService.cleanupChatMessages.mockResolvedValue(0);
+      mockGuardrailReviewService.cleanupExpiredReviews.mockResolvedValue(0);
+      mockAgentExecutionEventRepository.cleanupExpiredEvents.mockResolvedValue(0);
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(0);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(0);
 
@@ -174,6 +202,8 @@ describe('DataCleanupService', () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
       mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(0);
       mockChatSessionService.cleanupChatMessages.mockResolvedValue(0);
+      mockGuardrailReviewService.cleanupExpiredReviews.mockResolvedValue(0);
+      mockAgentExecutionEventRepository.cleanupExpiredEvents.mockResolvedValue(0);
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(0);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(0);
       mockUserHostingService.cleanupActivity.mockResolvedValue(0);
@@ -239,6 +269,8 @@ describe('DataCleanupService', () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
       mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(20);
       mockChatSessionService.cleanupChatMessages.mockResolvedValue(15);
+      mockGuardrailReviewService.cleanupExpiredReviews.mockResolvedValue(7);
+      mockAgentExecutionEventRepository.cleanupExpiredEvents.mockResolvedValue(9);
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(8);
       mockUserHostingService.cleanupActivity.mockResolvedValue(3);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(5);
@@ -250,6 +282,8 @@ describe('DataCleanupService', () => {
       expect(result).toEqual({
         agentInvocations: 20,
         chatMessages: 15,
+        guardrailReviewRecords: 7,
+        agentExecutionEvents: 9,
         processingRecords: 8,
         userActivity: 3,
         errorLogs: 5,
@@ -266,6 +300,8 @@ describe('DataCleanupService', () => {
       expect(result).toEqual({
         agentInvocations: 0,
         chatMessages: 0,
+        guardrailReviewRecords: 0,
+        agentExecutionEvents: 0,
         processingRecords: 0,
         userActivity: 0,
         errorLogs: 0,
@@ -274,6 +310,8 @@ describe('DataCleanupService', () => {
       });
       expect(messageProcessingService.nullAgentInvocations).not.toHaveBeenCalled();
       expect(chatSessionService.cleanupChatMessages).not.toHaveBeenCalled();
+      expect(mockGuardrailReviewService.cleanupExpiredReviews).not.toHaveBeenCalled();
+      expect(mockAgentExecutionEventRepository.cleanupExpiredEvents).not.toHaveBeenCalled();
       expect(mockReengagementTouchRepository.nullExpiredGeneratedText).not.toHaveBeenCalled();
     });
 
@@ -281,6 +319,8 @@ describe('DataCleanupService', () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
       mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(10);
       mockChatSessionService.cleanupChatMessages.mockRejectedValue(new Error('Error'));
+      mockGuardrailReviewService.cleanupExpiredReviews.mockRejectedValue(new Error('Error'));
+      mockAgentExecutionEventRepository.cleanupExpiredEvents.mockRejectedValue(new Error('Error'));
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(4);
       mockUserHostingService.cleanupActivity.mockResolvedValue(2);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(1);
@@ -294,6 +334,8 @@ describe('DataCleanupService', () => {
       expect(result).toEqual({
         agentInvocations: 10,
         chatMessages: 0,
+        guardrailReviewRecords: 0,
+        agentExecutionEvents: 0,
         processingRecords: 4,
         userActivity: 2,
         errorLogs: 1,
