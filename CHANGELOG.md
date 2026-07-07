@@ -8,6 +8,56 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v6.0.0`
+**最近更新**: `2026-07-07`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #441 调整功能发布升大版本规则
+- PR #441 调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。
+- PR #441 `update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。
+- PR #441 更新发版文档，并补脚本单测锁定规则。
+- PR #443 增加暑假工临时防护
+- PR #443 补齐复聊 shadow batch 追踪
+- PR #443 响应暑假工防护 review
+- PR #443 增加暑假工临时防护与复聊追踪修复
+
+### 新功能
+- PR #441 `update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。
+
+### 问题修复
+- PR #441 调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。
+- PR #441 更新发版文档，并补脚本单测锁定规则。
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #441 调整功能发布升大版本规则
+- PR #443 增加暑假工临时防护
+- PR #443 补齐复聊 shadow batch 追踪
+- PR #443 响应暑假工防护 review
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #441 `pnpm jest tests/scripts/update-version-changelog.spec.ts --watchman=false`
+- PR #441 pre-push `pnpm run ci:check`：lint / format / typecheck / build / 全量 jest coverage 通过（319 passed suites，4625 passed tests）
+- PR #443 `pnpm exec jest tests/tools/duliday/job-list/search.util.spec.ts tests/tools/tool/duliday-job-list.tool.spec.ts tests/tools/duliday/precheck/checklist.util.spec.ts tests/tools/tool/duliday-interview-precheck.tool.spec.ts --runInBand`
+- PR #443 `pnpm exec jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/integration/resume-booking-flow.spec.ts --runInBand`
+- PR #443 `pnpm exec jest tests/agent/reengagement/follow-up.processor.spec.ts tests/biz/monitoring/services/tracking/reengagement-tracking.service.spec.ts --runInBand`
+- PR #443 `pnpm run typecheck`
+- PR #443 pre-push `pnpm run ci:check` 全量通过：320 个 test suites passed，4637 个 tests passed。
+<!-- release:pending:end -->
+
 ## [5.33.0] - 2026-07-07
 
 **来源分支**: `develop`
