@@ -1,186 +1,142 @@
 {
-  "baseVersion": "7.0.0",
+  "baseVersion": "8.0.0",
   "nextVersion": "8.0.0",
   "updatedAt": "2026-07-07",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "455",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/455",
-      "title": "架构评估修复——消息管道可靠性、记忆并发安全、工具超时与依赖治理",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "补齐可靠性 review 修复"
-      ],
-      "summary": [
-        "删除 ReliableService 未使用的私有 sleep 方法",
-        "消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭",
-        "session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新",
-        "所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环",
-        "统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入",
-        "消除 biz→channels 反向依赖 + 配置传播间隔收敛",
-        "prettier 格式化 message-sender.module",
-        "补齐可靠性 review 修复",
-        "架构评估修复——消息管道可靠性、记忆并发安全、工具超时与依赖治理"
-      ],
-      "features": [],
-      "fixes": [
-        "补齐可靠性 review 修复"
-      ],
-      "optimizations": [
-        "session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新",
-        "消除 biz→channels 反向依赖 + 配置传播间隔收敛"
-      ],
-      "ops": [
-        "删除 ReliableService 未使用的私有 sleep 方法",
-        "消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭",
-        "所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环",
-        "统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入",
-        "prettier 格式化 message-sender.module"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "全量 320 测试套件 / 4639 用例全绿（含 wecom 消息 65、memory 510、group-task 218）",
-        "AppModule 装配 smoke 通过（@Global 令牌绑定后 DI 图完整）",
-        "tsc / eslint 干净",
-        "迁移已应用测试库（gaovfitvetoojkvtalxy）并用 supabase-js 实调验证后清理测试数据"
-      ]
-    },
-    {
-      "number": "456",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/456",
-      "title": "接入 Agent 执行事件观测",
-      "author": "huajune",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
-        "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
-        "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.",
-        "接入 Agent 执行事件观测",
-        "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
-        "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure."
-      ],
-      "summary": [
-        "降低语义护栏 shadow 误报",
-        "接入 Agent 执行事件观测",
-        "补齐 agent 执行观测单测",
-        "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
-        "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
-        "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
-        "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure.",
-        "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle."
-      ],
-      "features": [
-        "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
-        "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
-        "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.",
-        "接入 Agent 执行事件观测"
-      ],
-      "fixes": [
-        "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
-        "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure."
-      ],
-      "optimizations": [],
-      "ops": [
-        "降低语义护栏 shadow 误报",
-        "补齐 agent 执行观测单测"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`./node_modules/.bin/tsc --noEmit --pretty false`",
-        "`./node_modules/.bin/jest -c jest.di-smoke.config.ts --watchman=false --forceExit`",
-        "`./node_modules/.bin/jest tests/biz/monitoring/services/cleanup/data-cleanup.service.spec.ts tests/agent/runner/agent-runner.service.spec.ts tests/agent/generator/preparation.service.spec.ts tests/llm/llm-executor.service.spec.ts --runInBand --watchman=false`",
-        "`./node_modules/.bin/jest tests/tools/duliday/enterprise-room-count.util.spec.ts --runInBand --watchman=false`"
-      ]
-    },
-    {
-      "number": "457",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/457",
-      "title": "在 runner 出口清洗出站回复",
-      "author": "huajune",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
-        "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
-        "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
-        "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
-      ],
-      "summary": [
-        "在 runner 出口清洗出站回复",
-        "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
-        "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
-        "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
-        "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
-      ],
-      "features": [],
-      "fixes": [
-        "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
-        "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
-        "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
-        "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
-      ],
-      "optimizations": [],
-      "ops": [
-        "在 runner 出口清洗出站回复"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`jest tests/agent/guardrail/output/outbound-reply-sanitizer.spec.ts tests/agent/runner/agent-runner.service.spec.ts --runInBand --watchman=false`",
-        "`tsc --noEmit --pretty false`",
-        "Full pre-push `ci:check` passed: lint, format, typecheck, web build, backend build, and full Jest coverage run."
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "7.0.0",
+    "version": "8.0.0",
     "date": "2026-07-07",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "450",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/450",
-        "title": "降低语义护栏 shadow 误报",
+        "number": "455",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/455",
+        "title": "架构评估修复——消息管道可靠性、记忆并发安全、工具超时与依赖治理",
         "author": "ArielZhu",
         "mergedAt": "2026-07-07",
         "businessUpdates": [
-          "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
-          "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
-          "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
-          "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
-          "补充 packet builder 与 semantic reviewer 单测。"
+          "补齐可靠性 review 修复"
         ],
         "summary": [
-          "降低语义护栏 shadow 误报",
-          "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
-          "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
-          "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
-          "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
-          "补充 packet builder 与 semantic reviewer 单测。"
+          "删除 ReliableService 未使用的私有 sleep 方法",
+          "消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭",
+          "session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新",
+          "所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环",
+          "统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入",
+          "消除 biz→channels 反向依赖 + 配置传播间隔收敛",
+          "prettier 格式化 message-sender.module",
+          "补齐可靠性 review 修复",
+          "架构评估修复——消息管道可靠性、记忆并发安全、工具超时与依赖治理"
         ],
         "features": [],
         "fixes": [
-          "在 review packet 中显式标记 `jobList.hasEvidence`、markdown excerpt 长度。",
-          "在 geocode evidence 中保留 resolved 坐标、formattedAddress、areaLevelQuery，并标记 `hasResolvedCoordinate`。",
-          "强化 reviewer prompt，明确 markdown-only jobList 和 unique geocode 的证据读取方式。",
-          "增加 evidence backstop：当 reviewer 的“无岗位证据/无地理证据”判断被 packet 证据直接反驳时，丢弃该 finding，避免 shadow 误报污染。",
-          "补充 packet builder 与 semantic reviewer 单测。"
+          "补齐可靠性 review 修复"
         ],
-        "optimizations": [],
+        "optimizations": [
+          "session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新",
+          "消除 biz→channels 反向依赖 + 配置传播间隔收敛"
+        ],
         "ops": [
-          "降低语义护栏 shadow 误报"
+          "删除 ReliableService 未使用的私有 sleep 方法",
+          "消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭",
+          "所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环",
+          "统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入",
+          "prettier 格式化 message-sender.module"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm jest tests/agent/guardrail/output/review-packet.builder.spec.ts tests/agent/guardrail/output/llm/semantic-reviewer.service.spec.ts --watchman=false`",
-          "`pnpm exec tsc --noEmit`",
-          "`pnpm jest tests/agent/guardrail/output --watchman=false`",
-          "`pnpm run build`",
-          "pre-push `pnpm run ci:check` passed: lint, format, typecheck, build:ci, test:ci"
+          "全量 320 测试套件 / 4639 用例全绿（含 wecom 消息 65、memory 510、group-task 218）",
+          "AppModule 装配 smoke 通过（@Global 令牌绑定后 DI 图完整）",
+          "tsc / eslint 干净",
+          "迁移已应用测试库（gaovfitvetoojkvtalxy）并用 supabase-js 实调验证后清理测试数据"
+        ]
+      },
+      {
+        "number": "456",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/456",
+        "title": "接入 Agent 执行事件观测",
+        "author": "huajune",
+        "mergedAt": "2026-07-07",
+        "businessUpdates": [
+          "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
+          "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
+          "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.",
+          "接入 Agent 执行事件观测",
+          "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
+          "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure."
+        ],
+        "summary": [
+          "降低语义护栏 shadow 误报",
+          "接入 Agent 执行事件观测",
+          "补齐 agent 执行观测单测",
+          "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
+          "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
+          "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
+          "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure.",
+          "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle."
+        ],
+        "features": [
+          "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
+          "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
+          "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.",
+          "接入 Agent 执行事件观测"
+        ],
+        "fixes": [
+          "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
+          "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure."
+        ],
+        "optimizations": [],
+        "ops": [
+          "降低语义护栏 shadow 误报",
+          "补齐 agent 执行观测单测"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`./node_modules/.bin/tsc --noEmit --pretty false`",
+          "`./node_modules/.bin/jest -c jest.di-smoke.config.ts --watchman=false --forceExit`",
+          "`./node_modules/.bin/jest tests/biz/monitoring/services/cleanup/data-cleanup.service.spec.ts tests/agent/runner/agent-runner.service.spec.ts tests/agent/generator/preparation.service.spec.ts tests/llm/llm-executor.service.spec.ts --runInBand --watchman=false`",
+          "`./node_modules/.bin/jest tests/tools/duliday/enterprise-room-count.util.spec.ts --runInBand --watchman=false`"
+        ]
+      },
+      {
+        "number": "457",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/457",
+        "title": "在 runner 出口清洗出站回复",
+        "author": "huajune",
+        "mergedAt": "2026-07-07",
+        "businessUpdates": [
+          "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
+          "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
+          "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
+          "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
+        ],
+        "summary": [
+          "在 runner 出口清洗出站回复",
+          "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
+          "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
+          "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
+          "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
+        ],
+        "features": [],
+        "fixes": [
+          "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
+          "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
+          "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
+          "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
+        ],
+        "optimizations": [],
+        "ops": [
+          "在 runner 出口清洗出站回复"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`jest tests/agent/guardrail/output/outbound-reply-sanitizer.spec.ts tests/agent/runner/agent-runner.service.spec.ts --runInBand --watchman=false`",
+          "`tsc --noEmit --pretty false`",
+          "Full pre-push `ci:check` passed: lint, format, typecheck, web build, backend build, and full Jest coverage run."
         ]
       }
     ]
