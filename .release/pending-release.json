@@ -1,116 +1,83 @@
 {
-  "baseVersion": "5.33.0",
-  "nextVersion": "6.0.0",
+  "baseVersion": "6.0.0",
+  "nextVersion": "7.0.0",
   "updatedAt": "2026-07-07",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "441",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/441",
-      "title": "调整功能发布升大版本规则",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。",
-        "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
-        "更新发版文档，并补脚本单测锁定规则。"
-      ],
-      "summary": [
-        "调整功能发布升大版本规则",
-        "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
-        "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。",
-        "更新发版文档，并补脚本单测锁定规则。"
-      ],
-      "features": [
-        "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。"
-      ],
-      "fixes": [
-        "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
-        "更新发版文档，并补脚本单测锁定规则。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "调整功能发布升大版本规则"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm jest tests/scripts/update-version-changelog.spec.ts --watchman=false`",
-        "pre-push `pnpm run ci:check`：lint / format / typecheck / build / 全量 jest coverage 通过（319 passed suites，4625 passed tests）"
-      ]
-    },
-    {
-      "number": "443",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/443",
-      "title": "增加暑假工临时防护与复聊追踪修复",
-      "author": "huajune",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "增加暑假工临时防护",
-        "补齐复聊 shadow batch 追踪",
-        "响应暑假工防护 review",
-        "增加暑假工临时防护与复聊追踪修复"
-      ],
-      "summary": [
-        "增加暑假工临时防护",
-        "补齐复聊 shadow batch 追踪",
-        "响应暑假工防护 review",
-        "增加暑假工临时防护与复聊追踪修复"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "增加暑假工临时防护",
-        "补齐复聊 shadow batch 追踪",
-        "响应暑假工防护 review"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm exec jest tests/tools/duliday/job-list/search.util.spec.ts tests/tools/tool/duliday-job-list.tool.spec.ts tests/tools/duliday/precheck/checklist.util.spec.ts tests/tools/tool/duliday-interview-precheck.tool.spec.ts --runInBand`",
-        "`pnpm exec jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/integration/resume-booking-flow.spec.ts --runInBand`",
-        "`pnpm exec jest tests/agent/reengagement/follow-up.processor.spec.ts tests/biz/monitoring/services/tracking/reengagement-tracking.service.spec.ts --runInBand`",
-        "`pnpm run typecheck`",
-        "pre-push `pnpm run ci:check` 全量通过：320 个 test suites passed，4637 个 tests passed。"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.33.0",
+    "version": "6.0.0",
     "date": "2026-07-07",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "436",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/436",
-        "title": "优化复聊控制与追溯视图",
+        "number": "441",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/441",
+        "title": "调整功能发布升大版本规则",
         "author": "ArielZhu",
         "mergedAt": "2026-07-07",
         "businessUpdates": [
-          "优化复聊控制与追溯视图",
-          "删除复聊候选视图旧函数签名"
+          "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。",
+          "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
+          "更新发版文档，并补脚本单测锁定规则。"
         ],
         "summary": [
-          "优化复聊控制与追溯视图",
-          "删除复聊候选视图旧函数签名"
+          "调整功能发布升大版本规则",
+          "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
+          "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。",
+          "更新发版文档，并补脚本单测锁定规则。"
         ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [
-          "优化复聊控制与追溯视图"
+        "features": [
+          "`update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。"
         ],
+        "fixes": [
+          "调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。",
+          "更新发版文档，并补脚本单测锁定规则。"
+        ],
+        "optimizations": [],
         "ops": [
-          "删除复聊候选视图旧函数签名"
+          "调整功能发布升大版本规则"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm jest tests/agent/reengagement/follow-up.processor.spec.ts tests/agent/reengagement/scenario-registry.spec.ts tests/agent/reengagement/anchor.service.spec.ts tests/agent/reengagement/tasks/reengagement-start.tool.spec.ts tests/agent/reengagement/tasks/reengagement-follow-up.tool.spec.ts tests/biz/monitoring/reengagement-monitoring.service.spec.ts tests/web/reengagement-page.spec.ts tests/web/guardrail-trace.spec.ts tests/agent/tools/duliday-cancel-work-order.tool.spec.ts --watchman=false`",
-          "`pnpm jest tests/biz/monitoring/monitoring.controller.spec.ts --watchman=false`",
-          "`pnpm run ci:check`",
-          "push 前 husky pre-push 自动再次执行 `pnpm run ci:check`，已通过。",
-          "GitHub `CI Checks` 已通过上一轮；最新 push 后等待远端检查重新完成。"
+          "`pnpm jest tests/scripts/update-version-changelog.spec.ts --watchman=false`",
+          "pre-push `pnpm run ci:check`：lint / format / typecheck / build / 全量 jest coverage 通过（319 passed suites，4625 passed tests）"
+        ]
+      },
+      {
+        "number": "443",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/443",
+        "title": "增加暑假工临时防护与复聊追踪修复",
+        "author": "huajune",
+        "mergedAt": "2026-07-07",
+        "businessUpdates": [
+          "增加暑假工临时防护",
+          "补齐复聊 shadow batch 追踪",
+          "响应暑假工防护 review",
+          "增加暑假工临时防护与复聊追踪修复"
+        ],
+        "summary": [
+          "增加暑假工临时防护",
+          "补齐复聊 shadow batch 追踪",
+          "响应暑假工防护 review",
+          "增加暑假工临时防护与复聊追踪修复"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "增加暑假工临时防护",
+          "补齐复聊 shadow batch 追踪",
+          "响应暑假工防护 review"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm exec jest tests/tools/duliday/job-list/search.util.spec.ts tests/tools/tool/duliday-job-list.tool.spec.ts tests/tools/duliday/precheck/checklist.util.spec.ts tests/tools/tool/duliday-interview-precheck.tool.spec.ts --runInBand`",
+          "`pnpm exec jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/integration/resume-booking-flow.spec.ts --runInBand`",
+          "`pnpm exec jest tests/agent/reengagement/follow-up.processor.spec.ts tests/biz/monitoring/services/tracking/reengagement-tracking.service.spec.ts --runInBand`",
+          "`pnpm run typecheck`",
+          "pre-push `pnpm run ci:check` 全量通过：320 个 test suites passed，4637 个 tests passed。"
         ]
       }
     ]
