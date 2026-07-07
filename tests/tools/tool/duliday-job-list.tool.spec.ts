@@ -1234,5 +1234,28 @@ describe('buildJobListTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY);
       expect(result._replyInstruction).toContain('附近暂时没有全职的岗位');
     });
+
+    it('要暑假工时不参与家族放宽：普通兼职/小时工不得包装成暑假工', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职' } }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '小时工' } }),
+        ],
+        total: 2,
+      });
+
+      const result = await executeTool(contextWithLaborForm('暑假工'));
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY);
+      expect(result._replyInstruction).toContain('附近暂时没有暑假工的岗位');
+      expect(result._replyInstruction).toContain('把常规岗说成暑假工');
+      expect(result.queryMeta.laborFormFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateLaborForm: '暑假工',
+          excludedCount: 2,
+        }),
+      );
+    });
   });
 });

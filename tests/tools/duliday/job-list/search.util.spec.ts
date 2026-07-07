@@ -169,11 +169,11 @@ describe('job-list search util', () => {
       expect(result.excluded.map((e) => e.jobId)).toEqual([5, 4]);
     });
 
-    it('暑假工: strict-empty relaxes to part-time family (badcase 6a334d26)', () => {
+    it('暑假工: strict-empty does NOT relax to part-time family during summer guard period', () => {
       const result = applyLaborFormConstraint([fullTimeJob, partTimeJob, hourlyJob], '暑假工');
       expect(result.applied).toBe(true);
-      expect(result.relaxedToFamily).toBe(true);
-      expect(result.jobs).toEqual([partTimeJob, hourlyJob]);
+      expect(result.relaxedToFamily).toBe(false);
+      expect(result.jobs).toEqual([]);
     });
 
     it('全职: strict-empty does NOT relax (full-time is not in the family)', () => {

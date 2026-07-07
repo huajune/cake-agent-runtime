@@ -34,6 +34,7 @@ export const FIELD_ORDER = [
   '联系电话',
   '性别',
   '年龄',
+  '是否暑假工',
   '面试时间',
   '学历',
   '健康证情况',
@@ -52,6 +53,7 @@ export const TEMPLATE_CORE_FIELDS = ['姓名', '联系电话', '性别', '年龄
 
 export const FIELD_LABELS: Record<string, string> = {
   联系电话: '联系方式',
+  是否暑假工: '是否暑假工',
   健康证情况: '健康证',
   户籍省份: '籍贯/户籍',
   简历附件: '简历附件',
@@ -87,6 +89,14 @@ export function normalizeChecklistField(field: string | null | undefined): strin
     return '户籍省份';
   }
   if (normalized === '身份' || normalized === '是否学生') return '身份';
+  if (
+    normalized === '是否暑假工' ||
+    normalized === '暑假工' ||
+    normalized === '暑期工' ||
+    normalized === '是否暑期工'
+  ) {
+    return '是否暑假工';
+  }
   if (/简历/.test(normalized)) return '简历附件';
   if (normalized === '过往公司+岗位+年限' || /工作经历|工作经验|过往公司/.test(normalized)) {
     return '过往公司+岗位+年限';
@@ -270,6 +280,9 @@ export function buildEnumHintsForMissing(missingFields: string[]): Record<string
   }
   if (missingFields.includes('身份')) {
     hints.identity = ['学生', '社会人士'];
+  }
+  if (missingFields.includes('是否暑假工')) {
+    hints.summerWorker = ['是暑假工', '不是暑假工'];
   }
   return hints;
 }

@@ -19,6 +19,7 @@ import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import {
   isHardFilteredLaborForm,
   isPartTimeFamilyLaborForm,
+  isSeasonalLaborForm,
   matchesLaborForm,
   PART_TIME_LABOR_FORM_FAMILY,
   sanitizeLaborFormForDisplay,
@@ -245,7 +246,7 @@ export function applyLaborFormConstraint(
   };
 
   const strict = partition(keep);
-  if (strict.kept.length > 0 || !isPartTimeFamilyLaborForm(wanted)) {
+  if (strict.kept.length > 0 || !isPartTimeFamilyLaborForm(wanted) || isSeasonalLaborForm(wanted)) {
     return { applied: true, jobs: strict.kept, excluded: strict.excluded, relaxedToFamily: false };
   }
 
