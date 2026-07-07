@@ -116,6 +116,28 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "431",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/431",
+      "title": "merge master into develop for v5.32.0",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-07",
+      "businessUpdates": [
+        "merge master into develop for v5.32.0"
+      ],
+      "summary": [
+        "merge master into develop for v5.32.0"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "merge master into develop for v5.32.0"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
