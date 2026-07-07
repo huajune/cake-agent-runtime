@@ -27,7 +27,7 @@ describe('SemanticReviewerService', () => {
       const packet = makePacket({
         draftReply: '推荐你去静安寺店，薪资 24 元/小时',
         evidence: {
-          jobList: { args: {}, jobs: [{ jobId: 101 }], requestedBrands: [] },
+          jobList: { args: {}, hasEvidence: true, jobs: [{ jobId: 101 }], requestedBrands: [] },
         },
       });
       expect(service.shouldReview(packet)).toBe(true);
@@ -36,7 +36,7 @@ describe('SemanticReviewerService', () => {
     it('jobList 证据为空数组（召回 0 岗）→ 不触发 job 推荐档', () => {
       const packet = makePacket({
         draftReply: '推荐你去静安寺店',
-        evidence: { jobList: { args: {}, jobs: [], requestedBrands: [] } },
+        evidence: { jobList: { args: {}, hasEvidence: false, jobs: [], requestedBrands: [] } },
       });
       expect(service.shouldReview(packet)).toBe(false);
     });
@@ -47,6 +47,7 @@ describe('SemanticReviewerService', () => {
         evidence: {
           jobList: {
             args: {},
+            hasEvidence: true,
             jobs: [],
             requestedBrands: [],
             markdownExcerpt: '# 在招岗位（共 1 个）\n\n## 瑞幸咖啡（静安寺店）',
@@ -59,7 +60,7 @@ describe('SemanticReviewerService', () => {
     it('jobs 为空且无 markdownExcerpt → 跳过（与有 excerpt 的对照）', () => {
       const packet = makePacket({
         draftReply: '推荐你去静安寺店，薪资 24 元/小时',
-        evidence: { jobList: { args: {}, jobs: [], requestedBrands: [] } },
+        evidence: { jobList: { args: {}, hasEvidence: false, jobs: [], requestedBrands: [] } },
       });
       expect(service.shouldReview(packet)).toBe(false);
     });
@@ -70,6 +71,7 @@ describe('SemanticReviewerService', () => {
         evidence: {
           jobList: {
             args: {},
+            hasEvidence: true,
             jobs: [],
             requestedBrands: [],
             markdownExcerpt: '# 在招岗位（共 1 个）',
@@ -82,7 +84,7 @@ describe('SemanticReviewerService', () => {
     it('geocode 证据 + 位置结论措辞 → 触发', () => {
       const packet = makePacket({
         draftReply: '你附近有门店',
-        evidence: { geocode: { candidates: ['上海市静安寺'] } },
+        evidence: { geocode: { candidates: ['上海市静安寺'], hasResolvedCoordinate: false } },
       });
       expect(service.shouldReview(packet)).toBe(true);
     });
@@ -99,9 +101,9 @@ describe('SemanticReviewerService', () => {
       const packet = makePacket({
         draftReply: '好的，祝你顺利',
         evidence: {
-          jobList: { args: {}, jobs: [{ jobId: 101 }], requestedBrands: [] },
+          jobList: { args: {}, hasEvidence: true, jobs: [{ jobId: 101 }], requestedBrands: [] },
           booking: { success: true },
-          geocode: { candidates: ['上海'] },
+          geocode: { candidates: ['上海'], hasResolvedCoordinate: false },
         },
       });
       expect(service.shouldReview(packet)).toBe(false);
@@ -143,6 +145,86 @@ describe('SemanticReviewerService', () => {
     it('llm 层抛错时不吞异常（由 OutputGuardrailService 做 fail-close/fail-open 降级）', async () => {
       llm.generateStructured.mockRejectedValue(new Error('provider down'));
       await expect(service.review(makePacket())).rejects.toThrow('provider down');
+    });
+
+    it('drops job missing-evidence findings contradicted by markdown evidence', async () => {
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          decision: 'block',
+          confidence: 'high',
+          findings: [
+            {
+              code: 'job_recommendation_not_best_supported',
+              evidencePath: 'evidence.jobList.jobs',
+              evidenceQuote: '推荐必胜客岗位',
+              userImpact: 'jobList.jobs 为空数组，无任何岗位数据支撑',
+              repairMode: 'replan',
+              feedbackToGenerator: '不要推荐任何岗位',
+            },
+          ],
+        },
+      });
+
+      const result = await service.review(
+        makePacket({
+          evidence: {
+            jobList: {
+              args: {},
+              hasEvidence: true,
+              jobs: [],
+              requestedBrands: [],
+              markdownExcerpt: '# 在招岗位（共 1 个）\n必胜客（丹灶店）- 服务员',
+            },
+          },
+        }),
+      );
+
+      expect(result).toMatchObject({
+        decision: 'pass',
+        confidence: 'low',
+        findings: [],
+      });
+    });
+
+    it('drops geocode-unavailable findings contradicted by resolved coordinates', async () => {
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          decision: 'revise',
+          confidence: 'high',
+          findings: [
+            {
+              code: 'brand_or_geo_ambiguity_ignored',
+              evidencePath: 'evidence.geocode.candidates',
+              evidenceQuote: '顺德附近',
+              userImpact: 'geocode.candidates 为空，地理解析失败',
+              repairMode: 'rewrite',
+              feedbackToGenerator: '不要说附近',
+            },
+          ],
+        },
+      });
+
+      const result = await service.review(
+        makePacket({
+          evidence: {
+            geocode: {
+              resolution: 'unique',
+              formattedAddress: '广东省佛山市顺德区',
+              latitude: 22.805413,
+              longitude: 113.293197,
+              areaLevelQuery: true,
+              hasResolvedCoordinate: true,
+              candidates: [],
+            },
+          },
+        }),
+      );
+
+      expect(result).toMatchObject({
+        decision: 'pass',
+        confidence: 'low',
+        findings: [],
+      });
     });
   });
 });

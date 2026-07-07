@@ -62,6 +62,10 @@ export class SemanticReviewerService {
             '1. job_recommendation_not_best_supported：岗位推荐与 jobList 证据、距离排序、候选人指定品牌或班次明显冲突。',
             '2. brand_or_geo_ambiguity_ignored：地理或品牌证据不确定，但回复直接下结论。',
             '3. active_booking_state_conflict：booking 证据显示已约/失败/线上线下/面试时间地址等状态，但回复与其冲突或漏关键状态。',
+            '证据读取要求：',
+            '- jobList.hasEvidence=true 表示已有可核验岗位证据；即使 jobList.jobs=[]，只要 markdownExcerpt 存在也不能说“无岗位数据/无证据支撑”。',
+            '- geocode.hasResolvedCoordinate=true 表示已解析到坐标；unique 解析常见 candidates=[]，不能仅因 candidates 为空就说地理解析失败。',
+            '- geocode.areaLevelQuery=true 表示只解析到行政区级，不能支撑精确门店距离，但不等于 geocode 失败。',
             '裁决要求：',
             '- 每条 finding 必须给出 evidencePath（指向 packet 中的证据字段）和 evidenceQuote（回复原文）。',
             '- feedbackToGenerator 写成可直接执行的改写指令，只描述候选人可见回复该怎么改。',
@@ -75,6 +79,69 @@ export class SemanticReviewerService {
       ],
     });
 
-    return result.output as SemanticReviewVerdict;
+    return this.applyEvidenceBackstop(result.output as SemanticReviewVerdict, packet);
+  }
+
+  /**
+   * LLM reviewer 不能自证 evidence 缺失：
+   * 若 finding 的理由明确建立在“jobs/geocode 空”上，但 packet 明字段证明证据存在，
+   * 则丢弃该 finding，避免 shadow 样本池被系统性假阳污染。
+   */
+  private applyEvidenceBackstop(
+    verdict: SemanticReviewVerdict,
+    packet: GuardrailReviewPacket,
+  ): SemanticReviewVerdict {
+    const findings = verdict.findings.filter(
+      (finding) => !this.isContradictedByPacket(finding, packet),
+    );
+    if (findings.length === verdict.findings.length) return verdict;
+    if (findings.length === 0) {
+      return { ...verdict, decision: 'pass', confidence: 'low', findings };
+    }
+    return { ...verdict, decision: this.normalizeDecision(verdict.decision, findings), findings };
+  }
+
+  private isContradictedByPacket(
+    finding: SemanticReviewVerdict['findings'][number],
+    packet: GuardrailReviewPacket,
+  ): boolean {
+    const text = [
+      finding.evidencePath,
+      finding.evidenceQuote,
+      finding.userImpact,
+      finding.feedbackToGenerator,
+    ].join('\n');
+
+    if (finding.code === 'job_recommendation_not_best_supported') {
+      return this.claimsMissingJobEvidence(text) && packet.evidence.jobList?.hasEvidence === true;
+    }
+    if (finding.code === 'brand_or_geo_ambiguity_ignored') {
+      return (
+        this.claimsGeocodeUnavailable(text) &&
+        packet.evidence.geocode?.hasResolvedCoordinate === true
+      );
+    }
+    return false;
+  }
+
+  private claimsMissingJobEvidence(text: string): boolean {
+    return /jobList\.jobs\s*为空|jobs\s*为空|岗位数据\s*(?:为空|缺失)|无(?:任何)?岗位数据|无(?:任何)?数据支撑|没有(?:任何)?岗位数据|jobList\s*返回(?:结果)?为空/.test(
+      text,
+    );
+  }
+
+  private claimsGeocodeUnavailable(text: string): boolean {
+    return /geocode\.candidates\s*为空|candidates\s*为空|地理解析(?:无结果|失败|未成功|无有效)|未能解析|无法解析|无(?:有效)?坐标|位置未能解析/.test(
+      text,
+    );
+  }
+
+  private normalizeDecision(
+    decision: SemanticReviewVerdict['decision'],
+    findings: SemanticReviewVerdict['findings'],
+  ): SemanticReviewVerdict['decision'] {
+    const allowed = new Set(findings.map((finding) => finding.repairMode));
+    if ((decision === 'replan' || decision === 'block') && !allowed.has('replan')) return 'revise';
+    return decision;
   }
 }
