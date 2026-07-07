@@ -148,7 +148,7 @@ export class ReengagementTrackingService {
   /** shadow 分支：生成了文案但不投递（终态） */
   trackShadow(
     identity: ReengagementTouchIdentity,
-    params: { outcomeKind: string; generatedText?: string; reason: string },
+    params: { outcomeKind: string; generatedText?: string; reason: string; batchId?: string },
   ): void {
     this.persist({
       ...this.base(identity),
@@ -157,10 +157,15 @@ export class ReengagementTrackingService {
       decisionReason: params.reason,
       outcomeKind: params.outcomeKind,
       generatedText: params.generatedText,
+      batchId: params.batchId,
       firedAt: Date.now(),
       event: {
         event: ReengagementTouchEventName.ShadowGenerated,
-        detail: { outcomeKind: params.outcomeKind, reason: params.reason },
+        detail: {
+          outcomeKind: params.outcomeKind,
+          reason: params.reason,
+          ...(params.batchId ? { batchId: params.batchId } : {}),
+        },
       },
     });
   }

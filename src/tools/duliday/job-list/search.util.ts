@@ -245,7 +245,7 @@ export function applyLaborFormConstraint(
   };
 
   const strict = partition(keep);
-  if (strict.kept.length > 0 || !isPartTimeFamilyLaborForm(wanted)) {
+  if (strict.kept.length > 0 || !isPartTimeFamilyLaborForm(wanted) || wanted === '暑假工') {
     return { applied: true, jobs: strict.kept, excluded: strict.excluded, relaxedToFamily: false };
   }
 

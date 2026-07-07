@@ -54,6 +54,7 @@ describe('ReengagementTrackingService', () => {
       outcomeKind: 'reply',
       generatedText: '还在考虑吗？',
       reason: 'shadow_mode',
+      batchId: 'batch_sess-1_1750000000000',
     });
 
     const input = lastInput();
@@ -61,6 +62,10 @@ describe('ReengagementTrackingService', () => {
     expect(input.shadow).toBe(true);
     expect(input.generatedText).toBe('还在考虑吗？');
     expect(input.decisionReason).toBe('shadow_mode');
+    expect(input.batchId).toBe('batch_sess-1_1750000000000');
+    expect(input.event?.detail).toEqual(
+      expect.objectContaining({ batchId: 'batch_sess-1_1750000000000' }),
+    );
   });
 
   it('records sent as terminal state with text', () => {

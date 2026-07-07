@@ -837,6 +837,159 @@ describe('buildInterviewPrecheckTool', () => {
     }
   });
 
+  describe('暑假工临时口径', () => {
+    const readyInput = {
+      jobId: 100,
+      requestedDate: '2026-07-08',
+      candidateName: '王小明',
+      candidatePhone: '13800138000',
+      candidateAge: 20,
+      candidateInterviewTime: '明天下午',
+      candidateGender: '男',
+      candidateEducation: '高中',
+      candidateHasHealthCertificate: '有',
+      candidateIsStudent: 'false',
+    };
+
+    const fixedInterviewProcess = {
+      firstInterview: {
+        fixedInterviewTimes: [
+          {
+            interviewDate: '2026-07-08',
+            interviewStartTime: '13:30',
+            interviewEndTime: '16:30',
+          },
+        ],
+      },
+      interviewSupplement: [],
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-07T02:30:00.000Z'));
+    });
+
+    it('18-22 岁且当前岗位未明确暑假工时，先追问是否暑假工，不直接 ready_to_book', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+
+      const result = await executeTool(readyInput);
+
+      expect(result.success).toBe(true);
+      expect(result.nextAction).toBe('collect_fields');
+      expect(result.bookingChecklist.missingFields).toContain('是否暑假工');
+      expect(result.bookingChecklist.templateText).toContain('是否暑假工：');
+      expect(result.bookingChecklist.enumHints.summerWorker).toEqual(['是暑假工', '不是暑假工']);
+      expect(result.temporarySummerWorkerGuard).toEqual(
+        expect.objectContaining({
+          status: 'needs_confirmation',
+          field: '是否暑假工',
+        }),
+      );
+    });
+
+    it('18-22 岁候选人明确不是暑假工时，可继续普通岗位 precheck', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+
+      const result = await executeTool({
+        ...readyInput,
+        candidateLaborForm: '不是暑假工，长期兼职',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('是否暑假工');
+      expect(result.temporarySummerWorkerGuard).toBeUndefined();
+    });
+
+    it('18-22 岁候选人含糊说不知道是不是暑假工时，仍按未知处理并追问', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+
+      const result = await executeTool({
+        ...readyInput,
+        candidateLaborForm: '不知道是不是暑假工',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.nextAction).toBe('collect_fields');
+      expect(result.bookingChecklist.missingFields).toContain('是否暑假工');
+      expect(result.temporarySummerWorkerGuard).toEqual(
+        expect.objectContaining({
+          status: 'needs_confirmation',
+          field: '是否暑假工',
+        }),
+      );
+    });
+
+    it('候选人明确是暑假工但当前岗位未标注暑假工时，拦住当前岗位约面', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '小时工' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+
+      const result = await executeTool({
+        ...readyInput,
+        candidateLaborForm: '暑假工',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.nextAction).toBe('collect_fields');
+      expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
+      expect(result.temporarySummerWorkerGuard).toEqual(
+        expect.objectContaining({
+          status: 'blocked_non_summer_job',
+          reason: expect.stringContaining('默认不招暑假工'),
+        }),
+      );
+    });
+
+    it('岗位明确标注暑假工时，不触发 18-22 岁追问', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '暑假工' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+
+      const result = await executeTool(readyInput);
+
+      expect(result.success).toBe(true);
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('是否暑假工');
+      expect(result.temporarySummerWorkerGuard).toBeUndefined();
+    });
+  });
+
   it('should collect only missing education when candidate passes age boundary with explicit fields', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-27T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
@@ -1212,6 +1365,7 @@ describe('buildInterviewPrecheckTool', () => {
       {
         jobId: 100,
         requestedDate: '2026-04-08',
+        candidateLaborForm: '不是暑假工，长期',
         candidateSupplementAnswers: { 居住地址: '南京信息工程大学', 意向区域: '浦口' },
       },
       knownStandardFields,
@@ -2080,7 +2234,7 @@ describe('buildInterviewPrecheckTool', () => {
       });
 
       const result = await executeTool(
-        { jobId: 100 },
+        { jobId: 100, candidateLaborForm: '不是暑假工，长期' },
         {
           profile: {
             name: '张三',
