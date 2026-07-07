@@ -14,7 +14,7 @@
 **预计版本**: `v5.32.0`
 **最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #426 二次触发全生命周期落库追溯
@@ -46,6 +46,7 @@
 - PR #426 补齐 review 三处遗留——工单核验带 per-bot token/薪资容差限语境/duplicate 不覆…
 - PR #426 收敛发版阻断问题
 - PR #426 release/v5.32 再触达核验与追溯视图
+- PR #429 sync master into develop for v5.32.0
 
 ### 新功能
 - 无
@@ -83,6 +84,7 @@
 - PR #426 补齐 v5.32 六处无覆盖改动的行为级测试
 - PR #426 补齐 review 三处遗留——工单核验带 per-bot token/薪资容差限语境/duplicate 不覆…
 - PR #426 收敛发版阻断问题
+- PR #429 sync master into develop for v5.32.0
 
 ### 配置变更
 - 无

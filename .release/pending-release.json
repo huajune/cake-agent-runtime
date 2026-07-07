@@ -94,6 +94,28 @@
         "前后端 `tsc --noEmit` 通过",
         "pre-push 钩子全量 ci:check 通过"
       ]
+    },
+    {
+      "number": "429",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/429",
+      "title": "sync master into develop for v5.32.0",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-07",
+      "businessUpdates": [
+        "sync master into develop for v5.32.0"
+      ],
+      "summary": [
+        "sync master into develop for v5.32.0"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "sync master into develop for v5.32.0"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
