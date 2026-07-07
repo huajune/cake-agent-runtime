@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.33.0] - 2026-07-07
 
-**预计版本**: `v5.33.0`
-**最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #436 优化复聊控制与追溯视图
@@ -44,7 +40,6 @@
 - PR #436 `pnpm run ci:check`
 - PR #436 push 前 husky pre-push 自动再次执行 `pnpm run ci:check`，已通过。
 - PR #436 GitHub `CI Checks` 已通过上一轮；最新 push 后等待远端检查重新完成。
-<!-- release:pending:end -->
 
 ## [5.32.0] - 2026-07-07
 
