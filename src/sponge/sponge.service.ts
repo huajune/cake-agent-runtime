@@ -32,6 +32,7 @@ import {
 } from './sponge.types';
 import { SpongeBiService } from './sponge-bi.service';
 import { RedisService } from '@infra/redis/redis.service';
+import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
 import { stripNullish } from '@infra/utils/object.util';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SpongeTokenResolveContext } from './sponge-token.config';
@@ -157,7 +158,7 @@ export class SpongeService {
       options: params.options ?? { includeBasicInfo: true },
     };
 
-    const response = await fetch(this.jobListApi, {
+    const response = await fetchWithTimeout(this.jobListApi, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -224,7 +225,7 @@ export class SpongeService {
       operateType: params.operateType,
     });
 
-    const response = await fetch(INTERVIEW_BOOKING_API, {
+    const response = await fetchWithTimeout(INTERVIEW_BOOKING_API, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -315,12 +316,14 @@ export class SpongeService {
 
     this.logger.log(`上传附件: ${fileName}, size=${downloaded.buffer.byteLength}`);
 
-    const response = await fetch(UPLOAD_ATTACHMENT_API, {
+    const response = await fetchWithTimeout(UPLOAD_ATTACHMENT_API, {
       method: 'POST',
       headers: {
         'Duliday-Token': token,
       },
       body: formData,
+      // 上传附件体积可达数 MB，给比普通 API 更宽的预算
+      timeoutMs: 30_000,
     });
 
     if (!response.ok) {
@@ -403,7 +406,7 @@ export class SpongeService {
     const token = await this.resolveDulidayToken(tokenContext, {
       allowDefaultToken: options?.allowDefaultToken ?? true,
     });
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -447,9 +450,11 @@ export class SpongeService {
   private async downloadAttachment(
     fileUrl: string,
   ): Promise<{ buffer: ArrayBuffer; contentType: string }> {
-    const response = await fetch(fileUrl, {
+    const response = await fetchWithTimeout(fileUrl, {
       method: 'GET',
       headers: { Accept: 'application/pdf,application/octet-stream,*/*' },
+      // 附件（简历 PDF/图片）可达数 MB，给比普通 API 更宽的预算
+      timeoutMs: 30_000,
     });
 
     if (!response.ok) {
@@ -632,7 +637,7 @@ export class SpongeService {
     label: string,
     token: string,
   ): Promise<WorkOrderMutationResult> {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -683,7 +688,7 @@ export class SpongeService {
 
     const token = await this.resolveDulidayToken(tokenContext);
 
-    const response = await fetch(this.failureReasonsApi, {
+    const response = await fetchWithTimeout(this.failureReasonsApi, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -789,7 +794,7 @@ export class SpongeService {
 
     this.brandListFetchPromise = (async () => {
       try {
-        const response = await fetch(this.brandListApi, {
+        const response = await fetchWithTimeout(this.brandListApi, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -883,7 +888,7 @@ export class SpongeService {
         },
       };
 
-      const response = await fetch(this.interviewScheduleApi, {
+      const response = await fetchWithTimeout(this.interviewScheduleApi, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
