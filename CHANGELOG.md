@@ -14,7 +14,7 @@
 **预计版本**: `v6.0.0`
 **最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #441 调整功能发布升大版本规则
@@ -25,6 +25,13 @@
 - PR #443 补齐复聊 shadow batch 追踪
 - PR #443 响应暑假工防护 review
 - PR #443 增加暑假工临时防护与复聊追踪修复
+- PR #445 package.json / CHANGELOG.md / .release/pending-release.json 保留 v6.0.0 待发布记录
+- PR #445 ReengagementDetailDrawer 保留 develop 当前实现
+- PR #445 sync master into develop for v6.0.0
+- PR #447 第二父节点为当前 master
+- PR #447 冲突均按 develop 当前 v6.0.0 待发布内容保留
+- PR #447 内容层面不引入新业务变更，只修正 release PR 的合并拓扑
+- PR #447 merge master into develop for v6.0.0
 
 ### 新功能
 - PR #441 `update-version-changelog.js` 支持被测试 require，导出 `analyzeReleaseLevel` / `bumpVersion`。
@@ -32,6 +39,7 @@
 ### 问题修复
 - PR #441 调整 release 自动版本判定：`feat:` 直接升 major；`perf:`/`refactor:` 升 minor；`fix:`/docs/其他有效提交升 patch；`BREAKING CHANGE`/`type!:` 仍优先 major。
 - PR #441 更新发版文档，并补脚本单测锁定规则。
+- PR #447 内容层面不引入新业务变更，只修正 release PR 的合并拓扑
 
 ### 优化调整
 - 无
@@ -41,6 +49,10 @@
 - PR #443 增加暑假工临时防护
 - PR #443 补齐复聊 shadow batch 追踪
 - PR #443 响应暑假工防护 review
+- PR #445 package.json / CHANGELOG.md / .release/pending-release.json 保留 v6.0.0 待发布记录
+- PR #445 ReengagementDetailDrawer 保留 develop 当前实现
+- PR #447 第二父节点为当前 master
+- PR #447 冲突均按 develop 当前 v6.0.0 待发布内容保留
 
 ### 配置变更
 - 无
@@ -56,6 +68,8 @@
 - PR #443 `pnpm exec jest tests/agent/reengagement/follow-up.processor.spec.ts tests/biz/monitoring/services/tracking/reengagement-tracking.service.spec.ts --runInBand`
 - PR #443 `pnpm run typecheck`
 - PR #443 pre-push `pnpm run ci:check` 全量通过：320 个 test suites passed，4637 个 tests passed。
+- PR #445 pre-push pnpm run ci:check 全量通过：320 suites / 4639 tests passed。
+- PR #447 pre-push pnpm run ci:check 全量通过：320 suites / 4639 tests passed。
 <!-- release:pending:end -->
 
 ## [5.33.0] - 2026-07-07

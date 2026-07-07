@@ -74,6 +74,65 @@
         "`pnpm run typecheck`",
         "pre-push `pnpm run ci:check` 全量通过：320 个 test suites passed，4637 个 tests passed。"
       ]
+    },
+    {
+      "number": "445",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/445",
+      "title": "sync master into develop for v6.0.0",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-07",
+      "businessUpdates": [
+        "package.json / CHANGELOG.md / .release/pending-release.json 保留 v6.0.0 待发布记录",
+        "ReengagementDetailDrawer 保留 develop 当前实现",
+        "sync master into develop for v6.0.0"
+      ],
+      "summary": [
+        "package.json / CHANGELOG.md / .release/pending-release.json 保留 v6.0.0 待发布记录",
+        "ReengagementDetailDrawer 保留 develop 当前实现",
+        "sync master into develop for v6.0.0"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "package.json / CHANGELOG.md / .release/pending-release.json 保留 v6.0.0 待发布记录",
+        "ReengagementDetailDrawer 保留 develop 当前实现"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pre-push pnpm run ci:check 全量通过：320 suites / 4639 tests passed。"
+      ]
+    },
+    {
+      "number": "447",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/447",
+      "title": "merge master into develop for v6.0.0",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-07",
+      "businessUpdates": [
+        "内容层面不引入新业务变更，只修正 release PR 的合并拓扑"
+      ],
+      "summary": [
+        "第二父节点为当前 master",
+        "冲突均按 develop 当前 v6.0.0 待发布内容保留",
+        "内容层面不引入新业务变更，只修正 release PR 的合并拓扑",
+        "merge master into develop for v6.0.0"
+      ],
+      "features": [],
+      "fixes": [
+        "内容层面不引入新业务变更，只修正 release PR 的合并拓扑"
+      ],
+      "optimizations": [],
+      "ops": [
+        "第二父节点为当前 master",
+        "冲突均按 develop 当前 v6.0.0 待发布内容保留"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pre-push pnpm run ci:check 全量通过：320 suites / 4639 tests passed。"
+      ]
     }
   ],
   "lastRelease": {
