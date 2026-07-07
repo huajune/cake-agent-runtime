@@ -16,6 +16,11 @@ on:
         required: true
         type: string
 
+# 同一 PR 的新 run 取消旧 run：synchronize 连续触发时旧 diff 的 review 已过时
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -23,6 +28,12 @@ permissions:
 
 jobs:
   ai-code-review:
+    # release-metadata bot PR 只含脚本生成的版本元数据（package.json / CHANGELOG.md /
+    # .release/），AI review 无增量价值，跳过以省时省额度。workflow_dispatch 是
+    # 人工兜底通道，不做过滤。
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/')
     runs-on: ubuntu-latest
 
     steps:
