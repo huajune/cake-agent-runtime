@@ -66,6 +66,43 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.scenarioCode).toBe('opening_no_reply');
   });
 
+  it('sanitizes outbound reply text in runner outcome before any channel delivery', async () => {
+    const rawText = `<think>内部推理</think>
+**收到**，[表情消息] 好的
+
+
+1. 身高大概多少呀？
+2. 目前是暑假工还是能长期做？`;
+    generator.invoke.mockResolvedValue(
+      makeResult({
+        text: rawText,
+        responseMessages: [
+          {
+            role: 'assistant',
+            parts: [{ type: 'text', text: rawText }],
+          },
+        ],
+      }),
+    );
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '资料发你了' },
+    });
+
+    const expected = `收到，好的
+
+1. 身高大概多少呀？
+2. 目前是暑假工还是能长期做？`;
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(expected);
+    expect(outcome.generatedText).toBe(expected);
+    expect(outcome.responseMessages?.[0]?.parts).toEqual([{ type: 'text', text: expected }]);
+    expect(outcome.reply?.text).not.toContain('可以选');
+    expect(outcome.reply?.text).not.toContain('<think>');
+    expect(outcome.reply?.text).not.toContain('[表情消息]');
+  });
+
   it('empty text or skip_reply short-circuit maps to skipped', async () => {
     generator.invoke.mockResolvedValue(
       makeResult({
