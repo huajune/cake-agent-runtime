@@ -36,6 +36,12 @@ describe('checklist.util', () => {
       expect(normalizeChecklistField('是否学生')).toBe('身份');
     });
 
+    it('canonicalizes 暑假工 confirmation variants', () => {
+      expect(normalizeChecklistField('是否暑假工')).toBe('是否暑假工');
+      expect(normalizeChecklistField('暑期工')).toBe('是否暑假工');
+      expect(normalizeChecklistField('是否暑期工')).toBe('是否暑假工');
+    });
+
     it('canonicalizes 简历 / 简历附件', () => {
       expect(normalizeChecklistField('简历')).toBe('简历附件');
       expect(normalizeChecklistField('简历附件')).toBe('简历附件');
@@ -234,6 +240,11 @@ describe('checklist.util', () => {
     it('emits identity 学生/社会人士 when 身份 is missing', () => {
       const hints = buildEnumHintsForMissing(['身份']);
       expect(hints.identity).toEqual(['学生', '社会人士']);
+    });
+
+    it('emits summer worker hints when 是否暑假工 is missing', () => {
+      const hints = buildEnumHintsForMissing(['是否暑假工']);
+      expect(hints.summerWorker).toEqual(['是暑假工', '不是暑假工']);
     });
 
     it('returns empty object when no relevant missingFields', () => {

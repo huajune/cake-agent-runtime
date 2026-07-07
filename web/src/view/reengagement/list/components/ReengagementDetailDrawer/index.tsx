@@ -79,15 +79,6 @@ function formatMaybeEpoch(value: number | null): string | null {
   return value ? formatDateTime(new Date(value).toISOString()) : null;
 }
 
-function extractBatchIdFromEvents(events: ReengagementEvent[]): string | null {
-  for (const event of events) {
-    const jobId = readString(event.detail, 'jobId');
-    const match = jobId?.match(/batch_[^:\s]+/);
-    if (match) return match[0];
-  }
-  return null;
-}
-
 function sortEventsAsc(events: ReengagementEvent[]): ReengagementEvent[] {
   // 防御 events 数组里的 null 元素（record RPC 旧版本在无 event 写入时会落 [null]）
   return events.filter(Boolean).sort((a, b) => {
@@ -120,7 +111,9 @@ function getEventSummary(event: ReengagementEvent): string {
   }
 
   if (event.event === 'schedule_precheck_stopped') {
-    return reason ? `创建任务前预检没通过：${DETAIL_REASON_LABELS[reason] || reason}。` : '创建任务前预检没通过。';
+    return reason
+      ? `创建任务前预检没通过：${DETAIL_REASON_LABELS[reason] || reason}。`
+      : '创建任务前预检没通过。';
   }
 
   if (event.event === 'rescheduled_out_of_window') {
@@ -136,14 +129,18 @@ function getEventSummary(event: ReengagementEvent): string {
   }
 
   if (event.event === 'reserved') return '系统已锁定这次发送机会，避免并发任务重复触达。';
-  if (event.event === 'reserve_duplicate') return '同一触达槽已经有任务或发送记录，这次被幂等保护跳过。';
+  if (event.event === 'reserve_duplicate')
+    return '同一触达槽已经有任务或发送记录，这次被幂等保护跳过。';
   if (event.event === 'delivery_attempted') return '文案已进入外部渠道发送流程。';
   if (event.event === 'sent') return '复聊消息已通过渠道发出。';
   if (event.event === 'delivery_unknown') return '渠道侧返回异常，不能盲目重发，需要人工核对。';
-  if (event.event === 'frequency_blocked') return '为了避免同一候选人被过度打扰，这次触达被频控拦截。';
-  if (event.event === 'fired_but_disabled') return '任务到了触发时间，但复聊总开关已关闭，所以没有继续执行。';
+  if (event.event === 'frequency_blocked')
+    return '为了避免同一候选人被过度打扰，这次触达被频控拦截。';
+  if (event.event === 'fired_but_disabled')
+    return '任务到了触发时间，但复聊总开关已关闭，所以没有继续执行。';
   if (event.event === 'stopped') return '任务到点后发现候选人已回复、状态已变化，或场景不再成立。';
-  if (event.event === 'outcome_not_reply') return '主动回合没有产出可投递的回复，因此没有给候选人发消息。';
+  if (event.event === 'outcome_not_reply')
+    return '主动回合没有产出可投递的回复，因此没有给候选人发消息。';
   if (event.event === 'enqueue_error') return '任务写入队列失败，需要看技术明细里的错误。';
   if (reason) return DETAIL_REASON_LABELS[reason] || reason;
   if (outcomeKind) return OUTCOME_LABELS[outcomeKind] || outcomeKind;
@@ -160,10 +157,7 @@ export default function ReengagementDetailDrawer({
   const { data: record, isLoading, isError } = useReengagementRecordDetail(touchKey);
 
   const events = useMemo(() => sortEventsAsc(record?.events || []), [record?.events]);
-  const detailBatchId = useMemo(
-    () => record?.batch_id || extractBatchIdFromEvents(events),
-    [events, record?.batch_id],
-  );
+  const detailBatchId = record?.batch_id || null;
   const { data: sessionRecords, isLoading: sessionRecordsLoading } = useReengagementRecords({
     sessionId: record?.session_id ?? undefined,
     limit: 50,
@@ -194,7 +188,7 @@ export default function ReengagementDetailDrawer({
       { label: '决策原因', value: record.decision_reason || '-' },
       { label: 'Outcome', value: record.outcome_kind || '-' },
       { label: 'Reserve', value: record.reserve_result || '-' },
-      { label: 'Batch', value: detailBatchId || '-', mono: true },
+      { label: '主动回合 Batch', value: detailBatchId || '-', mono: true },
     ];
   }, [detailBatchId, record, scenarioLabels]);
 

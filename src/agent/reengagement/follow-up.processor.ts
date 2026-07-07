@@ -170,7 +170,8 @@ export class FollowUpProcessor implements OnModuleInit {
     const rolloutEnabled = resolveRolloutEnabled(scenario, runtime);
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
-      const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario);
+      const batchId = `batch_${sessionRef.sessionId}_${now}`;
+      const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
       this.logger.log(
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
           `text="${outcome.kind === 'reply' ? outcome.reply?.text.slice(0, 60) : `[${outcome.kind}]`}"` +
@@ -185,7 +186,21 @@ export class FollowUpProcessor implements OnModuleInit {
           : !rolloutEnabled
             ? 'rollout_disabled'
             : 'shadow_mode',
+        batchId,
       });
+      this.messageTracking.recordProactiveTurn(
+        this.buildProactiveTurnRecord({
+          batchId,
+          sessionRef,
+          scenario,
+          outcome,
+          receivedAt: now,
+          status: 'success',
+          replyPreview:
+            outcome.generatedText ?? (outcome.kind === 'reply' ? outcome.reply?.text : undefined),
+          channelIdentity,
+        }),
+      );
       if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       return;
     }

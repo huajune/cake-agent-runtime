@@ -81,6 +81,7 @@ describe('resume booking flow', () => {
         jobId: 528121,
         requestedDate: '2026-06-09',
         candidateAge: '22',
+        candidateLaborForm: '不是暑假工，长期',
         candidateInterviewTime: '2026-06-09 13:00:00',
         candidateGender: '男',
         candidateEducation: '大专',

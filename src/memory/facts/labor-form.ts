@@ -28,8 +28,9 @@ export const SEASONAL_LABOR_FORMS = ['寒假工', '暑假工'] as const;
 
 /** 判断一个 labor_form 是否为季节性用工形式（寒假工 / 暑假工）。 */
 export function isSeasonalLaborForm(value: string | null | undefined): boolean {
-  if (!value) return false;
-  return (SEASONAL_LABOR_FORMS as readonly string[]).includes(value);
+  const normalized = sanitizeLaborFormForDisplay(value);
+  if (!normalized) return false;
+  return (SEASONAL_LABOR_FORMS as readonly string[]).includes(normalized);
 }
 
 /**

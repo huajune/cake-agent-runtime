@@ -111,12 +111,14 @@ const SECTION_ALIASES = new Map([
 ]);
 
 const MODE = process.argv[2] || 'prepare';
-if (!['prepare', 'finalize'].includes(MODE)) {
-  console.error('用法: node scripts/update-version-changelog.js <prepare|finalize>');
-  process.exit(1);
-}
+if (require.main === module) {
+  if (!['prepare', 'finalize'].includes(MODE)) {
+    console.error('用法: node scripts/update-version-changelog.js <prepare|finalize>');
+    process.exit(1);
+  }
 
-main();
+  main();
+}
 
 function main() {
   const latestRelease = getLatestReleaseTag();
@@ -362,6 +364,10 @@ function analyzeReleaseLevel(commits) {
     }
 
     if (/^feat(?:\(.+?\))?:/i.test(commit.subject)) {
+      return 'major';
+    }
+
+    if (/^(?:perf|refactor)(?:\(.+?\))?:/i.test(commit.subject)) {
       level = level === 'major' ? level : 'minor';
       continue;
     }
@@ -1100,3 +1106,8 @@ function formatShanghaiDate(date = new Date()) {
 
   return formatter.format(date);
 }
+
+module.exports = {
+  analyzeReleaseLevel,
+  bumpVersion,
+};
