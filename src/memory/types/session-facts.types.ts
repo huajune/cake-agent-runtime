@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { factConfidenceRank } from './confidence-rank';
 import type { MemoryEntry } from '../stores/store.types';
 
 // ==================== 1. 提取 schema（LLM 输出结构） ====================
@@ -657,16 +658,9 @@ function assertFieldKeysMirrorSchemas(): void {
 
 assertFieldKeysMirrorSchemas();
 
-const CONFIDENCE_RANK: Record<SessionFactConfidence, number> = {
-  unknown: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-};
-
-/** 置信度排序值。供跨轮合并守卫比较新旧事实的可信级别。 */
+/** 置信度排序值。供跨轮合并守卫比较新旧事实的可信级别（权威定义见 confidence-rank.ts）。 */
 export function sessionFactConfidenceRank(confidence: SessionFactConfidence): number {
-  return CONFIDENCE_RANK[confidence] ?? 0;
+  return factConfidenceRank(confidence);
 }
 
 export function isSessionFactValue<T = unknown>(value: unknown): value is SessionFactValue<T> {
@@ -699,7 +693,7 @@ export function unwrapSessionFactValue<T>(
   if (value === null || value === undefined) return null;
   if (!isSessionFactValue<T>(value)) return value;
   const minConfidence = options.minConfidence;
-  if (minConfidence && CONFIDENCE_RANK[value.confidence] < CONFIDENCE_RANK[minConfidence]) {
+  if (minConfidence && factConfidenceRank(value.confidence) < factConfidenceRank(minConfidence)) {
     return null;
   }
   return value.value;

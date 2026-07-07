@@ -10,6 +10,11 @@ import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom
 describe('SimpleMergeService', () => {
   let service: SimpleMergeService;
 
+  type ServicePrivateAccess = {
+    delay(ms: number): Promise<void>;
+    renewProcessingLock(chatId: string, ownerToken: string): Promise<boolean>;
+  };
+
   const mockMessageQueue = {
     add: jest.fn(),
   };
@@ -22,6 +27,7 @@ describe('SimpleMergeService', () => {
     llen: jest.fn(),
     lrange: jest.fn(),
     ltrim: jest.fn(),
+    eval: jest.fn(),
     getClient: jest.fn(),
   };
 
@@ -74,6 +80,7 @@ describe('SimpleMergeService', () => {
     mockRedisService.expire.mockResolvedValue(1);
     mockRedisService.llen.mockResolvedValue(1);
     mockRedisService.ltrim.mockResolvedValue(undefined);
+    mockRedisService.eval.mockResolvedValue(1);
     mockRedisService.getClient.mockReturnValue({
       set: jest.fn().mockResolvedValue('OK'),
       eval: jest.fn().mockResolvedValue(1),
@@ -225,11 +232,98 @@ describe('SimpleMergeService', () => {
       expect(mockRedisService.ltrim).toHaveBeenCalledWith('wecom:message:pending:chat-123', 3, -1);
     });
 
+    it('should retry transient LTRIM failures and eventually succeed', async () => {
+      const delaySpy = jest
+        .spyOn(service as unknown as ServicePrivateAccess, 'delay')
+        .mockResolvedValue(undefined);
+      mockRedisService.ltrim
+        .mockRejectedValueOnce(new Error('redis transient'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(service.ackPendingMessages('chat-123', 3)).resolves.toBeUndefined();
+
+      expect(mockRedisService.ltrim).toHaveBeenCalledTimes(2);
+      expect(mockRedisService.ltrim).toHaveBeenNthCalledWith(
+        1,
+        'wecom:message:pending:chat-123',
+        3,
+        -1,
+      );
+      expect(delaySpy).toHaveBeenCalledTimes(1);
+      expect(delaySpy).toHaveBeenCalledWith(200);
+    });
+
+    it('should retry LTRIM failures up to the limit and throw the last error', async () => {
+      const delaySpy = jest
+        .spyOn(service as unknown as ServicePrivateAccess, 'delay')
+        .mockResolvedValue(undefined);
+      const finalError = new Error('redis still down');
+      mockRedisService.ltrim
+        .mockRejectedValueOnce(new Error('redis down 1'))
+        .mockRejectedValueOnce(new Error('redis down 2'))
+        .mockRejectedValueOnce(finalError);
+
+      await expect(service.ackPendingMessages('chat-123', 3)).rejects.toBe(finalError);
+
+      expect(mockRedisService.ltrim).toHaveBeenCalledTimes(3);
+      expect(delaySpy).toHaveBeenCalledTimes(2);
+      expect(delaySpy).toHaveBeenNthCalledWith(1, 200);
+      expect(delaySpy).toHaveBeenNthCalledWith(2, 400);
+    });
+
     it('should be a no-op when count <= 0', async () => {
       await service.ackPendingMessages('chat-123', 0);
       await service.ackPendingMessages('chat-123', -1);
 
       expect(mockRedisService.ltrim).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('processing lock heartbeat', () => {
+    it('should renew the processing lock only for the current owner via Lua', async () => {
+      mockRedisService.eval.mockResolvedValue(1);
+
+      const renewed = await (service as unknown as ServicePrivateAccess).renewProcessingLock(
+        'chat-123',
+        'owner-123',
+      );
+
+      expect(renewed).toBe(true);
+      expect(mockRedisService.eval).toHaveBeenCalledWith(
+        expect.stringContaining('redis.call("expire"'),
+        ['wecom:message:lock:chat-123'],
+        ['owner-123', '90'],
+      );
+      expect(mockRedisService.eval.mock.calls[0][0]).toContain(
+        'redis.call("get", KEYS[1]) == ARGV[1]',
+      );
+    });
+
+    it('should report failed renewal when the lock is missing or owned by another worker', async () => {
+      mockRedisService.eval.mockResolvedValue(0);
+
+      const renewed = await (service as unknown as ServicePrivateAccess).renewProcessingLock(
+        'chat-123',
+        'owner-123',
+      );
+
+      expect(renewed).toBe(false);
+    });
+
+    it('should renew on heartbeat interval and stop cleanly', async () => {
+      jest.useFakeTimers();
+      mockRedisService.eval.mockResolvedValue(1);
+
+      const stopHeartbeat = service.startLockHeartbeat('chat-123', 'owner-123');
+
+      await jest.advanceTimersByTimeAsync(30000);
+      expect(mockRedisService.eval).toHaveBeenCalledTimes(1);
+
+      stopHeartbeat();
+      await jest.advanceTimersByTimeAsync(30000);
+      expect(mockRedisService.eval).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
     });
   });
 

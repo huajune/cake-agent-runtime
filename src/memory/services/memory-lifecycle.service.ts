@@ -400,7 +400,9 @@ export class MemoryLifecycleService {
   ): Promise<PostProcessingStepStatus[]> {
     const steps: PostProcessingStepStatus[] = [];
 
-    // 这些步骤都会读改写同一份 session state，保留串行执行以避免 Redis 状态互相覆盖。
+    // session state 已改为 hash 字段级原子写（save* 只 HSET 自己的字段），跨字段并发
+    // 不再互相覆盖。这里保留串行执行是为了步骤间的数据依赖（projectAssistantTurn 读
+    // saveLastCandidatePool 刚写入的候选池）与 step 统计顺序，不再承担防覆盖职责。
     if (ctx.candidatePool?.length) {
       const candidatePoolResult = await this.runMeasuredStep('save_candidate_pool', async () => {
         await this.session.saveLastCandidatePool(

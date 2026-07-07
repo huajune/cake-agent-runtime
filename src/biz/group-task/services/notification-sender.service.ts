@@ -1,6 +1,6 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
+import { GROUP_MESSAGE_SENDER, type GroupMessageSender } from '../providers/group-channel.provider';
 import { AlertLevel } from '@enums/alert.enum';
 import {
   GroupContext,
@@ -40,7 +40,7 @@ export class NotificationSenderService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly messageSenderService: MessageSenderService,
+    @Inject(GROUP_MESSAGE_SENDER) private readonly messageSenderService: GroupMessageSender,
     private readonly opsNotifier: OpsNotifierService,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,

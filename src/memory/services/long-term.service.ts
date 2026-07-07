@@ -149,22 +149,27 @@ export class LongTermService {
   ): Promise<void> {
     try {
       const profileFacts = this.buildProfileFactsFromSettlement(facts, origin);
-      if (Object.keys(profileFacts).length > 0) {
-        await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
-        this.logger.log(
-          `[writeFromSettlement] Profile 写入: userId=${userId}, fields=${Object.keys(profileFacts).join(',')}`,
-        );
-      }
-
       // 求职意向同样跨会话有价值（城市/品牌/岗位/班次等），此前只活在 Redis
       // session facts（TTL 2 天）里，候选人隔几天回来意向全部丢失、只剩摘要叙述。
       const preferenceFacts = this.buildPreferenceFactsFromSettlement(facts, origin);
-      if (Object.keys(preferenceFacts).length > 0) {
-        await this.supabaseStore.upsertPreferenceFacts(corpId, userId, preferenceFacts);
-        this.logger.log(
-          `[writeFromSettlement] Preference 写入: userId=${userId}, fields=${Object.keys(preferenceFacts).join(',')}`,
-        );
+      if (Object.keys(profileFacts).length === 0 && Object.keys(preferenceFacts).length === 0) {
+        return;
       }
+
+      // profile + preference 单 RPC 事务写入（同一行锁），杜绝两步写之间失败
+      // 造成的"profile 落库而意向丢失"半写状态。
+      await this.supabaseStore.upsertProfileFacts(
+        corpId,
+        userId,
+        profileFacts,
+        undefined,
+        preferenceFacts,
+      );
+      this.logger.log(
+        `[writeFromSettlement] Profile+Preference 原子写入: userId=${userId}, ` +
+          `profileFields=${Object.keys(profileFacts).join(',') || '-'}, ` +
+          `preferenceFields=${Object.keys(preferenceFacts).join(',') || '-'}`,
+      );
     } catch (error) {
       this.logger.warn('[writeFromSettlement] 写入 Profile 失败', error);
     }

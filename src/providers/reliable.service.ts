@@ -90,8 +90,4 @@ export class ReliableService {
     const backoff = cfg.baseBackoffMs * Math.pow(2, attempt - 1);
     return Math.min(backoff, cfg.maxBackoffMs);
   }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 }

@@ -1,6 +1,6 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RoomService } from '@channels/wecom/room/room.service';
+import { GROUP_ROOM_QUERY, type GroupRoomQuery } from '../providers/group-channel.provider';
 import { GroupContext, ParsedGroupTag } from '../group-task.types';
 
 /** 小组级群列表 API 返回的标签项 */
@@ -47,7 +47,7 @@ export class GroupResolverService implements OnModuleInit {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly roomService: RoomService,
+    @Inject(GROUP_ROOM_QUERY) private readonly roomService: GroupRoomQuery,
   ) {
     // 格式: "艾酱:token1,宇航:token2,南瓜:token3"
     const raw = this.configService.get<string>('GROUP_TASK_TOKENS', '');

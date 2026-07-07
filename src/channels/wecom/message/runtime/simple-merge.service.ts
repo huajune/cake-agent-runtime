@@ -27,12 +27,24 @@ export class SimpleMergeService implements OnModuleInit {
 
   // Redis 配置
   private readonly PENDING_TTL_SECONDS = 300; // 5分钟过期兜底
-  private readonly PROCESSING_LOCK_TTL_SECONDS = 300;
-  private readonly QUIET_WINDOW_FOLLOWUP_DELAY_MS = 200;
+  /**
+   * 处理锁租约模型（三个时长的约束关系）：
+   * - PROCESSING_LOCK_TTL_SECONDS（90s）：锁的单次租约。持锁 worker 处理期间由心跳续期，
+   *   进程崩溃后孤悬锁最长存活一个租约，远小于 PENDING_TTL_SECONDS，消息不会等锁等到过期。
+   * - LOCK_HEARTBEAT_INTERVAL_MS（30s）：续期心跳间隔，必须 < TTL/2，正常处理中每个租约
+   *   至少有 2 次续期机会（Agent 调用 + replay 可达数分钟，靠心跳维持租约）。
+   * - LOCK_RETRY_DELAY_MS（30s）：锁冲突时补建重检任务的延迟。孤悬锁最长在
+   *   TTL + 1 个重检周期（120s）内被新 worker 接手，期间 pending 由重检续期兜底。
+   */
+  private readonly PROCESSING_LOCK_TTL_SECONDS = 90;
+  private readonly LOCK_HEARTBEAT_INTERVAL_MS = 30000;
   private readonly LOCK_RETRY_DELAY_MS = 30000;
+  private readonly QUIET_WINDOW_FOLLOWUP_DELAY_MS = 200;
   // 静默窗口检查任务创建失败时的本地重试（兜 Redis/队列瞬时抖动），耗尽后上抛交由上游记录失败。
   private readonly QUEUE_ADD_MAX_ATTEMPTS = 3;
   private readonly QUEUE_ADD_RETRY_DELAY_MS = 200;
+  // ack（LTRIM 裁 pending）失败重试：ack 丢失会让已回复的消息滞留 pending、并进下一批造成重复回复。
+  private readonly ACK_MAX_ATTEMPTS = 3;
 
   constructor(
     private readonly redisService: RedisService,
@@ -185,8 +197,28 @@ export class SimpleMergeService implements OnModuleInit {
   async ackPendingMessages(chatId: string, count: number): Promise<void> {
     if (count <= 0) return;
     const pendingKey = RedisKeyBuilder.pending(chatId);
-    await this.redisService.ltrim(pendingKey, count, -1);
-    this.logger.debug(`[${chatId}] ack 已处理 ${count} 条 pending`);
+
+    // ack 失败的后果不是"少删一条日志"而是业务性重复：已投递的消息滞留 pending，
+    // 会被下一个 job 并进新批次再次触发 Agent 回复。这里先本地重试兜 Redis 瞬时抖动，
+    // 耗尽后上抛，由调用方决定告警/终态语义。
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= this.ACK_MAX_ATTEMPTS; attempt++) {
+      try {
+        await this.redisService.ltrim(pendingKey, count, -1);
+        this.logger.debug(`[${chatId}] ack 已处理 ${count} 条 pending`);
+        return;
+      } catch (error) {
+        lastError = error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `[${chatId}] ack pending 失败（第 ${attempt}/${this.ACK_MAX_ATTEMPTS} 次，count=${count}）: ${errorMessage}`,
+        );
+        if (attempt < this.ACK_MAX_ATTEMPTS) {
+          await this.delay(this.QUEUE_ADD_RETRY_DELAY_MS * attempt);
+        }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
@@ -246,6 +278,50 @@ export class SimpleMergeService implements OnModuleInit {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[${chatId}] 创建锁冲突重检任务失败: ${errorMessage}`);
     }
+  }
+
+  /**
+   * 持锁处理期间的租约续期心跳。
+   *
+   * 锁 TTL（90s）短于一次完整的 Agent 调用 + replay 重跑（可达数分钟），持锁 worker
+   * 必须周期性续期，否则锁会在处理中途过期、被并发 worker 抢走导致同 chat 双份回复。
+   * 反过来，进程崩溃后没有心跳，孤悬锁最长一个租约（90s）即自动让位——这是把
+   * 「崩溃恢复速度」与「长任务持锁」解耦的关键。
+   *
+   * 返回停止函数，调用方必须在处理结束（finally）时调用。timer 已 unref，不阻塞进程退出。
+   */
+  startLockHeartbeat(chatId: string, ownerToken: string): () => void {
+    const timer = setInterval(() => {
+      void this.renewProcessingLock(chatId, ownerToken)
+        .then((renewed) => {
+          if (!renewed) {
+            this.logger.warn(
+              `[${chatId}] 处理锁心跳续期失败：锁已过期或易主（本 worker 可能已被判定死亡）`,
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`[${chatId}] 处理锁心跳续期异常: ${errorMessage}`);
+        });
+    }, this.LOCK_HEARTBEAT_INTERVAL_MS);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }
+
+  /** 仅当仍是锁持有者时才续期（Lua 原子判断），避免误续他人的锁。 */
+  private async renewProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
+    const result = await this.redisService.eval(
+      `
+          if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("expire", KEYS[1], ARGV[2])
+          end
+          return 0
+        `,
+      [RedisKeyBuilder.lock(chatId)],
+      [ownerToken, String(this.PROCESSING_LOCK_TTL_SECONDS)],
+    );
+    return result === 1;
   }
 
   async releaseProcessingLock(chatId: string, ownerToken: string): Promise<void> {

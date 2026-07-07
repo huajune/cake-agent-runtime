@@ -198,6 +198,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     const { chatId } = job.data;
     const lockOwner = `job:${job.id}:${Date.now()}`;
     let lockAcquired = false;
+    let stopLockHeartbeat: (() => void) | undefined;
 
     try {
       await this.workerManager.acquireExecutionSlot();
@@ -210,6 +211,10 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         await this.simpleMergeService.scheduleLockRetryCheck(chatId);
         return;
       }
+
+      // 锁改为短租约（90s）+ 处理期间心跳续期：长 Agent 调用不丢锁，
+      // 进程崩溃后孤悬锁最长一个租约即让位（旧实现固定 300s）。
+      stopLockHeartbeat = this.simpleMergeService.startLockHeartbeat(chatId, lockOwner);
 
       this.logger.log(`[Bull] 开始处理任务 ${job.id}, chatId: ${chatId}`);
 
@@ -250,6 +255,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`[Bull] 任务 ${job.id} 处理失败: ${errorMessage}`);
       throw error;
     } finally {
+      stopLockHeartbeat?.();
       if (lockAcquired) {
         await this.simpleMergeService.releaseProcessingLock(chatId, lockOwner).catch((error) => {
           const errorMessage = error instanceof Error ? error.message : String(error);

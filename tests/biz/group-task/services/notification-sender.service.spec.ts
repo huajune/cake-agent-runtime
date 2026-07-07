@@ -1,13 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
-import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
+import {
+  GROUP_MESSAGE_SENDER,
+  type GroupMessageSender,
+} from '@biz/group-task/providers/group-channel.provider';
 import { GroupTaskType, GroupContext, TaskExecutionResult } from '@biz/group-task/group-task.types';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 
 describe('NotificationSenderService', () => {
   let service: NotificationSenderService;
-  let messageSenderService: jest.Mocked<MessageSenderService>;
+  let messageSenderService: jest.Mocked<GroupMessageSender>;
   let opsNotifierService: jest.Mocked<OpsNotifierService>;
 
   const mockGroup: GroupContext = {
@@ -50,10 +53,10 @@ describe('NotificationSenderService', () => {
           } as unknown as ConfigService,
         },
         {
-          provide: MessageSenderService,
+          provide: GROUP_MESSAGE_SENDER,
           useValue: {
             sendMessage: jest.fn().mockResolvedValue(undefined),
-          } as unknown as MessageSenderService,
+          } as unknown as GroupMessageSender,
         },
         {
           provide: OpsNotifierService,
@@ -66,7 +69,7 @@ describe('NotificationSenderService', () => {
     }).compile();
 
     service = module.get<NotificationSenderService>(NotificationSenderService);
-    messageSenderService = module.get(MessageSenderService) as jest.Mocked<MessageSenderService>;
+    messageSenderService = module.get(GROUP_MESSAGE_SENDER) as jest.Mocked<GroupMessageSender>;
     opsNotifierService = module.get(OpsNotifierService) as jest.Mocked<OpsNotifierService>;
   });
 
