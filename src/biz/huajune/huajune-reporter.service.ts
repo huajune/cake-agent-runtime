@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
 import type {
   HuajuneCandidate,
   HuajuneEvent,
@@ -114,7 +115,7 @@ export class HuajuneReporterService {
 
   private async send(event: HuajuneEvent): Promise<void> {
     try {
-      const response = await fetch(this.endpoint, {
+      const response = await fetchWithTimeout(this.endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

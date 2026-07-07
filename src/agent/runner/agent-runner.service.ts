@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
 import { GeneratorService } from '../generator/generator.service';
 import type {
@@ -34,6 +34,8 @@ import {
 import { InputGuardrailService } from '../guardrail/input/input-guard.service';
 import type { SessionRef, TurnOutcome, TurnRequest, TurnTrigger } from './agent-runner.types';
 import { TurnFinalizer } from './turn-finalizer';
+import { AgentTracerService } from '@observability/agent-tracer.service';
+import { RequestContextService } from '@observability/context/request-context.service';
 
 export type {
   SessionRef,
@@ -112,6 +114,10 @@ export class AgentRunnerService {
     private readonly outputGuard: OutputGuardrailService,
     private readonly inputGuard: InputGuardrailService,
     private readonly guardrailReviews: GuardrailReviewService,
+    @Optional()
+    private readonly requestContext?: RequestContextService,
+    @Optional()
+    private readonly tracer?: AgentTracerService,
   ) {}
 
   invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
@@ -565,6 +571,47 @@ export class AgentRunnerService {
    */
   async runTurn(req: TurnRequest): Promise<TurnOutcome> {
     const { sessionRef, trigger, context } = req;
+    const telemetryContext = {
+      traceId: context?.messageId,
+      chatId: sessionRef.sessionId,
+      userId: sessionRef.userId,
+      corpId: sessionRef.corpId,
+      scenario:
+        context?.scenario ?? (trigger.kind === 'proactive' ? trigger.scenarioCode : undefined),
+      callerKind: context?.callerKind ?? CallerKind.WECOM,
+    };
+
+    const run = () => this.runTurnObserved(req);
+    if (this.requestContext) {
+      return this.requestContext.run(telemetryContext, run);
+    }
+    return run();
+  }
+
+  private async runTurnObserved(req: TurnRequest): Promise<TurnOutcome> {
+    const startedAt = Date.now();
+    this.tracer?.emit({ type: 'agent_start' });
+
+    try {
+      const outcome = await this.runTurnInternal(req);
+      this.tracer?.emit({
+        type: 'agent_end',
+        steps: outcome.agentSteps?.length,
+        totalTokens: outcome.usage?.totalTokens,
+        durationMs: Date.now() - startedAt,
+      });
+      return outcome;
+    } catch (error) {
+      this.tracer?.emit({
+        type: 'agent_error',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  private async runTurnInternal(req: TurnRequest): Promise<TurnOutcome> {
+    const { sessionRef, trigger, context } = req;
     const isProactive = trigger.kind === 'proactive';
     const scenarioCode = isProactive ? trigger.scenarioCode : undefined;
 
@@ -642,6 +689,10 @@ export class AgentRunnerService {
           `err=${err instanceof Error ? err.message : String(err)}`,
       );
       if (isProactive) {
+        this.tracer?.emit({
+          type: 'agent_error',
+          error: err instanceof Error ? err.message : String(err),
+        });
         return { kind: 'skipped', toolCalls: [], scenarioCode };
       }
       throw err;

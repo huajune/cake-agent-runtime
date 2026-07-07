@@ -93,6 +93,9 @@ describe('ReplyWorkflowService', () => {
     saveTerminalState: jest.fn(),
     recordCandidateActivity: jest.fn(),
   };
+  const alertNotifier = {
+    sendSimpleAlert: jest.fn().mockResolvedValue(true),
+  };
 
   let service: ReplyWorkflowService;
 
@@ -282,6 +285,7 @@ describe('ReplyWorkflowService', () => {
       outcomeInterventions as never,
       followUpScheduler as never,
       reengagementAnchors,
+      alertNotifier as never,
     );
   });
 

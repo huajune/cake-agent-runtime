@@ -5,6 +5,8 @@ describe('RedisStore', () => {
     get: jest.fn(),
     set: jest.fn().mockResolvedValue(undefined),
     setex: jest.fn().mockResolvedValue(undefined),
+    eval: jest.fn().mockResolvedValue(1),
+    hgetall: jest.fn(),
     del: jest.fn(),
   };
 
@@ -99,6 +101,88 @@ describe('RedisStore', () => {
       mockRedis.del.mockResolvedValue(0);
       const result = await store.del('test');
       expect(result).toBe(false);
+    });
+  });
+
+  describe('getHash', () => {
+    it('should return hash fields when key exists', async () => {
+      mockRedis.hgetall.mockResolvedValue({ stage: 'screening' });
+
+      const result = await store.getHash('session:hash');
+
+      expect(result).toEqual({ stage: 'screening' });
+      expect(mockRedis.hgetall).toHaveBeenCalledWith('session:hash');
+    });
+
+    it('should return null when hash is empty or missing', async () => {
+      mockRedis.hgetall.mockResolvedValue({});
+
+      const result = await store.getHash('session:hash');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('patchHash', () => {
+    it('should update fields and refresh TTL in one Lua eval', async () => {
+      await store.patchHash(
+        'session:hash',
+        {
+          stage: 'screening',
+          score: 88,
+          profile: { city: '上海' },
+          active: true,
+        },
+        172800,
+      );
+
+      expect(mockRedis.eval).toHaveBeenCalledWith(
+        expect.stringContaining('redis.call("hset"'),
+        ['session:hash'],
+        [
+          172800,
+          'stage',
+          'screening',
+          'score',
+          88,
+          'profile',
+          JSON.stringify({ city: '上海' }),
+          'active',
+          'true',
+        ],
+      );
+    });
+
+    it('should skip empty patches', async () => {
+      await store.patchHash('session:hash', {}, 172800);
+
+      expect(mockRedis.eval).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('backfillHash', () => {
+    it('should backfill missing fields and refresh TTL in one Lua eval', async () => {
+      await store.backfillHash(
+        'session:hash',
+        {
+          stage: 'screening',
+          skipped: undefined,
+          confidence: 'high',
+        },
+        172800,
+      );
+
+      expect(mockRedis.eval).toHaveBeenCalledWith(
+        expect.stringContaining('redis.call("hsetnx"'),
+        ['session:hash'],
+        [172800, 'stage', 'screening', 'confidence', 'high'],
+      );
+    });
+
+    it('should skip backfill when all fields are undefined', async () => {
+      await store.backfillHash('session:hash', { skipped: undefined }, 172800);
+
+      expect(mockRedis.eval).not.toHaveBeenCalled();
     });
   });
 });

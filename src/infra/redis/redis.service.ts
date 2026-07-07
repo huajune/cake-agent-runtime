@@ -128,6 +128,25 @@ export class RedisService implements OnModuleInit {
     return this.redisClient.eval(script, this.withPrefixAll(keys), args);
   }
 
+  // ==================== Hash ====================
+
+  /** HSET 多个字段（值由客户端 JSON 序列化）。 */
+  async hset(key: string, fields: Record<string, unknown>): Promise<number> {
+    return this.redisClient.hset(this.withPrefix(key), fields);
+  }
+
+  /** HGETALL，key 不存在返回 null；各字段值由客户端 JSON 反序列化。 */
+  async hgetall<T extends Record<string, unknown> = Record<string, unknown>>(
+    key: string,
+  ): Promise<T | null> {
+    return this.redisClient.hgetall<T>(this.withPrefix(key));
+  }
+
+  /** HSETNX：仅当字段不存在时写入。返回 1=写入成功，0=字段已存在。 */
+  async hsetnx(key: string, field: string, value: unknown): Promise<number> {
+    return this.redisClient.hsetnx(this.withPrefix(key), field, value);
+  }
+
   // ==================== List ====================
 
   async rpush(key: string, ...values: unknown[]): Promise<number> {

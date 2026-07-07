@@ -95,6 +95,20 @@ export class SessionService {
   ) {}
 
   // ==================== store ====================
+  //
+  // 存储形态：Redis hash（factsv2:*），每个 top-level 字段一个 hash field。
+  //
+  // 为什么不是单 JSON blob：save* 的"读整份-改-写整份"在并发写入方之间互相覆盖
+  // （入站 fire-and-forget 的 recordCandidateActivity、复聊 processor 的
+  // saveTerminalState 与 worker 回合收尾不持同一把锁，P0 丢更新）。hash 形态下
+  // 每个 save* 只 HSET 自己的字段，跨字段并发写天然隔离。
+  //
+  // 同字段仍是 last-writer-wins：facts / presentedJobs / invitedGroups 的
+  // "读-合并-写"依赖 chat 处理锁串行（同一 chat 的回合收尾在锁释放前 await 落盘），
+  // 不持锁的写入方（activity/terminal）只碰各自独占的字段。
+  //
+  // 迁移：读时旧 blob（facts:*）与 hash 叠加（hash 字段优先），并用 HSETNX 把旧
+  // blob 惰性回填进 hash 后删除旧 key；回填不会覆盖迁移窗口内的新写入。
 
   async getSessionState(
     corpId: string,
@@ -102,10 +116,25 @@ export class SessionService {
     sessionId: string,
   ): Promise<WeworkSessionState> {
     // 这里统一返回完整的空态，避免调用方反复处理 null/undefined 的分支。
-    const key = this.buildKey(corpId, userId, sessionId);
-    const entry = await this.redisStore.get(key);
-    if (!entry) return { ...EMPTY_SESSION_STATE };
-    const parsed = SessionFactsRedisContentSchema.safeParse(entry.content ?? {});
+    const hashKey = this.buildHashKey(corpId, userId, sessionId);
+    const legacyKey = this.buildKey(corpId, userId, sessionId);
+    const [hashFields, legacyEntry] = await Promise.all([
+      this.redisStore.getHash(hashKey),
+      this.redisStore.get(legacyKey),
+    ]);
+
+    const legacyContent =
+      legacyEntry?.content && typeof legacyEntry.content === 'object'
+        ? (legacyEntry.content as Record<string, unknown>)
+        : null;
+    if (legacyContent) {
+      void this.migrateLegacyState(hashKey, legacyKey, legacyContent);
+    }
+
+    if (!hashFields && !legacyContent) return { ...EMPTY_SESSION_STATE };
+
+    const combined = { ...(legacyContent ?? {}), ...(hashFields ?? {}) };
+    const parsed = SessionFactsRedisContentSchema.safeParse(combined);
     if (!parsed.success) {
       this.logger.warn(
         `[getSessionState] Invalid session facts entry ignored: ${parsed.error.issues
@@ -125,8 +154,46 @@ export class SessionService {
     };
   }
 
+  /**
+   * 只写 patch 中的字段（HSET），其余字段不受影响。
+   * 所有 save* 必须经此出口写入，禁止回到"读整份-写整份"。
+   */
+  private async patchSessionState(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    patch: Partial<WeworkSessionState>,
+  ): Promise<void> {
+    const validated = this.serializeStateContent(patch) as Record<string, unknown>;
+    await this.redisStore.patchHash(
+      this.buildHashKey(corpId, userId, sessionId),
+      validated,
+      this.config.sessionTtl,
+    );
+  }
+
+  /** 旧版单 blob → hash 的惰性迁移（HSETNX 只补缺失字段，迁移后删旧 key）。 */
+  private async migrateLegacyState(
+    hashKey: string,
+    legacyKey: string,
+    legacyContent: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.redisStore.backfillHash(hashKey, legacyContent, this.config.sessionTtl);
+      await this.redisStore.del(legacyKey);
+      this.logger.log(`[getSessionState] 旧版 session blob 已迁移为 hash: ${legacyKey}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[getSessionState] 旧版 session blob 迁移失败（下次读取重试）: ${message}`);
+    }
+  }
+
   async clearSessionState(corpId: string, userId: string, sessionId: string): Promise<boolean> {
-    return await this.redisStore.del(this.buildKey(corpId, userId, sessionId));
+    const [hashDeleted, legacyDeleted] = await Promise.all([
+      this.redisStore.del(this.buildHashKey(corpId, userId, sessionId)),
+      this.redisStore.del(this.buildKey(corpId, userId, sessionId)),
+    ]);
+    return hashDeleted || legacyDeleted;
   }
 
   async getFacts(corpId: string, userId: string, sessionId: string): Promise<SessionFacts | null> {
@@ -162,7 +229,6 @@ export class SessionService {
     facts: EntityExtractionResult | SessionFacts,
     options?: { forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[] },
   ): Promise<void> {
-    const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
     const sessionFacts = this.ensureSessionFacts(facts);
     const baseMerge = state.facts
@@ -174,12 +240,7 @@ export class SessionService {
     );
     const mergedFacts = SessionFactsSchema.parse(forcedMerge) as SessionFacts;
 
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent({ ...state, facts: mergedFacts }) as Record<string, unknown>,
-      this.config.sessionTtl,
-      false,
-    );
+    await this.patchSessionState(corpId, userId, sessionId, { facts: mergedFacts });
   }
 
   private applyForceNullFields(
@@ -320,21 +381,10 @@ export class SessionService {
     sessionId: string,
     jobs: RecommendedJobSummary[],
   ): Promise<void> {
-    const key = this.buildKey(corpId, userId, sessionId);
-    const state = await this.getSessionState(corpId, userId, sessionId);
     const validatedJobs = jobs.map(
       (job) => RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary,
     );
-
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent({ ...state, lastCandidatePool: validatedJobs }) as Record<
-        string,
-        unknown
-      >,
-      this.config.sessionTtl,
-      false,
-    );
+    await this.patchSessionState(corpId, userId, sessionId, { lastCandidatePool: validatedJobs });
   }
 
   async savePresentedJobs(
@@ -345,7 +395,6 @@ export class SessionService {
   ): Promise<void> {
     if (jobs.length === 0) return;
 
-    const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
     const validatedJobs = jobs.map(
       (job) => RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary,
@@ -354,15 +403,9 @@ export class SessionService {
       (job, index, arr) => arr.findIndex((item) => item.jobId === job.jobId) === index,
     );
 
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent({ ...state, presentedJobs: merged.slice(0, 10) }) as Record<
-        string,
-        unknown
-      >,
-      this.config.sessionTtl,
-      false,
-    );
+    await this.patchSessionState(corpId, userId, sessionId, {
+      presentedJobs: merged.slice(0, 10),
+    });
   }
 
   async saveCurrentFocusJob(
@@ -371,21 +414,10 @@ export class SessionService {
     sessionId: string,
     job: RecommendedJobSummary | null,
   ): Promise<void> {
-    const key = this.buildKey(corpId, userId, sessionId);
-    const state = await this.getSessionState(corpId, userId, sessionId);
     const validatedJob = job
       ? (RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary)
       : null;
-
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent({ ...state, currentFocusJob: validatedJob }) as Record<
-        string,
-        unknown
-      >,
-      this.config.sessionTtl,
-      false,
-    );
+    await this.patchSessionState(corpId, userId, sessionId, { currentFocusJob: validatedJob });
   }
 
   async saveInvitedGroup(
@@ -394,7 +426,6 @@ export class SessionService {
     sessionId: string,
     record: InvitedGroupRecord,
   ): Promise<void> {
-    const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
     const validated = InvitedGroupRecordSchema.parse(record) as InvitedGroupRecord;
     const existing = state.invitedGroups ?? [];
@@ -403,12 +434,7 @@ export class SessionService {
       (g, i, arr) => arr.findIndex((item) => item.groupName === g.groupName) === i,
     );
 
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent({ ...state, invitedGroups: merged }) as Record<string, unknown>,
-      this.config.sessionTtl,
-      false,
-    );
+    await this.patchSessionState(corpId, userId, sessionId, { invitedGroups: merged });
   }
 
   /**
@@ -421,18 +447,7 @@ export class SessionService {
     sessionId: string,
     terminal: AuthoritativeSessionState['terminal'],
   ): Promise<void> {
-    const key = this.buildKey(corpId, userId, sessionId);
-    const state = await this.getSessionState(corpId, userId, sessionId);
-
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent({ ...state, terminal: terminal ?? null }) as Record<
-        string,
-        unknown
-      >,
-      this.config.sessionTtl,
-      false,
-    );
+    await this.patchSessionState(corpId, userId, sessionId, { terminal: terminal ?? null });
     this.logger.log(
       `[saveTerminalState] terminal=${terminal ?? '-'} corpId=${corpId} userId=${userId} sessionId=${sessionId}`,
     );
@@ -448,18 +463,9 @@ export class SessionService {
     sessionId: string,
     at: Date = new Date(),
   ): Promise<void> {
-    const key = this.buildKey(corpId, userId, sessionId);
-    const state = await this.getSessionState(corpId, userId, sessionId);
-
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent({
-        ...state,
-        lastCandidateMessageAt: at.toISOString(),
-      }) as Record<string, unknown>,
-      this.config.sessionTtl,
-      false,
-    );
+    await this.patchSessionState(corpId, userId, sessionId, {
+      lastCandidateMessageAt: at.toISOString(),
+    });
   }
 
   // ==================== projection ====================
@@ -1038,8 +1044,14 @@ export class SessionService {
     };
   }
 
+  /** 旧版单 blob key（只读 + 迁移删除，禁止新写入）。 */
   private buildKey(corpId: string, userId: string, sessionId: string): string {
     return `facts:${corpId}:${userId}:${sessionId}`;
+  }
+
+  /** hash 形态的 session state key（所有写入的唯一目标）。 */
+  private buildHashKey(corpId: string, userId: string, sessionId: string): string {
+    return `factsv2:${corpId}:${userId}:${sessionId}`;
   }
 
   private serializeStateContent(content: Partial<WeworkSessionState>): Partial<WeworkSessionState> {

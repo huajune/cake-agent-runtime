@@ -92,7 +92,7 @@ agent_long_term_memories 加一列：latest_booking jsonb
 | `ops_events` | **新建** | 事件底账：append-only，所有事件原始记录 + idempotency_key |
 | `daily_ops_report` | **新建** | 每日每 bot 12 列事件计数（**从 ops_events 投影出来**）|
 | `handoff_events` | **新建** | Handoff 触发分析底账（11 字段，含 stage / reason_code）|
-| `recruitment_cases` | **废弃** | 不删表、不迁数据、标记 @deprecated |
+| `recruitment_cases` | **已删除** | 原计划"不删表、标记 @deprecated"，最终已于 2026-06-10 整表删除（迁移 `20260610170000_drop_recruitment_cases.sql`），代码同步移除 |
 
 ### 3.2 latest_booking 字段
 
@@ -974,7 +974,7 @@ P2-3. 测试 + 废弃标记 recruitment_cases
 |------|------|
 | 海绵 API 挂了 Agent 上下文无法渲染 | Redis 5min 缓存兜底；若仍失败按"海绵不会挂"假设处理 |
 | latest_booking 永不清空，候选人入职后还有指针 | Agent 上下文渲染时通过 currentStatus 区分对待（已上岗就不显示"待面试"提示）|
-| recruitment_cases 历史数据不迁移 | 标记 @deprecated 但保留表，查历史走老表 |
+| recruitment_cases 历史数据不迁移 | ~~标记 @deprecated 但保留表，查历史走老表~~ 最终已整表删除（2026-06-10，迁移 `20260610170000`），历史查询走海绵工单 / `ops_events` |
 | handoff_events 没有"已解决"状态 | 如后续需要追踪闭环，反查 user_pauses 表"暂停超 N 天未恢复"的用户 |
 | 海绵 15min cron 调用量大 | 仅扫近 30 天 `ops_events.booking.succeeded` 工单，按 workOrderId 精确查；可加 PG WHERE 过滤终态工单（已 hired/已离职跳过）|
 | 飞书 bitable 新增"邀请进群数"列依赖运营操作 | 运营在飞书表上加好后再上线 sync 逻辑 |

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
+import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
 import { GeocodeCandidate, GeocodeResult } from './geocoding.types';
 import {
   classifyGeocodeQuery,
@@ -174,7 +175,7 @@ export class GeocodingService {
         params.set('citylimit', 'true');
       }
 
-      const response = await fetch(`${AMAP_PLACE_API}?${params}`);
+      const response = await fetchWithTimeout(`${AMAP_PLACE_API}?${params}`);
       if (!response.ok) {
         this.logger.warn(`高德 POI 多候选 HTTP 失败: ${response.status}`);
         return [];
@@ -283,7 +284,7 @@ export class GeocodingService {
         params.set('citylimit', 'true'); // 限定城市，避免跨城市误匹配
       }
 
-      const response = await fetch(`${AMAP_PLACE_API}?${params}`);
+      const response = await fetchWithTimeout(`${AMAP_PLACE_API}?${params}`);
       if (!response.ok) {
         this.logger.warn(`高德 POI 搜索 HTTP 失败: ${response.status}`);
         return null;
@@ -343,7 +344,7 @@ export class GeocodingService {
       });
       if (city) params.set('city', city);
 
-      const response = await fetch(`${AMAP_GEOCODE_API}?${params}`);
+      const response = await fetchWithTimeout(`${AMAP_GEOCODE_API}?${params}`);
       if (!response.ok) {
         this.logger.warn(`高德 geocode HTTP 失败: ${response.status}`);
         return null;

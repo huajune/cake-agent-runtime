@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
 import { BIOrderQueryParams, BIOrder, BI_FIELD_NAMES, BI_FILTER_TYPES } from './sponge.types';
 
 const BI_PAGE_LIMIT = 200;
@@ -99,7 +100,7 @@ export class SpongeBiService {
         return false;
       }
       const url = `${this.biBaseUrl}/data-source/${this.biRefreshSourceId}/refresh?token=${refreshToken}`;
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: 'GET',
         headers: { Accept: 'application/json' },
       });
@@ -189,7 +190,7 @@ export class SpongeBiService {
     for (let page = 0; page < BI_MAX_PAGES; page++) {
       this.logger.debug(`[BI] 获取第 ${page + 1} 页数据 (offset: ${offset})...`);
 
-      const response = await fetch(`${this.biBaseUrl}/card/${this.biCardId}/data`, {
+      const response = await fetchWithTimeout(`${this.biBaseUrl}/card/${this.biCardId}/data`, {
         method: 'POST',
         headers: { 'X-Auth-Token': token, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -286,7 +287,7 @@ export class SpongeBiService {
   }
 
   private async doGetBIToken(loginId: string, password: string): Promise<string> {
-    const resp = await fetch(`${this.biBaseUrl}/sign-in`, {
+    const resp = await fetchWithTimeout(`${this.biBaseUrl}/sign-in`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain: 'guanbi', loginId, password }),

@@ -9,7 +9,6 @@ import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { DeliveryContext, AgentInvokeResult } from '../types';
@@ -22,6 +21,7 @@ import { WecomMessageObservabilityService } from '../telemetry/wecom-message-obs
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { ImageDescriptionService } from './image-description.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 
@@ -78,6 +78,7 @@ export class ReplyWorkflowService {
     private readonly outcomeFinalizer: TurnOutcomeInterventionService,
     private readonly followUpScheduler: FollowUpSchedulerService,
     private readonly reengagementAnchors: ReengagementAnchorService,
+    private readonly alertNotifier: AlertNotifierService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -487,6 +488,11 @@ export class ReplyWorkflowService {
    *
    * 任何上游异常未走到这里 → 不 ack → pending 保留 → Bull stalled retry 时新 worker 仍能
    * 拿到完整数据继续处理（修复发版 SIGKILL 中断 agent 后候选人消息被吞的问题）。
+   *
+   * ack 本身失败（simple-merge 内已重试 3 次仍失败）不能让本轮整体失败——回复已发出，
+   * 抛错触发 Bull retry 会给候选人再发一遍。但也不能只打日志：滞留的 pending 会被下一个
+   * job 并进新批次造成重复回复，必须以飞书告警形式暴露给运维人工介入（清理该 chat 的
+   * pending list 或等 5 分钟 TTL 自然过期，期间关注该会话是否产生重复回复）。
    */
   private async ackPendingIfMerged(chatId: string, count: number): Promise<void> {
     if (count <= 0) return;
@@ -494,9 +500,18 @@ export class ReplyWorkflowService {
       await this.simpleMergeService.ackPendingMessages(chatId, count);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      // ack 失败不应让本轮整体失败——回复已发出，最坏情况是 Bull retry 时再处理一次相同
-      // 数据并产生重复回复，监控里会观察到。这里只记日志，避免抛错触发 retry。
-      this.logger.warn(`[${chatId}] ack pending 失败（${count} 条）: ${errorMessage}`);
+      this.logger.error(
+        `[${chatId}] ack pending 最终失败（${count} 条），已发告警: ${errorMessage}`,
+      );
+      void this.alertNotifier
+        .sendSimpleAlert(
+          '消息 pending ack 失败，存在重复回复风险',
+          `chatId=${chatId} 的 ${count} 条已处理消息未能从 pending 队列裁掉（Redis LTRIM 重试 3 次仍失败）。` +
+            `这些消息会在 5 分钟 TTL 内被下一个任务并进新批次、可能触发重复回复。` +
+            `错误: ${errorMessage}`,
+          'error',
+        )
+        .catch(() => {});
     }
   }
 
@@ -695,7 +710,7 @@ export class ReplyWorkflowService {
       });
 
       const processingTime = Date.now() - startTime;
-      const content = this.normalizeContent(outcome.reply?.text ?? outcome.generatedText ?? '');
+      const content = outcome.reply?.text ?? outcome.generatedText ?? '';
       const isSkipped = outcome.kind !== 'reply';
       const guardrailBlocked: AgentInvokeResult['guardrailBlocked'] =
         outcome.kind === 'guardrail_blocked' ? outcome.guardrail : undefined;
@@ -771,17 +786,6 @@ export class ReplyWorkflowService {
       return message._receivedAtMs;
     }
     return undefined;
-  }
-
-  private normalizeContent(rawContent: string): string {
-    if (ReplyNormalizer.needsNormalization(rawContent)) {
-      const normalized = ReplyNormalizer.normalize(rawContent);
-      this.logger.debug(
-        `[ReplyNormalizer] 已清洗回复: "${rawContent.substring(0, 50)}..." → "${normalized.substring(0, 50)}..."`,
-      );
-      return normalized;
-    }
-    return rawContent;
   }
 
   private resolveAgentUserId(

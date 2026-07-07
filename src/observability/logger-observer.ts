@@ -11,11 +11,13 @@ export class LoggerObserver implements Observer {
   emit(event: AgentEvent): void {
     switch (event.type) {
       case 'agent_start':
-        this.logger.log(`Agent开始: userId=${event.userId}, scenario=${event.scenario}`);
+        this.logger.log(
+          `Agent开始: trace=${event.traceId ?? '-'}, userId=${event.userId}, scenario=${event.scenario}`,
+        );
         break;
       case 'agent_end':
         this.logger.log(
-          `Agent完成: userId=${event.userId}, steps=${event.steps}, ` +
+          `Agent完成: trace=${event.traceId ?? '-'}, userId=${event.userId}, steps=${event.steps}, ` +
             `tokens=${event.totalTokens}, 耗时=${event.durationMs}ms`,
         );
         break;
@@ -31,16 +33,25 @@ export class LoggerObserver implements Observer {
         );
         break;
       case 'agent_error':
-        this.logger.error(`Agent错误: userId=${event.userId}, ${event.error}`);
+        this.logger.error(
+          `Agent错误: trace=${event.traceId ?? '-'}, userId=${event.userId}, ${event.error}`,
+        );
+        break;
+      case 'model_call':
+        this.logger.debug(`模型调用: ${event.modelId} (role=${event.role})`);
         break;
       case 'model_fallback':
         this.logger.warn(`模型降级: ${event.fromModel} → ${event.toModel} (${event.reason})`);
         break;
       case 'tool_call':
-        this.logger.debug(`工具调用: ${event.toolName} (userId=${event.userId})`);
+        this.logger.debug(
+          `工具调用: ${event.toolName} (trace=${event.traceId ?? '-'}, duration=${event.durationMs ?? -1}ms, status=${event.status ?? '-'})`,
+        );
         break;
       case 'tool_error':
-        this.logger.error(`工具错误: ${event.toolName}: ${event.error}`);
+        this.logger.error(
+          `工具错误: ${event.toolName} (trace=${event.traceId ?? '-'}): ${event.error}`,
+        );
         break;
       case 'memory_recall':
         this.logger.debug(`记忆回忆: userId=${event.userId}, found=${event.found}`);

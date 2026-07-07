@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RoomService } from '@channels/wecom/room/room.service';
+import { GROUP_ROOM_QUERY, type GroupRoomQuery } from '../providers/group-channel.provider';
 import { RedisService } from '@infra/redis/redis.service';
 
 /**
@@ -49,7 +49,7 @@ export class GroupMembershipService {
 
   constructor(
     private readonly redisService: RedisService,
-    private readonly roomService: RoomService,
+    @Inject(GROUP_ROOM_QUERY) private readonly roomService: GroupRoomQuery,
     configService: ConfigService,
   ) {
     this.enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || null;

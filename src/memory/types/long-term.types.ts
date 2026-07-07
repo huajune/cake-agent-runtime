@@ -1,3 +1,4 @@
+import { FACT_CONFIDENCE_RANK, type FactConfidence } from './confidence-rank';
 /** 用户身份信息 — 长期记忆 Profile，跨会话复用 */
 export interface UserProfile {
   name: string | null;
@@ -22,7 +23,7 @@ export const USER_PROFILE_FIELD_KEYS = [
 export type UserProfileFieldKey = (typeof USER_PROFILE_FIELD_KEYS)[number];
 export type UserProfileFieldValue<K extends UserProfileFieldKey> = NonNullable<UserProfile[K]>;
 
-export type ProfileFactConfidence = 'high' | 'medium' | 'low' | 'unknown';
+export type ProfileFactConfidence = FactConfidence;
 export type ProfileFactSource =
   | 'candidate'
   | 'llm'
@@ -80,12 +81,8 @@ export type UserProfileFacts = {
   [K in UserProfileFieldKey]: UserProfileFactMaybeValue<UserProfileFieldValue<K>>;
 };
 
-const PROFILE_CONFIDENCE_RANK: Record<ProfileFactConfidence, number> = {
-  unknown: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-};
+// 权威定义见 confidence-rank.ts（与会话层共用；DB RPC long_term_profile_confidence_rank 为其 SQL 镜像）。
+const PROFILE_CONFIDENCE_RANK = FACT_CONFIDENCE_RANK;
 
 export function isUserProfileFieldKey(value: string): value is UserProfileFieldKey {
   return (USER_PROFILE_FIELD_KEYS as readonly string[]).includes(value);
