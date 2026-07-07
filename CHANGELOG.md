@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [7.0.0] - 2026-07-07
 
-**预计版本**: `v7.0.0`
-**最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #450 降低语义护栏 shadow 误报
@@ -52,7 +48,6 @@
 - PR #450 `pnpm jest tests/agent/guardrail/output --watchman=false`
 - PR #450 `pnpm run build`
 - PR #450 pre-push `pnpm run ci:check` passed: lint, format, typecheck, build:ci, test:ci
-<!-- release:pending:end -->
 
 ## [6.0.0] - 2026-07-07
 
