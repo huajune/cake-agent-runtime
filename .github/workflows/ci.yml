@@ -11,6 +11,12 @@ on:
   # bot 分支，使检查落在 PR head SHA 上（v5.13.1 发版只能靠人工 close/reopen）。
   workflow_dispatch:
 
+# 同一分支的新 run 开始时取消旧 run：bot 元数据分支每轮都从 develop 重建并
+# force-push，旧 SHA 上的检查已无意义（v8.0.0 发版实测同分支 3 连跑全部跑完）。
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
