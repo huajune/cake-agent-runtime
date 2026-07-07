@@ -16,7 +16,10 @@ import { GROUP_MESSAGE_SENDER } from '@biz/group-task/providers/group-channel.pr
 @Module({
   imports: [HttpModule, ApiConfigModule],
   controllers: [MessageSenderController],
-  providers: [MessageSenderService, { provide: GROUP_MESSAGE_SENDER, useExisting: MessageSenderService }],
+  providers: [
+    MessageSenderService,
+    { provide: GROUP_MESSAGE_SENDER, useExisting: MessageSenderService },
+  ],
   exports: [MessageSenderService, GROUP_MESSAGE_SENDER],
 })
 export class MessageSenderModule {}
