@@ -477,6 +477,17 @@ describe('FollowUpProcessor', () => {
           outcomeKind: 'reply',
           generatedText: '还在考虑吗？',
           reason: 'shadow_mode',
+          batchId: expect.stringMatching(/^batch_sess-1_\d+$/),
+        }),
+      );
+      expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'sess-1',
+          status: 'success',
+          scenario: 'reengagement:opening_no_reply',
+          messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
+          batchId: expect.stringMatching(/^batch_sess-1_\d+$/),
+          replyPreview: '还在考虑吗？',
         }),
       );
     });
