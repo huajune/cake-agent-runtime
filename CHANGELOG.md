@@ -8,6 +8,87 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v8.0.0`
+**最近更新**: `2026-07-07`
+**来源分支**: `develop`
+**累计 PR**: 3
+
+### 更新摘要
+- PR #455 删除 ReliableService 未使用的私有 sleep 方法
+- PR #455 消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭
+- PR #455 session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新
+- PR #455 所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环
+- PR #455 统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入
+- PR #455 消除 biz→channels 反向依赖 + 配置传播间隔收敛
+- PR #455 prettier 格式化 message-sender.module
+- PR #455 补齐可靠性 review 修复
+- PR #455 架构评估修复——消息管道可靠性、记忆并发安全、工具超时与依赖治理
+- PR #456 降低语义护栏 shadow 误报
+- PR #456 接入 Agent 执行事件观测
+- PR #456 补齐 agent 执行观测单测
+- PR #456 Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.
+- PR #456 Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.
+- PR #456 Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.
+- PR #456 Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure.
+- PR #456 Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.
+- PR #457 在 runner 出口清洗出站回复
+- PR #457 Moved deterministic outbound reply cleanup into the agent runner outcome path.
+- PR #457 Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.
+- PR #457 Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.
+- PR #457 Kept list/numbered-list content intact so missing-field questions no longer become “可以选”.
+
+### 新功能
+- PR #456 Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.
+- PR #456 Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.
+- PR #456 Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.
+- PR #456 接入 Agent 执行事件观测
+
+### 问题修复
+- PR #455 补齐可靠性 review 修复
+- PR #456 Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.
+- PR #456 Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure.
+- PR #457 Moved deterministic outbound reply cleanup into the agent runner outcome path.
+- PR #457 Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.
+- PR #457 Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.
+- PR #457 Kept list/numbered-list content intact so missing-field questions no longer become “可以选”.
+
+### 优化调整
+- PR #455 session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新
+- PR #455 消除 biz→channels 反向依赖 + 配置传播间隔收敛
+
+### 运维与流程
+- PR #455 删除 ReliableService 未使用的私有 sleep 方法
+- PR #455 消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭
+- PR #455 所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环
+- PR #455 统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入
+- PR #455 prettier 格式化 message-sender.module
+- PR #456 降低语义护栏 shadow 误报
+- PR #456 补齐 agent 执行观测单测
+- PR #457 在 runner 出口清洗出站回复
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #455 全量 320 测试套件 / 4639 用例全绿（含 wecom 消息 65、memory 510、group-task 218）
+- PR #455 AppModule 装配 smoke 通过（@Global 令牌绑定后 DI 图完整）
+- PR #455 tsc / eslint 干净
+- PR #455 迁移已应用测试库（gaovfitvetoojkvtalxy）并用 supabase-js 实调验证后清理测试数据
+- PR #456 `./node_modules/.bin/tsc --noEmit --pretty false`
+- PR #456 `./node_modules/.bin/jest -c jest.di-smoke.config.ts --watchman=false --forceExit`
+- PR #456 `./node_modules/.bin/jest tests/biz/monitoring/services/cleanup/data-cleanup.service.spec.ts tests/agent/runner/agent-runner.service.spec.ts tests/agent/generator/preparation.service.spec.ts tests/llm/llm-executor.service.spec.ts --runInBand --watchman=false`
+- PR #456 `./node_modules/.bin/jest tests/tools/duliday/enterprise-room-count.util.spec.ts --runInBand --watchman=false`
+- PR #457 `jest tests/agent/guardrail/output/outbound-reply-sanitizer.spec.ts tests/agent/runner/agent-runner.service.spec.ts --runInBand --watchman=false`
+- PR #457 `tsc --noEmit --pretty false`
+- PR #457 Full pre-push `ci:check` passed: lint, format, typecheck, web build, backend build, and full Jest coverage run.
+<!-- release:pending:end -->
+
 ## [7.0.0] - 2026-07-07
 
 **来源分支**: `develop`
