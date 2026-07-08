@@ -117,6 +117,26 @@ describe('RouterService', () => {
         '角色 "extract" 未配置模型 (AGENT_EXTRACT_MODEL)',
       );
     });
+
+    it('should promote the default fallback chain when the role primary model is missing', () => {
+      env.AGENT_DEFAULT_FALLBACKS =
+        'moonshotai/kimi-k2.6, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+
+      expect(service.getRouteByRole(ModelRole.Repair)).toEqual({
+        modelId: 'moonshotai/kimi-k2.6',
+        fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
+      });
+    });
+
+    it('should promote role-specific fallbacks before default fallbacks when primary is missing', () => {
+      env.AGENT_DEFAULT_FALLBACKS = 'moonshotai/kimi-k2.6';
+      env.AGENT_REPAIR_FALLBACKS = 'anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+
+      expect(service.getRouteByRole(ModelRole.Repair)).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['deepseek/deepseek-v4-flash'],
+      });
+    });
   });
 
   describe('resolveRoute', () => {
@@ -161,6 +181,28 @@ describe('RouterService', () => {
       ).toEqual({
         modelId: 'openai/gpt-4o-mini',
         fallbacks: undefined,
+      });
+    });
+
+    it('should resolve an unconfigured role through the default fallback chain', () => {
+      env.AGENT_DEFAULT_FALLBACKS =
+        'moonshotai/kimi-k2.6, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+
+      expect(service.resolveRoute({ role: ModelRole.Repair })).toEqual({
+        modelId: 'moonshotai/kimi-k2.6',
+        fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
+      });
+    });
+
+    it('should keep explicit fallbacks when resolving an unconfigured role', () => {
+      expect(
+        service.resolveRoute({
+          role: ModelRole.Repair,
+          fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
+        }),
+      ).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['deepseek/deepseek-v4-flash'],
       });
     });
   });

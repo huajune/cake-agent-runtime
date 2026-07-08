@@ -7,7 +7,43 @@ import {
 import type { GuardrailReviewRecord, GuardrailReviewStepDetail } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
+function normalizeReviewText(text: string) {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+function shouldShowStepFeedback(step: GuardrailReviewStepDetail) {
+  const feedback = step.feedback?.trim();
+  if (!feedback) return false;
+
+  const normalizedSuggestions = step.violations
+    .map((violation) => violation.suggestion?.trim())
+    .filter((suggestion): suggestion is string => Boolean(suggestion))
+    .map(normalizeReviewText);
+  if (normalizedSuggestions.length === 0) return true;
+
+  const suggestionSet = new Set(normalizedSuggestions);
+  const normalizedFeedback = normalizeReviewText(feedback);
+  if (suggestionSet.has(normalizedFeedback)) return false;
+
+  const feedbackLines = feedback
+    .split('\n')
+    .map(normalizeReviewText)
+    .filter(Boolean);
+  if (feedbackLines.length > 0 && feedbackLines.every((line) => suggestionSet.has(line))) {
+    return false;
+  }
+
+  return normalizeReviewText(
+    step.violations
+      .map((violation) => violation.suggestion?.trim())
+      .filter(Boolean)
+      .join('\n'),
+  ) !== normalizedFeedback;
+}
+
 function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
+  const showFeedback = shouldShowStepFeedback(step);
+
   return (
     <>
       {step.ruleIds.length > 0 && (
@@ -45,7 +81,7 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
           ))}
         </div>
       )}
-      {step.feedback && (
+      {showFeedback && step.feedback && (
         <div className={styles.feedback}>
           <span className={styles.violationLabel}>重写反馈</span>
           <span className={styles.violationContent}>{step.feedback}</span>
