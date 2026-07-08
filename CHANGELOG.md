@@ -8,6 +8,67 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.0.1`
+**最近更新**: `2026-07-08`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #476 版本号规则改回标准语义化版本
+- PR #476 版本号计算规则改回标准语义化版本：`feat:` 升 minor 而非 major，修复"很小的改动也跳大版本"的问题（两天内 v6→v7→v8 连跳三个大版本）
+- PR #477 改进复聊质量守卫和观测
+- PR #477 改进复聊 shadow 调研沉淀，补齐问题清单与修复方案，明确真发放开门槛。
+- PR #477 调整出站 guardrail 治理策略：将部分高误杀规则降为 observe，并为区级距离精确口径增加确定性 transform。
+- PR #477 补齐复聊主动回合的生成请求、耗时、投递结果等观测字段，方便线上追溯排障。
+
+### 新功能
+- PR #477 新增出站输出 transform 机制，当前支持将区/市级粗定位下的精确公里数改写为估算口径，并在二审通过后直接投递。
+- PR #477 新增复聊质量调研、修复方案与问题样本数据文档。
+
+### 问题修复
+- PR #476 `scripts/update-version-changelog.js` 旧口径：`feat:` → major+1（"业务新能力直接进下一大版本"）、`perf:`/`refactor:` → minor+1。只要发版批次里混进一个小 feat 就升大版本
+- PR #476 新规则（标准 Conventional Commits / semver）：
+- PR #476 `BREAKING CHANGE` / `type!:` → major+1
+- PR #476 `feat:` → minor+1
+- PR #476 其余有效提交（`fix:`/`perf:`/`refactor:`/`docs:` 等）→ patch+1
+- PR #476 CLAUDE.md 的 Git Commit Convention 本来写的就是 `feat → minor+1`，是脚本实现偏离了文档
+- PR #476 每轮 prepare 会从上一个 tag 重算 `nextVersion`（覆盖式），本 PR 合并后下一轮自动纠正，无需手工回调版本号
+- PR #476 版本号计算规则改回标准语义化版本：`feat:` 升 minor 而非 major，修复"很小的改动也跳大版本"的问题（两天内 v6→v7→v8 连跳三个大版本）
+- PR #477 修复 Guardrail Repair Writer 在禁用工具修复场景下仍可能输出工具调用/JSON/标签式内容的问题。
+- PR #477 降低保险、等通知时间收集、到店自报家门脚本缺失、模糊地名澄清、岗位职责泛化、远店推荐等规则在高误杀场景下的投递阻断风险。
+- PR #477 修复修复产物不可用或二次触发内部输出泄漏时的收敛策略，低风险可恢复问题优先 fail-open 到首版回复。
+- PR #477 修复系统状态编造规则误拦真实副作用工具失败说明的问题。
+- PR #477 改进复聊 shadow 调研沉淀，补齐问题清单与修复方案，明确真发放开门槛。
+- PR #477 调整出站 guardrail 治理策略：将部分高误杀规则降为 observe，并为区级距离精确口径增加确定性 transform。
+- PR #477 补齐复聊主动回合的生成请求、耗时、投递结果等观测字段，方便线上追溯排障。
+
+### 优化调整
+- PR #477 复聊主动回合落库记录补充 agentInvocation、tokenUsage、timings、deliveryResult 等追踪信息。
+- PR #477 新增辛瑜琦/瑜琦组的 bot 分组与飞书接收人映射。
+- PR #477 输出规则目录补充准入治理说明和 transform repair strategy 元数据。
+
+### 运维与流程
+- PR #476 同步更新 `tests/scripts/update-version-changelog.spec.ts` 与 `docs/workflows/version-release-guide.md`（保留历史口径变更说明）
+- PR #476 版本号规则改回标准语义化版本
+- PR #477 改进复聊质量守卫和观测
+
+### 配置变更
+- PR #477 新增 botImId `1688855468965879` 到瑜琦组/辛瑜琦飞书接收人映射。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #476 新规则本地断言全过：breaking / feat / fix / perf / refactor / docs / 混合批次（feat+fix 取 minor）/ skip 提交忽略等用例
+- PR #477 `pnpm exec jest tests/agent/generator/preparation.service.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts tests/agent/reengagement/follow-up.processor.spec.ts tests/agent/runner/agent-runner.service.spec.ts tests/biz/ops-events/services/bot-group-resolver.service.spec.ts tests/infra/feishu/receivers.spec.ts --watchman=false`
+- PR #477 `pnpm run ci:check`
+- PR #477 pre-push hook 自动执行 `pnpm run ci:check`
+- PR #477 其他说明：Jest coverage 阶段提示一个 worker 未优雅退出，但命令退出码为 0；日志中的 ERROR/WARN 来自测试用例模拟失败场景。
+<!-- release:pending:end -->
+
 ## [10.0.0] - 2026-07-08
 
 **来源分支**: `develop`
