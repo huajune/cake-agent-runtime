@@ -363,12 +363,10 @@ function analyzeReleaseLevel(commits) {
       return 'major';
     }
 
+    // 标准语义化版本：feat → minor，其余有效提交（fix/perf/refactor/docs/chore 等）
+    // → patch。旧口径 feat → major 导致混入一个小 feat 就跳大版本（v6→v7→v8）。
     if (/^feat(?:\(.+?\))?:/i.test(commit.subject)) {
-      return 'major';
-    }
-
-    if (/^(?:perf|refactor)(?:\(.+?\))?:/i.test(commit.subject)) {
-      level = level === 'major' ? level : 'minor';
+      level = 'minor';
       continue;
     }
 
