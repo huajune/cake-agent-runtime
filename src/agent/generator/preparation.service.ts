@@ -447,6 +447,10 @@ export class PreparationService {
     const repair = params.guardrailRepair;
     if (repair) {
       const feedback = repair.feedbackToGenerator?.trim();
+      const noToolRepairConstraint =
+        params.toolMode === 'none'
+          ? '\n- 本次修复不能调用任何工具。不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签；只输出发给候选人的纯中文文本。如果你认为需要重新查询才能回答，不要尝试查询，改为向候选人自然确认信息或告知稍后跟进。'
+          : '';
       parts.push(
         `本次是 Guardrail Repair Writer 模式。上一版候选人可见回复已被丢弃，原文如下：\n` +
           `"""${repair.originalReply.slice(0, 1200)}"""\n` +
@@ -455,6 +459,7 @@ export class PreparationService {
           `- 不提“规则/守卫/拦截/系统/工具/模型”。\n` +
           `- 不输出分析过程，不输出 JSON，不输出多方案。\n` +
           `- 命中规则：${repair.ruleIds.length > 0 ? repair.ruleIds.join('、') : '未提供'}。` +
+          noToolRepairConstraint +
           (feedback ? `\n- 聚合修复要求：${feedback}` : ''),
       );
     }
@@ -465,12 +470,17 @@ export class PreparationService {
           `- [${v.type}] ${v.feedbackPolicy === 'redacted' ? '证据已脱敏' : `问题：${v.evidence}`}；修复要求：${v.suggestion}`,
       );
       const hasReplan = params.reviseFeedback.some((v) => v.repairMode === 'replan');
+      const noToolRepairConstraint =
+        params.toolMode === 'none'
+          ? '本次修复不能调用任何工具。不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签——只输出发给候选人的纯中文文本。如果你认为需要重新查询才能回答，不要尝试查询，改为向候选人自然确认信息或告知稍后跟进。'
+          : '';
       parts.push(
         `上一版回复不可发送，存在以下需修正的问题。请只针对这些问题生成一版新的候选人可见回复，` +
           `不要解释或提到出站守卫/规则/拦截，不要复述高敏感条件，不要新增未接地承诺。` +
           (hasReplan
             ? `本次允许使用只读工具重新获取事实；严禁执行报名、拉群、取消、改期、发定位等副作用工具。`
             : `本次只做文案修复，严禁调用工具。`) +
+          noToolRepairConstraint +
           `\n${lines.join('\n')}`,
       );
     }

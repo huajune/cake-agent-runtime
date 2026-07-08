@@ -39,6 +39,22 @@ const INTERVIEW_DONE_STATUSES = new Set(['面试成功', '面试失败', '上岗
 /** 改期比对容差：active_booking.interview_time 与排程冻结时间差超过 1 分钟视为已改约。 */
 const INTERVIEW_TIME_DRIFT_TOLERANCE_MS = 60_000;
 
+interface ProactiveTurnExecution {
+  outcome: TurnOutcome;
+  agentRequest?: Record<string, unknown>;
+  aiStartAt: number;
+  aiEndAt: number;
+}
+
+interface ProactiveDeliveryResult {
+  success: boolean;
+  segmentCount: number;
+  failedSegments: number;
+  deliveredSegments?: number;
+  totalTime: number;
+  error?: string;
+}
+
 /**
  * 复聊 TaskProcessor：到点 → 代码校验停止条件 → 复用 runner（继承 guardrail/记忆/观测）→ 投递。
  *
@@ -171,7 +187,8 @@ export class FollowUpProcessor implements OnModuleInit {
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
       const batchId = `batch_${sessionRef.sessionId}_${now}`;
-      const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
+      const execution = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
+      const { outcome } = execution;
       this.logger.log(
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
           `text="${outcome.kind === 'reply' ? outcome.reply?.text.slice(0, 60) : `[${outcome.kind}]`}"` +
@@ -199,6 +216,15 @@ export class FollowUpProcessor implements OnModuleInit {
           replyPreview:
             outcome.generatedText ?? (outcome.kind === 'reply' ? outcome.reply?.text : undefined),
           channelIdentity,
+          execution,
+          completedAt: Date.now(),
+          deliveryResult: {
+            success: true,
+            segmentCount: 0,
+            failedSegments: 0,
+            deliveredSegments: 0,
+            totalTime: 0,
+          },
         }),
       );
       if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
@@ -223,7 +249,8 @@ export class FollowUpProcessor implements OnModuleInit {
     // 投递路径的主动回合在消息处理流水落一行（message_id = batchId），
     // 追溯页凭触达记录上的 batch_id 直接跳到该回合的完整生成轨迹。
     const batchId = `batch_${sessionRef.sessionId}_${now}`;
-    const outcome = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
+    const execution = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
+    const { outcome } = execution;
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
@@ -239,6 +266,15 @@ export class FollowUpProcessor implements OnModuleInit {
           status: 'success',
           replyPreview: `[未投递:${outcome.kind}]`,
           channelIdentity,
+          execution,
+          completedAt: Date.now(),
+          deliveryResult: {
+            success: true,
+            segmentCount: 0,
+            failedSegments: 0,
+            deliveredSegments: 0,
+            totalTime: 0,
+          },
         }),
       );
       await this.outcomeFinalizer.commit(outcome, {
@@ -252,7 +288,7 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    await this.outboxDeliverReserved(outcome, key, sessionRef.sessionId, now, identity, batchId);
+    await this.outboxDeliverReserved(execution, key, sessionRef.sessionId, now, identity, batchId);
   }
 
   /**
@@ -381,19 +417,34 @@ export class FollowUpProcessor implements OnModuleInit {
     }
   }
 
-  private runProactiveTurn(
+  private async runProactiveTurn(
     sessionRef: FollowUpJob['sessionRef'],
     scenarioCode: string,
     scenario: NonNullable<ReturnType<typeof getScenario>>,
     messageId?: string,
-  ): Promise<TurnOutcome> {
+  ): Promise<ProactiveTurnExecution> {
     const directive = `${scenario.objective}。生成要求：${scenario.generationPolicy}`;
-    return this.runner.runTurn({
+    let agentRequest: Record<string, unknown> | undefined;
+    const aiStartAt = Date.now();
+    const outcome = await this.runner.runTurn({
       sessionRef,
       trigger: { kind: 'proactive', directive, scenarioCode },
       toolMode: 'readonly',
-      context: messageId ? { messageId } : undefined,
+      context: messageId
+        ? {
+            messageId,
+            onPreparedRequest: (request) => {
+              agentRequest = request;
+            },
+          }
+        : undefined,
     });
+    return {
+      outcome,
+      agentRequest,
+      aiStartAt,
+      aiEndAt: Date.now(),
+    };
   }
 
   /** 主动回合的消息处理流水行（message_id = batchId，供追溯页跳转排障） */
@@ -407,8 +458,98 @@ export class FollowUpProcessor implements OnModuleInit {
     replyPreview?: string;
     error?: string;
     channelIdentity?: FollowUpJob['channelIdentity'];
+    execution: ProactiveTurnExecution;
+    completedAt: number;
+    deliveryResult?: ProactiveDeliveryResult;
   }): MessageProcessingRecordInput {
-    const { batchId, sessionRef, scenario, outcome } = params;
+    const { batchId, sessionRef, scenario, execution } = params;
+    const { outcome } = execution;
+    const replyText = outcome.reply?.text ?? outcome.generatedText;
+    const aiDuration = Math.max(execution.aiEndAt - execution.aiStartAt, 0);
+    const totalDuration = Math.max(params.completedAt - params.receivedAt, 0);
+    const deliveryStartAt = params.deliveryResult ? execution.aiEndAt : undefined;
+    const deliveryEndAt = params.deliveryResult ? params.completedAt : undefined;
+    const deliveryDuration =
+      params.deliveryResult?.totalTime ??
+      (deliveryStartAt !== undefined
+        ? Math.max(params.completedAt - deliveryStartAt, 0)
+        : undefined);
+    const agentInvocation = {
+      request: {
+        traceId: batchId,
+        messageId: batchId,
+        chatId: sessionRef.sessionId,
+        userId: sessionRef.userId,
+        userName: params.channelIdentity?.candidateName,
+        managerName: params.channelIdentity?.managerName,
+        imBotId: params.channelIdentity?.botImId,
+        scenario: `reengagement:${scenario.code}`,
+        content: `[系统主动跟进:${scenario.code}]`,
+        proactiveDirective: `${scenario.objective}。生成要求：${scenario.generationPolicy}`,
+        dispatchMode: 'proactive',
+        batchId,
+        acceptedAt: params.receivedAt,
+        sourceMessageIds: [],
+        sourceMessageCount: 0,
+        imageCount: 0,
+        agentRequest: execution.agentRequest,
+      },
+      response: {
+        status: params.status,
+        error: params.error,
+        reply: {
+          content: replyText,
+          reasoning: outcome.reasoning,
+          usage: outcome.usage,
+        },
+        messages: outcome.responseMessages,
+        toolCalls: outcome.toolCalls,
+        delivery: params.deliveryResult,
+        timings: {
+          timestamps: {
+            acceptedAt: params.receivedAt,
+            workerStartAt: params.receivedAt,
+            aiStartAt: execution.aiStartAt,
+            aiEndAt: execution.aiEndAt,
+            deliveryStartAt,
+            firstSegmentSentAt: replyText ? deliveryEndAt : undefined,
+            deliveryEndAt,
+            completedAt: params.completedAt,
+          },
+          durations: {
+            acceptedToWorkerStartMs: 0,
+            quietWindowWaitMs: 0,
+            queueWaitMs: 0,
+            prepMs: Math.max(execution.aiStartAt - params.receivedAt, 0),
+            queueMs: 0,
+            workerStartToAiStartMs: Math.max(execution.aiStartAt - params.receivedAt, 0),
+            aiStartToAiEndMs: aiDuration,
+            acceptedToAiStartMs: Math.max(execution.aiStartAt - params.receivedAt, 0),
+            acceptedToAiEndMs: Math.max(execution.aiEndAt - params.receivedAt, 0),
+            acceptedToFirstSegmentSentMs:
+              deliveryEndAt !== undefined
+                ? Math.max(deliveryEndAt - params.receivedAt, 0)
+                : undefined,
+            acceptedToDeliveryStartMs:
+              deliveryStartAt !== undefined
+                ? Math.max(deliveryStartAt - params.receivedAt, 0)
+                : undefined,
+            acceptedToDeliveryEndMs:
+              deliveryEndAt !== undefined
+                ? Math.max(deliveryEndAt - params.receivedAt, 0)
+                : undefined,
+            aiEndToDeliveryStartMs:
+              deliveryStartAt !== undefined
+                ? Math.max(deliveryStartAt - execution.aiEndAt, 0)
+                : undefined,
+            requestToFirstTextDeltaMs: Math.max(execution.aiEndAt - params.receivedAt, 0),
+            deliveryDurationMs: deliveryDuration,
+            totalMs: totalDuration,
+          },
+        },
+      },
+      isFallback: false,
+    };
     return {
       messageId: batchId,
       batchId,
@@ -423,23 +564,35 @@ export class FollowUpProcessor implements OnModuleInit {
       messagePreview: `[主动跟进] ${scenario.displayName}`,
       replyPreview: params.replyPreview,
       error: params.error,
+      totalDuration,
+      queueDuration: 0,
+      prepDuration: Math.max(execution.aiStartAt - params.receivedAt, 0),
+      aiStartAt: execution.aiStartAt,
+      aiEndAt: execution.aiEndAt,
+      aiDuration,
+      ttftMs: Math.max(execution.aiEndAt - params.receivedAt, 0),
+      sendDuration: deliveryDuration,
       toolCalls: outcome.toolCalls,
       agentSteps: outcome.agentSteps,
       memorySnapshot: outcome.memorySnapshot,
       guardrailOutput: outcome.guardrailTrace,
       tokenUsage: outcome.usage?.totalTokens,
+      isFallback: false,
+      fallbackSuccess: false,
+      agentInvocation,
     };
   }
 
   /** outbox 状态机投递：reserved → attempted → sent / unknown。 */
   private async outboxDeliverReserved(
-    outcome: TurnOutcome,
+    execution: ProactiveTurnExecution,
     key: string,
     sessionId: string,
     now: number,
     identity: ReengagementTouchIdentity,
     batchId: string,
   ): Promise<void> {
+    const { outcome } = execution;
     const sessionRef = { sessionId, userId: identity.userId ?? '', corpId: identity.corpId ?? '' };
     const scenario = getScenario(identity.scenarioCode as FollowUpJob['scenarioCode']);
     const channelIdentity: FollowUpJob['channelIdentity'] = {
@@ -447,10 +600,13 @@ export class FollowUpProcessor implements OnModuleInit {
       managerName: identity.managerName,
       botImId: identity.botImId,
     };
+    let deliveryStartAt = 0;
     try {
       await this.touchLedger.markDeliveryAttempted(key);
       this.tracking.trackDeliveryAttempted(identity);
+      deliveryStartAt = Date.now();
       await this.delivery!.deliver(outcome, { idempotencyKey: key });
+      const deliveryEndAt = Date.now();
       await this.touchLedger.markSent(key, sessionId, now);
       this.tracking.trackSent(identity, outcome.reply?.text, batchId);
       if (scenario) {
@@ -464,10 +620,20 @@ export class FollowUpProcessor implements OnModuleInit {
             status: 'success',
             replyPreview: outcome.reply?.text,
             channelIdentity,
+            execution,
+            completedAt: deliveryEndAt,
+            deliveryResult: {
+              success: true,
+              segmentCount: 1,
+              failedSegments: 0,
+              deliveredSegments: 1,
+              totalTime: Math.max(deliveryEndAt - deliveryStartAt, 0),
+            },
           }),
         );
       }
     } catch (error) {
+      const deliveryEndAt = Date.now();
       // deliver 后状态不明 → unknown，交补偿，不盲重投。送达与否未知时按未送达处理：
       // 宁可下一轮重复跟进语气，也不能让记忆引用候选人可能没收到的文本（HC-4）。
       this.tracking.trackDeliveryUnknown(identity, this.errorMessage(error), batchId);
@@ -483,6 +649,16 @@ export class FollowUpProcessor implements OnModuleInit {
             replyPreview: outcome.reply?.text,
             error: this.errorMessage(error),
             channelIdentity,
+            execution,
+            completedAt: deliveryEndAt,
+            deliveryResult: {
+              success: false,
+              segmentCount: 1,
+              failedSegments: 1,
+              deliveredSegments: 0,
+              totalTime: deliveryStartAt > 0 ? Math.max(deliveryEndAt - deliveryStartAt, 0) : 0,
+              error: this.errorMessage(error),
+            },
           }),
         );
       }

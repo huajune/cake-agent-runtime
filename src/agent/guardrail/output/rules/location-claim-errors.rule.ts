@@ -79,7 +79,7 @@ export function detectGeocodeAmbiguousCandidatesOmitted(
   return {
     ruleId: 'geocode_ambiguous_candidates_omitted',
     label: `geocode 返回多城市候选（${cities.join('/')}），但回复只泛泛追问城市，未列出候选项`,
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
   };
 }
 

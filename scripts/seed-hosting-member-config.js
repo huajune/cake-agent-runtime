@@ -33,6 +33,7 @@ const BOT_TO_RECEIVER = {
   1688854359801821: { openId: 'ou_954fb7341fd7fdd320de2d419d26df19', name: '南瓜' },
   1688854263771949: { openId: 'ou_12cf003c378f89299f8ccf32252c22c0', name: '盼盼' },
   1688855753660960: { openId: 'ou_6d3f217a88b5033ff256c64492e52ae7', name: '小阳' },
+  1688855468965879: { openId: 'ou_c88101c10aa900578ec97b6c6d529fa1', name: '辛瑜琦' },
 };
 
 function parseArgs(argv) {

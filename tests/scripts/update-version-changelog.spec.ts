@@ -12,23 +12,29 @@ describe('update-version-changelog release level', () => {
     expect(analyzeReleaseLevel([commit('feat(agent)!: 重做运行时契约')])).toBe('major');
   });
 
-  it('treats feature releases as major versions for this project', () => {
+  it('treats feature releases as minor versions (standard semver)', () => {
     expect(analyzeReleaseLevel([commit('feat(reengagement): 优化复聊控制与追溯视图')])).toBe(
-      'major',
+      'minor',
     );
-    expect(bumpVersion('5.32.0', 'major')).toBe('6.0.0');
-  });
-
-  it('keeps non-feature structural changes as minor', () => {
-    expect(analyzeReleaseLevel([commit('refactor(agent): 收口运行时边界')])).toBe('minor');
-    expect(analyzeReleaseLevel([commit('perf(dashboard): 缓存投影新鲜度')])).toBe('minor');
-    expect(bumpVersion('6.0.0', 'minor')).toBe('6.1.0');
+    expect(bumpVersion('8.0.0', 'minor')).toBe('8.1.0');
   });
 
   it('keeps fixes and other effective commits as patch', () => {
     expect(analyzeReleaseLevel([commit('fix(db): 删除旧函数签名')])).toBe('patch');
+    expect(analyzeReleaseLevel([commit('refactor(agent): 收口运行时边界')])).toBe('patch');
+    expect(analyzeReleaseLevel([commit('perf(dashboard): 缓存投影新鲜度')])).toBe('patch');
     expect(analyzeReleaseLevel([commit('docs(release): 更新说明')])).toBe('patch');
     expect(bumpVersion('6.1.0', 'patch')).toBe('6.1.1');
+  });
+
+  it('feat outranks patch-level commits in a mixed batch', () => {
+    expect(
+      analyzeReleaseLevel([
+        commit('fix(db): 删除旧函数签名'),
+        commit('feat(agent): 新增岗位召回工具'),
+        commit('chore(deps): 升级依赖'),
+      ]),
+    ).toBe('minor');
   });
 
   it('ignores release and skipped commits', () => {

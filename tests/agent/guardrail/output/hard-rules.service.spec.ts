@@ -252,7 +252,7 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain('internal_output_leak');
     });
 
-    it('blocks proactive insurance policy mention when candidate did not ask', () => {
+    it('asks for revision on proactive insurance policy promise when candidate did not ask', () => {
       const result = service.check({
         replyText: '这家早班 7:00-10:00，时薪 24 元，兼职岗位公司购买保险。',
         toolCalls: [],
@@ -262,7 +262,15 @@ describe('HardRulesService', () => {
       });
 
       expect(result.hit).toBe(true);
-      expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(true);
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'proactive_insurance_policy_mention',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
         'proactive_insurance_policy_mention',
       );
@@ -297,7 +305,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('still blocks proactive insurance mention when recent turns never asked', () => {
+    it('still asks for revision on proactive insurance promise when recent turns never asked', () => {
       const result = service.check({
         replyText: '兼职岗位公司购买保险，放心。',
         toolCalls: [],
@@ -369,6 +377,10 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
         'proactive_insurance_policy_mention',
       );
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'proactive_insurance_policy_mention')
+          ?.action,
+      ).toBe(GUARDRAIL_ACTION.REVISE);
     });
 
     it('blocks 签合同+五险一金 benefit promise (bare 合同 must not trigger requirement exemption)', () => {
@@ -383,6 +395,10 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
         'proactive_insurance_policy_mention',
       );
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'proactive_insurance_policy_mention')
+          ?.action,
+      ).toBe(GUARDRAIL_ACTION.REVISE);
     });
 
     it('blocks 给你交社保 benefit promise (qualification exemption requires 你有…交…社保 question form)', () => {
@@ -397,6 +413,10 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
         'proactive_insurance_policy_mention',
       );
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'proactive_insurance_policy_mention')
+          ?.action,
+      ).toBe(GUARDRAIL_ACTION.REVISE);
     });
 
     it('blocks legacy platform brand name in outbound reply', () => {
@@ -619,8 +639,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'farther_job_recommended',
-            action: GUARDRAIL_ACTION.REVISE,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -827,7 +847,25 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('asks for revision when wait-notice job still asks candidate to choose interview time', () => {
+    it('does not flag system status fabrication when a side-effect tool really failed', () => {
+      const result = service.check({
+        replyText: '系统提交失败了，我这边再帮你确认一下资料。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {},
+            result: { success: false, errorType: 'booking.submit_failed' },
+            status: 'error',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'system_status_fabrication',
+      );
+    });
+
+    it('observes when wait-notice job still asks candidate to choose interview time', () => {
       const result = service.check({
         replyText: '这家可以约，你看哪天下午方便面试？我帮你登记。',
         toolCalls: [
@@ -850,8 +888,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'wait_notice_time_collection',
-            action: GUARDRAIL_ACTION.REVISE,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -880,7 +918,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('asks for revision when reply generalizes job duties from industry common sense', () => {
+    it('observes when reply generalizes job duties from industry common sense', () => {
       const result = check('餐饮岗位一般都要洗碗和打扫，能接受的话我帮你约面试。');
 
       expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(false);
@@ -888,7 +926,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'work_content_generalization',
-            action: GUARDRAIL_ACTION.REVISE,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -1278,7 +1317,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('asks for revision when on-site script is missing from successful offline booking reply', () => {
+    it('observes when on-site script is missing from successful offline booking reply', () => {
       const result = service.check({
         replyText: '已帮你预约成功，7月2日14:00到店面试，记得带身份证。',
         toolCalls: [
@@ -1299,8 +1338,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'confirmed_booking_onsite_script_missing',
-            action: GUARDRAIL_ACTION.REVISE,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -1653,7 +1692,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('asks for revision when ambiguous geocode candidates are not listed in clarification', () => {
+    it('observes when ambiguous geocode candidates are not listed in clarification', () => {
       const result = service.check({
         replyText: '这个万达广场在多个城市都有，你这边主要在哪个城市呀？',
         toolCalls: [
@@ -1673,8 +1712,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'geocode_ambiguous_candidates_omitted',
-            action: GUARDRAIL_ACTION.REVISE,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
