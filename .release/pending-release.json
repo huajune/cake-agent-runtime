@@ -3,7 +3,43 @@
   "nextVersion": "10.0.0",
   "updatedAt": "2026-07-08",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "471",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/471",
+      "title": "降低守卫和预约收资误判",
+      "author": "huajune",
+      "mergedAt": "2026-07-08",
+      "businessUpdates": [
+        "接入 Agent 执行事件观测",
+        "降低守卫和预约收资误判"
+      ],
+      "summary": [
+        "降低语义护栏 shadow 误报",
+        "接入 Agent 执行事件观测",
+        "补齐 agent 执行观测单测",
+        "降低守卫和预约收资误判"
+      ],
+      "features": [
+        "接入 Agent 执行事件观测"
+      ],
+      "fixes": [
+        "降低守卫和预约收资误判"
+      ],
+      "optimizations": [],
+      "ops": [
+        "降低语义护栏 shadow 误报",
+        "补齐 agent 执行观测单测"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts --runInBand --watchman=false`",
+        "`pnpm run typecheck`",
+        "pre-push hook 完整执行 `pnpm run ci:check` 通过：lint、format、typecheck、build:ci、test:ci（326 suites passed, 4667 tests passed）。"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "9.0.0",
     "date": "2026-07-08",
