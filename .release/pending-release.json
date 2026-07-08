@@ -3,7 +3,51 @@
   "nextVersion": "10.0.3",
   "updatedAt": "2026-07-08",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "487",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/487",
+      "title": "稳定守卫修复模型路由",
+      "author": "huajune",
+      "mergedAt": "2026-07-08",
+      "businessUpdates": [
+        "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
+        "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
+        "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
+        "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。",
+        "稳定守卫修复模型路由"
+      ],
+      "summary": [
+        "稳定守卫修复模型路由",
+        "隐藏停止条件命中的复聊场景标签",
+        "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
+        "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
+        "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
+        "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。"
+      ],
+      "features": [],
+      "fixes": [
+        "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
+        "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
+        "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
+        "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。",
+        "稳定守卫修复模型路由"
+      ],
+      "optimizations": [],
+      "ops": [
+        "隐藏停止条件命中的复聊场景标签"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`./node_modules/.bin/jest tests/providers/router.service.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts --runInBand --watchman=false`",
+        "`./node_modules/.bin/tsc --noEmit`",
+        "`cd web && ./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build`"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.0.2",
     "date": "2026-07-08",
