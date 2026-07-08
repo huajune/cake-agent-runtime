@@ -54,14 +54,7 @@ export class RouterService {
 
   /** 获取指定角色的执行路由（primary + fallback 链）。 */
   getRouteByRole(role: ModelRole | string): ModelRoute {
-    const modelId = this.getModelIdByRole(role);
-    if (!modelId) {
-      throw new Error(`角色 "${role}" 未配置模型 (AGENT_${role.toUpperCase()}_MODEL)`);
-    }
-    return {
-      modelId,
-      fallbacks: this.parseFallbacks(role),
-    };
+    return this.buildRoleRoute(role, this.parseFallbacks(role));
   }
 
   /**
@@ -79,6 +72,7 @@ export class RouterService {
   }): ModelRoute {
     const role = options.role ?? ModelRole.Chat;
     const trimmed = options.overrideModelId?.trim();
+    const hasExplicitFallbacks = options.fallbacks !== undefined;
     const configuredFallbacks = options.fallbacks ?? this.getFallbacks(role);
     const fallbacks = options.disableFallbacks ? undefined : configuredFallbacks;
 
@@ -90,8 +84,14 @@ export class RouterService {
       };
     }
 
-    const route = this.getRouteByRole(role);
-    return fallbacks ? { modelId: route.modelId, fallbacks } : route;
+    const route = this.buildRoleRoute(role, fallbacks);
+    if (options.disableFallbacks) {
+      return { modelId: route.modelId, fallbacks: undefined };
+    }
+    if (hasExplicitFallbacks && this.getModelIdByRole(role)) {
+      return { modelId: route.modelId, fallbacks };
+    }
+    return route;
   }
 
   /** 兼容 chat turn 路径的便捷别名。 */
@@ -117,5 +117,26 @@ export class RouterService {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+  }
+
+  private buildRoleRoute(role: ModelRole | string, fallbacks: string[] | undefined): ModelRoute {
+    const modelId = this.getModelIdByRole(role);
+    if (!modelId && fallbacks && fallbacks.length > 0) {
+      const [fallbackAsPrimary, ...remainingFallbacks] = fallbacks;
+      this.logger.warn(
+        `角色 "${role}" 未配置主模型，使用降级链首个模型承接 (${fallbackAsPrimary})`,
+      );
+      return {
+        modelId: fallbackAsPrimary,
+        fallbacks: remainingFallbacks.length > 0 ? remainingFallbacks : undefined,
+      };
+    }
+    if (!modelId) {
+      throw new Error(`角色 "${role}" 未配置模型 (AGENT_${role.toUpperCase()}_MODEL)`);
+    }
+    return {
+      modelId,
+      fallbacks,
+    };
   }
 }

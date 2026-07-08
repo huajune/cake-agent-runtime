@@ -547,6 +547,37 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('does not treat salary range prose as a requested brand mismatch', () => {
+      const result = service.check({
+        replyText:
+          '班次各家店不太一样，一般是早中晚班可选，比如 08:00-15:00、15:00-23:00 这种，每班大概 7-8 小时。\n\n' +
+          '薪资是 19-20 元/时起，按月累计工时涨档：满 100 小时涨到 21-22 元/时，满 190 小时涨到 23-24 元/时，节假日 38 元/时。日结。\n\n' +
+          '你发个具体位置或地标给我，我帮你看哪家店离你最近，把那家的详细班次发你。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { brandAliasList: ['必胜客'] },
+            result: {
+              result: [
+                {
+                  jobId: 1,
+                  brandName: '必胜客',
+                  storeName: '青核',
+                  distanceKm: 2,
+                },
+              ],
+            },
+            resultCount: 1,
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'requested_brand_mismatch',
+      );
+    });
+
     it('does not flag requested brand mismatch when asking before alternative brands', () => {
       const result = service.check({
         replyText: '暂时没有这个品牌的岗位，你看其它品牌可以接受吗？',
