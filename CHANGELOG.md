@@ -8,6 +8,54 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.0.2`
+**最近更新**: `2026-07-08`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #482 收敛出站守卫规则止血版
+- PR #482 收敛守卫确定性修补实现
+- PR #482 强化复聊生成与任务治理
+- PR #482 优化守卫修复链路与 CI 范围
+- PR #482 强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。
+- PR #482 收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。
+- PR #482 为 release metadata PR 增加 CI 范围识别，允许纯版本元数据变更走轻量 CI。
+- PR #482 新增运营日报飞书历史报名/面试通过数回填脚本。
+- PR #482 强化复聊生成与守卫修复链路
+
+### 新功能
+- PR #482 新增运营日报飞书历史报名/面试通过数回填脚本。
+
+### 问题修复
+- PR #482 强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。
+- PR #482 收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。
+- PR #482 优化守卫修复链路与 CI 范围
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #482 为 release metadata PR 增加 CI 范围识别，允许纯版本元数据变更走轻量 CI。
+- PR #482 收敛出站守卫规则止血版
+- PR #482 收敛守卫确定性修补实现
+- PR #482 强化复聊生成与任务治理
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #482 `pnpm test -- tests/agent/runner/agent-runner.service.spec.ts tests/agent/runner/reply-rewrite.service.spec.ts --watchman=false`
+- PR #482 `pnpm run typecheck`
+- PR #482 `pnpm run ci:check`
+<!-- release:pending:end -->
+
 ## [10.0.1] - 2026-07-08
 
 **来源分支**: `develop`
