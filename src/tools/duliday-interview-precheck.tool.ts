@@ -50,6 +50,7 @@ import {
   buildCollectionStrategy,
   detectCollectionResistance,
   detectRealNameInsistence,
+  extractMessageText,
 } from '@tools/duliday/precheck/collection-strategy.util';
 import {
   buildBookableSlots,
@@ -354,6 +355,23 @@ function normalizeCandidateInterviewTimeInput(value: unknown): string | null {
   return typeof value === 'string' ? normalizePolicyText(value) || null : null;
 }
 
+function extractStructuredInterviewTimeFromMessages(messages: unknown[]): string | null {
+  for (const message of [...messages].reverse()) {
+    if (!message || typeof message !== 'object') continue;
+    const record = message as Record<string, unknown>;
+    if (record.role !== 'user') continue;
+
+    const text = extractMessageText(record.content);
+    if (!text) continue;
+
+    const match = text.match(/(?:^|\n|\r|[，。；;\s])面试(?:日期|时间)\s*[:：]\s*([^\n\r]+)/);
+    const value = normalizeCandidateInterviewTimeInput(match?.[1]);
+    if (value) return value;
+  }
+
+  return null;
+}
+
 function normalizeCandidateGenderInput(value: unknown): string | null {
   return typeof value === 'string' ? normalizeGenderValue(value) : null;
 }
@@ -634,6 +652,14 @@ export function buildInterviewPrecheckTool(
             highConfidenceInfo?.interview_time,
             normalizeCandidateInterviewTimeInput,
           );
+          if (!knownFieldMap['面试时间']) {
+            const structuredInterviewTime = extractStructuredInterviewTimeFromMessages(
+              context.messages,
+            );
+            if (structuredInterviewTime) {
+              knownFieldMap['面试时间'] = structuredInterviewTime;
+            }
+          }
           applyCandidateFieldOverride(
             knownFieldMap,
             '性别',

@@ -3127,8 +3127,8 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim');
       expect(hit).toBeDefined();
-      // replan（给只读工具）：rewrite 档禁工具曾诱导模型把工具调用写成文本外发（上线首日 badcase）
-      expect(hit?.action).toBe('replan');
+      // 纯文案修复：这类问题不是缺事实，而是不能把区级锚点距离说成精确距离。
+      expect(hit?.action).toBe('revise');
     });
 
     it('passes when reply asks for a more specific location instead', () => {
@@ -3159,6 +3159,18 @@ describe('HardRulesService', () => {
     it('passes when reply has no precise distance claim', () => {
       const result = service.check({
         replyText: '松江这边有成都你六姐在招，班次是晚班收档，你有兴趣吗？',
+        toolCalls: [makeAreaGeocodeCall(true)],
+        chatId: 'chat-1',
+      });
+
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim'),
+      ).toBeUndefined();
+    });
+
+    it('passes when reply says nearest without exposing a precise distance', () => {
+      const result = service.check({
+        replyText: '按松江区先看，离你最近的是成都你六姐松江大橘邻里中心店，具体距离要看你定位。',
         toolCalls: [makeAreaGeocodeCall(true)],
         chatId: 'chat-1',
       });

@@ -94,7 +94,7 @@ function readCandidateCities(candidates: unknown): string[] {
   return [...cities];
 }
 
-const PRECISE_DISTANCE_CLAIM_PATTERN = /\d+(?:\.\d+)?\s*(?:公里|千米|km)|离你最近/i;
+const PRECISE_DISTANCE_CLAIM_PATTERN = /\d+(?:\.\d+)?\s*(?:公里|千米|km)/i;
 // 已在追问更具体位置，或已声明距离是按区域估算 → 正确行为，豁免
 const SPECIFIC_LOCATION_REQUEST_PATTERN =
   /发个?(?:精准)?定位|具体(?:位置|地址|在哪|哪条路|路段|地标)|哪个(?:商圈|地铁站|路口|街道|镇)|(?:附近|旁边)(?:有什么|的)(?:地标|商圈|地铁)|按[^。！？\n]{0,8}(?:中心|区)估算|大概估算/;
@@ -126,9 +126,8 @@ export function detectDistrictLevelDistanceClaim(
     ruleId: 'district_level_distance_claim',
     label:
       '候选人只提供了区/市级位置（geocode areaLevelQuery=true，锚点为行政区代表点），但回复直接输出精确距离；应先追问具体位置/商圈/定位，或声明距离为区域估算',
-    // replan 而非 revise：修复口径要求重组岗位展示（去距离、留商圈），常需重看岗位数据；
-    // rewrite 档禁工具会诱导模型把工具调用写成文本（上线首日 13 次 repair 里 5 次产出
-    // 工具语法文本、3 条穿透词库发给候选人），replan 给只读工具从根上消除该诱因
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 这里不能 replan：问题不在缺少岗位事实，而在区级锚点距离不能当精确距离外发。
+    // 允许只读工具重查会把 distanceKm 再次喂给模型，容易在 repair 回合继续复述公里数。
+    action: GUARDRAIL_ACTION.REVISE,
   };
 }
