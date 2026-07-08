@@ -2,6 +2,8 @@ import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { splitClaimSentences } from './claim-assertion.util';
 
 const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
+const INSURANCE_POLICY_PROMISE_PATTERN =
+  /(?:有|交|缴|买|包|含|提供|上)[^。！？\n]{0,6}(?:五险(?:一金)?|社保|保险|意外险|雇主责任险)/;
 
 /**
  * 任职要求语境：岗位把"社保证明/劳动合同"当作应聘门槛（典型是"第二职业"类岗位要求
@@ -21,7 +23,7 @@ const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险
 //   "签合同交五险一金"这类福利承诺不含要求动词，仍拦）；
 // - "劳动合同 及/和/与/+ 社保"并列结构（要求行专属搭配）。
 const REQUIREMENT_CONTEXT_PATTERN =
-  /(?:提供|出示|提交|准备|带上?)[^。！？\n]{0,12}(?:证明|材料|合同)|(?:证明|材料|合同)[^。！？\n]{0,6}(?:提供|出示|提交|准备)|第二职业|第一职业|(?:需|须|需要|要求)(?:提供|出示|有|持有?)[^。！？\n]{0,8}(?:社保|保险|劳动合同)|(?:劳动)?合同[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:社保|保险)|(?:社保|保险)[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:劳动)?合同|(?:你|您)[^。！？\n]{0,4}有[^。！？\n]{0,8}(?:交|缴|买)[^。！？\n]{0,8}(?:社保|保险)/;
+  /(?:提供|出示|提交|准备|带上?)[^。！？\n]{0,12}(?:证明|材料|合同)|(?:证明|材料|合同)[^。！？\n]{0,6}(?:提供|出示|提交|准备)|第二职业|第一职业|(?:需|须|需要|要求)(?:你|您)?(?:提供|出示|有|持有?)[^。！？\n]{0,8}(?:社保|保险|劳动合同)|(?:劳动)?合同[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:社保|保险)|(?:社保|保险)[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:劳动)?合同|(?:你|您)[^。！？\n]{0,4}有[^。！？\n]{0,8}(?:交|缴|买)[^。！？\n]{0,8}(?:社保|保险)/;
 
 // 切句直接用 claim-assertion.util 的共享原语：此前本地实现把 ？丢弃、与共享口径
 // 悄悄分叉（2026-07-06 review），删除本地版防止再漂移。
@@ -67,12 +69,12 @@ export function detectProactiveInsurancePolicyMention(
   ) {
     return null;
   }
+  if (!policySentences.some((s) => INSURANCE_POLICY_PROMISE_PATTERN.test(s))) return null;
 
   return {
     ruleId: 'proactive_insurance_policy_mention',
     label:
-      '候选人本轮未主动询问保险/社保，但回复主动提及保险/社保/五险等敏感政策（兼职保险易被误解为社保/五险，需拦截）',
-    action: GUARDRAIL_ACTION.BLOCK,
-    blocked: true,
+      '候选人本轮未主动询问保险/社保，但回复主动给出保险/社保/五险承诺式口径（兼职保险易被误解为社保/五险，需改写）',
+    action: GUARDRAIL_ACTION.REVISE,
   };
 }

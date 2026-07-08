@@ -26,6 +26,10 @@ describe('BotGroupResolverService', () => {
       managerName: 'LiYuHang',
       groupName: '宇航组',
     });
+    expect(service.resolve('1688855468965879')).toEqual({
+      managerName: 'XinYuQi',
+      groupName: '瑜琦组',
+    });
   });
 
   it('strips prod-sync: prefix on numeric ids before lookup', () => {

@@ -461,16 +461,32 @@ describe('FollowUpProcessor', () => {
     });
 
     it('tracks shadow with generated text', async () => {
-      runner.runTurn.mockResolvedValue({
-        kind: 'reply',
-        reply: { text: '还在考虑吗？' },
-        toolCalls: [],
-        scenarioCode: 'opening_no_reply',
-        runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      runner.runTurn.mockImplementation(async (request) => {
+        await request.context?.onPreparedRequest?.({
+          modelId: 'openai/gpt-5.1',
+          system: 'system prompt',
+          messages: [{ role: 'user', content: '[系统主动跟进]' }],
+        });
+        return {
+          kind: 'reply',
+          reply: { text: '还在考虑吗？' },
+          toolCalls: [],
+          scenarioCode: 'opening_no_reply',
+          runTurnEnd: jest.fn().mockResolvedValue(undefined),
+          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        };
       });
 
       await buildProcessor().process(makeJob());
 
+      expect(runner.runTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
+            onPreparedRequest: expect.any(Function),
+          }),
+        }),
+      );
       expect(tracking.trackShadow).toHaveBeenCalledWith(
         expectedIdentity,
         expect.objectContaining({
@@ -488,6 +504,26 @@ describe('FollowUpProcessor', () => {
           messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
           batchId: expect.stringMatching(/^batch_sess-1_\d+$/),
           replyPreview: '还在考虑吗？',
+          tokenUsage: 15,
+          agentInvocation: expect.objectContaining({
+            request: expect.objectContaining({
+              agentRequest: expect.objectContaining({
+                modelId: 'openai/gpt-5.1',
+                system: 'system prompt',
+              }),
+              dispatchMode: 'proactive',
+              proactiveDirective: expect.stringContaining('开场已发'),
+            }),
+            response: expect.objectContaining({
+              reply: expect.objectContaining({ content: '还在考虑吗？' }),
+              timings: expect.objectContaining({
+                durations: expect.objectContaining({
+                  aiStartToAiEndMs: expect.any(Number),
+                  totalMs: expect.any(Number),
+                }),
+              }),
+            }),
+          }),
         }),
       );
     });

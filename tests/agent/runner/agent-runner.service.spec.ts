@@ -354,6 +354,53 @@ describe('AgentRunnerService.runTurn', () => {
     ]);
   });
 
+  it('applies a deterministic transform before LLM repair when all blocked rules support it', async () => {
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '松江这边有岗位，距离 9.4km。' }));
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise',
+        riskLevel: 'medium',
+        violations: [
+          {
+            type: 'district_level_distance_claim',
+            evidence: '区级位置报精确距离',
+            suggestion: '改成估算口径',
+            recoverability: 'recoverable',
+          },
+        ],
+        ruleIds: ['district_level_distance_claim'],
+        blockedRuleIds: ['district_level_distance_claim'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '松江这边有吗' },
+      context: { messageId: 'msg-transform' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('松江这边有岗位，距离 约9公里（按区域位置大概估算的）。');
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(outputGuard.check.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        reply: '松江这边有岗位，距离 约9公里（按区域位置大概估算的）。',
+        silent: true,
+      }),
+    );
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-transform',
+        repaired: true,
+        revisedReply: '松江这边有岗位，距离 约9公里（按区域位置大概估算的）。',
+        finalDecision: 'pass',
+        reasonCode: 'transformed',
+      }),
+    );
+  });
+
   it('recoverable rule veto repairs with no tools, then adopts the safe reply', async () => {
     generator.invoke
       .mockResolvedValueOnce(makeResult({ text: '这个岗位不要某地户籍，你报不了' }))
@@ -607,9 +654,9 @@ describe('AgentRunnerService.runTurn', () => {
     expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 1
   });
 
-  it('repair exhausted with only recoverable P1 violations fails open and delivers the revised reply', async () => {
+  it('repair exhausted with only recoverable P1 violations fails open to the first reply when repair is no better', async () => {
     // 2026-07-06 生产复盘：假阳 × repair_exhausted 静默是杀伤最大的组合。
-    // 仅 P1/P2 可恢复违规时投递修复版（reasonCode 标注），只有 P0/不可恢复才保持静默。
+    // 仅 P1/P2 可恢复违规时 fail-open；若修复版违规集合没有变好，投递首版避免修复劣化。
     generator.invoke
       .mockResolvedValueOnce(makeResult({ text: 'v1' }))
       .mockResolvedValueOnce(makeResult({ text: 'v2 修复版（仍有 P1 残留）' }));
@@ -637,6 +684,7 @@ describe('AgentRunnerService.runTurn', () => {
     });
 
     expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('v1');
     expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 不变
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -678,7 +726,7 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.guardrail).toEqual(expect.objectContaining({ reasonCode: 'repair_exhausted' }));
   });
 
-  it('dangling repair reply ("我帮你查下X") collapses to block instead of being delivered (badcase batch_6a4790c7)', async () => {
+  it('dangling repair reply ("我帮你查下X") fails open to the first reply for recoverable P1 violations', async () => {
     // repair 模型无视重写指令、重新规划任务时只会产出一句悬空承接句——
     // rewrite 模式下工具已被移除，该承诺永远不会兑现，不能投递。
     generator.invoke
@@ -705,14 +753,8 @@ describe('AgentRunnerService.runTurn', () => {
       context: { messageId: 'msg-dangling' },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
-    expect(outcome.guardrail).toEqual(
-      expect.objectContaining({
-        phase: 'outbound',
-        source: 'output_guardrail',
-        reasonCode: 'revise_dangling',
-      }),
-    );
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('花桥附近没岗哈，我拉你进餐饮兼职群');
     // 悬空产物不送二审（二审只查规则违规，会误放行）
     expect(outputGuard.check).toHaveBeenCalledTimes(1);
     // 审查档案落库，留存悬空文本供观测
@@ -721,8 +763,93 @@ describe('AgentRunnerService.runTurn', () => {
         traceId: 'msg-dangling',
         repaired: true,
         revisedReply: '我帮你查下花桥中骏附近的岗位',
-        finalDecision: 'block',
-        reasonCode: 'revise_dangling',
+        finalDecision: 'pass',
+        reasonCode: 'repair_unusable_fail_open',
+      }),
+    );
+  });
+
+  it('dangling repair reply still blocks when the first violation is high risk', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '这个岗位不要某地户籍' }))
+      .mockResolvedValueOnce(makeResult({ text: '我帮你查下其他岗位' }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'revise',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'discriminatory_screening_leak',
+          evidence: '命中高敏感规则',
+          suggestion: '删除敏感条件',
+          recoverability: 'recoverable',
+        },
+      ],
+      ruleIds: ['discriminatory_screening_leak'],
+      blockedRuleIds: ['discriminatory_screening_leak'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '我能报名吗' },
+      context: { messageId: 'msg-high-dangling' },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual(expect.objectContaining({ reasonCode: 'revise_dangling' }));
+  });
+
+  it('repair-created internal_output_leak block fails open to the first reply for recoverable P1 violations', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '这边暂无合适岗位，我先帮你拉进兼职群。' }))
+      .mockResolvedValueOnce(makeResult({ text: 'geocode(address="花桥")' }));
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise',
+        riskLevel: 'medium',
+        violations: [
+          {
+            type: 'group_promise_without_invite',
+            evidence: '未调用拉群却承诺拉群',
+            suggestion: '删除拉群承诺',
+            recoverability: 'recoverable',
+          },
+        ],
+        ruleIds: ['group_promise_without_invite'],
+        blockedRuleIds: ['group_promise_without_invite'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '工具调用文本',
+            suggestion: '删除内部输出',
+            recoverability: 'non_recoverable',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '松江这边有吗' },
+      context: { messageId: 'msg-leak-failopen' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('这边暂无合适岗位，我先帮你拉进兼职群。');
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-leak-failopen',
+        repaired: true,
+        revisedReply: 'geocode(address="花桥")',
+        finalDecision: 'pass',
+        reasonCode: 'repair_unusable_fail_open',
       }),
     );
   });

@@ -68,7 +68,7 @@ export const JOB_FACT_HALLUCINATION_RULES: FactRule[] = [
       '回复用行业常识泛化补充岗位职责（如“餐饮一般都要洗碗/收银/打扫”），工作内容必须按岗位数据表述，需改写为“以门店/岗位说明为准”或删除未接地职责',
     keywords: WORK_CONTENT_GENERALIZATION_PATTERN,
     requiredToolPredicate: () => false,
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
   },
 ];
 
@@ -166,7 +166,7 @@ export function detectFartherJobRecommended(
       label: `本轮岗位列表有更近门店"${nearest.storeName}"（${nearest.distanceKm.toFixed(
         1,
       )}km），但回复只推荐了更远门店"${job.storeName}"（${job.distanceKm.toFixed(1)}km）`,
-      action: GUARDRAIL_ACTION.REVISE,
+      action: GUARDRAIL_ACTION.OBSERVE,
     };
   }
 

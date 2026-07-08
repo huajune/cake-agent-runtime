@@ -331,6 +331,7 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('已为候选人预约奥乐齐长白门店面试');
     expect(result.finalPrompt).toContain('[unsupported_commitment]');
     expect(result.finalPrompt).toContain('只确认已提交预约');
+    expect(result.finalPrompt).toContain('不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签');
   });
 
   it('appends the HC-1 rewrite directive as a trailing user message (badcase batch_6a4790c7)', async () => {
