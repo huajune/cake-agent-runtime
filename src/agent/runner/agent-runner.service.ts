@@ -37,6 +37,7 @@ import { TurnFinalizer } from './turn-finalizer';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RequestContextService } from '@observability/context/request-context.service';
 import { tryDeterministicFix } from '../guardrail/output/hard-rules.service';
+import { ReplyRewriteService } from './reply-rewrite.service';
 
 export type {
   SessionRef,
@@ -115,6 +116,7 @@ export class AgentRunnerService {
     private readonly outputGuard: OutputGuardrailService,
     private readonly inputGuard: InputGuardrailService,
     private readonly guardrailReviews: GuardrailReviewService,
+    private readonly replyRewriter: ReplyRewriteService,
     @Optional()
     private readonly requestContext?: RequestContextService,
     @Optional()
@@ -177,11 +179,11 @@ export class AgentRunnerService {
    * 已审生成：generator.invoke → 出站守卫 → 需要时一次受控 repair（§5.3 / §7）。
    *
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
-   * - decision='revise'：丢弃首版，带 violations + 既成副作用做 `toolMode:'none'` 无工具重写；
+   * - decision='revise'：丢弃首版，交给独立文本修订链路按 violations + 已知事实做 rewrite；
    * - decision='replan'：丢弃首版，带 violations + 既成副作用做 `toolMode:'readonly'`
    *   允许只读工具重新规划；
    *   再审一次；二次仍 revise/replan 则按 §9「repair 死循环硬上限 1」收敛为 block。
-   * - decision='block'：先进入一次无工具受控重写；二审仍不通过才不投递。
+   * - decision='block'：先进入一次受控修复；二审仍不通过才不投递。
    *
    * turn-end 语义：内部两次生成都强制 `deferTurnEnd`，确保被丢弃的首版不写记忆；最终采纳版的
    * `runTurnEnd` 按调用方意图处理——调用方原本要自动收尾（未显式 defer）时，pass 即 fire-and-forget
@@ -256,27 +258,34 @@ export class AgentRunnerService {
       }
     }
 
-    // repair（hard cap 1）：丢弃首版，带违规意见 + 既成副作用做受控修复。
+    // repair（hard cap 1）：rewrite 走独立文本修订；replan 才复用 Agent generator 只读重查。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}`,
     );
-    const revised = await this.generator.invoke({
-      ...params,
-      deferTurnEnd: true,
-      toolMode: decision.repairMode === 'replan' ? 'readonly' : 'none',
-      reviseFeedback: decision.violations,
-      guardrailRepair:
-        decision.repairMode === 'rewrite'
-          ? {
+    const revised =
+      decision.repairMode === 'rewrite'
+        ? this.buildRewrittenResult(
+            first,
+            await this.replyRewriter.rewrite({
+              userMessage: ctx.userMessage,
               originalReply: firstText,
-              ruleIds: decision.ruleIds,
+              violations: decision.violations,
               feedbackToGenerator: decision.feedbackToGenerator,
-            }
-          : undefined,
-      committedSideEffects: committed || undefined,
-    });
+              ruleIds: decision.ruleIds,
+              toolCalls: first.toolCalls ?? [],
+              redLines: ctx.redLines,
+              committedSideEffects: committed || undefined,
+            }),
+          )
+        : await this.generator.invoke({
+            ...params,
+            deferTurnEnd: true,
+            toolMode: 'readonly',
+            reviseFeedback: decision.violations,
+            committedSideEffects: committed || undefined,
+          });
 
     const revisedText = (revised.text ?? '').trim();
     // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的
@@ -360,7 +369,10 @@ export class AgentRunnerService {
       );
     }
 
-    const reviewedToolCalls = this.mergeToolCallsForRevisedResult(first, revised);
+    const reviewedToolCalls =
+      decision.repairMode === 'rewrite'
+        ? (first.toolCalls ?? [])
+        : this.mergeToolCallsForRevisedResult(first, revised);
     const decision2 = await this.outputGuard.check(
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
@@ -638,6 +650,37 @@ export class AgentRunnerService {
     revised: GeneratorRunResult,
   ): AgentToolCall[] {
     return [...(draft.toolCalls ?? []), ...(revised.toolCalls ?? [])];
+  }
+
+  private buildRewrittenResult(result: GeneratorRunResult, text: string): GeneratorRunResult {
+    return {
+      ...result,
+      text,
+      responseMessages: this.rewriteAssistantResponseMessages(result.responseMessages, text),
+    };
+  }
+
+  private rewriteAssistantResponseMessages(
+    responseMessages: Array<Record<string, unknown>> | undefined,
+    text: string,
+  ): Array<Record<string, unknown>> | undefined {
+    if (!responseMessages) return undefined;
+    let replaced = false;
+    return responseMessages.map((message) => {
+      if (message.role !== 'assistant') return message;
+      const parts = Array.isArray(message.parts) ? message.parts : undefined;
+      if (!parts) return message;
+      return {
+        ...message,
+        parts: parts.map((part) => {
+          if (replaced || !part || typeof part !== 'object' || Array.isArray(part)) return part;
+          const record = part as Record<string, unknown>;
+          if (record.type !== 'text') return part;
+          replaced = true;
+          return { ...record, text };
+        }),
+      };
+    });
   }
 
   /** 把本轮已成功的副作用工具压成一句既成事实提示（喂给 revise 重写，防"声称未发生/重复执行"）。 */

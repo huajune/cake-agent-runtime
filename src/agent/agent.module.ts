@@ -15,6 +15,7 @@ import { OpsEventsModule } from '@biz/ops-events/ops-events.module';
 import { HandoffEventsModule } from '@biz/handoff-events/handoff-events.module';
 import { GeneratorService } from './generator/generator.service';
 import { AgentRunnerService } from './runner/agent-runner.service';
+import { ReplyRewriteService } from './runner/reply-rewrite.service';
 import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
 import { PreparationService } from './generator/preparation.service';
 import { ContextService } from './generator/context/context.service';
@@ -63,6 +64,7 @@ import {
     ContextService,
     PreparationService,
     GeneratorService,
+    ReplyRewriteService,
     AgentRunnerService,
     TurnOutcomeInterventionService,
     AgentHealthService,
@@ -79,6 +81,7 @@ import {
     ContextService,
     PreparationService,
     GeneratorService,
+    ReplyRewriteService,
     AgentRunnerService,
     TurnOutcomeInterventionService,
     GuardrailModule,
