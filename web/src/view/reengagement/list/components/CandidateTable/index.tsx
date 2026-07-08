@@ -5,7 +5,7 @@ import { AVATAR_GRADIENTS, getAvatarStyle, getUserInitial } from '@/utils/avatar
 import { getStatusMeta } from '../../constants';
 import styles from './index.module.scss';
 
-const HIDDEN_SCENARIO_STATUSES = new Set(['superseded']);
+const HIDDEN_SCENARIO_STATUSES = new Set(['superseded', 'stopped']);
 
 /** 未来时间的相对表述（fire_at 倒计时）；已过期/无效返回 null */
 function formatCountdown(fireAt: string): string | null {

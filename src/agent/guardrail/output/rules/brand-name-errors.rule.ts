@@ -223,7 +223,9 @@ function extractStructuredJobTitleBrands(text: string): string[] {
 function normalizeClaimedBrand(value: string): string | null {
   const normalized = normalizeBrand(value.replace(/^[\s#>*\-•\d.、]+/, ''));
   if (!normalized) return null;
-  if (/^(品牌|岗位|门店|薪资|班次|要求|距离|地址)$/.test(normalized)) return null;
+  if (/^(品牌|岗位|门店|薪资|班次|要求|距离|地址)(?:$|[\s:：]|[是为])/.test(normalized)) {
+    return null;
+  }
   return normalized;
 }
 

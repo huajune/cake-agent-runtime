@@ -8,6 +8,50 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.0.3`
+**最近更新**: `2026-07-08`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #487 稳定守卫修复模型路由
+- PR #487 隐藏停止条件命中的复聊场景标签
+- PR #487 模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。
+- PR #487 更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。
+- PR #487 修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。
+- PR #487 守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #487 模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。
+- PR #487 更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。
+- PR #487 修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。
+- PR #487 守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。
+- PR #487 稳定守卫修复模型路由
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #487 隐藏停止条件命中的复聊场景标签
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #487 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #487 `./node_modules/.bin/jest tests/providers/router.service.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts --runInBand --watchman=false`
+- PR #487 `./node_modules/.bin/tsc --noEmit`
+- PR #487 `cd web && ./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build`
+<!-- release:pending:end -->
+
 ## [10.0.2] - 2026-07-08
 
 **来源分支**: `develop`
