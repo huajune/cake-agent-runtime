@@ -19,6 +19,8 @@ export enum ReengagementTouchStatus {
   FrequencyBlocked = 'frequency_blocked',
   /** 9-21 窗口外，改期等待新到点 */
   Rescheduled = 'rescheduled',
+  /** 未到点前被同会话更新的复聊任务替代 */
+  Superseded = 'superseded',
   /** Redis 触达槽撞重（已发过/在途），跳过 */
   Duplicate = 'duplicate',
   /** shadow 分支：生成了文案但不投递（终态） */
@@ -40,6 +42,7 @@ export enum ReengagementTouchEventName {
   Stopped = 'stopped',
   FrequencyBlocked = 'frequency_blocked',
   RescheduledOutOfWindow = 'rescheduled_out_of_window',
+  Superseded = 'superseded',
   ShadowGenerated = 'shadow_generated',
   ReserveDuplicate = 'reserve_duplicate',
   Reserved = 'reserved',

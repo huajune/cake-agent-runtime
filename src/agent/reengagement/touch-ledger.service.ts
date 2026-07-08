@@ -15,7 +15,7 @@ export interface UnknownTouchSlot {
  *   命中其它（reserved/attempted）→ duplicate_inflight（上次未确认，可恢复）。
  * - 频控 24h ≤ 2 **只数 sent**（reserved/failed/unknown 不计——否则投递失败重投会被误算成多次触达）。
  * - 一旦进入 delivery_attempted，就处于"外部平台可能已发出"区间，不得盲目重投，
- *   必须靠 ChannelDeliveryPort 的渠道侧幂等或补偿（见 agent-reengagement-design.md §4）。
+ *   必须靠 ReengagementDeliveryPort 的渠道侧幂等或补偿（见 agent-reengagement-design.md §4）。
  */
 @Injectable()
 export class TouchLedgerService {
@@ -25,6 +25,8 @@ export class TouchLedgerService {
   private readonly SLOT_TTL_S = 3 * 24 * 60 * 60;
   /** 频控窗口。 */
   private readonly FREQ_WINDOW_MS = 24 * 60 * 60 * 1000;
+  /** 同会话触达冷却窗口：避免不同场景在候选人感知上重复追问。 */
+  readonly SESSION_TOUCH_COOLDOWN_MS = 2 * 60 * 60 * 1000;
   /** 频控上限。 */
   readonly MAX_TOUCHES_PER_24H = 2;
 
@@ -36,6 +38,10 @@ export class TouchLedgerService {
 
   private sentListKey(sessionId: string): string {
     return `reengagement:sent:${sessionId}`;
+  }
+
+  private lastTouchKey(sessionId: string): string {
+    return `reengagement:lastTouch:${sessionId}`;
   }
 
   /** 原子占位。已存在则按当前状态区分 duplicate_sent / duplicate_inflight。 */
@@ -55,16 +61,22 @@ export class TouchLedgerService {
   }
 
   async markSent(key: string, sessionId: string, now: number): Promise<void> {
-    // 频控只数 sent：slot 状态、sent 时间戳、频控 TTL 必须一起提交，避免部分成功低估触达次数。
+    // 频控与 session 冷却只数 confirmed sent，避免 shadow/失败投递压制后续真发。
     await this.redis.eval(
       `
 redis.call('SETEX', KEYS[1], ARGV[1], 'sent')
 redis.call('RPUSH', KEYS[2], ARGV[2])
 redis.call('EXPIRE', KEYS[2], ARGV[3])
+redis.call('SETEX', KEYS[3], ARGV[4], ARGV[2])
 return 1
 `,
-      [this.slotKey(key), this.sentListKey(sessionId)],
-      [this.SLOT_TTL_S, now, Math.ceil(this.FREQ_WINDOW_MS / 1000) * 2],
+      [this.slotKey(key), this.sentListKey(sessionId), this.lastTouchKey(sessionId)],
+      [
+        this.SLOT_TTL_S,
+        now,
+        Math.ceil(this.FREQ_WINDOW_MS / 1000) * 2,
+        Math.ceil(this.SESSION_TOUCH_COOLDOWN_MS / 1000) * 2,
+      ],
     );
   }
 
@@ -87,6 +99,27 @@ return 1
   async isOverFrequencyLimit(sessionId: string, now: number): Promise<boolean> {
     const count = await this.countSentIn24h(sessionId, now);
     return count >= this.MAX_TOUCHES_PER_24H;
+  }
+
+  /** 最近一次同会话确认送达触达的时间戳。 */
+  async getLastTouchAt(sessionId: string): Promise<number | null> {
+    const raw = await this.redis.get<number | string>(this.lastTouchKey(sessionId));
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  /** 兼容入口；在线链路应通过 markSent 同一事务提交。 */
+  async markLastTouch(sessionId: string, now: number): Promise<void> {
+    await this.redis.setex(
+      this.lastTouchKey(sessionId),
+      Math.ceil(this.SESSION_TOUCH_COOLDOWN_MS / 1000) * 2,
+      now,
+    );
+  }
+
+  async isInSessionTouchCooldown(sessionId: string, now: number): Promise<boolean> {
+    const lastTouchAt = await this.getLastTouchAt(sessionId);
+    return lastTouchAt != null && now - lastTouchAt < this.SESSION_TOUCH_COOLDOWN_MS;
   }
 
   /**

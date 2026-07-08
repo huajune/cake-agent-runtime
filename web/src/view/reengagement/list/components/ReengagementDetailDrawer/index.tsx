@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ExternalLink } from 'lucide-react';
+import { CheckCircle2, Clock, ExternalLink, Info, XCircle } from 'lucide-react';
 import { formatDateTime, formatJson } from '@/utils/format';
 import {
   useReengagementRecordDetail,
@@ -29,6 +29,13 @@ interface InfoFact {
   mono?: boolean;
 }
 
+interface SummaryInfo {
+  title: string;
+  description: string;
+  tone: 'pending' | 'success' | 'muted' | 'warning' | 'danger';
+  icon: 'clock' | 'check' | 'stop' | 'info';
+}
+
 const EVENT_LABELS: Record<string, string> = {
   scheduled: '已创建待发任务',
   schedule_precheck_stopped: '排程前已停止',
@@ -44,6 +51,7 @@ const EVENT_LABELS: Record<string, string> = {
   delivery_attempted: '开始投递',
   sent: '投递成功',
   delivery_unknown: '投递状态不明',
+  superseded: '已被新任务替代',
 };
 
 const DETAIL_REASON_LABELS: Record<string, string> = {
@@ -52,6 +60,18 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   rollout_disabled: '灰度未开启',
   reengagement_disabled: '复聊总开关关闭',
   over_frequency_limit_24h: '24 小时频控已达上限',
+  candidate_replied_after_anchor: '候选人已经回复，所以不再追问',
+  scenario_no_longer_holds: '当前会话状态已不满足这个复聊场景',
+  session_touch_cooldown: '同一候选人 2 小时内已有一次复聊，已自动跳过',
+  superseded_by_new_task: '候选人出现了新的复聊任务，这条旧任务已自动取消',
+  removed_pending_job: '任务已被系统取消',
+  composer_empty: '生成器没有产出可发送内容',
+  composer_skip: '生成器判断这次不适合主动跟进',
+  composer_error: '生成文案时发生异常',
+  composer_too_long: '生成文案过长，已拦截',
+  composer_validation_failed: '生成文案疑似包含内部信息，已拦截',
+  composer_forbidden_job_detail: '轻量复聊里出现了薪资、班次或岗位详情，已拦截',
+  composer_missing_expected_ask: '生成文案没有命中这个场景需要追问的要点，已拦截',
 };
 
 const OUTCOME_LABELS: Record<string, string> = {
@@ -100,6 +120,102 @@ function getEventLabel(event: ReengagementEvent): string {
   return EVENT_LABELS[event.event] ?? event.event;
 }
 
+function formatReason(reason?: string | null): string {
+  if (!reason) return '-';
+  if (DETAIL_REASON_LABELS[reason]) return DETAIL_REASON_LABELS[reason];
+  if (reason.startsWith('terminal:')) return `会话已进入终态：${reason.slice('terminal:'.length)}`;
+  if (reason.startsWith('external_cancelled:'))
+    return `报名已取消：${reason.slice('external_cancelled:'.length)}`;
+  if (reason.startsWith('interview_already_done:'))
+    return `面试已有结果：${reason.slice('interview_already_done:'.length)}`;
+  if (reason.startsWith('delivery_skipped:'))
+    return `渠道未实际投递：${reason.slice('delivery_skipped:'.length)}`;
+  return reason;
+}
+
+function getReadableStatus(record: ReengagementTouchRecord): SummaryInfo {
+  const scenario = record.scenario_code;
+  const reason = formatReason(record.decision_reason);
+  const fireAt = formatMaybeTime(record.fire_at);
+  const sentAt = formatMaybeTime(record.sent_at);
+
+  if (record.status === 'scheduled' || record.status === 'rescheduled') {
+    return {
+      title: '等待触发',
+      description:
+        fireAt === '-'
+          ? '系统已经创建了这次复聊任务，还没有到触发时间。'
+          : `系统计划在 ${fireAt} 触发这次复聊；到点后会再检查候选人是否已回复、场景是否仍成立。`,
+      tone: 'pending',
+      icon: 'clock',
+    };
+  }
+  if (record.status === 'sent') {
+    return {
+      title: '已经发给候选人',
+      description: sentAt === '-' ? '这次复聊已经通过渠道发出。' : `这次复聊已在 ${sentAt} 发出。`,
+      tone: 'success',
+      icon: 'check',
+    };
+  }
+  if (record.status === 'shadow') {
+    return {
+      title: '只观测，未发送',
+      description: `系统生成了“本来会发”的内容，但当前处于观测模式或无投递通道，所以没有发给候选人。原因：${reason}`,
+      tone: 'muted',
+      icon: 'info',
+    };
+  }
+  if (record.status === 'superseded') {
+    return {
+      title: '已被新任务替代',
+      description:
+        reason === '-'
+          ? '候选人出现了新的复聊任务，这条还没到点的旧任务已经自动取消，不会再发送。'
+          : reason,
+      tone: 'muted',
+      icon: 'stop',
+    };
+  }
+  if (record.status === 'stopped' || record.status === 'skipped' || record.status === 'disabled') {
+    return {
+      title: '不会发送',
+      description: reason === '-' ? `这次 ${scenario} 复聊已停止。` : reason,
+      tone: 'muted',
+      icon: 'stop',
+    };
+  }
+  if (record.status === 'frequency_blocked' || record.status === 'duplicate') {
+    return {
+      title: '被保护规则跳过',
+      description: reason === '-' ? '为了避免重复或过度打扰，这次没有发送。' : reason,
+      tone: 'warning',
+      icon: 'stop',
+    };
+  }
+  if (record.status === 'failed' || record.status === 'unknown') {
+    return {
+      title: record.status === 'unknown' ? '投递状态不明' : '执行失败',
+      description: record.error || (reason === '-' ? '需要查看技术明细进一步排查。' : reason),
+      tone: 'danger',
+      icon: 'stop',
+    };
+  }
+  return {
+    title: '已记录',
+    description: reason === '-' ? '系统记录了这次复聊任务。' : reason,
+    tone: 'muted',
+    icon: 'info',
+  };
+}
+
+function SummaryIcon({ icon }: { icon: SummaryInfo['icon'] }) {
+  if (icon === 'clock') return <Clock aria-hidden="true" size={18} />;
+  if (icon === 'check') return <CheckCircle2 aria-hidden="true" size={18} />;
+  if (icon === 'stop') return <XCircle aria-hidden="true" size={18} />;
+  return <Info aria-hidden="true" size={18} />;
+}
+
 function getEventSummary(event: ReengagementEvent): string {
   const reason = readString(event.detail, 'reason');
   const outcomeKind = readString(event.detail, 'outcomeKind');
@@ -111,9 +227,7 @@ function getEventSummary(event: ReengagementEvent): string {
   }
 
   if (event.event === 'schedule_precheck_stopped') {
-    return reason
-      ? `创建任务前预检没通过：${DETAIL_REASON_LABELS[reason] || reason}。`
-      : '创建任务前预检没通过。';
+    return reason ? `创建任务前预检没通过：${formatReason(reason)}。` : '创建任务前预检没通过。';
   }
 
   if (event.event === 'rescheduled_out_of_window') {
@@ -123,7 +237,7 @@ function getEventSummary(event: ReengagementEvent): string {
   }
 
   if (event.event === 'shadow_generated') {
-    const reasonText = reason ? DETAIL_REASON_LABELS[reason] || reason : '未投递';
+    const reasonText = reason ? formatReason(reason) : '未投递';
     const outcomeText = outcomeKind ? OUTCOME_LABELS[outcomeKind] || outcomeKind : '已生成结果';
     return `${outcomeText}，但因为「${reasonText}」，所以没有发给用户。`;
   }
@@ -134,6 +248,10 @@ function getEventSummary(event: ReengagementEvent): string {
   if (event.event === 'delivery_attempted') return '文案已进入外部渠道发送流程。';
   if (event.event === 'sent') return '复聊消息已通过渠道发出。';
   if (event.event === 'delivery_unknown') return '渠道侧返回异常，不能盲目重发，需要人工核对。';
+  if (event.event === 'superseded')
+    return reason
+      ? `候选人出现了新的复聊任务，这条旧任务已取消：${formatReason(reason)}。`
+      : '候选人出现了新的复聊任务，这条还没到点的旧任务已自动取消。';
   if (event.event === 'frequency_blocked')
     return '为了避免同一候选人被过度打扰，这次触达被频控拦截。';
   if (event.event === 'fired_but_disabled')
@@ -142,7 +260,7 @@ function getEventSummary(event: ReengagementEvent): string {
   if (event.event === 'outcome_not_reply')
     return '主动回合没有产出可投递的回复，因此没有给候选人发消息。';
   if (event.event === 'enqueue_error') return '任务写入队列失败，需要看技术明细里的错误。';
-  if (reason) return DETAIL_REASON_LABELS[reason] || reason;
+  if (reason) return formatReason(reason);
   if (outcomeKind) return OUTCOME_LABELS[outcomeKind] || outcomeKind;
   return '系统记录了这一步的处理状态。';
 }
@@ -164,8 +282,11 @@ export default function ReengagementDetailDrawer({
     enabled: !!record?.session_id,
   });
   const sameSessionRecords = useMemo(
-    () => sortRecordsByCreatedAt(sessionRecords ?? []),
-    [sessionRecords],
+    () =>
+      sortRecordsByCreatedAt(sessionRecords ?? []).filter(
+        (item) => item.status !== 'superseded' || item.touch_key === record?.touch_key,
+      ),
+    [record?.touch_key, sessionRecords],
   );
 
   // 最近聊天记录：还原触达前后的会话语境
@@ -180,17 +301,29 @@ export default function ReengagementDetailDrawer({
   const identityFacts = useMemo<InfoFact[]>(() => {
     if (!record) return [];
     return [
+      {
+        label: '候选人',
+        value: record.candidate_name || record.user_id || record.session_id || '-',
+      },
+      { label: '接管账号', value: record.manager_name || record.bot_im_id || '-' },
+      { label: '场景', value: scenarioLabels[record.scenario_code] ?? record.scenario_code ?? '-' },
+      { label: '当前结论', value: getReadableStatus(record).title },
+      { label: '原因', value: formatReason(record.decision_reason) },
+    ];
+  }, [record, scenarioLabels]);
+
+  const technicalFacts = useMemo<InfoFact[]>(() => {
+    if (!record) return [];
+    return [
       { label: 'Touch Key', value: record.touch_key, mono: true },
       { label: 'Session', value: record.session_id || '-', mono: true },
       { label: 'User', value: record.user_id || '-', mono: true },
       { label: 'Corp', value: record.corp_id || '-', mono: true },
-      { label: '场景', value: scenarioLabels[record.scenario_code] ?? record.scenario_code ?? '-' },
-      { label: '决策原因', value: record.decision_reason || '-' },
       { label: 'Outcome', value: record.outcome_kind || '-' },
       { label: 'Reserve', value: record.reserve_result || '-' },
       { label: '主动回合 Batch', value: detailBatchId || '-', mono: true },
     ];
-  }, [detailBatchId, record, scenarioLabels]);
+  }, [detailBatchId, record]);
 
   const timeFacts = useMemo<InfoFact[]>(() => {
     if (!record) return [];
@@ -210,6 +343,8 @@ export default function ReengagementDetailDrawer({
       onClose();
     }
   };
+
+  const summary = record ? getReadableStatus(record) : null;
 
   if (isLoading || !record) {
     return (
@@ -237,7 +372,9 @@ export default function ReengagementDetailDrawer({
         {/* Header */}
         <div className={styles.header}>
           <div className={styles.headerTop}>
-            <h3 className={styles.headerTitle}>触达记录详情</h3>
+            <h3 className={styles.headerTitle}>
+              复聊详情 · {scenarioLabels[record.scenario_code] ?? record.scenario_code}
+            </h3>
             <StatusBadge status={record.status} title={record.error || undefined} />
             {record.shadow && record.status !== 'shadow' && (
               <span className={styles.shadowFlag} title="Shadow：生成了文案但未投递">
@@ -253,6 +390,18 @@ export default function ReengagementDetailDrawer({
         {/* Body — left/right split */}
         <div className={styles.body}>
           <div className={styles.leftCol}>
+            {summary && (
+              <div className={`${styles.summaryCard} ${styles[`summary_${summary.tone}`]}`}>
+                <div className={styles.summaryIcon}>
+                  <SummaryIcon icon={summary.icon} />
+                </div>
+                <div className={styles.summaryBody}>
+                  <div className={styles.summaryTitle}>{summary.title}</div>
+                  <div className={styles.summaryText}>{summary.description}</div>
+                </div>
+              </div>
+            )}
+
             {/* Error */}
             {record.error && (
               <div className={styles.errorBox}>
@@ -305,7 +454,7 @@ export default function ReengagementDetailDrawer({
             {/* Generated text */}
             <div>
               <div className={styles.sectionTitle}>
-                生成文案
+                准备发送的文案
                 {record.shadow && <span className={styles.shadowNote}>本应发（未投递）</span>}
               </div>
               {record.generated_text ? (
@@ -313,8 +462,8 @@ export default function ReengagementDetailDrawer({
               ) : (
                 <div className={styles.emptyText}>
                   {record.outcome_kind === 'skipped'
-                    ? '未产出可发送文案（Outcome=skipped）'
-                    : '未生成文案'}
+                    ? `没有生成可发送文案：${formatReason(record.decision_reason)}`
+                    : '这次没有准备发送文案'}
                 </div>
               )}
             </div>
@@ -322,7 +471,7 @@ export default function ReengagementDetailDrawer({
             {/* Same session tasks */}
             <div>
               <div className={styles.sectionTitle}>
-                同候选人复聊任务
+                这个候选人的其他复聊
                 {!sessionRecordsLoading && (
                   <span className={styles.sectionNote}>共 {sameSessionRecords.length} 条</span>
                 )}
@@ -361,7 +510,9 @@ export default function ReengagementDetailDrawer({
                             : '无计划触发时间'}
                         </span>
                         {task.decision_reason && (
-                          <span className={styles.taskReason}>原因：{task.decision_reason}</span>
+                          <span className={styles.taskReason}>
+                            原因：{formatReason(task.decision_reason)}
+                          </span>
                         )}
                       </button>
                     );
@@ -372,7 +523,7 @@ export default function ReengagementDetailDrawer({
 
             {/* Lifecycle timeline */}
             <div>
-              <div className={styles.sectionTitle}>当前任务流转</div>
+              <div className={styles.sectionTitle}>这次任务流转</div>
               {events.length === 0 ? (
                 <div className={styles.emptyText}>暂无事件轨迹</div>
               ) : (
@@ -419,7 +570,7 @@ export default function ReengagementDetailDrawer({
               </button>
             )}
             {/* Identity facts */}
-            <div className={styles.sideTitle}>基本信息</div>
+            <div className={styles.sideTitle}>一眼看懂</div>
             <div className={styles.factList}>
               {identityFacts.map((fact) => (
                 <div key={fact.label} className={styles.factRow}>
@@ -432,7 +583,7 @@ export default function ReengagementDetailDrawer({
             </div>
 
             {/* Time facts */}
-            <div className={styles.sideTitle}>时间戳</div>
+            <div className={styles.sideTitle}>关键时间</div>
             <div className={styles.factList}>
               {timeFacts.map((fact) => (
                 <div key={fact.label} className={styles.factRow}>
@@ -441,6 +592,20 @@ export default function ReengagementDetailDrawer({
                 </div>
               ))}
             </div>
+
+            <details className={styles.technicalPanel}>
+              <summary>技术字段</summary>
+              <div className={styles.factList}>
+                {technicalFacts.map((fact) => (
+                  <div key={fact.label} className={styles.factRow}>
+                    <span className={styles.factLabel}>{fact.label}</span>
+                    <span className={`${styles.factValue} ${fact.mono ? styles.monoValue : ''}`}>
+                      {fact.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
           </div>
         </div>
       </div>

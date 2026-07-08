@@ -14,7 +14,7 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 });
 
 describe('FollowUpSchedulerService', () => {
-  let queue: { add: jest.Mock; getJob: jest.Mock };
+  let queue: { add: jest.Mock; getJob: jest.Mock; getJobs: jest.Mock };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
   let service: FollowUpSchedulerService;
@@ -23,6 +23,7 @@ describe('FollowUpSchedulerService', () => {
     queue = {
       add: jest.fn().mockResolvedValue(undefined),
       getJob: jest.fn().mockResolvedValue(null),
+      getJobs: jest.fn().mockResolvedValue([]),
     };
     systemConfig = {
       getAgentReplyConfig: jest.fn().mockResolvedValue({ reengagementEnabled: true }),
@@ -31,6 +32,7 @@ describe('FollowUpSchedulerService', () => {
       trackScheduled: jest.fn(),
       trackScheduleSkipped: jest.fn(),
       trackScheduleError: jest.fn(),
+      trackSuperseded: jest.fn(),
     };
     service = new FollowUpSchedulerService(
       queue as never,
@@ -160,6 +162,7 @@ describe('FollowUpSchedulerService', () => {
     });
     expect(queue.add).not.toHaveBeenCalled();
     expect(tracking.trackScheduled).not.toHaveBeenCalled();
+    expect(queue.getJobs).not.toHaveBeenCalled();
   });
 
   it('falls back to Bull-level dedup when the existing-job lookup fails', async () => {
@@ -176,6 +179,221 @@ describe('FollowUpSchedulerService', () => {
     expect(result.scheduled).toBe(true);
     expect(queue.add).toHaveBeenCalled();
     expect(tracking.trackScheduled).toHaveBeenCalled();
+  });
+
+  it('removes older pending pre-booking jobs for the same session before enqueueing a new pre-booking job', async () => {
+    const now = Date.UTC(2026, 5, 24, 2, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    const removeOldOpening = jest.fn().mockResolvedValue(undefined);
+    const removeOldStore = jest.fn().mockResolvedValue(undefined);
+    const removeOtherSession = jest.fn().mockResolvedValue(undefined);
+    const removePostBooking = jest.fn().mockResolvedValue(undefined);
+    queue.getJobs.mockResolvedValue([
+      {
+        id: 'sess-1:opening_no_reply:opening',
+        data: {
+          sessionRef,
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'opening',
+          anchorAt: now,
+        },
+        remove: removeOldOpening,
+      },
+      {
+        id: 'sess-1:store_presented_no_reply:msg-1:store_presented',
+        data: {
+          sessionRef,
+          scenarioCode: 'store_presented_no_reply',
+          anchorEventId: 'msg-1:store_presented',
+          anchorAt: now,
+        },
+        remove: removeOldStore,
+      },
+      {
+        id: 'sess-2:opening_no_reply:opening',
+        data: {
+          sessionRef: { ...sessionRef, sessionId: 'sess-2' },
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'opening',
+          anchorAt: now,
+        },
+        remove: removeOtherSession,
+      },
+      {
+        id: 'sess-1:interview_reminder:wo1',
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo1',
+          anchorAt: now,
+          workOrderId: 1,
+          expectedInterviewAt: now + 3 * 60 * 60_000,
+        },
+        remove: removePostBooking,
+      },
+    ]);
+
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'booking_incomplete',
+      anchorEventId: 'msg-2:collection_started',
+      anchorAt: now,
+      state: baseState({ collectedFields: { name: '张三' } as never }),
+    });
+
+    expect(removeOldOpening).toHaveBeenCalled();
+    expect(removeOldStore).toHaveBeenCalled();
+    expect(removeOtherSession).not.toHaveBeenCalled();
+    expect(removePostBooking).not.toHaveBeenCalled();
+    expect(tracking.trackSuperseded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-1',
+        scenarioCode: 'opening_no_reply',
+        anchorEventId: 'opening',
+      }),
+      expect.objectContaining({
+        jobId: 'sess-1:opening_no_reply:opening',
+        supersededByJobId: 'sess-1:booking_incomplete:msg-2:collection_started',
+      }),
+    );
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('removes stale pre-booking and old post-booking jobs before enqueueing a new post-booking job', async () => {
+    const now = Date.UTC(2026, 5, 24, 2, 0, 0);
+    const interviewAt = now + 4 * 60 * 60_000;
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    const removePreBooking = jest.fn().mockResolvedValue(undefined);
+    const removeOldBooking = jest.fn().mockResolvedValue(undefined);
+    const keepSameBookingSibling = jest.fn().mockResolvedValue(undefined);
+    queue.getJobs.mockResolvedValue([
+      {
+        id: 'sess-1:opening_no_reply:opening',
+        data: {
+          sessionRef,
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'opening',
+          anchorAt: now,
+        },
+        remove: removePreBooking,
+      },
+      {
+        id: 'sess-1:interview_reminder:wo1',
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo1',
+          anchorAt: now,
+          workOrderId: 1,
+          expectedInterviewAt: now + 2 * 60 * 60_000,
+        },
+        remove: removeOldBooking,
+      },
+      {
+        id: 'sess-1:post_interview_followup:wo2',
+        data: {
+          sessionRef,
+          scenarioCode: 'post_interview_followup',
+          anchorEventId: 'wo2',
+          anchorAt: now,
+          workOrderId: 2,
+          expectedInterviewAt: interviewAt,
+        },
+        remove: keepSameBookingSibling,
+      },
+    ]);
+
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: 'wo2',
+      anchorAt: now,
+      state: baseState({ terminal: 'booked', interviewAt } as never),
+      workOrderId: 2,
+      expectedInterviewAt: interviewAt,
+    });
+
+    expect(removePreBooking).toHaveBeenCalled();
+    expect(removeOldBooking).toHaveBeenCalled();
+    expect(keepSameBookingSibling).not.toHaveBeenCalled();
+    expect(tracking.trackSuperseded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-1',
+        scenarioCode: 'interview_reminder',
+        anchorEventId: 'wo1',
+      }),
+      expect.objectContaining({
+        jobId: 'sess-1:interview_reminder:wo1',
+        supersededByJobId: 'sess-1:interview_reminder:wo2',
+      }),
+    );
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('removes a pending job by id for scenario mutual exclusion', async () => {
+    const remove = jest.fn().mockResolvedValue(undefined);
+    queue.getJob.mockResolvedValue({
+      id: 'sess-1:opening_no_reply:opening',
+      data: {
+        sessionRef,
+        scenarioCode: 'opening_no_reply',
+        anchorEventId: 'opening',
+        anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+      },
+      remove,
+    });
+
+    await expect(
+      service.removePendingJob(
+        'sess-1:opening_no_reply:opening',
+        'address_missing_supersedes_opening_no_reply',
+      ),
+    ).resolves.toBe(true);
+
+    expect(queue.getJob).toHaveBeenCalledWith('sess-1:opening_no_reply:opening');
+    expect(remove).toHaveBeenCalled();
+    expect(tracking.trackSuperseded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-1',
+        scenarioCode: 'opening_no_reply',
+        anchorEventId: 'opening',
+      }),
+      expect.objectContaining({
+        jobId: 'sess-1:opening_no_reply:opening',
+        reason: 'address_missing_supersedes_opening_no_reply',
+      }),
+    );
+  });
+
+  it('removes superseded pending jobs through scenario registry contracts', async () => {
+    const remove = jest.fn().mockResolvedValue(undefined);
+    queue.getJob.mockResolvedValue({
+      id: 'sess-1:opening_no_reply:opening',
+      data: {
+        sessionRef,
+        scenarioCode: 'opening_no_reply',
+        anchorEventId: 'opening',
+        anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+      },
+      remove,
+    });
+
+    await expect(
+      service.removeSupersededPendingJobs({
+        sessionRef,
+        scenarioCode: 'address_missing',
+        reason: 'address_missing_supersedes_opening_no_reply',
+      }),
+    ).resolves.toBe(1);
+
+    expect(queue.getJob).toHaveBeenCalledWith('sess-1:opening_no_reply:opening');
+    expect(remove).toHaveBeenCalled();
+  });
+
+  it('returns false when there is no pending job to remove', async () => {
+    queue.getJob.mockResolvedValue(null);
+
+    await expect(service.removePendingJob('missing-job')).resolves.toBe(false);
   });
 
   it('uses a fresh empty state when state is omitted', async () => {

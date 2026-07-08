@@ -20,6 +20,12 @@ export interface ReengagementTouchIdentity {
   managerName?: string;
   /** 接管 bot 系统 wxid */
   botImId?: string;
+  /** WeCom 主动投递上下文（不落追踪表，仅运行时透传） */
+  token?: string;
+  imContactId?: string;
+  imRoomId?: string;
+  apiType?: 'enterprise' | 'group';
+  externalUserId?: string;
 }
 
 /**
@@ -50,7 +56,10 @@ export class ReengagementTrackingService {
    */
   async resolveChannelIdentity(
     sessionId: string,
-  ): Promise<Pick<ReengagementTouchIdentity, 'candidateName' | 'managerName' | 'botImId'> | null> {
+  ): Promise<Pick<
+    ReengagementTouchIdentity,
+    'candidateName' | 'managerName' | 'botImId' | 'imContactId' | 'externalUserId'
+  > | null> {
     try {
       return await this.repository.getLatestChatChannelIdentity(sessionId);
     } catch (error) {
@@ -145,6 +154,28 @@ export class ReengagementTrackingService {
     });
   }
 
+  /** 未到点任务被同会话新任务替代，Bull job 已移除 */
+  trackSuperseded(
+    identity: ReengagementTouchIdentity,
+    params: { jobId?: string; supersededByJobId?: string; reason?: string },
+  ): void {
+    const reason = params.reason ?? 'superseded_by_new_task';
+    this.persist({
+      ...this.base(identity),
+      jobId: params.jobId,
+      status: ReengagementTouchStatus.Superseded,
+      decisionReason: reason,
+      event: {
+        event: ReengagementTouchEventName.Superseded,
+        detail: {
+          reason,
+          ...(params.jobId ? { jobId: params.jobId } : {}),
+          ...(params.supersededByJobId ? { supersededByJobId: params.supersededByJobId } : {}),
+        },
+      },
+    });
+  }
+
   /** shadow 分支：生成了文案但不投递（终态） */
   trackShadow(
     identity: ReengagementTouchIdentity,
@@ -197,14 +228,18 @@ export class ReengagementTrackingService {
     identity: ReengagementTouchIdentity,
     outcomeKind: string,
     batchId?: string,
+    reason: string = ReengagementTouchEventName.OutcomeNotReply,
   ): void {
     this.persist({
       ...this.base(identity),
       status: ReengagementTouchStatus.Failed,
-      decisionReason: ReengagementTouchEventName.OutcomeNotReply,
+      decisionReason: reason,
       outcomeKind,
       batchId,
-      event: { event: ReengagementTouchEventName.OutcomeNotReply, detail: { outcomeKind } },
+      event: {
+        event: ReengagementTouchEventName.OutcomeNotReply,
+        detail: { outcomeKind, reason },
+      },
     });
   }
 

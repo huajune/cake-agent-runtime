@@ -25,11 +25,14 @@ const INTERVIEW_TIME = '2026-06-25 14:00';
 const INTERVIEW_AT = Date.UTC(2026, 5, 25, 6, 0, 0);
 
 describe('ReengagementAnchorService', () => {
-  let scheduler: { scheduleFollowUp: jest.Mock };
+  let scheduler: { scheduleFollowUp: jest.Mock; removeSupersededPendingJobs: jest.Mock };
   let session: { saveTerminalState: jest.Mock; getAuthoritativeState: jest.Mock };
 
   beforeEach(() => {
-    scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
+    scheduler = {
+      scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }),
+      removeSupersededPendingJobs: jest.fn().mockResolvedValue(1),
+    };
     session = {
       saveTerminalState: jest.fn().mockResolvedValue(undefined),
       getAuthoritativeState: jest.fn().mockResolvedValue(baseState()),
@@ -351,6 +354,11 @@ describe('ReengagementAnchorService', () => {
         anchorEventId: 'trace-1:address_missing',
       }),
     );
+    expect(scheduler.removeSupersededPendingJobs).toHaveBeenCalledWith({
+      sessionRef: { corpId: 'corp-1', userId: 'user-1', sessionId: 'chat-1' },
+      scenarioCode: 'address_missing',
+      reason: 'address_missing_supersedes_opening_no_reply',
+    });
   });
 
   it('still schedules address-missing for inverted send-location phrasing', async () => {

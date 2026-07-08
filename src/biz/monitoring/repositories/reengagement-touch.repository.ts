@@ -97,20 +97,31 @@ export class ReengagementTouchRepository extends BaseRepository {
     candidateName?: string;
     managerName?: string;
     botImId?: string;
+    imContactId?: string;
+    externalUserId?: string;
   } | null> {
     const rows = await this.selectFrom<{
       candidate_name: string | null;
       manager_name: string | null;
       im_bot_id: string | null;
-    }>('chat_messages', 'candidate_name,manager_name,im_bot_id', (q) =>
-      q.eq('chat_id', sessionId).order('timestamp', { ascending: false }).limit(1),
+      im_contact_id: string | null;
+      external_user_id: string | null;
+      is_self: boolean | null;
+    }>(
+      'chat_messages',
+      'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self',
+      (q) => q.eq('chat_id', sessionId).order('timestamp', { ascending: false }).limit(20),
     );
-    const row = rows[0];
+    const row = rows.find((r) => r.candidate_name || r.manager_name || r.im_bot_id) ?? rows[0];
     if (!row) return null;
+    const recipientRow =
+      rows.find((r) => r.is_self !== true && (r.im_contact_id || r.external_user_id)) ?? row;
     return {
       candidateName: row.candidate_name ?? undefined,
       managerName: row.manager_name ?? undefined,
       botImId: row.im_bot_id ?? undefined,
+      imContactId: recipientRow.im_contact_id ?? undefined,
+      externalUserId: recipientRow.external_user_id ?? undefined,
     };
   }
 

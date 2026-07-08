@@ -8,6 +8,7 @@ import { isShortCircuitedToolCall } from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import type { ReengagementChannelIdentity } from '@agent/reengagement/reengagement.types';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
@@ -374,11 +375,7 @@ export class ReplyWorkflowService {
         userId: agentCallParams.userId,
         corpId: agentCallParams.corpId,
         isGroupChat: Boolean(params.primaryMessage.imRoomId),
-        channelIdentity: {
-          candidateName: parsed.contactName,
-          managerName: params.primaryMessage.botUserId,
-          botImId: params.primaryMessage.imBotId,
-        },
+        channelIdentity: this.buildReengagementChannelIdentity(parsed, params.primaryMessage),
       });
 
       // 非 reply 终态（skipped 沉默 / guardrail_blocked 守卫拦截 / handoff 转人工）：跳过 WeCom 发送，
@@ -431,11 +428,7 @@ export class ReplyWorkflowService {
           userId: agentCallParams.userId,
           corpId: agentCallParams.corpId,
           isGroupChat: Boolean(params.primaryMessage.imRoomId),
-          channelIdentity: {
-            candidateName: parsed.contactName,
-            managerName: params.primaryMessage.botUserId,
-            botImId: params.primaryMessage.imBotId,
-          },
+          channelIdentity: this.buildReengagementChannelIdentity(parsed, params.primaryMessage),
         });
       }
 
@@ -863,11 +856,7 @@ export class ReplyWorkflowService {
               scenarioCode: 'opening_no_reply',
               anchorEventId: 'opening',
               anchorAt: Date.now(),
-              channelIdentity: {
-                candidateName: parsed.contactName,
-                managerName: primaryMessage.botUserId,
-                botImId,
-              },
+              channelIdentity: this.buildReengagementChannelIdentity(parsed, primaryMessage),
             })
             .catch((error: unknown) => {
               this.logger.warn(
@@ -993,6 +982,19 @@ export class ReplyWorkflowService {
       messageId: traceId ?? parsed.messageId,
       chatId: parsed.chatId,
       _apiType: parsed._apiType,
+    };
+  }
+
+  private buildReengagementChannelIdentity(
+    parsed: ReturnType<typeof MessageParser.parse>,
+    primaryMessage: EnterpriseMessageCallbackDto,
+  ): ReengagementChannelIdentity {
+    return {
+      candidateName: parsed.contactName,
+      managerName: primaryMessage.botUserId,
+      botImId: primaryMessage.imBotId,
+      imContactId: parsed.imContactId,
+      externalUserId: parsed.externalUserId,
     };
   }
 }

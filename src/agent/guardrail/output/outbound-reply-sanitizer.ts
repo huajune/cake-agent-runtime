@@ -10,9 +10,9 @@ export class OutboundReplySanitizer {
    * 匹配历史消息中注入的时间标记，防止模型模仿输出。
    */
   private static readonly TIME_MARKER_PATTERN =
-    /\[消息发送时间：[^\]]+\]|\[t:[^\]]+\]|\[当前时间:[^\]]+\]/g;
+    /[\[【](?:消息发送时间[:：]|t:|当前时间[:：])[^\]\】\n]*(?:[\]\】]|$)/gm;
   private static readonly TIME_MARKER_TEST_PATTERN =
-    /\[消息发送时间：[^\]]+\]|\[t:[^\]]+\]|\[当前时间:[^\]]+\]/;
+    /[\[【](?:消息发送时间[:：]|t:|当前时间[:：])[^\]\】\n]*(?:[\]\】]|$)/m;
 
   /**
    * 推理/思考标签：成对的 `<think>...</think>` 块整体删除；落单标签删除标签本身。
@@ -32,7 +32,7 @@ export class OutboundReplySanitizer {
       this.removeTimeMarkers(this.removeVisualPlaceholders(this.removeThinkTags(text))),
     );
 
-    return this.cleanWhitespace(cleaned);
+    return this.removeEmptyResidue(this.cleanWhitespace(cleaned));
   }
 
   private static removeTimeMarkers(text: string): string {
@@ -65,6 +65,10 @@ export class OutboundReplySanitizer {
       .filter((paragraph) => paragraph.length > 0);
 
     return processedParagraphs.join('\n\n');
+  }
+
+  private static removeEmptyResidue(text: string): string {
+    return /^[\s✅【】\[\]（）()，,。.!！?？:：;；\-_*]+$/.test(text) ? '' : text;
   }
 
   static needsSanitization(text: string): boolean {

@@ -35,6 +35,12 @@ describe('detectOutputLeak', () => {
     expect(detectOutputLeak('岗位推荐已发送，等待候选人确认。')).not.toBeNull();
   });
 
+  it('flags internal review/meta output', () => {
+    expect(detectOutputLeak('✅ 对话已完成，符合信任建立阶段要求。')).not.toBeNull();
+    expect(detectOutputLeak('当前回复符合信任建立阶段要求')).not.toBeNull();
+    expect(detectOutputLeak('【工具调用结果】{"success":true}')).not.toBeNull();
+  });
+
   it('flags tool-call echo', () => {
     expect(detectOutputLeak('调用 advance_stage 切换阶段')).not.toBeNull();
     expect(detectOutputLeak('我来调用duliday_job_list查一下')).not.toBeNull();
