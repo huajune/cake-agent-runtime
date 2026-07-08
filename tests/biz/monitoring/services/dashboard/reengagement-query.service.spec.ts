@@ -201,6 +201,57 @@ describe('ReengagementQueryService', () => {
     expect(result.candidates[1].nextTouch).toBeNull();
   });
 
+  it('hides superseded rows from candidate overview current states', async () => {
+    repository.getCandidateOverview.mockResolvedValue([
+      {
+        session_id: 'sess-1',
+        user_id: 'user-1',
+        corp_id: 'corp-1',
+        scenario_code: 'opening_no_reply',
+        touch_key: 'old-touch',
+        status: 'superseded',
+        decision_reason: 'superseded_by_new_task',
+        shadow: false,
+        fire_at: '2026-07-06T08:00:00.000Z',
+        sent_at: null,
+        anchor_at: '2026-07-06T01:00:00.000Z',
+        outcome_kind: null,
+        updated_at: '2026-07-06T05:00:00.000Z',
+        session_latest_at: '2026-07-06T06:00:00.000Z',
+        total_sessions: 1,
+        candidate_name: '候选人A',
+        manager_name: '招聘顾问一号',
+        bot_im_id: 'bot-1',
+      },
+      {
+        session_id: 'sess-1',
+        user_id: 'user-1',
+        corp_id: 'corp-1',
+        scenario_code: 'booking_incomplete',
+        touch_key: 'new-touch',
+        status: 'scheduled',
+        decision_reason: null,
+        shadow: false,
+        fire_at: '2026-07-06T09:00:00.000Z',
+        sent_at: null,
+        anchor_at: '2026-07-06T02:00:00.000Z',
+        outcome_kind: null,
+        updated_at: '2026-07-06T06:00:00.000Z',
+        session_latest_at: '2026-07-06T06:00:00.000Z',
+        total_sessions: 1,
+        candidate_name: '候选人A',
+        manager_name: '招聘顾问一号',
+        bot_im_id: 'bot-1',
+      },
+    ]);
+
+    const result = await service.getCandidateOverview({});
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].scenarios).toHaveLength(1);
+    expect(result.candidates[0].scenarios[0].touchKey).toBe('new-touch');
+  });
+
   it('returns an empty candidate page when the RPC returns no rows', async () => {
     repository.getCandidateOverview.mockResolvedValue([]);
 

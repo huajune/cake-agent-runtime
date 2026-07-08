@@ -149,6 +149,40 @@
   cursor: pointer;
 }
 
+.filterToggle {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.07);
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.32);
+  }
+}
+
+.filterToggleActive {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(148, 163, 184, 0.08);
+  color: #64748b;
+
+  &:hover {
+    background: rgba(148, 163, 184, 0.13);
+    border-color: rgba(148, 163, 184, 0.32);
+  }
+}
+
 /* ── Stat badges: 单行横向紧凑胶囊 ── */
 .statsGroup {
   display: inline-flex;
@@ -261,6 +295,10 @@
   .selectWrap {
     width: 100%;
     flex-basis: 100%;
+  }
+
+  .filterToggle {
+    width: 100%;
   }
 
   .statsGroup {

@@ -1,9 +1,56 @@
 {
   "baseVersion": "10.0.1",
-  "nextVersion": "10.0.1",
+  "nextVersion": "10.0.2",
   "updatedAt": "2026-07-08",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "482",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/482",
+      "title": "强化复聊生成与守卫修复链路",
+      "author": "huajune",
+      "mergedAt": "2026-07-08",
+      "businessUpdates": [
+        "新增运营日报飞书历史报名/面试通过数回填脚本。",
+        "强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。",
+        "收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。",
+        "优化守卫修复链路与 CI 范围"
+      ],
+      "summary": [
+        "收敛出站守卫规则止血版",
+        "收敛守卫确定性修补实现",
+        "强化复聊生成与任务治理",
+        "优化守卫修复链路与 CI 范围",
+        "强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。",
+        "收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。",
+        "为 release metadata PR 增加 CI 范围识别，允许纯版本元数据变更走轻量 CI。",
+        "新增运营日报飞书历史报名/面试通过数回填脚本。",
+        "强化复聊生成与守卫修复链路"
+      ],
+      "features": [
+        "新增运营日报飞书历史报名/面试通过数回填脚本。"
+      ],
+      "fixes": [
+        "强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。",
+        "收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。",
+        "优化守卫修复链路与 CI 范围"
+      ],
+      "optimizations": [],
+      "ops": [
+        "为 release metadata PR 增加 CI 范围识别，允许纯版本元数据变更走轻量 CI。",
+        "收敛出站守卫规则止血版",
+        "收敛守卫确定性修补实现",
+        "强化复聊生成与任务治理"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm test -- tests/agent/runner/agent-runner.service.spec.ts tests/agent/runner/reply-rewrite.service.spec.ts --watchman=false`",
+        "`pnpm run typecheck`",
+        "`pnpm run ci:check`"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.0.1",
     "date": "2026-07-08",

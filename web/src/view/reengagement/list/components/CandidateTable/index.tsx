@@ -5,6 +5,8 @@ import { AVATAR_GRADIENTS, getAvatarStyle, getUserInitial } from '@/utils/avatar
 import { getStatusMeta } from '../../constants';
 import styles from './index.module.scss';
 
+const HIDDEN_SCENARIO_STATUSES = new Set(['superseded']);
+
 /** 未来时间的相对表述（fire_at 倒计时）；已过期/无效返回 null */
 function formatCountdown(fireAt: string): string | null {
   const target = Date.parse(fireAt);
@@ -26,9 +28,9 @@ function formatCountdown(fireAt: string): string | null {
 /** 行点击的默认目标：优先待发任务，否则最近更新的场景触达 */
 function primaryTouchKey(candidate: ReengagementCandidateSummary): string | null {
   if (candidate.nextTouch) return candidate.nextTouch.touchKey;
-  const latest = [...candidate.scenarios].sort(
-    (a, b) => Date.parse(b.updatedAt || '') - Date.parse(a.updatedAt || ''),
-  )[0];
+  const latest = candidate.scenarios
+    .filter((scenario) => !HIDDEN_SCENARIO_STATUSES.has(scenario.status))
+    .sort((a, b) => Date.parse(b.updatedAt || '') - Date.parse(a.updatedAt || ''))[0];
   return latest?.touchKey ?? null;
 }
 
@@ -39,6 +41,8 @@ interface CandidateTableProps {
   error?: boolean;
   /** code→displayName，由页面从场景注册表接口构建（与流水视图同源） */
   scenarioLabels: Record<string, string>;
+  /** true 时只展示还有待发任务的候选人 */
+  pendingOnly?: boolean;
   /** 点场景芯片打开对应触达的详情抽屉 */
   onTouchClick: (touchKey: string) => void;
 }
@@ -53,8 +57,18 @@ export default function CandidateTable({
   loading,
   error,
   scenarioLabels,
+  pendingOnly = false,
   onTouchClick,
 }: CandidateTableProps) {
+  const visibleData = data
+    .map((candidate) => ({
+      ...candidate,
+      scenarios: candidate.scenarios.filter(
+        (scenario) => !HIDDEN_SCENARIO_STATUSES.has(scenario.status),
+      ),
+    }))
+    .filter((candidate) => candidate.nextTouch || candidate.scenarios.length > 0);
+
   const tableHeaders = (
     <tr>
       <th>候选人</th>
@@ -65,7 +79,7 @@ export default function CandidateTable({
     </tr>
   );
 
-  if (loading || error || data.length === 0) {
+  if (loading || error || visibleData.length === 0) {
     return (
       <section className={styles.section}>
         <div className={styles.tableWrapper}>
@@ -85,15 +99,21 @@ export default function CandidateTable({
                         <AlertTriangle className={styles.emptyIcon} aria-hidden="true" />
                       </div>
                       <p>候选人数据加载失败</p>
-                      <span className={styles.emptyHint}>请刷新页面重试，持续失败请联系研发排查</span>
+                      <span className={styles.emptyHint}>
+                        请刷新页面重试，持续失败请联系研发排查
+                      </span>
                     </div>
                   ) : (
                     <div className={styles.emptyStateContainer}>
                       <div className={styles.emptyIconHalo}>
                         <BellRing className={styles.emptyIcon} aria-hidden="true" />
                       </div>
-                      <p>暂无候选人触达数据</p>
-                      <span className={styles.emptyHint}>产生二次触发任务后，候选人会即刻出现在这里</span>
+                      <p>{pendingOnly ? '暂无待发候选人' : '暂无候选人触达数据'}</p>
+                      <span className={styles.emptyHint}>
+                        {pendingOnly
+                          ? '当前没有计划中的复聊；可在上方切到“显示全部”查看已结束记录'
+                          : '产生二次触发任务后，候选人会即刻出现在这里'}
+                      </span>
                     </div>
                   )}
                 </td>
@@ -111,7 +131,7 @@ export default function CandidateTable({
         <table className={styles.table}>
           <thead>{tableHeaders}</thead>
           <tbody>
-            {data.map((candidate, index) => {
+            {visibleData.map((candidate, index) => {
               const rowTouchKey = primaryTouchKey(candidate);
               const nextTouchCountdown = candidate.nextTouch
                 ? formatCountdown(candidate.nextTouch.fireAt)
@@ -139,7 +159,9 @@ export default function CandidateTable({
                                 AVATAR_GRADIENTS,
                               )}
                             >
-                              {getUserInitial(candidate.candidateName || candidate.userId || undefined)}
+                              {getUserInitial(
+                                candidate.candidateName || candidate.userId || undefined,
+                              )}
                             </div>
                             <span className={styles.candidateUser}>{displayName}</span>
                           </>

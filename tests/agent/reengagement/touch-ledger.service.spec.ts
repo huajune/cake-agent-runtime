@@ -41,6 +41,7 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
         const arr = lists.get(keys[1]) ?? [];
         arr.push(args[1]);
         lists.set(keys[1], arr);
+        store.set(keys[2], args[1]);
         return 1;
       }),
       scan: jest.fn(async () => [0, Array.from(store.keys())]),
@@ -66,9 +67,11 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
       expect.any(Number),
       1000,
       expect.any(Number),
+      expect.any(Number),
     ]);
     expect(await ledger.getState('k1')).toBe('sent');
     expect(await ledger.countSentIn24h('s1', 1001)).toBe(1);
+    expect(await ledger.getLastTouchAt('s1')).toBe(1000);
   });
 
   it('countSentIn24h only counts sent timestamps within the window', async () => {
@@ -84,6 +87,18 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     expect(await ledger.isOverFrequencyLimit('s1', now)).toBe(false);
     await ledger.markSent('b', 's1', now - 2000);
     expect(await ledger.isOverFrequencyLimit('s1', now)).toBe(true);
+  });
+
+  it('tracks session touch cooldown from confirmed sent touches', async () => {
+    const now = 100 * 60 * 60 * 1000;
+    expect(await ledger.isInSessionTouchCooldown('s1', now)).toBe(false);
+
+    await ledger.markSent('a', 's1', now);
+
+    expect(await ledger.getLastTouchAt('s1')).toBe(now);
+    expect(await ledger.isInSessionTouchCooldown('s1', now + 60 * 60 * 1000)).toBe(true);
+    expect(await ledger.isInSessionTouchCooldown('s1', now + 3 * 60 * 60 * 1000)).toBe(false);
+    expect(await ledger.countSentIn24h('s1', now)).toBe(1);
   });
 
   it('failed/unknown do NOT count toward frequency (only sent does)', async () => {

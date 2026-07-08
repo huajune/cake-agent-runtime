@@ -19,13 +19,13 @@ import { asRecord, type FactRule, type RuleContradiction } from '../output-rule.
  * - 不管“候选人问保险/社保时如何回答”，保险政策有独立规则。
  *
  * 动作策略：
- * - quota_promise 用 block：名额承诺没有任何工具能正当化，发出去风险不可逆；
+ * - quota_promise 用 block：名额承诺没有任何工具能正当化，发出去风险不可逆；runner 会先尝试一次重写，二审仍违规才静默；
  * - 工具失败却声称成功用 revise：通常可以改写成“未成功/需补充/人工处理”；
  * - 群满/群解散若没有本轮拉群成功信号，已升级为 revise，避免编造群状态。
  */
 
 // 注意：`还` 后面的承诺后缀必须命中其一——不能整组可选，否则裸子串"名额还"就会命中，
-// 把"名额还在不在我这边没法保证"这类合规免责话术一起硬拦（P0 block 不可修复，误杀即静默）。
+// 把"名额还在不在我这边没法保证"这类合规免责话术一起硬拦。
 const QUOTA_PROMISE_PATTERN =
   /名额(?:放心|不会满|还(?:有很多|有不少|够了?)|充足|给你留|帮你留|专门给你|留够了)|帮你(?:留(?!意)|保留)(?:好了|着)?(?:名额|位置)?|你(?:的|那个)?名额(?:还在(?!不在)|有的|没满)|名额不会满的/;
 
@@ -163,13 +163,12 @@ export const FALSE_PROMISE_RULES: FactRule[] = [
   },
   {
     ruleId: 'system_status_fabrication',
-    label:
-      '回复用系统/网络/后台异常解释拖延或失败（系统状态禁止编造和外露），需改写为补充信息、稍后人工处理或继续推进业务动作的口径',
+    label: '回复用系统/网络/后台异常解释拖延或失败（系统状态甩锅话术，观察后交由 LLM 层治理）',
     keywords: SYSTEM_STATUS_FABRICATION_PATTERN,
     ignorePredicate: (_text, toolCalls) =>
       toolCalls.some((call) => SIDE_EFFECT_TOOL_NAMES.has(call.toolName) && isFailedToolCall(call)),
     requiredToolPredicate: () => false,
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
   },
 ];
 
@@ -236,6 +235,72 @@ export function detectToolFailureSuccessClaim(
   }
 
   return null;
+}
+
+/**
+ * 主动复聊等无工具生成链路：只要回复声称副作用已经完成，就必须有本轮对应工具成功信号。
+ * 这和工具失败对账共用同一组完成时态 pattern，避免 composer 另起一套假承诺词库。
+ */
+export function detectCompletionSuccessClaimWithoutTool(
+  text: string,
+  toolCalls: AgentToolCall[],
+): RuleContradiction | null {
+  const requiredClaims: Array<{
+    toolName: string;
+    pattern: RegExp;
+    label: string;
+  }> = [
+    {
+      toolName: 'duliday_interview_booking',
+      pattern: BOOKING_SUCCESS_CLAIM_PATTERN,
+      label: '声称已预约/已安排面试但本轮没有 booking 成功信号',
+    },
+    {
+      toolName: 'duliday_cancel_work_order',
+      pattern: CANCEL_SUCCESS_CLAIM_PATTERN,
+      label: '声称已取消预约但本轮没有 cancel 成功信号',
+    },
+    {
+      toolName: 'duliday_modify_interview_time',
+      pattern: MODIFY_SUCCESS_CLAIM_PATTERN,
+      label: '声称已改约/已修改面试时间但本轮没有 modify 成功信号',
+    },
+    {
+      toolName: 'invite_to_group',
+      pattern: INVITE_SUCCESS_CLAIM_PATTERN,
+      label: '声称已拉群/已发送入群邀请但本轮没有 invite 成功信号',
+    },
+    {
+      toolName: 'send_store_location',
+      pattern: STORE_LOCATION_SUCCESS_CLAIM_PATTERN,
+      label: '声称已发送定位/位置但本轮没有 send_store_location 成功信号',
+    },
+  ];
+
+  for (const { toolName, pattern, label } of requiredClaims) {
+    if (!textAssertsClaim(text, pattern)) continue;
+    if (toolName === 'duliday_interview_booking' && isConditionalFutureBookingClaim(text)) {
+      continue;
+    }
+    const hasSuccessfulTool = toolCalls.some(
+      (call) => call.toolName === toolName && !isFailedToolCall(call),
+    );
+    if (hasSuccessfulTool) continue;
+    return {
+      ruleId: 'completion_success_claim_without_tool',
+      label,
+      action: GUARDRAIL_ACTION.REVISE,
+    };
+  }
+
+  return null;
+}
+
+function isConditionalFutureBookingClaim(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '');
+  return /(?:补齐|补充|补完|填完|资料|信息)[^。！？]{0,24}(?:后|之后)[^。！？]{0,24}(?:能|可以|继续|再|就)[^。！？]{0,24}(?:安排|预约|约面|报名)/.test(
+    normalized,
+  );
 }
 
 /**

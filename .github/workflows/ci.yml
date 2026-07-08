@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
       # dispatch 模式下回报 commit status 需要
       statuses: write
 
@@ -35,50 +36,158 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Detect CI scope
+        id: ci_scope
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || '' }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          FULL_CI=true
+          REASON="business or unknown change; run full CI"
+
+          validate_release_metadata_pr() {
+            local pr_number="$1"
+
+            if [ -z "${pr_number}" ]; then
+              echo "Release metadata fast path denied; no PR number resolved"
+              return 1
+            fi
+
+            local changed_files
+            changed_files="$(
+              gh api --paginate "repos/${GH_REPO}/pulls/${pr_number}/files" --jq '.[].filename'
+            )"
+            local unexpected_files=""
+
+            while IFS= read -r file; do
+              [ -z "${file}" ] && continue
+              case "${file}" in
+                package.json|CHANGELOG.md|.release/pending-release.json)
+                  ;;
+                *)
+                  unexpected_files="${unexpected_files}${file}"$'\n'
+                  ;;
+              esac
+            done <<< "${changed_files}"
+
+            if [ -n "${unexpected_files}" ]; then
+              echo "Release metadata fast path denied; unexpected files changed:"
+              while IFS= read -r file; do
+                [ -z "${file}" ] && continue
+                printf '  - %s\n' "${file}"
+              done <<< "${unexpected_files}"
+              return 1
+            fi
+
+            if echo "${changed_files}" | grep -qx 'package.json'; then
+              package_delta="$(
+                gh api --paginate "repos/${GH_REPO}/pulls/${pr_number}/files" \
+                  --jq '.[] | select(.filename == "package.json") | .patch // ""' |
+                  grep -E '^[+-]' |
+                  grep -vE '^(---|\+\+\+)' || true
+              )"
+
+              if [ -n "${package_delta}" ] &&
+                 echo "${package_delta}" | grep -vqE '^[+-][[:space:]]*"version":[[:space:]]*"[^"]+",?$'; then
+                echo "Release metadata fast path denied; package.json changed beyond version:"
+                echo "${package_delta}"
+                return 1
+              fi
+            fi
+
+            return 0
+          }
+
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            if [ "${BASE_REF}" = "develop" ] && [[ "${HEAD_REF}" == chore/release-metadata/* ]]; then
+              if validate_release_metadata_pr "${PR_NUMBER}"; then
+                FULL_CI=false
+                REASON="release metadata PR; only generated version metadata changed"
+              fi
+            elif [ "${BASE_REF}" = "master" ] && [ "${HEAD_REF}" = "develop" ]; then
+              FULL_CI=false
+              REASON="develop -> master release PR; code was checked before entering develop"
+            fi
+          elif [ "${EVENT_NAME}" = "workflow_dispatch" ] && [[ "${REF_NAME}" == chore/release-metadata/* ]]; then
+            PR_NUMBER="$(gh pr list --head "${REF_NAME}" --state open --json number --jq '.[0].number // ""')"
+            if validate_release_metadata_pr "${PR_NUMBER}"; then
+              FULL_CI=false
+              REASON="workflow_dispatch for release metadata bot branch"
+            fi
+          fi
+
+          echo "full_ci=${FULL_CI}" >> "${GITHUB_OUTPUT}"
+          echo "reason=${REASON}" >> "${GITHUB_OUTPUT}"
+          echo "CI scope: ${REASON}"
+
+      - name: Lightweight CI pass
+        if: steps.ci_scope.outputs.full_ci != 'true'
+        run: |
+          echo "Skipping full CI: ${{ steps.ci_scope.outputs.reason }}"
+
       - name: Setup Node.js
+        if: steps.ci_scope.outputs.full_ci == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
       - name: Setup pnpm
+        if: steps.ci_scope.outputs.full_ci == 'true'
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.33.4
 
       - name: Get pnpm store directory
+        if: steps.ci_scope.outputs.full_ci == 'true'
         id: pnpm-cache
         run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm dependencies
+        if: steps.ci_scope.outputs.full_ci == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ steps.pnpm-cache.outputs.pnpm_cache_dir }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
 
       - name: Install dependencies
+        if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: ESLint check
+        if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run lint:check
 
       - name: Prettier check
+        if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run format:check
 
       - name: TypeScript type check
+        if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run typecheck
 
       - name: Build
+        if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run build:ci
 
       - name: Unit tests with coverage
+        if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run test:ci
 
       # AppModule 全量装配冒烟：捕获 DI 循环依赖/缺失（v5.14.0 启动死锁事故的回归防线）
       - name: AppModule DI smoke test
+        if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run test:di-smoke
 
       - name: Upload coverage
-        if: always()
+        if: always() && steps.ci_scope.outputs.full_ci == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-report

@@ -16,6 +16,7 @@ export interface StatusMeta {
 export const STATUS_META: Record<string, StatusMeta> = {
   scheduled: { label: '已排程', tone: 'info' },
   rescheduled: { label: '已改期', tone: 'info' },
+  superseded: { label: '已被新任务替代', tone: 'muted' },
   sent: { label: '已投递', tone: 'success' },
   shadow: { label: 'Shadow', tone: 'neutral' },
   skipped: { label: '预检跳过', tone: 'muted' },
@@ -27,10 +28,12 @@ export const STATUS_META: Record<string, StatusMeta> = {
   unknown: { label: '状态不明', tone: 'danger' },
 };
 
-export const STATUS_OPTIONS = Object.entries(STATUS_META).map(([value, meta]) => ({
-  value,
-  label: meta.label,
-}));
+export const STATUS_OPTIONS = Object.entries(STATUS_META)
+  .filter(([value]) => value !== 'superseded')
+  .map(([value, meta]) => ({
+    value,
+    label: meta.label,
+  }));
 
 export function getStatusMeta(status: string): StatusMeta {
   return STATUS_META[status] || { label: status || '-', tone: 'muted' };

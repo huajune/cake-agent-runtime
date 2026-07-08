@@ -88,6 +88,8 @@ describe('ReplyWorkflowService', () => {
   };
   const followUpScheduler = {
     scheduleFollowUp: jest.fn(),
+    removePendingJob: jest.fn(),
+    removeSupersededPendingJobs: jest.fn(),
   };
   const session = {
     saveTerminalState: jest.fn(),
@@ -253,6 +255,8 @@ describe('ReplyWorkflowService', () => {
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
     followUpScheduler.scheduleFollowUp.mockResolvedValue({ scheduled: true });
+    followUpScheduler.removePendingJob.mockResolvedValue(true);
+    followUpScheduler.removeSupersededPendingJobs.mockResolvedValue(1);
     session.saveTerminalState.mockResolvedValue(undefined);
     session.recordCandidateActivity.mockResolvedValue(undefined);
     interventionService.dispatch.mockResolvedValue({
@@ -336,6 +340,23 @@ describe('ReplyWorkflowService', () => {
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('does not freeze callback token or api type into reengagement identities', async () => {
+    await service.processSingleMessage(createMessage({ token: 'enterprise-callback-token' }));
+    await flush();
+
+    const openingCall = followUpScheduler.scheduleFollowUp.mock.calls.find(
+      ([input]) => input.scenarioCode === 'opening_no_reply',
+    );
+    expect(openingCall?.[0].channelIdentity).toEqual(
+      expect.objectContaining({
+        botImId: 'im-bot-1',
+        imContactId: 'im-contact-1',
+      }),
+    );
+    expect(openingCall?.[0].channelIdentity).not.toHaveProperty('token');
+    expect(openingCall?.[0].channelIdentity).not.toHaveProperty('apiType');
   });
 
   it('should pass image urls to Agent directly without pre-describing on successful multimodal path', async () => {
@@ -689,6 +710,7 @@ describe('ReplyWorkflowService', () => {
     });
 
     await service.processSingleMessage(createMessage());
+    await flush();
 
     expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -780,6 +802,7 @@ describe('ReplyWorkflowService', () => {
   });
 
   it('schedules address_missing after a delivered reply asks for location', async () => {
+    opsEventsRecorder.recordEventDetailed.mockResolvedValueOnce('duplicate');
     runner.invoke.mockResolvedValueOnce({
       text: '你可以发个位置，我帮你看附近合适的门店。',
       usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
@@ -1460,3 +1483,5 @@ function createMessage(
     ...overrides,
   } as EnterpriseMessageCallbackDto;
 }
+
+const flush = () => new Promise((resolve) => setImmediate(resolve));

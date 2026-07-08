@@ -10,12 +10,8 @@ export interface ReengagementStatsSummary {
   unknown: number;
 }
 
-export type ReengagementViewMode = 'ledger' | 'candidates';
-
 interface ControlPanelProps {
   stats: ReengagementStatsSummary;
-  viewMode: ReengagementViewMode;
-  onViewModeChange: (mode: ReengagementViewMode) => void;
   timeRange: 'today' | 'week' | 'month';
   onTimeRangeChange: (range: 'today' | 'week' | 'month') => void;
   statusFilter: string;
@@ -24,6 +20,8 @@ interface ControlPanelProps {
   onScenarioFilterChange: (value: string) => void;
   searchSessionId: string;
   onSearchSessionIdChange: (sessionId: string) => void;
+  includeClosedCandidates: boolean;
+  onIncludeClosedCandidatesChange: (value: boolean) => void;
   allValue: string;
   /** 场景筛选项：由页面从场景注册表接口构建（displayName 单一来源） */
   scenarioOptions: Array<{ value: string; label: string }>;
@@ -35,15 +33,8 @@ const TIME_RANGE_OPTIONS = [
   { key: 'month' as const, label: '近30天' },
 ];
 
-const VIEW_MODE_OPTIONS = [
-  { key: 'candidates' as const, label: '候选人' },
-  { key: 'ledger' as const, label: '触达流水' },
-];
-
 export default function ControlPanel({
   stats,
-  viewMode,
-  onViewModeChange,
   timeRange,
   onTimeRangeChange,
   statusFilter,
@@ -52,6 +43,8 @@ export default function ControlPanel({
   onScenarioFilterChange,
   searchSessionId,
   onSearchSessionIdChange,
+  includeClosedCandidates,
+  onIncludeClosedCandidatesChange,
   allValue,
   scenarioOptions,
 }: ControlPanelProps) {
@@ -100,20 +93,7 @@ export default function ControlPanel({
   return (
     <section className={`control-panel ${styles.panel}`}>
       <div className={styles.row}>
-        <h3 className={styles.title}>二次触发追溯</h3>
-
-        <div className={styles.timeRangeGroup}>
-          {VIEW_MODE_OPTIONS.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              onClick={() => onViewModeChange(option.key)}
-              className={`${styles.segBtn} ${viewMode === option.key ? styles.segBtnActive : ''}`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <h3 className={styles.title}>复聊任务</h3>
 
         <div className={styles.timeRangeGroup}>
           {TIME_RANGE_OPTIONS.map((option) => (
@@ -184,6 +164,19 @@ export default function ControlPanel({
             ))}
           </select>
         </label>
+
+        <button
+          type="button"
+          className={`${styles.filterToggle} ${includeClosedCandidates ? styles.filterToggleActive : ''}`}
+          onClick={() => onIncludeClosedCandidatesChange(!includeClosedCandidates)}
+          title={
+            includeClosedCandidates
+              ? '当前包含无待发任务的候选人'
+              : '当前只展示还有下一次触达的候选人'
+          }
+        >
+          {includeClosedCandidates ? '显示全部' : '隐藏无待发'}
+        </button>
 
         <div className={styles.statsGroup}>
           {statBadges.map((item) => (

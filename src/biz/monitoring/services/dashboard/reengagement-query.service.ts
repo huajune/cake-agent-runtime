@@ -87,6 +87,9 @@ export class ReengagementQueryService {
     const bySession = new Map<string, ReengagementCandidateSummary>();
     const now = Date.now();
     for (const row of rows) {
+      if (row.status === ReengagementTouchStatus.Superseded) {
+        continue;
+      }
       let candidate = bySession.get(row.session_id);
       if (!candidate) {
         candidate = {

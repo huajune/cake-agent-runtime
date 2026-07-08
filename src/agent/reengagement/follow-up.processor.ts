@@ -2,21 +2,25 @@ import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/comm
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { ConfigService } from '@nestjs/config';
 import {
   ReengagementTrackingService,
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
-import { CHANNEL_DELIVERY_PORT, type ChannelDeliveryPort } from './channel-delivery.port';
+import {
+  REENGAGEMENT_DELIVERY_PORT,
+  type ReengagementDeliveryPort,
+} from './reengagement-delivery.service';
+import type { DeliveryContext } from '@wecom/message/types';
 import { FollowUpSchedulerService } from './follow-up-scheduler.service';
-import { AgentRunnerService } from '../runner/agent-runner.service';
 import type { TurnOutcome } from '../runner/agent-runner.types';
-import { TurnOutcomeInterventionService } from '../runner/turn-outcome-intervention.service';
 import { REENGAGEMENT_JOB_NAME, REENGAGEMENT_QUEUE, type FollowUpJob } from './reengagement.types';
 import {
   bookingFollowUpAnchorId,
@@ -29,6 +33,10 @@ import {
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
+import {
+  ProactiveComposerService,
+  type ProactiveComposeExecution,
+} from './proactive-composer.service';
 
 /** 海绵工单 currentStatus（9 态中文）里代表报名已失效的状态（对所有报名后场景生效）。 */
 const BOOKING_CANCELLED_STATUSES = new Set(['约面取消', '约面失败']);
@@ -39,12 +47,7 @@ const INTERVIEW_DONE_STATUSES = new Set(['面试成功', '面试失败', '上岗
 /** 改期比对容差：active_booking.interview_time 与排程冻结时间差超过 1 分钟视为已改约。 */
 const INTERVIEW_TIME_DRIFT_TOLERANCE_MS = 60_000;
 
-interface ProactiveTurnExecution {
-  outcome: TurnOutcome;
-  agentRequest?: Record<string, unknown>;
-  aiStartAt: number;
-  aiEndAt: number;
-}
+type ProactiveTurnExecution = ProactiveComposeExecution;
 
 interface ProactiveDeliveryResult {
   success: boolean;
@@ -53,6 +56,8 @@ interface ProactiveDeliveryResult {
   deliveredSegments?: number;
   totalTime: number;
   error?: string;
+  skipped?: boolean;
+  skipReason?: string;
 }
 
 /**
@@ -71,18 +76,19 @@ export class FollowUpProcessor implements OnModuleInit {
   constructor(
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
     private readonly session: SessionService,
-    private readonly runner: AgentRunnerService,
+    private readonly composer: ProactiveComposerService,
     private readonly touchLedger: TouchLedgerService,
     private readonly systemConfig: SystemConfigService,
-    private readonly outcomeFinalizer: TurnOutcomeInterventionService,
     private readonly tracking: ReengagementTrackingService,
     private readonly messageTracking: MessageTrackingService,
     private readonly sponge: SpongeService,
     private readonly longTerm: LongTermService,
+    private readonly chatSession: ChatSessionService,
     private readonly scheduler: FollowUpSchedulerService,
+    private readonly configService: ConfigService,
     @Optional()
-    @Inject(CHANNEL_DELIVERY_PORT)
-    private readonly delivery?: ChannelDeliveryPort<TurnOutcome>,
+    @Inject(REENGAGEMENT_DELIVERY_PORT)
+    private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
   ) {}
 
   onModuleInit(): void {
@@ -165,6 +171,18 @@ export class FollowUpProcessor implements OnModuleInit {
       }
     }
 
+    // 1.6) 同 session 触达冷却：跨场景兜底互斥，避免候选人短时间内收到感知重复追问。
+    if (
+      !scenario.sessionCooldownExempt &&
+      (await this.touchLedger.isInSessionTouchCooldown(sessionRef.sessionId, now))
+    ) {
+      this.logger.log(
+        `[reengagement] 同会话触达冷却，丢弃 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
+      );
+      this.tracking.trackStopped(identity, 'session_touch_cooldown');
+      return;
+    }
+
     // 2) 频控：24h ≤ 2（只数 sent）
     if (await this.touchLedger.isOverFrequencyLimit(sessionRef.sessionId, now)) {
       this.logger.log(`[reengagement] 频控丢弃 ${scenarioCode} sessionId=${sessionRef.sessionId}`);
@@ -187,7 +205,7 @@ export class FollowUpProcessor implements OnModuleInit {
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
       const batchId = `batch_${sessionRef.sessionId}_${now}`;
-      const execution = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
+      const execution = await this.runProactiveTurn(job.data, state, scenario, batchId);
       const { outcome } = execution;
       this.logger.log(
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
@@ -198,11 +216,13 @@ export class FollowUpProcessor implements OnModuleInit {
         outcomeKind: outcome.kind,
         generatedText:
           outcome.generatedText ?? (outcome.kind === 'reply' ? outcome.reply?.text : undefined),
-        reason: !this.delivery
-          ? 'no_delivery_port'
-          : !rolloutEnabled
-            ? 'rollout_disabled'
-            : 'shadow_mode',
+        reason:
+          execution.validationReason ??
+          (!this.delivery
+            ? 'no_delivery_port'
+            : !rolloutEnabled
+              ? 'rollout_disabled'
+              : 'shadow_mode'),
         batchId,
       });
       this.messageTracking.recordProactiveTurn(
@@ -227,7 +247,6 @@ export class FollowUpProcessor implements OnModuleInit {
           },
         }),
       );
-      if (outcome.runTurnEnd) await outcome.runTurnEnd({ includeAssistantText: false });
       return;
     }
 
@@ -249,13 +268,18 @@ export class FollowUpProcessor implements OnModuleInit {
     // 投递路径的主动回合在消息处理流水落一行（message_id = batchId），
     // 追溯页凭触达记录上的 batch_id 直接跳到该回合的完整生成轨迹。
     const batchId = `batch_${sessionRef.sessionId}_${now}`;
-    const execution = await this.runProactiveTurn(sessionRef, scenarioCode, scenario, batchId);
+    const execution = await this.runProactiveTurn(job.data, state, scenario, batchId);
     const { outcome } = execution;
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
-      this.tracking.trackOutcomeNotReply(identity, outcome.kind, batchId);
+      this.tracking.trackOutcomeNotReply(
+        identity,
+        outcome.kind,
+        batchId,
+        execution.validationReason,
+      );
       this.messageTracking.recordProactiveTurn(
         this.buildProactiveTurnRecord({
           batchId,
@@ -277,17 +301,9 @@ export class FollowUpProcessor implements OnModuleInit {
           },
         }),
       );
-      await this.outcomeFinalizer.commit(outcome, {
-        traceId: key,
-        chatId: sessionRef.sessionId,
-        userId: sessionRef.userId,
-        corpId: sessionRef.corpId,
-        userMessage: `[系统主动跟进:${scenarioCode}]`,
-      });
       await this.touchLedger.markFailedOrUnknown(key, 'failed');
       return;
     }
-
     await this.outboxDeliverReserved(execution, key, sessionRef.sessionId, now, identity, batchId);
   }
 
@@ -301,7 +317,14 @@ export class FollowUpProcessor implements OnModuleInit {
     jobData: FollowUpJob,
   ): Promise<FollowUpJob['channelIdentity']> {
     const fromJob = jobData.channelIdentity;
-    if (fromJob && (fromJob.candidateName || fromJob.managerName || fromJob.botImId)) {
+    if (
+      fromJob &&
+      (fromJob.candidateName ||
+        fromJob.managerName ||
+        fromJob.botImId ||
+        fromJob.imContactId ||
+        fromJob.externalUserId)
+    ) {
       return fromJob;
     }
     try {
@@ -409,6 +432,7 @@ export class FollowUpProcessor implements OnModuleInit {
         } as AuthoritativeSessionState,
         workOrderId,
         expectedInterviewAt: newInterviewAt,
+        channelIdentity: jobData.channelIdentity,
       });
     } catch (error) {
       this.logger.warn(
@@ -418,31 +442,22 @@ export class FollowUpProcessor implements OnModuleInit {
   }
 
   private async runProactiveTurn(
-    sessionRef: FollowUpJob['sessionRef'],
-    scenarioCode: string,
+    jobData: FollowUpJob,
+    state: AuthoritativeSessionState,
     scenario: NonNullable<ReturnType<typeof getScenario>>,
     messageId?: string,
   ): Promise<ProactiveTurnExecution> {
-    const directive = `${scenario.objective}。生成要求：${scenario.generationPolicy}`;
-    let agentRequest: Record<string, unknown> | undefined;
-    const aiStartAt = Date.now();
-    const outcome = await this.runner.runTurn({
-      sessionRef,
-      trigger: { kind: 'proactive', directive, scenarioCode },
-      toolMode: 'readonly',
-      context: messageId
-        ? {
-            messageId,
-            onPreparedRequest: (request) => {
-              agentRequest = request;
-            },
-          }
-        : undefined,
+    const result = await this.composer.compose({
+      sessionRef: jobData.sessionRef,
+      scenario,
+      jobData,
+      state,
+      messageId,
     });
+    if ((result as ProactiveTurnExecution).outcome) return result;
     return {
-      outcome,
-      agentRequest,
-      aiStartAt,
+      outcome: result as unknown as TurnOutcome,
+      aiStartAt: Date.now(),
       aiEndAt: Date.now(),
     };
   }
@@ -599,16 +614,54 @@ export class FollowUpProcessor implements OnModuleInit {
       candidateName: identity.candidateName,
       managerName: identity.managerName,
       botImId: identity.botImId,
+      imContactId: identity.imContactId,
+      externalUserId: identity.externalUserId,
     };
     let deliveryStartAt = 0;
     try {
       await this.touchLedger.markDeliveryAttempted(key);
       this.tracking.trackDeliveryAttempted(identity);
       deliveryStartAt = Date.now();
-      await this.delivery!.deliver(outcome, { idempotencyKey: key });
+      const deliveryResult = (await this.delivery!.deliver(outcome, {
+        idempotencyKey: key,
+        context: this.buildDeliveryContext(identity, sessionId, batchId),
+      })) as ProactiveDeliveryResult;
       const deliveryEndAt = Date.now();
+      const deliveredSegments = deliveryResult.deliveredSegments ?? deliveryResult.segmentCount;
+      if (deliveryResult.skipped || deliveredSegments <= 0) {
+        const reason = deliveryResult.skipReason
+          ? `delivery_skipped:${deliveryResult.skipReason}`
+          : 'delivery_skipped';
+        this.tracking.trackOutcomeNotReply(identity, 'delivery_skipped', batchId, reason);
+        await this.touchLedger.markFailedOrUnknown(key, 'failed');
+        if (scenario) {
+          this.messageTracking.recordProactiveTurn(
+            this.buildProactiveTurnRecord({
+              batchId,
+              sessionRef,
+              scenario,
+              outcome,
+              receivedAt: now,
+              status: 'success',
+              replyPreview: `[未投递:${reason}]`,
+              channelIdentity,
+              execution,
+              completedAt: deliveryEndAt,
+              deliveryResult,
+            }),
+          );
+        }
+        return;
+      }
       await this.touchLedger.markSent(key, sessionId, now);
       this.tracking.trackSent(identity, outcome.reply?.text, batchId);
+      await this.saveDeliveredAssistantHistory({
+        sessionId,
+        messageId: batchId,
+        text: outcome.reply?.text ?? '',
+        timestamp: deliveryEndAt,
+        identity,
+      });
       if (scenario) {
         this.messageTracking.recordProactiveTurn(
           this.buildProactiveTurnRecord({
@@ -623,11 +676,8 @@ export class FollowUpProcessor implements OnModuleInit {
             execution,
             completedAt: deliveryEndAt,
             deliveryResult: {
-              success: true,
-              segmentCount: 1,
-              failedSegments: 0,
-              deliveredSegments: 1,
-              totalTime: Math.max(deliveryEndAt - deliveryStartAt, 0),
+              ...deliveryResult,
+              totalTime: deliveryResult.totalTime ?? Math.max(deliveryEndAt - deliveryStartAt, 0),
             },
           }),
         );
@@ -662,22 +712,79 @@ export class FollowUpProcessor implements OnModuleInit {
           }),
         );
       }
-      try {
-        await this.touchLedger.markFailedOrUnknown(key, 'unknown');
-      } finally {
-        await outcome.runTurnEnd?.({ includeAssistantText: false });
-      }
+      // 投递状态不明时不写助手历史：候选人可能没看到这条复聊。
+      await this.touchLedger.markFailedOrUnknown(key, 'unknown');
       throw error;
     }
+    this.logger.log(`[reengagement] 已投递 key=${key}`);
+  }
 
-    try {
-      await outcome.runTurnEnd?.({ includeAssistantText: true });
-    } catch (error) {
+  private buildDeliveryContext(
+    identity: ReengagementTouchIdentity,
+    sessionId: string,
+    batchId: string,
+  ): DeliveryContext {
+    const token = this.resolveDeliveryToken(identity);
+    return {
+      token,
+      imBotId: identity.botImId ?? '',
+      imContactId: identity.imContactId ?? identity.externalUserId ?? '',
+      imRoomId: '',
+      contactName: identity.candidateName || '客户',
+      messageId: batchId,
+      chatId: sessionId,
+      _apiType: 'enterprise',
+    };
+  }
+
+  /**
+   * 投递 token 到点解析。⚠️ 这里要的是托管平台（Stride）发消息凭证，不是海绵 API token。
+   * 复聊只发候选人私聊，统一使用企业级 `STRIDE_ENTERPRISE_TOKEN`。
+   */
+  private resolveDeliveryToken(identity: ReengagementTouchIdentity): string {
+    const enterpriseToken = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || '';
+    if (!enterpriseToken) {
       this.logger.warn(
-        `[reengagement] turn-end lifecycle 执行失败，不改写触达状态: key=${key}, error=${this.errorMessage(error)}`,
+        `[reengagement] 投递 token 缺失（STRIDE_ENTERPRISE_TOKEN 未配置）botImId=${identity.botImId ?? '-'}`,
       );
     }
-    this.logger.log(`[reengagement] 已投递 key=${key}`);
+    return enterpriseToken;
+  }
+
+  private async saveDeliveredAssistantHistory(params: {
+    sessionId: string;
+    messageId: string;
+    text: string;
+    timestamp: number;
+    identity: ReengagementTouchIdentity;
+  }): Promise<void> {
+    if (!params.text.trim()) return;
+    try {
+      await this.chatSession.saveMessage({
+        chatId: params.sessionId,
+        messageId: params.messageId,
+        role: 'assistant',
+        content: params.text,
+        timestamp: params.timestamp,
+        candidateName: params.identity.candidateName,
+        managerName: params.identity.managerName,
+        orgId: params.identity.corpId,
+        imBotId: params.identity.botImId,
+        imContactId: params.identity.imContactId,
+        externalUserId: params.identity.externalUserId,
+        isRoom: false,
+        isSelf: true,
+        payload: {
+          source: 'reengagement',
+          scenarioCode: params.identity.scenarioCode,
+          anchorEventId: params.identity.anchorEventId,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 真发历史写入失败 messageId=${params.messageId}: ${this.errorMessage(error)}`,
+      );
+    }
   }
 
   /** 不在窗口：推到下一个 9-21 窗口重排（不消费 attempts）。 */

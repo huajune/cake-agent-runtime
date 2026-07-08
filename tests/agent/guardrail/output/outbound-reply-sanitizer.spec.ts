@@ -109,7 +109,9 @@ describe('OutboundReplySanitizer', () => {
     });
 
     it('应剥离 [图片消息] 占位符', () => {
-      expect(OutboundReplySanitizer.sanitize('[图片消息]收到啦，帮你看看')).toBe('收到啦，帮你看看');
+      expect(OutboundReplySanitizer.sanitize('[图片消息]收到啦，帮你看看')).toBe(
+        '收到啦，帮你看看',
+      );
     });
 
     it('占位符单独成段时整体清空', () => {
@@ -124,7 +126,9 @@ describe('OutboundReplySanitizer', () => {
   describe('normalize - 推理/思考标签剥离（badcase recvlEM9V4vBhP）', () => {
     it('应删除落单的闭合标签 </think>', () => {
       expect(OutboundReplySanitizer.sanitize('</think>')).toBe('');
-      expect(OutboundReplySanitizer.sanitize('好的，你先看看哈\n\n</think>')).toBe('好的，你先看看哈');
+      expect(OutboundReplySanitizer.sanitize('好的，你先看看哈\n\n</think>')).toBe(
+        '好的，你先看看哈',
+      );
     });
 
     it('应整体删除成对的 <think>...</think> 思考块', () => {
@@ -349,6 +353,18 @@ describe('OutboundReplySanitizer', () => {
       expect(result).not.toContain('[当前时间:');
       expect(result).toContain('第一段');
       expect(result).toContain('第二段');
+    });
+
+    it('应该移除全角收尾与行尾断裂的时间标记', () => {
+      expect(
+        OutboundReplySanitizer.sanitize('[消息发送时间：2026-07-08 10:41】 你方便发下位置吗？'),
+      ).toBe('你方便发下位置吗？');
+      expect(OutboundReplySanitizer.sanitize('[消息发送时间：2026-07-08 10:41')).toBe('');
+    });
+
+    it('清洗后只剩符号或勾号残渣时返回空串', () => {
+      expect(OutboundReplySanitizer.sanitize('✅')).toBe('');
+      expect(OutboundReplySanitizer.sanitize('【】')).toBe('');
     });
   });
 

@@ -109,6 +109,6 @@ import {
     ReplyWorkflowService, // 回复工作流（调用 Agent → 发送回复）
     MessageProcessingFailureService, // 失败兜底（告警、降级回复）
   ],
-  exports: [MessageService, MessageFilterService, MessageProcessor],
+  exports: [MessageService, MessageFilterService, MessageProcessor, MessageDeliveryService],
 })
 export class MessageModule {}

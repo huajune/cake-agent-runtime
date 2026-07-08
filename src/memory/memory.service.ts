@@ -11,6 +11,13 @@ import type { AgentMemoryContext } from './types/memory-runtime.types';
 import type { MessageMetadata, SummaryData, UserProfile } from './types/long-term.types';
 import type { InvitedGroupRecord } from './types/session-facts.types';
 import type { ProceduralState } from './types/procedural.types';
+import { formatExtractionFactLines } from './formatters/fact-lines.formatter';
+
+export interface ProactiveMemoryRecall {
+  recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  factLines: string[];
+  warnings?: string[];
+}
 
 export type { CandidateIdentityHint } from './services/memory-enrichment.service';
 
@@ -50,9 +57,54 @@ export class MemoryService {
     await this.lifecycle.onTurnEnd(ctx, assistantText);
   }
 
+  /**
+   * 主动复聊专用轻量 recall：复用记忆层的短期窗口与结构化事实 formatter。
+   *
+   * 复聊没有新的候选人输入，不需要完整 generator 上下文；但仍必须从 memory
+   * 接缝读取，避免绕开 Redis 短期缓存、事实陈旧标注与统一字段文案。
+   */
+  async recallForProactiveFollowUp(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    options?: { recentLimit?: number; shortTermEndTimeInclusive?: number },
+  ): Promise<ProactiveMemoryRecall> {
+    const memory = await this.onTurnStart(corpId, userId, sessionId, undefined, {
+      includeShortTerm: true,
+      shortTermEndTimeInclusive: options?.shortTermEndTimeInclusive,
+    });
+    const recentLimit = Math.max(1, options?.recentLimit ?? 5);
+    const recentMessages = memory.shortTerm.messageWindow
+      .slice(-recentLimit)
+      .map((message): ProactiveMemoryRecall['recentMessages'][number] | null => {
+        if (message.role !== 'user' && message.role !== 'assistant') return null;
+        return {
+          role: message.role,
+          content: this.stripInjectedTimeContext(message.content),
+        };
+      })
+      .filter((message): message is ProactiveMemoryRecall['recentMessages'][number] => !!message)
+      .filter((message) => message.content.length > 0);
+    const factLines = memory.sessionMemory?.facts
+      ? formatExtractionFactLines(memory.sessionMemory.facts)
+      : [];
+    return {
+      recentMessages,
+      factLines,
+      ...(memory._warnings?.length ? { warnings: memory._warnings } : {}),
+    };
+  }
+
   /** 读取历史摘要（recent + archive），供 recall_history 或沉淀逻辑使用。 */
   async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
     return await this.longTerm.getSummaryData(corpId, userId);
+  }
+
+  private stripInjectedTimeContext(content: string): string {
+    return content
+      .replace(/\s*(?:\[|【)消息发送时间[:：][\s\S]*?(?:\]|】|$)/g, '')
+      .replace(/\s*(?:\[|【)当前时间[:：][\s\S]*?(?:\]|】|$)/g, '')
+      .trim();
   }
 
   /** 写入长期档案的外部补充字段，统一落到 profile_facts。 */

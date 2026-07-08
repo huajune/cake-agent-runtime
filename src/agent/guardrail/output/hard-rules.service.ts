@@ -6,6 +6,7 @@ import {
   GUARDRAIL_FEEDBACK_POLICY,
   GUARDRAIL_PRIORITY,
 } from '@shared-types/guardrail.contract';
+import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
 import { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 import {
   detectBrandAliasFuzzyMatchIgnored,
@@ -14,25 +15,19 @@ import {
 } from './rules/brand-name-errors.rule';
 import {
   detectBookingFormFieldMismatch,
-  detectConfirmedBookingOnSiteScriptMissing,
   detectConfirmedBookingTimeMissing,
   detectHandoffNoBookingClaim,
   detectPrecheckBlockedBookingClaim,
   detectWaitNoticeTimeCollection,
   detectWaitNoticeTimeFabrication,
 } from './rules/booking-claim-errors.rule';
-import { detectCandidateNameEcho } from './rules/candidate-name-echo.rule';
-import { detectGroupInviteWithoutReason } from './rules/group-invite-context.rule';
-import { detectProvidedBookingFieldsIgnored } from './rules/context-priority-errors.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES, detectToolFailureSuccessClaim } from './rules/false-promises.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectHumanServicePhraseLeak, detectOutputLeak } from './rules/internal-info-leaks.rule';
-import { detectRepeatedGreeting, detectRepeatedReply } from './rules/repeated-reply.rule';
+import { detectRepeatedReply } from './rules/repeated-reply.rule';
 import {
   JOB_FACT_HALLUCINATION_RULES,
-  detectDistanceMissing,
-  detectFartherJobRecommended,
   detectSalaryFabrication,
   detectScheduleFilteredJobRecommended,
   detectUngroundedJobRecommendation,
@@ -44,7 +39,6 @@ import {
 } from './rules/job-fact-value-mismatch.rule';
 import {
   detectDistrictLevelDistanceClaim,
-  detectGeocodeAmbiguousCandidatesOmitted,
   detectGeocodeUncertainLocationClaim,
 } from './rules/location-claim-errors.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
@@ -57,6 +51,29 @@ export {
   OUTPUT_RULE_IDS,
   type OutputRuleCatalogMetadata,
 } from './rules/output-rule-catalog';
+
+const PRECISE_DISTANCE_FIX_PATTERN = /(\d+(?:\.\d+)?)\s*(?:km|公里|千米)/gi;
+
+/** 命中规则里能用字符串替换修好的，先直接修；修不了返回 null 走正常重写。 */
+export function tryDeterministicFix(text: string, blockedRuleIds: string[]): string | null {
+  const ruleIds = new Set(blockedRuleIds);
+  let fixed = text;
+
+  if (ruleIds.has('brand_name_violation')) {
+    fixed = sanitizeBrandName(fixed);
+  }
+
+  if (ruleIds.has('district_level_distance_claim')) {
+    PRECISE_DISTANCE_FIX_PATTERN.lastIndex = 0;
+    fixed = fixed.replace(PRECISE_DISTANCE_FIX_PATTERN, (match, value: string) => {
+      const distance = Number.parseFloat(value);
+      if (!Number.isFinite(distance)) return match;
+      return `约${Math.round(distance)}公里（按区域位置估算的）`;
+    });
+  }
+
+  return fixed === text ? null : fixed;
+}
 
 /**
  * Reply 后置事实对账。
@@ -118,7 +135,7 @@ export class HardRulesService {
   /**
    * 检查 reply 是否与本轮 tool 调用矛盾。
    *
-   * - observe 规则：命中即日志告警 + 飞书 badcase，内容仍可发送
+   * - observe 规则：命中即日志 + 落库 guardrail_review_records（不写飞书），内容仍可发送
    * - revise/replan 规则：当前回复不可发送，由 OutputGuardrail/runner 进入受控修复
    * - block 规则：当前回复不可发送且不可恢复，调用方必须丢弃本轮回复
    *
@@ -182,14 +199,6 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(confirmedBookingTimeMissing));
     }
 
-    const confirmedBookingOnSiteScriptMissing = detectConfirmedBookingOnSiteScriptMissing(
-      text,
-      toolCalls,
-    );
-    if (confirmedBookingOnSiteScriptMissing) {
-      contradictions.push(this.withRulePolicy(confirmedBookingOnSiteScriptMissing));
-    }
-
     const precheckBlockedBookingClaim = detectPrecheckBlockedBookingClaim(text, toolCalls);
     if (precheckBlockedBookingClaim) {
       contradictions.push(this.withRulePolicy(precheckBlockedBookingClaim));
@@ -208,14 +217,6 @@ export class HardRulesService {
     const geocodeUncertainLocationClaim = detectGeocodeUncertainLocationClaim(text, toolCalls);
     if (geocodeUncertainLocationClaim) {
       contradictions.push(this.withRulePolicy(geocodeUncertainLocationClaim));
-    }
-
-    const geocodeAmbiguousCandidatesOmitted = detectGeocodeAmbiguousCandidatesOmitted(
-      text,
-      toolCalls,
-    );
-    if (geocodeAmbiguousCandidatesOmitted) {
-      contradictions.push(this.withRulePolicy(geocodeAmbiguousCandidatesOmitted));
     }
 
     const districtLevelDistanceClaim = detectDistrictLevelDistanceClaim(text, toolCalls);
@@ -271,19 +272,6 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(imageDescriptionNotSaved));
     }
 
-    const providedBookingFieldsIgnored = detectProvidedBookingFieldsIgnored(
-      text,
-      params.userMessage,
-    );
-    if (providedBookingFieldsIgnored) {
-      contradictions.push(this.withRulePolicy(providedBookingFieldsIgnored));
-    }
-
-    const fartherJobRecommended = detectFartherJobRecommended(text, toolCalls);
-    if (fartherJobRecommended) {
-      contradictions.push(this.withRulePolicy(fartherJobRecommended));
-    }
-
     const scheduleFilteredJobRecommended = detectScheduleFilteredJobRecommended(text, toolCalls);
     if (scheduleFilteredJobRecommended) {
       contradictions.push(this.withRulePolicy(scheduleFilteredJobRecommended));
@@ -313,34 +301,14 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(brandNameError));
     }
 
-    const candidateNameEcho = detectCandidateNameEcho(text, params.contactName);
-    if (candidateNameEcho) {
-      contradictions.push(this.withRulePolicy(candidateNameEcho));
-    }
-
     const humanServicePhraseLeak = detectHumanServicePhraseLeak(text);
     if (humanServicePhraseLeak) {
       contradictions.push(this.withRulePolicy(humanServicePhraseLeak));
     }
 
-    const groupInviteWithoutReason = detectGroupInviteWithoutReason(text, toolCalls);
-    if (groupInviteWithoutReason) {
-      contradictions.push(this.withRulePolicy(groupInviteWithoutReason));
-    }
-
     const repeatedReply = detectRepeatedReply(text, params.recentAssistantTexts);
     if (repeatedReply) {
       contradictions.push(this.withRulePolicy(repeatedReply));
-    }
-
-    const repeatedGreeting = detectRepeatedGreeting(text, params.recentAssistantTexts);
-    if (repeatedGreeting) {
-      contradictions.push(this.withRulePolicy(repeatedGreeting));
-    }
-
-    const distanceMissing = detectDistanceMissing(text, toolCalls);
-    if (distanceMissing) {
-      contradictions.push(this.withRulePolicy(distanceMissing));
     }
 
     if (contradictions.length === 0) return { hit: false, contradictions: [] };
@@ -362,7 +330,13 @@ export class HardRulesService {
     // silent（advisory 调试流量）：只返回裁决，不 fire 飞书 badcase，避免污染生产判例。
     if (params.silent) return { hit: true, contradictions };
 
-    // 飞书告警 fire-and-forget——不阻塞回复链路；阻断规则标注"已拦截"便于运营分辨
+    // observe 档（currentReplySendable=true）判例已全量落 guardrail_review_records，
+    // 飞书 badcase 只保留 enforce（revise/replan/block，不可发送）判例：观察类只用于离线
+    // 校准精确率，从库里查即可，不再写多维表/告警，避免刷屏污染人工排查池。
+    const enforceContradictions = contradictions.filter((c) => c.currentReplySendable === false);
+    if (enforceContradictions.length === 0) return { hit: true, contradictions };
+
+    // 飞书告警 fire-and-forget——不阻塞回复链路；阻断规则均已拦截、未发送给候选人
     void this.replyFactGuardNotifier
       .notifyContradiction({
         chatId: params.chatId,
@@ -373,11 +347,10 @@ export class HardRulesService {
         botUserName: params.botUserName,
         userMessage: params.userMessage,
         replyPreview: text.slice(0, 400),
-        contradictions: contradictions.map((c) =>
-          c.currentReplySendable === false
-            ? { ...c, label: `【已拦截，未发送给候选人】${c.label}` }
-            : c,
-        ),
+        contradictions: enforceContradictions.map((c) => ({
+          ...c,
+          label: `【已拦截，未发送给候选人】${c.label}`,
+        })),
         toolNames: toolCalls.map((c) => c.toolName),
       })
       .catch((error: unknown) => {

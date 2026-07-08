@@ -13,18 +13,14 @@ import type { RuleContradiction } from '../output-rule.types';
  * 与 prompt 提醒的区别：这里对齐的是"真实发过什么"，模型忘了历史也拦得住。
  *
  * 分档：
- * - repeated_reply（revise）：当前回复与近几条已发消息近乎相同（去空白标点后全等，
- *   或字符 bigram 相似度 ≥ 0.9）。整段复读确定性强，直接要求重写；
- * - repeated_greeting（observe）：会话已经打过招呼，本轮又以"你好/您好"开场。
- *   问候语短、变体多，先观察收判例，不阻断。
+ * - repeated_reply（observe）：当前回复与近几条已发消息近乎相同（去空白标点后全等，
+ *   或字符 bigram 相似度 ≥ 0.9）。这是体验/语义质量问题，本层只观察；
  */
 
 const RECENT_WINDOW = 8;
 /** 短确认（"好的""收到"）天然会重复，只对足够长的内容判定复读。 */
 const MIN_REPEAT_LENGTH = 16;
 const SIMILARITY_THRESHOLD = 0.9;
-
-const GREETING_PATTERN = /^(?:你好|您好|哈喽|嗨|hi|hello)/i;
 
 /** 去空白与常见标点，只留内容字符，避免标点差异躲过全等判定。 */
 function normalizeReply(text: string): string {
@@ -69,31 +65,9 @@ export function detectRepeatedReply(
       return {
         ruleId: 'repeated_reply',
         label: `回复与本会话已发送的消息近乎相同（相似度 ${(similarity * 100).toFixed(0)}%），整段复读像机器人（badcase recvlmGXDwMZrz / recvlsYa5SSOn9）`,
-        action: GUARDRAIL_ACTION.REVISE,
+        action: GUARDRAIL_ACTION.OBSERVE,
       };
     }
   }
   return null;
-}
-
-/**
- * 重复打招呼检测：会话中已经有过问候开场，本轮又以"你好/您好"开头。
- */
-export function detectRepeatedGreeting(
-  text: string,
-  recentAssistantTexts: readonly string[] | undefined,
-): RuleContradiction | null {
-  if (!recentAssistantTexts?.length) return null;
-  if (!GREETING_PATTERN.test(text.trim())) return null;
-
-  const greetedBefore = recentAssistantTexts.some((previous) =>
-    GREETING_PATTERN.test(previous.trim()),
-  );
-  if (!greetedBefore) return null;
-
-  return {
-    ruleId: 'repeated_greeting',
-    label: '会话中已打过招呼，本轮又以"你好/您好"开场（badcase recvnVdWUh8E84 重复说你好）',
-    action: GUARDRAIL_ACTION.OBSERVE,
-  };
 }
