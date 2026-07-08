@@ -42,6 +42,14 @@ const STORE_LOCATION_SUCCESS_CLAIM_PATTERN =
   /(?:定位|位置|导航)[^。！？\n]{0,12}(?:发你|发过去|已发|发了)|(?:已|已经|帮你|给你)[^。！？\n]{0,12}(?:发|发送)[^。！？\n]{0,8}(?:定位|位置|导航)/;
 const SYSTEM_STATUS_FABRICATION_PATTERN =
   /(?:系统|平台|后台|网络|接口|服务器|数据|信息|名单|岗位|预约|报名)[^。！？\n]{0,12}(?:同步|更新|刷新|提交|录入|审核)?[^。！？\n]{0,8}(?:失败|异常|出错|错误|卡住|卡了|延迟|没同步|没更新|有(?:点)?问题)|(?:同步|网络|系统)[^。！？\n]{0,8}(?:有(?:点)?问题|不好|不太稳定)/;
+const SIDE_EFFECT_TOOL_NAMES = new Set([
+  'duliday_interview_booking',
+  'duliday_cancel_work_order',
+  'duliday_modify_interview_time',
+  'invite_to_group',
+  'send_store_location',
+  'request_handoff',
+]);
 
 /**
  * 拉群规则的误杀主要来自“询问/建议/条件句”：
@@ -158,6 +166,8 @@ export const FALSE_PROMISE_RULES: FactRule[] = [
     label:
       '回复用系统/网络/后台异常解释拖延或失败（系统状态禁止编造和外露），需改写为补充信息、稍后人工处理或继续推进业务动作的口径',
     keywords: SYSTEM_STATUS_FABRICATION_PATTERN,
+    ignorePredicate: (_text, toolCalls) =>
+      toolCalls.some((call) => SIDE_EFFECT_TOOL_NAMES.has(call.toolName) && isFailedToolCall(call)),
     requiredToolPredicate: () => false,
     action: GUARDRAIL_ACTION.REVISE,
   },

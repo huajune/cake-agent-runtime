@@ -27,6 +27,13 @@ import {
  * - exogenousSignal：这条规则依赖的外生信号或词库。没有外生信号的规则要特别谨慎；
  * - residualRisk：已知覆盖不到或为降低误杀故意放过的部分；
  * - verification：主要回归测试位置。
+ *
+ * 准入治理：
+ * - 新规则默认 observe 入场；
+ * - 升 revise 需要 ≥2 周 observe 判例、抽标精确率 ≥90%，并同时满足风险不对称、
+ *   有 ground truth、恢复路径可靠；
+ * - block 仅限封闭形态且发出后不可逆的事故；
+ * - veto 档规则精确率 < 70% 时应自动降 observe。
  */
 export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   id: string;
@@ -38,6 +45,7 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   exogenousSignal: string;
   residualRisk: string;
   verification: string;
+  repairStrategy?: 'transform' | 'rewrite' | 'replan';
 }
 
 type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy> &
@@ -133,7 +141,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'wait_notice_time_collection',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住等通知岗位里继续追问候选人面试日期、几点方便或要求选择面试时间的回复。',
     riskGoal: 'wait_notice 岗位不需要收集面试时间，资料齐后应告知面试官电话联系。',
@@ -158,7 +166,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'confirmed_booking_onsite_script_missing',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       '拦住预约工具已经返回到店自报家门脚本，但回复只说预约成功、漏教候选人到店怎么说的情况。',
@@ -181,7 +189,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'geocode_ambiguous_candidates_omitted',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住 geocode 已返回多城市候选，但回复只泛泛追问城市、没有列出候选城市的情况。',
     riskGoal: '多城市同名地点应按 geocode candidates 枚举候选城市，降低候选人来回澄清成本。',
@@ -195,6 +203,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'district_level_distance_claim',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
+    repairStrategy: 'transform',
     description: '拦住候选人只报了区/市名，回复却按行政区代表点直接输出精确公里数的情况。',
     riskGoal: '区级粗定位下的距离与候选人真实位置可能差数公里，直接报精确距离会误导到店。',
     exogenousSignal: 'geocode.result.areaLevelQuery（查询词与解析出的区/市名一致）。',
@@ -205,7 +214,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'farther_job_recommended',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住岗位列表里有明显更近门店，但回复只推荐更远门店且没有说明原因的情况。',
     riskGoal: '候选人按距离找岗时优先展示更近岗位，避免有近岗却推远岗。',
@@ -350,15 +359,15 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'proactive_insurance_policy_mention',
-    action: GUARDRAIL_ACTION.BLOCK,
-    priority: GUARDRAIL_PRIORITY.P0,
-    description: '拦住候选人没问保险时，主动提保险、社保、五险等容易误导的内容。',
-    riskGoal: '候选人未问时禁止主动提保险/社保/五险，避免兼职保险被误解。',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '拦住候选人没问保险时，主动给出保险、社保、五险等承诺式口径。',
+    riskGoal: '候选人未问时禁止主动承诺保险/社保/五险，避免兼职保险被误解。',
     exogenousSignal:
       '候选人本轮 userMessage 或近几轮消息（recentUserTexts）是否主动询问保险/社保。',
     residualRisk:
-      '跨轮豁免窗口为近 3 条候选人消息；更久之前问过、间隔多轮闲聊后再作答的场景仍可能误拦。' +
-      '任职要求豁免（第一/第二职业、要求+持有动词、合同及社保并列）可能放过个别措辞异常的福利承诺。',
+      '跨轮豁免窗口为近 3 条候选人消息；更久之前问过、间隔多轮闲聊后再作答的场景仍可能要求改写。' +
+      '任职要求豁免（第一/第二职业、要求+持有动词、合同及社保并列）会放行岗位硬性要求转述。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
@@ -507,7 +516,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'work_content_generalization',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住没按岗位数据说职责，而是用行业常识脑补“洗碗、打扫、搬货”等工作内容。',
     riskGoal: '岗位职责只能按岗位数据表述，禁止行业常识泛化补充。',

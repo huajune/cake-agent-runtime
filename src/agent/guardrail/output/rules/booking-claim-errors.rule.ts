@@ -175,7 +175,7 @@ export function detectWaitNoticeTimeCollection(
     ruleId: 'wait_notice_time_collection',
     label:
       'precheck 返回 interviewTimeMode=wait_notice，但回复仍在追问/收集面试时间；等通知岗位应说明面试官电话联系，不需要候选人选时间',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
   };
 }
 
@@ -224,7 +224,7 @@ export function detectConfirmedBookingOnSiteScriptMissing(
   return {
     ruleId: 'confirmed_booking_onsite_script_missing',
     label: `booking 已成功并返回到店脚本（${onSiteScript}），但回复未教候选人到店自报家门`,
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
   };
 }
 

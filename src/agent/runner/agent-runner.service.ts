@@ -36,6 +36,7 @@ import type { SessionRef, TurnOutcome, TurnRequest, TurnTrigger } from './agent-
 import { TurnFinalizer } from './turn-finalizer';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RequestContextService } from '@observability/context/request-context.service';
+import { applyOutputTransforms } from '../guardrail/output/transforms/output-transform.registry';
 
 export type {
   SessionRef,
@@ -220,6 +221,41 @@ export class AgentRunnerService {
       );
     }
 
+    const transformedText = applyOutputTransforms(firstText, decision, first.toolCalls ?? []);
+    if (transformedText) {
+      const transformedResult: GeneratorRunResult = { ...first, text: transformedText };
+      const transformedDecision = await this.outputGuard.check({
+        ...this.buildGuardInput(transformedResult, ctx),
+        silent: true,
+      });
+      if (transformedDecision.decision === 'pass' || transformedDecision.decision === 'observe') {
+        const finalDecision: OutputGuardDecision = {
+          ...transformedDecision,
+          decision: 'pass',
+          reasonCode: 'transformed',
+        };
+        this.persistReviewRecord(ctx, {
+          firstReply: firstText,
+          firstDecision: decision,
+          finalDecision,
+          repaired: true,
+          revisedReply: transformedText,
+          revisedDecision: transformedDecision,
+        });
+        return this.finalizeReviewed(
+          transformedResult,
+          finalDecision,
+          true,
+          wantDefer,
+          this.buildGuardrailTrace(
+            [firstStep, this.toGuardrailStep('revised', transformedDecision)],
+            true,
+            finalDecision,
+          ),
+        );
+      }
+    }
+
     // repair（hard cap 1）：丢弃首版，带违规意见 + 既成副作用做受控修复。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
@@ -269,8 +305,35 @@ export class AgentRunnerService {
         ruleIds: [],
         blockedRuleIds: [],
         repairMode: decision.repairMode,
-        reasonCode: 'revise_dangling',
+        reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
       };
+      if (this.isFirstReplyFailOpenEligible(decision)) {
+        const failOpenDecision: OutputGuardDecision = {
+          ...decision,
+          decision: 'pass',
+          reasonCode: 'repair_unusable_fail_open',
+        };
+        this.persistReviewRecord(ctx, {
+          firstReply: firstText,
+          firstDecision: decision,
+          finalDecision: failOpenDecision,
+          repaired: true,
+          revisedReply: revisedText,
+          revisedDecision: danglingStepDecision,
+          committedSideEffects: committed || undefined,
+        });
+        return this.finalizeReviewed(
+          first,
+          failOpenDecision,
+          false,
+          wantDefer,
+          this.buildGuardrailTrace(
+            [firstStep, this.toGuardrailStep('revised', danglingStepDecision)],
+            true,
+            failOpenDecision,
+          ),
+        );
+      }
       this.persistReviewRecord(ctx, {
         firstReply: firstText,
         firstDecision: decision,
@@ -301,6 +364,37 @@ export class AgentRunnerService {
     const decision2 = await this.outputGuard.check(
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
+    if (
+      decision2.decision === 'block' &&
+      this.isOnlyInternalOutputLeakBlock(decision2) &&
+      this.isFirstReplyFailOpenEligible(decision)
+    ) {
+      const failOpenDecision: OutputGuardDecision = {
+        ...decision,
+        decision: 'pass',
+        reasonCode: 'repair_unusable_fail_open',
+      };
+      this.persistReviewRecord(ctx, {
+        firstReply: firstText,
+        firstDecision: decision,
+        finalDecision: failOpenDecision,
+        repaired: true,
+        revisedReply: revisedText,
+        revisedDecision: decision2,
+        committedSideEffects: committed || undefined,
+      });
+      return this.finalizeReviewed(
+        first,
+        failOpenDecision,
+        false,
+        wantDefer,
+        this.buildGuardrailTrace(
+          [firstStep, this.toGuardrailStep('revised', decision2)],
+          true,
+          failOpenDecision,
+        ),
+      );
+    }
     // §9：repair 死循环硬上限 1 —— 二次仍 revise/replan 时按风险分级收敛：
     // - P0（riskLevel=high）或含不可恢复违规：block（静默 + 档案），发出去即不可挽回；
     // - 仅 P1/P2 可恢复违规：fail-open 投递修复版 + 档案标注 repair_exhausted_fail_open。
@@ -324,6 +418,11 @@ export class AgentRunnerService {
         ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
         : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
       : decision2;
+    const finalResult =
+      wantsRepairAgain && failOpenEligible && this.isSecondDecisionNoBetter(decision, decision2)
+        ? first
+        : { ...revised, toolCalls: reviewedToolCalls };
+    const finalRevised = finalResult !== first;
     this.persistReviewRecord(ctx, {
       firstReply: firstText,
       firstDecision: decision,
@@ -334,9 +433,9 @@ export class AgentRunnerService {
       committedSideEffects: committed || undefined,
     });
     return this.finalizeReviewed(
-      { ...revised, toolCalls: reviewedToolCalls },
+      finalResult,
       finalDecision,
-      true,
+      finalRevised,
       wantDefer,
       this.buildGuardrailTrace(
         [firstStep, this.toGuardrailStep('revised', decision2)],
@@ -371,7 +470,7 @@ export class AgentRunnerService {
     const hasSignal =
       data.firstDecision.decision !== 'pass' || data.firstDecision.ruleIds.length > 0;
     if (!hasSignal) return;
-    if (data.repaired && (!data.revisedReply || !data.revisedDecision)) {
+    if (data.repaired && (data.revisedReply === undefined || !data.revisedDecision)) {
       this.logger.warn(`[invokeReviewed] 审查档案缺少修复后内容，跳过落库: traceId=${ctx.traceId}`);
       return;
     }
@@ -458,6 +557,30 @@ export class AgentRunnerService {
       finalDecision: finalDecision.decision,
       reasonCode: finalDecision.reasonCode,
     };
+  }
+
+  private isFirstReplyFailOpenEligible(decision: OutputGuardDecision): boolean {
+    return (
+      decision.riskLevel !== 'high' &&
+      decision.violations.every((violation) => violation.recoverability !== 'non_recoverable')
+    );
+  }
+
+  private isOnlyInternalOutputLeakBlock(decision: OutputGuardDecision): boolean {
+    return (
+      decision.blockedRuleIds.length > 0 &&
+      decision.blockedRuleIds.every((ruleId) => ruleId === 'internal_output_leak')
+    );
+  }
+
+  private isSecondDecisionNoBetter(
+    firstDecision: OutputGuardDecision,
+    secondDecision: OutputGuardDecision,
+  ): boolean {
+    const firstBlocked = new Set(firstDecision.blockedRuleIds);
+    if (firstBlocked.size === 0) return false;
+    const secondBlocked = new Set(secondDecision.blockedRuleIds);
+    return [...firstBlocked].every((ruleId) => secondBlocked.has(ruleId));
   }
 
   /**
