@@ -1,214 +1,83 @@
 {
-  "baseVersion": "8.0.0",
+  "baseVersion": "9.0.0",
   "nextVersion": "9.0.0",
-  "updatedAt": "2026-07-07",
+  "updatedAt": "2026-07-08",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "464",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/464",
-      "title": "发版链路 bot PR 自动放行，CI/AI review 并发去重",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "发版链路 bot PR 自动放行，CI/AI review 并发去重",
-        "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**",
-        "CI 与 AI review 增加并发去重，同分支旧 run 自动取消"
-      ],
-      "summary": [
-        "发版链路 bot PR 自动放行，CI/AI review 并发去重",
-        "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**",
-        "CI 与 AI review 增加并发去重，同分支旧 run 自动取消"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**"
-      ],
-      "ops": [
-        "`ci.yml`：新增 `concurrency`（按分支取消旧 run）",
-        "`ai-code-review.yml`：新增按 PR 号的 concurrency；跳过 `chore/release-metadata/*` bot PR（纯脚本生成的版本元数据）",
-        "`version-changelog.yml`：",
-        "所有 checkout/gh 操作 token 改为 `RELEASE_BOT_TOKEN || GITHUB_TOKEN`。PAT push/建 PR 会正常触发 `pull_request` 事件（CI 原生跑），PAT 合并的 merged 事件能继续触发下一段 workflow——这是旧流程所有 dispatch 补丁的根因",
-        "元数据 PR：github-actions[bot] 补 approve（满足 develop 的 1 review + last-push-approval，approve 者与 push 者是不同 actor）+ PAT 开 auto-merge（squash）",
-        "固化 PR：master 无 required check，PAT 直接 squash 合并（人工决策点已前移到 release PR）",
-        "回同步 PR：approve + auto-merge（**merge commit**，squash 会导致下轮发版元数据冲突）",
-        "安全闸：自动 approve 前校验 PR 变更文件仅限 `package.json` / `CHANGELOG.md` / `.release/pending-release.json`，含其他文件则跳过自动放行",
-        "移除对 bot 元数据 PR 的 AI review dispatch",
-        "**未配置 `RELEASE_BOT_TOKEN` 时行为与现状完全一致**（dispatch 兜底 + 人工合并）",
-        "CI 与 AI review 增加并发去重，同分支旧 run 自动取消",
-        "发版链路 bot PR 自动放行，CI/AI review 并发去重"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "三个 workflow YAML 语法校验通过",
-        "无 PAT 回退路径逐段核对与现行为一致",
-        "预期效果：发版全链路（feature PR 合并 → 生产部署完成）从多次人工盯梳收敛为 1 次合并操作 + ~15 分钟自动级联"
-      ]
-    },
-    {
-      "number": "467",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/467",
-      "title": "放开版本元数据 PR 的 CI 触发",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-07",
-      "businessUpdates": [
-        "放开版本元数据 PR 的 CI 触发"
-      ],
-      "summary": [
-        "放开版本元数据 PR 的 CI 触发"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "放开版本元数据 PR 的 CI 触发"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`git diff --check`",
-        "`pnpm install --frozen-lockfile`",
-        "pre-push `pnpm run ci:check` 通过",
-        "327/328 test suites（1 skipped）",
-        "4682 passed / 4688 total（6 skipped）"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "8.0.0",
-    "date": "2026-07-07",
+    "version": "9.0.0",
+    "date": "2026-07-08",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "455",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/455",
-        "title": "架构评估修复——消息管道可靠性、记忆并发安全、工具超时与依赖治理",
+        "number": "464",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/464",
+        "title": "发版链路 bot PR 自动放行，CI/AI review 并发去重",
         "author": "ArielZhu",
         "mergedAt": "2026-07-07",
         "businessUpdates": [
-          "补齐可靠性 review 修复"
+          "发版链路 bot PR 自动放行，CI/AI review 并发去重",
+          "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**",
+          "CI 与 AI review 增加并发去重，同分支旧 run 自动取消"
         ],
         "summary": [
-          "删除 ReliableService 未使用的私有 sleep 方法",
-          "消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭",
-          "session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新",
-          "所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环",
-          "统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入",
-          "消除 biz→channels 反向依赖 + 配置传播间隔收敛",
-          "prettier 格式化 message-sender.module",
-          "补齐可靠性 review 修复",
-          "架构评估修复——消息管道可靠性、记忆并发安全、工具超时与依赖治理"
+          "发版链路 bot PR 自动放行，CI/AI review 并发去重",
+          "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**",
+          "CI 与 AI review 增加并发去重，同分支旧 run 自动取消"
         ],
         "features": [],
-        "fixes": [
-          "补齐可靠性 review 修复"
-        ],
+        "fixes": [],
         "optimizations": [
-          "session state 迁移为 Redis hash 字段级原子写，消除跨字段并发丢更新",
-          "消除 biz→channels 反向依赖 + 配置传播间隔收敛"
+          "发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**"
         ],
         "ops": [
-          "删除 ReliableService 未使用的私有 sleep 方法",
-          "消息管道可靠性加固——ack 重试+告警、处理锁心跳续期、Bull 连接优雅关闭",
-          "所有出站 fetch 统一 withTimeout 保护，下游卡顿不再拖死 Agent 工具循环",
-          "统一置信度 rank 权威定义 + 沉淀 profile/preference 单 RPC 原子写入",
-          "prettier 格式化 message-sender.module"
+          "`ci.yml`：新增 `concurrency`（按分支取消旧 run）",
+          "`ai-code-review.yml`：新增按 PR 号的 concurrency；跳过 `chore/release-metadata/*` bot PR（纯脚本生成的版本元数据）",
+          "`version-changelog.yml`：",
+          "所有 checkout/gh 操作 token 改为 `RELEASE_BOT_TOKEN || GITHUB_TOKEN`。PAT push/建 PR 会正常触发 `pull_request` 事件（CI 原生跑），PAT 合并的 merged 事件能继续触发下一段 workflow——这是旧流程所有 dispatch 补丁的根因",
+          "元数据 PR：github-actions[bot] 补 approve（满足 develop 的 1 review + last-push-approval，approve 者与 push 者是不同 actor）+ PAT 开 auto-merge（squash）",
+          "固化 PR：master 无 required check，PAT 直接 squash 合并（人工决策点已前移到 release PR）",
+          "回同步 PR：approve + auto-merge（**merge commit**，squash 会导致下轮发版元数据冲突）",
+          "安全闸：自动 approve 前校验 PR 变更文件仅限 `package.json` / `CHANGELOG.md` / `.release/pending-release.json`，含其他文件则跳过自动放行",
+          "移除对 bot 元数据 PR 的 AI review dispatch",
+          "**未配置 `RELEASE_BOT_TOKEN` 时行为与现状完全一致**（dispatch 兜底 + 人工合并）",
+          "CI 与 AI review 增加并发去重，同分支旧 run 自动取消",
+          "发版链路 bot PR 自动放行，CI/AI review 并发去重"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "全量 320 测试套件 / 4639 用例全绿（含 wecom 消息 65、memory 510、group-task 218）",
-          "AppModule 装配 smoke 通过（@Global 令牌绑定后 DI 图完整）",
-          "tsc / eslint 干净",
-          "迁移已应用测试库（gaovfitvetoojkvtalxy）并用 supabase-js 实调验证后清理测试数据"
+          "三个 workflow YAML 语法校验通过",
+          "无 PAT 回退路径逐段核对与现行为一致",
+          "预期效果：发版全链路（feature PR 合并 → 生产部署完成）从多次人工盯梳收敛为 1 次合并操作 + ~15 分钟自动级联"
         ]
       },
       {
-        "number": "456",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/456",
-        "title": "接入 Agent 执行事件观测",
-        "author": "huajune",
+        "number": "467",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/467",
+        "title": "放开版本元数据 PR 的 CI 触发",
+        "author": "ArielZhu",
         "mergedAt": "2026-07-07",
         "businessUpdates": [
-          "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
-          "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
-          "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.",
-          "接入 Agent 执行事件观测",
-          "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
-          "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure."
+          "放开版本元数据 PR 的 CI 触发"
         ],
         "summary": [
-          "降低语义护栏 shadow 误报",
-          "接入 Agent 执行事件观测",
-          "补齐 agent 执行观测单测",
-          "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
-          "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
-          "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
-          "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure.",
-          "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle."
-        ],
-        "features": [
-          "Turned `src/observability` into the Agent execution event bus with request context, tracer, composite observer, logger observer, and persisting observer.",
-          "Added `agent_execution_events` plus the monitoring-side persister, cleanup RPC, 60-day retention wiring, and alerting for persist failures.",
-          "Updated processing-chain retention so `message_processing_records`, `guardrail_review_records`, and `agent_execution_events` share the same 60-day lifecycle.",
-          "接入 Agent 执行事件观测"
-        ],
-        "fixes": [
-          "Instrumented Agent turn boundaries, debug chat, LLM model fallback, and tool execution/error events.",
-          "Kept the shadow/guardrail evidence fix in this branch: enterprise room count refresh now skips stale group counts when `syncRoom` reports failure."
-        ],
-        "optimizations": [],
-        "ops": [
-          "降低语义护栏 shadow 误报",
-          "补齐 agent 执行观测单测"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "`./node_modules/.bin/tsc --noEmit --pretty false`",
-          "`./node_modules/.bin/jest -c jest.di-smoke.config.ts --watchman=false --forceExit`",
-          "`./node_modules/.bin/jest tests/biz/monitoring/services/cleanup/data-cleanup.service.spec.ts tests/agent/runner/agent-runner.service.spec.ts tests/agent/generator/preparation.service.spec.ts tests/llm/llm-executor.service.spec.ts --runInBand --watchman=false`",
-          "`./node_modules/.bin/jest tests/tools/duliday/enterprise-room-count.util.spec.ts --runInBand --watchman=false`"
-        ]
-      },
-      {
-        "number": "457",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/457",
-        "title": "在 runner 出口清洗出站回复",
-        "author": "huajune",
-        "mergedAt": "2026-07-07",
-        "businessUpdates": [
-          "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
-          "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
-          "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
-          "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
-        ],
-        "summary": [
-          "在 runner 出口清洗出站回复",
-          "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
-          "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
-          "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
-          "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
+          "放开版本元数据 PR 的 CI 触发"
         ],
         "features": [],
-        "fixes": [
-          "Moved deterministic outbound reply cleanup into the agent runner outcome path.",
-          "Removed the 企微 message-layer `ReplyNormalizer` so channel delivery no longer mutates agent replies.",
-          "Sanitized `TurnOutcome.reply.text`, `generatedText`, and rendered `responseMessages` text parts from the same runner output.",
-          "Kept list/numbered-list content intact so missing-field questions no longer become “可以选”."
-        ],
+        "fixes": [],
         "optimizations": [],
         "ops": [
-          "在 runner 出口清洗出站回复"
+          "放开版本元数据 PR 的 CI 触发"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`jest tests/agent/guardrail/output/outbound-reply-sanitizer.spec.ts tests/agent/runner/agent-runner.service.spec.ts --runInBand --watchman=false`",
-          "`tsc --noEmit --pretty false`",
-          "Full pre-push `ci:check` passed: lint, format, typecheck, web build, backend build, and full Jest coverage run."
+          "`git diff --check`",
+          "`pnpm install --frozen-lockfile`",
+          "pre-push `pnpm run ci:check` 通过",
+          "327/328 test suites（1 skipped）",
+          "4682 passed / 4688 total（6 skipped）"
         ]
       }
     ]
