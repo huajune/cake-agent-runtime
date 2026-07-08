@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [9.0.0] - 2026-07-08
 
-**预计版本**: `v9.0.0`
-**最近更新**: `2026-07-07`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #464 发版链路 bot PR 自动放行，CI/AI review 并发去重
@@ -61,7 +57,6 @@
 - PR #467 pre-push `pnpm run ci:check` 通过
 - PR #467 327/328 test suites（1 skipped）
 - PR #467 4682 passed / 4688 total（6 skipped）
-<!-- release:pending:end -->
 
 ## [8.0.0] - 2026-07-07
 
