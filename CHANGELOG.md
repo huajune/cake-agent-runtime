@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.0.2] - 2026-07-08
 
-**预计版本**: `v10.0.2`
-**最近更新**: `2026-07-08`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #482 收敛出站守卫规则止血版
@@ -54,7 +50,6 @@
 - PR #482 `pnpm test -- tests/agent/runner/agent-runner.service.spec.ts tests/agent/runner/reply-rewrite.service.spec.ts --watchman=false`
 - PR #482 `pnpm run typecheck`
 - PR #482 `pnpm run ci:check`
-<!-- release:pending:end -->
 
 ## [10.0.1] - 2026-07-08
 
