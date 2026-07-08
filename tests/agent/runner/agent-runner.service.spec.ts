@@ -443,7 +443,7 @@ describe('AgentRunnerService.runTurn', () => {
     ]);
   });
 
-  it('applies a deterministic transform before LLM repair when all blocked rules support it', async () => {
+  it('applies a deterministic text fix before LLM repair when possible', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '松江这边有岗位，距离 9.4km。' }));
     outputGuard.check
       .mockResolvedValueOnce({
@@ -466,31 +466,31 @@ describe('AgentRunnerService.runTurn', () => {
     const outcome = await service.runTurn({
       sessionRef,
       trigger: { kind: 'inbound', userMessage: '松江这边有吗' },
-      context: { messageId: 'msg-transform' },
+      context: { messageId: 'msg-deterministic-fix' },
     });
 
     expect(outcome.kind).toBe('reply');
-    expect(outcome.reply?.text).toBe('松江这边有岗位，距离 约9公里（按区域位置大概估算的）。');
+    expect(outcome.reply?.text).toBe('松江这边有岗位，距离 约9公里（按区域位置估算的）。');
     expect(generator.invoke).toHaveBeenCalledTimes(1);
     expect(outputGuard.check).toHaveBeenCalledTimes(2);
     expect(outputGuard.check.mock.calls[1][0]).toEqual(
       expect.objectContaining({
-        reply: '松江这边有岗位，距离 约9公里（按区域位置大概估算的）。',
+        reply: '松江这边有岗位，距离 约9公里（按区域位置估算的）。',
         silent: true,
       }),
     );
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        traceId: 'msg-transform',
+        traceId: 'msg-deterministic-fix',
         repaired: true,
-        revisedReply: '松江这边有岗位，距离 约9公里（按区域位置大概估算的）。',
+        revisedReply: '松江这边有岗位，距离 约9公里（按区域位置估算的）。',
         finalDecision: 'pass',
-        reasonCode: 'transformed',
+        reasonCode: 'deterministic_fix',
       }),
     );
   });
 
-  it('sanitizes platform brand violation by transform without LLM repair', async () => {
+  it('sanitizes platform brand violation by deterministic text fix without LLM repair', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '到店说是独立日介绍来的就行。' }));
     outputGuard.check
       .mockResolvedValueOnce({
@@ -514,7 +514,7 @@ describe('AgentRunnerService.runTurn', () => {
     const outcome = await service.runTurn({
       sessionRef,
       trigger: { kind: 'inbound', userMessage: '怎么到店' },
-      context: { messageId: 'msg-brand-transform' },
+      context: { messageId: 'msg-brand-fix' },
     });
 
     expect(outcome.kind).toBe('reply');
@@ -528,11 +528,11 @@ describe('AgentRunnerService.runTurn', () => {
     );
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        traceId: 'msg-brand-transform',
+        traceId: 'msg-brand-fix',
         repaired: true,
         revisedReply: '到店说是独立客介绍来的就行。',
         finalDecision: 'pass',
-        reasonCode: 'transformed',
+        reasonCode: 'deterministic_fix',
       }),
     );
   });

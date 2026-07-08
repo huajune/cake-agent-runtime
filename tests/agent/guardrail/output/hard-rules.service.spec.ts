@@ -1,4 +1,4 @@
-import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
+import { HardRulesService, tryDeterministicFix } from '@agent/guardrail/output/hard-rules.service';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { AgentToolCall } from '@/types/agent-telemetry.types';
 import type { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
@@ -24,6 +24,24 @@ describe('HardRulesService', () => {
 
   const check = (replyText: string) =>
     service.check({ replyText, toolCalls: [], chatId: 'chat-1', userId: 'user-1' });
+
+  describe('tryDeterministicFix', () => {
+    it('sanitizes the legacy platform brand name', () => {
+      expect(tryDeterministicFix('到店说是独立日介绍来的就行。', ['brand_name_violation'])).toBe(
+        '到店说是独立客介绍来的就行。',
+      );
+    });
+
+    it('downgrades precise distance wording to an area-level estimate', () => {
+      expect(
+        tryDeterministicFix('松江这边有岗位，距离 9.4km。', ['district_level_distance_claim']),
+      ).toBe('松江这边有岗位，距离 约9公里（按区域位置估算的）。');
+    });
+
+    it('returns null when no deterministic string fix applies', () => {
+      expect(tryDeterministicFix('我帮你看看岗位。', ['quota_promise'])).toBeNull();
+    });
+  });
 
   describe('discriminatory_screening_leak', () => {
     const hitCases = [

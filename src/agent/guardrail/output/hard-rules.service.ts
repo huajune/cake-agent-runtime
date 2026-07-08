@@ -6,6 +6,7 @@ import {
   GUARDRAIL_FEEDBACK_POLICY,
   GUARDRAIL_PRIORITY,
 } from '@shared-types/guardrail.contract';
+import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
 import { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 import {
   detectBrandAliasFuzzyMatchIgnored,
@@ -50,6 +51,29 @@ export {
   OUTPUT_RULE_IDS,
   type OutputRuleCatalogMetadata,
 } from './rules/output-rule-catalog';
+
+const PRECISE_DISTANCE_FIX_PATTERN = /(\d+(?:\.\d+)?)\s*(?:km|公里|千米)/gi;
+
+/** 命中规则里能用字符串替换修好的，先直接修；修不了返回 null 走正常重写。 */
+export function tryDeterministicFix(text: string, blockedRuleIds: string[]): string | null {
+  const ruleIds = new Set(blockedRuleIds);
+  let fixed = text;
+
+  if (ruleIds.has('brand_name_violation')) {
+    fixed = sanitizeBrandName(fixed);
+  }
+
+  if (ruleIds.has('district_level_distance_claim')) {
+    PRECISE_DISTANCE_FIX_PATTERN.lastIndex = 0;
+    fixed = fixed.replace(PRECISE_DISTANCE_FIX_PATTERN, (match, value: string) => {
+      const distance = Number.parseFloat(value);
+      if (!Number.isFinite(distance)) return match;
+      return `约${Math.round(distance)}公里（按区域位置估算的）`;
+    });
+  }
+
+  return fixed === text ? null : fixed;
+}
 
 /**
  * Reply 后置事实对账。

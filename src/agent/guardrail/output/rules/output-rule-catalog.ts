@@ -46,7 +46,6 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   exogenousSignal: string;
   residualRisk: string;
   verification: string;
-  repairStrategy?: 'transform' | 'rewrite' | 'replan';
 }
 
 type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy> &
@@ -180,7 +179,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'district_level_distance_claim',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
-    repairStrategy: 'transform',
     description: '拦住候选人只报了区/市名，回复却按行政区代表点直接输出精确公里数的情况。',
     riskGoal: '区级粗定位下的距离与候选人真实位置可能差数公里，直接报精确距离会误导到店。',
     exogenousSignal: 'geocode.result.areaLevelQuery（查询词与解析出的区/市名一致）。',

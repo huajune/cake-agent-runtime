@@ -36,7 +36,7 @@ import type { SessionRef, TurnOutcome, TurnRequest, TurnTrigger } from './agent-
 import { TurnFinalizer } from './turn-finalizer';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RequestContextService } from '@observability/context/request-context.service';
-import { applyOutputTransforms } from '../guardrail/output/transforms/output-transform.registry';
+import { tryDeterministicFix } from '../guardrail/output/hard-rules.service';
 
 export type {
   SessionRef,
@@ -221,34 +221,34 @@ export class AgentRunnerService {
       );
     }
 
-    const transformedText = applyOutputTransforms(firstText, decision, first.toolCalls ?? []);
-    if (transformedText) {
-      const transformedResult: GeneratorRunResult = { ...first, text: transformedText };
-      const transformedDecision = await this.outputGuard.check({
-        ...this.buildGuardInput(transformedResult, ctx),
+    const fixedText = tryDeterministicFix(firstText, decision.blockedRuleIds);
+    if (fixedText) {
+      const fixedResult: GeneratorRunResult = { ...first, text: fixedText };
+      const fixedDecision = await this.outputGuard.check({
+        ...this.buildGuardInput(fixedResult, ctx),
         silent: true,
       });
-      if (transformedDecision.decision === 'pass' || transformedDecision.decision === 'observe') {
+      if (fixedDecision.decision === 'pass' || fixedDecision.decision === 'observe') {
         const finalDecision: OutputGuardDecision = {
-          ...transformedDecision,
+          ...fixedDecision,
           decision: 'pass',
-          reasonCode: 'transformed',
+          reasonCode: 'deterministic_fix',
         };
         this.persistReviewRecord(ctx, {
           firstReply: firstText,
           firstDecision: decision,
           finalDecision,
           repaired: true,
-          revisedReply: transformedText,
-          revisedDecision: transformedDecision,
+          revisedReply: fixedText,
+          revisedDecision: fixedDecision,
         });
         return this.finalizeReviewed(
-          transformedResult,
+          fixedResult,
           finalDecision,
           true,
           wantDefer,
           this.buildGuardrailTrace(
-            [firstStep, this.toGuardrailStep('revised', transformedDecision)],
+            [firstStep, this.toGuardrailStep('revised', fixedDecision)],
             true,
             finalDecision,
           ),
