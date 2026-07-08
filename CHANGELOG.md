@@ -8,6 +8,61 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v9.0.0`
+**最近更新**: `2026-07-07`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #464 发版链路 bot PR 自动放行，CI/AI review 并发去重
+- PR #464 发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**
+- PR #464 CI 与 AI review 增加并发去重，同分支旧 run 自动取消
+- PR #467 放开版本元数据 PR 的 CI 触发
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- PR #464 发版链路的三个机器人 PR（版本元数据 / 固化 / 回同步）在配置 `RELEASE_BOT_TOKEN` 后自动 approve + auto-merge，整个发版收敛为**只需人工合并一次 develop → master release PR**
+
+### 运维与流程
+- PR #464 `ci.yml`：新增 `concurrency`（按分支取消旧 run）
+- PR #464 `ai-code-review.yml`：新增按 PR 号的 concurrency；跳过 `chore/release-metadata/*` bot PR（纯脚本生成的版本元数据）
+- PR #464 `version-changelog.yml`：
+- PR #464 所有 checkout/gh 操作 token 改为 `RELEASE_BOT_TOKEN || GITHUB_TOKEN`。PAT push/建 PR 会正常触发 `pull_request` 事件（CI 原生跑），PAT 合并的 merged 事件能继续触发下一段 workflow——这是旧流程所有 dispatch 补丁的根因
+- PR #464 元数据 PR：github-actions[bot] 补 approve（满足 develop 的 1 review + last-push-approval，approve 者与 push 者是不同 actor）+ PAT 开 auto-merge（squash）
+- PR #464 固化 PR：master 无 required check，PAT 直接 squash 合并（人工决策点已前移到 release PR）
+- PR #464 回同步 PR：approve + auto-merge（**merge commit**，squash 会导致下轮发版元数据冲突）
+- PR #464 安全闸：自动 approve 前校验 PR 变更文件仅限 `package.json` / `CHANGELOG.md` / `.release/pending-release.json`，含其他文件则跳过自动放行
+- PR #464 移除对 bot 元数据 PR 的 AI review dispatch
+- PR #464 **未配置 `RELEASE_BOT_TOKEN` 时行为与现状完全一致**（dispatch 兜底 + 人工合并）
+- PR #464 CI 与 AI review 增加并发去重，同分支旧 run 自动取消
+- PR #464 发版链路 bot PR 自动放行，CI/AI review 并发去重
+- PR #467 放开版本元数据 PR 的 CI 触发
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #464 三个 workflow YAML 语法校验通过
+- PR #464 无 PAT 回退路径逐段核对与现行为一致
+- PR #464 预期效果：发版全链路（feature PR 合并 → 生产部署完成）从多次人工盯梳收敛为 1 次合并操作 + ~15 分钟自动级联
+- PR #467 `git diff --check`
+- PR #467 `pnpm install --frozen-lockfile`
+- PR #467 pre-push `pnpm run ci:check` 通过
+- PR #467 327/328 test suites（1 skipped）
+- PR #467 4682 passed / 4688 total（6 skipped）
+<!-- release:pending:end -->
+
 ## [8.0.0] - 2026-07-07
 
 **来源分支**: `develop`

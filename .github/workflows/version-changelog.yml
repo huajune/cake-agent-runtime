@@ -43,8 +43,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # 需要 actions:write 才能用 gh workflow run 派发 ai-code-review.yml；
-      # 详见本文件末尾"为 bot PR 触发 AI Code Review" step。
+      # 需要 actions:write 才能在无 PAT 时用 gh workflow run 兜底派发 ci.yml；
+      # 详见本 job 末尾"Dispatch CI Checks for bot PR" step。
       actions: write
       id-token: write
     steps:
@@ -53,7 +53,10 @@ jobs:
         with:
           ref: develop
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # 优先用 RELEASE_BOT_TOKEN（细粒度 PAT）：PAT push/建 PR 会正常触发
+          # pull_request 事件（CI、AI review 原生生效）；GITHUB_TOKEN 的产物会被
+          # GitHub 反递归机制吞掉，只能靠 dispatch 兜底 + 人工合并。
+          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -137,7 +140,7 @@ jobs:
       - name: Create or update develop release metadata PR
         id: bot_pr
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           RELEASE_METADATA_PR_NUMBERS: ${{ steps.merged_pr_contexts.outputs.numbers }}
           RELEASE_NOTES_LLM_ENABLED: ${{ vars.RELEASE_NOTES_LLM_ENABLED || 'true' }}
           RELEASE_NOTES_LLM_MODEL: ${{ vars.RELEASE_NOTES_LLM_MODEL || vars.AGENT_EXTRACT_MODEL || 'gpt-5-mini' }}
@@ -184,7 +187,7 @@ jobs:
           SOURCE_PR_LABEL="$(printf '%s\n' "${RELEASE_METADATA_PR_NUMBERS}" | sed '/^$/d' | awk '{printf "%s#%s", sep, $1; sep=", "}')"
 
           git add package.json CHANGELOG.md .release/pending-release.json
-          git commit -m "chore(release): 更新待发布版本信息 [skip ci]"
+          git commit -m "chore(release): 更新待发布版本信息"
           # 显式重设 push 凭证：上游 claude-code-action（OIDC 模式）会覆写
           # checkout 持久化的凭证，补偿模式实测 push 报 "Invalid username or
           # token"（2026-06-10）。注意必须仍推送到 origin 而不是裸 URL——
@@ -235,26 +238,45 @@ jobs:
           echo "✅ 已创建 develop 版本元数据 PR: #${NEW_PR_NUMBER}"
           echo "pr_number=${NEW_PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
-      # bot 用 GITHUB_TOKEN 创建/更新的 PR 不会触发 ai-code-review.yml 的
-      # pull_request 事件（GitHub 反递归设计）。workflow_dispatch 是该限制
-      # 的例外通道，允许从 GITHUB_TOKEN 派发，所以这里把刚处理的 bot PR 号
-      # 透传给 ai-code-review.yml 让它跑起来。
-      - name: Dispatch AI Code Review for bot PR
+      # 有 RELEASE_BOT_TOKEN 时把元数据 PR 的人工闸口自动化：
+      # - PAT push 的分支已原生触发 CI（pull_request 事件），无需 dispatch
+      # - github-actions[bot]（GITHUB_TOKEN）补 approve：develop 要求 1 个 review
+      #   且 approve 须晚于最后一次 push——最后 push 者是 PAT、approve 者是 bot，
+      #   两个不同 actor，规则可满足
+      # - 用 PAT 开 auto-merge：CI 绿后由 PAT 身份合并。不能用 GITHUB_TOKEN 合并，
+      #   否则 merged 事件被反递归机制吞掉，create-release-pr 不会触发、链路中断
+      - name: Auto-approve and enable auto-merge for bot PR
         if: steps.bot_pr.outputs.pr_number != ''
-        # AI review 失败不应阻塞元数据 PR 流程本身（PR 已经创建成功了）。
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          GITHUB_ACTIONS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.bot_pr.outputs.pr_number }}
         run: |
           set -euo pipefail
-          gh workflow run ai-code-review.yml \
-            --ref develop \
-            -f pr_number="${PR_NUMBER}"
-          echo "🚀 已派发 ai-code-review.yml 给 PR #${PR_NUMBER}"
+          if [ -z "${RELEASE_BOT_TOKEN}" ]; then
+            echo "ℹ️ 未配置 RELEASE_BOT_TOKEN，元数据 PR 保持人工 approve + 合并"
+            exit 0
+          fi
 
-      # required check "CI Checks"（ci.yml）同样不会被 bot push 触发，导致 bot PR
-      # 永远满足不了分支保护（v5.13.1 发版只能人工 close/reopen 触发）。
+          # 安全闸：只对纯版本元数据变更自动放行，防止本步骤成为任意代码的免审通道
+          UNEXPECTED_FILES=$(GH_TOKEN="${GITHUB_ACTIONS_TOKEN}" gh pr diff "${PR_NUMBER}" --name-only | \
+            grep -vE '^(package\.json|CHANGELOG\.md|\.release/pending-release\.json)$' || true)
+          if [ -n "${UNEXPECTED_FILES}" ]; then
+            echo "⚠️ 元数据 PR 含预期外文件，跳过自动放行，需人工处理："
+            echo "${UNEXPECTED_FILES}"
+            exit 0
+          fi
+
+          GH_TOKEN="${GITHUB_ACTIONS_TOKEN}" gh pr review "${PR_NUMBER}" --approve \
+            --body "自动批准：release-metadata bot PR（仅脚本生成的版本元数据文件）" || \
+            echo "⚠️ 自动 approve 失败（组织可能禁用了 Actions 批准 PR），需人工 approve"
+          GH_TOKEN="${RELEASE_BOT_TOKEN}" gh pr merge "${PR_NUMBER}" --auto --squash || \
+            echo "⚠️ auto-merge 开启失败（检查仓库 Settings 的 Allow auto-merge），需人工合并"
+          echo "✅ 元数据 PR #${PR_NUMBER} 已进入 auto-merge，CI 通过后自动合并"
+
+      # 无 PAT 时的兜底：required check "CI Checks"（ci.yml）不会被 bot push 触发，
+      # bot PR 永远满足不了分支保护（v5.13.1 发版只能人工 close/reopen 触发）。
       # 注意必须 --ref 到 bot 分支：check run 挂在所派发 ref 的 head SHA 上，
       # 派发到 develop 的话检查不会出现在 PR 上。
       - name: Dispatch CI Checks for bot PR
@@ -262,8 +284,13 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
         run: |
           set -euo pipefail
+          if [ -n "${RELEASE_BOT_TOKEN}" ]; then
+            echo "ℹ️ RELEASE_BOT_TOKEN 已配置，CI 由 pull_request 事件原生触发，跳过 dispatch"
+            exit 0
+          fi
           gh workflow run ci.yml --ref chore/release-metadata/develop
           echo "🚀 已在 bot 分支上派发 ci.yml"
 
@@ -301,7 +328,9 @@ jobs:
 
       - name: Create or update release PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 用 PAT 创建时，develop → master 发版 PR 会原生触发 CI（pull_request 事件）；
+          # GITHUB_TOKEN 创建的 PR 要等 develop 再收到人工 push 的 synchronize 才有检查。
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           node scripts/create-release-pr.js --base master --head develop
@@ -325,7 +354,8 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT 身份 push + 合并固化 PR，merged 事件才能触发 publish-master-release
+          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -339,7 +369,8 @@ jobs:
 
       - name: Create or update master release finalize PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -390,19 +421,32 @@ jobs:
 
           if [ -n "${EXISTING_PR_NUMBER}" ]; then
             gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
-            echo "✅ 已更新 master 发布固化 PR: #${EXISTING_PR_NUMBER}"
+            PR_NUMBER="${EXISTING_PR_NUMBER}"
+            echo "✅ 已更新 master 发布固化 PR: #${PR_NUMBER}"
           else
-            gh pr create \
+            PR_URL=$(gh pr create \
               --base "${BASE_BRANCH}" \
               --head "${BOT_BRANCH}" \
               --title "${PR_TITLE}" \
-              --body "${PR_BODY}"
+              --body "${PR_BODY}")
+            PR_NUMBER="${PR_URL##*/}"
+            echo "✅ 已创建 master 发布固化 PR: #${PR_NUMBER}"
           fi
 
-          # bot push 不触发 pull_request 事件，主动在 bot 分支上派发 required check。
-          # ci.yml 的 workflow_dispatch 触发器需已存在于该分支（随发版进入 master 后生效）。
-          gh workflow run ci.yml --ref "${BOT_BRANCH}" || \
-            echo "⚠️ ci.yml 派发失败（分支上可能还没有 workflow_dispatch 触发器），需人工 close/reopen 触发 CI"
+          if [ -n "${RELEASE_BOT_TOKEN}" ]; then
+            # 固化 PR 是脚本对已发版内容的机械固化（仅版本元数据文件），人工决策点
+            # 已前移到 develop → master 发版 PR；master 无 required check，直接
+            # squash 合并（线性历史要求）。必须由 PAT 合并：GITHUB_TOKEN 合并的
+            # merged 事件会被反递归机制吞掉，publish-master-release 不会触发。
+            gh pr merge "${PR_NUMBER}" --squash --auto || \
+              gh pr merge "${PR_NUMBER}" --squash || \
+              echo "⚠️ 自动合并失败，请人工 squash 合并固化 PR #${PR_NUMBER}"
+          else
+            # bot push 不触发 pull_request 事件，主动在 bot 分支上派发 required check。
+            # ci.yml 的 workflow_dispatch 触发器需已存在于该分支（随发版进入 master 后生效）。
+            gh workflow run ci.yml --ref "${BOT_BRANCH}" || \
+              echo "⚠️ ci.yml 派发失败（分支上可能还没有 workflow_dispatch 触发器），需人工 close/reopen 触发 CI"
+          fi
 
   publish-master-release:
     if: >
@@ -509,7 +553,8 @@ jobs:
         with:
           ref: develop
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT 身份 push，sync PR 才能原生触发 CI（pull_request 事件）
+          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -523,7 +568,9 @@ jobs:
 
       - name: Create or update master back-sync PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          GITHUB_ACTIONS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.publish-master-release.outputs.version }}
         run: |
           set -euo pipefail
@@ -600,17 +647,31 @@ jobs:
 
           if [ -n "${EXISTING_PR_NUMBER}" ]; then
             gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
-            echo "✅ 已更新 master → develop 同步 PR: #${EXISTING_PR_NUMBER}"
+            PR_NUMBER="${EXISTING_PR_NUMBER}"
+            echo "✅ 已更新 master → develop 同步 PR: #${PR_NUMBER}"
           else
             PR_URL=$(gh pr create \
               --base "${BASE_BRANCH}" \
               --head "${BOT_BRANCH}" \
               --title "${PR_TITLE}" \
               --body "${PR_BODY}")
-            NEW_PR_NUMBER="${PR_URL##*/}"
-            echo "✅ 已创建 master → develop 同步 PR: #${NEW_PR_NUMBER}"
+            PR_NUMBER="${PR_URL##*/}"
+            echo "✅ 已创建 master → develop 同步 PR: #${PR_NUMBER}"
           fi
 
-          # bot push 不触发 pull_request 事件，主动在 bot 分支上派发 required check
-          gh workflow run ci.yml --ref "${BOT_BRANCH}" || \
-            echo "⚠️ ci.yml 派发失败（分支上可能还没有 workflow_dispatch 触发器），需人工 close/reopen 触发 CI"
+          if [ -n "${RELEASE_BOT_TOKEN}" ]; then
+            # github-actions[bot] 补 approve 满足 develop 的 review 规则，PAT 开
+            # auto-merge、CI 绿后自动合并（合并者是 PAT，closed 事件可正常触发）。
+            # ⚠️ 必须 merge commit：squash 会让下一轮 develop → master 发版 PR
+            # 在 CHANGELOG/pending-release 等元数据文件上重复冲突。
+            GH_TOKEN="${GITHUB_ACTIONS_TOKEN}" gh pr review "${PR_NUMBER}" --approve \
+              --body "自动批准：master → develop 发布历史回同步（内容均已在 master 发布）" || \
+              echo "⚠️ 自动 approve 失败（组织可能禁用了 Actions 批准 PR），需人工 approve"
+            gh pr merge "${PR_NUMBER}" --auto --merge || \
+              echo "⚠️ auto-merge 开启失败（检查仓库 Settings 的 Allow auto-merge），需人工合并"
+            echo "✅ 同步 PR #${PR_NUMBER} 已进入 auto-merge，CI 通过后自动合并"
+          else
+            # bot push 不触发 pull_request 事件，主动在 bot 分支上派发 required check
+            gh workflow run ci.yml --ref "${BOT_BRANCH}" || \
+              echo "⚠️ ci.yml 派发失败（分支上可能还没有 workflow_dispatch 触发器），需人工 close/reopen 触发 CI"
+          fi
