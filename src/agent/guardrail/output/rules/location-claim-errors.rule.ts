@@ -22,8 +22,6 @@ const LOCATION_DECISION_CLAIM_PATTERN =
   /(?:附近|周边|离你|这个位置|你的位置|你这边|这附近)[^。！？\n]{0,30}(?:门店|岗位|有岗|暂无|没有|无岗|推荐|查到|查了)|(?:已|已经|帮你|给你)[^。！？\n]{0,18}(?:确认|定位|查到)[^。！？\n]{0,12}(?:位置|附近|门店|岗位)/;
 const LOCATION_CLARIFICATION_PATTERN =
   /(?:哪个|哪座|所在|具体)[^。！？\n]{0,8}城市|城市[^。！？\n]{0,8}(?:确认|是哪里|是哪)|具体[^。！？\n]{0,8}(?:地址|位置|地标)|(?:上海|北京|广州|深圳|杭州|南京|苏州|成都|武汉|重庆|天津|长沙|西安|郑州|合肥|宁波|无锡)[^。！？\n]{0,8}(?:还是|或)/;
-const GENERIC_CITY_CLARIFICATION_PATTERN =
-  /(?:哪个|哪座|所在|具体)[^。！？\n]{0,8}城市|城市[^。！？\n]{0,8}(?:确认|是哪里|是哪)/;
 
 export function detectGeocodeUncertainLocationClaim(
   text: string,
@@ -56,42 +54,6 @@ export function detectGeocodeUncertainLocationClaim(
     label: `geocode 未拿到唯一可用坐标（${errorType ?? `resolution=${resolution}`}），但回复已经基于位置做附近推荐/无岗判断/位置确认，需改写为确认城市或更具体地址`,
     action: GUARDRAIL_ACTION.REVISE,
   };
-}
-
-export function detectGeocodeAmbiguousCandidatesOmitted(
-  text: string,
-  toolCalls: AgentToolCall[],
-): RuleContradiction | null {
-  if (!GENERIC_CITY_CLARIFICATION_PATTERN.test(text)) return null;
-
-  const geocodeCall = [...toolCalls]
-    .reverse()
-    .find((call) => call.toolName === 'geocode' && call.result);
-  const result = asRecord(geocodeCall?.result);
-  if (!result || result.resolution !== 'ambiguous') return null;
-
-  const cities = readCandidateCities(result.candidates);
-  if (cities.length < 2) return null;
-
-  const mentionedCount = cities.filter((city) => text.includes(city.replace(/市$/, ''))).length;
-  if (mentionedCount >= 2) return null;
-
-  return {
-    ruleId: 'geocode_ambiguous_candidates_omitted',
-    label: `geocode 返回多城市候选（${cities.join('/')}），但回复只泛泛追问城市，未列出候选项`,
-    action: GUARDRAIL_ACTION.OBSERVE,
-  };
-}
-
-function readCandidateCities(candidates: unknown): string[] {
-  if (!Array.isArray(candidates)) return [];
-  const cities = new Set<string>();
-  for (const candidate of candidates) {
-    const record = asRecord(candidate);
-    const city = typeof record?.city === 'string' ? record.city.trim() : '';
-    if (city) cities.add(city);
-  }
-  return [...cities];
 }
 
 const PRECISE_DISTANCE_CLAIM_PATTERN = /\d+(?:\.\d+)?\s*(?:公里|千米|km)/i;

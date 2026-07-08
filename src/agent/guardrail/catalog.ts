@@ -24,18 +24,10 @@ import { TOOL_GUARDRAIL_CATALOG, TOOL_GUARDRAIL_IDS } from './tool/tool-guardrai
 const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   brand_alias_fuzzy_match_ignored:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
-  confirmed_booking_onsite_script_missing:
-    'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
   confirmed_booking_time_missing:
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
   district_level_distance_claim:
     'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
-  farther_job_recommended:
-    'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
-  geocode_ambiguous_candidates_omitted:
-    'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
-  group_invite_without_reason:
-    'agent/guardrail/output/rules/group-invite-context.rule.ts（HardRulesService 调度）',
   hourly_salary_value_mismatch:
     'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
   human_service_phrase_leak:
@@ -44,9 +36,6 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/visual-message-errors.rule.ts（HardRulesService 调度）',
   job_shift_polarity_mismatch:
     'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
-  provided_booking_fields_ignored:
-    'agent/guardrail/output/rules/context-priority-errors.rule.ts（HardRulesService 调度）',
-  repeated_greeting: 'agent/guardrail/output/rules/repeated-reply.rule.ts（HardRulesService 调度）',
   repeated_reply: 'agent/guardrail/output/rules/repeated-reply.rule.ts（HardRulesService 调度）',
   requested_brand_mismatch:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
@@ -60,12 +49,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
   brand_name_violation:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
-  candidate_name_echo:
-    'agent/guardrail/output/rules/candidate-name-echo.rule.ts（HardRulesService 调度）',
   discriminatory_screening_leak:
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
-  distance_missing:
-    'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
   geocode_uncertain_location_claim:
     'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
   group_full_without_invite:
@@ -91,8 +76,6 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
   wait_notice_time_fabrication:
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
-  work_content_generalization:
-    'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
 };
 
 export interface GuardrailCatalogEntry {

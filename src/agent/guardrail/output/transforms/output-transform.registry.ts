@@ -1,9 +1,10 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import type { OutputGuardDecision } from '../output-guardrail.service';
+import { brandNameTransform } from './brand-name.transform';
 import { districtLevelDistanceTransform } from './district-level-distance.transform';
 import type { OutputRuleTransform } from './output-transform.types';
 
-const TRANSFORMS: OutputRuleTransform[] = [districtLevelDistanceTransform];
+const TRANSFORMS: OutputRuleTransform[] = [brandNameTransform, districtLevelDistanceTransform];
 const TRANSFORM_BY_RULE_ID = new Map(TRANSFORMS.map((transform) => [transform.ruleId, transform]));
 
 export function applyOutputTransforms(

@@ -252,7 +252,7 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain('internal_output_leak');
     });
 
-    it('asks for revision on proactive insurance policy promise when candidate did not ask', () => {
+    it('observes proactive insurance policy promise when candidate did not ask', () => {
       const result = service.check({
         replyText: '这家早班 7:00-10:00，时薪 24 元，兼职岗位公司购买保险。',
         toolCalls: [],
@@ -266,8 +266,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'proactive_insurance_policy_mention',
-            action: GUARDRAIL_ACTION.REVISE,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -305,7 +305,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('still asks for revision on proactive insurance promise when recent turns never asked', () => {
+    it('still observes proactive insurance promise when recent turns never asked', () => {
       const result = service.check({
         replyText: '兼职岗位公司购买保险，放心。',
         toolCalls: [],
@@ -365,7 +365,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('still blocks when reply mixes requirement context with a benefit promise', () => {
+    it('still observes when reply mixes requirement context with a benefit promise', () => {
       const result = service.check({
         replyText: '这个岗位需要提供社保证明。另外公司还给你买五险一金，福利很好。',
         toolCalls: [],
@@ -380,10 +380,10 @@ describe('HardRulesService', () => {
       expect(
         result.contradictions.find((c) => c.ruleId === 'proactive_insurance_policy_mention')
           ?.action,
-      ).toBe(GUARDRAIL_ACTION.REVISE);
+      ).toBe(GUARDRAIL_ACTION.OBSERVE);
     });
 
-    it('blocks 签合同+五险一金 benefit promise (bare 合同 must not trigger requirement exemption)', () => {
+    it('observes 签合同+五险一金 benefit promise (bare 合同 must not trigger requirement exemption)', () => {
       const result = service.check({
         replyText: '转正后签合同，公司给你交五险一金，福利很好。',
         toolCalls: [],
@@ -398,10 +398,10 @@ describe('HardRulesService', () => {
       expect(
         result.contradictions.find((c) => c.ruleId === 'proactive_insurance_policy_mention')
           ?.action,
-      ).toBe(GUARDRAIL_ACTION.REVISE);
+      ).toBe(GUARDRAIL_ACTION.OBSERVE);
     });
 
-    it('blocks 给你交社保 benefit promise (qualification exemption requires 你有…交…社保 question form)', () => {
+    it('observes 给你交社保 benefit promise (qualification exemption requires 你有…交…社保 question form)', () => {
       const result = service.check({
         replyText: '放心，公司给你交社保的。',
         toolCalls: [],
@@ -416,7 +416,7 @@ describe('HardRulesService', () => {
       expect(
         result.contradictions.find((c) => c.ruleId === 'proactive_insurance_policy_mention')
           ?.action,
-      ).toBe(GUARDRAIL_ACTION.REVISE);
+      ).toBe(GUARDRAIL_ACTION.OBSERVE);
     });
 
     it('blocks legacy platform brand name in outbound reply', () => {
@@ -602,86 +602,6 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('asks for revision when a farther store is recommended while a much closer store exists', () => {
-      const result = service.check({
-        replyText: '推荐你去肯德基南京西路店，距离3.8公里，薪资24元。',
-        toolCalls: [
-          {
-            toolName: 'duliday_job_list',
-            args: {},
-            result: {
-              result: [
-                {
-                  _distanceKm: 0.5,
-                  basicInfo: {
-                    brandName: '肯德基',
-                    jobName: '服务员',
-                    storeInfo: { storeName: '静安寺店' },
-                  },
-                },
-                {
-                  _distanceKm: 3.8,
-                  basicInfo: {
-                    brandName: '肯德基',
-                    jobName: '服务员',
-                    storeInfo: { storeName: '南京西路店' },
-                  },
-                },
-              ],
-            },
-            resultCount: 2,
-            status: 'ok',
-          },
-        ] as never,
-      });
-
-      expect(result.contradictions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            ruleId: 'farther_job_recommended',
-            action: GUARDRAIL_ACTION.OBSERVE,
-            currentReplySendable: true,
-          }),
-        ]),
-      );
-    });
-
-    it('does not flag farther store recommendation when reply explains the distance tradeoff', () => {
-      const result = service.check({
-        replyText: '静安寺店更近但班次不匹配，推荐你去肯德基南京西路店，距离3.8公里。',
-        toolCalls: [
-          {
-            toolName: 'duliday_job_list',
-            args: {},
-            result: {
-              result: [
-                {
-                  _distanceKm: 0.5,
-                  basicInfo: {
-                    brandName: '肯德基',
-                    jobName: '服务员',
-                    storeInfo: { storeName: '静安寺店' },
-                  },
-                },
-                {
-                  _distanceKm: 3.8,
-                  basicInfo: {
-                    brandName: '肯德基',
-                    jobName: '服务员',
-                    storeInfo: { storeName: '南京西路店' },
-                  },
-                },
-              ],
-            },
-            resultCount: 2,
-            status: 'ok',
-          },
-        ] as never,
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('farther_job_recommended');
-    });
-
     it('asks for revision when schedule-filtered job list is followed by a recommendation', () => {
       const result = service.check({
         replyText: '这家门店可以做晚班，我帮你预约面试。',
@@ -833,7 +753,7 @@ describe('HardRulesService', () => {
       }
     });
 
-    it('asks for revision when reply fabricates system/network status', () => {
+    it('observes when reply fabricates system/network status', () => {
       const result = check('系统同步有点问题，我这边稍后再帮你预约。');
 
       expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(false);
@@ -841,7 +761,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'system_status_fabrication',
-            action: GUARDRAIL_ACTION.REVISE,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -860,9 +781,7 @@ describe('HardRulesService', () => {
         ] as never,
       });
 
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'system_status_fabrication',
-      );
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('system_status_fabrication');
     });
 
     it('observes when wait-notice job still asks candidate to choose interview time', () => {
@@ -915,21 +834,6 @@ describe('HardRulesService', () => {
 
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
         'wait_notice_time_collection',
-      );
-    });
-
-    it('observes when reply generalizes job duties from industry common sense', () => {
-      const result = check('餐饮岗位一般都要洗碗和打扫，能接受的话我帮你约面试。');
-
-      expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(false);
-      expect(result.contradictions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            ruleId: 'work_content_generalization',
-            action: GUARDRAIL_ACTION.OBSERVE,
-            currentReplySendable: true,
-          }),
-        ]),
       );
     });
 
@@ -1109,36 +1013,6 @@ describe('HardRulesService', () => {
         'image_description_not_saved',
       );
     });
-
-    it('asks for revision when current user message already provided booking fields but reply repeats them', () => {
-      const result = service.check({
-        userMessage: '张三，男，28岁，电话13800138000，本科，有健康证，明天下午可以面试',
-        replyText: ['请补充以下报名资料：', '姓名：', '电话：', '年龄：', '性别：'].join('\n'),
-        toolCalls: [],
-      });
-
-      expect(result.contradictions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            ruleId: 'provided_booking_fields_ignored',
-            action: GUARDRAIL_ACTION.REVISE,
-            currentReplySendable: false,
-          }),
-        ]),
-      );
-    });
-
-    it('does not flag when reply only asks for fields not provided in current user message', () => {
-      const result = service.check({
-        userMessage: '张三，男，28岁，电话13800138000，本科，明天下午可以面试',
-        replyText: '收到，还差健康证情况和过往工作经验，方便补充一下吗？',
-        toolCalls: [],
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'provided_booking_fields_ignored',
-      );
-    });
   });
 
   describe('side-effect output grounding', () => {
@@ -1314,57 +1188,6 @@ describe('HardRulesService', () => {
 
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
         'confirmed_booking_time_missing',
-      );
-    });
-
-    it('observes when on-site script is missing from successful offline booking reply', () => {
-      const result = service.check({
-        replyText: '已帮你预约成功，7月2日14:00到店面试，记得带身份证。',
-        toolCalls: [
-          {
-            toolName: 'duliday_interview_booking',
-            args: {},
-            result: {
-              success: true,
-              _confirmedInterviewTimeHuman: '2026年7月2日 14:00',
-              _onSiteScript: '到店跟前台/店长说"独立客招聘介绍来的，姓名 张三，应聘 服务员"',
-            },
-            status: 'ok',
-          },
-        ] as never,
-      });
-
-      expect(result.contradictions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            ruleId: 'confirmed_booking_onsite_script_missing',
-            action: GUARDRAIL_ACTION.OBSERVE,
-            currentReplySendable: true,
-          }),
-        ]),
-      );
-    });
-
-    it('does not flag successful booking reply that repeats the on-site script', () => {
-      const result = service.check({
-        replyText:
-          '已帮你预约成功，7月2日14:00到店面试。到店跟前台/店长说是独立客招聘介绍来的，报姓名张三，应聘服务员。',
-        toolCalls: [
-          {
-            toolName: 'duliday_interview_booking',
-            args: {},
-            result: {
-              success: true,
-              _confirmedInterviewTimeHuman: '2026年7月2日 14:00',
-              _onSiteScript: '到店跟前台/店长说"独立客招聘介绍来的，姓名 张三，应聘 服务员"',
-            },
-            status: 'ok',
-          },
-        ] as never,
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'confirmed_booking_onsite_script_missing',
       );
     });
 
@@ -1692,54 +1515,6 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('observes when ambiguous geocode candidates are not listed in clarification', () => {
-      const result = service.check({
-        replyText: '这个万达广场在多个城市都有，你这边主要在哪个城市呀？',
-        toolCalls: [
-          {
-            toolName: 'geocode',
-            args: { address: '万达广场' },
-            result: {
-              resolution: 'ambiguous',
-              candidates: [{ city: '上海市' }, { city: '南京市' }, { city: '苏州市' }],
-            },
-            status: 'ok',
-          },
-        ] as never,
-      });
-
-      expect(result.contradictions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            ruleId: 'geocode_ambiguous_candidates_omitted',
-            action: GUARDRAIL_ACTION.OBSERVE,
-            currentReplySendable: true,
-          }),
-        ]),
-      );
-    });
-
-    it('allows ambiguous geocode clarification that lists candidate cities', () => {
-      const result = service.check({
-        replyText: '这个万达广场有多个城市，是上海的，还是南京的？',
-        toolCalls: [
-          {
-            toolName: 'geocode',
-            args: { address: '万达广场' },
-            result: {
-              resolution: 'ambiguous',
-              candidates: [{ city: '上海市' }, { city: '南京市' }],
-            },
-            status: 'ok',
-          },
-        ] as never,
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'geocode_ambiguous_candidates_omitted',
-      );
-    });
-
     it('asks for revision when request_handoff found no booking but reply claims handoff or cancellation', () => {
       const result = service.check({
         replyText: '已帮你取消并转人工处理，后续会有人联系你。',
@@ -1794,68 +1569,6 @@ describe('HardRulesService', () => {
           }),
         ]),
       );
-    });
-  });
-
-  describe('candidate_name_echo (51 条新规则)', () => {
-    it('flags addressing the candidate by a nickname found in contactName', () => {
-      const result = service.check({
-        replyText: '小晴你好，咱们这边有几个岗位很合适',
-        toolCalls: [],
-        contactName: '上海奥乐齐 小晴',
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).toContain('candidate_name_echo');
-      expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(false);
-    });
-
-    it('does not flag a plain greeting when the token is not in contactName', () => {
-      const result = service.check({
-        replyText: '你好，咱们这边有几个岗位很合适',
-        toolCalls: [],
-        contactName: '上海奥乐齐',
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('candidate_name_echo');
-    });
-
-    it('does not flag when contactName is absent', () => {
-      const result = service.check({ replyText: '小晴你好', toolCalls: [] });
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('candidate_name_echo');
-    });
-  });
-
-  describe('distance_missing (51 条新规则)', () => {
-    const jobListWithDistance = [
-      {
-        toolName: 'duliday_job_list',
-        result: { result: [{ jobId: 1, storeName: '长白店', distanceKm: 2.3 }] },
-      },
-    ];
-
-    it('flags a store recommendation that omits distance when recall had distanceKm', () => {
-      const result = service.check({
-        replyText: '给你推荐奥乐齐长白门店，待遇不错，要不要约面试',
-        toolCalls: jobListWithDistance as never,
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).toContain('distance_missing');
-      expect(result.contradictions.some((c) => c.action === GUARDRAIL_ACTION.BLOCK)).toBe(false);
-    });
-
-    it('does not flag when the reply already gives a distance', () => {
-      const result = service.check({
-        replyText: '给你推荐奥乐齐长白门店，离你2.3公里，要不要约面试',
-        toolCalls: jobListWithDistance as never,
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('distance_missing');
-    });
-
-    it('does not flag when recall had no distanceKm', () => {
-      const result = service.check({
-        replyText: '给你推荐奥乐齐长白门店，要不要约面试',
-        toolCalls: [
-          { toolName: 'duliday_job_list', result: { result: [{ jobId: 1, storeName: '长白店' }] } },
-        ] as never,
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('distance_missing');
     });
   });
 
@@ -2141,6 +1854,52 @@ describe('HardRulesService', () => {
       expect(result.hit).toBe(true);
       await flushAsync();
       // 不应抛
+    });
+  });
+
+  describe('observe 档不写飞书 badcase（判例仅落库 guardrail_review_records）', () => {
+    it('observe-only 命中：返回裁决且落库全量，但不 fire 飞书 badcase', async () => {
+      const result = service.check({
+        replyText: '这个我帮你转人工客服处理下哈',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        traceId: 'trace-1',
+      });
+
+      expect(result.hit).toBe(true);
+      // 裁决/落库仍保留 observe 命中
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('human_service_phrase_leak');
+      expect(result.contradictions.every((c) => c.action === GUARDRAIL_ACTION.OBSERVE)).toBe(true);
+
+      await flushAsync();
+      // observe 判例不再写飞书多维表
+      expect(notifier.notifyContradiction).not.toHaveBeenCalled();
+    });
+
+    it('enforce + observe 混合：飞书只收 enforce 判例，observe 判例被过滤掉', async () => {
+      const result = service.check({
+        replyText: '不好意思群已满了，要不我帮你转人工客服看看',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        traceId: 'trace-1',
+      });
+
+      expect(result.hit).toBe(true);
+      // 返回裁决保留全部命中（含 observe），供落库与决策合并
+      const ruleIds = result.contradictions.map((c) => c.ruleId);
+      expect(ruleIds).toContain('group_full_without_invite');
+      expect(ruleIds).toContain('human_service_phrase_leak');
+
+      await flushAsync();
+      expect(notifier.notifyContradiction).toHaveBeenCalledTimes(1);
+      const payload = notifier.notifyContradiction.mock.calls[0][0] as {
+        contradictions: Array<{ ruleId: string }>;
+      };
+      const feishuRuleIds = payload.contradictions.map((c) => c.ruleId);
+      expect(feishuRuleIds).toContain('group_full_without_invite');
+      expect(feishuRuleIds).not.toContain('human_service_phrase_leak');
     });
   });
 
@@ -2995,7 +2754,7 @@ describe('HardRulesService', () => {
     });
   });
 
-  describe('repeated_reply / repeated_greeting (badcase recvnVdWUh8E84 / recvlmGXDwMZrz)', () => {
+  describe('repeated_reply (badcase recvlmGXDwMZrz / recvlsYa5SSOn9)', () => {
     it('flags near-duplicate long reply against recent assistant messages', () => {
       const jobDetail =
         '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.2公里，感兴趣可以帮你报名。';
@@ -3008,7 +2767,7 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
+      expect(hit?.action).toBe('observe');
     });
 
     it('flags punctuation-only variations as duplicates', () => {
@@ -3044,31 +2803,7 @@ describe('HardRulesService', () => {
       expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeUndefined();
     });
 
-    it('observes repeated greeting after the conversation already opened with one', () => {
-      const result = service.check({
-        replyText: '你好呀，请问你在找什么工作？',
-        toolCalls: [],
-        chatId: 'chat-1',
-        recentAssistantTexts: ['你好，我是招聘顾问小张', '我们这边有不少门店在招人'],
-      });
-
-      const hit = result.contradictions.find((c) => c.ruleId === 'repeated_greeting');
-      expect(hit).toBeDefined();
-      expect(hit?.action).toBe('observe');
-    });
-
-    it('does not flag greeting when prior assistant messages never greeted', () => {
-      const result = service.check({
-        replyText: '你好，看到你想找兼职？',
-        toolCalls: [],
-        chatId: 'chat-1',
-        recentAssistantTexts: ['这家门店时薪24元'],
-      });
-
-      expect(result.contradictions.find((c) => c.ruleId === 'repeated_greeting')).toBeUndefined();
-    });
-
-    it('skips both repeat rules when history is unavailable', () => {
+    it('skips repeat detection when history is unavailable', () => {
       const result = service.check({
         replyText: '你好呀，请问你在找什么工作？',
         toolCalls: [],
@@ -3076,7 +2811,6 @@ describe('HardRulesService', () => {
       });
 
       expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeUndefined();
-      expect(result.contradictions.find((c) => c.ruleId === 'repeated_greeting')).toBeUndefined();
     });
   });
 
@@ -3216,58 +2950,6 @@ describe('HardRulesService', () => {
 
       expect(
         result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim'),
-      ).toBeUndefined();
-    });
-  });
-
-  describe('group_invite_without_reason (badcase recvnBYuVLIQsV / recvnlMW3l3OXp)', () => {
-    const makeInviteCall = (result: Record<string, unknown>): AgentToolCall => ({
-      toolName: 'invite_to_group',
-      args: { city: '上海' },
-      result,
-    });
-
-    it('observes when invite succeeded but reply gives no reason', () => {
-      const result = service.check({
-        replyText: '入群邀请已经发你了，点一下卡片就能进群。',
-        toolCalls: [makeInviteCall({ success: true, groupName: '上海兼职群1号' })],
-        chatId: 'chat-1',
-      });
-
-      const hit = result.contradictions.find((c) => c.ruleId === 'group_invite_without_reason');
-      expect(hit).toBeDefined();
-      expect(hit?.action).toBe('observe');
-    });
-
-    it('passes when reply explains the no-match fallback reason', () => {
-      const result = service.check({
-        replyText: '现在暂时没有完全匹配的岗位，先帮你进兼职群，有新岗位群里会第一时间通知你。',
-        toolCalls: [makeInviteCall({ success: true, groupName: '上海兼职群1号' })],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'group_invite_without_reason'),
-      ).toBeUndefined();
-    });
-
-    it('skips when invite failed or candidate already in group', () => {
-      const failed = service.check({
-        replyText: '好的，我再帮你看看其他岗位。',
-        toolCalls: [makeInviteCall({ success: false, errorType: 'invite.group_full' })],
-        chatId: 'chat-1',
-      });
-      expect(
-        failed.contradictions.find((c) => c.ruleId === 'group_invite_without_reason'),
-      ).toBeUndefined();
-
-      const already = service.check({
-        replyText: '好的，有消息我跟你说。',
-        toolCalls: [makeInviteCall({ success: true, alreadyInGroup: true })],
-        chatId: 'chat-1',
-      });
-      expect(
-        already.contradictions.find((c) => c.ruleId === 'group_invite_without_reason'),
       ).toBeUndefined();
     });
   });

@@ -23,7 +23,7 @@ import type { FactRule, RuleContradiction } from '../output-rule.types';
  *
  * 动作策略：
  * - 未接地却输出具体岗位推荐用 replan：当前回复不可发，但允许重新查岗后再生成；
- * - 薪资、工作内容当前走 revise；距离漏报仍是 observe，避免因信息完整性问题阻断流程。
+ * - 薪资事实错报走 revise；距离完整性由岗位卡渲染器按构造保证，不在本层观察。
  */
 
 // 结构化推荐常见字段。若同一回复出现多个字段，通常说明模型已经在输出具体岗位卡片。
@@ -34,13 +34,6 @@ const JOB_TEMPLATE_LEAK_PATTERN = /推荐对话用模板/;
 // 薪资类幻觉只覆盖“岗位工具没有给字段但模型补了政策”的高风险说法。
 const SALARY_FABRICATION_PATTERN =
   /节假日(工资|薪资|时薪)?双倍|节假日(工资|薪资|时薪)(不一样|更高|翻倍)|周末(加薪|双倍|涨)|工资(按表现|按业绩|按绩效)?浮动|薪资面议|薪资按.*面议/;
-// 工作内容必须来自岗位数据；“餐饮一般都会...”这种行业常识不能替代岗位事实。
-const WORK_CONTENT_GENERALIZATION_PATTERN =
-  /(?:餐饮|奶茶|咖啡|零售|门店|服务员|店员)[^。！？\n]{0,12}(?:一般|通常|基本|大多|多数|都会|都要|可能会)[^。！？\n]{0,20}(?:洗碗|刷碗|洗盘|洗杯|收银|打扫|清洁|后厨|备餐|切配|上菜|做餐|端盘|搬货|理货)|(?:一般|通常|基本|大多|多数)[^。！？\n]{0,12}(?:都)?(?:要|会)[^。！？\n]{0,20}(?:洗碗|刷碗|洗盘|洗杯|收银|打扫|清洁|后厨|备餐|切配|上菜|做餐|端盘|搬货|理货)/;
-const DISTANCE_TOKEN_PATTERN = /公里|千米|[0-9.]+\s*k?m\b/i;
-const DISTANCE_TRADEOFF_REASON_PATTERN =
-  /更近[^。！？\n]{0,30}(?:不合适|不匹配|没岗|没有|班次|时间|要求|品牌|薪资)|远一点[^。！？\n]{0,30}(?:班次|时间|薪资|品牌|更合适|符合|匹配)|距离[^。！？\n]{0,12}(?:稍远|远一点)[^。！？\n]{0,30}(?:但|不过|因为)/;
-const FARTHER_DISTANCE_GAP_KM = 2;
 const JOB_RECOMMEND_OR_BOOKING_PATTERN =
   /(?:推荐|这家|这个岗位|门店)[^。！？\n]{0,24}(?:适合|可以|能做|在招|报名|预约|面试)|(?:可以|能|帮你|给你)[^。！？\n]{0,16}(?:约|预约|报名|安排面试)/;
 // 合规口径除了“没有符合班次的岗/问放宽”外，还包括“透明披露班次不符 + 征询能否接受”：
@@ -61,16 +54,7 @@ const SCHEDULE_ONLY_SHIFT_DECLARATION_PATTERN =
 const SCHEDULE_SHIFT_REQUIREMENT_ECHO_PATTERN =
   /(?:只找|只做|只考虑|只要|想找|想做|想要|倾向|偏好|接受)[^。！？\n]{0,6}(?:早班|白班|日班|晚班|夜班|通宵|全天)/;
 
-export const JOB_FACT_HALLUCINATION_RULES: FactRule[] = [
-  {
-    ruleId: 'work_content_generalization',
-    label:
-      '回复用行业常识泛化补充岗位职责（如“餐饮一般都要洗碗/收银/打扫”），工作内容必须按岗位数据表述，需改写为“以门店/岗位说明为准”或删除未接地职责',
-    keywords: WORK_CONTENT_GENERALIZATION_PATTERN,
-    requiredToolPredicate: () => false,
-    action: GUARDRAIL_ACTION.OBSERVE,
-  },
-];
+export const JOB_FACT_HALLUCINATION_RULES: FactRule[] = [];
 
 /**
  * 未接地岗位推荐检测。
@@ -136,41 +120,6 @@ export function detectSalaryFabrication(
       '回复声称节假日/周末薪资差异或工资浮动/面议，但本轮 duliday_job_list 返回的 jobSalary 里没有对应的 holidaySalary/overtimeSalary 字段（badcase aalxnd77 / zt98hgy3）',
     action: GUARDRAIL_ACTION.REVISE,
   };
-}
-
-export function detectFartherJobRecommended(
-  text: string,
-  toolCalls: AgentToolCall[],
-): RuleContradiction | null {
-  if (DISTANCE_TRADEOFF_REASON_PATTERN.test(text)) return null;
-
-  const jobListCall = readLatestUsableJobListCall(toolCalls);
-  if (!jobListCall) return null;
-
-  const jobs = readJobListJobs(jobListCall.result)
-    .map(readComparableJob)
-    .filter((job): job is ComparableJob => Boolean(job));
-  if (jobs.length < 2) return null;
-
-  const sortedByDistance = [...jobs].sort((a, b) => a.distanceKm - b.distanceKm);
-  const nearest = sortedByDistance[0];
-  if (!nearest.storeToken || textContainsNormalized(text, nearest.storeToken)) return null;
-
-  for (const job of sortedByDistance.slice(1)) {
-    if (!job.storeToken) continue;
-    if (job.distanceKm - nearest.distanceKm < FARTHER_DISTANCE_GAP_KM) continue;
-    if (!textContainsNormalized(text, job.storeToken)) continue;
-
-    return {
-      ruleId: 'farther_job_recommended',
-      label: `本轮岗位列表有更近门店"${nearest.storeName}"（${nearest.distanceKm.toFixed(
-        1,
-      )}km），但回复只推荐了更远门店"${job.storeName}"（${job.distanceKm.toFixed(1)}km）`,
-      action: GUARDRAIL_ACTION.OBSERVE,
-    };
-  }
-
-  return null;
 }
 
 export function detectScheduleFilteredJobRecommended(
@@ -241,29 +190,6 @@ function readRequestedShiftPolarity(args: unknown): ShiftPolarity | null {
   return null;
 }
 
-/**
- * 距离漏报检测。
- *
- * 当最后一次岗位工具已经返回 distanceKm/_distanceKm，且回复在做门店推荐/地址说明时，应把距离一起带给候选人。
- * 目前是 observe：它偏体验和信息完整性问题，不直接阻断候选人流程。
- */
-export function detectDistanceMissing(
-  text: string,
-  toolCalls: AgentToolCall[],
-): RuleContradiction | null {
-  const jobListCall = readLatestUsableJobListCall(toolCalls);
-  if (!jobListCall || !jobListHasDistance(jobListCall.result)) return null;
-  const looksLikeRecommendation = /门店|这家|地址|位于|附近|推荐/.test(text);
-  if (!looksLikeRecommendation) return null;
-  if (DISTANCE_TOKEN_PATTERN.test(text)) return null;
-  return {
-    ruleId: 'distance_missing',
-    label:
-      '本轮召回结果带 distanceKm，但回复推荐了门店却未给出距离（公里数）（51 条 distance_missing）',
-    action: GUARDRAIL_ACTION.OBSERVE,
-  };
-}
-
 // "可用" job_list 判定与最后一次可用/裸调用读取已收敛到 job-list-call.util（多规则共用）。
 
 /**
@@ -286,74 +212,6 @@ function hasNonEmptyHolidayOrOvertimeSalary(jobListResult: unknown): boolean {
     if (facts.hasHolidayBonus || facts.hasOvertimeBonus) return true;
   }
   return false;
-}
-
-/**
- * 检查岗位结果是否包含有效 distanceKm/_distanceKm。
- * 只要任一岗位有距离，就要求推荐回复尽量带出公里数。
- */
-function jobListHasDistance(jobListResult: unknown): boolean {
-  if (typeof jobListResult !== 'object' || jobListResult === null) return false;
-  const rawData = (jobListResult as Record<string, unknown>).rawData as
-    | Record<string, unknown>
-    | undefined;
-  const jobs = (rawData?.result ?? (jobListResult as Record<string, unknown>).result) as
-    | unknown[]
-    | undefined;
-  if (!Array.isArray(jobs)) return false;
-  return jobs.some((job) => {
-    return Boolean(
-      job && typeof job === 'object' && readDistanceKm(job as Record<string, unknown>) != null,
-    );
-  });
-}
-
-type ComparableJob = {
-  storeName: string;
-  storeToken: string;
-  distanceKm: number;
-};
-
-function readComparableJob(job: unknown): ComparableJob | null {
-  if (!job || typeof job !== 'object') return null;
-  const record = job as Record<string, unknown>;
-  const basicInfo = readRecord(record.basicInfo);
-  const storeInfo = readRecord(basicInfo?.storeInfo);
-  const storeName = readString(storeInfo?.storeName) ?? readString(basicInfo?.storeName);
-  const distanceKm = readDistanceKm(record);
-  if (!storeName || distanceKm == null) return null;
-  const storeToken = normalizeSearchToken(storeName);
-  if (storeToken.length < 2) return null;
-  return { storeName, storeToken, distanceKm };
-}
-
-function readJobListJobs(jobListResult: unknown): unknown[] {
-  if (typeof jobListResult !== 'object' || jobListResult === null) return [];
-  const result = jobListResult as Record<string, unknown>;
-  const rawData = result.rawData as Record<string, unknown> | undefined;
-  const jobs = rawData?.result ?? result.result;
-  return Array.isArray(jobs) ? jobs : [];
-}
-
-function readDistanceKm(record: Record<string, unknown>): number | null {
-  const distance = record._distanceKm ?? record.distanceKm;
-  return typeof distance === 'number' && Number.isFinite(distance) ? distance : null;
-}
-
-function readRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function textContainsNormalized(text: string, token: string): boolean {
-  return normalizeSearchToken(text).includes(token);
-}
-
-function normalizeSearchToken(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9一-龥]/g, '');
 }
 
 function readErrorType(value: unknown): string | null {

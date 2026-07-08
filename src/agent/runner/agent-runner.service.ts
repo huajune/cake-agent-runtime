@@ -181,7 +181,7 @@ export class AgentRunnerService {
    * - decision='replan'：丢弃首版，带 violations + 既成副作用做 `toolMode:'readonly'`
    *   允许只读工具重新规划；
    *   再审一次；二次仍 revise/replan 则按 §9「repair 死循环硬上限 1」收敛为 block。
-   * - decision='block'：调用方据此不投递（rule 硬拦 / llm 严重违规 / 降级）。
+   * - decision='block'：先进入一次无工具受控重写；二审仍不通过才不投递。
    *
    * turn-end 语义：内部两次生成都强制 `deferTurnEnd`，确保被丢弃的首版不写记忆；最终采纳版的
    * `runTurnEnd` 按调用方意图处理——调用方原本要自动收尾（未显式 defer）时，pass 即 fire-and-forget
@@ -204,7 +204,7 @@ export class AgentRunnerService {
 
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
     const firstStep = this.toGuardrailStep('first', decision);
-    const shouldRepair = decision.decision === 'revise' || decision.decision === 'replan';
+    const shouldRepair = decision.decision !== 'pass' && decision.decision !== 'observe';
     if (!shouldRepair) {
       this.persistReviewRecord(ctx, {
         firstReply: firstText,
@@ -402,7 +402,7 @@ export class AgentRunnerService {
     //   （候选人在约面/收资节点整轮收不到回复），P1 级假阳的代价应是"多一条告警"而不是丢单。
     //   注意 revise 档规则本就定义为"可改写修复"的口径问题，修复版即使仍有残留，
     //   其风险也低于关键转化节点的整轮静默。
-    const wantsRepairAgain = decision2.decision === 'revise' || decision2.decision === 'replan';
+    const wantsRepairAgain = decision2.decision !== 'pass' && decision2.decision !== 'observe';
     const failOpenEligible =
       wantsRepairAgain &&
       decision2.riskLevel !== 'high' &&

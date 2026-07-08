@@ -35,7 +35,7 @@ import type { GuardrailReviewPacket } from './llm/review-packet.types';
  *
  * 把确定性 rule 档与高风险才触发的 llm 档汇成一个最终裁决 `pass | revise | replan | block`：
  * - rule 档（{@link HardRulesService}）：先跑、确定性、可 veto 当前回复；
- *   命中即由 rule 服务内部告警（飞书 badcase），行为与现状一致。
+ *   enforce 命中由 rule 服务内部告警，observe 只落 `guardrail_review_records`。
  * - llm 档（{@link SemanticReviewerService}）：唯一的语义 reviewer，吃
  *   {@link GuardrailReviewPacketBuilder} 裁剪出的证据包，输出领域 finding。
  *   触发条件：本轮成功提交过副作用工具 / 回复含承诺·动态事实措辞 / 命中语义 contract 触发词。
@@ -81,7 +81,7 @@ export class OutputGuardrailService {
 
   /**
    * 读取本会话短期历史（单次远程读取，assistant/user 两用）：
-   * - assistant 文本：repeated_reply / repeated_greeting 的外生信号；
+   * - assistant 文本：repeated_reply 的外生信号；
    * - 最近几条 user 文本：跨轮豁免信号（如候选人上轮问了社保、本轮 Agent 作答）。
    * 读取失败按空降级——这些是质量规则信号，不能因 Redis 抖动挡住出站链路。
    */

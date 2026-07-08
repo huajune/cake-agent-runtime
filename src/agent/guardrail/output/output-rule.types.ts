@@ -41,7 +41,7 @@ export function deriveRulePolicy(action: GuardrailRuleAction): {
  * - observe：发现软性问题，内容仍可发，只记录告警；
  * - revise：内容不可发，LLM 重写文案即可修复；
  * - replan：内容不可发，LLM 需重走工具调用再生成；
- * - block：内容不可发，不允许修复，硬拦。
+ * - block：内容不可发，高风险且不可 fail-open；runner 仍先尝试一次受控重写，救不活才硬拦。
  *
  * `recoverability`、`currentReplySendable`、`repairMode` 均由 action 派生，
  * 不再作为 catalog 字段手动维护。

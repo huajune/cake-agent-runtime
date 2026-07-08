@@ -321,12 +321,64 @@ describe('AgentRunnerService.runTurn', () => {
     ).rejects.toThrow('llm down');
   });
 
-  it('output guard block maps to outbound guardrail_blocked outcome (not delivered)', async () => {
-    generator.invoke.mockResolvedValue(makeResult({ text: '不要新疆户籍的' }));
+  it('output guard block enters one rewrite and adopts the clean revised reply', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }))
+      .mockResolvedValueOnce(makeResult({ text: '这个岗位暂时不合适，我们可以看其他岗位。' }));
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'discriminatory_screening_leak',
+            evidence: '命中高敏感规则',
+            suggestion: '删除敏感条件',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['discriminatory_screening_leak'],
+        blockedRuleIds: ['discriminatory_screening_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '有什么岗位' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('这个岗位暂时不合适，我们可以看其他岗位。');
+    expect(generator.invoke).toHaveBeenCalledTimes(2);
+    expect(generator.invoke.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        toolMode: 'none',
+        guardrailRepair: expect.objectContaining({
+          originalReply: '不要新疆户籍的',
+          ruleIds: ['discriminatory_screening_leak'],
+        }),
+      }),
+    );
+  });
+
+  it('output guard block stays blocked when the rewrite still violates guardrails', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }))
+      .mockResolvedValueOnce(makeResult({ text: '还是不要新疆户籍的' }));
     outputGuard.check.mockResolvedValue({
       decision: 'block',
       riskLevel: 'high',
-      violations: [],
+      violations: [
+        {
+          type: 'discriminatory_screening_leak',
+          evidence: '命中高敏感规则',
+          suggestion: '删除敏感条件',
+          recoverability: 'non_recoverable',
+          repairMode: 'rewrite',
+        },
+      ],
       ruleIds: ['discriminatory_screening_leak'],
       blockedRuleIds: ['discriminatory_screening_leak'],
       repairMode: 'rewrite',
@@ -338,14 +390,14 @@ describe('AgentRunnerService.runTurn', () => {
     });
 
     expect(outcome.kind).toBe('guardrail_blocked');
-    expect(outcome.guardrail).toEqual({
-      phase: 'outbound',
-      source: 'output_guardrail',
-      ruleIds: ['discriminatory_screening_leak'],
-      reasonCode: undefined,
-      ruleBlocked: true,
-      inspectedText: '不要新疆户籍的',
-    });
+    expect(outcome.guardrail).toEqual(
+      expect.objectContaining({
+        ruleIds: ['discriminatory_screening_leak'],
+        reasonCode: 'repair_exhausted',
+        ruleBlocked: true,
+        inspectedText: '还是不要新疆户籍的',
+      }),
+    );
     expect(outcome.sideEffects).toEqual([
       expect.objectContaining({
         kind: 'general_handoff',
@@ -354,7 +406,7 @@ describe('AgentRunnerService.runTurn', () => {
         recordHandoff: true,
       }),
     ]);
-    expect(generator.invoke).toHaveBeenCalledTimes(1); // 无重写
+    expect(generator.invoke).toHaveBeenCalledTimes(2);
   });
 
   it('output guard revise triggers one rewrite with reviseFeedback, then adopts revised reply', async () => {
@@ -432,6 +484,53 @@ describe('AgentRunnerService.runTurn', () => {
         traceId: 'msg-transform',
         repaired: true,
         revisedReply: '松江这边有岗位，距离 约9公里（按区域位置大概估算的）。',
+        finalDecision: 'pass',
+        reasonCode: 'transformed',
+      }),
+    );
+  });
+
+  it('sanitizes platform brand violation by transform without LLM repair', async () => {
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '到店说是独立日介绍来的就行。' }));
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'brand_name_violation',
+            evidence: '独立日',
+            suggestion: '改成独立客',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['brand_name_violation'],
+        blockedRuleIds: ['brand_name_violation'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '怎么到店' },
+      context: { messageId: 'msg-brand-transform' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('到店说是独立客介绍来的就行。');
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        reply: '到店说是独立客介绍来的就行。',
+        silent: true,
+      }),
+    );
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-brand-transform',
+        repaired: true,
+        revisedReply: '到店说是独立客介绍来的就行。',
         finalDecision: 'pass',
         reasonCode: 'transformed',
       }),
@@ -936,12 +1035,17 @@ describe('AgentRunnerService.runTurn', () => {
       );
     });
 
-    it('first-review block (no repair) persists a first-only record', async () => {
-      generator.invoke.mockResolvedValue(makeResult({ text: '违规首版' }));
-      outputGuard.check.mockResolvedValue({
-        ...reviseDecision,
-        decision: 'block' as const,
-      });
+    it('first-review block persists both first and rewritten replies when repair succeeds', async () => {
+      generator.invoke
+        .mockResolvedValueOnce(makeResult({ text: '违规首版' }))
+        .mockResolvedValueOnce(makeResult({ text: '干净重写版' }));
+      outputGuard.check
+        .mockResolvedValueOnce({
+          ...reviseDecision,
+          decision: 'block' as const,
+          riskLevel: 'high' as const,
+        })
+        .mockResolvedValueOnce(passDecision);
 
       await service.runTurn({
         sessionRef,
@@ -953,8 +1057,9 @@ describe('AgentRunnerService.runTurn', () => {
         expect.objectContaining({
           traceId: 'msg-2',
           firstReply: '违规首版',
-          repaired: false,
-          finalDecision: 'block',
+          repaired: true,
+          revisedReply: '干净重写版',
+          finalDecision: 'pass',
         }),
       );
     });
