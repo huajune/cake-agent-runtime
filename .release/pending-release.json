@@ -1,102 +1,55 @@
 {
-  "baseVersion": "10.0.2",
-  "nextVersion": "10.0.3",
+  "baseVersion": "10.0.3",
+  "nextVersion": "10.0.4",
   "updatedAt": "2026-07-08",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "487",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/487",
-      "title": "稳定守卫修复模型路由",
-      "author": "huajune",
-      "mergedAt": "2026-07-08",
-      "businessUpdates": [
-        "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
-        "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
-        "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
-        "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。",
-        "稳定守卫修复模型路由"
-      ],
-      "summary": [
-        "稳定守卫修复模型路由",
-        "隐藏停止条件命中的复聊场景标签",
-        "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
-        "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
-        "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
-        "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。"
-      ],
-      "features": [],
-      "fixes": [
-        "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
-        "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
-        "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
-        "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。",
-        "稳定守卫修复模型路由"
-      ],
-      "optimizations": [],
-      "ops": [
-        "隐藏停止条件命中的复聊场景标签"
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`./node_modules/.bin/jest tests/providers/router.service.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts --runInBand --watchman=false`",
-        "`./node_modules/.bin/tsc --noEmit`",
-        "`cd web && ./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build`"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.0.2",
+    "version": "10.0.3",
     "date": "2026-07-08",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "482",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/482",
-        "title": "强化复聊生成与守卫修复链路",
+        "number": "487",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/487",
+        "title": "稳定守卫修复模型路由",
         "author": "huajune",
         "mergedAt": "2026-07-08",
         "businessUpdates": [
-          "新增运营日报飞书历史报名/面试通过数回填脚本。",
-          "强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。",
-          "收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。",
-          "优化守卫修复链路与 CI 范围"
+          "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
+          "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
+          "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
+          "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。",
+          "稳定守卫修复模型路由"
         ],
         "summary": [
-          "收敛出站守卫规则止血版",
-          "收敛守卫确定性修补实现",
-          "强化复聊生成与任务治理",
-          "优化守卫修复链路与 CI 范围",
-          "强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。",
-          "收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。",
-          "为 release metadata PR 增加 CI 范围识别，允许纯版本元数据变更走轻量 CI。",
-          "新增运营日报飞书历史报名/面试通过数回填脚本。",
-          "强化复聊生成与守卫修复链路"
+          "稳定守卫修复模型路由",
+          "隐藏停止条件命中的复聊场景标签",
+          "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
+          "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
+          "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
+          "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。"
         ],
-        "features": [
-          "新增运营日报飞书历史报名/面试通过数回填脚本。"
-        ],
+        "features": [],
         "fixes": [
-          "强化复聊触达生成、调度治理、触达记录和后台详情展示，降低重复触达和过期候选人误触达风险。",
-          "收敛出站守卫确定性修补逻辑，引入独立 ReplyRewriteService，让 rewrite 修复只做候选人可见文本改写，不再复用 agent 生成链路。",
-          "优化守卫修复链路与 CI 范围"
+          "模型路由层在角色主模型缺失时，会使用角色专属 fallback 或统一 fallback 链首个模型承接，避免 repair/review 等非 chat 链路在路由阶段直接抛错。",
+          "更新 `.env.example` 的模型角色示例，包含 review/repair 主模型与统一降级链。",
+          "修复品牌名守卫误把薪资/班次说明当成品牌 mismatch 的假阳，并补充回归测试。",
+          "守卫详情抽屉隐藏与 violation suggestion 完全重复的重写反馈，减少重复噪音。",
+          "稳定守卫修复模型路由"
         ],
         "optimizations": [],
         "ops": [
-          "为 release metadata PR 增加 CI 范围识别，允许纯版本元数据变更走轻量 CI。",
-          "收敛出站守卫规则止血版",
-          "收敛守卫确定性修补实现",
-          "强化复聊生成与任务治理"
+          "隐藏停止条件命中的复聊场景标签"
         ],
         "config": [],
-        "envFiles": [],
+        "envFiles": [
+          ".env.example"
+        ],
         "verification": [
-          "`pnpm test -- tests/agent/runner/agent-runner.service.spec.ts tests/agent/runner/reply-rewrite.service.spec.ts --watchman=false`",
-          "`pnpm run typecheck`",
-          "`pnpm run ci:check`"
+          "`./node_modules/.bin/jest tests/providers/router.service.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts --runInBand --watchman=false`",
+          "`./node_modules/.bin/tsc --noEmit`",
+          "`cd web && ./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build`"
         ]
       }
     ]

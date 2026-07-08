@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.0.3] - 2026-07-08
 
-**预计版本**: `v10.0.3`
-**最近更新**: `2026-07-08`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #487 稳定守卫修复模型路由
@@ -50,7 +46,6 @@
 - PR #487 `./node_modules/.bin/jest tests/providers/router.service.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts --runInBand --watchman=false`
 - PR #487 `./node_modules/.bin/tsc --noEmit`
 - PR #487 `cd web && ./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build`
-<!-- release:pending:end -->
 
 ## [10.0.2] - 2026-07-08
 
