@@ -54,16 +54,25 @@ export interface FollowUpScenario {
   generationPolicy: string;
   /** 场景级灰度默认值：运行时以托管配置 reengagementScenarioRollout 为准，未配置时回退此值。 */
   defaultRolloutEnabled: boolean;
+  /** 该场景触发后应取消的低优先级待触达场景，由 scheduler 统一解析 jobId。 */
+  supersedes?: FollowUpScenarioCode[];
+  /** 稳定锚点事件 id（用于被 supersedes 的固定锚点场景，例如 opening）。 */
+  canonicalAnchorEventId?: string;
+  /** 时间锚定场景不参与跨场景 session 冷却，例如面试前 1 小时提醒。 */
+  sessionCooldownExempt?: boolean;
 }
 
 /**
- * 渠道身份快照（排程时冻结）：候选人微信昵称 + 接管 bot。
+ * 渠道身份快照（排程时冻结）：候选人微信昵称 + 接管 bot + 稳定收件人标识。
  * 随任务落到 reengagement_touch_records，追溯页直读列，不做查询期关联。
+ * 复聊只面向候选人私聊；投递凭证统一在到点发送时读取 STRIDE_ENTERPRISE_TOKEN。
  */
 export interface ReengagementChannelIdentity {
   candidateName?: string;
   managerName?: string;
   botImId?: string;
+  imContactId?: string;
+  externalUserId?: string;
 }
 
 /** Bull job payload。 */

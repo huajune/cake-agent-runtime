@@ -25,33 +25,55 @@ const makeJob = (over: Partial<Record<string, unknown>> = {}) =>
     ...over,
   }) as never;
 
+const asExecution = (outcome: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
+  outcome,
+  agentRequest: { type: 'test-composer' },
+  aiStartAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+  aiEndAt: Date.UTC(2026, 5, 24, 2, 0, 1),
+  ...over,
+});
+
 describe('FollowUpProcessor', () => {
   let queue: { process: jest.Mock; add: jest.Mock };
   let session: { getAuthoritativeState: jest.Mock };
-  let runner: { runTurn: jest.Mock };
+  let composer: { compose: jest.Mock };
   let touchLedger: {
     isOverFrequencyLimit: jest.Mock;
+    isInSessionTouchCooldown: jest.Mock;
     reserve: jest.Mock;
     markDeliveryAttempted: jest.Mock;
     markSent: jest.Mock;
     markFailedOrUnknown: jest.Mock;
   };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
-  let outcomeFinalizer: { commit: jest.Mock };
   let tracking: Record<string, jest.Mock>;
   let messageTracking: { recordProactiveTurn: jest.Mock };
   let sponge: { getCachedWorkOrderById: jest.Mock };
   let longTerm: { getActiveBookings: jest.Mock };
+  let chatSession: { saveMessage: jest.Mock };
   let scheduler: { scheduleFollowUp: jest.Mock };
+  let configService: { get: jest.Mock };
   let delivery: { deliver: jest.Mock };
 
   beforeEach(() => {
     jest.useRealTimers();
     queue = { process: jest.fn(), add: jest.fn().mockResolvedValue(undefined) };
     session = { getAuthoritativeState: jest.fn().mockResolvedValue(baseState()) };
-    runner = { runTurn: jest.fn() };
+    composer = {
+      compose: jest.fn().mockResolvedValue(
+        asExecution({
+          kind: 'reply',
+          reply: { text: '还在考虑吗？' },
+          generatedText: '还在考虑吗？',
+          toolCalls: [],
+          scenarioCode: 'opening_no_reply',
+          agentSteps: [],
+        }),
+      ),
+    };
     touchLedger = {
       isOverFrequencyLimit: jest.fn().mockResolvedValue(false),
+      isInSessionTouchCooldown: jest.fn().mockResolvedValue(false),
       reserve: jest.fn().mockResolvedValue('reserved'),
       markDeliveryAttempted: jest.fn().mockResolvedValue(undefined),
       markSent: jest.fn().mockResolvedValue(undefined),
@@ -62,10 +84,15 @@ describe('FollowUpProcessor', () => {
         .fn()
         .mockResolvedValue({ reengagementEnabled: true, reengagementShadow: true }),
     };
-    outcomeFinalizer = { commit: jest.fn().mockResolvedValue(undefined) };
     sponge = { getCachedWorkOrderById: jest.fn().mockResolvedValue(null) };
     longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
+    chatSession = { saveMessage: jest.fn().mockResolvedValue(true) };
     scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
+    configService = {
+      get: jest.fn((key: string) =>
+        key === 'STRIDE_ENTERPRISE_TOKEN' ? 'stride-enterprise-token' : undefined,
+      ),
+    };
     tracking = {
       resolveChannelIdentity: jest.fn().mockResolvedValue(null),
       trackDisabledAtFire: jest.fn(),
@@ -81,22 +108,31 @@ describe('FollowUpProcessor', () => {
       trackDeliveryUnknown: jest.fn(),
     };
     messageTracking = { recordProactiveTurn: jest.fn() };
-    delivery = { deliver: jest.fn().mockResolvedValue(undefined) };
+    delivery = {
+      deliver: jest.fn().mockResolvedValue({
+        success: true,
+        segmentCount: 1,
+        failedSegments: 0,
+        deliveredSegments: 1,
+        totalTime: 0,
+      }),
+    };
   });
 
   const buildProcessor = (withDelivery = true) =>
     new FollowUpProcessor(
       queue as never,
       session as never,
-      runner as never,
+      composer as never,
       touchLedger as never,
       systemConfig as never,
-      outcomeFinalizer as never,
       tracking as never,
       messageTracking as never,
       sponge as never,
       longTerm as never,
+      chatSession as never,
       scheduler as never,
+      configService as never,
       withDelivery ? (delivery as never) : undefined,
     );
 
@@ -114,14 +150,14 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
-    expect(runner.runTurn).not.toHaveBeenCalled();
+    expect(composer.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('shadows with rollout_disabled when the scenario is switched off in runtime config', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    runner.runTurn.mockResolvedValue({
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还在考虑吗？' },
       toolCalls: [],
@@ -141,17 +177,15 @@ describe('FollowUpProcessor', () => {
       expect.anything(),
       expect.objectContaining({ reason: 'rollout_disabled' }),
     );
-    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('shadows post-booking scenarios when the post-booking master switch is off', async () => {
-    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    runner.runTurn.mockResolvedValue({
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '面试提醒' },
       toolCalls: [],
       scenarioCode: 'interview_reminder',
-      runTurnEnd,
     });
     systemConfig.getAgentReplyConfig.mockResolvedValue({
       reengagementEnabled: true,
@@ -178,14 +212,12 @@ describe('FollowUpProcessor', () => {
     );
   });
 
-  it('runs turn-end with includeAssistantText=false in shadow mode without delivering', async () => {
-    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    runner.runTurn.mockResolvedValue({
+  it('does not write assistant history in shadow mode without delivering', async () => {
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还在考虑吗？' },
       toolCalls: [],
       scenarioCode: 'opening_no_reply',
-      runTurnEnd,
     });
     systemConfig.getAgentReplyConfig.mockResolvedValue({
       reengagementEnabled: true,
@@ -195,17 +227,15 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
-  it('runs turn-end without assistant projection for skipped shadow outcomes', async () => {
-    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    runner.runTurn.mockResolvedValue({
+  it('does not write assistant history for skipped shadow outcomes', async () => {
+    composer.compose.mockResolvedValue({
       kind: 'skipped',
       generatedText: '候选人不可见草稿',
       toolCalls: [],
       scenarioCode: 'opening_no_reply',
-      runTurnEnd,
     });
 
     await buildProcessor().process(makeJob());
@@ -218,41 +248,126 @@ describe('FollowUpProcessor', () => {
       }),
     );
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
-  it('delivers non-shadow replies through the outbox and then runs turn-end lifecycle', async () => {
+  it('delivers non-shadow replies through the outbox and then writes assistant history', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);
-    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     systemConfig.getAgentReplyConfig.mockResolvedValue({
       reengagementEnabled: true,
       reengagementShadow: false,
     });
-    runner.runTurn.mockResolvedValue({
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
       scenarioCode: 'opening_no_reply',
-      runTurnEnd,
     });
 
     await buildProcessor().process(makeJob());
 
     expect(touchLedger.reserve).toHaveBeenCalledWith('sess-1:opening_no_reply:1782266400000');
     expect(touchLedger.markDeliveryAttempted).toHaveBeenCalled();
-    expect(delivery.deliver).toHaveBeenCalledWith(expect.objectContaining({ kind: 'reply' }), {
-      idempotencyKey: 'sess-1:opening_no_reply:1782266400000',
-    });
+    expect(delivery.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'reply' }),
+      expect.objectContaining({
+        idempotencyKey: 'sess-1:opening_no_reply:1782266400000',
+        context: expect.objectContaining({
+          token: 'stride-enterprise-token',
+          _apiType: 'enterprise',
+          chatId: 'sess-1',
+          messageId: 'batch_sess-1_1782266400000',
+        }),
+      }),
+    );
     expect(touchLedger.markSent).toHaveBeenCalledWith(
       'sess-1:opening_no_reply:1782266400000',
       'sess-1',
       now,
     );
-    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: true });
+    expect(chatSession.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'sess-1',
+        messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
+        role: 'assistant',
+        content: '还想看看附近岗位吗？',
+      }),
+    );
   });
 
-  it('commits side effects for non-shadow non-reply outcomes before marking the touch failed', async () => {
+  it('uses the enterprise token even when legacy payload carries a frozen token', async () => {
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+    });
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'evt-1',
+          anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+          channelIdentity: {
+            candidateName: '张三',
+            botImId: 'bot-1',
+            imContactId: 'contact-1',
+            token: 'legacy-frozen-token',
+            apiType: 'group',
+          },
+        },
+      }),
+    );
+
+    expect(delivery.deliver).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        context: expect.objectContaining({
+          token: 'stride-enterprise-token',
+          _apiType: 'enterprise',
+        }),
+      }),
+    );
+  });
+
+  it('does not fall back to frozen callback token when STRIDE_ENTERPRISE_TOKEN is not configured', async () => {
+    configService.get.mockReturnValue(undefined);
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+    });
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'evt-1',
+          anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+          channelIdentity: {
+            candidateName: '张三',
+            botImId: 'bot-1',
+            imContactId: 'contact-1',
+            apiType: 'enterprise',
+            token: 'frozen-callback-token',
+          },
+        },
+      }),
+    );
+
+    expect(delivery.deliver).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        context: expect.objectContaining({
+          token: '',
+          _apiType: 'enterprise',
+        }),
+      }),
+    );
+  });
+
+  it('marks the touch failed for non-shadow non-reply outcomes', async () => {
     systemConfig.getAgentReplyConfig.mockResolvedValue({
       reengagementEnabled: true,
       reengagementShadow: false,
@@ -273,44 +388,30 @@ describe('FollowUpProcessor', () => {
       sideEffects: [sideEffect],
       guardrail: { phase: 'outbound', source: 'output_guardrail' },
     };
-    runner.runTurn.mockResolvedValue(outcome);
+    composer.compose.mockResolvedValue(outcome);
 
     await buildProcessor().process(makeJob());
 
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(outcomeFinalizer.commit).toHaveBeenCalledWith(
-      outcome,
-      expect.objectContaining({
-        traceId: 'sess-1:opening_no_reply:1782266400000',
-        chatId: 'sess-1',
-        userId: 'user-1',
-        corpId: 'corp-1',
-        userMessage: '[系统主动跟进:opening_no_reply]',
-      }),
-    );
     expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
       'sess-1:opening_no_reply:1782266400000',
       'failed',
     );
-    expect(outcomeFinalizer.commit.mock.invocationCallOrder[0]).toBeLessThan(
-      touchLedger.markFailedOrUnknown.mock.invocationCallOrder[0],
-    );
   });
 
-  it('keeps a sent touch sent when turn-end lifecycle fails after delivery', async () => {
+  it('keeps a sent touch sent when assistant history write fails after delivery', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);
-    const runTurnEnd = jest.fn().mockRejectedValue(new Error('memory down'));
+    chatSession.saveMessage.mockRejectedValue(new Error('memory down'));
     systemConfig.getAgentReplyConfig.mockResolvedValue({
       reengagementEnabled: true,
       reengagementShadow: false,
     });
-    runner.runTurn.mockResolvedValue({
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
       scenarioCode: 'opening_no_reply',
-      runTurnEnd,
     });
 
     await buildProcessor().process(makeJob());
@@ -321,7 +422,7 @@ describe('FollowUpProcessor', () => {
       'sess-1',
       now,
     );
-    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: true });
+    expect(chatSession.saveMessage).toHaveBeenCalled();
     expect(touchLedger.markFailedOrUnknown).not.toHaveBeenCalled();
   });
 
@@ -332,7 +433,7 @@ describe('FollowUpProcessor', () => {
       reengagementShadow: false,
     });
     touchLedger.reserve.mockResolvedValue('duplicate_inflight');
-    runner.runTurn.mockResolvedValue({
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -343,9 +444,9 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(touchLedger.markDeliveryAttempted).not.toHaveBeenCalled();
-    expect(runner.runTurn).not.toHaveBeenCalled();
+    expect(composer.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).not.toHaveBeenCalled();
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('does not generate or run turn-end when a duplicate sent slot is skipped', async () => {
@@ -355,7 +456,7 @@ describe('FollowUpProcessor', () => {
       reengagementShadow: false,
     });
     touchLedger.reserve.mockResolvedValue('duplicate_sent');
-    runner.runTurn.mockResolvedValue({
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -365,9 +466,9 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
-    expect(runner.runTurn).not.toHaveBeenCalled();
+    expect(composer.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(runTurnEnd).not.toHaveBeenCalled();
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('runs turn-end without assistant projection when delivery fails and marks the touch unknown', async () => {
@@ -378,7 +479,7 @@ describe('FollowUpProcessor', () => {
       reengagementShadow: false,
     });
     delivery.deliver.mockRejectedValue(error);
-    runner.runTurn.mockResolvedValue({
+    composer.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -393,7 +494,38 @@ describe('FollowUpProcessor', () => {
       'unknown',
     );
     // 送达与否未知按未送达处理（HC-4）：仍完成用户侧记忆收尾，但不投影助手轮次。
-    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not mark sent or write history when the passive delivery pipeline skips sending', async () => {
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      reengagementEnabled: true,
+      reengagementShadow: false,
+    });
+    delivery.deliver.mockResolvedValue({
+      success: true,
+      segmentCount: 0,
+      failedSegments: 0,
+      deliveredSegments: 0,
+      totalTime: 0,
+      skipped: true,
+      skipReason: 'hosting_paused',
+    });
+
+    await buildProcessor().process(makeJob());
+
+    expect(touchLedger.markSent).not.toHaveBeenCalled();
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
+    expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+      'sess-1:opening_no_reply:1782266400000',
+      'failed',
+    );
+    expect(tracking.trackOutcomeNotReply).toHaveBeenCalledWith(
+      expect.anything(),
+      'delivery_skipped',
+      expect.stringMatching(/^batch_sess-1_\d+$/),
+      'delivery_skipped:hosting_paused',
+    );
   });
 
   it('reschedules directly to the next delivery window when fired outside the window', async () => {
@@ -403,7 +535,7 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob({ id: 'late-job' }));
 
     const expectedFireAt = Date.UTC(2026, 5, 25, 1, 0, 0); // next day 09:00 Shanghai
-    expect(runner.runTurn).not.toHaveBeenCalled();
+    expect(composer.compose).not.toHaveBeenCalled();
     expect(queue.add).toHaveBeenCalledWith(
       REENGAGEMENT_JOB_NAME,
       expect.objectContaining({ anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0) }),
@@ -449,7 +581,29 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(makeJob());
 
       expect(tracking.trackStopped).toHaveBeenCalledWith(expectedIdentity, 'terminal:booked');
-      expect(runner.runTurn).not.toHaveBeenCalled();
+      expect(composer.compose).not.toHaveBeenCalled();
+    });
+
+    it('does not apply session cooldown to time-anchored interview reminders', async () => {
+      touchLedger.isInSessionTouchCooldown.mockResolvedValue(true);
+      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      await buildProcessor().process(
+        makeJob({
+          data: {
+            sessionRef,
+            scenarioCode: 'interview_reminder',
+            anchorEventId: 'evt-b',
+            anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+            expectedInterviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
+          },
+        }),
+      );
+
+      expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'session_touch_cooldown',
+      );
+      expect(composer.compose).toHaveBeenCalled();
     });
 
     it('tracks frequency block', async () => {
@@ -460,31 +614,45 @@ describe('FollowUpProcessor', () => {
       expect(tracking.trackFrequencyBlocked).toHaveBeenCalledWith(expectedIdentity);
     });
 
-    it('tracks shadow with generated text', async () => {
-      runner.runTurn.mockImplementation(async (request) => {
-        await request.context?.onPreparedRequest?.({
-          modelId: 'openai/gpt-5.1',
-          system: 'system prompt',
-          messages: [{ role: 'user', content: '[系统主动跟进]' }],
-        });
-        return {
-          kind: 'reply',
-          reply: { text: '还在考虑吗？' },
-          toolCalls: [],
-          scenarioCode: 'opening_no_reply',
-          runTurnEnd: jest.fn().mockResolvedValue(undefined),
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        };
-      });
+    it('tracks session touch cooldown before generating', async () => {
+      touchLedger.isInSessionTouchCooldown.mockResolvedValue(true);
 
       await buildProcessor().process(makeJob());
 
-      expect(runner.runTurn).toHaveBeenCalledWith(
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expectedIdentity,
+        'session_touch_cooldown',
+      );
+      expect(composer.compose).not.toHaveBeenCalled();
+    });
+
+    it('tracks shadow with generated text', async () => {
+      composer.compose.mockResolvedValue(
+        asExecution(
+          {
+            kind: 'reply',
+            reply: { text: '还在考虑吗？' },
+            generatedText: '还在考虑吗？',
+            toolCalls: [],
+            scenarioCode: 'opening_no_reply',
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          },
+          {
+            agentRequest: {
+              modelId: 'openai/gpt-5.1',
+              system: 'system prompt',
+              messages: [{ role: 'user', content: '[系统主动跟进]' }],
+            },
+          },
+        ),
+      );
+
+      await buildProcessor().process(makeJob());
+
+      expect(composer.compose).toHaveBeenCalledWith(
         expect.objectContaining({
-          context: expect.objectContaining({
-            messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
-            onPreparedRequest: expect.any(Function),
-          }),
+          messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
+          scenario: expect.objectContaining({ code: 'opening_no_reply' }),
         }),
       );
       expect(tracking.trackShadow).toHaveBeenCalledWith(
@@ -496,6 +664,7 @@ describe('FollowUpProcessor', () => {
           batchId: expect.stringMatching(/^batch_sess-1_\d+$/),
         }),
       );
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
       expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
         expect.objectContaining({
           chatId: 'sess-1',
@@ -533,7 +702,7 @@ describe('FollowUpProcessor', () => {
         reengagementEnabled: true,
         reengagementShadow: false,
       });
-      runner.runTurn.mockResolvedValue({
+      composer.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: '明天见！' },
         toolCalls: [],
@@ -549,6 +718,11 @@ describe('FollowUpProcessor', () => {
         expectedIdentity,
         '明天见！',
         expect.stringMatching(/^batch_sess-1_\d+$/),
+      );
+      expect(touchLedger.markSent).toHaveBeenCalledWith(
+        'sess-1:opening_no_reply:1782266400000',
+        'sess-1',
+        Date.UTC(2026, 5, 24, 2, 0, 0),
       );
       // 投递成功的主动回合落一行消息处理流水（message_id = batchId）
       expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
@@ -567,7 +741,7 @@ describe('FollowUpProcessor', () => {
         reengagementEnabled: true,
         reengagementShadow: false,
       });
-      runner.runTurn.mockResolvedValue({
+      composer.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: 'hi' },
         toolCalls: [],
@@ -600,7 +774,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(makeJob());
 
       expect(tracking.trackDuplicate).toHaveBeenCalledWith(expectedIdentity, 'duplicate_sent');
-      expect(runner.runTurn).not.toHaveBeenCalled();
+      expect(composer.compose).not.toHaveBeenCalled();
     });
   });
 
@@ -609,7 +783,7 @@ describe('FollowUpProcessor', () => {
       jest.restoreAllMocks();
       // 10:00 上海，投递窗口内
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 0, 0));
-      runner.runTurn.mockResolvedValue({
+      composer.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: '还在考虑吗？' },
         toolCalls: [],
@@ -697,7 +871,7 @@ describe('FollowUpProcessor', () => {
       // 10:30 Shanghai，投递窗口内
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 30, 0));
       session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
-      runner.runTurn.mockResolvedValue({
+      composer.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: '面试提醒' },
         toolCalls: [],
@@ -719,7 +893,7 @@ describe('FollowUpProcessor', () => {
         expect.objectContaining({ scenarioCode: 'interview_reminder' }),
         'external_cancelled:约面取消',
       );
-      expect(runner.runTurn).not.toHaveBeenCalled();
+      expect(composer.compose).not.toHaveBeenCalled();
     });
 
     it('passes the per-bot token context to the sponge work-order lookup', async () => {
@@ -753,7 +927,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'interview_already_done:面试成功',
       );
-      expect(runner.runTurn).not.toHaveBeenCalled();
+      expect(composer.compose).not.toHaveBeenCalled();
     });
 
     it('lets post_interview_followup proceed when the interview is done', async () => {
@@ -765,7 +939,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(runner.runTurn).toHaveBeenCalled();
+      expect(composer.compose).toHaveBeenCalled();
     });
 
     it('stops with interview_time_changed when active_booking carries a different time', async () => {
@@ -780,7 +954,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'interview_time_changed',
       );
-      expect(runner.runTurn).not.toHaveBeenCalled();
+      expect(composer.compose).not.toHaveBeenCalled();
       // 替代任务锚点幂等（wo:iv:scenario）：与聊天改约锚点排的任务同 jobId，Bull 去重
       expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -829,7 +1003,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(runner.runTurn).toHaveBeenCalled();
+      expect(composer.compose).toHaveBeenCalled();
     });
 
     it('does not schedule a reminder replacement when the new time is already past', async () => {
@@ -856,7 +1030,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(runner.runTurn).toHaveBeenCalled();
+      expect(composer.compose).toHaveBeenCalled();
     });
 
     it('fails open when neither sponge nor active_booking yields verification data', async () => {
@@ -866,7 +1040,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(runner.runTurn).toHaveBeenCalled();
+      expect(composer.compose).toHaveBeenCalled();
     });
 
     it('exempts verifiable booking follow-ups from the replied-after-anchor rule', async () => {
@@ -877,7 +1051,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(runner.runTurn).toHaveBeenCalled();
+      expect(composer.compose).toHaveBeenCalled();
     });
 
     it('keeps the replied-after-anchor rule for legacy jobs without workOrderId', async () => {
@@ -893,7 +1067,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'candidate_replied_after_anchor',
       );
-      expect(runner.runTurn).not.toHaveBeenCalled();
+      expect(composer.compose).not.toHaveBeenCalled();
     });
 
     it('stops legacy booking follow-ups that have no frozen interview time', async () => {
@@ -907,7 +1081,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'scenario_no_longer_holds',
       );
-      expect(runner.runTurn).not.toHaveBeenCalled();
+      expect(composer.compose).not.toHaveBeenCalled();
     });
   });
 });

@@ -143,6 +143,45 @@ describe('ReengagementTouchRepository', () => {
     expect(queryMock.eq).toHaveBeenCalledWith('touch_key', 'touch-1');
   });
 
+  it('resolves runtime channel identity from recent chat messages without taking bot-side contact id', async () => {
+    const queryMock = makeQueryMock({
+      data: [
+        {
+          candidate_name: '张三',
+          manager_name: 'bot-user-1',
+          im_bot_id: 'bot-1',
+          im_contact_id: 'bot-contact',
+          external_user_id: null,
+          is_self: true,
+        },
+        {
+          candidate_name: '张三',
+          manager_name: 'bot-user-1',
+          im_bot_id: 'bot-1',
+          im_contact_id: 'candidate-contact',
+          external_user_id: 'external-1',
+          is_self: false,
+        },
+      ],
+      error: null,
+    });
+    mockSupabaseClient.from.mockReturnValue(queryMock);
+
+    const identity = await repository.getLatestChatChannelIdentity('sess-1');
+
+    expect(identity).toEqual({
+      candidateName: '张三',
+      managerName: 'bot-user-1',
+      botImId: 'bot-1',
+      imContactId: 'candidate-contact',
+      externalUserId: 'external-1',
+    });
+    expect(queryMock.select).toHaveBeenCalledWith(
+      'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self',
+    );
+    expect(queryMock.limit).toHaveBeenCalledWith(20);
+  });
+
   it('delegates stats and candidate overview to RPCs with capped pagination', async () => {
     mockSupabaseClient.rpc
       .mockResolvedValueOnce({

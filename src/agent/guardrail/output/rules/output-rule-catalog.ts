@@ -21,7 +21,8 @@ import {
  *
  * 字段解释：
  * - id：必须与检测逻辑返回的 ruleId 完全一致；
- * - action：命中后的默认处理语义，observe=只告警，revise=要求重写，block=丢弃不发送；
+ * - action：命中后的默认处理语义，observe=只记录，revise=要求重写，replan=重查工具，
+ *   block=高风险不可恢复，先重写自救，救不活才丢弃不发送；
  * - priority：风险优先级，P0 通常是合规/不可逆风险，P1 是强业务风险，P2 偏体验/质量；
  * - riskGoal：这条规则要防的真实业务风险；
  * - exogenousSignal：这条规则依赖的外生信号或词库。没有外生信号的规则要特别谨慎；
@@ -32,7 +33,7 @@ import {
  * - 新规则默认 observe 入场；
  * - 升 revise 需要 ≥2 周 observe 判例、抽标精确率 ≥90%，并同时满足风险不对称、
  *   有 ground truth、恢复路径可靠；
- * - block 仅限封闭形态且发出后不可逆的事故；
+ * - block 仅限封闭形态且发出后不可逆的事故；block 也先进入一次受控重写，二审仍违规才静默；
  * - veto 档规则精确率 < 70% 时应自动降 observe。
  */
 export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
@@ -45,7 +46,6 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   exogenousSignal: string;
   residualRisk: string;
   verification: string;
-  repairStrategy?: 'transform' | 'rewrite' | 'replan';
 }
 
 type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy> &
@@ -143,10 +143,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'wait_notice_time_collection',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住等通知岗位里继续追问候选人面试日期、几点方便或要求选择面试时间的回复。',
-    riskGoal: 'wait_notice 岗位不需要收集面试时间，资料齐后应告知面试官电话联系。',
+    description: '观察等通知岗位里继续追问候选人面试日期、几点方便或要求选择面试时间的回复。',
+    riskGoal: '作为 prompt 修复的验证指标：修复后看 wait_notice 继续收时间的命中是否归零。',
     exogenousSignal: 'duliday_interview_precheck.interview.interviewTimeMode=wait_notice。',
-    residualRisk: '极少数候选人主动追问多个可约方案时仍需结合上下文判断。',
+    residualRisk:
+      '消费者：prompt/运营复盘；退场条件：命中归零 1 个月后删除。极少数候选人主动追问多个可约方案时仍需结合上下文判断。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复在等通知岗位里继续追问或要求候选人选择面试时间，当前文本不可发送。请改写为：这个岗位不用约具体面试时间，资料提交后面试官会电话联系候选人确认，请保持电话畅通；然后只收集 precheck 要求的报名字段。',
@@ -165,19 +166,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版回复声称预约/报名成功，但漏掉了 booking 工具返回的已确认面试时间，当前文本不可发送。请改写为预约成功口径，并明确告知 _confirmedInterviewTimeHuman 中的面试时间；如果工具还返回 _onSiteScript，也要按工具文案提醒候选人到店如何说明。',
   },
   {
-    id: 'confirmed_booking_onsite_script_missing',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description:
-      '拦住预约工具已经返回到店自报家门脚本，但回复只说预约成功、漏教候选人到店怎么说的情况。',
-    riskGoal: '线下到店面试必须把 booking 工具返回的到店脚本透传给候选人，避免门店无法识别来访。',
-    exogenousSignal: 'duliday_interview_booking._onSiteScript。',
-    residualRisk: '候选人历史已收到到店脚本的跨轮豁免暂未纳入。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复声称预约/报名成功，但漏掉了 booking 工具返回的到店自报家门脚本，当前文本不可发送。请按 _onSiteScript 明确告知候选人到店要跟前台/店长说是「独立客招聘介绍来的」，并包含工具脚本里的姓名/应聘岗位要素。',
-  },
-  {
     id: 'geocode_uncertain_location_claim',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -188,22 +176,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
-    id: 'geocode_ambiguous_candidates_omitted',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住 geocode 已返回多城市候选，但回复只泛泛追问城市、没有列出候选城市的情况。',
-    riskGoal: '多城市同名地点应按 geocode candidates 枚举候选城市，降低候选人来回澄清成本。',
-    exogenousSignal: 'geocode.resolution=ambiguous / candidates[].city。',
-    residualRisk: '候选城市过多时的摘要策略仍需结合产品话术优化。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复没有使用 geocode 返回的候选城市清单，当前文本不可发送。请改写为列出 candidates 里的城市让候选人选择，例如“是上海的 X，还是南京的 X？”；不要直接下附近岗位结论。',
-  },
-  {
     id: 'district_level_distance_claim',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
-    repairStrategy: 'transform',
     description: '拦住候选人只报了区/市名，回复却按行政区代表点直接输出精确公里数的情况。',
     riskGoal: '区级粗定位下的距离与候选人真实位置可能差数公里，直接报精确距离会误导到店。',
     exogenousSignal: 'geocode.result.areaLevelQuery（查询词与解析出的区/市名一致）。',
@@ -211,18 +186,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '候选人目前只提供了区/市级位置，本轮距离是按行政区代表点估算的，当前文本不可发送。请只做文案改写：删除所有精确公里数和"离你X公里"表述；优先向候选人确认具体位置（哪条路/哪个商圈/地铁站，或请发定位）。如保留岗位展示，只保留门店名/商圈/路段等已在上一版出现的信息，不新增岗位事实，不调用工具。',
-  },
-  {
-    id: 'farther_job_recommended',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住岗位列表里有明显更近门店，但回复只推荐更远门店且没有说明原因的情况。',
-    riskGoal: '候选人按距离找岗时优先展示更近岗位，避免有近岗却推远岗。',
-    exogenousSignal: 'duliday_job_list 返回岗位的 distanceKm / _distanceKm 与门店名。',
-    residualRisk: '多目标权衡（品牌/班次/薪资）需要更多偏好信号才能完全判断。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复只推荐了更远门店，但本轮岗位列表里存在明显更近的可选门店，当前文本不可发送。请改写为优先推荐更近门店；如果确实因为班次、品牌或硬条件不推荐近门店，必须明确说明依据。',
   },
   {
     id: 'schedule_filtered_job_recommended',
@@ -359,46 +322,15 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'proactive_insurance_policy_mention',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住候选人没问保险时，主动给出保险、社保、五险等承诺式口径。',
-    riskGoal: '候选人未问时禁止主动承诺保险/社保/五险，避免兼职保险被误解。',
+    description: '观察候选人没问保险时，主动给出保险、社保、五险等承诺式口径。',
+    riskGoal: '观察准不可逆承诺样本，供运营复盘是否需要收窄到承诺式 unsupported_commitment。',
     exogenousSignal:
       '候选人本轮 userMessage 或近几轮消息（recentUserTexts）是否主动询问保险/社保。',
     residualRisk:
-      '跨轮豁免窗口为近 3 条候选人消息；更久之前问过、间隔多轮闲聊后再作答的场景仍可能要求改写。' +
-      '任职要求豁免（第一/第二职业、要求+持有动词、合同及社保并列）会放行岗位硬性要求转述。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'candidate_name_echo',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P2,
-    description: '发现回复直接喊出了企微备注里的候选人昵称或姓名。',
-    riskGoal: '发现回复直接称呼企微备注中的候选人昵称/姓名。',
-    exogenousSignal: 'contactName 企微备注。',
-    residualRisk: '当前为观察告警，普通中文词与昵称重合可能误报。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'distance_missing',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P2,
-    description: '发现按位置推荐门店时，明明工具给了距离，回复却没有告诉候选人距离。',
-    riskGoal: '发现候选人按位置查岗时推荐门店未给公里数。',
-    exogenousSignal: '本轮 job_list 结果是否带 distanceKm。',
-    residualRisk: '当前为体验类观察告警。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'group_invite_without_reason',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P2,
-    description: '发现本轮成功拉群，但回复没向候选人解释拉群原因（无岗兜底/新岗通知）。',
-    riskGoal: '防止不加解释的突兀拉群让候选人困惑是有岗还是没岗，影响信任。',
-    exogenousSignal: '本轮 invite_to_group 成功结果 + 回复中的拉群理由表述词组。',
-    residualRisk:
-      '理由是否充分是语义判断，词组只能抓完全没解释的下限；回复完全不提群、只静默发卡片的场景不在检测内。先观察校准误报。',
+      '消费者：运营复盘；退场条件：收窄成承诺式后观察 2 周，仍全是假阳则删除并交语义档 unsupported_commitment。' +
+      '跨轮豁免窗口为近 3 条候选人消息；任职要求豁免会放行岗位硬性要求转述。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
@@ -406,32 +338,24 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P2,
     description: '发现回复出现"转人工/人工客服"等与真人招募经理人设冲突的表述。',
-    riskGoal: '防止"转人工"类措辞自曝机器人身份，破坏真人人设导致候选人流失。',
+    riskGoal: '作为人设 prompt 迭代信号，追踪"转人工"类封闭词表泄漏。',
     exogenousSignal: '人设露馅词库（转人工/人工客服/人工坐席等）。',
-    residualRisk: '当前为观察告警；隐性人机暗示（"我只是个助手"）需持续补词。',
+    residualRisk:
+      '消费者：人设 prompt 迭代/运营复盘；退场条件：长期保留，因其是封闭词表且已有运营反馈判例。隐性人机暗示需持续补词。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
     id: 'repeated_reply',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P2,
-    description: '拦住与本会话已发送消息近乎相同的整段复读回复。',
-    riskGoal: '防止重复发送同样的岗位详情/追问，候选人观感像机器人。',
+    description: '观察与本会话已发送消息近乎相同的整段复读回复。',
+    riskGoal: '用真实已发消息作为 ground truth，发现整段复读 badcase 簇，供生成策略治理。',
     exogenousSignal: '短期记忆中本会话已投递的 assistant 消息。',
-    residualRisk: '语义相同但措辞重写的重复检测不到；短确认类消息（<16 字符）不判定。',
+    residualRisk:
+      '消费者：badcase 簇复盘/生成策略治理；退场条件：保留到生成层能稳定避免整段复读后再删。语义相同但措辞重写的重复检测不到；短确认类消息（<16 字符）不判定。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复与你在本会话里已经发过的消息几乎相同，当前文本不可发送。请针对候选人本轮消息给出有增量的回应：承接已发内容而不是原样重发；若候选人在追问已发过的信息，只补充关键差异点或换角度确认候选人的疑问。',
-  },
-  {
-    id: 'repeated_greeting',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P2,
-    description: '发现会话已经打过招呼，回复又以"你好/您好"重新开场。',
-    riskGoal: '防止对话中途重复打招呼，暴露上下文断裂、观感像机器人。',
-    exogenousSignal: '短期记忆中本会话已投递的 assistant 消息是否已有问候开场。',
-    residualRisk: '当前为观察告警；隔天再联系等合理重新问候场景会计入观测。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
     id: 'quota_promise',
@@ -493,35 +417,14 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。',
   },
   {
-    id: 'provided_booking_fields_ignored',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住候选人本轮已提供多项报名资料，但回复仍要求重复填写这些字段的情况。',
-    riskGoal: '多消息/长消息中已给出的报名资料必须被承接，不能只看最后一句而重复收资。',
-    exogenousSignal: '本轮 userMessage 中的姓名/电话/年龄/性别/学历/健康证/经验等字段。',
-    residualRisk: '候选人提供字段的复杂自然语言表达仍需 message parser/LLM reviewer 增强。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复忽略了候选人本轮已经提供的报名资料，当前文本不可发送。请重新阅读候选人整条消息，承接已提供字段，只追问仍缺失的字段；不要重复要求填写已经给出的姓名、电话、年龄、性别、学历、健康证、经验等信息。',
-  },
-  {
     id: 'system_status_fabrication',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住用“系统异常、后台同步、网络问题”这类没有依据的话来解释失败或拖延。',
-    riskGoal: '禁止用系统/网络/后台异常解释拖延、失败或信息缺失。',
-    exogenousSignal: '系统状态编造词库。',
-    residualRisk: '更委婉的甩锅话术需要从线上样本补充。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'work_content_generalization',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住没按岗位数据说职责，而是用行业常识脑补“洗碗、打扫、搬货”等工作内容。',
-    riskGoal: '岗位职责只能按岗位数据表述，禁止行业常识泛化补充。',
-    exogenousSignal: '行业常识泛化职责词库。',
-    residualRisk: '若岗位数据真实包含职责但回复用了泛化词，可能被要求改写为更接地口径。',
+    description: '观察用“系统异常、后台同步、网络问题”这类没有依据的话来解释失败或拖延。',
+    riskGoal: '观察真实投诉源里的“甩锅系统”话术，供运营话术复盘。',
+    exogenousSignal: '系统状态编造词库。',
+    residualRisk:
+      '消费者：运营话术复盘；退场条件：工具真失败豁免后观察 2 周，若无人消费告警则删除。更委婉的甩锅话术需要从线上样本补充。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];

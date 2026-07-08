@@ -150,7 +150,7 @@ describe('scenario-registry', () => {
       expect(shouldStop(s, baseState(), anchorAt).stop).toBe(false);
     });
 
-    it('booking_incomplete stops once required fields complete', () => {
+    it('booking_incomplete does not infer completion from a hard-coded field subset', () => {
       const s = getScenario('booking_incomplete')!;
       const complete = baseState({
         collectedFields: {
@@ -160,7 +160,7 @@ describe('scenario-registry', () => {
           gender: { value: '男', provenance: 'user_text', at: 1 },
         },
       });
-      expect(shouldStop(s, complete, anchorAt).stop).toBe(true);
+      expect(shouldStop(s, complete, anchorAt).stop).toBe(false);
       expect(shouldStop(s, baseState(), anchorAt).stop).toBe(false);
     });
   });

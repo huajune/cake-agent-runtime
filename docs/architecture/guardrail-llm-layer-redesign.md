@@ -153,7 +153,7 @@ flowchart TD
 |---|---|---|
 | `candidateSlotsDraft`（姓名/电话/年龄/学历…） | 已有 `memory/facts/high-confidence-facts.ts` + session facts | 完全重叠，不重建 |
 | geo/brand/人名歧义标注 | 高置信事实层的输出扩展 | geo-mappings 词典 + geocode 工具已返回 candidates；只缺"人名 vs 城市/品牌"歧义位（如"成都刘姐"），加到事实层输出 |
-| `messagePriorities`（多消息优先级/引用/撤回） | packet builder 内确定性规则 | 含报名字段的消息标 critical（复用 provided_booking_fields_ignored 的字段正则），不需要 LLM |
+| `messagePriorities`（多消息优先级/引用/撤回） | packet builder 内确定性规则 | 含报名字段的消息标 critical 时应使用高置信事实提取/结构化字段信号，不复用已退役的出站 observe 正则 |
 
 LLM 只在确定性规则确实覆盖不住时再考虑，且挂在现有 `ModelRole.Extract` 层，不新开层。以下原设计的 TurnSignals 结构保留作为字段参考：
 

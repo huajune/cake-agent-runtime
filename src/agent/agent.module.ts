@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { BizModule } from '@biz/biz.module';
@@ -9,11 +9,13 @@ import { SpongeModule } from '@sponge/sponge.module';
 import { LlmModule } from '@/llm/llm.module';
 import { NotificationModule } from '@notification/notification.module';
 import { CustomerModule } from '@wecom/customer/customer.module';
+import { MessageModule } from '@wecom/message/message.module';
 import { ObservabilityModule } from '@/observability/observability.module';
 import { OpsEventsModule } from '@biz/ops-events/ops-events.module';
 import { HandoffEventsModule } from '@biz/handoff-events/handoff-events.module';
 import { GeneratorService } from './generator/generator.service';
 import { AgentRunnerService } from './runner/agent-runner.service';
+import { ReplyRewriteService } from './runner/reply-rewrite.service';
 import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
 import { PreparationService } from './generator/preparation.service';
 import { ContextService } from './generator/context/context.service';
@@ -26,6 +28,11 @@ import { FollowUpSchedulerService } from './reengagement/follow-up-scheduler.ser
 import { FollowUpProcessor } from './reengagement/follow-up.processor';
 import { TouchLedgerService } from './reengagement/touch-ledger.service';
 import { ReengagementAnchorService } from './reengagement/anchor.service';
+import { ProactiveComposerService } from './reengagement/proactive-composer.service';
+import {
+  REENGAGEMENT_DELIVERY_PORT,
+  ReengagementDeliveryService,
+} from './reengagement/reengagement-delivery.service';
 
 @Module({
   imports: [
@@ -38,6 +45,7 @@ import { ReengagementAnchorService } from './reengagement/anchor.service';
     LlmModule,
     NotificationModule,
     CustomerModule,
+    forwardRef(() => MessageModule),
     ObservabilityModule,
     OpsEventsModule,
     HandoffEventsModule,
@@ -56,6 +64,7 @@ import { ReengagementAnchorService } from './reengagement/anchor.service';
     ContextService,
     PreparationService,
     GeneratorService,
+    ReplyRewriteService,
     AgentRunnerService,
     TurnOutcomeInterventionService,
     AgentHealthService,
@@ -64,11 +73,15 @@ import { ReengagementAnchorService } from './reengagement/anchor.service';
     FollowUpProcessor,
     TouchLedgerService,
     ReengagementAnchorService,
+    ProactiveComposerService,
+    ReengagementDeliveryService,
+    { provide: REENGAGEMENT_DELIVERY_PORT, useExisting: ReengagementDeliveryService },
   ],
   exports: [
     ContextService,
     PreparationService,
     GeneratorService,
+    ReplyRewriteService,
     AgentRunnerService,
     TurnOutcomeInterventionService,
     GuardrailModule,

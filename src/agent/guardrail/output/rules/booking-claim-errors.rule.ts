@@ -205,29 +205,6 @@ export function detectConfirmedBookingTimeMissing(
   };
 }
 
-export function detectConfirmedBookingOnSiteScriptMissing(
-  text: string,
-  toolCalls: AgentToolCall[],
-): RuleContradiction | null {
-  if (!BOOKING_SUCCESS_CLAIM_PATTERN.test(text)) return null;
-
-  const result = readLatestSuccessfulBookingResult(toolCalls);
-  if (!result) return null;
-
-  const onSiteScript = typeof result._onSiteScript === 'string' ? result._onSiteScript.trim() : '';
-  if (!onSiteScript) return null;
-
-  const mentionsDulike = /独立客/.test(text);
-  const mentionsReceptionContext = /前台|店长|到店|门店|报(?:一下)?(?:名字|姓名)|应聘/.test(text);
-  if (mentionsDulike && mentionsReceptionContext) return null;
-
-  return {
-    ruleId: 'confirmed_booking_onsite_script_missing',
-    label: `booking 已成功并返回到店脚本（${onSiteScript}），但回复未教候选人到店自报家门`,
-    action: GUARDRAIL_ACTION.OBSERVE,
-  };
-}
-
 export function detectHandoffNoBookingClaim(
   text: string,
   toolCalls: AgentToolCall[],

@@ -34,7 +34,7 @@ const REQUIREMENT_CONTEXT_PATTERN =
  * 职责：
  * - 管“候选人本轮没问，但 Agent 主动提保险/社保/五险/意外险/雇主责任险”的场景；
  * - 兼职岗位字段里的“保险”多指雇主责任险/意外险，候选人容易理解成社保/五险；
- * - 这在业务中属于敏感用工政策承诺，发出去就会形成聊天证据，所以命中直接 block。
+ * - 这在业务中属于敏感用工政策承诺，但自然语言语境复杂，本层只观察，不做 send-time veto。
  *
  * 不负责：
  * - 候选人本轮主动问了保险/社保时，这里不拦，后续应由业务 prompt/人工口径回答；
@@ -74,7 +74,7 @@ export function detectProactiveInsurancePolicyMention(
   return {
     ruleId: 'proactive_insurance_policy_mention',
     label:
-      '候选人本轮未主动询问保险/社保，但回复主动给出保险/社保/五险承诺式口径（兼职保险易被误解为社保/五险，需改写）',
-    action: GUARDRAIL_ACTION.REVISE,
+      '候选人本轮未主动询问保险/社保，但回复主动给出保险/社保/五险承诺式口径（兼职保险易被误解为社保/五险，观察后交由 LLM 层治理）',
+    action: GUARDRAIL_ACTION.OBSERVE,
   };
 }

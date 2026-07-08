@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Job, Queue } from 'bull';
+import { Job, Queue, type JobStatus } from 'bull';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   ReengagementTrackingService,
@@ -12,6 +12,7 @@ import {
   REENGAGEMENT_JOB_NAME,
   REENGAGEMENT_QUEUE,
   type FollowUpJob,
+  type FollowUpScenario,
   type FollowUpScenarioCode,
   type ReengagementChannelIdentity,
 } from './reengagement.types';
@@ -46,6 +47,8 @@ function createEmptyState(): AuthoritativeSessionState {
     stage: null,
   };
 }
+
+const PENDING_JOB_STATUSES: JobStatus[] = ['delayed', 'waiting', 'paused'];
 
 export interface ScheduleFollowUpResult {
   scheduled: boolean;
@@ -119,7 +122,11 @@ export class FollowUpSchedulerService {
 
     const fireAt = computeFireAt(scenario, { anchorAt: input.anchorAt, state });
     const delay = Math.max(0, fireAt - Date.now());
-    const jobId = `${input.sessionRef.sessionId}:${input.scenarioCode}:${input.anchorEventId}`;
+    const jobId = this.buildJobId(
+      input.sessionRef.sessionId,
+      input.scenarioCode,
+      input.anchorEventId,
+    );
 
     // Bull 同 jobId 的重复 add 是静默 no-op（幂等锚点刻意依赖这点），但 trackScheduled
     // 会无条件把底账 fire_at/scheduled_at 覆写成一个不会触发的新时间（已完成的任务上
@@ -135,6 +142,8 @@ export class FollowUpSchedulerService {
       this.logger.debug(`[reengagement] jobId=${jobId} 已存在，跳过重复排程与底账写入`);
       return { scheduled: false, reason: 'duplicate_job', jobId };
     }
+
+    await this.removeSupersededPendingJobsBeforeEnqueue(input, scenario, jobId);
 
     try {
       await this.queue.add(
@@ -174,5 +183,150 @@ export class FollowUpSchedulerService {
       );
       return { scheduled: false, reason: 'enqueue_error' };
     }
+  }
+
+  async removePendingJob(jobId: string, reason?: string): Promise<boolean> {
+    try {
+      const job = await this.queue.getJob(jobId);
+      if (!job) return false;
+      await job.remove();
+      this.trackRemovedPendingJob(job, jobId, undefined, reason ?? 'superseded');
+      this.logger.log(
+        `[reengagement] 已移除未触发任务 jobId=${jobId}${reason ? ` reason=${reason}` : ''}`,
+      );
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 移除任务失败 jobId=${jobId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    }
+  }
+
+  async removeSupersededPendingJobs(input: {
+    sessionRef: SessionRef;
+    scenarioCode: FollowUpScenarioCode;
+    reason?: string;
+  }): Promise<number> {
+    const scenario = getScenario(input.scenarioCode);
+    if (!scenario?.supersedes?.length) return 0;
+    let removed = 0;
+    for (const targetCode of scenario.supersedes) {
+      const target = getScenario(targetCode);
+      const anchorEventId = target?.canonicalAnchorEventId;
+      if (!anchorEventId) continue;
+      const jobId = this.buildJobId(input.sessionRef.sessionId, targetCode, anchorEventId);
+      const ok = await this.removePendingJob(
+        jobId,
+        input.reason ?? `${input.scenarioCode}_supersedes_${targetCode}`,
+      );
+      if (ok) removed += 1;
+    }
+    return removed;
+  }
+
+  private async removeSupersededPendingJobsBeforeEnqueue(
+    input: ScheduleFollowUpInput,
+    scenario: FollowUpScenario,
+    currentJobId: string,
+  ): Promise<number> {
+    let pendingJobs: Array<Job<FollowUpJob>> = [];
+    try {
+      pendingJobs = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 查询待触发任务失败，跳过旧任务清理 sessionId=${input.sessionRef.sessionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return 0;
+    }
+
+    let removed = 0;
+    for (const job of pendingJobs) {
+      const jobId = String(job.id);
+      if (jobId === currentJobId) continue;
+      if (!this.shouldRemovePendingJob(input, scenario, job.data)) continue;
+      try {
+        await job.remove();
+        this.trackRemovedPendingJob(
+          job,
+          jobId,
+          currentJobId,
+          `${input.scenarioCode}_supersedes_pending`,
+        );
+        removed += 1;
+        this.logger.log(`[reengagement] 新任务 ${currentJobId} 已移除旧待触发任务 jobId=${jobId}`);
+      } catch (error) {
+        this.logger.warn(
+          `[reengagement] 移除旧待触发任务失败 jobId=${jobId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return removed;
+  }
+
+  private trackRemovedPendingJob(
+    job: Job<FollowUpJob>,
+    jobId: string,
+    supersededByJobId?: string,
+    reason?: string,
+  ): void {
+    const identity = this.buildIdentityFromJobData(job.data);
+    if (!identity) return;
+    this.tracking.trackSuperseded(identity, { jobId, supersededByJobId, reason });
+  }
+
+  private buildIdentityFromJobData(
+    jobData: FollowUpJob | undefined,
+  ): ReengagementTouchIdentity | null {
+    if (!jobData) return null;
+    return {
+      sessionId: jobData.sessionRef.sessionId,
+      userId: jobData.sessionRef.userId,
+      corpId: jobData.sessionRef.corpId,
+      scenarioCode: jobData.scenarioCode,
+      anchorEventId: jobData.anchorEventId,
+      anchorAt: jobData.anchorAt,
+      ...jobData.channelIdentity,
+    };
+  }
+
+  private shouldRemovePendingJob(
+    input: ScheduleFollowUpInput,
+    scenario: FollowUpScenario,
+    candidate: FollowUpJob | undefined,
+  ): boolean {
+    if (!candidate || candidate.sessionRef.sessionId !== input.sessionRef.sessionId) return false;
+    const candidateScenario = getScenario(candidate.scenarioCode);
+    if (!candidateScenario) return false;
+
+    if (scenario.phase === 'pre_booking') {
+      return candidateScenario.phase === 'pre_booking';
+    }
+
+    if (candidateScenario.phase === 'pre_booking') return true;
+    return !this.isSameBookingSlot(input, candidate);
+  }
+
+  private isSameBookingSlot(input: ScheduleFollowUpInput, candidate: FollowUpJob): boolean {
+    return (
+      input.workOrderId != null &&
+      candidate.workOrderId === input.workOrderId &&
+      input.expectedInterviewAt != null &&
+      candidate.expectedInterviewAt === input.expectedInterviewAt
+    );
+  }
+
+  private buildJobId(
+    sessionId: string,
+    scenarioCode: FollowUpScenarioCode,
+    anchorEventId: string,
+  ): string {
+    return `${sessionId}:${scenarioCode}:${anchorEventId}`;
   }
 }

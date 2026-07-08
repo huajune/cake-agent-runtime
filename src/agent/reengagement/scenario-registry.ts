@@ -15,17 +15,6 @@ const WINDOW_START_HOUR = 9;
 const WINDOW_END_HOUR = 21;
 const SHANGHAI_OFFSET_MS = 8 * HOUR;
 
-/** 收资必备字段（booking_incomplete 是否仍缺资料的判据）。 */
-const BOOKING_REQUIRED_FIELDS = ['name', 'phone', 'age', 'gender'] as const;
-
-function hasField(state: AuthoritativeSessionState, key: string): boolean {
-  return Boolean((state.collectedFields as Record<string, unknown>)[key]);
-}
-
-function collectedFieldsComplete(state: AuthoritativeSessionState): boolean {
-  return BOOKING_REQUIRED_FIELDS.every((k) => hasField(state, k));
-}
-
 /**
  * 7 个需求场景 → 锚点/延迟/stopUnless 映射（见 agent-reengagement-design.md §5）。
  *
@@ -48,6 +37,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     stopUnless: () => true, // 通用停止条件（已回/terminal）已在 shouldStop 覆盖
     generationPolicy: '只问候+一句邀请，不夸大、不承诺、不催促；候选人未回不重复骚扰',
     defaultRolloutEnabled: true,
+    canonicalAnchorEventId: 'opening',
   },
   {
     code: 'address_missing',
@@ -65,6 +55,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     stopUnless: () => true,
     generationPolicy: '说明发位置的好处（就近推荐），不施压',
     defaultRolloutEnabled: false,
+    supersedes: ['opening_no_reply'],
   },
   {
     code: 'store_presented_no_reply',
@@ -90,7 +81,9 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     delayLabel: '2 小时',
     objective: '收资未完成，提醒候选人补齐剩余资料以便安排面试',
     requiredEvidence: ['collectedFields'],
-    stopUnless: (state) => !collectedFieldsComplete(state),
+    // 收资必填项随岗位/业务配置变化，不能在复聊层写死为姓名/手机号/年龄/性别。
+    // 是否已完成由候选人回话、报名成功终态和外部业务流程推进来收敛。
+    stopUnless: () => true,
     generationPolicy: '只提醒补资料、说明补齐后能更快约面，不催不压',
     defaultRolloutEnabled: true,
   },
@@ -112,6 +105,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
     generationPolicy: '提醒时间地点、带身份证/健康证；不索取新资料',
     defaultRolloutEnabled: true,
+    sessionCooldownExempt: true,
   },
   {
     code: 'post_interview_followup',

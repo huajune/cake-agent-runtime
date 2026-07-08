@@ -49,6 +49,23 @@ describe('ReengagementTrackingService', () => {
     expect(input.firedAt).toEqual(expect.any(Number));
   });
 
+  it('records superseded when a pending Bull job is removed before fire time', () => {
+    service.trackSuperseded(identity, {
+      jobId: 'job-old',
+      supersededByJobId: 'job-new',
+      reason: 'booking_incomplete_supersedes_pending',
+    });
+
+    const input = lastInput();
+    expect(input.status).toBe('superseded');
+    expect(input.jobId).toBe('job-old');
+    expect(input.decisionReason).toBe('booking_incomplete_supersedes_pending');
+    expect(input.event?.event).toBe('superseded');
+    expect(input.event?.detail).toEqual(
+      expect.objectContaining({ jobId: 'job-old', supersededByJobId: 'job-new' }),
+    );
+  });
+
   it('records shadow with generated text and reason', () => {
     service.trackShadow(identity, {
       outcomeKind: 'reply',

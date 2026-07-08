@@ -14,6 +14,9 @@ export interface ReengagementTouchRecord {
   session_id: string;
   user_id?: string | null;
   corp_id?: string | null;
+  candidate_name?: string | null;
+  manager_name?: string | null;
+  bot_im_id?: string | null;
   scenario_code: string;
   /** 锚点时间（ISO） */
   anchor_at?: string | null;

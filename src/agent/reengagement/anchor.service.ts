@@ -150,6 +150,15 @@ export class ReengagementAnchorService {
       );
     }
     if (this.asksForLocation(reply)) {
+      void this.scheduler.removeSupersededPendingJobs({
+        sessionRef: {
+          corpId: context.corpId,
+          userId: context.userId,
+          sessionId: context.chatId,
+        },
+        scenarioCode: 'address_missing',
+        reason: 'address_missing_supersedes_opening_no_reply',
+      });
       void this.schedule('address_missing', `${context.traceId}:address_missing`, context);
     }
   }
