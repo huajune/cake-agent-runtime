@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.0.1] - 2026-07-08
 
-**预计版本**: `v10.0.1`
-**最近更新**: `2026-07-08`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #476 版本号规则改回标准语义化版本
@@ -67,7 +63,6 @@
 - PR #477 `pnpm run ci:check`
 - PR #477 pre-push hook 自动执行 `pnpm run ci:check`
 - PR #477 其他说明：Jest coverage 阶段提示一个 worker 未优雅退出，但命令退出码为 0；日志中的 ERROR/WARN 来自测试用例模拟失败场景。
-<!-- release:pending:end -->
 
 ## [10.0.0] - 2026-07-08
 
