@@ -712,6 +712,57 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.missingFields).not.toContain('面试时间');
   });
 
+  it('should backfill interview time from structured user checklist text when tool input omits candidateInterviewTime', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:00',
+                  interviewEndTime: '14:00',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        candidateName: '冯珊珊',
+        candidatePhone: '15348090364',
+        candidateAge: 28,
+        candidateGender: '女',
+        candidateEducation: '高中',
+        candidateHasHealthCertificate: '有',
+        candidateIsStudent: false,
+      },
+      {
+        messages: [
+          {
+            role: 'user',
+            content:
+              '姓名：冯珊珊\n电话：15348090364\n性别：女\n年龄：28\n面试时间：明天周三13:00（报名截止明早10:45）\n应聘门店：1066 金山都乐汇',
+          },
+        ],
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.templateText).toContain(
+      '面试时间：明天周三13:00（报名截止明早10:45）',
+    );
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('面试时间');
+  });
+
   it('should backfill 姓名/联系电话 from candidateName/candidatePhone when session facts are empty (跨天回访旧事实已过期)', async () => {
     // 复刻王乐泉 case：候选人跨天回访，Redis 会话事实里姓名/电话已过期，
     // 但本轮对话原文里 Agent 已重新收齐。姓名/电话没有专属 candidate* 入参时，

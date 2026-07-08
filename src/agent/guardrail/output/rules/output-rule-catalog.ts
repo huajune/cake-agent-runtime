@@ -193,7 +193,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'district_level_distance_claim',
-    action: GUARDRAIL_ACTION.REPLAN,
+    action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住候选人只报了区/市名，回复却按行政区代表点直接输出精确公里数的情况。',
     riskGoal: '区级粗定位下的距离与候选人真实位置可能差数公里，直接报精确距离会误导到店。',
@@ -201,7 +201,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk: '候选人报的商圈名恰与区名同名时可能误判；已请求定位/声明估算口径的回复已豁免。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '候选人目前只提供了区/市级位置，本轮距离是按行政区代表点估算的，当前文本不可发送。请重新规划：不输出精确公里数，先向候选人确认具体位置（哪条路/哪个商圈/地铁站，或请发定位）；如需先展示岗位，可用只读工具重查岗位后只说门店所在商圈/路段，不说"离你X公里"。',
+      '候选人目前只提供了区/市级位置，本轮距离是按行政区代表点估算的，当前文本不可发送。请只做文案改写：删除所有精确公里数和"离你X公里"表述；优先向候选人确认具体位置（哪条路/哪个商圈/地铁站，或请发定位）。如保留岗位展示，只保留门店名/商圈/路段等已在上一版出现的信息，不新增岗位事实，不调用工具。',
   },
   {
     id: 'farther_job_recommended',
