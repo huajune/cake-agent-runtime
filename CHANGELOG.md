@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.0.0] - 2026-07-08
 
-**预计版本**: `v10.0.0`
-**最近更新**: `2026-07-08`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #471 降低语义护栏 shadow 误报
@@ -45,7 +41,6 @@
 - PR #471 `pnpm jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/agent/guardrail/output/hard-rules.service.spec.ts --runInBand --watchman=false`
 - PR #471 `pnpm run typecheck`
 - PR #471 pre-push hook 完整执行 `pnpm run ci:check` 通过：lint、format、typecheck、build:ci、test:ci（326 suites passed, 4667 tests passed）。
-<!-- release:pending:end -->
 
 ## [9.0.0] - 2026-07-08
 
