@@ -1,9 +1,32 @@
 {
   "baseVersion": "10.0.3",
   "nextVersion": "10.0.4",
-  "updatedAt": "2026-07-08",
+  "updatedAt": "2026-07-09",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "493",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/493",
+      "title": "AI review 行内评论工具补进 allowedTools",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-09",
+      "businessUpdates": [
+        "AI review 行内评论工具补进 allowedTools"
+      ],
+      "summary": [
+        "AI review 行内评论工具补进 allowedTools"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "AI review 行内评论工具补进 allowedTools"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.0.3",
     "date": "2026-07-08",
