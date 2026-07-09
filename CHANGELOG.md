@@ -14,31 +14,59 @@
 **预计版本**: `v10.0.4`
 **最近更新**: `2026-07-09`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #493 AI review 行内评论工具补进 allowedTools
+- PR #492 周六/周日班次约束提取 + 工具层与持久化约束逐字段合并
+- PR #492 回复生成链路 agent 化（generator/reengagement/reply-repair）
+- PR #492 托管成员配置 seed（辛雨琦）+ drift 检查工具
+- PR #492 会话事实提取增强 + 工具与运营通知补强
+- PR #492 新增架构知识库 + Agent 自迭代方案，精简 CLAUDE.md
+- PR #492 回复生成链路 agent 化重构：generator / 复聊 / reply-repair 三条链路统一为 `*.agent` 形态，收敛副作用出口
+- PR #492 新增托管成员配置（辛雨琦）seed 迁移与运行时配置 drift 检查工具
+- PR #492 会话事实提取增强、工具约束补强、运营通知补强
+- PR #492 新增架构知识库（17 篇专题）并精简 CLAUDE.md
+- PR #492 回复生成链路 agent 化 + 托管配置 drift 工具
 
 ### 新功能
-- 无
+- PR #492 `check-hosting-member-config-drift.js` + `config:hosting:check/sync:test/prod` 脚本：校验/同步 `system_config.hosting_member_config` 运行时配置漂移
+- PR #492 迁移 `20260709120000` 幂等 seed 辛雨琦托管成员配置
+- PR #492 新增托管成员配置（辛雨琦）seed 迁移与运行时配置 drift 检查工具
+- PR #492 新增架构知识库（17 篇专题）并精简 CLAUDE.md
+- PR #492 新增架构知识库 + Agent 自迭代方案，精简 CLAUDE.md
 
 ### 问题修复
-- 无
+- PR #492 出站守卫拉群改写反馈明确 rewrite 阶段无工具能力，禁止新增拉群邀约话术
+- PR #492 周六/周日班次约束提取 + 工具层与持久化约束逐字段合并（含测试）
 
 ### 优化调整
-- 无
+- PR #492 `generator.service` → `generator.agent`；`reply-rewrite.service` → `reply-repair.agent` + context provider
+- PR #492 复聊 `proactive-composer` / `reengagement-delivery` / `reengagement.types` 收敛为 `reengagement.agent`
+- PR #492 runner / module / 各 consumer 同步接线；删除被 `20260707150500` 取代的重复保留期迁移文件
+- PR #492 会话事实提取字段、格式化、prompt 与 session/short-term 服务同步增强
+- PR #492 回复生成链路 agent 化重构：generator / 复聊 / reply-repair 三条链路统一为 `*.agent` 形态，收敛副作用出口
+- PR #492 会话事实提取增强、工具约束补强、运营通知补强
+- PR #492 周六/周日班次约束提取 + 工具层与持久化约束逐字段合并
 
 ### 运维与流程
 - PR #493 AI review 行内评论工具补进 allowedTools
+- PR #492 发版指南与 PR 正文模板补充 `hosting_member_config` 检查清单（运行时配置非 schema migration）
+- PR #492 新增 `docs/architecture/agent-self-iteration-loop-plan.md` 自迭代闭环方案
+- PR #492 回复生成链路 agent 化（generator/reengagement/reply-repair）
+- PR #492 托管成员配置 seed（辛雨琦）+ drift 检查工具
+- PR #492 会话事实提取增强 + 工具与运营通知补强
 
 ### 配置变更
-- 无
+- PR #492 新增 migration `20260709120000_seed_xin_yuqi_hosting_member_config.sql`，发版需 test → prod 同步推送
+- PR #492 `package.json` 新增 `config:hosting:*` 脚本
 
 ### 环境变量提醒
 - 无
 
 ### 验证记录
-- 无
+- PR #492 `pnpm lint:check` / `format:check` / `typecheck` 全通过
+- PR #492 `pnpm jest --watchman=false`：331 套件通过、4720 测试通过（6 skip）
 <!-- release:pending:end -->
 
 ## [10.0.3] - 2026-07-08
