@@ -1148,6 +1148,121 @@ describe('buildJobListTool', () => {
     });
   });
 
+  describe('sessionFacts 班次约束逐字段合并 (badcase batch_6a4e430dce406a6aee7a3421)', () => {
+    // 候选人要"周六的兼职"（facts 已沉淀 onlyWeekends），模型却传 {onlyEvenings:true}
+    // 把周末约束弄丢——持久化约束必须补齐模型漏传的字段，而不是被整体覆盖
+    const contextWithWeekendFact = (): ToolBuildContext => ({
+      ...mockContext,
+      sessionFacts: {
+        interview_info: {},
+        preferences: {
+          schedule_constraint: {
+            onlyWeekends: true,
+            onlyEvenings: null,
+            onlyMornings: null,
+            maxDaysPerWeek: null,
+          },
+        },
+      } as ToolBuildContext['sessionFacts'],
+    });
+
+    it('模型传了不含 onlyWeekends 的约束时由持久化事实补齐，不整体覆盖', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({
+            basicInfo: { jobId: 1, brandName: 'KFC' },
+            workTime: { remark: '灵活排班，可选时段' },
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await executeTool(contextWithWeekendFact(), {
+        ...defaultInput,
+        candidateScheduleConstraint: { onlyEvenings: true },
+      } as typeof defaultInput);
+
+      expect(result.queryMeta.scheduleFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateConstraint: { onlyWeekends: true, onlyEvenings: true },
+        }),
+      );
+    });
+
+    it('模型传空对象 {} 视同未传，仍走持久化约束兜底', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({
+            basicInfo: { jobId: 1, brandName: 'KFC' },
+            workTime: { remark: '灵活排班，可选时段' },
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await executeTool(contextWithWeekendFact(), {
+        ...defaultInput,
+        candidateScheduleConstraint: {},
+      } as typeof defaultInput);
+
+      expect(result.queryMeta.scheduleFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateConstraint: { onlyWeekends: true },
+        }),
+      );
+    });
+
+    it('模型显式传的同名字段优先于持久化事实（本轮新信息覆盖旧值）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({
+            basicInfo: { jobId: 1, brandName: 'KFC' },
+            workTime: { remark: '灵活排班，可选时段' },
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await executeTool(contextWithWeekendFact(), {
+        ...defaultInput,
+        candidateScheduleConstraint: { onlyWeekends: false },
+      } as typeof defaultInput);
+
+      expect(result.queryMeta.scheduleFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateConstraint: { onlyWeekends: false },
+        }),
+      );
+    });
+
+    it('无持久化约束时模型入参原样生效', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({
+            basicInfo: { jobId: 1, brandName: 'KFC' },
+            workTime: { remark: '灵活排班，可选时段' },
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        candidateScheduleConstraint: { onlyEvenings: true },
+      } as typeof defaultInput);
+
+      expect(result.queryMeta.scheduleFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateConstraint: { onlyEvenings: true },
+        }),
+      );
+    });
+  });
+
   describe('用工形式家族放宽提示 laborFormRelaxNotice', () => {
     const contextWithLaborForm = (laborForm: string): ToolBuildContext => ({
       ...mockContext,

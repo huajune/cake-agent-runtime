@@ -147,6 +147,24 @@ const REJECT_NIGHT_PATTERN =
   /(?:不想上|不能上|不接受|不愿意上|不要|不做|不上).{0,3}夜班|夜班.{0,4}(?:不上|不要|不做|不接受)/;
 const ONLY_SHIFT_TARGETS = ['早班', '白班', '晚班', '夜班', '周末', '工作日'] as const;
 type OnlyShiftTarget = (typeof ONLY_SHIFT_TARGETS)[number];
+// "周末"的同义面：候选人常说具体的"周六/周日/星期六/礼拜天"而不说"周末"
+// （badcase batch_6a4e430dce406a6aee7a3421：候选人"帮我找黄浦区周六嘛兼职"，
+// 词表只有"周末"导致班次约束整轮丢失，模型反手把"七点才下班"译成只晚班）。
+const WEEKEND_WORD_FRAGMENT = '(?:周末|(?:周|星期|礼拜)[六日天])';
+const ONLY_SHIFT_TARGET_FRAGMENTS: Record<OnlyShiftTarget, string> = {
+  早班: '早班',
+  白班: '白班',
+  晚班: '晚班',
+  夜班: '夜班',
+  周末: WEEKEND_WORD_FRAGMENT,
+  工作日: '工作日',
+};
+// 求职意图里点名周末/周六日（"帮我找黄浦区周六嘛兼职"/"周末有没有活"）：
+// 没有"只"字也构成周末可用性约束——全周强排班岗位对这类候选人不可行。
+const WEEKEND_SEEK_PATTERN = new RegExp(
+  `(?:找|想做|想找|做|干|要)[^，。！？；;]{0,10}?${WEEKEND_WORD_FRAGMENT}[^，。！？；;]{0,6}?的?(?:兼职|工作|活儿?|岗位?|班)` +
+    `|${WEEKEND_WORD_FRAGMENT}[^，。！？；;]{0,4}?(?:有没有|有什么|有啥|能做|可以做)[^，。！？；;]{0,8}?(?:兼职|工作|活儿?|岗位?|班)`,
+);
 const WEEKLY_DAY_PATTERN = /(?:每周|一周)([^，。！？；;]{0,15}?)([一二两三四五六七0-7])\s*天/;
 const CHINESE_NUM_MAP: Record<string, number> = {
   一: 1,
@@ -1306,6 +1324,8 @@ function extractSchedule(message: string): string | null {
 
   matched.push(...matchOnlyShifts(message));
 
+  if (WEEKEND_SEEK_PATTERN.test(message)) matched.push('周末');
+
   const timeRange = extractTimeRange(message);
   if (timeRange) matched.push(timeRange);
 
@@ -1336,7 +1356,9 @@ function parseChineseOrArabicNumber(token: string): number | null {
 
 function matchOnlyShiftTargets(message: string): OnlyShiftTarget[] {
   return ONLY_SHIFT_TARGETS.filter((shift) =>
-    new RegExp(`只(?:能|想|考虑)?[^，。！？；;]{0,8}?${shift}`).test(message),
+    new RegExp(`只(?:能|想|考虑)?[^，。！？；;]{0,8}?${ONLY_SHIFT_TARGET_FRAGMENTS[shift]}`).test(
+      message,
+    ),
   );
 }
 
@@ -1408,6 +1430,11 @@ function extractScheduleConstraintStructured(message: string): {
     result.onlyEvenings = true;
   }
   if (onlyShiftTargets.includes('早班')) result.onlyMornings = true;
+
+  // "找周六的兼职"式求职意图：没有"只"字也按周末可用性约束沉淀
+  if (result.onlyWeekends === null && WEEKEND_SEEK_PATTERN.test(message)) {
+    result.onlyWeekends = true;
+  }
 
   const workRestDays = matchWorkRestDays(message);
   if (workRestDays !== null) result.maxDaysPerWeek = workRestDays;
