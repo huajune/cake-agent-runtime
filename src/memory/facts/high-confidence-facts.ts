@@ -392,6 +392,13 @@ const FIELD_EXTRACTORS: FieldExtractor[] = [
   },
   {
     group: 'interview_info',
+    field: 'experience',
+    merge: 'first-scalar',
+    extract: extractExperience,
+    evidence: (value) => `工作经历识别：${value}`,
+  },
+  {
+    group: 'interview_info',
     field: 'upload_resume',
     merge: 'first-scalar',
     extract: extractUploadResume,
@@ -772,6 +779,7 @@ export function filterHighConfidenceFacts(
       is_student: highOnly(facts.interview_info.is_student),
       education: highOnly(facts.interview_info.education),
       has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
+      experience: highOnly(facts.interview_info.experience),
       upload_resume: highOnly(facts.interview_info.upload_resume),
       height: highOnly(facts.interview_info.height),
       weight: highOnly(facts.interview_info.weight),
@@ -845,6 +853,7 @@ export function unwrapHighConfidenceFacts(
       has_health_certificate: unwrapHighConfidenceValue(
         facts.interview_info.has_health_certificate,
       ),
+      experience: unwrapHighConfidenceValue(facts.interview_info.experience),
       upload_resume: unwrapHighConfidenceValue(facts.interview_info.upload_resume),
       height: unwrapHighConfidenceValue(facts.interview_info.height),
       weight: unwrapHighConfidenceValue(facts.interview_info.weight),
@@ -1239,6 +1248,40 @@ function extractHealthCertificate(message: string): string | null {
     return '有';
   }
   return null;
+}
+
+function extractExperience(message: string): string | null {
+  const labeled = message.match(
+    /(?:过往公司\+岗位\+年限|工作经历|工作经验|近一段工作经历)\s*[：:]\s*([^\n\r]+)/u,
+  )?.[1];
+  if (labeled) return sanitizeExperienceText(labeled);
+
+  const durationPattern =
+    '(?:\\d+|[一二两三四五六七八九十半]+)\\s*(?:个?多?月|个月|月多|月|年多?|年)';
+  const rolePattern =
+    '(?:服务员|店员|收银员?|后厨|前厅|补货|分拣|打包|营业员|导购|咖啡师|饭店|餐饮)';
+
+  const explicit = new RegExp(
+    `((?:肯德基|KFC|[一-龥A-Za-z0-9]{2,20}(?:店|饭店|餐厅|自助|烤肉|咖啡|超市)?)[^，。,.!！?？\\n]{0,12}(?:${rolePattern})?[^，。,.!！?？\\n]{0,6}(?:做了|做|干了|干|工作了)?\\s*${durationPattern})`,
+    'iu',
+  ).exec(message)?.[1];
+  if (explicit) return sanitizeExperienceText(explicit);
+
+  const generic = new RegExp(
+    `((?:做|干)(?:饭店|餐饮|服务员|店员)[^，。,.!！?？\\n]{0,8}${durationPattern})`,
+    'iu',
+  ).exec(message)?.[1];
+  return generic ? sanitizeExperienceText(generic) : null;
+}
+
+function sanitizeExperienceText(value: string): string | null {
+  const text = value
+    .trim()
+    .replace(/[。；;]+$/u, '')
+    .replace(/\s+/g, '');
+  if (!text) return null;
+  if (!/(?:\d+|[一二两三四五六七八九十半]).*(?:月|年)/.test(text)) return null;
+  return text.length > 80 ? text.slice(0, 80) : text;
 }
 
 function extractUploadResume(message: string): string | null {

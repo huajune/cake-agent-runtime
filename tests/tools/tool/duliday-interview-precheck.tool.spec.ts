@@ -29,9 +29,11 @@ function emptyHighConfidenceFacts(): HighConfidenceFacts {
       is_student: null,
       education: null,
       has_health_certificate: null,
+      experience: null,
     },
     preferences: {
       brands: null,
+      brand_ids: null,
       salary: null,
       position: null,
       schedule: null,
@@ -1834,6 +1836,39 @@ describe('buildInterviewPrecheckTool', () => {
       { labelId: 501, labelName: '健康证类型', name: '健康证类型' },
       { labelId: 502, labelName: '过往公司+岗位+年限', name: '过往公司+岗位+年限' },
     ]);
+  });
+
+  it('should backfill work experience supplement from high-confidence facts', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 502, interviewSupplement: '过往公司+岗位+年限' },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const highConfidenceFacts = emptyHighConfidenceFacts();
+    highConfidenceFacts.interview_info.experience = highConfidence(
+      '肯德基服务员4个多月',
+      '工作经历识别',
+    );
+
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        highConfidenceFacts,
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields).not.toContain('过往公司+岗位+年限');
+    expect(result.bookingChecklist.templateText).toContain(
+      '过往公司+岗位+年限：肯德基服务员4个多月',
+    );
   });
 
   it('should canonicalize overlapping fields and avoid treating pure supplements as screening thresholds', async () => {

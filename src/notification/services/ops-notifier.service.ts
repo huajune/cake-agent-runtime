@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AlertLevel } from '@enums/alert.enum';
 import { FEISHU_RECEIVER_USERS, FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { FeishuOpsChannel } from '../channels/feishu-ops.channel';
+import { AlertNotifierService } from './alert-notifier.service';
 import {
   GroupTaskExecutionDetail,
   GroupTaskExecutionError,
@@ -16,6 +18,7 @@ export class OpsNotifierService {
     private readonly opsChannel: FeishuOpsChannel,
     private readonly opsCardRenderer: OpsCardRenderer,
     private readonly hostingMemberConfig: HostingMemberConfigService,
+    @Optional() private readonly alertNotifier?: AlertNotifierService,
   ) {}
 
   async sendGroupTaskPreview(params: {
@@ -83,6 +86,14 @@ export class OpsNotifierService {
     industry?: string;
     chatBotImId?: string;
     chatBotUserId?: string;
+    scope?: {
+      corpId?: string;
+      userId?: string;
+      contactName?: string;
+      chatId?: string;
+      sessionId?: string;
+      messageId?: string;
+    };
     rejectedGroups: Array<{
       name: string;
       imRoomId: string;
@@ -101,6 +112,55 @@ export class OpsNotifierService {
       ...params,
       atUsers: Array.from(atUsers),
     });
-    return this.opsChannel.send(card);
+    const delivered = await this.opsChannel.send(card);
+
+    void this.alertNotifier
+      ?.sendAlert({
+        code: 'wecom.invite_to_group.api_rejected',
+        severity: AlertLevel.WARNING,
+        summary: `接客 bot 拉群被接口拒绝：${params.city}${
+          params.industry ? `/${params.industry}` : ''
+        }`,
+        source: {
+          subsystem: 'wecom',
+          component: 'invite_to_group',
+          action: 'add_member_enterprise',
+          trigger: 'tool',
+        },
+        scope: params.scope,
+        impact: {
+          requiresHumanIntervention: true,
+        },
+        diagnostics: {
+          errorMessage: `企业级拉群接口拒绝 ${params.rejectedGroups.length} 个候选群`,
+          payload: {
+            city: params.city,
+            industry: params.industry,
+            chatBotImId: params.chatBotImId,
+            chatBotUserId: params.chatBotUserId,
+            rejectedGroups: params.rejectedGroups,
+            opsCardDelivered: delivered,
+          },
+        },
+        routing: { atUsers: Array.from(atUsers) },
+        dedupe: {
+          key: [
+            'wecom.invite_to_group.api_rejected',
+            params.city,
+            params.industry ?? '-',
+            params.chatBotImId ?? '-',
+            params.rejectedGroups
+              .map((group) => group.imRoomId)
+              .sort()
+              .join(','),
+          ].join(':'),
+        },
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[拉群被拒] 统一异常告警发送失败: ${message}`);
+      });
+
+    return delivered;
   }
 }

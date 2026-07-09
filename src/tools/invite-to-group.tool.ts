@@ -566,6 +566,14 @@ export function buildInviteToGroupTool(
               industry,
               chatBotImId: context.botImId,
               chatBotUserId: context.botUserId,
+              scope: {
+                corpId: context.corpId,
+                userId: context.userId,
+                contactName: context.contactName,
+                chatId: context.chatId ?? context.sessionId,
+                sessionId: context.sessionId,
+                messageId: context.turnId,
+              },
               rejectedGroups: rejectedGroupsDuringInvite.map((entry) => ({
                 name: entry.group.groupName,
                 imRoomId: entry.group.imRoomId,
@@ -923,6 +931,14 @@ async function sendInviteRejectedAlert(params: {
   industry?: string;
   chatBotImId?: string;
   chatBotUserId?: string;
+  scope?: {
+    corpId?: string;
+    userId?: string;
+    contactName?: string;
+    chatId?: string;
+    sessionId?: string;
+    messageId?: string;
+  };
   rejectedGroups: Array<{
     name: string;
     imRoomId: string;

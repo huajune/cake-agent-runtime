@@ -88,6 +88,17 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('有');
   });
 
+  it('should extract work experience for booking supplement backfill', () => {
+    const result = extractHighConfidenceFacts(
+      ['肯德基服务员4个多月', '河南烤肉自助服务员3个月'],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.experience)).toBe(
+      '肯德基服务员4个多月',
+    );
+  });
+
   it('should extract resume upload URL when the file name looks like a resume', () => {
     const result = extractHighConfidenceFacts(
       [

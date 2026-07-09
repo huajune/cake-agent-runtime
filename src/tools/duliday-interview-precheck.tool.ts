@@ -683,6 +683,13 @@ export function buildInterviewPrecheckTool(
           );
           applyCandidateFieldOverride(
             knownFieldMap,
+            '过往公司+岗位+年限',
+            undefined,
+            highConfidenceInfo?.experience,
+            normalizeCandidateUploadResumeInput,
+          );
+          applyCandidateFieldOverride(
+            knownFieldMap,
             '身份',
             candidateIsStudent,
             highConfidenceInfo?.is_student,
