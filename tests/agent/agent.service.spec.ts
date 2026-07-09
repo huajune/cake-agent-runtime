@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { GeneratorService } from '@agent/generator/generator.service';
+import { GeneratorAgent } from '@agent/generator/generator.agent';
 import { PreparationService } from '@agent/generator/preparation.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -11,8 +11,8 @@ jest.mock('ai', () => ({
   hasToolCall: jest.fn().mockReturnValue(() => false),
 }));
 
-describe('GeneratorService', () => {
-  let service: GeneratorService;
+describe('GeneratorAgent', () => {
+  let service: GeneratorAgent;
 
   const mockPreparation = {
     prepare: jest.fn(),
@@ -57,7 +57,7 @@ describe('GeneratorService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        GeneratorService,
+        GeneratorAgent,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: PreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
@@ -65,7 +65,7 @@ describe('GeneratorService', () => {
       ],
     }).compile();
 
-    service = module.get<GeneratorService>(GeneratorService);
+    service = module.get<GeneratorAgent>(GeneratorAgent);
     jest.clearAllMocks();
 
     mockLlm.supportsVisionInput.mockReturnValue(true);
@@ -155,14 +155,14 @@ describe('GeneratorService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        GeneratorService,
+        GeneratorAgent,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: PreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
         { provide: LlmExecutorService, useValue: mockLlm },
       ],
     }).compile();
-    service = module.get<GeneratorService>(GeneratorService);
+    service = module.get<GeneratorAgent>(GeneratorAgent);
 
     await service.invoke(invokeParams);
 

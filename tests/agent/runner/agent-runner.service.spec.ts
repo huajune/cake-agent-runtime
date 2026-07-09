@@ -7,7 +7,8 @@ describe('AgentRunnerService.runTurn', () => {
   let outputGuard: { check: jest.Mock };
   let inputGuard: { precheckInputRisk: jest.Mock; evaluate: jest.Mock };
   let guardrailReviews: { recordReview: jest.Mock };
-  let replyRewriter: { rewrite: jest.Mock };
+  let replyRepairAgent: { repair: jest.Mock };
+  let replyRepairContextProvider: { build: jest.Mock };
   let service: AgentRunnerService;
 
   const passDecision = {
@@ -38,13 +39,15 @@ describe('AgentRunnerService.runTurn', () => {
       evaluate: jest.fn().mockResolvedValue({ decision: 'pass' }),
     };
     guardrailReviews = { recordReview: jest.fn().mockResolvedValue('inserted') };
-    replyRewriter = { rewrite: jest.fn().mockResolvedValue('重写后的自然回复') };
+    replyRepairAgent = { repair: jest.fn().mockResolvedValue('重写后的自然回复') };
+    replyRepairContextProvider = { build: jest.fn().mockResolvedValue(undefined) };
     service = new AgentRunnerService(
       generator as never,
       outputGuard as never,
       inputGuard as never,
       guardrailReviews as never,
-      replyRewriter as never,
+      replyRepairAgent as never,
+      replyRepairContextProvider as never,
     );
   });
 
@@ -326,7 +329,7 @@ describe('AgentRunnerService.runTurn', () => {
 
   it('output guard block enters one rewrite and adopts the clean revised reply', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }));
-    replyRewriter.rewrite.mockResolvedValueOnce('这个岗位暂时不合适，我们可以看其他岗位。');
+    replyRepairAgent.repair.mockResolvedValueOnce('这个岗位暂时不合适，我们可以看其他岗位。');
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'block',
@@ -354,7 +357,7 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe('这个岗位暂时不合适，我们可以看其他岗位。');
     expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(replyRewriter.rewrite).toHaveBeenCalledWith(
+    expect(replyRepairAgent.repair).toHaveBeenCalledWith(
       expect.objectContaining({
         originalReply: '不要新疆户籍的',
         ruleIds: ['discriminatory_screening_leak'],
@@ -364,7 +367,7 @@ describe('AgentRunnerService.runTurn', () => {
 
   it('output guard block stays blocked when the rewrite still violates guardrails', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }));
-    replyRewriter.rewrite.mockResolvedValueOnce('还是不要新疆户籍的');
+    replyRepairAgent.repair.mockResolvedValueOnce('还是不要新疆户籍的');
     outputGuard.check.mockResolvedValue({
       decision: 'block',
       riskLevel: 'high',
@@ -409,7 +412,18 @@ describe('AgentRunnerService.runTurn', () => {
 
   it('output guard revise triggers one rewrite with reviseFeedback, then adopts revised reply', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '原始回复（语气僵硬）' }));
-    replyRewriter.rewrite.mockResolvedValueOnce('重写后的自然回复');
+    replyRepairContextProvider.build.mockResolvedValueOnce({
+      recentMessages: [{ role: 'user', content: '你好' }],
+      factLines: ['城市：上海'],
+      invitedGroups: [{ groupName: '上海餐饮兼职群', city: '上海', industry: '餐饮', invitedAt: 't' }],
+      groupInventory: { city: '上海', hasAnyGroup: true, lines: ['- 餐饮：1 个群（均有空位）'] },
+      presentedJobs: [],
+      candidatePool: [],
+      sessionFacts: null,
+      profileFacts: null,
+      longTermPreferences: null,
+    });
+    replyRepairAgent.repair.mockResolvedValueOnce('重写后的自然回复');
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'revise',
@@ -429,13 +443,24 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe('重写后的自然回复');
     expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(replyRewriter.rewrite).toHaveBeenCalledWith(
+    expect(replyRepairAgent.repair).toHaveBeenCalledWith(
       expect.objectContaining({
         userMessage: '你好',
         violations: [{ type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' }],
+        repairContext: expect.objectContaining({
+          factLines: ['城市：上海'],
+          groupInventory: expect.objectContaining({ city: '上海' }),
+        }),
       }),
     );
-    expect(replyRewriter.rewrite.mock.calls[0][0]).toMatchObject({
+    expect(replyRepairContextProvider.build).toHaveBeenCalledWith({
+      corpId: 'c1',
+      userId: 'u1',
+      sessionId: 's1',
+      currentUserMessage: '你好',
+      shortTermEndTimeInclusive: undefined,
+    });
+    expect(replyRepairAgent.repair.mock.calls[0][0]).toMatchObject({
       originalReply: '原始回复（语气僵硬）',
       ruleIds: [],
     });
@@ -537,7 +562,7 @@ describe('AgentRunnerService.runTurn', () => {
 
   it('recoverable rule veto repairs with no tools, then adopts the safe reply', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '这个岗位不要某地户籍，你报不了' }));
-    replyRewriter.rewrite.mockResolvedValueOnce(
+    replyRepairAgent.repair.mockResolvedValueOnce(
       '我先帮你看看更合适的岗位，需要同事确认后再回复你。',
     );
     outputGuard.check
@@ -571,11 +596,11 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toContain('更合适');
     expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(replyRewriter.rewrite.mock.calls[0][0]).toMatchObject({
+    expect(replyRepairAgent.repair.mock.calls[0][0]).toMatchObject({
       originalReply: '这个岗位不要某地户籍，你报不了',
       ruleIds: ['discriminatory_screening_leak'],
     });
-    expect(replyRewriter.rewrite.mock.calls[0][0].violations[0]).toMatchObject({
+    expect(replyRepairAgent.repair.mock.calls[0][0].violations[0]).toMatchObject({
       type: 'discriminatory_screening_leak',
       feedbackPolicy: 'redacted',
       repairMode: 'rewrite',
@@ -638,7 +663,7 @@ describe('AgentRunnerService.runTurn', () => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({ text: '已经约好了，但话术需要修', toolCalls: [bookingCall] }),
     );
-    replyRewriter.rewrite.mockResolvedValueOnce('已帮你约好面试，稍后按通知到店就行');
+    replyRepairAgent.repair.mockResolvedValueOnce('已帮你约好面试，稍后按通知到店就行');
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'revise',
@@ -658,10 +683,10 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe('已帮你约好面试，稍后按通知到店就行');
     expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(replyRewriter.rewrite.mock.calls[0][0]).toMatchObject({
+    expect(replyRepairAgent.repair.mock.calls[0][0]).toMatchObject({
       originalReply: '已经约好了，但话术需要修',
     });
-    expect(replyRewriter.rewrite.mock.calls[0][0].committedSideEffects).toContain(
+    expect(replyRepairAgent.repair.mock.calls[0][0].committedSideEffects).toContain(
       'duliday_interview_booking',
     );
     expect(outputGuard.check.mock.calls[1][0].toolCalls).toEqual([bookingCall]);
@@ -755,7 +780,7 @@ describe('AgentRunnerService.runTurn', () => {
 
   it('revise still failing after the hard cap collapses to outbound guardrail_blocked', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
-    replyRewriter.rewrite.mockResolvedValueOnce('v2 仍有问题');
+    replyRepairAgent.repair.mockResolvedValueOnce('v2 仍有问题');
     const reviseDecision = {
       decision: 'revise' as const,
       riskLevel: 'high' as const,
@@ -786,7 +811,7 @@ describe('AgentRunnerService.runTurn', () => {
     // 2026-07-06 生产复盘：假阳 × repair_exhausted 静默是杀伤最大的组合。
     // 仅 P1/P2 可恢复违规时 fail-open；若修复版违规集合没有变好，投递首版避免修复劣化。
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
-    replyRewriter.rewrite.mockResolvedValueOnce('v2 修复版（仍有 P1 残留）');
+    replyRepairAgent.repair.mockResolvedValueOnce('v2 修复版（仍有 P1 残留）');
     const p1ReviseDecision = {
       decision: 'revise' as const,
       riskLevel: 'medium' as const,
@@ -826,7 +851,7 @@ describe('AgentRunnerService.runTurn', () => {
 
   it('repair exhausted with a non-recoverable violation still blocks even at medium risk', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
-    replyRewriter.rewrite.mockResolvedValueOnce('v2 仍有问题');
+    replyRepairAgent.repair.mockResolvedValueOnce('v2 仍有问题');
     outputGuard.check.mockResolvedValue({
       decision: 'revise' as const,
       riskLevel: 'medium' as const,
@@ -858,7 +883,7 @@ describe('AgentRunnerService.runTurn', () => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({ text: '花桥附近没岗哈，我拉你进餐饮兼职群' }),
     );
-    replyRewriter.rewrite.mockResolvedValueOnce('我帮你查下花桥中骏附近的岗位');
+    replyRepairAgent.repair.mockResolvedValueOnce('我帮你查下花桥中骏附近的岗位');
     outputGuard.check.mockResolvedValueOnce({
       decision: 'revise',
       riskLevel: 'medium',
@@ -898,7 +923,7 @@ describe('AgentRunnerService.runTurn', () => {
 
   it('dangling repair reply still blocks when the first violation is high risk', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '这个岗位不要某地户籍' }));
-    replyRewriter.rewrite.mockResolvedValueOnce('我帮你查下其他岗位');
+    replyRepairAgent.repair.mockResolvedValueOnce('我帮你查下其他岗位');
     outputGuard.check.mockResolvedValueOnce({
       decision: 'revise',
       riskLevel: 'high',
@@ -929,7 +954,7 @@ describe('AgentRunnerService.runTurn', () => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({ text: '这边暂无合适岗位，我先帮你拉进兼职群。' }),
     );
-    replyRewriter.rewrite.mockResolvedValueOnce('geocode(address="花桥")');
+    replyRepairAgent.repair.mockResolvedValueOnce('geocode(address="花桥")');
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'revise',
@@ -994,7 +1019,7 @@ describe('AgentRunnerService.runTurn', () => {
 
     it('revise flow persists first draft full text, violations and revised reply', async () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '首版（含区级距离断言）' }));
-      replyRewriter.rewrite.mockResolvedValueOnce('重写后的回复');
+      replyRepairAgent.repair.mockResolvedValueOnce('重写后的回复');
       outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
 
       await service.runTurn({
@@ -1027,7 +1052,7 @@ describe('AgentRunnerService.runTurn', () => {
 
     it('first-review block persists both first and rewritten replies when repair succeeds', async () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '违规首版' }));
-      replyRewriter.rewrite.mockResolvedValueOnce('干净重写版');
+      replyRepairAgent.repair.mockResolvedValueOnce('干净重写版');
       outputGuard.check
         .mockResolvedValueOnce({
           ...reviseDecision,
@@ -1066,7 +1091,7 @@ describe('AgentRunnerService.runTurn', () => {
 
       // 守卫命中但无 traceId（debug-chat / test-suite）：不写档案
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '首版' }));
-      replyRewriter.rewrite.mockResolvedValueOnce('重写版');
+      replyRepairAgent.repair.mockResolvedValueOnce('重写版');
       outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
       await service.runTurn({ sessionRef, trigger: { kind: 'inbound', userMessage: 'hi' } });
       expect(guardrailReviews.recordReview).not.toHaveBeenCalled();
@@ -1074,7 +1099,7 @@ describe('AgentRunnerService.runTurn', () => {
 
     it('repair exhausted persists both steps with the collapsed block verdict (P0 高风险不 fail-open)', async () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
-      replyRewriter.rewrite.mockResolvedValueOnce('v2 仍有问题');
+      replyRepairAgent.repair.mockResolvedValueOnce('v2 仍有问题');
       outputGuard.check.mockResolvedValue({ ...reviseDecision, riskLevel: 'high' as const });
 
       await service.runTurn({

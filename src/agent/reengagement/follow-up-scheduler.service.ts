@@ -9,14 +9,57 @@ import {
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import type { SessionRef } from '../runner/agent-runner.types';
 import {
-  REENGAGEMENT_JOB_NAME,
-  REENGAGEMENT_QUEUE,
-  type FollowUpJob,
+  computeFireAt,
+  getScenario,
+  hasInterviewAt,
+  shouldStop,
   type FollowUpScenario,
   type FollowUpScenarioCode,
-  type ReengagementChannelIdentity,
-} from './reengagement.types';
-import { computeFireAt, getScenario, hasInterviewAt, shouldStop } from './scenario-registry';
+} from './scenario-registry';
+
+// 场景注册表 + 时窗/停止工具已拆到 ./scenario-registry；re-export 保持既有 import 路径可用。
+export * from './scenario-registry';
+
+export const REENGAGEMENT_QUEUE = 'reengagement';
+export const REENGAGEMENT_JOB_NAME = 'follow-up';
+
+/**
+ * 渠道身份快照（排程时冻结）：候选人微信昵称 + 接管 bot + 稳定收件人标识。
+ * 随任务落到 reengagement_touch_records，追溯页直读列，不做查询期关联。
+ * 复聊只面向候选人私聊；投递凭证统一在到点发送时读取 STRIDE_ENTERPRISE_TOKEN。
+ */
+export interface ReengagementChannelIdentity {
+  candidateName?: string;
+  managerName?: string;
+  botImId?: string;
+  imContactId?: string;
+  externalUserId?: string;
+}
+
+/** Bull job payload。 */
+export interface FollowUpJob {
+  sessionRef: SessionRef;
+  scenarioCode: FollowUpScenarioCode;
+  anchorEventId: string;
+  anchorAt: number;
+  /** 渠道身份快照（排程时冻结，观测用；存量任务可能缺失） */
+  channelIdentity?: ReengagementChannelIdentity;
+  /**
+   * 报名后场景（booking.succeeded 锚点）携带的工单 ID：processor 到点凭它向海绵核验
+   * 工单现状（外部取消/已面试）。缺失（存量任务/提取失败）时跳过核验，回退旧停止规则。
+   */
+  workOrderId?: number;
+  /**
+   * 排程时冻结的期望面试时间（毫秒）。到点与 active_booking.interview_time 比对，
+   * 不一致说明发生过改约（改约锚点已按新时间排了替代任务），旧任务应停。
+   */
+  expectedInterviewAt?: number;
+}
+
+/** 触达底账 outbox 状态机。 */
+export type TouchSlotState = 'reserved' | 'delivery_attempted' | 'sent' | 'failed' | 'unknown';
+
+export type ReserveResult = 'reserved' | 'duplicate_sent' | 'duplicate_inflight';
 
 export interface ScheduleFollowUpInput {
   sessionRef: SessionRef;
