@@ -4,503 +4,143 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cake Agent Runtime - DuLiDay 旗下的招聘专用 AI Agent 运行时，基于 Vercel AI SDK 多 Provider 架构，通过企业微信渠道为餐饮连锁企业提供智能招聘对话服务。
+Cake Agent Runtime — DuLiDay（独立客）旗下的招聘专用 AI Agent 运行时，通过企业微信渠道为餐饮连锁企业提供智能招聘对话服务。后端 NestJS，前端 `web/`（React 18 + Vite 的运营 Dashboard），随主服务一起构建部署。
 
-**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Vercel AI SDK | Supabase | Redis (Upstash) | Bull Queue | Winston
-
-**Core Capabilities**:
-- Agent 编排：Recall → Compose → Execute → Store 闭环，多步工具调用
-- 多模型容错：三层 Provider 架构（注册 → 重试/降级 → 角色路由）
-- 四层记忆：短期对话 → 会话事实 → 程序性阶段 → 长期用户画像
-- 渠道接入：企业微信消息管道（去重、过滤、聚合、拟人化投递）
-- 质量评估：LLM 评分的对话测试框架
+**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Vercel AI SDK | Supabase (Postgres) | Upstash Redis | Bull Queue | React 18 + Vite (web/)
 
 ## Development Commands
 
 ```bash
-# Development (with hot reload)
-pnpm run start:dev
+pnpm run install:all       # 安装根 + web 依赖
+pnpm run start:dev         # 开发（先 build web，再 nest --watch）
+pnpm run web:dev           # 仅前端 Dashboard 热更新
+pnpm run build             # 构建后端；build:ci 含 web + 占位 token
 
-# Build
-pnpm run build
+# 质量检查（CI 跑的是 ci:check 全家桶）
+pnpm run lint:check        # ESLint（--max-warnings=0）
+pnpm run typecheck         # tsc --noEmit
+pnpm run test              # Jest；tests/ 目录镜像 src/ 结构
 
-# Production
-pnpm run start:prod
-
-# Code Quality
-pnpm run lint          # ESLint check and auto-fix
-pnpm run format        # Prettier formatting
-pnpm run test          # Run tests
-pnpm run test:cov      # Test coverage
-
-# Single test file (tests are in tests/ directory, mirroring src/ structure)
-pnpm run test -- tests/wecom/message/message.service.spec.ts
-
-# Database Migrations (Supabase CLI, 生产/测试已隔离)
-pnpm run db:new <name>       # Create new migration
-pnpm run db:push:test        # Apply migrations to TEST (gaovfitvetoojkvtalxy)
-pnpm run db:push:prod        # Apply migrations to PROD (uvmbxcilpteaiizplcyp)
-pnpm run db:status:test      # List TEST migration status
-pnpm run db:status:prod      # List PROD migration status
-pnpm run db:pull             # Pull remote schema changes
-pnpm run db:diff             # Generate diff migration
-
-# 数据变更流程：先测试 → 再生产
-# 1. pnpm run db:new add_feature
-# 2. 编写 SQL（用 IF NOT EXISTS / ON CONFLICT 保证幂等）
-# 3. pnpm run db:push:test   → 验证
-# 4. pnpm run db:push:prod   → 上线
+# 单测文件
+pnpm run test -- tests/agent/runner/agent-runner.service.spec.ts --watchman=false
 ```
+
+⚠️ **跑测试的坑**：shell 默认 node 可能是 16（先 `node -v` 确认），本项目要求 Node 20+，实践用 `nvm use 22.16.0`；jest 不加 `--watchman=false` 会静默 0 测试无输出。
+
+⚠️ 本地无 Redis 时设 `ENABLE_BULL_QUEUE=false`（.env.local）。
+
+### Database Migrations（Supabase CLI，测试/生产隔离）
+
+```bash
+pnpm run db:new <name>       # 新建迁移（supabase/migrations/YYYYMMDDHHMMSS_*.sql）
+pnpm run db:push:test        # 应用到 TEST（gaovfitvetoojkvtalxy）
+pnpm run db:push:prod        # 应用到 PROD（uvmbxcilpteaiizplcyp）
+pnpm run db:status:test      # / db:status:prod 查看迁移状态
+```
+
+**流程：先测试后生产**。SQL 用 `IF NOT EXISTS` / `ON CONFLICT` 保证幂等；但**修改既有索引/函数定义时不要依赖 IF NOT EXISTS**（只查名字不查定义，会静默跳过），用 `DROP IF EXISTS + CREATE`。**生产 push 必须与代码发版同步**——只发代码不推迁移（或反之）是本仓库反复出现过的事故源。上线新表后用一条真实写入验证落库，别只看部署成功。
 
 ## Architecture
 
-### Layered Architecture
+### Layering Rule
 
-**Layer placement criteria**: 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `infra/`。
-`infra/` 禁止 import `biz/`、`wecom/`、`agent/`。
+依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `infra/`。
+**`infra/` 禁止 import `biz/`、`channels/`、`agent/`。**
 
 ```
-supabase/
-├── config.toml                     # Supabase project configuration
-└── migrations/                     # Database migrations (YYYYMMDDHHMMSS_*.sql)
-    └── 20260310000000_baseline.sql # Full schema baseline (12 tables, 19 functions)
-
 src/
-├── infra/                          # Infrastructure Layer (业务无关，禁止依赖 biz/)
-│   ├── client-http/                # HTTP client factory (Bearer Token)
-│   ├── config/                     # Config management (env validation)
-│   ├── redis/                      # Redis cache (Global module)
-│   ├── supabase/                   # Supabase database service
-│   ├── feishu/                     # 飞书集成 (告警通知)
-│   ├── alert/                      # Alert system (simplified ~300 lines)
-│   └── server/response/            # Unified response (Interceptor + Filter)
-│
-├── providers/                      # 多模型 Provider 层 (Vercel AI SDK)
-│   ├── registry.service.ts         # Layer 1: 纯工厂注册 (createProviderRegistry)
-│   ├── reliable.service.ts         # Layer 2: 容错层 (retry + fallback)
-│   ├── router.service.ts           # Layer 3: 角色路由 (resolveByRole)
-│   └── types.ts                    # Provider 配置与常量
-│
-├── tools/                          # 工具注册表 + 内置工具
-│   ├── tool-registry.service.ts    # 工具注册与构建
-│   └── *.tool.ts                   # 各工具实现
-│
-├── memory/                         # 四层记忆系统
-│   ├── memory.service.ts           # 统一读取 API (recallAll)
-│   ├── memory.config.ts            # 记忆系统配置常量
-│   ├── services/                   # 各层服务实现
-│   │   ├── short-term.service.ts       # 短期：对话窗口
-│   │   ├── session.service.ts          # 会话事实：意向/推荐记录
-│   │   ├── procedural.service.ts       # 程序性：阶段追踪
-│   │   ├── long-term.service.ts        # 长期：用户画像 (Supabase)
-│   │   ├── settlement.service.ts       # 空闲沉淀 (Session → Profile)
-│   │   ├── memory-lifecycle.service.ts # 回合收尾/沉淀生命周期
-│   │   └── memory-enrichment.service.ts# 记忆补全/事实丰富
-│   ├── facts/                      # 规则层事实提取与合并原语
-│   ├── formatters/                 # 注入文案格式化 (fact-lines 等)
-│   ├── stores/                     # Redis/Supabase 存储适配
-│   └── types/                      # 记忆系统类型定义
-│
-├── mcp/                            # MCP 客户端 (动态工具扩展)
-├── sponge/                         # 外部数据服务
-│
-├── agent/                          # AI Agent 编排层
-│   ├── runner.service.ts           # 核心编排引擎 (invoke/stream)
-│   ├── completion.service.ts       # 简单一次性 LLM 调用
-│   ├── context/                    # 动态 Prompt 组装 (Section 体系)
-│   ├── fact-extraction.service.ts  # LLM 事实提取
-│   └── input-guard.service.ts      # 输入安全检测
-│
-├── biz/                            # Business Layer (业务领域)
-│   ├── monitoring/                 # 业务监控 (tracking + analytics + cleanup)
-│   ├── user/                       # 用户管理
-│   ├── hosting-config/             # 托管配置
-│   ├── message/                    # 消息业务 (chat session + booking)
-│   ├── strategy/                   # 业务策略 (persona + redLines + stageGoals)
-│   ├── test-suite/                 # Agent 测试套件
-│   └── feishu-sync/                # 飞书多维表格双向同步
-│
-├── evaluation/                     # 对话质量评估框架
-│   ├── llm-evaluation.service.ts   # LLM 评分
-│   ├── conversation-parser.service.ts  # 对话解析
-│   └── services/                   # 执行/对话/飞书同步子服务
-│
-├── channels/
-│   └── wecom/                      # WeChat Enterprise Domain
-│       ├── message/                # 消息管道 (去重/过滤/聚合/投递)
-│       │   ├── message.service.ts  # Main coordinator
-│       │   └── services/           # Sub-services (pipeline, delivery, etc.)
-│       ├── message-sender/         # Message sending
-│       ├── bot/                    # Bot management
-│       ├── chat/                   # Chat session
-│       ├── contact/                # Contact management
-│       └── room/                   # Group chat
-│
-└── observability/                  # Observer 可观测性
+├── infra/              # 基础设施：config / redis / supabase / feishu / alert / http / server-response
+├── providers/          # 多模型三层：registry(注册) → reliable(重试/降级) → router(角色路由)
+├── llm/                # LLM 执行器（llm-executor：底层 generateText 封装、重试）
+├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
+├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / procedural(阶段) / long-term(画像)
+│                       #   + settlement(空闲沉淀) / facts(规则提取) / stores(Redis+Supabase 适配)
+├── agent/              # Agent 编排
+│   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
+│   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
+│   ├── guardrail/      #   input(注入/风险拦截) / output(hard-rules + llm-reviewer + sanitizer) / tool(catalog)
+│   └── reengagement/   #   二次触发：anchor → follow-up-scheduler → processor → proactive-composer
+├── observability/      # AsyncLocalStorage 请求上下文 + AgentTracer → CompositeObserver
+│                       #   → PersistingObserver 落 agent_execution_events（与 message_processing_records 同 traceId 可 join）
+├── mcp/                # MCP 客户端（动态工具扩展）
+├── sponge/             # 海绵（外部岗位/工单数据服务）
+├── analytics/          # 指标/趋势/规则计算
+├── notification/       # 告警通知（渠道 + 渲染器）
+├── evaluation/         # LLM 评分的对话质量评估
+├── biz/                # 业务域：monitoring(观测落库+查询) / hosting-config / strategy(persona+红线+阶段目标)
+│                       #   user / message / ops-events / conversion-analytics / candidate-blacklist
+│                       #   group-task / handoff-events / intervention / test-suite / feishu-sync / huajune
+├── channels/wecom/     # 企微渠道
+│   └── message/        #   ingress(回调入口) → application(过滤/管道/回复工作流) → runtime(去重/debounce 合并)
+│                       #   → delivery(拟人化投递) + telemetry(观测采集)
+├── skills/             # Claude Code skills（analyze-chat-badcases，软链进 .claude/skills）
+└── enums/ types/       # 共享枚举与类型
+
+web/                    # React Dashboard（视图：dashboard / message-processing / reengagement / test-suite /
+                        #   conversion-analysis / strategy / hosting / users / chat-records / system 等）
+supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
 ```
 
-### Message Processing Flow
+### Message Flow
 
 ```
-WeChat User Message
-  → Hosting Platform Callback → /wecom/message
-  → MessageController.handleCallback()
-  → MessageService.handleMessage()
-      ├── Deduplication check
-      ├── Message filtering
-      ├── Save to history
-      ├── Debounce merge (每条消息注册一个 delay=静默窗口 的 Bull job，
-      │                  Worker 触发时若距最后一条消息静默足够久才处理)
-      └── Return 200 OK immediately
-  → [Async Queue Processing]
-      ├── 取出静默窗口内累积的全部消息并合并
-      ├── Call Agent (OrchestratorService.run → Provider → generateText)
-      ├── Split response (MessageSplitter: \n\n + ~)
-      └── Send reply (with delay)
+企微用户消息 → 托管平台回调 POST /message (ingress，@Public 放行)
+  → application：接收 → 过滤规则 → 存历史 → 立即返回 200
+  → runtime：每条消息注册 delay=静默窗口 的 Bull job（debounce），
+             Worker 触发时距最后一条消息静默足够久才处理（simple-merge，90s 租约锁+心跳续期）
+  → agent/runner：runTurn（记忆召回 → prompt 组装 → 多步工具调用 → 出站守卫审查 → turn-finalizer 沉淀副作用）
+  → delivery：分段（\n\n + ~）+ 打字延迟拟人化发送
 ```
+
+出站守卫（output guardrail）三档：确定性 hard-rules → LLM 语义审查（shadow/enforce 由 `system_config.agent_reply_config` 控制）→ sanitizer；审查全程档案落 `guardrail_review_records`。
+
+复聊（reengagement）是独立链路：**不复用主 generator**，走 ProactiveComposer（事实齐全场景用确定性模板，话术场景用一次性 completion 调用），全生命周期落 `reengagement_touch_records`。
 
 ### Path Aliases (tsconfig.json)
 
-```typescript
-import { HttpClientFactory } from '@infra/http';
-import { AgentRunnerService } from '@agent/runner.service';
-import { RouterService } from '@providers/router.service';
-import { MessageService } from '@channels/wecom/message';
-```
+`@infra/* @agent/* @channels/* @wecom/* @biz/* @providers/* @tools/* @memory/* @mcp/* @sponge/* @observability/* @notification/* @analytics/* @enums/* @evaluation/* @test-suite/* @shared-types/*`
 
-## Key Design Patterns
+## Configuration
 
-### 1. Service Decomposition (MessageService Case)
-Refactored from 1099 lines monolith → 5 sub-services (~300 lines main)
-- **Deduplication** - MessageDeduplicationService
-- **Filtering** - MessageFilterService
-- **History** - MessageHistoryService
-- **Merging** - MessageMergeService (Queue-driven)
-- **Statistics** - MessageStatisticsService
+三层配置，完整清单见 `.env.example`；本地开发 `cp .env.example .env.local`。
 
-### 2. Caching Strategy
-- **Memory Cache** - Agent config profiles (ProfileLoaderService)
-- **Redis Cache** - Message history (MessageHistoryService)
-- **Bull Queue** - Message aggregation processing (MessageMergeService)
+1. **必填环境变量**（密钥/URL，无默认值）：各厂商 API key（`ANTHROPIC_API_KEY` 等）、角色路由模型 `AGENT_CHAT_MODEL` / `AGENT_EXTRACT_MODEL` / `AGENT_VISION_MODEL` / `AGENT_EVALUATE_MODEL`、`API_GUARD_TOKEN`（全局 ApiTokenGuard，`@Public()` 装饰器放行）、Upstash Redis、`DULIDAY_API_TOKEN`、Stride 托管平台、飞书告警/多维表格、Supabase URL + `SUPABASE_SERVICE_ROLE_KEY`、`SUPABASE_DB_URL_TEST/PROD`（迁移用）。
+2. **可选环境变量**（代码有默认值）：`PORT`(8585)、消息历史上限/TTL、打字延迟等。
+3. **托管配置（DB 动态）**：消息聚合窗口 `initialMergeWindowMs` 等在 `hosting_config` 表，Dashboard 可改，不走环境变量；守卫开关在 `system_config`。
 
-### 3. Factory Pattern
-```typescript
-// HttpClientFactory - Create clients with Bearer Token
-const client = this.httpClientFactory.createWithBearerAuth(config, token);
-```
-
-### 4. Unified Response Handling
-- **ResponseInterceptor** - Auto-wrap successful responses
-- **HttpExceptionFilter** - Centralized error handling
-- **@RawResponse** - Bypass wrapper (for 3rd party callbacks)
-
-Response format:
-- Success: `{ success: true, data: {...}, timestamp: '...' }`
-- Error: `{ success: false, error: { code, message }, timestamp: '...' }`
-
-### 5. Configuration Strategy
-
-配置分为三层，按变更频率和安全性分类：
-
-#### Layer 1: 必填环境变量（密钥/URL）
-**特点**：敏感信息，必须手动配置，不能有默认值
-
-| 变量 | 说明 | 来源 |
-|------|------|------|
-| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | Anthropic |
-| `AGENT_CHAT_MODEL` | 主聊天模型 ID | 环境配置 |
-| `UPSTASH_REDIS_REST_URL` | Redis REST API URL | Upstash |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis REST Token | Upstash |
-| `DULIDAY_API_TOKEN` | 杜力岱 API Token | 内部系统 |
-| `STRIDE_API_BASE_URL` | 托管平台 API | Stride |
-| `FEISHU_ALERT_WEBHOOK_URL` | 飞书告警 Webhook | 飞书机器人 |
-| `FEISHU_ALERT_SECRET` | 飞书签名密钥 | 飞书机器人 |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL | Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 密钥 | Supabase |
-
-#### Layer 2: 可选环境变量（有默认值）
-**特点**：代码中有默认值，按需覆盖
-
-| 变量 | 默认值 | 说明 | 使用位置 |
-|------|--------|------|----------|
-| `PORT` | `8585` | 服务端口 | main.ts |
-| `MAX_HISTORY_PER_CHAT` | `60` | Redis 消息数限制 | message-history |
-| `HISTORY_TTL_MS` | `7200000` | Redis 消息 TTL (2h) | message-history |
-| `TYPING_DELAY_PER_CHAR_MS` | `100` | 打字延迟/字符 | message-sender |
-| `PARAGRAPH_GAP_MS` | `2000` | 段落间隔 | message-sender |
-
-> **消息聚合参数已下沉到托管配置（hosting-config）**：
-> - `initialMergeWindowMs`（默认 `3000`）— 距离最后一条用户消息静默多久后才触发 Agent（debounce 窗口）
-> - 通过 Dashboard / Supabase `hosting_config` 表动态调整，不再走环境变量
-> - 旧的 `INITIAL_MERGE_WINDOW_MS` / `MAX_MERGED_MESSAGES` 已废弃（`MAX_MERGED_MESSAGES` 因改用 debounce 不再需要上限）
-
-#### Layer 3: 硬编码默认值（无需配置）
-**特点**：内置于代码，极少需要修改
-
-| 配置 | 值 | 位置 |
-|------|-----|------|
-| 告警节流窗口 | 5 分钟 | FeishuAlertService |
-| 告警最大次数 | 3 次/类型 | FeishuAlertService |
-| Profile 缓存 TTL | 1 小时 | ProfileLoaderService |
-
-#### 配置文件说明
-- **`.env.example`** - 模板文件，列出所有可配置项
-- **`.env.local`** - 本地开发配置（不提交 Git）
-- **代码默认值** - 在各 Service 的 constructor 中定义
-
-```typescript
-// Layer 1: 必填，无默认值
-const model = this.router.resolveByRole('chat'); // AGENT_CHAT_MODEL
-
-// Layer 2: 可选，有默认值
-const paragraphGap = parseInt(this.configService.get('PARAGRAPH_GAP_MS', '2000'));
-
-// Layer 3: 硬编码
-private readonly THROTTLE_WINDOW_MS = 5 * 60 * 1000;
-
-// 托管配置（Supabase hosting_config 动态读取）
-const mergeDelayMs = this.runtimeConfig.getMergeDelayMs(); // initialMergeWindowMs
-```
+⚠️ `.env.local`（本地，Supabase 指 TEST 库）与 `.env.production`（生产镜像，Supabase 指 PROD 库）键名一致但**数据源不同，不可无脑同步**；跑读写生产的一次性脚本必须用 `.env.production`。
 
 ## Code Standards
 
-### TypeScript Strict Mode
+- TypeScript 严格模式：禁 `any`（不确定用 `unknown` + 收窄）；禁 `console.log`（用 NestJS `Logger`）；禁手动 `new Service()`（走 DI）；禁硬编码密钥（走 ConfigService）。
+- Service 结构顺序：logger → config 属性 → constructor(DI) → public 方法 → private helpers；单一职责，超过 ~500 行考虑拆分。
+- 命名：文件 kebab-case；类/接口 PascalCase；变量/函数 camelCase；常量 UPPER_SNAKE_CASE。
+- 完整错误处理；统一响应由 ResponseInterceptor / HttpExceptionFilter 处理，第三方回调用 `@RawResponse` 绕过包装。
 
-```typescript
-// ❌ Forbidden
-function process(data: any): any { }
+## Git & Release Convention
 
-// ✅ Required
-function process(data: ProcessData): Result { }
+> **分支约定**：默认分支 `develop`，长期主线 `master`，**不存在 `main`**。PR 一律目标 `develop`；`develop` → `master` 走 release 流程。CLI 提示的 "Main branch: main" 不准确，以本说明为准。
 
-// ✅ When uncertain, use unknown
-function process(data: unknown): string {
-  if (typeof data === 'object' && data !== null) {
-    return (data as ProcessData).value;
-  }
-}
-```
+Conventional Commits + 标准 semver：`feat:` → minor，`fix:`/其余 → patch。develop 合入 master 后 GitHub Actions 自动更新版本、生成 CHANGELOG、打 tag。发版链路有多个 bot PR（元数据/发布/固化/回同步），配置了 `RELEASE_BOT_TOKEN` 自动放行；**回同步 PR 必须 merge commit（勿 squash）**，否则下轮 release 必冲突。
 
-### NestJS Service Structure
+仓库常有多个 AI 会话并发改码：**commit 时用 pathspec 限定自己的文件**；发现 stash / 工作树有他人改动勿动，先确认。
 
-```typescript
-@Injectable()
-export class ExampleService {
-  // 1. Logger (must be first)
-  private readonly logger = new Logger(ExampleService.name);
-
-  // 2. Config properties
-  private readonly apiUrl: string;
-
-  // 3. Constructor (DI)
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly httpService: HttpService,
-  ) {
-    this.apiUrl = this.configService.get('API_URL');
-  }
-
-  // 4. Public methods
-  async publicMethod(): Promise<Result> {
-    try {
-      // Business logic
-    } catch (error) {
-      this.logger.error('Error:', error);
-      throw new HttpException('Failed', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
-
-  // 5. Private helpers
-  private privateHelper(): void { }
-}
-```
-
-### Naming Conventions
-
-| Type | Convention | Example |
-|------|-----------|---------|
-| **Files** | kebab-case | `agent-api.service.ts`, `message-sender.controller.ts` |
-| **Classes/Interfaces** | PascalCase | `AgentService`, `IAgentProfile` |
-| **Variables/Functions** | camelCase | `sendMessage`, `apiKey` |
-| **Constants** | UPPER_SNAKE_CASE | `API_TIMEOUT`, `MAX_RETRY_COUNT` |
-
-### Forbidden Practices
-
-```typescript
-// ❌ Absolutely Forbidden
-const apiKey = 'sk-xxx';              // Hardcoded secrets
-console.log('debug');                 // Using console
-private service = new Service();      // Manual instantiation
-function test(data: any): any { }     // Using any
-
-// ✅ Must Use
-const apiKey = this.configService.get('API_KEY');
-this.logger.log('debug');
-constructor(private readonly service: Service) {}
-function test(data: Data): Result { }
-```
-
-## Environment Configuration
-
-配置策略详见上方 [Configuration Strategy](#5-configuration-strategy)。
-
-### 快速开始
-
-1. 复制模板：`cp .env.example .env.local`
-2. 填写必填项（Layer 1 的密钥/URL）
-3. 按需调整可选项（Layer 2 有默认值）
-
-### 最小配置示例
+## Testing & Debugging
 
 ```bash
-# === Layer 1: 必填 ===
-ANTHROPIC_API_KEY=your-anthropic-key
-AGENT_CHAT_MODEL=anthropic/claude-sonnet-4-5-20250929
-UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
-UPSTASH_REDIS_REST_TOKEN=your-token
-DULIDAY_API_TOKEN=your-token
-STRIDE_API_BASE_URL=https://stride-bg.dpclouds.com
-FEISHU_ALERT_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
-FEISHU_ALERT_SECRET=your-secret
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-key
-
-# === Layer 2: 按需覆盖 ===
-# PARAGRAPH_GAP_MS=2500          # 段落间隔，默认 2000
-# TYPING_DELAY_PER_CHAR_MS=120   # 打字延迟/字符，默认 100
-```
-
-> 消息聚合的 `initialMergeWindowMs`（debounce 静默窗口）已改为通过 Dashboard 的托管配置调整，不再是环境变量。
-
-完整配置项见 `.env.example`。
-
-## Git Commit Convention
-
-> **分支约定**：本仓库默认分支是 `develop`，长期主线是 `master`，**不存在 `main` 分支**。所有 PR 默认目标分支是 `develop`；`develop` → `master` 由 release 流程合并。CLI 自带的 `Main branch: main` 提示不准确，以本说明为准。
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```bash
-git commit -m "feat: add broadcast messaging"        # New feature (minor +1)
-git commit -m "fix: resolve session timeout issue"   # Bug fix (patch +1)
-git commit -m "refactor: simplify message handler"   # Refactoring
-git commit -m "docs: update API documentation"       # Documentation
-git commit -m "chore: update dependencies"           # Maintenance
-```
-
-Auto-versioning: When `develop` merges to `master`, GitHub Actions automatically:
-- Analyzes commits and updates version
-- Generates CHANGELOG.md
-- Creates version tag (e.g., v1.2.3)
-
-## Key APIs
-
-### 1. Hosting Platform API
-- **Enterprise-level**: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445
-- **Group-level**: https://s.apifox.cn/acec6592-fec1-443b-8563-10c4a10e64c4
-
-Key endpoints:
-- `GET /stream-api/chat/list` - Chat list
-- `GET /stream-api/message/history` - Message history
-- `POST /stream-api/message/send` - Send message
-
-### 2. AI Provider
-通过 Vercel AI SDK 直连各厂商 API（Anthropic, OpenAI, DeepSeek 等），
-由 `src/providers/` 三层架构管理（Registry → Reliable → Router）。
-
-## Testing and Debugging
-
-```bash
-# Health check
-curl http://localhost:8585/agent/health
-
-# View available models
-curl http://localhost:8585/agent/models
-
-# Debug chat (complete raw response)
+curl http://localhost:8585/agent/health       # 健康检查（已注册 Provider）
+curl http://localhost:8585/agent/models       # 可用模型
 curl -X POST http://localhost:8585/agent/debug-chat \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $API_GUARD_TOKEN" \
   -d '{"message":"你好","conversationId":"debug-001"}'
 
-# View logs
-tail -f logs/combined-$(date +%Y-%m-%d).log
-
-# Monitoring dashboard
-open http://localhost:8585/monitoring.html
+tail -f logs/combined-$(date +%Y-%m-%d).log   # 日志
 ```
 
-## Troubleshooting
-
-### Agent API Connection Failed
-```bash
-# Health check — 查看已注册的 Provider
-curl http://localhost:8585/agent/health
-
-# 确认 API Key 已配置
-echo $ANTHROPIC_API_KEY
-echo $AGENT_CHAT_MODEL
-```
-
-### Port Already in Use
-```bash
-lsof -i :8585
-kill -9 <PID>
-# Or change PORT in .env
-```
-
-### Message Merge Not Working
-- Verify `ENABLE_MESSAGE_MERGE=true`
-- Check Redis connection
-- Verify Bull Queue status
-- In dev mode: set `ENABLE_BULL_QUEUE=false` if no Redis
-
-### Dependencies Installation Failed
-```bash
-pnpm store prune
-rm -rf node_modules
-pnpm install
-```
+排障数据都在 Supabase：回合流水 `message_processing_records`（完整 prompt 在 `agent_invocation.request.agentRequest`）、执行事件 `agent_execution_events`、守卫档案 `guardrail_review_records`、复聊触达 `reengagement_touch_records`——同 `trace_id` 可互相 join。Dashboard 前端即 `web/`。
 
 ## Advanced Documentation
 
-For detailed guidelines on specific topics, see the **Claude Code Agents Documentation System**:
-
-📚 **[.claude/agents/README.md](./.claude/agents/README.md)** - Modular documentation hub
-
-**Specialized guides:**
-- **[Code Standards](./.claude/agents/code-standards.md)** - In-depth TypeScript & NestJS conventions
-- **[Architecture Principles](./.claude/agents/architecture-principles.md)** - SOLID, design patterns, DDD
-- **[Development Workflow](./.claude/agents/development-workflow.md)** - Git flow, testing, CI/CD
-- **[Performance Optimization](./.claude/agents/performance-optimization.md)** - Caching, monitoring, tuning
-- **[Code Quality Guardian](./.claude/agents/code-quality-guardian.md)** - Automated quality checks
-
-**When to use:**
-- This file (CLAUDE.md) provides quick overview and essential information
-- Agents docs provide deep dives into specific areas
-- Use agents docs for complex tasks requiring detailed guidance
-
-## Important References
-
-- **NestJS Docs**: https://docs.nestjs.com/
-- **Conventional Commits**: https://www.conventionalcommits.org/
-- **Development Guide**: docs/DEVELOPMENT_GUIDE.md (if exists)
-- **Cursor Rules**: .cursorrules (comprehensive development standards)
-
-## Best Practices Summary
-
-✅ **Must Follow**:
-- Strict type checking (no `any`)
-- Dependency injection (no `new Service()`)
-- Use Logger (no `console.log`)
-- Environment variables (no hardcoding)
-- Single responsibility (<500 lines per service)
-- Complete error handling (try-catch)
-- Comprehensive Swagger docs
-
-❌ **Absolutely Forbidden**:
-- Hardcoded secrets or credentials
-- Using `console.log`
-- Manual service instantiation
-- Abusing `any` type
-- Unhandled exceptions
-- Ignoring TypeScript errors
+- **[.claude/agents/README.md](./.claude/agents/README.md)** — 规范文档中心：code-standards / architecture-principles / frontend-standards / commit-guidelines / documentation-standards / code-quality-guardian
+- **docs/** — 架构（architecture/）、产品方案（product/）、数据库（db/）、技术调研（technical/）
+- **src/memory/README.md**、**src/agent/guardrail/tool/README.md** — 子系统内文档
