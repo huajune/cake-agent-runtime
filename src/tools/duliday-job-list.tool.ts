@@ -158,7 +158,7 @@ const inputSchema = z.object({
     })
     .optional()
     .describe(
-      '候选人班次硬约束。传入后，工具会按岗位 workTime 语义判定是否兼容；不兼容岗位会从结果中移除并在 queryMeta.scheduleFilter 里说明剔除数量。候选人明确表达"只能周末/只做晚班/每周最多两天"等班次硬约束时必须传，避免推荐工作日强排班/全周岗位。',
+      '候选人班次硬约束。传入后，工具会按岗位 workTime 语义判定是否兼容；不兼容岗位会从结果中移除并在 queryMeta.scheduleFilter 里说明剔除数量。候选人明确表达"只能周末/只做晚班/每周最多两天"等班次硬约束时必须传，避免推荐工作日强排班/全周岗位。注意方向：候选人解释"为什么某班次做不了"（如"我七点才下班赶不上晚班""上晚班影响睡眠"）是对该班次的**排除**，不是"只做该班次"，不得据此传 onlyEvenings/onlyMornings；"找周六/周末的活"= onlyWeekends: true。班次约束跨轮累积：候选人早前说过"只周六/只周末"，本轮只是补充其他限制时，onlyWeekends 必须继续带上，不得用新约束替换。',
     ),
 });
 
@@ -530,25 +530,32 @@ export function buildJobListTool(
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
         // 拉回候选人原话（badcase 簇 schedule_constraint_forgotten）。
+        // 升级（badcase batch_6a4e430dce406a6aee7a3421）：模型传了约束也不再整体采信——
+        // 候选人要"周六的兼职"，模型却传 {onlyEvenings:true} 把"周六"弄丢。持久化约束
+        // 是候选人原话的高置信沉淀，改为与模型入参逐字段合并：模型显式传的字段保留
+        // （本轮新信息优先），漏传的字段由持久化约束补齐；空对象 {} 视同未传
+        // （此前 {} 是 truthy，会绕过兜底）。
         const persistedConstraint = context.sessionFacts?.preferences?.schedule_constraint ?? null;
-        if (!candidateScheduleConstraint && persistedConstraint) {
-          const hasAnySignal =
-            persistedConstraint.onlyWeekends ||
-            persistedConstraint.onlyEvenings ||
-            persistedConstraint.onlyMornings ||
-            persistedConstraint.maxDaysPerWeek !== null;
-          if (hasAnySignal) {
-            candidateScheduleConstraint = {
-              ...(persistedConstraint.onlyWeekends && { onlyWeekends: true }),
-              ...(persistedConstraint.onlyEvenings && { onlyEvenings: true }),
-              ...(persistedConstraint.onlyMornings && { onlyMornings: true }),
-              ...(persistedConstraint.maxDaysPerWeek !== null && {
-                maxDaysPerWeek: persistedConstraint.maxDaysPerWeek,
-              }),
-            };
-            logger.log(
-              `从 sessionFacts 自动兜底 candidateScheduleConstraint: ${JSON.stringify(candidateScheduleConstraint)}`,
-            );
+        if (persistedConstraint) {
+          const persistedInput = {
+            ...(persistedConstraint.onlyWeekends && { onlyWeekends: true }),
+            ...(persistedConstraint.onlyEvenings && { onlyEvenings: true }),
+            ...(persistedConstraint.onlyMornings && { onlyMornings: true }),
+            ...(persistedConstraint.maxDaysPerWeek !== null && {
+              maxDaysPerWeek: persistedConstraint.maxDaysPerWeek,
+            }),
+          };
+          if (Object.keys(persistedInput).length > 0) {
+            const modelInput = candidateScheduleConstraint ?? {};
+            const merged = { ...persistedInput, ...modelInput };
+            const addedFields = Object.keys(persistedInput).filter((key) => !(key in modelInput));
+            if (addedFields.length > 0) {
+              logger.log(
+                `sessionFacts 班次约束合并：模型入参 ${JSON.stringify(modelInput)} 缺 [${addedFields.join(',')}]，` +
+                  `由持久化约束补齐 → ${JSON.stringify(merged)}`,
+              );
+            }
+            candidateScheduleConstraint = merged;
           }
         }
 

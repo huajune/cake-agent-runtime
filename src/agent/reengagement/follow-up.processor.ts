@@ -14,29 +14,62 @@ import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
-import {
-  REENGAGEMENT_DELIVERY_PORT,
-  type ReengagementDeliveryPort,
-} from './reengagement-delivery.service';
-import type { DeliveryContext } from '@wecom/message/types';
-import { FollowUpSchedulerService } from './follow-up-scheduler.service';
+import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
+import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
-import { REENGAGEMENT_JOB_NAME, REENGAGEMENT_QUEUE, type FollowUpJob } from './reengagement.types';
 import {
   bookingFollowUpAnchorId,
   computeFireAt,
+  FollowUpSchedulerService,
   getScenario,
   inWindow,
   parseInterviewTimestamp,
+  REENGAGEMENT_JOB_NAME,
+  REENGAGEMENT_QUEUE,
   resolveDelayMs,
   resolveRolloutEnabled,
   shouldStop,
-} from './scenario-registry';
+  type FollowUpJob,
+} from './follow-up-scheduler.service';
 import { TouchLedgerService } from './touch-ledger.service';
-import {
-  ProactiveComposerService,
-  type ProactiveComposeExecution,
-} from './proactive-composer.service';
+import { ReengagementAgent } from './reengagement.agent';
+import type { ReengagementAgentExecution } from './reengagement.agent';
+
+export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
+
+export interface ReengagementDeliveryPort<TOutcome = unknown, TResult = unknown> {
+  deliver(
+    outcome: TOutcome,
+    options?: { idempotencyKey?: string; context?: unknown },
+  ): Promise<TResult>;
+}
+
+@Injectable()
+export class ReengagementDeliveryService
+  implements ReengagementDeliveryPort<TurnOutcome, DeliveryResult>
+{
+  constructor(private readonly delivery: MessageDeliveryService) {}
+
+  async deliver(
+    outcome: TurnOutcome,
+    options?: { idempotencyKey?: string; context?: DeliveryContext },
+  ): Promise<DeliveryResult> {
+    const text = outcome.reply?.text?.trim();
+    if (outcome.kind !== 'reply' || !text) {
+      throw new Error(`reengagement_delivery_non_reply:${outcome.kind}`);
+    }
+    const context = options?.context;
+    if (!context?.token || !context.imBotId || !context.imContactId) {
+      throw new Error('reengagement_delivery_missing_context');
+    }
+
+    return this.delivery.deliverReply(
+      { content: text, reasoning: outcome.reasoning },
+      context,
+      false,
+    );
+  }
+}
 
 /** 海绵工单 currentStatus（9 态中文）里代表报名已失效的状态（对所有报名后场景生效）。 */
 const BOOKING_CANCELLED_STATUSES = new Set(['约面取消', '约面失败']);
@@ -47,7 +80,7 @@ const INTERVIEW_DONE_STATUSES = new Set(['面试成功', '面试失败', '上岗
 /** 改期比对容差：active_booking.interview_time 与排程冻结时间差超过 1 分钟视为已改约。 */
 const INTERVIEW_TIME_DRIFT_TOLERANCE_MS = 60_000;
 
-type ProactiveTurnExecution = ProactiveComposeExecution;
+type ProactiveTurnExecution = ReengagementAgentExecution;
 
 interface ProactiveDeliveryResult {
   success: boolean;
@@ -61,13 +94,12 @@ interface ProactiveDeliveryResult {
 }
 
 /**
- * 复聊 TaskProcessor：到点 → 代码校验停止条件 → 复用 runner（继承 guardrail/记忆/观测）→ 投递。
+ * 复聊 TaskProcessor：到点 → 代码校验停止条件 → 复聊 agent 生成 → 投递。
  *
  * 开关走 Dashboard 运行时配置（DB 动态读，即时生效）：`reengagementEnabled` 是急刹车——
- * 关闭后在途 job 到点直接丢弃；`reengagementShadow`（第一版必跑）走完 shouldStop +
- * runner.runTurn 但**不 deliver**，只记"本应发 X / 命中场景 Y / 停止原因 Z"。
- * ⚠️ shadow ≠ 无副作用：主动回合已 toolMode:'readonly' 物理禁副作用工具（见 runner.runTurn），
- * shadow 再叠加"不投递"，两者缺一不可。
+ * 关闭后在途 job 到点直接丢弃；`reengagementShadow` 走完 shouldStop + agent.compose
+ * 但**不 deliver**，只记"本应发 X / 命中场景 Y / 停止原因 Z"。
+ * 复聊 agent 当前不开放工具，shadow 再叠加"不投递"。
  */
 @Injectable()
 export class FollowUpProcessor implements OnModuleInit {
@@ -76,7 +108,7 @@ export class FollowUpProcessor implements OnModuleInit {
   constructor(
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
     private readonly session: SessionService,
-    private readonly composer: ProactiveComposerService,
+    private readonly reengagementAgent: ReengagementAgent,
     private readonly touchLedger: TouchLedgerService,
     private readonly systemConfig: SystemConfigService,
     private readonly tracking: ReengagementTrackingService,
@@ -205,7 +237,10 @@ export class FollowUpProcessor implements OnModuleInit {
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
       const batchId = `batch_${sessionRef.sessionId}_${now}`;
-      const execution = await this.runProactiveTurn(job.data, state, scenario, batchId);
+      const execution = await this.runProactiveTurn(job.data, state, scenario, batchId, {
+        rolloutEnabled,
+        shadow,
+      });
       const { outcome } = execution;
       this.logger.log(
         `[reengagement][SHADOW] 本应发: scenario=${scenarioCode} sessionId=${sessionRef.sessionId} ` +
@@ -268,7 +303,10 @@ export class FollowUpProcessor implements OnModuleInit {
     // 投递路径的主动回合在消息处理流水落一行（message_id = batchId），
     // 追溯页凭触达记录上的 batch_id 直接跳到该回合的完整生成轨迹。
     const batchId = `batch_${sessionRef.sessionId}_${now}`;
-    const execution = await this.runProactiveTurn(job.data, state, scenario, batchId);
+    const execution = await this.runProactiveTurn(job.data, state, scenario, batchId, {
+      rolloutEnabled,
+      shadow,
+    });
     const { outcome } = execution;
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
@@ -446,13 +484,16 @@ export class FollowUpProcessor implements OnModuleInit {
     state: AuthoritativeSessionState,
     scenario: NonNullable<ReturnType<typeof getScenario>>,
     messageId?: string,
+    options?: { rolloutEnabled?: boolean; shadow?: boolean },
   ): Promise<ProactiveTurnExecution> {
-    const result = await this.composer.compose({
+    const result = await this.reengagementAgent.compose({
       sessionRef: jobData.sessionRef,
       scenario,
       jobData,
       state,
       messageId,
+      rolloutEnabled: options?.rolloutEnabled,
+      shadow: options?.shadow,
     });
     if ((result as ProactiveTurnExecution).outcome) return result;
     return {

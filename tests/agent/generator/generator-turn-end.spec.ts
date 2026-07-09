@@ -1,4 +1,4 @@
-import { GeneratorService } from '@agent/generator/generator.service';
+import { GeneratorAgent } from '@agent/generator/generator.agent';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
 
 /**
@@ -6,13 +6,13 @@ import type { GeneratorRunResult } from '@agent/generator/generator.types';
  * includeAssistantText——false 表示回复未真实送达，只跑用户侧收尾，
  * 不把未送达文本投影成助手轮次（幽灵回复防护）。
  */
-describe('GeneratorService attachTurnEnd (runTurnEnd contract)', () => {
+describe('GeneratorAgent attachTurnEnd (runTurnEnd contract)', () => {
   const makeService = (onTurnEnd: jest.Mock) => {
     const configService = { get: (_k: string, d?: string) => d } as never;
     const preparation = {} as never;
     const memoryService = { onTurnEnd } as never;
     const llm = {} as never;
-    return new GeneratorService(configService, preparation, memoryService, llm);
+    return new GeneratorAgent(configService, preparation, memoryService, llm);
   };
 
   const ctx = {
@@ -24,7 +24,7 @@ describe('GeneratorService attachTurnEnd (runTurnEnd contract)', () => {
     turnState: { candidatePool: undefined },
   };
 
-  const attach = (service: GeneratorService, result: GeneratorRunResult) => {
+  const attach = (service: GeneratorAgent, result: GeneratorRunResult) => {
     (
       service as unknown as {
         attachTurnEnd: (

@@ -84,6 +84,9 @@ export function formatExtractionFactLines(
   if (healthCertificate)
     lines.push(`- 健康证: ${healthCertificate}${meta(info.has_health_certificate)}`);
 
+  const experience = readFactValue(info.experience);
+  if (experience) lines.push(`- 过往工作经历: ${experience}${meta(info.experience)}`);
+
   const uploadResume = readFactValue(info.upload_resume);
   if (uploadResume) lines.push(`- 简历附件: ${uploadResume}${meta(info.upload_resume)}`);
 

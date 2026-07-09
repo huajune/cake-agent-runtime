@@ -237,8 +237,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复声称已拉群/群邀请已发，但本轮没有成功调用 invite_to_group，当前文本不可发送。' +
-      '请改写为不声称已发生的口径：可以征询候选人是否愿意进群（候选人同意后下一轮再实际拉群），' +
-      '或直接说明后续有合适岗位会主动联系；不要说"已拉/已发邀请"。',
+      '请改写为不声称已发生、也不新增拉群征询的口径：删除群相关完成/邀约话术，' +
+      '直接说明后续有合适岗位会主动联系，或围绕已知岗位事实自然收口。' +
+      'rewrite 阶段没有工具能力，禁止新增"需要拉你进群吗/我可以拉你进群"等邀约；不要说"已拉/已发邀请"。',
   },
   {
     id: 'discriminatory_screening_leak',

@@ -1,5 +1,5 @@
 import { FollowUpProcessor } from '@agent/reengagement/follow-up.processor';
-import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/reengagement.types';
+import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/follow-up-scheduler.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
@@ -27,7 +27,7 @@ const makeJob = (over: Partial<Record<string, unknown>> = {}) =>
 
 const asExecution = (outcome: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
   outcome,
-  agentRequest: { type: 'test-composer' },
+  agentRequest: { type: 'test-reengagement-agent' },
   aiStartAt: Date.UTC(2026, 5, 24, 2, 0, 0),
   aiEndAt: Date.UTC(2026, 5, 24, 2, 0, 1),
   ...over,
@@ -36,7 +36,7 @@ const asExecution = (outcome: Record<string, unknown>, over: Record<string, unkn
 describe('FollowUpProcessor', () => {
   let queue: { process: jest.Mock; add: jest.Mock };
   let session: { getAuthoritativeState: jest.Mock };
-  let composer: { compose: jest.Mock };
+  let reengagementAgent: { compose: jest.Mock };
   let touchLedger: {
     isOverFrequencyLimit: jest.Mock;
     isInSessionTouchCooldown: jest.Mock;
@@ -59,7 +59,7 @@ describe('FollowUpProcessor', () => {
     jest.useRealTimers();
     queue = { process: jest.fn(), add: jest.fn().mockResolvedValue(undefined) };
     session = { getAuthoritativeState: jest.fn().mockResolvedValue(baseState()) };
-    composer = {
+    reengagementAgent = {
       compose: jest.fn().mockResolvedValue(
         asExecution({
           kind: 'reply',
@@ -123,7 +123,7 @@ describe('FollowUpProcessor', () => {
     new FollowUpProcessor(
       queue as never,
       session as never,
-      composer as never,
+      reengagementAgent as never,
       touchLedger as never,
       systemConfig as never,
       tracking as never,
@@ -150,14 +150,14 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
-    expect(composer.compose).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('shadows with rollout_disabled when the scenario is switched off in runtime config', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还在考虑吗？' },
       toolCalls: [],
@@ -181,7 +181,7 @@ describe('FollowUpProcessor', () => {
   });
 
   it('shadows post-booking scenarios when the post-booking master switch is off', async () => {
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '面试提醒' },
       toolCalls: [],
@@ -213,7 +213,7 @@ describe('FollowUpProcessor', () => {
   });
 
   it('does not write assistant history in shadow mode without delivering', async () => {
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还在考虑吗？' },
       toolCalls: [],
@@ -231,7 +231,7 @@ describe('FollowUpProcessor', () => {
   });
 
   it('does not write assistant history for skipped shadow outcomes', async () => {
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'skipped',
       generatedText: '候选人不可见草稿',
       toolCalls: [],
@@ -258,7 +258,7 @@ describe('FollowUpProcessor', () => {
       reengagementEnabled: true,
       reengagementShadow: false,
     });
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -388,7 +388,7 @@ describe('FollowUpProcessor', () => {
       sideEffects: [sideEffect],
       guardrail: { phase: 'outbound', source: 'output_guardrail' },
     };
-    composer.compose.mockResolvedValue(outcome);
+    reengagementAgent.compose.mockResolvedValue(outcome);
 
     await buildProcessor().process(makeJob());
 
@@ -407,7 +407,7 @@ describe('FollowUpProcessor', () => {
       reengagementEnabled: true,
       reengagementShadow: false,
     });
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -433,7 +433,7 @@ describe('FollowUpProcessor', () => {
       reengagementShadow: false,
     });
     touchLedger.reserve.mockResolvedValue('duplicate_inflight');
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -444,7 +444,7 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(touchLedger.markDeliveryAttempted).not.toHaveBeenCalled();
-    expect(composer.compose).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
     expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
@@ -456,7 +456,7 @@ describe('FollowUpProcessor', () => {
       reengagementShadow: false,
     });
     touchLedger.reserve.mockResolvedValue('duplicate_sent');
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -466,7 +466,7 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
-    expect(composer.compose).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
     expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
@@ -479,7 +479,7 @@ describe('FollowUpProcessor', () => {
       reengagementShadow: false,
     });
     delivery.deliver.mockRejectedValue(error);
-    composer.compose.mockResolvedValue({
+    reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '还想看看附近岗位吗？' },
       toolCalls: [],
@@ -535,7 +535,7 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob({ id: 'late-job' }));
 
     const expectedFireAt = Date.UTC(2026, 5, 25, 1, 0, 0); // next day 09:00 Shanghai
-    expect(composer.compose).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(queue.add).toHaveBeenCalledWith(
       REENGAGEMENT_JOB_NAME,
       expect.objectContaining({ anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0) }),
@@ -581,7 +581,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(makeJob());
 
       expect(tracking.trackStopped).toHaveBeenCalledWith(expectedIdentity, 'terminal:booked');
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
     it('does not apply session cooldown to time-anchored interview reminders', async () => {
@@ -603,7 +603,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'session_touch_cooldown',
       );
-      expect(composer.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
     it('tracks frequency block', async () => {
@@ -623,11 +623,11 @@ describe('FollowUpProcessor', () => {
         expectedIdentity,
         'session_touch_cooldown',
       );
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
     it('tracks shadow with generated text', async () => {
-      composer.compose.mockResolvedValue(
+      reengagementAgent.compose.mockResolvedValue(
         asExecution(
           {
             kind: 'reply',
@@ -649,7 +649,7 @@ describe('FollowUpProcessor', () => {
 
       await buildProcessor().process(makeJob());
 
-      expect(composer.compose).toHaveBeenCalledWith(
+      expect(reengagementAgent.compose).toHaveBeenCalledWith(
         expect.objectContaining({
           messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
           scenario: expect.objectContaining({ code: 'opening_no_reply' }),
@@ -702,7 +702,7 @@ describe('FollowUpProcessor', () => {
         reengagementEnabled: true,
         reengagementShadow: false,
       });
-      composer.compose.mockResolvedValue({
+      reengagementAgent.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: '明天见！' },
         toolCalls: [],
@@ -741,7 +741,7 @@ describe('FollowUpProcessor', () => {
         reengagementEnabled: true,
         reengagementShadow: false,
       });
-      composer.compose.mockResolvedValue({
+      reengagementAgent.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: 'hi' },
         toolCalls: [],
@@ -774,7 +774,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(makeJob());
 
       expect(tracking.trackDuplicate).toHaveBeenCalledWith(expectedIdentity, 'duplicate_sent');
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
   });
 
@@ -783,7 +783,7 @@ describe('FollowUpProcessor', () => {
       jest.restoreAllMocks();
       // 10:00 上海，投递窗口内
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 0, 0));
-      composer.compose.mockResolvedValue({
+      reengagementAgent.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: '还在考虑吗？' },
         toolCalls: [],
@@ -871,7 +871,7 @@ describe('FollowUpProcessor', () => {
       // 10:30 Shanghai，投递窗口内
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 30, 0));
       session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
-      composer.compose.mockResolvedValue({
+      reengagementAgent.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: '面试提醒' },
         toolCalls: [],
@@ -893,7 +893,7 @@ describe('FollowUpProcessor', () => {
         expect.objectContaining({ scenarioCode: 'interview_reminder' }),
         'external_cancelled:约面取消',
       );
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
     it('passes the per-bot token context to the sponge work-order lookup', async () => {
@@ -927,7 +927,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'interview_already_done:面试成功',
       );
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
     it('lets post_interview_followup proceed when the interview is done', async () => {
@@ -939,7 +939,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(composer.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
     it('stops with interview_time_changed when active_booking carries a different time', async () => {
@@ -954,7 +954,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'interview_time_changed',
       );
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
       // 替代任务锚点幂等（wo:iv:scenario）：与聊天改约锚点排的任务同 jobId，Bull 去重
       expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1003,7 +1003,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(composer.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
     it('does not schedule a reminder replacement when the new time is already past', async () => {
@@ -1030,7 +1030,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(composer.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
     it('fails open when neither sponge nor active_booking yields verification data', async () => {
@@ -1040,7 +1040,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(composer.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
     it('exempts verifiable booking follow-ups from the replied-after-anchor rule', async () => {
@@ -1051,7 +1051,7 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(bookingJob());
 
       expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(composer.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
     it('keeps the replied-after-anchor rule for legacy jobs without workOrderId', async () => {
@@ -1067,7 +1067,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'candidate_replied_after_anchor',
       );
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
     it('stops legacy booking follow-ups that have no frozen interview time', async () => {
@@ -1081,7 +1081,7 @@ describe('FollowUpProcessor', () => {
         expect.anything(),
         'scenario_no_longer_holds',
       );
-      expect(composer.compose).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
   });
 });

@@ -74,8 +74,8 @@ export type {
 } from './generator.types';
 
 @Injectable()
-export class GeneratorService {
-  private readonly logger = new Logger(GeneratorService.name);
+export class GeneratorAgent {
+  private readonly logger = new Logger(GeneratorAgent.name);
 
   /** thinking token 预算，>0 时启用 extended thinking */
   private readonly thinkingBudgetTokens: number;
