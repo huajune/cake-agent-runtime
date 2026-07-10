@@ -339,8 +339,18 @@ function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
     readHighConfidenceFactValue(context.highConfidenceFacts?.preferences?.labor_form),
     readFactValue(context.sessionFacts?.preferences?.labor_form),
   ];
+  if (context.currentLaborFormIntent?.kind === 'set') {
+    return context.currentLaborFormIntent.value;
+  }
   for (const source of sources) {
-    if (typeof source === 'string' && isValidLaborForm(source)) return source;
+    if (typeof source !== 'string' || !isValidLaborForm(source)) continue;
+    if (
+      context.currentLaborFormIntent?.kind === 'clear' &&
+      context.currentLaborFormIntent.clearedValues.some((value) => value === source)
+    ) {
+      return null;
+    }
+    return source;
   }
   return null;
 }
@@ -1275,13 +1285,17 @@ export function buildJobListTool(
                         : { excludedExamples: laborFormFilterResult.excluded.slice(0, 3) }),
                     },
                     // 过滤后为空且召回里存在契约异常数据时，大概率是数据问题而非真无岗
-                    laborFormAnomalies:
-                      laborFormAnomalies.length > 0
-                        ? {
-                            count: laborFormAnomalies.length,
-                            examples: laborFormAnomalies.slice(0, 10),
-                          }
-                        : null,
+                    ...(candidateLaborForm === '暑假工'
+                      ? {}
+                      : {
+                          laborFormAnomalies:
+                            laborFormAnomalies.length > 0
+                              ? {
+                                  count: laborFormAnomalies.length,
+                                  examples: laborFormAnomalies.slice(0, 10),
+                                }
+                              : null,
+                        }),
                   },
                 },
               });
@@ -1364,10 +1378,17 @@ export function buildJobListTool(
                 }
               : { applied: false },
             // 不符合新契约的岗位用工形式数据（不兼容不兜底，暴露出来修数据源头）
-            laborFormAnomalies:
-              laborFormAnomalies.length > 0
-                ? { count: laborFormAnomalies.length, examples: laborFormAnomalies.slice(0, 10) }
-                : null,
+            ...(candidateLaborForm === '暑假工'
+              ? {}
+              : {
+                  laborFormAnomalies:
+                    laborFormAnomalies.length > 0
+                      ? {
+                          count: laborFormAnomalies.length,
+                          examples: laborFormAnomalies.slice(0, 10),
+                        }
+                      : null,
+                }),
             brandNearestStores: brandGroups,
             // 同品牌≥2 家的硬约束信号：LLM 必须按 displayLine
             // 转述同品牌门店，禁止把多家门店压成"有 X 品牌"。

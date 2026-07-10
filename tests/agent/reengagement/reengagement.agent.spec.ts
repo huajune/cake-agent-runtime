@@ -288,4 +288,26 @@ describe('ReengagementAgent', () => {
       validationReason: 'candidate_name_in_reply',
     });
   });
+
+  it('does not drop a reply when a one-character nickname appears only as ordinary text', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        message: '你方便把位置发一下吗？我好按附近门店给你看。',
+        reason: '询问位置',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('booking_incomplete')!,
+      jobData: job('booking_incomplete', {
+        channelIdentity: { candidateName: '好' },
+      }),
+      state: baseState(),
+    });
+
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.validationReason).toBeUndefined();
+  });
 });

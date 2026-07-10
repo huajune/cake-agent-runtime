@@ -120,9 +120,9 @@ export class ReengagementAgent {
         reengagementOutput: output,
       };
 
-      const addressedCandidateName = this.collectCandidateNames(ctx, memory).find((name) =>
-        text.includes(name),
-      );
+      const addressedCandidateName = this.collectCandidateNames(ctx, memory)
+        .filter((name) => Array.from(name).length >= 2)
+        .find((name) => text.includes(name));
       if (addressedCandidateName) {
         return {
           outcome: {

@@ -794,6 +794,12 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('用工形式: 暑假工');
     expect(result.finalPrompt).not.toContain('旧暑假工品牌');
     expect(result.finalPrompt).not.toContain('旧暑假工焦点品牌');
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.currentLaborFormIntent).toEqual({
+      kind: 'clear',
+      clearedValues: ['暑假工'],
+    });
+    expect(toolContext.sessionFacts.preferences.labor_form).toBeNull();
   });
 
   it('renders invitedGroups in session memory to prevent duplicate invite (badcase 3g1ruov9 / 6vzw8oh3)', async () => {

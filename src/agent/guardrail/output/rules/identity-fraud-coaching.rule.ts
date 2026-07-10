@@ -22,7 +22,7 @@ import { asRecord, type RuleContradiction } from '../output-rule.types';
 // 可被改写的身份口径（引号可选）
 const IDENTITY_REWRITE_TARGET =
   '["“”\'『「〈《]?(?:非暑假工|不是暑假工|长期兼职|长期工|非学生|不是学生|社会人士)';
-const REGISTER_VERB = '(?:登记|填写?|报名|申报|上报|录入|提交|报)';
+const REGISTER_VERB = '(?:登记|填写?|报名|申报|上报|录入|提交)';
 
 // "按/写成/填成/报成…『非暑假工』…登记" 与 "登记/填…成『非暑假工』" 两个语序
 const IDENTITY_REWRITE_THEN_REGISTER_PATTERN = new RegExp(
@@ -32,9 +32,12 @@ const REGISTER_AS_IDENTITY_PATTERN = new RegExp(
   `${REGISTER_VERB}[^。！？\\n]{0,8}(?:成|为|按)[^。！？\\n]{0,4}${IDENTITY_REWRITE_TARGET}`,
 );
 
-// "为了(顺利)通过(系统)审核" 的规避语境 + 同句登记动作：无论方向，一律违规
+// "为了(顺利)通过(系统)审核" 的规避语境 + 同句身份改写登记：无论方向，一律违规。
+// 必须同时出现身份改写目标，避免把“通过审核请如实填写”之类诚信提醒误判为教唆。
+const AUDIT_EVASION_PREFIX =
+  '为了[^。！？\\n]{0,10}(?:过|通过|好过|顺利过)[^。！？\\n]{0,6}(?:系统)?(?:审核|审查|校验)';
 const AUDIT_EVASION_PATTERN = new RegExp(
-  `为了[^。！？\\n]{0,10}(?:过|通过|好过|顺利过)[^。！？\\n]{0,6}(?:系统)?(?:审核|审查|校验)[^。！？\\n]{0,24}${REGISTER_VERB}`,
+  `${AUDIT_EVASION_PREFIX}(?:[^。！？\\n]{0,24}${IDENTITY_REWRITE_TARGET}[^。！？\\n]{0,16}${REGISTER_VERB}|[^。！？\\n]{0,24}${REGISTER_VERB}[^。！？\\n]{0,8}(?:成|为|按)[^。！？\\n]{0,4}${IDENTITY_REWRITE_TARGET})`,
 );
 
 // "别说/不要提 你是暑假工/学生" 类隐瞒建议

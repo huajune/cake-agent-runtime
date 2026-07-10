@@ -1,5 +1,9 @@
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
-import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
+import {
+  StorageMessageSource,
+  StorageMessageType,
+  toStorageMessageSource,
+} from '@enums/storage-message.enum';
 
 describe('message-provenance.util', () => {
   const manualText = {
@@ -28,5 +32,12 @@ describe('message-provenance.util', () => {
     ['reengagement payload', { payloadSource: 'reengagement' }],
   ])('rejects %s', (_label, overrides) => {
     expect(isHumanAgentTextMessage({ ...manualText, ...overrides })).toBe(false);
+  });
+
+  it('keeps a missing persisted source untrusted after normalization', () => {
+    const source = toStorageMessageSource(undefined);
+
+    expect(source).toBe(StorageMessageSource.UNKNOWN);
+    expect(isHumanAgentTextMessage({ ...manualText, source })).toBe(false);
   });
 });

@@ -1544,6 +1544,24 @@ describe('buildJobListTool', () => {
       expect(result.queryMeta.laborFormFilter).toEqual({ applied: false });
     });
 
+    it('当前轮明确撤销旧用工形式时不再沿用旧事实硬过滤', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({ basicInfo: { jobId: 1, brandName: '普通兼职品牌', laborForm: '兼职' } }),
+        ],
+        total: 1,
+      });
+
+      const result = await executeTool({
+        ...contextWithLaborForm('暑假工'),
+        currentLaborFormIntent: { kind: 'clear', clearedValues: ['暑假工'] },
+      });
+
+      expect(result.resultCount).toBe(1);
+      expect(result.markdown).toContain('普通兼职品牌');
+      expect(result.queryMeta.laborFormFilter).toEqual({ applied: false });
+    });
+
     it('要全职时不参与家族放宽：附近只有兼职形态岗位应返回过滤后为空的错误', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
@@ -1600,6 +1618,28 @@ describe('buildJobListTool', () => {
         }),
       );
       expect(result.queryMeta.laborFormFilter).not.toHaveProperty('excludedExamples');
+    });
+
+    it('要暑假工时不向模型暴露契约异常岗位详情', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({
+            basicInfo: {
+              jobId: 99,
+              brandName: '脏数据品牌',
+              laborForm: '暑假工',
+              partTimeJobType: null,
+            },
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await executeTool(contextWithLaborForm('暑假工'));
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY);
+      expect(result.queryMeta).not.toHaveProperty('laborFormAnomalies');
+      expect(JSON.stringify(result)).not.toContain('脏数据品牌');
     });
 
     it('要暑假工时混合岗位池只返回暑假工，并隐藏被剔除普通岗位详情', async () => {

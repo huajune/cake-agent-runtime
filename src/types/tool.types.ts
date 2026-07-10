@@ -7,6 +7,7 @@ import type {
 } from '@memory/types/session-facts.types';
 import type { UserProfile } from '@memory/types/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
+import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -39,6 +40,8 @@ export interface ToolBuildContext {
   messages: unknown[];
   /** 当前轮末尾的候选人原话；供工具区分“用户明说”与“模型从昵称臆测”。 */
   currentUserMessage?: string;
+  /** 当前轮对用工形式偏好的明确变更；用于让工具覆盖或撤销跨轮旧事实。 */
+  currentLaborFormIntent?: LaborFormIntentDecision;
   /** 记录本轮工具查到的岗位候选池；回合结束后再统一写入会话记忆。 */
   onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
   /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */

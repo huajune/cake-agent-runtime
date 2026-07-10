@@ -2034,6 +2034,17 @@ describe('HardRulesService', () => {
         'identity_misregistration_coaching',
       );
     });
+
+    it.each([
+      '为了顺利通过审核，请如实填写你的真实身份信息并登记。',
+      '为了能顺利过系统审核，麻烦先汇报一下实际情况。',
+    ])('does not flag honest audit-compliance wording: %s', (replyText) => {
+      const result = service.check({ replyText, toolCalls: [] });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'identity_misregistration_coaching',
+      );
+    });
   });
 
   describe('group invite edge cases', () => {

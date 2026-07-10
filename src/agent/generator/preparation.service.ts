@@ -217,6 +217,7 @@ export class PreparationService {
       turnState,
       contactBrandAliases,
       currentUserMessage,
+      currentLaborFormIntent,
       bookingWorkOrderJobIds: bookingContext.jobIds,
     });
     const toolExecutionTimings = new Map<string, number>();
@@ -816,6 +817,7 @@ export class PreparationService {
     turnState: PreparedAgentContext['turnState'];
     contactBrandAliases: string[];
     currentUserMessage?: string;
+    currentLaborFormIntent: LaborFormIntentDecision;
     /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
     bookingWorkOrderJobIds: number[];
   }): ToolBuildContext {
@@ -829,6 +831,7 @@ export class PreparationService {
       turnState,
       contactBrandAliases,
       currentUserMessage,
+      currentLaborFormIntent,
       bookingWorkOrderJobIds,
     } = input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
@@ -845,6 +848,7 @@ export class PreparationService {
     const sessionFacts = this.mergeSessionFactsWithHighConfidence(
       highConfidenceSessionFacts,
       memory.highConfidenceFacts,
+      currentLaborFormIntent,
     );
     const geocodeLocationAnchor = resolveGeocodeLocationAnchor({
       currentUserMessage,
@@ -858,6 +862,7 @@ export class PreparationService {
       sessionId: params.sessionId,
       messages: normalizedMessages,
       currentUserMessage,
+      currentLaborFormIntent,
       thresholds,
       imageMessageIds: params.imageMessageIds,
       imageUrls: params.imageUrls,
@@ -900,36 +905,55 @@ export class PreparationService {
   private mergeSessionFactsWithHighConfidence(
     sessionFacts: EntityExtractionResult | null,
     highConfidence: HighConfidenceFacts | null,
+    currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
   ): EntityExtractionResult | null {
     const highConfidenceValues = unwrapHighConfidenceFacts(
       filterHighConfidenceFacts(highConfidence),
     );
-    if (!highConfidenceValues) return sessionFacts;
-    if (!sessionFacts) return highConfidenceValues;
+    let merged: EntityExtractionResult | null;
+    if (!highConfidenceValues) {
+      merged = sessionFacts;
+    } else if (!sessionFacts) {
+      merged = highConfidenceValues;
+    } else {
+      merged = { ...sessionFacts };
 
-    const merged = { ...sessionFacts };
-
-    // interview_info: 非 null 的高置信值覆盖旧值
-    const baseInfo = { ...sessionFacts.interview_info };
-    const hcInfo = highConfidenceValues.interview_info;
-    for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
-      if (hcInfo[key] != null) {
-        (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
+      // interview_info: 非 null 的高置信值覆盖旧值
+      const baseInfo = { ...sessionFacts.interview_info };
+      const hcInfo = highConfidenceValues.interview_info;
+      for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
+        if (hcInfo[key] != null) {
+          (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
+        }
       }
-    }
-    merged.interview_info = baseInfo;
+      merged.interview_info = baseInfo;
 
-    // preferences: 非 null 的高置信值覆盖旧值
-    const basePref = { ...sessionFacts.preferences };
-    const hcPref = highConfidenceValues.preferences;
-    for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
-      if (hcPref[key] != null) {
-        (basePref as Record<string, unknown>)[key] = hcPref[key];
+      // preferences: 非 null 的高置信值覆盖旧值
+      const basePref = { ...sessionFacts.preferences };
+      const hcPref = highConfidenceValues.preferences;
+      for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
+        if (hcPref[key] != null) {
+          (basePref as Record<string, unknown>)[key] = hcPref[key];
+        }
       }
+      merged.preferences = basePref;
     }
-    merged.preferences = basePref;
 
-    return merged;
+    if (!merged || currentLaborFormIntent.kind === 'ignore') return merged;
+
+    const previousLaborForm = merged.preferences.labor_form;
+    const activeLaborForm =
+      currentLaborFormIntent.kind === 'set'
+        ? currentLaborFormIntent.value
+        : previousLaborForm &&
+            currentLaborFormIntent.clearedValues.some((value) => value === previousLaborForm)
+          ? null
+          : previousLaborForm;
+
+    return {
+      ...merged,
+      preferences: { ...merged.preferences, labor_form: activeLaborForm },
+    };
   }
 
   /**

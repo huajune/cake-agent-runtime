@@ -104,7 +104,7 @@ export function toStorageMessageType(numericType: number | undefined): StorageMe
 
 export function toStorageMessageSource(numericSource: number | undefined): StorageMessageSource {
   if (numericSource === undefined || numericSource === null) {
-    return StorageMessageSource.MOBILE_PUSH;
+    return StorageMessageSource.UNKNOWN;
   }
   return MESSAGE_SOURCE_NUM_TO_STR[numericSource] ?? StorageMessageSource.UNKNOWN;
 }
