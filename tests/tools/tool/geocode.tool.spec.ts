@@ -507,6 +507,20 @@ describe('geocode tool', () => {
       expect(result.result).toMatchObject({ district: '杨浦区' });
       expect(mockGeocodingService.searchCandidates).toHaveBeenCalledTimes(1);
     });
+
+    it('人工锚点 referenceText 为空时仍可按锚点区县匹配查询', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ district: '嘉定区', poiName: '同济大学嘉定校区' }),
+      ]);
+
+      const result = (await buildContextualExecute({
+        ...manualAnchor,
+        referenceText: '',
+      })({ address: '嘉定同济园', city: '上海' })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+      expect(result.result).toMatchObject({ district: '嘉定区' });
+    });
   });
 
   describe('GEOCODE_UNRESOLVED_ADDRESS', () => {

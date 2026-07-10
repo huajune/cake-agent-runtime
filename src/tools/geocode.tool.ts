@@ -165,12 +165,15 @@ function queryMatchesAnchorReference(address: string, anchor: GeocodeLocationAnc
 
   const query = normalizeReferenceText(address);
   const reference = normalizeReferenceText(anchor.referenceText ?? '');
-  if (!query || !reference) return anchor.source === 'session_memory';
-
   const anchorTokens = [anchor.city, ...anchor.districts]
     .filter((token): token is string => Boolean(token))
     .flatMap((token) => [token, token.replace(/[市区县]$/, '')])
     .filter(Boolean);
+  if (!query) return false;
+  if (!reference) {
+    if (anchor.source === 'session_memory') return true;
+    return anchorTokens.some((token) => query.includes(normalizeReferenceText(token)));
+  }
   if (anchorTokens.some((token) => query.includes(normalizeReferenceText(token)))) return true;
 
   let core = query;

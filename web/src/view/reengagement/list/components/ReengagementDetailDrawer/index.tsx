@@ -121,7 +121,9 @@ function asString(value: unknown): string | undefined {
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function formatMaybeTime(value?: string | null): string {
@@ -363,8 +365,11 @@ export default function ReengagementDetailDrawer({
   const detailBatchId = record?.batch_id || null;
 
   // 主动回合流水：generated_text 之外的生成内幕（提示词/模型思考/用量）都在这一行里
-  const { data: turnRecord, isLoading: turnLoading } =
-    useMessageProcessingRecordDetail(detailBatchId);
+  const {
+    data: turnRecord,
+    isLoading: turnLoading,
+    isError: turnError,
+  } = useMessageProcessingRecordDetail(detailBatchId);
   const insight = useMemo(() => {
     if (!turnRecord?.agentInvocation) return null;
     return extractGenerationInsight(
@@ -550,6 +555,10 @@ export default function ReengagementDetailDrawer({
                 </div>
                 {turnLoading ? (
                   <div className={styles.emptyText}>加载生成轨迹中...</div>
+                ) : turnError ? (
+                  <div className={styles.emptyText}>
+                    生成轨迹加载失败，请稍后重试或查看消息处理流水
+                  </div>
                 ) : !insight ? (
                   <div className={styles.emptyText}>
                     没有找到这次主动回合的生成轨迹（流水可能已过保留期）

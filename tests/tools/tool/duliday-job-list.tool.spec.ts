@@ -479,6 +479,43 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.cityFilterRecovery).toBeNull();
   });
 
+  it('keeps county-level city normalization in the job-category local fallback', async () => {
+    const yanjiJob = makeJobData({
+      basicInfo: {
+        jobId: 528177,
+        brandName: '必胜客',
+        jobName: '必胜客-延吉万达店-服务员-小时工',
+        jobCategoryName: '服务员',
+        storeInfo: {
+          storeName: '延吉万达店',
+          storeAddress: '延河西路6999号延吉万达广场',
+          storeCityName: '延边朝鲜族自治州',
+          storeRegionName: '延吉市',
+        },
+      },
+    });
+    mockSpongeService.fetchJobs
+      .mockResolvedValueOnce({ jobs: [], total: 0 })
+      .mockResolvedValueOnce({ jobs: [yanjiJob], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['延吉'],
+      jobCategoryList: ['服务员'],
+    });
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
+    expect(mockSpongeService.fetchJobs.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        cityNameList: ['延边朝鲜族自治州'],
+        regionNameList: ['延吉市'],
+        jobCategoryList: [],
+      }),
+    );
+    expect(result.resultCount).toBe(1);
+    expect(result.queryMeta.jobCategoryMatchStrategy).toBe('local_keyword_match');
+  });
+
   it('recovers an unmapped county-level city from coordinates without adopting neighboring cities', async () => {
     const kunshanJob = makeJobData({
       basicInfo: {
@@ -1514,7 +1551,12 @@ describe('buildJobListTool', () => {
             basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职', partTimeJobType: '寒假工' },
           }),
           makeJobData({
-            basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '兼职', partTimeJobType: '小时工' },
+            basicInfo: {
+              jobId: 2,
+              brandName: '瑞幸',
+              laborForm: '兼职',
+              partTimeJobType: '小时工',
+            },
           }),
         ],
         total: 2,
@@ -1531,7 +1573,12 @@ describe('buildJobListTool', () => {
         jobs: [
           makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职' } }),
           makeJobData({
-            basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '兼职', partTimeJobType: '小时工' },
+            basicInfo: {
+              jobId: 2,
+              brandName: '瑞幸',
+              laborForm: '兼职',
+              partTimeJobType: '小时工',
+            },
           }),
         ],
         total: 2,
@@ -1558,9 +1605,23 @@ describe('buildJobListTool', () => {
     it('要暑假工时混合岗位池只返回暑假工，并隐藏被剔除普通岗位详情', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
-          makeJobData({ basicInfo: { jobId: 1, brandName: '暑假工品牌', laborForm: '兼职', partTimeJobType: '暑假工' } }),
+          makeJobData({
+            basicInfo: {
+              jobId: 1,
+              brandName: '暑假工品牌',
+              laborForm: '兼职',
+              partTimeJobType: '暑假工',
+            },
+          }),
           makeJobData({ basicInfo: { jobId: 2, brandName: '普通兼职品牌', laborForm: '兼职' } }),
-          makeJobData({ basicInfo: { jobId: 3, brandName: '小时工品牌', laborForm: '兼职', partTimeJobType: '小时工' } }),
+          makeJobData({
+            basicInfo: {
+              jobId: 3,
+              brandName: '小时工品牌',
+              laborForm: '兼职',
+              partTimeJobType: '小时工',
+            },
+          }),
         ],
         total: 3,
       });
@@ -1586,7 +1647,14 @@ describe('buildJobListTool', () => {
     it('当前轮高置信暑假工意向覆盖旧会话兼职意向', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
-          makeJobData({ basicInfo: { jobId: 1, brandName: '暑假工品牌', laborForm: '兼职', partTimeJobType: '暑假工' } }),
+          makeJobData({
+            basicInfo: {
+              jobId: 1,
+              brandName: '暑假工品牌',
+              laborForm: '兼职',
+              partTimeJobType: '暑假工',
+            },
+          }),
           makeJobData({ basicInfo: { jobId: 2, brandName: '普通兼职品牌', laborForm: '兼职' } }),
         ],
         total: 2,

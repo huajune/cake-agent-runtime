@@ -863,18 +863,9 @@ export function buildJobListTool(
           // 岗位类型本地兜底：当 API 对岗位类型检索不稳定时，退回到同条件宽查后，
           // 仅基于真实岗位字段做本地匹配，不依赖手写别名字典。
           if (jobs.length === 0 && sanitizedJobCategoryList.length > 0) {
-            const fallback = await fetchJobs({
-              cityNameList: normalizedCityNameList,
-              regionNameList: normalizedRegionNameList,
-              brandAliasList,
-              brandIdList,
-              projectNameList,
-              projectIdList,
-              storeNameList,
-              searchJobName: searchJobName?.trim() || undefined,
-              jobIdList,
-              options,
-            });
+            // 必须复用已经过县级市映射、坐标/区域归一化的基础请求，只放宽岗位类型。
+            // 重新从原始 city/region 组装会让“延吉 → 延边州 + 延吉市”等映射失效。
+            const fallback = await fetchJobs({ ...fetchBaseParams, jobCategoryList: [] });
 
             /* eslint-disable @typescript-eslint/no-explicit-any */
             const filtered = filterJobsByRequestedCategories(
