@@ -1,5 +1,6 @@
 import { ShortTermService } from '@memory/services/short-term.service';
 import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('ShortTermService', () => {
   const mockRepo = {
@@ -96,6 +97,7 @@ describe('ShortTermService', () => {
         role: 'user',
         content: '缓存消息',
         timestamp: 1710900000000,
+        provenanceVersion: 2,
       }),
     ]);
 
@@ -115,6 +117,7 @@ describe('ShortTermService', () => {
         role: 'user',
         content: '本批消息',
         timestamp: 1710900000000,
+        provenanceVersion: 2,
       }),
       JSON.stringify({
         chatId: 'chat_1',
@@ -122,6 +125,7 @@ describe('ShortTermService', () => {
         role: 'user',
         content: '下一批 pending',
         timestamp: 1710900001000,
+        provenanceVersion: 2,
       }),
     ]);
 
@@ -190,6 +194,69 @@ describe('ShortTermService', () => {
     const distanceFromNow = after - startTimeInclusive;
     expect(distanceFromNow).toBeGreaterThan(oneDay); // not 1-day window
     expect(distanceFromNow).toBeLessThanOrEqual(sevenDays + 1000); // ≤ 7-day window
+  });
+
+  it('should preserve provenance from DB history through time injection and cache backfill', async () => {
+    mockRedis.lrange.mockResolvedValue([]);
+    mockRepo.getChatHistory.mockResolvedValue([
+      {
+        messageId: 'manual-1',
+        role: 'assistant',
+        content: '上海嘉定同济园是吧',
+        timestamp: 1710900000000,
+        source: StorageMessageSource.MOBILE_PUSH,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+      },
+    ]);
+
+    const result = await service.getMessages('chat_1');
+
+    expect(result[0]).toMatchObject({
+      role: 'assistant',
+      source: StorageMessageSource.MOBILE_PUSH,
+      messageType: StorageMessageType.TEXT,
+      isSelf: true,
+    });
+    const serialized = mockRedis.rpush.mock.calls[0][1] as string;
+    expect(JSON.parse(serialized)).toMatchObject({
+      source: StorageMessageSource.MOBILE_PUSH,
+      messageType: StorageMessageType.TEXT,
+      isSelf: true,
+      provenanceVersion: 2,
+    });
+  });
+
+  it('should invalidate legacy cache entries and rebuild provenance from DB on the same key', async () => {
+    mockRedis.lrange.mockResolvedValue([
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'legacy-1',
+        role: 'assistant',
+        content: '旧缓存无来源',
+        timestamp: 1710900000000,
+      }),
+    ]);
+    mockRepo.getChatHistory.mockResolvedValue([
+      {
+        messageId: 'manual-1',
+        role: 'assistant',
+        content: 'DB 人工消息',
+        timestamp: 1710900000000,
+        source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+      },
+    ]);
+
+    const result = await service.getMessages('chat_1');
+
+    expect(mockRedis.del).toHaveBeenCalledWith(buildChatHistoryCacheKey('chat_1'));
+    expect(mockRepo.getChatHistory).toHaveBeenCalled();
+    expect(result[0]).toMatchObject({
+      source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
+      isSelf: true,
+    });
   });
 
   it('should clear lastLoadError after a successful reload', async () => {

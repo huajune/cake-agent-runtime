@@ -5,6 +5,8 @@ import { ChatMessageRepository } from '@biz/message/repositories/chat-message.re
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import { RedisService } from '@infra/redis/redis.service';
 import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
+import { MessageSource, MessageType } from '@enums/message-callback.enum';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('ChatSessionService', () => {
   let service: ChatSessionService;
@@ -71,10 +73,14 @@ describe('ChatSessionService', () => {
       const ok = await service.saveMessage({
         chatId: 'chat-1',
         messageId: 'msg-1',
-        role: 'user',
+        role: 'assistant',
         content: '你好',
         timestamp: 1710900000000,
         contactType: 1,
+        source: MessageSource.AGGREGATED_CHAT_MANUAL,
+        messageType: MessageType.TEXT,
+        isSelf: true,
+        payload: { source: 'callback' },
       });
 
       expect(ok).toBe(true);
@@ -91,6 +97,15 @@ describe('ChatSessionService', () => {
         buildChatHistoryCacheKey('chat-1'),
         86400,
       );
+      const cached = JSON.parse(mockRedisService.rpush.mock.calls[0][1] as string);
+      expect(cached).toMatchObject({
+        role: 'assistant',
+        source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+        payloadSource: 'callback',
+        provenanceVersion: 2,
+      });
       // Index key is gone — dedup delegated to DB UNIQUE(message_id)
       expect(mockRedisService.setex).not.toHaveBeenCalled();
       expect(mockRedisService.exists).not.toHaveBeenCalled();

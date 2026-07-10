@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {
   const chainMethods = [
@@ -290,8 +291,25 @@ describe('ChatMessageRepository', () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const dbRows = [
-        { role: 'assistant', content: 'Hello!', timestamp: '2026-03-10T10:01:00Z' },
-        { role: 'user', content: 'Hi', timestamp: '2026-03-10T10:00:00Z' },
+        {
+          message_id: 'msg-2',
+          role: 'assistant',
+          content: 'Hello!',
+          timestamp: '2026-03-10T10:01:00Z',
+          source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
+          message_type: StorageMessageType.TEXT,
+          is_self: true,
+          payload_source: 'callback',
+        },
+        {
+          message_id: 'msg-1',
+          role: 'user',
+          content: 'Hi',
+          timestamp: '2026-03-10T10:00:00Z',
+          source: StorageMessageSource.MOBILE_PUSH,
+          message_type: StorageMessageType.TEXT,
+          is_self: false,
+        },
       ];
 
       const queryMock = makeQueryMock({ data: dbRows, error: null });
@@ -304,6 +322,16 @@ describe('ChatMessageRepository', () => {
       expect(result[0].role).toBe('user');
       expect(result[1].role).toBe('assistant');
       expect(result[0].content).toBe('Hi');
+      expect(result[1]).toMatchObject({
+        messageId: 'msg-2',
+        source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+        payloadSource: 'callback',
+      });
+      expect(queryMock.select).toHaveBeenCalledWith(
+        'message_id,role,content,timestamp,source,message_type,is_self,payload_source:payload->>source',
+      );
     });
 
     it('should use custom limit', async () => {

@@ -5,6 +5,8 @@ import {
   toStorageMessageType,
   toStorageMessageSource,
   toStorageContactType,
+  type StorageMessageSource,
+  type StorageMessageType,
 } from '@enums/storage-message.enum';
 import { ChatMessageRecord } from '../entities/chat-message.entity';
 import { ChatMessageInput, ChatSessionSummary } from '../types/message.types';
@@ -136,7 +138,16 @@ export class ChatMessageRepository extends BaseRepository {
     limit: number = 60,
     options?: { startTimeInclusive?: number; endTimeInclusive?: number },
   ): Promise<
-    Array<{ messageId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
+    Array<{
+      messageId: string;
+      role: 'user' | 'assistant';
+      content: string;
+      timestamp: number;
+      source?: StorageMessageSource;
+      messageType?: StorageMessageType;
+      isSelf?: boolean;
+      payloadSource?: string;
+    }>
   > {
     if (!this.isAvailable()) {
       return [];
@@ -153,12 +164,19 @@ export class ChatMessageRepository extends BaseRepository {
         role: string;
         content: string;
         timestamp: string;
-      }>('message_id,role,content,timestamp', (q) => {
-        let query = q.eq('chat_id', chatId);
-        if (startTime) query = query.gte('timestamp', startTime.toISOString());
-        if (endTime) query = query.lte('timestamp', endTime.toISOString());
-        return query.order('timestamp', { ascending: false }).limit(limit);
-      });
+        source?: StorageMessageSource;
+        message_type?: StorageMessageType;
+        is_self?: boolean;
+        payload_source?: string;
+      }>(
+        'message_id,role,content,timestamp,source,message_type,is_self,payload_source:payload->>source',
+        (q) => {
+          let query = q.eq('chat_id', chatId);
+          if (startTime) query = query.gte('timestamp', startTime.toISOString());
+          if (endTime) query = query.lte('timestamp', endTime.toISOString());
+          return query.order('timestamp', { ascending: false }).limit(limit);
+        },
+      );
 
       // 返回时反转顺序（从旧到新）
       return results.reverse().map((m) => ({
@@ -166,6 +184,10 @@ export class ChatMessageRepository extends BaseRepository {
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: new Date(m.timestamp).getTime(),
+        source: m.source,
+        messageType: m.message_type,
+        isSelf: m.is_self,
+        payloadSource: m.payload_source,
       }));
     } catch (error) {
       this.logger.error(`获取会话历史失败 [${chatId}]:`, error);

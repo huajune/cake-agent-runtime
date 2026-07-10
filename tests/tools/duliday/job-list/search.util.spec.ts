@@ -1,6 +1,7 @@
 import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
+  collectLaborFormAnomalies,
   filterJobsByRequestedCategories,
   filterJobsToRequestedBrands,
   formatScheduleConstraintLabel,
@@ -98,20 +99,21 @@ describe('job-list search util', () => {
     expect(formatScheduleConstraintLabel({})).toBe('未明确');
   });
 
-  describe('applyLaborFormConstraint (用工形式过滤)', () => {
-    const summerJob = { basicInfo: { jobId: 1, brandName: '肯德基', laborForm: '暑假工' } };
-    const hourlyJob = { basicInfo: { jobId: 2, brandName: '麦当劳', laborForm: '小时工' } };
-    const plusJob = { basicInfo: { jobId: 3, brandName: '必胜客', laborForm: '兼职+' } };
+  describe('applyLaborFormConstraint (用工形式过滤，严格按新契约两级字段)', () => {
     const noLaborForm = { basicInfo: { jobId: 4, brandName: '星巴克', laborForm: null } };
     const fullTimeJob = { basicInfo: { jobId: 5, brandName: 'Tims', laborForm: '全职' } };
-    const partTimeJob = { basicInfo: { jobId: 6, brandName: '瑞幸', laborForm: '兼职' } };
-
-    it('小时工: keeps only jobs whose laborForm is 小时工', () => {
-      const result = applyLaborFormConstraint([summerJob, hourlyJob, plusJob], '小时工');
-      expect(result.applied).toBe(true);
-      expect(result.jobs).toEqual([hourlyJob]);
-      expect(result.excluded.map((e) => e.jobId)).toEqual([1, 3]);
-    });
+    const plainPartTimeJob = {
+      basicInfo: { jobId: 6, brandName: '瑞幸', laborForm: '兼职', partTimeJobType: null },
+    };
+    const summerJob = {
+      basicInfo: { jobId: 11, brandName: '肯德基', laborForm: '兼职', partTimeJobType: '暑假工' },
+    };
+    const hourlyJob = {
+      basicInfo: { jobId: 12, brandName: '麦当劳', laborForm: '兼职', partTimeJobType: '小时工' },
+    };
+    // 历史扁平脏数据（细分值写在 laborForm 上）：匹配层不兜底，应处处不被认作兼职形态
+    const dirtyFlatSummerJob = { basicInfo: { jobId: 7, brandName: '必胜客', laborForm: '暑假工' } };
+    const dirtyFlatHourlyJob = { basicInfo: { jobId: 8, brandName: '汉堡王', laborForm: '小时工' } };
 
     it('does not filter when candidate has no labor form preference', () => {
       const result = applyLaborFormConstraint([summerJob, hourlyJob], null);
@@ -121,70 +123,69 @@ describe('job-list search util', () => {
 
     it('全职: keeps only jobs whose laborForm is 全职 (must be field-backed)', () => {
       const result = applyLaborFormConstraint(
-        [fullTimeJob, hourlyJob, partTimeJob, noLaborForm],
+        [fullTimeJob, hourlyJob, plainPartTimeJob, noLaborForm],
         '全职',
       );
       expect(result.applied).toBe(true);
       expect(result.jobs).toEqual([fullTimeJob]);
-      expect(result.excluded.map((e) => e.jobId)).toEqual([2, 6, 4]);
+      expect(result.excluded.map((e) => e.jobId)).toEqual([12, 6, 4]);
     });
 
-    it('兼职: keeps only jobs whose laborForm is 兼职', () => {
+    it('兼职: parent-level match keeps all 兼职 jobs regardless of subdivision', () => {
       const result = applyLaborFormConstraint(
-        [fullTimeJob, hourlyJob, plusJob, summerJob, partTimeJob, noLaborForm],
+        [fullTimeJob, summerJob, hourlyJob, plainPartTimeJob, noLaborForm],
         '兼职',
       );
       expect(result.applied).toBe(true);
-      expect(result.jobs).toEqual([partTimeJob]);
-      expect(result.excluded.map((e) => e.jobId)).toEqual([5, 2, 3, 1, 4]);
+      expect(result.jobs).toEqual([summerJob, hourlyJob, plainPartTimeJob]);
+      expect(result.relaxedToFamily).toBe(false);
+      expect(result.excluded.map((e) => e.jobId)).toEqual([5, 4]);
     });
 
-    it('暑假工: keeps only jobs whose laborForm is 暑假工', () => {
+    it('暑假工: matches laborForm=兼职 + partTimeJobType=暑假工', () => {
       const result = applyLaborFormConstraint(
-        [fullTimeJob, summerJob, hourlyJob, plusJob, noLaborForm],
+        [fullTimeJob, summerJob, hourlyJob, plainPartTimeJob],
         '暑假工',
       );
       expect(result.applied).toBe(true);
       expect(result.jobs).toEqual([summerJob]);
-      expect(result.excluded.map((e) => e.jobId)).toEqual([5, 2, 3, 4]);
+      expect(result.relaxedToFamily).toBe(false);
+      expect(result.excluded.map((e) => e.jobId)).toEqual([5, 12, 6]);
+    });
+
+    it('小时工: exact partTimeJobType match wins without relaxation', () => {
+      const result = applyLaborFormConstraint([summerJob, hourlyJob], '小时工');
+      expect(result.jobs).toEqual([hourlyJob]);
+      expect(result.relaxedToFamily).toBe(false);
     });
 
     it('全职: never repackages part-time as full-time (excludes all → empty)', () => {
-      const result = applyLaborFormConstraint([hourlyJob, partTimeJob, noLaborForm], '全职');
+      const result = applyLaborFormConstraint([hourlyJob, plainPartTimeJob, noLaborForm], '全职');
       expect(result.applied).toBe(true);
       expect(result.jobs).toEqual([]);
       expect(result.excluded).toHaveLength(3);
       expect(result.relaxedToFamily).toBe(false);
     });
 
-    it('兼职: strict-empty relaxes to part-time family instead of returning nothing', () => {
-      // 附近只有 兼职+/小时工/暑假工 标签：不能告诉要"兼职"的候选人附近没岗
+    it('寒假工: no exact subdivision → relaxes to laborForm=兼职 family with signal', () => {
       const result = applyLaborFormConstraint(
-        [fullTimeJob, hourlyJob, plusJob, summerJob, noLaborForm],
-        '兼职',
+        [fullTimeJob, summerJob, plainPartTimeJob],
+        '寒假工',
       );
       expect(result.applied).toBe(true);
       expect(result.relaxedToFamily).toBe(true);
-      expect(result.jobs).toEqual([hourlyJob, plusJob, summerJob]);
-      expect(result.excluded.map((e) => e.jobId)).toEqual([5, 4]);
+      expect(result.jobs).toEqual([summerJob, plainPartTimeJob]);
     });
 
     it('暑假工: strict-empty does NOT relax to part-time family during summer guard period', () => {
-      const result = applyLaborFormConstraint([fullTimeJob, partTimeJob, hourlyJob], '暑假工');
+      const result = applyLaborFormConstraint([fullTimeJob, plainPartTimeJob, hourlyJob], '暑假工');
       expect(result.applied).toBe(true);
       expect(result.relaxedToFamily).toBe(false);
       expect(result.jobs).toEqual([]);
     });
 
-    it('寒假工: strict-empty still relaxes to part-time family outside the summer-only guard', () => {
-      const result = applyLaborFormConstraint([fullTimeJob, partTimeJob, hourlyJob], '寒假工');
-      expect(result.applied).toBe(true);
-      expect(result.relaxedToFamily).toBe(true);
-      expect(result.jobs).toEqual([partTimeJob, hourlyJob]);
-    });
-
     it('全职: strict-empty does NOT relax (full-time is not in the family)', () => {
-      const result = applyLaborFormConstraint([hourlyJob, partTimeJob], '全职');
+      const result = applyLaborFormConstraint([hourlyJob, plainPartTimeJob], '全职');
       expect(result.jobs).toEqual([]);
       expect(result.relaxedToFamily).toBe(false);
     });
@@ -194,6 +195,69 @@ describe('job-list search util', () => {
       expect(result.applied).toBe(true);
       expect(result.jobs).toEqual([]);
       expect(result.relaxedToFamily).toBe(false);
+    });
+
+    it('excluded entries expose partTimeJobType for honest explanations', () => {
+      const result = applyLaborFormConstraint([hourlyJob], '暑假工');
+      expect(result.jobs).toEqual([]);
+      expect(result.excluded).toEqual([
+        { jobId: 12, brandName: '麦当劳', laborForm: '兼职', partTimeJobType: '小时工' },
+      ]);
+    });
+
+    // ===== 历史扁平脏数据：不兼容不兜底，匹配不上是预期行为 =====
+
+    it('dirty flat laborForm=暑假工 does NOT match wanted 暑假工 (no legacy fallback)', () => {
+      const result = applyLaborFormConstraint([dirtyFlatSummerJob], '暑假工');
+      expect(result.jobs).toEqual([]);
+      expect(result.relaxedToFamily).toBe(false);
+    });
+
+    it('dirty flat labels do NOT participate in family relaxation', () => {
+      const result = applyLaborFormConstraint(
+        [dirtyFlatSummerJob, dirtyFlatHourlyJob, plainPartTimeJob],
+        '寒假工',
+      );
+      expect(result.relaxedToFamily).toBe(true);
+      expect(result.jobs).toEqual([plainPartTimeJob]);
+    });
+  });
+
+  describe('collectLaborFormAnomalies (契约异常数据暴露)', () => {
+    it('flags subdivision values written on laborForm (legacy flat data)', () => {
+      const anomalies = collectLaborFormAnomalies([
+        { basicInfo: { jobId: 7, brandName: '必胜客', laborForm: '暑假工' } },
+        { basicInfo: { jobId: 12, brandName: '麦当劳', laborForm: '兼职', partTimeJobType: '小时工' } },
+      ]);
+      expect(anomalies).toEqual([
+        {
+          jobId: 7,
+          brandName: '必胜客',
+          laborForm: '暑假工',
+          partTimeJobType: null,
+          reason: 'labor_form_not_in_axis',
+        },
+      ]);
+    });
+
+    it('flags unknown partTimeJobType and 全职-with-subdivision contradictions', () => {
+      const anomalies = collectLaborFormAnomalies([
+        { basicInfo: { jobId: 1, laborForm: '兼职', partTimeJobType: '日结工' } },
+        { basicInfo: { jobId: 2, laborForm: '全职', partTimeJobType: '小时工' } },
+      ]);
+      expect(anomalies.map((a) => a.reason)).toEqual([
+        'part_time_job_type_not_in_axis',
+        'full_time_with_part_time_job_type',
+      ]);
+    });
+
+    it('returns empty for contract-conforming jobs (null fields are fine)', () => {
+      const anomalies = collectLaborFormAnomalies([
+        { basicInfo: { jobId: 1, laborForm: '全职' } },
+        { basicInfo: { jobId: 2, laborForm: '兼职', partTimeJobType: '暑假工' } },
+        { basicInfo: { jobId: 3, laborForm: null } },
+      ]);
+      expect(anomalies).toEqual([]);
     });
   });
 

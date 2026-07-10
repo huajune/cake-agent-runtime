@@ -19,6 +19,7 @@ import type {
   HighConfidenceFacts,
   SessionFacts,
 } from '@memory/types/session-facts.types';
+import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 import {
   StrategyConfigRecord,
   StageGoalConfig,
@@ -49,6 +50,8 @@ export interface ComposeParams {
   sessionFacts?: EntityExtractionResult | SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
   highConfidenceFacts?: HighConfidenceFacts | null;
+  /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
+  currentLaborFormIntent?: LaborFormIntentDecision;
   /** 策略来源：wecom 读 released，test 读 testing，默认 released */
   strategySource?: 'released' | 'testing';
 }
@@ -100,6 +103,7 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       highConfidenceFacts,
+      currentLaborFormIntent,
       strategySource = 'released',
     } = params;
 
@@ -117,6 +121,7 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       highConfidenceFacts,
+      currentLaborFormIntent,
       currentTimeText: now,
       groupInventoryBlock,
     };

@@ -223,8 +223,10 @@ function renderBasicInfoSection(basicInfo: unknown, distanceKm: number | null | 
   pushField(lines, '岗位名称', sanitizeJobDisplayText(asString(bi.jobName)));
   pushField(lines, '岗位简称', sanitizeJobDisplayText(asString(bi.jobNickName)));
   pushField(lines, '岗位类型', sanitizeJobDisplayText(asString(bi.jobCategoryName)));
-  // 渲染前 sanitize：全职/兼职/兼职+/小时工/寒假工/暑假工 如实展示；"正式工/临时工" 收敛为 null。
+  // 渲染前 sanitize：全职/兼职（及历史数据里的细分值）如实展示；"正式工/临时工" 收敛为 null。
   pushField(lines, '用工形式', sanitizeLaborFormForDisplay(asString(bi.laborForm)));
+  // 兼职细分轴：laborForm=兼职 时的 寒假工/暑假工/小时工
+  pushField(lines, '兼职类型', sanitizeLaborFormForDisplay(asString(bi.partTimeJobType)));
   pushLongText(lines, '工作内容', bi.jobContent);
 
   const brand = formatNameWithId(bi.brandName, bi.brandId);
@@ -1068,9 +1070,10 @@ export function formatJobsToMarkdown(
     '> ⚠️ **数据使用原则**：各 section 中的备注、remark 等自由文本字段可能包含结构化字段未覆盖或与之矛盾的补充信息，回复时须结合全部内容；除下方单独说明的用工形式外，**自由文本与结构化字段冲突时以自由文本为准**\n\n';
 
   md +=
-    '> ⚠️ **用工类型口径**：岗位的"用工类型/用工形式"**一律以结构化 `用工形式` 字段为准**（如「兼职」「全职」）。' +
-    '若结构化 `用工形式` 字段为「寒假工」或「暑假工」，可如实说明这是对应用工类型；' +
-    '若仅福利备注里出现"暑假工/寒假工薪资 X 元/时"，但结构化 `用工形式` 不是寒假工/暑假工，' +
+    '> ⚠️ **用工类型口径**：岗位的用工形式**一律以结构化 `用工形式` + `兼职类型` 字段为准**' +
+    '（`用工形式` 只有「兼职」「全职」；兼职岗的细分看 `兼职类型`：寒假工/暑假工/小时工）。' +
+    '仅当 `兼职类型`（或历史数据的 `用工形式`）字段为「寒假工」「暑假工」时，才能说岗位是寒/暑假工；' +
+    '若仅福利备注里出现"暑假工/寒假工薪资 X 元/时"，但结构化字段不是寒假工/暑假工，' +
     '只能说明这是一档薪资条件，**不得把岗位用工类型改写成寒假工/暑假工**。\n\n';
 
   md += renderCandidateCardsBanner(jobs);

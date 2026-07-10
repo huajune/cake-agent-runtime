@@ -3,7 +3,10 @@ import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { z } from 'zod';
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type {
+  AuthoritativeSessionState,
+  CandidateFieldKey,
+} from '@memory/types/authoritative-session-state.types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob, FollowUpScenario } from './follow-up-scheduler.service';
@@ -25,12 +28,12 @@ export interface ReengagementComposeContext {
   shadow?: boolean;
 }
 
-// 复聊 agent 一次执行的完整输入：既要拼 prompt，也要整体落库观测。
-// 两个字段可见性边界不同：memory 会进 system prompt；trigger 只落库、绝不进 prompt。
+// 复聊 agent 一次执行的完整输入：用于整体落库观测。
+// system prompt 只读取其中的场景字段、最小状态摘要和脱敏后的 memory 投影，绝不序列化整包输入。
 export interface ReengagementAgentInput {
-  // 触发溯源元数据（复用 compose 上下文）：仅写入 agentRequest 供排障 join，不得序列化进 prompt。
+  // 触发溯源元数据（复用 compose 上下文）：仅写入 agentRequest 供排障 join。
   trigger: ReengagementComposeContext;
-  // 唯一允许进入 system prompt 的模型输入。
+  // 原始记忆观测；进入 prompt 前会做字段最小化与姓名/联系方式脱敏。
   memory: ReengagementMemorySnapshot;
 }
 
@@ -43,9 +46,25 @@ export interface ReengagementAgentExecution {
 }
 
 const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
-  message: z.string().describe('候选人可见的复聊消息'),
-  reason: z.string().describe('简短说明文案生成依据，仅供内部观测，不给候选人看'),
+  message: z.string().describe('候选人可见的复聊消息；不得用候选人的姓名、昵称或企微显示名作称呼'),
+  reason: z.string().describe('只说明输入证据如何支持本条文案，不得补写“已读”“在忙”等未提供状态'),
 });
+
+const COLLECTED_FIELD_LABELS: Record<CandidateFieldKey, string> = {
+  name: '姓名',
+  phone: '手机号',
+  age: '年龄',
+  gender: '性别',
+  education: '学历',
+  healthCert: '健康证',
+  householdProvince: '户籍',
+  height: '身高',
+  weight: '体重',
+  supplementAnswers: '补充问题',
+};
+
+const OMITTED_REENGAGEMENT_FACT_PATTERN =
+  /^- (?:姓名|联系方式|性别|年龄|是否学生|学历|过往工作经历|简历附件|身高|体重|户籍省份|意向品牌ID):/;
 
 @Injectable()
 export class ReengagementAgent {
@@ -66,7 +85,7 @@ export class ReengagementAgent {
     );
     const agentInput: ReengagementAgentInput = { trigger: ctx, memory };
 
-    // 只把 memory 交给 prompt 构造，trigger 溯源元数据在类型层就进不了 prompt。
+    // 只投影场景字段、最小状态和脱敏记忆，不把 trigger / memory 整包序列化进 prompt。
     const systemPrompt = this.buildSystemPrompt(ctx, memory);
 
     const aiStartAt = Date.now();
@@ -78,8 +97,9 @@ export class ReengagementAgent {
         schema: REENGAGEMENT_OUTPUT_SCHEMA,
         outputName: 'ReengagementMessage',
         system: systemPrompt,
-        // 主动复聊没有本轮候选人入站消息；上下文材料都属于系统提示词。
-        messages: [],
+        // 主动复聊没有本轮候选人入站消息；用中性指令触发生成，
+        // 候选人证据仍只来自 system prompt，不伪造候选人对话。
+        prompt: '请根据以上上下文生成本次复聊消息。',
         maxOutputTokens: 160,
         temperature: 0.3,
         onPreparedRequest: (request) => {
@@ -99,6 +119,30 @@ export class ReengagementAgent {
         reengagementInput: agentInput,
         reengagementOutput: output,
       };
+
+      const addressedCandidateName = this.collectCandidateNames(ctx, memory).find((name) =>
+        text.includes(name),
+      );
+      if (addressedCandidateName) {
+        return {
+          outcome: {
+            kind: 'skipped',
+            generatedText: text,
+            scenarioCode: ctx.scenario.code,
+            usage,
+            responseMessages,
+            toolCalls: [],
+            agentSteps,
+          },
+          agentRequest: {
+            ...agentRequestWithInput,
+            validationReason: 'candidate_name_in_reply',
+          },
+          aiStartAt,
+          aiEndAt,
+          validationReason: 'candidate_name_in_reply',
+        };
+      }
 
       const outcome: TurnOutcome = {
         kind: 'reply',
@@ -148,24 +192,32 @@ export class ReengagementAgent {
     ctx: ReengagementComposeContext,
     memory: ReengagementMemorySnapshot,
   ): string {
+    const candidateNames = this.collectCandidateNames(ctx, memory);
     return [
       '你是「独立客」的招聘顾问，正在企业微信上帮候选人对接餐饮门店的岗位。此刻候选人已经沉默或到了某个关键节点，你要主动发一条简短、自然的消息，把 TA 往前推进一步。',
       '',
+      '# 不可违反的红线',
+      '- 绝对禁止用候选人的姓名、昵称、企微显示名或其它个性化称呼来打招呼或称呼候选人；即使上下文里出现，也不要复述。直接说事情，必要时只使用“你”。',
+      '- 只使用下方证据。未回复不等于已读，不得声称候选人“已读未回”；也不得猜测候选人在忙、已完成面试、已接受岗位或有其它未提供状态。',
+      '- 不催促、不责备、不命令，不使用“怎么没回”“现在就”“赶紧”“别迟到”等表达。',
+      '- 不编造岗位事实、名额、录用结果、回电安排或任何已完成动作。',
+      '- 不能报名、不能拉群、不能发消息、不能创建或修改工单；本 Agent 不开放任何工具。',
+      '- 不要提及系统、模型、工具、JSON、任务代码、灰度发布、内部观测或隐私占位符。',
+      '',
       '# 本次需要完成的任务',
-      `任务代码：${ctx.scenario.code}`,
       `任务名称：${ctx.scenario.displayName}`,
       `任务目标：${ctx.scenario.objective}`,
-      `生成规范：${ctx.scenario.generationPolicy}`,
-      '以上「生成规范」是本条消息的最高优先级依据；下面的通用规范只做兜底约束，两者冲突时以生成规范为准。',
+      `本场景生成规范：${ctx.scenario.generationPolicy}`,
+      '本场景生成规范决定“这次具体说什么”，但不能覆盖上面的红线。',
       '',
-      '# 候选人证据材料',
-      '下面是本次复聊唯一可用的候选人上下文。只能基于这些证据生成，缺失的信息不要补全或猜测。',
+      '# 已核验的最小上下文',
+      '下面是本次复聊唯一可用的上下文。缺失的信息不要补全或猜测。',
       '',
-      '## 权威状态快照',
-      JSON.stringify(ctx.state),
+      '## 状态摘要',
+      this.formatStateSummary(ctx),
       '',
       '## 近期对话',
-      this.formatRecentMessages(memory.recentMessages),
+      this.formatRecentMessages(memory.recentMessages, candidateNames),
       '',
       '## 已知事实',
       this.formatFactLines(memory.factLines),
@@ -173,27 +225,100 @@ export class ReengagementAgent {
         ? ['', '## 时效提醒', ...memory.warnings.map((warning) => `- ${warning}`)]
         : []),
       '',
-      '# 通用规范',
-      '- 只写一到两句中文，像微信里真人顾问随口发的话：不客套、不群发腔、不堆表情。',
-      '- 只围绕本次目标提一个问题或一个行动点，不追问、不施压、不重复骚扰。',
-      '- 只使用上下文已有的事实；不要复述岗位详情、薪资、班次、地址，更不得编造名额、录用或回电。',
-      '- 不能报名、不能拉群、不能发消息、不能创建工单；本 agent 不开放任何工具。',
-      '- 不要提及系统、模型、工具、JSON、任务代码、灰度发布或内部观测。',
+      '# 写作要求',
+      '- 优先只写一句，最多两句；像微信里真人顾问随口发的话，不客套、不群发腔、不堆表情。',
+      '- 只围绕本次目标提一个问题或一个行动点，不连环追问，不重复上一条消息。',
+      '- 可以在确有助于候选人识别上下文时，简短承接近期对话里已经出现的岗位、门店、薪资、班次或位置；不得新增、改写、拼接或夸大任何细节，也不要整段复制岗位介绍。',
       '',
       '# 输出协议',
-      '返回结构化结果：message 是候选人可见的那一句话；reason 用一句话说明生成依据（仅内部观测，候选人看不到）。只输出最终文案，不要给多个方案或解释过程。',
+      '返回结构化结果：message 是候选人可见的最终文案；reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
     ].join('\n');
   }
 
-  private formatRecentMessages(messages: ReengagementMemorySnapshot['recentMessages']): string {
+  private formatStateSummary(ctx: ReengagementComposeContext): string {
+    const lines: string[] = [];
+    if (ctx.scenario.code === 'store_presented_no_reply') {
+      lines.push('- 已推荐过岗位或门店：是');
+    }
+    if (ctx.scenario.code === 'booking_incomplete') {
+      const collected = Object.keys(ctx.state.collectedFields)
+        .map((key) => COLLECTED_FIELD_LABELS[key as CandidateFieldKey])
+        .filter(Boolean);
+      lines.push('- 收资状态：已开始但未完成');
+      lines.push(`- 已收集资料项：${collected.length > 0 ? collected.join('、') : '暂无'}`);
+      lines.push('- 提醒原则：只提醒继续补充，不猜测具体缺少哪些字段');
+    }
+    if (
+      ctx.scenario.code === 'interview_reminder' ||
+      ctx.scenario.code === 'post_interview_followup'
+    ) {
+      const interviewAt = (ctx.state as AuthoritativeSessionState & { interviewAt?: number })
+        .interviewAt;
+      lines.push('- 当前预约：已经过到点状态核验，仍可继续本场景');
+      if (interviewAt != null && Number.isFinite(interviewAt)) {
+        lines.push(`- 面试时间：${this.formatShanghaiTime(interviewAt)}`);
+      }
+    }
+    return lines.length > 0 ? lines.join('\n') : '（无额外状态信息）';
+  }
+
+  private formatRecentMessages(
+    messages: ReengagementMemorySnapshot['recentMessages'],
+    candidateNames: string[],
+  ): string {
     if (!messages.length) return '（无近期对话）';
     return messages
-      .map((message) => `${message.role === 'user' ? '候选人' : '你'}：${message.content}`)
+      .map((message) => {
+        const content = this.redactPersonalIdentifiers(message.content, candidateNames);
+        return `${message.role === 'user' ? '候选人' : '你'}：${content}`;
+      })
       .join('\n');
   }
 
   private formatFactLines(factLines: ReengagementMemorySnapshot['factLines']): string {
-    return factLines.length ? factLines.join('\n') : '（暂无已知结构化事实）';
+    const safeLines = factLines
+      .filter((line) => !OMITTED_REENGAGEMENT_FACT_PATTERN.test(line.trim()))
+      .map((line) => line.replace(/（置信度:[^）]*，来源:[^）]*）/g, ''));
+    return safeLines.length ? safeLines.join('\n') : '（暂无生成所需的结构化事实）';
+  }
+
+  private collectCandidateNames(
+    ctx: ReengagementComposeContext,
+    memory: ReengagementMemorySnapshot,
+  ): string[] {
+    const names = new Set<string>();
+    const add = (value: unknown) => {
+      if (typeof value !== 'string') return;
+      const normalized = value.trim();
+      if (normalized) names.add(normalized);
+    };
+    add(ctx.jobData.channelIdentity?.candidateName);
+    add(ctx.state.collectedFields.name?.value);
+    for (const line of memory.factLines) {
+      const matched = /^- 姓名:\s*([^（]+?)(?:（|$)/.exec(line.trim());
+      add(matched?.[1]);
+    }
+    return [...names].sort((a, b) => b.length - a.length);
+  }
+
+  private redactPersonalIdentifiers(text: string, candidateNames: string[]): string {
+    let redacted = text;
+    for (const name of candidateNames) {
+      redacted = redacted.split(name).join('（姓名已省略）');
+    }
+    return redacted.replace(/\b1[3-9]\d{9}\b/g, '（手机号已省略）');
+  }
+
+  private formatShanghaiTime(timestamp: number): string {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(timestamp));
   }
 
   // 以下方法只是把 AI SDK 返回值投影成现有观测字段，不承载复聊业务逻辑。

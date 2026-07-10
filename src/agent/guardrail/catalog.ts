@@ -26,12 +26,12 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   confirmed_booking_time_missing:
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
-  district_level_distance_claim:
-    'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
   hourly_salary_value_mismatch:
     'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
   human_service_phrase_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
+  identity_misregistration_coaching:
+    'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts（HardRulesService 调度）',
   image_description_not_saved:
     'agent/guardrail/output/rules/visual-message-errors.rule.ts（HardRulesService 调度）',
   job_shift_polarity_mismatch:
@@ -41,8 +41,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   schedule_filtered_job_recommended:
     'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
-  settlement_cycle_mismatch:
-    'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
+  summer_worker_non_summer_recommendation:
+    'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
   wait_notice_time_collection:
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
   booking_form_field_mismatch:
@@ -54,8 +54,6 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   geocode_uncertain_location_claim:
     'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
   group_full_without_invite:
-    'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
-  group_promise_without_invite:
     'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
   handoff_no_booking_claim:
     'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',

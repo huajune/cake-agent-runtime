@@ -28,12 +28,6 @@ import type { RuleContradiction } from '../output-rule.types';
 const EARLY_SHIFT_PATTERN = /早班|白班/;
 const LATE_SHIFT_PATTERN = /晚班|夜班|通宵/;
 
-const SETTLEMENT_GROUPS = [
-  { key: '日结', claim: /日结|当日结|当天结/, truth: /日结|当日结|当天结/ },
-  { key: '周结', claim: /周结|按周结/, truth: /周结|按周结/ },
-  { key: '月结', claim: /月结|按月结/, truth: /月结|次月|按月结/ },
-] as const;
-
 // "时薪 20 元 / 每小时20块 / 一小时 20 元" 形态
 const HOURLY_SALARY_PREFIX_PATTERN =
   /(?:时薪|每小时|每个小时|一小时|一个小时)[^\d\n]{0,6}(\d+(?:\.\d+)?)\s*(?:元|块)/g;
@@ -51,29 +45,9 @@ const SALARY_CONTEXT_VALUE_PATTERN =
 
 // 否定/疑问/切句判定已下沉到 claim-assertion.util（承诺类规则共用同一口径）。
 
-/**
- * 结算词的"要求复述"语境：句子是在转述候选人的求职条件（"符合晚班日结要求的岗位"、
- * "想找日结的"），不是在声称某个岗位的结算方式。
- * 上线首日误伤（2026-07-03 repair_exhausted 单）：告别话术"后续有…符合晚班日结要求
- * 的岗位上线，我再同步给你"被当成岗位结算声称连杀两版。
- *
- * "要求/需求"必须锚定候选人第一人称（"你的要求"）才豁免，不能作裸词：
- * "这个岗位要求日结"是在声称岗位结算口径，若与真实数据矛盾正是本规则要拦的
- * 值级矛盾场景（PR #421 review）。
- */
-const CURRENT_JOB_SETTLEMENT_ASSERTION_PATTERN =
-  /(?:这个|这家|该|当前|本|门店|岗位)[^。！？\n]{0,16}(?:符合|满足|支持|可以|能|是|要求)/;
-const SETTLEMENT_REQUIREMENT_ECHO_PATTERN =
-  /(?:按你|按您|想找|想做|想要|偏好|(?:你|您)的?(?:要求|需求|条件))[^。！？\n]{0,10}(?:日结|周结|月结|当日结|当天结)|(?:你|您)的?[^。！？\n]{0,8}(?:日结|周结|月结|当日结|当天结)[^。！？\n]{0,4}(?:要求|需求|条件)/;
-
 /** 未来承诺句（"后续有…上线再同步你"）：不构成对当前岗位事实的声称。 */
 const FUTURE_PROMISE_PATTERN =
   /(?:后续|以后|之后|回头|到时|等有|一旦有)[^。！？\n]*(?:上线|再(?:同步|通知|告诉|联系|喊|找)|留意|帮你留意)/;
-
-function isSettlementRequirementEcho(sentence: string): boolean {
-  if (CURRENT_JOB_SETTLEMENT_ASSERTION_PATTERN.test(sentence)) return false;
-  return SETTLEMENT_REQUIREMENT_ECHO_PATTERN.test(sentence);
-}
 
 /**
  * 拼出本轮岗位事实的 ground truth 文本（markdown + rawData JSON）。
@@ -231,35 +205,6 @@ function normalizeNumberToken(token: string): string {
   return Number.isFinite(value) ? String(value) : token;
 }
 
-/**
- * 结算方式对账：本轮岗位数据写了结算口径时，回复声称的日结/周结/月结必须与之相符。
- */
-export function detectSettlementCycleMismatch(
-  text: string,
-  toolCalls: AgentToolCall[],
-): RuleContradiction | null {
-  const truth = readJobFactGroundTruth(toolCalls);
-  if (!truth) return null;
-  // 工具输出里没有任何结算口径时无从对账，跳过
-  const truthHasAnySettlement = SETTLEMENT_GROUPS.some((group) => group.truth.test(truth));
-  if (!truthHasAnySettlement) return null;
-
-  for (const group of SETTLEMENT_GROUPS) {
-    const claimingSentences = splitClaimSentences(text).filter(
-      (sentence) =>
-        assertsClaim(sentence, group.claim) &&
-        // 复述候选人要求 / 未来上新承诺不算对当前岗位结算方式的声称
-        !isSettlementRequirementEcho(sentence) &&
-        !FUTURE_PROMISE_PATTERN.test(sentence),
-    );
-    if (claimingSentences.length === 0) continue;
-    if (group.truth.test(truth)) continue;
-    const truthKeys = SETTLEMENT_GROUPS.filter((g) => g.truth.test(truth)).map((g) => g.key);
-    return {
-      ruleId: 'settlement_cycle_mismatch',
-      label: `回复声称"${group.key}"，但本轮 duliday_job_list 返回的岗位结算口径是"${truthKeys.join('/')}"（badcase #15 日结/月结说错）`,
-      action: GUARDRAIL_ACTION.REVISE,
-    };
-  }
-  return null;
-}
+// settlement_cycle_mismatch（结算方式对账）已于 2026-07-10 下线：否定盲区（"附近暂时
+// 没日结的岗位"这类如实告知）造成系统性假阳，近 5 天 11 次命中里至少 7 次误伤诚实回复，
+// 3 次整轮 block、3 次 repair_exhausted。用户裁定整条下线，不做修补。

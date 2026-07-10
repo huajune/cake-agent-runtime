@@ -4,6 +4,7 @@ import type {
   SessionFacts,
 } from '@memory/types/session-facts.types';
 import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
+import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 
 /**
  * 提示词组装上下文 — 所有 section 共享
@@ -27,6 +28,8 @@ export interface PromptContext {
   sessionFacts?: EntityExtractionResult | SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
   highConfidenceFacts?: HighConfidenceFacts | null;
+  /** 当前消息对用工形式的 set/clear/ignore 决策；用于区分撤销旧偏好与岗位事实问句。 */
+  currentLaborFormIntent?: LaborFormIntentDecision;
 }
 
 /**

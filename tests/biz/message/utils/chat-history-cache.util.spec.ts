@@ -3,6 +3,7 @@ import {
   parseCachedChatHistoryMessages,
   serializeCachedChatHistoryMessage,
 } from '@biz/message/utils/chat-history-cache.util';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('chat-history-cache.util', () => {
   it('should build cache key', () => {
@@ -16,6 +17,11 @@ describe('chat-history-cache.util', () => {
       role: 'user',
       content: '你好',
       timestamp: 123,
+      source: StorageMessageSource.MOBILE_PUSH,
+      messageType: StorageMessageType.TEXT,
+      isSelf: true,
+      payloadSource: 'manual',
+      provenanceVersion: 2,
     });
 
     expect(parseCachedChatHistoryMessages([raw])).toEqual([
@@ -25,6 +31,11 @@ describe('chat-history-cache.util', () => {
         role: 'user',
         content: '你好',
         timestamp: 123,
+        source: StorageMessageSource.MOBILE_PUSH,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+        payloadSource: 'manual',
+        provenanceVersion: 2,
       },
     ]);
   });

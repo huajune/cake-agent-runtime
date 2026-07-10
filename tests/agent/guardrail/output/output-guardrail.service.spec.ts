@@ -97,16 +97,14 @@ describe('OutputGuardrailService', () => {
     const reviewer = noTriggerReviewer();
     const { service } = build(
       false,
-      makeRuleResult([
-        { ruleId: 'group_promise_without_invite', label: 'x', action: GUARDRAIL_ACTION.OBSERVE },
-      ]),
+      makeRuleResult([{ ruleId: 'repeated_reply', label: 'x', action: GUARDRAIL_ACTION.OBSERVE }]),
       reviewer,
     );
 
     const decision = await service.check(baseInput());
 
     expect(decision.decision).toBe('pass');
-    expect(decision.ruleIds).toEqual(['group_promise_without_invite']);
+    expect(decision.ruleIds).toEqual(['repeated_reply']);
     expect(reviewer.review).not.toHaveBeenCalled();
   });
 

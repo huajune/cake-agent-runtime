@@ -293,6 +293,47 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.brandAliasSource).toBe('input');
   });
 
+  it('rejects a model brand copied from an unverified nickname unless the user said it', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        contactName: 'Gattouzo',
+        contactBrandAliases: [],
+        currentUserMessage: '[位置分享] 上海松江',
+      },
+      { ...defaultInput, cityNameList: ['上海'], brandAliasList: ['Gattouzo'] },
+    );
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ brandAliasList: [] }),
+    );
+    expect(result.queryMeta.brandAliasSource).toBe('none');
+    expect(result.queryMeta.rejectedNicknameBrandAliases).toEqual(['Gattouzo']);
+  });
+
+  it('keeps an unknown brand when the candidate explicitly names it in the current message', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+    await executeTool(
+      {
+        ...mockContext,
+        contactName: 'Gattouzo',
+        contactBrandAliases: [],
+        currentUserMessage: 'Gattouzo 还招人吗',
+      },
+      { ...defaultInput, cityNameList: ['上海'], brandAliasList: ['Gattouzo'] },
+    );
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ brandAliasList: ['Gattouzo'] }),
+    );
+  });
+
   it('should return error when no jobs found', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
@@ -396,6 +437,118 @@ describe('buildJobListTool', () => {
     );
   });
 
+  it('normalizes Yanji to Sponge prefecture city and region even without coordinates', async () => {
+    const yanjiJob = makeJobData({
+      basicInfo: {
+        jobId: 528176,
+        brandName: '必胜客',
+        jobName: '必胜客-延吉万达店-小时工',
+        storeInfo: {
+          storeName: '延吉万达店',
+          storeAddress: '延河西路6999号延吉万达广场',
+          storeCityName: '延边朝鲜族自治州',
+          storeRegionName: '延吉市',
+          latitude: 42.906,
+          longitude: 129.471,
+        },
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValueOnce({ jobs: [yanjiJob], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['延吉'],
+    });
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        cityNameList: ['延边朝鲜族自治州'],
+        regionNameList: ['延吉市'],
+      }),
+    );
+    expect(result.resultCount).toBe(1);
+    expect(result.markdown).toContain('延吉万达店');
+    expect(result.queryMeta.cityFilterNormalization).toEqual([
+      {
+        requestedCity: '延吉',
+        spongeCity: '延边朝鲜族自治州',
+        spongeRegion: '延吉市',
+      },
+    ]);
+    expect(result.queryMeta.cityFilterRecovery).toBeNull();
+  });
+
+  it('recovers an unmapped county-level city from coordinates without adopting neighboring cities', async () => {
+    const kunshanJob = makeJobData({
+      basicInfo: {
+        jobId: 98,
+        storeInfo: {
+          storeName: '昆山店',
+          storeCityName: '苏州市',
+          storeRegionName: '昆山市',
+          latitude: 31.2,
+          longitude: 121.0,
+        },
+      },
+    });
+    mockSpongeService.fetchJobs
+      .mockResolvedValueOnce({ jobs: [], total: 0 })
+      .mockResolvedValueOnce({ jobs: [kunshanJob], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['昆山'],
+      location: { longitude: 121.0, latitude: 31.2, range: 10000 },
+    });
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
+    expect(mockSpongeService.fetchJobs.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ cityNameList: [] }),
+    );
+    expect(result.resultCount).toBe(1);
+    expect(result.queryMeta.cityFilterRecovery).toEqual({
+      attempted: true,
+      applied: true,
+      requestedCities: ['昆山'],
+      candidateCount: 1,
+      recoveredCount: 1,
+    });
+  });
+
+  it('does not adopt cross-city jobs from coordinate recovery when the city label does not match', async () => {
+    const kunshanJob = makeJobData({
+      basicInfo: {
+        jobId: 99,
+        storeInfo: {
+          storeName: '昆山店',
+          storeCityName: '苏州市',
+          storeRegionName: '昆山市',
+          latitude: 31.2,
+          longitude: 121.0,
+        },
+      },
+    });
+    mockSpongeService.fetchJobs
+      .mockResolvedValueOnce({ jobs: [], total: 0 })
+      .mockResolvedValueOnce({ jobs: [kunshanJob], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['上海'],
+      location: { longitude: 121.0, latitude: 31.2, range: 10000 },
+    });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(result.cityFilterRecovery).toEqual({
+      attempted: true,
+      applied: false,
+      requestedCities: ['上海'],
+      candidateCount: 1,
+      recoveredCount: 0,
+    });
+  });
+
   it('should call onJobsFetched callback', async () => {
     const job = makeJobData({
       jobSalary: {
@@ -490,6 +643,23 @@ describe('buildJobListTool', () => {
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
     expect(result.reason).toBe('API timeout');
     expect(result._replyInstruction).not.toContain('API timeout');
+  });
+
+  it('does not fall back to historical non-summer jobs when a summer-worker query fails', async () => {
+    mockSpongeService.fetchJobs.mockRejectedValue(new Error('API timeout'));
+
+    const result = await executeTool({
+      ...mockContext,
+      sessionFacts: {
+        interview_info: {},
+        preferences: { labor_form: '暑假工' },
+      } as ToolBuildContext['sessionFacts'],
+    });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
+    expect(result._replyInstruction).toContain('候选人已明确只要暑假工');
+    expect(result._replyInstruction).toContain('不得基于 [会话记忆] 的普通兼职/小时工/全职岗位');
+    expect(result._replyInstruction).toContain('不得推荐、收资或约面');
   });
 
   it('should prepend interview decision summary when requirement or interview flags are enabled', async () => {
@@ -1275,27 +1445,29 @@ describe('buildJobListTool', () => {
     it('严格匹配为空、按兼职家族放宽命中：markdown 注入强制提示且 metadata 带 relaxedToFamily', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
-          makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职+' } }),
-          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '小时工' } }),
+          makeJobData({
+            basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职', partTimeJobType: '小时工' },
+          }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '兼职' } }),
           makeJobData({ basicInfo: { jobId: 3, brandName: '奥乐齐', laborForm: '全职' } }),
         ],
         total: 3,
       });
 
-      const result = await executeTool(contextWithLaborForm('兼职'));
+      const result = await executeTool(contextWithLaborForm('寒假工'));
 
       // 强制提示：禁止把家族岗位包装成候选人原话里的用工形式
-      expect(result.markdown).toContain('附近暂无岗位字段严格标注为「兼职」的岗位');
-      expect(result.markdown).toContain('必须按每个岗位真实的用工形式说明');
-      expect(result.markdown).toContain('不得把它们统称或包装成「兼职」');
+      expect(result.markdown).toContain('附近暂无结构化字段严格标注为「寒假工」的岗位');
+      expect(result.markdown).toContain('必须按每个岗位真实的用工形式/兼职类型说明');
+      expect(result.markdown).toContain('不得把它们统称或包装成「寒假工」');
       expect(result.queryMeta.laborFormFilter).toEqual(
         expect.objectContaining({
           applied: true,
-          candidateLaborForm: '兼职',
+          candidateLaborForm: '寒假工',
           relaxedToFamily: true,
         }),
       );
-      // 家族放宽只扩到兼职形态：全职岗仍被剔除
+      // 家族放宽只扩到 laborForm=兼职：全职岗仍被剔除
       expect(result.resultCount).toBe(2);
       expect(result.markdown).not.toContain('奥乐齐');
     });
@@ -1304,14 +1476,14 @@ describe('buildJobListTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
           makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职' } }),
-          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '兼职+' } }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '全职' } }),
         ],
         total: 2,
       });
 
       const result = await executeTool(contextWithLaborForm('兼职'));
 
-      expect(result.markdown).not.toContain('附近暂无岗位字段严格标注为');
+      expect(result.markdown).not.toContain('附近暂无结构化字段严格标注为');
       expect(result.queryMeta.laborFormFilter).toEqual(
         expect.objectContaining({
           applied: true,
@@ -1325,21 +1497,25 @@ describe('buildJobListTool', () => {
 
     it('候选人无用工形式偏好时不过滤也不注入提示', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职+' } })],
+        jobs: [makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职' } })],
         total: 1,
       });
 
       const result = await executeTool();
 
-      expect(result.markdown).not.toContain('附近暂无岗位字段严格标注为');
+      expect(result.markdown).not.toContain('附近暂无结构化字段严格标注为');
       expect(result.queryMeta.laborFormFilter).toEqual({ applied: false });
     });
 
     it('要全职时不参与家族放宽：附近只有兼职形态岗位应返回过滤后为空的错误', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
-          makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职+' } }),
-          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '小时工' } }),
+          makeJobData({
+            basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职', partTimeJobType: '寒假工' },
+          }),
+          makeJobData({
+            basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '兼职', partTimeJobType: '小时工' },
+          }),
         ],
         total: 2,
       });
@@ -1354,7 +1530,9 @@ describe('buildJobListTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
           makeJobData({ basicInfo: { jobId: 1, brandName: 'KFC', laborForm: '兼职' } }),
-          makeJobData({ basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '小时工' } }),
+          makeJobData({
+            basicInfo: { jobId: 2, brandName: '瑞幸', laborForm: '兼职', partTimeJobType: '小时工' },
+          }),
         ],
         total: 2,
       });
@@ -1364,11 +1542,77 @@ describe('buildJobListTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY);
       expect(result._replyInstruction).toContain('附近暂时没有暑假工的岗位');
       expect(result._replyInstruction).toContain('把常规岗说成暑假工');
+      expect(result._replyInstruction).toContain(
+        '不得主动推荐、展示或询问是否考虑普通兼职/小时工/全职',
+      );
       expect(result.queryMeta.laborFormFilter).toEqual(
         expect.objectContaining({
           applied: true,
           candidateLaborForm: '暑假工',
           excludedCount: 2,
+        }),
+      );
+      expect(result.queryMeta.laborFormFilter).not.toHaveProperty('excludedExamples');
+    });
+
+    it('要暑假工时混合岗位池只返回暑假工，并隐藏被剔除普通岗位详情', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({ basicInfo: { jobId: 1, brandName: '暑假工品牌', laborForm: '兼职', partTimeJobType: '暑假工' } }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '普通兼职品牌', laborForm: '兼职' } }),
+          makeJobData({ basicInfo: { jobId: 3, brandName: '小时工品牌', laborForm: '兼职', partTimeJobType: '小时工' } }),
+        ],
+        total: 3,
+      });
+
+      const result = await executeTool(contextWithLaborForm('暑假工'));
+
+      expect(result.resultCount).toBe(1);
+      expect(result.markdown).toContain('只能推荐下方暑假工岗位');
+      expect(result.markdown).toContain('暑假工品牌');
+      expect(result.markdown).not.toContain('普通兼职品牌');
+      expect(result.markdown).not.toContain('小时工品牌');
+      expect(result.queryMeta.laborFormFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateLaborForm: '暑假工',
+          relaxedToFamily: false,
+          excludedCount: 2,
+        }),
+      );
+      expect(result.queryMeta.laborFormFilter).not.toHaveProperty('excludedExamples');
+    });
+
+    it('当前轮高置信暑假工意向覆盖旧会话兼职意向', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({ basicInfo: { jobId: 1, brandName: '暑假工品牌', laborForm: '兼职', partTimeJobType: '暑假工' } }),
+          makeJobData({ basicInfo: { jobId: 2, brandName: '普通兼职品牌', laborForm: '兼职' } }),
+        ],
+        total: 2,
+      });
+
+      const result = await executeTool({
+        ...contextWithLaborForm('兼职'),
+        highConfidenceFacts: {
+          preferences: {
+            labor_form: {
+              value: '暑假工',
+              confidence: 'high',
+              source: 'rule',
+              evidence: '用工形式识别：暑假工',
+            },
+          },
+        } as ToolBuildContext['highConfidenceFacts'],
+      });
+
+      expect(result.resultCount).toBe(1);
+      expect(result.markdown).toContain('暑假工品牌');
+      expect(result.markdown).not.toContain('普通兼职品牌');
+      expect(result.queryMeta.laborFormFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          candidateLaborForm: '暑假工',
         }),
       );
     });

@@ -415,7 +415,9 @@ describe('AgentRunnerService.runTurn', () => {
     replyRepairContextProvider.build.mockResolvedValueOnce({
       recentMessages: [{ role: 'user', content: '你好' }],
       factLines: ['城市：上海'],
-      invitedGroups: [{ groupName: '上海餐饮兼职群', city: '上海', industry: '餐饮', invitedAt: 't' }],
+      invitedGroups: [
+        { groupName: '上海餐饮兼职群', city: '上海', industry: '餐饮', invitedAt: 't' },
+      ],
       groupInventory: { city: '上海', hasAnyGroup: true, lines: ['- 餐饮：1 个群（均有空位）'] },
       presentedJobs: [],
       candidatePool: [],
@@ -464,53 +466,6 @@ describe('AgentRunnerService.runTurn', () => {
       originalReply: '原始回复（语气僵硬）',
       ruleIds: [],
     });
-  });
-
-  it('applies a deterministic text fix before LLM repair when possible', async () => {
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: '松江这边有岗位，距离 9.4km。' }));
-    outputGuard.check
-      .mockResolvedValueOnce({
-        decision: 'revise',
-        riskLevel: 'medium',
-        violations: [
-          {
-            type: 'district_level_distance_claim',
-            evidence: '区级位置报精确距离',
-            suggestion: '改成估算口径',
-            recoverability: 'recoverable',
-          },
-        ],
-        ruleIds: ['district_level_distance_claim'],
-        blockedRuleIds: ['district_level_distance_claim'],
-        repairMode: 'rewrite',
-      })
-      .mockResolvedValueOnce(passDecision);
-
-    const outcome = await service.runTurn({
-      sessionRef,
-      trigger: { kind: 'inbound', userMessage: '松江这边有吗' },
-      context: { messageId: 'msg-deterministic-fix' },
-    });
-
-    expect(outcome.kind).toBe('reply');
-    expect(outcome.reply?.text).toBe('松江这边有岗位，距离 约9公里（按区域位置估算的）。');
-    expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(outputGuard.check).toHaveBeenCalledTimes(2);
-    expect(outputGuard.check.mock.calls[1][0]).toEqual(
-      expect.objectContaining({
-        reply: '松江这边有岗位，距离 约9公里（按区域位置估算的）。',
-        silent: true,
-      }),
-    );
-    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        traceId: 'msg-deterministic-fix',
-        repaired: true,
-        revisedReply: '松江这边有岗位，距离 约9公里（按区域位置估算的）。',
-        finalDecision: 'pass',
-        reasonCode: 'deterministic_fix',
-      }),
-    );
   });
 
   it('sanitizes platform brand violation by deterministic text fix without LLM repair', async () => {

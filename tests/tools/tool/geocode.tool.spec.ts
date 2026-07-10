@@ -2,6 +2,7 @@ import { buildGeocodeTool } from '@tools/geocode.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import type { ToolBuildContext } from '@shared-types/tool.types';
 
 type ExecuteFn = (args: { address: string; city?: string | null }) => Promise<unknown>;
 
@@ -369,6 +370,142 @@ describe('geocode tool', () => {
       const result = (await execute({ address: '板桥' })) as Record<string, unknown>;
 
       expect(result.resolution).toBe('unique');
+    });
+  });
+
+  describe('可信位置锚点纠偏', () => {
+    const buildContextualExecute = (
+      anchor: NonNullable<ToolBuildContext['geocodeLocationAnchor']>,
+    ): ExecuteFn => {
+      const contextualTool = buildGeocodeTool(mockGeocodingService)({
+        userId: 'test-user',
+        corpId: 'test-corp',
+        sessionId: 'test-session',
+        messages: [],
+        geocodeLocationAnchor: anchor,
+      });
+      return (contextualTool as unknown as { execute: ExecuteFn }).execute;
+    };
+
+    const manualAnchor: NonNullable<ToolBuildContext['geocodeLocationAnchor']> = {
+      city: '上海',
+      districts: ['嘉定'],
+      source: 'human_agent',
+      referenceText: '上海嘉定同济园是吧，我看下',
+      evidence: '人工招募经理消息：上海嘉定同济园是吧，我看下',
+    };
+
+    it('首查错到杨浦时带完整锚点重查，并只返回嘉定坐标（batch_6a4f77b6）', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock)
+        .mockResolvedValueOnce([
+          makeCandidate({
+            formattedAddress: '上海市杨浦区本溪路300号同济绿园',
+            district: '杨浦区',
+            poiName: '同济绿园',
+            longitude: 121.511576,
+            latitude: 31.274761,
+          }),
+        ])
+        .mockResolvedValueOnce([
+          makeCandidate({
+            formattedAddress: '上海市嘉定区曹安公路4800号同济大学嘉定校区',
+            district: '嘉定区',
+            poiName: '同济大学(嘉定校区)',
+            longitude: 121.21416,
+            latitude: 31.286012,
+          }),
+        ]);
+
+      const contextualExecute = buildContextualExecute(manualAnchor);
+      const result = (await contextualExecute({ address: '同济园', city: '上海' })) as Record<
+        string,
+        unknown
+      >;
+
+      expect(mockGeocodingService.searchCandidates).toHaveBeenNthCalledWith(1, '同济园', '上海');
+      expect(mockGeocodingService.searchCandidates).toHaveBeenNthCalledWith(
+        2,
+        '上海嘉定同济园',
+        '上海',
+      );
+      expect(result.resolution).toBe('unique');
+      expect(result.result).toMatchObject({
+        district: '嘉定区',
+        longitude: 121.21416,
+        latitude: 31.286012,
+      });
+      expect(result.contextCorrection).toMatchObject({
+        applied: true,
+        originalAddress: '同济园',
+        resolvedAddress: '上海嘉定同济园',
+      });
+    });
+
+    it('首批候选同时含杨浦和嘉定时先按锚点过滤，不被同城 unique 误导', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ district: '杨浦区', poiName: '同济绿园', longitude: 121.51 }),
+        makeCandidate({ district: '嘉定区', poiName: '同济大学嘉定校区', longitude: 121.21 }),
+      ]);
+
+      const result = (await buildContextualExecute(manualAnchor)({
+        address: '同济园',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledTimes(1);
+      expect(result.result).toMatchObject({ district: '嘉定区', longitude: 121.21 });
+    });
+
+    it('重查仍错区时 fail closed，不暴露首次错误坐标', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({
+          formattedAddress: '上海市杨浦区本溪路300号同济绿园',
+          district: '杨浦区',
+          poiName: '同济绿园',
+          longitude: 121.511576,
+          latitude: 31.274761,
+        }),
+      ]);
+
+      const result = (await buildContextualExecute(manualAnchor)({
+        address: '同济园',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_ANCHOR_MISMATCH);
+      expect(result.resolution).toBeUndefined();
+      expect(result.result).toBeUndefined();
+      expect(result.longitude).toBeUndefined();
+      expect(result._replyInstruction).toContain('禁止采用本次坐标');
+    });
+
+    it('首次已命中锚点区县时不重复查询', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ district: '嘉定区', poiName: '同济大学嘉定校区' }),
+      ]);
+
+      const result = (await buildContextualExecute(manualAnchor)({
+        address: '同济园',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledTimes(1);
+    });
+
+    it('与人工锚点无关的新地点不套用旧区县', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ district: '杨浦区', poiName: '五角场' }),
+      ]);
+
+      const result = (await buildContextualExecute(manualAnchor)({
+        address: '五角场',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+      expect(result.result).toMatchObject({ district: '杨浦区' });
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledTimes(1);
     });
   });
 

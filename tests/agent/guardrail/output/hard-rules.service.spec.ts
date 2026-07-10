@@ -32,12 +32,6 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('downgrades precise distance wording to an area-level estimate', () => {
-      expect(
-        tryDeterministicFix('松江这边有岗位，距离 9.4km。', ['district_level_distance_claim']),
-      ).toBe('松江这边有岗位，距离 约9公里（按区域位置估算的）。');
-    });
-
     it('returns null when no deterministic string fix applies', () => {
       expect(tryDeterministicFix('我帮你看看岗位。', ['quota_promise'])).toBeNull();
     });
@@ -573,9 +567,7 @@ describe('HardRulesService', () => {
         ] as never,
       });
 
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'requested_brand_mismatch',
-      );
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('requested_brand_mismatch');
     });
 
     it('does not flag requested brand mismatch when asking before alternative brands', () => {
@@ -757,6 +749,272 @@ describe('HardRulesService', () => {
           }),
         ]),
       );
+    });
+
+    describe('summer_worker_non_summer_recommendation', () => {
+      const summerFilterCall = (status: 'ok' | 'error' = 'error'): AgentToolCall => ({
+        toolName: 'duliday_job_list',
+        args: {},
+        result:
+          status === 'error'
+            ? {
+                success: false,
+                errorType: 'job_list.labor_form_filter_empty',
+                queryMeta: {
+                  laborFormFilter: {
+                    applied: true,
+                    candidateLaborForm: '暑假工',
+                    excludedCount: 2,
+                  },
+                },
+              }
+            : {
+                resultCount: 1,
+                markdown: '- **用工形式**: 暑假工',
+                queryMeta: {
+                  laborFormFilter: {
+                    applied: true,
+                    candidateLaborForm: '暑假工',
+                    excludedCount: 2,
+                  },
+                },
+              },
+        status,
+      });
+
+      it('blocks proposing ordinary part-time/hourly work after summer filtering is empty', () => {
+        const result = service.check({
+          replyText: '附近暂时没有暑假工，不过普通兼职和小时工也可以考虑，你愿意的话我帮你看看。',
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ruleId: 'summer_worker_non_summer_recommendation',
+              action: GUARDRAIL_ACTION.REVISE,
+              currentReplySendable: false,
+            }),
+          ]),
+        );
+      });
+
+      it('blocks relabeling a returned summer job as hourly work and continuing booking', () => {
+        const result = service.check({
+          replyText: '这个岗位是小时工，挺适合你的，我帮你报名面试。',
+          toolCalls: [summerFilterCall('ok')],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('blocks a direct downgrade when current message says 暑期工 even without job_list', () => {
+        const result = service.check({
+          userMessage: '我只找暑期工',
+          replyText: '那可以考虑普通兼职，我先给你推荐一家。',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('allows a truthful summer-worker no-match close without downgrade suggestions', () => {
+        const result = service.check({
+          replyText: '附近暂时没有暑假工岗位，后续有匹配的暑假工上线我再联系你。',
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('allows explicitly rejecting non-summer jobs instead of recommending them', () => {
+        const result = service.check({
+          replyText: '这家是普通兼职，不是暑假工，所以我先不推荐给你。',
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('does not treat an explicitly negated summer-worker message as summer intent', () => {
+        const result = service.check({
+          userMessage: '我不是暑假工，想长期做兼职',
+          replyText: '普通兼职可以考虑，我帮你查一下。',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('keeps the latest summer intent across a follow-up that only provides location', () => {
+        const result = service.check({
+          userMessage: '我在浦东',
+          recentUserTexts: ['我只找暑假工', '我在浦东'],
+          replyText: '普通兼职也可以考虑，我把刚才那家继续推荐给你。',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('does not treat merely asking whether a job is hourly work as accepting hourly work', () => {
+        const result = service.check({
+          userMessage: '这个是小时工吗',
+          recentUserTexts: ['我只找暑假工', '这个是小时工吗'],
+          replyText: '是小时工，也可以考虑，我继续帮你报名。',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('allows a later explicit change from summer work to regular part-time work', () => {
+        const result = service.check({
+          userMessage: '普通兼职也可以',
+          recentUserTexts: ['我只找暑假工', '普通兼职也可以'],
+          replyText: '那我按普通兼职帮你重新查。',
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('allows the screenshot-style explicit acceptance "普通兼职貌似好"', () => {
+        const result = service.check({
+          userMessage: '普通兼职貌似好',
+          recentUserTexts: ['我只找暑假工', '普通兼职貌似好'],
+          replyText: '那我按普通兼职帮你重新查。',
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('does not apply summer-only output guard to an uncertain summer-worker answer', () => {
+        const result = service.check({
+          userMessage: '我不知道是不是暑假工',
+          replyText: '普通兼职可以考虑，我帮你查一下。',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('does not apply summer-only output guard when the candidate explicitly accepts hourly work', () => {
+        const result = service.check({
+          userMessage: '暑假工或者小时工都可以',
+          replyText: '那我也帮你看看小时工。',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it.each([
+        '要不看看普通兼职？',
+        '先做普通兼职怎么样？',
+        '普通兼职也有，你看吗？',
+        '普通兼职也可以吗？',
+        '我帮你查一下普通兼职',
+        '我先给你找个小时工',
+        '附近只有普通兼职，是否需要我给你查一下？',
+      ])('blocks a colloquial non-summer downgrade suggestion: %s', (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it.each([
+        '普通兼职不能推荐给你',
+        '这个岗位是普通兼职，不符合你的暑假工要求',
+        '我不会给你推荐普通兼职，只按暑假工查',
+        '不能帮你报名小时工，只能等暑假工',
+      ])('allows a local rejection of a non-summer option: %s', (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('does not let one rejected option mask a later hourly-work suggestion', () => {
+        const result = service.check({
+          replyText: '普通兼职不能推荐给你，但要不看看小时工？',
+          toolCalls: [summerFilterCall()],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('keeps an earlier summer-only intent across an uncertain current-job question', () => {
+        const result = service.check({
+          userMessage: '我不知道这个岗位是不是暑假工',
+          recentUserTexts: ['我只找暑假工', '我不知道这个岗位是不是暑假工'],
+          replyText: '要不看看普通兼职？',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('keeps an earlier summer-only intent when the candidate rejects ordinary part-time work', () => {
+        const result = service.check({
+          userMessage: '我不考虑普通兼职',
+          recentUserTexts: ['我只找暑假工', '我不考虑普通兼职'],
+          replyText: '那我还是给你看看普通兼职。',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
+
+      it('does not create a summer-only intent from a current-job type question alone', () => {
+        const result = service.check({
+          userMessage: '这个岗位是不是暑假工',
+          replyText: '要不看看普通兼职？',
+          toolCalls: [],
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'summer_worker_non_summer_recommendation',
+        );
+      });
     });
 
     it('asks for revision when group-full claim is not grounded by invite_to_group', () => {
@@ -1398,6 +1656,88 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('flags booking/collection pitch when summer-worker guard blocks a non-summer job', () => {
+      const result = service.check({
+        replyText: '这个小时工可以约，你把资料发我，我帮你预约面试。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: { candidateLaborForm: '暑假工' },
+            result: {
+              nextAction: 'collect_fields',
+              temporarySummerWorkerGuard: {
+                status: 'blocked_non_summer_job',
+                reason: '当前岗位不是暑假工',
+              },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'precheck_blocked_booking_claim',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it.each([
+      '先把姓名、电话和年龄发我，我帮你登记一下',
+      '把资料补充一下：姓名、电话、年龄',
+      '你把资料发我，我继续帮你处理',
+    ])(
+      'flags pure data collection after summer-worker precheck blocks the job: %s',
+      (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [
+            {
+              toolName: 'duliday_interview_precheck',
+              args: { candidateLaborForm: '暑假工' },
+              result: {
+                nextAction: 'collect_fields',
+                temporarySummerWorkerGuard: {
+                  status: 'blocked_non_summer_job',
+                  reason: '当前岗位不是暑假工',
+                },
+              },
+              status: 'ok',
+            },
+          ] as never,
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain(
+          'precheck_blocked_booking_claim',
+        );
+      },
+    );
+
+    it('allows telling a blocked summer worker not to submit personal data', () => {
+      const result = service.check({
+        replyText: '这个岗位不是暑假工，先不用发姓名和电话，我不会继续帮你登记。',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: { candidateLaborForm: '暑假工' },
+            result: {
+              nextAction: 'collect_fields',
+              temporarySummerWorkerGuard: { status: 'blocked_non_summer_job' },
+            },
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'precheck_blocked_booking_claim',
+      );
+    });
+
     it('does not flag bookable claim while precheck asks to confirm date (confirm_date 是推进态)', () => {
       const result = service.check({
         replyText: '可以约的，这几天都有场次，你想约哪天？',
@@ -1564,6 +1904,33 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('asks for revision when a trusted location anchor rejects the geocode result', () => {
+      const result = service.check({
+        replyText: '杨浦这边附近暂时没有合适岗位。',
+        toolCalls: [
+          {
+            toolName: 'geocode',
+            args: { address: '同济园', city: '上海' },
+            result: {
+              success: false,
+              errorType: 'geocode.anchor_mismatch',
+              _replyInstruction: '请向候选人确认更具体的区/地标。',
+            },
+            status: 'error',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'geocode_uncertain_location_claim',
+            action: GUARDRAIL_ACTION.REVISE,
+          }),
+        ]),
+      );
+    });
+
     it('asks for revision when request_handoff found no booking but reply claims handoff or cancellation', () => {
       const result = service.check({
         replyText: '已帮你取消并转人工处理，后续会有人联系你。',
@@ -1590,33 +1957,81 @@ describe('HardRulesService', () => {
         ]),
       );
     });
+  });
 
-    it('does NOT flag future-tense invite promise（征询/承诺式是场景 2/3 设计内的前置轮）', () => {
-      // 2026-07-06 口径校准：先承接意向、候选人同意后下一轮实调 invite 是设计内动作链，
-      // 未来式承诺不再要求本轮已成功拉群。
+  describe('identity_misregistration_coaching (badcase chat 6a50827c 教唆按非暑假工登记)', () => {
+    const summerGuardPrecheck = (status: 'blocked_non_summer_job' | 'needs_confirmation') =>
+      [
+        {
+          toolName: 'duliday_interview_precheck',
+          args: {},
+          result: {
+            nextAction: 'collect_fields',
+            temporarySummerWorkerGuard: { status },
+          },
+          status: 'ok',
+        },
+      ] as never;
+
+    it('flags the audit-evasion coaching verbatim from the badcase (无需工具佐证)', () => {
       const result = service.check({
-        replyText: '我先拉你进群，后续群里会同步通知。',
-        toolCalls: [],
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'group_promise_without_invite',
-      );
-    });
-
-    it('does not treat "already invited" as historical context without an explicit past-time anchor', () => {
-      const result = service.check({
-        replyText: '已经拉你进群了，后续群里会同步通知。',
+        replyText:
+          '行，那为了顺利过系统审核，我帮你按“非暑假工（长期兼职）”登记上去可以吗？面试时你跟店长如实说下暑期能做两个月就行。',
         toolCalls: [],
       });
 
       expect(result.contradictions).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            ruleId: 'group_promise_without_invite',
+            ruleId: 'identity_misregistration_coaching',
             action: GUARDRAIL_ACTION.REVISE,
           }),
         ]),
+      );
+    });
+
+    it('flags concealment advice "先别说你是暑假工"', () => {
+      const result = service.check({
+        replyText: '面试的时候先别说你是暑假工，店长问了再说能做到八月底。',
+        toolCalls: [],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'identity_misregistration_coaching',
+      );
+    });
+
+    it('flags identity-rewrite registration while the summer guard is active', () => {
+      const result = service.check({
+        replyText: '那我帮你登记为社会人士，这样就能约上了。',
+        toolCalls: summerGuardPrecheck('needs_confirmation'),
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'identity_misregistration_coaching',
+      );
+    });
+
+    it('does not flag identity-rewrite phrasing without an active summer guard（候选人真实非暑假工的如实登记）', () => {
+      const result = service.check({
+        replyText: '好的，你是长期做的话，我就按长期兼职帮你登记。',
+        toolCalls: [],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'identity_misregistration_coaching',
+      );
+    });
+
+    it('does not flag the honest no-summer-jobs relay', () => {
+      const result = service.check({
+        replyText:
+          '这家目前标注的是常规兼职，暑期暂时不招暑假工哈。我先帮你留意，后续有暑假工岗位上线第一时间通知你。',
+        toolCalls: summerGuardPrecheck('blocked_non_summer_job'),
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'identity_misregistration_coaching',
       );
     });
   });
@@ -1676,66 +2091,6 @@ describe('HardRulesService', () => {
           ]),
           toolNames: [],
         }),
-      );
-    });
-
-    it('does NOT flag future-tense 拉群 promise（本轮先承接、下一轮实调是设计内动作链）', async () => {
-      const result = service.check({
-        replyText: '行，那我拉你进咱们餐饮兼职群，后面有合适的岗位我直接群里通知你。',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'group_promise_without_invite',
-      );
-    });
-
-    it('flags completed-claim "群邀请已经发你了" without any invite_to_group call', async () => {
-      const result = service.check({
-        replyText: '群邀请已经发你了，点一下卡片就能进群。',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-      expect(result.hit).toBe(true);
-      expect(result.contradictions.map((c) => c.ruleId)).toContain('group_promise_without_invite');
-    });
-
-    it('tells repair writer to delete group invitation wording instead of asking again', async () => {
-      const result = service.check({
-        replyText: '群邀请已经发你了，点一下卡片就能进群。',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-      const hit = result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite');
-
-      expect(hit?.feedbackToGenerator).toContain('不新增拉群征询');
-      expect(hit?.feedbackToGenerator).toContain('禁止新增"需要拉你进群吗/我可以拉你进群"');
-      expect(hit?.feedbackToGenerator).not.toContain('可以征询候选人是否愿意进群');
-    });
-
-    it('passes "入群邀请已经发你了" when invite_to_group succeeded this turn', async () => {
-      const result = service.check({
-        replyText: '入群邀请已经发你了，点一下卡片就能进群。有新岗位群里第一时间通知你。',
-        toolCalls: [makeInviteCall()],
-        chatId: 'chat-1',
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'group_promise_without_invite',
-      );
-    });
-
-    it('does NOT flag completed-claim when invite was called but status/result got lost（流水 status=unknown 缺口）', async () => {
-      // 生产已知缺口：invite_to_group 被真实调用但 status=unknown 且 result 未落。
-      // 无法证伪时宁可放过，不误拦正确的"邀请已发"话术（2026-07-06 守卫档案 id=3）。
-      const result = service.check({
-        replyText: '群邀请发你了，点一下就能进群。',
-        toolCalls: [
-          { toolName: 'invite_to_group', args: { city: '北京' }, status: 'unknown' },
-        ] as never,
-        chatId: 'chat-1',
-      });
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'group_promise_without_invite',
       );
     });
 
@@ -1862,16 +2217,6 @@ describe('HardRulesService', () => {
         chatId: 'chat-1',
       });
       expect(result.hit).toBe(false);
-    });
-
-    it('STILL flags "我拉你进群了" assertion without invite_to_group (not a question)', async () => {
-      const result = service.check({
-        replyText: '我拉你进咱们餐饮兼职群了，后面有合适的直接通知你。',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-      expect(result.hit).toBe(true);
-      expect(result.contradictions[0].ruleId).toBe('group_promise_without_invite');
     });
 
     it('does NOT flag promise when invite_to_group success backs it', async () => {
@@ -2636,145 +2981,6 @@ describe('HardRulesService', () => {
         ).toBeUndefined();
       });
     });
-
-    describe('settlement_cycle_mismatch', () => {
-      it('flags when reply claims 日结 but tool facts say 月结 (badcase #15)', () => {
-        const result = service.check({
-          replyText: '这家是日结的哦。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结（次月15日发放）')],
-          chatId: 'chat-1',
-        });
-
-        const hit = result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch');
-        expect(hit).toBeDefined();
-        expect(hit?.label).toContain('月结');
-      });
-
-      it('passes when claimed settlement matches tool facts', () => {
-        const result = service.check({
-          replyText: '工资日结。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 日结')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeUndefined();
-      });
-
-      it('treats 次月 as 月结 support', () => {
-        const result = service.check({
-          replyText: '这家是月结。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 次月10日发放')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeUndefined();
-      });
-
-      it('unions settlement facts across multiple usable job-list calls', () => {
-        // 第一次全市扩面查到周结岗，第二次近距离复查只剩月结岗——"周结"仍是本轮接地事实
-        const result = service.check({
-          replyText: '这家是周结，每周三发薪。',
-          toolCalls: [
-            makeMarkdownJobListCall('- **结算周期**: 周结算, 每周三发薪'),
-            makeMarkdownJobListCall('- **结算周期**: 月结算, 15号发薪'),
-          ],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeUndefined();
-      });
-
-      it('skips when tool facts carry no settlement info', () => {
-        const result = service.check({
-          replyText: '这家是日结的。',
-          toolCalls: [makeMarkdownJobListCall('- **薪资**: 22元/时')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeUndefined();
-      });
-
-      it('skips question and negation sentences', () => {
-        const result = service.check({
-          replyText: '你要找日结的吗？这家不是日结。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeUndefined();
-      });
-
-      it('skips requirement echo + future promise (上线首日 repair_exhausted 告别话术误伤)', () => {
-        const result = service.check({
-          replyText:
-            '行，那我这边先不硬推了哈。后续有离你近点、或者符合晚班日结要求的岗位上线，我再同步给你。你先忙，有需要随时找我。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 周结（每周三发）')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeUndefined();
-      });
-
-      it('still flags a real settlement claim even alongside a requirement echo', () => {
-        const result = service.check({
-          replyText: '你想找日结的对吧？这家就是日结的哦。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeDefined();
-      });
-
-      it('flags 岗位要求日结 as a job-fact claim (bare 要求 must not trigger the echo exemption)', () => {
-        const result = service.check({
-          replyText: '这个岗位要求日结上岗。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeDefined();
-      });
-
-      it('flags 当前岗位满足日结要求 as a real settlement claim', () => {
-        const result = service.check({
-          replyText: '这个岗位满足你的日结要求。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeDefined();
-      });
-
-      it('keeps exempting first-person requirement echo (你的日结要求)', () => {
-        const result = service.check({
-          replyText: '你的日结要求我记下了，有合适的再喊你。',
-          toolCalls: [makeMarkdownJobListCall('- **结算周期**: 月结')],
-          chatId: 'chat-1',
-        });
-
-        expect(
-          result.contradictions.find((c) => c.ruleId === 'settlement_cycle_mismatch'),
-        ).toBeUndefined();
-      });
-    });
   });
 
   describe('human_service_phrase_leak (badcase recvjXBkmV6idz / recvnV3iYGZnBJ)', () => {
@@ -2873,146 +3079,6 @@ describe('HardRulesService', () => {
       });
 
       expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeUndefined();
-    });
-  });
-
-  describe('group_promise 口径（2026-07-06 校准：只拦完成时态，征询/承诺式放行）', () => {
-    it('does NOT flag 帮你进餐饮兼职群 future promise（noMatchScript.candidateMessage 脚本原文）', () => {
-      // job_list 无结果时工具指示照念这句话再拉群；承诺式话术是设计内前置轮，不拦。
-      const result = service.check({
-        replyText: '我先帮你进餐饮兼职群，后续有合适的我会第一时间@你。',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
-      ).toBeUndefined();
-    });
-
-    it('does NOT flag conditional proposal "确认后我拉你进兼职群"（守卫档案 id=23 假阳回归）', () => {
-      const result = service.check({
-        replyText:
-          '方便确认下你是在南京吗？确认后我拉你进兼职群，后续有合适的岗位我第一时间通知你。',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
-      ).toBeUndefined();
-    });
-
-    it('does NOT flag "或者我先帮你进餐饮兼职群…？"（守卫档案 id=11 假阳回归）', () => {
-      const result = service.check({
-        replyText:
-          '海淀目前就这几家在招，要是觉得远，或者我先帮你进餐饮兼职群，有新岗第一时间通知你？',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
-      ).toBeUndefined();
-    });
-
-    it('flags completed-claim 发了群邀请 without invite call', () => {
-      const result = service.check({
-        replyText: '刚帮你发了群邀请，注意查收。',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
-      ).toBeDefined();
-    });
-
-    it('passes completed-claim when invite_to_group succeeded this turn', () => {
-      const result = service.check({
-        replyText: '刚帮你发了群邀请，注意查收。',
-        toolCalls: [
-          { toolName: 'invite_to_group', args: {}, result: { success: true } } as AgentToolCall,
-        ],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite'),
-      ).toBeUndefined();
-    });
-  });
-
-  describe('district_level_distance_claim (badcase recvjyv0SKiqe3 回归发现)', () => {
-    const makeAreaGeocodeCall = (areaLevelQuery: boolean): AgentToolCall => ({
-      toolName: 'geocode',
-      args: { address: '松江' },
-      result: {
-        resolution: 'unique',
-        result: { city: '上海市', district: '松江区', areaLevelQuery },
-      },
-    });
-
-    it('flags precise distance claim when geocode was an area-level query', () => {
-      const result = service.check({
-        replyText: '成都你六姐（松江大橘邻里中心店）- 晚班，离你2.2公里，要不要看看？',
-        toolCalls: [makeAreaGeocodeCall(true)],
-        chatId: 'chat-1',
-      });
-
-      const hit = result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim');
-      expect(hit).toBeDefined();
-      // 纯文案修复：这类问题不是缺事实，而是不能把区级锚点距离说成精确距离。
-      expect(hit?.action).toBe('revise');
-    });
-
-    it('passes when reply asks for a more specific location instead', () => {
-      const result = service.check({
-        replyText:
-          '松江这边有几家在招，你平时在哪条路或者哪个商圈附近？方便的话发个定位，我帮你算下距离。',
-        toolCalls: [makeAreaGeocodeCall(true)],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim'),
-      ).toBeUndefined();
-    });
-
-    it('passes when geocode query was POI-level (areaLevelQuery=false)', () => {
-      const result = service.check({
-        replyText: '九亭地铁站附近这家离你0.8公里。',
-        toolCalls: [makeAreaGeocodeCall(false)],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim'),
-      ).toBeUndefined();
-    });
-
-    it('passes when reply has no precise distance claim', () => {
-      const result = service.check({
-        replyText: '松江这边有成都你六姐在招，班次是晚班收档，你有兴趣吗？',
-        toolCalls: [makeAreaGeocodeCall(true)],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim'),
-      ).toBeUndefined();
-    });
-
-    it('passes when reply says nearest without exposing a precise distance', () => {
-      const result = service.check({
-        replyText: '按松江区先看，离你最近的是成都你六姐松江大橘邻里中心店，具体距离要看你定位。',
-        toolCalls: [makeAreaGeocodeCall(true)],
-        chatId: 'chat-1',
-      });
-
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'district_level_distance_claim'),
-      ).toBeUndefined();
     });
   });
 });

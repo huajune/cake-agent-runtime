@@ -31,7 +31,11 @@ export class HardConstraintsSection implements PromptSection {
   readonly name = 'hard-constraints';
 
   build(ctx: PromptContext): string {
-    const merged = this.mergeFacts(ctx.sessionFacts ?? null, ctx.highConfidenceFacts ?? null);
+    const merged = this.mergeFacts(
+      ctx.sessionFacts ?? null,
+      ctx.highConfidenceFacts ?? null,
+      ctx.currentLaborFormIntent,
+    );
     const hardLines = this.collectHardConstraintLines(merged);
     const softLines = this.collectSoftHintLines(merged);
     if (hardLines.length === 0 && softLines.length === 0) return '';
@@ -70,23 +74,43 @@ export class HardConstraintsSection implements PromptSection {
    * 合并 sessionFacts（已确认）与 highConfidenceFacts（本轮新增）。
    *
    * 取并集：sessionFacts 已有的优先保留；highConfidenceFacts 仅补充 sessionFacts 缺失的字段。
-   * 这里不处理冲突——TurnHintsSection 已负责把冲突字段单独拎到「待确认线索」段落。
+   * 唯一例外是 labor_form：它是可变求职意向，且岗位工具本身也采用“当前轮明确表达覆盖旧值”口径，
+   * 因此这里必须同步优先当前轮高置信值，避免 prompt 说“兼职硬过滤”、工具实际按“暑假工”过滤。
    */
   private mergeFacts(
     sessionFacts: EntityExtractionResult | SessionFacts | null,
     highConfidenceFacts: HighConfidenceFacts | null,
+    currentLaborFormIntent: PromptContext['currentLaborFormIntent'],
   ): { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null {
     const highConfidenceSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
     const highConfidenceValues = unwrapHighConfidenceFacts(
       filterHighConfidenceFacts(highConfidenceFacts),
     );
-    if (!highConfidenceSessionFacts && !highConfidenceValues) return null;
+    if (
+      !highConfidenceSessionFacts &&
+      !highConfidenceValues &&
+      currentLaborFormIntent?.kind !== 'set'
+    ) {
+      return null;
+    }
 
     const interview = {
       ...this.emptyInterviewInfo(),
       ...this.dropNulls(highConfidenceValues?.interview_info),
       ...this.dropNulls(highConfidenceSessionFacts?.interview_info),
     };
+
+    const highConfidenceLaborForm = highConfidenceValues?.preferences.labor_form ?? null;
+    const sessionLaborForm = highConfidenceSessionFacts?.preferences.labor_form ?? null;
+    const previousLaborForm = highConfidenceLaborForm ?? sessionLaborForm;
+    const activeLaborForm =
+      currentLaborFormIntent?.kind === 'set'
+        ? currentLaborFormIntent.value
+        : currentLaborFormIntent?.kind === 'clear' &&
+            previousLaborForm &&
+            currentLaborFormIntent.clearedValues.some((value) => value === previousLaborForm)
+          ? null
+          : previousLaborForm;
 
     const pref: Preferences = {
       brands:
@@ -121,10 +145,7 @@ export class HardConstraintsSection implements PromptSection {
         highConfidenceSessionFacts?.preferences.location ??
         highConfidenceValues?.preferences.location ??
         null,
-      labor_form:
-        highConfidenceSessionFacts?.preferences.labor_form ??
-        highConfidenceValues?.preferences.labor_form ??
-        null,
+      labor_form: activeLaborForm,
       delayed_intent:
         highConfidenceSessionFacts?.preferences.delayed_intent ??
         highConfidenceValues?.preferences.delayed_intent ??
@@ -244,8 +265,8 @@ export class HardConstraintsSection implements PromptSection {
       const hardFiltered = isHardFilteredLaborForm(pref.labor_form);
       lines.push(
         hardFiltered
-          ? `- 用工形式: ${pref.labor_form}（工具会按岗位 laborForm 字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止承诺"有/没有「${pref.labor_form}」"，过滤后为空就如实告知附近暂无该用工形式岗位）`
-          : `- 用工形式: ${pref.labor_form}（不要填入 jobCategoryList；介绍岗位用工形式时严格照岗位 laborForm 字段，不要把别的用工形式的岗位说成「${pref.labor_form}」）`,
+          ? `- 用工形式: ${pref.labor_form}（工具会按岗位 用工形式/兼职类型 结构化字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止承诺"有/没有「${pref.labor_form}」"，过滤后为空就如实告知附近暂无该用工形式岗位）`
+          : `- 用工形式: ${pref.labor_form}（不要填入 jobCategoryList；介绍岗位用工形式时严格照岗位 用工形式/兼职类型 结构化字段，不要把别的用工形式的岗位说成「${pref.labor_form}」）`,
       );
     }
     if (interview.is_student !== null && interview.is_student !== undefined) {

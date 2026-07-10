@@ -88,13 +88,13 @@ describe('session-job-matching', () => {
     const jiangwanHybridJob: RecommendedJobSummary = {
       jobId: 527488,
       brandName: '肯德基',
-      jobName: '肯德基-江湾字节T4-兼职+-全职',
+      jobName: '肯德基-江湾字节T4-月结-全职',
       storeName: '江湾字节T4',
       cityName: '上海',
       regionName: '杨浦',
-      laborForm: '兼职',
+      laborForm: '全职',
       salaryDesc: '17元/小时起',
-      jobCategoryName: '兼职+全职',
+      jobCategoryName: '月结全职',
     };
 
     const youfangDailyJob: RecommendedJobSummary = {

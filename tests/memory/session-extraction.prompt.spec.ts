@@ -76,9 +76,9 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
   });
 
   describe('labor_form 提取口径（2026-07 反转：找兼职/要全职 必须提取）', () => {
-    it('should list the 6 legal labor_form values (expanded from 4)', () => {
+    it('should list the 5 legal labor_form values', () => {
       expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
-        '仅允许以下合法值之一："全职"、"兼职"、"兼职+"、"小时工"、"寒假工"、"暑假工"',
+        '仅允许以下合法值之一："全职"、"兼职"、"小时工"、"寒假工"、"暑假工"',
       );
     });
 
@@ -119,6 +119,17 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
 
     it('should still forbid inferring labor_form from availability alone', () => {
       expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不要仅凭可用时间推理 labor_form');
+    });
+
+    it('should normalize summer aliases without treating negation, uncertainty, or alternatives as summer-only', () => {
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '"暑期工"/"暑期工作"/"暑期兼职"/"暑假兼职"统一归一为 labor_form: "暑假工"',
+      );
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('"不知道是不是暑假工"');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('"暑假工或者小时工都可以"');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不等于只要暑假工');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('"这个是小时工吗"');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不得据此更新 labor_form');
     });
   });
 });

@@ -56,7 +56,10 @@ export interface JobBasicInfo {
   jobNickName?: string;
   jobCategoryName?: string;
   jobContent?: string;
+  /** 用工形式，新契约仅 兼职/全职 两值；细分见 partTimeJobType */
   laborForm?: string;
+  /** 兼职类型（laborForm=兼职 时的细分）：寒假工 / 暑假工 / 小时工 */
+  partTimeJobType?: string;
   /** @deprecated 现网不返回，见上方说明 */
   requirementNum?: number;
   /** @deprecated 现网在 hiringRequirement.basicPersonalRequirements.minAge */
@@ -88,6 +91,7 @@ export const JobBasicInfoSchema = z
     jobCategoryName: NullableOptionalStringSchema,
     jobContent: NullableOptionalStringSchema,
     laborForm: NullableOptionalStringSchema,
+    partTimeJobType: NullableOptionalStringSchema,
     requirementNum: NullableOptionalNumberSchema,
     minAge: NullableOptionalNumberSchema,
     maxAge: NullableOptionalNumberSchema,

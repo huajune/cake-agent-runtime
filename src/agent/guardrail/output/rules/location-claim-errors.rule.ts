@@ -46,6 +46,7 @@ export function detectGeocodeUncertainLocationClaim(
     resolution === 'ambiguous' ||
     errorType === 'geocode.ambiguous_suffix' ||
     errorType === 'geocode.district_city_mismatch' ||
+    errorType === 'geocode.anchor_mismatch' ||
     errorType === 'geocode.unresolved_address';
   if (!uncertain) return null;
 
@@ -56,40 +57,5 @@ export function detectGeocodeUncertainLocationClaim(
   };
 }
 
-const PRECISE_DISTANCE_CLAIM_PATTERN = /\d+(?:\.\d+)?\s*(?:公里|千米|km)/i;
-// 已在追问更具体位置，或已声明距离是按区域估算 → 正确行为，豁免
-const SPECIFIC_LOCATION_REQUEST_PATTERN =
-  /发个?(?:精准)?定位|具体(?:位置|地址|在哪|哪条路|路段|地标)|哪个(?:商圈|地铁站|路口|街道|镇)|(?:附近|旁边)(?:有什么|的)(?:地标|商圈|地铁)|按[^。！？\n]{0,8}(?:中心|区)估算|大概估算/;
-
-/**
- * 区级粗定位 + 精确距离声称检测（badcase recvjyv0SKiqe3 回归实测发现）。
- *
- * 候选人只报区名（"松江"）时 geocode 也能 unique 命中（行政区代表点），
- * 此时基于锚点算的门店距离与候选人真实位置可能差好几公里，
- * 回复不应把"2.2km"这类精确距离直接说给候选人，而应先追问具体位置/商圈/定位，
- * 或明确说明距离是按区域估算。
- */
-export function detectDistrictLevelDistanceClaim(
-  text: string,
-  toolCalls: AgentToolCall[],
-): RuleContradiction | null {
-  if (!PRECISE_DISTANCE_CLAIM_PATTERN.test(text)) return null;
-  if (SPECIFIC_LOCATION_REQUEST_PATTERN.test(text)) return null;
-
-  const geocodeCall = [...toolCalls]
-    .reverse()
-    .find((call) => call.toolName === 'geocode' && call.result);
-  const result = asRecord(geocodeCall?.result);
-  if (!result || result.resolution !== 'unique') return null;
-  const inner = asRecord(result.result);
-  if (inner?.areaLevelQuery !== true) return null;
-
-  return {
-    ruleId: 'district_level_distance_claim',
-    label:
-      '候选人只提供了区/市级位置（geocode areaLevelQuery=true，锚点为行政区代表点），但回复直接输出精确距离；应先追问具体位置/商圈/定位，或声明距离为区域估算',
-    // 这里不能 replan：问题不在缺少岗位事实，而在区级锚点距离不能当精确距离外发。
-    // 允许只读工具重查会把 distanceKm 再次喂给模型，容易在 repair 回合继续复述公里数。
-    action: GUARDRAIL_ACTION.REVISE,
-  };
-}
+// district_level_distance_claim（区级粗定位精确距离）已于 2026-07-10 下线：3 天 109 次
+// 命中是全规则最大噪音源，大量正常的距离播报被强制重写。用户裁定整条下线。

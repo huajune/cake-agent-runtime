@@ -26,9 +26,11 @@ import { buildNoMatchScript } from '@tools/duliday/job-list/no-match-script.util
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
+import { COUNTY_LEVEL_CITY_TO_PREFECTURE } from '@memory/facts/geo-mappings';
 import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
+  collectLaborFormAnomalies,
   filterJobsByRequestedCategories,
   filterJobsToRequestedBrands,
   formatScheduleConstraintLabel,
@@ -62,6 +64,43 @@ const DEFAULT_PAGE_NUM = 1;
 const DEFAULT_PAGE_SIZE = 20;
 const DISTANCE_SCAN_MAX_PAGES = 10;
 
+function normalizeBrandEvidenceText(value: string | undefined): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+}
+
+/**
+ * 拦截模型从普通微信昵称臆测出的品牌。
+ *
+ * 仅在品牌库对 contactName 完全无命中时启用；候选人当轮确实明说了同一个名称时保留，
+ * 避免误伤“用户主动询问一个尚未入库品牌”的场景。
+ */
+function rejectUnverifiedNicknameBrandAliases(
+  aliases: string[],
+  context: ToolBuildContext,
+): { accepted: string[]; rejected: string[] } {
+  if (!context.contactName || (context.contactBrandAliases?.length ?? 0) > 0) {
+    return { accepted: aliases, rejected: [] };
+  }
+
+  const nickname = normalizeBrandEvidenceText(context.contactName);
+  const currentMessage = normalizeBrandEvidenceText(context.currentUserMessage);
+  if (!nickname) return { accepted: aliases, rejected: [] };
+
+  const accepted: string[] = [];
+  const rejected: string[] = [];
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeBrandEvidenceText(alias);
+    const looksCopiedFromNickname =
+      normalizedAlias.length >= 2 &&
+      (normalizedAlias === nickname || nickname.includes(normalizedAlias));
+    const candidateExplicitlySaidIt =
+      normalizedAlias.length >= 2 && currentMessage.includes(normalizedAlias);
+    if (looksCopiedFromNickname && !candidateExplicitlySaidIt) rejected.push(alias);
+    else accepted.push(alias);
+  }
+  return { accepted, rejected };
+}
+
 // ==================== 输入 Schema ====================
 
 const inputSchema = z.object({
@@ -86,7 +125,7 @@ const inputSchema = z.object({
     .optional()
     .default([])
     .describe(
-      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n严禁填入"全职"、"兼职"、"小时工"、"寒假工"、"暑假工"、"兼职+"、"临时工"等用工形式词——用工形式是岗位的 laborForm 属性、不是岗位工种，按工具的用工形式过滤处理（候选人意向已从会话事实自动读取），不要塞进 jobCategoryList。若召回为空，先清空 jobCategoryList 放宽重查。',
+      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n严禁填入"全职"、"兼职"、"小时工"、"寒假工"、"暑假工"、"临时工"等用工形式词——用工形式是岗位的 laborForm 属性、不是岗位工种，按工具的用工形式过滤处理（候选人意向已从会话事实自动读取），不要塞进 jobCategoryList。若召回为空，先清空 jobCategoryList 放宽重查。',
     ),
   brandIdList: z
     .array(z.number().int())
@@ -180,6 +219,7 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
       cityName: job.basicInfo.storeInfo?.storeCityName ?? null,
       regionName: job.basicInfo.storeInfo?.storeRegionName ?? null,
       laborForm: job.basicInfo.laborForm ?? null,
+      partTimeJobType: job.basicInfo.partTimeJobType ?? null,
       salaryDesc: formatSalarySummary(job),
       shiftSummary: composeShiftTimeText(job.workTime),
       jobCategoryName: job.basicInfo.jobCategoryName ?? null,
@@ -200,6 +240,66 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * 海绵的 city/region 按地级/县级行政区分层；候选人却常把县级市直接称作“城市”。
+ * 这里只剥最末级的通用后缀，用于判断 location-only 召回是否仍属于用户点名的行政区，
+ * 不用于改写实际查询参数。
+ */
+function normalizeAdministrativeMatchKey(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[市区县旗]$/, '');
+}
+
+function filterJobsToRequestedAdministrativeArea<T>(jobs: T[], requestedCities: string[]): T[] {
+  const requestedKeys = new Set(
+    requestedCities.map(normalizeAdministrativeMatchKey).filter(Boolean),
+  );
+  if (requestedKeys.size === 0) return [];
+
+  return jobs.filter((job) => {
+    if (!isRecord(job) || !isRecord(job.basicInfo)) return false;
+    const storeInfo = job.basicInfo.storeInfo;
+    if (!isRecord(storeInfo)) return false;
+    return [storeInfo.storeCityName, storeInfo.storeRegionName].some((label) =>
+      requestedKeys.has(normalizeAdministrativeMatchKey(label)),
+    );
+  });
+}
+
+interface SpongeCityFilterNormalization {
+  cityNameList: string[];
+  derivedRegionNameList: string[];
+  mappings: Array<{ requestedCity: string; spongeCity: string; spongeRegion: string }>;
+}
+
+/** 把明确的县级市工具参数转换为海绵的“地级 city + 县级 region”口径。 */
+function normalizeSpongeCityFilters(cityNames: string[]): SpongeCityFilterNormalization {
+  const cityNameList: string[] = [];
+  const derivedRegionNameList: string[] = [];
+  const mappings: SpongeCityFilterNormalization['mappings'] = [];
+
+  for (const requestedCity of cityNames) {
+    const countyCity = requestedCity.endsWith('市') ? requestedCity : `${requestedCity}市`;
+    const spongeCity = COUNTY_LEVEL_CITY_TO_PREFECTURE[countyCity];
+    if (!spongeCity) {
+      cityNameList.push(requestedCity);
+      continue;
+    }
+    cityNameList.push(spongeCity);
+    derivedRegionNameList.push(countyCity);
+    mappings.push({ requestedCity, spongeCity, spongeRegion: countyCity });
+  }
+
+  return {
+    cityNameList: [...new Set(cityNameList)],
+    derivedRegionNameList: [...new Set(derivedRegionNameList)],
+    mappings,
+  };
 }
 
 function readFactValue(value: unknown): unknown {
@@ -227,11 +327,11 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
 }
 
 /**
- * 解析候选人想要的细分用工形式（兼职+/小时工/寒假工/暑假工）。
+ * 解析候选人想要的用工形式。
  *
  * 只从已确定性提取的会话事实读取（高置信线索优先，其次会话事实），
  * 不依赖 LLM 入参——保证用工形式过滤始终生效，避免模型忘传。
- * 返回合法用工形式（全职/兼职/兼职+/小时工/寒假工/暑假工）；"正式工/临时工" 等
+ * 返回合法用工形式（全职/兼职/小时工/寒假工/暑假工）；"正式工/临时工" 等
  * 不同轴噪音词视为无效。
  */
 function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
@@ -501,7 +601,16 @@ export function buildJobListTool(
         // 用 prep 从企微备注解析出的目标品牌兜底为 brandAliasList，实现「备注品牌优先召回」
         // （纯提示词驱动经实测不可靠，模型会忽略备注按距离推）。候选人本轮点名了别的品牌时
         // 模型会自己把 brand 传进来，brandAliasList 非空就不会触发兜底。
-        let brandAliasList = brandAliasListInput;
+        const nicknameAliasValidation = rejectUnverifiedNicknameBrandAliases(
+          brandAliasListInput,
+          context,
+        );
+        let brandAliasList = nicknameAliasValidation.accepted;
+        if (nicknameAliasValidation.rejected.length > 0) {
+          logger.warn(
+            `拦截未经品牌库验证的昵称品牌参数: ${JSON.stringify(nicknameAliasValidation.rejected)}`,
+          );
+        }
         let brandAliasSource: 'input' | 'contact_remark' | 'session_facts' | 'none' =
           brandAliasList.length > 0 ? 'input' : 'none';
         const contactBrandAliases = context.contactBrandAliases ?? [];
@@ -604,6 +713,10 @@ export function buildJobListTool(
           includeInterviewProcess,
         };
 
+        // 当前轮高置信事实会覆盖旧会话事实。提前解析一次，除了成功结果过滤外，
+        // 查询异常时也要禁止“暑假工意向 → 回退历史普通兼职岗”的绕过路径。
+        const candidateLaborForm = resolveCandidateLaborForm(context);
+
         // 兜底：传了 lng/lat 但漏传 range 时，从业务阈值 max_recommend_distance_km 派生。
         // 上游 API 在 location.longitude/latitude 存在而 range 缺失时返回 code=10000，
         // 必须在请求前补齐，避免静默退化为 total=0。
@@ -624,21 +737,31 @@ export function buildJobListTool(
         // 企微备注兜底，故备注品牌也走品牌豁免。
         const hasBrandIntent = brandAliasList.length > 0 || brandIdList.length > 0;
 
+        // 旧会话事实或模型仍可能传 cityNameList=["延吉"]。在工具边界再次规范化，
+        // 确保无坐标的全城查询也能命中，而不只依赖下方 location-only 恢复。
+        const cityFilterNormalization = normalizeSpongeCityFilters(normalizedCityNameList);
+        const normalizedQueryRegionNameList = [
+          ...new Set([
+            ...normalizedRegionNameList,
+            ...cityFilterNormalization.derivedRegionNameList,
+          ]),
+        ];
+
         // 有坐标时丢弃 regionNameList：坐标（候选人真实位置）才是就近信号，区级精确过滤
         // 与坐标 AND 在一起只会把隔壁区更近的门店排除掉（badcase 6a3356e2 同源）。模型偶尔
         // 同时传 region+location，此处统一归一成纯距离召回，坐标比区中心更精确。
         // 品牌意向不动（品牌豁免距离上限，交由品牌专属逻辑处理）。
         let regionDroppedForCoords = false;
-        if (hasCoordinates && normalizedRegionNameList.length > 0 && !hasBrandIntent) {
+        if (hasCoordinates && normalizedQueryRegionNameList.length > 0 && !hasBrandIntent) {
           regionDroppedForCoords = true;
           logger.log(
-            `已传坐标，丢弃 regionNameList=[${normalizedRegionNameList.join(',')}] 改纯距离召回，避免区级过滤排除跨区更近门店`,
+            `已传坐标，丢弃 regionNameList=[${normalizedQueryRegionNameList.join(',')}] 改纯距离召回，避免区级过滤排除跨区更近门店`,
           );
         }
-        const regionNameListForQuery = regionDroppedForCoords ? [] : normalizedRegionNameList;
+        const regionNameListForQuery = regionDroppedForCoords ? [] : normalizedQueryRegionNameList;
 
-        const fetchBaseParams = {
-          cityNameList: normalizedCityNameList,
+        let fetchBaseParams = {
+          cityNameList: cityFilterNormalization.cityNameList,
           regionNameList: regionNameListForQuery,
           brandAliasList,
           brandIdList,
@@ -668,9 +791,52 @@ export function buildJobListTool(
             beforeCount: number;
             afterCount: number;
           } = null;
+          let cityFilterRecovery: null | {
+            attempted: true;
+            applied: boolean;
+            requestedCities: string[];
+            candidateCount: number;
+            recoveredCount: number;
+          } = null;
 
           // 首次请求
           let { jobs, total } = await fetchJobs(fetchBaseParams);
+
+          // 县级市行政层级兜底（生产 badcase 6a4f83a5ce406a6aeeeab4b2）：
+          // 候选人说“延吉市铁南”，确定性提取曾把“延吉”强制放进 cityNameList；但海绵
+          // 存的是 city=延边朝鲜族自治州、region=延吉市，导致正确坐标与错误 city 做 AND
+          // 后返回 0。已有精确坐标时，0 条后去掉 city 做一次 location-only 召回；为了避免
+          // 边界坐标把邻市岗位带回来，只采纳 storeCityName/storeRegionName 仍能匹配原城市名
+          // 的岗位。恢复查询失败不覆盖原始“0 条”语义。
+          if (jobs.length === 0 && hasCoordinates && normalizedCityNameList.length > 0) {
+            try {
+              const locationOnly = await fetchJobs({ ...fetchBaseParams, cityNameList: [] });
+              const recoveredJobs = filterJobsToRequestedAdministrativeArea(
+                locationOnly.jobs,
+                normalizedCityNameList,
+              );
+              cityFilterRecovery = {
+                attempted: true,
+                applied: recoveredJobs.length > 0,
+                requestedCities: normalizedCityNameList,
+                candidateCount: locationOnly.jobs.length,
+                recoveredCount: recoveredJobs.length,
+              };
+              if (recoveredJobs.length > 0) {
+                jobs = recoveredJobs;
+                total = recoveredJobs.length;
+                // 后续分页若触发，不能重新带回已证实错误的 city filter。
+                fetchBaseParams = { ...fetchBaseParams, cityNameList: [] };
+                logger.warn(
+                  `城市层级过滤兜底命中：cityNameList=${JSON.stringify(normalizedCityNameList)} 原查询 0 条，` +
+                    `location-only 候选 ${locationOnly.jobs.length} 条，行政区复核后恢复 ${recoveredJobs.length} 条`,
+                );
+              }
+            } catch (error: unknown) {
+              const reason = error instanceof Error ? error.message : String(error);
+              logger.warn(`城市层级过滤兜底查询失败，保留原始 0 条结果: ${reason}`);
+            }
+          }
 
           // 门店名模糊匹配回退：去掉 storeNameList 后在同范围（城市/区域/品牌等）宽查，
           // 再按门店名本地模糊过滤。不能查全量（{ options }）——上游要求至少一个筛选
@@ -910,9 +1076,9 @@ export function buildJobListTool(
             // batch_6a2fabf0536c9654020e6683：候选人答"川沙"，Agent 直接 regionNameList=["川沙"]
             // 查 0 条就拉群收口）。无坐标、无高稳定主键、无品牌别名兜底时，引导 Agent 先 geocode
             // 把地名规范成区级 district + 经纬度再重查，而不是照 noMatchScript 拉群。
-            // 判定：区/县级行政区名总以 区/县/旗 结尾；裸地名（川沙）或区名简称（浦东）都视为需 geocode。
+            // 判定：规范县级行政区名以 区/县/旗/市 结尾；裸地名（川沙）或区名简称（浦东）视为需 geocode。
             const suspectedTownshipRegions = normalizedRegionNameList.filter(
-              (region) => !/[区县旗]$/.test(region),
+              (region) => !/[区县旗市]$/.test(region),
             );
             const hasHighStabilityFilter =
               jobIdList.length > 0 || brandIdList.length > 0 || projectIdList.length > 0;
@@ -996,6 +1162,7 @@ export function buildJobListTool(
               outcome,
               replyInstruction,
               details: {
+                cityFilterRecovery,
                 noMatchScript: buildNoMatchScript({
                   brandLabels: brandAliasList,
                   storeLabels: storeNameList,
@@ -1061,36 +1228,69 @@ export function buildJobListTool(
             });
           }
 
-          // 用工形式过滤：候选人想要任一合法用工形式时，按岗位 laborForm 字段硬过滤。
+          // 契约异常暴露：laborForm/partTimeJobType 不符合新契约的岗位数据不做兼容兜底，
+          // 记 warn 并随 queryMeta 落库（message_processing_records），推动上游改数据本身。
+          const laborFormAnomalies = collectLaborFormAnomalies(jobs);
+          if (laborFormAnomalies.length > 0) {
+            logger.warn(
+              `岗位用工形式数据不符合契约（不做兼容，需修数据）: ${JSON.stringify(laborFormAnomalies.slice(0, 10))}` +
+                (laborFormAnomalies.length > 10 ? ` ...共 ${laborFormAnomalies.length} 条` : ''),
+            );
+          }
+
+          // 用工形式过滤：候选人想要任一合法用工形式时，按岗位 laborForm/partTimeJobType 结构化字段硬过滤。
           // 避免把别的用工形式包装成候选人想要的类型。
           // 候选人意向从确定性提取的会话事实读取，不依赖 LLM 入参，保证始终生效。
-          const candidateLaborForm = resolveCandidateLaborForm(context);
           const laborFormFilterResult = applyLaborFormConstraint(jobs, candidateLaborForm);
           const laborFormRelaxNotice = laborFormFilterResult.relaxedToFamily
-            ? `⚠️ 附近暂无岗位字段严格标注为「${candidateLaborForm}」的岗位；以下是同为兼职形态` +
-              '（兼职+/小时工/寒暑假工等）的岗位。介绍时**必须按每个岗位真实的用工形式说明**，' +
+            ? `⚠️ 附近暂无结构化字段严格标注为「${candidateLaborForm}」的岗位；以下是同为兼职形态` +
+              '（兼职类型不同，如小时工/寒假工或未标细分）的岗位。介绍时**必须按每个岗位真实的用工形式/兼职类型说明**，' +
               `不得把它们统称或包装成「${candidateLaborForm}」；可向候选人说明工作形态相近、由其自行决定。`
             : null;
+          const summerWorkerStrictNotice =
+            candidateLaborForm === '暑假工'
+              ? '⚠️ 候选人已明确只要暑假工：下方结果已经按岗位结构化字段（`兼职类型(partTimeJobType)=暑假工`）严格过滤。' +
+                '**只能推荐下方暑假工岗位**；禁止引用历史候选池、当前焦点岗位或本轮被剔除的普通兼职/小时工/全职岗位，' +
+                '也禁止主动询问候选人是否愿意改做其他用工形式。'
+              : null;
           if (laborFormFilterResult.applied) {
             jobs = laborFormFilterResult.jobs;
             total = jobs.length;
             if (laborFormFilterResult.excluded.length > 0 && jobs.length === 0) {
+              const noMatchFollowUp =
+                candidateLaborForm === '暑假工'
+                  ? '候选人已明确只要暑假工：不得主动推荐、展示或询问是否考虑普通兼职/小时工/全职，' +
+                    '不得沿用历史非暑假工岗位继续收资或约面。只可说明目前暂无匹配的暑假工岗位并维护候选人；' +
+                    '只有候选人之后主动、明确改口接受其他用工形式，才按其新意向重新查岗。'
+                  : '可主动表示后续有匹配岗位上线会第一时间通知；若候选人愿意考虑其他用工形式，再据其意向重新查岗。';
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY,
                 outcome: `本轮召回岗位经"${candidateLaborForm}"用工形式过滤后为空`,
                 replyInstruction:
-                  `候选人想要「${candidateLaborForm}」，但本轮附近召回的岗位经岗位 laborForm 字段核对后，` +
+                  `候选人想要「${candidateLaborForm}」，但本轮附近召回的岗位经岗位 用工形式/兼职类型 结构化字段核对后，` +
                   `没有一条是「${candidateLaborForm}」。**必须如实告知"附近暂时没有${candidateLaborForm}的岗位"**，` +
                   '不得把别的用工形式的岗位（如把兼职岗说成全职、把常规岗说成暑假工）包装回去，也不得凭通识承诺有岗。' +
-                  '可主动表示后续有匹配岗位上线会第一时间通知；若候选人愿意考虑其他用工形式，再据其意向重新查岗。',
+                  noMatchFollowUp,
                 details: {
                   queryMeta: {
                     laborFormFilter: {
                       applied: true,
                       candidateLaborForm,
                       excludedCount: laborFormFilterResult.excluded.length,
-                      excludedExamples: laborFormFilterResult.excluded.slice(0, 3),
+                      // 暑假工场景不把被剔除岗位的品牌/jobId 暴露给模型，避免它从 metadata
+                      // 捞回普通兼职/小时工当替代推荐；数量足够支撑诊断。
+                      ...(candidateLaborForm === '暑假工'
+                        ? {}
+                        : { excludedExamples: laborFormFilterResult.excluded.slice(0, 3) }),
                     },
+                    // 过滤后为空且召回里存在契约异常数据时，大概率是数据问题而非真无岗
+                    laborFormAnomalies:
+                      laborFormAnomalies.length > 0
+                        ? {
+                            count: laborFormAnomalies.length,
+                            examples: laborFormAnomalies.slice(0, 10),
+                          }
+                        : null,
                   },
                 },
               });
@@ -1127,6 +1327,7 @@ export function buildJobListTool(
               brandGroups,
             );
             const markdownSections = [
+              summerWorkerStrictNotice,
               laborFormRelaxNotice,
               ageScreeningSummary?.markdown,
               jobsMarkdown,
@@ -1144,6 +1345,9 @@ export function buildJobListTool(
             regionRelaxedToLocation,
             regionRelaxAttempted,
             regionDroppedForCoords,
+            cityFilterNormalization:
+              cityFilterNormalization.mappings.length > 0 ? cityFilterNormalization.mappings : null,
+            cityFilterRecovery,
             usedDistanceFiltering: hasUserCoords,
             distanceThresholdKm: maxKm ?? null,
             distanceScanPages,
@@ -1163,9 +1367,16 @@ export function buildJobListTool(
                   // 严格匹配为空、按兼职家族放宽命中：介绍必须按岗位真实 laborForm
                   relaxedToFamily: laborFormFilterResult.relaxedToFamily,
                   excludedCount: laborFormFilterResult.excluded.length,
-                  excludedExamples: laborFormFilterResult.excluded.slice(0, 5),
+                  ...(candidateLaborForm === '暑假工'
+                    ? {}
+                    : { excludedExamples: laborFormFilterResult.excluded.slice(0, 5) }),
                 }
               : { applied: false },
+            // 不符合新契约的岗位用工形式数据（不兼容不兜底，暴露出来修数据源头）
+            laborFormAnomalies:
+              laborFormAnomalies.length > 0
+                ? { count: laborFormAnomalies.length, examples: laborFormAnomalies.slice(0, 10) }
+                : null,
             brandNearestStores: brandGroups,
             // 同品牌≥2 家的硬约束信号：LLM 必须按 displayLine
             // 转述同品牌门店，禁止把多家门店压成"有 X 品牌"。
@@ -1183,6 +1394,7 @@ export function buildJobListTool(
             brandIdList,
             brandAliasList,
             brandAliasSource,
+            rejectedNicknameBrandAliases: nicknameAliasValidation.rejected,
             searchJobName: searchJobName?.trim() || null,
           };
 
@@ -1215,8 +1427,12 @@ export function buildJobListTool(
             errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
             outcome: '岗位查询接口失败',
             replyInstruction:
-              '岗位查询接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻安抚"这边稍等下"，' +
-              '基于 [会话记忆] 已展示岗位维持上下文，必要时调用 request_handoff 转人工。',
+              candidateLaborForm === '暑假工'
+                ? '岗位查询接口暂时不可用，且候选人已明确只要暑假工。不要把异常信息原文转述给候选人；' +
+                  '不得基于 [会话记忆] 的普通兼职/小时工/全职岗位维持上下文，不得推荐、收资或约面。' +
+                  '先用招募者口吻说明需要再确认暑假工岗位，必要时调用 request_handoff 转人工。'
+                : '岗位查询接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻安抚"这边稍等下"，' +
+                  '基于 [会话记忆] 已展示岗位维持上下文，必要时调用 request_handoff 转人工。',
             details: { reason: err instanceof Error ? err.message : '未知错误' },
           });
         }

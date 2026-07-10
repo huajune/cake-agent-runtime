@@ -234,6 +234,226 @@
   letter-spacing: normal;
 }
 
+/* ── ① 复聊消息（详情主角）── */
+.messageCard {
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.96) 100%);
+  padding: 14px 16px 16px;
+  box-shadow:
+    0 14px 32px rgba(31, 41, 55, 0.06),
+    0 0 26px rgba(139, 92, 246, 0.07);
+}
+
+.message_success {
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+.message_warning {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.message_muted {
+  border-color: rgba(148, 163, 184, 0.24);
+}
+
+.messageHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  color: #6d28d9;
+}
+
+.messageHeadTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.messageChipSuccess,
+.messageChipMuted {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.messageChipSuccess {
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  background: rgba(34, 197, 94, 0.08);
+  color: #15803d;
+}
+
+.messageChipMuted {
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  background: rgba(245, 158, 11, 0.07);
+  color: #b45309;
+}
+
+.messageBubble {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: 4px 16px 16px 16px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  font-size: 14px;
+  line-height: 1.8;
+  color: #1e293b;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── ② 模型思考 ── */
+.modelChip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.06);
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+}
+
+.insightCard {
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.94) 100%);
+  padding: 4px 16px;
+  box-shadow:
+    0 12px 28px rgba(31, 41, 55, 0.05),
+    0 0 22px rgba(139, 92, 246, 0.05);
+}
+
+.insightRow {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed rgba(139, 92, 246, 0.13);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.insightLabel {
+  flex: 0 0 60px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7c3aed;
+  padding-top: 1px;
+}
+
+.insightText {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #334155;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.insightThinking {
+  color: #64748b;
+  font-size: 12px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* ── ③ 最终提示词 ── */
+.promptPanel {
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.94) 100%);
+  padding: 10px 16px;
+  box-shadow:
+    0 12px 28px rgba(31, 41, 55, 0.05),
+    0 0 22px rgba(139, 92, 246, 0.05);
+
+  summary {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8b5cf6;
+    cursor: pointer;
+    user-select: none;
+
+    &:hover {
+      color: #6d28d9;
+    }
+  }
+}
+
+.promptText {
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(139, 92, 246, 0.12);
+  border-radius: 12px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #475569;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+/* ── 折叠段（聊天记录 / 任务流转 / 其他复聊）── */
+.collapsibleSection {
+  border-top: 1px dashed rgba(139, 92, 246, 0.16);
+  padding-top: 14px;
+
+  &[open] .collapsibleSummary {
+    margin-bottom: 10px;
+  }
+}
+
+.collapsibleSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &::before {
+    content: '▸';
+    color: #8b5cf6;
+    font-size: 11px;
+    transition: transform 0.15s ease;
+  }
+
+  &:hover {
+    color: #4f46e5;
+  }
+}
+
+.collapsibleSection[open] .collapsibleSummary::before {
+  transform: rotate(90deg);
+}
+
 .generatedText {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.96) 100%);
   border: 1px solid rgba(139, 92, 246, 0.14);

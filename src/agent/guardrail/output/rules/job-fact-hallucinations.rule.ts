@@ -1,6 +1,7 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
+import { decideLaborFormIntent } from '@memory/facts/labor-form';
 import {
   hasUsableJobListResult,
   readLatestJobListCall,
@@ -53,6 +54,58 @@ const SCHEDULE_ONLY_SHIFT_DECLARATION_PATTERN =
 // （与 job-fact-value-mismatch 的 SHIFT_REQUIREMENT_ECHO 同口径）。
 const SCHEDULE_SHIFT_REQUIREMENT_ECHO_PATTERN =
   /(?:只找|只做|只考虑|只要|想找|想做|想要|倾向|偏好|接受)[^。！？\n]{0,6}(?:早班|白班|日班|晚班|夜班|通宵|全天)/;
+
+// 暑假工是单向硬约束：删掉合法的“暑假工/暑期工”称呼后，剩余的兼职、小时工、
+// 全职才是非暑假工替代项，避免把“暑假兼职”里的“兼职”误判成普通兼职。
+const SUMMER_WORKER_ALIAS_PATTERN = /暑假工|暑期工|暑期工作|暑假兼职|暑期兼职/g;
+const NON_SUMMER_LABOR_FORM_FRAGMENT = '(?:普通兼职|常规兼职|长期兼职|小时工|全职|兼职)';
+const NON_SUMMER_FORWARD_OFFER_PATTERN = new RegExp(
+  `${NON_SUMMER_LABOR_FORM_FRAGMENT}[^。！？\\n]{0,18}` +
+    `(?:(?<!不)(?<!没)(?:可以|能)(?:做|考虑|接受|报名|约面|面试)|也行|` +
+    `要不要|愿不愿意|(?<!不)适合你|(?<!不)(?<!不能)推荐给你|` +
+    `帮你(?:报名|预约|约面|查|找|看)|安排面试|也有|还有|也可以(?:吗|么|[？?]|$)|可以吗|行吗|怎么样)`,
+);
+const NON_SUMMER_REVERSE_OFFER_PATTERN = new RegExp(
+  `(?<!不)(?<!没)(?<!不能)(?:建议|推荐|考虑|接受|改做|转做|当作|按|看看|看下|找找|` +
+    `报名|预约|约面|先做|做)[^。！？\\n]{0,18}${NON_SUMMER_LABOR_FORM_FRAGMENT}`,
+);
+const NON_SUMMER_NATURAL_SUGGESTION_PATTERN = new RegExp(
+  `(?:要不|不如)[^。！？\\n]{0,6}(?:看看|看下|考虑|先做|做)[^。！？\\n]{0,12}` +
+    `${NON_SUMMER_LABOR_FORM_FRAGMENT}|` +
+    `(?:我)?(?:帮|给)你[^。！？\\n]{0,8}(?:查|找|看|推|发)[^。！？\\n]{0,10}` +
+    `${NON_SUMMER_LABOR_FORM_FRAGMENT}|` +
+    `(?:我)?(?:发|推|找|查|看)[^。！？\\n]{0,10}${NON_SUMMER_LABOR_FORM_FRAGMENT}` +
+    `(?:岗位)?给你|` +
+    `${NON_SUMMER_LABOR_FORM_FRAGMENT}[^。！？\\n]{0,18}` +
+    `(?:(?:我)?(?:可以)?帮你(?:看|查|找|推)|(?:是否)?需要(?:我)?(?:给|帮)你(?:查|找|看))`,
+);
+const NON_SUMMER_CURRENT_JOB_CLAIM_PATTERN = new RegExp(
+  `(?:这家|这个岗位|该岗位|当前岗位)[^。！？\\n]{0,12}` +
+    `(?<!不)(?:是|属于|用工形式(?:是|为)?)[^。！？\\n]{0,6}${NON_SUMMER_LABOR_FORM_FRAGMENT}`,
+);
+const OTHER_LABOR_FORM_OFFER_PATTERN =
+  /(?:愿意|是否|要不要|能不能|可以)[^。！？\n]{0,8}(?:考虑|接受)[^。！？\n]{0,6}(?:其他|别的)用工形式|(?:其他|别的)用工形式[^。！？\n]{0,8}(?:考虑|接受|可以吗|行吗)/;
+const NON_SUMMER_NEGATIVE_ACTION_BEFORE_TERM_PATTERN = new RegExp(
+  `(?:不会|不能|不要|别|不建议|不推荐|不考虑|不接受|不帮|没法|无法)` +
+    `[^，,。！？\\n]{0,24}${NON_SUMMER_LABOR_FORM_FRAGMENT}`,
+  'g',
+);
+const NON_SUMMER_NEGATIVE_ACTION_AFTER_TERM_PATTERN = new RegExp(
+  `${NON_SUMMER_LABOR_FORM_FRAGMENT}[^，,。！？\\n]{0,20}` +
+    `(?:不能|不会|不要|不建议|不推荐|不考虑|不接受|不适合|不符合|不匹配|没法|无法)` +
+    `[^，,。！？\\n]{0,12}`,
+  'g',
+);
+const NON_SUMMER_CROSS_CLAUSE_REJECTION_PATTERN = new RegExp(
+  `${NON_SUMMER_LABOR_FORM_FRAGMENT}[，,]\\s*` + `(?:不符合|不匹配|不适合)[^，,。！？\\n]{0,18}`,
+  'g',
+);
+const NON_SUMMER_NOT_SUMMER_REJECTION_PATTERN = new RegExp(
+  `${NON_SUMMER_LABOR_FORM_FRAGMENT}[^。！？\\n]{0,20}` +
+    `(?:不是|并非)(?:暑假工|暑期工|暑期工作|暑假兼职|暑期兼职)` +
+    `[^。！？\\n]{0,16}(?:不推荐|不考虑|不适合|不匹配|不能|先不推|暂不推荐)`,
+  'g',
+);
 
 export const JOB_FACT_HALLUCINATION_RULES: FactRule[] = [];
 
@@ -164,6 +217,111 @@ export function detectScheduleFilteredJobRecommended(
       'duliday_job_list 返回 job_list.schedule_filter_empty（班次硬约束过滤后无匹配岗位），但回复仍推荐岗位或承诺可约',
     action: GUARDRAIL_ACTION.REVISE,
   };
+}
+
+/**
+ * 暑假工候选人不得被主动降级到普通兼职/小时工/全职。
+ *
+ * 外生信号有两类：
+ * - 本轮 job_list 的 queryMeta 明确记录 candidateLaborForm=暑假工；
+ * - 当前候选人消息明确说暑假工/暑期工（覆盖模型绕过 job_list 直接给替代建议）。
+ *
+ * 这里只拦“推荐/建议/继续推进”语义；如实说明“这些是普通兼职，不是暑假工，所以不推荐”
+ * 不会命中。候选人后续主动改口时，当前消息不再是暑假工意向，新的 job_list metadata 也会
+ * 按新 laborForm 生成，因此不妨碍重新查岗。
+ */
+export function detectSummerWorkerNonSummerRecommendation(
+  text: string,
+  toolCalls: AgentToolCall[],
+  userMessage?: string,
+  recentUserTexts?: string[],
+): RuleContradiction | null {
+  const latestExplicitIntent = readLatestExplicitSummerWorkerIntent([
+    ...(recentUserTexts ?? []),
+    ...(userMessage ? [userMessage] : []),
+  ]);
+  const hasSummerWorkerConstraint =
+    latestExplicitIntent === 'summer_worker' ||
+    (latestExplicitIntent === null &&
+      toolCalls.some((call) => hasSummerWorkerLaborFormFilter(call)));
+  if (!hasSummerWorkerConstraint) return null;
+
+  // 先只遮蔽局部拒绝片段，再检查剩余内容。不能按整句豁免，否则
+  // “普通兼职不能推荐，但要不看看小时工？”会把后半句真实降级建议一并洗掉。
+  const withoutSummerWorkerAliases = maskNonSummerRejectionSpans(text).replace(
+    SUMMER_WORKER_ALIAS_PATTERN,
+    '',
+  );
+  const currentJobClaimsNonSummer = NON_SUMMER_CURRENT_JOB_CLAIM_PATTERN.test(
+    withoutSummerWorkerAliases,
+  );
+  const offersNonSummerJob =
+    NON_SUMMER_FORWARD_OFFER_PATTERN.test(withoutSummerWorkerAliases) ||
+    NON_SUMMER_REVERSE_OFFER_PATTERN.test(withoutSummerWorkerAliases) ||
+    NON_SUMMER_NATURAL_SUGGESTION_PATTERN.test(withoutSummerWorkerAliases) ||
+    currentJobClaimsNonSummer ||
+    OTHER_LABOR_FORM_OFFER_PATTERN.test(withoutSummerWorkerAliases);
+  if (!offersNonSummerJob) return null;
+
+  return {
+    ruleId: 'summer_worker_non_summer_recommendation',
+    label: '候选人已明确只要暑假工，但回复仍主动推荐/建议普通兼职、小时工、全职或其他用工形式',
+    action: GUARDRAIL_ACTION.REVISE,
+  };
+}
+
+function hasSummerWorkerLaborFormFilter(call: AgentToolCall): boolean {
+  if (call.toolName !== 'duliday_job_list' || !call.result || typeof call.result !== 'object') {
+    return false;
+  }
+  const result = call.result as Record<string, unknown>;
+  const directQueryMeta = asPlainRecord(result.queryMeta);
+  const details = asPlainRecord(result.details);
+  const nestedQueryMeta = asPlainRecord(details?.queryMeta);
+  const queryMeta = directQueryMeta ?? nestedQueryMeta;
+  const laborFormFilter = asPlainRecord(queryMeta?.laborFormFilter);
+  return laborFormFilter?.candidateLaborForm === '暑假工' && laborFormFilter.applied !== false;
+}
+
+function readLatestExplicitSummerWorkerIntent(
+  userTexts: string[],
+): 'summer_worker' | 'other_labor_form' | null {
+  for (let index = userTexts.length - 1; index >= 0; index -= 1) {
+    const intent = readExplicitSummerWorkerIntent(userTexts[index]);
+    if (intent) return intent;
+  }
+  return null;
+}
+
+function readExplicitSummerWorkerIntent(
+  userMessage: string | undefined,
+): 'summer_worker' | 'other_labor_form' | null {
+  const intent = decideLaborFormIntent(userMessage);
+  if (intent.kind === 'set') {
+    return intent.value === '暑假工' ? 'summer_worker' : 'other_labor_form';
+  }
+  if (intent.kind === 'clear' && intent.clearedValues.includes('暑假工')) {
+    return 'other_labor_form';
+  }
+  return null;
+}
+
+function maskNonSummerRejectionSpans(text: string): string {
+  return [
+    NON_SUMMER_NOT_SUMMER_REJECTION_PATTERN,
+    NON_SUMMER_NEGATIVE_ACTION_BEFORE_TERM_PATTERN,
+    NON_SUMMER_NEGATIVE_ACTION_AFTER_TERM_PATTERN,
+    NON_SUMMER_CROSS_CLAUSE_REJECTION_PATTERN,
+  ].reduce((masked, pattern) => {
+    pattern.lastIndex = 0;
+    return masked.replace(pattern, ' ');
+  }, text);
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 type ShiftPolarity = 'day' | 'night';

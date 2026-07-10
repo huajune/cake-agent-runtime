@@ -122,11 +122,33 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '拦住预检查已经说不能约，但回复还在说可以约、马上安排或已经安排的情况。' +
       'date_unavailable 下"承认原日期约不上并转述替代时段"是规定动作，不拦。',
     riskGoal: 'precheck 已阻止 booking 时禁止继续承诺可约或已约。',
-    exogenousSignal: 'duliday_interview_precheck.nextAction / ageBoundary / nameFieldGuard。',
+    exogenousSignal:
+      'duliday_interview_precheck.nextAction / ageBoundary / nameFieldGuard / temporarySummerWorkerGuard。',
     residualRisk:
       'precheck 未结构化的新阻断原因需要补字段；date_unavailable 豁免只验证"承认约不上"的口径，' +
       '替代时段数值是否忠于 bookableSlots 未逐字对账。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复在 precheck 已阻止 booking 后仍声称可以约、已约或安排面试，当前文本不可发送。请按 precheck 的结构化阻断原因改写：年龄硬拒绝时停止当前岗位；姓名需人工时转人工；日期不可约时说明原日期不可约并给工具返回的替代时段；temporarySummerWorkerGuard=blocked_non_summer_job 时停止当前非暑假工岗位，不再收资或约面，只能重新查兼职类型为暑假工的岗位或如实说明暂无。',
+  },
+  {
+    id: 'identity_misregistration_coaching',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '拦住教唆候选人以不实身份登记（"为了过系统审核按非暑假工登记"）或隐瞒暑假工/学生身份的回复。' +
+      '候选人真实为非暑假工时的如实登记不拦（以暑假工守卫状态为佐证）。',
+    riskGoal:
+      '诚信红线：禁止指导候选人以虚假身份通过系统审核/门店登记，禁止建议隐瞒暑假工、学生等真实身份。',
+    exogenousSignal:
+      '回复文本的审核规避/身份改写/隐瞒话术模式 + duliday_interview_precheck.temporarySummerWorkerGuard 状态。',
+    residualRisk:
+      '话术变体（如"就说你能长期做"）依赖正则持续补样本；年龄/健康证等其他字段的造假教唆未覆盖，需按 badcase 扩展。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复在教唆候选人以不实身份登记或隐瞒身份（如按"非暑假工"登记以通过系统审核），当前文本不可发送，这是诚信红线。' +
+      '请改写为如实口径：候选人身份必须如实登记；当前岗位不匹配其身份时，如实告知暂无匹配岗位、可帮其留意后续岗位或拉群通知；' +
+      '禁止任何"先按XX登记/面试再说/别提暑假工"式的绕审建议。',
   },
   {
     id: 'wait_notice_time_fabrication',
@@ -176,18 +198,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
-    id: 'district_level_distance_claim',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住候选人只报了区/市名，回复却按行政区代表点直接输出精确公里数的情况。',
-    riskGoal: '区级粗定位下的距离与候选人真实位置可能差数公里，直接报精确距离会误导到店。',
-    exogenousSignal: 'geocode.result.areaLevelQuery（查询词与解析出的区/市名一致）。',
-    residualRisk: '候选人报的商圈名恰与区名同名时可能误判；已请求定位/声明估算口径的回复已豁免。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '候选人目前只提供了区/市级位置，本轮距离是按行政区代表点估算的，当前文本不可发送。请只做文案改写：删除所有精确公里数和"离你X公里"表述；优先向候选人确认具体位置（哪条路/哪个商圈/地铁站，或请发定位）。如保留岗位展示，只保留门店名/商圈/路段等已在上一版出现的信息，不新增岗位事实，不调用工具。',
-  },
-  {
     id: 'schedule_filtered_job_recommended',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -199,6 +209,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复忽略了班次硬约束过滤为空的工具结果，当前文本不可发送。请改写为：当前条件下暂时没有符合该班次要求的岗位，询问候选人是否可以放宽时段；不要推荐或预约被过滤掉的岗位。',
+  },
+  {
+    id: 'summer_worker_non_summer_recommendation',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '拦住候选人明确只要暑假工后，回复仍主动推荐、建议或继续推进普通兼职/小时工/全职的情况。',
+    riskGoal:
+      '暑假工意向必须只匹配结构化字段为暑假工（partTimeJobType=暑假工，或历史数据 laborForm=暑假工）的岗位，不得主动降级到其他用工形式。',
+    exogenousSignal:
+      '当前候选人消息中的明确暑假工/暑期工意向，或 duliday_job_list.queryMeta.laborFormFilter.candidateLaborForm=暑假工。',
+    residualRisk:
+      '不点明用工形式、只用门店代词复用历史普通岗位的隐式推荐，仍需岗位级 provenance 对账覆盖。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '候选人已明确只要暑假工，上一版却主动推荐或建议了普通兼职、小时工、全职或其他用工形式，当前文本不可发送。请删除这些替代建议：有结构化字段为暑假工（兼职类型 partTimeJobType=暑假工）的工具结果时只推荐其中岗位；查无暑假工时只如实说明目前暂无匹配岗位并表示后续有岗再通知。不得询问是否愿意改做其他类型，也不得沿用历史非暑假工岗位继续收资或约面。',
   },
   {
     id: 'handoff_no_booking_claim',
@@ -221,25 +247,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复声称群满、群解散、拉不进去或邀请发不过去，但本轮没有成功调用 invite_to_group，当前文本不可发送。请改写为不编造群状态的候选人可见回复：可以说明先帮 TA 继续看岗位、需要确认后再发邀请，或在确需拉群时重新规划调用工具。',
-  },
-  {
-    id: 'group_promise_without_invite',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description:
-      '拦住没有成功调用拉群工具，却声称"已拉你进群""群邀请已发"的完成口径回复。' +
-      '征询/承诺式（"要不我拉你进群？""我先帮你进群"）是 invite_to_group 场景 2/3 设计内的前置轮，不拦。',
-    riskGoal: '"已拉群/邀请已发"的完成口径必须由本轮 invite_to_group 成功结果接地。',
-    exogenousSignal: '本轮 invite_to_group 是否成功。',
-    residualRisk:
-      '承诺后候选人同意的下一轮是否真实调 invite（场景 3 履约）不在本规则单轮视野内；' +
-      '历史已入群场景依赖过去式豁免，仍需样本回放。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复声称已拉群/群邀请已发，但本轮没有成功调用 invite_to_group，当前文本不可发送。' +
-      '请改写为不声称已发生、也不新增拉群征询的口径：删除群相关完成/邀约话术，' +
-      '直接说明后续有合适岗位会主动联系，或围绕已知岗位事实自然收口。' +
-      'rewrite 阶段没有工具能力，禁止新增"需要拉你进群吗/我可以拉你进群"等邀约；不要说"已拉/已发邀请"。',
   },
   {
     id: 'discriminatory_screening_leak',
@@ -308,18 +315,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复声称的时薪金额在本轮岗位数据里不存在，当前文本不可发送。薪资数字只能引用 duliday_job_list 返回的数值或区间，不要自行换算或凭记忆报数。',
-  },
-  {
-    id: 'settlement_cycle_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住本轮岗位数据写了结算口径（如月结），回复却说成日结/周结的情况。',
-    riskGoal: '结算方式只能按本轮岗位工具结果表述，日结/月结说错直接影响候选人求职决策。',
-    exogenousSignal: '本轮 duliday_job_list 返回的结算周期事实（markdown/rawData）。',
-    residualRisk: '工具输出未包含结算口径时无从对账；非标准结算表述依赖词组持续补充。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复的结算方式与本轮岗位数据矛盾（如把月结说成日结），当前文本不可发送。结算口径只能按 duliday_job_list 返回的结算周期表述；工具没写结算方式时不要主动承诺。',
   },
   {
     id: 'proactive_insurance_policy_mention',

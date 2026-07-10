@@ -23,6 +23,8 @@ import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 const PRECHECK_BLOCKED_BOOKING_CLAIM_PATTERN =
   /(?:可以|能)[^。！？\n]{0,8}(?:约|预约|报名|面试)|(?:预约|报名|面试|到店)[^。！？\n]{0,16}(?:成功|好了|约好了|安排好了)|(?:已|已经|帮你|给你)[^。！？\n]{0,18}(?:约好|预约|报名|安排(?:好)?面试)/;
+const SUMMER_WORKER_BLOCKED_COLLECTION_PATTERN =
+  /(?:把|请|先|麻烦|你把)[^。！？\n]{0,10}(?:姓名|电话|年龄|资料|信息)[^。！？\n]{0,24}(?:发(?:给)?我|填写?|补充|提供|提交|登记)|(?:填写?|补充|提供|提交)[^。！？\n]{0,18}(?:姓名|电话|年龄|资料|信息)|(?:姓名|电话|年龄|资料|信息)[^。！？\n]{0,18}(?:填写?|补充|提供|提交|发(?:给)?我)/;
 const BOOKING_SUCCESS_CLAIM_PATTERN =
   /(?:预约|报名|面试|到店)[^。！？\n]{0,16}(?:成功|好了|约好了|安排好了|提交成功)|(?:已|已经|帮你|给你)[^。！？\n]{0,18}(?:约好|预约成功|报名成功|安排(?:好)?面试|提交(?:报名)?)/;
 const CONCRETE_INTERVIEW_TIME_PATTERN =
@@ -46,7 +48,7 @@ export function detectPrecheckBlockedBookingClaim(
   // 先看 reply 是否"声称"可约/已约/已安排（句粒度，否定/疑问句不算）：
   // "没法帮你登记报名"是转达拒绝的正确口径，不是可约声称（2026-07-06 守卫档案 id=51：
   // precheck 正确拒绝 + Agent 正确转达，却因全文裸匹配"帮你…报名"被 P0 拦成整轮静默）。
-  if (!textAssertsClaim(text, PRECHECK_BLOCKED_BOOKING_CLAIM_PATTERN)) return null;
+  const assertsBookingProgress = textAssertsClaim(text, PRECHECK_BLOCKED_BOOKING_CLAIM_PATTERN);
 
   // 取最后一次 precheck，避免同一轮多次尝试时拿到旧判断。
   const precheckCall = [...toolCalls]
@@ -58,14 +60,19 @@ export function detectPrecheckBlockedBookingClaim(
   const nextAction = typeof result.nextAction === 'string' ? result.nextAction : null;
   const ageBoundary = asRecord(result.ageBoundary);
   const nameFieldGuard = asRecord(result.nameFieldGuard);
+  const temporarySummerWorkerGuard = asRecord(result.temporarySummerWorkerGuard);
   const hardAgeReject = nextAction === 'age_rejected' || ageBoundary?.severity === 'hard_reject';
   const nameMustHandoff = nameFieldGuard?.mustHandoff === true;
+  const summerWorkerJobMismatch = temporarySummerWorkerGuard?.status === 'blocked_non_summer_job';
+  const collectsAfterSummerWorkerMismatch =
+    summerWorkerJobMismatch && textAssertsClaim(text, SUMMER_WORKER_BLOCKED_COLLECTION_PATTERN);
+  if (!assertsBookingProgress && !collectsAfterSummerWorkerMismatch) return null;
   // 只有真正阻断 booking 的终态才算冲突。collect_fields / confirm_date 是正常推进态——
   // “填一下资料我帮你约面”正是收资阶段的标准话术，不能当成功口径冲突拦。
   // 上线首日 badcase（batch_6a475a42…935）：collect_fields 被当阻断态触发无谓 repair，
   // 重写版漏收资字段又被 booking_form_field_mismatch 正确拦下，连锁成 repair_exhausted 丢弃整轮。
   const nextActionBlocksBooking =
-    nextAction === 'age_rejected' || nextAction === 'date_unavailable';
+    nextAction === 'age_rejected' || nextAction === 'date_unavailable' || summerWorkerJobMismatch;
 
   // 只有 precheck 明确不允许进入 booking，才认为 reply 成功口径冲突。
   if (!hardAgeReject && !nameMustHandoff && !nextActionBlocksBooking) return null;
@@ -74,7 +81,12 @@ export function detectPrecheckBlockedBookingClaim(
   // 返回 bookableSlots 替代时段。回复只要承认了原日期约不上（说明原因），"最近能约
   // 明天下午1点"就是在转述工具给的替代时段，属于 stage 策略要求的标准动作，放行；
   // 但完成时态的"已约好/预约成功"仍然是编造，不豁免。
-  if (nextAction === 'date_unavailable' && !hardAgeReject && !nameMustHandoff) {
+  if (
+    nextAction === 'date_unavailable' &&
+    !hardAgeReject &&
+    !nameMustHandoff &&
+    !summerWorkerJobMismatch
+  ) {
     if (
       DATE_UNAVAILABLE_ACK_PATTERN.test(text) &&
       !textAssertsClaim(text, BOOKING_SUCCESS_CLAIM_PATTERN)
@@ -87,10 +99,14 @@ export function detectPrecheckBlockedBookingClaim(
     ? 'age hard_reject/age_rejected'
     : nameMustHandoff
       ? 'nameFieldGuard.mustHandoff'
-      : `nextAction=${nextAction}`;
+      : summerWorkerJobMismatch
+        ? 'temporarySummerWorkerGuard.blocked_non_summer_job'
+        : `nextAction=${nextAction}`;
   return {
     ruleId: 'precheck_blocked_booking_claim',
-    label: `precheck 已阻止进入 booking（${reason}），但回复仍声称可约/已约/已安排面试，需改写为收集信息或人工处理口径`,
+    label: summerWorkerJobMismatch
+      ? `precheck 已因非暑假工岗位阻断（${reason}），但回复仍继续收资或声称可约/已约/已安排面试，需停止推进该岗位`
+      : `precheck 已阻止进入 booking（${reason}），但回复仍声称可约/已约/已安排面试，需改写为收集信息或人工处理口径`,
     action: GUARDRAIL_ACTION.REVISE,
   };
 }
