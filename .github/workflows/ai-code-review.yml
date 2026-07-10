@@ -53,9 +53,15 @@ jobs:
           DECISIVE_REVIEWS_BEFORE=$(gh api \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
             --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
+          if gh pr diff "$PR_NUMBER" --name-only | grep -Fxq '.github/workflows/ai-code-review.yml'; then
+            WORKFLOW_CHANGED=true
+          else
+            WORKFLOW_CHANGED=false
+          fi
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           echo "decisive_reviews_before=$DECISIVE_REVIEWS_BEFORE" >> "$GITHUB_OUTPUT"
+          echo "workflow_changed=$WORKFLOW_CHANGED" >> "$GITHUB_OUTPUT"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -73,6 +79,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - uses: anthropics/claude-code-action@v1
+        if: steps.pr.outputs.workflow_changed != 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -101,6 +108,7 @@ jobs:
       # `gh pr review` 时也可能显示绿色。这里强制校验本次 run 确实为当前 HEAD
       # 新增了 APPROVED / CHANGES_REQUESTED 裁决，杜绝“检查绿了但旧 review 仍阻塞”。
       - name: Verify decisive review was submitted for current HEAD
+        if: steps.pr.outputs.workflow_changed != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -122,3 +130,10 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
             --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | sort_by(.submitted_at) | last | .state")
           echo "AI review submitted for ${HEAD_SHA}: ${LATEST_STATE}"
+
+      # Anthropic Action 会拒绝运行 PR 自己修改过的 workflow（必须与默认分支完全一致）。
+      # 这类改动不能由它安全地自审，保留明确告警并交给仓库的人类审批规则兜底。
+      - name: Require human review for AI workflow changes
+        if: steps.pr.outputs.workflow_changed == 'true'
+        run: |
+          echo "::warning::AI review skipped because this PR modifies ai-code-review.yml; human review is required."
