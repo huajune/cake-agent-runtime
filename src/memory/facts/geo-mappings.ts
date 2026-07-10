@@ -144,7 +144,22 @@ export const NATIONAL_CITY_SUFFIX_TO_CITY: Record<string, string> = Object.fromE
 );
 
 /**
- * 区/县名 → 所属城市
+ * 海绵按“地级 city + 县级 region”存储的县级市映射。
+ *
+ * 消息扫描只使用带“市”后缀的完整名称，避免裸“延吉/珲春”等道路、门店名误命中；
+ * cityNameList 这类语义明确的工具参数可在边界层兼容裸名称。
+ */
+export const COUNTY_LEVEL_CITY_TO_PREFECTURE: Record<string, string> = {
+  延吉市: '延边朝鲜族自治州',
+  图们市: '延边朝鲜族自治州',
+  敦化市: '延边朝鲜族自治州',
+  珲春市: '延边朝鲜族自治州',
+  龙井市: '延边朝鲜族自治州',
+  和龙市: '延边朝鲜族自治州',
+};
+
+/**
+ * 县级行政区（区/县/县级市）→ 所属地级城市
  *
  * 仅收录高置信度、无歧义的区名（多个城市共享的区名必须排除，避免误判）。
  * extractor 对本轮消息里抽到的区直接走这张表推导城市。
@@ -299,6 +314,7 @@ export const DISTRICT_TO_CITY: Record<string, string> = {
   咸丰: '恩施',
   来凤: '恩施',
   鹤峰: '恩施',
+  ...COUNTY_LEVEL_CITY_TO_PREFECTURE,
 };
 
 /**

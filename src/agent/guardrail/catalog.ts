@@ -21,61 +21,29 @@ import type {
 import { OUTPUT_RULE_CATALOG, OUTPUT_RULE_IDS } from './output/rules/output-rule-catalog';
 import { TOOL_GUARDRAIL_CATALOG, TOOL_GUARDRAIL_IDS } from './tool/tool-guardrail.catalog';
 
+// 2026-07-10 用户裁定批量下线（勿修补勿重加）：job-fact-hallucinations /
+// job-fact-value-mismatch / booking-claim-errors / location-claim-errors 四个规则文件
+// 整族删除（13 个 rule id）；另有 group_full_without_invite / system_status_fabrication /
+// tool_failure_success_claim / brand_name_violation 4 条下线。岗位/预约事实治理交语义档。
 const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   brand_alias_fuzzy_match_ignored:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
-  confirmed_booking_time_missing:
-    'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
-  district_level_distance_claim:
-    'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
-  hourly_salary_value_mismatch:
-    'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
   human_service_phrase_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
+  identity_misregistration_coaching:
+    'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts（HardRulesService 调度）',
   image_description_not_saved:
     'agent/guardrail/output/rules/visual-message-errors.rule.ts（HardRulesService 调度）',
-  job_shift_polarity_mismatch:
-    'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
   repeated_reply: 'agent/guardrail/output/rules/repeated-reply.rule.ts（HardRulesService 调度）',
   requested_brand_mismatch:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
-  schedule_filtered_job_recommended:
-    'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
-  settlement_cycle_mismatch:
-    'agent/guardrail/output/rules/job-fact-value-mismatch.rule.ts（HardRulesService 调度）',
-  wait_notice_time_collection:
-    'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
-  booking_form_field_mismatch:
-    'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
-  brand_name_violation:
-    'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   discriminatory_screening_leak:
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
-  geocode_uncertain_location_claim:
-    'agent/guardrail/output/rules/location-claim-errors.rule.ts（HardRulesService 调度）',
-  group_full_without_invite:
-    'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
-  group_promise_without_invite:
-    'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
-  handoff_no_booking_claim:
-    'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
   internal_output_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
-  precheck_blocked_booking_claim:
-    'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
   proactive_insurance_policy_mention:
     'agent/guardrail/output/rules/insurance-policy-claims.rule.ts（HardRulesService 调度）',
   quota_promise: 'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
-  salary_fabrication:
-    'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
-  system_status_fabrication:
-    'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
-  tool_failure_success_claim:
-    'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
-  ungrounded_job_recommendation:
-    'agent/guardrail/output/rules/job-fact-hallucinations.rule.ts（HardRulesService 调度）',
-  wait_notice_time_fabrication:
-    'agent/guardrail/output/rules/booking-claim-errors.rule.ts（HardRulesService 调度）',
 };
 
 export interface GuardrailCatalogEntry {

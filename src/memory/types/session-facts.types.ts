@@ -810,6 +810,8 @@ export interface RecommendedJobSummary {
   cityName: string | null;
   regionName: string | null;
   laborForm: string | null;
+  /** 兼职类型（laborForm=兼职 时的细分：寒假工/暑假工/小时工）。可选：历史存量记录无此字段。 */
+  partTimeJobType?: string | null;
   salaryDesc: string | null;
   /** 班次摘要（由 composeShiftTimeText 生成）。null 表示工具调用时未获取到班次数据。 */
   shiftSummary?: string | null;
@@ -830,6 +832,7 @@ export const RecommendedJobSummarySchema = z.object({
   cityName: z.string().nullable(),
   regionName: z.string().nullable(),
   laborForm: z.string().nullable(),
+  partTimeJobType: z.string().nullable().optional(),
   salaryDesc: z.string().nullable(),
   shiftSummary: z.string().nullable().optional(),
   jobCategoryName: z.string().nullable(),

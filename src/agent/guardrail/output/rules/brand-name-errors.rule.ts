@@ -1,43 +1,26 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
-import { readLatestJobListCall, readLatestUsableJobListCall } from './job-list-call.util';
 
 /**
- * 品牌名错误：
- * - 平台/公司对外品牌必须说"独立客"，不能说历史名/错名"独立日"；
- * - 岗位品牌名必须来自本轮岗位工具接地结果，不能把 A 品牌岗位改写成 B 品牌岗位。
+ * 品牌名相关对账。
  *
  * 职责：
- * - 管对外品牌名错误，以及岗位推荐卡片里的品牌名被模型改写；
- * - 平台品牌错误不需要工具信号，只要 sanitizeBrandName 能修正，就说明 reply 里出现了禁用名称；
- * - 岗位品牌错误需要对账最后一次 duliday_job_list 返回的 brandName，确保“推荐标题”没有凭空换品牌。
+ * - 候选人/工具入参指定品牌时，回复不得结构化推荐其它品牌（requested_brand_mismatch）；
+ * - 工具已高置信回指品牌别名/口误时，回复不得声称品牌没找到（brand_alias_fuzzy_match_ignored）。
  *
  * 不负责：
- * - 不判断岗位是否真实存在，那属于 job-fact-hallucinations；
+ * - 不判断岗位是否真实存在（原 job-fact-hallucinations 规则族已于 2026-07-10 下线，
+ *   接地治理交语义档）；
+ * - 平台品牌错名（"独立日"）与岗位品牌改写（brand_name_violation）已于 2026-07-10
+ *   用户裁定下线（勿修补勿重加）；工具层 duliday-job-list 输出仍走 sanitizeBrandName；
  * - 不检查门店名、地址、岗位名的其它字段，目前只聚焦品牌字段。
  *
  * 维护边界：
- * - 岗位品牌名检查刻意只覆盖结构化推荐标题，降低把普通口语里的品牌讨论误杀的概率；
+ * - 品牌提取刻意只覆盖结构化推荐标题，降低把普通口语里的品牌讨论误杀的概率；
  * - 如果新增一种岗位推荐模板，要同步补 extractStructuredJobTitleBrands 的解析模式。
  */
 const BRAND_NO_MATCH_CLAIM_PATTERN =
   /(?:没找到|没有|暂无|暂时没有|查不到|未找到)[^。！？\n]{0,24}(?:这个|该)?(?:品牌|门店|岗位|在招)|(?:这个|该)?品牌[^。！？\n]{0,16}(?:没找到|没有|暂无|查不到|未找到)/;
-
-export function detectBrandNameError(text: string, toolCalls: AgentToolCall[] = []) {
-  // 平台/公司品牌名先做全量扫描：这是独立于岗位工具的对外口径红线。
-  if (sanitizeBrandName(text) !== text) {
-    return {
-      ruleId: 'brand_name_violation',
-      label: '回复出现对外品牌名错误（如"独立日"；正确对外名称是"独立客"），禁止发出',
-      action: GUARDRAIL_ACTION.BLOCK,
-      blocked: true,
-    };
-  }
-
-  // 岗位品牌名需要工具接地；没有 job_list 品牌结果时不做臆测。
-  return detectJobBrandMismatch(text, toolCalls);
-}
 
 export function detectRequestedBrandMismatch(text: string, toolCalls: AgentToolCall[] = []) {
   const requestedBrands = collectRequestedBrandAliases(toolCalls);
@@ -69,44 +52,6 @@ export function detectBrandAliasFuzzyMatchIgnored(text: string, toolCalls: Agent
     label: `duliday_job_list 返回高置信品牌回指"${suggestion}"，但回复仍声称品牌/岗位未找到`,
     action: GUARDRAIL_ACTION.REVISE,
   };
-}
-
-/**
- * 检查结构化岗位标题里的品牌是否来自本轮工具结果。
- * 例：工具返回“星巴克”，回复标题却写成“瑞幸咖啡 - 店员 - 近地铁”，应拦截。
- */
-function detectJobBrandMismatch(text: string, toolCalls: AgentToolCall[]) {
-  const groundedBrands = collectGroundedJobBrands(toolCalls);
-  if (groundedBrands.size === 0) return null;
-
-  const claimedBrands = extractStructuredJobTitleBrands(text);
-  for (const claimed of claimedBrands) {
-    if (isGroundedBrandClaim(claimed, groundedBrands)) continue;
-    return {
-      ruleId: 'brand_name_violation',
-      label: `回复里的岗位品牌名"${claimed}"不在本轮岗位工具返回品牌中，禁止把岗位品牌改写后发出`,
-      action: GUARDRAIL_ACTION.BLOCK,
-      blocked: true,
-    };
-  }
-
-  return null;
-}
-
-/**
- * 收集最后一次**可用**岗位工具结果里的品牌名。
- * 只从 duliday_job_list 读，避免其它工具里的自由文本污染品牌白名单。
- *
- * 必须取"最后一次可用"而不是裸最后一次（2026-07-06 review）：动作链"扩面查（有结果）
- * → 复核查（空/错）"下，裸最后一次读到的是错误结果——错误 details 里的
- * aliasFuzzyMatch.suggestions[].brandName 会被当成接地品牌，把上一次真实接地的推荐
- * 误判成品牌改写直接 block。
- */
-function collectGroundedJobBrands(toolCalls: AgentToolCall[]): Set<string> {
-  const brands = new Set<string>();
-  const latestJobListCall = readLatestUsableJobListCall(toolCalls);
-  if (latestJobListCall) collectBrandNames(latestJobListCall.result, brands);
-  return brands;
 }
 
 function collectRequestedBrandAliases(toolCalls: AgentToolCall[]): Set<string> {
@@ -156,38 +101,6 @@ function isNoMatchClaimAboutBrand(text: string, brandName: string): boolean {
 
 function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * 兼容 job-list 返回结构的多层包裹。
- * 历史结果可能在 result、rawData.result、basicInfo.brandName 等位置，因此递归浅层读取。
- */
-function collectBrandNames(value: unknown, brands: Set<string>, depth = 0): void {
-  if (depth > 5 || value === null || value === undefined) return;
-  if (Array.isArray(value)) {
-    for (const item of value) collectBrandNames(item, brands, depth + 1);
-    return;
-  }
-  if (typeof value !== 'object') return;
-
-  const record = value as Record<string, unknown>;
-  const directBrand = readNonEmptyString(record.brandName);
-  if (directBrand) brands.add(normalizeBrand(directBrand));
-
-  const basicInfo = record.basicInfo;
-  if (basicInfo && typeof basicInfo === 'object') {
-    const basicBrand = readNonEmptyString((basicInfo as Record<string, unknown>).brandName);
-    if (basicBrand) brands.add(normalizeBrand(basicBrand));
-  }
-
-  collectBrandNames(record.result, brands, depth + 1);
-  collectBrandNames(record.rawData, brands, depth + 1);
-}
-
-function readNonEmptyString(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
 }
 
 /**
@@ -244,4 +157,13 @@ function isGroundedBrandClaim(claimed: string, groundedBrands: Set<string>): boo
     if (claimed.includes(grounded) || grounded.includes(claimed)) return true;
   }
   return false;
+}
+
+/**
+ * 最后一次 duliday_job_list 调用（不问可用与否）：只用于读 aliasFuzzyMatch / args 等
+ * **错误侧**信号——这些信号恰恰长在空/错结果上，换成"可用"口径会读不到。
+ * 原 job-list-call.util 共享原语；2026-07-10 该 util 随 job-fact 规则族下线后内联至此。
+ */
+function readLatestJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
+  return [...toolCalls].reverse().find((call) => call.toolName === 'duliday_job_list') ?? null;
 }

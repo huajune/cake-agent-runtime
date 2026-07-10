@@ -7,9 +7,21 @@ import type {
 } from '@memory/types/session-facts.types';
 import type { UserProfile } from '@memory/types/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
+import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
+
+/** geocode 用的本轮可信位置锚点；只来自候选人高置信事实或真人招募经理最近确认。 */
+export interface GeocodeLocationAnchor {
+  city?: string;
+  districts: string[];
+  source: 'current_user' | 'human_agent' | 'session_memory';
+  /** 锚点来源原文/结构化地点摘要，用于确认模型 geocode query 确实在回指同一地点。 */
+  referenceText?: string;
+  /** 排障证据，禁止直接展示给候选人。 */
+  evidence: string;
+}
 
 /**
  * 每轮工具共享的上下文。
@@ -26,6 +38,10 @@ export interface ToolBuildContext {
   sessionId: string;
   /** 对话消息 */
   messages: unknown[];
+  /** 当前轮末尾的候选人原话；供工具区分“用户明说”与“模型从昵称臆测”。 */
+  currentUserMessage?: string;
+  /** 当前轮对用工形式偏好的明确变更；用于让工具覆盖或撤销跨轮旧事实。 */
+  currentLaborFormIntent?: LaborFormIntentDecision;
   /** 记录本轮工具查到的岗位候选池；回合结束后再统一写入会话记忆。 */
   onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
   /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */
@@ -76,6 +92,12 @@ export interface ToolBuildContext {
   sessionFacts?: EntityExtractionResult | null;
   /** 本轮前置高置信识别结果（含字段级置信度/证据），仅当前轮有效。 */
   highConfidenceFacts?: HighConfidenceFacts | null;
+  /**
+   * 本轮“附近/这边”等回指查询所依赖的可信位置锚点。
+   * geocode 的 unique 结果若与锚点区县冲突，必须带完整上下文重查或要求澄清，
+   * 不能把错区坐标继续交给岗位查询。
+   */
+  geocodeLocationAnchor?: GeocodeLocationAnchor;
   /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
   currentFocusJob?: RecommendedJobSummary | null;
   /**

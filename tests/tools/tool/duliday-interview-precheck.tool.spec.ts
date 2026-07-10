@@ -696,6 +696,11 @@ describe('buildInterviewPrecheckTool', () => {
           preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'stale context',
         },
+        // 身份翻转（记忆=社会人士 → 本轮=学生）需要候选人原话佐证，
+        // 否则会被溯源校验判为模型代答丢弃（badcase 6a50827c）。
+        messages: [
+          { role: 'user', content: '我现在是学生，在读大专，明天下午都有空' },
+        ] as never,
       },
     );
 
@@ -1000,7 +1005,7 @@ describe('buildInterviewPrecheckTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
           makeJob({
-            basicInfo: { laborForm: '小时工' },
+            basicInfo: { laborForm: '兼职', partTimeJobType: '小时工' },
             hiringRequirement: { remark: '' },
             interviewProcess: fixedInterviewProcess,
           }),
@@ -1027,7 +1032,7 @@ describe('buildInterviewPrecheckTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
           makeJob({
-            basicInfo: { laborForm: '暑假工' },
+            basicInfo: { laborForm: '兼职', partTimeJobType: '暑假工' },
             hiringRequirement: { remark: '' },
             interviewProcess: fixedInterviewProcess,
           }),
@@ -1040,6 +1045,126 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.nextAction).toBe('ready_to_book');
       expect(result.bookingChecklist.missingFields ?? []).not.toContain('是否暑假工');
       expect(result.temporarySummerWorkerGuard).toBeUndefined();
+    });
+
+    // ===== 身份粘性（badcase chat 6a50827c：模型删参/反传洗身份绕守卫）=====
+
+    const nonSummerJobFixture = () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职', partTimeJobType: '小时工' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+    };
+
+    it('候选人原话说过"暑假工的"后，模型省略 candidateLaborForm 也拦得住（粘性）', async () => {
+      nonSummerJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput },
+        {
+          messages: [
+            { role: 'assistant', content: '你是暑假工还是想长期做呀？' },
+            { role: 'user', content: '暑假工的' },
+          ] as never,
+        },
+      );
+
+      expect(result.temporarySummerWorkerGuard).toEqual(
+        expect.objectContaining({ status: 'blocked_non_summer_job' }),
+      );
+    });
+
+    it('模型反向传 candidateLaborForm="不是暑假工" 洗不掉候选人原话确认的暑假工身份', async () => {
+      nonSummerJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateLaborForm: '不是暑假工' },
+        {
+          messages: [{ role: 'user', content: '我是暑假工' }] as never,
+        },
+      );
+
+      expect(result.temporarySummerWorkerGuard).toEqual(
+        expect.objectContaining({ status: 'blocked_non_summer_job' }),
+      );
+    });
+
+    it('候选人自己明确改口"不是暑假工"时解除拦截（原话最新信号双向可信）', async () => {
+      nonSummerJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput },
+        {
+          messages: [
+            { role: 'user', content: '暑假工的' },
+            { role: 'user', content: '我不是暑假工，打算长期做' },
+          ] as never,
+        },
+      );
+
+      expect(result.temporarySummerWorkerGuard).toBeUndefined();
+      expect(result.nextAction).toBe('ready_to_book');
+    });
+
+    it('候选人引用块里的"暑假工岗位上线通知"不构成暑假工自认', async () => {
+      nonSummerJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 30 },
+        {
+          messages: [
+            {
+              role: 'user',
+              content: '[引用 祝东升：后续有暑假工岗位上线第一时间通知你]\n前者吧',
+            },
+          ] as never,
+        },
+      );
+
+      expect(result.temporarySummerWorkerGuard).toBeUndefined();
+    });
+
+    it('candidateIsStudent 与记忆矛盾且原话无佐证时判为模型代答，不覆盖身份', async () => {
+      nonSummerJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 30, candidateIsStudent: 'false' },
+        {
+          sessionFacts: {
+            interview_info: { is_student: true },
+            preferences: {},
+          } as never,
+          messages: [] as never,
+        },
+      );
+
+      expect(result.bookingChecklist.templateText ?? '').not.toContain(
+        '身份（学生/社会人士）：社会人士',
+      );
+    });
+
+    it('候选人原话有改口证据时（"已经毕业了"），显式身份翻转照常采信', async () => {
+      nonSummerJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 30, candidateIsStudent: 'false' },
+        {
+          sessionFacts: {
+            interview_info: { is_student: true },
+            preferences: {},
+          } as never,
+          messages: [{ role: 'user', content: '我已经毕业了，现在是社会人士' }] as never,
+        },
+      );
+
+      expect(result.bookingChecklist.templateText ?? '').toContain(
+        '身份（学生/社会人士）：社会人士',
+      );
     });
   });
 

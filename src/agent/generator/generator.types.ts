@@ -2,6 +2,7 @@ import { streamText } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import type { LlmThinkingConfig } from '@/llm/llm.types';
 import type { MessageType } from '@enums/message-callback.enum';
+import type { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -33,6 +34,11 @@ import type { GuardViolation } from '@shared-types/guardrail.contract';
 export interface GeneratorInputMessage {
   role: string;
   content: string;
+  /** WECOM 历史消息来源；用于区分真人招募经理与 Agent/自动回复。 */
+  source?: StorageMessageSource;
+  messageType?: StorageMessageType;
+  isSelf?: boolean;
+  payloadSource?: string;
   /** 该条 user message 关联的图片 URL 列表（test-suite/dashboard 路径） */
   imageUrls?: string[];
   /** 与 imageUrls 一一对应的图片消息 ID（wecom 路径供工具回写） */

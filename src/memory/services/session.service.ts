@@ -53,6 +53,7 @@ import {
   unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
 import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
+import { decideLaborFormIntent } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
@@ -214,9 +215,9 @@ export class SessionService {
   /**
    * 保存本轮提取的会话事实。
    *
-   * 默认走 deepMerge（null/空串不覆盖旧值，保留历史积累）；但 `forceNullFields`
-   * 列出的 `interview_info` 字段会在 merge 之后被显式覆盖为 null，用于让调用方
-   * 把确定不该保留的旧值（如 sanitizer 识别出的昵称）从 Redis 中清掉。
+   * 默认走 deepMerge（null/空串不覆盖旧值，保留历史积累）；但显式列入
+   * `forceNullFields` / `forceNullPreferenceFields` 的字段会在 merge 之后覆盖为 null，
+   * 用于让调用方把确定不该保留的旧值从 Redis 中清掉。
    *
    * 背景：badcase `batch_69e9bba2536c9654026522da_*` —— deepMerge 的 "null 不
    * 覆盖" 语义让 sanitizer 的 null 输出无法清除已污染的 name。新增该参数作为
@@ -227,7 +228,10 @@ export class SessionService {
     userId: string,
     sessionId: string,
     facts: EntityExtractionResult | SessionFacts,
-    options?: { forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[] },
+    options?: {
+      forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[];
+      forceNullPreferenceFields?: readonly (keyof EntityExtractionResult['preferences'])[];
+    },
   ): Promise<void> {
     const state = await this.getSessionState(corpId, userId, sessionId);
     const sessionFacts = this.ensureSessionFacts(facts);
@@ -237,6 +241,7 @@ export class SessionService {
     const forcedMerge = this.applyForceNullFields(
       baseMerge as SessionFacts,
       options?.forceNullFields,
+      options?.forceNullPreferenceFields,
     );
     const mergedFacts = SessionFactsSchema.parse(forcedMerge) as SessionFacts;
 
@@ -246,20 +251,34 @@ export class SessionService {
   private applyForceNullFields(
     facts: SessionFacts,
     forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[],
+    forceNullPreferenceFields?: readonly (keyof EntityExtractionResult['preferences'])[],
   ): SessionFacts {
-    if (!forceNullFields || forceNullFields.length === 0) return facts;
-    // interview_info 的字段类型异构（string|null、boolean|null 等），
+    if (
+      (!forceNullFields || forceNullFields.length === 0) &&
+      (!forceNullPreferenceFields || forceNullPreferenceFields.length === 0)
+    ) {
+      return facts;
+    }
+    // 两组字段类型异构（string|null、boolean|null、数组等），
     // 用 Record 视图收敛成 null 赋值，避免逐字段命中具体联合类型的推导限制。
     const interview = { ...facts.interview_info } as Record<
       keyof SessionFacts['interview_info'],
       unknown
     >;
-    for (const field of forceNullFields) {
+    for (const field of forceNullFields ?? []) {
       interview[field] = null;
+    }
+    const preferences = { ...facts.preferences } as Record<
+      keyof SessionFacts['preferences'],
+      unknown
+    >;
+    for (const field of forceNullPreferenceFields ?? []) {
+      preferences[field] = null;
     }
     return {
       ...facts,
       interview_info: interview as SessionFacts['interview_info'],
+      preferences: preferences as SessionFacts['preferences'],
     };
   }
 
@@ -575,6 +594,7 @@ export class SessionService {
     // 信息不会永久丢失：下一轮非应答消息的增量窗口仍覆盖本轮上下文（含助手
     // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
     const lastUserText = MessageParser.stripTimeContext(userMessages.at(-1) ?? '').trim();
+    const currentLaborFormIntent = decideLaborFormIntent(lastUserText);
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
       const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
       if (!currentTurnRuleHits) {
@@ -613,8 +633,14 @@ export class SessionService {
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
     const nameStillNull = droppedName && !unwrapSessionFactValue(newFacts.interview_info.name);
+    const persistedLaborForm = unwrapSessionFactValue(previousFacts?.preferences.labor_form);
+    const laborFormExplicitlyCleared =
+      currentLaborFormIntent.kind === 'clear' &&
+      typeof persistedLaborForm === 'string' &&
+      currentLaborFormIntent.clearedValues.some((value) => value === persistedLaborForm);
     await this.saveFacts(corpId, userId, sessionId, newFacts, {
       forceNullFields: nameStillNull ? ['name'] : undefined,
+      forceNullPreferenceFields: laborFormExplicitlyCleared ? ['labor_form'] : undefined,
     });
 
     return { llmDegraded };

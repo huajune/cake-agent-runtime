@@ -43,12 +43,17 @@ export class ShortTermService {
     this.lastLoadError = null;
 
     try {
-      const cachedHistory = this.applyTimeBoundary(
-        await this.getCachedHistory(chatId),
-        options?.endTimeInclusive,
-      );
-      if (cachedHistory.length > 0) {
+      const cached = await this.getCachedHistory(chatId);
+      const cacheHasProvenance =
+        cached.length > 0 && cached.every((message) => message.provenanceVersion === 2);
+      const cachedHistory = this.applyTimeBoundary(cached, options?.endTimeInclusive);
+      if (cacheHasProvenance && cachedHistory.length > 0) {
         return this.trimByChars(this.injectTimeContext(cachedHistory));
+      }
+      if (cached.length > 0 && !cacheHasProvenance) {
+        // 滚动发布兼容：旧实例写入的 v1 entry 仍可被旧代码读取；新实例发现后
+        // 原地重建同一个 key，不切前缀，避免 v1/v2 双 key 导致消息窗口分叉。
+        await this.redisService?.del(buildChatHistoryCacheKey(chatId));
       }
 
       const rawHistory = await this.chatSession.getChatHistory(
@@ -73,11 +78,23 @@ export class ShortTermService {
   }
 
   private injectTimeContext(
-    messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>,
+    messages: Array<{
+      role: 'user' | 'assistant';
+      content: string;
+      timestamp: number;
+      source?: ShortTermMessage['source'];
+      messageType?: ShortTermMessage['messageType'];
+      isSelf?: boolean;
+      payloadSource?: string;
+    }>,
   ): ShortTermMessage[] {
     return messages.map((msg) => ({
       role: msg.role,
       content: MessageParser.injectTimeContext(msg.content, msg.timestamp),
+      source: msg.source,
+      messageType: msg.messageType,
+      isSelf: msg.isSelf,
+      payloadSource: msg.payloadSource,
     }));
   }
 
@@ -91,9 +108,7 @@ export class ShortTermService {
 
   private async getCachedHistory(
     chatId: string,
-  ): Promise<
-    Array<{ messageId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
-  > {
+  ): Promise<ReturnType<typeof parseCachedChatHistoryMessages>> {
     if (!this.redisService) return [];
 
     const rawMessages = await this.redisService
@@ -113,6 +128,10 @@ export class ShortTermService {
       role: 'user' | 'assistant';
       content: string;
       timestamp: number;
+      source?: ShortTermMessage['source'];
+      messageType?: ShortTermMessage['messageType'];
+      isSelf?: boolean;
+      payloadSource?: string;
     }>,
   ): Promise<void> {
     if (!this.redisService || messages.length === 0) return;
@@ -125,6 +144,11 @@ export class ShortTermService {
         role: message.role,
         content: message.content,
         timestamp: message.timestamp,
+        source: message.source,
+        messageType: message.messageType,
+        isSelf: message.isSelf,
+        payloadSource: message.payloadSource,
+        provenanceVersion: 2,
       }),
     );
 

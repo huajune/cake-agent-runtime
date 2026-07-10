@@ -49,6 +49,7 @@ export interface ReplyRepairJobSummary {
   cityName?: string | null;
   regionName?: string | null;
   laborForm?: string | null;
+  partTimeJobType?: string | null;
   salaryDesc?: string | null;
   shiftSummary?: string | null;
   distanceKm?: number | null;
@@ -147,6 +148,7 @@ export class ReplyRepairContextProvider {
       cityName: job.cityName,
       regionName: job.regionName,
       laborForm: job.laborForm,
+      partTimeJobType: job.partTimeJobType ?? null,
       salaryDesc: job.salaryDesc,
       shiftSummary: job.shiftSummary,
       distanceKm: job.distanceKm,
@@ -156,7 +158,9 @@ export class ReplyRepairContextProvider {
   private formatJob(tag: string, job: ReplyRepairJobSummary): string {
     const name = [job.brandName, job.storeName, job.jobName].filter(Boolean).join('-');
     const meta = [
-      job.laborForm,
+      job.partTimeJobType && job.partTimeJobType !== job.laborForm
+        ? `${job.laborForm ?? '兼职'}(${job.partTimeJobType})`
+        : job.laborForm,
       job.salaryDesc,
       job.shiftSummary,
       job.distanceKm != null ? `${job.distanceKm}km` : null,

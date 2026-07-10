@@ -7,6 +7,7 @@ describe('buildInterviewBookingTool', () => {
     fetchJobs: jest.fn(),
     bookInterview: jest.fn(),
     uploadAttachmentFromUrl: jest.fn(),
+    getCachedWorkOrderById: jest.fn(),
   };
 
   const mockPrivateChatNotifier = {
@@ -73,6 +74,8 @@ describe('buildInterviewBookingTool', () => {
       fileName: '张三简历.pdf',
       cloudStorageKey: 'resume/cloud/key.pdf',
     });
+    // 软查重反查工单默认查不到手机号 → 保守按重复拦截（与海绵不可用时的兜底行为一致）
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
   });
 
   const flushAsyncEvents = async () => {
@@ -1035,6 +1038,129 @@ describe('buildInterviewBookingTool', () => {
       445999,
       expect.objectContaining({ job_id: 200 }),
     );
+  });
+
+  describe('软查重手机号交叉核验（工单 448367→448402 badcase）', () => {
+    // 同一个企微联系人先后给两个不同的人报同一岗位：罗欣宇约成功后 30 分钟内，
+    // 同会话给许颖（另一手机号）报同岗位被误判 already_booked。命中指针后应
+    // 反查工单手机号：不同手机号 = 不同候选人，放行。
+    const recentActiveBooking = {
+      work_order_id: 448367,
+      job_id: 100,
+      linked_at: new Date().toISOString(),
+    };
+
+    it('工单手机号与本次不同（不同候选人）时应放行，正常提交预约', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 448367,
+        phone: '13554730335',
+      });
+      mockSpongeService.bookInterview.mockResolvedValue({
+        success: true,
+        code: 0,
+        message: '预约成功',
+        workOrderId: 448402,
+      });
+
+      const result = await executeTool(
+        {
+          ...validInput,
+          phone: '13750091607',
+          educationId: 2,
+          householdRegisterProvinceId: 310000,
+          height: 170,
+        },
+        {},
+        { activeBooking: recentActiveBooking },
+      );
+
+      expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(
+        448367,
+        expect.anything(),
+      );
+      expect(result.success).toBe(true);
+      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: '13750091607' }),
+        expect.anything(),
+      );
+    });
+
+    it('工单手机号与本次相同（真·重复提交）时仍应拦截', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 448367,
+        phone: '13800138000',
+      });
+
+      const result = await executeTool(
+        { ...validInput, educationId: 2, householdRegisterProvinceId: 310000, height: 170 },
+        {},
+        { activeBooking: recentActiveBooking },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+      expect(result.existingWorkOrderId).toBe(448367);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('手机号比对应忽略空格/连字符等格式差异', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 448367,
+        phone: '138-0013-8000',
+      });
+
+      const result = await executeTool(
+        {
+          ...validInput,
+          phone: '138 0013 8000',
+          educationId: 2,
+          householdRegisterProvinceId: 310000,
+          height: 170,
+        },
+        {},
+        { activeBooking: recentActiveBooking },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('反查工单失败（海绵异常）时应保守拦截，保留防重试兜底', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.getCachedWorkOrderById.mockRejectedValue(new Error('sponge down'));
+
+      const result = await executeTool(
+        { ...validInput, educationId: 2, householdRegisterProvinceId: 310000, height: 170 },
+        {},
+        { activeBooking: recentActiveBooking },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('工单缺手机号时应保守拦截', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+        workOrderId: 448367,
+        phone: null,
+      });
+
+      const result = await executeTool(
+        { ...validInput, educationId: 2, householdRegisterProvinceId: 310000, height: 170 },
+        {},
+        { activeBooking: recentActiveBooking },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
   });
 
   it('should return missing_customer_label_values when supplements require unknown answers', async () => {

@@ -223,6 +223,7 @@ export class MemoryFixtureService {
       cityName: this.readStringFromKeys(raw, ['cityName', 'city_name', 'city']),
       regionName: this.readStringFromKeys(raw, ['regionName', 'region_name', 'district']),
       laborForm: this.readStringFromKeys(raw, ['laborForm', 'labor_form']),
+      partTimeJobType: this.readStringFromKeys(raw, ['partTimeJobType', 'part_time_job_type']),
       salaryDesc: this.readStringFromKeys(raw, ['salaryDesc', 'salary_desc', 'salary']),
       jobCategoryName: this.readStringFromKeys(raw, ['jobCategoryName', 'job_category_name']),
       ageRequirement: this.readStringFromKeys(raw, ['ageRequirement', 'age_requirement']),

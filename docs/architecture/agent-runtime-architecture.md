@@ -412,7 +412,7 @@ load_previous_state (串行)
 
 [src/memory/facts/high-confidence-facts.ts](src/memory/facts/high-confidence-facts.ts) 在 `onTurnStart` 里对当前 user 文本做规则匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度的 `highConfidenceFacts` 注入到 Context 的 `turn-hints` section，让模型看到字段值、置信度和证据。
 
-新增文件 [src/memory/facts/labor-form.ts](src/memory/facts/labor-form.ts)：识别用工形式（兼职+/小时工/寒假工/暑假工），与平台仅兼职岗位的业务约束对齐。
+[src/memory/facts/labor-form.ts](src/memory/facts/labor-form.ts)：用工形式领域模型——岗位轴为两级结构化字段（用工形式=全职/兼职 + 兼职类型=寒假工/暑假工/小时工），候选人偏好侧为扁平词汇，匹配层做层级翻译。
 
 ### 6.5 外部画像补全
 

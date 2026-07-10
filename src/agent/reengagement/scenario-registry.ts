@@ -91,7 +91,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     objective: '开场已发但候选人未回复，轻量关心一句、邀请其表达求职意向',
     requiredEvidence: ['lastCandidateMessageAt'],
     stopUnless: () => true, // 通用停止条件（已回/terminal）已在 shouldStop 覆盖
-    generationPolicy: '只问候+一句邀请，不夸大、不承诺、不催促；候选人未回不重复骚扰',
+    generationPolicy:
+      '直接询问是否还在找工作或是否愿意说下求职意向；不要问“在忙吗”“怎么没回”，不夸大、不承诺、不催促',
     defaultRolloutEnabled: true,
     canonicalAnchorEventId: 'opening',
   },
@@ -124,7 +125,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     objective: '已展示门店/岗位但候选人未回复，询问是否还有兴趣或需要换个方向',
     requiredEvidence: ['presentedStores'],
     stopUnless: (state) => state.presentedStores.length > 0,
-    generationPolicy: '不复读岗位详情，只问意向是否仍在/要不要换方向',
+    generationPolicy:
+      '可以简短承接近期对话里已推荐的岗位、门店或关键条件，帮助候选人确认在说哪个机会；只能复述已有证据，不新增或改写细节，然后询问是否感兴趣或要不要换方向',
     defaultRolloutEnabled: false,
   },
   {
@@ -140,7 +142,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     // 收资必填项随岗位/业务配置变化，不能在复聊层写死为姓名/手机号/年龄/性别。
     // 是否已完成由候选人回话、报名成功终态和外部业务流程推进来收敛。
     stopUnless: () => true,
-    generationPolicy: '只提醒补资料、说明补齐后能更快约面，不催不压',
+    generationPolicy:
+      '只提醒继续补充资料、说明补齐后便于推进约面；不要猜具体缺少哪些字段，不使用“现在补”“尽快发”等催促表达',
     defaultRolloutEnabled: true,
   },
   {
@@ -159,7 +162,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     objective: '面试前提醒候选人准时参加、带好证件',
     requiredEvidence: ['terminal', 'interviewAt'],
     stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
-    generationPolicy: '提醒时间地点、带身份证/健康证；不索取新资料',
+    generationPolicy:
+      '根据已有证据提醒时间地点和需携带的证件；使用“记得准时到”等中性表达，不使用“别迟到”等命令语气，不索取新资料',
     defaultRolloutEnabled: true,
     sessionCooldownExempt: true,
   },
@@ -178,7 +182,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     objective: '面试后回访，了解面试结果、是否需要后续协助',
     requiredEvidence: ['interviewAt'],
     stopUnless: hasInterviewAt,
-    generationPolicy: '关心面试体验、是否有问题需要协助；不施压入职',
+    generationPolicy:
+      '询问面试是否顺利、体验如何、是否需要协助；不要直接断言候选人已完成面试，不施压入职',
     defaultRolloutEnabled: false,
   },
   {

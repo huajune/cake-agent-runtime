@@ -1,6 +1,7 @@
 import { PreparationService } from '@agent/generator/preparation.service';
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import {
   FALLBACK_EXTRACTION,
   type HighConfidenceFacts,
@@ -87,6 +88,7 @@ describe('PreparationService', () => {
 
   const mockSpongeService = {
     getCachedWorkOrderById: jest.fn(),
+    fetchBrandList: jest.fn(),
   };
 
   const mockGroupResolver = {
@@ -105,6 +107,10 @@ describe('PreparationService', () => {
     mockLongTermService.getActiveBooking.mockResolvedValue(null);
     mockLongTermService.getActiveBookings.mockResolvedValue([]);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
+    mockSpongeService.fetchBrandList.mockResolvedValue([
+      { id: 1, name: '肯德基', aliases: ['KFC'] },
+      { id: 2, name: '奥乐齐', aliases: ['ALDI'] },
+    ]);
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '短期里的当前消息' }],
@@ -239,6 +245,51 @@ describe('PreparationService', () => {
     ]);
   });
 
+  it('does not inject an unverified WeChat nickname as a target brand (Gattouzo regression)', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '[位置分享] 上海松江' }],
+        userId: 'user-gattouzo',
+        corpId: 'corp-1',
+        sessionId: 'sess-gattouzo',
+        contactName: 'Gattouzo',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.fetchBrandList).toHaveBeenCalled();
+    expect(result.finalPrompt).not.toContain('Gattouzo');
+    expect(result.finalPrompt).not.toContain('[企微名称备注｜运营给本会话指定的目标品牌/门店]');
+    expect(mockToolRegistry.buildForScenario).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ contactBrandAliases: [] }),
+    );
+  });
+
+  it('injects only the catalog-verified standard brand from a contact remark', async () => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '[位置分享] 上海人民广场' }],
+        userId: 'user-kfc',
+        corpId: 'corp-1',
+        sessionId: 'sess-kfc',
+        contactName: '上海 肯德基 人广店',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('品牌库高置信命中：肯德基');
+    expect(result.finalPrompt).toContain('不得从原始昵称中猜测其它品牌');
+    expect(mockToolRegistry.buildForScenario).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ contactBrandAliases: ['肯德基'] }),
+    );
+  });
+
   it('filters side-effect tools in readonly toolMode', async () => {
     mockToolRegistry.buildForScenario.mockReturnValue({
       duliday_job_list: {},
@@ -331,7 +382,9 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('已为候选人预约奥乐齐长白门店面试');
     expect(result.finalPrompt).toContain('[unsupported_commitment]');
     expect(result.finalPrompt).toContain('只确认已提交预约');
-    expect(result.finalPrompt).toContain('不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签');
+    expect(result.finalPrompt).toContain(
+      '不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签',
+    );
   });
 
   it('appends the HC-1 rewrite directive as a trailing user message (badcase batch_6a4790c7)', async () => {
@@ -607,6 +660,148 @@ describe('PreparationService', () => {
     );
   });
 
+  it('hides non-summer historical jobs when the current intent is summer work', async () => {
+    const highConfidenceFacts = emptyHighConfidenceFacts();
+    highConfidenceFacts.preferences.labor_form = highConfidence('暑假工', '用工形式识别：暑假工');
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [{ role: 'user', content: '我只找暑期工' }] },
+      sessionMemory: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            labor_form: '兼职',
+          },
+        },
+        lastCandidatePool: [
+          {
+            jobId: 101,
+            brandName: '普通兼职品牌',
+            jobName: '普通兼职店员',
+            storeName: '普通兼职门店',
+            laborForm: '兼职',
+          },
+          {
+            jobId: 102,
+            brandName: '暑假工品牌',
+            jobName: '暑假工店员',
+            storeName: '暑假工门店',
+            laborForm: '兼职',
+            partTimeJobType: '暑假工',
+          },
+        ],
+        presentedJobs: [
+          {
+            jobId: 103,
+            brandName: '历史小时工品牌',
+            jobName: '历史小时工',
+            laborForm: '兼职',
+            partTimeJobType: '小时工',
+          },
+        ],
+        currentFocusJob: {
+          jobId: 104,
+          brandName: '历史全职品牌',
+          jobName: '历史全职',
+          laborForm: '全职',
+        },
+      },
+      highConfidenceFacts,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '我只找暑期工' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('用工形式: 暑假工');
+    expect(result.finalPrompt).toContain('暑假工品牌');
+    expect(result.finalPrompt).not.toContain('普通兼职品牌');
+    expect(result.finalPrompt).not.toContain('历史小时工品牌');
+    expect(result.finalPrompt).not.toContain('历史全职品牌');
+  });
+
+  it('clears stale summer memory and hides summer jobs when the candidate explicitly excludes summer work', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [{ role: 'user', content: '除了暑假工都可以' }] },
+      sessionMemory: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            labor_form: '暑假工',
+          },
+        },
+        lastCandidatePool: [
+          {
+            jobId: 201,
+            brandName: '普通兼职品牌',
+            jobName: '普通兼职店员',
+            laborForm: '兼职',
+          },
+          {
+            jobId: 202,
+            brandName: '旧暑假工品牌',
+            jobName: '旧暑假工店员',
+            laborForm: '兼职',
+            partTimeJobType: '暑假工',
+          },
+        ],
+        presentedJobs: null,
+        currentFocusJob: {
+          jobId: 203,
+          brandName: '旧暑假工焦点品牌',
+          jobName: '旧暑假工焦点岗位',
+          laborForm: '兼职',
+          partTimeJobType: '暑假工',
+        },
+      },
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '除了暑假工都可以' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('普通兼职品牌');
+    expect(result.finalPrompt).not.toContain('用工形式: 暑假工');
+    expect(result.finalPrompt).not.toContain('旧暑假工品牌');
+    expect(result.finalPrompt).not.toContain('旧暑假工焦点品牌');
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.currentLaborFormIntent).toEqual({
+      kind: 'clear',
+      clearedValues: ['暑假工'],
+    });
+    expect(toolContext.sessionFacts.preferences.labor_form).toBeNull();
+  });
+
   it('renders invitedGroups in session memory to prevent duplicate invite (badcase 3g1ruov9 / 6vzw8oh3)', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '还有别的吗' }] },
@@ -682,7 +877,8 @@ describe('PreparationService', () => {
             storeName: '陆家嘴店',
             cityName: '上海',
             regionName: '浦东新区',
-            laborForm: '小时工',
+            laborForm: '兼职',
+            partTimeJobType: '小时工',
             salaryDesc: '25元/小时',
           },
         ],
@@ -713,7 +909,7 @@ describe('PreparationService', () => {
     // 全职放开后：全职作为合法用工形式如实展示，不再剥离。
     expect(result.finalPrompt).toContain('岗位:奥乐齐-1082鑫都-分拣打包-全职');
     expect(result.finalPrompt).toContain('用工:全职');
-    expect(result.finalPrompt).toContain('用工:小时工');
+    expect(result.finalPrompt).toContain('用工:兼职(小时工)');
   });
 
   it('uses procedural stage + renders [当前预约信息] from active_booking + sponge', async () => {
@@ -1366,5 +1562,61 @@ describe('PreparationService', () => {
 
     const options = mockMemoryService.onTurnStart.mock.calls[0][4];
     expect(options.enrichmentIdentity).toBeUndefined();
+  });
+
+  it('保留人工消息来源、标记给模型，并为“附近”查询生成嘉定 geocode 锚点', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: {
+        messageWindow: [
+          { role: 'user', content: '同济店' },
+          {
+            role: 'assistant',
+            content: '上海嘉定同济园是吧，我看下\n[消息发送时间：2026-07-09 18:38 星期四]',
+            source: StorageMessageSource.MOBILE_PUSH,
+            messageType: StorageMessageType.TEXT,
+            isSelf: true,
+          },
+          {
+            role: 'assistant',
+            content: '目前这个店只有夜宵岗',
+            source: StorageMessageSource.MOBILE_PUSH,
+            messageType: StorageMessageType.TEXT,
+            isSelf: true,
+          },
+          { role: 'user', content: '附近的呢' },
+        ],
+      },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '附近的呢' }],
+        userId: 'user-location',
+        corpId: 'corp-1',
+        sessionId: 'sess-location',
+      },
+      'invoke',
+    );
+
+    expect(result.normalizedMessages[1]).toMatchObject({
+      role: 'assistant',
+      content: expect.stringContaining('真人招募经理手动发送'),
+    });
+    expect(result.normalizedMessages[2]).toMatchObject({
+      role: 'assistant',
+      content: expect.stringContaining('真人招募经理手动发送'),
+    });
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.geocodeLocationAnchor).toMatchObject({
+      city: '上海',
+      districts: ['嘉定'],
+      source: 'human_agent',
+      referenceText: '上海嘉定同济园是吧，我看下',
+    });
   });
 });

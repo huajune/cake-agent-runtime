@@ -281,6 +281,35 @@ describe('SessionService', () => {
       );
     });
 
+    it('should overwrite merged preference field when forceNullPreferenceFields is passed', async () => {
+      const existing: EntityExtractionResult = {
+        ...FALLBACK_EXTRACTION,
+        preferences: { ...FALLBACK_EXTRACTION.preferences, labor_form: '暑假工' },
+      };
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: existing,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      await service.saveFacts('corp1', 'user1', 'session1', FALLBACK_EXTRACTION, {
+        forceNullPreferenceFields: ['labor_form'],
+      });
+
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({ labor_form: null }),
+          }),
+        }),
+        86400,
+      );
+    });
+
     it('should not let lower-confidence new value overwrite higher-confidence old value', async () => {
       // 回归张漪 case（chat 69a13e919d6d3a463b0a37c6）：用户明确确认的
       // applied_position="后厨"（rule/high）被后续轮 LLM 推断 "内场"（llm/medium）覆盖。
@@ -826,6 +855,35 @@ describe('SessionService', () => {
     it('should skip extraction on empty messages', async () => {
       await service.extractAndSave('corp1', 'user1', 'sess1', []);
       expect(mockLlm.generateStructured).not.toHaveBeenCalled();
+    });
+
+    it('should persist an explicit labor-form revocation over stale session memory', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            preferences: { ...FALLBACK_EXTRACTION.preferences, labor_form: '暑假工' },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '暑假工不考虑了' },
+      ]);
+
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({ labor_form: null }),
+          }),
+        }),
+        86400,
+      );
     });
 
     it('should use full conversation history on cache miss', async () => {

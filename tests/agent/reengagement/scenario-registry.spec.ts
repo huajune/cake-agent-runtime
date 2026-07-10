@@ -21,6 +21,13 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
+  it('allows grounded context carry-over for store follow-ups', () => {
+    const policy = getScenario('store_presented_no_reply')!.generationPolicy;
+    expect(policy).toContain('可以简短承接');
+    expect(policy).toContain('只能复述已有证据');
+    expect(policy).not.toContain('不复读岗位详情');
+  });
+
   describe('inWindow (9-21 Shanghai)', () => {
     it('true inside window, false outside', () => {
       expect(inWindow(at(2))).toBe(true); // 10:00 Shanghai

@@ -3,8 +3,21 @@
   "configurations": [
     {
       "name": "backend",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "start:dev"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; nvm use 22.16.0 >/dev/null; pnpm exec nest start"
+      ],
+      "port": 8080,
+      "autoPort": false
+    },
+    {
+      "name": "backend-prod-preview",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; nvm use 22.16.0 >/dev/null; export NEXT_PUBLIC_SUPABASE_URL=$(grep -m1 '^NEXT_PUBLIC_SUPABASE_URL=' .env.production | cut -d= -f2-); export SUPABASE_SERVICE_ROLE_KEY=$(grep -m1 '^SUPABASE_SERVICE_ROLE_KEY=' .env.production | cut -d= -f2-); export READ_ONLY_PREVIEW=true RUNTIME_ENV=prodpreview REENGAGEMENT_ENABLED=false ENABLE_GROUP_TASK=false FEISHU_OPS_REPORT_ENABLED=false FEISHU_ALERT_ALLOW_NON_PROD=false; pnpm exec nest start"
+      ],
       "port": 8080,
       "autoPort": false
     },
@@ -13,7 +26,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "unset PORT; VITE_API_PROXY_TARGET=http://localhost:8080 pnpm --dir web run dev"
+        "export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; nvm use 22.16.0 >/dev/null; unset PORT; VITE_API_PROXY_TARGET=http://localhost:8080 pnpm --dir web run dev"
       ],
       "port": 5175,
       "autoPort": false

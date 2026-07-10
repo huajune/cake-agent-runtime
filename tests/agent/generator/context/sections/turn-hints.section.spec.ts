@@ -176,4 +176,29 @@ describe('TurnHintsSection', () => {
     expect(output).toContain('意向城市: 上海（置信度: high，来源: rule）');
     expect(output).not.toContain('[本轮待确认线索]');
   });
+
+  it('treats a current labor-form change as the active intent instead of pending confirmation', () => {
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: {
+        ...FALLBACK_EXTRACTION,
+        preferences: {
+          ...FALLBACK_EXTRACTION.preferences,
+          labor_form: '兼职',
+        },
+      },
+      highConfidenceFacts: {
+        ...emptyHighConfidenceFacts(),
+        preferences: {
+          ...emptyHighConfidenceFacts().preferences,
+          labor_form: highConfidence('暑假工', '用工形式识别：暑假工'),
+        },
+        reasoning: '当前轮改为暑假工',
+      },
+    });
+
+    expect(output).toContain('[本轮高置信线索]');
+    expect(output).toContain('用工形式: 暑假工');
+    expect(output).not.toContain('[本轮待确认线索]');
+  });
 });

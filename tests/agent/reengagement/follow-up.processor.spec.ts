@@ -1,6 +1,7 @@
 import { FollowUpProcessor } from '@agent/reengagement/follow-up.processor';
 import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/follow-up-scheduler.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import { MessageSource, MessageType } from '@enums/message-callback.enum';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
@@ -292,6 +293,8 @@ describe('FollowUpProcessor', () => {
         messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
         role: 'assistant',
         content: '还想看看附近岗位吗？',
+        source: MessageSource.AI_REPLY,
+        messageType: MessageType.TEXT,
       }),
     );
   });

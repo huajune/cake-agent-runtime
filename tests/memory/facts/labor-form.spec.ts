@@ -33,17 +33,10 @@ describe('labor-form', () => {
 
   describe('stripLaborFormFromCategories', () => {
     it('removes both invalid platform words and valid labor forms from categories', () => {
-      const result = stripLaborFormFromCategories([
-        '服务员',
-        '兼职',
-        '兼职+',
-        '收银员',
-        '全职',
-        '小时工',
-      ]);
+      const result = stripLaborFormFromCategories(['服务员', '兼职', '收银员', '全职', '小时工']);
 
       expect(result.cleaned).toEqual(['服务员', '收银员']);
-      expect(result.removed).toEqual(['兼职', '兼职+', '全职', '小时工']);
+      expect(result.removed).toEqual(['兼职', '全职', '小时工']);
     });
 
     it('trims whitespace and skips empty/non-string entries', () => {
@@ -116,12 +109,9 @@ describe('labor-form', () => {
       expect(sanitizeLaborFormForDisplay(value)).toBeNull();
     });
 
-    it.each(['全职', '兼职', '兼职+', '小时工', '寒假工', '暑假工'])(
-      'keeps legal labor form %s',
-      (value) => {
-        expect(sanitizeLaborFormForDisplay(value)).toBe(value);
-      },
-    );
+    it.each([...VALID_LABOR_FORMS])('keeps legal labor form %s', (value) => {
+      expect(sanitizeLaborFormForDisplay(value)).toBe(value);
+    });
   });
 
   describe('isFullTimeLaborForm', () => {
@@ -130,7 +120,7 @@ describe('labor-form', () => {
       expect(isFullTimeLaborForm(' 全职 ')).toBe(true);
     });
 
-    it.each(['兼职', '兼职+', '小时工', '暑假工', '正式工', '', null, undefined])(
+    it.each(['兼职', '小时工', '暑假工', '正式工', '', null, undefined])(
       'treats %p as not full-time',
       (value) => {
         expect(isFullTimeLaborForm(value)).toBe(false);
@@ -156,7 +146,7 @@ describe('labor-form', () => {
       expect(isSeasonalLaborForm(value)).toBe(true);
     });
 
-    it.each(['兼职+', '小时工', '兼职', '全职', '', null, undefined])(
+    it.each(['小时工', '兼职', '全职', '', null, undefined])(
       'treats %s as non-seasonal',
       (value) => {
         expect(isSeasonalLaborForm(value)).toBe(false);
@@ -165,23 +155,44 @@ describe('labor-form', () => {
   });
 
   describe('matchesLaborForm', () => {
-    it('matches when job laborForm strictly equals wanted', () => {
-      expect(matchesLaborForm('暑假工', '暑假工')).toBe(true);
+    it('matches subdivision via hierarchical laborForm + partTimeJobType (new contract)', () => {
+      expect(matchesLaborForm('兼职', '暑假工', '暑假工')).toBe(true);
+      expect(matchesLaborForm('兼职', '小时工', '小时工')).toBe(true);
+      expect(matchesLaborForm('兼职', '寒假工', '寒假工')).toBe(true);
+    });
+
+    it('matches parent-level wanted 兼职 regardless of subdivision', () => {
+      expect(matchesLaborForm('兼职', '暑假工', '兼职')).toBe(true);
+      expect(matchesLaborForm('兼职', null, '兼职')).toBe(true);
+      expect(matchesLaborForm('全职', null, '兼职')).toBe(false);
+    });
+
+    it('does NOT match legacy flat data (subdivision written on laborForm is a data bug)', () => {
+      expect(matchesLaborForm('暑假工', null, '暑假工')).toBe(false);
+      expect(matchesLaborForm('小时工', null, '小时工')).toBe(false);
+    });
+
+    it('matches 全职 only against parent laborForm', () => {
+      expect(matchesLaborForm('全职', null, '全职')).toBe(true);
+      expect(matchesLaborForm('兼职', '暑假工', '全职')).toBe(false);
     });
 
     it('does not match different subtypes (no semantic widening)', () => {
-      expect(matchesLaborForm('小时工', '暑假工')).toBe(false);
-      expect(matchesLaborForm('兼职+', '暑假工')).toBe(false);
+      expect(matchesLaborForm('兼职', '小时工', '暑假工')).toBe(false);
+      expect(matchesLaborForm('小时工', null, '暑假工')).toBe(false);
+      // 兼职岗未标细分不能当成候选人要的细分类型
+      expect(matchesLaborForm('兼职', null, '暑假工')).toBe(false);
     });
 
     it('does not match when job laborForm is empty/reverse-word/null', () => {
-      expect(matchesLaborForm(null, '暑假工')).toBe(false);
-      expect(matchesLaborForm('全职', '暑假工')).toBe(false);
-      expect(matchesLaborForm('', '暑假工')).toBe(false);
+      expect(matchesLaborForm(null, '暑假工', '暑假工')).toBe(false);
+      expect(matchesLaborForm(null, null, '暑假工')).toBe(false);
+      expect(matchesLaborForm('全职', null, '暑假工')).toBe(false);
+      expect(matchesLaborForm('', '暑假工', '暑假工')).toBe(false);
     });
 
     it('returns false when wanted is empty', () => {
-      expect(matchesLaborForm('暑假工', null)).toBe(false);
+      expect(matchesLaborForm('兼职', '暑假工', null)).toBe(false);
     });
   });
 });

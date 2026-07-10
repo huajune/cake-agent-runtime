@@ -74,11 +74,20 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
 
 /**
  * 目录顺序大致按风险链路排序：
- * 1. 内部信息泄漏 / 未接地岗位推荐 / 工具失败反向成功这类高危先列；
- * 2. booking、location、false promise 等流程对账居中；
+ * 1. 内部信息泄漏 / 工具失败反向成功 / 诚信红线这类高危先列；
+ * 2. false promise 等流程对账居中；
  * 3. observe 类质量规则靠后。
  *
  * 这里的顺序不决定运行顺序；运行顺序由 hard-rules.service 明确编排。
+ *
+ * 2026-07-10 用户裁定批量下线（勿修补勿重加）：ungrounded_job_recommendation /
+ * salary_fabrication / schedule_filtered_job_recommended / summer_worker_non_summer_recommendation /
+ * job_shift_polarity_mismatch / hourly_salary_value_mismatch / booking_form_field_mismatch /
+ * confirmed_booking_time_missing / handoff_no_booking_claim / precheck_blocked_booking_claim /
+ * wait_notice_time_collection / wait_notice_time_fabrication / geocode_uncertain_location_claim
+ * 共 13 条随所在规则文件整族删除；同日追加下线 group_full_without_invite /
+ * system_status_fabrication / tool_failure_success_claim / brand_name_violation 4 条。
+ * 岗位/预约事实治理交语义档。
  */
 const OUTPUT_RULE_CATALOG_SEEDS = [
   {
@@ -92,154 +101,23 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
-    id: 'ungrounded_job_recommendation',
-    action: GUARDRAIL_ACTION.REPLAN,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住没有重新查岗或没有本轮工具依据，却直接推荐具体门店、薪资、距离、班次的回复。',
-    riskGoal: '禁止未经过本轮岗位工具接地就输出具体岗位事实。',
-    exogenousSignal: '本轮任一次 duliday_job_list 调用是否返回可用岗位结果（不只看最后一次）。',
-    residualRisk:
-      '短句历史承接为降低误杀暂不拦截；有任一可用结果即视为接地，值级错报交由值对账规则。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复输出了未被本轮岗位工具接地的具体岗位事实，当前文本不可发送。请重新规划：如需要岗位事实，只能调用只读工具重新查岗；若缺少位置/意向等必要信息，就先中性追问。不要复用上一版的具体门店、薪资、距离、班次。',
-  },
-  {
-    id: 'tool_failure_success_claim',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P0,
-    description: '拦住工具其实失败了，但回复里说预约、拉群、取消、改期或发定位已经成功的情况。',
-    riskGoal: '副作用工具失败后禁止反向声称预约、取消、改期、拉群、发定位成功。',
-    exogenousSignal: '本轮副作用工具 result.success/errorType/status。',
-    residualRisk: '未登记的新副作用工具需要同步加入检测表。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'precheck_blocked_booking_claim',
+    id: 'identity_misregistration_coaching',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
-      '拦住预检查已经说不能约，但回复还在说可以约、马上安排或已经安排的情况。' +
-      'date_unavailable 下"承认原日期约不上并转述替代时段"是规定动作，不拦。',
-    riskGoal: 'precheck 已阻止 booking 时禁止继续承诺可约或已约。',
-    exogenousSignal: 'duliday_interview_precheck.nextAction / ageBoundary / nameFieldGuard。',
+      '拦住教唆候选人以不实身份登记（"为了过系统审核按非暑假工登记"）或隐瞒暑假工/学生身份的回复。' +
+      '候选人真实为非暑假工时的如实登记不拦（以暑假工守卫状态为佐证）。',
+    riskGoal:
+      '诚信红线：禁止指导候选人以虚假身份通过系统审核/门店登记，禁止建议隐瞒暑假工、学生等真实身份。',
+    exogenousSignal:
+      '回复文本的审核规避/身份改写/隐瞒话术模式 + duliday_interview_precheck.temporarySummerWorkerGuard 状态。',
     residualRisk:
-      'precheck 未结构化的新阻断原因需要补字段；date_unavailable 豁免只验证"承认约不上"的口径，' +
-      '替代时段数值是否忠于 bookableSlots 未逐字对账。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'wait_notice_time_fabrication',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住等通知岗位里凭空编出具体面试时间、到店时间或面试官联系时间的回复。',
-    riskGoal: '等通知岗位不得编造具体面试/到店时间。',
-    exogenousSignal: 'duliday_interview_precheck.interview.interviewTimeMode=wait_notice。',
-    residualRisk:
-      '非标准时间表述依赖正则持续补样本；约面语境与时间要求同句共现（班次/通勤时间已豁免），跨句编造可能漏判。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'wait_notice_time_collection',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '观察等通知岗位里继续追问候选人面试日期、几点方便或要求选择面试时间的回复。',
-    riskGoal: '作为 prompt 修复的验证指标：修复后看 wait_notice 继续收时间的命中是否归零。',
-    exogenousSignal: 'duliday_interview_precheck.interview.interviewTimeMode=wait_notice。',
-    residualRisk:
-      '消费者：prompt/运营复盘；退场条件：命中归零 1 个月后删除。极少数候选人主动追问多个可约方案时仍需结合上下文判断。',
+      '话术变体（如"就说你能长期做"）依赖正则持续补样本；年龄/健康证等其他字段的造假教唆未覆盖，需按 badcase 扩展。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版回复在等通知岗位里继续追问或要求候选人选择面试时间，当前文本不可发送。请改写为：这个岗位不用约具体面试时间，资料提交后面试官会电话联系候选人确认，请保持电话畅通；然后只收集 precheck 要求的报名字段。',
-  },
-  {
-    id: 'confirmed_booking_time_missing',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description:
-      '拦住预约工具已经返回确认面试时间，但回复只说预约成功、漏告知候选人具体时间的情况。',
-    riskGoal: '预约成功后必须把 booking 工具确认的面试时间透传给候选人。',
-    exogenousSignal: 'duliday_interview_booking._confirmedInterviewTimeHuman。',
-    residualRisk: '非常口语化的时间表达依赖时间正则持续补样本。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复声称预约/报名成功，但漏掉了 booking 工具返回的已确认面试时间，当前文本不可发送。请改写为预约成功口径，并明确告知 _confirmedInterviewTimeHuman 中的面试时间；如果工具还返回 _onSiteScript，也要按工具文案提醒候选人到店如何说明。',
-  },
-  {
-    id: 'geocode_uncertain_location_claim',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住地点还没确认清楚时，就直接说附近有岗、附近无岗或替候选人做位置判断的回复。',
-    riskGoal: '地理编码不唯一时不得基于位置做附近推荐或无岗判断。',
-    exogenousSignal: 'geocode.resolution / geocode.errorType。',
-    residualRisk: '候选人历史位置承接暂未纳入豁免判断。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'district_level_distance_claim',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住候选人只报了区/市名，回复却按行政区代表点直接输出精确公里数的情况。',
-    riskGoal: '区级粗定位下的距离与候选人真实位置可能差数公里，直接报精确距离会误导到店。',
-    exogenousSignal: 'geocode.result.areaLevelQuery（查询词与解析出的区/市名一致）。',
-    residualRisk: '候选人报的商圈名恰与区名同名时可能误判；已请求定位/声明估算口径的回复已豁免。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '候选人目前只提供了区/市级位置，本轮距离是按行政区代表点估算的，当前文本不可发送。请只做文案改写：删除所有精确公里数和"离你X公里"表述；优先向候选人确认具体位置（哪条路/哪个商圈/地铁站，或请发定位）。如保留岗位展示，只保留门店名/商圈/路段等已在上一版出现的信息，不新增岗位事实，不调用工具。',
-  },
-  {
-    id: 'schedule_filtered_job_recommended',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住岗位工具已因候选人班次硬约束过滤为空，但回复仍推荐岗位或承诺可约的情况。',
-    riskGoal: '班次不匹配时不得把被过滤岗位包装回去推荐或预约。',
-    exogenousSignal: 'duliday_job_list.errorType=job_list.schedule_filter_empty。',
-    residualRisk:
-      '部分班次偏好不是硬约束时仍依赖工具入参是否正确表达 candidateScheduleConstraint。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复忽略了班次硬约束过滤为空的工具结果，当前文本不可发送。请改写为：当前条件下暂时没有符合该班次要求的岗位，询问候选人是否可以放宽时段；不要推荐或预约被过滤掉的岗位。',
-  },
-  {
-    id: 'handoff_no_booking_claim',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住候选人没有已确认预约时，却说已经帮他转人工改期、取消或会有人跟进的回复。',
-    riskGoal: '候选人无已确认预约时不得声称已转人工改期/取消。',
-    exogenousSignal: 'request_handoff.errorType=handoff.no_booking。',
-    residualRisk: '人工侧另行处理但工具未返回时可能被要求改写。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
-    id: 'group_full_without_invite',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住没有真正尝试拉群，却回复候选人群满、群解散、拉不进去之类的说法。',
-    riskGoal: '未成功拉群时不得编造群满、群解散、邀请发不过去等状态。',
-    exogenousSignal: '本轮 invite_to_group 是否成功。',
-    residualRisk: '真实历史已尝试拉群但本轮未重试的场景仍需依赖上下文补充豁免。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复声称群满、群解散、拉不进去或邀请发不过去，但本轮没有成功调用 invite_to_group，当前文本不可发送。请改写为不编造群状态的候选人可见回复：可以说明先帮 TA 继续看岗位、需要确认后再发邀请，或在确需拉群时重新规划调用工具。',
-  },
-  {
-    id: 'group_promise_without_invite',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description:
-      '拦住没有成功调用拉群工具，却声称"已拉你进群""群邀请已发"的完成口径回复。' +
-      '征询/承诺式（"要不我拉你进群？""我先帮你进群"）是 invite_to_group 场景 2/3 设计内的前置轮，不拦。',
-    riskGoal: '"已拉群/邀请已发"的完成口径必须由本轮 invite_to_group 成功结果接地。',
-    exogenousSignal: '本轮 invite_to_group 是否成功。',
-    residualRisk:
-      '承诺后候选人同意的下一轮是否真实调 invite（场景 3 履约）不在本规则单轮视野内；' +
-      '历史已入群场景依赖过去式豁免，仍需样本回放。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复声称已拉群/群邀请已发，但本轮没有成功调用 invite_to_group，当前文本不可发送。' +
-      '请改写为不声称已发生、也不新增拉群征询的口径：删除群相关完成/邀约话术，' +
-      '直接说明后续有合适岗位会主动联系，或围绕已知岗位事实自然收口。' +
-      'rewrite 阶段没有工具能力，禁止新增"需要拉你进群吗/我可以拉你进群"等邀约；不要说"已拉/已发邀请"。',
+      '上一版回复在教唆候选人以不实身份登记或隐瞒身份（如按"非暑假工"登记以通过系统审核），当前文本不可发送，这是诚信红线。' +
+      '请改写为如实口径：候选人身份必须如实登记；当前岗位不匹配其身份时，如实告知暂无匹配岗位、可帮其留意后续岗位或拉群通知；' +
+      '禁止任何"先按XX登记/面试再说/别提暑假工"式的绕审建议。',
   },
   {
     id: 'discriminatory_screening_leak',
@@ -255,71 +133,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     feedbackPolicy: GUARDRAIL_FEEDBACK_POLICY.REDACTED,
     feedbackToGenerator:
       '上一版回复包含高敏感筛选条件或以高敏感属性作为拒绝理由，当前文本禁止发送。请重新生成：不要提及户籍、籍贯、民族、专业等门槛；不要解释具体不通过原因；核对专业只能开放式问"你学的什么专业"，不得把排除条件塞进问句；改为中性承接，可以推荐其他岗位、继续收集必要信息，或说明需要同事确认。',
-  },
-  {
-    id: 'booking_form_field_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住收资模板漏掉预检查要求现在必须收的字段，要求重新输出完整模板。',
-    riskGoal: '收资模板必须覆盖 precheck 要求字段，避免漏字段导致 booking 失败。',
-    exogenousSignal: 'precheck.requiredFieldsToCollectNow / starterFields。',
-    residualRisk:
-      '字段同义词和括号补充说明仍依赖归一化词表持续补充（面试时间的口语化标题已归一）。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版收资模板漏掉了 precheck 要求本轮必须收集的字段，当前文本不可发送。请重新输出完整收资模板，只包含候选人需要补充的字段；字段必须覆盖 precheck.requiredFieldsToCollectNow / starterFields，不要多收门店、面试时间等非必要字段。',
-  },
-  {
-    id: 'salary_fabrication',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住回复里多说岗位数据没有写的加薪、面议、薪资浮动等薪资信息。',
-    riskGoal: '薪资政策只能按本轮岗位数据表述，禁止编造节假日/周末加薪、浮动或面议。',
-    exogenousSignal: '岗位 jobSalary 派生薪资事实。',
-    residualRisk: '历史岗位复述场景为降低误伤暂不检测；复杂阶梯薪资仍依赖 salary parser 质量。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复编造了岗位薪资政策，当前文本不可发送。请删除节假日双倍、周末加薪、薪资面议、工资浮动等未在本轮岗位数据中出现的信息；薪资只按 duliday_job_list 返回的 jobSalary 表述。',
-  },
-  {
-    id: 'job_shift_polarity_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住本轮岗位数据只有晚班/夜班，回复却把岗位说成早班/白班的情况（反向同理）。',
-    riskGoal: '班次极性只能按本轮岗位工具结果表述，晚班说成早班会导致候选人错误决策甚至错误报名。',
-    exogenousSignal: '本轮 duliday_job_list 返回的班次事实文本（markdown/rawData）。',
-    residualRisk:
-      '中班等非极性班次、以及具体时间段（22:00-7:00）与班次名的换算不在检测范围；' +
-      '需求复述/未来上新承诺已豁免，藏在这类句式里的真实班次错报会漏判。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复的班次极性与本轮岗位工具结果矛盾（如把晚班岗位说成早班），当前文本不可发送。请严格按 duliday_job_list 返回的班次信息重写，不确定时引用工具里的原始班次表述。',
-  },
-  {
-    id: 'hourly_salary_value_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住回复声称的时薪数值在本轮岗位数据里完全不存在的情况。',
-    riskGoal: '时薪数值只能来自本轮岗位工具结果，禁止编造或错报具体金额。',
-    exogenousSignal: '本轮 duliday_job_list 返回的薪资数值与区间（markdown/rawData）。',
-    residualRisk:
-      '数字匹配刻意宽松（出现在工具输出任何位置即算支持，且允许 ±0.5 舍入/抹零头容差），' +
-      '综合换算类错报可能漏判；按日/按月薪资不在检测范围。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复声称的时薪金额在本轮岗位数据里不存在，当前文本不可发送。薪资数字只能引用 duliday_job_list 返回的数值或区间，不要自行换算或凭记忆报数。',
-  },
-  {
-    id: 'settlement_cycle_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住本轮岗位数据写了结算口径（如月结），回复却说成日结/周结的情况。',
-    riskGoal: '结算方式只能按本轮岗位工具结果表述，日结/月结说错直接影响候选人求职决策。',
-    exogenousSignal: '本轮 duliday_job_list 返回的结算周期事实（markdown/rawData）。',
-    residualRisk: '工具输出未包含结算口径时无从对账；非标准结算表述依赖词组持续补充。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复的结算方式与本轮岗位数据矛盾（如把月结说成日结），当前文本不可发送。结算口径只能按 duliday_job_list 返回的结算周期表述；工具没写结算方式时不要主动承诺。',
   },
   {
     id: 'proactive_insurance_policy_mention',
@@ -369,18 +182,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
-    id: 'brand_name_violation',
-    action: GUARDRAIL_ACTION.BLOCK,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦住把平台名或岗位品牌名说错，或者把工具结果里的品牌改成另一个品牌的回复。',
-    riskGoal:
-      '对外平台品牌和岗位品牌名必须使用正确名称，禁止把工具结果里的岗位品牌改写成其它品牌。',
-    exogenousSignal:
-      '平台品牌 sanitizeBrandName 词库；本轮 duliday_job_list 返回的岗位 brandName。',
-    residualRisk: '当前只对结构化岗位标题做品牌对账，普通口语品牌讨论不强拦以降低误伤。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-  },
-  {
     id: 'requested_brand_mismatch',
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -416,17 +217,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。',
-  },
-  {
-    id: 'system_status_fabrication',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '观察用“系统异常、后台同步、网络问题”这类没有依据的话来解释失败或拖延。',
-    riskGoal: '观察真实投诉源里的“甩锅系统”话术，供运营话术复盘。',
-    exogenousSignal: '系统状态编造词库。',
-    residualRisk:
-      '消费者：运营话术复盘；退场条件：工具真失败豁免后观察 2 周，若无人消费告警则删除。更委婉的甩锅话术需要从线上样本补充。',
-    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 
