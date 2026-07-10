@@ -8,6 +8,50 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.0.5`
+**最近更新**: `2026-07-10`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #500 保证 AI 复审写回裁决
+- PR #500 AI workflow 自修改时转人工审查
+- PR #500 修复 AI Code Review 在未写回 GitHub Review 时仍显示成功的假绿问题。
+- PR #500 保证每次 PR 更新都必须针对当前 HEAD 新增明确的 `APPROVED` 或 `CHANGES_REQUESTED` 裁决。
+
+### 新功能
+- PR #500 保证每次 PR 更新都必须针对当前 HEAD 新增明确的 `APPROVED` 或 `CHANGES_REQUESTED` 裁决。
+
+### 问题修复
+- PR #500 为 Claude 补充 `Read`、`Glob`、`Grep` 只读工具权限，减少审查过程中的权限拒绝。
+- PR #500 在提示词中明确当前 HEAD，并要求旧 Review 不得替代本轮裁决。
+- PR #500 在 Action 后通过 GitHub Reviews API 校验当前 HEAD 是否新增裁决；未写回时让 workflow 失败。
+- PR #500 AI Review workflow 自修改时，按 Anthropic Action 安全限制跳过自审并明确要求人工审查。
+- PR #500 修复 AI Code Review 在未写回 GitHub Review 时仍显示成功的假绿问题。
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #500 保证 AI 复审写回裁决
+- PR #500 AI workflow 自修改时转人工审查
+
+### 配置变更
+- PR #500 仅修改 `.github/workflows/ai-code-review.yml`，无运行时配置变更。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #500 Prettier 检查通过。
+- PR #500 Ruby YAML 解析通过。
+- PR #500 GitHub Reviews API 的 HEAD SHA 过滤查询已在 PR #499 上验证。
+- PR #500 主工作区完整 `pnpm ci:check` 通过：334 个测试套件、4,817 个测试通过。
+<!-- release:pending:end -->
+
 ## [10.0.4] - 2026-07-10
 
 **来源分支**: `develop`
