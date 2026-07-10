@@ -78,7 +78,9 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Review current HEAD with Claude
+        id: review
+        uses: anthropics/claude-code-action@v1
         if: steps.pr.outputs.workflow_changed != 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -102,11 +104,53 @@ jobs:
           # 缺它则每次落评论都被 allowedTools 拒。Read/Glob/Grep 用于只读代码审查；
           # gh pr review/comment 保留，供整体总结与 approve/request-changes 裁决。
           claude_args: |
-            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
+            --max-turns 80
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
 
-      # claude-code-action 只以 Claude 进程退出码判断成功；工具权限拒绝或漏掉
-      # `gh pr review` 时也可能显示绿色。这里强制校验本次 run 确实为当前 HEAD
-      # 新增了 APPROVED / CHANGES_REQUESTED 裁决，杜绝“检查绿了但旧 review 仍阻塞”。
+      # 主审查偶发在完成分析后漏掉最后的 gh pr review。先只记录是否已有裁决，
+      # 缺失时复用同一个 Claude session 续跑，避免重新读完整个大 PR。
+      - name: Detect decisive review for current HEAD
+        id: decisive-review
+        if: steps.pr.outputs.workflow_changed != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          REVIEWS_BEFORE: ${{ steps.pr.outputs.decisive_reviews_before }}
+        run: |
+          set -euo pipefail
+          REVIEWS_AFTER=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
+            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
+          if [ "$REVIEWS_AFTER" -gt "$REVIEWS_BEFORE" ]; then
+            echo "submitted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "submitted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resume Claude to submit the missing decisive review
+        if: >
+          steps.pr.outputs.workflow_changed != 'true' &&
+          steps.decisive-review.outputs.submitted != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Resume the completed review for PR #${{ steps.pr.outputs.number }} at HEAD
+            ${{ steps.pr.outputs.head_sha }}. The analysis phase finished but no decisive GitHub
+            review was submitted. Do not inspect more files and do not add exploratory comments.
+            Based strictly on the analysis already present in this session, immediately submit
+            exactly one review: approve if there are no blocking findings, otherwise request
+            changes and summarize the blocking findings. Your first and only tool action must be
+            `gh pr review --approve` or `gh pr review --request-changes`.
+          claude_args: |
+            --resume "${{ steps.review.outputs.session_id }}"
+            --max-turns 8
+            --allowedTools "Bash(gh pr review:*)"
+
+      # claude-code-action 只以 Claude 进程退出码判断成功；即使续跑仍漏掉裁决，
+      # 也必须在 PR 当前 HEAD 留下明确的阻塞 review，并把 workflow 判红。
       - name: Verify decisive review was submitted for current HEAD
         if: steps.pr.outputs.workflow_changed != 'true'
         env:
@@ -122,7 +166,9 @@ jobs:
             --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
 
           if [ "$REVIEWS_AFTER" -le "$REVIEWS_BEFORE" ]; then
-            echo "::error::AI review did not submit a new APPROVED or CHANGES_REQUESTED review for HEAD ${HEAD_SHA}."
+            gh pr review "$PR_NUMBER" --request-changes --body \
+              "Automated AI review did not complete a decisive review for HEAD ${HEAD_SHA}. The workflow is failing closed; inspect the AI Code Review run and request a fresh review after remediation."
+            echo "::error::AI review did not submit a new APPROVED or CHANGES_REQUESTED review for HEAD ${HEAD_SHA}; a blocking fallback review was submitted."
             exit 1
           fi
 
