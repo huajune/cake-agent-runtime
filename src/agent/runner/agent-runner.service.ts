@@ -36,7 +36,6 @@ import type { SessionRef, TurnOutcome, TurnRequest, TurnTrigger } from './agent-
 import { TurnFinalizer } from './turn-finalizer';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RequestContextService } from '@observability/context/request-context.service';
-import { tryDeterministicFix } from '../guardrail/output/hard-rules.service';
 import { ReplyRepairAgent } from '../reply-repair/reply-repair.agent';
 import {
   ReplyRepairContextProvider,
@@ -231,40 +230,8 @@ export class AgentRunnerService {
       );
     }
 
-    const fixedText = tryDeterministicFix(firstText, decision.blockedRuleIds);
-    if (fixedText) {
-      const fixedResult: GeneratorRunResult = { ...first, text: fixedText };
-      const fixedDecision = await this.outputGuard.check({
-        ...this.buildGuardInput(fixedResult, ctx),
-        silent: true,
-      });
-      if (fixedDecision.decision === 'pass' || fixedDecision.decision === 'observe') {
-        const finalDecision: OutputGuardDecision = {
-          ...fixedDecision,
-          decision: 'pass',
-          reasonCode: 'deterministic_fix',
-        };
-        this.persistReviewRecord(ctx, {
-          firstReply: firstText,
-          firstDecision: decision,
-          finalDecision,
-          repaired: true,
-          revisedReply: fixedText,
-          revisedDecision: fixedDecision,
-        });
-        return this.finalizeReviewed(
-          fixedResult,
-          finalDecision,
-          true,
-          wantDefer,
-          this.buildGuardrailTrace(
-            [firstStep, this.toGuardrailStep('revised', fixedDecision)],
-            true,
-            finalDecision,
-          ),
-        );
-      }
-    }
+    // 确定性修复快通道（tryDeterministicFix）已随 brand_name_violation 于 2026-07-10 下线：
+    // 它是唯一可字符串替换修复的规则，规则删除后快通道成为死路径。
 
     // repair（hard cap 1）：rewrite 模式走独立 ReplyRepairAgent；replan 才复用 Agent generator 只读重查。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);

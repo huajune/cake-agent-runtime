@@ -161,7 +161,7 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.upload_resume)).toBeNull();
   });
 
-  it('should keep first scalar values across multiple messages', () => {
+  it('should keep first scalar values except labor_form across multiple messages', () => {
     const result = extractHighConfidenceFacts(
       [
         '我25岁，男的，本科，有健康证，想做小时工，工资5000-6000，周末有空，13800138000',
@@ -175,7 +175,8 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.gender)).toBe('男');
     expect(unwrapHighConfidenceValue(result?.interview_info.education)).toBe('本科');
     expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('有');
-    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('小时工');
+    // labor_form 是意向字段，同批多条消息以候选人最后一次明确表达为准。
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('寒假工');
     expect(unwrapHighConfidenceValue(result?.preferences.salary)).toBe('工资5000-6000');
     expect(unwrapHighConfidenceValue(result?.preferences.schedule)).toBe('周末');
   });
@@ -446,7 +447,7 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.is_student)).toBe(false);
   });
 
-  it('should extract labor_form (全职/兼职/兼职+/小时工/寒假工/暑假工)', () => {
+  it('should extract labor_form (全职/兼职/小时工/寒假工/暑假工)', () => {
     const hourly = extractHighConfidenceFacts(['我想做小时工'], brandData);
     expect(unwrapHighConfidenceValue(hourly?.preferences.labor_form)).toBe('小时工');
 
@@ -459,15 +460,104 @@ describe('extractHighConfidenceFacts', () => {
     const fullTime = extractHighConfidenceFacts(['我找全职'], brandData);
     expect(unwrapHighConfidenceValue(fullTime?.preferences.labor_form)).toBe('全职');
 
-    // "兼职+" 含子串 "兼职"，但顺序敏感的关键词表保证提取出 "兼职+" 而非 "兼职"。
-    const plus = extractHighConfidenceFacts(['有兼职+吗'], brandData);
-    expect(unwrapHighConfidenceValue(plus?.preferences.labor_form)).toBe('兼职+');
-
     // 伴随其他信号时，position 与 labor_form 都应提取。
     const combined = extractHighConfidenceFacts(['想找兼职服务员'], brandData);
     expect(unwrapHighConfidenceValue(combined?.preferences.position)).toEqual(['服务员']);
     expect(unwrapHighConfidenceValue(combined?.preferences.labor_form)).toBe('兼职');
   });
+
+  it.each(['暑期工', '暑期工作', '暑期兼职', '暑假兼职'])(
+    'should normalize summer labor-form alias "%s" to 暑假工',
+    (alias) => {
+      const result = extractHighConfidenceFacts([`我想找${alias}`], brandData);
+
+      expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('暑假工');
+    },
+  );
+
+  it('should use the latest explicit labor form across batched user messages', () => {
+    const result = extractHighConfidenceFacts(['我想找兼职', '我只要暑期工'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('暑假工');
+  });
+
+  it('should ignore a negated summer-worker phrase and extract the later part-time intent', () => {
+    const result = extractHighConfidenceFacts(['不是暑假工，想长期兼职'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('兼职');
+  });
+
+  it('should not extract 暑假工 from an explicitly negated summer-work intent', () => {
+    const result = extractHighConfidenceFacts(['不找暑期工'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBeNull();
+  });
+
+  it('should not lock an uncertain summer-worker answer to 暑假工', () => {
+    const result = extractHighConfidenceFacts(['我不知道是不是暑假工'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBeNull();
+  });
+
+  it('should not enable summer-only filtering when the candidate explicitly accepts hourly work too', () => {
+    const result = extractHighConfidenceFacts(['暑假工或者小时工都可以'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('小时工');
+  });
+
+  it('should not treat a question about the current job type as a new labor-form preference', () => {
+    const result = extractHighConfidenceFacts(['这个是小时工吗'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBeNull();
+  });
+
+  it.each([
+    ['暑假工我做不了，想找长期兼职', '兼职'],
+    ['不要给我推荐暑假工，普通兼职就行', '兼职'],
+    ['除了暑假工都可以', null],
+    ['我不是只找暑假工，兼职也行', '兼职'],
+    ['就是小时工是吗，一天9个小时？', null],
+  ])(
+    'should distinguish labor-form rejection and job-type clarification: %s',
+    (message, expected) => {
+      const result = extractHighConfidenceFacts([message], brandData);
+
+      expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe(expected);
+    },
+  );
+
+  it.each([
+    ['暑假工我做不了，想找长期兼职', '兼职'],
+    ['不要给我推荐暑假工，普通兼职就行', '兼职'],
+    ['除了暑假工都可以', null],
+    ['我不是只找暑假工，兼职也行', '兼职'],
+    ['就是小时工是吗，一天9个小时？', '暑假工'],
+  ])(
+    'should apply set/clear/ignore semantics after an earlier summer-only intent: %s',
+    (message, expected) => {
+      const result = extractHighConfidenceFacts(['我只找暑假工', message], brandData);
+
+      expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe(expected);
+    },
+  );
+
+  it.each(['我不考虑普通兼职', '普通兼职不可以', '我不确定是暑假工还是小时工'])(
+    'should not replace an existing summer intent with a rejected or uncertain alternative: %s',
+    (message) => {
+      const result = extractHighConfidenceFacts(['我只找暑假工', message], brandData);
+
+      expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('暑假工');
+    },
+  );
+
+  it.each(['我想找小时工，可以吗', '我就是想找小时工'])(
+    'should still extract an explicit hourly-work preference: %s',
+    (message) => {
+      const result = extractHighConfidenceFacts([message], brandData);
+
+      expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('小时工');
+    },
+  );
 
   it('should extract city from whitelist district even when preceded by greetings or positional verbs', () => {
     // badcase: 候选人发"你好我在青浦区"，贪婪正则把整段当成区名归一化为
@@ -582,6 +672,18 @@ describe('extractHighConfidenceFacts', () => {
       source: 'rule',
       evidence: 'explicit_city',
     });
+  });
+
+  it('should map Yanji county-level city to the Sponge prefecture city and region (badcase 6a4f83a5ce406a6aeeeab4b2)', () => {
+    const result = extractHighConfidenceFacts(['延吉市铁男'], brandData);
+
+    expect(result?.preferences.city).toEqual({
+      value: '延边朝鲜族自治州',
+      confidence: 'high',
+      source: 'rule',
+      evidence: 'unique_district_alias',
+    });
+    expect(unwrapHighConfidenceValue(result?.preferences.district)).toEqual(['延吉市']);
   });
 
   describe('extractStructuredName', () => {

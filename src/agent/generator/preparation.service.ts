@@ -5,7 +5,14 @@ import { MessageType } from '@enums/message-callback.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
-import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
+import {
+  decideLaborFormIntent,
+  isValidLaborForm,
+  type LaborFormIntentDecision,
+  matchesLaborForm,
+  sanitizeJobDisplayText,
+  sanitizeLaborFormForDisplay,
+} from '@memory/facts/labor-form';
 import {
   detectBrandAliasHints,
   filterHighConfidenceFacts,
@@ -45,6 +52,8 @@ import {
   SIDE_EFFECT_TOOLS,
 } from '../generator/tool-call-analysis';
 import { AgentTracerService } from '@observability/agent-tracer.service';
+import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
+import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
 
 interface RealtimeGroupStatus {
   groupName: string;
@@ -120,6 +129,7 @@ export class PreparationService {
     // 合并场景（WeCom replay、test-suite 多条连发）下后续事实提取/阶段推断才不会漏内容。
     const truncatedMessages = this.truncateToCharBudget(params.messages);
     const currentUserMessage = this.trailingUserContent(truncatedMessages);
+    const currentLaborFormIntent = decideLaborFormIntent(currentUserMessage);
 
     // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态。
     const [memory, bookingContext, realtimeGroups] = await Promise.all([
@@ -147,6 +157,10 @@ export class PreparationService {
     // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
     const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
 
+    // 昵称中的品牌必须先经品牌库确定性命中，再决定是否进入 prompt。
+    // 原始 contactName 是微信昵称，不能在未命中品牌库时被 framing 成品牌备注。
+    const contactBrandAliases = await this.deriveContactBrandAliases(params.contactName);
+
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
     const memoryBlock = this.buildMemoryBlock(
@@ -154,6 +168,8 @@ export class PreparationService {
       bookingContext.block,
       realtimeGroups,
       params.contactName,
+      contactBrandAliases,
+      currentLaborFormIntent,
     );
     const persistedStage = memory.procedural.currentStage ?? undefined;
     // 程序性阶段存 Redis（TTL 2 天），过期后此前隐式兜底到策略第一个阶段——
@@ -172,6 +188,7 @@ export class PreparationService {
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       highConfidenceFacts: memory.highConfidenceFacts,
+      currentLaborFormIntent,
       strategySource: params.strategySource,
     });
 
@@ -190,7 +207,6 @@ export class PreparationService {
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
     const turnState: PreparedAgentContext['turnState'] = { candidatePool: null };
-    const contactBrandAliases = await this.deriveContactBrandAliases(params.contactName);
     const toolContext = this.buildToolContext({
       params,
       memory,
@@ -200,6 +216,8 @@ export class PreparationService {
       thresholds,
       turnState,
       contactBrandAliases,
+      currentUserMessage,
+      currentLaborFormIntent,
       bookingWorkOrderJobIds: bookingContext.jobIds,
     });
     const toolExecutionTimings = new Map<string, number>();
@@ -634,16 +652,43 @@ export class PreparationService {
     bookingContext: string,
     realtimeGroups: RealtimeGroupStatus[] = [],
     contactName?: string,
+    contactBrandAliases: string[] = [],
+    currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
   ): string {
+    const activeLaborForm = this.resolveActiveLaborForm(memory, currentLaborFormIntent);
     return (
       this.formatCrossConversationNotice(memory.longTerm.origin?.fromOtherConversation ?? false) +
-      this.formatContactNamePreferenceHint(contactName) +
+      this.formatContactNamePreferenceHint(contactName, contactBrandAliases) +
       this.formatProfile(memory.longTerm.profile) +
       this.formatLongTermPreferences(memory.longTerm.preferences ?? null) +
-      (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
+      (memory.sessionMemory
+        ? this.formatSessionFacts(memory.sessionMemory, activeLaborForm, currentLaborFormIntent)
+        : '') +
       this.formatRealtimeGroups(realtimeGroups) +
       bookingContext
     );
+  }
+
+  /** 当前轮明确用工形式覆盖旧会话事实；无当前值时沿用高置信会话事实。 */
+  private resolveActiveLaborForm(
+    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
+    currentIntent: LaborFormIntentDecision,
+  ): string | null {
+    const current = unwrapHighConfidenceFacts(filterHighConfidenceFacts(memory.highConfidenceFacts))
+      ?.preferences.labor_form;
+    const persisted = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
+      minConfidence: 'high',
+    })?.preferences.labor_form;
+    const previous = current ?? persisted ?? null;
+    const resolved =
+      currentIntent.kind === 'set'
+        ? currentIntent.value
+        : currentIntent.kind === 'clear' &&
+            previous &&
+            currentIntent.clearedValues.some((value) => value === previous)
+          ? null
+          : previous;
+    return isValidLaborForm(resolved) ? resolved : null;
   }
 
   /**
@@ -665,24 +710,27 @@ export class PreparationService {
    * 企微显示名称/备注常被运营改成「姓名 城市品牌门店」结构，标记这位候选人是
    * 冲着哪个品牌/门店来的——这是运营给本会话指定的目标品牌，不是可有可无的背景。
    *
-   * 这里不做程序化解析，只把原文交给模型理解，但要求把读出的品牌当作默认目标：
-   * - 能读出品牌+门店：默认带该品牌召回，并在结果里优先该门店；
-   * - 只能读出品牌：默认带该品牌召回；
-   * - 读不出 / 候选人改口指定别的品牌 / 带该品牌召回为空：才放宽。
+   * contactName 先由 deriveContactBrandAliases 做品牌库确定性校验：
+   * - 命中：只渲染标准品牌，原文仅用于帮助理解门店/城市；
+   * - 未命中：整段不渲染，避免把普通微信昵称误当品牌。
    */
-  private formatContactNamePreferenceHint(contactName: string | undefined): string {
+  private formatContactNamePreferenceHint(
+    contactName: string | undefined,
+    contactBrandAliases: string[],
+  ): string {
     const normalized = contactName
       ?.replace(/[\u0000-\u001f\u007f]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    if (!normalized) return '';
+    // 品牌库未命中时，contactName 只是普通微信昵称：不注入、不让模型自由猜品牌。
+    if (!normalized || contactBrandAliases.length === 0) return '';
 
     const clipped = normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized;
     return (
       `\n\n[企微名称备注｜运营给本会话指定的目标品牌/门店]\n\n` +
       `- 企微显示名称/备注：${clipped}\n` +
-      `- 运营常把「城市+品牌+门店」写进名称，标记这位候选人是冲着哪个品牌/门店来的。请结合上下文判断其中的品牌、门店、城市（可能也夹杂姓名等无关标记）。\n` +
-      `- **默认把读出的品牌当作本会话的目标品牌**：调用 duliday_job_list 召回时默认带上它（用 brandIdList/brandAliasList），推荐时优先该品牌的门店——**不要因为别的品牌门店离得更近就改推别家**。能同时读出门店的，在该品牌结果里优先挑这家门店或最近门店（备注门店名常与库内实名对不上，别直接塞 storeNameList 硬过滤，而是召回该品牌后在结果里挑）。\n` +
+      `- 品牌库高置信命中：${contactBrandAliases.join(' / ')}。只允许把这些标准品牌名当作本会话的目标品牌，不得从原始昵称中猜测其它品牌。\n` +
+      `- **默认按上述已验证品牌召回**：调用 duliday_job_list 时使用 brandIdList/brandAliasList，推荐时优先该品牌的门店——**不要因为别的品牌门店离得更近就改推别家**。能同时读出门店的，在该品牌结果里优先挑这家门店或最近门店（备注门店名常与库内实名对不上，别直接塞 storeNameList 硬过滤，而是召回该品牌后在结果里挑）。\n` +
       `- 例外（以候选人为准）：候选人本轮主动指定了别的品牌、明确说不想要这个品牌、或要求「看看其他品牌/所有岗位」时跟随候选人；带该品牌召回为空时再放宽到不限品牌。\n` +
       `- 品牌名本身含城市词不代表候选人所在城市（如“成都你六姐”的“成都”是品牌名一部分），不要仅凭品牌名推断城市。\n` +
       `- 这是内部线索：回复里禁止提及“备注/企微名称/昵称显示”，也不要称呼候选人昵称。`
@@ -768,6 +816,8 @@ export class PreparationService {
     thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
     turnState: PreparedAgentContext['turnState'];
     contactBrandAliases: string[];
+    currentUserMessage?: string;
+    currentLaborFormIntent: LaborFormIntentDecision;
     /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
     bookingWorkOrderJobIds: number[];
   }): ToolBuildContext {
@@ -780,6 +830,8 @@ export class PreparationService {
       thresholds,
       turnState,
       contactBrandAliases,
+      currentUserMessage,
+      currentLaborFormIntent,
       bookingWorkOrderJobIds,
     } = input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
@@ -796,12 +848,21 @@ export class PreparationService {
     const sessionFacts = this.mergeSessionFactsWithHighConfidence(
       highConfidenceSessionFacts,
       memory.highConfidenceFacts,
+      currentLaborFormIntent,
     );
+    const geocodeLocationAnchor = resolveGeocodeLocationAnchor({
+      currentUserMessage,
+      shortTermMessages: memory.shortTerm.messageWindow,
+      currentFacts: memory.highConfidenceFacts,
+      sessionFacts: highConfidenceSessionFacts,
+    });
     return {
       userId: params.userId,
       corpId: params.corpId,
       sessionId: params.sessionId,
       messages: normalizedMessages,
+      currentUserMessage,
+      currentLaborFormIntent,
       thresholds,
       imageMessageIds: params.imageMessageIds,
       imageUrls: params.imageUrls,
@@ -821,6 +882,7 @@ export class PreparationService {
       profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
       sessionFacts,
       highConfidenceFacts: memory.highConfidenceFacts,
+      geocodeLocationAnchor,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
       recentBrandPool,
       isRecalledJobId: (jobId: number) =>
@@ -843,36 +905,55 @@ export class PreparationService {
   private mergeSessionFactsWithHighConfidence(
     sessionFacts: EntityExtractionResult | null,
     highConfidence: HighConfidenceFacts | null,
+    currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
   ): EntityExtractionResult | null {
     const highConfidenceValues = unwrapHighConfidenceFacts(
       filterHighConfidenceFacts(highConfidence),
     );
-    if (!highConfidenceValues) return sessionFacts;
-    if (!sessionFacts) return highConfidenceValues;
+    let merged: EntityExtractionResult | null;
+    if (!highConfidenceValues) {
+      merged = sessionFacts;
+    } else if (!sessionFacts) {
+      merged = highConfidenceValues;
+    } else {
+      merged = { ...sessionFacts };
 
-    const merged = { ...sessionFacts };
-
-    // interview_info: 非 null 的高置信值覆盖旧值
-    const baseInfo = { ...sessionFacts.interview_info };
-    const hcInfo = highConfidenceValues.interview_info;
-    for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
-      if (hcInfo[key] != null) {
-        (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
+      // interview_info: 非 null 的高置信值覆盖旧值
+      const baseInfo = { ...sessionFacts.interview_info };
+      const hcInfo = highConfidenceValues.interview_info;
+      for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
+        if (hcInfo[key] != null) {
+          (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
+        }
       }
-    }
-    merged.interview_info = baseInfo;
+      merged.interview_info = baseInfo;
 
-    // preferences: 非 null 的高置信值覆盖旧值
-    const basePref = { ...sessionFacts.preferences };
-    const hcPref = highConfidenceValues.preferences;
-    for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
-      if (hcPref[key] != null) {
-        (basePref as Record<string, unknown>)[key] = hcPref[key];
+      // preferences: 非 null 的高置信值覆盖旧值
+      const basePref = { ...sessionFacts.preferences };
+      const hcPref = highConfidenceValues.preferences;
+      for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
+        if (hcPref[key] != null) {
+          (basePref as Record<string, unknown>)[key] = hcPref[key];
+        }
       }
+      merged.preferences = basePref;
     }
-    merged.preferences = basePref;
 
-    return merged;
+    if (!merged || currentLaborFormIntent.kind === 'ignore') return merged;
+
+    const previousLaborForm = merged.preferences.labor_form;
+    const activeLaborForm =
+      currentLaborFormIntent.kind === 'set'
+        ? currentLaborFormIntent.value
+        : previousLaborForm &&
+            currentLaborFormIntent.clearedValues.some((value) => value === previousLaborForm)
+          ? null
+          : previousLaborForm;
+
+    return {
+      ...merged,
+      preferences: { ...merged.preferences, labor_form: activeLaborForm },
+    };
   }
 
   /**
@@ -1138,36 +1219,86 @@ export class PreparationService {
   }
 
   /** 把会话记忆渲染成 prompt 片段。 */
-  private formatSessionFacts(state: WeworkSessionState): string {
+  private formatSessionFacts(
+    state: WeworkSessionState,
+    activeLaborForm: string | null,
+    currentIntent: LaborFormIntentDecision = { kind: 'ignore' },
+  ): string {
     const sections: string[] = [];
+    // 岗位轴是层级结构（laborForm=全职/兼职 + partTimeJobType 细分），意向值比对
+    // 必须走 matchesLaborForm：暑假工岗的 summary 是 laborForm=兼职 + partTimeJobType=暑假工，
+    // 扁平全等会把候选池整个滤空/漏清。
+    const visibleJobs = (jobs: RecommendedJobSummary[] | null | undefined) => {
+      if (currentIntent.kind === 'set') {
+        return (jobs ?? []).filter((job) =>
+          matchesLaborForm(job.laborForm, job.partTimeJobType, currentIntent.value),
+        );
+      }
+      if (currentIntent.kind === 'clear') {
+        return (jobs ?? []).filter(
+          (job) =>
+            !job.laborForm ||
+            !currentIntent.clearedValues.some((value) =>
+              matchesLaborForm(job.laborForm, job.partTimeJobType, value),
+            ),
+        );
+      }
+      return activeLaborForm === '暑假工'
+        ? (jobs ?? []).filter((job) =>
+            matchesLaborForm(job.laborForm, job.partTimeJobType, '暑假工'),
+          )
+        : (jobs ?? []);
+    };
 
     if (state.facts) {
-      const factLines = formatExtractionFactLines(state.facts);
+      // 用工形式是可变意向，当前消息的高置信值必须覆盖旧记忆的展示值；否则同一份
+      // system prompt 会同时出现“旧兼职”和“当前暑假工”，诱导模型复用旧岗位。
+      const persistedLaborForm = unwrapSessionFacts(state.facts, { minConfidence: 'low' })
+        ?.preferences.labor_form;
+      const shouldClearPersistedLaborForm =
+        currentIntent.kind === 'clear' &&
+        Boolean(
+          persistedLaborForm &&
+            currentIntent.clearedValues.some((value) => value === persistedLaborForm),
+        );
+      const factsForPrompt =
+        activeLaborForm || shouldClearPersistedLaborForm
+          ? ({
+              ...state.facts,
+              preferences: {
+                ...state.facts.preferences,
+                labor_form: activeLaborForm ?? null,
+              },
+            } as unknown as EntityExtractionResult)
+          : state.facts;
+      const factLines = formatExtractionFactLines(factsForPrompt);
 
       if (factLines.length > 0) {
         sections.push(`## 候选人已知信息\n${factLines.join('\n')}`);
       }
     }
 
-    if (state.lastCandidatePool?.length) {
+    const candidatePool = visibleJobs(state.lastCandidatePool);
+    if (candidatePool.length > 0) {
       // 渲染上限对齐 presentedJobs 的 slice(0,10)：候选池是唯一写入端无 cap 的池子
       // （工具单页 20 条且可能放宽），全量渲染会让 memoryBlock 无界膨胀。
       // Redis 中仍保留全量池供 jobId 复用/品牌回指匹配。
       const MAX_POOL_LINES = 10;
-      const pool = state.lastCandidatePool.slice(0, MAX_POOL_LINES);
+      const pool = candidatePool.slice(0, MAX_POOL_LINES);
       const jobLines = pool.map((j, i) => this.formatJobMemoryLine(j, i + 1));
-      const omitted = state.lastCandidatePool.length - pool.length;
+      const omitted = candidatePool.length - pool.length;
       const omittedNote =
         omitted > 0 ? `\n（另有 ${omitted} 个候选岗位未展示，可通过工具重新查询）` : '';
       sections.push(`## 上轮候选岗位池\n${jobLines.join('\n')}${omittedNote}`);
     }
 
-    if (state.presentedJobs?.length) {
-      const jobLines = state.presentedJobs.map((j, i) => this.formatJobMemoryLine(j, i + 1));
+    const presentedJobs = visibleJobs(state.presentedJobs);
+    if (presentedJobs.length > 0) {
+      const jobLines = presentedJobs.map((j, i) => this.formatJobMemoryLine(j, i + 1));
       sections.push(`## 最近已展示岗位\n${jobLines.join('\n')}`);
     }
 
-    if (state.currentFocusJob) {
+    if (state.currentFocusJob && visibleJobs([state.currentFocusJob]).length > 0) {
       sections.push(`## 当前焦点岗位\n${this.formatJobMemoryLine(state.currentFocusJob)}`);
     }
 
@@ -1298,7 +1429,14 @@ export class PreparationService {
     }
     if (job.distanceKm != null) parts.push(`距离:${job.distanceKm.toFixed(1)}km`);
     const displayLaborForm = sanitizeLaborFormForDisplay(job.laborForm);
-    if (displayLaborForm) parts.push(`用工:${displayLaborForm}`);
+    const displayPartTimeJobType = sanitizeLaborFormForDisplay(job.partTimeJobType);
+    if (displayLaborForm) {
+      parts.push(
+        displayPartTimeJobType && displayPartTimeJobType !== displayLaborForm
+          ? `用工:${displayLaborForm}(${displayPartTimeJobType})`
+          : `用工:${displayLaborForm}`,
+      );
+    }
     if (job.salaryDesc) parts.push(`薪资:${job.salaryDesc}`);
     if (job.shiftSummary) parts.push(`班次:${job.shiftSummary}`);
 
@@ -1364,7 +1502,9 @@ export class PreparationService {
       if (message.role === 'assistant') {
         return {
           role: 'assistant',
-          content: textContent,
+          content: isHumanAgentTextMessage(message)
+            ? `[内部来源标记：以下内容由真人招募经理手动发送，应作为本会话人工操作记录理解；不得向候选人复述此标记]\n${textContent}`
+            : textContent,
         };
       }
 
@@ -1527,7 +1667,7 @@ export class PreparationService {
 
     this.logger.warn(`输入消息总长度 ${totalChars} 超过上限 ${maxChars}，将丢弃最早的消息`);
 
-    const kept: { role: string; content: string }[] = [];
+    const kept: GeneratorInputMessage[] = [];
     let charCount = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
       const msgLen = messages[i].content?.length ?? 0;

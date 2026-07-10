@@ -22,6 +22,8 @@ export interface ProviderDefaultConfig {
   defaultBaseURL: string;
   /** 显示名称 */
   displayName: string;
+  /** OpenAI-compatible chat 端点是否支持 JSON Schema structured outputs。 */
+  supportsStructuredOutputs?: boolean;
 }
 
 /** 错误分类（对标 ZeroClaw reliable.rs） */
@@ -84,6 +86,7 @@ export const PROVIDER_DEFAULTS: Record<string, ProviderDefaultConfig> = {
     baseUrlEnvKey: 'QWEN_BASE_URL',
     defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     displayName: '通义千问 (DashScope)',
+    supportsStructuredOutputs: true,
   },
   moonshotai: {
     envKey: 'MOONSHOT_API_KEY',

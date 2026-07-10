@@ -6,6 +6,12 @@ import { ChatMessageInput } from '../types/message.types';
 import { formatLocalDateTime } from '@infra/utils/date.util';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import {
+  toStorageMessageSource,
+  toStorageMessageType,
+  type StorageMessageSource,
+  type StorageMessageType,
+} from '@enums/storage-message.enum';
+import {
   buildChatHistoryCacheKey,
   type CachedChatHistoryMessage,
   serializeCachedChatHistoryMessage,
@@ -179,7 +185,16 @@ export class ChatSessionService {
     limit: number,
     options?: { startTimeInclusive?: number; endTimeInclusive?: number },
   ): Promise<
-    Array<{ messageId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
+    Array<{
+      messageId: string;
+      role: 'user' | 'assistant';
+      content: string;
+      timestamp: number;
+      source?: StorageMessageSource;
+      messageType?: StorageMessageType;
+      isSelf?: boolean;
+      payloadSource?: string;
+    }>
   > {
     return this.chatMessageRepository.getChatHistory(chatId, limit, options);
   }
@@ -264,6 +279,12 @@ export class ChatSessionService {
       role: message.role,
       content: message.content,
       timestamp: message.timestamp,
+      source: toStorageMessageSource(message.source),
+      messageType: toStorageMessageType(message.messageType),
+      isSelf: message.isSelf,
+      payloadSource:
+        typeof message.payload?.source === 'string' ? message.payload.source : undefined,
+      provenanceVersion: 2,
     };
 
     await this.redisService.rpush(listKey, serializeCachedChatHistoryMessage(cacheMessage));

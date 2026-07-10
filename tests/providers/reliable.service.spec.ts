@@ -36,6 +36,16 @@ describe('ReliableService', () => {
   });
 
   describe('classifyError', () => {
+    it('should classify AI SDK invalid prompts as non_retryable', () => {
+      const invalidPrompt = new Error('Invalid prompt: messages must not be empty');
+      invalidPrompt.name = 'AI_InvalidPromptError';
+
+      expect(service.classifyError(invalidPrompt)).toBe('non_retryable');
+      expect(
+        service.classifyError(new Error('Invalid prompt: prompt or messages must be defined')),
+      ).toBe('non_retryable');
+    });
+
     it('should classify auth and request errors as non_retryable', () => {
       expect(service.classifyError(new Error('HTTP 401 Unauthorized'))).toBe('non_retryable');
       expect(service.classifyError(new Error('Invalid API Key provided'))).toBe('non_retryable');

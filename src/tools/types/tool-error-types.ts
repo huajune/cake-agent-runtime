@@ -107,6 +107,7 @@ export const TOOL_ERROR_TYPES = {
    * 命中本类型时禁止采用坐标，先中性反问候选人城市再带 city 重调。
    */
   GEOCODE_DISTRICT_CITY_MISMATCH: 'geocode.district_city_mismatch',
+  GEOCODE_ANCHOR_MISMATCH: 'geocode.anchor_mismatch',
   GEOCODE_UNRESOLVED_ADDRESS: 'geocode.unresolved_address',
   GEOCODE_FAILED: 'geocode.failed',
 

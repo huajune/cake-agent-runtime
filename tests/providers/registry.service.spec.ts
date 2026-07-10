@@ -137,10 +137,18 @@ describe('RegistryService', () => {
 
       const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
       expect(createOpenAICompatible).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'qwen', apiKey: 'qwen-test' }),
+        expect.objectContaining({
+          name: 'qwen',
+          apiKey: 'qwen-test',
+          supportsStructuredOutputs: true,
+        }),
       );
       expect(createOpenAICompatible).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'moonshotai', apiKey: 'moonshot-test' }),
+        expect.objectContaining({
+          name: 'moonshotai',
+          apiKey: 'moonshot-test',
+          supportsStructuredOutputs: undefined,
+        }),
       );
     });
 

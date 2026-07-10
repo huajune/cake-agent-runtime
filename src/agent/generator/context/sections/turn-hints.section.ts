@@ -282,16 +282,12 @@ export class TurnHintsSection implements PromptSection {
         pendingHints.preferences.location = value;
       },
     );
-    this.partitionHighValue(
-      comparableSessionFacts.preferences.labor_form,
-      highPref.labor_form,
-      (value) => {
-        normalHints.preferences.labor_form = value;
-      },
-      (value) => {
-        pendingHints.preferences.labor_form = value;
-      },
-    );
+    // labor_form 是候选人可随时改口的求职意向，不是姓名/年龄一类稳定身份事实。
+    // 当前消息被规则高置信识别后直接作为 normal hint；HardConstraintsSection 和工具层
+    // 都会用它覆盖旧会话值，不能一边按新值过滤、一边把它渲染成“待确认”。
+    if (highPref.labor_form) {
+      normalHints.preferences.labor_form = highPref.labor_form;
+    }
     this.partitionHighValue<DelayedIntent>(
       comparableSessionFacts.preferences.delayed_intent,
       highPref.delayed_intent,

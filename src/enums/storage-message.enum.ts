@@ -158,7 +158,7 @@ export function toStorageMessageType(numericType: number | undefined): StorageMe
  */
 export function toStorageMessageSource(numericSource: number | undefined): StorageMessageSource {
   if (numericSource === undefined || numericSource === null) {
-    return StorageMessageSource.MOBILE_PUSH; // 默认手机推送
+    return StorageMessageSource.UNKNOWN; // 缺失来源不能冒充真人手机发送
   }
   return MESSAGE_SOURCE_NUM_TO_STR[numericSource] ?? StorageMessageSource.UNKNOWN;
 }

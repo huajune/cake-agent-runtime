@@ -8,6 +8,61 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.0.5`
+**最近更新**: `2026-07-10`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #500 保证 AI 复审写回裁决
+- PR #500 AI workflow 自修改时转人工审查
+- PR #500 修复 AI Code Review 在未写回 GitHub Review 时仍显示成功的假绿问题。
+- PR #500 保证每次 PR 更新都必须针对当前 HEAD 新增明确的 `APPROVED` 或 `CHANGES_REQUESTED` 裁决。
+- PR #503 续跑并兜底 AI 复审裁决
+- PR #503 主审查最多回合数提升至 80，并补充只读 git 工具权限
+- PR #503 主审查未写入裁决时，复用同一 Claude session 续跑 8 回合，仅提交 approve/request-changes
+- PR #503 两阶段仍未写入时，由 workflow 为当前 HEAD 提交阻塞 review 并判红
+
+### 新功能
+- PR #500 保证每次 PR 更新都必须针对当前 HEAD 新增明确的 `APPROVED` 或 `CHANGES_REQUESTED` 裁决。
+
+### 问题修复
+- PR #500 为 Claude 补充 `Read`、`Glob`、`Grep` 只读工具权限，减少审查过程中的权限拒绝。
+- PR #500 在提示词中明确当前 HEAD，并要求旧 Review 不得替代本轮裁决。
+- PR #500 在 Action 后通过 GitHub Reviews API 校验当前 HEAD 是否新增裁决；未写回时让 workflow 失败。
+- PR #500 AI Review workflow 自修改时，按 Anthropic Action 安全限制跳过自审并明确要求人工审查。
+- PR #500 修复 AI Code Review 在未写回 GitHub Review 时仍显示成功的假绿问题。
+- PR #503 主审查未写入裁决时，复用同一 Claude session 续跑 8 回合，仅提交 approve/request-changes
+- PR #503 续跑并兜底 AI 复审裁决
+
+### 优化调整
+- PR #503 主审查最多回合数提升至 80，并补充只读 git 工具权限
+
+### 运维与流程
+- PR #500 保证 AI 复审写回裁决
+- PR #500 AI workflow 自修改时转人工审查
+- PR #503 两阶段仍未写入时，由 workflow 为当前 HEAD 提交阻塞 review 并判红
+
+### 配置变更
+- PR #500 仅修改 `.github/workflows/ai-code-review.yml`，无运行时配置变更。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #500 Prettier 检查通过。
+- PR #500 Ruby YAML 解析通过。
+- PR #500 GitHub Reviews API 的 HEAD SHA 过滤查询已在 PR #499 上验证。
+- PR #500 主工作区完整 `pnpm ci:check` 通过：334 个测试套件、4,817 个测试通过。
+- PR #503 Prettier workflow 格式检查通过
+- PR #503 YAML 解析通过
+- PR #503 git diff --check 通过
+- PR #503 参数依据 anthropics/claude-code-action@v1 官方 action.yml 与文档核对
+<!-- release:pending:end -->
+
 ## [10.0.4] - 2026-07-10
 
 **来源分支**: `develop`

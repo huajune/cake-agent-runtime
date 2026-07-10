@@ -85,6 +85,11 @@ function isSameBookingTarget(booking: ActiveBooking, jobId: number): boolean {
   return booking.job_id === jobId;
 }
 
+/** 归一化手机号用于比对：只保留数字，去掉空格/连字符等格式差异。 */
+function normalizePhoneDigits(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
 const supplementAnswersSchema = z
   .record(z.string(), z.string())
   .optional()
@@ -666,9 +671,28 @@ export function buildInterviewBookingTool(
           const activeBookings = await longTermService
             .getActiveBookings(context.corpId, context.userId)
             .catch(() => null);
-          const duplicateBooking = (activeBookings ?? []).find(
+          const recentSameJobBooking = (activeBookings ?? []).find(
             (booking) => isRecentBooking(booking) && isSameBookingTarget(booking, jobId),
           );
+          // 软查重按「企微联系人 + 岗位」定位，但一个企微号可能先后给不同的人报同一岗位
+          // （工单 448367→448402 事故：罗欣宇约成功后，同会话给许颖约同岗位被误判重复）。
+          // 命中指针后再用 work_order_id 反查工单上的手机号：手机号不同 = 不同候选人，放行；
+          // 只有同手机号（或查不到工单手机号时保守处理）才判定为真正的重复提交。
+          let duplicateBooking = recentSameJobBooking;
+          if (recentSameJobBooking?.work_order_id != null) {
+            const existingWorkOrder = await spongeService
+              .getCachedWorkOrderById(recentSameJobBooking.work_order_id, spongeTokenContext)
+              .catch(() => null);
+            const existingPhone = normalizePhoneDigits(existingWorkOrder?.phone);
+            const currentPhone = normalizePhoneDigits(phone);
+            if (existingPhone && currentPhone && existingPhone !== currentPhone) {
+              logger.log(
+                `[booking] 近期同岗位 active_booking 手机号与本次不同，判定为不同候选人，放行: ` +
+                  `chatId=${context.sessionId}, jobId=${jobId}, workOrderId=${recentSameJobBooking.work_order_id}`,
+              );
+              duplicateBooking = undefined;
+            }
+          }
           if (duplicateBooking?.work_order_id != null) {
             logger.warn(
               `[booking] 命中近期同岗位 active_booking 软查重，跳过重复提交: chatId=${context.sessionId}, jobId=${jobId}, workOrderId=${duplicateBooking.work_order_id}`,

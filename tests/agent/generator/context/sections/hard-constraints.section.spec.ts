@@ -81,6 +81,16 @@ describe('HardConstraintsSection', () => {
     expect(output).toBe('');
   });
 
+  it('renders an explicit current labor-form intent even when persisted facts are unavailable', () => {
+    const output = section.build({
+      ...baseCtx,
+      currentLaborFormIntent: { kind: 'set', value: '暑假工' },
+    });
+
+    expect(output).toContain('用工形式: 暑假工');
+    expect(output).toContain('只保留匹配「暑假工」的岗位');
+  });
+
   it('renders city/district from session facts and tells the model which filter to use', () => {
     const facts = cloneFallback();
     facts.preferences.city = { value: '南京', confidence: 'high', evidence: 'explicit_city' };
@@ -184,6 +194,49 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('意向薪资: 5000+');
     expect(output).not.toContain('意向薪资: 8000+');
+  });
+
+  it('prefers the current explicit labor form over stale session labor form', () => {
+    const session = cloneFallback();
+    session.preferences.labor_form = '兼职';
+    const high = cloneHighConfidenceFallback();
+    high.preferences.labor_form = highConfidenceValue('暑假工', '用工形式识别：暑假工');
+
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: session,
+      highConfidenceFacts: high,
+    });
+
+    expect(output).toContain('用工形式: 暑假工');
+    expect(output).toContain('只保留匹配「暑假工」的岗位');
+    expect(output).not.toContain('用工形式: 兼职');
+  });
+
+  it('does not fall back to stale summer labor form after the candidate explicitly excludes it', () => {
+    const session = cloneFallback();
+    session.preferences.labor_form = '暑假工';
+
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: session,
+      currentLaborFormIntent: { kind: 'clear', clearedValues: ['暑假工'] },
+    });
+
+    expect(output).not.toContain('用工形式: 暑假工');
+  });
+
+  it('keeps the existing summer labor form when the candidate only asks about a job type', () => {
+    const session = cloneFallback();
+    session.preferences.labor_form = '暑假工';
+
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: session,
+      currentLaborFormIntent: { kind: 'ignore' },
+    });
+
+    expect(output).toContain('用工形式: 暑假工');
   });
 
   it('does not consume low-confidence highConfidenceFacts as query constraints', () => {

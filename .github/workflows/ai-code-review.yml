@@ -35,7 +35,6 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/')
     runs-on: ubuntu-latest
-
     steps:
       - name: Resolve PR context
         id: pr
@@ -51,8 +50,18 @@ jobs:
             PR_NUMBER="${{ github.event.pull_request.number }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           fi
+          DECISIVE_REVIEWS_BEFORE=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
+            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
+          if gh pr diff "$PR_NUMBER" --name-only | grep -Fxq '.github/workflows/ai-code-review.yml'; then
+            WORKFLOW_CHANGED=true
+          else
+            WORKFLOW_CHANGED=false
+          fi
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "decisive_reviews_before=$DECISIVE_REVIEWS_BEFORE" >> "$GITHUB_OUTPUT"
+          echo "workflow_changed=$WORKFLOW_CHANGED" >> "$GITHUB_OUTPUT"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -69,12 +78,22 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Review current HEAD with Claude
+        id: review
+        uses: anthropics/claude-code-action@v1
+        if: steps.pr.outputs.workflow_changed != 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ steps.pr.outputs.number }}
+            CURRENT HEAD SHA: ${{ steps.pr.outputs.head_sha }}
+
+            This is a fresh review of the current HEAD, including fixes pushed after any previous
+            review. Previous APPROVED or CHANGES_REQUESTED reviews are stale decisions and do not
+            satisfy this run. You MUST finish by submitting exactly one new decisive review for the
+            current HEAD with either `gh pr review --approve` or `gh pr review --request-changes`.
+            A successful analysis without a new decisive GitHub review is a workflow failure.
 
             Review this PR according to the following rules:
 
@@ -82,8 +101,85 @@ jobs:
 
           # claude-code-action 默认 classify_inline_comments，行内评论走注入的
           # mcp__github_inline_comment__create_inline_comment 工具（不是 gh pr review）。
-          # 缺它则每次落评论都被 allowedTools 拒（run 会绿但 permission_denials 累积、
-          # 最终 "No buffered inline comments"，PR 上零评论）。gh pr review/comment 保留：
-          # review-rules 仍用它们发整体总结与 approve/request-changes 裁决。
+          # 缺它则每次落评论都被 allowedTools 拒。Read/Glob/Grep 用于只读代码审查；
+          # gh pr review/comment 保留，供整体总结与 approve/request-changes 裁决。
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
+            --max-turns 80
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
+
+      # 主审查偶发在完成分析后漏掉最后的 gh pr review。先只记录是否已有裁决，
+      # 缺失时复用同一个 Claude session 续跑，避免重新读完整个大 PR。
+      - name: Detect decisive review for current HEAD
+        id: decisive-review
+        if: steps.pr.outputs.workflow_changed != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          REVIEWS_BEFORE: ${{ steps.pr.outputs.decisive_reviews_before }}
+        run: |
+          set -euo pipefail
+          REVIEWS_AFTER=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
+            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
+          if [ "$REVIEWS_AFTER" -gt "$REVIEWS_BEFORE" ]; then
+            echo "submitted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "submitted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resume Claude to submit the missing decisive review
+        if: >
+          steps.pr.outputs.workflow_changed != 'true' &&
+          steps.decisive-review.outputs.submitted != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Resume the completed review for PR #${{ steps.pr.outputs.number }} at HEAD
+            ${{ steps.pr.outputs.head_sha }}. The analysis phase finished but no decisive GitHub
+            review was submitted. Do not inspect more files and do not add exploratory comments.
+            Based strictly on the analysis already present in this session, immediately submit
+            exactly one review: approve if there are no blocking findings, otherwise request
+            changes and summarize the blocking findings. Your first and only tool action must be
+            `gh pr review --approve` or `gh pr review --request-changes`.
+          claude_args: |
+            --resume "${{ steps.review.outputs.session_id }}"
+            --max-turns 8
+            --allowedTools "Bash(gh pr review:*)"
+
+      # claude-code-action 只以 Claude 进程退出码判断成功；即使续跑仍漏掉裁决，
+      # 也必须在 PR 当前 HEAD 留下明确的阻塞 review，并把 workflow 判红。
+      - name: Verify decisive review was submitted for current HEAD
+        if: steps.pr.outputs.workflow_changed != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          REVIEWS_BEFORE: ${{ steps.pr.outputs.decisive_reviews_before }}
+        run: |
+          set -euo pipefail
+          REVIEWS_AFTER=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
+            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
+
+          if [ "$REVIEWS_AFTER" -le "$REVIEWS_BEFORE" ]; then
+            gh pr review "$PR_NUMBER" --request-changes --body \
+              "Automated AI review did not complete a decisive review for HEAD ${HEAD_SHA}. The workflow is failing closed; inspect the AI Code Review run and request a fresh review after remediation."
+            echo "::error::AI review did not submit a new APPROVED or CHANGES_REQUESTED review for HEAD ${HEAD_SHA}; a blocking fallback review was submitted."
+            exit 1
+          fi
+
+          LATEST_STATE=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
+            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | sort_by(.submitted_at) | last | .state")
+          echo "AI review submitted for ${HEAD_SHA}: ${LATEST_STATE}"
+
+      # Anthropic Action 会拒绝运行 PR 自己修改过的 workflow（必须与默认分支完全一致）。
+      # 这类改动不能由它安全地自审，保留明确告警并交给仓库的人类审批规则兜底。
+      - name: Require human review for AI workflow changes
+        if: steps.pr.outputs.workflow_changed == 'true'
+        run: |
+          echo "::warning::AI review skipped because this PR modifies ai-code-review.yml; human review is required."

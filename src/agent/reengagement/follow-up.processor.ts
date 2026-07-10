@@ -34,6 +34,7 @@ import {
 import { TouchLedgerService } from './touch-ledger.service';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ReengagementAgentExecution } from './reengagement.agent';
+import { MessageSource, MessageType } from '@enums/message-callback.enum';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
@@ -807,6 +808,8 @@ export class FollowUpProcessor implements OnModuleInit {
         role: 'assistant',
         content: params.text,
         timestamp: params.timestamp,
+        messageType: MessageType.TEXT,
+        source: MessageSource.AI_REPLY,
         candidateName: params.identity.candidateName,
         managerName: params.identity.managerName,
         orgId: params.identity.corpId,

@@ -20,8 +20,12 @@ import {
   groupCandidatesByCity,
   pickAnchorCandidate,
 } from '@infra/geocoding/geocoding-candidate-ranker.util';
-import { hasGenericAmbiguousSuffix } from '@memory/facts/geo-mappings';
-import { ToolBuilder } from '@shared-types/tool.types';
+import {
+  hasGenericAmbiguousSuffix,
+  normalizeCityName,
+  normalizeDistrictForLookup,
+} from '@memory/facts/geo-mappings';
+import type { GeocodeLocationAnchor, ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('geocode');
@@ -137,8 +141,95 @@ function isAreaLevelQuery(queryAddress: string | undefined, c: GeocodeCandidate)
   return normalized === district || normalized === city;
 }
 
+function normalizeReferenceText(value: string): string {
+  return value.replace(/[\s，。！？、；：,.!?;:（）()【】\[\]"']/g, '');
+}
+
+function candidateMatchesAnchor(
+  candidate: GeocodeCandidate,
+  anchor: GeocodeLocationAnchor,
+): boolean {
+  const expectedCity = normalizeCityName(anchor.city);
+  const resolvedCity = normalizeCityName(candidate.city);
+  if (expectedCity && (!resolvedCity || resolvedCity !== expectedCity)) return false;
+
+  if (anchor.districts.length === 0) return true;
+  if (!candidate.district?.trim()) return false;
+  return anchor.districts.some((district) =>
+    candidateDistrictMatchesAddress([normalizeDistrictForLookup(district)], candidate.district),
+  );
+}
+
+function queryMatchesAnchorReference(address: string, anchor: GeocodeLocationAnchor): boolean {
+  if (anchor.source === 'current_user') return true;
+
+  const query = normalizeReferenceText(address);
+  const reference = normalizeReferenceText(anchor.referenceText ?? '');
+  const anchorTokens = [anchor.city, ...anchor.districts]
+    .filter((token): token is string => Boolean(token))
+    .flatMap((token) => [token, token.replace(/[市区县]$/, '')])
+    .filter(Boolean);
+  if (!query) return false;
+  if (!reference) {
+    if (anchor.source === 'session_memory') return true;
+    return anchorTokens.some((token) => query.includes(normalizeReferenceText(token)));
+  }
+  if (anchorTokens.some((token) => query.includes(normalizeReferenceText(token)))) return true;
+
+  let core = query;
+  for (const token of anchorTokens) {
+    core = core.replaceAll(normalizeReferenceText(token), '');
+  }
+  if (core.length >= 2 && (reference.includes(core) || core.includes(reference))) return true;
+
+  // “同济店”与“同济园”这类同一地标的轻微尾字差异：至少两个连续前缀字相同。
+  let commonPrefix = 0;
+  while (commonPrefix < core.length && reference.includes(core.slice(0, commonPrefix + 1))) {
+    commonPrefix += 1;
+  }
+  return commonPrefix >= 2;
+}
+
+function buildContextualAddress(address: string, anchor: GeocodeLocationAnchor): string {
+  const normalizedAddress = normalizeReferenceText(address);
+  const parts: string[] = [];
+  const city = anchor.city?.trim();
+  const district = anchor.districts.length === 1 ? anchor.districts[0]?.trim() : undefined;
+  if (city && !normalizedAddress.includes(normalizeReferenceText(city))) parts.push(city);
+  if (district && !normalizedAddress.includes(normalizeReferenceText(district)))
+    parts.push(district);
+  parts.push(address.trim());
+  return parts.join('');
+}
+
+function buildAnchorMismatchError(
+  address: string,
+  city: string | null,
+  anchor: GeocodeLocationAnchor,
+  candidates: GeocodeCandidate[],
+) {
+  return buildToolError({
+    errorType: TOOL_ERROR_TYPES.GEOCODE_ANCHOR_MISMATCH,
+    replyInstruction:
+      '当前已确认的位置上下文与本次地理解析结果不一致。禁止采用本次坐标、禁止据此查询或推荐附近岗位。' +
+      '请向候选人确认更具体的区/地标，或请对方发送位置，再重新调用 geocode。',
+    details: {
+      address,
+      city,
+      anchorCity: anchor.city,
+      anchorDistricts: anchor.districts,
+      anchorSource: anchor.source,
+      resolvedAreas: candidates.slice(0, 3).map((candidate) => ({
+        city: candidate.city,
+        district: candidate.district,
+        formattedAddress: candidate.formattedAddress,
+      })),
+    },
+  });
+}
+
 export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilder {
-  return () => {
+  return (context) => {
     return tool({
       description: DESCRIPTION,
       inputSchema,
@@ -171,6 +262,56 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             trimmedAddress,
             normalizedCity,
           );
+
+          const locationAnchor = context.geocodeLocationAnchor;
+          const applicableAnchor =
+            locationAnchor && queryMatchesAnchorReference(trimmedAddress, locationAnchor)
+              ? locationAnchor
+              : undefined;
+
+          if (applicableAnchor) {
+            const matchingCandidates = candidates.filter((candidate) =>
+              candidateMatchesAnchor(candidate, applicableAnchor),
+            );
+            if (matchingCandidates.length > 0) {
+              const anchor = pickAnchorCandidate(matchingCandidates);
+              return {
+                resolution: 'unique' as const,
+                result: toResultPayload(anchor, trimmedAddress),
+              };
+            }
+
+            const contextualAddress = buildContextualAddress(trimmedAddress, applicableAnchor);
+            const contextualCity = applicableAnchor.city?.trim() || normalizedCity;
+            const shouldRetry =
+              contextualAddress !== trimmedAddress || contextualCity !== normalizedCity;
+            const contextualCandidates = shouldRetry
+              ? await geocodingService.searchCandidates(contextualAddress, contextualCity)
+              : candidates;
+            const contextualMatches = contextualCandidates.filter((candidate) =>
+              candidateMatchesAnchor(candidate, applicableAnchor),
+            );
+            if (contextualMatches.length > 0) {
+              const anchor = pickAnchorCandidate(contextualMatches);
+              return {
+                resolution: 'unique' as const,
+                result: toResultPayload(anchor, contextualAddress),
+                contextCorrection: {
+                  applied: true,
+                  originalAddress: trimmedAddress,
+                  resolvedAddress: contextualAddress,
+                  source: applicableAnchor.source,
+                },
+              };
+            }
+
+            return buildAnchorMismatchError(
+              trimmedAddress,
+              normalizedCity,
+              applicableAnchor,
+              contextualCandidates.length > 0 ? contextualCandidates : candidates,
+            );
+          }
 
           if (candidates.length === 0) {
             return buildToolError({

@@ -1,11 +1,21 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Clock, ExternalLink, Info, XCircle } from 'lucide-react';
+import {
+  Brain,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  FileText,
+  Info,
+  MessageSquareText,
+  XCircle,
+} from 'lucide-react';
 import { formatDateTime, formatJson } from '@/utils/format';
 import {
   useReengagementRecordDetail,
   useReengagementRecords,
 } from '@/hooks/reengagement/useReengagementRecords';
+import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import { useChatSessionMessages } from '@/hooks/chat/useChatSessions';
 import type { ReengagementEvent, ReengagementTouchRecord } from '@/api/types/reengagement.types';
 import { getStatusMeta } from '../../constants';
@@ -36,6 +46,21 @@ interface SummaryInfo {
   icon: 'clock' | 'check' | 'stop' | 'info';
 }
 
+/** 从主动回合 agentRequest 还原的生成内幕（模型思考 + 提示词） */
+interface GenerationInsight {
+  /** 模型自述的生成依据（reengagement agent 结构化输出的 reason 字段） */
+  reason?: string;
+  /** extended thinking / agentSteps 里的思考过程 */
+  thinking?: string;
+  modelId?: string;
+  fallbackModelIds?: string[];
+  systemPrompt?: string;
+  /** 老版本模板档（未调用 LLM）标记 */
+  isTemplate: boolean;
+  validationReason?: string;
+  usageText?: string;
+}
+
 const EVENT_LABELS: Record<string, string> = {
   scheduled: '已创建待发任务',
   schedule_precheck_stopped: '排程前已停止',
@@ -58,6 +83,7 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   no_delivery_port: '没有实际投递通道',
   shadow_mode: 'Shadow 模式只生成不发送',
   rollout_disabled: '灰度未开启',
+  scenario_rollout_disabled: '该场景灰度未开启，只生成不发送',
   reengagement_disabled: '复聊总开关关闭',
   over_frequency_limit_24h: '24 小时频控已达上限',
   candidate_replied_after_anchor: '候选人已经回复，所以不再追问',
@@ -72,6 +98,7 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   composer_validation_failed: '生成文案疑似包含内部信息，已拦截',
   composer_forbidden_job_detail: '轻量复聊里出现了薪资、班次或岗位详情，已拦截',
   composer_missing_expected_ask: '生成文案没有命中这个场景需要追问的要点，已拦截',
+  reengagement_agent_error: '复聊生成调用异常',
 };
 
 const OUTCOME_LABELS: Record<string, string> = {
@@ -80,6 +107,24 @@ const OUTCOME_LABELS: Record<string, string> = {
   guardrail_blocked: '被安全规则拦截',
   handoff: '转人工',
 };
+
+type AnyRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): AnyRecord | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as AnyRecord)
+    : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
 
 function formatMaybeTime(value?: string | null): string {
   return value ? formatDateTime(value) : '-';
@@ -265,6 +310,48 @@ function getEventSummary(event: ReengagementEvent): string {
   return '系统记录了这一步的处理状态。';
 }
 
+/**
+ * 从主动回合流水（agent_invocation）里抽出「模型思考 + 提示词」。
+ *
+ * agentRequest 三种形态：
+ * - 新版 ReengagementAgent：{modelId, system, messages, reengagementInput, reengagementOutput:{message,reason}}
+ * - 旧版 composer 模板档：{type:'template', scenarioCode}（无 LLM 调用）
+ * - 旧版 composer LLM 档：{modelId, system, messages}（无结构化 reason）
+ */
+function extractGenerationInsight(
+  invocationRequest: AnyRecord | undefined,
+  invocationResponse: AnyRecord | undefined,
+  agentSteps: Array<{ reasoning?: string }> | undefined,
+): GenerationInsight {
+  const agentRequest = asRecord(invocationRequest?.agentRequest);
+  const output = asRecord(agentRequest?.reengagementOutput);
+  const reply = asRecord(invocationResponse?.reply);
+  const usage = asRecord(reply?.usage);
+
+  const thinking = (agentSteps ?? [])
+    .map((step) => step.reasoning?.trim())
+    .filter((text): text is string => !!text)
+    .join('\n\n');
+
+  const inputTokens = usage?.inputTokens;
+  const outputTokens = usage?.outputTokens;
+  const usageText =
+    typeof inputTokens === 'number' && typeof outputTokens === 'number'
+      ? `输入 ${inputTokens} / 输出 ${outputTokens} tokens`
+      : undefined;
+
+  return {
+    reason: asString(output?.reason),
+    thinking: thinking || undefined,
+    modelId: asString(agentRequest?.modelId),
+    fallbackModelIds: asStringArray(agentRequest?.fallbackModelIds),
+    systemPrompt: asString(agentRequest?.system),
+    isTemplate: asString(agentRequest?.type) === 'template',
+    validationReason: asString(agentRequest?.validationReason),
+    usageText,
+  };
+}
+
 export default function ReengagementDetailDrawer({
   touchKey,
   onClose,
@@ -276,6 +363,22 @@ export default function ReengagementDetailDrawer({
 
   const events = useMemo(() => sortEventsAsc(record?.events || []), [record?.events]);
   const detailBatchId = record?.batch_id || null;
+
+  // 主动回合流水：generated_text 之外的生成内幕（提示词/模型思考/用量）都在这一行里
+  const {
+    data: turnRecord,
+    isLoading: turnLoading,
+    isError: turnError,
+  } = useMessageProcessingRecordDetail(detailBatchId);
+  const insight = useMemo(() => {
+    if (!turnRecord?.agentInvocation) return null;
+    return extractGenerationInsight(
+      asRecord(turnRecord.agentInvocation.request),
+      asRecord(turnRecord.agentInvocation.response),
+      turnRecord.agentSteps,
+    );
+  }, [turnRecord]);
+
   const { data: sessionRecords, isLoading: sessionRecordsLoading } = useReengagementRecords({
     sessionId: record?.session_id ?? undefined,
     limit: 50,
@@ -345,6 +448,9 @@ export default function ReengagementDetailDrawer({
   };
 
   const summary = record ? getReadableStatus(record) : null;
+  const generatedText = record?.generated_text?.trim() || null;
+  const messageTone: SummaryInfo['tone'] =
+    record?.status === 'sent' ? 'success' : record?.status === 'shadow' ? 'warning' : 'muted';
 
   if (isLoading || !record) {
     return (
@@ -390,16 +496,38 @@ export default function ReengagementDetailDrawer({
         {/* Body — left/right split */}
         <div className={styles.body}>
           <div className={styles.leftCol}>
-            {summary && (
-              <div className={`${styles.summaryCard} ${styles[`summary_${summary.tone}`]}`}>
-                <div className={styles.summaryIcon}>
-                  <SummaryIcon icon={summary.icon} />
+            {/* ① 复聊消息 —— 这条任务的最终产物，是详情页的主角 */}
+            {generatedText ? (
+              <div className={`${styles.messageCard} ${styles[`message_${messageTone}`]}`}>
+                <div className={styles.messageHead}>
+                  <MessageSquareText aria-hidden="true" size={15} />
+                  <span className={styles.messageHeadTitle}>
+                    {record.status === 'sent' ? '已发送的复聊消息' : '生成的复聊消息'}
+                  </span>
+                  {record.status === 'sent' && record.sent_at ? (
+                    <span className={styles.messageChipSuccess}>
+                      {formatDateTime(record.sent_at)} 已发出
+                    </span>
+                  ) : (
+                    <span className={styles.messageChipMuted}>
+                      未投递 · {formatReason(record.decision_reason)}
+                    </span>
+                  )}
                 </div>
-                <div className={styles.summaryBody}>
-                  <div className={styles.summaryTitle}>{summary.title}</div>
-                  <div className={styles.summaryText}>{summary.description}</div>
-                </div>
+                <div className={styles.messageBubble}>{generatedText}</div>
               </div>
+            ) : (
+              summary && (
+                <div className={`${styles.summaryCard} ${styles[`summary_${summary.tone}`]}`}>
+                  <div className={styles.summaryIcon}>
+                    <SummaryIcon icon={summary.icon} />
+                  </div>
+                  <div className={styles.summaryBody}>
+                    <div className={styles.summaryTitle}>{summary.title}</div>
+                    <div className={styles.summaryText}>{summary.description}</div>
+                  </div>
+                </div>
+              )
             )}
 
             {/* Error */}
@@ -410,12 +538,101 @@ export default function ReengagementDetailDrawer({
               </div>
             )}
 
-            {/* Recent chat context */}
-            <div>
-              <div className={styles.sectionTitle}>
-                最近聊天记录
-                <span className={styles.sectionNote}>近 {RECENT_CHAT_LIMIT} 条</span>
+            {/* ② 模型是怎么想的 —— 生成依据 + 思考过程 */}
+            {detailBatchId && (
+              <div>
+                <div className={styles.sectionTitle}>
+                  <Brain aria-hidden="true" size={14} />
+                  模型是怎么想的
+                  {insight?.modelId && (
+                    <span className={styles.modelChip} title={insight.fallbackModelIds?.join(', ')}>
+                      {insight.modelId}
+                    </span>
+                  )}
+                  {insight?.usageText && (
+                    <span className={styles.sectionNote}>{insight.usageText}</span>
+                  )}
+                </div>
+                {turnLoading ? (
+                  <div className={styles.emptyText}>加载生成轨迹中...</div>
+                ) : turnError ? (
+                  <div className={styles.emptyText}>
+                    生成轨迹加载失败，请稍后重试或查看消息处理流水
+                  </div>
+                ) : !insight ? (
+                  <div className={styles.emptyText}>
+                    没有找到这次主动回合的生成轨迹（流水可能已过保留期）
+                  </div>
+                ) : insight.isTemplate ? (
+                  <div className={styles.insightCard}>
+                    <div className={styles.insightRow}>
+                      <span className={styles.insightLabel}>生成方式</span>
+                      <span className={styles.insightText}>
+                        确定性模板拼接（事实齐全场景不调用大模型，时间地点直接来自报名记录）
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.insightCard}>
+                    {insight.reason && (
+                      <div className={styles.insightRow}>
+                        <span className={styles.insightLabel}>生成依据</span>
+                        <span className={styles.insightText}>{insight.reason}</span>
+                      </div>
+                    )}
+                    {insight.thinking && (
+                      <div className={styles.insightRow}>
+                        <span className={styles.insightLabel}>思考过程</span>
+                        <span className={`${styles.insightText} ${styles.insightThinking}`}>
+                          {insight.thinking}
+                        </span>
+                      </div>
+                    )}
+                    {insight.validationReason && (
+                      <div className={styles.insightRow}>
+                        <span className={styles.insightLabel}>拦截原因</span>
+                        <span className={styles.insightText}>
+                          {formatReason(insight.validationReason)}
+                        </span>
+                      </div>
+                    )}
+                    {!insight.reason && !insight.thinking && !insight.validationReason && (
+                      <div className={styles.insightRow}>
+                        <span className={styles.insightText}>
+                          这轮生成没有留下结构化的思考记录（老版本生成链路），完整请求可看下方提示词或消息处理流水。
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* ③ 最终提示词 —— 实际发给模型的完整 system prompt */}
+            {detailBatchId && insight?.systemPrompt && (
+              <div>
+                <div className={styles.sectionTitle}>
+                  <FileText aria-hidden="true" size={14} />
+                  最终提示词
+                  <span className={styles.sectionNote}>实际发给模型的完整 system prompt</span>
+                </div>
+                <details className={styles.promptPanel} open>
+                  <summary>
+                    展开 / 收起全文（{insight.systemPrompt.length.toLocaleString()} 字）
+                  </summary>
+                  <pre className={styles.promptText}>{insight.systemPrompt}</pre>
+                </details>
+              </div>
+            )}
+
+            {/* ④ 最近聊天记录（默认折叠，避免淹没生成内幕） */}
+            <details className={styles.collapsibleSection}>
+              <summary className={styles.collapsibleSummary}>
+                最近聊天记录
+                <span className={styles.sectionNote}>
+                  {chatLoading ? '加载中...' : `近 ${recentMessages.length} 条`}
+                </span>
+              </summary>
               {chatLoading ? (
                 <div className={styles.emptyText}>加载中...</div>
               ) : recentMessages.length === 0 ? (
@@ -449,33 +666,51 @@ export default function ReengagementDetailDrawer({
                   </div>
                 </div>
               )}
-            </div>
+            </details>
 
-            {/* Generated text */}
-            <div>
-              <div className={styles.sectionTitle}>
-                准备发送的文案
-                {record.shadow && <span className={styles.shadowNote}>本应发（未投递）</span>}
-              </div>
-              {record.generated_text ? (
-                <div className={styles.generatedText}>{record.generated_text}</div>
+            {/* ⑤ 这次任务流转 */}
+            <details className={styles.collapsibleSection}>
+              <summary className={styles.collapsibleSummary}>
+                这次任务流转
+                <span className={styles.sectionNote}>{events.length} 步</span>
+              </summary>
+              {events.length === 0 ? (
+                <div className={styles.emptyText}>暂无事件轨迹</div>
               ) : (
-                <div className={styles.emptyText}>
-                  {record.outcome_kind === 'skipped'
-                    ? `没有生成可发送文案：${formatReason(record.decision_reason)}`
-                    : '这次没有准备发送文案'}
+                <div className={styles.timeline}>
+                  {events.map((event, index) => (
+                    <div
+                      key={`${event.at}-${event.event}-${index}`}
+                      className={styles.timelineItem}
+                    >
+                      <div className={styles.timelineDot} />
+                      <div className={styles.timelineContent}>
+                        <div className={styles.timelineHead}>
+                          <span className={styles.timelineEvent}>{getEventLabel(event)}</span>
+                          <span className={styles.timelineTime}>{formatDateTime(event.at)}</span>
+                        </div>
+                        <div className={styles.timelineSummary}>{getEventSummary(event)}</div>
+                        {event.detail && Object.keys(event.detail).length > 0 && (
+                          <details className={styles.timelineDetail}>
+                            <summary>技术明细</summary>
+                            <pre>{formatJson(event.detail)}</pre>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
+            </details>
 
-            {/* Same session tasks */}
-            <div>
-              <div className={styles.sectionTitle}>
+            {/* ⑥ 这个候选人的其他复聊（默认折叠：多为停止条件流水，排障时才需要） */}
+            <details className={styles.collapsibleSection}>
+              <summary className={styles.collapsibleSummary}>
                 这个候选人的其他复聊
                 {!sessionRecordsLoading && (
                   <span className={styles.sectionNote}>共 {sameSessionRecords.length} 条</span>
                 )}
-              </div>
+              </summary>
               {sessionRecordsLoading ? (
                 <div className={styles.emptyText}>加载中...</div>
               ) : sameSessionRecords.length === 0 ? (
@@ -519,39 +754,7 @@ export default function ReengagementDetailDrawer({
                   })}
                 </div>
               )}
-            </div>
-
-            {/* Lifecycle timeline */}
-            <div>
-              <div className={styles.sectionTitle}>这次任务流转</div>
-              {events.length === 0 ? (
-                <div className={styles.emptyText}>暂无事件轨迹</div>
-              ) : (
-                <div className={styles.timeline}>
-                  {events.map((event, index) => (
-                    <div
-                      key={`${event.at}-${event.event}-${index}`}
-                      className={styles.timelineItem}
-                    >
-                      <div className={styles.timelineDot} />
-                      <div className={styles.timelineContent}>
-                        <div className={styles.timelineHead}>
-                          <span className={styles.timelineEvent}>{getEventLabel(event)}</span>
-                          <span className={styles.timelineTime}>{formatDateTime(event.at)}</span>
-                        </div>
-                        <div className={styles.timelineSummary}>{getEventSummary(event)}</div>
-                        {event.detail && Object.keys(event.detail).length > 0 && (
-                          <details className={styles.timelineDetail}>
-                            <summary>技术明细</summary>
-                            <pre>{formatJson(event.detail)}</pre>
-                          </details>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            </details>
           </div>
 
           <div className={styles.rightCol}>

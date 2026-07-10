@@ -38,6 +38,13 @@ export class ReliableService {
     if (!(err instanceof Error)) return 'retryable';
 
     const msg = err.message.toLowerCase();
+
+    // AI SDK 会在请求发往 provider 前抛出 InvalidPromptError。
+    // 这类本地参数错误不会因重复调用恢复，应停止当前模型的重试。
+    if (err.name === 'AI_InvalidPromptError' || msg.startsWith('invalid prompt:')) {
+      return 'non_retryable';
+    }
+
     const statusMatch = msg.match(/(\d{3})/);
     const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
 

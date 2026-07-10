@@ -83,6 +83,7 @@ function scoreJobReference(job: RecommendedJobSummary, normalizedText: string): 
   const jobName = normalizeForMatch(job.jobName);
   const brandName = normalizeForMatch(job.brandName);
   const laborForm = normalizeForMatch(job.laborForm);
+  const partTimeJobType = normalizeForMatch(job.partTimeJobType);
   const salaryDesc = normalizeForMatch(job.salaryDesc);
 
   if (storeName && normalizedText.includes(storeName)) score += 5;
@@ -90,6 +91,8 @@ function scoreJobReference(job: RecommendedJobSummary, normalizedText: string): 
   score += scoreJobCategoryReference(job.jobCategoryName, normalizedText);
   if (brandName && normalizedText.includes(brandName)) score += 1;
   if (laborForm && normalizedText.includes(laborForm)) score += 1;
+  if (partTimeJobType && partTimeJobType !== laborForm && normalizedText.includes(partTimeJobType))
+    score += 1;
   if (salaryDesc && salaryDesc.length >= 4 && normalizedText.includes(salaryDesc)) score += 1;
 
   return score;
