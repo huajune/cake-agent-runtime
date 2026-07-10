@@ -49,6 +49,42 @@
         "GitHub Reviews API 的 HEAD SHA 过滤查询已在 PR #499 上验证。",
         "主工作区完整 `pnpm ci:check` 通过：334 个测试套件、4,817 个测试通过。"
       ]
+    },
+    {
+      "number": "503",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/503",
+      "title": "续跑并兜底 AI 复审裁决",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-10",
+      "businessUpdates": [
+        "主审查未写入裁决时，复用同一 Claude session 续跑 8 回合，仅提交 approve/request-changes",
+        "续跑并兜底 AI 复审裁决"
+      ],
+      "summary": [
+        "续跑并兜底 AI 复审裁决",
+        "主审查最多回合数提升至 80，并补充只读 git 工具权限",
+        "主审查未写入裁决时，复用同一 Claude session 续跑 8 回合，仅提交 approve/request-changes",
+        "两阶段仍未写入时，由 workflow 为当前 HEAD 提交阻塞 review 并判红"
+      ],
+      "features": [],
+      "fixes": [
+        "主审查未写入裁决时，复用同一 Claude session 续跑 8 回合，仅提交 approve/request-changes",
+        "续跑并兜底 AI 复审裁决"
+      ],
+      "optimizations": [
+        "主审查最多回合数提升至 80，并补充只读 git 工具权限"
+      ],
+      "ops": [
+        "两阶段仍未写入时，由 workflow 为当前 HEAD 提交阻塞 review 并判红"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "Prettier workflow 格式检查通过",
+        "YAML 解析通过",
+        "git diff --check 通过",
+        "参数依据 anthropics/claude-code-action@v1 官方 action.yml 与文档核对"
+      ]
     }
   ],
   "lastRelease": {
