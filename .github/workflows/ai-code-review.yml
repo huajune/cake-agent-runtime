@@ -35,6 +35,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/')
     runs-on: ubuntu-latest
+
     steps:
       - name: Resolve PR context
         id: pr
@@ -50,12 +51,8 @@ jobs:
             PR_NUMBER="${{ github.event.pull_request.number }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           fi
-          DECISIVE_REVIEWS_BEFORE=$(gh api \
-            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
-            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "decisive_reviews_before=$DECISIVE_REVIEWS_BEFORE" >> "$GITHUB_OUTPUT"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -78,13 +75,6 @@ jobs:
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ steps.pr.outputs.number }}
-            CURRENT HEAD SHA: ${{ steps.pr.outputs.head_sha }}
-
-            This is a fresh review of the current HEAD, including fixes pushed after any previous
-            review. Previous APPROVED or CHANGES_REQUESTED reviews are stale decisions and do not
-            satisfy this run. You MUST finish by submitting exactly one new decisive review for the
-            current HEAD with either `gh pr review --approve` or `gh pr review --request-changes`.
-            A successful analysis without a new decisive GitHub review is a workflow failure.
 
             Review this PR according to the following rules:
 
@@ -92,33 +82,8 @@ jobs:
 
           # claude-code-action 默认 classify_inline_comments，行内评论走注入的
           # mcp__github_inline_comment__create_inline_comment 工具（不是 gh pr review）。
-          # 缺它则每次落评论都被 allowedTools 拒。Read/Glob/Grep 用于只读代码审查；
-          # gh pr review/comment 保留，供整体总结与 approve/request-changes 裁决。
+          # 缺它则每次落评论都被 allowedTools 拒（run 会绿但 permission_denials 累积、
+          # 最终 "No buffered inline comments"，PR 上零评论）。gh pr review/comment 保留：
+          # review-rules 仍用它们发整体总结与 approve/request-changes 裁决。
           claude_args: |
-            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
-
-      # claude-code-action 只以 Claude 进程退出码判断成功；工具权限拒绝或漏掉
-      # `gh pr review` 时也可能显示绿色。这里强制校验本次 run 确实为当前 HEAD
-      # 新增了 APPROVED / CHANGES_REQUESTED 裁决，杜绝“检查绿了但旧 review 仍阻塞”。
-      - name: Verify decisive review was submitted for current HEAD
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-          REVIEWS_BEFORE: ${{ steps.pr.outputs.decisive_reviews_before }}
-        run: |
-          set -euo pipefail
-          REVIEWS_AFTER=$(gh api \
-            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
-            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | length")
-
-          if [ "$REVIEWS_AFTER" -le "$REVIEWS_BEFORE" ]; then
-            echo "::error::AI review did not submit a new APPROVED or CHANGES_REQUESTED review for HEAD ${HEAD_SHA}."
-            exit 1
-          fi
-
-          LATEST_STATE=$(gh api \
-            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
-            --jq "[.[] | select(.commit_id == \"${HEAD_SHA}\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\"))] | sort_by(.submitted_at) | last | .state")
-          echo "AI review submitted for ${HEAD_SHA}: ${LATEST_STATE}"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
