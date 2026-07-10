@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.0.5] - 2026-07-10
 
-**预计版本**: `v10.0.5`
-**最近更新**: `2026-07-10`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #500 保证 AI 复审写回裁决
@@ -61,7 +57,6 @@
 - PR #503 YAML 解析通过
 - PR #503 git diff --check 通过
 - PR #503 参数依据 anthropics/claude-code-action@v1 官方 action.yml 与文档核对
-<!-- release:pending:end -->
 
 ## [10.0.4] - 2026-07-10
 
