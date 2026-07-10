@@ -6,39 +6,17 @@ import {
   GUARDRAIL_FEEDBACK_POLICY,
   GUARDRAIL_PRIORITY,
 } from '@shared-types/guardrail.contract';
-import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
 import { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 import {
   detectBrandAliasFuzzyMatchIgnored,
-  detectBrandNameError,
   detectRequestedBrandMismatch,
 } from './rules/brand-name-errors.rule';
-import {
-  detectBookingFormFieldMismatch,
-  detectConfirmedBookingTimeMissing,
-  detectHandoffNoBookingClaim,
-  detectPrecheckBlockedBookingClaim,
-  detectWaitNoticeTimeCollection,
-  detectWaitNoticeTimeFabrication,
-} from './rules/booking-claim-errors.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
-import { FALSE_PROMISE_RULES, detectToolFailureSuccessClaim } from './rules/false-promises.rule';
+import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectHumanServicePhraseLeak, detectOutputLeak } from './rules/internal-info-leaks.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
-import {
-  JOB_FACT_HALLUCINATION_RULES,
-  detectSalaryFabrication,
-  detectScheduleFilteredJobRecommended,
-  detectSummerWorkerNonSummerRecommendation,
-  detectUngroundedJobRecommendation,
-} from './rules/job-fact-hallucinations.rule';
-import {
-  detectHourlySalaryValueMismatch,
-  detectJobShiftPolarityMismatch,
-} from './rules/job-fact-value-mismatch.rule';
-import { detectGeocodeUncertainLocationClaim } from './rules/location-claim-errors.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from './output-rule.types';
 import { OUTPUT_RULE_CATALOG, type OutputRuleCatalogMetadata } from './rules/output-rule-catalog';
@@ -49,18 +27,6 @@ export {
   OUTPUT_RULE_IDS,
   type OutputRuleCatalogMetadata,
 } from './rules/output-rule-catalog';
-
-/** 命中规则里能用字符串替换修好的，先直接修；修不了返回 null 走正常重写。 */
-export function tryDeterministicFix(text: string, blockedRuleIds: string[]): string | null {
-  const ruleIds = new Set(blockedRuleIds);
-  let fixed = text;
-
-  if (ruleIds.has('brand_name_violation')) {
-    fixed = sanitizeBrandName(fixed);
-  }
-
-  return fixed === text ? null : fixed;
-}
 
 /**
  * Reply 后置事实对账。
@@ -101,17 +67,12 @@ export class HardRulesService {
    *
    * 这里刻意只放 FactRule：
    * - false-promises 里的“名额承诺/拉群承诺”；
-   * - discrimination-leaks 里的“敏感筛选条件外露”；
-   * - job-fact-hallucinations 里的“行业常识泛化职责”。
+   * - discrimination-leaks 里的“敏感筛选条件外露”。
    *
    * 如果规则需要读取 tool.result 里的结构化字段，或需要生成动态 label，
    * 就不要塞进这个数组，而应写成 detectXxx 函数并在 check() 里显式编排。
    */
-  private readonly rules: FactRule[] = [
-    ...FALSE_PROMISE_RULES,
-    ...DISCRIMINATION_LEAK_RULES,
-    ...JOB_FACT_HALLUCINATION_RULES,
-  ];
+  private readonly rules: FactRule[] = [...FALSE_PROMISE_RULES, ...DISCRIMINATION_LEAK_RULES];
 
   private readonly rulePolicyById = new Map<string, OutputRuleCatalogMetadata>(
     OUTPUT_RULE_CATALOG.map((rule) => [rule.id, rule]),
@@ -157,13 +118,21 @@ export class HardRulesService {
 
     /**
      * 运行顺序说明：
-     * 1. 先跑“发出去不可恢复/高确定性”的规则：内部信息泄漏、未接地岗位推荐、工具失败却说成功；
-     * 2. 再跑依赖结构化工具结果的流程规则：precheck、wait_notice、geocode、handoff；
-     * 3. 再跑通用 FactRule 列表；
-     * 4. 最后跑质量/体验类补充规则：收资字段、薪资、保险、品牌、昵称、距离。
+     * 1. 先跑“发出去不可恢复/高确定性”的规则：内部信息泄漏、诚信红线；
+     * 2. 再跑通用 FactRule 列表；
+     * 3. 最后跑质量/体验类补充规则：图片描述、保险、品牌、复读。
      *
      * 顺序不用于短路：同一条 reply 可能同时命中多条规则，全部收集后统一告警。
      * 只有最终 blocked=true 才由 OutputGuardrail/runner 丢弃回复。
+     *
+     * 2026-07-10 用户裁定批量下线（勿修补勿重加，与 settlement_cycle_mismatch 同批治理）：
+     * job-fact-hallucinations（未接地推荐/薪资编造/班次过滤空推荐/暑假工降级）、
+     * job-fact-value-mismatch（班次极性/时薪数值对账）、booking-claim-errors（收资字段/
+     * 确认时间透传/等通知收时间与编时间/precheck 口径/handoff 无预约）、
+     * location-claim-errors（geocode 不确定位置声称）整族删除；false-promises 只保留
+     * quota_promise（group_full_without_invite / system_status_fabrication /
+     * tool_failure_success_claim 同批下线）；brand_name_violation（平台错名+岗位品牌改写）
+     * 及其 runner 确定性修复快通道同批下线。岗位/预约事实治理交语义档。
      */
 
     const internalOutputLeak = HardRulesService.detectInternalOutputLeak(text);
@@ -171,49 +140,9 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(internalOutputLeak));
     }
 
-    const ungroundedJobRecommendation = detectUngroundedJobRecommendation(text, toolCalls);
-    if (ungroundedJobRecommendation) {
-      contradictions.push(this.withRulePolicy(ungroundedJobRecommendation));
-    }
-
-    const toolFailureSuccessClaim = detectToolFailureSuccessClaim(text, toolCalls);
-    if (toolFailureSuccessClaim) {
-      contradictions.push(this.withRulePolicy(toolFailureSuccessClaim));
-    }
-
-    const confirmedBookingTimeMissing = detectConfirmedBookingTimeMissing(text, toolCalls);
-    if (confirmedBookingTimeMissing) {
-      contradictions.push(this.withRulePolicy(confirmedBookingTimeMissing));
-    }
-
-    const precheckBlockedBookingClaim = detectPrecheckBlockedBookingClaim(text, toolCalls);
-    if (precheckBlockedBookingClaim) {
-      contradictions.push(this.withRulePolicy(precheckBlockedBookingClaim));
-    }
-
     const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(text, toolCalls);
     if (identityMisregistrationCoaching) {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
-    }
-
-    const waitNoticeTimeFabrication = detectWaitNoticeTimeFabrication(text, toolCalls);
-    if (waitNoticeTimeFabrication) {
-      contradictions.push(this.withRulePolicy(waitNoticeTimeFabrication));
-    }
-
-    const waitNoticeTimeCollection = detectWaitNoticeTimeCollection(text, toolCalls);
-    if (waitNoticeTimeCollection) {
-      contradictions.push(this.withRulePolicy(waitNoticeTimeCollection));
-    }
-
-    const geocodeUncertainLocationClaim = detectGeocodeUncertainLocationClaim(text, toolCalls);
-    if (geocodeUncertainLocationClaim) {
-      contradictions.push(this.withRulePolicy(geocodeUncertainLocationClaim));
-    }
-
-    const handoffNoBookingClaim = detectHandoffNoBookingClaim(text, toolCalls);
-    if (handoffNoBookingClaim) {
-      contradictions.push(this.withRulePolicy(handoffNoBookingClaim));
     }
 
     for (const rule of this.rules) {
@@ -225,26 +154,6 @@ export class HardRulesService {
       );
     }
 
-    const bookingFormMismatch = detectBookingFormFieldMismatch(text, toolCalls);
-    if (bookingFormMismatch) {
-      contradictions.push(this.withRulePolicy(bookingFormMismatch));
-    }
-
-    const salaryFabrication = detectSalaryFabrication(text, toolCalls);
-    if (salaryFabrication) {
-      contradictions.push(this.withRulePolicy(salaryFabrication));
-    }
-
-    const jobShiftPolarityMismatch = detectJobShiftPolarityMismatch(text, toolCalls);
-    if (jobShiftPolarityMismatch) {
-      contradictions.push(this.withRulePolicy(jobShiftPolarityMismatch));
-    }
-
-    const hourlySalaryValueMismatch = detectHourlySalaryValueMismatch(text, toolCalls);
-    if (hourlySalaryValueMismatch) {
-      contradictions.push(this.withRulePolicy(hourlySalaryValueMismatch));
-    }
-
     const imageDescriptionNotSaved = detectImageDescriptionNotSaved(
       text,
       toolCalls,
@@ -252,21 +161,6 @@ export class HardRulesService {
     );
     if (imageDescriptionNotSaved) {
       contradictions.push(this.withRulePolicy(imageDescriptionNotSaved));
-    }
-
-    const scheduleFilteredJobRecommended = detectScheduleFilteredJobRecommended(text, toolCalls);
-    if (scheduleFilteredJobRecommended) {
-      contradictions.push(this.withRulePolicy(scheduleFilteredJobRecommended));
-    }
-
-    const summerWorkerNonSummerRecommendation = detectSummerWorkerNonSummerRecommendation(
-      text,
-      toolCalls,
-      params.userMessage,
-      params.recentUserTexts,
-    );
-    if (summerWorkerNonSummerRecommendation) {
-      contradictions.push(this.withRulePolicy(summerWorkerNonSummerRecommendation));
     }
 
     const proactiveInsuranceMention = detectProactiveInsurancePolicyMention(
@@ -286,11 +180,6 @@ export class HardRulesService {
     const brandAliasFuzzyMatchIgnored = detectBrandAliasFuzzyMatchIgnored(text, toolCalls);
     if (brandAliasFuzzyMatchIgnored) {
       contradictions.push(this.withRulePolicy(brandAliasFuzzyMatchIgnored));
-    }
-
-    const brandNameError = detectBrandNameError(text, toolCalls);
-    if (brandNameError) {
-      contradictions.push(this.withRulePolicy(brandNameError));
     }
 
     const humanServicePhraseLeak = detectHumanServicePhraseLeak(text);

@@ -1,5 +1,4 @@
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { splitClaimSentences } from './claim-assertion.util';
 
 const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
 const INSURANCE_POLICY_PROMISE_PATTERN =
@@ -25,8 +24,17 @@ const INSURANCE_POLICY_PROMISE_PATTERN =
 const REQUIREMENT_CONTEXT_PATTERN =
   /(?:提供|出示|提交|准备|带上?)[^。！？\n]{0,12}(?:证明|材料|合同)|(?:证明|材料|合同)[^。！？\n]{0,6}(?:提供|出示|提交|准备)|第二职业|第一职业|(?:需|须|需要|要求)(?:你|您)?(?:提供|出示|有|持有?)[^。！？\n]{0,8}(?:社保|保险|劳动合同)|(?:劳动)?合同[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:社保|保险)|(?:社保|保险)[^。！？\n]{0,4}[及和与+][^。！？\n]{0,6}(?:劳动)?合同|(?:你|您)[^。！？\n]{0,4}有[^。！？\n]{0,8}(?:交|缴|买)[^。！？\n]{0,8}(?:社保|保险)/;
 
-// 切句直接用 claim-assertion.util 的共享原语：此前本地实现把 ？丢弃、与共享口径
-// 悄悄分叉（2026-07-06 review），删除本地版防止再漂移。
+/**
+ * 切句：豁免判定按句子粒度做，避免整段误杀。
+ * 原 claim-assertion.util 共享原语；2026-07-10 该 util 随 job-fact/booking 规则族下线后
+ * 内联（口径与 false-promises 内联版一致：？由 lookbehind 保留在句内）。
+ */
+function splitClaimSentences(text: string): string[] {
+  return text
+    .split(/(?<=[？?])|[。！!\n；;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 /**
  * 保险/社保主动提及规则。

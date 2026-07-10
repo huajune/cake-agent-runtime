@@ -468,53 +468,6 @@ describe('AgentRunnerService.runTurn', () => {
     });
   });
 
-  it('sanitizes platform brand violation by deterministic text fix without LLM repair', async () => {
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: '到店说是独立日介绍来的就行。' }));
-    outputGuard.check
-      .mockResolvedValueOnce({
-        decision: 'block',
-        riskLevel: 'high',
-        violations: [
-          {
-            type: 'brand_name_violation',
-            evidence: '独立日',
-            suggestion: '改成独立客',
-            recoverability: 'non_recoverable',
-            repairMode: 'rewrite',
-          },
-        ],
-        ruleIds: ['brand_name_violation'],
-        blockedRuleIds: ['brand_name_violation'],
-        repairMode: 'rewrite',
-      })
-      .mockResolvedValueOnce(passDecision);
-
-    const outcome = await service.runTurn({
-      sessionRef,
-      trigger: { kind: 'inbound', userMessage: '怎么到店' },
-      context: { messageId: 'msg-brand-fix' },
-    });
-
-    expect(outcome.kind).toBe('reply');
-    expect(outcome.reply?.text).toBe('到店说是独立客介绍来的就行。');
-    expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(outputGuard.check.mock.calls[1][0]).toEqual(
-      expect.objectContaining({
-        reply: '到店说是独立客介绍来的就行。',
-        silent: true,
-      }),
-    );
-    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        traceId: 'msg-brand-fix',
-        repaired: true,
-        revisedReply: '到店说是独立客介绍来的就行。',
-        finalDecision: 'pass',
-        reasonCode: 'deterministic_fix',
-      }),
-    );
-  });
-
   it('recoverable rule veto repairs with no tools, then adopts the safe reply', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '这个岗位不要某地户籍，你报不了' }));
     replyRepairAgent.repair.mockResolvedValueOnce(
