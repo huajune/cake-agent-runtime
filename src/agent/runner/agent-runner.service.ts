@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
-import { GeneratorService } from '../generator/generator.service';
+import { GeneratorAgent } from '../generator/generator.agent';
 import type {
   GeneratorInvokeParams as GeneratorInvokeParams,
   GeneratorRunResult,
@@ -37,7 +37,11 @@ import { TurnFinalizer } from './turn-finalizer';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RequestContextService } from '@observability/context/request-context.service';
 import { tryDeterministicFix } from '../guardrail/output/hard-rules.service';
-import { ReplyRewriteService } from './reply-rewrite.service';
+import { ReplyRepairAgent } from '../reply-repair/reply-repair.agent';
+import {
+  ReplyRepairContextProvider,
+  type ReplyRepairContext,
+} from '../reply-repair/reply-repair-context.provider';
 
 export type {
   SessionRef,
@@ -90,6 +94,7 @@ export interface ReviewedTurnRunResult extends Omit<ReviewedRunResult, 'runTurnE
 export interface ReviewContext {
   /** 红线（喂给 llm 档；缺省空）。 */
   redLines?: string[];
+  sessionRef?: SessionRef;
   userMessage?: string;
   chatId?: string;
   userId?: string;
@@ -97,6 +102,7 @@ export interface ReviewContext {
   contactName?: string;
   botImId?: string;
   botUserName?: string;
+  shortTermEndTimeInclusive?: number;
 }
 
 /**
@@ -112,11 +118,13 @@ export class AgentRunnerService {
   private readonly logger = new Logger(AgentRunnerService.name);
 
   constructor(
-    private readonly generator: GeneratorService,
+    private readonly generator: GeneratorAgent,
     private readonly outputGuard: OutputGuardrailService,
     private readonly inputGuard: InputGuardrailService,
     private readonly guardrailReviews: GuardrailReviewService,
-    private readonly replyRewriter: ReplyRewriteService,
+    private readonly replyRepairAgent: ReplyRepairAgent,
+    @Optional()
+    private readonly replyRepairContextProvider?: ReplyRepairContextProvider,
     @Optional()
     private readonly requestContext?: RequestContextService,
     @Optional()
@@ -179,7 +187,7 @@ export class AgentRunnerService {
    * 已审生成：generator.invoke → 出站守卫 → 需要时一次受控 repair（§5.3 / §7）。
    *
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
-   * - decision='revise'：丢弃首版，交给独立文本修订链路按 violations + 已知事实做 rewrite；
+   * - decision='revise'：丢弃首版，交给独立 ReplyRepairAgent 按 violations + 已知事实做文本修复；
    * - decision='replan'：丢弃首版，带 violations + 既成副作用做 `toolMode:'readonly'`
    *   允许只读工具重新规划；
    *   再审一次；二次仍 revise/replan 则按 §9「repair 死循环硬上限 1」收敛为 block。
@@ -258,7 +266,7 @@ export class AgentRunnerService {
       }
     }
 
-    // repair（hard cap 1）：rewrite 走独立文本修订；replan 才复用 Agent generator 只读重查。
+    // repair（hard cap 1）：rewrite 模式走独立 ReplyRepairAgent；replan 才复用 Agent generator 只读重查。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
@@ -266,9 +274,9 @@ export class AgentRunnerService {
     );
     const revised =
       decision.repairMode === 'rewrite'
-        ? this.buildRewrittenResult(
+        ? this.buildRepairedResult(
             first,
-            await this.replyRewriter.rewrite({
+            await this.replyRepairAgent.repair({
               userMessage: ctx.userMessage,
               originalReply: firstText,
               violations: decision.violations,
@@ -277,6 +285,7 @@ export class AgentRunnerService {
               toolCalls: first.toolCalls ?? [],
               redLines: ctx.redLines,
               committedSideEffects: committed || undefined,
+              repairContext: await this.buildReplyRepairContext(ctx),
             }),
           )
         : await this.generator.invoke({
@@ -652,15 +661,36 @@ export class AgentRunnerService {
     return [...(draft.toolCalls ?? []), ...(revised.toolCalls ?? [])];
   }
 
-  private buildRewrittenResult(result: GeneratorRunResult, text: string): GeneratorRunResult {
+  private async buildReplyRepairContext(
+    ctx: ReviewContext,
+  ): Promise<ReplyRepairContext | undefined> {
+    if (!this.replyRepairContextProvider || !ctx.sessionRef) return undefined;
+    try {
+      return await this.replyRepairContextProvider.build({
+        corpId: ctx.sessionRef.corpId,
+        userId: ctx.sessionRef.userId,
+        sessionId: ctx.sessionRef.sessionId,
+        currentUserMessage: ctx.userMessage,
+        shortTermEndTimeInclusive: ctx.shortTermEndTimeInclusive,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[invokeReviewed] reply repair 上下文读取失败: sessionId=${ctx.sessionRef.sessionId}, ` +
+          `err=${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
+    }
+  }
+
+  private buildRepairedResult(result: GeneratorRunResult, text: string): GeneratorRunResult {
     return {
       ...result,
       text,
-      responseMessages: this.rewriteAssistantResponseMessages(result.responseMessages, text),
+      responseMessages: this.repairAssistantResponseMessages(result.responseMessages, text),
     };
   }
 
-  private rewriteAssistantResponseMessages(
+  private repairAssistantResponseMessages(
     responseMessages: Array<Record<string, unknown>> | undefined,
     text: string,
   ): Array<Record<string, unknown>> | undefined {
@@ -838,6 +868,7 @@ export class AgentRunnerService {
     let result: ReviewedRunResult;
     try {
       result = await this.invokeReviewed(params, {
+        sessionRef,
         userMessage: trigger.kind === 'inbound' ? trigger.userMessage : undefined,
         chatId: sessionRef.sessionId,
         userId: sessionRef.userId,
@@ -845,6 +876,7 @@ export class AgentRunnerService {
         contactName: context?.contactName,
         botImId: context?.botImId,
         botUserName: context?.botUserId,
+        shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
       });
     } catch (err) {
       // 韧性收敛仅对**主动**回合成立：reengagement 调度不能因单个会话生成失败（含空历史）而崩，

@@ -1700,6 +1700,19 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain('group_promise_without_invite');
     });
 
+    it('tells repair writer to delete group invitation wording instead of asking again', async () => {
+      const result = service.check({
+        replyText: '群邀请已经发你了，点一下卡片就能进群。',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+      const hit = result.contradictions.find((c) => c.ruleId === 'group_promise_without_invite');
+
+      expect(hit?.feedbackToGenerator).toContain('不新增拉群征询');
+      expect(hit?.feedbackToGenerator).toContain('禁止新增"需要拉你进群吗/我可以拉你进群"');
+      expect(hit?.feedbackToGenerator).not.toContain('可以征询候选人是否愿意进群');
+    });
+
     it('passes "入群邀请已经发你了" when invite_to_group succeeded this turn', async () => {
       const result = service.check({
         replyText: '入群邀请已经发你了，点一下卡片就能进群。有新岗位群里第一时间通知你。',

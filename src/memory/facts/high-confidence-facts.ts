@@ -147,6 +147,24 @@ const REJECT_NIGHT_PATTERN =
   /(?:不想上|不能上|不接受|不愿意上|不要|不做|不上).{0,3}夜班|夜班.{0,4}(?:不上|不要|不做|不接受)/;
 const ONLY_SHIFT_TARGETS = ['早班', '白班', '晚班', '夜班', '周末', '工作日'] as const;
 type OnlyShiftTarget = (typeof ONLY_SHIFT_TARGETS)[number];
+// "周末"的同义面：候选人常说具体的"周六/周日/星期六/礼拜天"而不说"周末"
+// （badcase batch_6a4e430dce406a6aee7a3421：候选人"帮我找黄浦区周六嘛兼职"，
+// 词表只有"周末"导致班次约束整轮丢失，模型反手把"七点才下班"译成只晚班）。
+const WEEKEND_WORD_FRAGMENT = '(?:周末|(?:周|星期|礼拜)[六日天])';
+const ONLY_SHIFT_TARGET_FRAGMENTS: Record<OnlyShiftTarget, string> = {
+  早班: '早班',
+  白班: '白班',
+  晚班: '晚班',
+  夜班: '夜班',
+  周末: WEEKEND_WORD_FRAGMENT,
+  工作日: '工作日',
+};
+// 求职意图里点名周末/周六日（"帮我找黄浦区周六嘛兼职"/"周末有没有活"）：
+// 没有"只"字也构成周末可用性约束——全周强排班岗位对这类候选人不可行。
+const WEEKEND_SEEK_PATTERN = new RegExp(
+  `(?:找|想做|想找|做|干|要)[^，。！？；;]{0,10}?${WEEKEND_WORD_FRAGMENT}[^，。！？；;]{0,6}?的?(?:兼职|工作|活儿?|岗位?|班)` +
+    `|${WEEKEND_WORD_FRAGMENT}[^，。！？；;]{0,4}?(?:有没有|有什么|有啥|能做|可以做)[^，。！？；;]{0,8}?(?:兼职|工作|活儿?|岗位?|班)`,
+);
 const WEEKLY_DAY_PATTERN = /(?:每周|一周)([^，。！？；;]{0,15}?)([一二两三四五六七0-7])\s*天/;
 const CHINESE_NUM_MAP: Record<string, number> = {
   一: 1,
@@ -371,6 +389,13 @@ const FIELD_EXTRACTORS: FieldExtractor[] = [
     merge: 'first-scalar',
     extract: extractHealthCertificate,
     evidence: (value) => `健康证识别：${value}`,
+  },
+  {
+    group: 'interview_info',
+    field: 'experience',
+    merge: 'first-scalar',
+    extract: extractExperience,
+    evidence: (value) => `工作经历识别：${value}`,
   },
   {
     group: 'interview_info',
@@ -754,6 +779,7 @@ export function filterHighConfidenceFacts(
       is_student: highOnly(facts.interview_info.is_student),
       education: highOnly(facts.interview_info.education),
       has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
+      experience: highOnly(facts.interview_info.experience),
       upload_resume: highOnly(facts.interview_info.upload_resume),
       height: highOnly(facts.interview_info.height),
       weight: highOnly(facts.interview_info.weight),
@@ -827,6 +853,7 @@ export function unwrapHighConfidenceFacts(
       has_health_certificate: unwrapHighConfidenceValue(
         facts.interview_info.has_health_certificate,
       ),
+      experience: unwrapHighConfidenceValue(facts.interview_info.experience),
       upload_resume: unwrapHighConfidenceValue(facts.interview_info.upload_resume),
       height: unwrapHighConfidenceValue(facts.interview_info.height),
       weight: unwrapHighConfidenceValue(facts.interview_info.weight),
@@ -1223,6 +1250,40 @@ function extractHealthCertificate(message: string): string | null {
   return null;
 }
 
+function extractExperience(message: string): string | null {
+  const labeled = message.match(
+    /(?:过往公司\+岗位\+年限|工作经历|工作经验|近一段工作经历)\s*[：:]\s*([^\n\r]+)/u,
+  )?.[1];
+  if (labeled) return sanitizeExperienceText(labeled);
+
+  const durationPattern =
+    '(?:\\d+|[一二两三四五六七八九十半]+)\\s*(?:个?多?月|个月|月多|月|年多?|年)';
+  const rolePattern =
+    '(?:服务员|店员|收银员?|后厨|前厅|补货|分拣|打包|营业员|导购|咖啡师|饭店|餐饮)';
+
+  const explicit = new RegExp(
+    `((?:肯德基|KFC|[一-龥A-Za-z0-9]{2,20}(?:店|饭店|餐厅|自助|烤肉|咖啡|超市)?)[^，。,.!！?？\\n]{0,12}(?:${rolePattern})?[^，。,.!！?？\\n]{0,6}(?:做了|做|干了|干|工作了)?\\s*${durationPattern})`,
+    'iu',
+  ).exec(message)?.[1];
+  if (explicit) return sanitizeExperienceText(explicit);
+
+  const generic = new RegExp(
+    `((?:做|干)(?:饭店|餐饮|服务员|店员)[^，。,.!！?？\\n]{0,8}${durationPattern})`,
+    'iu',
+  ).exec(message)?.[1];
+  return generic ? sanitizeExperienceText(generic) : null;
+}
+
+function sanitizeExperienceText(value: string): string | null {
+  const text = value
+    .trim()
+    .replace(/[。；;]+$/u, '')
+    .replace(/\s+/g, '');
+  if (!text) return null;
+  if (!/(?:\d+|[一二两三四五六七八九十半]).*(?:月|年)/.test(text)) return null;
+  return text.length > 80 ? text.slice(0, 80) : text;
+}
+
 function extractUploadResume(message: string): string | null {
   // "简历附件："分支只认 URL：候选人回填模板时常把别的内容连在这一行后面
   // （如"简历附件：过往公司+岗位+年限：…"），这类文字一旦入档会被 booking
@@ -1306,6 +1367,8 @@ function extractSchedule(message: string): string | null {
 
   matched.push(...matchOnlyShifts(message));
 
+  if (WEEKEND_SEEK_PATTERN.test(message)) matched.push('周末');
+
   const timeRange = extractTimeRange(message);
   if (timeRange) matched.push(timeRange);
 
@@ -1336,7 +1399,9 @@ function parseChineseOrArabicNumber(token: string): number | null {
 
 function matchOnlyShiftTargets(message: string): OnlyShiftTarget[] {
   return ONLY_SHIFT_TARGETS.filter((shift) =>
-    new RegExp(`只(?:能|想|考虑)?[^，。！？；;]{0,8}?${shift}`).test(message),
+    new RegExp(`只(?:能|想|考虑)?[^，。！？；;]{0,8}?${ONLY_SHIFT_TARGET_FRAGMENTS[shift]}`).test(
+      message,
+    ),
   );
 }
 
@@ -1408,6 +1473,11 @@ function extractScheduleConstraintStructured(message: string): {
     result.onlyEvenings = true;
   }
   if (onlyShiftTargets.includes('早班')) result.onlyMornings = true;
+
+  // "找周六的兼职"式求职意图：没有"只"字也按周末可用性约束沉淀
+  if (result.onlyWeekends === null && WEEKEND_SEEK_PATTERN.test(message)) {
+    result.onlyWeekends = true;
+  }
 
   const workRestDays = matchWorkRestDays(message);
   if (workRestDays !== null) result.maxDaysPerWeek = workRestDays;

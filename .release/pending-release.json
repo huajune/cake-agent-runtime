@@ -1,9 +1,96 @@
 {
   "baseVersion": "10.0.3",
-  "nextVersion": "10.0.3",
-  "updatedAt": "2026-07-08",
+  "nextVersion": "10.0.4",
+  "updatedAt": "2026-07-09",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "493",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/493",
+      "title": "AI review 行内评论工具补进 allowedTools",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-09",
+      "businessUpdates": [
+        "AI review 行内评论工具补进 allowedTools"
+      ],
+      "summary": [
+        "AI review 行内评论工具补进 allowedTools"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "AI review 行内评论工具补进 allowedTools"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "492",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/492",
+      "title": "回复生成链路 agent 化 + 托管配置 drift 工具",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-09",
+      "businessUpdates": [
+        "`check-hosting-member-config-drift.js` + `config:hosting:check/sync:test/prod` 脚本：校验/同步 `system_config.hosting_member_config` 运行时配置漂移",
+        "迁移 `20260709120000` 幂等 seed 辛雨琦托管成员配置",
+        "新增托管成员配置（辛雨琦）seed 迁移与运行时配置 drift 检查工具",
+        "新增架构知识库（17 篇专题）并精简 CLAUDE.md",
+        "新增架构知识库 + Agent 自迭代方案，精简 CLAUDE.md",
+        "出站守卫拉群改写反馈明确 rewrite 阶段无工具能力，禁止新增拉群邀约话术",
+        "周六/周日班次约束提取 + 工具层与持久化约束逐字段合并（含测试）"
+      ],
+      "summary": [
+        "周六/周日班次约束提取 + 工具层与持久化约束逐字段合并",
+        "回复生成链路 agent 化（generator/reengagement/reply-repair）",
+        "托管成员配置 seed（辛雨琦）+ drift 检查工具",
+        "会话事实提取增强 + 工具与运营通知补强",
+        "新增架构知识库 + Agent 自迭代方案，精简 CLAUDE.md",
+        "回复生成链路 agent 化重构：generator / 复聊 / reply-repair 三条链路统一为 `*.agent` 形态，收敛副作用出口",
+        "新增托管成员配置（辛雨琦）seed 迁移与运行时配置 drift 检查工具",
+        "会话事实提取增强、工具约束补强、运营通知补强",
+        "新增架构知识库（17 篇专题）并精简 CLAUDE.md",
+        "回复生成链路 agent 化 + 托管配置 drift 工具"
+      ],
+      "features": [
+        "`check-hosting-member-config-drift.js` + `config:hosting:check/sync:test/prod` 脚本：校验/同步 `system_config.hosting_member_config` 运行时配置漂移",
+        "迁移 `20260709120000` 幂等 seed 辛雨琦托管成员配置",
+        "新增托管成员配置（辛雨琦）seed 迁移与运行时配置 drift 检查工具",
+        "新增架构知识库（17 篇专题）并精简 CLAUDE.md",
+        "新增架构知识库 + Agent 自迭代方案，精简 CLAUDE.md"
+      ],
+      "fixes": [
+        "出站守卫拉群改写反馈明确 rewrite 阶段无工具能力，禁止新增拉群邀约话术",
+        "周六/周日班次约束提取 + 工具层与持久化约束逐字段合并（含测试）"
+      ],
+      "optimizations": [
+        "`generator.service` → `generator.agent`；`reply-rewrite.service` → `reply-repair.agent` + context provider",
+        "复聊 `proactive-composer` / `reengagement-delivery` / `reengagement.types` 收敛为 `reengagement.agent`",
+        "runner / module / 各 consumer 同步接线；删除被 `20260707150500` 取代的重复保留期迁移文件",
+        "会话事实提取字段、格式化、prompt 与 session/short-term 服务同步增强",
+        "回复生成链路 agent 化重构：generator / 复聊 / reply-repair 三条链路统一为 `*.agent` 形态，收敛副作用出口",
+        "会话事实提取增强、工具约束补强、运营通知补强",
+        "周六/周日班次约束提取 + 工具层与持久化约束逐字段合并"
+      ],
+      "ops": [
+        "发版指南与 PR 正文模板补充 `hosting_member_config` 检查清单（运行时配置非 schema migration）",
+        "新增 `docs/architecture/agent-self-iteration-loop-plan.md` 自迭代闭环方案",
+        "回复生成链路 agent 化（generator/reengagement/reply-repair）",
+        "托管成员配置 seed（辛雨琦）+ drift 检查工具",
+        "会话事实提取增强 + 工具与运营通知补强"
+      ],
+      "config": [
+        "新增 migration `20260709120000_seed_xin_yuqi_hosting_member_config.sql`，发版需 test → prod 同步推送",
+        "`package.json` 新增 `config:hosting:*` 脚本"
+      ],
+      "envFiles": [],
+      "verification": [
+        "`pnpm lint:check` / `format:check` / `typecheck` 全通过",
+        "`pnpm jest --watchman=false`：331 套件通过、4720 测试通过（6 skip）"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.0.3",
     "date": "2026-07-08",

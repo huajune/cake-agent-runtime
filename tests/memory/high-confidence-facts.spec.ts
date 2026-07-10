@@ -88,6 +88,17 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('有');
   });
 
+  it('should extract work experience for booking supplement backfill', () => {
+    const result = extractHighConfidenceFacts(
+      ['肯德基服务员4个多月', '河南烤肉自助服务员3个月'],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.experience)).toBe(
+      '肯德基服务员4个多月',
+    );
+  });
+
   it('should extract resume upload URL when the file name looks like a resume', () => {
     const result = extractHighConfidenceFacts(
       [
@@ -308,6 +319,34 @@ describe('extractHighConfidenceFacts', () => {
       const constraint = extractHighConfidenceFacts(['你好我想看下兼职'], brandData)?.preferences
         .schedule_constraint;
       expect(constraint ?? null).toBeNull();
+    });
+
+    // badcase batch_6a4e430dce406a6aee7a3421：候选人说"周六"而非"周末"，
+    // 约束整轮丢失，模型反手把"七点才下班"译成 onlyEvenings
+    it('extracts onlyWeekends from 周六求职意图"帮我找黄浦区周六嘛兼职"', () => {
+      const facts = extractHighConfidenceFacts(['帮我找黄浦区周六嘛兼职'], brandData);
+      const constraint = unwrapHighConfidenceValue(facts?.preferences.schedule_constraint);
+      expect(constraint?.onlyWeekends).toBe(true);
+      expect(constraint?.onlyEvenings).toBeNull();
+      expect(unwrapHighConfidenceValue(facts?.preferences.schedule)).toContain('周末');
+    });
+
+    it('extracts onlyWeekends from "只能星期六"', () => {
+      const constraint = extractHighConfidenceFacts(['我只能星期六过来上班'], brandData)
+        ?.preferences.schedule_constraint;
+      expect(unwrapHighConfidenceValue(constraint)?.onlyWeekends).toBe(true);
+    });
+
+    it('extracts onlyWeekends from "周末有没有活"', () => {
+      const constraint = extractHighConfidenceFacts(['周末有没有活'], brandData)?.preferences
+        .schedule_constraint;
+      expect(unwrapHighConfidenceValue(constraint)?.onlyWeekends).toBe(true);
+    });
+
+    it('does not treat 周六面试时间安排 as weekend constraint', () => {
+      const constraint = extractHighConfidenceFacts(['周六下午过来面试可以吗'], brandData)
+        ?.preferences.schedule_constraint;
+      expect(unwrapHighConfidenceValue(constraint)?.onlyWeekends ?? null).toBeNull();
     });
   });
 

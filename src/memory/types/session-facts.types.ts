@@ -21,6 +21,7 @@ export const InterviewInfoSchema = z.object({
   is_student: z.boolean().nullable().describe('是否学生'),
   education: z.string().nullable().describe('学历'),
   has_health_certificate: z.string().nullable().describe('健康证'),
+  experience: z.string().nullable().optional().describe('过往工作经历（公司/岗位/年限）'),
   upload_resume: z.string().nullable().optional().describe('简历附件 URL'),
   height: z.string().nullable().optional().describe('身高（cm，如 "170"）'),
   weight: z.string().nullable().optional().describe('体重（kg，如 "60"）'),
@@ -303,6 +304,7 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
   'is_student',
   'education',
   'has_health_certificate',
+  'experience',
   'upload_resume',
   'height',
   'weight',
@@ -416,6 +418,7 @@ export interface HighConfidenceInterviewInfo {
   is_student: HighConfidenceMaybeValue<boolean>;
   education: HighConfidenceMaybeValue<string>;
   has_health_certificate: HighConfidenceMaybeValue<string>;
+  experience?: HighConfidenceMaybeValue<string>;
   upload_resume?: HighConfidenceMaybeValue<string>;
   height?: HighConfidenceMaybeValue<string>;
   weight?: HighConfidenceMaybeValue<string>;
@@ -457,6 +460,7 @@ export interface SessionInterviewInfo {
   is_student: SessionFactMaybeValue<boolean>;
   education: SessionFactMaybeValue<string>;
   has_health_certificate: SessionFactMaybeValue<string>;
+  experience?: SessionFactMaybeValue<string>;
   upload_resume?: SessionFactMaybeValue<string>;
   height?: SessionFactMaybeValue<string>;
   weight?: SessionFactMaybeValue<string>;
@@ -547,6 +551,7 @@ export const SessionInterviewInfoSchema = z.object({
   is_student: NullableSessionFactSchema(z.boolean()),
   education: NullableSessionFactSchema(z.string()),
   has_health_certificate: NullableSessionFactSchema(z.string()),
+  experience: NullableSessionFactSchema(z.string()).optional(),
   upload_resume: NullableSessionFactSchema(z.string()).optional(),
   height: NullableSessionFactSchema(z.string()).optional(),
   weight: NullableSessionFactSchema(z.string()).optional(),

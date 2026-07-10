@@ -60,6 +60,7 @@ function buildReleasePrContent({ base, head }) {
       '## 发布前确认',
       '- [ ] GitHub CI 已通过',
       '- [ ] 生产数据库 migration 已确认（如本次包含 Supabase migration）',
+      '- [ ] `pnpm config:hosting:check:prod` 已通过（如本次涉及托管账号 / 飞书接收人 / 海绵 token 配置）',
       '- [ ] 生产环境变量已同步（如有环境变量提醒）',
       '',
       '## 环境变量提醒',

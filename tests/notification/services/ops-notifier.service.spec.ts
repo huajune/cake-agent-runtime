@@ -12,6 +12,7 @@ describe('OpsNotifierService', () => {
     buildGroupTaskPreviewCard: jest.fn(),
     buildGroupTaskReportCard: jest.fn(),
     buildGroupFullAlertCard: jest.fn(),
+    buildInviteRejectedAlertCard: jest.fn(),
   } as unknown as jest.Mocked<OpsCardRenderer>;
 
   const mockHostingMemberConfig = {
@@ -20,19 +21,26 @@ describe('OpsNotifierService', () => {
     ),
   };
 
+  const mockAlertNotifier = {
+    sendAlert: jest.fn<Promise<boolean>, [any]>(),
+  };
+
   let service: OpsNotifierService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockOpsChannel.send.mockResolvedValue(true);
     mockOpsChannel.sendOrThrow.mockResolvedValue(undefined);
+    mockAlertNotifier.sendAlert.mockResolvedValue(true);
     mockRenderer.buildGroupTaskPreviewCard.mockReturnValue({ kind: 'preview-card' });
     mockRenderer.buildGroupTaskReportCard.mockReturnValue({ kind: 'report-card' });
     mockRenderer.buildGroupFullAlertCard.mockReturnValue({ kind: 'group-full-card' });
+    mockRenderer.buildInviteRejectedAlertCard.mockReturnValue({ kind: 'invite-rejected-card' });
     service = new OpsNotifierService(
       mockOpsChannel as never,
       mockRenderer,
       mockHostingMemberConfig as never,
+      mockAlertNotifier as never,
     );
   });
 
@@ -102,5 +110,58 @@ describe('OpsNotifierService', () => {
       }),
     );
     expect(mockOpsChannel.send).toHaveBeenCalledWith({ kind: 'group-full-card' });
+  });
+
+  it('should persist a unified alert when invite is rejected by the enterprise API', async () => {
+    await service.sendInviteRejectedAlert({
+      city: '天津',
+      industry: '餐饮',
+      chatBotImId: '1688855468965879',
+      chatBotUserId: 'XinYuQi',
+      scope: {
+        chatId: 'chat-1',
+        userId: 'contact-1',
+        messageId: 'batch-1',
+      },
+      rejectedGroups: [
+        {
+          name: '天津餐饮兼职群',
+          imRoomId: 'room-1',
+          ownerBotImId: 'owner-1',
+          error: 'errcode=400400, errmsg=room not found',
+        },
+      ],
+    });
+
+    expect(mockRenderer.buildInviteRejectedAlertCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        city: '天津',
+        atUsers: expect.arrayContaining([FEISHU_RECEIVER_USERS.GAO_YAQI]),
+      }),
+    );
+    expect(mockOpsChannel.send).toHaveBeenCalledWith({ kind: 'invite-rejected-card' });
+    expect(mockAlertNotifier.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'wecom.invite_to_group.api_rejected',
+        summary: '接客 bot 拉群被接口拒绝：天津/餐饮',
+        source: expect.objectContaining({
+          subsystem: 'wecom',
+          component: 'invite_to_group',
+          action: 'add_member_enterprise',
+          trigger: 'tool',
+        }),
+        scope: expect.objectContaining({
+          chatId: 'chat-1',
+          userId: 'contact-1',
+          messageId: 'batch-1',
+        }),
+        diagnostics: expect.objectContaining({
+          payload: expect.objectContaining({
+            city: '天津',
+            opsCardDelivered: true,
+          }),
+        }),
+      }),
+    );
   });
 });

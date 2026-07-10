@@ -153,7 +153,7 @@ async function main() {
   console.log(`库:   ${url}`);
   console.log(`Stride: ${strideBase}`);
 
-  const [bots, spongeRow] = await Promise.all([
+  const [bots, spongeRow, existingHostingRow] = await Promise.all([
     fetchGroupBots(strideBase, strideToken),
     client
       .from('system_config')
@@ -161,12 +161,25 @@ async function main() {
       .eq('key', SPONGE_TOKEN_CONFIG_KEY)
       .maybeSingle()
       .then((r) => r.data?.value ?? null),
+    client
+      .from('system_config')
+      .select('value')
+      .eq('key', HOSTING_MEMBER_CONFIG_KEY)
+      .maybeSingle()
+      .then((r) => r.data?.value ?? null),
   ]);
+  const existingConfig =
+    existingHostingRow && typeof existingHostingRow === 'object' && !Array.isArray(existingHostingRow)
+      ? existingHostingRow
+      : {};
   const tokenResolver = buildTokenResolver(
     typeof spongeRow === 'string' ? JSON.parse(spongeRow) : spongeRow,
   );
 
-  const members = {};
+  // 合并式同步：已有 hosting_member_config 是生产运行时真相源之一，尤其可能包含
+  // 明文 dulidayToken 或暂未出现在 Stride 当前列表中的历史账号。这里默认保留，
+  // 只补齐/更新本脚本能权威生成的飞书接收人与可解析 token。
+  const members = { ...(existingConfig.members ?? {}) };
   const unmatchedReceivers = new Set(Object.keys(BOT_TO_RECEIVER));
   for (const bot of bots) {
     if (!bot.wxid) continue;
@@ -177,7 +190,7 @@ async function main() {
       botUserId: bot.wecomUserId,
       groupId: bot.groupId,
     });
-    const entry = {};
+    const entry = { ...(members[bot.wxid] ?? {}) };
     if (receiver?.openId) {
       entry.feishuOpenId = receiver.openId;
       entry.feishuName = receiver.name;

@@ -1,6 +1,6 @@
 {
   "name": "cake-agent-runtime",
-  "version": "10.0.3",
+  "version": "10.0.4",
   "description": "自主 AI Agent 运行时 — 基于 Vercel AI SDK 多 Provider 架构",
   "author": "",
   "private": true,
@@ -32,6 +32,10 @@
     "db:status:test": "dotenv -e .env.local -- bash -c 'supabase migration list --db-url $SUPABASE_DB_URL_TEST'",
     "db:status:prod": "dotenv -e .env.local -- bash -c 'supabase migration list --db-url $SUPABASE_DB_URL_PROD'",
     "db:new": "supabase migration new",
+    "config:hosting:check:test": "node scripts/check-hosting-member-config-drift.js --env .env.local",
+    "config:hosting:check:prod": "node scripts/check-hosting-member-config-drift.js --env .env.production",
+    "config:hosting:sync:test": "node scripts/seed-hosting-member-config.js --env .env.local --apply",
+    "config:hosting:sync:prod": "node scripts/seed-hosting-member-config.js --env .env.production --apply",
     "sync:test-suite:prod": "node scripts/sync-test-suite-batches-to-prod.js",
     "backfill:badcase-trace-memory": "node scripts/backfill-badcase-trace-memory.js",
     "check:badcase-trace-memory": "node scripts/backfill-badcase-trace-memory.js --check",

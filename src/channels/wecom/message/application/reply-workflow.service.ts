@@ -8,7 +8,7 @@ import { isShortCircuitedToolCall } from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
-import type { ReengagementChannelIdentity } from '@agent/reengagement/reengagement.types';
+import type { ReengagementChannelIdentity } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';

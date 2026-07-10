@@ -1,5 +1,5 @@
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
-import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/reengagement.types';
+import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/follow-up-scheduler.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };

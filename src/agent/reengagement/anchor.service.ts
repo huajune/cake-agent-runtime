@@ -2,9 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import { SessionService } from '@memory/services/session.service';
-import { FollowUpSchedulerService } from './follow-up-scheduler.service';
-import { bookingFollowUpAnchorId, parseInterviewTimestamp } from './scenario-registry';
-import type { FollowUpScenarioCode, ReengagementChannelIdentity } from './reengagement.types';
+import {
+  FollowUpSchedulerService,
+  type ReengagementChannelIdentity,
+} from './follow-up-scheduler.service';
+import {
+  bookingFollowUpAnchorId,
+  parseInterviewTimestamp,
+  type FollowUpScenarioCode,
+} from './scenario-registry';
 
 interface AnchorContext {
   traceId: string;

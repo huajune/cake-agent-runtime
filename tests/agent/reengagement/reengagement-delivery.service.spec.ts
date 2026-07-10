@@ -1,4 +1,4 @@
-import { ReengagementDeliveryService } from '@agent/reengagement/reengagement-delivery.service';
+import { ReengagementDeliveryService } from '@agent/reengagement/follow-up.processor';
 
 describe('ReengagementDeliveryService', () => {
   const delivery = {

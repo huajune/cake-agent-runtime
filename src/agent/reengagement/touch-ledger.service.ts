@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
-import type { ReserveResult, TouchSlotState } from './reengagement.types';
+import type { ReserveResult, TouchSlotState } from './follow-up-scheduler.service';
 
 export interface UnknownTouchSlot {
   key: string;
