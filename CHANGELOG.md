@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.0.4] - 2026-07-10
 
-**预计版本**: `v10.0.4`
-**最近更新**: `2026-07-09`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #493 AI review 行内评论工具补进 allowedTools
@@ -67,7 +63,6 @@
 ### 验证记录
 - PR #492 `pnpm lint:check` / `format:check` / `typecheck` 全通过
 - PR #492 `pnpm jest --watchman=false`：331 套件通过、4720 测试通过（6 skip）
-<!-- release:pending:end -->
 
 ## [10.0.3] - 2026-07-08
 
