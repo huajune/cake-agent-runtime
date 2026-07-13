@@ -469,7 +469,7 @@ describe('HardRulesService', () => {
       }
     });
 
-    it('asks for revision when reply uses image facts without saving image description', () => {
+    it('asks for a scoped replan when reply uses image facts without saving image description', () => {
       const result = service.check({
         replyText: '图片里是健康证，我看到了，可以继续帮你报名。',
         userMessage: '[图片 messageId=img-1]',
@@ -480,10 +480,22 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'image_description_not_saved',
-            action: GUARDRAIL_ACTION.REVISE,
+            action: GUARDRAIL_ACTION.REPLAN,
             currentReplySendable: false,
           }),
         ]),
+      );
+    });
+
+    it('does not mistake a health-certificate collection template for an image claim', () => {
+      const result = service.check({
+        replyText: '姓名：\n电话：\n健康证：有/无\n身份：学生/社会人士',
+        userMessage: '[表情消息]',
+        toolCalls: [],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'image_description_not_saved',
       );
     });
 

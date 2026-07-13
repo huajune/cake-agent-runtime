@@ -10,6 +10,21 @@ export const SEMANTIC_REVIEW_FINDING_CODES = [
   'active_booking_state_conflict',
 ] as const;
 
+export type SemanticReviewFindingCode = (typeof SEMANTIC_REVIEW_FINDING_CODES)[number];
+
+/** 每个语义 finding 自带恢复能力声明，与 code 定义同处维护。 */
+export const SEMANTIC_REVIEW_FINDING_POLICIES = {
+  job_recommendation_not_best_supported: {
+    repairToolNames: ['geocode', 'duliday_job_list'],
+  },
+  brand_or_geo_ambiguity_ignored: {
+    repairToolNames: ['geocode', 'duliday_job_list'],
+  },
+  active_booking_state_conflict: {
+    repairToolNames: ['duliday_interview_precheck'],
+  },
+} as const satisfies Record<SemanticReviewFindingCode, { repairToolNames: readonly string[] }>;
+
 const semanticReviewSchema = z.object({
   decision: z.enum(['pass', 'observe', 'revise', 'replan', 'block']),
   confidence: z.enum(['low', 'medium', 'high']),

@@ -46,6 +46,8 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   exogenousSignal: string;
   residualRisk: string;
   verification: string;
+  /** 由规则所有者声明，runner 不解释 ruleId。 */
+  repairToolNames: readonly string[];
 }
 
 type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy> &
@@ -68,6 +70,7 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
       (derived.currentReplySendable
         ? ''
         : `上一版回复命中 ${rule.id}，当前文本不可发送。请按业务事实重写，删除未接地承诺、内部实现或不合规表达，只输出候选人可见回复。`),
+    repairToolNames: rule.repairToolNames ?? [],
     ...rule,
   };
 }
@@ -208,6 +211,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复推荐的岗位品牌与候选人指定品牌不一致，当前文本不可发送。请重新规划：优先用候选人指定品牌重新查岗；若确实没有该品牌岗位，只能先说明未找到该品牌，并询问是否接受其它品牌，不要直接跨品牌推荐。',
+    repairToolNames: ['geocode', 'duliday_job_list'],
   },
   {
     id: 'brand_alias_fuzzy_match_ignored',
@@ -223,7 +227,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'image_description_not_saved',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住当前轮有图片/表情消息，但回复基于图片内容判断时没有成功保存图片描述的情况。',
     riskGoal: '视觉内容必须先结构化保存，避免图片识别事实无法进入后续记忆和报名链路。',
@@ -233,6 +237,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。',
+    repairToolNames: ['save_image_description'],
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 

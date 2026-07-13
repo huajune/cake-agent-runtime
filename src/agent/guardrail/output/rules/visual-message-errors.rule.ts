@@ -5,7 +5,7 @@ import { type RuleContradiction } from '../output-rule.types';
 const VISUAL_MESSAGE_MARKER_PATTERN =
   /\[(?:图片|表情)(?:\s+messageId=[^\]]+)?\]|\[(?:图片|表情)消息\]/;
 const IMAGE_FACT_CLAIM_PATTERN =
-  /图片(?:里|上|中|显示|看起来|内容)|截图(?:里|上|中|显示)|看(?:到|了)[^。！？\n]{0,12}(?:图片|截图|健康证|简历|二维码|岗位|薪资|门店|地址)|(?:健康证|简历|二维码|岗位截图|招聘海报)[^。！？\n]{0,18}(?:看到了|识别|显示|是|有)/;
+  /(?:图片|截图|照片)(?:里|上|中|显示|看起来|内容)|看(?:到|清|不清)[^。！？\n]{0,16}(?:图片|截图|照片|健康证|简历|二维码|岗位|薪资|门店|地址)/;
 
 export function detectImageDescriptionNotSaved(
   text: string,
@@ -21,7 +21,7 @@ export function detectImageDescriptionNotSaved(
     ruleId: 'image_description_not_saved',
     label:
       '本轮包含图片/表情消息，回复已基于图片内容做判断，但没有成功调用 save_image_description 保存图片描述',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPLAN,
   };
 }
 

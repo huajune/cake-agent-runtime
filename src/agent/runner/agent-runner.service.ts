@@ -187,8 +187,7 @@ export class AgentRunnerService {
    *
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
    * - decision='revise'：丢弃首版，交给独立 ReplyRepairAgent 按 violations + 已知事实做文本修复；
-   * - decision='replan'：丢弃首版，带 violations + 既成副作用做 `toolMode:'readonly'`
-   *   允许只读工具重新规划；
+   * - decision='replan'：丢弃首版，按命中规则生成精确工具 allowlist 后重新规划；
    *   再审一次；二次仍 revise/replan 则按 §9「repair 死循环硬上限 1」收敛为 block。
    * - decision='block'：先进入一次受控修复；二审仍不通过才不投递。
    *
@@ -233,12 +232,14 @@ export class AgentRunnerService {
     // 确定性修复快通道（tryDeterministicFix）已随 brand_name_violation 于 2026-07-10 下线：
     // 它是唯一可字符串替换修复的规则，规则删除后快通道成为死路径。
 
-    // repair（hard cap 1）：rewrite 模式走独立 ReplyRepairAgent；replan 才复用 Agent generator 只读重查。
+    // repair（hard cap 1）：rewrite 模式走独立 ReplyRepairAgent；replan 复用 Agent generator，
+    // 但只暴露命中规则明确登记的最小工具集合。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}`,
     );
+    const repairAllowedToolNames = this.resolveRepairAllowedToolNames(decision, params);
     const revised =
       decision.repairMode === 'rewrite'
         ? this.buildRepairedResult(
@@ -258,7 +259,8 @@ export class AgentRunnerService {
         : await this.generator.invoke({
             ...params,
             deferTurnEnd: true,
-            toolMode: 'readonly',
+            toolMode: params.toolMode === 'none' ? 'none' : 'scenario',
+            allowedToolNames: repairAllowedToolNames,
             reviseFeedback: decision.violations,
             committedSideEffects: committed || undefined,
           });
@@ -431,6 +433,22 @@ export class AgentRunnerService {
         finalDecision,
       ),
     );
+  }
+
+  private resolveRepairAllowedToolNames(
+    decision: OutputGuardDecision,
+    params: GeneratorInvokeParams,
+  ): string[] {
+    if (params.toolMode === 'none') return [];
+
+    const allowed = decision.repairToolNames ?? [];
+
+    // 调用方若已经给出更窄的权限，repair 不得借机扩权。
+    if (params.allowedToolNames !== undefined) {
+      const callerAllowed = new Set(params.allowedToolNames);
+      return allowed.filter((toolName) => callerAllowed.has(toolName));
+    }
+    return [...allowed];
   }
 
   /**

@@ -270,6 +270,7 @@ export class HardRulesService {
         feedbackToGenerator: sendable
           ? ''
           : `上一版回复命中 ${contradiction.ruleId}，当前文本不可发送。请按业务事实重写，只输出候选人可见回复。`,
+        repairToolNames: [],
       };
     }
 
@@ -280,6 +281,7 @@ export class HardRulesService {
       dataSensitivity: contradiction.dataSensitivity ?? policy.dataSensitivity,
       feedbackPolicy: contradiction.feedbackPolicy ?? policy.feedbackPolicy,
       feedbackToGenerator: contradiction.feedbackToGenerator ?? policy.feedbackToGenerator,
+      repairToolNames: contradiction.repairToolNames ?? policy.repairToolNames,
     };
   }
 }

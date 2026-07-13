@@ -22,7 +22,8 @@ export type GeneratorThinkingConfig = LlmThinkingConfig;
  * Controls which tools are physically exposed to the model for this turn.
  *
  * - scenario: normal scenario toolset
- * - readonly: only tools without external side effects
+ * - readonly: compatibility mode that excludes tools registered in SIDE_EFFECT_TOOLS; this is
+ *   not a literal read-only guarantee because some internal state projection tools are retained
  * - none: no tools at all
  */
 export type GeneratorToolMode = 'scenario' | 'readonly' | 'none';
@@ -80,6 +81,11 @@ export interface GeneratorInvokeParams {
   maxSteps?: number;
   /** 本轮物理工具集模式；默认 scenario，见 GeneratorToolMode。 */
   toolMode?: GeneratorToolMode;
+  /**
+   * 精确工具授权。提供时在 toolMode 的基础工具集上再取白名单交集。
+   * Guardrail replan 必须使用该字段，不能借用粗粒度 readonly 模式。
+   */
+  allowedToolNames?: string[];
   /**
    * HC-1 revise 回路：带上一版回复被出站守卫拦下的违规意见重生成，
    * 注入 system prompt 让模型只修正这些问题、不重跑业务逻辑。

@@ -342,6 +342,31 @@ describe('PreparationService', () => {
     expect(result.tools).toEqual({});
   });
 
+  it('intersects scenario tools with an explicit repair allowlist', async () => {
+    mockToolRegistry.buildForScenario.mockReturnValue({
+      geocode: {},
+      duliday_job_list: {},
+      save_image_description: {},
+      advance_stage: {},
+      duliday_interview_booking: {},
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '[图片 messageId=img-1]' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        toolMode: 'scenario',
+        allowedToolNames: ['save_image_description'],
+      },
+      'invoke',
+    );
+
+    expect(Object.keys(result.tools)).toEqual(['save_image_description']);
+  });
+
   it('omits the HC-1 revise notice for a normal turn', async () => {
     const result = await service.prepare(
       {
@@ -425,7 +450,7 @@ describe('PreparationService', () => {
     expect(content).toContain('只承接不给结果');
   });
 
-  it('rewrite directive allows readonly tools (not "no tools") for replan repair', async () => {
+  it('replan directive names the exact repair tool allowlist', async () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
@@ -433,7 +458,8 @@ describe('PreparationService', () => {
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
-        toolMode: 'readonly',
+        toolMode: 'scenario',
+        allowedToolNames: ['geocode', 'duliday_job_list'],
         reviseFeedback: [
           {
             type: 'hallucinated_fact',
@@ -449,7 +475,8 @@ describe('PreparationService', () => {
     const last = result.normalizedMessages[result.normalizedMessages.length - 1];
     expect(last.role).toBe('user');
     const content = last.content as string;
-    expect(content).toContain('允许调用只读工具');
+    expect(content).toContain('本次只允许调用以下工具');
+    expect(content).toContain('geocode、duliday_job_list');
     expect(content).not.toContain('严禁调用任何工具');
   });
 

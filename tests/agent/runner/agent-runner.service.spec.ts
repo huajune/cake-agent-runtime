@@ -515,7 +515,7 @@ describe('AgentRunnerService.runTurn', () => {
     });
   });
 
-  it('recoverable replan guard lets the repair pass use readonly tools', async () => {
+  it('recoverable replan guard exposes only its registered repair tools', async () => {
     const readonlyLookup = {
       toolName: 'duliday_job_list',
       args: { city: '上海' },
@@ -532,7 +532,7 @@ describe('AgentRunnerService.runTurn', () => {
         riskLevel: 'medium',
         violations: [
           {
-            type: 'ungrounded_job_recommendation',
+            type: 'job_recommendation_not_best_supported',
             evidence: '未接地岗位事实',
             suggestion: '只能用只读工具重新查岗，或先中性追问。',
             severity: 'P1',
@@ -541,9 +541,10 @@ describe('AgentRunnerService.runTurn', () => {
             repairMode: 'replan',
           },
         ],
-        ruleIds: ['ungrounded_job_recommendation'],
-        blockedRuleIds: ['ungrounded_job_recommendation'],
+        ruleIds: [],
+        blockedRuleIds: ['job_recommendation_not_best_supported'],
         repairMode: 'replan',
+        repairToolNames: ['geocode', 'duliday_job_list'],
       })
       .mockResolvedValueOnce(passDecision);
 
@@ -555,10 +556,60 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toContain('重新查到');
     expect(generator.invoke).toHaveBeenCalledTimes(2);
-    expect(generator.invoke.mock.calls[1][0].toolMode).toBe('readonly');
+    expect(generator.invoke.mock.calls[1][0].toolMode).toBe('scenario');
+    expect(generator.invoke.mock.calls[1][0].allowedToolNames).toEqual([
+      'geocode',
+      'duliday_job_list',
+    ]);
     expect(generator.invoke.mock.calls[1][0].reviseFeedback[0]).toMatchObject({
-      type: 'ungrounded_job_recommendation',
+      type: 'job_recommendation_not_best_supported',
       repairMode: 'replan',
+    });
+  });
+
+  it('image-description replan exposes only save_image_description', async () => {
+    const saveCall = {
+      toolName: 'save_image_description',
+      args: { messageId: 'img-1', description: '食品健康证' },
+      result: { success: true },
+    };
+    generator.invoke
+      .mockResolvedValueOnce(makeResult({ text: '图片里是健康证，可以继续报名。' }))
+      .mockResolvedValueOnce(
+        makeResult({ text: '图片里是健康证，可以继续报名。', toolCalls: [saveCall] }),
+      );
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'replan',
+        riskLevel: 'medium',
+        violations: [
+          {
+            type: 'image_description_not_saved',
+            evidence: '图片事实尚未保存',
+            suggestion: '先保存图片描述',
+            severity: 'P1',
+            recoverability: 'recoverable',
+            currentReplySendable: false,
+            repairMode: 'replan',
+          },
+        ],
+        ruleIds: ['image_description_not_saved'],
+        blockedRuleIds: ['image_description_not_saved'],
+        repairMode: 'replan',
+        repairToolNames: ['save_image_description'],
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '[图片 messageId=img-1]' },
+      context: { imageMessageIds: ['img-1'] },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(generator.invoke.mock.calls[1][0]).toMatchObject({
+      toolMode: 'scenario',
+      allowedToolNames: ['save_image_description'],
     });
   });
 
