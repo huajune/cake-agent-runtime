@@ -1,9 +1,37 @@
 {
   "baseVersion": "10.1.0",
-  "nextVersion": "10.1.0",
-  "updatedAt": "2026-07-10",
+  "nextVersion": "10.2.0",
+  "updatedAt": "2026-07-13",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "511",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/511",
+      "title": "按接客 Bot 托管状态决定复聊投递",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-13",
+      "businessUpdates": [
+        "按接客 Bot 托管状态决定复聊投递"
+      ],
+      "summary": [
+        "按接客 Bot 托管状态决定复聊投递"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "按接客 Bot 托管状态决定复聊投递"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "相关 4 个测试套件，85 项测试通过",
+        "TypeScript 类型检查通过",
+        "Web 与 Nest 构建通过",
+        "lint、Prettier 检查通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.1.0",
     "date": "2026-07-10",

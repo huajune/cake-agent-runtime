@@ -66,11 +66,6 @@ export interface ShouldStopResult {
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
-/** 9-21 时间窗（Asia/Shanghai，无 DST，恒 UTC+8）。 */
-const WINDOW_START_HOUR = 9;
-const WINDOW_END_HOUR = 21;
-const SHANGHAI_OFFSET_MS = 8 * HOUR;
-
 /**
  * 7 个需求场景 → 锚点/延迟/stopUnless 映射（见 agent-reengagement-design.md §5）。
  *
@@ -272,40 +267,9 @@ export function resolveDelayMs(scenario: FollowUpScenario, ctx: FollowUpScenario
   return typeof d === 'function' ? d(ctx) : d;
 }
 
-/** Shanghai 墙钟小时（0-23）。 */
-function shanghaiHour(ts: number): number {
-  return new Date(ts + SHANGHAI_OFFSET_MS).getUTCHours();
-}
-
-/** ts 是否落在 9-21 触达窗口内。 */
-export function inWindow(ts: number): boolean {
-  const hour = shanghaiHour(ts);
-  return hour >= WINDOW_START_HOUR && hour < WINDOW_END_HOUR;
-}
-
-/**
- * 计算绝对触发时间戳（已对齐 9-21 窗口）。
- *
- * 先算 anchorAt + delay；落在 <9:00 推到当日 9:00，>=21:00 推到次日 9:00（Asia/Shanghai）。
- * ⚠️ 调用方排程时 Bull `delay = max(0, fireAt - now)`（相对 ms），别把绝对 fireAt 当 delay。
- */
+/** 计算绝对触发时间戳；发送资格由到点时的托管状态决定，不再限制发送时段。 */
 export function computeFireAt(scenario: FollowUpScenario, ctx: FollowUpScenarioContext): number {
-  const base = ctx.anchorAt + resolveDelayMs(scenario, ctx);
-  const hour = shanghaiHour(base);
-  if (hour >= WINDOW_START_HOUR && hour < WINDOW_END_HOUR) return base;
-
-  const sh = new Date(base + SHANGHAI_OFFSET_MS);
-  // 当日 09:00 Shanghai = 当日 01:00 UTC
-  const todayNineUtc = Date.UTC(
-    sh.getUTCFullYear(),
-    sh.getUTCMonth(),
-    sh.getUTCDate(),
-    WINDOW_START_HOUR - 8,
-    0,
-    0,
-  );
-  // >=21 推到次日 9:00；<9 推到当日 9:00
-  return hour >= WINDOW_END_HOUR ? todayNineUtc + 24 * HOUR : todayNineUtc;
+  return ctx.anchorAt + resolveDelayMs(scenario, ctx);
 }
 
 /**
