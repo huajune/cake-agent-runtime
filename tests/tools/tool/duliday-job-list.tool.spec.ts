@@ -100,6 +100,8 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('禁止把多个岗位压缩在同一句');
     expect(builtTool.description).toContain('年龄判断必须沿用 precheck 弹性口径');
     expect(builtTool.description).toContain('候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位');
+    expect(builtTool.description).toContain('福利追问必须用 jobId 实时重查');
+    expect(builtTool.description).toContain('记忆只用于定位 jobId，禁止直接据记忆回答');
   });
 
   it('should annotate candidate age boundary results instead of leaving the model to strict-filter ages', async () => {
@@ -668,6 +670,35 @@ describe('buildJobListTool', () => {
         healthCertificateRequirement: '需健康证',
         studentRequirement: '不接受学生',
         distanceKm: expect.any(Number),
+      }),
+    ]);
+  });
+
+  it('should keep explicit meal and accommodation facts in the compact job summary', async () => {
+    const job = makeJobData({
+      welfare: {
+        catering: '无餐饮福利',
+        accommodation: '无住宿福利',
+        trafficAllowanceSalary: 200,
+        promotionWelfare: '表现优秀可晋升',
+        otherWelfare: ['法定节假日三薪'],
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    const onJobsFetched = jest.fn();
+    await executeTool({ ...mockContext, onJobsFetched }, { ...defaultInput, includeWelfare: true });
+
+    expect(onJobsFetched).toHaveBeenCalledWith([
+      expect.objectContaining({
+        jobId: 1,
+        welfareFacts: {
+          meals: 'self_or_none',
+          accommodation: 'self_or_none',
+          hasTrafficAllowance: true,
+          hasPromotionWelfare: true,
+          otherWelfareItems: ['法定节假日三薪'],
+        },
       }),
     ]);
   });

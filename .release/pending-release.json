@@ -1,9 +1,58 @@
 {
   "baseVersion": "10.2.0",
-  "nextVersion": "10.2.0",
+  "nextVersion": "10.3.0",
   "updatedAt": "2026-07-13",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "516",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/516",
+      "title": "调整同群与跨群发送间隔",
+      "author": "huajune",
+      "mergedAt": "2026-07-13",
+      "businessUpdates": [
+        "无。",
+        "修复跨群长延迟被错误应用到同群小程序卡片和跟随消息的问题。",
+        "移除 Bull delay 与发送 worker 等待的重复叠加，避免实际间隔超出预期。",
+        "群任务同群连续消息调整为固定间隔 40 秒，不同群之间调整为随机间隔 5～10 分钟。"
+      ],
+      "summary": [
+        "调整同群与跨群发送间隔",
+        "福利事实进入岗位记忆并强制实时重查",
+        "群任务同群连续消息调整为固定间隔 40 秒，不同群之间调整为随机间隔 5～10 分钟。"
+      ],
+      "features": [
+        "无。"
+      ],
+      "fixes": [
+        "修复跨群长延迟被错误应用到同群小程序卡片和跟随消息的问题。",
+        "移除 Bull delay 与发送 worker 等待的重复叠加，避免实际间隔超出预期。",
+        "群任务同群连续消息调整为固定间隔 40 秒，不同群之间调整为随机间隔 5～10 分钟。"
+      ],
+      "optimizations": [
+        "首个群立即发送，后续群通过 Redis 执行标记保持跨重启节奏。",
+        "按跨群最坏等待和同群消息数量调整汇总任务耗时估算。"
+      ],
+      "ops": [
+        "无数据库迁移。",
+        "调整同群与跨群发送间隔",
+        "福利事实进入岗位记忆并强制实时重查"
+      ],
+      "config": [
+        "`GROUP_TASK_SEND_DELAY_MS` 默认值由 `120000` 调整为 `300000`，含义改为跨群最小等待；实际随机为 1～2 倍。",
+        "同群连续消息间隔固定为 `40000ms`。"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "群任务测试：219 passed。",
+        "全量测试：4685 passed，6 skipped。",
+        "TypeScript 类型检查、ESLint、Prettier 通过。",
+        "前端和服务端生产构建通过。"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.2.0",
     "date": "2026-07-13",

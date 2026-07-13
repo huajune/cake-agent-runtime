@@ -617,6 +617,13 @@ describe('PreparationService', () => {
             educationRequirement: '高中及以上',
             healthCertificateRequirement: '需健康证',
             studentRequirement: '不接受学生',
+            welfareFacts: {
+              meals: 'self_or_none',
+              accommodation: 'self_or_none',
+              hasTrafficAllowance: false,
+              hasPromotionWelfare: false,
+              otherWelfareItems: [],
+            },
           },
         ],
         presentedJobs: null,
@@ -657,6 +664,9 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('地址:上海市浦东新区世纪大道100号');
     expect(result.finalPrompt).toContain(
       '约面要求:年龄18-35岁，学历高中及以上，健康证需健康证，学生不接受学生',
+    );
+    expect(result.finalPrompt).toContain(
+      '福利:员工餐无（员工自理/公司不提供），住宿无（员工自理/公司不提供）',
     );
   });
 
