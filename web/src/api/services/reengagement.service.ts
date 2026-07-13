@@ -57,7 +57,7 @@ export async function getReengagementCandidates(options?: {
   endDate?: string;
   status?: string;
   scenarioCode?: string;
-  sessionId?: string;
+  keyword?: string;
   pendingOnly?: boolean;
   limit?: number;
   offset?: number;
@@ -67,7 +67,7 @@ export async function getReengagementCandidates(options?: {
   if (options?.endDate) params.set('endDate', options.endDate);
   if (options?.status) params.set('status', options.status);
   if (options?.scenarioCode) params.set('scenarioCode', options.scenarioCode);
-  if (options?.sessionId) params.set('sessionId', options.sessionId);
+  if (options?.keyword) params.set('keyword', options.keyword);
   if (options?.pendingOnly) params.set('pendingOnly', 'true');
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));

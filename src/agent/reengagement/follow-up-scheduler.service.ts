@@ -54,6 +54,8 @@ export interface FollowUpJob {
    * 不一致说明发生过改约（改约锚点已按新时间排了替代任务），旧任务应停。
    */
   expectedInterviewAt?: number;
+  /** 预约时由岗位详情解析并冻结的面试形式，用于个性化提醒与 AI 面试延迟回访。 */
+  interviewType?: string;
 }
 
 /** 触达底账 outbox 状态机。 */
@@ -77,6 +79,8 @@ export interface ScheduleFollowUpInput {
   workOrderId?: number;
   /** 排程时冻结的期望面试时间（毫秒，改期比对基准）。 */
   expectedInterviewAt?: number;
+  /** 预约时解析出的面试形式。 */
+  interviewType?: string;
   /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
   channelIdentity?: ReengagementChannelIdentity;
 }
@@ -163,7 +167,11 @@ export class FollowUpSchedulerService {
       }
     }
 
-    const fireAt = computeFireAt(scenario, { anchorAt: input.anchorAt, state });
+    const fireAt = computeFireAt(scenario, {
+      anchorAt: input.anchorAt,
+      state,
+      interviewType: input.interviewType,
+    });
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = this.buildJobId(
       input.sessionRef.sessionId,
@@ -200,6 +208,7 @@ export class FollowUpSchedulerService {
           ...(input.expectedInterviewAt != null
             ? { expectedInterviewAt: input.expectedInterviewAt }
             : {}),
+          ...(input.interviewType ? { interviewType: input.interviewType } : {}),
           ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
         },
         {

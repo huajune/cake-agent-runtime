@@ -120,6 +120,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '禁止任何"先按XX登记/面试再说/别提暑假工"式的绕审建议。',
   },
   {
+    id: 'summer_worker_alternative_upsell',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '候选人明确找暑假工且本轮工具确认暑假工过滤后为空时，拦住主动劝转普通兼职、小时工、全职或长期兼职的话术。',
+    riskGoal: '确保暑假工无岗时直接拒绝，不用其他用工形式进行违背候选人明确意向的软性转化。',
+    exogenousSignal:
+      'duliday_job_list 的 JOB_LIST_LABOR_FORM_FILTER_EMPTY + queryMeta.laborFormFilter.candidateLaborForm=暑假工 + 本轮候选人未主动改口。',
+    residualRisk:
+      '未出现已登记替代用工形式词的隐晦劝转可能漏检；候选人跨轮主动改口依赖本轮 userMessage 表达清楚。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复在本轮已经确认没有暑假工岗位后，仍主动询问或建议候选人考虑普通兼职、小时工、全职或长期兼职，当前文本不可发送。' +
+      '请只输出一句直接、礼貌的无岗答复，例如：“抱歉，你附近暂时没有合适的暑假工岗位。”不要追加问题、替代岗位、后续劝转或其他用工形式。',
+  },
+  {
     id: 'discriminatory_screening_leak',
     action: GUARDRAIL_ACTION.BLOCK,
     priority: GUARDRAIL_PRIORITY.P0,

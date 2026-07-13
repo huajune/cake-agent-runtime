@@ -421,14 +421,21 @@ export class ReplyWorkflowService {
       // delivered-reply 锚点，否则会排出候选人没收到上一条时的幽灵复聊。
       const replyDelivered = this.wasReplyActuallyDelivered(deliveryResult);
       if (replyDelivered) {
-        this.recordAgentReplied(params.primaryMessage, parsed, traceId);
-        this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
+        const reengagementAnchorContext = {
           traceId,
           chatId,
           userId: agentCallParams.userId,
           corpId: agentCallParams.corpId,
           isGroupChat: Boolean(params.primaryMessage.imRoomId),
           channelIdentity: this.buildReengagementChannelIdentity(parsed, params.primaryMessage),
+        };
+        // 先确认这是不是本会话首条开场回复。开场本身即使询问了位置，也只排
+        // opening_no_reply；不能同时排 address_missing，否则候选人持续沉默时会被连追两次。
+        void this.recordAgentReplied(params.primaryMessage, parsed, traceId).then((replyKind) => {
+          this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
+            ...reengagementAnchorContext,
+            suppressAddressMissing: replyKind !== 'reply',
+          });
         });
       }
 
@@ -811,79 +818,79 @@ export class ReplyWorkflowService {
    * 之后插入冲突即普通回复。agent.replied 幂等键用 traceId（每轮一次，Bull retry 不重复计数）。
    * 全程 fire-and-forget。
    */
-  private recordAgentReplied(
+  private async recordAgentReplied(
     primaryMessage: EnterpriseMessageCallbackDto,
     parsed: ReturnType<typeof MessageParser.parse>,
     traceId: string,
-  ): void {
-    if (primaryMessage.imRoomId) return; // 群聊不计入候选人漏斗
+  ): Promise<'opening' | 'reply' | 'unknown'> {
+    if (primaryMessage.imRoomId) return 'unknown'; // 群聊不计入候选人漏斗
     const botImId = primaryMessage.imBotId;
     const corpId = this.resolveCorpId(primaryMessage);
     const userId = this.resolveAgentUserId(primaryMessage, parsed);
     const chatId = parsed.chatId;
 
-    void (async () => {
-      try {
-        const openingResult = await this.opsEventsRecorder.recordEventDetailed({
-          corpId,
-          eventName: 'agent.opening_sent',
-          idempotencyKey: `${chatId}:opening`,
-          botImId,
-          managerName: primaryMessage.botUserId,
-          sourceChannel: 'unknown',
-          userId,
-          chatId,
-        });
+    try {
+      const openingResult = await this.opsEventsRecorder.recordEventDetailed({
+        corpId,
+        eventName: 'agent.opening_sent',
+        idempotencyKey: `${chatId}:opening`,
+        botImId,
+        managerName: primaryMessage.botUserId,
+        sourceChannel: 'unknown',
+        userId,
+        chatId,
+      });
 
-        // 写入失败（DB 不可用 / 熔断 OPEN / RPC 异常）时，无法判定本条是否开场白：
-        // 不能据此误记为 agent.replied（否则开场白行永远缺失且不可恢复）。
-        // 跳过本轮分类——开场白行未写入，后续回复会再次尝试插入并正确判定。
-        if (openingResult === 'failed') {
-          this.logger.warn(
-            `[漏斗] 开场白事件写入失败，跳过本轮开场白/回复分类，等待后续重试 [${traceId}]`,
-          );
-          return;
-        }
-
-        const isOpening = openingResult === 'inserted';
-        if (isOpening) {
-          // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
-          // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态
-          // 做 shouldStop——候选人已回则丢弃）。fire-and-forget，失败不影响主漏斗。
-          void this.followUpScheduler
-            .scheduleFollowUp({
-              sessionRef: { corpId, userId, sessionId: chatId },
-              scenarioCode: 'opening_no_reply',
-              anchorEventId: 'opening',
-              anchorAt: Date.now(),
-              channelIdentity: this.buildReengagementChannelIdentity(parsed, primaryMessage),
-            })
-            .catch((error: unknown) => {
-              this.logger.warn(
-                `[reengagement] opening 锚点排程失败 [${traceId}]: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              );
-            });
-          // 开场白已记录（agent.opening_sent），本轮无需再记 agent.replied
-          return;
-        }
-
-        await this.opsEventsRecorder.recordEvent({
-          corpId,
-          eventName: 'agent.replied',
-          idempotencyKey: `${traceId}:replied`,
-          botImId,
-          managerName: primaryMessage.botUserId,
-          sourceChannel: 'unknown',
-          userId,
-          chatId,
-        });
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);
+      // 写入失败（DB 不可用 / 熔断 OPEN / RPC 异常）时，无法判定本条是否开场白：
+      // 不能据此误记为 agent.replied（否则开场白行永远缺失且不可恢复）。
+      // 跳过本轮分类——开场白行未写入，后续回复会再次尝试插入并正确判定。
+      if (openingResult === 'failed') {
+        this.logger.warn(
+          `[漏斗] 开场白事件写入失败，跳过本轮开场白/回复分类，等待后续重试 [${traceId}]`,
+        );
+        return 'unknown';
       }
-    })();
+
+      const isOpening = openingResult === 'inserted';
+      if (isOpening) {
+        // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
+        // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态
+        // 做 shouldStop——候选人已回则丢弃）。fire-and-forget，失败不影响主漏斗。
+        void this.followUpScheduler
+          .scheduleFollowUp({
+            sessionRef: { corpId, userId, sessionId: chatId },
+            scenarioCode: 'opening_no_reply',
+            anchorEventId: 'opening',
+            anchorAt: Date.now(),
+            channelIdentity: this.buildReengagementChannelIdentity(parsed, primaryMessage),
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              `[reengagement] opening 锚点排程失败 [${traceId}]: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          });
+        // 开场白已记录（agent.opening_sent），本轮无需再记 agent.replied
+        return 'opening';
+      }
+
+      await this.opsEventsRecorder.recordEvent({
+        corpId,
+        eventName: 'agent.replied',
+        idempotencyKey: `${traceId}:replied`,
+        botImId,
+        managerName: primaryMessage.botUserId,
+        sourceChannel: 'unknown',
+        userId,
+        chatId,
+      });
+      return 'reply';
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);
+      return 'unknown';
+    }
   }
 
   /**

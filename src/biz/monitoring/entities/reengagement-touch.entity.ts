@@ -150,7 +150,8 @@ export interface ReengagementCandidateFilters {
   endDate?: string;
   status?: ReengagementTouchStatus;
   scenarioCode?: string;
-  sessionId?: string;
+  /** Session ID 或候选人昵称的包含式搜索关键词 */
+  keyword?: string;
   /** 只看有待发任务（scheduled/rescheduled 且 fire_at 未到）的候选人 */
   pendingOnly?: boolean;
   limit?: number;

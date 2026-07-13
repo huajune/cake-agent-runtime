@@ -20,6 +20,7 @@
     "install:all": "pnpm install --ignore-scripts && cd web && pnpm install",
     "test": "jest",
     "test:badcase:p1": "jest tests/badcase/p1-curated-badcase-regression.spec.ts --watchman=false",
+    "eval:summer-worker-agent": "ts-node -r tsconfig-paths/register --project scripts/tsconfig.json scripts/eval-summer-worker-agent.ts",
     "test:ci": "jest --coverage --watchman=false",
     "test:di-smoke": "jest -c jest.di-smoke.config.ts --watchman=false --forceExit",
     "test:cov": "jest --coverage",

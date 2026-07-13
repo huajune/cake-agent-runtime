@@ -17,6 +17,7 @@ import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-co
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectHumanServicePhraseLeak, detectOutputLeak } from './rules/internal-info-leaks.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
+import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from './output-rule.types';
 import { OUTPUT_RULE_CATALOG, type OutputRuleCatalogMetadata } from './rules/output-rule-catalog';
@@ -143,6 +144,15 @@ export class HardRulesService {
     const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(text, toolCalls);
     if (identityMisregistrationCoaching) {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
+    }
+
+    const summerWorkerAlternativeUpsell = detectSummerWorkerAlternativeUpsell(
+      text,
+      toolCalls,
+      params.userMessage,
+    );
+    if (summerWorkerAlternativeUpsell) {
+      contradictions.push(this.withRulePolicy(summerWorkerAlternativeUpsell));
     }
 
     for (const rule of this.rules) {

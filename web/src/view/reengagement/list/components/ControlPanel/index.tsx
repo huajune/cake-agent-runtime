@@ -18,8 +18,8 @@ interface ControlPanelProps {
   onStatusFilterChange: (value: string) => void;
   scenarioFilter: string;
   onScenarioFilterChange: (value: string) => void;
-  searchSessionId: string;
-  onSearchSessionIdChange: (sessionId: string) => void;
+  searchKeyword: string;
+  onSearchKeywordChange: (keyword: string) => void;
   includeClosedCandidates: boolean;
   onIncludeClosedCandidatesChange: (value: boolean) => void;
   allValue: string;
@@ -41,29 +41,29 @@ export default function ControlPanel({
   onStatusFilterChange,
   scenarioFilter,
   onScenarioFilterChange,
-  searchSessionId,
-  onSearchSessionIdChange,
+  searchKeyword,
+  onSearchKeywordChange,
   includeClosedCandidates,
   onIncludeClosedCandidatesChange,
   allValue,
   scenarioOptions,
 }: ControlPanelProps) {
-  const [inputValue, setInputValue] = useState(searchSessionId);
+  const [inputValue, setInputValue] = useState(searchKeyword);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
   }, []);
 
   const handleSearch = useCallback(() => {
-    onSearchSessionIdChange(inputValue.trim());
-  }, [inputValue, onSearchSessionIdChange]);
+    onSearchKeywordChange(inputValue.trim());
+  }, [inputValue, onSearchKeywordChange]);
 
   const handleBlur = useCallback(() => {
     const trimmedValue = inputValue.trim();
-    if (trimmedValue !== searchSessionId) {
-      onSearchSessionIdChange(trimmedValue);
+    if (trimmedValue !== searchKeyword) {
+      onSearchKeywordChange(trimmedValue);
     }
-  }, [inputValue, searchSessionId, onSearchSessionIdChange]);
+  }, [inputValue, searchKeyword, onSearchKeywordChange]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -76,8 +76,8 @@ export default function ControlPanel({
 
   const handleClear = useCallback(() => {
     setInputValue('');
-    onSearchSessionIdChange('');
-  }, [onSearchSessionIdChange]);
+    onSearchKeywordChange('');
+  }, [onSearchKeywordChange]);
 
   const statBadges = [
     { label: '总触达', value: String(stats.total), toneClass: styles.badgePrimary },
@@ -111,7 +111,7 @@ export default function ControlPanel({
         <div className={styles.searchWrap}>
           <input
             type="text"
-            placeholder="检索 Session ID..."
+            placeholder="检索 Session ID / 候选人昵称..."
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}

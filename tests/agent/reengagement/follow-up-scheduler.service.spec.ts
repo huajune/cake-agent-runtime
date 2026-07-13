@@ -414,7 +414,7 @@ describe('FollowUpSchedulerService', () => {
     });
 
     expect(queue.add).toHaveBeenCalledTimes(2);
-    expect(queue.add.mock.calls[0][2]).toEqual(expect.objectContaining({ delay: 2 * 60 * 60_000 }));
-    expect(queue.add.mock.calls[1][2]).toEqual(expect.objectContaining({ delay: 2 * 60 * 60_000 }));
+    expect(queue.add.mock.calls[0][2]).toEqual(expect.objectContaining({ delay: 30 * 60_000 }));
+    expect(queue.add.mock.calls[1][2]).toEqual(expect.objectContaining({ delay: 30 * 60_000 }));
   });
 });

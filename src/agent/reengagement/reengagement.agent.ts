@@ -46,6 +46,11 @@ export interface ReengagementAgentExecution {
 }
 
 const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
+  decision: z
+    .enum(['send', 'skip'])
+    .describe(
+      '是否发送本次复聊。只有报名后场景中近期对话明确表明取消面试、去不了或不再考虑时选 skip；其余选 send',
+    ),
   message: z.string().describe('候选人可见的复聊消息；不得用候选人的姓名、昵称或企微显示名作称呼'),
   reason: z.string().describe('只说明输入证据如何支持本条文案，不得补写“已读”“在忙”等未提供状态'),
 });
@@ -86,7 +91,8 @@ export class ReengagementAgent {
     const agentInput: ReengagementAgentInput = { trigger: ctx, memory };
 
     // 只投影场景字段、最小状态和脱敏记忆，不把 trigger / memory 整包序列化进 prompt。
-    const systemPrompt = this.buildSystemPrompt(ctx, memory);
+    const composeNow = Date.now();
+    const systemPrompt = this.buildSystemPrompt(ctx, memory, composeNow);
 
     const aiStartAt = Date.now();
     let agentRequest: Record<string, unknown> | undefined;
@@ -110,15 +116,44 @@ export class ReengagementAgent {
       const agentSteps = this.extractAgentSteps(result.steps);
 
       const output = result.output;
-      const text = output.message;
+      const text = this.correctInterviewRelativeDay(ctx, output.message, composeNow);
       const usage = this.normalizeUsage(result.usage);
       const responseMessages = this.normalizeResponseMessages(result.response?.messages);
 
       const agentRequestWithInput = {
         ...(agentRequest ?? {}),
         reengagementInput: agentInput,
-        reengagementOutput: output,
+        reengagementOutput: { ...output, message: text },
+        ...(text !== output.message
+          ? {
+              temporalCorrection: {
+                originalMessage: output.message,
+                reason: 'interview_relative_day_mismatch',
+              },
+            }
+          : {}),
       };
+
+      if (output.decision === 'skip') {
+        return {
+          outcome: {
+            kind: 'skipped',
+            generatedText: text || undefined,
+            scenarioCode: ctx.scenario.code,
+            usage,
+            responseMessages,
+            toolCalls: [],
+            agentSteps,
+          },
+          agentRequest: {
+            ...agentRequestWithInput,
+            validationReason: 'candidate_cancelled_interview_in_chat',
+          },
+          aiStartAt,
+          aiEndAt,
+          validationReason: 'candidate_cancelled_interview_in_chat',
+        };
+      }
 
       const addressedCandidateName = this.collectCandidateNames(ctx, memory)
         .filter((name) => Array.from(name).length >= 2)
@@ -191,6 +226,7 @@ export class ReengagementAgent {
   private buildSystemPrompt(
     ctx: ReengagementComposeContext,
     memory: ReengagementMemorySnapshot,
+    now: number,
   ): string {
     const candidateNames = this.collectCandidateNames(ctx, memory);
     return [
@@ -213,8 +249,12 @@ export class ReengagementAgent {
       '# 已核验的最小上下文',
       '下面是本次复聊唯一可用的上下文。缺失的信息不要补全或猜测。',
       '',
+      '## 时间基准',
+      `- 当前北京时间：${this.formatShanghaiTime(now)}`,
+      '- “今天”“明天”等相对日期必须严格以当前北京时间为基准；状态摘要已经给出相对日期口径时必须原样遵守，不得自行换算。',
+      '',
       '## 状态摘要',
-      this.formatStateSummary(ctx),
+      this.formatStateSummary(ctx, now),
       '',
       '## 近期对话',
       this.formatRecentMessages(memory.recentMessages, candidateNames),
@@ -226,16 +266,31 @@ export class ReengagementAgent {
         : []),
       '',
       '# 写作要求',
+      ...(this.isPostBookingScenario(ctx)
+        ? [
+            '## 发送前语义停止条件',
+            '- 近期对话中，只要候选人最新明确表达已经取消面试、面试去不了/不去了、无法参加，或不再考虑这个岗位，decision 必须为 skip，message 留空；即使工单状态仍显示预约有效也必须放弃面试提醒和面试后回访。',
+            '- 候选人先答应、后又说去不了时，以更晚的取消表达为准；若取消后又明确重新约好新的面试，则以最新重新预约为准。',
+            '- 仅仅询问时间地点、表达紧张或尚未确认结果，不等于取消，decision 应为 send。',
+            '',
+          ]
+        : []),
       '- 优先只写一句，最多两句；像微信里真人顾问随口发的话，不客套、不群发腔、不堆表情。',
       '- 只围绕本次目标提一个问题或一个行动点，不连环追问，不重复上一条消息。',
       '- 可以在确有助于候选人识别上下文时，简短承接近期对话里已经出现的岗位、门店、薪资、班次或位置；不得新增、改写、拼接或夸大任何细节，也不要整段复制岗位介绍。',
       '',
       '# 输出协议',
-      '返回结构化结果：message 是候选人可见的最终文案；reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
+      '返回结构化结果：decision 决定是否发送；decision=send 时 message 是候选人可见的最终文案，decision=skip 时 message 必须为空；reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
     ].join('\n');
   }
 
-  private formatStateSummary(ctx: ReengagementComposeContext): string {
+  private isPostBookingScenario(ctx: ReengagementComposeContext): boolean {
+    return (
+      ctx.scenario.code === 'interview_reminder' || ctx.scenario.code === 'post_interview_followup'
+    );
+  }
+
+  private formatStateSummary(ctx: ReengagementComposeContext, now: number): string {
     const lines: string[] = [];
     if (ctx.scenario.code === 'store_presented_no_reply') {
       lines.push('- 已推荐过岗位或门店：是');
@@ -252,11 +307,14 @@ export class ReengagementAgent {
       ctx.scenario.code === 'interview_reminder' ||
       ctx.scenario.code === 'post_interview_followup'
     ) {
-      const interviewAt = (ctx.state as AuthoritativeSessionState & { interviewAt?: number })
-        .interviewAt;
+      const interviewAt =
+        (ctx.state as AuthoritativeSessionState & { interviewAt?: number }).interviewAt ??
+        ctx.jobData.expectedInterviewAt;
       lines.push('- 当前预约：已经过到点状态核验，仍可继续本场景');
+      lines.push(`- 面试形式：${ctx.jobData.interviewType ?? '未提供，不得猜测'}`);
       if (interviewAt != null && Number.isFinite(interviewAt)) {
         lines.push(`- 面试时间：${this.formatShanghaiTime(interviewAt)}`);
+        lines.push(`- 面试日期相对当前：${this.formatRelativeShanghaiDate(interviewAt, now)}`);
       }
     }
     return lines.length > 0 ? lines.join('\n') : '（无额外状态信息）';
@@ -318,6 +376,50 @@ export class ReengagementAgent {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
+    }).format(new Date(timestamp));
+  }
+
+  private formatRelativeShanghaiDate(timestamp: number, now: number): string {
+    const targetDay = this.shanghaiDayNumber(timestamp);
+    const currentDay = this.shanghaiDayNumber(now);
+    if (targetDay === currentDay) return '今天（只能说“今天”，不得说“明天”）';
+    if (targetDay === currentDay + 1) return '明天（只能说“明天”，不得说“今天”）';
+    return `${this.formatShanghaiDate(timestamp)}（使用具体日期，不要说“今天”或“明天”）`;
+  }
+
+  private correctInterviewRelativeDay(
+    ctx: ReengagementComposeContext,
+    message: string,
+    now: number,
+  ): string {
+    if (ctx.scenario.code !== 'interview_reminder') return message;
+    const interviewAt =
+      (ctx.state as AuthoritativeSessionState & { interviewAt?: number }).interviewAt ??
+      ctx.jobData.expectedInterviewAt;
+    if (interviewAt == null || !Number.isFinite(interviewAt)) return message;
+    if (this.shanghaiDayNumber(interviewAt) !== this.shanghaiDayNumber(now)) return message;
+    // 当天面试却写成“明天”是已知高频错误；确定性纠正，避免错误提醒直接触达候选人。
+    return message.replace(/明天/g, '今天');
+  }
+
+  private shanghaiDayNumber(timestamp: number): number {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(timestamp));
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value ?? 0);
+    return Math.floor(Date.UTC(value('year'), value('month') - 1, value('day')) / 86_400_000);
+  }
+
+  private formatShanghaiDate(timestamp: number): string {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
     }).format(new Date(timestamp));
   }
 

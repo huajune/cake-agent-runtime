@@ -507,6 +507,93 @@ describe('HardRulesService', () => {
     });
   });
 
+  describe('summer_worker_alternative_upsell', () => {
+    const summerWorkerEmptyToolCall = {
+      toolName: 'duliday_job_list',
+      args: {},
+      status: 'error' as const,
+      result: {
+        success: false,
+        errorType: 'job_list.labor_form_filter_empty',
+        queryMeta: {
+          laborFormFilter: {
+            applied: true,
+            candidateLaborForm: '暑假工',
+            excludedCount: 3,
+          },
+        },
+      },
+    };
+
+    it.each([
+      '抱歉，附近暂时没有暑假工，要不要考虑普通兼职？',
+      '目前没有合适的暑假工，小时工你愿意看看吗？',
+      '这边暂时没有暑假工，不过还有长期兼职可以推荐。',
+      '附近没有暑假工岗位，或者看看全职呢？',
+    ])(
+      'revises proactive alternative labor-form upsell after summer-worker empty result: %s',
+      (reply) => {
+        const result = service.check({
+          replyText: reply,
+          toolCalls: [summerWorkerEmptyToolCall],
+          chatId: 'chat-1',
+          userId: 'user-1',
+          userMessage: '我只找暑假工',
+          silent: true,
+        });
+
+        expect(result.contradictions).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ruleId: 'summer_worker_alternative_upsell',
+              action: GUARDRAIL_ACTION.REVISE,
+              currentReplySendable: false,
+            }),
+          ]),
+        );
+      },
+    );
+
+    it('allows the direct summer-worker rejection', () => {
+      const result = service.check({
+        replyText: '抱歉，你附近暂时没有合适的暑假工岗位。',
+        toolCalls: [summerWorkerEmptyToolCall],
+        userMessage: '我只找暑假工',
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'summer_worker_alternative_upsell',
+      );
+    });
+
+    it('does not infer an empty summer-worker result without tool ground truth', () => {
+      const result = service.check({
+        replyText: '要不要考虑普通兼职？',
+        toolCalls: [],
+        userMessage: '我找暑假工',
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'summer_worker_alternative_upsell',
+      );
+    });
+
+    it('allows alternatives when the candidate explicitly changes intent this turn', () => {
+      const result = service.check({
+        replyText: '普通兼职也有，我继续帮你查下。',
+        toolCalls: [summerWorkerEmptyToolCall],
+        userMessage: '没有暑假工的话，普通兼职也可以',
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'summer_worker_alternative_upsell',
+      );
+    });
+  });
+
   describe('identity_misregistration_coaching (badcase chat 6a50827c 教唆按非暑假工登记)', () => {
     const summerGuardPrecheck = (status: 'blocked_non_summer_job' | 'needs_confirmation') =>
       [
@@ -546,6 +633,24 @@ describe('HardRulesService', () => {
 
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
         'identity_misregistration_coaching',
+      );
+    });
+
+    it('flags coercing the candidate to repeat “不是暑假工” before registration (chat 6a549f04)', () => {
+      const result = service.check({
+        replyText:
+          '不过系统这边还需要你明确回复一下“不是暑假工”，才能完成登记。你回一句“不是暑假工”，我马上帮你提交预约。',
+        toolCalls: [],
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'identity_misregistration_coaching',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
       );
     });
 

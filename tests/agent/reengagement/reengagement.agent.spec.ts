@@ -77,6 +77,7 @@ describe('ReengagementAgent', () => {
       jobData: job('interview_reminder', {
         workOrderId: 555,
         expectedInterviewAt: Date.UTC(2026, 5, 25, 6, 0, 0),
+        interviewType: 'AI面试',
       }),
       state: baseState({ terminal: 'booked' }),
     });
@@ -90,6 +91,14 @@ describe('ReengagementAgent', () => {
     );
     expect(llm.generateStructured.mock.calls[0][0].system).not.toContain('interview_reminder');
     expect(llm.generateStructured.mock.calls[0][0].system).toContain('# 已核验的最小上下文');
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain(
+      '当前北京时间：2026/6/24 10:00',
+    );
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain(
+      '面试日期相对当前：明天（只能说“明天”，不得说“今天”）',
+    );
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain('- 面试形式：AI面试');
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain('AI 面试说明无需到店');
     expect(llm.generateStructured.mock.calls[0][0]).not.toHaveProperty('tools');
     expect(llm.generateStructured.mock.calls[0][0]).not.toHaveProperty('stopWhen');
     expect(result.outcome.kind).toBe('reply');
@@ -108,6 +117,79 @@ describe('ReengagementAgent', () => {
     expect(result.outcome.reply?.text).toContain('明天14:00');
     expect(result.outcome.reply?.text).toContain('身份证');
   });
+
+  it('corrects “tomorrow” to “today” when an interview reminder fires on the interview date', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        message: '提醒你一下，明天14:00参加面试。',
+        reason: '面试提醒',
+      },
+      usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', {
+        expectedInterviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
+      }),
+      state: baseState({
+        terminal: 'booked',
+        interviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
+      } as Partial<AuthoritativeSessionState>),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('面试日期相对当前：今天（只能说“今天”，不得说“明天”）');
+    expect(result.outcome.reply?.text).toBe('提醒你一下，今天14:00参加面试。');
+    expect(result.agentRequest).toMatchObject({
+      temporalCorrection: {
+        originalMessage: '提醒你一下，明天14:00参加面试。',
+        reason: 'interview_relative_day_mismatch',
+      },
+    });
+  });
+
+  it.each(['interview_reminder', 'post_interview_followup'] as const)(
+    'semantically skips %s when the latest candidate message says the interview was cancelled',
+    async (scenarioCode) => {
+      memoryRecall.recentMessages = [
+        { role: 'assistant', content: '面试安排在星期一下午。' },
+        { role: 'user', content: '不好意思哈，星期一约好的面试我去不了了。' },
+      ];
+      llm.generateStructured.mockResolvedValueOnce({
+        output: {
+          decision: 'skip',
+          message: '',
+          reason: '候选人最新明确表示约好的面试去不了了',
+        },
+        usage: { inputTokens: 16, outputTokens: 6, totalTokens: 22 },
+      });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario(scenarioCode)!,
+        jobData: job(scenarioCode, {
+          expectedInterviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
+        }),
+        state: baseState({ terminal: 'booked' }),
+      });
+
+      const system = llm.generateStructured.mock.calls[0][0].system as string;
+      expect(system).toContain('星期一约好的面试我去不了了');
+      expect(system).toContain('即使工单状态仍显示预约有效也必须放弃面试提醒和面试后回访');
+      expect(result.outcome.kind).toBe('skipped');
+      expect(result.outcome.reply).toBeUndefined();
+      expect(result.validationReason).toBe('candidate_cancelled_interview_in_chat');
+      expect(result.agentRequest).toMatchObject({
+        validationReason: 'candidate_cancelled_interview_in_chat',
+        reengagementOutput: {
+          decision: 'skip',
+          message: '',
+        },
+      });
+    },
+  );
 
   it('uses LLM for booking_incomplete instead of hard-coding missing fields', async () => {
     llm.generateStructured.mockResolvedValue({

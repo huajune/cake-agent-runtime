@@ -1641,6 +1641,8 @@ describe('buildJobListTool', () => {
       expect(result._replyInstruction).toContain(
         '不得主动推荐、展示或询问是否考虑普通兼职/小时工/全职',
       );
+      expect(result._replyInstruction).toContain('并结束本轮');
+      expect(result._replyInstruction).toContain('不得追加问题、替代建议');
       expect(result.queryMeta.laborFormFilter).toEqual(
         expect.objectContaining({
           applied: true,
