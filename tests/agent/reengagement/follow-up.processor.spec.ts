@@ -531,27 +531,15 @@ describe('FollowUpProcessor', () => {
     );
   });
 
-  it('reschedules directly to the next delivery window when fired outside the window', async () => {
+  it('processes immediately when fired outside the former delivery window', async () => {
     const now = Date.UTC(2026, 5, 24, 14, 0, 0); // 22:00 Shanghai
     jest.spyOn(Date, 'now').mockReturnValue(now);
 
     await buildProcessor().process(makeJob({ id: 'late-job' }));
 
-    const expectedFireAt = Date.UTC(2026, 5, 25, 1, 0, 0); // next day 09:00 Shanghai
-    expect(reengagementAgent.compose).not.toHaveBeenCalled();
-    expect(queue.add).toHaveBeenCalledWith(
-      REENGAGEMENT_JOB_NAME,
-      expect.objectContaining({ anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0) }),
-      expect.objectContaining({
-        jobId: `late-job:rw:${expectedFireAt}`,
-        delay: expectedFireAt - now,
-      }),
-    );
-    expect(tracking.trackRescheduled).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: 'sess-1', scenarioCode: 'opening_no_reply' }),
-      expectedFireAt,
-      `late-job:rw:${expectedFireAt}`,
-    );
+    expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(tracking.trackRescheduled).not.toHaveBeenCalled();
   });
 
   describe('二次触发追溯落库埋点', () => {
@@ -562,7 +550,7 @@ describe('FollowUpProcessor', () => {
     });
 
     beforeEach(() => {
-      // 前序用例可能把 Date.now mock 在 9-21 窗口外，先恢复再固定到窗口内（10:00 上海）
+      // 前序用例会固定 Date.now；追溯断言使用稳定时间。
       jest.restoreAllMocks();
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 0, 0));
     });

@@ -10,12 +10,16 @@ describe('ReengagementDeliveryService', () => {
       totalTime: 0,
     }),
   };
+  const botService = {
+    getConfiguredBotList: jest.fn().mockResolvedValue([{ wxid: 'bot-1' }]),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    botService.getConfiguredBotList.mockResolvedValue([{ wxid: 'bot-1' }]);
   });
 
-  const service = () => new ReengagementDeliveryService(delivery as never);
+  const service = () => new ReengagementDeliveryService(delivery as never, botService as never);
 
   it('uses the passive message delivery pipeline without duplicate monitoring', async () => {
     await service().deliver(
@@ -68,5 +72,53 @@ describe('ReengagementDeliveryService', () => {
         { context: undefined },
       ),
     ).rejects.toThrow('reengagement_delivery_missing_context');
+  });
+
+  it('skips delivery when the receiving bot is no longer hosted', async () => {
+    botService.getConfiguredBotList.mockResolvedValue([]);
+
+    const result = await service().deliver(
+      { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
+      {
+        context: {
+          token: 'token-1',
+          imBotId: 'bot-1',
+          imContactId: 'contact-1',
+          imRoomId: '',
+          contactName: '张三',
+          messageId: 'batch-1',
+          chatId: 'sess-1',
+        },
+      },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({ skipped: true, skipReason: 'receiving_bot_not_hosted' }),
+    );
+    expect(delivery.deliverReply).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the receiving bot hosting lookup fails', async () => {
+    botService.getConfiguredBotList.mockRejectedValue(new Error('hosting api unavailable'));
+
+    const result = await service().deliver(
+      { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
+      {
+        context: {
+          token: 'token-1',
+          imBotId: 'bot-1',
+          imContactId: 'contact-1',
+          imRoomId: '',
+          contactName: '张三',
+          messageId: 'batch-1',
+          chatId: 'sess-1',
+        },
+      },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({ skipped: true, skipReason: 'receiving_bot_not_hosted' }),
+    );
+    expect(delivery.deliverReply).not.toHaveBeenCalled();
   });
 });
