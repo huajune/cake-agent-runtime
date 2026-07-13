@@ -250,8 +250,12 @@ export class ReengagementAgent {
       '下面是本次复聊唯一可用的上下文。缺失的信息不要补全或猜测。',
       '',
       '## 时间基准',
-      `- 当前北京时间：${this.formatShanghaiTime(now)}`,
-      '- “今天”“明天”等相对日期必须严格以当前北京时间为基准；状态摘要已经给出相对日期口径时必须原样遵守，不得自行换算。',
+      `- 当前时间：${this.formatShanghaiTime(now)}`,
+      `- 今天：${this.formatShanghaiDateWithWeekday(now, 0)}`,
+      `- 明天：${this.formatShanghaiDateWithWeekday(now, 1)}`,
+      `- 后天：${this.formatShanghaiDateWithWeekday(now, 2)}`,
+      '- “今天”“明天”等相对日期必须严格以上述日期映射为基准；状态摘要已经给出相对日期口径时必须原样遵守，不得自行换算。',
+      '- 近期对话里的“今天”“明天”等历史表达，必须以该条消息标注的发送时间为基准理解，不能按本次触达时间重新解释。',
       '',
       '## 状态摘要',
       this.formatStateSummary(ctx, now),
@@ -328,7 +332,8 @@ export class ReengagementAgent {
     return messages
       .map((message) => {
         const content = this.redactPersonalIdentifiers(message.content, candidateNames);
-        return `${message.role === 'user' ? '候选人' : '你'}：${content}`;
+        const sentAt = message.sentAt ? `[发送于 ${message.sentAt}] ` : '';
+        return `${sentAt}${message.role === 'user' ? '候选人' : '你'}：${content}`;
       })
       .join('\n');
   }
@@ -421,6 +426,23 @@ export class ReengagementAgent {
       month: 'numeric',
       day: 'numeric',
     }).format(new Date(timestamp));
+  }
+
+  private formatShanghaiDateWithWeekday(timestamp: number, offsetDays: number): string {
+    const target = timestamp + offsetDays * 86_400_000;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(target));
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value ?? '';
+    const weekday = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      weekday: 'long',
+    }).format(new Date(target));
+    return `${value('year')}-${value('month')}-${value('day')} ${weekday}`;
   }
 
   // 以下方法只是把 AI SDK 返回值投影成现有观测字段，不承载复聊业务逻辑。

@@ -28,7 +28,7 @@ describe('ReengagementAgent', () => {
   let memory: { recallForProactiveFollowUp: jest.Mock };
   let reengagementAgent: ReengagementAgent;
   let memoryRecall: {
-    recentMessages: Array<{ role: string; content: string }>;
+    recentMessages: Array<{ role: string; content: string; sentAt?: string }>;
     factLines: string[];
   };
 
@@ -44,11 +44,19 @@ describe('ReengagementAgent', () => {
         response: { messages: [{ role: 'assistant', content: 'ok' }] },
       }),
     };
-    // recallForProactiveFollowUp 返回的是已处理结果：时间注入已剥离、facts 已渲染成字段行。
+    // recallForProactiveFollowUp 返回的是已处理结果：正文与发送时间分离，facts 已渲染成字段行。
     memoryRecall = {
       recentMessages: [
-        { role: 'user', content: '我在静安' },
-        { role: 'assistant', content: '你在哪个地铁站附近呀？' },
+        {
+          role: 'user',
+          content: '我在静安',
+          sentAt: '2026-06-24 09:55 星期三',
+        },
+        {
+          role: 'assistant',
+          content: '你在哪个地铁站附近呀？',
+          sentAt: '2026-06-24 09:56 星期三',
+        },
       ],
       factLines: ['- 意向城市: 上海（置信度: high，来源: llm）'],
     };
@@ -91,8 +99,15 @@ describe('ReengagementAgent', () => {
     );
     expect(llm.generateStructured.mock.calls[0][0].system).not.toContain('interview_reminder');
     expect(llm.generateStructured.mock.calls[0][0].system).toContain('# 已核验的最小上下文');
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain('当前时间：2026/6/24 10:00');
     expect(llm.generateStructured.mock.calls[0][0].system).toContain(
-      '当前北京时间：2026/6/24 10:00',
+      '今天：2026-06-24 星期三',
+    );
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain(
+      '明天：2026-06-25 星期四',
+    );
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain(
+      '后天：2026-06-26 星期五',
     );
     expect(llm.generateStructured.mock.calls[0][0].system).toContain(
       '面试日期相对当前：明天（只能说“明天”，不得说“今天”）',
@@ -257,10 +272,15 @@ describe('ReengagementAgent', () => {
     expect(request.system).not.toContain('## 记忆系统快照');
     expect(request.system).not.toContain('"messageWindow"');
     expect(request.system).toContain('## 近期对话');
-    expect(request.system).toContain('候选人：我在静安');
+    expect(request.system).toContain(
+      '[发送于 2026-06-24 09:55 星期三] 候选人：我在静安',
+    );
+    expect(request.system).toContain(
+      '历史表达，必须以该条消息标注的发送时间为基准理解',
+    );
     expect(request.system).toContain('## 已知事实');
     expect(request.system).toContain('意向城市: 上海');
-    // 注入的时间上下文标记已被 recall 剥离，不应出现在 prompt
+    // 原始注入后缀已被清洗，发送时间改为结构化、逐条标注。
     expect(request.system).not.toContain('消息发送时间');
     expect(request.system).not.toContain('内部追踪上下文');
     expect(request.system).not.toContain('rolloutEnabled');
@@ -273,8 +293,16 @@ describe('ReengagementAgent', () => {
         }),
         memory: expect.objectContaining({
           recentMessages: [
-            { role: 'user', content: '我在静安' },
-            { role: 'assistant', content: '你在哪个地铁站附近呀？' },
+            {
+              role: 'user',
+              content: '我在静安',
+              sentAt: '2026-06-24 09:55 星期三',
+            },
+            {
+              role: 'assistant',
+              content: '你在哪个地铁站附近呀？',
+              sentAt: '2026-06-24 09:56 星期三',
+            },
           ],
           factLines: ['- 意向城市: 上海（置信度: high，来源: llm）'],
         }),

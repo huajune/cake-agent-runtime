@@ -14,7 +14,12 @@ import type { ProceduralState } from './types/procedural.types';
 import { formatExtractionFactLines } from './formatters/fact-lines.formatter';
 
 export interface ProactiveMemoryRecall {
-  recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  recentMessages: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    /** 短期记忆注入的北京时间，用于锚定“今天/明天”等相对表达。 */
+    sentAt?: string;
+  }>;
   factLines: string[];
   warnings?: string[];
 }
@@ -78,9 +83,11 @@ export class MemoryService {
       .slice(-recentLimit)
       .map((message): ProactiveMemoryRecall['recentMessages'][number] | null => {
         if (message.role !== 'user' && message.role !== 'assistant') return null;
+        const sentAt = this.extractInjectedMessageTime(message.content);
         return {
           role: message.role,
           content: this.stripInjectedTimeContext(message.content),
+          ...(sentAt ? { sentAt } : {}),
         };
       })
       .filter((message): message is ProactiveMemoryRecall['recentMessages'][number] => !!message)
@@ -105,6 +112,10 @@ export class MemoryService {
       .replace(/\s*(?:\[|【)消息发送时间[:：][\s\S]*?(?:\]|】|$)/g, '')
       .replace(/\s*(?:\[|【)当前时间[:：][\s\S]*?(?:\]|】|$)/g, '')
       .trim();
+  }
+
+  private extractInjectedMessageTime(content: string): string | undefined {
+    return /(?:\[|【)消息发送时间[:：]\s*([^\]】]+)(?:\]|】)/u.exec(content)?.[1]?.trim();
   }
 
   /** 写入长期档案的外部补充字段，统一落到 profile_facts。 */

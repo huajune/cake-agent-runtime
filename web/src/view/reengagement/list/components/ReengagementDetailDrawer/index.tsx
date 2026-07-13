@@ -797,7 +797,7 @@ export default function ReengagementDetailDrawer({
               ))}
             </div>
 
-            <details className={styles.technicalPanel}>
+            <details className={styles.technicalPanel} open>
               <summary>技术字段</summary>
               <div className={styles.factList}>
                 {technicalFacts.map((fact) => (
