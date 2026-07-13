@@ -1440,10 +1440,36 @@ export class PreparationService {
     if (job.salaryDesc) parts.push(`薪资:${job.salaryDesc}`);
     if (job.shiftSummary) parts.push(`班次:${job.shiftSummary}`);
 
+    const welfareSummary = this.formatJobWelfareFacts(job);
+    if (welfareSummary) parts.push(`福利:${welfareSummary}`);
+
     const bookingConstraint = this.formatBookingConstraint(job);
     if (bookingConstraint) parts.push(`约面要求:${bookingConstraint}`);
 
     return parts.join(' | ');
+  }
+
+  private formatJobWelfareFacts(job: RecommendedJobSummary): string | null {
+    const welfare = job.welfareFacts;
+    if (!welfare) return null;
+
+    const labels = {
+      company: '公司提供',
+      allowance: '仅补贴（不直接提供）',
+      self_or_none: '无（员工自理/公司不提供）',
+      unspecified: '未明确',
+    } as const;
+    const facts = [
+      `员工餐${labels[welfare.meals]}`,
+      `住宿${labels[welfare.accommodation]}`,
+      welfare.hasTrafficAllowance ? '有交通补贴' : null,
+      welfare.hasPromotionWelfare ? '有晋升福利说明' : null,
+      welfare.otherWelfareItems.length > 0
+        ? `其他福利:${welfare.otherWelfareItems.join('、')}`
+        : null,
+    ].filter((fact): fact is string => Boolean(fact));
+
+    return facts.join('，') || null;
   }
 
   private formatBookingConstraint(job: RecommendedJobSummary): string | null {

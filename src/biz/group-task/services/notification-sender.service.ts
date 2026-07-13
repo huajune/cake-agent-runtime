@@ -11,7 +11,7 @@ import {
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
-import { resolveHumanizedDelayMs } from '../utils/humanized-delay.util';
+import { INTRA_GROUP_MESSAGE_DELAY_MS } from '../utils/humanized-delay.util';
 
 /** 独立客找工作小程序默认值（可通过环境变量覆盖） */
 const MINIPROGRAM_DEFAULTS = {
@@ -33,7 +33,6 @@ export class NotificationSenderService {
   private readonly logger = new Logger(NotificationSenderService.name);
 
   private readonly enterpriseToken: string;
-  private readonly sendDelayMs: number;
   private readonly miniprogramAppid: string;
   private readonly miniprogramUsername: string;
   private readonly miniprogramThumbUrl: string;
@@ -46,10 +45,6 @@ export class NotificationSenderService {
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {
     this.enterpriseToken = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || '';
-    this.sendDelayMs = parseInt(
-      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '120000'),
-      10,
-    );
     this.miniprogramAppid = this.configService.get<string>('MINIPROGRAM_APPID', '');
     this.miniprogramUsername = this.configService.get<string>('MINIPROGRAM_USERNAME', '');
     this.miniprogramThumbUrl = this.configService.get<string>('MINIPROGRAM_THUMB_URL', '');
@@ -94,7 +89,13 @@ export class NotificationSenderService {
 
     this.assertEnterpriseSendable(group);
 
-    await this.sendEnterpriseGroupMessage(group, 7, { text }, '跟随文本');
+    await this.sendEnterpriseGroupMessage(
+      group,
+      7,
+      { text },
+      '跟随文本',
+      INTRA_GROUP_MESSAGE_DELAY_MS,
+    );
   }
 
   /**
@@ -184,6 +185,7 @@ export class NotificationSenderService {
         9, // MINI_PROGRAM
         payload,
         '兼职小程序卡片',
+        INTRA_GROUP_MESSAGE_DELAY_MS,
       );
       this.logger.log(`[兼职群] 小程序卡片已通过企业级 API 发送: ${group.groupName}`);
       return;
@@ -253,13 +255,13 @@ export class NotificationSenderService {
     messageType: number,
     payload: Record<string, unknown>,
     label: string,
+    delayBeforeMs = 0,
   ): Promise<void> {
-    const delayMs = resolveHumanizedDelayMs(this.sendDelayMs);
-    if (delayMs > 0) {
+    if (delayBeforeMs > 0) {
       this.logger.debug(
-        `[群任务] ${group.groupName} ${label}前等待 ${delayMs}ms，模拟人工发送节奏`,
+        `[群任务] ${group.groupName} ${label}前等待 ${delayBeforeMs}ms（同群消息间隔）`,
       );
-      await this.delay(delayMs);
+      await this.delay(delayBeforeMs);
     }
 
     await this.messageSenderService.sendMessage({

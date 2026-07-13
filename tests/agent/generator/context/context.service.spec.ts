@@ -113,6 +113,8 @@ describe('ContextService', () => {
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
     expect(prompt).toContain('先接情绪，再解释用途');
+    expect(prompt).toContain('福利追问必须实时重查');
+    expect(prompt).toContain('记忆只用于确定 `jobId`，不能直接作为福利答案');
     // final-check 数据开关条目 — 已下沉到 duliday_job_list 工具描述（## 按候选人当前问题精确开启数据开关）
     expect(prompt).not.toContain('includeWelfare` / `includeJobSalary`');
     // final-check「未来某天才能面试」/「禁止承诺任何具体日期」— 已下沉到 duliday_interview_precheck 工具描述

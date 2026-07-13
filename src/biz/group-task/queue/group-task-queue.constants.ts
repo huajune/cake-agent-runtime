@@ -33,6 +33,10 @@ export const groupTaskResultKey = (execId: string, groupId: string): string =>
 
 export const groupTaskMetaKey = (execId: string): string => `group-task:meta:${execId}`;
 
+/** 标记某次执行已开始发送；首群不需要跨群等待。 */
+export const groupTaskDispatchStartedKey = (execId: string): string =>
+  `group-task:dispatch-started:${execId}`;
+
 /**
  * 同群当日幂等键，避免同一群在同一天同场次被重复发送。
  * - 跨 exec 有效：手动补发不会对已成功群二次发送。
@@ -99,6 +103,8 @@ export interface SendJobData {
   execDate: string;
   /** 整次 exec 的群总数 */
   totalGroups: number;
+  /** 不同群之间的最小等待时间，实际随机为 1~2 倍 */
+  sendDelayMs: number;
 }
 
 export interface SummarizeJobData {

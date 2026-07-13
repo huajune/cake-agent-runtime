@@ -1,6 +1,8 @@
 /**
  * 基于基础延时生成人类化抖动，避免固定节奏过于机械。
  */
+export const INTRA_GROUP_MESSAGE_DELAY_MS = 40_000;
+
 export function resolveHumanizedDelayMs(
   baseDelayMs: number,
   options?: {
