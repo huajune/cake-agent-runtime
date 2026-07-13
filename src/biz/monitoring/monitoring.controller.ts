@@ -75,7 +75,7 @@ export class AnalyticsController {
 
   /**
    * 二次触发候选人视角：一行一个候选人，带各场景当前态与下一次待发任务
-   * GET /analytics/reengagement-candidates?startDate=&endDate=&status=&scenarioCode=&sessionId=&pendingOnly=&limit=&offset=
+   * GET /analytics/reengagement-candidates?startDate=&endDate=&status=&scenarioCode=&keyword=&pendingOnly=&limit=&offset=
    */
   @Get('reengagement-candidates')
   async getReengagementCandidates(
@@ -83,7 +83,7 @@ export class AnalyticsController {
     @Query('endDate') endDate?: string,
     @Query('status') status?: string,
     @Query('scenarioCode') scenarioCode?: string,
-    @Query('sessionId') sessionId?: string,
+    @Query('keyword') keyword?: string,
     @Query('pendingOnly') pendingOnly?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
@@ -93,7 +93,7 @@ export class AnalyticsController {
       endDate,
       status,
       scenarioCode,
-      sessionId,
+      keyword,
       pendingOnly,
       limit,
       offset,

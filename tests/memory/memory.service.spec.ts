@@ -63,6 +63,44 @@ describe('MemoryService', () => {
     });
   });
 
+  describe('proactive follow-up recall', () => {
+    it('preserves each recent message time separately from the cleaned content', async () => {
+      mockLifecycle.onTurnStart.mockResolvedValue({
+        shortTerm: {
+          messageWindow: [
+            {
+              role: 'user',
+              content: '明天可以面试\n[消息发送时间：2026-07-12 16:30 星期日]',
+            },
+            {
+              role: 'assistant',
+              content: '好的\n[消息发送时间：2026-07-12 16:31 星期日]',
+            },
+          ],
+        },
+        sessionMemory: null,
+        highConfidenceFacts: null,
+        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        longTerm: { profile: null },
+      });
+
+      const recall = await service.recallForProactiveFollowUp('corp1', 'user1', 'sess1');
+
+      expect(recall.recentMessages).toEqual([
+        {
+          role: 'user',
+          content: '明天可以面试',
+          sentAt: '2026-07-12 16:30 星期日',
+        },
+        {
+          role: 'assistant',
+          content: '好的',
+          sentAt: '2026-07-12 16:31 星期日',
+        },
+      ]);
+    });
+  });
+
   describe('facade methods', () => {
     it('should get summary data via facade', async () => {
       mockLongTerm.getSummaryData.mockResolvedValue({

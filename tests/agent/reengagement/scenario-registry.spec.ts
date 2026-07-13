@@ -22,9 +22,20 @@ const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHou
 describe('scenario-registry', () => {
   it('allows grounded context carry-over for store follow-ups', () => {
     const policy = getScenario('store_presented_no_reply')!.generationPolicy;
-    expect(policy).toContain('可以简短承接');
+    expect(policy).toContain('简短承接');
     expect(policy).toContain('只能复述已有证据');
+    expect(policy).toContain('只询问考虑得如何或是否感兴趣');
+    expect(policy).toContain('禁止重新查岗');
+    expect(policy).toContain('禁止询问换品牌、换岗位、换区域或换城市');
     expect(policy).not.toContain('不复读岗位详情');
+  });
+
+  it('uses frontline-friendly opening copy and half-hour funnel delays', () => {
+    const opening = getScenario('opening_no_reply')!;
+    expect(opening.generationPolicy).toContain('还在看机会吗');
+    expect(opening.generationPolicy).toContain('不要使用“求职意向”');
+    expect(getScenario('store_presented_no_reply')!.triggerDelayMs).toBe(30 * 60_000);
+    expect(getScenario('booking_incomplete')!.triggerDelayMs).toBe(30 * 60_000);
   });
 
   describe('computeFireAt', () => {
@@ -46,6 +57,42 @@ describe('scenario-registry', () => {
       const anchorAt = Date.UTC(2026, 5, 24, 14, 0, 0); // 22:00 Shanghai
       const fireAt = computeFireAt(scenario, { anchorAt, state: baseState() });
       expect(fireAt).toBe(anchorAt + 15 * 60_000);
+    });
+
+    it('follows up on a morning AI interview at 17:00 Shanghai', () => {
+      const anchorAt = at(1); // 09:00 Shanghai
+      const interviewAt = at(2); // 10:00 Shanghai
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: 'AI面试',
+      });
+      expect(fireAt).toBe(at(9)); // 17:00 Shanghai
+    });
+
+    it('also follows up on an afternoon AI interview at 17:00 Shanghai', () => {
+      const anchorAt = at(1); // 09:00 Shanghai
+      const interviewAt = at(7, 30); // 15:30 Shanghai
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: 'AI面试',
+      });
+      expect(fireAt).toBe(at(9)); // 17:00 Shanghai
+    });
+
+    it('keeps non-AI interview follow-up at one hour after the booked time', () => {
+      const anchorAt = at(1);
+      const interviewAt = at(2);
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: '线下面试',
+      });
+      expect(fireAt).toBe(at(3));
     });
   });
 

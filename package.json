@@ -1,6 +1,6 @@
 {
   "name": "cake-agent-runtime",
-  "version": "10.3.0",
+  "version": "10.4.0",
   "description": "自主 AI Agent 运行时 — 基于 Vercel AI SDK 多 Provider 架构",
   "author": "",
   "private": true,
@@ -20,6 +20,7 @@
     "install:all": "pnpm install --ignore-scripts && cd web && pnpm install",
     "test": "jest",
     "test:badcase:p1": "jest tests/badcase/p1-curated-badcase-regression.spec.ts --watchman=false",
+    "eval:summer-worker-agent": "ts-node -r tsconfig-paths/register --project scripts/tsconfig.json scripts/eval-summer-worker-agent.ts",
     "test:ci": "jest --coverage --watchman=false",
     "test:di-smoke": "jest -c jest.di-smoke.config.ts --watchman=false --forceExit",
     "test:cov": "jest --coverage",

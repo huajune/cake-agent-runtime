@@ -466,6 +466,36 @@ describe('buildInterviewBookingTool', () => {
     );
   });
 
+  it('returns online completion guidance instead of an on-site script for AI interviews', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              firstInterviewWay: '线上面试',
+              firstInterviewDesc: '线上 AI 面试',
+            },
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      workOrderId: 555,
+    });
+
+    const result = await executeTool(validInput);
+
+    expect(result.success).toBe(true);
+    expect(result.requestInfo.interviewType).toBe('AI面试');
+    expect(result._aiInterviewGuide).toContain('无需到店');
+    expect(result._aiInterviewGuide).toContain('在线完成');
+    expect(result._onSiteScript).toBeUndefined();
+  });
+
   describe('wait_notice（岗位未配置面试时段，等通知）', () => {
     it('should book without interviewTime for jobs without interview windows', async () => {
       // 默认 makeJob 无任何面试窗口（等通知岗位）；带"面试时间"标签验证回填"等待通知"

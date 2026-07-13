@@ -25,6 +25,7 @@ import { HardRulesService } from './hard-rules.service';
 import type { RuleContradiction } from './output-rule.types';
 import { GuardrailReviewPacketBuilder } from './llm/review-packet.builder';
 import {
+  SEMANTIC_REVIEW_FINDING_POLICIES,
   SemanticReviewerService,
   type SemanticReviewVerdict,
 } from './llm/semantic-reviewer.service';
@@ -327,6 +328,10 @@ export class OutputGuardrailService {
         decision === GUARDRAIL_DECISION.REPLAN
           ? GUARDRAIL_REPAIR_MODE.REPLAN
           : GUARDRAIL_REPAIR_MODE.REWRITE,
+      repairToolNames: this.resolveRepairToolNames(
+        actionableRules,
+        enforcedLlm ? verdict.findings : [],
+      ),
       feedbackToGenerator: feedbackLines || undefined,
     };
   }
@@ -351,6 +356,7 @@ export class OutputGuardrailService {
         ruleIds,
         blockedRuleIds,
         repairMode,
+        repairToolNames: this.resolveRepairToolNames(actionableRules, []),
         feedbackToGenerator: this.buildFeedbackToGenerator(actionableRules),
       };
     }
@@ -523,6 +529,24 @@ export class OutputGuardrailService {
     active_booking_state_conflict: GUARDRAIL_PRIORITY.P0,
   };
 
+  private resolveRepairToolNames(
+    rules: RuleContradiction[],
+    findings: SemanticReviewVerdict['findings'],
+  ): string[] {
+    const names = new Set<string>();
+    for (const rule of rules) {
+      if (rule.repairMode !== GUARDRAIL_REPAIR_MODE.REPLAN) continue;
+      for (const name of rule.repairToolNames ?? []) names.add(name);
+    }
+    for (const finding of findings) {
+      if (finding.repairMode !== GUARDRAIL_REPAIR_MODE.REPLAN) continue;
+      for (const name of SEMANTIC_REVIEW_FINDING_POLICIES[finding.code].repairToolNames) {
+        names.add(name);
+      }
+    }
+    return [...names];
+  }
+
   /** 把 semantic finding 映射成 GuardViolation（喂回 repair prompt）。 */
   private findingToViolation(finding: SemanticReviewVerdict['findings'][number]): GuardViolation {
     return {
@@ -616,8 +640,10 @@ export interface OutputGuardDecision {
   ruleIds: string[];
   /** 当前回复不可发送的 rule id。最终是否 block 由 recoverability 与 repair 上限决定。 */
   blockedRuleIds: string[];
-  /** 本次修复建议：rewrite=无工具重写，replan=允许只读工具重新规划。 */
+  /** 本次修复建议：rewrite=无工具重写，replan=按命中规则的精确工具白名单重新规划。 */
   repairMode: GuardrailRepairMode;
+  /** 守卫声明的最小修复工具集合；runner 只执行，不解析 ruleId/finding code。 */
+  repairToolNames?: string[];
   /** 聚合后的脱敏/普通反馈，直接进入 generator repair prompt。 */
   feedbackToGenerator?: string;
   /** 降级/转人工归因码。 */

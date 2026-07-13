@@ -495,6 +495,7 @@ export class FollowUpProcessor implements OnModuleInit {
         } as AuthoritativeSessionState,
         workOrderId,
         expectedInterviewAt: newInterviewAt,
+        interviewType: jobData.interviewType,
         channelIdentity: jobData.channelIdentity,
       });
     } catch (error) {

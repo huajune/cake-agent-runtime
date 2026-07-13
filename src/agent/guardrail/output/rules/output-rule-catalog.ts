@@ -46,6 +46,8 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   exogenousSignal: string;
   residualRisk: string;
   verification: string;
+  /** 由规则所有者声明，runner 不解释 ruleId。 */
+  repairToolNames: readonly string[];
 }
 
 type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy> &
@@ -68,6 +70,7 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
       (derived.currentReplySendable
         ? ''
         : `上一版回复命中 ${rule.id}，当前文本不可发送。请按业务事实重写，删除未接地承诺、内部实现或不合规表达，只输出候选人可见回复。`),
+    repairToolNames: rule.repairToolNames ?? [],
     ...rule,
   };
 }
@@ -118,6 +121,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版回复在教唆候选人以不实身份登记或隐瞒身份（如按"非暑假工"登记以通过系统审核），当前文本不可发送，这是诚信红线。' +
       '请改写为如实口径：候选人身份必须如实登记；当前岗位不匹配其身份时，如实告知暂无匹配岗位、可帮其留意后续岗位或拉群通知；' +
       '禁止任何"先按XX登记/面试再说/别提暑假工"式的绕审建议。',
+  },
+  {
+    id: 'summer_worker_alternative_upsell',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '候选人明确找暑假工且本轮工具确认暑假工过滤后为空时，拦住主动劝转普通兼职、小时工、全职或长期兼职的话术。',
+    riskGoal: '确保暑假工无岗时直接拒绝，不用其他用工形式进行违背候选人明确意向的软性转化。',
+    exogenousSignal:
+      'duliday_job_list 的 JOB_LIST_LABOR_FORM_FILTER_EMPTY + queryMeta.laborFormFilter.candidateLaborForm=暑假工 + 本轮候选人未主动改口。',
+    residualRisk:
+      '未出现已登记替代用工形式词的隐晦劝转可能漏检；候选人跨轮主动改口依赖本轮 userMessage 表达清楚。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复在本轮已经确认没有暑假工岗位后，仍主动询问或建议候选人考虑普通兼职、小时工、全职或长期兼职，当前文本不可发送。' +
+      '请只输出一句直接、礼貌的无岗答复，例如：“抱歉，你附近暂时没有合适的暑假工岗位。”不要追加问题、替代岗位、后续劝转或其他用工形式。',
   },
   {
     id: 'discriminatory_screening_leak',
@@ -192,6 +211,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复推荐的岗位品牌与候选人指定品牌不一致，当前文本不可发送。请重新规划：优先用候选人指定品牌重新查岗；若确实没有该品牌岗位，只能先说明未找到该品牌，并询问是否接受其它品牌，不要直接跨品牌推荐。',
+    repairToolNames: ['geocode', 'duliday_job_list'],
   },
   {
     id: 'brand_alias_fuzzy_match_ignored',
@@ -207,7 +227,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'image_description_not_saved',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住当前轮有图片/表情消息，但回复基于图片内容判断时没有成功保存图片描述的情况。',
     riskGoal: '视觉内容必须先结构化保存，避免图片识别事实无法进入后续记忆和报名链路。',
@@ -217,6 +237,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。',
+    repairToolNames: ['save_image_description'],
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 

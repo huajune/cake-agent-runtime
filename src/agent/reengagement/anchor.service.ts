@@ -20,6 +20,8 @@ interface AnchorContext {
   isGroupChat?: boolean;
   /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
   channelIdentity?: ReengagementChannelIdentity;
+  /** 首条开场回复不排缺定位，避免开场未回后再连续触发缺定位。 */
+  suppressAddressMissing?: boolean;
 }
 
 interface AnchorAgentResult {
@@ -98,8 +100,9 @@ export class ReengagementAnchorService {
     const interviewAt = this.extractInterviewAt(call);
     if (interviewAt == null) return;
     const workOrderId = this.extractWorkOrderId(call);
+    const interviewType = this.extractInterviewType(call);
     const stateOverride: Partial<ReengagementState> = { terminal: 'booked', interviewAt };
-    const verification = { workOrderId, expectedInterviewAt: interviewAt };
+    const verification = { workOrderId, expectedInterviewAt: interviewAt, interviewType };
     const anchorIdFor = (scenarioCode: FollowUpScenarioCode): string =>
       workOrderId != null && interviewAt != null
         ? bookingFollowUpAnchorId(workOrderId, interviewAt, scenarioCode)
@@ -155,7 +158,7 @@ export class ReengagementAnchorService {
         { presentedStores: this.extractPresentedStores(presentedStoreCalls) },
       );
     }
-    if (this.asksForLocation(reply)) {
+    if (!context.suppressAddressMissing && this.asksForLocation(reply)) {
       void this.scheduler.removeSupersededPendingJobs({
         sessionRef: {
           corpId: context.corpId,
@@ -178,7 +181,11 @@ export class ReengagementAnchorService {
     anchorEventId: string,
     context: AnchorContext,
     stateOverride?: Partial<ReengagementState>,
-    verification?: { workOrderId?: number; expectedInterviewAt?: number },
+    verification?: {
+      workOrderId?: number;
+      expectedInterviewAt?: number;
+      interviewType?: string;
+    },
   ): Promise<void> {
     try {
       const state = await this.loadState(context);
@@ -194,6 +201,7 @@ export class ReengagementAnchorService {
         state: { ...state, ...stateOverride },
         workOrderId: verification?.workOrderId,
         expectedInterviewAt: verification?.expectedInterviewAt,
+        interviewType: verification?.interviewType,
         channelIdentity: context.channelIdentity,
       });
     } catch (error) {
@@ -309,6 +317,13 @@ export class ReengagementAnchorService {
       result?.newInterviewTime ??
       result?.interviewAt;
     return parseInterviewTimestamp(raw);
+  }
+
+  private extractInterviewType(call: AgentToolCall): string | undefined {
+    const result = this.asRecord(call.result);
+    const requestInfo = this.asRecord(result?.requestInfo);
+    const raw = result?.interviewType ?? requestInfo?.interviewType;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
   }
 
   private asRecord(value: unknown): Record<string, unknown> | undefined {

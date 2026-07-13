@@ -98,6 +98,7 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   composer_validation_failed: '生成文案疑似包含内部信息，已拦截',
   composer_forbidden_job_detail: '轻量复聊里出现了薪资、班次或岗位详情，已拦截',
   composer_missing_expected_ask: '生成文案没有命中这个场景需要追问的要点，已拦截',
+  candidate_cancelled_interview_in_chat: '候选人在聊天中已明确取消或无法参加面试，已停止触达',
   reengagement_agent_error: '复聊生成调用异常',
 };
 
@@ -796,7 +797,7 @@ export default function ReengagementDetailDrawer({
               ))}
             </div>
 
-            <details className={styles.technicalPanel}>
+            <details className={styles.technicalPanel} open>
               <summary>技术字段</summary>
               <div className={styles.factList}>
                 {technicalFacts.map((fact) => (
