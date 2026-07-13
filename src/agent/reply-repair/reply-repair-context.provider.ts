@@ -53,6 +53,7 @@ export interface ReplyRepairJobSummary {
   salaryDesc?: string | null;
   shiftSummary?: string | null;
   distanceKm?: number | null;
+  welfareFacts?: RecommendedJobSummary['welfareFacts'];
 }
 
 @Injectable()
@@ -152,6 +153,7 @@ export class ReplyRepairContextProvider {
       salaryDesc: job.salaryDesc,
       shiftSummary: job.shiftSummary,
       distanceKm: job.distanceKm,
+      welfareFacts: job.welfareFacts,
     };
   }
 
@@ -164,10 +166,22 @@ export class ReplyRepairContextProvider {
       job.salaryDesc,
       job.shiftSummary,
       job.distanceKm != null ? `${job.distanceKm}km` : null,
+      this.formatWelfare(job.welfareFacts),
     ]
       .filter(Boolean)
       .join(' / ');
     return `- [${tag}] ${name || `岗位#${job.jobId}`}${meta ? `（${meta}）` : ''}`;
+  }
+
+  private formatWelfare(welfare: ReplyRepairJobSummary['welfareFacts']): string | null {
+    if (!welfare) return null;
+    const labels = {
+      company: '公司提供',
+      allowance: '仅补贴',
+      self_or_none: '无',
+      unspecified: '未明确',
+    } as const;
+    return `员工餐${labels[welfare.meals]}，住宿${labels[welfare.accommodation]}`;
   }
 
   private formatInvitedGroup(group: InvitedGroupRecord): string {

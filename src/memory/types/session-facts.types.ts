@@ -801,6 +801,37 @@ export function toSessionFacts(
 // ==================== 2. 业务状态（当前会话的结构化短期记忆） ====================
 
 /** 候选岗位池摘要 — 复用 jobId 和补充查询 */
+export const RecommendedJobWelfareKindSchema = z.enum([
+  'company',
+  'allowance',
+  'self_or_none',
+  'unspecified',
+]);
+
+export type RecommendedJobWelfareKind = z.infer<typeof RecommendedJobWelfareKindSchema>;
+
+/**
+ * 精简岗位记忆中的福利事实。
+ *
+ * 不保存保险：保险/社保属于敏感口径，避免它进入每轮 prompt 后被模型主动包装成普通福利。
+ * meals/accommodation 保留明确的“无/未明确”，用于阻止模型在后续追问中把缺失事实脑补成有。
+ */
+export interface RecommendedJobWelfareFacts {
+  meals: RecommendedJobWelfareKind;
+  accommodation: RecommendedJobWelfareKind;
+  hasTrafficAllowance: boolean;
+  hasPromotionWelfare: boolean;
+  otherWelfareItems: string[];
+}
+
+export const RecommendedJobWelfareFactsSchema = z.object({
+  meals: RecommendedJobWelfareKindSchema,
+  accommodation: RecommendedJobWelfareKindSchema,
+  hasTrafficAllowance: z.boolean(),
+  hasPromotionWelfare: z.boolean(),
+  otherWelfareItems: z.array(z.string()),
+});
+
 export interface RecommendedJobSummary {
   jobId: number;
   brandName: string | null;
@@ -821,6 +852,8 @@ export interface RecommendedJobSummary {
   healthCertificateRequirement?: string | null;
   studentRequirement?: string | null;
   distanceKm?: number | null;
+  /** 工具查询时已获取的福利事实。可选：历史存量记录或未请求福利时无此字段。 */
+  welfareFacts?: RecommendedJobWelfareFacts | null;
 }
 
 export const RecommendedJobSummarySchema = z.object({
@@ -841,6 +874,7 @@ export const RecommendedJobSummarySchema = z.object({
   healthCertificateRequirement: z.string().nullable().optional(),
   studentRequirement: z.string().nullable().optional(),
   distanceKm: z.number().nullable().optional(),
+  welfareFacts: RecommendedJobWelfareFactsSchema.nullable().optional(),
 });
 
 /** 已邀入的群记录 */
