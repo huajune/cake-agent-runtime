@@ -19,14 +19,11 @@ import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import {
   bookingFollowUpAnchorId,
-  computeFireAt,
   FollowUpSchedulerService,
   getScenario,
-  inWindow,
   parseInterviewTimestamp,
   REENGAGEMENT_JOB_NAME,
   REENGAGEMENT_QUEUE,
-  resolveDelayMs,
   resolveRolloutEnabled,
   shouldStop,
   type FollowUpJob,
@@ -35,6 +32,7 @@ import { TouchLedgerService } from './touch-ledger.service';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ReengagementAgentExecution } from './reengagement.agent';
 import { MessageSource, MessageType } from '@enums/message-callback.enum';
+import { BotService } from '@wecom/bot/bot.service';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
@@ -49,7 +47,10 @@ export interface ReengagementDeliveryPort<TOutcome = unknown, TResult = unknown>
 export class ReengagementDeliveryService
   implements ReengagementDeliveryPort<TurnOutcome, DeliveryResult>
 {
-  constructor(private readonly delivery: MessageDeliveryService) {}
+  constructor(
+    private readonly delivery: MessageDeliveryService,
+    private readonly botService: BotService,
+  ) {}
 
   async deliver(
     outcome: TurnOutcome,
@@ -64,11 +65,39 @@ export class ReengagementDeliveryService
       throw new Error('reengagement_delivery_missing_context');
     }
 
+    // 复聊没有候选人入站消息可触发常规入口过滤，因此在真正投递前按接客 bot
+    // 重新核验托管账号列表。查不到或上游查询失败均 fail closed，避免已取消托管的
+    // 账号仍被历史 delayed job 主动发消息。
+    if (!(await this.isReceivingBotHosted(context.imBotId))) {
+      return {
+        success: true,
+        segmentCount: 0,
+        failedSegments: 0,
+        deliveredSegments: 0,
+        totalTime: 0,
+        skipped: true,
+        skipReason: 'receiving_bot_not_hosted',
+      };
+    }
+
     return this.delivery.deliverReply(
       { content: text, reasoning: outcome.reasoning },
       context,
       false,
     );
+  }
+
+  private async isReceivingBotHosted(imBotId: string): Promise<boolean> {
+    try {
+      const bots = await this.botService.getConfiguredBotList();
+      return bots.some((bot) =>
+        [bot.wxid, bot.id, bot.weixin, bot.wecomUserId]
+          .filter((id): id is string => typeof id === 'string')
+          .some((id) => id.trim() === imBotId.trim()),
+      );
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -223,13 +252,8 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    // 3) 9-21 窗口二次确认（防 delay 漂移）；不在窗口 → 推到下一窗口
-    if (!inWindow(now)) {
-      await this.reschedule(job, scenario, state, anchorAt);
-      return;
-    }
-
-    // 4) 投递 + 触达底账（shadow 只记不发）
+    // 3) 投递 + 触达底账（shadow 只记不发）。真实发送前由统一投递层再次检查
+    // 当前会话是否仍处于托管状态；已暂停/取消托管则整条跳过。
     // 无投递端口绑定时强制 shadow；否则读运行时配置（与开头的总开关同一次读取）。
     // 所有未投递分支的 runTurnEnd 一律 includeAssistantText:false：候选人没收到这条文本，
     // 若照常投影成助手轮次，下一轮真实对话会引用一段候选人从未见过的"跟进"（HC-4 幽灵回复）。
@@ -829,44 +853,6 @@ export class FollowUpProcessor implements OnModuleInit {
         `[reengagement] 真发历史写入失败 messageId=${params.messageId}: ${this.errorMessage(error)}`,
       );
     }
-  }
-
-  /** 不在窗口：推到下一个 9-21 窗口重排（不消费 attempts）。 */
-  private async reschedule(
-    job: Job<FollowUpJob>,
-    scenario: ReturnType<typeof getScenario>,
-    state: Parameters<typeof resolveDelayMs>[1]['state'],
-    anchorAt: number,
-  ): Promise<void> {
-    if (!scenario) return;
-    const nextAnchorAt = Math.max(Date.now(), anchorAt);
-    const fireAt = computeFireAt(scenario, { anchorAt: nextAnchorAt, state });
-    const delay = Math.max(0, fireAt - Date.now());
-    const jobId = `${job.id}:rw:${fireAt}`;
-    const rescheduledData: FollowUpJob = { ...job.data };
-    await this.queue.add(REENGAGEMENT_JOB_NAME, rescheduledData, {
-      jobId,
-      delay,
-      attempts: 2,
-      backoff: { type: 'fixed', delay: 30_000 },
-      removeOnComplete: { age: 3 * 24 * 60 * 60, count: 200 },
-      removeOnFail: { age: 3 * 24 * 60 * 60, count: 200 },
-    });
-    this.logger.log(
-      `[reengagement] 非投递窗口，推迟到 ${new Date(fireAt).toISOString()} 重判 jobId=${job.id} rescheduledJobId=${jobId}`,
-    );
-    this.tracking.trackRescheduled(
-      {
-        sessionId: job.data.sessionRef.sessionId,
-        userId: job.data.sessionRef.userId,
-        corpId: job.data.sessionRef.corpId,
-        scenarioCode: job.data.scenarioCode,
-        anchorEventId: job.data.anchorEventId,
-        anchorAt: job.data.anchorAt,
-      },
-      fireAt,
-      jobId,
-    );
   }
 
   private errorMessage(error: unknown): string {

@@ -3,7 +3,6 @@ import {
   computeFireAt,
   FOLLOW_UP_SCENARIOS,
   getScenario,
-  inWindow,
   resolveRolloutEnabled,
   shouldStop,
 } from '@agent/reengagement/follow-up-scheduler.service';
@@ -28,37 +27,25 @@ describe('scenario-registry', () => {
     expect(policy).not.toContain('不复读岗位详情');
   });
 
-  describe('inWindow (9-21 Shanghai)', () => {
-    it('true inside window, false outside', () => {
-      expect(inWindow(at(2))).toBe(true); // 10:00 Shanghai
-      expect(inWindow(at(11))).toBe(true); // 19:00 Shanghai
-      expect(inWindow(at(13))).toBe(false); // 21:00 Shanghai (end exclusive)
-      expect(inWindow(at(0))).toBe(false); // 08:00 Shanghai
-      expect(inWindow(at(15))).toBe(false); // 23:00 Shanghai
-    });
-  });
-
-  describe('computeFireAt window alignment', () => {
+  describe('computeFireAt', () => {
     const scenario = getScenario('opening_no_reply')!;
 
-    it('keeps fireAt when inside window', () => {
+    it('uses the scenario delay directly', () => {
       const anchorAt = at(2); // 10:00 Shanghai
       const fireAt = computeFireAt(scenario, { anchorAt, state: baseState() });
-      // +15min still inside window
       expect(fireAt).toBe(anchorAt + 15 * 60_000);
     });
 
-    it('pushes pre-9:00 fire to today 09:00 Shanghai', () => {
+    it('does not defer a trigger before the former 09:00 boundary', () => {
       const anchorAt = Date.UTC(2026, 5, 24, 0, 0, 0); // 08:00 Shanghai
       const fireAt = computeFireAt(scenario, { anchorAt, state: baseState() });
-      // 09:00 Shanghai = 01:00 UTC same day
-      expect(fireAt).toBe(Date.UTC(2026, 5, 24, 1, 0, 0));
+      expect(fireAt).toBe(anchorAt + 15 * 60_000);
     });
 
-    it('pushes post-21:00 fire to next day 09:00 Shanghai', () => {
+    it('does not defer a trigger after the former 21:00 boundary', () => {
       const anchorAt = Date.UTC(2026, 5, 24, 14, 0, 0); // 22:00 Shanghai
       const fireAt = computeFireAt(scenario, { anchorAt, state: baseState() });
-      expect(fireAt).toBe(Date.UTC(2026, 5, 25, 1, 0, 0)); // next day 09:00 Shanghai
+      expect(fireAt).toBe(anchorAt + 15 * 60_000);
     });
   });
 

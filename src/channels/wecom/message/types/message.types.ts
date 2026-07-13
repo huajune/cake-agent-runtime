@@ -93,7 +93,7 @@ export interface DeliveryResult {
   /** 投递层主动跳过本次发送（内部实现泄漏 / 已暂停托管）。 */
   skipped?: boolean;
   /** 跳过原因，用于排障。 */
-  skipReason?: 'output_leak' | 'hosting_paused';
+  skipReason?: 'output_leak' | 'hosting_paused' | 'receiving_bot_not_hosted';
 }
 
 export class DeliveryFailureError extends Error {
