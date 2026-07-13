@@ -204,7 +204,7 @@ export class ReengagementTouchRepository extends BaseRepository {
         p_end: filters.endDate ?? null,
         ...(filters.status ? { p_status: filters.status } : {}),
         p_scenario_code: filters.scenarioCode ?? null,
-        p_session_id: filters.sessionId ?? null,
+        p_keyword: filters.keyword ?? null,
         p_pending_only: filters.pendingOnly ?? false,
         p_limit: Math.min(filters.limit ?? 50, 200),
         p_offset: filters.offset ?? 0,

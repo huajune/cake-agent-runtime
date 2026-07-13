@@ -12,6 +12,8 @@ export type FollowUpScenarioCode =
 export interface FollowUpScenarioContext {
   anchorAt: number;
   state: AuthoritativeSessionState;
+  /** 预约工具解析出的面试形式；仅随报名后任务冻结，不写入会话权威态。 */
+  interviewType?: string;
 }
 
 /** 场景所属大阶段：报名前 / 报名后（报名后流程复杂，支持独立大开关）。 */
@@ -83,11 +85,11 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     anchorLabel: '开场白已发',
     triggerDelayMs: 15 * MINUTE,
     delayLabel: '15 分钟',
-    objective: '开场已发但候选人未回复，轻量关心一句、邀请其表达求职意向',
+    objective: '开场已发但候选人未回复，轻量确认是否还在看机会，并继续询问所在位置以便就近推荐',
     requiredEvidence: ['lastCandidateMessageAt'],
     stopUnless: () => true, // 通用停止条件（已回/terminal）已在 shouldStop 覆盖
     generationPolicy:
-      '直接询问是否还在找工作或是否愿意说下求职意向；不要问“在忙吗”“怎么没回”，不夸大、不承诺、不催促',
+      '优先使用“还在看机会吗”，再自然询问候选人目前在哪个区域、商圈或地铁站附近，说明可以帮忙看看附近岗位；不要使用“求职意向”这个词，不要问“在忙吗”“怎么没回”，不夸大、不承诺、不催促',
     defaultRolloutEnabled: true,
     canonicalAnchorEventId: 'opening',
   },
@@ -115,13 +117,13 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     displayName: '推店未回',
     anchorEvent: 'agent.store_presented',
     anchorLabel: '已展示门店/岗位',
-    triggerDelayMs: 3 * HOUR,
-    delayLabel: '3 小时',
-    objective: '已展示门店/岗位但候选人未回复，询问是否还有兴趣或需要换个方向',
+    triggerDelayMs: 30 * MINUTE,
+    delayLabel: '30 分钟',
+    objective: '已展示满足候选人条件的门店/岗位但候选人未回复，承接该岗位询问考虑得如何',
     requiredEvidence: ['presentedStores'],
     stopUnless: (state) => state.presentedStores.length > 0,
     generationPolicy:
-      '可以简短承接近期对话里已推荐的岗位、门店或关键条件，帮助候选人确认在说哪个机会；只能复述已有证据，不新增或改写细节，然后询问是否感兴趣或要不要换方向',
+      '简短承接近期对话里已经明确推荐且满足条件的岗位、门店或关键条件，帮助候选人确认在说哪个机会；只能复述已有证据，不新增或改写细节，然后只询问考虑得如何或是否感兴趣。禁止重新查岗，禁止说暂无岗位，禁止询问换品牌、换岗位、换区域或换城市',
     defaultRolloutEnabled: false,
   },
   {
@@ -130,8 +132,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     displayName: '收资未完成',
     anchorEvent: 'agent.collection_started',
     anchorLabel: '开始收集资料',
-    triggerDelayMs: 2 * HOUR,
-    delayLabel: '2 小时',
+    triggerDelayMs: 30 * MINUTE,
+    delayLabel: '30 分钟',
     objective: '收资未完成，提醒候选人补齐剩余资料以便安排面试',
     requiredEvidence: ['collectedFields'],
     // 收资必填项随岗位/业务配置变化，不能在复聊层写死为姓名/手机号/年龄/性别。
@@ -154,11 +156,11 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
       return Math.max(0, interviewAt - HOUR - ctx.anchorAt);
     },
     delayLabel: '面试前 1 小时（无面试时间不触发）',
-    objective: '面试前提醒候选人准时参加、带好证件',
+    objective: '根据面试形式提醒候选人按时参加；AI 面试提醒在线完成，线下面试才提醒到店',
     requiredEvidence: ['terminal', 'interviewAt'],
     stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
     generationPolicy:
-      '根据已有证据提醒时间地点和需携带的证件；使用“记得准时到”等中性表达，不使用“别迟到”等命令语气，不索取新资料',
+      '必须按状态摘要里的面试形式生成：AI 面试说明无需到店，提醒按面试通知的入口和要求在线完成，不提门店、到店或携带证件；线下面试才提醒时间、地点和已有证据中的证件；仅写“线上面试”但未明确 AI 时，不得说成 AI 面试。使用中性表达，不索取新资料',
     defaultRolloutEnabled: true,
     sessionCooldownExempt: true,
   },
@@ -171,14 +173,19 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     triggerDelayMs: (ctx: FollowUpScenarioContext) => {
       const interviewAt = resolveInterviewAt(ctx.state);
       if (interviewAt == null) return 0;
-      return Math.max(0, interviewAt + HOUR - ctx.anchorAt);
+      // AI 面试的预约时刻只是可开始时间，候选人当天仍有完成窗口；统一在面试日
+      // 17:00（北京时间）回访，避免按“预约时间 + N 小时”导致上午/下午预约触达不一致。
+      const followUpAt = isAiInterview(ctx.interviewType)
+        ? shanghaiDayAtHour(interviewAt, 17)
+        : interviewAt + HOUR;
+      return Math.max(0, followUpAt - ctx.anchorAt);
     },
-    delayLabel: '面试后 1 小时（无面试时间不触发）',
+    delayLabel: '普通面试后 1 小时；AI 面试当天 17:00（无面试时间不触发）',
     objective: '面试后回访，了解面试结果、是否需要后续协助',
     requiredEvidence: ['interviewAt'],
     stopUnless: hasInterviewAt,
     generationPolicy:
-      '询问面试是否顺利、体验如何、是否需要协助；不要直接断言候选人已完成面试，不施压入职',
+      '按状态摘要里的面试形式询问：AI 面试询问是否已经完成、是否遇到问题；其他面试询问是否顺利、体验如何、是否需要协助。不要直接断言候选人已完成面试，不施压入职',
     defaultRolloutEnabled: false,
   },
   {
@@ -211,6 +218,24 @@ export function resolveInterviewAt(state: AuthoritativeSessionState): number | n
 
 export function hasInterviewAt(state: AuthoritativeSessionState): boolean {
   return resolveInterviewAt(state) != null;
+}
+
+export function isAiInterview(interviewType: unknown): boolean {
+  return typeof interviewType === 'string' && /ai\s*面试/i.test(interviewType);
+}
+
+/** 给定时间戳所在的上海自然日，在指定整点对应的绝对时间戳。 */
+function shanghaiDayAtHour(timestamp: number, hour: number): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestamp));
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  // Asia/Shanghai 当前固定 UTC+8；17:00 CST = 09:00 UTC。
+  return Date.UTC(value('year'), value('month') - 1, value('day'), hour - 8);
 }
 
 /**

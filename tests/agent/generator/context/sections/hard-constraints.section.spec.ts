@@ -89,6 +89,8 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('用工形式: 暑假工');
     expect(output).toContain('只保留匹配「暑假工」的岗位');
+    expect(output).toContain('暑假工无岗时直接拒绝并结束本轮');
+    expect(output).toContain('禁止追加问题、替代岗位');
   });
 
   it('renders city/district from session facts and tells the model which filter to use', () => {

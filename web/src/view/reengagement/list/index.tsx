@@ -25,7 +25,7 @@ export default function ReengagementPage() {
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('week');
   const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
   const [scenarioFilter, setScenarioFilter] = useState<string>(ALL_VALUE);
-  const [searchSessionId, setSearchSessionId] = useState<string>('');
+  const [searchKeyword, setSearchKeyword] = useState<string>('');
   const [includeClosedCandidates, setIncludeClosedCandidates] = useState(false);
   const [selectedTouchKey, setSelectedTouchKey] = useState<string | null>(null);
 
@@ -49,7 +49,7 @@ export default function ReengagementPage() {
 
   const activeStatus = statusFilter !== ALL_VALUE ? statusFilter : undefined;
   const activeScenario = scenarioFilter !== ALL_VALUE ? scenarioFilter : undefined;
-  const activeSessionId = searchSessionId || undefined;
+  const activeKeyword = searchKeyword || undefined;
 
   // 筛选条件标识：任一变化都要重置分页与累加数据
   const filterKey = useMemo(
@@ -59,10 +59,10 @@ export default function ReengagementPage() {
         dateRange.endDate,
         activeStatus || '',
         activeScenario || '',
-        activeSessionId || '',
+        activeKeyword || '',
         includeClosedCandidates ? 'include-closed' : 'pending-only',
       ].join('|'),
-    [dateRange, activeStatus, activeScenario, activeSessionId, includeClosedCandidates],
+    [dateRange, activeStatus, activeScenario, activeKeyword, includeClosedCandidates],
   );
 
   const resetPaging = useCallback(() => {
@@ -95,9 +95,9 @@ export default function ReengagementPage() {
     [resetPaging],
   );
 
-  const handleSearchSessionIdChange = useCallback(
-    (sessionId: string) => {
-      setSearchSessionId(sessionId);
+  const handleSearchKeywordChange = useCallback(
+    (keyword: string) => {
+      setSearchKeyword(keyword);
       resetPaging();
     },
     [resetPaging],
@@ -135,7 +135,7 @@ export default function ReengagementPage() {
     endDate: dateRange.endDate,
     status: activeStatus,
     scenarioCode: activeScenario,
-    sessionId: activeSessionId,
+    keyword: activeKeyword,
     pendingOnly: !includeClosedCandidates,
     limit: CANDIDATE_PAGE_SIZE,
     offset: (candidatePage - 1) * CANDIDATE_PAGE_SIZE,
@@ -178,8 +178,8 @@ export default function ReengagementPage() {
         onStatusFilterChange={handleStatusFilterChange}
         scenarioFilter={scenarioFilter}
         onScenarioFilterChange={handleScenarioFilterChange}
-        searchSessionId={searchSessionId}
-        onSearchSessionIdChange={handleSearchSessionIdChange}
+        searchKeyword={searchKeyword}
+        onSearchKeywordChange={handleSearchKeywordChange}
         includeClosedCandidates={includeClosedCandidates}
         onIncludeClosedCandidatesChange={(next) => {
           setIncludeClosedCandidates(next);

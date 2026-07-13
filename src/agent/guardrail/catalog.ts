@@ -35,6 +35,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   image_description_not_saved:
     'agent/guardrail/output/rules/visual-message-errors.rule.ts（HardRulesService 调度）',
   repeated_reply: 'agent/guardrail/output/rules/repeated-reply.rule.ts（HardRulesService 调度）',
+  summer_worker_alternative_upsell:
+    'agent/guardrail/output/rules/summer-worker-alternative-upsell.rule.ts（HardRulesService 调度）',
   requested_brand_mismatch:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   discriminatory_screening_leak:

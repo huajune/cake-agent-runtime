@@ -87,6 +87,12 @@ describe('guardrail catalog', () => {
     }
   });
 
+  it('requires every deterministic replan rule to declare its repair tools', () => {
+    for (const rule of OUTPUT_RULE_CATALOG.filter((entry) => entry.action === 'replan')) {
+      expect(rule.repairToolNames.length).toBeGreaterThan(0);
+    }
+  });
+
   it('points each deterministic output rule to a domain rule file', () => {
     const outputEntries = new Map(catalogByLayer('output').map((entry) => [entry.id, entry]));
     for (const rule of OUTPUT_RULE_CATALOG) {

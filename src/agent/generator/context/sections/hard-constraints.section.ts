@@ -265,7 +265,7 @@ export class HardConstraintsSection implements PromptSection {
       const hardFiltered = isHardFilteredLaborForm(pref.labor_form);
       lines.push(
         hardFiltered
-          ? `- 用工形式: ${pref.labor_form}（工具会按岗位 用工形式/兼职类型 结构化字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止承诺"有/没有「${pref.labor_form}」"，过滤后为空就如实告知附近暂无该用工形式岗位）`
+          ? `- 用工形式: ${pref.labor_form}（工具会按岗位 用工形式/兼职类型 结构化字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止承诺"有/没有「${pref.labor_form}」"，过滤后为空就如实告知附近暂无该用工形式岗位${pref.labor_form === '暑假工' ? '；暑假工无岗时直接拒绝并结束本轮，禁止追加问题、替代岗位或“是否考虑普通兼职/小时工/全职”等劝转话术' : ''}）`
           : `- 用工形式: ${pref.labor_form}（不要填入 jobCategoryList；介绍岗位用工形式时严格照岗位 用工形式/兼职类型 结构化字段，不要把别的用工形式的岗位说成「${pref.labor_form}」）`,
       );
     }

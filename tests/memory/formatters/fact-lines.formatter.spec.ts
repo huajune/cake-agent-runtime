@@ -45,6 +45,10 @@ function emptyHighConfidenceFacts(): HighConfidenceFacts {
 }
 
 describe('formatExtractionFactLines', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('should render known interview and preference fields in stable labels', () => {
     const lines = formatExtractionFactLines({
       ...FALLBACK_EXTRACTION,
@@ -117,7 +121,8 @@ describe('formatExtractionFactLines', () => {
   });
 
   it('should warn when a time-sensitive fact is stale (extractedAt > 24h ago)', () => {
-    const staleAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-13T10:00:00+08:00'));
+    const staleAt = '2026-07-06T14:35:00+08:00';
     const lines = formatExtractionFactLines({
       ...FALLBACK_EXTRACTION,
       interview_info: {
@@ -134,6 +139,29 @@ describe('formatExtractionFactLines', () => {
 
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('- 面试时间: 明天下午2点');
-    expect(lines[0]).toContain('可能已失效');
+    expect(lines[0]).toContain(
+      '⚠️记录时间：2026-07-06 14:35；其中的相对时间表述以该记录时间为基准，可能已失效',
+    );
+  });
+
+  it('should render a complete Beijing timestamp for a fresh time-sensitive fact', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-13T15:00:00+08:00'));
+    const lines = formatExtractionFactLines({
+      ...FALLBACK_EXTRACTION,
+      interview_info: {
+        ...FALLBACK_EXTRACTION.interview_info,
+        applied_store: {
+          value: '顺德欢乐海岸PH',
+          confidence: 'high',
+          source: 'llm',
+          evidence: '候选人确认应聘门店',
+          extractedAt: '2026-07-13T14:35:00+08:00',
+        },
+      },
+    } as unknown as Parameters<typeof formatExtractionFactLines>[0]);
+
+    expect(lines).toContain(
+      '- 应聘门店: 顺德欢乐海岸PH（置信度: high，来源: llm）（记录时间：2026-07-13 14:35）',
+    );
   });
 });

@@ -44,7 +44,11 @@ describe('ReengagementAnchorService', () => {
   const bookingCall = {
     toolName: 'duliday_interview_booking',
     args: { interviewTime: INTERVIEW_TIME },
-    result: { success: true, workOrderId: 555 },
+    result: {
+      success: true,
+      workOrderId: 555,
+      requestInfo: { interviewType: 'AI面试' },
+    },
   };
 
   it('schedules booking follow-ups carrying workOrderId and frozen interview time', async () => {
@@ -59,6 +63,7 @@ describe('ReengagementAnchorService', () => {
         anchorEventId: `wo555:iv${INTERVIEW_AT}:interview_reminder`,
         workOrderId: 555,
         expectedInterviewAt: INTERVIEW_AT,
+        interviewType: 'AI面试',
       }),
     );
     expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
@@ -67,6 +72,7 @@ describe('ReengagementAnchorService', () => {
         anchorEventId: `wo555:iv${INTERVIEW_AT}:post_interview_followup`,
         workOrderId: 555,
         expectedInterviewAt: INTERVIEW_AT,
+        interviewType: 'AI面试',
       }),
     );
   });
@@ -376,6 +382,21 @@ describe('ReengagementAnchorService', () => {
         scenarioCode: 'address_missing',
         anchorEventId: 'trace-1:address_missing',
       }),
+    );
+  });
+
+  it('does not schedule address-missing from the opening reply itself', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '还在看机会吗？方便说下你在哪个地铁站附近，我帮你看看附近岗位。',
+        toolCalls: [],
+      },
+      { ...context, suppressAddressMissing: true },
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'address_missing' }),
     );
   });
 });

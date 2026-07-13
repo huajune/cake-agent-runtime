@@ -857,14 +857,21 @@ export function buildInterviewBookingTool(
                 // 等通知岗位（无 interviewTime）没有时间点可复述、也没有到店环节，
                 // 改为输出"面试官电话联系"话术指引。
                 ...(interviewTime
-                  ? {
-                      _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime),
-                      _onSiteScript: buildOnSiteScript({
-                        candidateName: name,
-                        jobName: resolvedJobName,
-                      }),
-                      _resultDisclaimer: '具体上岗时间和面试结果以门店现场告知为准',
-                    }
+                  ? /ai/i.test(interviewType ?? '')
+                    ? {
+                        _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime),
+                        _aiInterviewGuide:
+                          '该岗位是 AI 面试，无需到店；请提醒候选人按面试通知里的入口和要求在线完成，不要发送到店报到或携带证件话术。',
+                        _resultDisclaimer: '具体面试要求和结果以 AI 面试通知为准',
+                      }
+                    : {
+                        _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime),
+                        _onSiteScript: buildOnSiteScript({
+                          candidateName: name,
+                          jobName: resolvedJobName,
+                        }),
+                        _resultDisclaimer: '具体上岗时间和面试结果以门店现场告知为准',
+                      }
                   : {
                       _confirmedInterviewTimeHuman:
                         '未指定面试时间：面试官会直接电话联系候选人确认',

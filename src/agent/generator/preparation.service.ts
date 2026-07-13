@@ -223,7 +223,11 @@ export class PreparationService {
     const toolExecutionTimings = new Map<string, number>();
     const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
     const tools = this.wrapToolsWithTiming(
-      this.resolveToolsForMode(scenarioTools, params.toolMode ?? 'scenario'),
+      this.resolveToolsForMode(
+        scenarioTools,
+        params.toolMode ?? 'scenario',
+        params.allowedToolNames,
+      ),
       toolExecutionTimings,
     );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
@@ -328,17 +332,21 @@ export class PreparationService {
     this.logger.warn(`[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`);
   }
 
-  private resolveToolsForMode(tools: ToolSet, mode: GeneratorToolMode): ToolSet {
-    if (mode === 'scenario') return tools;
+  private resolveToolsForMode(
+    tools: ToolSet,
+    mode: GeneratorToolMode,
+    allowedToolNames?: string[],
+  ): ToolSet {
     if (mode === 'none') return {};
 
-    const readonlyTools: ToolSet = {};
+    const modeTools: ToolSet = {};
     for (const [name, toolDef] of Object.entries(tools)) {
-      if (!SIDE_EFFECT_TOOLS.has(name)) {
-        readonlyTools[name] = toolDef;
-      }
+      if (mode === 'scenario' || !SIDE_EFFECT_TOOLS.has(name)) modeTools[name] = toolDef;
     }
-    return readonlyTools;
+
+    if (allowedToolNames === undefined) return modeTools;
+    const allowed = new Set(allowedToolNames);
+    return Object.fromEntries(Object.entries(modeTools).filter(([name]) => allowed.has(name)));
   }
 
   /**
@@ -488,6 +496,7 @@ export class PreparationService {
           `- [${v.type}] ${v.feedbackPolicy === 'redacted' ? '证据已脱敏' : `问题：${v.evidence}`}；修复要求：${v.suggestion}`,
       );
       const hasReplan = params.reviseFeedback.some((v) => v.repairMode === 'replan');
+      const replanToolConstraint = this.buildReplanToolConstraint(params.allowedToolNames);
       const noToolRepairConstraint =
         params.toolMode === 'none'
           ? '本次修复不能调用任何工具。不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签——只输出发给候选人的纯中文文本。如果你认为需要重新查询才能回答，不要尝试查询，改为向候选人自然确认信息或告知稍后跟进。'
@@ -495,9 +504,7 @@ export class PreparationService {
       parts.push(
         `上一版回复不可发送，存在以下需修正的问题。请只针对这些问题生成一版新的候选人可见回复，` +
           `不要解释或提到出站守卫/规则/拦截，不要复述高敏感条件，不要新增未接地承诺。` +
-          (hasReplan
-            ? `本次允许使用只读工具重新获取事实；严禁执行报名、拉群、取消、改期、发定位等副作用工具。`
-            : `本次只做文案修复，严禁调用工具。`) +
+          (hasReplan ? replanToolConstraint : `本次只做文案修复，严禁调用工具。`) +
           noToolRepairConstraint +
           `\n${lines.join('\n')}`,
       );
@@ -522,12 +529,13 @@ export class PreparationService {
     if (!repair && violations.length === 0) return null;
 
     const hasReplan = violations.some((v) => v.repairMode === 'replan');
+    const replanToolConstraint = this.buildReplanToolConstraint(params.allowedToolNames);
     const lines: string[] = [
       '【系统重写指令｜本条不是候选人消息，候选人看不到本条，也不要回应本条】',
       '你上一版发给候选人的回复未通过发送前审查，已被丢弃。本轮任务不是回答候选人的新消息，' +
         '而是重写上一版回复。' +
         (hasReplan
-          ? '允许调用只读工具重新核实事实；严禁执行报名、拉群、取消、改期、发定位等副作用工具。'
+          ? replanToolConstraint
           : '严禁调用任何工具，严禁重新规划查岗/拉群/约面等任务——本轮工具动作已全部执行完毕，只做文案修复。' +
             '本轮没有工具可用，严禁把工具调用写成文本输出（如 {"name": "geocode", ...}、tool_call:xxx(...) 等形态，' +
             '这类文本会被当成事故直接拦截）；某个事实没有本轮工具结果支持时，删掉该事实或改为不确定表述。'),
@@ -548,6 +556,18 @@ export class PreparationService {
           : '严禁输出"我帮你查下/我先看看"这类只承接不给结果的话——本轮不会再有任何查询，回复必须直接给出结论或下一步。'),
     );
     return lines.join('\n\n');
+  }
+
+  /** Guardrail replan 的提示必须与物理工具白名单完全一致，不能再声称笼统的“只读”。 */
+  private buildReplanToolConstraint(allowedToolNames?: string[]): string {
+    if (allowedToolNames === undefined) {
+      // 兼容非 guardrail 的历史调用；guardrail runner 必须始终显式传入白名单。
+      return '本次只允许调用当前物理暴露的工具重新核实事实；严禁尝试任何未提供的工具。';
+    }
+    if (allowedToolNames.length === 0) {
+      return '本次没有可用工具；只能基于已有事实修正回复，不能承诺稍后查询。';
+    }
+    return `本次只允许调用以下工具重新核实或补全必要事实：${allowedToolNames.join('、')}；严禁尝试任何其它工具。`;
   }
 
   /**

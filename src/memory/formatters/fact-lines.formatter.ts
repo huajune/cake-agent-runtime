@@ -189,17 +189,26 @@ function formatStaleness(value: unknown): string {
   const recordedMs = Date.parse(extractedAt);
   if (!Number.isFinite(recordedMs)) return '';
 
-  const recordedDate = formatBeijingDate(recordedMs);
-  if (Date.now() - recordedMs < STALE_FACT_THRESHOLD_MS) return `（记录于${recordedDate}）`;
-  return `（⚠️记录于${recordedDate}，其中的相对时间表述以当时为基准，可能已失效，使用前必须与候选人确认）`;
+  const recordedAt = formatBeijingDateTime(recordedMs);
+  if (Date.now() - recordedMs < STALE_FACT_THRESHOLD_MS) {
+    return `（记录时间：${recordedAt}）`;
+  }
+  return `（⚠️记录时间：${recordedAt}；其中的相对时间表述以该记录时间为基准，可能已失效，使用前必须与候选人确认）`;
 }
 
-function formatBeijingDate(timestampMs: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+function formatBeijingDateTime(timestampMs: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
-    month: 'numeric',
-    day: 'numeric',
-  }).format(new Date(timestampMs));
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(timestampMs));
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')} ${value('hour')}:${value('minute')}`;
 }
 
 function isInlineHighConfidenceValue(

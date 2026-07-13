@@ -61,7 +61,7 @@ export function useReengagementCandidates(options?: {
   endDate?: string;
   status?: string;
   scenarioCode?: string;
-  sessionId?: string;
+  keyword?: string;
   pendingOnly?: boolean;
   limit?: number;
   offset?: number;

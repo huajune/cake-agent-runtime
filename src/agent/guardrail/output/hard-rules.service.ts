@@ -17,6 +17,7 @@ import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-co
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectHumanServicePhraseLeak, detectOutputLeak } from './rules/internal-info-leaks.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
+import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from './output-rule.types';
 import { OUTPUT_RULE_CATALOG, type OutputRuleCatalogMetadata } from './rules/output-rule-catalog';
@@ -145,6 +146,15 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
     }
 
+    const summerWorkerAlternativeUpsell = detectSummerWorkerAlternativeUpsell(
+      text,
+      toolCalls,
+      params.userMessage,
+    );
+    if (summerWorkerAlternativeUpsell) {
+      contradictions.push(this.withRulePolicy(summerWorkerAlternativeUpsell));
+    }
+
     for (const rule of this.rules) {
       if (!rule.keywords.test(text)) continue;
       if (rule.ignorePredicate?.(text, toolCalls)) continue;
@@ -260,6 +270,7 @@ export class HardRulesService {
         feedbackToGenerator: sendable
           ? ''
           : `上一版回复命中 ${contradiction.ruleId}，当前文本不可发送。请按业务事实重写，只输出候选人可见回复。`,
+        repairToolNames: [],
       };
     }
 
@@ -270,6 +281,7 @@ export class HardRulesService {
       dataSensitivity: contradiction.dataSensitivity ?? policy.dataSensitivity,
       feedbackPolicy: contradiction.feedbackPolicy ?? policy.feedbackPolicy,
       feedbackToGenerator: contradiction.feedbackToGenerator ?? policy.feedbackToGenerator,
+      repairToolNames: contradiction.repairToolNames ?? policy.repairToolNames,
     };
   }
 }

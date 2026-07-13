@@ -59,6 +59,8 @@ export interface OutputRulePolicy {
   dataSensitivity: GuardrailDataSensitivity;
   feedbackPolicy: GuardrailFeedbackPolicy;
   feedbackToGenerator: string;
+  /** replan 时允许恢复阶段调用的最小工具集合；非 replan 规则默认为空。 */
+  repairToolNames?: readonly string[];
 }
 
 /**
@@ -78,6 +80,7 @@ export interface RuleContradiction {
   feedbackPolicy?: GuardrailFeedbackPolicy;
   repairMode?: GuardrailRepairMode;
   feedbackToGenerator?: string;
+  repairToolNames?: readonly string[];
 }
 
 /**

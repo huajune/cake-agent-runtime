@@ -62,7 +62,7 @@ export class ReengagementQueryService {
     endDate?: string;
     status?: string;
     scenarioCode?: string;
-    sessionId?: string;
+    keyword?: string;
     pendingOnly?: string;
     limit?: string;
     offset?: string;
@@ -72,7 +72,7 @@ export class ReengagementQueryService {
       endDate: query.endDate ? this.dayEnd(query.endDate) : undefined,
       status: this.parseStatus(query.status),
       scenarioCode: query.scenarioCode,
-      sessionId: query.sessionId,
+      keyword: query.keyword?.trim() || undefined,
       pendingOnly: query.pendingOnly === 'true',
       limit: this.parsePositiveInt(query.limit),
       offset: this.parsePositiveInt(query.offset),
