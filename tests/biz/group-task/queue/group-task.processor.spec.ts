@@ -39,6 +39,7 @@ describe('GroupTaskProcessor', () => {
     setex: jest.Mock;
     get: jest.Mock;
     exists: jest.Mock;
+    setNx: jest.Mock;
     del: jest.Mock;
     getClient: jest.Mock;
   };
@@ -83,6 +84,7 @@ describe('GroupTaskProcessor', () => {
       setex: jest.fn().mockResolvedValue(undefined),
       get: jest.fn().mockResolvedValue(null),
       exists: jest.fn().mockResolvedValue(0),
+      setNx: jest.fn().mockResolvedValue(true),
       del: jest.fn().mockResolvedValue(1),
       getClient: jest.fn(),
     };
@@ -284,9 +286,9 @@ describe('GroupTaskProcessor', () => {
 
       const sendCalls = queueMock.add.mock.calls.filter((c) => c[0] === GroupTaskJobName.SEND);
       expect(sendCalls).toHaveLength(2);
-      // delay 按 globalIndex 错峰
+      // 跨群间隔由 send worker 串行控制，Bull 不再叠加 delay
       expect(sendCalls[0][2].delay).toBe(0);
-      expect(sendCalls[1][2].delay).toBe(60_000);
+      expect(sendCalls[1][2].delay).toBe(0);
       // 每个 send 的 msgRedisKey 相同，读同一份缓存
       expect(sendCalls[0][1].msgRedisKey).toBe(groupTaskMsgKey('exec-1', '上海_餐饮'));
       expect(sendCalls[0][1].msgRedisKey).toBe(sendCalls[1][1].msgRedisKey);
@@ -315,6 +317,7 @@ describe('GroupTaskProcessor', () => {
       msgRedisKey: groupTaskMsgKey('exec-1', '上海_餐饮'),
       execDate: '20260420',
       totalGroups: 1,
+      sendDelayMs: 300_000,
     };
 
     it('should short-circuit when daily idempotency key already exists', async () => {
@@ -359,6 +362,20 @@ describe('GroupTaskProcessor', () => {
         '1',
       );
       expect(brandRotation.recordPushedBrand).toHaveBeenCalledWith('r-1', '必胜客');
+    });
+
+    it('should wait a random 5-10 minutes before a subsequent group', async () => {
+      redisMock.setNx.mockResolvedValue(false);
+      redisMock.get.mockResolvedValue({ message: 'hi', summary: 's' });
+      const delaySpy = jest
+        .spyOn(processor as never, 'delay')
+        .mockResolvedValue(undefined as never);
+      const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+      await invokeHandler(GroupTaskJobName.SEND, baseSend);
+
+      expect(delaySpy).toHaveBeenCalledWith(450_000);
+      randomSpy.mockRestore();
     });
 
     it('should rethrow without setting idempotency key when send fails (Bull retry can then re-run)', async () => {

@@ -18,6 +18,7 @@ import {
   SendJobData,
   SendTarget,
   SummarizeJobData,
+  groupTaskDispatchStartedKey,
   groupTaskDailySentKey,
   groupTaskMetaKey,
   groupTaskMsgKey,
@@ -37,6 +38,10 @@ import { PartTimeJobStrategy } from '../strategies/part-time-job.strategy';
 import { StoreManagerStrategy } from '../strategies/store-manager.strategy';
 import { WorkTipsStrategy } from '../strategies/work-tips.strategy';
 import { NotificationStrategy } from '../strategies/notification.strategy';
+import {
+  INTRA_GROUP_MESSAGE_DELAY_MS,
+  resolveHumanizedDelayMs,
+} from '../utils/humanized-delay.util';
 
 /**
  * 群任务队列处理器
@@ -280,12 +285,13 @@ export class GroupTaskProcessor implements OnModuleInit {
 
     // 预估整次 exec 耗时：
     //   send worker concurrency=1 → N 个 send 任务全部串行；
-    //   每个 send 在内部还会被 resolveHumanizedDelayMs 额外 sleep 1.5-3x sendDelayMs
-    //   （见 notification-sender.service.ts::sendEnterpriseGroupMessage）。
-    // 必须按最坏情况 (3x) 估计整体完成时间，否则 summarize 在发送中途就开跑，
+    //   除首群外，每群发送前随机等待 1~2x sendDelayMs；
+    //   同群最多按“主消息 + 卡片 + 跟随文本”估算两次 40s 间隔。
+    // 必须按最坏情况估计整体完成时间，否则 summarize 在发送中途就开跑，
     // 会把还没写结果快照的群误报成 "未收到发送结果" 并写入幂等失败结果。
-    const HUMANIZED_MAX_FACTOR = 3;
-    const serializedSendMs = groups.length * sendDelayMs * HUMANIZED_MAX_FACTOR;
+    const serializedSendMs =
+      Math.max(0, groups.length - 1) * sendDelayMs * 2 +
+      groups.length * INTRA_GROUP_MESSAGE_DELAY_MS * 2;
     const summarizeDelayMs = serializedSendMs + sendDelayMs * 2 + 30_000;
     await this.enqueueSummarize(meta, summarizeDelayMs);
 
@@ -381,7 +387,7 @@ export class GroupTaskProcessor implements OnModuleInit {
     };
     await this.redisService.setex(msgRedisKey, GROUP_TASK_CACHE_TTL_SECONDS, cache);
 
-    for (const { group, globalIndex } of targets) {
+    for (const { group } of targets) {
       const sendJob: SendJobData = {
         execId,
         type,
@@ -392,10 +398,12 @@ export class GroupTaskProcessor implements OnModuleInit {
         msgRedisKey,
         execDate,
         totalGroups,
+        sendDelayMs,
       };
       await this.queue.add(GroupTaskJobName.SEND, sendJob, {
         jobId: `${execId}:send:${group.imRoomId}`,
-        delay: globalIndex * sendDelayMs,
+        // 发送 worker 内部串行等待，这里不再叠加 Bull delay。
+        delay: 0,
         attempts: 3,
         backoff: { type: 'exponential', delay: 15_000 },
         removeOnComplete: { age: 7 * 24 * 60 * 60, count: 1000 },
@@ -411,7 +419,8 @@ export class GroupTaskProcessor implements OnModuleInit {
   // ==================== Send ====================
 
   private async handleSend(job: Job<SendJobData>): Promise<void> {
-    const { execId, type, dryRun, group, groupKey, msgRedisKey, execDate, timeSlot } = job.data;
+    const { execId, type, dryRun, group, groupKey, msgRedisKey, execDate, timeSlot, sendDelayMs } =
+      job.data;
 
     // 幂等守护：跨 exec、跨重试共享。只在"成功后"写入，失败留白可重试。
     const dailyKey = groupTaskDailySentKey(type, execDate, timeSlot, group.imRoomId);
@@ -426,6 +435,25 @@ export class GroupTaskProcessor implements OnModuleInit {
         updatedAt: Date.now(),
       });
       return;
+    }
+
+    // 首个实际开始发送的群立即执行；后续群均在上一个 send job
+    // 完成后再随机等待 5~10 分钟。setNx 使进程重启后也不会把中途群误当首群。
+    const isFirstGroup = await this.redisService.setNx(
+      groupTaskDispatchStartedKey(execId),
+      '1',
+      GROUP_TASK_CACHE_TTL_SECONDS,
+    );
+    if (!isFirstGroup) {
+      // 兼容发版前已入队、尚未带 sendDelayMs 的旧 job。
+      const interGroupBaseDelayMs =
+        Number.isFinite(sendDelayMs) && sendDelayMs > 0 ? sendDelayMs : 300_000;
+      const interGroupDelayMs = resolveHumanizedDelayMs(interGroupBaseDelayMs, {
+        minFactor: 1,
+        maxFactor: 2,
+      });
+      this.logger.log(`[send] ${group.groupName} 跨群发送前等待 ${interGroupDelayMs}ms`);
+      await this.delay(interGroupDelayMs);
     }
 
     const cache = await this.redisService.get<GroupTaskMessageCache>(msgRedisKey);
@@ -468,6 +496,10 @@ export class GroupTaskProcessor implements OnModuleInit {
       });
       throw error;
     }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // ==================== Summarize ====================

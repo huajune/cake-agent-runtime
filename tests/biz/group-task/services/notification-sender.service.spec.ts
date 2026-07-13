@@ -69,6 +69,7 @@ describe('NotificationSenderService', () => {
     }).compile();
 
     service = module.get<NotificationSenderService>(NotificationSenderService);
+    jest.spyOn(service as never, 'delay').mockResolvedValue(undefined as never);
     messageSenderService = module.get(GROUP_MESSAGE_SENDER) as jest.Mocked<GroupMessageSender>;
     opsNotifierService = module.get(OpsNotifierService) as jest.Mocked<OpsNotifierService>;
   });
@@ -164,7 +165,7 @@ describe('NotificationSenderService', () => {
       ).rejects.toThrow('[兼职群] 小程序卡片发送失败 (测试群): enterprise api failed');
     });
 
-    it('should apply a humanized delay before enterprise sends when delay is configured', async () => {
+    it('should wait 40s before a follow-up message in the same group', async () => {
       const delayedService = new NotificationSenderService(
         {
           get: jest.fn((key: string, defaultValue?: string) => {
@@ -179,11 +180,9 @@ describe('NotificationSenderService', () => {
       const delaySpy = jest
         .spyOn(delayedService as never, 'delay')
         .mockResolvedValue(undefined as never);
-      const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
-
       await delayedService.sendTextToGroup(mockGroup, 'Hello group', false);
 
-      expect(delaySpy).toHaveBeenCalledWith(4500);
+      expect(delaySpy).toHaveBeenCalledWith(40_000);
       expect(messageSenderService.sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           token: 'test-enterprise-token',
@@ -193,20 +192,34 @@ describe('NotificationSenderService', () => {
           payload: { text: 'Hello group' },
         }),
       );
-
-      randomSpy.mockRestore();
     });
 
-    it('should default group task send delay to 120s when config is absent', () => {
-      const defaultDelayService = new NotificationSenderService(
+    it('should wait 40s before the mini program card in the same group', async () => {
+      const delayedService = new NotificationSenderService(
         {
-          get: jest.fn((_: string, defaultValue?: string) => defaultValue ?? ''),
+          get: jest.fn((key: string, defaultValue?: string) => {
+            if (key === 'STRIDE_ENTERPRISE_TOKEN') return 'test-enterprise-token';
+            if (key === 'MINIPROGRAM_APPID') return 'wx-test-appid';
+            if (key === 'MINIPROGRAM_USERNAME') return 'gh_test_username';
+            return defaultValue ?? '';
+          }),
         } as unknown as ConfigService,
         messageSenderService,
         opsNotifierService,
       );
+      const delaySpy = jest
+        .spyOn(delayedService as never, 'delay')
+        .mockResolvedValue(undefined as never);
 
-      expect((defaultDelayService as unknown as { sendDelayMs: number }).sendDelayMs).toBe(120000);
+      await delayedService.sendToGroup(
+        mockGroup,
+        '兼职岗位通知',
+        GroupTaskType.PART_TIME_JOB,
+        false,
+      );
+
+      expect(delaySpy).toHaveBeenCalledTimes(1);
+      expect(delaySpy).toHaveBeenCalledWith(40_000);
     });
   });
 

@@ -212,7 +212,7 @@ Cron 定时触发 / API 手动触发
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `GROUP_TASK_TOKENS` | - | 小组 token 映射（格式: `名称:token,名称:token`） |
-| `GROUP_TASK_SEND_DELAY_MS` | `60000` | 群任务发送基础间隔（毫秒，实际会做人类化随机抖动） |
+| `GROUP_TASK_SEND_DELAY_MS` | `300000` | 不同群间最小间隔（实际随机 1~2x，即 5~10 分钟）；同群连续消息固定间隔 40 秒 |
 | `MINIPROGRAM_APPID` | - | 小程序 appid（兼职群卡片） |
 | `MINIPROGRAM_USERNAME` | - | 小程序 username |
 | `MINIPROGRAM_THUMB_URL` | - | 小程序封面图 URL |
