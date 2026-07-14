@@ -156,15 +156,15 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.BLOCK,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
-      '拦住把户籍、籍贯、民族、专业等高敏感筛选条件说出口，或者拿这些条件直接拒绝候选人的回复。',
-    riskGoal: '防止户籍/籍贯/民族/专业等歧视性筛选条件外露。',
+      '拦住把户籍、籍贯、民族、专业、婚育等高敏感筛选条件说出口，或者拿这些条件直接拒绝候选人的回复。',
+    riskGoal: '防止户籍/籍贯/民族/专业/婚育等歧视性筛选条件外露。',
     exogenousSignal: '歧视筛选词词库。',
     residualRisk: '隐晦地域暗示需要 badcase 持续补词。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     dataSensitivity: GUARDRAIL_DATA_SENSITIVITY.HIGH,
     feedbackPolicy: GUARDRAIL_FEEDBACK_POLICY.REDACTED,
     feedbackToGenerator:
-      '上一版回复包含高敏感筛选条件或以高敏感属性作为拒绝理由，当前文本禁止发送。请重新生成：不要提及户籍、籍贯、民族、专业等门槛；不要解释具体不通过原因；核对专业只能开放式问"你学的什么专业"，不得把排除条件塞进问句；改为中性承接，可以推荐其他岗位、继续收集必要信息，或说明需要同事确认。',
+      '上一版回复包含高敏感筛选条件或以高敏感属性作为拒绝理由，当前文本禁止发送。请重新生成：不要提及户籍、籍贯、民族、专业、婚育等门槛；不要解释具体不通过原因；核对专业只能开放式问"你学的什么专业"，不得把排除条件塞进问句；婚育信息禁止询问、复述或确认；改为中性承接，可以推荐其他岗位、继续收集必要信息，或说明需要同事确认。',
   },
   {
     id: 'proactive_insurance_policy_mention',

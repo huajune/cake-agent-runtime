@@ -34,6 +34,13 @@ describe('HardRulesService', () => {
       '筛选项：专业（非新媒、食品）',
       // 倒序拒斥式：专业后紧跟拒绝后果（2026-07-06 review：收窄倒序支后保留的真阳）
       '不是相关专业的做不了',
+      // 婚育类禁止对外询问、展示或作为拒绝理由
+      '这个岗位的婚育要求是已婚已育',
+      '方便说下你的婚姻状况吗？',
+      '你现在是未婚还是已婚呢？',
+      '你结婚了吗，现在有孩子吗？',
+      '这家仅限已育人员',
+      '你的婚育状况不符合门店要求',
     ];
     it.each(hitCases)('flags and blocks discriminatory disclosure: %s', (reply) => {
       const result = check(reply);
@@ -68,6 +75,9 @@ describe('HardRulesService', () => {
       // 倒序安抚式："不是相关专业"后接宽慰而非拒绝后果（2026-07-06 review 误杀修复）
       '不是相关专业也没关系，这个岗位不卡专业',
       '不是相关专业也能做的，放心报',
+      // 明确没有婚育门槛的安抚句不是筛选条件外露
+      '这个岗位没有婚育要求',
+      '这家不看婚育要求，放心报名',
     ];
     it.each(passCases)('does not flag compliant phrasing: %s', (reply) => {
       const result = check(reply);

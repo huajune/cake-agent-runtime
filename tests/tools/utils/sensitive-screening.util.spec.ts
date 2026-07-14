@@ -28,6 +28,14 @@ describe('sensitive-screening util', () => {
     expect(containsSensitiveScreeningText('所学专业需说明')).toBe(true);
   });
 
+  it('detects marriage and childbearing screening conditions', () => {
+    expect(containsSensitiveScreeningText('婚育要求：已婚已育')).toBe(true);
+    expect(containsSensitiveScreeningText('婚姻状况：未婚')).toBe(true);
+    expect(containsSensitiveScreeningText('仅限已育人员')).toBe(true);
+    expect(containsSensitiveScreeningText('备孕中暂不考虑')).toBe(true);
+    expect(containsSensitiveScreeningText('已结婚且有孩子')).toBe(true);
+  });
+
   it('does not flag ordinary job text', () => {
     expect(containsSensitiveScreeningText('18-45岁，有健康证优先，排班灵活')).toBe(false);
     expect(containsSensitiveScreeningText('需要长期稳定，能上晚班')).toBe(false);
