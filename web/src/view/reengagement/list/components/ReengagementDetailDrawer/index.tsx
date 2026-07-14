@@ -99,6 +99,7 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   composer_forbidden_job_detail: '轻量复聊里出现了薪资、班次或岗位详情，已拦截',
   composer_missing_expected_ask: '生成文案没有命中这个场景需要追问的要点，已拦截',
   candidate_cancelled_interview_in_chat: '候选人在聊天中已明确取消或无法参加面试，已停止触达',
+  reengagement_agent_skipped: '复聊 Agent 根据当前上下文决定不发送，具体依据见生成轨迹',
   reengagement_agent_error: '复聊生成调用异常',
 };
 

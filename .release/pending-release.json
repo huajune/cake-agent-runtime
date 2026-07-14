@@ -1,9 +1,37 @@
 {
   "baseVersion": "10.8.0",
-  "nextVersion": "10.8.0",
+  "nextVersion": "10.9.0",
   "updatedAt": "2026-07-14",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "546",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/546",
+      "title": "修正收资优先级与场景判定",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-14",
+      "businessUpdates": [
+        "修正收资优先级与场景判定"
+      ],
+      "summary": [
+        "修正收资优先级与场景判定"
+      ],
+      "features": [],
+      "fixes": [
+        "修正收资优先级与场景判定"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm ci:check`",
+        "335 个测试套件通过（1 skipped）",
+        "4760 个测试通过（6 skipped）",
+        "Web 与服务端构建、类型检查、Lint、Prettier 均通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.8.0",
     "date": "2026-07-14",

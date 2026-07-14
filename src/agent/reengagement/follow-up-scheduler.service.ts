@@ -204,7 +204,19 @@ export class FollowUpSchedulerService {
       return { scheduled: false, reason: 'duplicate_job', jobId };
     }
 
-    await this.removeSupersededPendingJobsBeforeEnqueue(input, scenario, jobId);
+    const pendingCleanup = await this.removeSupersededPendingJobsBeforeEnqueue(
+      input,
+      scenario,
+      jobId,
+    );
+    if (pendingCleanup.blockedByBookingIncomplete) {
+      this.tracking.trackScheduleSkipped(identity, 'dominated_by_booking_incomplete');
+      return {
+        scheduled: false,
+        reason: 'dominated_by_booking_incomplete',
+        jobId,
+      };
+    }
 
     try {
       await this.queue.add(
@@ -290,6 +302,13 @@ export class FollowUpSchedulerService {
     try {
       const job = await this.queue.getJob(jobId);
       if (!job) return false;
+      const state = await job.getState();
+      if (state === 'stuck' || !PENDING_JOB_STATUSES.includes(state)) {
+        this.logger.debug(
+          `[reengagement] jobId=${jobId} 当前状态=${state}，不是待触发任务，跳过 superseded 标记`,
+        );
+        return false;
+      }
       await job.remove();
       this.trackRemovedPendingJob(job, jobId, undefined, reason ?? 'superseded');
       this.logger.log(
@@ -332,7 +351,7 @@ export class FollowUpSchedulerService {
     input: ScheduleFollowUpInput,
     scenario: FollowUpScenario,
     currentJobId: string,
-  ): Promise<number> {
+  ): Promise<{ removed: number; blockedByBookingIncomplete: boolean }> {
     let pendingJobs: Array<Job<FollowUpJob>> = [];
     try {
       pendingJobs = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
@@ -342,7 +361,19 @@ export class FollowUpSchedulerService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return 0;
+      return { removed: 0, blockedByBookingIncomplete: false };
+    }
+
+    const blockedByBookingIncomplete = pendingJobs.some(
+      (job) =>
+        input.scenarioCode !== 'booking_incomplete' &&
+        scenario.phase === 'pre_booking' &&
+        job.data?.sessionRef.sessionId === input.sessionRef.sessionId &&
+        job.data.scenarioCode === 'booking_incomplete',
+    );
+    if (blockedByBookingIncomplete) {
+      this.logger.debug(`[reengagement] 收资任务优先，跳过低阶任务 ${currentJobId}`);
+      return { removed: 0, blockedByBookingIncomplete: true };
     }
 
     let removed = 0;
@@ -368,7 +399,7 @@ export class FollowUpSchedulerService {
         );
       }
     }
-    return removed;
+    return { removed, blockedByBookingIncomplete: false };
   }
 
   private trackRemovedPendingJob(
@@ -407,6 +438,14 @@ export class FollowUpSchedulerService {
     if (!candidateScenario) return false;
 
     if (scenario.phase === 'pre_booking') {
+      // 收资开始后，候选人可能继续追问已选岗位的薪资、排班或福利。此类释疑产生的
+      // 低阶锚点不能覆盖 booking_incomplete；只有新的收资锚点或报名后场景才能收敛它。
+      if (
+        candidate.scenarioCode === 'booking_incomplete' &&
+        input.scenarioCode !== 'booking_incomplete'
+      ) {
+        return false;
+      }
       return candidateScenario.phase === 'pre_booking';
     }
 
