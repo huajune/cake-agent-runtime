@@ -1,8 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { ToolSet } from 'ai';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import { type GeneratorToolMode } from './generator.types';
-import { computeResultCount, computeToolCallStatus, SIDE_EFFECT_TOOLS } from './tool-call-analysis';
+import { type GeneratorToolMode } from '../generator.types';
+import {
+  computeResultCount,
+  computeToolCallStatus,
+  SIDE_EFFECT_TOOLS,
+} from '../tool-call-analysis';
 
 /**
  * 工具集包装（PreparationService 的纯函数辅助层）：

@@ -1,4 +1,4 @@
-import { type GeneratorInvokeParams } from './generator.types';
+import { type GeneratorInvokeParams } from '../generator.types';
 
 /**
  * HC-1 revise/repair 与 reengagement 主动回合的 prompt 指令构建（纯函数）。

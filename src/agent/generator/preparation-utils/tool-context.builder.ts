@@ -12,9 +12,9 @@ import {
   type RecommendedJobSummary,
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
-import { ContextService } from './context/context.service';
-import { type GeneratorInvokeParams } from './generator.types';
-import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
+import { ContextService } from '../context/context.service';
+import { type GeneratorInvokeParams } from '../generator.types';
+import { resolveGeocodeLocationAnchor } from '../geocode-location-anchor.util';
 import { type TurnStartMemory } from './memory-block.formatter';
 
 /**

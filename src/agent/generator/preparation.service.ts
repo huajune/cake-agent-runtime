@@ -23,25 +23,25 @@ import {
   type AgentMemorySnapshot,
 } from '../generator/generator.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import { CRITICAL_TURN_GUARD_RULES } from './critical-turn-guard.rules';
+import { CRITICAL_TURN_GUARD_RULES } from './preparation-utils/critical-turn-guard.rules';
 import {
   buildMemoryBlock,
   formatBookingContext,
   type RealtimeGroupStatus,
   type TurnStartMemory,
-} from './memory-block.formatter';
+} from './preparation-utils/memory-block.formatter';
 import {
   normalizeConversation,
   trailingUserContent,
   truncateToCharBudget,
-} from './conversation-normalizer';
+} from './preparation-utils/conversation-normalizer';
 import {
   buildProactiveDirective,
   buildReviseNotice,
   buildReviseUserDirective,
-} from './revise-directives';
-import { resolveToolsForMode, wrapToolsWithTiming } from './tool-set.util';
-import { buildToolContext } from './tool-context.builder';
+} from './preparation-utils/revise-directives';
+import { resolveToolsForMode, wrapToolsWithTiming } from './preparation-utils/tool-set.util';
+import { buildToolContext } from './preparation-utils/tool-context.builder';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -75,7 +75,7 @@ export interface PreparedAgentContext {
  * 回合准备编排：记忆召回 → 消息归一化 → memoryBlock/system prompt 组装 →
  * 工具集构建 → 观测快照。
  *
- * 纯函数辅助层按职责拆在同目录：memory-block.formatter（记忆渲染）、
+ * 纯函数辅助层按职责拆在 preparation-utils/ 子目录：memory-block.formatter（记忆渲染）、
  * conversation-normalizer（消息归一化）、revise-directives（HC-1/主动回合指令）、
  * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）、
  * critical-turn-guard.rules（动态硬禁令规则表）。本类只保留需要 IO/DI 的编排逻辑。
