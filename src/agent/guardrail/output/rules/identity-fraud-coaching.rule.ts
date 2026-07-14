@@ -31,6 +31,8 @@ const IDENTITY_REWRITE_THEN_REGISTER_PATTERN = new RegExp(
 const REGISTER_AS_IDENTITY_PATTERN = new RegExp(
   `${REGISTER_VERB}[^。！？\\n]{0,8}(?:成|为|按)[^。！？\\n]{0,4}${IDENTITY_REWRITE_TARGET}`,
 );
+const AGENT_AUTOFILL_IDENTITY_PATTERN =
+  /(?:身份[^。！？\n]{0,8})?(?:帮你|给你|替你)[^。！？\n]{0,8}(?:填|登记|录入)(?:了|成|为|成了)?[^。！？\n]{0,6}(?:社会人士|非学生|不是学生)/;
 
 // "为了(顺利)通过(系统)审核" 的规避语境 + 同句身份改写登记：无论方向，一律违规。
 // 必须同时出现身份改写目标，避免把“通过审核请如实填写”之类诚信提醒误判为教唆。
@@ -55,10 +57,9 @@ const COERCED_SUMMER_DENIAL_PATTERN =
  * 触发分三档：
  * 1. 审核规避语境（"为了过系统审核…登记"）→ 无条件违规；
  * 2. 隐瞒身份建议（"别说你是暑假工"）→ 无条件违规；
- * 3. 身份改写登记（"按非暑假工登记/登记成社会人士"）→ 仅当本轮 precheck 存在
- *    暑假工守卫状态（blocked/needs_confirmation）时违规——守卫在场说明身份
- *    未解或已确认暑假工，此时改写登记就是绕守卫；候选人真是非暑假工时守卫
- *    返回 null，如实登记不受影响。
+ * 3. 身份改写登记（"按非暑假工登记/登记成社会人士"）→ 本轮 precheck 存在
+ *    暑假工守卫，或 bookingChecklist 仍把身份列为 missing 时违规。候选人身份已由
+ *    precheck 明确确认时，如实登记不受影响。
  */
 export function detectIdentityMisregistrationCoaching(
   text: string,
@@ -68,19 +69,29 @@ export function detectIdentityMisregistrationCoaching(
   const concealment = IDENTITY_CONCEALMENT_PATTERN.test(text);
   const coercedSummerDenial = COERCED_SUMMER_DENIAL_PATTERN.test(text);
   const identityRewrite =
-    IDENTITY_REWRITE_THEN_REGISTER_PATTERN.test(text) || REGISTER_AS_IDENTITY_PATTERN.test(text);
+    IDENTITY_REWRITE_THEN_REGISTER_PATTERN.test(text) ||
+    REGISTER_AS_IDENTITY_PATTERN.test(text) ||
+    AGENT_AUTOFILL_IDENTITY_PATTERN.test(text);
 
   if (!auditEvasion && !concealment && !coercedSummerDenial && !identityRewrite) return null;
 
   if (!auditEvasion && !concealment && !coercedSummerDenial) {
-    // 第 3 档需要守卫在场作为"身份不实"的结构化佐证
-    // 扫描本轮全部 precheck，而不是只看最后一次：模型可能先命中守卫，随后通过代填身份
-    // 再调一次把最后结果洗成 ready_to_book。
+    // 第 3 档需要 precheck 作为"身份尚未确认/身份冲突"的结构化佐证。
+    // 扫描本轮全部 precheck，而不是只看最后一次：模型可能先命中守卫或 missingFields，
+    // 随后通过代填身份再调一次把最后结果洗成 ready_to_book。
     const guardActive = toolCalls.some((call) => {
       if (call.toolName !== 'duliday_interview_precheck' || !call.result) return false;
       const result = asRecord(call.result);
       const guard = asRecord(result?.temporarySummerWorkerGuard);
-      return guard?.status === 'blocked_non_summer_job' || guard?.status === 'needs_confirmation';
+      const checklist = asRecord(result?.bookingChecklist);
+      const missingFields = Array.isArray(checklist?.missingFields) ? checklist.missingFields : [];
+      const identityFieldGuard = asRecord(result?.identityFieldGuard);
+      return (
+        guard?.status === 'blocked_non_summer_job' ||
+        guard?.status === 'needs_confirmation' ||
+        missingFields.some((field) => field === '身份' || field === '是否学生') ||
+        identityFieldGuard?.mustAskCandidate === true
+      );
     });
     if (!guardActive) return null;
   }
@@ -91,7 +102,7 @@ export function detectIdentityMisregistrationCoaching(
       ? '建议候选人隐瞒暑假工/学生身份'
       : coercedSummerDenial
         ? '要求候选人复述“不是暑假工”以完成登记/预约'
-        : '暑假工守卫在场时建议按非暑假工/社会人士口径登记';
+        : '身份仍是 precheck 缺失字段时，Agent 擅自代填非学生/社会人士口径';
   return {
     ruleId: 'identity_misregistration_coaching',
     label:

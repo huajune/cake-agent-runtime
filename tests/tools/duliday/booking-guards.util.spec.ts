@@ -191,6 +191,41 @@ describe('runBookingGuards · hard-requirements', () => {
     });
   });
 
+  describe('student conflict · batch_6a559b7ace406a6aeedf1f8b_1783995721291', () => {
+    it('blocks booking when 岗位仅接受社会人士 but candidate is student', () => {
+      const job = makeJob({ hiringRequirement: { figure: '社会人士' } });
+      const result = runBookingGuards({
+        job,
+        name: realName,
+        interviewTime,
+        candidateIsStudent: true,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?._outcome).toContain('学生身份');
+      expect(result?.errorType).toBe('booking.rejected');
+    });
+
+    it('passes when candidate is social or job accepts both identities', () => {
+      expect(
+        runBookingGuards({
+          job: makeJob({ hiringRequirement: { figure: '社会人士' } }),
+          name: realName,
+          interviewTime,
+          candidateIsStudent: false,
+        }),
+      ).toBeNull();
+      expect(
+        runBookingGuards({
+          job: makeJob({ hiringRequirement: { figure: '学生,社会人士' } }),
+          name: realName,
+          interviewTime,
+          candidateIsStudent: true,
+        }),
+      ).toBeNull();
+    });
+  });
+
   it('combines: blocks on gender conflict before reaching healthCert check', () => {
     const job = makeJob({
       hiringRequirement: {

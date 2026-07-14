@@ -527,6 +527,15 @@ export class SpongeService {
       this.logger.warn(`读取工单缓存失败 workOrderId=${workOrderId}: ${this.errorMessage(error)}`);
     }
 
+    return await this.getWorkOrderById(workOrderId, tokenContext);
+  }
+
+  /** 绕过 Redis 缓存读取工单最新状态，并用结果刷新缓存。 */
+  async getWorkOrderById(
+    workOrderId: number,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<SignupWorkOrderItem | null> {
+    const cacheKey = this.workOrderCacheKey(workOrderId);
     let result: SignupWorkOrdersResult;
     try {
       result = await this.fetchSignupWorkOrders({ workOrderId }, tokenContext);

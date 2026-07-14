@@ -50,6 +50,8 @@ export interface FollowUpScenario {
   stopUnless: (state: AuthoritativeSessionState) => boolean;
   /** 语气与禁止项（不夸大/不承诺/不骚扰/拒绝即止）。 */
   generationPolicy: string;
+  /** 允许注入本场景 prompt 的结构化事实标签；近期对话不受此白名单影响。 */
+  relevantFactLabels: readonly string[];
   /** 场景级灰度默认值：运行时以托管配置 reengagementScenarioRollout 为准，未配置时回退此值。 */
   defaultRolloutEnabled: boolean;
   /** 该场景触发后应取消的低优先级待触达场景，由 scheduler 统一解析 jobId。 */
@@ -90,6 +92,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     stopUnless: () => true, // 通用停止条件（已回/terminal）已在 shouldStop 覆盖
     generationPolicy:
       '优先使用“还在看机会吗”，再自然询问候选人目前在哪个区域、商圈或地铁站附近，说明可以帮忙看看附近岗位；不要使用“求职意向”这个词，不要问“在忙吗”“怎么没回”，不夸大、不承诺、不催促',
+    relevantFactLabels: ['意向城市', '意向区域', '意向地点'],
     defaultRolloutEnabled: true,
     canonicalAnchorEventId: 'opening',
   },
@@ -108,6 +111,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     // 全链路无生产者（微信定位消息只被解析成文本进对话流），恒 undefined 属死代码，已删。
     stopUnless: () => true,
     generationPolicy: '说明发位置的好处（就近推荐），不施压',
+    relevantFactLabels: ['意向城市', '意向区域', '意向地点'],
     defaultRolloutEnabled: false,
     supersedes: ['opening_no_reply'],
   },
@@ -124,6 +128,22 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     stopUnless: (state) => state.presentedStores.length > 0,
     generationPolicy:
       '简短承接近期对话里已经明确推荐且满足条件的岗位、门店或关键条件，帮助候选人确认在说哪个机会；只能复述已有证据，不新增或改写细节，然后只询问考虑得如何或是否感兴趣。禁止重新查岗，禁止说暂无岗位，禁止询问换品牌、换岗位、换区域或换城市',
+    relevantFactLabels: [
+      '应聘门店',
+      '应聘岗位',
+      '用工形式',
+      '意向品牌',
+      '意向薪资',
+      '意向岗位',
+      '意向班次',
+      '意向城市',
+      '意向区域',
+      '意向地点',
+      '短期工意向',
+      '可用时间窗口',
+      '结构化排班约束',
+      '最早可面试日期',
+    ],
     defaultRolloutEnabled: false,
   },
   {
@@ -141,6 +161,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     stopUnless: () => true,
     generationPolicy:
       '只提醒继续补充资料、说明补齐后便于推进约面；不要猜具体缺少哪些字段，不使用“现在补”“尽快发”等催促表达',
+    relevantFactLabels: [],
     defaultRolloutEnabled: true,
   },
   {
@@ -160,7 +181,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     requiredEvidence: ['terminal', 'interviewAt'],
     stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
     generationPolicy:
-      '必须按状态摘要里的面试形式生成：AI 面试说明无需到店，提醒按面试通知的入口和要求在线完成，不提门店、到店或携带证件；线下面试才提醒时间、地点和已有证据中的证件；仅写“线上面试”但未明确 AI 时，不得说成 AI 面试。使用中性表达，不索取新资料',
+      '必须按状态摘要里的面试形式生成：AI 面试说明无需到店，提醒按面试通知的入口和要求在线完成，不提门店、到店或携带证件；线下面试才提醒时间、地点和已有证据中的证件；仅写“线上面试”但未明确 AI 时，不得说成 AI 面试。若状态摘要明确写着“工单未提供，不得猜测”，只能中性提醒候选人按面试通知中的时间和要求参加，不得提线上、线下、到店、地址、入口、材料或证件。使用中性表达，不索取新资料',
+    relevantFactLabels: [],
     defaultRolloutEnabled: true,
     sessionCooldownExempt: true,
   },
@@ -186,6 +208,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     stopUnless: hasInterviewAt,
     generationPolicy:
       '按状态摘要里的面试形式询问：AI 面试询问是否已经完成、是否遇到问题；其他面试询问是否顺利、体验如何、是否需要协助。不要直接断言候选人已完成面试，不施压入职',
+    relevantFactLabels: [],
     defaultRolloutEnabled: false,
   },
   {
@@ -200,6 +223,23 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     requiredEvidence: [],
     stopUnless: () => true,
     generationPolicy: '简短告知有新岗位、询问是否要看；不夸大',
+    relevantFactLabels: [
+      '求职类型',
+      '用工形式',
+      '意向品牌',
+      '意向薪资',
+      '意向岗位',
+      '意向班次',
+      '可接受班次',
+      '意向城市',
+      '意向区域',
+      '意向地点',
+      '推迟意向',
+      '短期工意向',
+      '可用时间窗口',
+      '结构化排班约束',
+      '最早可面试日期',
+    ],
     defaultRolloutEnabled: false,
   },
 ];

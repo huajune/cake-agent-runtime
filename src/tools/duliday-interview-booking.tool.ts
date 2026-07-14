@@ -178,7 +178,13 @@ const inputSchema = z.object({
   prechecked: z
     .object({
       nextAction: z
-        .enum(['ready_to_book', 'collect_fields', 'confirm_date', 'date_unavailable'])
+        .enum([
+          'ready_to_book',
+          'collect_fields',
+          'confirm_date',
+          'date_unavailable',
+          'student_rejected',
+        ])
         .describe('本轮 duliday_interview_precheck 返回的 nextAction 字段，必须复制原值'),
       missingFieldsCount: z
         .number()
@@ -278,7 +284,9 @@ export function buildInterviewBookingTool(
                   ? '上一轮 precheck 仍要求继续收资，禁止直接进入 booking。回到 duliday_interview_precheck 拿 missingFields/templateText 把候选人字段收齐，再调本工具。'
                   : prechecked.nextAction === 'confirm_date'
                     ? '上一轮 precheck 要求先和候选人确认日期，禁止直接 booking。和候选人对齐 requestedDate 后重新调 precheck，nextAction=ready_to_book 才能调本工具。'
-                    : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
+                    : prechecked.nextAction === 'student_rejected'
+                      ? '上一轮 precheck 已确认候选人学生身份与岗位要求冲突，严禁继续 booking。转查接受学生的岗位；不得修改或隐瞒身份重试。'
+                      : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
               details: { prechecked },
             }),
           );
@@ -549,6 +557,7 @@ export function buildInterviewBookingTool(
             supplementAnswers,
             candidateGenderId: genderId,
             candidateHasHealthCertificate: hasHealthCertificate,
+            candidateIsStudent: resolveCandidateIsStudentForBooking(context),
           });
           if (guardFailure) {
             return markBookingFailed(context, guardFailure);
@@ -804,10 +813,6 @@ export function buildInterviewBookingTool(
               void longTermService
                 .setActiveBooking(context.corpId, context.userId, workOrderId, {
                   job_id: jobId,
-                  interview_time: interviewTime ?? null,
-                  brand_name: resolvedBrandName ?? null,
-                  store_name: resolvedStoreName ?? null,
-                  job_name: resolvedJobName ?? null,
                 })
                 .catch((err: unknown) => {
                   logger.warn(
@@ -1138,6 +1143,25 @@ function resolveUploadResumeFileName(
     if (fileName && fileUrl === uploadResume) return fileName;
   }
   return undefined;
+}
+
+function resolveCandidateIsStudentForBooking(context: ToolBuildContext): boolean | undefined {
+  const text = [context.currentUserMessage, ...collectTextParts(context.messages)]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n');
+  const identityMatches = Array.from(
+    text.matchAll(/身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*(学生|社会人士)/gu),
+  );
+  const latestIdentity = identityMatches.at(-1)?.[1];
+  if (latestIdentity === '学生') return true;
+  if (latestIdentity === '社会人士') return false;
+
+  if (/不是学生|非学生|已经?毕业|社会人士|上班族/u.test(text)) return false;
+  if (/我是学生|(?:本科|大专|高中|研究生)在读|我还在读|我在上学/u.test(text)) return true;
+
+  const sessionIdentity = context.sessionFacts?.interview_info?.is_student;
+  if (typeof sessionIdentity === 'boolean') return sessionIdentity;
+  return typeof context.profile?.is_student === 'boolean' ? context.profile.is_student : undefined;
 }
 
 function collectTextParts(value: unknown, depth = 0): string[] {

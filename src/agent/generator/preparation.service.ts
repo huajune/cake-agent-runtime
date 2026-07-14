@@ -139,7 +139,12 @@ export class PreparationService {
         enrichmentIdentity: this.buildEnrichmentIdentity(params),
       }),
       // [当前预约信息] 改由 active_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
-      this.loadBookingContext(corpId, userId, this.buildSpongeTokenContext(params)),
+      this.loadBookingContext(
+        corpId,
+        userId,
+        currentUserMessage,
+        this.buildSpongeTokenContext(params),
+      ),
       this.loadRealtimeGroupStatus(params),
     ]);
 
@@ -1342,11 +1347,13 @@ export class PreparationService {
    * 渲染 [当前预约信息]：active_booking 指针 + 海绵工单实时状态。
    *
    * 不再读 recruitment_cases 本地字段（历史 booking_id 全 NULL、状态与海绵脱节）。
-   * 任意一步失败/无指针/查不到工单时返回空串（优雅降级，不阻断本轮）。
+   * 非预约回合允许使用短缓存；预约相关回合强制直查海绵。直查暂时失败时只注入
+   * “最新预约信息确认中”的封闭提示，不使用本地业务快照，也不阻断本轮。
    */
   private async loadBookingContext(
     corpId: string,
     userId: string,
+    currentUserMessage: string,
     tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
   ): Promise<{ block: string; jobIds: number[] }> {
     try {
@@ -1354,22 +1361,34 @@ export class PreparationService {
       if (activeBookings.length === 0) return { block: '', jobIds: [] };
 
       const contexts: Array<{ block: string; jobId: number | null }> = [];
+      const requiresFreshLookup = this.requiresFreshBookingContext(currentUserMessage);
+      let unavailableCount = 0;
       for (const activeBooking of activeBookings) {
         const workOrderId = activeBooking.work_order_id;
         let workOrder: Awaited<ReturnType<typeof this.spongeService.getCachedWorkOrderById>>;
         try {
-          workOrder = tokenContext
-            ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
-            : await this.spongeService.getCachedWorkOrderById(workOrderId);
+          if (requiresFreshLookup) {
+            workOrder = tokenContext
+              ? await this.spongeService.getWorkOrderById(workOrderId, tokenContext)
+              : await this.spongeService.getWorkOrderById(workOrderId);
+          } else {
+            workOrder = tokenContext
+              ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
+              : await this.spongeService.getCachedWorkOrderById(workOrderId);
+          }
         } catch (error) {
           this.logger.warn(
             `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
+          unavailableCount += 1;
           continue;
         }
-        if (!workOrder) continue;
+        if (!workOrder) {
+          unavailableCount += 1;
+          continue;
+        }
 
         // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
         // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集。
@@ -1383,10 +1402,20 @@ export class PreparationService {
         if (block) contexts.push({ block, jobId: normalizedJobId });
       }
 
-      const block =
-        contexts.length > 0
-          ? `\n\n[当前预约信息]\n\n${contexts.map((context) => context.block).join('\n\n')}`
+      const syncingBlock =
+        requiresFreshLookup && unavailableCount > 0
+          ? [
+              '预约信息同步中：长期记忆只确认存在预约工单，但海绵暂未返回最新详情。',
+              '禁止使用历史记忆猜测品牌、门店、岗位、面试时间、地址或预约状态，也禁止重复提交报名。',
+              '候选人询问预约、改约或取消时，只能自然说明“我正在确认最新预约信息，稍等一下”；不得提及工单、海绵、缓存或系统同步。',
+            ].join('\n')
           : '';
+      const renderedContexts = [
+        ...contexts.map((context) => context.block),
+        ...(syncingBlock ? [syncingBlock] : []),
+      ];
+      const block =
+        renderedContexts.length > 0 ? `\n\n[当前预约信息]\n\n${renderedContexts.join('\n\n')}` : '';
       return {
         block,
         // 仅当 block 非空（[当前预约信息] 真进了 system prompt、模型能看到「岗位ID」）才把 jobId
@@ -1403,6 +1432,13 @@ export class PreparationService {
       );
       return { block: '', jobIds: [] };
     }
+  }
+
+  /** 预约事实会发生改约、取消和状态推进；相关回合必须绕过 5 分钟缓存读取海绵。 */
+  private requiresFreshBookingContext(currentUserMessage: string): boolean {
+    return /面试|预约|报名|改约|改期|改到|换(?:个|一)?时间|取消|不去|到店|报到|入职/u.test(
+      currentUserMessage,
+    );
   }
 
   private formatBookingContext(workOrder: SignupWorkOrderItem, index = 1): string {

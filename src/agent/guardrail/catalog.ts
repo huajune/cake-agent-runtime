@@ -26,6 +26,8 @@ import { TOOL_GUARDRAIL_CATALOG, TOOL_GUARDRAIL_IDS } from './tool/tool-guardrai
 // 整族删除（13 个 rule id）；另有 group_full_without_invite / system_status_fabrication /
 // tool_failure_success_claim / brand_name_violation 4 条下线。岗位/预约事实治理交语义档。
 const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
+  invalid_model_output:
+    'agent/guardrail/output/rules/invalid-model-output.rule.ts（HardRulesService 调度）',
   brand_alias_fuzzy_match_ignored:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   human_service_phrase_leak:

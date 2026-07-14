@@ -88,6 +88,7 @@ describe('PreparationService', () => {
 
   const mockSpongeService = {
     getCachedWorkOrderById: jest.fn(),
+    getWorkOrderById: jest.fn(),
     fetchBrandList: jest.fn(),
   };
 
@@ -107,6 +108,7 @@ describe('PreparationService', () => {
     mockLongTermService.getActiveBooking.mockResolvedValue(null);
     mockLongTermService.getActiveBookings.mockResolvedValue([]);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
+    mockSpongeService.getWorkOrderById.mockResolvedValue(null);
     mockSpongeService.fetchBrandList.mockResolvedValue([
       { id: 1, name: '肯德基', aliases: ['KFC'] },
       { id: 2, name: '奥乐齐', aliases: ['ALDI'] },
@@ -973,7 +975,7 @@ describe('PreparationService', () => {
       work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
-    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+    mockSpongeService.getWorkOrderById.mockResolvedValue({
       workOrderId: 88001,
       jobId: 527349,
       brandName: '瑞幸',
@@ -1000,7 +1002,8 @@ describe('PreparationService', () => {
         memoryBlock: expect.stringContaining('[当前预约信息]'),
       }),
     );
-    expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88001);
+    expect(mockSpongeService.getWorkOrderById).toHaveBeenCalledWith(88001);
+    expect(mockSpongeService.getCachedWorkOrderById).not.toHaveBeenCalled();
     expect(result.entryStage).toBe('onboard_followup');
     expect(result.finalPrompt).toContain('工单号: 88001');
     // 岗位ID 用于改约前先调 duliday_interview_precheck 校验新日期。
@@ -1026,7 +1029,7 @@ describe('PreparationService', () => {
       { work_order_id: 88001, linked_at: '2026-04-15T08:00:00.000Z' },
       { work_order_id: 88002, linked_at: '2026-04-15T08:10:00.000Z' },
     ]);
-    mockSpongeService.getCachedWorkOrderById.mockImplementation(async (workOrderId: number) => {
+    mockSpongeService.getWorkOrderById.mockImplementation(async (workOrderId: number) => {
       if (workOrderId === 88001) throw new Error('sponge down');
       return {
         workOrderId: 88002,
@@ -1072,7 +1075,7 @@ describe('PreparationService', () => {
       work_order_id: 88001,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
-    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+    mockSpongeService.getWorkOrderById.mockResolvedValue({
       workOrderId: 88001,
       jobId: 527349,
       brandName: '瑞幸',
@@ -1114,7 +1117,7 @@ describe('PreparationService', () => {
       linked_at: '2026-04-15T08:00:00.000Z',
     });
     // 仅有 workOrderId + jobId，无任何展示字段 → formatBookingContext 返回 ''
-    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+    mockSpongeService.getWorkOrderById.mockResolvedValue({
       workOrderId: 88002,
       jobId: 527350,
     });
@@ -1135,8 +1138,8 @@ describe('PreparationService', () => {
     expect(toolContext.isRecalledJobId?.(527350)).toBe(false);
   });
 
-  it('改约场景：缓存把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
-    // Upstash 反序列化旧缓存可能把 jobId 给成字符串；formatBookingContext 用 != null 照样渲染
+  it('改约场景：海绵把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
+    // 海绵响应结构漂移可能把 jobId 给成字符串；formatBookingContext 用 != null 照样渲染
     // 「岗位ID: 527351」让模型用，故 provenance 必须归一数字串、与之同口径，否则改约被永久误拦。
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
@@ -1149,9 +1152,9 @@ describe('PreparationService', () => {
       work_order_id: 88003,
       linked_at: '2026-04-15T08:00:00.000Z',
     });
-    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+    mockSpongeService.getWorkOrderById.mockResolvedValue({
       workOrderId: 88003,
-      jobId: '527351', // 缓存返回字符串
+      jobId: '527351',
       brandName: '瑞幸',
       currentStatus: '约面成功',
     });
@@ -1170,6 +1173,69 @@ describe('PreparationService', () => {
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     // 模型 precheck 传 number 527351，provenance 归一后应匹配放行
     expect(toolContext.isRecalledJobId?.(527351)).toBe(true);
+  });
+
+  it('预约相关回合直查海绵失败时注入同步中提示且不回退本地快照', async () => {
+    mockActiveBooking({
+      work_order_id: 88004,
+      linked_at: '2026-04-15T08:00:00.000Z',
+      job_id: 527352,
+      interview_time: '2026-04-16 14:00:00',
+      brand_name: '旧品牌',
+      store_name: '旧门店',
+      job_name: '旧岗位',
+    });
+    mockSpongeService.getWorkOrderById.mockResolvedValue(null);
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '帮我把面试改到后天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.getWorkOrderById).toHaveBeenCalledWith(88004);
+    expect(mockSpongeService.getCachedWorkOrderById).not.toHaveBeenCalled();
+    expect(result.finalPrompt).toContain('[当前预约信息]');
+    expect(result.finalPrompt).toContain('预约信息同步中');
+    expect(result.finalPrompt).toContain('我正在确认最新预约信息，稍等一下');
+    expect(result.finalPrompt).not.toContain('旧品牌');
+    expect(result.finalPrompt).not.toContain('旧门店');
+    expect(result.finalPrompt).not.toContain('2026-04-16');
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.isRecalledJobId?.(527352)).toBe(false);
+  });
+
+  it('非预约回合继续读取工单短缓存，避免每轮直查海绵', async () => {
+    mockActiveBooking({
+      work_order_id: 88005,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88005,
+      jobId: 527353,
+      brandName: '瑞幸',
+      currentStatus: '约面成功',
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '这个岗位工资多少' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88005);
+    expect(mockSpongeService.getWorkOrderById).not.toHaveBeenCalled();
+    expect(result.finalPrompt).toContain('品牌: 瑞幸');
   });
 
   it('should trim passed messages when they exceed max chars', async () => {
