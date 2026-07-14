@@ -191,8 +191,7 @@ describe('FollowUpSchedulerService', () => {
         channelIdentity: { botImId: 'bot-1' },
       },
       expect.objectContaining({
-        jobId:
-          'sess-1:interview_reminder:trace-1:booking_succeeded:interview_reminder:resolve',
+        jobId: 'sess-1:interview_reminder:trace-1:booking_succeeded:interview_reminder:resolve',
         attempts: 6,
         backoff: { type: 'exponential', delay: 10_000 },
       }),
@@ -316,6 +315,45 @@ describe('FollowUpSchedulerService', () => {
     expect(queue.add).toHaveBeenCalled();
   });
 
+  it('keeps a pending collection follow-up when a store follow-up is scheduled later', async () => {
+    const now = Date.UTC(2026, 6, 14, 4, 28, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    const keepCollection = jest.fn().mockResolvedValue(undefined);
+    queue.getJobs.mockResolvedValue([
+      {
+        id: 'sess-1:booking_incomplete:msg-1:collection_started',
+        data: {
+          sessionRef,
+          scenarioCode: 'booking_incomplete',
+          anchorEventId: 'msg-1:collection_started',
+          anchorAt: now - 10 * 60_000,
+        },
+        remove: keepCollection,
+      },
+    ]);
+
+    const result = await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'store_presented_no_reply',
+      anchorEventId: 'msg-2:store_presented',
+      anchorAt: now,
+      state: baseState({ presentedStores: [{ jobId: 528538 }] }),
+    });
+
+    expect(keepCollection).not.toHaveBeenCalled();
+    expect(tracking.trackSuperseded).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      scheduled: false,
+      reason: 'dominated_by_booking_incomplete',
+      jobId: 'sess-1:store_presented_no_reply:msg-2:store_presented',
+    });
+    expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'store_presented_no_reply' }),
+      'dominated_by_booking_incomplete',
+    );
+  });
+
   it('removes stale pre-booking and old post-booking jobs before enqueueing a new post-booking job', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     const interviewAt = now + 4 * 60 * 60_000;
@@ -397,6 +435,7 @@ describe('FollowUpSchedulerService', () => {
         anchorEventId: 'opening',
         anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
       },
+      getState: jest.fn().mockResolvedValue('delayed'),
       remove,
     });
 
@@ -432,6 +471,7 @@ describe('FollowUpSchedulerService', () => {
         anchorEventId: 'opening',
         anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
       },
+      getState: jest.fn().mockResolvedValue('waiting'),
       remove,
     });
 
@@ -445,6 +485,31 @@ describe('FollowUpSchedulerService', () => {
 
     expect(queue.getJob).toHaveBeenCalledWith('sess-1:opening_no_reply:opening');
     expect(remove).toHaveBeenCalled();
+  });
+
+  it('does not mark an already completed job as superseded', async () => {
+    const remove = jest.fn().mockResolvedValue(undefined);
+    queue.getJob.mockResolvedValue({
+      id: 'sess-1:opening_no_reply:opening',
+      data: {
+        sessionRef,
+        scenarioCode: 'opening_no_reply',
+        anchorEventId: 'opening',
+        anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+      },
+      getState: jest.fn().mockResolvedValue('completed'),
+      remove,
+    });
+
+    await expect(
+      service.removePendingJob(
+        'sess-1:opening_no_reply:opening',
+        'address_missing_supersedes_opening_no_reply',
+      ),
+    ).resolves.toBe(false);
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(tracking.trackSuperseded).not.toHaveBeenCalled();
   });
 
   it('returns false when there is no pending job to remove', async () => {

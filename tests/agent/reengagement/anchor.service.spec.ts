@@ -312,6 +312,85 @@ describe('ReengagementAnchorService', () => {
     );
   });
 
+  it('does not treat a targeted job fact lookup as a newly presented store', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '工资是每月 15 号发。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { jobIdList: [528538], includeJobSalary: true },
+            result: {
+              resultCount: 1,
+              queryMeta: {
+                brandNearestStores: [
+                  { nearestStores: [{ jobId: 528538, storeName: '天河领展广场店' }] },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'store_presented_no_reply' }),
+    );
+  });
+
+  it('does not treat a positive job-list result as presented when the reply says no job matches', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '肯德基这些岗位要求22岁以上，你19岁暂时不匹配，后面有新岗位我在群里通知你。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: {},
+            result: {
+              resultCount: 1,
+              jobs: [{ jobId: 528538, brandName: '肯德基', storeName: '盐田店' }],
+            },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'store_presented_no_reply' }),
+    );
+  });
+
+  it('refreshes collection instead of store-presented when a fact reply continues collecting', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '工资是每月 15 号发。上面的资料填一下发我，我帮你约面。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { jobIdList: [528538], includeJobSalary: true },
+            result: { resultCount: 1 },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'booking_incomplete',
+        anchorEventId: 'trace-1:collection_continued',
+      }),
+    );
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'store_presented_no_reply' }),
+    );
+  });
+
   it('does not treat nearby-store recommendation copy as asking for location', async () => {
     buildService().handleDeliveredReplyAnchors(
       {

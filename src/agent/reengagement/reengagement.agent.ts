@@ -143,6 +143,7 @@ export class ReengagementAgent {
       };
 
       if (output.decision === 'skip') {
+        const validationReason = this.resolveSkipValidationReason(ctx, memory);
         return {
           outcome: {
             kind: 'skipped',
@@ -155,11 +156,11 @@ export class ReengagementAgent {
           },
           agentRequest: {
             ...agentRequestWithInput,
-            validationReason: 'candidate_cancelled_interview_in_chat',
+            validationReason,
           },
           aiStartAt,
           aiEndAt,
-          validationReason: 'candidate_cancelled_interview_in_chat',
+          validationReason,
         };
       }
 
@@ -296,6 +297,31 @@ export class ReengagementAgent {
     return (
       ctx.scenario.code === 'interview_reminder' || ctx.scenario.code === 'post_interview_followup'
     );
+  }
+
+  /**
+   * 模型可以因为证据不足、时机不合适等原因选择 skip，不能把所有 skip 都记成
+   * “候选人取消面试”。只有报名后场景且近期候选人最后一个相关信号明确取消时，
+   * 才使用取消原因；其余统一记为 Agent 主动跳过，详细理由保留在 reengagementOutput。
+   */
+  private resolveSkipValidationReason(
+    ctx: ReengagementComposeContext,
+    memory: ReengagementMemorySnapshot,
+  ): string {
+    if (!this.isPostBookingScenario(ctx)) return 'reengagement_agent_skipped';
+
+    const cancellation =
+      /(?:取消(?:面试)?|不(?:去|参加|面试)了?|去不了|无法参加|不再考虑|不想去|找到.{0,8}工作.{0,8}(?:不面试|不用|不考虑))/;
+    const rebooked =
+      /(?:重新.{0,8}(?:约|面试)|改到|改成|确定.{0,6}(?:去|参加)|还是(?:按|去|参加)|(?:可以|能够|能).{0,6}(?:参加|去面试))/;
+
+    for (let index = memory.recentMessages.length - 1; index >= 0; index -= 1) {
+      const message = memory.recentMessages[index];
+      if (message.role !== 'user') continue;
+      if (rebooked.test(message.content)) return 'reengagement_agent_skipped';
+      if (cancellation.test(message.content)) return 'candidate_cancelled_interview_in_chat';
+    }
+    return 'reengagement_agent_skipped';
   }
 
   private formatStateSummary(ctx: ReengagementComposeContext, now: number): string {
