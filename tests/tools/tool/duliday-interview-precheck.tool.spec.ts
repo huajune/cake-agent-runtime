@@ -2205,6 +2205,27 @@ describe('buildInterviewPrecheckTool', () => {
     );
   });
 
+  it('returns an internal-only notice for structured marriage and childbearing requirements', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            marriageBearingAndSocialSecurity: {
+              marriageBearingType: '限制',
+              marriageBearing: '已婚已育',
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.sensitiveScreeningNotice).toContain('婚育等敏感信息');
+    expect(result.sensitiveScreeningNotice).toContain('禁止询问、复述或确认');
+  });
+
   it('硕士学历和“刚毕业”不得代填学生筛选身份（batch_6a54b296ce406a6aeede64e5_1783939652276）', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
