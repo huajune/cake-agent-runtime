@@ -8,6 +8,81 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.5.0`
+**最近更新**: `2026-07-14`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #526 加固模型输出与预约复聊链路
+- PR #526 统一 pnpm 运行版本
+- PR #526 消息分段保留岗位卡片完整性
+- PR #526 工作流统一使用 Node 22
+- PR #526 preparation.service 按职责拆分 + 预约直查失败语义分流
+- PR #526 preparation 辅助模块归拢到 preparation-utils/ 子目录
+- PR #526 降低消息 Trace 带宽放大
+- PR #526 重新触发 AI 审查
+- PR #526 AI 审查改用结构化裁决
+- PR #526 加固 Qwen 模型输出边界，阻止推理标签、纯长数字和 Provider 格式残片进入候选人回复。
+- PR #526 将预约与复聊链路统一为工单索引 + 海绵实时事实，修复改约、取消和工单同步后的旧快照污染。
+- PR #526 完善学生身份、岗位硬要求和预约前置校验，并升级 AI SDK 与安全相关依赖。
+
+### 新功能
+- PR #526 新增预约工单上下文统一解析器，复聊提醒和面试后回访按海绵实时工单与岗位详情生成。
+- PR #526 Generator 在预约相关回合绕过工单短缓存；海绵尚未同步时注入封闭的“最新预约信息确认中”状态。
+
+### 问题修复
+- PR #526 修复 Qwen deep-thinking 多模态响应可能把 `<think>` 或内部数字标识写入可见 `content` 的问题；视觉回合临时关闭 thinking，文本回合保持原配置。
+- PR #526 Output Guardrail 新增 P0 异常模型输出规则，并在 LLM 执行层触发重试或模型降级。
+- PR #526 修复 `active_booking` 中面试时间、品牌、门店和岗位快照在改约或外部状态变化后继续污染 Generator/复聊的问题。
+- PR #526 修复预约刚成功但海绵工单尚未同步时 Generator 静默丢失预约上下文的问题，不再回退任何易过期本地事实。
+- PR #526 修复学生身份尚未明确时 Agent 擅自代填社会人士，以及明确学生与岗位要求冲突后仍继续预约的问题。
+- PR #526 修复复聊面试提醒使用旧时间、旧状态或历史任务冻结值的问题；关键事实缺失时 fail closed 并交由 Bull 重试。
+- PR #526 修复主动复聊历史消息被二次截断和时间上下文被改写的问题。
+- PR #526 加固 Qwen 模型输出边界，阻止推理标签、纯长数字和 Provider 格式残片进入候选人回复。
+- PR #526 将预约与复聊链路统一为工单索引 + 海绵实时事实，修复改约、取消和工单同步后的旧快照污染。
+- PR #526 完善学生身份、岗位硬要求和预约前置校验，并升级 AI SDK 与安全相关依赖。
+
+### 优化调整
+- PR #526 `active_booking` 收敛为 `work_order_id + job_id` 极简索引；完整预约快照继续写入 `booking.succeeded` 运营事件供审计。
+- PR #526 普通非预约回合继续复用短缓存，避免每轮直查海绵。
+- PR #526 AI SDK v6 Provider、Supabase、MCP SDK、Axios、Redis 等依赖升级到兼容补丁版本；未引入 AI SDK v7 或 NestJS v11 等破坏性升级。
+- PR #526 Redis 消息 Trace 改为字段级 Hash 增量更新，避免大型 Agent 请求/结果在各阶段反复整对象读写；Session 新 Hash 命中后停止查询旧 Key，降低 Redis 月度带宽与无效 miss。
+- PR #526 preparation.service 按职责拆分 + 预约直查失败语义分流
+
+### 运维与流程
+- PR #526 固定 pnpm 版本为 `10.34.5`，更新 lockfile 并补充高风险传递依赖 overrides。
+- PR #526 移除已废弃的 `crypto` 和 `@types/bull` 直接依赖。
+- PR #526 `pnpm audit --prod` 与全量审计均为 high 0 / critical 0。
+- PR #526 加固模型输出与预约复聊链路
+- PR #526 统一 pnpm 运行版本
+- PR #526 消息分段保留岗位卡片完整性
+- PR #526 工作流统一使用 Node 22
+- PR #526 preparation 辅助模块归拢到 preparation-utils/ 子目录
+- PR #526 降低消息 Trace 带宽放大
+- PR #526 重新触发 AI 审查
+- PR #526 AI 审查改用结构化裁决
+
+### 配置变更
+- PR #526 无环境变量变更。
+- PR #526 无数据库迁移。
+- PR #526 Qwen 图片输入且 thinking 已开启时，运行时会临时按该请求关闭 thinking；纯文本 Qwen 请求不受影响。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #526 `pnpm run ci:check`
+- PR #526 lint、Prettier、TypeScript 类型检查、Web/Nest 生产构建通过
+- PR #526 335 个测试套件通过，4753 个测试通过，6 个跳过
+- PR #526 Generator 预约实时查询/同步中降级、复聊工单解析、Output Guardrail 与 LLM fallback 定向测试通过
+- PR #526 关键链路已人工验证
+- PR #526 其他说明：生产依赖审计剩余 low/moderate 间接告警，无 high/critical。
+<!-- release:pending:end -->
+
 ## [10.4.0] - 2026-07-13
 
 **来源分支**: `develop`
