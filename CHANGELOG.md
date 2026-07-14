@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.11.0] - 2026-07-14
 
-**预计版本**: `v10.11.0`
-**最近更新**: `2026-07-14`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #556 合并 replay 期间到达的新消息
@@ -43,7 +39,6 @@
 - PR #556 `pnpm typecheck`
 - PR #556 `pnpm exec eslint src/channels/wecom/message/application/reply-workflow.service.ts --max-warnings=0`
 - PR #556 push hook 全量 `pnpm run ci:check`
-<!-- release:pending:end -->
 
 ## [10.10.0] - 2026-07-14
 
