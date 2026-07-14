@@ -8,6 +8,43 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.11.0`
+**最近更新**: `2026-07-14`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #556 合并 replay 期间到达的新消息
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- PR #556 合并 replay 期间到达的新消息
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #556 `pnpm jest tests/channels/wecom/message/application/reply-workflow.service.spec.ts --watchman=false --runInBand`
+- PR #556 `pnpm jest tests/channels/wecom/message/services/simple-merge.service.spec.ts tests/channels/wecom/message/message.processor.spec.ts --watchman=false --runInBand`
+- PR #556 `pnpm typecheck`
+- PR #556 `pnpm exec eslint src/channels/wecom/message/application/reply-workflow.service.ts --max-warnings=0`
+- PR #556 push hook 全量 `pnpm run ci:check`
+<!-- release:pending:end -->
+
 ## [10.10.0] - 2026-07-14
 
 **来源分支**: `develop`

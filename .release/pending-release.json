@@ -3,7 +3,36 @@
   "nextVersion": "10.11.0",
   "updatedAt": "2026-07-14",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "556",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/556",
+      "title": "合并 replay 期间到达的新消息",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-14",
+      "businessUpdates": [
+        "合并 replay 期间到达的新消息"
+      ],
+      "summary": [
+        "合并 replay 期间到达的新消息"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "合并 replay 期间到达的新消息"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/channels/wecom/message/application/reply-workflow.service.spec.ts --watchman=false --runInBand`",
+        "`pnpm jest tests/channels/wecom/message/services/simple-merge.service.spec.ts tests/channels/wecom/message/message.processor.spec.ts --watchman=false --runInBand`",
+        "`pnpm typecheck`",
+        "`pnpm exec eslint src/channels/wecom/message/application/reply-workflow.service.ts --max-warnings=0`",
+        "push hook 全量 `pnpm run ci:check`"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.10.0",
     "date": "2026-07-14",
