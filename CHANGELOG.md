@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.5.0] - 2026-07-14
 
-**预计版本**: `v10.5.0`
-**最近更新**: `2026-07-14`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #526 加固模型输出与预约复聊链路
@@ -81,7 +77,6 @@
 - PR #526 Generator 预约实时查询/同步中降级、复聊工单解析、Output Guardrail 与 LLM fallback 定向测试通过
 - PR #526 关键链路已人工验证
 - PR #526 其他说明：生产依赖审计剩余 low/moderate 间接告警，无 high/critical。
-<!-- release:pending:end -->
 
 ## [10.4.0] - 2026-07-13
 
