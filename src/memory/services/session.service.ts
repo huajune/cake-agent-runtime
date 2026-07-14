@@ -119,10 +119,11 @@ export class SessionService {
     // 这里统一返回完整的空态，避免调用方反复处理 null/undefined 的分支。
     const hashKey = this.buildHashKey(corpId, userId, sessionId);
     const legacyKey = this.buildKey(corpId, userId, sessionId);
-    const [hashFields, legacyEntry] = await Promise.all([
-      this.redisStore.getHash(hashKey),
-      this.redisStore.get(legacyKey),
-    ]);
+    const hashFields = await this.redisStore.getHash(hashKey);
+
+    // factsv2 命中后不再读取已经迁移并删除的 facts:* 旧 Key。
+    // 生产数据已完成迁移；旧格式只在新 Hash 缺失时走一次兼容读取与惰性回填。
+    const legacyEntry = hashFields ? null : await this.redisStore.get(legacyKey);
 
     const legacyContent =
       legacyEntry?.content && typeof legacyEntry.content === 'object'
@@ -134,7 +135,7 @@ export class SessionService {
 
     if (!hashFields && !legacyContent) return { ...EMPTY_SESSION_STATE };
 
-    const combined = { ...(legacyContent ?? {}), ...(hashFields ?? {}) };
+    const combined = hashFields ?? legacyContent ?? {};
     const parsed = SessionFactsRedisContentSchema.safeParse(combined);
     if (!parsed.success) {
       this.logger.warn(

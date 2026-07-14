@@ -14,9 +14,55 @@ describe('WecomMessageObservabilityService', () => {
   const traceState = new Map<string, unknown>();
   const mockTraceStore = {
     get: jest.fn(async (messageId: string) => traceState.get(messageId)),
+    getFields: jest.fn(async (messageId: string, fields: string[]) => {
+      const trace = traceState.get(messageId) as Record<string, unknown> | undefined;
+      if (!trace) return undefined;
+      return Object.fromEntries(
+        fields.filter((field) => field in trace).map((field) => [field, trace[field]]),
+      );
+    }),
+    getTimings: jest.fn(async (messageId: string, fields: string[]) => {
+      const trace = traceState.get(messageId) as { timings?: Record<string, number> } | undefined;
+      if (!trace) return undefined;
+      return Object.fromEntries(
+        fields
+          .filter((field) => trace.timings?.[field] !== undefined)
+          .map((field) => [field, trace.timings?.[field]]),
+      );
+    }),
+    exists: jest.fn(async (messageId: string) => traceState.has(messageId)),
     set: jest.fn(async (messageId: string, trace: unknown) => {
       traceState.set(messageId, trace);
     }),
+    patch: jest.fn(async (messageId: string, patch: Record<string, unknown>) => {
+      const trace = traceState.get(messageId) as Record<string, unknown> | undefined;
+      if (trace) traceState.set(messageId, { ...trace, ...patch });
+    }),
+    patchTimings: jest.fn(async (messageId: string, patch: Record<string, number>) => {
+      const trace = traceState.get(messageId) as
+        | (Record<string, unknown> & { timings?: Record<string, number> })
+        | undefined;
+      if (trace) {
+        traceState.set(messageId, {
+          ...trace,
+          timings: { ...(trace.timings ?? {}), ...patch },
+        });
+      }
+    }),
+    setTiming: jest.fn(
+      async (messageId: string, field: string, value: number, onlyIfAbsent: boolean) => {
+        const trace = traceState.get(messageId) as
+          | (Record<string, unknown> & { timings?: Record<string, number> })
+          | undefined;
+        if (!trace) return -1;
+        if (onlyIfAbsent && trace.timings?.[field] !== undefined) return 0;
+        traceState.set(messageId, {
+          ...trace,
+          timings: { ...(trace.timings ?? {}), [field]: value },
+        });
+        return 1;
+      },
+    ),
     delete: jest.fn(async (messageId: string) => {
       traceState.delete(messageId);
     }),
