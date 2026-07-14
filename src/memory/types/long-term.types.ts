@@ -257,16 +257,20 @@ export interface LongTermMemoryState {
  *
  * 对应 agent_long_term_memories.active_booking 列（迁移 20260630120000 由 latest_booking 改名，
  * JSONB 键 latest_work_order_id 同步改为 work_order_id）。
- * 业务状态每次实时查海绵（Redis 5min 缓存）。同一候选人可同时报名多个岗位，因此新数据会在
+ * 业务状态每次直接查海绵。同一候选人可同时报名多个岗位，因此新数据会在
  * `bookings` 中保留多个工单；顶层字段仍指向最近一笔，兼容旧调用方。
  */
 export interface ActiveBooking {
   work_order_id: number;
   linked_at: string;
   job_id?: number | null;
+  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存，复聊不得作为业务事实使用。 */
   interview_time?: string | null;
+  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存。 */
   brand_name?: string | null;
+  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存。 */
   store_name?: string | null;
+  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存。 */
   job_name?: string | null;
   bookings?: ActiveBooking[];
 }

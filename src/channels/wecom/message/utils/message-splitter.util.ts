@@ -14,8 +14,9 @@ export class MessageSplitter {
    * 单个换行保留在同一条消息内，用于列表/多行展示；发送片段末尾标点会被移除。
    *
    * @param text 原始消息文本
-   * @param maxSegments 可选段数上限。超过时合并最短相邻段（防御性兜底，
-   *   避免 Agent 写得过碎导致一次发 N 条消息刷屏）。
+   * @param maxSegments 可选段数软上限。超过时合并最短相邻普通话术（防御性兜底，
+   *   避免 Agent 写得过碎导致一次发 N 条消息刷屏）；岗位卡片/表单块保持原子性，
+   *   无法在不破坏结构的前提下继续合并时允许软超限。
    */
   static split(text: string, maxSegments?: number): string[] {
     if (!text || typeof text !== 'string') {
@@ -39,24 +40,48 @@ export class MessageSplitter {
   }
 
   /**
-   * 贪心合并最短相邻段，把段数压到 ≤ cap。
-   * 用于防御性兜底，避免 Agent 写得过碎时一次发出太多消息。
+   * 贪心合并最短相邻普通话术，尽量把段数压到 ≤ cap。
+   * 岗位卡片和表单块是原子段，不得与前后内容合并；否则标题会被粘到上一家岗位详情，
+   * 或详情被拆到下一条消息。没有安全候选时保留原段数，结构正确性优先于段数上限。
    */
   private static coalesceToCap(segments: string[], cap: number): string[] {
     const result = segments.slice();
     while (result.length > cap) {
-      let mergeIdx = 0;
+      let mergeIdx = -1;
       let minTotalLen = Infinity;
       for (let i = 0; i < result.length - 1; i += 1) {
+        if (
+          this.isAtomicStructuredBlock(result[i]) ||
+          this.isAtomicStructuredBlock(result[i + 1])
+        ) {
+          continue;
+        }
         const totalLen = result[i].length + result[i + 1].length;
         if (totalLen < minTotalLen) {
           minTotalLen = totalLen;
           mergeIdx = i;
         }
       }
+      if (mergeIdx < 0) break;
       result.splice(mergeIdx, 2, `${result[mergeIdx]}\n${result[mergeIdx + 1]}`);
     }
     return result;
+  }
+
+  private static isAtomicStructuredBlock(segment: string): boolean {
+    const lines = segment
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) return false;
+    if (this.findFormBlockEnd(lines, 0) === lines.length) return true;
+
+    return (
+      lines.length > 1 &&
+      this.isStructuredHeaderLine(lines[0]) &&
+      lines.slice(1).every((line) => this.isStructuredLine(line) || this.isFormLine(line))
+    );
   }
 
   private static mergeAdjacentFormBlocks(segments: string[]): string[] {
@@ -66,7 +91,11 @@ export class MessageSplitter {
       const current = segments[i];
       const next = segments[i + 1];
 
-      if (next && this.isFormIntroParagraph(current) && this.isFormParagraph(next)) {
+      if (
+        next &&
+        (this.isFormIntroParagraph(current) || this.isStructuredHeaderParagraph(current)) &&
+        this.isFormParagraph(next)
+      ) {
         result.push(`${current}\n${next}`);
         i += 1;
         continue;
@@ -216,6 +245,15 @@ export class MessageSplitter {
     return lines.length === 1 && this.isIntroLine(lines[0]);
   }
 
+  private static isStructuredHeaderParagraph(segment: string): boolean {
+    const lines = segment
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return lines.length === 1 && this.isStructuredHeaderLine(lines[0]);
+  }
+
   private static isFormParagraph(segment: string): boolean {
     const lines = segment
       .split(/\r?\n/)
@@ -267,7 +305,9 @@ export class MessageSplitter {
   private static isDetailLine(line: string): boolean {
     const normalized = line.trim();
     if (
-      /^(?:班次|上班时间|薪资|要求|地址|门店|工作内容|年龄|距离|时间|福利)[：:]/.test(normalized)
+      /^(?:班次|上班时间|薪资|要求|位置|地址|门店|工作内容|年龄|距离|时间|福利)[：:]/.test(
+        normalized,
+      )
     ) {
       return true;
     }

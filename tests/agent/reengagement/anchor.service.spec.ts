@@ -22,15 +22,19 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 // 2026-06-25 14:00 Shanghai
 const INTERVIEW_TIME = '2026-06-25 14:00';
-const INTERVIEW_AT = Date.UTC(2026, 5, 25, 6, 0, 0);
 
 describe('ReengagementAnchorService', () => {
-  let scheduler: { scheduleFollowUp: jest.Mock; removeSupersededPendingJobs: jest.Mock };
+  let scheduler: {
+    scheduleFollowUp: jest.Mock;
+    scheduleBookingResolution: jest.Mock;
+    removeSupersededPendingJobs: jest.Mock;
+  };
   let session: { saveTerminalState: jest.Mock; getAuthoritativeState: jest.Mock };
 
   beforeEach(() => {
     scheduler = {
       scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }),
+      scheduleBookingResolution: jest.fn().mockResolvedValue({ scheduled: true }),
       removeSupersededPendingJobs: jest.fn().mockResolvedValue(1),
     };
     session = {
@@ -51,33 +55,29 @@ describe('ReengagementAnchorService', () => {
     },
   };
 
-  it('schedules booking follow-ups carrying workOrderId and frozen interview time', async () => {
+  it('schedules booking resolution retries carrying only the stable workOrderId', async () => {
     buildService().handleToolAnchors({ toolCalls: [bookingCall] }, context);
     await flush();
 
     expect(session.saveTerminalState).toHaveBeenCalledWith('corp-1', 'user-1', 'chat-1', 'booked');
-    // 幂等锚点 wo:iv:scenario——同工单同时间只存在一个任务
-    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
       expect.objectContaining({
         scenarioCode: 'interview_reminder',
-        anchorEventId: `wo555:iv${INTERVIEW_AT}:interview_reminder`,
         workOrderId: 555,
-        expectedInterviewAt: INTERVIEW_AT,
-        interviewType: 'AI面试',
       }),
     );
-    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
       expect.objectContaining({
         scenarioCode: 'post_interview_followup',
-        anchorEventId: `wo555:iv${INTERVIEW_AT}:post_interview_followup`,
         workOrderId: 555,
-        expectedInterviewAt: INTERVIEW_AT,
-        interviewType: 'AI面试',
       }),
     );
+    const serializedCalls = JSON.stringify(scheduler.scheduleBookingResolution.mock.calls);
+    expect(serializedCalls).not.toContain('expectedInterviewAt');
+    expect(serializedCalls).not.toContain('interviewType');
   });
 
-  it('does not schedule booking follow-ups when the booking has no interview time', async () => {
+  it('still schedules a resolver when the booking result has no interview time', async () => {
     buildService().handleToolAnchors(
       {
         toolCalls: [
@@ -93,7 +93,7 @@ describe('ReengagementAnchorService', () => {
     await flush();
 
     expect(session.saveTerminalState).toHaveBeenCalledWith('corp-1', 'user-1', 'chat-1', 'booked');
-    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledTimes(2);
   });
 
   it('clears the booked terminal when a cancel succeeds', async () => {
@@ -171,7 +171,7 @@ describe('ReengagementAnchorService', () => {
     expect(session.saveTerminalState).not.toHaveBeenCalled();
   });
 
-  it('reschedules booking follow-ups at the new time when a modification succeeds', async () => {
+  it('resolves the latest sponge work order again when a modification succeeds', async () => {
     buildService().handleToolAnchors(
       {
         toolCalls: [
@@ -186,25 +186,23 @@ describe('ReengagementAnchorService', () => {
     );
     await flush();
 
-    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
       expect.objectContaining({
         scenarioCode: 'interview_reminder',
-        anchorEventId: `wo555:iv${INTERVIEW_AT}:interview_reminder`,
         workOrderId: 555,
-        expectedInterviewAt: INTERVIEW_AT,
       }),
     );
-    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
       expect.objectContaining({
         scenarioCode: 'post_interview_followup',
-        anchorEventId: `wo555:iv${INTERVIEW_AT}:post_interview_followup`,
+        workOrderId: 555,
       }),
     );
     // 改约不是新报名，不写 booked 终态
     expect(session.saveTerminalState).not.toHaveBeenCalled();
   });
 
-  it('does not schedule modify-anchored follow-ups without a new interview time', async () => {
+  it('resolves from sponge even when modify output has no interview time', async () => {
     buildService().handleToolAnchors(
       {
         toolCalls: [
@@ -219,7 +217,7 @@ describe('ReengagementAnchorService', () => {
     );
     await flush();
 
-    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledTimes(2);
     expect(session.saveTerminalState).not.toHaveBeenCalled();
   });
 

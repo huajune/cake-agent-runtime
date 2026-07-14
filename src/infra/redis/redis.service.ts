@@ -142,6 +142,19 @@ export class RedisService implements OnModuleInit {
     return this.redisClient.hgetall<T>(this.withPrefix(key));
   }
 
+  /** HGET 单个字段，值由客户端 JSON 反序列化。 */
+  async hget<T = unknown>(key: string, field: string): Promise<T | null> {
+    return this.redisClient.hget<T>(this.withPrefix(key), field);
+  }
+
+  /** HMGET 多个字段，返回 field → value 映射；Hash/字段不存在时返回 null。 */
+  async hmget<T extends Record<string, unknown> = Record<string, unknown>>(
+    key: string,
+    ...fields: string[]
+  ): Promise<T | null> {
+    return this.redisClient.hmget<T>(this.withPrefix(key), ...fields);
+  }
+
   /** HSETNX：仅当字段不存在时写入。返回 1=写入成功，0=字段已存在。 */
   async hsetnx(key: string, field: string, value: unknown): Promise<number> {
     return this.redisClient.hsetnx(this.withPrefix(key), field, value);

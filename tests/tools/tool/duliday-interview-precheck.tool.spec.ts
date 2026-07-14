@@ -717,6 +717,63 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.missingFields).not.toContain('面试时间');
   });
 
+  it('学生填写完整资料时，社会人士岗位仍必须 hard reject（batch_6a559b7ace406a6aeedf1f8b_1783995721291）', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-14T02:20:57.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          basicInfo: {
+            jobId: 528531,
+            jobName: 'M Stand-广州黄埔保利鱼珠店-店员-小时工',
+            laborForm: '兼职',
+            partTimeJobType: '小时工',
+          },
+          hiringRequirement: { figure: '社会人士', remark: '' },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-07-15',
+                  interviewStartTime: '15:00',
+                  interviewEndTime: '16:00',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 528531,
+        requestedDate: '2026-07-15',
+        candidateName: '罗瑞雪',
+        candidatePhone: '18529215978',
+        candidateAge: 19,
+        candidateInterviewTime: '明天下午3点',
+        candidateGender: '女',
+        candidateHasHealthCertificate: '有',
+        candidateIsStudent: true,
+      },
+      {
+        messages: [{ role: 'user', content: '身份：学生\n年龄：19\n面试时间：15号15点' }] as never,
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.screeningCriteria.isStudent).toBe('社会人士');
+    expect(result.nextAction).toBe('student_rejected');
+    expect(result.studentEligibility).toEqual(
+      expect.objectContaining({
+        severity: 'hard_reject',
+        candidateIdentity: '学生',
+        requiredIdentity: '社会人士',
+      }),
+    );
+  });
+
   it('should backfill interview time from structured user checklist text when tool input omits candidateInterviewTime', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
@@ -2146,6 +2203,43 @@ describe('buildInterviewPrecheckTool', () => {
         }),
       ]),
     );
+  });
+
+  it('硕士学历和“刚毕业”不得代填学生筛选身份（batch_6a54b296ce406a6aeede64e5_1783939652276）', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [
+              {
+                interviewSupplementId: 660,
+                interviewSupplement: '是否学生（不要学生）',
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, candidateAge: 24, candidateEducation: '硕士' },
+      {
+        sessionFacts: {
+          interview_info: { is_student: false, education: '已毕业' },
+          preferences: {},
+        } as never,
+        messages: [
+          { role: 'user', content: '还没工作，刚毕业' },
+          { role: 'assistant', content: '另外身份帮你填了社会人士' },
+          { role: 'user', content: '学历：硕士\n能工作几个月：2月' },
+        ] as never,
+      },
+    );
+
+    expect(result.bookingChecklist.templateText).toContain('学历：硕士');
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：');
+    expect(result.bookingChecklist.missingFields).toContain('身份');
+    expect(result.identityFieldGuard).toEqual(expect.objectContaining({ mustAskCandidate: true }));
   });
 
   it('should omit screeningChecks when all supplement labels are collect-type', async () => {

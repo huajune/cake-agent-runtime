@@ -45,17 +45,18 @@ export interface FollowUpJob {
   /** 渠道身份快照（排程时冻结，观测用；存量任务可能缺失） */
   channelIdentity?: ReengagementChannelIdentity;
   /**
-   * 报名后场景（booking.succeeded 锚点）携带的工单 ID：processor 到点凭它向海绵核验
-   * 工单现状（外部取消/已面试）。缺失（存量任务/提取失败）时跳过核验，回退旧停止规则。
+   * 报名后场景（booking.succeeded 锚点）携带的工单 ID：processor 到点凭它向海绵查询
+   * 最新工单。缺失（存量任务/提取失败）时 fail closed，不生成、不发送。
    */
   workOrderId?: number;
   /**
-   * 排程时冻结的期望面试时间（毫秒）。到点与 active_booking.interview_time 比对，
-   * 不一致说明发生过改约（改约锚点已按新时间排了替代任务），旧任务应停。
+   * @deprecated 仅兼容存量任务；不得再作为生成或发送依据。
    */
   expectedInterviewAt?: number;
-  /** 预约时由岗位详情解析并冻结的面试形式，用于个性化提醒与 AI 面试延迟回访。 */
+  /** @deprecated 仅兼容存量任务；不得再作为生成或发送依据。 */
   interviewType?: string;
+  /** 仅携带稳定工单引用、等待海绵同步后解析正式触达时间的重试任务。 */
+  resolveBookingAtFire?: boolean;
 }
 
 /** 触达底账 outbox 状态机。 */
@@ -77,9 +78,9 @@ export interface ScheduleFollowUpInput {
   state?: AuthoritativeSessionState;
   /** 报名后场景的工单 ID（processor 到点向海绵核验工单现状用）。 */
   workOrderId?: number;
-  /** 排程时冻结的期望面试时间（毫秒，改期比对基准）。 */
+  /** 只用于本次计算延迟，不写入新任务 payload。 */
   expectedInterviewAt?: number;
-  /** 预约时解析出的面试形式。 */
+  /** 只用于本次计算 AI 面试回访延迟，不写入新任务 payload。 */
   interviewType?: string;
   /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
   channelIdentity?: ReengagementChannelIdentity;
@@ -102,6 +103,15 @@ export interface ScheduleFollowUpResult {
   reason?: string;
   fireAt?: number;
   jobId?: string;
+}
+
+export interface ScheduleBookingResolutionInput {
+  sessionRef: SessionRef;
+  scenarioCode: Extract<FollowUpScenarioCode, 'interview_reminder' | 'post_interview_followup'>;
+  workOrderId: number;
+  anchorEventId: string;
+  anchorAt: number;
+  channelIdentity?: ReengagementChannelIdentity;
 }
 
 /**
@@ -205,10 +215,6 @@ export class FollowUpSchedulerService {
           anchorEventId: input.anchorEventId,
           anchorAt: input.anchorAt,
           ...(input.workOrderId != null ? { workOrderId: input.workOrderId } : {}),
-          ...(input.expectedInterviewAt != null
-            ? { expectedInterviewAt: input.expectedInterviewAt }
-            : {}),
-          ...(input.interviewType ? { interviewType: input.interviewType } : {}),
           ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
         },
         {
@@ -234,6 +240,49 @@ export class FollowUpSchedulerService {
         error instanceof Error ? error.message : String(error),
       );
       return { scheduled: false, reason: 'enqueue_error' };
+    }
+  }
+
+  /**
+   * 预约刚成功时只持久化工单定位信息。worker 以 Bull 重试查询海绵，拿到实时工单后
+   * 再创建正式 delayed job，避免把预约工具入参或尚未同步的本地快照冻结成业务事实。
+   */
+  async scheduleBookingResolution(
+    input: ScheduleBookingResolutionInput,
+  ): Promise<ScheduleFollowUpResult> {
+    if (!(await this.isEnabled())) return { scheduled: false, reason: 'disabled' };
+    // anchorEventId 必须进幂等键：同一工单后续改约会产生新锚点，需要重新查询并按新时间排程；
+    // 若只按 workOrderId 去重，已完成的首次解析任务会吞掉改约后的解析任务。
+    const jobId = `${input.sessionRef.sessionId}:${input.scenarioCode}:${input.anchorEventId}:resolve`;
+    try {
+      await this.queue.add(
+        REENGAGEMENT_JOB_NAME,
+        {
+          sessionRef: input.sessionRef,
+          scenarioCode: input.scenarioCode,
+          workOrderId: input.workOrderId,
+          anchorEventId: input.anchorEventId,
+          anchorAt: input.anchorAt,
+          resolveBookingAtFire: true,
+          ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
+        },
+        {
+          jobId,
+          attempts: 6,
+          backoff: { type: 'exponential', delay: 10_000 },
+          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
+          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+        },
+      );
+      this.logger.log(`[reengagement] 已排面试排程解析重试 jobId=${jobId}`);
+      return { scheduled: true, fireAt: Date.now(), jobId };
+    } catch (error) {
+      this.logger.error(
+        `[reengagement] 面试排程解析任务排程失败 jobId=${jobId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { scheduled: false, reason: 'booking_resolution_schedule_error', jobId };
     }
   }
 

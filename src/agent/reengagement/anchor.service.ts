@@ -6,11 +6,7 @@ import {
   FollowUpSchedulerService,
   type ReengagementChannelIdentity,
 } from './follow-up-scheduler.service';
-import {
-  bookingFollowUpAnchorId,
-  parseInterviewTimestamp,
-  type FollowUpScenarioCode,
-} from './scenario-registry';
+import { type FollowUpScenarioCode } from './scenario-registry';
 
 interface AnchorContext {
   traceId: string;
@@ -74,8 +70,8 @@ export class ReengagementAnchorService {
     }
     void terminalChain;
 
-    // 改约成功：按新面试时间排新的提醒/回访（新锚点）。旧任务携带的 expectedInterviewAt
-    // 与更新后的 active_booking.interview_time 不再一致，到点被 interview_time_changed 停掉。
+    // 改约成功：新锚点只触发面试排程解析；正式提醒/回访按海绵返回的新时间重排。
+    // 旧任务到点也会重新查同一工单，并因实时触发时间变化而停止或替换。
     const modified = toolCalls.find((call) => this.isInterviewModified(call));
     if (modified && deliverable) {
       this.scheduleBookingFollowUps(modified, `${context.traceId}:interview_modified`, context);
@@ -86,41 +82,30 @@ export class ReengagementAnchorService {
   }
 
   /**
-   * booking / 改约共用：按工具调用里的面试时间与工单号排面试提醒 + 面试后回访。
-   *
-   * 有工单号+面试时间时用幂等锚点（wo:iv:scenario）：同一工单同一时间只存在一个任务，
-   * 与 processor 到点发现改期后排的替代任务共用 jobId 自然去重。
-   * 缺面试时间（等通知报名/提取失败）时不排报名后主动触达；缺工单号时回退 traceId 锚点。
+   * booking / 改约共用：只把稳定工单号送入解析重试任务。正式触达时间必须由 worker
+   * 查询海绵实时工单后计算，禁止使用预约工具入参或旧任务快照。
    */
   private scheduleBookingFollowUps(
     call: AgentToolCall,
     anchorEventBase: string,
     context: AnchorContext,
   ): void {
-    const interviewAt = this.extractInterviewAt(call);
-    if (interviewAt == null) return;
     const workOrderId = this.extractWorkOrderId(call);
-    const interviewType = this.extractInterviewType(call);
-    const stateOverride: Partial<ReengagementState> = { terminal: 'booked', interviewAt };
-    const verification = { workOrderId, expectedInterviewAt: interviewAt, interviewType };
-    const anchorIdFor = (scenarioCode: FollowUpScenarioCode): string =>
-      workOrderId != null && interviewAt != null
-        ? bookingFollowUpAnchorId(workOrderId, interviewAt, scenarioCode)
-        : `${anchorEventBase}:${scenarioCode}`;
-    void this.schedule(
-      'interview_reminder',
-      anchorIdFor('interview_reminder'),
-      context,
-      stateOverride,
-      verification,
-    );
-    void this.schedule(
-      'post_interview_followup',
-      anchorIdFor('post_interview_followup'),
-      context,
-      stateOverride,
-      verification,
-    );
+    if (workOrderId == null) return;
+    for (const scenarioCode of ['interview_reminder', 'post_interview_followup'] as const) {
+      void this.scheduler.scheduleBookingResolution({
+        sessionRef: {
+          corpId: context.corpId,
+          userId: context.userId,
+          sessionId: context.chatId,
+        },
+        scenarioCode,
+        workOrderId,
+        anchorEventId: `${anchorEventBase}:${scenarioCode}`,
+        anchorAt: Date.now(),
+        channelIdentity: context.channelIdentity,
+      });
+    }
   }
 
   /**
@@ -304,26 +289,6 @@ export class ReengagementAnchorService {
     return /(?:你|您|方便|可以|麻烦|这边|这儿|那里|那边)?.{0,8}(?:发|给我发|提供|说下|说一下|告知|填).{0,12}(?:位置|地址|定位|地标|商圈|地铁站)|(?:位置|地址|定位|地标).{0,8}(?:发|给).{0,8}(?:我|这边)|(?:在哪|哪里).*?(?:城市|区|区域|商圈|地铁站|位置|地址|地标)|(?:城市|区|区域|商圈|地铁站|位置|地址|地标).*?(?:在哪|哪里)/.test(
       reply,
     );
-  }
-
-  private extractInterviewAt(call: AgentToolCall): number | undefined {
-    const args = this.asRecord(call.args);
-    const result = this.asRecord(call.result);
-    // newInterviewTime：duliday_modify_interview_time 改约工具的入参/返回字段
-    const raw =
-      args?.interviewTime ??
-      args?.newInterviewTime ??
-      result?.interviewTime ??
-      result?.newInterviewTime ??
-      result?.interviewAt;
-    return parseInterviewTimestamp(raw);
-  }
-
-  private extractInterviewType(call: AgentToolCall): string | undefined {
-    const result = this.asRecord(call.result);
-    const requestInfo = this.asRecord(result?.requestInfo);
-    const raw = result?.interviewType ?? requestInfo?.interviewType;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
   }
 
   private asRecord(value: unknown): Record<string, unknown> | undefined {

@@ -88,6 +88,7 @@ describe('ReplyWorkflowService', () => {
   };
   const followUpScheduler = {
     scheduleFollowUp: jest.fn(),
+    scheduleBookingResolution: jest.fn(),
     removePendingJob: jest.fn(),
     removeSupersededPendingJobs: jest.fn(),
   };
@@ -255,6 +256,7 @@ describe('ReplyWorkflowService', () => {
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
     followUpScheduler.scheduleFollowUp.mockResolvedValue({ scheduled: true });
+    followUpScheduler.scheduleBookingResolution.mockResolvedValue({ scheduled: true });
     followUpScheduler.removePendingJob.mockResolvedValue(true);
     followUpScheduler.removeSupersededPendingJobs.mockResolvedValue(1);
     session.saveTerminalState.mockResolvedValue(undefined);
@@ -692,7 +694,7 @@ describe('ReplyWorkflowService', () => {
     );
   });
 
-  it('schedules interview_reminder follow-up when booking succeeds', async () => {
+  it('schedules Sponge resolution jobs when booking succeeds', async () => {
     runner.invoke.mockResolvedValueOnce({
       text: '约好了，明天 13:30 面试',
       usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
@@ -712,27 +714,25 @@ describe('ReplyWorkflowService', () => {
     await service.processSingleMessage(createMessage());
     await flush();
 
-    expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
+    expect(followUpScheduler.scheduleBookingResolution).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
         scenarioCode: 'interview_reminder',
-        anchorEventId: `wo123:iv${Date.parse('2026-06-27T13:30:00+08:00')}:interview_reminder`,
+        anchorEventId: 'msg-1:booking_succeeded:interview_reminder',
         workOrderId: 123,
-        expectedInterviewAt: Date.parse('2026-06-27T13:30:00+08:00'),
-        state: expect.objectContaining({
-          terminal: 'booked',
-          interviewAt: Date.parse('2026-06-27T13:30:00+08:00'),
-        }),
       }),
     );
-    expect(followUpScheduler.scheduleFollowUp).toHaveBeenCalledWith(
+    expect(followUpScheduler.scheduleBookingResolution).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionRef: { corpId: 'corp-1', userId: 'im-contact-1', sessionId: 'chat-1' },
         scenarioCode: 'post_interview_followup',
-        anchorEventId: `wo123:iv${Date.parse('2026-06-27T13:30:00+08:00')}:post_interview_followup`,
+        anchorEventId: 'msg-1:booking_succeeded:post_interview_followup',
         workOrderId: 123,
       }),
     );
+    const payload = JSON.stringify(followUpScheduler.scheduleBookingResolution.mock.calls);
+    expect(payload).not.toContain('expectedInterviewAt');
+    expect(payload).not.toContain('interviewTime');
     expect(session.saveTerminalState).toHaveBeenCalledWith(
       'corp-1',
       'im-contact-1',

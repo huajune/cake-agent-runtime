@@ -64,7 +64,31 @@ describe('MemoryService', () => {
   });
 
   describe('proactive follow-up recall', () => {
-    it('preserves each recent message time separately from the cleaned content', async () => {
+    it('keeps the full Generator-trimmed message window without a second fixed limit', async () => {
+      mockLifecycle.onTurnStart.mockResolvedValue({
+        shortTerm: {
+          messageWindow: [
+            { role: 'user', content: '' },
+            ...Array.from({ length: 12 }, (_, index) => ({
+              role: index % 2 === 0 ? 'user' : 'assistant',
+              content: `message-${index + 1}`,
+            })),
+          ],
+        },
+        sessionMemory: null,
+        highConfidenceFacts: null,
+        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        longTerm: { profile: null },
+      });
+
+      const recall = await service.recallForProactiveFollowUp('corp1', 'user1', 'sess1');
+
+      expect(recall.recentMessages).toHaveLength(12);
+      expect(recall.recentMessages[0]?.content).toBe('message-1');
+      expect(recall.recentMessages[11]?.content).toBe('message-12');
+    });
+
+    it('preserves the same injected time format used by Generator', async () => {
       mockLifecycle.onTurnStart.mockResolvedValue({
         shortTerm: {
           messageWindow: [
@@ -89,13 +113,11 @@ describe('MemoryService', () => {
       expect(recall.recentMessages).toEqual([
         {
           role: 'user',
-          content: '明天可以面试',
-          sentAt: '2026-07-12 16:30 星期日',
+          content: '明天可以面试\n[消息发送时间：2026-07-12 16:30 星期日]',
         },
         {
           role: 'assistant',
-          content: '好的',
-          sentAt: '2026-07-12 16:31 星期日',
+          content: '好的\n[消息发送时间：2026-07-12 16:31 星期日]',
         },
       ]);
     });

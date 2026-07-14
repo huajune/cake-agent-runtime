@@ -36,10 +36,13 @@ export type HealthCertRequirement =
   | 'not_required' // 岗位明确不需要
   | 'unspecified'; // 数据未明确
 
+export type StudentRequirement = 'student_only' | 'social_only' | 'any' | 'unspecified';
+
 export interface HardRequirements {
   gender: GenderRequirement;
   household: HouseholdRequirement | null;
   healthCert: HealthCertRequirement;
+  student: StudentRequirement;
 }
 
 const FEMALE_TOKENS = new Set(['女', '女性', '仅女', '限女', '只要女', '只招女']);
@@ -132,11 +135,40 @@ function normalizeHealthCert(gate: unknown, requirementText: unknown): HealthCer
   return 'unspecified';
 }
 
+function normalizeStudentRequirement(
+  figure: unknown,
+  remark: unknown,
+  policyText: unknown,
+): StudentRequirement {
+  const normalizedFigure = typeof figure === 'string' ? figure.replace(/\s+/g, '') : '';
+  const figureParts = normalizedFigure.split(/[,，、/；;]+/).filter(Boolean);
+  const figureAllowsStudent = figureParts.includes('学生');
+  const figureAllowsSocial = figureParts.includes('社会人士');
+  if (/不限/.test(normalizedFigure) || (figureAllowsStudent && figureAllowsSocial)) return 'any';
+  if (figureAllowsSocial) return 'social_only';
+  if (figureAllowsStudent) return 'student_only';
+
+  const text = [remark, policyText]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('；')
+    .replace(/\s+/g, '');
+  if (!text) return 'unspecified';
+
+  if (/不限学生|学生不限/.test(text)) return 'any';
+  if (/(不招|不接受|不要|拒绝|仅限非|只要非)学生|学生勿扰|需要已毕业|社会人士/.test(text)) {
+    return 'social_only';
+  }
+  if (/(仅限|只招|只要|仅要)学生/.test(text) || /^学生$/.test(text)) {
+    return 'student_only';
+  }
+  return 'unspecified';
+}
+
 /**
  * 顶层入口：从 raw job + 可选的 policy 派生 HardRequirements enum。
  *
- * 当前只覆盖 gender / household / healthCert 三类高频硬约束。
- * 后续切片会扩展 age / student / education 等。
+ * 当前覆盖 gender / household / healthCert / student 四类高频硬约束。
+ * 后续切片会扩展 age / education 等。
  *
  * policy 参数：调用方已经跑过 buildJobPolicyAnalysis 时直接传进来，避免重复构建。
  * 不传则只能从 job._policy（测试 fixture 通道）兜底，realtime 调用务必显式传入。
@@ -164,6 +196,11 @@ export function extractHardRequirements(
     healthCert: normalizeHealthCert(
       normalized?.healthCertGate,
       normalized?.healthCertificateRequirement,
+    ),
+    student: normalizeStudentRequirement(
+      req?.figure,
+      req?.remark,
+      [normalized?.remark, normalized?.interviewRemark].filter(Boolean).join('；'),
     ),
   };
 }

@@ -186,8 +186,10 @@ export class WecomMessageObservabilityService {
       mergeWindowMs?: number;
     },
   ): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
+    const trace = await this.traceStore.getFields<WecomTraceContext, 'request'>(messageId, [
+      'request',
+    ]);
+    if (!trace?.request) return;
 
     const { messages, content, mergeWindowMs } = params;
     const imageCount = messages.filter((message) => MessageParser.extractImageUrl(message)).length;
@@ -206,16 +208,18 @@ export class WecomMessageObservabilityService {
     trace.request.sourceMessageCount = messages.length;
     if (acceptedAt !== undefined) {
       trace.request.acceptedAt = acceptedAt;
-      trace.timings.acceptedAt = acceptedAt;
     }
     trace.request.sourceMessageLastAcceptedAt = sourceMessageLastAcceptedAt;
     trace.request.quietWindowEligibleAt = quietWindowEligibleAt;
 
-    await this.traceStore.set(messageId, trace);
+    await this.traceStore.patch<WecomTraceContext>(messageId, { request: trace.request });
+    if (acceptedAt !== undefined) {
+      await this.traceStore.patchTimings<WecomTraceTimings>(messageId, { acceptedAt });
+    }
   }
 
   async hasTrace(messageId: string): Promise<boolean> {
-    return Boolean(await this.traceStore.get(messageId));
+    return this.traceStore.exists(messageId);
   }
 
   async updateDispatch(
@@ -223,40 +227,31 @@ export class WecomMessageObservabilityService {
     dispatchMode: DispatchMode,
     batchId?: string,
   ): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
+    const trace = await this.traceStore.getFields<WecomTraceContext, 'request'>(messageId, [
+      'request',
+    ]);
+    if (!trace?.request) return;
     trace.request.dispatchMode = dispatchMode;
     trace.request.batchId = batchId ?? trace.request.batchId;
-    await this.traceStore.set(messageId, trace);
+    await this.traceStore.patch<WecomTraceContext>(messageId, { request: trace.request });
   }
 
   async markHistoryStored(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
-    trace.timings.historyStoredAt = Date.now();
-    await this.traceStore.set(messageId, trace);
+    await this.markTiming(messageId, 'historyStoredAt');
   }
 
   async markImagePrepared(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
-    trace.timings.imagePreparedAt = Date.now();
-    await this.traceStore.set(messageId, trace);
+    await this.markTiming(messageId, 'imagePreparedAt');
   }
 
   async markQueueAdd(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace || trace.timings.queueAddAt) return;
-    trace.timings.queueAddAt = Date.now();
-    await this.traceStore.set(messageId, trace);
+    await this.markTiming(messageId, 'queueAddAt', true);
   }
 
   async markWorkerStart(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace || trace.timings.workerStartAt) return;
-    trace.timings.workerStartAt = Date.now();
-    await this.traceStore.set(messageId, trace);
-    this.trackingService.recordWorkerStart(messageId);
+    if (await this.markTiming(messageId, 'workerStartAt', true)) {
+      this.trackingService.recordWorkerStart(messageId);
+    }
   }
 
   /**
@@ -270,18 +265,31 @@ export class WecomMessageObservabilityService {
     sourceMessageIds: string[],
   ): Promise<void> {
     if (!sourceMessageIds.length) return;
-    const target = await this.traceStore.get<WecomTraceContext>(targetTraceId);
+    const timingFields: ('historyStoredAt' | 'imagePreparedAt' | 'queueAddAt')[] = [
+      'historyStoredAt',
+      'imagePreparedAt',
+      'queueAddAt',
+    ];
+    const target = await this.traceStore.getTimings<
+      WecomTraceTimings,
+      'historyStoredAt' | 'imagePreparedAt' | 'queueAddAt'
+    >(targetTraceId, timingFields);
     if (!target) return;
 
     const sources = await Promise.all(
-      sourceMessageIds.map((id) => this.traceStore.get<WecomTraceContext>(id)),
+      sourceMessageIds.map((id) =>
+        this.traceStore.getTimings<
+          WecomTraceTimings,
+          'historyStoredAt' | 'imagePreparedAt' | 'queueAddAt'
+        >(id, timingFields),
+      ),
     );
 
     const maxOf = (
       field: 'historyStoredAt' | 'imagePreparedAt' | 'queueAddAt',
     ): number | undefined => {
       const values = sources
-        .map((trace) => trace?.timings[field])
+        .map((timings) => timings?.[field])
         .filter((value): value is number => Number.isFinite(value ?? NaN));
       return values.length ? Math.max(...values) : undefined;
     };
@@ -290,11 +298,11 @@ export class WecomMessageObservabilityService {
     const imagePreparedAt = maxOf('imagePreparedAt');
     const queueAddAt = maxOf('queueAddAt');
 
-    if (historyStoredAt !== undefined) target.timings.historyStoredAt = historyStoredAt;
-    if (imagePreparedAt !== undefined) target.timings.imagePreparedAt = imagePreparedAt;
-    if (queueAddAt !== undefined) target.timings.queueAddAt = queueAddAt;
+    if (historyStoredAt !== undefined) target.historyStoredAt = historyStoredAt;
+    if (imagePreparedAt !== undefined) target.imagePreparedAt = imagePreparedAt;
+    if (queueAddAt !== undefined) target.queueAddAt = queueAddAt;
 
-    await this.traceStore.set(targetTraceId, target);
+    await this.traceStore.patchTimings(targetTraceId, target);
 
     const recyclableSourceIds = sourceMessageIds.filter((id) => id !== targetTraceId);
 
@@ -316,55 +324,38 @@ export class WecomMessageObservabilityService {
   }
 
   async markAiStart(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace || trace.timings.aiStartAt) return;
-    trace.timings.aiStartAt = Date.now();
-    await this.traceStore.set(messageId, trace);
-    this.trackingService.recordAiStart(messageId);
+    if (await this.markTiming(messageId, 'aiStartAt', true)) {
+      this.trackingService.recordAiStart(messageId);
+    }
   }
 
   async markAiEnd(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
-    trace.timings.aiEndAt = Date.now();
-    await this.traceStore.set(messageId, trace);
-    this.trackingService.recordAiEnd(messageId);
+    if (await this.markTiming(messageId, 'aiEndAt')) {
+      this.trackingService.recordAiEnd(messageId);
+    }
   }
 
   async recordAgentResult(messageId: string, agentResult: AgentInvokeResult): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
-    trace.agentResult = agentResult;
-    await this.traceStore.set(messageId, trace);
+    if (!(await this.traceStore.exists(messageId))) return;
+    await this.traceStore.patch<WecomTraceContext>(messageId, { agentResult });
   }
 
   async recordAgentRequest(messageId: string, request: Record<string, unknown>): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
-    trace.agentRequest = request;
-    await this.traceStore.set(messageId, trace);
+    if (!(await this.traceStore.exists(messageId))) return;
+    await this.traceStore.patch<WecomTraceContext>(messageId, { agentRequest: request });
   }
 
   async markDeliveryStart(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace || trace.timings.deliveryStartAt) return;
-    trace.timings.deliveryStartAt = Date.now();
-    await this.traceStore.set(messageId, trace);
+    await this.markTiming(messageId, 'deliveryStartAt', true);
   }
 
   async markFirstSegmentSent(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace || trace.timings.firstSegmentSentAt) return;
-    trace.timings.firstSegmentSentAt = Date.now();
-    await this.traceStore.set(messageId, trace);
+    await this.markTiming(messageId, 'firstSegmentSentAt', true);
   }
 
   async markDeliveryEnd(messageId: string, deliveryResult: DeliveryResult): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
-    trace.timings.deliveryEndAt = Date.now();
-    trace.deliveryResult = deliveryResult;
-    await this.traceStore.set(messageId, trace);
+    if (!(await this.markTiming(messageId, 'deliveryEndAt'))) return;
+    await this.traceStore.patch<WecomTraceContext>(messageId, { deliveryResult });
   }
 
   /**
@@ -373,31 +364,35 @@ export class WecomMessageObservabilityService {
    * 仍写入 delivery 时间戳与零片段 deliveryResult，确保耗时统计与流水结构完整。
    */
   async markReplySkipped(messageId: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
+    const timings = await this.traceStore.getTimings<
+      WecomTraceTimings,
+      'deliveryStartAt' | 'deliveryEndAt'
+    >(messageId, ['deliveryStartAt', 'deliveryEndAt']);
+    if (!timings) return;
     const now = Date.now();
-    trace.timings.replySkippedAt = now;
-    trace.timings.deliveryStartAt = trace.timings.deliveryStartAt ?? now;
-    trace.timings.deliveryEndAt = trace.timings.deliveryEndAt ?? now;
-    trace.deliveryResult = {
-      success: true,
-      segmentCount: 0,
-      failedSegments: 0,
-      deliveredSegments: 0,
-      totalTime: 0,
-    };
-    await this.traceStore.set(messageId, trace);
+    await Promise.all([
+      this.traceStore.patchTimings<WecomTraceTimings>(messageId, {
+        replySkippedAt: now,
+        deliveryStartAt: timings.deliveryStartAt ?? now,
+        deliveryEndAt: timings.deliveryEndAt ?? now,
+      }),
+      this.traceStore.patch<WecomTraceContext>(messageId, {
+        deliveryResult: {
+          success: true,
+          segmentCount: 0,
+          failedSegments: 0,
+          deliveredSegments: 0,
+          totalTime: 0,
+        },
+      }),
+    ]);
   }
 
   async markFallbackStart(messageId: string, fallbackMessage: string): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!trace) return;
-    trace.timings.fallbackStartAt = Date.now();
-    trace.fallbackDelivery = {
-      attempted: true,
-      message: fallbackMessage,
-    };
-    await this.traceStore.set(messageId, trace);
+    if (!(await this.markTiming(messageId, 'fallbackStartAt'))) return;
+    await this.traceStore.patch<WecomTraceContext>(messageId, {
+      fallbackDelivery: { attempted: true, message: fallbackMessage },
+    });
   }
 
   async markFallbackEnd(
@@ -410,19 +405,23 @@ export class WecomMessageObservabilityService {
       error?: string;
     },
   ): Promise<void> {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
+    const trace = await this.traceStore.getFields<WecomTraceContext, 'fallbackDelivery'>(
+      messageId,
+      ['fallbackDelivery'],
+    );
     if (!trace) return;
-    trace.timings.fallbackEndAt = Date.now();
-    trace.fallbackDelivery = {
-      attempted: true,
-      message: trace.fallbackDelivery?.message,
-      success: result.success,
-      totalTime: result.totalTime,
-      deliveredSegments: result.deliveredSegments,
-      failedSegments: result.failedSegments,
-      error: result.error,
-    };
-    await this.traceStore.set(messageId, trace);
+    await this.markTiming(messageId, 'fallbackEndAt');
+    await this.traceStore.patch<WecomTraceContext>(messageId, {
+      fallbackDelivery: {
+        attempted: true,
+        message: trace.fallbackDelivery?.message,
+        success: result.success,
+        totalTime: result.totalTime,
+        deliveredSegments: result.deliveredSegments,
+        failedSegments: result.failedSegments,
+        error: result.error,
+      },
+    });
   }
 
   async buildSuccessMetadata(
@@ -667,6 +666,28 @@ export class WecomMessageObservabilityService {
   private diff(to?: number, from?: number): number | undefined {
     if (to === undefined || from === undefined) return undefined;
     return Math.max(to - from, 0);
+  }
+
+  /**
+   * V2 Trace 直接原子更新单个 timing field，不再读取/回写整份 Agent Trace。
+   * 返回 true 表示本次确实写入；NX 字段已存在时返回 false。
+   */
+  private async markTiming(
+    messageId: string,
+    field: keyof WecomTraceTimings,
+    onlyIfAbsent = false,
+  ): Promise<boolean> {
+    const now = Date.now();
+    const status = await this.traceStore.setTiming(messageId, field, now, onlyIfAbsent);
+    if (status >= 0) return status === 1;
+
+    // 滚动发布兼容：V2 Hash 不存在时，读取旧 JSON 一次并升级成完整 V2。
+    const legacy = await this.traceStore.get<WecomTraceContext>(messageId);
+    if (!legacy) return false;
+    if (onlyIfAbsent && legacy.timings[field] !== undefined) return false;
+    legacy.timings[field] = now;
+    await this.traceStore.set(messageId, legacy);
+    return true;
   }
 
   private async cleanup(messageId: string): Promise<void> {
