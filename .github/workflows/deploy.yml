@@ -87,6 +87,20 @@ jobs:
             IMAGE_TAG="$RELEASE_TAG"
             cd /data/cake
 
+            echo "Docker storage before deployment cleanup:"
+            df -h / /var/lib/docker 2>/dev/null || df -h /
+            docker system df || true
+
+            # 发布前只清理未使用的资源：当前容器和 rollback 镜像不会被删除。
+            # 保留 24 小时内的构建缓存和 7 天内的未使用镜像，避免每次
+            # 构建都从零开始，同时防止历史发布层耗尽 Docker 磁盘。
+            docker image prune --all --force --filter "until=168h"
+            docker builder prune --all --force --filter "until=24h"
+
+            echo "Docker storage after deployment cleanup:"
+            df -h / /var/lib/docker 2>/dev/null || df -h /
+            docker system df || true
+
             if [ -d source/.git ]; then
               cd source
               # source 是发布专用克隆，不保留服务器本地的跟踪文件改动。
