@@ -1,63 +1,36 @@
 {
-  "baseVersion": "10.7.0",
+  "baseVersion": "10.8.0",
   "nextVersion": "10.8.0",
   "updatedAt": "2026-07-14",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "541",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/541",
-      "title": "构建前清理过期 Docker 缓存",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-14",
-      "businessUpdates": [
-        "构建前清理过期 Docker 缓存"
-      ],
-      "summary": [
-        "构建前清理过期 Docker 缓存"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "构建前清理过期 Docker 缓存"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "workflow YAML 解析通过",
-        "pre-push 完整 `pnpm run ci:check` 通过：335 个测试套件、4753 个测试通过"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.7.0",
+    "version": "10.8.0",
     "date": "2026-07-14",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "536",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/536",
-        "title": "避免发布源码权限位阻塞切换",
+        "number": "541",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/541",
+        "title": "构建前清理过期 Docker 缓存",
         "author": "ArielZhu",
         "mergedAt": "2026-07-14",
         "businessUpdates": [
-          "避免发布源码权限位阻塞切换"
+          "构建前清理过期 Docker 缓存"
         ],
         "summary": [
-          "避免发布源码权限位阻塞切换"
+          "构建前清理过期 Docker 缓存"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "避免发布源码权限位阻塞切换"
+          "构建前清理过期 Docker 缓存"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
           "workflow YAML 解析通过",
-          "本地临时 Git 仓库复现 chmod 脏状态，修复后的 checkout 可切换且工作区恢复 clean",
           "pre-push 完整 `pnpm run ci:check` 通过：335 个测试套件、4753 个测试通过"
         ]
       }
