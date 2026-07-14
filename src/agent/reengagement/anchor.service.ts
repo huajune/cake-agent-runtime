@@ -134,7 +134,18 @@ export class ReengagementAnchorService {
     const reply = (result.reply?.content ?? result.text ?? '').trim();
     const toolCalls = result.toolCalls ?? [];
 
-    const presentedStoreCalls = toolCalls.filter((call) => this.presentedStore(call));
+    // 候选人进入收资后仍可能追问薪资、排班、福利。回复若继续明确索要资料，应刷新
+    // 收资锚点，不能因为同轮补查岗位详情而降级成“推店未回”。首次 precheck 已由
+    // handleToolAnchors 排程，避免同一回合重复创建第二个收资锚点。
+    const collectionStartedThisTurn = toolCalls.some((call) => this.isCollectionStarted(call));
+    const collectionContinued = !collectionStartedThisTurn && this.asksForCollectionDetails(reply);
+    if (collectionContinued) {
+      void this.schedule('booking_incomplete', `${context.traceId}:collection_continued`, context);
+    }
+
+    const presentedStoreCalls = collectionContinued
+      ? []
+      : toolCalls.filter((call) => this.presentedStore(call, reply));
     if (presentedStoreCalls.length > 0) {
       void this.schedule(
         'store_presented_no_reply',
@@ -246,15 +257,56 @@ export class ReengagementAnchorService {
     return typeof raw === 'number' && Number.isInteger(raw) && raw > 0 ? raw : undefined;
   }
 
-  private presentedStore(call: AgentToolCall): boolean {
+  private presentedStore(call: AgentToolCall, reply: string): boolean {
     if (call.toolName !== 'duliday_job_list') return false;
+    const args = this.asRecord(call.args);
+    // 带明确 jobId 的查询是在已选岗位上补查薪资、排班、福利等事实，不是重新推店。
+    // 若把这种查询也当成展示门店，会在收资阶段错误排出 store_presented_no_reply。
+    if (Array.isArray(args?.jobIdList) && args.jobIdList.length > 0) return false;
     const result = this.asRecord(call.result);
     if (!result) return false;
-    if (typeof result.resultCount === 'number') return result.resultCount > 0;
-    return ['jobs', 'items', 'data', 'results', 'list'].some((key) => {
-      const value = result[key];
-      return Array.isArray(value) && value.length > 0;
-    });
+    const hasResults =
+      (typeof result.resultCount === 'number' && result.resultCount > 0) ||
+      ['jobs', 'items', 'data', 'results', 'list'].some((key) => {
+        const value = result[key];
+        return Array.isArray(value) && value.length > 0;
+      });
+    if (!hasResults) return false;
+
+    // 查到岗位不等于已经向候选人展示岗位。只有回复里出现结果中的具体品牌/门店/岗位，
+    // 或包含结构化岗位卡片，才建立“推店未回”锚点。这样能排除“暂无合适岗位”、
+    // “年龄不匹配”“进群等新岗”等查岗后未实际推荐的回复。
+    const labels = new Set<string>();
+    this.collectPresentationLabels(call.result, labels);
+    const mentionsResult = [...labels].some((label) => label.length >= 2 && reply.includes(label));
+    const containsJobCard =
+      /薪资\s*[:：]?\s*(?:\d|[一二三四五六七八九十])|(?:班次|要求|福利)\s*[:：]|[（(][^）)]+[）)]\s*[-—]/.test(
+        reply,
+      );
+    const containsPositiveHandoff =
+      /(?:这家|这个岗位|哪家|哪个岗位).{0,20}(?:考虑|感兴趣|合适|方便|接受|帮你约)|(?:考虑|感兴趣|合适).{0,12}(?:这家|这个岗位)/.test(
+        reply,
+      );
+    return containsJobCard || (mentionsResult && containsPositiveHandoff);
+  }
+
+  private collectPresentationLabels(value: unknown, out: Set<string>, depth = 0): void {
+    if (depth > 6 || value == null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) this.collectPresentationLabels(item, out, depth + 1);
+      return;
+    }
+    if (typeof value !== 'object') return;
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (
+        ['brandName', 'storeName', 'projectName', 'jobName'].includes(key) &&
+        typeof nested === 'string' &&
+        nested.trim().length > 0
+      ) {
+        out.add(nested.trim());
+      }
+      this.collectPresentationLabels(nested, out, depth + 1);
+    }
   }
 
   private extractPresentedStores(
@@ -287,6 +339,12 @@ export class ReengagementAnchorService {
 
   private asksForLocation(reply: string): boolean {
     return /(?:你|您|方便|可以|麻烦|这边|这儿|那里|那边)?.{0,8}(?:发|给我发|提供|说下|说一下|告知|填).{0,12}(?:位置|地址|定位|地标|商圈|地铁站)|(?:位置|地址|定位|地标).{0,8}(?:发|给).{0,8}(?:我|这边)|(?:在哪|哪里).*?(?:城市|区|区域|商圈|地铁站|位置|地址|地标)|(?:城市|区|区域|商圈|地铁站|位置|地址|地标).*?(?:在哪|哪里)/.test(
+      reply,
+    );
+  }
+
+  private asksForCollectionDetails(reply: string): boolean {
+    return /(?:资料|个人信息|报名信息).{0,16}(?:填|填写|补|补充|发我|给我|提供|登记)|(?:姓名|联系方式|手机号|电话|年龄|性别|面试时间).{0,30}(?:填|填写|补|补充|发我|给我|提供|登记)/.test(
       reply,
     );
   }

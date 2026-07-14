@@ -61,8 +61,7 @@ describe('ReengagementAgent', () => {
         },
         {
           role: 'assistant',
-          content:
-            '你在哪个地铁站附近呀？\n[消息发送时间：2026-06-24 09:56 星期三]',
+          content: '你在哪个地铁站附近呀？\n[消息发送时间：2026-06-24 09:56 星期三]',
         },
       ],
       factLines: ['- 意向城市: 上海（置信度: high，来源: llm）'],
@@ -214,6 +213,53 @@ describe('ReengagementAgent', () => {
     },
   );
 
+  it('records a non-booking model skip without misclassifying it as interview cancellation', async () => {
+    memoryRecall.recentMessages = [{ role: 'assistant', content: '你大概在哪个区域呀？' }];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'skip',
+        message: '',
+        reason: '距离上一条消息时间太短，继续发送会显得催促',
+      },
+      usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('opening_no_reply')!,
+      jobData: job('opening_no_reply'),
+      state: baseState(),
+    });
+
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.validationReason).toBe('reengagement_agent_skipped');
+    expect(result.agentRequest).toMatchObject({
+      validationReason: 'reengagement_agent_skipped',
+    });
+  });
+
+  it('does not label an evidence-insufficient interview skip as candidate cancellation', async () => {
+    memoryRecall.recentMessages = [{ role: 'user', content: '好的，知道了。' }];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'skip',
+        message: '',
+        reason: '面试形式和时间存在冲突，当前证据不足',
+      },
+      usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder'),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(result.validationReason).toBe('reengagement_agent_skipped');
+  });
+
   it('uses LLM for booking_incomplete instead of hard-coding missing fields', async () => {
     llm.generateStructured.mockResolvedValue({
       output: {
@@ -282,9 +328,7 @@ describe('ReengagementAgent', () => {
     expect(request.system).toContain('## 已知事实');
     expect(request.system).toContain('意向城市: 上海');
     // 保留与 Generator 完全相同的角色与时间后缀，不再二次拆解和改写。
-    expect(request.messages[1].content).toContain(
-      '消息发送时间：2026-06-24 09:56 星期三',
-    );
+    expect(request.messages[1].content).toContain('消息发送时间：2026-06-24 09:56 星期三');
     expect(request.system).not.toContain('内部追踪上下文');
     expect(request.system).not.toContain('rolloutEnabled');
     expect(request.system).not.toContain('shadow');
@@ -302,8 +346,7 @@ describe('ReengagementAgent', () => {
             },
             {
               role: 'assistant',
-              content:
-                '你在哪个地铁站附近呀？\n[消息发送时间：2026-06-24 09:56 星期三]',
+              content: '你在哪个地铁站附近呀？\n[消息发送时间：2026-06-24 09:56 星期三]',
             },
           ],
           factLines: ['- 意向城市: 上海（置信度: high，来源: llm）'],
