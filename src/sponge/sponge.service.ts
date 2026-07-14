@@ -530,10 +530,16 @@ export class SpongeService {
     return await this.getWorkOrderById(workOrderId, tokenContext);
   }
 
-  /** 绕过 Redis 缓存读取工单最新状态，并用结果刷新缓存。 */
+  /**
+   * 绕过 Redis 缓存读取工单最新状态，并用结果刷新缓存。
+   *
+   * 返回 null 表示海绵明确查不到该工单（指针可能已失效）；查询本身失败默认也返回 null，
+   * 但调用方需要区分「暂时查不到」与「确实不存在」时可传 throwOnFetchError 让失败上抛。
+   */
   async getWorkOrderById(
     workOrderId: number,
     tokenContext?: SpongeTokenResolveContext,
+    options?: { throwOnFetchError?: boolean },
   ): Promise<SignupWorkOrderItem | null> {
     const cacheKey = this.workOrderCacheKey(workOrderId);
     let result: SignupWorkOrdersResult;
@@ -541,6 +547,7 @@ export class SpongeService {
       result = await this.fetchSignupWorkOrders({ workOrderId }, tokenContext);
     } catch (error) {
       this.logger.warn(`查询工单失败 workOrderId=${workOrderId}: ${this.errorMessage(error)}`);
+      if (options?.throwOnFetchError) throw error;
       return null;
     }
 

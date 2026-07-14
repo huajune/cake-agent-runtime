@@ -1,42 +1,19 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
-import { MessageType } from '@enums/message-callback.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { ToolBuildContext } from '@shared-types/tool.types';
-import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
-import {
-  decideLaborFormIntent,
-  isValidLaborForm,
-  type LaborFormIntentDecision,
-  matchesLaborForm,
-  sanitizeJobDisplayText,
-  sanitizeLaborFormForDisplay,
-} from '@memory/facts/labor-form';
-import {
-  detectBrandAliasHints,
-  filterHighConfidenceFacts,
-  unwrapHighConfidenceFacts,
-} from '@memory/facts/high-confidence-facts';
+import { decideLaborFormIntent } from '@memory/facts/labor-form';
+import { detectBrandAliasHints } from '@memory/facts/high-confidence-facts';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import { LongTermService } from '@memory/services/long-term.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { SpongeService } from '@sponge/sponge.service';
-import type { SignupWorkOrderItem } from '@sponge/sponge.types';
+import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
 import {
-  isUserProfileFactValue,
-  type LongTermPreferenceFacts,
-  type UserProfileFacts,
-  unwrapUserProfileFacts,
-} from '@memory/types/long-term.types';
-import {
-  type EntityExtractionResult,
-  type HighConfidenceFacts,
   type RecommendedJobSummary,
   type WeworkSessionState,
-  unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
 import { ContextService } from './context/context.service';
 import { PromptInjectionService } from '../guardrail/input/prompt-injection.service';
@@ -44,21 +21,27 @@ import {
   type GeneratorInputMessage,
   type GeneratorInvokeParams,
   type AgentMemorySnapshot,
-  type GeneratorToolMode,
 } from '../generator/generator.types';
-import {
-  computeResultCount,
-  computeToolCallStatus,
-  SIDE_EFFECT_TOOLS,
-} from '../generator/tool-call-analysis';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
-import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
-
-interface RealtimeGroupStatus {
-  groupName: string;
-  city: string;
-}
+import { CRITICAL_TURN_GUARD_RULES } from './critical-turn-guard.rules';
+import {
+  buildMemoryBlock,
+  formatBookingContext,
+  type RealtimeGroupStatus,
+  type TurnStartMemory,
+} from './memory-block.formatter';
+import {
+  normalizeConversation,
+  trailingUserContent,
+  truncateToCharBudget,
+} from './conversation-normalizer';
+import {
+  buildProactiveDirective,
+  buildReviseNotice,
+  buildReviseUserDirective,
+} from './revise-directives';
+import { resolveToolsForMode, wrapToolsWithTiming } from './tool-set.util';
+import { buildToolContext } from './tool-context.builder';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -88,6 +71,15 @@ export interface PreparedAgentContext {
   toolExecutionTimings: Map<string, number>;
 }
 
+/**
+ * 回合准备编排：记忆召回 → 消息归一化 → memoryBlock/system prompt 组装 →
+ * 工具集构建 → 观测快照。
+ *
+ * 纯函数辅助层按职责拆在同目录：memory-block.formatter（记忆渲染）、
+ * conversation-normalizer（消息归一化）、revise-directives（HC-1/主动回合指令）、
+ * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）、
+ * critical-turn-guard.rules（动态硬禁令规则表）。本类只保留需要 IO/DI 的编排逻辑。
+ */
 @Injectable()
 export class PreparationService {
   private readonly logger = new Logger(PreparationService.name);
@@ -127,8 +119,11 @@ export class PreparationService {
     // 入参归一化：只认 messages[]。本轮的 user 文本 = 末尾连续的 user 块（上一条 assistant 之后的所有 user）。
     // 这样不管上层是否已把多条消息合并成单条 user，都能覆盖本轮全部用户输入——
     // 合并场景（WeCom replay、test-suite 多条连发）下后续事实提取/阶段推断才不会漏内容。
-    const truncatedMessages = this.truncateToCharBudget(params.messages);
-    const currentUserMessage = this.trailingUserContent(truncatedMessages);
+    const truncatedMessages = truncateToCharBudget(
+      params.messages,
+      this.memoryConfig.sessionWindowMaxChars,
+    );
+    const currentUserMessage = trailingUserContent(truncatedMessages);
     const currentLaborFormIntent = decideLaborFormIntent(currentUserMessage);
 
     // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态。
@@ -149,7 +144,7 @@ export class PreparationService {
     ]);
 
     // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
-    const normalizedMessages = this.normalizeConversation({
+    const normalizedMessages = normalizeConversation({
       callerKind,
       memoryWindow: memory.shortTerm.messageWindow,
       passedMessages: truncatedMessages,
@@ -168,7 +163,7 @@ export class PreparationService {
 
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
-    const memoryBlock = this.buildMemoryBlock(
+    const memoryBlock = buildMemoryBlock(
       memory,
       bookingContext.block,
       realtimeGroups,
@@ -212,7 +207,7 @@ export class PreparationService {
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
     const turnState: PreparedAgentContext['turnState'] = { candidatePool: null };
-    const toolContext = this.buildToolContext({
+    const toolContext = buildToolContext({
       params,
       memory,
       normalizedMessages,
@@ -227,25 +222,22 @@ export class PreparationService {
     });
     const toolExecutionTimings = new Map<string, number>();
     const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
-    const tools = this.wrapToolsWithTiming(
-      this.resolveToolsForMode(
-        scenarioTools,
-        params.toolMode ?? 'scenario',
-        params.allowedToolNames,
-      ),
+    const tools = wrapToolsWithTiming(
+      resolveToolsForMode(scenarioTools, params.toolMode ?? 'scenario', params.allowedToolNames),
       toolExecutionTimings,
+      this.tracer,
     );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
     const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
-    const reviseNotice = this.buildReviseNotice(params);
-    const proactiveDirective = this.buildProactiveDirective(params);
+    const reviseNotice = buildReviseNotice(params);
+    const proactiveDirective = buildProactiveDirective(params);
 
     // HC-1 repair/revise 回合：重写指令同时追加为对话末尾的 user 消息。
     // 只拼在超长 system 末尾时弱模型会无视它、把本轮当新对话重新规划任务
     // （badcase batch_6a4790c7ce406a6aeee9c102：repair 模型重新计划查岗、
     // 想调 geocode，工具已被物理移除，最终只发出一句悬空的"我帮你查下"）。
-    const reviseUserDirective = this.buildReviseUserDirective(params);
+    const reviseUserDirective = buildReviseUserDirective(params);
     if (reviseUserDirective) {
       normalizedMessages.push({ role: 'user', content: reviseUserDirective });
     }
@@ -269,117 +261,11 @@ export class PreparationService {
   }
 
   /**
-   * 给工具集的 execute 包一层真实计时（按 AI SDK 传入的 toolCallId 记录）。
-   *
-   * 没有这层时，观测里的工具耗时只能用"步骤墙钟"近似——它包含 LLM 思考与输出时间，
-   * 曾导致 skip_reply 这类纯本地工具在流水里显示平均 7s+，无法区分模型慢还是外部 API 慢。
-   */
-  private wrapToolsWithTiming(tools: ToolSet, timings: Map<string, number>): ToolSet {
-    const wrapped: ToolSet = {};
-    for (const [name, toolDef] of Object.entries(tools)) {
-      const execute = (toolDef as { execute?: unknown }).execute;
-      if (typeof execute !== 'function') {
-        wrapped[name] = toolDef;
-        continue;
-      }
-      wrapped[name] = {
-        ...toolDef,
-        execute: async (...args: unknown[]) => {
-          const startedAt = Date.now();
-          const options = args[1] as { toolCallId?: string } | undefined;
-          try {
-            const result = await (execute as (...callArgs: unknown[]) => unknown).apply(
-              toolDef,
-              args,
-            );
-            const durationMs = Date.now() - startedAt;
-            this.recordToolTiming(name, timings, options, durationMs);
-            const resultCount = computeResultCount(result);
-            this.tracer?.emit({
-              type: 'tool_call',
-              toolName: name,
-              durationMs,
-              resultCount,
-              status: computeToolCallStatus(result, resultCount, undefined, undefined, name),
-              sideEffect: SIDE_EFFECT_TOOLS.has(name),
-            });
-            return result;
-          } catch (error) {
-            const durationMs = Date.now() - startedAt;
-            this.recordToolTiming(name, timings, options, durationMs);
-            this.tracer?.emit({
-              type: 'tool_error',
-              toolName: name,
-              durationMs,
-              error: error instanceof Error ? error.message : String(error),
-            });
-            throw error;
-          }
-        },
-      } as ToolSet[string];
-    }
-    return wrapped;
-  }
-
-  private recordToolTiming(
-    name: string,
-    timings: Map<string, number>,
-    options: { toolCallId?: string } | undefined,
-    durationMs: number,
-  ): void {
-    if (options?.toolCallId) {
-      timings.set(options.toolCallId, durationMs);
-      return;
-    }
-
-    // AI SDK execute(input, options) 签名变更会走到这里：计时静默失效，
-    // durationMs 退回墙钟近似。打日志便于升级 SDK 后发现。
-    this.logger.warn(`[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`);
-  }
-
-  private resolveToolsForMode(
-    tools: ToolSet,
-    mode: GeneratorToolMode,
-    allowedToolNames?: string[],
-  ): ToolSet {
-    if (mode === 'none') return {};
-
-    const modeTools: ToolSet = {};
-    for (const [name, toolDef] of Object.entries(tools)) {
-      if (mode === 'scenario' || !SIDE_EFFECT_TOOLS.has(name)) modeTools[name] = toolDef;
-    }
-
-    if (allowedToolNames === undefined) return modeTools;
-    const allowed = new Set(allowedToolNames);
-    return Object.fromEntries(Object.entries(modeTools).filter(([name]) => allowed.has(name)));
-  }
-
-  /**
-   * 取本轮用户输入：末尾连续的 user 块（到上一条 assistant 为止），以换行合并。
-   *
-   * 为什么不只取最后一条：合并请求（WeCom replay、test-suite 多条连发）下，
-   * 末尾可能连续多条 user 且尚未有 assistant 打断。只取最后一条会让下游的
-   * 高置信事实提取、阶段推断、guard 告警文本漏掉前面几条的内容。
-   */
-  private trailingUserContent(messages: GeneratorInputMessage[]): string | undefined {
-    const collected: string[] = [];
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const role = messages[i].role;
-      if (role === 'user') {
-        const content = messages[i].content?.trim();
-        if (content) collected.unshift(content);
-        continue;
-      }
-      if (role === 'assistant') break;
-    }
-    return collected.length > 0 ? collected.join('\n') : undefined;
-  }
-
-  /**
    * 把本轮最容易复发的事故规则追加到 system prompt 最末尾。
    *
    * 这些规则不是替代主 prompt，而是把“当前消息已经命中”的禁令放到最后，
    * 避免模型在长上下文里先承认规则、最后又被阶段策略带回收资或预约。
+   * 规则本体（badcase 驱动的正则 + 禁令文案）维护在 critical-turn-guard.rules.ts。
    */
   private buildCriticalTurnGuard(
     currentUserMessage: string | undefined,
@@ -391,207 +277,15 @@ export class PreparationService {
       .map((message) => `${message.role}: ${message.content ?? ''}`)
       .join('\n');
     const combined = `${recent}\n${current}`;
-    const guards: string[] = [];
 
-    if (
-      /每周.{0,6}(最多|至多|只能|只).{0,4}[一二两三四五六七八九十\d]+天|做一休一|只周末|下班后|[一二两三四五六七八九十\d]+点才(?:能)?下班|现在决定不了时间|不上夜班/.test(
-        current,
-      )
-    ) {
-      guards.push(
-        '本轮候选人补充或重复了出勤/班次硬约束。最终回复在本轮工具校验前严禁说“资料都收到了/资料已收到/没问题/可以/备注上/资料备注/后面安排/随时发我再安排/到时候沟通/先把资料录上”，也严禁继续追问身高、体重、住址、支援意愿等收资字段。必须先用 duliday_interview_precheck 或 duliday_job_list(includeWorkTime=true) 校验当前岗位；若当前岗位不明确或没有本轮工具结果，只能说明“这个时间/每周出勤属于硬约束，需要先按班次核岗位是否匹配”，然后再询问岗位/位置用于筛选，不能基于历史助手话术直接断言“门店面试最晚到5点/今天来不及/等确定了再安排”或说资料已收好。若候选人问“6点下班还能不能面试”，未校验前必须回复“我先按下班后/晚班可约来核岗位”，不能直接给可约或不可约结论。',
-      );
-    }
-
-    if (
-      /(?:\d{1,2}月\d{1,2}[日号]?|今天|明天|后天|下周[一二三四五六日天]?|这?周[一二三四五六日天]|周[一二三四五六日天]).{0,12}(回来)?面试.{0,8}(可以|行|方便|吗)|面试.{0,12}(?:\d{1,2}月\d{1,2}[日号]?|今天|明天|后天|下周[一二三四五六日天]?|这?周[一二三四五六日天]|周[一二三四五六日天])|(?:\d{1,2}月\d{1,2}[日号]?|今天|明天|后天|下周[一二三四五六日天]?|这?周[一二三四五六日天]|周[一二三四五六日天]).{0,8}(上午|下午|晚上|[一二两三四五六七八九十\d]+点)?.{0,8}(可以|行吗|方便|能不能)/.test(
-        current,
-      )
-    ) {
-      guards.push(
-        '本轮候选人指定了面试日期。未调用 duliday_interview_precheck(requestedDate=候选人指定日期) 前，最终回复严禁说“可以/能约/通常可以/一般可以/帮你登记/帮你预约”，也不要催更近日期、改成其他日期时间或继续收整套资料。若 jobId/当前岗位不明确，先确认门店/岗位，不能直接承诺该日期可约；若 job_list 没查到当前岗位，也只能先确认门店/岗位。',
-      );
-    }
-
-    if (/健康证/.test(combined) && /专业|食品|新媒体|填写错误|职业/.test(combined)) {
-      guards.push(
-        '本轮涉及“健康证”和“专业筛选”。健康证只代表证件，不代表候选人的专业；即使历史助手说过专业不符，也不能把“有食品健康证”当成“食品专业”。最终回复必须先澄清“你实际专业是什么”，严禁直接拒绝预约或复述“食品/新媒体专业不符”，也不要声称已拉群，除非本轮 invite_to_group 成功。',
-      );
-    }
-
-    if (
-      /已面试|面试通过|通过了|入职|报到|培训|店长.{0,8}联系|只能一家店|选[^，。！？\n]{0,8}店|先去[^，。！？\n]{0,8}面试/.test(
-        combined,
-      )
-    ) {
-      guards.push(
-        '近邻上下文显示候选人已在面试/入职/只能保留一家店/门店已联系的跟进状态。最终回复严禁重新问“哪天方便面试”、重新收资、重新预约或继续推荐；需要处理状态、门店选择、异常或图片信息时，优先 request_handoff。若无 active case，也只能说让同事确认。',
-      );
-    }
-
-    if (
-      /1[3-9]\d{9}/.test(current) &&
-      /大专|本科|中专|高中|学历|年龄|岁|时间|周[一二三四五六日天]|下午|上午/.test(current)
-    ) {
-      guards.push(
-        '本轮候选人已经提交了报名/预约资料。最终回复必须先确认已收到姓名、电话、年龄、学历、面试时间等已给字段；候选人给了“周三下午/明天下午/具体日期时间”时必须原样承接，严禁擅自改成周四、两点或其他时间。严禁让候选人重填整套模板，也严禁回到“发地址/哪个区/查附近岗位”的入口。若当前岗位缺失，只能确认报名岗位/门店，不要改问住址。',
-      );
-    }
-
-    if (/银行卡|工资|扣税|税务|本人卡|别人卡|房贷|起诉|没几块钱|没啥税/.test(combined)) {
-      guards.push(
-        '本轮在讨论银行卡/税务/发薪主体。若没有本轮工具或明确岗位规则，最终回复严禁说“总部统一规定/公司统一流程/公司统一走账/统一流程/财务流程统一/按平台规则走/没法绕过/个人操作不了/必须/一定/不管多少/门店也按规定办事”，也严禁说“面试时问门店/让门店同事问问/现场沟通/灵活处理/特殊处理/变通”。只能说“通常需要本人账户，具体以岗位或同事确认”。候选人因银行卡异常、被起诉、房贷断供等无法本人卡发薪时，必须 request_handoff 或说明让同事确认；最终回复不要反问附近岗位/在聊的店/要不要看岗位，也不要继续强推约面。',
-      );
-    }
-
-    if (/\[位置分享\]|经纬度|这是我住的地方|住处|地址|附近/.test(combined)) {
-      guards.push(
-        '近邻上下文包含位置线索。若最终回复要引用“刚才那家/这家/那个奥乐齐/附近岗位”等具体推荐，必须写清门店名或地址，并且事实来自本轮 duliday_job_list、当前焦点岗位或当前预约信息。若历史推荐只有品牌/距离/薪资而缺门店/地址，不能继续用“这家”承接，必须重新查岗或先补清门店/地址。',
-      );
-    }
+    const guards = CRITICAL_TURN_GUARD_RULES.filter((rule) => {
+      const text = rule.target === 'current' ? current : combined;
+      return rule.patterns.every((pattern) => pattern.test(text));
+    }).map((rule) => rule.guard);
 
     if (guards.length === 0) return '';
 
     return `\n\n# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`;
-  }
-
-  /**
-   * HC-1：把 revise 回路的违规意见 / 已提交副作用摘要拼到 system prompt 末尾。
-   *
-   * - committedSideEffects：告知模型副作用已生效，既不声称未发生也不重复执行；
-   * - reviseFeedback：把出站守卫的违规意见喂回，让模型只修正这些问题。
-   *
-   * 二者均为可选；都缺省时返回空串，不影响普通回合。
-   */
-  private buildReviseNotice(params: GeneratorInvokeParams): string {
-    const parts: string[] = [];
-
-    const committed = params.committedSideEffects?.trim();
-    if (committed) {
-      parts.push(
-        `本轮的副作用动作已经执行并生效（${committed}），既成事实，不可撤销也不可重复执行。` +
-          `请基于这一事实重写本轮回复：修正措辞与合规问题，` +
-          `严禁声称未发生、严禁重复执行已经生效的操作。`,
-      );
-    }
-
-    const repair = params.guardrailRepair;
-    if (repair) {
-      const feedback = repair.feedbackToGenerator?.trim();
-      const noToolRepairConstraint =
-        params.toolMode === 'none'
-          ? '\n- 本次修复不能调用任何工具。不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签；只输出发给候选人的纯中文文本。如果你认为需要重新查询才能回答，不要尝试查询，改为向候选人自然确认信息或告知稍后跟进。'
-          : '';
-      parts.push(
-        `本次是 Guardrail Repair Writer 模式。上一版候选人可见回复已被丢弃，原文如下：\n` +
-          `"""${repair.originalReply.slice(0, 1200)}"""\n` +
-          `请只输出一版新的候选人可见回复，严格满足：\n` +
-          `- 只修复命中规则的问题，不扩写、不新增未接地事实、不改变已提交副作用事实。\n` +
-          `- 不提“规则/守卫/拦截/系统/工具/模型”。\n` +
-          `- 不输出分析过程，不输出 JSON，不输出多方案。\n` +
-          `- 命中规则：${repair.ruleIds.length > 0 ? repair.ruleIds.join('、') : '未提供'}。` +
-          noToolRepairConstraint +
-          (feedback ? `\n- 聚合修复要求：${feedback}` : ''),
-      );
-    }
-
-    if (params.reviseFeedback?.length) {
-      const lines = params.reviseFeedback.map(
-        (v) =>
-          `- [${v.type}] ${v.feedbackPolicy === 'redacted' ? '证据已脱敏' : `问题：${v.evidence}`}；修复要求：${v.suggestion}`,
-      );
-      const hasReplan = params.reviseFeedback.some((v) => v.repairMode === 'replan');
-      const replanToolConstraint = this.buildReplanToolConstraint(params.allowedToolNames);
-      const noToolRepairConstraint =
-        params.toolMode === 'none'
-          ? '本次修复不能调用任何工具。不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签——只输出发给候选人的纯中文文本。如果你认为需要重新查询才能回答，不要尝试查询，改为向候选人自然确认信息或告知稍后跟进。'
-          : '';
-      parts.push(
-        `上一版回复不可发送，存在以下需修正的问题。请只针对这些问题生成一版新的候选人可见回复，` +
-          `不要解释或提到出站守卫/规则/拦截，不要复述高敏感条件，不要新增未接地承诺。` +
-          (hasReplan ? replanToolConstraint : `本次只做文案修复，严禁调用工具。`) +
-          noToolRepairConstraint +
-          `\n${lines.join('\n')}`,
-      );
-    }
-
-    if (parts.length === 0) return '';
-    return `\n\n# 回复重写要求（HC-1）\n${parts.join('\n\n')}`;
-  }
-
-  /**
-   * HC-1 重写指令的对话末尾版：拼成一条追加在 messages 末尾的 user 消息。
-   *
-   * 动机：system HC-1 位于 ~16K token 大 prompt 的最尾部，而对话仍以候选人的
-   * 原问题收尾，弱模型（qwen 等 fallback 链路）会无视 system 指令、把 repair
-   * 回合当新对话重新执行任务。对话末尾的显式指令是模型注意力最强的位置，
-   * 与 system HC-1 双保险。内容自包含（含被丢弃原文与违规清单），不依赖模型
-   * 回头翻 system。
-   */
-  private buildReviseUserDirective(params: GeneratorInvokeParams): string | null {
-    const repair = params.guardrailRepair;
-    const violations = params.reviseFeedback ?? [];
-    if (!repair && violations.length === 0) return null;
-
-    const hasReplan = violations.some((v) => v.repairMode === 'replan');
-    const replanToolConstraint = this.buildReplanToolConstraint(params.allowedToolNames);
-    const lines: string[] = [
-      '【系统重写指令｜本条不是候选人消息，候选人看不到本条，也不要回应本条】',
-      '你上一版发给候选人的回复未通过发送前审查，已被丢弃。本轮任务不是回答候选人的新消息，' +
-        '而是重写上一版回复。' +
-        (hasReplan
-          ? replanToolConstraint
-          : '严禁调用任何工具，严禁重新规划查岗/拉群/约面等任务——本轮工具动作已全部执行完毕，只做文案修复。' +
-            '本轮没有工具可用，严禁把工具调用写成文本输出（如 {"name": "geocode", ...}、tool_call:xxx(...) 等形态，' +
-            '这类文本会被当成事故直接拦截）；某个事实没有本轮工具结果支持时，删掉该事实或改为不确定表述。'),
-    ];
-    if (repair) {
-      lines.push(`被丢弃的上一版回复原文：\n"""${repair.originalReply.slice(0, 1200)}"""`);
-    }
-    if (violations.length > 0) {
-      lines.push(
-        `需修正的问题：\n${violations.map((v) => `- [${v.type}] ${v.suggestion}`).join('\n')}`,
-      );
-    }
-    lines.push(
-      '现在直接输出修正后的候选人可见回复正文：保留上一版中符合事实、未违规的内容，只删除或改写违规部分；' +
-        '不输出分析过程、前言、JSON 或多个方案；不提"规则/守卫/拦截/系统/工具/模型"。' +
-        (hasReplan
-          ? ''
-          : '严禁输出"我帮你查下/我先看看"这类只承接不给结果的话——本轮不会再有任何查询，回复必须直接给出结论或下一步。'),
-    );
-    return lines.join('\n\n');
-  }
-
-  /** Guardrail replan 的提示必须与物理工具白名单完全一致，不能再声称笼统的“只读”。 */
-  private buildReplanToolConstraint(allowedToolNames?: string[]): string {
-    if (allowedToolNames === undefined) {
-      // 兼容非 guardrail 的历史调用；guardrail runner 必须始终显式传入白名单。
-      return '本次只允许调用当前物理暴露的工具重新核实事实；严禁尝试任何未提供的工具。';
-    }
-    if (allowedToolNames.length === 0) {
-      return '本次没有可用工具；只能基于已有事实修正回复，不能承诺稍后查询。';
-    }
-    return `本次只允许调用以下工具重新核实或补全必要事实：${allowedToolNames.join('、')}；严禁尝试任何其它工具。`;
-  }
-
-  /**
-   * reengagement 主动回合 directive 注入。
-   *
-   * 告诉模型本回合是系统发起的主动跟进、目标是什么；话术由模型按记忆/上下文实时生成。
-   * 强调主动回合的边界：只提醒/答疑，不替候选人报名/拉群（副作用工具已由 toolMode:'readonly'
-   * 物理移除，这里再用 prompt 重申，双保险）。被动回合不传，返回空串。
-   */
-  private buildProactiveDirective(params: GeneratorInvokeParams): string {
-    const directive = params.proactiveDirective?.trim();
-    if (!directive) return '';
-    return (
-      `\n\n# 主动跟进回合（reengagement）\n` +
-      `本回合不是候选人发来的消息，而是系统按既定场景发起的主动跟进。跟进目标：${directive}\n` +
-      `要求：① 自然、简短、不骚扰，像真人招募经理顺手关心一句；② 只做提醒/答疑，` +
-      `严禁替候选人报名/拉群/改约（这些动作只能由候选人本人在后续对话里推进）；` +
-      `③ 若记忆显示候选人已报名/已转人工/已明确拒绝，则不要发起跟进。`
-    );
   }
 
   /**
@@ -624,35 +318,6 @@ export class PreparationService {
   }
 
   /**
-   * 把本轮对话归一化为 AI SDK 的 ModelMessage[]：
-   *   1. 按 callerKind 选定消息源（WECOM 用 memory 历史，其他用调用方直传的）
-   *   2. 转成 ModelMessage
-   *   3. 按需注入顶层图片 parts（多模态 vision）
-   */
-  private normalizeConversation(input: {
-    callerKind: CallerKind;
-    memoryWindow: GeneratorInputMessage[];
-    passedMessages: GeneratorInputMessage[];
-    enableVision: boolean;
-    imageUrls?: string[];
-    imageMessageIds?: string[];
-    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
-  }): ModelMessage[] {
-    const source =
-      input.callerKind === CallerKind.WECOM ? input.memoryWindow : input.passedMessages;
-    const normalized = this.toModelMessages(source, input.enableVision);
-    if (input.imageUrls?.length && input.enableVision) {
-      this.injectImageParts(
-        normalized,
-        input.imageUrls,
-        input.imageMessageIds,
-        input.visualMessageTypes,
-      );
-    }
-    return normalized;
-  }
-
-  /**
    * 输入安全检查闭环：扫描 prompt injection → 异步告警 → 返回需要追加到 system prompt 的防护 suffix。
    * 命中注入时返回 GUARD_SUFFIX，否则返回空字符串。
    */
@@ -667,99 +332,6 @@ export class PreparationService {
       .alertInjection(userId, guardResult.reason!, currentUserMessage ?? '')
       .catch(() => {});
     return PromptInjectionService.GUARD_SUFFIX;
-  }
-
-  /**
-   * 把本轮相关记忆渲染成 ContextService.compose 能直接消费的 memoryBlock 字符串。
-   */
-  private buildMemoryBlock(
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
-    bookingContext: string,
-    realtimeGroups: RealtimeGroupStatus[] = [],
-    contactName?: string,
-    contactBrandAliases: string[] = [],
-    currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
-  ): string {
-    const activeLaborForm = this.resolveActiveLaborForm(memory, currentLaborFormIntent);
-    return (
-      this.formatCrossConversationNotice(memory.longTerm.origin?.fromOtherConversation ?? false) +
-      this.formatContactNamePreferenceHint(contactName, contactBrandAliases) +
-      this.formatProfile(memory.longTerm.profile) +
-      this.formatLongTermPreferences(memory.longTerm.preferences ?? null) +
-      (memory.sessionMemory
-        ? this.formatSessionFacts(memory.sessionMemory, activeLaborForm, currentLaborFormIntent)
-        : '') +
-      this.formatRealtimeGroups(realtimeGroups) +
-      bookingContext
-    );
-  }
-
-  /** 当前轮明确用工形式覆盖旧会话事实；无当前值时沿用高置信会话事实。 */
-  private resolveActiveLaborForm(
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
-    currentIntent: LaborFormIntentDecision,
-  ): string | null {
-    const current = unwrapHighConfidenceFacts(filterHighConfidenceFacts(memory.highConfidenceFacts))
-      ?.preferences.labor_form;
-    const persisted = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
-      minConfidence: 'high',
-    })?.preferences.labor_form;
-    const previous = current ?? persisted ?? null;
-    const resolved =
-      currentIntent.kind === 'set'
-        ? currentIntent.value
-        : currentIntent.kind === 'clear' &&
-            previous &&
-            currentIntent.clearedValues.some((value) => value === previous)
-          ? null
-          : previous;
-    return isValidLaborForm(resolved) ? resolved : null;
-  }
-
-  /**
-   * 跨会话来源口径。双 bot 服务同一候选人时，本轮注入的长期画像/意向可能来自
-   * 候选人此前在另一段会话（另一位招募经理）的沉淀——下面的身份/意向不是"你和
-   * TA 聊过"的记录。给模型一段泛指口径，避免假装是本会话的延续。
-   */
-  private formatCrossConversationNotice(fromOtherConversation: boolean): string {
-    if (!fromOtherConversation) return '';
-    return (
-      `\n\n[历史背景｜来自候选人此前在本平台的咨询]\n\n` +
-      `_下面的身份与求职意向，来自候选人**此前在本平台与另一位招聘顾问**的沟通沉淀，` +
-      `**不是你和 TA 本次/此前的聊天记录**。开场可自然衔接（例如"看到你之前在我们平台咨询过…"），` +
-      `但不要假装是你们之前聊过、也不要点名是哪位同事。_`
-    );
-  }
-
-  /**
-   * 企微显示名称/备注常被运营改成「姓名 城市品牌门店」结构，标记这位候选人是
-   * 冲着哪个品牌/门店来的——这是运营给本会话指定的目标品牌，不是可有可无的背景。
-   *
-   * contactName 先由 deriveContactBrandAliases 做品牌库确定性校验：
-   * - 命中：只渲染标准品牌，原文仅用于帮助理解门店/城市；
-   * - 未命中：整段不渲染，避免把普通微信昵称误当品牌。
-   */
-  private formatContactNamePreferenceHint(
-    contactName: string | undefined,
-    contactBrandAliases: string[],
-  ): string {
-    const normalized = contactName
-      ?.replace(/[\u0000-\u001f\u007f]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    // 品牌库未命中时，contactName 只是普通微信昵称：不注入、不让模型自由猜品牌。
-    if (!normalized || contactBrandAliases.length === 0) return '';
-
-    const clipped = normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized;
-    return (
-      `\n\n[企微名称备注｜运营给本会话指定的目标品牌/门店]\n\n` +
-      `- 企微显示名称/备注：${clipped}\n` +
-      `- 品牌库高置信命中：${contactBrandAliases.join(' / ')}。只允许把这些标准品牌名当作本会话的目标品牌，不得从原始昵称中猜测其它品牌。\n` +
-      `- **默认按上述已验证品牌召回**：调用 duliday_job_list 时使用 brandIdList/brandAliasList，推荐时优先该品牌的门店——**不要因为别的品牌门店离得更近就改推别家**。能同时读出门店的，在该品牌结果里优先挑这家门店或最近门店（备注门店名常与库内实名对不上，别直接塞 storeNameList 硬过滤，而是召回该品牌后在结果里挑）。\n` +
-      `- 例外（以候选人为准）：候选人本轮主动指定了别的品牌、明确说不想要这个品牌、或要求「看看其他品牌/所有岗位」时跟随候选人；带该品牌召回为空时再放宽到不限品牌。\n` +
-      `- 品牌名本身含城市词不代表候选人所在城市（如“成都你六姐”的“成都”是品牌名一部分），不要仅凭品牌名推断城市。\n` +
-      `- 这是内部线索：回复里禁止提及“备注/企微名称/昵称显示”，也不要称呼候选人昵称。`
-    );
   }
 
   /**
@@ -814,219 +386,133 @@ export class PreparationService {
     }
   }
 
-  /** 渲染实时群状态段；空数组（含核验失败）不渲染。 */
-  private formatRealtimeGroups(groups: RealtimeGroupStatus[]): string {
-    if (groups.length === 0) return '';
-    const lines = groups.map(
-      (group, index) => `${index + 1}. ${group.groupName}（城市: ${group.city}）`,
-    );
-    return (
-      `\n\n[候选人当前所在兼职群]\n\n` +
-      `_以下为实时核验结果（非记忆）。候选人已在这些群内：禁止调用 invite_to_group 再次邀请，` +
-      `也不要承诺"拉你进群"；候选人问群相关问题时直接按"你已经在 X 群里了"口径回应。_\n` +
-      lines.join('\n')
-    );
-  }
-
   /**
-   * 组装工具上下文。entryStage / availableStages 交给 advance_stage 使用；
-   * onJobsFetched 回调把本轮候选池暂存到 turnState，交给 onTurnEnd 落盘。
-   */
-  private buildToolContext(input: {
-    params: GeneratorInvokeParams;
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>;
-    normalizedMessages: ModelMessage[];
-    entryStage: string | null;
-    stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
-    thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
-    turnState: PreparedAgentContext['turnState'];
-    contactBrandAliases: string[];
-    currentUserMessage?: string;
-    currentLaborFormIntent: LaborFormIntentDecision;
-    /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
-    bookingWorkOrderJobIds: number[];
-  }): ToolBuildContext {
-    const {
-      params,
-      memory,
-      normalizedMessages,
-      entryStage,
-      stageGoals,
-      thresholds,
-      turnState,
-      contactBrandAliases,
-      currentUserMessage,
-      currentLaborFormIntent,
-      bookingWorkOrderJobIds,
-    } = input;
-    const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
-    // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 进行中预约工单 jobId（改约路径）
-    // + 本轮 job_list 抓取的候选池（turnState.candidatePool 由 onJobsFetched 实时写入），
-    // 供 precheck/booking 判定 jobId 是否有出处。
-    const turnStartRecalledJobIds = this.collectRecentJobIds(memory.sessionMemory);
-    for (const bookingWorkOrderJobId of bookingWorkOrderJobIds) {
-      turnStartRecalledJobIds.add(bookingWorkOrderJobId);
-    }
-    const highConfidenceSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
-      minConfidence: 'high',
-    });
-    const sessionFacts = this.mergeSessionFactsWithHighConfidence(
-      highConfidenceSessionFacts,
-      memory.highConfidenceFacts,
-      currentLaborFormIntent,
-    );
-    const geocodeLocationAnchor = resolveGeocodeLocationAnchor({
-      currentUserMessage,
-      shortTermMessages: memory.shortTerm.messageWindow,
-      currentFacts: memory.highConfidenceFacts,
-      sessionFacts: highConfidenceSessionFacts,
-    });
-    return {
-      userId: params.userId,
-      corpId: params.corpId,
-      sessionId: params.sessionId,
-      messages: normalizedMessages,
-      currentUserMessage,
-      currentLaborFormIntent,
-      thresholds,
-      imageMessageIds: params.imageMessageIds,
-      imageUrls: params.imageUrls,
-      visualMessageTypes: params.visualMessageTypes,
-      currentStage: entryStage,
-      availableStages: Object.keys(stageGoals),
-      stageGoals,
-      onJobsFetched: async (jobs) => {
-        turnState.candidatePool = jobs as RecommendedJobSummary[];
-      },
-      botUserId: params.botUserId,
-      contactName: params.contactName,
-      contactBrandAliases,
-      botImId: params.botImId,
-      groupId: params.groupId,
-      strategySource: params.strategySource,
-      profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
-      sessionFacts,
-      highConfidenceFacts: memory.highConfidenceFacts,
-      geocodeLocationAnchor,
-      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
-      recentBrandPool,
-      isRecalledJobId: (jobId: number) =>
-        turnStartRecalledJobIds.has(jobId) ||
-        (turnState.candidatePool?.some((j) => j.jobId === jobId) ?? false),
-      token: params.token,
-      imContactId: params.imContactId,
-      imRoomId: params.imRoomId,
-      chatId: params.sessionId,
-      apiType: params.apiType,
-      turnId: params.messageId,
-    };
-  }
-
-  /**
-   * 把本轮高置信识别结果（interview_info）叠加到上一轮 sessionFacts 上，
-   * 让工具（如 precheck）能拿到当前消息里刚提供的候选人字段（年龄/姓名/电话等）。
-   * 非 null 的高置信值覆盖旧值，null 不覆盖。
-   */
-  private mergeSessionFactsWithHighConfidence(
-    sessionFacts: EntityExtractionResult | null,
-    highConfidence: HighConfidenceFacts | null,
-    currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
-  ): EntityExtractionResult | null {
-    const highConfidenceValues = unwrapHighConfidenceFacts(
-      filterHighConfidenceFacts(highConfidence),
-    );
-    let merged: EntityExtractionResult | null;
-    if (!highConfidenceValues) {
-      merged = sessionFacts;
-    } else if (!sessionFacts) {
-      merged = highConfidenceValues;
-    } else {
-      merged = { ...sessionFacts };
-
-      // interview_info: 非 null 的高置信值覆盖旧值
-      const baseInfo = { ...sessionFacts.interview_info };
-      const hcInfo = highConfidenceValues.interview_info;
-      for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
-        if (hcInfo[key] != null) {
-          (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
-        }
-      }
-      merged.interview_info = baseInfo;
-
-      // preferences: 非 null 的高置信值覆盖旧值
-      const basePref = { ...sessionFacts.preferences };
-      const hcPref = highConfidenceValues.preferences;
-      for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
-        if (hcPref[key] != null) {
-          (basePref as Record<string, unknown>)[key] = hcPref[key];
-        }
-      }
-      merged.preferences = basePref;
-    }
-
-    if (!merged || currentLaborFormIntent.kind === 'ignore') return merged;
-
-    const previousLaborForm = merged.preferences.labor_form;
-    const activeLaborForm =
-      currentLaborFormIntent.kind === 'set'
-        ? currentLaborFormIntent.value
-        : previousLaborForm &&
-            currentLaborFormIntent.clearedValues.some((value) => value === previousLaborForm)
-          ? null
-          : previousLaborForm;
-
-    return {
-      ...merged,
-      preferences: { ...merged.preferences, labor_form: activeLaborForm },
-    };
-  }
-
-  /**
-   * 汇总本会话最近推荐过的品牌名（去重，按出现顺序保留）。
+   * 渲染 [当前预约信息]：active_booking 指针 + 海绵工单实时状态。
    *
-   * 取 presentedJobs（真正发给候选人的岗位）+ lastCandidatePool（最近一次工具结果），
-   * 并把 currentFocusJob 的品牌也带上。供 duliday_job_list 做品牌别名同音回指匹配。
+   * 不再读 recruitment_cases 本地字段（历史 booking_id 全 NULL、状态与海绵脱节）。
+   * 非预约回合允许使用短缓存；预约相关回合强制直查海绵，并区分两种「拿不到工单」：
+   * - 查询失败（网络/海绵抖动）：注入「最新预约信息确认中」的封闭提示，不使用本地
+   *   业务快照，也不阻断本轮；
+   * - 海绵明确查不到（指针已失效，active_booking 无过期机制、只有取消工具会清）：
+   *   按无此预约静默跳过——若也走「确认中」，失效指针会让每个预约回合永久停留在
+   *   「稍等一下」。
    */
-  private collectRecentBrandPool(
-    session: Awaited<ReturnType<MemoryService['onTurnStart']>>['sessionMemory'],
-  ): string[] {
-    if (!session) return [];
-    const ordered = [
-      ...(session.presentedJobs ?? []),
-      ...(session.lastCandidatePool ?? []),
-      ...(session.currentFocusJob ? [session.currentFocusJob] : []),
-    ];
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const job of ordered) {
-      const brand = job?.brandName?.trim();
-      if (!brand) continue;
-      if (seen.has(brand)) continue;
-      seen.add(brand);
-      result.push(brand);
+  private async loadBookingContext(
+    corpId: string,
+    userId: string,
+    currentUserMessage: string | undefined,
+    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
+  ): Promise<{ block: string; jobIds: number[] }> {
+    try {
+      const activeBookings = await this.longTermService.getActiveBookings(corpId, userId);
+      if (activeBookings.length === 0) return { block: '', jobIds: [] };
+
+      const requiresFreshLookup = this.requiresFreshBookingContext(currentUserMessage);
+      // 并行查询：直查路径下多工单串行会把多次海绵 API 耗时叠加进 prepare 热路径。
+      const lookups = await Promise.all(
+        activeBookings.map(async (activeBooking) => {
+          const workOrderId = activeBooking.work_order_id;
+          try {
+            const workOrder = requiresFreshLookup
+              ? await this.spongeService.getWorkOrderById(workOrderId, tokenContext, {
+                  throwOnFetchError: true,
+                })
+              : await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext);
+            return { workOrderId, workOrder, fetchFailed: false };
+          } catch (error) {
+            this.logger.warn(
+              `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            return { workOrderId, workOrder: null, fetchFailed: true };
+          }
+        }),
+      );
+
+      const contexts: Array<{ block: string; jobId: number | null }> = [];
+      let fetchFailedCount = 0;
+      for (const { workOrderId, workOrder, fetchFailed } of lookups) {
+        if (fetchFailed) {
+          fetchFailedCount += 1;
+          continue;
+        }
+        if (!workOrder) {
+          this.logger.warn(
+            `active_booking 指向的工单海绵查不到（指针可能已失效，按无此预约跳过）workOrderId=${workOrderId}`,
+          );
+          continue;
+        }
+
+        // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
+        // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集。
+        const block = formatBookingContext(workOrder, contexts.length + 1);
+        const normalizedJobId =
+          typeof workOrder.jobId === 'number'
+            ? workOrder.jobId
+            : typeof workOrder.jobId === 'string' && /^\d+$/.test(workOrder.jobId)
+              ? Number(workOrder.jobId)
+              : null;
+        if (block) contexts.push({ block, jobId: normalizedJobId });
+      }
+
+      const syncingBlock =
+        requiresFreshLookup && fetchFailedCount > 0
+          ? [
+              '预约信息同步中：候选人存在进行中的预约工单，但暂时查询不到最新详情。',
+              '禁止使用历史记忆猜测该预约的品牌、门店、岗位、面试时间、地址或状态；禁止对同一工单/同一岗位重复提交报名（候选人报名其它岗位不受影响，正常推进）。',
+              '候选人询问该预约、要求改约或取消时，只能自然说明“我正在确认最新预约信息，稍等一下”；不得提及工单、海绵、缓存或系统同步。',
+            ].join('\n')
+          : '';
+      const renderedContexts = [
+        ...contexts.map((context) => context.block),
+        ...(syncingBlock ? [syncingBlock] : []),
+      ];
+      const block =
+        renderedContexts.length > 0 ? `\n\n[当前预约信息]\n\n${renderedContexts.join('\n\n')}` : '';
+      return {
+        block,
+        // 仅当 block 非空（[当前预约信息] 真进了 system prompt、模型能看到「岗位ID」）才把 jobId
+        // 当 provenance：block 为空（工单展示字段全缺）时模型根本看不到该 jobId。
+        jobIds: block
+          ? contexts
+              .map((context) => context.jobId)
+              .filter((jobId): jobId is number => jobId != null)
+          : [],
+      };
+    } catch (error) {
+      this.logger.warn(
+        `加载预约上下文失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { block: '', jobIds: [] };
     }
-    return result;
   }
 
   /**
-   * 汇总本会话 turn-start 已召回/展示过的全部 jobId（presentedJobs ∪ lastCandidatePool ∪
-   * currentFocusJob，去重）。供 precheck/booking 的 jobId provenance 闸门判定"模型传入的 jobId
-   * 是否有合法来源"——集合为空即本会话从未召回任何岗位，此时任何 jobId 都属凭空生成。
+   * 预约事实会发生改约、取消和状态推进；相关回合必须绕过 5 分钟缓存读取海绵。
+   * currentUserMessage 为空（如主动跟进回合、消息以 assistant 收尾）时走缓存路径。
    */
-  private collectRecentJobIds(
-    session: Awaited<ReturnType<MemoryService['onTurnStart']>>['sessionMemory'],
-  ): Set<number> {
-    const ids = new Set<number>();
-    if (!session) return ids;
-    const ordered = [
-      ...(session.presentedJobs ?? []),
-      ...(session.lastCandidatePool ?? []),
-      ...(session.currentFocusJob ? [session.currentFocusJob] : []),
-    ];
-    for (const job of ordered) {
-      if (typeof job?.jobId === 'number') ids.add(job.jobId);
-    }
-    return ids;
+  private requiresFreshBookingContext(currentUserMessage: string | undefined): boolean {
+    if (!currentUserMessage) return false;
+    return /面试|预约|报名|改约|改期|改到|换(?:个|一)?时间|取消|不去|去不了|来不了|推迟|延期|迟到|到店|报到|入职/u.test(
+      currentUserMessage,
+    );
+  }
+
+  /** 老用户回访的入口阶段（需在场景策略阶段表中存在才生效）。 */
+  private static readonly RETURNING_USER_ENTRY_STAGE = 'job_consultation';
+
+  /**
+   * 老用户回访的入口阶段兜底。
+   *
+   * 长期画像里有身份字段（姓名/电话，主要来自报名成功或会话沉淀写入）即视为
+   * 服务过的老用户——回访时跳过信任建立，直接进入岗位咨询。
+   * 返回 undefined 表示按新用户处理（兜底到策略第一个阶段）。
+   */
+  private resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {
+    if (!profile) return undefined;
+    const hasIdentity = Boolean(profile.name?.value || profile.phone?.value);
+    return hasIdentity ? PreparationService.RETURNING_USER_ENTRY_STAGE : undefined;
   }
 
   /**
@@ -1039,7 +525,7 @@ export class PreparationService {
    * - profileKeys: 长期档案已填字段（不落值避免 PII）
    */
   private buildMemorySnapshot(
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
+    memory: TurnStartMemory,
     entryStage: string | null,
   ): AgentMemorySnapshot {
     const session = memory.sessionMemory;
@@ -1086,679 +572,5 @@ export class PreparationService {
     collect(facts.interview_info as unknown as Record<string, unknown>, 'interview');
     collect(facts.preferences as unknown as Record<string, unknown>, 'pref');
     return Object.keys(flat).length > 0 ? flat : null;
-  }
-
-  /** 把消息内容扁平化成纯文本。 */
-  private extractTextFromContent(content: unknown): string {
-    if (typeof content === 'string') return content;
-    if (Array.isArray(content)) {
-      return content
-        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-        .map((part) => part.text)
-        .join(' ');
-    }
-    return '';
-  }
-
-  /** 老用户回访的入口阶段（需在场景策略阶段表中存在才生效）。 */
-  private static readonly RETURNING_USER_ENTRY_STAGE = 'job_consultation';
-
-  /**
-   * 老用户回访的入口阶段兜底。
-   *
-   * 长期画像里有身份字段（姓名/电话，主要来自报名成功或会话沉淀写入）即视为
-   * 服务过的老用户——回访时跳过信任建立，直接进入岗位咨询。
-   * 返回 undefined 表示按新用户处理（兜底到策略第一个阶段）。
-   */
-  private resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {
-    if (!profile) return undefined;
-    const hasIdentity = Boolean(profile.name?.value || profile.phone?.value);
-    return hasIdentity ? PreparationService.RETURNING_USER_ENTRY_STAGE : undefined;
-  }
-
-  /** 把长期档案渲染成 prompt 片段。 */
-  private formatProfile(profile: UserProfileFacts | null): string {
-    if (!profile) return '';
-
-    const lines: string[] = [];
-    if (profile.name)
-      lines.push(`- 姓名: ${profile.name.value}${this.formatProfileFactMeta(profile.name)}`);
-    if (profile.phone)
-      lines.push(`- 联系方式: ${profile.phone.value}${this.formatProfileFactMeta(profile.phone)}`);
-    if (profile.gender)
-      lines.push(`- 性别: ${profile.gender.value}${this.formatProfileFactMeta(profile.gender)}`);
-    if (profile.age)
-      lines.push(`- 年龄: ${profile.age.value}${this.formatProfileFactMeta(profile.age)}`);
-    if (profile.is_student)
-      lines.push(
-        `- 是否学生: ${profile.is_student.value ? '是' : '否'}${this.formatProfileFactMeta(profile.is_student)}`,
-      );
-    if (profile.education)
-      lines.push(
-        `- 学历: ${profile.education.value}${this.formatProfileFactMeta(profile.education)}`,
-      );
-    if (profile.has_health_certificate)
-      lines.push(
-        `- 健康证: ${profile.has_health_certificate.value}${this.formatProfileFactMeta(profile.has_health_certificate)}`,
-      );
-
-    if (lines.length === 0) return '';
-    return `\n\n[用户档案]\n\n${lines.join('\n')}`;
-  }
-
-  private formatProfileFactMeta(value: {
-    confidence: string;
-    source: string;
-    evidence: string;
-    updatedAt: string;
-  }): string {
-    // evidence 是排障字段，不注入 prompt：提取 reasoning 全文曾随每个字段重复注入，
-    // 单轮 system prompt 被撑到 27K+ 字符（张漪 case）。更新时间保留日期部分，
-    // 让模型能判断档案信息的新旧。
-    const updatedDate = value.updatedAt?.slice(0, 10) || value.updatedAt;
-    return `（置信度: ${value.confidence}，来源: ${value.source}，更新于: ${updatedDate}）`;
-  }
-
-  /**
-   * 把长期求职意向渲染成 prompt 片段。
-   *
-   * 这是 settlement 沉淀的上一段求职会话的意向快照——历史参考，不是当前事实：
-   * 标注记录日期并明确"以本次会话为准"，避免重蹈旧会话事实复活的覆辙。
-   * available_after 已过期（日期早于今天）的直接不渲染。
-   */
-  private formatLongTermPreferences(preferences: LongTermPreferenceFacts | null): string {
-    if (!preferences) return '';
-
-    const labels: Record<string, string> = {
-      city: '意向城市',
-      district: '意向区域',
-      location: '意向地点',
-      brands: '意向品牌',
-      position: '意向岗位',
-      schedule: '意向班次',
-      salary: '意向薪资',
-      labor_form: '用工形式',
-      schedule_constraint: '排班硬约束',
-      delayed_intent: '推迟意向',
-      available_after: '最早可面日期',
-    };
-
-    const lines: string[] = [];
-    let latestUpdatedAt = '';
-    for (const [key, label] of Object.entries(labels)) {
-      const fact = preferences[key as keyof LongTermPreferenceFacts];
-      if (!fact || fact.value === null || fact.value === undefined) continue;
-
-      const rendered = this.renderPreferenceValue(key, fact.value);
-      if (!rendered) continue;
-
-      lines.push(`- ${label}: ${rendered}`);
-      if (fact.updatedAt > latestUpdatedAt) latestUpdatedAt = fact.updatedAt;
-    }
-
-    if (lines.length === 0) return '';
-    const recordedDate = latestUpdatedAt ? latestUpdatedAt.slice(0, 10) : '未知时间';
-    return (
-      `\n\n[历史求职意向]\n\n` +
-      `_以下是候选人上一段求职会话沉淀的意向（记录于 ${recordedDate}），仅供参考承接；` +
-      `候选人本次会话表达的新意向一律优先，不一致时以本次为准，不要拿旧意向反驳候选人。_\n` +
-      lines.join('\n')
-    );
-  }
-
-  /** 渲染单个长期意向值；返回 null 表示该字段不应注入（如已过期）。 */
-  private renderPreferenceValue(key: string, value: unknown): string | null {
-    if (Array.isArray(value)) {
-      return value.length > 0 ? value.map(String).join('、') : null;
-    }
-    if (key === 'available_after' && typeof value === 'object' && value !== null) {
-      const fact = value as { date?: string; raw?: string };
-      if (!fact.date) return null;
-      // 过期的"最早可面日期"不再注入
-      const today = new Date().toISOString().slice(0, 10);
-      if (fact.date < today) return null;
-      return `${fact.date}（原话: ${fact.raw ?? ''}）`;
-    }
-    if (key === 'delayed_intent' && typeof value === 'object' && value !== null) {
-      const fact = value as { until?: string; raw?: string };
-      if (!fact.until) return null;
-      return `${fact.until}（原话: ${fact.raw ?? ''}）`;
-    }
-    if (key === 'schedule_constraint' && typeof value === 'object' && value !== null) {
-      const c = value as {
-        onlyWeekends?: boolean | null;
-        onlyEvenings?: boolean | null;
-        onlyMornings?: boolean | null;
-        maxDaysPerWeek?: number | null;
-      };
-      const parts: string[] = [];
-      if (c.onlyWeekends) parts.push('只周末');
-      if (c.onlyEvenings) parts.push('只晚班');
-      if (c.onlyMornings) parts.push('只早班');
-      if (c.maxDaysPerWeek) parts.push(`每周最多${c.maxDaysPerWeek}天`);
-      return parts.length > 0 ? parts.join('、') : null;
-    }
-    if (typeof value === 'string') return value.trim() || null;
-    if (typeof value === 'boolean' || typeof value === 'number') return String(value);
-    return null;
-  }
-
-  /** 把会话记忆渲染成 prompt 片段。 */
-  private formatSessionFacts(
-    state: WeworkSessionState,
-    activeLaborForm: string | null,
-    currentIntent: LaborFormIntentDecision = { kind: 'ignore' },
-  ): string {
-    const sections: string[] = [];
-    // 岗位轴是层级结构（laborForm=全职/兼职 + partTimeJobType 细分），意向值比对
-    // 必须走 matchesLaborForm：暑假工岗的 summary 是 laborForm=兼职 + partTimeJobType=暑假工，
-    // 扁平全等会把候选池整个滤空/漏清。
-    const visibleJobs = (jobs: RecommendedJobSummary[] | null | undefined) => {
-      if (currentIntent.kind === 'set') {
-        return (jobs ?? []).filter((job) =>
-          matchesLaborForm(job.laborForm, job.partTimeJobType, currentIntent.value),
-        );
-      }
-      if (currentIntent.kind === 'clear') {
-        return (jobs ?? []).filter(
-          (job) =>
-            !job.laborForm ||
-            !currentIntent.clearedValues.some((value) =>
-              matchesLaborForm(job.laborForm, job.partTimeJobType, value),
-            ),
-        );
-      }
-      return activeLaborForm === '暑假工'
-        ? (jobs ?? []).filter((job) =>
-            matchesLaborForm(job.laborForm, job.partTimeJobType, '暑假工'),
-          )
-        : (jobs ?? []);
-    };
-
-    if (state.facts) {
-      // 用工形式是可变意向，当前消息的高置信值必须覆盖旧记忆的展示值；否则同一份
-      // system prompt 会同时出现“旧兼职”和“当前暑假工”，诱导模型复用旧岗位。
-      const persistedLaborForm = unwrapSessionFacts(state.facts, { minConfidence: 'low' })
-        ?.preferences.labor_form;
-      const shouldClearPersistedLaborForm =
-        currentIntent.kind === 'clear' &&
-        Boolean(
-          persistedLaborForm &&
-            currentIntent.clearedValues.some((value) => value === persistedLaborForm),
-        );
-      const factsForPrompt =
-        activeLaborForm || shouldClearPersistedLaborForm
-          ? ({
-              ...state.facts,
-              preferences: {
-                ...state.facts.preferences,
-                labor_form: activeLaborForm ?? null,
-              },
-            } as unknown as EntityExtractionResult)
-          : state.facts;
-      const factLines = formatExtractionFactLines(factsForPrompt);
-
-      if (factLines.length > 0) {
-        sections.push(`## 候选人已知信息\n${factLines.join('\n')}`);
-      }
-    }
-
-    const candidatePool = visibleJobs(state.lastCandidatePool);
-    if (candidatePool.length > 0) {
-      // 渲染上限对齐 presentedJobs 的 slice(0,10)：候选池是唯一写入端无 cap 的池子
-      // （工具单页 20 条且可能放宽），全量渲染会让 memoryBlock 无界膨胀。
-      // Redis 中仍保留全量池供 jobId 复用/品牌回指匹配。
-      const MAX_POOL_LINES = 10;
-      const pool = candidatePool.slice(0, MAX_POOL_LINES);
-      const jobLines = pool.map((j, i) => this.formatJobMemoryLine(j, i + 1));
-      const omitted = candidatePool.length - pool.length;
-      const omittedNote =
-        omitted > 0 ? `\n（另有 ${omitted} 个候选岗位未展示，可通过工具重新查询）` : '';
-      sections.push(`## 上轮候选岗位池\n${jobLines.join('\n')}${omittedNote}`);
-    }
-
-    const presentedJobs = visibleJobs(state.presentedJobs);
-    if (presentedJobs.length > 0) {
-      const jobLines = presentedJobs.map((j, i) => this.formatJobMemoryLine(j, i + 1));
-      sections.push(`## 最近已展示岗位\n${jobLines.join('\n')}`);
-    }
-
-    if (state.currentFocusJob && visibleJobs([state.currentFocusJob]).length > 0) {
-      sections.push(`## 当前焦点岗位\n${this.formatJobMemoryLine(state.currentFocusJob)}`);
-    }
-
-    if (state.invitedGroups?.length) {
-      // 历史 badcase 3g1ruov9 / 6vzw8oh3：本会话拉过群但记忆里漏渲染，Agent 看不到导致重复拉群。
-      // 触发 invite_to_group 工具时本字段已写入 session 记忆，这里把它注入 prompt 让 Agent 主动避让。
-      const groupLines = state.invitedGroups.map((g, i) => {
-        const industry = g.industry ? `（${g.industry}）` : '';
-        return `${i + 1}. ${g.groupName}${industry} - 城市: ${g.city}, 邀请时间: ${g.invitedAt}`;
-      });
-      sections.push(
-        `## 本会话已邀入的兼职群（禁止重复拉群）\n${groupLines.join('\n')}\n\n_命中以上任一群时，禁止再次调用 invite_to_group；候选人本轮再次同意入群/暗示想进群时，直接告知"之前已经把你拉到 X 群了，可以查看一下手机微信"即可。_`,
-      );
-    }
-
-    if (sections.length === 0) return '';
-    return `\n\n[会话记忆]\n\n${sections.join('\n\n')}`;
-  }
-
-  /**
-   * 渲染 [当前预约信息]：active_booking 指针 + 海绵工单实时状态。
-   *
-   * 不再读 recruitment_cases 本地字段（历史 booking_id 全 NULL、状态与海绵脱节）。
-   * 非预约回合允许使用短缓存；预约相关回合强制直查海绵。直查暂时失败时只注入
-   * “最新预约信息确认中”的封闭提示，不使用本地业务快照，也不阻断本轮。
-   */
-  private async loadBookingContext(
-    corpId: string,
-    userId: string,
-    currentUserMessage: string,
-    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
-  ): Promise<{ block: string; jobIds: number[] }> {
-    try {
-      const activeBookings = await this.longTermService.getActiveBookings(corpId, userId);
-      if (activeBookings.length === 0) return { block: '', jobIds: [] };
-
-      const contexts: Array<{ block: string; jobId: number | null }> = [];
-      const requiresFreshLookup = this.requiresFreshBookingContext(currentUserMessage);
-      let unavailableCount = 0;
-      for (const activeBooking of activeBookings) {
-        const workOrderId = activeBooking.work_order_id;
-        let workOrder: Awaited<ReturnType<typeof this.spongeService.getCachedWorkOrderById>>;
-        try {
-          if (requiresFreshLookup) {
-            workOrder = tokenContext
-              ? await this.spongeService.getWorkOrderById(workOrderId, tokenContext)
-              : await this.spongeService.getWorkOrderById(workOrderId);
-          } else {
-            workOrder = tokenContext
-              ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
-              : await this.spongeService.getCachedWorkOrderById(workOrderId);
-          }
-        } catch (error) {
-          this.logger.warn(
-            `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          unavailableCount += 1;
-          continue;
-        }
-        if (!workOrder) {
-          unavailableCount += 1;
-          continue;
-        }
-
-        // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
-        // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集。
-        const block = this.formatBookingContext(workOrder, contexts.length + 1);
-        const normalizedJobId =
-          typeof workOrder.jobId === 'number'
-            ? workOrder.jobId
-            : typeof workOrder.jobId === 'string' && /^\d+$/.test(workOrder.jobId)
-              ? Number(workOrder.jobId)
-              : null;
-        if (block) contexts.push({ block, jobId: normalizedJobId });
-      }
-
-      const syncingBlock =
-        requiresFreshLookup && unavailableCount > 0
-          ? [
-              '预约信息同步中：长期记忆只确认存在预约工单，但海绵暂未返回最新详情。',
-              '禁止使用历史记忆猜测品牌、门店、岗位、面试时间、地址或预约状态，也禁止重复提交报名。',
-              '候选人询问预约、改约或取消时，只能自然说明“我正在确认最新预约信息，稍等一下”；不得提及工单、海绵、缓存或系统同步。',
-            ].join('\n')
-          : '';
-      const renderedContexts = [
-        ...contexts.map((context) => context.block),
-        ...(syncingBlock ? [syncingBlock] : []),
-      ];
-      const block =
-        renderedContexts.length > 0 ? `\n\n[当前预约信息]\n\n${renderedContexts.join('\n\n')}` : '';
-      return {
-        block,
-        // 仅当 block 非空（[当前预约信息] 真进了 system prompt、模型能看到「岗位ID」）才把 jobId
-        // 当 provenance：block 为空（工单展示字段全缺）时模型根本看不到该 jobId。
-        jobIds: block
-          ? contexts
-              .map((context) => context.jobId)
-              .filter((jobId): jobId is number => jobId != null)
-          : [],
-      };
-    } catch (error) {
-      this.logger.warn(
-        `加载预约上下文失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return { block: '', jobIds: [] };
-    }
-  }
-
-  /** 预约事实会发生改约、取消和状态推进；相关回合必须绕过 5 分钟缓存读取海绵。 */
-  private requiresFreshBookingContext(currentUserMessage: string): boolean {
-    return /面试|预约|报名|改约|改期|改到|换(?:个|一)?时间|取消|不去|到店|报到|入职/u.test(
-      currentUserMessage,
-    );
-  }
-
-  private formatBookingContext(workOrder: SignupWorkOrderItem, index = 1): string {
-    const displayJobName = sanitizeJobDisplayText(workOrder.jobName ?? null);
-    const businessLines = [
-      workOrder.brandName ? `品牌: ${workOrder.brandName}` : null,
-      workOrder.projectName ? `门店/项目: ${workOrder.projectName}` : null,
-      displayJobName ? `岗位: ${displayJobName}` : null,
-      workOrder.currentStatus ? `当前状态: ${workOrder.currentStatus}` : null,
-      workOrder.signUpTime ? `报名时间: ${workOrder.signUpTime}` : null,
-      workOrder.interviewPassTime ? `面试通过时间: ${workOrder.interviewPassTime}` : null,
-    ].filter((line): line is string => Boolean(line));
-
-    // 仅有标题行 + 工单号（无任何业务字段）时不渲染，避免给 Agent 一个空壳 case。
-    if (businessLines.length === 0) return '';
-
-    // 岗位ID 单独渲染：改约前 Agent 要用它调 duliday_interview_precheck 校验新日期是否可约。
-    const lines = [
-      `预约 ${index}：当前存在一个仍在进行中的面试/上岗跟进 case（状态实时取自海绵工单系统）。`,
-      `工单号: ${workOrder.workOrderId}`,
-      workOrder.jobId != null ? `岗位ID: ${workOrder.jobId}` : null,
-      ...businessLines,
-    ].filter((line): line is string => Boolean(line));
-
-    lines.push(
-      '候选人可同时报名多个不同岗位；已预约 A 岗不代表不能继续报名 B 岗。但同一工单/同一岗位不要重复提交报名。',
-      '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。主动要求取消时调 duliday_cancel_work_order 自助取消。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
-      '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
-    );
-    return lines.join('\n');
-  }
-
-  private formatJobMemoryLine(job: RecommendedJobSummary, index?: number): string {
-    const head = index ? `${index}. [jobId:${job.jobId}]` : `[jobId:${job.jobId}]`;
-    const parts = [
-      head,
-      `品牌:${job.brandName ?? ''} - 岗位:${sanitizeJobDisplayText(job.jobName) ?? ''}`,
-    ];
-
-    if (job.storeName) parts.push(`门店:${job.storeName}`);
-    if (job.storeAddress) parts.push(`地址:${job.storeAddress}`);
-    if (job.cityName || job.regionName) {
-      parts.push(`地区:${[job.cityName, job.regionName].filter(Boolean).join('')}`);
-    }
-    if (job.distanceKm != null) parts.push(`距离:${job.distanceKm.toFixed(1)}km`);
-    const displayLaborForm = sanitizeLaborFormForDisplay(job.laborForm);
-    const displayPartTimeJobType = sanitizeLaborFormForDisplay(job.partTimeJobType);
-    if (displayLaborForm) {
-      parts.push(
-        displayPartTimeJobType && displayPartTimeJobType !== displayLaborForm
-          ? `用工:${displayLaborForm}(${displayPartTimeJobType})`
-          : `用工:${displayLaborForm}`,
-      );
-    }
-    if (job.salaryDesc) parts.push(`薪资:${job.salaryDesc}`);
-    if (job.shiftSummary) parts.push(`班次:${job.shiftSummary}`);
-
-    const welfareSummary = this.formatJobWelfareFacts(job);
-    if (welfareSummary) parts.push(`福利:${welfareSummary}`);
-
-    const bookingConstraint = this.formatBookingConstraint(job);
-    if (bookingConstraint) parts.push(`约面要求:${bookingConstraint}`);
-
-    return parts.join(' | ');
-  }
-
-  private formatJobWelfareFacts(job: RecommendedJobSummary): string | null {
-    const welfare = job.welfareFacts;
-    if (!welfare) return null;
-
-    const labels = {
-      company: '公司提供',
-      allowance: '仅补贴（不直接提供）',
-      self_or_none: '无（员工自理/公司不提供）',
-      unspecified: '未明确',
-    } as const;
-    const facts = [
-      `员工餐${labels[welfare.meals]}`,
-      `住宿${labels[welfare.accommodation]}`,
-      welfare.hasTrafficAllowance ? '有交通补贴' : null,
-      welfare.hasPromotionWelfare ? '有晋升福利说明' : null,
-      welfare.otherWelfareItems.length > 0
-        ? `其他福利:${welfare.otherWelfareItems.join('、')}`
-        : null,
-    ].filter((fact): fact is string => Boolean(fact));
-
-    return facts.join('，') || null;
-  }
-
-  private formatBookingConstraint(job: RecommendedJobSummary): string | null {
-    const constraints: string[] = [];
-
-    if (job.ageRequirement && job.ageRequirement !== '不限') {
-      constraints.push(`年龄${job.ageRequirement}`);
-    }
-    if (job.educationRequirement && job.educationRequirement !== '不限') {
-      constraints.push(`学历${job.educationRequirement}`);
-    }
-    if (
-      job.healthCertificateRequirement &&
-      job.healthCertificateRequirement !== '未明确要求' &&
-      job.healthCertificateRequirement !== '不限'
-    ) {
-      constraints.push(`健康证${job.healthCertificateRequirement}`);
-    }
-    if (job.studentRequirement) {
-      constraints.push(`学生${job.studentRequirement}`);
-    }
-
-    if (constraints.length === 0) return null;
-    return constraints.join('，');
-  }
-
-  /** 转成 AI SDK 的 ModelMessage，并兼容图片回退文本。 */
-  private toModelMessages(
-    messages: GeneratorInputMessage[],
-    enableVision: boolean,
-  ): ModelMessage[] {
-    return messages.map((message) => {
-      const textContent = this.extractTextFromContent(message.content);
-      if (message.role === 'user' && message.imageUrls?.length) {
-        if (enableVision) {
-          const imageParts = this.buildImageParts(message.imageUrls, message.imageMessageIds);
-          const textPart = textContent
-            ? [{ type: 'text' as const, text: String(textContent) }]
-            : [];
-          return {
-            role: 'user',
-            content: [...imageParts, ...textPart],
-          };
-        }
-
-        const fallbackText =
-          message.imageUrls.length === 1
-            ? '[图片消息]'
-            : `[图片消息 ${message.imageUrls.length} 张]`;
-        return {
-          role: 'user',
-          content: textContent ? `${fallbackText} ${textContent}` : fallbackText,
-        };
-      }
-
-      if (message.role === 'assistant') {
-        return {
-          role: 'assistant',
-          content: isHumanAgentTextMessage(message)
-            ? `[内部来源标记：以下内容由真人招募经理手动发送，应作为本会话人工操作记录理解；不得向候选人复述此标记]\n${textContent}`
-            : textContent,
-        };
-      }
-
-      if (message.role === 'system') {
-        return {
-          role: 'system',
-          content: textContent,
-        };
-      }
-
-      return {
-        role: 'user',
-        content: textContent,
-      };
-    });
-  }
-
-  /**
-   * 把顶层图片/表情参数挂回本轮视觉消息所在的位置。
-   *
-   * WECOM 路径的短期记忆来自 chat_messages，图片刚入库时只有 `[图片消息]`
-   * 占位；本轮 imageUrls/imageMessageIds 则来自原始回调 DTO。优先把 image
-   * part 注入到末尾连续 user 块里的视觉占位消息，保留「文字 -> 图片 -> 文字」
-   * 的真实顺序；如果找不到占位，再兜底挂到最后一条 user message。
-   */
-  private injectImageParts(
-    messages: ModelMessage[],
-    imageUrls: string[],
-    imageMessageIds?: string[],
-    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>,
-  ): void {
-    const imagePartGroups = this.buildImagePartGroups(
-      imageUrls,
-      imageMessageIds,
-      visualMessageTypes,
-    );
-    if (imagePartGroups.length === 0) return;
-
-    const trailingUserIndexes = this.collectTrailingUserIndexes(messages);
-    const visualPlaceholderIndexes = trailingUserIndexes.filter((index) =>
-      this.isVisualPlaceholderText(this.extractTextFromContent(messages[index].content)),
-    );
-
-    let nextGroupIndex = 0;
-    for (const messageIndex of visualPlaceholderIndexes) {
-      const group = imagePartGroups[nextGroupIndex];
-      if (!group) break;
-      messages[messageIndex] = this.withImageParts(messages[messageIndex], group);
-      nextGroupIndex += 1;
-    }
-
-    const remainingGroups = imagePartGroups.slice(nextGroupIndex);
-    if (remainingGroups.length > 0) {
-      const fallbackIndex = trailingUserIndexes.at(-1) ?? this.findLastUserIndex(messages);
-      if (fallbackIndex == null) return;
-      messages[fallbackIndex] = this.withImageParts(
-        messages[fallbackIndex],
-        remainingGroups.flat(),
-      );
-    }
-
-    this.logger.log(`注入 ${imagePartGroups.length} 张图片/表情到 user message（多模态 vision）`);
-  }
-
-  private collectTrailingUserIndexes(messages: ModelMessage[]): number[] {
-    const indexes: number[] = [];
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role !== 'user') break;
-      indexes.unshift(i);
-    }
-    return indexes;
-  }
-
-  private findLastUserIndex(messages: ModelMessage[]): number | null {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') return i;
-    }
-    return null;
-  }
-
-  private isVisualPlaceholderText(text: string): boolean {
-    return /^\s*\[(?:图片|表情)消息\]/.test(text);
-  }
-
-  private withImageParts(
-    message: ModelMessage,
-    imageParts: ReturnType<typeof this.buildImageParts>,
-  ) {
-    const textContent = this.extractTextFromContent(message.content);
-    const textPart = textContent ? [{ type: 'text' as const, text: String(textContent) }] : [];
-    return {
-      role: 'user' as const,
-      content: [...imageParts, ...textPart],
-    };
-  }
-
-  /** 构建 image parts，并附带可选的图片/表情 messageId 标签。 */
-  private buildImageParts(
-    imageUrls: string[],
-    imageMessageIds?: string[],
-    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>,
-  ) {
-    const validUrls = imageUrls
-      .map((url) => {
-        try {
-          return new URL(url);
-        } catch {
-          this.logger.warn(`跳过无效的图片/表情 URL: ${url}`);
-          return null;
-        }
-      })
-      .filter((url): url is URL => url !== null);
-
-    if (validUrls.length === 0) return [];
-    if (imageMessageIds?.length && imageMessageIds.length !== validUrls.length) {
-      this.logger.warn(
-        `图片/表情 URL 数量(${validUrls.length})与 messageId 数量(${imageMessageIds.length})不一致，将按现有顺序尽力注入`,
-      );
-    }
-
-    return validUrls.flatMap((url, index) => {
-      const messageId = imageMessageIds?.[index];
-      const kindName =
-        messageId && visualMessageTypes?.[messageId] === MessageType.EMOTION ? '表情' : '图片';
-      const label = messageId
-        ? { type: 'text' as const, text: `[${kindName} messageId=${messageId}]` }
-        : null;
-      const image = { type: 'image' as const, image: url };
-      return label ? [label, image] : [image];
-    });
-  }
-
-  private buildImagePartGroups(
-    imageUrls: string[],
-    imageMessageIds?: string[],
-    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>,
-  ) {
-    const flat = this.buildImageParts(imageUrls, imageMessageIds, visualMessageTypes);
-    const groups: Array<typeof flat> = [];
-    let current: typeof flat = [];
-    for (const part of flat) {
-      if (part.type === 'text' && /^\[(?:图片|表情) messageId=/.test(part.text) && current.length) {
-        groups.push(current);
-        current = [];
-      }
-      current.push(part);
-    }
-    if (current.length) groups.push(current);
-    return groups;
-  }
-
-  /**
-   * 按字符预算裁剪消息窗口：总字符数超限时，从最早的消息开始丢弃，保留最新的若干条，
-   * 直到剩余消息总字符数 ≤ sessionWindowMaxChars。
-   */
-  private truncateToCharBudget(messages: GeneratorInputMessage[]): GeneratorInputMessage[] {
-    const maxChars = this.memoryConfig.sessionWindowMaxChars;
-    const totalChars = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
-    if (totalChars <= maxChars) return messages;
-
-    this.logger.warn(`输入消息总长度 ${totalChars} 超过上限 ${maxChars}，将丢弃最早的消息`);
-
-    const kept: GeneratorInputMessage[] = [];
-    let charCount = 0;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msgLen = messages[i].content?.length ?? 0;
-      if (charCount + msgLen > maxChars && kept.length > 0) break;
-      kept.unshift(messages[i]);
-      charCount += msgLen;
-    }
-
-    this.logger.warn(`保留最近 ${kept.length}/${messages.length} 条消息，共 ${charCount} 字符`);
-    return kept;
   }
 }

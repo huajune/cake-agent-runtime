@@ -1002,7 +1002,9 @@ describe('PreparationService', () => {
         memoryBlock: expect.stringContaining('[当前预约信息]'),
       }),
     );
-    expect(mockSpongeService.getWorkOrderById).toHaveBeenCalledWith(88001);
+    expect(mockSpongeService.getWorkOrderById).toHaveBeenCalledWith(88001, undefined, {
+      throwOnFetchError: true,
+    });
     expect(mockSpongeService.getCachedWorkOrderById).not.toHaveBeenCalled();
     expect(result.entryStage).toBe('onboard_followup');
     expect(result.finalPrompt).toContain('工单号: 88001');
@@ -1056,6 +1058,8 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('工单号: 88002');
     expect(result.finalPrompt).toContain('品牌: 奥乐齐');
     expect(result.finalPrompt).not.toContain('工单号: 88001');
+    // 88001 属瞬时查询失败：正常渲染 88002 的同时注入同步中提示，双轨并存
+    expect(result.finalPrompt).toContain('预约信息同步中');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     expect(toolContext.isRecalledJobId?.(527350)).toBe(true);
   });
@@ -1175,7 +1179,7 @@ describe('PreparationService', () => {
     expect(toolContext.isRecalledJobId?.(527351)).toBe(true);
   });
 
-  it('预约相关回合直查海绵失败时注入同步中提示且不回退本地快照', async () => {
+  it('预约相关回合直查海绵瞬时失败时注入同步中提示且不回退本地快照', async () => {
     mockActiveBooking({
       work_order_id: 88004,
       linked_at: '2026-04-15T08:00:00.000Z',
@@ -1184,6 +1188,41 @@ describe('PreparationService', () => {
       brand_name: '旧品牌',
       store_name: '旧门店',
       job_name: '旧岗位',
+    });
+    mockSpongeService.getWorkOrderById.mockRejectedValue(new Error('sponge timeout'));
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '帮我把面试改到后天' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.getWorkOrderById).toHaveBeenCalledWith(88004, undefined, {
+      throwOnFetchError: true,
+    });
+    expect(mockSpongeService.getCachedWorkOrderById).not.toHaveBeenCalled();
+    expect(result.finalPrompt).toContain('[当前预约信息]');
+    expect(result.finalPrompt).toContain('预约信息同步中');
+    expect(result.finalPrompt).toContain('我正在确认最新预约信息，稍等一下');
+    expect(result.finalPrompt).not.toContain('旧品牌');
+    expect(result.finalPrompt).not.toContain('旧门店');
+    expect(result.finalPrompt).not.toContain('2026-04-16');
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.isRecalledJobId?.(527352)).toBe(false);
+  });
+
+  it('预约相关回合海绵明确查不到工单（指针失效）时静默跳过，不注入同步中提示', async () => {
+    // 与瞬时失败区分：not-found 若也走「确认中」，失效指针（active_booking 无过期
+    // 机制）会让候选人的每个预约回合永久停在「稍等一下」。
+    mockActiveBooking({
+      work_order_id: 88004,
+      linked_at: '2026-04-15T08:00:00.000Z',
+      brand_name: '旧品牌',
     });
     mockSpongeService.getWorkOrderById.mockResolvedValue(null);
 
@@ -1198,16 +1237,9 @@ describe('PreparationService', () => {
       'invoke',
     );
 
-    expect(mockSpongeService.getWorkOrderById).toHaveBeenCalledWith(88004);
-    expect(mockSpongeService.getCachedWorkOrderById).not.toHaveBeenCalled();
-    expect(result.finalPrompt).toContain('[当前预约信息]');
-    expect(result.finalPrompt).toContain('预约信息同步中');
-    expect(result.finalPrompt).toContain('我正在确认最新预约信息，稍等一下');
+    expect(result.finalPrompt).not.toContain('[当前预约信息]');
+    expect(result.finalPrompt).not.toContain('预约信息同步中');
     expect(result.finalPrompt).not.toContain('旧品牌');
-    expect(result.finalPrompt).not.toContain('旧门店');
-    expect(result.finalPrompt).not.toContain('2026-04-16');
-    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.isRecalledJobId?.(527352)).toBe(false);
   });
 
   it('非预约回合继续读取工单短缓存，避免每轮直查海绵', async () => {
@@ -1233,7 +1265,67 @@ describe('PreparationService', () => {
       'invoke',
     );
 
-    expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88005);
+    expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88005, undefined);
+    expect(mockSpongeService.getWorkOrderById).not.toHaveBeenCalled();
+    expect(result.finalPrompt).toContain('品牌: 瑞幸');
+  });
+
+  it('候选人说「去不了」这类改约/取消信号也触发直查海绵', async () => {
+    mockActiveBooking({
+      work_order_id: 88006,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getWorkOrderById.mockResolvedValue({
+      workOrderId: 88006,
+      jobId: 527354,
+      brandName: '瑞幸',
+      currentStatus: '约面成功',
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '明天有事去不了了' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.getWorkOrderById).toHaveBeenCalledWith(88006, undefined, {
+      throwOnFetchError: true,
+    });
+    expect(mockSpongeService.getCachedWorkOrderById).not.toHaveBeenCalled();
+  });
+
+  it('本轮无用户输入（消息以 assistant 收尾）时走缓存路径且不误判为预约回合', async () => {
+    mockActiveBooking({
+      work_order_id: 88007,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88007,
+      jobId: 527355,
+      brandName: '瑞幸',
+      currentStatus: '约面成功',
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [
+          { role: 'user', content: '你好' },
+          { role: 'assistant', content: '你好，想找什么工作？' },
+        ],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88007, undefined);
     expect(mockSpongeService.getWorkOrderById).not.toHaveBeenCalled();
     expect(result.finalPrompt).toContain('品牌: 瑞幸');
   });
