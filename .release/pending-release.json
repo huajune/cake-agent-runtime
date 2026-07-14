@@ -1,70 +1,38 @@
 {
-  "baseVersion": "10.6.0",
-  "nextVersion": "10.7.0",
+  "baseVersion": "10.7.0",
+  "nextVersion": "10.8.0",
   "updatedAt": "2026-07-14",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "536",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/536",
-      "title": "避免发布源码权限位阻塞切换",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-14",
-      "businessUpdates": [
-        "避免发布源码权限位阻塞切换"
-      ],
-      "summary": [
-        "避免发布源码权限位阻塞切换"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "避免发布源码权限位阻塞切换"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "workflow YAML 解析通过",
-        "本地临时 Git 仓库复现 chmod 脏状态，修复后的 checkout 可切换且工作区恢复 clean",
-        "pre-push 完整 `pnpm run ci:check` 通过：335 个测试套件、4753 个测试通过"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.6.0",
+    "version": "10.7.0",
     "date": "2026-07-14",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "531",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/531",
-        "title": "生产运行时统一到 Node 22",
+        "number": "536",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/536",
+        "title": "避免发布源码权限位阻塞切换",
         "author": "ArielZhu",
         "mergedAt": "2026-07-14",
         "businessUpdates": [
-          "生产运行时统一到 Node 22",
-          "AI 审查改用 workflow token 提交"
+          "避免发布源码权限位阻塞切换"
         ],
         "summary": [
-          "生产运行时统一到 Node 22",
-          "AI 审查改用 workflow token 提交"
+          "避免发布源码权限位阻塞切换"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "生产运行时统一到 Node 22",
-          "AI 审查改用 workflow token 提交"
+          "避免发布源码权限位阻塞切换"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`bash -n scripts/deploy-remote.sh`",
-          "Dockerfile / package runtime alignment 静态校验",
-          "`pnpm run ci:check`",
-          "lint、Prettier、TypeScript、Web/Nest 生产构建通过",
-          "335 个测试套件通过，4753 个测试通过，6 个跳过"
+          "workflow YAML 解析通过",
+          "本地临时 Git 仓库复现 chmod 脏状态，修复后的 checkout 可切换且工作区恢复 clean",
+          "pre-push 完整 `pnpm run ci:check` 通过：335 个测试套件、4753 个测试通过"
         ]
       }
     ]
