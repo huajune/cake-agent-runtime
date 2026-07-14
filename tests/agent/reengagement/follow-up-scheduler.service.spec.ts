@@ -142,6 +142,63 @@ describe('FollowUpSchedulerService', () => {
     );
   });
 
+  it('does not freeze interview facts in a formal post-booking job payload', async () => {
+    const now = Date.UTC(2026, 5, 24, 2, 0, 0);
+    const interviewAt = Date.UTC(2026, 5, 25, 6, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: 'wo555:live',
+      anchorAt: now,
+      state: baseState({ terminal: 'booked', interviewAt } as never),
+      workOrderId: 555,
+      expectedInterviewAt: interviewAt,
+      interviewType: 'AI面试',
+    });
+
+    const payload = queue.add.mock.calls[0][1];
+    expect(payload).toEqual(
+      expect.objectContaining({ scenarioCode: 'interview_reminder', workOrderId: 555 }),
+    );
+    expect(payload).not.toHaveProperty('expectedInterviewAt');
+    expect(payload).not.toHaveProperty('interviewType');
+  });
+
+  it('enqueues a retryable Sponge resolution job containing only stable booking identity', async () => {
+    const anchorAt = Date.UTC(2026, 5, 24, 2, 0, 0);
+
+    const result = await service.scheduleBookingResolution({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      workOrderId: 555,
+      anchorEventId: 'trace-1:booking_succeeded:interview_reminder',
+      anchorAt,
+      channelIdentity: { botImId: 'bot-1' },
+    });
+
+    expect(result.scheduled).toBe(true);
+    expect(queue.add).toHaveBeenCalledWith(
+      REENGAGEMENT_JOB_NAME,
+      {
+        sessionRef,
+        scenarioCode: 'interview_reminder',
+        workOrderId: 555,
+        anchorEventId: 'trace-1:booking_succeeded:interview_reminder',
+        anchorAt,
+        resolveBookingAtFire: true,
+        channelIdentity: { botImId: 'bot-1' },
+      },
+      expect.objectContaining({
+        jobId:
+          'sess-1:interview_reminder:trace-1:booking_succeeded:interview_reminder:resolve',
+        attempts: 6,
+        backoff: { type: 'exponential', delay: 10_000 },
+      }),
+    );
+  });
+
   it('skips both enqueue and ledger write when the same jobId already exists', async () => {
     // Bull 同 jobId add 是静默 no-op；若仍 trackScheduled 会把底账 fire_at
     // 覆写成一个不会触发的幽灵时间（已完成任务上 status=sent 却挂未来 fire_at）

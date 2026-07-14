@@ -51,6 +51,8 @@ export interface BookingGuardInput {
   candidateGenderId?: number;
   /** 候选人健康证：1=有，2=无但接受办理，3=无且不接受办理 */
   candidateHasHealthCertificate?: number;
+  /** 候选人是否学生；true=学生，false=社会人士 */
+  candidateIsStudent?: boolean;
 }
 
 /**
@@ -131,6 +133,16 @@ function checkHardRequirements(input: BookingGuardInput): ToolErrorReturn | null
       outcome: '预约失败（候选人健康证状态不满足岗位硬性约束）',
       replyInstruction: healthCertConflict.replyInstruction,
       details: { detailedReason: healthCertConflict.detailedReason },
+    });
+  }
+
+  if (hr.student === 'social_only' && input.candidateIsStudent === true) {
+    return buildToolError({
+      errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+      outcome: '预约失败（候选人学生身份与岗位硬性约束冲突）',
+      replyInstruction:
+        '当前岗位明确只接受社会人士，候选人已明确是学生，严禁继续 booking。礼貌说明当前岗位暂不匹配，并调用 duliday_job_list 查找接受学生的其它岗位；没有合适岗位时走 invite_to_group 或 request_handoff。不得修改或隐瞒候选人身份重试。',
+      details: { detailedReason: '岗位仅接受社会人士，候选人身份=学生' },
     });
   }
 

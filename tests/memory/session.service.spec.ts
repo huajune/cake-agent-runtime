@@ -98,6 +98,23 @@ describe('SessionService', () => {
       expect(state.terminal).toBeNull();
     });
 
+    it('should not read the legacy blob when the factsv2 hash exists', async () => {
+      mockRedisStore.getHash.mockResolvedValueOnce({
+        facts: null,
+        lastCandidatePool: null,
+        presentedJobs: [],
+        currentFocusJob: null,
+        invitedGroups: null,
+        terminal: null,
+        lastCandidateMessageAt: null,
+      });
+
+      const state = await service.getSessionState('corp1', 'user1', 'session1');
+
+      expect(state.presentedJobs).toEqual([]);
+      expect(mockRedisStore.get).not.toHaveBeenCalled();
+    });
+
     it('should return stored session state', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {

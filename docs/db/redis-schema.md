@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Redis (Upstash) 缓存层设计文档
 
-**最后更新**：2026-06-11
+**最后更新**：2026-07-14
 
 **Redis 客户端**：`@upstash/redis`（REST）+ `ioredis`（Bull Queue TCP）
 
@@ -37,7 +37,7 @@
 | 2 | `wecom:message:pending:{chatId}` | List | 5 min | wecom/message | 消息聚合队列 |
 | 3 | `wecom:message:last-message-at:{chatId}` | String | 5 min | wecom/message | 最近消息到达时间（静默窗口） |
 | 4 | `wecom:message:lock:{chatId}` | String | 5 min | wecom/message | 处理分布式锁（Lua 条件释放） |
-| 5 | `wecom:message:trace:{messageId}` | String | 24 h | wecom/message | 消息 trace 上下文（调试） |
+| 5 | `wecom:message:trace:{messageId}:v2` | Hash | 24 h | wecom/message | 消息 trace 上下文（字段级增量更新） |
 | 6 | `memory:short_term:chat:{chatId}` | List | 按 `MEMORY_SESSION_TTL_DAYS`（默认 2 天） | memory | 短期对话缓存 |
 | 7 | `memory:short_term:message:{messageId}` | String | 同上 | memory | messageId → chatId 索引 |
 | 8 | `facts:{corpId}:{userId}:{sessionId}` | String (JSON) | 同上 | memory | 会话事实（Session Facts） |
@@ -144,16 +144,26 @@
 
 ---
 
-### 5. `wecom:message:trace:{messageId}` — 消息 Trace 上下文
+### 5. `wecom:message:trace:{messageId}:v2` — 消息 Trace 上下文
 
 **代码位置**：[src/channels/wecom/message/telemetry/message-trace-store.service.ts](../../src/channels/wecom/message/telemetry/message-trace-store.service.ts)
 
 | 属性 | 值 |
 |------|----|
-| 数据结构 | String（JSON） |
+| 数据结构 | Hash（大对象按顶层字段拆分，timing 按时间点拆分） |
 | TTL | 86400s（24 小时） |
 
-**用途**：跨阶段携带可观测上下文（入队 / Agent / 发送），Dashboard 查询时重建链路。
+**字段布局**：
+
+| Field | 内容 |
+|-------|------|
+| `request` | 入站请求摘要 |
+| `agentRequest` / `agentResult` | Agent 请求与结果，各只写入一次 |
+| `deliveryResult` / `fallbackDelivery` | 投递结果 |
+| `timing:{name}` | 单个阶段时间戳，通过 HSET/HSETNX 原子更新 |
+| `_traceSchema` | Schema 版本，当前为 `2` |
+
+**用途**：跨阶段携带可观测上下文（入队 / Agent / 发送），结束时完整读取一次并重建 Dashboard 链路。V2 避免每个阶段都 GET/SET 整份 Agent Trace；旧的 `wecom:message:trace:{messageId}` String Key 仅用于滚动发布兼容读取，并在链路结束时一并删除。
 
 ---
 

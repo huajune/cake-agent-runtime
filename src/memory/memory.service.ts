@@ -17,8 +17,6 @@ export interface ProactiveMemoryRecall {
   recentMessages: Array<{
     role: 'user' | 'assistant';
     content: string;
-    /** 短期记忆注入的北京时间，用于锚定“今天/明天”等相对表达。 */
-    sentAt?: string;
   }>;
   factLines: string[];
   warnings?: string[];
@@ -72,26 +70,21 @@ export class MemoryService {
     corpId: string,
     userId: string,
     sessionId: string,
-    options?: { recentLimit?: number; shortTermEndTimeInclusive?: number },
+    options?: { shortTermEndTimeInclusive?: number },
   ): Promise<ProactiveMemoryRecall> {
     const memory = await this.onTurnStart(corpId, userId, sessionId, undefined, {
       includeShortTerm: true,
       shortTermEndTimeInclusive: options?.shortTermEndTimeInclusive,
     });
-    const recentLimit = Math.max(1, options?.recentLimit ?? 5);
+    // messageWindow 已由 ShortTermService 按与 Generator 相同的条数、时间和字符预算裁剪，
+    // 这里不再二次截断或改写其时间后缀，只丢弃空正文。
     const recentMessages = memory.shortTerm.messageWindow
-      .slice(-recentLimit)
-      .map((message): ProactiveMemoryRecall['recentMessages'][number] | null => {
-        if (message.role !== 'user' && message.role !== 'assistant') return null;
-        const sentAt = this.extractInjectedMessageTime(message.content);
-        return {
-          role: message.role,
-          content: this.stripInjectedTimeContext(message.content),
-          ...(sentAt ? { sentAt } : {}),
-        };
-      })
-      .filter((message): message is ProactiveMemoryRecall['recentMessages'][number] => !!message)
-      .filter((message) => message.content.length > 0);
+      .filter(
+        (message): message is typeof message & { role: 'user' | 'assistant' } =>
+          (message.role === 'user' || message.role === 'assistant') &&
+          message.content.trim().length > 0,
+      )
+      .map((message) => ({ role: message.role, content: message.content }));
     const factLines = memory.sessionMemory?.facts
       ? formatExtractionFactLines(memory.sessionMemory.facts)
       : [];
@@ -105,17 +98,6 @@ export class MemoryService {
   /** 读取历史摘要（recent + archive），供 recall_history 或沉淀逻辑使用。 */
   async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
     return await this.longTerm.getSummaryData(corpId, userId);
-  }
-
-  private stripInjectedTimeContext(content: string): string {
-    return content
-      .replace(/\s*(?:\[|【)消息发送时间[:：][\s\S]*?(?:\]|】|$)/g, '')
-      .replace(/\s*(?:\[|【)当前时间[:：][\s\S]*?(?:\]|】|$)/g, '')
-      .trim();
-  }
-
-  private extractInjectedMessageTime(content: string): string | undefined {
-    return /(?:\[|【)消息发送时间[:：]\s*([^\]】]+)(?:\]|】)/u.exec(content)?.[1]?.trim();
   }
 
   /** 写入长期档案的外部补充字段，统一落到 profile_facts。 */

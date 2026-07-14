@@ -101,6 +101,33 @@ describe('HardRulesService', () => {
   });
 
   describe('existing rules regression', () => {
+    it.each([
+      ['badcase 原始畸形 thinking 文本', '<think>\n<think>7144679778889'],
+      ['成对 thinking 标签也不得进入正文', '<think>内部推理</think>正常回复'],
+      ['12 位以上纯数字异常回复', '7144679778889'],
+    ])('blocks invalid model output: %s', (_name, reply) => {
+      const result = check(reply);
+
+      expect(result.hit).toBe(true);
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'invalid_model_output',
+            action: GUARDRAIL_ACTION.BLOCK,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it.each(['13800138000', '30元/小时', '面试编号 7144679778889'])(
+      'does not treat a normal candidate-facing value as invalid model output: %s',
+      (reply) => {
+        const result = check(reply);
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain('invalid_model_output');
+      },
+    );
+
     it('blocks internal output leak before delivery (badcase vllg7hlu)', () => {
       const result = check('阶段已切换到 job_consultation，等待候选人回复年龄信息。');
 
@@ -620,6 +647,19 @@ describe('HardRulesService', () => {
         },
       ] as never;
 
+    const identityMissingPrecheck = [
+      {
+        toolName: 'duliday_interview_precheck',
+        args: {},
+        result: {
+          nextAction: 'collect_fields',
+          bookingChecklist: { missingFields: ['性别', '健康证情况', '身份'] },
+          identityFieldGuard: { mustAskCandidate: true },
+        },
+        status: 'ok',
+      },
+    ] as never;
+
     it('flags the audit-evasion coaching verbatim from the badcase (无需工具佐证)', () => {
       const result = service.check({
         replyText:
@@ -674,6 +714,23 @@ describe('HardRulesService', () => {
 
       expect(result.contradictions.map((c) => c.ruleId)).toContain(
         'identity_misregistration_coaching',
+      );
+    });
+
+    it('flags autofilling social identity while precheck still marks 身份 missing (batch_6a54b296)', () => {
+      const result = service.check({
+        replyText: '另外身份帮你填了社会人士，出勤也先按“是”登记了哈。',
+        toolCalls: identityMissingPrecheck,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'identity_misregistration_coaching',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
       );
     });
 

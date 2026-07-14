@@ -94,6 +94,19 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
  */
 const OUTPUT_RULE_CATALOG_SEEDS = [
   {
+    id: 'invalid_model_output',
+    action: GUARDRAIL_ACTION.BLOCK,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '拦住正文含 <think> 推理标签，或整条只有长数字标识符的模型/Provider 异常输出。',
+    riskGoal: '防止推理通道格式错乱、无语义标识符等异常 completion 被当成正常回复发送。',
+    exogenousSignal: 'AI SDK 正文中的 <think> 标签；12 位以上纯数字整条回复。',
+    residualRisk: '其它无标签乱码需要结合新 badcase 扩展封闭形态，避免宽泛字符规则误杀正常话术。',
+    verification:
+      'tests/agent/guardrail/output/hard-rules.service.spec.ts；tests/llm/llm-executor.service.spec.ts',
+    feedbackToGenerator:
+      '上一版不是有效的候选人回复：禁止输出 <think>、内部推理、纯数字 ID 或其它模型格式残片。请根据候选人本轮消息重新生成一句自然、完整、可直接发送的中文回复。',
+  },
+  {
     id: 'internal_output_leak',
     action: GUARDRAIL_ACTION.BLOCK,
     priority: GUARDRAIL_PRIORITY.P0,

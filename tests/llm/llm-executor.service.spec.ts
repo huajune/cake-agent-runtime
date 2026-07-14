@@ -179,6 +179,74 @@ describe('LlmExecutorService', () => {
       );
     });
 
+    it('disables Qwen deep thinking for multimodal requests while keeping the image input', async () => {
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      const imageMessage = {
+        role: 'user' as const,
+        content: [
+          { type: 'image' as const, image: new URL('https://example.com/image.jpg') },
+          { type: 'text' as const, text: '看下这张图' },
+        ],
+      };
+      await service.generate({
+        role: ModelRole.Chat,
+        modelId: 'qwen/qwen3.7-plus',
+        messages: [imageMessage],
+        disableFallbacks: true,
+        thinking: { type: 'enabled', budgetTokens: 4000 },
+      });
+
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [imageMessage],
+          providerOptions: { qwen: { enable_thinking: false } },
+        }),
+      );
+    });
+
+    it.each([
+      ['malformed thinking text', '<think>\n<think>7144679778889'],
+      ['opaque numeric text', '7144679778889'],
+    ])(
+      'retries an invalid chat completion before it can reach guardrail: %s',
+      async (_name, text) => {
+        mockGenerateText
+          .mockResolvedValueOnce(makeGenerateResult({ text }))
+          .mockResolvedValueOnce(
+            makeGenerateResult({ text: '这张图是奥乐齐的晚班补货岗位，你是想问报名进度吗？' }),
+          );
+
+        const result = await service.generate({
+          role: ModelRole.Chat,
+          modelId: 'qwen/qwen3.6-plus',
+          prompt: 'hello',
+          disableFallbacks: true,
+          config: { maxRetries: 2 },
+        });
+
+        expect(result.text).toContain('奥乐齐');
+        expect(mockGenerateText).toHaveBeenCalledTimes(2);
+        expect(mockReliable.classifyError).toHaveBeenCalledWith(
+          expect.objectContaining({ message: expect.stringContaining('Invalid model response') }),
+        );
+      },
+    );
+
+    it('does not apply chat reply-shape validation to extraction roles', async () => {
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult({ text: '7144679778889' }));
+
+      const result = await service.generate({
+        role: ModelRole.Extract,
+        modelId: 'qwen/qwen3.6-plus',
+        prompt: 'extract',
+        disableFallbacks: true,
+      });
+
+      expect(result.text).toBe('7144679778889');
+      expect(mockGenerateText).toHaveBeenCalledTimes(1);
+    });
+
     it('should retry the primary model before falling back', async () => {
       mockGenerateText
         .mockRejectedValueOnce(new Error('HTTP 500 primary attempt 1'))

@@ -42,6 +42,9 @@ type StructuredGenerateResult<TSchema extends z.ZodTypeAny> = Awaited<
 
 type ProviderOptions = NonNullable<Parameters<typeof generateText>[0]['providerOptions']>;
 
+const VISIBLE_THINK_TAG_PATTERN = /<\/?think\s*>/i;
+const OPAQUE_NUMERIC_REPLY_PATTERN = /^\d{12,}$/;
+
 interface ExecutionPlan {
   role: ModelRole | string;
   primaryModelId: string;
@@ -81,7 +84,8 @@ export class LlmExecutorService {
       }
 
       const model = this.registry.resolve(modelId);
-      const providerOptions = this.buildProviderOptions(modelId, thinking);
+      const effectiveThinking = this.resolveRequestThinking(modelId, thinking, requiresVisionInput);
+      const providerOptions = this.buildProviderOptions(modelId, effectiveThinking);
       const params = this.buildGenerateParams(routeOptions, providerOptions);
       const retryConfig = this.reliable.getRetryConfig(config);
 
@@ -90,11 +94,13 @@ export class LlmExecutorService {
 
       for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt += 1) {
         try {
-          return await generateText({
+          const result = await generateText({
             ...params,
             model,
             maxRetries: 0,
           } as Parameters<typeof generateText>[0]);
+          this.assertUsableChatResult(result, plan.role);
+          return result;
         } catch (err) {
           lastRawError = err;
           const category = this.reliable.classifyError(err);
@@ -159,8 +165,16 @@ export class LlmExecutorService {
       try {
         this.emitModelAttempt(plan, modelId, previousModelId, lastError?.message);
         previousModelId = modelId;
+        const effectiveThinking = this.resolveRequestThinking(
+          modelId,
+          thinking,
+          requiresVisionInput,
+        );
         return streamText({
-          ...this.buildStreamParams(routeOptions, this.buildProviderOptions(modelId, thinking)),
+          ...this.buildStreamParams(
+            routeOptions,
+            this.buildProviderOptions(modelId, effectiveThinking),
+          ),
           model: this.registry.resolve(modelId),
         } as Parameters<typeof streamText>[0]);
       } catch (error) {
@@ -264,6 +278,43 @@ export class LlmExecutorService {
       if (!Array.isArray(content)) return false;
       return content.some((part) => part && typeof part === 'object' && part.type === 'image');
     });
+  }
+
+  /**
+   * DashScope 的标准 `reasoning_content` 已由 @ai-sdk/openai-compatible 分离。
+   * 线上 badcase 表明 Qwen deep-thinking 图片回合仍可能把畸形 `<think>` 写进 content；
+   * 在该组合稳定前仅关闭图片回合 thinking，文本回合保持原配置。
+   */
+  private resolveRequestThinking(
+    modelId: string,
+    thinking: LlmThinkingConfig | undefined,
+    hasVisionInput: boolean,
+  ): LlmThinkingConfig | undefined {
+    if (hasVisionInput && modelId.startsWith('qwen/') && thinking?.type === 'enabled') {
+      return { type: 'disabled', budgetTokens: 0 };
+    }
+    return thinking;
+  }
+
+  /**
+   * Treat malformed candidate-facing chat completions as retryable provider failures so the
+   * existing same-model retry/fallback chain can regenerate with the original images and tools.
+   * Output guardrail keeps the same checks as defense in depth for any path that bypasses here.
+   */
+  private assertUsableChatResult(
+    result: Awaited<ReturnType<typeof generateText>>,
+    role: ModelRole | string,
+  ): void {
+    if (role !== ModelRole.Chat) return;
+    const text = result.text?.trim() ?? '';
+    if (!text) return;
+
+    if (VISIBLE_THINK_TAG_PATTERN.test(text)) {
+      throw new Error('Invalid model response: visible chat text contains <think> markup');
+    }
+    if (OPAQUE_NUMERIC_REPLY_PATTERN.test(text)) {
+      throw new Error('Invalid model response: visible chat text is an opaque numeric identifier');
+    }
   }
 
   private buildProviderOptions(
@@ -394,7 +445,12 @@ export class LlmExecutorService {
 
     Object.assign(request, params);
 
-    const providerOptions = this.buildProviderOptions(plan.primaryModelId, thinking);
+    const effectiveThinking = this.resolveRequestThinking(
+      plan.primaryModelId,
+      thinking,
+      this.hasVisionInput(options.messages),
+    );
+    const providerOptions = this.buildProviderOptions(plan.primaryModelId, effectiveThinking);
     if (providerOptions) {
       request.providerOptions = providerOptions;
     }

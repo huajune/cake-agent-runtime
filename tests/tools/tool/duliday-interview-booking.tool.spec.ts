@@ -188,6 +188,17 @@ describe('buildInterviewBookingTool', () => {
       expect(result._outcome).toContain('date_unavailable');
     });
 
+    it('rejects when prechecked.nextAction === "student_rejected"', async () => {
+      const result = await executeTool({
+        ...validInput,
+        prechecked: { nextAction: 'student_rejected', missingFieldsCount: 0 },
+      });
+      expect(result.success).toBe(false);
+      expect(result._outcome).toContain('student_rejected');
+      expect(result._replyInstruction).toContain('学生身份');
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
     it('rejects when missingFieldsCount > 0 even with ready_to_book', async () => {
       const result = await executeTool({
         ...validInput,
@@ -412,6 +423,21 @@ describe('buildInterviewBookingTool', () => {
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
     expect(result._replyInstruction).toContain('筛选');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('booking guard: forged ready_to_book still rejects explicit student form for social-only job', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJob({ hiringRequirement: { figure: '社会人士' } })],
+    });
+
+    const result = await executeTool(validInput, {
+      currentUserMessage: '姓名：罗瑞雪\n年龄：19\n身份（学生/社会人士）：学生',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._outcome).toContain('学生身份');
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
@@ -1066,7 +1092,7 @@ describe('buildInterviewBookingTool', () => {
       'corp-1',
       'user-1',
       445999,
-      expect.objectContaining({ job_id: 200 }),
+      { job_id: 200 },
     );
   });
 

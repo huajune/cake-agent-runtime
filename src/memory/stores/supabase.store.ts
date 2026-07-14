@@ -396,19 +396,13 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     workOrderId: number,
-    metadata?: Partial<
-      Pick<ActiveBooking, 'job_id' | 'interview_time' | 'brand_name' | 'store_name' | 'job_name'>
-    >,
+    metadata?: Pick<ActiveBooking, 'job_id'>,
   ): Promise<void> {
     const existing = await this.getActiveBookings(corpId, userId);
     const activeBooking: ActiveBooking = {
       work_order_id: workOrderId,
       linked_at: new Date().toISOString(),
       job_id: metadata?.job_id ?? null,
-      interview_time: metadata?.interview_time ?? null,
-      brand_name: metadata?.brand_name ?? null,
-      store_name: metadata?.store_name ?? null,
-      job_name: metadata?.job_name ?? null,
     };
     const bookings = [
       activeBooking,

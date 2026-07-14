@@ -139,6 +139,28 @@ describe('extractHardRequirements', () => {
     });
   });
 
+  describe('student', () => {
+    it.each([
+      ['社会人士', 'social_only'],
+      ['学生,社会人士', 'any'],
+      ['学生', 'student_only'],
+    ])('maps figure "%s" to %s', (figure, expected) => {
+      const result = extractHardRequirements({ hiringRequirement: { figure } });
+      expect(result.student).toBe(expected);
+    });
+
+    it('infers 不接受学生 from hiring remark', () => {
+      const result = extractHardRequirements({
+        hiringRequirement: { remark: '长期用工，不接受学生' },
+      });
+      expect(result.student).toBe('social_only');
+    });
+
+    it('returns unspecified when no student rule exists', () => {
+      expect(extractHardRequirements({}).student).toBe('unspecified');
+    });
+  });
+
   describe('integration', () => {
     it('extracts all three fields from a complete raw job', () => {
       const result = extractHardRequirements({
@@ -156,6 +178,7 @@ describe('extractHardRequirements', () => {
         gender: 'female',
         household: { mode: 'exclude', regions: ['东三省'] },
         healthCert: 'required_before_onboard',
+        student: 'unspecified',
       });
     });
   });

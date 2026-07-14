@@ -49,7 +49,10 @@ describe('FollowUpProcessor', () => {
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
   let messageTracking: { recordProactiveTurn: jest.Mock };
-  let sponge: { getCachedWorkOrderById: jest.Mock };
+  let sponge: {
+    getWorkOrderById: jest.Mock;
+    fetchJobs: jest.Mock;
+  };
   let longTerm: { getActiveBookings: jest.Mock };
   let chatSession: { saveMessage: jest.Mock };
   let scheduler: { scheduleFollowUp: jest.Mock };
@@ -85,7 +88,11 @@ describe('FollowUpProcessor', () => {
         .fn()
         .mockResolvedValue({ reengagementEnabled: true, reengagementShadow: true }),
     };
-    sponge = { getCachedWorkOrderById: jest.fn().mockResolvedValue(null) };
+    const getWorkOrderById = jest.fn().mockResolvedValue(null);
+    sponge = {
+      getWorkOrderById,
+      fetchJobs: jest.fn().mockResolvedValue({ jobs: [], total: 0 }),
+    };
     longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
     chatSession = { saveMessage: jest.fn().mockResolvedValue(true) };
     scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
@@ -182,6 +189,12 @@ describe('FollowUpProcessor', () => {
   });
 
   it('shadows post-booking scenarios when the post-booking master switch is off', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 5, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 555,
+      currentStatus: '约面成功',
+      interviewTime: '2026-06-24 14:00',
+    });
     reengagementAgent.compose.mockResolvedValue({
       kind: 'reply',
       reply: { text: '面试提醒' },
@@ -201,6 +214,7 @@ describe('FollowUpProcessor', () => {
           scenarioCode: 'interview_reminder',
           anchorEventId: 'evt-1',
           anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+          workOrderId: 555,
           expectedInterviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
         },
       }),
@@ -576,6 +590,12 @@ describe('FollowUpProcessor', () => {
     });
 
     it('does not apply session cooldown to time-anchored interview reminders', async () => {
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 5, 0, 0));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-24 14:00',
+      });
       touchLedger.isInSessionTouchCooldown.mockResolvedValue(true);
       session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
       await buildProcessor().process(
@@ -585,6 +605,7 @@ describe('FollowUpProcessor', () => {
             scenarioCode: 'interview_reminder',
             anchorEventId: 'evt-b',
             anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+            workOrderId: 555,
             expectedInterviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
           },
         }),
@@ -872,14 +893,14 @@ describe('FollowUpProcessor', () => {
     });
 
     it('stops with external_cancelled when the work order was cancelled outside the chat', async () => {
-      sponge.getCachedWorkOrderById.mockResolvedValue({
+      sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面取消',
       });
 
       await buildProcessor().process(bookingJob());
 
-      expect(sponge.getCachedWorkOrderById).toHaveBeenCalledWith(555);
+      expect(sponge.getWorkOrderById).toHaveBeenCalledWith(555);
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.objectContaining({ scenarioCode: 'interview_reminder' }),
         'external_cancelled:约面取消',
@@ -887,10 +908,35 @@ describe('FollowUpProcessor', () => {
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
+    it('resolves a newly booked work order before scheduling the formal delayed job', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-25 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({
+          resolveBookingAtFire: true,
+          expectedInterviewAt: undefined,
+          interviewType: undefined,
+        }),
+      );
+
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scenarioCode: 'interview_reminder',
+          workOrderId: 555,
+          expectedInterviewAt,
+        }),
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
     it('passes the per-bot token context to the sponge work-order lookup', async () => {
       // 多 bot 企业 per-bot token ≠ 全局 fallback，不带 botImId 查工单会静默 miss，
       // 外部取消检测整条失效（2026-07-06 review）
-      sponge.getCachedWorkOrderById.mockResolvedValue({
+      sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面取消',
       });
@@ -899,7 +945,7 @@ describe('FollowUpProcessor', () => {
         bookingJob({ channelIdentity: { botImId: 'bot-1', candidateName: '张三' } }),
       );
 
-      expect(sponge.getCachedWorkOrderById).toHaveBeenCalledWith(555, { botImId: 'bot-1' });
+      expect(sponge.getWorkOrderById).toHaveBeenCalledWith(555, { botImId: 'bot-1' });
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
         'external_cancelled:约面取消',
@@ -907,7 +953,7 @@ describe('FollowUpProcessor', () => {
     });
 
     it('stops the reminder when the interview already happened', async () => {
-      sponge.getCachedWorkOrderById.mockResolvedValue({
+      sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '面试成功',
       });
@@ -922,9 +968,11 @@ describe('FollowUpProcessor', () => {
     });
 
     it('lets post_interview_followup proceed when the interview is done', async () => {
-      sponge.getCachedWorkOrderById.mockResolvedValue({
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 25, 7, 0, 0));
+      sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '面试成功',
+        interviewTime: '2026-06-25 14:00',
       });
 
       await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
@@ -933,33 +981,22 @@ describe('FollowUpProcessor', () => {
       expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
-    it('stops with interview_time_changed when active_booking carries a different time', async () => {
-      // active_booking 已改到 16:00（聊天改约路径），旧任务停 + 按新时间补排替代任务
+    it('does not trust a different interview time stored in active_booking', async () => {
       longTerm.getActiveBookings.mockResolvedValue([
         { work_order_id: 555, linked_at: 'x', interview_time: '2026-06-25 16:00' },
       ]);
 
-      await buildProcessor().process(bookingJob());
+      await expect(buildProcessor().process(bookingJob())).rejects.toThrow(
+        'reengagement_booking_context_unavailable:555',
+      );
 
-      expect(tracking.trackStopped).toHaveBeenCalledWith(
-        expect.anything(),
-        'interview_time_changed',
-      );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
-      // 替代任务锚点幂等（wo:iv:scenario）：与聊天改约锚点排的任务同 jobId，Bull 去重
-      expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
-        expect.objectContaining({
-          scenarioCode: 'interview_reminder',
-          anchorEventId: `wo555:iv${Date.UTC(2026, 5, 25, 8, 0, 0)}:interview_reminder`,
-          workOrderId: 555,
-          expectedInterviewAt: Date.UTC(2026, 5, 25, 8, 0, 0),
-        }),
-      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
     });
 
     it('detects backend time changes via the sponge interviewTime field', async () => {
       // 后台改时间：海绵 interviewTime 已变，本地 active_booking 还是旧时间——以海绵为准
-      sponge.getCachedWorkOrderById.mockResolvedValue({
+      sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面成功',
         interviewTime: '2026-06-25 16:00',
@@ -982,7 +1019,8 @@ describe('FollowUpProcessor', () => {
     });
 
     it('trusts a matching sponge interviewTime over a stale local pointer', async () => {
-      sponge.getCachedWorkOrderById.mockResolvedValue({
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 25, 5, 0, 0));
+      sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面成功',
         interviewTime: '2026-06-25 14:00',
@@ -998,7 +1036,7 @@ describe('FollowUpProcessor', () => {
     });
 
     it('does not schedule a reminder replacement when the new time is already past', async () => {
-      sponge.getCachedWorkOrderById.mockResolvedValue({
+      sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面成功',
         interviewTime: '2026-06-20 10:00',
@@ -1008,33 +1046,41 @@ describe('FollowUpProcessor', () => {
 
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
-        'interview_time_changed',
+        'interview_time_passed',
       );
       expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
     });
 
-    it('proceeds when active_booking time matches the frozen expectation', async () => {
+    it('does not use a matching active_booking time when Sponge is unavailable', async () => {
       longTerm.getActiveBookings.mockResolvedValue([
         { work_order_id: 555, linked_at: 'x', interview_time: '2026-06-25 14:00' },
       ]);
 
-      await buildProcessor().process(bookingJob());
+      await expect(buildProcessor().process(bookingJob())).rejects.toThrow(
+        'reengagement_booking_context_unavailable:555',
+      );
 
-      expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(reengagementAgent.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
-    it('fails open when neither sponge nor active_booking yields verification data', async () => {
-      sponge.getCachedWorkOrderById.mockResolvedValue(null);
+    it('fails closed when neither Sponge nor active_booking yields verification data', async () => {
+      sponge.getWorkOrderById.mockResolvedValue(null);
       longTerm.getActiveBookings.mockResolvedValue([]);
 
-      await buildProcessor().process(bookingJob());
+      await expect(buildProcessor().process(bookingJob())).rejects.toThrow(
+        'reengagement_booking_context_unavailable:555',
+      );
 
-      expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(reengagementAgent.compose).toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
     it('exempts verifiable booking follow-ups from the replied-after-anchor rule', async () => {
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 25, 5, 0, 0));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-25 14:00',
+      });
       session.getAuthoritativeState.mockResolvedValue(
         baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 }),
       );
@@ -1056,7 +1102,7 @@ describe('FollowUpProcessor', () => {
 
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
-        'candidate_replied_after_anchor',
+        'missing_authoritative_work_order_id',
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
@@ -1070,7 +1116,7 @@ describe('FollowUpProcessor', () => {
 
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
-        'scenario_no_longer_holds',
+        'missing_authoritative_work_order_id',
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });

@@ -15,6 +15,7 @@ import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
+import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
 import { detectHumanServicePhraseLeak, detectOutputLeak } from './rules/internal-info-leaks.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
 import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
@@ -135,6 +136,13 @@ export class HardRulesService {
      * tool_failure_success_claim 同批下线）；brand_name_violation（平台错名+岗位品牌改写）
      * 及其 runner 确定性修复快通道同批下线。岗位/预约事实治理交语义档。
      */
+
+    // 必须在 sanitizer 删除 <think> 标签之前识别模型/Provider 异常，避免畸形推理文本
+    // 被清洗成一串看似普通、实则无语义的字符后穿透出站链路。
+    const invalidModelOutput = detectInvalidModelOutput(text);
+    if (invalidModelOutput) {
+      contradictions.push(this.withRulePolicy(invalidModelOutput));
+    }
 
     const internalOutputLeak = HardRulesService.detectInternalOutputLeak(text);
     if (internalOutputLeak) {

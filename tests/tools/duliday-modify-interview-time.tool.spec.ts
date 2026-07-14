@@ -5,7 +5,7 @@ import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 describe('buildModifyInterviewTimeTool', () => {
   const spongeService = { modifyInterviewTime: jest.fn() };
   const opsEventsRecorder = { recordEvent: jest.fn() };
-  const longTermService = { updateActiveBookingInterviewTime: jest.fn() };
+  const longTermService = {};
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
@@ -31,7 +31,6 @@ describe('buildModifyInterviewTimeTool', () => {
     jest.clearAllMocks();
     spongeService.modifyInterviewTime.mockResolvedValue({ success: true, code: 0, message: 'ok' });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
-    longTermService.updateActiveBookingInterviewTime.mockResolvedValue(undefined);
   });
 
   it('modifies interview time, returns success and records booking.interview_modified', async () => {
@@ -54,21 +53,6 @@ describe('buildModifyInterviewTimeTool', () => {
         idempotencyKey: '123:interview_modified:2026-06-20 14:00',
       }),
     );
-    // 复聊到点改期核验以 active_booking.interview_time 为比对基准，改约成功必须同步
-    expect(longTermService.updateActiveBookingInterviewTime).toHaveBeenCalledWith(
-      'corp-1',
-      'user-1',
-      123,
-      '2026-06-20 14:00',
-    );
-  });
-
-  it('does not touch active_booking when modification fails', async () => {
-    spongeService.modifyInterviewTime.mockResolvedValue({ success: false, code: 500 });
-    const tool = buildTool();
-    await exec(tool, { workOrderId: 123, newInterviewTime: '2026-06-20 14:00' });
-
-    expect(longTermService.updateActiveBookingInterviewTime).not.toHaveBeenCalled();
   });
 
   it('rejects invalid workOrderId without calling the API', async () => {
