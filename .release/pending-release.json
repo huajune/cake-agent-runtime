@@ -3,7 +3,33 @@
   "nextVersion": "10.8.0",
   "updatedAt": "2026-07-14",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "541",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/541",
+      "title": "构建前清理过期 Docker 缓存",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-14",
+      "businessUpdates": [
+        "构建前清理过期 Docker 缓存"
+      ],
+      "summary": [
+        "构建前清理过期 Docker 缓存"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "构建前清理过期 Docker 缓存"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "workflow YAML 解析通过",
+        "pre-push 完整 `pnpm run ci:check` 通过：335 个测试套件、4753 个测试通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.7.0",
     "date": "2026-07-14",
