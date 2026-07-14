@@ -548,6 +548,15 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   const mb = asRecord(req.marriageBearingAndSocialSecurity) ?? {};
   pushField(lines, '婚育要求', mb.marriageBearingType);
   pushField(lines, '婚育状态', mb.marriageBearing);
+  const hasSensitiveMarriageConstraint =
+    hasValue(mb.marriageBearingType) || hasValue(mb.marriageBearing);
+  // hometown 已经输出自己的结构化警示时，后面的通用 section 检测会为避免
+  // 重复而跳过；因此同时存在婚育条件时必须单独标明，避免婚育数据失去禁止外露提示。
+  if (hasSensitiveHometownConstraint && hasSensitiveMarriageConstraint) {
+    lines.push(
+      '- ⚠️ 上述婚育条件🔒仅供内部筛选，**严禁询问候选人或向候选人展示、复述、确认**（涉婚育歧视与个人隐私风险，易起纠纷）',
+    );
+  }
   // socialSecurityList 现网是字符串（如"公司缴纳本地社保"/"无公司在缴社保流水"），
   // 旧代码按数组读会整段丢失；这里兼容字符串与历史数组两种形态。
   // socialSecurityRequirementType 现网不返回，已移除。
@@ -589,7 +598,7 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
     policy.normalizedRequirements.remark ?? sanitizeConstraintText(asString(req.remark));
   if (sanitizedRemark) pushLongText(lines, '其他要求', sanitizedRemark);
 
-  // 自由文本（其他要求等）可能内嵌"不要 X 籍 / 限本地户口"类敏感筛选条件，
+  // 自由文本（其他要求等）可能内嵌"不要 X 籍 / 限本地户口 / 婚育要求"类敏感筛选条件，
   // 结构化字段之外的这条路径同样需要 🔒 勿透露标注兜底。
   // 结构化 hometown 警示已输出时不再重复标注。
   if (

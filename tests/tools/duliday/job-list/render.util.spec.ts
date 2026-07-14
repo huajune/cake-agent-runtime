@@ -174,7 +174,7 @@ describe('job-list render util', () => {
       const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
 
       expect(markdown).toContain('不要新疆西藏籍');
-      expect(markdown).toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
+      expect(markdown).toContain('本节文本含户籍/籍贯/民族/专业/婚育等敏感筛选信息');
     });
 
     it('appends 🔒 notice when interview supplement embeds sensitive screening label', () => {
@@ -185,7 +185,7 @@ describe('job-list render util', () => {
       const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
 
       const interviewSection = markdown.slice(markdown.indexOf('### 面试流程'));
-      expect(interviewSection).toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
+      expect(interviewSection).toContain('本节文本含户籍/籍贯/民族/专业/婚育等敏感筛选信息');
     });
 
     it('does not duplicate notice when structured hometown warning already rendered', () => {
@@ -202,12 +202,32 @@ describe('job-list render util', () => {
       const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
 
       expect(markdown).toContain('上述民族/籍贯条件🔒仅供内部筛选');
-      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
+      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族/专业/婚育等敏感筛选信息');
     });
 
     it('does not append notice for ordinary jobs', () => {
       const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, detailFlags);
-      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族/专业等敏感筛选信息');
+      expect(markdown).not.toContain('本节文本含户籍/籍贯/民族/专业/婚育等敏感筛选信息');
+    });
+
+    it('marks structured marriage and childbearing requirements as internal-only', () => {
+      const job = makeJob(1);
+      job.hiringRequirement = {
+        basicPersonalRequirements: { minAge: 18, maxAge: 50, genderRequirement: '不限' },
+        marriageBearingAndSocialSecurity: {
+          marriageBearingType: '限制',
+          marriageBearing: '已婚已育',
+        },
+        certificate: { healthCertificate: '' },
+        figure: '不限',
+      } as typeof job.hiringRequirement;
+
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+      expect(markdown).toContain('- **婚育要求**: 限制');
+      expect(markdown).toContain('- **婚育状态**: 已婚已育');
+      expect(markdown).toContain('户籍/籍贯/民族/专业/婚育等敏感筛选信息');
+      expect(markdown).toContain('严禁向候选人展示或转述');
     });
   });
 
