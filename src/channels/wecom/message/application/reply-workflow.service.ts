@@ -32,6 +32,15 @@ import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-inter
  */
 const VISION_AWAIT_TIMEOUT_MS = 15_000;
 
+/**
+ * 同一回合最多吸收三批 Agent 运行期间到达的新消息。
+ *
+ * 旧逻辑只允许 replay 一次：如果候选人在第一次 replay 期间继续补充，新消息会被拆成
+ * follow-up，旧回复和新回复紧挨着投递，语义上很像重复发送。三次足以覆盖常见的连续补充，
+ * 同时保留硬上限，避免候选人持续输入时一个 worker 永不结束。
+ */
+const MAX_REPLAY_ATTEMPTS = 3;
+
 type VisualMessageTypes = Record<string, MessageType.IMAGE | MessageType.EMOTION>;
 
 interface AgentCallParams {
@@ -270,77 +279,85 @@ export class ReplyWorkflowService {
     // 统一收敛到「已知本轮投递结局」之后（守卫拦截/沉默分支 与 投递完成分支各一次 settle），
     // 而非生成结束就立即触发——否则被守卫拦截、托管暂停丢弃或投递失败的回复仍会被写进 session
     // 记忆，造成下一轮以为「已对候选人说过」的幽灵复聊。是否投影助手轮次由 `delivered` 决定。
-    // finalizer 内部保证「锁释放前 await 落盘 / replay 丢弃首版 / delivered→includeAssistantText」
+    // finalizer 内部保证「锁释放前 await 落盘 / replay 丢弃未投递版本 / delivered→includeAssistantText」
     // 这些记忆领域不变式，渠道只负责上报投递结局（见末尾 finally 的 whenSettled）。
     try {
-      // 非 reply outcome（skipped/guardrail_blocked/handoff）与已固化副作用工具均是
-      // agent/outcome 层给出的终态：不再拿通道 pending 变化重写这类结果。Agent 生成期间到达的
-      // 新消息仍留在 Redis pending list 里，由 MessageProcessor 末尾补建 follow-up job 处理。
-      const replaySkip = resolveReplaySkipDecision(agentResult.outcome, agentResult.toolCalls);
+      // 投递前重跑：每次 Agent 生成结束都检查运行期间到达的新消息，并在有界次数内继续
+      // 合并重跑。旧逻辑只检查首次生成，候选人在第一次 replay 期间继续补充时会被拆成
+      // follow-up，导致两批高度相似的回复紧挨着投递。
+      let replayAttempt = 0;
+      while (replayAttempt < MAX_REPLAY_ATTEMPTS) {
+        // 非 reply outcome（skipped/guardrail_blocked/handoff）与已固化副作用工具均是
+        // agent/outcome 层给出的终态：不再拿通道 pending 变化重写这类结果。未抓取的新消息
+        // 仍留在 Redis pending list，由 MessageProcessor 末尾补建 follow-up job 处理。
+        const replaySkip = resolveReplaySkipDecision(agentResult.outcome, agentResult.toolCalls);
+        if (replaySkip.skip) {
+          this.logger.warn(
+            `${logPrefix}[${contactName}][Replay-Skip] ${replaySkip.reasons.join(
+              ',',
+            )}，跳过 replay 检测，直接采用当前 outcome (chatId=${chatId})`,
+          );
+          break;
+        }
 
-      if (replaySkip.skip) {
-        this.logger.warn(
-          `${logPrefix}[${contactName}][Replay-Skip] ${replaySkip.reasons.join(
-            ',',
-          )}，跳过 replay 检测，直接采用首次 outcome (chatId=${chatId})`,
-        );
-      } else {
-        // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
-        // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
-        // 注意 fromIndex 必须是 worker 持有的 consumedPending 偏移，否则会把已经在 allMessages
+        // fromIndex 必须是 worker 持有的 consumedPending 偏移，否则会把已经在 allMessages
         // 里的消息再读一遍。
         const { messages: newMessages, snapshotSize: replaySnapshotSize } =
           await this.fetchPendingSinceAgentStart(chatId, consumedPending);
         consumedPending += replaySnapshotSize;
-        if (newMessages.length > 0) {
-          this.logger.warn(
-            `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
-          );
-          // 丢弃首次的记忆收尾——它承载了将首次回复写入 session 记忆的副作用。
-          // 第二次 callAgent 同样 deferTurnEnd，结果必然被采纳，返回后由 settle 触发。
-          agentResult.turnFinalizer?.discard();
-
-          allMessages = [...allMessages, ...newMessages];
-          content = this.wecomObservability.buildMergedRequestContent(allMessages);
-          imageUrls = this.collectImageUrls(allMessages);
-          imageMessageIds = this.collectImageMessageIds(allMessages);
-          visualMessageTypes = this.buildVisualMessageTypes(allMessages);
-          shortTermEndTimeInclusive = this.resolveShortTermEndTimeInclusive(allMessages);
-          await this.wecomObservability.updateRequestMessages(traceId, {
-            messages: allMessages,
-            content,
-            mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
-          });
-
-          // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
-          // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
-          // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
-          await this.wecomObservability.mergePrepTimingsFromSources(
-            traceId,
-            newMessages.map((message) => message.messageId),
-          );
-
-          // Replay 合入的新消息也可能走文本兼容描述；多模态主路径这里通常是 no-op。
-          await this.ensureCompatibilityDescriptionsReady(imageMessageIds, contactName, logPrefix);
-
-          agentResult = await this.callAgentWithVisualCompatibilityFallback({
-            ...agentCallParams,
-            userMessage: content,
-            imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-            imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
-            visualMessageTypes:
-              Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
-            shortTermEndTimeInclusive,
-            deferTurnEnd: true,
-          });
-
-          this.logger.log(
-            `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
-              `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
-          );
+        if (newMessages.length === 0) {
+          break;
         }
-        // turn-end 触发推迟到投递结局已知之后（见下方守卫/投递分支），此处不再立即触发。
+
+        replayAttempt += 1;
+        this.logger.warn(
+          `${logPrefix}[${contactName}][Replay ${replayAttempt}/${MAX_REPLAY_ATTEMPTS}] ` +
+            `检测到 ${newMessages.length} 条新消息，丢弃当前回复并重新调用 Agent (chatId=${chatId})`,
+        );
+        // 丢弃当前结果的记忆收尾——它承载了将未投递回复写入 session 记忆的副作用。
+        agentResult.turnFinalizer?.discard();
+
+        allMessages = [...allMessages, ...newMessages];
+        content = this.wecomObservability.buildMergedRequestContent(allMessages);
+        imageUrls = this.collectImageUrls(allMessages);
+        imageMessageIds = this.collectImageMessageIds(allMessages);
+        visualMessageTypes = this.buildVisualMessageTypes(allMessages);
+        shortTermEndTimeInclusive = this.resolveShortTermEndTimeInclusive(allMessages);
+        await this.wecomObservability.updateRequestMessages(traceId, {
+          messages: allMessages,
+          content,
+          mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
+        });
+
+        // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
+        // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
+        // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
+        await this.wecomObservability.mergePrepTimingsFromSources(
+          traceId,
+          newMessages.map((message) => message.messageId),
+        );
+
+        // Replay 合入的新消息也可能走文本兼容描述；多模态主路径这里通常是 no-op。
+        await this.ensureCompatibilityDescriptionsReady(imageMessageIds, contactName, logPrefix);
+
+        agentResult = await this.callAgentWithVisualCompatibilityFallback({
+          ...agentCallParams,
+          userMessage: content,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+          visualMessageTypes:
+            Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+          shortTermEndTimeInclusive,
+          deferTurnEnd: true,
+        });
+
+        this.logger.log(
+          `${logPrefix}[${contactName}][Replay ${replayAttempt}/${MAX_REPLAY_ATTEMPTS}] ` +
+            `重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
+            `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
+        );
       }
+      // turn-end 触发推迟到投递结局已知之后（见下方守卫/投递分支），此处不再立即触发。
 
       if (agentResult.isFallback) {
         void this.processingFailureService.sendFallbackAlert({
