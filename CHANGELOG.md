@@ -8,6 +8,45 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.6.0`
+**最近更新**: `2026-07-14`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #531 生产运行时统一到 Node 22
+- PR #531 AI 审查改用 workflow token 提交
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #531 生产运行时统一到 Node 22
+- PR #531 AI 审查改用 workflow token 提交
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #531 `bash -n scripts/deploy-remote.sh`
+- PR #531 Dockerfile / package runtime alignment 静态校验
+- PR #531 `pnpm run ci:check`
+- PR #531 lint、Prettier、TypeScript、Web/Nest 生产构建通过
+- PR #531 335 个测试套件通过，4753 个测试通过，6 个跳过
+<!-- release:pending:end -->
+
 ## [10.5.0] - 2026-07-14
 
 **来源分支**: `develop`
