@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Dependency Installation
-FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS deps
+FROM node:22-bookworm-slim@sha256:c29352e5563688e726158e23480bc2d4bd0af23bbdd055f8b837a12ecfd6a2a1 AS deps
 WORKDIR /app
 
 # Install a fixed pnpm version to keep dependency resolution reproducible.
-RUN npm install -g pnpm@10.33.4
+RUN npm install -g pnpm@10.34.5
 
 # Copy package files (including all workspace packages)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -15,6 +15,7 @@ COPY web/package.json ./web/
 # Install dependencies (skip postinstall scripts — supabase CLI binary download not needed in Docker)
 RUN --mount=type=cache,id=cake-agent-runtime-pnpm-store,target=/pnpm/store \
   pnpm config set store-dir /pnpm/store \
+  && pnpm config set engine-strict true \
   && pnpm install --frozen-lockfile --ignore-scripts
 
 # Stage 2: Build
@@ -43,7 +44,7 @@ RUN pnpm run build
 RUN CI=true pnpm prune --prod
 
 # Stage 3: Runner
-FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
+FROM node:22-bookworm-slim@sha256:c29352e5563688e726158e23480bc2d4bd0af23bbdd055f8b837a12ecfd6a2a1 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

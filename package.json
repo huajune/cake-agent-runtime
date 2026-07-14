@@ -6,6 +6,9 @@
   "private": true,
   "license": "ISC",
   "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "nest build",
     "build:ci": "API_GUARD_TOKEN=ci-placeholder-token pnpm run build:web && API_GUARD_TOKEN=ci-placeholder-token pnpm run build",
