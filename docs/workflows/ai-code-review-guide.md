@@ -3,7 +3,7 @@
 **最后更新**：2026-07-14
 
 本项目使用 **Claude Code Action** 对 Pull Request 自动进行代码审查。Claude 只负责
-生成符合 JSON Schema 的结构化结论，GitHub Actions 再使用 Claude App token 确定性
+生成符合 JSON Schema 的结构化结论，GitHub Actions 再使用 workflow GITHUB_TOKEN 确定性
 提交 `APPROVED` 或 `CHANGES_REQUESTED`，不依赖模型自行执行最后一条 `gh` 命令。
 
 ## 🚀 快速配置
