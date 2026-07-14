@@ -162,6 +162,24 @@ run_compose() {
   docker compose --env-file "$DEPLOY_ENV_FILE" up -d --force-recreate || return 1
 }
 
+dump_deployment_diagnostics() {
+  echo "Deployment diagnostics before rollback:"
+  docker compose --env-file "$DEPLOY_ENV_FILE" ps || true
+  docker compose --env-file "$DEPLOY_ENV_FILE" logs --no-color --tail=200 || true
+}
+
+verify_image_runtime() {
+  echo "Verifying runtime in ${IMAGE_NAME}:${IMAGE_TAG}..."
+  docker run --rm --entrypoint node "${IMAGE_NAME}:${IMAGE_TAG}" -e '
+    const major = Number(process.versions.node.split(".")[0]);
+    console.log(`Image Node.js runtime: ${process.version}`);
+    if (major < 22) {
+      console.error("Node.js 22 or newer is required by production dependencies.");
+      process.exit(1);
+    }
+  ' || return 1
+}
+
 health_check() {
   local health_port response
   health_port="$(read_env_value PORT "$RUNTIME_ENV_FILE")"
@@ -247,14 +265,22 @@ if ! build_or_load_image; then
   exit 1
 fi
 
+if ! verify_image_runtime; then
+  echo "Image runtime validation failed" >&2
+  rollback_release || true
+  exit 1
+fi
+
 write_deploy_env "$IMAGE_TAG"
 
 if ! run_compose; then
+  dump_deployment_diagnostics
   rollback_release || true
   exit 1
 fi
 
 if ! health_check; then
+  dump_deployment_diagnostics
   rollback_release || true
   exit 1
 fi

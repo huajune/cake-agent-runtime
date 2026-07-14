@@ -99,8 +99,9 @@ jobs:
 
             ${{ steps.review-rules.outputs.content }}
 
-          # Claude 只负责分析并返回受约束的结构化结论；下一步使用 Action 输出的
-          # Claude App token 确定性写回 review，避免模型漏掉最后的 gh 命令。
+          # Claude 只负责分析并返回受约束的结构化结论；下一步使用
+          # workflow GITHUB_TOKEN 确定性写回 review，避免依赖 Claude Action
+          # 临时 token 的生命周期，也避免模型漏掉最后的 gh 命令。
           # 补齐审查时常用的只读 git 子命令，减少 permission denial 浪费回合。
           claude_args: |
             --max-turns 80
@@ -108,14 +109,13 @@ jobs:
             --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git grep:*),Bash(git cat-file:*),Bash(git branch:*)"
 
       # 无论 Claude Action 成功、达到 max-turns 或异常退出，都进入确定性处理：
-      # - 成功且 structured_output 合法：用 Claude App token 提交裁决；
+      # - 成功且 structured_output 合法：用 workflow GITHUB_TOKEN 提交裁决；
       # - 失败或输出非法：幂等提交一次 github-actions 阻塞 review，并判红。
       - name: Submit deterministic review or fail closed
         if: always() && steps.pr.outputs.workflow_changed != 'true'
         env:
           GH_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLAUDE_GH_TOKEN: ${{ steps.review.outputs.github_token }}
           REVIEW_OUTCOME: ${{ steps.review.outcome }}
           REVIEW_JSON: ${{ steps.review.outputs.structured_output }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -139,7 +139,7 @@ jobs:
             exit 1
           }
 
-          if [ "$REVIEW_OUTCOME" != "success" ] || [ -z "$CLAUDE_GH_TOKEN" ]; then
+          if [ "$REVIEW_OUTCOME" != "success" ]; then
             submit_fallback
           fi
 
@@ -158,11 +158,14 @@ jobs:
           fi
 
           DECISION=$(printf '%s' "$REVIEW_JSON" | jq -r .decision)
-          SUMMARY=$(printf '%s' "$REVIEW_JSON" | jq -r .summary)
+          # Claude Action 偶尔会把内部 XML 结束标签放进 summary 字符串；
+          # 输出仍符合 schema，但不应把这些协议噪声写入 GitHub review。
+          SUMMARY=$(printf '%s' "$REVIEW_JSON" | jq -r \
+            '.summary | gsub("</?(summary|invoke)>"; "") | sub("[\\n[:space:]]+$"; "")')
           FINDINGS=$(printf '%s' "$REVIEW_JSON" | jq -r \
             'if (.blocking_findings | length) == 0 then "" else "\n\nBlocking findings:\n" + (.blocking_findings | map("- " + .) | join("\n")) end')
 
-          export GH_TOKEN="$CLAUDE_GH_TOKEN"
+          export GH_TOKEN="$GITHUB_TOKEN"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
             -f event="$DECISION" \
             -f commit_id="$HEAD_SHA" \
@@ -170,7 +173,6 @@ jobs:
 
           # 有效 Claude 裁决已经产生后，清理本 workflow 历史运行留下的自动阻塞
           # review；只匹配固定文案，避免误撤销人工或其他机器人的 review。
-          export GH_TOKEN="$GITHUB_TOKEN"
           gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\" and .state == \"CHANGES_REQUESTED\" and ((.body | startswith(\"${FALLBACK_PREFIX}\")) or (.body | startswith(\"${LEGACY_FALLBACK_PREFIX}\")))) | .id" |
             while read -r REVIEW_ID; do

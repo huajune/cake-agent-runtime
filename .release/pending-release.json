@@ -1,9 +1,41 @@
 {
   "baseVersion": "10.5.0",
-  "nextVersion": "10.5.0",
+  "nextVersion": "10.6.0",
   "updatedAt": "2026-07-14",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "531",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/531",
+      "title": "生产运行时统一到 Node 22",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-14",
+      "businessUpdates": [
+        "生产运行时统一到 Node 22",
+        "AI 审查改用 workflow token 提交"
+      ],
+      "summary": [
+        "生产运行时统一到 Node 22",
+        "AI 审查改用 workflow token 提交"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "生产运行时统一到 Node 22",
+        "AI 审查改用 workflow token 提交"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`bash -n scripts/deploy-remote.sh`",
+        "Dockerfile / package runtime alignment 静态校验",
+        "`pnpm run ci:check`",
+        "lint、Prettier、TypeScript、Web/Nest 生产构建通过",
+        "335 个测试套件通过，4753 个测试通过，6 个跳过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.5.0",
     "date": "2026-07-14",
