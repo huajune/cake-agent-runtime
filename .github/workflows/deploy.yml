@@ -89,15 +89,20 @@ jobs:
 
             if [ -d source/.git ]; then
               cd source
+              # source 是发布专用克隆，不保留服务器本地的跟踪文件改动。
+              # 旧流程的 chmod 会留下 executable bit 差异，导致下次 tag
+              # checkout 被 Git 拒绝；忽略文件模式并强制切换到当前发布标签。
+              git config core.fileMode false
               git fetch --depth 1 origin "refs/tags/${RELEASE_TAG}"
-              git checkout --detach FETCH_HEAD
+              git checkout --detach --force FETCH_HEAD
               cd ..
             else
               rm -rf source
               git clone --depth 1 https://github.com/${{ github.repository }}.git source
               cd source
+              git config core.fileMode false
               git fetch --depth 1 origin "refs/tags/${RELEASE_TAG}"
-              git checkout --detach FETCH_HEAD
+              git checkout --detach --force FETCH_HEAD
               cd ..
             fi
 
@@ -120,8 +125,7 @@ jobs:
               exit 1
             fi
 
-            chmod +x source/scripts/deploy-remote.sh
-            source/scripts/deploy-remote.sh \
+            bash source/scripts/deploy-remote.sh \
               --mode build \
               --image-name "$IMAGE_NAME" \
               --image-tag "$IMAGE_TAG" \
