@@ -18,6 +18,20 @@ const ALTERNATIVE_UPSELL_PATTERNS = [
   ),
 ];
 
+/** 解释先前推荐口径不等于本轮主动劝转其它用工形式。 */
+const HISTORICAL_RECOMMENDATION_EXPLANATION = new RegExp(
+  `(?:之前|此前|先前|前面|刚才|原来)[^。！？\n]{0,16}(?:推荐|介绍)[^。！？\n]{0,12}(?:是|按|属于)[^。！？\n]{0,8}${ALTERNATIVE_LABOR_FORM}(?:走的|岗位|类型)?`,
+);
+
+function containsActionableAlternativeUpsell(text: string): boolean {
+  return text
+    .split(/(?<=[。！？\n])/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .filter((sentence) => !HISTORICAL_RECOMMENDATION_EXPLANATION.test(sentence))
+    .some((sentence) => ALTERNATIVE_UPSELL_PATTERNS.some((pattern) => pattern.test(sentence)));
+}
+
 const USER_REJECTS_ALTERNATIVES =
   /(?:不考虑|不要|不找|不接受|不可以|不能做)[^。！？\n]{0,10}(?:普通兼职|常规兼职|长期兼职|长期工|小时工|全职)|只(?:要|找|考虑)暑假工/;
 const USER_ACCEPTS_ALTERNATIVES = [
@@ -49,7 +63,7 @@ export function detectSummerWorkerAlternativeUpsell(
 ): RuleContradiction | null {
   if (!hasSummerWorkerEmptyResult(toolCalls)) return null;
   if (candidateExplicitlyAcceptsAlternatives(userMessage)) return null;
-  if (!ALTERNATIVE_UPSELL_PATTERNS.some((pattern) => pattern.test(text))) return null;
+  if (!containsActionableAlternativeUpsell(text)) return null;
 
   return {
     ruleId: 'summer_worker_alternative_upsell',

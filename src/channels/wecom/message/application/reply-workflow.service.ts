@@ -21,6 +21,7 @@ import { SimpleMergeService } from '../runtime/simple-merge.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { ImageDescriptionService } from './image-description.service';
+import { ImageBrandBackfillService } from './image-brand-backfill.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
@@ -89,6 +90,7 @@ export class ReplyWorkflowService {
     private readonly followUpScheduler: FollowUpSchedulerService,
     private readonly reengagementAnchors: ReengagementAnchorService,
     private readonly alertNotifier: AlertNotifierService,
+    private readonly imageBrandBackfill: ImageBrandBackfillService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -485,6 +487,32 @@ export class ReplyWorkflowService {
       // 在方法返回（→ MessageProcessor 释放 chat 处理锁）前等待回合收尾落盘，
       // 保证同一 chat 的记忆写入相对处理锁串行，杜绝跨 job 并发覆盖。
       await agentResult.turnFinalizer?.whenSettled();
+
+      // 图片描述缺失兜底（§10.3）：回合终局确定后，用结构化 messageType + 本轮
+      // save_image_description 工具调用记录检测缺描述的图片，触发异步 Vision 补写
+      // （fire-and-forget，补写链路自行重新持锁 + 过期即弃）。只救下一轮状态。
+      try {
+        const missing = this.imageBrandBackfill.detectMissingImages({
+          imageMessageIds,
+          imageUrls,
+          visualMessageTypes,
+          toolCalls: agentResult.toolCalls,
+        });
+        this.imageBrandBackfill.scheduleBackfill({
+          corpId: agentCallParams.corpId,
+          userId: agentCallParams.userId,
+          sessionId: chatId,
+          chatId,
+          missing,
+          turnMs: Date.now(),
+        });
+      } catch (backfillError) {
+        this.logger.warn(
+          `${logPrefix}[${contactName}] 图片描述补写触发失败: ${
+            backfillError instanceof Error ? backfillError.message : String(backfillError)
+          }`,
+        );
+      }
     }
   }
 

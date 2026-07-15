@@ -31,6 +31,7 @@ import {
   normalizeIdentityText,
   normalizeNumberText,
 } from '@tools/duliday/precheck/field-normalize.util';
+import { resolveLocalHealthCertificateEligibility } from '@tools/duliday/precheck/health-certificate-policy.util';
 
 // Phase 1.A 拆分：辅助函数全部下沉到 duliday/precheck/* 子目录，0 逻辑改动。
 import {
@@ -63,7 +64,10 @@ import {
   buildScreeningCriteria,
 } from '@tools/duliday/precheck/screening-criteria.util';
 import { isHighConfidenceValue } from '@memory/facts/high-confidence-facts';
-import { extractHardRequirements } from '@tools/duliday/job-list/hard-requirements.util';
+import {
+  extractHardRequirements,
+  isHouseholdRequirementViolated,
+} from '@tools/duliday/job-list/hard-requirements.util';
 
 // 保留 age util 的符号 re-export，兼容 tests/tools/tool/duliday-interview-precheck.age-boundary.spec
 export {
@@ -109,10 +113,11 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
 - screeningCriteria.householdRegisterProvince（户籍约束）属于**敏感字段**，禁止直问"你是不是 X 籍 / 不要东北的 / 是不是本地"等让候选人感到被歧视的措辞；只能用"哥/姐方便问下是哪边人吗（公司这边登记需要核对下户籍信息）"等承接式开口，候选人主动给户籍后再对照 screeningCriteria.householdRegisterProvince 判断
 - sensitiveScreeningNotice：返回该字段时，说明本岗位筛选条件（含 remark/screeningChecks 原文）内嵌户籍/籍贯/民族/专业/婚育等敏感信息，必须严格按该提示执行——条件本身 🔒 仅供内部筛选，严禁透露给候选人；婚育信息还禁止主动询问、复述或确认
-- healthCertGate：健康证业务口径，三选一：
+- healthCertGate：健康证业务口径：
   - "before_interview"：岗位明确收紧，必须先确认候选人有食品健康证才能继续约面；无证时直接说明"这家要求先有证才能约"并给办证建议
-  - "before_onboard"：默认宽口径（多数岗位走这条），不要在约面前主动追问健康证；约面成功或推进入岗讨论时告知"上岗前要办好食品健康证"即可
-  - "unknown"：岗位数据没提健康证，按宽口径处理但不主动提
+  - "before_onboard"：岗位配置了健康证要求；预约资料必须确认本地健康证状态，无证但接受办理可继续，异地证不能按“有”提交
+  - "not_required"：岗位明确写了无需健康证，不收集、不校验
+  - "unknown"：岗位数据未配置健康证要求，不收集、不校验，也不要主动追问本地/异地
 - screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking；但 "食品类健康证/食品健康证/餐饮健康证" 是健康证类型，不是专业答案，遇到专业筛选题时必须澄清实际专业。核对时**严禁把 label 括号里的排除条件透露给候选人**：专业筛选题只能开放式问"你学的什么专业呀"，不得反问"专业不是新媒体/食品相关的吧"（把排除条件塞进问句=泄露筛选条件，会被出站守卫拦截）
 - bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
 - bookingChecklist.requiredFieldsToCollectNow：当前阶段必须立刻收齐的字段（missingFields 的扁平副本，便于一次性补问；若数组非空，回复必须把这些字段写成模板让候选人一次性填齐）
@@ -150,8 +155,12 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - **班次硬约束与岗位 workTime 不重叠时禁约面**：候选人 schedule 硬约束（"做一休一/每周最多两天/只周末/不上夜班/下班后/六点才下班"等）与当前候选岗位的工作时间无重叠时，禁止继续 collect_fields/duliday_interview_booking 进入约面流程，必须先用 duliday_job_list(includeWorkTime=true) 校验确认无匹配，再婉拒并走 invite_to_group。已经识别为不匹配仍继续收资约面 = 通融式推荐
 - **候选人主动自报学生身份时（"我是学生/在读/本科在读/刚考上研究生/准研究生/待入学/暑假工/寒假工/这几个月没事干"等）**：必须照 screeningChecks 中"是否学生"题项核对——若该题项存在且候选人答案命中 failSignals，立即停止收资、走婉拒/拉群，不得继续 booking；若 screeningChecks 未返回该题项，**不得**凭"figure=不限/学历够/未写学生限制/工具未返回学生字段"反推为"身份没限制/接受学生"，必须保守说"这个身份我先帮你确认下"或调 request_handoff。判定与 duliday_job_list 工具描述中"学生身份不能由缺省反推"同口径
 - nextAction === "student_rejected" 时，表示岗位明确只接受社会人士而候选人已明确是学生；必须停止当前岗位收资和 booking，转查接受学生的岗位。严禁修改、淡化或隐瞒候选人身份重试
+- nextAction === "household_rejected" 时，表示候选人与岗位内部户籍硬条件冲突；必须停止当前岗位收资和 booking，用中性话术转查其它岗位。具体户籍、籍贯或地域限制属于内部敏感筛选条件，严禁向候选人透露、复述或暗示
 - **候选人明确说出未来某天才能面试（"五一回来再说/X 月 X 号之后/下周回来/月底/等开学后"等）时**：把该日期当作硬约束，不得继续催"今天/明天能不能面"；若该日期超出 bookableSlots 范围，按 nextAction = confirm_date / date_unavailable 处理；本轮 requestedDate 传入该明确日期再调用本工具，根据返回结果决定后续话术
 - **健康证地域适用性问题（"外地的健康证能用吗 / 我是 X 省的证可以吗 / 这个证在你们这里能用吗"）禁止凭经验回答**：严禁说"全国通用 / 不分地区 / 都可以"等通识答案；必须基于本轮工具返回的 healthCertGate / 岗位详情字段回答，工具未明示时如实告知"具体到时按门店/同事确认"或调 request_handoff，不得用经验性回答兜底
+- **健康证按岗位数据执行**：只有 healthCertGate 为 before_interview / before_onboard 时才要求应聘城市本地健康证。本地证可按“有”继续；异地证一律不能按“有”提交，必须先询问是否接受重新办理本地证。healthCertGate 为 unknown / not_required 时不得主动收集或校验健康证
+- nextAction === "confirm_local_health_certificate" 时，只按 healthCertificateEligibility.recommendedQuestion 确认是否接受重办，禁止 booking；得到明确答复后重新调 precheck
+- nextAction === "health_certificate_rejected" 时，候选人已明确不接受办理本地证，立即停止当前岗位收资和 booking，礼貌说明当前岗位暂不匹配
 
 ## nextAction 与 booking 的契约
 - 只有当 nextAction === "ready_to_book"、且本轮已根据 screeningChecks/nameFieldGuard/healthCertGate 完成必要的人工核对时，才允许调 duliday_interview_booking
@@ -215,7 +224,7 @@ const inputSchema = z.object({
     .union([z.string(), z.boolean()])
     .optional()
     .describe(
-      '候选人明确说明的健康证情况，如 "有"、"无"、true、false。只传候选人答案，禁止传岗位健康证要求。',
+      '候选人明确说明的健康证情况，如 "有本地健康证"、"异地健康证"、"可以重办"、"不接受办理"。只传候选人答案，禁止传岗位健康证要求。',
     ),
   candidateIsStudent: z
     .union([z.boolean(), z.string()])
@@ -442,24 +451,36 @@ function normalizeCandidateIsStudentInput(value: unknown): string | null {
   return null;
 }
 
-function hasExplicitIdentityEvidence(identity: string, messages: unknown[]): boolean {
-  const text = messages
-    .map((message) => {
-      if (!message || typeof message !== 'object') return '';
-      const candidateMessage = message as Record<string, unknown>;
-      if (candidateMessage.role !== 'user') return '';
-      return extractMessageText(candidateMessage.content);
-    })
-    .filter(Boolean)
-    .join('\n');
-  if (identity === '学生') {
-    return /身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*学生|我是学生|(?:本科|大专|高中|硕士|研究生|博士)在读|我还在读|我在上学/u.test(
-      text,
-    );
+function findLatestExplicitIdentity(messages: unknown[]): '学生' | '社会人士' | null {
+  let latest: '学生' | '社会人士' | null = null;
+  for (const message of messages) {
+    if (!message || typeof message !== 'object') continue;
+    const candidateMessage = message as Record<string, unknown>;
+    if (candidateMessage.role !== 'user') continue;
+    const raw = extractMessageText(candidateMessage.content);
+    if (!raw) continue;
+    const text = raw.replace(/\[引用[^\n]*?\]\s*/g, '').trim();
+    if (
+      /身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*学生|我(?:现在)?是学生|(?:本科|大专|高中|硕士|研究生|博士)在读|我还在读|我在上学/u.test(
+        text,
+      )
+    ) {
+      latest = '学生';
+      continue;
+    }
+    if (
+      /身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*社会人士|我是社会人士|我不是学生|我是非学生|我已经?毕业|我毕业了/u.test(
+        text,
+      )
+    ) {
+      latest = '社会人士';
+    }
   }
-  return /身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*社会人士|我是社会人士|不是学生|非学生|已经毕业|已毕业/u.test(
-    text,
-  );
+  return latest;
+}
+
+function hasExplicitIdentityEvidence(identity: string, messages: unknown[]): boolean {
+  return findLatestExplicitIdentity(messages) === identity;
 }
 
 function normalizeCandidateUploadResumeInput(value: unknown): string | null {
@@ -467,11 +488,6 @@ function normalizeCandidateUploadResumeInput(value: unknown): string | null {
   const text = normalizePolicyText(value);
   return text || null;
 }
-
-const STUDENT_IDENTITY_EVIDENCE_PATTERN =
-  /学生|在读|在校|上学|读书|大一|大二|大三|大四|大专|本科|研究生|高中|初中|放假|开学|毕业/;
-const SOCIAL_IDENTITY_EVIDENCE_PATTERN =
-  /社会人士|不是学生|非学生|不算学生|已经?毕业|毕业了|上班族|全职工作|已经工作|工作了|待业|辞职|宝妈/;
 
 /**
  * candidateIsStudent 入参溯源校验：只拦"与记忆矛盾且候选人原话无佐证"的身份翻转。
@@ -500,22 +516,14 @@ function isStudentClaimUnsupportedFlip(params: {
       : typeof hcValue === 'boolean'
         ? hcValue
         : null;
-  // 记忆无身份 → 不构成"翻转"，按现状采信显式入参
-  if (memoryValue === null || memoryValue === claimedStudent) return false;
+  // 原话证据优先于已可能被污染的记忆。“社会人士岗位”等讨论语句不会被
+  // findLatestExplicitIdentity 当成候选人改口。
+  const latestExplicitIdentity = findLatestExplicitIdentity(params.messages);
+  if (latestExplicitIdentity !== null) return latestExplicitIdentity !== params.claimed;
 
-  const pattern = claimedStudent
-    ? STUDENT_IDENTITY_EVIDENCE_PATTERN
-    : SOCIAL_IDENTITY_EVIDENCE_PATTERN;
-  for (const message of params.messages) {
-    if (!message || typeof message !== 'object') continue;
-    const record = message as Record<string, unknown>;
-    if (record.role !== 'user') continue;
-    const raw = extractMessageText(record.content);
-    if (!raw) continue;
-    const text = raw.replace(/\[引用[^\n]*?\]\s*/g, '').trim();
-    if (text && pattern.test(text)) return false; // 原话有改口证据，采信
-  }
-  return true; // 与记忆矛盾且无原话佐证 → 模型代答
+  // 没有可追溯原话时，只允许与记忆一致的显式入参。
+  if (memoryValue === null) return false;
+  return memoryValue !== claimedStudent;
 }
 
 function normalizeCandidateNumberInput(value: unknown): string | null {
@@ -710,9 +718,10 @@ export function buildInterviewPrecheckTool(
               mode: lc.classification.mode,
               failSignals: [...lc.classification.failSignals],
             }));
-          const studentIdentityMustBeExplicit = screeningChecks.some((check) =>
-            /学生|身份/u.test(check.labelName),
-          );
+          const hardRequirements = extractHardRequirements(job, analysis);
+          const studentIdentityMustBeExplicit =
+            hardRequirements.student === 'social_only' ||
+            screeningChecks.some((check) => /学生|身份/u.test(check.labelName));
 
           const knownFieldMap = buildKnownFieldMap({
             contextProfile: context.profile ?? null,
@@ -782,6 +791,25 @@ export function buildInterviewPrecheckTool(
             highConfidenceInfo?.has_health_certificate,
             normalizeCandidateHealthCertificateInput,
           );
+          const healthCertificateEligibility = resolveLocalHealthCertificateEligibility({
+            latestAnswer: candidateHasHealthCertificate ?? context.currentUserMessage,
+            normalizedKnownValue: knownFieldMap['健康证情况'],
+            historicalValues: [
+              highConfidenceInfo?.has_health_certificate,
+              context.sessionFacts?.interview_info?.has_health_certificate,
+              context.profile?.has_health_certificate,
+            ],
+          });
+          if (healthCertificateEligibility.status === 'local_valid') {
+            knownFieldMap['健康证情况'] = '有';
+          } else if (healthCertificateEligibility.status === 'accepts_local_application') {
+            knownFieldMap['健康证情况'] = '无但接受办理健康证';
+          } else if (healthCertificateEligibility.status === 'rejects_local_application') {
+            knownFieldMap['健康证情况'] = '无且不接受办理健康证';
+          } else if (healthCertificateEligibility.status === 'non_local_needs_confirmation') {
+            // 异地证不能当作“有证”回填；保持 missing，由专用 nextAction 先问是否重办。
+            delete knownFieldMap['健康证情况'];
+          }
           applyCandidateFieldOverride(
             knownFieldMap,
             '过往公司+岗位+年限',
@@ -815,6 +843,10 @@ export function buildInterviewPrecheckTool(
             highConfidenceInfo?.is_student,
             normalizeCandidateIsStudentInput,
           );
+          const latestExplicitIdentity = findLatestExplicitIdentity(context.messages);
+          if (latestExplicitIdentity) {
+            knownFieldMap['身份'] = latestExplicitIdentity;
+          }
           const normalizedKnownIdentity = knownFieldMap['身份'] ?? null;
           if (
             studentIdentityMustBeExplicit &&
@@ -940,9 +972,12 @@ export function buildInterviewPrecheckTool(
             candidateAge: parseCandidateAge(knownFieldMap['年龄'] ?? null),
             range: parseAgeRange(analysis.normalizedRequirements.ageRequirement),
           });
-          const hardRequirements = extractHardRequirements(job, analysis);
           const studentRejected =
             hardRequirements.student === 'social_only' && knownFieldMap['身份'] === '学生';
+          const householdRejected = isHouseholdRequirementViolated(
+            hardRequirements.household,
+            knownFieldMap['户籍省份'],
+          );
           const collectionResistance = detectCollectionResistance(context.messages);
           const collectionStrategy =
             checklist.missingFields.length > 0
@@ -951,6 +986,9 @@ export function buildInterviewPrecheckTool(
                   resistanceSignals: collectionResistance.matchedSignals,
                 })
               : null;
+          const healthCertificateRequired =
+            analysis.normalizedRequirements.healthCertGate === 'before_interview' ||
+            analysis.normalizedRequirements.healthCertGate === 'before_onboard';
 
           const nextAction:
             | 'collect_fields'
@@ -958,23 +996,35 @@ export function buildInterviewPrecheckTool(
             | 'date_unavailable'
             | 'ready_to_book'
             | 'age_rejected'
-            | 'student_rejected' =
+            | 'student_rejected'
+            | 'household_rejected'
+            | 'confirm_local_health_certificate'
+            | 'health_certificate_rejected' =
             ageBoundary.severity === 'hard_reject'
               ? 'age_rejected'
               : studentRejected
                 ? 'student_rejected'
-                : temporarySummerWorkerGuard?.status === 'blocked_non_summer_job'
-                  ? 'collect_fields'
-                  : requestedDateCheck?.status === 'unavailable'
-                    ? 'date_unavailable'
-                    : checklist.missingFields.length > 0
-                      ? 'collect_fields'
-                      : interviewTimeWaitNotice
-                        ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
-                          'ready_to_book'
-                        : !requestedDateCheck || requestedDateCheck.status === 'needs_confirmation'
-                          ? 'confirm_date'
-                          : 'ready_to_book';
+                : householdRejected
+                  ? 'household_rejected'
+                  : healthCertificateRequired &&
+                      healthCertificateEligibility.status === 'rejects_local_application'
+                    ? 'health_certificate_rejected'
+                    : healthCertificateRequired &&
+                        healthCertificateEligibility.status === 'non_local_needs_confirmation'
+                      ? 'confirm_local_health_certificate'
+                      : temporarySummerWorkerGuard?.status === 'blocked_non_summer_job'
+                        ? 'collect_fields'
+                        : requestedDateCheck?.status === 'unavailable'
+                          ? 'date_unavailable'
+                          : checklist.missingFields.length > 0
+                            ? 'collect_fields'
+                            : interviewTimeWaitNotice
+                              ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
+                                'ready_to_book'
+                              : !requestedDateCheck ||
+                                  requestedDateCheck.status === 'needs_confirmation'
+                                ? 'confirm_date'
+                                : 'ready_to_book';
 
           // 内部中间态仅写入 debug 日志，不回传给 LLM
           logger.debug(
@@ -1071,13 +1121,24 @@ export function buildInterviewPrecheckTool(
                   reason: '岗位仅接受社会人士，候选人明确填写学生',
                 }
               : undefined,
+            householdEligibility: householdRejected
+              ? {
+                  severity: 'hard_reject',
+                  reason:
+                    '候选人与岗位内部户籍硬条件冲突。该条件仅供内部筛选，严禁向候选人透露；请用中性话术转推其它岗位。',
+                }
+              : undefined,
             sensitiveScreeningNotice,
-            // 健康证业务口径 gate（运营拍版默认宽口径）：模型按本字段决定是否前置问健康证，
+            // 健康证业务口径 gate：模型按本字段决定如何确认本地健康证，
             // 不需要再读 jobName / interviewRemark 自己解读关键词。
             // - before_interview：必须先确认候选人有证才能继续约面
-            // - before_onboard：默认走"先面试，录用后再办"，不要在约面前主动追问
-            // - unknown：岗位数据没提，不主动提
+            // - before_onboard：岗位配置了健康证要求，必须确认本地证或接受办理
+            // - not_required：岗位明确无需健康证
+            // - unknown：岗位未配置健康证要求，不收集、不校验
             healthCertGate: analysis.normalizedRequirements.healthCertGate,
+            healthCertificateEligibility: healthCertificateRequired
+              ? healthCertificateEligibility
+              : undefined,
             // 筛选型 supplement label 单独出口：Agent 必须先独立向候选人核对，
             // 候选人答案命中任一 failSignal 就停止收资；对应字段不在 templateText
             // 里（否则会被错当成需要填写的字段）。

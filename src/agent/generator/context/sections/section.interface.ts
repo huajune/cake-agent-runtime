@@ -3,6 +3,7 @@ import type {
   HighConfidenceFacts,
   SessionFacts,
 } from '@memory/types/session-facts.types';
+import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
 import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 
@@ -30,6 +31,8 @@ export interface PromptContext {
   highConfidenceFacts?: HighConfidenceFacts | null;
   /** 当前消息对用工形式的 set/clear/ignore 决策；用于区分撤销旧偏好与岗位事实问句。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
+  /** 本轮生效的会话品牌状态（currentBrand + excludedBrands，§9）；品牌提示的唯一数据源。 */
+  sessionBrandState?: SessionBrandState | null;
 }
 
 /**

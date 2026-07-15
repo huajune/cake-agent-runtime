@@ -1141,6 +1141,18 @@ describe('buildInterviewPrecheckTool', () => {
       });
     };
 
+    const socialOnlyJobFixture = () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职', partTimeJobType: '小时工' },
+            hiringRequirement: { figure: '社会人士', remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+    };
+
     it('候选人原话说过"暑假工的"后，模型省略 candidateLaborForm 也拦得住（粘性）', async () => {
       nonSummerJobFixture();
 
@@ -1245,6 +1257,56 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.bookingChecklist.templateText ?? '').toContain(
         '身份（学生/社会人士）：社会人士',
       );
+    });
+
+    it.each([
+      '那就社会人士的早班吧',
+      '嘉裕太阳城呢 不是有招社会人士岗吗',
+      '社会人士岗位会影响我后续读书吗',
+      '那东方宝泰店我可以用社会人士身份入职是吗',
+    ])('候选人讨论社会人士岗位时不得翻转已确认的学生身份：%s', async (message) => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 18, candidateIsStudent: 'false' },
+        {
+          sessionFacts: {
+            interview_info: { is_student: true },
+            preferences: {},
+          } as never,
+          messages: [
+            { role: 'user', content: '身份（学生/社会人士）：学生' },
+            { role: 'user', content: message },
+          ] as never,
+        },
+      );
+
+      expect(result.nextAction).toBe('student_rejected');
+      expect(result.studentEligibility).toEqual(
+        expect.objectContaining({ candidateIdentity: '学生', requiredIdentity: '社会人士' }),
+      );
+      expect(result.bookingChecklist.templateText ?? '').toContain('身份（学生/社会人士）：学生');
+    });
+
+    it('即使会话记忆已被污染为社会人士，仍以最新明确的候选人身份原话为准', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 18, candidateIsStudent: '否' },
+        {
+          sessionFacts: {
+            interview_info: { is_student: false },
+            preferences: {},
+          } as never,
+          messages: [
+            { role: 'user', content: '身份（学生/社会人士）：学生' },
+            { role: 'user', content: '那东方宝泰店我可以用社会人士身份入职是吗' },
+          ] as never,
+        },
+      );
+
+      expect(result.nextAction).toBe('student_rejected');
+      expect(result.bookingChecklist.templateText ?? '').toContain('身份（学生/社会人士）：学生');
     });
   });
 
@@ -1887,8 +1949,100 @@ describe('buildInterviewPrecheckTool', () => {
     );
 
     expect(result.success).toBe(true);
+    expect(result.nextAction).toBe('confirm_local_health_certificate');
+    expect(result.healthCertificateEligibility).toEqual(
+      expect.objectContaining({
+        status: 'non_local_needs_confirmation',
+        recommendedQuestion: expect.stringContaining('本地健康证'),
+      }),
+    );
     expect(result.bookingChecklist.missingFields).toContain('健康证情况');
     expect(result.bookingChecklist.templateText).toContain('健康证：');
+  });
+
+  it('should map acceptance after a non-local certificate to Sponge value 2', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '可以' },
+      {
+        currentUserMessage: '可以',
+        sessionFacts: {
+          interview_info: { has_health_certificate: '非本地健康证' },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.healthCertificateEligibility).toEqual(
+      expect.objectContaining({ status: 'accepts_local_application', spongeValue: 2 }),
+    );
+    expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
+  });
+
+  it('should reject the current job when non-local certificate holder refuses to reapply', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '不接受' },
+      {
+        currentUserMessage: '不接受',
+        sessionFacts: {
+          interview_info: { has_health_certificate: '非本地健康证' },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.nextAction).toBe('health_certificate_rejected');
+    expect(result.healthCertificateEligibility).toEqual(
+      expect.objectContaining({ status: 'rejects_local_application', spongeValue: 3 }),
+    );
+  });
+
+  it('should skip the default rule when the job explicitly says no health certificate is required', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            certificate: { education: '高中', healthCertificate: '无需健康证' },
+          },
+          interviewProcess: { interviewSupplement: [] },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '不接受办理' },
+      { currentUserMessage: '不接受办理' },
+    );
+
+    expect(result.healthCertGate).toBe('not_required');
+    expect(result.nextAction).not.toBe('health_certificate_rejected');
+    expect(result.bookingChecklist.missingFields).not.toContain('健康证情况');
+  });
+
+  it('should not inspect local certificate eligibility when the job has no health requirement', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { certificate: {} },
+          interviewProcess: { interviewSupplement: [], remark: '' },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '异地健康证' },
+      { currentUserMessage: '我的是异地健康证' },
+    );
+
+    expect(result.healthCertGate).toBe('unknown');
+    expect(result.healthCertificateEligibility).toBeUndefined();
+    expect(result.nextAction).not.toBe('confirm_local_health_certificate');
+    expect(result.bookingChecklist.missingFields).not.toContain('健康证情况');
   });
 
   it('should switch to progressive collection guidance when candidate resists filling many fields', async () => {
@@ -2041,6 +2195,34 @@ describe('buildInterviewPrecheckTool', () => {
       { labelId: 501, labelName: '健康证类型', name: '健康证类型' },
       { labelId: 502, labelName: '过往公司+岗位+年限', name: '过往公司+岗位+年限' },
     ]);
+  });
+
+  it('should hard-reject an explicitly excluded household without exposing restricted regions', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            requirementsForHometown: {
+              nativePlaceRequirementType: '不要',
+              nativePlaces: ['天津市', '江西省'],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      candidateHouseholdProvince: '天津市',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.nextAction).toBe('household_rejected');
+    expect(result.householdEligibility).toEqual(
+      expect.objectContaining({ severity: 'hard_reject' }),
+    );
+    expect(JSON.stringify(result.householdEligibility)).not.toContain('天津');
+    expect(JSON.stringify(result.householdEligibility)).not.toContain('江西');
   });
 
   it('should backfill work experience supplement from high-confidence facts', async () => {

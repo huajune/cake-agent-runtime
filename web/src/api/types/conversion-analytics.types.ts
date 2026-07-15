@@ -12,6 +12,8 @@ export type ConversionMetricMode = 'period' | 'cohort';
 export interface ConversionQuery {
   range: ConversionRange;
   groups?: string[];
+  /** cohort 口径只纳入至少成熟这些天的新增好友批次。 */
+  maturityDays?: number;
 }
 
 export interface ConversionRateMetric {

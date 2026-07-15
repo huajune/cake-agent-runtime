@@ -11,6 +11,7 @@ import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service'
 import { MessageFilterService } from '@wecom/message/application/filter.service';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import { ImageDescriptionService } from '@wecom/message/application/image-description.service';
+import { ImageBrandBackfillService } from '@wecom/message/application/image-brand-backfill.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -268,6 +269,13 @@ describe('MessagePipelineService', () => {
         // ReplyWorkflowService 第 14 个构造依赖；其自身依赖（FollowUpScheduler/SessionService）
         // 已在上面提供，直接注册真实类即可解析。
         ReengagementAnchorService,
+        {
+          provide: ImageBrandBackfillService,
+          useValue: {
+            detectMissingImages: jest.fn().mockReturnValue([]),
+            scheduleBackfill: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

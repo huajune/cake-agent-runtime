@@ -19,17 +19,6 @@ interface TestEvent {
   payload: Record<string, unknown> | null;
 }
 
-interface TestDailyRow {
-  bot_im_id: string | null;
-  manager_name: string | null;
-  group_name: string | null;
-  friends_added_count: number | null;
-  break_ice_count: number | null;
-  booking_success_count: number | null;
-  group_invite_count: number | null;
-  interview_pass_count: number | null;
-}
-
 const today = formatLocalDate(getLocalDayStart(new Date()));
 const prevDate = formatLocalDate(addLocalDays(getLocalDayStart(new Date()), -40));
 
@@ -53,14 +42,35 @@ const withWorkOrder = (event: TestEvent, workOrderId: string): TestEvent => ({
   payload: { work_order_id: workOrderId },
 });
 
+const forBot = (
+  event: TestEvent,
+  botImId: string,
+  managerName: string,
+  groupName: string,
+): TestEvent => ({
+  ...event,
+  bot_im_id: botImId,
+  manager_name: managerName,
+  group_name: groupName,
+});
+
+const botStageEvents = (
+  botImId: string,
+  managerName: string,
+  groupName: string,
+  prefix: string,
+  eventName: string,
+  count: number,
+): TestEvent[] =>
+  Array.from({ length: count }, (_, index) =>
+    forBot(ev(eventName, `${prefix}-${index}`, today), botImId, managerName, groupName),
+  );
+
 /**
  * 用假 query-builder 模拟 ops_events 仓储：按 modifier 捕获的 event_name 与 report_date 区间过滤事件，
  * 从而真实驱动 service 的 current/previous 取数路径。
  */
-function fakeOpsRepo(
-  events: TestEvent[],
-  dailyRows: TestDailyRow[] = [],
-): OpsEventsAnalyticsRepository {
+function fakeOpsRepo(events: TestEvent[]): OpsEventsAnalyticsRepository {
   const findOpsEvents = jest.fn((_columns: string, modifier: (q: unknown) => unknown) => {
     let eventNames: string[] = [];
     let start: string | undefined;
@@ -93,7 +103,7 @@ function fakeOpsRepo(
 
   return {
     findOpsEvents,
-    findDailyOpsReportRows: jest.fn(() => Promise.resolve(dailyRows)),
+    findDailyOpsReportRows: jest.fn(() => Promise.resolve([])),
   } as unknown as OpsEventsAnalyticsRepository;
 }
 
@@ -112,7 +122,9 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     ev('friend.added', 'U1', today, 0),
     ev('candidate.engaged', 'U1', today, 1),
     withWorkOrder(ev('booking.succeeded', 'U1', today, 2), 'W1'),
-    withWorkOrder(ev('interview.passed', 'U1', today, 3), 'W1'),
+    // 同一候选人的第二张预约工单：period 报名仍应按人计 1，而不是按工单计 2。
+    withWorkOrder(ev('booking.succeeded', 'U1', today, 3), 'W1B'),
+    withWorkOrder(ev('interview.passed', 'U1', today, 4), 'W1'),
     ev('group.invited', 'U1', today, 2),
     // U2：友好→破冰→报名（无面试），被加群
     ev('friend.added', 'U2', today, 0),
@@ -338,23 +350,17 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(stage('booking')?.stageRate).toBeCloseTo(2 / 4, 4);
   });
 
-  it('账号对比读取历史日报时按 bot alias 修正未分组占位值', async () => {
+  it('账号对比读取原始事件时按 bot alias 修正未分组占位值', async () => {
+    const botImId = 'prod-sync:CongLingKaiShiDeXianShiShiJie';
     const service = new ConversionAnalyticsService(
-      fakeOpsRepo(
-        [],
-        [
-          {
-            bot_im_id: 'prod-sync:CongLingKaiShiDeXianShiShiJie',
-            manager_name: 'CongLingKaiShiDeXianShiShiJie',
-            group_name: '未分组',
-            friends_added_count: 21,
-            break_ice_count: 21,
-            booking_success_count: 1,
-            group_invite_count: 9,
-            interview_pass_count: 0,
-          },
-        ],
-      ),
+      fakeOpsRepo([
+        forBot(
+          ev('friend.added', 'alias-user', today),
+          botImId,
+          'CongLingKaiShiDeXianShiShiJie',
+          '未分组',
+        ),
+      ]),
       new BotGroupResolverService(),
       fakeSystemConfig(),
     );
@@ -367,36 +373,21 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
 
     const yuhangBots = await service.getBots({ ...filter, groups: ['宇航组'] });
     expect(yuhangBots.bots).toHaveLength(1);
-    expect(yuhangBots.bots[0].botImId).toBe('prod-sync:CongLingKaiShiDeXianShiShiJie');
+    expect(yuhangBots.bots[0].botImId).toBe(botImId);
   });
 
   it('账号换 bot id 后按动态身份别名配置合并为同一身份行（计数相加）', async () => {
+    const events = [
+      ...botStageEvents('bot-old', 'Old Manager', '测试组', 'old-friend', 'friend.added', 5),
+      ...botStageEvents('bot-old', 'Old Manager', '测试组', 'old-break', 'candidate.engaged', 4),
+      ...botStageEvents('bot-old', 'Old Manager', '测试组', 'old-booking', 'booking.succeeded', 1),
+      ...botStageEvents('bot-old', 'Old Manager', '测试组', 'old-group', 'group.invited', 2),
+      ...botStageEvents('bot-new', 'New Manager', '测试组', 'new-friend', 'friend.added', 2),
+      ...botStageEvents('bot-new', 'New Manager', '测试组', 'new-break', 'candidate.engaged', 1),
+      ...botStageEvents('bot-new', 'New Manager', '测试组', 'new-group', 'group.invited', 1),
+    ];
     const service = new ConversionAnalyticsService(
-      fakeOpsRepo(
-        [],
-        [
-          {
-            bot_im_id: 'bot-old',
-            manager_name: 'Old Manager',
-            group_name: '测试组',
-            friends_added_count: 5,
-            break_ice_count: 4,
-            booking_success_count: 1,
-            group_invite_count: 2,
-            interview_pass_count: 0,
-          },
-          {
-            bot_im_id: 'bot-new',
-            manager_name: 'New Manager',
-            group_name: '测试组',
-            friends_added_count: 2,
-            break_ice_count: 1,
-            booking_success_count: 0,
-            group_invite_count: 1,
-            interview_pass_count: 0,
-          },
-        ],
-      ),
+      fakeOpsRepo(events),
       new BotGroupResolverService(),
       fakeSystemConfig({
         'bot-new': { canonicalBotImId: 'bot-old', managerName: 'Merged Manager' },
@@ -414,6 +405,45 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
       group_invite: 3,
       interview_pass: 0,
     });
+  });
+
+  it('期间汇总跨账号按候选人全局去重，账号明细仍保留各账号触点', async () => {
+    const samePersonEvents = [
+      forBot(ev('friend.added', 'shared-user', today), 'bot-a', 'A', '测试组'),
+      forBot(ev('candidate.engaged', 'shared-user', today, 1), 'bot-a', 'A', '测试组'),
+      forBot(ev('candidate.engaged', 'shared-user', today, 2), 'bot-b', 'B', '测试组'),
+    ];
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo(samePersonEvents),
+      new BotGroupResolverService(),
+      fakeSystemConfig(),
+    );
+
+    const [kpis, { bots }] = await Promise.all([
+      service.getKpis(filter, 'period'),
+      service.getBots(filter, 'period'),
+    ]);
+
+    expect(kpis.breakIceRate).toMatchObject({ numerator: 1, denominator: 1 });
+    expect(bots.reduce((sum, row) => sum + row.eventCounts.break_ice, 0)).toBe(2);
+  });
+
+  it('成熟同批口径排除最近批次，并保留完整观察期内的下游事件', async () => {
+    const matureDate = formatLocalDate(addLocalDays(getLocalDayStart(new Date()), -7));
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo([
+        ev('friend.added', 'mature-user', matureDate),
+        ev('candidate.engaged', 'mature-user', today, 1),
+        ev('friend.added', 'recent-user', today),
+        ev('candidate.engaged', 'recent-user', today, 1),
+      ]),
+      new BotGroupResolverService(),
+      fakeSystemConfig(),
+    );
+
+    const kpis = await service.getKpis({ ...filter, maturityDays: 7 }, 'cohort');
+
+    expect(kpis.breakIceRate).toMatchObject({ numerator: 1, denominator: 1 });
   });
 
   it('cohort 匹配在 user_id 缺失时回退 chat_id，不漏算（§3）', async () => {

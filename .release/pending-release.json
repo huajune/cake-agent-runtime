@@ -1,9 +1,55 @@
 {
   "baseVersion": "10.11.0",
-  "nextVersion": "10.11.0",
-  "updatedAt": "2026-07-14",
+  "nextVersion": "10.12.0",
+  "updatedAt": "2026-07-15",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "561",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/561",
+      "title": "BrandResolution 全链路改造 Phase 1–4",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-15",
+      "businessUpdates": [
+        "修复 pre-commit 钩子执行权限",
+        "修正排除品牌语义并补齐单测"
+      ],
+      "summary": [
+        "brand-resolution 方案 v4 修订（代码核查重评）",
+        "建立 src/resolution/brand 品牌解析层（Phase 1）",
+        "会话品牌状态 brand_state 落地 + 三处写入点收口（Phase 2）",
+        "duliday_job_list 品牌入口标准化 + brandFilterMode（Phase 3）",
+        "守卫三切换点改读 queryMeta.brand + Prompt Section 改读品牌状态（Pha…",
+        "完善业务校验与分析口径",
+        "修复 pre-commit 钩子执行权限",
+        "Merge remote-tracking branch 'origin/develop' into codex/brand-resolu…",
+        "修正排除品牌语义并补齐单测",
+        "BrandResolution 全链路改造 Phase 1–4"
+      ],
+      "features": [],
+      "fixes": [
+        "修复 pre-commit 钩子执行权限",
+        "修正排除品牌语义并补齐单测"
+      ],
+      "optimizations": [],
+      "ops": [
+        "brand-resolution 方案 v4 修订（代码核查重评）",
+        "建立 src/resolution/brand 品牌解析层（Phase 1）",
+        "会话品牌状态 brand_state 落地 + 三处写入点收口（Phase 2）",
+        "duliday_job_list 品牌入口标准化 + brandFilterMode（Phase 3）",
+        "守卫三切换点改读 queryMeta.brand + Prompt Section 改读品牌状态（Pha…",
+        "完善业务校验与分析口径",
+        "Merge remote-tracking branch 'origin/develop' into codex/brand-resolu…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pnpm lint:check 零警告；tsc --noEmit（src+tests）通过；全量 jest 4907 通过 / 0 失败",
+        "规格 §14.1–14.4 全部用例有对应单测（新增 ~130 个品牌链路测试）",
+        "零数据库迁移（brand_state 走 Redis 懒迁移）"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.11.0",
     "date": "2026-07-14",

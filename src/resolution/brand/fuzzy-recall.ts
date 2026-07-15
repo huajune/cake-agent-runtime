@@ -1,5 +1,9 @@
 /**
- * 品牌名同音降权模糊匹配。
+ * 品牌名同音降权模糊匹配（0 结果同音回指）。
+ *
+ * 迁移自 tools/duliday/job-list/brand-fuzzy-match.util.ts（逻辑不变，只换居所，§8.3）。
+ * 它与 resolve() 是并列的独立管线：候选集只有会话最近推荐过的品牌池、产出必须经候选人
+ * 确认才作数、由"查询命中 0 结果"事件触发——不并入解析主链路。
  *
  * 解决 badcase batch_6a0c074c536c9654029b6930：
  *   - Agent 上一轮推荐了"成都你六姐"
@@ -165,4 +169,22 @@ export function findBrandFuzzyMatches(
   return Array.from(bestByBrand.values())
     .sort((a, b) => b.score - a.score)
     .slice(0, opts.topK);
+}
+
+/** 回指建议的分歧度判定阈值：top1 比 top2 高出该分差即视为高置信。 */
+export const FUZZY_HIGH_CONFIDENCE_MARGIN = 0.15;
+
+/**
+ * 回指建议的置信档位（工具回复引导与守卫 brand_alias_fuzzy_match_ignored 共用同一判定）：
+ * - 单一候选 / top1 领先 ≥ margin → high（直接沿用该品牌，轻确认带过）
+ * - 多候选分数接近 → low（反问澄清）
+ * - 无候选 → none
+ */
+export function resolveFuzzyConfidence(
+  suggestions: ReadonlyArray<Pick<BrandFuzzyMatch, 'score'>>,
+): 'high' | 'low' | 'none' {
+  const top = suggestions[0];
+  if (!top) return 'none';
+  if (suggestions.length < 2) return 'high';
+  return top.score - suggestions[1].score >= FUZZY_HIGH_CONFIDENCE_MARGIN ? 'high' : 'low';
 }

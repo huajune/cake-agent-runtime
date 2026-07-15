@@ -7,6 +7,7 @@ import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
 import { RedisStore } from './stores/redis.store';
 import { SupabaseStore } from './stores/supabase.store';
+import { BrandStateService } from './services/brand-state.service';
 import { ShortTermService } from './services/short-term.service';
 import { SessionService } from './services/session.service';
 import { ProceduralService } from './services/procedural.service';
@@ -30,6 +31,7 @@ import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
     MemoryConfig,
     RedisStore,
     SupabaseStore,
+    BrandStateService,
     ShortTermService,
     SessionService,
     ProceduralService,
@@ -39,6 +41,13 @@ import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
     MemoryLifecycleService,
     MemoryService,
   ],
-  exports: [MemoryConfig, MemoryService, SessionService, LongTermService, ShortTermService],
+  exports: [
+    MemoryConfig,
+    MemoryService,
+    SessionService,
+    LongTermService,
+    ShortTermService,
+    BrandStateService,
+  ],
 })
 export class MemoryModule {}

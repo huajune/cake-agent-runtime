@@ -14,6 +14,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { MessageType } from '@enums/message-callback.enum';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import {
   isResumeImageDescription,
   stripResumeAttachmentLines,
@@ -53,8 +54,9 @@ export function buildSaveImageDescriptionTool(
   imageMessageIds: string[],
   visualMessageTypes?: Record<string, VisualKind>,
   imageUrlsByMessageId?: Record<string, string>,
+  brandResolution?: BrandResolutionService,
 ): ToolBuilder {
-  return () => {
+  return (context) => {
     return tool({
       description: DESCRIPTION + `\n可用的 messageId: ${imageMessageIds.join(', ')}`,
       inputSchema,
@@ -81,6 +83,24 @@ export function buildSaveImageDescriptionTool(
           ? `${prefix} ${stripResumeAttachmentLines(description)}\n简历附件：${resumeUrl}`
           : `${prefix} ${description}`;
         await chatSession.updateMessageContent(messageId, content);
+
+        // 图片品牌解析执行点（§10.2）：描述落库即同步经 resolve() 目录验证，结果挂
+        // 回合上下文——状态写入仍只在 turn-finalizer（本轮查询不注入，兜底边界原则）。
+        // 表情消息不是品牌来源；解析失败按无品牌降级，不影响描述保存。
+        if (prefix === '[图片消息]' && brandResolution && context.onImageBrandResolved) {
+          try {
+            const resolutions = await brandResolution.resolve(description, 'image_description');
+            if (resolutions.length > 0) {
+              context.onImageBrandResolved(resolutions, { messageId });
+            }
+          } catch (error) {
+            logger.warn(
+              `图片品牌解析失败（按无品牌降级）[${messageId}]: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
 
         logger.log(
           `${prefix} 描述已保存 [${messageId}]${resumeUrl ? '（识别为简历图片，已登记简历附件）' : ''}: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}"`,

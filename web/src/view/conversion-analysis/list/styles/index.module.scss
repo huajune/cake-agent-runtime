@@ -427,7 +427,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .caliberNote {
-  margin: 0 0 10px;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -443,6 +443,14 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     background: $primary;
     flex: none;
   }
+}
+
+.caliberToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: 10px;
 }
 
 .kpiCell {
@@ -1184,7 +1192,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     font-variant-numeric: tabular-nums;
   }
 }
-
 
 .botPanel {
   padding-bottom: $spacing-lg;
@@ -2133,7 +2140,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   .kpiBand {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
 }
 
 @media (max-width: $breakpoint-sm) {
@@ -2166,6 +2172,15 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
     button {
       flex: 1 1 0;
+    }
+  }
+
+  .caliberToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+
+    .modeTabs {
+      width: 100%;
     }
   }
 
@@ -2204,7 +2219,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     text-align: left;
   }
 }
-
 
 // ════════════════════════════════════════════════════════════════════
 // 浅色全息主题（Light Holo）

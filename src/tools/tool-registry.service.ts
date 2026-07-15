@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MemoryService } from '@memory/memory.service';
 import { SpongeService } from '@sponge/sponge.service';
+import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import {
   AiTool,
   AiToolSet,
@@ -84,6 +85,7 @@ export class ToolRegistryService {
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
+    private readonly brandResolutionService: BrandResolutionService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -298,6 +300,7 @@ export class ToolRegistryService {
         context.imageMessageIds,
         context.visualMessageTypes,
         imageUrlsByMessageId,
+        this.brandResolutionService,
       );
       tools['save_image_description'] = imgTool(context);
       this.logger.log(

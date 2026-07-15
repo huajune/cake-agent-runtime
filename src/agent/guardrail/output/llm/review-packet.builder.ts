@@ -52,7 +52,15 @@ export class GuardrailReviewPacketBuilder {
       .find((item) => item.resultCount !== 0 && item.status !== 'error' && item.status !== 'empty');
     const call = usable ?? jobListCalls[jobListCalls.length - 1];
 
-    const requestedBrands = readStringArray(call.args.brandAliasList);
+    // §11 第三切换点：品牌意图改读工具入口标准化后的 queryMeta.brand，
+    // 并按 filterMode 区分正向查询与排除。exclude 的 appliedCanonicalNames 是
+    // 候选人拒绝的品牌，绝不能放进 requestedBrands 误导 reviewer。
+    const brandMeta = readBrandQueryMeta(call.result);
+    const appliedBrands = brandMeta?.appliedCanonicalNames ?? [];
+    const isExcludeMode = brandMeta?.filterMode === 'exclude';
+    const requestedBrands = isExcludeMode ? [] : appliedBrands;
+    const excludedBrands = isExcludeMode ? appliedBrands : [];
+    const rejectedBrandInputs = brandMeta?.rejectedInputs ?? [];
     const jobs = readJobListJobs(call.result)
       .slice(0, 8)
       .map((job) => this.toJobEvidenceItem(job));
@@ -63,6 +71,8 @@ export class GuardrailReviewPacketBuilder {
       status: call.status,
       hasEvidence: jobs.length > 0 || Boolean(markdownExcerpt),
       requestedBrands,
+      ...(excludedBrands.length > 0 ? { excludedBrands } : {}),
+      ...(rejectedBrandInputs.length > 0 ? { rejectedBrandInputs } : {}),
       jobs,
       // 默认返回形态是 markdown-only（无 rawData 数组）：结构化解析为空时，
       // markdown 摘录就是岗位事实的唯一 ground truth。
@@ -205,6 +215,7 @@ const JOB_LIST_QUERY_INTENT_KEYS = [
   'regionNameList',
   'brandAliasList',
   'brandIdList',
+  'brandFilterMode',
   'storeNameList',
   'searchJobName',
   'jobCategoryList',
@@ -231,6 +242,24 @@ function readJobListJobs(result: unknown): unknown[] {
   const rawData = readRecord(record?.rawData);
   const jobs = rawData?.result ?? record?.result ?? record?.jobs ?? record?.items;
   return Array.isArray(jobs) ? jobs : [];
+}
+
+/** 读取工具结果里的 queryMeta.brand 小节（成功与错误结果同一路径）。 */
+function readBrandQueryMeta(
+  result: unknown,
+): { filterMode?: string; appliedCanonicalNames: string[]; rejectedInputs: string[] } | null {
+  const record = readRecord(result);
+  const queryMeta = readRecord(record?.queryMeta);
+  const brand = readRecord(queryMeta?.brand);
+  if (!brand) return null;
+  const rejected = readArray(brand.rejected)
+    .map((item) => readString(readRecord(item)?.input))
+    .filter((input): input is string => Boolean(input));
+  return {
+    filterMode: readString(brand.filterMode),
+    appliedCanonicalNames: readStringArray(brand.appliedCanonicalNames),
+    rejectedInputs: rejected,
+  };
 }
 
 /** markdown 证据摘录上限：开头的岗位卡片汇总区（推荐对话用模板）通常在前 4000 字内。 */

@@ -25,6 +25,7 @@ interface KpiTrendChartProps {
   data?: ConversionTrendResponse;
   loading: boolean;
   mode: ConversionMetricMode;
+  maturityDays: number;
   onModeChange: (mode: ConversionMetricMode) => void;
 }
 
@@ -72,7 +73,13 @@ interface ChartDatum extends ConversionTrendPoint {
   label: string;
 }
 
-export default function KpiTrendChart({ data, loading, mode, onModeChange }: KpiTrendChartProps) {
+export default function KpiTrendChart({
+  data,
+  loading,
+  mode,
+  maturityDays,
+  onModeChange,
+}: KpiTrendChartProps) {
   // 剔除周末（与「托管趋势」口径一致）：餐饮招聘周末基本无新增，留着只会拉出无意义断点。
   const chartData: ChartDatum[] = (data?.points ?? [])
     .filter((point) => !isWeekendDate(parseLocalDate(point.date)))
@@ -90,7 +97,7 @@ export default function KpiTrendChart({ data, loading, mode, onModeChange }: Kpi
         <div>
           <span className={styles.sectionKicker}>趋势洞察</span>
           <h2>关键指标趋势</h2>
-          <span>{trendDescription(mode)}</span>
+          <span>{trendDescription(mode, maturityDays)}</span>
         </div>
         <MetricModeTabs mode={mode} onChange={onModeChange} label="关键指标趋势口径" />
       </div>
@@ -235,10 +242,10 @@ function sumPointCounts(points: ConversionTrendPoint[]): Record<CountKey, number
   );
 }
 
-function trendDescription(mode: ConversionMetricMode) {
+function trendDescription(mode: ConversionMetricMode, maturityDays: number) {
   return mode === 'period'
-    ? '按天查看同一时段内各阶段发生量（均按人去重，已剔除周末）；与上方固定 period 名片同口径'
-    : '按新增好友入列日追踪同批后续转化（按人去重，已剔除周末）；口径不同于上方固定 period 名片，近几日受时间窗右侧截断可能偏低';
+    ? '按天查看同一时间窗内各阶段发生量（全局按候选人去重，已剔除周末）'
+    : `按新增好友入列日追踪至少成熟 ${maturityDays} 天的同批后续转化（按人去重，已剔除周末）`;
 }
 
 // 卡片右上的大数：从 0 滚动到目标值，与 KPI 名片的计数动画一致。

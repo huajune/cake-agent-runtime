@@ -100,6 +100,10 @@ describe('PreparationService', () => {
     listUserRooms: jest.fn().mockResolvedValue([]),
   };
 
+  const mockBrandStateService = {
+    deriveTurnBrandContext: jest.fn(),
+  };
+
   let service: PreparationService;
 
   beforeEach(() => {
@@ -163,6 +167,28 @@ describe('PreparationService', () => {
     }));
     mockInputGuard.detectMessages.mockReturnValue({ safe: true });
 
+    mockBrandStateService.deriveTurnBrandContext.mockImplementation(
+      async ({ persisted, contactName }) => {
+        // 与真实实现同语义的轻量替身：昵称在测试品牌库唯一命中即 seed
+        const nickname = (contactName ?? '').toLowerCase();
+        const matched = ['肯德基', 'kfc'].some((alias) => nickname.includes(alias))
+          ? [{ canonicalName: '肯德基', brandId: 1 }]
+          : [];
+        if (persisted) {
+          return {
+            state: persisted,
+            persisted: true,
+            nicknameBrands: matched.map((b) => b.canonicalName),
+          };
+        }
+        return {
+          state: { currentBrand: matched[0] ?? null, excludedBrands: [] },
+          persisted: false,
+          nicknameBrands: matched.map((b) => b.canonicalName),
+        };
+      },
+    );
+
     service = new PreparationService(
       mockToolRegistry as never,
       mockMemoryService as never,
@@ -173,6 +199,7 @@ describe('PreparationService', () => {
       mockSpongeService as never,
       mockGroupResolver as never,
       mockGroupMembership as never,
+      mockBrandStateService as never,
     );
   });
 
@@ -261,7 +288,11 @@ describe('PreparationService', () => {
       'invoke',
     );
 
-    expect(mockSpongeService.fetchBrandList).toHaveBeenCalled();
+    // 昵称品牌验证已收敛到 BrandStateService.deriveTurnBrandContext（内部经品牌目录），
+    // preparation 不再自行拉品牌列表。
+    expect(mockBrandStateService.deriveTurnBrandContext).toHaveBeenCalledWith(
+      expect.objectContaining({ contactName: 'Gattouzo' }),
+    );
     expect(result.finalPrompt).not.toContain('Gattouzo');
     expect(result.finalPrompt).not.toContain('[企微名称备注｜运营给本会话指定的目标品牌/门店]');
     expect(mockToolRegistry.buildForScenario).toHaveBeenCalledWith(

@@ -43,11 +43,11 @@ export interface FieldGuidance {
  *
  * - `before_interview`：岗位明确收紧——必须先办好健康证才能约面试
  *   触发关键词：有证约 / 持证上岗才能预约 / 先办证再约 / 必须有证才能约 / 有健康证才能预约
- * - `before_onboard`：默认宽口径——面试不要求有证，上岗前办好即可
- *   适用：健康证字段非空但无收紧关键词，或 jobName 含"餐饮/食品"等场景
- * - `unknown`：岗位数据完全没提健康证（罕见，按宽口径处理但不主动提）
+ * - `before_onboard`：岗位配置了健康证要求，但未要求面试前持证——上岗前办好即可
+ * - `not_required`：岗位明确写了无需健康证
+ * - `unknown`：岗位数据未配置健康证要求，不收集也不校验健康证
  */
-export type HealthCertGate = 'before_interview' | 'before_onboard' | 'unknown';
+export type HealthCertGate = 'before_interview' | 'before_onboard' | 'not_required' | 'unknown';
 
 export interface JobPolicyAnalysis {
   interviewWindows: InterviewWindow[];
@@ -424,7 +424,13 @@ function buildFieldSignals(job: JobDetail): PolicyFieldSignal[] {
   }
 
   const healthRequirement = normalizePolicyText(asString(cert?.healthCertificate));
-  if (healthRequirement || normalizePolicyText(asString(cert?.certificates)).includes('健康证')) {
+  const explicitlyNoHealthCertificate = /不需要健康证|无需健康证|不用办健康证/.test(
+    healthRequirement,
+  );
+  if (
+    !explicitlyNoHealthCertificate &&
+    (healthRequirement || normalizePolicyText(asString(cert?.certificates)).includes('健康证'))
+  ) {
     signals.push({
       field: '健康证情况',
       sourceField: 'certificate',
@@ -618,7 +624,8 @@ function extractRegistrationDeadline(fragment: string): string | null {
  *
  * - 收紧 (before_interview)：jobName / interviewProcess.remark / hiringRequirement.remark
  *   任一字段命中收紧关键词
- * - 否则若 cert.healthCertificate 非空 / interviewSupplements 含健康证 → before_onboard
+ * - 明确“不需要/无需” → not_required
+ * - cert.healthCertificate 非空 / 岗位要求文本含健康证 → before_onboard
  * - 否则 unknown
  */
 const HEALTH_CERT_TIGHT_KEYWORDS = [
@@ -650,6 +657,8 @@ function inferHealthCertGate(input: {
     ...input.interviewSupplements,
   ].filter(Boolean);
   const joined = haystacks.join('\n');
+
+  if (/不需要健康证|无需健康证|不用办健康证/.test(joined)) return 'not_required';
 
   for (const kw of HEALTH_CERT_TIGHT_KEYWORDS) {
     if (joined.includes(kw)) return 'before_interview';

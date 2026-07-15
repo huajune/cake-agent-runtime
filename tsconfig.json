@@ -35,6 +35,7 @@
       "@memory/*": ["src/memory/*"],
       "@mcp/*": ["src/mcp/*"],
       "@sponge/*": ["src/sponge/*"],
+      "@resolution/*": ["src/resolution/*"],
       "@observability/*": ["src/observability/*"],
       "@notification/*": ["src/notification/*"],
       "@analytics/*": ["src/analytics/*"],

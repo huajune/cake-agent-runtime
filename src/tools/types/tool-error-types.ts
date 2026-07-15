@@ -83,6 +83,8 @@ export const TOOL_ERROR_TYPES = {
    */
   JOB_LIST_REGION_NEEDS_GEOCODE: 'job_list.region_needs_geocode',
   JOB_LIST_SCHEDULE_FILTER_EMPTY: 'job_list.schedule_filter_empty',
+  /** 品牌列表为空却传了 enforce/exclude：矛盾组合，引导补品牌或改 mode（§8.1）。 */
+  JOB_LIST_BRAND_MODE_CONFLICT: 'job_list.brand_mode_conflict',
   /**
    * 候选人想要某个合法用工形式，但本轮召回的岗位经 laborForm 严格匹配后为空。
    * 引导 Agent 如实告知附近暂无该用工形式岗位，不得把别的用工形式包装回去。

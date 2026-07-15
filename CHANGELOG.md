@@ -8,6 +8,57 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.12.0`
+**最近更新**: `2026-07-15`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #561 brand-resolution 方案 v4 修订（代码核查重评）
+- PR #561 建立 src/resolution/brand 品牌解析层（Phase 1）
+- PR #561 会话品牌状态 brand_state 落地 + 三处写入点收口（Phase 2）
+- PR #561 duliday_job_list 品牌入口标准化 + brandFilterMode（Phase 3）
+- PR #561 守卫三切换点改读 queryMeta.brand + Prompt Section 改读品牌状态（Pha…
+- PR #561 完善业务校验与分析口径
+- PR #561 修复 pre-commit 钩子执行权限
+- PR #561 Merge remote-tracking branch 'origin/develop' into codex/brand-resolu…
+- PR #561 修正排除品牌语义并补齐单测
+- PR #561 BrandResolution 全链路改造 Phase 1–4
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #561 修复 pre-commit 钩子执行权限
+- PR #561 修正排除品牌语义并补齐单测
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #561 brand-resolution 方案 v4 修订（代码核查重评）
+- PR #561 建立 src/resolution/brand 品牌解析层（Phase 1）
+- PR #561 会话品牌状态 brand_state 落地 + 三处写入点收口（Phase 2）
+- PR #561 duliday_job_list 品牌入口标准化 + brandFilterMode（Phase 3）
+- PR #561 守卫三切换点改读 queryMeta.brand + Prompt Section 改读品牌状态（Pha…
+- PR #561 完善业务校验与分析口径
+- PR #561 Merge remote-tracking branch 'origin/develop' into codex/brand-resolu…
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #561 pnpm lint:check 零警告；tsc --noEmit（src+tests）通过；全量 jest 4907 通过 / 0 失败
+- PR #561 规格 §14.1–14.4 全部用例有对应单测（新增 ~130 个品牌链路测试）
+- PR #561 零数据库迁移（brand_state 走 Redis 懒迁移）
+<!-- release:pending:end -->
+
 ## [10.11.0] - 2026-07-14
 
 **来源分支**: `develop`

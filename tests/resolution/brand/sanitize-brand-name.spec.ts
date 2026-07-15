@@ -1,4 +1,4 @@
-import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
+import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 
 describe('sanitizeBrandName', () => {
   describe('passthrough', () => {

@@ -44,7 +44,7 @@ export function normalizeHealthCertificateValue(value: string | null | undefined
   const text = normalizePolicyText(value);
   if (!text) return null;
   if (/非本地|不是本地|外地|异地/.test(text)) return null;
-  if (/^有$|有健康证/.test(text)) return '有';
+  if (/^有$|有健康证|本地.{0,4}健康证|健康证.{0,4}本地/.test(text)) return '有';
   // 显式拒办优先识别，避免被下方"无但接受办理"模式误吞
   if (/无且不接受办理健康证|不办健康证|不接受办健康证|不接受办理/.test(text)) {
     return '无且不接受办理健康证';

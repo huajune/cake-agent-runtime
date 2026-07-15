@@ -20,6 +20,7 @@ import type {
   SessionFacts,
 } from '@memory/types/session-facts.types';
 import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
+import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import {
   StrategyConfigRecord,
   StageGoalConfig,
@@ -52,6 +53,8 @@ export interface ComposeParams {
   highConfidenceFacts?: HighConfidenceFacts | null;
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
+  /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
+  sessionBrandState?: SessionBrandState | null;
   /** 策略来源：wecom 读 released，test 读 testing，默认 released */
   strategySource?: 'released' | 'testing';
 }
@@ -104,6 +107,7 @@ export class ContextService implements OnModuleInit {
       sessionFacts,
       highConfidenceFacts,
       currentLaborFormIntent,
+      sessionBrandState,
       strategySource = 'released',
     } = params;
 
@@ -122,6 +126,7 @@ export class ContextService implements OnModuleInit {
       sessionFacts,
       highConfidenceFacts,
       currentLaborFormIntent,
+      sessionBrandState,
       currentTimeText: now,
       groupInventoryBlock,
     };

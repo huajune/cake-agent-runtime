@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AgentTracerService } from '@observability/agent-tracer.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SpongeService } from '@/sponge/sponge.service';
@@ -7,6 +8,8 @@ import { MemoryConfig } from '../memory.config';
 import { deepMerge } from '../stores/deep-merge.util';
 import { z } from 'zod';
 import {
+  BrandIntentEntrySchema,
+  type BrandIntentEntry,
   EntityExtractionResultSchema,
   ExplicitProvenanceEntrySchema,
   type ExplicitProvenanceEntry,
@@ -46,12 +49,14 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
 import {
-  detectBrandAliasHints,
+  detectBrandAliasHintsWithShadow,
   extractHighConfidenceFacts,
   filterHighConfidenceFacts,
-  mergeDetectedBrands,
   unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
+import { resolveBrands } from '@resolution/brand/brand-matcher';
+import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
+import type { BrandItem } from '@/sponge/sponge.types';
 import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
@@ -93,7 +98,12 @@ export class SessionService {
     private readonly llm: LlmExecutorService,
     private readonly sponge: SpongeService,
     private readonly systemConfig: SystemConfigService,
+    @Optional()
+    private readonly tracer?: AgentTracerService,
   ) {}
+
+  /** 新旧品牌匹配一致计数（§12：一致时仅计数不落行）。 */
+  private brandShadowAgreementCount = 0;
 
   // ==================== store ====================
   //
@@ -147,12 +157,40 @@ export class SessionService {
     }
     const content = parsed.data as Partial<WeworkSessionState>;
 
-    return {
+    return this.applyBrandProjection({
       ...EMPTY_SESSION_STATE,
       ...content,
       lastCandidatePool: content.lastCandidatePool ?? null,
       presentedJobs: content.presentedJobs ?? null,
       currentFocusJob: content.currentFocusJob ?? null,
+    });
+  }
+
+  /**
+   * preferences.brands 只读投影（§9.2 过渡期）：brand_state 存在时由其现算
+   * （派生口径 = currentBrand 单元素数组，空状态为空数组→null），旧存储值不可见；
+   * brand_state 不存在时保留旧数组原值——它是懒迁移（§9.4）的初始化数据源。
+   * 禁止任何路径直接写入该字段（写入点已全部收口到 brand_state reducer）。
+   */
+  private applyBrandProjection(state: WeworkSessionState): WeworkSessionState {
+    const brandState = state.brand_state;
+    if (!brandState || !state.facts) return state;
+
+    const projected = brandState.currentBrand
+      ? sessionFactValue([brandState.currentBrand.canonicalName], {
+          confidence: 'high',
+          source: 'system',
+          evidence: '会话品牌状态投影（currentBrand）',
+          extractedAt: new Date().toISOString(),
+        })
+      : null;
+
+    return {
+      ...state,
+      facts: {
+        ...state.facts,
+        preferences: { ...state.facts.preferences, brands: projected },
+      },
     };
   }
 
@@ -541,11 +579,11 @@ export class SessionService {
     userId: string,
     sessionId: string,
     messages: { role: string; content: string }[],
-  ): Promise<{ llmDegraded: boolean }> {
+  ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
     );
-    if (dialogueMessages.length === 0) return { llmDegraded: false };
+    if (dialogueMessages.length === 0) return { llmDegraded: false, brandIntents: [] };
 
     // 会话段切割：短期窗口跨 7 天，可能包含已了结的旧会话。旧会话的报名/约面
     // 事务字段一旦被重新提取，会"复活"成当前会话事实（生产 badcase：chat
@@ -600,11 +638,36 @@ export class SessionService {
       const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
       if (!currentTurnRuleHits) {
         this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
-        return { llmDegraded: false };
+        return { llmDegraded: false, brandIntents: [] };
       }
     }
 
-    const aliasHints = detectBrandAliasHints(userMessages, brandData);
+    // 新旧品牌匹配并行对比（§15.2）：旧算法在 shadow 运行，不一致才落
+    // brand_resolution_shadow_diff 事件（品牌目录时变，差异现场必须在线记录）。
+    const { hints: aliasHints, shadowDiff } = detectBrandAliasHintsWithShadow(
+      userMessages,
+      brandData,
+    );
+    if (shadowDiff) {
+      this.tracer?.emit({
+        type: 'brand_resolution_shadow_diff',
+        userId,
+        chatId: sessionId,
+        corpId,
+        inputs: shadowDiff.inputs,
+        legacyBrands: shadowDiff.legacyBrands,
+        nextBrands: shadowDiff.nextBrands,
+        catalogSize: shadowDiff.catalogSize,
+        origin: 'extraction_hints',
+      });
+    } else if (aliasHints.length > 0) {
+      this.brandShadowAgreementCount += 1;
+      if (this.brandShadowAgreementCount % 100 === 0) {
+        this.logger.log(
+          `[brand-shadow] 新旧品牌匹配一致累计 ${this.brandShadowAgreementCount} 次（extraction_hints）`,
+        );
+      }
+    }
     const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
     const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
     const prompt = buildSessionExtractionPrompt(
@@ -616,10 +679,14 @@ export class SessionService {
       MessageParser.formatCurrentTime(),
       previousFacts,
     );
-    const { facts: llmRaw, explicitProvenance, degraded: llmDegraded } = await this.callLLM(prompt);
-    const llmFacts = mergeDetectedBrands(llmRaw, aliasHints);
+    const {
+      facts: llmRaw,
+      explicitProvenance,
+      brandIntents: rawBrandIntents,
+      degraded: llmDegraded,
+    } = await this.callLLM(prompt);
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
-    const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
+    const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmRaw, userMessages);
     if (droppedName) {
       this.logger.log(
         `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
@@ -639,17 +706,68 @@ export class SessionService {
       currentLaborFormIntent.kind === 'clear' &&
       typeof persistedLaborForm === 'string' &&
       currentLaborFormIntent.clearedValues.some((value) => value === persistedLaborForm);
-    await this.saveFacts(corpId, userId, sessionId, newFacts, {
+    // 品牌写入收口（§9.2 三处之一）：LLM 抽出的品牌不再直接落 preferences.brands——
+    // 经品牌库验证 + 极性判定转成 BrandResolution 后，与其它来源一起走 brand_state reducer。
+    const factsForSave: SessionFacts = {
+      ...newFacts,
+      preferences: { ...newFacts.preferences, brands: null },
+    };
+    await this.saveFacts(corpId, userId, sessionId, factsForSave, {
       forceNullFields: nameStillNull ? ['name'] : undefined,
       forceNullPreferenceFields: laborFormExplicitlyCleared ? ['labor_form'] : undefined,
     });
 
-    return { llmDegraded };
+    return {
+      llmDegraded,
+      brandIntents: this.validateBrandIntents(rawBrandIntents, brandData),
+    };
+  }
+
+  /**
+   * LLM 极性轨输出验证（§6.3.1）：品牌名必须经品牌库标准化验证，未命中即整条丢弃，
+   * 不允许 LLM 创造标准品牌；极性沿用 LLM 判断（指代链接后的品牌名同样过目录验证）。
+   */
+  private validateBrandIntents(
+    intents: BrandIntentEntry[],
+    brandData: BrandItem[],
+  ): BrandResolution[] {
+    const out: BrandResolution[] = [];
+    for (const intent of intents) {
+      const brand = intent.brand?.trim();
+      if (!brand) {
+        // 品牌为空只对排斥/不限有意义（"换个品牌"/"这个不考虑"链接失败时的裸排斥）
+        if (intent.polarity === 'negative' || intent.polarity === 'browse_all') {
+          out.push({
+            canonicalName: null,
+            brandId: null,
+            matchedText: null,
+            source: 'user_text',
+            matchType: null,
+            intentPolarity: intent.polarity,
+            confidence: 0.9,
+            ambiguous: false,
+          });
+        }
+        continue;
+      }
+      const resolutions = resolveBrands(brand, 'user_text', brandData).filter(
+        (r) => !r.ambiguous && r.canonicalName !== null,
+      );
+      if (resolutions.length === 0) {
+        this.logger.debug(`[extractFacts] LLM 品牌意图未过目录验证，整条丢弃：「${brand}」`);
+        continue;
+      }
+      for (const resolution of resolutions) {
+        out.push({ ...resolution, intentPolarity: intent.polarity });
+      }
+    }
+    return out;
   }
 
   private async callLLM(prompt: string): Promise<{
     facts: EntityExtractionResult;
     explicitProvenance: ExplicitProvenanceEntry[];
+    brandIntents: BrandIntentEntry[];
     /** true = LLM 调用或 schema 解析失败，已降级为空提取（本轮新事实丢失，旧值不受影响）。 */
     degraded: boolean;
   }> {
@@ -665,24 +783,40 @@ export class SessionService {
         prompt,
       });
 
-      // explicit_provenance 不属于存储态 schema，归一化前单独取出。
-      const rawOutput = result.output as { explicit_provenance?: unknown };
+      // explicit_provenance / brand_intents 不属于存储态 schema，归一化前单独取出。
+      const rawOutput = result.output as { explicit_provenance?: unknown; brand_intents?: unknown };
       const provenanceParse = z
         .array(ExplicitProvenanceEntrySchema)
         .nullable()
         .optional()
         .safeParse(rawOutput?.explicit_provenance);
       const explicitProvenance = provenanceParse.success ? (provenanceParse.data ?? []) : [];
+      const brandIntentsParse = z
+        .array(BrandIntentEntrySchema)
+        .nullable()
+        .optional()
+        .safeParse(rawOutput?.brand_intents);
+      const brandIntents = brandIntentsParse.success ? (brandIntentsParse.data ?? []) : [];
 
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
       const parsed = EntityExtractionResultSchema.parse(result.output);
-      return { facts: this.backfillCityFromWhitelist(parsed), explicitProvenance, degraded: false };
+      return {
+        facts: this.backfillCityFromWhitelist(parsed),
+        explicitProvenance,
+        brandIntents,
+        degraded: false,
+      };
     } catch (err) {
       // 降级影响：本轮新事实丢失（下一轮增量窗口可自然补回），旧 facts 经
       // deepMerge "null 不覆盖"不受影响。调用方据 degraded 标记把
       // post_processing_status 标成降级，使提取实际成功率可观测。
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
-      return { facts: FALLBACK_EXTRACTION, explicitProvenance: [], degraded: true };
+      return {
+        facts: FALLBACK_EXTRACTION,
+        explicitProvenance: [],
+        brandIntents: [],
+        degraded: true,
+      };
     }
   }
 
@@ -1000,9 +1134,8 @@ export class SessionService {
     'available_after',
   ];
 
-  /** preferences 下走「累积去重」数组合并的字段。 */
+  /** preferences 下走「累积去重」数组合并的字段（brands 已收口到 brand_state，不再参与并集）。 */
   private static readonly ARRAY_PREF_FIELDS: readonly string[] = [
-    'brands',
     'position',
     'district',
     'location',
