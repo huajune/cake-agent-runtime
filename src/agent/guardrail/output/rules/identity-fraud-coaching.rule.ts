@@ -1,4 +1,4 @@
-import type { AgentToolCall } from '@agent/generator/generator.types';
+import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
@@ -12,7 +12,7 @@ import { asRecord, type RuleContradiction } from '../output-rule.types';
  * - 拦 "别说你是暑假工/学生" 类隐瞒身份建议。
  *
  * 不负责：
- * - 不判断候选人真实身份是什么（那是 precheck 身份粘性的职责）；
+ * - 不凭回复文本猜候选人真实身份，只消费记忆里已有的学生事实与本轮明确自报；
  * - 不拦如实转述（"这家不招暑假工，帮你留意后续岗位"是正确口径）。
  *
  * 动作策略：诚信红线用 revise——把"改身份过审"改写为如实告知/维护候选人口径；
@@ -51,6 +51,23 @@ const IDENTITY_CONCEALMENT_PATTERN =
 const COERCED_SUMMER_DENIAL_PATTERN =
   /(?:回复|回|说|确认|填写?|写)[^。！？\n]{0,16}(?:不是暑假工|非暑假工|不是暑期工|非暑期工)[^。！？\n]{0,24}(?:才能|才可以|才可|就能|完成|提交|登记|预约)|(?:需要|必须)[^。！？\n]{0,16}(?:回复|回|说|确认)[^。！？\n]{0,12}(?:不是暑假工|非暑假工|不是暑期工|非暑期工)/;
 
+const STUDENT_IDENTITY_RECLASSIFICATION_PATTERN =
+  /(?:不算|不是|不属于)(?:在校)?学生(?:了|身份|本人|哈|吧|呀|哦|$|[，,。！？!?\n])|(?:按|算作|视为|当作?)(?:社会身份|社会人士)|(?:可以|能)[^。！？\n]{0,12}(?:按社会身份|做社会兼职|报社会兼职)/;
+
+const EXPLICIT_NON_STUDENT_SELF_REPORT_PATTERN =
+  /我(?:现在)?(?:不是学生|是社会人士|已经工作了|在上班)|身份(?:是|：|:)社会人士/;
+
+function readBooleanFact(
+  memorySnapshot: AgentMemorySnapshot | undefined,
+  key: string,
+): boolean | null {
+  const fact = memorySnapshot?.sessionFacts?.[key];
+  if (typeof fact === 'boolean') return fact;
+  if (typeof fact !== 'object' || fact === null || !('value' in fact)) return null;
+  const value = (fact as { value?: unknown }).value;
+  return typeof value === 'boolean' ? value : null;
+}
+
 /**
  * 检测教唆候选人以不实身份登记/隐瞒身份的话术。
  *
@@ -60,10 +77,14 @@ const COERCED_SUMMER_DENIAL_PATTERN =
  * 3. 身份改写登记（"按非暑假工登记/登记成社会人士"）→ 本轮 precheck 存在
  *    暑假工守卫，或 bookingChecklist 仍把身份列为 missing 时违规。候选人身份已由
  *    precheck 明确确认时，如实登记不受影响。
+ * 4. 记忆已确认学生，回复却自行宣布“不算学生/按社会身份”→ 无需本轮工具即可违规；
+ *    仅候选人本轮明确自报“我不是学生/我是社会人士”时豁免陈旧记忆。
  */
 export function detectIdentityMisregistrationCoaching(
   text: string,
   toolCalls: AgentToolCall[],
+  memorySnapshot?: AgentMemorySnapshot,
+  userMessage?: string,
 ): RuleContradiction | null {
   const auditEvasion = AUDIT_EVASION_PATTERN.test(text);
   const concealment = IDENTITY_CONCEALMENT_PATTERN.test(text);
@@ -72,10 +93,22 @@ export function detectIdentityMisregistrationCoaching(
     IDENTITY_REWRITE_THEN_REGISTER_PATTERN.test(text) ||
     REGISTER_AS_IDENTITY_PATTERN.test(text) ||
     AGENT_AUTOFILL_IDENTITY_PATTERN.test(text);
+  const contradictsKnownStudentIdentity =
+    readBooleanFact(memorySnapshot, 'interview.is_student') === true &&
+    !EXPLICIT_NON_STUDENT_SELF_REPORT_PATTERN.test(userMessage?.trim() ?? '') &&
+    STUDENT_IDENTITY_RECLASSIFICATION_PATTERN.test(text);
 
-  if (!auditEvasion && !concealment && !coercedSummerDenial && !identityRewrite) return null;
+  if (
+    !auditEvasion &&
+    !concealment &&
+    !coercedSummerDenial &&
+    !identityRewrite &&
+    !contradictsKnownStudentIdentity
+  ) {
+    return null;
+  }
 
-  if (!auditEvasion && !concealment && !coercedSummerDenial) {
+  if (!auditEvasion && !concealment && !coercedSummerDenial && !contradictsKnownStudentIdentity) {
     // 第 3 档需要 precheck 作为"身份尚未确认/身份冲突"的结构化佐证。
     // 扫描本轮全部 precheck，而不是只看最后一次：模型可能先命中守卫或 missingFields，
     // 随后通过代填身份再调一次把最后结果洗成 ready_to_book。
@@ -102,7 +135,9 @@ export function detectIdentityMisregistrationCoaching(
       ? '建议候选人隐瞒暑假工/学生身份'
       : coercedSummerDenial
         ? '要求候选人复述“不是暑假工”以完成登记/预约'
-        : '身份仍是 precheck 缺失字段时，Agent 擅自代填非学生/社会人士口径';
+        : contradictsKnownStudentIdentity
+          ? '会话事实仍为学生，Agent 却擅自改判为非学生/社会人士'
+          : '身份仍是 precheck 缺失字段时，Agent 擅自代填非学生/社会人士口径';
   return {
     ruleId: 'identity_misregistration_coaching',
     label:

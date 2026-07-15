@@ -23,6 +23,15 @@ export interface CriticalTurnGuardRule {
 
 export const CRITICAL_TURN_GUARD_RULES: CriticalTurnGuardRule[] = [
   {
+    id: 'job_detail_missing_field_lookup',
+    target: 'current',
+    patterns: [
+      /日结|周结|月结|结算|发薪|工资|薪资|时薪|班次|排班|上班时间|工作时间|包吃|工作餐|员工餐|餐补|住宿|包住|福利|年龄|学历|健康证|招聘要求|报名条件|门店地址|上班地点|工作地点|全职|兼职|小时工|暑假工|寒假工|工作内容|岗位内容|主要做什么|具体做什么|做多久|长期|短期|工期|合同期/u,
+    ],
+    guard:
+      '本轮候选人在追问当前岗位的具体字段。先逐项检查[当前焦点岗位]摘要是否明确包含所问字段：缺少任一字段时，必须取当前焦点岗位 jobId 调 duliday_job_list(jobIdList=[当前jobId]) 补查对应模块后再回答，严禁用综合薪资单位、岗位名、品牌常识或历史助手话术推断。薪资、结算周期/发薪日和具体福利属于易变高风险事实，即使摘要已有也必须按 jobId 本轮实时重查。当前焦点岗位不明确时先确认门店/岗位，不得拿候选池里另一岗位代答。',
+  },
+  {
     id: 'schedule_constraint_precheck_first',
     target: 'current',
     patterns: [

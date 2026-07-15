@@ -642,9 +642,15 @@ const HEALTH_CERT_TIGHT_KEYWORDS = [
   '提前办好健康证',
 ];
 
+const HEALTH_CERT_TIGHT_PATTERNS = [
+  /面试(?:前|时).{0,12}(?:需|要|必须|携带|带|持有|出示).{0,12}健康证/,
+  /健康证(?:原件)?.{0,12}(?:面试前|面试时).{0,12}(?:需|要|必须|携带|带|持有|出示)/,
+];
+
 function inferHealthCertGate(input: {
   jobName: string | null;
   healthCertRequirement: string | null;
+  interviewDemand: string | null;
   interviewRemark: string | null;
   requirementRemark: string | null;
   interviewSupplements: string[];
@@ -652,6 +658,7 @@ function inferHealthCertGate(input: {
   const haystacks = [
     input.jobName ?? '',
     input.healthCertRequirement ?? '',
+    input.interviewDemand ?? '',
     input.interviewRemark ?? '',
     input.requirementRemark ?? '',
     ...input.interviewSupplements,
@@ -662,6 +669,9 @@ function inferHealthCertGate(input: {
 
   for (const kw of HEALTH_CERT_TIGHT_KEYWORDS) {
     if (joined.includes(kw)) return 'before_interview';
+  }
+  if (HEALTH_CERT_TIGHT_PATTERNS.some((pattern) => pattern.test(joined))) {
+    return 'before_interview';
   }
 
   const hasAnyHealthCertSignal =
@@ -733,6 +743,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
       healthCertGate: inferHealthCertGate({
         jobName: normalizePolicyText(asString(asRecord(job.basicInfo)?.jobName)),
         healthCertRequirement: normalizePolicyText(asString(cert?.healthCertificate)),
+        interviewDemand,
         interviewRemark,
         requirementRemark,
         interviewSupplements,

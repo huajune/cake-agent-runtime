@@ -46,7 +46,10 @@ import {
   buildKnownFieldMap,
   normalizeChecklistField,
 } from '@tools/duliday/precheck/checklist.util';
-import { getSupplementAnswerValue } from '@tools/duliday/booking/interview-booking-customer-label.builder';
+import {
+  extractSupplementAnswerFromMessages,
+  getSupplementAnswerValue,
+} from '@tools/duliday/booking/interview-booking-customer-label.builder';
 import {
   buildCollectionStrategy,
   detectCollectionResistance,
@@ -160,6 +163,7 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - **健康证地域适用性问题（"外地的健康证能用吗 / 我是 X 省的证可以吗 / 这个证在你们这里能用吗"）禁止凭经验回答**：严禁说"全国通用 / 不分地区 / 都可以"等通识答案；必须基于本轮工具返回的 healthCertGate / 岗位详情字段回答，工具未明示时如实告知"具体到时按门店/同事确认"或调 request_handoff，不得用经验性回答兜底
 - **健康证按岗位数据执行**：只有 healthCertGate 为 before_interview / before_onboard 时才要求应聘城市本地健康证。本地证可按“有”继续；异地证一律不能按“有”提交，必须先询问是否接受重新办理本地证。healthCertGate 为 unknown / not_required 时不得主动收集或校验健康证
 - nextAction === "confirm_local_health_certificate" 时，只按 healthCertificateEligibility.recommendedQuestion 确认是否接受重办，禁止 booking；得到明确答复后重新调 precheck
+- nextAction === "wait_for_health_certificate" 时，岗位要求面试前持有健康证，而候选人当前无证、在办或仅表示愿意办理；必须停止收资和 booking，明确说明拿到证后还需重新查询岗位在招状态与可约时段，严禁承诺“可以先约面 / 证到了就能约上 / 第一时间帮你约上”
 - nextAction === "health_certificate_rejected" 时，候选人已明确不接受办理本地证，立即停止当前岗位收资和 booking，礼貌说明当前岗位暂不匹配
 
 ## nextAction 与 booking 的契约
@@ -270,6 +274,33 @@ function normalizeCandidateAgeInput(candidateAge: unknown): string | null {
   if (candidateAge === undefined || candidateAge === null) return null;
   const parsedAge = parseCandidateAge(String(candidateAge));
   return parsedAge === null ? null : String(parsedAge);
+}
+
+function calculateAgeFromBirthDate(
+  value: string | null | undefined,
+  now = new Date(),
+): number | null {
+  const text = normalizePolicyText(value);
+  const match = text.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})(?:日)?$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const validated = new Date(Date.UTC(year, month - 1, day));
+  if (
+    validated.getUTCFullYear() !== year ||
+    validated.getUTCMonth() !== month - 1 ||
+    validated.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  let age = now.getFullYear() - year;
+  if (now.getMonth() + 1 < month || (now.getMonth() + 1 === month && now.getDate() < day)) {
+    age -= 1;
+  }
+  return age >= 10 && age <= 100 ? age : null;
 }
 
 type SummerWorkerIntent = 'summer_worker' | 'not_summer_worker';
@@ -460,18 +491,21 @@ function findLatestExplicitIdentity(messages: unknown[]): '学生' | '社会人�
     const raw = extractMessageText(candidateMessage.content);
     if (!raw) continue;
     const text = raw.replace(/\[引用[^\n]*?\]\s*/g, '').trim();
+    const compact = normalizePolicyText(text);
     if (
       /身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*学生|我(?:现在)?是学生|(?:本科|大专|高中|硕士|研究生|博士)在读|我还在读|我在上学/u.test(
         text,
-      )
+      ) ||
+      /^(?:学生|在读|还在上学)$/u.test(compact)
     ) {
       latest = '学生';
       continue;
     }
     if (
-      /身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*社会人士|我是社会人士|我不是学生|我是非学生|我已经?毕业|我毕业了/u.test(
+      /身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*社会人士|我是社会人士|我不是学生|我是非学生|我已经?毕业|我毕业了|我已经?工作了/u.test(
         text,
-      )
+      ) ||
+      /^(?:社会人士|社会人|不是学生|非学生|已经?工作了?|上班族)$/u.test(compact)
     ) {
       latest = '社会人士';
     }
@@ -784,15 +818,18 @@ export function buildInterviewPrecheckTool(
             highConfidenceInfo?.education,
             normalizeCandidateEducationInput,
           );
+          const normalizedCandidateHealthCertificate = normalizeCandidateHealthCertificateInput(
+            candidateHasHealthCertificate,
+          );
           applyCandidateFieldOverride(
             knownFieldMap,
             '健康证情况',
-            candidateHasHealthCertificate,
+            normalizedCandidateHealthCertificate,
             highConfidenceInfo?.has_health_certificate,
             normalizeCandidateHealthCertificateInput,
           );
           const healthCertificateEligibility = resolveLocalHealthCertificateEligibility({
-            latestAnswer: candidateHasHealthCertificate ?? context.currentUserMessage,
+            latestAnswer: normalizedCandidateHealthCertificate ?? context.currentUserMessage,
             normalizedKnownValue: knownFieldMap['健康证情况'],
             historicalValues: [
               highConfidenceInfo?.has_health_certificate,
@@ -911,17 +948,37 @@ export function buildInterviewPrecheckTool(
             delete knownFieldMap['姓名'];
           }
 
-          // collect 型 supplement label 会进 requiredFields，但 buildKnownFieldMap 只认标准字段、
-          // 也没有专属 candidate* 入参，缺一个回填入口就会永远留在 missingFields（nextAction 永远
-          // collect_fields，booking 闸门永远拒，对配了 collect 标签的岗位整条预约链卡死）。这里用
-          // 候选人本轮已答的 candidateSupplementAnswers（与 booking 的 supplementAnswers 同源、同
-          // 别名匹配逻辑）把这些标签回填进 knownFieldMap。key 与 requiredFields 一样做 checklist 归一，
-          // 保证能命中 displayOrder。
+          // collect 型 supplement label 会进 requiredFields，但 buildKnownFieldMap 只认标准字段。
+          // 优先采用模型显式传入的 candidateSupplementAnswers；若模型漏传，则从候选人最近
+          // 「字段：值」表单中确定性回填。这样出生日期等动态标签不会明明已填写却反复追问。
           for (const labelName of collectLabelNames) {
             const fieldKey = normalizeChecklistField(labelName);
             if (!fieldKey || knownFieldMap[fieldKey]) continue;
-            const answer = getSupplementAnswerValue(candidateSupplementAnswers, labelName);
+            const answer =
+              getSupplementAnswerValue(candidateSupplementAnswers, labelName) ??
+              extractSupplementAnswerFromMessages(context.messages, labelName);
             if (answer) knownFieldMap[fieldKey] = answer;
+          }
+
+          // 出生日期比模型自行换算的 candidateAge 更精确；以系统日期确定性计算，避免同一
+          // 候选人在相邻 precheck 中出现 25/26 岁漂移并触发不同年龄边界。
+          const birthDateEntry = Object.entries(knownFieldMap).find(([field]) =>
+            /出生日期|出生年月|生日/.test(field),
+          );
+          const ageFromBirthDate = calculateAgeFromBirthDate(birthDateEntry?.[1]);
+          if (ageFromBirthDate !== null) {
+            knownFieldMap['年龄'] = String(ageFromBirthDate);
+            // 精确出生日期属于候选人亲自提供的可靠资料。已满 25 岁且没有明确说自己仍是
+            // 学生时，按既有年龄推断口径视为社会人士，避免逼候选人机械回复固定三个字。
+            // 若候选人明确说自己是学生，原话仍然优先，不做覆盖。
+            if (
+              studentIdentityMustBeExplicit &&
+              ageFromBirthDate >= 25 &&
+              latestExplicitIdentity !== '学生' &&
+              !knownFieldMap['身份']
+            ) {
+              knownFieldMap['身份'] = '社会人士';
+            }
           }
 
           const summerWorkerIntent = resolveSummerWorkerIntent({
@@ -999,6 +1056,7 @@ export function buildInterviewPrecheckTool(
             | 'student_rejected'
             | 'household_rejected'
             | 'confirm_local_health_certificate'
+            | 'wait_for_health_certificate'
             | 'health_certificate_rejected' =
             ageBoundary.severity === 'hard_reject'
               ? 'age_rejected'
@@ -1012,19 +1070,22 @@ export function buildInterviewPrecheckTool(
                     : healthCertificateRequired &&
                         healthCertificateEligibility.status === 'non_local_needs_confirmation'
                       ? 'confirm_local_health_certificate'
-                      : temporarySummerWorkerGuard?.status === 'blocked_non_summer_job'
-                        ? 'collect_fields'
-                        : requestedDateCheck?.status === 'unavailable'
-                          ? 'date_unavailable'
-                          : checklist.missingFields.length > 0
-                            ? 'collect_fields'
-                            : interviewTimeWaitNotice
-                              ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
-                                'ready_to_book'
-                              : !requestedDateCheck ||
-                                  requestedDateCheck.status === 'needs_confirmation'
-                                ? 'confirm_date'
-                                : 'ready_to_book';
+                      : analysis.normalizedRequirements.healthCertGate === 'before_interview' &&
+                          healthCertificateEligibility.status === 'accepts_local_application'
+                        ? 'wait_for_health_certificate'
+                        : temporarySummerWorkerGuard?.status === 'blocked_non_summer_job'
+                          ? 'collect_fields'
+                          : requestedDateCheck?.status === 'unavailable'
+                            ? 'date_unavailable'
+                            : checklist.missingFields.length > 0
+                              ? 'collect_fields'
+                              : interviewTimeWaitNotice
+                                ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
+                                  'ready_to_book'
+                                : !requestedDateCheck ||
+                                    requestedDateCheck.status === 'needs_confirmation'
+                                  ? 'confirm_date'
+                                  : 'ready_to_book';
 
           // 内部中间态仅写入 debug 日志，不回传给 LLM
           logger.debug(
@@ -1059,6 +1120,14 @@ export function buildInterviewPrecheckTool(
           return stripNullish({
             success: true,
             nextAction,
+            _replyInstruction:
+              nextAction === 'ready_to_book'
+                ? '预检已通过。若候选人已确认当前面试时段，立即调用 duliday_interview_booking；只有 booking 返回 success=true 后，才能对候选人说已登记、已报名或已预约。'
+                : nextAction === 'collect_fields'
+                  ? `预检尚未通过，只缺：${checklist.missingFields.join('、')}。请一次性向候选人补问这些字段；候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
+                  : nextAction === 'wait_for_health_certificate'
+                    ? '当前岗位要求面试前持有健康证，候选人目前无证、在办或仅愿意办理，禁止继续收资或 booking。请说明拿到证后还需重新查询届时岗位是否在招及可约时段；严禁说可以先约面、证到了就能约上或保证届时有名额。'
+                    : '按 nextAction 处理当前预检结果；duliday_interview_booking 返回 success=true 前，禁止声称已登记、已报名或已预约。',
             job: {
               jobId,
               brandName: normalizePolicyText(job.basicInfo.brandName),

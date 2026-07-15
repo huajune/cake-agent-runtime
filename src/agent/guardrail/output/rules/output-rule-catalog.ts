@@ -91,6 +91,8 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
  * 共 13 条随所在规则文件整族删除；同日追加下线 group_full_without_invite /
  * system_status_fabrication / tool_failure_success_claim / brand_name_violation 4 条。
  * 岗位/预约事实治理交语义档。
+ * 2026-07-15 经新生产 badcase 与用户裁定，重新加入范围收窄后的“详情缺字段按当前
+ * jobId 补查”及“正式结算 vs 培训/阶梯补充结算”两条契约，不恢复其余已删除规则族。
  */
 const OUTPUT_RULE_CATALOG_SEEDS = [
   {
@@ -126,9 +128,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     riskGoal:
       '诚信红线：禁止指导候选人以虚假身份通过系统审核/门店登记，禁止建议隐瞒暑假工、学生等真实身份。',
     exogenousSignal:
-      '回复文本的审核规避/身份改写/隐瞒话术模式 + duliday_interview_precheck.temporarySummerWorkerGuard 状态。',
+      '回复文本的审核规避/身份改写/隐瞒话术模式 + duliday_interview_precheck 状态 + 会话记忆中的学生身份事实。',
     residualRisk:
-      '话术变体（如"就说你能长期做"）依赖正则持续补样本；年龄/健康证等其他字段的造假教唆未覆盖，需按 badcase 扩展。',
+      '话术变体（如"就说你能长期做"）依赖正则持续补样本；记忆尚未提取出身份时仍依赖 precheck；年龄/健康证等其他字段的造假教唆未覆盖。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复在教唆候选人以不实身份登记或隐瞒身份（如按"非暑假工"登记以通过系统审核），当前文本不可发送，这是诚信红线。' +
@@ -143,9 +145,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '候选人明确找暑假工且本轮工具确认暑假工过滤后为空时，拦住主动劝转普通兼职、小时工、全职或长期兼职的话术。',
     riskGoal: '确保暑假工无岗时直接拒绝，不用其他用工形式进行违背候选人明确意向的软性转化。',
     exogenousSignal:
-      'duliday_job_list 的 JOB_LIST_LABOR_FORM_FILTER_EMPTY + queryMeta.laborFormFilter.candidateLaborForm=暑假工 + 本轮候选人未主动改口。',
+      'duliday_job_list 的暑假工空结果，或最近候选人消息中仍有效的暑假工意向 + 本轮候选人未主动改口。',
     residualRisk:
-      '未出现已登记替代用工形式词的隐晦劝转可能漏检；候选人跨轮主动改口依赖本轮 userMessage 表达清楚。',
+      '超过最近消息窗口的暑假工意向依赖会话事实；未出现替代用工形式词的隐晦劝转仍可能漏检。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复在本轮已经确认没有暑假工岗位后，仍主动询问或建议候选人考虑普通兼职、小时工、全职或长期兼职，当前文本不可发送。' +
@@ -212,6 +214,36 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal: '名额承诺词库；无工具信号可正当化此承诺。',
     residualRisk: '含蓄承诺需要运营 badcase 持续补样本。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+  },
+  {
+    id: 'job_detail_lookup_required',
+    action: GUARDRAIL_ACTION.REPLAN,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '当前焦点岗位明确时，候选人追问精简记忆缺失的岗位详情，强制按 jobId 补查后再回答。',
+    riskGoal: '防止模型用综合月薪、品牌常识或历史助手话术推断结算、工期、工作内容等缺失字段。',
+    exogenousSignal:
+      '候选人本轮详情问题 + memory_snapshot.currentFocusJob.availableDetailFields + 本轮 duliday_job_list(jobIdList)。',
+    residualRisk:
+      '未能归类的新详情问法需要扩充字段意图词表；当前焦点岗位不明确时仍需先由生成层澄清岗位。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '候选人正在追问当前岗位详情，但精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；请使用当前焦点岗位 jobId 调用 duliday_job_list，只按本轮结果回答。',
+    repairToolNames: ['duliday_job_list'],
+  },
+  {
+    id: 'settlement_cycle_mismatch',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '本轮岗位工具已返回结算口径时，拦住把正式工资日结与培训/阶梯月补混成整份工资月结。',
+    riskGoal: '结算方式直接影响候选人决策，正式工资与补充费用的结算范围必须分别表述。',
+    exogenousSignal:
+      '本轮 duliday_job_list 返回的正式/培训薪资方案 salaryPeriod，以及回复中的结算断言。',
+    residualRisk: '非标准结算别名需要随生产样本扩充；无本轮工具结果时交由补查规则处理。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版混淆了正式工资结算与培训/阶梯差额结算。请严格按本轮岗位数据重写，分别说明基础工资、阶梯差价和培训费用各自如何结算；不要用综合月薪单位推断结算周期。',
   },
   {
     id: 'requested_brand_mismatch',

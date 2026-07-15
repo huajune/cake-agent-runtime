@@ -15,6 +15,7 @@ import {
   isSideEffectCommitted,
   isSideEffectTool,
   isToolSuccess,
+  MAX_PRECHECK_CALLS_PER_TURN,
   MAX_SAME_TOOL_CALLS_PER_TURN,
   REPLAY_BLOCKING_TOOLS,
   REVISION_FORBIDDEN_TOOLS,
@@ -232,6 +233,16 @@ describe('tool-call-analysis', () => {
       const steps = [callStep('a'), callStep('a')];
       expect(findToolsExceedingLimit(steps, 2)).toEqual(['a']);
       expect(findToolsExceedingLimit(steps, 3)).toEqual([]);
+    });
+
+    it('blocks precheck after its stricter per-turn limit', () => {
+      const steps = Array.from({ length: MAX_PRECHECK_CALLS_PER_TURN }, () =>
+        callStep('duliday_interview_precheck'),
+      );
+      expect(findToolsExceedingLimit(steps, MAX_PRECHECK_CALLS_PER_TURN)).toEqual([
+        'duliday_interview_precheck',
+      ]);
+      expect(MAX_PRECHECK_CALLS_PER_TURN).toBeLessThan(MAX_SAME_TOOL_CALLS_PER_TURN);
     });
 
     it('defaults to MAX_SAME_TOOL_CALLS_PER_TURN', () => {

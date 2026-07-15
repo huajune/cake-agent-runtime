@@ -43,6 +43,10 @@ export function normalizeGenderValue(value: string | null | undefined): string |
 export function normalizeHealthCertificateValue(value: string | null | undefined): string | null {
   const text = normalizePolicyText(value);
   if (!text) return null;
+  // LLM occasionally serializes the boolean field as a string. Leaving "False" untouched makes
+  // the checklist look complete while the policy resolver still treats it as unknown.
+  if (/^(?:false|否|no|0)$/i.test(text)) return '无但接受办理健康证';
+  if (/^(?:true|是|yes|1)$/i.test(text)) return '有';
   if (/非本地|不是本地|外地|异地/.test(text)) return null;
   if (/^有$|有健康证|本地.{0,4}健康证|健康证.{0,4}本地/.test(text)) return '有';
   // 显式拒办优先识别，避免被下方"无但接受办理"模式误吞
@@ -50,6 +54,15 @@ export function normalizeHealthCertificateValue(value: string | null | undefined
     return '无且不接受办理健康证';
   }
   if (/无但接受办理健康证|可以办健康证|可办健康证|接受办健康证|接受办理/.test(text)) {
+    return '无但接受办理健康证';
+  }
+  // “在办/等出证”代表当前仍未持证，但已接受办理。不能保留成任意文本，否则 checklist
+  // 会误以为字段已收齐，而 health policy 仍返回 unknown，导致面试前持证岗位穿透预检。
+  if (
+    /健康证.{0,6}(?:在办|办理中|正在办|等出证|待出证)|(?:在办|办理中|正在办).{0,6}健康证|预计.{0,8}出证/.test(
+      text,
+    )
+  ) {
     return '无但接受办理健康证';
   }
   // 候选人直接答"无/没有"等，按两步问法默认视为"无但接受办理健康证"

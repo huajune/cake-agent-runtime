@@ -1592,6 +1592,11 @@ describe('PreparationService', () => {
       messages: [{ role: 'user' as const, content: '[位置分享] 这是我住的地方，附近还有岗位吗' }],
       expected: '位置线索',
     },
+    {
+      name: 'job detail follow-up',
+      messages: [{ role: 'user' as const, content: '这个岗位具体做什么，工资是日结吗' }],
+      expected: '追问当前岗位的具体字段',
+    },
   ])('should append critical turn guard for $name', async ({ messages, expected }) => {
     const result = await service.prepare(
       {

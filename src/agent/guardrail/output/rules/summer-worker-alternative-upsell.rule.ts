@@ -1,9 +1,10 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { decideLaborFormIntent } from '@memory/facts/labor-form';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
-/** 候选人明确找暑假工、工具确认无岗后，禁止 Agent 主动劝转其他用工形式。 */
+/** 候选人明确找暑假工后，禁止 Agent 跨轮主动劝转其他用工形式。 */
 const ALTERNATIVE_LABOR_FORM = '(?:普通兼职|常规兼职|长期兼职|长期工|小时工|全职)';
 
 const ALTERNATIVE_UPSELL_PATTERNS = [
@@ -56,12 +57,30 @@ function candidateExplicitlyAcceptsAlternatives(userMessage: string | undefined)
   return USER_ACCEPTS_ALTERNATIVES.some((pattern) => pattern.test(text));
 }
 
+function hasActiveSummerWorkerIntent(recentUserTexts: string[] | undefined): boolean {
+  if (!recentUserTexts?.length) return false;
+
+  let summerIntentActive = false;
+  for (const text of recentUserTexts) {
+    const decision = decideLaborFormIntent(text);
+    if (decision.kind === 'set') {
+      summerIntentActive = decision.value === '暑假工';
+    } else if (decision.kind === 'clear' && decision.clearedValues.includes('暑假工')) {
+      summerIntentActive = false;
+    }
+  }
+  return summerIntentActive;
+}
+
 export function detectSummerWorkerAlternativeUpsell(
   text: string,
   toolCalls: AgentToolCall[],
   userMessage?: string,
+  recentUserTexts?: string[],
 ): RuleContradiction | null {
-  if (!hasSummerWorkerEmptyResult(toolCalls)) return null;
+  if (!hasSummerWorkerEmptyResult(toolCalls) && !hasActiveSummerWorkerIntent(recentUserTexts)) {
+    return null;
+  }
   if (candidateExplicitlyAcceptsAlternatives(userMessage)) return null;
   if (!containsActionableAlternativeUpsell(text)) return null;
 
