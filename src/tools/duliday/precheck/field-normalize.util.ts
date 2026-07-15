@@ -43,6 +43,10 @@ export function normalizeGenderValue(value: string | null | undefined): string |
 export function normalizeHealthCertificateValue(value: string | null | undefined): string | null {
   const text = normalizePolicyText(value);
   if (!text) return null;
+  // LLM occasionally serializes the boolean field as a string. Leaving "False" untouched makes
+  // the checklist look complete while the policy resolver still treats it as unknown.
+  if (/^(?:false|否|no|0)$/i.test(text)) return '无但接受办理健康证';
+  if (/^(?:true|是|yes|1)$/i.test(text)) return '有';
   if (/非本地|不是本地|外地|异地/.test(text)) return null;
   if (/^有$|有健康证|本地.{0,4}健康证|健康证.{0,4}本地/.test(text)) return '有';
   // 显式拒办优先识别，避免被下方"无但接受办理"模式误吞

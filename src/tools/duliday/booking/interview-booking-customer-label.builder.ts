@@ -120,6 +120,15 @@ function resolveCustomerLabelValue(
   const directAnswer = getSupplementAnswerValue(params.supplementAnswers, labelName);
   if (directAnswer) return directAnswer;
 
+  // 候选人常直接回填整张「字段：值」表单。模型偶发会漏传 supplementAnswers，
+  // 但原始候选人消息仍是可信的一手数据；从最近消息确定性回填，避免 booking 在
+  // precheck 已收齐后又因同一个补充标签缺值而失败。
+  const messageAnswer = extractSupplementAnswerFromMessages(
+    params.context.messages ?? [],
+    labelName,
+  );
+  if (messageAnswer) return messageAnswer;
+
   if (/学历/.test(labelName)) {
     return params.educationId != null ? getSpongeEducationLabelById(params.educationId) : null;
   }
@@ -166,14 +175,48 @@ export function getSupplementAnswerValue(
   if (!supplementAnswers) return null;
 
   const candidateKeys = [labelName, ...getSupplementAnswerAliases(labelName)];
-  for (const key of candidateKeys) {
-    const value = normalizeText(supplementAnswers[key]);
+  const normalizedCandidateKeys = new Set(candidateKeys.map(normalizeSupplementKey));
+  for (const [key, rawValue] of Object.entries(supplementAnswers)) {
+    if (!normalizedCandidateKeys.has(normalizeSupplementKey(key))) continue;
+    const value = normalizeText(rawValue);
     if (value) return value;
   }
   return null;
 }
 
+/**
+ * 从候选人最近填写的结构化表单中读取岗位补充字段。
+ *
+ * 仅接受 user 消息中独占一行的「字段名：非空值」，不从自然语言推断，也不读取
+ * assistant 消息，防止把系统发出的空模板或岗位要求误当成候选人答案。
+ */
+export function extractSupplementAnswerFromMessages(
+  messages: readonly unknown[] | undefined,
+  labelName: string,
+): string | null {
+  const recentUserMessages = (messages ?? []).filter(isUserMessage).slice(-12).reverse();
+
+  for (const message of recentUserMessages) {
+    const text = extractMessageContent(message.content);
+    if (!text) continue;
+
+    const answers: Record<string, string> = {};
+    for (const line of text.split(/\r?\n/u)) {
+      const match = line.match(/^\s*([^：:\n]{1,80})\s*[：:]\s*(\S.*?)\s*$/u);
+      if (!match) continue;
+      answers[match[1]] = match[2];
+    }
+
+    const answer = getSupplementAnswerValue(answers, labelName);
+    if (answer) return answer;
+  }
+
+  return null;
+}
+
 function getSupplementAnswerAliases(labelName: string): string[] {
+  if (/出生日期|出生年月|生日/.test(labelName))
+    return ['出生日期', '出生年月日', '出生年月', '生日'];
   if (/(籍贯|户籍)/.test(labelName)) return ['籍贯', '户籍', '户籍省份'];
   if (/身份/.test(labelName)) return ['身份', '是否学生'];
   if (/健康证类型/.test(labelName)) return ['健康证类型'];
@@ -186,6 +229,29 @@ function getSupplementAnswerAliases(labelName: string): string[] {
     return ['过往公司+岗位+年限', '工作经历', '工作经验', '近一段工作经历', '过往经历'];
   }
   return [];
+}
+
+function normalizeSupplementKey(value: string): string {
+  return value.replace(/\s+/gu, '').trim();
+}
+
+function isUserMessage(message: unknown): message is Record<string, unknown> {
+  return Boolean(
+    message && typeof message === 'object' && (message as Record<string, unknown>).role === 'user',
+  );
+}
+
+function extractMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(extractMessageContent).filter(Boolean).join('\n');
+  }
+  if (content && typeof content === 'object') {
+    const record = content as Record<string, unknown>;
+    if (typeof record.text === 'string') return record.text;
+    if (typeof record.content === 'string') return record.content;
+  }
+  return '';
 }
 
 function resolveIdentityLabel(context: ToolBuildContext): string | null {

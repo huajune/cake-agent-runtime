@@ -18,6 +18,12 @@ import type { AgentToolCall } from './generator.types';
 export const MAX_SAME_TOOL_CALLS_PER_TURN = 3;
 
 /**
+ * precheck 是同一岗位的确定性校验，不应靠换参数穷举；保留一次纠正遗漏入参的机会，
+ * 第二次后即屏蔽，避免身份/补充字段识别异常时单轮连续调用 4~5 次。
+ */
+export const MAX_PRECHECK_CALLS_PER_TURN = 2;
+
+/**
  * "narrow（仅 1 条结果）"语义只对搜索类工具有意义：
  * 查岗只命中 1 个岗位值得标记复查；geocode unique / booking 成功等单结果是正常形态。
  */

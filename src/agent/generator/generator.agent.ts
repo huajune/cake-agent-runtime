@@ -17,6 +17,7 @@ import {
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
   isShortCircuitedToolResult,
+  MAX_PRECHECK_CALLS_PER_TURN,
   MAX_SAME_TOOL_CALLS_PER_TURN,
 } from './tool-call-analysis';
 
@@ -289,7 +290,14 @@ export class GeneratorAgent {
     const logger = this.logger;
 
     return ({ steps }) => {
-      const overused = findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN);
+      const precheckToolName = 'duliday_interview_precheck';
+      const overusedPrecheck = findToolsExceedingLimit(steps, MAX_PRECHECK_CALLS_PER_TURN).filter(
+        (name) => name === precheckToolName,
+      );
+      const overusedGeneral = findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN).filter(
+        (name) => name !== precheckToolName,
+      );
+      const overused = [...overusedPrecheck, ...overusedGeneral];
 
       // 本轮已调用过业务工具（非 skip_reply 自身）→ 屏蔽 skip_reply
       const called = collectCalledToolNames(steps);
@@ -307,11 +315,16 @@ export class GeneratorAgent {
 
       const activeTools = baseTools.filter((name) => !blocked.includes(name));
       const noticeParts: string[] = [];
-      const overuseNotice = buildToolCallLimitNotice(
-        overused.filter((name) => !sideEffectBlocked.includes(name)),
+      const precheckOveruseNotice = buildToolCallLimitNotice(
+        overusedPrecheck.filter((name) => !sideEffectBlocked.includes(name)),
+        MAX_PRECHECK_CALLS_PER_TURN,
+      );
+      if (precheckOveruseNotice) noticeParts.push(precheckOveruseNotice);
+      const generalOveruseNotice = buildToolCallLimitNotice(
+        overusedGeneral.filter((name) => !sideEffectBlocked.includes(name)),
         MAX_SAME_TOOL_CALLS_PER_TURN,
       );
-      if (overuseNotice) noticeParts.push(overuseNotice);
+      if (generalOveruseNotice) noticeParts.push(generalOveruseNotice);
       if (skipReplyBlocked.length > 0) {
         noticeParts.push(
           `⚠️ 系统拦截：本轮已发生业务工具调用，不可再调用 \`${SKIP_REPLY_TOOL_NAME}\`。沉默仅适用于本轮完全无业务动作且候选人仅发确认词的场景。`,
