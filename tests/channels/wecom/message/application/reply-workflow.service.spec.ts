@@ -1172,9 +1172,10 @@ describe('ReplyWorkflowService', () => {
 
       await service.processSingleMessage(primary);
 
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledTimes(2);
       expect(runner.invoke).toHaveBeenCalledTimes(2);
-      // 两次都启用 deferTurnEnd：第二次结果必然被采纳，由 workflow 启动并在
-      // 方法返回（处理锁释放）前 await，保证记忆写入相对锁串行。
+      // 两次都启用 deferTurnEnd：本用例第二次生成后已无 pending，因此该结果被采纳，
+      // 由 workflow 启动并在方法返回（处理锁释放）前 await，保证记忆写入相对锁串行。
       expect(runner.invoke.mock.calls[0][0]).toEqual(
         expect.objectContaining({
           deferTurnEnd: true,
@@ -1221,7 +1222,7 @@ describe('ReplyWorkflowService', () => {
       });
     });
 
-    it('Case C: 重跑只允许一次——第二次 Agent 生成期间又有新消息也不再重跑', async () => {
+    it('Case C: 第一次 replay 期间又有新消息时继续合并，避免拆成重复感强的 follow-up', async () => {
       const primary = createMessage();
       const late1 = createMessage({
         messageId: 'msg-late-1',
@@ -1232,19 +1233,55 @@ describe('ReplyWorkflowService', () => {
         payload: { text: '第三条', pureText: '第三条' },
       });
 
-      simpleMergeService.claimPendingSnapshot.mockResolvedValue({
-        messages: [late1, late2],
-        snapshotSize: 2,
-        batchId: 'batch-late',
-      });
+      simpleMergeService.claimPendingSnapshot
+        .mockResolvedValueOnce({
+          messages: [late1],
+          snapshotSize: 1,
+          batchId: 'batch-late-1',
+        })
+        .mockResolvedValueOnce({
+          messages: [late2],
+          snapshotSize: 1,
+          batchId: 'batch-late-2',
+        })
+        .mockResolvedValueOnce({ messages: [], snapshotSize: 0, batchId: '' });
+
+      runner.invoke
+        .mockResolvedValueOnce({
+          text: '首次回复（会被丢弃）',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          text: '第一次 replay 回复（仍会被丢弃）',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          text: '吸收三条消息后的最终回复',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        });
 
       await service.processSingleMessage(primary);
 
-      // 只检查一次 pending：首次 Agent 完成后
-      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledTimes(1);
-      // 恰好重跑一次
-      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(1, 'chat-1', 0);
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(2, 'chat-1', 1);
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(3, 'chat-1', 2);
+      expect(runner.invoke).toHaveBeenCalledTimes(3);
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '吸收三条消息后的最终回复' }),
+        expect.anything(),
+        true,
+      );
+      expect(runner.invoke.mock.calls[2][0]).toEqual(
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              role: 'user',
+              content: '你好\n第二条\n第三条',
+            }),
+          ],
+        }),
+      );
     });
 
     it.each([['invite_to_group'], ['duliday_interview_booking']])(
@@ -1326,7 +1363,7 @@ describe('ReplyWorkflowService', () => {
 
       await service.processSingleMessage(primary);
 
-      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledTimes(1);
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledTimes(2);
       expect(runner.invoke).toHaveBeenCalledTimes(2);
       expect(firstRunTurnEnd).not.toHaveBeenCalled();
       expect(runner.invoke.mock.calls[1][0]).toEqual(
