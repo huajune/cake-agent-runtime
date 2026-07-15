@@ -198,6 +198,7 @@ export class PreparationService {
       sessionFacts: memory.sessionMemory?.facts ?? null,
       highConfidenceFacts: memory.highConfidenceFacts,
       currentLaborFormIntent,
+      sessionBrandState: turnBrandContext.state,
       strategySource: params.strategySource,
     });
 

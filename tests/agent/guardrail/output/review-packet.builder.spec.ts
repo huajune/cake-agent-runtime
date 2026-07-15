@@ -32,6 +32,15 @@ describe('GuardrailReviewPacketBuilder', () => {
                 jobSalary: { baseSalary: '24元/小时' },
               },
             ],
+            queryMeta: {
+              brand: {
+                filterMode: 'enforce',
+                brandSource: 'model_input',
+                appliedBrandIds: [],
+                appliedCanonicalNames: ['肯德基'],
+                rejected: [{ input: 'Gattouzo', reason: 'unmatched' }],
+              },
+            },
           },
           resultCount: 1,
           status: 'ok',
@@ -75,7 +84,10 @@ describe('GuardrailReviewPacketBuilder', () => {
       content: '我在静安寺附近，想看肯德基',
       messageType: 'text',
     });
+    // §11 第三切换点：requestedBrands 来自 queryMeta.brand（工具实际应用），
+    // 不再读模型原始 args.brandAliasList；被拒绝入参单独暴露。
     expect(packet.evidence.jobList?.requestedBrands).toEqual(['肯德基']);
+    expect(packet.evidence.jobList?.rejectedBrandInputs).toEqual(['Gattouzo']);
     expect(packet.evidence.jobList?.hasEvidence).toBe(true);
     // args 只保留查询意图白名单：分页/坐标不透传，空数组剔除，距离召回压成布尔标记。
     expect(packet.evidence.jobList?.args).toEqual({

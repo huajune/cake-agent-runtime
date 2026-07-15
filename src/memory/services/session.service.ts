@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AgentTracerService } from '@observability/agent-tracer.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SpongeService } from '@/sponge/sponge.service';
@@ -48,7 +49,7 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
 import {
-  detectBrandAliasHints,
+  detectBrandAliasHintsWithShadow,
   extractHighConfidenceFacts,
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
@@ -97,7 +98,12 @@ export class SessionService {
     private readonly llm: LlmExecutorService,
     private readonly sponge: SpongeService,
     private readonly systemConfig: SystemConfigService,
+    @Optional()
+    private readonly tracer?: AgentTracerService,
   ) {}
+
+  /** 新旧品牌匹配一致计数（§12：一致时仅计数不落行）。 */
+  private brandShadowAgreementCount = 0;
 
   // ==================== store ====================
   //
@@ -636,7 +642,32 @@ export class SessionService {
       }
     }
 
-    const aliasHints = detectBrandAliasHints(userMessages, brandData);
+    // 新旧品牌匹配并行对比（§15.2）：旧算法在 shadow 运行，不一致才落
+    // brand_resolution_shadow_diff 事件（品牌目录时变，差异现场必须在线记录）。
+    const { hints: aliasHints, shadowDiff } = detectBrandAliasHintsWithShadow(
+      userMessages,
+      brandData,
+    );
+    if (shadowDiff) {
+      this.tracer?.emit({
+        type: 'brand_resolution_shadow_diff',
+        userId,
+        chatId: sessionId,
+        corpId,
+        inputs: shadowDiff.inputs,
+        legacyBrands: shadowDiff.legacyBrands,
+        nextBrands: shadowDiff.nextBrands,
+        catalogSize: shadowDiff.catalogSize,
+        origin: 'extraction_hints',
+      });
+    } else if (aliasHints.length > 0) {
+      this.brandShadowAgreementCount += 1;
+      if (this.brandShadowAgreementCount % 100 === 0) {
+        this.logger.log(
+          `[brand-shadow] 新旧品牌匹配一致累计 ${this.brandShadowAgreementCount} 次（extraction_hints）`,
+        );
+      }
+    }
     const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
     const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
     const prompt = buildSessionExtractionPrompt(

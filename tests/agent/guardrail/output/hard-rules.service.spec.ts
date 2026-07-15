@@ -342,7 +342,7 @@ describe('HardRulesService', () => {
       ).toBe(GUARDRAIL_ACTION.OBSERVE);
     });
 
-    it('replans when requested brand is replaced by another brand recommendation', () => {
+    it('replans when applied brand is replaced by another brand recommendation（§11 读 queryMeta.brand）', () => {
       const result = service.check({
         replyText: '麦当劳（静安寺店）- 服务员，距离2公里，时薪24元。',
         toolCalls: [
@@ -358,6 +358,15 @@ describe('HardRulesService', () => {
                   distanceKm: 2,
                 },
               ],
+              queryMeta: {
+                brand: {
+                  filterMode: 'enforce',
+                  brandSource: 'model_input',
+                  appliedBrandIds: [],
+                  appliedCanonicalNames: ['肯德基'],
+                  rejected: [],
+                },
+              },
             },
             resultCount: 1,
             status: 'ok',
@@ -395,6 +404,15 @@ describe('HardRulesService', () => {
                   distanceKm: 2,
                 },
               ],
+              queryMeta: {
+                brand: {
+                  filterMode: 'enforce',
+                  brandSource: 'model_input',
+                  appliedBrandIds: [],
+                  appliedCanonicalNames: ['必胜客'],
+                  rejected: [],
+                },
+              },
             },
             resultCount: 1,
             status: 'ok',
@@ -412,9 +430,67 @@ describe('HardRulesService', () => {
           {
             toolName: 'duliday_job_list',
             args: { brandAliasList: ['肯德基'] },
-            result: { result: [] },
+            result: {
+              result: [],
+              queryMeta: {
+                brand: {
+                  filterMode: 'enforce',
+                  brandSource: 'model_input',
+                  appliedBrandIds: [],
+                  appliedCanonicalNames: ['肯德基'],
+                  rejected: [],
+                },
+              },
+            },
             resultCount: 0,
             status: 'empty',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('requested_brand_mismatch');
+    });
+
+    it('守卫只读标准化查询元数据：模型原始 brandAliasList 不再是对账依据（§14.4）', () => {
+      const result = service.check({
+        replyText: '麦当劳（静安寺店）- 服务员，距离2公里，时薪24元。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            // 模型原始参数写着肯德基，但工具入口标准化后没有形成品牌过滤
+            //（queryMeta.brand 缺失/无 applied）——不得据原始参数触发对账
+            args: { brandAliasList: ['肯德基'] },
+            result: { result: [{ jobId: 1, brandName: '麦当劳' }] },
+            resultCount: 1,
+            status: 'ok',
+          },
+        ] as never,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('requested_brand_mismatch');
+    });
+
+    it('被拒绝的昵称/模型别名不触发错误品牌守卫（rejected 不在 applied 里，§14.4）', () => {
+      const result = service.check({
+        replyText: '麦当劳（静安寺店）- 服务员，距离2公里，时薪24元。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { brandAliasList: ['Gattouzo'] },
+            result: {
+              result: [{ jobId: 1, brandName: '麦当劳' }],
+              queryMeta: {
+                brand: {
+                  filterMode: 'enforce',
+                  brandSource: 'model_input',
+                  appliedBrandIds: [],
+                  appliedCanonicalNames: [],
+                  rejected: [{ input: 'Gattouzo', reason: 'unmatched' }],
+                },
+              },
+            },
+            resultCount: 1,
+            status: 'ok',
           },
         ] as never,
       });
@@ -431,9 +507,15 @@ describe('HardRulesService', () => {
             args: { brandAliasList: ['刘姐妹'] },
             result: {
               result: [],
-              aliasFuzzyMatch: {
-                confidence: 'high',
-                suggestions: [{ inputAlias: '刘姐妹', brandName: '成都你六姐', score: 8 }],
+              queryMeta: {
+                brand: {
+                  filterMode: 'enforce',
+                  brandSource: 'model_input',
+                  appliedBrandIds: [],
+                  appliedCanonicalNames: [],
+                  rejected: [{ input: '刘姐妹', reason: 'unmatched' }],
+                  fuzzySuggestions: [{ inputAlias: '刘姐妹', brandName: '成都你六姐', score: 8 }],
+                },
               },
             },
             resultCount: 0,
@@ -462,9 +544,15 @@ describe('HardRulesService', () => {
             args: { brandAliasList: ['刘姐妹'] },
             result: {
               result: [],
-              aliasFuzzyMatch: {
-                confidence: 'high',
-                suggestions: [{ inputAlias: '刘姐妹', brandName: '成都你六姐', score: 8 }],
+              queryMeta: {
+                brand: {
+                  filterMode: 'enforce',
+                  brandSource: 'model_input',
+                  appliedBrandIds: [],
+                  appliedCanonicalNames: [],
+                  rejected: [{ input: '刘姐妹', reason: 'unmatched' }],
+                  fuzzySuggestions: [{ inputAlias: '刘姐妹', brandName: '成都你六姐', score: 8 }],
+                },
               },
             },
             resultCount: 0,
@@ -633,8 +721,7 @@ describe('HardRulesService', () => {
 
     it('still flags a real upsell in another sentence after the historical explanation', () => {
       const result = service.check({
-        replyText:
-          '之前的推荐是按常规兼职走的。不过附近还有长期兼职，要不要继续看看？',
+        replyText: '之前的推荐是按常规兼职走的。不过附近还有长期兼职，要不要继续看看？',
         toolCalls: [summerWorkerEmptyToolCall],
         userMessage: '我只找暑假工',
         silent: true,

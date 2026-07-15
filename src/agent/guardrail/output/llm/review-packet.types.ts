@@ -26,7 +26,10 @@ export interface JobListEvidence {
   /** 结构化岗位数组或 markdown 摘录是否提供了可核验岗位证据。 */
   hasEvidence: boolean;
   jobs: JobListEvidenceItem[];
+  /** 工具实际应用的品牌（queryMeta.brand.appliedCanonicalNames，§11 第三切换点）。 */
   requestedBrands: string[];
+  /** 未过品牌库验证被拒绝的品牌入参（不构成"候选人要的品牌"权威依据）。 */
+  rejectedBrandInputs?: string[];
   /**
    * 岗位工具 markdown 原文摘录（截断）。duliday_job_list 默认只返回 markdown
    * （rawData 需显式请求），此时结构化 jobs 解析为空，本字段就是岗位事实的

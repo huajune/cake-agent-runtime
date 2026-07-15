@@ -157,7 +157,6 @@ describe('HardConstraintsSection', () => {
   it('falls back to highConfidenceFacts when sessionFacts has no value for a field', () => {
     const session = cloneFallback();
     const high = cloneHighConfidenceFallback();
-    high.preferences.brands = highConfidenceValue(['必胜客'], '品牌别名识别：必胜客');
     high.preferences.schedule = highConfidenceValue('晚班', '班次识别：晚班');
 
     const output = section.build({
@@ -166,9 +165,39 @@ describe('HardConstraintsSection', () => {
       highConfidenceFacts: high,
     });
 
-    expect(output).toContain('意向品牌: 必胜客');
     expect(output).toContain('班次/工时偏好: 晚班');
     expect(output).toContain('"每天/周一至周日"不等于"可只排周末"');
+  });
+
+  it('品牌口径改读 SessionBrandState：currentBrand + excludedBrands（§14.4/goal #10）', () => {
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: cloneFallback(),
+      sessionBrandState: {
+        currentBrand: { canonicalName: '必胜客', brandId: 10239 },
+        excludedBrands: [{ canonicalName: '肯德基', brandId: 10001 }],
+      },
+    });
+
+    expect(output).toContain('当前意向品牌: 必胜客');
+    expect(output).toContain("brandFilterMode='clear'");
+    expect(output).toContain('排斥品牌: 肯德基');
+    expect(output).toContain('不要主动推荐其岗位');
+  });
+
+  it('空品牌状态不产出品牌行（不再读 preferences.brands 投影）', () => {
+    const high = cloneHighConfidenceFallback();
+    high.preferences.schedule = highConfidenceValue('晚班', '班次识别：晚班');
+
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: cloneFallback(),
+      highConfidenceFacts: high,
+      sessionBrandState: { currentBrand: null, excludedBrands: [] },
+    });
+
+    expect(output).not.toContain('当前意向品牌');
+    expect(output).not.toContain('排斥品牌');
   });
 
   it('renders Boss title brand ids as brandIdList hints', () => {

@@ -17,6 +17,8 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
+import { buildBrandCatalogIndex } from '@resolution/brand/catalog-index';
+import { buildExactMatchTokens, normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import {
   brandStateChanged,
   initBrandState,
@@ -234,6 +236,7 @@ export class BrandStateService {
           !r.ambiguous && r.canonicalName !== null && r.confidence >= BRAND_EXECUTABLE_CONFIDENCE,
       );
       const brands = Array.from(new Set(resolutions.map((r) => r.canonicalName!)));
+      this.emitNicknameShadowDiff(trimmed, brands, catalog);
       if (brands.length !== 1) return { seed: null, brands };
       const first = resolutions.find((r) => r.canonicalName === brands[0])!;
       return {
@@ -248,6 +251,43 @@ export class BrandStateService {
       );
       return { seed: null, brands: [] };
     }
+  }
+
+  /** 新旧昵称品牌匹配一致计数（§12：一致时仅计数不落行）。 */
+  private nicknameShadowAgreementCount = 0;
+
+  /**
+   * 昵称品牌的新旧路径并行对比（§15.2，origin=contact_name）。
+   * 旧路径 = 原 deriveContactBrandAliases 的 detectBrandAliasHints 匹配（token 全等 +
+   * 长别称包含 + 品类兜底）；不一致才落 brand_resolution_shadow_diff 事件。
+   */
+  private emitNicknameShadowDiff(
+    nickname: string,
+    nextBrands: string[],
+    catalog: BrandItem[],
+  ): void {
+    const legacyBrands = legacyNicknameBrandMatch(nickname, catalog).sort();
+    const sortedNext = [...nextBrands].sort();
+    const identical =
+      legacyBrands.length === sortedNext.length &&
+      legacyBrands.every((brand, index) => brand === sortedNext[index]);
+    if (identical) {
+      this.nicknameShadowAgreementCount += 1;
+      if (legacyBrands.length > 0 && this.nicknameShadowAgreementCount % 100 === 0) {
+        this.logger.log(
+          `[brand-shadow] 新旧昵称品牌匹配一致累计 ${this.nicknameShadowAgreementCount} 次（contact_name）`,
+        );
+      }
+      return;
+    }
+    this.tracer?.emit({
+      type: 'brand_resolution_shadow_diff',
+      inputs: [nickname],
+      legacyBrands,
+      nextBrands: sortedNext,
+      catalogSize: catalog.length,
+      origin: 'contact_name',
+    });
   }
 
   /** 懒迁移：旧 preferences.brands 末位品牌（≈最近表达），经目录回查补品牌 ID。 */
@@ -299,4 +339,32 @@ export class BrandStateService {
   private buildHashKey(corpId: string, userId: string, sessionId: string): string {
     return `factsv2:${corpId}:${userId}:${sessionId}`;
   }
+}
+
+/**
+ * 旧昵称品牌匹配算法（对照组，随旧匹配路径按 §15.6 指标门下线）：
+ * 与迁移前 deriveContactBrandAliases 使用的 detectBrandAliasHints 行为一致
+ * （token 全等 + 长别称整句包含 + 品类兜底），基于已迁移的归一化原语重建。
+ */
+function legacyNicknameBrandMatch(nickname: string, catalog: BrandItem[]): string[] {
+  if (!nickname || catalog.length === 0) return [];
+  const index = buildBrandCatalogIndex(catalog);
+  const tokens = buildExactMatchTokens(nickname);
+  if (tokens.length === 0) return [];
+  const normalized = normalizeForBrandMatch(nickname);
+
+  const brands = new Set<string>();
+  for (const candidate of index.candidates) {
+    const matched =
+      tokens.some((token) => token === candidate.normalized) ||
+      (candidate.containEligible && normalized.includes(candidate.normalized));
+    if (matched) brands.add(candidate.brandName);
+  }
+  if (brands.size === 0) {
+    for (const category of index.categories) {
+      if (!category.keywords.some((keyword) => normalized.includes(keyword))) continue;
+      for (const brandName of category.brands) brands.add(brandName);
+    }
+  }
+  return Array.from(brands);
 }
