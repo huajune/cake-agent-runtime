@@ -187,6 +187,7 @@ const inputSchema = z.object({
           'student_rejected',
           'household_rejected',
           'confirm_local_health_certificate',
+          'wait_for_health_certificate',
           'health_certificate_rejected',
         ])
         .describe('本轮 duliday_interview_precheck 返回的 nextAction 字段，必须复制原值'),
@@ -294,9 +295,11 @@ export function buildInterviewBookingTool(
                         ? '上一轮 precheck 已确认候选人与岗位内部硬性条件不匹配，严禁继续 booking。请用中性话术转查其它岗位；禁止透露具体户籍、籍贯或地域限制，也不得修改户籍字段重试。'
                         : prechecked.nextAction === 'confirm_local_health_certificate'
                           ? '候选人当前持有异地健康证，尚未确认是否接受重新办理应聘城市本地证。禁止 booking；先按 precheck.healthCertificateEligibility.recommendedQuestion 询问，得到明确答复后重新 precheck。'
-                          : prechecked.nextAction === 'health_certificate_rejected'
-                            ? '候选人明确不接受办理本地健康证，不满足当前岗位已配置的健康证要求，严禁 booking。礼貌说明当前岗位暂不匹配并停止本岗位推进。'
-                            : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
+                          : prechecked.nextAction === 'wait_for_health_certificate'
+                            ? '当前岗位要求面试前持有健康证，候选人目前无证、在办或仅愿意办理，严禁 booking。请候选人拿到证后再联系，并重新查询届时岗位在招状态与可约时段；禁止承诺届时一定能约上。'
+                            : prechecked.nextAction === 'health_certificate_rejected'
+                              ? '候选人明确不接受办理本地健康证，不满足当前岗位已配置的健康证要求，严禁 booking。礼貌说明当前岗位暂不匹配并停止本岗位推进。'
+                              : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
               details: { prechecked },
             }),
           );

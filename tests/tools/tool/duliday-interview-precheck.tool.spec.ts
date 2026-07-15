@@ -2056,6 +2056,49 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
   });
 
+  it('should wait for the certificate instead of becoming ready when it is required before interview', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: { interviewDemand: '面试前需食品健康证' },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      candidateHasHealthCertificate: '在办，预计明天出证',
+    });
+
+    expect(result.healthCertGate).toBe('before_interview');
+    expect(result.nextAction).toBe('wait_for_health_certificate');
+    expect(result._replyInstruction).toContain('重新查询届时岗位是否在招及可约时段');
+  });
+
+  it('should still allow local-certificate application for a before-onboard gate', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: { interviewDemand: '请带身份证' },
+            interviewSupplement: [],
+            remark: '',
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      candidateHasHealthCertificate: '无但接受办理健康证',
+    });
+
+    expect(result.healthCertGate).toBe('before_onboard');
+    expect(result.nextAction).not.toBe('wait_for_health_certificate');
+  });
+
   it('should reject the current job when non-local certificate holder refuses to reapply', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
 
