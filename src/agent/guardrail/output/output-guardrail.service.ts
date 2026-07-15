@@ -57,7 +57,7 @@ import type { GuardrailReviewPacket } from './llm/review-packet.types';
  * reviewer 故障走 ops 告警（fail-close error 级 / fail-open+shadow warning 级）。
  */
 /** 传给 rule 档做跨轮豁免的候选人消息条数（覆盖"上轮问、本轮追问"的短跨度语境）。 */
-const RECENT_USER_TEXTS_LIMIT = 3;
+const RECENT_USER_TEXTS_LIMIT = 8;
 
 @Injectable()
 export class OutputGuardrailService {
@@ -174,6 +174,7 @@ export class OutputGuardrailService {
       userMessage: input.userMessage,
       recentAssistantTexts,
       recentUserTexts,
+      memorySnapshot: input.memorySnapshot,
       silent: input.silent,
     });
     const ruleIds = ruleResult.contradictions.map((c) => c.ruleId);

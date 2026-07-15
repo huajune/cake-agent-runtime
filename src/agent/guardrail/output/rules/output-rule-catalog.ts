@@ -126,9 +126,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     riskGoal:
       '诚信红线：禁止指导候选人以虚假身份通过系统审核/门店登记，禁止建议隐瞒暑假工、学生等真实身份。',
     exogenousSignal:
-      '回复文本的审核规避/身份改写/隐瞒话术模式 + duliday_interview_precheck.temporarySummerWorkerGuard 状态。',
+      '回复文本的审核规避/身份改写/隐瞒话术模式 + duliday_interview_precheck 状态 + 会话记忆中的学生身份事实。',
     residualRisk:
-      '话术变体（如"就说你能长期做"）依赖正则持续补样本；年龄/健康证等其他字段的造假教唆未覆盖，需按 badcase 扩展。',
+      '话术变体（如"就说你能长期做"）依赖正则持续补样本；记忆尚未提取出身份时仍依赖 precheck；年龄/健康证等其他字段的造假教唆未覆盖。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复在教唆候选人以不实身份登记或隐瞒身份（如按"非暑假工"登记以通过系统审核），当前文本不可发送，这是诚信红线。' +
@@ -143,9 +143,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '候选人明确找暑假工且本轮工具确认暑假工过滤后为空时，拦住主动劝转普通兼职、小时工、全职或长期兼职的话术。',
     riskGoal: '确保暑假工无岗时直接拒绝，不用其他用工形式进行违背候选人明确意向的软性转化。',
     exogenousSignal:
-      'duliday_job_list 的 JOB_LIST_LABOR_FORM_FILTER_EMPTY + queryMeta.laborFormFilter.candidateLaborForm=暑假工 + 本轮候选人未主动改口。',
+      'duliday_job_list 的暑假工空结果，或最近候选人消息中仍有效的暑假工意向 + 本轮候选人未主动改口。',
     residualRisk:
-      '未出现已登记替代用工形式词的隐晦劝转可能漏检；候选人跨轮主动改口依赖本轮 userMessage 表达清楚。',
+      '超过最近消息窗口的暑假工意向依赖会话事实；未出现替代用工形式词的隐晦劝转仍可能漏检。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复在本轮已经确认没有暑假工岗位后，仍主动询问或建议候选人考虑普通兼职、小时工、全职或长期兼职，当前文本不可发送。' +

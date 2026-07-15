@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AgentToolCall } from '@agent/generator/generator.types';
+import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import {
   GUARDRAIL_ACTION,
   GUARDRAIL_DATA_SENSITIVITY,
@@ -106,6 +106,8 @@ export class HardRulesService {
     recentAssistantTexts?: string[];
     /** 最近几条候选人消息（时间序，含本轮），供跨轮豁免（如上轮问社保、本轮作答）。 */
     recentUserTexts?: string[];
+    /** 本轮入口记忆事实，用于跨轮身份红线对账。 */
+    memorySnapshot?: AgentMemorySnapshot;
     /** 静默模式（advisory）：命中不 fire 飞书 badcase 告警，只返回裁决。 */
     silent?: boolean;
   }): {
@@ -149,7 +151,12 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(internalOutputLeak));
     }
 
-    const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(text, toolCalls);
+    const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(
+      text,
+      toolCalls,
+      params.memorySnapshot,
+      params.userMessage,
+    );
     if (identityMisregistrationCoaching) {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
     }
@@ -158,6 +165,7 @@ export class HardRulesService {
       text,
       toolCalls,
       params.userMessage,
+      params.recentUserTexts,
     );
     if (summerWorkerAlternativeUpsell) {
       contradictions.push(this.withRulePolicy(summerWorkerAlternativeUpsell));

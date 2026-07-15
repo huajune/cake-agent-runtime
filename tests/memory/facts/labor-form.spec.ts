@@ -1,4 +1,5 @@
 import {
+  decideLaborFormIntent,
   INVALID_LABOR_FORM_WORDS,
   SEASONAL_LABOR_FORMS,
   VALID_LABOR_FORMS,
@@ -13,6 +14,29 @@ import {
 } from '@/memory/facts/labor-form';
 
 describe('labor-form', () => {
+  describe('decideLaborFormIntent', () => {
+    it.each(['暑假工短期的兼职', '我想找暑假工这种兼职', '寒假工也是兼职'])(
+      'keeps the seasonal subtype when 兼职 is only its parent category: %s',
+      (message) => {
+        expect(decideLaborFormIntent(message)).toEqual({
+          kind: 'set',
+          value: message.includes('寒假工') ? '寒假工' : '暑假工',
+        });
+      },
+    );
+
+    it.each(['暑假工或者普通兼职都可以', '暑假工、长期兼职也行'])(
+      'allows an explicitly accepted non-summer alternative to win: %s',
+      (message) => {
+        expect(decideLaborFormIntent(message)).toEqual({ kind: 'set', value: '兼职' });
+      },
+    );
+
+    it('does not treat an administrative registration label as a changed job preference', () => {
+      expect(decideLaborFormIntent('是准备用兼职身份登记的')).toEqual({ kind: 'ignore' });
+    });
+  });
+
   describe('isValidLaborForm', () => {
     it.each([...VALID_LABOR_FORMS])('accepts valid labor form %s', (value) => {
       expect(isValidLaborForm(value)).toBe(true);

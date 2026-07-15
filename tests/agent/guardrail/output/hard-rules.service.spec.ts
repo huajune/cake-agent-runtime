@@ -745,6 +745,25 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('revises cross-turn upsell while the recent candidate intent is still summer work', () => {
+      const result = service.check({
+        replyText: '上面推的奥乐齐属于普通兼职，如果你愿意按普通兼职身份报名，那些是可以做的。',
+        toolCalls: [],
+        userMessage: '不能做这种兼职的吗',
+        recentUserTexts: ['暑假工短期的兼职', '等上学了也是有空的话出来做做', '不能做这种兼职的吗'],
+        silent: true,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'summer_worker_alternative_upsell',
+            action: GUARDRAIL_ACTION.REVISE,
+          }),
+        ]),
+      );
+    });
+
     it('allows alternatives when the candidate explicitly changes intent this turn', () => {
       const result = service.check({
         replyText: '普通兼职也有，我继续帮你查下。',
@@ -857,6 +876,75 @@ describe('HardRulesService', () => {
             currentReplySendable: false,
           }),
         ]),
+      );
+    });
+
+    it('flags reclassifying a known student as social identity without a clear self-report (chat 6a572512)', () => {
+      const result = service.check({
+        replyText: '那这段时间就不算在校生了，完全可以按社会身份来做兼职。',
+        toolCalls: [],
+        userMessage: '高中毕业了，在等大学通知书',
+        memorySnapshot: {
+          currentStage: 'job_consultation',
+          presentedJobIds: [520361],
+          recommendedJobIds: [520361],
+          profileKeys: null,
+          sessionFacts: {
+            'interview.is_student': { value: true, confidence: 'medium', source: 'llm' },
+          },
+        },
+        silent: true,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'identity_misregistration_coaching',
+            action: GUARDRAIL_ACTION.REVISE,
+          }),
+        ]),
+      );
+    });
+
+    it('allows social identity wording after an explicit candidate self-report', () => {
+      const result = service.check({
+        replyText: '好的，你现在是社会人士，可以按社会身份登记。',
+        toolCalls: [],
+        userMessage: '我现在不是学生，是社会人士',
+        memorySnapshot: {
+          currentStage: 'job_consultation',
+          presentedJobIds: null,
+          recommendedJobIds: null,
+          profileKeys: null,
+          sessionFacts: {
+            'interview.is_student': { value: true, confidence: 'medium', source: 'llm' },
+          },
+        },
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'identity_misregistration_coaching',
+      );
+    });
+
+    it('allows accurately relaying that a job is not open to students', () => {
+      const result = service.check({
+        replyText: '这家不是学生能做的岗位，我继续帮你找接受学生的岗位。',
+        toolCalls: [],
+        userMessage: '我是学生',
+        memorySnapshot: {
+          currentStage: 'job_consultation',
+          presentedJobIds: null,
+          recommendedJobIds: null,
+          profileKeys: null,
+          sessionFacts: { 'interview.is_student': true },
+        },
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'identity_misregistration_coaching',
       );
     });
 
