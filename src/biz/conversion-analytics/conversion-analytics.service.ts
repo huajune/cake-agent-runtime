@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { addLocalDays, formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';
+import {
+  addLocalDays,
+  formatLocalDate,
+  getLocalDayStart,
+  parseLocalDateStart,
+} from '@infra/utils/date.util';
 import { OpsEventsAnalyticsRepository } from './repositories/ops-events-analytics.repository';
 import {
   ConversionBotCounts,
@@ -22,18 +27,6 @@ import {
 } from './types/conversion-analytics.types';
 
 type JsonPayload = Record<string, unknown> | null;
-
-interface DailyOpsReportRow {
-  report_date: string;
-  bot_im_id: string | null;
-  manager_name: string | null;
-  group_name: string | null;
-  friends_added_count: number | null;
-  break_ice_count: number | null;
-  booking_success_count: number | null;
-  group_invite_count: number | null;
-  interview_pass_count: number | null;
-}
 
 interface OpsEventRow {
   event_name: string;
@@ -88,18 +81,6 @@ const RANGE_DAYS: Record<ConversionRange, number> = {
   threeMonths: 90,
   sixMonths: 180,
 };
-
-const DAILY_COLUMNS = [
-  'report_date',
-  'bot_im_id',
-  'manager_name',
-  'group_name',
-  'friends_added_count',
-  'break_ice_count',
-  'booking_success_count',
-  'group_invite_count',
-  'interview_pass_count',
-].join(',');
 
 const OPS_EVENT_COLUMNS = [
   'event_name',
@@ -183,7 +164,7 @@ export class ConversionAnalyticsService {
     mode: ConversionMetricMode = 'period',
   ): Promise<ConversionKpisResponse> {
     await this.botGroupResolver.warmUp();
-    const period = this.getPeriod(filter.range);
+    const period = this.getMetricPeriod(filter, mode);
     if (mode === 'cohort') {
       return this.getCohortKpis(filter, period);
     }
@@ -249,9 +230,6 @@ export class ConversionAnalyticsService {
     period: ConversionPeriod,
     scope: 'current' | 'previous',
   ): Promise<ConversionTrendCounts> {
-    const snapshotCounts = await this.computeDailySnapshotCounts(filter, period, scope);
-    if (snapshotCounts) return snapshotCounts;
-
     const events = await this.fetchOpsEvents(
       filter,
       period,
@@ -280,7 +258,7 @@ export class ConversionAnalyticsService {
     mode: ConversionMetricMode = 'cohort',
   ): Promise<ConversionFunnelResponse> {
     await this.botGroupResolver.warmUp();
-    const period = this.getPeriod(filter.range);
+    const period = this.getMetricPeriod(filter, mode);
     if (mode === 'period') {
       return this.getPeriodFunnel(cohort, filter, period);
     }
@@ -433,6 +411,7 @@ export class ConversionAnalyticsService {
         const stageByEvent = new Map(stageDefs.map((def) => [def.eventName, def.stage] as const));
         const stageEvents = await this.fetchOpsEvents(filter, period, eventNames, scope, {
           applyGroupFilter: true,
+          dateBounds: this.getCohortObservationBounds(period, scope, filter.maturityDays ?? 0),
         });
 
         for (const event of stageEvents) {
@@ -472,9 +451,6 @@ export class ConversionAnalyticsService {
    */
   private async getPeriodTrends(filter: ConversionFilter): Promise<ConversionTrendResponse> {
     const period = this.getPeriod(filter.range);
-    const snapshotTrends = await this.getDailySnapshotTrends(filter, period);
-    if (snapshotTrends) return snapshotTrends;
-
     const events = await this.fetchOpsEvents(
       filter,
       period,
@@ -511,10 +487,11 @@ export class ConversionAnalyticsService {
   }
 
   /**
-   * cohort 趋势：每个点 = 当天新增好友这批人的后续转化，仍只计入所选时间窗内发生的下游事件。
+   * cohort 趋势：每个点 = 当天新增好友这批人的后续转化。
+   * 当 maturityDays > 0 时，入列窗口整体前移，并观察到其成熟截止日。
    */
   private async getCohortTrends(filter: ConversionFilter): Promise<ConversionTrendResponse> {
-    const period = this.getPeriod(filter.range);
+    const period = this.getMetricPeriod(filter, 'cohort');
     const { cohortMembers, rawSets } = await this.computeCohortRawSets(
       'friend_added',
       filter,
@@ -584,9 +561,11 @@ export class ConversionAnalyticsService {
         this.addIfPresent(sets.breakIce, this.getIdentityKey(event) ?? event.idempotency_key);
         break;
       case 'booking.succeeded':
-        // 按「预约次数（事件）」计数：与首页「预约成功数」一致——同一人报名多次计多次。
-        // 每行 booking.succeeded = 一次预约，idempotency_key 唯一，直接按它去重即得预约次数。
-        this.addIfPresent(sets.booking, event.idempotency_key);
+        // 转化分析统一按候选人计数；同一人重复预约只算 1 人。
+        this.addIfPresent(
+          sets.booking,
+          this.getIdentityKey(event) ?? this.getWorkOrderId(event) ?? event.idempotency_key,
+        );
         break;
       case 'group.invited':
         this.addIfPresent(sets.groupInvite, this.getIdentityKey(event) ?? event.idempotency_key);
@@ -611,67 +590,6 @@ export class ConversionAnalyticsService {
       interviewPass: sets.interviewPass.size,
       groupInvite: sets.groupInvite.size,
     };
-  }
-
-  /**
-   * 非今日 period 口径优先使用 daily_ops_report 快照：
-   * - 避免近 7/30 天为了 KPI/趋势把 ops_events 全量分页拉回 Node；
-   * - 今日仍走事件表，保证控制台实时性；
-   * - 渠道筛选目前没有日报维度，保留事件级路径。
-   *
-   * daily_ops_report 是按日/账号投影，跨日累加不是事件级去重；但作为 period 发生量快照
-   * 与页面的多日趋势/账号对比口径一致，且比事件表超时后清零更可靠。
-   */
-  private shouldUseDailySnapshot(filter: ConversionFilter): boolean {
-    return filter.range !== 'today' && filter.channels.length === 0;
-  }
-
-  private async computeDailySnapshotCounts(
-    filter: ConversionFilter,
-    period: ConversionPeriod,
-    scope: 'current' | 'previous',
-  ): Promise<ConversionTrendCounts | null> {
-    if (!this.shouldUseDailySnapshot(filter)) return null;
-
-    const rows = await this.fetchDailyRows(filter, period, scope);
-    if (rows.length === 0) return null;
-    return this.sumDailyRows(rows);
-  }
-
-  private async getDailySnapshotTrends(
-    filter: ConversionFilter,
-    period: ConversionPeriod,
-  ): Promise<ConversionTrendResponse | null> {
-    if (!this.shouldUseDailySnapshot(filter)) return null;
-
-    const rows = await this.fetchDailyRows(filter, period, 'current');
-    if (rows.length === 0) return null;
-
-    const buckets = new Map<string, DailyOpsReportRow[]>();
-    for (const row of rows) {
-      const bucket = buckets.get(row.report_date) ?? [];
-      bucket.push(row);
-      buckets.set(row.report_date, bucket);
-    }
-
-    const points = this.enumerateDates(period.startInstant, period.endInstant).map((date) =>
-      this.toTrendPoint(date, this.sumDailyRows(buckets.get(date) ?? [])),
-    );
-
-    return { mode: 'period', summary: this.sumDailyRows(rows), points };
-  }
-
-  private sumDailyRows(rows: DailyOpsReportRow[]): ConversionTrendCounts {
-    return rows.reduce<ConversionTrendCounts>(
-      (acc, row) => ({
-        friendAdded: acc.friendAdded + (row.friends_added_count ?? 0),
-        breakIce: acc.breakIce + (row.break_ice_count ?? 0),
-        booking: acc.booking + (row.booking_success_count ?? 0),
-        interviewPass: acc.interviewPass + (row.interview_pass_count ?? 0),
-        groupInvite: acc.groupInvite + (row.group_invite_count ?? 0),
-      }),
-      { friendAdded: 0, breakIce: 0, booking: 0, interviewPass: 0, groupInvite: 0 },
-    );
   }
 
   private async computeFriendAddedCohortCounts(
@@ -786,19 +704,18 @@ export class ConversionAnalyticsService {
     mode: ConversionMetricMode = 'period',
   ): Promise<ConversionBotsResponse> {
     await this.botGroupResolver.warmUp();
-    const period = this.getPeriod(filter.range);
+    const period = this.getMetricPeriod(filter, mode);
     const rows =
       mode === 'cohort'
         ? await this.getBotRowsFromCohort(filter, period)
         : await this.getBotRowsFromPeriodEvents(filter, period);
 
-    const fallbackRows =
-      rows.length === 0 && mode === 'period' && filter.channels.length === 0
-        ? await this.getBotRowsFromDailyReports(filter, period)
-        : rows;
-
     // 工单自助变更（取消/改约）按 period 直接计数 ops_events，合并到各 bot 行（不参与 cohort/漏斗）。
-    const withMutations = await this.applyMutationCounts(fallbackRows, filter, period);
+    const withMutations = await this.applyMutationCounts(
+      rows,
+      filter,
+      this.getPeriod(filter.range),
+    );
     const botIdentityAliases = await this.getBotIdentityAliases();
 
     return {
@@ -975,34 +892,6 @@ export class ConversionAnalyticsService {
     return code || 'other';
   }
 
-  // 兜底口径（§8）：仅当 period 模式、无渠道筛选且事件查询为空时启用。
-  // daily_ops_report 是「按日按 bot 的计数快照」，跨日累加不去重（同一人多日破冰会重复计），
-  // 与事件级按人去重不是同一口径，数值可能偏大；仅作为无事件数据时的降级展示。
-  private async getBotRowsFromDailyReports(
-    filter: ConversionFilter,
-    period: ConversionPeriod,
-  ): Promise<ConversionBotRow[]> {
-    const rows = await this.fetchDailyRows(filter, period, 'current');
-    const byBot = new Map<string, ConversionBotRow>();
-
-    for (const row of rows) {
-      const botImId = row.bot_im_id || 'unknown';
-      const existing =
-        byBot.get(botImId) ?? this.createBotRow(botImId, row.manager_name, row.group_name);
-
-      existing.eventCounts.friends_added += row.friends_added_count ?? 0;
-      existing.eventCounts.break_ice += row.break_ice_count ?? 0;
-      existing.eventCounts.booking_success += row.booking_success_count ?? 0;
-      existing.eventCounts.group_invite += row.group_invite_count ?? 0;
-      existing.eventCounts.interview_pass += row.interview_pass_count ?? 0;
-      existing.managerName = existing.managerName || row.manager_name || '未知账号';
-      existing.groupName = existing.groupName || row.group_name || '未分组';
-      byBot.set(botImId, this.finalizeBotRow(existing));
-    }
-
-    return Array.from(byBot.values()).map((row) => this.finalizeBotRow(row));
-  }
-
   private async getBotRowsFromPeriodEvents(
     filter: ConversionFilter,
     period: ConversionPeriod,
@@ -1078,39 +967,17 @@ export class ConversionAnalyticsService {
     return Array.from(byBot.values()).map((row) => this.finalizeBotRow(row));
   }
 
-  private async fetchDailyRows(
-    filter: ConversionFilter,
-    period: ConversionPeriod,
-    scope: 'current' | 'previous',
-  ): Promise<DailyOpsReportRow[]> {
-    const { startDate, endDate } = this.getDateBounds(period, scope);
-    const cacheKey = this.createRowsCacheKey('daily_ops_report', {
-      startDate,
-      endDate,
-      corpId: filter.corpId,
-      groups: this.normalizeListForCache(filter.groups),
-    });
-    const rows = await this.getCachedRows(cacheKey, () =>
-      this.opsEventsRepository.findDailyOpsReportRows<DailyOpsReportRow>(DAILY_COLUMNS, (q) => {
-        let query = q.gte('report_date', startDate).lte('report_date', endDate);
-        if (filter.corpId) query = query.eq('corp_id', filter.corpId);
-        return query.order('report_date', { ascending: true });
-      }),
-    );
-
-    return rows
-      .map((row) => this.enrichDailyRow(row))
-      .filter((row) => this.matchesGroupFilter(row.group_name, filter));
-  }
-
   private async fetchOpsEvents(
     filter: ConversionFilter,
     period: ConversionPeriod,
     eventNames: string[],
     scope: 'current' | 'previous',
-    options: { applyGroupFilter: boolean },
+    options: {
+      applyGroupFilter: boolean;
+      dateBounds?: { startDate: string; endDate: string };
+    },
   ): Promise<OpsEventRow[]> {
-    const { startDate, endDate } = this.getDateBounds(period, scope);
+    const { startDate, endDate } = options.dateBounds ?? this.getDateBounds(period, scope);
     const cacheKey = this.createRowsCacheKey('ops_events', {
       startDate,
       endDate,
@@ -1193,16 +1060,6 @@ export class ConversionAnalyticsService {
     }
   }
 
-  private enrichDailyRow(row: DailyOpsReportRow): DailyOpsReportRow {
-    const resolved = this.botGroupResolver.resolve(row.bot_im_id);
-    if (!resolved) return row;
-    return {
-      ...row,
-      manager_name: row.manager_name || resolved.managerName,
-      group_name: this.shouldUseResolvedGroup(row.group_name) ? resolved.groupName : row.group_name,
-    };
-  }
-
   private enrichOpsEvent(row: OpsEventRow): OpsEventRow {
     const resolved = this.botGroupResolver.resolve(row.bot_im_id);
     if (!resolved) return row;
@@ -1238,6 +1095,37 @@ export class ConversionAnalyticsService {
       previousEndDate: formatLocalDate(previousEnd),
       startInstant: start,
       endInstant: new Date(),
+    };
+  }
+
+  private getMetricPeriod(filter: ConversionFilter, mode: ConversionMetricMode): ConversionPeriod {
+    const period = this.getPeriod(filter.range);
+    const maturityDays = mode === 'cohort' ? (filter.maturityDays ?? 0) : 0;
+    if (maturityDays <= 0) return period;
+
+    return {
+      startDate: formatLocalDate(addLocalDays(period.startInstant, -maturityDays)),
+      endDate: formatLocalDate(addLocalDays(getLocalDayStart(period.endInstant), -maturityDays)),
+      previousStartDate: formatLocalDate(
+        addLocalDays(parseLocalDateStart(period.previousStartDate), -maturityDays),
+      ),
+      previousEndDate: formatLocalDate(
+        addLocalDays(parseLocalDateStart(period.previousEndDate), -maturityDays),
+      ),
+      startInstant: addLocalDays(period.startInstant, -maturityDays),
+      endInstant: addLocalDays(period.endInstant, -maturityDays),
+    };
+  }
+
+  private getCohortObservationBounds(
+    period: ConversionPeriod,
+    scope: 'current' | 'previous',
+    maturityDays: number,
+  ): { startDate: string; endDate: string } {
+    const base = this.getDateBounds(period, scope);
+    return {
+      startDate: base.startDate,
+      endDate: formatLocalDate(addLocalDays(parseLocalDateStart(base.endDate), maturityDays)),
     };
   }
 

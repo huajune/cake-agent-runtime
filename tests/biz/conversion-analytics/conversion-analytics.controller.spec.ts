@@ -23,7 +23,14 @@ describe('ConversionAnalyticsController', () => {
     const { controller, service } = buildController();
 
     await expect(
-      controller.getKpis('last30', ['北区, 南区', '东区'], 'wecom, private', ' corp-1 ', 'cohort'),
+      controller.getKpis(
+        'last30',
+        ['北区, 南区', '东区'],
+        'wecom, private',
+        ' corp-1 ',
+        'cohort',
+        '14',
+      ),
     ).resolves.toEqual({ endpoint: 'kpis' });
 
     expect(service.getKpis).toHaveBeenCalledWith(
@@ -32,6 +39,7 @@ describe('ConversionAnalyticsController', () => {
         groups: ['北区', '南区', '东区'],
         channels: ['wecom', 'private'],
         corpId: 'corp-1',
+        maturityDays: 14,
       },
       'cohort',
     );
@@ -53,6 +61,7 @@ describe('ConversionAnalyticsController', () => {
         groups: [],
         channels: [],
         corpId: undefined,
+        maturityDays: 7,
       },
       'cohort',
     );
@@ -78,7 +87,13 @@ describe('ConversionAnalyticsController', () => {
       'period',
     );
     expect(service.getBots).toHaveBeenCalledWith(
-      { range: 'threeMonths', groups: ['A'], channels: ['x', 'y'], corpId: 'corp-3' },
+      {
+        range: 'threeMonths',
+        groups: ['A'],
+        channels: ['x', 'y'],
+        corpId: 'corp-3',
+        maturityDays: 7,
+      },
       'cohort',
     );
     expect(service.getHandoff).toHaveBeenCalledWith({

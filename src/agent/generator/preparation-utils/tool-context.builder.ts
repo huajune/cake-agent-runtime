@@ -1,5 +1,6 @@
 import { ModelMessage } from 'ai';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@memory/facts/labor-form';
 import {
   filterHighConfidenceFacts,
@@ -33,8 +34,13 @@ export function buildToolContext(input: {
   entryStage: string | null;
   stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
   thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
-  turnState: { candidatePool: RecommendedJobSummary[] | null };
+  turnState: {
+    candidatePool: RecommendedJobSummary[] | null;
+    imageBrandResolutions: BrandResolution[];
+  };
   contactBrandAliases: string[];
+  /** 本轮生效的会话品牌状态（持久化状态或首轮 seed），透传给工具兜底。 */
+  sessionBrandState: SessionBrandState | null;
   currentUserMessage?: string;
   currentLaborFormIntent: LaborFormIntentDecision;
   /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
@@ -49,6 +55,7 @@ export function buildToolContext(input: {
     thresholds,
     turnState,
     contactBrandAliases,
+    sessionBrandState,
     currentUserMessage,
     currentLaborFormIntent,
     bookingWorkOrderJobIds,
@@ -92,9 +99,13 @@ export function buildToolContext(input: {
     onJobsFetched: async (jobs) => {
       turnState.candidatePool = jobs as RecommendedJobSummary[];
     },
+    onImageBrandResolved: (resolutions) => {
+      turnState.imageBrandResolutions.push(...resolutions);
+    },
     botUserId: params.botUserId,
     contactName: params.contactName,
     contactBrandAliases,
+    sessionBrandState,
     botImId: params.botImId,
     groupId: params.groupId,
     strategySource: params.strategySource,

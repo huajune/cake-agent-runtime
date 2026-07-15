@@ -69,6 +69,12 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('以用户最新表述为准');
   });
 
+  it('should keep confirmed student identity sticky across social-job discussion', () => {
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('身份粘性');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('社会人士岗位会影响读书吗');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不得**提取为 is_student=false');
+  });
+
   it('should instruct LLM to extract Boss title bracket brand ids', () => {
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('brand_ids');
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('[10239]');

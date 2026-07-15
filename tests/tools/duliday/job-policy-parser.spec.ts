@@ -23,6 +23,28 @@ describe('job-policy-parser', () => {
     expect(cleanPolicyText('辛苦跟店长确认。请提前联系\n手动输入')).toBe('请提前联系');
   });
 
+  it('keeps health certificate unknown without job configuration', () => {
+    const analysis = buildJobPolicyAnalysis({
+      basicInfo: { jobId: 1, jobName: '店员' },
+      hiringRequirement: { certificate: {} },
+      interviewProcess: {},
+    } as never);
+
+    expect(analysis.normalizedRequirements.healthCertGate).toBe('unknown');
+    expect(analysis.fieldGuidance.screeningFields).not.toContain('健康证情况');
+  });
+
+  it('allows an explicit no-health-certificate exception', () => {
+    const analysis = buildJobPolicyAnalysis({
+      basicInfo: { jobId: 1, jobName: '店员' },
+      hiringRequirement: { certificate: { healthCertificate: '无需健康证' } },
+      interviewProcess: {},
+    } as never);
+
+    expect(analysis.normalizedRequirements.healthCertGate).toBe('not_required');
+    expect(analysis.fieldGuidance.screeningFields).not.toContain('健康证情况');
+  });
+
   it('should remove clearly expired date constraints but keep active notes', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-03-30T08:00:00.000Z'));
 

@@ -1,4 +1,4 @@
-import { findBrandFuzzyMatches } from '@tools/duliday/job-list/brand-fuzzy-match.util';
+import { findBrandFuzzyMatches } from '@resolution/brand/fuzzy-recall';
 
 describe('findBrandFuzzyMatches', () => {
   describe('badcase batch_6a0c074c536c9654029b6930 — 刘姐妹 ↔ 成都你六姐', () => {

@@ -3,68 +3,88 @@ import {
   applyScheduleConstraint,
   collectLaborFormAnomalies,
   filterJobsByRequestedCategories,
-  filterJobsToRequestedBrands,
+  filterJobsExcludingBrands,
+  filterJobsToAppliedBrands,
   formatScheduleConstraintLabel,
   haversineDistance,
   scoreJobAgainstRequestedCategories,
 } from '@tools/duliday/job-list/search.util';
 
 describe('job-list search util', () => {
-  describe('filterJobsToRequestedBrands (Phase 1.C.3)', () => {
+  describe('filterJobsToAppliedBrands（§8.2 入口标准化后的等值比较）', () => {
     const dami = { basicInfo: { jobId: 1, brandName: '大米先生' } };
     const swei = { basicInfo: { jobId: 2, brandName: '史伟莎销售' } };
-    const kfc = { basicInfo: { jobId: 3, brandName: 'KFC肯德基' } };
+    const kfc = { basicInfo: { jobId: 3, brandId: 10001, brandName: '肯德基' } };
     const noBrand = { basicInfo: { jobId: 4 } };
 
-    it('returns all jobs when brandAliasList empty', () => {
-      const out = filterJobsToRequestedBrands([dami, swei], []);
+    it('returns all jobs when target empty', () => {
+      const out = filterJobsToAppliedBrands([dami, swei], { brandIds: [], canonicalNames: [] });
       expect(out).toHaveLength(2);
     });
 
-    it('keeps only jobs whose brandName contains the alias (substring)', () => {
-      const out = filterJobsToRequestedBrands([dami, swei, kfc], ['大米先生']);
+    it('keeps only jobs whose brandName equals the canonical name (badcase bb012h5c)', () => {
+      const out = filterJobsToAppliedBrands([dami, swei, kfc], {
+        brandIds: [],
+        canonicalNames: ['大米先生'],
+      });
       expect(out).toEqual([dami]);
     });
 
-    it('matches when alias is a substring of brandName (e.g. "肯德基" in "KFC肯德基")', () => {
-      const out = filterJobsToRequestedBrands([dami, kfc], ['肯德基']);
+    it('matches by brandId when present', () => {
+      const out = filterJobsToAppliedBrands([dami, kfc], {
+        brandIds: [10001],
+        canonicalNames: [],
+      });
       expect(out).toEqual([kfc]);
     });
 
-    it('matches when alias is brand + generic store suffix (e.g. brand "肯德基" + alias "肯德基店")', () => {
-      const job = { basicInfo: { jobId: 5, brandName: '肯德基' } };
-      const out = filterJobsToRequestedBrands([job], ['肯德基店']);
-      expect(out).toEqual([job]);
-    });
-
-    it('matches when alias is brand + 门店/分店 suffix', () => {
-      const job = { basicInfo: { jobId: 6, brandName: '麦当劳' } };
-      expect(filterJobsToRequestedBrands([job], ['麦当劳门店'])).toEqual([job]);
-      expect(filterJobsToRequestedBrands([job], ['麦当劳分店'])).toEqual([job]);
-      expect(filterJobsToRequestedBrands([job], ['麦当劳旗舰店'])).toEqual([job]);
-    });
-
-    it('does NOT match noise-y alias that merely contains brand as substring (e.g. "汉堡不错" vs brand "汉堡")', () => {
-      // review feedback：裸 alias.includes(brandName) 反向匹配会让"汉堡不错"误伤"汉堡"品牌。
-      // 现在策略改为只走 forward + 剥常见门店后缀，"不错" 不在后缀白名单里，应该被排除。
-      const job = { basicInfo: { jobId: 7, brandName: '汉堡' } };
-      expect(filterJobsToRequestedBrands([job], ['汉堡不错'])).toEqual([]);
-    });
-
-    it('does NOT match when brand is a single-char substring of unrelated alias', () => {
-      // 极短品牌名时的退化场景：brand "汉" 不应被任意含 "汉" 字符的 alias 命中
-      const job = { basicInfo: { jobId: 8, brandName: '汉' } };
-      expect(filterJobsToRequestedBrands([job], ['汉堡王不错'])).toEqual([]);
+    it('equality is normalized (case/separators) but NOT substring containment', () => {
+      const brandWithSpace = { basicInfo: { jobId: 5, brandName: 'M Stand' } };
+      expect(
+        filterJobsToAppliedBrands([brandWithSpace], { brandIds: [], canonicalNames: ['mstand'] }),
+      ).toEqual([brandWithSpace]);
+      // 私有包含匹配已废弃（§5.1）："肯德基" 不再命中 "KFC肯德基" 这类非等值品牌名
+      const kfcVariant = { basicInfo: { jobId: 6, brandName: 'KFC肯德基' } };
+      expect(
+        filterJobsToAppliedBrands([kfcVariant], { brandIds: [], canonicalNames: ['肯德基'] }),
+      ).toEqual([]);
     });
 
     it('drops jobs with missing brandName', () => {
-      const out = filterJobsToRequestedBrands([dami, noBrand], ['大米先生']);
+      const out = filterJobsToAppliedBrands([dami, noBrand], {
+        brandIds: [],
+        canonicalNames: ['大米先生'],
+      });
       expect(out).toEqual([dami]);
     });
 
-    it('accepts any of multiple aliases', () => {
-      const out = filterJobsToRequestedBrands([dami, swei, kfc], ['大米先生', '肯德基']);
+    it('accepts any of multiple canonical names', () => {
+      const out = filterJobsToAppliedBrands([dami, swei, kfc], {
+        brandIds: [],
+        canonicalNames: ['大米先生', '肯德基'],
+      });
       expect(out).toEqual([dami, kfc]);
+    });
+  });
+
+  describe('filterJobsExcludingBrands（§8.1 exclude 本地后过滤）', () => {
+    const dami = { basicInfo: { jobId: 1, brandName: '大米先生' } };
+    const kfc = { basicInfo: { jobId: 3, brandId: 10001, brandName: '肯德基' } };
+
+    it('removes excluded brands by name or id, keeps the rest', () => {
+      expect(
+        filterJobsExcludingBrands([dami, kfc], { brandIds: [10001], canonicalNames: [] }),
+      ).toEqual([dami]);
+      expect(
+        filterJobsExcludingBrands([dami, kfc], { brandIds: [], canonicalNames: ['大米先生'] }),
+      ).toEqual([kfc]);
+    });
+
+    it('returns all jobs when target empty', () => {
+      expect(filterJobsExcludingBrands([dami, kfc], { brandIds: [], canonicalNames: [] })).toEqual([
+        dami,
+        kfc,
+      ]);
     });
   });
 
@@ -112,8 +132,12 @@ describe('job-list search util', () => {
       basicInfo: { jobId: 12, brandName: '麦当劳', laborForm: '兼职', partTimeJobType: '小时工' },
     };
     // 历史扁平脏数据（细分值写在 laborForm 上）：匹配层不兜底，应处处不被认作兼职形态
-    const dirtyFlatSummerJob = { basicInfo: { jobId: 7, brandName: '必胜客', laborForm: '暑假工' } };
-    const dirtyFlatHourlyJob = { basicInfo: { jobId: 8, brandName: '汉堡王', laborForm: '小时工' } };
+    const dirtyFlatSummerJob = {
+      basicInfo: { jobId: 7, brandName: '必胜客', laborForm: '暑假工' },
+    };
+    const dirtyFlatHourlyJob = {
+      basicInfo: { jobId: 8, brandName: '汉堡王', laborForm: '小时工' },
+    };
 
     it('does not filter when candidate has no labor form preference', () => {
       const result = applyLaborFormConstraint([summerJob, hourlyJob], null);
@@ -168,10 +192,7 @@ describe('job-list search util', () => {
     });
 
     it('寒假工: no exact subdivision → relaxes to laborForm=兼职 family with signal', () => {
-      const result = applyLaborFormConstraint(
-        [fullTimeJob, summerJob, plainPartTimeJob],
-        '寒假工',
-      );
+      const result = applyLaborFormConstraint([fullTimeJob, summerJob, plainPartTimeJob], '寒假工');
       expect(result.applied).toBe(true);
       expect(result.relaxedToFamily).toBe(true);
       expect(result.jobs).toEqual([summerJob, plainPartTimeJob]);
@@ -227,7 +248,14 @@ describe('job-list search util', () => {
     it('flags subdivision values written on laborForm (legacy flat data)', () => {
       const anomalies = collectLaborFormAnomalies([
         { basicInfo: { jobId: 7, brandName: '必胜客', laborForm: '暑假工' } },
-        { basicInfo: { jobId: 12, brandName: '麦当劳', laborForm: '兼职', partTimeJobType: '小时工' } },
+        {
+          basicInfo: {
+            jobId: 12,
+            brandName: '麦当劳',
+            laborForm: '兼职',
+            partTimeJobType: '小时工',
+          },
+        },
       ]);
       expect(anomalies).toEqual([
         {

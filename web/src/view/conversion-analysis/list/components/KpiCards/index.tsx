@@ -1,5 +1,6 @@
 import type {
   ConversionKpisResponse,
+  ConversionMetricMode,
   ConversionRateMetric,
 } from '@/api/types/conversion-analytics.types';
 import {
@@ -12,22 +13,34 @@ import {
 } from 'lucide-react';
 import { useCountUp } from '@/hooks/useCountUp';
 import { KPI_DEFS } from '../../types';
+import MetricModeTabs from '../MetricModeTabs';
 import styles from '../../styles/index.module.scss';
 
 interface KpiCardsProps {
   data?: ConversionKpisResponse;
   loading: boolean;
+  mode: ConversionMetricMode;
+  maturityDays: number;
+  onModeChange: (mode: ConversionMetricMode) => void;
 }
 
-export default function KpiCards({ data, loading }: KpiCardsProps) {
+export default function KpiCards({
+  data,
+  loading,
+  mode,
+  maturityDays,
+  onModeChange,
+}: KpiCardsProps) {
   return (
     <>
-      {/* KPI 名片固定「同一时段(period)」口径，不随下方各模块的口径开关变化；
-          各阶段均按「人」去重，分母为 0 时不计算比率（§2/§6）。 */}
-      <p className={styles.caliberNote}>
-        口径：同一时段发生量快照（period，固定）· 各阶段按「人」去重 ·
-        与下方可切换口径的模块可能不同
-      </p>
+      <div className={styles.caliberToolbar}>
+        <p className={styles.caliberNote}>
+          {mode === 'cohort'
+            ? `口径：仅统计至少成熟 ${maturityDays} 天的新增好友批次 · 同一批人逐级追踪 · 各阶段按人去重`
+            : '口径：同一时间窗内各阶段分别发生 · 全局按候选人去重 · 非严格漏斗'}
+        </p>
+        <MetricModeTabs mode={mode} onChange={onModeChange} label="核心指标口径" />
+      </div>
       <section className={styles.kpiBand}>
         {KPI_DEFS.map((item) => {
           const Icon = KPI_ICONS[item.key];

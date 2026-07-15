@@ -343,10 +343,17 @@ export class GeneratorAgent {
   private async runTurnEndLifecycle(
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages'
+      | 'corpId'
+      | 'userId'
+      | 'sessionId'
+      | 'messageId'
+      | 'botImId'
+      | 'normalizedMessages'
+      | 'contactName'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
+        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
       };
     },
     assistantText?: string,
@@ -360,6 +367,8 @@ export class GeneratorAgent {
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
         candidatePool: ctx.turnState.candidatePool,
+        contactName: ctx.contactName,
+        imageBrandResolutions: ctx.turnState.imageBrandResolutions,
       },
       assistantText,
     );
@@ -368,10 +377,17 @@ export class GeneratorAgent {
   private dispatchTurnEndLifecycle(
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages'
+      | 'corpId'
+      | 'userId'
+      | 'sessionId'
+      | 'messageId'
+      | 'botImId'
+      | 'normalizedMessages'
+      | 'contactName'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
+        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
       };
     },
     assistantText?: string,
@@ -392,10 +408,11 @@ export class GeneratorAgent {
     result: GeneratorRunResult,
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'botImId' | 'normalizedMessages'
+      'corpId' | 'userId' | 'sessionId' | 'botImId' | 'normalizedMessages' | 'contactName'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
+        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
       };
     },
     messageId: string | undefined,

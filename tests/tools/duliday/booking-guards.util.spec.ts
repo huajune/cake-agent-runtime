@@ -63,6 +63,7 @@ describe('runBookingGuards · hard-requirements', () => {
         name: realName,
         interviewTime,
         candidateGenderId: 2,
+        candidateHasHealthCertificate: 1,
       });
       expect(result).not.toBeNull();
       expect(result?._outcome).toContain('性别');
@@ -79,6 +80,7 @@ describe('runBookingGuards · hard-requirements', () => {
         name: realName,
         interviewTime,
         candidateGenderId: 2,
+        candidateHasHealthCertificate: 1,
       });
       expect(result).toBeNull();
     });
@@ -94,6 +96,7 @@ describe('runBookingGuards · hard-requirements', () => {
         name: realName,
         interviewTime,
         candidateGenderId: 1,
+        candidateHasHealthCertificate: 1,
       });
       expect(result).toBeNull();
     });
@@ -108,6 +111,7 @@ describe('runBookingGuards · hard-requirements', () => {
         job,
         name: realName,
         interviewTime,
+        candidateHasHealthCertificate: 1,
       });
       expect(result).toBeNull();
     });
@@ -177,7 +181,7 @@ describe('runBookingGuards · hard-requirements', () => {
       expect(result).toBeNull();
     });
 
-    it('passes when 岗位 healthCert unspecified', () => {
+    it('passes when job healthCert is unspecified', () => {
       const job = makeJob({
         hiringRequirement: { certificate: {} },
       });
@@ -189,6 +193,78 @@ describe('runBookingGuards · hard-requirements', () => {
       });
       expect(result).toBeNull();
     });
+
+    it('blocks when the required health certificate value is missing', () => {
+      const job = makeJob({
+        hiringRequirement: { certificate: { healthCertificate: '食品健康证' } },
+      });
+      const result = runBookingGuards({ job, name: realName, interviewTime });
+      expect(result).not.toBeNull();
+      expect(result?._replyInstruction).toContain('本地健康证');
+    });
+
+    it('blocks a forged value 1 when the candidate fact says non-local certificate', () => {
+      const job = makeJob({
+        hiringRequirement: { certificate: { healthCertificate: '食品健康证' } },
+      });
+      const result = runBookingGuards({
+        job,
+        name: realName,
+        interviewTime,
+        candidateHasHealthCertificate: 1,
+        candidateHealthCertificateFact: '非本地健康证',
+      });
+      expect(result).not.toBeNull();
+      expect(result?._replyInstruction).toContain('异地健康证');
+    });
+  });
+
+  describe('household conflict · guardrail review record 589', () => {
+    const restrictedJob = () =>
+      makeJob({
+        hiringRequirement: {
+          requirementsForHometown: {
+            nativePlaceRequirementType: '不要',
+            nativePlaces: ['天津市', '江西省'],
+          },
+        },
+      });
+
+    it('blocks before booking when candidate province is explicitly excluded', () => {
+      const result = runBookingGuards({
+        job: restrictedJob(),
+        name: realName,
+        interviewTime,
+        candidateHouseholdProvinceId: 120000,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.errorType).toBe('booking.rejected');
+      expect(result?._outcome).toContain('内部硬性条件');
+      expect(result?._replyInstruction).not.toContain('天津');
+      expect(result?._replyInstruction).not.toContain('江西');
+      expect(result?._replyInstruction).toContain('禁止透露');
+    });
+
+    it('passes when candidate province is not excluded or is unknown', () => {
+      expect(
+        runBookingGuards({
+          job: restrictedJob(),
+          name: realName,
+          interviewTime,
+          candidateHouseholdProvinceId: 310000,
+          candidateHasHealthCertificate: 1,
+        }),
+      ).toBeNull();
+      expect(
+        runBookingGuards({
+          job: restrictedJob(),
+          name: realName,
+          interviewTime,
+          candidateHasHealthCertificate: 1,
+        }),
+      ).toBeNull();
+    });
   });
 
   describe('student conflict · batch_6a559b7ace406a6aeedf1f8b_1783995721291', () => {
@@ -199,6 +275,7 @@ describe('runBookingGuards · hard-requirements', () => {
         name: realName,
         interviewTime,
         candidateIsStudent: true,
+        candidateHasHealthCertificate: 1,
       });
 
       expect(result).not.toBeNull();
@@ -213,6 +290,7 @@ describe('runBookingGuards · hard-requirements', () => {
           name: realName,
           interviewTime,
           candidateIsStudent: false,
+          candidateHasHealthCertificate: 1,
         }),
       ).toBeNull();
       expect(
@@ -221,6 +299,7 @@ describe('runBookingGuards · hard-requirements', () => {
           name: realName,
           interviewTime,
           candidateIsStudent: true,
+          candidateHasHealthCertificate: 1,
         }),
       ).toBeNull();
     });

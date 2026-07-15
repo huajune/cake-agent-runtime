@@ -32,6 +32,15 @@ describe('GuardrailReviewPacketBuilder', () => {
                 jobSalary: { baseSalary: '24元/小时' },
               },
             ],
+            queryMeta: {
+              brand: {
+                filterMode: 'enforce',
+                brandSource: 'model_input',
+                appliedBrandIds: [],
+                appliedCanonicalNames: ['肯德基'],
+                rejected: [{ input: 'Gattouzo', reason: 'unmatched' }],
+              },
+            },
           },
           resultCount: 1,
           status: 'ok',
@@ -75,7 +84,10 @@ describe('GuardrailReviewPacketBuilder', () => {
       content: '我在静安寺附近，想看肯德基',
       messageType: 'text',
     });
+    // §11 第三切换点：requestedBrands 来自 queryMeta.brand（工具实际应用），
+    // 不再读模型原始 args.brandAliasList；被拒绝入参单独暴露。
     expect(packet.evidence.jobList?.requestedBrands).toEqual(['肯德基']);
+    expect(packet.evidence.jobList?.rejectedBrandInputs).toEqual(['Gattouzo']);
     expect(packet.evidence.jobList?.hasEvidence).toBe(true);
     // args 只保留查询意图白名单：分页/坐标不透传，空数组剔除，距离召回压成布尔标记。
     expect(packet.evidence.jobList?.args).toEqual({
@@ -131,6 +143,40 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(packet.evidence.jobList?.hasEvidence).toBe(true);
     expect(packet.evidence.jobList?.markdownExcerpt).toContain('成都你六姐（亚繁亚乐城店）');
     expect(packet.evidence.jobList?.markdownExcerptChars).toBeGreaterThan(0);
+  });
+
+  it('labels exclude-mode brands as excluded instead of requested', () => {
+    const packet = builder.build({
+      reply: '给你推荐大米先生的岗位',
+      userMessage: '别推肯德基了',
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: { brandAliasList: ['肯德基'], brandFilterMode: 'exclude' },
+          result: {
+            markdown: '# 在招岗位\n大米先生（人民广场店）',
+            queryMeta: {
+              brand: {
+                filterMode: 'exclude',
+                brandSource: 'model_input',
+                appliedBrandIds: [10001],
+                appliedCanonicalNames: ['肯德基'],
+                rejected: [],
+              },
+            },
+          },
+          resultCount: 1,
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.jobList?.requestedBrands).toEqual([]);
+    expect(packet.evidence.jobList?.excludedBrands).toEqual(['肯德基']);
+    expect(packet.evidence.jobList?.args).toEqual({
+      brandAliasList: ['肯德基'],
+      brandFilterMode: 'exclude',
+    });
   });
 
   it('keeps resolved geocode coordinates even when candidates are empty', () => {

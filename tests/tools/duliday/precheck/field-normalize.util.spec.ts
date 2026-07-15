@@ -77,6 +77,7 @@ describe('field-normalize.util', () => {
     it('maps 有 / 有健康证 to "有"', () => {
       expect(normalizeHealthCertificateValue('有')).toBe('有');
       expect(normalizeHealthCertificateValue('有健康证')).toBe('有');
+      expect(normalizeHealthCertificateValue('上海本地健康证')).toBe('有');
     });
 
     it('captures explicit refusal as "无且不接受办理健康证"', () => {

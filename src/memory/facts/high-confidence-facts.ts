@@ -1,4 +1,7 @@
 import type { BrandItem } from '@/sponge/sponge.types';
+import { resolveBrands } from '@resolution/brand/brand-matcher';
+import { buildBrandCatalogIndex } from '@resolution/brand/catalog-index';
+import { buildExactMatchTokens, normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { formatLocalDate } from '@infra/utils/date.util';
 import {
   FALLBACK_EXTRACTION,
@@ -40,53 +43,6 @@ const CITY_DICT: Record<string, true> = Object.fromEntries(
 
 /** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
 const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开发区))/g;
-
-// ── 品牌匹配常量 ───────────────────────────────────────────────────────────
-
-/**
- * 品牌匹配降噪词表：仅用于 buildExactMatchTokens 内的 stripBrandNoisePatterns，
- * 目的是从候选人消息中剥离求职意图词和语气词，留下纯品牌名。
- * 注意：其中也包含用工形式词，但不冲突——labor_form 意向解析跑在原始消息上，
- * 此清洗只在品牌匹配通道内生效。
- */
-const BRAND_NOISE_PATTERNS = [
-  '我想找',
-  '想找',
-  '我想看',
-  '想看',
-  '我想问',
-  '想问',
-  '问下',
-  '看下',
-  '看看',
-  '了解下',
-  '咨询下',
-  '求职',
-  '找工作',
-  '兼职',
-  '全职',
-  '小时工',
-  '寒假工',
-  '暑假工',
-  '临时工',
-  '岗位',
-  '工作',
-  '品牌',
-  '门店',
-  '店里',
-  '店',
-  '有没有',
-  '有吗',
-  '在招吗',
-  '招吗',
-  '吗',
-  '呀',
-  '呢',
-  '哈',
-  '哦',
-  '啊',
-] as const;
-const CONJUNCTION_SPLIT_REGEX = /(?:或者|和|跟|或|and|or)/;
 
 // ── 个人信息关键词 ─────────────────────────────────────────────────────────
 
@@ -189,117 +145,6 @@ export interface BrandAliasHint {
   sourceText: string;
 }
 
-interface BrandCandidate {
-  brandName: string;
-  alias: string;
-  normalized: string;
-  /**
-   * 是否允许子串包含匹配。
-   * 短别称（如 "报""全家""店""mc"）做包含会误命中日常词（"报名""我们全家"），
-   * 因此仅对足够长、辨识度高的别称启用包含：中文 ≥3 字、英数 ≥4 字。
-   */
-  containEligible: boolean;
-}
-
-/**
- * 通用短语别称黑名单（归一化形态）：这些别称虽然长度达标，但本身是日常用语/同音词，
- * 做子串包含会把普通句子误判为品牌意向（如 "给我来一份工作" 命中 来伊份 的别称 "来一份"）。
- * 命中黑名单的别称降级为仅全等匹配——用户单独说 "来一份" 仍能命中，嵌在句子里则不命中。
- */
-const BRAND_GENERIC_ALIAS_BLOCKLIST = new Set(['来一份', '来1份']);
-
-/** 别称是否长到可以安全地做子串包含匹配。 */
-function isBrandContainEligible(normalized: string): boolean {
-  if (BRAND_GENERIC_ALIAS_BLOCKLIST.has(normalized)) return false;
-  const isCjk = /[一-龥]/.test(normalized);
-  return isCjk ? normalized.length >= 3 : normalized.length >= 4;
-}
-
-/**
- * 品类（行业）配置。
- *
- * 真实场景中候选人说"咖啡"等品类词，指的是**该品类的相关品牌**（想去咖啡店），
- * 而不是"咖啡师"这个工种。因此命中品类词时，应展开为该品类下的全部品牌走品牌召回，
- * 不能窄化成 jobCategoryList=["咖啡师"]。
- *
- * 成员品牌的解析规则（见 resolveCategoryBrands）：
- *   名称/别名（归一化后）包含 keywords 任一的品牌（数据驱动，新品牌自动纳入）
- *   ∪ extraBrands（名字不含品类词但确属该品类，如「拉瓦萨」是咖啡品牌但名称无"咖啡"）
- *   − excludeBrands（名字含关键词但其实不属该品类，如早茶店"得闲饮茶"不是奶茶）
- *
- * keywords 同时用于：① 识别用户消息里的品类意图；② 从品牌库筛选成员品牌。
- *
- * 注意：只收录已人工核对过的品类。奶茶/火锅等品类纯靠子串会误纳（如"得闲饮茶"是早茶
- * 而非奶茶），需逐一核对 extraBrands/excludeBrands 后再开启，避免召回噪音。
- */
-interface BrandCategory {
-  /** 品类显示名，用于 evidence/日志 */
-  label: string;
-  /** 触发词 & 成员筛选词（原文，匹配时统一归一化） */
-  keywords: string[];
-  /** 名字不含品类词但确属该品类的品牌，手工补录 */
-  extraBrands: string[];
-  /** 名字含关键词但实际不属该品类的品牌，手工排除 */
-  excludeBrands: string[];
-}
-
-const BRAND_CATEGORIES: BrandCategory[] = [
-  {
-    label: '咖啡',
-    keywords: ['咖啡', 'coffee'],
-    extraBrands: ['拉瓦萨'],
-    excludeBrands: [],
-  },
-];
-
-/**
- * 所有品类关键词的归一化集合。
- * 这些词被"预留"给品类展开，不再作为单一品牌的别称参与精确匹配——
- * 否则像 Tims咖啡 把泛词"咖啡"挂成自己别称，会导致"咖啡"被错配成单一品牌。
- */
-const CATEGORY_KEYWORD_NORMALIZED = new Set(
-  BRAND_CATEGORIES.flatMap((category) =>
-    category.keywords.map((keyword) => normalizeForBrandMatch(keyword)).filter(Boolean),
-  ),
-);
-
-interface ResolvedBrandCategory {
-  label: string;
-  /** 归一化后的触发词 */
-  keywords: string[];
-  /** 该品类下的成员品牌标准名 */
-  brands: string[];
-}
-
-/** 按品牌库解析每个品类的成员品牌（数据驱动 + 手工补录/排除）。 */
-function resolveCategoryBrands(category: BrandCategory, brandData: BrandItem[]): string[] {
-  const keywords = category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean);
-  const brands = new Set<string>();
-
-  for (const brand of brandData) {
-    const fields = [brand.name, ...(brand.aliases ?? [])].map((v) => normalizeForBrandMatch(v));
-    if (fields.some((field) => keywords.some((kw) => field.includes(kw)))) {
-      brands.add(brand.name);
-    }
-  }
-  for (const extra of category.extraBrands) {
-    if (brandData.some((brand) => brand.name === extra)) brands.add(extra);
-  }
-  for (const excluded of category.excludeBrands) {
-    brands.delete(excluded);
-  }
-
-  return Array.from(brands);
-}
-
-function buildResolvedCategories(brandData: BrandItem[]): ResolvedBrandCategory[] {
-  return BRAND_CATEGORIES.map((category) => ({
-    label: category.label,
-    keywords: category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean),
-    brands: resolveCategoryBrands(category, brandData),
-  })).filter((category) => category.keywords.length > 0 && category.brands.length > 0);
-}
-
 interface LocationSignals {
   city: CityFact | null;
   district: string[];
@@ -312,9 +157,9 @@ interface LocationSignals {
  * 引用格式：`[引用 XXX：<被引用内容>]` 或行首 `引用 XXX：<内容>`。
  * 被引用内容通常是招募经理发的岗位描述，其中的年龄/班次/薪资等数值
  * 属于岗位要求，不是候选人自陈——必须在规则提取前剥离，否则所有
- * extract* 函数都会误提取引用块内的实体。
+ * extract* 函数都会误提取引用块内的实体（品牌解析同理：引用块里的品牌是经理的话）。
  */
-function stripQuotedBlocks(message: string): string {
+export function stripQuotedBlocks(message: string): string {
   return message
     .replace(/\[引用[^\]]*\]/g, '')
     .replace(/^引用\s+[^：]+：.*$/gm, '')
@@ -513,12 +358,11 @@ export function extractHighConfidenceFacts(
   const facts = cloneFallbackExtraction();
   const reasons: string[] = [];
 
+  // 品牌收口（§9.2）：本函数不再内联直写 preferences.brands——品牌真相唯一存储是
+  // brand_state（写入只经 turn-finalizer 的 reducer），preferences.brands 退化为只读投影。
+  // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
   const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
   if (aliasHints.length > 0) {
-    const brands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
-    facts.preferences.brands = ruleValue(brands, {
-      evidence: `品牌别名识别：${brands.join('、')}`,
-    });
     reasons.push(
       ...aliasHints.map(
         (hint) =>
@@ -644,13 +488,87 @@ export function extractHighConfidenceFacts(
   };
 }
 
+/**
+ * 品牌别名命中提示（适配层，过渡期）。
+ *
+ * 匹配主体已迁入 `resolution/brand`（§5.1 单一居所），本函数消费新解析结果、
+ * 保持旧接口与输出形态兼容：提及级线索（不区分极性——"不要肯德基"仍产出肯德基的
+ * 归一化线索，极性语义由 brand_state reducer 消费 resolveBrands 原始结果处理），
+ * 品类兜底行为不回归（已上线的咖啡品类召回）。
+ */
 export function detectBrandAliasHints(
   userMessages: string[],
   brandData: BrandItem[],
 ): BrandAliasHint[] {
   if (userMessages.length === 0 || brandData.length === 0) return [];
 
-  const { candidates, categories } = getBrandMatchAssets(brandData);
+  const hints: BrandAliasHint[] = [];
+  const seen = new Set<string>();
+  for (const message of userMessages) {
+    for (const resolution of resolveBrands(message, 'user_text', brandData)) {
+      if (resolution.ambiguous || !resolution.canonicalName) continue;
+      const matchedAlias =
+        resolution.matchType === 'category_expansion'
+          ? `${resolution.matchedText}(品类)`
+          : (resolution.matchedText ?? resolution.canonicalName);
+      const dedupeKey = `${resolution.canonicalName}::${message}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      hints.push({ brandName: resolution.canonicalName, matchedAlias, sourceText: message });
+    }
+  }
+  return hints;
+}
+
+/** 新旧品牌匹配路径的差异快照（对比期观测事件 brand_resolution_shadow_diff 的载荷）。 */
+export interface BrandAliasShadowDiff {
+  inputs: string[];
+  legacyBrands: string[];
+  nextBrands: string[];
+  catalogSize: number;
+}
+
+/**
+ * 带新旧对照的品牌线索检测（§15.2 并行对比期）。
+ *
+ * 新路径（resolveBrands）是生效路径；旧匹配算法作为对照组在 shadow 运行，
+ * 两侧品牌集合不一致时返回 diff（由调用方发射 brand_resolution_shadow_diff 事件），
+ * 一致时 diff 为 null（仅计数不落行）。旧路径随 §15.6 指标达标后物理删除。
+ */
+export function detectBrandAliasHintsWithShadow(
+  userMessages: string[],
+  brandData: BrandItem[],
+): { hints: BrandAliasHint[]; shadowDiff: BrandAliasShadowDiff | null } {
+  const hints = detectBrandAliasHints(userMessages, brandData);
+  if (userMessages.length === 0 || brandData.length === 0) {
+    return { hints, shadowDiff: null };
+  }
+
+  const legacyBrands = Array.from(
+    new Set(legacyDetectBrandAliasHints(userMessages, brandData).map((hint) => hint.brandName)),
+  ).sort();
+  const nextBrands = Array.from(new Set(hints.map((hint) => hint.brandName))).sort();
+  const identical =
+    legacyBrands.length === nextBrands.length &&
+    legacyBrands.every((brand, index) => brand === nextBrands[index]);
+
+  return {
+    hints,
+    shadowDiff: identical
+      ? null
+      : { inputs: userMessages, legacyBrands, nextBrands, catalogSize: brandData.length },
+  };
+}
+
+/**
+ * 旧品牌匹配算法（对照组，§15.6 前保留）：token 全等 + 长别称整句包含 + 品类兜底。
+ * 与迁移前的 detectBrandAliasHints 行为一致（基于同一套已迁移的归一化原语重建）。
+ */
+function legacyDetectBrandAliasHints(
+  userMessages: string[],
+  brandData: BrandItem[],
+): BrandAliasHint[] {
+  const { candidates, categories } = buildBrandCatalogIndex(brandData);
   const hints: BrandAliasHint[] = [];
   const seen = new Set<string>();
 
@@ -665,14 +583,10 @@ export function detectBrandAliasHints(
     const tokens = buildExactMatchTokens(message);
     if (tokens.length === 0) continue;
 
-    // 整条消息的归一化形态，用于长别称的子串包含匹配，
-    // 这样 "我要瑞幸咖啡兼职" 这类品牌嵌在句子里的说法也能命中，不再依赖降噪表恰好剥干净。
     const normalizedMessage = normalizeForBrandMatch(message);
 
     let matchedSpecificBrand = false;
     for (const candidate of candidates) {
-      // 短别称：仍走 token 全等，避免 "报"→"报名"、"全家"→"我们全家" 等误命中。
-      // 长别称：在全等之外，额外允许整句包含该别称。
       const matched =
         tokens.some((token) => token === candidate.normalized) ||
         (candidate.containEligible && normalizedMessage.includes(candidate.normalized));
@@ -682,8 +596,6 @@ export function detectBrandAliasHints(
       pushHint(candidate.brandName, candidate.alias, message);
     }
 
-    // 品类兜底：用户说"咖啡"等品类词（且未指名某个具体品牌）时，
-    // 展开为该品类下的全部相关品牌——真实场景里品类词指的就是相关品牌，而非"咖啡师"工种。
     if (!matchedSpecificBrand) {
       for (const category of categories) {
         if (!category.keywords.some((keyword) => normalizedMessage.includes(keyword))) continue;
@@ -734,7 +646,7 @@ export function normalizeGenderValue(value: unknown): '男' | '女' | null {
  * 把外部补充的性别合并进高置信事实对象。
  *
  * 使用浅拷贝保证不污染入参引用，并把来源标签追加到 reasoning 里，便于排障溯源。
- * 与 mergeDetectedBrands 同构，都是"补充字段→不可变合并"的合并器。
+ * "补充字段→不可变合并"的合并器：浅拷贝入参后按来源标签补写字段。
  */
 export function mergeSupplementalGenderFact(
   existing: HighConfidenceFacts | null,
@@ -890,36 +802,6 @@ export function unwrapHighConfidenceFacts(
       available_after: unwrapHighConfidenceValue(facts.preferences.available_after),
     },
     reasoning: facts.reasoning,
-  };
-}
-
-export function mergeDetectedBrands(
-  facts: EntityExtractionResult,
-  aliasHints: BrandAliasHint[],
-): EntityExtractionResult {
-  const detectedBrands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
-  if (detectedBrands.length === 0) return facts;
-
-  const existingBrands = facts.preferences.brands ?? [];
-  const mergedBrands = Array.from(new Set([...existingBrands, ...detectedBrands]));
-  const addedBrands = mergedBrands.filter((brand) => !existingBrands.includes(brand));
-  if (addedBrands.length === 0) return facts;
-
-  const reasoningSuffix = aliasHints
-    .filter((hint) => addedBrands.includes(hint.brandName))
-    .map(
-      (hint) =>
-        `根据用户原话"${hint.sourceText}"，将别名"${hint.matchedAlias}"归一化为标准品牌"${hint.brandName}"`,
-    )
-    .join('；');
-
-  return {
-    ...facts,
-    preferences: {
-      ...facts.preferences,
-      brands: mergedBrands,
-    },
-    reasoning: reasoningSuffix ? `${facts.reasoning}\n${reasoningSuffix}` : facts.reasoning,
   };
 }
 
@@ -1214,12 +1096,17 @@ function extractStudentInfo(message: string): {
   if (/大一|大二|大三|大四/.test(message)) {
     return { isStudent: true, education: '本科在读' };
   }
-  // 反向触发：候选人明确说自己已离开校园 → is_student=false
+  // 反向触发：候选人明确说自己已离开校园 → is_student=false。
+  // 不能只搜“社会人士”关键词：“社会人士岗位会影响读书吗”“不是有招
+  // 社会人士岗吗”都在讨论岗位要求，不是候选人改口自报身份。
   // badcase v9mxbgiv：候选人回"社会人士，目前待岗状态"，规则只覆盖"不是学生|已毕业"导致漏判，
   // Agent 反复追问"学生还是社会人士"。需要与 LLM 抽取（session-extraction.prompt.ts）的
   // 反向触发词保持一致。
   if (
-    /不是学生|已毕业|社会人士|上班族|已经工作|工作过|在职|待岗|失业|退休|全职妈妈|带娃/.test(
+    /(?:^|[\s，,。！!；;])(?:我(?:现在)?(?:是|算)?|身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*)?社会人士(?:$|[\s，,。！!；;])/.test(
+      message,
+    ) ||
+    /不是学生|已经?毕业|毕业了|上班族|已经工作|工作过|在职|待岗|失业|退休|全职妈妈|在家带娃/.test(
       message,
     )
   ) {
@@ -1255,7 +1142,7 @@ function extractHealthCertificate(message: string): string | null {
   ) {
     return '非本地健康证';
   }
-  if (/有健康证|(?:食品|餐饮|零售)(?:类)?健康证/.test(message)) {
+  if (/有健康证|本地.{0,4}健康证|健康证.{0,4}本地|(?:食品|餐饮|零售)(?:类)?健康证/.test(message)) {
     return '有';
   }
   return null;
@@ -1736,82 +1623,4 @@ function extractPositionShareLocations(message: string): string[] {
   if (address) locations.push(address);
 
   return Array.from(new Set(locations.filter(Boolean)));
-}
-
-/**
- * 品牌匹配资产（候选别名表 + 品类展开）按 brandData 引用 memoize。
- *
- * brandData 来自 SpongeService 的 30 分钟缓存，引用在缓存有效期内稳定；
- * 此前每轮对话（且一轮内最多两次：lifecycle 前置识别 + extraction）都对
- * 全量品牌做 normalize + sort 全量重建，纯 CPU 浪费且随品牌规模线性放大。
- */
-let brandAssetsCache: {
-  source: BrandItem[];
-  candidates: BrandCandidate[];
-  categories: ResolvedBrandCategory[];
-} | null = null;
-
-function getBrandMatchAssets(brandData: BrandItem[]): {
-  candidates: BrandCandidate[];
-  categories: ResolvedBrandCategory[];
-} {
-  if (brandAssetsCache && brandAssetsCache.source === brandData) {
-    return brandAssetsCache;
-  }
-  brandAssetsCache = {
-    source: brandData,
-    candidates: buildBrandCandidates(brandData),
-    categories: buildResolvedCategories(brandData),
-  };
-  return brandAssetsCache;
-}
-
-function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {
-  return brandData
-    .flatMap((brand) => [brand.name, ...(brand.aliases ?? [])].map((alias) => ({ brand, alias })))
-    .map(({ brand, alias }) => {
-      const normalized = normalizeForBrandMatch(alias);
-      return {
-        brandName: brand.name,
-        alias,
-        normalized,
-        containEligible: isBrandContainEligible(normalized),
-      };
-    })
-    .filter(
-      (candidate) =>
-        // 预留品类词给品类展开：泛词别称（如 Tims咖啡 的别称"咖啡"）不参与单一品牌精确匹配
-        candidate.normalized.length > 0 && !CATEGORY_KEYWORD_NORMALIZED.has(candidate.normalized),
-    )
-    .sort((a, b) => b.normalized.length - a.normalized.length);
-}
-
-function buildExactMatchTokens(message: string): string[] {
-  const normalized = normalizeForBrandMatch(message);
-  if (!normalized) return [];
-
-  const stripped = stripBrandNoisePatterns(normalized);
-  const tokens = new Set<string>();
-
-  if (normalized) tokens.add(normalized);
-  if (stripped) tokens.add(stripped);
-
-  for (const token of stripped.split(CONJUNCTION_SPLIT_REGEX)) {
-    if (token) tokens.add(token);
-  }
-
-  return Array.from(tokens).filter(Boolean);
-}
-
-function stripBrandNoisePatterns(normalizedText: string): string {
-  let output = normalizedText;
-  for (const pattern of BRAND_NOISE_PATTERNS) {
-    output = output.replace(new RegExp(pattern, 'g'), '');
-  }
-  return output;
-}
-
-function normalizeForBrandMatch(value: string | null | undefined): string {
-  if (!value) return '';
-  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 }

@@ -45,6 +45,54 @@ export interface HardRequirements {
   student: StudentRequirement;
 }
 
+const HOUSEHOLD_REGION_GROUPS: Record<string, string[]> = {
+  东北: ['辽宁', '吉林', '黑龙江'],
+  东三省: ['辽宁', '吉林', '黑龙江'],
+  东北三省: ['辽宁', '吉林', '黑龙江'],
+  京津冀: ['北京', '天津', '河北'],
+};
+
+const HOUSEHOLD_REGION_SUFFIX_PATTERN =
+  /(?:壮族自治区|回族自治区|维吾尔自治区|特别行政区|自治区|省|市)$/;
+
+function normalizeHouseholdRegion(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/^(?:户籍|籍贯)[:：]?/, '')
+    .replace(HOUSEHOLD_REGION_SUFFIX_PATTERN, '')
+    .replace(/(?:户籍|户口|籍|本地人?|人)$/, '');
+}
+
+function householdRegionMatches(candidateProvince: string, configuredRegion: string): boolean {
+  const candidate = normalizeHouseholdRegion(candidateProvince);
+  const configured = normalizeHouseholdRegion(configuredRegion);
+  if (!candidate || !configured) return false;
+  if (candidate === configured) return true;
+  const configuredRaw = configuredRegion.trim().replace(/\s+/g, '');
+  return (
+    HOUSEHOLD_REGION_GROUPS[configuredRaw] ??
+    HOUSEHOLD_REGION_GROUPS[configured] ??
+    []
+  ).includes(candidate);
+}
+
+/**
+ * 判断候选人户籍是否违反岗位结构化户籍硬约束。
+ *
+ * 候选人户籍未知时不猜测；已知时同时支持省/市后缀差异和常见区域组（如东三省）。
+ */
+export function isHouseholdRequirementViolated(
+  requirement: HouseholdRequirement | null,
+  candidateProvince: string | null | undefined,
+): boolean {
+  if (!requirement || !candidateProvince?.trim()) return false;
+  const listed = requirement.regions.some((region) =>
+    householdRegionMatches(candidateProvince, region),
+  );
+  return requirement.mode === 'exclude' ? listed : !listed;
+}
+
 const FEMALE_TOKENS = new Set(['女', '女性', '仅女', '限女', '只要女', '只招女']);
 const MALE_TOKENS = new Set(['男', '男性', '仅男', '限男', '只要男', '只招男']);
 const ANY_TOKENS = new Set(['不限', '男女不限', '均可', '不限性别']);
@@ -121,6 +169,7 @@ const CERT_NOT_REQUIRED = /不需要|无需|不必/;
 function normalizeHealthCert(gate: unknown, requirementText: unknown): HealthCertRequirement {
   if (gate === 'before_interview') return 'required_before_interview';
   if (gate === 'before_onboard') return 'required_before_onboard';
+  if (gate === 'not_required') return 'not_required';
 
   const text = typeof requirementText === 'string' ? requirementText : '';
   if (!text || /未明确/.test(text)) return 'unspecified';

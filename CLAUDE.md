@@ -46,12 +46,15 @@ pnpm run db:status:test      # / db:status:prod 查看迁移状态
 
 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `infra/`。
 **`infra/` 禁止 import `biz/`、`channels/`、`agent/`。**
+**`resolution/` 只依赖 `sponge/`**（可被 memory/agent/tools/guardrail 依赖，禁止反向 import）。
 
 ```
 src/
 ├── infra/              # 基础设施：config / redis / supabase / feishu / alert / http / server-response
 ├── providers/          # 多模型三层：registry(注册) → reliable(重试/降级) → router(角色路由)
 ├── llm/                # LLM 执行器（llm-executor：底层 generateText 封装、重试）
+├── resolution/brand/   # 品牌解析域（唯一居所）：目录索引/匹配/极性/品类展开/状态 reducer/同音回指/公司名规范化
+│                       #   纯确定性代码零 LLM；resolve() 输出标准品牌+极性+置信度；只依赖 sponge 品牌目录
 ├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
 ├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / procedural(阶段) / long-term(画像)
 │                       #   + settlement(空闲沉淀) / facts(规则提取) / stores(Redis+Supabase 适配)
@@ -98,7 +101,7 @@ supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
 
 ### Path Aliases (tsconfig.json)
 
-`@infra/* @agent/* @channels/* @wecom/* @biz/* @providers/* @tools/* @memory/* @mcp/* @sponge/* @observability/* @notification/* @analytics/* @enums/* @evaluation/* @test-suite/* @shared-types/*`
+`@infra/* @agent/* @channels/* @wecom/* @biz/* @providers/* @tools/* @memory/* @mcp/* @sponge/* @resolution/* @observability/* @notification/* @analytics/* @enums/* @evaluation/* @test-suite/* @shared-types/*`
 
 ## Configuration
 

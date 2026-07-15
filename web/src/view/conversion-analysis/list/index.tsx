@@ -19,16 +19,23 @@ import KpiTrendChart from './components/KpiTrendChart';
 import type { BotSortKey, SortDirection } from './types';
 import styles from './styles/index.module.scss';
 
+const COHORT_MATURITY_DAYS = 7;
+
 export default function ConversionAnalysis() {
   const [range, setRange] = useState<ConversionRange>('week');
   const [groups, setGroups] = useState<string[]>([]);
-  const [trendMode, setTrendMode] = useState<ConversionMetricMode>('period');
-  const [funnelMode, setFunnelMode] = useState<ConversionMetricMode>('period');
-  const [botsMode, setBotsMode] = useState<ConversionMetricMode>('period');
+  const [metricMode, setMetricMode] = useState<ConversionMetricMode>('cohort');
   const [sortKey, setSortKey] = useState<BotSortKey>('booking_rate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const query: ConversionQuery = useMemo(() => ({ range, groups }), [groups, range]);
+  const query: ConversionQuery = useMemo(
+    () => ({
+      range,
+      groups,
+      maturityDays: metricMode === 'cohort' ? COHORT_MATURITY_DAYS : undefined,
+    }),
+    [groups, metricMode, range],
+  );
   const {
     data: kpis,
     isLoading: kpisLoading,
@@ -37,7 +44,7 @@ export default function ConversionAnalysis() {
     isError: kpisError,
     refetch: refetchKpis,
     dataUpdatedAt,
-  } = useConversionKpis(query, 'period', true);
+  } = useConversionKpis(query, metricMode, true);
   const {
     data: trends,
     isLoading: trendsLoading,
@@ -45,7 +52,7 @@ export default function ConversionAnalysis() {
     isPlaceholderData: trendsPlaceholder,
     isError: trendsError,
     refetch: refetchTrends,
-  } = useConversionTrends(query, trendMode, true);
+  } = useConversionTrends(query, metricMode, true);
   const {
     data: funnel,
     isLoading: funnelLoading,
@@ -53,7 +60,7 @@ export default function ConversionAnalysis() {
     isPlaceholderData: funnelPlaceholder,
     isError: funnelError,
     refetch: refetchFunnel,
-  } = useConversionFunnel(query, 'friend_added', funnelMode, true);
+  } = useConversionFunnel(query, 'friend_added', metricMode, true);
   const {
     data: bots,
     isLoading: botsLoading,
@@ -61,7 +68,7 @@ export default function ConversionAnalysis() {
     isPlaceholderData: botsPlaceholder,
     isError: botsError,
     refetch: refetchBots,
-  } = useConversionBots(query, botsMode, true);
+  } = useConversionBots(query, metricMode, true);
   const {
     data: handoff,
     isLoading: handoffLoading,
@@ -83,8 +90,7 @@ export default function ConversionAnalysis() {
   // 避免 API 全挂时页面只剩空白/加载态而无任何反馈。
   const hasError = kpisError || trendsError || funnelError || botsError || handoffError;
   const allError = kpisError && trendsError && funnelError && botsError && handoffError;
-  const anyLoading =
-    kpisLoading || trendsLoading || funnelLoading || botsLoading || handoffLoading;
+  const anyLoading = kpisLoading || trendsLoading || funnelLoading || botsLoading || handoffLoading;
   const refetchAll = () => {
     void refetchKpis();
     void refetchTrends();
@@ -156,22 +162,30 @@ export default function ConversionAnalysis() {
             />
           ) : null}
 
-          <KpiCards data={kpis} loading={kpisLoading} />
+          <KpiCards
+            data={kpis}
+            loading={kpisLoading}
+            mode={metricMode}
+            maturityDays={COHORT_MATURITY_DAYS}
+            onModeChange={setMetricMode}
+          />
 
           <KpiTrendChart
             data={trends}
             loading={trendsLoading}
-            mode={trendMode}
-            onModeChange={setTrendMode}
+            mode={metricMode}
+            maturityDays={COHORT_MATURITY_DAYS}
+            onModeChange={setMetricMode}
           />
 
           <BotComparisonTable
             rows={sortedBots}
             loading={botsLoading}
-            mode={botsMode}
+            mode={metricMode}
+            maturityDays={COHORT_MATURITY_DAYS}
             sortKey={sortKey}
             sortDirection={sortDirection}
-            onModeChange={setBotsMode}
+            onModeChange={setMetricMode}
             onSort={handleSort}
           />
 
@@ -179,8 +193,9 @@ export default function ConversionAnalysis() {
             <CohortFunnel
               data={funnel}
               loading={funnelLoading}
-              mode={funnelMode}
-              onModeChange={setFunnelMode}
+              mode={metricMode}
+              maturityDays={COHORT_MATURITY_DAYS}
+              onModeChange={setMetricMode}
             />
           </section>
 

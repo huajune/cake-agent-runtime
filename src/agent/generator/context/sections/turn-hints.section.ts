@@ -34,6 +34,7 @@ export class TurnHintsSection implements PromptSection {
     const { normalHints, pendingHints } = this.partition(
       ctx.sessionFacts ?? null,
       ctx.highConfidenceFacts ?? null,
+      ctx.sessionBrandState ?? null,
     );
 
     const parts: string[] = [];
@@ -81,6 +82,7 @@ export class TurnHintsSection implements PromptSection {
   private partition(
     sessionFacts: EntityExtractionResult | SessionFacts | null,
     highConfidenceFacts: HighConfidenceFacts | null,
+    sessionBrandState: PromptContext['sessionBrandState'] = null,
   ): {
     normalHints: HighConfidenceFacts | null;
     pendingHints: HighConfidenceFacts | null;
@@ -212,8 +214,11 @@ export class TurnHintsSection implements PromptSection {
       },
     );
 
+    // 品牌口径改读 SessionBrandState（§9 单一存储；不再读 preferences.brands 投影）：
+    // 跨轮已知品牌 = currentBrand 单元素。当前轮品牌写入点已收口（brands 恒 null），
+    // 本轮品牌意图由模型直读原文 + 收尾 reducer 沉淀，此分支只服务防御性兼容。
     this.partitionHighArrayValue(
-      comparableSessionFacts.preferences.brands,
+      sessionBrandState?.currentBrand ? [sessionBrandState.currentBrand.canonicalName] : null,
       highPref.brands,
       (value) => {
         normalHints.preferences.brands = value;

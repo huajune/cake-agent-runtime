@@ -153,6 +153,7 @@ describe('SessionService', () => {
         invitedGroups: null,
         terminal: null,
         lastCandidateMessageAt: null,
+        brand_state: null,
       });
     });
 
@@ -1429,14 +1430,16 @@ describe('SessionService', () => {
       expect(callArgs.prompt).toContain('[品牌别名命中提示]');
       expect(callArgs.prompt).toContain('来一份');
       expect(callArgs.prompt).toContain('来伊份');
+      // 品牌写入收口（§9.2）：提取路径不再把品牌写进 preferences.brands
+      //（品牌真相只在 brand_state，由 turn-finalizer 的 reducer 统一写入），
+      // 归一化线索仍进提取 prompt（上方断言）。
       expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              brands: factValue(['来伊份'], { confidence: 'high', source: 'rule' }),
+              brands: null,
             }),
-            reasoning: expect.stringContaining('来伊份'),
           }),
         }),
         86400,

@@ -1,12 +1,19 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
+import { resolveFuzzyConfidence } from '@resolution/brand/fuzzy-recall';
 
 /**
  * 品牌名相关对账。
  *
  * 职责：
- * - 候选人/工具入参指定品牌时，回复不得结构化推荐其它品牌（requested_brand_mismatch）；
+ * - 候选人/工具指定品牌时，回复不得结构化推荐其它品牌（requested_brand_mismatch）；
  * - 工具已高置信回指品牌别名/口误时，回复不得声称品牌没找到（brand_alias_fuzzy_match_ignored）。
+ *
+ * 数据源（§11 守卫切换点）：**只读 `toolResult.queryMeta.brand`**（工具入口标准化后的
+ * 实际应用品牌），不再读模型原始 `brandAliasList`——对账对象从"模型请求的"修正为
+ * "工具实际应用的"；被拒绝的昵称/模型别名（rejected）不构成对账依据。
+ * 品牌归一化原语 import 自 resolution/brand（§5.1 单一居所），不再私有实现。
  *
  * 不负责：
  * - 不判断岗位是否真实存在（原 job-fact-hallucinations 规则族已于 2026-07-10 下线，
@@ -23,16 +30,16 @@ const BRAND_NO_MATCH_CLAIM_PATTERN =
   /(?:没找到|没有|暂无|暂时没有|查不到|未找到)[^。！？\n]{0,24}(?:这个|该)?(?:品牌|门店|岗位|在招)|(?:这个|该)?品牌[^。！？\n]{0,16}(?:没找到|没有|暂无|查不到|未找到)/;
 
 export function detectRequestedBrandMismatch(text: string, toolCalls: AgentToolCall[] = []) {
-  const requestedBrands = collectRequestedBrandAliases(toolCalls);
-  if (requestedBrands.size === 0) return null;
+  const appliedBrands = collectAppliedBrands(toolCalls);
+  if (appliedBrands.size === 0) return null;
   if (isAskingBeforeAlternativeBrandRecommendation(text)) return null;
 
   const claimedBrands = extractStructuredJobTitleBrands(text);
   for (const claimed of claimedBrands) {
-    if (isGroundedBrandClaim(claimed, requestedBrands)) continue;
+    if (isGroundedBrandClaim(claimed, appliedBrands)) continue;
     return {
       ruleId: 'requested_brand_mismatch',
-      label: `候选人指定品牌为"${[...requestedBrands].join('/')}"，但回复结构化推荐了其它品牌"${claimed}"`,
+      label: `工具实际应用品牌为"${[...appliedBrands].join('/')}"，但回复结构化推荐了其它品牌"${claimed}"`,
       action: GUARDRAIL_ACTION.REPLAN,
     };
   }
@@ -43,7 +50,7 @@ export function detectRequestedBrandMismatch(text: string, toolCalls: AgentToolC
 export function detectBrandAliasFuzzyMatchIgnored(text: string, toolCalls: AgentToolCall[] = []) {
   if (!BRAND_NO_MATCH_CLAIM_PATTERN.test(text)) return null;
 
-  const suggestion = readHighConfidenceBrandAliasSuggestion(toolCalls);
+  const suggestion = readHighConfidenceFuzzySuggestion(toolCalls);
   if (!suggestion) return null;
   if (text.includes(suggestion) && !isNoMatchClaimAboutBrand(text, suggestion)) return null;
 
@@ -54,16 +61,15 @@ export function detectBrandAliasFuzzyMatchIgnored(text: string, toolCalls: Agent
   };
 }
 
-function collectRequestedBrandAliases(toolCalls: AgentToolCall[]): Set<string> {
+/** 读工具实际应用的品牌（enforce 生效条件；exclude 的排除目标不是"推荐来源"，不对账）。 */
+function collectAppliedBrands(toolCalls: AgentToolCall[]): Set<string> {
   const brands = new Set<string>();
-  const latestJobListCall = readLatestJobListCall(toolCalls);
-  const args = latestJobListCall?.args;
-  if (!args || typeof args !== 'object') return brands;
-  const brandAliasList = (args as Record<string, unknown>).brandAliasList;
-  if (!Array.isArray(brandAliasList)) return brands;
-  for (const alias of brandAliasList) {
-    const normalized = normalizeClaimedBrand(String(alias));
-    if (normalized) brands.add(normalized);
+  const brandMeta = readLatestBrandQueryMeta(toolCalls);
+  if (!brandMeta) return brands;
+  if (brandMeta.filterMode !== 'enforce') return brands;
+  for (const name of brandMeta.appliedCanonicalNames) {
+    const cleaned = cleanClaimedBrandTitle(name);
+    if (cleaned) brands.add(cleaned);
   }
   return brands;
 }
@@ -74,22 +80,56 @@ function isAskingBeforeAlternativeBrandRecommendation(text: string): boolean {
   );
 }
 
-function readHighConfidenceBrandAliasSuggestion(toolCalls: AgentToolCall[]): string | null {
-  // 这里必须读裸最后一次调用：aliasFuzzyMatch 恰恰长在 0 结果/错误返回的 details 上，
-  // 换成"可用"口径会永远读不到高置信品牌回指。
+/**
+ * 读 queryMeta.brand.fuzzySuggestions 的高置信回指（§8.3 守卫数据源切换）。
+ * 这里必须读裸最后一次调用：回指建议恰恰长在 0 结果/错误返回上，换成"可用"口径会永远读不到。
+ * 置信档位与工具共享 resolveFuzzyConfidence（分歧度阈值单一居所）。
+ */
+function readHighConfidenceFuzzySuggestion(toolCalls: AgentToolCall[]): string | null {
+  const brandMeta = readLatestBrandQueryMeta(toolCalls);
+  const suggestions = brandMeta?.fuzzySuggestions;
+  if (!Array.isArray(suggestions) || suggestions.length === 0) return null;
+
+  const scored = suggestions
+    .map((item) => {
+      const record = item as Record<string, unknown>;
+      return {
+        brandName: typeof record.brandName === 'string' ? record.brandName.trim() : '',
+        score: typeof record.score === 'number' ? record.score : 0,
+      };
+    })
+    .filter((item) => item.brandName.length > 0);
+  if (scored.length === 0) return null;
+  if (resolveFuzzyConfidence(scored) !== 'high') return null;
+  return scored[0].brandName;
+}
+
+interface BrandQueryMetaView {
+  filterMode: string;
+  appliedCanonicalNames: string[];
+  fuzzySuggestions?: unknown[];
+}
+
+/** 最后一次 duliday_job_list 调用的 queryMeta.brand 小节（成功/错误结果同一路径读取）。 */
+function readLatestBrandQueryMeta(toolCalls: AgentToolCall[]): BrandQueryMetaView | null {
   const call = readLatestJobListCall(toolCalls);
   const result = call?.result;
   if (!result || typeof result !== 'object') return null;
-  const aliasFuzzyMatch = (result as Record<string, unknown>).aliasFuzzyMatch;
-  if (!aliasFuzzyMatch || typeof aliasFuzzyMatch !== 'object') return null;
-  const match = aliasFuzzyMatch as Record<string, unknown>;
-  if (match.confidence !== 'high') return null;
-  const suggestions = match.suggestions;
-  if (!Array.isArray(suggestions) || suggestions.length === 0) return null;
-  const first = suggestions[0];
-  if (!first || typeof first !== 'object') return null;
-  const brandName = (first as Record<string, unknown>).brandName;
-  return typeof brandName === 'string' && brandName.trim() ? brandName.trim() : null;
+  const queryMeta = (result as Record<string, unknown>).queryMeta;
+  if (!queryMeta || typeof queryMeta !== 'object') return null;
+  const brand = (queryMeta as Record<string, unknown>).brand;
+  if (!brand || typeof brand !== 'object') return null;
+  const brandRecord = brand as Record<string, unknown>;
+  const appliedCanonicalNames = Array.isArray(brandRecord.appliedCanonicalNames)
+    ? brandRecord.appliedCanonicalNames.filter((name): name is string => typeof name === 'string')
+    : [];
+  return {
+    filterMode: typeof brandRecord.filterMode === 'string' ? brandRecord.filterMode : 'clear',
+    appliedCanonicalNames,
+    fuzzySuggestions: Array.isArray(brandRecord.fuzzySuggestions)
+      ? brandRecord.fuzzySuggestions
+      : undefined,
+  };
 }
 
 function isNoMatchClaimAboutBrand(text: string, brandName: string): boolean {
@@ -121,7 +161,7 @@ function extractStructuredJobTitleBrands(text: string): string[] {
 
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
-      const brand = normalizeClaimedBrand(match[1]);
+      const brand = cleanClaimedBrandTitle(match[1]);
       if (brand) brands.add(brand);
     }
   }
@@ -130,37 +170,46 @@ function extractStructuredJobTitleBrands(text: string): string[] {
 }
 
 /**
- * 清理编号、markdown 引用、项目符号后得到候选品牌名。
+ * 清理编号、markdown 引用、项目符号后得到候选品牌名（展示形态，保留原文写法）。
  * 同时过滤“岗位/薪资/地址”等字段标题，避免把模板字段当品牌。
+ * 对账比较不用此展示形态——一律走 brand-normalize 的归一化（见 isGroundedBrandClaim）。
  */
-function normalizeClaimedBrand(value: string): string | null {
-  const normalized = normalizeBrand(value.replace(/^[\s#>*\-•\d.、]+/, ''));
-  if (!normalized) return null;
-  if (/^(品牌|岗位|门店|薪资|班次|要求|距离|地址)(?:$|[\s:：]|[是为])/.test(normalized)) {
+function cleanClaimedBrandTitle(value: string): string | null {
+  const cleaned = value
+    .replace(/^[\s#>*\-•\d.、]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return null;
+  if (/^(品牌|岗位|门店|薪资|班次|要求|距离|地址)(?:$|[\s:：]|[是为])/.test(cleaned)) {
     return null;
   }
-  return normalized;
-}
-
-function normalizeBrand(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+  return cleaned;
 }
 
 /**
- * 品牌对账允许包含关系：
- * - 工具返回“星巴克咖啡”，回复写“星巴克”可接受；
- * - 工具返回简称，回复标题包含完整品牌也可接受。
+ * 品牌对账允许包含关系（归一化后比较，§5.1 归一化原语单一居所）：
+ * - 工具应用“星巴克咖啡”，回复写“星巴克”可接受；
+ * - 工具应用简称，回复标题包含完整品牌也可接受。
  */
 function isGroundedBrandClaim(claimed: string, groundedBrands: Set<string>): boolean {
+  const normalizedClaimed = normalizeForBrandMatch(claimed);
+  if (!normalizedClaimed) return false;
   for (const grounded of groundedBrands) {
-    if (claimed === grounded) return true;
-    if (claimed.includes(grounded) || grounded.includes(claimed)) return true;
+    const normalizedGrounded = normalizeForBrandMatch(grounded);
+    if (!normalizedGrounded) continue;
+    if (normalizedClaimed === normalizedGrounded) return true;
+    if (
+      normalizedClaimed.includes(normalizedGrounded) ||
+      normalizedGrounded.includes(normalizedClaimed)
+    ) {
+      return true;
+    }
   }
   return false;
 }
 
 /**
- * 最后一次 duliday_job_list 调用（不问可用与否）：只用于读 aliasFuzzyMatch / args 等
+ * 最后一次 duliday_job_list 调用（不问可用与否）：只用于读 queryMeta.brand 等
  * **错误侧**信号——这些信号恰恰长在空/错结果上，换成"可用"口径会读不到。
  * 原 job-list-call.util 共享原语；2026-07-10 该 util 随 job-fact 规则族下线后内联至此。
  */

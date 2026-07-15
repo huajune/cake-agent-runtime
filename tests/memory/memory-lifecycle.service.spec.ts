@@ -59,7 +59,11 @@ describe('MemoryLifecycleService', () => {
     getSessionState: jest.fn(),
     saveLastCandidatePool: jest.fn().mockResolvedValue(undefined),
     projectAssistantTurn: jest.fn().mockResolvedValue(undefined),
-    extractAndSave: jest.fn().mockResolvedValue(undefined),
+    extractAndSave: jest.fn().mockResolvedValue({ llmDegraded: false, brandIntents: [] }),
+  };
+
+  const mockBrandState = {
+    applyTurnResolutions: jest.fn().mockResolvedValue({ changed: false, initialized: false }),
   };
 
   const mockSettlement = {
@@ -106,6 +110,9 @@ describe('MemoryLifecycleService', () => {
     mockEnrichment.enrich.mockImplementation(async (snapshot) => snapshot);
     mockMessageProcessing.updatePostProcessingStatus.mockResolvedValue(true);
 
+    mockSessionService.extractAndSave.mockResolvedValue({ llmDegraded: false, brandIntents: [] });
+    mockBrandState.applyTurnResolutions.mockResolvedValue({ changed: false, initialized: false });
+
     service = new MemoryLifecycleService(
       mockShortTerm as never,
       mockProcedural as never,
@@ -115,6 +122,7 @@ describe('MemoryLifecycleService', () => {
       mockSponge as never,
       mockEnrichment as never,
       mockMessageProcessing as never,
+      mockBrandState as never,
     );
   });
 
@@ -282,7 +290,10 @@ describe('MemoryLifecycleService', () => {
   });
 
   it('should expose high-confidence facts separately on turn start', async () => {
-    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: '来一份' }]);
+    // 品牌写入收口（§9.2）后，前置识别不再把品牌写进 preferences.brands
+    // （品牌真相只在 brand_state），但品牌线索仍进 reasoning 供排障参考；
+    // 用带其它规则信号的消息验证前置识别本身照常工作。
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: '来一份，我25岁' }]);
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
@@ -297,12 +308,14 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '来一份');
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '来一份，我25岁');
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
     expect(ctx.sessionMemory).toBeNull();
-    expect(ctx.highConfidenceFacts?.preferences.brands).toEqual(
-      expect.objectContaining({ value: ['来伊份'], source: 'rule' }),
+    expect(ctx.highConfidenceFacts?.preferences.brands).toBeNull();
+    expect(ctx.highConfidenceFacts?.reasoning).toContain('来伊份');
+    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
+      expect.objectContaining({ value: '25' }),
     );
   });
 
@@ -659,5 +672,96 @@ describe('MemoryLifecycleService', () => {
     expect(mockSessionService.getSessionState).not.toHaveBeenCalled();
     expect(mockSessionService.projectAssistantTurn).not.toHaveBeenCalled();
     expect(mockSessionService.extractAndSave).not.toHaveBeenCalled();
+    expect(mockBrandState.applyTurnResolutions).not.toHaveBeenCalled();
+  });
+
+  describe('apply_brand_state 步骤（§6.3.1 时序）', () => {
+    it('排在 extract_facts 之后，汇总规则轨 + 图片轨 + LLM 轨结果进 reducer', async () => {
+      const llmIntent = {
+        canonicalName: '麦当劳',
+        brandId: null,
+        matchedText: '麦当劳',
+        source: 'user_text' as const,
+        matchType: 'canonical_exact' as const,
+        intentPolarity: 'negative' as const,
+        confidence: 0.95,
+        ambiguous: false,
+      };
+      mockSessionService.extractAndSave.mockResolvedValue({
+        llmDegraded: false,
+        brandIntents: [llmIntent],
+      });
+      const imageResolution = {
+        canonicalName: '肯德基',
+        brandId: null,
+        matchedText: '肯德基',
+        source: 'image_description' as const,
+        matchType: 'canonical_exact' as const,
+        intentPolarity: 'positive' as const,
+        confidence: 0.95,
+        ambiguous: false,
+      };
+
+      await service.onTurnEnd(
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          messageId: 'msg-3',
+          contactName: '小王 肯德基',
+          normalizedMessages: [{ role: 'user', content: '我想去KFC' }],
+          imageBrandResolutions: [imageResolution],
+        },
+        '好的',
+      );
+
+      expect(mockBrandState.applyTurnResolutions).toHaveBeenCalledTimes(1);
+      const call = mockBrandState.applyTurnResolutions.mock.calls[0][0];
+      expect(call.contactName).toBe('小王 肯德基');
+      // 图片轨透传 + LLM 轨极性结果 + 规则轨对本轮 user 文本的解析（KFC → 肯德基）
+      expect(call.resolutions).toEqual(
+        expect.arrayContaining([
+          imageResolution,
+          llmIntent,
+          expect.objectContaining({ canonicalName: '肯德基', source: 'user_text' }),
+        ]),
+      );
+      // 步骤顺序：apply_brand_state 在 extract_facts 之后
+      const finalStatus = mockMessageProcessing.updatePostProcessingStatus.mock.calls.at(-1)![1];
+      const stepNames = finalStatus.steps.map((step: { name: string }) => step.name);
+      expect(stepNames.indexOf('apply_brand_state')).toBeGreaterThan(
+        stepNames.indexOf('extract_facts'),
+      );
+    });
+
+    it('extract_facts 抛错/降级时 reducer 仍以规则轨结果照常运行并落状态', async () => {
+      mockSessionService.extractAndSave.mockRejectedValueOnce(new Error('extract failed'));
+
+      await service.onTurnEnd(
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          messageId: 'msg-4',
+          normalizedMessages: [{ role: 'user', content: '不要肯德基' }],
+        },
+        '好的',
+      );
+
+      expect(mockBrandState.applyTurnResolutions).toHaveBeenCalledTimes(1);
+      const call = mockBrandState.applyTurnResolutions.mock.calls[0][0];
+      expect(call.resolutions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ canonicalName: '肯德基', intentPolarity: 'negative' }),
+        ]),
+      );
+      const finalStatus = mockMessageProcessing.updatePostProcessingStatus.mock.calls.at(-1)![1];
+      expect(finalStatus.steps).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'extract_facts', status: 'failure' }),
+          expect.objectContaining({ name: 'apply_brand_state', status: 'success' }),
+        ]),
+      );
+    });
   });
 });

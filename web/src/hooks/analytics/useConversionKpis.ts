@@ -7,7 +7,7 @@ export function conversionRefetchInterval(range: ConversionQuery['range']) {
 }
 
 export function conversionQueryKey(query: ConversionQuery) {
-  return [query.range, query.groups ?? []] as const;
+  return [query.range, query.groups ?? [], query.maturityDays ?? 0] as const;
 }
 
 export function useConversionKpis(

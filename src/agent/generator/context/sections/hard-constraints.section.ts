@@ -37,7 +37,7 @@ export class HardConstraintsSection implements PromptSection {
       ctx.currentLaborFormIntent,
     );
     const hardLines = this.collectHardConstraintLines(merged);
-    const softLines = this.collectSoftHintLines(merged);
+    const softLines = this.collectSoftHintLines(merged, ctx.sessionBrandState ?? null);
     if (hardLines.length === 0 && softLines.length === 0) return '';
 
     const sections: string[] = [];
@@ -235,20 +235,34 @@ export class HardConstraintsSection implements PromptSection {
    */
   private collectSoftHintLines(
     merged: { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null,
+    sessionBrandState: PromptContext['sessionBrandState'] = null,
   ): string[] {
-    if (!merged) return [];
+    const lines: string[] = [];
+
+    // 品牌口径改读 SessionBrandState（§9.3 终态：currentBrand + excludedBrands，
+    // 不再读 preferences.brands 投影）：排斥语义首次可显式注入提示词（软约束，§8.1）。
+    if (sessionBrandState?.currentBrand) {
+      lines.push(
+        `- 当前意向品牌: ${sessionBrandState.currentBrand.canonicalName}` +
+          `（会话品牌状态；模型省略品牌参数时工具会自动沿用它查询。建议可得 ID 时用 brandIdList；` +
+          `若要放宽探索别家，显式传 brandFilterMode='clear'）`,
+      );
+    }
+    if (sessionBrandState?.excludedBrands?.length) {
+      lines.push(
+        `- 排斥品牌: ${sessionBrandState.excludedBrands.map((brand) => brand.canonicalName).join('、')}` +
+          `（候选人明确表示过不要这些品牌：不要主动推荐其岗位，无品牌查询的结果里出现时优先跳过；` +
+          `候选人本轮重新点名想去时按其最新表达处理）`,
+      );
+    }
+
+    if (!merged) return lines;
 
     const { interview, pref } = merged;
-    const lines: string[] = [];
 
     if (interview.gender) {
       lines.push(
         `- 性别: ${interview.gender}（建议开 includeHiringRequirement，结果中性别不符的优先排除）`,
-      );
-    }
-    if (pref.brands?.length) {
-      lines.push(
-        `- 意向品牌: ${pref.brands.join('、')}（建议用 brandIdList；若搜索无结果可尝试去掉品牌限制扩大召回）`,
       );
     }
     if (pref.brand_ids?.length) {

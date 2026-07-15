@@ -76,6 +76,10 @@ describe('ReplyWorkflowService', () => {
     describeAndUpdateAsync: jest.fn(),
     awaitVision: jest.fn().mockResolvedValue(undefined),
   };
+  const imageBrandBackfill = {
+    detectMissingImages: jest.fn().mockReturnValue([]),
+    scheduleBackfill: jest.fn(),
+  };
   const opsEventsRecorder = {
     recordEvent: jest.fn(),
     recordEventDetailed: jest.fn(),
@@ -292,6 +296,7 @@ describe('ReplyWorkflowService', () => {
       followUpScheduler as never,
       reengagementAnchors,
       alertNotifier as never,
+      imageBrandBackfill as never,
     );
   });
 

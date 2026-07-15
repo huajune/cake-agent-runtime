@@ -23,6 +23,9 @@ function toParams(query: ConversionQuery, extra?: Record<string, string>) {
   for (const group of query.groups ?? []) {
     params.append('groups', group);
   }
+  if (extra?.mode === 'cohort') {
+    params.set('maturityDays', String(query.maturityDays ?? 7));
+  }
   // 渠道（source_channel）暂无埋点，写入侧恒为 'unknown'，前端不再传 channel（§7）。
   return params.toString();
 }

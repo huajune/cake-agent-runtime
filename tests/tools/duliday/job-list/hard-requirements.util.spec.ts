@@ -1,4 +1,8 @@
-import { extractHardRequirements } from '@tools/duliday/job-list/hard-requirements.util';
+import {
+  extractHardRequirements,
+  isHouseholdRequirementViolated,
+  type HouseholdRequirement,
+} from '@tools/duliday/job-list/hard-requirements.util';
 
 describe('extractHardRequirements', () => {
   describe('gender', () => {
@@ -77,6 +81,25 @@ describe('extractHardRequirements', () => {
 
     it('returns null when hometown block missing', () => {
       expect(extractHardRequirements({ hiringRequirement: {} }).household).toBeNull();
+    });
+
+    it.each([
+      [{ mode: 'exclude', regions: ['天津', '江西省'] }, '天津市', true],
+      [{ mode: 'exclude', regions: ['天津', '江西省'] }, '上海市', false],
+      [{ mode: 'exclude', regions: ['东三省'] }, '黑龙江省', true],
+      [{ mode: 'include', regions: ['上海本地'] }, '上海市', false],
+      [{ mode: 'include', regions: ['上海本地'] }, '江苏省', true],
+    ] as Array<[HouseholdRequirement, string, boolean]>)(
+      'evaluates structured household constraint %#',
+      (requirement, candidateProvince, expected) => {
+        expect(isHouseholdRequirementViolated(requirement, candidateProvince)).toBe(expected);
+      },
+    );
+
+    it('does not infer a conflict when candidate province is unknown', () => {
+      expect(
+        isHouseholdRequirementViolated({ mode: 'exclude', regions: ['天津'] }, undefined),
+      ).toBe(false);
     });
   });
 
