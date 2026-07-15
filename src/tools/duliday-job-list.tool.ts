@@ -642,7 +642,12 @@ export function buildJobListTool(
         let brandAliasSource: 'input' | 'contact_remark' | 'session_facts' | 'none' =
           brandAliasList.length > 0 ? 'input' : 'none';
         const contactBrandAliases = context.contactBrandAliases ?? [];
+        // 过渡期护栏（§13 Phase 2.4）：brand_state 已存在（seed 已发生）即禁用旧昵称兜底，
+        // 避免旧兜底无视新状态把昵称品牌注回查询（"换个品牌/browse_all 之后被昵称锁回"）。
+        // 昵称品牌经首轮 seed 已进入 currentBrand，由会话品牌兜底统一承接。
+        const brandStateActive = context.sessionBrandState != null;
         if (
+          !brandStateActive &&
           brandAliasList.length === 0 &&
           brandIdList.length === 0 &&
           contactBrandAliases.length > 0
@@ -651,13 +656,17 @@ export function buildJobListTool(
           brandAliasSource = 'contact_remark';
           logger.log(`从企微备注自动兜底 brandAliasList: ${JSON.stringify(brandAliasList)}`);
         }
-        // 会话品牌事实兜底（badcase recvjFFKcZPsiC 想找大米先生却被跨品牌推荐）：
-        // 候选人早前轮次点名的品牌已被 fact-extraction 持久化到 sessionFacts.preferences.brands，
-        // 模型本轮忘带品牌入参时确定性拉回，与 Phase 3.1 的 schedule_constraint 兜底同模式。
-        // 备注品牌优先级更高（引流来源，已实测校准）；候选人本轮点名新品牌时模型会自己传参，不触发兜底。
-        const sessionBrands = (context.sessionFacts?.preferences?.brands ?? []).filter(
-          (brand): brand is string => typeof brand === 'string' && brand.trim().length > 0,
-        );
+        // 会话品牌兜底（§8.1，badcase recvjFFKcZPsiC 想找大米先生却被跨品牌推荐）：
+        // 只补"模型看不到的跨轮遗忘"。SessionBrandState.currentBrand 是唯一兜底档
+        // （昵称品牌经首轮 seed 已在其中）；无新状态的旧链路（test/debug 未注入）
+        // 退回读 preferences.brands 投影。
+        const sessionBrands = context.sessionBrandState
+          ? context.sessionBrandState.currentBrand
+            ? [context.sessionBrandState.currentBrand.canonicalName]
+            : []
+          : (context.sessionFacts?.preferences?.brands ?? []).filter(
+              (brand): brand is string => typeof brand === 'string' && brand.trim().length > 0,
+            );
         if (brandAliasList.length === 0 && brandIdList.length === 0 && sessionBrands.length > 0) {
           brandAliasList = sessionBrands;
           brandAliasSource = 'session_facts';

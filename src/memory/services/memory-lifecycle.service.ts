@@ -3,13 +3,17 @@ import { MessageProcessingService } from '@biz/message/services/message-processi
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
 import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-types/tracking.types';
+import { resolveBrands } from '@resolution/brand/brand-matcher';
+import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
+import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
+import { BrandStateService } from './brand-state.service';
 import { LongTermService } from './long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
 import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
-import { extractHighConfidenceFacts } from '../facts/high-confidence-facts';
+import { extractHighConfidenceFacts, stripQuotedBlocks } from '../facts/high-confidence-facts';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import type {
   LongTermPreferenceFacts,
@@ -18,7 +22,11 @@ import type {
 } from '../types/long-term.types';
 import { isUserProfileFactValue } from '../types/long-term.types';
 import type { ShortTermMessage } from '../types/short-term.types';
-import { type HighConfidenceFacts, type RecommendedJobSummary } from '../types/session-facts.types';
+import {
+  type HighConfidenceFacts,
+  type RecommendedJobSummary,
+  type WeworkSessionState,
+} from '../types/session-facts.types';
 
 export interface MemoryLifecycleTurnContext {
   corpId: string;
@@ -30,6 +38,10 @@ export interface MemoryLifecycleTurnContext {
   normalizedMessages: ModelMessage[];
   /** 本轮工具查到的候选池；回合结束时统一写入会话记忆。 */
   candidatePool?: RecommendedJobSummary[] | null;
+  /** 候选人微信昵称；brand_state 首次初始化（懒迁移 seed，§9.4）用。 */
+  contactName?: string;
+  /** 本轮图片描述的品牌解析结果（save_image_description execute 内同步产出，§10.2）。 */
+  imageBrandResolutions?: BrandResolution[] | null;
 }
 
 interface StepOutcome<T = void> {
@@ -70,6 +82,7 @@ export class MemoryLifecycleService {
     private readonly sponge: SpongeService,
     private readonly enrichment: MemoryEnrichmentService,
     private readonly messageProcessing: MessageProcessingService,
+    private readonly brandState: BrandStateService,
   ) {}
 
   /**
@@ -270,7 +283,9 @@ export class MemoryLifecycleService {
       }
 
       branchNames.push('session_turn_end_updates');
-      branchPromises.push(this.runSessionTurnEndSteps(ctx, lastUserText, assistantText));
+      branchPromises.push(
+        this.runSessionTurnEndSteps(ctx, lastUserText, assistantText, previousState),
+      );
 
       const settledBranches = await Promise.allSettled(branchPromises);
       settledBranches.forEach((result, index) => {
@@ -315,12 +330,16 @@ export class MemoryLifecycleService {
     lastCandidatePool: unknown[] | null;
     presentedJobs: unknown[] | null;
     currentFocusJob: unknown | null;
+    brand_state?: unknown;
   }): boolean {
     return Boolean(
       state.facts ||
         state.lastCandidatePool?.length ||
         state.presentedJobs?.length ||
-        state.currentFocusJob,
+        state.currentFocusJob ||
+        // 品牌状态本身就是结构化会话记忆：seed-only 会话（首轮只落了 brand_state）
+        // 不能被判成空会话，否则准备阶段读不到已存在的状态、触发重复 seed
+        state.brand_state,
     );
   }
 
@@ -397,6 +416,7 @@ export class MemoryLifecycleService {
     ctx: MemoryLifecycleTurnContext,
     lastUserText: string,
     assistantText?: string,
+    previousState?: WeworkSessionState,
   ): Promise<PostProcessingStepStatus[]> {
     const steps: PostProcessingStepStatus[] = [];
 
@@ -454,7 +474,73 @@ export class MemoryLifecycleService {
     }
     steps.push(extractFactsResult.step);
 
+    // 品牌状态 reducer（§6.3.1/§9.3）：排在 extract_facts 之后（吃它的极性/指代链接产出），
+    // 且不因其失败/降级跳过——extract_facts 抛错时以规则轨 + 图片解析结果照常运行，
+    // 否则当轮确定性解析出的 positive/negative（连同首轮 seed）会随异常一起丢失。
+    const brandStateResult = await this.runMeasuredStep('apply_brand_state', async () => {
+      return await this.applyBrandState(ctx, extractFactsResult.value?.brandIntents ?? [], {
+        previousState,
+      });
+    });
+    steps.push(brandStateResult.step);
+
     return steps;
+  }
+
+  /**
+   * 汇总本轮全部品牌解析结果 → reducer 批量应用 → 单字段写回（§5.3 锚点二）。
+   *
+   * 三路输入：规则轨（本轮 user 文本重解析，确定性）、LLM 轨（extract_facts 扩展输出，
+   * 已过目录验证）、图片轨（save_image_description execute 内产出，挂回合上下文）。
+   */
+  private async applyBrandState(
+    ctx: MemoryLifecycleTurnContext,
+    llmBrandIntents: BrandResolution[],
+    options: { previousState?: WeworkSessionState },
+  ): Promise<{ changed: boolean; initialized: boolean }> {
+    let brandData: Awaited<ReturnType<SpongeService['fetchBrandList']>> = [];
+    try {
+      brandData = await this.sponge.fetchBrandList();
+    } catch {
+      brandData = [];
+    }
+
+    // 规则轨：本轮末尾连续 user 块的文本（与回合准备的 trailingUserContent 同口径），
+    // 剥引用块与时间后缀后逐条解析。
+    const ruleResolutions = this.collectTrailingUserTexts(ctx.normalizedMessages).flatMap((text) =>
+      resolveBrands(text, 'user_text', brandData),
+    );
+    const resolutions: BrandResolution[] = [
+      ...(ctx.imageBrandResolutions ?? []),
+      ...ruleResolutions,
+      ...llmBrandIntents,
+    ];
+
+    return await this.brandState.applyTurnResolutions({
+      corpId: ctx.corpId,
+      userId: ctx.userId,
+      sessionId: ctx.sessionId,
+      resolutions,
+      contactName: ctx.contactName,
+      persistedBrandState: options.previousState
+        ? (options.previousState.brand_state ?? null)
+        : undefined,
+      facts: options.previousState?.facts ?? null,
+    });
+  }
+
+  /** 末尾连续 user 块的纯文本（剥引用块 + 时间后缀），供品牌规则轨解析。 */
+  private collectTrailingUserTexts(messages: ModelMessage[]): string[] {
+    const texts: string[] = [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role !== 'user') break;
+      const text = stripQuotedBlocks(
+        MessageParser.stripTimeContext(this.extractTextFromContent(message.content)),
+      ).trim();
+      if (text) texts.unshift(text);
+    }
+    return texts;
   }
 
   private createTimedTask<T>(name: string, task: () => Promise<T>): TimedTask<T> {

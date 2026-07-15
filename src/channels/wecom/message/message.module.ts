@@ -25,6 +25,8 @@ import { MessageDeliveryService } from './delivery/delivery.service';
 import { MessageCallbackAdapterService } from './ingress/callback-adapter.service';
 import { MessagePipelineService } from './application/pipeline.service';
 import { ImageDescriptionService } from './application/image-description.service';
+import { ImageBrandBackfillService } from './application/image-brand-backfill.service';
+import { BrandResolutionModule } from '@resolution/brand/brand-resolution.module';
 import { WecomMessageObservabilityService } from './telemetry/wecom-message-observability.service';
 import { NotificationModule } from '@notification/notification.module';
 import { MessageRuntimeConfigService } from './runtime/message-runtime-config.service';
@@ -64,6 +66,7 @@ import {
     NotificationModule,
     InterventionModule,
     MemoryModule,
+    BrandResolutionModule,
     // 注册消息聚合队列
     BullModule.registerQueue({
       name: 'message-merge',
@@ -104,6 +107,7 @@ import {
     MessageCallbackAdapterService, // 消息回调适配器（支持小组级和企业级格式）
     MessagePipelineService, // 消息处理管线（核心处理逻辑）
     ImageDescriptionService, // 图片描述（异步 vision 识别 → 回写 content）
+    ImageBrandBackfillService, // 图片描述缺失的品牌补写（重新持锁 + 过期即弃，§10.3）
     WecomMessageObservabilityService, // 企微消息链路观测（阶段时延 + 结构化调试上下文）
     AcceptInboundMessageService, // 入站预处理（过滤、去重、写历史）
     ReplyWorkflowService, // 回复工作流（调用 Agent → 发送回复）

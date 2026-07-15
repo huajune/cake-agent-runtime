@@ -1,4 +1,5 @@
 import {
+  detectBrandAliasHints,
   extractHighConfidenceFacts,
   extractStructuredName,
   unwrapHighConfidenceValue,
@@ -12,58 +13,64 @@ describe('extractHighConfidenceFacts', () => {
     { name: '报亭咖啡', aliases: ['报', '报亭'] },
   ];
 
-  it('should normalize brand aliases from user messages', () => {
-    const result = extractHighConfidenceFacts(['来一份'], brandData);
+  // 品牌写入收口（§9.2）：品牌真相只在 brand_state（写入经 turn-finalizer reducer），
+  // extractHighConfidenceFacts 不再把品牌写进 preferences.brands；
+  // 品牌线索（归一化提示）由 detectBrandAliasHints 适配层继续产出。
 
-    expect(result?.preferences.brands).toEqual(
-      expect.objectContaining({ value: ['来伊份'], confidence: 'high', source: 'rule' }),
-    );
+  it('should surface brand alias hints without writing preferences.brands', () => {
+    const hints = detectBrandAliasHints(['来一份'], brandData);
+    expect(hints.map((hint) => hint.brandName)).toEqual(['来伊份']);
+
+    const result = extractHighConfidenceFacts(['来一份'], brandData);
+    expect(result?.preferences.brands ?? null).toBeNull();
+  });
+
+  it('should keep brand hint reasoning when other facts exist', () => {
+    const result = extractHighConfidenceFacts(['来一份，我25岁'], brandData);
+    expect(result?.preferences.brands ?? null).toBeNull();
+    expect(result?.reasoning).toContain('来伊份');
   });
 
   it('should not misclassify generic phrases as brands', () => {
-    const result = extractHighConfidenceFacts(['给我来一份工作'], brandData);
-
-    expect(result).toBeNull();
+    expect(detectBrandAliasHints(['给我来一份工作'], brandData)).toEqual([]);
+    expect(extractHighConfidenceFacts(['给我来一份工作'], brandData)).toBeNull();
   });
 
   it('should match a distinctive brand embedded in a sentence (containment)', () => {
     // 旧的全等匹配会因为 "我要"/"兼职" 未被恰好剥离而漏掉品牌；
     // 长别称改为子串包含后，品牌嵌在句子里也能命中。
-    const result = extractHighConfidenceFacts(['我要瑞幸咖啡兼职'], brandData);
-
-    expect(unwrapHighConfidenceValue(result?.preferences.brands) ?? []).toContain('瑞幸咖啡');
+    const hints = detectBrandAliasHints(['我要瑞幸咖啡兼职'], brandData);
+    expect(hints.map((hint) => hint.brandName)).toContain('瑞幸咖啡');
   });
 
   it('should not let short generic aliases false-match common words (报名)', () => {
     // 报亭咖啡 的短别称 "报" 不可被 "报名" 命中。
-    const result = extractHighConfidenceFacts(['我要报名面试'], brandData);
-
-    expect(unwrapHighConfidenceValue(result?.preferences.brands) ?? []).not.toContain('报亭咖啡');
+    const hints = detectBrandAliasHints(['我要报名面试'], brandData);
+    expect(hints.map((hint) => hint.brandName)).not.toContain('报亭咖啡');
   });
 
   it('should expand a category word (咖啡) to related brands, not a position', () => {
     // 品类词"咖啡"指的是相关品牌，应展开为咖啡类品牌走品牌召回，而非提取为 position "咖啡师"。
-    const result = extractHighConfidenceFacts(['我要咖啡兼职'], brandData);
+    const hints = detectBrandAliasHints(['我要咖啡兼职'], brandData);
+    expect(hints.map((hint) => hint.brandName)).toEqual(
+      expect.arrayContaining(['瑞幸咖啡', '报亭咖啡']),
+    );
+    expect(hints.every((hint) => hint.matchedAlias === '咖啡(品类)')).toBe(true);
 
-    const brands = unwrapHighConfidenceValue(result?.preferences.brands) ?? [];
-    expect(brands).toEqual(expect.arrayContaining(['瑞幸咖啡', '报亭咖啡']));
     // 规则层绝不能把品类词识别成具体岗位
+    const result = extractHighConfidenceFacts(['我要咖啡兼职'], brandData);
     expect(unwrapHighConfidenceValue(result?.preferences.position) ?? []).not.toContain('咖啡师');
   });
 
   it('should prefer the specific brand over category expansion when one is named', () => {
     // 指名"瑞幸咖啡"时只取该品牌，不应再展开成整个咖啡品类。
-    const result = extractHighConfidenceFacts(['我要瑞幸咖啡兼职'], brandData);
-
-    const brands = unwrapHighConfidenceValue(result?.preferences.brands) ?? [];
-    expect(brands).toEqual(['瑞幸咖啡']);
+    const hints = detectBrandAliasHints(['我要瑞幸咖啡兼职'], brandData);
+    expect(hints.map((hint) => hint.brandName)).toEqual(['瑞幸咖啡']);
   });
 
   it('should not match conjunction chars as brand alias', () => {
     const brands = [{ name: '和府捞面', aliases: ['和'] }];
-    const result = extractHighConfidenceFacts(['肯德基和星巴克'], brands);
-
-    expect(unwrapHighConfidenceValue(result?.preferences.brands) ?? []).not.toContain('和府捞面');
+    expect(detectBrandAliasHints(['肯德基和星巴克'], brands)).toEqual([]);
   });
 
   it('should extract explicit high-confidence entities from one sentence', () => {

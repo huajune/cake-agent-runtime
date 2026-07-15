@@ -8,6 +8,7 @@ import type {
 import type { UserProfile } from '@memory/types/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
 import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
+import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -90,6 +91,16 @@ export interface ToolBuildContext {
   profile?: UserProfile | null;
   /** 当前会话已提取事实（用于工具判断已知/缺失字段） */
   sessionFacts?: EntityExtractionResult | null;
+  /**
+   * 本轮生效的会话品牌状态（§9）：已持久化状态，或首轮由昵称/旧数组 seed 出的初始状态。
+   * duliday_job_list 的会话品牌兜底只读 currentBrand（§8.1）；状态存在即旧昵称兜底档禁用。
+   */
+  sessionBrandState?: SessionBrandState | null;
+  /**
+   * save_image_description 落描述时同步解析出的图片品牌（§10.2）。
+   * 解析结果挂回合上下文，供 turn-finalizer 统一写 brand_state；不干预本轮查询。
+   */
+  onImageBrandResolved?: (resolutions: BrandResolution[], meta: { messageId: string }) => void;
   /** 本轮前置高置信识别结果（含字段级置信度/证据），仅当前轮有效。 */
   highConfidenceFacts?: HighConfidenceFacts | null;
   /**

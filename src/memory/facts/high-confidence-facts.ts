@@ -157,9 +157,9 @@ interface LocationSignals {
  * 引用格式：`[引用 XXX：<被引用内容>]` 或行首 `引用 XXX：<内容>`。
  * 被引用内容通常是招募经理发的岗位描述，其中的年龄/班次/薪资等数值
  * 属于岗位要求，不是候选人自陈——必须在规则提取前剥离，否则所有
- * extract* 函数都会误提取引用块内的实体。
+ * extract* 函数都会误提取引用块内的实体（品牌解析同理：引用块里的品牌是经理的话）。
  */
-function stripQuotedBlocks(message: string): string {
+export function stripQuotedBlocks(message: string): string {
   return message
     .replace(/\[引用[^\]]*\]/g, '')
     .replace(/^引用\s+[^：]+：.*$/gm, '')
@@ -358,12 +358,11 @@ export function extractHighConfidenceFacts(
   const facts = cloneFallbackExtraction();
   const reasons: string[] = [];
 
+  // 品牌收口（§9.2）：本函数不再内联直写 preferences.brands——品牌真相唯一存储是
+  // brand_state（写入只经 turn-finalizer 的 reducer），preferences.brands 退化为只读投影。
+  // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
   const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
   if (aliasHints.length > 0) {
-    const brands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
-    facts.preferences.brands = ruleValue(brands, {
-      evidence: `品牌别名识别：${brands.join('、')}`,
-    });
     reasons.push(
       ...aliasHints.map(
         (hint) =>
@@ -647,7 +646,7 @@ export function normalizeGenderValue(value: unknown): '男' | '女' | null {
  * 把外部补充的性别合并进高置信事实对象。
  *
  * 使用浅拷贝保证不污染入参引用，并把来源标签追加到 reasoning 里，便于排障溯源。
- * 与 mergeDetectedBrands 同构，都是"补充字段→不可变合并"的合并器。
+ * "补充字段→不可变合并"的合并器：浅拷贝入参后按来源标签补写字段。
  */
 export function mergeSupplementalGenderFact(
   existing: HighConfidenceFacts | null,
@@ -803,36 +802,6 @@ export function unwrapHighConfidenceFacts(
       available_after: unwrapHighConfidenceValue(facts.preferences.available_after),
     },
     reasoning: facts.reasoning,
-  };
-}
-
-export function mergeDetectedBrands(
-  facts: EntityExtractionResult,
-  aliasHints: BrandAliasHint[],
-): EntityExtractionResult {
-  const detectedBrands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
-  if (detectedBrands.length === 0) return facts;
-
-  const existingBrands = facts.preferences.brands ?? [];
-  const mergedBrands = Array.from(new Set([...existingBrands, ...detectedBrands]));
-  const addedBrands = mergedBrands.filter((brand) => !existingBrands.includes(brand));
-  if (addedBrands.length === 0) return facts;
-
-  const reasoningSuffix = aliasHints
-    .filter((hint) => addedBrands.includes(hint.brandName))
-    .map(
-      (hint) =>
-        `根据用户原话"${hint.sourceText}"，将别名"${hint.matchedAlias}"归一化为标准品牌"${hint.brandName}"`,
-    )
-    .join('；');
-
-  return {
-    ...facts,
-    preferences: {
-      ...facts.preferences,
-      brands: mergedBrands,
-    },
-    reasoning: reasoningSuffix ? `${facts.reasoning}\n${reasoningSuffix}` : facts.reasoning,
   };
 }
 

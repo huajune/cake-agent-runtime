@@ -3,10 +3,11 @@ import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { decideLaborFormIntent } from '@memory/facts/labor-form';
-import { detectBrandAliasHints } from '@memory/facts/high-confidence-facts';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
+import { BrandStateService, type TurnBrandContext } from '@memory/services/brand-state.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { SpongeService } from '@sponge/sponge.service';
@@ -59,7 +60,11 @@ export interface PreparedAgentContext {
   /** 本轮临时状态；回合结束时统一交给 memory lifecycle。 */
   turnState: {
     candidatePool: RecommendedJobSummary[] | null;
+    /** save_image_description 落描述时同步解析出的图片品牌（§10.2 回合上下文）。 */
+    imageBrandResolutions: BrandResolution[];
   };
+  /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
+  contactName?: string;
   /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
   memorySnapshot?: AgentMemorySnapshot;
   /**
@@ -94,6 +99,7 @@ export class PreparationService {
     private readonly spongeService: SpongeService,
     private readonly groupResolver: GroupResolverService,
     private readonly groupMembership: GroupMembershipService,
+    private readonly brandStateService: BrandStateService,
     @Optional()
     private readonly tracer?: AgentTracerService,
   ) {}
@@ -157,9 +163,12 @@ export class PreparationService {
     // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
     const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
 
-    // 昵称中的品牌必须先经品牌库确定性命中，再决定是否进入 prompt。
-    // 原始 contactName 是微信昵称，不能在未命中品牌库时被 framing 成品牌备注。
-    const contactBrandAliases = await this.deriveContactBrandAliases(params.contactName);
+    // 品牌上下文（§5.3 锚点一）：读 SessionBrandState；brand_state 不存在时按
+    // 「旧并集末位 > 已验证昵称品牌 seed > 空」构造本轮生效的初始状态（首轮推荐即按
+    // 该品牌启动），持久化仍随收尾 reducer 统一落盘。昵称品牌必须先经品牌库确定性
+    // 命中——未命中的昵称（如 Gattouzo）不产生任何品牌线索。
+    const turnBrandContext = await this.deriveTurnBrandContext(params.contactName, memory);
+    const contactBrandAliases = turnBrandContext.nicknameBrands;
 
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
@@ -206,7 +215,10 @@ export class PreparationService {
     }
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
-    const turnState: PreparedAgentContext['turnState'] = { candidatePool: null };
+    const turnState: PreparedAgentContext['turnState'] = {
+      candidatePool: null,
+      imageBrandResolutions: [],
+    };
     const toolContext = buildToolContext({
       params,
       memory,
@@ -216,6 +228,7 @@ export class PreparationService {
       thresholds,
       turnState,
       contactBrandAliases,
+      sessionBrandState: turnBrandContext.state,
       currentUserMessage,
       currentLaborFormIntent,
       bookingWorkOrderJobIds: bookingContext.jobIds,
@@ -255,6 +268,7 @@ export class PreparationService {
       maxSteps,
       entryStage,
       turnState,
+      contactName: params.contactName,
       memorySnapshot,
       toolExecutionTimings,
     };
@@ -335,25 +349,30 @@ export class PreparationService {
   }
 
   /**
-   * 从企微名称备注里确定性解析目标品牌标准名。
+   * 派生本轮品牌上下文（§5.3 锚点一）：SessionBrandState + 昵称品牌线索。
    *
-   * 纯提示词驱动「备注品牌优先」经实测不可靠（模型会忽略备注按距离推），故在 prep 阶段
-   * 用与候选人消息相同的品牌词典匹配器（detectBrandAliasHints）把备注里的品牌抠出来，
-   * 交给 duliday_job_list 在模型没传品牌时确定性兜底（见 ToolBuildContext.contactBrandAliases）。
-   *
-   * 失败/无命中/无备注一律返回空数组（按"无目标品牌"降级，不阻断主流程）。
+   * 昵称品牌统一经 BrandResolutionService 的目录验证（resolve(contact_name)）：
+   * brand_state 不存在时唯一命中的昵称品牌 seed 为 currentBrand 初始值（仅此一次），
+   * 首轮推荐即按该品牌启动；状态一旦存在永不重新 seed。
+   * 失败一律降级为空状态（不阻断主流程）。
    */
-  private async deriveContactBrandAliases(contactName: string | undefined): Promise<string[]> {
-    const normalized = contactName?.trim();
-    if (!normalized) return [];
+  private async deriveTurnBrandContext(
+    contactName: string | undefined,
+    memory: TurnStartMemory,
+  ): Promise<TurnBrandContext> {
     try {
-      const brandData = await this.spongeService.fetchBrandList();
-      if (!brandData?.length) return [];
-      const hints = detectBrandAliasHints([normalized], brandData);
-      return Array.from(new Set(hints.map((hint) => hint.brandName)));
+      return await this.brandStateService.deriveTurnBrandContext({
+        persisted: memory.sessionMemory?.brand_state ?? null,
+        facts: memory.sessionMemory?.facts ?? null,
+        contactName,
+      });
     } catch (error) {
-      this.logger.warn('备注品牌解析失败（按无目标品牌降级）', error);
-      return [];
+      this.logger.warn('品牌上下文派生失败（按空状态降级）', error);
+      return {
+        state: { currentBrand: null, excludedBrands: [] },
+        persisted: false,
+        nicknameBrands: [],
+      };
     }
   }
 

@@ -11,6 +11,10 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'agent_error',
   'model_fallback',
   'tool_error',
+  // 品牌状态迁移：仅状态变化时发射，前后快照不可重放，必须落库（§12）
+  'brand_state_change',
+  // 新旧品牌匹配差异（临时，随旧路径下线删除）：目录时变不可离线重放（§12/§15.6）
+  'brand_resolution_shadow_diff',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;

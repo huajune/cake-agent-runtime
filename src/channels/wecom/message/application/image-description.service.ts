@@ -99,6 +99,7 @@ export class ImageDescriptionService {
     );
 
     const task = this.describeAndUpdate(messageId, imageUrl, kind)
+      .then(() => undefined)
       .catch((error) => {
         this.consecutiveFailures++;
         const err = error instanceof Error ? error : new Error(String(error));
@@ -122,6 +123,37 @@ export class ImageDescriptionService {
       });
 
     this.inFlight.set(messageId, task);
+  }
+
+  /**
+   * 描述缺失的异步补写（§10.3）：主路径模型漏调 save_image_description 时，
+   * turn 收尾后由补写链路调用。返回描述文本供品牌解析；失败/并行任务已在跑时返回 null。
+   */
+  async describeForBackfill(messageId: string, imageUrl: string): Promise<string | null> {
+    const existing = this.inFlight.get(messageId);
+    if (existing) {
+      // 兼容路径的预转写已在跑：描述会由该任务写回，本次不重复调 vision。
+      await existing.catch(() => {});
+      return null;
+    }
+
+    const run = this.describeAndUpdate(messageId, imageUrl, MessageType.IMAGE);
+    this.inFlight.set(
+      messageId,
+      run.then(() => undefined).catch(() => undefined),
+    );
+    try {
+      const description = await run;
+      this.consecutiveFailures = 0;
+      return description;
+    } catch (error) {
+      this.logger.warn(
+        `图片描述补写失败 [${messageId}]: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    } finally {
+      this.inFlight.delete(messageId);
+    }
   }
 
   /**
@@ -163,19 +195,19 @@ export class ImageDescriptionService {
   }
 
   /**
-   * 调用 vision 模型描述图片/表情，回写到 DB
+   * 调用 vision 模型描述图片/表情，回写到 DB。返回描述文本（无效 URL/空结果返回 null）。
    */
   private async describeAndUpdate(
     messageId: string,
     imageUrl: string,
     kind: VisualMessageKind,
-  ): Promise<void> {
+  ): Promise<string | null> {
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(imageUrl);
     } catch {
       this.logger.warn(`无效的${this.kindLabel(kind)} URL [${messageId}]: ${imageUrl}`);
-      return;
+      return null;
     }
 
     const promptText =
@@ -202,7 +234,7 @@ export class ImageDescriptionService {
     const description = result.text.trim();
     if (!description) {
       this.logger.warn(`${this.kindLabel(kind)}描述返回空结果 [${messageId}]`);
-      return;
+      return null;
     }
 
     // 简历图片：追加 "简历附件：URL" 行，让候选人发的手写简历/简历照片走与
@@ -223,6 +255,7 @@ export class ImageDescriptionService {
     this.logger.log(
       `${this.kindLabel(kind)}描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${result.usage.totalTokens}`,
     );
+    return description;
   }
 
   /**

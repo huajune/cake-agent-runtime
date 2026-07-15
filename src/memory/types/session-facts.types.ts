@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import { factConfidenceRank } from './confidence-rank';
 import type { MemoryEntry } from '../stores/store.types';
 
@@ -255,6 +256,26 @@ export const ExplicitProvenanceEntrySchema = z.object({
 
 export type ExplicitProvenanceEntry = z.infer<typeof ExplicitProvenanceEntrySchema>;
 
+/**
+ * LLM 极性轨输出（§6.3.1）：品牌意图极性 + 指代链接结果。
+ * brand 为 null 表示品牌为空的表达（"换个品牌"类 negative / "品牌不限"类 browse_all）。
+ * 输出的品牌名必须经品牌库标准化验证后才进 brand_state reducer，未命中即整条丢弃。
+ */
+export const BrandIntentEntrySchema = z.object({
+  brand: z
+    .string()
+    .nullable()
+    .describe(
+      '品牌名（尽量使用[可用品牌信息]中的标准名；指代表达须链接到实际品牌名）；' +
+        '"换个品牌/这个不考虑"等无具体品牌的排斥填 null',
+    ),
+  polarity: z
+    .enum(['positive', 'negative', 'browse_all'])
+    .describe('positive=意向/询问/提及；negative=排斥（含指代排斥）；browse_all=明确不限品牌'),
+});
+
+export type BrandIntentEntry = z.infer<typeof BrandIntentEntrySchema>;
+
 /** LLM 结构化输出 schema — city 字段为字符串 */
 export const LLMEntityExtractionResultSchema = z.object({
   interview_info: InterviewInfoSchema,
@@ -267,6 +288,15 @@ export const LLMEntityExtractionResultSchema = z.object({
       '候选人明确提供的 interview_info 字段清单：仅当字段值来自结构化表单回填（「年龄：37」）' +
         '或候选人直接自陈（"我有健康证""我今年37"）时列入，并附逐字原文片段；' +
         '由上下文推断、或助手提及后候选人仅附和的字段一律不列',
+    ),
+  brand_intents: z
+    .array(BrandIntentEntrySchema)
+    .nullable()
+    .optional()
+    .describe(
+      '本轮候选人对品牌的意图极性清单（仅本轮新表达，不复读历史）。' +
+        '候选人用"这个/那个/第一个/你说的那家"等指代品牌时，必须链接到图片或此前推荐的实际品牌名再输出；' +
+        '排斥表达（"X就算了""X干过了不去了""这个不考虑"）输出 negative；明确不限品牌输出 browse_all',
     ),
   reasoning: z
     .string()
@@ -907,6 +937,12 @@ export interface WeworkSessionState {
   terminal?: SessionTerminalState | null;
   /** 候选人最后一次入站消息时间（ISO）；复聊 shouldStop 用「锚点后已回话」停发。可选：旧数据无此键。 */
   lastCandidateMessageAt?: string | null;
+  /**
+   * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
+   * 写入只经 turn-finalizer 的 brand_state reducer（单一门）；preferences.brands 是它的只读投影。
+   * 可选：旧数据无此键（懒迁移，见 §9.4）。
+   */
+  brand_state?: PersistedBrandState | null;
 }
 
 export const InvitedGroupRecordSchema = z.object({
@@ -914,6 +950,18 @@ export const InvitedGroupRecordSchema = z.object({
   city: z.string(),
   industry: z.string().optional(),
   invitedAt: z.string(),
+});
+
+export const SessionBrandRefSchema = z.object({
+  canonicalName: z.string(),
+  brandId: z.number().int().nullable(),
+});
+
+/** brand_state 的 Redis 落盘 schema（未注册进 SessionFactsRedisContentSchema 的字段会被丢弃）。 */
+export const PersistedBrandStateSchema = z.object({
+  currentBrand: SessionBrandRefSchema.nullable(),
+  excludedBrands: z.array(SessionBrandRefSchema),
+  updatedAtMs: z.number().nullable().optional(),
 });
 
 export const WeworkSessionStateSchema = z.object({
@@ -924,6 +972,7 @@ export const WeworkSessionStateSchema = z.object({
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
   terminal: z.enum(['booked', 'handed_off', 'rejected', 'onboarded']).nullable().optional(),
   lastCandidateMessageAt: z.string().nullable().optional(),
+  brand_state: PersistedBrandStateSchema.nullable().optional(),
 });
 
 /** 当前会话没有任何结构化记忆时的空状态。 */
@@ -935,6 +984,7 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   invitedGroups: null,
   terminal: null,
   lastCandidateMessageAt: null,
+  brand_state: null,
 };
 
 // ==================== 3. Redis 持久化结构 ====================
