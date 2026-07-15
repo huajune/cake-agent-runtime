@@ -52,11 +52,14 @@ export class GuardrailReviewPacketBuilder {
       .find((item) => item.resultCount !== 0 && item.status !== 'error' && item.status !== 'empty');
     const call = usable ?? jobListCalls[jobListCalls.length - 1];
 
-    // §11 第三切换点：requestedBrands 改读工具入口标准化后的 queryMeta.brand
-    // （实际应用的品牌），不再读模型原始 call.args.brandAliasList；被拒绝的入参
-    // （未命中/歧义）单独暴露给 reviewer，不构成"候选人要的品牌"权威依据。
+    // §11 第三切换点：品牌意图改读工具入口标准化后的 queryMeta.brand，
+    // 并按 filterMode 区分正向查询与排除。exclude 的 appliedCanonicalNames 是
+    // 候选人拒绝的品牌，绝不能放进 requestedBrands 误导 reviewer。
     const brandMeta = readBrandQueryMeta(call.result);
-    const requestedBrands = brandMeta?.appliedCanonicalNames ?? [];
+    const appliedBrands = brandMeta?.appliedCanonicalNames ?? [];
+    const isExcludeMode = brandMeta?.filterMode === 'exclude';
+    const requestedBrands = isExcludeMode ? [] : appliedBrands;
+    const excludedBrands = isExcludeMode ? appliedBrands : [];
     const rejectedBrandInputs = brandMeta?.rejectedInputs ?? [];
     const jobs = readJobListJobs(call.result)
       .slice(0, 8)
@@ -68,6 +71,7 @@ export class GuardrailReviewPacketBuilder {
       status: call.status,
       hasEvidence: jobs.length > 0 || Boolean(markdownExcerpt),
       requestedBrands,
+      ...(excludedBrands.length > 0 ? { excludedBrands } : {}),
       ...(rejectedBrandInputs.length > 0 ? { rejectedBrandInputs } : {}),
       jobs,
       // 默认返回形态是 markdown-only（无 rawData 数组）：结构化解析为空时，
@@ -211,6 +215,7 @@ const JOB_LIST_QUERY_INTENT_KEYS = [
   'regionNameList',
   'brandAliasList',
   'brandIdList',
+  'brandFilterMode',
   'storeNameList',
   'searchJobName',
   'jobCategoryList',
@@ -242,7 +247,7 @@ function readJobListJobs(result: unknown): unknown[] {
 /** 读取工具结果里的 queryMeta.brand 小节（成功与错误结果同一路径）。 */
 function readBrandQueryMeta(
   result: unknown,
-): { appliedCanonicalNames: string[]; rejectedInputs: string[] } | null {
+): { filterMode?: string; appliedCanonicalNames: string[]; rejectedInputs: string[] } | null {
   const record = readRecord(result);
   const queryMeta = readRecord(record?.queryMeta);
   const brand = readRecord(queryMeta?.brand);
@@ -251,6 +256,7 @@ function readBrandQueryMeta(
     .map((item) => readString(readRecord(item)?.input))
     .filter((input): input is string => Boolean(input));
   return {
+    filterMode: readString(brand.filterMode),
     appliedCanonicalNames: readStringArray(brand.appliedCanonicalNames),
     rejectedInputs: rejected,
   };

@@ -145,6 +145,40 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(packet.evidence.jobList?.markdownExcerptChars).toBeGreaterThan(0);
   });
 
+  it('labels exclude-mode brands as excluded instead of requested', () => {
+    const packet = builder.build({
+      reply: '给你推荐大米先生的岗位',
+      userMessage: '别推肯德基了',
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: { brandAliasList: ['肯德基'], brandFilterMode: 'exclude' },
+          result: {
+            markdown: '# 在招岗位\n大米先生（人民广场店）',
+            queryMeta: {
+              brand: {
+                filterMode: 'exclude',
+                brandSource: 'model_input',
+                appliedBrandIds: [10001],
+                appliedCanonicalNames: ['肯德基'],
+                rejected: [],
+              },
+            },
+          },
+          resultCount: 1,
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.jobList?.requestedBrands).toEqual([]);
+    expect(packet.evidence.jobList?.excludedBrands).toEqual(['肯德基']);
+    expect(packet.evidence.jobList?.args).toEqual({
+      brandAliasList: ['肯德基'],
+      brandFilterMode: 'exclude',
+    });
+  });
+
   it('keeps resolved geocode coordinates even when candidates are empty', () => {
     const packet = builder.build({
       reply: '顺德这边有岗位',

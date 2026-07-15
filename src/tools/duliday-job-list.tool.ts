@@ -745,6 +745,12 @@ export function buildJobListTool(
         }
         const brandAliasList = brandPlan.queryBrandAliasList;
         const brandIdList = brandPlan.queryBrandIdList;
+        // exclude 档的 applied 是“候选人不要的品牌”，不能拿来生成“该品牌没岗”的
+        // 候选人话术；无结果脚本只承接正向 enforce 查询的品牌。
+        const noMatchBrandLabels =
+          brandPlan.filterMode === 'enforce'
+            ? brandPlan.applied.map((brand) => brand.canonicalName)
+            : [];
         // Phase 3.1：候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
@@ -1133,7 +1139,7 @@ export function buildJobListTool(
                   details: {
                     maxKm,
                     noMatchScript: buildNoMatchScript({
-                      brandLabels: brandPlan.applied.map((brand) => brand.canonicalName),
+                      brandLabels: noMatchBrandLabels,
                       storeLabels: storeNameList,
                       cityLabels: normalizedCityNameList,
                       regionLabels: normalizedRegionNameList,
@@ -1287,7 +1293,7 @@ export function buildJobListTool(
                   ? { brandFilterNotice: brandPlan.disclosure }
                   : {}),
                 noMatchScript: buildNoMatchScript({
-                  brandLabels: brandPlan.applied.map((brand) => brand.canonicalName),
+                  brandLabels: noMatchBrandLabels,
                   storeLabels: storeNameList,
                   cityLabels: normalizedCityNameList,
                   regionLabels: normalizedRegionNameList,

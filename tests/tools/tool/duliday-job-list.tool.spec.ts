@@ -414,6 +414,74 @@ describe('buildJobListTool', () => {
     expect(result.markdown).not.toContain('肯德基');
   });
 
+  it('exclude mode 全部过滤为空时不把排除品牌说成“没查到该品牌”', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData({ basicInfo: { jobId: 1, brandName: '肯德基' } })],
+      total: 1,
+    });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['上海'],
+      brandAliasList: ['肯德基'],
+      brandFilterMode: 'exclude',
+    } as never);
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(result.noMatchScript.querySummary).not.toContain('肯德基');
+    expect(result.noMatchScript.candidateMessage).not.toContain('肯德基');
+    expect(result.queryMeta.brand).toMatchObject({
+      filterMode: 'exclude',
+      appliedCanonicalNames: ['肯德基'],
+    });
+  });
+
+  it('exclude mode 距离过滤为空时不把排除品牌写进无结果话术', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJobData({
+          basicInfo: {
+            jobId: 2,
+            brandName: '大米先生',
+            storeInfo: {
+              storeName: '远距离店',
+              storeAddress: '北京市朝阳区xx路',
+              storeCityName: '北京',
+              storeRegionName: '朝阳区',
+              latitude: 39.9,
+              longitude: 116.4,
+            },
+          },
+        }),
+      ],
+      total: 1,
+    });
+    const contextWithThreshold: ToolBuildContext = {
+      ...mockContext,
+      thresholds: [
+        {
+          flag: 'max_recommend_distance_km',
+          label: '推荐距离上限',
+          rule: '仅推荐距离范围内门店',
+          max: 3,
+          unit: 'km',
+        },
+      ],
+    };
+
+    const result = await executeTool(contextWithThreshold, {
+      ...defaultInput,
+      cityNameList: ['北京'],
+      brandAliasList: ['肯德基'],
+      brandFilterMode: 'exclude',
+      location: { latitude: 31.23, longitude: 121.47 },
+    } as never);
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(result.noMatchScript.querySummary).not.toContain('肯德基');
+    expect(result.noMatchScript.candidateMessage).not.toContain('肯德基');
+  });
+
   it('should return error when no jobs found', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 

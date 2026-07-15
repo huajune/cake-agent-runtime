@@ -26,8 +26,10 @@ export interface JobListEvidence {
   /** 结构化岗位数组或 markdown 摘录是否提供了可核验岗位证据。 */
   hasEvidence: boolean;
   jobs: JobListEvidenceItem[];
-  /** 工具实际应用的品牌（queryMeta.brand.appliedCanonicalNames，§11 第三切换点）。 */
+  /** 工具实际正向查询的品牌（exclude 模式不计入，§11 第三切换点）。 */
   requestedBrands: string[];
+  /** 工具实际排除的品牌；仅 filterMode=exclude 时存在。 */
+  excludedBrands?: string[];
   /** 未过品牌库验证被拒绝的品牌入参（不构成"候选人要的品牌"权威依据）。 */
   rejectedBrandInputs?: string[];
   /**
