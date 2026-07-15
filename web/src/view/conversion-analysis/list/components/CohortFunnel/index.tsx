@@ -460,7 +460,10 @@ export default function CohortFunnel({
                     ))}
                   </span>
                 </div>
-                <span className={styles.stageCardMeta} title={metricTooltip(stage, total, cohortSubject)}>
+                <span
+                  className={styles.stageCardMeta}
+                  title={metricTooltip(stage, total, cohortSubject)}
+                >
                   <b>{stage.count}</b> 人 · 阶段率 <em>{formatPercent(stage.stageRate)}</em>
                 </span>
               </div>

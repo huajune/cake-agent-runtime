@@ -1142,7 +1142,7 @@ function extractHealthCertificate(message: string): string | null {
   ) {
     return '非本地健康证';
   }
-  if (/有健康证|(?:食品|餐饮|零售)(?:类)?健康证/.test(message)) {
+  if (/有健康证|本地.{0,4}健康证|健康证.{0,4}本地|(?:食品|餐饮|零售)(?:类)?健康证/.test(message)) {
     return '有';
   }
   return null;

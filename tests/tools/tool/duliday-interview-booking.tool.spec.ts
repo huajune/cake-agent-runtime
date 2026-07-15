@@ -35,6 +35,7 @@ describe('buildInterviewBookingTool', () => {
     jobId: 100,
     interviewTime: '2026-03-20 14:00:00',
     operateType: 6,
+    hasHealthCertificate: 1,
     prechecked: { nextAction: 'ready_to_book' as const, missingFieldsCount: 0 },
   };
 
@@ -441,6 +442,33 @@ describe('buildInterviewBookingTool', () => {
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
+  it('booking guard: forged ready_to_book still blocks an excluded household before side effect', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            requirementsForHometown: {
+              nativePlaceRequirementType: '不要',
+              nativePlaces: ['天津市', '江西省'],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      householdRegisterProvinceId: 120000,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._outcome).toContain('内部硬性条件');
+    expect(result._replyInstruction).not.toContain('天津');
+    expect(result._replyInstruction).not.toContain('江西');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
   // 时段窗口/报名截止/dateOnly 等时段硬规则的二次校验已经从 booking 移除——
   // 由 duliday_interview_precheck 前置拦截，booking 信任 precheck 的结论。
   // 仍保留一条"合法时段提交成功"的正路径，作为 booking 端的烟雾测试。
@@ -700,6 +728,7 @@ describe('buildInterviewBookingTool', () => {
         pageSize: 1,
         options: {
           includeBasicInfo: true,
+          includeHiringRequirement: true,
           includeInterviewProcess: true,
         },
       },
@@ -718,7 +747,7 @@ describe('buildInterviewBookingTool', () => {
         householdRegisterProvinceId: 310000,
         height: 172,
         weight: undefined,
-        hasHealthCertificate: undefined,
+        hasHealthCertificate: 1,
         healthCertificateTypes: undefined,
         educationId: 2,
         uploadResume: undefined,

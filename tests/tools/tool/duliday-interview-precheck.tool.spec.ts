@@ -1949,8 +1949,100 @@ describe('buildInterviewPrecheckTool', () => {
     );
 
     expect(result.success).toBe(true);
+    expect(result.nextAction).toBe('confirm_local_health_certificate');
+    expect(result.healthCertificateEligibility).toEqual(
+      expect.objectContaining({
+        status: 'non_local_needs_confirmation',
+        recommendedQuestion: expect.stringContaining('本地健康证'),
+      }),
+    );
     expect(result.bookingChecklist.missingFields).toContain('健康证情况');
     expect(result.bookingChecklist.templateText).toContain('健康证：');
+  });
+
+  it('should map acceptance after a non-local certificate to Sponge value 2', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '可以' },
+      {
+        currentUserMessage: '可以',
+        sessionFacts: {
+          interview_info: { has_health_certificate: '非本地健康证' },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.healthCertificateEligibility).toEqual(
+      expect.objectContaining({ status: 'accepts_local_application', spongeValue: 2 }),
+    );
+    expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
+  });
+
+  it('should reject the current job when non-local certificate holder refuses to reapply', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '不接受' },
+      {
+        currentUserMessage: '不接受',
+        sessionFacts: {
+          interview_info: { has_health_certificate: '非本地健康证' },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.nextAction).toBe('health_certificate_rejected');
+    expect(result.healthCertificateEligibility).toEqual(
+      expect.objectContaining({ status: 'rejects_local_application', spongeValue: 3 }),
+    );
+  });
+
+  it('should skip the default rule when the job explicitly says no health certificate is required', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            certificate: { education: '高中', healthCertificate: '无需健康证' },
+          },
+          interviewProcess: { interviewSupplement: [] },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '不接受办理' },
+      { currentUserMessage: '不接受办理' },
+    );
+
+    expect(result.healthCertGate).toBe('not_required');
+    expect(result.nextAction).not.toBe('health_certificate_rejected');
+    expect(result.bookingChecklist.missingFields).not.toContain('健康证情况');
+  });
+
+  it('should not inspect local certificate eligibility when the job has no health requirement', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { certificate: {} },
+          interviewProcess: { interviewSupplement: [], remark: '' },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, candidateHasHealthCertificate: '异地健康证' },
+      { currentUserMessage: '我的是异地健康证' },
+    );
+
+    expect(result.healthCertGate).toBe('unknown');
+    expect(result.healthCertificateEligibility).toBeUndefined();
+    expect(result.nextAction).not.toBe('confirm_local_health_certificate');
+    expect(result.bookingChecklist.missingFields).not.toContain('健康证情况');
   });
 
   it('should switch to progressive collection guidance when candidate resists filling many fields', async () => {

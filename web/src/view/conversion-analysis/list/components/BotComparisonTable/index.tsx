@@ -165,7 +165,9 @@ function renderCell(bot: ConversionBotRow, type: ColumnType, key: BotSortKey) {
         >
           {formatPercent(value)}
         </strong>
-        <i className={`${styles.rateBar} ${isInterview ? styles.rateBarInterview : styles.rateBarBooking}`}>
+        <i
+          className={`${styles.rateBar} ${isInterview ? styles.rateBarInterview : styles.rateBarBooking}`}
+        >
           <b style={{ width: `${pct}%` }} />
         </i>
       </>

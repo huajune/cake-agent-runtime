@@ -411,6 +411,12 @@ describe('extractHighConfidenceFacts', () => {
     ).toBe('非本地健康证');
     expect(
       unwrapHighConfidenceValue(
+        extractHighConfidenceFacts(['我有上海本地健康证'], brandData)?.interview_info
+          .has_health_certificate,
+      ),
+    ).toBe('有');
+    expect(
+      unwrapHighConfidenceValue(
         extractHighConfidenceFacts(['我没有食品健康证'], brandData)?.interview_info
           .has_health_certificate,
       ),

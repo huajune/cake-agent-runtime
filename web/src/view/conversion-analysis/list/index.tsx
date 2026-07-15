@@ -90,8 +90,7 @@ export default function ConversionAnalysis() {
   // 避免 API 全挂时页面只剩空白/加载态而无任何反馈。
   const hasError = kpisError || trendsError || funnelError || botsError || handoffError;
   const allError = kpisError && trendsError && funnelError && botsError && handoffError;
-  const anyLoading =
-    kpisLoading || trendsLoading || funnelLoading || botsLoading || handoffLoading;
+  const anyLoading = kpisLoading || trendsLoading || funnelLoading || botsLoading || handoffLoading;
   const refetchAll = () => {
     void refetchKpis();
     void refetchTrends();

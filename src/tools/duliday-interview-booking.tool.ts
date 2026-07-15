@@ -38,6 +38,7 @@ import {
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { evaluateBookingNameGate } from '@tools/shared/precheck-core';
+import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -185,6 +186,8 @@ const inputSchema = z.object({
           'date_unavailable',
           'student_rejected',
           'household_rejected',
+          'confirm_local_health_certificate',
+          'health_certificate_rejected',
         ])
         .describe('本轮 duliday_interview_precheck 返回的 nextAction 字段，必须复制原值'),
       missingFieldsCount: z
@@ -289,7 +292,11 @@ export function buildInterviewBookingTool(
                       ? '上一轮 precheck 已确认候选人学生身份与岗位要求冲突，严禁继续 booking。转查接受学生的岗位；不得修改或隐瞒身份重试。'
                       : prechecked.nextAction === 'household_rejected'
                         ? '上一轮 precheck 已确认候选人与岗位内部硬性条件不匹配，严禁继续 booking。请用中性话术转查其它岗位；禁止透露具体户籍、籍贯或地域限制，也不得修改户籍字段重试。'
-                        : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
+                        : prechecked.nextAction === 'confirm_local_health_certificate'
+                          ? '候选人当前持有异地健康证，尚未确认是否接受重新办理应聘城市本地证。禁止 booking；先按 precheck.healthCertificateEligibility.recommendedQuestion 询问，得到明确答复后重新 precheck。'
+                          : prechecked.nextAction === 'health_certificate_rejected'
+                            ? '候选人明确不接受办理本地健康证，不满足当前岗位已配置的健康证要求，严禁 booking。礼貌说明当前岗位暂不匹配并停止本岗位推进。'
+                            : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
               details: { prechecked },
             }),
           );
@@ -561,6 +568,10 @@ export function buildInterviewBookingTool(
             supplementAnswers,
             candidateGenderId: genderId,
             candidateHasHealthCertificate: hasHealthCertificate,
+            candidateHealthCertificateFact:
+              unwrapHighConfidenceValue(
+                context.highConfidenceFacts?.interview_info.has_health_certificate,
+              ) ?? context.sessionFacts?.interview_info.has_health_certificate,
             candidateIsStudent: resolveCandidateIsStudentForBooking(context),
             candidateHouseholdProvinceId: householdRegisterProvinceId,
           });

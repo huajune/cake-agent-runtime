@@ -70,9 +70,11 @@ function householdRegionMatches(candidateProvince: string, configuredRegion: str
   if (!candidate || !configured) return false;
   if (candidate === configured) return true;
   const configuredRaw = configuredRegion.trim().replace(/\s+/g, '');
-  return (HOUSEHOLD_REGION_GROUPS[configuredRaw] ?? HOUSEHOLD_REGION_GROUPS[configured] ?? []).includes(
-    candidate,
-  );
+  return (
+    HOUSEHOLD_REGION_GROUPS[configuredRaw] ??
+    HOUSEHOLD_REGION_GROUPS[configured] ??
+    []
+  ).includes(candidate);
 }
 
 /**
@@ -167,6 +169,7 @@ const CERT_NOT_REQUIRED = /不需要|无需|不必/;
 function normalizeHealthCert(gate: unknown, requirementText: unknown): HealthCertRequirement {
   if (gate === 'before_interview') return 'required_before_interview';
   if (gate === 'before_onboard') return 'required_before_onboard';
+  if (gate === 'not_required') return 'not_required';
 
   const text = typeof requirementText === 'string' ? requirementText : '';
   if (!text || /未明确/.test(text)) return 'unspecified';

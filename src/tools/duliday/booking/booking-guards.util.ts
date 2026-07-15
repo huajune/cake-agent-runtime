@@ -53,6 +53,8 @@ export interface BookingGuardInput {
   candidateGenderId?: number;
   /** 候选人健康证：1=有，2=无但接受办理，3=无且不接受办理 */
   candidateHasHealthCertificate?: number;
+  /** 候选人健康证原始事实，用于防止把“异地证”伪造成 1=有 */
+  candidateHealthCertificateFact?: string | null;
   /** 候选人是否学生；true=学生，false=社会人士 */
   candidateIsStudent?: boolean;
   /** 候选人户籍省 ID（来自 booking 工具入参） */
@@ -145,6 +147,7 @@ function checkHardRequirements(input: BookingGuardInput): ToolErrorReturn | null
   const healthCertConflict = detectHealthCertConflict(
     hr.healthCert,
     input.candidateHasHealthCertificate,
+    input.candidateHealthCertificateFact,
   );
   if (healthCertConflict) {
     return buildToolError({
@@ -186,9 +189,28 @@ function detectGenderConflict(
 function detectHealthCertConflict(
   required: HardRequirements['healthCert'],
   candidateHasHealthCertificate: number | undefined,
+  candidateHealthCertificateFact?: string | null,
 ): { detailedReason: string; replyInstruction: string } | null {
   if (required === 'unspecified' || required === 'not_required') return null;
-  if (candidateHasHealthCertificate == null) return null;
+  if (candidateHasHealthCertificate == null) {
+    return {
+      detailedReason: '岗位已配置健康证要求，booking 未传 hasHealthCertificate',
+      replyInstruction:
+        '当前岗位已配置健康证要求，但尚未收齐健康证情况，禁止 booking。返回 duliday_interview_precheck 询问候选人：应聘城市本地健康证按 1=有；异地证必须先确认是否接受重办。',
+    };
+  }
+
+  if (
+    candidateHasHealthCertificate === 1 &&
+    candidateHealthCertificateFact &&
+    /非本地|不是本地|外地|异地/.test(candidateHealthCertificateFact)
+  ) {
+    return {
+      detailedReason: `候选人事实为异地健康证，但 booking 传入 hasHealthCertificate=1`,
+      replyInstruction:
+        '异地健康证不能按“有本地证”提交。禁止 booking；先询问候选人是否接受录用后重新办理应聘城市本地健康证。接受才能传 2，不接受传 3 并停止本岗位推进。',
+    };
+  }
 
   // 面试前必须有：无证（无论是否接受办理）都不应直接 booking
   if (required === 'required_before_interview' && candidateHasHealthCertificate !== 1) {

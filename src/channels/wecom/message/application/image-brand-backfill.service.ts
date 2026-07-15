@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 import { MessageType } from '@enums/message-callback.enum';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import { BrandStateService } from '@memory/services/brand-state.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { ImageDescriptionService } from './image-description.service';
 import { SimpleMergeService } from '../runtime/simple-merge.service';
@@ -43,6 +44,7 @@ export class ImageBrandBackfillService {
     private readonly brandResolution: BrandResolutionService,
     private readonly brandState: BrandStateService,
     private readonly simpleMerge: SimpleMergeService,
+    private readonly alertNotifier: AlertNotifierService,
   ) {}
 
   /**
@@ -153,6 +155,16 @@ export class ImageBrandBackfillService {
         `[image-brand-backfill] 处理锁竞争超时放弃补写（累计 ${this.lockGiveUpCount} 次）：` +
           `宁可丢一次图片品牌，不做锁外写 chatId=${params.chatId}`,
       );
+      // 观测不能只打日志（项目既定原则）：设计上应罕见的异常必须可见。
+      this.alertNotifier
+        .sendSimpleAlert(
+          '图片品牌补写因锁竞争放弃',
+          `chatId=${params.chatId} 的图片品牌补写连续 ${LOCK_RETRY_ATTEMPTS} 次拿不到处理锁，已放弃` +
+            `（累计 ${this.lockGiveUpCount} 次）。该图品牌不会进入会话品牌状态；` +
+            `频发说明该会话消息处理长期占锁或锁泄漏，需人工排查。`,
+          'warning',
+        )
+        .catch(() => {});
       return;
     }
 
@@ -169,6 +181,19 @@ export class ImageBrandBackfillService {
         `[image-brand-backfill] 补写落状态结果=${outcome} chatId=${params.chatId} ` +
           `brands=${resolutions.map((r) => r.canonicalName ?? '-').join(',')}`,
       );
+      if (outcome === 'dropped_expired') {
+        // 过期即弃是防时间倒流的正确行为，但每次发生都值得被看见：
+        // 意味着模型漏调描述 + 候选人后续又表达了新品牌意图（信号密集会话）。
+        this.alertNotifier
+          .sendSimpleAlert(
+            '图片品牌补写因过期被丢弃',
+            `chatId=${params.chatId} 的图片品牌补写晚于会话品牌状态的最新变更，按"过期即弃"丢弃` +
+              `（品牌：${resolutions.map((r) => r.canonicalName ?? '-').join('、')}）。` +
+              `属正常防护（不做时间倒流），仅当频发时需关注模型漏调 save_image_description 的比例。`,
+            'info',
+          )
+          .catch(() => {});
+      }
     } finally {
       await this.simpleMerge.releaseProcessingLock(params.chatId, ownerToken);
     }

@@ -1193,7 +1193,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 }
 
-
 .botPanel {
   padding-bottom: $spacing-lg;
   background:
@@ -2141,7 +2140,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   .kpiBand {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
 }
 
 @media (max-width: $breakpoint-sm) {
@@ -2221,7 +2219,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     text-align: left;
   }
 }
-
 
 // ════════════════════════════════════════════════════════════════════
 // 浅色全息主题（Light Holo）

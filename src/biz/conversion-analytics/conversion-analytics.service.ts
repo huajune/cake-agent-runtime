@@ -711,7 +711,11 @@ export class ConversionAnalyticsService {
         : await this.getBotRowsFromPeriodEvents(filter, period);
 
     // 工单自助变更（取消/改约）按 period 直接计数 ops_events，合并到各 bot 行（不参与 cohort/漏斗）。
-    const withMutations = await this.applyMutationCounts(rows, filter, period);
+    const withMutations = await this.applyMutationCounts(
+      rows,
+      filter,
+      this.getPeriod(filter.range),
+    );
     const botIdentityAliases = await this.getBotIdentityAliases();
 
     return {
