@@ -25,6 +25,7 @@ import { TOOL_GUARDRAIL_CATALOG, TOOL_GUARDRAIL_IDS } from './tool/tool-guardrai
 // job-fact-value-mismatch / booking-claim-errors / location-claim-errors 四个规则文件
 // 整族删除（13 个 rule id）；另有 group_full_without_invite / system_status_fabrication /
 // tool_failure_success_claim / brand_name_violation 4 条下线。岗位/预约事实治理交语义档。
+// 2026-07-15 经新 badcase 与用户裁定，加入范围收窄后的详情补查和结算范围对账契约。
 const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   invalid_model_output:
     'agent/guardrail/output/rules/invalid-model-output.rule.ts（HardRulesService 调度）',
@@ -48,6 +49,10 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   proactive_insurance_policy_mention:
     'agent/guardrail/output/rules/insurance-policy-claims.rule.ts（HardRulesService 调度）',
   quota_promise: 'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
+  job_detail_lookup_required:
+    'agent/guardrail/output/rules/job-detail-grounding.rule.ts（HardRulesService 调度）',
+  settlement_cycle_mismatch:
+    'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
 };
 
 export interface GuardrailCatalogEntry {

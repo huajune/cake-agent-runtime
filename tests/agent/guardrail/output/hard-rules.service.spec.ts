@@ -1,4 +1,5 @@
 import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
+import type { AgentMemorySnapshot } from '@shared-types/agent-telemetry.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 
@@ -15,6 +16,216 @@ describe('HardRulesService', () => {
 
   const check = (replyText: string) =>
     service.check({ replyText, toolCalls: [], chatId: 'chat-1', userId: 'user-1' });
+
+  describe('job detail grounding', () => {
+    const memorySnapshot: AgentMemorySnapshot = {
+      currentStage: 'interview_scheduling',
+      presentedJobIds: [524579],
+      recommendedJobIds: [524579],
+      sessionFacts: null,
+      profileKeys: null,
+      currentFocusJob: {
+        jobId: 524579,
+        availableDetailFields: [
+          'salary',
+          'shift',
+          'age_requirement',
+          'education_requirement',
+          'health_certificate_requirement',
+          'address',
+          'employment',
+        ],
+      },
+    };
+
+    it('replans the production case when settlement is asked without a focus-job lookup', () => {
+      const result = service.check({
+        replyText: '这边是按月结算的，具体发薪规则我帮你确认下。',
+        toolCalls: [],
+        userMessage: '不是暑假工，咱这边是日结吗',
+        memorySnapshot,
+        chatId: '6a5729fece406a6aee2035f9',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'job_detail_lookup_required',
+            action: GUARDRAIL_ACTION.REPLAN,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('replans any missing detail field, not only settlement', () => {
+      const result = service.check({
+        replyText: '主要就是做前厅服务。',
+        toolCalls: [],
+        userMessage: '这个岗位具体做什么',
+        memorySnapshot,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('does not force a lookup when the requested stable field exists in compact memory', () => {
+      const result = service.check({
+        replyText: '班次是11点到20点。',
+        toolCalls: [],
+        userMessage: '这个班次几点到几点',
+        memorySnapshot,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('still refreshes salary, settlement and welfare even when compact memory has those fields', () => {
+      const snapshotWithVolatileFields: AgentMemorySnapshot = {
+        ...memorySnapshot,
+        currentFocusJob: {
+          ...memorySnapshot.currentFocusJob,
+          availableDetailFields: [
+            ...memorySnapshot.currentFocusJob.availableDetailFields,
+            'settlement',
+            'welfare',
+          ],
+        },
+      };
+      const result = service.check({
+        replyText: '时薪20元，日结，也有工作餐。',
+        toolCalls: [],
+        userMessage: '工资多少，日结吗，包工作餐吗',
+        memorySnapshot: snapshotWithVolatileFields,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('accepts a completed lookup for the current focus job but not another job', () => {
+      const makeCall = (jobId: number) => ({
+        toolName: 'duliday_job_list',
+        args: { jobIdList: [jobId] },
+        result: { markdown: '# 在招岗位' },
+        status: 'ok' as const,
+      });
+      const accepted = service.check({
+        replyText: '我查到了，这个岗位的具体工作内容是前厅服务。',
+        toolCalls: [makeCall(524579)],
+        userMessage: '具体做什么',
+        memorySnapshot,
+        chatId: 'chat-1',
+      });
+      const rejected = service.check({
+        replyText: '主要做前厅服务。',
+        toolCalls: [makeCall(999999)],
+        userMessage: '具体做什么',
+        memorySnapshot,
+        chatId: 'chat-1',
+      });
+
+      expect(accepted.contradictions.map((item) => item.ruleId)).not.toContain(
+        'job_detail_lookup_required',
+      );
+      expect(rejected.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+  });
+
+  describe('settlement cycle scope', () => {
+    const hybridSettlementCall = {
+      toolName: 'duliday_job_list',
+      args: { jobIdList: [524579] },
+      status: 'ok' as const,
+      result: {
+        markdown:
+          '#### 薪资方案 1（正式）\n- **结算周期**: 日结算, 当日结发薪\n' +
+          '#### 薪资方案 2（培训期）\n- **结算周期**: 月结算, 10号发薪',
+      },
+    };
+
+    it('rejects treating monthly training pay as the whole salary cycle', () => {
+      const result = service.check({
+        replyText: '这边是按月结算的，具体发薪规则我帮你确认下。',
+        toolCalls: [hybridSettlementCall],
+        userMessage: '咱这边是日结吗',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'settlement_cycle_mismatch',
+      );
+    });
+
+    it('accepts a scoped explanation of daily base pay and monthly supplemental pay', () => {
+      const result = service.check({
+        replyText: '基础工资是日结，培训费用和阶梯差价按月结算，每月10号补发。',
+        toolCalls: [hybridSettlementCall],
+        userMessage: '咱这边是日结吗',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_cycle_mismatch',
+      );
+    });
+
+    it('accepts a plain monthly claim for a formal monthly salary scenario', () => {
+      const result = service.check({
+        replyText: '这家是月结，15号发薪。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { jobIdList: [1] },
+            status: 'ok',
+            result: {
+              markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 月结算, 15号发薪',
+            },
+          },
+        ],
+        userMessage: '是月结吗',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_cycle_mismatch',
+      );
+    });
+
+    it('does not use another job lookup to validate the current focus job settlement', () => {
+      const result = service.check({
+        replyText: '这个岗位是月结。',
+        toolCalls: [hybridSettlementCall],
+        userMessage: '是月结吗',
+        memorySnapshot: {
+          currentStage: 'interview_scheduling',
+          presentedJobIds: [999999],
+          recommendedJobIds: [999999],
+          sessionFacts: null,
+          profileKeys: null,
+          currentFocusJob: { jobId: 999999, availableDetailFields: [] },
+        },
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_cycle_mismatch',
+      );
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+  });
 
   describe('discriminatory_screening_leak', () => {
     const hitCases = [

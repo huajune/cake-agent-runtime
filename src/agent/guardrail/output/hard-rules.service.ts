@@ -17,7 +17,9 @@ import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-co
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
 import { detectHumanServicePhraseLeak, detectOutputLeak } from './rules/internal-info-leaks.rule';
+import { detectJobDetailLookupRequired } from './rules/job-detail-grounding.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
+import { detectSettlementCycleMismatch } from './rules/settlement-cycle-mismatch.rule';
 import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from './output-rule.types';
@@ -137,6 +139,9 @@ export class HardRulesService {
      * quota_promise（group_full_without_invite / system_status_fabrication /
      * tool_failure_success_claim 同批下线）；brand_name_violation（平台错名+岗位品牌改写）
      * 及其 runner 确定性修复快通道同批下线。岗位/预约事实治理交语义档。
+     * 2026-07-15 新 badcase 6a5729fe 表明“详情缺字段仍直接猜测”无法仅靠语义档治理，
+     * 用户重新裁定启用两条更窄的确定性契约：job_detail_lookup_required 只检查是否按
+     * 当前 jobId 补查；settlement_cycle_mismatch 只对账正式结算与培训/阶梯补充结算。
      */
 
     // 必须在 sanitizer 删除 <think> 标签之前识别模型/Provider 异常，避免畸形推理文本
@@ -169,6 +174,24 @@ export class HardRulesService {
     );
     if (summerWorkerAlternativeUpsell) {
       contradictions.push(this.withRulePolicy(summerWorkerAlternativeUpsell));
+    }
+
+    const jobDetailLookupRequired = detectJobDetailLookupRequired(
+      toolCalls,
+      params.memorySnapshot,
+      params.userMessage,
+    );
+    if (jobDetailLookupRequired) {
+      contradictions.push(this.withRulePolicy(jobDetailLookupRequired));
+    }
+
+    const settlementCycleMismatch = detectSettlementCycleMismatch(
+      text,
+      toolCalls,
+      params.memorySnapshot?.currentFocusJob?.jobId,
+    );
+    if (settlementCycleMismatch) {
+      contradictions.push(this.withRulePolicy(settlementCycleMismatch));
     }
 
     for (const rule of this.rules) {

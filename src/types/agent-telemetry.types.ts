@@ -57,4 +57,25 @@ export interface AgentMemorySnapshot {
   sessionFacts: Record<string, unknown> | null;
   /** 长期档案里已填充的字段名列表（不含值，避免 PII 泛滥） */
   profileKeys: string[] | null;
+  /** 当前焦点岗位及精简记忆已经具备的详情字段；用于判断追问是否需要按 jobId 补查。 */
+  currentFocusJob?: AgentFocusJobSnapshot | null;
+}
+
+export type AgentJobDetailField =
+  | 'salary'
+  | 'settlement'
+  | 'shift'
+  | 'welfare'
+  | 'age_requirement'
+  | 'education_requirement'
+  | 'health_certificate_requirement'
+  | 'student_requirement'
+  | 'address'
+  | 'employment'
+  | 'duties'
+  | 'duration';
+
+export interface AgentFocusJobSnapshot {
+  jobId: number;
+  availableDetailFields: AgentJobDetailField[];
 }

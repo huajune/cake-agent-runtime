@@ -91,6 +91,8 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
  * 共 13 条随所在规则文件整族删除；同日追加下线 group_full_without_invite /
  * system_status_fabrication / tool_failure_success_claim / brand_name_violation 4 条。
  * 岗位/预约事实治理交语义档。
+ * 2026-07-15 经新生产 badcase 与用户裁定，重新加入范围收窄后的“详情缺字段按当前
+ * jobId 补查”及“正式结算 vs 培训/阶梯补充结算”两条契约，不恢复其余已删除规则族。
  */
 const OUTPUT_RULE_CATALOG_SEEDS = [
   {
@@ -212,6 +214,36 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal: '名额承诺词库；无工具信号可正当化此承诺。',
     residualRisk: '含蓄承诺需要运营 badcase 持续补样本。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+  },
+  {
+    id: 'job_detail_lookup_required',
+    action: GUARDRAIL_ACTION.REPLAN,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '当前焦点岗位明确时，候选人追问精简记忆缺失的岗位详情，强制按 jobId 补查后再回答。',
+    riskGoal: '防止模型用综合月薪、品牌常识或历史助手话术推断结算、工期、工作内容等缺失字段。',
+    exogenousSignal:
+      '候选人本轮详情问题 + memory_snapshot.currentFocusJob.availableDetailFields + 本轮 duliday_job_list(jobIdList)。',
+    residualRisk:
+      '未能归类的新详情问法需要扩充字段意图词表；当前焦点岗位不明确时仍需先由生成层澄清岗位。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '候选人正在追问当前岗位详情，但精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；请使用当前焦点岗位 jobId 调用 duliday_job_list，只按本轮结果回答。',
+    repairToolNames: ['duliday_job_list'],
+  },
+  {
+    id: 'settlement_cycle_mismatch',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '本轮岗位工具已返回结算口径时，拦住把正式工资日结与培训/阶梯月补混成整份工资月结。',
+    riskGoal: '结算方式直接影响候选人决策，正式工资与补充费用的结算范围必须分别表述。',
+    exogenousSignal:
+      '本轮 duliday_job_list 返回的正式/培训薪资方案 salaryPeriod，以及回复中的结算断言。',
+    residualRisk: '非标准结算别名需要随生产样本扩充；无本轮工具结果时交由补查规则处理。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版混淆了正式工资结算与培训/阶梯差额结算。请严格按本轮岗位数据重写，分别说明基础工资、阶梯差价和培训费用各自如何结算；不要用综合月薪单位推断结算周期。',
   },
   {
     id: 'requested_brand_mismatch',

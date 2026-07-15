@@ -571,7 +571,31 @@ export class PreparationService {
         recommendedJobIds && recommendedJobIds.length > 0 ? recommendedJobIds : null,
       sessionFacts,
       profileKeys: profileKeys && profileKeys.length > 0 ? profileKeys : null,
+      currentFocusJob: this.buildFocusJobSnapshot(session?.currentFocusJob ?? null),
     };
+  }
+
+  private buildFocusJobSnapshot(
+    job: RecommendedJobSummary | null,
+  ): AgentMemorySnapshot['currentFocusJob'] {
+    if (!job) return null;
+
+    const availableDetailFields: NonNullable<
+      AgentMemorySnapshot['currentFocusJob']
+    >['availableDetailFields'] = [];
+    if (job.salaryDesc) availableDetailFields.push('salary');
+    if (job.settlementSummary) availableDetailFields.push('settlement');
+    if (job.shiftSummary) availableDetailFields.push('shift');
+    if (job.welfareFacts) availableDetailFields.push('welfare');
+    if (job.ageRequirement) availableDetailFields.push('age_requirement');
+    if (job.educationRequirement) availableDetailFields.push('education_requirement');
+    if (job.healthCertificateRequirement) {
+      availableDetailFields.push('health_certificate_requirement');
+    }
+    if (job.studentRequirement) availableDetailFields.push('student_requirement');
+    if (job.storeAddress) availableDetailFields.push('address');
+    if (job.laborForm || job.partTimeJobType) availableDetailFields.push('employment');
+    return { jobId: job.jobId, availableDetailFields };
   }
 
   /** 扁平化 facts.interview_info + facts.preferences，只保留非空字段。 */
