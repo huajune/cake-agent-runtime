@@ -1789,6 +1789,7 @@ describe('buildInterviewPrecheckTool', () => {
   });
 
   it('should recover 出生日期 from a candidate-filled form when the model omits candidateSupplementAnswers', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     // badcase chat 6a5721dace406a6aeef0a849：原消息明确写了出生日期，模型也看到了，
     // 但 tool call 漏传 candidateSupplementAnswers，导致 precheck 再次追问出生日期。
     mockSpongeService.fetchJobs.mockResolvedValue({
