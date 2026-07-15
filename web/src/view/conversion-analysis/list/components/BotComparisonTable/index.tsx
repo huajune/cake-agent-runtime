@@ -12,6 +12,7 @@ interface BotComparisonTableProps {
   rows: ConversionBotRow[];
   loading: boolean;
   mode: ConversionMetricMode;
+  maturityDays: number;
   sortKey: BotSortKey;
   sortDirection: SortDirection;
   onModeChange: (mode: ConversionMetricMode) => void;
@@ -37,6 +38,7 @@ export default function BotComparisonTable({
   rows,
   loading,
   mode,
+  maturityDays,
   sortKey,
   sortDirection,
   onModeChange,
@@ -52,8 +54,8 @@ export default function BotComparisonTable({
           <span>
             {rows.length} 个账号 · 点击表头按指标排序 · 各指标按「人」去重 ·{' '}
             {mode === 'period'
-              ? '同一时段发生量（与上方 period 名片同口径）'
-              : '按新增好友同批追踪（口径不同于上方固定 period 名片）'}
+              ? '同一时间窗内分别发生；跨账号流转时，账号行之和可能高于全局唯一人数'
+              : `追踪至少成熟 ${maturityDays} 天的新增好友批次`}
           </span>
         </div>
         <div className={styles.panelHeaderActions}>

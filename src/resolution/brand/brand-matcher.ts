@@ -302,9 +302,14 @@ function findLatinBoundarySpan(normalizedText: string, alias: string): number {
 
 // ==================== 工具入口别名标准化（§8.2 消费方复用） ====================
 
+export interface ResolvedAliasBrand extends BrandCandidate {
+  /** 是否经品类词展开而来（品类查询列表须先减去会话 excludedBrands，§6.2）。 */
+  viaCategoryExpansion: boolean;
+}
+
 export interface AliasResolutionOutcome {
   /** 入口标准化后可执行的唯一标准品牌（含品类展开出的品牌集合）。 */
-  applied: BrandCandidate[];
+  applied: ResolvedAliasBrand[];
   rejected: Array<{
     input: string;
     reason: 'unmatched' | 'ambiguous' | 'low_confidence';
@@ -322,7 +327,7 @@ export function resolveBrandAliasInputs(
   inputs: string[],
   catalog: BrandItem[],
 ): AliasResolutionOutcome {
-  const applied = new Map<string, BrandCandidate>();
+  const applied = new Map<string, ResolvedAliasBrand>();
   const rejected: AliasResolutionOutcome['rejected'] = [];
 
   for (const rawInput of inputs) {
@@ -337,9 +342,13 @@ export function resolveBrandAliasInputs(
 
     if (executable.length > 0) {
       for (const resolution of executable) {
+        const viaCategoryExpansion = resolution.matchType === 'category_expansion';
+        const existing = applied.get(resolution.canonicalName!);
         applied.set(resolution.canonicalName!, {
           canonicalName: resolution.canonicalName!,
           brandId: resolution.brandId,
+          // 同一品牌被显式点名与品类展开同时命中时，按显式命中处理（不减 excluded）
+          viaCategoryExpansion: (existing?.viaCategoryExpansion ?? true) && viaCategoryExpansion,
         });
       }
       continue;

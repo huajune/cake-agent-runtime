@@ -18,19 +18,23 @@ export default function MetricModeTabs({
         type="button"
         role="tab"
         aria-selected={mode === 'period'}
+        tabIndex={mode === 'period' ? 0 : -1}
+        title="同一时间窗内，各阶段分别按候选人去重"
         className={mode === 'period' ? styles.modeTabActive : ''}
         onClick={() => onChange('period')}
       >
-        同一时段
+        同期发生量
       </button>
       <button
         type="button"
         role="tab"
         aria-selected={mode === 'cohort'}
+        tabIndex={mode === 'cohort' ? 0 : -1}
+        title="从同一批新增好友出发，追踪其后续转化"
         className={mode === 'cohort' ? styles.modeTabActive : ''}
         onClick={() => onChange('cohort')}
       >
-        同批追踪
+        成熟同批追踪
       </button>
     </div>
   );

@@ -454,6 +454,16 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.is_student)).toBe(false);
   });
 
+  it.each([
+    ['社会人士岗位会影响我后续读书吗'],
+    ['那就社会人士的早班吧'],
+    ['嘉裕太阳城呢 不是有招社会人士岗吗'],
+    ['那东方宝泰店我可以用社会人士身份入职是吗'],
+  ])('should not treat job discussion as non-student identity: %s', (message) => {
+    const result = extractHighConfidenceFacts([message], brandData);
+    expect(unwrapHighConfidenceValue(result?.interview_info.is_student)).toBeNull();
+  });
+
   it('should extract labor_form (全职/兼职/小时工/寒假工/暑假工)', () => {
     const hourly = extractHighConfidenceFacts(['我想做小时工'], brandData);
     expect(unwrapHighConfidenceValue(hourly?.preferences.labor_form)).toBe('小时工');

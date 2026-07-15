@@ -24,7 +24,7 @@ import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { buildNoMatchScript } from '@tools/duliday/job-list/no-match-script.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
-import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
+import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { COUNTY_LEVEL_CITY_TO_PREFECTURE } from '@memory/facts/geo-mappings';
 import {
@@ -32,11 +32,21 @@ import {
   applyScheduleConstraint,
   collectLaborFormAnomalies,
   filterJobsByRequestedCategories,
-  filterJobsToRequestedBrands,
+  filterJobsExcludingBrands,
+  filterJobsToAppliedBrands,
   formatScheduleConstraintLabel,
   haversineDistance,
 } from '@tools/duliday/job-list/search.util';
-import { findBrandFuzzyMatches } from '@tools/duliday/job-list/brand-fuzzy-match.util';
+import {
+  buildBrandQueryPlan,
+  toBrandQueryMeta,
+  type BrandQueryPlan,
+} from '@tools/duliday/job-list/brand-query.util';
+import {
+  findBrandFuzzyMatches,
+  resolveFuzzyConfidence,
+  type BrandFuzzyMatch,
+} from '@resolution/brand/fuzzy-recall';
 import {
   buildBrandNearestStoreSummary,
   formatSalarySummary,
@@ -65,41 +75,73 @@ const DEFAULT_PAGE_NUM = 1;
 const DEFAULT_PAGE_SIZE = 20;
 const DISTANCE_SCAN_MAX_PAGES = 10;
 
-function normalizeBrandEvidenceText(value: string | undefined): string {
-  return (value ?? '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
-}
-
 /**
- * 拦截模型从普通微信昵称臆测出的品牌。
+ * 模型品牌入参全部被拒（未命中品牌库/冲突别名）时的结构化结果（§8.2.5）。
  *
- * 仅在品牌库对 contactName 完全无命中时启用；候选人当轮确实明说了同一个名称时保留，
- * 避免误伤“用户主动询问一个尚未入库品牌”的场景。
+ * 三种走向由回指置信度决定（判定阈值与守卫共享 resolveFuzzyConfidence）：
+ * high=直接按回指品牌推进；low=反问澄清；none=按 noMatchScript 收口。
+ * 未验证品牌绝不静默降级成无品牌查询（那会引发跨品牌乱推），也不进入品牌过滤。
  */
-function rejectUnverifiedNicknameBrandAliases(
-  aliases: string[],
-  context: ToolBuildContext,
-): { accepted: string[]; rejected: string[] } {
-  if (!context.contactName || (context.contactBrandAliases?.length ?? 0) > 0) {
-    return { accepted: aliases, rejected: [] };
+function buildBrandRejectedResult(params: {
+  brandPlan: BrandQueryPlan;
+  fuzzySuggestions: BrandFuzzyMatch[];
+  noMatchScript: ReturnType<typeof buildNoMatchScript>;
+}): Record<string, unknown> {
+  const { brandPlan, fuzzySuggestions, noMatchScript } = params;
+  const fuzzyConfidence = resolveFuzzyConfidence(fuzzySuggestions);
+  const topMatch = fuzzySuggestions[0] ?? null;
+  const rejectedInputs = brandPlan.rejected.map((item) => item.input);
+
+  let outcome: string;
+  let replyInstruction: string;
+  if (fuzzyConfidence === 'high' && topMatch) {
+    outcome = '品牌入参未命中品牌库，疑似口误，已自动回指最近推荐品牌';
+    replyInstruction =
+      `品牌入参 ${JSON.stringify(rejectedInputs)} 未在品牌库命中，但与会话最近推荐的 **${topMatch.brandName}** ` +
+      '高度同音回指（见 queryMeta.brand.fuzzySuggestions[0]）。**直接按该品牌继续推进**，' +
+      '回复时用一句轻确认带过让候选人自然听到正确品牌名；不要单独反问"你是说 X 吗"，' +
+      '不要照念 noMatchScript，不要调 invite_to_group。需要岗位详情时用该标准品牌名重调本工具。';
+  } else if (fuzzyConfidence === 'low') {
+    outcome = '品牌入参未命中品牌库，会话最近品牌池存在多个同音候选，需反问澄清';
+    replyInstruction =
+      `品牌入参 ${JSON.stringify(rejectedInputs)} 未在品牌库命中，会话最近品牌池里存在多个同音/字形候选` +
+      '（见 queryMeta.brand.fuzzySuggestions），无法判定指代哪一个。**用一句反问澄清**："你说的是 X 还是 Y？"——' +
+      '不要直接答"没查到"，不要照念 noMatchScript，不要调 invite_to_group。';
+  } else {
+    outcome = '品牌入参未命中品牌库，未形成品牌过滤';
+    replyInstruction =
+      `品牌入参 ${JSON.stringify(rejectedInputs)} 经品牌库校验全部未命中（见 queryMeta.brand.rejected：` +
+      'unmatched=库中无此品牌，ambiguous=别名对应多个品牌需澄清）。未按该品牌执行查询。' +
+      '若这是候选人点名的品牌，**严格按 noMatchScript.candidateMessage 原文照念，再调 invite_to_group 拉群**，' +
+      '不得跨品牌推荐；若怀疑是你自己拼错了品牌名，换标准品牌名或 brandIdList 重查一次。';
   }
 
-  const nickname = normalizeBrandEvidenceText(context.contactName);
-  const currentMessage = normalizeBrandEvidenceText(context.currentUserMessage);
-  if (!nickname) return { accepted: aliases, rejected: [] };
-
-  const accepted: string[] = [];
-  const rejected: string[] = [];
-  for (const alias of aliases) {
-    const normalizedAlias = normalizeBrandEvidenceText(alias);
-    const looksCopiedFromNickname =
-      normalizedAlias.length >= 2 &&
-      (normalizedAlias === nickname || nickname.includes(normalizedAlias));
-    const candidateExplicitlySaidIt =
-      normalizedAlias.length >= 2 && currentMessage.includes(normalizedAlias);
-    if (looksCopiedFromNickname && !candidateExplicitlySaidIt) rejected.push(alias);
-    else accepted.push(alias);
-  }
-  return { accepted, rejected };
+  return buildToolError({
+    errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+    outcome,
+    replyInstruction,
+    details: {
+      noMatchScript,
+      aliasFuzzyMatch:
+        fuzzyConfidence !== 'none'
+          ? {
+              brandAliasList: rejectedInputs,
+              confidence: fuzzyConfidence,
+              suggestions: fuzzySuggestions,
+            }
+          : null,
+      queryMeta: {
+        brand: toBrandQueryMeta(
+          brandPlan,
+          fuzzySuggestions.map((match) => ({
+            brandName: match.brandName,
+            inputAlias: match.inputAlias,
+            score: match.score,
+          })),
+        ),
+      },
+    },
+  });
 }
 
 // ==================== 输入 Schema ====================
@@ -134,6 +176,17 @@ const inputSchema = z.object({
     .default([])
     .describe(
       '品牌ID列表；Boss直聘岗位标题中形如 "[10239]" 的方括号纯数字是品牌ID，应填为 brandIdList=[10239]，不要当作 jobId/薪资/编号',
+    ),
+  brandFilterMode: z
+    .enum(['enforce', 'exclude', 'clear', 'browse_all'])
+    .optional()
+    .describe(
+      '品牌过滤形态（可选）。enforce=仅查询指定品牌（品牌列表非空时的默认语义，通常无需显式传）；' +
+        'exclude=排除指定品牌（结果中剔除 brandIdList/brandAliasList 列出的品牌）；' +
+        'clear=本次查询有意放宽品牌条件（0 结果重查、探索别家时**必须显式传 clear**，只省略品牌参数会被会话品牌兜底拉回）；' +
+        'browse_all=候选人明确说不限品牌。' +
+        '兜底语义：品牌参数与本字段都省略时，工具沿用会话品牌状态的当前主品牌查询（brandSource=session_state 会在结果中披露）。' +
+        '注意：enforce/exclude 必须配合非空品牌列表，列表为空会报错。',
     ),
   projectNameList: z.array(z.string()).optional().default([]).describe('项目名称列表'),
   projectIdList: z.array(z.number().int()).optional().default([]).describe('项目ID列表'),
@@ -602,7 +655,8 @@ export function buildJobListTool(
         cityNameList = [],
         regionNameList = [],
         brandAliasList: brandAliasListInput = [],
-        brandIdList = [],
+        brandIdList: brandIdListInput = [],
+        brandFilterMode,
         projectNameList = [],
         projectIdList = [],
         storeNameList = [],
@@ -625,53 +679,72 @@ export function buildJobListTool(
           .map((region) => region.trim())
           .filter(Boolean);
 
-        // 备注品牌确定性兜底：模型本轮没传任何品牌（brandAliasList/brandIdList 均空）时，
-        // 用 prep 从企微备注解析出的目标品牌兜底为 brandAliasList，实现「备注品牌优先召回」
-        // （纯提示词驱动经实测不可靠，模型会忽略备注按距离推）。候选人本轮点名了别的品牌时
-        // 模型会自己把 brand 传进来，brandAliasList 非空就不会触发兜底。
-        const nicknameAliasValidation = rejectUnverifiedNicknameBrandAliases(
-          brandAliasListInput,
-          context,
-        );
-        let brandAliasList = nicknameAliasValidation.accepted;
-        if (nicknameAliasValidation.rejected.length > 0) {
+        // ==================== 品牌入口标准化 + 查询计划（§8.1/§8.2） ====================
+        // 别名经品牌目录解析成唯一标准品牌（冲突/未命中进 rejected，不形成品牌过滤）；
+        // 会话品牌兜底只读 SessionBrandState.currentBrand（昵称品牌经首轮 seed 已在其中，
+        // 旧 contact_remark 兜底档随入口标准化废除）；模型原始参数保留在流水审计，不作权威事实。
+        let brandCatalog: Awaited<ReturnType<SpongeService['fetchBrandList']>> = [];
+        try {
+          brandCatalog = await spongeService.fetchBrandList();
+        } catch (error) {
           logger.warn(
-            `拦截未经品牌库验证的昵称品牌参数: ${JSON.stringify(nicknameAliasValidation.rejected)}`,
+            `品牌目录拉取失败，入口标准化按空目录降级: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           );
         }
-        let brandAliasSource: 'input' | 'contact_remark' | 'session_facts' | 'none' =
-          brandAliasList.length > 0 ? 'input' : 'none';
-        const contactBrandAliases = context.contactBrandAliases ?? [];
-        // 过渡期护栏（§13 Phase 2.4）：brand_state 已存在（seed 已发生）即禁用旧昵称兜底，
-        // 避免旧兜底无视新状态把昵称品牌注回查询（"换个品牌/browse_all 之后被昵称锁回"）。
-        // 昵称品牌经首轮 seed 已进入 currentBrand，由会话品牌兜底统一承接。
-        const brandStateActive = context.sessionBrandState != null;
-        if (
-          !brandStateActive &&
-          brandAliasList.length === 0 &&
-          brandIdList.length === 0 &&
-          contactBrandAliases.length > 0
-        ) {
-          brandAliasList = contactBrandAliases;
-          brandAliasSource = 'contact_remark';
-          logger.log(`从企微备注自动兜底 brandAliasList: ${JSON.stringify(brandAliasList)}`);
+        const brandPlan = buildBrandQueryPlan({
+          brandAliasList: brandAliasListInput,
+          brandIdList: brandIdListInput,
+          brandFilterMode,
+          sessionBrandState: context.sessionBrandState ?? null,
+          catalog: brandCatalog,
+        });
+
+        // 矛盾组合：列表空 + enforce/exclude（§8.1 组合表第 4 行）。
+        if (brandPlan.error === 'empty_list_with_mode') {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_BRAND_MODE_CONFLICT,
+            outcome: `brandFilterMode='${brandPlan.filterMode}' 但品牌列表为空`,
+            replyInstruction:
+              `brandFilterMode='${brandPlan.filterMode}' 必须配合非空的 brandIdList/brandAliasList。` +
+              "请补上要查询/排除的品牌后重试；若本意是无品牌查询，改传 brandFilterMode='clear'（放宽重查）" +
+              "或 'browse_all'（候选人明确不限品牌）。",
+            details: { queryMeta: { brand: toBrandQueryMeta(brandPlan) } },
+          });
         }
-        // 会话品牌兜底（§8.1，badcase recvjFFKcZPsiC 想找大米先生却被跨品牌推荐）：
-        // 只补"模型看不到的跨轮遗忘"。SessionBrandState.currentBrand 是唯一兜底档
-        // （昵称品牌经首轮 seed 已在其中）；无新状态的旧链路（test/debug 未注入）
-        // 退回读 preferences.brands 投影。
-        const sessionBrands = context.sessionBrandState
-          ? context.sessionBrandState.currentBrand
-            ? [context.sessionBrandState.currentBrand.canonicalName]
-            : []
-          : (context.sessionFacts?.preferences?.brands ?? []).filter(
-              (brand): brand is string => typeof brand === 'string' && brand.trim().length > 0,
-            );
-        if (brandAliasList.length === 0 && brandIdList.length === 0 && sessionBrands.length > 0) {
-          brandAliasList = sessionBrands;
-          brandAliasSource = 'session_facts';
-          logger.log(`从会话品牌事实自动兜底 brandAliasList: ${JSON.stringify(brandAliasList)}`);
+
+        // 模型传了品牌但全部被拒（未命中/歧义）：不得静默降级成无品牌查询乱推。
+        // 先与会话最近推荐品牌池做同音回指（"刘姐妹"→"成都你六姐"口误场景，§8.3）。
+        if (brandPlan.allRejected) {
+          const rejectedInputs = brandPlan.rejected.map((item) => item.input);
+          const fuzzySuggestions =
+            (context.recentBrandPool?.length ?? 0) > 0
+              ? findBrandFuzzyMatches(rejectedInputs, context.recentBrandPool ?? [])
+              : [];
+          return buildBrandRejectedResult({
+            brandPlan,
+            fuzzySuggestions,
+            noMatchScript: buildNoMatchScript({
+              brandLabels: rejectedInputs,
+              storeLabels: storeNameList,
+              cityLabels: normalizedCityNameList,
+              regionLabels: normalizedRegionNameList,
+              maxKm: null,
+              scheduleConstraintLabel: candidateScheduleConstraint
+                ? formatScheduleConstraintLabel(candidateScheduleConstraint)
+                : null,
+            }),
+          });
         }
+
+        if (brandPlan.brandSource === 'session_state') {
+          logger.log(
+            `会话品牌兜底命中：currentBrand=${JSON.stringify(brandPlan.applied)}（brandSource=session_state）`,
+          );
+        }
+        const brandAliasList = brandPlan.queryBrandAliasList;
+        const brandIdList = brandPlan.queryBrandIdList;
         // Phase 3.1：候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
@@ -770,8 +843,8 @@ export function buildJobListTool(
             : location;
 
         // 点名品牌意向：品牌查询有独立的"距离豁免 + 0 条放宽"逻辑（line 425-427），区级兜底
-        // 一律绕开，避免给品牌结果套上 maxKm 距离帽把远处的品牌门店藏掉。brandAliasList 已含
-        // 企微备注兜底，故备注品牌也走品牌豁免。
+        // 一律绕开，避免给品牌结果套上 maxKm 距离帽把远处的品牌门店藏掉。查询品牌条件来自
+        // 入口标准化后的 brandPlan（enforce 档，含会话品牌兜底），故兜底品牌也走品牌豁免。
         const hasBrandIntent = brandAliasList.length > 0 || brandIdList.length > 0;
 
         // 旧会话事实或模型仍可能传 cityNameList=["延吉"]。在工具边界再次规范化，
@@ -1060,7 +1133,7 @@ export function buildJobListTool(
                   details: {
                     maxKm,
                     noMatchScript: buildNoMatchScript({
-                      brandLabels: brandAliasList,
+                      brandLabels: brandPlan.applied.map((brand) => brand.canonicalName),
                       storeLabels: storeNameList,
                       cityLabels: normalizedCityNameList,
                       regionLabels: normalizedRegionNameList,
@@ -1084,16 +1157,34 @@ export function buildJobListTool(
             /* eslint-enable @typescript-eslint/no-explicit-any */
           }
 
-          // Phase 1.C.3：候选人明确品牌意向（brandAliasList 非空）时硬过滤到该品牌，
-          // 杜绝跨品牌乱推（badcase bb012h5c：找大米先生推史伟莎销售/消杀员）。
-          // 过滤后 0 条 fall through 到下方 no-match 路径，触发 noMatchScript 拉群兜底。
-          if (brandAliasList.length > 0) {
+          // 品牌意向硬过滤（§8.2 入口标准化后为等值比较）：enforce 档把结果过滤到
+          // 实际应用的品牌 ID/标准名，杜绝跨品牌乱推（badcase bb012h5c：找大米先生
+          // 推史伟莎——sponge 某些场景做模糊匹配）。过滤后 0 条 fall through 到下方
+          // no-match 路径，触发 noMatchScript 拉群兜底。
+          const brandEqualityTarget = {
+            brandIds: brandPlan.applied
+              .map((brand) => brand.brandId)
+              .filter((id): id is number => id != null),
+            canonicalNames: brandPlan.applied.map((brand) => brand.canonicalName),
+          };
+          if (brandPlan.filterMode === 'enforce' && brandPlan.applied.length > 0) {
             const beforeBrandFilter = jobs.length;
-            jobs = filterJobsToRequestedBrands(jobs, brandAliasList);
+            jobs = filterJobsToAppliedBrands(jobs, brandEqualityTarget);
             if (jobs.length !== beforeBrandFilter) {
               total = jobs.length;
               logger.log(
-                `品牌硬过滤：brandAliasList=${JSON.stringify(brandAliasList)} 剔除非匹配品牌 ${beforeBrandFilter - jobs.length} 条`,
+                `品牌硬过滤（等值）：applied=${JSON.stringify(brandEqualityTarget.canonicalNames)} 剔除非匹配品牌 ${beforeBrandFilter - jobs.length} 条`,
+              );
+            }
+          }
+          // exclude 档：上游接口无品牌排除参数，只能召回后本地剔除（§8.1，已知召回空洞局限）。
+          if (brandPlan.filterMode === 'exclude' && brandPlan.excludeBrands.length > 0) {
+            const beforeExcludeFilter = jobs.length;
+            jobs = filterJobsExcludingBrands(jobs, brandEqualityTarget);
+            if (jobs.length !== beforeExcludeFilter) {
+              total = jobs.length;
+              logger.log(
+                `品牌排除过滤：excluded=${JSON.stringify(brandEqualityTarget.canonicalNames)} 剔除 ${beforeExcludeFilter - jobs.length} 条`,
               );
             }
           }
@@ -1134,52 +1225,53 @@ export function buildJobListTool(
               });
             }
 
-            // brandAliasList 命中 0 时，先和会话最近推荐过的品牌池做同音/字形回指匹配，
+            // 品牌查询命中 0 时，先和会话最近推荐过的品牌池做同音/字形回指匹配，
             // 识别"刘姐妹"实指上轮推过的"成都你六姐"这类候选人口误（badcase
-            // batch_6a0c074c536c9654029b6930：Agent 把口误"刘姐妹"当全新品牌判 0 拉群）。
+            // batch_6a0c074c536c9654029b6930）。全未命中品牌库的入参已在入口标准化
+            // 提前走 buildBrandRejectedResult；此处兜的是"品牌合法但查无岗位"的残余，
+            // 用模型原始入参（口误原文）做回指。
+            const hadBrandCondition =
+              brandPlan.filterMode === 'enforce' && brandPlan.applied.length > 0;
             const fuzzySuggestions =
-              brandAliasList.length > 0 && (context.recentBrandPool?.length ?? 0) > 0
-                ? findBrandFuzzyMatches(brandAliasList, context.recentBrandPool ?? [])
+              hadBrandCondition && (context.recentBrandPool?.length ?? 0) > 0
+                ? findBrandFuzzyMatches(
+                    brandAliasListInput.length > 0
+                      ? brandAliasListInput
+                      : brandPlan.applied.map((brand) => brand.canonicalName),
+                    context.recentBrandPool ?? [],
+                  )
                 : [];
 
-            // 匹配分歧度判定：
-            // - 单一候选 / top1 比 top2 高 0.15 分以上 → 高置信，Agent 直接沿用该品牌
-            //   （回复时用一句轻带过即可，不再单独反问，避免无谓 friction）
+            // 匹配分歧度判定（与守卫共享 resolveFuzzyConfidence）：
+            // - 单一候选 / top1 领先 ≥0.15 → 高置信，Agent 直接沿用该品牌（轻确认带过）
             // - 多个分数接近 → 低置信，反问澄清
+            const fuzzyConfidence = resolveFuzzyConfidence(fuzzySuggestions);
             const topMatch = fuzzySuggestions[0] ?? null;
-            const margin =
-              fuzzySuggestions.length >= 2
-                ? topMatch!.score - fuzzySuggestions[1].score
-                : Number.POSITIVE_INFINITY;
-            const fuzzyConfidence: 'high' | 'low' | 'none' = !topMatch
-              ? 'none'
-              : margin >= 0.15
-                ? 'high'
-                : 'low';
 
             let replyInstruction: string;
             let outcome: string;
-            if (fuzzyConfidence === 'high') {
+            if (fuzzyConfidence === 'high' && topMatch) {
               outcome = '品牌别名疑似口误，已自动回指最近推荐品牌';
               replyInstruction =
-                'brandAliasList 字面命中 0，但候选人输入与会话最近推荐的 **' +
-                topMatch!.brandName +
-                '** 高度同音回指（见 aliasFuzzyMatch.suggestions[0]）。**直接按该品牌继续推进**，' +
+                '品牌查询命中 0，但候选人输入与会话最近推荐的 **' +
+                topMatch.brandName +
+                '** 高度同音回指（见 queryMeta.brand.fuzzySuggestions[0]）。**直接按该品牌继续推进**，' +
                 '回复时用一句轻确认带过（如"成都你六姐这家…"）让候选人自然听到正确品牌名；' +
                 '**不要单独反问"你是说 X 吗"，不要照念 noMatchScript，不要调 invite_to_group。' +
-                '若需要重新拿岗位详情，从 [会话记忆] 已展示岗位里取 jobId 直查，避免重复 brandAliasList。' +
+                '若需要重新拿岗位详情，从 [会话记忆] 已展示岗位里取 jobId 直查，避免重复品牌别名。' +
                 '候选人后续若否认这个品牌，再按 noMatchScript 收口。';
             } else if (fuzzyConfidence === 'low') {
               outcome = '品牌别名疑似口误，候选品牌多个分数接近，需反问澄清';
               replyInstruction =
-                'brandAliasList 字面命中 0，会话最近品牌池里存在多个同音/字形候选（见 aliasFuzzyMatch.suggestions），' +
-                '分数差 < 0.15 无法判定指代哪一个。**用一句反问澄清**："你说的是 X 还是 Y？"——' +
+                '品牌查询命中 0，会话最近品牌池里存在多个同音/字形候选（见 queryMeta.brand.fuzzySuggestions），' +
+                '分数差过小无法判定指代哪一个。**用一句反问澄清**："你说的是 X 还是 Y？"——' +
                 '不要直接答"没查到"，不要照念 noMatchScript，不要调 invite_to_group。';
             } else {
               outcome = '未找到符合条件的岗位';
               replyInstruction =
-                '本次查询无匹配岗位。先核对是否用了 storeNameList / brandAliasList 等低稳定字段；' +
-                '是则换 regionNameList / brandIdList 重试一次。' +
+                '本次查询无匹配岗位。先核对是否用了 storeNameList 等低稳定字段；' +
+                '是则换 regionNameList / brandIdList 重试一次；需要放宽品牌条件重查时显式传 ' +
+                "brandFilterMode='clear'（只省略品牌参数会被会话品牌兜底拉回）。" +
                 '若已是高稳定字段仍为 0，**严格按 noMatchScript.candidateMessage 原文照念给候选人，再调 invite_to_group 拉群**——' +
                 '不得自行改写承接句、不得跨品牌推荐、不得反问"换品牌 / 换城市 / 别的区域"；' +
                 '候选人主动追问扩张时同样按此动作链处理。';
@@ -1191,8 +1283,11 @@ export function buildJobListTool(
               replyInstruction,
               details: {
                 cityFilterRecovery,
+                ...(brandPlan.brandSource === 'session_state' && brandPlan.disclosure
+                  ? { brandFilterNotice: brandPlan.disclosure }
+                  : {}),
                 noMatchScript: buildNoMatchScript({
-                  brandLabels: brandAliasList,
+                  brandLabels: brandPlan.applied.map((brand) => brand.canonicalName),
                   storeLabels: storeNameList,
                   cityLabels: normalizedCityNameList,
                   regionLabels: normalizedRegionNameList,
@@ -1204,11 +1299,21 @@ export function buildJobListTool(
                 aliasFuzzyMatch:
                   fuzzyConfidence !== 'none'
                     ? {
-                        brandAliasList,
+                        brandAliasList: brandAliasListInput,
                         confidence: fuzzyConfidence,
                         suggestions: fuzzySuggestions,
                       }
                     : null,
+                queryMeta: {
+                  brand: toBrandQueryMeta(
+                    brandPlan,
+                    fuzzySuggestions.map((match) => ({
+                      brandName: match.brandName,
+                      inputAlias: match.inputAlias,
+                      score: match.score,
+                    })),
+                  ),
+                },
               },
             });
           }
@@ -1350,6 +1455,14 @@ export function buildJobListTool(
           const brandGroups = buildBrandNearestStoreSummary(jobs);
           const multiStoreGroups = getMultiStoreBrandGroups(brandGroups);
 
+          // 兜底知情披露（§8.1）：brandSource=session_state / 品类裁剪时向模型说明
+          // 所用品牌与 clear 覆盖出口，兜底不做静默注入。
+          const brandFilterNotice =
+            brandPlan.brandSource === 'session_state' ||
+            brandPlan.categoryExcludedRemoved.length > 0
+              ? brandPlan.disclosure
+              : null;
+
           if (formatSet.has('markdown')) {
             const jobsMarkdown = formatJobsToMarkdown(
               jobs,
@@ -1360,6 +1473,7 @@ export function buildJobListTool(
               brandGroups,
             );
             const markdownSections = [
+              brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               summerWorkerStrictNotice,
               laborFormRelaxNotice,
               ageScreeningSummary?.markdown,
@@ -1369,6 +1483,9 @@ export function buildJobListTool(
           }
           if (formatSet.has('rawData')) {
             result.rawData = { result: jobs, total };
+          }
+          if (brandFilterNotice) {
+            result.brandFilterNotice = brandFilterNotice;
           }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;
@@ -1431,10 +1548,10 @@ export function buildJobListTool(
                   }))
                 : null,
             ageScreening: ageScreeningSummary?.meta ?? null,
-            brandIdList,
-            brandAliasList,
-            brandAliasSource,
-            rejectedNicknameBrandAliases: nicknameAliasValidation.rejected,
+            // 品牌散字段（brandIdList/brandAliasList/brandAliasSource/rejectedNickname…）
+            // 已收拢为类型化 brand 小节（§11）；模型原始参数在 message_processing_records
+            // 调用流水里本来就有，不重复存。
+            brand: toBrandQueryMeta(brandPlan),
             searchJobName: searchJobName?.trim() || null,
           };
 

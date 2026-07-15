@@ -427,7 +427,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .caliberNote {
-  margin: 0 0 10px;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -443,6 +443,14 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     background: $primary;
     flex: none;
   }
+}
+
+.caliberToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: 10px;
 }
 
 .kpiCell {
@@ -2166,6 +2174,15 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
     button {
       flex: 1 1 0;
+    }
+  }
+
+  .caliberToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+
+    .modeTabs {
+      width: 100%;
     }
   }
 

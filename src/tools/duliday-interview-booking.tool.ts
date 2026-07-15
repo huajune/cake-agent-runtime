@@ -98,7 +98,7 @@ const supplementAnswersSchema = z
 const DESCRIPTION = `预约面试。真正调用面试预约接口，提交面试时间 + 候选人信息。入参必须与 supplier/entryUser 契约保持一致。
 
 ## 调用契约（必读）
-本工具**完全信任 duliday_interview_precheck 的结论**：自身不再做时段窗口、报名截止、筛选答案、真实姓名等硬规则的二次校验。漏调 precheck 或不按 precheck 的 nextAction 行动，就会把不合规的候选人直接送进门店。所以在调本工具之前，必须满足以下全部条件：
+本工具要求先完成 duliday_interview_precheck，并会在真实预约前对关键硬规则做服务端二次校验。漏调 precheck 或不按 precheck 的 nextAction 行动，会被直接拒绝。所以在调本工具之前，必须满足以下全部条件：
 
 1. **本轮已经调过 duliday_interview_precheck**，且 nextAction === "ready_to_book"。任何 collect_fields / confirm_date / date_unavailable 状态都不得直接进 booking。**必须把本轮 precheck 返回的 nextAction + bookingChecklist.missingFields.length 原样填入入参 prechecked 字段**——后端会硬校验，缺该字段或 nextAction ≠ ready_to_book 或 missingFieldsCount > 0 直接拒，不会调真实预约接口。
 2. **interviewTime 必须来自 precheck 返回的 bookableSlots**：只有 bookingAllowed=true 且带 interviewTime 的 slot 才能用；dateOnly=true / 00:00-00:00 / bookingAllowed=false 的 slot 必须由人工确认，禁止自动提交。"registrationDeadline / 报名截止"**绝不是面试时间**，严禁把它当作 interviewTime。**例外**：precheck 返回 interview.interviewTimeMode === "wait_notice"（岗位未配置面试时段，面试官电话联系）时，**不要传 interviewTime**，严禁自己编一个时间填进来。
@@ -184,6 +184,7 @@ const inputSchema = z.object({
           'confirm_date',
           'date_unavailable',
           'student_rejected',
+          'household_rejected',
         ])
         .describe('本轮 duliday_interview_precheck 返回的 nextAction 字段，必须复制原值'),
       missingFieldsCount: z
@@ -286,7 +287,9 @@ export function buildInterviewBookingTool(
                     ? '上一轮 precheck 要求先和候选人确认日期，禁止直接 booking。和候选人对齐 requestedDate 后重新调 precheck，nextAction=ready_to_book 才能调本工具。'
                     : prechecked.nextAction === 'student_rejected'
                       ? '上一轮 precheck 已确认候选人学生身份与岗位要求冲突，严禁继续 booking。转查接受学生的岗位；不得修改或隐瞒身份重试。'
-                      : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
+                      : prechecked.nextAction === 'household_rejected'
+                        ? '上一轮 precheck 已确认候选人与岗位内部硬性条件不匹配，严禁继续 booking。请用中性话术转查其它岗位；禁止透露具体户籍、籍贯或地域限制，也不得修改户籍字段重试。'
+                        : '上一轮 precheck 判定 date_unavailable（候选人请求日期不可约或被 available_after 拦截）。先解释原因并和候选人对齐其他日期，重新调 precheck，禁止本轮 booking。',
               details: { prechecked },
             }),
           );
@@ -503,6 +506,7 @@ export function buildInterviewBookingTool(
               pageSize: 1,
               options: {
                 includeBasicInfo: true,
+                includeHiringRequirement: true,
                 includeInterviewProcess: true,
               },
             },
@@ -558,6 +562,7 @@ export function buildInterviewBookingTool(
             candidateGenderId: genderId,
             candidateHasHealthCertificate: hasHealthCertificate,
             candidateIsStudent: resolveCandidateIsStudentForBooking(context),
+            candidateHouseholdProvinceId: householdRegisterProvinceId,
           });
           if (guardFailure) {
             return markBookingFailed(context, guardFailure);

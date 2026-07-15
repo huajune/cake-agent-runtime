@@ -20,6 +20,7 @@
  * （不增加 sponge 调用）。
  */
 import type { JobDetail } from '@sponge/sponge.types';
+import { getSpongeProvinceNameById } from '@sponge/sponge.enums';
 import { isStrictRealChineseName } from '@memory/facts/name-guard';
 import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/utils/job-policy-parser';
 import {
@@ -33,6 +34,7 @@ import {
 } from '@tools/utils/supplement-label-classifier';
 import {
   extractHardRequirements,
+  isHouseholdRequirementViolated,
   type HardRequirements,
 } from '@tools/duliday/job-list/hard-requirements.util';
 import {
@@ -53,6 +55,8 @@ export interface BookingGuardInput {
   candidateHasHealthCertificate?: number;
   /** 候选人是否学生；true=学生，false=社会人士 */
   candidateIsStudent?: boolean;
+  /** 候选人户籍省 ID（来自 booking 工具入参） */
+  candidateHouseholdProvinceId?: number;
 }
 
 /**
@@ -105,8 +109,7 @@ function checkScreeningAnswers(
 }
 
 /**
- * 比对岗位硬约束与候选人 facts。命中性别冲突 / 健康证不满足等不可妥协场景时拒 booking。
- * 户籍约束当前不在 booking 层做硬拦——province ID 映射在工具入参之外，留给 precheck/render 提醒。
+ * 比对岗位硬约束与候选人 facts。命中性别 / 户籍 / 健康证等不可妥协场景时拒 booking。
  */
 function checkHardRequirements(input: BookingGuardInput): ToolErrorReturn | null {
   const policy = buildJobPolicyAnalysis(input.job);
@@ -120,6 +123,22 @@ function checkHardRequirements(input: BookingGuardInput): ToolErrorReturn | null
       replyInstruction:
         '岗位明确限制性别，候选人性别不符，**严禁继续 booking**。先用礼貌话术告知候选人本岗位仅限对方不属于的性别，然后调 duliday_job_list 重新筛同区域其他岗位；或在用户自荐其它意向时调 request_handoff 转人工，让招募经理判断是否破例。不要回头修改 genderId 重试本工具。',
       details: { detailedReason: genderConflict },
+    });
+  }
+
+  const candidateHouseholdProvince =
+    input.candidateHouseholdProvinceId == null
+      ? null
+      : getSpongeProvinceNameById(input.candidateHouseholdProvinceId);
+  if (isHouseholdRequirementViolated(hr.household, candidateHouseholdProvince)) {
+    return buildToolError({
+      errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+      outcome: '预约失败（候选人与岗位内部硬性条件冲突）',
+      replyInstruction:
+        '候选人与当前岗位的内部硬性条件不匹配，严禁继续 booking。请用中性话术说明当前岗位暂不匹配，并调用 duliday_job_list 转查其它岗位；禁止透露、复述或暗示具体户籍、籍贯或地域限制，也不得修改户籍字段重试。',
+      details: {
+        detailedReason: '候选人户籍与岗位内部硬约束冲突（敏感条件，仅供内部审计）',
+      },
     });
   }
 

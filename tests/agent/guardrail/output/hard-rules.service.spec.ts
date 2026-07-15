@@ -58,6 +58,7 @@ describe('HardRulesService', () => {
       // 宣布"无限制"是合规的
       '这个岗位性别年龄不限，户籍也不限的',
       '这家对户籍没有要求，放心报名',
+      '这个岗位只写了要食品健康证，没提地域限制。具体外地证能不能用我帮你跟门店确认下',
       // 催收资料场景误用"不要"
       '麻烦把籍贯发我一下哈，不要发错啦',
       // 专业的合规开放式核对与形容词用法
@@ -612,6 +613,34 @@ describe('HardRulesService', () => {
       });
 
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'summer_worker_alternative_upsell',
+      );
+    });
+
+    it('allows explaining that a previous recommendation used the regular part-time path', () => {
+      const result = service.check({
+        replyText:
+          '刚核了一下，你找的是暑假工，之前的推荐是按常规兼职走的。抱歉，附近暂时没有合适的暑假工岗位。',
+        toolCalls: [summerWorkerEmptyToolCall],
+        userMessage: '我只找暑假工',
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'summer_worker_alternative_upsell',
+      );
+    });
+
+    it('still flags a real upsell in another sentence after the historical explanation', () => {
+      const result = service.check({
+        replyText:
+          '之前的推荐是按常规兼职走的。不过附近还有长期兼职，要不要继续看看？',
+        toolCalls: [summerWorkerEmptyToolCall],
+        userMessage: '我只找暑假工',
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
         'summer_worker_alternative_upsell',
       );
     });

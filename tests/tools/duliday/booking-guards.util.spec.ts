@@ -191,6 +191,48 @@ describe('runBookingGuards · hard-requirements', () => {
     });
   });
 
+  describe('household conflict · guardrail review record 589', () => {
+    const restrictedJob = () =>
+      makeJob({
+        hiringRequirement: {
+          requirementsForHometown: {
+            nativePlaceRequirementType: '不要',
+            nativePlaces: ['天津市', '江西省'],
+          },
+        },
+      });
+
+    it('blocks before booking when candidate province is explicitly excluded', () => {
+      const result = runBookingGuards({
+        job: restrictedJob(),
+        name: realName,
+        interviewTime,
+        candidateHouseholdProvinceId: 120000,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.errorType).toBe('booking.rejected');
+      expect(result?._outcome).toContain('内部硬性条件');
+      expect(result?._replyInstruction).not.toContain('天津');
+      expect(result?._replyInstruction).not.toContain('江西');
+      expect(result?._replyInstruction).toContain('禁止透露');
+    });
+
+    it('passes when candidate province is not excluded or is unknown', () => {
+      expect(
+        runBookingGuards({
+          job: restrictedJob(),
+          name: realName,
+          interviewTime,
+          candidateHouseholdProvinceId: 310000,
+        }),
+      ).toBeNull();
+      expect(
+        runBookingGuards({ job: restrictedJob(), name: realName, interviewTime }),
+      ).toBeNull();
+    });
+  });
+
   describe('student conflict · batch_6a559b7ace406a6aeedf1f8b_1783995721291', () => {
     it('blocks booking when 岗位仅接受社会人士 but candidate is student', () => {
       const job = makeJob({ hiringRequirement: { figure: '社会人士' } });

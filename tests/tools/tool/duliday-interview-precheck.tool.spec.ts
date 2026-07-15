@@ -1141,6 +1141,18 @@ describe('buildInterviewPrecheckTool', () => {
       });
     };
 
+    const socialOnlyJobFixture = () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职', partTimeJobType: '小时工' },
+            hiringRequirement: { figure: '社会人士', remark: '' },
+            interviewProcess: fixedInterviewProcess,
+          }),
+        ],
+      });
+    };
+
     it('候选人原话说过"暑假工的"后，模型省略 candidateLaborForm 也拦得住（粘性）', async () => {
       nonSummerJobFixture();
 
@@ -1245,6 +1257,56 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.bookingChecklist.templateText ?? '').toContain(
         '身份（学生/社会人士）：社会人士',
       );
+    });
+
+    it.each([
+      '那就社会人士的早班吧',
+      '嘉裕太阳城呢 不是有招社会人士岗吗',
+      '社会人士岗位会影响我后续读书吗',
+      '那东方宝泰店我可以用社会人士身份入职是吗',
+    ])('候选人讨论社会人士岗位时不得翻转已确认的学生身份：%s', async (message) => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 18, candidateIsStudent: 'false' },
+        {
+          sessionFacts: {
+            interview_info: { is_student: true },
+            preferences: {},
+          } as never,
+          messages: [
+            { role: 'user', content: '身份（学生/社会人士）：学生' },
+            { role: 'user', content: message },
+          ] as never,
+        },
+      );
+
+      expect(result.nextAction).toBe('student_rejected');
+      expect(result.studentEligibility).toEqual(
+        expect.objectContaining({ candidateIdentity: '学生', requiredIdentity: '社会人士' }),
+      );
+      expect(result.bookingChecklist.templateText ?? '').toContain('身份（学生/社会人士）：学生');
+    });
+
+    it('即使会话记忆已被污染为社会人士，仍以最新明确的候选人身份原话为准', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 18, candidateIsStudent: '否' },
+        {
+          sessionFacts: {
+            interview_info: { is_student: false },
+            preferences: {},
+          } as never,
+          messages: [
+            { role: 'user', content: '身份（学生/社会人士）：学生' },
+            { role: 'user', content: '那东方宝泰店我可以用社会人士身份入职是吗' },
+          ] as never,
+        },
+      );
+
+      expect(result.nextAction).toBe('student_rejected');
+      expect(result.bookingChecklist.templateText ?? '').toContain('身份（学生/社会人士）：学生');
     });
   });
 
@@ -2041,6 +2103,34 @@ describe('buildInterviewPrecheckTool', () => {
       { labelId: 501, labelName: '健康证类型', name: '健康证类型' },
       { labelId: 502, labelName: '过往公司+岗位+年限', name: '过往公司+岗位+年限' },
     ]);
+  });
+
+  it('should hard-reject an explicitly excluded household without exposing restricted regions', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            requirementsForHometown: {
+              nativePlaceRequirementType: '不要',
+              nativePlaces: ['天津市', '江西省'],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      candidateHouseholdProvince: '天津市',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.nextAction).toBe('household_rejected');
+    expect(result.householdEligibility).toEqual(
+      expect.objectContaining({ severity: 'hard_reject' }),
+    );
+    expect(JSON.stringify(result.householdEligibility)).not.toContain('天津');
+    expect(JSON.stringify(result.householdEligibility)).not.toContain('江西');
   });
 
   it('should backfill work experience supplement from high-confidence facts', async () => {

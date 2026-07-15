@@ -21,6 +21,7 @@ interface CohortFunnelProps {
   data?: ConversionFunnelResponse;
   loading: boolean;
   mode: ConversionMetricMode;
+  maturityDays: number;
   onModeChange: (mode: ConversionMetricMode) => void;
 }
 
@@ -81,7 +82,13 @@ const SPRINKLES: Array<[number, number, number, number]> = [
 ];
 const SPRINKLE_COLORS = ['#f9a8d4', '#fcd34d', '#86efac', '#93c5fd', '#fda4af', '#c4b5fd'];
 
-export default function CohortFunnel({ data, loading, mode, onModeChange }: CohortFunnelProps) {
+export default function CohortFunnel({
+  data,
+  loading,
+  mode,
+  maturityDays,
+  onModeChange,
+}: CohortFunnelProps) {
   const chartData: FunnelChartDatum[] = (data?.stages ?? []).map((stage, index) => {
     const palette = FUNNEL_PALETTE[index % FUNNEL_PALETTE.length];
     return {
@@ -94,7 +101,7 @@ export default function CohortFunnel({ data, loading, mode, onModeChange }: Coho
   });
   const total = data?.totalCohort ?? 0;
   const cohortSubject = '新增好友';
-  const cohortDescription = funnelDescription(mode, total, loading);
+  const cohortDescription = funnelDescription(mode, total, loading, maturityDays);
 
   const n = chartData.length;
   // 层边界半宽：等比收窄；layer i 的碗口 = boundaries[i]，碗底 = boundaries[i+1]。
@@ -117,7 +124,7 @@ export default function CohortFunnel({ data, loading, mode, onModeChange }: Coho
       <div className={styles.panelHeader}>
         <div>
           <span className={styles.sectionKicker}>转化路径</span>
-          <h2>{mode === 'period' ? '同一时段漏斗' : '批次转化漏斗'}</h2>
+          <h2>{mode === 'period' ? '同一时段阶段发生量' : '成熟批次转化漏斗'}</h2>
           <span>{cohortDescription}</span>
         </div>
         <MetricModeTabs mode={mode} onChange={onModeChange} label="漏斗口径" />
@@ -465,7 +472,7 @@ export default function CohortFunnel({ data, loading, mode, onModeChange }: Coho
         </div>
       </div>
 
-      <p className={styles.funnelNote}>{funnelNote(mode, cohortSubject)}</p>
+      <p className={styles.funnelNote}>{funnelNote(mode, cohortSubject, maturityDays)}</p>
     </section>
   );
 }
@@ -517,21 +524,26 @@ function stageLabel(stage: string, fallback: string) {
   return labels[stage] ?? fallback;
 }
 
-function funnelDescription(mode: ConversionMetricMode, total: number, loading: boolean) {
+function funnelDescription(
+  mode: ConversionMetricMode,
+  total: number,
+  loading: boolean,
+  maturityDays: number,
+) {
   if (mode === 'period') {
     return loading || total === 0
       ? '查看本时间段内各阶段发生量'
       : `本时间段 ${total} 位新增好友对应的阶段发生量`;
   }
   return loading || total === 0
-    ? '追踪本期新增好友这同一批人的后续进展'
-    : `追踪本期 ${total} 位新增好友这同一批人的后续进展`;
+    ? `追踪至少成熟 ${maturityDays} 天的新增好友批次`
+    : `追踪 ${total} 位至少成熟 ${maturityDays} 天的新增好友后续进展`;
 }
 
-function funnelNote(mode: ConversionMetricMode, subject: string) {
+function funnelNote(mode: ConversionMetricMode, subject: string, maturityDays: number) {
   if (mode === 'period') {
     return '口径：同一时段发生量快照。新增好友、破冰、报名、面试通过分别取本时间窗内去重事件（均按人去重）。注意：各阶段独立计数，下游可能超过上一阶段（如窗口外加的好友在本期破冰/报名），故本图非严格收口漏斗、阶段率可能 >100%；如需「同一批人逐级 ⊆」请切到同批追踪。';
   }
 
-  return `口径：以本期${subject}为同一批人逐级追踪（按人去重、线性阶段每级 ⊆ 上一级，比率天然 ≤100%）；收口到面试通过，无入职级。注意：下游只统计落在所选时间窗内的事件，越靠近今天的批次后续转化可能尚未发生（右侧截断），近几日数值偏低属正常；时间窗越长该影响越小。`;
+  return `口径：以至少成熟 ${maturityDays} 天的${subject}为同一批人逐级追踪（按人去重、线性阶段每级 ⊆ 上一级，比率天然 ≤100%）；每位候选人都有完整的 ${maturityDays} 天观察期，避免近期批次尚未来得及转化造成的低估；收口到面试通过，无入职级。`;
 }

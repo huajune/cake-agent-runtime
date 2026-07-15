@@ -5,7 +5,19 @@ import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 describe('buildJobListTool', () => {
   const mockSpongeService = {
     fetchJobs: jest.fn(),
+    fetchBrandList: jest.fn(),
   };
+
+  // 入口标准化（§8.2）用的品牌目录：名称与各测试岗位 brandName 对齐（等值过滤），
+  // 刻意不带 id（保持"无 ID 时保留标准名走 brandAliasList"的断言口径）。
+  const brandCatalog = [
+    { name: 'KFC', aliases: [] },
+    { name: '肯德基', aliases: [] },
+    { name: '大米先生', aliases: [] },
+    { name: '成都你六姐', aliases: [] },
+    { name: '奥乐齐', aliases: [] },
+    { name: '史伟莎', aliases: [] },
+  ];
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
@@ -66,7 +78,14 @@ describe('buildJobListTool', () => {
     includeInterviewProcess: false,
   };
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // mockResolvedValueOnce 队列不会被 clearAllMocks 清掉：早退分支未消费的 once 值会
+    // 泄漏进下一个用例，这里统一 reset 后重建默认实现。
+    mockSpongeService.fetchJobs.mockReset();
+    mockSpongeService.fetchBrandList.mockReset();
+    mockSpongeService.fetchBrandList.mockResolvedValue(brandCatalog);
+  });
   afterEach(() => jest.useRealTimers());
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -212,10 +231,10 @@ describe('buildJobListTool', () => {
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandIdList: [] }),
     );
-    expect(result.queryMeta.brandIdList).toEqual([]);
+    expect(result.queryMeta.brand.appliedBrandIds).toEqual([]);
   });
 
-  it('should inject contact-remark brand into brandAliasList when model passes no brand', async () => {
+  it('does NOT inject contact-remark brand（旧 contact_remark 兜底档已废除，§13 Phase 3.5）', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
       total: 1,
@@ -226,14 +245,14 @@ describe('buildJobListTool', () => {
       { ...defaultInput, cityNameList: ['上海'] },
     );
 
+    // 昵称品牌统一在首轮准备阶段经验证后 seed 进 brand_state，工具侧不再存在昵称档
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      expect.objectContaining({ brandAliasList: ['KFC'] }),
+      expect.objectContaining({ brandAliasList: [] }),
     );
-    expect(result.queryMeta.brandAliasList).toEqual(['KFC']);
-    expect(result.queryMeta.brandAliasSource).toBe('contact_remark');
+    expect(result.queryMeta.brand.brandSource).toBe('none');
   });
 
-  it('should fall back to session-facts brands when model and remark carry no brand (badcase recvjFFKcZPsiC)', async () => {
+  it('falls back to SessionBrandState.currentBrand when model passes no brand (badcase recvjFFKcZPsiC)', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJobData({ basicInfo: { brandName: '大米先生' } })],
       total: 1,
@@ -242,9 +261,10 @@ describe('buildJobListTool', () => {
     const result = await executeTool(
       {
         ...mockContext,
-        sessionFacts: {
-          preferences: { brands: ['大米先生'] },
-        } as ToolBuildContext['sessionFacts'],
+        sessionBrandState: {
+          currentBrand: { canonicalName: '大米先生', brandId: null },
+          excludedBrands: [],
+        },
       },
       { ...defaultInput, cityNameList: ['南京'] },
     );
@@ -252,10 +272,33 @@ describe('buildJobListTool', () => {
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandAliasList: ['大米先生'] }),
     );
-    expect(result.queryMeta.brandAliasSource).toBe('session_facts');
+    expect(result.queryMeta.brand.brandSource).toBe('session_state');
+    expect(result.queryMeta.brand.filterMode).toBe('enforce');
   });
 
-  it('should prefer contact-remark brand over session-facts brands', async () => {
+  it('discloses the session-fallback brand and the clear escape hatch in the result（§8.1 知情披露）', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData({ basicInfo: { brandName: '大米先生' } })],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        sessionBrandState: {
+          currentBrand: { canonicalName: '大米先生', brandId: null },
+          excludedBrands: [],
+        },
+      },
+      { ...defaultInput, cityNameList: ['南京'] },
+    );
+
+    expect(result.brandFilterNotice).toContain('大米先生');
+    expect(result.brandFilterNotice).toContain("brandFilterMode='clear'");
+    expect(result.markdown).toContain('大米先生');
+  });
+
+  it('excludedBrands 不经兜底回流；filterMode=clear 时不触发任何兜底', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
       total: 1,
@@ -264,76 +307,111 @@ describe('buildJobListTool', () => {
     const result = await executeTool(
       {
         ...mockContext,
-        contactBrandAliases: ['KFC'],
-        sessionFacts: {
-          preferences: { brands: ['大米先生'] },
-        } as ToolBuildContext['sessionFacts'],
+        sessionBrandState: {
+          currentBrand: { canonicalName: '大米先生', brandId: null },
+          excludedBrands: [{ canonicalName: '肯德基', brandId: null }],
+        },
       },
-      { ...defaultInput, cityNameList: ['上海'] },
+      { ...defaultInput, cityNameList: ['上海'], brandFilterMode: 'clear' } as never,
     );
 
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      expect.objectContaining({ brandAliasList: ['KFC'] }),
+      expect.objectContaining({ brandAliasList: [], brandIdList: [] }),
     );
-    expect(result.queryMeta.brandAliasSource).toBe('contact_remark');
+    expect(result.queryMeta.brand.filterMode).toBe('clear');
+    expect(result.queryMeta.brand.brandSource).toBe('none');
   });
 
-  it('should NOT override an explicitly passed brand with the contact-remark brand', async () => {
+  it('should NOT override an explicitly passed brand with the session brand', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
       total: 1,
     });
 
     const result = await executeTool(
-      { ...mockContext, contactBrandAliases: ['星巴克'] },
+      {
+        ...mockContext,
+        sessionBrandState: {
+          currentBrand: { canonicalName: '大米先生', brandId: null },
+          excludedBrands: [],
+        },
+      },
       { ...defaultInput, cityNameList: ['上海'], brandAliasList: ['KFC'] },
     );
 
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandAliasList: ['KFC'] }),
     );
-    expect(result.queryMeta.brandAliasSource).toBe('input');
+    expect(result.queryMeta.brand.brandSource).toBe('model_input');
   });
 
-  it('rejects a model brand copied from an unverified nickname unless the user said it', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [makeJobData({ basicInfo: { brandName: 'KFC' } })],
-      total: 1,
-    });
-
+  it('rejects unverified brand inputs（Gattouzo 昵称臆造 → rejected，不查询不静默放行）', async () => {
     const result = await executeTool(
       {
         ...mockContext,
         contactName: 'Gattouzo',
-        contactBrandAliases: [],
         currentUserMessage: '[位置分享] 上海松江',
       },
       { ...defaultInput, cityNameList: ['上海'], brandAliasList: ['Gattouzo'] },
     );
 
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      expect.objectContaining({ brandAliasList: [] }),
-    );
-    expect(result.queryMeta.brandAliasSource).toBe('none');
-    expect(result.queryMeta.rejectedNicknameBrandAliases).toEqual(['Gattouzo']);
+    // 全部入参未过目录验证：不发起查询（防跨品牌乱推），结构化披露 rejected
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(result.queryMeta.brand.rejected).toEqual([{ input: 'Gattouzo', reason: 'unmatched' }]);
+    expect(result.noMatchScript).toBeDefined();
   });
 
-  it('keeps an unknown brand when the candidate explicitly names it in the current message', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
-
-    await executeTool(
+  it('unknown brand stays rejected even when the candidate explicitly names it（查不到就不猜，§6.2）', async () => {
+    const result = await executeTool(
       {
         ...mockContext,
         contactName: 'Gattouzo',
-        contactBrandAliases: [],
         currentUserMessage: 'Gattouzo 还招人吗',
       },
       { ...defaultInput, cityNameList: ['上海'], brandAliasList: ['Gattouzo'] },
     );
 
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(result.queryMeta.brand.rejected[0].reason).toBe('unmatched');
+  });
+
+  it('empty brand list + enforce/exclude 是矛盾组合，报错引导补品牌或改 mode（§8.1）', async () => {
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['上海'],
+      brandFilterMode: 'enforce',
+    } as never);
+
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_MODE_CONFLICT);
+  });
+
+  it('exclude mode 本地剔除指定品牌（上游无品牌排除参数，§8.1）', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJobData({ basicInfo: { jobId: 1, brandName: '肯德基' } }),
+        makeJobData({ basicInfo: { jobId: 2, brandName: '大米先生' } }),
+      ],
+      total: 2,
+    });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['上海'],
+      brandAliasList: ['肯德基'],
+      brandFilterMode: 'exclude',
+    } as never);
+
+    // 查询本身不带品牌条件，召回后本地剔除
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      expect.objectContaining({ brandAliasList: ['Gattouzo'] }),
+      expect.objectContaining({ brandAliasList: [], brandIdList: [] }),
     );
+    expect(result.resultCount).toBe(1);
+    expect(result.queryMeta.brand.filterMode).toBe('exclude');
+    expect(result.queryMeta.brand.appliedCanonicalNames).toEqual(['肯德基']);
+    expect(result.markdown).toContain('大米先生');
+    expect(result.markdown).not.toContain('肯德基');
   });
 
   it('should return error when no jobs found', async () => {
