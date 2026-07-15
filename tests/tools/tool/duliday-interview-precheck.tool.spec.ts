@@ -55,6 +55,7 @@ function emptyHighConfidenceFacts(): HighConfidenceFacts {
 describe('buildInterviewPrecheckTool', () => {
   const mockSpongeService = {
     fetchJobs: jest.fn(),
+    fetchSignupWorkOrders: jest.fn(),
   };
 
   const mockContext: ToolBuildContext = {
@@ -138,6 +139,7 @@ describe('buildInterviewPrecheckTool', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useRealTimers();
+    mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
   });
 
   afterEach(() => {
@@ -950,6 +952,20 @@ describe('buildInterviewPrecheckTool', () => {
     }
   });
 
+  it('jobId 传数字字符串时 schema 直接 coerce 收下，不再整体拒调用', async () => {
+    // badcase 6a448d09：模型把 jobId 序列化成 "516576"，严格 number 让调用被拒，
+    // 模型换格式空转 3 次。coerce 后数字字符串照常进入 execute。
+    const builder = buildInterviewPrecheckTool(
+      mockSpongeService as never,
+      { recordEvent: jest.fn() } as never,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const builtTool = builder(mockContext) as any;
+    const parsed = builtTool.inputSchema.safeParse({ jobId: '516576' });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.jobId).toBe(516576);
+  });
+
   describe('暑假工临时口径', () => {
     const readyInput = {
       jobId: 100,
@@ -1324,6 +1340,209 @@ describe('buildInterviewPrecheckTool', () => {
 
       expect(result.nextAction).toBe('student_rejected');
       expect(result.bookingChecklist.templateText ?? '').toContain('身份（学生/社会人士）：学生');
+    });
+
+    // ===== 身份识别缺口 + 追问升级（badcase chat 6a448d09：候选人四种真实回答均不被
+    // 白名单承认，"再回一句社会人士"被追问 3 遍后模型才自行转人工）=====
+
+    it.each(['男 已经工作了', '是社会人士', '已经上班了', '对，社会人士的'])(
+      '复合/前缀式社会人士回答应被子句级识别通过身份校验：%s',
+      async (message) => {
+        socialOnlyJobFixture();
+
+        const result = await executeTool(readyInput, {
+          messages: [{ role: 'user', content: message }] as never,
+        });
+
+        expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+        expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+        expect(result.nextAction).toBe('ready_to_book');
+      },
+    );
+
+    it.each(['我是大学生', '18岁 还在上学'])(
+      '复合/变体学生自认同样被子句级识别，社会人士岗位照常 hard reject：%s',
+      async (message) => {
+        socialOnlyJobFixture();
+
+        const result = await executeTool(readyInput, {
+          messages: [{ role: 'user', content: message }] as never,
+        });
+
+        expect(result.nextAction).toBe('student_rejected');
+      },
+    );
+
+    it('单值确认问句后候选人答"是的"构成身份自认（badcase 6a448d09 追问第 2 轮）', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          {
+            role: 'assistant',
+            content: '系统里还差个“身份”选项没勾，你确认下是选“社会人士”对吧',
+          },
+          { role: 'user', content: '是的' },
+        ] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+      expect(result.nextAction).toBe('ready_to_book');
+    });
+
+    it('二选一问句（学生还是已经工作了）后的"是的"语义不定，不构成身份自认', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          { role: 'assistant', content: '你目前是学生还是已经工作了呀？' },
+          { role: 'user', content: '是的' },
+        ] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).toContain('身份');
+      expect(result.nextAction).toBe('collect_fields');
+    });
+
+    it('身份追问 2 次且候选人已作答仍无法核验时升级 mustHandoff，指令转 request_handoff', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          { role: 'assistant', content: '另外目前是学生还是已经工作了？' },
+          { role: 'user', content: '那个啥' },
+          { role: 'assistant', content: '还有个身份要确认下哈' },
+          { role: 'user', content: '嗯呐' },
+        ] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields).toEqual(['身份']);
+      expect(result.identityFieldGuard).toEqual(
+        expect.objectContaining({ mustHandoff: true, mustAskCandidate: false }),
+      );
+      expect(result._replyInstruction).toContain('request_handoff');
+      expect(result._replyInstruction).toContain('禁止再次追问身份');
+    });
+
+    it('身份仅追问过 1 次时不升级，仍按正常收资追问', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          { role: 'assistant', content: '另外目前是学生还是已经工作了？' },
+          { role: 'user', content: '那个啥' },
+        ] as never,
+      });
+
+      expect(result.identityFieldGuard).toEqual(
+        expect.objectContaining({ mustAskCandidate: true }),
+      );
+      expect(result._replyInstruction).toContain('只缺：身份');
+    });
+
+    // ===== 在途工单探测（badcase chat 6a448d09：候选人经其它渠道已约次日面试，
+    // Agent 无从知晓险些重复报名；对"系统里有没有记录"也只能凭空断言）=====
+
+    it('同岗位在途工单存在时输出 duplicateBookingGuard 并禁止重复 booking', async () => {
+      socialOnlyJobFixture();
+      mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({
+        total: 1,
+        workOrders: [
+          {
+            workOrderId: 987,
+            jobId: 100,
+            jobName: 'KFC-五角场店-服务员',
+            brandName: 'KFC',
+            interviewTime: '2026-07-08 13:30',
+            currentStatus: '约面成功',
+            signUpTime: '2026-07-06 10:00',
+          },
+        ],
+      });
+
+      const result = await executeTool(readyInput, {
+        messages: [{ role: 'user', content: '我是社会人士' }] as never,
+      });
+
+      expect(mockSpongeService.fetchSignupWorkOrders).toHaveBeenCalledWith(
+        { phone: '13800138000' },
+        expect.anything(),
+      );
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.duplicateBookingGuard).toEqual(expect.objectContaining({ workOrderId: 987 }));
+      expect(result.existingRegistrations).toHaveLength(1);
+      expect(result._replyInstruction).toContain('禁止再调 duliday_interview_booking');
+    });
+
+    it('其它岗位在途工单只披露 existingRegistrations，不拦当前岗位 booking', async () => {
+      socialOnlyJobFixture();
+      mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({
+        total: 1,
+        workOrders: [
+          {
+            workOrderId: 988,
+            jobId: 200,
+            jobName: '奥乐齐-南翔-通岗店员',
+            brandName: '奥乐齐',
+            interviewTime: '2026-07-09 13:00',
+            currentStatus: '约面待确认',
+            signUpTime: '2026-07-06 11:00',
+          },
+        ],
+      });
+
+      const result = await executeTool(readyInput, {
+        messages: [{ role: 'user', content: '我是社会人士' }] as never,
+      });
+
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.duplicateBookingGuard).toBeUndefined();
+      expect(result.existingRegistrations).toEqual([
+        expect.objectContaining({ workOrderId: 988, isSameJob: false }),
+      ]);
+      expect(result._replyInstruction).toContain('立即调用 duliday_interview_booking');
+    });
+
+    it('已取消/已失败工单不算在途，不产生披露字段', async () => {
+      socialOnlyJobFixture();
+      mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({
+        total: 1,
+        workOrders: [
+          { workOrderId: 989, jobId: 100, currentStatus: '约面取消', signUpTime: '2026-07-01' },
+        ],
+      });
+
+      const result = await executeTool(readyInput, {
+        messages: [{ role: 'user', content: '我是社会人士' }] as never,
+      });
+
+      expect(result.existingRegistrations).toBeUndefined();
+      expect(result.duplicateBookingGuard).toBeUndefined();
+    });
+
+    it('在途工单查询失败时静默降级，不阻断预检', async () => {
+      socialOnlyJobFixture();
+      mockSpongeService.fetchSignupWorkOrders.mockRejectedValue(new Error('海绵超时'));
+
+      const result = await executeTool(readyInput, {
+        messages: [{ role: 'user', content: '我是社会人士' }] as never,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.existingRegistrations).toBeUndefined();
+    });
+
+    it('没有可用手机号时不发起在途工单查询', async () => {
+      socialOnlyJobFixture();
+
+      const { candidatePhone: _omitted, ...inputWithoutPhone } = readyInput;
+      await executeTool(inputWithoutPhone, {
+        messages: [{ role: 'user', content: '我是社会人士' }] as never,
+      });
+
+      expect(mockSpongeService.fetchSignupWorkOrders).not.toHaveBeenCalled();
     });
   });
 
