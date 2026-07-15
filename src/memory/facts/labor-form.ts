@@ -171,6 +171,7 @@ const CURRENT_JOB_LABOR_FORM_CONTEXT_PATTERN =
   /(?:这个|这份|这家|该|当前)(?:岗位|工作)?|(?:岗位|工作|用工形式)[^，。！？?!；;\n]{0,6}(?:是|属于|算)|(?:^|\s)(?:就|也就|所以|也就是说)?是/;
 const LABOR_FORM_FACT_QUESTION_PATTERN =
   /是不是|是否|算不算|属于吗|是吗|对吗|对吧|到底是|还是[^，。！；;\n]{0,12}[？?]/;
+const LABOR_FORM_REGISTRATION_LABEL_PATTERN = /(?:身份|登记|填写|填报|录入|申报)/;
 const LABOR_FORM_REJECTION_PREFIX_PATTERN =
   /(?:(?<!是)不是|并非|不要|别|不想|不考虑|不接受|不找|不做|拒绝|排除|除了|不适合|不能做|做不了)[^，。！？?!；;\n]{0,14}$/;
 const LABOR_FORM_REJECTION_SUFFIX_PATTERN =
@@ -178,6 +179,7 @@ const LABOR_FORM_REJECTION_SUFFIX_PATTERN =
 
 interface LaborFormMention {
   value: ValidLaborForm;
+  raw: string;
   index: number;
   length: number;
 }
@@ -242,6 +244,14 @@ function decideLaborFormClause(clause: string): LaborFormIntentDecision {
   if (asksOrStatesCurrentJobType && !LABOR_FORM_PREFERENCE_SIGNAL_PATTERN.test(clause)) {
     return { kind: 'ignore' };
   }
+  // “准备用兼职身份登记”只是在复述报名标签，不等于主动放弃已确认的暑假工偏好。
+  // 必须同时出现“接受/考虑/想做”等明确意向动作，才能据此改写 labor_form。
+  if (
+    LABOR_FORM_REGISTRATION_LABEL_PATTERN.test(clause) &&
+    !LABOR_FORM_PREFERENCE_SIGNAL_PATTERN.test(clause)
+  ) {
+    return { kind: 'ignore' };
+  }
 
   const rejected: ValidLaborForm[] = [];
   const accepted: LaborFormMention[] = [];
@@ -256,11 +266,28 @@ function decideLaborFormClause(clause: string): LaborFormIntentDecision {
   }
 
   if (accepted.length > 0) {
-    // 同时接受“暑假工 + 其它形式”不构成 summer-only。单值 schema 下取最后一个
-    // 明确接受的非暑假工类型，避免错误开启暑假工硬锁。
-    const hasSummer = accepted.some((mention) => mention.value === '暑假工');
-    const nonSummer = accepted.filter((mention) => mention.value !== '暑假工');
-    const chosen = hasSummer && nonSummer.length > 0 ? nonSummer.at(-1)! : accepted.at(-1)!;
+    // “暑假工短期的兼职”里的“兼职”是上位类目，不是候选人同时接受普通兼职。
+    // 只有出现“或者/都可以/普通兼职”等并列接受信号时，才允许非季节性形式覆盖。
+    const seasonal = accepted.find((mention) => isSeasonalLaborForm(mention.value));
+    const hasSeasonal = seasonal != null;
+    const hasExplicitAlternativeSignal =
+      /(?:或者|或是|还是|以及|都可以|均可|都行|也可以|也行|普通兼职|常规兼职|长期兼职)/.test(
+        clause,
+      );
+    const nonSeasonal = accepted.filter(
+      (mention) =>
+        !isSeasonalLaborForm(mention.value) &&
+        !(
+          hasSeasonal &&
+          mention.value === '兼职' &&
+          mention.raw === '兼职' &&
+          !hasExplicitAlternativeSignal
+        ),
+    );
+    const chosen = hasSeasonal && nonSeasonal.length > 0 ? nonSeasonal.at(-1)! : accepted.at(-1)!;
+    if (hasSeasonal && nonSeasonal.length === 0 && seasonal) {
+      return { kind: 'set', value: seasonal.value };
+    }
     return { kind: 'set', value: chosen.value };
   }
 
@@ -275,6 +302,7 @@ function readLaborFormMentions(clause: string): LaborFormMention[] {
   LABOR_FORM_MENTION_PATTERN.lastIndex = 0;
   return Array.from(clause.matchAll(LABOR_FORM_MENTION_PATTERN)).map((match) => ({
     value: normalizeLaborFormMention(match[0]),
+    raw: match[0],
     index: match.index,
     length: match[0].length,
   }));

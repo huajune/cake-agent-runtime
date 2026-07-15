@@ -1,6 +1,14 @@
 import { resolveLocalHealthCertificateEligibility } from '@tools/duliday/precheck/health-certificate-policy.util';
+import { normalizeHealthCertificateValue } from '@tools/duliday/precheck/field-normalize.util';
 
 describe('resolveLocalHealthCertificateEligibility', () => {
+  it.each(['健康证在办', '正在办健康证', '办理中，预计明天出证'])(
+    'normalizes certificate-in-progress as currently absent but willing: %s',
+    (value) => {
+      expect(normalizeHealthCertificateValue(value)).toBe('无但接受办理健康证');
+    },
+  );
+
   it('accepts an explicit local certificate as Sponge value 1', () => {
     expect(
       resolveLocalHealthCertificateEligibility({ latestAnswer: '我有上海本地健康证' }),

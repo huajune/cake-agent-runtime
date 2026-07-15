@@ -525,6 +525,37 @@ describe('OutputGuardrailService', () => {
     expect(ruleGuard.check).toHaveBeenCalledWith(expect.objectContaining({ silent: true }));
   });
 
+  it('passes memory snapshot and recent user texts to deterministic cross-turn rules', async () => {
+    const reviewer = noTriggerReviewer();
+    const { service, ruleGuard, shortTerm } = build(false, makeRuleResult(), reviewer);
+    shortTerm.getMessages.mockResolvedValue([
+      { role: 'user', content: '暑假工短期的兼职' },
+      { role: 'user', content: '高中毕业了，在等大学通知书' },
+    ]);
+    const memorySnapshot = {
+      currentStage: 'job_consultation',
+      presentedJobIds: null,
+      recommendedJobIds: null,
+      profileKeys: null,
+      sessionFacts: { 'interview.is_student': { value: true } },
+    };
+
+    await service.check(
+      baseInput({
+        chatId: 'chat-identity',
+        userMessage: '高中毕业了，在等大学通知书',
+        memorySnapshot,
+      }),
+    );
+
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memorySnapshot,
+        recentUserTexts: ['暑假工短期的兼职', '高中毕业了，在等大学通知书'],
+      }),
+    );
+  });
+
   it('silent（advisory）：reviewer 故障 + 高风险 → 仍 block，但不 fire 故障告警', async () => {
     const reviewer = {
       shouldReview: jest.fn().mockReturnValue(false),

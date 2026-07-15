@@ -824,6 +824,49 @@ describe('buildInterviewBookingTool', () => {
     );
   });
 
+  it('should recover a labeled birth date from candidate messages when supplementAnswers is omitted', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [{ interviewSupplementId: 103, interviewSupplement: '出生日期' }],
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      notice: '请准时到达',
+      errorList: null,
+    });
+
+    const { result } = await executeToolWithContext(validInput, {
+      messages: [
+        {
+          role: 'user',
+          content: '姓名：曹旭天\n出生日期：2000-10-15',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerLabelList: [
+          {
+            labelId: 103,
+            labelName: '出生日期',
+            name: '出生日期',
+            value: '2000-10-15',
+          },
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
   it('should upload resume URL first and pass cloudStorageKey to entryUser', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [

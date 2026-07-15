@@ -1153,6 +1153,23 @@ describe('buildInterviewPrecheckTool', () => {
       });
     };
 
+    it.each(['社会人士', '已经工作了', '我已经工作了', '对的\n因为我已经工作了'])(
+      '社会人士岗位应把候选人明确原话“%s”识别为非学生并直接通过身份校验',
+      async (message) => {
+        socialOnlyJobFixture();
+
+        const result = await executeTool(readyInput, {
+          messages: [{ role: 'user', content: message }] as never,
+        });
+
+        expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+        expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+        expect(result.nextAction).toBe('ready_to_book');
+        expect(result._replyInstruction).toContain('立即调用 duliday_interview_booking');
+        expect(result._replyInstruction).toContain('success=true');
+      },
+    );
+
     it('候选人原话说过"暑假工的"后，模型省略 candidateLaborForm 也拦得住（粘性）', async () => {
       nonSummerJobFixture();
 
@@ -1771,6 +1788,53 @@ describe('buildInterviewPrecheckTool', () => {
     expect(withAnswers.nextAction).toBe('ready_to_book');
   });
 
+  it('should recover 出生日期 from a candidate-filled form when the model omits candidateSupplementAnswers', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    // badcase chat 6a5721dace406a6aeef0a849：原消息明确写了出生日期，模型也看到了，
+    // 但 tool call 漏传 candidateSupplementAnswers，导致 precheck 再次追问出生日期。
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { figure: '社会人士', remark: '' },
+          interviewProcess: {
+            interviewSupplement: [{ interviewSupplementId: 103, interviewSupplement: '出生日期' }],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        candidateName: '曹旭天',
+        candidatePhone: '18051608227',
+        // 模型错误换算为 26；precheck 应以精确出生日期覆盖为 25。
+        candidateAge: 26,
+        candidateGender: '男',
+        candidateInterviewTime: '周六 13:00',
+        candidateHasHealthCertificate: '无但接受办理',
+      },
+      {
+        messages: [
+          {
+            role: 'user',
+            content:
+              '姓名：曹旭天\n联系方式：18051608227\n性别：男\n面试时间：周六 13:00\n出生日期：2000-10-15',
+          },
+        ],
+      },
+    );
+
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('出生日期');
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+    expect(result.bookingChecklist.templateText).toContain('出生日期：2000-10-15');
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+    expect(result.bookingChecklist.templateText).toContain('年龄：25');
+    expect(result.ageBoundary.candidateAge).toBe(25);
+    expect(result._replyInstruction).toContain('候选人没有新回复前');
+    expect(result._replyInstruction).toContain('禁止声称已登记');
+  });
+
   it('should keep ambiguous gender text unfilled instead of coercing it to 女', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
@@ -1917,6 +1981,18 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
   });
 
+  it('should normalize string "False" as no health certificate instead of keeping a literal value', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool({ jobId: 100, candidateHasHealthCertificate: 'False' });
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('健康证情况');
+    expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
+    expect(result.bookingChecklist.templateText).not.toContain('False');
+  });
+
   it('should not treat non-local health certificate as a completed certificate answer', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
@@ -1979,6 +2055,49 @@ describe('buildInterviewPrecheckTool', () => {
       expect.objectContaining({ status: 'accepts_local_application', spongeValue: 2 }),
     );
     expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
+  });
+
+  it('should wait for the certificate instead of becoming ready when it is required before interview', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: { interviewDemand: '面试前需食品健康证' },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      candidateHasHealthCertificate: '在办，预计明天出证',
+    });
+
+    expect(result.healthCertGate).toBe('before_interview');
+    expect(result.nextAction).toBe('wait_for_health_certificate');
+    expect(result._replyInstruction).toContain('重新查询届时岗位是否在招及可约时段');
+  });
+
+  it('should still allow local-certificate application for a before-onboard gate', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: { interviewDemand: '请带身份证' },
+            interviewSupplement: [],
+            remark: '',
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      candidateHasHealthCertificate: '无但接受办理健康证',
+    });
+
+    expect(result.healthCertGate).toBe('before_onboard');
+    expect(result.nextAction).not.toBe('wait_for_health_certificate');
   });
 
   it('should reject the current job when non-local certificate holder refuses to reapply', async () => {

@@ -356,7 +356,9 @@ function formatSessionFacts(
   }
 
   if (sections.length === 0) return '';
-  return `\n\n[会话记忆]\n\n${sections.join('\n\n')}`;
+  const detailLookupRule =
+    '_岗位详情使用规则：精简记忆只负责承接已有字段和定位 jobId。候选人追问的字段未在「当前焦点岗位」中明确出现时，必须按该 jobId 调用 duliday_job_list 补查后再回答，禁止从综合薪资单位、岗位名、品牌常识或历史助手回复推断。薪资、结算周期/发薪日和具体福利即使摘要有值，也必须实时重查。_';
+  return `\n\n[会话记忆]\n\n${detailLookupRule}\n\n${sections.join('\n\n')}`;
 }
 
 export function formatBookingContext(workOrder: SignupWorkOrderItem, index = 1): string {
@@ -412,6 +414,7 @@ function formatJobMemoryLine(job: RecommendedJobSummary, index?: number): string
     );
   }
   if (job.salaryDesc) parts.push(`薪资:${job.salaryDesc}`);
+  if (job.settlementSummary) parts.push(`结算:${job.settlementSummary}`);
   if (job.shiftSummary) parts.push(`班次:${job.shiftSummary}`);
 
   const welfareSummary = formatJobWelfareFacts(job);

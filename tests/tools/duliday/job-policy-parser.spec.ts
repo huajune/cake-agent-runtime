@@ -45,6 +45,19 @@ describe('job-policy-parser', () => {
     expect(analysis.fieldGuidance.screeningFields).not.toContain('健康证情况');
   });
 
+  it.each(['面试前需食品健康证', '面试时携带健康证原件', '健康证原件面试时必须出示'])(
+    'treats explicit interview-time certificate wording as before_interview: %s',
+    (interviewDemand) => {
+      const analysis = buildJobPolicyAnalysis({
+        basicInfo: { jobId: 1, jobName: '服务员' },
+        hiringRequirement: { certificate: { healthCertificate: '食品健康证' } },
+        interviewProcess: { firstInterview: { interviewDemand } },
+      } as never);
+
+      expect(analysis.normalizedRequirements.healthCertGate).toBe('before_interview');
+    },
+  );
+
   it('should remove clearly expired date constraints but keep active notes', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-03-30T08:00:00.000Z'));
 
