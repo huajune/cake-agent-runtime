@@ -238,7 +238,9 @@ const inputSchema = z.object({
     .union([z.boolean(), z.string()])
     .optional()
     .describe(
-      '候选人明确说明是否学生。建议传 boolean；也可传 "学生"、"社会人士"、"不是学生" 等候选人答案。',
+      '候选人明确说明是否学生。建议传 boolean（true=学生，false=社会人士）或 "学生"/"社会人士"/"不是学生"。' +
+        '候选人只答"是/是的/不是"时，必须按其回答的问题方向翻译成 "学生" 或 "社会人士" 再传，禁止原样转传单字肯定/否定（本字段按"是否学生"绝对语义解析，答案方向传反会归错）。' +
+        '注意：把学生身份作为筛选题的岗位以候选人原话为准，本入参不能替代候选人在对话中明确作答。',
     ),
   candidateUploadResume: z
     .string()
@@ -475,6 +477,9 @@ function normalizeCandidateIsStudentInput(value: unknown): string | null {
   if (!text) return null;
   // LLM 常把 is_student 当 boolean 传成字符串 "true"/"false"/"False"（大小写不一），需显式映射：
   // false=不是学生=社会人士，true=学生。漏掉会让"身份"永远留在 missingFields、卡死 collect_fields。
+  // ⚠️ "是/否"按字段绝对语义（是否学生）解析；候选人对反方向问句（"是社会人士对吧"）的"是"
+  // 若被模型原样转传会归错方向。该风险由后续"候选人原话覆写优先于入参"的判定层兜住，
+  // schema describe 也已要求模型翻译后再传。
   if (/^(false|否|no|不是|0)$/i.test(text)) return '社会人士';
   if (/^(true|是|yes|1)$/i.test(text)) return '学生';
   if (/社会人士|社会人|不是学生|非学生|不算学生|已毕业|上班族|已经工作|工作了/.test(text)) {
