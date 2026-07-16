@@ -24,22 +24,45 @@ import {
  * 做子串包含会把普通句子误判为品牌意向（如 "给我来一份工作" 命中 来伊份 的别称 "来一份"）。
  * 命中黑名单的别称降级为仅全等匹配——用户单独说 "来一份" 仍能命中，嵌在句子里则不命中。
  */
-export const BRAND_GENERIC_ALIAS_BLOCKLIST = new Set(['来一份', '来1份']);
+export const BRAND_GENERIC_ALIAS_BLOCKLIST = new Set([
+  '来一份',
+  '来1份',
+  // 品类/业态泛词被运营录成单一品牌别名（如 7-11 的"便利店"）：句中包含必误判，降级为仅全等。
+  '便利店',
+]);
 
-/** 别称是否长到可以安全地做子串包含匹配（中文 ≥3 字、英数 ≥4 字，黑名单除外）。 */
+/**
+ * 非标准名别名的最短归一化长度：<2 一律不参与任何匹配。
+ *
+ * 品牌库存在 17 个 1 字符别名（"报""捞""红""匠"…含全角塌缩产物），单字词形在中文
+ * 对话里是纯噪音源——即使只做全等 token 匹配，分句后独立成 token 的单字（"姐，…"）
+ * 也会高频误命中（2026-07-16 生产事故）。品牌标准名本身不受此限（单字品牌如"匠"
+ * 仍可被整句全等命中）。
+ */
+export const MIN_ALIAS_NORMALIZED_LENGTH = 2;
+
+/**
+ * 别称是否长到可以安全地做子串包含匹配（中文 ≥3 字、英文 ≥4 字，黑名单除外）。
+ * 纯数字别名一律不做无边界子串包含——"10200" 这类 ID 型别名嵌在手机号/时间串里
+ * 必然巧合命中，数字别名只允许全等 token 或带边界的短词包含。
+ */
 export function isBrandContainEligible(normalized: string): boolean {
   if (BRAND_GENERIC_ALIAS_BLOCKLIST.has(normalized)) return false;
+  if (/^[0-9]+$/.test(normalized)) return false;
   const isCjk = /[一-龥]/.test(normalized);
   return isCjk ? normalized.length >= 3 : normalized.length >= 4;
 }
 
 /**
- * 短英文/数字别名（2-3 字符，如 "KFC"）是否可做 token 边界包含匹配（§7.3）：
+ * 短英文/数字别名是否可做 token 边界包含匹配（§7.3）：
  * 匹配片段前后必须不是英数字符（即处于 CJK/边界处），"kfc松江" 命中而 "mcm" 不命中 "mc"。
  * 短中文别名不参与任何包含匹配（只走全等 token）。
+ * 纯数字别名要求 ≥3 位（"711" 可边界包含；"71" 在 "玫瑰街71号" 这类门牌/时间串场景
+ * 全是巧合命中，只留全等 token）。
  */
 export function isShortLatinBoundaryEligible(normalized: string): boolean {
   if (BRAND_GENERIC_ALIAS_BLOCKLIST.has(normalized)) return false;
+  if (/^[0-9]+$/.test(normalized)) return /^[0-9]{3}$/.test(normalized);
   return /^[a-z0-9]{2,3}$/.test(normalized);
 }
 
@@ -97,8 +120,10 @@ export function buildBrandCatalogIndex(brandData: BrandItem[]): BrandCatalogInde
     )
     .filter(
       (candidate) =>
-        // 预留品类词给品类展开：泛词别称（如 Tims咖啡 的别称"咖啡"）不参与单一品牌精确匹配
-        candidate.normalized.length > 0 && !CATEGORY_KEYWORD_NORMALIZED.has(candidate.normalized),
+        // 预留品类词给品类展开：泛词别称（如 Tims咖啡 的别称"咖啡"）不参与单一品牌精确匹配；
+        // 非标准名别名低于最短长度门槛（单字/塌缩词形）整体剔除，标准名只要求非空。
+        candidate.normalized.length >= (candidate.isCanonical ? 1 : MIN_ALIAS_NORMALIZED_LENGTH) &&
+        !CATEGORY_KEYWORD_NORMALIZED.has(candidate.normalized),
     )
     .sort((a, b) => b.normalized.length - a.normalized.length);
 
