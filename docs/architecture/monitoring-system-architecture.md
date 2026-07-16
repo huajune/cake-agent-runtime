@@ -573,7 +573,8 @@ TOAST 压力主要来源是 `agent_invocation` JSONB，因此每天凌晨把 >7 
 - [Agent Runtime 架构](./agent-runtime-architecture.md)
 - [消息服务架构](./message-service-architecture.md)
 - [Redis Key 设计与使用说明](../db/redis-schema.md)
-- [告警系统架构](./alert-system-architecture.md)
+- [飞书通知系统](../infrastructure/feishu-alert-system.md)
+- [人工告警触发场景清单](../infrastructure/human-alert-triggers.md)
 
 ---
 

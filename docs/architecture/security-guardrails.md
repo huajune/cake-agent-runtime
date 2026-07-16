@@ -121,7 +121,7 @@ HTTP 请求
 - 灰度开关（已迁托管配置 `agent_reply_config`，Dashboard 即时生效；env 仅作 bootstrap 默认）：`OUTPUT_GUARDRAIL_LLM_ENABLED`（enforce 参与裁决）、`OUTPUT_GUARDRAIL_SEMANTIC_SHADOW_ENABLED`（shadow 只观测）。
 - **LLM 不能自证**：reviewer 自评 `confidence=low` 的 revise/replan/block 在代码层强制降级为 observe，不允许凭感觉 block。
 - **故障降级**：高风险触发（副作用既成/承诺事实）reviewer 故障 → block（fail-close）；仅语义 contract 触发 → 回退 rule 档裁决（fail-open）。
-- **silent advisory**：`check({ silent: true })` 只返回裁决、不 fire 任何告警/判例上报，用于调试流量流末展示"守卫会怎么判"，避免污染生产 badcase 池。
+- **silent advisory**：`check({ silent: true })` 只返回裁决、不 fire 任何告警/判例落库，用于调试流量流末展示"守卫会怎么判"，避免污染生产守卫日志。
 
 ### 5.3 受控修复回路
 
@@ -129,7 +129,7 @@ HTTP 请求
 
 ### 5.4 观测落库
 
-出站全程 trace（首审→repair→二审）落 `message_processing_records.guardrail_output`；入站拦截摘要落 `guardrail_input`（均为独立小 JSONB 列，不塞 agent_invocation 大 blob）。Dashboard 流水页徽标 + 详情抽屉时间线展示；调试页流末 `data-guardrail` part 展示 advisory 裁决。
+出站全程 trace（首审→repair→二审）落 `message_processing_records.guardrail_output`；完整守卫命中、Semantic Shadow verdict 与修复正文落 `guardrail_review_records`；是否运行、通过量和 finding code 统计落 `agent_execution_events`。机器判例不自动创建 BadCase，只有人工确认需要修复的问题才进入 BadCase。入站拦截摘要落 `guardrail_input`（主表字段均为独立小 JSONB，不塞 agent_invocation 大 blob）。Dashboard 流水页徽标 + 详情抽屉时间线展示；调试页流末 `data-guardrail` part 展示 advisory 裁决。
 
 ---
 

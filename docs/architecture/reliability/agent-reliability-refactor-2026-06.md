@@ -358,7 +358,7 @@ interface TurnOutcome {
     reasonCode: string; reason?: string;
     sourceToolCall: string;                  // 'duliday_interview_booking' | 'request_handoff'
     idempotencyKey: string;                  // `${chatId}:handoff:${turnId}` —— 与现有 request_handoff 一致
-    alreadyDispatched?: boolean;             // 迁移期：request_handoff 在工具内已 dispatch → true，outcome 层不再 dispatch
+    alreadyDispatched?: boolean;             // 迁移兼容字段；当前 request_handoff 已收敛到 outcome 副作用出口
   };
 }
 ```

@@ -879,6 +879,117 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
   });
 
+  it('不采信当前消息中没有证据的 candidate 参数，旧记忆不能伪装成本轮自报', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: { interviewSupplement: [] },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        candidateName: '赵堤',
+        candidatePhone: '18963221030',
+        candidateAge: 36,
+        candidateGender: '女',
+        candidateEducation: '中专',
+        candidateHasHealthCertificate: '有',
+      },
+      { currentUserMessage: '明天下午16点可以吗' },
+    );
+
+    expect(result.bookingChecklist.missingFields).toEqual(
+      expect.arrayContaining(['姓名', '联系电话', '性别', '年龄']),
+    );
+    expect(result.bookingChecklist.templateText).not.toContain('赵堤');
+    expect(result.bookingChecklist.templateText).not.toContain('18963221030');
+    expect(result.nextAction).toBe('collect_fields');
+  });
+
+  it('当前轮高置信自报覆盖冲突的模型参数和历史字段', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: { interviewSupplement: [] },
+        }),
+      ],
+    });
+    const facts = emptyHighConfidenceFacts();
+    facts.interview_info.name = highConfidence('王玥', '结构化姓名识别');
+    facts.interview_info.phone = highConfidence('19290703760', '手机号识别');
+    facts.interview_info.age = highConfidence('36', '年龄识别');
+    facts.interview_info.gender = highConfidence('女', '性别识别');
+    facts.interview_info.gender_source = highConfidence('candidate', '候选人自报');
+    facts.interview_info.education = highConfidence('大专', '学历识别');
+    facts.interview_info.has_health_certificate = highConfidence('有', '健康证识别');
+    facts.interview_info.height = highConfidence('163', '身高识别');
+    facts.interview_info.weight = highConfidence('46', '体重识别');
+    facts.interview_info.household_register_province = highConfidence('天津', '户籍识别');
+
+    const currentUserMessage =
+      '姓名：王玥\n联系方式：19290703760\n学历：大专\n健康证：有\n籍贯：天津\n身高：163\n体重：46kg';
+    const result = await executeTool(
+      {
+        jobId: 100,
+        candidateName: '赵堤',
+        candidatePhone: '18963221030',
+        candidateAge: 37,
+        candidateGender: '男',
+        candidateEducation: '中专',
+        candidateHasHealthCertificate: '无',
+        candidateHeight: 175,
+        candidateWeight: 70,
+        candidateHouseholdProvince: '安徽',
+      },
+      { currentUserMessage, highConfidenceFacts: facts },
+    );
+
+    expect(result.bookingChecklist.templateText).toContain('姓名：王玥');
+    expect(result.bookingChecklist.templateText).toContain('联系方式：19290703760');
+    expect(result.bookingChecklist.templateText).toContain('学历：大专');
+    expect(result.bookingChecklist.templateText).toContain('籍贯/户籍：天津');
+    expect(result.bookingChecklist.templateText).not.toContain('赵堤');
+    expect(result.bookingChecklist.templateText).not.toContain('18963221030');
+    expect(result.bookingChecklist.templateText).not.toContain('学历：中专');
+  });
+
+  it('只有长期画像、当前未确认时，关键报名字段仍应进入 missingFields', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: { interviewSupplement: [] },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        currentUserMessage: '明天下午16点可以吗',
+        profile: {
+          name: '赵堤',
+          phone: '18963221030',
+          gender: '女',
+          age: '36',
+          is_student: false,
+          education: '中专',
+          has_health_certificate: '有',
+        },
+      },
+    );
+
+    expect(result.bookingChecklist.missingFields).toEqual(
+      expect.arrayContaining(['姓名', '联系电话', '性别', '年龄']),
+    );
+    expect(result.bookingChecklist.templateText).not.toContain('赵堤');
+  });
+
   it('should treat 审简历优先 jobs as wait_notice even when interview windows exist (不判 date_unavailable)', async () => {
     // badcase chat 6a2fac72…：奥乐齐岗位虽配了面试时段窗口，但 interviewAddress 是
     // "先审核简历，待简历审核通过后，告知面试地点&时间"——面试时间由面试官在简历审核
@@ -1282,6 +1393,26 @@ describe('buildInterviewPrecheckTool', () => {
       );
     });
 
+    it('历史明确填写学生时，模型误传 false 会被原话溯源校验丢弃', async () => {
+      nonSummerJobFixture();
+
+      const result = await executeTool(
+        { ...readyInput, candidateAge: 18, candidateIsStudent: 'false' },
+        {
+          messages: [
+            { role: 'user', content: '18岁，学历高中，身份学生' },
+            { role: 'user', content: '高考完还没收到录取通知书' },
+            { role: 'user', content: '是学生还是社会人士' },
+          ] as never,
+        },
+      );
+
+      expect(result.bookingChecklist.templateText ?? '').not.toContain(
+        '身份（学生/社会人士）：社会人士',
+      );
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+    });
+
     it('候选人原话有改口证据时（"已经毕业了"），显式身份翻转照常采信', async () => {
       nonSummerJobFixture();
 
@@ -1572,6 +1703,66 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.nextAction).toBe('ready_to_book');
     });
 
+    it.each([
+      '身份（学生/社会人士）：社会',
+      '目前是学生还是社会人士？（这家只招社会人士哈）社会',
+      '是否是学信网在籍学生：否',
+    ])('近两日生产表单变体应通过身份校验：%s', async (message) => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [{ role: 'user', content: message }] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+      expect(result.nextAction).toBe('ready_to_book');
+    });
+
+    it.each(['社会', '工作', '社会人士呢'])(
+      '二选一身份问句后的生产短答案应通过身份校验：%s',
+      async (answer) => {
+        socialOnlyJobFixture();
+
+        const result = await executeTool(readyInput, {
+          messages: [
+            { role: 'assistant', content: '目前是学生还是社会人士？' },
+            { role: 'user', content: answer },
+          ] as never,
+        });
+
+        expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+        expect(result.nextAction).toBe('ready_to_book');
+      },
+    );
+
+    it.each(['身份：学生 / 社会人士', '学历：高中毕业', '高中毕业了，在等大学通知书'])(
+      '未填写模板或仅有教育经历不能伪造社会人士证据：%s',
+      async (message) => {
+        socialOnlyJobFixture();
+
+        const result = await executeTool(readyInput, {
+          messages: [{ role: 'user', content: message }] as never,
+        });
+
+        expect(result.bookingChecklist.missingFields ?? []).toContain('身份');
+        expect(result.nextAction).toBe('collect_fields');
+      },
+    );
+
+    it('二选一身份问句后的“学生”仍按社会人士岗位 hard reject', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          { role: 'assistant', content: '目前是学生还是社会人士？' },
+          { role: 'user', content: '学生' },
+        ] as never,
+      });
+
+      expect(result.nextAction).toBe('student_rejected');
+    });
+
     it('确认问答带时间戳后缀时仍构成身份自认', async () => {
       socialOnlyJobFixture();
 
@@ -1594,7 +1785,7 @@ describe('buildInterviewPrecheckTool', () => {
     const flipHistory = [
       { role: 'user', content: '身份（学生还是社会人士）：学生' },
       { role: 'assistant', content: '亲，这个岗位暂时不要学生哈' },
-      { role: 'user', content: '填顺手了，已毕业' },
+      { role: 'user', content: '我已毕业，是社会人士' },
     ];
 
     it('学生被拒后首次改口不采信：身份保持缺失并要求核实', async () => {
@@ -1624,6 +1815,25 @@ describe('buildInterviewPrecheckTool', () => {
             content: '身份跟你确认下哈，你已经毕业了对吧？还在读也没关系，如实说就行',
           },
           { role: 'user', content: '对，已经毕业了' },
+        ] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.identityFieldGuard).toBeUndefined();
+      expect(result.nextAction).toBe('ready_to_book');
+    });
+
+    it('候选人明确说明误填后再说已毕业：纠错直接生效，不重复追问身份', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          { role: 'user', content: '身份（学生还是社会人士）：学生' },
+          { role: 'assistant', content: '亲，这个岗位暂时不要学生哈' },
+          { role: 'assistant', content: '我报不了' },
+          { role: 'user', content: '填顺手了' },
+          { role: 'user', content: '[图片]' },
+          { role: 'user', content: '已毕业' },
         ] as never,
       });
 

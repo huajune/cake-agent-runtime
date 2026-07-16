@@ -241,7 +241,8 @@ export default function Config() {
       return { label: '报名后开关关闭', className: styles.statusWarn };
     }
     if (!reengagementEnabled) return { label: '待生效 · 总开关关闭', className: styles.statusWarn };
-    if (reengagementShadow) return { label: '待生效 · Shadow 观测中', className: styles.statusWarn };
+    if (reengagementShadow)
+      return { label: '待生效 · Shadow 观测中', className: styles.statusWarn };
     return { label: '真实发送', className: styles.statusOn };
   };
 
@@ -620,14 +621,15 @@ export default function Config() {
                   </div>
                   <p className={styles.settingDescription}>
                     <strong>关闭</strong>：仅确定性规则档生效，语义审查不运行。
-                    <strong>Shadow 观测</strong>：审查跟随真实流量试跑，结论只写入飞书 badcase
-                    表和流水记录，不影响发送，用于评估"如果它说了算，会拦哪些回复"。
-                    <strong>拦截生效</strong>：审查结论真正参与出站裁决，高风险回复（已提交预约等副作用、含承诺性措辞）会被打回重写或拦截不发。
+                    <strong>Shadow 观测</strong>：审查跟随真实流量试跑，结论写入守卫日志和
+                    执行事件，不影响发送，用于评估"如果它说了算，会拦哪些回复"。
+                    <strong>拦截生效</strong>
+                    ：审查结论真正参与出站裁决，高风险回复（已提交预约等副作用、含承诺性措辞）会被打回重写或拦截不发。
                   </p>
                   <div className={styles.settingMeta}>
                     <span>切换即时生效</span>
                     <span>拦截生效时审查故障按 fail-close 拦截</span>
-                    <span>命中判例见飞书 badcase 多维表</span>
+                    <span>完整判例见守卫日志，运行统计见执行事件</span>
                   </div>
                 </div>
                 <div className={styles.controlBlock}>
@@ -694,7 +696,8 @@ export default function Config() {
                   <span className={styles.settingLabel}>场景清单与场景级开关</span>
                   {reengagementScenarios && reengagementScenarios.length > 0 ? (
                     <span className={styles.scenarioPanelHint}>
-                      {reengagementScenarios.length} 个场景 · {scenarioOnCount} 个已放开 · 报名后大开关
+                      {reengagementScenarios.length} 个场景 · {scenarioOnCount} 个已放开 ·
+                      报名后大开关
                       {reengagementPostBookingEnabled ? '已开' : '已关'}
                     </span>
                   ) : (
@@ -753,7 +756,8 @@ export default function Config() {
                     </div>
 
                     <p className={styles.scenarioFootnote}>
-                      「真实发送」需同时满足：总开关开启 + Shadow 观测关闭 + 场景开关开启（报名后场景还需
+                      「真实发送」需同时满足：总开关开启 + Shadow 观测关闭 +
+                      场景开关开启（报名后场景还需
                       报名后大开关开启）；其余组合到点只走判断与生成、记录「本应发什么」。
                       候选人已回话、会话已终态或场景条件不再成立时，到点任务会自动取消。
                     </p>

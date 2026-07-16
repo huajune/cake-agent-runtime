@@ -1,6 +1,6 @@
 # Agent 可靠性重构 + 复聊 —— 实施路线图（逐块落地）
 
-> 状态：实施计划（评审稿）
+> 状态：历史施工记录（2026-07-16 归档口径，不再作为当前实现说明）
 > 日期：2026-06-24
 > 父文档：
 > - [agent-reliability-refactor-2026-06.md](./agent-reliability-refactor-2026-06.md)（总架构，§10 落地路线）
@@ -8,6 +8,8 @@
 > - [agent-reengagement-design.md](./agent-reengagement-design.md)（复聊实现级设计）
 >
 > 本文把三份设计拆成**可独立提交、可独立验证、有依赖序**的 PR 块，作为「逐块做」的施工底图。每块标注：依赖、改动面、验证点、回滚边界。
+>
+> 当前运行时真相请以 [Agent 运行时架构](../agent-runtime-architecture.md)、[安全护栏说明](../security-guardrails.md) 和 [Gate 拒绝与人工介入流水线](../handoff-gate-and-intervention-pipeline.md) 为准。本文中的“迁移期”“尚未落地”和旧文件名保留为当时施工语境，不再持续校准。
 
 ---
 
@@ -126,7 +128,7 @@
 - **改动面**：
   - `TurnOutcome { kind: 'reply'|'skipped'|'blocked'|'handoff'; reply?; toolCalls; guardDecision?; runTurnEnd?; handoff?{reasonCode,sourceToolCall,idempotencyKey,alreadyDispatched} }`。
   - `AgentRunnerService.runTurn(TurnRequest)`：`trigger: {kind:'inbound', userMessage} | {kind:'proactive', directive, scenarioCode}`；proactive 把 directive 合成为输入起回合，透传 `toolMode`。
-  - reply-workflow 改调 `runTurn`，把现有 `block/handoff` 映射收口进 outcome（`block` 带 `severity` → `blocked` vs `handoff`）。**迁移期 request_handoff 仍工具内 dispatch、标 `alreadyDispatched`，不进 outcome dispatch**（防双派发，已是现状）。
+  - reply-workflow 改调 `runTurn`，把现有 `block/handoff` 映射收口进 outcome（`block` 带 `severity` → `blocked` vs `handoff`）。当时采用 `alreadyDispatched` 兼容工具内 dispatch；当前已进一步收敛到统一 outcome 副作用出口，见 handoff 真相文档。
 - **验证点**：被动路径行为等价（现有 reply-workflow 测试全绿）；proactive 入口能起一个 readonly 回合产出 outcome（不投递）。
 - **回滚边界**：被动路径必须零行为差异；proactive 是纯新增路径。
 

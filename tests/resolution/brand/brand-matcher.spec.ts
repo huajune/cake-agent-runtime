@@ -20,6 +20,10 @@ const catalog: BrandItem[] = [
   // 冲突别名：两家品牌共用别名"小龙"
   { id: 10008, name: '小龙坎', aliases: ['小龙'] },
   { id: 10009, name: '小龙翻大江', aliases: ['小龙'] },
+  { id: 10207, name: '鄂尔多斯1980', aliases: ['鄂尔多斯'] },
+  { id: 10311, name: 'Zara Home', aliases: ['zh'] },
+  { id: 10319, name: 'Liquid Laundry', aliases: ['LL'] },
+  { id: 10320, name: '成都你六姐', aliases: ['成都六姐'] },
 ];
 
 function names(results: BrandResolution[]): string[] {
@@ -117,6 +121,12 @@ describe('resolveBrands - 实体匹配（§14.1）', () => {
     expect(names(positives(results))).toEqual(['肯德基']);
     expect(negatives(results)).toHaveLength(0);
   });
+
+  it('"成都六姐不要人嘛" 是招聘状态问句，不判为排除品牌', () => {
+    const results = resolveBrands('额，成都六姐不要人嘛', 'user_text', catalog);
+    expect(names(positives(results))).toEqual(['成都你六姐']);
+    expect(negatives(results)).toHaveLength(0);
+  });
 });
 
 describe('resolveBrands - 微信昵称（contact_name，§14.1）', () => {
@@ -176,6 +186,36 @@ describe('resolveBrands - 短别名误判防护（§7.3/§14.1）', () => {
   it('"mcm包包" 不命中短英数别名 mc（token 边界防护）', () => {
     expect(resolveBrands('mcm包包', 'user_text', catalog)).toEqual([]);
   });
+
+  it('"我是zh" 是短昵称自我介绍，不命中 Zara Home', () => {
+    expect(resolveBrands('我是zh', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('群来源说明末尾的 LL 是昵称，不命中 Liquid Laundry', () => {
+    expect(
+      resolveBrands('我是群聊“独立客&上海餐饮兼职12群”的LL', 'user_text', catalog),
+    ).toEqual([]);
+  });
+
+  it('纯短英文微信昵称 zh 不作为品牌 seed', () => {
+    expect(resolveBrands('zh', 'contact_name', catalog)).toEqual([]);
+  });
+
+  it('地址中的鄂尔多斯路不命中鄂尔多斯1980', () => {
+    expect(
+      resolveBrands(
+        '[位置分享] 宝山区乾皓苑（鄂尔多斯路东100米）（宝山区鄂尔多斯路）',
+        'user_text',
+        catalog,
+      ),
+    ).toEqual([]);
+  });
+
+  it('明确品牌表达仍能命中鄂尔多斯1980', () => {
+    expect(names(resolveBrands('想找鄂尔多斯的岗位', 'user_text', catalog))).toEqual([
+      '鄂尔多斯1980',
+    ]);
+  });
 });
 
 describe('resolveBrands - 冲突别名与歧义（§14.1）', () => {
@@ -212,14 +252,22 @@ describe('resolveBrands - 图片来源（image_description，§14.1）', () => {
   });
 });
 
-describe('resolveBrands - 品类展开（§6.2/§14.1）', () => {
-  it('"咖啡" 品类词展开为品类品牌，matchType 为 category_expansion', () => {
+describe('resolveBrands - 品类默认与扩张（§6.2/§14.1）', () => {
+  it('"咖啡兼职" 默认识别为 M Stand', () => {
     const results = resolveBrands('我想找咖啡兼职', 'user_text', catalog);
+    expect(names(results)).toEqual(['M Stand']);
+    expect(results[0]).toMatchObject({
+      matchType: 'category_default',
+      intentPolarity: 'positive',
+      confidence: 0.85,
+      matchedText: '咖啡',
+    });
+  });
+
+  it('"其他咖啡品牌" 扩张为完整咖啡品牌集合', () => {
+    const results = resolveBrands('其他咖啡品牌有吗', 'user_text', catalog);
     const expanded = results.filter((r) => r.matchType === 'category_expansion');
-    expect(names(expanded).sort()).toEqual(['拉瓦萨', '瑞幸咖啡']);
-    expect(expanded.every((r) => r.intentPolarity === 'positive')).toBe(true);
-    expect(expanded.every((r) => r.confidence === 0.75)).toBe(true);
-    expect(expanded.every((r) => r.matchedText === '咖啡')).toBe(true);
+    expect(names(expanded).sort()).toEqual(['M Stand', '拉瓦萨', '瑞幸咖啡']);
   });
 
   it('品类词与具体品牌同现时只返回具体品牌，不展开品类', () => {
@@ -231,9 +279,16 @@ describe('resolveBrands - 品类展开（§6.2/§14.1）', () => {
   it('品类词处于否定语境时不展开', () => {
     expect(
       resolveBrands('不要咖啡', 'user_text', catalog).filter(
-        (r) => r.matchType === 'category_expansion',
+        (r) => r.matchType === 'category_expansion' || r.matchType === 'category_default',
       ),
     ).toEqual([]);
+  });
+
+  it('裸自我介绍“我是zara”不识别品牌，但求职句仍识别', () => {
+    const zaraCatalog: BrandItem[] = [{ id: 20001, name: 'ZARA', aliases: ['zara'] }];
+    expect(resolveBrands('我是zara', 'user_text', zaraCatalog)).toEqual([]);
+    expect(resolveBrands("I'm Zara", 'user_text', zaraCatalog)).toEqual([]);
+    expect(names(resolveBrands('zara导购还招人吗', 'user_text', zaraCatalog))).toEqual(['ZARA']);
   });
 });
 
@@ -276,8 +331,8 @@ describe('resolveBrandAliasInputs - 工具入口标准化（§8.2）', () => {
     expect(outcome.rejected[0].candidates?.length).toBe(2);
   });
 
-  it('品类词入参展开为品类品牌（已上线咖啡召回不回归）', () => {
+  it('普通咖啡品类词入参默认标准化为 M Stand', () => {
     const outcome = resolveBrandAliasInputs(['咖啡'], catalog);
-    expect(outcome.applied.map((b) => b.canonicalName).sort()).toEqual(['拉瓦萨', '瑞幸咖啡']);
+    expect(outcome.applied.map((b) => b.canonicalName)).toEqual(['M Stand']);
   });
 });

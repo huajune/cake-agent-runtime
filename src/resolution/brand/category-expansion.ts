@@ -34,14 +34,17 @@ export interface BrandCategory {
   extraBrands: string[];
   /** 名字含关键词但实际不属该品类的品牌，手工排除 */
   excludeBrands: string[];
+  /** 未指定具体品牌时的业务默认；出现“其他/除了”等扩张意图时仍返回完整品类。 */
+  defaultBrand?: string;
 }
 
 export const BRAND_CATEGORIES: BrandCategory[] = [
   {
     label: '咖啡',
     keywords: ['咖啡', 'coffee'],
-    extraBrands: ['拉瓦萨'],
+    extraBrands: ['M Stand', '拉瓦萨'],
     excludeBrands: [],
+    defaultBrand: 'M Stand',
   },
 ];
 
@@ -62,6 +65,7 @@ export interface ResolvedBrandCategory {
   keywords: string[];
   /** 该品类下的成员品牌标准名 */
   brands: string[];
+  defaultBrand?: string;
 }
 
 /** 按品牌库解析每个品类的成员品牌（数据驱动 + 手工补录/排除）。 */
@@ -90,6 +94,9 @@ export function buildResolvedCategories(brandData: BrandItem[]): ResolvedBrandCa
     label: category.label,
     keywords: category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean),
     brands: resolveCategoryBrands(category, brandData),
+    defaultBrand: brandData.some((brand) => brand.name === category.defaultBrand)
+      ? category.defaultBrand
+      : undefined,
   })).filter((category) => category.keywords.length > 0 && category.brands.length > 0);
 }
 

@@ -123,6 +123,50 @@ describe('OutboundReplySanitizer', () => {
     });
   });
 
+  describe('normalize - 岗位推荐内部模板标题剥离', () => {
+    it('删除独立标题并保留开场与岗位卡正文', () => {
+      const input = `刚查了下，金川附近有一家肯德基在招
+
+📣 推荐对话用模板
+
+肯德基（星河肯德基）- 服务员，7.9km
+班次：06:00-14:00 / 11:00-20:00 / 16:00-23:00
+薪资：13.04 元/时起
+要求：18-40 岁，需办食品健康证`;
+
+      expect(OutboundReplySanitizer.sanitize(input)).toBe(`刚查了下，金川附近有一家肯德基在招
+
+肯德基（星河肯德基）- 服务员，7.9km
+班次：06:00-14:00 / 11:00-20:00 / 16:00-23:00
+薪资：13.04 元/时起
+要求：18-40 岁，需办食品健康证`);
+    });
+
+    it('兼容工具 markdown 中带引用、emoji、加粗和说明的标题行', () => {
+      const input = `> 📣 **推荐对话用模板**（仅供内部约束格式）
+肯德基（星河肯德基）- 服务员，7.9km`;
+
+      expect(OutboundReplySanitizer.sanitize(input)).toBe('肯德基（星河肯德基）- 服务员，7.9km');
+    });
+
+    it('识别该内部标题需要清洗', () => {
+      expect(OutboundReplySanitizer.needsSanitization('📣 推荐对话用模板')).toBe(true);
+    });
+
+    it.each(['推荐岗位话术模板', '岗位推荐对话模板', '候选人推荐话术模板：'])(
+      '删除受限的独立标题变体：%s',
+      (banner) => {
+        const input = `${banner}\n肯德基（星河肯德基）- 服务员，7.9km`;
+        expect(OutboundReplySanitizer.sanitize(input)).toBe('肯德基（星河肯德基）- 服务员，7.9km');
+      },
+    );
+
+    it('不删除普通候选人话术中包含的“推荐岗位”表达', () => {
+      const input = '我推荐这个岗位给你，班次和距离都比较合适';
+      expect(OutboundReplySanitizer.sanitize(input)).toBe(input);
+    });
+  });
+
   describe('normalize - 推理/思考标签剥离（badcase recvlEM9V4vBhP）', () => {
     it('应删除落单的闭合标签 </think>', () => {
       expect(OutboundReplySanitizer.sanitize('</think>')).toBe('');

@@ -1,6 +1,7 @@
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
 describe('buildInterviewBookingTool', () => {
   const mockSpongeService = {
@@ -442,6 +443,32 @@ describe('buildInterviewBookingTool', () => {
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
+  it('booking guard: 二选一问句后的“社会”与 precheck 使用同一身份口径', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { figure: '社会人士' },
+          interviewProcess: { interviewSupplement: [] },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+    });
+
+    const result = await executeTool(validInput, {
+      messages: [
+        { role: 'assistant', content: '目前是学生还是社会人士？' },
+        { role: 'user', content: '社会' },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.bookInterview).toHaveBeenCalled();
+  });
+
   it('booking guard: forged ready_to_book still blocks an excluded household before side effect', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
@@ -518,6 +545,69 @@ describe('buildInterviewBookingTool', () => {
       }),
       expect.objectContaining({ botUserId: 'manager-1' }),
     );
+  });
+
+  it('提交前发现更新消息时拒绝旧资料下单，并返回可 replay 的短路信号', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              periodicInterviewTimes: [],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+    const hasNewerUserInput = jest.fn().mockResolvedValue(true);
+
+    const { result, context } = await executeToolWithContext(validInput, {
+      hasNewerUserInput,
+    });
+
+    expect(hasNewerUserInput).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      success: false,
+      shortCircuited: true,
+      staleInput: true,
+      reasonCode: 'newer_user_input_pending',
+    });
+    expect(context.bookingSucceeded).toBe(false);
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('最终报名 payload 与最新权威候选人事实冲突时拒绝提交', async () => {
+    const result = await executeTool(validInput, {
+      bookingCandidateFacts: {
+        ...FALLBACK_EXTRACTION.interview_info,
+        name: '王玥',
+        phone: '19290703760',
+        age: '36',
+        gender: '女',
+        gender_source: 'candidate',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result.conflictingFields).toEqual(
+      expect.arrayContaining(['姓名', '联系电话', '年龄', '性别']),
+    );
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('只有历史参数、没有权威候选人事实时拒绝提交', async () => {
+    const result = await executeTool(validInput, { bookingCandidateFacts: null });
+
+    expect(result.success).toBe(false);
+    expect(result.missingEvidenceFields).toEqual(
+      expect.arrayContaining(['姓名', '联系电话', '年龄', '性别']),
+    );
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
   it('returns online completion guidance instead of an on-site script for AI interviews', async () => {

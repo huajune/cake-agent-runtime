@@ -11,7 +11,7 @@
 
 ## 0. 阅读指引
 
-本文整合了下列 9 份架构源文档，按"先看全景、再看模块、最后看落地"的顺序编排：
+本文整合了下列 7 份架构源文档，按"先看全景、再看模块、最后看落地"的顺序编排：
 
 | # | 来源文档 | 章节映射 |
 | - | --- | --- |
@@ -19,11 +19,9 @@
 | 2 | [memory-system-architecture.md](./architecture/memory-system-architecture.md) | §6 |
 | 3 | [message-service-architecture.md](./architecture/message-service-architecture.md) | §7 |
 | 4 | [monitoring-system-architecture.md](./architecture/monitoring-system-architecture.md) | §8 |
-| 5 | [alert-system-architecture.md](./architecture/alert-system-architecture.md) | §8 |
-| 6 | [test-suite-architecture.md](./architecture/test-suite-architecture.md) | §9 |
-| 7 | [security-guardrails.md](./architecture/security-guardrails.md) | §11 |
-| 8 | [group-task-pipeline.md](./architecture/group-task-pipeline.md) | §12 |
-| 9 | [llm-executor-dependency-diagram.md](./architecture/llm-executor-dependency-diagram.md) | §3 §5 |
+| 5 | [test-suite-architecture.md](./architecture/test-suite-architecture.md) | §9 |
+| 6 | [security-guardrails.md](./architecture/security-guardrails.md) | §11 |
+| 7 | [group-task-pipeline.md](./architecture/group-task-pipeline.md) | §12 |
 
 需要进一步深入某个领域时，按章节末尾的"延伸阅读"跳到原文档。
 
@@ -138,8 +136,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 所有 LLM 消费方（Agent、记忆事实抽取、外部画像补全、评估打分、注入检测）都走它，
 背后是 `RouterService → ReliableService → RegistryService` 三层处理。
 
-> **延伸阅读**：[agent-runtime-architecture.md §3](./architecture/agent-runtime-architecture.md#3-agent-编排层) ·
-> [llm-executor-dependency-diagram.md](./architecture/llm-executor-dependency-diagram.md)
+> **延伸阅读**：[agent-runtime-architecture.md §3.8](./architecture/agent-runtime-architecture.md#38-llmexecutorservice--共享-llm-入口)
 
 ---
 
@@ -364,31 +361,29 @@ Agent 生成期间用户又发了新消息，怎么办？
 | 业务指标告警评估 | `*/5 * * * *` | 默认 |
 | 数据清理 + stuck → timeout | `0 3 * * *` | 默认 |
 
-### 8.3 告警系统 — 编排器模式
+### 8.3 告警系统 — 当前实现
 
-```
-sendAlert(context)
-  → 全局开关 → 严重程度判断 → 静默检查 → 故障状态记录
-  → 限流聚合 → 飞书 Webhook
-```
+当前告警不再经过旧的 `AlertOrchestratorService`。不同告警由领域服务直接编排并复用通知渠道：
 
-**核心机制**：
-- **限流聚合**：同类型告警 5 分钟窗口内只发 1 次，窗口期结束发聚合告警（"5 分钟内 300 次，分布：超时 189 / 限流 111"）。
-- **恢复检测**：连续成功 5 次 → 自动发送恢复通知（"故障时长 33 分钟，期间失败 127 次"）。
-- **静默管理**：API `/alert/silence` 支持临时屏蔽（计划维护场景）。
-- **配置热加载**：`config/alert-rules.json` 修改即时生效。
+- 消息/模型异常：`IncidentReporterService`、`AlertNotifierService`；
+- 业务指标：`AnalyticsAlertService` 每 5 分钟读取 Dashboard 快照并经 `BusinessMetricRuleEngine` 判断；
+- 人工介入：Runner 最终 outcome → `TurnOutcomeInterventionService` → `InterventionService`，统一写底账、暂停托管并发送飞书卡片；
+- 接收人和 Webhook：由通知模块与托管账号配置解析。
+
+业务指标配置从 Supabase `hosting_config.agent_reply_config` 动态读取，同一指标默认 30 分钟内不重复发送。
 
 **业务指标告警阈值**：
 
 | 指标 | WARNING | CRITICAL |
 | --- | --- | --- |
 | 成功率 | < 90% | < 80% |
-| 平均响应时间 | > 5s | > 10s |
-| 队列积压 | > 50 条 | > 100 条 |
-| 错误率 | > 10/分钟 | > 20/分钟 |
+| 平均响应时间 | > 42s | > 60s |
+| 在途请求 | > 10 条 | > 20 条 |
+| 近 1h 错误数 | > 7 | > 10 |
 
 > **延伸阅读**：[monitoring-system-architecture.md](./architecture/monitoring-system-architecture.md) ·
-> [alert-system-architecture.md](./architecture/alert-system-architecture.md)
+> [飞书通知系统](./infrastructure/feishu-alert-system.md) ·
+> [人工告警触发清单](./infrastructure/human-alert-triggers.md)
 
 ---
 

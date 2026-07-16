@@ -16,13 +16,14 @@ import {
   SPONGE_HEALTH_CERTIFICATE_MAPPING,
   SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING,
   SPONGE_OPERATE_TYPE_MAPPING,
+  getSpongeProvinceNameById,
 } from '@sponge/sponge.enums';
 import {
   extractInterviewSupplementDefinitions,
   type SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { findLatestExplicitIdentity } from '@tools/shared/identity-statement.util';
+import { findLatestExplicitIdentityEvidence } from '@tools/shared/identity-statement.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
@@ -90,6 +91,113 @@ function isSameBookingTarget(booking: ActiveBooking, jobId: number): boolean {
 /** 归一化手机号用于比对：只保留数字，去掉空格/连字符等格式差异。 */
 function normalizePhoneDigits(value: string | null | undefined): string {
   return (value ?? '').replace(/\D/g, '');
+}
+
+interface BookingAuthorityFailure {
+  missingEvidenceFields: string[];
+  conflictingFields: string[];
+}
+
+function validateBookingCandidateAuthority(
+  context: ToolBuildContext,
+  payload: {
+    name: string;
+    phone: string;
+    age: number;
+    genderId: number;
+    educationId?: number;
+    householdRegisterProvinceId?: number;
+    height?: number;
+    weight?: number;
+    hasHealthCertificate?: number;
+  },
+): BookingAuthorityFailure | null {
+  // 生产 generator 始终注入该权威视图；直接工具单测/旧 debug 调用未注入时保持兼容。
+  if (context.bookingCandidateFacts === undefined) return null;
+
+  const facts = context.bookingCandidateFacts;
+  const missingEvidenceFields: string[] = [];
+  const conflictingFields: string[] = [];
+  const checks: Array<{ field: string; expected: unknown; actual: unknown; required: boolean }> = [
+    { field: '姓名', expected: facts?.name, actual: payload.name, required: true },
+    { field: '联系电话', expected: facts?.phone, actual: payload.phone, required: true },
+    { field: '年龄', expected: facts?.age, actual: payload.age, required: true },
+    {
+      field: '性别',
+      expected: facts?.gender_source === 'candidate' ? facts.gender : null,
+      actual: getSpongeGenderLabelById(payload.genderId),
+      required: true,
+    },
+    {
+      field: '学历',
+      expected: facts?.education,
+      actual: payload.educationId == null ? null : SPONGE_EDUCATION_MAPPING[payload.educationId],
+      required: payload.educationId != null,
+    },
+    {
+      field: '户籍省份',
+      expected: facts?.household_register_province,
+      actual:
+        payload.householdRegisterProvinceId == null
+          ? null
+          : getSpongeProvinceNameById(payload.householdRegisterProvinceId),
+      required: payload.householdRegisterProvinceId != null,
+    },
+    {
+      field: '身高',
+      expected: facts?.height,
+      actual: payload.height,
+      required: payload.height != null,
+    },
+    {
+      field: '体重',
+      expected: facts?.weight,
+      actual: payload.weight,
+      required: payload.weight != null,
+    },
+    {
+      field: '健康证情况',
+      expected: facts?.has_health_certificate,
+      actual:
+        payload.hasHealthCertificate == null
+          ? null
+          : SPONGE_HEALTH_CERTIFICATE_MAPPING[payload.hasHealthCertificate],
+      required: payload.hasHealthCertificate != null,
+    },
+  ];
+
+  for (const check of checks) {
+    if (!check.required) continue;
+    const expected = normalizeBookingAuthorityValue(check.field, check.expected);
+    const actual = normalizeBookingAuthorityValue(check.field, check.actual);
+    if (!expected) {
+      missingEvidenceFields.push(check.field);
+    } else if (!actual || actual !== expected) {
+      conflictingFields.push(check.field);
+    }
+  }
+
+  return missingEvidenceFields.length > 0 || conflictingFields.length > 0
+    ? { missingEvidenceFields, conflictingFields }
+    : null;
+}
+
+function normalizeBookingAuthorityValue(field: string, value: unknown): string {
+  if (value == null) return '';
+  const text = String(value).trim().toLowerCase().replace(/\s+/g, '');
+  if (field === '联系电话') return text.replace(/\D/g, '');
+  if (field === '身高') return text.replace(/cm|厘米/g, '').replace(/\.0+$/, '');
+  if (field === '体重') return text.replace(/kg|公斤|千克/g, '').replace(/\.0+$/, '');
+  if (field === '户籍省份') {
+    return text.replace(/壮族自治区|回族自治区|维吾尔自治区|自治区|特别行政区|省|市$/g, '');
+  }
+  if (field === '学历' && /中专|技校|职高/.test(text)) return '中专技校职高';
+  if (field === '健康证情况') {
+    if (/无.*不接受|不办|不接受办理/.test(text)) return '无且不接受办理健康证';
+    if (/无.*接受|可以办|愿意办/.test(text)) return '无但接受办理健康证';
+    if (/有/.test(text)) return '有';
+  }
+  return text;
 }
 
 const supplementAnswersSchema = z
@@ -485,6 +593,38 @@ export function buildInterviewBookingTool(
           );
         }
 
+        // 报名字段权威性闸门：最终 API payload 必须能由当前轮确定性自报或高置信会话事实
+        // 逐项解释。模型从 prompt 复制的 medium/llm 历史值既不能补缺，也不能覆盖最新自报。
+        const authorityFailure = validateBookingCandidateAuthority(context, {
+          name,
+          phone,
+          age,
+          genderId,
+          educationId,
+          householdRegisterProvinceId,
+          height,
+          weight,
+          hasHealthCertificate,
+        });
+        if (authorityFailure) {
+          logger.warn(
+            `[booking] 候选人字段权威性校验拒绝: chatId=${context.sessionId}, ` +
+              `missing=${authorityFailure.missingEvidenceFields.join('|') || '-'}, ` +
+              `conflict=${authorityFailure.conflictingFields.join('|') || '-'}`,
+          );
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+              outcome: '预约失败（报名字段缺少候选人明确确认或与最新自报冲突）',
+              replyInstruction:
+                '报名资料不能使用低置信历史记忆。按 missingEvidenceFields 补问候选人，' +
+                '按 conflictingFields 采用候选人最新自报后重新 precheck；在字段确认完成前禁止 booking。',
+              details: { ...authorityFailure },
+            }),
+          );
+        }
+
         const resolvedUploadResume = resolveUploadResume(uploadResume, context);
         const genderLabel = getSpongeGenderLabelById(genderId) ?? undefined;
         const ageText = normalizeAgeText(age);
@@ -750,6 +890,27 @@ export function buildInterviewBookingTool(
                   ? { pendingUploadResume: bookingUploadResume ?? freshResumeThisTurn }
                   : {}),
               },
+            });
+          }
+
+          // 最后提交闸门：Agent 生成可能持续数分钟，期间候选人会补发或更正报名资料。
+          // 真正调用海绵前检查本轮输入是否已过期；命中后不创建工单，交给渠道合并新消息 replay。
+          if (context.hasNewerUserInput && (await context.hasNewerUserInput())) {
+            logger.warn(
+              `[booking] 提交前检测到候选人新消息，短路旧输入: chatId=${context.sessionId}, jobId=${jobId}`,
+            );
+            return markBookingFailed(context, {
+              ...buildToolError({
+                errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+                outcome: '预约未提交（候选人有更新消息，当前入参已过期）',
+                replyInstruction:
+                  '候选人刚补充了新消息，当前报名资料已过期。runtime 会合并最新消息重新处理；' +
+                  '本轮立即停止，不要回复候选人、不要重试 booking、不要调用其他工具。',
+                details: { jobId },
+              }),
+              shortCircuited: true,
+              staleInput: true,
+              reasonCode: 'newer_user_input_pending',
             });
           }
 
@@ -1172,10 +1333,11 @@ function resolveCandidateIsStudentForBooking(context: ToolBuildContext): boolean
   const currentUserEntry = context.currentUserMessage
     ? [{ role: 'user', content: context.currentUserMessage }]
     : [];
-  const latestIdentity = findLatestExplicitIdentity([
+  const latestIdentityEvidence = findLatestExplicitIdentityEvidence([
     ...(Array.isArray(context.messages) ? context.messages : []),
     ...currentUserEntry,
   ]);
+  const latestIdentity = latestIdentityEvidence?.identity ?? null;
   if (latestIdentity === '学生') return true;
   if (latestIdentity === '社会人士') return false;
 

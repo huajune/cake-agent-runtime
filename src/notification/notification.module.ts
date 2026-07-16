@@ -1,6 +1,5 @@
 import { Global, Module } from '@nestjs/common';
 import { FeishuModule } from '@infra/feishu/feishu.module';
-import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
 import { FeishuAlertChannel } from './channels/feishu-alert.channel';
 import { FeishuOpsChannel } from './channels/feishu-ops.channel';
 import { FeishuPrivateChatChannel } from './channels/feishu-private-chat.channel';
@@ -14,12 +13,11 @@ import { ConversationRiskNotifierService } from './services/conversation-risk-no
 import { GeneralHandoffNotifierService } from './services/general-handoff-notifier.service';
 import { OpsNotifierService } from './services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from './services/private-chat-monitor-notifier.service';
-import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notifier.service';
 import { SemanticReviewNotifierService } from './services/semantic-review-notifier.service';
 
 @Global()
 @Module({
-  imports: [FeishuModule, FeishuSyncModule],
+  imports: [FeishuModule],
   providers: [
     FeishuAlertChannel,
     FeishuOpsChannel,
@@ -34,7 +32,6 @@ import { SemanticReviewNotifierService } from './services/semantic-review-notifi
     GeneralHandoffNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
-    ReplyFactGuardNotifierService,
     SemanticReviewNotifierService,
   ],
   exports: [
@@ -43,7 +40,6 @@ import { SemanticReviewNotifierService } from './services/semantic-review-notifi
     GeneralHandoffNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
-    ReplyFactGuardNotifierService,
     SemanticReviewNotifierService,
   ],
 })

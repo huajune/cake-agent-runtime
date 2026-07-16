@@ -173,7 +173,7 @@ describe('GeneratorAgent', () => {
     );
   });
 
-  it('should restore candidate-facing text generated before a follow-up tool call', async () => {
+  it('should never concatenate intermediate tool-step text into the final reply', async () => {
     const jobText =
       '松江这边有在招的兼职岗位，暑期可以做～\n\n' +
       '奥乐齐（1049 开元地中海店）- 晚班补货，1km\n' +
@@ -234,76 +234,13 @@ describe('GeneratorAgent', () => {
 
     const result = await service.invoke(invokeParams);
 
-    expect(result.text).toBe(`${jobText}\n\n${ctaText}`);
+    expect(result.text).toBe(ctaText);
+    expect(result.text).not.toContain(jobText);
+    expect(mockLlm.generate).toHaveBeenCalledTimes(1);
     expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'sess-1' }),
-      `${jobText}\n\n${ctaText}`,
+      ctaText,
     );
-  });
-
-  it('should drop internal stage status when restoring dropped candidate-facing text', async () => {
-    const jobText =
-      '保利中悦广场附近有几家必胜客在招：\n\n' +
-      '必胜客（顺德大信PH）- 餐厅服务员，0.7km\n' +
-      '班次：10:00-23:00，目前需要中晚班\n' +
-      '薪资：基础12.8元/时，月累计满100小时14.9元/时，满190小时17.2元/时';
-    const internalStatus = '（已切换到岗位咨询阶段，等待候选人反馈意向）';
-
-    mockLlm.generate.mockResolvedValueOnce({
-      text: internalStatus,
-      response: {
-        messages: [{ role: 'assistant', content: [{ type: 'text', text: internalStatus }] }],
-      },
-      steps: [
-        {
-          finishReason: 'tool-calls',
-          toolCalls: [
-            {
-              toolCallId: 'tool-1',
-              toolName: 'duliday_job_list',
-              input: { brandAliasList: ['必胜客'] },
-            },
-          ],
-          toolResults: [
-            {
-              toolCallId: 'tool-1',
-              output: { success: true, result: [{ basicInfo: { jobId: 1 } }], total: 1 },
-            },
-          ],
-          usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
-        },
-        {
-          text: jobText,
-          finishReason: 'tool-calls',
-          toolCalls: [
-            {
-              toolCallId: 'tool-2',
-              toolName: 'advance_stage',
-              input: { nextStage: 'job_consultation' },
-            },
-          ],
-          toolResults: [
-            {
-              toolCallId: 'tool-2',
-              output: { success: true, newStage: 'job_consultation' },
-            },
-          ],
-          usage: { inputTokens: 40, outputTokens: 80, totalTokens: 120 },
-        },
-        {
-          text: internalStatus,
-          finishReason: 'stop',
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        },
-      ],
-      usage: { inputTokens: 130, outputTokens: 105, totalTokens: 235 },
-    });
-
-    const result = await service.invoke(invokeParams);
-
-    expect(result.text).toBe(jobText);
-    expect(result.text).not.toContain('已切换到');
-    expect(result.text).not.toContain('等待候选人反馈');
   });
 
   it('should prefer a longer final reply when it subsumes an earlier tool-call step text', async () => {
@@ -354,7 +291,55 @@ describe('GeneratorAgent', () => {
     expect(result.text.match(/松江区附近有这些岗位/g)).toHaveLength(1);
   });
 
-  it('should not treat a short keyword filler as restored candidate-facing text', async () => {
+  it('should discard provisional text before a side-effect tool when the final reply revises it', async () => {
+    const provisionalText =
+      '理解，6公里确实稍微有点远。目前你这边5公里内确实暂时没有空位，最近的就是之前提到的万达店那家。\n\n' +
+      '要不我先帮你进兼职群？后续有更近的新岗位上线，我第一时间@你。';
+    const finalText =
+      '理解，6公里确实稍微有点远。目前你这边5公里内确实暂时没有更近的岗位，最近的就是之前提到的万达店那家。\n\n' +
+      '你已经在我们的餐饮兼职群里了，后续有更近的新岗位上线，群里会第一时间通知，你也可以随时留意群消息。';
+
+    mockLlm.generate.mockResolvedValueOnce({
+      text: finalText,
+      response: {
+        messages: [{ role: 'assistant', content: [{ type: 'text', text: finalText }] }],
+      },
+      steps: [
+        {
+          text: provisionalText,
+          finishReason: 'tool-calls',
+          toolCalls: [
+            {
+              toolCallId: 'tool-1',
+              toolName: 'invite_to_group',
+              input: { city: '上海', industry: '餐饮' },
+            },
+          ],
+          toolResults: [
+            {
+              toolCallId: 'tool-1',
+              output: { success: true, alreadyInGroup: true },
+            },
+          ],
+          usage: { inputTokens: 40, outputTokens: 80, totalTokens: 120 },
+        },
+        {
+          text: finalText,
+          finishReason: 'stop',
+          usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+        },
+      ],
+      usage: { inputTokens: 50, outputTokens: 90, totalTokens: 140 },
+    });
+
+    const result = await service.invoke(invokeParams);
+
+    expect(result.text).toBe(finalText);
+    expect(result.text).not.toContain('要不我先帮你进兼职群');
+    expect(result.text.match(/理解，6公里确实稍微有点远/g)).toHaveLength(1);
+  });
+
+  it('should recover empty final text without sending a short intermediate filler', async () => {
     mockLlm.generate
       .mockResolvedValueOnce({
         text: '',
@@ -418,13 +403,13 @@ describe('GeneratorAgent', () => {
     );
   });
 
-  it('should keep a legitimate final reply that mentions waiting for feedback', async () => {
+  it('should accept an advance_stage-first sequence without recovery', async () => {
     const jobText =
       '顺德大良附近有这几个门店在招：\n\n' +
       '必胜客（大信PH店）- 餐厅服务员，0.7km\n' +
       '班次：10:00-23:00，目前需要中晚班\n' +
       '薪资：基础12.8元/时，满190小时17.2元/时';
-    const finalText = '你先看下这几个岗位，等待候选人反馈后我再继续帮你约面试。';
+    const finalText = `${jobText}\n\n你先看下这几个岗位，方便的话我再继续帮你约面试。`;
 
     mockLlm.generate.mockResolvedValueOnce({
       text: finalText,
@@ -433,7 +418,6 @@ describe('GeneratorAgent', () => {
       },
       steps: [
         {
-          text: jobText,
           finishReason: 'tool-calls',
           toolCalls: [
             {
@@ -451,6 +435,23 @@ describe('GeneratorAgent', () => {
           usage: { inputTokens: 40, outputTokens: 80, totalTokens: 120 },
         },
         {
+          finishReason: 'tool-calls',
+          toolCalls: [
+            {
+              toolCallId: 'tool-2',
+              toolName: 'duliday_job_list',
+              input: { cityNameList: ['佛山'], regionNameList: ['顺德区'] },
+            },
+          ],
+          toolResults: [
+            {
+              toolCallId: 'tool-2',
+              output: { success: true, result: [{ basicInfo: { jobId: 1 } }], total: 1 },
+            },
+          ],
+          usage: { inputTokens: 30, outputTokens: 20, totalTokens: 50 },
+        },
+        {
           text: finalText,
           finishReason: 'stop',
           usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
@@ -461,10 +462,11 @@ describe('GeneratorAgent', () => {
 
     const result = await service.invoke(invokeParams);
 
-    expect(result.text).toBe(`${jobText}\n\n${finalText}`);
+    expect(result.text).toBe(finalText);
+    expect(mockLlm.generate).toHaveBeenCalledTimes(1);
   });
 
-  it('should restore dropped candidate-facing text for stream finish results', async () => {
+  it('should not concatenate intermediate tool-step text in stream results', async () => {
     const jobText =
       '保利中悦广场附近有几家必胜客在招：\n\n' +
       '必胜客（顺德大信PH）- 餐厅服务员，0.7km\n' +
@@ -512,12 +514,12 @@ describe('GeneratorAgent', () => {
 
     expect(onFinish).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: `${jobText}\n\n${ctaText}`,
+        text: ctaText,
       }),
     );
     expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'sess-1' }),
-      `${jobText}\n\n${ctaText}`,
+      ctaText,
     );
   });
 

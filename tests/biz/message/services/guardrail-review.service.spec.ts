@@ -6,6 +6,7 @@ import type { AlertNotifierService } from '@notification/services/alert-notifier
 describe('GuardrailReviewService', () => {
   const repository = {
     insertReviewRecord: jest.fn(),
+    appendSemanticReview: jest.fn(),
     findByTraceId: jest.fn(),
   };
   const alertNotifier = {
@@ -101,5 +102,44 @@ describe('GuardrailReviewService', () => {
     await expect(service.findByTraceId('msg-1')).resolves.toEqual({ traceId: 'msg-1' });
 
     expect(repository.findByTraceId).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('delegates complete semantic verdicts to the append-only repository path', async () => {
+    repository.appendSemanticReview.mockResolvedValueOnce(true);
+    const input = {
+      traceId: 'msg-shadow',
+      mode: 'shadow' as const,
+      decision: 'pass' as const,
+      confidence: 'high',
+      findings: [],
+      draftReply: '候选回复',
+    };
+
+    await expect(service.recordSemanticReview(input)).resolves.toBe(true);
+    expect(repository.appendSemanticReview).toHaveBeenCalledWith(input);
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('alerts when a semantic verdict cannot be persisted', async () => {
+    repository.appendSemanticReview.mockResolvedValueOnce(false);
+
+    await expect(
+      service.recordSemanticReview({
+        traceId: 'msg-shadow-fail',
+        mode: 'shadow',
+        decision: 'revise',
+        confidence: 'high',
+        findings: [],
+        draftReply: '候选回复',
+      }),
+    ).resolves.toBe(false);
+
+    expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'guardrail_review_persist_failed',
+        source: expect.objectContaining({ action: 'persist_semantic_review' }),
+        scope: expect.objectContaining({ messageId: 'msg-shadow-fail' }),
+      }),
+    );
   });
 });

@@ -30,16 +30,6 @@ import {
  */
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
 
-/** 候选人可见正文被写在 tool-call step 时，低于这个长度的中间片段通常只是“我先查下”。 */
-const SUBSTANTIVE_STEP_TEXT_MIN_CHARS = 80;
-
-/** 模型偶发把阶段流转状态当成最终回复；这类文本绝不能作为候选人可见内容。 */
-const INTERNAL_STATUS_TEXT_PATTERNS: RegExp[] = [
-  /阶段已切换|阶段切换到|阶段推进到|已切换到[^。！？\n]{0,30}阶段/,
-  /等待候选人(?:反馈|回应|回复|确认|提供|补充)[^。！？\n]{0,30}(?:意向|信息|结果|选择)/,
-  /当前阶段策略|阶段成功标准|effectiveStageStrategy|nextStage|currentStage|fromStage/,
-];
-
 /**
  * stopWhen 条件：当任意工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。
  *
@@ -165,7 +155,6 @@ export class GeneratorAgent {
         toolExecutionTimings: ctx.toolExecutionTimings,
       });
 
-      result = this.restoreDroppedCandidateText(result);
       result = await this.recoverEmptyTextResult(result, ctx, params);
 
       this.attachTurnEnd(result, ctx, params.messageId, result.text, params.deferTurnEnd);
@@ -225,7 +214,7 @@ export class GeneratorAgent {
         },
         onFinish: ({ usage, steps, text }) => {
           this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
-          let result = this.buildRunResult({
+          const result = this.buildRunResult({
             text,
             reasoningText: undefined,
             steps,
@@ -240,7 +229,6 @@ export class GeneratorAgent {
             stepEndWallclocks,
             toolExecutionTimings: ctx.toolExecutionTimings,
           });
-          result = this.restoreDroppedCandidateText(result);
           this.attachTurnEnd(result, ctx, params.messageId, result.text, params.deferTurnEnd);
           if (params.onFinish) {
             Promise.resolve(params.onFinish(result)).catch((err) =>
@@ -309,7 +297,6 @@ export class GeneratorAgent {
       const sideEffectBlocked = findSucceededSideEffectTools(steps).filter((name) =>
         baseTools.includes(name),
       );
-
       const blocked = Array.from(new Set([...overused, ...skipReplyBlocked, ...sideEffectBlocked]));
       if (blocked.length === 0) return {};
 
@@ -567,69 +554,6 @@ export class GeneratorAgent {
       agentRequest: params.agentRequest,
       memorySnapshot: params.memorySnapshot,
     };
-  }
-
-  /**
-   * AI SDK 多步 loop 中，模型可能先生成一大段候选人可见正文，再在同一个 step 调工具
-   * （典型是 `advance_stage`）。最终 `generateText().text` 只包含最后一个无工具 step 的文本，
-   * 导致前面正文只留在 `steps[n].text` / 后台流水里，没有真正投递给候选人。
-   *
-   * 这里把“足够长的中间候选人正文”恢复进最终 text，并丢弃明显的内部阶段状态回声。
-   */
-  private restoreDroppedCandidateText(result: GeneratorRunResult): GeneratorRunResult {
-    if (result.agentSteps.length <= 1) return result;
-
-    const fragments: string[] = [];
-    let hasSubstantiveNonFinalText = false;
-    const lastIndex = result.agentSteps.length - 1;
-
-    for (const step of result.agentSteps) {
-      const text = this.normalizeStepText(step.text);
-      if (!text || this.isInternalStatusText(text)) continue;
-
-      const isFinalStep = step.stepIndex === lastIndex;
-      if (!isFinalStep) {
-        if (!this.isSubstantiveStepText(text)) continue;
-        hasSubstantiveNonFinalText = true;
-      }
-
-      this.addRestoredFragment(fragments, text);
-    }
-
-    if (!hasSubstantiveNonFinalText) return result;
-
-    const restoredText = fragments.join('\n\n').trim();
-    if (!restoredText || restoredText === result.text.trim()) return result;
-
-    this.logger.warn(
-      `检测到候选人正文落在 tool-call step，已恢复最终回复: sessionTextChars=${result.text.length}, restoredTextChars=${restoredText.length}`,
-    );
-
-    return { ...result, text: restoredText };
-  }
-
-  private normalizeStepText(text: string | undefined): string {
-    return (text ?? '').replace(/\r\n/g, '\n').trim();
-  }
-
-  private isSubstantiveStepText(text: string): boolean {
-    return text.length >= SUBSTANTIVE_STEP_TEXT_MIN_CHARS;
-  }
-
-  private isInternalStatusText(text: string): boolean {
-    return INTERNAL_STATUS_TEXT_PATTERNS.some((pattern) => pattern.test(text));
-  }
-
-  private addRestoredFragment(fragments: string[], text: string): void {
-    for (let i = fragments.length - 1; i >= 0; i -= 1) {
-      const existing = fragments[i];
-      if (existing === text || existing.includes(text)) return;
-      if (text.includes(existing)) {
-        fragments.splice(i, 1);
-      }
-    }
-
-    fragments.push(text);
   }
 
   /**

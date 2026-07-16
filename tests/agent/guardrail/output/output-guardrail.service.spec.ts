@@ -51,10 +51,8 @@ describe('OutputGuardrailService', () => {
         policies: { redLines: [], outputRuleHits: [] },
       }),
     };
-    const semanticNotifier = {
-      notifyVerdict: jest.fn().mockResolvedValue(true),
-      notifyReviewerFailure: jest.fn().mockResolvedValue(undefined),
-    };
+    const semanticRecorder = { record: jest.fn().mockResolvedValue(true) };
+    const semanticNotifier = { notifyReviewerFailure: jest.fn().mockResolvedValue(undefined) };
     const shortTerm = { getMessages: jest.fn().mockResolvedValue([]) };
     const router = {
       getModelIdByRole: jest
@@ -67,6 +65,7 @@ describe('OutputGuardrailService', () => {
       ruleGuard as never,
       packetBuilder as never,
       semanticReviewer as never,
+      semanticRecorder as never,
       semanticNotifier as never,
       shortTerm as never,
       router as never,
@@ -77,6 +76,7 @@ describe('OutputGuardrailService', () => {
       ruleGuard,
       packetBuilder,
       semanticReviewer,
+      semanticRecorder,
       semanticNotifier,
       shortTerm,
       router,
@@ -413,7 +413,7 @@ describe('OutputGuardrailService', () => {
     expect(reviewer.review).toHaveBeenCalledTimes(1);
   });
 
-  it('shadow 命中判例 → 异步上报 notifyVerdict(mode=shadow)，pass 判例不上报', async () => {
+  it('shadow 的命中与 pass verdict 都异步归档到 guardrail_review_records', async () => {
     const reviewer = {
       shouldReview: jest.fn().mockReturnValue(true),
       review: jest.fn().mockResolvedValue({
@@ -422,31 +422,33 @@ describe('OutputGuardrailService', () => {
         findings: [makeFinding()],
       }),
     };
-    const { service, semanticNotifier } = build(false, makeRuleResult(), reviewer, {
+    const { service, semanticRecorder } = build(false, makeRuleResult(), reviewer, {
       semanticShadowEnabled: true,
     });
 
     await service.check(baseInput({ chatId: 'chat-1', userMessage: '明天能面试吗' }));
     await new Promise((resolve) => setImmediate(resolve)); // flush fire-and-forget shadow
 
-    expect(semanticNotifier.notifyVerdict).toHaveBeenCalledWith(
+    expect(semanticRecorder.record).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: 'shadow',
         decision: 'revise',
         chatId: 'chat-1',
+        draftReply: '你好，有几个门店可以看看',
         findings: [expect.objectContaining({ code: 'active_booking_state_conflict' })],
       }),
     );
 
-    // pass 且无 finding：不上报
-    semanticNotifier.notifyVerdict.mockClear();
+    semanticRecorder.record.mockClear();
     reviewer.review.mockResolvedValue({ decision: 'pass', confidence: 'high', findings: [] });
     await service.check(baseInput());
     await new Promise((resolve) => setImmediate(resolve));
-    expect(semanticNotifier.notifyVerdict).not.toHaveBeenCalled();
+    expect(semanticRecorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'shadow', decision: 'pass', findings: [] }),
+    );
   });
 
-  it('enforce 命中 → 上报 notifyVerdict(mode=enforce)', async () => {
+  it('enforce verdict → 归档到 guardrail_review_records', async () => {
     const reviewer = {
       shouldReview: jest.fn().mockReturnValue(true),
       review: jest.fn().mockResolvedValue({
@@ -455,17 +457,17 @@ describe('OutputGuardrailService', () => {
         findings: [makeFinding()],
       }),
     };
-    const { service, semanticNotifier } = build(true, makeRuleResult(), reviewer);
+    const { service, semanticRecorder } = build(true, makeRuleResult(), reviewer);
 
     const decision = await service.check(baseInput({ reply: '已帮你约好明天面试' }));
 
     expect(decision.decision).toBe('revise');
-    expect(semanticNotifier.notifyVerdict).toHaveBeenCalledWith(
+    expect(semanticRecorder.record).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'enforce', decision: 'revise' }),
     );
   });
 
-  it('低置信 enforce 结论降级 observe → 上报 notifyVerdict(mode=confidence_downgraded)', async () => {
+  it('低置信 enforce 结论降级 observe → 归档 confidence_downgraded verdict', async () => {
     const reviewer = {
       shouldReview: jest.fn().mockReturnValue(true),
       review: jest.fn().mockResolvedValue({
@@ -474,13 +476,13 @@ describe('OutputGuardrailService', () => {
         findings: [makeFinding()],
       }),
     };
-    const { service, semanticNotifier } = build(true, makeRuleResult(), reviewer);
+    const { service, semanticRecorder } = build(true, makeRuleResult(), reviewer);
 
     const decision = await service.check(baseInput({ reply: '已帮你约好明天面试' }));
 
     // 降级为 observe：不拦截（回复仍可发送），只留观测记录
     expect(decision.decision).toBe('observe');
-    expect(semanticNotifier.notifyVerdict).toHaveBeenCalledWith(
+    expect(semanticRecorder.record).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'confidence_downgraded', decision: 'block' }),
     );
   });
@@ -516,14 +518,14 @@ describe('OutputGuardrailService', () => {
         findings: [makeFinding()],
       }),
     };
-    const { service, ruleGuard, semanticNotifier } = build(true, makeRuleResult(), reviewer);
+    const { service, ruleGuard, semanticRecorder } = build(true, makeRuleResult(), reviewer);
 
     const decision = await service.check(baseInput({ reply: '已帮你约好明天面试', silent: true }));
 
     // 裁决照常返回（advisory 展示用）
     expect(decision.decision).toBe('revise');
-    // 但不 fire 语义判例上报，避免污染生产 badcase
-    expect(semanticNotifier.notifyVerdict).not.toHaveBeenCalled();
+    // 但不写生产守卫日志
+    expect(semanticRecorder.record).not.toHaveBeenCalled();
     // silent 透传给 rule 档，rule 命中同样不告警
     expect(ruleGuard.check).toHaveBeenCalledWith(expect.objectContaining({ silent: true }));
   });

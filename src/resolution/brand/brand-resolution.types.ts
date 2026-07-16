@@ -20,6 +20,7 @@ export type BrandMatchType =
   | 'canonical_exact'
   | 'alias_exact'
   | 'alias_containment'
+  | 'category_default'
   | 'category_expansion';
 
 /**
@@ -55,6 +56,7 @@ export const BRAND_CONFIDENCE = {
   canonicalExact: 0.95,
   aliasExact: 0.9,
   aliasContainment: 0.75,
+  categoryDefault: 0.85,
   categoryExpansion: 0.75,
   ambiguous: 0.4,
 } as const;

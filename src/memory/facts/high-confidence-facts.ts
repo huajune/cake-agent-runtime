@@ -510,7 +510,9 @@ export function detectBrandAliasHints(
       const matchedAlias =
         resolution.matchType === 'category_expansion'
           ? `${resolution.matchedText}(品类)`
-          : (resolution.matchedText ?? resolution.canonicalName);
+          : resolution.matchType === 'category_default'
+            ? `${resolution.matchedText}(品类默认)`
+            : (resolution.matchedText ?? resolution.canonicalName);
       const dedupeKey = `${resolution.canonicalName}::${message}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
