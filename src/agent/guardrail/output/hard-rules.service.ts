@@ -16,9 +16,14 @@ import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
-import { detectHumanServicePhraseLeak, detectOutputLeak } from './rules/internal-info-leaks.rule';
+import {
+  detectHumanServicePhraseLeak,
+  detectMetaNarrationReply,
+  detectOutputLeak,
+} from './rules/internal-info-leaks.rule';
 import { detectJobDetailLookupRequired } from './rules/job-detail-grounding.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
+import { detectUnsupportedScheduleWindowClaim } from './rules/schedule-window-claims.rule';
 import { detectSettlementCycleMismatch } from './rules/settlement-cycle-mismatch.rule';
 import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
@@ -156,6 +161,13 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(internalOutputLeak));
     }
 
+    // 元叙述旁白与阶段/工具名泄漏同族（内部视角文本外发），但形态是自然语言，
+    // 词库 PATTERNS 覆盖不到，须单独形态检测；命中后 runner 直达静默不进 repair。
+    const metaNarrationReply = detectMetaNarrationReply(text);
+    if (metaNarrationReply) {
+      contradictions.push(this.withRulePolicy(metaNarrationReply));
+    }
+
     const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(
       text,
       toolCalls,
@@ -192,6 +204,15 @@ export class HardRulesService {
     );
     if (settlementCycleMismatch) {
       contradictions.push(this.withRulePolicy(settlementCycleMismatch));
+    }
+
+    const unsupportedScheduleWindowClaim = detectUnsupportedScheduleWindowClaim(
+      text,
+      toolCalls,
+      params.memorySnapshot?.currentFocusJob?.jobId,
+    );
+    if (unsupportedScheduleWindowClaim) {
+      contradictions.push(this.withRulePolicy(unsupportedScheduleWindowClaim));
     }
 
     for (const rule of this.rules) {

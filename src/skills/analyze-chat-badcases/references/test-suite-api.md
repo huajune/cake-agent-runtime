@@ -10,13 +10,13 @@
 
 ## 常用端点
 
-### 创建批次 + 测试用例
+### 仅创建批次元数据
 
 ```
 POST /test-suite/batches
 ```
 
-请求体契约参考 `src/biz/test-suite/dto/` 下的 `*.dto.ts`。Claude 在调用前先 Read 这些 DTO 文件，按照它们的字段结构构造请求。
+该端点只创建 `test_batches` 元数据，不接受 `caseIds`，也不执行 case。请求体契约参考 `CreateBatchRequestDto`。
 
 ### 执行批次
 
@@ -24,7 +24,17 @@ POST /test-suite/batches
 POST /test-suite/batch
 ```
 
-触发批次执行（异步）。返回后通过下方查询端点轮询进度。
+请求体使用 `BatchTestRequestDto`：`cases` 传完整 `TestChatRequestDto[]`，可附 `batchName / parallel`。当前实现会等待全部 case 执行完成后同步返回完整结果，适合定向策展子集；不要把它当异步队列再轮询。
+
+每条 case 的 `userId` 必填。为了隔离长期画像和会话记忆，每条 case 使用唯一且稳定的 `userId / sessionId`。
+
+### 整表快速创建与异步执行
+
+```
+POST /test-suite/batches/quick-create
+```
+
+该端点从预配置飞书 `测试集 / 验证集` 整表导入并提交队列，适合正式全表回归。它没有 priority/category/sourceType 子集过滤；不要用它运行本轮少量定向 case。返回后再轮询进度。
 
 ### 查询批次进度
 
@@ -135,5 +145,34 @@ POST /test-suite/datasets/conversation/import-curated
 - 调用前先 Read 相关 DTO 文件确认契约，不要凭记忆构造请求体
 - 调用时做错误处理：HTTP 非 2xx 就把返回值给用户看，不要静默失败
 - 轮询进度时给个合理上限（比如 60 次 × 5s），不要死循环
-- 导入正式数据集后，再调用 `POST /test-suite/batches/quick-create` 触发测试
+- 导入正式数据集后，只有确实要跑整张正式表时才调用 `POST /test-suite/batches/quick-create`；本轮定向子集继续使用 `POST /test-suite/batch`
 - `测试集` 走 `testType: "scenario"`，`验证集` 走 `testType: "conversation"`
+
+## 测试结果同步到生产 Dashboard
+
+策展批次在测试环境执行、评审完成后，使用仓库脚本复制已有结果：
+
+```bash
+pnpm sync:test-suite:prod -- <batch-id> [batch-id...]
+```
+
+该命令读取 `.env.local` 和 `.env.production`，按原 ID upsert：
+
+- `test_batches`
+- `test_executions`
+- `test_conversation_snapshots`
+
+它不会执行批次、不会调用模型、不会发送消息，也不会把 case 导入飞书正式测试集。运行前应先把 `review_status / review_comment / failure_reason` 写入测试环境；如果评审发生在同步之后，需要再次运行同一命令幂等覆盖生产记录。
+
+成功条件：
+
+- 输出 `warnings: []`
+- `synced.testBatches` 等于目标批次数
+- `production.executionCount` 等于目标批次执行记录总数
+- 生产 API 能按每个 batch ID 查到相同名称、状态和统计
+- `GET /test-suite/batches/:id/executions` 的记录数与评审状态分布一致
+- 抽查 `GET /test-suite/executions/:id` 能看到实际回复、工具调用、执行 trace 与评审备注
+
+线上查看入口：`https://cake.duliday.com/web/test-suite`。
+
+不要使用生产 `/test-suite/batch` 或 `/batches/quick-create` 来“同步”结果；这两个端点会产生新的执行，造成重复模型调用和不同版本结果。

@@ -1,5 +1,6 @@
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { matchIdentityStatement } from '@tools/shared/identity-statement.util';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**
@@ -71,12 +72,14 @@ function readBooleanFact(
 /**
  * 检测教唆候选人以不实身份登记/隐瞒身份的话术。
  *
- * 触发分三档：
+ * 触发分四档：
  * 1. 审核规避语境（"为了过系统审核…登记"）→ 无条件违规；
  * 2. 隐瞒身份建议（"别说你是暑假工"）→ 无条件违规；
  * 3. 身份改写登记（"按非暑假工登记/登记成社会人士"）→ 本轮 precheck 存在
- *    暑假工守卫，或 bookingChecklist 仍把身份列为 missing 时违规。候选人身份已由
- *    precheck 明确确认时，如实登记不受影响。
+ *    暑假工守卫，或 bookingChecklist 仍把身份列为 missing 时违规。**豁免**：候选人
+ *    本轮已明确自报非学生（共享识别器判定）时，Agent 转述/代填其口径属如实登记，
+ *    不算教唆（2026-07-15 产品裁定；此前识别器缺口致 precheck 身份滞留 missing，
+ *    本档把诚实回复误判成造假教唆 block）。
  * 4. 记忆已确认学生，回复却自行宣布“不算学生/按社会身份”→ 无需本轮工具即可违规；
  *    仅候选人本轮明确自报“我不是学生/我是社会人士”时豁免陈旧记忆。
  */
@@ -89,13 +92,22 @@ export function detectIdentityMisregistrationCoaching(
   const auditEvasion = AUDIT_EVASION_PATTERN.test(text);
   const concealment = IDENTITY_CONCEALMENT_PATTERN.test(text);
   const coercedSummerDenial = COERCED_SUMMER_DENIAL_PATTERN.test(text);
+  // 候选人本轮明确自报非学生（共享识别器：剥时间戳/引用块、子句级+表单式）。
+  // 2026-07-15 产品裁定的豁免依据：候选人已作答时，Agent 转述/代填其口径不算教唆。
+  // 识别器缺口曾让 precheck missingFields 滞留"身份"，本规则据此把诚实回复误判成
+  // 造假教唆并 block（候选人 18:03 刚答"不是学生"，18:04 回复被拦）。
+  const candidateSelfReportedNonStudent =
+    matchIdentityStatement(userMessage ?? '') === '社会人士' ||
+    EXPLICIT_NON_STUDENT_SELF_REPORT_PATTERN.test(userMessage?.trim() ?? '');
   const identityRewrite =
-    IDENTITY_REWRITE_THEN_REGISTER_PATTERN.test(text) ||
-    REGISTER_AS_IDENTITY_PATTERN.test(text) ||
-    AGENT_AUTOFILL_IDENTITY_PATTERN.test(text);
+    (IDENTITY_REWRITE_THEN_REGISTER_PATTERN.test(text) ||
+      REGISTER_AS_IDENTITY_PATTERN.test(text) ||
+      AGENT_AUTOFILL_IDENTITY_PATTERN.test(text)) &&
+    // 豁免仅覆盖"如实转述"档；审核规避/隐瞒建议/指定口径诱导仍无条件违规。
+    !candidateSelfReportedNonStudent;
   const contradictsKnownStudentIdentity =
     readBooleanFact(memorySnapshot, 'interview.is_student') === true &&
-    !EXPLICIT_NON_STUDENT_SELF_REPORT_PATTERN.test(userMessage?.trim() ?? '') &&
+    !candidateSelfReportedNonStudent &&
     STUDENT_IDENTITY_RECLASSIFICATION_PATTERN.test(text);
 
   if (

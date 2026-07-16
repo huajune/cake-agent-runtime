@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RouterService } from '@providers/router.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -78,7 +79,23 @@ export class OutputGuardrailService {
     private readonly semanticNotifier: SemanticReviewNotifierService,
     private readonly shortTerm: ShortTermService,
     private readonly router: RouterService,
+    private readonly tracer: AgentTracerService,
   ) {}
+
+  /**
+   * 语义评审执行档案：每次评审完成发一条 semantic_review 事件落
+   * agent_execution_events。命中判例（分子）在飞书 badcase 表，这里补分母——
+   * 没有它，"shadow 到底跑没跑/跑了多少"在生产侧无从查证。
+   */
+  private emitSemanticReviewEvent(mode: 'shadow' | 'enforce', verdict: SemanticReviewVerdict) {
+    this.tracer.emit({
+      type: 'semantic_review',
+      mode,
+      decision: verdict.decision,
+      confidence: verdict.confidence,
+      findingCodes: verdict.findings.map((finding) => finding.code),
+    });
+  }
 
   /**
    * 读取本会话短期历史（单次远程读取，assistant/user 两用）：
@@ -279,6 +296,8 @@ export class OutputGuardrailService {
       );
     }
 
+    this.emitSemanticReviewEvent('enforce', verdict);
+
     // LLM 不能自证：低置信的 enforce 结论强制降级为 observe，只留观测。
     const llmDecision = this.applyConfidenceBackstop(verdict);
     const llmViolations = verdict.findings.map((finding) => this.findingToViolation(finding));
@@ -389,6 +408,7 @@ export class OutputGuardrailService {
     void this.semanticReviewer
       .review(packet)
       .then(async (verdict) => {
+        this.emitSemanticReviewEvent('shadow', verdict);
         const findingCodes = verdict.findings.map((finding) => finding.code).join(',') || '-';
         this.logger.log(
           `[OutputGuardrail] semantic shadow: decision=${verdict.decision}, confidence=${verdict.confidence}, findings=${findingCodes}`,

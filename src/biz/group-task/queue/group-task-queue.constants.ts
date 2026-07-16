@@ -33,9 +33,19 @@ export const groupTaskResultKey = (execId: string, groupId: string): string =>
 
 export const groupTaskMetaKey = (execId: string): string => `group-task:meta:${execId}`;
 
-/** 标记某次执行已开始发送；首群不需要跨群等待。 */
-export const groupTaskDispatchStartedKey = (execId: string): string =>
-  `group-task:dispatch-started:${execId}`;
+/**
+ * 同一企微 bot 的群发串行锁。
+ *
+ * Bull 同一 Queue 注册多个 named processor 时，各 processor 的 concurrency 会共同消费
+ * Queue 中的任意 job，不能依赖 `process('send', 1, ...)` 保证 Send 全局单并发。因此发送
+ * 阶段必须额外按 bot 加分布式锁。
+ */
+export const groupTaskBotDispatchLockKey = (imBotId: string): string =>
+  `group-task:bot-dispatch-lock:${imBotId}`;
+
+/** 最近一次群发送尝试结束时间，用于保证跨 exec、跨任务类型仍遵守发送间隔。 */
+export const groupTaskBotLastDispatchKey = (imBotId: string): string =>
+  `group-task:bot-last-dispatch:${imBotId}`;
 
 /**
  * 同群当日幂等键，避免同一群在同一天同场次被重复发送。

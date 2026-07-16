@@ -33,6 +33,7 @@ describe('FollowUpSchedulerService', () => {
       trackScheduleSkipped: jest.fn(),
       trackScheduleError: jest.fn(),
       trackSuperseded: jest.fn(),
+      trackStoppedBeforeFire: jest.fn(),
     };
     service = new FollowUpSchedulerService(
       queue as never,
@@ -65,6 +66,62 @@ describe('FollowUpSchedulerService', () => {
 
     expect(result).toEqual({ scheduled: false, reason: 'unknown_scenario' });
     expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('removes all pending store follow-ups for the session and tracks them as stopped', async () => {
+    const removeMatching = jest.fn().mockResolvedValue(undefined);
+    const removeOtherScenario = jest.fn().mockResolvedValue(undefined);
+    const removeOtherSession = jest.fn().mockResolvedValue(undefined);
+    queue.getJobs.mockResolvedValue([
+      {
+        id: 'store-job-1',
+        data: {
+          sessionRef,
+          scenarioCode: 'store_presented_no_reply',
+          anchorEventId: 'msg-1:store_presented',
+          anchorAt: 1000,
+        },
+        remove: removeMatching,
+      },
+      {
+        id: 'opening-job-1',
+        data: {
+          sessionRef,
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'opening',
+          anchorAt: 1000,
+        },
+        remove: removeOtherScenario,
+      },
+      {
+        id: 'store-job-2',
+        data: {
+          sessionRef: { ...sessionRef, sessionId: 'sess-2' },
+          scenarioCode: 'store_presented_no_reply',
+          anchorEventId: 'msg-2:store_presented',
+          anchorAt: 1000,
+        },
+        remove: removeOtherSession,
+      },
+    ]);
+
+    const removed = await service.stopPendingJobsForSessionScenario({
+      sessionRef,
+      scenarioCode: 'store_presented_no_reply',
+      reason: 'candidate_invited_to_group',
+    });
+
+    expect(removed).toBe(1);
+    expect(removeMatching).toHaveBeenCalled();
+    expect(removeOtherScenario).not.toHaveBeenCalled();
+    expect(removeOtherSession).not.toHaveBeenCalled();
+    expect(tracking.trackStoppedBeforeFire).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-1',
+        scenarioCode: 'store_presented_no_reply',
+      }),
+      { jobId: 'store-job-1', reason: 'candidate_invited_to_group' },
+    );
   });
 
   it('prechecks stop conditions when state is supplied', async () => {

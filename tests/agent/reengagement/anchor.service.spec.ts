@@ -28,6 +28,7 @@ describe('ReengagementAnchorService', () => {
     scheduleFollowUp: jest.Mock;
     scheduleBookingResolution: jest.Mock;
     removeSupersededPendingJobs: jest.Mock;
+    stopPendingJobsForSessionScenario: jest.Mock;
   };
   let session: { saveTerminalState: jest.Mock; getAuthoritativeState: jest.Mock };
 
@@ -36,6 +37,7 @@ describe('ReengagementAnchorService', () => {
       scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }),
       scheduleBookingResolution: jest.fn().mockResolvedValue({ scheduled: true }),
       removeSupersededPendingJobs: jest.fn().mockResolvedValue(1),
+      stopPendingJobsForSessionScenario: jest.fn().mockResolvedValue(1),
     };
     session = {
       saveTerminalState: jest.fn().mockResolvedValue(undefined),
@@ -54,6 +56,46 @@ describe('ReengagementAnchorService', () => {
       requestInfo: { interviewType: 'AI面试' },
     },
   };
+
+  it('stops pending store follow-ups immediately after a successful group invite', async () => {
+    buildService().handleToolAnchors(
+      {
+        toolCalls: [
+          {
+            toolName: 'invite_to_group',
+            args: { city: '上海', industry: '餐饮' },
+            result: { success: true, groupName: '上海餐饮兼职群' },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.stopPendingJobsForSessionScenario).toHaveBeenCalledWith({
+      sessionRef: { corpId: 'corp-1', userId: 'user-1', sessionId: 'chat-1' },
+      scenarioCode: 'store_presented_no_reply',
+      reason: 'candidate_invited_to_group',
+    });
+  });
+
+  it('does not stop store follow-ups when a group invite fails', async () => {
+    buildService().handleToolAnchors(
+      {
+        toolCalls: [
+          {
+            toolName: 'invite_to_group',
+            args: { city: '上海', industry: '餐饮' },
+            result: { success: false },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.stopPendingJobsForSessionScenario).not.toHaveBeenCalled();
+  });
 
   it('schedules booking resolution retries carrying only the stable workOrderId', async () => {
     buildService().handleToolAnchors({ toolCalls: [bookingCall] }, context);
@@ -328,6 +370,35 @@ describe('ReengagementAnchorService', () => {
                 ],
               },
             },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'store_presented_no_reply' }),
+    );
+  });
+
+  it('does not create a new store follow-up in the same turn as a successful group invite', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '成都你六姐（宝山万达店）有后厨岗位，已帮你加入上海餐饮兼职群。',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: {},
+            result: {
+              resultCount: 1,
+              jobs: [{ jobId: 123, brandName: '成都你六姐', storeName: '宝山万达店' }],
+            },
+          },
+          {
+            toolName: 'invite_to_group',
+            args: { city: '上海', industry: '餐饮' },
+            result: { success: true, groupName: '上海餐饮兼职群' },
           },
         ],
       },

@@ -361,6 +361,13 @@ export function shouldStop(
   if (state.terminal && !bookingSucceededFollowUp) {
     return { stop: true, reason: `terminal:${state.terminal}` };
   }
+  if (
+    scenario.code === 'store_presented_no_reply' &&
+    state.invitedGroups != null &&
+    state.invitedGroups.length > 0
+  ) {
+    return { stop: true, reason: 'candidate_invited_to_group' };
+  }
   const repliedRuleExempt =
     scenario.anchorEvent === 'booking.succeeded' && opts?.externallyVerifiable === true;
   if (

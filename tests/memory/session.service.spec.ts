@@ -492,6 +492,30 @@ describe('SessionService', () => {
       expect(state.terminal).toBe('booked');
       expect(state.lastCandidateMessageAt).toBe(Date.parse('2026-07-02T10:00:00.000Z'));
     });
+
+    it('projects invitedGroups for reengagement stop conditions', async () => {
+      const invitedGroups = [
+        {
+          groupName: '上海餐饮兼职群',
+          city: '上海',
+          industry: '餐饮',
+          invitedAt: '2026-07-15T07:55:00.000Z',
+        },
+      ];
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: null,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+          invitedGroups,
+        },
+      });
+
+      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
+
+      expect(state.invitedGroups).toEqual(invitedGroups);
+    });
   });
 
   describe('reengagement stop signals persistence', () => {

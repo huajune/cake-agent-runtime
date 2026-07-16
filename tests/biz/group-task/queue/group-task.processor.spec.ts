@@ -18,6 +18,8 @@ import {
   SendJobData,
   SummarizeJobData,
   groupTaskDailySentKey,
+  groupTaskBotDispatchLockKey,
+  groupTaskBotLastDispatchKey,
   groupTaskMsgKey,
   groupTaskResultKey,
 } from '@biz/group-task/queue/group-task-queue.constants';
@@ -41,6 +43,7 @@ describe('GroupTaskProcessor', () => {
     exists: jest.Mock;
     setNx: jest.Mock;
     del: jest.Mock;
+    eval: jest.Mock;
     getClient: jest.Mock;
   };
   let groupResolver: { resolveGroups: jest.Mock };
@@ -86,6 +89,7 @@ describe('GroupTaskProcessor', () => {
       exists: jest.fn().mockResolvedValue(0),
       setNx: jest.fn().mockResolvedValue(true),
       del: jest.fn().mockResolvedValue(1),
+      eval: jest.fn().mockResolvedValue(1),
       getClient: jest.fn(),
     };
 
@@ -286,9 +290,9 @@ describe('GroupTaskProcessor', () => {
 
       const sendCalls = queueMock.add.mock.calls.filter((c) => c[0] === GroupTaskJobName.SEND);
       expect(sendCalls).toHaveLength(2);
-      // 跨群间隔由 send worker 串行控制，Bull 不再叠加 delay
+      // Bull 层先按全局序号做最小错峰；Redis bot 锁负责最终串行兜底
       expect(sendCalls[0][2].delay).toBe(0);
-      expect(sendCalls[1][2].delay).toBe(0);
+      expect(sendCalls[1][2].delay).toBe(60_000);
       // 每个 send 的 msgRedisKey 相同，读同一份缓存
       expect(sendCalls[0][1].msgRedisKey).toBe(groupTaskMsgKey('exec-1', '上海_餐饮'));
       expect(sendCalls[0][1].msgRedisKey).toBe(sendCalls[1][1].msgRedisKey);
@@ -317,7 +321,7 @@ describe('GroupTaskProcessor', () => {
       msgRedisKey: groupTaskMsgKey('exec-1', '上海_餐饮'),
       execDate: '20260420',
       totalGroups: 1,
-      sendDelayMs: 300_000,
+      sendDelayMs: 120_000,
     };
 
     it('should short-circuit when daily idempotency key already exists', async () => {
@@ -364,18 +368,81 @@ describe('GroupTaskProcessor', () => {
       expect(brandRotation.recordPushedBrand).toHaveBeenCalledWith('r-1', '必胜客');
     });
 
-    it('should wait a random 5-10 minutes before a subsequent group', async () => {
-      redisMock.setNx.mockResolvedValue(false);
-      redisMock.get.mockResolvedValue({ message: 'hi', summary: 's' });
+    it('should wait a random 2-4 minutes before a subsequent group', async () => {
+      const now = Date.now();
+      redisMock.get.mockImplementation(async (key: string) =>
+        key === groupTaskBotLastDispatchKey('bot-1') ? now : { message: 'hi', summary: 's' },
+      );
       const delaySpy = jest
         .spyOn(processor as never, 'delay')
         .mockResolvedValue(undefined as never);
       const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
 
       await invokeHandler(GroupTaskJobName.SEND, baseSend);
 
-      expect(delaySpy).toHaveBeenCalledWith(450_000);
+      expect(delaySpy).toHaveBeenCalledWith(180_000);
       randomSpy.mockRestore();
+      nowSpy.mockRestore();
+    });
+
+    it('should serialize concurrent send jobs for the same bot', async () => {
+      let lockOwner: string | null = null;
+      let lastDispatchAt: number | null = null;
+      let releaseFirstSend!: () => void;
+      const firstSendBlocked = new Promise<void>((resolve) => {
+        releaseFirstSend = resolve;
+      });
+
+      redisMock.setNx.mockImplementation(async (_key: string, owner: string) => {
+        if (lockOwner) return false;
+        lockOwner = owner;
+        return true;
+      });
+      redisMock.eval.mockImplementation(
+        async (_script: string, _keys: string[], args: string[]) => {
+          if (lockOwner === args[0]) {
+            lockOwner = null;
+            return 1;
+          }
+          return 0;
+        },
+      );
+      redisMock.get.mockImplementation(async (key: string) => {
+        if (key === groupTaskBotLastDispatchKey('bot-1')) return lastDispatchAt;
+        return { message: 'hi', summary: 's' };
+      });
+      redisMock.setex.mockImplementation(async (key: string, _ttl: number, value: unknown) => {
+        if (key === groupTaskBotLastDispatchKey('bot-1')) lastDispatchAt = Number(value);
+      });
+      notificationSender.sendToGroup
+        .mockImplementationOnce(() => firstSendBlocked)
+        .mockResolvedValueOnce(undefined);
+      jest
+        .spyOn(processor as unknown as { delay(ms: number): Promise<void> }, 'delay')
+        .mockImplementation(async (ms: number) => {
+          await new Promise((resolve) => setTimeout(resolve, ms === 1_000 ? 1 : 0));
+        });
+
+      const first = invokeHandler(GroupTaskJobName.SEND, baseSend);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const second = invokeHandler(GroupTaskJobName.SEND, {
+        ...baseSend,
+        execId: 'exec-2',
+        group: { ...baseSend.group, imRoomId: 'r-2', groupName: '群2' },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      expect(notificationSender.sendToGroup).toHaveBeenCalledTimes(1);
+      expect(redisMock.setNx).toHaveBeenCalledWith(
+        groupTaskBotDispatchLockKey('bot-1'),
+        expect.any(String),
+        expect.any(Number),
+      );
+
+      releaseFirstSend();
+      await Promise.all([first, second]);
+      expect(notificationSender.sendToGroup).toHaveBeenCalledTimes(2);
     });
 
     it('should rethrow without setting idempotency key when send fails (Bull retry can then re-run)', async () => {
@@ -396,6 +463,12 @@ describe('GroupTaskProcessor', () => {
         expect.any(Number),
         expect.objectContaining({ status: 'failed', error: '企微限流' }),
       );
+      expect(redisMock.setex).toHaveBeenCalledWith(
+        groupTaskBotLastDispatchKey('bot-1'),
+        expect.any(Number),
+        expect.any(Number),
+      );
+      expect(redisMock.eval).toHaveBeenCalled();
     });
 
     it('should throw when message cache is lost (Bull will retry; if expired, alert surfaces)', async () => {

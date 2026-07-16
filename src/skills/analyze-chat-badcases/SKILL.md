@@ -1,6 +1,6 @@
 ---
 name: analyze-chat-badcases
-description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodCase 反馈样本池中提交的样本，识别问题并协作修复，生成针对性测试集验证修复。用于以下场景：用户提到"分析生产对话"、"找 badcase"、"分析昨天/今天提交的 badcase"、"进入反馈验证 SOP"、"Agent 表现怎么样"、"对话回归"、"质量审计"、"候选人流失分析"、"抽查最近的聊天"，或任何涉及 Agent 对话质量改进的闭环任务。即使用户没有显式说"分析 badcase"，只要他们在讨论 Agent 对话问题并想动手改进，就应该用这个 skill。
+description: 抽样分析 Agent 生产对话或 BadCase / GoodCase 反馈样本，结合多张观测表定位链路根因，识别并修复问题，策展针对性测试集，运行真实 Agent 回复链路，评审结果并同步生产 Dashboard。用户提到“分析生产对话”“找 badcase”“观测链路排障”“反馈验证 SOP”“Fable/Agent 修复交接”“策展回归 case”“跑真实回复链路”“对话回归”“质量审计”“候选人流失分析”“抽查最近聊天”或要求把测试结果展示到 cake.duliday.com 时，都应使用本 skill。即使没有显式说 badcase，只要目标是闭环改进 Agent 对话质量，也应该触发。
 ---
 
 # Analyze Chat Badcases
@@ -19,9 +19,10 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - MCP 工具：`mcp__supabase__execute_sql`
 - `project_id`: `uvmbxcilpteaiizplcyp`
 
-两张核心表按 `message_id` 1:1 join：`chat_messages`（完整对话）+ `message_processing_records`（每 turn 工具调用/记忆/异常）。
+先用两张主表按 `message_id` 关联：`chat_messages`（完整对话）+ `message_processing_records`（每 turn 主账本）。确认问题 turn 后，再按 `trace_id/message_id` 下钻 `agent_execution_events`、`guardrail_review_records` 等观测附属表；不要把主表当成全部证据。
 
 字段含义见 `references/schema.md`——在 Step 2 读完原始数据后需要参考。
+多表职责、关联键、查询模板和缺行语义见 `references/observability-troubleshooting.md`——定位具体 BadCase 根因时必须读取。
 
 **飞书反馈样本池**：
 
@@ -43,6 +44,13 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 涉及排障链路与记忆评测时，必须同时遵循 `docs/workflows/badcase-trace-memory-evaluation.md`：新反馈要带 `messageId / traceId / sourceTrace`，正式测试资产要带 `sourceTrace / memorySetup / memoryAssertions`，存量数据缺失时先回填再重跑。
 
 ## 执行步骤
+
+### 授权与检查点
+
+- 用户只要求分析/诊断时，停在报告和修复建议，不自动改代码、入库或运行测试。
+- 用户明确要求“策展并跑”“修复并验证”“直接跑真实链路”时，视为已授权完成定向草稿和临时测试批次，不必为了重复确认同一目标而停住；仍要在执行前用简短清单说明 case 数、关键覆盖和动态 fixture 边界。
+- 正式写入飞书 `测试集 / 验证集` 始终保留 Step 7 的用户确认闸门。临时 `/test-suite/batch` 执行不等于正式资产入库。
+- 生产 Dashboard 数据同步是已完成测试结果的默认收口，不会重新运行模型；用户明确要求仅本地时才跳过。
 
 ### Step 0. 选择入口
 
@@ -90,6 +98,16 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 
 字段不理解时查 `references/schema.md`，尤其 `anomaly_flags` / `tool_calls` / `memory_snapshot` 这三个 JSONB 字段是判案主要依据。
 
+对每个候选 BadCase 做分层证据下钻，具体顺序见 `references/observability-troubleshooting.md`：
+
+1. 用 `chat_messages + message_processing_records` 锚定问题 turn、`message_id/trace_id` 和主链终态。
+2. 查 `agent_execution_events` 还原模型、工具、语义评审和异常的时间线。
+3. 涉及出站拦截/改写/静默时查 `guardrail_review_records`；涉及转人工、预约、投递、复聊时再查对应业务观测表。
+4. 查 `monitoring_error_logs` 排除观测落库、外部依赖或投递基础设施异常。
+5. 只有单条失败 trace 需要确认“模型当时实际看到了什么”时，才定点读取 `agent_invocation.request.agentRequest`；禁止批量拉取该大字段。
+
+报告中的根因必须附 `message_id/trace_id + 表名 + 关键字段`。观测表无行不自动等于“没有执行”：先判断该表是否稀疏、测试流是否隔离、写入是否异步以及是否超出保留期。
+
 ### Step 3. 产出分析报告
 
 在对话里直接输出 markdown。模板：
@@ -122,12 +140,13 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 
 展示报告后问：哪些问题优先修？修复方向是否认同？按用户回答决定下一步。
 
-**不要跳过这步直接改代码**——用户可能有你看不到的上下文（业务优先级、上线计划、已知正在修的问题）。
+探索式分析不要跳过这步直接改代码——用户可能有你看不到的业务优先级和上线计划。若用户一开始已经点名具体修复内容并明确要求“实现/修复并验证”，该请求本身就是优先级确认，可直接进入 Step 5，但要先复述范围与不可控依赖。
 
 ### Step 5. 实施修复
 
 按常规开发流程：
 
+- 先用多表证据把根因定位到 `prompt / stage / tool / data / memory / guardrail / delivery / workflow / observability`，不要只凭最终话术猜代码位置
 - Read 相关代码定位问题点
 - 改代码 / prompt / 工具实现
 - 遵循 `.claude/agents/code-standards.md`
@@ -164,8 +183,9 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 **测试套件接口踩坑提示**：
 
 - `POST /test-suite/batches/quick-create` 会**整表**读飞书测试集（没有 priority / category / sourceType 过滤），不要用它来跑"P1 批次/P2 批次/某 source 子集"这类目标批次——会拉到 119 条全表，不只你要的子集
-- 想跑特定子集的批次时，正确路径是：先按目标筛选 case 列表（按本地 curated JSON 或飞书 search filter） → 调 `POST /test-suite/batches`（带显式 caseIds）创建执行，而不是 quick-create
+- 想跑特定子集时，先按目标筛选 case 列表，再调 `POST /test-suite/batch`，在 `cases` 中传完整 `TestChatRequestDto`；`POST /test-suite/batches` 只创建批次元数据，不接受 `caseIds`，不能用来执行子集
 - 目标批次的 `batchName` 必须显式包含目标维度（如 "2026-04-29 P2 用例测试 30 条"），避免和 quick-create 全表批次在列表里混淆
+- 真实链路 fixture、静默断言、预约工具证据与并发策略见 `references/test-execution-fixtures.md`；执行预约/身份/真人接管类 case 前必须读该文件
 
 - 只有通过这个质量闸门的草稿，才允许进入用户确认和导入步骤
 
@@ -300,11 +320,29 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 
 ### Step 9. 跑测试
 
-调 test-suite 批次执行端点，轮询结果。输出：
+先读 `references/test-suite-api.md`、`references/test-execution-fixtures.md` 和 `references/observability-troubleshooting.md`，再按批次类型执行：
+
+- 定向 scenario 子集：`POST /test-suite/batch`，请求会等待全部 case 完成后同步返回结果，不需要再轮询
+- 飞书整表 quick-create 或 conversation queue：按返回的 batch/source ID 轮询进度
+
+输出：
 
 - 通过率
 - 未通过用例清单 + 失败原因
 - 若通过率不理想，回 Step 5 继续迭代
+
+本 skill 策展并执行的目标批次，在主回复、工具调用、守卫流水和人工/自动评审结论稳定后，默认还要把**已有测试数据同步到生产 test-suite 数据库**，让运营能在 `https://cake.duliday.com/web/test-suite` 查看；这一步只是复制数据，绝不能重新运行 Agent：
+
+1. 先在测试环境通过评审 API 完成评审写入。通过、失败、跳过/资产不可评估要有明确 `review_status / review_comment / failure_reason`；不要只凭 HTTP `success` 判业务通过，也不要只修改生产库导致测试环境和生产评审状态分叉。
+2. 收集本轮需要展示的目标 `batchId`，排除临时 smoke、误建批次和与本轮无关的历史批次。
+3. 运行 `pnpm sync:test-suite:prod -- <batchId...>`。脚本只把现有 `test_batches / test_executions / test_conversation_snapshots` upsert 到生产库，不触发批次执行、不调用模型、不发送候选人消息。
+4. 同步输出中 `warnings` 必须为空，且 `production.executionCount` 必须等于这些批次在测试环境的执行记录总数；否则不能宣称同步成功。
+5. 用 `.env.production` 的 `API_GUARD_TOKEN` 查询生产端 `GET /test-suite/batches/:id` 和 `GET /test-suite/batches/:id/executions`，全量核对批次名称、状态、总数、通过/失败/待评审（含 skipped）分布，以及至少一条执行详情中的实际回复、工具调用和评审备注。
+6. 对用户报告两套口径：Dashboard 的 `pass_rate`（通常以总 case 数为分母）以及剔除 skipped/资产不可评估后的可评估通过率，避免两者看起来矛盾。
+
+只有以下情况可以不自动同步：用户明确要求仅本地验证；缺少 `.env.production`；目标批次仍在运行或评审结论尚未稳定；同步会把未脱敏隐私带入生产。此时必须明确报告“未同步”及原因，不能静默跳过。
+
+生产同步与正式资产导入是两件事：同步批次是为了在 Dashboard 看本次执行证据；`POST /datasets/*/import-curated` 是把用户确认后的 case 写入飞书正式 `测试集 / 验证集`。不要因为完成了其中一个就声称另一个也已完成。
 
 创建测试批次时，`batchName` 只写可读的业务标题，不要带工作流标签：
 
@@ -328,11 +366,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 - 只有当正式资产能稳定关联到源 `chatId / messageId` 时，才再深挖 `message_processing_records`
 - 不要默认把生产消息处理流水整段塞进评审弹窗；否则容易混入不属于测试执行的数据噪音
 
-如果用户明确要求把结果同步到线上页面 `https://cake.duliday.com/web/test-suite`，不要只停留在测试环境数据库或飞书回写：
-
-- 先确认批次评审状态已经稳定
-- 再运行 `pnpm sync:test-suite:prod -- <batchId...>` 把这轮批次同步到生产 test-suite 数据库
-- 该页面的数据源是生产库里的 `test_batches / test_executions / conversation source`，不是飞书表本身
+`https://cake.duliday.com/web/test-suite` 的数据源是生产库里的 `test_batches / test_executions / test_conversation_snapshots`，不是飞书表本身。不要用飞书字段已更新来替代上面的生产同步与 API 对账。
 
 ### Step 10. 回写反馈样本池状态
 
@@ -384,7 +418,7 @@ BadCase 状态只保留 4 个运营可判断状态：
 
 **你不要做**：
 
-- 不要跳过 Step 4 / Step 7 直接改代码或入库——用户需要审查闸门
+- 探索式分析不要跳过 Step 4 就改代码；正式资产入库不要跳过 Step 7。用户已明确指定修复并授权验证时，可以直接实施和跑临时定向批次，但这不等于授权写入飞书正式资产
 - 不要把 `BadCase / GoodCase` 当成正式测试资产表，它们只是样本池
 - 不要依赖任何手动勾选字段来决定是否进入 `测试集 / 验证集`
 - 不要硬编码红线清单；业务规则在 `src/biz/strategy/`，要用时去读
@@ -397,4 +431,6 @@ BadCase 状态只保留 4 个运营可判断状态：
 - `queries/latest-chats.sql` — 生产对话抽样 SQL，Step 1B 直接用
 - `references/schema.md` — 两表字段含义 + anomaly_flags / tool_calls / memory_snapshot JSONB 结构
 - `references/test-suite-api.md` — test-suite 端点速查，Step 8/9 用
+- `references/test-execution-fixtures.md` — 真实 Agent 测试的来源标记、动态工具 fixture、静默断言与评审口径，Step 6/9 用
+- `references/observability-troubleshooting.md` — 生产与 test-suite 的多表证据链、关联键、查询顺序和结论规范，Step 2/5/9 用
 - `docs/workflows/feedback-repair-test-validation-v2.md` — 反馈修复测试验证链路 V2，定义样本池、正式测试资产和血缘关系边界

@@ -113,7 +113,7 @@ POST /group-task/trigger/:type
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `GROUP_TASK_TOKENS` | - | 小组 token 映射（格式: `名称:token,名称:token`） |
-| `GROUP_TASK_SEND_DELAY_MS` | `300000` | 不同群间最小间隔（实际随机 1~2x，即 5~10 分钟）；同群连续消息固定间隔 40 秒 |
+| `GROUP_TASK_SEND_DELAY_MS` | `120000` | 不同群间最小间隔（实际随机 1~2x，即 2~4 分钟）；同群连续消息固定间隔 40 秒 |
 | `GROUP_MEMBER_LIMIT` | `200` | 群成员上限（invite_to_group 容量判断） |
 | `STRIDE_ENTERPRISE_TOKEN` | - | 企业级 API token（拉人进群用） |
 | `MINIPROGRAM_APPID` | - | 小程序 appid（兼职群卡片） |

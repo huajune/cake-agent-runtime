@@ -115,6 +115,11 @@ export function classifyReviewedOutcome(
       ? result.outputDecision.blockedRuleIds
       : [result.outputDecision.reasonCode ?? 'output_blocked'];
     const turnId = messageId ?? scenarioCode ?? sessionRef.sessionId;
+    // 元叙述旁白收敛（meta_narration_silenced）：模型本意就是本轮沉默，语义上等效
+    // skip_reply，不派 general_handoff——该副作用会暂停托管 + 飞书告警，而此场景
+    // 多为真人经理已在沟通（用户裁定：真人插话不自动暂停托管），且候选人下一轮
+    // 的新诉求仍应由 Agent 正常接管。守卫档案照常落库，不丢观测。
+    const intentionalSilence = result.outputDecision.reasonCode === 'meta_narration_silenced';
     return {
       kind: 'guardrail_blocked',
       toolCalls,
@@ -122,16 +127,18 @@ export function classifyReviewedOutcome(
       runTurnEnd,
       ...metadata,
       disposition: 'side_effects',
-      sideEffects: [
-        ...toolSideEffects,
-        buildOutputGuardHandoffSideEffect({
-          sessionRef,
-          turnId,
-          ruleBlocked,
-          reasonCode: result.outputDecision.reasonCode ?? ruleIds.join(','),
-          replyPreview: text,
-        }),
-      ],
+      sideEffects: intentionalSilence
+        ? toolSideEffects
+        : [
+            ...toolSideEffects,
+            buildOutputGuardHandoffSideEffect({
+              sessionRef,
+              turnId,
+              ruleBlocked,
+              reasonCode: result.outputDecision.reasonCode ?? ruleIds.join(','),
+              replyPreview: text,
+            }),
+          ],
       guardrail: {
         phase: 'outbound',
         source: 'output_guardrail',
