@@ -3,7 +3,32 @@
   "nextVersion": "10.15.0",
   "updatedAt": "2026-07-16",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "577",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/577",
+      "title": "全角别名塌缩致单字误命中品牌（热修）",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-16",
+      "businessUpdates": [
+        "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
+        "全角别名塌缩致单字误命中品牌（热修）"
+      ],
+      "summary": [
+        "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
+        "全角别名塌缩致单字误命中品牌（热修）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.14.0",
     "date": "2026-07-16",
