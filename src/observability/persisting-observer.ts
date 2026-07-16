@@ -13,6 +13,8 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'tool_error',
   // 品牌状态迁移：仅状态变化时发射，前后快照不可重放，必须落库（§12）
   'brand_state_change',
+  // 语义评审分母：每次 shadow/enforce 评审一条（日均几百），pass 判例仅此一处可查
+  'semantic_review',
   // 新旧品牌匹配差异（临时，随旧路径下线删除）：目录时变不可离线重放（§12/§15.6）
   'brand_resolution_shadow_diff',
 ]);

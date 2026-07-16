@@ -61,6 +61,7 @@ describe('OutputGuardrailService', () => {
         .fn()
         .mockReturnValue(options.reviewModelConfigured === false ? '' : 'anthropic/claude-x'),
     };
+    const tracer = { emit: jest.fn() };
     const service = new OutputGuardrailService(
       systemConfig as never,
       ruleGuard as never,
@@ -69,6 +70,7 @@ describe('OutputGuardrailService', () => {
       semanticNotifier as never,
       shortTerm as never,
       router as never,
+      tracer as never,
     );
     return {
       service,
@@ -78,6 +80,7 @@ describe('OutputGuardrailService', () => {
       semanticNotifier,
       shortTerm,
       router,
+      tracer,
     };
   };
 
