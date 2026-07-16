@@ -395,6 +395,7 @@ export class SessionService {
       recalledJobIds,
       hardConstraints: [],
       presentedStores: (state.presentedJobs ?? []).map((job) => ({ jobId: job.jobId })),
+      invitedGroups: state.invitedGroups ?? [],
       stage: null,
       terminal: state.terminal ?? undefined,
       lastCandidateMessageAt: Number.isFinite(lastCandidateMessageAt)

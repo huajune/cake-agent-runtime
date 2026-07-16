@@ -54,6 +54,18 @@ export class ReengagementAnchorService {
     // 核验工单现状兜底（external_cancelled）。不依赖 deliverable：工单已实际取消。
     const cancelSucceeded = toolCalls.some((call) => this.isCancelSucceeded(call));
     const booking = toolCalls.find((call) => this.isBookingSucceeded(call));
+    const groupInvited = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
+    if (groupInvited) {
+      void this.scheduler.stopPendingJobsForSessionScenario({
+        sessionRef: {
+          corpId: context.corpId,
+          userId: context.userId,
+          sessionId: context.chatId,
+        },
+        scenarioCode: 'store_presented_no_reply',
+        reason: 'candidate_invited_to_group',
+      });
+    }
     // 终态写入必须串行：同回合先取消旧工单再报新岗位（换岗）时，clear 的读-判-写
     // 若与新 booked 写入并发，可能落在其后抹掉刚写的终态，导致带活面试的会话被
     // 报名前场景继续骚扰。链上顺序 = 工具调用顺序（先 clear 后 booked）。
@@ -139,13 +151,15 @@ export class ReengagementAnchorService {
     // handleToolAnchors 排程，避免同一回合重复创建第二个收资锚点。
     const collectionStartedThisTurn = toolCalls.some((call) => this.isCollectionStarted(call));
     const collectionContinued = !collectionStartedThisTurn && this.asksForCollectionDetails(reply);
+    const groupInvitedThisTurn = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
     if (collectionContinued) {
       void this.schedule('booking_incomplete', `${context.traceId}:collection_continued`, context);
     }
 
-    const presentedStoreCalls = collectionContinued
-      ? []
-      : toolCalls.filter((call) => this.presentedStore(call, reply));
+    const presentedStoreCalls =
+      collectionContinued || groupInvitedThisTurn
+        ? []
+        : toolCalls.filter((call) => this.presentedStore(call, reply));
     if (presentedStoreCalls.length > 0) {
       void this.schedule(
         'store_presented_no_reply',
@@ -242,6 +256,11 @@ export class ReengagementAnchorService {
 
   private isCancelSucceeded(call: AgentToolCall): boolean {
     if (call.toolName !== 'duliday_cancel_work_order') return false;
+    return this.asRecord(call.result)?.success === true;
+  }
+
+  private isGroupInviteSucceeded(call: AgentToolCall): boolean {
+    if (call.toolName !== 'invite_to_group') return false;
     return this.asRecord(call.result)?.success === true;
   }
 

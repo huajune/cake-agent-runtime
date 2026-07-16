@@ -347,6 +347,55 @@ export class FollowUpSchedulerService {
     return removed;
   }
 
+  /**
+   * 业务动作已明确使某场景失效时，立即移除该会话下该场景的全部待触发任务。
+   * 与 superseded 不同，这里没有新任务替代旧任务，追溯页应显示 stopped。
+   */
+  async stopPendingJobsForSessionScenario(input: {
+    sessionRef: SessionRef;
+    scenarioCode: FollowUpScenarioCode;
+    reason: string;
+  }): Promise<number> {
+    let pendingJobs: Array<Job<FollowUpJob>> = [];
+    try {
+      pendingJobs = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 查询待终止任务失败 sessionId=${input.sessionRef.sessionId} scenario=${input.scenarioCode}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return 0;
+    }
+
+    let removed = 0;
+    for (const job of pendingJobs) {
+      if (
+        job.data?.sessionRef.sessionId !== input.sessionRef.sessionId ||
+        job.data.scenarioCode !== input.scenarioCode
+      ) {
+        continue;
+      }
+      const jobId = String(job.id);
+      try {
+        await job.remove();
+        const identity = this.buildIdentityFromJobData(job.data);
+        if (identity) {
+          this.tracking.trackStoppedBeforeFire(identity, { jobId, reason: input.reason });
+        }
+        removed += 1;
+        this.logger.log(`[reengagement] 已提前终止任务 jobId=${jobId} reason=${input.reason}`);
+      } catch (error) {
+        this.logger.warn(
+          `[reengagement] 提前终止任务失败 jobId=${jobId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return removed;
+  }
+
   private async removeSupersededPendingJobsBeforeEnqueue(
     input: ScheduleFollowUpInput,
     scenario: FollowUpScenario,

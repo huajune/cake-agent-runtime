@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-07-02
+**最后更新**：2026-07-16
 
 ---
 
@@ -72,6 +72,7 @@
 - **[产品定义](product/product-definition.md)** — 定位、用户角色、核心功能
 - **[业务流程详细说明](product/business-flows.md)** — 候选人招聘全流程 + 群聊管理
 - **[产品规划路线图](product/product-roadmap.md)** — 版本规划与功能优先级
+- **[复聊功能产品说明](product/reengagement.md)** — 主动跟进的场景、触发/停止规则、内容规范、灰度、指标与验收口径
 - **[Agent 运营手册（理解系统+日常操作）](product/agent-for-operations.md)** ⭐ — 运营向：消息旅程、记忆、工具清单、剧本、可调项、排查（原 product-view + agent-workflow 合并）
 - **[敏感信息与安全护栏全景（运营版）](product/sensitive-info-guardrails-for-operations.md)** — 公平性/诚信/隐私保护与运营处置指引（技术侧见 [security-guardrails.md](architecture/security-guardrails.md)）
 - **[拉人进群产品设计](product/invite-to-group.md)** — invite_to_group 产品设计

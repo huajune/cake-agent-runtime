@@ -49,6 +49,22 @@ describe('ReengagementTrackingService', () => {
     expect(input.firedAt).toEqual(expect.any(Number));
   });
 
+  it('records an eagerly removed pending job as stopped without a fire time', () => {
+    service.trackStoppedBeforeFire(identity, {
+      jobId: 'job-1',
+      reason: 'candidate_invited_to_group',
+    });
+
+    const input = lastInput();
+    expect(input.status).toBe('stopped');
+    expect(input.jobId).toBe('job-1');
+    expect(input.decisionReason).toBe('candidate_invited_to_group');
+    expect(input.firedAt).toBeUndefined();
+    expect(input.event?.detail).toEqual(
+      expect.objectContaining({ beforeFire: true, reason: 'candidate_invited_to_group' }),
+    );
+  });
+
   it('records superseded when a pending Bull job is removed before fire time', () => {
     service.trackSuperseded(identity, {
       jobId: 'job-old',

@@ -34,6 +34,13 @@ export interface AuthoritativeSessionState {
     source: 'candidate' | 'precheck';
   }>;
   presentedStores: PresentedStore[];
+  /** 本会话已成功邀请/核验在群的记录；复聊到点核验据此停止推店未回。 */
+  invitedGroups?: Array<{
+    groupName: string;
+    city: string;
+    industry?: string;
+    invitedAt: string;
+  }>;
   stage: string | null;
   lastCandidateMessageAt?: number;
   terminal?: 'booked' | 'handed_off' | 'rejected' | 'onboarded';
