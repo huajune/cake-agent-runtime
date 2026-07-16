@@ -8,6 +8,7 @@ import type {
   GeneratorStreamResult,
 } from '@agent/generator/generator.types';
 import { CallerKind } from '@enums/agent.enum';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 import {
@@ -603,7 +604,12 @@ export class TestExecutionService {
 
   private resolveHistoryForAgent(
     request: Pick<TestChatRequestDto, 'history' | 'message' | 'skipHistoryTrim'>,
-  ): Array<{ role: MessageRole; content: string; imageUrls?: string[] }> {
+  ): Array<{
+    role: MessageRole;
+    content: string;
+    imageUrls?: string[];
+    humanAgent?: boolean;
+  }> {
     const history = request.history || [];
     if (request.skipHistoryTrim) return history;
 
@@ -628,7 +634,12 @@ export class TestExecutionService {
   private async prepareMonitoringContext(params: {
     request: TestChatRequestDto;
     sessionId: string;
-    historyForAgent: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>;
+    historyForAgent: Array<{
+      role: MessageRole;
+      content: string;
+      imageUrls?: string[];
+      humanAgent?: boolean;
+    }>;
   }): Promise<MonitoringContextInfo> {
     const { request, sessionId, historyForAgent } = params;
 
@@ -652,7 +663,12 @@ export class TestExecutionService {
   private async syncHistoryToProductionChat(
     request: TestChatRequestDto,
     sessionId: string,
-    history: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>,
+    history: Array<{
+      role: MessageRole;
+      content: string;
+      imageUrls?: string[];
+      humanAgent?: boolean;
+    }>,
   ): Promise<string[]> {
     if (history.length === 0) {
       return [];
@@ -677,7 +693,12 @@ export class TestExecutionService {
     request: TestChatRequestDto;
     sessionId: string;
     historyIndex: number;
-    message: { role: MessageRole; content: string; imageUrls?: string[] };
+    message: {
+      role: MessageRole;
+      content: string;
+      imageUrls?: string[];
+      humanAgent?: boolean;
+    };
     timestamp: number;
   }): ChatMessageInput {
     const { request, sessionId, historyIndex, message, timestamp } = params;
@@ -685,7 +706,12 @@ export class TestExecutionService {
     const hasImages = (message.imageUrls?.length ?? 0) > 0;
     const role = message.role === MessageRole.ASSISTANT ? 'assistant' : 'user';
     const messageType = hasImages && !trimmedContent ? MessageType.IMAGE : MessageType.TEXT;
-    const source = role === 'assistant' ? MessageSource.AI_REPLY : MessageSource.MOBILE_PUSH;
+    const source =
+      role === 'assistant'
+        ? message.humanAgent
+          ? MessageSource.MOBILE_PUSH
+          : MessageSource.AI_REPLY
+        : MessageSource.MOBILE_PUSH;
 
     return {
       chatId: sessionId,
@@ -755,7 +781,12 @@ export class TestExecutionService {
   private buildHistoryMessageId(
     sessionId: string,
     historyIndex: number,
-    message: { role: MessageRole; content: string; imageUrls?: string[] },
+    message: {
+      role: MessageRole;
+      content: string;
+      imageUrls?: string[];
+      humanAgent?: boolean;
+    },
   ): string {
     const hash = createHash('sha1')
       .update(
@@ -763,6 +794,7 @@ export class TestExecutionService {
           role: message.role,
           content: message.content,
           imageUrls: message.imageUrls || [],
+          humanAgent: message.humanAgent === true,
         }),
       )
       .digest('hex')
@@ -803,7 +835,12 @@ export class TestExecutionService {
   }
 
   private buildRunnerMessages(
-    history: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>,
+    history: Array<{
+      role: MessageRole;
+      content: string;
+      imageUrls?: string[];
+      humanAgent?: boolean;
+    }>,
     message?: string,
     imageUrls?: string[],
   ): GeneratorInputMessage[] {
@@ -812,6 +849,13 @@ export class TestExecutionService {
         role: m.role as 'user' | 'assistant',
         content: m.content,
         imageUrls: m.imageUrls,
+        ...(m.role === MessageRole.ASSISTANT && m.humanAgent
+          ? {
+              source: StorageMessageSource.MOBILE_PUSH,
+              messageType: StorageMessageType.TEXT,
+              isSelf: true,
+            }
+          : {}),
       })),
       {
         role: 'user',
