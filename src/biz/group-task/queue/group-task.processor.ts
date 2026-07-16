@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
+import { randomUUID } from 'node:crypto';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { AlertLevel } from '@enums/alert.enum';
@@ -18,7 +19,8 @@ import {
   SendJobData,
   SendTarget,
   SummarizeJobData,
-  groupTaskDispatchStartedKey,
+  groupTaskBotDispatchLockKey,
+  groupTaskBotLastDispatchKey,
   groupTaskDailySentKey,
   groupTaskMetaKey,
   groupTaskMsgKey,
@@ -42,6 +44,16 @@ import {
   INTRA_GROUP_MESSAGE_DELAY_MS,
   resolveHumanizedDelayMs,
 } from '../utils/humanized-delay.util';
+
+const BOT_DISPATCH_LOCK_TTL_SECONDS = 20 * 60;
+const BOT_DISPATCH_LOCK_POLL_MS = 1_000;
+
+const RELEASE_OWNED_LOCK_SCRIPT = `
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  return redis.call('del', KEYS[1])
+end
+return 0
+`;
 
 /**
  * 群任务队列处理器
@@ -93,7 +105,8 @@ export class GroupTaskProcessor implements OnModuleInit {
     this.queue.process(GroupTaskJobName.PREPARE, 3, (job: Job<PrepareJobData>) =>
       this.handlePrepare(job),
     );
-    // send 单 worker，防止同一 bot 并发发出触发风控；单群之间通过 delay 天然错峰
+    // 注意：Bull named processor 的 concurrency 不是 job name 级隔离；同 Queue 的其它
+    // process loop 也可能取到 send job。真正的同 bot 串行由 handleSend 的 Redis 锁保证。
     this.queue.process(GroupTaskJobName.SEND, 1, (job: Job<SendJobData>) => this.handleSend(job));
     this.queue.process(GroupTaskJobName.SUMMARIZE, 1, (job: Job<SummarizeJobData>) =>
       this.handleSummarize(job),
@@ -387,7 +400,7 @@ export class GroupTaskProcessor implements OnModuleInit {
     };
     await this.redisService.setex(msgRedisKey, GROUP_TASK_CACHE_TTL_SECONDS, cache);
 
-    for (const { group } of targets) {
+    for (const { group, globalIndex } of targets) {
       const sendJob: SendJobData = {
         execId,
         type,
@@ -402,8 +415,9 @@ export class GroupTaskProcessor implements OnModuleInit {
       };
       await this.queue.add(GroupTaskJobName.SEND, sendJob, {
         jobId: `${execId}:send:${group.imRoomId}`,
-        // 发送 worker 内部串行等待，这里不再叠加 Bull delay。
-        delay: 0,
+        // 先在 Bull 层按全局序号做最小错峰，避免大量 send 同时进入 active 占满所有
+        // processor loop；实际跨群 2~4 分钟间隔仍由 handleSend 的 bot 锁兜底。
+        delay: globalIndex * sendDelayMs,
         attempts: 3,
         backoff: { type: 'exponential', delay: 15_000 },
         removeOnComplete: { age: 7 * 24 * 60 * 60, count: 1000 },
@@ -437,31 +451,37 @@ export class GroupTaskProcessor implements OnModuleInit {
       return;
     }
 
-    // 首个实际开始发送的群立即执行；后续群均在上一个 send job
-    // 完成后再随机等待 5~10 分钟。setNx 使进程重启后也不会把中途群误当首群。
-    const isFirstGroup = await this.redisService.setNx(
-      groupTaskDispatchStartedKey(execId),
-      '1',
-      GROUP_TASK_CACHE_TTL_SECONDS,
-    );
-    if (!isFirstGroup) {
-      // 兼容发版前已入队、尚未带 sendDelayMs 的旧 job。
-      const interGroupBaseDelayMs =
-        Number.isFinite(sendDelayMs) && sendDelayMs > 0 ? sendDelayMs : 300_000;
-      const interGroupDelayMs = resolveHumanizedDelayMs(interGroupBaseDelayMs, {
-        minFactor: 1,
-        maxFactor: 2,
-      });
-      this.logger.log(`[send] ${group.groupName} 跨群发送前等待 ${interGroupDelayMs}ms`);
-      await this.delay(interGroupDelayMs);
-    }
-
     const cache = await this.redisService.get<GroupTaskMessageCache>(msgRedisKey);
     if (!cache) {
       throw new Error(`[send] 消息缓存丢失，无法发送 ${group.groupName}: ${msgRedisKey}`);
     }
 
+    const botId = group.imBotId?.trim();
+    if (!botId) {
+      throw new Error(`[send] 群 ${group.groupName} 缺少 imBotId，无法建立发送限速锁`);
+    }
+
+    const lockKey = groupTaskBotDispatchLockKey(botId);
+    const lockOwner = `${execId}:${group.imRoomId}:${randomUUID()}`;
+    await this.acquireBotDispatchLock(lockKey, lockOwner, group.groupName);
+
+    let dispatchAttempted = false;
     try {
+      // 等锁期间可能已有另一个 exec 完成了同群发送，锁内再查一次避免重复投递。
+      if (await this.redisService.exists(dailyKey)) {
+        this.logger.log(`[send] 等锁期间已发送，跳过: ${group.groupName}`);
+        await this.writeGroupResult(execId, group.imRoomId, {
+          groupKey,
+          groupName: group.groupName,
+          status: 'skipped',
+          summary: '今日已发送（锁内幂等跳过）',
+          updatedAt: Date.now(),
+        });
+        return;
+      }
+
+      await this.waitForBotDispatchWindow(botId, group.groupName, sendDelayMs);
+      dispatchAttempted = true;
       await this.notificationSender.sendToGroup(group, cache.message, type, dryRun);
       if (cache.followUpMessage) {
         await this.notificationSender.sendTextToGroup(group, cache.followUpMessage, dryRun);
@@ -495,7 +515,65 @@ export class GroupTaskProcessor implements OnModuleInit {
         updatedAt: Date.now(),
       });
       throw error;
+    } finally {
+      // 即便主消息成功、卡片失败，也要从本次尝试结束重新计算跨群间隔，避免失败重试
+      // 与下一群立刻叠加。缓存缺失/锁内幂等跳过没有真正发送，不更新时间。
+      try {
+        if (dispatchAttempted) {
+          await this.redisService.setex(
+            groupTaskBotLastDispatchKey(botId),
+            GROUP_TASK_CACHE_TTL_SECONDS,
+            Date.now(),
+          );
+        }
+      } finally {
+        // 时间戳写入失败也必须释放锁，避免后续群只能等锁 TTL 自然过期。
+        await this.releaseBotDispatchLock(lockKey, lockOwner);
+      }
     }
+  }
+
+  private async acquireBotDispatchLock(
+    lockKey: string,
+    lockOwner: string,
+    groupName: string,
+  ): Promise<void> {
+    let loggedWaiting = false;
+    while (!(await this.redisService.setNx(lockKey, lockOwner, BOT_DISPATCH_LOCK_TTL_SECONDS))) {
+      if (!loggedWaiting) {
+        this.logger.log(`[send] ${groupName} 等待同 bot 的前序群发送完成`);
+        loggedWaiting = true;
+      }
+      await this.delay(BOT_DISPATCH_LOCK_POLL_MS);
+    }
+  }
+
+  private async waitForBotDispatchWindow(
+    botId: string,
+    groupName: string,
+    sendDelayMs: number,
+  ): Promise<void> {
+    const lastDispatchAt = Number(
+      await this.redisService.get<number | string>(groupTaskBotLastDispatchKey(botId)),
+    );
+    if (!Number.isFinite(lastDispatchAt) || lastDispatchAt <= 0) return;
+
+    // 兼容发版前已入队、尚未带 sendDelayMs 的旧 job。
+    const interGroupBaseDelayMs =
+      Number.isFinite(sendDelayMs) && sendDelayMs > 0 ? sendDelayMs : 120_000;
+    const spacingMs = resolveHumanizedDelayMs(interGroupBaseDelayMs, {
+      minFactor: 1,
+      maxFactor: 2,
+    });
+    const remainingMs = Math.max(0, lastDispatchAt + spacingMs - Date.now());
+    if (remainingMs <= 0) return;
+
+    this.logger.log(`[send] ${groupName} 跨群发送前等待 ${remainingMs}ms`);
+    await this.delay(remainingMs);
+  }
+
+  private async releaseBotDispatchLock(lockKey: string, lockOwner: string): Promise<void> {
+    await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [lockKey], [lockOwner]);
   }
 
   private delay(ms: number): Promise<void> {
