@@ -1,152 +1,92 @@
 {
-  "baseVersion": "10.14.0",
+  "baseVersion": "10.15.0",
   "nextVersion": "10.15.0",
   "updatedAt": "2026-07-16",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "577",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/577",
-      "title": "全角别名塌缩致单字误命中品牌（热修）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-16",
-      "businessUpdates": [
-        "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
-        "全角别名塌缩致单字误命中品牌（热修）"
-      ],
-      "summary": [
-        "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
-        "全角别名塌缩致单字误命中品牌（热修）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "576",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/576",
-      "title": "加固事实护栏与人工接管链路",
-      "author": "huajune",
-      "mergedAt": "2026-07-16",
-      "businessUpdates": [
-        "加固事实护栏与人工接管链路",
-        "收紧岗位查询后的预约承诺",
-        "补齐面试时间意图护栏测试"
-      ],
-      "summary": [
-        "加固事实护栏与人工接管链路",
-        "收紧岗位查询后的预约承诺",
-        "补齐面试时间意图护栏测试"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "加固事实护栏与人工接管链路",
-        "收紧岗位查询后的预约承诺",
-        "补齐面试时间意图护栏测试"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "lint、Prettier、TypeScript typecheck、前后端生产构建通过。",
-        "完整 Jest：350 个套件、5165 个用例通过；发现并修复 1 个 Guardrail 目录元数据失败。",
-        "修复后定向复验：Guardrail 目录、品牌事故回归、品牌匹配、身份识别共 154 个用例通过。",
-        "`git diff --check` 通过。"
-      ]
-    },
-    {
-      "number": "580",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/580",
-      "title": "brand-resolution 规格升至 v5（实施后修订）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-16",
-      "businessUpdates": [
-        "brand-resolution 规格升至 v5（实施后修订）"
-      ],
-      "summary": [
-        "brand-resolution 规格升至 v5（实施后修订）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "brand-resolution 规格升至 v5（实施后修订）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.14.0",
+    "version": "10.15.0",
     "date": "2026-07-16",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "571",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/571",
-        "title": "修复身份预检、出站护栏与群任务调度",
+        "number": "577",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/577",
+        "title": "全角别名塌缩致单字误命中品牌（热修）",
         "author": "ArielZhu",
         "mergedAt": "2026-07-16",
         "businessUpdates": [
-          "Test Suite 支持真人经理消息 fixture，并完善多表观测排障与复聊产品文档。",
-          "支持真人消息夹具与多表排障",
-          "统一学生/社会人士身份识别链路，修复身份预检重复追问、拒后改口核实和重复报名风险。",
-          "拦截静默旁白与无依据班次承诺，补充语义评审观测，并在成功拉群后终止无效复聊。",
-          "群任务改为按企微 Bot 分布式串行发送，默认跨群间隔调整为 2–4 分钟。"
+          "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
+          "全角别名塌缩致单字误命中品牌（热修）"
         ],
         "summary": [
-          "身份识别增强与追问上限护栏",
-          "澄清身份入参答案方向语义",
-          "身份链路统一识别器与核实护栏",
-          "拦截静默旁白与无依据班次承诺",
-          "持久化语义评审执行事件",
-          "拉群后终止无效推店复聊",
-          "按机器人串行发送并缩短群间隔",
-          "支持真人消息夹具与多表排障",
-          "统一学生/社会人士身份识别链路，修复身份预检重复追问、拒后改口核实和重复报名风险。",
-          "拦截静默旁白与无依据班次承诺，补充语义评审观测，并在成功拉群后终止无效复聊。",
-          "群任务改为按企微 Bot 分布式串行发送，默认跨群间隔调整为 2–4 分钟。",
-          "Test Suite 支持真人经理消息 fixture，并完善多表观测排障与复聊产品文档。",
-          "修复身份预检、出站护栏与群任务调度"
+          "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
+          "全角别名塌缩致单字误命中品牌（热修）"
         ],
-        "features": [
-          "Test Suite 支持真人经理消息 fixture，并完善多表观测排障与复聊产品文档。",
-          "支持真人消息夹具与多表排障"
+        "features": [],
+        "fixes": [],
+        "optimizations": [
+          "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧"
         ],
-        "fixes": [
-          "统一学生/社会人士身份识别链路，修复身份预检重复追问、拒后改口核实和重复报名风险。",
-          "拦截静默旁白与无依据班次承诺，补充语义评审观测，并在成功拉群后终止无效复聊。",
-          "群任务改为按企微 Bot 分布式串行发送，默认跨群间隔调整为 2–4 分钟。"
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "576",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/576",
+        "title": "加固事实护栏与人工接管链路",
+        "author": "huajune",
+        "mergedAt": "2026-07-16",
+        "businessUpdates": [
+          "加固事实护栏与人工接管链路",
+          "收紧岗位查询后的预约承诺",
+          "补齐面试时间意图护栏测试"
         ],
+        "summary": [
+          "加固事实护栏与人工接管链路",
+          "收紧岗位查询后的预约承诺",
+          "补齐面试时间意图护栏测试"
+        ],
+        "features": [],
+        "fixes": [],
         "optimizations": [],
         "ops": [
-          "身份识别增强与追问上限护栏",
-          "澄清身份入参答案方向语义",
-          "身份链路统一识别器与核实护栏",
-          "拦截静默旁白与无依据班次承诺",
-          "持久化语义评审执行事件",
-          "拉群后终止无效推店复聊",
-          "按机器人串行发送并缩短群间隔"
+          "加固事实护栏与人工接管链路",
+          "收紧岗位查询后的预约承诺",
+          "补齐面试时间意图护栏测试"
         ],
-        "config": [
-          "`GROUP_TASK_SEND_DELAY_MS` 默认值由 `300000` 调整为 `120000`，实际随机间隔由 5–10 分钟调整为 2–4 分钟。"
-        ],
-        "envFiles": [
-          ".env.example"
-        ],
+        "config": [],
+        "envFiles": [],
         "verification": [
-          "`pnpm run ci:check` 全量通过",
-          "349 个测试套件通过，5077 个测试通过，1 个套件按配置跳过",
-          "身份预检、Agent 护栏、语义评审、复聊、群任务和 Test Suite 定向测试通过"
+          "lint、Prettier、TypeScript typecheck、前后端生产构建通过。",
+          "完整 Jest：350 个套件、5165 个用例通过；发现并修复 1 个 Guardrail 目录元数据失败。",
+          "修复后定向复验：Guardrail 目录、品牌事故回归、品牌匹配、身份识别共 154 个用例通过。",
+          "`git diff --check` 通过。"
         ]
+      },
+      {
+        "number": "580",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/580",
+        "title": "brand-resolution 规格升至 v5（实施后修订）",
+        "author": "ArielZhu",
+        "mergedAt": "2026-07-16",
+        "businessUpdates": [
+          "brand-resolution 规格升至 v5（实施后修订）"
+        ],
+        "summary": [
+          "brand-resolution 规格升至 v5（实施后修订）"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "brand-resolution 规格升至 v5（实施后修订）"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
       }
     ]
   }
