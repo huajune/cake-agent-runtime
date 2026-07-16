@@ -1597,6 +1597,13 @@ describe('PreparationService', () => {
       messages: [{ role: 'user' as const, content: '这个岗位具体做什么，工资是日结吗' }],
       expected: '追问当前岗位的具体字段',
     },
+    {
+      name: 'numeric schedule proposal without schedule keyword',
+      messages: [
+        { role: 'user' as const, content: '欢乐海岸店暂时需要排4-10，因为需要看地铁时间' },
+      ],
+      expected: '追问当前岗位的具体字段',
+    },
   ])('should append critical turn guard for $name', async ({ messages, expected }) => {
     const result = await service.prepare(
       {

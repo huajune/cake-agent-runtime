@@ -119,6 +119,23 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
+    id: 'meta_narration_reply',
+    action: GUARDRAIL_ACTION.BLOCK,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '拦住整条回复是描述 Agent 自身行为的括号旁白（如"（本轮为真人沟通，AI 保持静默，不插入回复）"）。' +
+      '模型有沉默意图但没走 skip_reply 时会产生这种内心独白外发；runner 对本规则直达静默，不进重写 repair。',
+    riskGoal:
+      '防止模型的静默意图/内心独白被当正文发给候选人，暴露 AI 身份并破坏真人接管中的沟通（badcase chat 6a5740ff，经理被迫撤回）。',
+    exogenousSignal:
+      '整条回复被括号完整包裹的封闭形态 + 自我指涉元词（真人/AI/静默/不插入回复等）。',
+    residualRisk:
+      '未被括号包裹、或与正文混排的旁白不在口径内（依赖 prompt 红线与 skip_reply 场景扩充治理）；新元词形态需随 badcase 补词。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版整条是描述你自身行为的旁白说明，不是给候选人的话，当前文本不可发送。本轮若不该回复，唯一合法动作是调用 skip_reply 工具；若需要回复，请直接输出候选人可见的正文。',
+  },
+  {
     id: 'identity_misregistration_coaching',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
@@ -220,16 +237,29 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
-      '当前焦点岗位明确时，候选人追问精简记忆缺失的岗位详情，强制按 jobId 补查后再回答。',
-    riskGoal: '防止模型用综合月薪、品牌常识或历史助手话术推断结算、工期、工作内容等缺失字段。',
+      '候选人追问已展示岗位详情时，强制明确当前岗位并按 jobId 补查动态或缺失字段后再回答。',
+    riskGoal: '防止模型用综合月薪、品牌常识或历史助手话术推断结算、班次、工期、工作内容等字段。',
     exogenousSignal:
       '候选人本轮详情问题 + memory_snapshot.currentFocusJob.availableDetailFields + 本轮 duliday_job_list(jobIdList)。',
     residualRisk:
-      '未能归类的新详情问法需要扩充字段意图词表；当前焦点岗位不明确时仍需先由生成层澄清岗位。',
+      '未能归类的新详情问法需要扩充字段意图词表；当前岗位不明确且尚未展示岗位时仍需由生成层澄清。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '候选人正在追问当前岗位详情，但精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；请使用当前焦点岗位 jobId 调用 duliday_job_list，只按本轮结果回答。',
+      '候选人正在追问已展示岗位详情，但当前岗位不明确、精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；当前焦点岗位明确时使用其 jobId 调用 duliday_job_list，只按本轮结果回答；当前焦点岗位不明确时先确认候选人问的是哪家门店/岗位。',
     repairToolNames: ['duliday_job_list'],
+  },
+  {
+    id: 'unsupported_schedule_window_claim',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '拦截把岗位已给固定班次擅自缩短、改写成工具未列出的“可协调时段”。',
+    riskGoal: '避免候选人依据虚构排班承诺报名，到店后才发现必须做到岗位规定时间。',
+    exogenousSignal: '当前 jobId 的 duliday_job_list 工作时间结果 + 回复中的明确时间段和协调承诺。',
+    residualRisk:
+      '没有数字时间段的含蓄承诺交语义审查；本轮没有岗位补查时由 job_detail_lookup_required 先 replan。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版把当前岗位班次改写成了工具未列出的可协调时段，当前文本不可发送。请只转述本轮 duliday_job_list 明确列出的完整工作班次；候选人无法满足时，如实说明当前岗位时间不匹配，并按已有流程查询其他岗位或说明需要门店人工确认。禁止说“一般没问题/不会强制/可以协调”为候选人缩短班次。',
   },
   {
     id: 'settlement_cycle_mismatch',

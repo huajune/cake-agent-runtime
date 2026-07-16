@@ -46,11 +46,15 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   internal_output_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
+  meta_narration_reply:
+    'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   proactive_insurance_policy_mention:
     'agent/guardrail/output/rules/insurance-policy-claims.rule.ts（HardRulesService 调度）',
   quota_promise: 'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
   job_detail_lookup_required:
     'agent/guardrail/output/rules/job-detail-grounding.rule.ts（HardRulesService 调度）',
+  unsupported_schedule_window_claim:
+    'agent/guardrail/output/rules/schedule-window-claims.rule.ts（HardRulesService 调度）',
   settlement_cycle_mismatch:
     'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
 };

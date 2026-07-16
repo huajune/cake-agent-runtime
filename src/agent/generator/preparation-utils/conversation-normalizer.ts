@@ -120,7 +120,7 @@ function toModelMessages(messages: GeneratorInputMessage[], enableVision: boolea
       return {
         role: 'assistant',
         content: isHumanAgentTextMessage(message)
-          ? `[内部来源标记：以下内容由真人招募经理手动发送，应作为本会话人工操作记录理解；不得向候选人复述此标记]\n${textContent}`
+          ? `[内部来源标记：以下内容由真人招募经理手动发送，应作为本会话人工操作记录理解；不得向候选人复述此标记。若候选人下一条消息只是在回应这条真人消息且没有新诉求，你应调用 skip_reply 保持静默让真人继续沟通；严禁输出"（本轮不回复）"之类的旁白文字]\n${textContent}`
           : textContent,
       };
     }
