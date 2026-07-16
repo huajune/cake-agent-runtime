@@ -139,6 +139,7 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('学生能否安排只看岗位数据');
     expect(output).toContain('未写学生限制或未返回学生筛选项时按没有额外学生硬限制');
     expect(output).toContain('不得凭空增加门店确认或人工介入');
+    expect(output).toContain('约面阶段仍必须保持 candidateIsStudent=true 调 precheck');
   });
 
   it('routes district-without-city through geocode tri-state instead of reverse-asking the candidate', () => {
