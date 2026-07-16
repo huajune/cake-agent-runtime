@@ -122,3 +122,37 @@ export function detectHumanServicePhraseLeak(content: string): RuleContradiction
     action: GUARDRAIL_ACTION.OBSERVE,
   };
 }
+
+/**
+ * 元叙述旁白：整条回复是描述 Agent 自身行为的括号旁白，说明模型有"本轮不该说话"
+ * 的意图但没走 skip_reply 工具，把内心独白当成了正文。
+ *
+ * 业务背景：badcase chat 6a5740ff…（2026-07-15）：真人招募经理手动插话筛选候选人、
+ * 候选人回应真人后，模型输出「（本轮为真人招募经理与候选人直接沟通，AI 保持静默，
+ * 不插入回复）」被当正文投递，经理被迫撤回。与上面的内部状态泄漏同族（内部
+ * 视角文本外发），但形态是自然语言旁白，词库式 PATTERNS 覆盖不到。
+ *
+ * 口径刻意收窄（兜底边界原则，30 天生产仅此一例形态）：
+ * - 整条回复必须被全角/半角括号完整包裹——正常候选人话术不存在这种形态；
+ * - 且含自我指涉元词（真人/AI/静默/不插入回复 等）。
+ * 两个条件叠加，正文里合法使用括号（如"到店说（独立客介绍来的）"）不会命中。
+ *
+ * 命中处理：block，且 runner 对本规则直达静默不进 repair——本该沉默的轮次，
+ * 重写产物仍是不该发的插话（见 agent-runner isOnlyMetaNarrationBlock）。
+ */
+const META_NARRATION_WRAPPED_PATTERN = /^[（(][^（()）]*[）)]$/;
+const META_NARRATION_TERM_PATTERN =
+  /真人|AI|人机|静默|沉默|不插入|不回复|无需回复|等待候选人|人工操作/;
+
+export function detectMetaNarrationReply(content: string): RuleContradiction | null {
+  const text = content?.trim() ?? '';
+  if (!text) return null;
+  if (!META_NARRATION_WRAPPED_PATTERN.test(text)) return null;
+  if (!META_NARRATION_TERM_PATTERN.test(text)) return null;
+  return {
+    ruleId: 'meta_narration_reply',
+    label:
+      '整条回复是描述 Agent 自身行为的括号旁白（如"AI 保持静默，不插入回复"），属内心独白外发，必须拦截并整轮静默（badcase chat 6a5740ff）',
+    action: GUARDRAIL_ACTION.BLOCK,
+  };
+}

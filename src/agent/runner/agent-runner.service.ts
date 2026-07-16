@@ -212,6 +212,34 @@ export class AgentRunnerService {
 
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
     const firstStep = this.toGuardrailStep('first', decision);
+
+    // 元叙述旁白 = 模型的静默意图漏成了正文（badcase chat 6a5740ff…：真人经理接管
+    // 期间模型输出"（AI 保持静默，不插入回复）"被投递）。这种轮次的正确结局是整轮
+    // 沉默——repair 重写只会把"不该说话的轮次"改写成另一句插话，因此与悬空承接句
+    // 同理直接收敛为 block（沉默 + 落审查档案），不进 repair、不送二审。
+    if (decision.decision === 'block' && this.isOnlyMetaNarrationBlock(decision)) {
+      const silencedDecision: OutputGuardDecision = {
+        ...decision,
+        reasonCode: 'meta_narration_silenced',
+      };
+      this.logger.warn(
+        `[invokeReviewed] 首版为元叙述旁白，收敛为 block（整轮静默）: text="${firstText.slice(0, 80)}"`,
+      );
+      this.persistReviewRecord(ctx, {
+        firstReply: firstText,
+        firstDecision: decision,
+        finalDecision: silencedDecision,
+        repaired: false,
+      });
+      return this.finalizeReviewed(
+        first,
+        silencedDecision,
+        false,
+        wantDefer,
+        this.buildGuardrailTrace([firstStep], false, silencedDecision),
+      );
+    }
+
     const shouldRepair = decision.decision !== 'pass' && decision.decision !== 'observe';
     if (!shouldRepair) {
       this.persistReviewRecord(ctx, {
@@ -576,6 +604,18 @@ export class AgentRunnerService {
     return (
       decision.blockedRuleIds.length > 0 &&
       decision.blockedRuleIds.every((ruleId) => ruleId === 'internal_output_leak')
+    );
+  }
+
+  /**
+   * 首审仅命中 meta_narration_reply（元叙述旁白）时直达静默：这种回复代表模型本轮
+   * 的真实意图是"不说话"，重写修复没有意义（修出来的仍是不该发的插话）。混合命中
+   * 其它 block 规则时不走此捷径，仍按常规 repair 流程保守处理。
+   */
+  private isOnlyMetaNarrationBlock(decision: OutputGuardDecision): boolean {
+    return (
+      decision.blockedRuleIds.length > 0 &&
+      decision.blockedRuleIds.every((ruleId) => ruleId === 'meta_narration_reply')
     );
   }
 

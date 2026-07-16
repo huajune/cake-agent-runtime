@@ -126,6 +126,27 @@ export class ReengagementTrackingService {
     );
   }
 
+  /** 未到点前业务状态已使任务失效；Bull job 已移除，不伪造 fired_at。 */
+  trackStoppedBeforeFire(
+    identity: ReengagementTouchIdentity,
+    params: { jobId?: string; reason: string },
+  ): void {
+    this.persist({
+      ...this.base(identity),
+      jobId: params.jobId,
+      status: ReengagementTouchStatus.Stopped,
+      decisionReason: params.reason,
+      event: {
+        event: ReengagementTouchEventName.Stopped,
+        detail: {
+          reason: params.reason,
+          beforeFire: true,
+          ...(params.jobId ? { jobId: params.jobId } : {}),
+        },
+      },
+    });
+  }
+
   /** 频控丢弃 */
   trackFrequencyBlocked(identity: ReengagementTouchIdentity): void {
     this.markFired(

@@ -119,6 +119,14 @@ export class SimpleMessageDto {
   @IsString()
   content: string;
 
+  @ApiPropertyOptional({
+    description: '是否为真人招募经理手动发送；仅用于测试历史来源 fixture',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  humanAgent?: boolean;
+
   @ApiPropertyOptional({ description: '该条消息关联的图片 URL 列表' })
   @IsOptional()
   @IsArray()

@@ -53,6 +53,18 @@ export type AgentEvent = AgentEventContext &
       }
     | { type: 'model_call'; modelId: string; role: string }
     | { type: 'model_fallback'; fromModel: string; toModel: string; reason: string }
+    /**
+     * 出站语义评审执行档案（shadow / enforce 各发一条）：语义档命中判例落飞书
+     * badcase 表（分子），此事件补"实际跑了多少次评审"（分母），兼作存活探针——
+     * pass 判例此前只有进程日志，生产侧无法证实语义档是否真的在跑。
+     */
+    | {
+        type: 'semantic_review';
+        mode: 'shadow' | 'enforce';
+        decision: string;
+        confidence: string;
+        findingCodes: string[];
+      }
     | {
         type: 'tool_call';
         toolName: string;

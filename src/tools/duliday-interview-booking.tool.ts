@@ -22,6 +22,7 @@ import {
   type SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
+import { findLatestExplicitIdentity } from '@tools/shared/identity-statement.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
@@ -1165,18 +1166,18 @@ function resolveUploadResumeFileName(
 }
 
 function resolveCandidateIsStudentForBooking(context: ToolBuildContext): boolean | undefined {
-  const text = [context.currentUserMessage, ...collectTextParts(context.messages)]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join('\n');
-  const identityMatches = Array.from(
-    text.matchAll(/身份(?:[（(]学生\s*[/／]\s*社会人士[）)])?\s*[：:]\s*(学生|社会人士)/gu),
-  );
-  const latestIdentity = identityMatches.at(-1)?.[1];
+  // 统一走共享识别器（只读候选人 user 消息、剥引用块/时间戳、子句级锚定）。
+  // 旧实现对"全窗口拼接文本"做子串测试，Agent 模板"身份（学生还是社会人士）："
+  // 自带"社会人士"子串，任何出现过该模板的会话都会被误判为非学生。
+  const currentUserEntry = context.currentUserMessage
+    ? [{ role: 'user', content: context.currentUserMessage }]
+    : [];
+  const latestIdentity = findLatestExplicitIdentity([
+    ...(Array.isArray(context.messages) ? context.messages : []),
+    ...currentUserEntry,
+  ]);
   if (latestIdentity === '学生') return true;
   if (latestIdentity === '社会人士') return false;
-
-  if (/不是学生|非学生|已经?毕业|社会人士|上班族/u.test(text)) return false;
-  if (/我是学生|(?:本科|大专|高中|研究生)在读|我还在读|我在上学/u.test(text)) return true;
 
   const sessionIdentity = context.sessionFacts?.interview_info?.is_student;
   if (typeof sessionIdentity === 'boolean') return sessionIdentity;

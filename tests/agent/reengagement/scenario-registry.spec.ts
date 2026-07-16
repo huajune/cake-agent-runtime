@@ -150,6 +150,40 @@ describe('scenario-registry', () => {
       expect(r.reason).toBe('candidate_replied_after_anchor');
     });
 
+    it('stops store follow-ups when the candidate has joined a group', () => {
+      const storeScenario = getScenario('store_presented_no_reply')!;
+      const state = baseState({
+        presentedStores: [{ jobId: 123 }],
+        invitedGroups: [
+          {
+            groupName: '上海餐饮兼职群',
+            city: '上海',
+            industry: '餐饮',
+            invitedAt: new Date(anchorAt + 1).toISOString(),
+          },
+        ],
+      });
+
+      expect(shouldStop(storeScenario, state, anchorAt)).toEqual({
+        stop: true,
+        reason: 'candidate_invited_to_group',
+      });
+    });
+
+    it('does not apply the invited-group stop to unrelated scenarios', () => {
+      const state = baseState({
+        invitedGroups: [
+          {
+            groupName: '上海餐饮兼职群',
+            city: '上海',
+            invitedAt: new Date(anchorAt + 1).toISOString(),
+          },
+        ],
+      });
+
+      expect(shouldStop(scenario, state, anchorAt).stop).toBe(false);
+    });
+
     it('exempts externally verifiable booking follow-ups from the replied rule', () => {
       // 报名后回一句"好的"不该杀掉面试提醒——带 workOrderId 的任务由到点核验判失效
       const s = getScenario('interview_reminder')!;

@@ -199,7 +199,9 @@ export function matchScheduleConstraint(
   const has = (s: ScheduleSemantic) => semantics.includes(s);
 
   if (constraint.onlyWeekends) {
-    if (has('weekend_only_compatible') || has('flexible')) return { matched: true };
+    // 冲突语义必须先于宽松语义判定。海绵岗位可能同时标记“灵活排班”和
+    // “做六休一/每周至少 5 天”；此时 flexible 只表示日内时段可协调，不能覆盖
+    // 每周出勤频次。历史 badcase 6a57332c：只做周末的候选人被推荐全周岗位。
     if (has('requires_full_week')) {
       return { matched: false, reason: '岗位是全周强排班，与"只做周末"冲突' };
     }
@@ -207,17 +209,19 @@ export function matchScheduleConstraint(
       // 周六周日要给班 + 工作日也要给班 → 不能"只周末"
       return { matched: false, reason: '岗位除周末外还要工作日给班，与"只做周末"冲突' };
     }
+    if (has('weekend_only_compatible') || has('flexible')) return { matched: true };
     return { matched: false, reason: '岗位排班未明确允许只做周末' };
   }
 
   if (constraint.onlyEvenings) {
-    if (has('evening_compatible') || has('flexible')) return { matched: true };
-    if (has('morning_compatible') && !has('evening_compatible')) {
-      return { matched: false, reason: '岗位仅安排早班，与"只做晚班"冲突' };
-    }
+    // “灵活排班”同样不能覆盖全周/全天强排班事实。
     if (has('requires_full_week')) {
       return { matched: false, reason: '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认' };
     }
+    if (has('morning_compatible') && !has('evening_compatible')) {
+      return { matched: false, reason: '岗位仅安排早班，与"只做晚班"冲突' };
+    }
+    if (has('evening_compatible') || has('flexible')) return { matched: true };
     return { matched: false, reason: '岗位排班未明确含晚班' };
   }
 

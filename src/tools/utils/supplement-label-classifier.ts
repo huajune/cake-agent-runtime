@@ -22,6 +22,22 @@
 /** 括号黑名单：匹配"（不要/非/不接受/不含/不做/不招 ...）"风格的约束描述。 */
 const BLACKLIST_PAREN_REGEX = /[（(](?:不要|非|不接受|不含|不做|不招)([^）)]+)[)）]/u;
 
+/**
+ * 裸排除式：labelName 本身就是人员身份约束（"不要学生"、"不招暑假工"、"学生勿扰"），
+ * 没有括号。2026-07-15 生产：肯德基岗配了"不要学生"标签，被默认当 collect 型进了
+ * missingFields / templateText，模型被迫向候选人收集这个泄露筛选意图、候选人也
+ * 无从作答的"字段"。产品裁定：这类标签是约束条件，走 screening 通道。
+ *
+ * 目标词收窄为人员身份类白名单：排班/偏好描述型标签（如"不要早班要周末和全天"）
+ * 仍是 collect 型，不得误归 screening。
+ */
+const BARE_EXCLUSION_TARGET = '(学生|大学生|在校生|应届生|暑假工|暑期工|寒假工)';
+const BARE_EXCLUSION_REGEX = new RegExp(
+  `^(?:不要|不招|不收|不接受|谢绝|拒绝)${BARE_EXCLUSION_TARGET}$`,
+  'u',
+);
+const BARE_AVOID_SUFFIX_REGEX = new RegExp(`^${BARE_EXCLUSION_TARGET}勿扰$`, 'u');
+
 /** 反问式：以"吗"结尾的 label，如"周四六日都能上班吗"。 */
 const RHETORICAL_REGEX = /吗[?？]?$/u;
 
@@ -70,6 +86,20 @@ export type SupplementClassification =
  */
 export function classifySupplementLabel(labelName: string): SupplementClassification {
   const normalized = labelName.trim();
+
+  const bareExclusionMatch =
+    BARE_EXCLUSION_REGEX.exec(normalized) ?? BARE_AVOID_SUFFIX_REGEX.exec(normalized);
+  if (bareExclusionMatch) {
+    const target = (bareExclusionMatch[1] ?? '').trim();
+    if (target) {
+      return {
+        type: 'screening',
+        labelName,
+        mode: 'blacklist',
+        failSignals: [target],
+      };
+    }
+  }
 
   const blacklistMatch = BLACKLIST_PAREN_REGEX.exec(normalized);
   if (blacklistMatch) {

@@ -112,6 +112,12 @@ describe('matchScheduleConstraint', () => {
         });
       },
     );
+
+    it('lets full-week semantics override flexible for badcase 6a57332c', () => {
+      expect(
+        matchScheduleConstraint(['requires_full_week', 'flexible'], { onlyWeekends: true }),
+      ).toEqual({ matched: false, reason: '岗位是全周强排班，与"只做周末"冲突' });
+    });
   });
 
   describe('onlyEvenings', () => {
@@ -130,6 +136,17 @@ describe('matchScheduleConstraint', () => {
         });
       },
     );
+
+    it('lets full-week semantics override flexible', () => {
+      expect(
+        matchScheduleConstraint(['requires_full_week', 'flexible', 'evening_compatible'], {
+          onlyEvenings: true,
+        }),
+      ).toEqual({
+        matched: false,
+        reason: '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认',
+      });
+    });
   });
 
   describe('onlyMornings', () => {

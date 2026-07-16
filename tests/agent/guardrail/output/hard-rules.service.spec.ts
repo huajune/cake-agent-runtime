@@ -72,7 +72,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('does not force a lookup when the requested stable field exists in compact memory', () => {
+    it('refreshes shift details even when compact memory says the field exists', () => {
       const result = service.check({
         replyText: '班次是11点到20点。',
         toolCalls: [],
@@ -81,7 +81,36 @@ describe('HardRulesService', () => {
         chatId: 'chat-1',
       });
 
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('replans when candidate proposes a numeric schedule window without saying 班次', () => {
+      const result = service.check({
+        replyText: '这个时间可以协调的。',
+        toolCalls: [],
+        userMessage: '欢乐海岸店暂时需要排4-10，因为需要看地铁时间',
+        memorySnapshot,
+        chatId: '6a573349ce406a6aee27fd07',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('replans shift questions when jobs were presented but no current focus job was set', () => {
+      const { currentFocusJob: _omitted, ...snapshotWithoutFocus } = memorySnapshot;
+      const result = service.check({
+        replyText: '是排班制的，每周会根据你方便的时间来排。',
+        toolCalls: [],
+        userMessage: '这些时间是排班还是直落',
+        memorySnapshot: snapshotWithoutFocus,
+        chatId: '6a573349ce406a6aee27fd07',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
         'job_detail_lookup_required',
       );
     });
@@ -137,6 +166,74 @@ describe('HardRulesService', () => {
         'job_detail_lookup_required',
       );
       expect(rejected.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+  });
+
+  describe('schedule window claims', () => {
+    const memorySnapshot: AgentMemorySnapshot = {
+      currentStage: 'job_consultation',
+      presentedJobIds: [528551],
+      recommendedJobIds: [528551],
+      sessionFacts: null,
+      profileKeys: null,
+      currentFocusJob: { jobId: 528551, availableDetailFields: ['shift'] },
+    };
+    const shiftLookup = {
+      toolName: 'duliday_job_list',
+      args: { jobIdList: [528551], includeWorkTime: true },
+      status: 'ok' as const,
+      result: { markdown: '班次：16:00-次日 00:00' },
+    };
+
+    it('rejects the fabricated shortened window from badcase 6a573349', () => {
+      const result = service.check({
+        replyText: '你跟店里说下地铁时间，协调排 16:00-22:00 这段一般没问题，不会强制上到半夜。',
+        toolCalls: [shiftLookup],
+        userMessage: '欢乐海岸店暂时需要排4-10，因为需要看地铁时间',
+        memorySnapshot,
+        chatId: '6a573349ce406a6aee27fd07',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'unsupported_schedule_window_claim',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('allows faithfully repeating the complete tool-provided window', () => {
+      const result = service.check({
+        replyText: '这家目前可以排 16:00-次日 00:00。',
+        toolCalls: [shiftLookup],
+        userMessage: '这家几点上班',
+        memorySnapshot,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it('does not compare a lookup for another job against the current focus job', () => {
+      const result = service.check({
+        replyText: '协调排 16:00-22:00 一般没问题。',
+        toolCalls: [{ ...shiftLookup, args: { jobIdList: [999999], includeWorkTime: true } }],
+        userMessage: '需要排4-10',
+        memorySnapshot,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
         'job_detail_lookup_required',
       );
     });
@@ -1258,6 +1355,42 @@ describe('HardRulesService', () => {
       const feishuRuleIds = payload.contradictions.map((c) => c.ruleId);
       expect(feishuRuleIds).toContain('discriminatory_screening_leak');
       expect(feishuRuleIds).not.toContain('human_service_phrase_leak');
+    });
+  });
+
+  describe('meta_narration_reply (badcase chat 6a5740ff 真人接管期间静默旁白被投递)', () => {
+    it.each([
+      [
+        'badcase 原文：真人接管静默旁白',
+        '（本轮为真人招募经理与候选人直接沟通，AI 保持静默，不插入回复）',
+      ],
+      ['半角括号 + 不回复元词', '(本轮不回复，等待候选人补充信息)'],
+      ['沉默变体', '（AI 保持沉默，等待真人经理继续跟进）'],
+      ['人工操作记录变体', '（此消息为人工操作记录，无需回复）'],
+    ])('blocks bracket-wrapped meta narration: %s', (_name, reply) => {
+      const result = check(reply);
+
+      expect(result.hit).toBe(true);
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'meta_narration_reply',
+            action: GUARDRAIL_ACTION.BLOCK,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it.each([
+      ['正文内合法括号补充', '到店跟前台说"独立客招聘介绍来的"就行（记得带好健康证）'],
+      ['整条括号但无元词', '（明天下午 1 点见哈）'],
+      ['含元词但未被括号包裹', '你要是一直不回复，这个名额我就先帮别人排上了哈'],
+      ['方头括号提醒（另有 internal_output_leak 白名单用例）', '【面试提醒】明天上午10点面试'],
+    ])('does not flag legitimate bracket usage: %s', (_name, reply) => {
+      const result = check(reply);
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('meta_narration_reply');
     });
   });
 

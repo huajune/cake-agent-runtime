@@ -47,7 +47,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     private readonly workTipsStrategy: WorkTipsStrategy,
   ) {
     this.sendDelayMs = parseInt(
-      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '300000'),
+      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '120000'),
       10,
     );
   }

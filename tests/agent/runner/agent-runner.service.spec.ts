@@ -365,6 +365,57 @@ describe('AgentRunnerService.runTurn', () => {
     );
   });
 
+  it('meta narration block converges to silence without repair or handoff side effect', async () => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: '（本轮为真人招募经理与候选人直接沟通，AI 保持静默，不插入回复）' }),
+    );
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'block',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'meta_narration_reply',
+          evidence: '整条回复是描述 Agent 自身行为的括号旁白',
+          suggestion: '本轮应调用 skip_reply',
+          recoverability: 'non_recoverable',
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['meta_narration_reply'],
+      blockedRuleIds: ['meta_narration_reply'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '有的' },
+      context: { messageId: 'trace-meta-narration-1' },
+    });
+
+    // 不进 repair、不送二审：本该沉默的轮次重写出来仍是不该发的插话。
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outputGuard.check).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual(
+      expect.objectContaining({
+        ruleIds: ['meta_narration_reply'],
+        reasonCode: 'meta_narration_silenced',
+        ruleBlocked: true,
+      }),
+    );
+    // 等效 skip_reply 的安静静默：不派 general_handoff（那会暂停托管+飞书告警，
+    // 而该场景多为真人经理已在沟通，用户裁定真人插话不自动暂停）。
+    expect(outcome.sideEffects ?? []).toEqual([]);
+    // 守卫档案照常落库，观测不丢。
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'block',
+        reasonCode: 'meta_narration_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
   it('output guard block stays blocked when the rewrite still violates guardrails', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }));
     replyRepairAgent.repair.mockResolvedValueOnce('还是不要新疆户籍的');

@@ -7,6 +7,8 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 import { MessageRole } from '@enums/message.enum';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
+import { MessageSource } from '@wecom/message/ingress/message-callback.dto';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;
@@ -127,6 +129,47 @@ describe('TestExecutionService', () => {
           content: '你好，请问还在招人吗',
           chatId: expect.any(String),
         }),
+      );
+    });
+
+    it('should preserve a human manager source fixture through storage and runner input', async () => {
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult(''));
+
+      await service.executeTest({
+        ...baseRequest,
+        message: '有的',
+        history: [
+          {
+            role: MessageRole.ASSISTANT,
+            content: '有一个月以上餐饮经验吗',
+            humanAgent: true,
+          },
+        ],
+        skipHistoryTrim: true,
+      });
+
+      expect(mockChatSessionService.saveMessagesBatch).toHaveBeenCalledWith([
+        expect.objectContaining({
+          role: 'assistant',
+          content: '有一个月以上餐饮经验吗',
+          source: MessageSource.MOBILE_PUSH,
+          isSelf: true,
+        }),
+      ]);
+      expect(loop.invokeReviewed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              role: 'assistant',
+              content: '有一个月以上餐饮经验吗',
+              source: StorageMessageSource.MOBILE_PUSH,
+              messageType: StorageMessageType.TEXT,
+              isSelf: true,
+            }),
+            { role: 'user', content: '有的', imageUrls: undefined },
+          ],
+        }),
+        expect.anything(),
       );
     });
 
