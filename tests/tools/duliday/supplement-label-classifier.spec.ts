@@ -41,6 +41,24 @@ describe('classifySupplementLabel', () => {
     });
   });
 
+  describe('screening labels — 裸排除式人员身份约束（2026-07-15 产品裁定）', () => {
+    it.each([
+      ['不要学生', '学生'],
+      ['不招暑假工', '暑假工'],
+      ['学生勿扰', '学生'],
+    ])('classifies %s as screening blacklist with failSignal %s', (label, signal) => {
+      const result = classifySupplementLabel(label);
+      expect(result.type).toBe('screening');
+      if (result.type !== 'screening') return;
+      expect(result.mode).toBe('blacklist');
+      expect(result.failSignals).toEqual([signal]);
+    });
+
+    it('排班偏好描述型标签不误归 screening（不要早班要周末和全天）', () => {
+      expect(classifySupplementLabel('不要早班要周末和全天').type).toBe('collect');
+    });
+  });
+
   describe('screening labels — rhetorical', () => {
     it('classifies 周四六日都能上班吗 as rhetorical screening', () => {
       const result = classifySupplementLabel('周四六日都能上班吗');

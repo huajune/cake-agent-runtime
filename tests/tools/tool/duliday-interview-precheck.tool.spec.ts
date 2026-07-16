@@ -964,6 +964,15 @@ describe('buildInterviewPrecheckTool', () => {
     const parsed = builtTool.inputSchema.safeParse({ jobId: '516576' });
     expect(parsed.success).toBe(true);
     expect(parsed.data.jobId).toBe(516576);
+
+    // candidateSupplementAnswers 被模型序列化成 JSON 字符串时同样 preprocess 收下
+    // （2026-07-15 生产：两次整调用被拒致空转）。
+    const parsedSupplement = builtTool.inputSchema.safeParse({
+      jobId: 100,
+      candidateSupplementAnswers: '{"通勤时间":"40分钟"}',
+    });
+    expect(parsedSupplement.success).toBe(true);
+    expect(parsedSupplement.data.candidateSupplementAnswers).toEqual({ 通勤时间: '40分钟' });
   });
 
   describe('暑假工临时口径', () => {
@@ -1543,6 +1552,112 @@ describe('buildInterviewPrecheckTool', () => {
       });
 
       expect(mockSpongeService.fetchSignupWorkOrders).not.toHaveBeenCalled();
+    });
+
+    // ===== 2026-07-15 生产语料：时间戳后缀击穿 v10.13.0 整句锚定 + 模板措辞漂移 =====
+
+    it.each([
+      '社会人士\n[消息发送时间：2026-07-15 17:33 星期三]',
+      '身份（学生还是社会人士）：社会人士\n[消息发送时间：2026-07-15 17:26 星期三]',
+      '女\n确定社会人士\n40分钟',
+    ])('生产实测回答应通过身份校验：%s', async (message) => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [{ role: 'user', content: message }] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+      expect(result.nextAction).toBe('ready_to_book');
+    });
+
+    it('确认问答带时间戳后缀时仍构成身份自认', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          {
+            role: 'assistant',
+            content: '你确认下是选“社会人士”对吧\n[消息发送时间：2026-07-15 16:24 星期三]',
+          },
+          { role: 'user', content: '是的\n[消息发送时间：2026-07-15 16:24 星期三]' },
+        ] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.nextAction).toBe('ready_to_book');
+    });
+
+    // ===== 拒后改口核实（2026-07-15 产品裁定）=====
+
+    const flipHistory = [
+      { role: 'user', content: '身份（学生还是社会人士）：学生' },
+      { role: 'assistant', content: '亲，这个岗位暂时不要学生哈' },
+      { role: 'user', content: '填顺手了，已毕业' },
+    ];
+
+    it('学生被拒后首次改口不采信：身份保持缺失并要求核实', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: flipHistory as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).toContain('身份');
+      expect(result.nextAction).toBe('collect_fields');
+      expect(result.identityFieldGuard).toEqual(
+        expect.objectContaining({ mustAskCandidate: true, verifyIdentityFlip: true }),
+      );
+      expect(result._replyInstruction).toContain('首次改口不能直接采信');
+      expect(result._replyInstruction).toContain('严禁暗示');
+    });
+
+    it('核实问句后候选人再次确认，改口生效可继续预约', async () => {
+      socialOnlyJobFixture();
+
+      const result = await executeTool(readyInput, {
+        messages: [
+          ...flipHistory,
+          {
+            role: 'assistant',
+            content: '身份跟你确认下哈，你已经毕业了对吧？还在读也没关系，如实说就行',
+          },
+          { role: 'user', content: '对，已经毕业了' },
+        ] as never,
+      });
+
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.identityFieldGuard).toBeUndefined();
+      expect(result.nextAction).toBe('ready_to_book');
+    });
+
+    // ===== "不要学生"裸排除标签走 screening 通道（2026-07-15 产品裁定）=====
+
+    it('配"不要学生"标签的岗位：标签不进收资清单，学生自认直接 hard reject', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            basicInfo: { laborForm: '兼职', partTimeJobType: '小时工' },
+            hiringRequirement: { remark: '' },
+            interviewProcess: {
+              firstInterview: fixedInterviewProcess.firstInterview,
+              interviewSupplement: [{ interviewSupplementId: 88, interviewSupplement: '不要学生' }],
+            },
+          }),
+        ],
+      });
+
+      const result = await executeTool(readyInput, {
+        messages: [{ role: 'user', content: '身份：学生' }] as never,
+      });
+
+      expect(result.bookingChecklist.requiredFields ?? []).not.toContain('不要学生');
+      expect(result.bookingChecklist.templateText ?? '').not.toContain('不要学生');
+      expect(result.screeningChecks).toEqual(
+        expect.arrayContaining([expect.objectContaining({ labelName: '不要学生' })]),
+      );
+      expect(result.nextAction).toBe('student_rejected');
     });
   });
 
