@@ -67,6 +67,8 @@ interface AgentCallParams {
   modelId?: string;
   thinking?: GeneratorThinkingConfig;
   shortTermEndTimeInclusive?: number;
+  /** 报名等不可逆工具提交前检查 pending，避免用运行中已过期的候选人资料下单。 */
+  hasNewerUserInput?: () => Promise<boolean>;
   /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
   deferTurnEnd?: boolean;
 }
@@ -253,6 +255,13 @@ export class ReplyWorkflowService {
       apiType: parsed._apiType,
       modelId: overrideModelId,
       thinking,
+      hasNewerUserInput: async () => {
+        const { messages: newerMessages } = await this.fetchPendingSinceAgentStart(
+          chatId,
+          consumedPending,
+        );
+        return newerMessages.length > 0;
+      },
     } as const;
 
     // 兼容描述等待：只有主聊天模型不支持 vision 时，accept-inbound 才会提前触发图片描述。
@@ -745,6 +754,7 @@ export class ReplyWorkflowService {
           visualMessageTypes: params.visualMessageTypes,
           thinking: params.thinking,
           shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+          hasNewerUserInput: params.hasNewerUserInput,
           onPreparedRequest:
             recordMonitoring && messageId
               ? (agentRequest) =>

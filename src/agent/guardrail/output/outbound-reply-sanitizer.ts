@@ -25,11 +25,21 @@ export class OutboundReplySanitizer {
    */
   private static readonly VISUAL_PLACEHOLDER_PATTERN = /\[(?:图片|表情)消息\]\s?/g;
 
+  /**
+   * 兼容历史工具结果及模型自造的岗位模板元标题。若标题前后带空行，MessageSplitter
+   * 会把它单独发成一条消息。匹配刻意限制为独立整行，并覆盖“推荐岗位话术模板”一类
+   * 受限变体；普通候选人话术里的“推荐这个岗位”不会命中。
+   */
+  private static readonly INTERNAL_JOB_CARD_BANNER_LINE_PATTERN =
+    /^(?:>\s*)?(?:📣\s*)?(?:\*\*)?(?:(?:候选人)?(?:岗位推荐|推荐(?:岗位)?))(?:对话用|对话|话术|用)?模板(?:\*\*)?(?:\s*[：:（(].*)?$/;
+
   static sanitize(text: string): string {
     if (!text || typeof text !== 'string') return text;
 
     const cleaned = this.removeMarkdownDecoration(
-      this.removeTimeMarkers(this.removeVisualPlaceholders(this.removeThinkTags(text))),
+      this.removeInternalJobCardBanner(
+        this.removeTimeMarkers(this.removeVisualPlaceholders(this.removeThinkTags(text))),
+      ),
     );
 
     return this.removeEmptyResidue(this.cleanWhitespace(cleaned));
@@ -45,6 +55,18 @@ export class OutboundReplySanitizer {
 
   private static removeVisualPlaceholders(text: string): string {
     return text.replace(this.VISUAL_PLACEHOLDER_PATTERN, '').trim();
+  }
+
+  private static removeInternalJobCardBanner(text: string): string {
+    return text
+      .split(/\r?\n/)
+      .filter((line) => !this.isInternalJobCardBannerLine(line))
+      .join('\n')
+      .trim();
+  }
+
+  private static isInternalJobCardBannerLine(line: string): boolean {
+    return this.INTERNAL_JOB_CARD_BANNER_LINE_PATTERN.test(line.trim());
   }
 
   private static removeMarkdownDecoration(text: string): string {
@@ -76,6 +98,7 @@ export class OutboundReplySanitizer {
     if (/<\/?think\s*>/i.test(text)) return true;
     if (/\[(?:图片|表情)消息\]/.test(text)) return true;
     if (this.TIME_MARKER_TEST_PATTERN.test(text)) return true;
+    if (text.split(/\r?\n/).some((line) => this.isInternalJobCardBannerLine(line))) return true;
     if (/\*\*|__|`/.test(text)) return true;
     if (/\n{3,}/.test(text)) return true;
     return false;

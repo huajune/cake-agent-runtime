@@ -60,6 +60,8 @@ describe('StageStrategySection', () => {
     const block = section.build(makeCtx());
 
     expect(block).toContain('advance_stage');
+    expect(block).toContain('先单独调用');
+    expect(block).toContain('effectiveStageStrategy');
   });
 
   it('should default to first stage when currentStage is undefined', () => {

@@ -228,7 +228,7 @@ export function buildInviteToGroupTool(
           // 工具、city 又缺出处时，工具回 city_unverified 并引导模型追问城市继续
           // 推进拉群，候选人被反复纠缠。实时群成员关系本身就是该城市的最强依据。
           // 群列表走缓存（不 forceRefresh），任何失败静默降级回原流程。
-          if (groupMembership) {
+          if (context.strategySource !== 'testing' && groupMembership) {
             try {
               const cachedGroups = await groupResolver.resolveGroups('兼职群');
               const normalizedRequestedCity = normalizeCity(city);

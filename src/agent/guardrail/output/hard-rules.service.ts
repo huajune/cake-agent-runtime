@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AlertLevel } from '@enums/alert.enum';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import {
   GUARDRAIL_ACTION,
   GUARDRAIL_DATA_SENSITIVITY,
   GUARDRAIL_FEEDBACK_POLICY,
   GUARDRAIL_PRIORITY,
 } from '@shared-types/guardrail.contract';
-import { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 import {
   detectBrandAliasFuzzyMatchIgnored,
   detectRequestedBrandMismatch,
@@ -25,6 +26,7 @@ import { detectJobDetailLookupRequired } from './rules/job-detail-grounding.rule
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
 import { detectUnsupportedScheduleWindowClaim } from './rules/schedule-window-claims.rule';
 import { detectSettlementCycleMismatch } from './rules/settlement-cycle-mismatch.rule';
+import { detectUnsupportedStoreStatusSpeculation } from './rules/store-status-speculation.rule';
 import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from './output-rule.types';
@@ -87,7 +89,7 @@ export class HardRulesService {
     OUTPUT_RULE_CATALOG.map((rule) => [rule.id, rule]),
   );
 
-  constructor(private readonly replyFactGuardNotifier: ReplyFactGuardNotifierService) {}
+  constructor(private readonly alertNotifier: AlertNotifierService) {}
 
   /**
    * 检查 reply 是否与本轮 tool 调用矛盾。
@@ -113,9 +115,11 @@ export class HardRulesService {
     recentAssistantTexts?: string[];
     /** 最近几条候选人消息（时间序，含本轮），供跨轮豁免（如上轮问社保、本轮作答）。 */
     recentUserTexts?: string[];
+    /** 最近会话消息（保留 role 与顺序），供身份二选一问答等上下文证据识别。 */
+    recentMessages?: unknown[];
     /** 本轮入口记忆事实，用于跨轮身份红线对账。 */
     memorySnapshot?: AgentMemorySnapshot;
-    /** 静默模式（advisory）：命中不 fire 飞书 badcase 告警，只返回裁决。 */
+    /** 静默模式（advisory）：只返回裁决，由调用方避免写生产守卫日志。 */
     silent?: boolean;
   }): {
     hit: boolean;
@@ -173,6 +177,7 @@ export class HardRulesService {
       toolCalls,
       params.memorySnapshot,
       params.userMessage,
+      params.recentMessages,
     );
     if (identityMisregistrationCoaching) {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
@@ -213,6 +218,14 @@ export class HardRulesService {
     );
     if (unsupportedScheduleWindowClaim) {
       contradictions.push(this.withRulePolicy(unsupportedScheduleWindowClaim));
+    }
+
+    const unsupportedStoreStatusSpeculation = detectUnsupportedStoreStatusSpeculation(
+      text,
+      toolCalls,
+    );
+    if (unsupportedStoreStatusSpeculation) {
+      contradictions.push(this.withRulePolicy(unsupportedStoreStatusSpeculation));
     }
 
     for (const rule of this.rules) {
@@ -278,37 +291,56 @@ export class HardRulesService {
         .join(',')}, replyPreview="${text.slice(0, 80)}"${params.silent ? ' [silent]' : ''}`,
     );
 
-    // silent（advisory 调试流量）：只返回裁决，不 fire 飞书 badcase，避免污染生产判例。
+    // silent（advisory 调试流量）：只返回裁决，runner 不写生产守卫日志。
     if (params.silent) return { hit: true, contradictions };
 
-    // observe 档（currentReplySendable=true）判例已全量落 guardrail_review_records，
-    // 飞书 badcase 只保留 enforce（revise/replan/block，不可发送）判例：观察类只用于离线
-    // 校准精确率，从库里查即可，不再写多维表/告警，避免刷屏污染人工排查池。
-    const enforceContradictions = contradictions.filter((c) => c.currentReplySendable === false);
-    if (enforceContradictions.length === 0) return { hit: true, contradictions };
+    const p0Contradictions = contradictions.filter(
+      (contradiction) => contradiction.severity === GUARDRAIL_PRIORITY.P0,
+    );
+    if (p0Contradictions.length > 0) {
+      void this.alertNotifier
+        .sendAlert({
+          code: 'output_guardrail_p0_intercepted',
+          severity: AlertLevel.ERROR,
+          summary: '出站守卫拦截 P0 回复事故',
+          source: {
+            subsystem: 'agent',
+            component: 'output-guardrail',
+            action: 'intercept_p0_reply',
+          },
+          scope: {
+            messageId: params.traceId,
+            chatId: params.chatId,
+            userId: params.userId,
+            contactName: params.contactName,
+          },
+          impact: {
+            userVisible: false,
+            requiresHumanIntervention: false,
+          },
+          diagnostics: {
+            category: 'p0_guardrail_interception',
+            payload: {
+              ruleIds: p0Contradictions.map((contradiction) => contradiction.ruleId),
+              currentReplySendable: false,
+            },
+          },
+          dedupe: {
+            key: `output_guardrail_p0_intercepted:${p0Contradictions
+              .map((contradiction) => contradiction.ruleId)
+              .sort()
+              .join(',')}`,
+          },
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `[ReplyFactGuard] P0 告警发送失败: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    }
 
-    // 飞书告警 fire-and-forget——不阻塞回复链路；阻断规则均已拦截、未发送给候选人
-    void this.replyFactGuardNotifier
-      .notifyContradiction({
-        chatId: params.chatId,
-        userId: params.userId,
-        traceId: params.traceId,
-        contactName: params.contactName,
-        botImId: params.botImId,
-        botUserName: params.botUserName,
-        userMessage: params.userMessage,
-        replyPreview: text.slice(0, 400),
-        contradictions: enforceContradictions.map((c) => ({
-          ...c,
-          label: `【已拦截，未发送给候选人】${c.label}`,
-        })),
-        toolNames: toolCalls.map((c) => c.toolName),
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`[ReplyFactGuard] 飞书告警发送失败: ${message}`);
-      });
-
+    // 所有 rule 命中与修复过程由 runner 统一归档到 guardrail_review_records。
+    // 机器判例不自动创建 BadCase；BadCase 只接收人工确认需要修复的问题。
     return { hit: true, contradictions };
   }
 

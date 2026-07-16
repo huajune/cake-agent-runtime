@@ -11,6 +11,7 @@ const catalog: BrandItem[] = [
   { id: 10002, name: '麦当劳', aliases: ['金拱门'] },
   { id: 10003, name: '瑞幸咖啡', aliases: ['瑞幸'] },
   { id: 10004, name: '拉瓦萨', aliases: [] },
+  { id: 10027, name: 'M Stand', aliases: ['mstand'] },
   { id: 10005, name: '大米先生', aliases: [] },
   { id: 10008, name: '小龙坎', aliases: ['小龙'] },
   { id: 10009, name: '小龙翻大江', aliases: ['小龙'] },
@@ -177,16 +178,27 @@ describe('buildBrandQueryPlan（§8.1 组合规则）', () => {
     expect(plan.queryBrandAliasList).toEqual([]);
   });
 
-  it('品类展开的查询品牌列表须先减去会话 excludedBrands（§6.2）', () => {
+  it('咖啡默认只查询 M Stand，并视为业务默认而非多品牌扩张', () => {
     const plan = buildBrandQueryPlan({
       brandAliasList: ['咖啡'],
       brandIdList: [],
       sessionBrandState: stateWith(null, [{ canonicalName: '瑞幸咖啡', brandId: 10003 }]),
       catalog,
     });
-    expect(plan.applied.map((b) => b.canonicalName)).toEqual(['拉瓦萨']);
+    expect(plan.applied.map((b) => b.canonicalName)).toEqual(['M Stand']);
+    expect(plan.queryBrandIdList).toEqual([10027]);
+    expect(plan.categoryExcludedRemoved).toEqual([]);
+  });
+
+  it('其他咖啡品牌仍按品类扩张并减去 excludedBrands', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: ['其他咖啡品牌'],
+      brandIdList: [],
+      sessionBrandState: stateWith(null, [{ canonicalName: '瑞幸咖啡', brandId: 10003 }]),
+      catalog,
+    });
+    expect(plan.applied.map((b) => b.canonicalName).sort()).toEqual(['M Stand', '拉瓦萨']);
     expect(plan.categoryExcludedRemoved).toEqual(['瑞幸咖啡']);
-    expect(plan.disclosure).toContain('瑞幸咖啡');
   });
 
   it('显式点名的品牌不减 excludedBrands（显式表达优先，收尾会解除排斥）', () => {

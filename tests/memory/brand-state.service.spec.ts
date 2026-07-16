@@ -10,6 +10,7 @@ const catalog = [
   { id: 1, name: '肯德基', aliases: ['KFC'] },
   { id: 2, name: '麦当劳', aliases: ['金拱门'] },
   { id: 3, name: '大米先生', aliases: [] },
+  { id: 10311, name: 'Zara Home', aliases: ['zh'] },
 ];
 
 function makeFactsWithBrands(brands: string[] | null): SessionFacts {
@@ -81,6 +82,16 @@ describe('BrandStateService', () => {
         persisted: null,
         facts: null,
         contactName: 'Gattouzo',
+      });
+      expect(ctx.state.currentBrand).toBeNull();
+      expect(ctx.nicknameBrands).toEqual([]);
+    });
+
+    it('2-3 位纯英文昵称即使唯一命中品牌别名也不产生 seed', async () => {
+      const ctx = await service.deriveTurnBrandContext({
+        persisted: null,
+        facts: null,
+        contactName: 'zh',
       });
       expect(ctx.state.currentBrand).toBeNull();
       expect(ctx.nicknameBrands).toEqual([]);

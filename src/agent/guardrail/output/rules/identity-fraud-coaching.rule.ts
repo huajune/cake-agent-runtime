@@ -1,6 +1,9 @@
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { matchIdentityStatement } from '@tools/shared/identity-statement.util';
+import {
+  findLatestExplicitIdentityEvidence,
+  matchIdentityEvidence,
+} from '@tools/shared/identity-statement.util';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**
@@ -55,9 +58,6 @@ const COERCED_SUMMER_DENIAL_PATTERN =
 const STUDENT_IDENTITY_RECLASSIFICATION_PATTERN =
   /(?:不算|不是|不属于)(?:在校)?学生(?:了|身份|本人|哈|吧|呀|哦|$|[，,。！？!?\n])|(?:按|算作|视为|当作?)(?:社会身份|社会人士)|(?:可以|能)[^。！？\n]{0,12}(?:按社会身份|做社会兼职|报社会兼职)/;
 
-const EXPLICIT_NON_STUDENT_SELF_REPORT_PATTERN =
-  /我(?:现在)?(?:不是学生|是社会人士|已经工作了|在上班)|身份(?:是|：|:)社会人士/;
-
 function readBooleanFact(
   memorySnapshot: AgentMemorySnapshot | undefined,
   key: string,
@@ -88,6 +88,7 @@ export function detectIdentityMisregistrationCoaching(
   toolCalls: AgentToolCall[],
   memorySnapshot?: AgentMemorySnapshot,
   userMessage?: string,
+  recentMessages?: unknown[],
 ): RuleContradiction | null {
   const auditEvasion = AUDIT_EVASION_PATTERN.test(text);
   const concealment = IDENTITY_CONCEALMENT_PATTERN.test(text);
@@ -96,9 +97,13 @@ export function detectIdentityMisregistrationCoaching(
   // 2026-07-15 产品裁定的豁免依据：候选人已作答时，Agent 转述/代填其口径不算教唆。
   // 识别器缺口曾让 precheck missingFields 滞留"身份"，本规则据此把诚实回复误判成
   // 造假教唆并 block（候选人 18:03 刚答"不是学生"，18:04 回复被拦）。
+  const latestConversationIdentity = findLatestExplicitIdentityEvidence([
+    ...(recentMessages ?? []),
+    ...(userMessage ? [{ role: 'user', content: userMessage }] : []),
+  ]);
   const candidateSelfReportedNonStudent =
-    matchIdentityStatement(userMessage ?? '') === '社会人士' ||
-    EXPLICIT_NON_STUDENT_SELF_REPORT_PATTERN.test(userMessage?.trim() ?? '');
+    latestConversationIdentity?.identity === '社会人士' ||
+    matchIdentityEvidence(userMessage ?? '')?.identity === '社会人士';
   const identityRewrite =
     (IDENTITY_REWRITE_THEN_REGISTER_PATTERN.test(text) ||
       REGISTER_AS_IDENTITY_PATTERN.test(text) ||

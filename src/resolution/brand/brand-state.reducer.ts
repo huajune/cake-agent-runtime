@@ -56,9 +56,10 @@ export function initBrandState(input: {
  *   否则这个每轮都在的静态值会不断把自己写回 currentBrand，覆盖对话演进）；
  *   剔除歧义与低于可执行阈值的结果。
  * 第 1 步 应用全部 positive（图片先、文字后）：
- *   - 显式命中（matchType ≠ category_expansion）一律解除该品牌的排斥（反悔即赦免）；
+ *   - 显式命中和业务品类默认（matchType ≠ category_expansion）会解除该品牌的排斥；
  *     品类展开产出的 positive 不解除排斥（"咖啡"没有点名瑞幸，谈不上赦免）；
- *   - 同来源去重后恰 1 条且非品类展开 → 替换 currentBrand；≥2 条或含品类展开 → 多品牌
+ *   - 同来源去重后恰 1 条且非品类展开 → 替换 currentBrand；咖啡默认 M Stand 属于单品牌默认；
+ *     ≥2 条或含品类展开 → 多品牌
  *     表达，不立主品牌（候选人没说更想去哪个，系统不替他挑）。
  * 第 2 步 应用全部 negative：有品牌 → 加入 excludedBrands（恰是 currentBrand 则同时清空）；
  *   品牌为空（"换个品牌"/指示代词排斥）→ currentBrand 移入 excludedBrands 并清空。

@@ -5,6 +5,7 @@ import { GuardrailReviewRepository } from '../repositories/guardrail-review.repo
 import type {
   GuardrailReviewInsertInput,
   GuardrailReviewRecord,
+  GuardrailSemanticReviewInput,
   GuardrailReviewWriteOutcome,
 } from '../types/guardrail-review.types';
 
@@ -38,6 +39,19 @@ export class GuardrailReviewService {
 
   async findByTraceId(traceId: string): Promise<GuardrailReviewRecord | null> {
     return this.repository.findByTraceId(traceId);
+  }
+
+  /** 追加完整 Semantic Reviewer 判例；失败可见但不阻塞回复主链。 */
+  async recordSemanticReview(input: GuardrailSemanticReviewInput): Promise<boolean> {
+    if (!input.traceId || !input.draftReply) {
+      this.alertSemanticPersistFailure(input, 'invalid_semantic_review_input');
+      return false;
+    }
+    const appended = await this.repository.appendSemanticReview(input);
+    if (!appended) {
+      this.alertSemanticPersistFailure(input, 'db_write_failed');
+    }
+    return appended;
   }
 
   async cleanupExpiredReviews(retentionDays: number): Promise<number> {
@@ -90,5 +104,40 @@ export class GuardrailReviewService {
       return input.repairMode == null && input.revisedReply == null && input.revised == null;
     }
     return Boolean(input.repairMode && input.revisedReply && input.revised);
+  }
+
+  private alertSemanticPersistFailure(input: GuardrailSemanticReviewInput, reason: string): void {
+    void this.alertNotifier
+      .sendAlert({
+        code: 'guardrail_review_persist_failed',
+        severity: AlertLevel.ERROR,
+        summary: '语义守卫判例落库失败，该回合的 shadow/enforce 证据将无法回放',
+        source: {
+          subsystem: 'agent',
+          component: 'output-guardrail',
+          action: 'persist_semantic_review',
+        },
+        scope: {
+          messageId: input.traceId,
+          chatId: input.chatId,
+          userId: input.userId,
+          contactName: input.contactName,
+        },
+        diagnostics: {
+          category: reason,
+          payload: {
+            mode: input.mode,
+            decision: input.decision,
+            confidence: input.confidence,
+            findingCodes: input.findings.map((finding) => finding.code),
+          },
+        },
+        dedupe: { key: `guardrail_semantic_review_persist_failed:${reason}` },
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `[guardrailReview] 语义判例落库失败告警发送异常: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
   }
 }

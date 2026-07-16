@@ -218,9 +218,10 @@ export function renderCandidateCard(job: any, index?: number): CandidateCard | n
 }
 
 /**
- * 渲染插在 markdown 顶部的"推荐用模板"banner——固定结构的卡片合集 +
- * 每个字段的取值口径规则，LLM 结合下方详情自行组织每个字段的内容。
+ * 渲染插在 markdown 顶部的实际岗位卡正文。
  *
+ * 这里刻意不放“内部模板/固定格式/示例”等元标题：工具结果里的每一行都可以安全地
+ * 被模型直接转述给候选人，从源头避免内部标题泄漏。
  * 返回空字符串表示 jobs 为空，调用方跳过插入。
  */
 export function renderCandidateCardsBanner(jobs: any[]): string {
@@ -231,24 +232,6 @@ export function renderCandidateCardsBanner(jobs: any[]): string {
   if (cards.length === 0) return '';
 
   const lines: string[] = [];
-  lines.push(
-    '> 📣 **推荐对话用模板**（向候选人介绍岗位时**严格按以下固定格式输出**，每行的具体取值须结合该岗位下方详情和备注组织完整信息）',
-  );
-  lines.push('> **固定格式（四行，不得删除或合并）**：');
-  lines.push('> ```');
-  lines.push('> 品牌（门店）- 岗位，距离km');
-  lines.push('> 班次：列全所有档位（不得只挑一档）');
-  lines.push('> 薪资：完整薪资描述（含阶梯/节假日等备注中的补充薪资）');
-  lines.push('> 要求：年龄、健康证、其他限制');
-  lines.push('> ```');
-  lines.push('> **示例**：');
-  lines.push('> ```');
-  lines.push('> 成都你六姐（佘山旭辉里店）- 前厅服务员，4.9km');
-  lines.push('> 班次：晚班 18:00-22:00');
-  lines.push('> 薪资：24 元/时起，做满 40 小时 26 元，满 80 小时 28 元');
-  lines.push('> 要求：25-45 岁，需办食品健康证');
-  lines.push('> ```');
-  lines.push('> **以下为各岗位的结构化数据参考**（取值时须结合下方详情和备注）：');
   for (const card of cards) {
     for (const line of card.multiLine.split('\n')) {
       lines.push(`> ${line}`);

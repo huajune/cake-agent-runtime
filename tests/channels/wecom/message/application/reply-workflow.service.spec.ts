@@ -180,6 +180,7 @@ describe('ReplyWorkflowService', () => {
         modelId: req.modelId,
         thinking: req.context?.thinking,
         shortTermEndTimeInclusive: req.context?.shortTermEndTimeInclusive,
+        hasNewerUserInput: req.context?.hasNewerUserInput,
         onPreparedRequest: req.context?.onPreparedRequest,
       };
       const raw = await runner.invoke(invokeParams);
@@ -1331,6 +1332,63 @@ describe('ReplyWorkflowService', () => {
         );
       },
     );
+
+    it('报名提交前发现候选人新消息时，旧回合短路但仍吸收 pending 并 replay', async () => {
+      const primary = createMessage();
+      const newer = createMessage({
+        messageId: 'msg-new-booking-profile',
+        payload: {
+          text: '姓名：王玥\n手机号：19290703760',
+          pureText: '姓名：王玥\n手机号：19290703760',
+        },
+      });
+      simpleMergeService.claimPendingSnapshot
+        .mockResolvedValueOnce({ messages: [newer], snapshotSize: 1, batchId: '' })
+        .mockResolvedValueOnce({ messages: [], snapshotSize: 0, batchId: '' });
+
+      runner.invoke
+        .mockResolvedValueOnce({
+          text: '',
+          responseMessages: [],
+          toolCalls: [
+            {
+              toolName: 'duliday_interview_booking',
+              args: {},
+              result: {
+                success: false,
+                shortCircuited: true,
+                staleInput: true,
+                reasonCode: 'newer_user_input_pending',
+              },
+            },
+          ],
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          text: '已按你刚补充的资料重新核对',
+          responseMessages: [],
+          toolCalls: [],
+          usage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 },
+        });
+
+      await service.processSingleMessage(primary);
+
+      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(runner.invoke.mock.calls[1][0]).toEqual(
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining('姓名：王玥'),
+            }),
+          ],
+        }),
+      );
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '已按你刚补充的资料重新核对' }),
+        expect.anything(),
+        true,
+      );
+    });
 
     it('Case E2: 首次只调用 advance_stage 时仍执行 replay，合并 Agent 生成期间的新消息', async () => {
       const primary = createMessage();

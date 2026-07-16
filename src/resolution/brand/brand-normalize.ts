@@ -55,10 +55,19 @@ export const BRAND_NOISE_PATTERNS = [
 
 export const CONJUNCTION_SPLIT_REGEX = /(?:或者|和|跟|或|and|or)/;
 
-/** 归一化：小写、去掉非中英数字符（全半角/空格/分隔符随之消除）。 */
+/**
+ * 归一化：全半角折叠（NFKC）→ 小写 → 去掉非中英数字符。
+ *
+ * NFKC 折叠是 §7.1「全半角统一」的实现——不做折叠时全角字符（"６姐"的"６"、
+ * "７-１１"）会被白名单过滤直接删除，别名塌缩成超短词形：生产事故 2026-07-16
+ * "６姐"塌缩成单字"姐"，候选人喊"姐，…"被批量误判成品牌意向（42+ 会话状态污染）。
+ */
 export function normalizeForBrandMatch(value: string | null | undefined): string {
   if (!value) return '';
-  return value.toLowerCase().replace(/[^a-z0-9一-龥]/g, '');
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^a-z0-9一-龥]/g, '');
 }
 
 export function stripBrandNoisePatterns(normalizedText: string): string {

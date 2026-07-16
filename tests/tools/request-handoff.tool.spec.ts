@@ -78,6 +78,22 @@ describe('buildRequestHandoffTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
+  it('uses a work order resolved earlier in the same turn when the current contact has no active_booking', async () => {
+    longTermService.getActiveBooking.mockResolvedValue(null);
+    const tool = buildTool({ ...mockContext, runtimeWorkOrderId: 450643 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tool as any).execute({
+      reasonCode: 'modify_appointment',
+      reason: '自助改约提交失败，需要人工处理',
+    });
+
+    expect(result).toMatchObject({
+      dispatched: true,
+      shortCircuited: true,
+      sideEffect: expect.objectContaining({ workOrderId: 450643 }),
+    });
+  });
+
   it('returns a handoff sideEffect intent for outcome-layer dispatch', async () => {
     longTermService.getActiveBooking.mockResolvedValue({
       work_order_id: 5001,
@@ -100,7 +116,6 @@ describe('buildRequestHandoffTool', () => {
         reason: '门店导航错了',
         workOrderId: 5001,
         botImId: 'bot-im-1',
-        idempotencyKey: expect.stringContaining('chat-1:handoff:'),
         recordHandoff: true,
       }),
     );

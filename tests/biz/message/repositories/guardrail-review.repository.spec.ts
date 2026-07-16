@@ -14,6 +14,9 @@ type RepositoryWithClient = GuardrailReviewRepository & {
 type RepositoryWithSelectOne = GuardrailReviewRepository & {
   selectOne: jest.Mock;
 };
+type RepositoryWithRpc = GuardrailReviewRepository & {
+  rpc: jest.Mock;
+};
 
 describe('GuardrailReviewRepository', () => {
   const repository = new GuardrailReviewRepository({
@@ -79,14 +82,48 @@ describe('GuardrailReviewRepository', () => {
         revised_decision: 'pass',
         final_decision: 'pass',
       }),
-      { onConflict: 'trace_id', ignoreDuplicates: true },
+      { onConflict: 'trace_id', ignoreDuplicates: false },
     );
   });
 
-  it('returns duplicate when the trace_id write is skipped by conflict', async () => {
+  it('returns failed when an upsert unexpectedly returns no row', async () => {
     mockClient({ data: [], error: null });
 
-    await expect(repository.insertReviewRecord(baseRecord)).resolves.toBe('duplicate');
+    await expect(repository.insertReviewRecord(baseRecord)).resolves.toBe('failed');
+  });
+
+  it('atomically appends semantic reviews through the merge-only RPC', async () => {
+    const rpc = jest
+      .spyOn(repository as unknown as RepositoryWithRpc, 'rpc')
+      .mockResolvedValue([{ appended: true }]);
+
+    await expect(
+      repository.appendSemanticReview({
+        traceId: 'msg-shadow',
+        chatId: 'chat-1',
+        mode: 'shadow',
+        decision: 'revise',
+        confidence: 'high',
+        findings: [
+          {
+            code: 'active_booking_state_conflict',
+            evidenceQuote: '已约好',
+            userImpact: '预约状态冲突',
+            feedbackToGenerator: '按预约证据重写',
+          },
+        ],
+        draftReply: '已帮你约好',
+      }),
+    ).resolves.toBe(true);
+
+    expect(rpc).toHaveBeenCalledWith(
+      'append_guardrail_semantic_review',
+      expect.objectContaining({
+        p_trace_id: 'msg-shadow',
+        p_draft_reply: '已帮你约好',
+        p_review: expect.objectContaining({ mode: 'shadow', decision: 'revise' }),
+      }),
+    );
   });
 
   it('returns failed when the database write fails', async () => {
@@ -124,6 +161,16 @@ describe('GuardrailReviewRepository', () => {
         committed_side_effects: '已成功报名',
         final_decision: 'pass',
         reason_code: 'repair_ok',
+        semantic_reviews: [
+          {
+            mode: 'enforce',
+            decision: 'revise',
+            confidence: 'high',
+            findings: [],
+            draftReply: '首版回复',
+            reviewedAt: '2026-07-03T08:59:59.000Z',
+          },
+        ],
         created_at: '2026-07-03T09:00:00.000Z',
       });
 
@@ -146,6 +193,7 @@ describe('GuardrailReviewRepository', () => {
         committedSideEffects: '已成功报名',
         finalDecision: 'pass',
         reasonCode: 'repair_ok',
+        semanticReviews: [expect.objectContaining({ mode: 'enforce', decision: 'revise' })],
         createdAt: '2026-07-03T09:00:00.000Z',
       }),
     );

@@ -106,7 +106,7 @@ function formatInterviewDecisionSummary(
   addSummaryLine(
     lines,
     '学生身份要求',
-    studentRequirement ?? '未明确（学生/在读/准研究生候选人不得据此承诺身份没限制，需确认）',
+    studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）',
   );
 
   if (policy.highlights.requirementHighlights.length > 0) {

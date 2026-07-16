@@ -31,13 +31,14 @@ import {
   type SemanticReviewVerdict,
 } from './llm/semantic-reviewer.service';
 import type { GuardrailReviewPacket } from './llm/review-packet.types';
+import { SemanticReviewRecorderService } from './semantic-review-recorder.service';
 
 /**
  * 出站守卫组合器（§5.2 / §7）。
  *
  * 把确定性 rule 档与高风险才触发的 llm 档汇成一个最终裁决 `pass | revise | replan | block`：
  * - rule 档（{@link HardRulesService}）：先跑、确定性、可 veto 当前回复；
- *   enforce 命中由 rule 服务内部告警，observe 只落 `guardrail_review_records`。
+ *   所有命中与修复过程统一落 `guardrail_review_records`，不自动创建 BadCase。
  * - llm 档（{@link SemanticReviewerService}）：唯一的语义 reviewer，吃
  *   {@link GuardrailReviewPacketBuilder} 裁剪出的证据包，输出领域 finding。
  *   触发条件：本轮成功提交过副作用工具 / 回复含承诺·动态事实措辞 / 命中语义 contract 触发词。
@@ -54,7 +55,7 @@ import type { GuardrailReviewPacket } from './llm/review-packet.types';
  * - `outputGuardrailLlmEnabled` 开启后 reviewer 结论参与裁决（enforce）；
  * - `outputGuardrailSemanticShadowEnabled` 在未 enforce 时 fire-and-forget 只观测。
  * 两个都关（默认）：只有 rule 档生效；可恢复 veto 会先进受控 repair loop。
- * 观测不落日志洞：shadow/enforce/低置信降级判例写飞书 badcase 多维表，
+ * 观测不落日志洞：shadow/enforce/低置信降级判例写 `guardrail_review_records`，
  * reviewer 故障走 ops 告警（fail-close error 级 / fail-open+shadow warning 级）。
  */
 /** 传给 rule 档做跨轮豁免的候选人消息条数（覆盖"上轮问、本轮追问"的短跨度语境）。 */
@@ -76,6 +77,7 @@ export class OutputGuardrailService {
     private readonly ruleGuard: HardRulesService,
     private readonly packetBuilder: GuardrailReviewPacketBuilder,
     private readonly semanticReviewer: SemanticReviewerService,
+    private readonly semanticRecorder: SemanticReviewRecorderService,
     private readonly semanticNotifier: SemanticReviewNotifierService,
     private readonly shortTerm: ShortTermService,
     private readonly router: RouterService,
@@ -84,8 +86,7 @@ export class OutputGuardrailService {
 
   /**
    * 语义评审执行档案：每次评审完成发一条 semantic_review 事件落
-   * agent_execution_events。命中判例（分子）在飞书 badcase 表，这里补分母——
-   * 没有它，"shadow 到底跑没跑/跑了多少"在生产侧无从查证。
+   * agent_execution_events，承担运行次数、通过量与 finding code 统计。
    */
   private emitSemanticReviewEvent(mode: 'shadow' | 'enforce', verdict: SemanticReviewVerdict) {
     this.tracer.emit({
@@ -105,8 +106,8 @@ export class OutputGuardrailService {
    */
   private async readRecentTexts(
     chatId: string | undefined,
-  ): Promise<{ assistantTexts: string[]; userTexts: string[] }> {
-    if (!chatId) return { assistantTexts: [], userTexts: [] };
+  ): Promise<{ assistantTexts: string[]; userTexts: string[]; messages: unknown[] }> {
+    if (!chatId) return { assistantTexts: [], userTexts: [], messages: [] };
     try {
       const messages = await this.shortTerm.getMessages(chatId);
       const assistantTexts = messages
@@ -116,11 +117,11 @@ export class OutputGuardrailService {
         .filter((message) => message.role === 'user' && message.content.trim().length > 0)
         .map((message) => message.content)
         .slice(-RECENT_USER_TEXTS_LIMIT);
-      return { assistantTexts, userTexts };
+      return { assistantTexts, userTexts, messages };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`[OutputGuardrail] 读取会话历史失败，跳过重复输出对账: ${message}`);
-      return { assistantTexts: [], userTexts: [] };
+      return { assistantTexts: [], userTexts: [], messages: [] };
     }
   }
 
@@ -177,8 +178,11 @@ export class OutputGuardrailService {
     }
 
     // ---- rule 档（确定性，先跑；内部已做飞书告警） ----
-    const { assistantTexts: recentAssistantTexts, userTexts: recentUserTexts } =
-      await this.readRecentTexts(input.chatId);
+    const {
+      assistantTexts: recentAssistantTexts,
+      userTexts: recentUserTexts,
+      messages: recentMessages,
+    } = await this.readRecentTexts(input.chatId);
     const ruleResult = this.ruleGuard.check({
       replyText: reply,
       toolCalls: input.toolCalls,
@@ -191,6 +195,7 @@ export class OutputGuardrailService {
       userMessage: input.userMessage,
       recentAssistantTexts,
       recentUserTexts,
+      recentMessages,
       memorySnapshot: input.memorySnapshot,
       silent: input.silent,
     });
@@ -311,14 +316,15 @@ export class OutputGuardrailService {
       llmDecision === GUARDRAIL_DECISION.REVISE ||
       llmDecision === GUARDRAIL_DECISION.REPLAN ||
       llmDecision === GUARDRAIL_DECISION.BLOCK;
-    // 判例上报：enforce 拦截与低置信降级都是灰度评估样本，fire-and-forget 写 badcase 表。
+    // 每次 enforce 评审都归档到 guardrail_review_records；pass 也要保留，才能还原修复后二审。
     const confidenceDowngraded = llmDecision !== (verdict.decision as OutputDecision);
     if (!input.silent) {
-      if (confidenceDowngraded) {
-        void this.notifyVerdict('confidence_downgraded', verdict, reply, input);
-      } else if (enforcedLlm) {
-        void this.notifyVerdict('enforce', verdict, reply, input);
-      }
+      void this.recordVerdict(
+        confidenceDowngraded ? 'confidence_downgraded' : 'enforce',
+        verdict,
+        reply,
+        input,
+      );
     }
     const feedbackLines = [
       this.buildFeedbackToGenerator(actionableRules),
@@ -393,14 +399,14 @@ export class OutputGuardrailService {
 
   /**
    * 未 enforce 时的 shadow 观测：fire-and-forget，不影响裁决、不阻塞回复链路。
-   * 命中判例写飞书 badcase 表（灰度期评估 precision 的原材料），失败走 ops 告警。
+   * 全部 verdict 写 guardrail_review_records（灰度期评估 precision 的原材料），失败走 ops 告警。
    */
   private runSemanticShadow(
     packet: GuardrailReviewPacket,
     flags: { llmEnabled: boolean; shadowEnabled: boolean },
     input: OutputGuardInput,
   ): void {
-    // silent（advisory 调试流量）：不跑 shadow，避免污染灰度 badcase 判例池。
+    // silent（advisory 调试流量）：不跑 shadow，避免污染生产守卫判例池。
     if (input.silent) return;
     if (!flags.shadowEnabled || flags.llmEnabled) return;
     if (!this.semanticReviewer.shouldReview(packet)) return;
@@ -413,9 +419,7 @@ export class OutputGuardrailService {
         this.logger.log(
           `[OutputGuardrail] semantic shadow: decision=${verdict.decision}, confidence=${verdict.confidence}, findings=${findingCodes}`,
         );
-        if (verdict.decision !== GUARDRAIL_DECISION.PASS || verdict.findings.length > 0) {
-          await this.notifyVerdict('shadow', verdict, packet.draftReply, input);
-        }
+        await this.recordVerdict('shadow', verdict, packet.draftReply, input);
       })
       .catch(async (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -432,17 +436,17 @@ export class OutputGuardrailService {
       });
   }
 
-  /** 语义判例上报（badcase 多维表）；通知失败只记日志，不影响裁决链路。 */
-  private async notifyVerdict(
+  /** 语义判例归档（guardrail_review_records）；失败不影响裁决链路。 */
+  private async recordVerdict(
     mode: 'shadow' | 'enforce' | 'confidence_downgraded',
     verdict: SemanticReviewVerdict,
     reply: string,
     input: OutputGuardInput,
   ): Promise<void> {
-    await this.semanticNotifier
-      .notifyVerdict({
+    await this.semanticRecorder
+      .record({
         mode,
-        decision: verdict.decision,
+        decision: verdict.decision as OutputDecision,
         confidence: verdict.confidence,
         findings: verdict.findings.map((finding) => ({
           code: finding.code,
@@ -450,7 +454,7 @@ export class OutputGuardrailService {
           userImpact: finding.userImpact,
           feedbackToGenerator: finding.feedbackToGenerator,
         })),
-        replyPreview: reply.slice(0, 400),
+        draftReply: reply,
         userMessage: input.userMessage,
         chatId: input.chatId,
         userId: input.userId,
@@ -639,7 +643,7 @@ export interface OutputGuardInput {
   memorySnapshot?: AgentMemorySnapshot;
   redLines?: string[];
   userMessage?: string;
-  /** 透传给 rule 档做飞书告警/观测的上下文。 */
+  /** 透传给 rule 档与守卫日志的上下文。 */
   chatId?: string;
   userId?: string;
   traceId?: string;
@@ -647,8 +651,8 @@ export interface OutputGuardInput {
   botImId?: string;
   botUserName?: string;
   /**
-   * 静默模式（advisory）：只返回裁决，不 fire 任何告警/判例上报（飞书 badcase、语义 verdict、
-   * reviewer 故障告警）。用于调试流量在流末 advisory 展示"守卫会怎么判"，避免污染生产 badcase 池。
+   * 静默模式（advisory）：只返回裁决，不 fire 任何告警/判例落库。
+   * 用于调试流量在流末 advisory 展示"守卫会怎么判"，避免污染生产守卫日志。
    */
   silent?: boolean;
 }

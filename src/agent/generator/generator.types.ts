@@ -75,6 +75,8 @@ export interface GeneratorInvokeParams {
    * `timestamp <= cutoff` 的历史，避免上一批提前吃到下一批 pending 消息。
    */
   shortTermEndTimeInclusive?: number;
+  /** 不可逆工具提交前检查当前回合启动后是否又收到候选人消息。 */
+  hasNewerUserInput?: () => Promise<boolean>;
   /** 场景标识，默认 candidate-consultation */
   scenario?: string;
   /** 最大工具循环步数，默认 5 */

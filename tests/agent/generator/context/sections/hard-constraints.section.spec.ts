@@ -136,8 +136,9 @@ describe('HardConstraintsSection', () => {
     const output = section.build({ ...baseCtx, sessionFacts: facts });
 
     expect(output).toContain('是否学生: 是');
-    expect(output).toContain('学生/在读/准研究生身份需谨慎处理');
-    expect(output).toContain('figure=不限、学历够、未写学生限制都不能推断为身份没限制');
+    expect(output).toContain('学生能否安排只看岗位数据');
+    expect(output).toContain('未写学生限制或未返回学生筛选项时按没有额外学生硬限制');
+    expect(output).toContain('不得凭空增加门店确认或人工介入');
   });
 
   it('routes district-without-city through geocode tri-state instead of reverse-asking the candidate', () => {

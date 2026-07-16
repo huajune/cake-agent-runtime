@@ -1,13 +1,13 @@
 # HC-1/2/3 Runtime 机制设计
 
 > 状态：runtime 机制完成（当前分支）
-> 日期：2026-06-24
+> 日期：2026-06-24；HC-3 当前实现校准：2026-07-16
 > 父文档：[agent-reliability-refactor-2026-06.md](./agent-reliability-refactor-2026-06.md) §12 未决硬约束
 > 目的：把 §12 的三条硬约束（声明）变成已落地的 runtime 机制——具体到函数、数据形状、控制流、边界。当前分支已具备进入后续增强阶段的基础。
 
 前置事实（已核实）：
-- generator `stopWhen` 已改为 any-tool 短路：任意 tool result `output.shortCircuited===true` 即停 loop，`skip_reply` 仍保留无条件短路（[generator.service.ts](../../../src/agent/generator/generator.service.ts#L118)）；`AgentRunnerService.invokeReviewed()` 已承接 output guardrail + 一次 revise 编排（[agent-runner.service.ts](../../../src/agent/runner/agent-runner.service.ts#L120)）。
-- `request_handoff` 工具**在工具内** `interventionService.dispatch(...)`（pause+告警）并返回 `{dispatched:true, shortCircuited:true}`（[request-handoff.tool.ts](../../../src/tools/request-handoff.tool.ts#L194)）。
+- generator `stopWhen` 已支持 any-tool 短路：任意 tool result `output.shortCircuited===true` 即停 loop，`skip_reply` 仍保留无条件短路（[generator.agent.ts](../../../src/agent/generator/generator.agent.ts)）；`AgentRunnerService.invokeReviewed()` 承接 output guardrail + 一次受控修复。
+- `request_handoff` 工具只声明 `general_handoff` 副作用意图并返回 `{dispatched:true, shortCircuited:true}`；Runner 统一生成幂等键，最终 outcome 确认后再写底账、暂停托管和告警。
 - booking 历史上信任模型入参 `prechecked.nextAction`；当前分支已补 jobId provenance gate、booking name gate 与 hard-reject runtime short-circuit。完整全量 `evaluatePrecheck` 仍可继续抽纯函数化，但不再是 HC-1/2/3 runtime 机制的阻塞项。
 - replay 阻断工具集 = `{invite_to_group, duliday_interview_booking}`（[reply-workflow.service.ts](../../../src/channels/wecom/message/application/reply-workflow.service.ts#L58)）。更完整的 HC-1 副作用工具集以 [tool-call-analysis.ts](../../../src/agent/generator/tool-call-analysis.ts#L136) 的 `SIDE_EFFECT_TOOLS` 为准。
 
@@ -18,7 +18,7 @@
 - 已新增 `AuthoritativeSessionState` 与 `SessionService.getAuthoritativeState()`：`recalledJobIds:Set<number>` 来自 presented/current/candidate pool；`lastCandidateMessageAt` / `terminal` 已写入；`collectedFields` 仅投影有 provenance 的字段，不把模型工具参数当硬准入。
 - precheck/booking 已使用 `context.isRecalledJobId(jobId)` 做成员判定；booking 的 jobId 无召回出处路径已升级为 `{shortCircuited:true, gateRejected:true, reasonCode:'job_id_not_recalled'}`。
 - 已新增 `tools/shared/candidate-field-parser.ts` 与 booking name gate：候选人原文 parser 在工具上下文中可用，`"我是X"` 打招呼昵称不作为真实姓名 evidence。
-- `reply-workflow` 已把 booking gate 短路映射到 outcome 层 handoff 派发：先写 handoff 底账，`duplicate` 跳过重复 dispatch，`failed` 仍 fail-safe pause+告警；`request_handoff` 迁移期仍由工具内 dispatch，避免双派发。
+- `reply-workflow` 已把 `request_handoff` 和白名单 Tool gate 统一交给 outcome 层派发：先写 handoff 底账，`duplicate` 跳过重复 dispatch，`failed` 仍 fail-safe pause+告警。
 - `HandoffRecorderService.record()` / `HandoffEventsRepository.insertHandoffEvent()` 已升级为三态 `inserted | duplicate | failed`。
 - 复聊/主动回合已消费这些机制：主动回合默认 `toolMode:'readonly'`；handoff/booking 终态写入 session，供主动触达停止条件使用。
 
@@ -143,74 +143,21 @@ function isFieldAuthoritative(f?: CollectedField): boolean { return !!f && AUTHO
 
 ## HC-3：hard-reject 短路由 runtime 保证
 
-### 机制（复用现成 shortCircuit，不造新基建）
+HC-3 已落地，并从 booking 专用机制扩展为通用的 Tool gate → Generator 短路 → Runner handoff → Intervention 提交流水线。当前不变量：
 
-**1. BookingGuardrail 只读判定**（已设计）：`gate()` 返回 `{decision:'reject_hard', reasonCode}`，**无任何 dispatch**。
+- 高风险工具在真实副作用前完成 gate 判定；
+- hard-reject 返回 `shortCircuited: true + gateRejected: true`；
+- Generator 根据 `shortCircuited` 强制停止 LLM loop；
+- Runner 只对白名单工具的 `gateRejected` 收敛为 `handoff`；
+- `request_handoff` 和 gate handoff 都由 Runner 生成统一幂等键；
+- `TurnOutcomeInterventionService` 先写底账判重，再执行暂停托管和飞书告警；
+- 只有 `duplicate` 跳过派发，底账 `failed` 时继续 fail-safe 人工介入。
 
-**2. booking 工具据 verdict 返回短路 result**
-```ts
-// duliday-interview-booking.tool execute 首行
-const verdict = await bookingGuardrail.gate({
-  jobId,
-  sessionRef,
-  requestedInterviewTime,
-  currentUserMessages,  // HC-2：当前轮候选人原文，供 gate 内 parser 兜底解析+写权威态
-  turnId,               // 解析/写状态/幂等的事务关联
-});
-if (verdict.decision === 'reject_hard') {
-  return { shortCircuited: true, gateRejected: true, reasonCode: verdict.reasonForHandoff };  // ← 不 dispatch、不 booking
-}
-if (verdict.decision === 'reject_collect') return buildToolError({ ... });   // 可重试收资
-// allow → 执行真实 booking
-```
+完整的当前实现、字段协议、幂等边界、失败策略和扩展检查单统一维护在：
 
-**3. runner stopWhen 改为通用短路（推荐）**
-```ts
-// 现：shortCircuitByToolResult('request_handoff')
-// 改：任意工具 output.shortCircuited===true 即停 —— request_handoff 自然纳入，未来 gate 自动覆盖
-const shortCircuitOnAnyToolResult = ({ steps }) =>
-  (steps[steps.length-1]?.toolResults ?? []).some(r => isShortCircuitedToolResult(r.output));
-```
+> [Gate 拒绝与人工介入流水线](../handoff-gate-and-intervention-pipeline.md)
 
-**4. runner 把短路结果映射成 handoff outcome；intervention 由 outcome 层 dispatch**
-```ts
-// runner 收尾：若末步有 gateRejected 短路 → TurnOutcome.kind='handoff'
-// outcome 处理层（reply-workflow 或其后继）见 handoff → interventionService.dispatch({kind, reasonCode})
-```
-
-### 为什么不在 booking 工具内 dispatch
-- 保持 **gate 只读、tool 只判不执行 intervention**：dispatch（pause 托管+告警）是有副作用的动作，集中到 outcome 层，便于统一观测/幂等/在 shadow 或测试链路里禁用。
-- 注：现有 `request_handoff` 是**在工具内** dispatch 的（legacy）。HC-3 走 outcome 层；二者迁移期并存，后续把 request_handoff 也收敛到 outcome 层 dispatch（统一）。
-- 关键不变量：**短路是 runtime 强制的**（stopWhen 见 `shortCircuited` 即停），模型无法在 hard-reject 后继续生成绕过——这正是"不交给模型"。
-
-### handoff 的元数据与幂等契约（必须补，否则重放会重复 pause+告警）
-现 `request_handoff` 用稳定 turnId 做幂等键 `${chatId}:handoff:${turnId}`，保证 Bull retry / 崩溃重放只 pause+告警一次（[request-handoff.tool.ts](../../../src/tools/request-handoff.tool.ts#L164)）。outcome 层新路径必须用**同等幂等键**，否则重复暂停托管+告警。
-```ts
-// TurnOutcome 扩展（父文档 §5.3 同步）
-interface TurnOutcome {
-  kind: 'reply' | 'skipped' | 'blocked' | 'handoff';
-  // ... 原字段
-  handoff?: {
-    reasonCode: string; reason?: string;
-    sourceToolCall: string;                          // 'duliday_interview_booking' | 'request_handoff'
-    idempotencyKey: string;                          // `${chatId}:handoff:${turnId}` —— 与现有一致
-    alreadyDispatched?: boolean;                     // request_handoff 工具内已 dispatch → true；outcome 层据此跳过
-  };
-}
-```
-**幂等落点**：`InterventionService.dispatch` 本身**不接收/不消费幂等键**，只查 `alreadyPaused`（[intervention.service.ts](../../../src/biz/intervention/intervention.service.ts#L75)）——不足以防重放。真正幂等的是 `HandoffEventsRepository.insertHandoffEvent`（按 `corp_id + idempotency_key` upsert，见 [handoff-events.repository.ts](../../../src/biz/handoff-events/handoff-events.repository.ts#L37)）。
-
-`handoff_events` 写入结果必须保持三态，不能退回布尔 `false=重复/失败/熔断/DB不可用` 混合语义。若按"false 就跳过 dispatch"实现，**Supabase 故障时会静默不暂停、不告警**（漏人工介入，P0）：
-```ts
-type HandoffWriteOutcome = 'inserted' | 'duplicate' | 'failed';
-const r = await handoffRecorder.record({ idempotencyKey, reasonCode, ... });
-if (r === 'duplicate') return;                       // 真重复 → 跳过 dispatch
-await interventionService.dispatch({ pauseTargetId, kind, reasonCode });  // inserted 正常 dispatch
-if (r === 'failed') logger.error('handoff 底账写入失败，已 fail-safe dispatch', { idempotencyKey }); // failed → 仍 dispatch + 高危告警/指标
-```
-即 **duplicate 才跳过；failed 一律 fail-safe dispatch（宁可重复也不漏人工）+ 打高危日志/指标**。当前实现已用原生 `upsert(... ignoreDuplicates).select('idempotency_key')` 区分 inserted/duplicate/error。
-
-**迁移期防双 dispatch（P0）**：现有 `request_handoff` 工具**已在工具内 dispatch**（[request-handoff.tool.ts](../../../src/tools/request-handoff.tool.ts#L195)）。outcome 层只处理 booking gate hard-reject 路径；`request_handoff` 在 `TurnOutcome.handoff.alreadyDispatched=true` 时跳过 outcome dispatch，避免重复 pause+告警。后续如需把 request_handoff 也收敛到 outcome 层，可在同一 metadata 契约下迁移。
+本文不再复制 handoff 代码细节，避免可靠性历史设计稿与运行时真相文档发生漂移。
 
 ---
 

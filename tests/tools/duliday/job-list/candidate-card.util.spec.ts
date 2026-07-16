@@ -159,7 +159,7 @@ describe('renderCandidateCardsBanner', () => {
     expect(renderCandidateCardsBanner([])).toBe('');
   });
 
-  it('renders all jobs as quoted block with header', () => {
+  it('renders all jobs as quoted candidate-safe cards without internal template metadata', () => {
     const banner = renderCandidateCardsBanner([
       makeJob(),
       makeJob({
@@ -171,8 +171,9 @@ describe('renderCandidateCardsBanner', () => {
         },
       }),
     ]);
-    expect(banner).toContain('推荐对话用模板');
-    expect(banner).toContain('不得删除或合并');
+    expect(banner).not.toContain('模板');
+    expect(banner).not.toContain('固定格式');
+    expect(banner).not.toContain('示例');
     expect(banner).toMatch(/> .*1\..*肯德基/);
     expect(banner).toMatch(/> .*2\..*麦当劳/);
   });

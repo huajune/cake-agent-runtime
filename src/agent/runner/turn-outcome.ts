@@ -2,11 +2,12 @@ import type { AgentToolCall, GeneratorRunResult } from '../generator/generator.t
 import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import {
   blocksReplay,
-  isBookingGateRejectedToolCall,
+  isHandoffGateRejectedToolCall,
   isShortCircuitedToolCall,
 } from '../generator/tool-call-analysis';
 import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.service';
 import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
+import { buildHandoffIdempotencyKey } from './handoff-idempotency';
 import type { SessionRef, TurnOutcome, TurnTrigger } from './agent-runner.types';
 import type {
   GeneralHandoffSideEffectIntent,
@@ -32,6 +33,12 @@ export function resolveReplaySkipDecision(
   outcome: TurnOutcome | undefined,
   toolCalls: AgentToolCall[] | undefined,
 ): ReplaySkipDecision {
+  // 不可逆工具在提交前发现候选人有新消息时会主动短路旧回合。这个 skipped outcome
+  // 与普通 skip_reply 相反：必须继续读取 pending 并 replay，不能被 outcome/tool 阻断。
+  if (hasStaleInputAbort(toolCalls)) {
+    return { skip: false, reasons: [], blockingTools: [] };
+  }
+
   const reasons: string[] = [];
   if (outcome && outcome.kind !== 'reply') {
     reasons.push(`outcome:${outcome.kind}`);
@@ -46,6 +53,16 @@ export function resolveReplaySkipDecision(
   }
 
   return { skip: reasons.length > 0, reasons, blockingTools };
+}
+
+function hasStaleInputAbort(toolCalls: AgentToolCall[] | undefined): boolean {
+  return (toolCalls ?? []).some((call) => {
+    const result =
+      call.result && typeof call.result === 'object' && !Array.isArray(call.result)
+        ? (call.result as Record<string, unknown>)
+        : undefined;
+    return result?.staleInput === true && result?.reasonCode === 'newer_user_input_pending';
+  });
 }
 
 function collectReplayBlockingTools(toolCalls: AgentToolCall[] | undefined): string[] {
@@ -153,37 +170,59 @@ export function classifyReviewedOutcome(
 
   // handoff：request_handoff 或 booking gate hard-reject；副作用统一从 sideEffects 出口执行。
   const requestHandoff = toolCalls.find(isCommittedRequestHandoffCall);
-  const bookingGateReject = toolCalls.find(isBookingGateRejectedToolCall);
-  const handoffCall = requestHandoff ?? bookingGateReject;
+  const gateReject = toolCalls.find(isHandoffGateRejectedToolCall);
+  const handoffCall = requestHandoff ?? gateReject;
   if (handoffCall) {
     const args = handoffCall.args as { reasonCode?: unknown; reason?: unknown } | undefined;
-    const callResult = handoffCall.result as { reasonCode?: unknown } | undefined;
-    const handoffToolSideEffect = collectToolSideEffectIntents([handoffCall])[0];
+    const callResult = handoffCall.result as
+      | {
+          reasonCode?: unknown;
+          workOrderId?: unknown;
+          handoffReason?: unknown;
+          actionAdvice?: unknown;
+          _outcome?: unknown;
+        }
+      | undefined;
+    const collectedToolSideEffect = collectToolSideEffectIntents([handoffCall])[0];
+    const handoffToolSideEffect =
+      collectedToolSideEffect?.kind === 'general_handoff' ? collectedToolSideEffect : undefined;
     const reasonCode =
       (typeof args?.reasonCode === 'string' && args.reasonCode) ||
       (typeof callResult?.reasonCode === 'string' && callResult.reasonCode) ||
       'other';
     const turnId = messageId ?? scenarioCode ?? sessionRef.sessionId;
     const alreadyDispatched = handoffCall.toolName === 'request_handoff' && !handoffToolSideEffect;
-    const idempotencyKey = `${sessionRef.sessionId}:handoff:${turnId}`;
-    const gateReason =
-      handoffCall.toolName === 'duliday_interview_booking'
-        ? resolveBookingGateReason(handoffCall, reasonCode)
+    const idempotencyKey = buildHandoffIdempotencyKey({
+      chatId: sessionRef.sessionId,
+      turnId,
+    });
+    const isBookingGate = handoffCall.toolName === 'duliday_interview_booking';
+    const isModifyOwnershipGate = handoffCall.toolName === 'duliday_modify_interview_time';
+    const gateReason = isBookingGate
+      ? resolveBookingGateReason(handoffCall, reasonCode)
+      : isModifyOwnershipGate && typeof callResult?.handoffReason === 'string'
+        ? callResult.handoffReason
         : undefined;
     const fallbackHandoffSideEffect: GeneralHandoffSideEffectIntent = {
       kind: 'general_handoff',
       source: 'agent_tool',
-      alertLabel:
-        handoffCall.toolName === 'duliday_interview_booking'
-          ? 'Booking runtime guard 拦截'
+      alertLabel: isBookingGate
+        ? 'Booking runtime guard 拦截'
+        : isModifyOwnershipGate
+          ? '工单不属于当前微信联系人'
           : 'request_handoff 转人工',
-      reasonCode:
-        handoffCall.toolName === 'duliday_interview_booking' ? 'system_blocked' : reasonCode,
-      reason: gateReason || (typeof args?.reason === 'string' && args.reason) || '需要人工协助',
-      actionAdvice:
-        handoffCall.toolName === 'duliday_interview_booking'
-          ? '人工确认 jobId 来源与候选人真实意向；必要时手动补录或重新推荐岗位。'
+      reasonCode: isBookingGate ? 'system_blocked' : reasonCode,
+      reason:
+        gateReason ||
+        (typeof args?.reason === 'string' && args.reason) ||
+        (typeof callResult?._outcome === 'string' && callResult._outcome) ||
+        '需要人工协助',
+      actionAdvice: isBookingGate
+        ? '人工确认 jobId 来源与候选人真实意向；必要时手动补录或重新推荐岗位。'
+        : typeof callResult?.actionAdvice === 'string'
+          ? callResult.actionAdvice
           : undefined,
+      workOrderId: typeof callResult?.workOrderId === 'number' ? callResult.workOrderId : undefined,
       idempotencyKey,
       alreadyDispatched,
       recordHandoff: !alreadyDispatched,
@@ -194,7 +233,11 @@ export function classifyReviewedOutcome(
       scenarioCode,
       runTurnEnd,
       ...metadata,
-      sideEffects: [handoffToolSideEffect ?? fallbackHandoffSideEffect],
+      sideEffects: [
+        handoffToolSideEffect
+          ? { ...handoffToolSideEffect, idempotencyKey }
+          : fallbackHandoffSideEffect,
+      ],
       handoff: {
         reasonCode,
         reason: typeof args?.reason === 'string' ? args.reason : undefined,
@@ -305,7 +348,11 @@ function buildOutputGuardHandoffSideEffect(params: {
     reason: `${reason}；replyPreview="${params.replyPreview.slice(0, 400)}"`,
     actionAdvice:
       '本轮回复被出站守卫拦截、未发送给候选人。人工核对候选人最近消息与被拦截回复，必要时人工接管回复。',
-    idempotencyKey: `${params.sessionRef.sessionId}:handoff:${params.turnId}:output_guard`,
+    idempotencyKey: buildHandoffIdempotencyKey({
+      chatId: params.sessionRef.sessionId,
+      turnId: params.turnId,
+      scope: 'output_guard',
+    }),
     recordHandoff: true,
   };
 }

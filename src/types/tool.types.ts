@@ -47,6 +47,12 @@ export interface ToolBuildContext {
   onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
   /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */
   bookingSucceeded?: boolean;
+  /**
+   * 本轮工具实时解析出的工单号。用于处理“海绵已存在工单，但工单挂在另一微信联系人，
+   * 或当前用户的 active_booking 尚未写入”的情况：改约/取消工具拿到有效工单后写入，
+   * request_handoff 可据此关联正确工单并避免误判首次约面。
+   */
+  runtimeWorkOrderId?: number;
   /** 业务阈值（策略配置） */
   thresholds?: Threshold[];
   /** 图片/表情消息 ID 列表（当前轮次包含视觉消息时传入，供 save_image_description 工具使用） */
@@ -149,6 +155,16 @@ export interface ToolBuildContext {
    * 又能在重试时去重（不会重复 +1）。缺省（test/debug 链路）时由工具回退到时间戳。
    */
   turnId?: string;
+  /**
+   * 不可逆工具提交前的输入新鲜度检查。
+   * 返回 true 表示 Agent 运行期间候选人又发了消息，当前工具入参已经过期。
+   */
+  hasNewerUserInput?: () => Promise<boolean>;
+  /**
+   * 本轮可用于真实报名的候选人字段权威视图：高置信会话事实与当前轮确定性自报合并结果。
+   * booking 用它核对最终 API payload，防止模型绕过 precheck 重新塞入旧记忆。
+   */
+  bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;
 }
 
 /** 工具构建函数。 */

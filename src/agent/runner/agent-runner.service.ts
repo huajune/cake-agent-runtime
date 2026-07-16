@@ -887,6 +887,7 @@ export class AgentRunnerService {
       modelId: req.modelId,
       thinking: context?.thinking,
       shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
+      hasNewerUserInput: context?.hasNewerUserInput,
       onPreparedRequest: context?.onPreparedRequest,
     };
 

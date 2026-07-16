@@ -72,6 +72,17 @@ describe('job-list render util', () => {
     expect(markdown.indexOf('⚠️ 同品牌多门店')).toBeLessThan(markdown.indexOf('## 1. 服务员'));
   });
 
+  it('treats missing student restriction as no extra student hard gate', () => {
+    const flags: ProgressiveDisclosureFlags = {
+      ...minimalFlags,
+      includeHiringRequirement: true,
+    };
+    const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, flags);
+
+    expect(markdown).toContain('未标注学生限制（按无额外学生硬限制处理）');
+    expect(markdown).not.toContain('需确认');
+  });
+
   it('marks insurance as sensitive in welfare markdown instead of ordinary active welfare', () => {
     const flags: ProgressiveDisclosureFlags = {
       ...minimalFlags,
