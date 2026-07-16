@@ -60,6 +60,28 @@
         "修复后定向复验：Guardrail 目录、品牌事故回归、品牌匹配、身份识别共 154 个用例通过。",
         "`git diff --check` 通过。"
       ]
+    },
+    {
+      "number": "580",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/580",
+      "title": "brand-resolution 规格升至 v5（实施后修订）",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-16",
+      "businessUpdates": [
+        "brand-resolution 规格升至 v5（实施后修订）"
+      ],
+      "summary": [
+        "brand-resolution 规格升至 v5（实施后修订）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "brand-resolution 规格升至 v5（实施后修订）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
