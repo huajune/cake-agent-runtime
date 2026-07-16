@@ -106,7 +106,7 @@ function formatInterviewDecisionSummary(
   addSummaryLine(
     lines,
     '学生身份要求',
-    studentRequirement ?? '未明确（学生/在读/准研究生候选人不得据此承诺身份没限制，需确认）',
+    studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）',
   );
 
   if (policy.highlights.requirementHighlights.length > 0) {
@@ -1077,6 +1077,9 @@ export function formatJobsToMarkdown(
 
   md +=
     '> ⚠️ **数据使用原则**：各 section 中的备注、remark 等自由文本字段可能包含结构化字段未覆盖或与之矛盾的补充信息，回复时须结合全部内容；除下方单独说明的用工形式外，**自由文本与结构化字段冲突时以自由文本为准**\n\n';
+
+  md +=
+    '> ⚠️ **预约动作边界**：本工具只查询岗位，**没有提交预约**。只调用本工具后不得说“已提交 / 正在提交 / 这就提交 / 稍后提交预约”；约面必须继续调用 `duliday_interview_precheck`，且只有 `duliday_interview_booking` 返回 success=true 才能说预约已提交。\n\n';
 
   md +=
     '> ⚠️ **用工类型口径**：岗位的用工形式**一律以结构化 `用工形式` + `兼职类型` 字段为准**' +

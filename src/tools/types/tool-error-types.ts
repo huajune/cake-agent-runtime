@@ -67,6 +67,10 @@ export const TOOL_ERROR_TYPES = {
   // duliday_modify_interview_time
   // ============================================================
   MODIFY_INTERVIEW_MISSING_WORK_ORDER_ID: 'modify_interview.missing_work_order_id',
+  /** 候选人只询问时段可用性，尚未明确确认提交改约。 */
+  MODIFY_INTERVIEW_UNCONFIRMED: 'modify_interview.unconfirmed',
+  /** 手机号查到的工单不属于当前微信联系人的 active_booking，禁止自助修改并直接转人工。 */
+  MODIFY_INTERVIEW_WORK_ORDER_NOT_IN_MEMORY: 'modify_interview.work_order_not_in_memory',
   MODIFY_INTERVIEW_INVALID_TIME: 'modify_interview.invalid_time',
   MODIFY_INTERVIEW_REJECTED: 'modify_interview.rejected',
   MODIFY_INTERVIEW_REQUEST_FAILED: 'modify_interview.request_failed',

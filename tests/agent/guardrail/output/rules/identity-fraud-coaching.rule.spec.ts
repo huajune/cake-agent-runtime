@@ -29,6 +29,50 @@ describe('detectIdentityMisregistrationCoaching', () => {
     expect(result).toBeNull();
   });
 
+  it.each([
+    '身份（学生/社会人士）：社会',
+    '目前是学生还是社会人士？（这家只招社会人士哈）社会',
+    '是否是学信网在籍学生：否',
+  ])('生产表单证据与 precheck/booking 同口径豁免：%s', (userMessage) => {
+    expect(
+      detectIdentityMisregistrationCoaching(
+        autofillReply,
+        precheckWithIdentityMissing(),
+        undefined,
+        userMessage,
+      ),
+    ).toBeNull();
+  });
+
+  it('二选一问句后的“社会”使用会话证据豁免陈旧学生记忆', () => {
+    expect(
+      detectIdentityMisregistrationCoaching(
+        '明白，按你刚确认的社会人士身份登记',
+        precheckWithIdentityMissing(),
+        { sessionFacts: { 'interview.is_student': true } } as never,
+        '社会',
+        [
+          { role: 'assistant', content: '目前是学生还是社会人士？' },
+          { role: 'user', content: '社会' },
+        ],
+      ),
+    ).toBeNull();
+  });
+
+  it.each(['身份：学生 / 社会人士', '学历：高中毕业', '高中毕业了，在等大学通知书'])(
+    '未填写模板或仅有教育经历不能豁免身份代填：%s',
+    (userMessage) => {
+      expect(
+        detectIdentityMisregistrationCoaching(
+          autofillReply,
+          precheckWithIdentityMissing(),
+          undefined,
+          userMessage,
+        ),
+      ).not.toBeNull();
+    },
+  );
+
   it('候选人未作答时代填仍违规（防模型凭空代答）', () => {
     const result = detectIdentityMisregistrationCoaching(
       autofillReply,

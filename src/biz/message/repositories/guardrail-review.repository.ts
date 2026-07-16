@@ -10,6 +10,7 @@ import type { GuardrailReviewDbRecord } from '../entities/guardrail-review.entit
 import type {
   GuardrailReviewInsertInput,
   GuardrailReviewRecord,
+  GuardrailSemanticReviewInput,
   GuardrailReviewWriteOutcome,
 } from '../types/guardrail-review.types';
 
@@ -29,10 +30,10 @@ export class GuardrailReviewRepository extends BaseRepository {
   }
 
   /**
-   * 写入一条审查档案（按 trace_id 幂等）。
+   * 写入一条 runner 审查档案（按 trace_id 幂等更新）。
    *
-   * 该表是 message_processing_records 的 1:0..1 稀疏附属表；写入口必须保留
-   * inserted / duplicate / failed 三态，调用方才能把重复消费和真实落库失败区分开。
+   * shadow 语义判例可能先创建同 trace 的最小基线行，因此这里不能 ignoreDuplicates；
+   * 冲突时更新 runner 字段，而 payload 不携带 semantic_reviews，数据库会保留异步追加内容。
    */
   async insertReviewRecord(
     input: GuardrailReviewInsertInput,
@@ -50,7 +51,7 @@ export class GuardrailReviewRepository extends BaseRepository {
         .from(this.tableName)
         .upsert(this.toDbRecord(input) as unknown as Record<string, unknown>, {
           onConflict: 'trace_id',
-          ignoreDuplicates: true,
+          ignoreDuplicates: false,
         })
         .select('trace_id');
 
@@ -60,10 +61,52 @@ export class GuardrailReviewRepository extends BaseRepository {
       }
 
       const rows = (data as Array<Pick<GuardrailReviewDbRecord, 'trace_id'>> | null) ?? [];
-      return rows.length > 0 ? 'inserted' : 'duplicate';
+      return rows.length > 0 ? 'inserted' : 'failed';
     } catch (error) {
       this.handleError('UPSERT', error);
       return 'failed';
+    }
+  }
+
+  /**
+   * 追加一条语义审查判例。
+   *
+   * RPC 只合并 semantic_reviews，避免 shadow 异步写入与 runner 的首审/修复档案并发时
+   * 互相覆盖；trace 尚无 hard-rule 档案时由数据库创建一条最小 pass 基线行。
+   */
+  async appendSemanticReview(input: GuardrailSemanticReviewInput): Promise<boolean> {
+    if (!this.isAvailable()) {
+      this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 语义判例写入`);
+      return false;
+    }
+    if (this.circuitBlocked('APPEND_SEMANTIC_REVIEW')) {
+      return false;
+    }
+
+    try {
+      const result = await this.rpc<Array<{ appended: boolean }>>(
+        'append_guardrail_semantic_review',
+        {
+          p_trace_id: input.traceId,
+          p_chat_id: input.chatId ?? null,
+          p_user_id: input.userId ?? null,
+          p_bot_user_name: input.botUserName ?? null,
+          p_contact_name: input.contactName ?? null,
+          p_user_message: input.userMessage ?? null,
+          p_draft_reply: input.draftReply,
+          p_review: {
+            mode: input.mode,
+            decision: input.decision,
+            confidence: input.confidence,
+            findings: input.findings,
+            draftReply: input.draftReply,
+          },
+        },
+      );
+      return result?.[0]?.appended === true;
+    } catch (error) {
+      this.handleError('APPEND_SEMANTIC_REVIEW', error);
+      return false;
     }
   }
 
@@ -161,6 +204,7 @@ export class GuardrailReviewRepository extends BaseRepository {
       committedSideEffects: row.committed_side_effects ?? undefined,
       finalDecision: row.final_decision as OutputDecision,
       reasonCode: row.reason_code ?? undefined,
+      semanticReviews: row.semantic_reviews ?? [],
       createdAt: row.created_at,
     };
   }

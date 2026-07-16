@@ -19,6 +19,8 @@ describe('job-list render util', () => {
     const markdown = formatJobsToMarkdown([makeJob(1)], 3, 1, 1, minimalFlags);
 
     expect(markdown).toContain('# 在招岗位（共 3 个）');
+    expect(markdown).toContain('本工具只查询岗位，**没有提交预约**');
+    expect(markdown).toContain('只有 `duliday_interview_booking` 返回 success=true');
     expect(markdown).toContain('1. **肯德基 - 服务员** | 静安寺店 | 上海市静安区xx路 | 距离 2.3km');
     expect(markdown).toContain('_还有 2 个岗位未显示');
   });
@@ -70,6 +72,17 @@ describe('job-list render util', () => {
     expect(markdown).toContain('### 招聘要求');
     expect(markdown).toContain('### 工作时间');
     expect(markdown.indexOf('⚠️ 同品牌多门店')).toBeLessThan(markdown.indexOf('## 1. 服务员'));
+  });
+
+  it('treats missing student restriction as no extra student hard gate', () => {
+    const flags: ProgressiveDisclosureFlags = {
+      ...minimalFlags,
+      includeHiringRequirement: true,
+    };
+    const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, flags);
+
+    expect(markdown).toContain('未标注学生限制（按无额外学生硬限制处理）');
+    expect(markdown).not.toContain('需确认');
   });
 
   it('marks insurance as sensitive in welfare markdown instead of ordinary active welfare', () => {

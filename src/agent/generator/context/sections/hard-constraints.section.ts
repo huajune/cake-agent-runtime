@@ -286,7 +286,7 @@ export class HardConstraintsSection implements PromptSection {
     if (interview.is_student !== null && interview.is_student !== undefined) {
       lines.push(
         interview.is_student
-          ? '- 是否学生: 是（学生/在读/准研究生身份需谨慎处理；建议开 includeHiringRequirement 或 duliday_interview_precheck 核对；结果中明确"不接受学生"的不要推给学生候选人；figure=不限、学历够、未写学生限制都不能推断为身份没限制，必须保守说明需要确认）'
+          ? '- 是否学生: 是（学生能否安排只看岗位数据；建议开 includeHiringRequirement 或 duliday_interview_precheck 核对。明确"不接受学生"则停止，明确接受/学生优先则继续；未写学生限制或未返回学生筛选项时按没有额外学生硬限制继续其余校验，不得凭空增加门店确认或人工介入。资格允许只代表可继续，约面阶段仍必须保持 candidateIsStudent=true 调 precheck，禁止只查 job_list 就承诺提交预约）'
           : '- 是否学生: 否（建议开 includeHiringRequirement 核对，不要把社会人士误问成学生）',
       );
     }

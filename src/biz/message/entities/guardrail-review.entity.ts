@@ -1,4 +1,5 @@
 import type { GuardViolation } from '@shared-types/guardrail.contract';
+import type { GuardrailSemanticReview } from '../types/guardrail-review.types';
 
 /**
  * 出站守卫审查档案数据库格式
@@ -31,4 +32,5 @@ export interface GuardrailReviewDbRecord {
   committed_side_effects: string | null;
   final_decision: string;
   reason_code: string | null;
+  semantic_reviews: GuardrailSemanticReview[] | null;
 }

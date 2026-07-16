@@ -5,7 +5,7 @@ import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 describe('buildModifyInterviewTimeTool', () => {
   const spongeService = { modifyInterviewTime: jest.fn() };
   const opsEventsRecorder = { recordEvent: jest.fn() };
-  const longTermService = {};
+  const longTermService = { getActiveBookings: jest.fn() };
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
@@ -29,6 +29,8 @@ describe('buildModifyInterviewTimeTool', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete mockContext.runtimeWorkOrderId;
+    longTermService.getActiveBookings.mockResolvedValue([{ work_order_id: 123 }]);
     spongeService.modifyInterviewTime.mockResolvedValue({ success: true, code: 0, message: 'ok' });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
   });
@@ -77,6 +79,48 @@ describe('buildModifyInterviewTimeTool', () => {
     });
   });
 
+  it('does not modify when the candidate only asks whether a morning slot is available', async () => {
+    const context = {
+      ...mockContext,
+      currentUserMessage: '明天上午的面试还有吗',
+    };
+    const tool = buildTool(context);
+    const result = await exec(tool, {
+      workOrderId: 450643,
+      newInterviewTime: '2026-07-17 10:00',
+    });
+
+    expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: false,
+      errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_UNCONFIRMED,
+    });
+  });
+
+  it('short-circuits to handoff before modification when the work order is not in current contact memory', async () => {
+    longTermService.getActiveBookings.mockResolvedValue([]);
+    const context = {
+      ...mockContext,
+      currentUserMessage: '确定，帮我改到明天上午10点',
+    };
+    const tool = buildTool(context);
+    const result = await exec(tool, {
+      workOrderId: 450643,
+      newInterviewTime: '2026-07-17 10:00',
+    });
+
+    expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
+    expect(context.runtimeWorkOrderId).toBe(450643);
+    expect(result).toMatchObject({
+      success: false,
+      shortCircuited: true,
+      gateRejected: true,
+      reasonCode: 'modify_appointment',
+      workOrderId: 450643,
+      errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_WORK_ORDER_NOT_IN_MEMORY,
+    });
+  });
+
   it('returns MODIFY_INTERVIEW_REJECTED on business failure', async () => {
     spongeService.modifyInterviewTime.mockResolvedValue({ success: false, code: 500 });
     const tool = buildTool();
@@ -86,6 +130,7 @@ describe('buildModifyInterviewTimeTool', () => {
       success: false,
       errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REJECTED,
     });
+    expect(mockContext.runtimeWorkOrderId).toBe(123);
   });
 
   it('returns MODIFY_INTERVIEW_REQUEST_FAILED when the API throws', async () => {

@@ -31,6 +31,7 @@ export interface TurnContext
     | 'groupId'
     | 'thinking'
     | 'shortTermEndTimeInclusive'
+    | 'hasNewerUserInput'
     | 'onPreparedRequest'
   > {
   callerKind?: CallerKind;

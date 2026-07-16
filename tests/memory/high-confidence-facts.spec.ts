@@ -11,6 +11,7 @@ describe('extractHighConfidenceFacts', () => {
     { name: '肯德基', aliases: ['KFC'] },
     { name: '瑞幸咖啡', aliases: ['瑞幸', 'luckin'] },
     { name: '报亭咖啡', aliases: ['报', '报亭'] },
+    { name: 'M Stand', aliases: ['mstand'] },
   ];
 
   // 品牌写入收口（§9.2）：品牌真相只在 brand_state（写入经 turn-finalizer reducer），
@@ -49,13 +50,10 @@ describe('extractHighConfidenceFacts', () => {
     expect(hints.map((hint) => hint.brandName)).not.toContain('报亭咖啡');
   });
 
-  it('should expand a category word (咖啡) to related brands, not a position', () => {
-    // 品类词"咖啡"指的是相关品牌，应展开为咖啡类品牌走品牌召回，而非提取为 position "咖啡师"。
+  it('should default generic 咖啡兼职 to M Stand, not a position', () => {
     const hints = detectBrandAliasHints(['我要咖啡兼职'], brandData);
-    expect(hints.map((hint) => hint.brandName)).toEqual(
-      expect.arrayContaining(['瑞幸咖啡', '报亭咖啡']),
-    );
-    expect(hints.every((hint) => hint.matchedAlias === '咖啡(品类)')).toBe(true);
+    expect(hints.map((hint) => hint.brandName)).toEqual(['M Stand']);
+    expect(hints[0].matchedAlias).toBe('咖啡(品类默认)');
 
     // 规则层绝不能把品类词识别成具体岗位
     const result = extractHighConfidenceFacts(['我要咖啡兼职'], brandData);

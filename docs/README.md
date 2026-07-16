@@ -25,19 +25,21 @@
 
 - **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐ — 现状主干：分层架构、编排（Generator/Runner）、Context 组装、Provider 三层、工具、消息管线、模块依赖图
 - **[Agent 运营手册](product/agent-for-operations.md)** 👉 — 上文的业务语言版（运营向，收录在 product/，见下方产品区）
-- **[Agent 运行时 · 一条消息的回合之旅](architecture/agent-runtime-architecture-explained.html)** 🎞️ — 交互式可视化（浏览器打开）
-- **[LLM Executor 调用关系图](architecture/llm-executor-dependency-diagram.md)** — `agent / memory / llm / providers` 调用边界与典型回合时序
 - **[记忆系统架构](architecture/memory-system-architecture.md)** — 四层记忆（CoALA）、Hybrid 注入/检索、空闲沉淀
 - **[记忆与线索数据流](architecture/memory-and-hints-data-flow.md)** — 记忆读写与线索注入的端到端数据流
 - **[企微消息服务架构](architecture/message-service-architecture.md)** — 消息管道：去重→过滤→存储→聚合→Agent→投递
 - **[群任务通知流水线](architecture/group-task-pipeline.md)** — 群任务定时通知的运行时流水线
+- **[Gate 拒绝与人工介入流水线](architecture/handoff-gate-and-intervention-pipeline.md)** — Tool gate → LLM 短路 → Runner handoff → 底账判重 → 暂停托管与飞书告警
 
 ### 可靠性重构文档族（设计 → 详设 → 施工）
 
 - **[可靠性重构设计](architecture/reliability/agent-reliability-refactor-2026-06.md)** — 总设计：根因、目标架构、模块设计、落地路线、未决硬约束
 - **[HC-1/2/3 Runtime 机制设计](architecture/reliability/agent-reliability-hc-runtime-mechanisms.md)** — 三条硬约束的 runtime 机制详设
-- **[实施路线图（逐块落地）](architecture/reliability/agent-reliability-implementation-roadmap.md)** — 拆成 PR-A…G 的施工计划 + 进度
 - **[二次主动回复（复聊）实现方案](architecture/reliability/agent-reengagement-design.md)** — reengagement 触发/影子/真发设计
+
+### 历史设计与施工记录
+
+- **[实施路线图（PR-A…G）](architecture/reliability/agent-reliability-implementation-roadmap.md)** 🗄️ — 2026-06 施工记录；当前实现以运行时现状文档为准
 - **[Agent 架构重设计（基于 63 条 badcase）](architecture/reliability/agent-redesign-from-badcases.md)** 🗄️ — **已归档**，结论已并入上方 refactor 文档
 
 ### 守卫与安全
@@ -49,7 +51,6 @@
 
 - **[测试套件架构](architecture/test-suite-architecture.md)** — LLM 评分对话质量评估框架（单轮 + 多轮 + 批量 + 飞书同步）
 - **[监控系统架构](architecture/monitoring-system-architecture.md)** — 消息追踪、小时级聚合、Dashboard
-- **[告警系统架构](architecture/alert-system-architecture.md)** — 飞书告警、业务指标告警、节流
 
 ---
 

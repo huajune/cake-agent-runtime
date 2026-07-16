@@ -17,6 +17,34 @@ export interface GuardrailReviewStepDetail {
   feedback?: string;
 }
 
+export type GuardrailSemanticReviewMode = 'shadow' | 'enforce' | 'confidence_downgraded';
+
+export interface GuardrailSemanticFinding {
+  code: string;
+  evidenceQuote: string;
+  userImpact: string;
+  feedbackToGenerator: string;
+}
+
+/** 语义守卫的一次完整裁决；同一 trace 可包含首审、修复后二审等多次记录。 */
+export interface GuardrailSemanticReview {
+  mode: GuardrailSemanticReviewMode;
+  decision: OutputDecision;
+  confidence: string;
+  findings: GuardrailSemanticFinding[];
+  draftReply: string;
+  reviewedAt?: string;
+}
+
+export interface GuardrailSemanticReviewInput extends Omit<GuardrailSemanticReview, 'reviewedAt'> {
+  traceId: string;
+  chatId?: string;
+  userId?: string;
+  botUserName?: string;
+  contactName?: string;
+  userMessage?: string;
+}
+
 /** 一条出站守卫审查档案（写入/读取共用形状，camelCase）。 */
 export interface GuardrailReviewRecord {
   traceId: string;
@@ -38,12 +66,14 @@ export interface GuardrailReviewRecord {
   committedSideEffects?: string;
   finalDecision: OutputDecision;
   reasonCode?: string;
+  /** Semantic Reviewer 的完整判例序列；包含 shadow 与 enforce 首审/二审。 */
+  semanticReviews: GuardrailSemanticReview[];
   createdAt?: string;
 }
 
 type GuardrailReviewInsertBase = Omit<
   GuardrailReviewRecord,
-  'createdAt' | 'repairMode' | 'repaired' | 'revisedReply' | 'revised'
+  'createdAt' | 'semanticReviews' | 'repairMode' | 'repaired' | 'revisedReply' | 'revised'
 >;
 
 export type GuardrailReviewInsertInput =

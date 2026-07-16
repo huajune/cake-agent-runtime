@@ -41,7 +41,8 @@ const MATCH_TYPE_PRIORITY: Record<BrandMatchType, number> = {
   canonical_exact: 1,
   alias_exact: 2,
   alias_containment: 3,
-  category_expansion: 4,
+  category_default: 4,
+  category_expansion: 5,
 };
 
 const CONFIDENCE_BY_MATCH_TYPE: Record<BrandMatchType, number> = {
@@ -49,6 +50,7 @@ const CONFIDENCE_BY_MATCH_TYPE: Record<BrandMatchType, number> = {
   canonical_exact: BRAND_CONFIDENCE.canonicalExact,
   alias_exact: BRAND_CONFIDENCE.aliasExact,
   alias_containment: BRAND_CONFIDENCE.aliasContainment,
+  category_default: BRAND_CONFIDENCE.categoryDefault,
   category_expansion: BRAND_CONFIDENCE.categoryExpansion,
 };
 
@@ -99,7 +101,9 @@ export function resolveBrands(
   }
 
   // 3. 逐子句实体匹配 + 子句内极性判定。
-  const clauseMatches = splitClauses(trimmed).flatMap((clause) => matchClause(clause, index));
+  const clauseMatches = splitClauses(trimmed).flatMap((clause) =>
+    matchClause(clause, source, index),
+  );
 
   // 歧义词形：同一词形对应多个品牌 → 单独产出 ambiguous 结果，不参与品牌去重。
   const uniqueMatches: Array<ClauseMatch & { brand: BrandCandidate }> = [];
@@ -180,15 +184,27 @@ export function resolveBrands(
       ) {
         continue;
       }
-      for (const brandName of category.brands) {
+      const categoryBrands = shouldBrowseAlternativeBrands(normalizedText)
+        ? category.brands
+        : category.defaultBrand
+          ? [category.defaultBrand]
+          : category.brands;
+      const matchType: BrandMatchType =
+        category.defaultBrand && categoryBrands.length === 1
+          ? 'category_default'
+          : 'category_expansion';
+      for (const brandName of categoryBrands) {
         results.push({
           canonicalName: brandName,
           brandId: index.brandIdByName.get(brandName) ?? null,
           matchedText: category.label,
           source,
-          matchType: 'category_expansion',
+          matchType,
           intentPolarity: 'positive',
-          confidence: BRAND_CONFIDENCE.categoryExpansion,
+          confidence:
+            matchType === 'category_default'
+              ? BRAND_CONFIDENCE.categoryDefault
+              : BRAND_CONFIDENCE.categoryExpansion,
           ambiguous: false,
         });
       }
@@ -226,8 +242,77 @@ function resolveBrandIdMentions(
   return results;
 }
 
+const SHORT_LATIN_NICKNAME_PATTERN = /^(?:你好|嗨)?(?:我是|我叫|叫我|昵称是)[a-z0-9]{2,3}$/;
+const GEOGRAPHIC_SUFFIX_PATTERN =
+  /^(?:大道|街道|地铁站|公交站|小区|开发区|路|街|巷|弄|胡同|镇|乡|村|区|县|市|苑|园|里|号)/;
+
+/**
+ * 裸自我介绍是加好友昵称验证语，不写品牌；2-3 位昵称还额外拦截 contact_name。
+ * 带求职/地点上下文的 "ZARA导购"、"KFC松江" 仍按原规则识别。
+ */
+function isLowInformationShortLatinMatch(params: {
+  normalizedClause: string;
+  normalizedAlias: string;
+  source: BrandResolutionSource;
+}): boolean {
+  if (params.source === 'contact_name') {
+    return (
+      /^[a-z0-9]{2,3}$/.test(params.normalizedAlias) &&
+      params.normalizedClause === params.normalizedAlias
+    );
+  }
+  if (params.source !== 'user_text') return false;
+  if (isBareSelfIntroduction(params.normalizedClause, params.normalizedAlias)) return true;
+  if (!/^[a-z0-9]{2,3}$/.test(params.normalizedAlias)) return false;
+  if (isGroupNicknameIntroduction(params.normalizedClause, params.normalizedAlias)) return true;
+  return SHORT_LATIN_NICKNAME_PATTERN.test(params.normalizedClause);
+}
+
+function isBareSelfIntroduction(normalizedClause: string, normalizedAlias: string): boolean {
+  return [
+    `我是${normalizedAlias}`,
+    `我叫${normalizedAlias}`,
+    `叫我${normalizedAlias}`,
+    `昵称是${normalizedAlias}`,
+    `im${normalizedAlias}`,
+    `iam${normalizedAlias}`,
+  ].includes(normalizedClause);
+}
+
+/**
+ * 加群后的来源说明里，末尾 2-3 位英数串通常是群昵称，不是品牌：
+ * “我是群聊「独立客&上海餐饮兼职12群」的LL”。
+ */
+function isGroupNicknameIntroduction(normalizedClause: string, normalizedAlias: string): boolean {
+  return (
+    /^(?:你好|嗨)?(?:我是|我叫)/.test(normalizedClause) &&
+    /(?:群聊|群里|群内|兼职群)/.test(normalizedClause) &&
+    normalizedClause.endsWith(normalizedAlias)
+  );
+}
+
+/** “其他咖啡品牌 / 除了 M Stand”表示扩张查询，不应用咖啡默认品牌。 */
+function shouldBrowseAlternativeBrands(normalizedText: string): boolean {
+  return /(?:其他|其它|别的|另外|还有|除了|除去|不看|不要|不考虑)/.test(normalizedText);
+}
+
+/** 地址中的同名片段不是品牌："鄂尔多斯路" 不得命中品牌 "鄂尔多斯1980"。 */
+function isGeographicNameMatch(
+  normalizedClause: string,
+  spanStart: number,
+  spanLength: number,
+): boolean {
+  if (spanStart < 0) return false;
+  const suffix = normalizedClause.slice(spanStart + spanLength);
+  return GEOGRAPHIC_SUFFIX_PATTERN.test(suffix);
+}
+
 /** 单子句内的实体匹配：全等 token（短别名）+ 长别名包含 + 短英数边界包含。 */
-function matchClause(clause: string, index: BrandCatalogIndex): ClauseMatch[] {
+function matchClause(
+  clause: string,
+  source: BrandResolutionSource,
+  index: BrandCatalogIndex,
+): ClauseMatch[] {
   const normalizedClause = normalizeForBrandMatch(clause);
   if (!normalizedClause) return [];
 
@@ -258,6 +343,16 @@ function matchClause(clause: string, index: BrandCatalogIndex): ClauseMatch[] {
     }
 
     if (!matched) continue;
+    if (
+      isLowInformationShortLatinMatch({
+        normalizedClause,
+        normalizedAlias: candidate.normalized,
+        source,
+      }) ||
+      isGeographicNameMatch(normalizedClause, spanStart, candidate.normalized.length)
+    ) {
+      continue;
+    }
     seenNormalized.add(candidate.normalized);
 
     const entries = index.byNormalized.get(candidate.normalized) ?? [candidate];

@@ -7,20 +7,22 @@
 > 配套查阅：
 > - 飞书群组与 webhook 配置：[feishu-alert-system.md](./feishu-alert-system.md)
 > - 按目标群组聚合的简表：[feishu-alert-system.md](./feishu-alert-system.md) 的「通知分布」
+> - Tool gate、Runner handoff、底账和幂等：[handoff-gate-and-intervention-pipeline.md](../architecture/handoff-gate-and-intervention-pipeline.md)
 
 ## 人工介入路径对比
 
 | 触发器 | 是否短路 Agent | 本轮是否回复候选人 | 暂停托管/告警执行方式 |
 |---|---|---|---|
-| `request_handoff` 工具 | ✅ runtime 立即结束本轮 | ❌ 候选人本次不会收到任何回复 | 异步 fire-and-forget |
-| `raise_risk_alert` 工具 | ❌ Agent 继续走完本轮 | ✅ Agent 自主组织共情/安抚话术 | 异步 fire-and-forget |
-| 规则前置拦截（regex） | ❌ Agent 继续走完本轮 | ✅ Agent 正常生成回复 | 异步 fire-and-forget |
+| `request_handoff` 工具 | ✅ `shortCircuited` 立即结束 loop | ❌ | Runner 最终 outcome 提交后统一写底账、暂停和告警 |
+| Tool gate hard-reject | ✅ `shortCircuited + gateRejected` | ❌ | Runner 确定性分类为 handoff 后统一提交 |
+| `raise_risk_alert` 工具 | ❌ Agent 可继续生成安抚回复 | ✅（投递成功后再提交副作用） | `reply` outcome 投递成功后统一暂停和告警 |
+| Input risk intercept | ✅ 生成前拦截 | ❌ | Runner/Outcome 统一提交暂停和告警 |
 
 ---
 
 ## 一、对话风险类（人工接管会话）
 
-> 路径：`InterventionService.dispatch` → 异步暂停托管 + 异步飞书人工介入卡（fire-and-forget）
+> 路径：Runner 声明 side-effect intent → 渠道确认最终回合 → `TurnOutcomeInterventionService.commit` → 底账判重 → `InterventionService.dispatch` → 暂停托管 + 飞书人工介入卡。
 
 ### 1. 规则前置拦截
 
@@ -38,7 +40,7 @@
 
 ### 3. 转人工短路（`request_handoff` 工具）
 
-- **位置**：[request-handoff.tool.ts](../../src/tools/request-handoff.tool.ts)、runner 短路：[runner.service.ts](../../src/agent/runner/agent-runner.service.ts)（`SHORT_CIRCUIT_TOOL_NAMES`）
+- **位置**：[request-handoff.tool.ts](../../src/tools/request-handoff.tool.ts)、通用短路：[generator.agent.ts](../../src/agent/generator/generator.agent.ts)、终态分类：[turn-outcome.ts](../../src/agent/runner/turn-outcome.ts)
 - **来源**：Agent 工具调用
 - **条件**：面试 / 入职跟进阶段需人工，原因码：
   - `cannot_find_store`
@@ -49,9 +51,14 @@
   - `modify_appointment`
   - `self_recruited_or_completed`
   - `other`
-- **效果**：runtime 立即结束本轮 loop（与 `skip_reply` 同属短路工具），候选人本次不会收到任何回复；
-  暂停托管 + case 改为 handoff + 飞书告警全部异步执行；
-  即便没有 active case，也会异步暂停托管，避免继续对话。
+- **效果**：工具返回 `shortCircuited: true`，runtime 结束本轮 loop；Runner 将本轮分类为 `handoff`，渠道不发送候选人回复，并由统一副作用出口写转人工底账、暂停托管和发送飞书告警。
+
+### 4. Tool gate hard-reject
+
+- **位置**：[tool-call-analysis.ts](../../src/agent/generator/tool-call-analysis.ts)、[turn-outcome.ts](../../src/agent/runner/turn-outcome.ts)
+- **来源**：报名 provenance gate、改约工单归属 gate 等白名单安全门禁
+- **条件**：业务工具返回 `shortCircuited: true + gateRejected: true`
+- **效果**：不依赖模型再次调用 `request_handoff`，Runner 直接收敛为 handoff；完整机制见 [Gate 拒绝与人工介入流水线](../architecture/handoff-gate-and-intervention-pipeline.md)。
 
 ---
 
@@ -59,19 +66,19 @@
 
 > 路径：`AlertNotifierService.sendAlert`，标注 `requiresHumanIntervention: true`
 
-### 4. Agent / 消息管道处理失败
+### 5. Agent / 消息管道处理失败
 
 - **位置**：[message-processing-failure.service.ts:102](../../src/channels/wecom/message/application/message-processing-failure.service.ts#L102)
 - **code**：`agent.invoke_failed` 或 `message.processing_failed`
 - **条件**：发送降级回复前的告警（非投递错误）
 
-### 5. 降级回复也失败（CRITICAL）
+### 6. 降级回复也失败（CRITICAL）
 
 - **位置**：[message-processing-failure.service.ts:216](../../src/channels/wecom/message/application/message-processing-failure.service.ts#L216)
 - **code**：`message.delivery_failed`
 - **条件**：用户彻底收不到任何回复
 
-### 6. Agent 主动降级（`isFallback`）
+### 7. Agent 主动降级（`isFallback`）
 
 - **位置**：[message-processing-failure.service.ts:301](../../src/channels/wecom/message/application/message-processing-failure.service.ts#L301)
 - **code**：`agent.fallback_required`
@@ -81,13 +88,13 @@
 
 ## 三、Agent 输入安全
 
-### 7. Prompt 注入检测
+### 8. Prompt 注入检测
 
 - **位置**：[input-guard.service.ts:124](../../src/agent/guardrail/input/input-guard.service.ts#L124)
 - **code**：`prompt_injection`
 - **条件**：用户输入命中 prompt injection 检测
 
-### 8. 调试接口异常
+### 9. 调试接口异常
 
 - **位置**：[agent.controller.ts:81](../../src/agent/agent.controller.ts#L81)
 - **code**：`agent.debug_chat_failed`
@@ -100,57 +107,57 @@
 > [analytics-alert.service.ts:84](../../src/biz/monitoring/services/alerts/analytics-alert.service.ts#L84)
 > → `BusinessMetricRuleEngine` 评估，阈值由 Supabase `hosting_config` 动态读取，每条 30 分钟节流。
 
-### 9. 成功率（`success-rate`）
+### 10. 成功率（`success-rate`）
 
 - **WARNING**：低于 `successRateCritical + 10`（默认 90%）
 - **CRITICAL**：低于 `successRateCritical`（默认 80%）
 
-### 10. 平均响应时间（`avg-duration`）
+### 11. 平均响应时间（`avg-duration`）
 
-- **WARNING**：超过 `avgDurationCritical / 2`（默认 30s）
+- **WARNING**：超过 `avgDurationCritical * 0.7`（默认 42s）
 - **CRITICAL**：超过 `avgDurationCritical`（默认 60s）
 
-### 11. 在途请求队列（`queue-depth`）
+### 12. 在途请求队列（`queue-depth`）
 
 - **WARNING**：超过阈值/2（默认 10）
 - **CRITICAL**：超过阈值（默认 20）
 
-### 12. 错误率（`error-rate`）
+### 13. 错误率（`error-rate`）
 
-- **WARNING**：24h 错误数小时均值超过阈值/2（默认 5/h）
+- **WARNING**：近 1h 错误数超过 `errorRateCritical * 0.7` 向下取整（默认 7/h）
 - **CRITICAL**：超过阈值（默认 10/h）
 
 ---
 
 ## 五、群任务（Bull Queue）
 
-### 13. job 重试耗尽
+### 14. job 重试耗尽
 
 - **位置**：[group-task.processor.ts:127](../../src/biz/group-task/queue/group-task.processor.ts#L127)
 - **code**：`group_task.<jobName>_exhausted`
 
-### 14. 未解析到任何目标群
+### 15. 未解析到任何目标群
 
 - **位置**：[group-task.processor.ts:193](../../src/biz/group-task/queue/group-task.processor.ts#L193)
 - **code**：`group_task.no_groups_resolved`
 - **条件**：plan 阶段 `resolveGroups` 返回空（多半是 token 失效 / room label 缺失 / 缓存污染）
 
-### 15. summarize 阶段汇总卡发送失败
+### 16. summarize 阶段汇总卡发送失败
 
 - **位置**：[group-task.processor.ts:509](../../src/biz/group-task/queue/group-task.processor.ts#L509)
 - **code**：`group_task.summary_failed`
 
-### 16. 整次执行零成功
+### 17. 整次执行零成功
 
 - **位置**：[group-task.processor.ts:531](../../src/biz/group-task/queue/group-task.processor.ts#L531)
 - **code**：`group_task.all_skipped`（全跳过）或 `group_task.total_failure`（全失败）
 
-### 17. 飞书运营汇总卡发送失败
+### 18. 飞书运营汇总卡发送失败
 
 - **位置**：[notification-sender.service.ts:218](../../src/biz/group-task/services/notification-sender.service.ts#L218)
 - **code**：`group_task.feishu_report_failed`
 
-### 18. 飞书运营预览卡发送失败
+### 19. 飞书运营预览卡发送失败
 
 - **位置**：[notification-sender.service.ts:280](../../src/biz/group-task/services/notification-sender.service.ts#L280)
 - **code**：`group_task.feishu_preview_failed`
@@ -161,32 +168,32 @@
 
 > 统一使用 `cron.job_failed` code
 
-### 19. Supabase keep-alive ping 失败（WARNING）
+### 20. Supabase keep-alive ping 失败（WARNING）
 
 - **位置**：[supabase.service.ts:102](../../src/infra/supabase/supabase.service.ts#L102)
 - **频率**：每天 1 次
 
-### 20. 业务指标检查 cron 自身失败
+### 21. 业务指标检查 cron 自身失败
 
 - **位置**：[analytics-alert.service.ts:109](../../src/biz/monitoring/services/alerts/analytics-alert.service.ts#L109)
 
-### 21. 小时统计聚合失败
+### 22. 小时统计聚合失败
 
 - **位置**：[analytics-maintenance.service.ts:171](../../src/biz/monitoring/services/maintenance/analytics-maintenance.service.ts#L171)
 
-### 22. 日统计聚合失败
+### 23. 日统计聚合失败
 
 - **位置**：[analytics-maintenance.service.ts:305](../../src/biz/monitoring/services/maintenance/analytics-maintenance.service.ts#L305)
 
-### 23. 数据清理 cron 失败
+### 24. 数据清理 cron 失败
 
 - **位置**：[data-cleanup.service.ts:299](../../src/biz/monitoring/services/cleanup/data-cleanup.service.ts#L299)
 
-### 24. 聊天记录飞书同步失败
+### 25. 聊天记录飞书同步失败
 
 - **位置**：[chat-record.service.ts:107](../../src/biz/feishu-sync/chat-record.service.ts#L107)
 
-### 25. 飞书多维表格同步失败
+### 26. 飞书多维表格同步失败
 
 - **位置**：[bitable-sync.service.ts:166](../../src/biz/feishu-sync/bitable-sync.service.ts#L166)
 
@@ -194,7 +201,7 @@
 
 ## 七、运营提醒（`OpsNotifierService`）
 
-### 26. 候选群全部满员
+### 27. 候选群全部满员
 
 - **位置**：[invite-to-group.tool.ts:142](../../src/tools/invite-to-group.tool.ts#L142) / [:263](../../src/tools/invite-to-group.tool.ts#L263)
 - **方法**：`sendGroupFullAlert`
@@ -204,19 +211,19 @@
 
 ## 八、进程级 / HTTP 级兜底
 
-### 27. 未捕获异常（CRITICAL）
+### 28. 未捕获异常（CRITICAL）
 
 - **位置**：[process-exception-monitor.service.ts:37](../../src/observability/runtime/process-exception-monitor.service.ts#L37)
 - **code**：`system.process_uncaught_exception`
 - **条件**：进程层 `uncaughtException`
 
-### 28. 未处理 Promise 拒绝（CRITICAL）
+### 29. 未处理 Promise 拒绝（CRITICAL）
 
 - **位置**：[process-exception-monitor.service.ts:59](../../src/observability/runtime/process-exception-monitor.service.ts#L59)
 - **code**：`system.process_unhandled_rejection`
 - **条件**：进程层 `unhandledRejection`
 
-### 29. HTTP 5xx
+### 30. HTTP 5xx
 
 - **位置**：[http-exception.filter.ts:85](../../src/infra/server/response/filters/http-exception.filter.ts#L85)
 - **code**：`server.http_exception`
@@ -226,7 +233,7 @@
 
 ## 九、子系统错误阈值
 
-### 30. Vision 描述连续失败（WARNING）
+### 31. Vision 描述连续失败（WARNING）
 
 - **位置**：[image-description.service.ts:87](../../src/channels/wecom/message/application/image-description.service.ts#L87)
 - **条件**：图片/表情描述连续失败达到 `ALERT_THRESHOLD`

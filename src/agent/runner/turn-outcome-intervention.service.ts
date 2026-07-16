@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import type { HandoffWriteOutcome } from '@biz/handoff-events/handoff-events.types';
+import { buildHandoffIdempotencyKey } from './handoff-idempotency';
 import type { TurnOutcome } from './agent-runner.types';
 import type {
   GeneralHandoffSideEffectIntent,
@@ -139,7 +140,9 @@ export class TurnOutcomeInterventionService {
     context: TurnOutcomeCommitContext,
   ): Promise<void> {
     const occurredAt = new Date();
-    const idempotencyKey = intent.idempotencyKey || `${context.chatId}:handoff:${context.traceId}`;
+    const idempotencyKey =
+      intent.idempotencyKey ||
+      buildHandoffIdempotencyKey({ chatId: context.chatId, turnId: context.traceId });
     const shouldRecord = intent.recordHandoff !== false;
 
     if (shouldRecord) {

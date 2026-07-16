@@ -1,21 +1,87 @@
 import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
 import type { AgentMemorySnapshot } from '@shared-types/agent-telemetry.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import type { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 
 describe('HardRulesService', () => {
   let service: HardRulesService;
-  let notifier: { notifyContradiction: jest.Mock };
+  const alertNotifier = { sendAlert: jest.fn().mockResolvedValue(true) };
 
   beforeEach(() => {
-    notifier = { notifyContradiction: jest.fn().mockResolvedValue(undefined) };
-    service = new HardRulesService(notifier as unknown as ReplyFactGuardNotifierService);
+    alertNotifier.sendAlert.mockClear();
+    alertNotifier.sendAlert.mockResolvedValue(true);
+    service = new HardRulesService(alertNotifier as never);
   });
 
   const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
 
   const check = (replyText: string) =>
     service.check({ replyText, toolCalls: [], chatId: 'chat-1', userId: 'user-1' });
+
+  describe('store status speculation', () => {
+    const noMatchLookup = {
+      toolName: 'duliday_job_list',
+      args: { cityNameList: ['上海'], brandAliasList: ['M Stand'] },
+      result: {
+        queryMeta: { brand: { appliedCanonicalNames: ['M Stand'] } },
+        noMatchScript: {
+          candidateMessage: 'M Stand在上海这边暂时没找到合适的岗位',
+          nextToolCall: 'invite_to_group',
+        },
+      },
+      status: 'ok' as const,
+    };
+
+    it('revises the production case that guesses the screenshot job is full', () => {
+      const result = service.check({
+        replyText: 'M Stand 在上海暂时没找到在招的岗位，你截图那家可能已经招满了。',
+        toolCalls: [noMatchLookup],
+        userMessage: '我想问这个',
+        chatId: 'test-brand-image',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'unsupported_store_status_speculation',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('revises vague speculation that the store may have adjusted', () => {
+      const result = service.check({
+        replyText: '这家目前暂时没查到在招岗位了，可能门店那边有调整。',
+        toolCalls: [noMatchLookup],
+        userMessage: '我想问这个',
+        chatId: 'test-brand-image',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'unsupported_store_status_speculation',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('allows the grounded no-match wording without an operational guess', () => {
+      const result = service.check({
+        replyText: 'M Stand 在上海这边目前暂时没查到匹配的在招岗位。',
+        toolCalls: [noMatchLookup],
+        userMessage: '我想问这个',
+        chatId: 'test-brand-image',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_store_status_speculation',
+      );
+    });
+  });
 
   describe('job detail grounding', () => {
     const memorySnapshot: AgentMemorySnapshot = {
@@ -395,14 +461,17 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('fires feishu notification on hit with blocked label prefix', () => {
+    it('routes P0 interceptions to monitoring alerts without creating BadCase', async () => {
       const result = check('这个岗位不要新疆西藏籍的');
       expect(result.hit).toBe(true);
-      expect(notifier.notifyContradiction).toHaveBeenCalledTimes(1);
-      const payload = notifier.notifyContradiction.mock.calls[0][0] as {
-        contradictions: Array<{ label: string }>;
-      };
-      expect(payload.contradictions[0].label).toContain('【已拦截，未发送给候选人】');
+      expect(result.contradictions[0].currentReplySendable).toBe(false);
+      await flushAsync();
+      expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'output_guardrail_p0_intercepted',
+          source: expect.objectContaining({ action: 'intercept_p0_reply' }),
+        }),
+      );
     });
 
     it('silent（advisory）：命中仍返回裁决，但不 fire 飞书告警', () => {
@@ -415,7 +484,7 @@ describe('HardRulesService', () => {
       });
       expect(result.hit).toBe(true);
       expect(result.contradictions.map((c) => c.ruleId)).toContain('discriminatory_screening_leak');
-      expect(notifier.notifyContradiction).not.toHaveBeenCalled();
+      expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
     });
   });
 
@@ -1296,24 +1365,10 @@ describe('HardRulesService', () => {
       const result = service.check({ replyText: '', toolCalls: [] });
       expect(result).toEqual({ hit: false, contradictions: [] });
     });
-
-    it('does not throw if ops notifier alert rejects (fire-and-forget)', async () => {
-      notifier.notifyContradiction.mockRejectedValue(new Error('feishu down'));
-
-      const result = service.check({
-        replyText: '这个岗位不要新疆西藏籍的',
-        toolCalls: [],
-        chatId: 'chat-1',
-      });
-
-      expect(result.hit).toBe(true);
-      await flushAsync();
-      // 不应抛
-    });
   });
 
-  describe('observe 档不写飞书 badcase（判例仅落库 guardrail_review_records）', () => {
-    it('observe-only 命中：返回裁决且落库全量，但不 fire 飞书 badcase', async () => {
+  describe('机器判例统一由 runner 写 guardrail_review_records', () => {
+    it('observe-only 命中：返回完整裁决，不创建外部反馈', () => {
       const result = service.check({
         replyText: '这个我帮你转人工客服处理下哈',
         toolCalls: [],
@@ -1326,13 +1381,9 @@ describe('HardRulesService', () => {
       // 裁决/落库仍保留 observe 命中
       expect(result.contradictions.map((c) => c.ruleId)).toContain('human_service_phrase_leak');
       expect(result.contradictions.every((c) => c.action === GUARDRAIL_ACTION.OBSERVE)).toBe(true);
-
-      await flushAsync();
-      // observe 判例不再写飞书多维表
-      expect(notifier.notifyContradiction).not.toHaveBeenCalled();
     });
 
-    it('enforce + observe 混合：飞书只收 enforce 判例，observe 判例被过滤掉', async () => {
+    it('enforce + observe 混合：返回全部命中供统一守卫日志归档', () => {
       const result = service.check({
         replyText: '这个岗位不要新疆西藏籍的。要不我帮你转人工客服问问',
         toolCalls: [],
@@ -1346,15 +1397,6 @@ describe('HardRulesService', () => {
       const ruleIds = result.contradictions.map((c) => c.ruleId);
       expect(ruleIds).toContain('discriminatory_screening_leak');
       expect(ruleIds).toContain('human_service_phrase_leak');
-
-      await flushAsync();
-      expect(notifier.notifyContradiction).toHaveBeenCalledTimes(1);
-      const payload = notifier.notifyContradiction.mock.calls[0][0] as {
-        contradictions: Array<{ ruleId: string }>;
-      };
-      const feishuRuleIds = payload.contradictions.map((c) => c.ruleId);
-      expect(feishuRuleIds).toContain('discriminatory_screening_leak');
-      expect(feishuRuleIds).not.toContain('human_service_phrase_leak');
     });
   });
 

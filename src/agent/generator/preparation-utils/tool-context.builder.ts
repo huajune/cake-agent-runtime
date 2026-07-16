@@ -124,6 +124,8 @@ export function buildToolContext(input: {
     chatId: params.sessionId,
     apiType: params.apiType,
     turnId: params.messageId,
+    hasNewerUserInput: params.hasNewerUserInput,
+    bookingCandidateFacts: sessionFacts?.interview_info ?? null,
   };
 }
 

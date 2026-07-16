@@ -16,6 +16,23 @@ import { extractMessageText } from '@tools/duliday/precheck/collection-strategy.
 
 export type CandidateIdentity = '学生' | '社会人士';
 
+export type IdentityEvidenceSource = 'direct' | 'form_answer' | 'choice_answer' | 'confirmation';
+
+/**
+ * 候选人身份的可追溯原话证据。
+ *
+ * identity 只表达识别结果；source 说明为什么这段文本可按身份答案解释；evidence
+ * 保留清洗后的候选人原话，供 precheck / booking / 出站守卫记录与排障。没有足够
+ * 明确的候选人原话时返回 null，年龄、画像和模型工具入参都不能伪装成本对象。
+ */
+export interface IdentityEvidence {
+  identity: CandidateIdentity;
+  source: IdentityEvidenceSource;
+  evidence: string;
+  /** 会话级扫描时对应 messages 数组的位置；单消息识别不填。 */
+  messageIndex?: number;
+}
+
 // —— 消息装饰清洗 ————————————————————————————————————————————————
 // 企微引用块：引用的是对方消息，不代表候选人自述。
 const QUOTE_BLOCK_RE = /\[引用[^\n]*?\]\s*/g;
@@ -35,12 +52,21 @@ export function stripMessageDecorations(text: string): string {
 export function classifyIdentityAnswerText(value: string): CandidateIdentity | null {
   const text = value.trim();
   if (!text) return null;
+  // 未填写的选项模板不能被其中的“社会人士”子串误判为答案。若模板后面另有回填值，
+  // 去掉模板后只解释剩余部分（如“学生/社会人士 社会人士”）。
+  const withoutChoiceTemplate = text
+    .replace(/学生\s*(?:[\/／]|还是|或)\s*社会人士?/gu, ' ')
+    .replace(/社会人士?\s*(?:[\/／]|还是|或)\s*学生/gu, ' ')
+    .replace(/[（()）：:\s]/gu, ' ')
+    .trim();
+  if (withoutChoiceTemplate !== text && !withoutChoiceTemplate) return null;
+  if (withoutChoiceTemplate !== text) return classifyIdentityAnswerText(withoutChoiceTemplate);
   // LLM 常把 is_student 布尔序列化成 "true"/"False"/"是"/"否"（按字段绝对语义解析）
   if (/^(false|否|no|不是|0)$/i.test(text)) return '社会人士';
   if (/^(true|是|yes|1)$/i.test(text)) return '学生';
   // 否定/社会侧优先：先排除"不是学生"再匹配"学生"
   if (
-    /社会人士|社会人|不是学生|非学生|不算学生|已毕业|毕业了|上班族|已经工作|工作了|在上班/.test(
+    /社会人士|社会人|^社会$|不是学生|非学生|不算学生|不在读书|已毕业|毕业了|上班族|^上班$|^工作$|已经工作|工作了|在上班/.test(
       text,
     )
   ) {
@@ -60,32 +86,97 @@ const STUDENT_CLAUSE_RE =
   /^(?:我|本人)?(?:现在|目前)?(?:确定|确认|肯定)?(?:还)?(?:就)?(?:是)?(?:学生|大学生|在校生|在读学生|在校学生|高中生|在读|在上学|还在上学)(?:的|哈|哦|呀|啊)?$/u;
 const SOCIAL_CLAUSE_RE =
   /^(?:我|本人)?(?:现在|目前)?(?:确定|确认|肯定)?(?:就)?(?:是)?(?:社会人士|社会人|不是学生|非学生|已经?(?:毕业|工作|上班)(?:了|啦)?|毕业了|上班族)(?:的|哈|哦|呀|啊)?$/u;
+const SOCIAL_GRADUATION_CLAUSE_RE =
+  /^(?:对)?(?:我)?(?:去年|今年)?(?:已经?|完全)?(?:本科|大专|专科|高中|硕士|研究生|博士)(?:已)?毕业(?:了|啦)?$/u;
 // 表单行：括号说明放宽为任意文本——Agent 会把模板写成"身份（学生还是社会人士）："
 // 等变体（2026-07-15 生产 19 个 chat），候选人照抄回填必须能被认。值交给宽松分类器。
 const FORM_LINE_RE = /身份(?:[（(][^（）()]*[）)])?\s*[：:]\s*([^\n，。；！？、]{1,16})/u;
+// 脱敏/摘要后的生产表单有时会丢失冒号，变成“18岁，学历高中，身份学生”。只认
+// 紧跟身份字段的单值，并排除“身份学生还是社会人士”这类未作答选项。
+const INLINE_IDENTITY_FIELD_RE =
+  /身份\s*(?:是\s*)?(学生|社会人士|社会人|社会|非学生|不是学生)(?!\s*(?:还是|或|[\/／]))(?=$|[\s，。；！？、])/u;
+const STUDENT_STATUS_FORM_RE =
+  /(?:是否(?:是)?(?:学信网)?在籍学生|是否(?:是)?学生)\s*[：:]\s*(是|否|true|false|yes|no|1|0)(?=$|[\s，。；！？、])/iu;
+// 候选人有时直接在 Agent 的二选一问题后填写简写答案，例如：
+// “目前是学生还是社会人士？（这家只招社会人士哈）社会”。“社会”单独出现在
+// 自由聊天里语义过宽，不能加入通用社会人士关键词；只在这个已知是身份答案的
+// 二选一表单上下文中收窄识别。
+const CHOICE_FORM_RE =
+  /学生\s*还是\s*社会人士\s*[？?：:]\s*(?:[（(][^（）()]*[）)])?\s*(社会人士?|社会人|社会|学生)(?=$|[\s，。；！？、])/u;
 const CLAUSE_SPLIT_RE = /[\s，。！？；、,.!?;\n\r~～]+/u;
 
-/** 识别单条消息文本中的身份自认；无明确自认返回 null。 */
-export function matchIdentityStatement(rawText: string): CandidateIdentity | null {
+/** 识别单条消息文本中的身份自认，并返回可追溯证据；无明确自认返回 null。 */
+export function matchIdentityEvidence(rawText: string): IdentityEvidence | null {
   const text = stripMessageDecorations(rawText);
   if (!text) return null;
+  let statementText = text;
   const formMatch = FORM_LINE_RE.exec(text);
   if (formMatch) {
     const fromForm = classifyIdentityAnswerText(formMatch[1] ?? '');
-    if (fromForm) return fromForm;
+    if (fromForm) return { identity: fromForm, source: 'form_answer', evidence: text };
+    // 从后续自由文本扫描中移除未填写的“学生/社会人士”选项，避免分句后把选项本身
+    // 当成候选人自述；消息里的其它明确自述（如“学历：本科在读”）仍继续识别。
+    statementText = text.replace(formMatch[0], ' ');
   }
-  if (/我(?:现在)?是学生|(?:本科|大专|高中|硕士|研究生|博士)在读|我还在读|我在上学/u.test(text)) {
-    return '学生';
+  const inlineIdentityMatch = INLINE_IDENTITY_FIELD_RE.exec(statementText);
+  if (inlineIdentityMatch) {
+    const fromInlineField = classifyIdentityAnswerText(inlineIdentityMatch[1] ?? '');
+    if (fromInlineField) {
+      return { identity: fromInlineField, source: 'form_answer', evidence: text };
+    }
   }
-  if (/我是社会人士|我不是学生|我是非学生|我已经?毕业|我毕业了|我已经?工作了/u.test(text)) {
-    return '社会人士';
+  const studentStatusFormMatch = STUDENT_STATUS_FORM_RE.exec(text);
+  if (studentStatusFormMatch) {
+    const fromForm = classifyIdentityAnswerText(studentStatusFormMatch[1] ?? '');
+    if (fromForm) return { identity: fromForm, source: 'form_answer', evidence: text };
   }
-  for (const clause of text.split(CLAUSE_SPLIT_RE)) {
+  const choiceFormMatch = CHOICE_FORM_RE.exec(statementText);
+  if (choiceFormMatch) {
+    return {
+      identity: choiceFormMatch[1] === '学生' ? '学生' : '社会人士',
+      source: 'form_answer',
+      evidence: text,
+    };
+  }
+  if (
+    /我(?:现在)?是学生|(?:本科|大专|高中|硕士|研究生|博士)在读|目前(?:大学)?本科|我还在读|我在上学|算是学生|学生[^。！？\n]{0,12}(?:实习|还没毕业)/u.test(
+      statementText,
+    )
+  ) {
+    return { identity: '学生', source: 'direct', evidence: text };
+  }
+  if (
+    /我是社会人士|身份(?:是|：|:)社会人士|我不是学生|我是非学生|我[^。！？\n]{0,8}(?:已经?|完全)?(?:本科|大专|专科|高中|硕士|研究生|博士)?毕业(?:了|啦)?|我已经?工作了|完全毕业了/u.test(
+      statementText,
+    )
+  ) {
+    return { identity: '社会人士', source: 'direct', evidence: text };
+  }
+  for (const clause of statementText.split(CLAUSE_SPLIT_RE)) {
     if (!clause) continue;
-    if (STUDENT_CLAUSE_RE.test(clause)) return '学生';
-    if (SOCIAL_CLAUSE_RE.test(clause)) return '社会人士';
+    if (STUDENT_CLAUSE_RE.test(clause)) {
+      return { identity: '学生', source: 'direct', evidence: text };
+    }
+    if (SOCIAL_CLAUSE_RE.test(clause)) {
+      return { identity: '社会人士', source: 'direct', evidence: text };
+    }
+    // 学历字段里的“高中毕业”不是身份自认；只接受独立的毕业陈述，且出现等待升学
+    // 等反向线索时保持 unknown。
+    if (
+      SOCIAL_GRADUATION_CLAUSE_RE.test(clause) &&
+      !/(?:等|等待|准备|马上|即将)[^。！？\n]{0,12}(?:大学|录取|通知书|开学|入学)/u.test(
+        statementText,
+      )
+    ) {
+      return { identity: '社会人士', source: 'direct', evidence: text };
+    }
   }
   return null;
+}
+
+/** 兼容旧调用方：只读取结构化证据中的身份值。 */
+export function matchIdentityStatement(rawText: string): CandidateIdentity | null {
+  return matchIdentityEvidence(rawText)?.identity ?? null;
 }
 
 // —— 确认式问答 ————————————————————————————————————————————————
@@ -109,6 +200,15 @@ export function detectIdentityConfirmQuestion(rawText: string): CandidateIdentit
   return null;
 }
 
+/** 识别“学生还是社会人士/已经工作”这类二选一问句；其后的短答案才可宽松解释。 */
+export function isIdentityChoiceQuestion(rawText: string): boolean {
+  const text = stripMessageDecorations(rawText);
+  if (!text) return false;
+  return /学生[^。！？\n]{0,12}(?:还是|或)[^。！？\n]{0,12}(?:社会人士|社会人|已经?工作|上班)|(?:社会人士|社会人|已经?工作|上班)[^。！？\n]{0,12}(?:还是|或)[^。！？\n]{0,12}学生/u.test(
+    text,
+  );
+}
+
 const BARE_AFFIRMATION_RE =
   /^(?:是的|是啊|是呀|是|对的|对呀|对啊|对|嗯嗯|嗯|好的|好|没错|确认|确定)$/u;
 const BARE_NEGATION_RE = /^(?:不是|不对|不|没有|错了)/u;
@@ -130,35 +230,66 @@ function readMessageText(message: unknown): { role: unknown; text: string } | nu
  * 除直接自认外，还识别确认式问答：assistant 发出单值确认问句后，候选人的
  * 纯肯定应答（"是的"）构成自认；否定应答只撤销悬挂问句，不反推相反身份。
  */
-export function findLatestExplicitIdentity(messages: unknown[]): CandidateIdentity | null {
-  let latest: CandidateIdentity | null = null;
+export function findLatestExplicitIdentityEvidence(messages: unknown[]): IdentityEvidence | null {
+  let latest: IdentityEvidence | null = null;
   let pendingConfirm: CandidateIdentity | null = null;
-  for (const message of messages) {
+  let pendingChoice = false;
+  for (const [messageIndex, message] of messages.entries()) {
     const parsed = readMessageText(message);
     if (!parsed || !parsed.text) continue;
     if (parsed.role === 'assistant') {
       pendingConfirm = detectIdentityConfirmQuestion(parsed.text);
+      pendingChoice = pendingConfirm === null && isIdentityChoiceQuestion(parsed.text);
       continue;
     }
     if (parsed.role !== 'user') continue;
-    const stated = matchIdentityStatement(parsed.text);
+    if (pendingChoice) {
+      const compact = parsed.text.replace(/[呢哈哦呀啊！。～!.~\s]+$/gu, '').trim();
+      const isShortChoiceAnswer =
+        /^(?:学生|社会人士?|社会人|社会|工作|上班|已毕业|毕业了|不是学生|非学生)$/u.test(compact);
+      const choiceIdentity = isShortChoiceAnswer ? classifyIdentityAnswerText(compact) : null;
+      if (choiceIdentity) {
+        latest = {
+          identity: choiceIdentity,
+          source: 'choice_answer',
+          evidence: parsed.text,
+          messageIndex,
+        };
+        pendingChoice = false;
+        continue;
+      }
+    }
+    const stated = matchIdentityEvidence(parsed.text);
     if (stated) {
-      latest = stated;
+      latest = { ...stated, messageIndex };
       pendingConfirm = null;
+      pendingChoice = false;
       continue;
     }
     if (pendingConfirm) {
       const compact = parsed.text.replace(/[！。～!.~\s]+$/u, '');
       if (BARE_AFFIRMATION_RE.test(compact)) {
-        latest = pendingConfirm;
+        latest = {
+          identity: pendingConfirm,
+          source: 'confirmation',
+          evidence: parsed.text,
+          messageIndex,
+        };
         pendingConfirm = null;
+        pendingChoice = false;
       } else if (BARE_NEGATION_RE.test(compact)) {
         pendingConfirm = null;
+        pendingChoice = false;
       }
       // 非应答消息（debounce 合并的寒暄等）不清除悬挂问句，等后续消息继续判定。
     }
   }
   return latest;
+}
+
+/** 兼容旧调用方：只读取会话级结构化证据中的身份值。 */
+export function findLatestExplicitIdentity(messages: unknown[]): CandidateIdentity | null {
+  return findLatestExplicitIdentityEvidence(messages)?.identity ?? null;
 }
 
 // —— 身份追问统计 ————————————————————————————————————————————
@@ -216,6 +347,10 @@ export function summarizeIdentityAskRounds(messages: unknown[]): {
 const STUDENT_REJECTION_NOTICE_RE =
   /(?:不要|不招|不收|不接受|暂不(?:要|招|收)|暂时不(?:要|招|收))[^\n。！？]{0,6}学生|学生[^\n。！？]{0,8}(?:不要|不招|不收|报不了|做不了|不行|暂不)|(?:只要|仅限|只招|只接受)[^\n。！？]{0,6}社会人士/u;
 
+// 明确承认表单/措辞填错，与“被拒后为了报名改口”语义不同。
+const IDENTITY_CORRECTION_NOTICE_RE =
+  /(?:填顺手了|(?:填|写|选|说)错了|误填(?:了)?|手滑(?:填|写|选)?错了?|刚才(?:填|写|选|说)错了)/u;
+
 /** 判定一条 assistant 消息是否在告知候选人"该岗位不接受学生"。 */
 export function detectStudentRejectionNotice(rawText: string): boolean {
   const text = stripMessageDecorations(rawText);
@@ -223,11 +358,20 @@ export function detectStudentRejectionNotice(rawText: string): boolean {
   return STUDENT_REJECTION_NOTICE_RE.test(text);
 }
 
+/** 判定候选人是否明确说明先前身份信息属于误填或口误。 */
+export function detectIdentityCorrectionNotice(rawText: string): boolean {
+  const text = stripMessageDecorations(rawText);
+  if (!text) return false;
+  return IDENTITY_CORRECTION_NOTICE_RE.test(text);
+}
+
 /**
  * 识别"学生自认 → 被拒 → 改口社会人士"序列并判断改口是否已核实。
  *
- * 产品裁定（2026-07-15）：被拒后的首次改口不能直接采信——Agent 必须核实一次
+ * 产品裁定（2026-07-15）：被拒后的策略性首次改口不能直接采信——Agent 必须核实一次
  * （告知如实填写不影响推荐其它岗位），候选人在核实问句后再次明确确认，改口才生效。
+ * 候选人明确说明先前是误填/口误（可与身份陈述分开发送）时，属于纠错而非策略性改口，
+ * 后续清晰身份陈述直接生效。
  * 只防"学生→社会"方向（造假动机方向）；反向改口自证学生无需核实。
  */
 export function resolveIdentityFlipAfterRejection(messages: unknown[]): {
@@ -238,6 +382,7 @@ export function resolveIdentityFlipAfterRejection(messages: unknown[]): {
   let flipped = false;
   let verifyAsked = false;
   let confirmed = false;
+  let correctionDeclared = false;
   for (const message of messages) {
     const parsed = readMessageText(message);
     if (!parsed || !parsed.text) continue;
@@ -250,6 +395,9 @@ export function resolveIdentityFlipAfterRejection(messages: unknown[]): {
       continue;
     }
     if (parsed.role !== 'user') continue;
+    if (rejected && detectIdentityCorrectionNotice(parsed.text)) {
+      correctionDeclared = true;
+    }
     const stated = matchIdentityStatement(parsed.text);
     if (stated === '学生') {
       // 候选人重新自认学生：改口链路重置（诚实方向，直接采信）。
@@ -258,9 +406,15 @@ export function resolveIdentityFlipAfterRejection(messages: unknown[]): {
       flipped = false;
       verifyAsked = false;
       confirmed = false;
+      correctionDeclared = false;
       continue;
     }
     if (stated === '社会人士' && rejected) {
+      if (correctionDeclared) {
+        flipped = true;
+        confirmed = true;
+        continue;
+      }
       if (!flipped) {
         flipped = true;
       } else if (verifyAsked) {

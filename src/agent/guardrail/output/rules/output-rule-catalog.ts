@@ -276,6 +276,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版混淆了正式工资结算与培训/阶梯差额结算。请严格按本轮岗位数据重写，分别说明基础工资、阶梯差价和培训费用各自如何结算；不要用综合月薪单位推断结算周期。',
   },
   {
+    id: 'unsupported_store_status_speculation',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '岗位查询只返回 noMatchScript 时，拦住把“暂时没查到岗位”扩写成门店已招满、关店、搬迁或装修。',
+    riskGoal: '避免候选人把未经证实的门店运营状态当成事实，误判岗位和门店是否仍存在。',
+    exogenousSignal: 'duliday_job_list.result.noMatchScript + 回复中的门店运营状态断言或推测。',
+    residualRisk:
+      '不带 noMatchScript 的其它门店状态问答仍依赖语义审查；新运营状态词形需随 BadCase 扩充。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版把“本轮暂时没查到匹配岗位”猜成了门店已经招满、关店、搬迁或装修，当前文本不可发送。' +
+      '岗位工具不掌握这些运营状态；请只说“目前暂时没查到匹配的在招岗位”，并根据已成功执行的后续工具自然承接，禁止补充任何原因猜测。',
+  },
+  {
     id: 'requested_brand_mismatch',
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,

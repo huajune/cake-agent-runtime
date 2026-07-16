@@ -1015,11 +1015,17 @@ describe('buildInviteToGroupTool', () => {
 
   describe('testing strategy source (test-suite 重放链路)', () => {
     it('returns simulated success without touching enterprise APIs', async () => {
-      const result = await executeTool({ city: '上海' }, { strategySource: 'testing' });
+      const groupMembership = { listUserRooms: jest.fn().mockResolvedValue([]) };
+      const result = await executeTool(
+        { city: '上海' },
+        { strategySource: 'testing' },
+        { groupMembership },
+      );
 
       expect(result.success).toBe(true);
       expect(result.simulated).toBe(true);
       expect(result.inviteDelivery).toBe('invite_card');
+      expect(groupMembership.listUserRooms).not.toHaveBeenCalled();
       expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
       expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });

@@ -245,6 +245,16 @@ export function isBookingGateRejectedToolCall(
   return r?.shortCircuited === true && (r.gateRejected === true || r.guardrailRejected === true);
 }
 
+/** 需要由 outcome 层直接转人工的工具归属/provenance gate hard-reject。 */
+export function isHandoffGateRejectedToolCall(
+  call: Pick<AgentToolCall, 'toolName' | 'result'>,
+): boolean {
+  if (isBookingGateRejectedToolCall(call)) return true;
+  if (call.toolName !== 'duliday_modify_interview_time') return false;
+  const r = asRecord(call.result);
+  return r?.shortCircuited === true && r.gateRejected === true;
+}
+
 /** 工具结果是否明确被 runtime/tool guardrail 拒绝。 */
 export function isGuardrailRejected(result: unknown): boolean {
   const r = asRecord(result);

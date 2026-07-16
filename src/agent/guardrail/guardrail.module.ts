@@ -13,6 +13,7 @@ import { OutputGuardrailService } from './output/output-guardrail.service';
 import { HardRulesService } from './output/hard-rules.service';
 import { GuardrailReviewPacketBuilder } from './output/llm/review-packet.builder';
 import { SemanticReviewerService } from './output/llm/semantic-reviewer.service';
+import { SemanticReviewRecorderService } from './output/semantic-review-recorder.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { SemanticReviewerService } from './output/llm/semantic-reviewer.service'
     HardRulesService,
     GuardrailReviewPacketBuilder,
     SemanticReviewerService,
+    SemanticReviewRecorderService,
     OutputGuardrailService,
   ],
   exports: [
@@ -40,6 +42,7 @@ import { SemanticReviewerService } from './output/llm/semantic-reviewer.service'
     HardRulesService,
     GuardrailReviewPacketBuilder,
     SemanticReviewerService,
+    SemanticReviewRecorderService,
     OutputGuardrailService,
   ],
 })

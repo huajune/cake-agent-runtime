@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-04-23
+**最后更新**：2026-07-16
 **面向**：研发同学
 **运营/产品视角**：[agent-for-operations.md](../product/agent-for-operations.md)
 
@@ -59,19 +59,19 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 - `channels/` 通过 `AgentRunnerService` 接口调用 Agent
 - `memory/`、`tools/`、`evaluation/` 通过 `llm/` 使用模型能力，不直接依赖 `providers/` 内部实现
 
-更聚焦的调用关系图：[LLM Executor 依赖图](./llm-executor-dependency-diagram.md)
+LLM 调用边界与完整时序已收敛到本文 §3.8，不再维护独立的依赖图文档。
 
 ---
 
 ## 3. Agent 编排层
 
 > **命名更新（2026-06 可靠性重构后）**：原单一 `AgentRunnerService`（旧路径 `src/agent/runner/agent-runner.service.ts`）已拆成两层：
-> - **`GeneratorService`**（`src/agent/generator/generator.service.ts`）——负责调 LLM 与收尾（本节下文描述的"调 LLM/收尾"职责现归属它）。
+> - **`GeneratorAgent`**（`src/agent/generator/generator.agent.ts`）——负责 LLM 多步工具循环与生成结果归一化（本节下文描述的"调 LLM"职责现归属它）。
 > - **`AgentRunnerService`**（`src/agent/runner/agent-runner.service.ts`）——回合编排接缝：`invokeReviewed`（generator → 出站守卫 → 受控 repair）、`runTurn`（渠道无关终态分类）、`precheckInboundOutcome`（入站风险预检）。
 >
-> 出站守卫见 [security-guardrails.md](./security-guardrails.md)。本节下文的 `AgentRunnerService.invoke` 语义现由 `GeneratorService.invoke` 承担；代码行号引用可能随重构漂移，以文件名 + 方法名为准。
+> 出站守卫见 [security-guardrails.md](./security-guardrails.md)。本节下文的 `AgentRunnerService.invoke` 语义现由 `GeneratorAgent.invoke` 承担；代码行号引用可能随重构漂移，以文件名 + 方法名为准。
 
-入口：[src/agent/generator/generator.service.ts](src/agent/generator/generator.service.ts)（生成）、[src/agent/runner/agent-runner.service.ts](src/agent/runner/agent-runner.service.ts)（编排）
+入口：[src/agent/generator/generator.agent.ts](src/agent/generator/generator.agent.ts)（生成）、[src/agent/runner/agent-runner.service.ts](src/agent/runner/agent-runner.service.ts)（编排）
 
 生成层只做两件事：**调 LLM**、**收尾**。所有准备工作下放到独立的 `AgentPreparationService`，所有 LLM 请求统一走 `LlmExecutorService`。
 
@@ -212,6 +212,71 @@ supportsVisionInput(options): boolean
 ```
 
 消费方包括：`AgentRunnerService`、`SessionService.extractAndSave`（事实提取）、`MemoryEnrichmentService`（外部画像补全）、`LlmEvaluationService`、`InputGuardService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
+
+#### 分层关系
+
+```mermaid
+flowchart TD
+    A["Channels / Biz / Memory"] --> B["LlmExecutorService"]
+    C["AgentRunnerService"] --> B
+    B --> D["RouterService"]
+    B --> E["ReliableService"]
+    B --> F["RegistryService"]
+    D --> G["AGENT_*_MODEL / FALLBACKS"]
+    E --> H["availability / retry / backoff policy"]
+    F --> I["provider SDK instances"]
+```
+
+关键约束：
+
+- `provider` 层只保留注册、路由和可靠性策略；
+- 真正调用 Vercel AI SDK `generateText / streamText / Output.object` 的统一入口是 `LlmExecutorService`；
+- `AgentPreparationService` 只准备上下文，不做模型选择；
+- `AgentRunnerService` 负责编排，不直接拼 provider-specific SDK 参数；
+- `RouterService` 决定模型链，`ReliableService` 决定重试/退避，`RegistryService` 解析 provider SDK 实例。
+
+#### Memory 为什么可以调用 LLM
+
+```mermaid
+flowchart LR
+    U["User Turn"] --> R["AgentRunnerService"]
+    R --> M["MemoryService.onTurnStart / onTurnEnd"]
+    M --> S["SessionService.extract facts"]
+    M --> T["SettlementService.summarize archive"]
+    S --> X["LlmExecutorService"]
+    T --> X
+    R --> X
+```
+
+Memory 调用 LLM 是职责内的事实抽取和摘要压缩，不是越过分层直连 provider。Agent、Memory 和 Evaluation 可以消费模型能力，但都必须经过同一个执行入口。
+
+#### 一轮对话时序
+
+```mermaid
+sequenceDiagram
+    participant Channel as ReplyWorkflowService
+    participant Runner as AgentRunnerService
+    participant Prep as AgentPreparationService
+    participant Memory as MemoryService
+    participant LLM as LlmExecutorService
+    participant Router as RouterService
+    participant Reliable as ReliableService
+    participant Registry as RegistryService
+
+    Channel->>Runner: invoke(messages, modelId?, thinking?)
+    Runner->>LLM: supportsVisionInput(role=chat, modelId?)
+    LLM->>Router: resolveRoute(...)
+    Runner->>Prep: prepare(..., enableVision)
+    Prep->>Memory: onTurnStart(...)
+    Prep-->>Runner: finalPrompt + normalizedMessages + tools
+    Runner->>LLM: generate(role=chat, system, messages, tools)
+    LLM->>Router: resolveRoute(...)
+    LLM->>Reliable: availability / retry policy
+    LLM->>Registry: resolve(modelId)
+    LLM-->>Runner: text / steps / usage
+    Runner->>Memory: onTurnEnd(...) [deferred]
+    Runner-->>Channel: TurnOutcome
+```
 
 ---
 
@@ -438,12 +503,12 @@ load_previous_state (串行)
 | `recall_history`              | 查询用户历史求职记录摘要                                                   |
 | `duliday_job_list`            | 查询在招岗位（含 geocode + 距离排序 + 业务阈值过滤）；回调写入候选池       |
 | `duliday_interview_precheck`  | 面试前置校验（可约日期 / 时段 / 备注字段）；不真正提交预约                 |
-| `duliday_interview_booking`   | 面试预约提交（副作用：创建 recruitment_case、失败侧暂停托管）              |
+| `duliday_interview_booking`   | 面试预约提交；安全 gate hard-reject 时由 Runner 收敛为人工介入              |
 | `geocode`                     | 地名 → 标准化地址 + 经纬度                                                 |
 | `send_store_location`         | 向候选人发送门店企微位置消息                                               |
 | `invite_to_group`             | 邀请加入企微兼职群（副作用：addMember 外部 API + session facts 写入）       |
-| `raise_risk_alert`            | 候选人投诉/辱骂/情绪升级时触发人工介入（暂停托管 + 飞书告警）               |
-| `request_handoff`             | 面试/入职跟进阻塞时申请人工接管（case 标记 handoff + 暂停托管 + 告警）      |
+| `raise_risk_alert`            | 声明会话风险副作用意图；回复投递后由统一出口暂停托管并告警                   |
+| `request_handoff`             | 声明人工接管意图并短路本轮；Runner 统一写底账、暂停托管和告警                |
 | `skip_reply`                  | 主动沉默本轮（仅候选人发纯确认词且上轮已推进时使用）                       |
 
 **动态注入**：本轮 `imageMessageIds` 非空时，运行时注入 `save_image_description` 工具（让模型把图片/表情内容写回 DB 供后续检索）。
@@ -855,10 +920,11 @@ AppModule
 ## 相关文档
 
 - [记忆系统架构](memory-system-architecture.md) — 四类记忆完整设计
-- [LLM Executor 依赖图](llm-executor-dependency-diagram.md) — LLM 调用关系图
 - [消息服务架构](message-service-architecture.md) — 消息管线详细设计
-- [告警系统架构](alert-system-architecture.md) — 飞书告警分级
 - [监控系统架构](monitoring-system-architecture.md) — 消息追踪与分析
+- [飞书通知系统](../infrastructure/feishu-alert-system.md) — 通知渠道与接收人配置
+- [人工告警触发清单](../infrastructure/human-alert-triggers.md) — 告警触发场景
+- [Gate 拒绝与人工介入流水线](handoff-gate-and-intervention-pipeline.md) — 确定性转人工和副作用提交
 - [测试套件架构](test-suite-architecture.md) — Agent 评估体系
 - [安全防护](security-guardrails.md) — Prompt injection 防护
 - [Group Task Pipeline](group-task-pipeline.md) — 群任务流程

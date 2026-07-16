@@ -303,6 +303,48 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.handoff?.alreadyDispatched).toBe(false);
   });
 
+  it('modify ownership gate hard-reject directly maps to handoff with the resolved work order', async () => {
+    generator.invoke.mockResolvedValue(
+      makeResult({
+        text: '',
+        toolCalls: [
+          {
+            toolName: 'duliday_modify_interview_time',
+            args: { workOrderId: 450643, newInterviewTime: '2026-07-17 10:00' },
+            result: {
+              success: false,
+              shortCircuited: true,
+              gateRejected: true,
+              reasonCode: 'modify_appointment',
+              errorType: 'modify_interview.work_order_not_in_memory',
+              workOrderId: 450643,
+              handoffReason: '手机号工单不属于当前微信联系人，已阻止自助改约',
+              actionAdvice: '核实联系人关系后人工修改工单',
+            },
+          },
+        ],
+      }),
+    );
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '确定改到明天上午10点' },
+      context: { messageId: 'm-modify-owner-gate' },
+    });
+
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.handoff?.sourceToolCall).toBe('duliday_modify_interview_time');
+    expect(outcome.handoff?.reasonCode).toBe('modify_appointment');
+    expect(outcome.sideEffects).toEqual([
+      expect.objectContaining({
+        kind: 'general_handoff',
+        workOrderId: 450643,
+        reasonCode: 'modify_appointment',
+        reason: '手机号工单不属于当前微信联系人，已阻止自助改约',
+      }),
+    ]);
+  });
+
   it('generator failure collapses to skipped (reengagement resilience)', async () => {
     generator.invoke.mockRejectedValue(new Error('messages 为空'));
 

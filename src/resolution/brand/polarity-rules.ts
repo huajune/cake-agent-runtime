@@ -70,6 +70,10 @@ const PRECEDING_INTERROGATIVE_TAIL = /(?:要不要|去不去|想不想|做不做
 /** 品牌后置否定头（作用于品牌片段之后的窗口）。 */
 const FOLLOWING_NEGATION_HEAD = /^(?:就|也|都|我)?(?:不要了?|不去了?|不考虑|不行|算了|就算了)/;
 
+/** “品牌不要人嘛 / 不招人吗”是在问招聘状态，不是表达品牌排斥。 */
+const FOLLOWING_HIRING_QUESTION_HEAD =
+  /^(?:(?:还)?要不要|(?:还)?要|不要|招不招|招|不招)(?:人|兼职|员工|店员|服务员|小时工)(?:吗|嘛|么|啊|呀|呢)?/;
+
 /** 否定判定的观察窗口（归一化字符数）。 */
 const NEGATION_WINDOW = 8;
 
@@ -92,6 +96,7 @@ export function isBrandSpanNegated(
     spanStart + spanLength,
     spanStart + spanLength + NEGATION_WINDOW,
   );
+  if (FOLLOWING_HIRING_QUESTION_HEAD.test(after)) return false;
   return FOLLOWING_NEGATION_HEAD.test(after);
 }
 

@@ -79,7 +79,7 @@ export class StageStrategySection implements PromptSection {
     lines.push(
       '',
       '[阶段推进提示]',
-      '当你判断当前阶段目标已达成，请调用 advance_stage 工具切换到下一阶段。',
+      '当你判断需要切换阶段时，下一步必须先单独调用 advance_stage：调用前不输出候选人文本，也不并行调用其他工具；收到 effectiveStageStrategy 后再继续业务工具和完整回复。',
     );
   }
 
