@@ -13,7 +13,7 @@ describe('buildSendStoreLocationTool', () => {
   };
 
   const mockGeocodingService = {
-    geocode: jest.fn(),
+    searchCandidates: jest.fn(),
   };
 
   const mockContext: ToolBuildContext = {
@@ -230,11 +230,22 @@ describe('buildSendStoreLocationTool', () => {
         },
       ],
     });
-    mockGeocodingService.geocode.mockResolvedValue({
-      formattedAddress: '上海市杨浦区控江路旭辉广场',
-      latitude: 31.281,
-      longitude: 121.53,
-    });
+    mockGeocodingService.searchCandidates.mockResolvedValue([
+      {
+        formattedAddress: '上海市杨浦区控江路旭辉广场',
+        province: '上海市',
+        city: '上海市',
+        district: '杨浦区',
+        township: '',
+        latitude: 31.281,
+        longitude: 121.53,
+        poiName: '成都你六姐（上海控江旭辉店）',
+        typecode: '050100',
+        source: 'poi',
+        precision: 'poi',
+        confidence: 'high',
+      },
+    ]);
     mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
 
     const result = await executeTool(
@@ -250,9 +261,10 @@ describe('buildSendStoreLocationTool', () => {
     expect(result.addressConflict).toBe(true);
     expect(result._fixedReply).toContain('这次面试请去');
     expect(result._fixedReply).toContain('不要按工作门店地址前往面试');
-    expect(mockGeocodingService.geocode).toHaveBeenCalledWith(
+    expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith(
       '成都你六姐（上海控江旭辉店）',
       '上海市',
+      5,
     );
     expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -263,6 +275,175 @@ describe('buildSendStoreLocationTool', () => {
           longitude: 121.53,
         }),
       }),
+    );
+  });
+
+  it('同工作地址应继承门店 POI，不得地理编码语义文本', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob({
+            storeInfo: {
+              storeName: '上海899广场店',
+              storeAddress: '上海市静安区万航渡路889号889广场',
+              storeCityName: '上海市',
+              latitude: 31.229319650565213,
+              longitude: 121.42866514121314,
+            },
+          }),
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线下面试',
+              interviewAddress: '同工作地址',
+            },
+          },
+        },
+      ],
+    });
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool(
+      { jobId: 100, destination: 'interview' },
+      { activeBookingJobIds: [100], currentUserMessage: '面试地址怎么走' },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.destination).toBe('interview');
+    expect(result.interviewLocationSource).toBe('same_as_workplace');
+    expect(result.addressConflict).toBe(false);
+    expect(result.sentAddress).toBe('上海市静安区万航渡路889号889广场');
+    expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
+    expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageType: SendMessageType.LOCATION,
+        payload: expect.objectContaining({
+          address: '上海市静安区万航渡路889号889广场',
+          latitude: 31.229319650565213,
+          longitude: 121.42866514121314,
+        }),
+      }),
+    );
+  });
+
+  it('多个独立面试 POI 中只采用与地址锚点唯一匹配的高可信结果', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob({
+            storeInfo: {
+              storeName: '上海东方渔人码头店',
+              storeAddress: '上海东方渔人码头成都你六姐',
+              storeCityName: '上海市',
+              latitude: 31.25175342004096,
+              longitude: 121.53239363958569,
+            },
+          }),
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线下面试',
+              interviewAddress: '新店开业前在成都你六姐（上海宝龙旭辉店）面试',
+            },
+          },
+        },
+      ],
+    });
+    mockGeocodingService.searchCandidates.mockResolvedValue([
+      {
+        formattedAddress: '上海市杨浦区宝龙旭辉广场成都你六姐上海宝龙旭辉店',
+        province: '上海市',
+        city: '上海市',
+        district: '杨浦区',
+        township: '',
+        latitude: 31.27,
+        longitude: 121.53,
+        poiName: '成都你六姐（上海宝龙旭辉店）',
+        typecode: '050100',
+        source: 'poi',
+        precision: 'poi',
+        confidence: 'high',
+      },
+      {
+        formattedAddress: '上海市浦东新区另一家成都你六姐',
+        province: '上海市',
+        city: '上海市',
+        district: '浦东新区',
+        township: '',
+        latitude: 31.22,
+        longitude: 121.6,
+        poiName: '成都你六姐（另一家店）',
+        typecode: '050100',
+        source: 'poi',
+        precision: 'poi',
+        confidence: 'high',
+      },
+    ]);
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool(
+      { jobId: 100, destination: 'interview' },
+      { activeBookingJobIds: [100], currentUserMessage: '发一下面试定位' },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.interviewLocationSource).toBe('custom');
+    expect(result.latitude).toBe(31.27);
+    expect(result.longitude).toBe(121.53);
+  });
+
+  it('独立面试地址存在多个高可信但无法唯一匹配的 POI 时不得发送定位', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob(),
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线下面试',
+              interviewAddress: '另一家面试门店',
+            },
+          },
+        },
+      ],
+    });
+    mockGeocodingService.searchCandidates.mockResolvedValue([
+      {
+        formattedAddress: '北京市丰台区甲门店',
+        province: '北京市',
+        city: '北京市',
+        district: '丰台区',
+        township: '',
+        latitude: 39.8,
+        longitude: 116.2,
+        poiName: '甲门店',
+        typecode: '050100',
+        source: 'poi',
+        precision: 'poi',
+        confidence: 'high',
+      },
+      {
+        formattedAddress: '北京市丰台区乙门店',
+        province: '北京市',
+        city: '北京市',
+        district: '丰台区',
+        township: '',
+        latitude: 39.9,
+        longitude: 116.3,
+        poiName: '乙门店',
+        typecode: '050100',
+        source: 'poi',
+        precision: 'poi',
+        confidence: 'high',
+      },
+    ]);
+
+    const result = await executeTool(
+      { jobId: 100, destination: 'interview' },
+      { activeBookingJobIds: [100], currentUserMessage: '面试地址怎么走' },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_INTERVIEW_GEOCODE_FAILED);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ messageType: SendMessageType.LOCATION }),
     );
   });
 
@@ -288,7 +469,7 @@ describe('buildSendStoreLocationTool', () => {
     );
 
     expect(result.destination).toBe('store');
-    expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
+    expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
     expect(result.sentAddress).toBe('北京市丰台区青塔西路 1 号');
   });
 
@@ -306,7 +487,7 @@ describe('buildSendStoreLocationTool', () => {
         },
       ],
     });
-    mockGeocodingService.geocode.mockResolvedValue(null);
+    mockGeocodingService.searchCandidates.mockResolvedValue([]);
 
     const result = await executeTool(
       { jobId: 100 },
@@ -352,7 +533,7 @@ describe('buildSendStoreLocationTool', () => {
     expect(result.interviewMethod).toBe('线上面试');
     expect(result.interviewAddress).toBeNull();
     expect(result._fixedReply).toContain('不需要到门店');
-    expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
+    expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -377,7 +558,7 @@ describe('buildSendStoreLocationTool', () => {
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_UNAVAILABLE);
     expect(result.interviewMethod).toBeNull();
     expect(result.interviewAddress).toBeNull();
-    expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
+    expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });
 });
