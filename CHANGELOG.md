@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.18.0] - 2026-07-17
 
-**预计版本**: `v10.18.0`
-**最近更新**: `2026-07-17`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #596 按面试形式区分面试与门店定位
@@ -61,7 +57,6 @@
 - PR #596 `pnpm run test:di-smoke` 通过。
 - PR #596 文档/提示词更新后相关测试 59/59 通过。
 - PR #596 `pnpm run lint:check`、`pnpm run format:check`、`pnpm run typecheck`、前后端构建、`git diff --check` 通过。
-<!-- release:pending:end -->
 
 ## [10.17.0] - 2026-07-17
 
