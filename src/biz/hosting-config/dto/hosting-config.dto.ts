@@ -121,6 +121,11 @@ export class UpdateAgentReplyConfigDto {
   @IsOptional()
   @IsObject()
   reengagementScenarioRollout?: Record<string, boolean>;
+
+  /** 场景触发偏移分钟数（0～10080）；非法值会被服务端丢弃 */
+  @IsOptional()
+  @IsObject()
+  reengagementScenarioDelayMinutes?: Record<string, number>;
 }
 
 // ==================== 群任务通知配置 ====================

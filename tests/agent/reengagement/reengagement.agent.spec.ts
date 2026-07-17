@@ -169,6 +169,35 @@ describe('ReengagementAgent', () => {
     });
   });
 
+  it('corrects a reminder time that belongs to another work order', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        message: '今天下午14点半的面试别忘了哈。',
+        reason: '误用了近期对话中另一场面试的时间',
+      },
+      usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+    });
+
+    const interviewAt = Date.UTC(2026, 6, 17, 5, 0, 0); // 13:00 Shanghai
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 111 }),
+      state: baseState({ terminal: 'booked', interviewAt } as Partial<AuthoritativeSessionState>),
+      bookingContext: liveBookingContext({ workOrderId: 111, interviewAt }),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('候选人可能同时有多个面试');
+    expect(result.outcome.reply?.text).toBe('今天13:00的面试别忘了哈。');
+    expect(result.agentRequest).toMatchObject({
+      temporalCorrection: {
+        originalMessage: '今天下午14点半的面试别忘了哈。',
+        reason: 'interview_time_mismatch',
+      },
+    });
+  });
+
   it.each(['interview_reminder', 'post_interview_followup'] as const)(
     'semantically skips %s when the latest candidate message says the interview was cancelled',
     async (scenarioCode) => {

@@ -212,7 +212,6 @@ describe('FollowUpSchedulerService', () => {
       state: baseState({ terminal: 'booked', interviewAt } as never),
       workOrderId: 555,
       expectedInterviewAt: interviewAt,
-      interviewType: 'AI面试',
     });
 
     const payload = queue.add.mock.calls[0][1];
@@ -411,12 +410,13 @@ describe('FollowUpSchedulerService', () => {
     );
   });
 
-  it('removes stale pre-booking and old post-booking jobs before enqueueing a new post-booking job', async () => {
+  it('isolates concurrent post-booking jobs by work order and replaces only the same scenario', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     const interviewAt = now + 4 * 60 * 60_000;
     jest.spyOn(Date, 'now').mockReturnValue(now);
     const removePreBooking = jest.fn().mockResolvedValue(undefined);
-    const removeOldBooking = jest.fn().mockResolvedValue(undefined);
+    const keepOtherBooking = jest.fn().mockResolvedValue(undefined);
+    const removeOldSameScenario = jest.fn().mockResolvedValue(undefined);
     const keepSameBookingSibling = jest.fn().mockResolvedValue(undefined);
     queue.getJobs.mockResolvedValue([
       {
@@ -439,7 +439,18 @@ describe('FollowUpSchedulerService', () => {
           workOrderId: 1,
           expectedInterviewAt: now + 2 * 60 * 60_000,
         },
-        remove: removeOldBooking,
+        remove: keepOtherBooking,
+      },
+      {
+        id: 'sess-1:interview_reminder:wo2-old-time',
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo2-old-time',
+          anchorAt: now,
+          workOrderId: 2,
+        },
+        remove: removeOldSameScenario,
       },
       {
         id: 'sess-1:post_interview_followup:wo2',
@@ -466,16 +477,17 @@ describe('FollowUpSchedulerService', () => {
     });
 
     expect(removePreBooking).toHaveBeenCalled();
-    expect(removeOldBooking).toHaveBeenCalled();
+    expect(keepOtherBooking).not.toHaveBeenCalled();
+    expect(removeOldSameScenario).toHaveBeenCalled();
     expect(keepSameBookingSibling).not.toHaveBeenCalled();
     expect(tracking.trackSuperseded).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 'sess-1',
         scenarioCode: 'interview_reminder',
-        anchorEventId: 'wo1',
+        anchorEventId: 'wo2-old-time',
       }),
       expect.objectContaining({
-        jobId: 'sess-1:interview_reminder:wo1',
+        jobId: 'sess-1:interview_reminder:wo2-old-time',
         supersededByJobId: 'sess-1:interview_reminder:wo2',
       }),
     );

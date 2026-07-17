@@ -483,6 +483,22 @@
   color: $text-muted;
 }
 
+.delayEditor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.delayInput {
+  width: 76px;
+  padding: 6px 8px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  color: $text-primary;
+  background: $bg-card;
+}
+
 .scenarioObjective {
   min-width: 220px;
   color: $text-secondary;

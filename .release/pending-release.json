@@ -1,9 +1,93 @@
 {
   "baseVersion": "10.16.0",
-  "nextVersion": "10.16.0",
+  "nextVersion": "10.17.0",
   "updatedAt": "2026-07-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "590",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/590",
+      "title": "升级 GitHub Actions 至 Node 24 运行时",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-17",
+      "businessUpdates": [
+        "升级 GitHub Actions 至 Node 24 运行时",
+        "升级 actions/checkout 至 v7.0.0",
+        "升级 actions/setup-node 至 v7.0.0",
+        "升级 actions/cache 至 v6.1.0",
+        "升级 pnpm/action-setup 至 v6.0.9",
+        "升级 actions/upload-artifact 至 v7.0.1",
+        "所有官方 Action 均 pin 到对应 release 的不可变 commit SHA",
+        "将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA"
+      ],
+      "summary": [
+        "升级 GitHub Actions 至 Node 24 运行时",
+        "升级 actions/checkout 至 v7.0.0",
+        "升级 actions/setup-node 至 v7.0.0",
+        "升级 actions/cache 至 v6.1.0",
+        "升级 pnpm/action-setup 至 v6.0.9",
+        "升级 actions/upload-artifact 至 v7.0.1",
+        "所有官方 Action 均 pin 到对应 release 的不可变 commit SHA",
+        "将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "升级 actions/checkout 至 v7.0.0",
+        "升级 actions/setup-node 至 v7.0.0",
+        "升级 actions/cache 至 v6.1.0",
+        "升级 pnpm/action-setup 至 v6.0.9",
+        "升级 actions/upload-artifact 至 v7.0.1",
+        "所有官方 Action 均 pin 到对应 release 的不可变 commit SHA",
+        "将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA",
+        "升级 GitHub Actions 至 Node 24 运行时"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "官方 release/tag 与 commit SHA 已通过 GitHub API 核验",
+        "五个目标 Action 的 action.yml 均确认 runs.using 为 node24",
+        "所有 workflow YAML 解析通过",
+        "Prettier workflow 检查通过",
+        "git diff --check 通过",
+        "pnpm run ci:check 通过",
+        "352 test suites passed，1 skipped",
+        "5228 tests passed，6 skipped",
+        "pre-commit 与 pre-push hooks 通过"
+      ]
+    },
+    {
+      "number": "591",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/591",
+      "title": "修复多工单面试提醒与回访时机",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-17",
+      "businessUpdates": [
+        "修复多工单面试提醒与回访时机",
+        "面试前提醒与面试后回访支持按场景配置分钟偏移，面试后回访默认延后 120 分钟"
+      ],
+      "summary": [
+        "修复多工单面试提醒与回访时机"
+      ],
+      "features": [],
+      "fixes": [
+        "修复多工单面试提醒与回访时机"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [
+        "托管配置新增各复聊场景的分钟偏移设置，无需新增环境变量"
+      ],
+      "envFiles": [],
+      "verification": [
+        "干净 worktree 类型检查通过",
+        "复聊与托管配置 202 个测试通过",
+        "Dashboard TypeScript 与 Vite 构建通过",
+        "增加配置偏移、多工单隔离、跨工单时间纠正回归测试"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.16.0",
     "date": "2026-07-17",

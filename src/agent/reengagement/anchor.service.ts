@@ -194,7 +194,6 @@ export class ReengagementAnchorService {
     verification?: {
       workOrderId?: number;
       expectedInterviewAt?: number;
-      interviewType?: string;
     },
   ): Promise<void> {
     try {
@@ -211,7 +210,6 @@ export class ReengagementAnchorService {
         state: { ...state, ...stateOverride },
         workOrderId: verification?.workOrderId,
         expectedInterviewAt: verification?.expectedInterviewAt,
-        interviewType: verification?.interviewType,
         channelIdentity: context.channelIdentity,
       });
     } catch (error) {

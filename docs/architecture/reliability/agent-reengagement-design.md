@@ -120,7 +120,7 @@ class FollowUpTaskProcessor {
 | `store_presented_no_reply` | 最终回复已投递且展示岗位/门店 | +N h | 锚点后无回复 |
 | `booking_incomplete` | 最终采纳回合 precheck `collect_fields` | +N h | collectedFields 仍不齐 |
 | `interview_reminder` | `booking.succeeded` | `interviewTime - 1h` | 面试未取消 |
-| `post_interview_followup` | `booking.succeeded` | `interviewTime + ~1h` | — |
+| `post_interview_followup` | `booking.succeeded` | `interviewTime + 2h` | — |
 | `new_job_for_waiting` | **岗位上线事件**（外部，后开） | 事件驱动 | 候选人仍在等待池 |
 
 ## 6. 模块与 DI（agent 能力，非 biz）

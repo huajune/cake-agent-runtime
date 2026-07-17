@@ -42,6 +42,8 @@ export class AnalyticsController {
       anchorEvent: scenario.anchorEvent,
       anchorLabel: scenario.anchorLabel,
       delayLabel: scenario.delayLabel,
+      delayMode: scenario.delayMode,
+      defaultDelayMinutes: scenario.defaultDelayMinutes,
       objective: scenario.objective,
       generationPolicy: scenario.generationPolicy,
       defaultRolloutEnabled: scenario.defaultRolloutEnabled,

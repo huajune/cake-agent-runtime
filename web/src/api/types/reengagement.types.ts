@@ -94,6 +94,8 @@ export interface ReengagementScenario {
   anchorEvent: string;
   anchorLabel: string;
   delayLabel: string;
+  delayMode: 'after_anchor' | 'before_interview' | 'after_interview';
+  defaultDelayMinutes: number;
   objective: string;
   generationPolicy: string;
   /** 场景级灰度默认值：运行时以托管配置 reengagementScenarioRollout 为准 */
