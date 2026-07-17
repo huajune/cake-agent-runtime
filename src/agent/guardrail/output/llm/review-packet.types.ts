@@ -11,6 +11,7 @@ export interface GuardrailReviewPacket {
     precheck?: PrecheckEvidence;
     booking?: BookingEvidence;
     geocode?: GeocodeEvidence;
+    sentLocation?: SentLocationEvidence;
   };
   policies: {
     redLines: string[];
@@ -82,4 +83,17 @@ export interface GeocodeEvidence {
   /** unique 解析常没有 candidates 数组；有坐标即代表地理解析成功。 */
   hasResolvedCoordinate: boolean;
   candidates: string[];
+}
+
+export interface SentLocationEvidence {
+  success: boolean;
+  destination?: 'interview' | 'store';
+  interviewMethod?: string;
+  locationNotRequired?: boolean;
+  storeName?: string;
+  storeAddress?: string;
+  interviewAddress?: string;
+  sentAddress?: string;
+  addressConflict?: boolean;
+  errorType?: string;
 }

@@ -235,6 +235,37 @@ describe('HardRulesService', () => {
         'job_detail_lookup_required',
       );
     });
+
+    it('面试地址追问必须补查，只有成功发送面试定位才能满足', () => {
+      const missing = service.check({
+        replyText: '面试就去东方渔人码头店。',
+        toolCalls: [],
+        userMessage: '面试地址在哪里',
+        memorySnapshot,
+        chatId: 'interview-location-missing',
+      });
+      const grounded = service.check({
+        replyText: '面试请去控江旭辉店，定位已发。',
+        toolCalls: [
+          {
+            toolName: 'send_store_location',
+            args: { jobId: 524579, destination: 'interview' },
+            status: 'ok',
+            result: { success: true, jobId: 524579, destination: 'interview' },
+          },
+        ],
+        userMessage: '面试地址在哪里',
+        memorySnapshot,
+        chatId: 'interview-location-grounded',
+      });
+
+      expect(missing.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+      expect(grounded.contradictions.map((item) => item.ruleId)).not.toContain(
+        'job_detail_lookup_required',
+      );
+    });
   });
 
   describe('schedule window claims', () => {

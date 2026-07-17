@@ -21,7 +21,7 @@ export const SEMANTIC_REVIEW_FINDING_POLICIES = {
     repairToolNames: ['geocode', 'duliday_job_list'],
   },
   active_booking_state_conflict: {
-    repairToolNames: ['duliday_interview_precheck'],
+    repairToolNames: ['send_store_location', 'request_handoff'],
   },
 } as const satisfies Record<SemanticReviewFindingCode, { repairToolNames: readonly string[] }>;
 
@@ -58,7 +58,11 @@ export class SemanticReviewerService {
       Boolean(packet.evidence.geocode) && /附近|地址|位置|门店|距离|城市|区|路/.test(reply);
     const hasBookingStateClaim =
       Boolean(packet.evidence.booking) && /预约|报名|面试|到店|二维码|地址|时间/.test(reply);
-    return hasJobRecommendation || hasGeoOrBrandAmbiguity || hasBookingStateClaim;
+    const hasSentLocationClaim =
+      Boolean(packet.evidence.sentLocation) && /地址|位置|定位|导航|面试|门店/.test(reply);
+    return (
+      hasJobRecommendation || hasGeoOrBrandAmbiguity || hasBookingStateClaim || hasSentLocationClaim
+    );
   }
 
   async review(packet: GuardrailReviewPacket): Promise<SemanticReviewVerdict> {
@@ -81,6 +85,10 @@ export class SemanticReviewerService {
             '- jobList.hasEvidence=true 表示已有可核验岗位证据；即使 jobList.jobs=[]，只要 markdownExcerpt 存在也不能说“无岗位数据/无证据支撑”。',
             '- geocode.hasResolvedCoordinate=true 表示已解析到坐标；unique 解析常见 candidates=[]，不能仅因 candidates 为空就说地理解析失败。',
             '- geocode.areaLevelQuery=true 表示只解析到行政区级，不能支撑精确门店距离，但不等于 geocode 失败。',
+            '- sentLocation.addressConflict=true 表示面试地址与工作门店不同。回复必须说清两者差异，且不得把 storeAddress 当成面试目的地。',
+            '- sentLocation.destination=interview 时，回复必须称其为面试定位；不得说已发门店定位或声称应去工作门店面试。',
+            '- 只有 sentLocation.interviewMethod 明确为线下/到店/现场面试时才允许声称有面试地址或已发面试定位。线上/AI/视频/电话面试或 locationNotRequired=true 时，任何到店、面试地址或面试定位声称都是 active_booking_state_conflict。',
+            '- “地图未更新/新店刚入驻/地址没错”等解释必须在 evidence 中有明确依据；否则按 active_booking_state_conflict 要求删除。',
             '裁决要求：',
             '- 每条 finding 必须给出 evidencePath（指向 packet 中的证据字段）和 evidenceQuote（回复原文）。',
             '- feedbackToGenerator 写成可直接执行的改写指令，只描述候选人可见回复该怎么改。',

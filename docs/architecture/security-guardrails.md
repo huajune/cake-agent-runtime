@@ -115,7 +115,7 @@ HTTP 请求
 
 ### 5.2 LLM 语义 reviewer
 
-位置：`output/llm/semantic-reviewer.service.ts`，吃 `review-packet.builder.ts` 裁剪的证据包（jobList / precheck / booking / geocode 四类），输出领域 finding。当前三类 contract：`job_recommendation_not_best_supported`、`brand_or_geo_ambiguity_ignored`、`active_booking_state_conflict`。
+位置：`output/llm/semantic-reviewer.service.ts`，吃 `review-packet.builder.ts` 裁剪的证据包（jobList / precheck / booking / geocode / sentLocation 五类），输出领域 finding。当前三类 contract：`job_recommendation_not_best_supported`、`brand_or_geo_ambiguity_ignored`、`active_booking_state_conflict`。其中 `sentLocation` 会记录目的地类型、面试形式、工作门店/面试/实际发送地址及冲突标记，用于拦截把面试定位说成工作门店、线上面试声称需到店，以及工作门店与面试地址混用。
 
 - 触发：本轮成功提交过副作用工具 / 回复含承诺·动态事实措辞 / 命中语义 contract 触发词。
 - 灰度开关（已迁托管配置 `agent_reply_config`，Dashboard 即时生效；env 仅作 bootstrap 默认）：`OUTPUT_GUARDRAIL_LLM_ENABLED`（enforce 参与裁决）、`OUTPUT_GUARDRAIL_SEMANTIC_SHADOW_ENABLED`（shadow 只观测）。

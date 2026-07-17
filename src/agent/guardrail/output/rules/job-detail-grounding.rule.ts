@@ -48,16 +48,39 @@ const JOB_DETAIL_QUERY_RULES: readonly JobDetailQueryRule[] = [
   },
   { field: 'student_requirement', pattern: /招聘要求|报名条件|有什么要求|什么条件/u },
   { field: 'address', pattern: /门店地址|店在哪里|店在哪|上班地点|工作地点/u },
+  {
+    field: 'interview_address',
+    pattern: /面试(?:地址|地点|去哪|在哪)|去哪面试|面试怎么走/u,
+    alwaysFresh: true,
+  },
   { field: 'employment', pattern: /全职|兼职|小时工|暑假工|寒假工|用工形式/u },
   { field: 'duties', pattern: /工作内容|岗位内容|主要做什么|具体做什么|主要干嘛|干什么活/u },
   { field: 'duration', pattern: /做多久|工作多久|长期|短期|至少几个月|工期|合同期/u },
 ];
 
-function hasFocusJobLookup(toolCalls: AgentToolCall[], jobId: number): boolean {
-  return toolCalls.some((call) => {
+function hasFocusJobLookup(
+  toolCalls: AgentToolCall[],
+  jobId: number,
+  requested: readonly JobDetailQueryRule[],
+): boolean {
+  const hasJobListLookup = toolCalls.some((call) => {
     if (call.toolName !== 'duliday_job_list' || call.status === 'error') return false;
     const jobIdList = call.args.jobIdList;
     return Array.isArray(jobIdList) && jobIdList.some((value) => Number(value) === jobId);
+  });
+  if (hasJobListLookup) return true;
+
+  const onlyInterviewAddress = requested.every((rule) => rule.field === 'interview_address');
+  if (!onlyInterviewAddress) return false;
+  return toolCalls.some((call) => {
+    if (call.toolName !== 'send_store_location' || call.status === 'error') return false;
+    const result =
+      call.result && typeof call.result === 'object' && !Array.isArray(call.result)
+        ? (call.result as Record<string, unknown>)
+        : null;
+    return (
+      Number(call.args.jobId ?? result?.jobId) === jobId && result?.destination === 'interview'
+    );
   });
 }
 
@@ -92,7 +115,7 @@ export function detectJobDetailLookupRequired(
     return null;
   }
 
-  if (hasFocusJobLookup(toolCalls, focusJob.jobId)) return null;
+  if (hasFocusJobLookup(toolCalls, focusJob.jobId, requested)) return null;
 
   const available = new Set(focusJob.availableDetailFields);
   const missingOrFresh = requested.filter((rule) => rule.alwaysFresh || !available.has(rule.field));
