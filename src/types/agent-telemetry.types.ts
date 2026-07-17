@@ -71,6 +71,7 @@ export type AgentJobDetailField =
   | 'health_certificate_requirement'
   | 'student_requirement'
   | 'address'
+  | 'interview_address'
   | 'employment'
   | 'duties'
   | 'duration';

@@ -11,6 +11,7 @@ import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { SpongeService } from '@sponge/sponge.service';
+import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
 import {
   type RecommendedJobSummary,
@@ -428,6 +429,7 @@ export class PreparationService {
       if (activeBookings.length === 0) return { block: '', jobIds: [] };
 
       const requiresFreshLookup = this.requiresFreshBookingContext(currentUserMessage);
+      const requiresLocationDetails = this.requiresBookingLocationDetails(currentUserMessage);
       // 并行查询：直查路径下多工单串行会把多次海绵 API 耗时叠加进 prepare 热路径。
       const lookups = await Promise.all(
         activeBookings.map(async (activeBooking) => {
@@ -438,21 +440,58 @@ export class PreparationService {
                   throwOnFetchError: true,
                 })
               : await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext);
-            return { workOrderId, workOrder, fetchFailed: false };
+            const normalizedJobId = this.normalizeJobId(workOrder?.jobId);
+            let location:
+              | { storeAddress?: string; interviewMethod?: string; interviewAddress?: string }
+              | undefined;
+            if (requiresLocationDetails && normalizedJobId != null) {
+              try {
+                const detail = await this.spongeService.fetchJobs(
+                  {
+                    jobIdList: [normalizedJobId],
+                    pageNum: 1,
+                    pageSize: 1,
+                    onlySignableJobs: false,
+                    options: { includeBasicInfo: true, includeInterviewProcess: true },
+                  },
+                  tokenContext,
+                );
+                const job = detail.jobs[0];
+                if (job) {
+                  const storeAddress =
+                    typeof job.basicInfo?.storeInfo?.storeAddress === 'string'
+                      ? job.basicInfo.storeInfo.storeAddress.trim()
+                      : undefined;
+                  const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
+                  const interviewMethod = interviewMeta.method ?? undefined;
+                  const interviewAddress = isOfflineInterviewMethod(interviewMethod)
+                    ? (interviewMeta.address ?? undefined)
+                    : undefined;
+                  location = { storeAddress, interviewMethod, interviewAddress };
+                }
+              } catch (error) {
+                this.logger.warn(
+                  `加载预约地址详情失败 workOrderId=${workOrderId}: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                );
+              }
+            }
+            return { workOrderId, workOrder, location, fetchFailed: false };
           } catch (error) {
             this.logger.warn(
               `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${
                 error instanceof Error ? error.message : String(error)
               }`,
             );
-            return { workOrderId, workOrder: null, fetchFailed: true };
+            return { workOrderId, workOrder: null, location: undefined, fetchFailed: true };
           }
         }),
       );
 
       const contexts: Array<{ block: string; jobId: number | null }> = [];
       let fetchFailedCount = 0;
-      for (const { workOrderId, workOrder, fetchFailed } of lookups) {
+      for (const { workOrderId, workOrder, location, fetchFailed } of lookups) {
         if (fetchFailed) {
           fetchFailedCount += 1;
           continue;
@@ -466,13 +505,8 @@ export class PreparationService {
 
         // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
         // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集。
-        const block = formatBookingContext(workOrder, contexts.length + 1);
-        const normalizedJobId =
-          typeof workOrder.jobId === 'number'
-            ? workOrder.jobId
-            : typeof workOrder.jobId === 'string' && /^\d+$/.test(workOrder.jobId)
-              ? Number(workOrder.jobId)
-              : null;
+        const block = formatBookingContext(workOrder, contexts.length + 1, location);
+        const normalizedJobId = this.normalizeJobId(workOrder.jobId);
         if (block) contexts.push({ block, jobId: normalizedJobId });
       }
 
@@ -514,9 +548,22 @@ export class PreparationService {
    */
   private requiresFreshBookingContext(currentUserMessage: string | undefined): boolean {
     if (!currentUserMessage) return false;
-    return /面试|预约|报名|改约|改期|改到|换(?:个|一)?时间|取消|不去|去不了|来不了|推迟|延期|迟到|到店|报到|入职/u.test(
+    return /面试|预约|报名|改约|改期|改到|换(?:个|一)?时间|取消|不去|去不了|来不了|推迟|延期|迟到|到店|报到|入职|地址|位置|定位|导航|怎么走|找不到|搞错/u.test(
       currentUserMessage,
     );
+  }
+
+  private requiresBookingLocationDetails(currentUserMessage: string | undefined): boolean {
+    return Boolean(
+      currentUserMessage &&
+        /面试|到店|报到|地址|位置|定位|导航|怎么走|找不到|搞错/u.test(currentUserMessage),
+    );
+  }
+
+  private normalizeJobId(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+    if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+    return null;
   }
 
   /** 老用户回访的入口阶段（需在场景策略阶段表中存在才生效）。 */

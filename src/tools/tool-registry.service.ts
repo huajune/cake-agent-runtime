@@ -158,8 +158,8 @@ export class ToolRegistryService {
 
       send_store_location: createToolDefinition({
         name: 'send_store_location',
-        description: '向候选人发送当前门店的企微位置消息（问地址/定位/导航时使用）',
-        create: buildSendStoreLocationTool(spongeService, messageSenderService),
+        description: '向候选人发送面试地点或工作门店的企微位置消息（已约面后默认优先面试地点）',
+        create: buildSendStoreLocationTool(spongeService, messageSenderService, geocodingService),
       }),
 
       invite_to_group: createToolDefinition({

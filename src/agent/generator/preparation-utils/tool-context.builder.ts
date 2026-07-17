@@ -114,6 +114,7 @@ export function buildToolContext(input: {
     highConfidenceFacts: memory.highConfidenceFacts,
     geocodeLocationAnchor,
     currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+    activeBookingJobIds: bookingWorkOrderJobIds,
     recentBrandPool,
     isRecalledJobId: (jobId: number) =>
       turnStartRecalledJobIds.has(jobId) ||

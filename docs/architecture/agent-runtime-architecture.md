@@ -505,7 +505,7 @@ load_previous_state (串行)
 | `duliday_interview_precheck`  | 面试前置校验（可约日期 / 时段 / 备注字段）；不真正提交预约                 |
 | `duliday_interview_booking`   | 面试预约提交；安全 gate hard-reject 时由 Runner 收敛为人工介入              |
 | `geocode`                     | 地名 → 标准化地址 + 经纬度                                                 |
-| `send_store_location`         | 向候选人发送门店企微位置消息                                               |
+| `send_store_location`         | 按面试形式发送面试地点或工作门店位置；避免预约场景混用两类地址             |
 | `invite_to_group`             | 邀请加入企微兼职群（副作用：addMember 外部 API + session facts 写入）       |
 | `raise_risk_alert`            | 声明会话风险副作用意图；回复投递后由统一出口暂停托管并告警                   |
 | `request_handoff`             | 声明人工接管意图并短路本轮；Runner 统一写底账、暂停托管和告警                |

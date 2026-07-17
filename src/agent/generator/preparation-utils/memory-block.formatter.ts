@@ -361,7 +361,15 @@ function formatSessionFacts(
   return `\n\n[会话记忆]\n\n${detailLookupRule}\n\n${sections.join('\n\n')}`;
 }
 
-export function formatBookingContext(workOrder: SignupWorkOrderItem, index = 1): string {
+export function formatBookingContext(
+  workOrder: SignupWorkOrderItem,
+  index = 1,
+  location?: {
+    storeAddress?: string;
+    interviewMethod?: string;
+    interviewAddress?: string;
+  },
+): string {
   const displayJobName = sanitizeJobDisplayText(workOrder.jobName ?? null);
   const businessLines = [
     workOrder.brandName ? `品牌: ${workOrder.brandName}` : null,
@@ -370,6 +378,9 @@ export function formatBookingContext(workOrder: SignupWorkOrderItem, index = 1):
     workOrder.currentStatus ? `当前状态: ${workOrder.currentStatus}` : null,
     workOrder.signUpTime ? `报名时间: ${workOrder.signUpTime}` : null,
     workOrder.interviewPassTime ? `面试通过时间: ${workOrder.interviewPassTime}` : null,
+    location?.storeAddress ? `工作门店地址: ${location.storeAddress}` : null,
+    location?.interviewMethod ? `面试形式: ${location.interviewMethod}` : null,
+    location?.interviewAddress ? `面试地址: ${location.interviewAddress}` : null,
   ].filter((line): line is string => Boolean(line));
 
   // 仅有标题行 + 工单号（无任何业务字段）时不渲染，避免给 Agent 一个空壳 case。
@@ -387,6 +398,7 @@ export function formatBookingContext(workOrder: SignupWorkOrderItem, index = 1):
     '候选人可同时报名多个不同岗位；已预约 A 岗不代表不能继续报名 B 岗。但同一工单/同一岗位不要重复提交报名。',
     '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。主动要求取消时调 duliday_cancel_work_order 自助取消。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
     '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
+    '必须先核对「面试形式」：只有明确为线下/到店/现场面试才允许告知或发送面试地址。线上、AI、视频、电话面试不需要到店，禁止发送任何面试定位；面试形式未明确时也不得猜测为线下。仅在明确线下面试且「面试地址」与「工作门店地址」不同时，候选人询问赴约地址/定位才优先面试地址。',
   );
   return lines.join('\n');
 }

@@ -12,6 +12,10 @@ describe('buildSendStoreLocationTool', () => {
     sendMessage: jest.fn(),
   };
 
+  const mockGeocodingService = {
+    geocode: jest.fn(),
+  };
+
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
@@ -58,6 +62,7 @@ describe('buildSendStoreLocationTool', () => {
     const builder = buildSendStoreLocationTool(
       mockSpongeService as any,
       mockMessageSenderService as any,
+      mockGeocodingService as any,
     );
     const builtTool = builder({
       ...mockContext,
@@ -92,6 +97,7 @@ describe('buildSendStoreLocationTool', () => {
         pageSize: 1,
         options: {
           includeBasicInfo: true,
+          includeInterviewProcess: true,
         },
       },
       expect.objectContaining({ botImId: 'bot-im-1' }),
@@ -199,6 +205,179 @@ describe('buildSendStoreLocationTool', () => {
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_UNAVAILABLE);
     expect(result.storeAddress).toBe('北京市丰台区青塔西路 1 号');
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('进行中预约的地址质疑应发送面试地点，不得发新门店定位', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob({
+            storeInfo: {
+              storeName: '上海东方渔人码头店',
+              storeAddress: '上海东方渔人码头成都你六姐F1楼',
+              storeCityName: '上海市',
+              latitude: 31.251,
+              longitude: 121.55,
+            },
+          }),
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线下面试',
+              interviewAddress: '新店开业前在成都你六姐（上海控江旭辉店）面试',
+            },
+          },
+        },
+      ],
+    });
+    mockGeocodingService.geocode.mockResolvedValue({
+      formattedAddress: '上海市杨浦区控江路旭辉广场',
+      latitude: 31.281,
+      longitude: 121.53,
+    });
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool(
+      { jobId: 100, destination: 'store' },
+      {
+        activeBookingJobIds: [100],
+        currentUserMessage: '高德地图查不到东方渔人码头店的位置，是否搞错了？',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.destination).toBe('interview');
+    expect(result.addressConflict).toBe(true);
+    expect(result._fixedReply).toContain('这次面试请去');
+    expect(result._fixedReply).toContain('不要按工作门店地址前往面试');
+    expect(mockGeocodingService.geocode).toHaveBeenCalledWith(
+      '成都你六姐（上海控江旭辉店）',
+      '上海市',
+    );
+    expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageType: SendMessageType.LOCATION,
+        payload: expect.objectContaining({
+          address: '新店开业前在成都你六姐（上海控江旭辉店）面试',
+          latitude: 31.281,
+          longitude: 121.53,
+        }),
+      }),
+    );
+  });
+
+  it('进行中预约下明确询问上班地址时仍可发工作门店', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob(),
+          interviewProcess: {
+            firstInterview: { interviewAddress: '北京市丰台区另一个面试点' },
+          },
+        },
+      ],
+    });
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool(
+      { jobId: 100, destination: 'store' },
+      {
+        activeBookingJobIds: [100],
+        currentUserMessage: '我是想问入职后的上班地址在哪',
+      },
+    );
+
+    expect(result.destination).toBe('store');
+    expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
+    expect(result.sentAddress).toBe('北京市丰台区青塔西路 1 号');
+  });
+
+  it('异店面试地址无法地理编码时宁可转人工也不发工作门店', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob(),
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线下面试',
+              interviewAddress: '新店开业前在另一家店面试',
+            },
+          },
+        },
+      ],
+    });
+    mockGeocodingService.geocode.mockResolvedValue(null);
+
+    const result = await executeTool(
+      { jobId: 100 },
+      { activeBookingJobIds: [100], currentUserMessage: '面试地址怎么走' },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_INTERVIEW_GEOCODE_FAILED);
+    expect(result.fallbackTextSent).toBe(true);
+    expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageType: SendMessageType.TEXT,
+        payload: expect.objectContaining({ text: expect.stringContaining('这次面试请去') }),
+      }),
+    );
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ messageType: SendMessageType.LOCATION }),
+    );
+  });
+
+  it('线上面试即使残留 interviewAddress 也不得发送定位', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob(),
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线上面试',
+              interviewAddress: '历史残留的某门店地址',
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, destination: 'interview' },
+      { activeBookingJobIds: [100], currentUserMessage: '面试地址在哪里' },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.locationNotRequired).toBe(true);
+    expect(result.interviewMethod).toBe('线上面试');
+    expect(result.interviewAddress).toBeNull();
+    expect(result._fixedReply).toContain('不需要到门店');
+    expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('面试形式未明确时不得根据地址字段猜测为线下', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...makeJob(),
+          interviewProcess: {
+            firstInterview: { interviewAddress: '某门店地址' },
+          },
+        },
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, destination: 'interview' },
+      { activeBookingJobIds: [100], currentUserMessage: '面试地址在哪里' },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_UNAVAILABLE);
+    expect(result.interviewMethod).toBeNull();
+    expect(result.interviewAddress).toBeNull();
+    expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });
 });
