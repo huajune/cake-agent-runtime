@@ -149,7 +149,7 @@ export const SIDE_EFFECT_TOOLS = new Set([
   'request_handoff',
 ]);
 
-/** 触发后会产生不可逆外部动作，本轮 replay 必须跳过的工具。 */
+/** 成功提交后会产生不可逆外部动作，本轮 replay 必须跳过的工具。 */
 export const REPLAY_BLOCKING_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking']);
 
 /** revise 是纯文本修复阶段：这些工具绝不允许在 revise 中暴露。 */
@@ -261,10 +261,15 @@ export function isGuardrailRejected(result: unknown): boolean {
   return r?.guardrailRejected === true || r?.gateRejected === true;
 }
 
-/** 归一后的 AgentToolCall 是否会阻断 replay。 */
+/**
+ * 归一后的 AgentToolCall 是否会阻断 replay。
+ *
+ * 只有已确认提交的不可逆副作用才能阻断重跑；失败的拉群/预约没有改变
+ * 外部状态，若此时候选人又补充了消息，应吸收 pending 并 replay 旧回合。
+ */
 export function blocksReplay(call: Pick<AgentToolCall, 'toolName' | 'result'>): boolean {
   if (!REPLAY_BLOCKING_TOOLS.has(call.toolName)) return false;
-  return true;
+  return isSideEffectCommitted(call.result);
 }
 
 /** prepareStep 入参中 step 的最小子集；这里只关心 toolCalls 的 toolName。 */

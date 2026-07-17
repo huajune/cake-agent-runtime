@@ -17,6 +17,11 @@ export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>
   config?: Partial<ReliableConfig>;
   thinking?: LlmThinkingConfig;
   onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
+  /**
+   * Validate lazy result fields while still inside the retry/fallback loop.
+   * AI SDK structured output can throw only when `result.output` is accessed.
+   */
+  validateResult?: (result: Awaited<ReturnType<typeof generateText>>) => void;
 }
 
 export interface LlmGenerateStructuredOptions<TSchema extends z.ZodTypeAny>
@@ -64,7 +69,7 @@ export class LlmExecutorService {
   ) {}
 
   async generate(options: LlmGenerateOptions): Promise<Awaited<ReturnType<typeof generateText>>> {
-    const { config, onPreparedRequest, thinking, ...routeOptions } = options;
+    const { config, onPreparedRequest, thinking, validateResult, ...routeOptions } = options;
     const plan = this.resolveExecutionPlan(routeOptions);
     const attempts: string[] = [];
     let lastRawError: unknown = null;
@@ -100,6 +105,7 @@ export class LlmExecutorService {
             maxRetries: 0,
           } as Parameters<typeof generateText>[0]);
           this.assertUsableChatResult(result, plan.role);
+          validateResult?.(result);
           return result;
         } catch (err) {
           lastRawError = err;
@@ -135,11 +141,12 @@ export class LlmExecutorService {
         schema,
         name: outputName,
       }),
+      // `output` is a lazy AI SDK getter. Access it before leaving generate() so
+      // no-output failures use the same retry and model fallback policy as API errors.
+      validateResult: (candidate) => {
+        if (!candidate.output) throw new Error('No structured output returned');
+      },
     });
-
-    if (!result.output) {
-      throw new Error('No structured output returned');
-    }
 
     return result as StructuredGenerateResult<TSchema>;
   }

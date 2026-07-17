@@ -51,7 +51,7 @@ export class ReengagementAnchorService {
 
     // 取消工单成功：booked 终态回退（候选人回到求职中，报名前场景恢复可排程）。
     // 在途的旧面试提醒不在这里清（Bull 不支持按会话检索），由 processor 到点向海绵
-    // 核验工单现状兜底（external_cancelled）。不依赖 deliverable：工单已实际取消。
+    // 核验工单是否仍为进行中状态兜底。不依赖 deliverable：工单已实际取消。
     const cancelSucceeded = toolCalls.some((call) => this.isCancelSucceeded(call));
     const booking = toolCalls.find((call) => this.isBookingSucceeded(call));
     const groupInvited = toolCalls.some((call) => this.isGroupInviteSucceeded(call));

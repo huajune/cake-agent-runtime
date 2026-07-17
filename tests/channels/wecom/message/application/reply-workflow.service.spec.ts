@@ -95,6 +95,7 @@ describe('ReplyWorkflowService', () => {
     scheduleBookingResolution: jest.fn(),
     removePendingJob: jest.fn(),
     removeSupersededPendingJobs: jest.fn(),
+    stopPendingJobsForSessionScenario: jest.fn(),
   };
   const session = {
     saveTerminalState: jest.fn(),
@@ -264,6 +265,7 @@ describe('ReplyWorkflowService', () => {
     followUpScheduler.scheduleBookingResolution.mockResolvedValue({ scheduled: true });
     followUpScheduler.removePendingJob.mockResolvedValue(true);
     followUpScheduler.removeSupersededPendingJobs.mockResolvedValue(1);
+    followUpScheduler.stopPendingJobsForSessionScenario.mockResolvedValue({ stopped: 1 });
     session.saveTerminalState.mockResolvedValue(undefined);
     session.recordCandidateActivity.mockResolvedValue(undefined);
     interventionService.dispatch.mockResolvedValue({
@@ -1286,7 +1288,7 @@ describe('ReplyWorkflowService', () => {
     });
 
     it.each([['invite_to_group'], ['duliday_interview_booking']])(
-      'Case E: 首次调用命中不可逆工具 [%s] 时跳过 replay，不 drain pending，直接投递首次回复',
+      'Case E: 首次成功提交不可逆工具 [%s] 时跳过 replay，不 drain pending，直接投递首次回复',
       async (blockingToolName) => {
         const primary = createMessage();
         // 即便 pending 有新消息，也不应该被 drain；这里故意准备新消息来验证 skip 语义
@@ -1306,7 +1308,7 @@ describe('ReplyWorkflowService', () => {
           text: '首次回复（必须投递）',
           reasoning: undefined,
           responseMessages: [],
-          toolCalls: [{ toolName: blockingToolName, args: {} }],
+          toolCalls: [{ toolName: blockingToolName, args: {}, result: { success: true } }],
           usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
           runTurnEnd: firstRunTurnEnd,
         });
@@ -1332,6 +1334,66 @@ describe('ReplyWorkflowService', () => {
         );
       },
     );
+
+    it('拉群失败后候选人补充城市时，吸收 pending 并 replay 过期追问', async () => {
+      const primary = createMessage({
+        messageId: 'msg-emotion',
+        payload: { text: '[表情消息]', pureText: '[表情消息]' },
+      });
+      const cityMessage = createMessage({
+        messageId: 'msg-city',
+        payload: {
+          text: '我在青岛市北区，凯德新都心商圈',
+          pureText: '我在青岛市北区，凯德新都心商圈',
+        },
+      });
+      simpleMergeService.claimPendingSnapshot
+        .mockResolvedValueOnce({ messages: [cityMessage], snapshotSize: 1, batchId: '' })
+        .mockResolvedValueOnce({ messages: [], snapshotSize: 0, batchId: '' });
+
+      runner.invoke
+        .mockResolvedValueOnce({
+          text: '方便说下你现在在哪个城市吗',
+          responseMessages: [],
+          toolCalls: [
+            {
+              toolName: 'invite_to_group',
+              args: { city: '北京市' },
+              result: {
+                success: false,
+                errorType: 'invite.city_unverified',
+              },
+            },
+          ],
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          text: '收到，我帮你看凯德新都心附近的岗位',
+          responseMessages: [],
+          toolCalls: [],
+          usage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 },
+        });
+
+      await service.processSingleMessage(primary);
+
+      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(runner.invoke.mock.calls[1][0]).toEqual(
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining('青岛市北区'),
+            }),
+          ],
+        }),
+      );
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '收到，我帮你看凯德新都心附近的岗位' }),
+        expect.anything(),
+        true,
+      );
+      expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-city');
+    });
 
     it('报名提交前发现候选人新消息时，旧回合短路但仍吸收 pending 并 replay', async () => {
       const primary = createMessage();
@@ -1444,7 +1506,7 @@ describe('ReplyWorkflowService', () => {
       );
     });
 
-    it('Case F: 首次命中不可逆工具 + 无副作用的其他工具，仍然按 skip 处理', async () => {
+    it('Case F: 首次成功提交不可逆工具 + 无副作用的其他工具，仍然按 skip 处理', async () => {
       const primary = createMessage();
       runner.invoke.mockResolvedValueOnce({
         text: '已为你安排预约',
@@ -1452,7 +1514,11 @@ describe('ReplyWorkflowService', () => {
         responseMessages: [],
         toolCalls: [
           { toolName: 'duliday_job_list', args: {} },
-          { toolName: 'duliday_interview_booking', args: {} },
+          {
+            toolName: 'duliday_interview_booking',
+            args: {},
+            result: { success: true, workOrderId: 12345 },
+          },
         ],
         usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
         runTurnEnd: jest.fn().mockResolvedValue(undefined),

@@ -166,7 +166,7 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.upload_resume)).toBeNull();
   });
 
-  it('should keep first scalar values except labor_form across multiple messages', () => {
+  it('should keep first stable scalars but use latest health and labor-form values', () => {
     const result = extractHighConfidenceFacts(
       [
         '我25岁，男的，本科，有健康证，想做小时工，工资5000-6000，周末有空，13800138000',
@@ -179,7 +179,8 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('25');
     expect(unwrapHighConfidenceValue(result?.interview_info.gender)).toBe('男');
     expect(unwrapHighConfidenceValue(result?.interview_info.education)).toBe('本科');
-    expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('有');
+    // 健康证状态和办理意愿会变化，以最后一次明确表达为准。
+    expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('无');
     // labor_form 是意向字段，同批多条消息以候选人最后一次明确表达为准。
     expect(unwrapHighConfidenceValue(result?.preferences.labor_form)).toBe('寒假工');
     expect(unwrapHighConfidenceValue(result?.preferences.salary)).toBe('工资5000-6000');
@@ -419,6 +420,65 @@ describe('extractHighConfidenceFacts', () => {
           .has_health_certificate,
       ),
     ).toBe('无');
+  });
+
+  it.each([
+    '如果面试上了，他后期会去体检，然后办一个健康证',
+    '目前没有健康证，但确定上岗前会去办',
+    '我愿意入职前再办一张食品健康证',
+    '后面去体检办健康证没问题',
+  ])(
+    'should treat future health-certificate commitment as accepting application: %s',
+    (message) => {
+      expect(
+        unwrapHighConfidenceValue(
+          extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+        ),
+      ).toBe('无但接受办理健康证');
+    },
+  );
+
+  it('should recognize a labeled health-certificate value without inventing willingness', () => {
+    const result = extractHighConfidenceFacts(['健康证：无'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('无');
+  });
+
+  it('should let the latest explicit health-certificate answer override older history', () => {
+    const result = extractHighConfidenceFacts(
+      ['健康证：无', '如果面试上了，后期会去体检，然后办一个健康证'],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe(
+      '无但接受办理健康证',
+    );
+  });
+
+  it.each(['健康证怎么办呀？', '能不能办健康证？', '这个需要我去办健康证吗？'])(
+    'should not treat a health-certificate question as an application commitment: %s',
+    (message) => {
+      expect(
+        unwrapHighConfidenceValue(
+          extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+        ) ?? null,
+      ).toBeNull();
+    },
+  );
+
+  it.each([
+    '我不打算办健康证',
+    '后面也不会去办食品健康证',
+    '不愿意去体检然后办健康证',
+    '不可以去体检然后办健康证',
+    '我不太愿意后面再去体检然后办一张食品健康证',
+    '健康证我不考虑之后再去办理',
+  ])('should keep explicit refusal authoritative: %s', (message) => {
+    expect(
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+      ),
+    ).toBe('无且不接受办理健康证');
   });
 
   it('should treat admitted or enrolled graduate students as student identity', () => {

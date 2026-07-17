@@ -105,11 +105,11 @@ export class ReengagementDeliveryService
   }
 }
 
-/** 海绵工单 currentStatus（9 态中文）里代表报名已失效的状态（对所有报名后场景生效）。 */
-const BOOKING_CANCELLED_STATUSES = new Set(['约面取消', '约面失败']);
-
-/** 面试/上岗已发生的状态：面试提醒无意义应停；面试后回访不受影响（面试完成正是回访前提）。 */
-const INTERVIEW_DONE_STATUSES = new Set(['面试成功', '面试失败', '上岗成功', '上岗失败', '已离职']);
+/**
+ * 报名后复聊只允许仍处于约面阶段的工单。海绵 currentStatus 共 9 态；除以下两态外，
+ * 其余状态都说明报名已经失败、取消，或面试结果/后续结果已经产生，不再提醒或追问。
+ */
+const ACTIVE_INTERVIEW_WORK_ORDER_STATUSES = new Set(['约面待确认', '约面成功']);
 
 const BOOKING_SCHEDULE_TOLERANCE_MS = 60_000;
 
@@ -214,10 +214,18 @@ export class FollowUpProcessor implements OnModuleInit {
       // 面试排程解析任务只保存工单引用；拿到海绵实时工单后才创建正式 delayed job。
       // 查询失败抛错交给 Bull backoff 重试，绝不使用预约工具参数兜底。
       if (job.data.resolveBookingAtFire) {
-        if (!bookingContext?.interviewAt || !job.data.workOrderId) {
+        if (!bookingContext || !job.data.workOrderId) {
           throw new Error(
             `reengagement_booking_context_unavailable:${job.data.workOrderId ?? '-'}`,
           );
+        }
+        const invalidReason = this.checkBookingInvalidAtFire(bookingContext);
+        if (invalidReason) {
+          this.tracking.trackStopped(identity, invalidReason);
+          return;
+        }
+        if (!bookingContext.interviewAt) {
+          throw new Error(`reengagement_booking_time_unavailable:${job.data.workOrderId}`);
         }
         await this.scheduler.scheduleFollowUp({
           sessionRef,
@@ -245,7 +253,7 @@ export class FollowUpProcessor implements OnModuleInit {
         throw new Error(`reengagement_booking_context_unavailable:${job.data.workOrderId ?? '-'}`);
       }
       if (!bookingContext.interviewAt) {
-        const invalidReason = this.checkBookingInvalidAtFire(job.data, bookingContext);
+        const invalidReason = this.checkBookingInvalidAtFire(bookingContext);
         if (invalidReason) {
           this.tracking.trackStopped(identity, invalidReason);
           return;
@@ -273,7 +281,7 @@ export class FollowUpProcessor implements OnModuleInit {
     // 1.5) 报名后场景到点核验：向海绵查工单现状（外部取消/已面试）并按实时面试时间校准排程。
     // 查询或关键时间缺失会在上方抛错重试，严格 fail closed，不使用旧任务/记忆快照放行。
     if (scenario.anchorEvent === 'booking.succeeded' && bookingContext) {
-      const invalidReason = this.checkBookingInvalidAtFire(job.data, bookingContext);
+      const invalidReason = this.checkBookingInvalidAtFire(bookingContext);
       if (invalidReason) {
         this.logger.log(
           `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${invalidReason}`,
@@ -486,26 +494,16 @@ export class FollowUpProcessor implements OnModuleInit {
   /**
    * 报名后场景到点核验（shouldStop 之后、生成之前）。返回失效原因；仍有效返回 null。
    *
-   * - 海绵实时工单现状（source of truth）：约面取消/约面失败 → 报名已失效；
-   *   面试提醒额外拦已面试/已上岗（提醒已无意义），面试后回访不拦（面试完成正是回访前提）。
+   * - 海绵实时工单现状（source of truth）：只有约面待确认/约面成功是进行中报名；
+   *   取消、失败、面试结果已出及上岗后状态均停止提醒和回访。
    * - 工单或面试时间拿不到时，上游直接抛错重试并 fail closed，不允许旧快照兜底发送。
    */
-  private checkBookingInvalidAtFire(
-    jobData: FollowUpJob,
-    bookingContext: ReengagementBookingContext,
-  ): string | null {
-    const { scenarioCode } = jobData;
+  private checkBookingInvalidAtFire(bookingContext: ReengagementBookingContext): string | null {
     const currentStatus = bookingContext.currentStatus ?? null;
-    if (currentStatus) {
-      if (BOOKING_CANCELLED_STATUSES.has(currentStatus)) {
-        return `external_cancelled:${currentStatus}`;
-      }
-      if (scenarioCode === 'interview_reminder' && INTERVIEW_DONE_STATUSES.has(currentStatus)) {
-        return `interview_already_done:${currentStatus}`;
-      }
-    }
-
-    return null;
+    if (!currentStatus) return 'work_order_status_unavailable';
+    return ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(currentStatus)
+      ? null
+      : `work_order_not_active:${currentStatus}`;
   }
 
   /**
