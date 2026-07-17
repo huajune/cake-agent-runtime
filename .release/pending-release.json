@@ -1,9 +1,37 @@
 {
   "baseVersion": "10.19.0",
-  "nextVersion": "10.19.0",
+  "nextVersion": "10.20.0",
   "updatedAt": "2026-07-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "606",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/606",
+      "title": "紧急放宽报名兼容校验",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-17",
+      "businessUpdates": [
+        "紧急放宽报名兼容校验"
+      ],
+      "summary": [
+        "紧急放宽报名兼容校验"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "紧急放宽报名兼容校验"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`：通过（352 个测试套件通过、1 个跳过；5248 个测试通过、6 个跳过）",
+        "4 个聚焦测试套件：215 个用例通过",
+        "最近一个月历史成功报名回归：223 个样本中 209 个通过，兼容通过率 93.72%",
+        "无数据库迁移、环境变量、密钥或基础设施变更"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.19.0",
     "date": "2026-07-17",
