@@ -8,6 +8,40 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.19.0`
+**最近更新**: `2026-07-17`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #601 修复线下面试地址为「同工作地址」时误把语义文本拿去地理编码的问题。
+- PR #601 独立面试地址改为多候选 POI 校验，避免直接采用地图服务第一条结果导致错发定位。
+
+### 问题修复
+- PR #601 「同工作地址 / 同门店地址」等配置直接继承工作门店的标准地址和高德坐标。
+- PR #601 其他面试地址只在单一高可信 POI，或地址锚点唯一命中时发送位置卡片。
+- PR #601 POI 无法可靠确认、地图服务不可用或额度耗尽时，保留文字地址并转人工，不回退到工作门店坐标。
+
+### 优化调整
+- PR #601 工具结果增加 `interviewLocationSource`，便于区分 `same_as_workplace` 与 `custom` 并观测实际路由。
+- PR #601 同步更新运营产品文档中的面试地点来源、独立地址校验和异常降级规则。
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #601 `pnpm exec jest tests/tools/tool/send-store-location.tool.spec.ts --runInBand --watchman=false`：14/14 通过。
+- PR #601 `pnpm run ci:check`：lint、format、typecheck、前后端 build、全量测试全部通过。
+- PR #601 全量测试：352/353 suites 通过（1 skipped），5242/5248 tests 通过（6 skipped）。
+- PR #601 `git diff --check`：通过。
+<!-- release:pending:end -->
+
 ## [10.18.0] - 2026-07-17
 
 **来源分支**: `develop`

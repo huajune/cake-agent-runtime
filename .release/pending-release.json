@@ -1,9 +1,45 @@
 {
   "baseVersion": "10.18.0",
-  "nextVersion": "10.18.0",
+  "nextVersion": "10.19.0",
   "updatedAt": "2026-07-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "601",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/601",
+      "title": "区分面试地点来源并校验定位",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-17",
+      "businessUpdates": [
+        "「同工作地址 / 同门店地址」等配置直接继承工作门店的标准地址和高德坐标。",
+        "其他面试地址只在单一高可信 POI，或地址锚点唯一命中时发送位置卡片。",
+        "POI 无法可靠确认、地图服务不可用或额度耗尽时，保留文字地址并转人工，不回退到工作门店坐标。"
+      ],
+      "summary": [
+        "修复线下面试地址为「同工作地址」时误把语义文本拿去地理编码的问题。",
+        "独立面试地址改为多候选 POI 校验，避免直接采用地图服务第一条结果导致错发定位。"
+      ],
+      "features": [],
+      "fixes": [
+        "「同工作地址 / 同门店地址」等配置直接继承工作门店的标准地址和高德坐标。",
+        "其他面试地址只在单一高可信 POI，或地址锚点唯一命中时发送位置卡片。",
+        "POI 无法可靠确认、地图服务不可用或额度耗尽时，保留文字地址并转人工，不回退到工作门店坐标。"
+      ],
+      "optimizations": [
+        "工具结果增加 `interviewLocationSource`，便于区分 `same_as_workplace` 与 `custom` 并观测实际路由。",
+        "同步更新运营产品文档中的面试地点来源、独立地址校验和异常降级规则。"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm exec jest tests/tools/tool/send-store-location.tool.spec.ts --runInBand --watchman=false`：14/14 通过。",
+        "`pnpm run ci:check`：lint、format、typecheck、前后端 build、全量测试全部通过。",
+        "全量测试：352/353 suites 通过（1 skipped），5242/5248 tests 通过（6 skipped）。",
+        "`git diff --check`：通过。"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.18.0",
     "date": "2026-07-17",
