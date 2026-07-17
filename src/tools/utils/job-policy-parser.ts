@@ -75,6 +75,16 @@ export interface JobPolicyAnalysis {
   };
 }
 
+/**
+ * 只有面试方式明确表达“需要到现场”时才视为线下面试。
+ * 空值/未知不得根据 interviewAddress 反推为线下，避免把历史残留地址
+ * 错发给线上、AI、视频或电话面试候选人。
+ */
+export function isOfflineInterviewMethod(method: string | null | undefined): boolean {
+  if (!method?.trim()) return false;
+  return /线下|到店|现场|当面|门店面试/u.test(method);
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function hasValue(value: unknown): boolean {

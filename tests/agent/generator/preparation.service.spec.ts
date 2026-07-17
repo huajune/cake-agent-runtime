@@ -89,6 +89,7 @@ describe('PreparationService', () => {
   const mockSpongeService = {
     getCachedWorkOrderById: jest.fn(),
     getWorkOrderById: jest.fn(),
+    fetchJobs: jest.fn(),
     fetchBrandList: jest.fn(),
   };
 
@@ -113,6 +114,7 @@ describe('PreparationService', () => {
     mockLongTermService.getActiveBookings.mockResolvedValue([]);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
     mockSpongeService.getWorkOrderById.mockResolvedValue(null);
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
     mockSpongeService.fetchBrandList.mockResolvedValue([
       { id: 1, name: '肯德基', aliases: ['KFC'] },
       { id: 2, name: '奥乐齐', aliases: ['ALDI'] },
@@ -1043,6 +1045,116 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('岗位ID: 527349');
     expect(result.finalPrompt).toContain('品牌: 瑞幸');
     expect(result.finalPrompt).toContain('当前状态: 约面成功');
+  });
+
+  it('预约后询问定位时将面试地址与工作门店地址一起注入上下文', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'onboard_followup',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+    mockActiveBooking({
+      work_order_id: 88008,
+      linked_at: '2026-07-15T08:00:00.000Z',
+    });
+    mockSpongeService.getWorkOrderById.mockResolvedValue({
+      workOrderId: 88008,
+      jobId: 39688,
+      brandName: '成都你六姐',
+      projectName: '上海东方渔人码头店',
+      jobName: '小时工',
+      currentStatus: '约面成功',
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          basicInfo: {
+            jobId: 39688,
+            storeInfo: {
+              storeAddress: '上海东方渔人码头成都你六姐F1楼',
+            },
+          },
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线下面试',
+              interviewAddress: '新店开业前在成都你六姐（上海控江旭辉店）面试',
+            },
+          },
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [
+          {
+            role: 'user',
+            content: '高德地图查不到这家店的位置，是否搞错了？',
+          },
+        ],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('工作门店地址: 上海东方渔人码头成都你六姐F1楼');
+    expect(result.finalPrompt).toContain('面试地址: 新店开业前在成都你六姐（上海控江旭辉店）面试');
+    expect(result.finalPrompt).toContain('面试形式: 线下面试');
+    expect(result.finalPrompt).toContain('只有明确为线下/到店/现场面试才允许');
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.activeBookingJobIds).toEqual([39688]);
+  });
+
+  it('线上面试只注入面试形式，不注入残留的面试地址', async () => {
+    mockActiveBooking({ work_order_id: 88009, linked_at: '2026-07-15T08:00:00.000Z' });
+    mockSpongeService.getWorkOrderById.mockResolvedValue({
+      workOrderId: 88009,
+      jobId: 39689,
+      brandName: '某品牌',
+      currentStatus: '约面成功',
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          basicInfo: {
+            jobId: 39689,
+            storeInfo: { storeAddress: '上海市某工作门店' },
+          },
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: '线上面试',
+              interviewAddress: '历史残留的线下地址',
+            },
+          },
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '面试地址在哪里' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('面试形式: 线上面试');
+    expect(result.finalPrompt).not.toContain('面试地址: 历史残留的线下地址');
   });
 
   it('keeps other active booking contexts when one sponge lookup fails', async () => {

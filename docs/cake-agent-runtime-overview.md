@@ -450,7 +450,7 @@ Agent 生成期间用户又发了新消息，怎么办？
 | `duliday_interview_precheck` | 面试前置校验（不真正提交） |
 | `duliday_interview_booking` | 面试预约提交（不可逆） |
 | `geocode` | 地名 → 标准化地址 + 经纬度 |
-| `send_store_location` | 发送门店企微位置 |
+| `send_store_location` | 按面试形式发送面试地点或工作门店的企微位置；进行中预约默认核对面试目的地 |
 | `invite_to_group` | 邀请加入企微兼职群（不可逆） |
 | `raise_risk_alert` | 候选人投诉/辱骂时人工介入 |
 | `request_handoff` | 面试/入职跟进阻塞时申请人工接管 |

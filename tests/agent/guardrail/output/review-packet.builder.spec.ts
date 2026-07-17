@@ -77,6 +77,20 @@ describe('GuardrailReviewPacketBuilder', () => {
             candidates: [{ formattedAddress: '上海市静安寺' }],
           },
         },
+        {
+          toolName: 'send_store_location',
+          args: { jobId: 101, destination: 'interview' },
+          result: {
+            success: true,
+            destination: 'interview',
+            interviewMethod: '线下面试',
+            storeName: '东方渔人码头店',
+            storeAddress: '东方渔人码头F1楼',
+            interviewAddress: '控江旭辉店',
+            sentAddress: '控江旭辉店',
+            addressConflict: true,
+          },
+        },
       ],
     });
 
@@ -119,6 +133,18 @@ describe('GuardrailReviewPacketBuilder', () => {
       confidence: 'low',
       hasResolvedCoordinate: false,
       candidates: ['上海市静安寺'],
+    });
+    expect(packet.evidence.sentLocation).toEqual({
+      success: true,
+      destination: 'interview',
+      interviewMethod: '线下面试',
+      locationNotRequired: undefined,
+      storeName: '东方渔人码头店',
+      storeAddress: '东方渔人码头F1楼',
+      interviewAddress: '控江旭辉店',
+      sentAddress: '控江旭辉店',
+      addressConflict: true,
+      errorType: undefined,
     });
     expect(packet.policies.outputRuleHits).toEqual(['confirmed_booking_time_missing']);
   });

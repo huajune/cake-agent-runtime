@@ -118,6 +118,12 @@ export interface ToolBuildContext {
   /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
   currentFocusJob?: RecommendedJobSummary | null;
   /**
+   * 当前仍在进行中的预约工单所属 jobId。
+   * 定位工具用它区分“普通咨询工作门店”与“已约面后去哪里面试”：
+   * 后者在面试地址与门店地址不同时必须优先面试地址。
+   */
+  activeBookingJobIds?: number[];
+  /**
    * 本会话是否召回/展示过任何岗位（turn-start 的 presentedJobs ∪ lastCandidatePool ∪
    * currentFocusJob，并实时并入本轮 onJobsFetched 抓取的候选池——故自救闭环里"先 job_list
    * 再 precheck"的二次调用能看到本轮刚召回的岗位）。

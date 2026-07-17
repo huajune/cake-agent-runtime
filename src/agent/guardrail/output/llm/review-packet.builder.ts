@@ -30,6 +30,7 @@ export class GuardrailReviewPacketBuilder {
         precheck: this.buildPrecheckEvidence(input.toolCalls),
         booking: this.buildBookingEvidence(input.toolCalls),
         geocode: this.buildGeocodeEvidence(input.toolCalls),
+        sentLocation: this.buildSentLocationEvidence(input.toolCalls),
       },
       policies: {
         redLines: input.redLines ?? [],
@@ -205,6 +206,29 @@ export class GuardrailReviewPacketBuilder {
         })
         .filter((value): value is string => Boolean(value))
         .slice(0, 5),
+    };
+  }
+
+  private buildSentLocationEvidence(
+    toolCalls: AgentToolCall[],
+  ): GuardrailReviewPacket['evidence']['sentLocation'] {
+    const call = [...toolCalls]
+      .reverse()
+      .find((item) => item.toolName === 'send_store_location' && item.result);
+    const result = readRecord(call?.result);
+    if (!result) return undefined;
+    const destination = readString(result.destination);
+    return {
+      success: result.success === true,
+      destination: destination === 'interview' || destination === 'store' ? destination : undefined,
+      interviewMethod: readString(result.interviewMethod),
+      locationNotRequired: readBoolean(result.locationNotRequired),
+      storeName: readString(result.storeName),
+      storeAddress: readString(result.storeAddress),
+      interviewAddress: readString(result.interviewAddress),
+      sentAddress: readString(result.sentAddress),
+      addressConflict: readBoolean(result.addressConflict),
+      errorType: readString(result.errorType),
     };
   }
 }
