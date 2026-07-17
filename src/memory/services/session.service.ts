@@ -962,8 +962,9 @@ export class SessionService {
    * [d] applyHighConfidenceMetadata 的两次遍历）。
    *
    * 一次遍历对每个字段决定胜者值与最终元数据：
-   * - 标量：LLM 非空优先取 LLM；LLM 空时 rule 补位（boolean 的「空」= null，
-   *   故 LLM 给出 false 也算有值，与旧实现的 `=== null` 判定等价）。
+   * - 标量：通常由 LLM 非空值优先、rule 在 LLM 空时补位。健康证是有限枚举且
+   *   直接控制约面资格，因此当前轮确定性 rule 命中时由 rule 覆盖 LLM，避免模型把
+   *   “愿意/拒绝办理”压缩回含义不完整的“无”。
    * - 数组（brands/position/district/location/time_windows）：LLM 与 rule 累积去重。
    * - 元数据：rule 该字段高置信有值，且 LLM 无值（rule 补位）或与 rule 同值（二者一致）时，
    *   最终元数据采用 rule（high/rule）；否则保留 LLM（medium/llm）。这是旧 [c]+[d]
@@ -1017,7 +1018,7 @@ export class SessionService {
       }
     };
 
-    // ── 标量字段：LLM 非空优先，rule 补位 ──
+    // ── 标量字段：通常 LLM 非空优先，rule 补位；健康证确定性枚举由 rule 优先 ──
     for (const [groupKey, target, ruleGroup] of [
       ['interview_info', infoMerge, ruleInfo],
       ['preferences', prefMerge, rulePref],
@@ -1028,7 +1029,15 @@ export class SessionService {
           : SessionService.SCALAR_PREF_FIELDS;
       for (const field of fields) {
         const ruleFact = ruleGroup[field];
-        if (!hasMeaningfulValue(target[field]) && ruleFact && hasMeaningfulValue(ruleFact.value)) {
+        const shouldRuleOverride =
+          groupKey === 'interview_info' &&
+          field === 'has_health_certificate' &&
+          ruleFact &&
+          hasMeaningfulValue(ruleFact.value);
+        if (
+          shouldRuleOverride ||
+          (!hasMeaningfulValue(target[field]) && ruleFact && hasMeaningfulValue(ruleFact.value))
+        ) {
           target[field] = ruleFact.value;
         }
         noteRuleMeta(groupKey, field, ruleFact, target[field]);

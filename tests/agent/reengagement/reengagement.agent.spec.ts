@@ -104,7 +104,9 @@ describe('ReengagementAgent', () => {
         messages: memoryRecall.recentMessages,
       }),
     );
-    expect(llm.generateStructured.mock.calls[0][0].system).not.toContain('interview_reminder');
+    expect(llm.generateStructured.mock.calls[0][0].system).not.toContain(
+      '任务代码：interview_reminder',
+    );
     expect(llm.generateStructured.mock.calls[0][0].system).toContain('# 已核验的最小上下文');
     expect(llm.generateStructured.mock.calls[0][0].system).toContain('当前时间：2026/6/24 10:00');
     expect(llm.generateStructured.mock.calls[0][0].system).toContain('今天：2026-06-24 星期三');
@@ -199,7 +201,7 @@ describe('ReengagementAgent', () => {
         role: 'user',
         content: '不好意思哈，星期一约好的面试我去不了了。',
       });
-      expect(system).toContain('即使工单状态仍显示预约有效也必须放弃面试提醒和面试后回访');
+      expect(system).toContain('即使实时工单仍显示预约有效也不能发送');
       expect(result.outcome.kind).toBe('skipped');
       expect(result.outcome.reply).toBeUndefined();
       expect(result.validationReason).toBe('candidate_cancelled_interview_in_chat');
@@ -212,6 +214,116 @@ describe('ReengagementAgent', () => {
       });
     },
   );
+
+  it.each([
+    {
+      name: 'the recruiter cancelled because the role was filled',
+      scenarioCode: 'post_interview_followup' as const,
+      messages: [{ role: 'assistant', content: '门店已经招满了，这次面试不用过去了。' }],
+      blockReason: 'manager_cancelled_interview' as const,
+    },
+    {
+      name: 'the conversation implies a failed interview result',
+      scenarioCode: 'post_interview_followup' as const,
+      messages: [{ role: 'user', content: '我刚才和店长吵起来了，店长让我走了。' }],
+      blockReason: 'interview_result_known' as const,
+    },
+    {
+      name: 'the recruiter already asked for the interview result',
+      scenarioCode: 'interview_reminder' as const,
+      messages: [{ role: 'assistant', content: '今天面试得怎么样，还顺利吗？' }],
+      blockReason: 'result_inquiry_already_sent' as const,
+    },
+    {
+      name: 'the recruiter already sent an interview reminder',
+      scenarioCode: 'interview_reminder' as const,
+      messages: [{ role: 'assistant', content: '提醒一下，明天下午两点记得按时参加面试。' }],
+      blockReason: 'interview_reminder_already_sent' as const,
+    },
+  ])(
+    'blocks a post-booking message when $name',
+    async ({ scenarioCode, messages, blockReason }) => {
+      memoryRecall.recentMessages = messages;
+      llm.generateStructured.mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason,
+          message: '这条消息不应该发送',
+          reason: '近期对话命中停止条件',
+        },
+        usage: { inputTokens: 18, outputTokens: 6, totalTokens: 24 },
+      });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario(scenarioCode)!,
+        jobData: job(scenarioCode, { workOrderId: 555 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext(),
+      });
+
+      expect(result.outcome.kind).toBe('skipped');
+      expect(result.outcome.reply).toBeUndefined();
+      expect(result.validationReason).toBe(blockReason);
+      expect(result.agentRequest).toMatchObject({ validationReason: blockReason });
+    },
+  );
+
+  it('does not treat a previous reminder as a blocker for post-interview followup', async () => {
+    memoryRecall.recentMessages = [
+      { role: 'assistant', content: '提醒一下，明天下午两点记得按时参加面试。' },
+    ];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '今天面试还顺利吗？',
+        reason: '此前只有提醒，没有询问结果',
+      },
+      usage: { inputTokens: 16, outputTokens: 7, totalTokens: 23 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('post_interview_followup')!,
+      jobData: job('post_interview_followup', { workOrderId: 555 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.outcome.reply?.text).toBe('今天面试还顺利吗？');
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('此前只发送过面试提醒不构成停止条件');
+  });
+
+  it('documents that a rebook after cancellation follows the latest valid intent', async () => {
+    memoryRecall.recentMessages = [
+      { role: 'user', content: '明天的面试我去不了了。' },
+      { role: 'assistant', content: '已经帮你改到周五下午两点。' },
+      { role: 'user', content: '好的，周五下午两点我能参加。' },
+    ];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '提醒一下，周五下午两点记得参加面试。',
+        reason: '候选人最新确认了改约后的面试',
+      },
+      usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 555 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.validationReason).toBeUndefined();
+  });
 
   it('records a non-booking model skip without misclassifying it as interview cancellation', async () => {
     memoryRecall.recentMessages = [{ role: 'assistant', content: '你大概在哪个区域呀？' }];
@@ -258,6 +370,37 @@ describe('ReengagementAgent', () => {
     });
 
     expect(result.validationReason).toBe('reengagement_agent_skipped');
+  });
+
+  it('does not cap structured output and preserves request metadata without exposing errors as copy', async () => {
+    llm.generateStructured.mockImplementationOnce(async (options) => {
+      options.onPreparedRequest?.({
+        modelId: 'qwen/qwen3.7-plus',
+        fallbackModelIds: ['anthropic/claude-sonnet-4-6'],
+      });
+      throw new Error('No output generated.');
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('store_presented_no_reply')!,
+      jobData: job('store_presented_no_reply'),
+      state: baseState(),
+    });
+
+    const request = llm.generateStructured.mock.calls[0][0];
+    expect(request).not.toHaveProperty('maxOutputTokens');
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.outcome.generatedText).toBeUndefined();
+    expect(result.agentRequest).toMatchObject({
+      modelId: 'qwen/qwen3.7-plus',
+      fallbackModelIds: ['anthropic/claude-sonnet-4-6'],
+      validationReason: 'reengagement_agent_error',
+      generationError: {
+        name: 'Error',
+        message: 'No output generated.',
+      },
+    });
   });
 
   it('uses LLM for booking_incomplete instead of hard-coding missing fields', async () => {

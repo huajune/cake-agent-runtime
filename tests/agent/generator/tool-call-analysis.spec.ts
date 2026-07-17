@@ -313,7 +313,13 @@ describe('tool-call-analysis', () => {
     it('keeps side-effect, replay, revise, and proactive policy in one helper module', () => {
       expect(isSideEffectTool('duliday_interview_booking')).toBe(true);
       expect(REPLAY_BLOCKING_TOOLS.has('duliday_interview_booking')).toBe(true);
-      expect(blocksReplay({ toolName: 'duliday_interview_booking', result: {} })).toBe(true);
+      expect(blocksReplay({ toolName: 'duliday_interview_booking', result: {} })).toBe(false);
+      expect(
+        blocksReplay({
+          toolName: 'duliday_interview_booking',
+          result: { sideEffectCommitted: true },
+        }),
+      ).toBe(true);
       expect(blocksReplay({ toolName: 'advance_stage', result: { success: true } })).toBe(false);
       expect(REVISION_FORBIDDEN_TOOLS.has('duliday_interview_booking')).toBe(true);
       expect(isForbiddenDuringRevise('duliday_interview_booking')).toBe(true);
