@@ -95,6 +95,14 @@ describe('classifySupplementLabel', () => {
 });
 
 describe('matchesScreeningFailure', () => {
+  it('does not treat an explicitly negated blacklist term as a failure', () => {
+    const classification = classifySupplementLabel('不要学生');
+    expect(classification.type).toBe('screening');
+    if (classification.type === 'screening') {
+      expect(matchesScreeningFailure(classification, '不是学生')).toBeNull();
+    }
+  });
+
   it('returns the matched signal when candidate answer contains blacklist keyword', () => {
     const cls = classifySupplementLabel('专业（非新媒、食品）');
     if (cls.type !== 'screening') throw new Error('expected screening');

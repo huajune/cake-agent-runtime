@@ -102,6 +102,27 @@ describe('buildCustomerLabelList — hasHealthCertificate 回填', () => {
 
     expect(result.customerLabelList[0].value).toBe('有');
   });
+
+  it('岗位筛选标签不应当作客户资料必填项（生产 case 6a59d4be）', () => {
+    const result = expectSuccess(
+      buildCustomerLabelList(
+        makeParams({
+          supplementDefinitions: [
+            { labelId: 360, labelName: '不要学生', name: '不要学生' },
+            { labelId: 560, labelName: '意向班次', name: '意向班次' },
+          ],
+          supplementAnswers: { 意向班次: '11:00-20:00' },
+        }),
+      ),
+    );
+
+    expect(result.customerLabelDefinitions).toEqual([
+      { labelId: 560, labelName: '意向班次', name: '意向班次' },
+    ]);
+    expect(result.customerLabelList).toEqual([
+      { labelId: 560, labelName: '意向班次', name: '意向班次', value: '11:00-20:00' },
+    ]);
+  });
 });
 
 describe('resolveInterviewType', () => {

@@ -16,7 +16,6 @@ import {
   SPONGE_HEALTH_CERTIFICATE_MAPPING,
   SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING,
   SPONGE_OPERATE_TYPE_MAPPING,
-  getSpongeProvinceNameById,
 } from '@sponge/sponge.enums';
 import {
   extractInterviewSupplementDefinitions,
@@ -121,49 +120,6 @@ function validateBookingCandidateAuthority(
   const checks: Array<{ field: string; expected: unknown; actual: unknown; required: boolean }> = [
     { field: '姓名', expected: facts?.name, actual: payload.name, required: true },
     { field: '联系电话', expected: facts?.phone, actual: payload.phone, required: true },
-    { field: '年龄', expected: facts?.age, actual: payload.age, required: true },
-    {
-      field: '性别',
-      expected: facts?.gender_source === 'candidate' ? facts.gender : null,
-      actual: getSpongeGenderLabelById(payload.genderId),
-      required: true,
-    },
-    {
-      field: '学历',
-      expected: facts?.education,
-      actual: payload.educationId == null ? null : SPONGE_EDUCATION_MAPPING[payload.educationId],
-      required: payload.educationId != null,
-    },
-    {
-      field: '户籍省份',
-      expected: facts?.household_register_province,
-      actual:
-        payload.householdRegisterProvinceId == null
-          ? null
-          : getSpongeProvinceNameById(payload.householdRegisterProvinceId),
-      required: payload.householdRegisterProvinceId != null,
-    },
-    {
-      field: '身高',
-      expected: facts?.height,
-      actual: payload.height,
-      required: payload.height != null,
-    },
-    {
-      field: '体重',
-      expected: facts?.weight,
-      actual: payload.weight,
-      required: payload.weight != null,
-    },
-    {
-      field: '健康证情况',
-      expected: facts?.has_health_certificate,
-      actual:
-        payload.hasHealthCertificate == null
-          ? null
-          : SPONGE_HEALTH_CERTIFICATE_MAPPING[payload.hasHealthCertificate],
-      required: payload.hasHealthCertificate != null,
-    },
   ];
 
   for (const check of checks) {
@@ -593,8 +549,8 @@ export function buildInterviewBookingTool(
           );
         }
 
-        // 报名字段权威性闸门：最终 API payload 必须能由当前轮确定性自报或高置信会话事实
-        // 逐项解释。模型从 prompt 复制的 medium/llm 历史值既不能补缺，也不能覆盖最新自报。
+        // 只保留姓名/电话的跨工具一致性校验，防止候选人串档。其他报名字段以本次
+        // booking 显式入参为准，不再因预检快照不同步而硬拒。
         const authorityFailure = validateBookingCandidateAuthority(context, {
           name,
           phone,
@@ -616,10 +572,10 @@ export function buildInterviewBookingTool(
             context,
             buildToolError({
               errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
-              outcome: '预约失败（报名字段缺少候选人明确确认或与最新自报冲突）',
+              outcome: '预约失败（姓名或联系电话与预检结果不一致）',
               replyInstruction:
-                '报名资料不能使用低置信历史记忆。按 missingEvidenceFields 补问候选人，' +
-                '按 conflictingFields 采用候选人最新自报后重新 precheck；在字段确认完成前禁止 booking。',
+                '只需按 missingEvidenceFields / conflictingFields 核对姓名和联系电话，采用本次候选人资料重新 precheck；' +
+                '年龄、性别、学历、健康证、户籍、身高和体重不受此一致性闸门限制。',
               details: { ...authorityFailure },
             }),
           );
