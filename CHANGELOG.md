@@ -8,6 +8,67 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.17.0`
+**最近更新**: `2026-07-17`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #590 升级 GitHub Actions 至 Node 24 运行时
+- PR #590 升级 actions/checkout 至 v7.0.0
+- PR #590 升级 actions/setup-node 至 v7.0.0
+- PR #590 升级 actions/cache 至 v6.1.0
+- PR #590 升级 pnpm/action-setup 至 v6.0.9
+- PR #590 升级 actions/upload-artifact 至 v7.0.1
+- PR #590 所有官方 Action 均 pin 到对应 release 的不可变 commit SHA
+- PR #590 将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA
+- PR #591 修复多工单面试提醒与回访时机
+- PR #591 面试前提醒与面试后回访支持按场景配置分钟偏移，面试后回访默认延后 120 分钟
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #591 修复多工单面试提醒与回访时机
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #590 升级 actions/checkout 至 v7.0.0
+- PR #590 升级 actions/setup-node 至 v7.0.0
+- PR #590 升级 actions/cache 至 v6.1.0
+- PR #590 升级 pnpm/action-setup 至 v6.0.9
+- PR #590 升级 actions/upload-artifact 至 v7.0.1
+- PR #590 所有官方 Action 均 pin 到对应 release 的不可变 commit SHA
+- PR #590 将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA
+- PR #590 升级 GitHub Actions 至 Node 24 运行时
+
+### 配置变更
+- PR #591 托管配置新增各复聊场景的分钟偏移设置，无需新增环境变量
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #590 官方 release/tag 与 commit SHA 已通过 GitHub API 核验
+- PR #590 五个目标 Action 的 action.yml 均确认 runs.using 为 node24
+- PR #590 所有 workflow YAML 解析通过
+- PR #590 Prettier workflow 检查通过
+- PR #590 git diff --check 通过
+- PR #590 pnpm run ci:check 通过
+- PR #590 352 test suites passed，1 skipped
+- PR #590 5228 tests passed，6 skipped
+- PR #590 pre-commit 与 pre-push hooks 通过
+- PR #591 干净 worktree 类型检查通过
+- PR #591 复聊与托管配置 202 个测试通过
+- PR #591 Dashboard TypeScript 与 Vite 构建通过
+- PR #591 增加配置偏移、多工单隔离、跨工单时间纠正回归测试
+<!-- release:pending:end -->
+
 ## [10.16.0] - 2026-07-17
 
 **来源分支**: `develop`
