@@ -51,6 +51,7 @@ export interface AgentReplyConfig {
   reengagementPostBookingEnabled: boolean;
   // 场景级灰度 map（key=场景 code）；未配置的场景回退代码默认值
   reengagementScenarioRollout: Record<string, boolean>;
+  reengagementScenarioDelayMinutes: Record<string, number>;
 }
 
 export interface GroupTaskConfig {

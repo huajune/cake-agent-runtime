@@ -229,6 +229,7 @@ export default function Config() {
     agentConfigData?.config.reengagementPostBookingEnabled ?? true,
   );
   const scenarioRollout = agentConfigData?.config.reengagementScenarioRollout ?? {};
+  const scenarioDelayMinutes = agentConfigData?.config.reengagementScenarioDelayMinutes ?? {};
 
   // 场景开关：托管配置里配过用配置值，没配过回退代码默认值
   const isScenarioOn = (scenario: ReengagementScenario) =>
@@ -254,6 +255,19 @@ export default function Config() {
       reengagementScenarioRollout: { [code]: next },
     });
   };
+
+  const updateScenarioDelay = (scenario: ReengagementScenario, raw: string) => {
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 10_080) return;
+    updateConfig.mutate({ reengagementScenarioDelayMinutes: { [scenario.code]: parsed } });
+  };
+
+  const delaySuffix = (scenario: ReengagementScenario) =>
+    scenario.delayMode === 'before_interview'
+      ? '分钟前'
+      : scenario.delayMode === 'after_interview'
+        ? '分钟后'
+        : '分钟后';
 
   // ===== 三态运行状态：两个布尔开关（总开关 × shadow）收敛成 关闭/Shadow 观测/生效 =====
   const guardrailState: ModuleRunState = guardrailLlmEnabled
@@ -362,7 +376,26 @@ export default function Config() {
                   <div>{scenario.anchorLabel}</div>
                   <div className={styles.scenarioCode}>{scenario.anchorEvent}</div>
                 </td>
-                <td>{scenario.delayLabel}</td>
+                <td>
+                  <div className={styles.delayEditor}>
+                    <input
+                      key={`${scenario.code}-${scenarioDelayMinutes[scenario.code] ?? scenario.defaultDelayMinutes}`}
+                      className={styles.delayInput}
+                      type="number"
+                      min={0}
+                      max={10_080}
+                      step={1}
+                      defaultValue={
+                        scenarioDelayMinutes[scenario.code] ?? scenario.defaultDelayMinutes
+                      }
+                      disabled={updateConfig.isPending}
+                      aria-label={`${scenario.displayName}触发偏移分钟数`}
+                      onBlur={(e) => updateScenarioDelay(scenario, e.target.value)}
+                    />
+                    <span>{delaySuffix(scenario)}</span>
+                  </div>
+                  <div className={styles.scenarioCode}>默认：{scenario.delayLabel}</div>
+                </td>
                 <td className={styles.scenarioObjective}>{scenario.objective}</td>
                 <td>
                   <label className={styles.switch}>

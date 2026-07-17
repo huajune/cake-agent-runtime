@@ -12,8 +12,6 @@ export type FollowUpScenarioCode =
 export interface FollowUpScenarioContext {
   anchorAt: number;
   state: AuthoritativeSessionState;
-  /** 预约工具解析出的面试形式；仅随报名后任务冻结，不写入会话权威态。 */
-  interviewType?: string;
 }
 
 /** 场景所属大阶段：报名前 / 报名后（报名后流程复杂，支持独立大开关）。 */
@@ -25,7 +23,11 @@ export interface ScenarioRolloutConfig {
   reengagementPostBookingEnabled?: boolean;
   /** 场景级开关 map（key=场景 code）；未配置的场景回退代码默认值。 */
   reengagementScenarioRollout?: Record<string, boolean>;
+  /** 场景触发偏移分钟数（key=场景 code），缺失时回退代码默认值。 */
+  reengagementScenarioDelayMinutes?: Record<string, number>;
 }
+
+export type FollowUpDelayMode = 'after_anchor' | 'before_interview' | 'after_interview';
 
 /** 结构化场景配置（非 prompt 常量）。 */
 export interface FollowUpScenario {
@@ -42,6 +44,9 @@ export interface FollowUpScenario {
   triggerDelayMs: number | ((ctx: FollowUpScenarioContext) => number);
   /** 触发延迟人话描述（triggerDelayMs 为函数时无法直接序列化，展示走这里）。 */
   delayLabel: string;
+  /** Dashboard 可配置的时间偏移语义与默认分钟数。 */
+  delayMode: FollowUpDelayMode;
+  defaultDelayMinutes: number;
   /** 跟进目标（喂 runner 的 proactive directive）。 */
   objective: string;
   /** 排程前/触发时必须具备的权威状态字段（审计用）。 */
@@ -87,6 +92,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     anchorLabel: '开场白已发',
     triggerDelayMs: 15 * MINUTE,
     delayLabel: '15 分钟',
+    delayMode: 'after_anchor',
+    defaultDelayMinutes: 15,
     objective: '开场已发但候选人未回复，轻量确认是否还在看机会，并继续询问所在位置以便就近推荐',
     requiredEvidence: ['lastCandidateMessageAt'],
     stopUnless: () => true, // 通用停止条件（已回/terminal）已在 shouldStop 覆盖
@@ -104,6 +111,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     anchorLabel: 'Agent 已回复',
     triggerDelayMs: 30 * MINUTE,
     delayLabel: '30 分钟',
+    delayMode: 'after_anchor',
+    defaultDelayMinutes: 30,
     objective: '此前对话缺定位/地址，提醒候选人发一下位置以便就近推荐岗位',
     requiredEvidence: ['lastCandidateMessageAt'],
     // 无场景专属停止条件：候选人发定位就是一条入站消息，由通用
@@ -123,6 +132,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     anchorLabel: '已展示门店/岗位',
     triggerDelayMs: 30 * MINUTE,
     delayLabel: '30 分钟',
+    delayMode: 'after_anchor',
+    defaultDelayMinutes: 30,
     objective: '已展示满足候选人条件的门店/岗位但候选人未回复，承接该岗位询问考虑得如何',
     requiredEvidence: ['presentedStores'],
     stopUnless: (state) => state.presentedStores.length > 0,
@@ -154,6 +165,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     anchorLabel: '开始收集资料',
     triggerDelayMs: 30 * MINUTE,
     delayLabel: '30 分钟',
+    delayMode: 'after_anchor',
+    defaultDelayMinutes: 30,
     objective: '收资未完成，提醒候选人补齐剩余资料以便安排面试',
     requiredEvidence: ['collectedFields'],
     // 收资必填项随岗位/业务配置变化，不能在复聊层写死为姓名/手机号/年龄/性别。
@@ -177,6 +190,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
       return Math.max(0, interviewAt - HOUR - ctx.anchorAt);
     },
     delayLabel: '面试前 1 小时（无面试时间不触发）',
+    delayMode: 'before_interview',
+    defaultDelayMinutes: 60,
     objective: '根据面试形式提醒候选人按时参加；AI 面试提醒在线完成，线下面试才提醒到店',
     requiredEvidence: ['terminal', 'interviewAt'],
     stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
@@ -195,14 +210,12 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     triggerDelayMs: (ctx: FollowUpScenarioContext) => {
       const interviewAt = resolveInterviewAt(ctx.state);
       if (interviewAt == null) return 0;
-      // AI 面试的预约时刻只是可开始时间，候选人当天仍有完成窗口；统一在面试日
-      // 17:00（北京时间）回访，避免按“预约时间 + N 小时”导致上午/下午预约触达不一致。
-      const followUpAt = isAiInterview(ctx.interviewType)
-        ? shanghaiDayAtHour(interviewAt, 17)
-        : interviewAt + HOUR;
+      const followUpAt = interviewAt + 2 * HOUR;
       return Math.max(0, followUpAt - ctx.anchorAt);
     },
-    delayLabel: '普通面试后 1 小时；AI 面试当天 17:00（无面试时间不触发）',
+    delayLabel: '工单面试时间后 2 小时（无面试时间不触发）',
+    delayMode: 'after_interview',
+    defaultDelayMinutes: 120,
     objective: '面试后回访，了解面试结果、是否需要后续协助',
     requiredEvidence: ['interviewAt'],
     stopUnless: hasInterviewAt,
@@ -219,6 +232,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     anchorLabel: '岗位发布（外部事件）',
     triggerDelayMs: 0,
     delayLabel: '立即',
+    delayMode: 'after_anchor',
+    defaultDelayMinutes: 0,
     objective: '此前暂无岗位的候选人，现有新岗位上线，主动告知',
     requiredEvidence: [],
     stopUnless: () => true,
@@ -258,24 +273,6 @@ export function resolveInterviewAt(state: AuthoritativeSessionState): number | n
 
 export function hasInterviewAt(state: AuthoritativeSessionState): boolean {
   return resolveInterviewAt(state) != null;
-}
-
-export function isAiInterview(interviewType: unknown): boolean {
-  return typeof interviewType === 'string' && /ai\s*面试/i.test(interviewType);
-}
-
-/** 给定时间戳所在的上海自然日，在指定整点对应的绝对时间戳。 */
-function shanghaiDayAtHour(timestamp: number, hour: number): number {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date(timestamp));
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value ?? 0);
-  // Asia/Shanghai 当前固定 UTC+8；17:00 CST = 09:00 UTC。
-  return Date.UTC(value('year'), value('month') - 1, value('day'), hour - 8);
 }
 
 /**
@@ -327,14 +324,31 @@ export function resolveRolloutEnabled(
   return true;
 }
 
-export function resolveDelayMs(scenario: FollowUpScenario, ctx: FollowUpScenarioContext): number {
+export function resolveDelayMs(
+  scenario: FollowUpScenario,
+  ctx: FollowUpScenarioContext,
+  configuredDelayMinutes?: number,
+): number {
+  if (configuredDelayMinutes != null) {
+    const offsetMs = configuredDelayMinutes * MINUTE;
+    if (scenario.delayMode === 'after_anchor') return offsetMs;
+    const interviewAt = resolveInterviewAt(ctx.state);
+    if (interviewAt == null) return 0;
+    const fireAt =
+      scenario.delayMode === 'before_interview' ? interviewAt - offsetMs : interviewAt + offsetMs;
+    return Math.max(0, fireAt - ctx.anchorAt);
+  }
   const d = scenario.triggerDelayMs;
   return typeof d === 'function' ? d(ctx) : d;
 }
 
 /** 计算绝对触发时间戳；发送资格由到点时的托管状态决定，不再限制发送时段。 */
-export function computeFireAt(scenario: FollowUpScenario, ctx: FollowUpScenarioContext): number {
-  return ctx.anchorAt + resolveDelayMs(scenario, ctx);
+export function computeFireAt(
+  scenario: FollowUpScenario,
+  ctx: FollowUpScenarioContext,
+  configuredDelayMinutes?: number,
+): number {
+  return ctx.anchorAt + resolveDelayMs(scenario, ctx, configuredDelayMinutes);
 }
 
 /**
