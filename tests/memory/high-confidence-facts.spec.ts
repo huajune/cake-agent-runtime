@@ -466,16 +466,20 @@ describe('extractHighConfidenceFacts', () => {
     },
   );
 
-  it.each(['我不打算办健康证', '后面也不会去办食品健康证'])(
-    'should keep explicit refusal authoritative: %s',
-    (message) => {
-      expect(
-        unwrapHighConfidenceValue(
-          extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
-        ),
-      ).toBe('无且不接受办理健康证');
-    },
-  );
+  it.each([
+    '我不打算办健康证',
+    '后面也不会去办食品健康证',
+    '不愿意去体检然后办健康证',
+    '不可以去体检然后办健康证',
+    '我不太愿意后面再去体检然后办一张食品健康证',
+    '健康证我不考虑之后再去办理',
+  ])('should keep explicit refusal authoritative: %s', (message) => {
+    expect(
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+      ),
+    ).toBe('无且不接受办理健康证');
+  });
 
   it('should treat admitted or enrolled graduate students as student identity', () => {
     const admitted = extractHighConfidenceFacts(
