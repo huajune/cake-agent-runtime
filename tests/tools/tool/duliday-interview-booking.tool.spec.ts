@@ -578,7 +578,7 @@ describe('buildInterviewBookingTool', () => {
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
-  it('最终报名 payload 与最新权威候选人事实冲突时拒绝提交', async () => {
+  it('最终报名 payload 的姓名电话与预检事实冲突时拒绝提交', async () => {
     const result = await executeTool(validInput, {
       bookingCandidateFacts: {
         ...FALLBACK_EXTRACTION.interview_info,
@@ -592,9 +592,7 @@ describe('buildInterviewBookingTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-    expect(result.conflictingFields).toEqual(
-      expect.arrayContaining(['姓名', '联系电话', '年龄', '性别']),
-    );
+    expect(result.conflictingFields).toEqual(['姓名', '联系电话']);
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
@@ -603,11 +601,27 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool(validInput, { bookingCandidateFacts: null });
 
     expect(result.success).toBe(false);
-    expect(result.missingEvidenceFields).toEqual(
-      expect.arrayContaining(['姓名', '联系电话', '年龄', '性别']),
-    );
+    expect(result.missingEvidenceFields).toEqual(['姓名', '联系电话']);
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('年龄性别及可选报名字段与预检快照不一致时不再硬拒', async () => {
+    const result = await executeTool(validInput, {
+      bookingCandidateFacts: {
+        ...FALLBACK_EXTRACTION.interview_info,
+        name: validInput.name,
+        phone: validInput.phone,
+        age: '99',
+        gender: '女',
+        gender_source: 'candidate',
+        education: '博士',
+        has_health_certificate: '无',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledTimes(1);
   });
 
   it('returns online completion guidance instead of an on-site script for AI interviews', async () => {

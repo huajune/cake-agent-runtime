@@ -12,6 +12,7 @@ import {
 } from '@sponge/sponge.enums';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { classifySupplementLabel } from '@tools/utils/supplement-label-classifier';
 
 export interface BuildCustomerLabelListParams {
   supplementDefinitions: SpongeInterviewSupplementDefinition[];
@@ -52,7 +53,16 @@ export type BuildCustomerLabelListResult =
 export function buildCustomerLabelList(
   params: BuildCustomerLabelListParams,
 ): BuildCustomerLabelListResult {
-  const definitions = params.supplementDefinitions;
+  // screening 标签是岗位约束，由 precheck / booking guards 判定是否通过；
+  // 它们不是候选人资料字段，不应进 customerLabelList，更不应反向要求填“不要学生”。
+  // 与 precheck 共用同一分类器，避免“预检已过、booking 又报缺值”的契约分叉。
+  const definitions = params.supplementDefinitions.filter(
+    (definition) =>
+      classifySupplementLabel(definition.labelName).type === 'collect' ||
+      // “是否有健康证”这类标准资料标签形式上也是二元问句，但已能从
+      // booking 标准入参确定性回填，必须保留；只跳过真正无客户值的筛选约束。
+      resolveCustomerLabelValue(definition.labelName, params) !== null,
+  );
   if (definitions.length === 0) {
     return {
       success: true,

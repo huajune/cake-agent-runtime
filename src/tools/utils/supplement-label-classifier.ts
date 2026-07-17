@@ -154,12 +154,20 @@ export function matchesScreeningFailure(
   if (!normalized) return null;
   for (const signal of classification.failSignals) {
     if (!normalized.includes(signal)) continue;
+    if (classification.mode === 'blacklist' && isExplicitlyNegatedSignal(normalized, signal)) {
+      continue;
+    }
     if (isLikelyHealthCertificateTypeAnswerForProfession(classification.labelName, normalized)) {
       continue;
     }
     return signal;
   }
   return null;
+}
+
+function isExplicitlyNegatedSignal(answer: string, signal: string): boolean {
+  const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:不是|并非|非|不属于|不算|已经不是|已不是)\\s*${escaped}`, 'u').test(answer);
 }
 
 function isLikelyHealthCertificateTypeAnswerForProfession(

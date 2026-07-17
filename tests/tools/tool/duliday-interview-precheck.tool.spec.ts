@@ -134,6 +134,23 @@ describe('buildInterviewPrecheckTool', () => {
       abortSignal: undefined as any,
     }) as any;
   };
+
+  const executeToolWithContext = async (
+    input: Record<string, any>,
+    contextOverride: Partial<ToolBuildContext> = {},
+  ) => {
+    const context: ToolBuildContext = { ...mockContext, ...contextOverride };
+    const builtTool = buildInterviewPrecheckTool(
+      mockSpongeService as never,
+      { recordEvent: jest.fn() } as never,
+    )(context);
+    const result = (await builtTool.execute(input as any, {
+      toolCallId: 'test',
+      messages: [],
+      abortSignal: undefined as any,
+    })) as any;
+    return { result, context };
+  };
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   beforeEach(() => {
@@ -719,6 +736,186 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.missingFields).not.toContain('面试时间');
   });
 
+  it('跨多轮收资且中文时间被转成 ISO 时，预检应识别证据并同步给 booking', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const { result, context } = await executeToolWithContext(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+        candidateName: '王小明',
+        candidatePhone: '13800138000',
+        candidateAge: 24,
+        candidateInterviewTime: '2026-04-08 13:30',
+        candidateGender: '男',
+        candidateEducation: '大专',
+        candidateHasHealthCertificate: '有',
+        candidateIsStudent: false,
+      },
+      {
+        currentUserMessage: '4月8日下午13点30可以',
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            has_health_certificate: '无但接受办理健康证',
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: '健康证旧记忆尚未更新',
+        },
+        messages: [
+          {
+            role: 'user',
+            content:
+              '姓名：王小明\n联系电话：13800138000\n性别：男\n年龄：24岁\n学历：大专\n健康证：有\n身份：社会人士',
+          },
+          { role: 'assistant', content: '哪天方便面试？' },
+          { role: 'user', content: '4月8日下午13点30可以' },
+        ] as never,
+      },
+    );
+
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
+    expect(context.bookingCandidateFacts).toEqual(
+      expect.objectContaining({
+        name: '王小明',
+        phone: '13800138000',
+        age: '24',
+        gender: '男',
+        gender_source: 'candidate',
+        education: '大专',
+        has_health_certificate: '有',
+      }),
+    );
+  });
+
+  it('候选人明确确认助手的结构化资料汇总时，应将汇总字段视为可追溯证据', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-17T06:47:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            certificate: { healthCertificate: '食品健康证' },
+            remark: '',
+          },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-07-20',
+                  interviewStartTime: '15:00',
+                  interviewEndTime: '16:00',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-07-20',
+        candidateName: '谢科南',
+        candidatePhone: '16607653749',
+        candidateAge: 25,
+        candidateGender: '男',
+        candidateInterviewTime: '2026-07-20 15:00',
+        candidateHasHealthCertificate: '有',
+      },
+      {
+        currentUserMessage: '确定\n[消息发送时间：2026-07-17 14:47 星期五]',
+        messages: [
+          {
+            role: 'user',
+            content:
+              '姓名：谢科南\n电话：16607653749\n健康证：有\n[消息发送时间：2026-07-14 14:17 星期二]',
+          },
+          {
+            role: 'assistant',
+            content:
+              '刚系统提示还需要最后核对：\n姓名：谢科南\n联系方式：16607653749\n性别：男\n年龄：25\n面试时间：7月20号下午3点',
+          },
+          { role: 'assistant', content: '没问题回个“确认”，我马上帮你提交预约' },
+          {
+            role: 'user',
+            content: '确定\n[消息发送时间：2026-07-17 14:47 星期五]',
+          },
+        ] as never,
+      },
+    );
+
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
+  });
+
+  it('年龄单独回复带消息时间戳、面试日期中夹星期时，仍应通过字段证据校验', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-17T07:28:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { certificate: {}, remark: '' },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-07-19',
+                  interviewStartTime: '13:00',
+                  interviewEndTime: '15:00',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        candidateName: '张三',
+        candidatePhone: '13800138000',
+        candidateAge: 37,
+        candidateGender: '男',
+        candidateInterviewTime: '2026-07-19 周日 13:00-15:00',
+      },
+      {
+        currentUserMessage: '确认',
+        messages: [
+          { role: 'user', content: '姓名：张三\n电话：13800138000\n性别：男' },
+          { role: 'user', content: '37\n[消息发送时间：2026-07-17 15:28 星期五]' },
+          { role: 'user', content: '我选2：7月19日（周日）13:00-15:00' },
+          { role: 'user', content: '确认' },
+        ] as never,
+      },
+    );
+
+    expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
+    expect(result.nextAction).toBe('ready_to_book');
+  });
+
   it('学生填写完整资料时，社会人士岗位仍必须 hard reject（batch_6a559b7ace406a6aeedf1f8b_1783995721291）', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-14T02:20:57.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
@@ -879,7 +1076,7 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
   });
 
-  it('不采信当前消息中没有证据的 candidate 参数，旧记忆不能伪装成本轮自报', async () => {
+  it('紧急兼容：candidate 显式参数无需命中当前消息文本即可完成跨轮收资', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -902,15 +1099,15 @@ describe('buildInterviewPrecheckTool', () => {
       { currentUserMessage: '明天下午16点可以吗' },
     );
 
-    expect(result.bookingChecklist.missingFields).toEqual(
+    expect(result.bookingChecklist.missingFields ?? []).not.toEqual(
       expect.arrayContaining(['姓名', '联系电话', '性别', '年龄']),
     );
-    expect(result.bookingChecklist.templateText).not.toContain('赵堤');
-    expect(result.bookingChecklist.templateText).not.toContain('18963221030');
-    expect(result.nextAction).toBe('collect_fields');
+    expect(result.bookingChecklist.templateText).toContain('赵堤');
+    expect(result.bookingChecklist.templateText).toContain('18963221030');
+    expect(result.nextAction).toBe('ready_to_book');
   });
 
-  it('当前轮高置信自报覆盖冲突的模型参数和历史字段', async () => {
+  it('紧急兼容：显式 candidate 参数覆盖冲突的当前轮高置信事实', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -949,13 +1146,13 @@ describe('buildInterviewPrecheckTool', () => {
       { currentUserMessage, highConfidenceFacts: facts },
     );
 
-    expect(result.bookingChecklist.templateText).toContain('姓名：王玥');
-    expect(result.bookingChecklist.templateText).toContain('联系方式：19290703760');
-    expect(result.bookingChecklist.templateText).toContain('学历：大专');
-    expect(result.bookingChecklist.templateText).toContain('籍贯/户籍：天津');
-    expect(result.bookingChecklist.templateText).not.toContain('赵堤');
-    expect(result.bookingChecklist.templateText).not.toContain('18963221030');
-    expect(result.bookingChecklist.templateText).not.toContain('学历：中专');
+    expect(result.bookingChecklist.templateText).toContain('姓名：赵堤');
+    expect(result.bookingChecklist.templateText).toContain('联系方式：18963221030');
+    expect(result.bookingChecklist.templateText).toContain('学历：中专');
+    expect(result.bookingChecklist.templateText).toContain('籍贯/户籍：安徽');
+    expect(result.bookingChecklist.templateText).not.toContain('姓名：王玥');
+    expect(result.bookingChecklist.templateText).not.toContain('联系方式：19290703760');
+    expect(result.bookingChecklist.templateText).not.toContain('学历：大专');
   });
 
   it('只有长期画像、当前未确认时，关键报名字段仍应进入 missingFields', async () => {
@@ -1217,7 +1414,7 @@ describe('buildInterviewPrecheckTool', () => {
       );
     });
 
-    it('候选人说“暑假做，长期也可”仍识别为暑假工，不能被长期意向洗掉', async () => {
+    it('候选人说“暑假做，长期也可”时按最新长期意向继续常规岗位', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
           makeJob({
@@ -1238,10 +1435,8 @@ describe('buildInterviewPrecheckTool', () => {
         },
       );
 
-      expect(result.temporarySummerWorkerGuard).toEqual(
-        expect.objectContaining({ status: 'blocked_non_summer_job' }),
-      );
-      expect(result.nextAction).toBe('collect_fields');
+      expect(result.temporarySummerWorkerGuard).toBeUndefined();
+      expect(result.nextAction).toBe('ready_to_book');
     });
 
     it('岗位明确标注暑假工时，不触发 18-22 岁追问', async () => {
@@ -1374,7 +1569,7 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.temporarySummerWorkerGuard).toBeUndefined();
     });
 
-    it('candidateIsStudent 与记忆矛盾且原话无佐证时判为模型代答，不覆盖身份', async () => {
+    it('candidateIsStudent 与记忆矛盾时仍以本次显式参数为准', async () => {
       nonSummerJobFixture();
 
       const result = await executeTool(
@@ -1388,7 +1583,7 @@ describe('buildInterviewPrecheckTool', () => {
         },
       );
 
-      expect(result.bookingChecklist.templateText ?? '').not.toContain(
+      expect(result.bookingChecklist.templateText ?? '').toContain(
         '身份（学生/社会人士）：社会人士',
       );
     });
@@ -1516,15 +1711,18 @@ describe('buildInterviewPrecheckTool', () => {
     it('单值确认问句后候选人答"是的"构成身份自认（badcase 6a448d09 追问第 2 轮）', async () => {
       socialOnlyJobFixture();
 
-      const result = await executeTool(readyInput, {
-        messages: [
-          {
-            role: 'assistant',
-            content: '系统里还差个“身份”选项没勾，你确认下是选“社会人士”对吧',
-          },
-          { role: 'user', content: '是的' },
-        ] as never,
-      });
+      const result = await executeTool(
+        { ...readyInput, candidateIsStudent: undefined },
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '系统里还差个“身份”选项没勾，你确认下是选“社会人士”对吧',
+            },
+            { role: 'user', content: '是的' },
+          ] as never,
+        },
+      );
 
       expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
       expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
@@ -1534,12 +1732,15 @@ describe('buildInterviewPrecheckTool', () => {
     it('二选一问句（学生还是已经工作了）后的"是的"语义不定，不构成身份自认', async () => {
       socialOnlyJobFixture();
 
-      const result = await executeTool(readyInput, {
-        messages: [
-          { role: 'assistant', content: '你目前是学生还是已经工作了呀？' },
-          { role: 'user', content: '是的' },
-        ] as never,
-      });
+      const result = await executeTool(
+        { ...readyInput, candidateIsStudent: undefined },
+        {
+          messages: [
+            { role: 'assistant', content: '你目前是学生还是已经工作了呀？' },
+            { role: 'user', content: '是的' },
+          ] as never,
+        },
+      );
 
       expect(result.bookingChecklist.missingFields ?? []).toContain('身份');
       expect(result.nextAction).toBe('collect_fields');
@@ -1548,14 +1749,17 @@ describe('buildInterviewPrecheckTool', () => {
     it('身份追问 2 次且候选人已作答仍无法核验时升级 mustHandoff，指令转 request_handoff', async () => {
       socialOnlyJobFixture();
 
-      const result = await executeTool(readyInput, {
-        messages: [
-          { role: 'assistant', content: '另外目前是学生还是已经工作了？' },
-          { role: 'user', content: '那个啥' },
-          { role: 'assistant', content: '还有个身份要确认下哈' },
-          { role: 'user', content: '嗯呐' },
-        ] as never,
-      });
+      const result = await executeTool(
+        { ...readyInput, candidateIsStudent: undefined },
+        {
+          messages: [
+            { role: 'assistant', content: '另外目前是学生还是已经工作了？' },
+            { role: 'user', content: '那个啥' },
+            { role: 'assistant', content: '还有个身份要确认下哈' },
+            { role: 'user', content: '嗯呐' },
+          ] as never,
+        },
+      );
 
       expect(result.bookingChecklist.missingFields).toEqual(['身份']);
       expect(result.identityFieldGuard).toEqual(
@@ -1568,12 +1772,15 @@ describe('buildInterviewPrecheckTool', () => {
     it('身份仅追问过 1 次时不升级，仍按正常收资追问', async () => {
       socialOnlyJobFixture();
 
-      const result = await executeTool(readyInput, {
-        messages: [
-          { role: 'assistant', content: '另外目前是学生还是已经工作了？' },
-          { role: 'user', content: '那个啥' },
-        ] as never,
-      });
+      const result = await executeTool(
+        { ...readyInput, candidateIsStudent: undefined },
+        {
+          messages: [
+            { role: 'assistant', content: '另外目前是学生还是已经工作了？' },
+            { role: 'user', content: '那个啥' },
+          ] as never,
+        },
+      );
 
       expect(result.identityFieldGuard).toEqual(
         expect.objectContaining({ mustAskCandidate: true }),
@@ -1724,12 +1931,15 @@ describe('buildInterviewPrecheckTool', () => {
       async (answer) => {
         socialOnlyJobFixture();
 
-        const result = await executeTool(readyInput, {
-          messages: [
-            { role: 'assistant', content: '目前是学生还是社会人士？' },
-            { role: 'user', content: answer },
-          ] as never,
-        });
+        const result = await executeTool(
+          { ...readyInput, candidateIsStudent: undefined },
+          {
+            messages: [
+              { role: 'assistant', content: '目前是学生还是社会人士？' },
+              { role: 'user', content: answer },
+            ] as never,
+          },
+        );
 
         expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
         expect(result.nextAction).toBe('ready_to_book');
@@ -1741,9 +1951,12 @@ describe('buildInterviewPrecheckTool', () => {
       async (message) => {
         socialOnlyJobFixture();
 
-        const result = await executeTool(readyInput, {
-          messages: [{ role: 'user', content: message }] as never,
-        });
+        const result = await executeTool(
+          { ...readyInput, candidateIsStudent: undefined },
+          {
+            messages: [{ role: 'user', content: message }] as never,
+          },
+        );
 
         expect(result.bookingChecklist.missingFields ?? []).toContain('身份');
         expect(result.nextAction).toBe('collect_fields');
@@ -1780,7 +1993,7 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.nextAction).toBe('ready_to_book');
     });
 
-    // ===== 拒后改口核实（2026-07-15 产品裁定）=====
+    // ===== 拒后改口按最新显式身份继续 =====
 
     const flipHistory = [
       { role: 'user', content: '身份（学生还是社会人士）：学生' },
@@ -1788,20 +2001,16 @@ describe('buildInterviewPrecheckTool', () => {
       { role: 'user', content: '我已毕业，是社会人士' },
     ];
 
-    it('学生被拒后首次改口不采信：身份保持缺失并要求核实', async () => {
+    it('学生被拒后明确改口社会人士时按最新身份继续', async () => {
       socialOnlyJobFixture();
 
       const result = await executeTool(readyInput, {
         messages: flipHistory as never,
       });
 
-      expect(result.bookingChecklist.missingFields ?? []).toContain('身份');
-      expect(result.nextAction).toBe('collect_fields');
-      expect(result.identityFieldGuard).toEqual(
-        expect.objectContaining({ mustAskCandidate: true, verifyIdentityFlip: true }),
-      );
-      expect(result._replyInstruction).toContain('首次改口不能直接采信');
-      expect(result._replyInstruction).toContain('严禁暗示');
+      expect(result.bookingChecklist.missingFields ?? []).not.toContain('身份');
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.identityFieldGuard).toBeUndefined();
     });
 
     it('核实问句后候选人再次确认，改口生效可继续预约', async () => {
@@ -3103,9 +3312,9 @@ describe('buildInterviewPrecheckTool', () => {
     );
 
     expect(result.bookingChecklist.templateText).toContain('学历：硕士');
-    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：');
-    expect(result.bookingChecklist.missingFields).toContain('身份');
-    expect(result.identityFieldGuard).toEqual(expect.objectContaining({ mustAskCandidate: true }));
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+    expect(result.bookingChecklist.missingFields).not.toContain('身份');
+    expect(result.identityFieldGuard).toBeUndefined();
   });
 
   it('should omit screeningChecks when all supplement labels are collect-type', async () => {
