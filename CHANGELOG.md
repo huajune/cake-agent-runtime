@@ -8,6 +8,52 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.16.0`
+**最近更新**: `2026-07-17`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #585 加固复聊发送与事实写入边界
+- PR #585 避免健康证拒绝意愿误判
+- PR #585 复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。
+- PR #585 仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。
+- PR #585 新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。
+
+### 新功能
+- PR #585 新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。
+
+### 问题修复
+- PR #585 复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。
+- PR #585 仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。
+- PR #585 避免健康证拒绝意愿误判
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #585 加固复聊发送与事实写入边界
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #585 相关定向测试：6 suites / 319 tests
+- PR #585 `tests/agent/generator/tool-call-analysis.spec.ts`：52 tests
+- PR #585 `pnpm run ci:check`：lint、format、typecheck、前后端 build、全量 Jest 全部通过
+- PR #585 全量 Jest：352 suites passed、1 skipped；5224 tests passed、6 skipped
+- PR #585 pre-commit lint/format hook 通过
+- PR #585 pre-push 完整 `ci:check` hook 通过
+- PR #585 `git diff --check` 通过
+- PR #585 `ship-release` skill quick validation 通过
+<!-- release:pending:end -->
+
 ## [10.15.0] - 2026-07-16
 
 **来源分支**: `develop`
