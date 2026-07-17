@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.16.0] - 2026-07-17
 
-**预计版本**: `v10.16.0`
-**最近更新**: `2026-07-17`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #585 加固复聊发送与事实写入边界
@@ -52,7 +48,6 @@
 - PR #585 pre-push 完整 `ci:check` hook 通过
 - PR #585 `git diff --check` 通过
 - PR #585 `ship-release` skill quick validation 通过
-<!-- release:pending:end -->
 
 ## [10.15.0] - 2026-07-16
 
