@@ -1,156 +1,72 @@
 {
-  "baseVersion": "10.17.0",
+  "baseVersion": "10.18.0",
   "nextVersion": "10.18.0",
   "updatedAt": "2026-07-17",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "596",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/596",
-      "title": "按面试形式区分面试与门店定位",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-17",
-      "businessUpdates": [
-        "线下/到店/现场面试优先发送真实面试地点；与工作门店不同时明确区分两者。",
-        "线上、AI、视频、电话面试不发送地址或定位，即使上游残留地址字段也会忽略。",
-        "面试形式未知时不根据地址反推线下面试，禁止发送定位并转人工确认。",
-        "线下面试地址无法解析坐标时，只发送已核验的面试文字地址并转人工，绝不回退到工作门店。",
-        "候选人明确询问上班地址、工作地点或工作门店时，仍发送工作门店定位。",
-        "修复进行中面试预约场景把工作门店地址误当作面试地址发送的问题。",
-        "按面试形式决定是否存在面试地址，并同步预约上下文、提示词、定位工具与输出护栏。",
-        "更新运营、架构和运行时文档，明确面试地点与工作门店的边界及异常降级方式。",
-        "避免误判工作门店定位"
-      ],
-      "summary": [
-        "按面试形式区分面试与门店定位",
-        "避免误判工作门店定位",
-        "修复进行中面试预约场景把工作门店地址误当作面试地址发送的问题。",
-        "按面试形式决定是否存在面试地址，并同步预约上下文、提示词、定位工具与输出护栏。",
-        "更新运营、架构和运行时文档，明确面试地点与工作门店的边界及异常降级方式。"
-      ],
-      "features": [],
-      "fixes": [
-        "线下/到店/现场面试优先发送真实面试地点；与工作门店不同时明确区分两者。",
-        "线上、AI、视频、电话面试不发送地址或定位，即使上游残留地址字段也会忽略。",
-        "面试形式未知时不根据地址反推线下面试，禁止发送定位并转人工确认。",
-        "线下面试地址无法解析坐标时，只发送已核验的面试文字地址并转人工，绝不回退到工作门店。",
-        "候选人明确询问上班地址、工作地点或工作门店时，仍发送工作门店定位。",
-        "修复进行中面试预约场景把工作门店地址误当作面试地址发送的问题。",
-        "按面试形式决定是否存在面试地址，并同步预约上下文、提示词、定位工具与输出护栏。",
-        "更新运营、架构和运行时文档，明确面试地点与工作门店的边界及异常降级方式。",
-        "避免误判工作门店定位"
-      ],
-      "optimizations": [
-        "活跃预约的地址/导航问题会刷新岗位面试流程，并向模型注入工作门店、面试形式以及仅线下面试可见的面试地址。",
-        "语义审查证据包新增 `sentLocation`，用于识别面试形式、发送目的地和地址冲突。",
-        "补充岗位详情接地规则，拦截未经工具核验的面试地址回复。"
-      ],
-      "ops": [
-        "按面试形式区分面试与门店定位"
-      ],
-      "config": [
-        "N/A：无数据库 migration/schema/RPC/权限/回填变化。",
-        "N/A：无新增、修改或废弃环境变量、Secrets、运行时配置及部署脚本变化。",
-        "部署顺序：仅应用代码发布，无前置 migration 或配置动作。",
-        "回滚方式：回滚到上一生产镜像/tag；仓库部署流程会在健康检查失败时自动回滚。"
-      ],
-      "envFiles": [],
-      "verification": [
-        "原 badcase、线上面试残留地址、未知面试形式、明确工作地址、地理编码失败等定向回归通过。",
-        "`pnpm run ci:check` 通过。",
-        "全量测试：352 suites passed，1 skipped；5239 tests passed，6 skipped。",
-        "`pnpm run test:di-smoke` 通过。",
-        "文档/提示词更新后相关测试 59/59 通过。",
-        "`pnpm run lint:check`、`pnpm run format:check`、`pnpm run typecheck`、前后端构建、`git diff --check` 通过。"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.17.0",
+    "version": "10.18.0",
     "date": "2026-07-17",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "590",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/590",
-        "title": "升级 GitHub Actions 至 Node 24 运行时",
+        "number": "596",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/596",
+        "title": "按面试形式区分面试与门店定位",
         "author": "ArielZhu",
         "mergedAt": "2026-07-17",
         "businessUpdates": [
-          "升级 GitHub Actions 至 Node 24 运行时",
-          "升级 actions/checkout 至 v7.0.0",
-          "升级 actions/setup-node 至 v7.0.0",
-          "升级 actions/cache 至 v6.1.0",
-          "升级 pnpm/action-setup 至 v6.0.9",
-          "升级 actions/upload-artifact 至 v7.0.1",
-          "所有官方 Action 均 pin 到对应 release 的不可变 commit SHA",
-          "将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA"
+          "线下/到店/现场面试优先发送真实面试地点；与工作门店不同时明确区分两者。",
+          "线上、AI、视频、电话面试不发送地址或定位，即使上游残留地址字段也会忽略。",
+          "面试形式未知时不根据地址反推线下面试，禁止发送定位并转人工确认。",
+          "线下面试地址无法解析坐标时，只发送已核验的面试文字地址并转人工，绝不回退到工作门店。",
+          "候选人明确询问上班地址、工作地点或工作门店时，仍发送工作门店定位。",
+          "修复进行中面试预约场景把工作门店地址误当作面试地址发送的问题。",
+          "按面试形式决定是否存在面试地址，并同步预约上下文、提示词、定位工具与输出护栏。",
+          "更新运营、架构和运行时文档，明确面试地点与工作门店的边界及异常降级方式。",
+          "避免误判工作门店定位"
         ],
         "summary": [
-          "升级 GitHub Actions 至 Node 24 运行时",
-          "升级 actions/checkout 至 v7.0.0",
-          "升级 actions/setup-node 至 v7.0.0",
-          "升级 actions/cache 至 v6.1.0",
-          "升级 pnpm/action-setup 至 v6.0.9",
-          "升级 actions/upload-artifact 至 v7.0.1",
-          "所有官方 Action 均 pin 到对应 release 的不可变 commit SHA",
-          "将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "升级 actions/checkout 至 v7.0.0",
-          "升级 actions/setup-node 至 v7.0.0",
-          "升级 actions/cache 至 v6.1.0",
-          "升级 pnpm/action-setup 至 v6.0.9",
-          "升级 actions/upload-artifact 至 v7.0.1",
-          "所有官方 Action 均 pin 到对应 release 的不可变 commit SHA",
-          "将 AI Code Review 中 checkout@v4 的浮动引用改为固定 SHA",
-          "升级 GitHub Actions 至 Node 24 运行时"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "官方 release/tag 与 commit SHA 已通过 GitHub API 核验",
-          "五个目标 Action 的 action.yml 均确认 runs.using 为 node24",
-          "所有 workflow YAML 解析通过",
-          "Prettier workflow 检查通过",
-          "git diff --check 通过",
-          "pnpm run ci:check 通过",
-          "352 test suites passed，1 skipped",
-          "5228 tests passed，6 skipped",
-          "pre-commit 与 pre-push hooks 通过"
-        ]
-      },
-      {
-        "number": "591",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/591",
-        "title": "修复多工单面试提醒与回访时机",
-        "author": "ArielZhu",
-        "mergedAt": "2026-07-17",
-        "businessUpdates": [
-          "修复多工单面试提醒与回访时机",
-          "面试前提醒与面试后回访支持按场景配置分钟偏移，面试后回访默认延后 120 分钟"
-        ],
-        "summary": [
-          "修复多工单面试提醒与回访时机"
+          "按面试形式区分面试与门店定位",
+          "避免误判工作门店定位",
+          "修复进行中面试预约场景把工作门店地址误当作面试地址发送的问题。",
+          "按面试形式决定是否存在面试地址，并同步预约上下文、提示词、定位工具与输出护栏。",
+          "更新运营、架构和运行时文档，明确面试地点与工作门店的边界及异常降级方式。"
         ],
         "features": [],
         "fixes": [
-          "修复多工单面试提醒与回访时机"
+          "线下/到店/现场面试优先发送真实面试地点；与工作门店不同时明确区分两者。",
+          "线上、AI、视频、电话面试不发送地址或定位，即使上游残留地址字段也会忽略。",
+          "面试形式未知时不根据地址反推线下面试，禁止发送定位并转人工确认。",
+          "线下面试地址无法解析坐标时，只发送已核验的面试文字地址并转人工，绝不回退到工作门店。",
+          "候选人明确询问上班地址、工作地点或工作门店时，仍发送工作门店定位。",
+          "修复进行中面试预约场景把工作门店地址误当作面试地址发送的问题。",
+          "按面试形式决定是否存在面试地址，并同步预约上下文、提示词、定位工具与输出护栏。",
+          "更新运营、架构和运行时文档，明确面试地点与工作门店的边界及异常降级方式。",
+          "避免误判工作门店定位"
         ],
-        "optimizations": [],
-        "ops": [],
+        "optimizations": [
+          "活跃预约的地址/导航问题会刷新岗位面试流程，并向模型注入工作门店、面试形式以及仅线下面试可见的面试地址。",
+          "语义审查证据包新增 `sentLocation`，用于识别面试形式、发送目的地和地址冲突。",
+          "补充岗位详情接地规则，拦截未经工具核验的面试地址回复。"
+        ],
+        "ops": [
+          "按面试形式区分面试与门店定位"
+        ],
         "config": [
-          "托管配置新增各复聊场景的分钟偏移设置，无需新增环境变量"
+          "N/A：无数据库 migration/schema/RPC/权限/回填变化。",
+          "N/A：无新增、修改或废弃环境变量、Secrets、运行时配置及部署脚本变化。",
+          "部署顺序：仅应用代码发布，无前置 migration 或配置动作。",
+          "回滚方式：回滚到上一生产镜像/tag；仓库部署流程会在健康检查失败时自动回滚。"
         ],
         "envFiles": [],
         "verification": [
-          "干净 worktree 类型检查通过",
-          "复聊与托管配置 202 个测试通过",
-          "Dashboard TypeScript 与 Vite 构建通过",
-          "增加配置偏移、多工单隔离、跨工单时间纠正回归测试"
+          "原 badcase、线上面试残留地址、未知面试形式、明确工作地址、地理编码失败等定向回归通过。",
+          "`pnpm run ci:check` 通过。",
+          "全量测试：352 suites passed，1 skipped；5239 tests passed，6 skipped。",
+          "`pnpm run test:di-smoke` 通过。",
+          "文档/提示词更新后相关测试 59/59 通过。",
+          "`pnpm run lint:check`、`pnpm run format:check`、`pnpm run typecheck`、前后端构建、`git diff --check` 通过。"
         ]
       }
     ]
