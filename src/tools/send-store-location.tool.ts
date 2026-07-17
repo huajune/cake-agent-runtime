@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SendMessageType } from '@channels/wecom/message-sender/dto/send-message.dto';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
 import { SpongeService } from '@sponge/sponge.service';
 import type { JobDetail } from '@sponge/sponge.types';
 import { ToolBuilder } from '@shared-types/tool.types';
@@ -86,6 +87,17 @@ function extractStoreLocation(job: JobDetail): {
 }
 
 type LocationDestination = 'interview' | 'store';
+type InterviewLocationSource = 'same_as_workplace' | 'custom';
+
+const SAME_AS_WORKPLACE_ADDRESS_VALUES = new Set([
+  '同工作地址',
+  '同工作地点',
+  '同门店地址',
+  '同门店地点',
+  '与工作地址相同',
+  '与工作地点相同',
+  '与门店地址相同',
+]);
 
 function normalizeAddressForComparison(value: string | null): string {
   return (value ?? '').replace(/[\s，。！？、；：,.!?;:（）()\-]/g, '').toLowerCase();
@@ -96,6 +108,17 @@ function addressesDiffer(first: string | null, second: string | null): boolean {
   const b = normalizeAddressForComparison(second);
   if (!a || !b) return false;
   return !a.includes(b) && !b.includes(a);
+}
+
+function resolveInterviewLocationSource(
+  interviewAddress: string,
+  storeAddress: string | null,
+): InterviewLocationSource {
+  const normalizedInterviewAddress = normalizeAddressForComparison(interviewAddress);
+  if (SAME_AS_WORKPLACE_ADDRESS_VALUES.has(normalizedInterviewAddress)) {
+    return 'same_as_workplace';
+  }
+  return addressesDiffer(interviewAddress, storeAddress) ? 'custom' : 'same_as_workplace';
 }
 
 function resolveDestination(input: {
@@ -125,6 +148,45 @@ function geocodeQueryForInterviewAddress(address: string): string {
     .replace(/^新店开业前在/u, '')
     .replace(/(?:进行)?面试\s*$/u, '')
     .trim();
+}
+
+function interviewAddressAnchors(query: string): string[] {
+  const bracketAnchors = Array.from(
+    query.matchAll(/[（(]([^（）()]{2,})[）)]/gu),
+    (match) => match[1],
+  );
+  return [...bracketAnchors, query]
+    .map(normalizeAddressForComparison)
+    .filter((value, index, values) => value.length >= 4 && values.indexOf(value) === index);
+}
+
+function candidateMatchesInterviewAddress(candidate: GeocodeCandidate, anchors: string[]): boolean {
+  const candidateText = normalizeAddressForComparison(
+    `${candidate.poiName}${candidate.formattedAddress}`,
+  );
+  const poiName = normalizeAddressForComparison(candidate.poiName);
+  return anchors.some(
+    (anchor) =>
+      candidateText.includes(anchor) ||
+      anchor.includes(candidateText) ||
+      (poiName.length >= 4 && anchor.includes(poiName)),
+  );
+}
+
+function selectInterviewLocationCandidate(
+  query: string,
+  candidates: GeocodeCandidate[],
+): GeocodeCandidate | null {
+  const reliableCandidates = candidates.filter(
+    (candidate) => candidate.confidence === 'high' && candidate.precision !== 'road',
+  );
+  if (reliableCandidates.length === 1) return reliableCandidates[0];
+
+  const anchors = interviewAddressAnchors(query);
+  const matched = reliableCandidates.filter((candidate) =>
+    candidateMatchesInterviewAddress(candidate, anchors),
+  );
+  return matched.length === 1 ? matched[0] : null;
 }
 
 /**
@@ -264,7 +326,10 @@ export function buildSendStoreLocationTool(
             offlineInterview,
             currentUserMessage: context.currentUserMessage,
           });
-          const addressConflict = addressesDiffer(interviewAddress, store.storeAddress);
+          const interviewLocationSource = interviewAddress
+            ? resolveInterviewLocationSource(interviewAddress, store.storeAddress)
+            : null;
+          const addressConflict = interviewLocationSource === 'custom';
 
           if (resolvedDestination === 'interview' && !interviewAddress) {
             return buildToolError({
@@ -284,7 +349,7 @@ export function buildSendStoreLocationTool(
           if (
             !store.storeName ||
             !store.storeAddress ||
-            ((resolvedDestination === 'store' || !addressConflict) &&
+            ((resolvedDestination === 'store' || interviewLocationSource === 'same_as_workplace') &&
               (store.latitude == null || store.longitude == null))
           ) {
             return buildToolError({
@@ -310,20 +375,23 @@ export function buildSendStoreLocationTool(
           let targetLongitude = store.longitude;
 
           if (resolvedDestination === 'interview' && interviewAddress) {
-            if (!addressConflict) {
-              targetAddress = interviewAddress;
+            if (interviewLocationSource === 'same_as_workplace') {
+              targetAddress = store.storeAddress;
             } else {
               const storeInfo = matchedJob.basicInfo?.storeInfo as
                 | Record<string, unknown>
                 | undefined;
               const city = pickString(storeInfo?.storeCityName);
-              let geocoded = null;
+              let geocoded: GeocodeCandidate | null = null;
               if (geocodingService) {
                 try {
-                  geocoded = await geocodingService.geocode(
-                    geocodeQueryForInterviewAddress(interviewAddress),
+                  const query = geocodeQueryForInterviewAddress(interviewAddress);
+                  const candidates = await geocodingService.searchCandidates(
+                    query,
                     city ?? undefined,
+                    5,
                   );
+                  geocoded = selectInterviewLocationCandidate(query, candidates);
                 } catch (error) {
                   logger.warn(
                     `面试地址地理编码失败: jobId=${resolvedJobId}, error=${
@@ -360,7 +428,7 @@ export function buildSendStoreLocationTool(
                   },
                 });
               }
-              targetName = `面试地点·${geocoded.formattedAddress}`;
+              targetName = `面试地点·${geocoded.poiName || geocoded.formattedAddress}`;
               targetAddress = interviewAddress;
               targetLatitude = geocoded.latitude;
               targetLongitude = geocoded.longitude;
@@ -406,6 +474,7 @@ export function buildSendStoreLocationTool(
             storeName: store.storeName,
             storeAddress: store.storeAddress,
             interviewAddress,
+            interviewLocationSource,
             addressConflict,
             sentAddress: targetAddress,
             latitude: targetLatitude,
