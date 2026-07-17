@@ -1,9 +1,54 @@
 {
   "baseVersion": "10.15.0",
   "nextVersion": "10.16.0",
-  "updatedAt": "2026-07-16",
+  "updatedAt": "2026-07-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "585",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/585",
+      "title": "加固复聊发送与事实写入边界",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-17",
+      "businessUpdates": [
+        "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。",
+        "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
+        "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
+        "避免健康证拒绝意愿误判"
+      ],
+      "summary": [
+        "加固复聊发送与事实写入边界",
+        "避免健康证拒绝意愿误判",
+        "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
+        "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
+        "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。"
+      ],
+      "features": [
+        "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。"
+      ],
+      "fixes": [
+        "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
+        "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
+        "避免健康证拒绝意愿误判"
+      ],
+      "optimizations": [],
+      "ops": [
+        "加固复聊发送与事实写入边界"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "相关定向测试：6 suites / 319 tests",
+        "`tests/agent/generator/tool-call-analysis.spec.ts`：52 tests",
+        "`pnpm run ci:check`：lint、format、typecheck、前后端 build、全量 Jest 全部通过",
+        "全量 Jest：352 suites passed、1 skipped；5224 tests passed、6 skipped",
+        "pre-commit lint/format hook 通过",
+        "pre-push 完整 `ci:check` hook 通过",
+        "`git diff --check` 通过",
+        "`ship-release` skill quick validation 通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.15.0",
     "date": "2026-07-16",
