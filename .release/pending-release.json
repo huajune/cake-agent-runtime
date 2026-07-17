@@ -1,137 +1,57 @@
 {
-  "baseVersion": "10.15.0",
-  "nextVersion": "10.16.0",
+  "baseVersion": "10.16.0",
+  "nextVersion": "10.17.0",
   "updatedAt": "2026-07-17",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "585",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/585",
-      "title": "加固复聊发送与事实写入边界",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-17",
-      "businessUpdates": [
-        "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。",
-        "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
-        "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
-        "避免健康证拒绝意愿误判"
-      ],
-      "summary": [
-        "加固复聊发送与事实写入边界",
-        "避免健康证拒绝意愿误判",
-        "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
-        "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
-        "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。"
-      ],
-      "features": [
-        "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。"
-      ],
-      "fixes": [
-        "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
-        "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
-        "避免健康证拒绝意愿误判"
-      ],
-      "optimizations": [],
-      "ops": [
-        "加固复聊发送与事实写入边界"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "相关定向测试：6 suites / 319 tests",
-        "`tests/agent/generator/tool-call-analysis.spec.ts`：52 tests",
-        "`pnpm run ci:check`：lint、format、typecheck、前后端 build、全量 Jest 全部通过",
-        "全量 Jest：352 suites passed、1 skipped；5224 tests passed、6 skipped",
-        "pre-commit lint/format hook 通过",
-        "pre-push 完整 `ci:check` hook 通过",
-        "`git diff --check` 通过",
-        "`ship-release` skill quick validation 通过"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.15.0",
-    "date": "2026-07-16",
+    "version": "10.16.0",
+    "date": "2026-07-17",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "577",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/577",
-        "title": "全角别名塌缩致单字误命中品牌（热修）",
+        "number": "585",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/585",
+        "title": "加固复聊发送与事实写入边界",
         "author": "ArielZhu",
-        "mergedAt": "2026-07-16",
+        "mergedAt": "2026-07-17",
         "businessUpdates": [
-          "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
-          "全角别名塌缩致单字误命中品牌（热修）"
+          "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。",
+          "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
+          "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
+          "避免健康证拒绝意愿误判"
         ],
         "summary": [
-          "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧",
-          "全角别名塌缩致单字误命中品牌（热修）"
+          "加固复聊发送与事实写入边界",
+          "避免健康证拒绝意愿误判",
+          "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
+          "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
+          "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。"
         ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [
-          "全角别名塌缩致单字误命中——归一化补 NFKC 折叠 + 别名门槛收紧"
+        "features": [
+          "新增项目级 `ship-release` skill，沉淀从本地改动审阅到 PR、数据库/环境配置追踪及生产发布验证的 checklist。"
         ],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": []
-      },
-      {
-        "number": "576",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/576",
-        "title": "加固事实护栏与人工接管链路",
-        "author": "huajune",
-        "mergedAt": "2026-07-16",
-        "businessUpdates": [
-          "加固事实护栏与人工接管链路",
-          "收紧岗位查询后的预约承诺",
-          "补齐面试时间意图护栏测试"
+        "fixes": [
+          "复聊发送前同时核验实时工单状态与近期对话语义，避免在取消、结果已知、已提醒或已回访后重复触达。",
+          "仅让已确认提交的拉群/预约副作用阻断 replay，并强化事实写入、结构化输出与 LLM 错误观测边界。",
+          "避免健康证拒绝意愿误判"
         ],
-        "summary": [
-          "加固事实护栏与人工接管链路",
-          "收紧岗位查询后的预约承诺",
-          "补齐面试时间意图护栏测试"
-        ],
-        "features": [],
-        "fixes": [],
         "optimizations": [],
         "ops": [
-          "加固事实护栏与人工接管链路",
-          "收紧岗位查询后的预约承诺",
-          "补齐面试时间意图护栏测试"
+          "加固复聊发送与事实写入边界"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "lint、Prettier、TypeScript typecheck、前后端生产构建通过。",
-          "完整 Jest：350 个套件、5165 个用例通过；发现并修复 1 个 Guardrail 目录元数据失败。",
-          "修复后定向复验：Guardrail 目录、品牌事故回归、品牌匹配、身份识别共 154 个用例通过。",
-          "`git diff --check` 通过。"
+          "相关定向测试：6 suites / 319 tests",
+          "`tests/agent/generator/tool-call-analysis.spec.ts`：52 tests",
+          "`pnpm run ci:check`：lint、format、typecheck、前后端 build、全量 Jest 全部通过",
+          "全量 Jest：352 suites passed、1 skipped；5224 tests passed、6 skipped",
+          "pre-commit lint/format hook 通过",
+          "pre-push 完整 `ci:check` hook 通过",
+          "`git diff --check` 通过",
+          "`ship-release` skill quick validation 通过"
         ]
-      },
-      {
-        "number": "580",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/580",
-        "title": "brand-resolution 规格升至 v5（实施后修订）",
-        "author": "ArielZhu",
-        "mergedAt": "2026-07-16",
-        "businessUpdates": [
-          "brand-resolution 规格升至 v5（实施后修订）"
-        ],
-        "summary": [
-          "brand-resolution 规格升至 v5（实施后修订）"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "brand-resolution 规格升至 v5（实施后修订）"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": []
       }
     ]
   }
