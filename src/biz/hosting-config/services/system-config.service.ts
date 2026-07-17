@@ -151,6 +151,9 @@ export class SystemConfigService {
       reengagementScenarioRollout: this.sanitizeScenarioRollout(
         config?.reengagementScenarioRollout,
       ),
+      reengagementScenarioDelayMinutes: this.sanitizeScenarioDelayMinutes(
+        config?.reengagementScenarioDelayMinutes,
+      ),
     };
   }
 
@@ -162,6 +165,17 @@ export class SystemConfigService {
     const result: Record<string, boolean> = {};
     for (const [key, raw] of Object.entries(value)) {
       if (typeof raw === 'boolean') {
+        result[key] = raw;
+      }
+    }
+    return result;
+  }
+
+  private sanitizeScenarioDelayMinutes(value: unknown): Record<string, number> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+    const result: Record<string, number> = {};
+    for (const [key, raw] of Object.entries(value)) {
+      if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw <= 10_080) {
         result[key] = raw;
       }
     }
@@ -305,6 +319,14 @@ export class SystemConfigService {
             reengagementScenarioRollout: {
               ...base.reengagementScenarioRollout,
               ...config.reengagementScenarioRollout,
+            },
+          }
+        : {}),
+      ...(config.reengagementScenarioDelayMinutes
+        ? {
+            reengagementScenarioDelayMinutes: {
+              ...base.reengagementScenarioDelayMinutes,
+              ...config.reengagementScenarioDelayMinutes,
             },
           }
         : {}),

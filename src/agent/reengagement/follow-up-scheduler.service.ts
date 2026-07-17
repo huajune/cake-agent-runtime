@@ -80,8 +80,6 @@ export interface ScheduleFollowUpInput {
   workOrderId?: number;
   /** 只用于本次计算延迟，不写入新任务 payload。 */
   expectedInterviewAt?: number;
-  /** 只用于本次计算 AI 面试回访延迟，不写入新任务 payload。 */
-  interviewType?: string;
   /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
   channelIdentity?: ReengagementChannelIdentity;
 }
@@ -141,7 +139,8 @@ export class FollowUpSchedulerService {
   }
 
   async scheduleFollowUp(input: ScheduleFollowUpInput): Promise<ScheduleFollowUpResult> {
-    if (!(await this.isEnabled())) return { scheduled: false, reason: 'disabled' };
+    const runtime = await this.systemConfig.getAgentReplyConfig();
+    if (!runtime.reengagementEnabled) return { scheduled: false, reason: 'disabled' };
 
     const scenario = getScenario(input.scenarioCode);
     if (!scenario) return { scheduled: false, reason: 'unknown_scenario' };
@@ -177,11 +176,14 @@ export class FollowUpSchedulerService {
       }
     }
 
-    const fireAt = computeFireAt(scenario, {
-      anchorAt: input.anchorAt,
-      state,
-      interviewType: input.interviewType,
-    });
+    const fireAt = computeFireAt(
+      scenario,
+      {
+        anchorAt: input.anchorAt,
+        state,
+      },
+      runtime.reengagementScenarioDelayMinutes?.[scenario.code],
+    );
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = this.buildJobId(
       input.sessionRef.sessionId,
@@ -499,16 +501,16 @@ export class FollowUpSchedulerService {
     }
 
     if (candidateScenario.phase === 'pre_booking') return true;
-    return !this.isSameBookingSlot(input, candidate);
-  }
+    // 报名后任务以工单为隔离边界：同一候选人可以同时存在多个有效面试，跨工单
+    // 绝不能互相覆盖。同工单的不同场景（提醒/回访）也应并存；只有同工单同场景的
+    // 旧任务才是改约前的过期任务，需要由新时间对应的任务替换。
+    if (input.workOrderId != null && candidate.workOrderId != null) {
+      if (candidate.workOrderId !== input.workOrderId) return false;
+      return candidate.scenarioCode === input.scenarioCode;
+    }
 
-  private isSameBookingSlot(input: ScheduleFollowUpInput, candidate: FollowUpJob): boolean {
-    return (
-      input.workOrderId != null &&
-      candidate.workOrderId === input.workOrderId &&
-      input.expectedInterviewAt != null &&
-      candidate.expectedInterviewAt === input.expectedInterviewAt
-    );
+    // 缺少工单身份的存量任务无法安全区分面试，沿用旧行为，由新任务收敛。
+    return true;
   }
 
   private buildJobId(

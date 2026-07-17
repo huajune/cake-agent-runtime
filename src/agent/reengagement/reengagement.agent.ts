@@ -133,7 +133,12 @@ export class ReengagementAgent {
 
       const output = result.output;
       const blockReason = output.blockReason ?? 'none';
-      const text = this.correctInterviewRelativeDay(ctx, output.message, composeNow);
+      const temporalCorrection = this.correctInterviewTemporalFacts(
+        ctx,
+        output.message,
+        composeNow,
+      );
+      const text = temporalCorrection.text;
       const usage = this.normalizeUsage(result.usage);
       const responseMessages = this.normalizeResponseMessages(result.response?.messages);
 
@@ -141,11 +146,11 @@ export class ReengagementAgent {
         ...(agentRequest ?? {}),
         reengagementInput: agentInput,
         reengagementOutput: { ...output, message: text },
-        ...(text !== output.message
+        ...(temporalCorrection.reason
           ? {
               temporalCorrection: {
                 originalMessage: output.message,
-                reason: 'interview_relative_day_mismatch',
+                reason: temporalCorrection.reason,
               },
             }
           : {}),
@@ -300,6 +305,7 @@ export class ReengagementAgent {
             ...(ctx.scenario.code === 'interview_reminder'
               ? [
                   '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。单纯告知预约成功、时间地点不一定是提醒；必须具有提醒参加的语义。',
+                  '- 状态摘要里的“面试时间”是当前工单的唯一权威时间。候选人可能同时有多个面试；近期对话中出现的其它面试时间属于其它工单，禁止用来生成本次提醒。',
                 ]
               : [
                   '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
@@ -476,17 +482,39 @@ export class ReengagementAgent {
     return `${this.formatShanghaiDate(timestamp)}（使用具体日期，不要说“今天”或“明天”）`;
   }
 
-  private correctInterviewRelativeDay(
+  private correctInterviewTemporalFacts(
     ctx: ReengagementComposeContext,
     message: string,
     now: number,
-  ): string {
-    if (ctx.scenario.code !== 'interview_reminder') return message;
+  ): { text: string; reason?: string } {
+    if (ctx.scenario.code !== 'interview_reminder') return { text: message };
     const interviewAt = ctx.bookingContext?.interviewAt;
-    if (interviewAt == null || !Number.isFinite(interviewAt)) return message;
-    if (this.shanghaiDayNumber(interviewAt) !== this.shanghaiDayNumber(now)) return message;
+    if (interviewAt == null || !Number.isFinite(interviewAt)) return { text: message };
+
+    let corrected = message;
+    let reason: string | undefined;
+    const expectedClock = this.formatShanghaiClock(interviewAt);
+    const clockPattern =
+      /(?:(?:上午|下午|晚上|中午|早上|凌晨)\s*)?(?:[01]?\d|2[0-3])(?:(?:[:：][0-5]\d)|(?:点(?:半|[0-5]?\d分)?))/g;
+    corrected = corrected.replace(clockPattern, expectedClock);
+    if (corrected !== message) reason = 'interview_time_mismatch';
+
+    if (this.shanghaiDayNumber(interviewAt) !== this.shanghaiDayNumber(now)) {
+      return { text: corrected, ...(reason ? { reason } : {}) };
+    }
     // 当天面试却写成“明天”是已知高频错误；确定性纠正，避免错误提醒直接触达候选人。
-    return message.replace(/明天/g, '今天');
+    const dayCorrected = corrected.replace(/明天/g, '今天');
+    if (dayCorrected !== corrected && !reason) reason = 'interview_relative_day_mismatch';
+    return { text: dayCorrected, ...(reason ? { reason } : {}) };
+  }
+
+  private formatShanghaiClock(timestamp: number): string {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(timestamp));
   }
 
   private shanghaiDayNumber(timestamp: number): number {

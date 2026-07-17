@@ -282,12 +282,12 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
-    expect(touchLedger.reserve).toHaveBeenCalledWith('sess-1:opening_no_reply:1782266400000');
+    expect(touchLedger.reserve).toHaveBeenCalledWith('sess-1:opening_no_reply:evt-1');
     expect(touchLedger.markDeliveryAttempted).toHaveBeenCalled();
     expect(delivery.deliver).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'reply' }),
       expect.objectContaining({
-        idempotencyKey: 'sess-1:opening_no_reply:1782266400000',
+        idempotencyKey: 'sess-1:opening_no_reply:evt-1',
         context: expect.objectContaining({
           token: 'stride-enterprise-token',
           _apiType: 'enterprise',
@@ -297,7 +297,7 @@ describe('FollowUpProcessor', () => {
       }),
     );
     expect(touchLedger.markSent).toHaveBeenCalledWith(
-      'sess-1:opening_no_reply:1782266400000',
+      'sess-1:opening_no_reply:evt-1',
       'sess-1',
       now,
     );
@@ -411,7 +411,7 @@ describe('FollowUpProcessor', () => {
 
     expect(delivery.deliver).not.toHaveBeenCalled();
     expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
-      'sess-1:opening_no_reply:1782266400000',
+      'sess-1:opening_no_reply:evt-1',
       'failed',
     );
   });
@@ -435,7 +435,7 @@ describe('FollowUpProcessor', () => {
 
     expect(delivery.deliver).toHaveBeenCalled();
     expect(touchLedger.markSent).toHaveBeenCalledWith(
-      'sess-1:opening_no_reply:1782266400000',
+      'sess-1:opening_no_reply:evt-1',
       'sess-1',
       now,
     );
@@ -507,7 +507,7 @@ describe('FollowUpProcessor', () => {
     await expect(buildProcessor().process(makeJob())).rejects.toThrow('delivery down');
 
     expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
-      'sess-1:opening_no_reply:1782266400000',
+      'sess-1:opening_no_reply:evt-1',
       'unknown',
     );
     // 送达与否未知按未送达处理（HC-4）：仍完成用户侧记忆收尾，但不投影助手轮次。
@@ -534,7 +534,7 @@ describe('FollowUpProcessor', () => {
     expect(touchLedger.markSent).not.toHaveBeenCalled();
     expect(chatSession.saveMessage).not.toHaveBeenCalled();
     expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
-      'sess-1:opening_no_reply:1782266400000',
+      'sess-1:opening_no_reply:evt-1',
       'failed',
     );
     expect(tracking.trackOutcomeNotReply).toHaveBeenCalledWith(
@@ -732,7 +732,7 @@ describe('FollowUpProcessor', () => {
         expect.stringMatching(/^batch_sess-1_\d+$/),
       );
       expect(touchLedger.markSent).toHaveBeenCalledWith(
-        'sess-1:opening_no_reply:1782266400000',
+        'sess-1:opening_no_reply:evt-1',
         'sess-1',
         Date.UTC(2026, 5, 24, 2, 0, 0),
       );
@@ -1009,7 +1009,7 @@ describe('FollowUpProcessor', () => {
     it.each(['约面待确认', '约面成功'])(
       'allows the semantic gate for active work-order status %s',
       async (currentStatus) => {
-        jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 25, 7, 0, 0));
+        jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 25, 8, 0, 0));
         sponge.getWorkOrderById.mockResolvedValue({
           workOrderId: 555,
           currentStatus,

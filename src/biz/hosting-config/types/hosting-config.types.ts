@@ -48,6 +48,7 @@ export interface AgentReplyConfig {
   reengagementShadow: boolean; // shadow：到点走完停止判断与生成但不投递，只记录"本应发"
   reengagementPostBookingEnabled: boolean; // 报名后大场景独立开关：关闭后报名后场景（面试提醒/回访）只 shadow
   reengagementScenarioRollout: Record<string, boolean>; // 场景级灰度 map（key=场景 code）；未配置的场景回退代码默认值
+  reengagementScenarioDelayMinutes: Record<string, number>; // 场景触发偏移分钟数；缺失时回退场景默认值
 }
 
 /**
@@ -80,4 +81,5 @@ export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   // 报名后大开关默认开（不额外收紧）；场景级 map 默认空 = 全部回退代码内 defaultRolloutEnabled
   reengagementPostBookingEnabled: true,
   reengagementScenarioRollout: {},
+  reengagementScenarioDelayMinutes: {},
 };

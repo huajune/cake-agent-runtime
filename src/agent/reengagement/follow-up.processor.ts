@@ -243,7 +243,6 @@ export class FollowUpProcessor implements OnModuleInit {
           } as AuthoritativeSessionState,
           workOrderId: bookingContext.workOrderId,
           expectedInterviewAt: bookingContext.interviewAt,
-          interviewType: bookingContext.interviewType,
           channelIdentity,
         });
         return;
@@ -290,18 +289,16 @@ export class FollowUpProcessor implements OnModuleInit {
         return;
       }
 
-      const expectedFireAt = computeFireAt(scenario, {
-        anchorAt: now,
-        state,
-        interviewType: bookingContext.interviewType,
-      });
-      if (expectedFireAt - now > BOOKING_SCHEDULE_TOLERANCE_MS) {
-        await this.scheduleTimeChangedReplacement(
-          job.data,
+      const expectedFireAt = computeFireAt(
+        scenario,
+        {
+          anchorAt: now,
           state,
-          bookingContext.interviewAt!,
-          bookingContext.interviewType,
-        );
+        },
+        runtime.reengagementScenarioDelayMinutes?.[scenario.code],
+      );
+      if (expectedFireAt - now > BOOKING_SCHEDULE_TOLERANCE_MS) {
+        await this.scheduleTimeChangedReplacement(job.data, state, bookingContext.interviewAt!);
         this.tracking.trackStopped(identity, 'interview_time_changed');
         return;
       }
@@ -392,7 +389,9 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    const key = `${sessionRef.sessionId}:${scenarioCode}:${anchorAt}`;
+    // 与 Bull job / 追踪底账共用稳定锚点。anchorAt 可能在两个并发工单解析时落在同一
+    // 毫秒，不能作为多面试场景的幂等身份，否则第二场提醒会被误判成重复触达。
+    const key = ReengagementTrackingService.touchKey(identity);
     const slot = await this.touchLedger.reserve(key);
     if (slot === 'duplicate_sent') {
       // 之前那次触达已送达，但**本次生成的文本**没发出去——不投影本次文本。
@@ -518,7 +517,6 @@ export class FollowUpProcessor implements OnModuleInit {
     jobData: FollowUpJob,
     state: AuthoritativeSessionState,
     newInterviewAt: number,
-    interviewType?: string,
   ): Promise<void> {
     const { sessionRef, scenarioCode, workOrderId } = jobData;
     if (workOrderId == null) return;
@@ -536,7 +534,6 @@ export class FollowUpProcessor implements OnModuleInit {
         } as AuthoritativeSessionState,
         workOrderId,
         expectedInterviewAt: newInterviewAt,
-        interviewType,
         channelIdentity: jobData.channelIdentity,
       });
     } catch (error) {

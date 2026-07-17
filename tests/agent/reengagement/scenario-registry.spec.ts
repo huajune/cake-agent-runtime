@@ -59,40 +59,50 @@ describe('scenario-registry', () => {
       expect(fireAt).toBe(anchorAt + 15 * 60_000);
     });
 
-    it('follows up on a morning AI interview at 17:00 Shanghai', () => {
+    it('follows up two hours after the work-order interview time', () => {
       const anchorAt = at(1); // 09:00 Shanghai
       const interviewAt = at(2); // 10:00 Shanghai
       const followup = getScenario('post_interview_followup')!;
       const fireAt = computeFireAt(followup, {
         anchorAt,
         state: baseState({ terminal: 'booked', interviewAt } as never),
-        interviewType: 'AI面试',
       });
-      expect(fireAt).toBe(at(9)); // 17:00 Shanghai
+      expect(fireAt).toBe(at(4)); // 12:00 Shanghai
     });
 
-    it('also follows up on an afternoon AI interview at 17:00 Shanghai', () => {
+    it('uses the same two-hour delay for afternoon interviews', () => {
       const anchorAt = at(1); // 09:00 Shanghai
       const interviewAt = at(7, 30); // 15:30 Shanghai
       const followup = getScenario('post_interview_followup')!;
       const fireAt = computeFireAt(followup, {
         anchorAt,
         state: baseState({ terminal: 'booked', interviewAt } as never),
-        interviewType: 'AI面试',
       });
-      expect(fireAt).toBe(at(9)); // 17:00 Shanghai
+      expect(fireAt).toBe(at(9, 30)); // 17:30 Shanghai
     });
 
-    it('keeps non-AI interview follow-up at one hour after the booked time', () => {
-      const anchorAt = at(1);
-      const interviewAt = at(2);
+    it('does not delay an overdue follow-up from the scheduling anchor', () => {
+      const anchorAt = at(5); // 13:00 Shanghai
+      const interviewAt = at(2); // 10:00 Shanghai
       const followup = getScenario('post_interview_followup')!;
       const fireAt = computeFireAt(followup, {
         anchorAt,
         state: baseState({ terminal: 'booked', interviewAt } as never),
-        interviewType: '线下面试',
       });
-      expect(fireAt).toBe(at(3));
+      expect(fireAt).toBe(anchorAt);
+    });
+
+    it('applies configured interview offsets without changing the work-order anchor', () => {
+      const anchorAt = at(1);
+      const interviewAt = at(6); // 14:00 Shanghai
+      const state = baseState({ terminal: 'booked', interviewAt } as never);
+
+      expect(computeFireAt(getScenario('interview_reminder')!, { anchorAt, state }, 90)).toBe(
+        at(4, 30),
+      );
+      expect(computeFireAt(getScenario('post_interview_followup')!, { anchorAt, state }, 180)).toBe(
+        at(9),
+      );
     });
   });
 
