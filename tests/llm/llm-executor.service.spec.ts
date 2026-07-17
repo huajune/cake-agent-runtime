@@ -354,22 +354,25 @@ describe('LlmExecutorService', () => {
   });
 
   describe('generateStructured', () => {
-    it('should throw when the structured output is empty', async () => {
+    it('should retry and fall back when the lazy structured output is empty', async () => {
       const schema = z.object({ score: z.number() });
-      mockGenerateText.mockResolvedValueOnce(
-        makeGenerateResult({
-          output: undefined,
-        }),
-      );
+      const emptyResult = makeGenerateResult({ output: undefined });
+      const fallbackResult = makeGenerateResult({ output: { score: 0.9 } });
+      mockGenerateText
+        .mockResolvedValueOnce(emptyResult)
+        .mockResolvedValueOnce(emptyResult)
+        .mockResolvedValueOnce(fallbackResult);
 
-      await expect(
-        service.generateStructured({
-          role: ModelRole.Extract,
-          prompt: 'extract',
-          schema,
-        }),
-      ).rejects.toThrow('No structured output returned');
+      const result = await service.generateStructured({
+        role: ModelRole.Extract,
+        prompt: 'extract',
+        schema,
+        config: { maxRetries: 2 },
+      });
 
+      expect(result.output).toEqual({ score: 0.9 });
+      expect(getGenerateModelIds()).toEqual([primaryModelId, primaryModelId, fallbackModelId]);
+      expect(mockReliable.classifyError).toHaveBeenCalledTimes(2);
       expect(mockOutputObject).toHaveBeenCalledWith(
         expect.objectContaining({
           schema,

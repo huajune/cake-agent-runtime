@@ -181,7 +181,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     requiredEvidence: ['terminal', 'interviewAt'],
     stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
     generationPolicy:
-      '必须按状态摘要里的面试形式生成：AI 面试说明无需到店，提醒按面试通知的入口和要求在线完成，不提门店、到店或携带证件；线下面试才提醒时间、地点和已有证据中的证件；仅写“线上面试”但未明确 AI 时，不得说成 AI 面试。若状态摘要明确写着“工单未提供，不得猜测”，只能中性提醒候选人按面试通知中的时间和要求参加，不得提线上、线下、到店、地址、入口、材料或证件。使用中性表达，不索取新资料',
+      '仅在当前工单仍进行中，且近期对话没有取消、不参加、已有面试结果、已询问面试结果或已发送本次面试提醒时生成。必须按状态摘要里的面试形式生成：AI 面试说明无需到店，提醒按面试通知的入口和要求在线完成，不提门店、到店或携带证件；线下面试才提醒时间、地点和已有证据中的证件；仅写“线上面试”但未明确 AI 时，不得说成 AI 面试。若状态摘要明确写着“工单未提供，不得猜测”，只能中性提醒候选人按面试通知中的时间和要求参加，不得提线上、线下、到店、地址、入口、材料或证件。使用中性表达，不索取新资料',
     relevantFactLabels: [],
     defaultRolloutEnabled: true,
     sessionCooldownExempt: true,
@@ -207,7 +207,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     requiredEvidence: ['interviewAt'],
     stopUnless: hasInterviewAt,
     generationPolicy:
-      '按状态摘要里的面试形式询问：AI 面试询问是否已经完成、是否遇到问题；其他面试询问是否顺利、体验如何、是否需要协助。不要直接断言候选人已完成面试，不施压入职',
+      '仅在当前工单仍进行中，且近期对话没有取消、不参加、已有面试结果或招募经理已经询问本次面试结果时生成；此前只发过面试提醒不影响回访。按状态摘要里的面试形式询问：AI 面试询问是否已经完成、是否遇到问题；其他面试询问是否顺利、体验如何、是否需要协助。不要直接断言候选人已完成面试，不施压入职',
     relevantFactLabels: [],
     defaultRolloutEnabled: false,
   },
@@ -345,7 +345,7 @@ export function computeFireAt(scenario: FollowUpScenario, ctx: FollowUpScenarioC
  * - lastCandidateMessageAt > anchorAt（候选人在锚点后已回话）→ 停
  *   例外：booking.succeeded 锚点且任务带 workOrderId（opts.externallyVerifiable）时豁免——
  *   候选人报名后回一句"好的"不该杀掉面试提醒；报名是否仍有效改由 processor 到点向
- *   海绵工单现状 + active_booking 面试时间核验（external_cancelled / interview_time_changed）。
+ *   海绵工单现状 + active_booking 面试时间核验（work_order_not_active / interview_time_changed）。
  *   不带 workOrderId 的存量任务无核验能力，保留回话即停的旧行为。
  * - 场景特定 stopUnless 不成立 → 停
  */

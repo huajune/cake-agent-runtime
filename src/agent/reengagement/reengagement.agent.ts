@@ -51,9 +51,18 @@ export interface ReengagementAgentExecution {
 const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
   decision: z
     .enum(['send', 'skip'])
-    .describe(
-      '是否发送本次复聊。只有报名后场景中近期对话明确表明取消面试、去不了或不再考虑时选 skip；其余选 send',
-    ),
+    .describe('是否发送本次复聊。命中本场景任一发送前语义停止条件时必须为 skip，否则为 send'),
+  blockReason: z
+    .enum([
+      'none',
+      'candidate_declined_interview',
+      'manager_cancelled_interview',
+      'interview_result_known',
+      'result_inquiry_already_sent',
+      'interview_reminder_already_sent',
+    ])
+    .default('none')
+    .describe('命中的发送前语义停止原因；未命中为 none'),
   message: z.string().describe('候选人可见的复聊消息；不得用候选人的姓名、昵称或企微显示名作称呼'),
   reason: z.string().describe('只说明输入证据如何支持本条文案，不得补写“已读”“在忙”等未提供状态'),
 });
@@ -114,7 +123,6 @@ export class ReengagementAgent {
         // 与 Generator 一致，直接传模型原生 user/assistant 历史；system 已包含本次主动
         // 复聊任务，不追加虚构的 user 指令，也不把历史重新文本化进 system。
         messages,
-        maxOutputTokens: 160,
         temperature: 0.3,
         onPreparedRequest: (request) => {
           agentRequest = request;
@@ -124,6 +132,7 @@ export class ReengagementAgent {
       const agentSteps = this.extractAgentSteps(result.steps);
 
       const output = result.output;
+      const blockReason = output.blockReason ?? 'none';
       const text = this.correctInterviewRelativeDay(ctx, output.message, composeNow);
       const usage = this.normalizeUsage(result.usage);
       const responseMessages = this.normalizeResponseMessages(result.response?.messages);
@@ -142,8 +151,8 @@ export class ReengagementAgent {
           : {}),
       };
 
-      if (output.decision === 'skip') {
-        const validationReason = this.resolveSkipValidationReason(ctx, memory);
+      if (output.decision === 'skip' || blockReason !== 'none') {
+        const validationReason = this.resolveSkipValidationReason(ctx, memory, blockReason);
         return {
           outcome: {
             kind: 'skipped',
@@ -211,19 +220,24 @@ export class ReengagementAgent {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      const generatedText = error instanceof Error ? error.message : String(error);
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         outcome: {
           kind: 'skipped',
-          generatedText,
           toolCalls: [],
           scenarioCode: ctx.scenario.code,
           agentSteps: [],
         },
         agentRequest: {
+          ...(agentRequest ?? {}),
           type: 'reengagement_agent',
           scenarioCode: ctx.scenario.code,
           validationReason: 'reengagement_agent_error',
+          generationError: {
+            name: errorName,
+            message: errorMessage,
+          },
         },
         aiStartAt,
         aiEndAt: Date.now(),
@@ -278,9 +292,21 @@ export class ReengagementAgent {
       ...(this.isPostBookingScenario(ctx)
         ? [
             '## 发送前语义停止条件',
-            '- 近期对话中，只要候选人最新明确表达已经取消面试、面试去不了/不去了、无法参加，或不再考虑这个岗位，decision 必须为 skip，message 留空；即使工单状态仍显示预约有效也必须放弃面试提醒和面试后回访。',
-            '- 候选人先答应、后又说去不了时，以更晚的取消表达为准；若取消后又明确重新约好新的面试，则以最新重新预约为准。',
-            '- 仅仅询问时间地点、表达紧张或尚未确认结果，不等于取消，decision 应为 send。',
+            '- 下列角色约定必须严格遵守：user 是候选人，assistant 是招募经理。只判断与当前工单、本次面试相关的表达，不要用其他岗位或更早一次面试的历史误判。',
+            '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
+            '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。',
+            '- 对话已经给出面试通过、未通过、录用或淘汰等结果，或者“和店长吵架了”“店长让我走了”等语境已经能合理判断面试流程结束：blockReason=interview_result_known。不要把“等通知”“还不知道结果”误判成已有结果。',
+            '- 招募经理（assistant）已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。候选人自己询问结果不属于此项。',
+            ...(ctx.scenario.code === 'interview_reminder'
+              ? [
+                  '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。单纯告知预约成功、时间地点不一定是提醒；必须具有提醒参加的语义。',
+                ]
+              : [
+                  '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
+                ]),
+            '- 命中任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示预约有效也不能发送。未命中时 blockReason=none。',
+            '- 同一意图有前后变化时以最新有效表达为准：取消后又明确重新约好可以恢复；改约后的新面试不被旧时间对应的提醒阻止。',
+            '- 仅仅询问面试时间地点、表达紧张或尚未确认结果，不构成以上停止条件。',
             '',
           ]
         : []),
@@ -289,7 +315,7 @@ export class ReengagementAgent {
       '- 可以在确有助于候选人识别上下文时，简短承接近期对话里已经出现的岗位、门店、薪资、班次或位置；不得新增、改写、拼接或夸大任何细节，也不要整段复制岗位介绍。',
       '',
       '# 输出协议',
-      '返回结构化结果：decision 决定是否发送；decision=send 时 message 是候选人可见的最终文案，decision=skip 时 message 必须为空；reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
+      '返回结构化结果：decision 决定是否发送；blockReason 给出命中的语义停止原因，未命中必须为 none；decision=send 时 message 是候选人可见的最终文案，decision=skip 时 message 必须为空；reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
     ].join('\n');
   }
 
@@ -307,8 +333,16 @@ export class ReengagementAgent {
   private resolveSkipValidationReason(
     ctx: ReengagementComposeContext,
     memory: ReengagementMemorySnapshot,
+    blockReason?:
+      | 'none'
+      | 'candidate_declined_interview'
+      | 'manager_cancelled_interview'
+      | 'interview_result_known'
+      | 'result_inquiry_already_sent'
+      | 'interview_reminder_already_sent',
   ): string {
     if (!this.isPostBookingScenario(ctx)) return 'reengagement_agent_skipped';
+    if (blockReason && blockReason !== 'none') return blockReason;
 
     const cancellation =
       /(?:取消(?:面试)?|不(?:去|参加|面试)了?|去不了|无法参加|不再考虑|不想去|找到.{0,8}工作.{0,8}(?:不面试|不用|不考虑))/;

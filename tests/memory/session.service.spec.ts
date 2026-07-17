@@ -1125,6 +1125,39 @@ describe('SessionService', () => {
       );
     });
 
+    it('should let the current-turn health-certificate rule override a lossy LLM value', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            has_health_certificate: '无',
+          },
+          reasoning: 'LLM 只保留了无证状态',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '目前没有健康证，但确定上岗前会去办。' },
+      ]);
+
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              has_health_certificate: factValue('无但接受办理健康证', {
+                confidence: 'high',
+                source: 'rule',
+              }),
+            }),
+          }),
+        }),
+        86400,
+      );
+    });
+
     it('should backfill rule facts when LLM returns null for a field', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(

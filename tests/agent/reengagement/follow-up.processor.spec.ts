@@ -892,7 +892,7 @@ describe('FollowUpProcessor', () => {
       });
     });
 
-    it('stops with external_cancelled when the work order was cancelled outside the chat', async () => {
+    it('stops when the work order was cancelled outside the chat', async () => {
       sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面取消',
@@ -903,7 +903,7 @@ describe('FollowUpProcessor', () => {
       expect(sponge.getWorkOrderById).toHaveBeenCalledWith(555);
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.objectContaining({ scenarioCode: 'interview_reminder' }),
-        'external_cancelled:约面取消',
+        'work_order_not_active:约面取消',
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
@@ -933,6 +933,28 @@ describe('FollowUpProcessor', () => {
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
+    it('does not create formal delayed jobs for a non-active resolved work order', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面取消',
+      });
+
+      await buildProcessor().process(
+        bookingJob({
+          resolveBookingAtFire: true,
+          expectedInterviewAt: undefined,
+          interviewType: undefined,
+        }),
+      );
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'work_order_not_active:约面取消',
+      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
     it('passes the per-bot token context to the sponge work-order lookup', async () => {
       // 多 bot 企业 per-bot token ≠ 全局 fallback，不带 botImId 查工单会静默 miss，
       // 外部取消检测整条失效（2026-07-06 review）
@@ -948,7 +970,7 @@ describe('FollowUpProcessor', () => {
       expect(sponge.getWorkOrderById).toHaveBeenCalledWith(555, { botImId: 'bot-1' });
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
-        'external_cancelled:约面取消',
+        'work_order_not_active:约面取消',
       );
     });
 
@@ -962,12 +984,12 @@ describe('FollowUpProcessor', () => {
 
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
-        'interview_already_done:面试成功',
+        'work_order_not_active:面试成功',
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
-    it('lets post_interview_followup proceed when the interview is done', async () => {
+    it('stops post_interview_followup when the interview result is already known', async () => {
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 25, 7, 0, 0));
       sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
@@ -977,8 +999,65 @@ describe('FollowUpProcessor', () => {
 
       await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
 
-      expect(tracking.trackStopped).not.toHaveBeenCalled();
-      expect(reengagementAgent.compose).toHaveBeenCalled();
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'work_order_not_active:面试成功',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it.each(['约面待确认', '约面成功'])(
+      'allows the semantic gate for active work-order status %s',
+      async (currentStatus) => {
+        jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 25, 7, 0, 0));
+        sponge.getWorkOrderById.mockResolvedValue({
+          workOrderId: 555,
+          currentStatus,
+          interviewTime: '2026-06-25 14:00',
+        });
+
+        await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
+
+        expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+          expect.anything(),
+          expect.stringContaining('work_order_not_active:'),
+        );
+        expect(reengagementAgent.compose).toHaveBeenCalled();
+      },
+    );
+
+    it.each(['约面失败', '约面取消', '面试失败', '面试成功', '上岗失败', '上岗成功', '已离职'])(
+      'stops both post-booking scenarios for non-active status %s',
+      async (currentStatus) => {
+        sponge.getWorkOrderById.mockResolvedValue({
+          workOrderId: 555,
+          currentStatus,
+          interviewTime: '2026-06-25 14:00',
+        });
+
+        await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
+
+        expect(tracking.trackStopped).toHaveBeenCalledWith(
+          expect.anything(),
+          `work_order_not_active:${currentStatus}`,
+        );
+        expect(reengagementAgent.compose).not.toHaveBeenCalled();
+      },
+    );
+
+    it('fails closed when the work-order status is missing', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        interviewTime: '2026-06-25 14:00',
+      });
+
+      await buildProcessor().process(bookingJob({ scenarioCode: 'post_interview_followup' }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'work_order_status_unavailable',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
     it('does not trust a different interview time stored in active_booking', async () => {
