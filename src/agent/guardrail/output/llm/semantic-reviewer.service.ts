@@ -85,7 +85,7 @@ export class SemanticReviewerService {
             '- jobList.hasEvidence=true 表示已有可核验岗位证据；即使 jobList.jobs=[]，只要 markdownExcerpt 存在也不能说“无岗位数据/无证据支撑”。',
             '- geocode.hasResolvedCoordinate=true 表示已解析到坐标；unique 解析常见 candidates=[]，不能仅因 candidates 为空就说地理解析失败。',
             '- geocode.areaLevelQuery=true 表示只解析到行政区级，不能支撑精确门店距离，但不等于 geocode 失败。',
-            '- sentLocation.addressConflict=true 表示面试地址与工作门店不同。回复必须说清两者差异，且不得把 storeAddress 当成面试目的地。',
+            '- sentLocation.addressConflict=true 表示面试地址与工作门店不同。仅当 destination=interview 时，回复必须说清两者差异，且不得把 storeAddress 当成面试目的地；destination=store 表示候选人明确询问工作地点，不要求额外展开面试地址，但不得把工作门店说成面试地点。',
             '- sentLocation.destination=interview 时，回复必须称其为面试定位；不得说已发门店定位或声称应去工作门店面试。',
             '- 只有 sentLocation.interviewMethod 明确为线下/到店/现场面试时才允许声称有面试地址或已发面试定位。线上/AI/视频/电话面试或 locationNotRequired=true 时，任何到店、面试地址或面试定位声称都是 active_booking_state_conflict。',
             '- “地图未更新/新店刚入驻/地址没错”等解释必须在 evidence 中有明确依据；否则按 active_booking_state_conflict 要求删除。',
