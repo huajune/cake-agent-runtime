@@ -17,6 +17,8 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'semantic_review',
   // 新旧品牌匹配差异（临时，随旧路径下线删除）：目录时变不可离线重放（§12/§15.6）
   'brand_resolution_shadow_diff',
+  // 上者的分母：每 100 次一致落一条，二者相除即 §15.6 的差异率门禁（临时，同批下线）
+  'brand_resolution_shadow_agreement',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;

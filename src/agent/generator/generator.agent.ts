@@ -354,6 +354,7 @@ export class GeneratorAgent {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
         imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
+        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
       };
     },
     assistantText?: string,
@@ -369,6 +370,7 @@ export class GeneratorAgent {
         candidatePool: ctx.turnState.candidatePool,
         contactName: ctx.contactName,
         imageBrandResolutions: ctx.turnState.imageBrandResolutions,
+        jobListQuerySignature: ctx.turnState.jobListQuerySignature,
       },
       assistantText,
     );
@@ -388,6 +390,7 @@ export class GeneratorAgent {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
         imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
+        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
       };
     },
     assistantText?: string,
@@ -413,6 +416,7 @@ export class GeneratorAgent {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
         imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
+        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
       };
     },
     messageId: string | undefined,

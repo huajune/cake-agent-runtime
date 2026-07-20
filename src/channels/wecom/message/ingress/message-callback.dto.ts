@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsNumber, IsObject, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
 import {
   MessageType,
   ContactType,
@@ -201,6 +201,10 @@ export class EnterpriseMessageCallbackDto {
   @IsString()
   @IsNotEmpty()
   messageId: string; // 消息ID
+
+  @IsString()
+  @IsOptional()
+  externalRequestId?: string; // 发送接口透传的幂等/关联键
 
   @IsString()
   @IsNotEmpty()

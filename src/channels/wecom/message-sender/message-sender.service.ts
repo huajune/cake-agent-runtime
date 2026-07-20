@@ -54,8 +54,17 @@ export class MessageSenderService {
   async sendMessage(data: SendMessageDto | any) {
     try {
       // 提取字段
-      const { _apiType, token, chatId, imBotId, imContactId, imRoomId, messageType, payload } =
-        data;
+      const {
+        _apiType,
+        token,
+        chatId,
+        imBotId,
+        imContactId,
+        imRoomId,
+        messageType,
+        payload,
+        externalRequestId,
+      } = data;
 
       // 调试日志：查看 _apiType 的实际值
       this.logger.debug(`[API 路由] _apiType=${_apiType}, typeof=${typeof _apiType}`);
@@ -66,7 +75,8 @@ export class MessageSenderService {
       if (_apiType === 'group') {
         // 小组级 API：token 在请求体中
         // 生成唯一的 externalRequestId
-        const externalRequestId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const resolvedExternalRequestId =
+          externalRequestId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
         // 转换消息类型：企业级 → 小组级
         const groupMessageType = this.convertToGroupMessageType(messageType);
@@ -75,7 +85,7 @@ export class MessageSenderService {
         requestBody = {
           token,
           chatId,
-          externalRequestId,
+          externalRequestId: resolvedExternalRequestId,
           messageType: groupMessageType, // 使用转换后的类型
           payload,
         };
@@ -91,6 +101,7 @@ export class MessageSenderService {
           imRoomId,
           messageType,
           payload,
+          ...(externalRequestId ? { externalRequestId } : {}),
         };
         this.logger.debug(`使用 API: 企业级 - ${apiUrl}`);
       }

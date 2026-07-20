@@ -45,6 +45,8 @@ describe('ReengagementAgent', () => {
     llm = {
       generateStructured: jest.fn().mockResolvedValue({
         output: {
+          decision: 'send',
+          blockReason: 'none',
           message: '你方便发下位置吗？我这边好按附近方向给你看。',
           reason: 'address_missing task has enough context',
         },
@@ -79,6 +81,8 @@ describe('ReengagementAgent', () => {
   it('generates a structured message with assembled context for interview reminders', async () => {
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '提醒你一下，面试是明天14:00，记得带身份证和健康证哈。',
         reason: 'interview reminder has interview evidence',
       },
@@ -139,6 +143,8 @@ describe('ReengagementAgent', () => {
   it('corrects “tomorrow” to “today” when an interview reminder fires on the interview date', async () => {
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '提醒你一下，明天14:00参加面试。',
         reason: '面试提醒',
       },
@@ -172,6 +178,8 @@ describe('ReengagementAgent', () => {
   it('corrects a reminder time that belongs to another work order', async () => {
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '今天下午14点半的面试别忘了哈。',
         reason: '误用了近期对话中另一场面试的时间',
       },
@@ -208,6 +216,7 @@ describe('ReengagementAgent', () => {
       llm.generateStructured.mockResolvedValueOnce({
         output: {
           decision: 'skip',
+          blockReason: 'candidate_declined_interview',
           message: '',
           reason: '候选人最新明确表示约好的面试去不了了',
         },
@@ -233,9 +242,9 @@ describe('ReengagementAgent', () => {
       expect(system).toContain('即使实时工单仍显示预约有效也不能发送');
       expect(result.outcome.kind).toBe('skipped');
       expect(result.outcome.reply).toBeUndefined();
-      expect(result.validationReason).toBe('candidate_cancelled_interview_in_chat');
+      expect(result.validationReason).toBe('candidate_declined_interview');
       expect(result.agentRequest).toMatchObject({
-        validationReason: 'candidate_cancelled_interview_in_chat',
+        validationReason: 'candidate_declined_interview',
         reengagementOutput: {
           decision: 'skip',
           message: '',
@@ -354,16 +363,27 @@ describe('ReengagementAgent', () => {
     expect(result.validationReason).toBeUndefined();
   });
 
-  it('records a non-booking model skip without misclassifying it as interview cancellation', async () => {
+  it('retries a contradictory pre-booking skip and uses the corrected send decision', async () => {
     memoryRecall.recentMessages = [{ role: 'assistant', content: '你大概在哪个区域呀？' }];
-    llm.generateStructured.mockResolvedValueOnce({
-      output: {
-        decision: 'skip',
-        message: '',
-        reason: '距离上一条消息时间太短，继续发送会显得催促',
-      },
-      usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
-    });
+    llm.generateStructured
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'skip',
+          blockReason: 'none',
+          message: '',
+          reason: '当前处于正常对话流程',
+        },
+        usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+      })
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason: 'none',
+          message: '还在看机会吗？你大概在哪个区或地铁站附近呀？',
+          reason: '开场已发且候选人未回复',
+        },
+        usage: { inputTokens: 14, outputTokens: 8, totalTokens: 22 },
+      });
 
     const result = await reengagementAgent.compose({
       sessionRef,
@@ -372,18 +392,25 @@ describe('ReengagementAgent', () => {
       state: baseState(),
     });
 
-    expect(result.outcome.kind).toBe('skipped');
-    expect(result.validationReason).toBe('reengagement_agent_skipped');
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.outcome.reply?.text).toContain('还在看机会吗');
+    expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+    expect(llm.generateStructured.mock.calls[1][0].system).toContain('上次输出纠正');
     expect(result.agentRequest).toMatchObject({
-      validationReason: 'reengagement_agent_skipped',
+      outputCorrection: {
+        issue: 'pre_booking_skip_not_allowed',
+        firstOutput: expect.objectContaining({ decision: 'skip', blockReason: 'none' }),
+        retryOutput: expect.objectContaining({ decision: 'send', blockReason: 'none' }),
+      },
     });
   });
 
-  it('does not label an evidence-insufficient interview skip as candidate cancellation', async () => {
+  it('safely skips and records a decision anomaly when correction is still inconsistent', async () => {
     memoryRecall.recentMessages = [{ role: 'user', content: '好的，知道了。' }];
-    llm.generateStructured.mockResolvedValueOnce({
+    llm.generateStructured.mockResolvedValue({
       output: {
         decision: 'skip',
+        blockReason: 'none',
         message: '',
         reason: '面试形式和时间存在冲突，当前证据不足',
       },
@@ -398,7 +425,14 @@ describe('ReengagementAgent', () => {
       bookingContext: liveBookingContext(),
     });
 
-    expect(result.validationReason).toBe('reengagement_agent_skipped');
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.validationReason).toBe('reengagement_decision_invalid');
+    expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+    expect(result.agentRequest).toMatchObject({
+      validationReason: 'reengagement_decision_invalid',
+      generationError: { name: 'ReengagementOutputContractError' },
+      outputCorrection: { issue: 'skip_without_block_reason' },
+    });
   });
 
   it('does not cap structured output and preserves request metadata without exposing errors as copy', async () => {
@@ -435,6 +469,8 @@ describe('ReengagementAgent', () => {
   it('uses LLM for booking_incomplete instead of hard-coding missing fields', async () => {
     llm.generateStructured.mockResolvedValue({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '还差一些报名资料，你方便继续补充一下吗？我这边好接着看。',
         reason: 'booking collection is incomplete',
       },
@@ -626,6 +662,8 @@ describe('ReengagementAgent', () => {
   it('does not locally enforce reply length', async () => {
     llm.generateStructured.mockResolvedValue({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '复'.repeat(81),
         reason: 'length is governed by prompt not local code',
       },
@@ -691,6 +729,8 @@ describe('ReengagementAgent', () => {
   it('blocks a generated reply that still addresses the candidate by name', async () => {
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '张三，方便把剩下的资料补充一下吗？',
         reason: '提醒补资料',
       },
@@ -743,6 +783,8 @@ describe('ReengagementAgent', () => {
     ];
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message:
           '这家是 AI 面试，手机上就能做，不用跑门店哈\n\n也不包吃住，吃饭需要自理\n\n面试安排在工作日 10:00-19:00（周二到周五都行），你看哪天方便\n\n另外确认下，如果这家店人手不够，能接受调配到附近其他必胜客门店上班吗',
         reason: '候选人询问面试形式和是否包吃住，需如实回答并继续推进约面',
@@ -777,6 +819,8 @@ describe('ReengagementAgent', () => {
     ];
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '资料收到啦，剩下的补齐后我就能帮你安排面试',
         reason: '提醒补资料',
       },
@@ -804,6 +848,8 @@ describe('ReengagementAgent', () => {
     ];
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '剩下的资料随时可以发我哈，补齐了就能帮你把面试定下来',
         reason: '提醒补资料',
       },
@@ -824,6 +870,8 @@ describe('ReengagementAgent', () => {
   it('does not drop a reply when a one-character nickname appears only as ordinary text', async () => {
     llm.generateStructured.mockResolvedValueOnce({
       output: {
+        decision: 'send',
+        blockReason: 'none',
         message: '你方便把位置发一下吗？我好按附近门店给你看。',
         reason: '询问位置',
       },

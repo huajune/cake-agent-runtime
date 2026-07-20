@@ -9,7 +9,6 @@ import {
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
-import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
@@ -35,7 +34,6 @@ import {
   resolveReengagementBookingContext,
   type ReengagementBookingContext,
 } from './booking-context';
-import { MessageSource, MessageType } from '@enums/message-callback.enum';
 import { BotService } from '@wecom/bot/bot.service';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
@@ -148,7 +146,6 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly messageTracking: MessageTrackingService,
     private readonly sponge: SpongeService,
     private readonly longTerm: LongTermService,
-    private readonly chatSession: ChatSessionService,
     private readonly scheduler: FollowUpSchedulerService,
     private readonly configService: ConfigService,
     @Optional()
@@ -762,13 +759,6 @@ export class FollowUpProcessor implements OnModuleInit {
       }
       await this.touchLedger.markSent(key, sessionId, now);
       this.tracking.trackSent(identity, outcome.reply?.text, batchId);
-      await this.saveDeliveredAssistantHistory({
-        sessionId,
-        messageId: batchId,
-        text: outcome.reply?.text ?? '',
-        timestamp: deliveryEndAt,
-        identity,
-      });
       if (scenario) {
         this.messageTracking.recordProactiveTurn(
           this.buildProactiveTurnRecord({
@@ -840,6 +830,7 @@ export class FollowUpProcessor implements OnModuleInit {
       contactName: identity.candidateName || '客户',
       messageId: batchId,
       chatId: sessionId,
+      externalRequestId: batchId,
       _apiType: 'enterprise',
     };
   }
@@ -856,44 +847,6 @@ export class FollowUpProcessor implements OnModuleInit {
       );
     }
     return enterpriseToken;
-  }
-
-  private async saveDeliveredAssistantHistory(params: {
-    sessionId: string;
-    messageId: string;
-    text: string;
-    timestamp: number;
-    identity: ReengagementTouchIdentity;
-  }): Promise<void> {
-    if (!params.text.trim()) return;
-    try {
-      await this.chatSession.saveMessage({
-        chatId: params.sessionId,
-        messageId: params.messageId,
-        role: 'assistant',
-        content: params.text,
-        timestamp: params.timestamp,
-        messageType: MessageType.TEXT,
-        source: MessageSource.AI_REPLY,
-        candidateName: params.identity.candidateName,
-        managerName: params.identity.managerName,
-        orgId: params.identity.corpId,
-        imBotId: params.identity.botImId,
-        imContactId: params.identity.imContactId,
-        externalUserId: params.identity.externalUserId,
-        isRoom: false,
-        isSelf: true,
-        payload: {
-          source: 'reengagement',
-          scenarioCode: params.identity.scenarioCode,
-          anchorEventId: params.identity.anchorEventId,
-        },
-      });
-    } catch (error) {
-      this.logger.warn(
-        `[reengagement] 真发历史写入失败 messageId=${params.messageId}: ${this.errorMessage(error)}`,
-      );
-    }
   }
 
   private errorMessage(error: unknown): string {

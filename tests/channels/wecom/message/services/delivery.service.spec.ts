@@ -106,6 +106,18 @@ describe('MessageDeliveryService', () => {
       expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledWith('msg-123');
     });
 
+    it('uses a stable externalRequestId for a single proactive message', async () => {
+      await service.deliverReply(
+        { content: '主动提醒' },
+        { ...deliveryContext, externalRequestId: 'batch-chat-123' },
+        false,
+      );
+
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ externalRequestId: 'batch-chat-123' }),
+      );
+    });
+
     it('should strip trailing punctuation for single-message delivery', async () => {
       const result = await service.deliverReply({ content: '收到～' }, deliveryContext, true);
 
@@ -129,6 +141,31 @@ describe('MessageDeliveryService', () => {
       expect(result.deliveredSegments).toBe(3);
       expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(3);
       expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledTimes(1);
+    });
+
+    it('assigns stable per-segment externalRequestIds and reuses them on retry', async () => {
+      mockMessageSenderService.sendMessage
+        .mockRejectedValueOnce(new Error('transient'))
+        .mockResolvedValue({ success: true });
+
+      await service.deliverReply(
+        { content: 'First paragraph\n\nSecond paragraph' },
+        { ...deliveryContext, externalRequestId: 'batch-chat-123' },
+        false,
+      );
+
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ externalRequestId: 'batch-chat-123:segment:1' }),
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ externalRequestId: 'batch-chat-123:segment:1' }),
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({ externalRequestId: 'batch-chat-123:segment:2' }),
+      );
     });
 
     it('should split and send two messages when content contains wave mark', async () => {

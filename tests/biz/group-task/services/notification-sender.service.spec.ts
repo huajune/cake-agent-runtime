@@ -194,7 +194,7 @@ describe('NotificationSenderService', () => {
       );
     });
 
-    it('should wait 40s before the mini program card in the same group', async () => {
+    it('should wait a random 40-120s before the mini program card in the same group', async () => {
       const delayedService = new NotificationSenderService(
         {
           get: jest.fn((key: string, defaultValue?: string) => {
@@ -210,16 +210,21 @@ describe('NotificationSenderService', () => {
       const delaySpy = jest
         .spyOn(delayedService as never, 'delay')
         .mockResolvedValue(undefined as never);
+      const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
-      await delayedService.sendToGroup(
-        mockGroup,
-        '兼职岗位通知',
-        GroupTaskType.PART_TIME_JOB,
-        false,
-      );
+      try {
+        await delayedService.sendToGroup(
+          mockGroup,
+          '兼职岗位通知',
+          GroupTaskType.PART_TIME_JOB,
+          false,
+        );
 
-      expect(delaySpy).toHaveBeenCalledTimes(1);
-      expect(delaySpy).toHaveBeenCalledWith(40_000);
+        expect(delaySpy).toHaveBeenCalledTimes(1);
+        expect(delaySpy).toHaveBeenCalledWith(80_000);
+      } finally {
+        randomSpy.mockRestore();
+      }
     });
   });
 

@@ -83,6 +83,25 @@ describe('MessageSenderService', () => {
         expect(callBody.imRoomId).toBe('room-1');
       });
 
+      it('should forward a caller-provided externalRequestId to the enterprise API', async () => {
+        mockHttpService.post.mockResolvedValue({ errcode: 0, requestId: 'request-1' });
+
+        await service.sendMessage({
+          _apiType: 'enterprise',
+          token: 'ent-token',
+          imBotId: 'bot-1',
+          imContactId: 'contact-1',
+          messageType: 7,
+          payload: { text: 'Hello' },
+          externalRequestId: 'batch-session-1',
+        });
+
+        expect(mockHttpService.post).toHaveBeenCalledWith(
+          'https://enterprise-api.example.com/message/send?token=ent-token',
+          expect.objectContaining({ externalRequestId: 'batch-session-1' }),
+        );
+      });
+
       it('should use undefined _apiType as enterprise API', async () => {
         const data = {
           token: 'ent-token',

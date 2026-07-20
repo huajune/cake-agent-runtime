@@ -37,6 +37,7 @@ export function buildToolContext(input: {
   turnState: {
     candidatePool: RecommendedJobSummary[] | null;
     imageBrandResolutions: BrandResolution[];
+    jobListQuerySignature: string | null;
   };
   contactBrandAliases: string[];
   /** 本轮生效的会话品牌状态（持久化状态或首轮 seed），透传给工具兜底。 */
@@ -98,6 +99,10 @@ export function buildToolContext(input: {
     stageGoals,
     onJobsFetched: async (jobs) => {
       turnState.candidatePool = jobs as RecommendedJobSummary[];
+    },
+    lastJobListQuery: memory.sessionMemory?.lastJobListQuery ?? null,
+    onJobListQueryExecuted: (query) => {
+      turnState.jobListQuerySignature = query.signature;
     },
     onImageBrandResolved: (resolutions) => {
       turnState.imageBrandResolutions.push(...resolutions);

@@ -154,6 +154,7 @@ describe('SessionService', () => {
         terminal: null,
         lastCandidateMessageAt: null,
         brand_state: null,
+        lastJobListQuery: null,
       });
     });
 
