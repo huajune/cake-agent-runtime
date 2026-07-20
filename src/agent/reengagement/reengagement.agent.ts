@@ -89,6 +89,9 @@ const NEVER_EXPOSED_REENGAGEMENT_FACT_LABELS = new Set([
 
 @Injectable()
 export class ReengagementAgent {
+  /** 归一化后短于该长度的文案不做复读判定，避免误伤“你看哪天方便”这类必然重叠的短句。 */
+  private static readonly DUPLICATE_REPLY_MIN_LENGTH = 10;
+
   private readonly logger = new Logger(ReengagementAgent.name);
 
   constructor(
@@ -175,6 +178,27 @@ export class ReengagementAgent {
           aiStartAt,
           aiEndAt,
           validationReason,
+        };
+      }
+
+      if (this.isDuplicateOfRecentAssistantReply(text, memory)) {
+        return {
+          outcome: {
+            kind: 'skipped',
+            generatedText: text,
+            scenarioCode: ctx.scenario.code,
+            usage,
+            responseMessages,
+            toolCalls: [],
+            agentSteps,
+          },
+          agentRequest: {
+            ...agentRequestWithInput,
+            validationReason: 'duplicate_of_recent_assistant_reply',
+          },
+          aiStartAt,
+          aiEndAt,
+          validationReason: 'duplicate_of_recent_assistant_reply',
         };
       }
 
@@ -318,6 +342,7 @@ export class ReengagementAgent {
         : []),
       '- 优先只写一句，最多两句；像微信里真人顾问随口发的话，不客套、不群发腔、不堆表情。',
       '- 只围绕本次目标提一个问题或一个行动点，不连环追问，不重复上一条消息。',
+      '- 近期对话末尾若已经是你（assistant）发出的说明或追问，禁止原样或轻改后重发同样内容；候选人的提问只要历史里已经回答过，也不要再答一遍。换一个更轻的角度围绕本次任务轻推即可。',
       '- 可以在确有助于候选人识别上下文时，简短承接近期对话里已经出现的岗位、门店、薪资、班次或位置；不得新增、改写、拼接或夸大任何细节，也不要整段复制岗位介绍。',
       '',
       '# 输出协议',
@@ -433,6 +458,44 @@ export class ReengagementAgent {
 
   private extractFactLabel(line: string): string | undefined {
     return /^-\s*([^:：]+)[:：]/u.exec(line.trim())?.[1]?.trim();
+  }
+
+  /**
+   * 模型可能把历史里自己已发的回答当成待回答问题原样复读（badcase：booking_incomplete
+   * 触达逐字重发了 30 分钟前主链路的 4 段回复，仅分段和标点不同）。prompt 层的
+   * “不重复上一条消息”拦不住，这里做确定性兜底：生成文案去掉空白标点后，若完整
+   * 落在近期任意一条 assistant 消息、或任意一段连续 assistant 消息的拼接之内，判定为复读。
+   */
+  private isDuplicateOfRecentAssistantReply(
+    text: string,
+    memory: ReengagementMemorySnapshot,
+  ): boolean {
+    const normalized = this.normalizeForDuplicateCheck(text);
+    if (Array.from(normalized).length < ReengagementAgent.DUPLICATE_REPLY_MIN_LENGTH) {
+      return false;
+    }
+    const corpus: string[] = [];
+    let assistantRun = '';
+    for (const message of memory.recentMessages) {
+      if (message.role !== 'assistant') {
+        if (assistantRun) corpus.push(assistantRun);
+        assistantRun = '';
+        continue;
+      }
+      const content = this.normalizeForDuplicateCheck(message.content);
+      if (!content) continue;
+      corpus.push(content);
+      assistantRun += content;
+    }
+    if (assistantRun) corpus.push(assistantRun);
+    return corpus.some((entry) => entry.includes(normalized));
+  }
+
+  private normalizeForDuplicateCheck(text: string): string {
+    return text
+      .replace(/\[消息发送时间：[^\]]*\]/g, '')
+      .replace(/[\p{P}\p{S}\s]+/gu, '')
+      .toLowerCase();
   }
 
   private collectCandidateNames(

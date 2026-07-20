@@ -715,6 +715,112 @@ describe('ReengagementAgent', () => {
     });
   });
 
+  it('blocks a reply that verbatim repeats the trailing assistant segments (merged with different punctuation)', async () => {
+    // 生产 badcase：booking_incomplete 触达把 30 分钟前主链路的 4 段回复合并重发，
+    // 仅分段方式和句末标点不同。
+    memoryRecall.recentMessages = [
+      { role: 'user', content: '这个是需要线下面试嘛\n[消息发送时间：2026-06-24 09:59 星期三]' },
+      { role: 'user', content: '是不是不包吃住啊\n[消息发送时间：2026-06-24 09:59 星期三]' },
+      {
+        role: 'assistant',
+        content:
+          '这家是 AI 面试，手机上就能做，不用跑门店哈\n[消息发送时间：2026-06-24 10:03 星期三]',
+      },
+      {
+        role: 'assistant',
+        content: '也不包吃住，吃饭需要自理\n[消息发送时间：2026-06-24 10:03 星期三]',
+      },
+      {
+        role: 'assistant',
+        content:
+          '面试安排在工作日 10:00-19:00（周二到周五都行），你看哪天方便\n[消息发送时间：2026-06-24 10:04 星期三]',
+      },
+      {
+        role: 'assistant',
+        content:
+          '另外确认下，如果这家店人手不够，能接受调配到附近其他必胜客门店上班吗\n[消息发送时间：2026-06-24 10:04 星期三]',
+      },
+    ];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        message:
+          '这家是 AI 面试，手机上就能做，不用跑门店哈\n\n也不包吃住，吃饭需要自理\n\n面试安排在工作日 10:00-19:00（周二到周五都行），你看哪天方便\n\n另外确认下，如果这家店人手不够，能接受调配到附近其他必胜客门店上班吗',
+        reason: '候选人询问面试形式和是否包吃住，需如实回答并继续推进约面',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('booking_incomplete')!,
+      jobData: job('booking_incomplete'),
+      state: baseState(),
+    });
+
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.validationReason).toBe('duplicate_of_recent_assistant_reply');
+    expect(result.agentRequest).toMatchObject({
+      validationReason: 'duplicate_of_recent_assistant_reply',
+    });
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('禁止原样或轻改后重发同样内容');
+  });
+
+  it('blocks a reply that copies a single earlier assistant message', async () => {
+    memoryRecall.recentMessages = [
+      {
+        role: 'assistant',
+        content:
+          '资料收到啦，剩下的补齐后我就能帮你安排面试\n[消息发送时间：2026-06-24 09:56 星期三]',
+      },
+      { role: 'user', content: '好的\n[消息发送时间：2026-06-24 09:57 星期三]' },
+    ];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        message: '资料收到啦，剩下的补齐后我就能帮你安排面试',
+        reason: '提醒补资料',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('booking_incomplete')!,
+      jobData: job('booking_incomplete'),
+      state: baseState(),
+    });
+
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.validationReason).toBe('duplicate_of_recent_assistant_reply');
+  });
+
+  it('does not block a fresh nudge that only briefly echoes earlier context', async () => {
+    memoryRecall.recentMessages = [
+      {
+        role: 'assistant',
+        content:
+          '面试安排在工作日 10:00-19:00（周二到周五都行），你看哪天方便\n[消息发送时间：2026-06-24 10:04 星期三]',
+      },
+    ];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        message: '剩下的资料随时可以发我哈，补齐了就能帮你把面试定下来',
+        reason: '提醒补资料',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('booking_incomplete')!,
+      jobData: job('booking_incomplete'),
+      state: baseState(),
+    });
+
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.validationReason).toBeUndefined();
+  });
+
   it('does not drop a reply when a one-character nickname appears only as ordinary text', async () => {
     llm.generateStructured.mockResolvedValueOnce({
       output: {
