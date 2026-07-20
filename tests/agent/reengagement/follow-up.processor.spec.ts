@@ -1,7 +1,6 @@
 import { FollowUpProcessor } from '@agent/reengagement/follow-up.processor';
 import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/follow-up-scheduler.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
-import { MessageSource, MessageType } from '@enums/message-callback.enum';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
@@ -54,7 +53,6 @@ describe('FollowUpProcessor', () => {
     fetchJobs: jest.Mock;
   };
   let longTerm: { getActiveBookings: jest.Mock };
-  let chatSession: { saveMessage: jest.Mock };
   let scheduler: { scheduleFollowUp: jest.Mock };
   let configService: { get: jest.Mock };
   let delivery: { deliver: jest.Mock };
@@ -94,7 +92,6 @@ describe('FollowUpProcessor', () => {
       fetchJobs: jest.fn().mockResolvedValue({ jobs: [], total: 0 }),
     };
     longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
-    chatSession = { saveMessage: jest.fn().mockResolvedValue(true) };
     scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
     configService = {
       get: jest.fn((key: string) =>
@@ -138,7 +135,6 @@ describe('FollowUpProcessor', () => {
       messageTracking as never,
       sponge as never,
       longTerm as never,
-      chatSession as never,
       scheduler as never,
       configService as never,
       withDelivery ? (delivery as never) : undefined,
@@ -185,7 +181,6 @@ describe('FollowUpProcessor', () => {
       expect.anything(),
       expect.objectContaining({ reason: 'rollout_disabled' }),
     );
-    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('shadows post-booking scenarios when the post-booking master switch is off', async () => {
@@ -242,7 +237,6 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('does not write assistant history for skipped shadow outcomes', async () => {
@@ -263,10 +257,9 @@ describe('FollowUpProcessor', () => {
       }),
     );
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
-  it('delivers non-shadow replies through the outbox and then writes assistant history', async () => {
+  it('delivers non-shadow replies with a stable channel externalRequestId', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);
     systemConfig.getAgentReplyConfig.mockResolvedValue({
@@ -293,6 +286,7 @@ describe('FollowUpProcessor', () => {
           _apiType: 'enterprise',
           chatId: 'sess-1',
           messageId: 'batch_sess-1_1782266400000',
+          externalRequestId: 'batch_sess-1_1782266400000',
         }),
       }),
     );
@@ -300,16 +294,6 @@ describe('FollowUpProcessor', () => {
       'sess-1:opening_no_reply:evt-1',
       'sess-1',
       now,
-    );
-    expect(chatSession.saveMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        chatId: 'sess-1',
-        messageId: expect.stringMatching(/^batch_sess-1_\d+$/),
-        role: 'assistant',
-        content: '还想看看附近岗位吗？',
-        source: MessageSource.AI_REPLY,
-        messageType: MessageType.TEXT,
-      }),
     );
   });
 
@@ -416,10 +400,9 @@ describe('FollowUpProcessor', () => {
     );
   });
 
-  it('keeps a sent touch sent when assistant history write fails after delivery', async () => {
+  it('does not directly write assistant history after delivery because the channel callback owns it', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);
-    chatSession.saveMessage.mockRejectedValue(new Error('memory down'));
     systemConfig.getAgentReplyConfig.mockResolvedValue({
       reengagementEnabled: true,
       reengagementShadow: false,
@@ -439,7 +422,6 @@ describe('FollowUpProcessor', () => {
       'sess-1',
       now,
     );
-    expect(chatSession.saveMessage).toHaveBeenCalled();
     expect(touchLedger.markFailedOrUnknown).not.toHaveBeenCalled();
   });
 
@@ -463,7 +445,6 @@ describe('FollowUpProcessor', () => {
     expect(touchLedger.markDeliveryAttempted).not.toHaveBeenCalled();
     expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('does not generate or run turn-end when a duplicate sent slot is skipped', async () => {
@@ -485,7 +466,6 @@ describe('FollowUpProcessor', () => {
 
     expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('runs turn-end without assistant projection when delivery fails and marks the touch unknown', async () => {
@@ -511,7 +491,6 @@ describe('FollowUpProcessor', () => {
       'unknown',
     );
     // 送达与否未知按未送达处理（HC-4）：仍完成用户侧记忆收尾，但不投影助手轮次。
-    expect(chatSession.saveMessage).not.toHaveBeenCalled();
   });
 
   it('does not mark sent or write history when the passive delivery pipeline skips sending', async () => {
@@ -532,7 +511,6 @@ describe('FollowUpProcessor', () => {
     await buildProcessor().process(makeJob());
 
     expect(touchLedger.markSent).not.toHaveBeenCalled();
-    expect(chatSession.saveMessage).not.toHaveBeenCalled();
     expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
       'sess-1:opening_no_reply:evt-1',
       'failed',

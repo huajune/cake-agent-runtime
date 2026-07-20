@@ -45,6 +45,15 @@ export interface ToolBuildContext {
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 记录本轮工具查到的岗位候选池；回合结束后再统一写入会话记忆。 */
   onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
+  /**
+   * 上一轮 duliday_job_list 的查询签名（会话记忆持久化）。
+   * 工具用它检测"本轮查询与上一轮无实质差异"：签名相同即结果必然相同，
+   * 结果头部注入重复查询提醒，要求模型实质调整查询或按既有拉群优先阶梯兜底
+   * （badcase 6a5dc7c4ce406a6aee57bf6d：连续三轮同参查询复读"没有"激怒候选人）。
+   */
+  lastJobListQuery?: { signature: string; turnId: string | null } | null;
+  /** 记录本轮 duliday_job_list 查询签名；回合结束后统一写入会话记忆。 */
+  onJobListQueryExecuted?: (query: { signature: string }) => void;
   /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */
   bookingSucceeded?: boolean;
   /**

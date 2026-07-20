@@ -58,6 +58,7 @@ describe('MemoryLifecycleService', () => {
   const mockSessionService = {
     getSessionState: jest.fn(),
     saveLastCandidatePool: jest.fn().mockResolvedValue(undefined),
+    saveLastJobListQuery: jest.fn().mockResolvedValue(undefined),
     projectAssistantTurn: jest.fn().mockResolvedValue(undefined),
     extractAndSave: jest.fn().mockResolvedValue({ llmDegraded: false, brandIntents: [] }),
   };
@@ -166,6 +167,29 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.sessionMemory).not.toBeNull();
     expect(ctx.highConfidenceFacts).toBeNull();
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
+  });
+
+  it('should retain a session state that only contains the last job-list query', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: '再看看' }]);
+    mockSessionService.getSessionState.mockResolvedValue({
+      facts: null,
+      lastCandidatePool: null,
+      presentedJobs: null,
+      currentFocusJob: null,
+      lastJobListQuery: {
+        signature: '{"city":["上海"]}',
+        turnId: 'turn-1',
+        updatedAtMs: 1,
+      },
+    });
+    mockProcedural.get.mockResolvedValue(null);
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1');
+
+    expect(ctx.sessionMemory?.lastJobListQuery).toEqual(
+      expect.objectContaining({ turnId: 'turn-1' }),
+    );
   });
 
   describe('cross-conversation origin detection', () => {
@@ -533,6 +557,7 @@ describe('MemoryLifecycleService', () => {
             jobCategoryName: '分拣员',
           },
         ],
+        jobListQuerySignature: '{"city":["上海"]}',
       },
       '可以，我先帮你确认下长白这边的面试要求。',
     );
@@ -562,6 +587,16 @@ describe('MemoryLifecycleService', () => {
           jobCategoryName: '分拣员',
         },
       ],
+    );
+    expect(mockSessionService.saveLastJobListQuery).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      expect.objectContaining({
+        signature: '{"city":["上海"]}',
+        turnId: null,
+        updatedAtMs: expect.any(Number),
+      }),
     );
     expect(mockSessionService.projectAssistantTurn).toHaveBeenCalledWith({
       corpId: 'corp-1',

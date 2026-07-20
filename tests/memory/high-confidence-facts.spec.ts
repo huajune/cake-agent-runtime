@@ -1,5 +1,6 @@
 import {
   detectBrandAliasHints,
+  detectBrandAliasHintsWithShadow,
   extractHighConfidenceFacts,
   extractStructuredName,
   unwrapHighConfidenceValue,
@@ -17,6 +18,37 @@ describe('extractHighConfidenceFacts', () => {
   // 品牌写入收口（§9.2）：品牌真相只在 brand_state（写入经 turn-finalizer reducer），
   // extractHighConfidenceFacts 不再把品牌写进 preferences.brands；
   // 品牌线索（归一化提示）由 detectBrandAliasHints 适配层继续产出。
+
+  // §15.2/§15.6 新旧并行对比：next 是生效路径，legacy 是 shadow 对照组。
+  // 这层是旧路径下线门禁（差异率 < 2% 且持续 7 天）的唯一数据源，此前零覆盖。
+  describe('detectBrandAliasHintsWithShadow（§15.6 门禁数据源）', () => {
+    it('新旧一致时不产出 diff（该轮计入门禁分母，不落行）', () => {
+      const { hints, shadowDiff } = detectBrandAliasHintsWithShadow(['来一份'], brandData);
+      expect(hints.map((h) => h.brandName)).toEqual(['来伊份']);
+      expect(shadowDiff).toBeNull();
+    });
+
+    it('工种词"咖啡师"：新路径不认、旧路径误展开 → 产出 diff（归因为"新对旧错"）', () => {
+      // 这是工种后缀护栏在 shadow 对照里的直接体现：旧路径裸子串匹配仍把"咖啡师"
+      // 当品类词展开成三个咖啡品牌，新路径按护栏返回空。§15.6 逐条归因时这类计
+      // "新对旧错"——它会推高差异率，但恰恰是旧路径该下线的证据，不是阻塞理由。
+      const { shadowDiff } = detectBrandAliasHintsWithShadow(['咖啡师'], brandData);
+      expect(shadowDiff).not.toBeNull();
+      expect(shadowDiff?.nextBrands).toEqual([]);
+      expect(shadowDiff?.legacyBrands.sort()).toEqual(['M Stand', '报亭咖啡', '瑞幸咖啡']);
+      expect(shadowDiff?.catalogSize).toBe(brandData.length);
+      expect(shadowDiff?.inputs).toEqual(['咖啡师']);
+    });
+
+    it('撤除默认品牌后，裸品类词"咖啡兼职"新旧已收敛为一致', () => {
+      expect(detectBrandAliasHintsWithShadow(['我要咖啡兼职'], brandData).shadowDiff).toBeNull();
+    });
+
+    it('空输入或空目录时短路，不产出 diff（避免把降级算成差异）', () => {
+      expect(detectBrandAliasHintsWithShadow([], brandData).shadowDiff).toBeNull();
+      expect(detectBrandAliasHintsWithShadow(['来一份'], []).shadowDiff).toBeNull();
+    });
+  });
 
   it('should surface brand alias hints without writing preferences.brands', () => {
     const hints = detectBrandAliasHints(['来一份'], brandData);
@@ -50,10 +82,11 @@ describe('extractHighConfidenceFacts', () => {
     expect(hints.map((hint) => hint.brandName)).not.toContain('报亭咖啡');
   });
 
-  it('should default generic 咖啡兼职 to M Stand, not a position', () => {
+  it('should expand generic 咖啡兼职 to the whole category, not a position', () => {
+    // 2026-07-20 产品裁定撤除 defaultBrand：品类词展开为全部成员品牌，不收敛到 M Stand。
     const hints = detectBrandAliasHints(['我要咖啡兼职'], brandData);
-    expect(hints.map((hint) => hint.brandName)).toEqual(['M Stand']);
-    expect(hints[0].matchedAlias).toBe('咖啡(品类默认)');
+    expect(hints.map((hint) => hint.brandName).sort()).toEqual(['M Stand', '报亭咖啡', '瑞幸咖啡']);
+    expect(hints[0].matchedAlias).toBe('咖啡(品类)');
 
     // 规则层绝不能把品类词识别成具体岗位
     const result = extractHighConfidenceFacts(['我要咖啡兼职'], brandData);

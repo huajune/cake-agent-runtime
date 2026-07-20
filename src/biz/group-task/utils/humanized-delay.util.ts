@@ -3,6 +3,10 @@
  */
 export const INTRA_GROUP_MESSAGE_DELAY_MS = 40_000;
 
+/** 岗位文案发送后，小程序卡片的随机等待区间。 */
+export const MINIPROGRAM_CARD_DELAY_MIN_MS = 40_000;
+export const MINIPROGRAM_CARD_DELAY_MAX_MS = 120_000;
+
 export function resolveHumanizedDelayMs(
   baseDelayMs: number,
   options?: {

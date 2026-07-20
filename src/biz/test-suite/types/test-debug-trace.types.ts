@@ -6,6 +6,8 @@
  * without adding test-only branches to the production Agent path.
  */
 
+import type { JobListQuerySignatureInput } from '@tools/shared/job-list-query-signature';
+
 export interface TestSourceTrace {
   /** BadCase table stable IDs, e.g. gm33uxr0. */
   badcaseIds?: string[];
@@ -42,6 +44,17 @@ export interface MemoryFixtureSetup {
   presentedJobs?: Record<string, unknown>[];
   currentFocusJob?: Record<string, unknown> | null;
   invitedGroups?: Record<string, unknown>[];
+  /**
+   * 上一轮 duliday_job_list 查询；用于跨轮重复查询真实链路回归。
+   * 新 fixture 应保存 queryParams，由 seed 链路调用生产签名函数现算，避免签名格式演进
+   * 导致手写字符串静默失效。signature 仅为兼容已有测试资产保留。
+   */
+  lastJobListQuery?: {
+    queryParams?: JobListQuerySignatureInput;
+    signature?: string;
+    turnId: string | null;
+    updatedAtMs?: number | null;
+  } | null;
   /** Long-term user profile fixture. */
   profile?: Record<string, unknown>;
   /** Convenience stage field. */

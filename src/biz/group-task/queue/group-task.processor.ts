@@ -42,6 +42,7 @@ import { WorkTipsStrategy } from '../strategies/work-tips.strategy';
 import { NotificationStrategy } from '../strategies/notification.strategy';
 import {
   INTRA_GROUP_MESSAGE_DELAY_MS,
+  MINIPROGRAM_CARD_DELAY_MAX_MS,
   resolveHumanizedDelayMs,
 } from '../utils/humanized-delay.util';
 
@@ -299,12 +300,12 @@ export class GroupTaskProcessor implements OnModuleInit {
     // 预估整次 exec 耗时：
     //   send worker concurrency=1 → N 个 send 任务全部串行；
     //   除首群外，每群发送前随机等待 1~2x sendDelayMs；
-    //   同群最多按“主消息 + 卡片 + 跟随文本”估算两次 40s 间隔。
+    //   同群最多按“主消息 + 40~120s 后卡片 + 40s 后跟随文本”估算。
     // 必须按最坏情况估计整体完成时间，否则 summarize 在发送中途就开跑，
     // 会把还没写结果快照的群误报成 "未收到发送结果" 并写入幂等失败结果。
     const serializedSendMs =
       Math.max(0, groups.length - 1) * sendDelayMs * 2 +
-      groups.length * INTRA_GROUP_MESSAGE_DELAY_MS * 2;
+      groups.length * (MINIPROGRAM_CARD_DELAY_MAX_MS + INTRA_GROUP_MESSAGE_DELAY_MS);
     const summarizeDelayMs = serializedSendMs + sendDelayMs * 2 + 30_000;
     await this.enqueueSummarize(meta, summarizeDelayMs);
 

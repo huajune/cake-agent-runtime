@@ -129,6 +129,36 @@ describe('ReengagementTrackingService', () => {
     expect(input.event?.event).toBe('reserved');
   });
 
+  it('records a normal Agent skip as skipped instead of a system failure', () => {
+    service.trackOutcomeNotReply(identity, 'skipped', 'batch-1', 'reengagement_agent_skipped');
+
+    const input = lastInput();
+    expect(input.status).toBe('skipped');
+    expect(input.outcomeKind).toBe('skipped');
+    expect(input.decisionReason).toBe('reengagement_agent_skipped');
+    expect(input.event?.event).toBe('outcome_not_reply');
+  });
+
+  it.each(['reengagement_agent_error', 'composer_error'])(
+    'keeps real generation error %s classified as failed',
+    (reason) => {
+      service.trackOutcomeNotReply(identity, 'skipped', 'batch-1', reason);
+
+      const input = lastInput();
+      expect(input.status).toBe('failed');
+      expect(input.decisionReason).toBe(reason);
+    },
+  );
+
+  it.each(['guardrail_blocked', 'handoff', 'delivery_skipped'])(
+    'records expected no-send outcome %s as skipped',
+    (outcomeKind) => {
+      service.trackOutcomeNotReply(identity, outcomeKind, 'batch-1', outcomeKind);
+
+      expect(lastInput().status).toBe('skipped');
+    },
+  );
+
   it('swallows repository failures (fire-and-forget, never blocks main flow)', async () => {
     repository.record.mockRejectedValue(new Error('db down'));
 

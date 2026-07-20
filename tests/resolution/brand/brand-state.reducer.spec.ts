@@ -175,22 +175,21 @@ describe('reduceBrandState（§9.3 四步）', () => {
     expect(next.currentBrand?.canonicalName).toBe('肯德基');
   });
 
-  it('咖啡品类默认写 M Stand；其他咖啡品牌扩张不立主品牌', () => {
+  it('咖啡品类展开不立主品牌，也不解除既有排斥', () => {
+    // 2026-07-20 起品类词一律走多品牌展开（撤除 defaultBrand），按 §6.2 只做当轮查询
+    // 扩展、不写会话主品牌——这同时堵死了"品类词改写 currentBrand"的状态污染通道。
     const prev: SessionBrandState = {
       currentBrand: null,
       excludedBrands: [{ canonicalName: '瑞幸咖啡', brandId: 3 }],
     };
-    const defaultResolutions = resolveBrands('我想找咖啡兼职', 'user_text', catalog);
-    expect(defaultResolutions.every((r) => r.matchType === 'category_default')).toBe(true);
+    for (const text of ['我想找咖啡兼职', '其他咖啡品牌有吗']) {
+      const resolutions = resolveBrands(text, 'user_text', catalog);
+      expect(resolutions.every((r) => r.matchType === 'category_expansion')).toBe(true);
 
-    const defaultNext = reduceBrandState(prev, defaultResolutions);
-    expect(defaultNext.currentBrand?.canonicalName).toBe('M Stand');
-    expect(defaultNext.excludedBrands.map((b) => b.canonicalName)).toEqual(['瑞幸咖啡']);
-
-    const expanded = resolveBrands('其他咖啡品牌有吗', 'user_text', catalog);
-    const expandedNext = reduceBrandState(prev, expanded);
-    expect(expandedNext.currentBrand).toBeNull();
-    expect(expandedNext.excludedBrands.map((b) => b.canonicalName)).toEqual(['瑞幸咖啡']);
+      const next = reduceBrandState(prev, resolutions);
+      expect(next.currentBrand).toBeNull();
+      expect(next.excludedBrands.map((b) => b.canonicalName)).toEqual(['瑞幸咖啡']);
+    }
   });
 
   it('同轮图片 positive(A) + 指示代词排斥（"这个不考虑"）→ 终态 excluded=[A]（纯规则轨）', () => {

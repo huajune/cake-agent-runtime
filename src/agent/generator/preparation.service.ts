@@ -63,6 +63,8 @@ export interface PreparedAgentContext {
     candidatePool: RecommendedJobSummary[] | null;
     /** save_image_description 落描述时同步解析出的图片品牌（§10.2 回合上下文）。 */
     imageBrandResolutions: BrandResolution[];
+    /** 本轮 duliday_job_list 查询签名（跨轮重复查询检测，回合收尾落会话记忆）。 */
+    jobListQuerySignature: string | null;
   };
   /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
   contactName?: string;
@@ -220,6 +222,7 @@ export class PreparationService {
     const turnState: PreparedAgentContext['turnState'] = {
       candidatePool: null,
       imageBrandResolutions: [],
+      jobListQuerySignature: null,
     };
     const toolContext = buildToolContext({
       params,

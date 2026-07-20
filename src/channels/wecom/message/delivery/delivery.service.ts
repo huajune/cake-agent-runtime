@@ -131,7 +131,11 @@ export class MessageDeliveryService implements OnModuleInit {
     const outboundContent = MessageSplitter.stripTrailingPunctuation(content) || content.trim();
 
     try {
-      await this.sendTextSegment(context, outboundContent);
+      await this.sendTextSegment(
+        context,
+        outboundContent,
+        this.segmentExternalRequestId(context, 0, 1),
+      );
       await this.wecomObservability.markFirstSegmentSent(context.messageId);
 
       this.logger.log(`[${contactName}] 单条消息发送成功: "${this.truncate(outboundContent)}"`);
@@ -192,7 +196,11 @@ export class MessageDeliveryService implements OnModuleInit {
       );
 
       try {
-        await this.sendTextSegment(context, segment);
+        await this.sendTextSegment(
+          context,
+          segment,
+          this.segmentExternalRequestId(context, i, segments.length),
+        );
         successCount++;
         if (!firstSegmentSent) {
           firstSegmentSent = true;
@@ -260,7 +268,11 @@ export class MessageDeliveryService implements OnModuleInit {
    * 多为 WeCom 接口瞬时抖动。补一次退避重试覆盖绝大多数瞬时失败;仍失败才上抛由调用方计入
    * failedCount,交后续 fallback / 告警链路兜底。
    */
-  private async sendTextSegment(context: DeliveryContext, text: string): Promise<void> {
+  private async sendTextSegment(
+    context: DeliveryContext,
+    text: string,
+    externalRequestId?: string,
+  ): Promise<void> {
     const { token, imBotId, imContactId, imRoomId, chatId, _apiType } = context;
     let lastError: unknown;
     for (let attempt = 0; attempt <= SEGMENT_SEND_RETRIES; attempt += 1) {
@@ -273,6 +285,7 @@ export class MessageDeliveryService implements OnModuleInit {
           chatId,
           messageType: SendMessageType.TEXT,
           payload: { text },
+          externalRequestId,
           _apiType,
         });
         if (attempt > 0) {
@@ -291,6 +304,17 @@ export class MessageDeliveryService implements OnModuleInit {
       }
     }
     throw lastError;
+  }
+
+  /** 同一段重试复用同一 externalRequestId；多段则用稳定段序号避免渠道幂等误吞后续段。 */
+  private segmentExternalRequestId(
+    context: DeliveryContext,
+    segmentIndex: number,
+    segmentCount: number,
+  ): string | undefined {
+    const base = context.externalRequestId?.trim();
+    if (!base) return undefined;
+    return segmentCount === 1 ? base : `${base}:segment:${segmentIndex + 1}`;
   }
 
   private truncate(text: string, maxLength: number = 50): string {

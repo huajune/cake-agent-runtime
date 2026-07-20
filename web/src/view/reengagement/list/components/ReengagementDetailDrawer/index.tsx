@@ -98,8 +98,14 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   composer_validation_failed: '生成文案疑似包含内部信息，已拦截',
   composer_forbidden_job_detail: '轻量复聊里出现了薪资、班次或岗位详情，已拦截',
   composer_missing_expected_ask: '生成文案没有命中这个场景需要追问的要点，已拦截',
+  candidate_declined_interview: '候选人已明确表示取消或无法参加面试',
+  manager_cancelled_interview: '招募经理已明确通知面试取消或无需参加',
+  interview_result_known: '对话中已经有明确的面试结果',
+  result_inquiry_already_sent: '招募经理已经询问过本次面试结果',
+  interview_reminder_already_sent: '本次面试提醒已经发送过',
   candidate_cancelled_interview_in_chat: '候选人在聊天中已明确取消或无法参加面试，已停止触达',
   reengagement_agent_skipped: '复聊 Agent 根据当前上下文决定不发送，具体依据见生成轨迹',
+  reengagement_decision_invalid: '模型连续两次返回了自相矛盾的决策，系统已安全地不发送',
   reengagement_agent_error: '复聊生成调用异常',
 };
 
@@ -224,6 +230,38 @@ function getReadableStatus(record: ReengagementTouchRecord): SummaryInfo {
       icon: 'stop',
     };
   }
+  if (record.status === 'skipped' && record.decision_reason === 'reengagement_decision_invalid') {
+    return {
+      title: '决策异常，已安全不发送',
+      description: reason,
+      tone: 'warning',
+      icon: 'info',
+    };
+  }
+  if (record.status === 'skipped' && record.outcome_kind === 'skipped') {
+    return {
+      title: 'Agent 决定不发送',
+      description: reason === '-' ? '这次复聊已正常完成决策，但没有产出需要发送的消息。' : reason,
+      tone: 'muted',
+      icon: 'info',
+    };
+  }
+  if (record.status === 'skipped' && record.outcome_kind === 'guardrail_blocked') {
+    return {
+      title: '安全拦截，未发送',
+      description: reason === '-' ? '生成内容未通过发送前安全检查。' : reason,
+      tone: 'warning',
+      icon: 'stop',
+    };
+  }
+  if (record.status === 'skipped' && record.outcome_kind === 'handoff') {
+    return {
+      title: '已转人工，未自动发送',
+      description: reason === '-' ? '这次对话已交给人工处理。' : reason,
+      tone: 'muted',
+      icon: 'info',
+    };
+  }
   if (record.status === 'stopped' || record.status === 'skipped' || record.status === 'disabled') {
     return {
       title: '不会发送',
@@ -242,7 +280,12 @@ function getReadableStatus(record: ReengagementTouchRecord): SummaryInfo {
   }
   if (record.status === 'failed' || record.status === 'unknown') {
     return {
-      title: record.status === 'unknown' ? '投递状态不明' : '执行失败',
+      title:
+        record.status === 'unknown'
+          ? '投递状态不明'
+          : record.decision_reason === 'reengagement_agent_error'
+            ? '生成异常'
+            : '执行失败',
       description: record.error || (reason === '-' ? '需要查看技术明细进一步排查。' : reason),
       tone: 'danger',
       icon: 'stop',
@@ -424,8 +467,16 @@ export default function ReengagementDetailDrawer({
       { label: 'Session', value: record.session_id || '-', mono: true },
       { label: 'User', value: record.user_id || '-', mono: true },
       { label: 'Corp', value: record.corp_id || '-', mono: true },
-      { label: 'Outcome', value: record.outcome_kind || '-' },
-      { label: 'Reserve', value: record.reserve_result || '-' },
+      {
+        label: '生成结论',
+        value: record.outcome_kind
+          ? OUTCOME_LABELS[record.outcome_kind] || record.outcome_kind
+          : '-',
+      },
+      {
+        label: '触达槽',
+        value: record.reserve_result === 'reserved' ? '占用成功' : record.reserve_result || '-',
+      },
       { label: '主动回合 Batch', value: detailBatchId || '-', mono: true },
     ];
   }, [detailBatchId, record]);
@@ -592,7 +643,7 @@ export default function ReengagementDetailDrawer({
                     )}
                     {insight.validationReason && (
                       <div className={styles.insightRow}>
-                        <span className={styles.insightLabel}>拦截原因</span>
+                        <span className={styles.insightLabel}>未发送原因</span>
                         <span className={styles.insightText}>
                           {formatReason(insight.validationReason)}
                         </span>

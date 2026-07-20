@@ -80,6 +80,11 @@ export interface DeliveryContext {
   contactName: string;
   messageId: string;
   chatId: string;
+  /**
+   * 渠道侧幂等/回调关联键。仅在调用方有稳定出站身份时提供；分段投递会追加段序号。
+   * 普通被动回复不能直接复用 messageId，因为它通常等于候选人入站 messageId。
+   */
+  externalRequestId?: string;
   _apiType?: 'enterprise' | 'group';
 }
 

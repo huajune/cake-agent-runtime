@@ -928,6 +928,20 @@ export interface InvitedGroupRecord {
 /** 会话终态（复聊停止条件的权威信号）。 */
 export type SessionTerminalState = 'booked' | 'handed_off' | 'rejected' | 'onboarded';
 
+/**
+ * 最近一次 duliday_job_list 的查询签名记录。
+ * 供工具跨轮比对"本轮查询与上一轮是否有实质差异"——签名相同即结果必然相同，
+ * 模型必须实质调整查询或按既有拉群优先阶梯兜底，不得复读
+ * （badcase 6a5dc7c4ce406a6aee57bf6d）。
+ */
+export interface JobListQueryRecord {
+  /** 归一化过滤条件的稳定序列化（见 tools/shared/job-list-query-signature.ts）。 */
+  signature: string;
+  /** 执行该查询的 turnId（= 触发消息 messageId）；用于排除同轮 Bull 重试误判。 */
+  turnId: string | null;
+  updatedAtMs?: number | null;
+}
+
 /** 会话事实层 — 当前这次求职会话的结构化状态 */
 export interface WeworkSessionState {
   facts: SessionFacts | null;
@@ -949,6 +963,8 @@ export interface WeworkSessionState {
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;
+  /** 最近一次 duliday_job_list 查询签名（跨轮重复查询检测）。可选：旧数据无此键。 */
+  lastJobListQuery?: JobListQueryRecord | null;
 }
 
 export const InvitedGroupRecordSchema = z.object({
@@ -970,6 +986,12 @@ export const PersistedBrandStateSchema = z.object({
   updatedAtMs: z.number().nullable().optional(),
 });
 
+export const JobListQueryRecordSchema = z.object({
+  signature: z.string(),
+  turnId: z.string().nullable(),
+  updatedAtMs: z.number().nullable().optional(),
+});
+
 export const WeworkSessionStateSchema = z.object({
   facts: SessionFactsSchema.nullable(),
   lastCandidatePool: z.array(RecommendedJobSummarySchema).nullable(),
@@ -979,6 +1001,7 @@ export const WeworkSessionStateSchema = z.object({
   terminal: z.enum(['booked', 'handed_off', 'rejected', 'onboarded']).nullable().optional(),
   lastCandidateMessageAt: z.string().nullable().optional(),
   brand_state: PersistedBrandStateSchema.nullable().optional(),
+  lastJobListQuery: JobListQueryRecordSchema.nullable().optional(),
 });
 
 /** 当前会话没有任何结构化记忆时的空状态。 */
@@ -991,6 +1014,7 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   terminal: null,
   lastCandidateMessageAt: null,
   brand_state: null,
+  lastJobListQuery: null,
 };
 
 // ==================== 3. Redis 持久化结构 ====================
