@@ -197,6 +197,16 @@ describe('resolveBrands - 短别名误判防护（§7.3/§14.1）', () => {
     );
   });
 
+  it('带消息时间戳后缀的群来源说明同样不命中（2026-07-15 生产假阳性原文）', () => {
+    expect(
+      resolveBrands(
+        '我是群聊“独立客&上海餐饮兼职12群”的LL\n[消息发送时间：2026-07-15 16:13 星期三]',
+        'user_text',
+        catalog,
+      ),
+    ).toEqual([]);
+  });
+
   it('纯短英文微信昵称 zh 不作为品牌 seed', () => {
     expect(resolveBrands('zh', 'contact_name', catalog)).toEqual([]);
   });
@@ -357,5 +367,39 @@ describe('resolveBrandAliasInputs - 工具入口标准化（§8.2）', () => {
       '拉瓦萨',
       '瑞幸咖啡',
     ]);
+  });
+});
+
+describe('resolveBrands - 误命中归因字段（sourceText/matchedText）', () => {
+  // 2026-07-21 观测期发现：事件里只有 matchType + canonicalName 时，脏别名塌缩与
+  // 候选人真实简称长得一模一样，日检必须回查 chat_messages 才能分真假阳性。
+  it('包含匹配同时留下命中词条与用户原文', () => {
+    const results = positives(resolveBrands('我看附近好多成都六姐', 'user_text', catalog));
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      canonicalName: '成都你六姐',
+      matchType: 'alias_containment',
+      matchedText: '成都六姐', // 命中的品牌库词条
+      sourceText: '我看附近好多成都六姐', // 用户原文，归因靠它
+    });
+  });
+
+  it('matchedText 记词条、sourceText 记原文，两者不是同一个东西', () => {
+    const [result] = positives(resolveBrands('KFC松江那家还招人吗', 'user_text', catalog));
+    expect(result.matchedText).toBe('KFC');
+    expect(result.sourceText).toBe('KFC松江那家还招人吗');
+  });
+
+  it('品类展开也带原文，便于核对护栏是否该拦', () => {
+    const [result] = resolveBrands('我想找咖啡兼职', 'user_text', catalog);
+    expect(result).toMatchObject({ matchedText: '咖啡', sourceText: '我想找咖啡兼职' });
+  });
+
+  it('超长子句截断，不把整段消息灌进事件表', () => {
+    // 子句内不能有分句符，否则 splitClauses 会先切短，测不到截断
+    const longClause = `${'我想找一份稳定的工作'.repeat(12)}KFC`;
+    const [result] = positives(resolveBrands(longClause, 'user_text', catalog));
+    expect(result.sourceText).toHaveLength(81); // 80 字符 + 省略号
+    expect(result.sourceText!.endsWith('…')).toBe(true);
   });
 });

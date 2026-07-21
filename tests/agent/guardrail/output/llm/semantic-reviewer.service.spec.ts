@@ -1,4 +1,8 @@
-import { SemanticReviewerService } from '@agent/guardrail/output/llm/semantic-reviewer.service';
+import {
+  hasTruncatedFindingText,
+  SemanticReviewerService,
+  type SemanticReviewVerdict,
+} from '@agent/guardrail/output/llm/semantic-reviewer.service';
 import type { GuardrailReviewPacket } from '@agent/guardrail/output/llm/review-packet.types';
 import { ModelRole } from '@/llm/llm.types';
 import type { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -225,6 +229,59 @@ describe('SemanticReviewerService', () => {
         confidence: 'low',
         findings: [],
       });
+    });
+  });
+
+  describe('hasTruncatedFindingText（约束解码截断检测）', () => {
+    const makeVerdict = (
+      finding: Partial<SemanticReviewVerdict['findings'][number]>,
+    ): SemanticReviewVerdict => ({
+      decision: 'revise',
+      confidence: 'high',
+      findings: [
+        {
+          code: 'brand_or_geo_ambiguity_ignored',
+          evidencePath: 'evidence.jobList',
+          evidenceQuote: '成都你六姐（1788广场店）',
+          userImpact: '候选人可能误认为需要前往成都工作',
+          repairMode: 'rewrite',
+          feedbackToGenerator: '请明确说明「成都你六姐」是品牌名，门店在上海',
+          ...finding,
+        },
+      ],
+    });
+
+    it('识别生产截断样本：userImpact 断在悬垂及物成分', () => {
+      expect(
+        hasTruncatedFindingText(
+          makeVerdict({ userImpact: '候选人位于上海市长宁区，但回复推荐的岗位品牌名为' }),
+        ),
+      ).toBe(true);
+      expect(hasTruncatedFindingText(makeVerdict({ userImpact: '回复提到' }))).toBe(true);
+      expect(hasTruncatedFindingText(makeVerdict({ feedbackToGenerator: '回复误将' }))).toBe(true);
+    });
+
+    it('完整句子不误判为截断', () => {
+      expect(hasTruncatedFindingText(makeVerdict({}))).toBe(false);
+      expect(
+        hasTruncatedFindingText(makeVerdict({ userImpact: '候选人会误以为门店在成都而流失。' })),
+      ).toBe(false);
+      expect(
+        hasTruncatedFindingText(makeVerdict({ feedbackToGenerator: '删除关于面试地址的声称' })),
+      ).toBe(false);
+    });
+
+    it('review 输出被截断时 validateOutput 抛错触发重试策略', async () => {
+      llm.generateStructured.mockImplementation(
+        (options: { validateOutput?: (output: unknown) => void }) => {
+          options.validateOutput?.(
+            makeVerdict({ userImpact: '候选人位于上海市长宁区，但回复推荐的岗位品牌名为' }),
+          );
+          return Promise.resolve({ output: makeVerdict({}) });
+        },
+      );
+
+      await expect(service.review(makePacket())).rejects.toThrow(/truncated/);
     });
   });
 });

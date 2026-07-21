@@ -55,6 +55,33 @@ describe('buildNoMatchScript', () => {
       expect(s.candidateMessage).toContain('咱们这边');
     });
 
+    // badcase 4c94j4f7：10km 圆内 0 结果被口播成"必胜客在北京这边没岗"，
+    // 15 分钟后换锚点就查出 8.7km 的门店。半径查询不得升格成全城断言。
+    it('distance-anchored query states the radius instead of claiming the whole city', () => {
+      const s = buildNoMatchScript({
+        brandLabels: ['必胜客'],
+        cityLabels: ['北京'],
+        maxKm: 10,
+      });
+      expect(s.candidateMessage).toContain('必胜客在你附近 10 公里内');
+      expect(s.candidateMessage).not.toContain('北京这边');
+    });
+
+    it('keeps the region when combined with a radius', () => {
+      const s = buildNoMatchScript({
+        brandLabels: ['汉堡王'],
+        regionLabels: ['徐汇'],
+        maxKm: 5,
+      });
+      expect(s.candidateMessage).toContain('徐汇一带附近 5 公里内');
+      expect(s.candidateMessage).not.toContain('徐汇这片');
+    });
+
+    it('keeps city phrasing when the query had no radius cap', () => {
+      const s = buildNoMatchScript({ brandLabels: ['必胜客'], cityLabels: ['北京'] });
+      expect(s.candidateMessage).toContain('必胜客在北京这边');
+    });
+
     it('always includes 拉群 follow-up action', () => {
       const s = buildNoMatchScript({});
       expect(s.candidateMessage).toContain('餐饮兼职群');
@@ -73,6 +100,13 @@ describe('buildNoMatchScript', () => {
       expect(f.some((x) => x.includes('跨品牌'))).toBe(true);
       expect(f.some((x) => x.includes('关了') || x.includes('搬了'))).toBe(true);
       expect(f.some((x) => x.includes('静默'))).toBe(true);
+    });
+
+    it('adds a whole-city overclaim ban only for radius-capped queries', () => {
+      const capped = buildNoMatchScript({ maxKm: 10 }).forbiddenActions;
+      expect(capped.some((x) => x.includes('整个城市'))).toBe(true);
+      const uncapped = buildNoMatchScript({ cityLabels: ['北京'] }).forbiddenActions;
+      expect(uncapped.some((x) => x.includes('整个城市'))).toBe(false);
     });
   });
 });

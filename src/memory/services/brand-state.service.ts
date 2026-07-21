@@ -13,9 +13,14 @@
  * 持久化仍随收尾 reducer 统一落盘。
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, type OnModuleDestroy } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
+import {
+  ShadowAgreementCounter,
+  SHADOW_AGREEMENT_BATCH,
+  SHADOW_AGREEMENT_MAX_LAG_MS,
+} from '@observability/shadow-agreement-counter';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import { buildBrandCatalogIndex } from '@resolution/brand/catalog-index';
 import { buildExactMatchTokens, normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
@@ -51,7 +56,7 @@ export interface TurnBrandContext {
 }
 
 @Injectable()
-export class BrandStateService {
+export class BrandStateService implements OnModuleDestroy {
   private readonly logger = new Logger(BrandStateService.name);
 
   /** 异步补写「过期即弃」计数（轻量观测，§12：走日志聚合，不新增事件类型）。 */
@@ -106,6 +111,10 @@ export class BrandStateService {
     persistedBrandState?: PersistedBrandState | null;
     facts?: SessionFacts | null;
   }): Promise<{ changed: boolean; initialized: boolean }> {
+    // 歧义现场在入口无条件记录：歧义结果不写状态，若绑在"状态变化才发事件"上，
+    // 纯歧义轮（冲突别名如「小龙」）整档零留痕（§18 观测债，2026-07-21 修复）。
+    this.emitAmbiguousResolutions(params, params.resolutions, false);
+
     const persisted =
       params.persistedBrandState !== undefined
         ? params.persistedBrandState
@@ -159,6 +168,9 @@ export class BrandStateService {
     resolutionTurnMs: number;
   }): Promise<'applied' | 'dropped_expired' | 'noop'> {
     if (params.resolutions.length === 0) return 'noop';
+
+    // 歧义观测不受过期丢弃影响：歧义发生是事实，无论状态是否写入都要留痕。
+    this.emitAmbiguousResolutions(params, params.resolutions, true);
 
     const persisted = await this.readBrandState(params.corpId, params.userId, params.sessionId);
     if (persisted && shouldDropLateResolutions(persisted, params.resolutionTurnMs)) {
@@ -254,7 +266,30 @@ export class BrandStateService {
   }
 
   /** 新旧昵称品牌匹配一致计数（§12：一致时仅计数不落行）。 */
-  private nicknameShadowAgreementCount = 0;
+  /**
+   * 昵称路径的一致计数（§15.6 分母）。原实现只 logger.log，从不落库——contact_name 的
+   * diff 因此长期没有可配对的分母，差异率只能算 extraction_hints 一侧（2026-07-21 发现）。
+   */
+  private readonly nicknameShadowAgreement = new ShadowAgreementCounter(
+    SHADOW_AGREEMENT_BATCH,
+    SHADOW_AGREEMENT_MAX_LAG_MS,
+  );
+
+  onModuleDestroy(): void {
+    const flushed = this.nicknameShadowAgreement.drain();
+    if (flushed > 0) this.emitNicknameShadowAgreement(flushed);
+  }
+
+  private emitNicknameShadowAgreement(batchSize: number): void {
+    this.tracer?.emit({
+      type: 'brand_resolution_shadow_agreement',
+      batchSize,
+      origin: 'contact_name',
+    });
+    this.logger.log(
+      `[brand-shadow] 新旧昵称品牌匹配一致落库 ${batchSize} 次，累计 ${this.nicknameShadowAgreement.totalCount} 次（contact_name）`,
+    );
+  }
 
   /**
    * 昵称品牌的新旧路径并行对比（§15.2，origin=contact_name）。
@@ -272,12 +307,10 @@ export class BrandStateService {
       legacyBrands.length === sortedNext.length &&
       legacyBrands.every((brand, index) => brand === sortedNext[index]);
     if (identical) {
-      this.nicknameShadowAgreementCount += 1;
-      if (legacyBrands.length > 0 && this.nicknameShadowAgreementCount % 100 === 0) {
-        this.logger.log(
-          `[brand-shadow] 新旧昵称品牌匹配一致累计 ${this.nicknameShadowAgreementCount} 次（contact_name）`,
-        );
-      }
+      // 空对空不是证据（昵称里本来就没品牌），不计入门禁分母。
+      if (legacyBrands.length === 0) return;
+      const flushed = this.nicknameShadowAgreement.record();
+      if (flushed > 0) this.emitNicknameShadowAgreement(flushed);
       return;
     }
     this.tracer?.emit({
@@ -306,6 +339,33 @@ export class BrandStateService {
     return { canonicalName: last, brandId: typeof exact?.id === 'number' ? exact.id : null };
   }
 
+  /** 歧义词形现场（brand_resolution_ambiguous）：只挑 ambiguous 结果，无则不发。 */
+  private emitAmbiguousResolutions(
+    scope: { corpId: string; userId: string; sessionId: string },
+    resolutions: BrandResolution[],
+    late: boolean,
+  ): void {
+    const ambiguous = resolutions.filter((r) => r.ambiguous);
+    if (ambiguous.length === 0) return;
+    this.tracer?.emit({
+      type: 'brand_resolution_ambiguous',
+      corpId: scope.corpId,
+      userId: scope.userId,
+      chatId: scope.sessionId,
+      items: ambiguous.map((r) => ({
+        source: r.source,
+        matchedText: r.matchedText,
+        sourceText: r.sourceText,
+        polarity: r.intentPolarity,
+        candidates: (r.candidates ?? []).map((c) => ({
+          canonicalName: c.canonicalName,
+          brandId: c.brandId,
+        })),
+      })),
+      late,
+    });
+  }
+
   private emitStateChange(params: {
     corpId: string;
     userId: string;
@@ -328,6 +388,8 @@ export class BrandStateService {
         polarity: r.intentPolarity,
         canonicalName: r.canonicalName,
         matchType: r.matchType,
+        matchedText: r.matchedText,
+        sourceText: r.sourceText,
         confidence: r.confidence,
       })),
       initialized: params.initialized,

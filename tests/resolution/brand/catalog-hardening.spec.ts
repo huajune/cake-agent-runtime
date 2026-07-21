@@ -112,6 +112,27 @@ describe('生产事故场景回归', () => {
     ).toContain('肯德基');
   });
 
+  it('时间段"晚上7-11点"不得命中 7-11便利店（2026-07-20 生产假阳性）', () => {
+    const results = resolveBrands(
+      '在我地址附近的还有啥类型的 晚上7-11点\n[消息发送时间：2026-07-20 11:10 星期一]',
+      'user_text',
+      catalog,
+    );
+    expect(results.map((r) => r.canonicalName)).not.toContain('7-11便利店');
+  });
+
+  it('时间单位后缀/时段前缀均拦截："7-11点""晚上7-11"；星期词不拦"周五711有班吗"', () => {
+    expect(
+      resolveBrands('7-11点有班吗', 'user_text', catalog).map((r) => r.canonicalName),
+    ).not.toContain('7-11便利店');
+    expect(
+      resolveBrands('工作时间是晚上7-11', 'user_text', catalog).map((r) => r.canonicalName),
+    ).not.toContain('7-11便利店');
+    expect(
+      resolveBrands('周五711有班吗', 'user_text', catalog).map((r) => r.canonicalName),
+    ).toContain('7-11便利店');
+  });
+
   it('单字品牌标准名"匠"仍可整句全等命中；单字别名"报"已被剔除', () => {
     expect(resolveBrands('匠', 'user_text', catalog).map((r) => r.canonicalName)).toContain('匠');
     expect(resolveBrands('我报过名了', 'user_text', catalog)).toHaveLength(0);

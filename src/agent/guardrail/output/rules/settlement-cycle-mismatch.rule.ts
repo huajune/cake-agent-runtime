@@ -87,11 +87,17 @@ function splitClaimSentences(text: string): string[] {
     .filter(Boolean);
 }
 
+// 否定前缀词表。2026-07-21 审计：原表只有「不是|并非|不按|不算」，漏掉最常用的
+// 「没有/没/无/暂无」，导致"附近暂时没有日结的岗位"被判成"回复声称日结"——窗口内
+// 16 条命中里 5 条属此类假阳，且 rewrite 二审通过率 0%（任何正确回答都必须出现结算词）。
+const NEGATION_PREFIX = '不是|并非|不按|不算|没有|没|无|暂无|不提供|不做';
+
 function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean {
   const pattern = CYCLE_PATTERNS.find((entry) => entry.cycle === cycle)?.pattern;
   if (!pattern?.test(sentence)) return false;
   if (/[吗么嘛？?]|是不是|是否/u.test(sentence)) return false;
-  return !new RegExp(`(?:不是|并非|不按|不算)[^，。；]{0,5}${cycle}`, 'u').test(sentence);
+  // 间隔禁跨逗号：保证"这家不是月结，是日结"里的"日结"仍算断言。
+  return !new RegExp(`(?:${NEGATION_PREFIX})[^，。；]{0,5}${cycle}`, 'u').test(sentence);
 }
 
 /** 正式工资结算为主口径；培训/阶梯月补只有在回复写清范围时才能作为“月结”依据。 */
@@ -109,7 +115,13 @@ export function detectSettlementCycleMismatch(
     );
     for (const sentence of claims) {
       if (truth.primary.has(cycle)) continue;
-      if (truth.supplemental.has(cycle) && SUPPLEMENTAL_CONTEXT_PATTERN.test(sentence)) continue;
+      // 句子已把结算周期限定在阶梯/差价/培训等补充项上时一律豁免，不再要求
+      // truth.supplemental 也收录该周期。本规则的risk goal 是"补充结算不能改写成整份
+      // 工资的结算周期"——已显式限定范围的句子按定义没有犯这个错。
+      // 2026-07-21 审计：原实现要求 supplemental 命中同一周期，而岗位数据常常根本不编码
+      // 培训/阶梯方案，导致"基础日结、超 100 小时的阶梯差价月结"这类**正确且规则自己
+      // 要求的**写法被判违规（规则 feedback 要求"分别说明各自如何结算"，恰恰产出这种句子）。
+      if (SUPPLEMENTAL_CONTEXT_PATTERN.test(sentence)) continue;
       return {
         ruleId: 'settlement_cycle_mismatch',
         label: `回复声称“${cycle}”，但本轮岗位正式工资结算口径是“${[...truth.primary].join(

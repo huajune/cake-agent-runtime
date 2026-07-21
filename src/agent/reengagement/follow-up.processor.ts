@@ -231,6 +231,7 @@ export class FollowUpProcessor implements OnModuleInit {
             bookingContext.workOrderId,
             bookingContext.interviewAt,
             scenarioCode,
+            bookingContext.interviewType,
           ),
           anchorAt: now,
           state: {
@@ -240,6 +241,7 @@ export class FollowUpProcessor implements OnModuleInit {
           } as AuthoritativeSessionState,
           workOrderId: bookingContext.workOrderId,
           expectedInterviewAt: bookingContext.interviewAt,
+          interviewType: bookingContext.interviewType,
           channelIdentity,
         });
         return;
@@ -291,11 +293,17 @@ export class FollowUpProcessor implements OnModuleInit {
         {
           anchorAt: now,
           state,
+          interviewType: bookingContext.interviewType,
         },
         runtime.reengagementScenarioDelayMinutes?.[scenario.code],
       );
       if (expectedFireAt - now > BOOKING_SCHEDULE_TOLERANCE_MS) {
-        await this.scheduleTimeChangedReplacement(job.data, state, bookingContext.interviewAt!);
+        await this.scheduleTimeChangedReplacement(
+          job.data,
+          state,
+          bookingContext.interviewAt!,
+          bookingContext,
+        );
         this.tracking.trackStopped(identity, 'interview_time_changed');
         return;
       }
@@ -514,6 +522,7 @@ export class FollowUpProcessor implements OnModuleInit {
     jobData: FollowUpJob,
     state: AuthoritativeSessionState,
     newInterviewAt: number,
+    bookingContext: ReengagementBookingContext,
   ): Promise<void> {
     const { sessionRef, scenarioCode, workOrderId } = jobData;
     if (workOrderId == null) return;
@@ -522,8 +531,15 @@ export class FollowUpProcessor implements OnModuleInit {
       await this.scheduler.scheduleFollowUp({
         sessionRef,
         scenarioCode,
-        anchorEventId: bookingFollowUpAnchorId(workOrderId, newInterviewAt, scenarioCode),
-        anchorAt: Date.now(),
+        anchorEventId: bookingFollowUpAnchorId(
+          workOrderId,
+          newInterviewAt,
+          scenarioCode,
+          bookingContext.interviewType,
+        ),
+        // 保留原报名锚点。替代任务仅因工单面试时间变化而重排；若改成当前时间，
+        // Agent 状态摘要会把重排时间误标为“报名完成时间”，也会改变候选人回复停止边界。
+        anchorAt: jobData.anchorAt,
         state: {
           ...state,
           terminal: 'booked',
@@ -531,6 +547,7 @@ export class FollowUpProcessor implements OnModuleInit {
         } as AuthoritativeSessionState,
         workOrderId,
         expectedInterviewAt: newInterviewAt,
+        interviewType: bookingContext.interviewType,
         channelIdentity: jobData.channelIdentity,
       });
     } catch (error) {

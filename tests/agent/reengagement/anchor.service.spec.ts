@@ -492,6 +492,38 @@ describe('ReengagementAnchorService', () => {
     );
   });
 
+  it('does not splice send-location and next-sentence keywords into a location ask', async () => {
+    // 生产 badcase（touch 21294）：给候选人纠正并重发面试定位的回复，被整段正则把
+    // “刚发错了”与下一句“面试定位”拼接命中，错误排了缺定位触达。
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '不好意思刚发错了，确实是四海城。面试定位我发你了，你点开就能看导航。',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'address_missing' }),
+    );
+  });
+
+  it('still schedules when 发错 is a warning inside a real location request', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '别发错了，麻烦把定位发我一下。',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'address_missing' }),
+    );
+  });
+
   it('still schedules address-missing when asking for a business district or metro station', async () => {
     buildService().handleDeliveredReplyAnchors(
       {

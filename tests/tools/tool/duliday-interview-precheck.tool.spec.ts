@@ -2340,6 +2340,56 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).not.toContain('姓名：李涵婷');
   });
 
+  it('should not prefill quoted manager display name when botUserId is pinyin (prod badcase 2026-07-20)', async () => {
+    // 生产实况（message_processing_records id=195898）：botUserId 落库是拼音 gaoyaqi，
+    // 候选人引用经理发的岗位卡后，模型把引用前缀里的中文显示名"高雅琪"当 candidateName
+    // 传入——与 botUserId 的全等比对（旧防线 b）必然失配，只能靠引用前缀负向证据拦截。
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, candidateName: '高雅琪' },
+      {
+        botUserId: 'gaoyaqi',
+        messages: [
+          {
+            role: 'user',
+            content:
+              '[引用 高雅琪：M Stand（白云五号店，距你6km）：早班 07:30-10:30，26元/小时，18-35岁] 这',
+          },
+        ] as never,
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.nameFieldGuard).toEqual(
+      expect.objectContaining({
+        suspicious: true,
+        observedValue: '高雅琪',
+      }),
+    );
+    expect(result.nameFieldGuard.reason).toContain('引用');
+    expect(result.bookingChecklist.missingFields).toContain('姓名');
+    expect(result.bookingChecklist.templateText).toContain('姓名：');
+    expect(result.bookingChecklist.templateText).not.toContain('姓名：高雅琪');
+  });
+
   it('should default identity to 社会人士 when age >= 25 (skip is_student question)', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({

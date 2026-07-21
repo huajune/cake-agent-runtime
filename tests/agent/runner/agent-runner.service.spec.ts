@@ -407,6 +407,99 @@ describe('AgentRunnerService.runTurn', () => {
     );
   });
 
+  it('fence-only internal_output_leak strips code fences deterministically without LLM repair', async () => {
+    const draft = [
+      '是的，这岗是周结，每周三发上周的工资。',
+      '',
+      '面试时间有周三、周四、周五的 10:30-15:00，你先填下资料，我帮你安排。',
+      '',
+      '```text',
+      '面试要求：先将以下资料补充下发给我，我来帮你约面试',
+      '姓名：',
+      '联系方式：',
+      '面试时间（周三/周四/周五 10:30-15:00 选一天）：',
+      '```',
+    ].join('\n');
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=^```）',
+            suggestion: '删除泄漏内容',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '这是周接?' },
+      context: { messageId: 'trace-fence-strip-1' },
+    });
+
+    // 围栏内的报名表模板必须逐字保留，只有围栏标记被剥掉；不进 LLM 重写。
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toContain('姓名：');
+    expect(outcome.reply?.text).toContain('面试时间（周三/周四/周五 10:30-15:00 选一天）：');
+    expect(outcome.reply?.text).not.toContain('```');
+    // 剥离产物仍送二审，档案标注 fence_stripped 供审计区分修复方式。
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'pass',
+        reasonCode: 'fence_stripped',
+        repaired: true,
+        revisedReply: expect.stringContaining('姓名：'),
+      }),
+    );
+  });
+
+  it('mixed internal leak (fence + tool name) falls back to LLM repair', async () => {
+    const draft = ['```json', '{"name":"duliday_job_list"}', '```', '给你看下岗位'].join('\n');
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    replyRepairAgent.repair.mockResolvedValueOnce('帮你看了下附近的岗位，稍后发你详情。');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '回复疑似泄漏 Agent 内部状态/工具实现',
+            suggestion: '删除泄漏内容',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '有岗位吗' },
+      context: { messageId: 'trace-fence-mixed-1' },
+    });
+
+    // 剥完围栏仍残留工具名泄漏，确定性快通道不适用，走常规 LLM 重写。
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('帮你看了下附近的岗位，稍后发你详情。');
+  });
+
   it('meta narration block converges to silence without repair or handoff side effect', async () => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({ text: '（本轮为真人招募经理与候选人直接沟通，AI 保持静默，不插入回复）' }),
@@ -658,6 +751,95 @@ describe('AgentRunnerService.runTurn', () => {
       type: 'job_recommendation_not_best_supported',
       repairMode: 'replan',
     });
+  });
+
+  it('handoff promise replan exposes request_handoff and resolves to a real handoff', async () => {
+    const bookingFailure = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 528499 },
+      result: { success: false, errorType: 'booking.rejected' },
+    };
+    const handoffCall = {
+      toolName: 'request_handoff',
+      args: { reasonCode: 'system_blocked', reason: '岗位报名失败需人工确认' },
+      result: { dispatched: true, shortCircuited: true },
+    };
+    generator.invoke
+      .mockResolvedValueOnce(
+        makeResult({
+          text: '我让同事帮你确认下名额和后续安排，稍后给你答复哈',
+          toolCalls: [bookingFailure],
+        }),
+      )
+      .mockResolvedValueOnce(makeResult({ text: '', toolCalls: [handoffCall] }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'replan',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'handoff_promise_without_handoff',
+          evidence: '承诺同事后续确认但未转人工',
+          suggestion: '调用 request_handoff 或删除承诺',
+          severity: 'P0',
+          recoverability: 'recoverable',
+          currentReplySendable: false,
+          repairMode: 'replan',
+        },
+      ],
+      ruleIds: ['handoff_promise_without_handoff'],
+      blockedRuleIds: ['handoff_promise_without_handoff'],
+      repairMode: 'replan',
+      repairToolNames: ['request_handoff'],
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '专业：医学' },
+      context: { messageId: 'm-handoff-promise' },
+    });
+
+    expect(generator.invoke).toHaveBeenCalledTimes(2);
+    expect(generator.invoke.mock.calls[1][0]).toMatchObject({
+      toolMode: 'scenario',
+      allowedToolNames: ['request_handoff'],
+    });
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.handoff?.sourceToolCall).toBe('request_handoff');
+  });
+
+  it('does not fail open the original handoff promise when replan produces no handoff', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(
+        makeResult({ text: '我让同事帮你确认下，稍后给你答复。', toolCalls: [] }),
+      )
+      .mockResolvedValueOnce(makeResult({ text: '', toolCalls: [] }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'replan',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'handoff_promise_without_handoff',
+          evidence: '承诺同事后续确认但未转人工',
+          suggestion: '调用 request_handoff 或删除承诺',
+          severity: 'P0',
+          recoverability: 'recoverable',
+          currentReplySendable: false,
+          repairMode: 'replan',
+        },
+      ],
+      ruleIds: ['handoff_promise_without_handoff'],
+      blockedRuleIds: ['handoff_promise_without_handoff'],
+      repairMode: 'replan',
+      repairToolNames: ['request_handoff'],
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '专业：医学' },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.reply).toBeUndefined();
   });
 
   it('image-description replan exposes only save_image_description', async () => {

@@ -35,11 +35,29 @@ const positive = (name: string, brandId: number | null = null): BrandResolution 
   canonicalName: name,
   brandId,
   matchedText: name,
+  sourceText: name,
   source: 'user_text',
   matchType: 'canonical_exact',
   intentPolarity: 'positive',
   confidence: 0.95,
   ambiguous: false,
+});
+
+/** 冲突别名歧义结果：canonicalName 为空、候选多品牌（如「小龙」→ 小龙坎/小龙翻大江）。 */
+const ambiguousMention = (alias: string, sourceText: string): BrandResolution => ({
+  canonicalName: null,
+  brandId: null,
+  matchedText: alias,
+  sourceText,
+  source: 'user_text',
+  matchType: 'alias_containment',
+  intentPolarity: 'positive',
+  confidence: 0.4,
+  ambiguous: true,
+  candidates: [
+    { canonicalName: '小龙坎', brandId: 8 },
+    { canonicalName: '小龙翻大江', brandId: 9 },
+  ],
 });
 
 describe('BrandStateService', () => {
@@ -191,6 +209,91 @@ describe('BrandStateService', () => {
       expect(event.prev.currentBrand.canonicalName).toBe('肯德基');
       expect(event.next.currentBrand.canonicalName).toBe('麦当劳');
       expect(event.triggers[0]).toMatchObject({ canonicalName: '麦当劳', polarity: 'positive' });
+    });
+  });
+
+  describe('brand_resolution_ambiguous（歧义现场留痕，§18 观测债）', () => {
+    const persisted = {
+      currentBrand: { canonicalName: '肯德基', brandId: 1 },
+      excludedBrands: [],
+      updatedAtMs: 1000,
+    };
+
+    it('纯歧义轮：状态不变也发 ambiguous 事件（此前该场景整档零留痕），不发 state_change', async () => {
+      const outcome = await service.applyTurnResolutions({
+        corpId: 'c',
+        userId: 'u',
+        sessionId: 's',
+        resolutions: [ambiguousMention('小龙', '想去小龙那边上班')],
+        persistedBrandState: persisted,
+        facts: null,
+      });
+      expect(outcome.changed).toBe(false);
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
+      expect(mockTracer.emit).toHaveBeenCalledTimes(1);
+      const event = mockTracer.emit.mock.calls[0][0];
+      expect(event.type).toBe('brand_resolution_ambiguous');
+      expect(event.late).toBe(false);
+      expect(event.items).toEqual([
+        expect.objectContaining({
+          matchedText: '小龙',
+          sourceText: '想去小龙那边上班',
+          candidates: [
+            { canonicalName: '小龙坎', brandId: 8 },
+            { canonicalName: '小龙翻大江', brandId: 9 },
+          ],
+        }),
+      ]);
+    });
+
+    it('歧义与状态变化同轮：两个事件都发，ambiguous 只含歧义项', async () => {
+      await service.applyTurnResolutions({
+        corpId: 'c',
+        userId: 'u',
+        sessionId: 's',
+        resolutions: [ambiguousMention('小龙', '小龙和麦当劳都行'), positive('麦当劳', 2)],
+        persistedBrandState: persisted,
+        facts: null,
+      });
+      const types = mockTracer.emit.mock.calls.map((c) => c[0].type);
+      expect(types).toContain('brand_resolution_ambiguous');
+      expect(types).toContain('brand_state_change');
+      const ambiguousEvent = mockTracer.emit.mock.calls.find(
+        (c) => c[0].type === 'brand_resolution_ambiguous',
+      )![0];
+      expect(ambiguousEvent.items).toHaveLength(1);
+    });
+
+    it('无歧义结果不发事件（不给事件表添噪音）', async () => {
+      await service.applyTurnResolutions({
+        corpId: 'c',
+        userId: 'u',
+        sessionId: 's',
+        resolutions: [positive('肯德基', 1)],
+        persistedBrandState: persisted,
+        facts: null,
+      });
+      const types = mockTracer.emit.mock.calls.map((c) => c[0].type);
+      expect(types).not.toContain('brand_resolution_ambiguous');
+    });
+
+    it('图片补写路径即使 dropped_expired 也留歧义痕（late=true）', async () => {
+      mockRedisStore.getHash.mockResolvedValue({
+        brand_state: { currentBrand: null, excludedBrands: [], updatedAtMs: 5000 },
+      });
+      const outcome = await service.applyLateImageResolutions({
+        corpId: 'c',
+        userId: 'u',
+        sessionId: 's',
+        resolutions: [
+          { ...ambiguousMention('小龙', '门店招牌写着小龙'), source: 'image_description' },
+        ],
+        resolutionTurnMs: 4000,
+      });
+      expect(outcome).toBe('dropped_expired');
+      expect(mockTracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'brand_resolution_ambiguous', late: true }),
+      );
     });
   });
 

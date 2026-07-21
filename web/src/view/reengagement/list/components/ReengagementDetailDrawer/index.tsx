@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Brain,
@@ -18,6 +18,11 @@ import {
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import { useChatSessionMessages } from '@/hooks/chat/useChatSessions';
 import type { ReengagementEvent, ReengagementTouchRecord } from '@/api/types/reengagement.types';
+import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
+import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
+import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
+import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
+import { REENGAGEMENT_SCENARIO_TYPE_OPTIONS } from '@/view/agent-test/list/constants';
 import { getStatusMeta } from '../../constants';
 import StatusBadge from '../StatusBadge';
 import styles from './index.module.scss';
@@ -103,6 +108,7 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   interview_result_known: '对话中已经有明确的面试结果',
   result_inquiry_already_sent: '招募经理已经询问过本次面试结果',
   interview_reminder_already_sent: '本次面试提醒已经发送过',
+  interview_not_started_per_chat: '按聊天记录约定的实际面试时间，面试尚未开始',
   candidate_cancelled_interview_in_chat: '候选人在聊天中已明确取消或无法参加面试，已停止触达',
   reengagement_agent_skipped: '复聊 Agent 根据当前上下文决定不发送，具体依据见生成轨迹',
   reengagement_decision_invalid: '模型连续两次返回了自相矛盾的决策，系统已安全地不发送',
@@ -494,6 +500,72 @@ export default function ReengagementDetailDrawer({
     ];
   }, [record]);
 
+  // 反馈：与主聊/测试页同一流程，来源标记为复聊，用复聊专属场景分类
+  const feedback = useFeedback({ source: 'reengagement' });
+
+  const feedbackChatHistory = useMemo(() => {
+    const lines = recentMessages.map((msg) => {
+      const name =
+        msg.role === 'assistant'
+          ? msg.managerName || '接管账号'
+          : msg.candidateName || '候选人';
+      return `[${formatDateTime(msg.timestamp)} ${name}] ${msg.content}`;
+    });
+    const touchText = record?.generated_text?.trim();
+    if (touchText) {
+      const sentMark =
+        record?.status === 'sent'
+          ? `已发送${record?.sent_at ? ` ${formatDateTime(record.sent_at)}` : ''}`
+          : '未投递';
+      lines.push(`[复聊消息·${sentMark}] ${touchText}`);
+    }
+    return lines.join('\n');
+  }, [recentMessages, record?.generated_text, record?.sent_at, record?.status]);
+
+  const feedbackUserMessage = useMemo(
+    () =>
+      [...recentMessages].reverse().find((msg) => msg.role !== 'assistant' && msg.content.trim())
+        ?.content,
+    [recentMessages],
+  );
+
+  const feedbackSourceTrace = useMemo<FeedbackSourceTrace | undefined>(() => {
+    if (!record) return undefined;
+    return {
+      chatIds: record.session_id ? [record.session_id] : undefined,
+      batchIds: detailBatchId ? [detailBatchId] : undefined,
+      raw: {
+        source: 'reengagement-detail',
+        touchKey: record.touch_key,
+        scenarioCode: record.scenario_code,
+        touchStatus: record.status,
+        sessionId: record.session_id,
+        userId: record.user_id,
+      },
+    };
+  }, [detailBatchId, record]);
+
+  const handleSubmitFeedback = useCallback(() => {
+    void feedback.submit({
+      chatHistory: feedbackChatHistory,
+      userMessage: feedbackUserMessage,
+      chatId: record?.session_id || undefined,
+      batchId: detailBatchId || undefined,
+      sourceTrace: feedbackSourceTrace,
+      candidateName: record?.candidate_name || undefined,
+      managerName: record?.manager_name || undefined,
+    });
+  }, [
+    detailBatchId,
+    feedback,
+    feedbackChatHistory,
+    feedbackSourceTrace,
+    feedbackUserMessage,
+    record?.candidate_name,
+    record?.manager_name,
+    record?.session_id,
+  ]);
+
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -540,6 +612,15 @@ export default function ReengagementDetailDrawer({
                 Shadow
               </span>
             )}
+            {/* 反馈：标记本次复聊为 Good/Bad Case，写入飞书反馈表 */}
+            <div className={styles.headerFeedback}>
+              <FeedbackButtons
+                successType={feedback.successType}
+                disabled={!feedbackChatHistory.trim()}
+                onGoodCase={() => feedback.openModal('goodcase')}
+                onBadCase={() => feedback.openModal('badcase')}
+              />
+            </div>
             <button className={styles.closeBtn} onClick={onClose}>
               &times;
             </button>
@@ -864,6 +945,24 @@ export default function ReengagementDetailDrawer({
             </details>
           </div>
         </div>
+
+        <FeedbackModal
+          isOpen={feedback.isOpen}
+          feedbackType={feedback.feedbackType}
+          scenarioType={feedback.scenarioType}
+          remark={feedback.remark}
+          isSubmitting={feedback.isSubmitting}
+          chatHistoryPreview={feedbackChatHistory}
+          submitError={feedback.submitError}
+          scenarioOptions={REENGAGEMENT_SCENARIO_TYPE_OPTIONS}
+          screenshots={feedback.screenshots}
+          onAddScreenshots={feedback.addScreenshots}
+          onRemoveScreenshot={feedback.removeScreenshot}
+          onClose={feedback.closeModal}
+          onScenarioTypeChange={feedback.setScenarioType}
+          onRemarkChange={feedback.setRemark}
+          onSubmit={handleSubmitFeedback}
+        />
       </div>
     </div>
   );

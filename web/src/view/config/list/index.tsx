@@ -81,12 +81,37 @@ function getThinkingModeLabel(value?: string): string {
 /** 功能模块运行状态三态：关闭 → Shadow 观测（只记录）→ 真实生效 */
 type ModuleRunState = 'off' | 'shadow' | 'live';
 
+/** 页内分区：mode 标注该区配置的生效方式，驱动节标题徽章与锚点导航 */
+type SectionMode = 'save' | 'instant' | 'mixed';
+
+interface PageSection {
+  id: string;
+  label: string;
+  mode: SectionMode;
+}
+
+const PAGE_SECTIONS: PageSection[] = [
+  { id: 'models', label: '模型路由', mode: 'save' },
+  { id: 'reply', label: '回复节奏', mode: 'save' },
+  { id: 'dispatch', label: '消息调度', mode: 'mixed' },
+  { id: 'guardrail', label: '出站守卫', mode: 'instant' },
+  { id: 'reengagement', label: '主动复聊', mode: 'instant' },
+  { id: 'grouptask', label: '群任务', mode: 'instant' },
+];
+
+const SECTION_MODE_LABELS: Record<SectionMode, string> = {
+  save: '需保存',
+  instant: '即时生效',
+  mixed: '开关即时 · 滑杆需保存',
+};
+
 export default function Config() {
   const [editingConfig, setEditingConfig] = useState<Partial<AgentReplyConfig>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [editingConcurrency, setEditingConcurrency] = useState<number | null>(null);
   // 场景清单属于低频配置，默认折叠，主开关操作路径保持清爽
   const [scenariosExpanded, setScenariosExpanded] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>(PAGE_SECTIONS[0].id);
 
   const { data: agentConfigData, isLoading: isLoadingConfig } = useAgentReplyConfig();
   const updateConfig = useUpdateAgentReplyConfig();
@@ -106,6 +131,53 @@ export default function Config() {
       setHasChanges(false);
     }
   }, [agentConfigData]);
+
+  // 锚点导航 scroll-spy：以视口上 1/4 带为命中区，滚动时高亮当前分区
+  useEffect(() => {
+    if (isLoadingConfig) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]?.target.id) {
+          setActiveSection(visible[0].target.id.replace('config-', ''));
+        }
+      },
+      { rootMargin: '-15% 0px -65% 0px' },
+    );
+    for (const section of PAGE_SECTIONS) {
+      const el = document.getElementById(`config-${section.id}`);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [isLoadingConfig]);
+
+  // 不用 scrollIntoView（overflow 祖先下会滚错容器）也不用 smooth（实测动画会被
+  // 页面内其他滚动调用打断回弹）：显式对文档滚动容器瞬时定位最可靠；72px 为
+  // sticky 导航条预留。
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(`config-${id}`);
+    const scroller = document.scrollingElement;
+    if (!el || !scroller) return;
+    const top = scroller.scrollTop + el.getBoundingClientRect().top - 72;
+    scroller.scrollTop = Math.max(top, 0);
+    setActiveSection(id);
+  };
+
+  const renderSectionModeBadge = (mode: SectionMode) => (
+    <span
+      className={`${styles.sectionModeBadge} ${
+        mode === 'instant'
+          ? styles.sectionModeInstant
+          : mode === 'save'
+            ? styles.sectionModeSave
+            : styles.sectionModeMixed
+      }`}
+    >
+      {SECTION_MODE_LABELS[mode]}
+    </span>
+  );
 
   const handleConfigChange = (key: string, value: number | boolean | string) => {
     setEditingConfig((prev) => ({ ...prev, [key]: value }));
@@ -196,19 +268,94 @@ export default function Config() {
     );
   };
 
-  const modelValue = String(getCurrentValue('wecomCallbackModelId') ?? '');
-  const modelDefaultValue = String(getDefaultValue('wecomCallbackModelId') ?? '');
   const modelOptions = availableModelsData?.models ?? [];
-  const modelDefaultOption = modelOptions.find((o) => o.id === modelDefaultValue);
-  const modelDefaultLabel = modelDefaultOption
-    ? modelDefaultOption.name || modelDefaultOption.id
-    : modelDefaultValue || '默认角色路由';
-  const extractModelValue = String(getCurrentValue('extractModelId') ?? '');
-  const extractModelDefaultValue = String(getDefaultValue('extractModelId') ?? '');
-  const extractModelDefaultOption = modelOptions.find((o) => o.id === extractModelDefaultValue);
-  const extractModelDefaultLabel = extractModelDefaultOption
-    ? extractModelDefaultOption.name || extractModelDefaultOption.id
-    : extractModelDefaultValue || '默认角色路由';
+
+  // 六个角色统一走同一套模型覆盖机制（agent_reply_config），网格紧凑渲染。
+  // 留空 = 走对应 AGENT_{ROLE}_MODEL 环境变量角色路由。
+  const modelRoleFields: Array<{
+    key: keyof AgentReplyConfig & string;
+    label: string;
+    envVar: string;
+    hint: string;
+  }> = [
+    {
+      key: 'wecomCallbackModelId',
+      label: '企微聊天',
+      envVar: 'AGENT_CHAT_MODEL',
+      hint: '企微回调进 Agent 的主对话模型，直接决定候选人体验。',
+    },
+    {
+      key: 'extractModelId',
+      label: '事实提取',
+      envVar: 'AGENT_EXTRACT_MODEL',
+      hint: '会话事实提取与沉淀摘要。切换后盯系统监控页「提取质量对账」。',
+    },
+    {
+      key: 'visionModelId',
+      label: '图片理解',
+      envVar: 'AGENT_VISION_MODEL',
+      hint: '健康证、岗位截图等图片消息的视觉理解，仅可选多模态模型。',
+    },
+    {
+      key: 'evaluateModelId',
+      label: '对话质量评估',
+      envVar: 'AGENT_EVALUATE_MODEL',
+      hint: '对话质量 LLM 评分。切换后评估分数环比会出现口径断点。',
+    },
+    {
+      key: 'reviewModelId',
+      label: '守卫语义审查',
+      envVar: 'AGENT_REVIEW_MODEL',
+      hint: '出站语义审查，建议与聊天模型跨厂商；切换后 shadow 精度需重新基线。',
+    },
+    {
+      key: 'repairModelId',
+      label: '守卫修复',
+      envVar: 'AGENT_REPAIR_MODEL',
+      hint: '守卫拦截后的回复改写（revise 修复）。',
+    },
+    {
+      key: 'reengagementModelId',
+      label: '复聊',
+      envVar: 'AGENT_REENGAGEMENT_MODEL',
+      hint: '复聊触达的语义停止判定与文案生成，判定质量对模型敏感；留空回退环境变量，再回退企微聊天角色。',
+    },
+  ];
+
+  const renderModelCell = (field: (typeof modelRoleFields)[number]) => {
+    const value = String(getCurrentValue(field.key) ?? '');
+    const defaultValue = String(getDefaultValue(field.key) ?? '');
+    const defaultOption = modelOptions.find((o) => o.id === defaultValue);
+    const defaultLabel = defaultOption
+      ? defaultOption.name || defaultOption.id
+      : defaultValue || '默认角色路由';
+
+    return (
+      <div
+        key={field.key}
+        className={`${styles.modelCell} ${isModified(field.key) ? styles.modelCellModified : ''}`}
+      >
+        <div className={styles.settingHeading}>
+          <span className={styles.settingLabel}>{field.label}</span>
+          {isModified(field.key) ? <span className={styles.modifiedBadge}>已修改</span> : null}
+        </div>
+        <p className={styles.modelCellHint}>{field.hint}</p>
+        <ModelSelector
+          value={value}
+          options={modelOptions}
+          onChange={(next) => handleConfigChange(field.key, next)}
+          disabled={isLoadingModels}
+          placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
+          defaultOptionLabel="默认角色路由"
+          defaultOptionDesc={`留空则走后端 ${field.envVar} 角色路由`}
+        />
+        <div className={styles.modelCellMeta}>
+          <span>默认: {defaultLabel}</span>
+          <code>{field.envVar}</code>
+        </div>
+      </div>
+    );
+  };
   const thinkingModeValue = String(
     getCurrentValue('wecomCallbackThinkingMode') ?? 'fast',
   ) as AgentReplyThinkingMode;
@@ -445,80 +592,54 @@ export default function Config() {
         <div className={styles.loadingText}>加载配置中...</div>
       ) : (
         <>
-          <section className={styles.moduleSection}>
+          <nav className={styles.sectionNav} aria-label="页内分区导航">
+            {PAGE_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className={`${styles.sectionNavItem} ${
+                  activeSection === section.id ? styles.sectionNavItemActive : ''
+                }`}
+                onClick={() => scrollToSection(section.id)}
+              >
+                {section.label}
+              </button>
+            ))}
+          </nav>
+
+          <section id="config-models" className={styles.moduleSection}>
             <div className={styles.moduleHeader}>
               <div>
-                <h3 className={styles.moduleTitle}>Agent 回复</h3>
+                <h3 className={styles.moduleTitle}>
+                  模型路由
+                  {renderSectionModeBadge('save')}
+                </h3>
                 <p className={styles.moduleDescription}>
-                  这一组决定企微回调进 Agent 时使用哪个模型，以及消息发送时表现出来的回复节奏。
+                  六个 Agent 角色各用哪个模型。留空走后端环境变量的默认路由，改动保存后约 5
+                  秒内全实例生效，无需发版。
                 </p>
               </div>
             </div>
 
             <div className={styles.settingsPanel}>
-              <div
-                className={`${styles.settingRow} ${isModified('wecomCallbackModelId') ? styles.settingRowModified : ''}`}
-              >
-                <div className={styles.settingBody}>
-                  <div className={styles.settingHeading}>
-                    <span className={styles.settingLabel}>企微回调聊天模型</span>
-                    {isModified('wecomCallbackModelId') ? (
-                      <span className={styles.modifiedBadge}>已修改</span>
-                    ) : null}
-                  </div>
-                  <p className={styles.settingDescription}>
-                    控制企业微信消息回调进入 Agent 时使用的聊天模型。留空时继续走默认角色路由。
-                  </p>
-                  <div className={styles.settingMeta}>
-                    <span>适用于新的企微回调请求</span>
-                    <span>默认: {modelDefaultLabel}</span>
-                  </div>
-                </div>
-                <div className={styles.controlBlock}>
-                  <ModelSelector
-                    value={modelValue}
-                    options={modelOptions}
-                    onChange={(next) => handleConfigChange('wecomCallbackModelId', next)}
-                    disabled={isLoadingModels}
-                    placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
-                    defaultOptionLabel="默认角色路由"
-                    defaultOptionDesc="留空则走后端 AGENT_CHAT_MODEL 角色路由"
-                  />
-                </div>
-              </div>
+              <div className={styles.modelGrid}>{modelRoleFields.map(renderModelCell)}</div>
+            </div>
+          </section>
 
-              <div
-                className={`${styles.settingRow} ${isModified('extractModelId') ? styles.settingRowModified : ''}`}
-              >
-                <div className={styles.settingBody}>
-                  <div className={styles.settingHeading}>
-                    <span className={styles.settingLabel}>事实提取模型</span>
-                    {isModified('extractModelId') ? (
-                      <span className={styles.modifiedBadge}>已修改</span>
-                    ) : null}
-                  </div>
-                  <p className={styles.settingDescription}>
-                    控制会话事实提取与沉淀摘要使用的模型。留空时走后端 AGENT_EXTRACT_MODEL
-                    角色路由。切换后请在系统监控页观察"提取质量对账"卡片，准确率下滑即回退。
-                  </p>
-                  <div className={styles.settingMeta}>
-                    <span>适用于新的提取/沉淀请求</span>
-                    <span>默认: {extractModelDefaultLabel}</span>
-                  </div>
-                </div>
-                <div className={styles.controlBlock}>
-                  <ModelSelector
-                    value={extractModelValue}
-                    options={modelOptions}
-                    onChange={(next) => handleConfigChange('extractModelId', next)}
-                    disabled={isLoadingModels}
-                    placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
-                    defaultOptionLabel="默认角色路由"
-                    defaultOptionDesc="留空则走后端 AGENT_EXTRACT_MODEL 角色路由"
-                  />
-                </div>
+          <section id="config-reply" className={styles.moduleSection}>
+            <div className={styles.moduleHeader}>
+              <div>
+                <h3 className={styles.moduleTitle}>
+                  回复节奏
+                  {renderSectionModeBadge('save')}
+                </h3>
+                <p className={styles.moduleDescription}>
+                  决定回复偏速度还是偏推理，以及消息发出时表现出来的拟人节奏。
+                </p>
               </div>
+            </div>
 
+            <div className={styles.settingsPanel}>
               <div
                 className={`${styles.settingRow} ${isModified('wecomCallbackThinkingMode') ? styles.settingRowModified : ''}`}
               >
@@ -566,10 +687,13 @@ export default function Config() {
             </div>
           </section>
 
-          <section className={styles.moduleSection}>
+          <section id="config-dispatch" className={styles.moduleSection}>
             <div className={styles.moduleHeader}>
               <div>
-                <h3 className={styles.moduleTitle}>消息处理与调度</h3>
+                <h3 className={styles.moduleTitle}>
+                  消息处理与调度
+                  {renderSectionModeBadge('mixed')}
+                </h3>
                 <p className={styles.moduleDescription}>
                   用来控制消息何时触发一轮新请求，以及 Worker 如何消化这些请求。
                 </p>
@@ -634,10 +758,13 @@ export default function Config() {
             </div>
           </section>
 
-          <section className={styles.moduleSection}>
+          <section id="config-guardrail" className={styles.moduleSection}>
             <div className={styles.moduleHeader}>
               <div>
-                <h3 className={styles.moduleTitle}>出站守卫（LLM 语义审查）</h3>
+                <h3 className={styles.moduleTitle}>
+                  出站守卫（LLM 语义审查）
+                  {renderSectionModeBadge('instant')}
+                </h3>
                 <p className={styles.moduleDescription}>
                   回复发出前的最后一道语义审查：核对岗位推荐、地理品牌、预约状态与工具证据是否一致。
                   开关即时生效，无需保存；灰度期先开
@@ -676,10 +803,13 @@ export default function Config() {
             </div>
           </section>
 
-          <section className={styles.moduleSection}>
+          <section id="config-reengagement" className={styles.moduleSection}>
             <div className={styles.moduleHeader}>
               <div>
-                <h3 className={styles.moduleTitle}>主动复聊（跟进触达）</h3>
+                <h3 className={styles.moduleTitle}>
+                  主动复聊（跟进触达）
+                  {renderSectionModeBadge('instant')}
+                </h3>
                 <p className={styles.moduleDescription}>
                   候选人沉默后由 Agent
                   主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
@@ -802,10 +932,13 @@ export default function Config() {
             </div>
           </section>
 
-          <section className={styles.moduleSection}>
+          <section id="config-grouptask" className={styles.moduleSection}>
             <div className={styles.moduleHeader}>
               <div>
-                <h3 className={styles.moduleTitle}>群任务通知</h3>
+                <h3 className={styles.moduleTitle}>
+                  群任务通知
+                  {renderSectionModeBadge('instant')}
+                </h3>
                 <p className={styles.moduleDescription}>
                   管理 Cron 自动推送与手动触发入口。这里的开关都是即时生效，不需要额外保存。
                 </p>
