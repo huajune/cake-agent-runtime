@@ -10,6 +10,8 @@ import {
   IsIn,
   IsInt,
   Min,
+  ArrayMaxSize,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -21,6 +23,7 @@ import {
   FeishuTestStatus,
   MessageRole,
   FeedbackType,
+  FeedbackSource,
   TestType,
 } from '../enums/test.enum';
 import type {
@@ -1006,6 +1009,28 @@ export class SubmitFeedbackRequestDto {
   @IsOptional()
   @IsString()
   managerName?: string;
+
+  @ApiPropertyOptional({
+    description: '反馈来源渠道，缺省视为 agent_test',
+    enum: FeedbackSource,
+  })
+  @IsOptional()
+  @IsEnum(FeedbackSource)
+  source?: FeedbackSource;
+
+  @ApiPropertyOptional({
+    description: '截图附件（base64 dataURL，最多 5 张，单张解码后 ≤5MB）',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsString({ each: true })
+  @Matches(/^data:image\/(png|jpe?g|webp|gif);base64,/, {
+    each: true,
+    message: 'screenshots 必须是 data:image/* 的 base64 dataURL',
+  })
+  screenshots?: string[];
 }
 
 /**

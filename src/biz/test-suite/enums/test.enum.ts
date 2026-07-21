@@ -156,6 +156,19 @@ export enum FeedbackType {
 }
 
 /**
+ * 反馈来源渠道
+ * 用于飞书表「来源」列筛选，缺省视为 agent_test 以兼容旧客户端
+ */
+export enum FeedbackSource {
+  /** Agent 测试页 */
+  AGENT_TEST = 'agent_test',
+  /** 主聊天记录页 */
+  CHAT_RECORD = 'chat_record',
+  /** 复聊（二次触达）页 */
+  REENGAGEMENT = 'reengagement',
+}
+
+/**
  * 测试类型
  * 区分用例测试和回归验证测试
  */

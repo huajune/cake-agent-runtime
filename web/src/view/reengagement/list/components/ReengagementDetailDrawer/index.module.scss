@@ -98,6 +98,12 @@
   }
 }
 
+.feedbackEntry {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .rightCol {
   flex: 0 0 300px;
   background:

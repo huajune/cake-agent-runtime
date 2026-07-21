@@ -187,6 +187,9 @@ export interface ImportResult {
 
 export type FeedbackType = 'badcase' | 'goodcase';
 
+/** 反馈来源渠道：agent 测试页 / 主聊记录页 / 复聊页 */
+export type FeedbackSource = 'agent_test' | 'chat_record' | 'reengagement';
+
 export interface FeedbackSourceTrace {
   badcaseIds?: string[];
   goodcaseIds?: string[];
@@ -215,6 +218,9 @@ export interface SubmitFeedbackRequest {
   sourceTrace?: FeedbackSourceTrace;
   candidateName?: string;
   managerName?: string;
+  source?: FeedbackSource;
+  /** 截图附件（base64 dataURL，最多 5 张） */
+  screenshots?: string[];
 }
 
 export interface SubmitFeedbackResponse {

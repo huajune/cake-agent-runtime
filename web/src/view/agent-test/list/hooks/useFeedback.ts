@@ -2,9 +2,14 @@ import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { ApiError, NetworkError } from '@/api/client';
 import { submitFeedback, FeedbackType } from '@/api/services/agent-test.service';
-import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
+import type { FeedbackSource, FeedbackSourceTrace } from '@/api/types/agent-test.types';
+
+export const MAX_FEEDBACK_SCREENSHOTS = 5;
+const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 
 export interface UseFeedbackOptions {
+  /** 反馈来源渠道，决定飞书表「来源」列取值；缺省 agent_test */
+  source?: FeedbackSource;
   onError?: (error: string) => void;
 }
 
@@ -14,6 +19,7 @@ export interface UseFeedbackReturn {
   feedbackType: FeedbackType | null;
   scenarioType: string;
   remark: string;
+  screenshots: string[];
   isSubmitting: boolean;
   successType: FeedbackType | null;
   submitError: string | null;
@@ -23,6 +29,8 @@ export interface UseFeedbackReturn {
   closeModal: () => void;
   setScenarioType: (type: string) => void;
   setRemark: (remark: string) => void;
+  addScreenshots: (files: Iterable<File>) => void;
+  removeScreenshot: (index: number) => void;
   submit: (payload: {
     chatHistory: string;
     userMessage?: string;
@@ -59,14 +67,24 @@ function getFeedbackErrorMessage(error: unknown): string {
   return '提交反馈失败，请重试';
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 /**
  * 反馈功能 Hook
  */
-export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackReturn {
+export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFeedbackReturn {
   const [isOpen, setIsOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState<FeedbackType | null>(null);
   const [scenarioType, setScenarioType] = useState('');
   const [remark, setRemark] = useState('');
+  const [screenshots, setScreenshots] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successType, setSuccessType] = useState<FeedbackType | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -75,6 +93,7 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
     setFeedbackType(type);
     setScenarioType('');
     setRemark('');
+    setScreenshots([]);
     setSubmitError(null);
     setIsOpen(true);
   }, []);
@@ -84,7 +103,40 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
     setFeedbackType(null);
     setScenarioType('');
     setRemark('');
+    setScreenshots([]);
     setSubmitError(null);
+  }, []);
+
+  const addScreenshots = useCallback((files: Iterable<File>) => {
+    void (async () => {
+      const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
+      if (images.length === 0) return;
+
+      const oversized = images.filter((file) => file.size > MAX_SCREENSHOT_BYTES);
+      if (oversized.length > 0) {
+        toast.error('单张截图不能超过 5MB');
+      }
+
+      const accepted = images.filter((file) => file.size <= MAX_SCREENSHOT_BYTES);
+      if (accepted.length === 0) return;
+
+      try {
+        const dataUrls = await Promise.all(accepted.map(readFileAsDataUrl));
+        setScreenshots((prev) => {
+          const merged = [...prev, ...dataUrls];
+          if (merged.length > MAX_FEEDBACK_SCREENSHOTS) {
+            toast.error(`最多上传 ${MAX_FEEDBACK_SCREENSHOTS} 张截图`);
+          }
+          return merged.slice(0, MAX_FEEDBACK_SCREENSHOTS);
+        });
+      } catch {
+        toast.error('读取截图失败，请重试');
+      }
+    })();
+  }, []);
+
+  const removeScreenshot = useCallback((index: number) => {
+    setScreenshots((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
   const submit = useCallback(
@@ -128,6 +180,8 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
           sourceTrace,
           candidateName: candidateName?.trim() || undefined,
           managerName: managerName?.trim() || undefined,
+          source,
+          screenshots: screenshots.length > 0 ? screenshots : undefined,
         });
         setSuccessType(submittedType);
         closeModal();
@@ -150,7 +204,7 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
         setIsSubmitting(false);
       }
     },
-    [feedbackType, scenarioType, remark, closeModal, onError],
+    [feedbackType, scenarioType, remark, screenshots, source, closeModal, onError],
   );
 
   const clearSuccess = useCallback(() => {
@@ -162,6 +216,7 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
     feedbackType,
     scenarioType,
     remark,
+    screenshots,
     isSubmitting,
     successType,
     submitError,
@@ -169,6 +224,8 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
     closeModal,
     setScenarioType,
     setRemark,
+    addScreenshots,
+    removeScreenshot,
     submit,
     clearSuccess,
   };

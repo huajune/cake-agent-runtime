@@ -25,6 +25,23 @@ export const SCENARIO_TYPE_OPTIONS = [
   ...FEEDBACK_SCENARIO_TYPES.map((type) => ({ value: type, label: type })),
 ];
 
+// 复聊（二次触达）BadCase 专属场景分类：描述触达决策/内容层面的问题
+export const REENGAGEMENT_SCENARIO_TYPES = [
+  '1-不该触达（工单/条件误判）',
+  '2-触达时机错误（过早/过晚）',
+  '3-重复打扰（"已提醒过"误判）',
+  '4-场景挂错',
+  '5-话术事实错误（岗位/时间/状态不符）',
+  '6-语气/话术不当',
+  '7-取消/改期后仍按旧状态触达',
+  '8-其他',
+] as const;
+
+export const REENGAGEMENT_SCENARIO_TYPE_OPTIONS = [
+  { value: '', label: '请选择场景...' },
+  ...REENGAGEMENT_SCENARIO_TYPES.map((type) => ({ value: type, label: type })),
+];
+
 // 历史记录示例格式
 export const HISTORY_PLACEHOLDER = `粘贴对话记录，格式如：
 [12/04 14:23 候选人] 你好

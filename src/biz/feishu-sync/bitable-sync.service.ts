@@ -26,6 +26,8 @@ export interface AgentTestFeedback {
   sourceTrace?: FeedbackSourceTrace | null; // 反馈来源排障证据包
   candidateName?: string; // 候选人昵称
   managerName?: string; // 招募经理姓名
+  source?: 'agent_test' | 'chat_record' | 'reengagement'; // 反馈来源渠道，缺省 agent_test
+  screenshots?: string[]; // 截图附件（base64 dataURL）
 }
 
 export interface FeedbackSourceTrace {
@@ -91,6 +93,7 @@ export class FeishuBitableSyncService {
     sourceTraceIds: ['来源TraceID', 'sourceTraceIds', 'traceIds'],
     sourceBatchIds: ['来源BatchID', 'sourceBatchIds', 'batchIds'],
     source: ['来源'],
+    screenshots: ['截图', '附件', 'Screenshots'],
     status: ['状态'],
     priority: ['优先级'],
     issueId: ['问题ID'],
@@ -282,22 +285,32 @@ export class FeishuBitableSyncService {
         remarkParts,
       });
 
+      await this.applyFeedbackScreenshots({
+        screenshots: feedback.screenshots,
+        tableConfig,
+        existingFieldNames,
+        recordFields,
+        remarkParts,
+        feedbackId,
+      });
+
       if (remarkField && remarkParts.length > 0) {
         recordFields[remarkField] = this.bitableApi.truncateText(remarkParts.join('\n'), 3000);
       }
 
+      const sourceLabel = this.resolveFeedbackSourceLabel(feedback.source);
       if (feedback.type === 'badcase') {
         setField(this.feedbackFieldAliases.issueId, feedbackId);
         setField(this.feedbackFieldAliases.status, '待分析');
         setField(this.feedbackFieldAliases.priority, 'P2');
-        setField(this.feedbackFieldAliases.source, 'AgentTest');
+        setField(this.feedbackFieldAliases.source, sourceLabel);
 
         if (feedback.errorType) {
           setField(this.feedbackFieldAliases.category, feedback.errorType);
         }
       } else {
         setField(this.feedbackFieldAliases.sampleId, feedbackId);
-        setField(this.feedbackFieldAliases.source, 'AgentTest');
+        setField(this.feedbackFieldAliases.source, sourceLabel);
         setField(
           this.feedbackFieldAliases.highlightType,
           this.inferGoodCaseHighlightType(feedback),
@@ -424,6 +437,105 @@ export class FeishuBitableSyncService {
   }
 
   // ==================== 私有方法 ====================
+
+  /** 反馈来源 → 飞书「来源」列文案；缺省保持 AgentTest 兼容旧客户端 */
+  private resolveFeedbackSourceLabel(source?: AgentTestFeedback['source']): string {
+    switch (source) {
+      case 'chat_record':
+        return '主聊';
+      case 'reengagement':
+        return '复聊';
+      default:
+        return 'AgentTest';
+    }
+  }
+
+  /**
+   * 上传截图并写入附件字段
+   *
+   * 附件字段不存在时自动建列（type 17）；建列或上传失败一律降级为备注注明，
+   * 不让整条反馈失败。
+   */
+  private async applyFeedbackScreenshots(options: {
+    screenshots: string[] | undefined;
+    tableConfig: { appToken: string; tableId: string };
+    existingFieldNames: Set<string>;
+    recordFields: Record<string, unknown>;
+    remarkParts: string[];
+    feedbackId: string;
+  }): Promise<void> {
+    const { screenshots, tableConfig, existingFieldNames, recordFields, remarkParts, feedbackId } =
+      options;
+    if (!screenshots || screenshots.length === 0) return;
+
+    let fieldName = this.feedbackFieldAliases.screenshots.find((alias) =>
+      existingFieldNames.has(alias),
+    );
+    if (!fieldName) {
+      const FIELD_TYPE_ATTACHMENT = 17;
+      try {
+        fieldName = this.feedbackFieldAliases.screenshots[0];
+        await this.bitableApi.createField(
+          tableConfig.appToken,
+          tableConfig.tableId,
+          fieldName,
+          FIELD_TYPE_ATTACHMENT,
+        );
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`[Feedback] 自动创建附件字段失败: ${errorMessage}`);
+        remarkParts.push(`含 ${screenshots.length} 张截图，附件字段创建失败未能上传`);
+        return;
+      }
+    }
+
+    const fileTokens: string[] = [];
+    let failed = 0;
+    for (let i = 0; i < screenshots.length; i++) {
+      const parsed = this.parseImageDataUrl(screenshots[i]);
+      if (!parsed) {
+        failed += 1;
+        continue;
+      }
+      try {
+        const { fileToken } = await this.bitableApi.uploadMedia(
+          tableConfig.appToken,
+          `feedback-${feedbackId}-${i + 1}.${parsed.ext}`,
+          parsed.buffer,
+          parsed.mimeType,
+        );
+        fileTokens.push(fileToken);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `[Feedback] 截图上传失败 (${i + 1}/${screenshots.length}): ${errorMessage}`,
+        );
+        failed += 1;
+      }
+    }
+
+    if (fileTokens.length > 0) {
+      recordFields[fieldName] = fileTokens.map((token) => ({ file_token: token }));
+    }
+    if (failed > 0) {
+      remarkParts.push(`截图上传失败 ${failed}/${screenshots.length} 张`);
+    }
+  }
+
+  private parseImageDataUrl(
+    dataUrl: string,
+  ): { buffer: Buffer; mimeType: string; ext: string } | null {
+    const match = /^data:(image\/(png|jpe?g|webp|gif));base64,(.+)$/.exec(dataUrl);
+    if (!match) return null;
+    try {
+      const buffer = Buffer.from(match[3], 'base64');
+      if (buffer.length === 0) return null;
+      const ext = match[2] === 'jpeg' || match[2] === 'jpg' ? 'jpg' : match[2];
+      return { buffer, mimeType: match[1], ext };
+    } catch {
+      return null;
+    }
+  }
 
   private setFeedbackSourceTraceFields(options: {
     sourceTrace: FeedbackSourceTrace | null;

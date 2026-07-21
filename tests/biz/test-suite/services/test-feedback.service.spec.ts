@@ -44,6 +44,40 @@ describe('TestFeedbackService', () => {
     );
   });
 
+  it('passes source and screenshots through to Feishu payload', async () => {
+    feishuBitableService.writeAgentTestFeedback.mockResolvedValue({
+      success: true,
+      recordId: 'rec-2',
+    });
+
+    await service.submitFeedback({
+      type: 'badcase',
+      chatHistory: 'history',
+      source: 'reengagement',
+      screenshots: ['data:image/png;base64,aGVsbG8='],
+    } as any);
+
+    expect(feishuBitableService.writeAgentTestFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'reengagement',
+        screenshots: ['data:image/png;base64,aGVsbG8='],
+      }),
+    );
+  });
+
+  it('rejects screenshots larger than 5MB', async () => {
+    const oversized = `data:image/png;base64,${'A'.repeat(7 * 1024 * 1024)}`;
+
+    await expect(
+      service.submitFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        screenshots: [oversized],
+      } as any),
+    ).rejects.toThrow('超过 5MB 限制');
+    expect(feishuBitableService.writeAgentTestFeedback).not.toHaveBeenCalled();
+  });
+
   it('throws when Feishu write fails', async () => {
     feishuBitableService.writeAgentTestFeedback.mockResolvedValue({
       success: false,
