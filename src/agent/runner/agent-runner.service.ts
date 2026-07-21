@@ -24,6 +24,10 @@ import type {
 import { classifyReviewedOutcome } from './turn-outcome';
 import { isDanglingCheckReply } from './dangling-reply';
 import {
+  detectOutputLeak,
+  stripMarkdownCodeFences,
+} from '../guardrail/output/rules/internal-info-leaks.rule';
+import {
   OutputGuardrailService,
   type OutputGuardDecision,
 } from '../guardrail/output/output-guardrail.service';
@@ -257,43 +261,85 @@ export class AgentRunnerService {
       );
     }
 
-    // 确定性修复快通道（tryDeterministicFix）已随 brand_name_violation 于 2026-07-10 下线：
-    // 它是唯一可字符串替换修复的规则，规则删除后快通道成为死路径。
+    // 确定性修复快通道：仅命中 internal_output_leak 且剥掉代码围栏标记后不再有任何
+    // 泄漏形态时，剥离本身就是完整修复——围栏内正文（报名表模板等结构化内容）逐字保留，
+    // 跳过 LLM 重写（2026-07-21 badcase：rewrite 把围栏里的报名表模板压成一句话流水账）。
+    // 剥离产物仍走下方二审，二审才是放行依据。
+    const fenceStrippedText = this.tryStripFenceOnlyLeak(decision, firstText);
 
     // repair（hard cap 1）：rewrite 模式走独立 ReplyRepairAgent；replan 复用 Agent generator，
     // 但只暴露命中规则明确登记的最小工具集合。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
-        `violations=${decision.violations.map((v) => v.type).join(',') || '-'}`,
+        `violations=${decision.violations.map((v) => v.type).join(',') || '-'}` +
+        (fenceStrippedText !== null ? '，fence-only 命中走确定性剥围栏，跳过 LLM 重写' : ''),
     );
     const repairAllowedToolNames = this.resolveRepairAllowedToolNames(decision, params);
     const revised =
-      decision.repairMode === 'rewrite'
-        ? this.buildRepairedResult(
-            first,
-            await this.replyRepairAgent.repair({
-              userMessage: ctx.userMessage,
-              originalReply: firstText,
-              violations: decision.violations,
-              feedbackToGenerator: decision.feedbackToGenerator,
-              ruleIds: decision.ruleIds,
-              toolCalls: first.toolCalls ?? [],
-              redLines: ctx.redLines,
+      fenceStrippedText !== null
+        ? this.buildRepairedResult(first, fenceStrippedText)
+        : decision.repairMode === 'rewrite'
+          ? this.buildRepairedResult(
+              first,
+              await this.replyRepairAgent.repair({
+                userMessage: ctx.userMessage,
+                originalReply: firstText,
+                violations: decision.violations,
+                feedbackToGenerator: decision.feedbackToGenerator,
+                ruleIds: decision.ruleIds,
+                toolCalls: first.toolCalls ?? [],
+                redLines: ctx.redLines,
+                committedSideEffects: committed || undefined,
+                repairContext: await this.buildReplyRepairContext(ctx),
+              }),
+            )
+          : await this.generator.invoke({
+              ...params,
+              deferTurnEnd: true,
+              toolMode: params.toolMode === 'none' ? 'none' : 'scenario',
+              allowedToolNames: repairAllowedToolNames,
+              reviseFeedback: decision.violations,
               committedSideEffects: committed || undefined,
-              repairContext: await this.buildReplyRepairContext(ctx),
-            }),
-          )
-        : await this.generator.invoke({
-            ...params,
-            deferTurnEnd: true,
-            toolMode: params.toolMode === 'none' ? 'none' : 'scenario',
-            allowedToolNames: repairAllowedToolNames,
-            reviseFeedback: decision.violations,
-            committedSideEffects: committed || undefined,
-          });
+            });
 
     const revisedText = (revised.text ?? '').trim();
+    // replan 可能以短路副作用结束而不产生文本（例如本规则只开放 request_handoff，
+    // 工具成功派发后 generator 按协议立即结束）。此时外部动作已经真实发生，不能把
+    // 空文本当成 repair 失败；合并首版工具轨迹后直接交给 outcome 层归类为 handoff。
+    const committedShortCircuit = (revised.toolCalls ?? []).some(
+      (call) =>
+        call.toolName === 'request_handoff' &&
+        isShortCircuitedToolCall(call) &&
+        isToolSuccess(call.result),
+    );
+    if (decision.repairMode === 'replan' && committedShortCircuit) {
+      const reviewedToolCalls = this.mergeToolCallsForRevisedResult(first, revised);
+      const shortCircuitDecision: OutputGuardDecision = {
+        ...PASS_DECISION,
+        reasonCode: 'replan_short_circuited',
+      };
+      this.persistReviewRecord(ctx, {
+        firstReply: firstText,
+        firstDecision: decision,
+        finalDecision: shortCircuitDecision,
+        repaired: true,
+        revisedReply: revisedText,
+        revisedDecision: shortCircuitDecision,
+        committedSideEffects: committed || undefined,
+      });
+      return this.finalizeReviewed(
+        { ...revised, toolCalls: reviewedToolCalls },
+        shortCircuitDecision,
+        true,
+        wantDefer,
+        this.buildGuardrailTrace(
+          [firstStep, this.toGuardrailStep('revised', shortCircuitDecision)],
+          true,
+          shortCircuitDecision,
+        ),
+      );
+    }
     // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的
     // 将来时承诺不可能兑现，投递即空头承诺（badcase batch_6a4790c7…：候选人
     // 只收到一句"我帮你查下花桥中骏附近的岗位"，之后再无下文）。与空文本同样
@@ -435,7 +481,10 @@ export class AgentRunnerService {
       ? failOpenEligible
         ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
         : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
-      : decision2;
+      : fenceStrippedText !== null
+        ? // 确定性剥围栏放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
+          { ...decision2, reasonCode: decision2.reasonCode ?? 'fence_stripped' }
+        : decision2;
     const finalResult =
       wantsRepairAgain && failOpenEligible && this.isSecondDecisionNoBetter(decision, decision2)
         ? first
@@ -509,6 +558,17 @@ export class AgentRunnerService {
       return;
     }
 
+    // block 档案必须可归因（2026-07-06~08 生产曾落 46 条 null reason_code，复盘时
+    // 无法区分拦截路径）：现行所有 block 分支都应显式携带 reasonCode，这里只兜历史
+    // 上出现过的遗漏并告警，让回归在观测里现形而不是沉默落 null。
+    let reasonCode = data.finalDecision.reasonCode;
+    if (!reasonCode && data.finalDecision.decision === 'block') {
+      reasonCode = 'unattributed_block';
+      this.logger.warn(
+        `[invokeReviewed] block 档案缺少 reasonCode，已兜底为 unattributed_block: ` +
+          `traceId=${ctx.traceId}, rules=${data.finalDecision.blockedRuleIds.join(',') || '-'}`,
+      );
+    }
     const baseRecord = {
       traceId: ctx.traceId,
       chatId: ctx.chatId,
@@ -520,7 +580,7 @@ export class AgentRunnerService {
       firstReply: data.firstReply,
       first: this.toReviewStepDetail(data.firstDecision),
       finalDecision: data.finalDecision.decision,
-      reasonCode: data.finalDecision.reasonCode,
+      reasonCode,
     };
     const reviewRecord: GuardrailReviewInsertInput = data.repaired
       ? {
@@ -605,6 +665,19 @@ export class AgentRunnerService {
       decision.blockedRuleIds.length > 0 &&
       decision.blockedRuleIds.every((ruleId) => ruleId === 'internal_output_leak')
     );
+  }
+
+  /**
+   * fence-only 泄漏的确定性最小修复：不可发送命中仅为 internal_output_leak，且剥掉
+   * markdown 围栏标记后词库再无任何命中 → 返回剥离后的文本（围栏内正文逐字保留）。
+   * 其余情况（混合命中、剥完仍有泄漏、剥完为空）返回 null，交给常规 LLM repair。
+   */
+  private tryStripFenceOnlyLeak(decision: OutputGuardDecision, text: string): string | null {
+    if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
+    const stripped = stripMarkdownCodeFences(text);
+    if (!stripped || stripped === text) return null;
+    if (detectOutputLeak(stripped)) return null;
+    return stripped;
   }
 
   /**

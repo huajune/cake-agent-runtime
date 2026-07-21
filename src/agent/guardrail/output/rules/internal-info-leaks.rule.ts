@@ -103,6 +103,30 @@ export function detectOutputLeak(content: string): RegExp | null {
 }
 
 /**
+ * 剥掉 markdown 代码围栏标记（```` ```lang ````），围栏内的正文原样保留。
+ *
+ * 业务背景：2026-07-21 生产 badcase——首版用 ```text 围栏包了一张逐项填写的报名表模板，
+ * 仅因围栏命中本规则进了 LLM 重写，重写把整张模板压成一句话流水账。围栏是本词库里
+ * 唯一"删掉标记即完整修复"的形态，runner 对 fence-only 命中走此确定性最小修复，
+ * 不进 LLM 重写（修复代价为零）。
+ *
+ * 行为：行首 ``` 标记行整行删除；``` 后跟正文的行只删标记保留正文；压缩多余空行。
+ */
+export function stripMarkdownCodeFences(content: string): string {
+  return content
+    .split('\n')
+    .map((line) => {
+      if (!/^\s*```/.test(line)) return line;
+      const rest = line.replace(/^\s*`{3,}[\w-]*\s*/, '');
+      return rest === '' ? null : rest;
+    })
+    .filter((line): line is string => line !== null)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
  * 人设露馅：Agent 人设是真人招募经理，说"转人工/人工客服"等词等于自曝机器人身份。
  *
  * 运营反馈（recvjXBkmV6idz"能不能不要说转人工，这样不是露馅了吗"、

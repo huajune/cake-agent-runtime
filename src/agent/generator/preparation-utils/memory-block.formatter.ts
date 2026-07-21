@@ -396,7 +396,7 @@ export function formatBookingContext(
 
   lines.push(
     '候选人可同时报名多个不同岗位；已预约 A 岗不代表不能继续报名 B 岗。但同一工单/同一岗位不要重复提交报名。',
-    '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。主动要求取消时调 duliday_cancel_work_order 自助取消。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
+    '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。候选人明确放弃这次已约面试/岗位时（不限于说"取消"二字，"不去了""干不了""不想干了"等明确拒绝也算）必须调 duliday_cancel_work_order 自助取消——工单不会因口头放弃自动失效，不取消门店会空等、候选人留爽约记录。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
     '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
     '必须先核对「面试形式」：只有明确为线下/到店/现场面试才允许告知或发送面试地址。线上、AI、视频、电话面试不需要到店，禁止发送任何面试定位；面试形式未明确时也不得猜测为线下。仅在明确线下面试且「面试地址」与「工作门店地址」不同时，候选人询问赴约地址/定位才优先面试地址。',
   );

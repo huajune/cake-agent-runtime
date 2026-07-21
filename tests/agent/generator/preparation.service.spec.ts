@@ -510,9 +510,13 @@ describe('PreparationService', () => {
     const last = result.normalizedMessages[result.normalizedMessages.length - 1];
     expect(last.role).toBe('user');
     const content = last.content as string;
-    expect(content).toContain('本次只允许调用以下工具');
+    // 2026-07-21 守卫审计：措辞由"只允许调用"改为"必须先调用"——replan 判据是缺事实
+    // 而非缺措辞，不重新取数则二审必然复燃（生产：二审通过组 96% 调了工具，失败组 51%）。
+    expect(content).toContain('本次修复必须先调用以下工具');
     expect(content).toContain('geocode、duliday_job_list');
     expect(content).not.toContain('严禁调用任何工具');
+    // 本案证据（jobId/字段等线索）必须与静态 suggestion 一起出现在这条注意力最强的指令里。
+    expect(content).toContain('问题：距离数字无工具依据');
   });
 
   it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
