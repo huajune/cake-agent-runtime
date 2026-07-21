@@ -1,5 +1,6 @@
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import {
+  bookingFollowUpAnchorId,
   computeFireAt,
   FOLLOW_UP_SCENARIOS,
   getScenario,
@@ -20,6 +21,15 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
+  it('versions AI 17:00 follow-up anchors without changing other booking anchors', () => {
+    expect(
+      bookingFollowUpAnchorId(451713, 1784599200000, 'post_interview_followup', 'AI面试'),
+    ).toBe('wo451713:iv1784599200000:post_interview_followup:ai17');
+    expect(bookingFollowUpAnchorId(451713, 1784599200000, 'interview_reminder', 'AI面试')).toBe(
+      'wo451713:iv1784599200000:interview_reminder',
+    );
+  });
+
   it('allows grounded context carry-over for store follow-ups', () => {
     const policy = getScenario('store_presented_no_reply')!.generationPolicy;
     expect(policy).toContain('简短承接');
@@ -81,6 +91,30 @@ describe('scenario-registry', () => {
       expect(fireAt).toBe(at(9, 30)); // 17:30 Shanghai
     });
 
+    it('schedules AI interview follow-up at 17:00 Shanghai on the interview day', () => {
+      const anchorAt = at(1); // 09:00 Shanghai
+      const interviewAt = at(2); // 10:00 Shanghai
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: 'AI面试',
+      });
+      expect(fireAt).toBe(at(9)); // 17:00 Shanghai
+    });
+
+    it('does not move an overdue AI interview follow-up backwards to 17:00', () => {
+      const anchorAt = at(10); // 18:00 Shanghai
+      const interviewAt = at(2); // 10:00 Shanghai
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: '线上 AI 面试',
+      });
+      expect(fireAt).toBe(anchorAt);
+    });
+
     it('does not delay an overdue follow-up from the scheduling anchor', () => {
       const anchorAt = at(5); // 13:00 Shanghai
       const interviewAt = at(2); // 10:00 Shanghai
@@ -103,6 +137,13 @@ describe('scenario-registry', () => {
       expect(computeFireAt(getScenario('post_interview_followup')!, { anchorAt, state }, 180)).toBe(
         at(9),
       );
+      expect(
+        computeFireAt(
+          getScenario('post_interview_followup')!,
+          { anchorAt, state, interviewType: 'AI面试' },
+          60,
+        ),
+      ).toBe(at(7));
     });
   });
 

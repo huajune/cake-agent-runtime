@@ -231,6 +231,7 @@ export class FollowUpProcessor implements OnModuleInit {
             bookingContext.workOrderId,
             bookingContext.interviewAt,
             scenarioCode,
+            bookingContext.interviewType,
           ),
           anchorAt: now,
           state: {
@@ -240,6 +241,7 @@ export class FollowUpProcessor implements OnModuleInit {
           } as AuthoritativeSessionState,
           workOrderId: bookingContext.workOrderId,
           expectedInterviewAt: bookingContext.interviewAt,
+          interviewType: bookingContext.interviewType,
           channelIdentity,
         });
         return;
@@ -291,11 +293,17 @@ export class FollowUpProcessor implements OnModuleInit {
         {
           anchorAt: now,
           state,
+          interviewType: bookingContext.interviewType,
         },
         runtime.reengagementScenarioDelayMinutes?.[scenario.code],
       );
       if (expectedFireAt - now > BOOKING_SCHEDULE_TOLERANCE_MS) {
-        await this.scheduleTimeChangedReplacement(job.data, state, bookingContext.interviewAt!);
+        await this.scheduleTimeChangedReplacement(
+          job.data,
+          state,
+          bookingContext.interviewAt!,
+          bookingContext,
+        );
         this.tracking.trackStopped(identity, 'interview_time_changed');
         return;
       }
@@ -514,6 +522,7 @@ export class FollowUpProcessor implements OnModuleInit {
     jobData: FollowUpJob,
     state: AuthoritativeSessionState,
     newInterviewAt: number,
+    bookingContext: ReengagementBookingContext,
   ): Promise<void> {
     const { sessionRef, scenarioCode, workOrderId } = jobData;
     if (workOrderId == null) return;
@@ -522,7 +531,12 @@ export class FollowUpProcessor implements OnModuleInit {
       await this.scheduler.scheduleFollowUp({
         sessionRef,
         scenarioCode,
-        anchorEventId: bookingFollowUpAnchorId(workOrderId, newInterviewAt, scenarioCode),
+        anchorEventId: bookingFollowUpAnchorId(
+          workOrderId,
+          newInterviewAt,
+          scenarioCode,
+          bookingContext.interviewType,
+        ),
         anchorAt: Date.now(),
         state: {
           ...state,
@@ -531,6 +545,7 @@ export class FollowUpProcessor implements OnModuleInit {
         } as AuthoritativeSessionState,
         workOrderId,
         expectedInterviewAt: newInterviewAt,
+        interviewType: bookingContext.interviewType,
         channelIdentity: jobData.channelIdentity,
       });
     } catch (error) {
