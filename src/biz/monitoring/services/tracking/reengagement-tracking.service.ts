@@ -244,16 +244,32 @@ export class ReengagementTrackingService {
     });
   }
 
-  /** 主动回合结果非 reply，不投递 */
+  /**
+   * 主动回合结果非 reply，不投递。
+   *
+   * skipped / guardrail_blocked / handoff 是已正常完成的业务决策，不得冒充
+   * 系统失败；只有模型调用异常等真实错误才进入 failed。
+   */
   trackOutcomeNotReply(
     identity: ReengagementTouchIdentity,
     outcomeKind: string,
     batchId?: string,
     reason: string = ReengagementTouchEventName.OutcomeNotReply,
   ): void {
+    const expectedNoSendOutcomes = new Set([
+      'skipped',
+      'guardrail_blocked',
+      'handoff',
+      'delivery_skipped',
+    ]);
+    const generationErrorReasons = new Set(['reengagement_agent_error', 'composer_error']);
+    const status =
+      !generationErrorReasons.has(reason) && expectedNoSendOutcomes.has(outcomeKind)
+        ? ReengagementTouchStatus.Skipped
+        : ReengagementTouchStatus.Failed;
     this.persist({
       ...this.base(identity),
-      status: ReengagementTouchStatus.Failed,
+      status,
       decisionReason: reason,
       outcomeKind,
       batchId,

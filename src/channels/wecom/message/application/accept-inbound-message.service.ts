@@ -480,7 +480,15 @@ export class AcceptInboundMessageService {
       imContactId: messageData.imContactId,
       contactType: messageData.contactType,
       isSelf: messageData.isSelf,
-      payload: messageData.payload as Record<string, unknown>,
+      payload: {
+        ...(messageData.payload as Record<string, unknown>),
+        ...(messageData.externalRequestId
+          ? {
+              externalRequestId: messageData.externalRequestId,
+              channelMessageId: messageData.messageId,
+            }
+          : {}),
+      },
       avatar: messageData.avatar,
       externalUserId: messageData.externalUserId,
     };

@@ -230,6 +230,75 @@ describe('buildJobListTool', () => {
     );
   });
 
+  describe('跨轮重复查询检测（badcase 6a5dc7c4ce406a6aee57bf6d）', () => {
+    it('与上一轮签名一致且 turnId 不同时，结果头部注入重复查询提醒', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+      const recorded: Array<{ signature: string }> = [];
+
+      // 第一轮：记录签名
+      const firstCtx: ToolBuildContext = {
+        ...mockContext,
+        turnId: 'turn-1',
+        onJobListQueryExecuted: (q) => recorded.push(q),
+      };
+      const first = await executeTool(firstCtx, { ...defaultInput, cityNameList: ['北京'] });
+      expect(first.markdown).not.toContain('重复查询提醒');
+      expect(first.queryMeta.repeatQuery).toEqual({ repeated: false });
+      expect(recorded).toHaveLength(1);
+
+      // 第二轮：同参 + 上一轮签名注入 → 提醒
+      const secondCtx: ToolBuildContext = {
+        ...mockContext,
+        turnId: 'turn-2',
+        lastJobListQuery: { signature: recorded[0].signature, turnId: 'turn-1' },
+      };
+      const second = await executeTool(secondCtx, { ...defaultInput, cityNameList: ['北京'] });
+      expect(second.markdown).toContain('重复查询提醒');
+      expect(second.markdown).toContain('request_handoff');
+      expect(second.queryMeta.repeatQuery).toEqual({ repeated: true, previousTurnId: 'turn-1' });
+    });
+
+    it('查询条件有实质差异时不触发提醒', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+      const recorded: Array<{ signature: string }> = [];
+      await executeTool(
+        { ...mockContext, turnId: 'turn-1', onJobListQueryExecuted: (q) => recorded.push(q) },
+        { ...defaultInput, cityNameList: ['北京'], regionNameList: ['朝阳区'] },
+      );
+
+      const result = await executeTool(
+        {
+          ...mockContext,
+          turnId: 'turn-2',
+          lastJobListQuery: { signature: recorded[0].signature, turnId: 'turn-1' },
+        },
+        // 去掉区域限制 = 实质扩围
+        { ...defaultInput, cityNameList: ['北京'] },
+      );
+      expect(result.markdown).not.toContain('重复查询提醒');
+      expect(result.queryMeta.repeatQuery).toEqual({ repeated: false });
+    });
+
+    it('同 turnId（Bull 同轮重试）不触发提醒', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+      const recorded: Array<{ signature: string }> = [];
+      await executeTool(
+        { ...mockContext, turnId: 'turn-1', onJobListQueryExecuted: (q) => recorded.push(q) },
+        { ...defaultInput, cityNameList: ['北京'] },
+      );
+
+      const result = await executeTool(
+        {
+          ...mockContext,
+          turnId: 'turn-1',
+          lastJobListQuery: { signature: recorded[0].signature, turnId: 'turn-1' },
+        },
+        { ...defaultInput, cityNameList: ['北京'] },
+      );
+      expect(result.markdown).not.toContain('重复查询提醒');
+    });
+  });
+
   it('should return markdown format by default', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJobData()],

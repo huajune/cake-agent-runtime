@@ -22,6 +22,8 @@ import {
   type ScheduleConstraintFact,
   type InvitedGroupRecord,
   InvitedGroupRecordSchema,
+  type JobListQueryRecord,
+  JobListQueryRecordSchema,
   SessionFactsSchema,
   SessionFactsRedisContentSchema,
   type SessionFacts,
@@ -85,6 +87,10 @@ import {
  * 外部不应该直接拼 Redis key 来读写 `facts:*`，
  * 也不应该把“已展示岗位 / 当前焦点岗位”的判断逻辑散落到别处。
  */
+
+/** 新旧品牌匹配一致的落库批大小（§15.6 门禁分母；随旧路径下线一并删除）。 */
+const BRAND_SHADOW_AGREEMENT_BATCH = 100;
+
 @Injectable()
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
@@ -102,7 +108,7 @@ export class SessionService {
     private readonly tracer?: AgentTracerService,
   ) {}
 
-  /** 新旧品牌匹配一致计数（§12：一致时仅计数不落行）。 */
+  /** 新旧品牌匹配一致计数（§15.6 差异率分母）；每满一批落一条观测事件。 */
   private brandShadowAgreementCount = 0;
 
   // ==================== store ====================
@@ -446,6 +452,17 @@ export class SessionService {
     await this.patchSessionState(corpId, userId, sessionId, { lastCandidatePool: validatedJobs });
   }
 
+  /** 记录本轮 duliday_job_list 查询签名，供下一轮做跨轮重复查询检测。 */
+  async saveLastJobListQuery(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    record: JobListQueryRecord,
+  ): Promise<void> {
+    const validated = JobListQueryRecordSchema.parse(record) as JobListQueryRecord;
+    await this.patchSessionState(corpId, userId, sessionId, { lastJobListQuery: validated });
+  }
+
   async savePresentedJobs(
     corpId: string,
     userId: string,
@@ -662,8 +679,18 @@ export class SessionService {
         origin: 'extraction_hints',
       });
     } else if (aliasHints.length > 0) {
+      // 一致计数是 §15.6 差异率门禁的**分母**：只打日志则重启即归零、事后不可查，
+      // 门禁到期也无法判定（2026-07-20 观测期实测踩到）。按批落库，量级可忽略。
       this.brandShadowAgreementCount += 1;
-      if (this.brandShadowAgreementCount % 100 === 0) {
+      if (this.brandShadowAgreementCount % BRAND_SHADOW_AGREEMENT_BATCH === 0) {
+        this.tracer?.emit({
+          type: 'brand_resolution_shadow_agreement',
+          userId,
+          chatId: sessionId,
+          corpId,
+          batchSize: BRAND_SHADOW_AGREEMENT_BATCH,
+          origin: 'extraction_hints',
+        });
         this.logger.log(
           `[brand-shadow] 新旧品牌匹配一致累计 ${this.brandShadowAgreementCount} 次（extraction_hints）`,
         );

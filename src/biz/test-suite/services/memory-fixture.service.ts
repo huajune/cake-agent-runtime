@@ -10,6 +10,7 @@ import {
 } from '@memory/types/session-facts.types';
 import type { ProceduralState } from '@memory/types/procedural.types';
 import type { UserProfile } from '@memory/types/long-term.types';
+import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';
 import type { MemoryFixtureSetup, TestRuntimeScope } from '../types/test-debug-trace.types';
 
 export interface MemoryFixtureSnapshot {
@@ -64,6 +65,21 @@ export class MemoryFixtureService {
         scope.sessionId,
         presentedJobs,
       );
+    }
+
+    if (setup.lastJobListQuery) {
+      const { queryParams, signature, turnId, updatedAtMs } = setup.lastJobListQuery;
+      const resolvedSignature = queryParams
+        ? buildJobListQuerySignature(queryParams)
+        : signature?.trim();
+      if (!resolvedSignature) {
+        throw new Error('memorySetup.lastJobListQuery 必须提供 queryParams 或 signature');
+      }
+      await this.sessionService.saveLastJobListQuery(scope.corpId, scope.userId, scope.sessionId, {
+        signature: resolvedSignature,
+        turnId,
+        updatedAtMs,
+      });
     }
 
     if (setup.currentFocusJob !== undefined) {

@@ -67,6 +67,15 @@ const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
   reason: z.string().describe('只说明输入证据如何支持本条文案，不得补写“已读”“在忙”等未提供状态'),
 });
 
+type ReengagementOutput = z.infer<typeof REENGAGEMENT_OUTPUT_SCHEMA>;
+
+class ReengagementOutputContractError extends Error {
+  constructor(readonly issue: string) {
+    super(`Reengagement output contract violation: ${issue}`);
+    this.name = 'ReengagementOutputContractError';
+  }
+}
+
 const COLLECTED_FIELD_LABELS: Record<CandidateFieldKey, string> = {
   name: '姓名',
   phone: '手机号',
@@ -89,6 +98,9 @@ const NEVER_EXPOSED_REENGAGEMENT_FACT_LABELS = new Set([
 
 @Injectable()
 export class ReengagementAgent {
+  /** 归一化后短于该长度的文案不做复读判定，避免误伤“你看哪天方便”这类必然重叠的短句。 */
+  private static readonly DUPLICATE_REPLY_MIN_LENGTH = 10;
+
   private readonly logger = new Logger(ReengagementAgent.name);
 
   constructor(
@@ -113,21 +125,49 @@ export class ReengagementAgent {
 
     const aiStartAt = Date.now();
     let agentRequest: Record<string, unknown> | undefined;
+    let outputCorrection:
+      | { issue: string; firstOutput: ReengagementOutput; retryOutput?: ReengagementOutput }
+      | undefined;
 
     try {
-      const result = await this.llm.generateStructured({
-        role: ModelRole.Chat,
-        schema: REENGAGEMENT_OUTPUT_SCHEMA,
-        outputName: 'ReengagementMessage',
-        system: systemPrompt,
-        // 与 Generator 一致，直接传模型原生 user/assistant 历史；system 已包含本次主动
-        // 复聊任务，不追加虚构的 user 指令，也不把历史重新文本化进 system。
-        messages,
-        temperature: 0.3,
-        onPreparedRequest: (request) => {
-          agentRequest = request;
-        },
-      });
+      const generate = (system: string) =>
+        this.llm.generateStructured({
+          role: ModelRole.Chat,
+          schema: REENGAGEMENT_OUTPUT_SCHEMA,
+          outputName: 'ReengagementMessage',
+          system,
+          // 与 Generator 一致，直接传模型原生 user/assistant 历史；system 已包含本次主动
+          // 复聊任务，不追加虚构的 user 指令，也不把历史重新文本化进 system。
+          messages,
+          temperature: 0.3,
+          onPreparedRequest: (request) => {
+            agentRequest = request;
+          },
+        });
+
+      let result = await generate(systemPrompt);
+      let contractIssue = this.getOutputContractIssue(ctx, result.output);
+      if (contractIssue) {
+        outputCorrection = { issue: contractIssue, firstOutput: result.output };
+        this.logger.warn(
+          `[reengagement] 结构化决策不一致，纠正重试 scenario=${ctx.scenario.code} issue=${contractIssue}`,
+        );
+        result = await generate(
+          [
+            systemPrompt,
+            '',
+            '# 上次输出纠正',
+            `上次结构化输出违反协议（${contractIssue}），请重新决策。`,
+            'decision=send 时 blockReason 必须为 none 且 message 非空；decision=skip 时必须命中明确的 blockReason 且 message 为空。',
+            '不得以“正常对话流程”、“感觉不需要”等模糊判断跳过已到点且通过预检的复聊任务。',
+          ].join('\n'),
+        );
+        outputCorrection.retryOutput = result.output;
+        contractIssue = this.getOutputContractIssue(ctx, result.output);
+        if (contractIssue) {
+          throw new ReengagementOutputContractError(contractIssue);
+        }
+      }
       const aiEndAt = Date.now();
       const agentSteps = this.extractAgentSteps(result.steps);
 
@@ -146,6 +186,7 @@ export class ReengagementAgent {
         ...(agentRequest ?? {}),
         reengagementInput: agentInput,
         reengagementOutput: { ...output, message: text },
+        ...(outputCorrection ? { outputCorrection } : {}),
         ...(temporalCorrection.reason
           ? {
               temporalCorrection: {
@@ -175,6 +216,27 @@ export class ReengagementAgent {
           aiStartAt,
           aiEndAt,
           validationReason,
+        };
+      }
+
+      if (this.isDuplicateOfRecentAssistantReply(text, memory)) {
+        return {
+          outcome: {
+            kind: 'skipped',
+            generatedText: text,
+            scenarioCode: ctx.scenario.code,
+            usage,
+            responseMessages,
+            toolCalls: [],
+            agentSteps,
+          },
+          agentRequest: {
+            ...agentRequestWithInput,
+            validationReason: 'duplicate_of_recent_assistant_reply',
+          },
+          aiStartAt,
+          aiEndAt,
+          validationReason: 'duplicate_of_recent_assistant_reply',
         };
       }
 
@@ -225,6 +287,10 @@ export class ReengagementAgent {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      const decisionContractInvalid = error instanceof ReengagementOutputContractError;
+      const validationReason = decisionContractInvalid
+        ? 'reengagement_decision_invalid'
+        : 'reengagement_agent_error';
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
@@ -238,7 +304,8 @@ export class ReengagementAgent {
           ...(agentRequest ?? {}),
           type: 'reengagement_agent',
           scenarioCode: ctx.scenario.code,
-          validationReason: 'reengagement_agent_error',
+          validationReason,
+          ...(outputCorrection ? { outputCorrection } : {}),
           generationError: {
             name: errorName,
             message: errorMessage,
@@ -246,9 +313,33 @@ export class ReengagementAgent {
         },
         aiStartAt,
         aiEndAt: Date.now(),
-        validationReason: 'reengagement_agent_error',
+        validationReason,
       };
     }
+  }
+
+  private getOutputContractIssue(
+    ctx: ReengagementComposeContext,
+    output: ReengagementOutput,
+  ): string | null {
+    const blockReason = output.blockReason ?? 'none';
+    const hasMessage = !!output.message?.trim();
+
+    if (output.decision === 'send') {
+      // 显式 blockReason 始终优先：即使 decision 误写成 send，也保持 fail-closed，
+      // 由下方统一分支安全跳过，不为纠正格式而冒险发送。
+      if (blockReason !== 'none') return null;
+      if (!hasMessage) return 'send_without_message';
+      return null;
+    }
+
+    if (output.decision === 'skip') {
+      if (!this.isPostBookingScenario(ctx)) return 'pre_booking_skip_not_allowed';
+      if (blockReason === 'none') return 'skip_without_block_reason';
+      return null;
+    }
+
+    return 'missing_decision';
   }
 
   private buildSystemPrompt(
@@ -315,13 +406,19 @@ export class ReengagementAgent {
             '- 仅仅询问面试时间地点、表达紧张或尚未确认结果，不构成以上停止条件。',
             '',
           ]
-        : []),
+        : [
+            '## 发送决策',
+            '- 本任务已通过候选人未回复、场景仍成立等确定性预检；你只负责生成本场景的合规跟进文案，decision 必须为 send。',
+            '- 不得以“正常对话流程”、“感觉不需要”或“上一条已经询问”为由跳过；应换一个更轻的角度跟进。',
+            '',
+          ]),
       '- 优先只写一句，最多两句；像微信里真人顾问随口发的话，不客套、不群发腔、不堆表情。',
       '- 只围绕本次目标提一个问题或一个行动点，不连环追问，不重复上一条消息。',
+      '- 近期对话末尾若已经是你（assistant）发出的说明或追问，禁止原样或轻改后重发同样内容；候选人的提问只要历史里已经回答过，也不要再答一遍。换一个更轻的角度围绕本次任务轻推即可。',
       '- 可以在确有助于候选人识别上下文时，简短承接近期对话里已经出现的岗位、门店、薪资、班次或位置；不得新增、改写、拼接或夸大任何细节，也不要整段复制岗位介绍。',
       '',
       '# 输出协议',
-      '返回结构化结果：decision 决定是否发送；blockReason 给出命中的语义停止原因，未命中必须为 none；decision=send 时 message 是候选人可见的最终文案，decision=skip 时 message 必须为空；reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
+      '返回结构化结果：decision 决定是否发送；blockReason 给出命中的语义停止原因，未命中必须为 none。只有明确命中上述语义停止条件时才允许 decision=skip，此时 message 必须为空；否则 decision=send 且 message 必须是候选人可见的最终文案。reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
     ].join('\n');
   }
 
@@ -332,9 +429,9 @@ export class ReengagementAgent {
   }
 
   /**
-   * 模型可以因为证据不足、时机不合适等原因选择 skip，不能把所有 skip 都记成
-   * “候选人取消面试”。只有报名后场景且近期候选人最后一个相关信号明确取消时，
-   * 才使用取消原因；其余统一记为 Agent 主动跳过，详细理由保留在 reengagementOutput。
+   * 显式 blockReason 优先于 decision，确保模型即使误写 decision=send 也不会穿透安全停止条件。
+   * 兼容存量模型没有返回 blockReason 的报名后输出：仅当最新候选人消息明确取消时，
+   * 才追溯为取消原因；其余不明确的 skip 会在上游触发纠正重试。
    */
   private resolveSkipValidationReason(
     ctx: ReengagementComposeContext,
@@ -433,6 +530,44 @@ export class ReengagementAgent {
 
   private extractFactLabel(line: string): string | undefined {
     return /^-\s*([^:：]+)[:：]/u.exec(line.trim())?.[1]?.trim();
+  }
+
+  /**
+   * 模型可能把历史里自己已发的回答当成待回答问题原样复读（badcase：booking_incomplete
+   * 触达逐字重发了 30 分钟前主链路的 4 段回复，仅分段和标点不同）。prompt 层的
+   * “不重复上一条消息”拦不住，这里做确定性兜底：生成文案去掉空白标点后，若完整
+   * 落在近期任意一条 assistant 消息、或任意一段连续 assistant 消息的拼接之内，判定为复读。
+   */
+  private isDuplicateOfRecentAssistantReply(
+    text: string,
+    memory: ReengagementMemorySnapshot,
+  ): boolean {
+    const normalized = this.normalizeForDuplicateCheck(text);
+    if (Array.from(normalized).length < ReengagementAgent.DUPLICATE_REPLY_MIN_LENGTH) {
+      return false;
+    }
+    const corpus: string[] = [];
+    let assistantRun = '';
+    for (const message of memory.recentMessages) {
+      if (message.role !== 'assistant') {
+        if (assistantRun) corpus.push(assistantRun);
+        assistantRun = '';
+        continue;
+      }
+      const content = this.normalizeForDuplicateCheck(message.content);
+      if (!content) continue;
+      corpus.push(content);
+      assistantRun += content;
+    }
+    if (assistantRun) corpus.push(assistantRun);
+    return corpus.some((entry) => entry.includes(normalized));
+  }
+
+  private normalizeForDuplicateCheck(text: string): string {
+    return text
+      .replace(/\[消息发送时间：[^\]]*\]/g, '')
+      .replace(/[\p{P}\p{S}\s]+/gu, '')
+      .toLowerCase();
   }
 
   private collectCandidateNames(

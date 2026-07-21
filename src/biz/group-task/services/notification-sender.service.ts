@@ -11,7 +11,12 @@ import {
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
-import { INTRA_GROUP_MESSAGE_DELAY_MS } from '../utils/humanized-delay.util';
+import {
+  INTRA_GROUP_MESSAGE_DELAY_MS,
+  MINIPROGRAM_CARD_DELAY_MAX_MS,
+  MINIPROGRAM_CARD_DELAY_MIN_MS,
+  resolveHumanizedDelayMs,
+} from '../utils/humanized-delay.util';
 
 /** 独立客找工作小程序默认值（可通过环境变量覆盖） */
 const MINIPROGRAM_DEFAULTS = {
@@ -179,13 +184,18 @@ export class NotificationSenderService {
       description: MINIPROGRAM_DEFAULTS.DESCRIPTION,
     };
 
+    const cardDelayMs = resolveHumanizedDelayMs(MINIPROGRAM_CARD_DELAY_MIN_MS, {
+      minFactor: 1,
+      maxFactor: MINIPROGRAM_CARD_DELAY_MAX_MS / MINIPROGRAM_CARD_DELAY_MIN_MS,
+    });
+
     try {
       await this.sendEnterpriseGroupMessage(
         group,
         9, // MINI_PROGRAM
         payload,
         '兼职小程序卡片',
-        INTRA_GROUP_MESSAGE_DELAY_MS,
+        cardDelayMs,
       );
       this.logger.log(`[兼职群] 小程序卡片已通过企业级 API 发送: ${group.groupName}`);
       return;

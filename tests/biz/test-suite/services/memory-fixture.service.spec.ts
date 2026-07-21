@@ -14,6 +14,7 @@ describe('MemoryFixtureService', () => {
   const mockSessionService = {
     saveFacts: jest.fn(),
     saveLastCandidatePool: jest.fn(),
+    saveLastJobListQuery: jest.fn(),
     savePresentedJobs: jest.fn(),
     saveCurrentFocusJob: jest.fn(),
     getSessionState: jest.fn(),
@@ -101,6 +102,59 @@ describe('MemoryFixtureService', () => {
         }),
         reasoning: 'curated fixture',
       }),
+    );
+  });
+
+  it('should derive the previous job-list query fingerprint from query params', async () => {
+    await service.seed(scope, {
+      lastJobListQuery: {
+        queryParams: {
+          cityNameList: ['上海'],
+          regionNameList: ['黄浦区'],
+          brandAliasList: [],
+          brandIdList: [],
+          projectNameList: [],
+          projectIdList: [],
+          storeNameList: [],
+          jobCategoryList: [],
+          jobIdList: [],
+          salaryPeriodNameList: [],
+        },
+        turnId: 'previous-turn',
+        updatedAtMs: 123,
+      },
+    });
+
+    expect(mockSessionService.saveLastJobListQuery).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'session-1',
+      {
+        signature:
+          '{"city":["上海"],"region":["黄浦区"],"brandAlias":[],"brandId":[],"brandMode":null,"excludeBrand":[],"project":[],"projectId":[],"store":[],"searchJobName":null,"category":[],"jobId":[],"settlement":[],"location":null,"schedule":null,"laborForm":null}',
+        turnId: 'previous-turn',
+        updatedAtMs: 123,
+      },
+    );
+  });
+
+  it('keeps legacy signature fixtures compatible', async () => {
+    await service.seed(scope, {
+      lastJobListQuery: {
+        signature: 'legacy-signature',
+        turnId: 'previous-turn',
+      },
+    });
+
+    expect(mockSessionService.saveLastJobListQuery).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'session-1',
+      {
+        signature: 'legacy-signature',
+        turnId: 'previous-turn',
+        updatedAtMs: undefined,
+      },
     );
   });
 });

@@ -38,6 +38,8 @@ export interface MemoryLifecycleTurnContext {
   normalizedMessages: ModelMessage[];
   /** 本轮工具查到的候选池；回合结束时统一写入会话记忆。 */
   candidatePool?: RecommendedJobSummary[] | null;
+  /** 本轮 duliday_job_list 查询签名；回合结束时写入会话记忆，供下一轮重复查询检测。 */
+  jobListQuerySignature?: string | null;
   /** 候选人微信昵称；brand_state 首次初始化（懒迁移 seed，§9.4）用。 */
   contactName?: string;
   /** 本轮图片描述的品牌解析结果（save_image_description execute 内同步产出，§10.2）。 */
@@ -331,12 +333,16 @@ export class MemoryLifecycleService {
     presentedJobs: unknown[] | null;
     currentFocusJob: unknown | null;
     brand_state?: unknown;
+    lastJobListQuery?: unknown;
   }): boolean {
     return Boolean(
       state.facts ||
         state.lastCandidatePool?.length ||
         state.presentedJobs?.length ||
         state.currentFocusJob ||
+        // 0 结果查询可能不会留下 candidatePool / presentedJobs，但查询指纹本身必须在
+        // 下一轮继续注入，否则最需要防复读的“连续无结果”场景会被误判为空会话。
+        state.lastJobListQuery ||
         // 品牌状态本身就是结构化会话记忆：seed-only 会话（首轮只落了 brand_state）
         // 不能被判成空会话，否则准备阶段读不到已存在的状态、触发重复 seed
         state.brand_state,
@@ -435,6 +441,19 @@ export class MemoryLifecycleService {
       steps.push(candidatePoolResult.step);
     } else {
       steps.push(this.buildSkippedStep('save_candidate_pool', '本轮没有 candidatePool 需要写入'));
+    }
+
+    if (ctx.jobListQuerySignature) {
+      const querySignatureResult = await this.runMeasuredStep('save_job_list_query', async () => {
+        await this.session.saveLastJobListQuery(ctx.corpId, ctx.userId, ctx.sessionId, {
+          signature: ctx.jobListQuerySignature as string,
+          turnId: ctx.messageId ?? null,
+          updatedAtMs: Date.now(),
+        });
+      });
+      steps.push(querySignatureResult.step);
+    } else {
+      steps.push(this.buildSkippedStep('save_job_list_query', '本轮没有 job_list 查询需要记录'));
     }
 
     if (assistantText?.trim()) {

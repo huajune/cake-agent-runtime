@@ -192,9 +192,9 @@ describe('resolveBrands - 短别名误判防护（§7.3/§14.1）', () => {
   });
 
   it('群来源说明末尾的 LL 是昵称，不命中 Liquid Laundry', () => {
-    expect(
-      resolveBrands('我是群聊“独立客&上海餐饮兼职12群”的LL', 'user_text', catalog),
-    ).toEqual([]);
+    expect(resolveBrands('我是群聊“独立客&上海餐饮兼职12群”的LL', 'user_text', catalog)).toEqual(
+      [],
+    );
   });
 
   it('纯短英文微信昵称 zh 不作为品牌 seed', () => {
@@ -252,14 +252,15 @@ describe('resolveBrands - 图片来源（image_description，§14.1）', () => {
   });
 });
 
-describe('resolveBrands - 品类默认与扩张（§6.2/§14.1）', () => {
-  it('"咖啡兼职" 默认识别为 M Stand', () => {
+describe('resolveBrands - 品类展开（§6.2/§14.1）', () => {
+  it('"咖啡兼职" 展开为完整咖啡品牌集合，不收敛到默认品牌', () => {
+    // 2026-07-20 产品裁定：撤除 v10.15.0 的 defaultBrand（"咖啡"只出 M Stand）。
     const results = resolveBrands('我想找咖啡兼职', 'user_text', catalog);
-    expect(names(results)).toEqual(['M Stand']);
+    expect(names(results).sort()).toEqual(['M Stand', '拉瓦萨', '瑞幸咖啡']);
     expect(results[0]).toMatchObject({
-      matchType: 'category_default',
+      matchType: 'category_expansion',
       intentPolarity: 'positive',
-      confidence: 0.85,
+      confidence: 0.75,
       matchedText: '咖啡',
     });
   });
@@ -279,9 +280,27 @@ describe('resolveBrands - 品类默认与扩张（§6.2/§14.1）', () => {
   it('品类词处于否定语境时不展开', () => {
     expect(
       resolveBrands('不要咖啡', 'user_text', catalog).filter(
-        (r) => r.matchType === 'category_expansion' || r.matchType === 'category_default',
+        (r) => r.matchType === 'category_expansion',
       ),
     ).toEqual([]);
+  });
+
+  it('工种称谓“咖啡师”不触发品类通道（生产回归：报名途中改写 currentBrand）', () => {
+    // 生产实例 6a5dbfa7（2026-07-20）：候选人已选定拉瓦萨，填报名表时写下
+    // “应聘岗位：长期晚班咖啡师”，裸子串匹配把“咖啡”读成品类词，
+    // currentBrand 被当时的 category_default 档从拉瓦萨改写成 M Stand。
+    const form = '姓名：陈某 面试时间：周二 应聘门店：复旦管院店 应聘岗位：长期晚班咖啡师';
+    expect(resolveBrands(form, 'user_text', catalog)).toEqual([]);
+
+    for (const text of ['我面试咖啡师', '咖啡师', '接受无咖啡师经验', '想做咖啡学徒']) {
+      expect(resolveBrands(text, 'user_text', catalog)).toEqual([]);
+    }
+  });
+
+  it('工种词与品类词同现时仍按品类命中', () => {
+    const results = resolveBrands('做咖啡师也行，主要想找咖啡店', 'user_text', catalog);
+    expect(names(results).sort()).toEqual(['M Stand', '拉瓦萨', '瑞幸咖啡']);
+    expect(results[0].matchType).toBe('category_expansion');
   });
 
   it('裸自我介绍“我是zara”不识别品牌，但求职句仍识别', () => {
@@ -331,8 +350,12 @@ describe('resolveBrandAliasInputs - 工具入口标准化（§8.2）', () => {
     expect(outcome.rejected[0].candidates?.length).toBe(2);
   });
 
-  it('普通咖啡品类词入参默认标准化为 M Stand', () => {
+  it('咖啡品类词入参展开为全部咖啡品牌', () => {
     const outcome = resolveBrandAliasInputs(['咖啡'], catalog);
-    expect(outcome.applied.map((b) => b.canonicalName)).toEqual(['M Stand']);
+    expect(outcome.applied.map((b) => b.canonicalName).sort()).toEqual([
+      'M Stand',
+      '拉瓦萨',
+      '瑞幸咖啡',
+    ]);
   });
 });

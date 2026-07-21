@@ -29,6 +29,10 @@ import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { COUNTY_LEVEL_CITY_TO_PREFECTURE } from '@memory/facts/geo-mappings';
 import {
+  buildJobListQuerySignature,
+  REPEAT_QUERY_NOTICE,
+} from '@tools/shared/job-list-query-signature';
+import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
   collectLaborFormAnomalies,
@@ -919,8 +923,44 @@ export function buildJobListTool(
             recoveredCount: number;
           } = null;
 
+          // 跨轮重复查询检测（badcase 6a5dc7c4ce406a6aee57bf6d）：归一化后的实质过滤条件
+          // 与上一轮完全一致时，结果必然相同——结果头部注入提醒，要求模型实质调整查询
+          // 或按既有拉群优先阶梯兜底，不得复读"没有"。同轮 Bull 重试（turnId 相同）不触发。
+          const querySignature = buildJobListQuerySignature({
+            cityNameList: fetchBaseParams.cityNameList,
+            regionNameList: fetchBaseParams.regionNameList,
+            brandAliasList: fetchBaseParams.brandAliasList,
+            brandIdList: fetchBaseParams.brandIdList,
+            // exclude 模式的品牌不进上游查询参数（本地剔除），mode 与排除名单单独入签名
+            brandFilterMode:
+              brandPlan.filterMode === 'exclude' && brandPlan.excludeBrands.length > 0
+                ? 'exclude'
+                : fetchBaseParams.brandAliasList.length > 0 ||
+                    fetchBaseParams.brandIdList.length > 0
+                  ? 'enforce'
+                  : null,
+            excludeBrandNames: brandPlan.excludeBrands.map((brand) => brand.canonicalName),
+            projectNameList: fetchBaseParams.projectNameList,
+            projectIdList: fetchBaseParams.projectIdList,
+            storeNameList: fetchBaseParams.storeNameList,
+            searchJobName: fetchBaseParams.searchJobName,
+            jobCategoryList: fetchBaseParams.jobCategoryList,
+            jobIdList: fetchBaseParams.jobIdList,
+            salaryPeriodNameList: fetchBaseParams.salaryPeriodNameList,
+            location: fetchBaseParams.location ?? null,
+            candidateScheduleConstraint: candidateScheduleConstraint ?? null,
+            candidateLaborForm,
+          });
+          const previousQuery = context.lastJobListQuery ?? null;
+          const isRepeatQuery = Boolean(
+            previousQuery &&
+              previousQuery.signature === querySignature &&
+              previousQuery.turnId !== (context.turnId ?? null),
+          );
+
           // 首次请求
           let { jobs, total } = await fetchJobs(fetchBaseParams);
+          context.onJobListQueryExecuted?.({ signature: querySignature });
 
           // 县级市行政层级兜底（生产 badcase 6a4f83a5ce406a6aeeeab4b2）：
           // 候选人说“延吉市铁南”，确定性提取曾把“延吉”强制放进 cityNameList；但海绵
@@ -1483,6 +1523,7 @@ export function buildJobListTool(
               brandGroups,
             );
             const markdownSections = [
+              isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               summerWorkerStrictNotice,
               laborFormRelaxNotice,
@@ -1502,6 +1543,10 @@ export function buildJobListTool(
           result.queryMeta = {
             storeMatchStrategy,
             jobCategoryMatchStrategy,
+            // 跨轮重复查询：本轮实质过滤条件与上一轮完全一致（观测排障用）
+            repeatQuery: isRepeatQuery
+              ? { repeated: true, previousTurnId: previousQuery?.turnId ?? null }
+              : { repeated: false },
             regionRelaxedToLocation,
             regionRelaxAttempted,
             regionDroppedForCoords,

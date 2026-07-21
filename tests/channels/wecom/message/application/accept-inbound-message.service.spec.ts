@@ -138,6 +138,28 @@ describe('AcceptInboundMessageService', () => {
     expect(userHostingService.pauseUser).not.toHaveBeenCalled();
   });
 
+  it('preserves externalRequestId and the real channel messageId on API_SEND callbacks', async () => {
+    await service.execute(
+      createMessage({
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        messageId: 'channel-message-1',
+        externalRequestId: 'batch-session-1',
+        payload: { text: '面试提醒', pureText: '面试提醒' },
+      }),
+    );
+
+    expect(chatSession.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'channel-message-1',
+        payload: expect.objectContaining({
+          externalRequestId: 'batch-session-1',
+          channelMessageId: 'channel-message-1',
+        }),
+      }),
+    );
+  });
+
   it('records last candidate message timestamp for reengagement stop conditions', async () => {
     const result = await service.execute(createMessage({ timestamp: '1713168001234' }));
 

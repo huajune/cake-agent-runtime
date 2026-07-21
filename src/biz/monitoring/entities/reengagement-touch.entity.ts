@@ -9,7 +9,7 @@
 export enum ReengagementTouchStatus {
   /** 已排程，等待到点 */
   Scheduled = 'scheduled',
-  /** 排程前预检停止（未入队） */
+  /** 业务上正常跳过（含排程前预检停止、Agent 主动不发送） */
   Skipped = 'skipped',
   /** 到点时总开关关闭，丢弃 */
   Disabled = 'disabled',
@@ -27,7 +27,7 @@ export enum ReengagementTouchStatus {
   Shadow = 'shadow',
   /** 已投递 */
   Sent = 'sent',
-  /** 生成非 reply、入队失败或投递明确失败 */
+  /** 生成异常、入队失败或投递明确失败 */
   Failed = 'failed',
   /** 投递后状态不明，需人工核对渠道侧 */
   Unknown = 'unknown',

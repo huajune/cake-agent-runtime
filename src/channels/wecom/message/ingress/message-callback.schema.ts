@@ -14,6 +14,7 @@ export const EnterpriseMessageCallbackInputSchema = z
     imContactId: z.string().optional(),
     messageType: z.number().int(),
     messageId: z.string().min(1),
+    externalRequestId: z.string().min(1).optional(),
     timestamp: z.union([z.string().min(1), z.number().int()]).transform((value) => String(value)),
     isSelf: z.boolean().optional(),
     source: z.number().int().optional(),

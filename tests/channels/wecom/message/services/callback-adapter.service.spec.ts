@@ -149,6 +149,15 @@ describe('MessageCallbackAdapterService', () => {
       expect(result._apiType).toBeUndefined();
     });
 
+    it('should preserve externalRequestId from enterprise send callbacks', () => {
+      const result = service.normalizeCallback({
+        ...validEnterpriseBody,
+        externalRequestId: 'batch-session-1',
+      });
+
+      expect(result.externalRequestId).toBe('batch-session-1');
+    });
+
     it('should infer source for enterprise callback missing source field', () => {
       const bodyWithoutSource = {
         ...validEnterpriseBody,

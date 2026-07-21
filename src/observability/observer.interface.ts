@@ -99,7 +99,7 @@ export type AgentEvent = AgentEventContext &
       }
     /**
      * 新旧品牌匹配路径差异（§12 临时事件，随旧路径下线删除）：
-     * 品牌目录时变、离线重放无法复现，差异现场必须在线记录；一致时仅计数不落行。
+     * 品牌目录时变、离线重放无法复现，差异现场必须在线记录。
      */
     | {
         type: 'brand_resolution_shadow_diff';
@@ -108,6 +108,22 @@ export type AgentEvent = AgentEventContext &
         legacyBrands: string[];
         nextBrands: string[];
         catalogSize: number;
+        origin: 'extraction_hints' | 'contact_name';
+      }
+    /**
+     * 新旧一致的**批次计数**（§15.6 门禁分母，随旧路径下线一并删除）。
+     *
+     * 差异率 = diff 事件数 / (diff 事件数 + Σ batchSize)，两个数都在 agent_execution_events
+     * 里，一条 SQL 可算。之所以按批而非逐次落：一致是常态（日均数百次），逐次落行会把
+     * 事件表冲成计数器；每满 batchSize 落一条，量级可忽略而比率不失真。
+     *
+     * 已知精度损失：进程重启时未满一批的计数丢失（每实例最多 batchSize-1）。对"低于 2%
+     * 且持续 7 天"这种量级判定可接受——丢的是分母，只会让差异率显得偏高，不会漏报。
+     */
+    | {
+        type: 'brand_resolution_shadow_agreement';
+        userId?: string;
+        batchSize: number;
         origin: 'extraction_hints' | 'contact_name';
       }
   );

@@ -41,8 +41,7 @@ const MATCH_TYPE_PRIORITY: Record<BrandMatchType, number> = {
   canonical_exact: 1,
   alias_exact: 2,
   alias_containment: 3,
-  category_default: 4,
-  category_expansion: 5,
+  category_expansion: 4,
 };
 
 const CONFIDENCE_BY_MATCH_TYPE: Record<BrandMatchType, number> = {
@@ -50,7 +49,6 @@ const CONFIDENCE_BY_MATCH_TYPE: Record<BrandMatchType, number> = {
   canonical_exact: BRAND_CONFIDENCE.canonicalExact,
   alias_exact: BRAND_CONFIDENCE.aliasExact,
   alias_containment: BRAND_CONFIDENCE.aliasContainment,
-  category_default: BRAND_CONFIDENCE.categoryDefault,
   category_expansion: BRAND_CONFIDENCE.categoryExpansion,
 };
 
@@ -175,36 +173,27 @@ export function resolveBrands(
     idResolutions.length > 0 || uniqueMatches.length > 0 || results.some((r) => r.ambiguous);
   if (!matchedSpecificBrand && source !== 'contact_name') {
     const normalizedText = normalizeForBrandMatch(trimmed);
-    for (const { category, matchedKeyword } of matchCategories(normalizedText, index.categories)) {
+    for (const { category, matchedKeyword, matchedIndex } of matchCategories(
+      normalizedText,
+      index.categories,
+    )) {
       // 品类词处于否定语境（"不要咖啡"）时不展开：确定性轨宁缺毋滥，交 LLM 轨处理。
-      const keywordStart = normalizedText.indexOf(matchedKeyword);
-      if (
-        keywordStart >= 0 &&
-        isBrandSpanNegated(normalizedText, keywordStart, matchedKeyword.length)
-      ) {
+      // 位置取自 matchCategories 命中的那次出现——不能重新 indexOf，否则"咖啡师…不要咖啡"
+      // 这类文本会把否定判定锚到工种词那次出现上。
+      if (isBrandSpanNegated(normalizedText, matchedIndex, matchedKeyword.length)) {
         continue;
       }
-      const categoryBrands = shouldBrowseAlternativeBrands(normalizedText)
-        ? category.brands
-        : category.defaultBrand
-          ? [category.defaultBrand]
-          : category.brands;
-      const matchType: BrandMatchType =
-        category.defaultBrand && categoryBrands.length === 1
-          ? 'category_default'
-          : 'category_expansion';
-      for (const brandName of categoryBrands) {
+      // 品类命中一律展开为全部成员品牌（§6.2）——不设默认品牌，理由见
+      // category-expansion.ts 的 BRAND_CATEGORIES 注释。
+      for (const brandName of category.brands) {
         results.push({
           canonicalName: brandName,
           brandId: index.brandIdByName.get(brandName) ?? null,
           matchedText: category.label,
           source,
-          matchType,
+          matchType: 'category_expansion',
           intentPolarity: 'positive',
-          confidence:
-            matchType === 'category_default'
-              ? BRAND_CONFIDENCE.categoryDefault
-              : BRAND_CONFIDENCE.categoryExpansion,
+          confidence: BRAND_CONFIDENCE.categoryExpansion,
           ambiguous: false,
         });
       }
@@ -289,11 +278,6 @@ function isGroupNicknameIntroduction(normalizedClause: string, normalizedAlias: 
     /(?:群聊|群里|群内|兼职群)/.test(normalizedClause) &&
     normalizedClause.endsWith(normalizedAlias)
   );
-}
-
-/** “其他咖啡品牌 / 除了 M Stand”表示扩张查询，不应用咖啡默认品牌。 */
-function shouldBrowseAlternativeBrands(normalizedText: string): boolean {
-  return /(?:其他|其它|别的|另外|还有|除了|除去|不看|不要|不考虑)/.test(normalizedText);
 }
 
 /** 地址中的同名片段不是品牌："鄂尔多斯路" 不得命中品牌 "鄂尔多斯1980"。 */

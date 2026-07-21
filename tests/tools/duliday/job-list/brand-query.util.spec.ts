@@ -178,16 +178,16 @@ describe('buildBrandQueryPlan（§8.1 组合规则）', () => {
     expect(plan.queryBrandAliasList).toEqual([]);
   });
 
-  it('咖啡默认只查询 M Stand，并视为业务默认而非多品牌扩张', () => {
+  it('裸品类词"咖啡"按品类扩张并减去 excludedBrands（不再收敛到默认品牌）', () => {
+    // 2026-07-20 产品裁定撤除 defaultBrand 后，"咖啡"与"其他咖啡品牌"走同一条展开路径。
     const plan = buildBrandQueryPlan({
       brandAliasList: ['咖啡'],
       brandIdList: [],
       sessionBrandState: stateWith(null, [{ canonicalName: '瑞幸咖啡', brandId: 10003 }]),
       catalog,
     });
-    expect(plan.applied.map((b) => b.canonicalName)).toEqual(['M Stand']);
-    expect(plan.queryBrandIdList).toEqual([10027]);
-    expect(plan.categoryExcludedRemoved).toEqual([]);
+    expect(plan.applied.map((b) => b.canonicalName).sort()).toEqual(['M Stand', '拉瓦萨']);
+    expect(plan.categoryExcludedRemoved).toEqual(['瑞幸咖啡']);
   });
 
   it('其他咖啡品牌仍按品类扩张并减去 excludedBrands', () => {
