@@ -85,9 +85,20 @@ export function reduceBrandState(
   let currentBrand: SessionBrandRef | null = prev.currentBrand;
   let excludedBrands: SessionBrandRef[] = [...prev.excludedBrands];
 
+  // §6.3.1 规则 3 的跨轨延伸：同一品牌同轮又要又不要（不同消息/不同轨各出一条，
+  // resolveBrands 的单文本合并覆盖不到）时显式否定优先。净否定品牌不得参与第 1 步
+  // 的 currentBrand 替换与排斥赦免——否则它会先上位把无辜的在位品牌顶下台、再被
+  // 第 2 步排斥，最终在位者凭空出局（2026-07-21 审计："肯德基年龄不行"两次误清
+  // 在位的成都你六姐/奥乐齐）。
+  const negatedRefs = negatives.filter((r) => r.canonicalName !== null).map(toRef);
+  const isNegatedThisTurn = (ref: SessionBrandRef) =>
+    negatedRefs.some((negated) => isSameBrandRef(negated, ref));
+
   // 第 1 步：positive（图片先、文字后，逐来源各自应用）
   for (const source of POSITIVE_SOURCE_ORDER) {
-    const group = dedupeByBrand(positives.filter((r) => r.source === source));
+    const group = dedupeByBrand(
+      positives.filter((r) => r.source === source && !isNegatedThisTurn(toRef(r))),
+    );
     if (group.length === 0) continue;
 
     for (const resolution of group) {
