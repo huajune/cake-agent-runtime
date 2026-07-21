@@ -240,6 +240,12 @@ describe('ReengagementAgent', () => {
         content: '不好意思哈，星期一约好的面试我去不了了。',
       });
       expect(system).toContain('即使实时工单仍显示预约有效也不能发送');
+      if (scenarioCode === 'interview_reminder') {
+        // 抽样审计：模型高频把预约当轮的收尾叮嘱/二维码交付误判为“已提醒”（误杀），
+        // 也漏判预约回合后另行发出的口头提醒（漏拦）。口径必须给出正反例。
+        expect(system).toContain('预约成功当轮的告知与收尾叮嘱都不算已提醒');
+        expect(system).toContain('预约回合之后另行发出的提醒参加消息');
+      }
       // 生产 badcase（touch 19712）：候选人说“干不了”且顾问已转拉群，提醒仍被发出。
       // 判据必须覆盖婉拒表达 + 转群语境，并区分“为本次面试拉群”不算放弃。
       expect(system).toContain('干不了');
