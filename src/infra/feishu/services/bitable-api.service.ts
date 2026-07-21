@@ -156,6 +156,38 @@ export class FeishuBitableApiService {
   }
 
   /**
+   * 上传媒体文件并挂载到多维表格（用于附件字段）
+   *
+   * 调用 drive/v1/medias/upload_all，parent_node 传多维表格 appToken，
+   * 返回的 file_token 可写入附件字段：[{ file_token }]
+   */
+  async uploadMedia(
+    appToken: string,
+    fileName: string,
+    buffer: Buffer,
+    mimeType = 'image/png',
+  ): Promise<{ fileToken: string }> {
+    const form = new FormData();
+    form.append('file_name', fileName);
+    form.append('parent_type', 'bitable_image');
+    form.append('parent_node', appToken);
+    form.append('size', String(buffer.length));
+    form.append('file', new Blob([new Uint8Array(buffer)], { type: mimeType }), fileName);
+
+    const response = await this.feishuApi.post<FeishuResponse<{ file_token: string }>>(
+      '/drive/v1/medias/upload_all',
+      form,
+      { timeout: 30000 },
+    );
+
+    if (response.data.code !== 0 || !response.data.data?.file_token) {
+      throw new Error(`上传附件失败: ${response.data.msg}`);
+    }
+
+    return { fileToken: response.data.data.file_token };
+  }
+
+  /**
    * 检查字段是否存在
    */
   async fieldExists(appToken: string, tableId: string, fieldName: string): Promise<boolean> {

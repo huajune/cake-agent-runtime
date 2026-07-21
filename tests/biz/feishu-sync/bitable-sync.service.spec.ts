@@ -48,6 +48,8 @@ describe('FeishuBitableSyncService', () => {
         ]),
       batchCreateRecords: jest.fn(),
       createRecord: jest.fn(),
+      createField: jest.fn().mockResolvedValue({ fieldId: 'fld_new' }),
+      uploadMedia: jest.fn().mockResolvedValue({ fileToken: 'file_token_1' }),
       truncateText: jest.fn((text: string, max = 2000) =>
         text && text.length > max ? `${text.slice(0, max)}...(truncated)` : text || '',
       ),
@@ -211,6 +213,128 @@ describe('FeishuBitableSyncService', () => {
           traceId: 'trace_001',
         }),
       );
+    });
+
+    it('should map feedback source to Chinese labels for 来源 column', async () => {
+      mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
+      mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_new' });
+
+      await service.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        source: 'reengagement',
+      });
+      expect(mockBitableApi.createRecord).toHaveBeenLastCalledWith(
+        badcaseTableConfig.appToken,
+        badcaseTableConfig.tableId,
+        expect.objectContaining({ 来源: '复聊' }),
+      );
+
+      await service.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        source: 'chat_record',
+      });
+      expect(mockBitableApi.createRecord).toHaveBeenLastCalledWith(
+        badcaseTableConfig.appToken,
+        badcaseTableConfig.tableId,
+        expect.objectContaining({ 来源: '主聊' }),
+      );
+    });
+
+    const PNG_DATA_URL = 'data:image/png;base64,aGVsbG8=';
+
+    it('should upload screenshots into an existing attachment field', async () => {
+      mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
+      mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_new' });
+      const baseFields = await mockBitableApi.getFields('a', 'b');
+      mockBitableApi.getFields.mockResolvedValue([...baseFields, { field_name: '截图' } as never]);
+
+      const result = await service.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        screenshots: [PNG_DATA_URL, PNG_DATA_URL],
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockBitableApi.createField).not.toHaveBeenCalled();
+      expect(mockBitableApi.uploadMedia).toHaveBeenCalledTimes(2);
+      expect(mockBitableApi.createRecord).toHaveBeenCalledWith(
+        badcaseTableConfig.appToken,
+        badcaseTableConfig.tableId,
+        expect.objectContaining({
+          截图: [{ file_token: 'file_token_1' }, { file_token: 'file_token_1' }],
+        }),
+      );
+    });
+
+    it('should auto-create the attachment field when missing', async () => {
+      mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
+      mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_new' });
+
+      const result = await service.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        screenshots: [PNG_DATA_URL],
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockBitableApi.createField).toHaveBeenCalledWith(
+        badcaseTableConfig.appToken,
+        badcaseTableConfig.tableId,
+        '截图',
+        17,
+      );
+      expect(mockBitableApi.createRecord).toHaveBeenCalledWith(
+        badcaseTableConfig.appToken,
+        badcaseTableConfig.tableId,
+        expect.objectContaining({ 截图: [{ file_token: 'file_token_1' }] }),
+      );
+    });
+
+    it('should degrade to remark note when attachment field creation fails', async () => {
+      mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
+      mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_new' });
+      (mockBitableApi.createField as jest.Mock).mockRejectedValue(new Error('perm denied'));
+
+      const result = await service.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        screenshots: [PNG_DATA_URL],
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockBitableApi.uploadMedia).not.toHaveBeenCalled();
+      const recordFields = (mockBitableApi.createRecord as jest.Mock).mock.calls[0][2] as Record<
+        string,
+        unknown
+      >;
+      expect(recordFields['截图']).toBeUndefined();
+      expect(String(recordFields['备注'])).toContain('附件字段创建失败');
+    });
+
+    it('should note failed uploads in remark but keep the record', async () => {
+      mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
+      mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_new' });
+      const baseFields = await mockBitableApi.getFields('a', 'b');
+      mockBitableApi.getFields.mockResolvedValue([...baseFields, { field_name: '截图' } as never]);
+      (mockBitableApi.uploadMedia as jest.Mock)
+        .mockResolvedValueOnce({ fileToken: 'file_token_1' })
+        .mockRejectedValueOnce(new Error('upload failed'));
+
+      const result = await service.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        screenshots: [PNG_DATA_URL, PNG_DATA_URL],
+      });
+
+      expect(result.success).toBe(true);
+      const recordFields = (mockBitableApi.createRecord as jest.Mock).mock.calls[0][2] as Record<
+        string,
+        unknown
+      >;
+      expect(recordFields['截图']).toEqual([{ file_token: 'file_token_1' }]);
+      expect(String(recordFields['备注'])).toContain('截图上传失败 1/2 张');
     });
 
     it('should enrich feedback source trace from message processing detail', async () => {
