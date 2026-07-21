@@ -14,6 +14,145 @@
 
 .moduleSection {
   margin-bottom: $spacing-xl;
+  // 锚点跳转时给 sticky 导航条留出头部空间
+  scroll-margin-top: 76px;
+}
+
+// ==================== 页内锚点导航 ====================
+
+.sectionNav {
+  position: sticky;
+  top: 8px;
+  z-index: $z-sticky;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: $spacing-lg;
+  padding: 5px;
+  border: 1px solid $border;
+  border-radius: $radius-full;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.sectionNavItem {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: none;
+  border-radius: $radius-full;
+  background: transparent;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-secondary;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast, box-shadow $transition-fast;
+
+  &:hover {
+    color: $text-primary;
+    background: $bg-secondary;
+  }
+}
+
+.sectionNavItemActive {
+  color: $primary;
+  background: $primary-soft;
+  box-shadow: $shadow-sm;
+
+  &:hover {
+    color: $primary;
+    background: $primary-soft;
+  }
+}
+
+// ==================== 节标题生效方式徽章 ====================
+
+.sectionModeBadge {
+  margin-left: $spacing-sm;
+  padding: 3px 10px;
+  border-radius: $radius-full;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+  letter-spacing: 0;
+  vertical-align: 3px;
+}
+
+.sectionModeSave {
+  background: $primary-soft;
+  color: $primary;
+}
+
+.sectionModeInstant {
+  background: $success-soft;
+  color: $success;
+}
+
+.sectionModeMixed {
+  background: $warning-soft;
+  color: $warning;
+}
+
+// ==================== 模型路由网格 ====================
+
+.modelGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-md;
+}
+
+.modelCell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: $spacing-md;
+  border: 1px solid $border;
+  border-radius: 16px;
+  background: $bg-primary;
+  transition: border-color $transition-fast, box-shadow $transition-fast;
+
+  &:hover {
+    border-color: $border-hover;
+  }
+}
+
+.modelCellModified {
+  border-color: $primary;
+  box-shadow: 0 0 0 3px $primary-12;
+}
+
+.modelCellHint {
+  margin: 0;
+  min-height: 2.9em;
+  font-size: 12px;
+  line-height: 1.45;
+  color: $text-secondary;
+}
+
+.modelCellMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  font-size: 11px;
+  color: $text-muted;
+
+  code {
+    font-family: $font-family-mono;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: $radius-sm;
+    background: $bg-secondary;
+  }
 }
 
 .moduleHeader {
@@ -582,6 +721,14 @@
   .settingRow {
     grid-template-columns: 1fr;
     gap: $spacing-md;
+  }
+
+  .modelGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modelCellHint {
+    min-height: 0;
   }
 
   .controlValue,

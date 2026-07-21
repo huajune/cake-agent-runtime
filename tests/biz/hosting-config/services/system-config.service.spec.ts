@@ -215,6 +215,41 @@ describe('SystemConfigService', () => {
     });
   });
 
+  // ==================== getRoleModelOverride ====================
+
+  describe('getRoleModelOverride', () => {
+    beforeEach(() => {
+      (service as any).agentReplyConfig = {
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        extractModelId: 'deepseek/deepseek-v4-pro',
+        reviewModelId: '  deepseek/deepseek-v4-pro  ',
+        evaluateModelId: '',
+        reengagementModelId: 'deepseek/deepseek-v4-pro',
+      };
+      (service as any).agentReplyConfigExpiry = Date.now() + 60_000;
+    });
+
+    it('returns trimmed override for configured roles', async () => {
+      await expect(service.getRoleModelOverride('review')).resolves.toBe(
+        'deepseek/deepseek-v4-pro',
+      );
+      await expect(service.getRoleModelOverride('extract')).resolves.toBe(
+        'deepseek/deepseek-v4-pro',
+      );
+      await expect(service.getRoleModelOverride('reengagement')).resolves.toBe(
+        'deepseek/deepseek-v4-pro',
+      );
+    });
+
+    it('returns undefined for empty override (falls back to env role routing)', async () => {
+      await expect(service.getRoleModelOverride('evaluate')).resolves.toBeUndefined();
+    });
+
+    it('returns undefined for chat: wecom callback keeps its dedicated channel', async () => {
+      await expect(service.getRoleModelOverride('chat')).resolves.toBeUndefined();
+    });
+  });
+
   // ==================== getAgentReplyConfig ====================
 
   describe('getAgentReplyConfig', () => {

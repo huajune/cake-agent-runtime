@@ -74,6 +74,26 @@ export class SystemConfigService {
         typeof config?.extractModelId === 'string'
           ? config.extractModelId.trim()
           : DEFAULT_AGENT_REPLY_CONFIG.extractModelId,
+      visionModelId:
+        typeof config?.visionModelId === 'string'
+          ? config.visionModelId.trim()
+          : DEFAULT_AGENT_REPLY_CONFIG.visionModelId,
+      evaluateModelId:
+        typeof config?.evaluateModelId === 'string'
+          ? config.evaluateModelId.trim()
+          : DEFAULT_AGENT_REPLY_CONFIG.evaluateModelId,
+      reviewModelId:
+        typeof config?.reviewModelId === 'string'
+          ? config.reviewModelId.trim()
+          : DEFAULT_AGENT_REPLY_CONFIG.reviewModelId,
+      repairModelId:
+        typeof config?.repairModelId === 'string'
+          ? config.repairModelId.trim()
+          : DEFAULT_AGENT_REPLY_CONFIG.repairModelId,
+      reengagementModelId:
+        typeof config?.reengagementModelId === 'string'
+          ? config.reengagementModelId.trim()
+          : DEFAULT_AGENT_REPLY_CONFIG.reengagementModelId,
       initialMergeWindowMs:
         typeof config?.initialMergeWindowMs === 'number'
           ? config.initialMergeWindowMs
@@ -291,6 +311,24 @@ export class SystemConfigService {
   async getExtractModelOverride(): Promise<string | undefined> {
     const config = await this.getAgentReplyConfig();
     return config.extractModelId?.trim() || undefined;
+  }
+
+  /**
+   * 按角色返回运行时模型覆盖（Dashboard 配置非空时生效，空/未配置返回 undefined 走
+   * AGENT_{ROLE}_MODEL 环境变量路由）。chat 角色刻意返回 undefined：企微回调链路走
+   * wecomCallbackModelId 专用通道，不在此重复应用。
+   */
+  async getRoleModelOverride(role: string): Promise<string | undefined> {
+    const config = await this.getAgentReplyConfig();
+    const byRole: Record<string, string | undefined> = {
+      extract: config.extractModelId,
+      vision: config.visionModelId,
+      evaluate: config.evaluateModelId,
+      review: config.reviewModelId,
+      repair: config.repairModelId,
+      reengagement: config.reengagementModelId,
+    };
+    return byRole[role]?.trim() || undefined;
   }
 
   async getAgentReplyConfig(): Promise<AgentReplyConfig> {

@@ -16,6 +16,12 @@ export interface AgentReplyConfig {
   wecomCallbackModelId: string;
   wecomCallbackThinkingMode: AgentReplyThinkingMode;
   extractModelId: string;
+  // 其余角色的运行时模型覆盖（空字符串 = 走对应 AGENT_{ROLE}_MODEL 环境变量路由）
+  visionModelId: string;
+  evaluateModelId: string;
+  reviewModelId: string;
+  repairModelId: string;
+  reengagementModelId: string;
 
   // 消息聚合配置
   initialMergeWindowMs: number;

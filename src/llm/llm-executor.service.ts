@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Output, generateText, streamText } from 'ai';
 import { RegistryService } from '@providers/registry.service';
 import { ReliableService } from '@providers/reliable.service';
@@ -8,6 +8,7 @@ import type { AgentError } from '@shared-types/agent-error.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { z } from 'zod';
 import { type LlmThinkingConfig, ModelRole } from './llm.types';
+import { ROLE_MODEL_OVERRIDES, type RoleModelOverridesProvider } from './role-model-overrides';
 
 export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>[0], 'model'> {
   role?: ModelRole | string;
@@ -28,6 +29,11 @@ export interface LlmGenerateStructuredOptions<TSchema extends z.ZodTypeAny>
   extends Omit<LlmGenerateOptions, 'output'> {
   schema: TSchema;
   outputName?: string;
+  /**
+   * schema 校验通过后的业务级校验：抛错即视为本次生成失败，走与 API 错误相同的
+   * 重试/降级策略。用于拦截"结构合法但内容损坏"的输出（如约束解码截断）。
+   */
+  validateOutput?: (output: unknown) => void;
 }
 
 export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0], 'model'> {
@@ -66,11 +72,14 @@ export class LlmExecutorService {
     private readonly reliable: ReliableService,
     @Optional()
     private readonly tracer?: AgentTracerService,
+    @Optional()
+    @Inject(ROLE_MODEL_OVERRIDES)
+    private readonly roleModelOverrides?: RoleModelOverridesProvider,
   ) {}
 
   async generate(options: LlmGenerateOptions): Promise<Awaited<ReturnType<typeof generateText>>> {
     const { config, onPreparedRequest, thinking, validateResult, ...routeOptions } = options;
-    const plan = this.resolveExecutionPlan(routeOptions);
+    const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
     const attempts: string[] = [];
     let lastRawError: unknown = null;
     const requiresVisionInput = this.hasVisionInput(routeOptions.messages);
@@ -134,7 +143,7 @@ export class LlmExecutorService {
   async generateStructured<TSchema extends z.ZodTypeAny>(
     options: LlmGenerateStructuredOptions<TSchema>,
   ): Promise<StructuredGenerateResult<TSchema>> {
-    const { schema, outputName = 'StructuredOutput', ...rest } = options;
+    const { schema, outputName = 'StructuredOutput', validateOutput, ...rest } = options;
     const result = await this.generate({
       ...rest,
       output: Output.object({
@@ -145,6 +154,7 @@ export class LlmExecutorService {
       // no-output failures use the same retry and model fallback policy as API errors.
       validateResult: (candidate) => {
         if (!candidate.output) throw new Error('No structured output returned');
+        validateOutput?.(candidate.output);
       },
     });
 
@@ -153,7 +163,7 @@ export class LlmExecutorService {
 
   async stream(options: LlmStreamOptions): Promise<ReturnType<typeof streamText>> {
     const { onPreparedRequest, thinking, ...routeOptions } = options;
-    const plan = this.resolveExecutionPlan(routeOptions);
+    const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
     const requiresVisionInput = this.hasVisionInput(routeOptions.messages);
     await this.emitPreparedRequest(plan, routeOptions, thinking, onPreparedRequest);
 
@@ -230,6 +240,31 @@ export class LlmExecutorService {
     // parts whenever a text-only fallback is configured, forcing unnecessary
     // pre-agent image description even though the normal path can see images directly.
     return supportsVision(plan.primaryModelId);
+  }
+
+  /**
+   * 带运行时角色覆盖的路由解析。优先级：调用方显式 modelId > Dashboard 角色覆盖
+   * （ROLE_MODEL_OVERRIDES，如 agent_reply_config.reviewModelId）> AGENT_{ROLE}_MODEL
+   * 环境变量。覆盖读取失败按无覆盖处理，绝不阻塞生成链路。
+   */
+  private async resolveExecutionPlanWithOverrides(options: {
+    role?: ModelRole | string;
+    modelId?: string;
+    fallbacks?: string[];
+    disableFallbacks?: boolean;
+  }): Promise<ExecutionPlan> {
+    if (!options.modelId?.trim() && this.roleModelOverrides) {
+      const role = String(options.role ?? ModelRole.Chat);
+      try {
+        const override = await this.roleModelOverrides.getRoleModelOverride(role);
+        if (override) {
+          return this.resolveExecutionPlan({ ...options, modelId: override });
+        }
+      } catch (error) {
+        this.logger.warn(`读取角色模型覆盖失败，回退环境变量路由: role=${role}`, error);
+      }
+    }
+    return this.resolveExecutionPlan(options);
   }
 
   private resolveExecutionPlan(options: {
