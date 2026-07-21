@@ -611,6 +611,15 @@ export default function ReengagementDetailDrawer({
                 Shadow
               </span>
             )}
+            {/* 反馈：标记本次复聊为 Good/Bad Case，写入飞书反馈表 */}
+            <div className={styles.headerFeedback}>
+              <FeedbackButtons
+                successType={feedback.successType}
+                disabled={!feedbackChatHistory.trim()}
+                onGoodCase={() => feedback.openModal('goodcase')}
+                onBadCase={() => feedback.openModal('badcase')}
+              />
+            </div>
             <button className={styles.closeBtn} onClick={onClose}>
               &times;
             </button>
@@ -882,15 +891,6 @@ export default function ReengagementDetailDrawer({
           </div>
 
           <div className={styles.rightCol}>
-            {/* 反馈：标记本次复聊为 Good/Bad Case，写入飞书反馈表 */}
-            <div className={styles.feedbackEntry}>
-              <FeedbackButtons
-                successType={feedback.successType}
-                disabled={!feedbackChatHistory.trim()}
-                onGoodCase={() => feedback.openModal('goodcase')}
-                onBadCase={() => feedback.openModal('badcase')}
-              />
-            </div>
             {/* 该触达由哪个主动回合投递：跳消息处理流水详情 */}
             {detailBatchId && (
               <button
