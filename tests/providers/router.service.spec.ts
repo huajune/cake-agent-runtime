@@ -120,16 +120,16 @@ describe('RouterService', () => {
 
     it('should promote the default fallback chain when the role primary model is missing', () => {
       env.AGENT_DEFAULT_FALLBACKS =
-        'moonshotai/kimi-k2.6, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+        'moonshotai/kimi-k3, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
 
       expect(service.getRouteByRole(ModelRole.Repair)).toEqual({
-        modelId: 'moonshotai/kimi-k2.6',
+        modelId: 'moonshotai/kimi-k3',
         fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
       });
     });
 
     it('should promote role-specific fallbacks before default fallbacks when primary is missing', () => {
-      env.AGENT_DEFAULT_FALLBACKS = 'moonshotai/kimi-k2.6';
+      env.AGENT_DEFAULT_FALLBACKS = 'moonshotai/kimi-k3';
       env.AGENT_REPAIR_FALLBACKS = 'anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
 
       expect(service.getRouteByRole(ModelRole.Repair)).toEqual({
@@ -186,10 +186,10 @@ describe('RouterService', () => {
 
     it('should resolve an unconfigured role through the default fallback chain', () => {
       env.AGENT_DEFAULT_FALLBACKS =
-        'moonshotai/kimi-k2.6, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+        'moonshotai/kimi-k3, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
 
       expect(service.resolveRoute({ role: ModelRole.Repair })).toEqual({
-        modelId: 'moonshotai/kimi-k2.6',
+        modelId: 'moonshotai/kimi-k3',
         fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
       });
     });

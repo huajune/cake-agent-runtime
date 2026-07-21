@@ -12,6 +12,8 @@ export type FollowUpScenarioCode =
 export interface FollowUpScenarioContext {
   anchorAt: number;
   state: AuthoritativeSessionState;
+  /** 实时岗位详情解析出的面试形式；仅用于需要按形式区分触发时间的场景。 */
+  interviewType?: string;
 }
 
 /** 场景所属大阶段：报名前 / 报名后（报名后流程复杂，支持独立大开关）。 */
@@ -74,6 +76,20 @@ export interface ShouldStopResult {
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const SHANGHAI_UTC_OFFSET_MS = 8 * HOUR;
+
+function isAiInterview(interviewType?: string): boolean {
+  return typeof interviewType === 'string' && /ai\s*面试/i.test(interviewType);
+}
+
+/** 上海时区无夏令时：返回面试日期当天指定整点的绝对时间。 */
+function shanghaiHourOnInterviewDay(interviewAt: number, hour: number): number {
+  const localDate = new Date(interviewAt + SHANGHAI_UTC_OFFSET_MS);
+  return (
+    Date.UTC(localDate.getUTCFullYear(), localDate.getUTCMonth(), localDate.getUTCDate(), hour) -
+    SHANGHAI_UTC_OFFSET_MS
+  );
+}
 
 /**
  * 7 个需求场景 → 锚点/延迟/stopUnless 映射（见 agent-reengagement-design.md §5）。
@@ -196,7 +212,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     requiredEvidence: ['terminal', 'interviewAt'],
     stopUnless: (state) => state.terminal !== 'rejected' && hasInterviewAt(state),
     generationPolicy:
-      '仅在当前工单仍进行中，且近期对话没有取消、不参加、已有面试结果、已询问面试结果或已发送本次面试提醒时生成。必须按状态摘要里的面试形式生成：AI 面试说明无需到店，提醒按面试通知的入口和要求在线完成，不提门店、到店或携带证件；线下面试才提醒时间、地点和已有证据中的证件；仅写“线上面试”但未明确 AI 时，不得说成 AI 面试。若状态摘要明确写着“工单未提供，不得猜测”，只能中性提醒候选人按面试通知中的时间和要求参加，不得提线上、线下、到店、地址、入口、材料或证件。使用中性表达，不索取新资料',
+      '仅在当前工单仍进行中，且近期对话没有取消、不参加、已有面试结果、已询问面试结果或已发送本次面试提醒时生成。必须按状态摘要里的面试形式生成：AI 面试说明无需到店，提醒按面试通知的入口和要求在线完成，不提门店、到店或携带证件；线下面试才提醒时间、地点和已有证据中的证件；仅写“线上面试”但未明确 AI 时，不得说成 AI 面试。提醒里的具体钟点以近期对话中对本次面试实际时间的明确约定优先（工单时间可能只是面试窗口起点），对话无明确约定才用工单时间。若状态摘要明确写着“工单未提供，不得猜测”，只能中性提醒候选人按面试通知中的时间和要求参加，不得提线上、线下、到店、地址、入口、材料或证件。使用中性表达，不索取新资料',
     relevantFactLabels: [],
     defaultRolloutEnabled: true,
     sessionCooldownExempt: true,
@@ -210,17 +226,22 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     triggerDelayMs: (ctx: FollowUpScenarioContext) => {
       const interviewAt = resolveInterviewAt(ctx.state);
       if (interviewAt == null) return 0;
-      const followUpAt = interviewAt + 2 * HOUR;
+      // AI 面试采用固定时段，业务约定统一在面试日期当天 17:00 询问是否完成；
+      // 不按工单 interviewAt 再做前后钳制。其他面试保持按工单面试时间后 2 小时回访。
+      // Dashboard 显式偏移仍由 resolveDelayMs 优先处理，便于运营临时覆盖。
+      const followUpAt = isAiInterview(ctx.interviewType)
+        ? shanghaiHourOnInterviewDay(interviewAt, 17)
+        : interviewAt + 2 * HOUR;
       return Math.max(0, followUpAt - ctx.anchorAt);
     },
-    delayLabel: '工单面试时间后 2 小时（无面试时间不触发）',
+    delayLabel: 'AI 面试当天 17:00；其他面试在工单面试时间后 2 小时（无面试时间不触发）',
     delayMode: 'after_interview',
     defaultDelayMinutes: 120,
     objective: '面试后回访，了解面试结果、是否需要后续协助',
     requiredEvidence: ['interviewAt'],
     stopUnless: hasInterviewAt,
     generationPolicy:
-      '仅在当前工单仍进行中，且近期对话没有取消、不参加、已有面试结果或招募经理已经询问本次面试结果时生成；此前只发过面试提醒不影响回访。按状态摘要里的面试形式询问：AI 面试询问是否已经完成、是否遇到问题；其他面试询问是否顺利、体验如何、是否需要协助。不要直接断言候选人已完成面试，不施压入职',
+      '仅在当前工单仍进行中，且近期对话没有取消、不参加、已有面试结果或招募经理已经询问本次面试结果时生成；此前只发过面试提醒不影响回访。面试是否已开始，按近期对话中明确约定的实际面试时间优先判断（工单时间可能只是面试窗口起点），尚未开始的不生成。按状态摘要里的面试形式询问：AI 面试询问是否已经完成、是否遇到问题；其他面试询问是否顺利、体验如何、是否需要协助。不要直接断言候选人已完成面试，不施压入职',
     relevantFactLabels: [],
     defaultRolloutEnabled: false,
   },
@@ -286,8 +307,13 @@ export function bookingFollowUpAnchorId(
   workOrderId: number,
   interviewAtMs: number,
   scenarioCode: string,
+  interviewType?: string,
 ): string {
-  return `wo${workOrderId}:iv${interviewAtMs}:${scenarioCode}`;
+  // AI 17:00 是独立排程版本。版本后缀既避免新任务与旧“面试后 +2h”任务撞 Bull
+  // jobId，也让存量旧任务到点校准时能成功补排 17:00 的替代任务。
+  const scheduleVersion =
+    scenarioCode === 'post_interview_followup' && isAiInterview(interviewType) ? ':ai17' : '';
+  return `wo${workOrderId}:iv${interviewAtMs}:${scenarioCode}${scheduleVersion}`;
 }
 
 /**

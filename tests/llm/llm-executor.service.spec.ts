@@ -460,4 +460,73 @@ describe('LlmExecutorService', () => {
       );
     });
   });
+
+  describe('role model overrides（运行时角色模型覆盖）', () => {
+    const overrideModelId = 'deepseek/deepseek-v4-pro';
+
+    function makeServiceWithOverrides(
+      getRoleModelOverride: (role: string) => Promise<string | undefined>,
+    ) {
+      return new LlmExecutorService(
+        mockRouter as unknown as RouterService,
+        mockRegistry as unknown as RegistryService,
+        mockReliable as unknown as ReliableService,
+        undefined,
+        { getRoleModelOverride },
+      );
+    }
+
+    it('无显式 modelId 时应用角色覆盖', async () => {
+      const getOverride = jest.fn().mockResolvedValue(overrideModelId);
+      const overriddenService = makeServiceWithOverrides(getOverride);
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      await overriddenService.generate({ role: ModelRole.Review, prompt: 'hi' });
+
+      expect(getOverride).toHaveBeenCalledWith('review');
+      expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ overrideModelId }),
+      );
+    });
+
+    it('调用方显式 modelId 优先于角色覆盖，覆盖源不被查询', async () => {
+      const getOverride = jest.fn().mockResolvedValue(overrideModelId);
+      const overriddenService = makeServiceWithOverrides(getOverride);
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      await overriddenService.generate({
+        role: ModelRole.Review,
+        modelId: 'qwen/qwen3.7-plus',
+        prompt: 'hi',
+      });
+
+      expect(getOverride).not.toHaveBeenCalled();
+      expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ overrideModelId: 'qwen/qwen3.7-plus' }),
+      );
+    });
+
+    it('覆盖源读取失败时回退环境变量角色路由，不阻塞生成', async () => {
+      const overriddenService = makeServiceWithOverrides(
+        jest.fn().mockRejectedValue(new Error('redis down')),
+      );
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      const result = await overriddenService.generate({ role: ModelRole.Review, prompt: 'hi' });
+
+      expect(result.text).toBe('mock response');
+      expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ overrideModelId: undefined }),
+      );
+    });
+
+    it('覆盖源返回 undefined（未配置）时走角色路由', async () => {
+      const overriddenService = makeServiceWithOverrides(jest.fn().mockResolvedValue(undefined));
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      await overriddenService.generate({ role: ModelRole.Evaluate, prompt: 'hi' });
+
+      expect(getGenerateModelIds()).toEqual([primaryModelId]);
+    });
+  });
 });

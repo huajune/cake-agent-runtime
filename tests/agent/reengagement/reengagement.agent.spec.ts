@@ -71,11 +71,86 @@ describe('ReengagementAgent', () => {
     memory = {
       recallForProactiveFollowUp: jest.fn().mockResolvedValue(memoryRecall),
     };
-    reengagementAgent = new ReengagementAgent(llm as never, memory as never);
+    reengagementAgent = new ReengagementAgent(llm as never, memory as never, {
+      get: () => undefined,
+    } as never);
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('routes to the dedicated reengagement model when AGENT_REENGAGEMENT_MODEL is set', async () => {
+    const agent = new ReengagementAgent(llm as never, memory as never, {
+      get: (key: string) =>
+        key === 'AGENT_REENGAGEMENT_MODEL' ? 'deepseek/deepseek-v4-pro' : undefined,
+    } as never);
+
+    await agent.compose({
+      sessionRef,
+      scenario: getScenario('address_missing')!,
+      jobData: job('address_missing'),
+      state: baseState(),
+    });
+
+    expect(llm.generateStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'deepseek/deepseek-v4-pro' }),
+    );
+    // 缺省时不得携带 modelId，保持 Chat 角色路由（含 Dashboard 运行时覆盖）不变。
+    llm.generateStructured.mockClear();
+    await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('address_missing')!,
+      jobData: job('address_missing'),
+      state: baseState(),
+    });
+    expect(llm.generateStructured).toHaveBeenCalledWith(
+      expect.not.objectContaining({ modelId: expect.anything() }),
+    );
+  });
+
+  it('prefers the dashboard runtime override over the env model', async () => {
+    const agent = new ReengagementAgent(
+      llm as never,
+      memory as never,
+      {
+        get: (key: string) => (key === 'AGENT_REENGAGEMENT_MODEL' ? 'qwen/qwen3.7-plus' : undefined),
+      } as never,
+      { getRoleModelOverride: jest.fn().mockResolvedValue('deepseek/deepseek-v4-pro') },
+    );
+
+    await agent.compose({
+      sessionRef,
+      scenario: getScenario('address_missing')!,
+      jobData: job('address_missing'),
+      state: baseState(),
+    });
+
+    expect(llm.generateStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'deepseek/deepseek-v4-pro' }),
+    );
+  });
+
+  it('falls back to the env model when the dashboard override read fails', async () => {
+    const agent = new ReengagementAgent(
+      llm as never,
+      memory as never,
+      {
+        get: (key: string) => (key === 'AGENT_REENGAGEMENT_MODEL' ? 'qwen/qwen3.7-plus' : undefined),
+      } as never,
+      { getRoleModelOverride: jest.fn().mockRejectedValue(new Error('config store down')) },
+    );
+
+    await agent.compose({
+      sessionRef,
+      scenario: getScenario('address_missing')!,
+      jobData: job('address_missing'),
+      state: baseState(),
+    });
+
+    expect(llm.generateStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'qwen/qwen3.7-plus' }),
+    );
   });
 
   it('generates a structured message with assembled context for interview reminders', async () => {
@@ -240,6 +315,22 @@ describe('ReengagementAgent', () => {
         content: '不好意思哈，星期一约好的面试我去不了了。',
       });
       expect(system).toContain('即使实时工单仍显示预约有效也不能发送');
+      // 抽样审计三类高频错误的 prompt 防线：证据先行的判定步骤、禁止模糊理由跳过、
+      // 预约当轮/另行提醒的客观时间锚点（报名完成时间）。
+      expect(system).toContain('判定步骤：先定位候选人');
+      expect(system).toContain('不得以“对话流程正常”');
+      expect(system).toContain('报名完成时间');
+      if (scenarioCode === 'interview_reminder') {
+        // 抽样审计：模型高频把预约当轮的收尾叮嘱/二维码交付误判为“已提醒”（误杀），
+        // 也漏判预约回合后另行发出的口头提醒（漏拦）。口径必须给出正反例。
+        expect(system).toContain('预约成功当轮的告知与收尾叮嘱都不算已提醒');
+        expect(system).toContain('预约回合之后另行发出的提醒参加消息');
+      }
+      // 生产 badcase（touch 19712）：候选人说“干不了”且顾问已转拉群，提醒仍被发出。
+      // 判据必须覆盖婉拒表达 + 转群语境，并区分“为本次面试拉群”不算放弃。
+      expect(system).toContain('干不了');
+      expect(system).toContain('邀请进群、改推其他岗位');
+      expect(system).toContain('招募经理为本次面试拉群');
       expect(result.outcome.kind).toBe('skipped');
       expect(result.outcome.reply).toBeUndefined();
       expect(result.validationReason).toBe('candidate_declined_interview');

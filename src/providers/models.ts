@@ -1,5 +1,5 @@
 /**
- * 模型数据字典 — 所有已知模型的静态目录 (2026.06 更新版)
+ * 模型数据字典 — 所有已知模型的静态目录 (2026.07 更新版)
  *
  * RegistryService 根据已注册 Provider 过滤出当前可用模型。
  * 新增模型只需在对应 Provider 下加一行。
@@ -62,12 +62,6 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     description: 'OpenAI 通用旗舰 (全能表现)',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'openai/gpt-5.3-chat-latest': {
-    provider: 'openai',
-    name: 'GPT-5.3 Chat (Latest)',
-    description: 'OpenAI GPT-5.3 Chat 快照（旧版快照；优先迁移到最新 GPT-5.x）',
-    capabilities: ['tool-use', 'multimodal'],
-  },
   'openai/gpt-5.4-mini': {
     provider: 'openai',
     name: 'GPT-5.4 Mini',
@@ -92,12 +86,6 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     provider: 'google',
     name: 'Gemini 3.5 Flash',
     description: 'Google 新一代极速版 (2026-05 I/O 发布)',
-    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
-  },
-  'google/gemini-3.1-flash-lite-preview': {
-    provider: 'google',
-    name: 'Gemini 3.1 Flash-Lite Preview',
-    description: 'Google 低成本轻量版 Preview（官方已下线，迁移到 gemini-3.1-flash-lite）',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'google/gemini-3.1-flash-lite': {
@@ -148,23 +136,13 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== MoonshotAI / Kimi ====================
-  'moonshotai/kimi-k2.6': {
+  // K2 系列（k2.5/k2.6/k2-thinking）已于 2026-07 移除：官方公告 K2 全平台 2026-08-31 下线，
+  // kimi-thinking 系已停服；统一迁移到 K3。
+  'moonshotai/kimi-k3': {
     provider: 'moonshotai',
-    name: 'Kimi K2.6',
-    description: 'Kimi K2.6 (Vibe Coding / Agent Swarm 协作) ¥6.5/27',
-    capabilities: ['tool-use', 'multimodal', 'long-context', 'thinking'],
-  },
-  'moonshotai/kimi-k2.5': {
-    provider: 'moonshotai',
-    name: 'Kimi K2.5',
-    description: 'Kimi K2.5 (256K / 长文本处理专精) ¥4/21',
-    capabilities: ['long-context', 'tool-use', 'multimodal', 'thinking'],
-  },
-  'moonshotai/kimi-k2-thinking': {
-    provider: 'moonshotai',
-    name: 'Kimi K2 Thinking',
-    description: 'Kimi K2 Thinking（已废弃，建议迁移 Kimi K2.6）',
-    capabilities: ['thinking', 'tool-use', 'long-context'],
+    name: 'Kimi K3',
+    description: 'Kimi K3 (2.8T MoE / 1M 上下文 / 原生多模态 / 默认开启思考，2026-07-16 发布)',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
 };
 

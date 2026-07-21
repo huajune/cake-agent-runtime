@@ -2,20 +2,20 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-07-16
+**最后更新**：2026-07-21
 
 ---
 
 ## 🧭 我该读哪份？
 
-| 角色 / 目标 | 建议入口 |
-|---|---|
-| 快速了解系统全貌 | [系统宣讲说明书](cake-agent-runtime-overview.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md) |
-| 产品 / 运营 | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)、[业务流程](product/business-flows.md) |
-| 新人研发入门 | [开发指南](guides/development-guide.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md) → [记忆系统](architecture/memory-system-architecture.md) |
-| 做可靠性 / 守卫改进 | [可靠性重构总设计](architecture/reliability/agent-reliability-refactor-2026-06.md)（文档族三层）+ [安全护栏说明](architecture/security-guardrails.md) |
-| 质量评测 / 回归 | [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md) |
-| 发版 / 部署 | [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md) |
+| 角色 / 目标         | 建议入口                                                                                                                                                          |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 快速了解系统全貌    | [系统宣讲说明书](cake-agent-runtime-overview.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md)                                                 |
+| 产品 / 运营         | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)、[业务流程](product/business-flows.md)                               |
+| 新人研发入门        | [开发指南](guides/development-guide.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md) → [记忆系统](architecture/memory-system-architecture.md) |
+| 做可靠性 / 守卫改进 | [可靠性重构总设计](architecture/reliability/agent-reliability-refactor-2026-06.md)（文档族三层）+ [安全护栏说明](architecture/security-guardrails.md)             |
+| 质量评测 / 回归     | [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md)                                                              |
+| 发版 / 部署         | [发版底账](releases/README.md) → [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)                                 |
 
 ---
 
@@ -102,6 +102,7 @@
 
 ### 版本 / 部署 / CI
 
+- **[发版底账](releases/README.md)** ⭐ — 每个正式版本的范围、风险、回归证据、回滚与上线结果归档
 - **[版本与发布指南](workflows/version-release-guide.md)** — 发布操作流程 + 版本自动化机制（原 auto-version-changelog 已并入）
 - **[构建与部署指南](workflows/deploy-guide.md)** — tag 触发构建部署、健康检查、回滚
 - **[分支保护规则配置](workflows/branch-protection-guide.md)** — 分支保护、环境隔离、CI 必需检查

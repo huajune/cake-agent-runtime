@@ -101,8 +101,18 @@ export function buildReviseUserDirective(params: GeneratorInvokeParams): string 
     lines.push(`被丢弃的上一版回复原文：\n"""${repair.originalReply.slice(0, 1200)}"""`);
   }
   if (violations.length > 0) {
+    // evidence 必须与 suggestion 一起给：本案证据（如 "未按 jobId=528499 调用
+    // duliday_job_list"、命中的具体字段）只存在于 evidence，而 suggestion 是规则目录里
+    // 的静态策略文本，逐条命中都一样。2026-07-21 审计：本函数此前只渲染 suggestion，
+    // 于是在**注意力最强的对话末尾通道**里，模型被要求"用其 jobId 调用 duliday_job_list"
+    // 却拿不到 jobId 是多少——replan 二审失败样本中 49% 根本没调该工具。
     lines.push(
-      `需修正的问题：\n${violations.map((v) => `- [${v.type}] ${v.suggestion}`).join('\n')}`,
+      `需修正的问题：\n${violations
+        .map((v) => {
+          const evidence = v.feedbackPolicy === 'redacted' ? '证据已脱敏' : v.evidence?.trim();
+          return `- [${v.type}] ${evidence ? `问题：${evidence}；` : ''}修复要求：${v.suggestion}`;
+        })
+        .join('\n')}`,
     );
   }
   lines.push(
@@ -124,7 +134,14 @@ function buildReplanToolConstraint(allowedToolNames?: string[]): string {
   if (allowedToolNames.length === 0) {
     return '本次没有可用工具；只能基于已有事实修正回复，不能承诺稍后查询。';
   }
-  return `本次只允许调用以下工具重新核实或补全必要事实：${allowedToolNames.join('、')}；严禁尝试任何其它工具。`;
+  // 措辞必须是"必须先调用"而不是"允许调用"：replan 之所以被判 replan 而不是 rewrite，
+  // 就是因为规则认定缺的是**事实**而非措辞，不重新取数则二审必然复燃同一条规则。
+  // 生产实测（2026-07-21）：二审通过组 96% 调了白名单工具，失败组只有 51%。
+  return (
+    `本次修复必须先调用以下工具重新核实或补全事实，再基于返回结果写回复：${allowedToolNames.join('、')}；` +
+    `严禁尝试任何其它工具。不调用就直接改写文案是无效修复——缺的是数据不是措辞，` +
+    `请按上面「需修正的问题」里给出的 jobId / 字段等具体线索发起查询。`
+  );
 }
 
 /**

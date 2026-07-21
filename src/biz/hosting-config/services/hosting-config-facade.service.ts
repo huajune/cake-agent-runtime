@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { MODEL_DICTIONARY } from '@providers/models';
+import { supportsVision } from '@providers/types';
 import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
@@ -63,9 +65,41 @@ export class HostingConfigFacadeService {
   async updateAgentReplyConfig(
     body: Partial<AgentReplyConfig>,
   ): Promise<{ config: AgentReplyConfig; message: string }> {
+    this.assertModelOverridesValid(body);
     this.logger.log(`更新 Agent 回复策略配置: ${JSON.stringify(body)}`);
     const newConfig = await this.systemConfigService.setAgentReplyConfig(body);
     return { config: newConfig, message: '配置已更新' };
+  }
+
+  /**
+   * 模型覆盖字段的保存时校验：非空值必须是 MODEL_DICTIONARY 登记过的模型 ID
+   * （空字符串 = 清除覆盖走环境变量路由，放行）；vision 覆盖额外要求多模态能力，
+   * 否则图片消息会在执行器被逐台跳过、静默落入降级链。
+   */
+  private assertModelOverridesValid(body: Partial<AgentReplyConfig>): void {
+    const modelFields: Array<keyof AgentReplyConfig> = [
+      'wecomCallbackModelId',
+      'extractModelId',
+      'visionModelId',
+      'evaluateModelId',
+      'reviewModelId',
+      'repairModelId',
+      'reengagementModelId',
+    ];
+    for (const field of modelFields) {
+      const raw = body[field];
+      if (typeof raw !== 'string') continue;
+      const modelId = raw.trim();
+      if (!modelId) continue;
+      if (!MODEL_DICTIONARY[modelId]) {
+        throw new BadRequestException(
+          `${field} 不是已登记的模型 ID: ${modelId}（可用清单见 GET /agent/models）`,
+        );
+      }
+      if (field === 'visionModelId' && !supportsVision(modelId)) {
+        throw new BadRequestException(`visionModelId 必须是多模态模型: ${modelId} 不支持图片输入`);
+      }
+    }
   }
 
   async updateGroupTaskConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {

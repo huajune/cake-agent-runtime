@@ -80,6 +80,8 @@ export interface ScheduleFollowUpInput {
   workOrderId?: number;
   /** 只用于本次计算延迟，不写入新任务 payload。 */
   expectedInterviewAt?: number;
+  /** 只用于本次计算按面试形式区分的延迟，不写入新任务 payload。 */
+  interviewType?: string;
   /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
   channelIdentity?: ReengagementChannelIdentity;
 }
@@ -181,6 +183,7 @@ export class FollowUpSchedulerService {
       {
         anchorAt: input.anchorAt,
         state,
+        interviewType: input.interviewType,
       },
       runtime.reengagementScenarioDelayMinutes?.[scenario.code],
     );

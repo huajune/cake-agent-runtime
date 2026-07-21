@@ -375,6 +375,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
 
   // 使用反馈 Hook
   const feedback = useFeedback({
+    source: 'agent_test',
     onError: (error) => setLocalError(error),
   });
 
@@ -552,6 +553,9 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
         isSubmitting={feedback.isSubmitting}
         chatHistoryPreview={historyText.trim()}
         submitError={feedback.submitError}
+        screenshots={feedback.screenshots}
+        onAddScreenshots={feedback.addScreenshots}
+        onRemoveScreenshot={feedback.removeScreenshot}
         onClose={feedback.closeModal}
         onScenarioTypeChange={feedback.setScenarioType}
         onRemarkChange={feedback.setRemark}

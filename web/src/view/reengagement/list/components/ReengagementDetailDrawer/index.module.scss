@@ -98,6 +98,17 @@
   }
 }
 
+.headerFeedback {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+
+  // 反馈组接管了右推，紧随其后的关闭按钮不再需要 auto 边距
+  + .closeBtn {
+    margin-left: 0;
+  }
+}
+
 .rightCol {
   flex: 0 0 300px;
   background:

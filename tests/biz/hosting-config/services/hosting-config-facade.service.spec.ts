@@ -104,6 +104,32 @@ describe('HostingConfigFacadeService', () => {
       expect(result.message).toBe('配置已更新');
       expect(mockSystemConfigService.setAgentReplyConfig).toHaveBeenCalledWith({});
     });
+
+    it('accepts registered model ids for role overrides and empty string as clear', async () => {
+      const partial = { reviewModelId: 'deepseek/deepseek-v4-pro', evaluateModelId: '' };
+      mockSystemConfigService.setAgentReplyConfig.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        ...partial,
+      });
+
+      await expect(service.updateAgentReplyConfig(partial)).resolves.toMatchObject({
+        message: '配置已更新',
+      });
+    });
+
+    it('rejects unregistered model ids for role overrides', async () => {
+      await expect(
+        service.updateAgentReplyConfig({ reviewModelId: 'foo/not-a-model' }),
+      ).rejects.toThrow('不是已登记的模型');
+      expect(mockSystemConfigService.setAgentReplyConfig).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-multimodal model for visionModelId', async () => {
+      await expect(
+        service.updateAgentReplyConfig({ visionModelId: 'deepseek/deepseek-v4-pro' }),
+      ).rejects.toThrow('必须是多模态模型');
+      expect(mockSystemConfigService.setAgentReplyConfig).not.toHaveBeenCalled();
+    });
   });
 
   // ==================== resetAgentReplyConfig ====================

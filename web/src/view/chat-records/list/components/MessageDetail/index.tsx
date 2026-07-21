@@ -64,8 +64,9 @@ export default function MessageDetail({
   currentSession,
   isLoading,
 }: MessageDetailProps) {
-  const feedback = useFeedback();
+  const feedback = useFeedback({ source: 'chat_record' });
   const {
+    addScreenshots,
     clearSuccess,
     closeModal,
     feedbackType,
@@ -73,7 +74,9 @@ export default function MessageDetail({
     isSubmitting,
     openModal,
     remark,
+    removeScreenshot,
     scenarioType,
+    screenshots,
     setRemark,
     setScenarioType,
     submit,
@@ -305,6 +308,9 @@ export default function MessageDetail({
         isSubmitting={isSubmitting}
         chatHistoryPreview={chatHistoryPreview}
         submitError={submitError}
+        screenshots={screenshots}
+        onAddScreenshots={addScreenshots}
+        onRemoveScreenshot={removeScreenshot}
         onClose={closeModal}
         onScenarioTypeChange={setScenarioType}
         onRemarkChange={setRemark}

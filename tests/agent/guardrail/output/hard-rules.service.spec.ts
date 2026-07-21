@@ -266,6 +266,90 @@ describe('HardRulesService', () => {
         'job_detail_lookup_required',
       );
     });
+
+    it('报名表单回填不算详情追问（生产误伤 2026-07-21 record 2076）', () => {
+      const snapshotMissingFields: AgentMemorySnapshot = {
+        ...memorySnapshot,
+        currentFocusJob: { jobId: 524579, availableDetailFields: ['salary'] },
+      };
+      const result = service.check({
+        replyText: '资料收到了，今天 13:30-16:30 还能约面试，帮你约今天下午这个时段可以吗？',
+        toolCalls: [],
+        userMessage:
+          '姓名：刘苹\n联系方式：18321207842\n性别：女\n学历：中专\n健康证：有\n身份：社会人士48岁',
+        memorySnapshot: snapshotMissingFields,
+        chatId: 'form-fill-not-inquiry',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('引用块里的岗位卡片时段/关键词不算详情追问（生产误伤 2026-07-21 record 2048）', () => {
+      const result = service.check({
+        replyText: '你先把资料填好发我，我帮你约。',
+        toolCalls: [],
+        userMessage: '[引用 高雅琪：M Stand（白云五号店）早班 07:30-10:30，26元/小时，18-35岁]\n这',
+        memorySnapshot,
+        chatId: 'quote-block-not-inquiry',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('引用块之外的班次追问仍必须补查（生产真阳 2026-07-21 record 2053）', () => {
+      const result = service.check({
+        replyText: '这家的班次是固定的，选了早班就是每天只上早班。',
+        toolCalls: [],
+        userMessage:
+          '[引用 祝东升：这两家目前都只有早班：高德置地店 07:30-11:30]\n你好 这些是固定班次吗？\n就每天只上早班吗',
+        memorySnapshot,
+        chatId: 'question-outside-quote-still-fires',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('表单式行内带疑问语气仍算追问（学历：初中可以吗）', () => {
+      const snapshotMissingFields: AgentMemorySnapshot = {
+        ...memorySnapshot,
+        currentFocusJob: { jobId: 524579, availableDetailFields: ['salary'] },
+      };
+      const result = service.check({
+        replyText: '初中学历没问题的。',
+        toolCalls: [],
+        userMessage: '学历：初中可以吗',
+        memorySnapshot: snapshotMissingFields,
+        chatId: 'form-line-with-question-still-fires',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('表单值后同行追问要做多久仍必须补查岗位时长', () => {
+      const snapshotMissingDuration: AgentMemorySnapshot = {
+        ...memorySnapshot,
+        currentFocusJob: { jobId: 524579, availableDetailFields: ['salary'] },
+      };
+      const result = service.check({
+        replyText: '这个岗位需要长期做。',
+        toolCalls: [],
+        userMessage: '健康证：有，这活儿要做多久',
+        memorySnapshot: snapshotMissingDuration,
+        chatId: 'form-line-with-duration-question-still-fires',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
   });
 
   describe('schedule window claims', () => {
@@ -336,6 +420,62 @@ describe('HardRulesService', () => {
     });
   });
 
+  // 2026-07-21 守卫审计：本分支要求的补救是"先反问哪家门店"这一对话行为，而规则拿不到
+  // replyText；且入参在 repair 轮内不变，命中即注定二审复燃（生产 57/57）。降级 observe。
+  describe('job_detail_lookup_required with an ambiguous focus job', () => {
+    const ambiguousSnapshot = {
+      currentStage: 'job_matching',
+      presentedJobIds: [111, 222],
+      recommendedJobIds: [111, 222],
+      sessionFacts: null,
+      profileKeys: null,
+      currentFocusJob: undefined,
+    };
+
+    it('only observes（不再 replan）when several jobs were shown but none is in focus', () => {
+      const result = service.check({
+        replyText: '这几家店的班次都可以协调的。',
+        toolCalls: [],
+        userMessage: '这几个店的班次是怎么排的',
+        memorySnapshot: ambiguousSnapshot,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'job_detail_lookup_required',
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
+          }),
+        ]),
+      );
+    });
+
+    it('still replans when the focus job is known but was not looked up', () => {
+      const result = service.check({
+        replyText: '这家的班次是 09:00-18:00。',
+        toolCalls: [],
+        userMessage: '这家班次怎么排',
+        memorySnapshot: {
+          ...ambiguousSnapshot,
+          currentFocusJob: { jobId: 111, availableDetailFields: [] },
+        },
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'job_detail_lookup_required',
+            action: GUARDRAIL_ACTION.REPLAN,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+  });
+
   describe('settlement cycle scope', () => {
     const hybridSettlementCall = {
       toolName: 'duliday_job_list',
@@ -394,6 +534,83 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
         'settlement_cycle_mismatch',
       );
+    });
+
+    // 2026-07-21 守卫审计：窗口内 16 条命中 rewrite 二审通过率 0%，抽样 6/6 假阳。
+    // 两类根因各补一组回归。
+    describe('production false positives (2026-07-21 audit)', () => {
+      const monthlyOnlyCall = {
+        toolName: 'duliday_job_list',
+        args: { jobIdList: [1] },
+        status: 'ok' as const,
+        result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 月结算, 15号发薪' },
+      };
+      const dailyOnlyCall = {
+        toolName: 'duliday_job_list',
+        args: { jobIdList: [1] },
+        status: 'ok' as const,
+        result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 日结算, 当日结发薪' },
+      };
+
+      // trace batch_6a5db6d9…/batch_6a5ede31…：回复说的恰恰是判决书的反面。
+      it.each([
+        ['没 + 无空格', '东靖路附近暂时没日结岗，目前有几家月结（15号发薪）的兼职。'],
+        ['没有 + 的', '这边暂时没有日结的岗位，工资都是月结的，次月15号左右发。'],
+        ['无', '该门店无日结安排，按月结发放。'],
+      ])('does not treat a negated cycle mention as an assertion (%s)', (_label, replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '有日结的岗位吗',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      it('keeps asserting the cycle when a negation targets a different cycle', () => {
+        const result = service.check({
+          replyText: '这家不是月结，是日结的。',
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '是日结吗',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      // trace batch_6a5db6b6…：岗位数据没编码培训/阶梯方案，但回复已把"月结"限定在
+      // 阶梯差价上——这正是规则 feedback 要求的写法，不能再判违规。
+      it('accepts supplemental-scoped cycles even when the job data has no supplemental scenario', () => {
+        const result = service.check({
+          replyText:
+            '两家都是日结为主。基础工资每天按实际出勤结，但超过 100 小时的阶梯差价是月结的，每月10号发。',
+          toolCalls: [dailyOnlyCall],
+          userMessage: '他们这结算是怎么结算的，日结还是月结',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      it('still blocks an unscoped cycle claim that contradicts the formal salary period', () => {
+        const result = service.check({
+          replyText: '这家工资是月结的，每月15号统一发放。',
+          toolCalls: [dailyOnlyCall],
+          userMessage: '怎么结算的',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
     });
 
     it('does not use another job lookup to validate the current focus job settlement', () => {
@@ -1493,7 +1710,7 @@ describe('HardRulesService', () => {
       ).toBeDefined();
     });
 
-    it('does not flag the compliant 同事 phrasing', () => {
+    it('does not flag persona leakage but still requires real handoff for 同事 follow-up', () => {
       const result = service.check({
         replyText: '这个我帮你问下负责的同事，稍后回复你哈。',
         toolCalls: [],
@@ -1503,6 +1720,99 @@ describe('HardRulesService', () => {
       expect(
         result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak'),
       ).toBeUndefined();
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'handoff_promise_without_handoff'),
+      ).toBeDefined();
+    });
+  });
+
+  describe('handoff_promise_without_handoff (production trace batch_6a54b296…)', () => {
+    const productionReply =
+      '这边暂时没约上，这家目前报名人数比较多，我让同事帮你确认下名额和后续安排，稍后给你答复哈';
+
+    it('replans when the reply promises colleague follow-up without request_handoff', () => {
+      const result = service.check({
+        replyText: productionReply,
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { jobId: 528499 },
+            result: { success: false, errorType: 'booking.rejected' },
+          },
+        ],
+        chatId: '6a54b296ce406a6aeede64e5',
+      });
+
+      const hit = result.contradictions.find(
+        (item) => item.ruleId === 'handoff_promise_without_handoff',
+      );
+      expect(hit).toMatchObject({
+        action: 'replan',
+        severity: 'P0',
+        currentReplySendable: false,
+        repairMode: 'replan',
+        repairToolNames: ['request_handoff'],
+      });
+    });
+
+    it('allows the promise when request_handoff was actually dispatched', () => {
+      const result = service.check({
+        replyText: productionReply,
+        toolCalls: [
+          {
+            toolName: 'request_handoff',
+            args: { reasonCode: 'system_blocked', reason: '报名失败需人工确认' },
+            result: { dispatched: true, shortCircuited: true },
+          },
+        ],
+        chatId: 'chat-handoff-ok',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it('does not accept a failed request_handoff as grounding', () => {
+      const result = service.check({
+        replyText: '我已经让负责的同事跟进处理，稍后联系你。',
+        toolCalls: [
+          {
+            toolName: 'request_handoff',
+            args: { reasonCode: 'system_blocked' },
+            result: { dispatched: false, shortCircuited: false },
+          },
+        ],
+        chatId: 'chat-handoff-failed',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it('also replans collective promises phrased with 我们', () => {
+      const result = service.check({
+        replyText: '我们这边会让门店负责人核实一下，晚点回复你。',
+        toolCalls: [],
+        chatId: 'chat-collective-handoff-promise',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it.each([
+      '这个岗位的具体安排以门店同事确认结果为准。',
+      '我先核对一下现有资料，确认好再回复你。',
+      '你可以联系门店负责人咨询具体排班。',
+    ])('does not flag a boundary statement without an agent follow-up promise: %s', (replyText) => {
+      const result = service.check({ replyText, toolCalls: [], chatId: 'chat-boundary' });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'handoff_promise_without_handoff',
+      );
     });
   });
 

@@ -134,10 +134,21 @@ jobs:
           echo "Skipping full CI: ${{ steps.ci_scope.outputs.reason }}"
 
       - name: Setup Node.js
-        if: steps.ci_scope.outputs.full_ci == 'true'
+        if: >-
+          steps.ci_scope.outputs.full_ci == 'true' ||
+          (github.event_name == 'pull_request' &&
+          github.event.pull_request.base.ref == 'master' &&
+          github.event.pull_request.head.ref == 'develop')
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+
+      - name: Validate release ledger
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.base.ref == 'master' &&
+          github.event.pull_request.head.ref == 'develop'
+        run: node scripts/check-release-ledger.js
 
       - name: Setup pnpm
         if: steps.ci_scope.outputs.full_ci == 'true'

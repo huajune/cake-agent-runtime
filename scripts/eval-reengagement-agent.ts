@@ -200,7 +200,7 @@ async function main(): Promise<void> {
     const memory = {
       recallForProactiveFollowUp: async () => fixture.memory,
     };
-    const agent = new ReengagementAgent(llm, memory as never);
+    const agent = new ReengagementAgent(llm, memory as never, config);
     const anchorAt = BASE_AT - 4 * 60 * 60_000;
     const jobData: FollowUpJob = {
       sessionRef: {

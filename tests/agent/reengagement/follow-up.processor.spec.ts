@@ -889,8 +889,21 @@ describe('FollowUpProcessor', () => {
     it('resolves a newly booked work order before scheduling the formal delayed job', async () => {
       sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
+        jobId: 9002,
         currentStatus: '约面成功',
         interviewTime: '2026-06-25 14:00',
+      });
+      sponge.fetchJobs.mockResolvedValue({
+        total: 1,
+        jobs: [
+          {
+            interviewProcess: {
+              firstInterview: {
+                firstInterviewWay: 'AI面试',
+              },
+            },
+          },
+        ],
       });
 
       await buildProcessor().process(
@@ -906,6 +919,7 @@ describe('FollowUpProcessor', () => {
           scenarioCode: 'interview_reminder',
           workOrderId: 555,
           expectedInterviewAt,
+          interviewType: 'AI面试',
         }),
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
@@ -1071,6 +1085,7 @@ describe('FollowUpProcessor', () => {
       expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
         expect.objectContaining({
           anchorEventId: `wo555:iv${Date.UTC(2026, 5, 25, 8, 0, 0)}:interview_reminder`,
+          anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
         }),
       );
     });

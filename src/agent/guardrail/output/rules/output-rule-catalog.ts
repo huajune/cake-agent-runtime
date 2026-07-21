@@ -69,7 +69,7 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
       rule.feedbackToGenerator ??
       (derived.currentReplySendable
         ? ''
-        : `上一版回复命中 ${rule.id}，当前文本不可发送。请按业务事实重写，删除未接地承诺、内部实现或不合规表达，只输出候选人可见回复。`),
+        : `上一版回复命中 ${rule.id}，当前文本不可发送。只修改造成违规的部分：删除未接地承诺、内部实现或不合规表达；未涉及违规的内容（岗位信息、表单字段、时间选项等）原样保留，只输出候选人可见回复。`),
     repairToolNames: rule.repairToolNames ?? [],
     ...rule,
   };
@@ -117,6 +117,12 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal: '内部阶段/工具/JSON 泄漏模式库。',
     residualRisk: '隐喻式泄漏或未登记的新内部术语仍需补充词库。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    // 2026-07-21 badcase：通用"按业务事实重写"反馈让 rewrite 把 ```text 围栏里的
+    // 报名表模板压成一句话流水账——泄漏类命中的正确修法是"摘除泄漏物"而非重写全文。
+    // fence-only 命中已由 runner 确定性剥离，不进 LLM；本反馈服务混合泄漏形态的重写。
+    feedbackToGenerator:
+      '上一版回复混入了不该给候选人看的内部实现痕迹（工具名/阶段名/JSON/代码围栏等，见证据），当前文本不可发送。' +
+      '只删除或改写泄漏的那部分；其余内容——尤其逐项列出的报名表字段、岗位信息、时间选项——必须逐字保留，禁止压缩成一句话或整段重写。',
   },
   {
     id: 'meta_narration_reply',
@@ -210,6 +216,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
+    id: 'handoff_promise_without_handoff',
+    action: GUARDRAIL_ACTION.REPLAN,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功 request_handoff。',
+    riskGoal: '防止 Agent 口头承诺人工跟进却没有落 handoff、暂停托管或通知负责人。',
+    exogenousSignal: '同事/负责人后续动作承诺词形 + 本轮 request_handoff.dispatched=true。',
+    residualRisk:
+      '不含同事、负责人、店长、门店、招聘经理等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的 request_handoff，当前文本不可发送。若确实需要人工跟进，必须调用 request_handoff 并写清待确认事项；若不需要人工跟进，就删除“同事会确认/稍后联系”等承诺，只陈述当前已确认的事实。',
+    repairToolNames: ['request_handoff'],
+  },
+  {
     id: 'repeated_reply',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P2,
@@ -242,7 +263,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal:
       '候选人本轮详情问题 + memory_snapshot.currentFocusJob.availableDetailFields + 本轮 duliday_job_list(jobIdList)。',
     residualRisk:
-      '未能归类的新详情问法需要扩充字段意图词表；当前岗位不明确且尚未展示岗位时仍需由生成层澄清。',
+      '未能归类的新详情问法需要扩充字段意图词表；当前岗位不明确且尚未展示岗位时仍需由生成层澄清。' +
+      '焦点岗位不明确分支（2026-07-21 起）只 observe 不 replan：其补救动作是对话行为，规则拿不到 replyText 无从验证，' +
+      '且入参在 repair 轮内不变必然复燃——该场景的治理交语义审查。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '候选人正在追问已展示岗位详情，但当前岗位不明确、精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；当前焦点岗位明确时使用其 jobId 调用 duliday_job_list，只按本轮结果回答；当前焦点岗位不明确时先确认候选人问的是哪家门店/岗位。',
@@ -270,10 +293,15 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     riskGoal: '结算方式直接影响候选人决策，正式工资与补充费用的结算范围必须分别表述。',
     exogenousSignal:
       '本轮 duliday_job_list 返回的正式/培训薪资方案 salaryPeriod，以及回复中的结算断言。',
-    residualRisk: '非标准结算别名需要随生产样本扩充；无本轮工具结果时交由补查规则处理。',
+    residualRisk:
+      '非标准结算别名需要随生产样本扩充；无本轮工具结果时交由补查规则处理。' +
+      '2026-07-21 起句子已把周期限定在阶梯/差价/培训范围内即豁免（不再要求岗位数据也编码了对应补充方案），' +
+      '代价是"阶梯差价日结"这类补充项本身说错的场景不再拦截，交语义审查。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版混淆了正式工资结算与培训/阶梯差额结算。请严格按本轮岗位数据重写，分别说明基础工资、阶梯差价和培训费用各自如何结算；不要用综合月薪单位推断结算周期。',
+      '上一版把某一项的结算周期说成了整份工资的结算周期。请严格按本轮岗位数据重写：先说清正式工资的结算周期，' +
+      '再在同一句里点明阶梯差价/培训费用等补充项各自的结算方式（例如「基础工资日结，超 100 小时的阶梯差价月结」）；' +
+      '候选人没问到的补充项不要主动展开，不要用综合月薪单位推断结算周期。',
   },
   {
     id: 'unsupported_store_status_speculation',
