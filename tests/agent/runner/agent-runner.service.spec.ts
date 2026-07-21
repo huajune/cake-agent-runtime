@@ -660,6 +660,95 @@ describe('AgentRunnerService.runTurn', () => {
     });
   });
 
+  it('handoff promise replan exposes request_handoff and resolves to a real handoff', async () => {
+    const bookingFailure = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 528499 },
+      result: { success: false, errorType: 'booking.rejected' },
+    };
+    const handoffCall = {
+      toolName: 'request_handoff',
+      args: { reasonCode: 'system_blocked', reason: '岗位报名失败需人工确认' },
+      result: { dispatched: true, shortCircuited: true },
+    };
+    generator.invoke
+      .mockResolvedValueOnce(
+        makeResult({
+          text: '我让同事帮你确认下名额和后续安排，稍后给你答复哈',
+          toolCalls: [bookingFailure],
+        }),
+      )
+      .mockResolvedValueOnce(makeResult({ text: '', toolCalls: [handoffCall] }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'replan',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'handoff_promise_without_handoff',
+          evidence: '承诺同事后续确认但未转人工',
+          suggestion: '调用 request_handoff 或删除承诺',
+          severity: 'P0',
+          recoverability: 'recoverable',
+          currentReplySendable: false,
+          repairMode: 'replan',
+        },
+      ],
+      ruleIds: ['handoff_promise_without_handoff'],
+      blockedRuleIds: ['handoff_promise_without_handoff'],
+      repairMode: 'replan',
+      repairToolNames: ['request_handoff'],
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '专业：医学' },
+      context: { messageId: 'm-handoff-promise' },
+    });
+
+    expect(generator.invoke).toHaveBeenCalledTimes(2);
+    expect(generator.invoke.mock.calls[1][0]).toMatchObject({
+      toolMode: 'scenario',
+      allowedToolNames: ['request_handoff'],
+    });
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.handoff?.sourceToolCall).toBe('request_handoff');
+  });
+
+  it('does not fail open the original handoff promise when replan produces no handoff', async () => {
+    generator.invoke
+      .mockResolvedValueOnce(
+        makeResult({ text: '我让同事帮你确认下，稍后给你答复。', toolCalls: [] }),
+      )
+      .mockResolvedValueOnce(makeResult({ text: '', toolCalls: [] }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'replan',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'handoff_promise_without_handoff',
+          evidence: '承诺同事后续确认但未转人工',
+          suggestion: '调用 request_handoff 或删除承诺',
+          severity: 'P0',
+          recoverability: 'recoverable',
+          currentReplySendable: false,
+          repairMode: 'replan',
+        },
+      ],
+      ruleIds: ['handoff_promise_without_handoff'],
+      blockedRuleIds: ['handoff_promise_without_handoff'],
+      repairMode: 'replan',
+      repairToolNames: ['request_handoff'],
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '专业：医学' },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.reply).toBeUndefined();
+  });
+
   it('image-description replan exposes only save_image_description', async () => {
     const saveCall = {
       toolName: 'save_image_description',

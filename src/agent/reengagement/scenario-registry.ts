@@ -307,8 +307,13 @@ export function bookingFollowUpAnchorId(
   workOrderId: number,
   interviewAtMs: number,
   scenarioCode: string,
+  interviewType?: string,
 ): string {
-  return `wo${workOrderId}:iv${interviewAtMs}:${scenarioCode}`;
+  // AI 17:00 是独立排程版本。版本后缀既避免新任务与旧“面试后 +2h”任务撞 Bull
+  // jobId，也让存量旧任务到点校准时能成功补排 17:00 的替代任务。
+  const scheduleVersion =
+    scenarioCode === 'post_interview_followup' && isAiInterview(interviewType) ? ':ai17' : '';
+  return `wo${workOrderId}:iv${interviewAtMs}:${scenarioCode}${scheduleVersion}`;
 }
 
 /**

@@ -1559,7 +1559,7 @@ describe('HardRulesService', () => {
       ).toBeDefined();
     });
 
-    it('does not flag the compliant 同事 phrasing', () => {
+    it('does not flag persona leakage but still requires real handoff for 同事 follow-up', () => {
       const result = service.check({
         replyText: '这个我帮你问下负责的同事，稍后回复你哈。',
         toolCalls: [],
@@ -1569,6 +1569,87 @@ describe('HardRulesService', () => {
       expect(
         result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak'),
       ).toBeUndefined();
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'handoff_promise_without_handoff'),
+      ).toBeDefined();
+    });
+  });
+
+  describe('handoff_promise_without_handoff (production trace batch_6a54b296…)', () => {
+    const productionReply =
+      '这边暂时没约上，这家目前报名人数比较多，我让同事帮你确认下名额和后续安排，稍后给你答复哈';
+
+    it('replans when the reply promises colleague follow-up without request_handoff', () => {
+      const result = service.check({
+        replyText: productionReply,
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { jobId: 528499 },
+            result: { success: false, errorType: 'booking.rejected' },
+          },
+        ],
+        chatId: '6a54b296ce406a6aeede64e5',
+      });
+
+      const hit = result.contradictions.find(
+        (item) => item.ruleId === 'handoff_promise_without_handoff',
+      );
+      expect(hit).toMatchObject({
+        action: 'replan',
+        severity: 'P0',
+        currentReplySendable: false,
+        repairMode: 'replan',
+        repairToolNames: ['request_handoff'],
+      });
+    });
+
+    it('allows the promise when request_handoff was actually dispatched', () => {
+      const result = service.check({
+        replyText: productionReply,
+        toolCalls: [
+          {
+            toolName: 'request_handoff',
+            args: { reasonCode: 'system_blocked', reason: '报名失败需人工确认' },
+            result: { dispatched: true, shortCircuited: true },
+          },
+        ],
+        chatId: 'chat-handoff-ok',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it('does not accept a failed request_handoff as grounding', () => {
+      const result = service.check({
+        replyText: '我已经让负责的同事跟进处理，稍后联系你。',
+        toolCalls: [
+          {
+            toolName: 'request_handoff',
+            args: { reasonCode: 'system_blocked' },
+            result: { dispatched: false, shortCircuited: false },
+          },
+        ],
+        chatId: 'chat-handoff-failed',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it.each([
+      '这个岗位的具体安排以门店同事确认结果为准。',
+      '我先核对一下现有资料，确认好再回复你。',
+      '你可以联系门店负责人咨询具体排班。',
+    ])('does not flag a boundary statement without an agent follow-up promise: %s', (replyText) => {
+      const result = service.check({ replyText, toolCalls: [], chatId: 'chat-boundary' });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'handoff_promise_without_handoff',
+      );
     });
   });
 

@@ -14,6 +14,7 @@ import {
 } from './rules/brand-name-errors.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
+import { detectHandoffPromiseWithoutHandoff } from './rules/handoff-promises.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
@@ -226,6 +227,11 @@ export class HardRulesService {
     );
     if (unsupportedStoreStatusSpeculation) {
       contradictions.push(this.withRulePolicy(unsupportedStoreStatusSpeculation));
+    }
+
+    const handoffPromiseWithoutHandoff = detectHandoffPromiseWithoutHandoff(text, toolCalls);
+    if (handoffPromiseWithoutHandoff) {
+      contradictions.push(this.withRulePolicy(handoffPromiseWithoutHandoff));
     }
 
     for (const rule of this.rules) {

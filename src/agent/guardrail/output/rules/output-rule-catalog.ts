@@ -210,6 +210,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
+    id: 'handoff_promise_without_handoff',
+    action: GUARDRAIL_ACTION.REPLAN,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功 request_handoff。',
+    riskGoal: '防止 Agent 口头承诺人工跟进却没有落 handoff、暂停托管或通知负责人。',
+    exogenousSignal: '同事/负责人后续动作承诺词形 + 本轮 request_handoff.dispatched=true。',
+    residualRisk:
+      '不含同事、负责人、店长、门店、招聘经理等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的 request_handoff，当前文本不可发送。若确实需要人工跟进，必须调用 request_handoff 并写清待确认事项；若不需要人工跟进，就删除“同事会确认/稍后联系”等承诺，只陈述当前已确认的事实。',
+    repairToolNames: ['request_handoff'],
+  },
+  {
     id: 'repeated_reply',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P2,

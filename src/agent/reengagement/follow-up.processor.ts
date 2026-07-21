@@ -231,6 +231,7 @@ export class FollowUpProcessor implements OnModuleInit {
             bookingContext.workOrderId,
             bookingContext.interviewAt,
             scenarioCode,
+            bookingContext.interviewType,
           ),
           anchorAt: now,
           state: {
@@ -530,7 +531,12 @@ export class FollowUpProcessor implements OnModuleInit {
       await this.scheduler.scheduleFollowUp({
         sessionRef,
         scenarioCode,
-        anchorEventId: bookingFollowUpAnchorId(workOrderId, newInterviewAt, scenarioCode),
+        anchorEventId: bookingFollowUpAnchorId(
+          workOrderId,
+          newInterviewAt,
+          scenarioCode,
+          bookingContext.interviewType,
+        ),
         anchorAt: Date.now(),
         state: {
           ...state,

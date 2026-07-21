@@ -294,6 +294,42 @@ export class AgentRunnerService {
           });
 
     const revisedText = (revised.text ?? '').trim();
+    // replan 可能以短路副作用结束而不产生文本（例如本规则只开放 request_handoff，
+    // 工具成功派发后 generator 按协议立即结束）。此时外部动作已经真实发生，不能把
+    // 空文本当成 repair 失败；合并首版工具轨迹后直接交给 outcome 层归类为 handoff。
+    const committedShortCircuit = (revised.toolCalls ?? []).some(
+      (call) =>
+        call.toolName === 'request_handoff' &&
+        isShortCircuitedToolCall(call) &&
+        isToolSuccess(call.result),
+    );
+    if (decision.repairMode === 'replan' && committedShortCircuit) {
+      const reviewedToolCalls = this.mergeToolCallsForRevisedResult(first, revised);
+      const shortCircuitDecision: OutputGuardDecision = {
+        ...PASS_DECISION,
+        reasonCode: 'replan_short_circuited',
+      };
+      this.persistReviewRecord(ctx, {
+        firstReply: firstText,
+        firstDecision: decision,
+        finalDecision: shortCircuitDecision,
+        repaired: true,
+        revisedReply: revisedText,
+        revisedDecision: shortCircuitDecision,
+        committedSideEffects: committed || undefined,
+      });
+      return this.finalizeReviewed(
+        { ...revised, toolCalls: reviewedToolCalls },
+        shortCircuitDecision,
+        true,
+        wantDefer,
+        this.buildGuardrailTrace(
+          [firstStep, this.toGuardrailStep('revised', shortCircuitDecision)],
+          true,
+          shortCircuitDecision,
+        ),
+      );
+    }
     // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的
     // 将来时承诺不可能兑现，投递即空头承诺（badcase batch_6a4790c7…：候选人
     // 只收到一句"我帮你查下花桥中骏附近的岗位"，之后再无下文）。与空文本同样

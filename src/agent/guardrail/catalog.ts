@@ -33,6 +33,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   human_service_phrase_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
+  handoff_promise_without_handoff:
+    'agent/guardrail/output/rules/handoff-promises.rule.ts（HardRulesService 调度）',
   identity_misregistration_coaching:
     'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts（HardRulesService 调度）',
   image_description_not_saved:

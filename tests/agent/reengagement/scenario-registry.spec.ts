@@ -1,5 +1,6 @@
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import {
+  bookingFollowUpAnchorId,
   computeFireAt,
   FOLLOW_UP_SCENARIOS,
   getScenario,
@@ -20,6 +21,15 @@ const baseState = (over: Partial<AuthoritativeSessionState> = {}): Authoritative
 const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
+  it('versions AI 17:00 follow-up anchors without changing other booking anchors', () => {
+    expect(
+      bookingFollowUpAnchorId(451713, 1784599200000, 'post_interview_followup', 'AI面试'),
+    ).toBe('wo451713:iv1784599200000:post_interview_followup:ai17');
+    expect(bookingFollowUpAnchorId(451713, 1784599200000, 'interview_reminder', 'AI面试')).toBe(
+      'wo451713:iv1784599200000:interview_reminder',
+    );
+  });
+
   it('allows grounded context carry-over for store follow-ups', () => {
     const policy = getScenario('store_presented_no_reply')!.generationPolicy;
     expect(policy).toContain('简短承接');

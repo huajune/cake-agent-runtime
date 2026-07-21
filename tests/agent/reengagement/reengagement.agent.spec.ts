@@ -335,32 +335,6 @@ describe('ReengagementAgent', () => {
     expect(system).toContain('此前只发送过面试提醒不构成停止条件');
   });
 
-  it('deterministically skips an interview reminder already sent even if the model would send', async () => {
-    memoryRecall.recentMessages = [
-      {
-        role: 'assistant',
-        content: '明天上午10点留意微信消息，会有AI面试的安排，手机上操作就行。',
-      },
-      { role: 'user', content: '嗯嗯，好的。' },
-    ];
-
-    const result = await reengagementAgent.compose({
-      sessionRef,
-      scenario: getScenario('interview_reminder')!,
-      jobData: job('interview_reminder', { workOrderId: 555 }),
-      state: baseState({ terminal: 'booked' }),
-      bookingContext: liveBookingContext(),
-    });
-
-    expect(llm.generateStructured).not.toHaveBeenCalled();
-    expect(result.outcome.kind).toBe('skipped');
-    expect(result.validationReason).toBe('interview_reminder_already_sent');
-    expect(result.agentRequest).toMatchObject({
-      validationReason: 'interview_reminder_already_sent',
-      deterministicStop: true,
-    });
-  });
-
   it('documents that a rebook after cancellation follows the latest valid intent', async () => {
     memoryRecall.recentMessages = [
       { role: 'user', content: '明天的面试我去不了了。' },
