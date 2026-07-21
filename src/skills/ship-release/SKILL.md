@@ -34,6 +34,10 @@ description: 审阅并整理本地代码改动，执行测试与 CI 校验，创
 
 5. 执行校验。
    - 先跑相关定向测试，再跑仓库要求的 lint、format check、typecheck、build 和 CI 等价命令。
+   - 若发版范围涉及 Agent 回复、Guardrail、预约/工单、复聊、记忆或 test-suite，用 `analyze-chat-badcases` 作为强制配套工作流，完整执行“正式测试资产质量闸门（如适用）→ 真实 Agent 链路 → 逐条业务评审 → testing/飞书状态收口 → 生产 Dashboard 同步 → 生产 API 全量对账”。不得只跑单测或模型直调后宣称回归通过。
+   - Agent 回归必须分开记录 runtime 与业务口径：`execution_status=success` 只代表链路完成；只有 `review_status=passed` 且回复、工具、守卫、终态或副作用证据符合 checkpoint，才可标为业务通过。证据不足或动态 fixture 不可控必须标为 `skipped / 测试资产不可评估`，不能记作通过。
+   - 评审动态事实前必须核对 Agent 实际收到的完整运行上下文，包括测试输入、当前预约信息、记忆、工具结果、execution trace/steps 和守卫终态；“本轮没有工具调用”不等于“回复无依据”，也不得只看最终文本就判幻觉。短路工具成功时，空回复应按工具契约评审，不能自动判为内容缺失。
+   - 生产 Dashboard 同步是已完成 Agent 回归的默认收口。评审结论稳定后运行项目既有同步命令，并核对 `warnings=[]`、批次数、执行数、评审分布、实际回复、工具调用和评审备注；除非用户明确要求仅本地，未完成同步与生产 API 对账不得勾选 Agent 回归闸口。若因隐私、权限、配置缺失或评审未完成而不能同步，必须明确报告并保持发布阻断状态。
    - 运行 `git diff --check`；格式化或修复后重新审阅最终 diff。
    - 数据库变化需检查迁移命名和顺序、SQL 可重复执行性、锁表/回填风险、RLS/权限、索引、函数签名、向前与向后兼容、回滚策略，以及测试库/生产库 migration status；优先先做只读状态检查。
    - 环境变量变化需检查代码读取点、默认值与 fail-fast 行为、`.env.example`、README/运维文档、CI、Docker/托管平台配置和 GitHub Actions secrets/variables 是否同步；只报告变量名和配置位置，绝不打印值。
@@ -94,6 +98,7 @@ description: 审阅并整理本地代码改动，执行测试与 CI 校验，创
 
 - [ ] PR 摘要、根因、用户影响、风险、验证记录完整
 - [ ] 发版底账 P0 全部通过，P1 无新增阻断性回归，证据链接完整
+- [ ] Agent 行为相关改动已完成真实链路、逐条业务评审、testing/飞书状态收口、生产 Dashboard 同步与生产 API 全量对账，或确认 `N/A`；不得用 runtime success 代替业务 passed
 - [ ] required checks 全绿，阻塞 review 已处理，最新 commit 已获得所需批准
 - [ ] 数据库迁移顺序、兼容窗口、锁表/回填/回滚风险已评估，或确认 `N/A`
 - [ ] 环境变量名称、目标环境、配置入口和责任人已列明；所需 secrets/variables 已存在，或确认 `N/A`
