@@ -280,6 +280,27 @@ function isGroupNicknameIntroduction(normalizedClause: string, normalizedAlias: 
   );
 }
 
+// 刻意不含"周五"这类星期词：星期+数字（"周五711有班吗"）多是品牌问询而非时段。
+const TEMPORAL_PREFIX_PATTERN = /(?:晚上|晚间|夜里|上午|下午|早上|凌晨|中午|傍晚|每天|每晚)$/;
+const TEMPORAL_SUFFIX_PATTERN = /^(?:点半|点钟|点|小时|号|月|日|年)/;
+
+/**
+ * 时间语境中的数字片段不是品牌："晚上7-11点" 归一化塌缩成 "晚上711点" 后，
+ * "711" 会经数字边界包含误命中 7-11便利店（2026-07-20 生产假阳性）。
+ * 纯数字别名的命中片段紧邻时段前缀或时间单位后缀时不认；
+ * 候选人真指门店的 "去711买东西" / 整句 "7-11" 不受影响。
+ */
+function isTemporalNumericMatch(
+  normalizedClause: string,
+  spanStart: number,
+  normalizedAlias: string,
+): boolean {
+  if (spanStart < 0 || !/^[0-9]+$/.test(normalizedAlias)) return false;
+  const before = normalizedClause.slice(0, spanStart);
+  const after = normalizedClause.slice(spanStart + normalizedAlias.length);
+  return TEMPORAL_PREFIX_PATTERN.test(before) || TEMPORAL_SUFFIX_PATTERN.test(after);
+}
+
 /** 地址中的同名片段不是品牌："鄂尔多斯路" 不得命中品牌 "鄂尔多斯1980"。 */
 function isGeographicNameMatch(
   normalizedClause: string,
@@ -333,7 +354,8 @@ function matchClause(
         normalizedAlias: candidate.normalized,
         source,
       }) ||
-      isGeographicNameMatch(normalizedClause, spanStart, candidate.normalized.length)
+      isGeographicNameMatch(normalizedClause, spanStart, candidate.normalized.length) ||
+      isTemporalNumericMatch(normalizedClause, spanStart, candidate.normalized)
     ) {
       continue;
     }
