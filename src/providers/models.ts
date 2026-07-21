@@ -62,12 +62,6 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     description: 'OpenAI 通用旗舰 (全能表现)',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'openai/gpt-5.3-chat-latest': {
-    provider: 'openai',
-    name: 'GPT-5.3 Chat (Latest)',
-    description: 'OpenAI GPT-5.3 Chat 快照（旧版快照；优先迁移到最新 GPT-5.x）',
-    capabilities: ['tool-use', 'multimodal'],
-  },
   'openai/gpt-5.4-mini': {
     provider: 'openai',
     name: 'GPT-5.4 Mini',

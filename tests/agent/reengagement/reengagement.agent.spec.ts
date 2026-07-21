@@ -240,6 +240,11 @@ describe('ReengagementAgent', () => {
         content: '不好意思哈，星期一约好的面试我去不了了。',
       });
       expect(system).toContain('即使实时工单仍显示预约有效也不能发送');
+      // 生产 badcase（touch 19712）：候选人说“干不了”且顾问已转拉群，提醒仍被发出。
+      // 判据必须覆盖婉拒表达 + 转群语境，并区分“为本次面试拉群”不算放弃。
+      expect(system).toContain('干不了');
+      expect(system).toContain('邀请进群、改推其他岗位');
+      expect(system).toContain('招募经理为本次面试拉群');
       expect(result.outcome.kind).toBe('skipped');
       expect(result.outcome.reply).toBeUndefined();
       expect(result.validationReason).toBe('candidate_declined_interview');
