@@ -568,8 +568,22 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
 
   const comp = asRecord(req.competencyRequirements) ?? {};
   if (hasValue(comp.minWorkTime)) {
-    const s = formatValueWithUnit(comp.minWorkTime, comp.minWorkTimeUnit);
-    if (s) lines.push(`- **最低工作经验**: ${s}`);
+    // minWorkTimeUnit 现网下发的是数字枚举 id（非文本单位），直接拼接会渲染成
+    // "最低工作经验: 3 1" 这种读不懂的串，模型索性忽略该条件，对候选人答"接受无经验"
+    // （badcase umkgixpq：实际要求咖啡师 3 个月经验）。枚举字典本仓库没有，
+    // 不猜映射——单位不可读时只给数值并显式标注待确认，保证"有经验门槛"这个事实不丢。
+    const unitIsReadable =
+      hasValue(comp.minWorkTimeUnit) && Number.isNaN(Number(String(comp.minWorkTimeUnit).trim()));
+    const s = unitIsReadable
+      ? formatValueWithUnit(comp.minWorkTime, comp.minWorkTimeUnit)
+      : formatValueWithUnit(comp.minWorkTime, null);
+    if (s) {
+      lines.push(
+        unitIsReadable
+          ? `- **最低工作经验**: ${s}`
+          : `- **最低工作经验**: ${s}（单位未下发，勿臆断为月/年；该岗位有经验门槛，不得对候选人称"无经验也可以"，需按门店口径确认）`,
+      );
+    }
   }
   pushField(lines, '经验岗位类型', comp.workExperienceJobType);
 

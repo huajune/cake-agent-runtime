@@ -106,6 +106,46 @@ describe('job-list render util', () => {
     expect(markdown).not.toContain('- **保险**: 公司购买');
   });
 
+  // badcase umkgixpq：拉瓦萨咖啡师实际要求 3 个月经验，海绵下发
+  // minWorkTime=3 / minWorkTimeUnit=1（数字枚举 id），旧渲染拼成 "3 1"，
+  // 模型读不懂就忽略了该条件，对候选人答"这家接受无经验"。
+  describe('minimum work experience rendering', () => {
+    const flags: ProgressiveDisclosureFlags = {
+      ...minimalFlags,
+      includeHiringRequirement: true,
+    };
+
+    const jobWithExperience = (unit: unknown) => {
+      const job = makeJob(1) as Record<string, unknown>;
+      const hiring = job.hiringRequirement as Record<string, unknown>;
+      hiring.competencyRequirements = { minWorkTime: 3, minWorkTimeUnit: unit };
+      return job;
+    };
+
+    it('never renders a bare numeric unit id as if it were a unit', () => {
+      const markdown = formatJobsToMarkdown([jobWithExperience(1)], 1, 1, 10, flags);
+
+      expect(markdown).not.toContain('最低工作经验**: 3 1');
+      expect(markdown).toContain('最低工作经验');
+      expect(markdown).toContain('单位未下发');
+      // 关键：经验门槛存在这个事实必须传达给模型，否则会答"无经验也可以"。
+      expect(markdown).toContain('不得对候选人称"无经验也可以"');
+    });
+
+    it('renders a readable text unit as-is without the caveat', () => {
+      const markdown = formatJobsToMarkdown([jobWithExperience('个月')], 1, 1, 10, flags);
+
+      expect(markdown).toContain('- **最低工作经验**: 3 个月');
+      expect(markdown).not.toContain('单位未下发');
+    });
+
+    it('omits the line entirely when no experience requirement is set', () => {
+      const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, flags);
+
+      expect(markdown).not.toContain('最低工作经验');
+    });
+  });
+
   describe('hard-requirements banner', () => {
     const detailFlags: ProgressiveDisclosureFlags = {
       includeBasicInfo: true,

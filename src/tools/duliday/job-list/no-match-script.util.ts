@@ -75,7 +75,17 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
 
   // 承接句：候选人提了什么就接什么
   const subjectPhrase = store ? `${store}这家` : brand ? `${brand}` : '咱们这边';
-  const placePhrase = region ? `${region}这片` : city ? `${city}这边` : '附近';
+  // 距离锚定的查询只覆盖以候选人坐标为圆心的 maxKm 圆，不能口播成"整个城市没有"。
+  // badcase 4c94j4f7：10km 圆内 0 结果被说成"必胜客在北京这边没岗"，15 分钟后换个
+  // 锚点就查出 8.7km 的门店，候选人当场质疑。半径必须进候选人可见文案。
+  const placePhrase =
+    ctx.maxKm != null
+      ? `${region ? `${region}一带` : '你'}附近 ${ctx.maxKm} 公里内`
+      : region
+        ? `${region}这片`
+        : city
+          ? `${city}这边`
+          : '附近';
   const intro = `${subjectPhrase}${store ? '' : `在${placePhrase}`}暂时没找到合适的岗位`;
 
   // 拉群兜底动作（统一一句，不让模型自由发挥）
@@ -88,6 +98,11 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
     candidateMessage,
     nextToolCall: 'invite_to_group',
     forbiddenActions: [
+      ...(ctx.maxKm != null
+        ? [
+            `本轮只查了候选人坐标附近 ${ctx.maxKm} 公里内，不得把它说成"整个城市/这个区都没有岗位"——范围外可能仍有该品牌门店`,
+          ]
+        : []),
       '不得反问"换品牌 / 换城市 / 别的区域看看吗"',
       '不得跨品牌推荐（候选人提了 X 品牌，无岗就走拉群，不能默默推 Y 品牌）',
       '不得说"这家可能关了 / 应该是搬了 / 估计招满了"等门店运营状态推测',
