@@ -18,6 +18,7 @@ describe('ImageBrandBackfillService', () => {
     source: 'image_description',
     matchType: 'canonical_exact',
     matchedText: '肯德基',
+    sourceText: '肯德基招聘海报',
     intentPolarity: 'positive',
     ambiguous: false,
   };

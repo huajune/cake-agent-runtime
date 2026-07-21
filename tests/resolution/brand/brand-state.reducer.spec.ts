@@ -25,6 +25,7 @@ function makeResolution(overrides: Partial<BrandResolution>): BrandResolution {
     canonicalName: null,
     brandId: null,
     matchedText: null,
+    sourceText: null,
     source: 'user_text',
     matchType: 'canonical_exact',
     intentPolarity: 'positive',

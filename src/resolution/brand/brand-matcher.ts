@@ -15,6 +15,7 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import {
   BRAND_CONFIDENCE,
+  truncateSourceText,
   type BrandCandidate,
   type BrandMatchType,
   type BrandResolution,
@@ -59,6 +60,8 @@ interface ClauseMatch {
   entries: BrandCatalogCandidate[];
   matchType: Extract<BrandMatchType, 'canonical_exact' | 'alias_exact' | 'alias_containment'>;
   matchedText: string;
+  /** 命中所在子句的用户原文（归因用，见 BrandResolution.sourceText）。 */
+  sourceText: string;
   negated: boolean;
 }
 
@@ -89,6 +92,7 @@ export function resolveBrands(
         canonicalName: null,
         brandId: null,
         matchedText: control.matchedText,
+        sourceText: truncateSourceText(trimmed),
         source,
         matchType: null,
         intentPolarity: control.polarity,
@@ -112,6 +116,7 @@ export function resolveBrands(
         canonicalName: null,
         brandId: null,
         matchedText: match.matchedText,
+        sourceText: truncateSourceText(match.sourceText),
         source,
         matchType: match.matchType,
         intentPolarity: match.negated ? 'negative' : 'positive',
@@ -160,6 +165,7 @@ export function resolveBrands(
       canonicalName: brand.canonicalName,
       brandId: brand.brandId,
       matchedText: match.matchedText,
+      sourceText: truncateSourceText(match.sourceText),
       source,
       matchType: match.matchType,
       intentPolarity: match.negated ? 'negative' : 'positive',
@@ -190,6 +196,7 @@ export function resolveBrands(
           canonicalName: brandName,
           brandId: index.brandIdByName.get(brandName) ?? null,
           matchedText: category.label,
+          sourceText: truncateSourceText(trimmed),
           source,
           matchType: 'category_expansion',
           intentPolarity: 'positive',
@@ -221,6 +228,7 @@ function resolveBrandIdMentions(
       canonicalName: brand.name,
       brandId,
       matchedText: match[0],
+      sourceText: truncateSourceText(text),
       source,
       matchType: 'brand_id',
       intentPolarity: 'positive',
@@ -375,6 +383,7 @@ function matchClause(
           : 'alias_exact'
         : 'alias_containment',
       matchedText: candidate.alias,
+      sourceText: clause,
       negated,
     });
   }

@@ -85,11 +85,18 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         prev: SessionBrandState | null;
         next: SessionBrandState;
+        /**
+         * 触发本次迁移的解析结果。matchedText（命中的品牌库词条）与 sourceText（用户原文
+         * 片段）是误命中归因的必需项：只有 matchType + canonicalName 时，脏别名塌缩与候选人
+         * 真实简称在事件里长得一模一样，日检必须回查 chat_messages 才能分真假阳性。
+         */
         triggers: Array<{
           source: BrandResolutionSource;
           polarity: BrandIntentPolarity;
           canonicalName: string | null;
           matchType: BrandMatchType | null;
+          matchedText: string | null;
+          sourceText: string | null;
           confidence: number;
         }>;
         /** 本次写入是否首次初始化（懒迁移/seed）。 */
@@ -125,6 +132,25 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         batchSize: number;
         origin: 'extraction_hints' | 'contact_name';
+      }
+    /**
+     * 歧义品牌词形现场（§12 长期事件，补 §18 观测债）：冲突别名命中（如「小龙」→
+     * 小龙坎/小龙翻大江）按设计不写状态，而 brand_state_change 仅状态变化时发射——
+     * 纯歧义轮因此整档零留痕（2026-07-21 发现）。本事件在解析结果入口无条件记录，
+     * 不依赖状态是否变化；量级与冲突别名出现频率同阶（每天个位数）。
+     */
+    | {
+        type: 'brand_resolution_ambiguous';
+        userId?: string;
+        items: Array<{
+          source: BrandResolutionSource;
+          matchedText: string | null;
+          sourceText: string | null;
+          polarity: BrandIntentPolarity;
+          candidates: Array<{ canonicalName: string; brandId: number | null }>;
+        }>;
+        /** 是否图片补写（§10.3）路径。 */
+        late: boolean;
       }
   );
 
