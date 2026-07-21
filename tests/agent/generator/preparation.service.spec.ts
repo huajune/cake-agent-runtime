@@ -1047,6 +1047,106 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('当前状态: 约面成功');
   });
 
+  // badcase pm2ivers：海绵已下发 interviewTime，但 formatBookingContext 没渲染，模型只看到
+  // 「约面待确认」这个无日期状态词，把"已排期"补全成"还在等门店确认排期"。
+  it('渲染 active_booking 的面试时间，并给出过期核实与跨顾问披露口径', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [{ role: 'user', content: '我是来米' }] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'onboard_followup',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+    mockContext.compose.mockImplementation(async (params?: { memoryBlock?: string }) => ({
+      systemPrompt: ['SYSTEM_PROMPT', params?.memoryBlock].filter(Boolean).join('\n\n'),
+      stageGoals: { onboard_followup: { stage: 'onboard_followup' } },
+      thresholds: [],
+    }));
+    mockActiveBooking({
+      work_order_id: 449822,
+      linked_at: '2026-07-14T05:53:49.648Z',
+    });
+    const workOrder = {
+      workOrderId: 449822,
+      jobId: 520361,
+      brandName: '奥乐齐',
+      projectName: '1035 银都',
+      jobName: '社会兼职',
+      currentStatus: '约面待确认',
+      signUpTime: '2026-07-14 13:53:49',
+      interviewTime: '2026-07-19 13:00:00',
+    };
+    // 非预约回合走短缓存读取，预约回合才直查海绵；两条路径都要能拿到 interviewTime。
+    mockSpongeService.getWorkOrderById.mockResolvedValue(workOrder);
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue(workOrder);
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '我是来米' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    // 事实：面试时间必须进 prompt，否则模型无从判断是否已排期。
+    expect(result.finalPrompt).toContain('面试时间: 2026-07-19 13:00:00');
+    // 口径一：不得声称仍在等排期；已过期且未通过时先核实到场情况。
+    expect(result.finalPrompt).toContain('不得声称还在等门店确认时间');
+    expect(result.finalPrompt).toContain('必须先向候选人核实当天是否到场面试');
+    // 口径二：跨顾问预约不得主动插入其他品牌咨询（badcase t9bszhx8）。
+    expect(result.finalPrompt).toContain('不得主动插入该预约的状态');
+  });
+
+  it('工单无 interviewTime 时不渲染面试时间行（老版本海绵响应容缺）', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [{ role: 'user', content: '在吗' }] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'onboard_followup',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+    mockContext.compose.mockImplementation(async (params?: { memoryBlock?: string }) => ({
+      systemPrompt: ['SYSTEM_PROMPT', params?.memoryBlock].filter(Boolean).join('\n\n'),
+      stageGoals: { onboard_followup: { stage: 'onboard_followup' } },
+      thresholds: [],
+    }));
+    mockActiveBooking({ work_order_id: 88003, linked_at: '2026-07-14T05:53:49.648Z' });
+    const legacyWorkOrder = {
+      workOrderId: 88003,
+      brandName: '瑞幸',
+      currentStatus: '约面待确认',
+    };
+    mockSpongeService.getWorkOrderById.mockResolvedValue(legacyWorkOrder);
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue(legacyWorkOrder);
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '在吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('工单号: 88003');
+    expect(result.finalPrompt).not.toContain('面试时间: ');
+  });
+
   it('预约后询问定位时将面试地址与工作门店地址一起注入上下文', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },

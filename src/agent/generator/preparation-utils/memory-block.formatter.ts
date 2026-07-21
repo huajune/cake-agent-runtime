@@ -377,6 +377,9 @@ export function formatBookingContext(
     displayJobName ? `岗位: ${displayJobName}` : null,
     workOrder.currentStatus ? `当前状态: ${workOrder.currentStatus}` : null,
     workOrder.signUpTime ? `报名时间: ${workOrder.signUpTime}` : null,
+    // 海绵 2026-07 起下发；缺了它模型只看到「约面待确认」这个无日期状态词，
+    // 会把"已排期"语义补全成"还在等门店确认排期"（badcase pm2ivers）。
+    workOrder.interviewTime ? `面试时间: ${workOrder.interviewTime}` : null,
     workOrder.interviewPassTime ? `面试通过时间: ${workOrder.interviewPassTime}` : null,
     location?.storeAddress ? `工作门店地址: ${location.storeAddress}` : null,
     location?.interviewMethod ? `面试形式: ${location.interviewMethod}` : null,
@@ -397,6 +400,8 @@ export function formatBookingContext(
   lines.push(
     '候选人可同时报名多个不同岗位；已预约 A 岗不代表不能继续报名 B 岗。但同一工单/同一岗位不要重复提交报名。',
     '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。主动要求取消时调 duliday_cancel_work_order 自助取消。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
+    '「面试时间」已在上方给出时：不得声称还在等门店确认时间、等排期或时间未定。若该时间已早于当前日期且没有「面试通过时间」，说明面试已过期且结果未知——必须先向候选人核实当天是否到场面试，再按其回答推进或改约，禁止臆断已面试/未面试或编造后续流程。',
+    '本预约可能来自候选人此前与另一位招聘顾问的沟通，不一定是你经手的。仅当候选人主动问起它、或主动要求改约/取消时才可提及；候选人在咨询其他品牌/门店/岗位时，不得主动插入该预约的状态，也不得使用「我看到你报了…」这类像是本人经手的口径。',
     '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
     '必须先核对「面试形式」：只有明确为线下/到店/现场面试才允许告知或发送面试地址。线上、AI、视频、电话面试不需要到店，禁止发送任何面试定位；面试形式未明确时也不得猜测为线下。仅在明确线下面试且「面试地址」与「工作门店地址」不同时，候选人询问赴约地址/定位才优先面试地址。',
   );
