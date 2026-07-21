@@ -28,6 +28,22 @@ export class UpdateAgentReplyConfigDto {
   extractModelId?: string;
 
   @IsOptional()
+  @IsString()
+  visionModelId?: string;
+
+  @IsOptional()
+  @IsString()
+  evaluateModelId?: string;
+
+  @IsOptional()
+  @IsString()
+  reviewModelId?: string;
+
+  @IsOptional()
+  @IsString()
+  repairModelId?: string;
+
+  @IsOptional()
   @IsIn(['fast', 'deep'])
   wecomCallbackThinkingMode?: 'fast' | 'deep';
 

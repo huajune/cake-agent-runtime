@@ -271,6 +271,11 @@ describe('ReengagementAgent', () => {
         content: '不好意思哈，星期一约好的面试我去不了了。',
       });
       expect(system).toContain('即使实时工单仍显示预约有效也不能发送');
+      // 抽样审计三类高频错误的 prompt 防线：证据先行的判定步骤、禁止模糊理由跳过、
+      // 预约当轮/另行提醒的客观时间锚点（报名完成时间）。
+      expect(system).toContain('判定步骤：先定位候选人');
+      expect(system).toContain('不得以“对话流程正常”');
+      expect(system).toContain('报名完成时间');
       if (scenarioCode === 'interview_reminder') {
         // 抽样审计：模型高频把预约当轮的收尾叮嘱/二维码交付误判为“已提醒”（误杀），
         // 也漏判预约回合后另行发出的口头提醒（漏拦）。口径必须给出正反例。

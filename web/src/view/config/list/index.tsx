@@ -209,6 +209,78 @@ export default function Config() {
   const extractModelDefaultLabel = extractModelDefaultOption
     ? extractModelDefaultOption.name || extractModelDefaultOption.id
     : extractModelDefaultValue || '默认角色路由';
+
+  // 其余角色的运行时模型覆盖行（与企微聊天/事实提取同一保存链路，留空走环境变量角色路由）
+  const roleModelFields = [
+    {
+      key: 'visionModelId' as const,
+      label: '图片理解模型',
+      envVar: 'AGENT_VISION_MODEL',
+      description: '候选人发图片（健康证、岗位截图等）时的视觉理解模型。仅可选多模态模型。',
+      scope: '适用于新的图片消息',
+    },
+    {
+      key: 'evaluateModelId' as const,
+      label: '对话质量评估模型',
+      envVar: 'AGENT_EVALUATE_MODEL',
+      description: '对话质量 LLM 评分使用的模型。切换后评估分数环比会出现口径断点。',
+      scope: '适用于新的评估任务',
+    },
+    {
+      key: 'reviewModelId' as const,
+      label: '守卫语义审查模型',
+      envVar: 'AGENT_REVIEW_MODEL',
+      description:
+        '出站守卫 llm 档（语义审查）使用的模型。建议与聊天模型选不同厂商，保持互审独立性；切换后 shadow 精度需重新基线。',
+      scope: '适用于新的出站审查',
+    },
+    {
+      key: 'repairModelId' as const,
+      label: '守卫修复模型',
+      envVar: 'AGENT_REPAIR_MODEL',
+      description: '守卫拦截后改写回复（revise 修复）使用的模型。',
+      scope: '适用于新的修复轮',
+    },
+  ];
+
+  const renderRoleModelRow = (field: (typeof roleModelFields)[number]) => {
+    const value = String(getCurrentValue(field.key) ?? '');
+    const defaultValue = String(getDefaultValue(field.key) ?? '');
+    const defaultOption = modelOptions.find((o) => o.id === defaultValue);
+    const defaultLabel = defaultOption
+      ? defaultOption.name || defaultOption.id
+      : defaultValue || '默认角色路由';
+
+    return (
+      <div
+        key={field.key}
+        className={`${styles.settingRow} ${isModified(field.key) ? styles.settingRowModified : ''}`}
+      >
+        <div className={styles.settingBody}>
+          <div className={styles.settingHeading}>
+            <span className={styles.settingLabel}>{field.label}</span>
+            {isModified(field.key) ? <span className={styles.modifiedBadge}>已修改</span> : null}
+          </div>
+          <p className={styles.settingDescription}>{field.description}</p>
+          <div className={styles.settingMeta}>
+            <span>{field.scope}</span>
+            <span>默认: {defaultLabel}</span>
+          </div>
+        </div>
+        <div className={styles.controlBlock}>
+          <ModelSelector
+            value={value}
+            options={modelOptions}
+            onChange={(next) => handleConfigChange(field.key, next)}
+            disabled={isLoadingModels}
+            placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
+            defaultOptionLabel="默认角色路由"
+            defaultOptionDesc={`留空则走后端 ${field.envVar} 角色路由`}
+          />
+        </div>
+      </div>
+    );
+  };
   const thinkingModeValue = String(
     getCurrentValue('wecomCallbackThinkingMode') ?? 'fast',
   ) as AgentReplyThinkingMode;
@@ -518,6 +590,8 @@ export default function Config() {
                   />
                 </div>
               </div>
+
+              {roleModelFields.map(renderRoleModelRow)}
 
               <div
                 className={`${styles.settingRow} ${isModified('wecomCallbackThinkingMode') ? styles.settingRowModified : ''}`}

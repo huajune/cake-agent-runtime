@@ -49,10 +49,15 @@ export interface ReengagementAgentExecution {
   validationReason?: string;
 }
 
+// 字段顺序即模型生成顺序：判定依据（reason）必须先于 decision 产出，
+// 强制“先摆证据再下结论”。曾有判例：模型推理已识别到候选人放弃岗位，
+// 但 decision 排在最前导致先写了 send，随后的分析未能修正结论。
 const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
-  decision: z
-    .enum(['send', 'skip'])
-    .describe('是否发送本次复聊。命中本场景任一发送前语义停止条件时必须为 skip，否则为 send'),
+  reason: z
+    .string()
+    .describe(
+      '判定依据：引用近期对话里决定发送或跳过的关键证据（谁在何时说了什么）；只引用输入证据，不得补写“已读”“在忙”等未提供状态',
+    ),
   blockReason: z
     .enum([
       'none',
@@ -63,9 +68,11 @@ const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
       'interview_reminder_already_sent',
     ])
     .default('none')
-    .describe('命中的发送前语义停止原因；未命中为 none'),
+    .describe('根据判定依据得出的发送前语义停止原因；未命中为 none'),
+  decision: z
+    .enum(['send', 'skip'])
+    .describe('是否发送本次复聊。blockReason 命中任一停止原因时必须为 skip，否则为 send'),
   message: z.string().describe('候选人可见的复聊消息；不得用候选人的姓名、昵称或企微显示名作称呼'),
-  reason: z.string().describe('只说明输入证据如何支持本条文案，不得补写“已读”“在忙”等未提供状态'),
 });
 
 type ReengagementOutput = z.infer<typeof REENGAGEMENT_OUTPUT_SCHEMA>;
@@ -400,6 +407,7 @@ export class ReengagementAgent {
       ...(this.isPostBookingScenario(ctx)
         ? [
             '## 发送前语义停止条件',
+            '- 判定步骤：先定位候选人（user）关于本次面试的最新有效表态，再检查招募经理（assistant）是否已取消面试、已询问结果或已另行提醒，最后才得出结论；关键证据写入 reason。',
             '- 下列角色约定必须严格遵守：user 是候选人，assistant 是招募经理。只判断与当前工单、本次面试相关的表达，不要用其他岗位或更早一次面试的历史误判。',
             '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
             '- 候选人得知岗位要求或条件后表示接受不了，例如“干不了”“做不了”“那算了”，即使语气委婉、没有出现“取消”字样，也属于放弃本岗位；若招募经理随后已转为邀请进群、改推其他岗位，候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview。注意区分：招募经理为本次面试拉群（如群内接龙面试）不属于放弃信号。',
@@ -408,13 +416,14 @@ export class ReengagementAgent {
             '- 招募经理（assistant）已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。候选人自己询问结果不属于此项。',
             ...(ctx.scenario.code === 'interview_reminder'
               ? [
-                  '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。判断口径：预约成功当轮的告知与收尾叮嘱都不算已提醒，包括时间地点确认、“准时到哈”“记得提前到”“记得带证件”、发送面试码或二维码；只有预约回合之后另行发出的提醒参加消息（如“记得今天的面试哈”“明天来吗，面试可以来吗”）才算已提醒。',
+                  '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。判断口径：预约成功当轮的告知与收尾叮嘱都不算已提醒，包括时间地点确认、“准时到哈”“记得提前到”“记得带证件”、发送面试码或二维码；只有预约回合之后另行发出的提醒参加消息（如“记得今天的面试哈”“明天来吗，面试可以来吗”）才算已提醒。可用状态摘要里的“报名完成时间”区分：与其紧邻的消息属于预约当轮。',
                   '- 状态摘要里的“面试时间”是当前工单的唯一权威时间。候选人可能同时有多个面试；近期对话中出现的其它面试时间属于其它工单，禁止用来生成本次提醒。',
                 ]
               : [
                   '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
                 ]),
             '- 命中任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示预约有效也不能发送。未命中时 blockReason=none。',
+            '- 未命中任何停止条件时必须 decision=send：不得以“对话流程正常”“候选人已确认过”“感觉没必要再发”等模糊理由跳过；候选人回复“好的/OK”只是确认收到，不构成停止条件。',
             '- 同一意图有前后变化时以最新有效表达为准：取消后又明确重新约好可以恢复；改约后的新面试不被旧时间对应的提醒阻止。',
             '- 仅仅询问面试时间地点、表达紧张或尚未确认结果，不构成以上停止条件。',
             '',
@@ -431,7 +440,7 @@ export class ReengagementAgent {
       '- 可以在确有助于候选人识别上下文时，简短承接近期对话里已经出现的岗位、门店、薪资、班次或位置；不得新增、改写、拼接或夸大任何细节，也不要整段复制岗位介绍。',
       '',
       '# 输出协议',
-      '返回结构化结果：decision 决定是否发送；blockReason 给出命中的语义停止原因，未命中必须为 none。只有明确命中上述语义停止条件时才允许 decision=skip，此时 message 必须为空；否则 decision=send 且 message 必须是候选人可见的最终文案。reason 用一句话指出所依据的输入证据（仅内部观测）。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
+      '按字段顺序返回结构化结果：先在 reason 里引用决定发送或跳过的关键对话证据（谁在何时说了什么，仅内部观测），再据此给出 blockReason（未命中必须为 none），然后才是 decision。只有明确命中上述语义停止条件时才允许 decision=skip，此时 message 必须为空；否则 decision=send 且 message 必须是候选人可见的最终文案。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
     ].join('\n');
   }
 
@@ -493,6 +502,11 @@ export class ReengagementAgent {
     ) {
       const booking = ctx.bookingContext;
       lines.push('- 当前预约：已在本次触达前查询海绵实时工单并通过状态核验');
+      // 报名完成时间是区分“预约当轮告知”与“另行发出的提醒”的客观锚点，
+      // 供 interview_reminder_already_sent 口径判定使用。
+      if (Number.isFinite(ctx.jobData.anchorAt)) {
+        lines.push(`- 报名完成时间：${this.formatShanghaiTime(ctx.jobData.anchorAt)}`);
+      }
       lines.push(`- 面试形式：${booking?.interviewType ?? '工单未提供，不得猜测'}`);
       if (booking?.brandName) lines.push(`- 品牌：${booking.brandName}`);
       if (booking?.companyName) lines.push(`- 企业：${booking.companyName}`);
