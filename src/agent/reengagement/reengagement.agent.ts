@@ -118,6 +118,33 @@ export class ReengagementAgent {
     );
     const agentInput: ReengagementAgentInput = { trigger: ctx, memory };
 
+    // “本次面试已提醒过”属于可由聊天证据确定的停止条件，不能再把最终决定交给模型。
+    // 线上曾出现模型推理明确判断应 skip、最终结构化输出却改成 send 的情况。这里在调
+    // LLM 前做保守拦截：只认 assistant 消息中同时出现面试与明确提醒/操作语义；若后续
+    // 已出现改约，则旧时间对应的提醒失效，允许为新时间重新生成提醒。
+    const deterministicBlockReason = this.resolveDeterministicBlockReason(ctx, memory);
+    if (deterministicBlockReason) {
+      const stoppedAt = Date.now();
+      return {
+        outcome: {
+          kind: 'skipped',
+          scenarioCode: ctx.scenario.code,
+          toolCalls: [],
+          agentSteps: [],
+        },
+        agentRequest: {
+          type: 'reengagement_agent',
+          scenarioCode: ctx.scenario.code,
+          reengagementInput: agentInput,
+          validationReason: deterministicBlockReason,
+          deterministicStop: true,
+        },
+        aiStartAt: stoppedAt,
+        aiEndAt: stoppedAt,
+        validationReason: deterministicBlockReason,
+      };
+    }
+
     // 只投影场景字段、最小状态和脱敏记忆，不把 trigger / memory 整包序列化进 prompt。
     const composeNow = Date.now();
     const systemPrompt = this.buildSystemPrompt(ctx, memory, composeNow);
@@ -459,6 +486,31 @@ export class ReengagementAgent {
       if (cancellation.test(message.content)) return 'candidate_cancelled_interview_in_chat';
     }
     return 'reengagement_agent_skipped';
+  }
+
+  private resolveDeterministicBlockReason(
+    ctx: ReengagementComposeContext,
+    memory: ReengagementMemorySnapshot,
+  ): 'interview_reminder_already_sent' | null {
+    if (ctx.scenario.code !== 'interview_reminder') return null;
+
+    const rebooked =
+      /(?:改到|改成|调整到|重新.{0,8}(?:约|安排)).{0,20}面试|面试.{0,20}(?:改到|改成|调整到|重新.{0,8}(?:约|安排))/;
+
+    for (let index = memory.recentMessages.length - 1; index >= 0; index -= 1) {
+      const message = memory.recentMessages[index];
+      if (message.role !== 'assistant') continue;
+      if (rebooked.test(message.content)) return null;
+      if (
+        /面试/.test(message.content) &&
+        /(?:记得|别忘|提醒|留意(?:微信|消息|通知|面试)|按时参加|准时参加|手机上操作|按.{0,12}(?:通知|入口).{0,12}(?:完成|参加))/.test(
+          message.content,
+        )
+      ) {
+        return 'interview_reminder_already_sent';
+      }
+    }
+    return null;
   }
 
   private formatStateSummary(ctx: ReengagementComposeContext, now: number): string {

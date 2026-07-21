@@ -12,6 +12,8 @@ export type FollowUpScenarioCode =
 export interface FollowUpScenarioContext {
   anchorAt: number;
   state: AuthoritativeSessionState;
+  /** 实时岗位详情解析出的面试形式；仅用于需要按形式区分触发时间的场景。 */
+  interviewType?: string;
 }
 
 /** 场景所属大阶段：报名前 / 报名后（报名后流程复杂，支持独立大开关）。 */
@@ -74,6 +76,20 @@ export interface ShouldStopResult {
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const SHANGHAI_UTC_OFFSET_MS = 8 * HOUR;
+
+function isAiInterview(interviewType?: string): boolean {
+  return typeof interviewType === 'string' && /ai\s*面试/i.test(interviewType);
+}
+
+/** 上海时区无夏令时：返回面试日期当天指定整点的绝对时间。 */
+function shanghaiHourOnInterviewDay(interviewAt: number, hour: number): number {
+  const localDate = new Date(interviewAt + SHANGHAI_UTC_OFFSET_MS);
+  return (
+    Date.UTC(localDate.getUTCFullYear(), localDate.getUTCMonth(), localDate.getUTCDate(), hour) -
+    SHANGHAI_UTC_OFFSET_MS
+  );
+}
 
 /**
  * 7 个需求场景 → 锚点/延迟/stopUnless 映射（见 agent-reengagement-design.md §5）。
@@ -210,10 +226,15 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     triggerDelayMs: (ctx: FollowUpScenarioContext) => {
       const interviewAt = resolveInterviewAt(ctx.state);
       if (interviewAt == null) return 0;
-      const followUpAt = interviewAt + 2 * HOUR;
+      // AI 面试是候选人在通知入口自助完成，统一在面试日期当天 17:00 询问是否完成；
+      // 其他面试保持按工单面试时间后 2 小时回访。Dashboard 显式偏移仍由
+      // resolveDelayMs 优先处理，便于运营临时覆盖。
+      const followUpAt = isAiInterview(ctx.interviewType)
+        ? shanghaiHourOnInterviewDay(interviewAt, 17)
+        : interviewAt + 2 * HOUR;
       return Math.max(0, followUpAt - ctx.anchorAt);
     },
-    delayLabel: '工单面试时间后 2 小时（无面试时间不触发）',
+    delayLabel: 'AI 面试当天 17:00；其他面试在工单面试时间后 2 小时（无面试时间不触发）',
     delayMode: 'after_interview',
     defaultDelayMinutes: 120,
     objective: '面试后回访，了解面试结果、是否需要后续协助',

@@ -81,6 +81,30 @@ describe('scenario-registry', () => {
       expect(fireAt).toBe(at(9, 30)); // 17:30 Shanghai
     });
 
+    it('schedules AI interview follow-up at 17:00 Shanghai on the interview day', () => {
+      const anchorAt = at(1); // 09:00 Shanghai
+      const interviewAt = at(2); // 10:00 Shanghai
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: 'AI面试',
+      });
+      expect(fireAt).toBe(at(9)); // 17:00 Shanghai
+    });
+
+    it('does not move an overdue AI interview follow-up backwards to 17:00', () => {
+      const anchorAt = at(10); // 18:00 Shanghai
+      const interviewAt = at(2); // 10:00 Shanghai
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: '线上 AI 面试',
+      });
+      expect(fireAt).toBe(anchorAt);
+    });
+
     it('does not delay an overdue follow-up from the scheduling anchor', () => {
       const anchorAt = at(5); // 13:00 Shanghai
       const interviewAt = at(2); // 10:00 Shanghai
@@ -103,6 +127,13 @@ describe('scenario-registry', () => {
       expect(computeFireAt(getScenario('post_interview_followup')!, { anchorAt, state }, 180)).toBe(
         at(9),
       );
+      expect(
+        computeFireAt(
+          getScenario('post_interview_followup')!,
+          { anchorAt, state, interviewType: 'AI面试' },
+          60,
+        ),
+      ).toBe(at(7));
     });
   });
 

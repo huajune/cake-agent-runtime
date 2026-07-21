@@ -28,6 +28,11 @@ export interface LlmGenerateStructuredOptions<TSchema extends z.ZodTypeAny>
   extends Omit<LlmGenerateOptions, 'output'> {
   schema: TSchema;
   outputName?: string;
+  /**
+   * schema 校验通过后的业务级校验：抛错即视为本次生成失败，走与 API 错误相同的
+   * 重试/降级策略。用于拦截"结构合法但内容损坏"的输出（如约束解码截断）。
+   */
+  validateOutput?: (output: unknown) => void;
 }
 
 export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0], 'model'> {
@@ -134,7 +139,7 @@ export class LlmExecutorService {
   async generateStructured<TSchema extends z.ZodTypeAny>(
     options: LlmGenerateStructuredOptions<TSchema>,
   ): Promise<StructuredGenerateResult<TSchema>> {
-    const { schema, outputName = 'StructuredOutput', ...rest } = options;
+    const { schema, outputName = 'StructuredOutput', validateOutput, ...rest } = options;
     const result = await this.generate({
       ...rest,
       output: Output.object({
@@ -145,6 +150,7 @@ export class LlmExecutorService {
       // no-output failures use the same retry and model fallback policy as API errors.
       validateResult: (candidate) => {
         if (!candidate.output) throw new Error('No structured output returned');
+        validateOutput?.(candidate.output);
       },
     });
 

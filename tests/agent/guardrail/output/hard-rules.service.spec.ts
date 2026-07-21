@@ -266,6 +266,72 @@ describe('HardRulesService', () => {
         'job_detail_lookup_required',
       );
     });
+
+    it('报名表单回填不算详情追问（生产误伤 2026-07-21 record 2076）', () => {
+      const snapshotMissingFields: AgentMemorySnapshot = {
+        ...memorySnapshot,
+        currentFocusJob: { jobId: 524579, availableDetailFields: ['salary'] },
+      };
+      const result = service.check({
+        replyText: '资料收到了，今天 13:30-16:30 还能约面试，帮你约今天下午这个时段可以吗？',
+        toolCalls: [],
+        userMessage:
+          '姓名：刘苹\n联系方式：18321207842\n性别：女\n学历：中专\n健康证：有\n身份：社会人士48岁',
+        memorySnapshot: snapshotMissingFields,
+        chatId: 'form-fill-not-inquiry',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('引用块里的岗位卡片时段/关键词不算详情追问（生产误伤 2026-07-21 record 2048）', () => {
+      const result = service.check({
+        replyText: '你先把资料填好发我，我帮你约。',
+        toolCalls: [],
+        userMessage: '[引用 高雅琪：M Stand（白云五号店）早班 07:30-10:30，26元/小时，18-35岁]\n这',
+        memorySnapshot,
+        chatId: 'quote-block-not-inquiry',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('引用块之外的班次追问仍必须补查（生产真阳 2026-07-21 record 2053）', () => {
+      const result = service.check({
+        replyText: '这家的班次是固定的，选了早班就是每天只上早班。',
+        toolCalls: [],
+        userMessage:
+          '[引用 祝东升：这两家目前都只有早班：高德置地店 07:30-11:30]\n你好 这些是固定班次吗？\n就每天只上早班吗',
+        memorySnapshot,
+        chatId: 'question-outside-quote-still-fires',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
+
+    it('表单式行内带疑问语气仍算追问（学历：初中可以吗）', () => {
+      const snapshotMissingFields: AgentMemorySnapshot = {
+        ...memorySnapshot,
+        currentFocusJob: { jobId: 524579, availableDetailFields: ['salary'] },
+      };
+      const result = service.check({
+        replyText: '初中学历没问题的。',
+        toolCalls: [],
+        userMessage: '学历：初中可以吗',
+        memorySnapshot: snapshotMissingFields,
+        chatId: 'form-line-with-question-still-fires',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
   });
 
   describe('schedule window claims', () => {

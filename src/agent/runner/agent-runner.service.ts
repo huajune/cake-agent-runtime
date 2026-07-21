@@ -509,6 +509,17 @@ export class AgentRunnerService {
       return;
     }
 
+    // block 档案必须可归因（2026-07-06~08 生产曾落 46 条 null reason_code，复盘时
+    // 无法区分拦截路径）：现行所有 block 分支都应显式携带 reasonCode，这里只兜历史
+    // 上出现过的遗漏并告警，让回归在观测里现形而不是沉默落 null。
+    let reasonCode = data.finalDecision.reasonCode;
+    if (!reasonCode && data.finalDecision.decision === 'block') {
+      reasonCode = 'unattributed_block';
+      this.logger.warn(
+        `[invokeReviewed] block 档案缺少 reasonCode，已兜底为 unattributed_block: ` +
+          `traceId=${ctx.traceId}, rules=${data.finalDecision.blockedRuleIds.join(',') || '-'}`,
+      );
+    }
     const baseRecord = {
       traceId: ctx.traceId,
       chatId: ctx.chatId,
@@ -520,7 +531,7 @@ export class AgentRunnerService {
       firstReply: data.firstReply,
       first: this.toReviewStepDetail(data.firstDecision),
       finalDecision: data.finalDecision.decision,
-      reasonCode: data.finalDecision.reasonCode,
+      reasonCode,
     };
     const reviewRecord: GuardrailReviewInsertInput = data.repaired
       ? {

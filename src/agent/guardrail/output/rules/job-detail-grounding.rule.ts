@@ -4,6 +4,7 @@ import type {
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { stripMessageDecorations } from '@tools/shared/identity-statement.util';
 import type { RuleContradiction } from '../output-rule.types';
 
 interface JobDetailQueryRule {
@@ -58,6 +59,27 @@ const JOB_DETAIL_QUERY_RULES: readonly JobDetailQueryRule[] = [
   { field: 'duration', pattern: /做多久|工作多久|长期|短期|至少几个月|工期|合同期/u },
 ];
 
+// 报名表单回填行（生产误伤复盘 2026-07-21）：候选人整段回填「姓名：… / 学历：中专 /
+// 健康证：有 / 身份：社会人士」时，"学历/健康证/年龄"等标签词会被误判成详情追问。
+// 只剥离已知报名表单标签开头的行；值里带疑问语气（"学历：初中可以吗"）的仍是追问，保留。
+const BOOKING_FORM_LABELS =
+  '姓名|联系方式|联系电话|电话|手机号?|性别|年龄|学历|健康证|身份|面试时间|应聘门店|应聘岗位|到岗时间|现居住?地?|住址|籍贯';
+const FORM_FILL_LINE_RE = new RegExp(
+  `^\\s*(?:${BOOKING_FORM_LABELS})(?:[（(][^（）()]*[）)])?\\s*[：:].*$`,
+  'gmu',
+);
+const QUESTION_HINT_RE = /[？?]|吗\b|吗$|多少|几点|几号|行不行|能不能|可以不|可不可以/u;
+
+/**
+ * 详情追问匹配前的消息清洗：剥引用块/时间戳装饰（引用的是 Agent 自己发过的岗位卡片，
+ * 里面的班次时段、薪资关键词不代表候选人在追问），再剥报名表单回填行。
+ */
+function stripNonInquiryText(userMessage: string): string {
+  return stripMessageDecorations(userMessage)
+    .replace(FORM_FILL_LINE_RE, (line) => (QUESTION_HINT_RE.test(line) ? line : ''))
+    .trim();
+}
+
 function hasFocusJobLookup(
   toolCalls: AgentToolCall[],
   jobId: number,
@@ -96,7 +118,10 @@ export function detectJobDetailLookupRequired(
   const focusJob = memorySnapshot?.currentFocusJob;
   if (!userMessage?.trim()) return null;
 
-  const requested = JOB_DETAIL_QUERY_RULES.filter((rule) => rule.pattern.test(userMessage));
+  const inquiryText = stripNonInquiryText(userMessage);
+  if (!inquiryText) return null;
+
+  const requested = JOB_DETAIL_QUERY_RULES.filter((rule) => rule.pattern.test(inquiryText));
   if (requested.length === 0) return null;
 
   // 已展示多个岗位但没有形成 currentFocusJob 时，不能把其中任一岗位的班次泛化成
