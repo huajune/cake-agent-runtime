@@ -85,18 +85,11 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         prev: SessionBrandState | null;
         next: SessionBrandState;
-        /**
-         * 触发本次迁移的解析结果。matchedText（命中的品牌库词条）与 sourceText（用户原文
-         * 片段）是误命中归因的必需项：只有 matchType + canonicalName 时，脏别名塌缩与候选人
-         * 真实简称在事件里长得一模一样，日检必须回查 chat_messages 才能分真假阳性。
-         */
         triggers: Array<{
           source: BrandResolutionSource;
           polarity: BrandIntentPolarity;
           canonicalName: string | null;
           matchType: BrandMatchType | null;
-          matchedText: string | null;
-          sourceText: string | null;
           confidence: number;
         }>;
         /** 本次写入是否首次初始化（懒迁移/seed）。 */

@@ -37,19 +37,7 @@ export interface BrandResolution {
   canonicalName: string | null;
   brandId: number | null;
 
-  /**
-   * 命中的**品牌库词条**：别名或标准名本身；品类展开为品类标签，全局控制为控制词。
-   * 注意它不是用户原文——用户原文在 sourceText（历史命名易误读，勿混用）。
-   */
   matchedText: string | null;
-  /**
-   * 触发该命中的**用户原始输入片段**（子句级，超长截断至 SOURCE_TEXT_MAX_LENGTH）。
-   *
-   * 存在理由：误命中归因只靠 matchType + matchedText 判不了——「六姐」既可能是候选人
-   * 打的真实简称，也可能是脏别名在无关语境里塌缩（2026-07-16「姐」P0 即此形态）。
-   * 少了原文，每次日检都要回查 chat_messages 才能分真假阳性（2026-07-21 观测实测）。
-   */
-  sourceText: string | null;
   source: BrandResolutionSource;
   matchType: BrandMatchType | null;
   intentPolarity: BrandIntentPolarity;
@@ -73,18 +61,6 @@ export const BRAND_CONFIDENCE = {
 
 /** 工具可执行阈值：≥ 0.75 的无歧义结果才可形成品牌过滤条件。 */
 export const BRAND_EXECUTABLE_CONFIDENCE = 0.75;
-
-/** sourceText 截断上限：够看清命中语境，又不至于把整段消息灌进事件表。 */
-export const SOURCE_TEXT_MAX_LENGTH = 80;
-
-/** 截断用户原文至 SOURCE_TEXT_MAX_LENGTH；空串归一为 null。 */
-export function truncateSourceText(text: string | null | undefined): string | null {
-  const trimmed = text?.trim();
-  if (!trimmed) return null;
-  return trimmed.length <= SOURCE_TEXT_MAX_LENGTH
-    ? trimmed
-    : `${trimmed.slice(0, SOURCE_TEXT_MAX_LENGTH)}…`;
-}
 
 // ==================== 会话品牌状态（§9） ====================
 

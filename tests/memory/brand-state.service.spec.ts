@@ -35,7 +35,6 @@ const positive = (name: string, brandId: number | null = null): BrandResolution 
   canonicalName: name,
   brandId,
   matchedText: name,
-  sourceText: name,
   source: 'user_text',
   matchType: 'canonical_exact',
   intentPolarity: 'positive',
