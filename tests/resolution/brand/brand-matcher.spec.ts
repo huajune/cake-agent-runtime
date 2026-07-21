@@ -197,6 +197,16 @@ describe('resolveBrands - 短别名误判防护（§7.3/§14.1）', () => {
     );
   });
 
+  it('带消息时间戳后缀的群来源说明同样不命中（2026-07-15 生产假阳性原文）', () => {
+    expect(
+      resolveBrands(
+        '我是群聊“独立客&上海餐饮兼职12群”的LL\n[消息发送时间：2026-07-15 16:13 星期三]',
+        'user_text',
+        catalog,
+      ),
+    ).toEqual([]);
+  });
+
   it('纯短英文微信昵称 zh 不作为品牌 seed', () => {
     expect(resolveBrands('zh', 'contact_name', catalog)).toEqual([]);
   });
