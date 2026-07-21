@@ -67,6 +67,7 @@ const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
       'interview_result_known',
       'result_inquiry_already_sent',
       'interview_reminder_already_sent',
+      'interview_not_started_per_chat',
     ])
     .default('none')
     .describe('根据判定依据得出的发送前语义停止原因；未命中为 none'),
@@ -429,6 +430,7 @@ export class ReengagementAgent {
             '## 发送前语义停止条件',
             '- 判定步骤：先定位候选人（user）关于本次面试的最新有效表态，再检查招募经理（assistant）是否已取消面试、已询问结果或已另行提醒，最后才得出结论；关键证据写入 reason。',
             '- 下列角色约定必须严格遵守：user 是候选人，assistant 是招募经理。只判断与当前工单、本次面试相关的表达，不要用其他岗位或更早一次面试的历史误判。',
+            '- 时间口径（聊天优先）：状态摘要里的面试时间来自工单登记，可能只是当天面试窗口的起点而非实际面试时刻；若近期对话中候选人、招募经理或助手已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间，一律以对话中最新的明确约定为准；对话中没有明确时间约定时，才以工单时间为准。',
             '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
             '- 候选人得知岗位要求或条件后表示接受不了，例如“干不了”“做不了”“那算了”，即使语气委婉、没有出现“取消”字样，也属于放弃本岗位；若招募经理随后已转为邀请进群、改推其他岗位，候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview。注意区分：招募经理为本次面试拉群（如群内接龙面试）不属于放弃信号。',
             '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。',
@@ -437,10 +439,11 @@ export class ReengagementAgent {
             ...(ctx.scenario.code === 'interview_reminder'
               ? [
                   '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。判断口径：预约成功当轮的告知与收尾叮嘱都不算已提醒，包括时间地点确认、“准时到哈”“记得提前到”“记得带证件”、发送面试码或二维码；只有预约回合之后另行发出的提醒参加消息（如“记得今天的面试哈”“明天来吗，面试可以来吗”）才算已提醒。可用状态摘要里的“报名完成时间”区分：与其紧邻的消息属于预约当轮。',
-                  '- 状态摘要里的“面试时间”是当前工单的唯一权威时间。候选人可能同时有多个面试；近期对话中出现的其它面试时间属于其它工单，禁止用来生成本次提醒。',
+                  '- 本次面试的具体钟点按上面的时间口径（聊天优先）确定。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。',
                 ]
               : [
                   '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
+                  '- 按上面的时间口径（聊天优先）判断，本次面试的实际时间尚未到、面试还没开始的：blockReason=interview_not_started_per_chat。不要仅因为工单登记时间已过就断定面试已经进行；候选人明确说“还没开始”“还没面”也属于此项。',
                 ]),
             '- 命中任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示预约有效也不能发送。未命中时 blockReason=none。',
             '- 未命中任何停止条件时必须 decision=send：不得以“对话流程正常”“候选人已确认过”“感觉没必要再发”等模糊理由跳过；候选人回复“好的/OK”只是确认收到，不构成停止条件。',
@@ -484,7 +487,8 @@ export class ReengagementAgent {
       | 'manager_cancelled_interview'
       | 'interview_result_known'
       | 'result_inquiry_already_sent'
-      | 'interview_reminder_already_sent',
+      | 'interview_reminder_already_sent'
+      | 'interview_not_started_per_chat',
   ): string {
     if (!this.isPostBookingScenario(ctx)) return 'reengagement_agent_skipped';
     if (blockReason && blockReason !== 'none') return blockReason;
@@ -540,6 +544,11 @@ export class ReengagementAgent {
         lines.push(`- 面试时间：${this.formatShanghaiTime(booking.interviewAt)}`);
         lines.push(
           `- 面试日期相对当前：${this.formatRelativeShanghaiDate(booking.interviewAt, now)}`,
+        );
+        // 窗口制岗位的工单时间只是面试窗口起点（badcase：工单 10:00、聊天约定 13:00，
+        // 12:00 回访问"面试顺利吗"）。产品裁定：有明确聊天约定以聊天为准，无则以工单为准。
+        lines.push(
+          '- 时间口径：以上面试时间来自工单登记，可能只是当天面试窗口的起点；近期对话中对本次面试实际时间的明确约定优先于该时间',
         );
       }
     }

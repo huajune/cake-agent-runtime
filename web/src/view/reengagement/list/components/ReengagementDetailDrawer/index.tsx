@@ -108,6 +108,7 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   interview_result_known: '对话中已经有明确的面试结果',
   result_inquiry_already_sent: '招募经理已经询问过本次面试结果',
   interview_reminder_already_sent: '本次面试提醒已经发送过',
+  interview_not_started_per_chat: '按聊天记录约定的实际面试时间，面试尚未开始',
   candidate_cancelled_interview_in_chat: '候选人在聊天中已明确取消或无法参加面试，已停止触达',
   reengagement_agent_skipped: '复聊 Agent 根据当前上下文决定不发送，具体依据见生成轨迹',
   reengagement_decision_invalid: '模型连续两次返回了自相矛盾的决策，系统已安全地不发送',
