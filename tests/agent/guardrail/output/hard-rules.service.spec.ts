@@ -332,6 +332,24 @@ describe('HardRulesService', () => {
         'job_detail_lookup_required',
       );
     });
+
+    it('表单值后同行追问要做多久仍必须补查岗位时长', () => {
+      const snapshotMissingDuration: AgentMemorySnapshot = {
+        ...memorySnapshot,
+        currentFocusJob: { jobId: 524579, availableDetailFields: ['salary'] },
+      };
+      const result = service.check({
+        replyText: '这个岗位需要长期做。',
+        toolCalls: [],
+        userMessage: '健康证：有，这活儿要做多久',
+        memorySnapshot: snapshotMissingDuration,
+        chatId: 'form-line-with-duration-question-still-fires',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'job_detail_lookup_required',
+      );
+    });
   });
 
   describe('schedule window claims', () => {

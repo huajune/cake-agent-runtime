@@ -226,9 +226,9 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     triggerDelayMs: (ctx: FollowUpScenarioContext) => {
       const interviewAt = resolveInterviewAt(ctx.state);
       if (interviewAt == null) return 0;
-      // AI 面试是候选人在通知入口自助完成，统一在面试日期当天 17:00 询问是否完成；
-      // 其他面试保持按工单面试时间后 2 小时回访。Dashboard 显式偏移仍由
-      // resolveDelayMs 优先处理，便于运营临时覆盖。
+      // AI 面试采用固定时段，业务约定统一在面试日期当天 17:00 询问是否完成；
+      // 不按工单 interviewAt 再做前后钳制。其他面试保持按工单面试时间后 2 小时回访。
+      // Dashboard 显式偏移仍由 resolveDelayMs 优先处理，便于运营临时覆盖。
       const followUpAt = isAiInterview(ctx.interviewType)
         ? shanghaiHourOnInterviewDay(interviewAt, 17)
         : interviewAt + 2 * HOUR;

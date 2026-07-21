@@ -60,6 +60,14 @@ describe('check-release-ledger', () => {
     expect(() => validateReleaseLedger(root)).toThrow('仍有 pending 底账');
   });
 
+  it('rejects leftover pending ledgers even when the matching version ledger exists', () => {
+    const root = createRepo('v10.23.0.md', validLedger);
+    const directory = path.join(root, 'docs', 'releases', '2026');
+    fs.writeFileSync(path.join(directory, 'pending-aborted-release.md'), validLedger);
+
+    expect(() => validateReleaseLedger(root)).toThrow('正式版本底账已存在，但仍有 pending 底账');
+  });
+
   it('rejects incomplete P0 cases', () => {
     const root = createRepo('v10.23.0.md', validLedger.replace('通过 |', '部分通过 |'));
     expect(() => validateReleaseLedger(root)).toThrow('P0 状态必须明确为“通过”');

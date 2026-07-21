@@ -103,6 +103,19 @@ describe('scenario-registry', () => {
       expect(fireAt).toBe(at(9)); // 17:00 Shanghai
     });
 
+    it('keeps the fixed 17:00 AI follow-up contract instead of clamping to interviewAt', () => {
+      const anchorAt = at(1); // 09:00 Shanghai
+      // AI 面试采用固定时段；即使上游工单时间字段晚于 17:00，也不能改变固定回访钟点。
+      const interviewAt = at(11);
+      const followup = getScenario('post_interview_followup')!;
+      const fireAt = computeFireAt(followup, {
+        anchorAt,
+        state: baseState({ terminal: 'booked', interviewAt } as never),
+        interviewType: 'AI面试',
+      });
+      expect(fireAt).toBe(at(9)); // 17:00 Shanghai
+    });
+
     it('does not move an overdue AI interview follow-up backwards to 17:00', () => {
       const anchorAt = at(10); // 18:00 Shanghai
       const interviewAt = at(2); // 10:00 Shanghai

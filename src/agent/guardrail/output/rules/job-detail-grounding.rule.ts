@@ -68,7 +68,7 @@ const FORM_FILL_LINE_RE = new RegExp(
   `^\\s*(?:${BOOKING_FORM_LABELS})(?:[（(][^（）()]*[）)])?\\s*[：:].*$`,
   'gmu',
 );
-const QUESTION_HINT_RE = /[？?]|吗\b|吗$|多少|几点|几号|行不行|能不能|可以不|可不可以/u;
+const QUESTION_HINT_RE = /[？?]|吗\b|吗$|多少|多久|几点|几号|行不行|能不能|可以不|可不可以/u;
 
 /**
  * 详情追问匹配前的消息清洗：剥引用块/时间戳装饰（引用的是 Agent 自己发过的岗位卡片，

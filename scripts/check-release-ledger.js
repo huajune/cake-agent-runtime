@@ -52,11 +52,11 @@ function validateReleaseLedger(rootDir = DEFAULT_ROOT) {
   );
   const expectedName = `v${version}.md`;
   const versionLedgers = ledgers.filter((file) => path.basename(file) === expectedName);
+  const pending = ledgers
+    .filter((file) => path.basename(file).startsWith('pending-'))
+    .map((file) => path.relative(rootDir, file));
 
   if (versionLedgers.length !== 1) {
-    const pending = ledgers
-      .filter((file) => path.basename(file).startsWith('pending-'))
-      .map((file) => path.relative(rootDir, file));
     throw new Error(
       [
         `发版底账校验失败：应存在且仅存在一份 docs/releases/YYYY/${expectedName}`,
@@ -64,6 +64,11 @@ function validateReleaseLedger(rootDir = DEFAULT_ROOT) {
           ? `仍有 pending 底账，请合并范围后重命名：${pending.join(', ')}`
           : '未找到 pending 底账；请从 docs/releases/_template.md 创建并完成验证',
       ].join('\n'),
+    );
+  }
+  if (pending.length > 0) {
+    throw new Error(
+      `发版底账校验失败：正式版本底账已存在，但仍有 pending 底账，必须合并范围后删除：${pending.join(', ')}`,
     );
   }
 
