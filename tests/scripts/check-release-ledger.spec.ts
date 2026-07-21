@@ -42,7 +42,17 @@ describe('check-release-ledger', () => {
 
   it('rejects incomplete P0 cases', () => {
     const root = createRepo('v10.23.0.md', validLedger.replace('通过 |', '部分通过 |'));
-    expect(() => validateReleaseLedger(root)).toThrow('P0 仍包含');
+    expect(() => validateReleaseLedger(root)).toThrow('P0 状态必须明确为“通过”');
+  });
+
+  it('rejects unknown P0 statuses instead of treating them as passed', () => {
+    const root = createRepo('v10.23.0.md', validLedger.replace('通过 |', '已回放 |'));
+    expect(() => validateReleaseLedger(root)).toThrow('P0-01=已回放');
+  });
+
+  it('rejects an empty P0 table', () => {
+    const root = createRepo('v10.23.0.md', validLedger.replace('| P0-01 | 通过 |\n', ''));
+    expect(() => validateReleaseLedger(root)).toThrow('没有可验证的 case');
   });
 
   it('rejects unchecked release gates', () => {

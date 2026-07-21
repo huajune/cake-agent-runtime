@@ -1773,6 +1773,18 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('also replans collective promises phrased with 我们', () => {
+      const result = service.check({
+        replyText: '我们这边会让门店负责人核实一下，晚点回复你。',
+        toolCalls: [],
+        chatId: 'chat-collective-handoff-promise',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
     it.each([
       '这个岗位的具体安排以门店同事确认结果为准。',
       '我先核对一下现有资料，确认好再回复你。',

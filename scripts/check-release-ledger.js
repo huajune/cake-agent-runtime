@@ -21,6 +21,25 @@ function section(content, startHeading, endHeading) {
   return content.slice(start, end < 0 ? undefined : end);
 }
 
+function tableRows(content) {
+  return content
+    .split('\n')
+    .filter((line) => line.trim().startsWith('|'))
+    .map((line) =>
+      line
+        .trim()
+        .replace(/^\||\|$/g, '')
+        .split('|')
+        .map((cell) => cell.trim()),
+    )
+    .filter(
+      (cells) =>
+        cells.length > 1 &&
+        cells[0] !== 'ID' &&
+        !cells.every((cell) => /^:?-+:?$/.test(cell.replace(/\s/g, ''))),
+    );
+}
+
 function validateReleaseLedger(rootDir = DEFAULT_ROOT) {
   const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
   const version = packageJson.version;
@@ -51,8 +70,14 @@ function validateReleaseLedger(rootDir = DEFAULT_ROOT) {
   if (!p0) {
     throw new Error(`发版底账校验失败：${path.relative(rootDir, ledgerPath)} 缺少 P0 回归章节`);
   }
-  if (/\|\s*(?:待验证|部分通过|失败)\s*\|/.test(p0)) {
-    throw new Error('发版底账校验失败：P0 仍包含“待验证 / 部分通过 / 失败”项');
+  const p0Rows = tableRows(p0);
+  if (p0Rows.length === 0) {
+    throw new Error('发版底账校验失败：P0 回归章节没有可验证的 case');
+  }
+  const incompleteP0 = p0Rows.filter((cells) => cells.at(-1) !== '通过');
+  if (incompleteP0.length > 0) {
+    const details = incompleteP0.map((cells) => `${cells[0]}=${cells.at(-1) || '空'}`).join(', ');
+    throw new Error(`发版底账校验失败：P0 状态必须明确为“通过”：${details}`);
   }
 
   const gate = section(content, '## 5. 发布闸口', '## 6. 发布结果');
@@ -80,6 +105,7 @@ if (require.main === module) {
 
 module.exports = {
   section,
+  tableRows,
   validateReleaseLedger,
   walkMarkdownFiles,
 };

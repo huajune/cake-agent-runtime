@@ -537,7 +537,9 @@ export class FollowUpProcessor implements OnModuleInit {
           scenarioCode,
           bookingContext.interviewType,
         ),
-        anchorAt: Date.now(),
+        // 保留原报名锚点。替代任务仅因工单面试时间变化而重排；若改成当前时间，
+        // Agent 状态摘要会把重排时间误标为“报名完成时间”，也会改变候选人回复停止边界。
+        anchorAt: jobData.anchorAt,
         state: {
           ...state,
           terminal: 'booked',

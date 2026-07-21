@@ -1085,6 +1085,7 @@ describe('FollowUpProcessor', () => {
       expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
         expect.objectContaining({
           anchorEventId: `wo555:iv${Date.UTC(2026, 5, 25, 8, 0, 0)}:interview_reminder`,
+          anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
         }),
       );
     });

@@ -509,6 +509,21 @@ describe('ReengagementAnchorService', () => {
     );
   });
 
+  it('still schedules when 发错 is a warning inside a real location request', async () => {
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '别发错了，麻烦把定位发我一下。',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'address_missing' }),
+    );
+  });
+
   it('still schedules address-missing when asking for a business district or metro station', async () => {
     buildService().handleDeliveredReplyAnchors(
       {
