@@ -21,7 +21,7 @@ function section(content, startHeading, endHeading) {
   return content.slice(start, end < 0 ? undefined : end);
 }
 
-function tableRows(content) {
+function tableCells(content) {
   return content
     .split('\n')
     .filter((line) => line.trim().startsWith('|'))
@@ -31,13 +31,16 @@ function tableRows(content) {
         .replace(/^\||\|$/g, '')
         .split('|')
         .map((cell) => cell.trim()),
-    )
-    .filter(
-      (cells) =>
-        cells.length > 1 &&
-        cells[0] !== 'ID' &&
-        !cells.every((cell) => /^:?-+:?$/.test(cell.replace(/\s/g, ''))),
     );
+}
+
+function tableRows(content) {
+  return tableCells(content).filter(
+    (cells) =>
+      cells.length > 1 &&
+      cells[0] !== 'ID' &&
+      !cells.every((cell) => /^:?-+:?$/.test(cell.replace(/\s/g, ''))),
+  );
 }
 
 function validateReleaseLedger(rootDir = DEFAULT_ROOT) {
@@ -74,9 +77,16 @@ function validateReleaseLedger(rootDir = DEFAULT_ROOT) {
   if (p0Rows.length === 0) {
     throw new Error('发版底账校验失败：P0 回归章节没有可验证的 case');
   }
-  const incompleteP0 = p0Rows.filter((cells) => cells.at(-1) !== '通过');
+  const p0Header = tableCells(p0).find((cells) => cells[0] === 'ID');
+  const statusColumn = p0Header?.indexOf('状态') ?? -1;
+  if (statusColumn < 0) {
+    throw new Error('发版底账校验失败：P0 回归表缺少“状态”列');
+  }
+  const incompleteP0 = p0Rows.filter((cells) => cells[statusColumn] !== '通过');
   if (incompleteP0.length > 0) {
-    const details = incompleteP0.map((cells) => `${cells[0]}=${cells.at(-1) || '空'}`).join(', ');
+    const details = incompleteP0
+      .map((cells) => `${cells[0]}=${cells[statusColumn] || '空'}`)
+      .join(', ');
     throw new Error(`发版底账校验失败：P0 状态必须明确为“通过”：${details}`);
   }
 
@@ -105,6 +115,7 @@ if (require.main === module) {
 
 module.exports = {
   section,
+  tableCells,
   tableRows,
   validateReleaseLedger,
   walkMarkdownFiles,

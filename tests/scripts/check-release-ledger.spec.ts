@@ -35,6 +35,26 @@ describe('check-release-ledger', () => {
     );
   });
 
+  it('locates 状态 by header when the template includes a trailing 证据 column', () => {
+    const ledger = validLedger
+      .replace('| ID | 状态 |', '| ID | 场景与输入 | 状态 | 证据 |')
+      .replace('| --- | --- |', '| --- | --- | --- | --- |')
+      .replace('| P0-01 | 通过 |', '| P0-01 | 场景 | 通过 | run-123 |');
+    const root = createRepo('v10.23.0.md', ledger);
+
+    expect(validateReleaseLedger(root)).toEqual(expect.objectContaining({ version: '10.23.0' }));
+  });
+
+  it('rejects an incomplete status even when 证据 is the final column', () => {
+    const ledger = validLedger
+      .replace('| ID | 状态 |', '| ID | 场景与输入 | 状态 | 证据 |')
+      .replace('| --- | --- |', '| --- | --- | --- | --- |')
+      .replace('| P0-01 | 通过 |', '| P0-01 | 场景 | 待验证 | run-123 |');
+    const root = createRepo('v10.23.0.md', ledger);
+
+    expect(() => validateReleaseLedger(root)).toThrow('P0-01=待验证');
+  });
+
   it('rejects a pending ledger for a formal release', () => {
     const root = createRepo('pending-2026-07-21-pr-619.md', validLedger);
     expect(() => validateReleaseLedger(root)).toThrow('仍有 pending 底账');
@@ -53,6 +73,11 @@ describe('check-release-ledger', () => {
   it('rejects an empty P0 table', () => {
     const root = createRepo('v10.23.0.md', validLedger.replace('| P0-01 | 通过 |\n', ''));
     expect(() => validateReleaseLedger(root)).toThrow('没有可验证的 case');
+  });
+
+  it('rejects a P0 table without a 状态 column', () => {
+    const root = createRepo('v10.23.0.md', validLedger.replace('状态', '结果'));
+    expect(() => validateReleaseLedger(root)).toThrow('缺少“状态”列');
   });
 
   it('rejects unchecked release gates', () => {
