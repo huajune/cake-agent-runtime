@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
@@ -103,10 +104,20 @@ export class ReengagementAgent {
 
   private readonly logger = new Logger(ReengagementAgent.name);
 
+  /**
+   * 复聊语义判定/生成专用模型（AGENT_REENGAGEMENT_MODEL，可选）。
+   * 语义停止条件（放弃岗位识别、"已提醒过"口径）对模型能力敏感，与主链路 Chat
+   * 角色解耦独立灰度；缺省时回退 Chat 角色路由，行为与历史一致。
+   */
+  private readonly reengagementModelId?: string;
+
   constructor(
     private readonly llm: LlmExecutorService,
     private readonly memory: MemoryService,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.reengagementModelId = config.get<string>('AGENT_REENGAGEMENT_MODEL')?.trim() || undefined;
+  }
 
   async compose(ctx: ReengagementComposeContext): Promise<ReengagementAgentExecution> {
     // 走主动复聊专用 recall：拿到已渲染的 factLines（含陈旧告警）和 Generator 同源的
@@ -133,6 +144,7 @@ export class ReengagementAgent {
       const generate = (system: string) =>
         this.llm.generateStructured({
           role: ModelRole.Chat,
+          ...(this.reengagementModelId ? { modelId: this.reengagementModelId } : {}),
           schema: REENGAGEMENT_OUTPUT_SCHEMA,
           outputName: 'ReengagementMessage',
           system,

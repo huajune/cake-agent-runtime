@@ -71,11 +71,42 @@ describe('ReengagementAgent', () => {
     memory = {
       recallForProactiveFollowUp: jest.fn().mockResolvedValue(memoryRecall),
     };
-    reengagementAgent = new ReengagementAgent(llm as never, memory as never);
+    reengagementAgent = new ReengagementAgent(llm as never, memory as never, {
+      get: () => undefined,
+    } as never);
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('routes to the dedicated reengagement model when AGENT_REENGAGEMENT_MODEL is set', async () => {
+    const agent = new ReengagementAgent(llm as never, memory as never, {
+      get: (key: string) =>
+        key === 'AGENT_REENGAGEMENT_MODEL' ? 'deepseek/deepseek-v4-pro' : undefined,
+    } as never);
+
+    await agent.compose({
+      sessionRef,
+      scenario: getScenario('address_missing')!,
+      jobData: job('address_missing'),
+      state: baseState(),
+    });
+
+    expect(llm.generateStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'deepseek/deepseek-v4-pro' }),
+    );
+    // 缺省时不得携带 modelId，保持 Chat 角色路由（含 Dashboard 运行时覆盖）不变。
+    llm.generateStructured.mockClear();
+    await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('address_missing')!,
+      jobData: job('address_missing'),
+      state: baseState(),
+    });
+    expect(llm.generateStructured).toHaveBeenCalledWith(
+      expect.not.objectContaining({ modelId: expect.anything() }),
+    );
   });
 
   it('generates a structured message with assembled context for interview reminders', async () => {
