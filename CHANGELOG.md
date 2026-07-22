@@ -14,7 +14,7 @@
 **预计版本**: `v10.24.0`
 **最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -24,6 +24,13 @@
 - PR #640 Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）
 - PR #640 旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致
 - PR #640 建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）
+- PR #643 geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…
+- PR #643 geocode/invite-to-group 切换 @resolution/geo（方案 Phase …
+- PR #643 geocode-location-anchor 切换 @resolution/geo（方案 Phase …
+- PR #643 三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）
+- PR #643 session.service 切换 @resolution/geo（方案 Phase 2 边界 5）
+- PR #643 duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…
+- PR #643 Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）
 
 ### 新功能
 - 无
@@ -40,6 +47,12 @@
 
 ### 运维与流程
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
+- PR #643 geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…
+- PR #643 geocode/invite-to-group 切换 @resolution/geo（方案 Phase …
+- PR #643 geocode-location-anchor 切换 @resolution/geo（方案 Phase …
+- PR #643 三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）
+- PR #643 session.service 切换 @resolution/geo（方案 Phase 2 边界 5）
+- PR #643 duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…
 
 ### 配置变更
 - 无
