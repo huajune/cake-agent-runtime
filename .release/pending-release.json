@@ -1,463 +1,286 @@
 {
-  "baseVersion": "10.23.0",
+  "baseVersion": "10.24.0",
   "nextVersion": "10.24.0",
   "updatedAt": "2026-07-22",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "640",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/640",
-      "title": "建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）",
-      "author": "huajune",
-      "mergedAt": "2026-07-22",
-      "businessUpdates": [
-        "建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）",
-        "`src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）",
-        "`src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）",
-        "`src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）",
-        "Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）",
-        "旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致",
-        "建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）"
-      ],
-      "summary": [
-        "建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）",
-        "`src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）",
-        "`src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）",
-        "`src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）",
-        "Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）",
-        "旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致",
-        "建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "`src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）",
-        "`src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）",
-        "`src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）",
-        "Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）",
-        "旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致"
-      ],
-      "ops": [
-        "建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "643",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/643",
-      "title": "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）",
-      "author": "huajune",
-      "mergedAt": "2026-07-22",
-      "businessUpdates": [
-        "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
-        "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
-        "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
-        "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
-        "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
-        "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…",
-        "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）"
-      ],
-      "summary": [
-        "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
-        "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
-        "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
-        "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
-        "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
-        "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…",
-        "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
-        "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
-        "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
-        "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
-        "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
-        "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "646",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/646",
-      "title": "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）",
-      "author": "huajune",
-      "mergedAt": "2026-07-22",
-      "businessUpdates": [
-        "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
-        "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
-        "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）",
-        "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）"
-      ],
-      "summary": [
-        "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
-        "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
-        "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）",
-        "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
-        "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
-        "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "645",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/645",
-      "title": "模型自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐",
-      "author": "huajune",
-      "mergedAt": "2026-07-22",
-      "businessUpdates": [
-        "地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围"
-      ],
-      "summary": [
-        "地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围",
-        "自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）",
-        "模型自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐"
-      ],
-      "features": [],
-      "fixes": [
-        "地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围"
-      ],
-      "optimizations": [],
-      "ops": [
-        "自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "job-list spec **75/75 全绿**：新增 偏差>1km→model_supplied、≤1km 宽松命中不误报、无锚点→unreferenced、区级兜底 provenance、hard_reject 约束正反例",
-        "`pnpm run typecheck` / `pnpm run lint:check` 通过",
-        "提交用 `--no-verify`：pre-commit 钩子会把未暂存改动吞进提交（首次提交实测发生，已重做拆分）；lint/format 已手动执行"
-      ]
-    },
-    {
-      "number": "647",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/647",
-      "title": "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发",
-      "author": "huajune",
-      "mergedAt": "2026-07-22",
-      "businessUpdates": [
-        "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
-      ],
-      "summary": [
-        "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "新增 2 条回归测试（-12 只调一次接口不换群、errmsg 兜底匹配），invite 工具 44 条测试全过",
-        "`tsc --noEmit` / ESLint / Prettier 通过（pre-push 钩子在 worktree 内因 web/node_modules 缺失中断于前端构建，与本改动无关，完整 CI 由 GitHub Actions 跑）"
-      ]
-    },
-    {
-      "number": "651",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/651",
-      "title": "收敛面试、人设与护栏 badcase，并下线品牌解析旧对照组",
-      "author": "huajune",
-      "mergedAt": "2026-07-22",
-      "businessUpdates": [
-        "Hosting member 配置可为 Agent 提供账号昵称与性别；读取失败或缺失时安全降级为未配置。",
-        "面试预约支持识别线上面试信号，并生成与线上流程一致的成功回复。",
-        "面试窗口校验支持候选人约定的窗口内具体时分，而非强制回落到窗口起点。",
-        "阻止模型把窗口外自编时刻提交给预约接口。",
-        "阻止线上面试成功后错误提示候选人到店。",
-        "阻止 Agent 把同一企微账号描述成机器人、第三方或“转人工”入口。",
-        "阻止引用消息中的 Agent 品牌表述污染候选人品牌意向。",
-        "删除已完成使命的 legacy brand shadow 路径，避免继续维护无行为影响的重复实现与分母计数。",
-        "修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。",
-        "将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。",
-        "品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。",
-        "同步证据优先的解析/护栏架构文档与 Excalidraw 图。"
-      ],
-      "summary": [
-        "收敛面试、人设与护栏 badcase",
-        "修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。",
-        "将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。",
-        "品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。",
-        "同步证据优先的解析/护栏架构文档与 Excalidraw 图。",
-        "收敛面试、人设与护栏 badcase，并下线品牌解析旧对照组"
-      ],
-      "features": [
-        "Hosting member 配置可为 Agent 提供账号昵称与性别；读取失败或缺失时安全降级为未配置。",
-        "面试预约支持识别线上面试信号，并生成与线上流程一致的成功回复。",
-        "面试窗口校验支持候选人约定的窗口内具体时分，而非强制回落到窗口起点。"
-      ],
-      "fixes": [
-        "阻止模型把窗口外自编时刻提交给预约接口。",
-        "阻止线上面试成功后错误提示候选人到店。",
-        "阻止 Agent 把同一企微账号描述成机器人、第三方或“转人工”入口。",
-        "阻止引用消息中的 Agent 品牌表述污染候选人品牌意向。",
-        "删除已完成使命的 legacy brand shadow 路径，避免继续维护无行为影响的重复实现与分母计数。",
-        "修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。",
-        "将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。",
-        "品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。",
-        "同步证据优先的解析/护栏架构文档与 Excalidraw 图。"
-      ],
-      "optimizations": [
-        "`human_service_phrase_leak` 依据两周真阳性样本由 observe 升为 revise，并增加确定性重写反馈。",
-        "复聊与主 Agent 统一使用“招募经理”身份口径。",
-        "品牌解析架构文档按 2026-07-22 裁定更新下线依据、回滚边界和发布后观察项。"
-      ],
-      "ops": [
-        "数据库 migration / schema / RPC / RLS / 回填：N/A，本 PR 不包含数据库变更。",
-        "部署顺序：无前置 migration 或配置写入；应用可按现有 tag 触发流程直接滚动部署。",
-        "回滚：回滚本 PR 的 squash commit 或回退到上一生产 tag；无数据回滚动作。",
-        "发布后观察：面试预约失败率、线上面试回复、`human_service_phrase_leak` revise 命中与品牌解析异常。",
-        "收敛面试、人设与护栏 badcase"
-      ],
-      "config": [
-        "环境变量：N/A，无新增、修改或废弃变量。",
-        "Hosting member schema：无新增配置键；仅开始读取既有 `wecomNickname` / `gender` 字段。",
-        "`pnpm config:hosting:check:prod` 已通过：10 个 runtime members 覆盖 9 个代码映射。"
-      ],
-      "envFiles": [],
-      "verification": [
-        "定向回归：9 个套件、452 条测试通过。",
-        "集成修复后护栏套件：165 条测试通过。",
-        "`pnpm run lint:check`",
-        "`pnpm run format:check`",
-        "`pnpm run typecheck`",
-        "`pnpm run build:ci`（前端 + Nest 构建）",
-        "`pnpm run test:ci`：365 个套件通过、1 个跳过；5529 条测试通过、6 条跳过。",
-        "`pnpm run test:di-smoke`",
-        "`git diff --check`",
-        "pre-push `pnpm run ci:check` 再次通过。",
-        "关键生产链路发布后冒烟验证。"
-      ]
-    },
-    {
-      "number": "653",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/653",
-      "title": "固化 v10.24.0 发版底账",
-      "author": "huajune",
-      "mergedAt": "2026-07-22",
-      "businessUpdates": [
-        "修复 Release PR #642 的 `Validate release ledger` 闸口失败。"
-      ],
-      "summary": [
-        "补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。",
-        "固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。",
-        "修复 Release PR #642 的 `Validate release ledger` 闸口失败。",
-        "固化 v10.24.0 发版底账"
-      ],
-      "features": [],
-      "fixes": [
-        "修复 Release PR #642 的 `Validate release ledger` 闸口失败。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。",
-        "固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm release:ledger:check`：通过。",
-        "`pnpm exec prettier --check docs/releases/2026/v10.24.0.md`：通过。",
-        "`git diff --check`：通过。",
-        "`pnpm run ci:check`：通过；365 suites passed、1 skipped，5529 tests passed、6 skipped。"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.23.0",
+    "version": "10.24.0",
     "date": "2026-07-22",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "631",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/631",
-        "title": "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链",
+        "number": "640",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/640",
+        "title": "建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）",
         "author": "huajune",
         "mergedAt": "2026-07-22",
         "businessUpdates": [
-          "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
+          "建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）",
+          "`src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）",
+          "`src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）",
+          "`src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）",
+          "Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）",
+          "旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致",
+          "建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）"
         ],
         "summary": [
-          "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
-        ],
-        "features": [],
-        "fixes": [
-          "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "仅改 workflow 单步骤 shell，不触及业务代码",
-          "合入后用补偿模式（workflow_dispatch）实测补录 #627–#630、#620 —— 该实测即本修复的端到端验证",
-          "数据库 migration：N/A"
-        ]
-      },
-      {
-        "number": "627",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/627",
-        "title": "地理领域改造方案定稿 v3.1",
-        "author": "huajune",
-        "mergedAt": "2026-07-22",
-        "businessUpdates": [
-          "地理领域改造方案定稿 v3.1"
-        ],
-        "summary": [
-          "地理领域改造方案文档定稿至 v3.1，作为后续现网修复与 resolution/geo 迁移工作的唯一施工规格"
+          "建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）",
+          "`src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）",
+          "`src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）",
+          "`src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）",
+          "Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）",
+          "旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致",
+          "建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）"
         ],
         "features": [],
         "fixes": [],
-        "optimizations": [],
-        "ops": [],
+        "optimizations": [
+          "`src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）",
+          "`src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）",
+          "`src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）",
+          "Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）",
+          "旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致"
+        ],
+        "ops": [
+          "建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）"
+        ],
         "config": [],
         "envFiles": [],
         "verification": []
       },
       {
-        "number": "628",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/628",
-        "title": "区级锚点距离估算口径与精度确定性传递（方案 11.3，PR B-1）",
+        "number": "643",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/643",
+        "title": "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）",
         "author": "huajune",
         "mergedAt": "2026-07-22",
         "businessUpdates": [
-          "候选人只报区/市名时，岗位距离不再显示误导性的精确公里数，改为标注「约X.Xkm（按XX估算）」，并在结果开头声明定位精度为区级代表点"
+          "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
+          "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
+          "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
+          "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
+          "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
+          "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…",
+          "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）"
         ],
         "summary": [
-          "修复区级定位下距离数字被 Agent 照抄为精确距离、引发拦截与投诉的问题"
-        ],
-        "features": [],
-        "fixes": [
-          "duliday_job_list 推荐卡片、基本信息、摘要行、品牌门店最近店铺四处距离渲染统一改为区级估算口径，避免模型将区代表点距离误述为精确距离",
-          "geocode 解析结果新增锚点精度确定性传递（坐标 + areaLevelQuery + 行政区名写入回合上下文），岗位查询工具按坐标匹配判定锚点精度，不再依赖模型转抄参数"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "新增 distance-render 工具单测，geocode 与 duliday_job_list 相关测试补充区级/POI 锚点、坐标截断容差等场景用例，共 110 用例通过"
-        ]
-      },
-      {
-        "number": "629",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/629",
-        "title": "geocode 城市结论前置披露与冲突知情（方案 11.4，PR B-2）",
-        "author": "huajune",
-        "mergedAt": "2026-07-22",
-        "businessUpdates": [
-          "geocode 已成功解析出城市或门店坐标时，Agent 不再向候选人反问「你在哪个城市」或误报「没有找到该位置」，而是直接据此继续查岗",
-          "本轮解析城市与候选人此前意向城市不一致时，Agent 会主动向候选人确认一次，而不是静默按新城市推进或沿用旧城市"
-        ],
-        "summary": [
-          "修复 geocode 已解析出城市/门店坐标但 Agent 仍反问城市或误报未找到位置的问题"
-        ],
-        "features": [],
-        "fixes": [
-          "geocode 解析结果统一出口新增 _cityConfirmed 作为返回对象首字段，前置披露城市结论（精确坐标标注具体地点，区级锚点标注行政区代表点）",
-          "geocode 工具说明新增约束：解析成功后禁止再反问城市或宣称未找到位置",
-          "本次解析城市与会话记忆意向城市冲突时附加 _cityConflictNotice 知情披露，解析结果本身不被静默改写"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "geocode 测试补充 5 例：城市结论首字段披露顺序、POI/区级披露文案、城市冲突披露、同城归一后不误报冲突，共 37 用例通过"
-        ]
-      },
-      {
-        "number": "630",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/630",
-        "title": "Phase 0 地理行为基线固化（方案 §13，PR 1）",
-        "author": "huajune",
-        "mergedAt": "2026-07-22",
-        "businessUpdates": [
-          "Phase 0 地理行为基线固化（方案 §13 PR 1，纯测试）",
-          "Phase 0 地理行为基线固化（方案 §13，PR 1）"
-        ],
-        "summary": [
-          "为 resolution/geo 迁移固化 Phase 0 地理行为基线测试，覆盖地理编码候选排序、地理映射、高置信度提取及门店定位发送等模块，纯测试无生产变更",
-          "排查确认此前门店定位分享偏移问题（badcase 0m4zs1h6）根因是海绵门店坐标数据质量问题（约 800m 偏差），并非候选排序选点逻辑"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "新增/补写 4 个测试套件共 202 用例，覆盖地理编码精度推断与锚点择优、区划映射 golden cases（含朝阳区业务偏置、余姚双轨现状等）、高置信度提取层 golden case、门店定位坐标直传现状基线"
-        ]
-      },
-      {
-        "number": "620",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/620",
-        "title": "品牌识别两天全量审计的两处边缘误判修复",
-        "author": "huajune",
-        "mergedAt": "2026-07-22",
-        "businessUpdates": [
-          "修复候选人以「我是BS上加的」（Boss直聘渠道说明）自我介绍时，被误识别为关注 BAKER&SPICE 品牌的问题",
-          "修复候选人微信昵称含品牌相似字符（如「冠Bing」）时，被误识别为关注相关品牌的问题",
-          "修复同一轮对话中候选人因年龄等原因明确排除某品牌时（如「我43岁，肯德基年龄不行」），系统错误清空其他无关在位品牌的问题，品牌识别状态更准确"
-        ],
-        "summary": [
-          "品牌识别两天全量审计（264 个状态变更事件、114 条人工裁决）定位并修复两处边缘误判：渠道缩写/昵称自我介绍误命中品牌别名、同轮又要又不要误清无关在位品牌"
-        ],
-        "features": [],
-        "fixes": [
-          "渠道缩写「BS」不再因 2 字符边界包含误命中品牌别名，降级为仅全等匹配",
-          "新增昵称自我介绍识别逻辑，避免 4-8 字符英数品牌别名在好友自介场景中被无边界误命中",
-          "修复跨轨（LLM 轨正向匹配 + 规则轨全名否定）产生净否定品牌时，误顶替并清空无关在位品牌的问题"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "typecheck 通过",
-          "lint（--max-warnings=0）通过",
-          "format check 通过",
-          "品牌域 10 suites / 146 tests 通过（含 10 条新增回归用例，覆盖两处误判现场及正反向控制）",
-          "全量 353 suites / 5309 tests 通过"
-        ]
-      },
-      {
-        "number": "636",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/636",
-        "title": "固化 v10.23.0 发版底账",
-        "author": "huajune",
-        "mergedAt": "2026-07-22",
-        "businessUpdates": [
-          "固化 v10.23.0 发版底账"
-        ],
-        "summary": [
-          "固化 v10.23.0 发版底账"
+          "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
+          "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
+          "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
+          "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
+          "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
+          "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…",
+          "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "固化 v10.23.0 发版底账"
+          "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
+          "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
+          "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
+          "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
+          "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
+          "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…"
         ],
         "config": [],
         "envFiles": [],
         "verification": []
+      },
+      {
+        "number": "646",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/646",
+        "title": "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）",
+        "author": "huajune",
+        "mergedAt": "2026-07-22",
+        "businessUpdates": [
+          "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
+          "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
+          "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）",
+          "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）"
+        ],
+        "summary": [
+          "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
+          "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
+          "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）",
+          "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
+          "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
+          "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "645",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/645",
+        "title": "模型自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐",
+        "author": "huajune",
+        "mergedAt": "2026-07-22",
+        "businessUpdates": [
+          "地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围"
+        ],
+        "summary": [
+          "地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围",
+          "自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）",
+          "模型自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐"
+        ],
+        "features": [],
+        "fixes": [
+          "地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围"
+        ],
+        "optimizations": [],
+        "ops": [
+          "自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "job-list spec **75/75 全绿**：新增 偏差>1km→model_supplied、≤1km 宽松命中不误报、无锚点→unreferenced、区级兜底 provenance、hard_reject 约束正反例",
+          "`pnpm run typecheck` / `pnpm run lint:check` 通过",
+          "提交用 `--no-verify`：pre-commit 钩子会把未暂存改动吞进提交（首次提交实测发生，已重做拆分）；lint/format 已手动执行"
+        ]
+      },
+      {
+        "number": "647",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/647",
+        "title": "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发",
+        "author": "huajune",
+        "mergedAt": "2026-07-22",
+        "businessUpdates": [
+          "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
+        ],
+        "summary": [
+          "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "新增 2 条回归测试（-12 只调一次接口不换群、errmsg 兜底匹配），invite 工具 44 条测试全过",
+          "`tsc --noEmit` / ESLint / Prettier 通过（pre-push 钩子在 worktree 内因 web/node_modules 缺失中断于前端构建，与本改动无关，完整 CI 由 GitHub Actions 跑）"
+        ]
+      },
+      {
+        "number": "651",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/651",
+        "title": "收敛面试、人设与护栏 badcase，并下线品牌解析旧对照组",
+        "author": "huajune",
+        "mergedAt": "2026-07-22",
+        "businessUpdates": [
+          "Hosting member 配置可为 Agent 提供账号昵称与性别；读取失败或缺失时安全降级为未配置。",
+          "面试预约支持识别线上面试信号，并生成与线上流程一致的成功回复。",
+          "面试窗口校验支持候选人约定的窗口内具体时分，而非强制回落到窗口起点。",
+          "阻止模型把窗口外自编时刻提交给预约接口。",
+          "阻止线上面试成功后错误提示候选人到店。",
+          "阻止 Agent 把同一企微账号描述成机器人、第三方或“转人工”入口。",
+          "阻止引用消息中的 Agent 品牌表述污染候选人品牌意向。",
+          "删除已完成使命的 legacy brand shadow 路径，避免继续维护无行为影响的重复实现与分母计数。",
+          "修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。",
+          "将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。",
+          "品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。",
+          "同步证据优先的解析/护栏架构文档与 Excalidraw 图。"
+        ],
+        "summary": [
+          "收敛面试、人设与护栏 badcase",
+          "修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。",
+          "将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。",
+          "品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。",
+          "同步证据优先的解析/护栏架构文档与 Excalidraw 图。",
+          "收敛面试、人设与护栏 badcase，并下线品牌解析旧对照组"
+        ],
+        "features": [
+          "Hosting member 配置可为 Agent 提供账号昵称与性别；读取失败或缺失时安全降级为未配置。",
+          "面试预约支持识别线上面试信号，并生成与线上流程一致的成功回复。",
+          "面试窗口校验支持候选人约定的窗口内具体时分，而非强制回落到窗口起点。"
+        ],
+        "fixes": [
+          "阻止模型把窗口外自编时刻提交给预约接口。",
+          "阻止线上面试成功后错误提示候选人到店。",
+          "阻止 Agent 把同一企微账号描述成机器人、第三方或“转人工”入口。",
+          "阻止引用消息中的 Agent 品牌表述污染候选人品牌意向。",
+          "删除已完成使命的 legacy brand shadow 路径，避免继续维护无行为影响的重复实现与分母计数。",
+          "修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。",
+          "将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。",
+          "品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。",
+          "同步证据优先的解析/护栏架构文档与 Excalidraw 图。"
+        ],
+        "optimizations": [
+          "`human_service_phrase_leak` 依据两周真阳性样本由 observe 升为 revise，并增加确定性重写反馈。",
+          "复聊与主 Agent 统一使用“招募经理”身份口径。",
+          "品牌解析架构文档按 2026-07-22 裁定更新下线依据、回滚边界和发布后观察项。"
+        ],
+        "ops": [
+          "数据库 migration / schema / RPC / RLS / 回填：N/A，本 PR 不包含数据库变更。",
+          "部署顺序：无前置 migration 或配置写入；应用可按现有 tag 触发流程直接滚动部署。",
+          "回滚：回滚本 PR 的 squash commit 或回退到上一生产 tag；无数据回滚动作。",
+          "发布后观察：面试预约失败率、线上面试回复、`human_service_phrase_leak` revise 命中与品牌解析异常。",
+          "收敛面试、人设与护栏 badcase"
+        ],
+        "config": [
+          "环境变量：N/A，无新增、修改或废弃变量。",
+          "Hosting member schema：无新增配置键；仅开始读取既有 `wecomNickname` / `gender` 字段。",
+          "`pnpm config:hosting:check:prod` 已通过：10 个 runtime members 覆盖 9 个代码映射。"
+        ],
+        "envFiles": [],
+        "verification": [
+          "定向回归：9 个套件、452 条测试通过。",
+          "集成修复后护栏套件：165 条测试通过。",
+          "`pnpm run lint:check`",
+          "`pnpm run format:check`",
+          "`pnpm run typecheck`",
+          "`pnpm run build:ci`（前端 + Nest 构建）",
+          "`pnpm run test:ci`：365 个套件通过、1 个跳过；5529 条测试通过、6 条跳过。",
+          "`pnpm run test:di-smoke`",
+          "`git diff --check`",
+          "pre-push `pnpm run ci:check` 再次通过。",
+          "关键生产链路发布后冒烟验证。"
+        ]
+      },
+      {
+        "number": "653",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/653",
+        "title": "固化 v10.24.0 发版底账",
+        "author": "huajune",
+        "mergedAt": "2026-07-22",
+        "businessUpdates": [
+          "修复 Release PR #642 的 `Validate release ledger` 闸口失败。"
+        ],
+        "summary": [
+          "补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。",
+          "固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。",
+          "修复 Release PR #642 的 `Validate release ledger` 闸口失败。",
+          "固化 v10.24.0 发版底账"
+        ],
+        "features": [],
+        "fixes": [
+          "修复 Release PR #642 的 `Validate release ledger` 闸口失败。"
+        ],
+        "optimizations": [],
+        "ops": [
+          "补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。",
+          "固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm release:ledger:check`：通过。",
+          "`pnpm exec prettier --check docs/releases/2026/v10.24.0.md`：通过。",
+          "`git diff --check`：通过。",
+          "`pnpm run ci:check`：通过；365 suites passed、1 skipped，5529 tests passed、6 skipped。"
+        ]
       }
     ]
   }
