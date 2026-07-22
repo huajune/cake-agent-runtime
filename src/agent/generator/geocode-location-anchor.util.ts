@@ -4,7 +4,7 @@ import {
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
 } from '@memory/facts/high-confidence-facts';
-import { resolveCityFromDistrict } from '@memory/facts/geo-mappings';
+import { resolveCityFromDistrict } from '@resolution/geo';
 import type { ShortTermMessage } from '@memory/types/short-term.types';
 import type {
   CityFact,

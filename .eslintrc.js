@@ -25,7 +25,6 @@ module.exports = {
       excludedFiles: [
         'src/memory/facts/high-confidence-facts.ts',
         'src/memory/services/session.service.ts',
-        'src/agent/generator/geocode-location-anchor.util.ts',
         'src/tools/duliday-job-list.tool.ts',
       ],
       rules: {
