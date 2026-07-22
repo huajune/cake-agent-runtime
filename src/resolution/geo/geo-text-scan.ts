@@ -8,15 +8,15 @@
  * （置信度生命周期仍归 memory）。
  */
 
-import type { GeoTextScanCity, GeoTextScanResult, WhitelistScanResult } from '../geo.types';
+import type { GeoTextScanCity, GeoTextScanResult, WhitelistScanResult } from './geo.types';
 import {
   DISTRICT_TO_CITY,
   MUNICIPALITIES,
   SUPPORTED_CITY_PREFIXES,
-} from '../admin/administrative-division.data';
-import { NATIONAL_CITY_SUFFIX_TO_CITY } from '../admin/explicit-city.data';
-import { LOCATION_TO_CITY } from '../places/place-alias.data';
-import { normalizeDistrictForLookup } from '../normalization/geo-name.normalizer';
+} from './administrative-division.data';
+import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
+import { LOCATION_TO_CITY } from './place-alias.data';
+import { normalizeDistrictForLookup } from './geo-name.normalizer';
 import { matchInUncoveredSegments, scanWhitelistKeysByLongest } from './whitelist-scanner';
 
 /**

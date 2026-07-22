@@ -7,10 +7,10 @@
  * 已表达明确语义；自由文本扫描仍只命中"延吉市"这种显式后缀。
  */
 
-import type { GeoSignalConflictShadow, ParentAdministrativeArea } from '../geo.types';
+import type { GeoSignalConflictShadow, ParentAdministrativeArea } from './geo.types';
 import { COUNTY_LEVEL_CITY_TO_PREFECTURE, DISTRICT_TO_CITY } from './administrative-division.data';
-import { normalizeDistrictForLookup } from '../normalization/geo-name.normalizer';
-import { resolveCityFromLocation } from '../places/place-alias.resolver';
+import { normalizeDistrictForLookup } from './geo-name.normalizer';
+import { resolveCityFromLocation } from './place-alias.resolver';
 
 /**
  * 单个 district 名 → 城市（命中白名单则返回 city，否则 null）。

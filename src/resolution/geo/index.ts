@@ -18,20 +18,17 @@ export type {
   WhitelistScanResult,
 } from './geo.types';
 
-export { normalizeCityName, normalizeDistrictForLookup } from './normalization/geo-name.normalizer';
+export { normalizeCityName, normalizeDistrictForLookup } from './geo-name.normalizer';
 export {
   detectGeoSignalConflict,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
-} from './admin/administrative-area.resolver';
-export { resolveCityFromLocation } from './places/place-alias.resolver';
-export { scanWhitelistKeysByLongest, matchInUncoveredSegments } from './matching/whitelist-scanner';
-export { scanGeoSignalsFromText } from './matching/geo-text-scan';
-export {
-  hasGenericAmbiguousSuffix,
-  GENERIC_AMBIGUOUS_SUFFIXES,
-} from './policy/ambiguous-place.policy';
+} from './administrative-area.resolver';
+export { resolveCityFromLocation } from './place-alias.resolver';
+export { scanWhitelistKeysByLongest, matchInUncoveredSegments } from './whitelist-scanner';
+export { scanGeoSignalsFromText } from './geo-text-scan';
+export { hasGenericAmbiguousSuffix, GENERIC_AMBIGUOUS_SUFFIXES } from './ambiguous-place.policy';
 
 // —— 过渡期导出（消费者收口后随 Phase 5 删除）——
 // Phase 1 门面必须兜住现存全部导入符号（§4 依赖清单），否则迁移首日即编译失败。
@@ -43,8 +40,8 @@ export {
   SUPPORTED_CITY_PREFIXES,
   DISTRICT_TO_CITY,
   COUNTY_LEVEL_CITY_TO_PREFECTURE,
-} from './admin/administrative-division.data';
+} from './administrative-division.data';
 /** @deprecated 同上 */
-export { NATIONAL_CITY_SUFFIX_TO_CITY } from './admin/explicit-city.data';
+export { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
 /** @deprecated 同上 */
-export { LOCATION_TO_CITY } from './places/place-alias.data';
+export { LOCATION_TO_CITY } from './place-alias.data';
