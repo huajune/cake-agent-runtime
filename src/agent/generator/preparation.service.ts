@@ -10,6 +10,7 @@ import { LongTermService } from '@memory/services/long-term.service';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
@@ -103,6 +104,7 @@ export class PreparationService {
     private readonly groupResolver: GroupResolverService,
     private readonly groupMembership: GroupMembershipService,
     private readonly brandStateService: BrandStateService,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
     @Optional()
     private readonly tracer?: AgentTracerService,
   ) {}
@@ -135,8 +137,8 @@ export class PreparationService {
     const currentUserMessage = trailingUserContent(truncatedMessages);
     const currentLaborFormIntent = decideLaborFormIntent(currentUserMessage);
 
-    // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态。
-    const [memory, bookingContext, realtimeGroups] = await Promise.all([
+    // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
+    const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
       this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
         includeShortTerm: callerKind === CallerKind.WECOM,
         shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
@@ -150,6 +152,7 @@ export class PreparationService {
         this.buildSpongeTokenContext(params),
       ),
       this.loadRealtimeGroupStatus(params),
+      this.loadAccountIdentity(params.botImId),
     ]);
 
     // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
@@ -202,6 +205,11 @@ export class PreparationService {
       highConfidenceFacts: memory.highConfidenceFacts,
       currentLaborFormIntent,
       sessionBrandState: turnBrandContext.state,
+      accountIdentity: {
+        botUserId: params.botUserId,
+        nickname: accountIdentityConfig.nickname ?? undefined,
+        gender: accountIdentityConfig.gender ?? undefined,
+      },
       strategySource: params.strategySource,
     });
 
@@ -407,6 +415,23 @@ export class PreparationService {
     } catch (error) {
       this.logger.warn('实时群状态核验失败（按未知降级）', error);
       return [];
+    }
+  }
+
+  /**
+   * 账号身份配置（企微昵称/性别，hosting_member_config 按 botImId 索引）：
+   * 供 IdentitySection 锚定"你就是这个账号本人"。读失败按未配置降级，不阻断回合。
+   */
+  private async loadAccountIdentity(
+    botImId: string | undefined,
+  ): Promise<{ nickname: string | null; gender: string | null }> {
+    try {
+      return await this.hostingMemberConfig.resolveAgentAccountIdentity(botImId);
+    } catch (error) {
+      this.logger.warn(
+        `账号身份配置读取失败（按未配置降级）: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { nickname: null, gender: null };
     }
   }
 

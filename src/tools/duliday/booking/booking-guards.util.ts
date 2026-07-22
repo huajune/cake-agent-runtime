@@ -24,8 +24,11 @@ import { getSpongeProvinceNameById } from '@sponge/sponge.enums';
 import { isStrictRealChineseName } from '@memory/facts/name-guard';
 import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/utils/job-policy-parser';
 import {
+  compareTime,
   findSameDayCutoffViolation,
   getShanghaiWeekday,
+  isDateOnlyWindow,
+  normalizeHm,
   resolveBookingDeadlineDateTime,
 } from '@tools/duliday/booking/interview-window.util';
 import {
@@ -281,6 +284,40 @@ function validateInterviewTimeAgainstSchedule(
         })),
       },
     });
+  }
+
+  // 时分必须落在匹配窗口的 [startTime, endTime] 内。窗口制岗位允许提交候选人在
+  // 窗口内约定的具体时刻（badcase chat 6a5f3080：候选人约 15:00、工单却落窗口起点
+  // 10:00，下游按工单时间等人），但窗口外的时刻仍是臆造，照拦。
+  // dateOnly / 起止时间不可解析的窗口没有时分校验源，跳过（这类 slot 由
+  // bookingAllowed=false 在 prompt 层禁止自动提交）。
+  const hm = normalizeHm(hms);
+  if (hm) {
+    const timeWithinSomeWindow = matchedWindows.some((window) => {
+      if (isDateOnlyWindow(window)) return true;
+      const start = normalizeHm(window.startTime);
+      const end = normalizeHm(window.endTime);
+      if (!start || !end) return true;
+      return compareTime(hm, start) >= 0 && compareTime(hm, end) <= 0;
+    });
+    if (!timeWithinSomeWindow) {
+      return buildToolError({
+        errorType: TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME,
+        outcome: '预约失败（时刻不在面试窗口内）',
+        replyInstruction:
+          '当前 interviewTime 的时刻不在该日面试窗口内。窗口制岗位只能提交窗口起止时间之间的时刻：' +
+          '候选人明确约定了窗口内某时刻就用该时刻，否则用 bookableSlots 里 slot 自带的 interviewTime（窗口起点）；不要凭印象拼时间。',
+        details: {
+          detailedReason: `${hm} 不在 ${date} 的面试窗口内`,
+          availableSlots: matchedWindows.slice(0, 8).map((window) => ({
+            date: window.date ?? null,
+            weekday: window.weekday ?? null,
+            startTime: window.startTime,
+            endTime: window.endTime,
+          })),
+        },
+      });
+    }
   }
 
   return null;

@@ -323,3 +323,48 @@ describe('runBookingGuards · hard-requirements', () => {
     expect(result?._outcome).toContain('性别');
   });
 });
+
+describe('runBookingGuards · 窗口内时分校验 (badcase chat 6a5f3080 窗口制候选人约定时刻)', () => {
+  // makeJob 的 interviewTimeSchedule 不是 parser 认的形状（解析出 0 窗口、整个时段
+  // 校验被跳过）；这里按真实 sponge 结构给一个"每周全天 09:00-18:00"的周期窗口。
+  function makeWindowJob(): JobDetail {
+    return makeJob({
+      interviewProcess: {
+        firstInterview: {
+          periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
+            interviewWeekday: `每周${day}`,
+            interviewTimes: [{ interviewStartTime: '09:00', interviewEndTime: '18:00' }],
+          })),
+        },
+      },
+    });
+  }
+
+  it('allows candidate-agreed time inside the window (15:00 in 09:00-18:00)', () => {
+    expect(
+      runBookingGuards({ job: makeWindowJob(), name: realName, interviewTime: '2099-12-31 15:00:00' }),
+    ).toBeNull();
+  });
+
+  it('allows the window start time (default slot interviewTime)', () => {
+    expect(
+      runBookingGuards({ job: makeWindowJob(), name: realName, interviewTime: '2099-12-31 09:00:00' }),
+    ).toBeNull();
+  });
+
+  it('allows the window end boundary', () => {
+    expect(
+      runBookingGuards({ job: makeWindowJob(), name: realName, interviewTime: '2099-12-31 18:00:00' }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['before window opens', '2099-12-31 08:00:00'],
+    ['after window closes', '2099-12-31 20:30:00'],
+  ])('rejects fabricated time outside the window: %s', (_name, time) => {
+    const result = runBookingGuards({ job: makeWindowJob(), name: realName, interviewTime: time });
+    expect(result).not.toBeNull();
+    expect(result?._outcome).toContain('时刻不在面试窗口内');
+    expect(result?.errorType).toBe('booking.invalid_interview_time');
+  });
+});

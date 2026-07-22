@@ -1,4 +1,4 @@
-import { normalizeDistrictForLookup } from '@memory/facts/geo-mappings';
+import { normalizeDistrictForLookup } from '@resolution/geo';
 import type {
   GeocodeCandidate,
   GeocodeCandidateConfidence,

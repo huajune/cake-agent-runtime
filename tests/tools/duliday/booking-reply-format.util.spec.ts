@@ -1,6 +1,7 @@
 import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
+  isOnlineInterview,
 } from '@tools/duliday/booking/booking-reply-format.util';
 
 describe('formatInterviewTimeForReply', () => {
@@ -51,5 +52,51 @@ describe('buildOnSiteScript', () => {
     expect(buildOnSiteScript({ candidateName: null, jobName: null })).toBe(
       '到店跟前台/店长说"独立客招聘介绍来的"',
     );
+  });
+});
+
+describe('isOnlineInterview (badcase chat 6a5f3080 线上面试误发到店话术)', () => {
+  it('detects online from interviewType 线上/视频/电话', () => {
+    expect(isOnlineInterview({ interviewType: '线上面试' })).toBe(true);
+    expect(isOnlineInterview({ interviewType: '视频面试' })).toBe(true);
+    expect(isOnlineInterview({ interviewType: '电话面试' })).toBe(true);
+  });
+
+  it('detects online from remark 腾讯会议 signal (badcase 原文形态)', () => {
+    expect(
+      isOnlineInterview({
+        interviewType: null,
+        interviewRemark:
+          '让人选添加佛山面试群，备注好名字＋手机号码，在群里发腾讯会议链接，请在规定时间入会',
+      }),
+    ).toBe(true);
+  });
+
+  it('detects online from flowDescription 线上面试 signal', () => {
+    expect(
+      isOnlineInterview({ interviewType: null, flowDescription: '线上面试，24小时出结果' }),
+    ).toBe(true);
+  });
+
+  it('defaults to offline when no signal at all (keciu6u6 到店脚本不回归)', () => {
+    expect(isOnlineInterview({})).toBe(false);
+    expect(isOnlineInterview({ interviewType: '到店面试', interviewRemark: '带好健康证' })).toBe(
+      false,
+    );
+  });
+
+  it('explicit offline method wins over online words in remark (混合流程按到店)', () => {
+    expect(
+      isOnlineInterview({
+        interviewType: '线下面试',
+        interviewRemark: '先线上初筛，通过后到店复试',
+      }),
+    ).toBe(false);
+  });
+
+  it('does not treat unrelated remark words as online', () => {
+    expect(
+      isOnlineInterview({ interviewType: null, interviewRemark: '到店找店长，带身份证' }),
+    ).toBe(false);
   });
 });

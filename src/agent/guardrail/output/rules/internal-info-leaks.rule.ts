@@ -131,10 +131,20 @@ export function stripMarkdownCodeFences(content: string): string {
  *
  * 运营反馈（recvjXBkmV6idz"能不能不要说转人工，这样不是露馅了吗"、
  * recvnV3iYGZnBJ"别说我给你转人工，有点像人机"）。正确口径是"我帮你问下同事/
- * 让负责的同事联系你"。与上面的内部状态泄漏同族（实现细节外露），但先 observe
- * 收判例——话术类拦截要先确认误报率再升档。
+ * 让负责的同事联系你"。与上面的内部状态泄漏同族（实现细节外露）。
+ *
+ * 2026-07-07 observe 入场收判例；2026-07-21 升 revise：两周 5 条命中全为真阳性
+ * 人设露馅（守卫档案 7-14/7-16/7-17/7-20/7-21），封闭词表零误报，措辞替换即可
+ * 修复，满足 catalog 准入条件（≥2 周判例、精确率 ≥90%、恢复路径可靠）。
+ *
+ * 2026-07-22 扩词（badcase chat 6a5dedb2ce406a6aeee1ea62"东升是真人招募经理哈"
+ * 直发未拦）：补"人工登记/人工确认"等动作变体与"真人经理/专人联系"类第三方
+ * 割裂表述。仍是封闭词表；"真人/人工"单字不入表，避免误伤正常语义。
  */
-const HUMAN_SERVICE_PHRASE_PATTERN = /转人工|人工客服|人工坐席|转接人工|人工渠道/;
+const HUMAN_SERVICE_PHRASE_PATTERN =
+  /转人工|人工客服|人工坐席|转接人工|人工渠道|人工登记|人工确认|人工介入|人工处理|人工跟进|真人招募经理|真人经理|真人客服|专人联系|专人跟进|专人对接/;
+// 刻意不入表："人工审核"（描述门店/品牌侧简历审核外部流程，属合法业务表述，
+// precheck wait_notice 话术已改为"先进入审核"避免主动引导该词形）。
 
 export function detectHumanServicePhraseLeak(content: string): RuleContradiction | null {
   if (!content) return null;
@@ -142,8 +152,8 @@ export function detectHumanServicePhraseLeak(content: string): RuleContradiction
   return {
     ruleId: 'human_service_phrase_leak',
     label:
-      '回复出现"转人工/人工客服"等表述，与真人招募经理人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ），应改为"帮你问下同事"类口径',
-    action: GUARDRAIL_ACTION.OBSERVE,
+      '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
+    action: GUARDRAIL_ACTION.REVISE,
   };
 }
 

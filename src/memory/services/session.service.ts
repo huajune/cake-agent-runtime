@@ -1,10 +1,5 @@
-import { Injectable, Logger, Optional, type OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import {
-  ShadowAgreementCounter,
-  SHADOW_AGREEMENT_BATCH,
-  SHADOW_AGREEMENT_MAX_LAG_MS,
-} from '@observability/shadow-agreement-counter';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SpongeService } from '@/sponge/sponge.service';
@@ -56,7 +51,7 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
 import {
-  detectBrandAliasHintsWithShadow,
+  detectBrandAliasHints,
   extractHighConfidenceFacts,
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
@@ -64,7 +59,7 @@ import {
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
-import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
+import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -94,7 +89,7 @@ import {
  */
 
 @Injectable()
-export class SessionService implements OnModuleDestroy {
+export class SessionService {
   private readonly logger = new Logger(SessionService.name);
 
   /** 纯应答词判定的最大文本长度：超过即认为携带额外信息，不可跳过提取。 */
@@ -109,35 +104,6 @@ export class SessionService implements OnModuleDestroy {
     @Optional()
     private readonly tracer?: AgentTracerService,
   ) {}
-
-  /** 新旧品牌匹配一致计数（§15.6 差异率分母）；攒满一批或超时即落一条观测事件。 */
-  private readonly brandShadowAgreement = new ShadowAgreementCounter(
-    SHADOW_AGREEMENT_BATCH,
-    SHADOW_AGREEMENT_MAX_LAG_MS,
-  );
-
-  /** 进程退出前把未满批的分母交出去，避免滚动发布把当批计数吞掉。 */
-  onModuleDestroy(): void {
-    const flushed = this.brandShadowAgreement.drain();
-    if (flushed > 0) this.emitBrandShadowAgreement(flushed);
-  }
-
-  private emitBrandShadowAgreement(
-    batchSize: number,
-    scope?: { corpId: string; userId: string; sessionId: string },
-  ): void {
-    this.tracer?.emit({
-      type: 'brand_resolution_shadow_agreement',
-      userId: scope?.userId,
-      chatId: scope?.sessionId,
-      corpId: scope?.corpId,
-      batchSize,
-      origin: 'extraction_hints',
-    });
-    this.logger.log(
-      `[brand-shadow] 新旧品牌匹配一致落库 ${batchSize} 次，累计 ${this.brandShadowAgreement.totalCount} 次（extraction_hints）`,
-    );
-  }
 
   // ==================== store ====================
   //
@@ -688,32 +654,8 @@ export class SessionService implements OnModuleDestroy {
       }
     }
 
-    // 新旧品牌匹配并行对比（§15.2）：旧算法在 shadow 运行，不一致才落
-    // brand_resolution_shadow_diff 事件（品牌目录时变，差异现场必须在线记录）。
-    const { hints: aliasHints, shadowDiff } = detectBrandAliasHintsWithShadow(
-      userMessages,
-      brandData,
-    );
-    if (shadowDiff) {
-      this.tracer?.emit({
-        type: 'brand_resolution_shadow_diff',
-        userId,
-        chatId: sessionId,
-        corpId,
-        inputs: shadowDiff.inputs,
-        legacyBrands: shadowDiff.legacyBrands,
-        nextBrands: shadowDiff.nextBrands,
-        catalogSize: shadowDiff.catalogSize,
-        origin: 'extraction_hints',
-      });
-    } else if (aliasHints.length > 0) {
-      // 一致计数是 §15.6 差异率门禁的**分母**：只打日志则重启即归零、事后不可查，
-      // 门禁到期也无法判定（2026-07-20 观测期实测踩到）。按批 + 超时双条件落库。
-      const flushed = this.brandShadowAgreement.record();
-      if (flushed > 0) {
-        this.emitBrandShadowAgreement(flushed, { corpId, userId, sessionId });
-      }
-    }
+    // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
+    const aliasHints = detectBrandAliasHints(userMessages, brandData);
     const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
     const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
     const prompt = buildSessionExtractionPrompt(
@@ -1246,6 +1188,17 @@ export class SessionService implements OnModuleDestroy {
    */
   private backfillCityFromWhitelist(facts: EntityExtractionResult): EntityExtractionResult {
     if (facts.preferences.city) return facts;
+    // 冲突 shadow（方案 §8.2 / Phase 3）：多信号指向不同城市时现行先命中先赢；
+    // 落库观测走岗位工具 queryMeta.geoSignalConflictShadow，这里仅辅助定位。
+    const conflictShadow = detectGeoSignalConflict(
+      facts.preferences.district,
+      facts.preferences.location,
+    );
+    if (conflictShadow) {
+      this.logger.warn(
+        `[extractFacts] 地理信号冲突（shadow，行为不变仍先命中先赢）: ${JSON.stringify(conflictShadow)}`,
+      );
+    }
     const resolved = resolveCityFromGeoSignals(
       facts.preferences.district,
       facts.preferences.location,

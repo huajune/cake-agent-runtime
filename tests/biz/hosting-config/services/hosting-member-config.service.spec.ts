@@ -68,4 +68,47 @@ describe('HostingMemberConfigService', () => {
       BOT_TO_RECEIVER['1688855974513959'],
     );
   });
+
+  describe('resolveAgentAccountIdentity (badcase chat 6a5dedb2ce406a6aeee1ea62)', () => {
+    it('resolves configured nickname and gender with trimming', async () => {
+      repository.readConfig.mockResolvedValue({
+        members: {
+          '1688854363869800': { wecomNickname: ' 祝东升 ', gender: ' 男 ' },
+        },
+      });
+      const service = new HostingMemberConfigService(repository as never);
+
+      await expect(service.resolveAgentAccountIdentity('1688854363869800')).resolves.toEqual({
+        nickname: '祝东升',
+        gender: '男',
+      });
+    });
+
+    it('resolves by normalized botImId (sync prefix stripped)', async () => {
+      repository.readConfig.mockResolvedValue({
+        members: { '1688854363869800': { wecomNickname: '祝东升', gender: '男' } },
+      });
+      const service = new HostingMemberConfigService(repository as never);
+
+      await expect(
+        service.resolveAgentAccountIdentity('prod-sync:1688854363869800'),
+      ).resolves.toEqual({ nickname: '祝东升', gender: '男' });
+    });
+
+    it('returns null fields when not configured or config read fails', async () => {
+      repository.readConfig.mockResolvedValue({ members: {} });
+      const service = new HostingMemberConfigService(repository as never);
+      await expect(service.resolveAgentAccountIdentity('1688854363869800')).resolves.toEqual({
+        nickname: null,
+        gender: null,
+      });
+
+      repository.readConfig.mockRejectedValueOnce(new Error('db down'));
+      const failing = new HostingMemberConfigService(repository as never);
+      await expect(failing.resolveAgentAccountIdentity('1688854363869800')).resolves.toEqual({
+        nickname: null,
+        gender: null,
+      });
+    });
+  });
 });

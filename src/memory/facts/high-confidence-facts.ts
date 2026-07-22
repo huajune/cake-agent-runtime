@@ -1,7 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
-import { buildBrandCatalogIndex } from '@resolution/brand/catalog-index';
-import { buildExactMatchTokens, normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { formatLocalDate } from '@infra/utils/date.util';
 import {
   FALLBACK_EXTRACTION,
@@ -14,35 +12,9 @@ import {
   type HighConfidenceValue,
   type ScheduleConstraintFact,
 } from '../types/session-facts.types';
-import {
-  DISTRICT_TO_CITY,
-  LOCATION_TO_CITY,
-  MUNICIPALITIES,
-  NATIONAL_CITY_SUFFIX_TO_CITY,
-  SUPPORTED_CITY_PREFIXES,
-  matchInUncoveredSegments,
-  normalizeDistrictForLookup,
-  scanWhitelistKeysByLongest,
-  type WhitelistScanResult,
-} from './geo-mappings';
+import { scanGeoSignalsFromText } from '@resolution/geo';
 import { isLikelyRealChineseName } from './name-guard';
 import { decideLaborFormIntent } from './labor-form';
-
-// ── 地理常量 ───────────────────────────────────────────────────────────────
-
-/**
- * 城市识别词典：直辖市 + 已支持城市前缀去重后的精确匹配集合。
- * 给 scanWhitelistKeysByLongest 作为 city 维度的输入。
- */
-const CITY_DICT: Record<string, true> = Object.fromEntries(
-  Array.from(new Set<string>([...MUNICIPALITIES, ...SUPPORTED_CITY_PREFIXES])).map((city) => [
-    city,
-    true,
-  ]),
-);
-
-/** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
-const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开发区))/g;
 
 // ── 个人信息关键词 ─────────────────────────────────────────────────────────
 
@@ -497,6 +469,14 @@ export function extractHighConfidenceFacts(
  * 保持旧接口与输出形态兼容：提及级线索（不区分极性——"不要肯德基"仍产出肯德基的
  * 归一化线索，极性语义由 brand_state reducer 消费 resolveBrands 原始结果处理），
  * 品类兜底行为不回归（已上线的咖啡品类召回）。
+ *
+ * 引用块在**本函数内**剥离，不依赖调用方：引用块里的品牌是招募经理/Agent 的话，
+ * 不是候选人自陈。2026-07-21 生产实例 6a5f21ef——候选人引用 Agent 的
+ * 「零售群是超市、便利店、门店导购这类」，"便利店"命中品牌"7-11便利店"并进入
+ * 提取提示词，形成 Agent 说品牌 → 候选人引用 → 品牌被当作其兴趣的自污染回路。
+ * 根因是调用方（session.service extractFacts）传了原始消息，而剥离契约只写在
+ * stripQuotedBlocks 的注释里、无结构约束。收进入口后调用方无法再漏（幂等，
+ * extractHighConfidenceFacts 侧已剥过一次也无副作用）。
  */
 export function detectBrandAliasHints(
   userMessages: string[],
@@ -506,7 +486,9 @@ export function detectBrandAliasHints(
 
   const hints: BrandAliasHint[] = [];
   const seen = new Set<string>();
-  for (const message of userMessages) {
+  for (const raw of userMessages) {
+    const message = stripQuotedBlocks(raw);
+    if (!message) continue;
     for (const resolution of resolveBrands(message, 'user_text', brandData)) {
       if (resolution.ambiguous || !resolution.canonicalName) continue;
       const matchedAlias =
@@ -519,95 +501,6 @@ export function detectBrandAliasHints(
       hints.push({ brandName: resolution.canonicalName, matchedAlias, sourceText: message });
     }
   }
-  return hints;
-}
-
-/** 新旧品牌匹配路径的差异快照（对比期观测事件 brand_resolution_shadow_diff 的载荷）。 */
-export interface BrandAliasShadowDiff {
-  inputs: string[];
-  legacyBrands: string[];
-  nextBrands: string[];
-  catalogSize: number;
-}
-
-/**
- * 带新旧对照的品牌线索检测（§15.2 并行对比期）。
- *
- * 新路径（resolveBrands）是生效路径；旧匹配算法作为对照组在 shadow 运行，
- * 两侧品牌集合不一致时返回 diff（由调用方发射 brand_resolution_shadow_diff 事件），
- * 一致时 diff 为 null（仅计数不落行）。旧路径随 §15.6 指标达标后物理删除。
- */
-export function detectBrandAliasHintsWithShadow(
-  userMessages: string[],
-  brandData: BrandItem[],
-): { hints: BrandAliasHint[]; shadowDiff: BrandAliasShadowDiff | null } {
-  const hints = detectBrandAliasHints(userMessages, brandData);
-  if (userMessages.length === 0 || brandData.length === 0) {
-    return { hints, shadowDiff: null };
-  }
-
-  const legacyBrands = Array.from(
-    new Set(legacyDetectBrandAliasHints(userMessages, brandData).map((hint) => hint.brandName)),
-  ).sort();
-  const nextBrands = Array.from(new Set(hints.map((hint) => hint.brandName))).sort();
-  const identical =
-    legacyBrands.length === nextBrands.length &&
-    legacyBrands.every((brand, index) => brand === nextBrands[index]);
-
-  return {
-    hints,
-    shadowDiff: identical
-      ? null
-      : { inputs: userMessages, legacyBrands, nextBrands, catalogSize: brandData.length },
-  };
-}
-
-/**
- * 旧品牌匹配算法（对照组，§15.6 前保留）：token 全等 + 长别称整句包含 + 品类兜底。
- * 与迁移前的 detectBrandAliasHints 行为一致（基于同一套已迁移的归一化原语重建）。
- */
-function legacyDetectBrandAliasHints(
-  userMessages: string[],
-  brandData: BrandItem[],
-): BrandAliasHint[] {
-  const { candidates, categories } = buildBrandCatalogIndex(brandData);
-  const hints: BrandAliasHint[] = [];
-  const seen = new Set<string>();
-
-  const pushHint = (brandName: string, matchedAlias: string, sourceText: string): void => {
-    const dedupeKey = `${brandName}::${sourceText}`;
-    if (seen.has(dedupeKey)) return;
-    hints.push({ brandName, matchedAlias, sourceText });
-    seen.add(dedupeKey);
-  };
-
-  for (const message of userMessages) {
-    const tokens = buildExactMatchTokens(message);
-    if (tokens.length === 0) continue;
-
-    const normalizedMessage = normalizeForBrandMatch(message);
-
-    let matchedSpecificBrand = false;
-    for (const candidate of candidates) {
-      const matched =
-        tokens.some((token) => token === candidate.normalized) ||
-        (candidate.containEligible && normalizedMessage.includes(candidate.normalized));
-      if (!matched) continue;
-
-      matchedSpecificBrand = true;
-      pushHint(candidate.brandName, candidate.alias, message);
-    }
-
-    if (!matchedSpecificBrand) {
-      for (const category of categories) {
-        if (!category.keywords.some((keyword) => normalizedMessage.includes(keyword))) continue;
-        for (const brandName of category.brands) {
-          pushHint(brandName, `${category.label}(品类)`, message);
-        }
-      }
-    }
-  }
-
   return hints;
 }
 
@@ -1491,120 +1384,29 @@ function extractTimeRange(message: string): string | null {
 /**
  * 抽取地点相关字段（含高置信城市推导）。
  *
- * 设计：**白名单驱动扫描 + 正则兜底**（PR #177 之后的第二次重构）。
- *
- * 以前用"贪婪正则吃整段 → 事后清洗"的策略，每出一种新表达（"你好我在青浦区"、
- * "浦东新区航头镇"…）都要在清洗链上加一刀。本版本反过来：
- *   1. 先用白名单做最长精确匹配（city → district → location），数据驱动
- *   2. 未覆盖字符段才交给正则识别"白名单外的 raw district"，**不补 city**（留给 LLM）
- *
- * 加新支持城市/区，只改 geo-mappings 数据，不再动正则/清洗。
+ * 三轮白名单扫描的编排（city → district → location → 未覆盖段正则兜底，
+ * 覆盖逐轮继承）已按方案 §8.4 收口为 @resolution/geo 的 scanGeoSignalsFromText，
+ * 行为由 Phase 0 golden cases 锁定。本函数只保留消息形态相关的抽取
+ * （位置分享 / "XX附近"）与 CityFact 置信度包装——记忆如何消费扫描结果归
+ * memory，扫描本身归 geo。
  */
 function extractLocation(message: string): LocationSignals {
   const positionShareLocations = extractPositionShareLocations(message);
 
-  // 三轮串联扫描，covered 区间逐轮累积，避免后轮再去消费前轮已认领的字符
-  const cityScan = scanWhitelistKeysByLongest(message, CITY_DICT);
-  const districtScan = scanWhitelistKeysByLongest(message, DISTRICT_TO_CITY, cityScan.covered);
-  const locationScan = scanWhitelistKeysByLongest(message, LOCATION_TO_CITY, districtScan.covered);
-
-  const city = resolveCity(message, cityScan, districtScan, locationScan);
-
-  // district：白名单命中（归一化后） + 未覆盖区间正则兜底（白名单外，城市未知）
-  const whitelistDistricts = districtScan.hits.map((hit) => normalizeDistrictForLookup(hit.key));
-  const rawDistricts = matchInUncoveredSegments(
-    message,
-    locationScan.covered,
-    RAW_DISTRICT_PATTERN,
-  ).map(normalizeRawDistrict);
-  const districts = Array.from(new Set([...whitelistDistricts, ...rawDistricts].filter(Boolean)));
+  const geoScan = scanGeoSignalsFromText(message);
+  const city: CityFact | null = geoScan.city
+    ? { value: geoScan.city.value, confidence: 'high', evidence: geoScan.city.evidence }
+    : null;
+  const districts = geoScan.districts;
 
   // location：位置分享 title/address + 白名单命中 + "XX附近/旁边" 兜底
-  const whitelistLocations = locationScan.hits.map((hit) => hit.key);
   const nearbyLocations = extractNearbyLocations(message, districts);
   const locations = Array.from(
-    new Set([...positionShareLocations, ...whitelistLocations, ...nearbyLocations].filter(Boolean)),
+    new Set([...positionShareLocations, ...geoScan.locations, ...nearbyLocations].filter(Boolean)),
   );
 
   return { city, district: districts, location: locations };
 }
-
-/**
- * 综合三轮扫描结果推导 city（带 evidence）。
- *
- * 优先级：白名单 city > district 反推 > location 反推 > 通用"XX市"正则兜底。
- *
- * evidence 细分：
- *   - `municipality_compact`：直辖市开头（start=0）且紧接 district 命中（"上海浦东"）
- *   - `explicit_city`：其他 city 白名单命中或通用"XX市"匹配
- *   - `unique_district_alias`：从 district 反推（无歧义区名）
- *   - `hotspot_alias`：从 location/商圈反推
- */
-function resolveCity(
-  message: string,
-  cityScan: WhitelistScanResult,
-  districtScan: WhitelistScanResult,
-  locationScan: WhitelistScanResult,
-): CityFact | null {
-  const cityHit = cityScan.hits[0];
-  if (cityHit) {
-    const isMunicipality = (MUNICIPALITIES as readonly string[]).includes(cityHit.key);
-    const hasTightDistrict = districtScan.hits.some((d) => d.start === cityHit.end);
-    const evidence =
-      isMunicipality && cityHit.start === 0 && hasTightDistrict
-        ? 'municipality_compact'
-        : 'explicit_city';
-    return { value: cityHit.key, confidence: 'high', evidence };
-  }
-
-  const districtHit = districtScan.hits[0];
-  if (districtHit) {
-    return {
-      value: DISTRICT_TO_CITY[districtHit.key],
-      confidence: 'high',
-      evidence: 'unique_district_alias',
-    };
-  }
-
-  const locationHit = locationScan.hits[0];
-  if (locationHit) {
-    return {
-      value: LOCATION_TO_CITY[locationHit.key],
-      confidence: 'high',
-      evidence: 'hotspot_alias',
-    };
-  }
-
-  // 全国城市名表兜底：只接受真实"XX市"行政区划名，避免"大超市/夜市"误提取。
-  const nationalCityScan = scanWhitelistKeysByLongest(
-    message,
-    NATIONAL_CITY_SUFFIX_TO_CITY,
-    locationScan.covered,
-  );
-  const nationalCityHit = nationalCityScan.hits[0];
-  if (nationalCityHit) {
-    return {
-      value: NATIONAL_CITY_SUFFIX_TO_CITY[nationalCityHit.key],
-      confidence: 'high',
-      evidence: 'explicit_city',
-    };
-  }
-
-  return null;
-}
-
-function normalizeRawDistrict(candidate: string): string {
-  // 兜底场景：候选词来自"白名单未覆盖区间"。理论上不含已识别的区名，但仍可能整段
-  // 被正则吃进来（如完全在白名单外的城市的区），所以复用旧版前缀剥离 + 后缀归一化
-  // 作最后一层保险。
-  const withoutPrefix = candidate
-    .replace(/^[\u4e00-\u9fa5]{2,12}省/, '')
-    .replace(/^[\u4e00-\u9fa5]{2,12}市/, '')
-    .replace(/^(?:你好|您好|哈喽|嗨)/, '')
-    .replace(/^(?:我在|人在|住在|我住|目前在|现在在|今天在|平时在|在)/, '');
-  return normalizeDistrictForLookup(withoutPrefix);
-}
-
 /** "X附近"里 X 是泛指而非地名的停用词：这些词入库只会污染 pref.location。 */
 const NEARBY_LOCATION_STOPWORDS = new Set([
   '公司',

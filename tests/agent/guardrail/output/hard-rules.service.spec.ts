@@ -1616,7 +1616,7 @@ describe('HardRulesService', () => {
   });
 
   describe('机器判例统一由 runner 写 guardrail_review_records', () => {
-    it('observe-only 命中：返回完整裁决，不创建外部反馈', () => {
+    it('人设露馅命中：返回 revise 裁决，不创建外部反馈', () => {
       const result = service.check({
         replyText: '这个我帮你转人工客服处理下哈',
         toolCalls: [],
@@ -1626,9 +1626,17 @@ describe('HardRulesService', () => {
       });
 
       expect(result.hit).toBe(true);
-      // 裁决/落库仍保留 observe 命中
+      // 两周真阳性验证后已从 observe 升为 revise，当前回复不可直接发送。
       expect(result.contradictions.map((c) => c.ruleId)).toContain('human_service_phrase_leak');
-      expect(result.contradictions.every((c) => c.action === GUARDRAIL_ACTION.OBSERVE)).toBe(true);
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'human_service_phrase_leak',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
     });
 
     it('enforce + observe 混合：返回全部命中供统一守卫日志归档', () => {
@@ -1685,7 +1693,7 @@ describe('HardRulesService', () => {
   });
 
   describe('human_service_phrase_leak (badcase recvjXBkmV6idz / recvnV3iYGZnBJ)', () => {
-    it('observes when reply mentions 转人工', () => {
+    it('revises when reply mentions 转人工', () => {
       const result = service.check({
         replyText: '这个问题我给你转人工处理下哈。',
         toolCalls: [],
@@ -1694,8 +1702,8 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('observe');
-      expect(hit?.currentReplySendable).toBe(true);
+      expect(hit?.action).toBe('revise');
+      expect(hit?.currentReplySendable).toBe(false);
     });
 
     it('observes when reply mentions 人工客服', () => {
@@ -1723,6 +1731,53 @@ describe('HardRulesService', () => {
       expect(
         result.contradictions.find((c) => c.ruleId === 'handoff_promise_without_handoff'),
       ).toBeDefined();
+    });
+
+    // 2026-07-22 扩词（badcase chat 6a5dedb2ce406a6aeee1ea62：Agent 自称"李娜"，
+    // 把账号主人"东升"说成"真人招募经理"，原词表未覆盖直发未拦）
+    it('revises 真人招募经理 self-splitting statement (badcase 6a5dedb2)', () => {
+      const result = service.check({
+        replyText: '东升是真人招募经理哈，我是李娜，负责前期咨询和报名的',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
+      expect(hit).toBeDefined();
+      expect(hit?.action).toBe('revise');
+    });
+
+    it('revises 人工登记 / 门店人工确认 action variants', () => {
+      for (const replyText of ['资料我帮你人工登记一下哈', '这个班次需要门店人工确认下']) {
+        const result = service.check({ replyText, toolCalls: [], chatId: 'chat-1' });
+        expect(
+          result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak'),
+        ).toBeDefined();
+      }
+    });
+
+    it('revises 专人联系 third-party phrasing', () => {
+      const result = service.check({
+        replyText: '后续会有专人联系你安排面试哈。',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak'),
+      ).toBeDefined();
+    });
+
+    it('does not flag incidental 人工 substring across word boundaries', () => {
+      const result = service.check({
+        replyText: '这家门店招人工作日白班为主，周末可以轮休。',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak'),
+      ).toBeUndefined();
     });
   });
 
@@ -1799,6 +1854,40 @@ describe('HardRulesService', () => {
       });
 
       expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it.each([
+      '看到了，这个提示是平台审核没通过抢单资格。我帮你转人工核实下具体原因，稍等哈～',
+      '现在帮你转人工同事确认下还有没有合适你的岗位，你稍等。',
+      '我帮你转人工登记一下，稍后同事会联系你确认。',
+    ])(
+      'replans 转人工-style promise without request_handoff (badcase chat 6a5f4549): %s',
+      (replyText) => {
+        const result = service.check({ replyText, toolCalls: [], chatId: 'chat-zhuanrengong' });
+
+        const ruleIds = result.contradictions.map((item) => item.ruleId);
+        expect(ruleIds).toContain('handoff_promise_without_handoff');
+        // 人设露馅由 human_service_phrase_leak 同步命中，两规则叠加按更重的 replan 收敛
+        expect(ruleIds).toContain('human_service_phrase_leak');
+      },
+    );
+
+    it('allows 转人工 promise when request_handoff was actually dispatched', () => {
+      const result = service.check({
+        replyText: '我帮你转人工核实下具体原因，稍等哈～',
+        toolCalls: [
+          {
+            toolName: 'request_handoff',
+            args: { reasonCode: 'system_blocked', reason: '抢单资格审核需人工核实' },
+            result: { dispatched: true, shortCircuited: true },
+          },
+        ],
+        chatId: 'chat-zhuanrengong-ok',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
         'handoff_promise_without_handoff',
       );
     });
