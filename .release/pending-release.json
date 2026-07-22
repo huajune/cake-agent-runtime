@@ -3,7 +3,32 @@
   "nextVersion": "10.25.0",
   "updatedAt": "2026-07-22",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "658",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/658",
+      "title": "geo 目录文件平铺，与 brand 风格一致（方案 v3.3）",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）",
+        "geo 目录文件平铺，与 brand 风格一致（方案 v3.3）"
+      ],
+      "summary": [
+        "geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）",
+        "geo 目录文件平铺，与 brand 风格一致（方案 v3.3）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.24.0",
     "date": "2026-07-22",
