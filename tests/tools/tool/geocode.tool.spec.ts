@@ -590,4 +590,67 @@ describe('geocode tool', () => {
       expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(false);
     });
   });
+
+  describe('回合上下文锚点记录（方案 11.3 B-1：areaLevelQuery 确定性传递）', () => {
+    function makeContext(): ToolBuildContext {
+      return { userId: 'u', corpId: 'c', sessionId: 's', messages: [] };
+    }
+
+    it('区级 unique 解析 → 记录 areaLevelQuery=true + 行政区名到 context.geocodeResolvedAnchors', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '嘉定区', district: '嘉定区', township: '' }),
+      ]);
+
+      await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '嘉定',
+        city: '上海',
+      });
+
+      expect(ctx.geocodeResolvedAnchors).toHaveLength(1);
+      expect(ctx.geocodeResolvedAnchors?.[0]).toMatchObject({
+        longitude: 121.27,
+        latitude: 31.32,
+        areaLevelQuery: true,
+        areaName: '嘉定区',
+        city: '上海市',
+      });
+    });
+
+    it('POI 级 unique 解析 → 记录 areaLevelQuery=false', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '九亭镇', district: '松江区', township: '九亭镇' }),
+      ]);
+
+      await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '九亭',
+        city: '上海',
+      });
+
+      expect(ctx.geocodeResolvedAnchors).toHaveLength(1);
+      expect(ctx.geocodeResolvedAnchors?.[0]).toMatchObject({
+        areaLevelQuery: false,
+        areaName: null,
+      });
+    });
+
+    it('ambiguous 多城歧义 → 不记录锚点', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ city: '南京市', district: '鼓楼区', formattedAddress: '南京市鼓楼区' }),
+        makeCandidate({ city: '福州市', district: '鼓楼区', formattedAddress: '福州市鼓楼区' }),
+      ]);
+
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '鼓楼',
+      })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('ambiguous');
+      expect(ctx.geocodeResolvedAnchors).toBeUndefined();
+    });
+  });
 });
