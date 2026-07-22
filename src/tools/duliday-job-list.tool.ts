@@ -27,7 +27,7 @@ import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settleme
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { COUNTY_LEVEL_CITY_TO_PREFECTURE } from '@memory/facts/geo-mappings';
+import { COUNTY_LEVEL_CITY_TO_PREFECTURE } from '@resolution/geo';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,

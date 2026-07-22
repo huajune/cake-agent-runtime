@@ -23,14 +23,6 @@ module.exports = {
       // 门面文件本身不 import 旧路径，无需豁免。
       files: ['src/**/*.ts'],
       excludedFiles: [
-        'src/memory/facts/high-confidence-facts.ts',
-        'src/memory/services/session.service.ts',
-        'src/agent/generator/geocode-location-anchor.util.ts',
-        'src/infra/geocoding/geocoding-query-classifier.util.ts',
-        'src/infra/geocoding/geocoding-candidate-ranker.util.ts',
-        'src/tools/geocode.tool.ts',
-        'src/tools/invite-to-group.tool.ts',
-        'src/tools/duliday-job-list.tool.ts',
       ],
       rules: {
         'no-restricted-imports': [

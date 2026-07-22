@@ -11,6 +11,8 @@ export type {
   AdministrativeLevel,
   GeoResolution,
   GeoResolutionEvidence,
+  GeoTextScanCity,
+  GeoTextScanResult,
   ParentAdministrativeArea,
   WhitelistScanHit,
   WhitelistScanResult,
@@ -24,6 +26,7 @@ export {
 } from './admin/administrative-area.resolver';
 export { resolveCityFromLocation } from './places/place-alias.resolver';
 export { scanWhitelistKeysByLongest, matchInUncoveredSegments } from './matching/whitelist-scanner';
+export { scanGeoSignalsFromText } from './matching/geo-text-scan';
 export {
   hasGenericAmbiguousSuffix,
   GENERIC_AMBIGUOUS_SUFFIXES,
