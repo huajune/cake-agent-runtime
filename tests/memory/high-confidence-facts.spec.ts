@@ -775,7 +775,7 @@ describe('extractHighConfidenceFacts', () => {
 
   it.each([
     ['苏州市有岗位吗', '苏州'],
-    ['昆山市有没有兼职', '昆山'],
+    ['温岭市有活吗', '温岭'],
     ['芒市有店吗', '芒市'],
   ])('should extract explicit national city name from "%s"', (message, city) => {
     const result = extractHighConfidenceFacts([message], brandData);
@@ -798,6 +798,18 @@ describe('extractHighConfidenceFacts', () => {
       evidence: 'unique_district_alias',
     });
     expect(unwrapHighConfidenceValue(result?.preferences.district)).toEqual(['延吉市']);
+  });
+
+  it('昆山市 经县级市补录映射推导苏州市（Phase 3 补录，与延吉同构；badcase 同型防护）', () => {
+    const result = extractHighConfidenceFacts(['昆山市有没有兼职'], brandData);
+
+    expect(result?.preferences.city).toEqual({
+      value: '苏州市',
+      confidence: 'high',
+      source: 'rule',
+      evidence: 'unique_district_alias',
+    });
+    expect(unwrapHighConfidenceValue(result?.preferences.district)).toEqual(['昆山市']);
   });
 
   it('golden（Phase 0 基线）：余姚市 经区县白名单命中"余姚"推导宁波（方案 9.2 双轨现状）', () => {

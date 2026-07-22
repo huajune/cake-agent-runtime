@@ -30,6 +30,17 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
       expect(resolveCityFromDistrict('延吉市')).toBe('延边朝鲜族自治州');
     });
 
+    it('昆山市 → 苏州市（Phase 3 业务足迹补录，2026-07-22 真实海绵查询实证）', () => {
+      expect(resolveCityFromDistrict('昆山市')).toBe('苏州市');
+      expect(resolveParentAdministrativeArea('昆山')).toEqual({
+        input: '昆山',
+        canonicalName: '昆山市',
+        level: 'county_level_city',
+        parentCity: '苏州市',
+      });
+      expect(resolveParentAdministrativeArea('昆山市')?.parentCity).toBe('苏州市');
+    });
+
     it('真跨城歧义区名不在白名单，city 不解析（鼓楼：南京/福州/开封/徐州同名）', () => {
       expect(resolveCityFromDistrict('鼓楼区')).toBeNull();
       expect(resolveCityFromDistrict('鼓楼')).toBeNull();

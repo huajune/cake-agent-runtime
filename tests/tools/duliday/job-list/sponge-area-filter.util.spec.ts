@@ -17,6 +17,12 @@ describe('sponge-area-filter.util（海绵行政区适配）', () => {
       }
     });
 
+    it('补录县级市：昆山 → 苏州市 + 昆山市（Phase 3 实证补录）', () => {
+      const result = normalizeSpongeCityFilters(['昆山']);
+      expect(result.cityNameList).toEqual(['苏州市']);
+      expect(result.derivedRegionNameList).toEqual(['昆山市']);
+    });
+
     it('普通地级市/直辖市保持城市过滤，不派生县级 region', () => {
       expect(normalizeSpongeCityFilters(['上海'])).toEqual({
         cityNameList: ['上海'],

@@ -776,13 +776,13 @@ describe('buildJobListTool', () => {
   });
 
   it('recovers an unmapped county-level city from coordinates without adopting neighboring cities', async () => {
-    const kunshanJob = makeJobData({
+    const yiwuJob = makeJobData({
       basicInfo: {
         jobId: 98,
         storeInfo: {
-          storeName: '昆山店',
-          storeCityName: '苏州市',
-          storeRegionName: '昆山市',
+          storeName: '义乌店',
+          storeCityName: '金华市',
+          storeRegionName: '义乌市',
           latitude: 31.2,
           longitude: 121.0,
         },
@@ -790,11 +790,11 @@ describe('buildJobListTool', () => {
     });
     mockSpongeService.fetchJobs
       .mockResolvedValueOnce({ jobs: [], total: 0 })
-      .mockResolvedValueOnce({ jobs: [kunshanJob], total: 1 });
+      .mockResolvedValueOnce({ jobs: [yiwuJob], total: 1 });
 
     const result = await executeTool(mockContext, {
       ...defaultInput,
-      cityNameList: ['昆山'],
+      cityNameList: ['义乌'],
       location: { longitude: 121.0, latitude: 31.2, range: 10000 },
     });
 
@@ -806,20 +806,20 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.cityFilterRecovery).toEqual({
       attempted: true,
       applied: true,
-      requestedCities: ['昆山'],
+      requestedCities: ['义乌'],
       candidateCount: 1,
       recoveredCount: 1,
     });
   });
 
   it('does not adopt cross-city jobs from coordinate recovery when the city label does not match', async () => {
-    const kunshanJob = makeJobData({
+    const yiwuJob = makeJobData({
       basicInfo: {
         jobId: 99,
         storeInfo: {
-          storeName: '昆山店',
-          storeCityName: '苏州市',
-          storeRegionName: '昆山市',
+          storeName: '义乌店',
+          storeCityName: '金华市',
+          storeRegionName: '义乌市',
           latitude: 31.2,
           longitude: 121.0,
         },
@@ -827,7 +827,7 @@ describe('buildJobListTool', () => {
     });
     mockSpongeService.fetchJobs
       .mockResolvedValueOnce({ jobs: [], total: 0 })
-      .mockResolvedValueOnce({ jobs: [kunshanJob], total: 1 });
+      .mockResolvedValueOnce({ jobs: [yiwuJob], total: 1 });
 
     const result = await executeTool(mockContext, {
       ...defaultInput,
@@ -2167,9 +2167,7 @@ describe('buildJobListTool', () => {
       mockSpongeService.fetchJobs
         .mockResolvedValueOnce({ jobs: [], total: 0 })
         .mockResolvedValueOnce({ jobs: [haidianStoreJob()], total: 1 });
-      const geocodeMock = jest
-        .fn()
-        .mockResolvedValue({ longitude: 116.29, latitude: 39.95 });
+      const geocodeMock = jest.fn().mockResolvedValue({ longitude: 116.29, latitude: 39.95 });
       const builder = buildJobListTool(
         mockSpongeService as never,
         { recordEvent: jest.fn() } as never,
