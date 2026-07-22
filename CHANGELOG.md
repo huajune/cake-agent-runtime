@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.25.0] - 2026-07-22
 
-**预计版本**: `v10.25.0`
-**最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #658 geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）
@@ -88,7 +84,6 @@
 - PR #662 lint / format / typecheck / Web + Nest build 全部通过。
 - PR #662 关键链路已人工验证：两条真实 Agent 场景的 turn-end memory trace 中 `name/phone/experience` 均为空，`preferences.brands=null`，品牌落入 `brand_state.currentBrand`；无 precheck/booking 调用。
 - PR #662 正式测试资产、飞书评审状态、生产 Dashboard 和生产 API 已完成收口。
-<!-- release:pending:end -->
 
 ## [10.24.0] - 2026-07-22
 
