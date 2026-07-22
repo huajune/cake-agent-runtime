@@ -152,6 +152,18 @@ jobs:
           BASE_BRANCH="develop"
           BOT_BRANCH="chore/release-metadata/develop"
 
+          # 上一步 claude-code-action 会污染 checkout 持久化的 git 凭证：
+          # 2026-07-21 起本步骤第一条 git fetch 即 400（LLM 步骤被跳过的运行则正常，
+          # run 29822303983 vs 29821986140 对照实锤）。原修复只在 push 前重设凭证，
+          # fetch 仍裸奔——步骤入口统一重建：清掉 checkout v7 的 includeIf 凭证
+          # 注入（防双 Authorization 头）+ 重设唯一的 PAT 头，不依赖环境残留。
+          for key in $(git config --local --name-only --get-regexp '^includeif\.' || true); do
+            git config --local --unset-all "$key" || true
+          done
+          git config --local --unset-all "http.https://github.com/.extraheader" || true
+          git config --local "http.https://github.com/.extraheader" \
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+
           git fetch origin "${BASE_BRANCH}"
           git checkout -B "${BOT_BRANCH}" "origin/${BASE_BRANCH}"
 
