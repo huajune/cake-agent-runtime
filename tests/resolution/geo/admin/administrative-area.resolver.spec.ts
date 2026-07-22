@@ -1,5 +1,6 @@
 import {
   COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  detectGeoSignalConflict,
   DISTRICT_TO_CITY,
   LOCATION_TO_CITY,
   NATIONAL_CITY_SUFFIX_TO_CITY,
@@ -27,6 +28,17 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
 
     it('golden：延吉市 → 延边朝鲜族自治州（县级市映射并入区县表）', () => {
       expect(resolveCityFromDistrict('延吉市')).toBe('延边朝鲜族自治州');
+    });
+
+    it('昆山市 → 苏州市（Phase 3 业务足迹补录，2026-07-22 真实海绵查询实证）', () => {
+      expect(resolveCityFromDistrict('昆山市')).toBe('苏州市');
+      expect(resolveParentAdministrativeArea('昆山')).toEqual({
+        input: '昆山',
+        canonicalName: '昆山市',
+        level: 'county_level_city',
+        parentCity: '苏州市',
+      });
+      expect(resolveParentAdministrativeArea('昆山市')?.parentCity).toBe('苏州市');
     });
 
     it('真跨城歧义区名不在白名单，city 不解析（鼓楼：南京/福州/开封/徐州同名）', () => {
@@ -121,6 +133,34 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
         expect(key.length).toBeGreaterThan(0);
         expect(value.trim().length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe('detectGeoSignalConflict（Phase 3 冲突检测 shadow 档）', () => {
+    it('多信号指向不同城市 → 记录候选清单与先命中城市（badcase xnp1u820 形态）', () => {
+      const shadow = detectGeoSignalConflict(['静安区'], ['光谷']);
+      expect(shadow).toEqual({
+        candidates: [
+          { city: '上海', evidence: 'unique_district_alias', matchedText: '静安区' },
+          { city: '武汉', evidence: 'hotspot_alias', matchedText: '光谷' },
+        ],
+        firstHitCity: '上海',
+      });
+      // shadow 不改变现行行为：resolveCityFromGeoSignals 仍先命中先赢
+      expect(resolveCityFromGeoSignals(['静安区'], ['光谷'])).toEqual({
+        value: '上海',
+        evidence: 'unique_district_alias',
+      });
+    });
+
+    it('多信号指向同一城市 → 不构成冲突', () => {
+      expect(detectGeoSignalConflict(['青浦区'], ['陆家嘴'])).toBeNull();
+    });
+
+    it('单信号 / 白名单外信号 / 空信号 → 不构成冲突', () => {
+      expect(detectGeoSignalConflict(['静安区'], null)).toBeNull();
+      expect(detectGeoSignalConflict(['鼓楼区'], ['万达广场'])).toBeNull();
+      expect(detectGeoSignalConflict(null, null)).toBeNull();
     });
   });
 });

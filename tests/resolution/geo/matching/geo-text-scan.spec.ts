@@ -42,10 +42,18 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
     expect(scan.districts).toEqual(['余姚']);
   });
 
-  it('golden：全国显式"XX市"兜底（昆山市 → explicit_city），裸名称不触发', () => {
-    expect(scanGeoSignalsFromText('我在昆山市找工作').city).toEqual({
-      value: '昆山',
+  it('golden：全国显式"XX市"兜底（温岭市 → explicit_city），裸名称不触发', () => {
+    expect(scanGeoSignalsFromText('我在温岭市找工作').city).toEqual({
+      value: '温岭',
       evidence: 'explicit_city',
+    });
+    expect(scanGeoSignalsFromText('我在温岭找工作').city).toBeNull();
+  });
+
+  it('昆山市 → 县级市补录映射推导苏州市（Phase 3 补录，与延吉同构）；裸名称不触发', () => {
+    expect(scanGeoSignalsFromText('我在昆山市找工作').city).toEqual({
+      value: '苏州市',
+      evidence: 'unique_district_alias',
     });
     expect(scanGeoSignalsFromText('我在昆山找工作').city).toBeNull();
   });

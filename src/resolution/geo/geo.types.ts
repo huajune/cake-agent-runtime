@@ -67,6 +67,23 @@ export interface GeoTextScanResult {
   locations: string[];
 }
 
+/**
+ * 地理信号冲突 shadow 观测（§8.2 / Phase 3 第 6 步，shadow → enforce 两段发版的
+ * shadow 档）：多个信号指向不同城市时，现行 resolveCityFromGeoSignals 先命中先赢；
+ * 本结构记录"本应 ambiguous"的案例供落 GeoQueryMeta 观测，**不改变任何返回值**。
+ * enforce 切换需 shadow 观测 1~2 周后人工决策（§17.4）。
+ */
+export interface GeoSignalConflictShadow {
+  /** 各信号解析出的城市候选（按信号顺序去重；≥2 才构成冲突）。 */
+  candidates: Array<{
+    city: string;
+    evidence: 'unique_district_alias' | 'hotspot_alias';
+    matchedText: string;
+  }>;
+  /** 现行先命中先赢实际采用的城市（= candidates[0].city），证明行为未变。 */
+  firstHitCity: string;
+}
+
 /** 白名单最长优先扫描的单次命中。 */
 export interface WhitelistScanHit {
   /** 命中的白名单 key */

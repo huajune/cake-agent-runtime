@@ -7,7 +7,7 @@
  * 已表达明确语义；自由文本扫描仍只命中"延吉市"这种显式后缀。
  */
 
-import type { ParentAdministrativeArea } from '../geo.types';
+import type { GeoSignalConflictShadow, ParentAdministrativeArea } from '../geo.types';
 import { COUNTY_LEVEL_CITY_TO_PREFECTURE, DISTRICT_TO_CITY } from './administrative-division.data';
 import { normalizeDistrictForLookup } from '../normalization/geo-name.normalizer';
 import { resolveCityFromLocation } from '../places/place-alias.resolver';
@@ -46,6 +46,39 @@ export function resolveCityFromGeoSignals(
     if (city) return { value: city, evidence: 'hotspot_alias' };
   }
   return null;
+}
+
+/**
+ * 地理信号冲突检测——shadow 档（§8.2 / Phase 3 第 6 步）。
+ *
+ * 与 resolveCityFromGeoSignals 的先命中先赢不同，本函数扫描**全部**信号并
+ * 收集去重后的城市候选；≥2 个不同城市即"本应 ambiguous"（现网实证：
+ * badcase xnp1u820 "成都的 + 静安区"、i2vljy1u）。仅供观测落 GeoQueryMeta，
+ * 不参与任何行为决策；enforce 切换需 shadow 观测 1~2 周后人工决策（§17.4）。
+ */
+export function detectGeoSignalConflict(
+  districts: readonly string[] | null | undefined,
+  locations: readonly string[] | null | undefined,
+): GeoSignalConflictShadow | null {
+  const candidates: GeoSignalConflictShadow['candidates'] = [];
+  const seenCities = new Set<string>();
+  const push = (
+    city: string | null,
+    evidence: 'unique_district_alias' | 'hotspot_alias',
+    matchedText: string,
+  ) => {
+    if (!city || seenCities.has(city)) return;
+    seenCities.add(city);
+    candidates.push({ city, evidence, matchedText });
+  };
+  for (const district of districts ?? []) {
+    push(resolveCityFromDistrict(district), 'unique_district_alias', district);
+  }
+  for (const location of locations ?? []) {
+    push(resolveCityFromLocation(location), 'hotspot_alias', location);
+  }
+  if (candidates.length < 2) return null;
+  return { candidates, firstHitCity: candidates[0].city };
 }
 
 /**

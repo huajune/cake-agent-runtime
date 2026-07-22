@@ -20,6 +20,7 @@ export type {
 
 export { normalizeCityName, normalizeDistrictForLookup } from './normalization/geo-name.normalizer';
 export {
+  detectGeoSignalConflict,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,

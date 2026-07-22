@@ -27,7 +27,11 @@ import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settleme
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { COUNTY_LEVEL_CITY_TO_PREFECTURE } from '@resolution/geo';
+import {
+  filterJobsToRequestedAdministrativeArea,
+  normalizeSpongeCityFilters,
+} from '@tools/duliday/job-list/sponge-area-filter.util';
+import { detectGeoSignalConflict } from '@resolution/geo';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
@@ -323,66 +327,6 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-/**
- * 海绵的 city/region 按地级/县级行政区分层；候选人却常把县级市直接称作“城市”。
- * 这里只剥最末级的通用后缀，用于判断 location-only 召回是否仍属于用户点名的行政区，
- * 不用于改写实际查询参数。
- */
-function normalizeAdministrativeMatchKey(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  return value
-    .trim()
-    .replace(/\s+/g, '')
-    .replace(/[市区县旗]$/, '');
-}
-
-function filterJobsToRequestedAdministrativeArea<T>(jobs: T[], requestedCities: string[]): T[] {
-  const requestedKeys = new Set(
-    requestedCities.map(normalizeAdministrativeMatchKey).filter(Boolean),
-  );
-  if (requestedKeys.size === 0) return [];
-
-  return jobs.filter((job) => {
-    if (!isRecord(job) || !isRecord(job.basicInfo)) return false;
-    const storeInfo = job.basicInfo.storeInfo;
-    if (!isRecord(storeInfo)) return false;
-    return [storeInfo.storeCityName, storeInfo.storeRegionName].some((label) =>
-      requestedKeys.has(normalizeAdministrativeMatchKey(label)),
-    );
-  });
-}
-
-interface SpongeCityFilterNormalization {
-  cityNameList: string[];
-  derivedRegionNameList: string[];
-  mappings: Array<{ requestedCity: string; spongeCity: string; spongeRegion: string }>;
-}
-
-/** 把明确的县级市工具参数转换为海绵的“地级 city + 县级 region”口径。 */
-function normalizeSpongeCityFilters(cityNames: string[]): SpongeCityFilterNormalization {
-  const cityNameList: string[] = [];
-  const derivedRegionNameList: string[] = [];
-  const mappings: SpongeCityFilterNormalization['mappings'] = [];
-
-  for (const requestedCity of cityNames) {
-    const countyCity = requestedCity.endsWith('市') ? requestedCity : `${requestedCity}市`;
-    const spongeCity = COUNTY_LEVEL_CITY_TO_PREFECTURE[countyCity];
-    if (!spongeCity) {
-      cityNameList.push(requestedCity);
-      continue;
-    }
-    cityNameList.push(spongeCity);
-    derivedRegionNameList.push(countyCity);
-    mappings.push({ requestedCity, spongeCity, spongeRegion: countyCity });
-  }
-
-  return {
-    cityNameList: [...new Set(cityNameList)],
-    derivedRegionNameList: [...new Set(derivedRegionNameList)],
-    mappings,
-  };
 }
 
 function readFactValue(value: unknown): unknown {
@@ -1592,6 +1536,13 @@ export function buildJobListTool(
               areaLevelQuery: distanceAnchor?.precision === 'area_level',
               areaName: distanceAnchor?.areaName ?? null,
             },
+            // 地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）：会话事实的多个
+            // 地理信号指向不同城市时记录"本应 ambiguous"案例，仅观测不干预——
+            // 现行先命中先赢行为不变；enforce 需 shadow 观测 1~2 周后人工决策（§17.4）。
+            geoSignalConflictShadow: detectGeoSignalConflict(
+              context.sessionFacts?.preferences?.district ?? null,
+              context.sessionFacts?.preferences?.location ?? null,
+            ),
             distanceThresholdKm: maxKm ?? null,
             distanceScanPages,
             distanceScanTruncated,
