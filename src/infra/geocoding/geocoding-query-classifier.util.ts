@@ -2,7 +2,7 @@ import {
   hasGenericAmbiguousSuffix,
   NATIONAL_CITY_SUFFIX_TO_CITY,
   SUPPORTED_CITY_PREFIXES,
-} from '@memory/facts/geo-mappings';
+} from '@resolution/geo';
 import type { GeocodeQueryKind } from './geocoding.types';
 
 const METRO_STATION_PATTERN = /(?:地铁站|地铁|站)$/;

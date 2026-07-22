@@ -26,8 +26,6 @@ module.exports = {
         'src/memory/facts/high-confidence-facts.ts',
         'src/memory/services/session.service.ts',
         'src/agent/generator/geocode-location-anchor.util.ts',
-        'src/infra/geocoding/geocoding-query-classifier.util.ts',
-        'src/infra/geocoding/geocoding-candidate-ranker.util.ts',
         'src/tools/geocode.tool.ts',
         'src/tools/invite-to-group.tool.ts',
         'src/tools/duliday-job-list.tool.ts',
