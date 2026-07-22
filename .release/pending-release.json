@@ -82,6 +82,36 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "646",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/646",
+      "title": "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
+        "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
+        "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）",
+        "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）"
+      ],
+      "summary": [
+        "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
+        "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
+        "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）",
+        "Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…",
+        "地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）",
+        "业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {

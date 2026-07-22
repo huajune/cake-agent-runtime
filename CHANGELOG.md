@@ -14,7 +14,7 @@
 **预计版本**: `v10.24.0`
 **最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -31,6 +31,10 @@
 - PR #643 session.service 切换 @resolution/geo（方案 Phase 2 边界 5）
 - PR #643 duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…
 - PR #643 Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）
+- PR #646 海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…
+- PR #646 地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）
+- PR #646 业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）
+- PR #646 Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）
 
 ### 新功能
 - 无
@@ -53,6 +57,9 @@
 - PR #643 三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）
 - PR #643 session.service 切换 @resolution/geo（方案 Phase 2 边界 5）
 - PR #643 duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…
+- PR #646 海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…
+- PR #646 地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）
+- PR #646 业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）
 
 ### 配置变更
 - 无
