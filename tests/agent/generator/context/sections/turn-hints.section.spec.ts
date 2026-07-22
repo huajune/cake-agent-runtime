@@ -69,14 +69,15 @@ describe('TurnHintsSection', () => {
         ...emptyHighConfidenceFacts(),
         preferences: {
           ...emptyHighConfidenceFacts().preferences,
-          brands: highConfidence(['来伊份'], '品牌别名识别：来伊份'),
+          // brands 已随 preferences.brands 退役不再进 turn hints（§19.6），用 district 验证同一数组渲染路径
+          district: highConfidence(['杨浦区'], '区域识别：杨浦区'),
         },
-        reasoning: '品牌别名识别',
+        reasoning: '区域识别',
       },
     });
 
     expect(output).toContain('[本轮高置信线索]');
-    expect(output).toContain('意向品牌: 来伊份');
+    expect(output).toContain('意向区域: 杨浦区');
     expect(output).not.toContain('[本轮待确认线索]');
   });
 
@@ -133,16 +134,16 @@ describe('TurnHintsSection', () => {
         ...emptyHighConfidenceFacts(),
         preferences: {
           ...emptyHighConfidenceFacts().preferences,
-          brands: highConfidence(['来伊份'], '品牌别名识别：来伊份'),
+          district: highConfidence(['杨浦区'], '区域识别：杨浦区'),
           city: highConfidence('北京', 'explicit_city'),
         },
-        reasoning: '品牌别名识别，城市识别',
+        reasoning: '区域识别，城市识别',
       },
     });
 
     expect(output).toContain('[本轮高置信线索]');
     expect(output).toContain('[本轮待确认线索]');
-    expect(output).toContain('意向品牌: 来伊份');
+    expect(output).toContain('意向区域: 杨浦区');
     expect(output).toContain('意向城市: 北京');
 
     const highConfidenceIndex = output.indexOf('[本轮高置信线索]');

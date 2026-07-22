@@ -61,7 +61,6 @@ describe('formatExtractionFactLines', () => {
       },
       preferences: {
         ...FALLBACK_EXTRACTION.preferences,
-        brands: ['来伊份', '奥乐齐'],
         city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
         district: ['杨浦区'],
       },
@@ -72,10 +71,38 @@ describe('formatExtractionFactLines', () => {
       '- 联系方式: 13800138000',
       '- 年龄: 25',
       '- 是否学生: 否',
-      '- 意向品牌: 来伊份、奥乐齐',
       '- 意向城市: 上海（置信度: high）',
       '- 意向区域: 杨浦区',
     ]);
+  });
+
+  it('should render brand from currentBrandName option, never from retired preferences.brands (§19.6)', () => {
+    // 品牌唯一真相是 brand_state，由调用方经 options 显式注入；
+    // facts 里即使残留旧存储值（收口前写入）也不得渲染。
+    const lines = formatExtractionFactLines(
+      {
+        ...FALLBACK_EXTRACTION,
+        preferences: {
+          ...FALLBACK_EXTRACTION.preferences,
+          brands: ['旧存储残留品牌'],
+        },
+      },
+      { currentBrandName: '来伊份' },
+    );
+
+    expect(lines).toEqual(['- 意向品牌: 来伊份（来源: 会话品牌状态）']);
+  });
+
+  it('should render no brand line when currentBrandName is absent', () => {
+    const lines = formatExtractionFactLines({
+      ...FALLBACK_EXTRACTION,
+      preferences: {
+        ...FALLBACK_EXTRACTION.preferences,
+        brands: ['旧存储残留品牌'],
+      },
+    });
+
+    expect(lines).toEqual([]);
   });
 
   it('should skip empty fields', () => {

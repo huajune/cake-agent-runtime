@@ -376,7 +376,6 @@ export class PreparationService {
     try {
       return await this.brandStateService.deriveTurnBrandContext({
         persisted: memory.sessionMemory?.brand_state ?? null,
-        facts: memory.sessionMemory?.facts ?? null,
         contactName,
       });
     } catch (error) {

@@ -86,7 +86,10 @@ export class MemoryService {
       )
       .map((message) => ({ role: message.role, content: message.content }));
     const factLines = memory.sessionMemory?.facts
-      ? formatExtractionFactLines(memory.sessionMemory.facts)
+      ? formatExtractionFactLines(memory.sessionMemory.facts, {
+          // 品牌唯一真相是 brand_state（§19.6）；facts.preferences.brands 已退役
+          currentBrandName: memory.sessionMemory.brand_state?.currentBrand?.canonicalName ?? null,
+        })
       : [];
     return {
       recentMessages,

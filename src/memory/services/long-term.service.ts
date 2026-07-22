@@ -12,6 +12,7 @@ import type {
   ActiveBooking,
   LongTermPreferenceFacts,
 } from '../types/long-term.types';
+import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import {
   LONG_TERM_PREFERENCE_FIELD_KEYS,
   userProfileFactValue,
@@ -35,6 +36,11 @@ import {
 export interface FactOrigin {
   sessionId?: string;
   botImId?: string;
+}
+
+/** settlement 专用：血缘之外附带品牌快照源（preferences.brands 已退役，§19.6）。 */
+export interface SettlementFactOrigin extends FactOrigin {
+  brandState?: PersistedBrandState | null;
 }
 
 /**
@@ -145,7 +151,7 @@ export class LongTermService {
     corpId: string,
     userId: string,
     facts: EntityExtractionResult | SessionFacts,
-    origin?: FactOrigin,
+    origin?: SettlementFactOrigin,
   ): Promise<void> {
     try {
       const profileFacts = this.buildProfileFactsFromSettlement(facts, origin);
@@ -381,13 +387,16 @@ export class LongTermService {
    */
   private buildPreferenceFactsFromSettlement(
     facts: EntityExtractionResult | SessionFacts,
-    origin?: FactOrigin,
+    origin?: SettlementFactOrigin,
   ): LongTermPreferenceFacts {
     const updatedAt = new Date().toISOString();
     const preferenceFacts: LongTermPreferenceFacts = {};
     const prefs = facts.preferences as unknown as Record<string, unknown>;
 
     for (const key of LONG_TERM_PREFERENCE_FIELD_KEYS) {
+      // 品牌快照不再走 preferences.brands（字段已退役，读边界恒 null，§19.6），
+      // 由下方 brand_state.currentBrand 显式提供。
+      if (key === 'brands') continue;
       const rawValue = prefs[key];
       const value = unwrapSessionFactValue(rawValue as SessionFactValue<unknown> | null);
       if (!this.hasPreferenceValue(value)) continue;
@@ -396,6 +405,18 @@ export class LongTermService {
         source: 'extraction',
         confidence: 'medium',
         evidence: this.buildSettlementEvidence(rawValue),
+        updatedAt,
+        originSessionId: origin?.sessionId,
+        originBotId: origin?.botImId,
+      });
+    }
+
+    const currentBrand = origin?.brandState?.currentBrand;
+    if (currentBrand) {
+      preferenceFacts.brands = userProfileFactValue([currentBrand.canonicalName], {
+        source: 'extraction',
+        confidence: 'medium',
+        evidence: '会话品牌状态快照（brand_state.currentBrand）',
         updatedAt,
         originSessionId: origin?.sessionId,
         originBotId: origin?.botImId,

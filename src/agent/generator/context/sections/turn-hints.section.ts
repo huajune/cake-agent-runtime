@@ -34,7 +34,6 @@ export class TurnHintsSection implements PromptSection {
     const { normalHints, pendingHints } = this.partition(
       ctx.sessionFacts ?? null,
       ctx.highConfidenceFacts ?? null,
-      ctx.sessionBrandState ?? null,
     );
 
     const parts: string[] = [];
@@ -82,7 +81,6 @@ export class TurnHintsSection implements PromptSection {
   private partition(
     sessionFacts: EntityExtractionResult | SessionFacts | null,
     highConfidenceFacts: HighConfidenceFacts | null,
-    sessionBrandState: PromptContext['sessionBrandState'] = null,
   ): {
     normalHints: HighConfidenceFacts | null;
     pendingHints: HighConfidenceFacts | null;
@@ -214,19 +212,10 @@ export class TurnHintsSection implements PromptSection {
       },
     );
 
-    // 品牌口径改读 SessionBrandState（§9 单一存储；不再读 preferences.brands 投影）：
-    // 跨轮已知品牌 = currentBrand 单元素。当前轮品牌写入点已收口（brands 恒 null），
-    // 本轮品牌意图由模型直读原文 + 收尾 reducer 沉淀，此分支只服务防御性兼容。
-    this.partitionHighArrayValue(
-      sessionBrandState?.currentBrand ? [sessionBrandState.currentBrand.canonicalName] : null,
-      highPref.brands,
-      (value) => {
-        normalHints.preferences.brands = value;
-      },
-      (value) => {
-        pendingHints.preferences.brands = value;
-      },
-    );
+    // 品牌不进 turn hints：写入点收口后 highPref.brands 恒 null（partition 对 null
+    // currentFact 直接早退，原防御分支实为死代码，§19.6 随投影退役一并删除）。
+    // 跨轮品牌由 hard-constraints 段直读 sessionBrandState 注入，本轮品牌意图由
+    // 模型直读原文 + 收尾 reducer 沉淀。
     this.partitionHighValue(
       comparableSessionFacts.preferences.salary,
       highPref.salary,

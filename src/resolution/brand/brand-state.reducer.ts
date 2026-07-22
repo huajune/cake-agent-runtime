@@ -35,18 +35,18 @@ export function brandStateChanged(prev: SessionBrandState, next: SessionBrandSta
 }
 
 /**
- * 首次初始化（§9.4 懒迁移）：旧 preferences.brands 末位品牌 > 已验证昵称品牌 seed > 空。
+ * 首次初始化（§9.4）：已验证昵称品牌 seed > 空。
  *
- * 旧数组末位是对话表达（时点晚于加好友的昵称），优先；其余旧品牌直接丢弃
- * （无极性无时序，不值得继承）。seed 仅在 brand_state 不存在时执行一次，
- * 状态一旦存在（哪怕被 browse_all 清成空值）永不重新 seed。
+ * 原「旧 preferences.brands 末位品牌」档（§9.4 懒迁移）已于 2026-07-22 退役：
+ * 生产 Redis 实测 889 个会话中仅 1 个仍具备迁移条件且 TTL 剩 <17h——迁移窗口
+ * （sessionTtl=3 天，早于 brand_state 上线时长）已数学耗尽（§19.6）。
+ * seed 仅在 brand_state 不存在时执行一次，状态一旦存在（哪怕被 browse_all
+ * 清成空值）永不重新 seed。
  */
 export function initBrandState(input: {
-  legacyLastBrand?: SessionBrandRef | null;
   nicknameSeed?: SessionBrandRef | null;
 }): SessionBrandState {
-  const currentBrand = input.legacyLastBrand ?? input.nicknameSeed ?? null;
-  return { currentBrand, excludedBrands: [] };
+  return { currentBrand: input.nicknameSeed ?? null, excludedBrands: [] };
 }
 
 /**

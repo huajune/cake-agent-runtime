@@ -8,9 +8,9 @@
  * - 异步补写（§10.3）：图片描述晚到，由渠道层重新持锁后调 applyLateImageResolutions，
  *   带「过期即弃」防护。
  *
- * 首次初始化（懒迁移，§9.4）：旧 preferences.brands 末位品牌 > 已验证昵称品牌 seed > 空；
- * seed 状态在首轮回合准备阶段即经 deriveTurnBrandContext 构造生效（注入提示词、供工具兜底），
- * 持久化仍随收尾 reducer 统一落盘。
+ * 首次初始化（§9.4）：已验证昵称品牌 seed > 空（旧 preferences.brands 懒迁移档已于
+ * 2026-07-22 退役，§19.6）；seed 状态在首轮回合准备阶段即经 deriveTurnBrandContext
+ * 构造生效（注入提示词、供工具兜底），持久化仍随收尾 reducer 统一落盘。
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
@@ -30,14 +30,9 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import { BRAND_EXECUTABLE_CONFIDENCE } from '@resolution/brand/brand-resolution.types';
-import type { BrandItem } from '@/sponge/sponge.types';
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
-import {
-  PersistedBrandStateSchema,
-  unwrapSessionFactValue,
-  type SessionFacts,
-} from '../types/session-facts.types';
+import { PersistedBrandStateSchema } from '../types/session-facts.types';
 
 export interface TurnBrandContext {
   /** 本轮生效的品牌状态：已持久化状态，或首轮 seed 出的初始状态（未落盘）。 */
@@ -71,7 +66,6 @@ export class BrandStateService {
    */
   async deriveTurnBrandContext(params: {
     persisted: PersistedBrandState | null | undefined;
-    facts: SessionFacts | null;
     contactName?: string;
   }): Promise<TurnBrandContext> {
     const nicknameSeed = await this.resolveNicknameSeed(params.contactName);
@@ -82,9 +76,8 @@ export class BrandStateService {
         nicknameBrands: nicknameSeed.brands,
       };
     }
-    const legacyLastBrand = await this.deriveLegacyLastBrand(params.facts);
     return {
-      state: initBrandState({ legacyLastBrand, nicknameSeed: nicknameSeed.seed }),
+      state: initBrandState({ nicknameSeed: nicknameSeed.seed }),
       persisted: false,
       nicknameBrands: nicknameSeed.brands,
     };
@@ -102,7 +95,6 @@ export class BrandStateService {
     contactName?: string;
     /** 回合收尾开头已读出的会话状态（避免重复 HGETALL）；缺省时内部补读。 */
     persistedBrandState?: PersistedBrandState | null;
-    facts?: SessionFacts | null;
   }): Promise<{ changed: boolean; initialized: boolean }> {
     // 歧义现场在入口无条件记录：歧义结果不写状态，若绑在"状态变化才发事件"上，
     // 纯歧义轮（冲突别名如「小龙」）整档零留痕（§18 观测债，2026-07-21 修复）。
@@ -119,8 +111,7 @@ export class BrandStateService {
       prev = persisted;
     } else {
       const nicknameSeed = await this.resolveNicknameSeed(params.contactName);
-      const legacyLastBrand = await this.deriveLegacyLastBrand(params.facts ?? null);
-      prev = initBrandState({ legacyLastBrand, nicknameSeed: nicknameSeed.seed });
+      prev = initBrandState({ nicknameSeed: nicknameSeed.seed });
       initialized = true;
     }
 
@@ -215,6 +206,22 @@ export class BrandStateService {
     return parsed.data as PersistedBrandState;
   }
 
+  /**
+   * 测试夹具专用直写（test-suite memory-fixture）。
+   *
+   * preferences.brands 已退役（§19.6），用例预设的品牌意向必须以 brand_state
+   * 形态种入才对链路可见。生产路径禁止调用——生产写入仍只经 reducer
+   * （applyTurnResolutions / applyLateImageResolutions，§9.2 单一写入方）。
+   */
+  async seedFixtureBrandState(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    state: PersistedBrandState,
+  ): Promise<void> {
+    await this.writeBrandState(corpId, userId, sessionId, state);
+  }
+
   private async writeBrandState(
     corpId: string,
     userId: string,
@@ -255,22 +262,6 @@ export class BrandStateService {
       );
       return { seed: null, brands: [] };
     }
-  }
-
-  /** 懒迁移：旧 preferences.brands 末位品牌（≈最近表达），经目录回查补品牌 ID。 */
-  private async deriveLegacyLastBrand(facts: SessionFacts | null): Promise<SessionBrandRef | null> {
-    const brands = unwrapSessionFactValue(facts?.preferences?.brands) as string[] | null;
-    const last = brands?.filter((b) => typeof b === 'string' && b.trim())?.at(-1);
-    if (!last) return null;
-    let catalog: BrandItem[] = [];
-    try {
-      catalog = await this.sponge.fetchBrandList();
-    } catch {
-      catalog = [];
-    }
-    const exact = catalog.find((brand) => brand.name === last);
-    // 旧数组存的是当年验证过的标准名；目录里已下架的品牌保留名称、ID 置空
-    return { canonicalName: last, brandId: typeof exact?.id === 'number' ? exact.id : null };
   }
 
   /** 歧义词形现场（brand_resolution_ambiguous）：只挑 ambiguous 结果，无则不发。 */
