@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.25.0] - 2026-07-22
 
-**预计版本**: `v10.25.0`
-**最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 4
 
 ### 更新摘要
 - PR #658 geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）
@@ -106,7 +102,6 @@
 - PR #664 `git diff --check`：通过。
 - PR #664 实现 PR #657/#658/#662 required checks 均通过；#662 最新全量基线为 366 suites、5548 tests。
 - PR #664 正式测试集 batch `3dfaefe1-64e0-48db-b678-d1c9dd591a39`：2/2 passed，Dashboard 与可评估通过率均为 100%。
-<!-- release:pending:end -->
 
 ## [10.24.0] - 2026-07-22
 
