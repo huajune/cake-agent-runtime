@@ -374,20 +374,27 @@ describe('SettlementService', () => {
         reasoning: 'test',
       };
 
-      const result = await service.detectAndSettle(
-        'corp1',
-        'user1',
-        'sess1',
-        fakeFacts,
-        'bot-wxid-1',
-      );
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', fakeFacts, 'bot-wxid-1', {
+        currentBrand: { canonicalName: '肯德基', brandId: 101 },
+        excludedBrands: [],
+        updatedAtMs: now,
+      });
 
       expect(result).toBe(true);
+      // brand_state 随血缘一起下传（§19.6 长期意向品牌快照源）
       expect(mockLongTermService.writeFromSettlement).toHaveBeenCalledWith(
         'corp1',
         'user1',
         fakeFacts,
-        { sessionId: 'sess1', botImId: 'bot-wxid-1' },
+        {
+          sessionId: 'sess1',
+          botImId: 'bot-wxid-1',
+          brandState: {
+            currentBrand: { canonicalName: '肯德基', brandId: 101 },
+            excludedBrands: [],
+            updatedAtMs: now,
+          },
+        },
       );
     });
 

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MemoryService } from '@memory/memory.service';
 import { SessionService } from '@memory/services/session.service';
+import { BrandStateService } from '@memory/services/brand-state.service';
 import {
   EntityExtractionResultSchema,
   FALLBACK_EXTRACTION,
@@ -26,6 +27,7 @@ export class MemoryFixtureService {
   constructor(
     private readonly memoryService: MemoryService,
     private readonly sessionService: SessionService,
+    private readonly brandStateService: BrandStateService,
   ) {}
 
   async reset(scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId'>): Promise<void> {
@@ -45,6 +47,25 @@ export class MemoryFixtureService {
     const facts = this.resolveSessionFacts(setup);
     if (facts) {
       await this.sessionService.saveFacts(scope.corpId, scope.userId, scope.sessionId, facts);
+
+      // preferences.brands 已退役（§19.6），存进 facts 的品牌对链路不可见；
+      // 用例预设的品牌意向按「末位≈最近」种成 brand_state（懒迁移同款口径）。
+      const fixtureBrands = (facts.preferences.brands ?? []).filter(
+        (brand): brand is string => typeof brand === 'string' && brand.trim().length > 0,
+      );
+      const lastBrand = fixtureBrands.at(-1);
+      if (lastBrand) {
+        await this.brandStateService.seedFixtureBrandState(
+          scope.corpId,
+          scope.userId,
+          scope.sessionId,
+          {
+            currentBrand: { canonicalName: lastBrand, brandId: null },
+            excludedBrands: [],
+            updatedAtMs: Date.now(),
+          },
+        );
+      }
     }
 
     const lastCandidatePool = this.normalizeJobSummaries(setup.lastCandidatePool);

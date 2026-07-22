@@ -211,18 +211,20 @@ describe('LongTermService', () => {
             ...FALLBACK_EXTRACTION.interview_info,
             name: '张三',
           },
-          preferences: {
-            ...FALLBACK_EXTRACTION.preferences,
-            brands: ['肯德基'],
-          },
           reasoning: '候选人提供了姓名与品牌意向',
         },
         { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
       );
 
+      // 品牌快照源已迁 brand_state（§19.6）：经 origin.brandState 传入，不再读 preferences.brands
       await service.writeFromSettlement('corp1', 'user1', sessionFacts, {
         sessionId: 'chat-A',
         botImId: 'bot-wxid-A',
+        brandState: {
+          currentBrand: { canonicalName: '肯德基', brandId: 101 },
+          excludedBrands: [],
+          updatedAtMs: 1753100000000,
+        },
       });
 
       const savedProfile = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
@@ -258,6 +260,7 @@ describe('LongTermService', () => {
           ...FALLBACK_EXTRACTION,
           preferences: {
             ...FALLBACK_EXTRACTION.preferences,
+            // 收口前的旧存储残留：不得再被沉淀（§19.6）
             brands: ['肯德基', '必胜客'],
             position: ['后厨'],
             schedule: '下午',
@@ -273,15 +276,23 @@ describe('LongTermService', () => {
         { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
       );
 
-      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
+      await service.writeFromSettlement('corp1', 'user1', sessionFacts, {
+        brandState: {
+          currentBrand: { canonicalName: '必胜客', brandId: null },
+          excludedBrands: [],
+          updatedAtMs: 1753100000000,
+        },
+      });
 
       expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledTimes(1);
       const saved = mockSupabaseStore.upsertProfileFacts.mock.calls[0][4];
+      // brands 快照 = brand_state.currentBrand 单元素；旧 preferences.brands 存储值不参与
       expect(saved.brands).toEqual(
         expect.objectContaining({
-          value: ['肯德基', '必胜客'],
+          value: ['必胜客'],
           source: 'extraction',
           confidence: 'medium',
+          evidence: '会话品牌状态快照（brand_state.currentBrand）',
         }),
       );
       expect(saved.city).toEqual(expect.objectContaining({ value: '上海' }));

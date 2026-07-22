@@ -62,6 +62,7 @@ import type { BrandItem } from '@/sponge/sponge.types';
 import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
+import { assertNoExtractionExampleEcho } from '../facts/placeholder-identity';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   hasMeaningfulValue,
@@ -157,7 +158,7 @@ export class SessionService {
     }
     const content = parsed.data as Partial<WeworkSessionState>;
 
-    return this.applyBrandProjection({
+    return this.retireBrandsField({
       ...EMPTY_SESSION_STATE,
       ...content,
       lastCandidatePool: content.lastCandidatePool ?? null,
@@ -167,29 +168,21 @@ export class SessionService {
   }
 
   /**
-   * preferences.brands 只读投影（§9.2 过渡期）：brand_state 存在时由其现算
-   * （派生口径 = currentBrand 单元素数组，空状态为空数组→null），旧存储值不可见；
-   * brand_state 不存在时保留旧数组原值——它是懒迁移（§9.4）的初始化数据源。
-   * 禁止任何路径直接写入该字段（写入点已全部收口到 brand_state reducer）。
+   * preferences.brands 字段退役墓碑（§19.6，2026-07-22 取代原只读投影）。
+   *
+   * 品牌唯一真相是 brand_state；需要展示品牌的消费方一律直读 brand_state
+   * （提示词硬约束段、fact-lines 的 currentBrandName 选项、settlement 快照均已迁）。
+   * 存储里的旧 brands 值在读边界统一抹平——deepMerge 的"null 不覆盖"语义会让
+   * 收口前写入的旧值在长活跃会话里无限存续（如 6a1e42a5），逐个读方防御不如
+   * 一处截断。schema 保留该字段仅为解析兼容，禁止任何读写复活。
    */
-  private applyBrandProjection(state: WeworkSessionState): WeworkSessionState {
-    const brandState = state.brand_state;
-    if (!brandState || !state.facts) return state;
-
-    const projected = brandState.currentBrand
-      ? sessionFactValue([brandState.currentBrand.canonicalName], {
-          confidence: 'high',
-          source: 'system',
-          evidence: '会话品牌状态投影（currentBrand）',
-          extractedAt: new Date().toISOString(),
-        })
-      : null;
-
+  private retireBrandsField(state: WeworkSessionState): WeworkSessionState {
+    if (!state.facts || state.facts.preferences.brands == null) return state;
     return {
       ...state,
       facts: {
         ...state.facts,
-        preferences: { ...state.facts.preferences, brands: projected },
+        preferences: { ...state.facts.preferences, brands: null },
       },
     };
   }
@@ -771,6 +764,10 @@ export class SessionService {
         outputName: 'WeworkCandidateFacts',
         system: SESSION_EXTRACTION_SYSTEM_PROMPT,
         prompt,
+        // 示例回声防线：弱模型会把提示词示例值（占位手机号等）当默认值填进输出
+        //（badcase 2026-07-22 张三/13800138000 假身份成单）。命中即判本次生成
+        // 失败，走与 API 错误相同的重试/降级，绝不让占位身份落进事实层。
+        validateOutput: assertNoExtractionExampleEcho,
       });
 
       // explicit_provenance / brand_intents 不属于存储态 schema，归一化前单独取出。

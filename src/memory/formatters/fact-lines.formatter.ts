@@ -18,6 +18,14 @@ export interface FactLineFormatOptions {
    * 是"手机号识别：135xx"这类短线索，是提取 LLM 的判断依据。
    */
   includeEvidence?: boolean;
+  /**
+   * 会话当前意向品牌（brand_state.currentBrand.canonicalName）。
+   *
+   * preferences.brands 字段已退役（§19.6）：品牌唯一真相是 brand_state，
+   * 由调用方显式传入而非从 facts 里读——防止存储里收口前的旧值复活。
+   * 不传则不渲染意向品牌行（如事实提取 prompt 的规则线索注入，无需品牌上下文）。
+   */
+  currentBrandName?: string | null;
 }
 
 /** 时间敏感字段超过该时长未更新时，渲染陈旧告警。 */
@@ -105,8 +113,9 @@ export function formatExtractionFactLines(
   if (laborForm && isValidLaborForm(laborForm)) {
     lines.push(`- 用工形式: ${laborForm}${meta(pref.labor_form)}`);
   }
-  const brands = readFactValue(pref.brands);
-  if (brands?.length) lines.push(`- 意向品牌: ${brands.join('、')}${meta(pref.brands)}`);
+  if (options.currentBrandName) {
+    lines.push(`- 意向品牌: ${options.currentBrandName}（来源: 会话品牌状态）`);
+  }
   const brandIds = readFactValue(pref.brand_ids);
   if (brandIds?.length) lines.push(`- 意向品牌ID: ${brandIds.join('、')}${meta(pref.brand_ids)}`);
   const salary = readFactValue(pref.salary);

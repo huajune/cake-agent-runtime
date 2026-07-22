@@ -226,22 +226,14 @@ describe('reduceBrandState（§9.3 四步）', () => {
   });
 });
 
-describe('initBrandState（§9.4 懒迁移）', () => {
-  it('旧 preferences.brands 末位品牌优先于昵称 seed', () => {
-    const state = initBrandState({
-      legacyLastBrand: { canonicalName: '麦当劳', brandId: 2 },
-      nicknameSeed: { canonicalName: '肯德基', brandId: 1 },
-    });
-    expect(state.currentBrand?.canonicalName).toBe('麦当劳');
+describe('initBrandState（§9.4；懒迁移档已于 2026-07-22 退役，§19.6）', () => {
+  it('已验证昵称品牌 seed 进入初始状态', () => {
+    const state = initBrandState({ nicknameSeed: { canonicalName: '肯德基', brandId: 1 } });
+    expect(state.currentBrand?.canonicalName).toBe('肯德基');
     expect(state.excludedBrands).toEqual([]);
   });
 
-  it('无旧数组时用已验证昵称品牌 seed', () => {
-    const state = initBrandState({ nicknameSeed: { canonicalName: '肯德基', brandId: 1 } });
-    expect(state.currentBrand?.canonicalName).toBe('肯德基');
-  });
-
-  it('两者皆无则空状态', () => {
+  it('无昵称 seed 则空状态', () => {
     expect(initBrandState({})).toEqual(EMPTY);
   });
 });

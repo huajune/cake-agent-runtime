@@ -20,6 +20,10 @@ describe('MemoryFixtureService', () => {
     getSessionState: jest.fn(),
   };
 
+  const mockBrandStateService = {
+    seedFixtureBrandState: jest.fn(),
+  };
+
   const scope = {
     corpId: 'corp-1',
     userId: 'user-1',
@@ -28,7 +32,11 @@ describe('MemoryFixtureService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new MemoryFixtureService(mockMemoryService as any, mockSessionService as any);
+    service = new MemoryFixtureService(
+      mockMemoryService as any,
+      mockSessionService as any,
+      mockBrandStateService as any,
+    );
   });
 
   it('should normalize rough badcase context into session facts and job summaries', async () => {
@@ -76,6 +84,38 @@ describe('MemoryFixtureService', () => {
       'session-1',
       expect.objectContaining({ currentStage: 'job_matching' }),
     );
+  });
+
+  it('should seed brand_state from fixture brands (preferences.brands 已退役，§19.6)', async () => {
+    // 夹具预设的品牌意向存进 facts 对链路已不可见（读边界墓碑），
+    // 必须按「末位≈最近」种成 brand_state 才能驱动品牌行为。
+    await service.seed(scope, {
+      sessionFacts: {
+        preferences: { brands: ['肯德基', '来伊份'] },
+        reasoning: 'curated fixture',
+      },
+    });
+
+    expect(mockBrandStateService.seedFixtureBrandState).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'session-1',
+      expect.objectContaining({
+        currentBrand: { canonicalName: '来伊份', brandId: null },
+        excludedBrands: [],
+      }),
+    );
+  });
+
+  it('should not seed brand_state when fixture has no brands', async () => {
+    await service.seed(scope, {
+      sessionFacts: {
+        preferences: { city: '北京' },
+        reasoning: 'curated fixture',
+      },
+    });
+
+    expect(mockBrandStateService.seedFixtureBrandState).not.toHaveBeenCalled();
   });
 
   it('should complete partial structured facts before saving them', async () => {
