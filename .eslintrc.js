@@ -23,7 +23,6 @@ module.exports = {
       // 门面文件本身不 import 旧路径，无需豁免。
       files: ['src/**/*.ts'],
       excludedFiles: [
-        'src/tools/duliday-job-list.tool.ts',
       ],
       rules: {
         'no-restricted-imports': [
