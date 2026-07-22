@@ -572,6 +572,55 @@ describe('buildInviteToGroupTool', () => {
     expect(mockMemoryService.saveInvitedGroup).not.toHaveBeenCalled();
   });
 
+  it('treats errcode=-12 (invite card sent, pending consent) as success and stops trying other groups', async () => {
+    // badcase batch_6a4f77b6ce406a6aeefd34a9：-12 实为"已发送入群邀请卡片、需对方同意"，
+    // 此前被当失败换群重试，上海零售 5 个群连发了 5 张邀请卡片
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imRoomId: 'room-1', groupName: '上海零售①', memberCount: 50, industry: '零售' }),
+      makeGroup({ imRoomId: 'room-2', groupName: '上海零售②', memberCount: 60, industry: '零售' }),
+      makeGroup({ imRoomId: 'room-3', groupName: '上海零售③', memberCount: 70, industry: '零售' }),
+    ]);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({
+      errcode: -12,
+      errmsg:
+        'can not add room member by roomWxid: R:1, contactWxid: w1, wecomErrorTip: 已发送入群邀请给 候选人 ，为了减少打扰，需对方同意邀请后才会加入该外部群聊',
+    });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海', industry: '零售' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(true);
+    expect(result.inviteDelivery).toBe('invite_card');
+    expect(result.groupName).toBe('上海零售①');
+    expect(result._outcome).toContain('入群邀请卡片');
+    expect(result._replyInstruction).toContain('入群邀请已经发你了');
+    // 只调一次拉群接口，不再换下一个候选群重发卡片
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+    expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
+    expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
+    expect(mockOpsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: 'group.invited' }),
+    );
+  });
+
+  it('treats an invite-card-sent errmsg as success even if the errcode differs from -12', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 30 })]);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({
+      errcode: -99,
+      errmsg: 'wecomErrorTip: 已发送入群邀请给 候选人 ，需对方同意邀请后才会加入该外部群聊',
+    });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(true);
+    // 已降级为邀请卡片投递，即使群人数<40 也不能按 direct_add 口径说"已帮你加入"
+    expect(result.inviteDelivery).toBe('invite_card');
+    expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
+  });
+
   it('should still alert when -8 is mixed with an actionable structural failure (400400)', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       makeGroup({ imRoomId: 'room-1', groupName: '上海餐饮①', memberCount: 30 }),

@@ -455,7 +455,14 @@ export function buildInviteToGroupTool(
               inviteApiResult = compatibilityRetryOutcome.inviteResult;
             }
 
-            if (!inviteApiResult.accepted) {
+            // 企微 errcode=-12：外部联系人无法被直接拉入群，平台已改发入群邀请卡片、
+            // 等候选人同意后入群。卡片已实际触达候选人，是投递成功而非失败——此前
+            // 把 -12 当拒绝继续换下一个群重试，候选人一次收到该城市该行业全部候选群
+            // 的邀请卡片（badcase batch_6a4f77b6ce406a6aeefd34a9：上海零售 5 群连发 5 张卡）。
+            const inviteCardSentPendingConsent =
+              !inviteApiResult.accepted && isInviteCardSentPendingConsent(inviteApiResult);
+
+            if (!inviteApiResult.accepted && !inviteCardSentPendingConsent) {
               if (inviteApiResult.code === -9) {
                 // 外部接口返回 user 已在群：业务目标已经达成（候选人在群内），
                 // 按 success 返回。不走 buildToolError，避免 prompt 里"invite 失败分支
@@ -505,11 +512,12 @@ export function buildInviteToGroupTool(
               },
             );
 
-            const isDirectAdd = (targetGroup.memberCount ?? 0) < 40;
+            const isDirectAdd =
+              !inviteCardSentPendingConsent && (targetGroup.memberCount ?? 0) < 40;
             const inviteDelivery = isDirectAdd ? 'direct_add' : 'invite_card';
 
             logger.log(
-              `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed})`,
+              `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed}, pendingConsent=${inviteCardSentPendingConsent})`,
             );
 
             recordGroupInvited(targetGroup.groupName);
@@ -523,7 +531,11 @@ export function buildInviteToGroupTool(
               fallbackUsed,
               selectionReason,
               citySnapshot,
-              _outcome: isDirectAdd ? '候选人已被直接加入目标兼职群' : '已向候选人发送入群邀请卡片',
+              _outcome: inviteCardSentPendingConsent
+                ? '已向候选人发送入群邀请卡片（企微要求候选人同意后才会入群）'
+                : isDirectAdd
+                  ? '候选人已被直接加入目标兼职群'
+                  : '已向候选人发送入群邀请卡片',
               _replyInstruction: isDirectAdd
                 ? `候选人已被直接加入"${targetGroup.groupName}"。回复时可以说"已帮你加入了${targetGroup.groupName}"；不要输出任何群链接或二维码。`
                 : '企微已向候选人发送入群邀请卡片。回复时只能说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接 / URL。',
@@ -888,6 +900,13 @@ function sleep(ms: number): Promise<void> {
 
 function isRoomNotFoundError(result: InviteApiResult): boolean {
   return result.code === 400400 || /room not found/i.test(result.error ?? '');
+}
+
+// 企微 errcode=-12：直接拉人被降级为发送入群邀请卡片（需对方同意），
+// errmsg 通常带 "已发送入群邀请给…需对方同意邀请后才会加入该外部群聊"。
+// errmsg 兜底匹配覆盖平台换错误码但保留提示文案的情况。
+function isInviteCardSentPendingConsent(result: InviteApiResult): boolean {
+  return result.code === -12 || /已发送入群邀请/.test(result.error ?? '');
 }
 
 function shouldAddChatBotToGroup(
