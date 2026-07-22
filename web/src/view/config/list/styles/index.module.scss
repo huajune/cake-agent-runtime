@@ -1,7 +1,7 @@
 @use '@/assets/styles/variables' as *;
 
 .page {
-  padding: $spacing-md;
+  padding: $spacing-md $spacing-lg;
   padding-bottom: 104px;
 }
 
@@ -13,7 +13,7 @@
 }
 
 .moduleSection {
-  margin-bottom: $spacing-xl;
+  margin-bottom: 28px;
   // 锚点跳转时给 sticky 导航条留出头部空间
   scroll-margin-top: 76px;
 }
@@ -27,12 +27,12 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   margin-bottom: $spacing-lg;
   padding: 5px;
   border: 1px solid $border;
-  border-radius: $radius-full;
+  border-radius: $radius-xl;
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
@@ -45,10 +45,16 @@
 }
 
 .sectionNavItem {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 112px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   flex-shrink: 0;
   padding: 8px 14px;
   border: none;
-  border-radius: $radius-full;
+  border-radius: $radius-lg;
   background: transparent;
   font-size: $font-size-xs;
   font-weight: $font-weight-semibold;
@@ -61,6 +67,20 @@
     color: $text-primary;
     background: $bg-secondary;
   }
+}
+
+.sectionNavLabel {
+  color: inherit;
+}
+
+.sectionNavMeta {
+  font-size: 10px;
+  font-weight: $font-weight-medium;
+  color: $text-muted;
+}
+
+.sectionNavItemActive .sectionNavMeta {
+  color: $primary;
 }
 
 .sectionNavItemActive {
@@ -104,59 +124,72 @@
 // ==================== 模型路由网格 ====================
 
 .modelGrid {
+  display: flex;
+  flex-direction: column;
+}
+
+.modelListHeader {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: $spacing-md;
+  grid-template-columns: minmax(420px, 1.15fr) minmax(380px, 1fr);
+  gap: $spacing-lg;
+  padding: 0 $spacing-md 10px;
+  border-bottom: 1px solid $border;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
 }
 
 .modelCell {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(420px, 1.15fr) minmax(380px, 1fr);
+  gap: $spacing-lg;
+  align-items: center;
   min-width: 0;
-  padding: $spacing-md;
-  border: 1px solid $border;
-  border-radius: 16px;
-  background: $bg-primary;
-  transition: border-color $transition-fast, box-shadow $transition-fast;
+  padding: 13px $spacing-md;
+  border-bottom: 1px solid $border;
+  transition: background $transition-fast, box-shadow $transition-fast;
 
   &:hover {
-    border-color: $border-hover;
+    background: $bg-secondary;
+  }
+
+  &:last-child {
+    border-bottom: 0;
   }
 }
 
 .modelCellModified {
-  border-color: $primary;
-  box-shadow: 0 0 0 3px $primary-12;
+  box-shadow: inset 3px 0 0 $primary;
+  background: $primary-03;
 }
 
 .modelCellHint {
   margin: 0;
-  min-height: 2.9em;
+  overflow: hidden;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.55;
   color: $text-secondary;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.modelCellMeta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: $spacing-sm;
-  font-size: 11px;
-  color: $text-muted;
+.modelCellIdentity {
+  grid-column: 1;
+  min-width: 0;
+}
 
-  code {
-    font-family: $font-family-mono;
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: $radius-sm;
-    background: $bg-secondary;
-  }
+.modelCellIdentity .settingHeading {
+  margin-bottom: 5px;
+}
+
+.modelCellControl {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-width: 0;
 }
 
 .moduleHeader {
-  margin-bottom: $spacing-md;
+  margin-bottom: 12px;
 }
 
 .moduleTitle {
@@ -176,14 +209,11 @@
 }
 
 .settingsPanel {
-  padding: $spacing-lg $spacing-xl;
-  border-radius: 20px;
+  padding: $spacing-md $spacing-lg;
+  border-radius: $radius-xl;
   border: 1px solid $border;
   background: $bg-card;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
-}
-
-.settingsPanel {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
   display: flex;
   flex-direction: column;
 }
@@ -197,7 +227,7 @@
   grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
   gap: $spacing-lg;
   align-items: center;
-  padding: 20px 0;
+  padding: 16px 0;
   border-bottom: 1px solid $border;
 }
 
@@ -267,7 +297,7 @@
 .settingDescription {
   margin: 0;
   font-size: $font-size-sm;
-  line-height: 1.65;
+  line-height: 1.55;
   color: $text-secondary;
 }
 
@@ -662,9 +692,9 @@
   gap: $spacing-lg;
   padding: $spacing-md $spacing-lg;
   border-radius: $radius-xl;
-  border: 1px solid $border;
+  border: 1px solid $primary-20;
   background: $bg-card;
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 18px 40px rgba(79, 70, 229, 0.16);
 }
 
 .saveDockInfo {
@@ -699,6 +729,18 @@
   @include button-primary;
   min-height: 40px;
   padding: 0 16px;
+}
+
+.shortcut {
+  margin-left: 8px;
+  padding: 2px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font-family: $font-family-sans;
+  font-size: 10px;
+  line-height: 1;
 }
 
 @include respond-to(lg) {

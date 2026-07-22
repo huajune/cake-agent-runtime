@@ -65,8 +65,30 @@ export interface GroupTaskConfig {
   dryRun: boolean;
 }
 
+export type AgentModelConfigKey =
+  | 'wecomCallbackModelId'
+  | 'extractModelId'
+  | 'visionModelId'
+  | 'evaluateModelId'
+  | 'reviewModelId'
+  | 'repairModelId'
+  | 'reengagementModelId';
+
 export interface AgentReplyConfigResponse {
   config: AgentReplyConfig;
   defaults: AgentReplyConfig;
+  resolvedModels: Record<
+    AgentModelConfigKey,
+    {
+      modelId: string;
+      source:
+        | 'runtime_override'
+        | 'role_environment'
+        | 'role_fallback'
+        | 'chat_fallback'
+        | 'unconfigured';
+      envVar: string;
+    }
+  >;
   groupTaskConfig: GroupTaskConfig;
 }

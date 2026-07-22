@@ -9,6 +9,7 @@ interface ControlBarProps {
   subtitle?: string;
   hints?: ControlHint[];
   hasChanges: boolean;
+  pendingChangeCount?: number;
   isPending: boolean;
 }
 
@@ -17,6 +18,7 @@ export default function ControlBar({
   subtitle,
   hints,
   hasChanges,
+  pendingChangeCount = 0,
   isPending,
 }: ControlBarProps) {
   return (
@@ -25,7 +27,9 @@ export default function ControlBar({
         <div className={styles.titleRow}>
           <h1 className={styles.title}>{title}</h1>
           {hasChanges && (
-            <span className={styles.statusText}>{isPending ? '保存中...' : '有未保存更改'}</span>
+            <span className={styles.statusText} role="status">
+              {isPending ? '保存中...' : `${pendingChangeCount || 1} 项待保存`}
+            </span>
           )}
         </div>
         {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
