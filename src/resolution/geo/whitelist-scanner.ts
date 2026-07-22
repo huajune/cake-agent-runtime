@@ -6,7 +6,7 @@
  * 正则兜底（识别白名单外的"XX区/镇/街道"，但不补 city，留给 LLM 处理）。
  */
 
-import type { WhitelistScanHit, WhitelistScanResult } from '../geo.types';
+import type { WhitelistScanHit, WhitelistScanResult } from './geo.types';
 
 /**
  * 给定消息与字典，按 key 长度降序找出所有非重叠命中。
