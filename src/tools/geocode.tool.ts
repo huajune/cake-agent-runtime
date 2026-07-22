@@ -24,7 +24,7 @@ import {
   hasGenericAmbiguousSuffix,
   normalizeCityName,
   normalizeDistrictForLookup,
-} from '@memory/facts/geo-mappings';
+} from '@resolution/geo';
 import type {
   GeocodeLocationAnchor,
   ToolBuildContext,

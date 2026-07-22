@@ -15,7 +15,7 @@ import { extractUserTexts } from '@tools/shared/precheck-core';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
-import { resolveCityFromDistrict } from '@memory/facts/geo-mappings';
+import { resolveCityFromDistrict } from '@resolution/geo';
 
 const logger = new Logger('invite_to_group');
 
