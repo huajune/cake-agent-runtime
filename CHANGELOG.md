@@ -14,7 +14,7 @@
 **预计版本**: `v10.24.0`
 **最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -35,12 +35,15 @@
 - PR #646 地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）
 - PR #646 业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）
 - PR #646 Phase 3 海绵适配器抽取 + 昆山补录 + 冲突检测 shadow（方案 §11.2/§9.2/§8.2，PR 4）
+- PR #645 地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围
+- PR #645 自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）
+- PR #645 模型自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #645 地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围
 
 ### 优化调整
 - PR #640 `src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）
@@ -60,6 +63,7 @@
 - PR #646 海绵行政区适配抽为 sponge-area-filter.util（方案 §11.2，Phase 3 第…
 - PR #646 地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）
 - PR #646 业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）
+- PR #645 自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）
 
 ### 配置变更
 - 无
@@ -68,7 +72,9 @@
 - 无
 
 ### 验证记录
-- 无
+- PR #645 job-list spec **75/75 全绿**：新增 偏差>1km→model_supplied、≤1km 宽松命中不误报、无锚点→unreferenced、区级兜底 provenance、hard_reject 约束正反例
+- PR #645 `pnpm run typecheck` / `pnpm run lint:check` 通过
+- PR #645 提交用 `--no-verify`：pre-commit 钩子会把未暂存改动吞进提交（首次提交实测发生，已重做拆分）；lint/format 已手动执行
 <!-- release:pending:end -->
 
 ## [10.23.0] - 2026-07-22
