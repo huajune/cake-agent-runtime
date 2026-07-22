@@ -153,6 +153,31 @@ describe('ContextService', () => {
     expect(prompt).not.toContain('bookingChecklist.collectionStrategy');
   });
 
+  it('should thread accountIdentity (nickname/gender/botUserId) into the identity anchor', async () => {
+    const { systemPrompt } = await service.compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+      accountIdentity: { botUserId: 'ZhuDongSheng', nickname: '东升', gender: '男' },
+    });
+
+    expect(systemPrompt).toContain('# 账号身份');
+    expect(systemPrompt).toContain('候选人看到的这个企微账号就是你本人');
+    expect(systemPrompt).toContain('你的名字（企微昵称）：「东升」');
+    expect(systemPrompt).toContain('你的性别：男');
+    expect(systemPrompt).toContain('本账号的内部标识是「ZhuDongSheng」');
+  });
+
+  it('should still inject the account-identity anchor without accountIdentity', async () => {
+    const { systemPrompt } = await service.compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+    });
+
+    expect(systemPrompt).toContain('# 账号身份');
+    expect(systemPrompt).toContain('当前未提供具体昵称');
+    expect(systemPrompt).not.toContain('本账号的内部标识');
+  });
+
   it('should keep runtime time injection to a single rendered current time line', async () => {
     const { systemPrompt } = await service.compose({
       scenario: 'candidate-consultation',
@@ -173,6 +198,8 @@ describe('ContextService', () => {
 
     expect(systemPrompt).not.toContain('\n---\n');
     expect(systemPrompt).not.toContain('<!--');
+    // badcase 溯源等维护者注记以 HTML 注释留在源 md，加载时剥离，不得进模型上下文
+    expect(systemPrompt).not.toMatch(/badcase/i);
   });
 
   it('should inject group inventory block when sessionFacts carries a city', async () => {

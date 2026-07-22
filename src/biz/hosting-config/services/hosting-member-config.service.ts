@@ -50,6 +50,24 @@ export class HostingMemberConfigService {
     return entry?.dulidayToken?.trim() || null;
   }
 
+  /**
+   * Agent 账号身份（企微昵称/性别）：注入 system prompt 身份段（IdentitySection），
+   * 让模型确知"自己是谁"。
+   *
+   * 两字段均来自 hosting_member_config（wecomNickname / gender，按 botImId 配置；
+   * 昵称须与托管平台「托管账号名称」即候选人所见企微昵称一致，账号改名时同步改配置）。
+   * 未配置的字段返回 null，由身份段降级为"不编造、轻带过"口径。
+   */
+  async resolveAgentAccountIdentity(
+    botImId: string | null | undefined,
+  ): Promise<{ nickname: string | null; gender: string | null }> {
+    const entry = await this.getByBotImId(botImId);
+    return {
+      nickname: entry?.wecomNickname?.trim() || null,
+      gender: entry?.gender?.trim() || null,
+    };
+  }
+
   private async loadConfig(): Promise<HostingMemberConfig | null> {
     if (Date.now() < this.cacheExpireAt) return this.cache;
     if (this.loadPromise) return this.loadPromise;

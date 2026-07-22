@@ -26,7 +26,7 @@ import {
   StageGoalConfig,
   Threshold,
 } from '@shared-types/strategy-config.types';
-import { PromptSection, PromptContext } from './sections/section.interface';
+import { PromptSection, PromptContext, AccountIdentity } from './sections/section.interface';
 import { IdentitySection } from './sections/identity.section';
 import { RedLinesSection } from './sections/red-lines.section';
 import { DateTimeSection } from './sections/datetime.section';
@@ -55,6 +55,8 @@ export interface ComposeParams {
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
   sessionBrandState?: SessionBrandState | null;
+  /** 托管账号身份（昵称/性别/内部标识）；IdentitySection 账号身份锚定用。 */
+  accountIdentity?: AccountIdentity;
   /** 策略来源：wecom 读 released，test 读 testing，默认 released */
   strategySource?: 'released' | 'testing';
 }
@@ -108,6 +110,7 @@ export class ContextService implements OnModuleInit {
       highConfidenceFacts,
       currentLaborFormIntent,
       sessionBrandState,
+      accountIdentity,
       strategySource = 'released',
     } = params;
 
@@ -127,6 +130,7 @@ export class ContextService implements OnModuleInit {
       highConfidenceFacts,
       currentLaborFormIntent,
       sessionBrandState,
+      accountIdentity,
       currentTimeText: now,
       groupInventoryBlock,
     };
@@ -254,10 +258,21 @@ export class ContextService implements OnModuleInit {
       const filePath = join(this.promptsBasePath, `${assetName}.md`);
       const content = await this.readTextFile(filePath);
       if (content) {
-        this.promptAssets.set(assetName, content);
+        this.promptAssets.set(assetName, this.stripMaintainerComments(content));
       }
     }
     this.logger.log(`提示词资产加载完成，共 ${this.promptAssets.size} 个文件`);
+  }
+
+  /**
+   * 剥离 HTML 注释（<!-- ... -->）：badcase 溯源、修订注记等维护者信息只留在
+   * 源 md 文件里，不进模型上下文——省 token 且避免内部事故细节被模型回显。
+   */
+  private stripMaintainerComments(content: string): string {
+    return content
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n');
   }
 
   private buildStageGoalsMap(config: StrategyConfigRecord): Record<string, StageGoalConfig> {

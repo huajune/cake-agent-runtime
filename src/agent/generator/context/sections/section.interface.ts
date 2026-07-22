@@ -33,6 +33,23 @@ export interface PromptContext {
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态（currentBrand + excludedBrands，§9）；品牌提示的唯一数据源。 */
   sessionBrandState?: SessionBrandState | null;
+  /**
+   * 托管账号身份信息。IdentitySection 用它锚定"候选人看到的这个账号就是你本人"，
+   * 让模型确知自己的名字/性别，防止把账号主人说成"另一个真人"或另编姓名性别
+   * （badcase chat 6a5dedb2ce406a6aeee1ea62：自称"李娜"+"我是女生"，把账号主人
+   * "东升"说成"真人招募经理"）。
+   */
+  accountIdentity?: AccountIdentity;
+}
+
+/** 托管账号身份信息（IdentitySection 渲染用）。 */
+export interface AccountIdentity {
+  /** 渠道回调 botUserId（多为拼音/英文内部标识，如 "ZhuDongSheng"）。 */
+  botUserId?: string;
+  /** 企微账号对外昵称（候选人看到的名字）；来自 hosting_member_config.wecomNickname。 */
+  nickname?: string;
+  /** 账号人设性别（"男"/"女"）；来自 hosting_member_config.gender。 */
+  gender?: string;
 }
 
 /**

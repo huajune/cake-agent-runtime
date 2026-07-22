@@ -10,6 +10,8 @@ This directory is the durable source of truth for editable architecture diagrams
 | Observability data lineage | `observability-data-lineage.excalidraw` |
 | Guardrail architecture | `guardrail-architecture.excalidraw` |
 | Memory system architecture | `memory-system-architecture.excalidraw` |
+| Evidence-first resolution and guardrail feedback loop | `evidence-first-resolution-and-guardrails.excalidraw` |
+| Shareable evidence-first decision architecture | `evidence-first-decision-architecture.excalidraw` |
 
 The first four diagrams form the system-level reading path: start with the system
 boundary, follow a message through the runtime, inspect the main business state

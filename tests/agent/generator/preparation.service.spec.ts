@@ -105,6 +105,10 @@ describe('PreparationService', () => {
     deriveTurnBrandContext: jest.fn(),
   };
 
+  const mockHostingMemberConfig = {
+    resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
+  };
+
   let service: PreparationService;
 
   beforeEach(() => {
@@ -202,6 +206,7 @@ describe('PreparationService', () => {
       mockGroupResolver as never,
       mockGroupMembership as never,
       mockBrandStateService as never,
+      mockHostingMemberConfig as never,
     );
   });
 
@@ -274,6 +279,60 @@ describe('PreparationService', () => {
     expect(result.turnState.candidatePool).toEqual([
       expect.objectContaining({ jobId: 1, storeName: '长白' }),
     ]);
+  });
+
+  it('threads hosting-member account identity into compose (badcase 6a5dedb2)', async () => {
+    mockHostingMemberConfig.resolveAgentAccountIdentity.mockResolvedValueOnce({
+      nickname: '东升',
+      gender: '男',
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你叫什么名字' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        botImId: 'im-bot-1',
+        botUserId: 'ZhuDongSheng',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(mockHostingMemberConfig.resolveAgentAccountIdentity).toHaveBeenCalledWith('im-bot-1');
+    expect(mockContext.compose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountIdentity: { botUserId: 'ZhuDongSheng', nickname: '东升', gender: '男' },
+      }),
+    );
+  });
+
+  it('degrades to empty account identity when the config read fails', async () => {
+    mockHostingMemberConfig.resolveAgentAccountIdentity.mockRejectedValueOnce(
+      new Error('config store down'),
+    );
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        botImId: 'im-bot-1',
+        botUserId: 'ZhuDongSheng',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(mockContext.compose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountIdentity: { botUserId: 'ZhuDongSheng', nickname: undefined, gender: undefined },
+      }),
+    );
   });
 
   it('does not inject an unverified WeChat nickname as a target brand (Gattouzo regression)', async () => {
@@ -609,7 +668,7 @@ describe('PreparationService', () => {
     );
 
     expect(result.finalPrompt).toContain('[历史背景｜来自候选人此前在本平台的咨询]');
-    expect(result.finalPrompt).toContain('另一位招聘顾问');
+    expect(result.finalPrompt).toContain('另一位招募经理');
     // 档案信息仍然渲染，只是被打上"来自此前会话"的口径
     expect(result.finalPrompt).toContain('姓名: 张三');
   });
