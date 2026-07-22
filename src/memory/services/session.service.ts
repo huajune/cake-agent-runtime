@@ -64,7 +64,7 @@ import {
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
-import { resolveCityFromGeoSignals } from '@resolution/geo';
+import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -1246,6 +1246,17 @@ export class SessionService implements OnModuleDestroy {
    */
   private backfillCityFromWhitelist(facts: EntityExtractionResult): EntityExtractionResult {
     if (facts.preferences.city) return facts;
+    // 冲突 shadow（方案 §8.2 / Phase 3）：多信号指向不同城市时现行先命中先赢；
+    // 落库观测走岗位工具 queryMeta.geoSignalConflictShadow，这里仅辅助定位。
+    const conflictShadow = detectGeoSignalConflict(
+      facts.preferences.district,
+      facts.preferences.location,
+    );
+    if (conflictShadow) {
+      this.logger.warn(
+        `[extractFacts] 地理信号冲突（shadow，行为不变仍先命中先赢）: ${JSON.stringify(conflictShadow)}`,
+      );
+    }
     const resolved = resolveCityFromGeoSignals(
       facts.preferences.district,
       facts.preferences.location,

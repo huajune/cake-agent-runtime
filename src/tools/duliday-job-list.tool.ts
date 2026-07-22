@@ -31,6 +31,7 @@ import {
   filterJobsToRequestedAdministrativeArea,
   normalizeSpongeCityFilters,
 } from '@tools/duliday/job-list/sponge-area-filter.util';
+import { detectGeoSignalConflict } from '@resolution/geo';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
@@ -1535,6 +1536,13 @@ export function buildJobListTool(
               areaLevelQuery: distanceAnchor?.precision === 'area_level',
               areaName: distanceAnchor?.areaName ?? null,
             },
+            // 地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）：会话事实的多个
+            // 地理信号指向不同城市时记录"本应 ambiguous"案例，仅观测不干预——
+            // 现行先命中先赢行为不变；enforce 需 shadow 观测 1~2 周后人工决策（§17.4）。
+            geoSignalConflictShadow: detectGeoSignalConflict(
+              context.sessionFacts?.preferences?.district ?? null,
+              context.sessionFacts?.preferences?.location ?? null,
+            ),
             distanceThresholdKm: maxKm ?? null,
             distanceScanPages,
             distanceScanTruncated,

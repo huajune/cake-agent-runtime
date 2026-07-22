@@ -1,5 +1,6 @@
 import {
   COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  detectGeoSignalConflict,
   DISTRICT_TO_CITY,
   LOCATION_TO_CITY,
   NATIONAL_CITY_SUFFIX_TO_CITY,
@@ -121,6 +122,34 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
         expect(key.length).toBeGreaterThan(0);
         expect(value.trim().length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe('detectGeoSignalConflict（Phase 3 冲突检测 shadow 档）', () => {
+    it('多信号指向不同城市 → 记录候选清单与先命中城市（badcase xnp1u820 形态）', () => {
+      const shadow = detectGeoSignalConflict(['静安区'], ['光谷']);
+      expect(shadow).toEqual({
+        candidates: [
+          { city: '上海', evidence: 'unique_district_alias', matchedText: '静安区' },
+          { city: '武汉', evidence: 'hotspot_alias', matchedText: '光谷' },
+        ],
+        firstHitCity: '上海',
+      });
+      // shadow 不改变现行行为：resolveCityFromGeoSignals 仍先命中先赢
+      expect(resolveCityFromGeoSignals(['静安区'], ['光谷'])).toEqual({
+        value: '上海',
+        evidence: 'unique_district_alias',
+      });
+    });
+
+    it('多信号指向同一城市 → 不构成冲突', () => {
+      expect(detectGeoSignalConflict(['青浦区'], ['陆家嘴'])).toBeNull();
+    });
+
+    it('单信号 / 白名单外信号 / 空信号 → 不构成冲突', () => {
+      expect(detectGeoSignalConflict(['静安区'], null)).toBeNull();
+      expect(detectGeoSignalConflict(['鼓楼区'], ['万达广场'])).toBeNull();
+      expect(detectGeoSignalConflict(null, null)).toBeNull();
     });
   });
 });

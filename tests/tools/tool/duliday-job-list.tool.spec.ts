@@ -2016,6 +2016,37 @@ describe('buildJobListTool', () => {
     });
   });
 
+  describe('地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）', () => {
+    it('会话事实多信号指向不同城市 → queryMeta.geoSignalConflictShadow 记录候选，行为不变', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+      const ctx: ToolBuildContext = {
+        ...mockContext,
+        sessionFacts: {
+          preferences: { district: ['静安区'], location: ['光谷'] },
+        } as unknown as ToolBuildContext['sessionFacts'],
+      };
+
+      const result = await executeTool(ctx, { ...defaultInput, cityNameList: ['北京'] });
+
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta.geoSignalConflictShadow).toEqual({
+        candidates: [
+          { city: '上海', evidence: 'unique_district_alias', matchedText: '静安区' },
+          { city: '武汉', evidence: 'hotspot_alias', matchedText: '光谷' },
+        ],
+        firstHitCity: '上海',
+      });
+    });
+
+    it('信号一致或缺失 → shadow 为 null', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+
+      const result = await executeTool(mockContext, { ...defaultInput, cityNameList: ['北京'] });
+
+      expect(result.queryMeta.geoSignalConflictShadow).toBeNull();
+    });
+  });
+
   describe('区级锚点距离估算口径（方案 11.3 B-1）', () => {
     const haidianStoreJob = () =>
       makeJobData({
