@@ -14,7 +14,7 @@
 **预计版本**: `v10.24.0`
 **最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -39,12 +39,29 @@
 - PR #645 自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）
 - PR #645 模型自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐
 - PR #647 拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发
+- PR #651 收敛面试、人设与护栏 badcase
+- PR #651 修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。
+- PR #651 将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。
+- PR #651 品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。
+- PR #651 同步证据优先的解析/护栏架构文档与 Excalidraw 图。
+- PR #651 收敛面试、人设与护栏 badcase，并下线品牌解析旧对照组
 
 ### 新功能
-- 无
+- PR #651 Hosting member 配置可为 Agent 提供账号昵称与性别；读取失败或缺失时安全降级为未配置。
+- PR #651 面试预约支持识别线上面试信号，并生成与线上流程一致的成功回复。
+- PR #651 面试窗口校验支持候选人约定的窗口内具体时分，而非强制回落到窗口起点。
 
 ### 问题修复
 - PR #645 地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围
+- PR #651 阻止模型把窗口外自编时刻提交给预约接口。
+- PR #651 阻止线上面试成功后错误提示候选人到店。
+- PR #651 阻止 Agent 把同一企微账号描述成机器人、第三方或“转人工”入口。
+- PR #651 阻止引用消息中的 Agent 品牌表述污染候选人品牌意向。
+- PR #651 删除已完成使命的 legacy brand shadow 路径，避免继续维护无行为影响的重复实现与分母计数。
+- PR #651 修复窗口制面试预约：候选人约定的具体时刻必须落在真实面试窗口内，线上/视频/电话面试不再发送到店话术。
+- PR #651 将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。
+- PR #651 品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。
+- PR #651 同步证据优先的解析/护栏架构文档与 Excalidraw 图。
 
 ### 优化调整
 - PR #640 `src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）
@@ -52,6 +69,9 @@
 - PR #640 `src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）
 - PR #640 Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）
 - PR #640 旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致
+- PR #651 `human_service_phrase_leak` 依据两周真阳性样本由 observe 升为 revise，并增加确定性重写反馈。
+- PR #651 复聊与主 Agent 统一使用“招募经理”身份口径。
+- PR #651 品牌解析架构文档按 2026-07-22 裁定更新下线依据、回滚边界和发布后观察项。
 
 ### 运维与流程
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -66,9 +86,16 @@
 - PR #646 业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）
 - PR #645 自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）
 - PR #647 拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发
+- PR #651 数据库 migration / schema / RPC / RLS / 回填：N/A，本 PR 不包含数据库变更。
+- PR #651 部署顺序：无前置 migration 或配置写入；应用可按现有 tag 触发流程直接滚动部署。
+- PR #651 回滚：回滚本 PR 的 squash commit 或回退到上一生产 tag；无数据回滚动作。
+- PR #651 发布后观察：面试预约失败率、线上面试回复、`human_service_phrase_leak` revise 命中与品牌解析异常。
+- PR #651 收敛面试、人设与护栏 badcase
 
 ### 配置变更
-- 无
+- PR #651 环境变量：N/A，无新增、修改或废弃变量。
+- PR #651 Hosting member schema：无新增配置键；仅开始读取既有 `wecomNickname` / `gender` 字段。
+- PR #651 `pnpm config:hosting:check:prod` 已通过：10 个 runtime members 覆盖 9 个代码映射。
 
 ### 环境变量提醒
 - 无
@@ -79,6 +106,17 @@
 - PR #645 提交用 `--no-verify`：pre-commit 钩子会把未暂存改动吞进提交（首次提交实测发生，已重做拆分）；lint/format 已手动执行
 - PR #647 新增 2 条回归测试（-12 只调一次接口不换群、errmsg 兜底匹配），invite 工具 44 条测试全过
 - PR #647 `tsc --noEmit` / ESLint / Prettier 通过（pre-push 钩子在 worktree 内因 web/node_modules 缺失中断于前端构建，与本改动无关，完整 CI 由 GitHub Actions 跑）
+- PR #651 定向回归：9 个套件、452 条测试通过。
+- PR #651 集成修复后护栏套件：165 条测试通过。
+- PR #651 `pnpm run lint:check`
+- PR #651 `pnpm run format:check`
+- PR #651 `pnpm run typecheck`
+- PR #651 `pnpm run build:ci`（前端 + Nest 构建）
+- PR #651 `pnpm run test:ci`：365 个套件通过、1 个跳过；5529 条测试通过、6 条跳过。
+- PR #651 `pnpm run test:di-smoke`
+- PR #651 `git diff --check`
+- PR #651 pre-push `pnpm run ci:check` 再次通过。
+- PR #651 关键生产链路发布后冒烟验证。
 <!-- release:pending:end -->
 
 ## [10.23.0] - 2026-07-22
