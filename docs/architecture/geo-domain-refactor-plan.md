@@ -468,7 +468,7 @@ sequenceDiagram
 
 修复设计——**杠杆放在工具输出文本**（门店名照抄类 badcase 证明模型会高保真照抄工具文本，把正确表述放进被照抄的文本里是最稳的一层）：
 
-1. **锚点精度确定性传递**：geocode 的 `areaLevelQuery` 经回合上下文（ToolBuildContext / `GeoQueryMeta.anchor`）传给岗位工具，**不依赖模型转抄参数**；
+1. **锚点精度与坐标均确定性传递**：geocode 的 `areaLevelQuery` 经回合上下文（ToolBuildContext / `GeoQueryMeta.anchor`）传给岗位工具，**不依赖模型转抄参数**。坐标本身同样不可信任模型转抄：实证 chat `6a60528bce406a6aee8004f9`（2026-07-22）中，模型在"5km 复查"轮未调 geocode、自编了一组与真实锚点偏差约 3.7km 的坐标，导致该轮 5 公里圈画错位置（4.5km 的门店被算成 1.2km，本轮结论未出错纯属年龄过滤兜住）。修法：岗位工具边界校验模型传入坐标与会话内最近一次 geocode 结果的偏差，超过 1km 记 `GeoQueryMeta.anchor.source='model_supplied'` 观测（shadow 先行，是否强制回退 geocode 坐标待观测数据决策）；
 2. **距离渲染带估算标记**：区级锚点下，岗位工具输出的距离一律渲染为"约 X.Xkm（按 XX 区估算）"，结果头部声明"本次定位为区级代表点，距离为估算值"；
 3. **工具 description 补一条约束**（prompt 分层原则：工具强绑定约束放工具侧）：区级定位下回复须用估算表述，或先追问具体位置/商圈/定位；
 4. **守卫规则保留为后盾，不下线**：上游修复生效后 `district_level_distance_claim` 拦截量应趋零——这本身就是验收指标（16.2 的对账口径）。
@@ -709,7 +709,8 @@ interface GeoQueryMeta {
    * 锚点精度切分距离类问题。也是工作流 B-1 的精度传递通道（11.3）。
    */
   anchor: {
-    source: 'geocode' | 'session_fact' | 'user_location_share' | null;
+    source: 'geocode' | 'session_fact' | 'user_location_share' | 'model_supplied' | null;
+    // model_supplied = 模型传入坐标与会话内 geocode 结果偏差超阈值（实证见 11.3 修复点 1）
     precision: 'poi' | 'area_level' | null; // area_level = 行政区代表点
     areaLevelQuery: boolean;
   };
@@ -905,3 +906,4 @@ interface GeoQueryMeta {
 | v2.2 | 2026-07-21 | 三类现网痛点（区级距离表述 / geocode 城市消费 / 定位选点）从范围外并入为工作流 B，优先级高于迁移 |
 | v3 | 2026-07-21 | 定稿整理：去除过程性表述，统一章节编号与交叉引用，决策摘要补依据列，过程历史收敛至本表 |
 | v3.1 | 2026-07-21 | 新增 17.4 发版后处置与 shadow 判定：仅冲突检测与全国映射两处 shadow 两段发版，其余复用现有观测网；补发版后真实流量验证清单 |
+| v3.2 | 2026-07-22 | 按 chat 6a60528bce406a6aee8004f9 实证扩展 B-1：模型自编坐标（偏差 3.7km）纳入修复范围——工具边界坐标偏差校验 + `anchor.source` 增加 `model_supplied` 档 |
