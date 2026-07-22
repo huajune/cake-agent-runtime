@@ -218,6 +218,7 @@ describe('buildJobListTool', () => {
     expect(result.markdown).toContain('## 候选人年龄筛选提示');
     expect(result.markdown).toContain('boundary 1 个');
     expect(result.markdown).toContain('hard_reject 1 个');
+    expect(result.markdown).toContain('hard_reject 岗位默认不得推荐');
     expect(result.markdown).toContain('禁止回复"没有一个接受 52 岁"');
     expect(result.queryMeta.ageScreening).toEqual(
       expect.objectContaining({
@@ -228,6 +229,44 @@ describe('buildJobListTool', () => {
         }),
       }),
     );
+  });
+
+  it('无 hard_reject 岗位时不注入"默认不得推荐"约束', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJobData({
+          basicInfo: {
+            jobId: 777,
+            brandName: '奥乐齐',
+            jobName: '理货员',
+            storeInfo: {
+              storeName: '缤谷广场',
+              storeAddress: '上海市长宁区xx路',
+              storeCityName: '上海',
+              storeRegionName: '长宁区',
+            },
+          },
+          hiringRequirement: {
+            basicPersonalRequirements: { minAge: 18, maxAge: 45 },
+          },
+        }),
+      ],
+      total: 1,
+    });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        sessionFacts: { interview_info: { age: '20' } } as ToolBuildContext['sessionFacts'],
+      },
+      {
+        ...defaultInput,
+        includeHiringRequirement: true,
+      },
+    );
+
+    expect(result.markdown).toContain('hard_reject 0 个');
+    expect(result.markdown).not.toContain('hard_reject 岗位默认不得推荐');
   });
 
   describe('跨轮重复查询检测（badcase 6a5dc7c4ce406a6aee57bf6d）', () => {
@@ -2093,6 +2132,8 @@ describe('buildJobListTool', () => {
         precision: 'area_level',
         areaLevelQuery: true,
         areaName: '海淀区',
+        coordsProvenance: 'turn_geocode',
+        coordsDeviationKm: null,
       });
       // brandNearestStores displayLine 同样必须带估算口径
       expect(result.queryMeta.brandNearestStores[0].nearestStores[0].displayLine).toContain(
@@ -2129,10 +2170,12 @@ describe('buildJobListTool', () => {
         precision: 'poi',
         areaLevelQuery: false,
         areaName: null,
+        coordsProvenance: 'turn_geocode',
+        coordsDeviationKm: null,
       });
     });
 
-    it('坐标与本轮 geocode 锚点不匹配（位置分享等）→ 精确口径，anchor.source=null', async () => {
+    it('坐标与本轮 geocode 锚点偏差>1km → shadow 记 model_supplied，不干预查询与渲染（方案 11.3 v3.2）', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
       const ctx: ToolBuildContext = {
         ...mockContext,
@@ -2153,13 +2196,67 @@ describe('buildJobListTool', () => {
         location: { longitude: 116.29, latitude: 39.95, range: 10000 },
       });
 
+      // 渲染与查询行为不变（shadow 只观测）：仍按 poi 精确口径
       expect(result.markdown).not.toContain('估算');
-      expect(result.queryMeta.anchor).toEqual({
-        source: null,
-        precision: 'poi',
-        areaLevelQuery: false,
-        areaName: null,
+      expect(result.queryMeta.anchor).toEqual(
+        expect.objectContaining({
+          source: 'model_supplied',
+          precision: 'poi',
+          areaLevelQuery: false,
+          areaName: null,
+          coordsProvenance: 'model_supplied',
+        }),
+      );
+      expect(result.queryMeta.anchor.coordsDeviationKm).toBeGreaterThan(1);
+    });
+
+    it('坐标偏离锚点 ≤1km（超出 0.005° 严格容差）→ 仍按 turn_geocode 记录偏差，不误报自编', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
+      const ctx: ToolBuildContext = {
+        ...mockContext,
+        geocodeResolvedAnchors: [
+          {
+            longitude: 116.29,
+            latitude: 39.95,
+            areaLevelQuery: false,
+            areaName: null,
+            city: '北京市',
+          },
+        ],
+      };
+
+      // Δlng 0.008°(~0.68km) + Δlat 0.002°(~0.22km)：严格容差外、1km 内
+      const result = await executeTool(ctx, {
+        ...defaultInput,
+        cityNameList: ['北京'],
+        location: { longitude: 116.298, latitude: 39.952, range: 10000 },
       });
+
+      expect(result.queryMeta.anchor.coordsProvenance).toBe('turn_geocode');
+      expect(result.queryMeta.anchor.source).toBe(null);
+      expect(result.queryMeta.anchor.coordsDeviationKm).toBeGreaterThan(0);
+      expect(result.queryMeta.anchor.coordsDeviationKm).toBeLessThanOrEqual(1);
+    });
+
+    it('本轮无 geocode 锚点但模型传了坐标（改半径复查未重新 geocode）→ 记 unreferenced', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
+
+      const result = await executeTool(
+        { ...mockContext, geocodeResolvedAnchors: [] },
+        {
+          ...defaultInput,
+          cityNameList: ['北京'],
+          location: { longitude: 116.29, latitude: 39.95, range: 5000 },
+        },
+      );
+
+      expect(result.queryMeta.anchor).toEqual(
+        expect.objectContaining({
+          source: null,
+          coordsProvenance: 'unreferenced',
+          coordsDeviationKm: null,
+        }),
+      );
     });
 
     it('工具内区级兜底（regionRelaxedToLocation）→ 同样按区级估算口径渲染', async () => {
@@ -2206,6 +2303,8 @@ describe('buildJobListTool', () => {
         precision: 'area_level',
         areaLevelQuery: true,
         areaName: '海淀区',
+        coordsProvenance: 'turn_geocode',
+        coordsDeviationKm: null,
       });
     });
 
@@ -2219,6 +2318,7 @@ describe('buildJobListTool', () => {
 
       expect(builtTool.description).toContain('区级定位下距离必须按估算口径转述');
       expect(builtTool.description).toContain('约 X.Xkm（按 XX 估算）');
+      expect(builtTool.description).toContain('location 坐标禁止凭记忆自编');
     });
   });
 });
