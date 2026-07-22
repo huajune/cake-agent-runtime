@@ -24,6 +24,9 @@ const catalog: BrandItem[] = [
   { id: 10311, name: 'Zara Home', aliases: ['zh'] },
   { id: 10319, name: 'Liquid Laundry', aliases: ['LL'] },
   { id: 10320, name: '成都你六姐', aliases: ['成都六姐'] },
+  // 2026-07-21 生产误判复现用：渠道缩写撞车 + 4 字符拉丁别名昵称撞车
+  { id: 10321, name: 'BAKER&SPICE', aliases: ['BS'] },
+  { id: 10322, name: 'BIIIING缤水', aliases: ['Bing'] },
 ];
 
 function names(results: BrandResolution[]): string[] {
@@ -401,5 +404,36 @@ describe('resolveBrands - 误命中归因字段（sourceText/matchedText）', ()
     const [result] = positives(resolveBrands(longClause, 'user_text', catalog));
     expect(result.sourceText).toHaveLength(81); // 80 字符 + 省略号
     expect(result.sourceText!.endsWith('…')).toBe(true);
+  });
+});
+
+describe('resolveBrands - 渠道缩写与昵称自介误命中（2026-07-21 生产审计）', () => {
+  it('"我是BS上加的" 指 Boss直聘 渠道，不命中 BAKER&SPICE（黑名单降级为仅全等）', () => {
+    expect(resolveBrands('我是BS上加的', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('单独打 "BS" 仍可全等命中 BAKER&SPICE（黑名单只降档不封杀）', () => {
+    const results = positives(resolveBrands('BS', 'user_text', catalog));
+    expect(names(results)).toEqual(['BAKER&SPICE']);
+  });
+
+  it('"我是🥚冠Bing" 是加好友昵称自介，不命中 BIIIING缤水', () => {
+    // 归一化剥掉 emoji 后余部 "冠bing" 呈昵称形态；≥4 字符拉丁别名的无边界包含
+    // 此前无自介守卫（2-3 字符守卫覆盖不到），生产实锤误 seed 品牌状态
+    expect(resolveBrands('我是🥚冠Bing', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('"我是Bing" 裸自介同样不命中', () => {
+    expect(resolveBrands('我是Bing', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('带求职语境的自介开头照常识别："我是想问luckin还招吗"', () => {
+    const results = positives(resolveBrands('我是想问luckin还招吗', 'user_text', catalog));
+    expect(names(results)).toEqual(['瑞幸咖啡']);
+  });
+
+  it('非自介句里的 4 字符拉丁别名照常包含命中："Bing有什么兼职"', () => {
+    const results = positives(resolveBrands('Bing有什么兼职', 'user_text', catalog));
+    expect(names(results)).toEqual(['BIIIING缤水']);
   });
 });

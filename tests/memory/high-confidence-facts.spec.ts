@@ -800,6 +800,21 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.preferences.district)).toEqual(['延吉市']);
   });
 
+  it('golden（Phase 0 基线）：余姚市 经区县白名单命中"余姚"推导宁波（方案 9.2 双轨现状）', () => {
+    // 提取层现状：DISTRICT_TO_CITY 的"余姚"在三轮扫描的 district 轮先命中，
+    // city 推导为宁波；全国显式表的"余姚市→余姚"在此路径不生效。
+    // Phase 3 海绵口径验证 + 县级市补录后，工具边界的转换将另行加测；本用例锁提取层不漂移。
+    const result = extractHighConfidenceFacts(['我在余姚市这边'], brandData);
+
+    expect(result?.preferences.city).toEqual({
+      value: '宁波',
+      confidence: 'high',
+      source: 'rule',
+      evidence: 'unique_district_alias',
+    });
+    expect(unwrapHighConfidenceValue(result?.preferences.district)).toEqual(['余姚']);
+  });
+
   describe('extractStructuredName', () => {
     it('should extract name from "姓名：XX" key-value pair', () => {
       expect(extractStructuredName('姓名：赵堤')).toBe('赵堤');

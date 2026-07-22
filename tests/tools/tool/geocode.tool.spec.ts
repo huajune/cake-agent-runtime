@@ -590,4 +590,161 @@ describe('geocode tool', () => {
       expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(false);
     });
   });
+
+  describe('城市结论前置披露（方案 11.4 B-2）', () => {
+    function makeContext(sessionCity?: string): ToolBuildContext {
+      return {
+        userId: 'u',
+        corpId: 'c',
+        sessionId: 's',
+        messages: [],
+        ...(sessionCity
+          ? {
+              sessionFacts: {
+                preferences: {
+                  city: { value: sessionCity, confidence: 'high', evidence: 'explicit_city' },
+                },
+              } as unknown as ToolBuildContext['sessionFacts'],
+            }
+          : {}),
+      };
+    }
+
+    it('POI 级 unique 解析 → _cityConfirmed 前置为首字段，含城市与定位点', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '九亭镇', district: '松江区', township: '九亭镇' }),
+      ]);
+
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '九亭',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(Object.keys(result)[0]).toBe('_cityConfirmed');
+      expect(result._cityConfirmed).toBe('已确认城市：上海市；已定位到 九亭镇（精确坐标）');
+      expect(result._cityConflictNotice).toBeUndefined();
+      expect(result.resolution).toBe('unique');
+    });
+
+    it('区级 unique 解析 → _cityConfirmed 标注行政区代表点而非精确坐标', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '嘉定区', district: '嘉定区', township: '' }),
+      ]);
+
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '嘉定',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(result._cityConfirmed).toBe('已确认城市：上海市（已定位到行政区代表点：嘉定区）');
+      expect(result._cityConfirmed).not.toContain('精确坐标');
+    });
+
+    it('解析城市与会话记忆城市冲突 → 附 _cityConflictNotice，不静默覆盖', async () => {
+      const ctx = makeContext('成都');
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '静安寺', district: '静安区', township: '' }),
+      ]);
+
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '静安寺',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(result._cityConflictNotice).toContain('上海市');
+      expect(result._cityConflictNotice).toContain('成都');
+      expect(result._cityConflictNotice).toContain('禁止静默');
+      // 冲突只做知情披露，解析结果本身不被改写
+      expect((result.result as Record<string, unknown>).city).toBe('上海市');
+    });
+
+    it('会话记忆城市与解析城市一致（市后缀差异归一）→ 不附冲突披露', async () => {
+      const ctx = makeContext('上海');
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '静安寺', district: '静安区', township: '' }),
+      ]);
+
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '静安寺',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(result._cityConflictNotice).toBeUndefined();
+    });
+
+    it('description 声明解析成功后禁止再反问城市', () => {
+      expect(toolInstance.description).toContain('_cityConfirmed');
+      expect(toolInstance.description).toContain('禁止再向候选人反问');
+      expect(toolInstance.description).toContain('不得静默按新城市推进');
+    });
+  });
+
+  describe('回合上下文锚点记录（方案 11.3 B-1：areaLevelQuery 确定性传递）', () => {
+    function makeContext(): ToolBuildContext {
+      return { userId: 'u', corpId: 'c', sessionId: 's', messages: [] };
+    }
+
+    it('区级 unique 解析 → 记录 areaLevelQuery=true + 行政区名到 context.geocodeResolvedAnchors', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '嘉定区', district: '嘉定区', township: '' }),
+      ]);
+
+      await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '嘉定',
+        city: '上海',
+      });
+
+      expect(ctx.geocodeResolvedAnchors).toHaveLength(1);
+      expect(ctx.geocodeResolvedAnchors?.[0]).toMatchObject({
+        longitude: 121.27,
+        latitude: 31.32,
+        areaLevelQuery: true,
+        areaName: '嘉定区',
+        city: '上海市',
+      });
+    });
+
+    it('POI 级 unique 解析 → 记录 areaLevelQuery=false', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '九亭镇', district: '松江区', township: '九亭镇' }),
+      ]);
+
+      await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '九亭',
+        city: '上海',
+      });
+
+      expect(ctx.geocodeResolvedAnchors).toHaveLength(1);
+      expect(ctx.geocodeResolvedAnchors?.[0]).toMatchObject({
+        areaLevelQuery: false,
+        areaName: null,
+      });
+    });
+
+    it('ambiguous 多城歧义 → 不记录锚点', async () => {
+      const ctx = makeContext();
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ city: '南京市', district: '鼓楼区', formattedAddress: '南京市鼓楼区' }),
+        makeCandidate({ city: '福州市', district: '鼓楼区', formattedAddress: '福州市鼓楼区' }),
+      ]);
+
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '鼓楼',
+      })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('ambiguous');
+      expect(ctx.geocodeResolvedAnchors).toBeUndefined();
+    });
+  });
 });

@@ -120,6 +120,46 @@ describe('buildSendStoreLocationTool', () => {
     });
   });
 
+  it('golden（Phase 0 / 方案 11.5 B-3）：store 目的地坐标来自海绵 storeInfo 直传，不经 geocode 复核', async () => {
+    // badcase 0m4zs1h6（chat 6a4dcef8ce406a6aeec56fd8）排查结论：发给候选人的错误
+    // 定位坐标 (121.511937, 31.239212) 正是海绵门店数据 storeInfo 的原值（与上海中心
+    // 大厦真实位置偏差约 800m），本工具按现状直传，选点排序（ranker）不参与 store
+    // 分支——根因是门店坐标数据质量。本用例锁定"直传"现状：后续若引入坐标复核/
+    // 纠偏，必须显式修改本基线并附带方案依据。
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          jobId: 528365,
+          jobName: '成都你六姐-上海中心店（新店）-前厅服务员-兼职',
+          storeInfo: {
+            storeName: '上海中心店（新店）',
+            storeAddress: '上海市浦东新区陆家嘴银城中路501号上海中心大厦',
+            latitude: 31.239212,
+            longitude: 121.511937,
+          },
+        }),
+      ],
+    });
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool({ jobId: 528365 });
+
+    expect(result.success).toBe(true);
+    expect(result.latitude).toBe(31.239212);
+    expect(result.longitude).toBe(121.511937);
+    expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
+    expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageType: SendMessageType.LOCATION,
+        payload: expect.objectContaining({
+          latitude: 31.239212,
+          longitude: 121.511937,
+          name: '上海中心店（新店）',
+        }),
+      }),
+    );
+  });
+
   it('should fallback to current focus job when jobId is omitted', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJob()],

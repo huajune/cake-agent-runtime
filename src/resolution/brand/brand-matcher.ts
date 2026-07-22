@@ -260,9 +260,30 @@ function isLowInformationShortLatinMatch(params: {
   }
   if (params.source !== 'user_text') return false;
   if (isBareSelfIntroduction(params.normalizedClause, params.normalizedAlias)) return true;
+  if (isLatinNicknameSelfIntroMatch(params.normalizedClause, params.normalizedAlias)) return true;
   if (!/^[a-z0-9]{2,3}$/.test(params.normalizedAlias)) return false;
   if (isGroupNicknameIntroduction(params.normalizedClause, params.normalizedAlias)) return true;
   return SHORT_LATIN_NICKNAME_PATTERN.test(params.normalizedClause);
+}
+
+const SELF_INTRO_PREFIX_PATTERN = /^(?:你好|哈喽|嗨)?(?:我是|我叫|叫我|昵称是)/;
+/** 自介余部出现任一求职语境信号即不算昵称（"我是想问luckin还招吗"照常识别）。 */
+const SELF_INTRO_JOB_HINT_PATTERN = /[想找要问招做干]|应聘|兼职|全职|工作|上班|岗位?/;
+
+/**
+ * 自介句里的英数昵称片段不是品牌。「我是🥚冠Bing」归一化剥掉 emoji 后是
+ * "我是冠bing"，而 ≥4 字符英数别名（如 BIIIING缤水 的 "bing"）允许无边界子串包含，
+ * 昵称自介必误命中（2026-07-21 生产审计）。既有 2-3 字符守卫覆盖不到这一档：
+ * 自介前缀 + 余部呈昵称形态（短、含命中别名、无求职语境词）→ 判低信息放弃匹配。
+ */
+function isLatinNicknameSelfIntroMatch(normalizedClause: string, normalizedAlias: string): boolean {
+  if (!/^[a-z0-9]{2,8}$/.test(normalizedAlias)) return false;
+  const prefix = SELF_INTRO_PREFIX_PATTERN.exec(normalizedClause);
+  if (!prefix) return false;
+  const remainder = normalizedClause.slice(prefix[0].length);
+  if (remainder.length === 0 || remainder.length > 12) return false;
+  if (!remainder.includes(normalizedAlias)) return false;
+  return !SELF_INTRO_JOB_HINT_PATTERN.test(remainder);
 }
 
 function isBareSelfIntroduction(normalizedClause: string, normalizedAlias: string): boolean {

@@ -1,9 +1,186 @@
 {
   "baseVersion": "10.22.0",
-  "nextVersion": "10.22.0",
-  "updatedAt": "2026-07-21",
+  "nextVersion": "10.23.0",
+  "updatedAt": "2026-07-22",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "631",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/631",
+      "title": "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
+      ],
+      "summary": [
+        "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
+      ],
+      "features": [],
+      "fixes": [
+        "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "仅改 workflow 单步骤 shell，不触及业务代码",
+        "合入后用补偿模式（workflow_dispatch）实测补录 #627–#630、#620 —— 该实测即本修复的端到端验证",
+        "数据库 migration：N/A"
+      ]
+    },
+    {
+      "number": "627",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/627",
+      "title": "地理领域改造方案定稿 v3.1",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "地理领域改造方案定稿 v3.1"
+      ],
+      "summary": [
+        "地理领域改造方案文档定稿至 v3.1，作为后续现网修复与 resolution/geo 迁移工作的唯一施工规格"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "628",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/628",
+      "title": "区级锚点距离估算口径与精度确定性传递（方案 11.3，PR B-1）",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "候选人只报区/市名时，岗位距离不再显示误导性的精确公里数，改为标注「约X.Xkm（按XX估算）」，并在结果开头声明定位精度为区级代表点"
+      ],
+      "summary": [
+        "修复区级定位下距离数字被 Agent 照抄为精确距离、引发拦截与投诉的问题"
+      ],
+      "features": [],
+      "fixes": [
+        "duliday_job_list 推荐卡片、基本信息、摘要行、品牌门店最近店铺四处距离渲染统一改为区级估算口径，避免模型将区代表点距离误述为精确距离",
+        "geocode 解析结果新增锚点精度确定性传递（坐标 + areaLevelQuery + 行政区名写入回合上下文），岗位查询工具按坐标匹配判定锚点精度，不再依赖模型转抄参数"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 distance-render 工具单测，geocode 与 duliday_job_list 相关测试补充区级/POI 锚点、坐标截断容差等场景用例，共 110 用例通过"
+      ]
+    },
+    {
+      "number": "629",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/629",
+      "title": "geocode 城市结论前置披露与冲突知情（方案 11.4，PR B-2）",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "geocode 已成功解析出城市或门店坐标时，Agent 不再向候选人反问「你在哪个城市」或误报「没有找到该位置」，而是直接据此继续查岗",
+        "本轮解析城市与候选人此前意向城市不一致时，Agent 会主动向候选人确认一次，而不是静默按新城市推进或沿用旧城市"
+      ],
+      "summary": [
+        "修复 geocode 已解析出城市/门店坐标但 Agent 仍反问城市或误报未找到位置的问题"
+      ],
+      "features": [],
+      "fixes": [
+        "geocode 解析结果统一出口新增 _cityConfirmed 作为返回对象首字段，前置披露城市结论（精确坐标标注具体地点，区级锚点标注行政区代表点）",
+        "geocode 工具说明新增约束：解析成功后禁止再反问城市或宣称未找到位置",
+        "本次解析城市与会话记忆意向城市冲突时附加 _cityConflictNotice 知情披露，解析结果本身不被静默改写"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "geocode 测试补充 5 例：城市结论首字段披露顺序、POI/区级披露文案、城市冲突披露、同城归一后不误报冲突，共 37 用例通过"
+      ]
+    },
+    {
+      "number": "630",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/630",
+      "title": "Phase 0 地理行为基线固化（方案 §13，PR 1）",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "Phase 0 地理行为基线固化（方案 §13 PR 1，纯测试）",
+        "Phase 0 地理行为基线固化（方案 §13，PR 1）"
+      ],
+      "summary": [
+        "为 resolution/geo 迁移固化 Phase 0 地理行为基线测试，覆盖地理编码候选排序、地理映射、高置信度提取及门店定位发送等模块，纯测试无生产变更",
+        "排查确认此前门店定位分享偏移问题（badcase 0m4zs1h6）根因是海绵门店坐标数据质量问题（约 800m 偏差），并非候选排序选点逻辑"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增/补写 4 个测试套件共 202 用例，覆盖地理编码精度推断与锚点择优、区划映射 golden cases（含朝阳区业务偏置、余姚双轨现状等）、高置信度提取层 golden case、门店定位坐标直传现状基线"
+      ]
+    },
+    {
+      "number": "620",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/620",
+      "title": "品牌识别两天全量审计的两处边缘误判修复",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "修复候选人以「我是BS上加的」（Boss直聘渠道说明）自我介绍时，被误识别为关注 BAKER&SPICE 品牌的问题",
+        "修复候选人微信昵称含品牌相似字符（如「冠Bing」）时，被误识别为关注相关品牌的问题",
+        "修复同一轮对话中候选人因年龄等原因明确排除某品牌时（如「我43岁，肯德基年龄不行」），系统错误清空其他无关在位品牌的问题，品牌识别状态更准确"
+      ],
+      "summary": [
+        "品牌识别两天全量审计（264 个状态变更事件、114 条人工裁决）定位并修复两处边缘误判：渠道缩写/昵称自我介绍误命中品牌别名、同轮又要又不要误清无关在位品牌"
+      ],
+      "features": [],
+      "fixes": [
+        "渠道缩写「BS」不再因 2 字符边界包含误命中品牌别名，降级为仅全等匹配",
+        "新增昵称自我介绍识别逻辑，避免 4-8 字符英数品牌别名在好友自介场景中被无边界误命中",
+        "修复跨轨（LLM 轨正向匹配 + 规则轨全名否定）产生净否定品牌时，误顶替并清空无关在位品牌的问题"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "typecheck 通过",
+        "lint（--max-warnings=0）通过",
+        "format check 通过",
+        "品牌域 10 suites / 146 tests 通过（含 10 条新增回归用例，覆盖两处误判现场及正反向控制）",
+        "全量 353 suites / 5309 tests 通过"
+      ]
+    },
+    {
+      "number": "636",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/636",
+      "title": "固化 v10.23.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "固化 v10.23.0 发版底账"
+      ],
+      "summary": [
+        "固化 v10.23.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "固化 v10.23.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.22.0",
     "date": "2026-07-21",

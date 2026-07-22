@@ -278,3 +278,44 @@ describe('brandStateChanged', () => {
     expect(brandStateChanged(state, { ...state, currentBrand: null })).toBe(true);
   });
 });
+
+describe('reduceBrandState - 同轮又要又不要不误清在位品牌（2026-07-21 生产审计）', () => {
+  const incumbent: SessionBrandState = {
+    currentBrand: { canonicalName: '成都你六姐', brandId: 6 },
+    excludedBrands: [],
+  };
+
+  it('净否定品牌不上位：肯德基同轮正+负，被排斥且在位六姐保持', () => {
+    // 生产形态："我43岁，肯德基年龄不行"——LLM 轨出 positive、规则轨出 negative。
+    // 修复前 positive 先把肯德基顶上 currentBrand（六姐无辜出局），negative 再排斥
+    // → 最终 currentBrand=null；修复后净否定品牌不参与替换。
+    const next = reduceBrandState(incumbent, [positive('肯德基'), negative('肯德基')]);
+    expect(next.currentBrand?.canonicalName).toBe('成都你六姐');
+    expect(next.excludedBrands.map((b) => b.canonicalName)).toEqual(['肯德基']);
+  });
+
+  it('跨来源同样生效：图片轨 positive + 文字轨 negative', () => {
+    const next = reduceBrandState(incumbent, [
+      positive('肯德基', 'image_description'),
+      negative('肯德基'),
+    ]);
+    expect(next.currentBrand?.canonicalName).toBe('成都你六姐');
+    expect(next.excludedBrands.map((b) => b.canonicalName)).toEqual(['肯德基']);
+  });
+
+  it('净否定不拖累其他品牌上位："肯德基不行，麦当劳呢"', () => {
+    const next = reduceBrandState(incumbent, [
+      positive('肯德基'),
+      negative('肯德基'),
+      positive('麦当劳'),
+    ]);
+    expect(next.currentBrand?.canonicalName).toBe('麦当劳');
+    expect(next.excludedBrands.map((b) => b.canonicalName)).toEqual(['肯德基']);
+  });
+
+  it('在位品牌自身被否定仍照常清空（原行为不回归）', () => {
+    const next = reduceBrandState(incumbent, [positive('成都你六姐'), negative('成都你六姐')]);
+    expect(next.currentBrand).toBeNull();
+    expect(next.excludedBrands.map((b) => b.canonicalName)).toEqual(['成都你六姐']);
+  });
+});

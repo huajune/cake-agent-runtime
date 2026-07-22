@@ -2015,4 +2015,181 @@ describe('buildJobListTool', () => {
       );
     });
   });
+
+  describe('区级锚点距离估算口径（方案 11.3 B-1）', () => {
+    const haidianStoreJob = () =>
+      makeJobData({
+        basicInfo: {
+          jobId: 9101,
+          brandName: 'KFC',
+          storeInfo: {
+            storeName: '中关村店',
+            storeAddress: '北京市海淀区中关村大街1号',
+            storeCityName: '北京',
+            storeRegionName: '海淀区',
+            longitude: 116.3,
+            latitude: 39.96,
+          },
+        },
+      });
+
+    it('本轮坐标命中 geocode 区级锚点 → 距离带"约/按XX估算"标记 + 头部精度声明 + queryMeta.anchor', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
+      const ctx: ToolBuildContext = {
+        ...mockContext,
+        geocodeResolvedAnchors: [
+          {
+            longitude: 116.29,
+            latitude: 39.95,
+            areaLevelQuery: true,
+            areaName: '海淀区',
+            city: '北京市',
+          },
+        ],
+      };
+
+      // 模型转抄坐标时常截断小数位：偏移 < 0.005° 仍应命中锚点
+      const result = await executeTool(ctx, {
+        ...defaultInput,
+        cityNameList: ['北京'],
+        location: { longitude: 116.2901, latitude: 39.9502, range: 10000 },
+      });
+
+      expect(result.markdown).toContain('定位精度：区级代表点（海淀区）');
+      expect(result.markdown).toMatch(/约\d+\.\dkm（按海淀区估算）/);
+      expect(result.queryMeta.anchor).toEqual({
+        source: 'geocode',
+        precision: 'area_level',
+        areaLevelQuery: true,
+        areaName: '海淀区',
+      });
+      // brandNearestStores displayLine 同样必须带估算口径
+      expect(result.queryMeta.brandNearestStores[0].nearestStores[0].displayLine).toContain(
+        '（按海淀区估算）',
+      );
+    });
+
+    it('POI 级 geocode 锚点 → 保持精确距离口径，无头部声明', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
+      const ctx: ToolBuildContext = {
+        ...mockContext,
+        geocodeResolvedAnchors: [
+          {
+            longitude: 116.29,
+            latitude: 39.95,
+            areaLevelQuery: false,
+            areaName: null,
+            city: '北京市',
+          },
+        ],
+      };
+
+      const result = await executeTool(ctx, {
+        ...defaultInput,
+        cityNameList: ['北京'],
+        location: { longitude: 116.29, latitude: 39.95, range: 10000 },
+      });
+
+      expect(result.markdown).not.toContain('定位精度：区级代表点');
+      expect(result.markdown).not.toContain('估算');
+      expect(result.markdown).toMatch(/\d+\.\dkm/);
+      expect(result.queryMeta.anchor).toEqual({
+        source: 'geocode',
+        precision: 'poi',
+        areaLevelQuery: false,
+        areaName: null,
+      });
+    });
+
+    it('坐标与本轮 geocode 锚点不匹配（位置分享等）→ 精确口径，anchor.source=null', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
+      const ctx: ToolBuildContext = {
+        ...mockContext,
+        geocodeResolvedAnchors: [
+          {
+            longitude: 121.47,
+            latitude: 31.23,
+            areaLevelQuery: true,
+            areaName: '静安区',
+            city: '上海市',
+          },
+        ],
+      };
+
+      const result = await executeTool(ctx, {
+        ...defaultInput,
+        cityNameList: ['北京'],
+        location: { longitude: 116.29, latitude: 39.95, range: 10000 },
+      });
+
+      expect(result.markdown).not.toContain('估算');
+      expect(result.queryMeta.anchor).toEqual({
+        source: null,
+        precision: 'poi',
+        areaLevelQuery: false,
+        areaName: null,
+      });
+    });
+
+    it('工具内区级兜底（regionRelaxedToLocation）→ 同样按区级估算口径渲染', async () => {
+      // 首次区级精确查询 0 条 → geocode 区中心 → 距离召回命中
+      mockSpongeService.fetchJobs
+        .mockResolvedValueOnce({ jobs: [], total: 0 })
+        .mockResolvedValueOnce({ jobs: [haidianStoreJob()], total: 1 });
+      const geocodeMock = jest
+        .fn()
+        .mockResolvedValue({ longitude: 116.29, latitude: 39.95 });
+      const builder = buildJobListTool(
+        mockSpongeService as never,
+        { recordEvent: jest.fn() } as never,
+        { geocode: geocodeMock } as never,
+      );
+      const ctx: ToolBuildContext = {
+        ...mockContext,
+        thresholds: [
+          {
+            flag: 'max_recommend_distance_km',
+            label: '推荐距离上限',
+            rule: '仅推荐距离范围内门店',
+            max: 10,
+            unit: 'km',
+          },
+        ],
+      };
+      const builtTool = builder(ctx);
+
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const result = (await builtTool.execute(
+        {
+          ...defaultInput,
+          cityNameList: ['北京'],
+          regionNameList: ['海淀区'],
+        } as any,
+        { toolCallId: 'test', messages: [], abortSignal: undefined as any },
+      )) as any;
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+
+      expect(geocodeMock).toHaveBeenCalledWith('海淀区', '北京');
+      expect(result.markdown).toContain('定位精度：区级代表点（海淀区）');
+      expect(result.markdown).toMatch(/约\d+\.\dkm（按海淀区估算）/);
+      expect(result.queryMeta.anchor).toEqual({
+        source: 'geocode',
+        precision: 'area_level',
+        areaLevelQuery: true,
+        areaName: '海淀区',
+      });
+    });
+
+    it('description 声明区级定位的估算表述约束', () => {
+      const builder = buildJobListTool(
+        mockSpongeService as never,
+        { recordEvent: jest.fn() } as never,
+        { geocode: jest.fn().mockResolvedValue(null) } as never,
+      );
+      const builtTool = builder(mockContext);
+
+      expect(builtTool.description).toContain('区级定位下距离必须按估算口径转述');
+      expect(builtTool.description).toContain('约 X.Xkm（按 XX 估算）');
+    });
+  });
 });
