@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   useAgentReplyConfig,
   useUpdateAgentReplyConfig,
@@ -8,7 +8,11 @@ import {
 import { useWorkerStatus, useSetWorkerConcurrency } from '@/hooks/config/useWorker';
 import { useReengagementScenarios } from '@/hooks/reengagement/useReengagementRecords';
 import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
-import type { AgentReplyConfig, AgentReplyThinkingMode } from '@/api/types/config.types';
+import type {
+  AgentModelConfigKey,
+  AgentReplyConfig,
+  AgentReplyThinkingMode,
+} from '@/api/types/config.types';
 import type { ReengagementScenario } from '@/api/types/reengagement.types';
 
 import { ModelSelector } from '@/components/ModelSelector';
@@ -107,7 +111,7 @@ const SECTION_MODE_LABELS: Record<SectionMode, string> = {
 
 export default function Config() {
   const [editingConfig, setEditingConfig] = useState<Partial<AgentReplyConfig>>({});
-  const [hasChanges, setHasChanges] = useState(false);
+  const [dirtyFields, setDirtyFields] = useState<string[]>([]);
   const [editingConcurrency, setEditingConcurrency] = useState<number | null>(null);
   // 场景清单属于低频配置，默认折叠，主开关操作路径保持清爽
   const [scenariosExpanded, setScenariosExpanded] = useState(false);
@@ -128,7 +132,7 @@ export default function Config() {
   useEffect(() => {
     if (agentConfigData?.config) {
       setEditingConfig(agentConfigData.config);
-      setHasChanges(false);
+      setDirtyFields([]);
     }
   }, [agentConfigData]);
 
@@ -181,21 +185,23 @@ export default function Config() {
 
   const handleConfigChange = (key: string, value: number | boolean | string) => {
     setEditingConfig((prev) => ({ ...prev, [key]: value }));
-    setHasChanges(true);
-  };
-
-  const handleSaveConfig = () => {
-    updateConfig.mutate(editingConfig, {
-      onSuccess: () => {
-        setHasChanges(false);
-      },
+    setDirtyFields((prev) => {
+      const persistedValue = agentConfigData?.config[key as keyof AgentReplyConfig];
+      if (value === persistedValue) return prev.filter((field) => field !== key);
+      return prev.includes(key) ? prev : [...prev, key];
     });
   };
+
+  const handleSaveConfig = useCallback(() => {
+    updateConfig.mutate(editingConfig, {
+      onSuccess: () => setDirtyFields([]),
+    });
+  }, [editingConfig, updateConfig]);
 
   const handleCancelEdit = () => {
     if (agentConfigData?.config) {
       setEditingConfig(agentConfigData.config);
-      setHasChanges(false);
+      setDirtyFields([]);
     }
   };
 
@@ -216,6 +222,20 @@ export default function Config() {
   const isModified = <K extends keyof AgentReplyConfig>(key: K) =>
     getCurrentValue(key) !== getDefaultValue(key);
 
+  const pendingChangeCount = dirtyFields.length;
+  const hasChanges = pendingChangeCount > 0;
+
+  useEffect(() => {
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      if (hasChanges && !updateConfig.isPending) handleSaveConfig();
+    };
+
+    window.addEventListener('keydown', handleSaveShortcut);
+    return () => window.removeEventListener('keydown', handleSaveShortcut);
+  }, [handleSaveConfig, hasChanges, updateConfig.isPending]);
+
   const renderNumberSetting = (meta: NumberConfigMeta, options?: { disabled?: boolean }) => {
     const currentValue = Number(getCurrentValue(meta.key) ?? 0);
     const defaultValue = Number(getDefaultValue(meta.key) ?? 0);
@@ -229,7 +249,7 @@ export default function Config() {
         <div className={styles.settingBody}>
           <div className={styles.settingHeading}>
             <span className={styles.settingLabel}>{meta.label}</span>
-            {modified ? <span className={styles.modifiedBadge}>已修改</span> : null}
+            {modified ? <span className={styles.modifiedBadge}>覆盖默认</span> : null}
           </div>
           <p className={styles.settingDescription}>{meta.description}</p>
           <div className={styles.settingMeta}>
@@ -270,10 +290,10 @@ export default function Config() {
 
   const modelOptions = availableModelsData?.models ?? [];
 
-  // 六个角色统一走同一套模型覆盖机制（agent_reply_config），网格紧凑渲染。
+  // 七个角色统一走同一套模型覆盖机制（agent_reply_config），列表紧凑渲染。
   // 留空 = 走对应 AGENT_{ROLE}_MODEL 环境变量角色路由。
   const modelRoleFields: Array<{
-    key: keyof AgentReplyConfig & string;
+    key: AgentModelConfigKey;
     label: string;
     envVar: string;
     hint: string;
@@ -324,34 +344,44 @@ export default function Config() {
 
   const renderModelCell = (field: (typeof modelRoleFields)[number]) => {
     const value = String(getCurrentValue(field.key) ?? '');
-    const defaultValue = String(getDefaultValue(field.key) ?? '');
-    const defaultOption = modelOptions.find((o) => o.id === defaultValue);
-    const defaultLabel = defaultOption
-      ? defaultOption.name || defaultOption.id
-      : defaultValue || '默认角色路由';
-
+    const resolvedModel = agentConfigData?.resolvedModels?.[field.key];
+    // 兼容前端先于后端发布：已有页面覆盖值本身就是当前生效模型。
+    const effectiveModelId = resolvedModel?.modelId || value;
     return (
       <div
         key={field.key}
         className={`${styles.modelCell} ${isModified(field.key) ? styles.modelCellModified : ''}`}
       >
-        <div className={styles.settingHeading}>
-          <span className={styles.settingLabel}>{field.label}</span>
-          {isModified(field.key) ? <span className={styles.modifiedBadge}>已修改</span> : null}
+        <div className={styles.modelCellIdentity}>
+          <div className={styles.settingHeading}>
+            <span className={styles.settingLabel}>{field.label}</span>
+            {isModified(field.key) ? (
+              <span className={styles.modifiedBadge}>覆盖默认</span>
+            ) : null}
+          </div>
+          <p className={styles.modelCellHint} title={field.hint}>
+            {field.hint}
+          </p>
         </div>
-        <p className={styles.modelCellHint}>{field.hint}</p>
-        <ModelSelector
-          value={value}
-          options={modelOptions}
-          onChange={(next) => handleConfigChange(field.key, next)}
-          disabled={isLoadingModels}
-          placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
-          defaultOptionLabel="默认角色路由"
-          defaultOptionDesc={`留空则走后端 ${field.envVar} 角色路由`}
-        />
-        <div className={styles.modelCellMeta}>
-          <span>默认: {defaultLabel}</span>
-          <code>{field.envVar}</code>
+        <div className={styles.modelCellControl}>
+          <ModelSelector
+            value={value}
+            options={modelOptions}
+            onChange={(next) => handleConfigChange(field.key, next)}
+            disabled={isLoadingModels}
+            placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
+            defaultOptionLabel="默认角色路由"
+            defaultOptionDesc={
+              effectiveModelId
+                ? `当前使用 ${effectiveModelId}`
+                : `留空则走后端 ${field.envVar} 角色路由`
+            }
+            resolvedDefaultLabel={
+              !value && effectiveModelId ? `${effectiveModelId} · 默认路由` : undefined
+            }
+            showModelId={false}
+            triggerDisplay="id"
+          />
         </div>
       </div>
     );
@@ -585,6 +615,7 @@ export default function Config() {
         subtitle="统一管理企微回调模型、消息节奏和运行开关。这里只放真正影响当前系统运行方式的配置。"
         hints={[{ label: '表单项需要保存' }, { label: '运行开关即时生效' }]}
         hasChanges={hasChanges}
+        pendingChangeCount={pendingChangeCount}
         isPending={updateConfig.isPending}
       />
 
@@ -602,7 +633,8 @@ export default function Config() {
                 }`}
                 onClick={() => scrollToSection(section.id)}
               >
-                {section.label}
+                <span className={styles.sectionNavLabel}>{section.label}</span>
+                <span className={styles.sectionNavMeta}>{SECTION_MODE_LABELS[section.mode]}</span>
               </button>
             ))}
           </nav>
@@ -615,13 +647,17 @@ export default function Config() {
                   {renderSectionModeBadge('save')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  六个 Agent 角色各用哪个模型。留空走后端环境变量的默认路由，改动保存后约 5
+                  七个 Agent 角色各用哪个模型。留空走后端环境变量的默认路由，改动保存后约 5
                   秒内全实例生效，无需发版。
                 </p>
               </div>
             </div>
 
             <div className={styles.settingsPanel}>
+              <div className={styles.modelListHeader} aria-hidden="true">
+                <span>角色与用途</span>
+                <span>模型</span>
+              </div>
               <div className={styles.modelGrid}>{modelRoleFields.map(renderModelCell)}</div>
             </div>
           </section>
@@ -647,7 +683,7 @@ export default function Config() {
                   <div className={styles.settingHeading}>
                     <span className={styles.settingLabel}>企微回调回复模式</span>
                     {isModified('wecomCallbackThinkingMode') ? (
-                      <span className={styles.modifiedBadge}>已修改</span>
+                      <span className={styles.modifiedBadge}>覆盖默认</span>
                     ) : null}
                   </div>
                   <p className={styles.settingDescription}>
@@ -955,21 +991,29 @@ export default function Config() {
       {hasChanges ? (
         <div className={styles.saveDock}>
           <div className={styles.saveDockInfo}>
-            <span className={styles.saveDockTitle}>有未保存更改</span>
+            <span className={styles.saveDockTitle}>
+              {pendingChangeCount || 1} 项配置待保存
+            </span>
             <span className={styles.saveDockText}>
-              当前页面里只有表单项需要保存，运行开关类配置已经即时生效。
+              保存后约 5 秒内全实例生效；运行开关类配置已经即时生效。
             </span>
           </div>
           <div className={styles.saveDockActions}>
             <button className={styles.btnGhost} onClick={handleCancelEdit}>
-              取消
+              放弃更改
             </button>
             <button
               className={styles.btnPrimary}
               onClick={handleSaveConfig}
               disabled={updateConfig.isPending}
             >
-              {updateConfig.isPending ? '保存中...' : '保存更改'}
+              {updateConfig.isPending ? (
+                '保存中...'
+              ) : (
+                <>
+                  保存并生效 <kbd className={styles.shortcut}>⌘S</kbd>
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -1,7 +1,14 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MODEL_DICTIONARY } from '@providers/models';
 import { supportsVision } from '@providers/types';
-import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
+import {
+  AgentReplyConfig,
+  AgentModelConfigKey,
+  DEFAULT_AGENT_REPLY_CONFIG,
+  ResolvedAgentModel,
+  ResolvedAgentModels,
+} from '../types/hosting-config.types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -22,6 +29,7 @@ export class HostingConfigFacadeService {
     private readonly systemConfigService: SystemConfigService,
     private readonly groupBlacklistService: GroupBlacklistService,
     private readonly userHostingService: UserHostingService,
+    private readonly configService: ConfigService,
   ) {}
 
   // ==================== 运行时开关 ====================
@@ -51,6 +59,7 @@ export class HostingConfigFacadeService {
   async getAgentReplyConfig(): Promise<{
     config: AgentReplyConfig;
     defaults: AgentReplyConfig;
+    resolvedModels: ResolvedAgentModels;
     groupTaskConfig: GroupTaskConfig;
   }> {
     const config = await this.systemConfigService.getAgentReplyConfig();
@@ -58,8 +67,104 @@ export class HostingConfigFacadeService {
     return {
       config,
       defaults: DEFAULT_AGENT_REPLY_CONFIG,
+      resolvedModels: this.resolveAgentModels(config),
       groupTaskConfig,
     };
+  }
+
+  /**
+   * 将页面覆盖与部署环境路由合并成“当前真正会使用的主模型”。前端不应只看到
+   * AGENT_* 变量名；这里复用运行时的优先级，便于操作人员在切换前核对实际模型。
+   */
+  private resolveAgentModels(config: AgentReplyConfig): ResolvedAgentModels {
+    const definitions: Array<{
+      key: AgentModelConfigKey;
+      role: string;
+      envVar: string;
+      fallbackToChat?: boolean;
+    }> = [
+      { key: 'wecomCallbackModelId', role: 'chat', envVar: 'AGENT_CHAT_MODEL' },
+      { key: 'extractModelId', role: 'extract', envVar: 'AGENT_EXTRACT_MODEL' },
+      { key: 'visionModelId', role: 'vision', envVar: 'AGENT_VISION_MODEL' },
+      { key: 'evaluateModelId', role: 'evaluate', envVar: 'AGENT_EVALUATE_MODEL' },
+      { key: 'reviewModelId', role: 'review', envVar: 'AGENT_REVIEW_MODEL' },
+      { key: 'repairModelId', role: 'repair', envVar: 'AGENT_REPAIR_MODEL' },
+      {
+        key: 'reengagementModelId',
+        role: 'reengagement',
+        envVar: 'AGENT_REENGAGEMENT_MODEL',
+        fallbackToChat: true,
+      },
+    ];
+
+    return Object.fromEntries(
+      definitions.map((definition) => {
+        const override = config[definition.key]?.trim();
+        if (override) {
+          return [
+            definition.key,
+            {
+              modelId: override,
+              source: 'runtime_override',
+              envVar: definition.envVar,
+            } satisfies ResolvedAgentModel,
+          ];
+        }
+
+        const environmentModel = this.configService.get<string>(definition.envVar)?.trim();
+        if (environmentModel) {
+          return [
+            definition.key,
+            {
+              modelId: environmentModel,
+              source: 'role_environment',
+              envVar: definition.envVar,
+            } satisfies ResolvedAgentModel,
+          ];
+        }
+
+        const chatModel = definition.fallbackToChat
+          ? this.configService.get<string>('AGENT_CHAT_MODEL')?.trim()
+          : '';
+        if (chatModel) {
+          return [
+            definition.key,
+            {
+              modelId: chatModel,
+              source: 'chat_fallback',
+              envVar: definition.envVar,
+            } satisfies ResolvedAgentModel,
+          ];
+        }
+
+        const roleFallbacks =
+          this.configService.get<string>(`AGENT_${definition.role.toUpperCase()}_FALLBACKS`) ||
+          this.configService.get<string>('AGENT_DEFAULT_FALLBACKS');
+        const fallbackModel = roleFallbacks
+          ?.split(',')
+          .map((modelId) => modelId.trim())
+          .find(Boolean);
+        if (fallbackModel) {
+          return [
+            definition.key,
+            {
+              modelId: fallbackModel,
+              source: 'role_fallback',
+              envVar: definition.envVar,
+            } satisfies ResolvedAgentModel,
+          ];
+        }
+
+        return [
+          definition.key,
+          {
+            modelId: '',
+            source: 'unconfigured',
+            envVar: definition.envVar,
+          } satisfies ResolvedAgentModel,
+        ];
+      }),
+    ) as ResolvedAgentModels;
   }
 
   async updateAgentReplyConfig(

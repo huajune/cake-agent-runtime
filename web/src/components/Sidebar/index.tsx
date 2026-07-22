@@ -83,7 +83,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <button
         className="sidebar-toggle"
         onClick={onToggle}
-        title={isCollapsed ? '展开菜单 (⌘S)' : '收起菜单 (⌘S)'}
+        title={isCollapsed ? '展开菜单 (⌘B)' : '收起菜单 (⌘B)'}
+        aria-label={isCollapsed ? '展开菜单' : '收起菜单'}
       >
         {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
       </button>

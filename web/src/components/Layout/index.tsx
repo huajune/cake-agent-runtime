@@ -63,11 +63,11 @@ export default function Layout() {
     setIsSidebarCollapsed((prev) => !prev);
   }, []);
 
-  // 监听 Cmd+S (Mac) / Ctrl+S (Windows) 快捷键
+  // Cmd/Ctrl + B 是常见的侧栏切换快捷键；Cmd/Ctrl + S 留给表单页面保存。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault(); // 阻止浏览器默认保存行为
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
         toggleSidebar();
       }
     };

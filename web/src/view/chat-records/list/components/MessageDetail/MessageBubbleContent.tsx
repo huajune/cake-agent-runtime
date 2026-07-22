@@ -158,7 +158,9 @@ export function MessageBubbleContent({ messageType, content, payload }: Props) {
   switch (messageType) {
     case 'IMAGE': {
       const { previewUrl, thumbnailUrl } = getImageUrls(payload);
-      const displayUrl = thumbnailUrl || previewUrl;
+      // 聊天记录是质检与问题追溯入口，内联图片优先展示原图，避免缩略图
+      // 压缩后文字不可读；原图失效时再安全降级到渠道缩略图。
+      const displayUrl = previewUrl || thumbnailUrl;
       const targetUrl = previewUrl || displayUrl;
       if (!displayUrl || !targetUrl) {
         return <span className={styles.fallback}>{content || '[图片消息]'}</span>;
@@ -169,15 +171,21 @@ export function MessageBubbleContent({ messageType, content, payload }: Props) {
             type="button"
             className={styles.imageLink}
             onClick={() => setPreviewImage({ url: targetUrl, alt: '图片预览' })}
-            title="放大预览图片"
-            aria-label="放大预览图片"
+            title="查看原图"
+            aria-label="查看原图"
           >
             <img
               src={displayUrl}
-              alt="图片"
+              alt="聊天图片"
               className={styles.image}
               loading="lazy"
               decoding="async"
+              onError={(event) => {
+                if (thumbnailUrl && event.currentTarget.dataset.fallbackApplied !== 'true') {
+                  event.currentTarget.dataset.fallbackApplied = 'true';
+                  event.currentTarget.src = thumbnailUrl;
+                }
+              }}
             />
             <span className={styles.imageOverlay} aria-hidden="true">
               <ZoomIn size={16} />
@@ -226,7 +234,9 @@ export function MessageBubbleContent({ messageType, content, payload }: Props) {
           <div className={styles.voiceHeader}>
             <span className={styles.voiceIcon}>🎤</span>
             <span className={styles.voiceLabel}>语音消息</span>
-            {duration ? <span className={styles.voiceDuration}>{formatDuration(duration)}</span> : null}
+            {duration ? (
+              <span className={styles.voiceDuration}>{formatDuration(duration)}</span>
+            ) : null}
           </div>
           {url ? (
             <audio controls src={url} preload="metadata" className={styles.voiceAudio} />
@@ -255,7 +265,9 @@ export function MessageBubbleContent({ messageType, content, payload }: Props) {
             src={url}
             className={styles.videoPlayer}
           />
-          {duration ? <div className={styles.mediaMeta}>时长 {formatDuration(duration)}</div> : null}
+          {duration ? (
+            <div className={styles.mediaMeta}>时长 {formatDuration(duration)}</div>
+          ) : null}
         </div>
       );
     }
@@ -346,7 +358,9 @@ export function MessageBubbleContent({ messageType, content, payload }: Props) {
             <span className={styles.miniProgramTag}>小程序</span>
             <span className={styles.miniProgramTitle}>{title}</span>
           </div>
-          {thumb ? <img src={thumb} alt="" className={styles.miniProgramThumb} loading="lazy" /> : null}
+          {thumb ? (
+            <img src={thumb} alt="" className={styles.miniProgramThumb} loading="lazy" />
+          ) : null}
           {desc ? <div className={styles.miniProgramDesc}>{desc}</div> : null}
         </div>
       );

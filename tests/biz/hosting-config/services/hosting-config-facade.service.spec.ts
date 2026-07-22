@@ -4,6 +4,7 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { DEFAULT_AGENT_REPLY_CONFIG } from '@biz/hosting-config/types/hosting-config.types';
+import { ConfigService } from '@nestjs/config';
 
 describe('HostingConfigFacadeService', () => {
   let service: HostingConfigFacadeService;
@@ -29,6 +30,15 @@ describe('HostingConfigFacadeService', () => {
     resumeUser: jest.fn(),
   };
 
+  const roleModels: Record<string, string> = {
+    AGENT_CHAT_MODEL: 'qwen/qwen3.7-plus',
+    AGENT_EXTRACT_MODEL: 'deepseek/deepseek-v4-flash',
+    AGENT_VISION_MODEL: 'qwen/qwen3-vl-plus',
+  };
+  const mockConfigService = {
+    get: jest.fn((key: string) => roleModels[key]),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -36,6 +46,7 @@ describe('HostingConfigFacadeService', () => {
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: GroupBlacklistService, useValue: mockGroupBlacklistService },
         { provide: UserHostingService, useValue: mockUserHostingService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -64,7 +75,41 @@ describe('HostingConfigFacadeService', () => {
       expect(result.config).toEqual(mockConfig);
       expect(result.defaults).toEqual(DEFAULT_AGENT_REPLY_CONFIG);
       expect(result.groupTaskConfig).toEqual({ enabled: false, dryRun: true });
+      expect(result.resolvedModels).toMatchObject({
+        wecomCallbackModelId: {
+          modelId: 'qwen/qwen3.7-plus',
+          source: 'role_environment',
+        },
+        extractModelId: {
+          modelId: 'deepseek/deepseek-v4-flash',
+          source: 'role_environment',
+        },
+        visionModelId: {
+          modelId: 'qwen/qwen3-vl-plus',
+          source: 'role_environment',
+        },
+        reengagementModelId: {
+          modelId: 'qwen/qwen3.7-plus',
+          source: 'chat_fallback',
+        },
+      });
       expect(mockSystemConfigService.getAgentReplyConfig).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports a saved runtime model override as the effective model', async () => {
+      mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        reviewModelId: 'deepseek/deepseek-v4-pro',
+      });
+      mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({ enabled: false, dryRun: true });
+
+      const result = await service.getAgentReplyConfig();
+
+      expect(result.resolvedModels.reviewModelId).toEqual({
+        modelId: 'deepseek/deepseek-v4-pro',
+        source: 'runtime_override',
+        envVar: 'AGENT_REVIEW_MODEL',
+      });
     });
 
     it('should pass through the group task config from systemConfigService', async () => {
