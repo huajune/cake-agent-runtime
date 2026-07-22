@@ -157,6 +157,28 @@
         "品牌域 10 suites / 146 tests 通过（含 10 条新增回归用例，覆盖两处误判现场及正反向控制）",
         "全量 353 suites / 5309 tests 通过"
       ]
+    },
+    {
+      "number": "636",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/636",
+      "title": "固化 v10.23.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "固化 v10.23.0 发版底账"
+      ],
+      "summary": [
+        "固化 v10.23.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "固化 v10.23.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
