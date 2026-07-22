@@ -113,10 +113,8 @@ export class HardConstraintsSection implements PromptSection {
           : previousLaborForm;
 
     const pref: Preferences = {
-      brands:
-        highConfidenceSessionFacts?.preferences.brands ??
-        highConfidenceValues?.preferences.brands ??
-        null,
+      // 品牌不再读 preferences.brands（字段已退役，§19.6）；软提示行直读 sessionBrandState。
+      brands: null,
       brand_ids:
         highConfidenceSessionFacts?.preferences.brand_ids ??
         highConfidenceValues?.preferences.brand_ids ??

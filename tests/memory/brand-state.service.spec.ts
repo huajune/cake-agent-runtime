@@ -4,7 +4,6 @@
 
 import { BrandStateService } from '@memory/services/brand-state.service';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import type { SessionFacts } from '@memory/types/session-facts.types';
 
 const catalog = [
   { id: 1, name: '肯德基', aliases: ['KFC'] },
@@ -12,24 +11,6 @@ const catalog = [
   { id: 3, name: '大米先生', aliases: [] },
   { id: 10311, name: 'Zara Home', aliases: ['zh'] },
 ];
-
-function makeFactsWithBrands(brands: string[] | null): SessionFacts {
-  return {
-    interview_info: {},
-    preferences: {
-      brands: brands
-        ? {
-            value: brands,
-            confidence: 'high',
-            source: 'rule',
-            evidence: 'test',
-            extractedAt: new Date().toISOString(),
-          }
-        : null,
-    },
-    reasoning: '',
-  } as unknown as SessionFacts;
-}
 
 const positive = (name: string, brandId: number | null = null): BrandResolution => ({
   canonicalName: name,
@@ -87,7 +68,6 @@ describe('BrandStateService', () => {
     it('brand_state 不存在且昵称品牌唯一命中 → seed 为 currentBrand（首轮即生效）', async () => {
       const ctx = await service.deriveTurnBrandContext({
         persisted: null,
-        facts: null,
         contactName: '小王 肯德基五角场',
       });
       expect(ctx.persisted).toBe(false);
@@ -98,7 +78,6 @@ describe('BrandStateService', () => {
     it('未命中品牌库的昵称（Gattouzo）不产生 seed', async () => {
       const ctx = await service.deriveTurnBrandContext({
         persisted: null,
-        facts: null,
         contactName: 'Gattouzo',
       });
       expect(ctx.state.currentBrand).toBeNull();
@@ -108,28 +87,26 @@ describe('BrandStateService', () => {
     it('2-3 位纯英文昵称即使唯一命中品牌别名也不产生 seed', async () => {
       const ctx = await service.deriveTurnBrandContext({
         persisted: null,
-        facts: null,
         contactName: 'zh',
       });
       expect(ctx.state.currentBrand).toBeNull();
       expect(ctx.nicknameBrands).toEqual([]);
     });
 
-    it('旧 preferences.brands 末位品牌优先于昵称 seed（对话表达时点更晚）', async () => {
+    it('懒迁移已退役（§19.6）：无持久化状态时只按昵称 seed 初始化', async () => {
+      // 旧 preferences.brands 末位品牌档已删除——生产 Redis 实测迁移窗口耗尽
+      // （889 会话仅 1 个可迁且 TTL <17h），旧存储值不再影响初始化。
       const ctx = await service.deriveTurnBrandContext({
         persisted: null,
-        facts: makeFactsWithBrands(['肯德基', '大米先生']),
         contactName: '小王 肯德基',
       });
-      expect(ctx.state.currentBrand?.canonicalName).toBe('大米先生');
-      expect(ctx.state.currentBrand?.brandId).toBe(3);
+      expect(ctx.state.currentBrand?.canonicalName).toBe('肯德基');
     });
 
     it('brand_state 已存在（含被 browse_all 清成空值）永不重新 seed', async () => {
       const cleared = { currentBrand: null, excludedBrands: [], updatedAtMs: 1000 };
       const ctx = await service.deriveTurnBrandContext({
         persisted: cleared,
-        facts: null,
         contactName: '小王 肯德基',
       });
       expect(ctx.persisted).toBe(true);
@@ -137,10 +114,9 @@ describe('BrandStateService', () => {
       expect(ctx.state.currentBrand).toBeNull();
     });
 
-    it('空数组旧事实 + 无昵称品牌 → 空状态初始化', async () => {
+    it('无昵称品牌 → 空状态初始化', async () => {
       const ctx = await service.deriveTurnBrandContext({
         persisted: null,
-        facts: makeFactsWithBrands([]),
         contactName: undefined,
       });
       expect(ctx.state).toEqual({ currentBrand: null, excludedBrands: [] });
@@ -156,7 +132,6 @@ describe('BrandStateService', () => {
         resolutions: [],
         contactName: '小王 肯德基',
         persistedBrandState: null,
-        facts: null,
       });
       expect(outcome.initialized).toBe(true);
       expect(mockRedisStore.patchHash).toHaveBeenCalledTimes(1);
@@ -183,7 +158,6 @@ describe('BrandStateService', () => {
         sessionId: 's',
         resolutions: [positive('肯德基', 1)],
         persistedBrandState: persisted,
-        facts: null,
       });
       expect(outcome.changed).toBe(false);
       expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
@@ -202,7 +176,6 @@ describe('BrandStateService', () => {
         sessionId: 's',
         resolutions: [positive('麦当劳', 2)],
         persistedBrandState: persisted,
-        facts: null,
       });
       const event = mockTracer.emit.mock.calls[0][0];
       expect(event.type).toBe('brand_state_change');
@@ -226,7 +199,6 @@ describe('BrandStateService', () => {
         sessionId: 's',
         resolutions: [ambiguousMention('小龙', '想去小龙那边上班')],
         persistedBrandState: persisted,
-        facts: null,
       });
       expect(outcome.changed).toBe(false);
       expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
@@ -253,7 +225,6 @@ describe('BrandStateService', () => {
         sessionId: 's',
         resolutions: [ambiguousMention('小龙', '小龙和麦当劳都行'), positive('麦当劳', 2)],
         persistedBrandState: persisted,
-        facts: null,
       });
       const types = mockTracer.emit.mock.calls.map((c) => c[0].type);
       expect(types).toContain('brand_resolution_ambiguous');
@@ -271,7 +242,6 @@ describe('BrandStateService', () => {
         sessionId: 's',
         resolutions: [positive('肯德基', 1)],
         persistedBrandState: persisted,
-        facts: null,
       });
       const types = mockTracer.emit.mock.calls.map((c) => c[0].type);
       expect(types).not.toContain('brand_resolution_ambiguous');

@@ -569,6 +569,7 @@ describe('MemoryLifecycleService', () => {
       'sess-1',
       null, // facts is null
       'bot-wxid-1', // botImId forwarded as fact lineage
+      null, // brand_state（长期意向品牌快照源，§19.6）；本用例会话无品牌状态
     );
     expect(mockSessionService.saveLastCandidatePool).toHaveBeenCalledWith(
       'corp-1',

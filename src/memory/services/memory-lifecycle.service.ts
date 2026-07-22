@@ -260,6 +260,8 @@ export class MemoryLifecycleService {
             ctx.sessionId,
             previousState?.facts ?? null,
             ctx.botImId,
+            // 长期意向的品牌快照直读 brand_state（§19.6，preferences.brands 已退役）
+            previousState?.brand_state ?? null,
           );
         });
         branchNames.push(settlementTask.name);
@@ -544,7 +546,6 @@ export class MemoryLifecycleService {
       persistedBrandState: options.previousState
         ? (options.previousState.brand_state ?? null)
         : undefined,
-      facts: options.previousState?.facts ?? null,
     });
   }
 

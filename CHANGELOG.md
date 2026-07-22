@@ -8,6 +8,88 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.25.0`
+**最近更新**: `2026-07-22`
+**来源分支**: `develop`
+**累计 PR**: 3
+
+### 更新摘要
+- PR #658 geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）
+- PR #658 geo 目录文件平铺，与 brand 风格一致（方案 v3.3）
+- PR #657 优化模型配置与桌面端布局
+- PR #657 聊天记录优先展示原图
+- PR #657 重构配置页桌面端信息层级：模型角色改为双列列表，显示当前实际生效模型、覆盖状态和待保存项数量。
+- PR #657 将配置页保存快捷键设为 Cmd/Ctrl+S；全局侧栏切换改为 Cmd/Ctrl+B，避免快捷键冲突。
+- PR #657 模型选择器统一展示模型 ID、能力摘要与发布日期，并完善触发器和无覆盖时的默认路由提示。
+- PR #657 后端配置接口返回各 Agent 角色解析后的实际模型及来源，前端不再只能看到环境变量名。
+- PR #657 聊天记录中的图片优先直接加载原图；原图加载失败时自动回退缩略图，并保留点击放大/新窗口查看能力。
+- PR #662 品牌投影与懒迁移退役，preferences.brands 全链路收口 brand_state（§19.6）
+- PR #662 拦截抽取提示词示例身份回声
+- PR #662 将品牌意向的唯一真相收口到 `brand_state`，彻底停止读取、写入和迁移旧 `preferences.brands`。
+- PR #662 拦截抽取模型把提示词字段示例（示例姓名、占位手机号、示例经历）整套回填到候选人事实中的回声问题。
+- PR #662 补齐会话、长期记忆、settlement、回复上下文和 test-suite fixture 对 `brand_state` 的统一读写与回归覆盖。
+- PR #662 收口品牌状态并拦截示例身份回声
+
+### 新功能
+- PR #657 将配置页保存快捷键设为 Cmd/Ctrl+S；全局侧栏切换改为 Cmd/Ctrl+B，避免快捷键冲突。
+- PR #657 模型选择器统一展示模型 ID、能力摘要与发布日期，并完善触发器和无覆盖时的默认路由提示。
+- PR #657 后端配置接口返回各 Agent 角色解析后的实际模型及来源，前端不再只能看到环境变量名。
+- PR #657 聊天记录中的图片优先直接加载原图；原图加载失败时自动回退缩略图，并保留点击放大/新窗口查看能力。
+- PR #662 无。
+
+### 问题修复
+- PR #662 抽取出口新增 `validateOutput` 校验：命中已知占位手机号，或示例姓名与示例经历组合时，本次抽取按失败处理并进入既有重试/降级，防止虚构身份进入记忆并触发真实预约。
+- PR #662 旧 `preferences.brands` 在读取边界统一清空，避免旧字段通过 deep merge 在长会话中复活。
+- PR #662 补齐会话、长期记忆、settlement、回复上下文和 test-suite fixture 对 `brand_state` 的统一读写与回归覆盖。
+
+### 优化调整
+- PR #657 重构配置页桌面端信息层级：模型角色改为双列列表，显示当前实际生效模型、覆盖状态和待保存项数量。
+- PR #657 优化模型配置与桌面端布局
+- PR #662 提示词、事实渲染、品牌状态服务、长期记忆沉淀及修复上下文统一直接读取 `brand_state`。
+- PR #662 退役旧品牌懒迁移逻辑，并更新品牌解析架构文档。
+- PR #662 将品牌意向的唯一真相收口到 `brand_state`，彻底停止读取、写入和迁移旧 `preferences.brands`。
+- PR #662 拦截抽取模型把提示词字段示例（示例姓名、占位手机号、示例经历）整套回填到候选人事实中的回声问题。
+- PR #662 拦截抽取提示词示例身份回声
+
+### 运维与流程
+- PR #658 geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）
+- PR #657 聊天记录优先展示原图
+- PR #662 策展并导入 2 条带生产 chat/trace 血缘的正式回归场景。
+- PR #662 测试批次：`3dfaefe1-64e0-48db-b678-d1c9dd591a39`；2/2 runtime success、2/2 业务 passed、0 skipped。
+- PR #662 批次已同步生产 Dashboard，`warnings=[]`，生产 API 全量对账为 2 条执行、通过率 100%。
+- PR #662 品牌投影与懒迁移退役，preferences.brands 全链路收口 brand_state（§19.6）
+
+### 配置变更
+- PR #662 数据库 migration / schema / RPC / RLS / 回填：N/A。
+- PR #662 环境变量 / secrets / 运行时配置：N/A。
+- PR #662 部署顺序：仅应用代码滚动发布，无前置配置或数据动作。
+- PR #662 回滚：回滚本 PR；`brand_state` 仍为现有字段，不涉及数据降级或不可逆操作。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #657 HostingConfigFacadeService：19/19 tests passed。
+- PR #657 `pnpm run lint:check`：通过。
+- PR #657 `pnpm run format:check`：通过。
+- PR #657 `pnpm run typecheck`：通过。
+- PR #657 `pnpm run build:ci`：前端与 Nest 构建通过。
+- PR #657 `pnpm run test:ci`：365 suites passed、1 skipped；5530 tests passed、6 skipped。
+- PR #657 Web ESLint：0 errors；11 个既有、非本 PR 文件 warning。
+- PR #657 `git diff --check`：通过。
+- PR #662 `pnpm run ci:check`
+- PR #662 `pnpm run test:di-smoke`
+- PR #662 `git diff --check origin/develop...HEAD`
+- PR #662 定向测试：5 suites / 93 tests passed。
+- PR #662 全量测试：366 suites passed、1 skipped；5548 tests passed、6 skipped。
+- PR #662 lint / format / typecheck / Web + Nest build 全部通过。
+- PR #662 关键链路已人工验证：两条真实 Agent 场景的 turn-end memory trace 中 `name/phone/experience` 均为空，`preferences.brands=null`，品牌落入 `brand_state.currentBrand`；无 precheck/booking 调用。
+- PR #662 正式测试资产、飞书评审状态、生产 Dashboard 和生产 API 已完成收口。
+<!-- release:pending:end -->
+
 ## [10.24.0] - 2026-07-22
 
 **来源分支**: `develop`

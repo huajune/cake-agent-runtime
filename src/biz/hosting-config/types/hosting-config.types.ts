@@ -58,6 +58,30 @@ export interface AgentReplyConfig {
   reengagementScenarioDelayMinutes: Record<string, number>; // 场景触发偏移分钟数；缺失时回退场景默认值
 }
 
+export type AgentModelConfigKey =
+  | 'wecomCallbackModelId'
+  | 'extractModelId'
+  | 'visionModelId'
+  | 'evaluateModelId'
+  | 'reviewModelId'
+  | 'repairModelId'
+  | 'reengagementModelId';
+
+export type ResolvedAgentModelSource =
+  | 'runtime_override'
+  | 'role_environment'
+  | 'role_fallback'
+  | 'chat_fallback'
+  | 'unconfigured';
+
+export interface ResolvedAgentModel {
+  modelId: string;
+  source: ResolvedAgentModelSource;
+  envVar: string;
+}
+
+export type ResolvedAgentModels = Record<AgentModelConfigKey, ResolvedAgentModel>;
+
 /**
  * Agent 回复策略配置默认值
  */

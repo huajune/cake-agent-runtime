@@ -7,6 +7,7 @@ import type {
   ModelCapability,
 } from '../types/agent.types';
 import { api, unwrapResponse } from '../client';
+import { MODEL_DICTIONARY } from '../../../../src/providers/models';
 
 export type {
   AvailableModelsResponse,
@@ -32,14 +33,17 @@ export async function getAvailableModels(): Promise<AvailableModelsResponse> {
   const { data } = await api.get('/agent/models');
   const raw = unwrapResponse<{ models: RawModelEntry[]; total: number }>(data);
   const models: ModelOption[] =
-    raw.models?.map((m) => ({
-      id: m.id,
-      provider: m.provider ?? '',
-      name: m.name ?? m.id,
-      description: m.description ?? '',
-      capabilities: m.capabilities ?? [],
-      releasedAt: m.releasedAt,
-    })) ?? [];
+    raw.models?.map((m) => {
+      const catalogEntry = MODEL_DICTIONARY[m.id];
+      return {
+        id: m.id,
+        provider: catalogEntry?.provider ?? m.provider ?? '',
+        name: catalogEntry?.name ?? m.name ?? m.id,
+        description: catalogEntry?.description ?? m.description ?? '',
+        capabilities: catalogEntry?.capabilities ?? m.capabilities ?? [],
+        releasedAt: catalogEntry?.releasedAt ?? m.releasedAt,
+      };
+    }) ?? [];
   return {
     availableModels: models.map((m) => m.id),
     models,

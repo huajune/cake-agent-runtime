@@ -22,6 +22,10 @@ export interface ModelSelectorProps {
   emptyPlaceholder?: string;
   defaultOptionLabel?: string;
   defaultOptionDesc?: string;
+  resolvedDefaultLabel?: string;
+  resolvedDefaultId?: string;
+  showModelId?: boolean;
+  triggerDisplay?: 'name' | 'id';
 }
 
 interface CapabilityMeta {
@@ -48,6 +52,47 @@ function CapabilityTag({ capability }: { capability: ModelCapability }) {
   );
 }
 
+function getModelSummary(option: ModelOption): string {
+  const description = option.description?.trim();
+  let summary = '';
+
+  if (description) {
+    const normalized = description.replace(/（/g, '(').replace(/）/g, ')');
+    const match = normalized.match(/^(.*?)\s*\((.*)\)\s*$/);
+    if (!match) {
+      summary = normalized.replace(/^(Google|DeepSeek|通义千问)\s*/i, '').trim();
+    } else {
+      const [, rawPrefix, detail] = match;
+      const prefix = rawPrefix.replace(/^(Google|DeepSeek|通义千问)\s*/i, '').trim();
+      const modelKey = `${option.name} ${option.id}`
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+      const prefixKey = prefix.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+      const usefulPrefix = prefixKey && !modelKey.includes(prefixKey) ? prefix : '';
+      summary = [usefulPrefix, detail.trim()].filter(Boolean).join(' / ');
+    }
+  }
+
+  const capabilityDetails: Partial<Record<ModelCapability, string>> = {
+    thinking: '深度思考',
+    'tool-use': '工具调用',
+    multimodal: '原生多模态',
+    'long-context': '长上下文',
+  };
+  const capabilityAlreadyCovered: Partial<Record<ModelCapability, RegExp>> = {
+    thinking: /思考|推理/i,
+    'tool-use': /工具调用|Agent|Claude Code/i,
+    multimodal: /多模态|视觉|图片|图文|OCR/i,
+    'long-context': /上下文|context/i,
+  };
+  const supplements = option.capabilities
+    .filter((capability) => !capabilityAlreadyCovered[capability]?.test(summary))
+    .map((capability) => capabilityDetails[capability])
+    .filter(Boolean);
+
+  return [summary, ...supplements].filter(Boolean).join(' / ');
+}
+
 export function ModelSelector({
   value,
   options,
@@ -57,6 +102,10 @@ export function ModelSelector({
   emptyPlaceholder = '暂无可用模型',
   defaultOptionLabel = '默认（角色路由）',
   defaultOptionDesc = '留空使用后端 AGENT_CHAT_MODEL 角色路由',
+  resolvedDefaultLabel,
+  resolvedDefaultId,
+  showModelId = true,
+  triggerDisplay = 'name',
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -119,13 +168,21 @@ export function ModelSelector({
 
   const isDisabled = disabled || options.length === 0;
   const triggerLabel = selected
-    ? selected.name || selected.id
+    ? triggerDisplay === 'id'
+      ? selected.id
+      : selected.name || selected.id
     : value
       ? value
-      : options.length === 0
-        ? emptyPlaceholder
-        : placeholder;
-  const triggerSub = selected?.id && selected.id !== triggerLabel ? selected.id : '';
+      : resolvedDefaultLabel
+        ? resolvedDefaultLabel
+        : options.length === 0
+          ? emptyPlaceholder
+          : placeholder;
+  const triggerSub = showModelId && selected?.id && selected.id !== triggerLabel
+    ? selected.id
+    : showModelId && !value && resolvedDefaultId
+      ? `${resolvedDefaultId} · 默认路由`
+      : '';
 
   return (
     <div className={styles.modelSelector} ref={containerRef}>
@@ -180,6 +237,7 @@ export function ModelSelector({
 
             {options.map((option) => {
               const isSelected = option.id === value;
+              const summary = getModelSummary(option);
               return (
                 <button
                   key={option.id}
@@ -191,7 +249,7 @@ export function ModelSelector({
                 >
                   <div className={styles.optionMain}>
                     <div className={styles.optionTitleRow}>
-                      <span className={styles.optionTitle}>{option.name || option.id}</span>
+                      <span className={styles.optionTitle} title={option.id}>{option.id}</span>
                       {option.releasedAt && (
                         <span className={styles.optionDate} title={`发布时间 ${option.releasedAt}`}>
                           <Calendar size={11} />
@@ -200,9 +258,7 @@ export function ModelSelector({
                       )}
                       {isSelected && <Check size={14} className={styles.optionCheck} />}
                     </div>
-                    {option.description && (
-                      <p className={styles.optionDesc}>{option.description}</p>
-                    )}
+                    {summary && <p className={styles.optionDesc}>{summary}</p>}
                     {option.capabilities.length > 0 && (
                       <div className={styles.optionCaps}>
                         {option.capabilities.map((cap) => (
