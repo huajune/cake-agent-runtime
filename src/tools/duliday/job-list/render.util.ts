@@ -48,6 +48,11 @@ import {
 } from '@tools/duliday/job-list/brand-stores.util';
 import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
 import {
+  buildDistancePrecisionNotice,
+  formatDistanceKm,
+  type DistanceAnchorPrecision,
+} from '@tools/duliday/job-list/distance-render.util';
+import {
   extractHardRequirements,
   type HardRequirements,
 } from '@tools/duliday/job-list/hard-requirements.util';
@@ -213,7 +218,11 @@ function asNumber(value: unknown): number | null {
 
 // ==================== 模块 1：基本信息 ====================
 
-function renderBasicInfoSection(basicInfo: unknown, distanceKm: number | null | undefined): string {
+function renderBasicInfoSection(
+  basicInfo: unknown,
+  distanceKm: number | null | undefined,
+  distanceAnchor: DistanceAnchorPrecision | null,
+): string {
   const bi = asRecord(basicInfo);
   if (!bi) return '';
   const lines: string[] = [];
@@ -249,7 +258,7 @@ function renderBasicInfoSection(basicInfo: unknown, distanceKm: number | null | 
   }
 
   if (distanceKm != null && !Number.isNaN(distanceKm)) {
-    lines.push(`- **距离**: ${distanceKm.toFixed(1)}km`);
+    lines.push(`- **距离**: ${formatDistanceKm(distanceKm, distanceAnchor)}`);
   }
 
   pushField(lines, '创建时间', bi.createTime);
@@ -957,7 +966,11 @@ function renderInterviewProcessSection(
 
 // ==================== 岗位格式化 ====================
 
-function formatJobToOneLine(jobInput: unknown, index: number): string {
+function formatJobToOneLine(
+  jobInput: unknown,
+  index: number,
+  distanceAnchor: DistanceAnchorPrecision | null,
+): string {
   const job = asRecord(jobInput) ?? {};
   const bi = asRecord(job.basicInfo) ?? {};
   const store = asRecord(bi.storeInfo) ?? {};
@@ -971,7 +984,7 @@ function formatJobToOneLine(jobInput: unknown, index: number): string {
   if (displayStoreName) parts.push(displayStoreName);
   if (hasValue(store.storeAddress)) parts.push(String(store.storeAddress));
   const distanceKm = asNumber(job._distanceKm);
-  if (distanceKm != null) parts.push(`距离 ${distanceKm.toFixed(1)}km`);
+  if (distanceKm != null) parts.push(`距离 ${formatDistanceKm(distanceKm, distanceAnchor)}`);
   return parts.join(' | ');
 }
 
@@ -991,7 +1004,11 @@ export const FULL_DETAIL_CAP = 6;
  * 让 Agent 能直接转述"还有 X 家更远的（店名/距离/薪资）"并按 jobId 取详情。
  * 班次文本常多行，摘要行不含，需详情时由 jobIdList 全文给出。
  */
-function formatJobToSummaryLine(jobInput: unknown, index: number): string {
+function formatJobToSummaryLine(
+  jobInput: unknown,
+  index: number,
+  distanceAnchor: DistanceAnchorPrecision | null,
+): string {
   const job = asRecord(jobInput) ?? {};
   const bi = asRecord(job.basicInfo) ?? {};
   const store = asRecord(bi.storeInfo) ?? {};
@@ -1005,7 +1022,7 @@ function formatJobToSummaryLine(jobInput: unknown, index: number): string {
   );
   if (displayStoreName) parts.push(displayStoreName);
   const distanceKm = asNumber(job._distanceKm);
-  if (distanceKm != null) parts.push(`${distanceKm.toFixed(1)}km`);
+  if (distanceKm != null) parts.push(formatDistanceKm(distanceKm, distanceAnchor));
   const salary = formatSalarySummary(job);
   if (salary) parts.push(salary);
   const age = policy.normalizedRequirements.ageRequirement;
@@ -1029,6 +1046,7 @@ function formatJobToMarkdown(
   jobInput: unknown,
   index: number,
   flags: ProgressiveDisclosureFlags,
+  distanceAnchor: DistanceAnchorPrecision | null,
 ): string {
   const job = asRecord(jobInput) ?? {};
   const bi = asRecord(job.basicInfo) ?? {};
@@ -1053,7 +1071,7 @@ function formatJobToMarkdown(
     md += formatInterviewDecisionSummary(policy, shiftTimeText);
   }
   if (flags.includeBasicInfo) {
-    md += renderBasicInfoSection(job.basicInfo, asNumber(job._distanceKm));
+    md += renderBasicInfoSection(job.basicInfo, asNumber(job._distanceKm), distanceAnchor);
   }
   if (flags.includeJobSalary) {
     md += renderSalarySection(job.jobSalary);
@@ -1083,11 +1101,19 @@ export function formatJobsToMarkdown(
   pageSize: number,
   flags: ProgressiveDisclosureFlags,
   brandGroups: BrandNearestStoresGroup[] | null = null,
+  distanceAnchor: DistanceAnchorPrecision | null = null,
 ): string {
   const start = (pageNum - 1) * pageSize + 1;
   const end = Math.min(start + jobs.length - 1, total);
 
   let md = `# 在招岗位（共 ${total} 个）\n\n`;
+
+  // 区级锚点（方案 11.3）：距离全部是按行政区代表点的估算值，头部先声明定位精度，
+  // 让模型在看到任何距离数字之前先建立"估算"口径。
+  const precisionNotice = buildDistancePrecisionNotice(distanceAnchor);
+  if (precisionNotice) {
+    md += precisionNotice;
+  }
 
   md +=
     '> ⚠️ **数据使用原则**：各 section 中的备注、remark 等自由文本字段可能包含结构化字段未覆盖或与之矛盾的补充信息，回复时须结合全部内容；除下方单独说明的用工形式外，**自由文本与结构化字段冲突时以自由文本为准**\n\n';
@@ -1102,7 +1128,7 @@ export function formatJobsToMarkdown(
     '若仅福利备注里出现"暑假工/寒假工薪资 X 元/时"，但结构化字段不是寒假工/暑假工，' +
     '只能说明这是一档薪资条件，**不得把岗位用工类型改写成寒假工/暑假工**。\n\n';
 
-  md += renderCandidateCardsBanner(jobs);
+  md += renderCandidateCardsBanner(jobs, distanceAnchor);
 
   // 同品牌多门店强约束置顶（同品牌两家被压缩成"有肯德基、肯德基"）
   const multiStoreSection = renderMultiStoreBrandWarning(brandGroups);
@@ -1112,7 +1138,7 @@ export function formatJobsToMarkdown(
 
   if (isMinimalMode(flags)) {
     jobs.forEach((job, index) => {
-      md += formatJobToOneLine(job, start + index - 1) + '\n';
+      md += formatJobToOneLine(job, start + index - 1, distanceAnchor) + '\n';
     });
     if (total > end) md += `\n_还有 ${total - end} 个岗位未显示，可通过筛选条件缩小范围_\n`;
     return md;
@@ -1123,7 +1149,7 @@ export function formatJobsToMarkdown(
   // 渐进式披露：最近 FULL_DETAIL_CAP 家全文，其余降摘要行（详情走 jobIdList 重查）。
   const fullCount = Math.min(jobs.length, FULL_DETAIL_CAP);
   jobs.slice(0, fullCount).forEach((job, index) => {
-    md += formatJobToMarkdown(job, index, flags);
+    md += formatJobToMarkdown(job, index, flags, distanceAnchor);
     md += '---\n\n';
   });
 
@@ -1131,7 +1157,7 @@ export function formatJobsToMarkdown(
   if (tail.length > 0) {
     md += `### 更远的 ${tail.length} 家（仅摘要，候选人问到具体某家详情时用其 jobId 走 jobIdList 重查）\n`;
     tail.forEach((job, i) => {
-      md += formatJobToSummaryLine(job, fullCount + i) + '\n';
+      md += formatJobToSummaryLine(job, fullCount + i, distanceAnchor) + '\n';
     });
     md += '\n';
   }

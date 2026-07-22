@@ -23,6 +23,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { hasValue } from '@tools/duliday/job-list/helpers.util';
+import {
+  formatDistanceKm,
+  type DistanceAnchorPrecision,
+} from '@tools/duliday/job-list/distance-render.util';
 import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
 import {
   extractHardRequirements,
@@ -169,14 +173,20 @@ function collectRemarks(job: any): string {
  * 输入：raw job（jobs 数组单元素），需包含 basicInfo / workTime / jobSalary / hiringRequirement / welfare。
  * 输出：oneLine + multiLine 两种 ready-to-send 模板字符串。
  */
-export function renderCandidateCard(job: any, index?: number): CandidateCard | null {
+export function renderCandidateCard(
+  job: any,
+  index?: number,
+  distanceAnchor: DistanceAnchorPrecision | null = null,
+): CandidateCard | null {
   if (!job?.basicInfo) return null;
   const bi = job.basicInfo;
   const position = resolvePositionName(bi);
   const brand = bi.brandName || '';
   const store = normalizeStoreNameForAgent(bi.storeInfo?.storeName, bi.storeInfo?.storeCityName);
   const distance =
-    typeof job._distanceKm === 'number' ? `${Math.round(job._distanceKm * 10) / 10}km` : '';
+    typeof job._distanceKm === 'number'
+      ? formatDistanceKm(Math.round(job._distanceKm * 10) / 10, distanceAnchor)
+      : '';
 
   const policy = buildJobPolicyAnalysis(job);
   const hr = extractHardRequirements(job, policy);
@@ -224,10 +234,13 @@ export function renderCandidateCard(job: any, index?: number): CandidateCard | n
  * 被模型直接转述给候选人，从源头避免内部标题泄漏。
  * 返回空字符串表示 jobs 为空，调用方跳过插入。
  */
-export function renderCandidateCardsBanner(jobs: any[]): string {
+export function renderCandidateCardsBanner(
+  jobs: any[],
+  distanceAnchor: DistanceAnchorPrecision | null = null,
+): string {
   if (!Array.isArray(jobs) || jobs.length === 0) return '';
   const cards = jobs
-    .map((job, idx) => renderCandidateCard(job, idx))
+    .map((job, idx) => renderCandidateCard(job, idx, distanceAnchor))
     .filter((c): c is CandidateCard => c !== null);
   if (cards.length === 0) return '';
 

@@ -11,6 +11,10 @@
  */
 
 import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
+import {
+  formatDistanceKm,
+  type DistanceAnchorPrecision,
+} from '@tools/duliday/job-list/distance-render.util';
 import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import { extractHardRequirements } from '@tools/duliday/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
@@ -71,11 +75,12 @@ function formatBrandStoreDisplayLine(
   shiftSummary: string | null,
   wageRange: string | null,
   requirementSummary: string | null,
+  distanceAnchor: DistanceAnchorPrecision | null,
 ): string {
   const parts: string[] = [];
   parts.push(storeName?.trim() || '门店待确认');
   if (distanceKm != null && Number.isFinite(distanceKm)) {
-    parts.push(`${distanceKm.toFixed(1)}km`);
+    parts.push(formatDistanceKm(distanceKm, distanceAnchor));
   }
   if (shiftSummary?.trim()) {
     parts.push(shiftSummary.trim());
@@ -139,6 +144,7 @@ function formatRequirementSummary(job: BrandSummaryJobInput): string | null {
  */
 export function buildBrandNearestStoreSummary(
   jobs: BrandSummaryJobInput[],
+  distanceAnchor: DistanceAnchorPrecision | null = null,
 ): BrandNearestStoresGroup[] | null {
   if (!Array.isArray(jobs) || jobs.length === 0) return null;
 
@@ -219,6 +225,7 @@ export function buildBrandNearestStoreSummary(
             store.shiftSummary,
             store.wageRange,
             store.requirementSummary,
+            distanceAnchor,
           ),
         }));
       return {

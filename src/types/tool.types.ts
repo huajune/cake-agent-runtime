@@ -13,6 +13,22 @@ import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
 
+/**
+ * 本轮 geocode 成功解析的锚点记录（工具间回合内通信：geocode 写入、
+ * duliday_job_list 读取）。用于确定性判定岗位查询坐标的锚点精度——
+ * areaLevelQuery=true 表示锚点是行政区代表点（候选人只报了区/市名），
+ * 距离必须按估算口径渲染（方案 11.3）。不依赖模型转抄 areaLevelQuery 参数。
+ */
+export interface GeocodeResolvedAnchor {
+  longitude: number;
+  latitude: number;
+  /** 查询词只是区/县/市级行政区名，锚点为行政区代表点。 */
+  areaLevelQuery: boolean;
+  /** 区级锚点的行政区名（如"海淀区"/"常州"），非区级锚点为 null。 */
+  areaName: string | null;
+  city: string | null;
+}
+
 /** geocode 用的本轮可信位置锚点；只来自候选人高置信事实或真人招募经理最近确认。 */
 export interface GeocodeLocationAnchor {
   city?: string;
@@ -124,6 +140,12 @@ export interface ToolBuildContext {
    * 不能把错区坐标继续交给岗位查询。
    */
   geocodeLocationAnchor?: GeocodeLocationAnchor;
+  /**
+   * 本轮 geocode 成功解析的锚点列表；由 geocode 工具在每次 unique 解析后追加，
+   * duliday_job_list 按坐标匹配判定本轮距离锚点精度（方案 11.3 的确定性传递通道，
+   * 同 bookingSucceeded 的回合内直写模式）。
+   */
+  geocodeResolvedAnchors?: GeocodeResolvedAnchor[];
   /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
   currentFocusJob?: RecommendedJobSummary | null;
   /**
