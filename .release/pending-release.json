@@ -142,6 +142,31 @@
         "`pnpm run typecheck` / `pnpm run lint:check` 通过",
         "提交用 `--no-verify`：pre-commit 钩子会把未暂存改动吞进提交（首次提交实测发生，已重做拆分）；lint/format 已手动执行"
       ]
+    },
+    {
+      "number": "647",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/647",
+      "title": "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
+      ],
+      "summary": [
+        "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 2 条回归测试（-12 只调一次接口不换群、errmsg 兜底匹配），invite 工具 44 条测试全过",
+        "`tsc --noEmit` / ESLint / Prettier 通过（pre-push 钩子在 worktree 内因 web/node_modules 缺失中断于前端构建，与本改动无关，完整 CI 由 GitHub Actions 跑）"
+      ]
     }
   ],
   "lastRelease": {

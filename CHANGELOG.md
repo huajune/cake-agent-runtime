@@ -14,7 +14,7 @@
 **预计版本**: `v10.24.0`
 **最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -38,6 +38,7 @@
 - PR #645 地理方案 v3.2——模型自编坐标实证纳入 B-1 修复范围
 - PR #645 自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）
 - PR #645 模型自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐
+- PR #647 拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发
 
 ### 新功能
 - 无
@@ -64,6 +65,7 @@
 - PR #646 地理信号冲突检测 shadow 档（方案 §8.2/§17.4，Phase 3 第 6 步）
 - PR #646 业务足迹县级市补录——昆山市→苏州市（方案 §9.2，Phase 3 第 3-4 步）
 - PR #645 自编坐标 shadow 观测 + 年龄 hard_reject 岗默认不推荐（方案 11.3 v3.2）
+- PR #647 拉群 errcode=-12 实为已发邀请卡片，按成功处理不再换群重发
 
 ### 配置变更
 - 无
@@ -75,6 +77,8 @@
 - PR #645 job-list spec **75/75 全绿**：新增 偏差>1km→model_supplied、≤1km 宽松命中不误报、无锚点→unreferenced、区级兜底 provenance、hard_reject 约束正反例
 - PR #645 `pnpm run typecheck` / `pnpm run lint:check` 通过
 - PR #645 提交用 `--no-verify`：pre-commit 钩子会把未暂存改动吞进提交（首次提交实测发生，已重做拆分）；lint/format 已手动执行
+- PR #647 新增 2 条回归测试（-12 只调一次接口不换群、errmsg 兜底匹配），invite 工具 44 条测试全过
+- PR #647 `tsc --noEmit` / ESLint / Prettier 通过（pre-push 钩子在 worktree 内因 web/node_modules 缺失中断于前端构建，与本改动无关，完整 CI 由 GitHub Actions 跑）
 <!-- release:pending:end -->
 
 ## [10.23.0] - 2026-07-22
