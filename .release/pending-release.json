@@ -43,6 +43,45 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "643",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/643",
+      "title": "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
+        "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
+        "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
+        "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
+        "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
+        "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…",
+        "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）"
+      ],
+      "summary": [
+        "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
+        "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
+        "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
+        "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
+        "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
+        "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…",
+        "Phase 2 消费者迁移 + 三轮扫描编排入 geo（方案 §13，PR 3）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "geocoding classifier/ranker 切换 @resolution/geo（方案 Ph…",
+        "geocode/invite-to-group 切换 @resolution/geo（方案 Phase …",
+        "geocode-location-anchor 切换 @resolution/geo（方案 Phase …",
+        "三轮扫描编排抽为 scanGeoSignalsFromText（方案 §8.4，Phase 2 边界 4）",
+        "session.service 切换 @resolution/geo（方案 Phase 2 边界 5）",
+        "duliday-job-list 切换 @resolution/geo，旧路径豁免清零（方案 Phase…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
