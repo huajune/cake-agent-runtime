@@ -64,7 +64,7 @@ import {
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
-import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
+import { resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
