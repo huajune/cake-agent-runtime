@@ -27,6 +27,54 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "657",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/657",
+      "title": "优化模型配置与桌面端布局",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "将配置页保存快捷键设为 Cmd/Ctrl+S；全局侧栏切换改为 Cmd/Ctrl+B，避免快捷键冲突。",
+        "模型选择器统一展示模型 ID、能力摘要与发布日期，并完善触发器和无覆盖时的默认路由提示。",
+        "后端配置接口返回各 Agent 角色解析后的实际模型及来源，前端不再只能看到环境变量名。",
+        "聊天记录中的图片优先直接加载原图；原图加载失败时自动回退缩略图，并保留点击放大/新窗口查看能力。"
+      ],
+      "summary": [
+        "优化模型配置与桌面端布局",
+        "聊天记录优先展示原图",
+        "重构配置页桌面端信息层级：模型角色改为双列列表，显示当前实际生效模型、覆盖状态和待保存项数量。",
+        "将配置页保存快捷键设为 Cmd/Ctrl+S；全局侧栏切换改为 Cmd/Ctrl+B，避免快捷键冲突。",
+        "模型选择器统一展示模型 ID、能力摘要与发布日期，并完善触发器和无覆盖时的默认路由提示。",
+        "后端配置接口返回各 Agent 角色解析后的实际模型及来源，前端不再只能看到环境变量名。",
+        "聊天记录中的图片优先直接加载原图；原图加载失败时自动回退缩略图，并保留点击放大/新窗口查看能力。"
+      ],
+      "features": [
+        "将配置页保存快捷键设为 Cmd/Ctrl+S；全局侧栏切换改为 Cmd/Ctrl+B，避免快捷键冲突。",
+        "模型选择器统一展示模型 ID、能力摘要与发布日期，并完善触发器和无覆盖时的默认路由提示。",
+        "后端配置接口返回各 Agent 角色解析后的实际模型及来源，前端不再只能看到环境变量名。",
+        "聊天记录中的图片优先直接加载原图；原图加载失败时自动回退缩略图，并保留点击放大/新窗口查看能力。"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "重构配置页桌面端信息层级：模型角色改为双列列表，显示当前实际生效模型、覆盖状态和待保存项数量。",
+        "优化模型配置与桌面端布局"
+      ],
+      "ops": [
+        "聊天记录优先展示原图"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "HostingConfigFacadeService：19/19 tests passed。",
+        "`pnpm run lint:check`：通过。",
+        "`pnpm run format:check`：通过。",
+        "`pnpm run typecheck`：通过。",
+        "`pnpm run build:ci`：前端与 Nest 构建通过。",
+        "`pnpm run test:ci`：365 suites passed、1 skipped；5530 tests passed、6 skipped。",
+        "Web ESLint：0 errors；11 个既有、非本 PR 文件 warning。",
+        "`git diff --check`：通过。"
+      ]
     }
   ],
   "lastRelease": {
