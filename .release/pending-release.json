@@ -1,9 +1,36 @@
 {
   "baseVersion": "10.22.0",
   "nextVersion": "10.23.0",
-  "updatedAt": "2026-07-21",
+  "updatedAt": "2026-07-22",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "631",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/631",
+      "title": "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
+      ],
+      "summary": [
+        "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
+      ],
+      "features": [],
+      "fixes": [
+        "发版元数据步骤入口重建 git 凭证，修复 fetch 400 断链"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "仅改 workflow 单步骤 shell，不触及业务代码",
+        "合入后用补偿模式（workflow_dispatch）实测补录 #627–#630、#620 —— 该实测即本修复的端到端验证",
+        "数据库 migration：N/A"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.22.0",
     "date": "2026-07-21",
