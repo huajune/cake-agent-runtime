@@ -243,6 +243,39 @@
         "pre-push `pnpm run ci:check` 再次通过。",
         "关键生产链路发布后冒烟验证。"
       ]
+    },
+    {
+      "number": "653",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/653",
+      "title": "固化 v10.24.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-22",
+      "businessUpdates": [
+        "修复 Release PR #642 的 `Validate release ledger` 闸口失败。"
+      ],
+      "summary": [
+        "补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。",
+        "固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。",
+        "修复 Release PR #642 的 `Validate release ledger` 闸口失败。",
+        "固化 v10.24.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [
+        "修复 Release PR #642 的 `Validate release ledger` 闸口失败。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。",
+        "固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm release:ledger:check`：通过。",
+        "`pnpm exec prettier --check docs/releases/2026/v10.24.0.md`：通过。",
+        "`git diff --check`：通过。",
+        "`pnpm run ci:check`：通过；365 suites passed、1 skipped，5529 tests passed、6 skipped。"
+      ]
     }
   ],
   "lastRelease": {

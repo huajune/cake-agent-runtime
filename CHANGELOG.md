@@ -14,7 +14,7 @@
 **预计版本**: `v10.24.0`
 **最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -45,6 +45,10 @@
 - PR #651 品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。
 - PR #651 同步证据优先的解析/护栏架构文档与 Excalidraw 图。
 - PR #651 收敛面试、人设与护栏 badcase，并下线品牌解析旧对照组
+- PR #653 补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。
+- PR #653 固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。
+- PR #653 修复 Release PR #642 的 `Validate release ledger` 闸口失败。
+- PR #653 固化 v10.24.0 发版底账
 
 ### 新功能
 - PR #651 Hosting member 配置可为 Agent 提供账号昵称与性别；读取失败或缺失时安全降级为未配置。
@@ -62,6 +66,7 @@
 - PR #651 将企微账号昵称与性别注入 Agent 身份锚点，统一“候选人看到的账号就是本人”口径，并把“转人工/真人经理/专人联系”等露馅话术从 observe 升为 revise。
 - PR #651 品牌解析入口统一剥离引用块，并在完成生产归因后删除只用于 shadow 对照的旧品牌匹配、计数器和观测字段。
 - PR #651 同步证据优先的解析/护栏架构文档与 Excalidraw 图。
+- PR #653 修复 Release PR #642 的 `Validate release ledger` 闸口失败。
 
 ### 优化调整
 - PR #640 `src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）
@@ -91,6 +96,8 @@
 - PR #651 回滚：回滚本 PR 的 squash commit 或回退到上一生产 tag；无数据回滚动作。
 - PR #651 发布后观察：面试预约失败率、线上面试回复、`human_service_phrase_leak` revise 命中与品牌解析异常。
 - PR #651 收敛面试、人设与护栏 badcase
+- PR #653 补齐 `v10.24.0` 正式发版底账，覆盖实现 PR #640/#643/#645/#646/#647/#651。
+- PR #653 固化地理域、面试预约、账号身份、输出护栏、拉群幂等与品牌 shadow 下线的范围、风险、P0/P1、配置结论和回滚方案。
 
 ### 配置变更
 - PR #651 环境变量：N/A，无新增、修改或废弃变量。
@@ -117,6 +124,10 @@
 - PR #651 `git diff --check`
 - PR #651 pre-push `pnpm run ci:check` 再次通过。
 - PR #651 关键生产链路发布后冒烟验证。
+- PR #653 `pnpm release:ledger:check`：通过。
+- PR #653 `pnpm exec prettier --check docs/releases/2026/v10.24.0.md`：通过。
+- PR #653 `git diff --check`：通过。
+- PR #653 `pnpm run ci:check`：通过；365 suites passed、1 skipped，5529 tests passed、6 skipped。
 <!-- release:pending:end -->
 
 ## [10.23.0] - 2026-07-22
