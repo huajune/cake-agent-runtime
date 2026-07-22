@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.24.0] - 2026-07-22
 
-**预计版本**: `v10.24.0`
-**最近更新**: `2026-07-22`
 **来源分支**: `develop`
-**累计 PR**: 7
 
 ### 更新摘要
 - PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
@@ -128,7 +124,6 @@
 - PR #653 `pnpm exec prettier --check docs/releases/2026/v10.24.0.md`：通过。
 - PR #653 `git diff --check`：通过。
 - PR #653 `pnpm run ci:check`：通过；365 suites passed、1 skipped，5529 tests passed、6 skipped。
-<!-- release:pending:end -->
 
 ## [10.23.0] - 2026-07-22
 
