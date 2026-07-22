@@ -71,9 +71,13 @@ describe('ReengagementAgent', () => {
     memory = {
       recallForProactiveFollowUp: jest.fn().mockResolvedValue(memoryRecall),
     };
-    reengagementAgent = new ReengagementAgent(llm as never, memory as never, {
-      get: () => undefined,
-    } as never);
+    reengagementAgent = new ReengagementAgent(
+      llm as never,
+      memory as never,
+      {
+        get: () => undefined,
+      } as never,
+    );
   });
 
   afterEach(() => {
@@ -81,10 +85,14 @@ describe('ReengagementAgent', () => {
   });
 
   it('routes to the dedicated reengagement model when AGENT_REENGAGEMENT_MODEL is set', async () => {
-    const agent = new ReengagementAgent(llm as never, memory as never, {
-      get: (key: string) =>
-        key === 'AGENT_REENGAGEMENT_MODEL' ? 'deepseek/deepseek-v4-pro' : undefined,
-    } as never);
+    const agent = new ReengagementAgent(
+      llm as never,
+      memory as never,
+      {
+        get: (key: string) =>
+          key === 'AGENT_REENGAGEMENT_MODEL' ? 'deepseek/deepseek-v4-pro' : undefined,
+      } as never,
+    );
 
     await agent.compose({
       sessionRef,
@@ -114,7 +122,8 @@ describe('ReengagementAgent', () => {
       llm as never,
       memory as never,
       {
-        get: (key: string) => (key === 'AGENT_REENGAGEMENT_MODEL' ? 'qwen/qwen3.7-plus' : undefined),
+        get: (key: string) =>
+          key === 'AGENT_REENGAGEMENT_MODEL' ? 'qwen/qwen3.7-plus' : undefined,
       } as never,
       { getRoleModelOverride: jest.fn().mockResolvedValue('deepseek/deepseek-v4-pro') },
     );
@@ -136,7 +145,8 @@ describe('ReengagementAgent', () => {
       llm as never,
       memory as never,
       {
-        get: (key: string) => (key === 'AGENT_REENGAGEMENT_MODEL' ? 'qwen/qwen3.7-plus' : undefined),
+        get: (key: string) =>
+          key === 'AGENT_REENGAGEMENT_MODEL' ? 'qwen/qwen3.7-plus' : undefined,
       } as never,
       { getRoleModelOverride: jest.fn().mockRejectedValue(new Error('config store down')) },
     );
@@ -590,7 +600,8 @@ describe('ReengagementAgent', () => {
     expect(system).toContain('已收集资料项：姓名');
     expect(system).not.toContain('"collectedFields"');
     expect(system).not.toContain('张三');
-    expect(system).toContain('招聘顾问');
+    expect(system).toContain('招募经理');
+    expect(system).toContain('候选人看到的这个企微账号就是你本人');
     // 内部类名不应作为人设泄漏进 prompt
     expect(llm.generateStructured.mock.calls[0][0].system).not.toContain('ReengagementAgent');
     expect(llm.generateStructured.mock.calls[0][0].system).not.toContain('booking_incomplete');

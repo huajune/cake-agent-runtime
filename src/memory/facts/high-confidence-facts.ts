@@ -1,7 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
-import { buildBrandCatalogIndex } from '@resolution/brand/catalog-index';
-import { buildExactMatchTokens, normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { formatLocalDate } from '@infra/utils/date.util';
 import {
   FALLBACK_EXTRACTION,
@@ -471,6 +469,14 @@ export function extractHighConfidenceFacts(
  * 保持旧接口与输出形态兼容：提及级线索（不区分极性——"不要肯德基"仍产出肯德基的
  * 归一化线索，极性语义由 brand_state reducer 消费 resolveBrands 原始结果处理），
  * 品类兜底行为不回归（已上线的咖啡品类召回）。
+ *
+ * 引用块在**本函数内**剥离，不依赖调用方：引用块里的品牌是招募经理/Agent 的话，
+ * 不是候选人自陈。2026-07-21 生产实例 6a5f21ef——候选人引用 Agent 的
+ * 「零售群是超市、便利店、门店导购这类」，"便利店"命中品牌"7-11便利店"并进入
+ * 提取提示词，形成 Agent 说品牌 → 候选人引用 → 品牌被当作其兴趣的自污染回路。
+ * 根因是调用方（session.service extractFacts）传了原始消息，而剥离契约只写在
+ * stripQuotedBlocks 的注释里、无结构约束。收进入口后调用方无法再漏（幂等，
+ * extractHighConfidenceFacts 侧已剥过一次也无副作用）。
  */
 export function detectBrandAliasHints(
   userMessages: string[],
@@ -480,7 +486,9 @@ export function detectBrandAliasHints(
 
   const hints: BrandAliasHint[] = [];
   const seen = new Set<string>();
-  for (const message of userMessages) {
+  for (const raw of userMessages) {
+    const message = stripQuotedBlocks(raw);
+    if (!message) continue;
     for (const resolution of resolveBrands(message, 'user_text', brandData)) {
       if (resolution.ambiguous || !resolution.canonicalName) continue;
       const matchedAlias =
@@ -493,95 +501,6 @@ export function detectBrandAliasHints(
       hints.push({ brandName: resolution.canonicalName, matchedAlias, sourceText: message });
     }
   }
-  return hints;
-}
-
-/** 新旧品牌匹配路径的差异快照（对比期观测事件 brand_resolution_shadow_diff 的载荷）。 */
-export interface BrandAliasShadowDiff {
-  inputs: string[];
-  legacyBrands: string[];
-  nextBrands: string[];
-  catalogSize: number;
-}
-
-/**
- * 带新旧对照的品牌线索检测（§15.2 并行对比期）。
- *
- * 新路径（resolveBrands）是生效路径；旧匹配算法作为对照组在 shadow 运行，
- * 两侧品牌集合不一致时返回 diff（由调用方发射 brand_resolution_shadow_diff 事件），
- * 一致时 diff 为 null（仅计数不落行）。旧路径随 §15.6 指标达标后物理删除。
- */
-export function detectBrandAliasHintsWithShadow(
-  userMessages: string[],
-  brandData: BrandItem[],
-): { hints: BrandAliasHint[]; shadowDiff: BrandAliasShadowDiff | null } {
-  const hints = detectBrandAliasHints(userMessages, brandData);
-  if (userMessages.length === 0 || brandData.length === 0) {
-    return { hints, shadowDiff: null };
-  }
-
-  const legacyBrands = Array.from(
-    new Set(legacyDetectBrandAliasHints(userMessages, brandData).map((hint) => hint.brandName)),
-  ).sort();
-  const nextBrands = Array.from(new Set(hints.map((hint) => hint.brandName))).sort();
-  const identical =
-    legacyBrands.length === nextBrands.length &&
-    legacyBrands.every((brand, index) => brand === nextBrands[index]);
-
-  return {
-    hints,
-    shadowDiff: identical
-      ? null
-      : { inputs: userMessages, legacyBrands, nextBrands, catalogSize: brandData.length },
-  };
-}
-
-/**
- * 旧品牌匹配算法（对照组，§15.6 前保留）：token 全等 + 长别称整句包含 + 品类兜底。
- * 与迁移前的 detectBrandAliasHints 行为一致（基于同一套已迁移的归一化原语重建）。
- */
-function legacyDetectBrandAliasHints(
-  userMessages: string[],
-  brandData: BrandItem[],
-): BrandAliasHint[] {
-  const { candidates, categories } = buildBrandCatalogIndex(brandData);
-  const hints: BrandAliasHint[] = [];
-  const seen = new Set<string>();
-
-  const pushHint = (brandName: string, matchedAlias: string, sourceText: string): void => {
-    const dedupeKey = `${brandName}::${sourceText}`;
-    if (seen.has(dedupeKey)) return;
-    hints.push({ brandName, matchedAlias, sourceText });
-    seen.add(dedupeKey);
-  };
-
-  for (const message of userMessages) {
-    const tokens = buildExactMatchTokens(message);
-    if (tokens.length === 0) continue;
-
-    const normalizedMessage = normalizeForBrandMatch(message);
-
-    let matchedSpecificBrand = false;
-    for (const candidate of candidates) {
-      const matched =
-        tokens.some((token) => token === candidate.normalized) ||
-        (candidate.containEligible && normalizedMessage.includes(candidate.normalized));
-      if (!matched) continue;
-
-      matchedSpecificBrand = true;
-      pushHint(candidate.brandName, candidate.alias, message);
-    }
-
-    if (!matchedSpecificBrand) {
-      for (const category of categories) {
-        if (!category.keywords.some((keyword) => normalizedMessage.includes(keyword))) continue;
-        for (const brandName of category.brands) {
-          pushHint(brandName, `${category.label}(品类)`, message);
-        }
-      }
-    }
-  }
-
   return hints;
 }
 

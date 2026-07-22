@@ -27,6 +27,36 @@ export function formatInterviewTimeForReply(interviewTime: string): string {
 }
 
 /**
+ * 判断岗位是否为线上（非到店）面试，用于决定预约成功后要不要附带到店脚本。
+ *
+ * badcase chat 6a5f3080（佛山必胜客）：岗位面试备注写明"线上面试、群里发腾讯会议链接"，
+ * 但 booking 成功结果无条件附带 _onSiteScript，Agent 同一轮既说"线上腾讯会议"又说
+ * "到店跟前台说……"，自相矛盾。
+ *
+ * 判定口径刻意保守：只有面试方式或面试备注出现**明确线上信号**才判线上；
+ * 空值/未知一律按到店处理，避免回归 badcase keciu6u6（漏发到店脚本，候选人
+ * 到店被当陌生人）。面试方式明确写"线下/到店/现场"时，即便备注含"线上"字样
+ * （如混合流程）也按到店处理。
+ */
+const ONLINE_INTERVIEW_SIGNAL_PATTERN =
+  /线上面试|线上形式|线上进行|视频面试|电话面试|远程面试|腾讯会议|会议链接|入会|钉钉会议|飞书会议/;
+const OFFLINE_INTERVIEW_METHOD_PATTERN = /线下|到店|现场|当面|门店面试/;
+
+export function isOnlineInterview(params: {
+  interviewType?: string | null;
+  interviewRemark?: string | null;
+  flowDescription?: string | null;
+}): boolean {
+  const type = params.interviewType?.trim() ?? '';
+  if (OFFLINE_INTERVIEW_METHOD_PATTERN.test(type)) return false;
+  if (/线上|视频|电话|远程/.test(type)) return true;
+  const freeText = [params.interviewRemark, params.flowDescription]
+    .filter((text): text is string => Boolean(text?.trim()))
+    .join('\n');
+  return ONLINE_INTERVIEW_SIGNAL_PATTERN.test(freeText);
+}
+
+/**
  * 构造候选人到店报到时的自报家门脚本。
  *
  * 包含三要素：(1) "独立客招聘介绍来的"（badcase wcyayxpf：必须用「独立客」不能用变体），

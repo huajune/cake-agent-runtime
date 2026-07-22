@@ -206,14 +206,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'human_service_phrase_leak',
-    action: GUARDRAIL_ACTION.OBSERVE,
+    // 2026-07-07 observe 入场；2026-07-21 升 revise：两周 5 判例全真阳性（守卫档案
+    // 7-14/7-16/7-17/7-20/7-21，含 chat 6a5f4549 "我帮你转人工核实"），零误报。
+    // 2026-07-22 扩词：补"人工登记/人工确认"动作变体与"真人经理/专人联系"类第三方
+    // 割裂表述（badcase chat 6a5dedb2ce406a6aeee1ea62"东升是真人招募经理哈"直发未拦）。
+    action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P2,
-    description: '发现回复出现"转人工/人工客服"等与真人招募经理人设冲突的表述。',
-    riskGoal: '作为人设 prompt 迭代信号，追踪"转人工"类封闭词表泄漏。',
-    exogenousSignal: '人设露馅词库（转人工/人工客服/人工坐席等）。',
+    description: '打回重写出现"转人工/人工客服/真人经理/专人联系"等与账号本人人设冲突表述的回复。',
+    riskGoal: '防止"转人工/真人/专人"类客服话术自曝机器人身份，破坏"账号即本人"人设。',
+    exogenousSignal: '人设露馅词库（转人工/人工客服/人工登记/真人经理/专人联系等）。',
     residualRisk:
-      '消费者：人设 prompt 迭代/运营复盘；退场条件：长期保留，因其是封闭词表且已有运营反馈判例。隐性人机暗示需持续补词。',
+      '隐性人机暗示（"系统显示""机器人"自嘲等）与自报虚构姓名不在封闭词表内（后者需账号名参照，由 IdentitySection 账号身份锚定治理），需随判例补词；重写仅换措辞，若整轮本该走 request_handoff 则由 handoff_promise_without_handoff 对账。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
+      '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。',
   },
   {
     id: 'handoff_promise_without_handoff',
@@ -222,9 +229,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     description:
       '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功 request_handoff。',
     riskGoal: '防止 Agent 口头承诺人工跟进却没有落 handoff、暂停托管或通知负责人。',
-    exogenousSignal: '同事/负责人后续动作承诺词形 + 本轮 request_handoff.dispatched=true。',
+    exogenousSignal:
+      '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true。',
     residualRisk:
-      '不含同事、负责人、店长、门店、招聘经理等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
+      '不含同事、负责人、店长、门店、招聘经理、转人工等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的 request_handoff，当前文本不可发送。若确实需要人工跟进，必须调用 request_handoff 并写清待确认事项；若不需要人工跟进，就删除“同事会确认/稍后联系”等承诺，只陈述当前已确认的事实。',
@@ -282,7 +290,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '没有数字时间段的含蓄承诺交语义审查；本轮没有岗位补查时由 job_detail_lookup_required 先 replan。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版把当前岗位班次改写成了工具未列出的可协调时段，当前文本不可发送。请只转述本轮 duliday_job_list 明确列出的完整工作班次；候选人无法满足时，如实说明当前岗位时间不匹配，并按已有流程查询其他岗位或说明需要门店人工确认。禁止说“一般没问题/不会强制/可以协调”为候选人缩短班次。',
+      '上一版把当前岗位班次改写成了工具未列出的可协调时段，当前文本不可发送。请只转述本轮 duliday_job_list 明确列出的完整工作班次；候选人无法满足时，如实说明当前岗位时间不匹配，并按已有流程查询其他岗位或说明需要跟门店再确认。禁止说“一般没问题/不会强制/可以协调”为候选人缩短班次。',
   },
   {
     id: 'settlement_cycle_mismatch',

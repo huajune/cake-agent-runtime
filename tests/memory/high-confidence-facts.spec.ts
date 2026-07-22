@@ -1,6 +1,5 @@
 import {
   detectBrandAliasHints,
-  detectBrandAliasHintsWithShadow,
   extractHighConfidenceFacts,
   extractStructuredName,
   unwrapHighConfidenceValue,
@@ -19,35 +18,37 @@ describe('extractHighConfidenceFacts', () => {
   // extractHighConfidenceFacts 不再把品牌写进 preferences.brands；
   // 品牌线索（归一化提示）由 detectBrandAliasHints 适配层继续产出。
 
-  // §15.2/§15.6 新旧并行对比：next 是生效路径，legacy 是 shadow 对照组。
-  // 这层是旧路径下线门禁（差异率 < 2% 且持续 7 天）的唯一数据源，此前零覆盖。
-  describe('detectBrandAliasHintsWithShadow（§15.6 门禁数据源）', () => {
-    it('新旧一致时不产出 diff（该轮计入门禁分母，不落行）', () => {
-      const { hints, shadowDiff } = detectBrandAliasHintsWithShadow(['来一份'], brandData);
-      expect(hints.map((h) => h.brandName)).toEqual(['来伊份']);
-      expect(shadowDiff).toBeNull();
+  // 引用块剥离（§19.2）：引用块里的品牌是招募经理/Agent 的话，不是候选人自陈。
+  // 剥离收在 detectBrandAliasHints 入口内，调用方传原始消息也不会漏。
+  describe('detectBrandAliasHints 引用块剥离', () => {
+    it('引用块内的品牌不产出线索（Agent 自污染回路，生产实例 6a5f21ef）', () => {
+      // 候选人引用 Agent 说过的话，其中的品牌不是候选人的意向表达。
+      const hints = detectBrandAliasHints(
+        ['[引用 辛瑜琦：肯德基和瑞幸咖啡都在招]\n姐，这个群可以拉我一下嘛'],
+        brandData,
+      );
+      expect(hints).toEqual([]);
     });
 
-    it('工种词"咖啡师"：新路径不认、旧路径误展开 → 产出 diff（归因为"新对旧错"）', () => {
-      // 这是工种后缀护栏在 shadow 对照里的直接体现：旧路径裸子串匹配仍把"咖啡师"
-      // 当品类词展开成三个咖啡品牌，新路径按护栏返回空。§15.6 逐条归因时这类计
-      // "新对旧错"——它会推高差异率，但恰恰是旧路径该下线的证据，不是阻塞理由。
-      const { shadowDiff } = detectBrandAliasHintsWithShadow(['咖啡师'], brandData);
-      expect(shadowDiff).not.toBeNull();
-      expect(shadowDiff?.nextBrands).toEqual([]);
-      expect(shadowDiff?.legacyBrands.sort()).toEqual(['M Stand', '报亭咖啡', '瑞幸咖啡']);
-      expect(shadowDiff?.catalogSize).toBe(brandData.length);
-      expect(shadowDiff?.inputs).toEqual(['咖啡师']);
+    it('行首"引用 XXX："形态同样剥离', () => {
+      expect(detectBrandAliasHints(['引用 辛瑜琦：肯德基在招人'], brandData)).toEqual([]);
     });
 
-    it('撤除默认品牌后，裸品类词"咖啡兼职"新旧已收敛为一致', () => {
-      expect(detectBrandAliasHintsWithShadow(['我要咖啡兼职'], brandData).shadowDiff).toBeNull();
+    it('只剥引用块、正文品牌照常命中（引用肯德基 + 正文瑞幸 → 只出瑞幸）', () => {
+      const hints = detectBrandAliasHints(
+        ['[引用 辛瑜琦：肯德基在招人]\n我要瑞幸咖啡兼职'],
+        brandData,
+      );
+      expect(hints.map((h) => h.brandName)).toEqual(['瑞幸咖啡']);
     });
 
-    it('空输入或空目录时短路，不产出 diff（避免把降级算成差异）', () => {
-      expect(detectBrandAliasHintsWithShadow([], brandData).shadowDiff).toBeNull();
-      expect(detectBrandAliasHintsWithShadow(['来一份'], []).shadowDiff).toBeNull();
+    it('整条消息只有引用块时短路，不产出线索', () => {
+      expect(detectBrandAliasHints(['[引用 辛瑜琦：肯德基在招人]'], brandData)).toEqual([]);
     });
+  });
+
+  it('工种词"咖啡师"不当品类词展开（§7.3 工种后缀护栏）', () => {
+    expect(detectBrandAliasHints(['咖啡师'], brandData)).toEqual([]);
   });
 
   it('should surface brand alias hints without writing preferences.brands', () => {

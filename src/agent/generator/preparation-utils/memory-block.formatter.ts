@@ -86,7 +86,7 @@ function formatCrossConversationNotice(fromOtherConversation: boolean): string {
   if (!fromOtherConversation) return '';
   return (
     `\n\n[历史背景｜来自候选人此前在本平台的咨询]\n\n` +
-    `_下面的身份与求职意向，来自候选人**此前在本平台与另一位招聘顾问**的沟通沉淀，` +
+    `_下面的身份与求职意向，来自候选人**此前在本平台与另一位招募经理**的沟通沉淀，` +
     `**不是你和 TA 本次/此前的聊天记录**。开场可自然衔接（例如"看到你之前在我们平台咨询过…"），` +
     `但不要假装是你们之前聊过、也不要点名是哪位同事。_`
   );
