@@ -8,6 +8,49 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.24.0`
+**最近更新**: `2026-07-22`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
+- PR #640 `src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）
+- PR #640 `src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）
+- PR #640 `src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）
+- PR #640 Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）
+- PR #640 旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致
+- PR #640 建立 resolution/geo 与全量兼容门面（方案 Phase 1，PR 2）
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- PR #640 `src/**`：禁 import `memory/facts/geo-mappings`（存量 8 消费者列 excludedFiles 临时豁免，**Phase 2 逐边界清零**）
+- PR #640 `src/resolution/**`：禁业务/基础设施依赖（brand 保留 @sponge 豁免）
+- PR #640 `src/resolution/geo/**`：零出向依赖（含 @sponge / @resolution/brand）
+- PR #640 Phase 0 golden cases 全量平移至 `tests/resolution/geo/`（normalizer/scanner/admin resolver/places/policy 五个 spec）
+- PR #640 旧 spec 位置改为**门面等价性验证**：§4 清单 16 个运行时符号逐个断言与 `@resolution/geo` **同一引用**（Object.is）+ 旧入口冒烟——新旧入口测试结果必然一致
+
+### 运维与流程
+- PR #640 建立 resolution/geo 地理解析域与全量兼容门面（方案 Phase 1，PR 2）
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [10.23.0] - 2026-07-22
 
 **来源分支**: `develop`
