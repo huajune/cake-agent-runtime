@@ -129,6 +129,8 @@ describe('buildModifyInterviewTimeTool', () => {
     expect(result).toMatchObject({
       success: false,
       errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REJECTED,
+      apiCode: 500,
+      apiMessage: null,
     });
     expect(mockContext.runtimeWorkOrderId).toBe(123);
   });
