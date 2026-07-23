@@ -136,5 +136,4 @@
 - [安全守卫架构](../architecture/security-guardrails.md)
 - [人工告警触发清单](../infrastructure/human-alert-triggers.md)
 - [Gate 拒绝与人工介入流水线](../architecture/handoff-gate-and-intervention-pipeline.md)
-- [人工告警触发清单](../infrastructure/human-alert-triggers.md)
 - [监控系统架构](../architecture/monitoring-system-architecture.md)

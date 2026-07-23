@@ -178,7 +178,9 @@ export function buildCancelWorkOrderTool(
           const workOrder = await spongeService.getWorkOrderById(workOrderId, tokenContext);
           const currentStatus = workOrder?.currentStatus ?? '';
           const interviewPassed = Boolean(workOrder?.interviewPassTime);
-          const statusBlocked = /面试通过|已通过|已入职|入职办理|已上岗|已完成/.test(currentStatus);
+          const statusBlocked = ['面试成功', '上岗失败', '上岗成功', '已离职'].includes(
+            currentStatus,
+          );
           if (interviewPassed || statusBlocked) {
             logger.warn(
               `取消拦截（工单状态不可自助取消）: chatId=${chatId}, workOrderId=${workOrderId}, status=${currentStatus}, interviewPassTime=${workOrder?.interviewPassTime ?? '-'}`,

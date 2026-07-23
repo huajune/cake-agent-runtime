@@ -35,6 +35,33 @@ export const BRAND_GENERIC_ALIAS_BLOCKLIST = new Set([
 ]);
 
 /**
+ * 非雇主主体：我方在招聘平台上的发布 / 派遣主体，不是候选人可去上班的雇主品牌。
+ *
+ * 「跃橙云服」是本公司在 BOSS 直聘等平台的发布主体（见 candidate-consultation.md），
+ * 但它同时在海绵品牌目录里占了一条（brandId 10024）。候选人转发的岗位卡片截图里
+ * 「发布方：跃橙云服·人事招聘主管」这一行文本命中品牌库后会直接写状态，
+ * 把候选人上一轮真实说过的品牌顶掉——2026-07-22 生产实例 chat 6a609ed4：
+ * 18:45 候选人说「吾悦必胜客的」立主品牌必胜客(10006)，18:48 发截图后
+ * currentBrand 被替换成 跃橙云服(10024)，岗位召回随即圈到我方派遣主体上。
+ *
+ * 处置：从**文本匹配轨**整体剔除（不进 candidates / byNormalized / 品类展开），
+ * 同时进 nonEmployerBrandIds 供「品牌ID：」契约轨拒绝；
+ * byBrandId / brandIdByName 保留全量，按 ID 反查元数据的路径不受影响。
+ */
+export const NON_EMPLOYER_BRAND_IDS = new Set<number>([10024]);
+
+/** 同一主体的名称变体（归一化形态），目录换 ID 或补录别名时仍能拦住。 */
+export const NON_EMPLOYER_BRAND_NORMALIZED_NAMES = new Set<string>(
+  ['跃橙云服', '跃橙云服人力资源（上海）有限公司', '跃橙云服人力资源'].map(normalizeForBrandMatch),
+);
+
+/** 该品牌是否为非雇主主体（ID 命中或标准名命中即算）。 */
+export function isNonEmployerBrand(brand: BrandItem): boolean {
+  if (typeof brand.id === 'number' && NON_EMPLOYER_BRAND_IDS.has(brand.id)) return true;
+  return NON_EMPLOYER_BRAND_NORMALIZED_NAMES.has(normalizeForBrandMatch(brand.name));
+}
+
+/**
  * 非标准名别名的最短归一化长度：<2 一律不参与任何匹配。
  *
  * 品牌库存在 17 个 1 字符别名（"报""捞""红""匠"…含全角塌缩产物），单字词形在中文
@@ -91,6 +118,8 @@ export interface BrandCatalogIndex {
   byBrandId: Map<number, BrandItem>;
   /** 标准名 → 品牌ID（入口标准化时优先转 ID 用）。 */
   brandIdByName: Map<string, number>;
+  /** 不允许从用户文本 / 图片契约写入会话品牌的非雇主主体 ID。 */
+  nonEmployerBrandIds: Set<number>;
   /** 已解析的品类展开配置。 */
   categories: ResolvedBrandCategory[];
 }
@@ -103,7 +132,8 @@ export function buildBrandCatalogIndex(brandData: BrandItem[]): BrandCatalogInde
     return indexCache.index;
   }
 
-  const candidates: BrandCatalogCandidate[] = brandData
+  const employerBrands = brandData.filter((brand) => !isNonEmployerBrand(brand));
+  const candidates: BrandCatalogCandidate[] = employerBrands
     .flatMap((brand) =>
       [
         { brand, alias: brand.name, isCanonical: true },
@@ -142,10 +172,12 @@ export function buildBrandCatalogIndex(brandData: BrandItem[]): BrandCatalogInde
 
   const byBrandId = new Map<number, BrandItem>();
   const brandIdByName = new Map<string, number>();
+  const nonEmployerBrandIds = new Set<number>();
   for (const brand of brandData) {
     if (typeof brand.id === 'number') {
       byBrandId.set(brand.id, brand);
       brandIdByName.set(brand.name, brand.id);
+      if (isNonEmployerBrand(brand)) nonEmployerBrandIds.add(brand.id);
     }
   }
 
@@ -154,7 +186,8 @@ export function buildBrandCatalogIndex(brandData: BrandItem[]): BrandCatalogInde
     byNormalized,
     byBrandId,
     brandIdByName,
-    categories: buildResolvedCategories(brandData),
+    nonEmployerBrandIds,
+    categories: buildResolvedCategories(employerBrands),
   };
   indexCache = { source: brandData, index };
   return index;

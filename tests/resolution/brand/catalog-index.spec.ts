@@ -14,6 +14,7 @@ describe('catalog-index', () => {
     { id: 4, name: '来伊份', aliases: ['来一份'] },
     { id: 5, name: '小龙坎', aliases: ['小龙'] },
     { id: 6, name: '小龙翻大江', aliases: ['小龙'] },
+    { id: 10024, name: '跃橙云服', aliases: ['跃橙云服人力资源'] },
   ];
 
   it('classifies safe contains and short latin boundary aliases', () => {
@@ -31,6 +32,10 @@ describe('catalog-index', () => {
     expect(index.brandIdByName.get('瑞幸咖啡')).toBe(2);
     expect(index.byNormalized.get('小龙')).toHaveLength(2);
     expect(index.byNormalized.has('咖啡')).toBe(false);
+    expect(index.byNormalized.has('跃橙云服')).toBe(false);
+    expect(index.byBrandId.get(10024)?.name).toBe('跃橙云服');
+    expect(index.brandIdByName.get('跃橙云服')).toBe(10024);
+    expect(index.nonEmployerBrandIds).toContain(10024);
     expect(index.categories.find((item) => item.label === '咖啡')?.brands.sort()).toEqual([
       '拉瓦萨',
       '瑞幸咖啡',

@@ -10,14 +10,14 @@
 >
 > 本设计主体已落地。以下几处**最终实现与初版设计不同，下述为准**（正文相关段落已就地标注；均已对照当前代码确认仍生效）：
 >
-> 1. **入职 `candidate.hired` 不再采集**：15min 海绵轮询收口到 `interview.passed`，不写 `candidate.hired`（[`sponge-status-poll.cron.ts:21`](../../src/biz/ops-events/sponge-status-poll.cron.ts#L21)）。因此「整体转化率」= **面试通过数 / 新增好友**（不再是"入职/加好友"）；cohort 漏斗、KPI 均**无「入职」阶段**。
+> 1. **入职 `candidate.hired` 不再采集**：15min 海绵轮询收口到 `interview.passed`，不写 `candidate.hired`（[`sponge-status-poll.cron.ts:21`](../../src/biz/ops-events/crons/sponge-status-poll.cron.ts#L21)）。因此「整体转化率」= **面试通过数 / 新增好友**（不再是"入职/加好友"）；cohort 漏斗、KPI 均**无「入职」阶段**。
 > 2. **KPI 无 `hireRate` 字段**：后端 `ConversionKpisResponse` 实际返回 `breakIceRate / bookingRate / groupInviteRate / passRate / overallRate`，**没有 `hireRate`**（[`conversion-analytics.types.ts:37-44`](../../src/biz/conversion-analytics/types/conversion-analytics.types.ts#L37-L44)）。第三张卡是**加群率 = 破冰后加群人数 / 破冰人数**（分母是破冰，不是报名）。
 > 3. **handoff 接口无 `byStage`**：`/analytics/conversion/handoff` 只返回 `reasons[]`（reason_code 聚合），未实现按 `stage` 的分布（stage 字段在 `handoff_events` 表里有，分析接口未消费）。
 > 4. **`is_synthetic` 列实际加了、但没用**：迁移 `20260529150000` 仍 `ADD COLUMN message_processing_records.is_synthetic`（+部分索引），而 TS 代码**零引用**——孤儿列（破冰改走 `isPureFriendAddGreeting` 文本识别）。下文"已废弃不加"的说法不准。
 > 5. **handoff 原因 10 类**（非 8 类）：新增 `no_match_or_group_full`、`system_blocked`；见 [`request-handoff.tool.ts`](../../src/tools/request-handoff.tool.ts) 与迁移 `20260603120000_reclassify_handoff_other_reasons.sql`。
 > 6. **轮询窗口 60 天**（非 30 天）：`sponge-status-poll.cron.ts` 的 `lookbackDays = 60`。
 > 7. **cohort 漏斗实际阶段**：加好友 cohort = 新增好友 → 破冰 → 邀请进群 → 报名 → 面试通过（5 级，进群为破冰侧支）；报名 cohort = 报名 → 面试通过（2 级）。均**无"入职"**。
-> 8. **已完成**（本文"实施顺序"曾列为后续）：P1-8 飞书 21:00 日报 cron（[`ops-daily-report.cron.ts`](../../src/biz/ops-events/ops-daily-report.cron.ts)）、P2-2 huajune 埋点（[`huajune-reporter.service.ts`](../../src/biz/huajune/huajune-reporter.service.ts)）均已实现。
+> 8. **已完成**（本文"实施顺序"曾列为后续）：P1-8 飞书 21:00 日报 cron（[`ops-daily-report.cron.ts`](../../src/biz/ops-events/crons/ops-daily-report.cron.ts)）、P2-2 huajune 埋点（[`huajune-reporter.service.ts`](../../src/biz/huajune/huajune-reporter.service.ts)）均已实现。
 
 ---
 
@@ -1258,4 +1258,4 @@ web/src/components/Sidebar/         新增"转化分析"菜单项
 - ~~新增客户回调 `POST /wecom/customer/callback`~~（已废弃：生产无此回调，加好友走普通消息管道握手语）
 - 加好友握手语识别：`src/channels/wecom/message/utils/friend-add-greeting.util.ts`（`isPureFriendAddGreeting`）
 - 已有 long-term memory 架构：`docs/architecture/memory-and-hints-data-flow.md`
-- 已废弃的 recruitment_cases TODO：`docs/todo/recruitment-case-followup-window-and-stage-reset.md`
+- recruitment_cases 相关旧 TODO 已随整表和对应业务模块删除，不再维护。

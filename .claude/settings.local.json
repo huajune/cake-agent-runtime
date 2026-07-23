@@ -469,8 +469,7 @@
       "Bash(git --no-pager diff --cached --name-status)",
       "Bash(git --no-pager diff --cached --name-only)",
       "Bash(nvm use *)",
-      "Bash(cat)",
-      "Bash(git apply *)"
+      "Bash(cat)"
     ],
     "deny": [
       "Bash(git restore:*)",

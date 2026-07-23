@@ -1,7 +1,7 @@
 # Agent 架构重新设计 — 基于 63 条 badcase 反馈
 
 > **[已归档 · 2026-07-02]** 本文是早期 badcase 根因分析（63 条 → 4 类失败模式 P1–P4），作为后续重构的**输入**。
-> 其结论已被 [agent-reliability-refactor-2026-06.md](./agent-reliability-refactor-2026-06.md) 的更大范围分析（51 条新 badcase + P1–P6 框架）吸收并扩展，落地进度见
+> 其结论已被 [agent-reliability-refactor-2026-06.md](../../architecture/reliability/agent-reliability-refactor-2026-06.md) 的更大范围分析（51 条新 badcase + P1–P6 框架）吸收并扩展，落地进度见
 > [agent-reliability-implementation-roadmap.md](./agent-reliability-implementation-roadmap.md)。本文仅保留为分析过程记录，不再更新。
 >
 > 状态：设计阶段（历史档案，已被 refactor-2026-06 取代）
