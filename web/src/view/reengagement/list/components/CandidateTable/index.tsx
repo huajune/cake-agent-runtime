@@ -1,4 +1,4 @@
-import { Clock, BellRing, AlertTriangle } from 'lucide-react';
+import { Clock, BellRing, AlertTriangle, CircleHelp } from 'lucide-react';
 import { formatDateTime, formatRelativeTime, truncateSessionId } from '@/utils/format';
 import type { ReengagementCandidateSummary } from '@/api/types/reengagement.types';
 import { AVATAR_GRADIENTS, getAvatarStyle, getUserInitial } from '@/utils/avatar';
@@ -49,7 +49,7 @@ interface CandidateTableProps {
 
 /**
  * 候选人视角：一行一个候选人（session），左侧突出"下一次会发什么"，
- * 右侧是各场景当前态芯片（每场景最新一次触达，点开看全轨迹）。
+ * 右侧是各场景最近任务芯片（每场景最新一次触达，点开看全轨迹）。
  * 整行可点：进入该候选人最相关的触达（待发任务优先）。
  */
 export default function CandidateTable({
@@ -74,7 +74,14 @@ export default function CandidateTable({
       <th>候选人</th>
       <th>接管账号</th>
       <th>下一次触达</th>
-      <th>各场景当前态</th>
+      <th
+        title="展示每个场景最近一条任务的处理状态，不代表候选人当前同时处于这些业务阶段"
+      >
+        <span className={styles.headerWithHelp}>
+          各场景最近任务
+          <CircleHelp size={13} aria-hidden="true" />
+        </span>
+      </th>
       <th className={styles.thRight}>最近活动</th>
     </tr>
   );

@@ -160,7 +160,14 @@ export function buildModifyInterviewTimeTool(
               outcome: '修改约面时间失败',
               replyInstruction:
                 '改约未成功。请以真人招募者口吻一句话向候选人说明"我让同事帮你确认一下，稍等"之类的衔接语，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口报错/技术细节，不要谎称已改约。',
-              details: { workOrderId, newInterviewTime: trimmedTime },
+              // apiCode/apiMessage 透传海绵后端的拒绝原因，仅供观测落库（dashboard 直接可见，无需翻 Winston 日志）；
+              // _replyInstruction 已禁止 LLM 把这些细节复读给候选人。
+              details: {
+                workOrderId,
+                newInterviewTime: trimmedTime,
+                apiCode: result.code,
+                apiMessage: result.message ?? null,
+              },
             });
           }
 

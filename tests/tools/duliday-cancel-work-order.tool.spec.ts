@@ -178,6 +178,8 @@ describe('buildCancelWorkOrderTool', () => {
     expect(result).toMatchObject({
       success: false,
       errorType: TOOL_ERROR_TYPES.CANCEL_REJECTED,
+      apiCode: 500,
+      apiMessage: 'busy',
     });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
     expect(longTermService.clearActiveBooking).not.toHaveBeenCalled();

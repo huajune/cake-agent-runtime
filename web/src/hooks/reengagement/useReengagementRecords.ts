@@ -54,7 +54,7 @@ export function useReengagementScenarios() {
 }
 
 /**
- * 获取候选人视角聚合（一行一个候选人，各场景当前态 + 下一次待发任务）
+ * 获取候选人视角聚合（一行一个候选人，各场景最近任务状态 + 下一次待发任务）
  */
 export function useReengagementCandidates(options?: {
   startDate?: string;

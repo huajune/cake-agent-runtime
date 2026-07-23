@@ -8,6 +8,42 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.26.0`
+**最近更新**: `2026-07-23`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #672 自助取消/改约被拒时透传海绵 code/message 供观测
+- PR #672 透传取消与改约拒绝原因用于观测
+- PR #675 澄清复聊场景任务状态文案
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #672 自助取消/改约被拒时透传海绵 code/message 供观测
+- PR #675 澄清复聊场景任务状态文案
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [10.25.0] - 2026-07-22
 
 **来源分支**: `develop`
@@ -28,6 +64,10 @@
 - PR #662 拦截抽取模型把提示词字段示例（示例姓名、占位手机号、示例经历）整套回填到候选人事实中的回声问题。
 - PR #662 补齐会话、长期记忆、settlement、回复上下文和 test-suite fixture 对 `brand_state` 的统一读写与回归覆盖。
 - PR #662 收口品牌状态并拦截示例身份回声
+- PR #664 新增 `docs/releases/2026/v10.25.0.md`，统一覆盖实现 PR #657/#658/#662。
+- PR #664 固化配置可视化、聊天原图、Geo 目录平铺、品牌状态收口与示例身份回声防护的风险、验证和回滚边界。
+- PR #664 补齐 Release PR #660 当前缺失的发版底账闸口。
+- PR #664 建立 v10.25.0 发版底账
 
 ### 新功能
 - PR #657 将配置页保存快捷键设为 Cmd/Ctrl+S；全局侧栏切换改为 Cmd/Ctrl+B，避免快捷键冲突。
@@ -35,11 +75,14 @@
 - PR #657 后端配置接口返回各 Agent 角色解析后的实际模型及来源，前端不再只能看到环境变量名。
 - PR #657 聊天记录中的图片优先直接加载原图；原图加载失败时自动回退缩略图，并保留点击放大/新窗口查看能力。
 - PR #662 无。
+- PR #664 N/A；本 PR 仅新增发版底账。
+- PR #664 新增 `docs/releases/2026/v10.25.0.md`，统一覆盖实现 PR #657/#658/#662。
 
 ### 问题修复
 - PR #662 抽取出口新增 `validateOutput` 校验：命中已知占位手机号，或示例姓名与示例经历组合时，本次抽取按失败处理并进入既有重试/降级，防止虚构身份进入记忆并触发真实预约。
 - PR #662 旧 `preferences.brands` 在读取边界统一清空，避免旧字段通过 deep merge 在长会话中复活。
 - PR #662 补齐会话、长期记忆、settlement、回复上下文和 test-suite fixture 对 `brand_state` 的统一读写与回归覆盖。
+- PR #664 修复 #660 因缺少 `v10.25.0` 底账而失败的 `Validate release ledger` 检查。
 
 ### 优化调整
 - PR #657 重构配置页桌面端信息层级：模型角色改为双列列表，显示当前实际生效模型、覆盖状态和待保存项数量。
@@ -49,6 +92,7 @@
 - PR #662 将品牌意向的唯一真相收口到 `brand_state`，彻底停止读取、写入和迁移旧 `preferences.brands`。
 - PR #662 拦截抽取模型把提示词字段示例（示例姓名、占位手机号、示例经历）整套回填到候选人事实中的回声问题。
 - PR #662 拦截抽取提示词示例身份回声
+- PR #664 将三项实现 PR、P0/P1 回归、配置结论、部署顺序和回滚条件统一为可审计记录。
 
 ### 运维与流程
 - PR #658 geo 目录文件平铺，与 brand 风格一致（方案 v3.3 裁定）
@@ -57,12 +101,17 @@
 - PR #662 测试批次：`3dfaefe1-64e0-48db-b678-d1c9dd591a39`；2/2 runtime success、2/2 业务 passed、0 skipped。
 - PR #662 批次已同步生产 Dashboard，`warnings=[]`，生产 API 全量对账为 2 条执行、通过率 100%。
 - PR #662 品牌投影与懒迁移退役，preferences.brands 全链路收口 brand_state（§19.6）
+- PR #664 无 migration、schema、RPC、RLS、回填、环境变量或 secret 变化。
+- PR #664 部署仍按 tag 触发现有滚动发布；回滚目标为 `v10.24.0`。
+- PR #664 固化配置可视化、聊天原图、Geo 目录平铺、品牌状态收口与示例身份回声防护的风险、验证和回滚边界。
+- PR #664 补齐 Release PR #660 当前缺失的发版底账闸口。
 
 ### 配置变更
 - PR #662 数据库 migration / schema / RPC / RLS / 回填：N/A。
 - PR #662 环境变量 / secrets / 运行时配置：N/A。
 - PR #662 部署顺序：仅应用代码滚动发布，无前置配置或数据动作。
 - PR #662 回滚：回滚本 PR；`brand_state` 仍为现有字段，不涉及数据降级或不可逆操作。
+- PR #664 N/A；仅记录既有配置读取行为，不修改任何生产配置。
 
 ### 环境变量提醒
 - 无
@@ -84,6 +133,11 @@
 - PR #662 lint / format / typecheck / Web + Nest build 全部通过。
 - PR #662 关键链路已人工验证：两条真实 Agent 场景的 turn-end memory trace 中 `name/phone/experience` 均为空，`preferences.brands=null`，品牌落入 `brand_state.currentBrand`；无 precheck/booking 调用。
 - PR #662 正式测试资产、飞书评审状态、生产 Dashboard 和生产 API 已完成收口。
+- PR #664 `prettier --check docs/releases/2026/v10.25.0.md`：通过。
+- PR #664 `node scripts/check-release-ledger.js`：通过。
+- PR #664 `git diff --check`：通过。
+- PR #664 实现 PR #657/#658/#662 required checks 均通过；#662 最新全量基线为 366 suites、5548 tests。
+- PR #664 正式测试集 batch `3dfaefe1-64e0-48db-b678-d1c9dd591a39`：2/2 passed，Dashboard 与可评估通过率均为 100%。
 
 ## [10.24.0] - 2026-07-22
 
