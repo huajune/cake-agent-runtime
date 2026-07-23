@@ -192,6 +192,9 @@ function readStructuredBusinessUpdates(releaseTag = getReleaseTag()) {
   const releaseEntries = resolveReleaseMetadataEntries(releaseMetadata, version);
   const lines = [];
   for (const entry of releaseEntries) {
+    const entryTitle = formatReleaseText(entry.title, { includePrReference: false });
+    if (entryTitle && isReleaseProcessUpdate(entryTitle)) continue;
+
     const businessUpdates = Array.isArray(entry.businessUpdates) ? entry.businessUpdates : [];
     const fallbackUpdates = businessUpdates.length
       ? businessUpdates
@@ -210,7 +213,7 @@ function readStructuredBusinessUpdates(releaseTag = getReleaseTag()) {
 function isReleaseProcessUpdate(value) {
   return [
     /(?:修正|补齐).*元数据/i,
-    /(?:飞书)?(?:发版)?通知.*(?:业务摘要|业务改动|发布流程|运维话术)/i,
+    /(?:飞书)?(?:发版)?通知.*(?:业务摘要|业务改动|发布流程|流程话术|运维话术)/i,
     /(?:上一版回填|治理文档|发版底账).*(?:误分类|业务改动)/i,
   ].some((pattern) => pattern.test(value));
 }

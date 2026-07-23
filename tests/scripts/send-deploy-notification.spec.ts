@@ -219,6 +219,7 @@ const metadataFile = path.join(os.tmpdir(), \`release-metadata-process-\${proces
 fs.writeFileSync(metadataFile, JSON.stringify({
   nextVersion: '10.28.0',
   entries: [{
+    title: '报名状态修复',
     businessUpdates: [
       '没有进行中报名时，Agent 会明确当前尚未报名',
       '修正元数据自动化并发竞态，补齐已合并的 #693 与 #694',
@@ -227,6 +228,11 @@ fs.writeFileSync(metadataFile, JSON.stringify({
       '发版通知过滤发布流程话术',
       '过滤通知中的发布流程话术'
     ],
+    features: [],
+    fixes: []
+  }, {
+    title: '通知过滤覆盖发布流程话术变体',
+    businessUpdates: ['自动摘要改写后仍可能生成其他内部维护表述'],
     features: [],
     fixes: []
   }]
@@ -243,6 +249,7 @@ fs.rmSync(metadataFile, { force: true });
     expect(markdown).not.toContain('业务改动误分类');
     expect(markdown).not.toContain('发版通知过滤发布流程话术');
     expect(markdown).not.toContain('过滤通知中的发布流程话术');
+    expect(markdown).not.toContain('自动摘要改写后仍可能生成其他内部维护表述');
   });
 
   it('does not render env reminders in deploy cards', () => {
