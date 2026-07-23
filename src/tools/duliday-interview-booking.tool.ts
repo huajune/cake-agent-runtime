@@ -1050,8 +1050,9 @@ export function buildInterviewBookingTool(
                         {
                           _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime),
                           _onlineInterviewGuide:
-                            '该岗位为线上面试，无需到店；严禁发送"到店跟前台/店长说"类报到话术。' +
-                            '请按 precheck 返回的 flowDescription / processRemark 照实告知候选人面试形式与入会方式。',
+                            '该岗位面试初始环节为线上/电话形式，本轮不需要到店；严禁发送"到店跟前台/店长说"类报到话术、严禁发送门店地址作为面试地点。' +
+                            '请按 precheck 返回的 flowDescription / processRemark 照实告知候选人面试形式（如"面试官先电话沟通，合适的会通知线下门店面试"就照念，' +
+                            '并明确提醒候选人：在接到电话/通知前不要自行去门店）。',
                           _resultDisclaimer: '具体面试安排和结果以线上面试通知为准',
                         }
                       : {
