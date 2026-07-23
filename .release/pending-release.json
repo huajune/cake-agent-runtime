@@ -34,6 +34,35 @@
         "生产容器 `cake-agent-runtime:v10.28.0` 为 `running / healthy`",
         "`/agent/health` 返回 healthy，Redis、Supabase 均正常"
       ]
+    },
+    {
+      "number": "713",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/713",
+      "title": "发版通知业务改动为空时禁止回退",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "发版通知业务改动为空时禁止回退"
+      ],
+      "summary": [
+        "发版通知业务改动为空时禁止回退"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "区分“没有结构化元数据”和“结构化业务条目被全部过滤”",
+        "前者继续兼容 CHANGELOG，后者明确显示本次无候选人/运营可感知业务改动",
+        "防止已经过滤的底账/发布流程内容被 CHANGELOG 回退重新捞回",
+        "发版通知业务改动为空时禁止回退"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "通知格式测试：13/13 通过",
+        "`pnpm run ci:check`：366 个测试套件、5610 个测试通过，6 个跳过",
+        "使用最终 v10.29.0 元数据预演：仅显示“本次无候选人/运营可感知业务改动”"
+      ]
     }
   ],
   "lastRelease": {
