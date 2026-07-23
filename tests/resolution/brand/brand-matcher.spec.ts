@@ -273,6 +273,38 @@ describe('resolveBrands - 图片来源（image_description，§14.1）', () => {
     );
     expect(results).toEqual([]);
   });
+
+  it('「发布方」字段值一律不当求职意向——即使字段里写的是雇主品牌', () => {
+    // 发布方是发布 / 代理主体字段，与候选人想去的雇主品牌是两个字段。
+    const results = resolveBrands('发布方：肯德基人力资源服务部', 'image_description', catalog);
+    expect(results).toEqual([]);
+  });
+
+  it('遮蔽只挖标签之后：同子句里候选人自己说的品牌照常命中', () => {
+    const results = resolveBrands(
+      '我想去肯德基 发布方：跃橙云服·人事招聘主管祝东升',
+      'user_text',
+      catalog,
+    );
+    expect(names(positives(results))).toEqual(['肯德基']);
+  });
+
+  it('复合标签「品牌/发布方：X」不遮蔽，真雇主品牌仍然命中', () => {
+    // vision 把品牌与发布方并成一个标签时挖字段值会连真品牌一起丢，
+    // 该形态改由非雇主主体清单（catalog-index）兜底。
+    const results = resolveBrands(
+      '品牌/发布方：M Stand·人才经纪人（辛女士）',
+      'image_description',
+      catalog,
+    );
+    expect(names(positives(results))).toEqual(['M Stand']);
+  });
+
+  it('遮蔽不影响归因：sourceText 仍是未遮蔽的原子句', () => {
+    const results = resolveBrands('麦当劳的岗位 发布方：跃橙云服', 'image_description', catalog);
+    expect(names(positives(results))).toEqual(['麦当劳']);
+    expect(results[0].sourceText).toContain('发布方：跃橙云服');
+  });
 });
 
 describe('resolveBrands - 品类展开（§6.2/§14.1）', () => {
