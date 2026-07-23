@@ -1,9 +1,34 @@
 {
   "baseVersion": "10.25.0",
   "nextVersion": "10.26.0",
-  "updatedAt": "2026-07-22",
+  "updatedAt": "2026-07-23",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "672",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/672",
+      "title": "透传取消与改约拒绝原因用于观测",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "自助取消/改约被拒时透传海绵 code/message 供观测",
+        "透传取消与改约拒绝原因用于观测"
+      ],
+      "summary": [
+        "自助取消/改约被拒时透传海绵 code/message 供观测",
+        "透传取消与改约拒绝原因用于观测"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "自助取消/改约被拒时透传海绵 code/message 供观测"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.25.0",
     "date": "2026-07-22",
