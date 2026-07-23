@@ -27,6 +27,28 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "675",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/675",
+      "title": "澄清复聊场景任务状态文案",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "澄清复聊场景任务状态文案"
+      ],
+      "summary": [
+        "澄清复聊场景任务状态文案"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "澄清复聊场景任务状态文案"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
