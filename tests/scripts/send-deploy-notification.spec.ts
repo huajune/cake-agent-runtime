@@ -210,6 +210,48 @@ fs.rmSync(metadataFile, { force: true });
     expect(markdown).not.toContain('不应该走到这里');
   });
 
+  it('filters release-process maintenance from candidate-facing business updates', () => {
+    const markdown = runNode(`
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const metadataFile = path.join(os.tmpdir(), \`release-metadata-process-\${process.pid}.json\`);
+fs.writeFileSync(metadataFile, JSON.stringify({
+  nextVersion: '10.28.0',
+  entries: [{
+    title: '报名状态修复',
+    businessUpdates: [
+      '没有进行中报名时，Agent 会明确当前尚未报名',
+      '修正元数据自动化并发竞态，补齐已合并的 #693 与 #694',
+      '将 #693/#694/#695 的真实候选人可感知改动置于飞书发版通知业务摘要',
+      '移除上一版回填、治理文档和发版底账的业务改动误分类',
+      '发版通知过滤发布流程话术',
+      '过滤通知中的发布流程话术'
+    ],
+    features: [],
+    fixes: []
+  }, {
+    title: '通知过滤覆盖发布流程话术变体',
+    businessUpdates: ['自动摘要改写后仍可能生成其他内部维护表述'],
+    features: [],
+    fixes: []
+  }]
+}));
+process.env.RELEASE_METADATA_FILE = metadataFile;
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v10.28.0', deployResult: 'success' }));
+fs.rmSync(metadataFile, { force: true });
+`);
+
+    expect(markdown).toContain('- 没有进行中报名时，Agent 会明确当前尚未报名');
+    expect(markdown).not.toContain('元数据自动化并发竞态');
+    expect(markdown).not.toContain('飞书发版通知业务摘要');
+    expect(markdown).not.toContain('业务改动误分类');
+    expect(markdown).not.toContain('发版通知过滤发布流程话术');
+    expect(markdown).not.toContain('过滤通知中的发布流程话术');
+    expect(markdown).not.toContain('自动摘要改写后仍可能生成其他内部维护表述');
+  });
+
   it('does not render env reminders in deploy cards', () => {
     const releaseNotes = `
 ### 新功能

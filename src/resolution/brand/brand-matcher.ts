@@ -342,17 +342,52 @@ function isGeographicNameMatch(
   return GEOGRAPHIC_SUFFIX_PATTERN.test(suffix);
 }
 
+/**
+ * 岗位卡片「发布方」字段值不是候选人的求职意向品牌（2026-07-22 生产实例）。
+ *
+ * 候选人转发的招聘平台截图里，`发布方：XX·人事招聘主管` 是发布 / 代理主体，
+ * 与他想去的雇主品牌是两个不同字段。该字段值命中品牌库即写状态时，会把候选人
+ * 上一轮真实说过的品牌顶掉——chat 6a609ed4：18:45 说「吾悦必胜客的」立主品牌，
+ * 18:48 发截图后 currentBrand 被替换成发布主体，岗位召回随即跑偏。
+ *
+ * 处置：标签之后到子句结尾整段不参与匹配。归因用的 sourceText 仍是原子句，
+ * 观测侧看得到完整原文。
+ *
+ * 边界（刻意留窄，宁缺毋滥）：
+ * - 不含「用人单位 / 招聘方」——那两个标签指向的就是雇主本身；
+ * - 标签前紧邻「品牌」字样时（vision 把两字段并成 `品牌/发布方：X`）不遮蔽，
+ *   否则真雇主品牌会被一并挖掉，该形态由非雇主主体清单（catalog-index）兜底；
+ * - 只作用于实体匹配轨。品类展开轨仍读整段原文：发布方字段里单独出现品类词
+ *   且本轮无任何具体品牌命中，是极罕见组合，且展开的后果远轻于顶掉主品牌。
+ */
+const PUBLISHER_FIELD_LABEL_REGEX =
+  /发布方|发布者|发布单位|发布主体|发布公司|发布企业|人才经纪人|经纪人|招聘代理|代理招聘/g;
+
+/** 标签前是「品牌」+ 至多 3 个非汉字连接符（`品牌/`、`品牌 / `）→ 复合标签，不遮蔽。 */
+const COMPOSITE_BRAND_LABEL_PREFIX = /品牌[^一-龥]{0,3}$/;
+
+function maskPublisherFieldValues(clause: string): string {
+  for (const match of clause.matchAll(PUBLISHER_FIELD_LABEL_REGEX)) {
+    if (match.index === undefined) continue;
+    if (COMPOSITE_BRAND_LABEL_PREFIX.test(clause.slice(0, match.index))) continue;
+    return clause.slice(0, match.index);
+  }
+  return clause;
+}
+
 /** 单子句内的实体匹配：全等 token（短别名）+ 长别名包含 + 短英数边界包含。 */
 function matchClause(
   clause: string,
   source: BrandResolutionSource,
   index: BrandCatalogIndex,
 ): ClauseMatch[] {
-  const normalizedClause = normalizeForBrandMatch(clause);
+  // 「发布方」字段值先遮蔽再匹配；sourceText 仍用原子句，归因不丢原文。
+  const matchableClause = maskPublisherFieldValues(clause);
+  const normalizedClause = normalizeForBrandMatch(matchableClause);
   if (!normalizedClause) return [];
 
   // 匹配 token：原子句 token ∪ 剥离极性控制词后的 token（让"不要全家"露出短别名本体）。
-  const tokens = new Set(buildExactMatchTokens(clause));
+  const tokens = new Set(buildExactMatchTokens(matchableClause));
   for (const token of buildExactMatchTokens(stripPolarityControlWords(normalizedClause))) {
     tokens.add(token);
   }

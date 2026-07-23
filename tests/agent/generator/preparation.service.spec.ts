@@ -1047,6 +1047,27 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('用工:兼职(小时工)');
   });
 
+  it('无工单时注入 [预约状态] 接地块，禁完成口径（badcase zvey1mg8 空头宣称）', async () => {
+    mockLongTermService.getActiveBookings.mockResolvedValue([]);
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '帮我报名吧' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('[预约状态]');
+    expect(result.finalPrompt).toContain('没有任何进行中的报名/预约工单');
+    expect(result.finalPrompt).toContain('严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径');
+    // 段名必须与 [当前预约信息] 区分——后者的存在性被工具指令当作"已有预约"信号
+    expect(result.finalPrompt).not.toContain('[当前预约信息]');
+  });
+
   it('uses procedural stage + renders [当前预约信息] from active_booking + sponge', async () => {
     // 阶段直接取程序性记忆（onboard_followup 不再由 recruitment_cases 推导）。
     mockMemoryService.onTurnStart.mockResolvedValue({

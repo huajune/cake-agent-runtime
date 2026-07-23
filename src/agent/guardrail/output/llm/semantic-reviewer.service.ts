@@ -109,6 +109,7 @@ export class SemanticReviewerService {
             '- jobList.hasEvidence=true 表示已有可核验岗位证据；即使 jobList.jobs=[]，只要 markdownExcerpt 存在也不能说“无岗位数据/无证据支撑”。',
             '- 品牌名里可以包含地名，且与门店所在城市无关（如「成都你六姐」是在上海等地经营的连锁品牌，「北京华联」同理）。品牌名中的地名一律不作为地理冲突依据，只看门店/距离字段；仅凭品牌名判 brand_or_geo_ambiguity_ignored 属误判。',
             '- 候选人提供的姓名疑似微信昵称时，回复要求其补充真实姓名是既定报名流程，不是 active_booking_state_conflict，即使 precheck 已返回 ready_to_book。',
+            '- 回复以完成口径宣称报名/预约已完成（「已帮你报名」「已报名成功」「已登记好」「已提交预约」等），但本轮 toolCalls 中没有 duliday_interview_booking 成功证据、booking 证据里也没有对应工单时，判 active_booking_state_conflict（高置信）——候选人会基于虚假的已报名状态空等。征询式（「要不要帮你报名」）与进行式（「我这就帮你提交」）不算完成口径，放行。',
             '- geocode.hasResolvedCoordinate=true 表示已解析到坐标；unique 解析常见 candidates=[]，不能仅因 candidates 为空就说地理解析失败。',
             '- geocode.areaLevelQuery=true 表示只解析到行政区级，不能支撑精确门店距离，但不等于 geocode 失败。',
             '- sentLocation.addressConflict=true 表示面试地址与工作门店不同。仅当 destination=interview 时，回复必须说清两者差异，且不得把 storeAddress 当成面试目的地；destination=store 表示候选人明确询问工作地点，不要求额外展开面试地址，但不得把工作门店说成面试地点。',

@@ -172,6 +172,21 @@ const CURRENT_JOB_LABOR_FORM_CONTEXT_PATTERN =
 const LABOR_FORM_FACT_QUESTION_PATTERN =
   /是不是|是否|算不算|属于吗|是吗|对吗|对吧|到底是|还是[^，。！；;\n]{0,12}[？?]/;
 const LABOR_FORM_REGISTRATION_LABEL_PATTERN = /(?:身份|登记|填写|填报|录入|申报)/;
+/**
+ * 招聘限制疑问句（badcase chat 6a61c97c，2026-07-23）："只招暑假工吗"是在询问岗位
+ * 的招聘限制——言下之意候选人自己很可能**不是**暑假工，与"还招暑假工吗"（求职意向）
+ * 语义相反。命中即整句忽略，不得提取为候选人用工形式偏好；否则该值以 rule/high 每轮
+ * 重刷粘死，候选人后续改口"长期"都清不掉，job_list 被过滤到 0 只能转人工。
+ */
+const LABOR_FORM_HIRING_RESTRICTION_QUESTION_PATTERN =
+  /(?:只|仅)(?:招|要|收)[^，。！？?!；;\n]{0,10}[吗么？?]/;
+/**
+ * "长期"意向（同 badcase）：候选人说"长期呢/我说长期有没有/要长期的"时，明确否定了
+ * 寒暑假季节工偏好，但"长期"不在 labor_form 合法枚举内映射不出新值——旧的季节工值
+ * 会永生。此处产出 clear 信号：既清除已存的暑/寒假工，也让 job_list 本轮旁路季节过滤
+ * （currentLaborFormIntent.kind==='clear' 消费路径），给模型留出口。
+ */
+const LONG_TERM_MENTION_PATTERN = /长期/;
 const LABOR_FORM_REJECTION_PREFIX_PATTERN =
   /(?:(?<!是)不是|并非|不要|别|不想|不考虑|不接受|不找|不做|拒绝|排除|除了|不适合|不能做|做不了)[^，。！？?!；;\n]{0,14}$/;
 const LABOR_FORM_REJECTION_SUFFIX_PATTERN =
@@ -229,8 +244,28 @@ export function decideLaborFormIntent(message: string | null | undefined): Labor
 }
 
 function decideLaborFormClause(clause: string): LaborFormIntentDecision {
+  // "长期呢/我说长期有没有/要长期的"：明确否定季节工偏好。"长期"不在合法枚举内，
+  // 无法以 set 覆盖旧值，必须走 clear 清除暑/寒假工（拒绝方向"做不了长期"不清，
+  // 保持原偏好）。含"兼职"时交给下方 mention 路径（"长期兼职"→ set 兼职）。
+  if (LONG_TERM_MENTION_PATTERN.test(clause) && !/兼职/.test(clause)) {
+    const index = clause.search(LONG_TERM_MENTION_PATTERN);
+    const prefix = clause.slice(0, index);
+    const suffix = clause.slice(index + 2);
+    const isRejected =
+      LABOR_FORM_REJECTION_PREFIX_PATTERN.test(prefix) ||
+      LABOR_FORM_REJECTION_SUFFIX_PATTERN.test(suffix);
+    if (!isRejected) {
+      return { kind: 'clear', clearedValues: ['暑假工', '寒假工'] };
+    }
+  }
+
   const mentions = readLaborFormMentions(clause);
   if (mentions.length === 0) return { kind: 'ignore' };
+
+  // "只招暑假工吗"是招聘限制疑问，不是求职意向（与"还招暑假工吗"相反），整句忽略。
+  if (LABOR_FORM_HIRING_RESTRICTION_QUESTION_PATTERN.test(clause)) {
+    return { kind: 'ignore' };
+  }
 
   // “不确定是暑假工还是小时工”没有形成偏好；整句忽略，不能用最后一个关键词改口。
   if (LABOR_FORM_UNCERTAINTY_PATTERN.test(clause)) return { kind: 'ignore' };
