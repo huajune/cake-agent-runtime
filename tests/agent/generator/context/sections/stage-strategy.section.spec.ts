@@ -1,6 +1,7 @@
 import { StageStrategySection } from '@agent/generator/context/sections/stage-strategy.section';
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
-import { StrategyConfigRecord, StageGoalConfig } from '@shared-types/strategy-config.types';
+import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
+import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 
 describe('StageStrategySection', () => {
   const section = new StageStrategySection();

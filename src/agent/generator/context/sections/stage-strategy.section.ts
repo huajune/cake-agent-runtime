@@ -1,5 +1,5 @@
 import { PromptSection, PromptContext } from './section.interface';
-import { StageGoalConfig } from '@shared-types/strategy-config.types';
+import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 
 /**
  * 阶段策略段落 — 当前阶段配置 + 所有阶段概览 + 推进提示

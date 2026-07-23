@@ -17,9 +17,6 @@ import {
   type FollowUpScenarioCode,
 } from './scenario-registry';
 
-// 场景注册表 + 时窗/停止工具已拆到 ./scenario-registry；re-export 保持既有 import 路径可用。
-export * from './scenario-registry';
-
 export const REENGAGEMENT_QUEUE = 'reengagement';
 export const REENGAGEMENT_JOB_NAME = 'follow-up';
 

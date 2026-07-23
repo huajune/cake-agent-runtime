@@ -4,7 +4,7 @@ import { AnalyticsDashboardService } from './services/dashboard/analytics-dashbo
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
 import { ReengagementQueryService } from './services/dashboard/reengagement-query.service';
-import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/follow-up-scheduler.service';
+import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/scenario-registry';
 import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
