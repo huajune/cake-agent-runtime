@@ -2,6 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "t1-api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; nvm use 22.16.0 >/dev/null; PORT=8586 pnpm exec nest start"
+      ],
+      "port": 8586,
+      "autoPort": false
+    },
+    {
       "name": "backend",
       "runtimeExecutable": "bash",
       "runtimeArgs": [

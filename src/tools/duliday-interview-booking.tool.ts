@@ -1032,6 +1032,11 @@ export function buildInterviewBookingTool(
                 errorType: null,
                 requestInfo,
                 _outcome: '预约成功，可以告知候选人面试安排',
+                // badcase yfrc6wb9：booking success 后回复未向候选人播报，候选人不知已报名，
+                // 3 分钟后重复提交撞 already_booked。成功播报是硬约束，不是可选项。
+                _replyInstruction:
+                  '预约已成功提交。本轮回复**必须**明确向候选人确认报名成功，并按下方 _confirmedInterviewTimeHuman / 各 guide 字段复述面试安排；' +
+                  '严禁不提报名结果、只回答候选人其他问题或静默。',
                 // 历史 badcase keciu6u6 / waugdoxa / 2za5e0ek：约面成功后 Agent 漏说具体时间点、漏教候选人到店脚本。
                 // 这两个字段是工具事实，Agent 必须照实复述（在 Agent prompt 的"## 硬规则"段有强约束）。
                 // 等通知岗位（无 interviewTime）没有时间点可复述、也没有到店环节，
