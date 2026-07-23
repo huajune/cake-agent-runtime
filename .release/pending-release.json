@@ -30,6 +30,121 @@
         "`/agent/health` 返回 healthy，Redis/Supabase 正常",
         "本地 pre-push 全量测试受到工作区未提交的无关预约代码影响（5 个失败）；未改动这些代码，交由 PR 干净检出 CI 校验本提交"
       ]
+    },
+    {
+      "number": "686",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/686",
+      "title": "退役三个无主 re-export 门面",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "退役三个无主 re-export 门面，消费者收口到符号真实居所",
+        "退役三个无主 re-export 门面"
+      ],
+      "summary": [
+        "退役三个无主 re-export 门面，消费者收口到符号真实居所",
+        "退役三个无主 re-export 门面"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "退役三个无主 re-export 门面，消费者收口到符号真实居所"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "零行为变更（纯 import 路径收口 + 删空壳文件）",
+        "typecheck / lint 通过；全量 Jest 366 套件 / 5548 通过 / 0 失败"
+      ]
+    },
+    {
+      "number": "685",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/685",
+      "title": "无岗承接二档话术 + 全等复读确定性改写（badcase 治理 PR-2）",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "无岗承接二档话术 + 全等复读确定性改写（badcase 治理 PR-2）"
+      ],
+      "summary": [
+        "无岗承接二档话术 + 全等复读确定性改写（badcase 治理 PR-2）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "无岗承接二档话术 + 全等复读确定性改写（badcase 治理 PR-2）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 Jest：366 套件 / 5553 通过 / 0 失败",
+        "新增用例覆盖：二档文案与一档差异、Aron 案原文形态签名检测、全等→revise / 近似→observe 分档、标点变体归一化",
+        "typecheck / lint 通过"
+      ]
+    },
+    {
+      "number": "684",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/684",
+      "title": "booking 身份溯源解锁与取消核验 + 转人工确定性通道（badcase 治理 PR-1）",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "新增 v10.27.0 发版底账；移除误提交的本地 `.claude` 权限。",
+        "预约姓名确认可解除打招呼昵称负向证据；重复索名后进入人工接管。",
+        "booking 手机号必须可追溯到候选人原文。",
+        "取消工单前核对当前预约归属；状态枚举已对齐真实值 `面试成功 / 上岗失败 / 上岗成功 / 已离职`，并保留 `interviewPassTime` 拦截。",
+        "明确“转人工”走确定性输入风险通道，暂停、告警且候选人侧静默。",
+        "电话初面 / 两段式面试不再误发到店脚本。",
+        "“跃橙云服”作为发布 / 派遣主体，从文本品牌匹配、图片品牌 ID 契约和品类展开中剔除。",
+        "重写 README / 文档索引，归档 4 份已完成或不再维护的历史方案；保留仍未完成的 recruitment case TODO。"
+      ],
+      "summary": [
+        "booking 身份溯源解锁与取消核验 + 转人工确定性通道（badcase 治理 PR-1）",
+        "先电话后到店两段式面试不再误发到店脚本（沈阳必胜客双面投诉）",
+        "补记海绵 firstInterviewWay 为 null 的核实结论",
+        "治理方案收口记录——S1/S2 执行闭环与工单 452333 运营待办",
+        "收口 v10.27.0 治理与发版底账",
+        "预约姓名确认可解除打招呼昵称负向证据；重复索名后进入人工接管。",
+        "booking 手机号必须可追溯到候选人原文。",
+        "取消工单前核对当前预约归属；状态枚举已对齐真实值 `面试成功 / 上岗失败 / 上岗成功 / 已离职`，并保留 `interviewPassTime` 拦截。",
+        "明确“转人工”走确定性输入风险通道，暂停、告警且候选人侧静默。",
+        "电话初面 / 两段式面试不再误发到店脚本。",
+        "“跃橙云服”作为发布 / 派遣主体，从文本品牌匹配、图片品牌 ID 契约和品类展开中剔除。",
+        "重写 README / 文档索引，归档 4 份已完成或不再维护的历史方案；保留仍未完成的 recruitment case TODO。",
+        "新增 v10.27.0 发版底账；移除误提交的本地 `.claude` 权限。"
+      ],
+      "features": [
+        "新增 v10.27.0 发版底账；移除误提交的本地 `.claude` 权限。"
+      ],
+      "fixes": [
+        "预约姓名确认可解除打招呼昵称负向证据；重复索名后进入人工接管。",
+        "booking 手机号必须可追溯到候选人原文。",
+        "取消工单前核对当前预约归属；状态枚举已对齐真实值 `面试成功 / 上岗失败 / 上岗成功 / 已离职`，并保留 `interviewPassTime` 拦截。",
+        "明确“转人工”走确定性输入风险通道，暂停、告警且候选人侧静默。",
+        "电话初面 / 两段式面试不再误发到店脚本。",
+        "“跃橙云服”作为发布 / 派遣主体，从文本品牌匹配、图片品牌 ID 契约和品类展开中剔除。",
+        "重写 README / 文档索引，归档 4 份已完成或不再维护的历史方案；保留仍未完成的 recruitment case TODO。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "booking 身份溯源解锁与取消核验 + 转人工确定性通道（badcase 治理 PR-1）",
+        "先电话后到店两段式面试不再误发到店脚本（沈阳必胜客双面投诉）",
+        "补记海绵 firstInterviewWay 为 null 的核实结论",
+        "治理方案收口记录——S1/S2 执行闭环与工单 452333 运营待办",
+        "收口 v10.27.0 治理与发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "定向回归：7 suites / 328 tests",
+        "完整 CI：366 suites / 5586 tests（另有存量 1 suite / 6 tests skipped）",
+        "lint、Prettier、typecheck、后端与 Web build：通过",
+        "AppModule DI smoke：通过",
+        "`pnpm run release:ledger:check`：通过",
+        "正式模型回放批次 `3e2100a5`：3/3 运行成功；姓名/手机号与二次无岗通过；强转人工场景因旧测试 runner 绕过输入闸门跳过，已由确定性入口和终态测试补证"
+      ]
     }
   ],
   "lastRelease": {
