@@ -90,7 +90,9 @@ chat `6a5ee65bce406a6aee1e77bb`（来米，7-21）：刚加好友，Agent 第一
 - 岗位的面试方式字段未流入 `resolveInterviewType`（booking result 的 `requestInfo.interviewType` 为 undefined）；
 - 兜底 freeText（`interviewRemark`，precheck 侧同源字段即 `processRemark`）里明明有"面试官先电话沟通"原文，但 `ONLINE_INTERVIEW_SIGNAL_PATTERN` 只认字面"电话面试"，"先电话沟通"漏网 → 保守兜底走到店脚本。
 
-**修复（已随 PR #684 分支提交）**：① 正则补强电话初面信号（电话初面/电话初试/先电话沟通/电话沟通后/先电话联系；不收"保持电话畅通/会电话联系"防误伤 keciu6u6 回归）；② `_onlineInterviewGuide` 改为兼容两段式（"初始环节不需到店 + 接到电话/通知前不要自行去门店"，禁发地址）。**遗留**：复聊提醒模板不带面试形式（归入 PR-2/复聊侧）；候选人报"到了"时的纠偏敏感度（模型行为，观察修复后是否仍现）；interviewType 字段未下发的海绵侧排查。
+**修复（已随 PR #684 分支提交）**：① 正则补强电话初面信号（电话初面/电话初试/先电话沟通/电话沟通后/先电话联系；不收"保持电话畅通/会电话联系"防误伤 keciu6u6 回归）；② `_onlineInterviewGuide` 改为兼容两段式（"初始环节不需到店 + 接到电话/通知前不要自行去门店"，禁发地址）。**遗留**：复聊提醒模板不带面试形式（归入 PR-2/复聊侧）；候选人报"到了"时的纠偏敏感度（模型行为，观察修复后是否仍现）。
+
+**海绵侧排查已闭环（7-23 直调生产 API 核实）**：job/list 返回该岗位 `firstInterviewWay: null`、`firstInterviewDesc: "面试官先电话沟通，合适的会通知线下门店面试"`——招聘平台页面显示的"面试方式：电话面试"结构化字段**没有同步到 AI 网关接口**（字段存在但值为 null），面试方式信息只以自由文本形态存在于 firstInterviewDesc。本次正则修复恰好落在该字段的消费路径（interviewRemark 同源）上，可兜住；但建议向海绵/数据侧提需求：把面试方式结构化值同步下发 firstInterviewWay，让强信号路径生效，不依赖文本正则。
 
 ### 根因 5【P2】口径类散点
 
