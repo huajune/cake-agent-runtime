@@ -49,6 +49,28 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "677",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/677",
+      "title": "建立 v10.26.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "建立 v10.26.0 发版底账"
+      ],
+      "summary": [
+        "建立 v10.26.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "建立 v10.26.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
