@@ -13,8 +13,12 @@ import type { RuleContradiction } from '../output-rule.types';
  * 与 prompt 提醒的区别：这里对齐的是"真实发过什么"，模型忘了历史也拦得住。
  *
  * 分档：
- * - repeated_reply（observe）：当前回复与近几条已发消息近乎相同（去空白标点后全等，
- *   或字符 bigram 相似度 ≥ 0.9）。这是体验/语义质量问题，本层只观察；
+ * - repeated_reply_verbatim（revise）：去空白标点后**全等**。零假阳场景——候选人已经
+ *   收到过一字不差的这句话，复读必然是"人机感"（badcase 6a5df7e7：无岗话术两轮全等
+ *   复读 + 不回应具体提问，候选人评价"说话跟人机一样"后辱骂流失）。进 repair 改写；
+ *   repair 白改机制下最坏结果 = 投递原首版（现状），无回归风险；
+ * - repeated_reply（observe）：bigram 相似度 ≥ 0.9 但非全等。措辞相近可能是合理的
+ *   口径复述（同一岗位事实再确认），本层只观察。
  */
 
 const RECENT_WINDOW = 8;
@@ -61,6 +65,18 @@ export function detectRepeatedReply(
     const normalized = normalizeReply(previous);
     if (normalized.length < MIN_REPEAT_LENGTH) continue;
     const similarity = normalized === current ? 1 : bigramSimilarity(current, normalized);
+    if (similarity === 1) {
+      return {
+        ruleId: 'repeated_reply_verbatim',
+        label:
+          '回复与本会话已发送的消息逐字相同（去空白标点后全等），整段复读像机器人（badcase 6a5df7e7 复读两轮后候选人辱骂流失）',
+        action: GUARDRAIL_ACTION.REVISE,
+        feedbackToGenerator:
+          '上一版回复与本会话已发送过的消息逐字相同，候选人已经收到过这句话，原样复读会被当成机器人。' +
+          '请换一种表述重写，并优先回应候选人本轮消息里的具体问题（如点名的品牌、追问的范围）；' +
+          '仅当候选人明确要求"再发一遍/重新发我"时才可保留原文。只输出候选人可见回复。',
+      };
+    }
     if (similarity >= SIMILARITY_THRESHOLD) {
       return {
         ruleId: 'repeated_reply',
