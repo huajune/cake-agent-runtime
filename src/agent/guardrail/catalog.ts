@@ -113,9 +113,10 @@ export const GUARDRAIL_CATALOG: GuardrailCatalogEntry[] = [
     action: 'pause_hosting',
     coverage: 'code',
     priority: 'P0',
-    riskGoal: '辱骂、投诉风险、面试结果追问等高风险会话进入 Agent 前暂停托管。',
+    riskGoal: '辱骂、投诉风险、面试结果追问、主动要求转人工等高风险会话进入 Agent 前暂停托管。',
     source: 'agent/guardrail/input/risk-intercept.service.ts',
-    exogenousSignal: '高置信关键词规则（abuse / complaint_risk / interview_result_inquiry）',
+    exogenousSignal:
+      '高置信关键词规则（abuse / complaint_risk / interview_result_inquiry / human_handoff_request）',
     residualRisk: '隐晦投诉或无关键词升级仍可能漏检。',
     verification: 'tests/agent/guardrail/input/risk-intercept.service.spec.ts',
     owner: 'agent-runtime',

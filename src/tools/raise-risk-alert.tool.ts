@@ -46,6 +46,8 @@ const RISK_TYPE_LABELS: Record<ToolRiskType, string> = {
   complaint_risk: '投诉/举报风险',
   escalation: '情绪升级',
   interview_result_inquiry: '面试结果追问',
+  // input 层确定性拦截专用类型；本工具的 inputSchema 未开放给模型，仅为类型完整。
+  human_handoff_request: '候选人主动要求人工',
 };
 
 function extractLatestUserMessageFromToolContext(messages: unknown[]): string {

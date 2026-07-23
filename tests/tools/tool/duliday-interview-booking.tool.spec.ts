@@ -23,7 +23,9 @@ describe('buildInterviewBookingTool', () => {
     userId: 'user-1',
     corpId: 'corp-1',
     sessionId: 'sess-1',
-    messages: [],
+    // B4 手机号溯源闸门要求提交的 phone 在候选人原文中有出处；共享上下文里
+    // 预置一条候选人报号消息，让存量用例聚焦各自原本要测的环节。
+    messages: [{ role: 'user', content: '电话13800138000' }],
     contactName: '候选人微信名',
     botUserId: 'manager-1',
   };
@@ -375,6 +377,70 @@ describe('buildInterviewBookingTool', () => {
     expect(result._replyInstruction ?? '').not.toContain('打招呼语昵称');
   });
 
+  it('HC-2 name gate: unlocks after explicit confirmation (badcase g4ytra23 死锁修复)', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJob({ interviewProcess: { interviewSupplement: [] } })],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+    });
+
+    // 打招呼昵称=真名，但候选人已明确确认"就是陈佩珊" → 解锁放行
+    const result = await executeTool(
+      { ...validInput, name: '陈佩珊' },
+      {
+        messages: [
+          { role: 'user', content: '我是陈佩珊' },
+          { role: 'user', content: '电话13800138000' },
+          { role: 'assistant', content: '麻烦发一下身份证上的真实姓名' },
+          { role: 'user', content: '就是陈佩珊' },
+        ],
+      },
+    );
+
+    expect(result._replyInstruction ?? '').not.toContain('打招呼语昵称');
+    expect(result.success).toBe(true);
+  });
+
+  it('HC-2 name gate: escalates to request_handoff after 2+ real-name asks (同题限问)', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      { ...validInput, name: '小王' },
+      {
+        messages: [
+          { role: 'user', content: '我是小王' },
+          { role: 'user', content: '电话13800138000' },
+          { role: 'assistant', content: '麻烦发一下身份证上的真实姓名，我帮你登记' },
+          { role: 'user', content: '发了呀' },
+          { role: 'assistant', content: '门店登记需要用身份证上的真实姓名哈' },
+          { role: 'user', content: '就这个' },
+        ],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result._replyInstruction).toContain('request_handoff');
+    expect(result._replyInstruction).toContain('禁止再重复索要');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('B4 phone gate: rejects a phone with no user-text provenance (示例回声编造号)', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      { ...validInput, name: '张三', phone: '15921708092' },
+      { messages: [{ role: 'user', content: '姓名：张三' }, { role: 'user', content: '周四下午' }] },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
+    expect(result._replyInstruction).toContain('手机号');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
   it('booking guard: should reject when interviewTime falls outside the job windows', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
@@ -460,6 +526,7 @@ describe('buildInterviewBookingTool', () => {
 
     const result = await executeTool(validInput, {
       messages: [
+        { role: 'user', content: '电话13800138000' },
         { role: 'assistant', content: '目前是学生还是社会人士？' },
         { role: 'user', content: '社会' },
       ],
@@ -950,7 +1017,7 @@ describe('buildInterviewBookingTool', () => {
       messages: [
         {
           role: 'user',
-          content: '姓名：曹旭天\n出生日期：2000-10-15',
+          content: '姓名：曹旭天\n联系电话：13800138000\n出生日期：2000-10-15',
         },
       ],
     });
@@ -996,6 +1063,7 @@ describe('buildInterviewBookingTool', () => {
       },
       {
         messages: [
+          { role: 'user', content: '电话13800138000' },
           {
             role: 'user',
             content:
@@ -1303,7 +1371,7 @@ describe('buildInterviewBookingTool', () => {
           householdRegisterProvinceId: 310000,
           height: 170,
         },
-        {},
+        { messages: [{ role: 'user', content: '电话13750091607' }] },
         { activeBooking: recentActiveBooking },
       );
 

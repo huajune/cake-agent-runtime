@@ -26,6 +26,15 @@ const AUTO_GREETING_REGEX =
  */
 const TIME_CONTEXT_SUFFIX_REGEX = /\n\[消息发送时间：[^\]]*\]\s*$/u;
 
+/**
+ * 剥离短期记忆时间后缀，供整句锚定类识别器（打招呼语/确认句/肯定答复）在匹配前调用。
+ * badcase 6a448d09（v10.13.0 修复被时间后缀击穿）的教训：任何对"整条消息"做
+ * 锚定判断的正则，都必须先过这一层，否则后缀会让 `$` 锚点永远失配。
+ */
+export function stripTimeContextSuffix(message: string): string {
+  return message.replace(TIME_CONTEXT_SUFFIX_REGEX, '');
+}
+
 export function extractAutoGreetingName(message: string): string | null {
   if (!message) return null;
   const stripped = message.replace(TIME_CONTEXT_SUFFIX_REGEX, '').trim();

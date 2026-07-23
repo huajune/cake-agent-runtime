@@ -216,7 +216,8 @@ describe('resume booking flow', () => {
       chatId: '6a1ced34536c9654027defbd',
       contactName: '候选人微信名',
       botUserId: 'manager-1',
-      messages: [{ role: 'user', content: messageContent }],
+      // B4 手机号溯源闸门要求提交的 phone 在候选人原文有出处，预置报号消息
+      messages: [{ role: 'user', content: '电话15305186866' }, { role: 'user', content: messageContent }],
       highConfidenceFacts,
       sessionFacts: {
         interview_info: {

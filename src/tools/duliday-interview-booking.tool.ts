@@ -39,7 +39,11 @@ import {
 } from '@tools/duliday/booking/booking-reply-format.util';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { evaluateBookingNameGate } from '@tools/shared/precheck-core';
+import {
+  countRealNameAsks,
+  evaluateBookingNameGate,
+  evaluateBookingPhoneGate,
+} from '@tools/shared/precheck-core';
 import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
 
 const logger = new Logger('duliday_interview_booking');
@@ -443,15 +447,41 @@ export function buildInterviewBookingTool(
         // 缺口（2-4 字昵称形态合法但只是微信打招呼昵称）。先确认真名再约，不得拿昵称下真预约。
         const nameGate = evaluateBookingNameGate(name, context.messages ?? []);
         if (nameGate.decision === 'reject_collect') {
+          // 同题限问（badcase g4ytra23：重复索名 4 遍）：已问过 ≥2 次仍未通过校验时，
+          // 不再让模型继续追问，改走 request_handoff 由真人核实，避免死循环消耗候选人耐心。
+          const nameAskCount = countRealNameAsks(context.messages ?? []);
+          const replyInstruction =
+            nameAskCount >= 2
+              ? `${nameGate.reason}。你已就"真实姓名"向候选人索要过 ${nameAskCount} 次，禁止再重复索要。` +
+                '请调用 request_handoff（reasonCode=booking_conflict，reason 注明"姓名多次校验未通过需人工核实"）转人工，' +
+                '并向候选人自然回复一句承接语（如"好嘞，我这边帮你核对登记，稍后回你"）；不得再次询问姓名，不得提及校验/系统。'
+              : `${nameGate.reason}。请用"门店登记需要本名"等自然话术先向候选人确认真实姓名，` +
+                '拿到真名后再调 duliday_interview_precheck/本工具；禁止把微信昵称或"我是XX"里的昵称当姓名提交。';
           return markBookingFailed(
             context,
             buildToolError({
               errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS,
               outcome: '预约失败（姓名疑似打招呼语昵称）',
+              replyInstruction,
+              details: { suspiciousName: name, nameAskCount },
+            }),
+          );
+        }
+
+        // B4 手机号溯源闸门（正向证据）：手机号必须能在候选人原文里找到出处。抽取示例回声
+        // 臆造的档案曾经"沿用"洗白后带编造手机号直达 booking（badcase 6e9ar9gd 簇），姓名之外
+        // 错误代价最高的字段是手机号——门店按它联系候选人，错号=预约作废+候选人失联。
+        const phoneGate = evaluateBookingPhoneGate(phone, context.messages ?? []);
+        if (phoneGate.decision === 'reject_collect') {
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS,
+              outcome: '预约失败（手机号无候选人原文出处）',
               replyInstruction:
-                `${nameGate.reason}。请用"门店登记需要本名"等自然话术先向候选人确认真实姓名，` +
-                '拿到真名后再调 duliday_interview_precheck/本工具；禁止把微信昵称或"我是XX"里的昵称当姓名提交。',
-              details: { suspiciousName: name },
+                `${phoneGate.reason}。请用"方便留个联系电话吗，门店面试前会联系你"等自然话术向候选人索要手机号，` +
+                '拿到候选人亲口发的号码后再调 duliday_interview_precheck/本工具；禁止沿用记忆档案或历史记录里来源不明的号码。',
+              details: { suspiciousPhone: phone },
             }),
           );
         }
