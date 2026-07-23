@@ -453,7 +453,19 @@ export class PreparationService {
   ): Promise<{ block: string; jobIds: number[] }> {
     try {
       const activeBookings = await this.longTermService.getActiveBookings(corpId, userId);
-      if (activeBookings.length === 0) return { block: '', jobIds: [] };
+      if (activeBookings.length === 0) {
+        // B-5 报名空头宣称接地（badcase zvey1mg8/as1f14iz/5wglb8k7：零 booking 调用却对候选人
+        // 宣称"已帮你报好/已登记好"）。无工单时明示 ground truth，让完成口径必须以本轮工具结果
+        // 为据。注意段名必须区别于 [当前预约信息]——后者的**存在性**被多个工具指令当作"已有
+        // 预约"信号（如 request_handoff "存在时必须调用"），空状态复用同名段会毒化这些判断。
+        return {
+          block:
+            '\n\n[预约状态]\n\n当前候选人没有任何进行中的报名/预约工单。' +
+            '严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径描述报名状态；' +
+            '只有本轮 duliday_interview_booking 返回 success 后，才能向候选人确认报名成功。',
+          jobIds: [],
+        };
+      }
 
       const requiresFreshLookup = this.requiresFreshBookingContext(currentUserMessage);
       const requiresLocationDetails = this.requiresBookingLocationDetails(currentUserMessage);
