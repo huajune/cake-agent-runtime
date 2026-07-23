@@ -222,6 +222,36 @@
         "pnpm run ci:check：366 suites / 5608 tests passed",
         "JSON / git diff --check 通过"
       ]
+    },
+    {
+      "number": "702",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/702",
+      "title": "发版通知过滤发布流程话术",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "过滤通知中的发布流程话术",
+        "发版通知过滤发布流程话术"
+      ],
+      "summary": [
+        "过滤通知中的发布流程话术",
+        "发版通知过滤发布流程话术"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "过滤误入候选人/运营可感知区块的发版元数据修正、通知治理和底账维护话术",
+        "保留真正面向业务的候选人体验改动",
+        "过滤通知中的发布流程话术"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm exec jest tests/scripts/send-deploy-notification.spec.ts --runInBand`：12/12 通过",
+        "`pnpm run ci:check`：366 个测试套件通过，5609 个测试通过，6 个跳过",
+        "通知预览仅保留 6 条候选人/运营可感知改动"
+      ]
     }
   ],
   "lastRelease": {
