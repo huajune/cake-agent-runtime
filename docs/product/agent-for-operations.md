@@ -3,7 +3,7 @@
 > **面向读者**：业务运营、招聘运营、产品同学
 > **目的**：用业务语言讲清楚「候选人发一句话 → AI 回复」中间发生了什么，以及每一轮 AI「想了什么、查了什么、做了什么」，方便你排查 case、调策略、和客户解释。
 > **配套技术版**：[agent-runtime-architecture.md](../architecture/agent-runtime-architecture.md)（研发同学读这份）
-> **交互式可视化**：[一条消息的回合之旅](../architecture/agent-runtime-architecture-explained.html)（浏览器打开）
+> 技术实现详见：[Agent 运行时架构](../architecture/agent-runtime-architecture.md)
 > **最后更新**：2026-07-02（由 product-view + agent-workflow 两份合并）
 
 ---

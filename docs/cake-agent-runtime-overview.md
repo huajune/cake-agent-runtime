@@ -142,7 +142,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 
 ## 4. Context System — Prompt 组装的 Section 化
 
-入口：[`src/agent/context/context.service.ts`](../src/agent/context/context.service.ts)
+入口：[`src/agent/generator/context/context.service.ts`](../src/agent/generator/context/context.service.ts)
 
 我们把 Prompt 拆成可注册的 `PromptSection`，按场景组装：
 

@@ -60,6 +60,28 @@ const INTERVIEW_RESULT_INQUIRY_KEYWORDS = [
   '没收到面试结果',
 ] as const;
 
+/**
+ * 候选人主动要求转人工的高置信短语。
+ *
+ * 业务背景（badcase 6a5df7e7ce406a6aee043595，2026-07-20）：候选人礼貌发"转人工"后
+ * 无任何确定性响应（词表只有辱骂/投诉/面试结果三类），3 分钟静默后升级为辱骂才命中
+ * abuse 拦截——系统实际教会候选人"骂人才能叫来真人"。
+ *
+ * 处置与 abuse 同款：确定性静默 + 暂停托管 + 飞书告警，出站零话术——人设是真人招募
+ * 经理，接管发生在同一企微账号上，任何"帮你转人工/叫真人"话术反而是唯一暴露 AI 身份
+ * 的环节（[[feedback_no_bot_identity_leak_in_handoff]]）。
+ *
+ * 误伤防护："转人工/转接人工"字面几乎零歧义，任意位置命中即判；其余短语（找人工/
+ * 人工客服/叫人工/要人工）只在**短消息**（剥表情占位与标点后 ≤ 8 字）中判定——
+ * "人工客服岗位还招人吗"这类岗位咨询必须放行。
+ */
+const HUMAN_HANDOFF_EXACT_KEYWORDS = ['转人工', '转接人工'] as const;
+const HUMAN_HANDOFF_SHORT_KEYWORDS = ['找人工', '人工客服', '叫人工', '要人工'] as const;
+const HUMAN_HANDOFF_SHORT_MESSAGE_MAX_LENGTH = 8;
+/** 表情占位（[强]/[微笑]…）与标点，短消息长度判定前剥除。 */
+const EMOJI_PLACEHOLDER_RE = /\[[^\]]{1,8}\]/g;
+const PUNCTUATION_RE = /[\s，。！？!?~～、.…；;：:"'“”‘’()（）]/gu;
+
 export interface PreAgentRiskPrecheckResult {
   hit: boolean;
   riskType?: InputRiskType;
@@ -185,7 +207,45 @@ export class RiskInterceptService {
       return interviewResult;
     }
 
+    const humanHandoffResult = this.detectHumanHandoffRequest(content);
+    if (humanHandoffResult.hit) {
+      return humanHandoffResult;
+    }
+
     return { hit: false };
+  }
+
+  /** 候选人主动要求转人工：见 HUMAN_HANDOFF_* 常量注释（词表边界 + 短消息防误伤）。 */
+  private detectHumanHandoffRequest(content: string): InputRiskDetectionResult {
+    const normalized = this.normalize(content);
+    const matched: string[] = [];
+
+    for (const keyword of HUMAN_HANDOFF_EXACT_KEYWORDS) {
+      if (normalized.includes(keyword)) matched.push(keyword);
+    }
+
+    if (matched.length === 0) {
+      const compact = normalized.replace(EMOJI_PLACEHOLDER_RE, '').replace(PUNCTUATION_RE, '');
+      if (compact.length <= HUMAN_HANDOFF_SHORT_MESSAGE_MAX_LENGTH) {
+        for (const keyword of HUMAN_HANDOFF_SHORT_KEYWORDS) {
+          if (compact.includes(keyword)) matched.push(keyword);
+        }
+      }
+    }
+
+    if (matched.length === 0) {
+      return { hit: false };
+    }
+
+    return {
+      hit: true,
+      riskType: 'human_handoff_request',
+      riskLabel: '候选人主动要求人工',
+      summary:
+        '候选人明确要求转人工，已静默暂停托管。候选人正在等待，请尽快用同一账号自然接续' +
+        '（首句如"刚在忙，你说"），不要提及 AI、机器人或转接。',
+      reason: `命中转人工请求关键词：${matched.join('、')}`,
+    };
   }
 
   private detectKeywordRisk(

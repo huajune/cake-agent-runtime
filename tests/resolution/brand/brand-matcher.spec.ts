@@ -27,6 +27,7 @@ const catalog: BrandItem[] = [
   // 2026-07-21 生产误判复现用：渠道缩写撞车 + 4 字符拉丁别名昵称撞车
   { id: 10321, name: 'BAKER&SPICE', aliases: ['BS'] },
   { id: 10322, name: 'BIIIING缤水', aliases: ['Bing'] },
+  { id: 10024, name: '跃橙云服', aliases: ['跃橙云服人力资源'] },
 ];
 
 function names(results: BrandResolution[]): string[] {
@@ -262,6 +263,15 @@ describe('resolveBrands - 图片来源（image_description，§14.1）', () => {
     expect(mstand).toHaveLength(1);
     expect(mstand[0].matchType).toBe('brand_id');
     expect(mstand[0].confidence).toBe(1.0);
+  });
+
+  it('发布 / 派遣主体不从图片文本或品牌 ID 契约写入品牌', () => {
+    const results = resolveBrands(
+      '发布方：跃橙云服·人事招聘主管；品牌ID：10024',
+      'image_description',
+      catalog,
+    );
+    expect(results).toEqual([]);
   });
 });
 
