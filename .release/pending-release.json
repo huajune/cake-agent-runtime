@@ -3,7 +3,70 @@
   "nextVersion": "10.28.0",
   "updatedAt": "2026-07-23",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "690",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/690",
+      "title": "回填 v10.27.0 生产发布结果",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "回填 v10.27.0 生产发布结果",
+        "将 v10.27.0 底账状态更新为已发布",
+        "回填 Release、部署 workflow、发布时间和生产健康验证",
+        "记录限定测试批同步结果（2 passed / 1 skipped），明确未触碰 tz2607- 资产和批次 56d30741",
+        "记录 master → develop 回同步 PR #689"
+      ],
+      "summary": [
+        "回填 v10.27.0 生产发布结果",
+        "将 v10.27.0 底账状态更新为已发布",
+        "回填 Release、部署 workflow、发布时间和生产健康验证",
+        "记录限定测试批同步结果（2 passed / 1 skipped），明确未触碰 tz2607- 资产和批次 56d30741",
+        "记录 master → develop 回同步 PR #689"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "将 v10.27.0 底账状态更新为已发布",
+        "回填 Release、部署 workflow、发布时间和生产健康验证",
+        "记录限定测试批同步结果（2 passed / 1 skipped），明确未触碰 tz2607- 资产和批次 56d30741",
+        "记录 master → develop 回同步 PR #689",
+        "回填 v10.27.0 生产发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "Prettier check 通过",
+        "git diff --check 通过",
+        "纯文档变更"
+      ]
+    },
+    {
+      "number": "691",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/691",
+      "title": "badcase 治理方案 §8 收口（人工反馈池分层 + T1 复测结果）",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "治理方案 §8 人工反馈池分层处置与 T1 复测收口",
+        "badcase 治理方案 §8 收口（人工反馈池分层 + T1 复测结果）"
+      ],
+      "summary": [
+        "治理方案 §8 人工反馈池分层处置与 T1 复测收口",
+        "badcase 治理方案 §8 收口（人工反馈池分层 + T1 复测结果）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "治理方案 §8 人工反馈池分层处置与 T1 复测收口"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.27.0",
     "date": "2026-07-23",
