@@ -15,6 +15,40 @@ import {
 
 describe('labor-form', () => {
   describe('decideLaborFormIntent', () => {
+    describe('招聘限制疑问句与长期改口（badcase chat 6a61c97c）', () => {
+      it.each(['只招暑假工吗', '你们只招暑假工吗？', '仅招暑假工么', '只要暑假工吗'])(
+        'ignores hiring-restriction questions: %s',
+        (message) => {
+          expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
+        },
+      );
+
+      it('still treats plain 招-questions as summer intent (还招暑假工吗)', () => {
+        expect(decideLaborFormIntent('还招暑假工吗')).toEqual({ kind: 'set', value: '暑假工' });
+      });
+
+      it.each(['长期呢', '我说长期有没有', '要长期的', '能长期做'])(
+        'clears seasonal forms on explicit long-term intent: %s',
+        (message) => {
+          expect(decideLaborFormIntent(message)).toEqual({
+            kind: 'clear',
+            clearedValues: ['暑假工', '寒假工'],
+          });
+        },
+      );
+
+      it.each(['做不了长期', '长期做不了'])(
+        'does NOT clear when long-term is rejected: %s',
+        (message) => {
+          expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
+        },
+      );
+
+      it('长期兼职 still sets 兼职 via mention path', () => {
+        expect(decideLaborFormIntent('找长期兼职')).toEqual({ kind: 'set', value: '兼职' });
+      });
+    });
+
     it.each(['暑假工短期的兼职', '我想找暑假工这种兼职', '寒假工也是兼职'])(
       'keeps the seasonal subtype when 兼职 is only its parent category: %s',
       (message) => {
