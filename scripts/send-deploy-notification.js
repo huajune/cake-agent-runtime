@@ -21,6 +21,7 @@ const RELEASE_METADATA_PATH = '.release/pending-release.json';
 const PENDING_START = '<!-- release:pending:start -->';
 const PENDING_END = '<!-- release:pending:end -->';
 const DEFAULT_OPERATIONAL_SUMMARY = '- 本次包含体验优化与稳定性修复，技术明细已记录在版本说明中。';
+const NO_BUSINESS_UPDATE_SUMMARY = '- 本次无候选人/运营可感知业务改动。';
 const DEPLOY_STATUS_META = {
   success: {
     icon: '🎂',
@@ -176,8 +177,10 @@ function extractBusinessUpdateSummary(releaseNotes) {
 }
 
 function renderBusinessUpdateSummary(structuredBusinessUpdates, releaseNotes) {
-  if (structuredBusinessUpdates.length > 0) {
-    return renderUpdateSummary(structuredBusinessUpdates, 10);
+  if (Array.isArray(structuredBusinessUpdates)) {
+    return structuredBusinessUpdates.length > 0
+      ? renderUpdateSummary(structuredBusinessUpdates, 10)
+      : NO_BUSINESS_UPDATE_SUMMARY;
   }
   return extractBusinessUpdateSummary(releaseNotes);
 }
@@ -185,11 +188,15 @@ function renderBusinessUpdateSummary(structuredBusinessUpdates, releaseNotes) {
 function readStructuredBusinessUpdates(releaseTag = getReleaseTag()) {
   const releaseMetadata = readReleaseMetadata();
   if (!releaseMetadata) {
-    return [];
+    return null;
   }
 
   const version = String(releaseTag || '').replace(/^v/, '');
   const releaseEntries = resolveReleaseMetadataEntries(releaseMetadata, version);
+  if (releaseEntries.length === 0) {
+    return null;
+  }
+
   const lines = [];
   for (const entry of releaseEntries) {
     const entryTitle = formatReleaseText(entry.title, { includePrReference: false });
