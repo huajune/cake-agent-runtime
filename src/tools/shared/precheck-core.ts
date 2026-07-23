@@ -11,7 +11,7 @@
  * booking 侧 defense-in-depth 的姓名闸门，不改 precheck 内部。
  */
 
-import { isFromAutoGreeting } from '@memory/facts/name-guard';
+import { isFromAutoGreeting, stripTimeContextSuffix } from '@memory/facts/name-guard';
 import { parseName } from './candidate-field-parser';
 
 /** 从归一化消息（ModelMessage 形态）里抽出全部 user 文本。 */
@@ -25,6 +25,24 @@ export function extractUserTexts(messages: readonly unknown[]): string[] {
     if (text.trim().length > 0) texts.push(text);
   }
   return texts;
+}
+
+export interface DialogueTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+/** 按原始顺序抽出 user/assistant 双角色文本（确认问答对识别需要 assistant 上下文）。 */
+export function extractDialogueTurns(messages: readonly unknown[]): DialogueTurn[] {
+  const turns: DialogueTurn[] = [];
+  for (const m of messages) {
+    if (!m || typeof m !== 'object') continue;
+    const msg = m as { role?: unknown; content?: unknown };
+    if (msg.role !== 'user' && msg.role !== 'assistant') continue;
+    const text = extractText(msg.content);
+    if (text.trim().length > 0) turns.push({ role: msg.role, text });
+  }
+  return turns;
 }
 
 function extractText(content: unknown): string {
@@ -106,6 +124,79 @@ export interface NameGateVerdict {
   reason?: string;
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** 剥时间后缀 + 引用块后，去掉空白与常见标点，用于短答复整句匹配。 */
+function normalizeShortAnswer(text: string): string {
+  return stripQuoteBlocks(stripTimeContextSuffix(text)).replace(
+    /[\s，。！？!?~～、.…；;：:]/gu,
+    '',
+  );
+}
+
+/** 纯肯定答复（对确认问句的整句应答）。 */
+const AFFIRMATIVE_ANSWER_RE =
+  /^(是|是的|是滴|是啊|是呀|对|对的|对啊|对呀|嗯|嗯嗯|没错|确认|正确)$/u;
+
+/**
+ * 候选人是否已在对话中对 `name` 做出明确确认（姓名闸门的解锁路径）。
+ *
+ * 业务背景：badcase g4ytra23（chat 6a60856b，2026-07-22）——候选人打招呼语昵称恰好
+ * 等于真名（"我是陈佩珊"），`isFromAutoGreeting` 是存在性判断，导致其后无论候选人
+ * 怎么确认（"是的"/"就是陈佩珊"/发身份证照片）闸门都持续 reject，booking 连拒 5 次、
+ * Agent 重复索名 4 遍。以下三类确认证据满足其一即视为解锁：
+ *
+ * 1. 直陈确认：候选人原文出现"就是{name}"（对"发一下真实姓名"的直接应答句式）；
+ * 2. 问答对确认：assistant 提问句同时含 {name} + 全名/真实姓名/本名 + 疑问尾缀，
+ *    且紧随其后的第一条 user 消息是纯肯定答复；
+ * 3. 身份证图片证据：vision 描述文本（以 user 消息形态入历史）中"身份证…姓名{name}"
+ *    形态匹配——注意 OCR 描述"姓名陈佩珊"无冒号分隔，`hasStructuredNameSubmission`
+ *    的键值对正则覆盖不到。
+ */
+export function isNameConfirmedInDialogue(name: string, messages: readonly unknown[]): boolean {
+  const target = name?.trim();
+  if (!target || target.length < 2) return false;
+  const turns = extractDialogueTurns(messages);
+  const escaped = escapeRegExp(target);
+  const directConfirmRe = new RegExp(`就是\\s*${escaped}`, 'u');
+  const idCardRe = new RegExp(`身份证[^\\n]{0,30}?姓名\\s*[：:]?\\s*${escaped}`, 'u');
+
+  for (const turn of turns) {
+    if (turn.role !== 'user') continue;
+    const text = stripQuoteBlocks(stripTimeContextSuffix(turn.text));
+    if (directConfirmRe.test(text) || idCardRe.test(text)) return true;
+  }
+
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i];
+    if (turn.role !== 'assistant') continue;
+    const askText = turn.text;
+    if (!askText.includes(target)) continue;
+    if (!/(全名|真实姓名|本名)/u.test(askText)) continue;
+    if (!/(对吧|对吗|对么|对不对|是吗|是么|是吧)/u.test(askText)) continue;
+    for (let j = i + 1; j < turns.length; j++) {
+      if (turns[j].role !== 'user') continue;
+      // 只认紧随其后的第一条 user 消息，避免远处无关的"嗯/对"被错误归因到这次确认。
+      if (AFFIRMATIVE_ANSWER_RE.test(normalizeShortAnswer(turns[j].text))) return true;
+      break;
+    }
+  }
+  return false;
+}
+
+/**
+ * assistant 已向候选人索要"真实姓名/本名"的次数（同题限问用）。
+ * 回复经 delivery 分段后逐段入历史，索名句通常独占一段，按含关键词的消息数计即可。
+ */
+export function countRealNameAsks(messages: readonly unknown[]): number {
+  return extractDialogueTurns(messages).filter(
+    (turn) =>
+      turn.role === 'assistant' && /(真实姓名|身份证上的本名|身份证上的姓名)/u.test(turn.text),
+  ).length;
+}
+
 /**
  * booking 提交前的姓名权威闸门（HC-2，**负向证据**口径，避免误拒）。
  *
@@ -125,6 +216,9 @@ export function evaluateBookingNameGate(
   const target = name?.trim();
   if (!target) return { decision: 'allow' };
   if (isNameAuthoritative(target, messages)) return { decision: 'allow' };
+  // 解锁路径：负向证据（打招呼语昵称/引用前缀）可被候选人后续的明确确认覆盖——
+  // "就是X"/确认问答对/身份证图片证据（badcase g4ytra23 死锁修复）。
+  if (isNameConfirmedInDialogue(target, messages)) return { decision: 'allow' };
   if (isNameOnlyQuotedSpeaker(target, messages)) {
     return {
       decision: 'reject_collect',
@@ -139,4 +233,41 @@ export function evaluateBookingNameGate(
     };
   }
   return { decision: 'allow' };
+}
+
+/**
+ * 提交的手机号是否能在候选人原文中找到出处（剥引用块后按纯数字子串匹配，
+ * 容忍"155 2189 9062"等分隔写法）。
+ */
+export function isPhoneAuthoritative(phone: string, messages: readonly unknown[]): boolean {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!/^1\d{10}$/.test(digits)) return false;
+  return extractUserTexts(messages).some((text) =>
+    stripQuoteBlocks(text).replace(/\D/g, '').includes(digits),
+  );
+}
+
+/**
+ * booking 提交前的手机号溯源闸门（正向证据口径）。
+ *
+ * 业务背景：badcase 6e9ar9gd 簇（2026-07-22）——抽取示例回声臆造的档案经"沿用"洗白后，
+ * booking 曾拿**候选人从未提供过的编造手机号**（15921708092）提交真实预约网关；当时全部
+ * 字段中只有姓名有溯源守卫。手机号是预约表单里错误代价最高的字段（门店按它联系候选人），
+ * 必须能追溯到候选人亲口发送的消息，否则一律打回索要。
+ *
+ * 与姓名闸门口径不同：姓名允许"无负向证据即放行"（裸答真名很常见），手机号採正向证据——
+ * 合法手机号只可能来自候选人原文，原文里不存在即臆造/串档案，没有灰区。
+ */
+export function evaluateBookingPhoneGate(
+  phone: string,
+  messages: readonly unknown[],
+): NameGateVerdict {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!digits) return { decision: 'allow' }; // 空值交给必填字段校验，不在本闸门重复报
+  if (isPhoneAuthoritative(phone, messages)) return { decision: 'allow' };
+  return {
+    decision: 'reject_collect',
+    reason:
+      '提交的手机号在候选人原文中不存在，疑似臆造或来自非候选人渠道，必须先向候选人索要联系方式',
+  };
 }

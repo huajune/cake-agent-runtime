@@ -239,14 +239,28 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     repairToolNames: ['request_handoff'],
   },
   {
+    id: 'repeated_reply_verbatim',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P2,
+    description: '拦下与本会话已发送消息逐字相同（去空白标点后全等）的整段复读，进 repair 改写。',
+    riskGoal:
+      '全等复读是零假阳的"人机感"信号（badcase 6a5df7e7：无岗话术两轮全等复读后候选人辱骂流失），确定性进 repair 换表述并回应候选人本轮问题。',
+    exogenousSignal: '短期记忆中本会话已投递的 assistant 消息（去空白标点后全等比对）。',
+    residualRisk:
+      'repair 白改（二审失败投原首版）时回退到现状；候选人明确要求"再发一遍"的合理重发依赖 repair 上下文判断。观察期指标：上线 3 天看白改率，>30% 降级为 delivery 层全等去重。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复与本会话已发送过的消息逐字相同，候选人已经收到过这句话，当前文本不可发送。请换一种表述重写，并优先回应候选人本轮消息里的具体问题；仅当候选人明确要求"再发一遍"时才可保留原文。',
+  },
+  {
     id: 'repeated_reply',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P2,
-    description: '观察与本会话已发送消息近乎相同的整段复读回复。',
+    description: '观察与本会话已发送消息近乎相同（相似度 ≥0.9 但非全等）的整段复读回复。',
     riskGoal: '用真实已发消息作为 ground truth，发现整段复读 badcase 簇，供生成策略治理。',
     exogenousSignal: '短期记忆中本会话已投递的 assistant 消息。',
     residualRisk:
-      '消费者：badcase 簇复盘/生成策略治理；退场条件：保留到生成层能稳定避免整段复读后再删。语义相同但措辞重写的重复检测不到；短确认类消息（<16 字符）不判定。',
+      '消费者：badcase 簇复盘/生成策略治理；退场条件：保留到生成层能稳定避免整段复读后再删。语义相同但措辞重写的重复检测不到；短确认类消息（<16 字符）不判定；全等档已拆至 repeated_reply_verbatim 做 revise。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复与你在本会话里已经发过的消息几乎相同，当前文本不可发送。请针对候选人本轮消息给出有增量的回应：承接已发内容而不是原样重发；若候选人在追问已发过的信息，只补充关键差异点或换角度确认候选人的疑问。',

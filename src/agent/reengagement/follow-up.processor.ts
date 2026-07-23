@@ -17,16 +17,18 @@ import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service
 import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import {
-  bookingFollowUpAnchorId,
-  computeFireAt,
   FollowUpSchedulerService,
-  getScenario,
   REENGAGEMENT_JOB_NAME,
   REENGAGEMENT_QUEUE,
-  resolveRolloutEnabled,
-  shouldStop,
   type FollowUpJob,
 } from './follow-up-scheduler.service';
+import {
+  bookingFollowUpAnchorId,
+  computeFireAt,
+  getScenario,
+  resolveRolloutEnabled,
+  shouldStop,
+} from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ReengagementAgentExecution } from './reengagement.agent';

@@ -151,4 +151,46 @@ describe('RiskInterceptService', () => {
       label: '历史面试结果追问',
     });
   });
+
+  describe('human_handoff_request（badcase 6a5df7e7：礼貌要人工无响应，骂人才触发拦截）', () => {
+    it.each(['转人工', '转人工[强]', '麻烦转人工谢谢', '可以转接人工吗'])(
+      'detects explicit 转人工 request anywhere: %s',
+      async (scanContent) => {
+        await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({
+          hit: true,
+          riskType: 'human_handoff_request',
+          reason: expect.stringContaining('转人工'),
+          label: '候选人主动要求人工',
+        });
+      },
+    );
+
+    it.each(['找人工', '人工客服', '要人工！', '叫人工来[微笑]'])(
+      'detects short-message human request: %s',
+      async (scanContent) => {
+        await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
+          hit: true,
+          riskType: 'human_handoff_request',
+        });
+      },
+    );
+
+    it('does NOT hit when 人工客服 appears inside a long job inquiry (防误伤)', async () => {
+      await expect(
+        service.precheck(baseInput({ scanContent: '你们那个人工客服的岗位还在招人吗，待遇怎么样' })),
+      ).resolves.toEqual({ hit: false });
+    });
+
+    it('does NOT hit on unrelated 人工 mentions in long text', async () => {
+      await expect(
+        service.precheck(baseInput({ scanContent: '我之前在厂里做人工质检，想换个餐饮工作' })),
+      ).resolves.toEqual({ hit: false });
+    });
+
+    it('abuse takes precedence when both appear (拦截理由更贴近现场)', async () => {
+      await expect(
+        service.precheck(baseInput({ scanContent: '转人工，你们是骗子吗，滚' })),
+      ).resolves.toMatchObject({ hit: true, riskType: 'abuse' });
+    });
+  });
 });

@@ -1905,8 +1905,8 @@ describe('HardRulesService', () => {
     });
   });
 
-  describe('repeated_reply (badcase recvlmGXDwMZrz / recvlsYa5SSOn9)', () => {
-    it('flags near-duplicate long reply against recent assistant messages', () => {
+  describe('repeated_reply (badcase recvlmGXDwMZrz / recvlsYa5SSOn9 / 6a5df7e7)', () => {
+    it('verbatim duplicate escalates to revise (badcase 6a5df7e7 全等复读辱骂流失)', () => {
       const jobDetail =
         '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.2公里，感兴趣可以帮你报名。';
       const result = service.check({
@@ -1916,12 +1916,14 @@ describe('HardRulesService', () => {
         recentAssistantTexts: ['好的', jobDetail],
       });
 
-      const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply');
+      const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply_verbatim');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('observe');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.feedbackToGenerator).toContain('换一种表述');
+      expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeUndefined();
     });
 
-    it('flags punctuation-only variations as duplicates', () => {
+    it('punctuation-only variations count as verbatim (归一化后全等)', () => {
       const result = service.check({
         replyText: '你平时主要在哪个区域活动呀？方便告诉我下～',
         toolCalls: [],
@@ -1929,7 +1931,28 @@ describe('HardRulesService', () => {
         recentAssistantTexts: ['你平时主要在哪个区域活动呀，方便告诉我下'],
       });
 
-      expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeDefined();
+      const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply_verbatim');
+      expect(hit).toBeDefined();
+      expect(hit?.action).toBe('revise');
+    });
+
+    it('near-duplicate (≥0.9 but not verbatim) stays observe-only', () => {
+      const result = service.check({
+        replyText:
+          '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.3公里，感兴趣可以帮你报名。',
+        toolCalls: [],
+        chatId: 'chat-1',
+        recentAssistantTexts: [
+          '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.2公里，感兴趣可以帮你报名。',
+        ],
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply');
+      expect(hit).toBeDefined();
+      expect(hit?.action).toBe('observe');
+      expect(
+        result.contradictions.find((c) => c.ruleId === 'repeated_reply_verbatim'),
+      ).toBeUndefined();
     });
 
     it('does not flag short acknowledgements', () => {

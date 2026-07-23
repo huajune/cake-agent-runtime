@@ -124,6 +124,8 @@ export const INPUT_RISK_TYPE = {
   ABUSE: 'abuse',
   COMPLAINT_RISK: 'complaint_risk',
   INTERVIEW_RESULT_INQUIRY: 'interview_result_inquiry',
+  /** 候选人主动明确要求转人工（badcase 6a5df7e7：礼貌要人工无响应，升级辱骂才触发拦截）。 */
+  HUMAN_HANDOFF_REQUEST: 'human_handoff_request',
 } as const;
 
 export const INPUT_RISK_TYPES = Object.values(INPUT_RISK_TYPE);

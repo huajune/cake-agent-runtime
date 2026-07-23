@@ -222,6 +222,7 @@ function resolveBrandIdMentions(
     const brandId = Number(match[1]);
     if (!Number.isFinite(brandId) || seen.has(brandId)) continue;
     seen.add(brandId);
+    if (index.nonEmployerBrandIds.has(brandId)) continue;
     const brand = index.byBrandId.get(brandId);
     if (!brand) continue;
     results.push({

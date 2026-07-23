@@ -3,13 +3,13 @@
 > 状态：历史施工记录（2026-07-16 归档口径，不再作为当前实现说明）
 > 日期：2026-06-24
 > 父文档：
-> - [agent-reliability-refactor-2026-06.md](./agent-reliability-refactor-2026-06.md)（总架构，§10 落地路线）
-> - [agent-reliability-hc-runtime-mechanisms.md](./agent-reliability-hc-runtime-mechanisms.md)（HC-1/2/3 runtime 机制）
-> - [agent-reengagement-design.md](./agent-reengagement-design.md)（复聊实现级设计）
+> - [agent-reliability-refactor-2026-06.md](../../architecture/reliability/agent-reliability-refactor-2026-06.md)（总架构，§10 落地路线）
+> - [agent-reliability-hc-runtime-mechanisms.md](../../architecture/reliability/agent-reliability-hc-runtime-mechanisms.md)（HC-1/2/3 runtime 机制）
+> - [agent-reengagement-design.md](../../architecture/reliability/agent-reengagement-design.md)（复聊实现级设计）
 >
 > 本文把三份设计拆成**可独立提交、可独立验证、有依赖序**的 PR 块，作为「逐块做」的施工底图。每块标注：依赖、改动面、验证点、回滚边界。
 >
-> 当前运行时真相请以 [Agent 运行时架构](../agent-runtime-architecture.md)、[安全护栏说明](../security-guardrails.md) 和 [Gate 拒绝与人工介入流水线](../handoff-gate-and-intervention-pipeline.md) 为准。本文中的“迁移期”“尚未落地”和旧文件名保留为当时施工语境，不再持续校准。
+> 当前运行时真相请以 [Agent 运行时架构](../../architecture/agent-runtime-architecture.md)、[安全护栏说明](../../architecture/security-guardrails.md) 和 [Gate 拒绝与人工介入流水线](../../architecture/handoff-gate-and-intervention-pipeline.md) 为准。本文中的“迁移期”“尚未落地”和旧文件名保留为当时施工语境，不再持续校准。
 
 ---
 
@@ -39,7 +39,7 @@
 | 能力 | 现状 | 位点 |
 |---|---|---|
 | `runner` seam | `TurnRunnerService` 已下线，回合编排收口 `AgentRunnerService`，行为不变 | [agent-runner.service.ts](../../../src/agent/runner/agent-runner.service.ts) |
-| `ChannelDeliveryPort` | 接口已定义（`deliver(outcome, {idempotencyKey})`） | [channel-delivery.port.ts](../../../src/agent/reengagement/channel-delivery.port.ts) |
+| `ChannelDeliveryPort` | 历史接口，当前已经移除 | `channel-delivery.port.ts` |
 | `toolMode` 接缝 | `AgentInvokeParams.toolMode: scenario\|readonly\|none`，preparation 物理过滤工具 | [generator.types.ts:27](../../../src/agent/generator/generator.types.ts#L27)、agent-preparation.service.ts |
 | 权威状态骨架 | `AuthoritativeSessionState` 类型 + `SessionService.getAuthoritativeState()`（派生只读） | [authoritative-session-state.types.ts](../../../src/memory/types/authoritative-session-state.types.ts)、session.service.ts:131 |
 | HC-2 jobId 闸门 | `recalledJobIds:Set` 成员判定 `isRecalledJobId`，booking 无召回出处 → `{shortCircuited,gateRejected,reasonCode:'job_id_not_recalled'}` | precheck/booking tool、tool.types.ts |

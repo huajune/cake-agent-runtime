@@ -21,6 +21,46 @@ export interface NoMatchQueryContext {
   regionLabels?: string[];
   maxKm?: number | null;
   scheduleConstraintLabel?: string | null;
+  /**
+   * 本会话是否已发送过一次"暂时没有岗位"类话术（由调用方从消息历史判定）。
+   * true 时输出二档话术：不再逐字重复一档句式，改为"确认当前确实没有 + 已记录意向 +
+   * 有岗第一时间联系"，并要求先回应候选人本轮的具体问题。
+   * badcase 6a5df7e7（Aron 辱骂流失案）：两轮一字不差的无岗复读 + 不回应"除了必胜客
+   * 还有其他吗"的具体提问，是候选人"说话跟人机一样"评价的直接来源。
+   */
+  priorNoMatchReplySent?: boolean;
+}
+
+/** 本会话已发送过的无岗类话术签名（一档 candidateMessage 与 invite 无群收口话术的共同特征）。 */
+const NO_MATCH_REPLY_SIGNATURE = /暂时没(有|找到).{0,12}岗位/;
+
+/**
+ * 扫描消息历史里 assistant 是否已发过"暂时没有岗位"类话术。
+ * 消息形态为 ModelMessage（role + string/parts content），与 booking 侧同构；
+ * 本域不依赖 tools/shared，就地实现最小抽取。
+ */
+export function hasPriorNoMatchReply(messages: readonly unknown[]): boolean {
+  for (const m of messages) {
+    if (!m || typeof m !== 'object') continue;
+    const msg = m as { role?: unknown; content?: unknown };
+    if (msg.role !== 'assistant') continue;
+    const text =
+      typeof msg.content === 'string'
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content
+              .map((part) =>
+                part &&
+                typeof part === 'object' &&
+                typeof (part as { text?: unknown }).text === 'string'
+                  ? (part as { text: string }).text
+                  : '',
+              )
+              .join(' ')
+          : '';
+    if (NO_MATCH_REPLY_SIGNATURE.test(text)) return true;
+  }
+  return false;
 }
 
 export interface NoMatchScript {
@@ -91,7 +131,11 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
   // 拉群兜底动作（统一一句，不让模型自由发挥）
   const action = '我先帮你进餐饮兼职群，后续有合适的我会第一时间@你';
 
-  const candidateMessage = `${intro}，${action}`;
+  // 二档话术（本会话已告知过一次无岗）：不再逐字重复一档句式——候选人已经听过一遍，
+  // 复读即"人机感"（badcase 6a5df7e7）。改为确认式收口 + 已记录意向 + 主动联系承诺。
+  const candidateMessage = ctx.priorNoMatchReplySent
+    ? `刚又帮你查了一遍，${subjectPhrase}${store ? '' : `在${placePhrase}`}现在确实还没有新的合适岗位，你的需求我记下来了，一有新岗位上来就第一时间联系你`
+    : `${intro}，${action}`;
 
   return {
     querySummary,
@@ -107,6 +151,11 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
       '不得跨品牌推荐（候选人提了 X 品牌，无岗就走拉群，不能默默推 Y 品牌）',
       '不得说"这家可能关了 / 应该是搬了 / 估计招满了"等门店运营状态推测',
       '不得直接静默调 invite_to_group——必须先用 candidateMessage 承接候选人意向再拉群',
+      ...(ctx.priorNoMatchReplySent
+        ? [
+            '本会话已发送过一次无岗话术：本次严禁与已发送的消息逐字重复；若候选人本轮提了具体问题（点名的品牌、追问的范围等），先用一句话正面回应它，再用 candidateMessage 收口',
+          ]
+        : []),
     ],
   };
 }

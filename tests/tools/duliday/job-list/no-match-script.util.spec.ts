@@ -1,4 +1,7 @@
-import { buildNoMatchScript } from '@tools/duliday/job-list/no-match-script.util';
+import {
+  buildNoMatchScript,
+  hasPriorNoMatchReply,
+} from '@tools/duliday/job-list/no-match-script.util';
 
 describe('buildNoMatchScript', () => {
   describe('querySummary', () => {
@@ -107,6 +110,52 @@ describe('buildNoMatchScript', () => {
       expect(capped.some((x) => x.includes('整个城市'))).toBe(true);
       const uncapped = buildNoMatchScript({ cityLabels: ['北京'] }).forbiddenActions;
       expect(uncapped.some((x) => x.includes('整个城市'))).toBe(false);
+    });
+  });
+
+  describe('二次无岗升级（badcase 6a5df7e7 Aron 复读辱骂案）', () => {
+    it('second-stage candidateMessage differs from first-stage and drops the group line', () => {
+      const first = buildNoMatchScript({ brandLabels: ['必胜客'], cityLabels: ['沈阳'] });
+      const second = buildNoMatchScript({
+        brandLabels: ['必胜客'],
+        cityLabels: ['沈阳'],
+        priorNoMatchReplySent: true,
+      });
+      expect(second.candidateMessage).not.toBe(first.candidateMessage);
+      expect(second.candidateMessage).toContain('记下来');
+      expect(second.candidateMessage).toContain('第一时间联系你');
+    });
+
+    it('second-stage adds a no-verbatim-repeat forbidden action', () => {
+      const second = buildNoMatchScript({ priorNoMatchReplySent: true });
+      expect(second.forbiddenActions.some((x) => x.includes('逐字重复'))).toBe(true);
+      const first = buildNoMatchScript({});
+      expect(first.forbiddenActions.some((x) => x.includes('逐字重复'))).toBe(false);
+    });
+  });
+
+  describe('hasPriorNoMatchReply', () => {
+    it('detects prior no-match assistant reply (Aron 案原文形态)', () => {
+      expect(
+        hasPriorNoMatchReply([
+          { role: 'user', content: '沈阳和平长白这里' },
+          { role: 'assistant', content: '沈阳这边暂时没有合适的岗位，后续有匹配我会主动联系你' },
+        ]),
+      ).toBe(true);
+      expect(
+        hasPriorNoMatchReply([
+          { role: 'assistant', content: '必胜客在你附近 10 公里内暂时没找到合适的岗位，我先帮你进餐饮兼职群' },
+        ]),
+      ).toBe(true);
+    });
+
+    it('ignores user messages and unrelated assistant texts', () => {
+      expect(
+        hasPriorNoMatchReply([
+          { role: 'user', content: '暂时没有合适的岗位吗' },
+          { role: 'assistant', content: '帮你查到 3 个岗位，看看哪个合适' },
+        ]),
+      ).toBe(false);
     });
   });
 });

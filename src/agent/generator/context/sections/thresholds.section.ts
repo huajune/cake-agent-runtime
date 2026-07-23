@@ -1,5 +1,5 @@
 import { PromptSection, PromptContext } from './section.interface';
-import { Threshold } from '@shared-types/strategy-config.types';
+import { Threshold } from '@biz/strategy/types/strategy.types';
 
 /**
  * 业务阈值段落 — 从策略配置读取阈值定义

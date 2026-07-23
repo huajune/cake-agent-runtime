@@ -1,5 +1,5 @@
 import { ReengagementAgent } from '@agent/reengagement/reengagement.agent';
-import { getScenario } from '@agent/reengagement/follow-up-scheduler.service';
+import { getScenario } from '@agent/reengagement/scenario-registry';
 import type { FollowUpJob } from '@agent/reengagement/follow-up-scheduler.service';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 

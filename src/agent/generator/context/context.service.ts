@@ -21,11 +21,8 @@ import type {
 } from '@memory/types/session-facts.types';
 import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
-import {
-  StrategyConfigRecord,
-  StageGoalConfig,
-  Threshold,
-} from '@shared-types/strategy-config.types';
+import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
+import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
 import { PromptSection, PromptContext, AccountIdentity } from './sections/section.interface';
 import { IdentitySection } from './sections/identity.section';
 import { RedLinesSection } from './sections/red-lines.section';

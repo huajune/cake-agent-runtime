@@ -1,6 +1,6 @@
 import { ThresholdsSection } from '@agent/generator/context/sections/thresholds.section';
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
-import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
+import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 
 describe('ThresholdsSection', () => {
   const section = new ThresholdsSection();

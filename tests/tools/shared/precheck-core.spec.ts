@@ -1,8 +1,11 @@
 import {
+  countRealNameAsks,
   evaluateBookingNameGate,
+  evaluateBookingPhoneGate,
   extractQuotedSpeakers,
   extractUserTexts,
   isNameAuthoritative,
+  isNameConfirmedInDialogue,
   isNameOnlyQuotedSpeaker,
 } from '@tools/shared/precheck-core';
 
@@ -108,6 +111,103 @@ describe('precheck-core', () => {
     it('does not double-reject format-invalid names (left to checkRealName)', () => {
       // 'Mike' 无负向证据 → 本闸门放行，交给 runBookingGuards.checkRealName 形态拦截
       expect(evaluateBookingNameGate('Mike', [userMsg('帮我约面试')]).decision).toBe('allow');
+    });
+  });
+
+  describe('isNameConfirmedInDialogue / 姓名闸门解锁路径（badcase g4ytra23 死锁修复）', () => {
+    // 陈佩珊案：打招呼语昵称=真名，isFromAutoGreeting 存在性判断导致后续任何确认都解不开
+    const greeting = userMsg('我是陈佩珊');
+
+    it('unlocks via 直陈确认 "就是X"', () => {
+      const messages = [greeting, asstMsg('麻烦发一下身份证上的真实姓名'), userMsg('就是陈佩珊')];
+      expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(true);
+      expect(evaluateBookingNameGate('陈佩珊', messages).decision).toBe('allow');
+    });
+
+    it('unlocks via 确认问答对（assistant 问"全名对吧" + user 答"是的"）', () => {
+      const messages = [
+        greeting,
+        asstMsg('门店登记需要用身份证上的本名，"陈佩珊"是你的全名对吧？确认下我这边就直接帮你登记了'),
+        userMsg('是的'),
+      ];
+      expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(true);
+      expect(evaluateBookingNameGate('陈佩珊', messages).decision).toBe('allow');
+    });
+
+    it('unlocks via 确认问答对（肯定答复带时间后缀——7-15 时间后缀击穿教训回归）', () => {
+      const messages = [
+        greeting,
+        asstMsg('"陈佩珊"是你的全名对吧？'),
+        userMsg('是的\n[消息发送时间：2026-07-22 17:11 星期三]'),
+      ];
+      expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(true);
+    });
+
+    it('unlocks via 身份证图片 OCR 描述（无冒号分隔形态）', () => {
+      const messages = [greeting, userMsg('[图片消息] 身份证图片：姓名陈佩珊，性别女，民族汉')];
+      expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(true);
+      expect(evaluateBookingNameGate('陈佩珊', messages).decision).toBe('allow');
+    });
+
+    it('does NOT unlock when the affirmative answers an unrelated question', () => {
+      const messages = [
+        greeting,
+        asstMsg('这个岗位是早班，你时间能排开吗'),
+        userMsg('是的'),
+      ];
+      expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(false);
+      expect(evaluateBookingNameGate('陈佩珊', messages).decision).toBe('reject_collect');
+    });
+
+    it('does NOT unlock when the next user message is not affirmative', () => {
+      const messages = [greeting, asstMsg('"陈佩珊"是你的全名对吧？'), userMsg('到时候联系谁呢')];
+      expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(false);
+    });
+  });
+
+  describe('countRealNameAsks', () => {
+    it('counts assistant real-name asks (同题限问依据)', () => {
+      const messages = [
+        asstMsg('麻烦发一下身份证上的真实姓名，我帮你登记上'),
+        userMsg('发了呀'),
+        asstMsg('门店登记需要用身份证上的本名哈，麻烦发一下身份证上的真实姓名'),
+        asstMsg('到时候面试前会提前跟你联系确认'),
+      ];
+      expect(countRealNameAsks(messages)).toBe(2);
+    });
+  });
+
+  describe('evaluateBookingPhoneGate（badcase 6e9ar9gd 簇：编造手机号提交预约）', () => {
+    it('allows a phone that appears verbatim in user text', () => {
+      expect(
+        evaluateBookingPhoneGate('15921708092', [userMsg('手机号15921708092')]).decision,
+      ).toBe('allow');
+    });
+
+    it('allows a phone written with separators (155 2189 9062)', () => {
+      expect(
+        evaluateBookingPhoneGate('15521899062', [userMsg('电话 155 2189 9062')]).decision,
+      ).toBe('allow');
+    });
+
+    it('rejects a phone with no user-text provenance (示例回声/沿用洗白的编造号)', () => {
+      const verdict = evaluateBookingPhoneGate('15921708092', [
+        userMsg('我是陈佩珊'),
+        userMsg('周四下午'),
+      ]);
+      expect(verdict.decision).toBe('reject_collect');
+      expect(verdict.reason).toContain('手机号');
+    });
+
+    it('ignores phone digits inside quoted blocks (bot 表单被引用不算候选人出处)', () => {
+      const verdict = evaluateBookingPhoneGate('13800000000', [
+        userMsg('[引用 招募经理：联系电话：13800000000] 怎么填'),
+      ]);
+      expect(verdict.decision).toBe('reject_collect');
+    });
+
+    it('passes through empty phone (交给必填校验)', () => {
+      expect(evaluateBookingPhoneGate('', [userMsg('你好')]).decision).toBe('allow');
     });
   });
 });

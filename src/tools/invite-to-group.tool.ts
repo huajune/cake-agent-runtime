@@ -16,6 +16,7 @@ import { OpsNotifierService } from '@notification/services/ops-notifier.service'
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
 import { resolveCityFromDistrict } from '@resolution/geo';
+import { hasPriorNoMatchReply } from '@tools/duliday/job-list/no-match-script.util';
 
 const logger = new Logger('invite_to_group');
 
@@ -31,6 +32,14 @@ const COMPAT_RETRY_DELAYS_MS = [3000, 5000, 8000];
 // 该城市/平台本就没有可对接的兼职群时，不触发人工介入，Agent 自然收口并继续托管。
 const NO_GROUP_CONTINUE_INSTRUCTION =
   '该城市/平台本就没有可对接的兼职群（注意：这不是群满，而是没有群）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
+
+// 二次无岗升级（badcase 6a5df7e7 Aron 案）：无群城市里 Agent 连续两轮照本指令输出
+// 一字不差的"暂时没有合适的岗位"，且没回应候选人"除了必胜客还有其他吗"的具体提问，
+// 候选人评价"说话跟人机一样"后辱骂流失。已告知过一次无岗时必须换表述并回应本轮问题。
+const NO_GROUP_REPEAT_ESCALATION =
+  '注意：本会话已经告知过候选人"暂时没有岗位"，本次**严禁与已发送的消息逐字重复**。' +
+  '先用一句话正面回应候选人本轮的具体问题（如点名的品牌、追问的范围、"还有别的吗"），' +
+  '再换一种表述自然收口（如"刚又帮你查了一遍，这边现在确实还没有新的合适岗位，你的需求我记下来了，有新岗位第一时间联系你"）。';
 
 // 候选人非接客 bot 的外部联系人（已拉黑/删好友），全部候选群都报 -8 "is not a friend"。
 // 这是候选人侧真实状态、人工无可作为，故不发运维告警、也不转人工，自然收口即可。
@@ -351,7 +360,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE,
               outcome: '暂无可用群',
-              replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
+              replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${hasPriorNoMatchReply(context.messages ?? []) ? NO_GROUP_REPEAT_ESCALATION : ''}`,
             });
           }
 
@@ -366,7 +375,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY,
               outcome: '该城市无匹配群',
-              replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
+              replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${hasPriorNoMatchReply(context.messages ?? []) ? NO_GROUP_REPEAT_ESCALATION : ''}`,
               details: { city },
             });
           }

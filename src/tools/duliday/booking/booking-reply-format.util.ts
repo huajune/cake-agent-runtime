@@ -38,8 +38,13 @@ export function formatInterviewTimeForReply(interviewTime: string): string {
  * 到店被当陌生人）。面试方式明确写"线下/到店/现场"时，即便备注含"线上"字样
  * （如混合流程）也按到店处理。
  */
+// badcase 6a608ad4/6a607170（2026-07-23 沈阳必胜客双面投诉）：岗位面试说明是
+// "面试官先电话沟通，合适的会通知线下门店面试"——先电话后到店的两段式流程，初始
+// 环节不应发到店脚本；但旧正则只认字面"电话面试"，"先电话沟通"漏网，booking 成功后
+// 照发 _onSiteScript，候选人没等电话直接到店。只收强电话初面信号，"保持电话畅通/
+// 有变动会电话联系"这类到店岗常见措辞不收，避免误伤回归 keciu6u6。
 const ONLINE_INTERVIEW_SIGNAL_PATTERN =
-  /线上面试|线上形式|线上进行|视频面试|电话面试|远程面试|腾讯会议|会议链接|入会|钉钉会议|飞书会议/;
+  /线上面试|线上形式|线上进行|视频面试|电话面试|电话初面|电话初试|先电话沟通|电话沟通后|先电话联系|远程面试|腾讯会议|会议链接|入会|钉钉会议|飞书会议/;
 const OFFLINE_INTERVIEW_METHOD_PATTERN = /线下|到店|现场|当面|门店面试/;
 
 export function isOnlineInterview(params: {

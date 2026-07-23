@@ -4,7 +4,7 @@ import type {
   SessionFacts,
 } from '@memory/types/session-facts.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
-import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
+import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 
 /**

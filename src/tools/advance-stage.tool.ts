@@ -3,7 +3,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { MemoryService } from '@memory/memory.service';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { StageGoalConfig } from '@shared-types/strategy-config.types';
+import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('advance_stage');

@@ -3,9 +3,13 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildCancelWorkOrderTool', () => {
-  const spongeService = { cancelWorkOrder: jest.fn(), fetchFailureReasonsByPids: jest.fn() };
+  const spongeService = {
+    cancelWorkOrder: jest.fn(),
+    fetchFailureReasonsByPids: jest.fn(),
+    getWorkOrderById: jest.fn(),
+  };
   const opsEventsRecorder = { recordEvent: jest.fn() };
-  const longTermService = { clearActiveBooking: jest.fn() };
+  const longTermService = { clearActiveBooking: jest.fn(), getActiveBookings: jest.fn() };
   const privateChatNotifier = { notifyInterviewCancellation: jest.fn() };
 
   const mockContext: ToolBuildContext = {
@@ -37,9 +41,81 @@ describe('buildCancelWorkOrderTool', () => {
       { id: 12011, info: '时间冲突' },
     ]);
     spongeService.cancelWorkOrder.mockResolvedValue({ success: true, code: 0, message: 'ok' });
+    spongeService.getWorkOrderById.mockResolvedValue({
+      workOrderId: 123,
+      currentStatus: '约面成功',
+      interviewPassTime: null,
+    });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     longTermService.clearActiveBooking.mockResolvedValue(undefined);
+    longTermService.getActiveBookings.mockResolvedValue([
+      { work_order_id: 123, linked_at: '2026-07-01T00:00:00Z' },
+    ]);
     privateChatNotifier.notifyInterviewCancellation.mockResolvedValue(true);
+  });
+
+  describe('B5 取消前置核验', () => {
+    it('rejects a workOrderId outside the active_booking set (记忆残留/臆造工单)', async () => {
+      const tool = buildTool();
+      const result = await exec(tool, { workOrderId: 999, cancelReasonId: 12010 });
+
+      expect(result).toMatchObject({
+        success: false,
+        errorType: TOOL_ERROR_TYPES.CANCEL_WORK_ORDER_NOT_OWNED,
+      });
+      expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+    });
+
+    it('rejects cancellation when interviewPassTime shows the interview already passed', async () => {
+      spongeService.getWorkOrderById.mockResolvedValue({
+        workOrderId: 123,
+        currentStatus: '约面成功',
+        interviewPassTime: '2026-07-22 15:30:00',
+      });
+      const tool = buildTool();
+      const result = await exec(tool, { workOrderId: 123, cancelReasonId: 12010 });
+
+      expect(result).toMatchObject({
+        success: false,
+        errorType: TOOL_ERROR_TYPES.CANCEL_BLOCKED_BY_STATUS,
+      });
+      expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+    });
+
+    it.each(['面试成功', '上岗失败', '上岗成功', '已离职'])(
+      'rejects cancellation when currentStatus is %s even without interviewPassTime',
+      async (currentStatus) => {
+        spongeService.getWorkOrderById.mockResolvedValue({
+          workOrderId: 123,
+          currentStatus,
+          interviewPassTime: null,
+        });
+        const tool = buildTool();
+        const result = await exec(tool, { workOrderId: 123, cancelReasonId: 12010 });
+
+        expect(result).toMatchObject({
+          success: false,
+          errorType: TOOL_ERROR_TYPES.CANCEL_BLOCKED_BY_STATUS,
+        });
+        expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+      },
+    );
+
+    it('degrades to allow when status lookup fails (海绵抖动不阻断正常取消)', async () => {
+      spongeService.getWorkOrderById.mockRejectedValue(new Error('sponge timeout'));
+      const tool = buildTool();
+      const result = await exec(tool, { workOrderId: 123, cancelReasonId: 12010 });
+
+      expect(result).toMatchObject({ success: true, workOrderId: 123 });
+    });
+
+    it('degrades to allow when active_booking read fails (本地存储故障不阻断)', async () => {
+      longTermService.getActiveBookings.mockRejectedValue(new Error('supabase down'));
+      const tool = buildTool();
+      const result = await exec(tool, { workOrderId: 123, cancelReasonId: 12010 });
+
+      expect(result).toMatchObject({ success: true, workOrderId: 123 });
+    });
   });
 
   it('returns CANCEL_REASON_REQUIRED with available reasons when reasonId is omitted', async () => {

@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-07-21
+**最后更新**：2026-07-23
 
 ---
 
@@ -39,8 +39,8 @@
 
 ### 历史设计与施工记录
 
-- **[实施路线图（PR-A…G）](architecture/reliability/agent-reliability-implementation-roadmap.md)** 🗄️ — 2026-06 施工记录；当前实现以运行时现状文档为准
-- **[Agent 架构重设计（基于 63 条 badcase）](architecture/reliability/agent-redesign-from-badcases.md)** 🗄️ — **已归档**，结论已并入上方 refactor 文档
+- **[实施路线图（PR-A…G）](archive/reliability/agent-reliability-implementation-roadmap.md)** 🗄️ — 2026-06 施工记录；当前实现以运行时现状文档为准
+- **[Agent 架构重设计（基于 63 条 badcase）](archive/reliability/agent-redesign-from-badcases.md)** 🗄️ — **已归档**，结论已并入上方 refactor 文档
 
 ### 守卫与安全
 
@@ -121,9 +121,8 @@
 > 这些是工程 backlog / 规划稿，不代表已实现的设计。落地后应更新对应架构文档或归档。
 
 - **[Agent 高风险流程安全加固](todo/agent-safety-hardening.md)** — 安全加固 TODO（部分已并入守卫现状）
-- **[告警链路全链路上下文富化](todo/alert-chain-context-enrichment.md)**
-- **[告警持久化入口统一 + 监控 KPI 修正](todo/alert-persistence-unification.md)**
-- **[Recruitment Case 跟进窗口与阶段回切治理](todo/recruitment-case-followup-window-and-stage-reset.md)**
+
+已完成或被替代的方案统一收录在 **[历史文档](archive/README.md)**。
 
 ---
 
@@ -136,7 +135,7 @@
 
 ## 🔗 相关资源
 
-- 代码规范：[../.cursorrules](../.cursorrules) ｜ Agent 配置：[../.claude/agents/](../.claude/agents/)
+- 协作规范：[../CLAUDE.md](../CLAUDE.md) ｜ Agent 配置：[../.claude/agents/](../.claude/agents/)
 - 架构原则：[../.claude/agents/architecture-principles.md](../.claude/agents/architecture-principles.md) ｜ 代码标准：[../.claude/agents/code-standards.md](../.claude/agents/code-standards.md)
 
 ---

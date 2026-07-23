@@ -170,4 +170,4 @@ workflow 采用 fail-closed：Claude 达到 `max-turns`、Action 异常退出或
 
 - [Anthropic API 文档](https://docs.anthropic.com/)
 - [GitHub Actions 文档](https://docs.github.com/en/actions)
-- [项目编码规范](.cursorrules)
+- [项目协作规范](../../CLAUDE.md)

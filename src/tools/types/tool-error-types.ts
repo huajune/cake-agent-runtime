@@ -62,6 +62,10 @@ export const TOOL_ERROR_TYPES = {
   CANCEL_REASON_FETCH_FAILED: 'cancel.reason_fetch_failed',
   CANCEL_REJECTED: 'cancel.rejected',
   CANCEL_REQUEST_FAILED: 'cancel.request_failed',
+  /** workOrderId 不在候选人当前有效预约（active_booking）集合内：疑似臆造/串档案工单，硬拒。 */
+  CANCEL_WORK_ORDER_NOT_OWNED: 'cancel.work_order_not_owned',
+  /** 工单已面试通过/入职推进中：不可自助取消，转人工核实。 */
+  CANCEL_BLOCKED_BY_STATUS: 'cancel.blocked_by_status',
 
   // ============================================================
   // duliday_modify_interview_time
