@@ -187,6 +187,13 @@ const LABOR_FORM_HIRING_RESTRICTION_QUESTION_PATTERN =
  * （currentLaborFormIntent.kind==='clear' 消费路径），给模型留出口。
  */
 const LONG_TERM_MENTION_PATTERN = /长期/;
+/**
+ * 工作经历叙述语境（badcase chat 6a61d124，2026-07-23）：候选人回填简历"过往公司+
+ * 岗位+年限：高中毕业肯德基寒暑假工…"——历史经历里的用工形式词不是当前求职意向。
+ * 命中经历语境且无明确意向动作时整句忽略；"毕业了想找暑假工"含"想找"仍正常提取。
+ */
+const LABOR_FORM_EXPERIENCE_CONTEXT_PATTERN =
+  /过往|经历|做过|干过|之前(?:在|做|是)|以前(?:在|做|是)|曾在|毕业|上一份|干了|做了[^，。！？?!；;\n]{0,4}(?:年|个月)/;
 const LABOR_FORM_REJECTION_PREFIX_PATTERN =
   /(?:(?<!是)不是|并非|不要|别|不想|不考虑|不接受|不找|不做|拒绝|排除|除了|不适合|不能做|做不了)[^，。！？?!；;\n]{0,14}$/;
 const LABOR_FORM_REJECTION_SUFFIX_PATTERN =
@@ -264,6 +271,15 @@ function decideLaborFormClause(clause: string): LaborFormIntentDecision {
 
   // "只招暑假工吗"是招聘限制疑问，不是求职意向（与"还招暑假工吗"相反），整句忽略。
   if (LABOR_FORM_HIRING_RESTRICTION_QUESTION_PATTERN.test(clause)) {
+    return { kind: 'ignore' };
+  }
+
+  // 工作经历叙述里的用工形式词（"高中毕业肯德基寒暑假工"）不是当前意向；
+  // 同句出现"想找/要做"等明确意向动作时不免疫。
+  if (
+    LABOR_FORM_EXPERIENCE_CONTEXT_PATTERN.test(clause) &&
+    !LABOR_FORM_PREFERENCE_SIGNAL_PATTERN.test(clause)
+  ) {
     return { kind: 'ignore' };
   }
 

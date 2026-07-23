@@ -49,6 +49,24 @@ describe('labor-form', () => {
       });
     });
 
+    describe('工作经历叙述免疫（badcase chat 6a61d124）', () => {
+      it.each([
+        '过往公司+岗位+年限：高中毕业肯德基寒暑假工大学毕业之后肯德基一年中间有一个暑假在霸王茶姬',
+        '之前在肯德基做暑假工',
+        '以前做过小时工',
+        '上一份是全职',
+      ])('ignores labor-form words inside experience narration: %s', (message) => {
+        expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
+      });
+
+      it('keeps intent when experience narration carries an explicit preference verb', () => {
+        expect(decideLaborFormIntent('我毕业了，想找暑假工')).toEqual({
+          kind: 'set',
+          value: '暑假工',
+        });
+      });
+    });
+
     it.each(['暑假工短期的兼职', '我想找暑假工这种兼职', '寒假工也是兼职'])(
       'keeps the seasonal subtype when 兼职 is only its parent category: %s',
       (message) => {

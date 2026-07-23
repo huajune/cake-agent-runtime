@@ -60,7 +60,7 @@ import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
 import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
-import { decideLaborFormIntent } from '../facts/labor-form';
+import { decideLaborFormIntent, type LaborFormIntentDecision } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import { assertNoExtractionExampleEcho } from '../facts/placeholder-identity';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -638,7 +638,14 @@ export class SessionService {
     // 信息不会永久丢失：下一轮非应答消息的增量窗口仍覆盖本轮上下文（含助手
     // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
     const lastUserText = MessageParser.stripTimeContext(userMessages.at(-1) ?? '').trim();
-    const currentLaborFormIntent = decideLaborFormIntent(lastUserText);
+    // 用工形式意向按窗口内时间序折叠，最后一个非 ignore 信号胜出——只看最后一条会丢批量
+    // 消息里的 clear（badcase chat 6a61d124：候选人三连发"我不是暑假工/我是长期/我现在已经
+    // 大学毕业了"，clear 在第一条，末条无信号，暑假工旧值清不掉→查岗全被过滤→转人工）。
+    const currentLaborFormIntent = userMessages
+      .map((message) => decideLaborFormIntent(MessageParser.stripTimeContext(message).trim()))
+      .reduce<LaborFormIntentDecision>((acc, cur) => (cur.kind === 'ignore' ? acc : cur), {
+        kind: 'ignore',
+      });
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
       const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
       if (!currentTurnRuleHits) {
