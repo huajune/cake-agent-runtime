@@ -22,7 +22,10 @@ import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { buildNoMatchScript } from '@tools/duliday/job-list/no-match-script.util';
+import {
+  buildNoMatchScript,
+  hasPriorNoMatchReply,
+} from '@tools/duliday/job-list/no-match-script.util';
 import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
@@ -653,6 +656,9 @@ export function buildJobListTool(
         const normalizedRegionNameList = regionNameList
           .map((region) => region.trim())
           .filter(Boolean);
+        // B7 二次无岗升级（badcase 6a5df7e7）：本会话已发过无岗话术时，noMatchScript 出二档
+        // 文案并禁止逐字复读，四个无岗出口共用同一判定。
+        const priorNoMatchReplySent = hasPriorNoMatchReply(context.messages ?? []);
 
         // ==================== 品牌入口标准化 + 查询计划（§8.1/§8.2） ====================
         // 别名经品牌目录解析成唯一标准品牌（冲突/未命中进 rejected，不形成品牌过滤）；
@@ -701,6 +707,7 @@ export function buildJobListTool(
             brandPlan,
             fuzzySuggestions,
             noMatchScript: buildNoMatchScript({
+              priorNoMatchReplySent,
               brandLabels: rejectedInputs,
               storeLabels: storeNameList,
               cityLabels: normalizedCityNameList,
@@ -1209,6 +1216,7 @@ export function buildJobListTool(
                   details: {
                     maxKm,
                     noMatchScript: buildNoMatchScript({
+                      priorNoMatchReplySent,
                       brandLabels: noMatchBrandLabels,
                       storeLabels: storeNameList,
                       cityLabels: normalizedCityNameList,
@@ -1363,6 +1371,7 @@ export function buildJobListTool(
                   ? { brandFilterNotice: brandPlan.disclosure }
                   : {}),
                 noMatchScript: buildNoMatchScript({
+                  priorNoMatchReplySent,
                   brandLabels: noMatchBrandLabels,
                   storeLabels: storeNameList,
                   cityLabels: normalizedCityNameList,
@@ -1424,6 +1433,7 @@ export function buildJobListTool(
                   candidateScheduleConstraint,
                 ),
                 noMatchScript: buildNoMatchScript({
+                  priorNoMatchReplySent,
                   brandLabels: brandAliasList,
                   storeLabels: storeNameList,
                   cityLabels: normalizedCityNameList,
