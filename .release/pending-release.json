@@ -65,6 +65,45 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "695",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/695",
+      "title": "岗位截图发布方不再覆盖求职品牌",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "修复招聘平台发布主体覆盖候选人真实求职品牌、导致岗位召回跑偏的问题",
+        "岗位截图中的“发布方/发布主体/招聘代理”等字段不再参与求职品牌实体匹配",
+        "保留字段前候选人明确提到的雇主品牌，并保留完整 sourceText 供观测归因",
+        "对“品牌/发布方”复合标签保留品牌识别，避免误挖真实雇主"
+      ],
+      "summary": [
+        "岗位截图「发布方」字段值不再当候选人求职意向品牌",
+        "岗位截图中的“发布方/发布主体/招聘代理”等字段不再参与求职品牌实体匹配",
+        "保留字段前候选人明确提到的雇主品牌，并保留完整 sourceText 供观测归因",
+        "对“品牌/发布方”复合标签保留品牌识别，避免误挖真实雇主",
+        "岗位截图发布方不再覆盖求职品牌"
+      ],
+      "features": [],
+      "fixes": [
+        "修复招聘平台发布主体覆盖候选人真实求职品牌、导致岗位召回跑偏的问题",
+        "岗位截图中的“发布方/发布主体/招聘代理”等字段不再参与求职品牌实体匹配",
+        "保留字段前候选人明确提到的雇主品牌，并保留完整 sourceText 供观测归因",
+        "对“品牌/发布方”复合标签保留品牌识别，避免误挖真实雇主"
+      ],
+      "optimizations": [],
+      "ops": [
+        "岗位截图「发布方」字段值不再当候选人求职意向品牌"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（由 GitHub CI 执行）",
+        "`pnpm exec jest tests/resolution/brand/brand-matcher.spec.ts --runInBand --watchman=false`（64 tests passed）",
+        "`git diff --check`",
+        "无 migration、环境变量或运行时配置变化"
+      ]
     }
   ],
   "lastRelease": {
