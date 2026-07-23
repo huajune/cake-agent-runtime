@@ -3,7 +3,39 @@
   "nextVersion": "10.29.0",
   "updatedAt": "2026-07-23",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "711",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/711",
+      "title": "发版底账回填业务改动",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "发版底账回填业务改动"
+      ],
+      "summary": [
+        "发版底账回填业务改动"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "将 v10.28.0 状态更新为已发布",
+        "回填 Release、部署 workflow、正式发布时间、生产镜像与健康检查",
+        "记录飞书通知成功、master → develop 回同步 #710 与无回滚结论",
+        "保留独立回归批次证据，并再次注明未触碰 `tz2607-*` 与批次 `56d30741`",
+        "发版底账回填业务改动"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`：366 个测试套件、5609 个测试通过，6 个跳过",
+        "Prettier 与 `git diff --check` 通过",
+        "生产容器 `cake-agent-runtime:v10.28.0` 为 `running / healthy`",
+        "`/agent/health` 返回 healthy，Redis、Supabase 均正常"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.28.0",
     "date": "2026-07-23",
