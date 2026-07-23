@@ -3,7 +3,35 @@
   "nextVersion": "10.27.0",
   "updatedAt": "2026-07-23",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "682",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/682",
+      "title": "回填 v10.26.0 生产发布结果",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "回填 v10.26.0 生产发布结果"
+      ],
+      "summary": [
+        "回填 v10.26.0 生产发布结果"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "回填 v10.26.0 生产发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "v10.26.0 发布流水线成功：Build and Deploy #29976217910",
+        "线上容器 `cake-agent-runtime:v10.26.0` 状态 healthy",
+        "`/agent/health` 返回 healthy，Redis/Supabase 正常",
+        "本地 pre-push 全量测试受到工作区未提交的无关预约代码影响（5 个失败）；未改动这些代码，交由 PR 干净检出 CI 校验本提交"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.26.0",
     "date": "2026-07-23",
