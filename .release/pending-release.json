@@ -30,7 +30,11 @@
       ],
       "config": [],
       "envFiles": [],
-      "verification": ["Prettier check 通过", "git diff --check 通过", "纯文档变更"]
+      "verification": [
+        "Prettier check 通过",
+        "git diff --check 通过",
+        "纯文档变更"
+      ]
     },
     {
       "number": "691",
@@ -46,7 +50,9 @@
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": ["治理方案 §8 人工反馈池分层处置与 T1 复测收口"],
+      "ops": [
+        "治理方案 §8 人工反馈池分层处置与 T1 复测收口"
+      ],
       "config": [],
       "envFiles": [],
       "verification": []
@@ -136,7 +142,9 @@
         "对“品牌/发布方”复合标签保留品牌识别，避免误挖真实雇主"
       ],
       "optimizations": [],
-      "ops": ["岗位截图「发布方」字段值不再当候选人求职意向品牌"],
+      "ops": [
+        "岗位截图「发布方」字段值不再当候选人求职意向品牌"
+      ],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -163,14 +171,56 @@
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": ["记录组合分支完整 CI、DI 冒烟和 4 条独立 Agent 发布回归证据"],
-      "config": ["无 migration、环境变量或运行时配置变化"],
+      "ops": [
+        "记录组合分支完整 CI、DI 冒烟和 4 条独立 Agent 发布回归证据"
+      ],
+      "config": [
+        "无 migration、环境变量或运行时配置变化"
+      ],
       "envFiles": [],
       "verification": [
         "pnpm run ci:check：366 suites / 5608 tests passed",
         "pnpm run test:di-smoke：1/1 passed",
         "独立 Agent 回归：4/4 passed",
         "git diff --check / Prettier：通过"
+      ]
+    },
+    {
+      "number": "700",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/700",
+      "title": "补齐 v10.28.0 发布元数据",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "修正元数据自动化并发竞态，补齐已合并的 #693 与 #694",
+        "将 #693/#694/#695 的真实候选人可感知改动置于飞书发版通知业务摘要",
+        "移除上一版回填、治理文档和发版底账的业务改动误分类"
+      ],
+      "summary": [
+        "补齐 v10.28.0 发布元数据",
+        "修正元数据自动化并发竞态，补齐已合并的 #693 与 #694",
+        "将 #693/#694/#695 的真实候选人可感知改动置于飞书发版通知业务摘要",
+        "移除上一版回填、治理文档和发版底账的业务改动误分类",
+        "回填 Release PR #697，并关闭底账最后一个一致性闸口"
+      ],
+      "features": [],
+      "fixes": [
+        "修正元数据自动化并发竞态，补齐已合并的 #693 与 #694",
+        "将 #693/#694/#695 的真实候选人可感知改动置于飞书发版通知业务摘要",
+        "移除上一版回填、治理文档和发版底账的业务改动误分类"
+      ],
+      "optimizations": [],
+      "ops": [
+        "回填 Release PR #697，并关闭底账最后一个一致性闸口",
+        "补齐 v10.28.0 发布元数据"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "发版底账校验通过",
+        "通知 buildMarkdown 预演仅包含 6 条真实业务改动",
+        "pnpm run ci:check：366 suites / 5608 tests passed",
+        "JSON / git diff --check 通过"
       ]
     }
   ],
@@ -185,12 +235,18 @@
         "title": "回填 v10.26.0 生产发布结果",
         "author": "huajune",
         "mergedAt": "2026-07-23",
-        "businessUpdates": ["回填 v10.26.0 生产发布结果"],
-        "summary": ["回填 v10.26.0 生产发布结果"],
+        "businessUpdates": [
+          "回填 v10.26.0 生产发布结果"
+        ],
+        "summary": [
+          "回填 v10.26.0 生产发布结果"
+        ],
         "features": [],
         "fixes": [],
         "optimizations": [],
-        "ops": ["回填 v10.26.0 生产发布结果"],
+        "ops": [
+          "回填 v10.26.0 生产发布结果"
+        ],
         "config": [],
         "envFiles": [],
         "verification": [
