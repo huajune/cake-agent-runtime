@@ -10,13 +10,7 @@
       "title": "回填 v10.27.0 生产发布结果",
       "author": "huajune",
       "mergedAt": "2026-07-23",
-      "businessUpdates": [
-        "回填 v10.27.0 生产发布结果",
-        "将 v10.27.0 底账状态更新为已发布",
-        "回填 Release、部署 workflow、发布时间和生产健康验证",
-        "记录限定测试批同步结果（2 passed / 1 skipped），明确未触碰 tz2607- 资产和批次 56d30741",
-        "记录 master → develop 回同步 PR #689"
-      ],
+      "businessUpdates": [],
       "summary": [
         "回填 v10.27.0 生产发布结果",
         "将 v10.27.0 底账状态更新为已发布",
@@ -36,11 +30,7 @@
       ],
       "config": [],
       "envFiles": [],
-      "verification": [
-        "Prettier check 通过",
-        "git diff --check 通过",
-        "纯文档变更"
-      ]
+      "verification": ["Prettier check 通过", "git diff --check 通过", "纯文档变更"]
     },
     {
       "number": "691",
@@ -48,10 +38,7 @@
       "title": "badcase 治理方案 §8 收口（人工反馈池分层 + T1 复测结果）",
       "author": "huajune",
       "mergedAt": "2026-07-23",
-      "businessUpdates": [
-        "治理方案 §8 人工反馈池分层处置与 T1 复测收口",
-        "badcase 治理方案 §8 收口（人工反馈池分层 + T1 复测结果）"
-      ],
+      "businessUpdates": [],
       "summary": [
         "治理方案 §8 人工反馈池分层处置与 T1 复测收口",
         "badcase 治理方案 §8 收口（人工反馈池分层 + T1 复测结果）"
@@ -59,12 +46,70 @@
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": [
-        "治理方案 §8 人工反馈池分层处置与 T1 复测收口"
-      ],
+      "ops": ["治理方案 §8 人工反馈池分层处置与 T1 复测收口"],
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "693",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/693",
+      "title": "报名空头宣称接地与成功播报硬指令",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "没有进行中报名时，Agent 会明确当前尚未报名，不再无依据声称“已报名”或“已登记好”",
+        "实际报名成功后，Agent 必须明确告知报名结果并复述面试安排"
+      ],
+      "summary": [
+        "报名状态增加权威事实接地，只允许在本轮 duliday_interview_booking 成功后使用完成口径",
+        "真实报名成功后强制播报结果与面试安排",
+        "补强报名完成口径的语义审查"
+      ],
+      "features": [],
+      "fixes": [
+        "修复没有 booking 成功证据却向候选人宣称已报名的问题",
+        "修复 booking 成功后未向候选人播报、导致重复提交的问题"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "组合分支定向测试 4 suites / 261 tests 通过",
+        "独立回归 RELEASE-V10280-BOOKING-GROUNDING-001 通过",
+        "无 migration、环境变量或运行时配置变化"
+      ]
+    },
+    {
+      "number": "694",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/694",
+      "title": "招聘限制疑问不再误记用工意向，长期改口清除季节工",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "候选人问“只招暑假工吗”时，不再被误记为本人只找暑假工",
+        "候选人改口找长期岗位时，会清除旧季节工筛选并恢复长期岗位推荐"
+      ],
+      "summary": [
+        "招聘限制疑问句不再写入暑假工偏好",
+        "“长期”改口会清除既有暑假工或寒假工偏好",
+        "本轮岗位查询旁路已清除的季节工过滤"
+      ],
+      "features": [],
+      "fixes": [
+        "修复“只招暑假工吗”被误判为暑假工求职意向的问题",
+        "修复改口“长期”后旧季节工偏好持续粘住、过滤真实岗位的问题"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "组合分支定向测试 4 suites / 261 tests 通过",
+        "独立回归 RELEASE-V10280-LABOR-QUESTION-002 与 RELEASE-V10280-LABOR-CLEAR-003 通过",
+        "无 migration、环境变量或运行时配置变化"
+      ]
     },
     {
       "number": "695",
@@ -73,10 +118,8 @@
       "author": "huajune",
       "mergedAt": "2026-07-23",
       "businessUpdates": [
-        "修复招聘平台发布主体覆盖候选人真实求职品牌、导致岗位召回跑偏的问题",
-        "岗位截图中的“发布方/发布主体/招聘代理”等字段不再参与求职品牌实体匹配",
-        "保留字段前候选人明确提到的雇主品牌，并保留完整 sourceText 供观测归因",
-        "对“品牌/发布方”复合标签保留品牌识别，避免误挖真实雇主"
+        "招聘平台截图的“发布方/发布主体/招聘代理”不再覆盖候选人明确表达的求职品牌",
+        "“品牌/发布方”复合标签仍会保留真实雇主识别，避免岗位推荐跑偏"
       ],
       "summary": [
         "岗位截图「发布方」字段值不再当候选人求职意向品牌",
@@ -93,9 +136,7 @@
         "对“品牌/发布方”复合标签保留品牌识别，避免误挖真实雇主"
       ],
       "optimizations": [],
-      "ops": [
-        "岗位截图「发布方」字段值不再当候选人求职意向品牌"
-      ],
+      "ops": ["岗位截图「发布方」字段值不再当候选人求职意向品牌"],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -111,12 +152,7 @@
       "title": "添加 v10.28.0 发版底账",
       "author": "huajune",
       "mergedAt": "2026-07-23",
-      "businessUpdates": [
-        "汇总 #691/#693/#694/#695 的 v10.28.0 发布范围、风险和回滚条件",
-        "独立批次 2509555c-2f72-4c28-ac64-ce2ed135d519 已同步生产测试台，4/4 passed、0 pending",
-        "明确未读取或覆盖 tz2607-* 资产与批次 56d30741",
-        "添加 v10.28.0 发版底账"
-      ],
+      "businessUpdates": [],
       "summary": [
         "添加 v10.28.0 发版底账",
         "汇总 #691/#693/#694/#695 的 v10.28.0 发布范围、风险和回滚条件",
@@ -124,20 +160,11 @@
         "独立批次 2509555c-2f72-4c28-ac64-ce2ed135d519 已同步生产测试台，4/4 passed、0 pending",
         "明确未读取或覆盖 tz2607-* 资产与批次 56d30741"
       ],
-      "features": [
-        "汇总 #691/#693/#694/#695 的 v10.28.0 发布范围、风险和回滚条件",
-        "独立批次 2509555c-2f72-4c28-ac64-ce2ed135d519 已同步生产测试台，4/4 passed、0 pending",
-        "明确未读取或覆盖 tz2607-* 资产与批次 56d30741",
-        "添加 v10.28.0 发版底账"
-      ],
+      "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": [
-        "记录组合分支完整 CI、DI 冒烟和 4 条独立 Agent 发布回归证据"
-      ],
-      "config": [
-        "无 migration、环境变量或运行时配置变化"
-      ],
+      "ops": ["记录组合分支完整 CI、DI 冒烟和 4 条独立 Agent 发布回归证据"],
+      "config": ["无 migration、环境变量或运行时配置变化"],
       "envFiles": [],
       "verification": [
         "pnpm run ci:check：366 suites / 5608 tests passed",
@@ -158,18 +185,12 @@
         "title": "回填 v10.26.0 生产发布结果",
         "author": "huajune",
         "mergedAt": "2026-07-23",
-        "businessUpdates": [
-          "回填 v10.26.0 生产发布结果"
-        ],
-        "summary": [
-          "回填 v10.26.0 生产发布结果"
-        ],
+        "businessUpdates": ["回填 v10.26.0 生产发布结果"],
+        "summary": ["回填 v10.26.0 生产发布结果"],
         "features": [],
         "fixes": [],
         "optimizations": [],
-        "ops": [
-          "回填 v10.26.0 生产发布结果"
-        ],
+        "ops": ["回填 v10.26.0 生产发布结果"],
         "config": [],
         "envFiles": [],
         "verification": [
