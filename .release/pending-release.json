@@ -104,6 +104,47 @@
         "`git diff --check`",
         "无 migration、环境变量或运行时配置变化"
       ]
+    },
+    {
+      "number": "698",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/698",
+      "title": "添加 v10.28.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-23",
+      "businessUpdates": [
+        "汇总 #691/#693/#694/#695 的 v10.28.0 发布范围、风险和回滚条件",
+        "独立批次 2509555c-2f72-4c28-ac64-ce2ed135d519 已同步生产测试台，4/4 passed、0 pending",
+        "明确未读取或覆盖 tz2607-* 资产与批次 56d30741",
+        "添加 v10.28.0 发版底账"
+      ],
+      "summary": [
+        "添加 v10.28.0 发版底账",
+        "汇总 #691/#693/#694/#695 的 v10.28.0 发布范围、风险和回滚条件",
+        "记录组合分支完整 CI、DI 冒烟和 4 条独立 Agent 发布回归证据",
+        "独立批次 2509555c-2f72-4c28-ac64-ce2ed135d519 已同步生产测试台，4/4 passed、0 pending",
+        "明确未读取或覆盖 tz2607-* 资产与批次 56d30741"
+      ],
+      "features": [
+        "汇总 #691/#693/#694/#695 的 v10.28.0 发布范围、风险和回滚条件",
+        "独立批次 2509555c-2f72-4c28-ac64-ce2ed135d519 已同步生产测试台，4/4 passed、0 pending",
+        "明确未读取或覆盖 tz2607-* 资产与批次 56d30741",
+        "添加 v10.28.0 发版底账"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "记录组合分支完整 CI、DI 冒烟和 4 条独立 Agent 发布回归证据"
+      ],
+      "config": [
+        "无 migration、环境变量或运行时配置变化"
+      ],
+      "envFiles": [],
+      "verification": [
+        "pnpm run ci:check：366 suites / 5608 tests passed",
+        "pnpm run test:di-smoke：1/1 passed",
+        "独立 Agent 回归：4/4 passed",
+        "git diff --check / Prettier：通过"
+      ]
     }
   ],
   "lastRelease": {
