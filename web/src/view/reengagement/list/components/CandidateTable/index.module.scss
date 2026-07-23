@@ -83,6 +83,16 @@
   text-align: right;
 }
 
+.headerWithHelp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+
+  svg {
+    color: #94a3b8;
+  }
+}
+
 // 整行可点：hover 提亮 + 左侧主色指示条（与流水视图一致的交互语言）
 // 数据行入场：自下而上渐显，按行序错峰（与 users 页一致的观感）
 .clickableRow {
@@ -373,7 +383,7 @@ td.loading {
   color: #cbd5e1;
 }
 
-// ── 场景当前态芯片 ──
+// ── 各场景最近任务芯片 ──
 .chipGroup {
   display: flex;
   flex-wrap: wrap;

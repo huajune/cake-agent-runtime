@@ -61,7 +61,7 @@ export interface ReengagementCandidateScenario {
   updatedAt: string;
 }
 
-/** 候选人视角行：一行一个候选人（session），带各场景当前态与下一次待发任务 */
+/** 候选人视角行：一行一个候选人（session），带各场景最近任务状态与下一次待发任务 */
 export interface ReengagementCandidateSummary {
   sessionId: string;
   userId?: string | null;

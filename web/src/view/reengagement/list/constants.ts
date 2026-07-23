@@ -19,7 +19,7 @@ export const STATUS_META: Record<string, StatusMeta> = {
   superseded: { label: '已被新任务替代', tone: 'muted' },
   sent: { label: '已投递', tone: 'success' },
   shadow: { label: 'Shadow', tone: 'neutral' },
-  skipped: { label: '未发送', tone: 'muted' },
+  skipped: { label: '已跳过', tone: 'muted' },
   stopped: { label: '停止条件命中', tone: 'muted' },
   disabled: { label: '开关关闭丢弃', tone: 'muted' },
   frequency_blocked: { label: '频控拦截', tone: 'warning' },
