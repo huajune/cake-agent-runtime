@@ -11,7 +11,8 @@ import type {
 } from '@memory/types/authoritative-session-state.types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
-import type { FollowUpJob, FollowUpScenario } from './follow-up-scheduler.service';
+import type { FollowUpJob } from './follow-up-scheduler.service';
+import type { FollowUpScenario } from './scenario-registry';
 import type { ReengagementBookingContext } from './booking-context';
 
 // 复聊记忆用主动复聊专用 recall：结构化事实已过 formatExtractionFactLines（含陈旧告警），

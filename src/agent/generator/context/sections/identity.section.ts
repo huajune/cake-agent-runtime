@@ -1,5 +1,5 @@
 import { PromptSection, PromptContext, AccountIdentity } from './section.interface';
-import { StrategyPersona, StrategyRoleSetting } from '@shared-types/strategy-config.types';
+import { StrategyPersona, StrategyRoleSetting } from '@biz/strategy/types/strategy.types';
 
 /**
  * 身份段落 — 角色设定 + 账号身份 + 人格设定

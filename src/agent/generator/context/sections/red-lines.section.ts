@@ -1,5 +1,5 @@
 import { PromptSection, PromptContext } from './section.interface';
-import { StrategyRedLines } from '@shared-types/strategy-config.types';
+import { StrategyRedLines } from '@biz/strategy/types/strategy.types';
 
 /**
  * 红线规则段落 — 绝对禁止的行为

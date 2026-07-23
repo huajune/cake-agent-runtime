@@ -6,7 +6,7 @@ import {
   getScenario,
   resolveRolloutEnabled,
   shouldStop,
-} from '@agent/reengagement/follow-up-scheduler.service';
+} from '@agent/reengagement/scenario-registry';
 
 const baseState = (over: Partial<AuthoritativeSessionState> = {}): AuthoritativeSessionState => ({
   collectedFields: {},

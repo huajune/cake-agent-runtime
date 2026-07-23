@@ -1,5 +1,5 @@
 import { Tool, ToolSet } from 'ai';
-import { StageGoalConfig, Threshold } from './strategy-config.types';
+import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
 import type {
   EntityExtractionResult,
   HighConfidenceFacts,
