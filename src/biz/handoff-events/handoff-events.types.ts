@@ -15,7 +15,7 @@ export interface RecordHandoffInput {
   reason?: string | null;
   /** Agent 给的建议动作。 */
   actionAdvice?: string | null;
-  /** 岗位数据缺口（salary_admin_inquiry）：落 ops_events payload 供缺配字段统计。 */
+  /** 岗位数据缺口（salary_admin_inquiry）：落 handoff_events.missing_job_info + ops_events payload。 */
   missingJobInfo?: string[] | null;
   /** 触发时会话阶段（程序性 currentStage）。 */
   stage?: string | null;
