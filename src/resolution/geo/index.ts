@@ -29,6 +29,7 @@ export { resolveCityFromLocation } from './place-alias.resolver';
 export { scanWhitelistKeysByLongest, matchInUncoveredSegments } from './whitelist-scanner';
 export { scanGeoSignalsFromText } from './geo-text-scan';
 export { hasGenericAmbiguousSuffix, GENERIC_AMBIGUOUS_SUFFIXES } from './ambiguous-place.policy';
+export { NATIONAL_CITY_BARE_NAMES } from './explicit-city.data';
 
 // —— 过渡期导出（消费者收口后随 Phase 5 删除）——
 // Phase 1 门面必须兜住现存全部导入符号（§4 依赖清单），否则迁移首日即编译失败。
