@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
+import { extractPresentedJobs } from '@memory/services/session-job-matching';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import { SessionService } from '@memory/services/session.service';
 import {
@@ -167,6 +168,15 @@ export class ReengagementAnchorService {
         context,
         { presentedStores: this.extractPresentedStores(presentedStoreCalls) },
       );
+    } else if (
+      !collectionContinued &&
+      !groupInvitedThisTurn &&
+      !toolCalls.some((call) => call.toolName === 'duliday_job_list')
+    ) {
+      // 候选人追问“还有别的吗”时，Agent 可以直接复用上轮候选岗位池，不必重复查岗。
+      // 这类回合没有 duliday_job_list toolCall，但仍真实展示了新岗位；从持久化候选池
+      // 映射回复中的门店/岗位，给本次投递建立新的推店未回锚点。
+      void this.scheduleRecalledPoolPresentation(reply, context);
     }
     if (!context.suppressAddressMissing && this.asksForLocation(reply)) {
       void this.scheduler.removeSupersededPendingJobs({
@@ -296,15 +306,45 @@ export class ReengagementAnchorService {
     const labels = new Set<string>();
     this.collectPresentationLabels(call.result, labels);
     const mentionsResult = [...labels].some((label) => label.length >= 2 && reply.includes(label));
-    const containsJobCard =
-      /薪资\s*[:：]?\s*(?:\d|[一二三四五六七八九十])|(?:班次|要求|福利)\s*[:：]|[（(][^）)]+[）)]\s*[-—]/.test(
-        reply,
+    return this.containsJobCard(reply) || (mentionsResult && this.containsPositiveHandoff(reply));
+  }
+
+  private async scheduleRecalledPoolPresentation(
+    reply: string,
+    context: AnchorContext,
+  ): Promise<void> {
+    if (!this.containsJobCard(reply) && !this.containsPositiveHandoff(reply)) return;
+
+    try {
+      const state = await this.session.getSessionState(
+        context.corpId,
+        context.userId,
+        context.chatId,
       );
-    const containsPositiveHandoff =
-      /(?:这家|这个岗位|哪家|哪个岗位).{0,20}(?:考虑|感兴趣|合适|方便|接受|帮你约)|(?:考虑|感兴趣|合适).{0,12}(?:这家|这个岗位)/.test(
-        reply,
+      const presentedJobs = extractPresentedJobs(reply, state.lastCandidatePool ?? []);
+      if (presentedJobs.length === 0) return;
+
+      await this.schedule(
+        'store_presented_no_reply',
+        `${context.traceId}:store_presented`,
+        context,
+        { presentedStores: presentedJobs.map((job) => ({ jobId: job.jobId })) },
       );
-    return containsJobCard || (mentionsResult && containsPositiveHandoff);
+    } catch (error) {
+      this.logFailure('match recalled pool presentation', context, error);
+    }
+  }
+
+  private containsJobCard(reply: string): boolean {
+    return /薪资\s*[:：]?\s*(?:\d|[一二三四五六七八九十])|(?:班次|要求|福利)\s*[:：]|[（(][^）)]+[）)]\s*[-—]/.test(
+      reply,
+    );
+  }
+
+  private containsPositiveHandoff(reply: string): boolean {
+    return /(?:这家|这个岗位|哪家|哪个岗位).{0,20}(?:考虑|感兴趣|合适|方便|接受|帮你约)|(?:考虑|感兴趣|合适).{0,12}(?:这家|这个岗位)/.test(
+      reply,
+    );
   }
 
   private collectPresentationLabels(value: unknown, out: Set<string>, depth = 0): void {

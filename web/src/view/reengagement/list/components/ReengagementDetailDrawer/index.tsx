@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Brain,
@@ -411,6 +411,21 @@ export default function ReengagementDetailDrawer({
 }: ReengagementDetailDrawerProps) {
   const navigate = useNavigate();
   const { data: record, isLoading, isError } = useReengagementRecordDetail(touchKey);
+
+  // 弹窗打开期间锁住页面底层滚动；否则滚轮落在不可滚区域或滚到栏位边界时，
+  // 浏览器会继续滚动候选人列表。
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+    };
+  }, []);
 
   const events = useMemo(() => sortEventsAsc(record?.events || []), [record?.events]);
   const detailBatchId = record?.batch_id || null;

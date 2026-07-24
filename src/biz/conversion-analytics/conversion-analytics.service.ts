@@ -140,7 +140,12 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
   modify_appointment: '改期或取消预约',
   self_recruited_or_completed: '已自招或已入职',
   no_match_or_group_full: '无匹配岗位/群满需维护',
-  system_blocked: '工具/系统卡死',
+  system_blocked: '系统异常需人工补录',
+  booking_capacity_full: '岗位报名人数已满',
+  group_invite_failed: '拉群失败需人工维护',
+  salary_admin_inquiry: '薪资/考勤/证明类咨询',
+  interview_slot_coordination: '面试时段需人工协调',
+  identity_age_exception: '身份/年龄边界需人工裁量',
   other: '其他原因',
 };
 

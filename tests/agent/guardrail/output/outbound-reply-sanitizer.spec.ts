@@ -1,6 +1,28 @@
 import { OutboundReplySanitizer } from '@agent/guardrail/output/outbound-reply-sanitizer';
 
 describe('OutboundReplySanitizer', () => {
+  describe('stripTimeMarkers - 守卫审查前的最小剥离', () => {
+    it('剥掉模型模仿输出的时间标记，其余内容不动', () => {
+      const input =
+        '富都店兼职排班是做六休一，周中休一天\n[消息发送时间：2026-07-22 13:16 星期三]\n' +
+        '两个班次选一个：早班 09:00-19:00\n[消息发送时间：2026-07-22 13:16 星期三]';
+      expect(OutboundReplySanitizer.stripTimeMarkers(input)).toBe(
+        '富都店兼职排班是做六休一，周中休一天\n\n两个班次选一个：早班 09:00-19:00',
+      );
+    });
+
+    it('不剥反引号围栏——internal_output_leak 的围栏检测依赖它', () => {
+      const input = '```text\n姓名：\n电话：\n```';
+      expect(OutboundReplySanitizer.stripTimeMarkers(input)).toBe(input);
+    });
+
+    it('无时间标记时原样返回', () => {
+      expect(OutboundReplySanitizer.stripTimeMarkers('你好，岗位还在招')).toBe(
+        '你好，岗位还在招',
+      );
+    });
+  });
+
   describe('normalize - 换行规则（双换行拆消息，单换行保留）', () => {
     it('段落内单换行应保留，作为同一条消息内的换行', () => {
       const input = `线下面试，时间是周一到周五的中午13点。

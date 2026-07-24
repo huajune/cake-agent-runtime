@@ -252,6 +252,32 @@ fs.rmSync(metadataFile, { force: true });
     expect(markdown).not.toContain('自动摘要改写后仍可能生成其他内部维护表述');
   });
 
+  it('does not fall back to changelog business lines when structured entries are fully filtered', () => {
+    const markdown = runNode(`
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const metadataFile = path.join(os.tmpdir(), \`release-metadata-filtered-\${process.pid}.json\`);
+fs.writeFileSync(metadataFile, JSON.stringify({
+  nextVersion: '10.29.0',
+  entries: [{
+    title: '发版底账回填业务改动',
+    businessUpdates: ['发版底账回填业务改动'],
+    features: [],
+    fixes: []
+  }]
+}));
+process.env.RELEASE_METADATA_FILE = metadataFile;
+process.env.RELEASE_NOTES = '### 问题修复\\n- 发版底账回填业务改动';
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v10.29.0', deployResult: 'success' }));
+fs.rmSync(metadataFile, { force: true });
+`);
+
+    expect(markdown).toContain('- 本次无候选人/运营可感知业务改动。');
+    expect(markdown).not.toContain('- 发版底账回填业务改动');
+  });
+
   it('does not render env reminders in deploy cards', () => {
     const releaseNotes = `
 ### 新功能

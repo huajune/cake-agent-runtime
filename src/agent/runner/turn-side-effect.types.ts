@@ -34,6 +34,8 @@ export interface GeneralHandoffSideEffectIntent extends TurnSideEffectBase {
   reasonCode: string;
   reason: string;
   actionAdvice?: string;
+  /** 岗位数据缺口：候选人问到而岗位字段没有答案的信息点（salary_admin_inquiry 场景）。 */
+  missingJobInfo?: string[];
   stage?: string | null;
   workOrderId?: number | null;
   botImId?: string;

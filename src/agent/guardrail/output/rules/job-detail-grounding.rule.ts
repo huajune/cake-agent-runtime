@@ -131,7 +131,7 @@ export function detectJobDetailLookupRequired(
   // 问的是哪家门店”——一个**对话行为**，而本规则拿不到 replyText（入参只有 toolCalls/
   // memorySnapshot/userMessage），无从判断回复是否已经反问。且这三个入参在 repair 轮内
   // 都不会变（memory 不在回合中途回写，repair 会重建同一份 snapshot），因此命中即注定
-  // 二审复燃 → isSecondDecisionNoBetter → 丢弃修复版、投递原首版。
+  // 二审复燃 → isSecondDecisionWorse/回归闸门判定 → 修复版默认胜出，仅真变差时回退首版。
   // 生产实测：57 条 replan 二审失败全部复燃在本规则上，即每条命中白烧一次带工具的
   // Agent 生成而候选人拿到的仍是原文。降级为 observe：保留档案与告警，不再触发无效 repair。
   if (!focusJob) {

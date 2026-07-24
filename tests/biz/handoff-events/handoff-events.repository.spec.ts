@@ -46,6 +46,7 @@ describe('HandoffEventsRepository', () => {
       stage: 'booking_followup',
       botImId: 'bot-1',
       workOrderId: 12345,
+      missingJobInfo: ['trial_period'],
       idempotencyKey: 'trace-1',
       occurredAt,
     });
@@ -62,6 +63,7 @@ describe('HandoffEventsRepository', () => {
         stage: 'booking_followup',
         bot_im_id: 'bot-1',
         work_order_id: 12345,
+        missing_job_info: ['trial_period'],
         idempotency_key: 'trace-1',
         created_at: '2026-06-05T03:00:00.000Z',
       },

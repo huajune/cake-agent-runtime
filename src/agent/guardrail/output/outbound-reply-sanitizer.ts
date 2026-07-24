@@ -33,6 +33,17 @@ export class OutboundReplySanitizer {
   private static readonly INTERNAL_JOB_CARD_BANNER_LINE_PATTERN =
     /^(?:>\s*)?(?:📣\s*)?(?:\*\*)?(?:(?:候选人)?(?:岗位推荐|推荐(?:岗位)?))(?:对话用|对话|话术|用)?模板(?:\*\*)?(?:\s*[：:（(].*)?$/;
 
+  /**
+   * 只剥时间标记，不做其它清洗。供出站守卫在审查前调用：模型模仿短期记忆注入格式
+   * 输出的 `[消息发送时间：…]` 占全部回合 ~11%（2026-07-24 审计），会污染 LLM 审查
+   * 上下文并噪声化守卫档案。刻意不复用 sanitize()——它会剥反引号，破坏
+   * internal_output_leak 的围栏检测与 fence_stripped 修复路径。
+   */
+  static stripTimeMarkers(text: string): string {
+    if (!text || typeof text !== 'string') return text;
+    return this.cleanWhitespace(this.removeTimeMarkers(text));
+  }
+
   static sanitize(text: string): string {
     if (!text || typeof text !== 'string') return text;
 

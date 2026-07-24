@@ -27,6 +27,8 @@ import {
   detectOutputLeak,
   stripMarkdownCodeFences,
 } from '../guardrail/output/rules/internal-info-leaks.rule';
+import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
+import { detectRepairRegression } from '../guardrail/output/repair-regression.util';
 import {
   OutputGuardrailService,
   type OutputGuardDecision,
@@ -208,7 +210,10 @@ export class AgentRunnerService {
     const wantDefer = params.deferTurnEnd === true;
     const first = await this.generator.invoke({ ...params, deferTurnEnd: true });
 
-    const firstText = (first.text ?? '').trim();
+    // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记（占全部回合 ~11%，2026-07-24 审计）：
+    // 避免噪声进入 LLM 审查上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
+    // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
+    const firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
     if (!firstText || firstSkipped) {
       return this.finalizeReviewed(first, PASS_DECISION, false, wantDefer);
@@ -301,9 +306,18 @@ export class AgentRunnerService {
               allowedToolNames: repairAllowedToolNames,
               reviseFeedback: decision.violations,
               committedSideEffects: committed || undefined,
+              // 2026-07-24 审计 P0-1：replan 此前看不到首版草稿，重写指令却要求
+              // "保留上一版中符合事实、未违规的内容"，导致丢内容甚至结论反转
+              // （trace batch_6a606ac5…：4 个岗位详情被改写成"附近没查到在招岗位"）。
+              // 注入首版原文让 replan 在其基础上做定向修复，而非从零重写。
+              guardrailRepair: {
+                originalReply: firstText,
+                ruleIds: decision.ruleIds,
+                feedbackToGenerator: decision.feedbackToGenerator,
+              },
             });
 
-    const revisedText = (revised.text ?? '').trim();
+    const revisedText = OutboundReplySanitizer.stripTimeMarkers((revised.text ?? '').trim());
     // replan 可能以短路副作用结束而不产生文本（例如本规则只开放 request_handoff，
     // 工具成功派发后 generator 按协议立即结束）。此时外部动作已经真实发生，不能把
     // 空文本当成 repair 失败；合并首版工具轨迹后直接交给 outcome 层归类为 handoff。
@@ -477,16 +491,35 @@ export class AgentRunnerService {
           `rules=${decision2.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
       );
     }
+    // 确定性 repair 回归闸门（2026-07-24 审计 P1-5）：二审只判"修复版是否违规"，不比较
+    // "相对首版是否退步"——结构压扁/结论反转的修复版曾带着二审 pass 直接投递
+    // （trace batch_6a606ac5…）。检出回归且首版属 P1/P2 可恢复档时弃用修复版、回退首版；
+    // 首版是 P0（不可 fail-open）时不回退——此时修复版仍是唯一可投递的选择。
+    // fence_stripped 是逐字剥围栏，不可能回归，跳过检测。
+    const regression =
+      fenceStrippedText === null ? detectRepairRegression(firstText, revisedText) : null;
+    const regressionRevert = regression !== null && this.isFirstReplyFailOpenEligible(decision);
+    if (regressionRevert) {
+      this.logger.warn(
+        `[invokeReviewed] repair 回归（${regression}），弃用修复版回退首版: ` +
+          `rules=${decision.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
+      );
+    }
     const finalDecision: OutputGuardDecision = wantsRepairAgain
       ? failOpenEligible
         ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
         : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
-      : fenceStrippedText !== null
-        ? // 确定性剥围栏放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
-          { ...decision2, reasonCode: decision2.reasonCode ?? 'fence_stripped' }
-        : decision2;
-    const finalResult =
-      wantsRepairAgain && failOpenEligible && this.isSecondDecisionNoBetter(decision, decision2)
+      : regressionRevert
+        ? { ...decision2, reasonCode: `repair_regression_reverted:${regression}` }
+        : fenceStrippedText !== null
+          ? // 确定性剥围栏放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
+            { ...decision2, reasonCode: decision2.reasonCode ?? 'fence_stripped' }
+          : decision2;
+    const finalResult = wantsRepairAgain
+      ? failOpenEligible && (this.isSecondDecisionWorse(decision, decision2) || regressionRevert)
+        ? first
+        : { ...revised, toolCalls: reviewedToolCalls }
+      : regressionRevert
         ? first
         : { ...revised, toolCalls: reviewedToolCalls };
     const finalRevised = finalResult !== first;
@@ -692,14 +725,22 @@ export class AgentRunnerService {
     );
   }
 
-  private isSecondDecisionNoBetter(
+  /**
+   * fail-open 时修复版默认胜出（2026-07-24 审计 P1-3）。
+   *
+   * 旧判据是"首版 blocked 规则集完全复燃 → 弃修复版投首版"，把本窗口 10/16 的
+   * fail-open 修复版丢回首版，其中多例修复版明确更优（结算口径精确化、删掉洗身份
+   * 叙述）却被弃用，甚至致洗身份文本实际投递（trace batch_6a6190cd…）。同一规则
+   * 复燃时两版违规程度相同，而修复版还多消化了一次反馈与二审；因此只有修复版引入
+   * 首版没有的新 blocked 规则（真变差）才回退首版。结构压扁/结论反转类退化由
+   * 确定性回归闸门（detectRepairRegression）在调用点并联把守。
+   */
+  private isSecondDecisionWorse(
     firstDecision: OutputGuardDecision,
     secondDecision: OutputGuardDecision,
   ): boolean {
     const firstBlocked = new Set(firstDecision.blockedRuleIds);
-    if (firstBlocked.size === 0) return false;
-    const secondBlocked = new Set(secondDecision.blockedRuleIds);
-    return [...firstBlocked].every((ruleId) => secondBlocked.has(ruleId));
+    return secondDecision.blockedRuleIds.some((ruleId) => !firstBlocked.has(ruleId));
   }
 
   /**
@@ -738,7 +779,8 @@ export class AgentRunnerService {
     toolCalls: AgentToolCall[] = result.toolCalls ?? [],
   ) {
     return {
-      reply: (result.text ?? '').trim(),
+      // 与 invokeReviewed 的 firstText/revisedText 同口径：审查剥时间标记后的文本。
+      reply: OutboundReplySanitizer.stripTimeMarkers((result.text ?? '').trim()),
       toolCalls,
       memorySnapshot: result.memorySnapshot,
       redLines: ctx.redLines ?? [],

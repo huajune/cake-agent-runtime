@@ -21,8 +21,20 @@ export interface GeneralHandoffNotificationPayload {
    * 真人介入告警用它沿用原文案标题「真人介入聊天，已自动暂停托管 · 需要人工介入」。
    */
   titleOverride?: string;
+  /**
+   * 转人工原因代码（request_handoff 枚举）。卡片据此分时效等级；
+   * 缺省（如真人介入告警）不分级。
+   */
+  reasonCode?: string;
   reason: string;
   actionAdvice?: string;
+  /** 关联工单 ID（来自 active_booking）；有值时渲染在候选人信息区。 */
+  workOrderId?: number | null;
+  /**
+   * 岗位数据缺口（salary_admin_inquiry）：候选人问到而岗位字段没有答案的
+   * 信息点。有值时卡片渲染「岗位数据缺口」区块（含当前焦点岗位），供运营补录。
+   */
+  missingJobInfo?: string[];
   /**
    * 调用方所属企业 ID；用于识别测试/调试链路。
    * - 'test'  → TestExecutionService（含所有 badcase 回归批次）

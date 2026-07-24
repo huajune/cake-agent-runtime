@@ -290,8 +290,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '且入参在 repair 轮内不变必然复燃——该场景的治理交语义审查。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '候选人正在追问已展示岗位详情，但当前岗位不明确、精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；当前焦点岗位明确时使用其 jobId 调用 duliday_job_list，只按本轮结果回答；当前焦点岗位不明确时先确认候选人问的是哪家门店/岗位。',
-    repairToolNames: ['duliday_job_list'],
+      '候选人正在追问已展示岗位详情，但当前岗位不明确、精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；当前焦点岗位明确时使用其 jobId 调用 duliday_job_list，只按本轮结果回答；当前焦点岗位不明确时先确认候选人问的是哪家门店/岗位。若本轮查询无结果，只能说明本次未查到，不得断言该区域没有岗位，不得删除上一版已向候选人展示过的岗位信息。',
+    // geocode 与 duliday_job_list 同予（对齐 unsupported_store_status_speculation）：
+    // 2026-07-24 审计 P0-2，白名单缺地理召回时 replan 无法复现首版的距离召回，
+    // "本轮查不到"被翻译成"附近没有岗位"（trace batch_6a606ac5…，事实反转已投递）。
+    repairToolNames: ['geocode', 'duliday_job_list'],
   },
   {
     id: 'unsupported_schedule_window_claim',

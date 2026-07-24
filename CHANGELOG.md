@@ -8,6 +8,116 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.29.0`
+**最近更新**: `2026-07-24`
+**来源分支**: `develop`
+**累计 PR**: 6
+
+### 更新摘要
+- PR #711 发版底账回填业务改动
+- PR #713 发版通知业务改动为空时禁止回退
+- PR #715 姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）
+- PR #715 姓名解锁句式补强（本名直答/裸吗问句/无键名表单）
+- PR #717 语义判定三分法全链路盘点与迁移方案
+- PR #716 出站守卫 repair 质量四批修复（2026-07-24 审计）
+- PR #716 request_handoff 原因枚举拆细 + 人工介入卡片增强
+- PR #716 request_handoff 描述改为不限会话阶段
+- PR #716 修正 request_handoff 前置条件中的遗留矛盾触发词
+- PR #716 system_blocked 文案去黑话，改为运营视角表述
+- PR #716 salary_admin_inquiry 禁止空头承诺，改为先查证再当轮转人工
+- PR #716 candidate-consultation 合同类咨询与 salary_admin_inquiry 口径对齐
+- PR #716 岗位字段缺值场景改为当轮转人工，删除"帮你确认下"豁免
+- PR #716 修正 RecordHandoffInput 注释中过时的枚举数量
+- PR #716 修复 aggregate_hourly_stats tool_agg 键名漂移并回填 30 天
+- PR #716 salary_admin_inquiry 卡片展示岗位数据缺口供运营补录
+- PR #716 salary_admin_inquiry 告警卡片改紫色与紧急红卡区分
+- PR #716 missingJobInfo 落 handoff_events.missing_job_info 底账列
+- PR #716 锁定复聊详情抽屉底层滚动
+- PR #716 恢复候选池复用场景的推店锚点
+- PR #716 对齐岗位数据缺口转人工契约
+- PR #716 建立本批发版底账
+- PR #716 同步同批发版改动
+- PR #716 补齐联合头验证证据
+- PR #716 收口守卫、人工介入与复聊质量修复
+- PR #721 固化 v10.29.0 发版底账
+- PR #721 将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`
+- PR #721 补齐 PR #715、#716、#717、#720 的合入与验证证据
+- PR #721 标记 v10.29.0 发布前门禁已完成
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #716 出站守卫 repair 质量四批修复（2026-07-24 审计）
+- PR #716 修正 request_handoff 前置条件中的遗留矛盾触发词
+- PR #716 修正 RecordHandoffInput 注释中过时的枚举数量
+- PR #716 修复 aggregate_hourly_stats tool_agg 键名漂移并回填 30 天
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #711 将 v10.28.0 状态更新为已发布
+- PR #711 回填 Release、部署 workflow、正式发布时间、生产镜像与健康检查
+- PR #711 记录飞书通知成功、master → develop 回同步 #710 与无回滚结论
+- PR #711 保留独立回归批次证据，并再次注明未触碰 `tz2607-*` 与批次 `56d30741`
+- PR #711 发版底账回填业务改动
+- PR #713 区分“没有结构化元数据”和“结构化业务条目被全部过滤”
+- PR #713 前者继续兼容 CHANGELOG，后者明确显示本次无候选人/运营可感知业务改动
+- PR #713 防止已经过滤的底账/发布流程内容被 CHANGELOG 回退重新捞回
+- PR #713 发版通知业务改动为空时禁止回退
+- PR #715 姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）
+- PR #717 语义判定三分法全链路盘点与迁移方案
+- PR #716 request_handoff 原因枚举拆细 + 人工介入卡片增强
+- PR #716 request_handoff 描述改为不限会话阶段
+- PR #716 system_blocked 文案去黑话，改为运营视角表述
+- PR #716 salary_admin_inquiry 禁止空头承诺，改为先查证再当轮转人工
+- PR #716 candidate-consultation 合同类咨询与 salary_admin_inquiry 口径对齐
+- PR #716 岗位字段缺值场景改为当轮转人工，删除"帮你确认下"豁免
+- PR #716 salary_admin_inquiry 卡片展示岗位数据缺口供运营补录
+- PR #716 salary_admin_inquiry 告警卡片改紫色与紧急红卡区分
+- PR #716 missingJobInfo 落 handoff_events.missing_job_info 底账列
+- PR #716 锁定复聊详情抽屉底层滚动
+- PR #716 恢复候选池复用场景的推店锚点
+- PR #716 对齐岗位数据缺口转人工契约
+- PR #716 建立本批发版底账
+- PR #716 同步同批发版改动
+- PR #716 补齐联合头验证证据
+- PR #721 将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`
+- PR #721 补齐 PR #715、#716、#717、#720 的合入与验证证据
+- PR #721 标记 v10.29.0 发布前门禁已完成
+- PR #721 固化 v10.29.0 发版底账
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #711 `pnpm run ci:check`：366 个测试套件、5609 个测试通过，6 个跳过
+- PR #711 Prettier 与 `git diff --check` 通过
+- PR #711 生产容器 `cake-agent-runtime:v10.28.0` 为 `running / healthy`
+- PR #711 `/agent/health` 返回 healthy，Redis、Supabase 均正常
+- PR #713 通知格式测试：13/13 通过
+- PR #713 `pnpm run ci:check`：366 个测试套件、5610 个测试通过，6 个跳过
+- PR #713 使用最终 v10.29.0 元数据预演：仅显示“本次无候选人/运营可感知业务改动”
+- PR #716 最终联合头 `8448e5d3` 的 `pnpm run ci:check`：lint / format / typecheck / Web build / Nest build 全部通过。
+- PR #716 Jest：367 suites、5643 tests 通过；1 suite / 6 tests 按项目配置跳过。
+- PR #716 `pnpm run test:di-smoke`：完整 AppModule 依赖图实例化通过。
+- PR #716 定向 Agent / Guardrail / 复聊 14 suites、377 tests 通过；通知卡 18 tests 通过。
+- PR #716 两条真实 Agent P0 回归经人工 trace 评审通过：姓名确认解除阻塞；合同类型缺失时先查岗再 `salary_admin_inquiry`，`missingJobInfo=[合同类型]`。
+- PR #716 正式回归数据集新增 2 条幂等资产，0 失败。
+- PR #716 测试库、生产库 migration 状态一致；生产新增列可查询，小时 RPC 返回真实工具名的非空 `tool_stats`。
+- PR #716 浏览器确认复聊页面/路由可加载；本地候选人数据接口失败导致无可打开记录，抽屉滚轮实操记为 P1 非阻断限制，双根节点锁定及 cleanup 恢复已做代码核对。
+- PR #721 `pnpm run release:ledger:check`
+- PR #721 pre-push 全量校验：367 个测试套件通过，5643 个测试通过，6 个跳过
+- PR #721 lint、format、typecheck、Web build、Nest build 均通过
+<!-- release:pending:end -->
+
 ## [10.28.0] - 2026-07-23
 
 **来源分支**: `develop`
@@ -45,6 +155,8 @@
 - PR #702 发版通知过滤发布流程话术
 - PR #704 覆盖通知流程话术变体
 - PR #704 通知过滤覆盖发布流程话术变体
+- PR #706 按条目过滤通知流程内容
+- PR #706 发版通知按条目屏蔽发布流程内容
 
 ### 新功能
 - 无
@@ -82,6 +194,9 @@
 - PR #704 覆盖自动元数据生成的“过滤通知中的发布流程话术”倒装表述
 - PR #704 将真实最终元数据作为回归样本，避免流程维护内容进入候选人/运营区块
 - PR #704 覆盖通知流程话术变体
+- PR #706 对通知治理、发布流程等内部维护 PR 按元数据条目整体过滤
+- PR #706 不再依赖自动摘要的具体措辞，避免改写后重新进入业务区块
+- PR #706 按条目过滤通知流程内容
 
 ### 配置变更
 - PR #698 无 migration、环境变量或运行时配置变化
@@ -117,6 +232,9 @@
 - PR #704 通知格式测试：12/12 通过
 - PR #704 `pnpm run ci:check`：366 个测试套件、5609 个测试通过，6 个跳过
 - PR #704 基于最终 v10.28.0 元数据预演：仅保留 6 条候选人/运营可感知改动
+- PR #706 通知格式测试：12/12 通过，新增未知内部摘要回归样本
+- PR #706 `pnpm run ci:check`：366 个测试套件、5609 个测试通过，6 个跳过
+- PR #706 基于最终 v10.28.0 元数据预演：仅保留 6 条候选人/运营可感知改动
 
 ## [10.27.0] - 2026-07-23
 
