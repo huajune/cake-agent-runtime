@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.29.0] - 2026-07-24
 
-**预计版本**: `v10.29.0`
-**最近更新**: `2026-07-24`
 **来源分支**: `develop`
-**累计 PR**: 6
 
 ### 更新摘要
 - PR #711 发版底账回填业务改动
@@ -116,7 +112,6 @@
 - PR #721 `pnpm run release:ledger:check`
 - PR #721 pre-push 全量校验：367 个测试套件通过，5643 个测试通过，6 个跳过
 - PR #721 lint、format、typecheck、Web build、Nest build 均通过
-<!-- release:pending:end -->
 
 ## [10.28.0] - 2026-07-23
 
