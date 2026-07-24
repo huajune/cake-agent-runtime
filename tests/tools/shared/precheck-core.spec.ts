@@ -6,6 +6,7 @@ import {
   extractUserTexts,
   isNameAuthoritative,
   isNameConfirmedInDialogue,
+  isNameProvidedAfterAsk,
   isNameOnlyQuotedSpeaker,
 } from '@tools/shared/precheck-core';
 
@@ -162,6 +163,53 @@ describe('precheck-core', () => {
     it('does NOT unlock when the next user message is not affirmative', () => {
       const messages = [greeting, asstMsg('"陈佩珊"是你的全名对吧？'), userMsg('到时候联系谁呢')];
       expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(false);
+    });
+  });
+
+  describe('张杰案句式补强（badcase 6a609570：昵称=真名，确认后仍被拦转人工）', () => {
+    const greeting = userMsg('我是张杰');
+
+    it('unlocks via 裸"吗"结尾确认问句 + "是我本名"答复', () => {
+      const messages = [
+        greeting,
+        asstMsg('这边门店登记需要填身份证上的真实姓名哈，请问"张杰"是你的本名吗？'),
+        userMsg('是我本名'),
+      ];
+      expect(isNameConfirmedInDialogue('张杰', messages)).toBe(true);
+      expect(evaluateBookingNameGate('张杰', messages).decision).toBe('allow');
+    });
+
+    it.each(['是本名', '就是本名', '是我真名', '本名'])(
+      'accepts 本名类直答变体: %s',
+      (answer) => {
+        const messages = [greeting, asstMsg('请问"张杰"是你的本名吗？'), userMsg(answer)];
+        expect(isNameConfirmedInDialogue('张杰', messages)).toBe(true);
+      },
+    );
+
+    it('unlocks via 应索要后的无键名表单回复（姓名+手机号连发）', () => {
+      const messages = [
+        greeting,
+        asstMsg('你看方便的话，发下你的姓名、电话和年龄，我这边直接帮你录入提交'),
+        userMsg('张杰  15800977053    38岁'),
+      ];
+      expect(isNameProvidedAfterAsk('张杰', messages)).toBe(true);
+      expect(evaluateBookingNameGate('张杰', messages).decision).toBe('allow');
+    });
+
+    it('does NOT unlock keyless reply without a phone number (弱证据不放行)', () => {
+      const messages = [greeting, asstMsg('发下你的姓名'), userMsg('张杰')];
+      expect(isNameProvidedAfterAsk('张杰', messages)).toBe(false);
+    });
+
+    it('does NOT unlock when keyless reply is not the immediate next message', () => {
+      const messages = [
+        greeting,
+        asstMsg('发下你的姓名、电话和年龄'),
+        userMsg('我先问下薪资'),
+        userMsg('张杰 15800977053'),
+      ];
+      expect(isNameProvidedAfterAsk('张杰', messages)).toBe(false);
     });
   });
 
