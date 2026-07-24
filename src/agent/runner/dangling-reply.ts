@@ -29,19 +29,9 @@ const GROUNDED_PATTERN =
 /** 归一化后超过该长度的回复默认视为带实质内容，不参与悬空判定。 */
 const MAX_DANGLING_LENGTH = 30;
 
-/**
- * 提示词钦定的兜底话术豁免（candidate-consultation.md L105/L133："没有字段就如实回
- * '这个我帮你确认下'"）。该句是对具体字段缺失的诚实延后，不是 repair 后无法兑现的
- * 查岗承诺；不豁免会把按提示词改写的合规 repair 整轮 block（2026-07-06 review）。
- * 锚定"这个"指代 + 确认/核实/问 的完整短句，"帮你查下XX岗位"类查岗承诺不受影响。
- */
-const MANDATED_DEFERRAL_PATTERN =
-  /^这个(?:我|这边)?(?:帮|给)你(?:确认|核实|问)一?下[哈呢哦呀嘛~～。！!]*$/;
-
 export function isDanglingCheckReply(text: string): boolean {
   const normalized = text.replace(/\s+/g, '');
   if (!normalized || normalized.length > MAX_DANGLING_LENGTH) return false;
-  if (MANDATED_DEFERRAL_PATTERN.test(normalized)) return false;
   if (!PROMISE_PATTERN.test(normalized)) return false;
   return !GROUNDED_PATTERN.test(normalized);
 }
