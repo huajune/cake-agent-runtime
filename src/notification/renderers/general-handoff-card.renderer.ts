@@ -37,10 +37,13 @@ export class GeneralHandoffCardRenderer {
     ].filter((line): line is string => Boolean(line));
 
     const baseTitle = payload.titleOverride ?? `🚨 候选人需人工介入 · ${payload.alertLabel}`;
+    // 岗位数据缺口类（salary_admin_inquiry）用紫色与紧急红卡区分：
+    // 运营在告警群一眼识别"补数据单"而非急件。
+    const color = payload.reasonCode === 'salary_admin_inquiry' ? 'purple' : 'red';
     return this.cardBuilder.buildMarkdownCard({
       title: payload.isTest ? `${baseTitle} · 测试ing` : baseTitle,
       content: sections.join('\n\n'),
-      color: 'red',
+      color,
       atUsers: payload.atUsers,
       atAll: payload.atAll,
     });

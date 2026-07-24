@@ -172,6 +172,12 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(content).toContain('岗位数据缺口（可在岗位库补录）');
       expect(content).toContain('岗位：M Stand-广州K11店-店员-小时工（jobId 528517）');
       expect(content).toContain('缺失信息：试用期、工作餐');
+      expect(card).toEqual(expect.objectContaining({ color: 'purple' }));
+    });
+
+    it('keeps red color for non-salary reason codes', () => {
+      const card = renderer.buildCard(buildPayload({ reasonCode: 'modify_appointment' }));
+      expect(card).toEqual(expect.objectContaining({ color: 'red' }));
     });
 
     it('falls back to placeholder when focus job is missing, omits block without missingJobInfo', () => {
