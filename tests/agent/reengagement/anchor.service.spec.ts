@@ -30,7 +30,11 @@ describe('ReengagementAnchorService', () => {
     removeSupersededPendingJobs: jest.Mock;
     stopPendingJobsForSessionScenario: jest.Mock;
   };
-  let session: { saveTerminalState: jest.Mock; getAuthoritativeState: jest.Mock };
+  let session: {
+    saveTerminalState: jest.Mock;
+    getAuthoritativeState: jest.Mock;
+    getSessionState: jest.Mock;
+  };
 
   beforeEach(() => {
     scheduler = {
@@ -42,6 +46,7 @@ describe('ReengagementAnchorService', () => {
     session = {
       saveTerminalState: jest.fn().mockResolvedValue(undefined),
       getAuthoritativeState: jest.fn().mockResolvedValue(baseState()),
+      getSessionState: jest.fn().mockResolvedValue({ lastCandidatePool: [] }),
     };
   });
 
@@ -351,6 +356,80 @@ describe('ReengagementAnchorService', () => {
           presentedStores: [{ jobId: 516221 }],
         }),
       }),
+    );
+  });
+
+  it('schedules store-presented follow-up when the reply reuses the recalled candidate pool', async () => {
+    session.getSessionState.mockResolvedValue({
+      lastCandidatePool: [
+        {
+          jobId: 523107,
+          brandName: '奥乐齐',
+          jobName: '分拣打包',
+          storeName: '万源坊店',
+          cityName: '上海',
+          regionName: '闵行区',
+          laborForm: '全职',
+          salaryDesc: '6200-9800 元/月',
+          jobCategoryName: '分拣打包',
+        },
+      ],
+    });
+
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: [
+          '再看几个不同班次的',
+          '奥乐齐（万源坊店）分拣打包，离你 3.6 公里',
+          '班次：07:00-22:00 排班（每天至少 11 小时）',
+          '薪资：6200-9800 元/月',
+          '要求：18-40 岁，入职前办食品健康证',
+        ].join('\n'),
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'store_presented_no_reply',
+        anchorEventId: 'trace-1:store_presented',
+        state: expect.objectContaining({
+          presentedStores: [{ jobId: 523107 }],
+        }),
+      }),
+    );
+  });
+
+  it('does not schedule a recalled-pool follow-up for a negative job mention', async () => {
+    session.getSessionState.mockResolvedValue({
+      lastCandidatePool: [
+        {
+          jobId: 523107,
+          brandName: '奥乐齐',
+          jobName: '分拣打包',
+          storeName: '万源坊店',
+          cityName: '上海',
+          regionName: '闵行区',
+          laborForm: '全职',
+          salaryDesc: '6200-9800 元/月',
+          jobCategoryName: '分拣打包',
+        },
+      ],
+    });
+
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '奥乐齐万源坊店目前没有合适岗位。',
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'store_presented_no_reply' }),
     );
   });
 
