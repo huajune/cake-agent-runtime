@@ -44,8 +44,14 @@ export interface RiskInterventionPayload extends InterventionBase {
 export interface GeneralHandoffInterventionPayload extends InterventionBase {
   kind: 'general_handoff';
   alertLabel: string;
+  /** 转人工原因代码（request_handoff 枚举）；卡片按它分时效等级。 */
+  reasonCode?: string;
   reason: string;
   actionAdvice?: string;
+  /** 关联工单 ID（来自 active_booking），透传到告警卡片。 */
+  workOrderId?: number | null;
+  /** 岗位数据缺口（salary_admin_inquiry）：卡片展示给运营补录。 */
+  missingJobInfo?: string[];
   source: 'agent_tool';
 }
 
@@ -139,8 +145,11 @@ export class InterventionService {
   private notifyGeneralHandoff(payload: GeneralHandoffInterventionPayload): Promise<boolean> {
     return this.generalHandoffNotifier.notify({
       alertLabel: payload.alertLabel,
+      reasonCode: payload.reasonCode,
       reason: payload.reason,
       actionAdvice: payload.actionAdvice,
+      workOrderId: payload.workOrderId,
+      missingJobInfo: payload.missingJobInfo,
       corpId: payload.corpId,
       botImId: payload.botImId,
       botUserName: payload.botUserName,

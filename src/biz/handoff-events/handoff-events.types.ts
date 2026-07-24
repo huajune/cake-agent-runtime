@@ -9,12 +9,14 @@ export interface RecordHandoffInput {
   corpId: string;
   chatId: string;
   userId?: string | null;
-  /** 转人工原因代码（request_handoff 的 8 个枚举之一，text 无约束可扩展）。 */
+  /** 转人工原因代码（request_handoff 的枚举之一，text 无约束可扩展）。 */
   reasonCode: string;
   /** Agent 给的原话原因。 */
   reason?: string | null;
   /** Agent 给的建议动作。 */
   actionAdvice?: string | null;
+  /** 岗位数据缺口（salary_admin_inquiry）：落 handoff_events.missing_job_info + ops_events payload。 */
+  missingJobInfo?: string[] | null;
   /** 触发时会话阶段（程序性 currentStage）。 */
   stage?: string | null;
   botImId?: string | null;

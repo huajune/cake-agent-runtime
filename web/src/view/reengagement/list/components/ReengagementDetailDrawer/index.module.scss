@@ -68,7 +68,9 @@
 .body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
+  overscroll-behavior: contain;
   background:
     radial-gradient(circle at 44% 26%, rgba(139, 92, 246, 0.04), transparent 36%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 250, 252, 0.9) 100%);
@@ -76,8 +78,10 @@
 
 .leftCol {
   flex: 1 1 0;
+  min-height: 0;
   padding: 24px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -111,12 +115,14 @@
 
 .rightCol {
   flex: 0 0 300px;
+  min-height: 0;
   background:
     radial-gradient(circle at 50% 2%, rgba(139, 92, 246, 0.07), transparent 36%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(248, 250, 252, 0.82) 100%);
   border-left: 1px solid rgba(139, 92, 246, 0.12);
   padding: 20px 18px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
 
   &::-webkit-scrollbar {
     width: 8px;

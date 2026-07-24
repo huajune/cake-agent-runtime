@@ -13,6 +13,7 @@ interface HandoffEventRow {
   stage: string | null;
   bot_im_id: string | null;
   work_order_id: number | null;
+  missing_job_info: string[] | null;
   idempotency_key: string;
   created_at: string;
 }
@@ -47,6 +48,7 @@ export class HandoffEventsRepository extends BaseRepository {
       stage: input.stage ?? null,
       bot_im_id: input.botImId ?? null,
       work_order_id: input.workOrderId ?? null,
+      missing_job_info: input.missingJobInfo?.length ? input.missingJobInfo : null,
       idempotency_key: input.idempotencyKey,
       created_at: input.occurredAt.toISOString(),
     };

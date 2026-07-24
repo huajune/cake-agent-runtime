@@ -94,8 +94,9 @@ export interface GeneratorInvokeParams {
    */
   reviseFeedback?: GuardViolation[];
   /**
-   * Guardrail Repair Writer 模式：用于 output guardrail 的 rewrite 修复。
-   * 与 reviseFeedback 配合，要求模型只按允许事实和规则反馈改写上一版候选人可见回复。
+   * 出站守卫修复回合：output guardrail replan 修复时由 runner 传入，把被拦下的
+   * 首版原文注入 prompt，要求模型在其基础上做定向修复而非从零重写
+   * （rewrite 模式走独立 ReplyRepairAgent，不经此字段）。
    */
   guardrailRepair?: {
     originalReply: string;
