@@ -613,6 +613,84 @@ describe('HardRulesService', () => {
       });
     });
 
+    // 2026-07-24 守卫审计：窗口内评审 4 例 3 例假阳（精确率 25%），三类根因各补回归。
+    describe('production false positives (2026-07-24 audit)', () => {
+      const monthlyOnlyCall = {
+        toolName: 'duliday_job_list',
+        args: { jobIdList: [1] },
+        status: 'ok' as const,
+        result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 月结算, 15号发薪' },
+      };
+
+      // trace batch_6a61a550…：「不支持」不在否定词表，整句失防；rewrite 为修它
+      // 追加了无依据的月结断言。
+      it('does not treat "不支持日结或周结" as an assertion', () => {
+        const result = service.check({
+          replyText: '目前沈河区这边在招的岗位都要求至少做 6 个月以上，暂时没有短期的，也不支持日结或周结。',
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '那短期要吗？',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      // trace batch_6a5ee3e8…：「或」并列后段（日结）距否定词 7 字，超出旧 5 字窗口。
+      it('exempts both cycles in a negated "X或Y" alternation', () => {
+        const result = service.check({
+          replyText: '抱歉哈，除了肯德基之外，你附近暂时没找到其他周结或日结的岗位。',
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '有周结的吗',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      // trace batch_6a5db79e…：描述另一家的灵工单属性；trace batch_6a5ee3e8…：
+      // 未来供给承诺——都不是焦点岗位的结算断言。
+      it.each([
+        ['灵工单属性', '之前截图里那个海底捞捞面师是 7 月 24 号一天的灵工单（短期/日结），不是长期能一直排的兼职。'],
+        ['未来供给', '你看是接受可可牛月结的，还是我先帮你进兼职群，后面有周结/日结的新岗位第一时间通知你。'],
+      ])('exempts prospective/other-job cycle mentions (%s)', (_label, replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [
+            {
+              toolName: 'duliday_job_list',
+              args: { jobIdList: [1] },
+              status: 'ok' as const,
+              result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 月结算, 15号发薪' },
+            },
+          ],
+          userMessage: '有日结的吗',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      // 收紧并列残余间隔的反例：「没有月结、只有日结」是转折不是并列豁免。
+      it('still blocks "没有X、只有Y" style contrastive assertions', () => {
+        const result = service.check({
+          replyText: '这家没有月结、只有日结。',
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '怎么结算',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+    });
+
     it('does not use another job lookup to validate the current focus job settlement', () => {
       const result = service.check({
         replyText: '这个岗位是月结。',

@@ -751,6 +751,10 @@ describe('AgentRunnerService.runTurn', () => {
       type: 'job_recommendation_not_best_supported',
       repairMode: 'replan',
     });
+    // 2026-07-24 审计 P0-1：replan 必须携带首版草稿，供 prompt 要求"在其基础上修复"。
+    expect(generator.invoke.mock.calls[1][0].guardrailRepair).toMatchObject({
+      originalReply: '推荐静安门店，距离 1.2km',
+    });
   });
 
   it('handoff promise replan exposes request_handoff and resolves to a real handoff', async () => {
@@ -1041,9 +1045,9 @@ describe('AgentRunnerService.runTurn', () => {
     expect(generator.invoke).toHaveBeenCalledTimes(1); // hard cap 1, rewrite 不复用 generator
   });
 
-  it('repair exhausted with only recoverable P1 violations fails open to the first reply when repair is no better', async () => {
-    // 2026-07-06 生产复盘：假阳 × repair_exhausted 静默是杀伤最大的组合。
-    // 仅 P1/P2 可恢复违规时 fail-open；若修复版违规集合没有变好，投递首版避免修复劣化。
+  it('repair exhausted with the same recurring P1 violation fails open to the revised reply', async () => {
+    // 2026-07-24 审计 P1-3：同一规则复燃时两版违规程度相同，而修复版还多消化了一次
+    // 反馈与二审，默认胜出（旧策略投首版曾致更优修复被弃、洗身份文本实际投递）。
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
     replyRepairAgent.repair.mockResolvedValueOnce('v2 修复版（仍有 P1 残留）');
     const p1ReviseDecision = {
@@ -1070,7 +1074,7 @@ describe('AgentRunnerService.runTurn', () => {
     });
 
     expect(outcome.kind).toBe('reply');
-    expect(outcome.reply?.text).toBe('v1');
+    expect(outcome.reply?.text).toBe('v2 修复版（仍有 P1 残留）');
     expect(generator.invoke).toHaveBeenCalledTimes(1); // hard cap 不变，rewrite 不复用 generator
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1079,6 +1083,104 @@ describe('AgentRunnerService.runTurn', () => {
         revisedReply: 'v2 修复版（仍有 P1 残留）',
         finalDecision: 'pass',
         reasonCode: 'repair_exhausted_fail_open',
+      }),
+    );
+  });
+
+  it('repair exhausted falls back to the first reply when the revision introduces a new blocked rule', async () => {
+    // 修复版引入首版没有的 blocked 规则 = 真变差，回退首版。
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
+    replyRepairAgent.repair.mockResolvedValueOnce('v2 修复版（引入新违规）');
+    const makeDecision = (blockedRuleIds: string[]) => ({
+      decision: 'revise' as const,
+      riskLevel: 'medium' as const,
+      violations: blockedRuleIds.map((ruleId) => ({
+        type: ruleId,
+        evidence: '证据',
+        suggestion: '修复建议',
+        recoverability: 'recoverable' as const,
+      })),
+      ruleIds: blockedRuleIds,
+      blockedRuleIds,
+      repairMode: 'rewrite' as const,
+    });
+    outputGuard.check
+      .mockResolvedValueOnce(makeDecision(['district_level_distance_claim']))
+      .mockResolvedValueOnce(makeDecision(['settlement_cycle_mismatch']));
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '我在江宁区' },
+      context: { messageId: 'msg-failopen-worse' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('v1');
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-failopen-worse',
+        repaired: true,
+        reasonCode: 'repair_exhausted_fail_open',
+      }),
+    );
+  });
+
+  it('reverts a second-review-passing repair that collapses structured content (regression gate)', async () => {
+    // 2026-07-24 审计 P1-5：二审只判"是否违规"不判"是否退步"——结构压扁的修复版
+    // 曾带着二审 pass 直接投递（trace batch_6a609570…）。回归闸门在 pass 分支也生效。
+    const firstReply = [
+      '要帮你登记预约的话，先把下面资料发我：',
+      '姓名：',
+      '联系电话：',
+      '性别：',
+      '年龄：',
+      '面试时间：（比如 明天下午 2 点）',
+      '应聘门店：上海佘山旭辉里店',
+      '学历：',
+      '健康证：（有/无）',
+      '身份：（学生/社会人士）',
+      '应聘岗位：洗碗工',
+    ].join('\n');
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: firstReply }));
+    replyRepairAgent.repair.mockResolvedValueOnce('你看方便的话，发下姓名、电话和年龄就行。');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise' as const,
+        riskLevel: 'medium' as const,
+        violations: [
+          {
+            type: 'job_detail_lookup_required',
+            evidence: '详情字段需实时刷新',
+            suggestion: '按 jobId 补查后回答',
+            recoverability: 'recoverable' as const,
+          },
+        ],
+        ruleIds: ['job_detail_lookup_required'],
+        blockedRuleIds: ['job_detail_lookup_required'],
+        repairMode: 'rewrite' as const,
+      })
+      .mockResolvedValueOnce({
+        decision: 'pass' as const,
+        riskLevel: 'low' as const,
+        violations: [],
+        ruleIds: [],
+        blockedRuleIds: [],
+        repairMode: 'rewrite' as const,
+      });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '怎么报名' },
+      context: { messageId: 'msg-regression' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(firstReply);
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-regression',
+        repaired: true,
+        reasonCode: 'repair_regression_reverted:structure_collapsed',
       }),
     );
   });

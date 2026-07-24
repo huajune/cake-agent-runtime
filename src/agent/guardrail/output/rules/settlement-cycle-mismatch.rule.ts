@@ -90,14 +90,32 @@ function splitClaimSentences(text: string): string[] {
 // 否定前缀词表。2026-07-21 审计：原表只有「不是|并非|不按|不算」，漏掉最常用的
 // 「没有/没/无/暂无」，导致"附近暂时没有日结的岗位"被判成"回复声称日结"——窗口内
 // 16 条命中里 5 条属此类假阳，且 rewrite 二审通过率 0%（任何正确回答都必须出现结算词）。
-const NEGATION_PREFIX = '不是|并非|不按|不算|没有|没|无|暂无|不提供|不做';
+// 2026-07-24 审计追补「不支持|没找到|未找到|找不到」："也不支持日结或周结"整句失防
+// （trace batch_6a61a550…，rewrite 为修它追加了无依据的月结断言）。
+const NEGATION_PREFIX =
+  '不是|并非|不按|不算|没有|没找到|未找到|找不到|没|无|暂无|不提供|不做|不支持';
+
+// 前瞻/他岗语境：句子谈的是"其他岗位/未来供给/别家的灵工单"，不是焦点岗位的结算承诺。
+// 2026-07-24 审计："后面有周结/日结的新岗位第一时间通知你"、"海底捞……灵工单（短期/日结）"
+// 均被判成对焦点岗位声称日结/周结（trace batch_6a5ee3e8…、batch_6a5db79e…）。
+// 词表刻意只收"未来供给/他岗实体"强信号（新岗位/灵工单/第一时间通知…），不收
+// 泛化的"留意/帮你看看"——后者常与焦点岗位断言同句出现，会豁免掉真违规。
+const PROSPECTIVE_CONTEXT_PATTERN =
+  /其他[^，。；]{0,8}岗位|新岗位|灵工单|第一时间|后面有|后续(?:有|如果)|发(?:到)?群里/u;
 
 function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean {
   const pattern = CYCLE_PATTERNS.find((entry) => entry.cycle === cycle)?.pattern;
   if (!pattern?.test(sentence)) return false;
   if (/[吗么嘛？?]|是不是|是否/u.test(sentence)) return false;
-  // 间隔禁跨逗号：保证"这家不是月结，是日结"里的"日结"仍算断言。
-  return !new RegExp(`(?:${NEGATION_PREFIX})[^，。；]{0,5}${cycle}`, 'u').test(sentence);
+  if (PROSPECTIVE_CONTEXT_PATTERN.test(sentence)) return false;
+  // 间隔禁跨逗号/顿号：保证"这家不是月结，是日结"里的"日结"仍算断言。
+  // 并列穿透只走显式可选组「…或/、//」一次（如"没找到其他周结或日结的岗位"——「日结」
+  // 距否定词 7 字超出旧窗口，alternation 后段照旧假阳，2026-07-24 审计）。基础间隔
+  // 排除顿号 + 并列后残余间隔收紧到 1 字，避免"没有月结、只有日结"这类转折被误豁免。
+  return !new RegExp(
+    `(?:${NEGATION_PREFIX})[^，。；、]{0,5}(?:[^，。；、]{0,4}[或、/])?[^，。；、]?${cycle}`,
+    'u',
+  ).test(sentence);
 }
 
 /** 正式工资结算为主口径；培训/阶梯月补只有在回复写清范围时才能作为“月结”依据。 */
