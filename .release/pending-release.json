@@ -87,6 +87,28 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "717",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/717",
+      "title": "语义判定三分法全链路盘点与迁移方案",
+      "author": "huajune",
+      "mergedAt": "2026-07-24",
+      "businessUpdates": [
+        "语义判定三分法全链路盘点与迁移方案"
+      ],
+      "summary": [
+        "语义判定三分法全链路盘点与迁移方案"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "语义判定三分法全链路盘点与迁移方案"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
