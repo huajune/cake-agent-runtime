@@ -4,6 +4,12 @@ import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.se
 import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
 import { GeneralHandoffNotificationPayload } from '../types/general-handoff-notification.types';
 
+/**
+ * 时效敏感的转人工原因：候选人可能已在途/正在等待，超时未跟进直接丢单。
+ * （改约类 24h 真人跟进率长期偏低，卡片顶部显式标急以对齐处理优先级。）
+ */
+const URGENT_REASON_CODES = new Set(['modify_appointment', 'no_reception', 'booking_conflict']);
+
 @Injectable()
 export class GeneralHandoffCardRenderer {
   constructor(private readonly cardBuilder: FeishuCardBuilderService) {}
@@ -15,8 +21,12 @@ export class GeneralHandoffCardRenderer {
       atAll?: boolean;
     },
   ): Record<string, unknown> {
+    const isUrgent = payload.reasonCode ? URGENT_REASON_CODES.has(payload.reasonCode) : false;
     const sections = [
       payload.isTest ? '> 测试ing（来自回归批次，无需 @ 招募经理）' : null,
+      isUrgent
+        ? `> <font color='red'>**⏱ 时效敏感**：候选人可能已在途或正在等待，请尽快跟进</font>`
+        : null,
       this.formatHighlightedFocus(payload.reason, payload.actionAdvice),
       `**当前消息**：${payload.currentMessageContent || '-'}`,
       `**聊天上下文（最近10条）**\n${this.formatRecentMessages(payload)}`,
@@ -72,6 +82,7 @@ export class GeneralHandoffCardRenderer {
       name ? `姓名：${name}` : null,
       phone ? `电话：${phone}` : null,
       age ? `年龄：${age}` : null,
+      payload.workOrderId != null ? `关联工单：${payload.workOrderId}` : null,
       payload.botUserName?.trim() ? `托管账号：${payload.botUserName.trim()}` : null,
       `会话ID：${payload.chatId}`,
       `暂停ID：${payload.pausedUserId}`,

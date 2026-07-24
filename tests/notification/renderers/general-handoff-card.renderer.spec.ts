@@ -132,6 +132,29 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(card.content as string).toContain('**当前消息**：-');
     });
 
+    it('prepends urgency banner for time-sensitive reason codes', () => {
+      const card = renderer.buildCard(buildPayload({ reasonCode: 'modify_appointment' }));
+      expect(card.content as string).toContain(
+        "> <font color='red'>**⏱ 时效敏感**：候选人可能已在途或正在等待，请尽快跟进</font>",
+      );
+    });
+
+    it('omits urgency banner for non-urgent or missing reason codes', () => {
+      const nonUrgent = renderer.buildCard(buildPayload({ reasonCode: 'salary_admin_inquiry' }));
+      expect(nonUrgent.content as string).not.toContain('时效敏感');
+
+      const missing = renderer.buildCard(buildPayload());
+      expect(missing.content as string).not.toContain('时效敏感');
+    });
+
+    it('renders work order id when provided and omits it otherwise', () => {
+      const withOrder = renderer.buildCard(buildPayload({ workOrderId: 123456 }));
+      expect(withOrder.content as string).toContain('关联工单：123456');
+
+      const withoutOrder = renderer.buildCard(buildPayload({ workOrderId: null }));
+      expect(withoutOrder.content as string).not.toContain('关联工单：');
+    });
+
     it('propagates atUsers / atAll to the card builder', () => {
       renderer.buildCard(buildPayload({ atAll: true }));
       expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
