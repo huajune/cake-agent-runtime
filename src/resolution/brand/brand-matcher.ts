@@ -343,6 +343,31 @@ function isGeographicNameMatch(
 }
 
 /**
+ * 与全国城市同名的品牌别名（"鄂尔多斯" 之于 "鄂尔多斯1980"），命中片段后紧跟另一个
+ * 汉字时是"市+区/县"地名短语（"鄂尔多斯东胜" = 鄂尔多斯市东胜区），候选人在报所在地
+ * 而非求职意向品牌——别名的无边界子串包含会把它塌缩成品牌，顶掉上一轮真实品牌
+ * （2026-07-23 生产实例 chat 6a617720）。
+ *
+ * 上一函数 isGeographicNameMatch 只认「品牌名 + 通用地理后缀（路/街/区/市…）」，
+ * 覆盖不到「鄂尔多斯 + 专有区名(东胜)」这类无通名后缀的市区拼接，故补此判据。
+ *
+ * 品牌所有格「的」（"鄂尔多斯的岗位"）与词尾/标点边界不算地名延续，仍可命中；
+ * 判据刻意留窄：只拦"城市同名别名 + 汉字延续"这一实证形态，不做前缀方位介词等推断，
+ * 避免误伤「想找鄂尔多斯的岗位」等真实求职表达。
+ */
+function isCityHomographGeographicMatch(
+  cityHomograph: boolean,
+  normalizedClause: string,
+  spanStart: number,
+  spanLength: number,
+): boolean {
+  if (!cityHomograph || spanStart < 0) return false;
+  const nextChar = normalizedClause[spanStart + spanLength];
+  if (!nextChar || nextChar === '的') return false;
+  return /[一-龥]/.test(nextChar);
+}
+
+/**
  * 岗位卡片「发布方」字段值不是候选人的求职意向品牌（2026-07-22 生产实例）。
  *
  * 候选人转发的招聘平台截图里，`发布方：XX·人事招聘主管` 是发布 / 代理主体，
@@ -420,6 +445,12 @@ function matchClause(
         source,
       }) ||
       isGeographicNameMatch(normalizedClause, spanStart, candidate.normalized.length) ||
+      isCityHomographGeographicMatch(
+        candidate.cityHomograph,
+        normalizedClause,
+        spanStart,
+        candidate.normalized.length,
+      ) ||
       isTemporalNumericMatch(normalizedClause, spanStart, candidate.normalized)
     ) {
       continue;

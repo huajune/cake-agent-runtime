@@ -230,6 +230,28 @@ describe('resolveBrands - 短别名误判防护（§7.3/§14.1）', () => {
       '鄂尔多斯1980',
     ]);
   });
+
+  // 2026-07-23 生产实例 chat 6a617720：候选人报所在地"鄂尔多斯东胜"（鄂尔多斯市东胜区）
+  // 被城市同名别名塌缩成服装品牌，顶掉上一轮真实品牌。城市同名别名 + 汉字延续按地名拒绝。
+  it('城市同名别名+区名（鄂尔多斯东胜）报所在地不命中', () => {
+    expect(resolveBrands('鄂尔多斯东胜', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('城市同名别名嵌在地名短语（我在鄂尔多斯东胜区上班）不命中', () => {
+    expect(resolveBrands('我在鄂尔多斯东胜区上班', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('城市同名别名后紧跟「的」（品牌所有格）仍命中鄂尔多斯1980', () => {
+    expect(names(resolveBrands('鄂尔多斯的还招人吗', 'user_text', catalog))).toEqual([
+      '鄂尔多斯1980',
+    ]);
+  });
+
+  it('标准名鄂尔多斯1980（非城市同名）不受地名延续判据影响', () => {
+    expect(names(resolveBrands('鄂尔多斯1980招人吗', 'user_text', catalog))).toEqual([
+      '鄂尔多斯1980',
+    ]);
+  });
 });
 
 describe('resolveBrands - 冲突别名与歧义（§14.1）', () => {
