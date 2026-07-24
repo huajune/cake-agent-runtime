@@ -28,6 +28,7 @@ describe('HandoffRecorderService', () => {
       stage: 'booking_followup',
       botImId: 'bot-1',
       workOrderId: 12345,
+      missingJobInfo: ['trial_period'],
       idempotencyKey: 'trace-1',
       occurredAt,
     });
@@ -43,6 +44,7 @@ describe('HandoffRecorderService', () => {
       stage: 'booking_followup',
       botImId: 'bot-1',
       workOrderId: 12345,
+      missingJobInfo: ['trial_period'],
       idempotencyKey: 'trace-1',
       occurredAt,
     });
@@ -59,6 +61,7 @@ describe('HandoffRecorderService', () => {
         reason: '候选人想改面试时间',
         stage: 'booking_followup',
         work_order_id: 12345,
+        missing_job_info: ['trial_period'],
       },
     });
   });
@@ -85,6 +88,7 @@ describe('HandoffRecorderService', () => {
           reason: null,
           stage: null,
           work_order_id: null,
+          missing_job_info: null,
         }),
       }),
     );
