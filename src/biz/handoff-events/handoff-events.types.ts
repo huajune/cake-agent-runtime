@@ -9,7 +9,7 @@ export interface RecordHandoffInput {
   corpId: string;
   chatId: string;
   userId?: string | null;
-  /** 转人工原因代码（request_handoff 的 8 个枚举之一，text 无约束可扩展）。 */
+  /** 转人工原因代码（request_handoff 的枚举之一，text 无约束可扩展）。 */
   reasonCode: string;
   /** Agent 给的原话原因。 */
   reason?: string | null;
