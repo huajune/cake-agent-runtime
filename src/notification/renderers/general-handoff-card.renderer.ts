@@ -28,6 +28,7 @@ export class GeneralHandoffCardRenderer {
         ? `> <font color='red'>**⏱ 时效敏感**：候选人可能已在途或正在等待，请尽快跟进</font>`
         : null,
       this.formatHighlightedFocus(payload.reason, payload.actionAdvice),
+      this.formatJobDataGap(payload),
       `**当前消息**：${payload.currentMessageContent || '-'}`,
       `**聊天上下文（最近10条）**\n${this.formatRecentMessages(payload)}`,
       `**候选人信息**\n${this.formatCandidateInfo(payload)}`,
@@ -52,6 +53,30 @@ export class GeneralHandoffCardRenderer {
       lines.push(`> <font color='red'>**建议动作**：${trimmedAdvice}</font>`);
     }
     return lines.join('\n');
+  }
+
+  /**
+   * 岗位数据缺口区块（salary_admin_inquiry）：候选人问到而岗位字段没有答案的
+   * 信息点 + 当前焦点岗位。运营据此可直接去岗位库补录缺失字段。
+   */
+  private formatJobDataGap(payload: GeneralHandoffNotificationPayload): string | null {
+    const missing = (payload.missingJobInfo ?? []).map((item) => item.trim()).filter(Boolean);
+    if (missing.length === 0) return null;
+
+    const focusJob = payload.sessionState?.currentFocusJob;
+    const jobLabel = focusJob
+      ? `${
+          focusJob.jobName ||
+          [focusJob.brandName, focusJob.storeName].filter(Boolean).join('-') ||
+          '未知岗位'
+        }（jobId ${focusJob.jobId}）`
+      : '未定位到焦点岗位（见聊天上下文）';
+
+    return [
+      '**📋 岗位数据缺口（可在岗位库补录）**',
+      `岗位：${jobLabel}`,
+      `缺失信息：${missing.join('、')}`,
+    ].join('\n');
   }
 
   private formatRecentMessages(payload: GeneralHandoffNotificationPayload): string {

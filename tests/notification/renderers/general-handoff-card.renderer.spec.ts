@@ -147,6 +147,43 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(missing.content as string).not.toContain('时效敏感');
     });
 
+    it('renders job data gap block with focus job for salary_admin_inquiry', () => {
+      const sessionState = buildSessionState();
+      sessionState.currentFocusJob = {
+        jobId: 528517,
+        brandName: 'M Stand',
+        jobName: 'M Stand-广州K11店-店员-小时工',
+        storeName: '广州K11店',
+        cityName: '广州',
+        regionName: '天河区',
+        laborForm: '兼职',
+        salaryDesc: '25元/小时',
+        jobCategoryName: '店员',
+      };
+      const card = renderer.buildCard(
+        buildPayload({
+          reasonCode: 'salary_admin_inquiry',
+          missingJobInfo: ['试用期', '工作餐'],
+          sessionState,
+        }),
+      );
+      const content = card.content as string;
+
+      expect(content).toContain('岗位数据缺口（可在岗位库补录）');
+      expect(content).toContain('岗位：M Stand-广州K11店-店员-小时工（jobId 528517）');
+      expect(content).toContain('缺失信息：试用期、工作餐');
+    });
+
+    it('falls back to placeholder when focus job is missing, omits block without missingJobInfo', () => {
+      const withGapNoJob = renderer.buildCard(
+        buildPayload({ missingJobInfo: ['转正政策'] }),
+      );
+      expect(withGapNoJob.content as string).toContain('未定位到焦点岗位');
+
+      const noGap = renderer.buildCard(buildPayload({ missingJobInfo: [] }));
+      expect(noGap.content as string).not.toContain('岗位数据缺口');
+    });
+
     it('renders work order id when provided and omits it otherwise', () => {
       const withOrder = renderer.buildCard(buildPayload({ workOrderId: 123456 }));
       expect(withOrder.content as string).toContain('关联工单：123456');
