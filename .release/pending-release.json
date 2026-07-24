@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.28.0",
   "nextVersion": "10.29.0",
-  "updatedAt": "2026-07-23",
+  "updatedAt": "2026-07-24",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -63,6 +63,30 @@
         "`pnpm run ci:check`：366 个测试套件、5610 个测试通过，6 个跳过",
         "使用最终 v10.29.0 元数据预演：仅显示“本次无候选人/运营可感知业务改动”"
       ]
+    },
+    {
+      "number": "715",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/715",
+      "title": "姓名解锁句式补强（本名直答/裸吗问句/无键名表单）",
+      "author": "huajune",
+      "mergedAt": "2026-07-24",
+      "businessUpdates": [
+        "姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）",
+        "姓名解锁句式补强（本名直答/裸吗问句/无键名表单）"
+      ],
+      "summary": [
+        "姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）",
+        "姓名解锁句式补强（本名直答/裸吗问句/无键名表单）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
