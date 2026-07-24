@@ -136,9 +136,13 @@ function normalizeShortAnswer(text: string): string {
   );
 }
 
-/** 纯肯定答复（对确认问句的整句应答）。 */
+/**
+ * 纯肯定答复（对确认问句的整句应答）。
+ * badcase 6a609570（张杰案）补充："是我本名/就是本名/是真名"类本名直答——原词表只有
+ * 纯确认词，候选人换个说法确认就漏。
+ */
 const AFFIRMATIVE_ANSWER_RE =
-  /^(是|是的|是滴|是啊|是呀|对|对的|对啊|对呀|嗯|嗯嗯|没错|确认|正确)$/u;
+  /^(是|是的|是滴|是啊|是呀|对|对的|对啊|对呀|嗯|嗯嗯|没错|确认|正确|(?:就?是)?我?的?(?:本名|真名|真实姓名))$/u;
 
 /**
  * 候选人是否已在对话中对 `name` 做出明确确认（姓名闸门的解锁路径）。
@@ -155,6 +159,30 @@ const AFFIRMATIVE_ANSWER_RE =
  *    形态匹配——注意 OCR 描述"姓名陈佩珊"无冒号分隔，`hasStructuredNameSubmission`
  *    的键值对正则覆盖不到。
  */
+/**
+ * 应索要后的无键名表单回复（badcase 6a609570，2026-07-23）：assistant 明确索要姓名
+ * （"发下你的姓名、电话和年龄"），候选人裸回"张杰 15800977053 38岁"——没有"姓名："
+ * 键也没有"我叫"，parseName 拿不到出处；但"目标姓名 + 11 位手机号同现于对索要的
+ * 直接应答"是强证据（昵称党不会连名带手机号一起报）。
+ */
+export function isNameProvidedAfterAsk(name: string, messages: readonly unknown[]): boolean {
+  const target = name?.trim();
+  if (!target || target.length < 2) return false;
+  const turns = extractDialogueTurns(messages);
+  const askRe =
+    /(?:发|提供|留|填|报|给)[^，。！？?!；;\n]{0,10}(?:姓名|名字)|(?:姓名|名字)[^，。！？?!；;\n]{0,10}(?:发|提供|留|填|报|给)/u;
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].role !== 'assistant' || !askRe.test(turns[i].text)) continue;
+    for (let j = i + 1; j < turns.length; j++) {
+      if (turns[j].role !== 'user') continue;
+      const text = stripQuoteBlocks(stripTimeContextSuffix(turns[j].text));
+      if (text.includes(target) && /1\d{10}/.test(text.replace(/[\s-]/g, ''))) return true;
+      break; // 只认紧随其后的第一条 user 消息
+    }
+  }
+  return false;
+}
+
 export function isNameConfirmedInDialogue(name: string, messages: readonly unknown[]): boolean {
   const target = name?.trim();
   if (!target || target.length < 2) return false;
@@ -175,7 +203,10 @@ export function isNameConfirmedInDialogue(name: string, messages: readonly unkno
     const askText = turn.text;
     if (!askText.includes(target)) continue;
     if (!/(全名|真实姓名|本名)/u.test(askText)) continue;
-    if (!/(对吧|对吗|对么|对不对|是吗|是么|是吧)/u.test(askText)) continue;
+    // 疑问尾缀：除"对吧/是吗"类，还要认"是你的本名吗"这种裸"吗/么"结尾
+    // （badcase 6a609570：问句是「"张杰"是你的本名吗」，原尾缀表漏掉）。
+    // 问句已被 target+本名词双条件约束，放宽到任意疑问标记不会误触发。
+    if (!/(对吧|对吗|对么|对不对|是吗|是么|是吧|[吗么？?])/u.test(askText)) continue;
     for (let j = i + 1; j < turns.length; j++) {
       if (turns[j].role !== 'user') continue;
       // 只认紧随其后的第一条 user 消息，避免远处无关的"嗯/对"被错误归因到这次确认。
@@ -219,6 +250,7 @@ export function evaluateBookingNameGate(
   // 解锁路径：负向证据（打招呼语昵称/引用前缀）可被候选人后续的明确确认覆盖——
   // "就是X"/确认问答对/身份证图片证据（badcase g4ytra23 死锁修复）。
   if (isNameConfirmedInDialogue(target, messages)) return { decision: 'allow' };
+  if (isNameProvidedAfterAsk(target, messages)) return { decision: 'allow' };
   if (isNameOnlyQuotedSpeaker(target, messages)) {
     return {
       decision: 'reject_collect',
