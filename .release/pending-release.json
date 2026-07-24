@@ -181,6 +181,41 @@
         "测试库、生产库 migration 状态一致；生产新增列可查询，小时 RPC 返回真实工具名的非空 `tool_stats`。",
         "浏览器确认复聊页面/路由可加载；本地候选人数据接口失败导致无可打开记录，抽屉滚轮实操记为 P1 非阻断限制，双根节点锁定及 cleanup 恢复已做代码核对。"
       ]
+    },
+    {
+      "number": "721",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/721",
+      "title": "固化 v10.29.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-24",
+      "businessUpdates": [
+        "固化 v10.29.0 发版底账",
+        "将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`",
+        "补齐 PR #715、#716、#717、#720 的合入与验证证据",
+        "标记 v10.29.0 发布前门禁已完成"
+      ],
+      "summary": [
+        "固化 v10.29.0 发版底账",
+        "将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`",
+        "补齐 PR #715、#716、#717、#720 的合入与验证证据",
+        "标记 v10.29.0 发布前门禁已完成"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`",
+        "补齐 PR #715、#716、#717、#720 的合入与验证证据",
+        "标记 v10.29.0 发布前门禁已完成",
+        "固化 v10.29.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run release:ledger:check`",
+        "pre-push 全量校验：367 个测试套件通过，5643 个测试通过，6 个跳过",
+        "lint、format、typecheck、Web build、Nest build 均通过"
+      ]
     }
   ],
   "lastRelease": {
