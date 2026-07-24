@@ -1,9 +1,49 @@
 {
   "baseVersion": "10.29.0",
-  "nextVersion": "10.29.0",
+  "nextVersion": "10.30.0",
   "updatedAt": "2026-07-24",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "725",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/725",
+      "title": "回填 v10.29.0 发布结果",
+      "author": "huajune",
+      "mergedAt": "2026-07-24",
+      "businessUpdates": [
+        "回填 v10.29.0 发布结果",
+        "将 v10.29.0 底账状态更新为“已发布”",
+        "回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果",
+        "记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收",
+        "记录 `master → develop` 回同步 #724 和未发生回滚"
+      ],
+      "summary": [
+        "回填 v10.29.0 发布结果",
+        "将 v10.29.0 底账状态更新为“已发布”",
+        "回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果",
+        "记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收",
+        "记录 `master → develop` 回同步 #724 和未发生回滚"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "将 v10.29.0 底账状态更新为“已发布”",
+        "回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果",
+        "记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收",
+        "记录 `master → develop` 回同步 #724 和未发生回滚",
+        "回填 v10.29.0 发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "Prettier 与 `git diff --check` 通过",
+        "pre-push 全量校验通过：367 个测试套件、5643 个测试通过，6 个跳过",
+        "生产容器 `cake-agent-runtime:v10.29.0` 为 `running / healthy`，重启 0 次",
+        "`/agent/health` 返回 healthy，Redis、Supabase 均正常"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.29.0",
     "date": "2026-07-24",
