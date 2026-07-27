@@ -93,4 +93,103 @@ describe('detectRepairRegression', () => {
   it('returns null for identical texts', () => {
     expect(detectRepairRegression(bookingFormFirst, bookingFormFirst)).toBeNull();
   });
+
+  // ============ fact_mutated（2026-07-27 审计，trace batch_6a630be4…） ============
+
+  describe('fact_mutated: 已确认日期星期被 repair 翻错', () => {
+    // 生产案（文本节选）：2026-07-28 真实是周二，首版来自工具盖章，replan 改成周一后投递。
+    const NOW = new Date(2026, 6, 24); // 2026-07-24（案发当天）
+    const weekdayFirst =
+      '资料收到啦，已帮你成功提交报名！\n你的面试安排在 7 月 28 日（周二）上午 10:30。\n地点：哈根达斯（上海又一城店）。';
+    const weekdayRevised =
+      '资料收到啦，正在帮你核对并提交报名，稍后给你回执。\n你的面试安排在 7 月 28 日（周一）上午 10:30。\n地点：哈根达斯（上海又一城店）。';
+
+    it('detects the production weekday flip (周二→周一, first was correct)', () => {
+      expect(detectRepairRegression(weekdayFirst, weekdayRevised, { now: NOW })).toBe(
+        'fact_mutated',
+      );
+    });
+
+    it('does not flag when the repair corrects a wrong weekday (周一→周二)', () => {
+      expect(detectRepairRegression(weekdayRevised, weekdayFirst, { now: NOW })).not.toBe(
+        'fact_mutated',
+      );
+    });
+
+    it('does not flag when weekday is unchanged', () => {
+      const revisedSameWeekday = weekdayFirst.replace('已帮你成功提交报名！', '报名提交好啦！');
+      expect(
+        detectRepairRegression(weekdayFirst, revisedSameWeekday, { now: NOW }),
+      ).toBeNull();
+    });
+
+    it('handles 星期X notation and spaced dates', () => {
+      const first = '面试定在7月28日（星期二）下午2点。地址在杨浦区淞沪路8号。';
+      const revised = '面试定在 7 月 28 日（星期三）下午 2 点。地址在杨浦区淞沪路8号。';
+      expect(detectRepairRegression(first, revised, { now: NOW })).toBe('fact_mutated');
+    });
+
+    it('does not flag dates that only appear in one side', () => {
+      const first = '面试定在7月28日（周二）下午2点。';
+      const revised = '面试改到7月29日（周三）下午2点，你看方便吗？';
+      expect(detectRepairRegression(first, revised, { now: NOW })).toBeNull();
+    });
+
+    it('infers year across the December/January boundary', () => {
+      // 2027-01-05 真实是周二；now 在 2026 年末，就近年份必须推断为 2027。
+      const yearEnd = new Date(2026, 11, 28); // 2026-12-28
+      const first = '面试安排在1月5日（周二）上午10点。';
+      const revised = '面试安排在1月5日（周一）上午10点。';
+      expect(detectRepairRegression(first, revised, { now: yearEnd })).toBe('fact_mutated');
+    });
+  });
+
+  // ====== commitment_downgraded（2026-07-27 审计，trace batch_6a630be4… 同案另一处伤） ======
+
+  describe('commitment_downgraded: 既成 booking 被降级成进行时', () => {
+    const committed =
+      '本轮已成功执行副作用工具：duliday_interview_booking（已生效不可撤销；重写时不要声称未发生，也不要重复执行）';
+    const first = '资料收到啦，已帮你成功提交报名！\n你的面试安排在 7 月 28 日（周二）上午 10:30。';
+    const downgraded =
+      '资料收到啦，正在帮你核对并提交报名，稍后给你回执。\n你的面试安排在 7 月 28 日（周二）上午 10:30。';
+
+    it('detects the production success→pending downgrade', () => {
+      expect(
+        detectRepairRegression(first, downgraded, {
+          committedSideEffects: committed,
+          now: new Date(2026, 6, 24),
+        }),
+      ).toBe('commitment_downgraded');
+    });
+
+    it('does not fire without booking in committed side effects', () => {
+      expect(
+        detectRepairRegression(first, downgraded, {
+          committedSideEffects: '本轮已成功执行副作用工具：invite_to_group（已生效不可撤销）',
+          now: new Date(2026, 6, 24),
+        }),
+      ).toBeNull();
+    });
+
+    it('does not fire when the revised reply still asserts success', () => {
+      const revisedStillDone =
+        '报名已经帮你提交成功啦！面试安排在 7 月 28 日（周二）上午 10:30，稍后留意面试通知。';
+      expect(
+        detectRepairRegression(first, revisedStillDone, {
+          committedSideEffects: committed,
+          now: new Date(2026, 6, 24),
+        }),
+      ).toBeNull();
+    });
+
+    it('does not fire when the first reply never claimed success', () => {
+      const firstPending = '资料收到啦，我这边帮你核对下就提交报名。';
+      expect(
+        detectRepairRegression(firstPending, downgraded, {
+          committedSideEffects: committed,
+          now: new Date(2026, 6, 24),
+        }),
+      ).toBeNull();
+    });
+  });
 });

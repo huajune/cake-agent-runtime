@@ -497,7 +497,11 @@ export class AgentRunnerService {
     // 首版是 P0（不可 fail-open）时不回退——此时修复版仍是唯一可投递的选择。
     // fence_stripped 是逐字剥围栏，不可能回归，跳过检测。
     const regression =
-      fenceStrippedText === null ? detectRepairRegression(firstText, revisedText) : null;
+      fenceStrippedText === null
+        ? detectRepairRegression(firstText, revisedText, {
+            committedSideEffects: committed || undefined,
+          })
+        : null;
     const regressionRevert = regression !== null && this.isFirstReplyFailOpenEligible(decision);
     if (regressionRevert) {
       this.logger.warn(

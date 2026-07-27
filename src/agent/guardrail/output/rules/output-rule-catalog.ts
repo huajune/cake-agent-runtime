@@ -379,7 +379,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '若渠道未把 imageMessageIds 透传到 OutputGuardInput，图片纯元信息场景仍需后续接入。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。',
+      '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。' +
+      // 2026-07-27 审计：本规则是纯流程违规——上一版文本内容本身没有问题，缺的只是工具调用。
+      // trace batch_6a38e61c…：replan 放开重写后把首版谨慎的"建议问店长"改成编造的
+      // "考勤系统半小时内晚退不扣款"政策并实际投递。补调工具后必须回到原文。
+      '保存完成后，上一版文本内容本身没有违规，请以上一版原文为基础尽量逐字保留输出，不要重新组织内容、不要新增任何原文没有的结论或政策性断言。',
     repairToolNames: ['save_image_description'],
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
