@@ -701,17 +701,12 @@ describe('AgentRunnerService.runTurn', () => {
     });
   });
 
-  it('recoverable replan guard exposes only its registered repair tools', async () => {
-    const readonlyLookup = {
-      toolName: 'duliday_job_list',
-      args: { city: '上海' },
-      result: { jobs: [{ storeName: '静安门店', distanceKm: 1.2 }] },
-    };
-    generator.invoke
-      .mockResolvedValueOnce(makeResult({ text: '推荐静安门店，距离 1.2km' }))
-      .mockResolvedValueOnce(
-        makeResult({ text: '这边重新查到静安门店，距离约 1.2km。', toolCalls: [readonlyLookup] }),
-      );
+  // 2026-07-27 replan 退役（评估文档 §2.4）：以下四条原为 replan 流程测试，改写为
+  // "遗留 replan 裁决统一走 ReplyRepairAgent 受约束重写"的新契约——generator 只被
+  // 调用一次（首版），修复不再重进 generator、不再持有任何工具白名单。
+
+  it('repairs a legacy replan decision via ReplyRepairAgent without re-invoking the generator', async () => {
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '推荐静安门店，距离 1.2km' }));
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'replan',
@@ -720,7 +715,7 @@ describe('AgentRunnerService.runTurn', () => {
           {
             type: 'job_recommendation_not_best_supported',
             evidence: '未接地岗位事实',
-            suggestion: '只能用只读工具重新查岗，或先中性追问。',
+            suggestion: '只能按已有事实修正表述，或先中性追问。',
             severity: 'P1',
             recoverability: 'recoverable',
             currentReplySendable: false,
@@ -740,61 +735,46 @@ describe('AgentRunnerService.runTurn', () => {
     });
 
     expect(outcome.kind).toBe('reply');
-    expect(outcome.reply?.text).toContain('重新查到');
-    expect(generator.invoke).toHaveBeenCalledTimes(2);
-    expect(generator.invoke.mock.calls[1][0].toolMode).toBe('scenario');
-    expect(generator.invoke.mock.calls[1][0].allowedToolNames).toEqual([
-      'geocode',
-      'duliday_job_list',
-    ]);
-    expect(generator.invoke.mock.calls[1][0].reviseFeedback[0]).toMatchObject({
-      type: 'job_recommendation_not_best_supported',
-      repairMode: 'replan',
-    });
-    // 2026-07-24 审计 P0-1：replan 必须携带首版草稿，供 prompt 要求"在其基础上修复"。
-    expect(generator.invoke.mock.calls[1][0].guardrailRepair).toMatchObject({
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(replyRepairAgent.repair.mock.calls[0][0]).toMatchObject({
       originalReply: '推荐静安门店，距离 1.2km',
     });
   });
 
-  it('handoff promise replan exposes request_handoff and resolves to a real handoff', async () => {
+  it('repairs a handoff promise by rewrite instead of executing a replan handoff', async () => {
     const bookingFailure = {
       toolName: 'duliday_interview_booking',
       args: { jobId: 528499 },
       result: { success: false, errorType: 'booking.rejected' },
     };
-    const handoffCall = {
-      toolName: 'request_handoff',
-      args: { reasonCode: 'system_blocked', reason: '岗位报名失败需人工确认' },
-      result: { dispatched: true, shortCircuited: true },
-    };
-    generator.invoke
-      .mockResolvedValueOnce(
-        makeResult({
-          text: '我让同事帮你确认下名额和后续安排，稍后给你答复哈',
-          toolCalls: [bookingFailure],
-        }),
-      )
-      .mockResolvedValueOnce(makeResult({ text: '', toolCalls: [handoffCall] }));
-    outputGuard.check.mockResolvedValueOnce({
-      decision: 'replan',
-      riskLevel: 'high',
-      violations: [
-        {
-          type: 'handoff_promise_without_handoff',
-          evidence: '承诺同事后续确认但未转人工',
-          suggestion: '调用 request_handoff 或删除承诺',
-          severity: 'P0',
-          recoverability: 'recoverable',
-          currentReplySendable: false,
-          repairMode: 'replan',
-        },
-      ],
-      ruleIds: ['handoff_promise_without_handoff'],
-      blockedRuleIds: ['handoff_promise_without_handoff'],
-      repairMode: 'replan',
-      repairToolNames: ['request_handoff'],
-    });
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: '我让同事帮你确认下名额和后续安排，稍后给你答复哈',
+        toolCalls: [bookingFailure],
+      }),
+    );
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'replan',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'handoff_promise_without_handoff',
+            evidence: '承诺同事后续确认但未转人工',
+            suggestion: '删除承诺，只陈述已确认事实',
+            severity: 'P0',
+            recoverability: 'recoverable',
+            currentReplySendable: false,
+            repairMode: 'replan',
+          },
+        ],
+        ruleIds: ['handoff_promise_without_handoff'],
+        blockedRuleIds: ['handoff_promise_without_handoff'],
+        repairMode: 'replan',
+        repairToolNames: ['request_handoff'],
+      })
+      .mockResolvedValueOnce(passDecision);
 
     const outcome = await service.runTurn({
       sessionRef,
@@ -802,40 +782,43 @@ describe('AgentRunnerService.runTurn', () => {
       context: { messageId: 'm-handoff-promise' },
     });
 
-    expect(generator.invoke).toHaveBeenCalledTimes(2);
-    expect(generator.invoke.mock.calls[1][0]).toMatchObject({
-      toolMode: 'scenario',
-      allowedToolNames: ['request_handoff'],
-    });
-    expect(outcome.kind).toBe('handoff');
-    expect(outcome.handoff?.sourceToolCall).toBe('request_handoff');
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('reply');
   });
 
-  it('does not fail open the original handoff promise when replan produces no handoff', async () => {
-    generator.invoke
-      .mockResolvedValueOnce(
-        makeResult({ text: '我让同事帮你确认下，稍后给你答复。', toolCalls: [] }),
-      )
-      .mockResolvedValueOnce(makeResult({ text: '', toolCalls: [] }));
-    outputGuard.check.mockResolvedValueOnce({
-      decision: 'replan',
-      riskLevel: 'high',
-      violations: [
-        {
-          type: 'handoff_promise_without_handoff',
-          evidence: '承诺同事后续确认但未转人工',
-          suggestion: '调用 request_handoff 或删除承诺',
-          severity: 'P0',
-          recoverability: 'recoverable',
-          currentReplySendable: false,
-          repairMode: 'replan',
-        },
-      ],
-      ruleIds: ['handoff_promise_without_handoff'],
-      blockedRuleIds: ['handoff_promise_without_handoff'],
-      repairMode: 'replan',
-      repairToolNames: ['request_handoff'],
-    });
+  it('does not fail open the P0 handoff promise when the rewrite repair stays in violation', async () => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: '我让同事帮你确认下，稍后给你答复。', toolCalls: [] }),
+    );
+    const p0Violation = {
+      type: 'handoff_promise_without_handoff',
+      evidence: '承诺同事后续确认但未转人工',
+      suggestion: '删除承诺，只陈述已确认事实',
+      severity: 'P0',
+      recoverability: 'recoverable',
+      currentReplySendable: false,
+      repairMode: 'rewrite',
+    };
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise',
+        riskLevel: 'high',
+        violations: [p0Violation],
+        ruleIds: ['handoff_promise_without_handoff'],
+        blockedRuleIds: ['handoff_promise_without_handoff'],
+        repairMode: 'rewrite',
+        repairToolNames: [],
+      })
+      .mockResolvedValueOnce({
+        decision: 'revise',
+        riskLevel: 'high',
+        violations: [p0Violation],
+        ruleIds: ['handoff_promise_without_handoff'],
+        blockedRuleIds: ['handoff_promise_without_handoff'],
+        repairMode: 'rewrite',
+        repairToolNames: [],
+      });
 
     const outcome = await service.runTurn({
       sessionRef,
@@ -846,17 +829,10 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.reply).toBeUndefined();
   });
 
-  it('image-description replan exposes only save_image_description', async () => {
-    const saveCall = {
-      toolName: 'save_image_description',
-      args: { messageId: 'img-1', description: '食品健康证' },
-      result: { success: true },
-    };
-    generator.invoke
-      .mockResolvedValueOnce(makeResult({ text: '图片里是健康证，可以继续报名。' }))
-      .mockResolvedValueOnce(
-        makeResult({ text: '图片里是健康证，可以继续报名。', toolCalls: [saveCall] }),
-      );
+  it('repairs a legacy image-description decision without granting any tool access', async () => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: '图片里是健康证，可以继续报名。' }),
+    );
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'replan',
@@ -865,7 +841,7 @@ describe('AgentRunnerService.runTurn', () => {
           {
             type: 'image_description_not_saved',
             evidence: '图片事实尚未保存',
-            suggestion: '先保存图片描述',
+            suggestion: '按已确认事实修正表述',
             severity: 'P1',
             recoverability: 'recoverable',
             currentReplySendable: false,
@@ -886,10 +862,8 @@ describe('AgentRunnerService.runTurn', () => {
     });
 
     expect(outcome.kind).toBe('reply');
-    expect(generator.invoke.mock.calls[1][0]).toMatchObject({
-      toolMode: 'scenario',
-      allowedToolNames: ['save_image_description'],
-    });
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
   });
 
   it('keeps draft side-effect toolCalls when reviewing and returning a revised reply', async () => {

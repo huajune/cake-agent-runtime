@@ -26,7 +26,6 @@ import { HardRulesService } from './hard-rules.service';
 import type { RuleContradiction } from './output-rule.types';
 import { GuardrailReviewPacketBuilder } from './llm/review-packet.builder';
 import {
-  SEMANTIC_REVIEW_FINDING_POLICIES,
   SemanticReviewerService,
   type SemanticReviewVerdict,
 } from './llm/semantic-reviewer.service';
@@ -313,9 +312,7 @@ export class OutputGuardrailService {
       (c) => c.currentReplySendable === false,
     );
     const enforcedLlm =
-      llmDecision === GUARDRAIL_DECISION.REVISE ||
-      llmDecision === GUARDRAIL_DECISION.REPLAN ||
-      llmDecision === GUARDRAIL_DECISION.BLOCK;
+      llmDecision === GUARDRAIL_DECISION.REVISE || llmDecision === GUARDRAIL_DECISION.BLOCK;
     // 每次 enforce 评审都归档到 guardrail_review_records；pass 也要保留，才能还原修复后二审。
     const confidenceDowngraded = llmDecision !== (verdict.decision as OutputDecision);
     if (!input.silent) {
@@ -350,14 +347,9 @@ export class OutputGuardrailService {
       ],
       ruleIds,
       blockedRuleIds,
-      repairMode:
-        decision === GUARDRAIL_DECISION.REPLAN
-          ? GUARDRAIL_REPAIR_MODE.REPLAN
-          : GUARDRAIL_REPAIR_MODE.REWRITE,
-      repairToolNames: this.resolveRepairToolNames(
-        actionableRules,
-        enforcedLlm ? verdict.findings : [],
-      ),
+      // replan 已退役（2026-07-27），修复模式恒为 rewrite、无工具白名单。
+      repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+      repairToolNames: [],
       feedbackToGenerator: feedbackLines || undefined,
     };
   }
@@ -369,11 +361,8 @@ export class OutputGuardrailService {
     ruleIds: string[],
     blockedRuleIds: string[],
   ): OutputGuardDecision {
-    if (ruleDecision === GUARDRAIL_DECISION.REPLAN || ruleDecision === GUARDRAIL_DECISION.REVISE) {
-      const repairMode =
-        ruleDecision === GUARDRAIL_DECISION.REPLAN
-          ? GUARDRAIL_REPAIR_MODE.REPLAN
-          : GUARDRAIL_REPAIR_MODE.REWRITE;
+    // replan 已退役（2026-07-27）：mergeRuleDecision 只产出 block/revise/observe/pass。
+    if (ruleDecision === GUARDRAIL_DECISION.REVISE) {
       const actionableRules = contradictions.filter((c) => c.currentReplySendable === false);
       return {
         decision: ruleDecision,
@@ -381,8 +370,8 @@ export class OutputGuardrailService {
         violations: actionableRules.map((c) => this.ruleToViolation(c)),
         ruleIds,
         blockedRuleIds,
-        repairMode,
-        repairToolNames: this.resolveRepairToolNames(actionableRules, []),
+        repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+        repairToolNames: [],
         feedbackToGenerator: this.buildFeedbackToGenerator(actionableRules),
       };
     }
@@ -489,11 +478,15 @@ export class OutputGuardrailService {
    * （revise/replan/block）一律降级为 observe——证据不足只能观测，不能拦截。
    */
   private applyConfidenceBackstop(verdict: SemanticReviewVerdict): OutputDecision {
-    const decision = verdict.decision as OutputDecision;
+    // replan 已退役（2026-07-27）：正常路径 SemanticReviewerService.normalizeDecision
+    // 已归一，这里是纵深防御（防 reviewer 实现被替换/mock 直接注入 'replan'——
+    // mergeByPriority 的序列已无该档，漏网会被静默当 pass 吞掉）。
+    const decision =
+      (verdict.decision as OutputDecision) === GUARDRAIL_DECISION.REPLAN
+        ? GUARDRAIL_DECISION.REVISE
+        : (verdict.decision as OutputDecision);
     const isEnforce =
-      decision === GUARDRAIL_DECISION.REVISE ||
-      decision === GUARDRAIL_DECISION.REPLAN ||
-      decision === GUARDRAIL_DECISION.BLOCK;
+      decision === GUARDRAIL_DECISION.REVISE || decision === GUARDRAIL_DECISION.BLOCK;
     if (isEnforce && verdict.confidence === 'low') {
       this.logger.warn(
         `[OutputGuardrail] semantic reviewer 低置信 ${decision} 降级为 observe: findings=${verdict.findings
@@ -506,16 +499,18 @@ export class OutputGuardrailService {
   }
 
   private mergeRuleDecision(contradictions: RuleContradiction[]): OutputDecision {
+    // 2026-07-27 发牌切换收尾：GuardrailRuleAction 已删 REPLAN（硬规则零雇主），
+    // 规则层聚合从此只产出 block/revise/observe/pass 四档。
     const actions = contradictions.map((c) => c.action);
     if (actions.includes('block')) return GUARDRAIL_DECISION.BLOCK;
-    if (actions.includes('replan')) return GUARDRAIL_DECISION.REPLAN;
     if (actions.includes('revise')) return GUARDRAIL_DECISION.REVISE;
     if (actions.includes('observe')) return GUARDRAIL_DECISION.OBSERVE;
     return GUARDRAIL_DECISION.PASS;
   }
 
   private mergeByPriority(a: OutputDecision, b: OutputDecision): OutputDecision {
-    const PRIORITY: OutputDecision[] = ['block', 'replan', 'revise', 'observe', 'pass'];
+    // replan 已退役（2026-07-27）：任何来源都不再产出该档，优先级序列中移除。
+    const PRIORITY: OutputDecision[] = ['block', 'revise', 'observe', 'pass'];
     return PRIORITY.find((d) => d === a || d === b) ?? GUARDRAIL_DECISION.PASS;
   }
 
@@ -554,24 +549,6 @@ export class OutputGuardrailService {
     active_booking_state_conflict: GUARDRAIL_PRIORITY.P0,
   };
 
-  private resolveRepairToolNames(
-    rules: RuleContradiction[],
-    findings: SemanticReviewVerdict['findings'],
-  ): string[] {
-    const names = new Set<string>();
-    for (const rule of rules) {
-      if (rule.repairMode !== GUARDRAIL_REPAIR_MODE.REPLAN) continue;
-      for (const name of rule.repairToolNames ?? []) names.add(name);
-    }
-    for (const finding of findings) {
-      if (finding.repairMode !== GUARDRAIL_REPAIR_MODE.REPLAN) continue;
-      for (const name of SEMANTIC_REVIEW_FINDING_POLICIES[finding.code].repairToolNames) {
-        names.add(name);
-      }
-    }
-    return [...names];
-  }
-
   /** 把 semantic finding 映射成 GuardViolation（喂回 repair prompt）。 */
   private findingToViolation(finding: SemanticReviewVerdict['findings'][number]): GuardViolation {
     return {
@@ -584,14 +561,12 @@ export class OutputGuardrailService {
         `修正以消除「${finding.code}」问题，只输出候选人可见回复`,
       severity:
         OutputGuardrailService.SEMANTIC_FINDING_SEVERITY[finding.code] ?? GUARDRAIL_PRIORITY.P1,
-      // 语义 finding 只经 revise/replan 进入 violations（block 在上游即收敛为最终裁决），
+      // 语义 finding 只经 revise 进入 violations（block 在上游即收敛为最终裁决），
       // 按定义可改写修复；P0 finding 禁 fail-open 的信号由 severity → riskLevel 承载，
       // 不能留 undefined——runner 的 fail-open 闸门按 !== 'non_recoverable' 判定。
       recoverability: GUARDRAIL_RECOVERABILITY.RECOVERABLE,
-      repairMode:
-        finding.repairMode === 'replan'
-          ? GUARDRAIL_REPAIR_MODE.REPLAN
-          : GUARDRAIL_REPAIR_MODE.REWRITE,
+      // replan 已退役（2026-07-27）：schema 容忍的 'replan' 值在此统一折叠为 rewrite。
+      repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
     };
   }
 
@@ -620,7 +595,7 @@ export class OutputGuardrailService {
   ): GuardrailRiskLevel {
     if (llmDecision === GUARDRAIL_DECISION.BLOCK) return GUARDRAIL_RISK_LEVEL.HIGH;
     const ruleLevel = this.resolveRuleRiskLevel(actionableRules);
-    if (llmDecision === GUARDRAIL_DECISION.REVISE || llmDecision === GUARDRAIL_DECISION.REPLAN) {
+    if (llmDecision === GUARDRAIL_DECISION.REVISE) {
       const hasP0 =
         ruleLevel === GUARDRAIL_RISK_LEVEL.HIGH ||
         enforcedLlmViolations.some((v) => v.severity === GUARDRAIL_PRIORITY.P0);
