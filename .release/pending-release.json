@@ -292,6 +292,41 @@
         "全部生产实证原文入测试用例，含反向保护（\"肯德基做兼职可以吗\"不标履历、裸品牌名不算回声、\"生鲜超市\"单独指名仍命中）",
         "刷新 develop 后的 pre-push 全量 CI：370 suites / 5735 tests（6 skipped）✅，lint --max-warnings=0 ✅，format ✅，typecheck ✅，build:ci ✅"
       ]
+    },
+    {
+      "number": "748",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/748",
+      "title": "候选人资料证据化 P0——城市工具确权入档 + 展示出处门",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "Merge branch 'codex/fix-pr-746' into codex/fix-pr-748",
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-748"
+      ],
+      "summary": [
+        "候选人资料证据化 P0——geocode/定位分享城市确权入档 + 展示出处门",
+        "候选人资料证据化方案修订——§0统一证据模型总纲(三不统一/采信分级/准入矩阵)+§15 badc…",
+        "Merge branch 'codex/fix-pr-746' into codex/fix-pr-748",
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-748",
+        "候选人资料证据化 P0——城市工具确权入档 + 展示出处门"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge branch 'codex/fix-pr-746' into codex/fix-pr-748",
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-748"
+      ],
+      "optimizations": [],
+      "ops": [
+        "候选人资料证据化 P0——geocode/定位分享城市确权入档 + 展示出处门",
+        "候选人资料证据化方案修订——§0统一证据模型总纲(三不统一/采信分级/准入矩阵)+§15 badc…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "刷新 develop 后 lint:check / format:check / typecheck / 前后端 build:ci 全部通过",
+        "全量 Jest：370 套件 / 5751 用例通过（6 skipped）",
+        "新增 15 个针对性用例：saveToolAttestedCity 四分支、定位分享注入四场景、reverseGeocode 五场景、onCityResolved 穿线、save_attested_city 时序"
+      ]
     }
   ],
   "lastRelease": {
