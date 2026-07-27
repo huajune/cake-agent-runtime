@@ -696,20 +696,6 @@ function inferHealthCertGate(input: {
   return 'unknown';
 }
 
-/**
- * 单段文本（典型：jobName）是否指示"面试前必须持证"（有证约族）。
- * 与 inferHealthCertGate 的收紧判定同源，供 duliday_interview_booking 做
- * 服务端字面兜底（badcase a8gh8d9m：precheck 漏判后 booking 无二道防线，
- * 无证候选人真实建单）。
- */
-export function textIndicatesCertRequiredBeforeInterview(text: string | null | undefined): boolean {
-  if (!text) return false;
-  const normalized = normalizePolicyText(text);
-  if (!normalized) return false;
-  if (HEALTH_CERT_TIGHT_KEYWORDS.some((kw) => normalized.includes(kw))) return true;
-  return HEALTH_CERT_TIGHT_PATTERNS.some((pattern) => pattern.test(normalized));
-}
-
 export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
   const hiringRequirement = asRecord(job.hiringRequirement);
   const basic = asRecord(hiringRequirement?.basicPersonalRequirements);

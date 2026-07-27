@@ -162,40 +162,6 @@ describe('buildInterviewBookingTool', () => {
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
   });
 
-  describe('有证约字面兜底（badcase a8gh8d9m）', () => {
-    it('rejects cert-required jobName variant when candidate has no certificate', async () => {
-      const result = await executeTool({
-        ...validInput,
-        jobName: '成都你六姐-上海宝山海江新天地店-后厨（有证、有经验约）-小时工',
-        hasHealthCertificate: 2,
-      });
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-      expect(result._outcome).toContain('有证约');
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('rejects plain 有证约 jobName when candidate rejects applying (3)', async () => {
-      const result = await executeTool({
-        ...validInput,
-        jobName: '成都你六姐-上海凌空SOHO店-洗碗工（有证约）-小时工',
-        hasHealthCertificate: 3,
-      });
-      expect(result.success).toBe(false);
-      expect(result._outcome).toContain('有证约');
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('does not trigger the cert gate for cert-required jobName when candidate has certificate', async () => {
-      const result = await executeTool({
-        ...validInput,
-        jobName: '成都你六姐-上海凌空SOHO店-洗碗工（有证约）-小时工',
-        hasHealthCertificate: 1,
-      });
-      expect(result._outcome ?? '').not.toContain('有证约岗位');
-    });
-  });
-
   describe('Phase 2-lite.1 prechecked contract', () => {
     it('rejects when prechecked.nextAction === "collect_fields"', async () => {
       const result = await executeTool({
@@ -466,7 +432,12 @@ describe('buildInterviewBookingTool', () => {
 
     const result = await executeTool(
       { ...validInput, name: '张三', phone: '15921708092' },
-      { messages: [{ role: 'user', content: '姓名：张三' }, { role: 'user', content: '周四下午' }] },
+      {
+        messages: [
+          { role: 'user', content: '姓名：张三' },
+          { role: 'user', content: '周四下午' },
+        ],
+      },
     );
 
     expect(result.success).toBe(false);

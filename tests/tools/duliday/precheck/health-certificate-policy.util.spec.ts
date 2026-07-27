@@ -56,9 +56,9 @@ describe('resolveLocalHealthCertificateEligibility', () => {
     expect(resolveLocalHealthCertificateEligibility({ latestAnswer: '有' })).toEqual(
       expect.objectContaining({ status: 'local_valid' }),
     );
-    expect(resolveLocalHealthCertificateEligibility({ latestAnswer: '无但接受办理健康证' })).toEqual(
-      expect.objectContaining({ status: 'accepts_local_application' }),
-    );
+    expect(
+      resolveLocalHealthCertificateEligibility({ latestAnswer: '无但接受办理健康证' }),
+    ).toEqual(expect.objectContaining({ status: 'accepts_local_application' }));
     const empty = resolveLocalHealthCertificateEligibility({});
     expect(empty.status).toBe('unknown');
     expect(empty.explicitNoCertificate).toBeUndefined();

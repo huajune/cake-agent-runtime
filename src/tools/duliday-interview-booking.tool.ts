@@ -38,11 +38,7 @@ import {
   isOnlineInterview,
   formatInterviewTimeForReply,
 } from '@tools/duliday/booking/booking-reply-format.util';
-import {
-  buildJobPolicyAnalysis,
-  isWaitNoticeInterview,
-  textIndicatesCertRequiredBeforeInterview,
-} from '@tools/utils/job-policy-parser';
+import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import {
   countRealNameAsks,
@@ -427,29 +423,6 @@ export function buildInterviewBookingTool(
             reasonCode: 'job_id_not_recalled',
           });
         }
-        // 有证约字面兜底（precheck 同型判定的 booking 侧 defense-in-depth）：
-        // jobName 指示"面试前必须持证"而候选人无证（2=无但接受办理 / 3=无且不接受）时
-        // 禁止建单。precheck 是主闸（wait_for_health_certificate），但解析漏判或模型
-        // 伪造 prechecked 时这里再拦一道（badcase a8gh8d9m："后厨（有证、有经验约）"
-        // 变体漏判后无证候选人真实建单）。
-        if (
-          textIndicatesCertRequiredBeforeInterview(jobName) &&
-          (hasHealthCertificate === 2 || hasHealthCertificate === 3)
-        ) {
-          return markBookingFailed(
-            context,
-            buildToolError({
-              errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
-              outcome: '预约拦截（有证约岗位，候选人当前无健康证）',
-              replyInstruction:
-                '该岗位要求面试前持有食品健康证（有证约），候选人当前无证，不能提交预约。' +
-                '如实告知候选人这家需要先办好健康证才能约面，并说明拿到证后需重新确认岗位在招状态与可约时段；' +
-                '严禁承诺"可以先约面 / 证到了就能约上"。',
-              details: { jobId, jobName, hasHealthCertificate },
-            }),
-          );
-        }
-
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
         // recruitment_cases 已废弃：不再用 active case 查重。重复预约由海绵侧约束 +
