@@ -14,7 +14,7 @@
 **预计版本**: `v10.31.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 8
+**累计 PR**: 9
 
 ### 更新摘要
 - PR #739 回填 v10.30.0 发布结果
@@ -78,6 +78,8 @@
 - PR #748 Merge branch 'codex/fix-pr-746' into codex/fix-pr-748
 - PR #748 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-748
 - PR #748 候选人资料证据化 P0——城市工具确权入档 + 展示出处门
+- PR #756 Merge remote-tracking branch 'origin/develop' into codex/release-v10.…
+- PR #756 补齐 v10.31.0 统一发版底账
 
 ### 新功能
 - PR #747 `image_description_not_saved` replan→observe：纯流程违规，replan 全文重写曾编造考勤扣款政策并投递（trace batch_6a38e61c…）
@@ -144,6 +146,8 @@
 - PR #746 履历/定位/回声语境闸——三病灶收敛currentBrand污染
 - PR #748 候选人资料证据化 P0——geocode/定位分享城市确权入档 + 展示出处门
 - PR #748 候选人资料证据化方案修订——§0统一证据模型总纲(三不统一/采信分级/准入矩阵)+§15 badc…
+- PR #756 Merge remote-tracking branch 'origin/develop' into codex/release-v10.…
+- PR #756 补齐 v10.31.0 统一发版底账
 
 ### 配置变更
 - 无
@@ -167,6 +171,13 @@
 - PR #748 刷新 develop 后 lint:check / format:check / typecheck / 前后端 build:ci 全部通过
 - PR #748 全量 Jest：370 套件 / 5751 用例通过（6 skipped）
 - PR #748 新增 15 个针对性用例：saveToolAttestedCity 四分支、定位分享注入四场景、reverseGeocode 五场景、onCityResolved 穿线、save_attested_city 时序
+- PR #756 `node scripts/check-release-ledger.js` ✅
+- PR #756 `git diff --check` ✅
+- PR #756 pre-push 完整 `ci:check` ✅：lint / format / typecheck / Web + Nest build
+- PR #756 Jest：370 suites passed、1 skipped；5751 tests passed、6 skipped、0 failed
+- PR #756 真实 Agent 批次 `b58f5506-2727-494c-953d-86d4510c0792`：4 passed / 0 failed / 2 skipped；可评估通过率 100%
+- PR #756 生产 test-suite 同步：`warnings=[]`，executionCount=6
+- PR #756 飞书正式测试集：3 条稳定场景创建成功，幂等重放 unchanged=3
 <!-- release:pending:end -->
 
 ## [10.30.0] - 2026-07-27
