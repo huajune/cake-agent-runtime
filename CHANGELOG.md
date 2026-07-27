@@ -14,7 +14,7 @@
 **预计版本**: `v10.31.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #739 回填 v10.30.0 发布结果
@@ -66,6 +66,9 @@
 - PR #747 四条原 replan 流程测试改写为新契约，保留"P0 假承诺修不净不 fail-open"安全属性
 - PR #747 新增 docs/architecture/guardrail-chain-assessment-and-rebuild.md：全链路分段裁定、第一性原理（实时反馈环三处偷换）、发牌表、双环体系与三条数据流、oracle 边界、历史注记
 - PR #747 repair 动手权默认翻转——发牌切换五规则 + replan 全链路物理退役 + 双环质量体系文档
+- PR #728 城市同名别名在地名短语中不再塌缩成品牌
+- PR #728 收紧城市同名地名续接判据
+- PR #728 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728
 
 ### 新功能
 - PR #747 `image_description_not_saved` replan→observe：纯流程违规，replan 全文重写曾编造考勤扣款政策并投递（trace batch_6a38e61c…）
@@ -84,6 +87,7 @@
 - PR #747 `settlement_cycle_mismatch` revise→observe：三期假阳率触发目录治理条款（07-27 命中 2/2 均否定句误判）；v10.30.0 已修语序假阳，observe 期重攒精确率，两周 ≥90% 可复牌
 - PR #747 结论定性修正——本方案是架构调整非推翻，补落地风险分级(补环先行/拆解灰度后行)
 - PR #747 口径对齐 v10.30.0 已发版——回归闸二期/settlement修复引用从'PR #731'…
+- PR #728 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728
 
 ### 优化调整
 - 无
@@ -122,6 +126,8 @@
 - PR #747 §4.1 流1图注勘误——持牌现状 8 revise+5 block 非'3条'；§2.2 补发牌…
 - PR #747 物理删除 replan 执行路径——三层全封，repair 统一走 ReplyRepairAgent
 - PR #747 同步 develop 并收口规则冲突
+- PR #728 城市同名别名在地名短语中不再塌缩成品牌
+- PR #728 收紧城市同名地名续接判据
 
 ### 配置变更
 - 无
@@ -137,6 +143,9 @@
 - PR #744 新提交已重新触发 GitHub CI 与 AI Review。
 - PR #747 全量 5656 测试绿（367 suites）；typecheck / lint 干净
 - PR #747 事后环已就位：daily-badcase-scan 日报（每日 09:00）含发牌验收栏目（收牌规则首版直投代价逐日抽查，重度伤害=回滚信号）与 L1 回扫（日期星期校验/悬空承诺核验）
+- PR #728 定向品牌测试通过。
+- PR #728 两次完整 pre-push 均通过 lint、format、typecheck、前后端 build 与全量 Jest；最新基线为 369 个测试套件、5702 个测试通过。
+- PR #728 GitHub CI 与 AI Review 正在对最新 develop 基线复核。
 <!-- release:pending:end -->
 
 ## [10.30.0] - 2026-07-27
