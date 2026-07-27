@@ -14,7 +14,7 @@
 **预计版本**: `v10.30.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #725 回填 v10.29.0 发布结果
@@ -24,6 +24,9 @@
 - PR #725 记录 `master → develop` 回同步 #724 和未发生回滚
 - PR #729 兼职岗被说成全职月结（chat 6a62c6f8）三层修复
 - PR #730 日巡检四项 badcase 修复（2026-07-24 批次）
+- PR #731 repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳
+- PR #731 出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定
+- PR #731 评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案
 
 ### 新功能
 - 无
@@ -41,6 +44,9 @@
 - PR #725 记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收
 - PR #725 记录 `master → develop` 回同步 #724 和未发生回滚
 - PR #725 回填 v10.29.0 发布结果
+- PR #731 repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳
+- PR #731 出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定
+- PR #731 评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案
 
 ### 配置变更
 - 无
@@ -58,6 +64,9 @@
 - PR #730 新增回归：identity provenance 4 例、invite 城市门青岛 2 例、geo resolver 崂山 golden、reengagement 婉拒/已报告完成 2 例 + prompt 防线断言
 - PR #730 `tests/memory/facts/ + tests/resolution/geo/ + tests/agent/reengagement/reengagement.agent.spec.ts + tests/memory/services/ + tests/tools/`：1500+ 用例全绿
 - PR #730 `tsc --noEmit` / `eslint --max-warnings=0` / pre-push 全量 ci:check 通过
+- PR #731 `repair-regression.util.spec.ts`：+10 用例（生产案正反向、星期纠错不误伤、跨年推断、booking 降级四个负例）
+- PR #731 `hard-rules.service.spec.ts`：+3 用例（两类假阳豁免 + 愿望复述禁跨句反例）
+- PR #731 全量：191/191 pass（两 spec）+ runner 53/53 pass + typecheck + lint 全绿
 <!-- release:pending:end -->
 
 ## [10.29.0] - 2026-07-24
