@@ -23,6 +23,7 @@ import {
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { findLatestExplicitIdentityEvidence } from '@tools/shared/identity-statement.util';
+import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
@@ -329,6 +330,21 @@ export function buildInterviewBookingTool(
         jobName,
         prechecked,
       }) => {
+        // 测试链路 PII 白名单闸门：booking 真调海绵生产网关，测试重放必须用
+        // 假身份（2026-07-27 误建真实工单 453264 事故后固化为系统校验）。
+        if (context.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,
+              outcome: '测试链路拦截：手机号不在测试白名单，未执行真实报名',
+              replyInstruction:
+                '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝提交、未产生任何真实工单。' +
+                '不得谎称已报名/已登记；请如实说明报名未提交。测试用例应使用统一假身份（兮兮/18271421690）。',
+              details: { phone: maskPhoneForDetails(phone) },
+            }),
+          );
+        }
         // Phase 2-lite.1：precheck 契约硬约束。booking 完全信任 precheck 结论，
         // LLM 必须把本轮 precheck 的 nextAction + missingFieldsCount 显式传进来；
         // 任一不满足 ready_to_book 则直接拒，不进 sponge API。
