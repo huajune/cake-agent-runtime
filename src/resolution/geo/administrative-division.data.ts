@@ -76,6 +76,8 @@ export const DISTRICT_TO_CITY: Record<string, string> = {
   平谷: '北京',
   密云: '北京',
   延庆: '北京',
+  // 鄂尔多斯
+  东胜: '鄂尔多斯',
   // 上海
   黄浦: '上海',
   徐汇: '上海',

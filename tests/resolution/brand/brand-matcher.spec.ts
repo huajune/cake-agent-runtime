@@ -247,6 +247,12 @@ describe('resolveBrands - 短别名误判防护（§7.3/§14.1）', () => {
     ]);
   });
 
+  it('城市同名别名后紧跟普通招聘话术仍命中鄂尔多斯1980', () => {
+    expect(names(resolveBrands('鄂尔多斯还招人吗', 'user_text', catalog))).toEqual([
+      '鄂尔多斯1980',
+    ]);
+  });
+
   it('标准名鄂尔多斯1980（非城市同名）不受地名延续判据影响', () => {
     expect(names(resolveBrands('鄂尔多斯1980招人吗', 'user_text', catalog))).toEqual([
       '鄂尔多斯1980',

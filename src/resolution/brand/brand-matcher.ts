@@ -13,6 +13,7 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
+import { DISTRICT_TO_CITY } from '@resolution/geo';
 import {
   BRAND_CONFIDENCE,
   truncateSourceText,
@@ -52,6 +53,18 @@ const CONFIDENCE_BY_MATCH_TYPE: Record<BrandMatchType, number> = {
   alias_containment: BRAND_CONFIDENCE.aliasContainment,
   category_expansion: BRAND_CONFIDENCE.categoryExpansion,
 };
+
+const DISTRICT_SUFFIXES_BY_CITY = Object.entries(DISTRICT_TO_CITY).reduce(
+  (index, [district, city]) => {
+    const normalizedCity = normalizeForBrandMatch(city);
+    const normalizedDistrict = normalizeForBrandMatch(district);
+    const districts = index.get(normalizedCity) ?? [];
+    districts.push(normalizedDistrict);
+    index.set(normalizedCity, districts);
+    return index;
+  },
+  new Map<string, string[]>(),
+);
 
 /** "品牌ID：10239" 行的格式契约（两侧 prompt 已约定，§10.4）。 */
 const BRAND_ID_CONTRACT_REGEX = /品牌\s*ID\s*[：:]\s*(\d{1,10})/gi;
@@ -343,28 +356,29 @@ function isGeographicNameMatch(
 }
 
 /**
- * 与全国城市同名的品牌别名（"鄂尔多斯" 之于 "鄂尔多斯1980"），命中片段后紧跟另一个
- * 汉字时是"市+区/县"地名短语（"鄂尔多斯东胜" = 鄂尔多斯市东胜区），候选人在报所在地
- * 而非求职意向品牌——别名的无边界子串包含会把它塌缩成品牌，顶掉上一轮真实品牌
+ * 与全国城市同名的品牌别名（"鄂尔多斯" 之于 "鄂尔多斯1980"），命中片段后紧跟该城市
+ * 的已知区县时是"市+区/县"地名短语（"鄂尔多斯东胜" = 鄂尔多斯市东胜区），候选人在
+ * 报所在地而非求职意向品牌——别名的无边界子串包含会把它塌缩成品牌，顶掉上一轮真实品牌
  * （2026-07-23 生产实例 chat 6a617720）。
  *
  * 上一函数 isGeographicNameMatch 只认「品牌名 + 通用地理后缀（路/街/区/市…）」，
  * 覆盖不到「鄂尔多斯 + 专有区名(东胜)」这类无通名后缀的市区拼接，故补此判据。
  *
- * 品牌所有格「的」（"鄂尔多斯的岗位"）与词尾/标点边界不算地名延续，仍可命中；
- * 判据刻意留窄：只拦"城市同名别名 + 汉字延续"这一实证形态，不做前缀方位介词等推断，
- * 避免误伤「想找鄂尔多斯的岗位」等真实求职表达。
+ * 判据刻意留窄：只拦"城市同名别名 + 同城已知区县"这一实证形态，不把任意汉字延续
+ * 都当地名，避免误伤「鄂尔多斯还招人吗」等真实求职表达。
  */
 function isCityHomographGeographicMatch(
   cityHomograph: boolean,
+  normalizedAlias: string,
   normalizedClause: string,
   spanStart: number,
   spanLength: number,
 ): boolean {
   if (!cityHomograph || spanStart < 0) return false;
-  const nextChar = normalizedClause[spanStart + spanLength];
-  if (!nextChar || nextChar === '的') return false;
-  return /[一-龥]/.test(nextChar);
+  const suffix = normalizedClause.slice(spanStart + spanLength);
+  return (DISTRICT_SUFFIXES_BY_CITY.get(normalizedAlias) ?? []).some((district) =>
+    suffix.startsWith(district),
+  );
 }
 
 /**
@@ -447,6 +461,7 @@ function matchClause(
       isGeographicNameMatch(normalizedClause, spanStart, candidate.normalized.length) ||
       isCityHomographGeographicMatch(
         candidate.cityHomograph,
+        candidate.normalized,
         normalizedClause,
         spanStart,
         candidate.normalized.length,
