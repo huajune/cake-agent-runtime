@@ -62,7 +62,10 @@ import type { BrandItem } from '@/sponge/sponge.types';
 import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { sanitizeInterviewName } from '../facts/name-guard';
-import { assertNoExtractionExampleEcho } from '../facts/placeholder-identity';
+import {
+  assertExtractionIdentityProvenance,
+  assertNoExtractionExampleEcho,
+} from '../facts/placeholder-identity';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   hasMeaningfulValue,
@@ -767,7 +770,13 @@ export class SessionService {
         // 示例回声防线：弱模型会把提示词示例值（占位手机号等）当默认值填进输出
         //（badcase 2026-07-22 张三/13800138000 假身份成单）。命中即判本次生成
         // 失败，走与 API 错误相同的重试/降级，绝不让占位身份落进事实层。
-        validateOutput: assertNoExtractionExampleEcho,
+        // 身份出处门（badcase 2026-07-24 赵堤/18833669895 新造身份穿透示例名单）：
+        // name/phone 必须能在提取 prompt（消息窗口 + 已确认事实 + 图片描述）里找到，
+        // 找不到即臆造，同样判本次生成失败。
+        validateOutput: (output) => {
+          assertNoExtractionExampleEcho(output);
+          assertExtractionIdentityProvenance(output, prompt);
+        },
       });
 
       // explicit_provenance / brand_intents 不属于存储态 schema，归一化前单独取出。

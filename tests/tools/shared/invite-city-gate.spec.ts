@@ -86,6 +86,32 @@ describe('evaluateInviteCityGate', () => {
     expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
   });
 
+  it('allows via district inference for 青岛崂山 (badcase recvqhLOPwv0m9: 崂山区松岭路)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '青岛',
+      sessionCity: null,
+      userTexts: ['招收兼职吗？', '崂山区松岭路', '在北宅'],
+    });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('市南/市北 only count with the 区 suffix (substring safety)', () => {
+    expect(
+      evaluateInviteCityGate({
+        requestedCity: '青岛',
+        sessionCity: null,
+        userTexts: ['我在超市南边等你'],
+      }),
+    ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    expect(
+      evaluateInviteCityGate({
+        requestedCity: '青岛',
+        sessionCity: null,
+        userTexts: ['我住市北区'],
+      }),
+    ).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
   it('does not treat ambiguous district names (朝阳/通州) as provenance', () => {
     const verdict = evaluateInviteCityGate({
       requestedCity: '北京',

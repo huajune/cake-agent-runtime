@@ -66,6 +66,7 @@ const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
       'candidate_declined_interview',
       'manager_cancelled_interview',
       'interview_result_known',
+      'interview_done_reported',
       'result_inquiry_already_sent',
       'interview_reminder_already_sent',
       'interview_not_started_per_chat',
@@ -434,7 +435,7 @@ export class ReengagementAgent {
             '- 时间口径（聊天优先）：状态摘要里的面试时间来自工单登记，可能只是当天面试窗口的起点而非实际面试时刻；若近期对话中候选人、招募经理或助手已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间，一律以对话中最新的明确约定为准；对话中没有明确时间约定时，才以工单时间为准。拿不准对话里的时间是否指本工单本次面试（例如候选人同时聊着多个岗位）时，一律回退按工单时间处理，不得据此 skip 或改写提醒钟点。',
             '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
             '- 候选人得知岗位要求或条件后表示接受不了，例如“干不了”“做不了”“那算了”，即使语气委婉、没有出现“取消”字样，也属于放弃本岗位；若招募经理随后已转为邀请进群、改推其他岗位，候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview。注意区分：招募经理为本次面试拉群（如群内接龙面试）不属于放弃信号。',
-            '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。',
+            '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。**婉拒也算取消**：招募经理在了解候选人条件后给出否定性结论（如"那不太合适""这个做不了""条件不符合"），且此后没有重新确认面试继续的，同样命中本条——不要求出现"取消""不用来"等字样，候选人回应"行/好吧"更是接受拒绝的信号。不得以"没有明确说取消"或"工单仍显示约面成功"为由放行发送。',
             '- 对话已经给出面试通过、未通过、录用或淘汰等结果，或者“和店长吵架了”“店长让我走了”等语境已经能合理判断面试流程结束：blockReason=interview_result_known。不要把“等通知”“还不知道结果”误判成已有结果。',
             '- 招募经理（assistant）已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。候选人自己询问结果不属于此项。',
             ...(ctx.scenario.code === 'interview_reminder'
@@ -445,6 +446,7 @@ export class ReengagementAgent {
               : [
                   '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
                   '- 按上面的时间口径（聊天优先）判断，本次面试的实际时间尚未到、面试还没开始的：blockReason=interview_not_started_per_chat。不要仅因为工单登记时间已过就断定面试已经进行；候选人明确说“还没开始”“还没面”也属于此项。',
+                  '- 候选人已经主动告知本次面试已参加/已完成并在等结果（如“已面试，等您通知”“面完了，等消息”），且招募经理（assistant）已对该消息作出过回应：blockReason=interview_done_reported。此时再问“面试结束了吧/还顺利吗”是重复打扰；面试是否顺利的结果跟进由招募经理按通知节奏处理。注意与 interview_result_known 的区别：本条不要求已知结果，只要求候选人已报告面试完成且经理已回应过。',
                 ]),
             '- 命中任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示预约有效也不能发送。未命中时 blockReason=none。',
             '- 未命中任何停止条件时必须 decision=send：不得以“对话流程正常”“候选人已确认过”“感觉没必要再发”等模糊理由跳过；候选人回复“好的/OK”只是确认收到，不构成停止条件。',
@@ -487,6 +489,7 @@ export class ReengagementAgent {
       | 'candidate_declined_interview'
       | 'manager_cancelled_interview'
       | 'interview_result_known'
+      | 'interview_done_reported'
       | 'result_inquiry_already_sent'
       | 'interview_reminder_already_sent'
       | 'interview_not_started_per_chat',
