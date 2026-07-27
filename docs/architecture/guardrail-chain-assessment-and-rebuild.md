@@ -66,7 +66,25 @@
 
 **设计原则**：检测可以广，动手必须窄；回退闸只做"比较"不做"判断"；fail-open 优于静默、首版优于坏修复；每档新增形态必须有已投递 trace 实证。
 
-**待落地**：(a) 规则目录增加 `repairStyle: 'minimal_edit' | 'preserve_text' | 'rewrite'` 显式声明，让"该用哪档"成为规则登记时的决定；(b) replan 分支注入 `buildReplyRepairContext` 的 booking 事实块，对齐 rewrite。
+### replan 的终态：拆解，而非继续加约束
+
+replan 是收权的头号对象——三期全部已投递伤害出自它，而提示词约束已被证明有天花板
+（周二→周一案发生在 v10.29.0 首版注入 + 双通道保留指令生效之后）。终态把它拆成两步，
+**重写权整个拿走**：
+
+```
+今天：  replan = generator 重进全循环 → 重取数 + 自由重写整段 → 二审
+终态：  第一步｜补取数   generator 只跑白名单工具，文本产物丢弃
+        第二步｜回填     ReplyRepairAgent 拿〔首版原文 + 合并后新工具事实 + 违规句定位〕
+                         做受约束重写（该写手已有结构保留约束 + booking 事实块注入）
+```
+
+全链路从此只剩**一个**能改候选人可见文本的写手；generator 在 repair 场景降级为纯取数器；
+出口回归闸继续模式无关兜底。工程上是重新接线而非新造：replan 已有工具轨迹合并
+（`mergeToolCallsForRevisedResult`），ReplyRepairAgent 已接受 `toolCalls`+`repairContext`，
+把合并结果构建进 repairContext 即可——顺带消灭 booking 事实块只注入 rewrite 的不对称。
+
+**待落地**：(a) 规则目录增加 `repairStyle: 'minimal_edit' | 'preserve_text' | 'rewrite'` 显式声明——终态下没有任何一档叫"重新规划回复"；(b) 上述 replan 两步拆解（P2 阶段，替代原"replan 注入 booking 事实块"的过渡方案——拆解后统一走 rewrite 路径，注入自动覆盖）。
 
 ## 3. 事后检测环：每日全量自动 badcase 扫描（新建）
 
@@ -124,7 +142,7 @@ shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evid
 |---|---|---|---|
 | P0 | L0：昨日 shadow findings triage + 飞书日报 | 低（一条查询+一个定时任务） | 无 |
 | P1 | L1：确定性全量回扫（先上日期星期/悬空承诺/静默丢消息三项） | 中（纯函数+SQL，零 LLM） | 复用 `detectRepairRegression`/硬规则纯函数 |
-| P2 | repair 收权：`repairStyle` 显式化 + replan 注入 booking 事实块 | 中 | PR #731 合入后 |
+| P2 | repair 收权：`repairStyle` 显式化 + replan 两步拆解（取数归 generator、写字归 ReplyRepairAgent） | 中 | PR #731 合入后 |
 | P3 | L2 LLM 抽扫 + 自动策展进 test-suite；"新增政策断言溯源"检测 | 高 | P0/P1 数据校准抽样策略 |
 
 ## 6. 残留风险与观测锚点
