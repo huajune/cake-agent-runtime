@@ -26,7 +26,10 @@ import {
 import { detectJobDetailLookupRequired } from './rules/job-detail-grounding.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
 import { detectUnsupportedScheduleWindowClaim } from './rules/schedule-window-claims.rule';
-import { detectSettlementCycleMismatch } from './rules/settlement-cycle-mismatch.rule';
+import {
+  detectSettlementCycleMismatch,
+  detectSettlementNoEvidenceAssertion,
+} from './rules/settlement-cycle-mismatch.rule';
 import { detectUnsupportedStoreStatusSpeculation } from './rules/store-status-speculation.rule';
 import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
@@ -210,6 +213,16 @@ export class HardRulesService {
     );
     if (settlementCycleMismatch) {
       contradictions.push(this.withRulePolicy(settlementCycleMismatch));
+    }
+
+    // 形态二：本轮岗位查询全查无时的无证据结算断言（形态一 truth=null 放行的半边）。
+    const settlementNoEvidenceAssertion = detectSettlementNoEvidenceAssertion(
+      text,
+      toolCalls,
+      params.recentMessages ?? [],
+    );
+    if (settlementNoEvidenceAssertion) {
+      contradictions.push(this.withRulePolicy(settlementNoEvidenceAssertion));
     }
 
     const unsupportedScheduleWindowClaim = detectUnsupportedScheduleWindowClaim(
