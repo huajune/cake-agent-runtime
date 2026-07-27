@@ -14,7 +14,7 @@
 **预计版本**: `v10.31.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 7
+**累计 PR**: 8
 
 ### 更新摘要
 - PR #739 回填 v10.30.0 发布结果
@@ -73,6 +73,11 @@
 - PR #746 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-746
 - PR #746 Merge branch 'codex/fix-pr-728' into codex/fix-pr-746
 - PR #746 履历/定位/回声语境闸——三病灶收敛 currentBrand 污染
+- PR #748 候选人资料证据化 P0——geocode/定位分享城市确权入档 + 展示出处门
+- PR #748 候选人资料证据化方案修订——§0统一证据模型总纲(三不统一/采信分级/准入矩阵)+§15 badc…
+- PR #748 Merge branch 'codex/fix-pr-746' into codex/fix-pr-748
+- PR #748 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-748
+- PR #748 候选人资料证据化 P0——城市工具确权入档 + 展示出处门
 
 ### 新功能
 - PR #747 `image_description_not_saved` replan→observe：纯流程违规，replan 全文重写曾编造考勤扣款政策并投递（trace batch_6a38e61c…）
@@ -94,6 +99,8 @@
 - PR #728 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728
 - PR #746 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-746
 - PR #746 Merge branch 'codex/fix-pr-728' into codex/fix-pr-746
+- PR #748 Merge branch 'codex/fix-pr-746' into codex/fix-pr-748
+- PR #748 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-748
 
 ### 优化调整
 - 无
@@ -135,6 +142,8 @@
 - PR #728 城市同名别名在地名短语中不再塌缩成品牌
 - PR #728 收紧城市同名地名续接判据
 - PR #746 履历/定位/回声语境闸——三病灶收敛currentBrand污染
+- PR #748 候选人资料证据化 P0——geocode/定位分享城市确权入档 + 展示出处门
+- PR #748 候选人资料证据化方案修订——§0统一证据模型总纲(三不统一/采信分级/准入矩阵)+§15 badc…
 
 ### 配置变更
 - 无
@@ -155,6 +164,9 @@
 - PR #728 GitHub CI 与 AI Review 正在对最新 develop 基线复核。
 - PR #746 全部生产实证原文入测试用例，含反向保护（"肯德基做兼职可以吗"不标履历、裸品牌名不算回声、"生鲜超市"单独指名仍命中）
 - PR #746 刷新 develop 后的 pre-push 全量 CI：370 suites / 5735 tests（6 skipped）✅，lint --max-warnings=0 ✅，format ✅，typecheck ✅，build:ci ✅
+- PR #748 刷新 develop 后 lint:check / format:check / typecheck / 前后端 build:ci 全部通过
+- PR #748 全量 Jest：370 套件 / 5751 用例通过（6 skipped）
+- PR #748 新增 15 个针对性用例：saveToolAttestedCity 四分支、定位分享注入四场景、reverseGeocode 五场景、onCityResolved 穿线、save_attested_city 时序
 <!-- release:pending:end -->
 
 ## [10.30.0] - 2026-07-27
