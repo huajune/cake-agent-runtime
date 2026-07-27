@@ -57,6 +57,8 @@ import {
   unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
+import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
+import { isAssistantEchoUtterance, isSystemTextReflow } from '@resolution/brand/llm-intent-guards';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
 import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
@@ -703,18 +705,28 @@ export class SessionService {
 
     return {
       llmDegraded,
-      brandIntents: this.validateBrandIntents(rawBrandIntents, brandData),
+      brandIntents: this.validateBrandIntents(
+        rawBrandIntents,
+        brandData,
+        scopedMessages.filter((m) => m.role === 'assistant').map((m) => m.content),
+      ),
     };
   }
 
   /**
    * LLM 极性轨输出验证（§6.3.1）：品牌名必须经品牌库标准化验证，未命中即整条丢弃，
    * 不允许 LLM 创造标准品牌；极性沿用 LLM 判断（指代链接后的品牌名同样过目录验证）。
+   *
+   * 2026-07-27 追加两道确定性输入闸（llm-intent-guards）：系统文本回流与助手话术
+   * 回声整条丢弃——brand 字段被塞进整句时包含匹配仍能过目录验证，但说话人不是候选人
+   * （2026-07-24 chat 6a633590 Agent 找店话术凭空立主品牌塔可贝尔）。
    */
   private validateBrandIntents(
     intents: BrandIntentEntry[],
     brandData: BrandItem[],
+    assistantTexts: string[] = [],
   ): BrandResolution[] {
+    const normalizedAssistantTexts = assistantTexts.map(normalizeForBrandMatch).filter(Boolean);
     const out: BrandResolution[] = [];
     for (const intent of intents) {
       const brand = intent.brand?.trim();
@@ -736,11 +748,27 @@ export class SessionService {
         }
         continue;
       }
+      if (isSystemTextReflow(brand)) {
+        this.logger.warn(`[extractFacts] LLM 品牌意图为系统文本回流，整条丢弃：「${brand}」`);
+        continue;
+      }
       const resolutions = resolveBrands(brand, 'user_text', brandData).filter(
         (r) => !r.ambiguous && r.canonicalName !== null,
       );
       if (resolutions.length === 0) {
         this.logger.debug(`[extractFacts] LLM 品牌意图未过目录验证，整条丢弃：「${brand}」`);
+        continue;
+      }
+      if (
+        isAssistantEchoUtterance({
+          normalizedBrandField: normalizeForBrandMatch(brand),
+          normalizedMatchedTexts: resolutions.map((r) =>
+            normalizeForBrandMatch(r.matchedText ?? ''),
+          ),
+          normalizedAssistantTexts,
+        })
+      ) {
+        this.logger.warn(`[extractFacts] LLM 品牌意图为助手话术回声，整条丢弃：「${brand}」`);
         continue;
       }
       for (const resolution of resolutions) {
