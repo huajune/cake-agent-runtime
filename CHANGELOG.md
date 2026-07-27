@@ -14,7 +14,7 @@
 **预计版本**: `v10.31.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #739 回填 v10.30.0 发布结果
@@ -30,13 +30,64 @@
 - PR #744 有证约岗位对无证候选人补三层拦截
 - PR #744 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744
 - PR #744 以权威岗位策略收口有证约闸门
+- PR #747 repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳
+- PR #747 出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定
+- PR #747 评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案
+- PR #747 §2 补 replan 终态拆解——取数归 generator、写字归 ReplyRepairAg…
+- PR #747 结论定性修正——本方案是架构调整非推翻，补落地风险分级(补环先行/拆解灰度后行)
+- PR #747 §2 终态改为 repair 动手权默认翻转——默认 observe+白名单发牌，replan 退…
+- PR #747 §4.1 补三条数据流读写边界——事前实时/事后T+1/反馈按需，observe档案为两环接口
+- PR #747 L0 出口改本地 md 日报(Fable 会话查看)——用户裁定不做飞书日报，落库表推迟 P3
+- PR #747 §2 补第一性原理(实时反馈环行不通,快环笨慢环聪明)+§2.4 推理链五步摊开
+- PR #747 第一性原理精确化——增量信号三处偷换(存量削减/二手信号非新观测/目标替换)
+- PR #747 §2.5 repair 层解体裁定——三残件(确定性编辑/P0抢救/句级窄修)+准入条件与三偷换一…
+- PR #747 §8 历史注记——原架构本就是纯净形态，本方案是带证据的回归而非新设计
+- PR #747 一致性修订——清除飞书日报/repairStyle残留，P0 标注已上线(daily-badcas…
+- PR #747 撤 repairAction 新枚举提案——改为现有 action 做减法(删REPLAN/obs…
+- PR #747 §8.1 reflection 的 oracle 边界——实现超业界水平,败因是无verifier…
+- PR #747 §8.1 补本域 oracle 库存五类——最强判据(候选人行为)天生T+1迟到，双环=按orac…
+- PR #747 §8.1 补 oracle 术语定义(判据/标准答案,裁判vs评委)
+- PR #747 §2.6 运营'本轮达标'要求路由——客观项inline硬兜/场景定义前置生成侧/判断项日报验收/…
+- PR #747 发牌切换第一批——settlement/image_desc 降 observe，收回 repair 动手权
+- PR #747 发牌切换收尾——job_detail 降 observe + catalog action 缺省即 OB…
+- PR #747 REPLAN 全面退役——brand_mismatch 降 observe(审计3/3假阳)、hando…
+- PR #747 §4.1 流1图注勘误——持牌现状 8 revise+5 block 非'3条'；§2.2 补发牌…
+- PR #747 物理删除 replan 执行路径——三层全封，repair 统一走 ReplyRepairAgent
+- PR #747 口径对齐 v10.30.0 已发版——回归闸二期/settlement修复引用从'PR #731'…
+- PR #747 同步 develop 并收口规则冲突
+- PR #747 `settlement_cycle_mismatch` revise→observe：三期假阳率触发目录治理条款（07-27 命中 2/2 均否定句误判）；v10.30.0 已修语序假阳，observe 期重攒精确率，两周 ≥90% 可复牌
+- PR #747 `image_description_not_saved` replan→observe：纯流程违规，replan 全文重写曾编造考勤扣款政策并投递（trace batch_6a38e61c…）
+- PR #747 `job_detail_lookup_required` replan→observe：命中最大户、三期全部重度已投递伤害宿主；接盘=每日 badcase 日报 L1 投递物vs工具事实矛盾抽查（已同步上线）
+- PR #747 `requested_brand_mismatch` replan→observe：专项审计抽样 3/3 假阳（门店名被当品牌名），历史 7/7 二审通过实为格式空转
+- PR #747 `handoff_promise_without_handoff` replan→revise：P0 假承诺类，rewrite 删完成时态承诺修法唯一，P0 收敛保证修不好即 block
+- PR #747 类型层：`GuardrailRuleAction` 删除 REPLAN；catalog seed `action` 缺省即 OBSERVE；catalog.spec 守"零 replan + 零工具白名单"不变量
+- PR #747 runner：删 generator 重进臂/短路块/工具白名单解析，repair 统一走 ReplyRepairAgent
+- PR #747 guardrail/语义档：删全部 replan 分流与 resolveRepairToolNames；normalizeDecision 无条件 replan→revise + applyConfidenceBackstop 纵深防御（防 mock/实现替换注入被静默吞成 pass）
+- PR #747 四条原 replan 流程测试改写为新契约，保留"P0 假承诺修不净不 fail-open"安全属性
+- PR #747 新增 docs/architecture/guardrail-chain-assessment-and-rebuild.md：全链路分段裁定、第一性原理（实时反馈环三处偷换）、发牌表、双环体系与三条数据流、oracle 边界、历史注记
+- PR #747 repair 动手权默认翻转——发牌切换五规则 + replan 全链路物理退役 + 双环质量体系文档
+- PR #728 城市同名别名在地名短语中不再塌缩成品牌
+- PR #728 收紧城市同名地名续接判据
+- PR #728 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728
 
 ### 新功能
-- 无
+- PR #747 `image_description_not_saved` replan→observe：纯流程违规，replan 全文重写曾编造考勤扣款政策并投递（trace batch_6a38e61c…）
+- PR #747 `job_detail_lookup_required` replan→observe：命中最大户、三期全部重度已投递伤害宿主；接盘=每日 badcase 日报 L1 投递物vs工具事实矛盾抽查（已同步上线）
+- PR #747 `requested_brand_mismatch` replan→observe：专项审计抽样 3/3 假阳（门店名被当品牌名），历史 7/7 二审通过实为格式空转
+- PR #747 `handoff_promise_without_handoff` replan→revise：P0 假承诺类，rewrite 删完成时态承诺修法唯一，P0 收敛保证修不好即 block
+- PR #747 类型层：`GuardrailRuleAction` 删除 REPLAN；catalog seed `action` 缺省即 OBSERVE；catalog.spec 守"零 replan + 零工具白名单"不变量
+- PR #747 runner：删 generator 重进臂/短路块/工具白名单解析，repair 统一走 ReplyRepairAgent
+- PR #747 guardrail/语义档：删全部 replan 分流与 resolveRepairToolNames；normalizeDecision 无条件 replan→revise + applyConfidenceBackstop 纵深防御（防 mock/实现替换注入被静默吞成 pass）
+- PR #747 四条原 replan 流程测试改写为新契约，保留"P0 假承诺修不净不 fail-open"安全属性
+- PR #747 新增 docs/architecture/guardrail-chain-assessment-and-rebuild.md：全链路分段裁定、第一性原理（实时反馈环三处偷换）、发牌表、双环体系与三条数据流、oracle 边界、历史注记
 
 ### 问题修复
 - PR #742 行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件
 - PR #744 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744
+- PR #747 `settlement_cycle_mismatch` revise→observe：三期假阳率触发目录治理条款（07-27 命中 2/2 均否定句误判）；v10.30.0 已修语序假阳，observe 期重攒精确率，两周 ≥90% 可复牌
+- PR #747 结论定性修正——本方案是架构调整非推翻，补落地风险分级(补环先行/拆解灰度后行)
+- PR #747 口径对齐 v10.30.0 已发版——回归闸二期/settlement修复引用从'PR #731'…
+- PR #728 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728
 
 ### 优化调整
 - 无
@@ -52,6 +103,31 @@
 - PR #745 settlement 规则族补形态二——查无岗位时的无证据结算断言
 - PR #744 有证约岗位对无证候选人补三层拦截
 - PR #744 以权威岗位策略收口有证约闸门
+- PR #747 repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳
+- PR #747 出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定
+- PR #747 评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案
+- PR #747 §2 补 replan 终态拆解——取数归 generator、写字归 ReplyRepairAg…
+- PR #747 §2 终态改为 repair 动手权默认翻转——默认 observe+白名单发牌，replan 退…
+- PR #747 §4.1 补三条数据流读写边界——事前实时/事后T+1/反馈按需，observe档案为两环接口
+- PR #747 L0 出口改本地 md 日报(Fable 会话查看)——用户裁定不做飞书日报，落库表推迟 P3
+- PR #747 §2 补第一性原理(实时反馈环行不通,快环笨慢环聪明)+§2.4 推理链五步摊开
+- PR #747 第一性原理精确化——增量信号三处偷换(存量削减/二手信号非新观测/目标替换)
+- PR #747 §2.5 repair 层解体裁定——三残件(确定性编辑/P0抢救/句级窄修)+准入条件与三偷换一…
+- PR #747 §8 历史注记——原架构本就是纯净形态，本方案是带证据的回归而非新设计
+- PR #747 一致性修订——清除飞书日报/repairStyle残留，P0 标注已上线(daily-badcas…
+- PR #747 撤 repairAction 新枚举提案——改为现有 action 做减法(删REPLAN/obs…
+- PR #747 §8.1 reflection 的 oracle 边界——实现超业界水平,败因是无verifier…
+- PR #747 §8.1 补本域 oracle 库存五类——最强判据(候选人行为)天生T+1迟到，双环=按orac…
+- PR #747 §8.1 补 oracle 术语定义(判据/标准答案,裁判vs评委)
+- PR #747 §2.6 运营'本轮达标'要求路由——客观项inline硬兜/场景定义前置生成侧/判断项日报验收/…
+- PR #747 发牌切换第一批——settlement/image_desc 降 observe，收回 repair 动手权
+- PR #747 发牌切换收尾——job_detail 降 observe + catalog action 缺省即 OB…
+- PR #747 REPLAN 全面退役——brand_mismatch 降 observe(审计3/3假阳)、hando…
+- PR #747 §4.1 流1图注勘误——持牌现状 8 revise+5 block 非'3条'；§2.2 补发牌…
+- PR #747 物理删除 replan 执行路径——三层全封，repair 统一走 ReplyRepairAgent
+- PR #747 同步 develop 并收口规则冲突
+- PR #728 城市同名别名在地名短语中不再塌缩成品牌
+- PR #728 收紧城市同名地名续接判据
 
 ### 配置变更
 - 无
@@ -65,6 +141,11 @@
 - PR #744 相关 4 个 spec：212/212 通过。
 - PR #744 本地完整 pre-push：lint、format、typecheck、前后端 build、369 个测试套件 / 5709 个测试全部通过。
 - PR #744 新提交已重新触发 GitHub CI 与 AI Review。
+- PR #747 全量 5656 测试绿（367 suites）；typecheck / lint 干净
+- PR #747 事后环已就位：daily-badcase-scan 日报（每日 09:00）含发牌验收栏目（收牌规则首版直投代价逐日抽查，重度伤害=回滚信号）与 L1 回扫（日期星期校验/悬空承诺核验）
+- PR #728 定向品牌测试通过。
+- PR #728 两次完整 pre-push 均通过 lint、format、typecheck、前后端 build 与全量 Jest；最新基线为 369 个测试套件、5702 个测试通过。
+- PR #728 GitHub CI 与 AI Review 正在对最新 develop 基线复核。
 <!-- release:pending:end -->
 
 ## [10.30.0] - 2026-07-27
