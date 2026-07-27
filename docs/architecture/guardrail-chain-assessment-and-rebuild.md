@@ -124,7 +124,7 @@ repair 的存在前提——"带违规反馈的第二次生成会比第一次好
 2. **发牌表把它的雇主全开除了**：job_detail 收回动手权（observe，不修了）；image_desc 改"补调工具 + 原文照发"（不需要重新生成文本）。**雇主没了，replan 变成没有航班的登机口——不需要拆除航站楼，自然没人走。**"退役"= 代码还在、调用次数归零。
 3. **为什么"不拆"反而对**：原两步拆解（取数归 generator 只跑工具文本丢弃、写字统一归 ReplyRepairAgent）是给 replan 做安全化手术，前提是它还有活干。发牌后其服务对象已被裁定不值得修（三期数据：对这两条规则做任何 inline 修复期望为负）——**给没有调用者的路径做安全化改造是纯浪费**。拆解降级为条件项：仅当未来某规则以生产数据挣到"补取数修复"资格时再做（零件现成：`mergeToolCallsForRevisedResult`、ReplyRepairAgent 的 `toolCalls`+`repairContext` 通道，届时是接线不是新造）；按 §2.1 第一性原理，这一天大概率不来——"补事实"的正确位置在慢环根修。
 4. **job_detail 的违规不是没人管，是换人管**：今天=命中→replan→二审→投修复版（60% 变好但全部重度伤害产自此路）；终态=命中→observe 首版原样投递+证据留档→次日事后环 L1 扫投递物对照工具事实→系统性形态走生成侧根修。代价 ~14 条/天轻违规首版直投，换重度伤害归零——§6 的"L1 接盘检查先上线"硬约束由此而来。
-5. **枚举是退役的保险栓**：`repairAction` 枚举中**故意不存在 'replan' 值**——退役不是"恰好没人用"的偶然状态，而是类型层面硬约束；未来想给新规则配"重新规划回复"，必须先回本文档打这场架。
+5. **枚举是退役的保险栓**：直接从现有 `action` 枚举**删除 REPLAN 值**（`repairMode`/`repairToolNames` 字段随之陪葬）——退役不是"恰好没人用"的偶然状态，而是类型层面硬约束；未来想给新规则配"重新规划回复"，必须先回本文档打这场架。
 
 replan 曾是三期全部已投递伤害的宿主，且提示词约束已证明天花板（周二→周一案发生在 v10.29.0 首版注入 + 双通道保留指令生效**之后**）。拆解与发牌是通往同一终点（LLM 失去整段重写权）的两条路——发牌不用动刀，还顺手回答了更根本的"该不该修"，故拆解从必做降为备用。
 
@@ -148,7 +148,7 @@ replan 曾是三期全部已投递伤害的宿主，且提示词约束已证明�
 仍 block=0→评估连抢救改纯确定性处置（block+留档事后环），届时 repair 归零，链路收敛为
 "确定性防线 + 观测 + 离线修复"纯净形态——不强求，让数据决定。
 
-**待落地**：(a) 规则目录 `repairAction: 'deterministic' | 'preserve_text' | 'rewrite' | 'observe'` 显式声明，**默认 observe**——目录里不存在任何一档叫"重新规划回复"；(b) 发牌切换按规则逐条灰度（先 settlement / image_desc，再 job_detail），每条切换后由事后环日报验收（对应检查项须先于或同步于该规则的切换上线，见 §6）。
+**待落地**：(a) **不新增任何枚举/字段，在现有类型上做减法**（用户裁定：guardrail 类型维度已够多）——`action` 枚举删除 REPLAN 值、observe 从"pass + risk_level=low"暗语转正为一等值并设为**默认**，终态 `action = OBSERVE(默认) | REVISE | BLOCK` 三值；`repairMode`/`repairToolNames` 字段删除。image_desc 的"补调工具+原文照发"不需要目录值：文本不变即 observe，缺失的工具调用作为副作用补执行（finalizer/异步皆可），与 fence_stripped 同类——代码特例，不进目录当概念。净账：类型维度 5→2（action+priority），枚举值 4→3，零新增；(b) 发牌切换按规则逐条灰度（先 settlement / image_desc，再 job_detail），每条切换后由事后环日报验收（对应检查项须先于或同步于该规则的切换上线，见 §6）。
 
 ## 3. 事后检测环：每日全量自动 badcase 扫描（新建）
 
@@ -189,7 +189,7 @@ shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evid
         │  hard-rules → 语义审查 → sanitizer → repair 阶梯 → 回归闸 → 收敛      │
    生成 ─┤                                                                      ├─ 投递
         │                                                                      │
-        └──← 新规则 / 新回归闸形态 / repairAction 发牌调整 ←──────┐              │
+        └──← 新规则 / 新回归闸形态 / action 发牌调整 ←────────────┐              │
                                                                 │              ▼
         ┌────────────── 事后检测（offline，每日，100% 投递物）───┴──────────────┐
         │  L0 shadow 裁决消费 → L1 确定性全量回扫 → L2 LLM 定向抽扫             │
@@ -251,7 +251,7 @@ shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evid
 badcase findings → 归因 → 三路出口：
   ① 生成侧根修：prompt / 记忆 / 工具描述 → 首版质量提升（走正常 PR 发版）
   ② 新检查候选：先进 L1 确定性检查或 shadow 规则 → 精度达标 → 才升硬规则/enforce
-  ③ 发牌调整：两期战绩数据 → 白名单发牌/收牌（改规则目录 repairAction，走 PR）
+  ③ 发牌调整：两期战绩数据 → 白名单发牌/收牌（改规则目录 action 值，走 PR）
 ```
 
 badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），离线环的误判不会自动污染线上
@@ -268,7 +268,7 @@ badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），�
 |---|---|---|---|
 | P0 ✅ 已上线（2026-07-27） | L0：昨日 shadow findings triage + 本地 md 日报（`daily-badcase-scan`，每日 09:00，Fable 会话查看） | 低（一条查询+一个 scheduled task） | 无 |
 | P1 | L1：确定性全量回扫（先上日期星期/悬空承诺/静默丢消息三项） | 中（纯函数+SQL，零 LLM） | 复用 `detectRepairRegression`/硬规则纯函数 |
-| P2 | repair 发牌切换：`repairAction` 显式化（默认 observe）+ 按规则逐条灰度收回（settlement / image_desc → job_detail），replan 随之退役 | 中 | PR #731 合入后；P0/P1 日报作逐条验收 |
+| P2 | repair 发牌切换：`action` 枚举减法（删 REPLAN、observe 转正为默认）+ 按规则逐条灰度收回（settlement / image_desc → job_detail），replan 随之退役 | 中 | PR #731 合入后；P0/P1 日报作逐条验收 |
 | P3 | L2 LLM 抽扫 + 自动策展进 test-suite；"新增政策断言溯源"检测 | 高 | P0/P1 数据校准抽样策略 |
 
 ## 6. 残留风险与观测锚点
