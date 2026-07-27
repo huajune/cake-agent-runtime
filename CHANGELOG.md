@@ -8,6 +8,51 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.31.0`
+**最近更新**: `2026-07-27`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #739 回填 v10.30.0 发布结果
+- PR #739 GitHub Release / tag 已创建
+- PR #739 Build and Deploy #30235700533：test / deploy / notify 全部成功
+- PR #739 `cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次
+- PR #739 公网 `/agent/health`：healthy，Redis / Supabase 正常
+- PR #739 启动后生产消息持续处理；无 ERROR / FATAL
+- PR #739 #738 已完成 `master → develop` 回同步
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #739 GitHub Release / tag 已创建
+- PR #739 Build and Deploy #30235700533：test / deploy / notify 全部成功
+- PR #739 `cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次
+- PR #739 公网 `/agent/health`：healthy，Redis / Supabase 正常
+- PR #739 启动后生产消息持续处理；无 ERROR / FATAL
+- PR #739 #738 已完成 `master → develop` 回同步
+- PR #739 回填 v10.30.0 发布结果
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [10.30.0] - 2026-07-27
 
 **来源分支**: `develop`
