@@ -14,7 +14,7 @@
 **预计版本**: `v10.31.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #739 回填 v10.30.0 发布结果
@@ -24,12 +24,14 @@
 - PR #739 公网 `/agent/health`：healthy，Redis / Supabase 正常
 - PR #739 启动后生产消息持续处理；无 ERROR / FATAL
 - PR #739 #738 已完成 `master → develop` 回同步
+- PR #742 行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件
+- PR #742 行为类 badcase 簇五处修复（区名映射/刚性时段/改期转人工/发薪合规/已拒条件）
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #742 行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件
 
 ### 优化调整
 - 无
@@ -50,7 +52,8 @@
 - 无
 
 ### 验证记录
-- 无
+- PR #742 jest：invite-city-gate.spec + duliday-job-list.tool.spec 94/94 通过；pre-push 全量 ci:check 通过
+- PR #742 真实链路验证批 `1fe43230`（本分支 server 重跑 14 条原失败 case）：8 翻正，逐条评审已落 TEST 库
 <!-- release:pending:end -->
 
 ## [10.30.0] - 2026-07-27

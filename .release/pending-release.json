@@ -43,6 +43,32 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "742",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/742",
+      "title": "行为类 badcase 簇五处修复（区名映射/刚性时段/改期转人工/发薪合规/已拒条件）",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件"
+      ],
+      "summary": [
+        "行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件",
+        "行为类 badcase 簇五处修复（区名映射/刚性时段/改期转人工/发薪合规/已拒条件）"
+      ],
+      "features": [],
+      "fixes": [
+        "行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "jest：invite-city-gate.spec + duliday-job-list.tool.spec 94/94 通过；pre-push 全量 ci:check 通过",
+        "真实链路验证批 `1fe43230`（本分支 server 重跑 14 条原失败 case）：8 翻正，逐条评审已落 TEST 库"
+      ]
     }
   ],
   "lastRelease": {
