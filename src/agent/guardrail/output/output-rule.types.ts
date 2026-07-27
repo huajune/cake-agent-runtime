@@ -23,8 +23,6 @@ export function deriveRulePolicy(action: GuardrailRuleAction): {
       return { currentReplySendable: true, recoverability: 'recoverable', repairMode: 'rewrite' };
     case 'revise':
       return { currentReplySendable: false, recoverability: 'recoverable', repairMode: 'rewrite' };
-    case 'replan':
-      return { currentReplySendable: false, recoverability: 'recoverable', repairMode: 'replan' };
     case 'block':
       return {
         currentReplySendable: false,
@@ -37,21 +35,23 @@ export function deriveRulePolicy(action: GuardrailRuleAction): {
 /**
  * 确定性规则命中后的处理语义（`GuardrailAction` 的输出层子集）。
  *
- * 优先级（严重度递增）：observe < revise < replan < block
- * - observe：发现软性问题，内容仍可发，只记录告警；
- * - revise：内容不可发，LLM 重写文案即可修复；
- * - replan：内容不可发，LLM 需重走工具调用再生成；
+ * 优先级（严重度递增）：observe < revise < block
+ * - observe：发现软性问题，内容仍可发，只记录告警（发牌制缺省档，评估文档 §2.2）；
+ * - revise：内容不可发，LLM 受约束重写被点名句即可修复；
  * - block：内容不可发，高风险且不可 fail-open；runner 仍先尝试一次受控重写，救不活才硬拦。
+ *
+ * 2026-07-27 起 REPLAN 从本联合类型删除（发牌切换收尾，硬规则目录零雇主）：
+ * "重新规划整段回复"不再是任何规则可声明的修复方式——三期审计证明该机制是全部
+ * 已投递伤害的宿主（docs/architecture/guardrail-chain-assessment-and-rebuild.md §2）。
+ * 未来需要"补取事实"式修复的规则，走 §2.4 条件项两步拆解（取数归 generator、
+ * 写字归 ReplyRepairAgent），必须先修订该文档再扩本类型。
  *
  * `recoverability`、`currentReplySendable`、`repairMode` 均由 action 派生，
  * 不再作为 catalog 字段手动维护。
  */
 export type GuardrailRuleAction = Extract<
   GuardrailAction,
-  | typeof GUARDRAIL_ACTION.OBSERVE
-  | typeof GUARDRAIL_ACTION.REVISE
-  | typeof GUARDRAIL_ACTION.REPLAN
-  | typeof GUARDRAIL_ACTION.BLOCK
+  typeof GUARDRAIL_ACTION.OBSERVE | typeof GUARDRAIL_ACTION.REVISE | typeof GUARDRAIL_ACTION.BLOCK
 >;
 
 export interface OutputRulePolicy {

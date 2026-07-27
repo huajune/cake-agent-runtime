@@ -23,7 +23,7 @@ describe('job-detail-grounding.rule', () => {
 
     it('replans when employment is asked without a jobId lookup（"兼职还是全职的"零工具作答）', () => {
       const verdict = detectJobDetailLookupRequired([], singlePresented, '兼职还是全职的');
-      expect(verdict?.action).toBe(GUARDRAIL_ACTION.REPLAN);
+      expect(verdict?.action).toBe(GUARDRAIL_ACTION.OBSERVE);
       expect(verdict?.ruleId).toBe('job_detail_lookup_required');
       expect(verdict?.label).toContain('jobId=528527');
       expect(verdict?.label).toContain('employment');
@@ -31,7 +31,7 @@ describe('job-detail-grounding.rule', () => {
 
     it('replans when settlement is asked without a jobId lookup', () => {
       const verdict = detectJobDetailLookupRequired([], singlePresented, '是周结还是月结呀');
-      expect(verdict?.action).toBe(GUARDRAIL_ACTION.REPLAN);
+      expect(verdict?.action).toBe(GUARDRAIL_ACTION.OBSERVE);
       expect(verdict?.label).toContain('settlement');
     });
 

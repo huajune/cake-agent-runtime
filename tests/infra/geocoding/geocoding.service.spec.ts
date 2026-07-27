@@ -274,6 +274,79 @@ describe('GeocodingService', () => {
     });
   });
 
+  describe('reverseGeocode（定位分享城市证据化 A2）', () => {
+    const mockRegeoResponse = (regeocode: unknown) => ({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ status: '1', regeocode }),
+    });
+
+    it('地级市：返回 city/district/formattedAddress 并写缓存', async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(
+        mockRegeoResponse({
+          formatted_address: '辽宁省沈阳市浑南区奥体中心',
+          addressComponent: { province: '辽宁省', city: '沈阳市', district: '浑南区' },
+        }),
+      ) as never;
+
+      const result = await service.reverseGeocode(123.453476, 41.742458);
+
+      expect(result).toEqual({
+        province: '辽宁省',
+        city: '沈阳市',
+        district: '浑南区',
+        formattedAddress: '辽宁省沈阳市浑南区奥体中心',
+      });
+      expect(mockRedisService.setex).toHaveBeenCalled();
+    });
+
+    it('直辖市 city 为空数组 → 用 province 兜底', async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(
+        mockRegeoResponse({
+          formatted_address: '上海市浦东新区曹路镇黎明村98号楼',
+          addressComponent: { province: '上海市', city: [], district: '浦东新区' },
+        }),
+      ) as never;
+
+      const result = await service.reverseGeocode(121.695882, 31.269528);
+
+      expect(result?.city).toBe('上海市');
+    });
+
+    it('缓存命中不发请求', async () => {
+      const cached = {
+        province: '上海市',
+        city: '上海市',
+        district: '浦东新区',
+        formattedAddress: '上海市浦东新区',
+      };
+      mockRedisService.get.mockResolvedValue(cached);
+      global.fetch = jest.fn() as never;
+
+      const result = await service.reverseGeocode(121.695882, 31.269528);
+
+      expect(result).toEqual(cached);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('HTTP 失败 / status!=1 → null 不抛错', async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 }) as never;
+      expect(await service.reverseGeocode(121.6, 31.2)).toBeNull();
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ status: '0' }),
+      }) as never;
+      expect(await service.reverseGeocode(121.6, 31.2)).toBeNull();
+    });
+
+    it('非法坐标 → 直接 null', async () => {
+      expect(await service.reverseGeocode(Number.NaN, 31.2)).toBeNull();
+    });
+  });
+
   describe('searchCandidates', () => {
     const makePoi = (overrides: Record<string, unknown> = {}) => ({
       name: '默认 POI',

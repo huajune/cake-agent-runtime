@@ -198,8 +198,12 @@ export class SemanticReviewerService {
     decision: SemanticReviewVerdict['decision'],
     findings: SemanticReviewVerdict['findings'],
   ): SemanticReviewVerdict['decision'] {
+    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4），语义档
+    // 裁决无条件归一为 revise——schema 仍容忍模型输出 'replan'（避免结构化输出
+    // 重试），但它永远不会传出本方法，runner 的 replan 执行路径已删除。
     const allowed = new Set(findings.map((finding) => finding.repairMode));
-    if ((decision === 'replan' || decision === 'block') && !allowed.has('replan')) return 'revise';
+    if (decision === 'replan') return 'revise';
+    if (decision === 'block' && !allowed.has('replan')) return 'revise';
     return decision;
   }
 }

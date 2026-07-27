@@ -712,6 +712,35 @@ describe('geocode tool', () => {
       });
     });
 
+    it('unique 解析 → 触发 onCityResolved 城市确权回调（证据化 A1）', async () => {
+      const onCityResolved = jest.fn();
+      const ctx: ToolBuildContext = { ...makeContext(), onCityResolved };
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({
+          formattedAddress: '辽宁省沈阳市浑南区奥体中心(公交站)',
+          province: '辽宁省',
+          city: '沈阳市',
+          district: '浑南区',
+          township: '',
+          poiName: '奥体中心',
+        }),
+      ]);
+
+      await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '奥体中心地铁口',
+        city: '沈阳',
+      });
+
+      expect(onCityResolved).toHaveBeenCalledTimes(1);
+      expect(onCityResolved.mock.calls[0][0]).toMatchObject({
+        city: '沈阳市',
+        district: '浑南区',
+        source: 'geocode_unique',
+      });
+      expect(onCityResolved.mock.calls[0][0].evidence).toContain('geocode 唯一解析');
+    });
+
     it('POI 级 unique 解析 → 记录 areaLevelQuery=false', async () => {
       const ctx = makeContext();
       const instance = buildGeocodeTool(mockGeocodingService)(ctx);

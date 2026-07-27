@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { FailureReasonItem } from '@sponge/sponge.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
+import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
@@ -127,6 +128,19 @@ export function buildCancelWorkOrderTool(
         interviewTime,
       }) => {
         const chatId = context.chatId ?? context.sessionId;
+
+        // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
+        // 假身份工单（与 booking 同源防线，2026-07-27 误建工单事故后固化）。
+        if (context.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,
+            outcome: '测试链路拦截：手机号不在测试白名单，未执行真实取消',
+            replyInstruction:
+              '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝执行、未触达真实工单。' +
+              '不得谎称已取消；请如实说明未执行。测试用例应使用统一假身份（兮兮/18271421690）。',
+            details: { phone: maskPhoneForDetails(phone), workOrderId },
+          });
+        }
 
         if (!Number.isInteger(workOrderId) || workOrderId <= 0) {
           return buildToolError({

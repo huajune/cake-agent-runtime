@@ -50,11 +50,18 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   repairToolNames: readonly string[];
 }
 
-type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy> &
-  Partial<OutputRulePolicy>;
+type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy | 'action'> &
+  Partial<OutputRulePolicy> & {
+    /**
+     * 2026-07-27 发牌制（评估文档 §2.2）：缺省 observe——新规则默认只观测不动手，
+     * repair 动手权（revise/replan/block）须以生产战绩显式申领后填写。
+     */
+    action?: GuardrailRuleAction;
+  };
 
 function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCatalogMetadata {
-  const derived = deriveRulePolicy(rule.action);
+  const action = rule.action ?? GUARDRAIL_ACTION.OBSERVE;
+  const derived = deriveRulePolicy(action);
   const feedbackPolicy =
     rule.feedbackPolicy ??
     (derived.currentReplySendable
@@ -72,6 +79,7 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
         : `上一版回复命中 ${rule.id}，当前文本不可发送。只修改造成违规的部分：删除未接地承诺、内部实现或不合规表达；未涉及违规的内容（岗位信息、表单字段、时间选项等）原样保留，只输出候选人可见回复。`),
     repairToolNames: rule.repairToolNames ?? [],
     ...rule,
+    action,
   };
 }
 
@@ -224,7 +232,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'handoff_promise_without_handoff',
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌收尾：replan → revise。rewrite 修法唯一（删完成时态承诺、只陈述
+    // 已确认事实），P0 收敛兜底 rewrite 失败即 block；补执行 request_handoff 的
+    // 保文补参式修复为条件项（评估文档 §2.4）。至此硬规则目录 REPLAN 零雇主。
+    action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
       '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功 request_handoff。',
@@ -235,8 +246,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '不含同事、负责人、店长、门店、招聘经理、转人工等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的 request_handoff，当前文本不可发送。若确实需要人工跟进，必须调用 request_handoff 并写清待确认事项；若不需要人工跟进，就删除“同事会确认/稍后联系”等承诺，只陈述当前已确认的事实。',
-    repairToolNames: ['request_handoff'],
+      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的 request_handoff，当前文本不可发送。请删除“同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。',
+    // 2026-07-27 降 revise 后白名单摘除（原 ['request_handoff']；rewrite 无工具，
+    // 补执行 handoff 的修复形态见评估文档 §2.4 条件项）。
   },
   {
     id: 'repeated_reply_verbatim',
@@ -277,7 +289,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_detail_lookup_required',
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌切换：replan → observe（评估文档 §2.2/§2.4）。三期审计全部重度
+    // 已投递伤害的宿主（事实反转 6a59dcad/周二改周一 6a630be4/内容坍缩 6a62d97b），
+    // 提示层防护均证明被击穿。observe 后首版直投，接盘方=每日 badcase 日报 4.5 栏目
+    // 的 L1 投递文本 vs 工具事实矛盾抽查（同步上线，满足 §6）。
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       '候选人追问已展示岗位详情时，强制明确当前岗位并按 jobId 补查动态或缺失字段后再回答。',
@@ -291,10 +307,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '候选人正在追问已展示岗位详情，但当前岗位不明确、精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；当前焦点岗位明确时使用其 jobId 调用 duliday_job_list，只按本轮结果回答；当前焦点岗位不明确时先确认候选人问的是哪家门店/岗位。若本轮查询无结果，只能说明本次未查到，不得断言该区域没有岗位，不得删除上一版已向候选人展示过的岗位信息。',
-    // geocode 与 duliday_job_list 同予（对齐 unsupported_store_status_speculation）：
-    // 2026-07-24 审计 P0-2，白名单缺地理召回时 replan 无法复现首版的距离召回，
-    // "本轮查不到"被翻译成"附近没有岗位"（trace batch_6a606ac5…，事实反转已投递）。
-    repairToolNames: ['geocode', 'duliday_job_list'],
+    // 2026-07-27 降 observe 后不再进 replan，工具白名单摘除（原 ['geocode',
+    // 'duliday_job_list']，2026-07-24 审计 P0-2 补齐地理召回的历史见 git）。feedback
+    // 保留，供未来重新申请动手权时复用。
   },
   {
     id: 'unsupported_schedule_window_claim',
@@ -311,7 +326,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'settlement_cycle_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
+    // 2026-07-27 发牌切换第一批：revise → observe。三期审计假阳触发本目录"精确率 <70%
+    // 应自动降 observe"治理条款；同 PR 已修否定语序假阳，observe 期重新累计精确率，
+    // 连续两周 ≥90% 可重新申请 revise（评估文档 §2.2 发牌表）。
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       '本轮岗位工具已返回结算口径时，拦住把正式工资日结与培训/阶梯月补混成整份工资月结。',
@@ -319,7 +337,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal:
       '本轮 duliday_job_list 返回的正式/培训薪资方案 salaryPeriod，以及回复中的结算断言。',
     residualRisk:
-      '非标准结算别名需要随生产样本扩充；无本轮工具结果时交由补查规则处理。' +
+      '非标准结算别名需要随生产样本扩充；本轮工具全查无时由 settlement_no_evidence_assertion 兜接。' +
       '2026-07-21 起句子已把周期限定在阶梯/差价/培训范围内即豁免（不再要求岗位数据也编码了对应补充方案），' +
       '代价是"阶梯差价日结"这类补充项本身说错的场景不再拦截，交语义审查。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
@@ -327,6 +345,25 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版把某一项的结算周期说成了整份工资的结算周期。请严格按本轮岗位数据重写：先说清正式工资的结算周期，' +
       '再在同一句里点明阶梯差价/培训费用等补充项各自的结算方式（例如「基础工资日结，超 100 小时的阶梯差价月结」）；' +
       '候选人没问到的补充项不要主动展开，不要用综合月薪单位推断结算周期。',
+  },
+  {
+    id: 'settlement_no_evidence_assertion',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '本轮岗位查询全部失败/查无且会话无出处时，拦住凭通识断言日结/周结/月结的结算编造。',
+    riskGoal:
+      '结算方式直接影响候选人决策；查无岗位时的结算断言必然是通识/他品牌规则填空（2026-07-27 复测双证：查无仍称"都是月结"/"日结当天发"）。',
+    exogenousSignal:
+      '本轮 duliday_job_list 全部 error/查无（无 markdown 与 rawData）+ 助手侧历史无该结算词 + 回复中的结算断言。',
+    residualRisk:
+      '往轮助手卡片含该结算词即豁免（旧数据可能已过期，交语义审查）；候选人提问中的结算词不构成出处；' +
+      '断言判定与 settlement_cycle_mismatch 共用否定/愿望/前瞻词表，新形态假阳随生产样本迭代。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版在本轮岗位查询全部失败/查无的情况下断言了结算周期，该结论没有任何工具出处，当前文本不可发送。' +
+      '请重写：如实说明目前暂时没查到匹配的在招岗位、结算等细节需以查到的岗位数据为准；' +
+      '禁止用"一般都是/通常"类通识或其他品牌的结算规则填空，也不要沿用已查不到岗位的历史结算信息。',
   },
   {
     id: 'unsupported_store_status_speculation',
@@ -345,16 +382,24 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'requested_brand_mismatch',
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌专项审计：replan → observe。生产抽样 3/3 假阳（门店名被
+    // extractStructuredJobTitleBrands 当品牌名，"江南赋店/置汇旭辉店/枫蓝国际"），
+    // 历史 7/7 二审通过实为 replan 重新生成"品牌（门店）"格式骗过解析器的空转。
+    // 触发目录治理条款"精确率 <70% 自动降 observe"。检测保留观察真跨品牌串台；
+    // 门店名误判修复 + 两周精确率 ≥90% 后可重新申请（届时按评估文档 §2.4 条件项
+    // 实现"两步拆解"取数修复，不回 replan）。至此 REPLAN 在硬规则目录零雇主。
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住候选人/工具入参已指定品牌，但回复结构化推荐了其它品牌的岗位。',
     riskGoal: '候选人指定品牌时不得跨品牌推荐，除非先说明未找到并征得候选人接受替代。',
     exogenousSignal: 'duliday_job_list.args.brandAliasList 与回复结构化推荐品牌。',
-    residualRisk: '候选人已明确接受替代品牌的跨轮上下文暂未纳入。',
+    residualRisk:
+      '候选人已明确接受替代品牌的跨轮上下文暂未纳入。' +
+      '2026-07-27 降 observe：消费者=每日 badcase 日报 4.5 发牌验收；退场条件=门店名误判修复且两周精确率 ≥90% 重新申请，长期纯假阳则删除。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '上一版回复推荐的岗位品牌与候选人指定品牌不一致，当前文本不可发送。请重新规划：优先用候选人指定品牌重新查岗；若确实没有该品牌岗位，只能先说明未找到该品牌，并询问是否接受其它品牌，不要直接跨品牌推荐。',
-    repairToolNames: ['geocode', 'duliday_job_list'],
+    // 2026-07-27 降 observe 后白名单摘除（原 ['geocode','duliday_job_list']）。
   },
   {
     id: 'brand_alias_fuzzy_match_ignored',
@@ -370,7 +415,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'image_description_not_saved',
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌切换第一批：replan → observe。纯流程违规（缺工具调用，文本无错），
+    // replan 全文重写曾引入编造并投递（trace batch_6a38e61c…编造考勤扣款政策）。终态
+    // "补调工具+原文照发"副作用补执行未实现前先 observe，命中由每日 badcase 日报追踪
+    // （评估文档 §2.2/§2.4）。
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住当前轮有图片/表情消息，但回复基于图片内容判断时没有成功保存图片描述的情况。',
     riskGoal: '视觉内容必须先结构化保存，避免图片识别事实无法进入后续记忆和报名链路。',
@@ -384,7 +433,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       // trace batch_6a38e61c…：replan 放开重写后把首版谨慎的"建议问店长"改成编造的
       // "考勤系统半小时内晚退不扣款"政策并实际投递。补调工具后必须回到原文。
       '保存完成后，上一版文本内容本身没有违规，请以上一版原文为基础尽量逐字保留输出，不要重新组织内容、不要新增任何原文没有的结论或政策性断言。',
-    repairToolNames: ['save_image_description'],
+    // 2026-07-27 降 observe 后不再进 replan，工具白名单随之摘除；上方 feedback 保留，
+    // 供未来实现"补调工具+原文照发"或重新申请动手权时复用。
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 

@@ -12,6 +12,7 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
+import { NATIONAL_CITY_BARE_NAMES } from '@resolution/geo';
 import { normalizeForBrandMatch } from './brand-normalize';
 import {
   buildResolvedCategories,
@@ -32,6 +33,10 @@ export const BRAND_GENERIC_ALIAS_BLOCKLIST = new Set([
   // 招聘域高频渠道缩写：候选人说"BS上加的"指 Boss直聘，非 BAKER&SPICE
   // （2026-07-21 生产审计实锤）。降级为仅全等，单独打 "BS" 仍可命中。
   'bs',
+  // 业态泛词直接是品牌标准名（brandId 10338）：候选人描述工作履历"生鲜超市做过理货
+  // 和补货"经句中包含误判成意向品牌（2026-07-24 生产审计，顶掉在位的奥乐齐）。
+  // 降级为仅全等——候选人单独打"生鲜超市"指名该品牌时仍可命中。
+  '生鲜超市',
 ]);
 
 /**
@@ -72,6 +77,29 @@ export function isNonEmployerBrand(brand: BrandItem): boolean {
 export const MIN_ALIAS_NORMALIZED_LENGTH = 2;
 
 /**
+ * 与全国地级市/县级市同名的别名（归一化词形，≥3 字）。
+ *
+ * "鄂尔多斯"（品牌"鄂尔多斯1980"的别名）与内蒙古地级市完全同形——候选人说
+ * "鄂尔多斯东胜"（鄂尔多斯市东胜区）是在报所在地，别名的无边界子串包含会把它塌缩成
+ * 服装品牌，顶掉上一轮真实说过的品牌（2026-07-23 生产实例 chat 6a617720）。
+ * 命中该集合的别名在"地名延续"语境（后紧跟同城已知区县）下按地名拒绝，见
+ * brand-matcher.isCityHomographGeographicMatch。
+ *
+ * 只收 ≥3 归一化字：2 字城市名（大理/三亚/东方）撞餐饮品牌别名的概率高，保守排除；
+ * 门槛与 isBrandContainEligible 的中文包含门槛（≥3）一致。
+ */
+export const CITY_HOMOGRAPH_ALIAS_NORMALIZED: ReadonlySet<string> = new Set(
+  Array.from(NATIONAL_CITY_BARE_NAMES)
+    .map((name) => normalizeForBrandMatch(name))
+    .filter((normalized) => normalized.length >= 3),
+);
+
+/** 别名归一化词形是否与全国城市同名（≥3 字），需按地名语境收紧匹配。 */
+export function isCityHomographAlias(normalized: string): boolean {
+  return CITY_HOMOGRAPH_ALIAS_NORMALIZED.has(normalized);
+}
+
+/**
  * 别称是否长到可以安全地做子串包含匹配（中文 ≥3 字、英文 ≥4 字，黑名单除外）。
  * 纯数字别名一律不做无边界子串包含——"10200" 这类 ID 型别名嵌在手机号/时间串里
  * 必然巧合命中，数字别名只允许全等 token 或带边界的短词包含。
@@ -107,6 +135,8 @@ export interface BrandCatalogCandidate {
   containEligible: boolean;
   /** 是否允许短英数别名的 token 边界包含匹配。 */
   shortLatinBoundaryEligible: boolean;
+  /** 该别名是否与全国城市同名（"鄂尔多斯"）——地名延续语境按地名拒绝。 */
+  cityHomograph: boolean;
 }
 
 export interface BrandCatalogIndex {
@@ -148,6 +178,7 @@ export function buildBrandCatalogIndex(brandData: BrandItem[]): BrandCatalogInde
           isCanonical,
           containEligible: isBrandContainEligible(normalized),
           shortLatinBoundaryEligible: isShortLatinBoundaryEligible(normalized),
+          cityHomograph: isCityHomographAlias(normalized),
         };
       }),
     )

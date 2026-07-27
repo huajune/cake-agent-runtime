@@ -1,5 +1,6 @@
 import {
   detectGlobalBrandControls,
+  isBrandSpanHistoryContext,
   isBrandSpanNegated,
   splitClauses,
   stripPolarityControlWords,
@@ -30,5 +31,33 @@ describe('polarity-rules', () => {
       '麦当劳可以',
       'M Stand也行',
     ]);
+  });
+});
+
+describe('isBrandSpanHistoryContext（2026-07-27 履历语境，三例生产实证）', () => {
+  it('后置时长体："优衣库的话有做三个月左右"', () => {
+    expect(isBrandSpanHistoryContext('优衣库的话有做三个月左右', 0, 3)).toBe(true);
+  });
+
+  it('前置"刚从" + 后置离职体："刚从盒马鲜生做分拣离职"', () => {
+    // 盒马鲜生 span 起点 2、长度 4，前窗"刚从"与后窗"做分拣离职"任一命中即可
+    expect(isBrandSpanHistoryContext('刚从盒马鲜生做分拣离职捂脸', 2, 4)).toBe(true);
+  });
+
+  it('后置完成体："生鲜超市做过理货和补货"', () => {
+    expect(isBrandSpanHistoryContext('生鲜超市做过理货和补货', 0, 4)).toBe(true);
+  });
+
+  it('前置"之前在"："之前在肯德基上过班"', () => {
+    expect(isBrandSpanHistoryContext('之前在肯德基上过班', 3, 3)).toBe(true);
+  });
+
+  it('求职表达不误伤："肯德基做兼职可以吗" / "想去必胜客上班"', () => {
+    expect(isBrandSpanHistoryContext('肯德基做兼职可以吗', 0, 3)).toBe(false);
+    expect(isBrandSpanHistoryContext('想去必胜客上班', 2, 3)).toBe(false);
+  });
+
+  it('无关的"从"不误伤："从苏州过来想找肯德基"', () => {
+    expect(isBrandSpanHistoryContext('从苏州过来想找肯德基', 7, 3)).toBe(false);
   });
 });
