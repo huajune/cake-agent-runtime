@@ -75,6 +75,8 @@ repair 的存在前提——"带违规反馈的第二次生成会比第一次好
 
 白名单准入标准（也是退出标准）：**违规句可精确定位 + 修法唯一 + rewrite 窄改**；连续两期变好率 <70% 或出现任一已投递退步即收回。仓库先例：2026-07-21 已把 job_detail"焦点不明确"分支降 observe（理由相同——repair 轮内入参不变必然复燃），本方案是把该局部决定升格为 repair 层的默认策略。
 
+> **发牌表边界（诚实声明）**：上表只覆盖三期审计窗口内有命中的规则。切换后目录全景 = 6 observe + 8 revise + 5 block（P0 红线）。revise 档另有 5 条未经本轮复审（human_service_phrase_leak 7-21 凭 5/5 真阳升档、repeated_reply_verbatim、identity_misregistration_coaching、summer_worker_alternative_upsell、brand_alias_fuzzy_match_ignored）——牌是各自 badcase 战绩挣的，按同一生命周期由每日日报累计精确率，下期守卫审计逐条复审；其中 summer_worker 07-24 二审 0% 通过，是最先该复审的一条。
+
 **代价与接盘方**：job_detail 收回后 ~14 条/天真违规首版直接投递（多为"未现查即答详情"级轻问题），由事后环当天 L1 回扫抓矛盾、次日归因修生成侧的根。定位从此明确：**repair 不是质量提升机制（数据证明干不了），只是 P0 抢救 + 少数已证明的窄修；质量在源头复利，不在出口缝补。**
 
 ### 2.3 白名单内规则的动作阶梯
@@ -231,10 +233,12 @@ shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evid
  → generator 首版草稿
  → hard-rules 检测（10 条，全量回合）
      ├─ 无命中 ─────────────────────────────→ sanitizer → 投递
-     ├─ 命中·白名单规则（store_status 等 3 条）
-     │    → 动作阶梯修复 → 回归闸 + 二审 → 收敛 ─→ sanitizer → 投递
-     └─ 命中·非白名单规则（job_detail 等）
-          → observe：首版原样放行 ──────────────→ sanitizer → 投递
+     ├─ 命中·持牌规则（revise 8 条 + block 5 条，2026-07-27 切换后现状）
+     │    → 动作阶梯修复（确定性剥离/受约束 rewrite，replan 已不存在）
+     │      → 回归闸 + 二审 → 收敛（过→投修复版；P1/P2 败→投首版；P0 败→block）
+     │      ─→ sanitizer → 投递
+     └─ 命中·无牌规则（observe 6 条：job_detail/settlement/image_desc/brand_mismatch 等）
+          → observe：首版原样放行 + 留档给事后环 ─→ sanitizer → 投递
  语义审查 shadow（门控，~33% 带证据回合）→ 只写档案，不动文本
 
  写入：guardrail_review_records   ← 命中/observe 证据、修复轨迹、semantic_reviews
