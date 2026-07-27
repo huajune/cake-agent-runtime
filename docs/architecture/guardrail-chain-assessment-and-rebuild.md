@@ -125,7 +125,7 @@ repair 的存在前提——"带违规反馈的第二次生成会比第一次好
 推理链摊开（避免"怎么突然不用拆了"的误读）：
 
 1. **replan 不是独立系统，是被规则"雇佣"的**：链路里没有自主运行的 replan 模块，每条规则登记时声明命中后走哪条修复路径。目录内雇主实为**四个**（两次勘误的教训：雇主清单必须 grep 目录，不能拿命中窗口反推）：`job_detail_lookup_required`、`image_description_not_saved`、`requested_brand_mismatch`、`handoff_promise_without_handoff`。
-2. **07-27 发牌切换把四个雇主全部裁定完毕**：job_detail / image_desc / brand_mismatch 收回动手权降 observe（brand_mismatch 经专项抽样 3/3 假阳——门店名被当品牌名，历史 7/7 二审通过实为 replan 重新生成"品牌（门店）"格式骗过解析器的空转）；handoff_promise 降 **revise**（P0 假承诺类，rewrite 修法唯一=删完成时态承诺，P0 收敛保证修不好即 block）。**REPLAN 已从 `GuardrailRuleAction` 联合类型删除（类型层保险栓落地）**，目录不变量测试守住零雇主状态；runner 的 replan 执行分支成为不可达死码，随后续清理移除。
+2. **07-27 发牌切换把四个雇主全部裁定完毕**：job_detail / image_desc / brand_mismatch 收回动手权降 observe（brand_mismatch 经专项抽样 3/3 假阳——门店名被当品牌名，历史 7/7 二审通过实为 replan 重新生成"品牌（门店）"格式骗过解析器的空转）；handoff_promise 降 **revise**（P0 假承诺类，rewrite 修法唯一=删完成时态承诺，P0 收敛保证修不好即 block）。**REPLAN 已从 `GuardrailRuleAction` 联合类型删除（类型层保险栓落地）**，目录不变量测试守住零雇主状态；**replan 执行路径已同日物理删除，无死码遗留**——三层全封：runner（重进 generator 臂/短路块/工具白名单解析删除，repair 统一走 ReplyRepairAgent）、guardrail 分流（mergeRuleDecision/mergeByPriority/repairMode 映射均无 replan 档，resolveRepairToolNames 删除）、语义档（normalizeDecision 无条件把 'replan' 归一为 revise + applyConfidenceBackstop 纵深防御，防 mock/实现替换注入）。
 3. **为什么"不拆"反而对**：原两步拆解（取数归 generator 只跑工具文本丢弃、写字统一归 ReplyRepairAgent）是给 replan 做安全化手术，前提是它还有活干。发牌后其服务对象已被裁定不值得修（三期数据：对这两条规则做任何 inline 修复期望为负）——**给没有调用者的路径做安全化改造是纯浪费**。拆解降级为条件项：仅当未来某规则以生产数据挣到"补取数修复"资格时再做（零件现成：`mergeToolCallsForRevisedResult`、ReplyRepairAgent 的 `toolCalls`+`repairContext` 通道，届时是接线不是新造）；按 §2.1 第一性原理，这一天大概率不来——"补事实"的正确位置在慢环根修。
 4. **job_detail 的违规不是没人管，是换人管**：今天=命中→replan→二审→投修复版（60% 变好但全部重度伤害产自此路）；终态=命中→observe 首版原样投递+证据留档→次日事后环 L1 扫投递物对照工具事实→系统性形态走生成侧根修。代价 ~14 条/天轻违规首版直投，换重度伤害归零——§6 的"L1 接盘检查先上线"硬约束由此而来。
 5. **枚举是退役的保险栓**：直接从现有 `action` 枚举**删除 REPLAN 值**（`repairMode`/`repairToolNames` 字段随之陪葬）——退役不是"恰好没人用"的偶然状态，而是类型层面硬约束；未来想给新规则配"重新规划回复"，必须先回本文档打这场架。
@@ -294,7 +294,7 @@ badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），�
 |---|---|---|---|
 | P0 ✅ 已上线（2026-07-27） | L0：昨日 shadow findings triage + 本地 md 日报（`daily-badcase-scan`，每日 09:00，Fable 会话查看） | 低（一条查询+一个 scheduled task） | 无 |
 | P1 | L1：确定性全量回扫（先上日期星期/悬空承诺/静默丢消息三项） | 中（纯函数+SQL，零 LLM） | 复用 `detectRepairRegression`/硬规则纯函数 |
-| P2 ✅ 发牌切换全部完成（2026-07-27 本 PR） | 四个 replan 雇主全部裁定：settlement / image_desc / job_detail / **brand_mismatch（专项审计 3/3 假阳）** 降 observe，**handoff_promise 降 revise**（P0 假承诺，rewrite 修法唯一）；catalog seed `action` 缺省即 OBSERVE；**REPLAN 已从 `GuardrailRuleAction` 删除**（类型保险栓 + 目录零雇主不变量测试）；日报 4.5 发牌验收 + 4.6 L1 回扫同步上线。全量 5656 测试绿。余项：runner replan 死码清理（不可达，纯清洁）、"补调工具+原文照发"条件项（按 §2.4 触发） | 中 | 日报 4.5/4.6 逐日验收，重度伤害=回滚信号 |
+| P2 ✅ 发牌切换全部完成（2026-07-27 本 PR） | 四个 replan 雇主全部裁定：settlement / image_desc / job_detail / **brand_mismatch（专项审计 3/3 假阳）** 降 observe，**handoff_promise 降 revise**（P0 假承诺，rewrite 修法唯一）；catalog seed `action` 缺省即 OBSERVE；**REPLAN 已从 `GuardrailRuleAction` 删除**（类型保险栓 + 目录零雇主不变量测试）；**replan 执行路径已全部物理删除**——runner 的 generator 重进臂/短路块/工具白名单解析、guardrail 的 replan 分流与 resolveRepairToolNames、语义档裁决无条件归一 revise + applyConfidenceBackstop 纵深防御，四条原 replan 流程测试改写为"遗留 replan 裁决统一走 ReplyRepairAgent"新契约；日报 4.5 发牌验收 + 4.6 L1 回扫同步上线。全量 5656 测试绿。余项仅"补调工具+原文照发"条件项（按 §2.4 触发） | 中 | 日报 4.5/4.6 逐日验收，重度伤害=回滚信号 |
 | P3 | L2 LLM 抽扫 + 自动策展进 test-suite；"新增政策断言溯源"检测 | 高 | P0/P1 数据校准抽样策略 |
 
 ## 6. 残留风险与观测锚点

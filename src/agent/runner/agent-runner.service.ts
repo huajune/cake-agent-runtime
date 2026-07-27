@@ -193,9 +193,12 @@ export class AgentRunnerService {
    *
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
    * - decision='revise'：丢弃首版，交给独立 ReplyRepairAgent 按 violations + 已知事实做文本修复；
-   * - decision='replan'：丢弃首版，按命中规则生成精确工具 allowlist 后重新规划；
-   *   再审一次；二次仍 revise/replan 则按 §9「repair 死循环硬上限 1」收敛为 block。
+   *   再审一次；二次仍不过按 §9「repair 死循环硬上限 1」分级收敛。
    * - decision='block'：先进入一次受控修复；二审仍不通过才不投递。
+   *
+   * （2026-07-27 发牌切换收尾：replan 修复模式已整体退役——GuardrailRuleAction 已删
+   *   REPLAN、语义档裁决在 normalizeDecision 归一为 revise，本方法不再存在重进
+   *   generator 的修复路径；历史语义见评估文档 §2.4。）
    *
    * turn-end 语义：内部两次生成都强制 `deferTurnEnd`，确保被丢弃的首版不写记忆；最终采纳版的
    * `runTurnEnd` 按调用方意图处理——调用方原本要自动收尾（未显式 defer）时，pass 即 fire-and-forget
@@ -272,88 +275,34 @@ export class AgentRunnerService {
     // 剥离产物仍走下方二审，二审才是放行依据。
     const fenceStrippedText = this.tryStripFenceOnlyLeak(decision, firstText);
 
-    // repair（hard cap 1）：rewrite 模式走独立 ReplyRepairAgent；replan 复用 Agent generator，
-    // 但只暴露命中规则明确登记的最小工具集合。
+    // repair（hard cap 1）：统一走独立 ReplyRepairAgent 受约束重写——replan（重进
+    // generator 重取数+重写全文）已于 2026-07-27 发牌切换整体退役（评估文档 §2.4），
+    // 全链路只剩一个能改候选人可见文本的写手。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}` +
         (fenceStrippedText !== null ? '，fence-only 命中走确定性剥围栏，跳过 LLM 重写' : ''),
     );
-    const repairAllowedToolNames = this.resolveRepairAllowedToolNames(decision, params);
     const revised =
       fenceStrippedText !== null
         ? this.buildRepairedResult(first, fenceStrippedText)
-        : decision.repairMode === 'rewrite'
-          ? this.buildRepairedResult(
-              first,
-              await this.replyRepairAgent.repair({
-                userMessage: ctx.userMessage,
-                originalReply: firstText,
-                violations: decision.violations,
-                feedbackToGenerator: decision.feedbackToGenerator,
-                ruleIds: decision.ruleIds,
-                toolCalls: first.toolCalls ?? [],
-                redLines: ctx.redLines,
-                committedSideEffects: committed || undefined,
-                repairContext: await this.buildReplyRepairContext(ctx),
-              }),
-            )
-          : await this.generator.invoke({
-              ...params,
-              deferTurnEnd: true,
-              toolMode: params.toolMode === 'none' ? 'none' : 'scenario',
-              allowedToolNames: repairAllowedToolNames,
-              reviseFeedback: decision.violations,
+        : this.buildRepairedResult(
+            first,
+            await this.replyRepairAgent.repair({
+              userMessage: ctx.userMessage,
+              originalReply: firstText,
+              violations: decision.violations,
+              feedbackToGenerator: decision.feedbackToGenerator,
+              ruleIds: decision.ruleIds,
+              toolCalls: first.toolCalls ?? [],
+              redLines: ctx.redLines,
               committedSideEffects: committed || undefined,
-              // 2026-07-24 审计 P0-1：replan 此前看不到首版草稿，重写指令却要求
-              // "保留上一版中符合事实、未违规的内容"，导致丢内容甚至结论反转
-              // （trace batch_6a606ac5…：4 个岗位详情被改写成"附近没查到在招岗位"）。
-              // 注入首版原文让 replan 在其基础上做定向修复，而非从零重写。
-              guardrailRepair: {
-                originalReply: firstText,
-                ruleIds: decision.ruleIds,
-                feedbackToGenerator: decision.feedbackToGenerator,
-              },
-            });
+              repairContext: await this.buildReplyRepairContext(ctx),
+            }),
+          );
 
     const revisedText = OutboundReplySanitizer.stripTimeMarkers((revised.text ?? '').trim());
-    // replan 可能以短路副作用结束而不产生文本（例如本规则只开放 request_handoff，
-    // 工具成功派发后 generator 按协议立即结束）。此时外部动作已经真实发生，不能把
-    // 空文本当成 repair 失败；合并首版工具轨迹后直接交给 outcome 层归类为 handoff。
-    const committedShortCircuit = (revised.toolCalls ?? []).some(
-      (call) =>
-        call.toolName === 'request_handoff' &&
-        isShortCircuitedToolCall(call) &&
-        isToolSuccess(call.result),
-    );
-    if (decision.repairMode === 'replan' && committedShortCircuit) {
-      const reviewedToolCalls = this.mergeToolCallsForRevisedResult(first, revised);
-      const shortCircuitDecision: OutputGuardDecision = {
-        ...PASS_DECISION,
-        reasonCode: 'replan_short_circuited',
-      };
-      this.persistReviewRecord(ctx, {
-        firstReply: firstText,
-        firstDecision: decision,
-        finalDecision: shortCircuitDecision,
-        repaired: true,
-        revisedReply: revisedText,
-        revisedDecision: shortCircuitDecision,
-        committedSideEffects: committed || undefined,
-      });
-      return this.finalizeReviewed(
-        { ...revised, toolCalls: reviewedToolCalls },
-        shortCircuitDecision,
-        true,
-        wantDefer,
-        this.buildGuardrailTrace(
-          [firstStep, this.toGuardrailStep('revised', shortCircuitDecision)],
-          true,
-          shortCircuitDecision,
-        ),
-      );
-    }
     // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的
     // 将来时承诺不可能兑现，投递即空头承诺（badcase batch_6a4790c7…：候选人
     // 只收到一句"我帮你查下花桥中骏附近的岗位"，之后再无下文）。与空文本同样
@@ -435,10 +384,8 @@ export class AgentRunnerService {
       );
     }
 
-    const reviewedToolCalls =
-      decision.repairMode === 'rewrite'
-        ? (first.toolCalls ?? [])
-        : this.mergeToolCallsForRevisedResult(first, revised);
+    // rewrite/剥围栏均不产生新工具调用，二审对账对象就是首版工具轨迹。
+    const reviewedToolCalls = first.toolCalls ?? [];
     const decision2 = await this.outputGuard.check(
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
@@ -473,7 +420,7 @@ export class AgentRunnerService {
         ),
       );
     }
-    // §9：repair 死循环硬上限 1 —— 二次仍 revise/replan 时按风险分级收敛：
+    // §9：repair 死循环硬上限 1 —— 二次仍 revise 时按风险分级收敛：
     // - P0（riskLevel=high）或含不可恢复违规：block（静默 + 档案），发出去即不可挽回；
     // - 仅 P1/P2 可恢复违规：fail-open 投递修复版 + 档案标注 repair_exhausted_fail_open。
     //   依据 2026-07-06 生产守卫档案首日复盘：假阳 × repair_exhausted 静默的组合杀伤最大
@@ -547,22 +494,6 @@ export class AgentRunnerService {
         finalDecision,
       ),
     );
-  }
-
-  private resolveRepairAllowedToolNames(
-    decision: OutputGuardDecision,
-    params: GeneratorInvokeParams,
-  ): string[] {
-    if (params.toolMode === 'none') return [];
-
-    const allowed = decision.repairToolNames ?? [];
-
-    // 调用方若已经给出更窄的权限，repair 不得借机扩权。
-    if (params.allowedToolNames !== undefined) {
-      const callerAllowed = new Set(params.allowedToolNames);
-      return allowed.filter((toolName) => callerAllowed.has(toolName));
-    }
-    return [...allowed];
   }
 
   /**
@@ -796,13 +727,6 @@ export class AgentRunnerService {
       botImId: ctx.botImId,
       botUserName: ctx.botUserName,
     };
-  }
-
-  private mergeToolCallsForRevisedResult(
-    draft: GeneratorRunResult,
-    revised: GeneratorRunResult,
-  ): AgentToolCall[] {
-    return [...(draft.toolCalls ?? []), ...(revised.toolCalls ?? [])];
   }
 
   private async buildReplyRepairContext(
