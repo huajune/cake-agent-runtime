@@ -12,9 +12,9 @@
 ## 待发布
 
 **预计版本**: `v10.30.0`
-**最近更新**: `2026-07-24`
+**最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #725 回填 v10.29.0 发布结果
@@ -22,12 +22,13 @@
 - PR #725 回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果
 - PR #725 记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收
 - PR #725 记录 `master → develop` 回同步 #724 和未发生回滚
+- PR #729 兼职岗被说成全职月结（chat 6a62c6f8）三层修复
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #729 兼职岗被说成全职月结（chat 6a62c6f8）三层修复
 
 ### 优化调整
 - 无
@@ -50,6 +51,8 @@
 - PR #725 pre-push 全量校验通过：367 个测试套件、5643 个测试通过，6 个跳过
 - PR #725 生产容器 `cake-agent-runtime:v10.29.0` 为 `running / healthy`，重启 0 次
 - PR #725 `/agent/health` 返回 healthy，Redis、Supabase 均正常
+- PR #729 新增 3 个测试组（labor-form 选择疑问句 8 例、唯一岗自动锁焦 2 例、job-detail 守卫新分支 7 例）
+- PR #729 `tests/memory` + `tests/agent` + `tests/tools` 全量：**3099 passed / 6 skipped，0 fail**；typecheck、eslint 干净
 <!-- release:pending:end -->
 
 ## [10.29.0] - 2026-07-24
