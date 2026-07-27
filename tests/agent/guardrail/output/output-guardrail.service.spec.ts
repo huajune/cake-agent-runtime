@@ -188,7 +188,10 @@ describe('OutputGuardrailService', () => {
     );
   });
 
-  it('flag 开 + 语义 contract 触发（无高风险词）→ 也触发 llm；verdict replan → replan', async () => {
+  it('flag 开 + 语义 contract 触发（无高风险词）→ 也触发 llm；遗留 verdict replan 归一为 revise/rewrite', async () => {
+    // 2026-07-27 replan 退役：即使 reviewer 实现（或 mock）直接注入 'replan' 裁决，
+    // applyConfidenceBackstop 的纵深防御也会归一为 revise，修复模式恒 rewrite——
+    // 不允许被 mergeByPriority 静默吞成 pass，更不允许触发已删除的 replan 路径。
     const reviewer = {
       shouldReview: jest.fn().mockReturnValue(true),
       review: jest.fn().mockResolvedValue({
@@ -208,8 +211,9 @@ describe('OutputGuardrailService', () => {
     const decision = await service.check(baseInput({ reply: '给你推荐宝山的门店哈' }));
 
     expect(reviewer.review).toHaveBeenCalledTimes(1);
-    expect(decision.decision).toBe('replan');
-    expect(decision.repairMode).toBe('replan');
+    expect(decision.decision).toBe('revise');
+    expect(decision.repairMode).toBe('rewrite');
+    expect(decision.repairToolNames).toEqual([]);
   });
 
   it('flag 开 + 高风险（紧跟副作用工具）→ 触发 llm；verdict block → block', async () => {

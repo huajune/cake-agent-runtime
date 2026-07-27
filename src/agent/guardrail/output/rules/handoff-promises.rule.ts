@@ -36,6 +36,11 @@ export function detectHandoffPromiseWithoutHandoff(
     ruleId: 'handoff_promise_without_handoff',
     label:
       '回复承诺已让同事/负责人后续确认或联系候选人，但本轮没有成功 request_handoff，属于无真实动作支撑的跟进承诺',
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌收尾：replan → revise（评估文档 §2.2/§2.4）。replan 作为修复
+    // 机制已整体退役；本规则检测是过程判据（承诺词形+dispatched 对账）、rewrite 下
+    // 修法唯一（删除完成时态承诺、只陈述已确认事实），符合白名单准入三条件，且 P0
+    // 收敛保证 rewrite 失败即 block——假承诺不会出门。"真正补执行 request_handoff"
+    // 的保文补参式修复是条件项（评估文档 §2.4），届时走两步拆解不回 replan。
+    action: GUARDRAIL_ACTION.REVISE,
   };
 }
