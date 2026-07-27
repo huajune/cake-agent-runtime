@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.30.0] - 2026-07-27
 
-**预计版本**: `v10.30.0`
-**最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 5
 
 ### 更新摘要
 - PR #725 回填 v10.29.0 发布结果
@@ -74,7 +70,6 @@
 - PR #735 联合头 `pnpm run ci:check`：368 suites、5681 tests 通过，1 suite / 6 tests 按配置跳过
 - PR #735 真实 Agent：4 passed / 1 skipped / 0 failed；两批已同步生产测试看板，`warnings=[]`
 - PR #735 无 migration、环境变量或部署配置变更
-<!-- release:pending:end -->
 
 ## [10.29.0] - 2026-07-24
 
