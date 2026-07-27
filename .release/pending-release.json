@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.29.0",
   "nextVersion": "10.30.0",
-  "updatedAt": "2026-07-24",
+  "updatedAt": "2026-07-27",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -41,6 +41,31 @@
         "pre-push 全量校验通过：367 个测试套件、5643 个测试通过，6 个跳过",
         "生产容器 `cake-agent-runtime:v10.29.0` 为 `running / healthy`，重启 0 次",
         "`/agent/health` 返回 healthy，Redis、Supabase 均正常"
+      ]
+    },
+    {
+      "number": "729",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/729",
+      "title": "兼职岗被说成全职月结（chat 6a62c6f8）三层修复",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "兼职岗被说成全职月结（chat 6a62c6f8）三层修复"
+      ],
+      "summary": [
+        "兼职岗被说成全职月结（chat 6a62c6f8）三层修复"
+      ],
+      "features": [],
+      "fixes": [
+        "兼职岗被说成全职月结（chat 6a62c6f8）三层修复"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 3 个测试组（labor-form 选择疑问句 8 例、唯一岗自动锁焦 2 例、job-detail 守卫新分支 7 例）",
+        "`tests/memory` + `tests/agent` + `tests/tools` 全量：**3099 passed / 6 skipped，0 fail**；typecheck、eslint 干净"
       ]
     }
   ],
