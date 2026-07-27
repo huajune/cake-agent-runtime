@@ -233,6 +233,17 @@ function recordResolvedAnchor(
     areaName,
     city: c.city || null,
   });
+  // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
+  // unique 解析即城市确认，暂存 turnState 供回合收尾写 pref.city，让 invite 城市门
+  // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
+  if (c.city?.trim()) {
+    context.onCityResolved?.({
+      city: c.city.trim(),
+      district: c.district?.trim() || null,
+      evidence: `geocode 唯一解析：${c.formattedAddress?.trim() || queryAddress?.trim() || c.city.trim()}`,
+      source: 'geocode_unique',
+    });
+  }
 }
 
 function normalizeReferenceText(value: string): string {

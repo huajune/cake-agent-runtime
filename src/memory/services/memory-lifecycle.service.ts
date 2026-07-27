@@ -3,6 +3,7 @@ import { MessageProcessingService } from '@biz/message/services/message-processi
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
 import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-types/tracking.types';
+import type { CityAttestation } from '@shared-types/tool.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
@@ -44,6 +45,8 @@ export interface MemoryLifecycleTurnContext {
   contactName?: string;
   /** 本轮图片描述的品牌解析结果（save_image_description execute 内同步产出，§10.2）。 */
   imageBrandResolutions?: BrandResolution[] | null;
+  /** 本轮 geocode unique 解析确权的城市；回合结束写入 pref.city（source='tool'）。 */
+  cityAttestation?: CityAttestation | null;
 }
 
 interface StepOutcome<T = void> {
@@ -473,6 +476,22 @@ export class MemoryLifecycleService {
       steps.push(
         this.buildSkippedStep('project_assistant_turn', '本轮没有 assistantText，跳过岗位记忆投影'),
       );
+    }
+
+    // 工具确权城市入档（候选人资料证据化 A1）：排在 extract_facts 之前——若本轮候选人
+    // 原文也报了城市，规则/LLM 抽取（T1 亲证）随后覆盖工具确权（T2），采信优先级正确。
+    if (ctx.cityAttestation) {
+      const attestedCityResult = await this.runMeasuredStep('save_attested_city', async () => {
+        return await this.session.saveToolAttestedCity(
+          ctx.corpId,
+          ctx.userId,
+          ctx.sessionId,
+          ctx.cityAttestation as CityAttestation,
+        );
+      });
+      steps.push(attestedCityResult.step);
+    } else {
+      steps.push(this.buildSkippedStep('save_attested_city', '本轮没有工具确权城市需要写入'));
     }
 
     const flatMessages = ctx.normalizedMessages.map((m) => ({

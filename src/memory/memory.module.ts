@@ -16,6 +16,7 @@ import { SettlementService } from './services/settlement.service';
 import { MemoryEnrichmentService } from './services/memory-enrichment.service';
 import { MemoryLifecycleService } from './services/memory-lifecycle.service';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
+import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 
 /**
  * Memory 模块
@@ -26,7 +27,14 @@ import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
  * - stores: Redis / Supabase 基础设施
  */
 @Module({
-  imports: [BizMessageModule, SpongeModule, UserModule, LlmModule, HostingConfigModule],
+  imports: [
+    BizMessageModule,
+    SpongeModule,
+    UserModule,
+    LlmModule,
+    HostingConfigModule,
+    GeocodingModule,
+  ],
   providers: [
     MemoryConfig,
     RedisStore,

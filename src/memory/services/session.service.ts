@@ -1,4 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import type { CityAttestation } from '@shared-types/tool.types';
+import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -54,6 +56,7 @@ import {
   detectBrandAliasHints,
   extractHighConfidenceFacts,
   filterHighConfidenceFacts,
+  stripQuotedBlocks,
   unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
@@ -107,6 +110,8 @@ export class SessionService {
     private readonly systemConfig: SystemConfigService,
     @Optional()
     private readonly tracer?: AgentTracerService,
+    @Optional()
+    private readonly geocoding?: GeocodingService,
   ) {}
 
   // ==================== store ====================
@@ -281,6 +286,63 @@ export class SessionService {
     const mergedFacts = SessionFactsSchema.parse(forcedMerge) as SessionFacts;
 
     await this.patchSessionState(corpId, userId, sessionId, { facts: mergedFacts });
+  }
+
+  /**
+   * 工具确权城市入档（候选人资料证据化 A1，badcase 6a671722 沈阳 / 6a618a6e 上海浦东）。
+   *
+   * geocode unique 解析出的城市写入 pref.city（source='tool'，confidence=high），
+   * 让 invite 城市门的 session_fact 档与 [兼职群资源] 段不再依赖候选人字面报城市名。
+   * 证据是外生工具结果（amap 解析），不是模型自报，不违背 HC-2「模型参数不自证」。
+   *
+   * 采信边界：
+   * - 与既有 high 置信城市冲突时不覆盖——geocode 已通过 _cityConflictNotice 要求模型
+   *   向候选人确认，城市切换只能走候选人亲证（T1），工具确权（T2）无权仲裁冲突；
+   * - 同城重复确权跳过，避免每轮空写；
+   * - 旧值为低置信/兼容迁移值时允许覆盖。
+   */
+  async saveToolAttestedCity(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    attestation: CityAttestation,
+  ): Promise<'written' | 'skipped_same_city' | 'skipped_city_conflict' | 'skipped_invalid'> {
+    const normalized = attestation.city.trim().replace(/市$/, '');
+    if (!normalized) return 'skipped_invalid';
+
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    const prev = state.facts?.preferences?.city ?? null;
+    if (prev && typeof prev.value === 'string' && prev.value.trim()) {
+      const prevNormalized = prev.value.trim().replace(/市$/, '');
+      if (prevNormalized === normalized) return 'skipped_same_city';
+      if (sessionFactConfidenceRank(prev.confidence) >= sessionFactConfidenceRank('high')) {
+        this.logger.log(
+          `[saveToolAttestedCity] 城市冲突不覆盖：既有 ${prev.value}（${prev.confidence}/${prev.source}），` +
+            `本轮工具确权 ${normalized}；等待候选人亲证后再切换`,
+        );
+        return 'skipped_city_conflict';
+      }
+    }
+
+    const cityFact: SessionFactValue<string> = {
+      value: normalized,
+      confidence: 'high',
+      source: 'tool',
+      evidence: truncateEvidence(attestation.evidence),
+      extractedAt: new Date().toISOString(),
+    };
+    // 除 city 外全字段 null（deepMerge "null 不覆盖"语义保证不动其他事实）；
+    // city 的 SessionFactValue 形态由 NullableSessionCityFactSchema 联合类型直接接受。
+    const facts = SessionFactsSchema.parse({
+      ...FALLBACK_EXTRACTION,
+      preferences: { ...FALLBACK_EXTRACTION.preferences, city: cityFact },
+      reasoning: '工具确权城市入档（geocode 唯一解析）',
+    }) as SessionFacts;
+    await this.saveFacts(corpId, userId, sessionId, facts);
+    this.logger.log(
+      `[saveToolAttestedCity] pref.city=${normalized} 已入档（source=tool, ${attestation.source}）`,
+    );
+    return 'written';
   }
 
   private applyForceNullFields(
@@ -682,6 +744,22 @@ export class SessionService {
       userMessages,
     );
 
+    // 定位分享城市证据化（候选人资料证据化 A2，badcase 6a618a6e 上海浦东）：
+    // GPS 坐标是候选人给出的最强位置证据，但渲染文本常无城市名（"黎明村98号楼"），
+    // 规则/LLM 轨都抽不出 → 坐标逆解后按 source='tool' 入档。
+    // 本轮文本已抽出高置信城市时让位（T1 亲证 > T2 工具确权）。
+    const currentTurnUserTexts: string[] = [];
+    for (let i = scopedMessages.length - 1; i >= 0 && scopedMessages[i].role === 'user'; i--) {
+      currentTurnUserTexts.unshift(scopedMessages[i].content);
+    }
+    const locationCityFact = await this.buildLocationShareCityFact(
+      currentTurnUserTexts,
+      newFacts.preferences.city,
+    );
+    if (locationCityFact) {
+      newFacts.preferences.city = locationCityFact;
+    }
+
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
     const nameStillNull = droppedName && !unwrapSessionFactValue(newFacts.interview_info.name);
@@ -899,6 +977,54 @@ export class SessionService {
 
   private ensureSessionFacts(facts: EntityExtractionResult | SessionFacts): SessionFacts {
     return SessionFactsSchema.parse(facts) as SessionFacts;
+  }
+
+  /** 定位分享渲染文本中的经纬度（`[经纬度:lat,lng]`，见 MessageParser 渲染约定）。 */
+  private static readonly LOCATION_SHARE_COORDS_PATTERN =
+    /\[经纬度:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g;
+
+  /**
+   * 本轮候选人定位分享 → 逆地理编码 → 城市事实（A2）。
+   *
+   * 只扫当前 user 消息块（尾部连续 user 段），引用块先剥离（转发的经理定位不算
+   * 候选人自己的位置）；多条定位取最后一条（最新位置）。逆解失败/服务缺失静默跳过。
+   */
+  private async buildLocationShareCityFact(
+    currentTurnUserTexts: readonly string[],
+    existingCity: SessionFacts['preferences']['city'],
+  ): Promise<SessionFactValue<string> | null> {
+    if (!this.geocoding) return null;
+    if (existingCity && existingCity.confidence === 'high') return null;
+
+    let coords: { latitude: number; longitude: number } | null = null;
+    for (const text of currentTurnUserTexts) {
+      const cleaned = stripQuotedBlocks(MessageParser.stripTimeContext(text));
+      if (!cleaned.includes('[位置分享]')) continue;
+      for (const match of cleaned.matchAll(SessionService.LOCATION_SHARE_COORDS_PATTERN)) {
+        const latitude = Number(match[1]);
+        const longitude = Number(match[2]);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          coords = { latitude, longitude };
+        }
+      }
+    }
+    if (!coords) return null;
+
+    const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
+    if (!regeo?.city?.trim()) return null;
+    const city = regeo.city.trim().replace(/市$/, '');
+    if (!city) return null;
+
+    this.logger.log(`[extractFacts] 定位分享逆解析城市入档: ${city}（source=tool）`);
+    return {
+      value: city,
+      confidence: 'high',
+      source: 'tool',
+      evidence: truncateEvidence(
+        `定位分享逆解析：${regeo.formattedAddress || `${regeo.province}${regeo.city}${regeo.district}`}`,
+      ),
+      extractedAt: new Date().toISOString(),
+    };
   }
 
   /**

@@ -61,6 +61,7 @@ describe('MemoryLifecycleService', () => {
     saveLastJobListQuery: jest.fn().mockResolvedValue(undefined),
     projectAssistantTurn: jest.fn().mockResolvedValue(undefined),
     extractAndSave: jest.fn().mockResolvedValue({ llmDegraded: false, brandIntents: [] }),
+    saveToolAttestedCity: jest.fn().mockResolvedValue('written'),
   };
 
   const mockBrandState = {
@@ -709,6 +710,52 @@ describe('MemoryLifecycleService', () => {
     expect(mockSessionService.projectAssistantTurn).not.toHaveBeenCalled();
     expect(mockSessionService.extractAndSave).not.toHaveBeenCalled();
     expect(mockBrandState.applyTurnResolutions).not.toHaveBeenCalled();
+  });
+
+  describe('save_attested_city 步骤（候选人资料证据化 A1）', () => {
+    const attestation = {
+      city: '沈阳市',
+      district: '浑南区',
+      evidence: 'geocode 唯一解析：辽宁省沈阳市浑南区奥体中心(公交站)',
+      source: 'geocode_unique' as const,
+    };
+
+    it('携带 cityAttestation → 在 extract_facts 之前写入工具确权城市', async () => {
+      await service.onTurnEnd(
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          normalizedMessages: [{ role: 'user', content: '好的' }],
+          cityAttestation: attestation,
+        },
+        '帮你查下沈阳的群',
+      );
+
+      expect(mockSessionService.saveToolAttestedCity).toHaveBeenCalledWith(
+        'corp-1',
+        'user-1',
+        'sess-1',
+        attestation,
+      );
+      const attestOrder = mockSessionService.saveToolAttestedCity.mock.invocationCallOrder[0];
+      const extractOrder = mockSessionService.extractAndSave.mock.invocationCallOrder[0];
+      expect(attestOrder).toBeLessThan(extractOrder);
+    });
+
+    it('无 cityAttestation → 不触发写入', async () => {
+      await service.onTurnEnd(
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          normalizedMessages: [{ role: 'user', content: '好的' }],
+        },
+        '收到',
+      );
+
+      expect(mockSessionService.saveToolAttestedCity).not.toHaveBeenCalled();
+    });
   });
 
   describe('apply_brand_state 步骤（§6.3.1 时序）', () => {
