@@ -432,7 +432,12 @@ describe('buildInterviewBookingTool', () => {
 
     const result = await executeTool(
       { ...validInput, name: '张三', phone: '15921708092' },
-      { messages: [{ role: 'user', content: '姓名：张三' }, { role: 'user', content: '周四下午' }] },
+      {
+        messages: [
+          { role: 'user', content: '姓名：张三' },
+          { role: 'user', content: '周四下午' },
+        ],
+      },
     );
 
     expect(result.success).toBe(false);

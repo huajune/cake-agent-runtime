@@ -655,6 +655,10 @@ const HEALTH_CERT_TIGHT_KEYWORDS = [
 const HEALTH_CERT_TIGHT_PATTERNS = [
   /面试(?:前|时).{0,12}(?:需|要|必须|携带|带|持有|出示).{0,12}健康证/,
   /健康证(?:原件)?.{0,12}(?:面试前|面试时).{0,12}(?:需|要|必须|携带|带|持有|出示)/,
+  // "有证约" 的并列变体：jobName 里常写成 "（有证、有经验约）/（有证有经验约）"，
+  // 顿号+经验会把 "有证约" 三字拆断，导致字面关键词匹配不中（badcase a8gh8d9m：
+  // "后厨（有证、有经验约）" 未识别为收紧，无证候选人 ready_to_book 直至 booking 成功）。
+  /有证[、，,\s]*(?:有?经验[、，,\s]*)?约/,
 ];
 
 function inferHealthCertGate(input: {
