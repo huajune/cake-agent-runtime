@@ -91,6 +91,37 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "744",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/744",
+      "title": "有证约岗位对无证候选人补三层拦截",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744"
+      ],
+      "summary": [
+        "有证约岗位对无证候选人补三层拦截",
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744",
+        "以权威岗位策略收口有证约闸门"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744"
+      ],
+      "optimizations": [],
+      "ops": [
+        "有证约岗位对无证候选人补三层拦截",
+        "以权威岗位策略收口有证约闸门"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "相关 4 个 spec：212/212 通过。",
+        "本地完整 pre-push：lint、format、typecheck、前后端 build、369 个测试套件 / 5709 个测试全部通过。",
+        "新提交已重新触发 GitHub CI 与 AI Review。"
+      ]
     }
   ],
   "lastRelease": {
