@@ -135,7 +135,25 @@ export function detectJobDetailLookupRequired(
   // 生产实测：57 条 replan 二审失败全部复燃在本规则上，即每条命中白烧一次带工具的
   // Agent 生成而候选人拿到的仍是原文。降级为 observe：保留档案与告警，不再触发无效 repair。
   if (!focusJob) {
-    const hasPresentedJobs = (memorySnapshot?.presentedJobIds?.length ?? 0) > 0;
+    const presentedJobIds = memorySnapshot?.presentedJobIds ?? [];
+
+    // 唯一已展示岗位但焦点未锁定（badcase chat 6a62c6f8，2026-07-24：单岗展示打分
+    // 不足焦点悬空，“兼职还是全职的”零工具作答编出全职/月结/签合同）：追问只可能
+    // 指这一个岗位，且精简记忆没有任何岗位字段可供接地，必须按该 jobId 查证。
+    // 与下方多岗分支不同，这里的补救动作是工具调用（repair 轮 toolCalls 会变化，
+    // 二审可解除），可以安全 REPLAN。
+    if (presentedJobIds.length === 1) {
+      const presentedJobId = presentedJobIds[0];
+      if (hasFocusJobLookup(toolCalls, presentedJobId, requested)) return null;
+      const fields = [...new Set(requested.map((rule) => rule.field))].join('/');
+      return {
+        ruleId: 'job_detail_lookup_required',
+        label: `候选人追问唯一已展示岗位详情(${fields})，但焦点未锁定、精简记忆无岗位字段，本轮未按 jobId=${presentedJobId} 调用 duliday_job_list 查证`,
+        action: GUARDRAIL_ACTION.REPLAN,
+      };
+    }
+
+    const hasPresentedJobs = presentedJobIds.length > 0;
     const asksShift = requested.some((rule) => rule.field === 'shift');
     if (hasPresentedJobs && asksShift) {
       return {

@@ -270,6 +270,18 @@ function decideLaborFormClause(clause: string): LaborFormIntentDecision {
   // “不确定是暑假工还是小时工”没有形成偏好；整句忽略，不能用最后一个关键词改口。
   if (LABOR_FORM_UNCERTAINTY_PATTERN.test(clause)) return { kind: 'ignore' };
 
+  // “兼职还是全职的”（badcase chat 6a62c6f8，2026-07-24）：两个不同用工形式被
+  // “还是/或者”连接且无求职/接受动作时，是在问岗位属于哪种——选择疑问句常省略
+  // 问号，不能兜到 FACT_QUESTION 的“还是…？”分支后按末位关键词 set 成偏好。
+  const distinctMentionValues = new Set(mentions.map((mention) => mention.value));
+  if (
+    distinctMentionValues.size >= 2 &&
+    /还是|或者|或是/.test(clause) &&
+    !LABOR_FORM_PREFERENCE_SIGNAL_PATTERN.test(clause)
+  ) {
+    return { kind: 'ignore' };
+  }
+
   // “这个岗位是小时工吗 / 就是小时工是吗”是在核对岗位事实。只有同时出现明确的
   // 求职/接受动作时，才把用工形式当成新的候选人偏好。
   const asksOrStatesCurrentJobType =

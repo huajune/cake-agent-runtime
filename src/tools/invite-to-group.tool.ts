@@ -41,6 +41,12 @@ const NO_GROUP_REPEAT_ESCALATION =
   '先用一句话正面回应候选人本轮的具体问题（如点名的品牌、追问的范围、"还有别的吗"），' +
   '再换一种表述自然收口（如"刚又帮你查了一遍，这边现在确实还没有新的合适岗位，你的需求我记下来了，有新岗位第一时间联系你"）。';
 
+// 多步回合送达提醒（badcase recvqgsttbhyYq / chat 6a62f368，2026-07-24）：无岗→拉群链路里，
+// 模型在工具调用之间"计划说"的无岗承接句从未真正发出，最终只投递了拉群确认句，候选人
+// 收到"不说原因直接拉群"。工具成功结果里显式提醒：中间步骤文字不会送达，最终回复必须补上。
+const UNDELIVERED_PRELUDE_REMINDER =
+  '注意：本轮此前步骤里你写过/计划过的话（包括"附近暂无岗位"的无岗承接句）**并没有发给候选人**，候选人只会看到你本次的最终回复。若本次拉群源于查岗无结果（noMatchScript 场景）且对话历史里尚未出现无岗说明，最终回复必须先按 noMatchScript.candidateMessage 的口径说明无岗原因，再接入群确认句；不得只发一句入群确认。';
+
 // 候选人非接客 bot 的外部联系人（已拉黑/删好友），全部候选群都报 -8 "is not a friend"。
 // 这是候选人侧真实状态、人工无可作为，故不发运维告警、也不转人工，自然收口即可。
 const NOT_FRIEND_CONTINUE_INSTRUCTION =
@@ -329,8 +335,7 @@ export function buildInviteToGroupTool(
               industry: industry ?? undefined,
               inviteDelivery: 'invite_card',
               _outcome: '【测试链路模拟】已向候选人发送入群邀请卡片（未触达真实企业接口）',
-              _replyInstruction:
-                '企微已向候选人发送入群邀请卡片。回复时只能说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何群链接 / URL。',
+              _replyInstruction: `企微已向候选人发送入群邀请卡片。入群确认句必须原样说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
             };
           }
 
@@ -546,8 +551,8 @@ export function buildInviteToGroupTool(
                   ? '候选人已被直接加入目标兼职群'
                   : '已向候选人发送入群邀请卡片',
               _replyInstruction: isDirectAdd
-                ? `候选人已被直接加入"${targetGroup.groupName}"。回复时可以说"已帮你加入了${targetGroup.groupName}"；不要输出任何群链接或二维码。`
-                : '企微已向候选人发送入群邀请卡片。回复时只能说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接 / URL。',
+                ? `候选人已被直接加入"${targetGroup.groupName}"。回复时可以说"已帮你加入了${targetGroup.groupName}"；不要输出任何群链接或二维码。${UNDELIVERED_PRELUDE_REMINDER}`
+                : `企微已向候选人发送入群邀请卡片。入群确认句必须原样说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
             };
           }
 

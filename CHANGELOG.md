@@ -8,6 +8,74 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.30.0`
+**最近更新**: `2026-07-27`
+**来源分支**: `develop`
+**累计 PR**: 5
+
+### 更新摘要
+- PR #725 回填 v10.29.0 发布结果
+- PR #725 将 v10.29.0 底账状态更新为“已发布”
+- PR #725 回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果
+- PR #725 记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收
+- PR #725 记录 `master → develop` 回同步 #724 和未发生回滚
+- PR #729 兼职岗被说成全职月结（chat 6a62c6f8）三层修复
+- PR #730 日巡检四项 badcase 修复（2026-07-24 批次）
+- PR #731 repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳
+- PR #731 出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定
+- PR #731 评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案
+- PR #735 固化 v10.30.0 发版底账
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #729 兼职岗被说成全职月结（chat 6a62c6f8）三层修复
+- PR #730 日巡检四项 badcase 修复（2026-07-24 批次）
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #725 将 v10.29.0 底账状态更新为“已发布”
+- PR #725 回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果
+- PR #725 记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收
+- PR #725 记录 `master → develop` 回同步 #724 和未发生回滚
+- PR #725 回填 v10.29.0 发布结果
+- PR #731 repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳
+- PR #731 出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定
+- PR #731 评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案
+- PR #735 固化 v10.30.0 发版底账
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #725 Prettier 与 `git diff --check` 通过
+- PR #725 pre-push 全量校验通过：367 个测试套件、5643 个测试通过，6 个跳过
+- PR #725 生产容器 `cake-agent-runtime:v10.29.0` 为 `running / healthy`，重启 0 次
+- PR #725 `/agent/health` 返回 healthy，Redis、Supabase 均正常
+- PR #729 新增 3 个测试组（labor-form 选择疑问句 8 例、唯一岗自动锁焦 2 例、job-detail 守卫新分支 7 例）
+- PR #729 `tests/memory` + `tests/agent` + `tests/tools` 全量：**3099 passed / 6 skipped，0 fail**；typecheck、eslint 干净
+- PR #730 新增回归：identity provenance 4 例、invite 城市门青岛 2 例、geo resolver 崂山 golden、reengagement 婉拒/已报告完成 2 例 + prompt 防线断言
+- PR #730 `tests/memory/facts/ + tests/resolution/geo/ + tests/agent/reengagement/reengagement.agent.spec.ts + tests/memory/services/ + tests/tools/`：1500+ 用例全绿
+- PR #730 `tsc --noEmit` / `eslint --max-warnings=0` / pre-push 全量 ci:check 通过
+- PR #731 `repair-regression.util.spec.ts`：+10 用例（生产案正反向、星期纠错不误伤、跨年推断、booking 降级四个负例）
+- PR #731 `hard-rules.service.spec.ts`：+3 用例（两类假阳豁免 + 愿望复述禁跨句反例）
+- PR #731 全量：191/191 pass（两 spec）+ runner 53/53 pass + typecheck + lint 全绿
+- PR #735 `pnpm run release:ledger:check` 通过
+- PR #735 联合头定向测试：9 suites、382/382 tests 通过
+- PR #735 联合头 `pnpm run ci:check`：368 suites、5681 tests 通过，1 suite / 6 tests 按配置跳过
+- PR #735 真实 Agent：4 passed / 1 skipped / 0 failed；两批已同步生产测试看板，`warnings=[]`
+- PR #735 无 migration、环境变量或部署配置变更
+<!-- release:pending:end -->
+
 ## [10.29.0] - 2026-07-24
 
 **来源分支**: `develop`

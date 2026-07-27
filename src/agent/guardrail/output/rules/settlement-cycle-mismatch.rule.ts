@@ -93,7 +93,19 @@ function splitClaimSentences(text: string): string[] {
 // 2026-07-24 审计追补「不支持|没找到|未找到|找不到」："也不支持日结或周结"整句失防
 // （trace batch_6a61a550…，rewrite 为修它追加了无依据的月结断言）。
 const NEGATION_PREFIX =
-  '不是|并非|不按|不算|没有|没找到|未找到|找不到|没|无|暂无|不提供|不做|不支持';
+  '不是|并非|不按|不算|没有|没找到|未找到|找不到|没排到|排不到|没|无|暂无|不提供|不做|不支持';
+
+// 后缀否定：否定词在结算词之后（"日结的暂时没排到哈"）。前缀正则不认这种语序，
+// 2026-07-27 审计 FP：trace batch_6a62db88…（"日结的暂时没排到哈"被判声称日结，
+// rewrite 空转丢了"时薪 20 多"）。间隔同样禁跨逗号/顿号。
+const NEGATION_SUFFIX =
+  '没排到|排不到|没找到|找不到|没约到|约不到|没有|暂时没|暂无|没了|不做|不支持';
+
+// 愿望复述：句子在复述候选人自己的诉求（"你想找日结、只做一周左右的岗位是吧"），
+// 不是对焦点岗位的结算承诺。问号被 splitClaimSentences 剥掉、"吧"不在疑问词表，
+// 这类句子会漏进断言判定（2026-07-27 审计 FP：trace batch_6a63278c…）。
+// 窗口禁跨逗号/顿号，避免"你想找日结，这家就是日结"里第二个断言被连带豁免。
+const DESIRE_ECHO_PREFIX = '你想找|你想要|你是想|你想|你要|想找|要找';
 
 // 前瞻/他岗语境：句子谈的是"其他岗位/未来供给/别家的灵工单"，不是焦点岗位的结算承诺。
 // 2026-07-24 审计："后面有周结/日结的新岗位第一时间通知你"、"海底捞……灵工单（短期/日结）"
@@ -108,6 +120,12 @@ function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean
   if (!pattern?.test(sentence)) return false;
   if (/[吗么嘛？?]|是不是|是否/u.test(sentence)) return false;
   if (PROSPECTIVE_CONTEXT_PATTERN.test(sentence)) return false;
+  if (new RegExp(`(?:${DESIRE_ECHO_PREFIX})[^，。；、]{0,6}${cycle}`, 'u').test(sentence)) {
+    return false;
+  }
+  if (new RegExp(`${cycle}[^，。；、]{0,4}(?:${NEGATION_SUFFIX})`, 'u').test(sentence)) {
+    return false;
+  }
   // 间隔禁跨逗号/顿号：保证"这家不是月结，是日结"里的"日结"仍算断言。
   // 并列穿透只走显式可选组「…或/、//」一次（如"没找到其他周结或日结的岗位"——「日结」
   // 距否定词 7 字超出旧窗口，alternation 后段照旧假阳，2026-07-24 审计）。基础间隔
