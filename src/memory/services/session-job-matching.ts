@@ -73,6 +73,12 @@ export function resolveAssistantAnchoredFocusJob(
 
   const presented = dedupeJobsById([...newlyPresentedJobs, ...previousPresentedJobs]);
   const knownJobs = dedupeJobsById([...presented, ...candidatePool]);
+
+  // 唯一岗场景（badcase chat 6a62c6f8，2026-07-24）：候选池与已展示岗都只有同一个
+  // 岗位时焦点不存在歧义，直接锁定。单岗展示话术常凑不到 8 分打分门槛（门店 5 +
+  // 品牌 1 + 薪资 1 = 7），焦点悬空会让后续详情追问失去 jobId 接地。
+  if (presented.length === 1 && knownJobs.length === 1) return presented[0];
+
   return pickDominantReferencedJob(knownJobs, normalizedAssistantText);
 }
 
