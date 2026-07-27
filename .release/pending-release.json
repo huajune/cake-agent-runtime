@@ -125,6 +125,34 @@
         "`hard-rules.service.spec.ts`：+3 用例（两类假阳豁免 + 愿望复述禁跨句反例）",
         "全量：191/191 pass（两 spec）+ runner 53/53 pass + typecheck + lint 全绿"
       ]
+    },
+    {
+      "number": "735",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/735",
+      "title": "固化 v10.30.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "固化 v10.30.0 发版底账"
+      ],
+      "summary": [
+        "固化 v10.30.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "固化 v10.30.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run release:ledger:check` 通过",
+        "联合头定向测试：9 suites、382/382 tests 通过",
+        "联合头 `pnpm run ci:check`：368 suites、5681 tests 通过，1 suite / 6 tests 按配置跳过",
+        "真实 Agent：4 passed / 1 skipped / 0 failed；两批已同步生产测试看板，`warnings=[]`",
+        "无 migration、环境变量或部署配置变更"
+      ]
     }
   ],
   "lastRelease": {
