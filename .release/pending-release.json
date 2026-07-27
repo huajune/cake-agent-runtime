@@ -3,7 +3,48 @@
   "nextVersion": "10.31.0",
   "updatedAt": "2026-07-27",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "739",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/739",
+      "title": "回填 v10.30.0 发布结果",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "回填 v10.30.0 发布结果",
+        "GitHub Release / tag 已创建",
+        "Build and Deploy #30235700533：test / deploy / notify 全部成功",
+        "`cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次",
+        "公网 `/agent/health`：healthy，Redis / Supabase 正常",
+        "启动后生产消息持续处理；无 ERROR / FATAL",
+        "#738 已完成 `master → develop` 回同步"
+      ],
+      "summary": [
+        "回填 v10.30.0 发布结果",
+        "GitHub Release / tag 已创建",
+        "Build and Deploy #30235700533：test / deploy / notify 全部成功",
+        "`cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次",
+        "公网 `/agent/health`：healthy，Redis / Supabase 正常",
+        "启动后生产消息持续处理；无 ERROR / FATAL",
+        "#738 已完成 `master → develop` 回同步"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "GitHub Release / tag 已创建",
+        "Build and Deploy #30235700533：test / deploy / notify 全部成功",
+        "`cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次",
+        "公网 `/agent/health`：healthy，Redis / Supabase 正常",
+        "启动后生产消息持续处理；无 ERROR / FATAL",
+        "#738 已完成 `master → develop` 回同步",
+        "回填 v10.30.0 发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.30.0",
     "date": "2026-07-27",
