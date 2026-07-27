@@ -229,6 +229,37 @@
         "全量 5656 测试绿（367 suites）；typecheck / lint 干净",
         "事后环已就位：daily-badcase-scan 日报（每日 09:00）含发牌验收栏目（收牌规则首版直投代价逐日抽查，重度伤害=回滚信号）与 L1 回扫（日期星期校验/悬空承诺核验）"
       ]
+    },
+    {
+      "number": "728",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/728",
+      "title": "城市同名别名在地名短语中不再塌缩成品牌",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"
+      ],
+      "summary": [
+        "城市同名别名在地名短语中不再塌缩成品牌",
+        "收紧城市同名地名续接判据",
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"
+      ],
+      "optimizations": [],
+      "ops": [
+        "城市同名别名在地名短语中不再塌缩成品牌",
+        "收紧城市同名地名续接判据"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "定向品牌测试通过。",
+        "两次完整 pre-push 均通过 lint、format、typecheck、前后端 build 与全量 Jest；最新基线为 369 个测试套件、5702 个测试通过。",
+        "GitHub CI 与 AI Review 正在对最新 develop 基线复核。"
+      ]
     }
   ],
   "lastRelease": {
