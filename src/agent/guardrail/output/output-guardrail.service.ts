@@ -506,9 +506,10 @@ export class OutputGuardrailService {
   }
 
   private mergeRuleDecision(contradictions: RuleContradiction[]): OutputDecision {
+    // 2026-07-27 发牌切换收尾：GuardrailRuleAction 已删 REPLAN（硬规则零雇主），
+    // 规则层聚合从此只产出 block/revise/observe/pass 四档。
     const actions = contradictions.map((c) => c.action);
     if (actions.includes('block')) return GUARDRAIL_DECISION.BLOCK;
-    if (actions.includes('replan')) return GUARDRAIL_DECISION.REPLAN;
     if (actions.includes('revise')) return GUARDRAIL_DECISION.REVISE;
     if (actions.includes('observe')) return GUARDRAIL_DECISION.OBSERVE;
     return GUARDRAIL_DECISION.PASS;

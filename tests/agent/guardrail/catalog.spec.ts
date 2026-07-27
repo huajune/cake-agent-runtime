@@ -87,9 +87,12 @@ describe('guardrail catalog', () => {
     }
   });
 
-  it('requires every deterministic replan rule to declare its repair tools', () => {
-    for (const rule of OUTPUT_RULE_CATALOG.filter((entry) => entry.action === 'replan')) {
-      expect(rule.repairToolNames.length).toBeGreaterThan(0);
+  it('keeps REPLAN retired: no rule declares it and no non-replan rule carries repair tools', () => {
+    // 2026-07-27 发牌切换收尾：GuardrailRuleAction 已删 REPLAN（类型层保险栓），
+    // 本用例守住"零雇主"状态——恢复取数式修复须先修订评估文档 §2.4 并走两步拆解。
+    for (const rule of OUTPUT_RULE_CATALOG) {
+      expect(['observe', 'revise', 'block']).toContain(rule.action);
+      expect(rule.repairToolNames).toEqual([]);
     }
   });
 

@@ -1139,8 +1139,10 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'requested_brand_mismatch',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            // 2026-07-27 发牌专项审计降 observe：生产抽样 3/3 假阳（门店名被当品牌名），
+            // 检测保留观察真跨品牌串台，不再触发 repair。
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -1923,7 +1925,9 @@ describe('HardRulesService', () => {
     const productionReply =
       '这边暂时没约上，这家目前报名人数比较多，我让同事帮你确认下名额和后续安排，稍后给你答复哈';
 
-    it('replans when the reply promises colleague follow-up without request_handoff', () => {
+    it('requires a rewrite when the reply promises colleague follow-up without request_handoff', () => {
+      // 2026-07-27 发牌收尾：replan → revise。rewrite 修法唯一（删完成时态承诺、只陈述
+      // 已确认事实），P0 保证 rewrite 失败即 block；补执行 handoff 属 §2.4 条件项。
       const result = service.check({
         replyText: productionReply,
         toolCalls: [
@@ -1940,11 +1944,11 @@ describe('HardRulesService', () => {
         (item) => item.ruleId === 'handoff_promise_without_handoff',
       );
       expect(hit).toMatchObject({
-        action: 'replan',
+        action: 'revise',
         severity: 'P0',
         currentReplySendable: false,
-        repairMode: 'replan',
-        repairToolNames: ['request_handoff'],
+        repairMode: 'rewrite',
+        repairToolNames: [],
       });
     });
 
