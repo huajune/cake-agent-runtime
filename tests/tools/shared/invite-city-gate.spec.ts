@@ -59,6 +59,33 @@ describe('evaluateInviteCityGate', () => {
     expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
   });
 
+  it('allows 深圳 via district inference for 宝安区 (badcase 6k74okcw: 宝安区桥头新区仍被反问城市)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '深圳',
+      sessionCity: null,
+      userTexts: ['我在宝安区桥头新区', '桥头地铁站A出口附近'],
+    });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('allows 广州 via district inference for 黄埔区 (badcase bubv5rh9: 黄埔区被当上海黄浦区)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '广州',
+      sessionCity: null,
+      userTexts: ['黄埔区'],
+    });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('does not infer 广州 from Shanghai 黄浦 (different character, stays unverified)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '广州',
+      sessionCity: null,
+      userTexts: ['我在黄浦区'],
+    });
+    expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+  });
+
   it('allows via district inference for town-level mention inside location-share render text (badcase 6a5d96de: 房山定位)', () => {
     const verdict = evaluateInviteCityGate({
       requestedCity: '北京',
@@ -84,6 +111,32 @@ describe('evaluateInviteCityGate', () => {
       userTexts: ['我现在搬到顺义了'],
     });
     expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('allows via district inference for 青岛崂山 (badcase recvqhLOPwv0m9: 崂山区松岭路)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '青岛',
+      sessionCity: null,
+      userTexts: ['招收兼职吗？', '崂山区松岭路', '在北宅'],
+    });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('市南/市北 only count with the 区 suffix (substring safety)', () => {
+    expect(
+      evaluateInviteCityGate({
+        requestedCity: '青岛',
+        sessionCity: null,
+        userTexts: ['我在超市南边等你'],
+      }),
+    ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    expect(
+      evaluateInviteCityGate({
+        requestedCity: '青岛',
+        sessionCity: null,
+        userTexts: ['我住市北区'],
+      }),
+    ).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
   });
 
   it('does not treat ambiguous district names (朝阳/通州) as provenance', () => {

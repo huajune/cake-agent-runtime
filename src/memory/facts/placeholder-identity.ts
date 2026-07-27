@@ -74,3 +74,41 @@ export function assertNoExtractionExampleEcho(output: unknown): void {
     );
   }
 }
+
+/**
+ * 身份字段出处校验（badcase 2026-07-24，chat 6a4f520a…）：
+ *
+ * 列表式回声防线只认已知示例值；弱模型换一套**新造**姓名/手机号（"赵堤/18833669895"）
+ * 即穿透，臆造档案再经 [已确认事实] 增量机制以"沿用"名义轮轮延续，最终被预填进
+ * 报名收资表发给候选人。
+ *
+ * 不变式：name / phone 属候选人自报身份，只可能来自提取 prompt 文本
+ * （消息窗口原文、[已确认事实] 携带的旧值、或图片描述注入文本），
+ * 不存在"凭空正确"的合法来源。输出值在 prompt 中找不到即判臆造，本次生成失败
+ * 走重试/降级（降级=本轮丢新事实，旧值不受影响，远优于假身份入库）。
+ *
+ * 匹配口径：
+ * - phone：prompt 与输出都压缩为纯数字流后做子串匹配，容忍"158 8726 5838"等分隔写法；
+ * - name：prompt 去空白后做子串匹配（候选人姓名在中文语料中不会被空白拆散跨行）。
+ */
+export function assertExtractionIdentityProvenance(output: unknown, promptText: string): void {
+  const info = (output as { interview_info?: Record<string, unknown> } | null)?.interview_info;
+  if (!info) return;
+
+  const phone = typeof info.phone === 'string' ? info.phone.trim() : '';
+  const phoneDigits = phone.replace(/\D/g, '');
+  if (phoneDigits.length >= 7) {
+    const promptDigits = promptText.replace(/\D/g, '');
+    if (!promptDigits.includes(phoneDigits)) {
+      throw new Error(`提取输出的手机号在提取上下文中无出处（疑似臆造身份）: phone=${phone}`);
+    }
+  }
+
+  const name = typeof info.name === 'string' ? info.name.trim() : '';
+  if (name.length >= 2) {
+    const promptCondensed = promptText.replace(/\s/g, '');
+    if (!promptCondensed.includes(name)) {
+      throw new Error(`提取输出的姓名在提取上下文中无出处（疑似臆造身份）: name=${name}`);
+    }
+  }
+}

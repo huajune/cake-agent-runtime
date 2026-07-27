@@ -69,6 +69,27 @@ describe('labor-form', () => {
     it('does not treat an administrative registration label as a changed job preference', () => {
       expect(decideLaborFormIntent('是准备用兼职身份登记的')).toEqual({ kind: 'ignore' });
     });
+
+    describe('无问号选择疑问句（badcase chat 6a62c6f8：兼职被误 set 成全职）', () => {
+      it.each(['兼职还是全职的', '兼职还是全职', '是兼职或者全职', '暑假工还是小时工的'])(
+        'ignores alternative questions joining two labor forms: %s',
+        (message) => {
+          expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
+        },
+      );
+
+      it('带问号的选择疑问句沿用 FACT_QUESTION 分支，仍 ignore', () => {
+        expect(decideLaborFormIntent('这个是兼职还是全职？')).toEqual({ kind: 'ignore' });
+      });
+
+      it('带明确求职动作的并列表达不受豁免影响', () => {
+        expect(decideLaborFormIntent('想找兼职或者全职')).toEqual({ kind: 'set', value: '全职' });
+      });
+
+      it('单一形式的直陈选择不受影响', () => {
+        expect(decideLaborFormIntent('我要做兼职')).toEqual({ kind: 'set', value: '兼职' });
+      });
+    });
   });
 
   describe('isValidLaborForm', () => {
