@@ -121,4 +121,34 @@ describe('session-job-matching', () => {
       ),
     ).toEqual(jiangwanDailyJob);
   });
+
+  describe('唯一岗自动锁焦（badcase chat 6a62c6f8：单岗展示打分不足焦点悬空）', () => {
+    // 生产展示话术只含 门店(+5)+品牌(+1)+薪资(+1)=7 分，够不到 8 分门槛
+    const singleJobReply =
+      '呼和浩特这边有咱们合作的门店，刚帮你查到一个：肯德基（金地明峰）- 服务员，约5.6km，薪资：13.04元/时起，综合2500-3200元/月';
+
+    const kfcJob: RecommendedJobSummary = {
+      jobId: 528527,
+      brandName: '肯德基',
+      jobName: '餐饮/西餐厅/普通服务员',
+      storeName: '金地明峰',
+      cityName: '呼和浩特市',
+      regionName: '新城区',
+      laborForm: '兼职',
+      salaryDesc: '2500-3200 元/月',
+      jobCategoryName: '餐饮/西餐厅/普通服务员',
+    };
+
+    it('locks focus when the pool and presented list contain the same single job', () => {
+      expect(resolveAssistantAnchoredFocusJob(singleJobReply, [], [kfcJob], [kfcJob])).toEqual(
+        kfcJob,
+      );
+    });
+
+    it('does not auto-lock when the pool has other candidates', () => {
+      expect(
+        resolveAssistantAnchoredFocusJob(singleJobReply, [], [kfcJob], [kfcJob, chaoneiJob]),
+      ).toBeNull();
+    });
+  });
 });
