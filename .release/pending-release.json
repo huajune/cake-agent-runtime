@@ -69,6 +69,28 @@
         "jest：invite-city-gate.spec + duliday-job-list.tool.spec 94/94 通过；pre-push 全量 ci:check 通过",
         "真实链路验证批 `1fe43230`（本分支 server 重跑 14 条原失败 case）：8 翻正，逐条评审已落 TEST 库"
       ]
+    },
+    {
+      "number": "745",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/745",
+      "title": "settlement 规则族补形态二——查无岗位时的无证据结算断言",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "settlement 规则族补形态二——查无岗位时的无证据结算断言"
+      ],
+      "summary": [
+        "settlement 规则族补形态二——查无岗位时的无证据结算断言"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "settlement 规则族补形态二——查无岗位时的无证据结算断言"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
