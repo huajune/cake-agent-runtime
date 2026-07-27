@@ -100,6 +100,56 @@ export function isBrandSpanNegated(
   return FOLLOWING_NEGATION_HEAD.test(after);
 }
 
+// ==================== 履历语境判定（2026-07-27 全天审计新增） ====================
+
+/**
+ * 品牌前置履历标记（作用于品牌片段之前的窗口）：
+ * "刚从盒马鲜生做分拣离职" 的 "刚从"、"之前在优衣库" 的 "之前在"。
+ */
+const HISTORY_PRECEDING_TAIL =
+  /(?:(?:刚|才|新)?从|(?:之前|以前|原来|先前|过去|曾经?)(?:在|是|做)?|(?:老东家|上一?家|前东家|上一?份工作?)(?:是|就是|在)?)$/;
+
+/**
+ * 品牌后置履历标记（作用于品牌片段之后的窗口，有限清单）：
+ * - 完成体："生鲜超市做过理货"、"肯德基干过"、"哈根达斯上过班"
+ * - 时长体："优衣库的话有做三个月左右"、"干了两年"
+ * - 离职体："盒马鲜生做分拣离职"
+ */
+const HISTORY_FOLLOWING_HEADS: RegExp[] = [
+  /^(?:的话)?(?:也|就|都)?(?:有|是)?[做干待呆上]过/,
+  /^(?:的话)?(?:也|就|都)?(?:有|是)?[做干待呆][了过]?[0-9一二两三四五六七八九十几半]{1,4}个?(?:月|年|周|天|星期|礼拜)/,
+  /^[一-龥a-z0-9]{0,8}(?:离职|辞职)/,
+];
+
+/** 履历判定的观察窗口（归一化字符数）：前窗对齐否定窗口，后窗放宽容纳"做分拣离职"类插入语。 */
+const HISTORY_WINDOW_BEFORE = 6;
+const HISTORY_WINDOW_AFTER = 10;
+
+/**
+ * 判断归一化子句中的品牌片段是否处于**履历/过往就职语境**（§6.3.1 延伸，2026-07-27）。
+ *
+ * 背景：Agent 收资固定会问"之前在哪家公司做过什么岗位"，候选人如实回答老东家
+ * （"优衣库的话有做三个月""刚从盒马鲜生做分拣离职""生鲜超市做过理货和补货"）后，
+ * 老东家经包含匹配被当作新求职意向、把已确立的 currentBrand 顶下台（2026-07-24
+ * 全天审计：5 例状态污染中 3 例即此形态）。履历提及是记忆性陈述，不是意向切换。
+ *
+ * 有限清单纪律与否定判定一致：只认高置信模式，判不准交 LLM 轨。
+ * 调用方约定同 isBrandSpanNegated：子句必须已按标点切分。
+ */
+export function isBrandSpanHistoryContext(
+  normalizedClause: string,
+  spanStart: number,
+  spanLength: number,
+): boolean {
+  const before = normalizedClause.slice(Math.max(0, spanStart - HISTORY_WINDOW_BEFORE), spanStart);
+  if (HISTORY_PRECEDING_TAIL.test(before)) return true;
+  const after = normalizedClause.slice(
+    spanStart + spanLength,
+    spanStart + spanLength + HISTORY_WINDOW_AFTER,
+  );
+  return HISTORY_FOLLOWING_HEADS.some((pattern) => pattern.test(after));
+}
+
 /**
  * 匹配前剥离极性控制词，让短别名的全等 token 匹配在否定句里也能露出品牌本体
  * （"不要全家" → "全家"）。只服务匹配通道，极性判定仍在原子句上进行。

@@ -114,3 +114,16 @@ export const NATIONAL_CITY_SUFFIX_TO_CITY: Record<string, string> = Object.fromE
     normalizeExplicitCityWithSuffix(cityName),
   ]),
 );
+
+/**
+ * 全国地级市 / 县级市的「裸名」集合（已去「市」后缀，"芒市"等特例保留原形）。
+ *
+ * 与 NATIONAL_CITY_SUFFIX_TO_CITY 同源、值域一致，单列一个 Set 便于 O(1) 成员判定。
+ * 消费方（brand 域 city-homograph 门槛）用它判定"某品牌别名是否与全国城市同名"，
+ * 从而对"鄂尔多斯东胜"这类地名短语里被塌缩的城市同名别名收紧匹配。
+ * 注意：这里只暴露裸名集合供跨域**成员判定**，不改动 explicit-city 扫描字典
+ * 「消息里只认带市后缀」的既有安全边界（见文件头口径）。
+ */
+export const NATIONAL_CITY_BARE_NAMES: ReadonlySet<string> = new Set(
+  Object.values(NATIONAL_CITY_SUFFIX_TO_CITY),
+);

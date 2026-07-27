@@ -13,6 +13,7 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
+import { DISTRICT_TO_CITY } from '@resolution/geo';
 import {
   BRAND_CONFIDENCE,
   truncateSourceText,
@@ -31,6 +32,7 @@ import {
 import { matchCategories } from './category-expansion';
 import {
   detectGlobalBrandControls,
+  isBrandSpanHistoryContext,
   isBrandSpanNegated,
   splitClauses,
   stripPolarityControlWords,
@@ -53,6 +55,18 @@ const CONFIDENCE_BY_MATCH_TYPE: Record<BrandMatchType, number> = {
   category_expansion: BRAND_CONFIDENCE.categoryExpansion,
 };
 
+const DISTRICT_SUFFIXES_BY_CITY = Object.entries(DISTRICT_TO_CITY).reduce(
+  (index, [district, city]) => {
+    const normalizedCity = normalizeForBrandMatch(city);
+    const normalizedDistrict = normalizeForBrandMatch(district);
+    const districts = index.get(normalizedCity) ?? [];
+    districts.push(normalizedDistrict);
+    index.set(normalizedCity, districts);
+    return index;
+  },
+  new Map<string, string[]>(),
+);
+
 /** "品牌ID：10239" 行的格式契约（两侧 prompt 已约定，§10.4）。 */
 const BRAND_ID_CONTRACT_REGEX = /品牌\s*ID\s*[：:]\s*(\d{1,10})/gi;
 
@@ -63,6 +77,21 @@ interface ClauseMatch {
   /** 命中所在子句的用户原文（归因用，见 BrandResolution.sourceText）。 */
   sourceText: string;
   negated: boolean;
+  /** 处于履历/过往就职语境（见 BrandResolution.historyContext）。 */
+  historyContext: boolean;
+}
+
+/**
+ * `[位置分享]` 结构化消息段：场所名/地址是候选人所在位置的地理数据，不是求职意向品牌。
+ *
+ * 2026-07-24 生产实例 chat 6a1e42dc：候选人分享自身定位「[位置分享] 沃尔玛(上海田林店)
+ * （徐汇区田林路103-4号） [经纬度:…]」，"沃尔玛"命中品牌库后把已确立的主品牌
+ * 成都你六姐顶下台。段内文本一律不参与品牌解析；地理语义由 geo 域承接。
+ */
+const LOCATION_SHARE_SEGMENT_REGEX = /\[位置分享\][^[]*(?:\[经纬度[^\]]*\]?)?/g;
+
+function stripLocationShareSegments(text: string): string {
+  return text.replace(LOCATION_SHARE_SEGMENT_REGEX, ' ');
 }
 
 /**
@@ -78,21 +107,25 @@ export function resolveBrands(
   const trimmed = text?.trim();
   if (!trimmed || catalog.length === 0) return [];
 
+  // 位置分享段先整体剥除再解析（含品类展开轨——场所名里的品类词同样不是意向）。
+  const content = stripLocationShareSegments(trimmed);
+  if (!content.trim()) return [];
+
   const index = buildBrandCatalogIndex(catalog);
   const results: BrandResolution[] = [];
 
   // 1. 品牌 ID 契约行（图片描述为主，任何来源出现均认）。
-  const idResolutions = resolveBrandIdMentions(trimmed, source, index);
+  const idResolutions = resolveBrandIdMentions(content, source, index);
   results.push(...idResolutions);
 
   // 2. 全局品牌控制（browse_all / 品牌为空的 negative）。昵称不是意图表达，跳过。
   if (source !== 'contact_name') {
-    for (const control of detectGlobalBrandControls(trimmed)) {
+    for (const control of detectGlobalBrandControls(content)) {
       results.push({
         canonicalName: null,
         brandId: null,
         matchedText: control.matchedText,
-        sourceText: truncateSourceText(trimmed),
+        sourceText: truncateSourceText(content),
         source,
         matchType: null,
         intentPolarity: control.polarity,
@@ -103,7 +136,7 @@ export function resolveBrands(
   }
 
   // 3. 逐子句实体匹配 + 子句内极性判定。
-  const clauseMatches = splitClauses(trimmed).flatMap((clause) =>
+  const clauseMatches = splitClauses(content).flatMap((clause) =>
     matchClause(clause, source, index),
   );
 
@@ -152,6 +185,10 @@ export function resolveBrands(
       match: {
         ...(better ? match : existing.match),
         negated: existing.match.negated || match.negated,
+        // 履历标记同否定一样 OR 合并：任一子句给出确定性履历证据即携带。
+        // 同轮"履历提及 + 显式新意向"指向同一品牌的极端形态会被保守合并成履历——
+        // 影响仅限本轮不顶替在位品牌，下一轮单独提及即恢复（替换式状态机自愈）。
+        historyContext: existing.match.historyContext || match.historyContext,
       },
     });
   }
@@ -170,6 +207,8 @@ export function resolveBrands(
       matchType: match.matchType,
       intentPolarity: match.negated ? 'negative' : 'positive',
       confidence: CONFIDENCE_BY_MATCH_TYPE[match.matchType],
+      // 只在有确定性履历证据时携带（true|缺省语义，见类型注释）。
+      ...(match.historyContext && !match.negated ? { historyContext: true as const } : {}),
       ambiguous: false,
     });
   }
@@ -178,7 +217,7 @@ export function resolveBrands(
   const matchedSpecificBrand =
     idResolutions.length > 0 || uniqueMatches.length > 0 || results.some((r) => r.ambiguous);
   if (!matchedSpecificBrand && source !== 'contact_name') {
-    const normalizedText = normalizeForBrandMatch(trimmed);
+    const normalizedText = normalizeForBrandMatch(content);
     for (const { category, matchedKeyword, matchedIndex } of matchCategories(
       normalizedText,
       index.categories,
@@ -196,7 +235,7 @@ export function resolveBrands(
           canonicalName: brandName,
           brandId: index.brandIdByName.get(brandName) ?? null,
           matchedText: category.label,
-          sourceText: truncateSourceText(trimmed),
+          sourceText: truncateSourceText(content),
           source,
           matchType: 'category_expansion',
           intentPolarity: 'positive',
@@ -343,6 +382,32 @@ function isGeographicNameMatch(
 }
 
 /**
+ * 与全国城市同名的品牌别名（"鄂尔多斯" 之于 "鄂尔多斯1980"），命中片段后紧跟该城市
+ * 的已知区县时是"市+区/县"地名短语（"鄂尔多斯东胜" = 鄂尔多斯市东胜区），候选人在
+ * 报所在地而非求职意向品牌——别名的无边界子串包含会把它塌缩成品牌，顶掉上一轮真实品牌
+ * （2026-07-23 生产实例 chat 6a617720）。
+ *
+ * 上一函数 isGeographicNameMatch 只认「品牌名 + 通用地理后缀（路/街/区/市…）」，
+ * 覆盖不到「鄂尔多斯 + 专有区名(东胜)」这类无通名后缀的市区拼接，故补此判据。
+ *
+ * 判据刻意留窄：只拦"城市同名别名 + 同城已知区县"这一实证形态，不把任意汉字延续
+ * 都当地名，避免误伤「鄂尔多斯还招人吗」等真实求职表达。
+ */
+function isCityHomographGeographicMatch(
+  cityHomograph: boolean,
+  normalizedAlias: string,
+  normalizedClause: string,
+  spanStart: number,
+  spanLength: number,
+): boolean {
+  if (!cityHomograph || spanStart < 0) return false;
+  const suffix = normalizedClause.slice(spanStart + spanLength);
+  return (DISTRICT_SUFFIXES_BY_CITY.get(normalizedAlias) ?? []).some((district) =>
+    suffix.startsWith(district),
+  );
+}
+
+/**
  * 岗位卡片「发布方」字段值不是候选人的求职意向品牌（2026-07-22 生产实例）。
  *
  * 候选人转发的招聘平台截图里，`发布方：XX·人事招聘主管` 是发布 / 代理主体，
@@ -420,6 +485,13 @@ function matchClause(
         source,
       }) ||
       isGeographicNameMatch(normalizedClause, spanStart, candidate.normalized.length) ||
+      isCityHomographGeographicMatch(
+        candidate.cityHomograph,
+        candidate.normalized,
+        normalizedClause,
+        spanStart,
+        candidate.normalized.length,
+      ) ||
       isTemporalNumericMatch(normalizedClause, spanStart, candidate.normalized)
     ) {
       continue;
@@ -430,6 +502,11 @@ function matchClause(
     const negated =
       spanStart >= 0 &&
       isBrandSpanNegated(normalizedClause, spanStart, candidate.normalized.length);
+    // 履历语境（2026-07-27 审计）：老东家自述不是新意向，标记后由 reducer 限制其状态写入。
+    const historyContext =
+      !negated &&
+      spanStart >= 0 &&
+      isBrandSpanHistoryContext(normalizedClause, spanStart, candidate.normalized.length);
     // 档位按证据形态定（§6.2）：全等 token 才是 exact 档；包含/边界包含一律 containment 档，
     // 即使命中的是标准名（"肯德基还招吗" 里的 肯德基 是子串证据，不是完全相等证据）。
     matches.push({
@@ -442,6 +519,7 @@ function matchClause(
       matchedText: candidate.alias,
       sourceText: clause,
       negated,
+      historyContext,
     });
   }
 

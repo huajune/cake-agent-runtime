@@ -230,6 +230,34 @@ describe('resolveBrands - 短别名误判防护（§7.3/§14.1）', () => {
       '鄂尔多斯1980',
     ]);
   });
+
+  // 2026-07-23 生产实例 chat 6a617720：候选人报所在地"鄂尔多斯东胜"（鄂尔多斯市东胜区）
+  // 被城市同名别名塌缩成服装品牌，顶掉上一轮真实品牌。城市同名别名 + 汉字延续按地名拒绝。
+  it('城市同名别名+区名（鄂尔多斯东胜）报所在地不命中', () => {
+    expect(resolveBrands('鄂尔多斯东胜', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('城市同名别名嵌在地名短语（我在鄂尔多斯东胜区上班）不命中', () => {
+    expect(resolveBrands('我在鄂尔多斯东胜区上班', 'user_text', catalog)).toEqual([]);
+  });
+
+  it('城市同名别名后紧跟「的」（品牌所有格）仍命中鄂尔多斯1980', () => {
+    expect(names(resolveBrands('鄂尔多斯的还招人吗', 'user_text', catalog))).toEqual([
+      '鄂尔多斯1980',
+    ]);
+  });
+
+  it('城市同名别名后紧跟普通招聘话术仍命中鄂尔多斯1980', () => {
+    expect(names(resolveBrands('鄂尔多斯还招人吗', 'user_text', catalog))).toEqual([
+      '鄂尔多斯1980',
+    ]);
+  });
+
+  it('标准名鄂尔多斯1980（非城市同名）不受地名延续判据影响', () => {
+    expect(names(resolveBrands('鄂尔多斯1980招人吗', 'user_text', catalog))).toEqual([
+      '鄂尔多斯1980',
+    ]);
+  });
 });
 
 describe('resolveBrands - 冲突别名与歧义（§14.1）', () => {
@@ -477,5 +505,61 @@ describe('resolveBrands - 渠道缩写与昵称自介误命中（2026-07-21 生�
   it('非自介句里的 4 字符拉丁别名照常包含命中："Bing有什么兼职"', () => {
     const results = positives(resolveBrands('Bing有什么兼职', 'user_text', catalog));
     expect(names(results)).toEqual(['BIIIING缤水']);
+  });
+});
+
+describe('位置分享段剥离（2026-07-24 chat 6a1e42dc 定位地标顶掉在位品牌）', () => {
+  it('位置分享里的品牌同名场所不产生任何解析结果', () => {
+    const results = resolveBrands(
+      '[位置分享] 肯德基(上海田林店)（徐汇区田林路103-4号） [经纬度:31.170591,121.433539]',
+      'user_text',
+      catalog,
+    );
+    expect(results).toEqual([]);
+  });
+
+  it('位置分享段之外的意向表达照常解析', () => {
+    const results = positives(
+      resolveBrands(
+        '[位置分享] 肯德基(上海田林店)（徐汇区…） [经纬度:31.17,121.43] 我想找麦当劳',
+        'user_text',
+        catalog,
+      ),
+    );
+    expect(names(results)).toEqual(['麦当劳']);
+  });
+});
+
+describe('履历语境标记（2026-07-27 审计：老东家自述不是新意向）', () => {
+  it('履历句携带 historyContext，意向句缺省', () => {
+    const [history] = positives(resolveBrands('刚从肯德基离职', 'user_text', catalog));
+    expect(history.canonicalName).toBe('肯德基');
+    expect(history.historyContext).toBe(true);
+
+    const [intent] = positives(resolveBrands('我想去肯德基', 'user_text', catalog));
+    expect(intent.canonicalName).toBe('肯德基');
+    expect(intent.historyContext).toBeUndefined();
+  });
+
+  it('同轮不同子句"履历 + 新意向"各自独立标记', () => {
+    const results = positives(
+      resolveBrands('之前在麦当劳做过两年，现在想找肯德基', 'user_text', catalog),
+    );
+    const byName = new Map(results.map((r) => [r.canonicalName, r]));
+    expect(byName.get('麦当劳')?.historyContext).toBe(true);
+    expect(byName.get('肯德基')?.historyContext).toBeUndefined();
+  });
+});
+
+describe('业态泛词标准名降级（2026-07-24 "生鲜超市做过理货" 履历句误命中）', () => {
+  const genericCatalog: BrandItem[] = [{ id: 10338, name: '生鲜超市', aliases: [] }, ...catalog];
+
+  it('句中包含不再命中，单独指名仍可全等命中', () => {
+    expect(
+      names(positives(resolveBrands('生鲜超市做过理货和补货', 'user_text', genericCatalog))),
+    ).toEqual([]);
+    expect(names(positives(resolveBrands('生鲜超市', 'user_text', genericCatalog)))).toEqual([
+      '生鲜超市',
+    ]);
   });
 });

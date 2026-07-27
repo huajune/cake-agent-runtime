@@ -1076,7 +1076,10 @@ export function buildInterviewPrecheckTool(
                         healthCertificateEligibility.status === 'non_local_needs_confirmation'
                       ? 'confirm_local_health_certificate'
                       : analysis.normalizedRequirements.healthCertGate === 'before_interview' &&
-                          healthCertificateEligibility.status === 'accepts_local_application'
+                          (healthCertificateEligibility.status === 'accepts_local_application' ||
+                            // 有证约岗位：候选人明确说了无证/在办/过期（未表态愿否办理）
+                            // 也必须挡在约面前（badcase a8gh8d9m：填"无"落 unknown 被放行）
+                            healthCertificateEligibility.explicitNoCertificate === true)
                         ? 'wait_for_health_certificate'
                         : temporarySummerWorkerGuard?.status === 'blocked_non_summer_job'
                           ? 'collect_fields'

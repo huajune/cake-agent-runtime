@@ -42,4 +42,25 @@ describe('resolveLocalHealthCertificateEligibility', () => {
       }),
     ).toEqual(expect.objectContaining({ status: 'rejects_local_application', spongeValue: 3 }));
   });
+
+  it.each(['无', '没有', '没办', '还没办', '健康证过期了', '在办', '办理中，还没下证'])(
+    'flags explicit no-certificate answers so before_interview jobs can gate: %s (badcase a8gh8d9m)',
+    (latestAnswer) => {
+      expect(resolveLocalHealthCertificateEligibility({ latestAnswer })).toEqual(
+        expect.objectContaining({ status: 'unknown', explicitNoCertificate: true }),
+      );
+    },
+  );
+
+  it('does not flag explicitNoCertificate for 有/无但接受办理/empty', () => {
+    expect(resolveLocalHealthCertificateEligibility({ latestAnswer: '有' })).toEqual(
+      expect.objectContaining({ status: 'local_valid' }),
+    );
+    expect(
+      resolveLocalHealthCertificateEligibility({ latestAnswer: '无但接受办理健康证' }),
+    ).toEqual(expect.objectContaining({ status: 'accepts_local_application' }));
+    const empty = resolveLocalHealthCertificateEligibility({});
+    expect(empty.status).toBe('unknown');
+    expect(empty.explicitNoCertificate).toBeUndefined();
+  });
 });

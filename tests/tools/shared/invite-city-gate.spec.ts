@@ -59,6 +59,33 @@ describe('evaluateInviteCityGate', () => {
     expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
   });
 
+  it('allows 深圳 via district inference for 宝安区 (badcase 6k74okcw: 宝安区桥头新区仍被反问城市)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '深圳',
+      sessionCity: null,
+      userTexts: ['我在宝安区桥头新区', '桥头地铁站A出口附近'],
+    });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('allows 广州 via district inference for 黄埔区 (badcase bubv5rh9: 黄埔区被当上海黄浦区)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '广州',
+      sessionCity: null,
+      userTexts: ['黄埔区'],
+    });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('does not infer 广州 from Shanghai 黄浦 (different character, stays unverified)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '广州',
+      sessionCity: null,
+      userTexts: ['我在黄浦区'],
+    });
+    expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+  });
+
   it('allows via district inference for town-level mention inside location-share render text (badcase 6a5d96de: 房山定位)', () => {
     const verdict = evaluateInviteCityGate({
       requestedCity: '北京',

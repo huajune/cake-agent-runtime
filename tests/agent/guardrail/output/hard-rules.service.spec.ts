@@ -104,7 +104,9 @@ describe('HardRulesService', () => {
       },
     };
 
-    it('replans the production case when settlement is asked without a focus-job lookup', () => {
+    it('observes (reply stays sendable) the production case when settlement is asked without a focus-job lookup', () => {
+      // 2026-07-27 发牌切换：replan → observe。本规则曾是三期审计全部重度已投递伤害
+      // 的宿主（事实反转/周二改周一），降档后首版直投、命中留档给事后环 L1 抽查。
       const result = service.check({
         replyText: '这边是按月结算的，具体发薪规则我帮你确认下。',
         toolCalls: [],
@@ -117,8 +119,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'job_detail_lookup_required',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -452,7 +454,8 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('still replans when the focus job is known but was not looked up', () => {
+    it('still observes when the focus job is known but was not looked up', () => {
+      // 2026-07-27 发牌切换：replan → observe（同上，命中留档不再触发 repair）。
       const result = service.check({
         replyText: '这家的班次是 09:00-18:00。',
         toolCalls: [],
@@ -468,10 +471,130 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'job_detail_lookup_required',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
+      );
+    });
+  });
+
+  // 2026-07-27 复测双证（RT-009/RT-010，badcase psx3d3f4/831tvtl0）：本轮查询全查无时
+  // 形态一 truth=null 放行，模型用通识断言"都是月结"/"日结当天发"纯编造。
+  describe('settlement no-evidence assertion (形态二)', () => {
+    const failedJobListCall = {
+      toolName: 'duliday_job_list',
+      args: { jobIdList: [5025072856] },
+      status: 'ok' as const,
+      result: { success: false, _outcome: '未找到符合条件的岗位', errorType: 'job_list.no_results' },
+    };
+    const erroredJobListCall = {
+      toolName: 'duliday_job_list',
+      args: { cityNameList: ['常州'] },
+      status: 'error' as const,
+      result: null,
+    };
+
+    it('fires when all job_list calls returned no data but reply asserts monthly (RT-009 shape)', () => {
+      const result = service.check({
+        replyText: '这两家肯德基都是月结，每月发薪。',
+        toolCalls: [failedJobListCall, erroredJobListCall],
+        userMessage: '日结月结',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('fires on fabricated daily-pay claim after fruitless queries (RT-010 shape)', () => {
+      const result = service.check({
+        replyText: '两家都是日结，当天发薪。你看哪个方便？',
+        toolCalls: [failedJobListCall],
+        userMessage: '日结工有吗',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('user question wording does not count as provenance', () => {
+      const result = service.check({
+        replyText: '都是月结的。',
+        toolCalls: [failedJobListCall],
+        userMessage: '好的',
+        recentMessages: [{ role: 'user', content: '日结月结？' }],
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('exempts cycles already presented in assistant history cards', () => {
+      const result = service.check({
+        replyText: '这家是周结的，每周三发薪。',
+        toolCalls: [failedJobListCall],
+        userMessage: '周结吗',
+        recentMessages: [
+          { role: 'assistant', content: '薪资：14.8 元/时起，周结每周三发\n要求：18-45 岁' },
+        ],
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('does not fire on honest no-result replies or negated mentions', () => {
+      const result = service.check({
+        replyText: '附近暂时没有日结的岗位，目前暂时没查到匹配的在招岗位。',
+        toolCalls: [failedJobListCall],
+        userMessage: '日结工有吗',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('yields to 形态一 when any job_list call produced data', () => {
+      const result = service.check({
+        replyText: '这家是月结，15号发薪。',
+        toolCalls: [
+          failedJobListCall,
+          {
+            toolName: 'duliday_job_list',
+            args: { jobIdList: [1] },
+            status: 'ok' as const,
+            result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 月结算, 15号发薪' },
+          },
+        ],
+        userMessage: '是月结吗',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('stays silent when no job_list ran this turn (history-only chat)', () => {
+      const result = service.check({
+        replyText: '这家是月结哈。',
+        toolCalls: [],
+        userMessage: '月结吗',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
       );
     });
   });
@@ -1136,8 +1259,10 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'requested_brand_mismatch',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            // 2026-07-27 发牌专项审计降 observe：生产抽样 3/3 假阳（门店名被当品牌名），
+            // 检测保留观察真跨品牌串台，不再触发 repair。
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -1353,7 +1478,9 @@ describe('HardRulesService', () => {
       }
     });
 
-    it('asks for a scoped replan when reply uses image facts without saving image description', () => {
+    it('observes (reply stays sendable) when reply uses image facts without saving image description', () => {
+      // 2026-07-27 发牌切换第一批：replan → observe。replan 全文重写曾把无错首版改出
+      // 编造政策并投递（trace batch_6a38e61c…），降档后回复原样投递、命中只留档。
       const result = service.check({
         replyText: '图片里是健康证，我看到了，可以继续帮你报名。',
         userMessage: '[图片 messageId=img-1]',
@@ -1364,8 +1491,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'image_description_not_saved',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -1918,7 +2045,9 @@ describe('HardRulesService', () => {
     const productionReply =
       '这边暂时没约上，这家目前报名人数比较多，我让同事帮你确认下名额和后续安排，稍后给你答复哈';
 
-    it('replans when the reply promises colleague follow-up without request_handoff', () => {
+    it('requires a rewrite when the reply promises colleague follow-up without request_handoff', () => {
+      // 2026-07-27 发牌收尾：replan → revise。rewrite 修法唯一（删完成时态承诺、只陈述
+      // 已确认事实），P0 保证 rewrite 失败即 block；补执行 handoff 属 §2.4 条件项。
       const result = service.check({
         replyText: productionReply,
         toolCalls: [
@@ -1935,11 +2064,11 @@ describe('HardRulesService', () => {
         (item) => item.ruleId === 'handoff_promise_without_handoff',
       );
       expect(hit).toMatchObject({
-        action: 'replan',
+        action: 'revise',
         severity: 'P0',
         currentReplySendable: false,
-        repairMode: 'replan',
-        repairToolNames: ['request_handoff'],
+        repairMode: 'rewrite',
+        repairToolNames: [],
       });
     });
 

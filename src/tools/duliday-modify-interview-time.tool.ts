@@ -83,6 +83,20 @@ export function buildModifyInterviewTimeTool(
       execute: async ({ workOrderId, newInterviewTime }) => {
         const chatId = context.chatId ?? context.sessionId;
 
+        // 测试链路保守整拦：modify 无手机号入参、无法做假身份白名单校验，而
+        // workOrderId 可能经 precheck(真实手机号) 取到真实工单——测试重放一旦
+        // 提交即误改真实候选人面试（与 booking/cancel 的 PII 闸门同源防线）。
+        if (context.strategySource === 'testing') {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.TEST_LINK_MODIFY_BLOCKED,
+            outcome: '测试链路拦截：不执行真实改约提交',
+            replyInstruction:
+              '当前为测试链路，改约不会真正提交（防止误改真实候选人的面试工单）。' +
+              '不得谎称已改约；请按 precheck 的可约结论向候选人说明将为其改约到该时间即可。',
+            details: { workOrderId, newInterviewTime },
+          });
+        }
+
         if (isInterviewSlotAvailabilityInquiryOnly(context.currentUserMessage)) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_UNCONFIRMED,

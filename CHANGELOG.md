@@ -14,7 +14,7 @@
 **预计版本**: `v10.31.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #739 回填 v10.30.0 发布结果
@@ -24,12 +24,19 @@
 - PR #739 公网 `/agent/health`：healthy，Redis / Supabase 正常
 - PR #739 启动后生产消息持续处理；无 ERROR / FATAL
 - PR #739 #738 已完成 `master → develop` 回同步
+- PR #742 行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件
+- PR #742 行为类 badcase 簇五处修复（区名映射/刚性时段/改期转人工/发薪合规/已拒条件）
+- PR #745 settlement 规则族补形态二——查无岗位时的无证据结算断言
+- PR #744 有证约岗位对无证候选人补三层拦截
+- PR #744 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744
+- PR #744 以权威岗位策略收口有证约闸门
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #742 行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件
+- PR #744 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744
 
 ### 优化调整
 - 无
@@ -42,6 +49,9 @@
 - PR #739 启动后生产消息持续处理；无 ERROR / FATAL
 - PR #739 #738 已完成 `master → develop` 回同步
 - PR #739 回填 v10.30.0 发布结果
+- PR #745 settlement 规则族补形态二——查无岗位时的无证据结算断言
+- PR #744 有证约岗位对无证候选人补三层拦截
+- PR #744 以权威岗位策略收口有证约闸门
 
 ### 配置变更
 - 无
@@ -50,7 +60,11 @@
 - 无
 
 ### 验证记录
-- 无
+- PR #742 jest：invite-city-gate.spec + duliday-job-list.tool.spec 94/94 通过；pre-push 全量 ci:check 通过
+- PR #742 真实链路验证批 `1fe43230`（本分支 server 重跑 14 条原失败 case）：8 翻正，逐条评审已落 TEST 库
+- PR #744 相关 4 个 spec：212/212 通过。
+- PR #744 本地完整 pre-push：lint、format、typecheck、前后端 build、369 个测试套件 / 5709 个测试全部通过。
+- PR #744 新提交已重新触发 GitHub CI 与 AI Review。
 <!-- release:pending:end -->
 
 ## [10.30.0] - 2026-07-27

@@ -140,8 +140,8 @@ export function detectJobDetailLookupRequired(
     // 唯一已展示岗位但焦点未锁定（badcase chat 6a62c6f8，2026-07-24：单岗展示打分
     // 不足焦点悬空，“兼职还是全职的”零工具作答编出全职/月结/签合同）：追问只可能
     // 指这一个岗位，且精简记忆没有任何岗位字段可供接地，必须按该 jobId 查证。
-    // 与下方多岗分支不同，这里的补救动作是工具调用（repair 轮 toolCalls 会变化，
-    // 二审可解除），可以安全 REPLAN。
+    // 与下方多岗分支不同，这里的补救动作原本可以通过工具调用解除；但 2026-07-27
+    // 已从类型层退役 REPLAN，job_detail 规则族统一改为 observe，由事后环接盘。
     if (presentedJobIds.length === 1) {
       const presentedJobId = presentedJobIds[0];
       if (hasFocusJobLookup(toolCalls, presentedJobId, requested)) return null;
@@ -149,7 +149,7 @@ export function detectJobDetailLookupRequired(
       return {
         ruleId: 'job_detail_lookup_required',
         label: `候选人追问唯一已展示岗位详情(${fields})，但焦点未锁定、精简记忆无岗位字段，本轮未按 jobId=${presentedJobId} 调用 duliday_job_list 查证`,
-        action: GUARDRAIL_ACTION.REPLAN,
+        action: GUARDRAIL_ACTION.OBSERVE,
       };
     }
 
@@ -176,6 +176,14 @@ export function detectJobDetailLookupRequired(
   return {
     ruleId: 'job_detail_lookup_required',
     label: `候选人追问当前岗位详情(${fields})，但精简记忆缺字段或该字段要求实时刷新，本轮未按 jobId=${focusJob.jobId} 调用 duliday_job_list`,
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌切换：主分支 replan → observe（docs/architecture/
+    // guardrail-chain-assessment-and-rebuild.md §2.2/§2.4）。本规则是三期审计全部
+    // 重度已投递伤害的宿主——replan 重生成曾把正确首版改成事实反转（trace
+    // batch_6a59dcad…"要求"→"奥乐齐没岗位"）、把工具盖章的"周二"改成"周一"并降级
+    // 已成功报名（trace batch_6a630be4…），且反馈注入/首版注入/白名单补 geocode 等
+    // 提示层防护均被击穿。降 observe 后首版直投（多为"未现查即答详情"级轻问题），
+    // 接盘方=事后环 L1 投递文本 vs 工具事实矛盾抽查（每日 badcase 日报 4.5 栏目，
+    // 与本切换同步上线，满足 §6 硬约束）。
+    action: GUARDRAIL_ACTION.OBSERVE,
   };
 }

@@ -311,3 +311,57 @@ describe('reduceBrandState - 同轮又要又不要不误清在位品牌（2026-0
     expect(next.excludedBrands.map((b) => b.canonicalName)).toEqual(['成都你六姐']);
   });
 });
+
+describe('履历语境闸（2026-07-27 审计：优衣库/盒马/生鲜超市三例状态污染）', () => {
+  const history = (name: string) =>
+    makeResolution({
+      canonicalName: name,
+      matchedText: name,
+      matchType: 'alias_containment',
+      confidence: 0.75,
+      historyContext: true,
+    });
+
+  it('履历提及不顶替已确立的 currentBrand', () => {
+    const prev: SessionBrandState = {
+      currentBrand: { canonicalName: '肯德基', brandId: 1 },
+      excludedBrands: [],
+    };
+    const next = reduceBrandState(prev, [history('麦当劳')]);
+    expect(next.currentBrand?.canonicalName).toBe('肯德基');
+  });
+
+  it('currentBrand 为空且唯一提及时仍可 seed（"提及即兴趣"裁定不变）', () => {
+    const next = reduceBrandState(EMPTY, [history('麦当劳')]);
+    expect(next.currentBrand?.canonicalName).toBe('麦当劳');
+  });
+
+  it('履历提及不解除排斥、也不 seed 已排斥品牌', () => {
+    const prev: SessionBrandState = {
+      currentBrand: null,
+      excludedBrands: [{ canonicalName: '麦当劳', brandId: 2 }],
+    };
+    const next = reduceBrandState(prev, [history('麦当劳')]);
+    expect(next.currentBrand).toBeNull();
+    expect(next.excludedBrands.map((b) => b.canonicalName)).toEqual(['麦当劳']);
+  });
+
+  it('同轮"履历 + 新意向"不同品牌：新意向照常替换', () => {
+    const prev: SessionBrandState = {
+      currentBrand: { canonicalName: '肯德基', brandId: 1 },
+      excludedBrands: [],
+    };
+    const next = reduceBrandState(prev, [history('麦当劳'), positive('瑞幸咖啡')]);
+    expect(next.currentBrand?.canonicalName).toBe('瑞幸咖啡');
+  });
+
+  it('去重时履历标记 OR 合并：LLM 轨裸品牌名条目（更高档位）不冲掉规则轨履历证据', () => {
+    const prev: SessionBrandState = {
+      currentBrand: { canonicalName: '肯德基', brandId: 1 },
+      excludedBrands: [],
+    };
+    // 规则轨：履历语境 containment 0.75；LLM 轨：裸品牌名 canonical_exact 0.95 无语境
+    const next = reduceBrandState(prev, [history('麦当劳'), positive('麦当劳')]);
+    expect(next.currentBrand?.canonicalName).toBe('肯德基');
+  });
+});

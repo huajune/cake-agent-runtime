@@ -12,6 +12,22 @@ export interface LocalHealthCertificateEligibility {
   spongeValue: 1 | 2 | 3 | null;
   recommendedQuestion?: string;
   reason: string;
+  /**
+   * 候选人明确表达了"当前没有可用健康证"（无/没办/在办/过期等），但未表态是否
+   * 接受办理（表态过的走 accepts/rejects 分支）。有证约岗位（healthCertGate=
+   * before_interview）据此直接进 wait_for_health_certificate，不得 ready_to_book。
+   * badcase a8gh8d9m：候选人填"健康证：无"落 unknown 被放行直至真实建单。
+   */
+  explicitNoCertificate?: boolean;
+}
+
+/** 候选人健康证回答是否为"当前无可用证"的明确表达（不含是否接受办理的表态）。 */
+function isExplicitNoCertificate(text: string): boolean {
+  if (!text) return false;
+  if (/^(?:无|没有?|暂无|没办(?:理)?|还没(?:有|办)?|未办(?:理)?)$/.test(text)) return true;
+  return /没有健康证|无健康证|健康证[^，。;；]{0,8}(?:过期|作废|没办|未办|还没)|过期.{0,8}(?:没办|未办|还没办?)|在办|办理中|还?没下证|等下证/.test(
+    text,
+  );
 }
 
 function readText(value: unknown): string {
@@ -111,6 +127,15 @@ export function resolveLocalHealthCertificateEligibility(params: {
       recommendedQuestion:
         '这个岗位需要应聘城市本地办理的健康证，你现在的是异地证。可以接受录用后重新办理一张本地健康证吗？',
       reason: '历史事实显示候选人持有异地健康证，尚未确认是否重办',
+    };
+  }
+
+  if (isExplicitNoCertificate(effective)) {
+    return {
+      status: 'unknown',
+      spongeValue: null,
+      explicitNoCertificate: true,
+      reason: '候选人明确表示当前没有可用健康证（未表态是否接受办理）',
     };
   }
 
