@@ -341,6 +341,15 @@ describe('ReengagementAgent', () => {
       expect(system).toContain('干不了');
       expect(system).toContain('邀请进群、改推其他岗位');
       expect(system).toContain('招募经理为本次面试拉群');
+      // badcase chat 6a6093e3（2026-07-24）：经理"那不太合适"婉拒被以"未明确取消+
+      // 工单仍有效"为由放行。婉拒口径必须成文，且禁止用这两条理由放行。
+      expect(system).toContain('婉拒也算取消');
+      expect(system).toContain('不得以"没有明确说取消"或"工单仍显示约面成功"为由放行发送');
+      if (scenarioCode === 'post_interview_followup') {
+        // badcase chat 6a607596（2026-07-24）：候选人已报告"已面试，等您通知"且经理已
+        // 回应，回访仍问"面试结束了吧"。
+        expect(system).toContain('interview_done_reported');
+      }
       expect(result.outcome.kind).toBe('skipped');
       expect(result.outcome.reply).toBeUndefined();
       expect(result.validationReason).toBe('candidate_declined_interview');
@@ -372,6 +381,30 @@ describe('ReengagementAgent', () => {
       scenarioCode: 'interview_reminder' as const,
       messages: [{ role: 'assistant', content: '今天面试得怎么样，还顺利吗？' }],
       blockReason: 'result_inquiry_already_sent' as const,
+    },
+    {
+      // badcase recvqgvKqRAcKg / chat 6a6093e3（2026-07-24）：经理婉拒"那不太合适"后
+      // 未取消工单，提醒与回访仍照发。婉拒 + 候选人"行"接受即构成经理取消。
+      name: 'the recruiter softly rejected the candidate without the word 取消',
+      scenarioCode: 'interview_reminder' as const,
+      messages: [
+        { role: 'assistant', content: '有餐饮经验吗' },
+        { role: 'user', content: '没有餐饮经验' },
+        { role: 'assistant', content: '那不太合适' },
+        { role: 'user', content: '行' },
+      ],
+      blockReason: 'manager_cancelled_interview' as const,
+    },
+    {
+      // badcase recvqgxF51YhD8 / chat 6a607596（2026-07-24）：候选人已说"已面试，等您通知"
+      // 且经理回应过"好"，7 小时后回访仍问"面试结束了吧？"。
+      name: 'the candidate already reported the interview as done and awaiting notice',
+      scenarioCode: 'post_interview_followup' as const,
+      messages: [
+        { role: 'user', content: '已面试，等您通知' },
+        { role: 'assistant', content: '好' },
+      ],
+      blockReason: 'interview_done_reported' as const,
     },
     {
       name: 'the recruiter already sent an interview reminder',

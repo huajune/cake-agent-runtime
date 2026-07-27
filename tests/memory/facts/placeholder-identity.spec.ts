@@ -1,4 +1,5 @@
 import {
+  assertExtractionIdentityProvenance,
   assertNoExtractionExampleEcho,
   isPlaceholderPhone,
   isPromptExampleName,
@@ -91,5 +92,55 @@ describe('assertNoExtractionExampleEcho', () => {
     expect(() => assertNoExtractionExampleEcho(null)).not.toThrow();
     expect(() => assertNoExtractionExampleEcho({})).not.toThrow();
     expect(() => assertNoExtractionExampleEcho('oops')).not.toThrow();
+  });
+});
+
+describe('assertExtractionIdentityProvenance', () => {
+  const baseOutput = (info: Record<string, unknown>) => ({ interview_info: info });
+
+  const PROMPT = [
+    '[已确认事实（此前轮次提取，沿用即可）]',
+    '- 姓名: 李梅（置信度: high）',
+    '- 联系方式: 15887265838（置信度: high）',
+    '[历史对话]',
+    '用户: 哈根达斯招人吗',
+    '用户: 我电话 158 8726 5838',
+    '[当前消息]',
+    '周一到周五晚上我也可以去',
+  ].join('\n');
+
+  it('badcase 2026-07-24 chat 6a4f520a：新造姓名+手机号在上下文无出处即抛错', () => {
+    expect(() =>
+      assertExtractionIdentityProvenance(baseOutput({ name: '赵堤', phone: null }), PROMPT),
+    ).toThrow(/姓名在提取上下文中无出处/);
+    expect(() =>
+      assertExtractionIdentityProvenance(baseOutput({ name: null, phone: '18833669895' }), PROMPT),
+    ).toThrow(/手机号在提取上下文中无出处/);
+  });
+
+  it('[已确认事实] 携带的旧值（沿用）放行', () => {
+    expect(() =>
+      assertExtractionIdentityProvenance(
+        baseOutput({ name: '李梅', phone: '15887265838' }),
+        PROMPT,
+      ),
+    ).not.toThrow();
+  });
+
+  it('候选人原话里带分隔符的手机号放行（纯数字流匹配）', () => {
+    expect(() =>
+      assertExtractionIdentityProvenance(
+        baseOutput({ name: null, phone: '158-8726-5838' }),
+        PROMPT,
+      ),
+    ).not.toThrow();
+  });
+
+  it('空身份字段 / interview_info 缺失放行', () => {
+    expect(() =>
+      assertExtractionIdentityProvenance(baseOutput({ name: null, phone: null }), PROMPT),
+    ).not.toThrow();
+    expect(() => assertExtractionIdentityProvenance(null, PROMPT)).not.toThrow();
+    expect(() => assertExtractionIdentityProvenance({}, PROMPT)).not.toThrow();
   });
 });
