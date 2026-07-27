@@ -1418,8 +1418,9 @@ export function buildJobListTool(
               outcome: '班次约束过滤后无匹配岗位',
               replyInstruction:
                 '本轮工具结果经候选人班次硬约束过滤后为空。' +
-                '**严格按 noMatchScript.candidateMessage 原文照念给候选人**，再询问是否可以放宽时段；' +
-                '若候选人不愿放宽，调用 invite_to_group 拉群维护。' +
+                '**严格按 noMatchScript.candidateMessage 原文照念给候选人**，然后直接调用 invite_to_group 拉群维护。' +
+                '候选人的可上班时段是刚性需求：**禁止劝候选人放宽时段/调整自己的时间迁就班次**' +
+                '（不得问"要不要放宽一下时段/全天班周末班也可以考虑吗"）；只有候选人后续主动改口放宽，才按新时段重新查岗。' +
                 '禁止把被剔除的岗位再以"差不多"包装回去。',
               details: {
                 queryMeta: {

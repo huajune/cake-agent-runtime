@@ -136,6 +136,68 @@ function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean
   ).test(sentence);
 }
 
+/** 助手侧历史文本（含往轮岗位卡片）。候选人提问（"日结月结？"）不构成结算出处，故只取 assistant。 */
+function readAssistantHistoryText(recentMessages: readonly unknown[]): string {
+  const parts: string[] = [];
+  for (const message of recentMessages) {
+    if (!message || typeof message !== 'object') continue;
+    const record = message as { role?: unknown; content?: unknown };
+    if (record.role !== 'assistant' || typeof record.content !== 'string') continue;
+    parts.push(record.content);
+  }
+  return parts.join('\n');
+}
+
+/**
+ * 形态二：无证据结算断言（2026-07-27 复测双证 RT-009/RT-010，badcase psx3d3f4/831tvtl0）。
+ *
+ * 形态一（detectSettlementCycleMismatch）只在本轮工具**有**结算数据时对账；
+ * 本轮 duliday_job_list 全部失败/查无时 truth=null 直接放行——恰好放过了
+ * "查无仍自信断言「都是月结」/「日结当天发」"这类纯编造（模型用通识或
+ * 其他品牌规则填空）。本形态补上这半边：
+ *
+ * - 触发条件：本轮调过 duliday_job_list 且**没有任何一次**返回岗位数据
+ *   （全部 error / success:false / 无 markdown 与 rawData）；
+ * - 出处豁免：该结算词在**助手侧历史**（往轮真实岗位卡片）出现过则不拦
+ *   ——候选人自己的提问（"日结月结？"）不算出处；
+ * - 断言判定复用形态一全部假阳防线（疑问句/否定前后缀/愿望复述/前瞻语境/补充结算限定）。
+ *
+ * 快环确定性动作（2026-07-27 架构裁定合规）：纯文本与工具结果比较，无 LLM 参与。
+ */
+export function detectSettlementNoEvidenceAssertion(
+  replyText: string,
+  toolCalls: AgentToolCall[],
+  recentMessages: readonly unknown[] = [],
+): RuleContradiction | null {
+  const jobListCalls = toolCalls.filter((call) => call.toolName === 'duliday_job_list');
+  if (jobListCalls.length === 0) return null;
+  const anyProductive = jobListCalls.some((call) => {
+    if (call.status === 'error' || !call.result) return false;
+    const result = call.result as Record<string, unknown>;
+    return typeof result.markdown === 'string' || Boolean(result.rawData);
+  });
+  if (anyProductive) return null; // 有数据一律走形态一的对账逻辑
+
+  const assistantHistory = readAssistantHistoryText(recentMessages);
+  for (const { cycle, pattern } of CYCLE_PATTERNS) {
+    if (pattern.test(assistantHistory)) continue; // 往轮卡片出现过该结算词：出处判定豁免
+    const claims = splitClaimSentences(replyText).filter((sentence) =>
+      sentenceAssertsCycle(sentence, cycle),
+    );
+    for (const sentence of claims) {
+      if (SUPPLEMENTAL_CONTEXT_PATTERN.test(sentence)) continue;
+      return {
+        ruleId: 'settlement_no_evidence_assertion',
+        label:
+          `本轮岗位查询全部失败/查无、会话历史亦无出处，回复却断言“${cycle}”` +
+          '——结算周期是影响候选人决策的关键事实，禁止用通识或其他品牌规则填空',
+        action: GUARDRAIL_ACTION.REVISE,
+      };
+    }
+  }
+  return null;
+}
+
 /** 正式工资结算为主口径；培训/阶梯月补只有在回复写清范围时才能作为“月结”依据。 */
 export function detectSettlementCycleMismatch(
   replyText: string,
