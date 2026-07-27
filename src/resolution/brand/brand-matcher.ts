@@ -32,6 +32,7 @@ import {
 import { matchCategories } from './category-expansion';
 import {
   detectGlobalBrandControls,
+  isBrandSpanHistoryContext,
   isBrandSpanNegated,
   splitClauses,
   stripPolarityControlWords,
@@ -76,6 +77,21 @@ interface ClauseMatch {
   /** 命中所在子句的用户原文（归因用，见 BrandResolution.sourceText）。 */
   sourceText: string;
   negated: boolean;
+  /** 处于履历/过往就职语境（见 BrandResolution.historyContext）。 */
+  historyContext: boolean;
+}
+
+/**
+ * `[位置分享]` 结构化消息段：场所名/地址是候选人所在位置的地理数据，不是求职意向品牌。
+ *
+ * 2026-07-24 生产实例 chat 6a1e42dc：候选人分享自身定位「[位置分享] 沃尔玛(上海田林店)
+ * （徐汇区田林路103-4号） [经纬度:…]」，"沃尔玛"命中品牌库后把已确立的主品牌
+ * 成都你六姐顶下台。段内文本一律不参与品牌解析；地理语义由 geo 域承接。
+ */
+const LOCATION_SHARE_SEGMENT_REGEX = /\[位置分享\][^[]*(?:\[经纬度[^\]]*\]?)?/g;
+
+function stripLocationShareSegments(text: string): string {
+  return text.replace(LOCATION_SHARE_SEGMENT_REGEX, ' ');
 }
 
 /**
@@ -91,21 +107,25 @@ export function resolveBrands(
   const trimmed = text?.trim();
   if (!trimmed || catalog.length === 0) return [];
 
+  // 位置分享段先整体剥除再解析（含品类展开轨——场所名里的品类词同样不是意向）。
+  const content = stripLocationShareSegments(trimmed);
+  if (!content.trim()) return [];
+
   const index = buildBrandCatalogIndex(catalog);
   const results: BrandResolution[] = [];
 
   // 1. 品牌 ID 契约行（图片描述为主，任何来源出现均认）。
-  const idResolutions = resolveBrandIdMentions(trimmed, source, index);
+  const idResolutions = resolveBrandIdMentions(content, source, index);
   results.push(...idResolutions);
 
   // 2. 全局品牌控制（browse_all / 品牌为空的 negative）。昵称不是意图表达，跳过。
   if (source !== 'contact_name') {
-    for (const control of detectGlobalBrandControls(trimmed)) {
+    for (const control of detectGlobalBrandControls(content)) {
       results.push({
         canonicalName: null,
         brandId: null,
         matchedText: control.matchedText,
-        sourceText: truncateSourceText(trimmed),
+        sourceText: truncateSourceText(content),
         source,
         matchType: null,
         intentPolarity: control.polarity,
@@ -116,7 +136,7 @@ export function resolveBrands(
   }
 
   // 3. 逐子句实体匹配 + 子句内极性判定。
-  const clauseMatches = splitClauses(trimmed).flatMap((clause) =>
+  const clauseMatches = splitClauses(content).flatMap((clause) =>
     matchClause(clause, source, index),
   );
 
@@ -165,6 +185,10 @@ export function resolveBrands(
       match: {
         ...(better ? match : existing.match),
         negated: existing.match.negated || match.negated,
+        // 履历标记同否定一样 OR 合并：任一子句给出确定性履历证据即携带。
+        // 同轮"履历提及 + 显式新意向"指向同一品牌的极端形态会被保守合并成履历——
+        // 影响仅限本轮不顶替在位品牌，下一轮单独提及即恢复（替换式状态机自愈）。
+        historyContext: existing.match.historyContext || match.historyContext,
       },
     });
   }
@@ -183,6 +207,8 @@ export function resolveBrands(
       matchType: match.matchType,
       intentPolarity: match.negated ? 'negative' : 'positive',
       confidence: CONFIDENCE_BY_MATCH_TYPE[match.matchType],
+      // 只在有确定性履历证据时携带（true|缺省语义，见类型注释）。
+      ...(match.historyContext && !match.negated ? { historyContext: true as const } : {}),
       ambiguous: false,
     });
   }
@@ -191,7 +217,7 @@ export function resolveBrands(
   const matchedSpecificBrand =
     idResolutions.length > 0 || uniqueMatches.length > 0 || results.some((r) => r.ambiguous);
   if (!matchedSpecificBrand && source !== 'contact_name') {
-    const normalizedText = normalizeForBrandMatch(trimmed);
+    const normalizedText = normalizeForBrandMatch(content);
     for (const { category, matchedKeyword, matchedIndex } of matchCategories(
       normalizedText,
       index.categories,
@@ -209,7 +235,7 @@ export function resolveBrands(
           canonicalName: brandName,
           brandId: index.brandIdByName.get(brandName) ?? null,
           matchedText: category.label,
-          sourceText: truncateSourceText(trimmed),
+          sourceText: truncateSourceText(content),
           source,
           matchType: 'category_expansion',
           intentPolarity: 'positive',
@@ -476,6 +502,11 @@ function matchClause(
     const negated =
       spanStart >= 0 &&
       isBrandSpanNegated(normalizedClause, spanStart, candidate.normalized.length);
+    // 履历语境（2026-07-27 审计）：老东家自述不是新意向，标记后由 reducer 限制其状态写入。
+    const historyContext =
+      !negated &&
+      spanStart >= 0 &&
+      isBrandSpanHistoryContext(normalizedClause, spanStart, candidate.normalized.length);
     // 档位按证据形态定（§6.2）：全等 token 才是 exact 档；包含/边界包含一律 containment 档，
     // 即使命中的是标准名（"肯德基还招吗" 里的 肯德基 是子串证据，不是完全相等证据）。
     matches.push({
@@ -488,6 +519,7 @@ function matchClause(
       matchedText: candidate.alias,
       sourceText: clause,
       negated,
+      historyContext,
     });
   }
 

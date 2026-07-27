@@ -101,16 +101,30 @@ export function reduceBrandState(
     );
     if (group.length === 0) continue;
 
-    for (const resolution of group) {
+    // 履历语境闸（2026-07-27 全天审计：优衣库/盒马/生鲜超市三例状态污染）：
+    // 候选人自述过往就职是记忆性提及，不是新求职意向——不解除排斥、不顶替已确立的
+    // currentBrand；currentBrand 为空且本组唯一提及时仍可 seed（「提及即兴趣」裁定不变）。
+    const intentGroup = group.filter((r) => !r.historyContext);
+    const historyGroup = group.filter((r) => r.historyContext);
+
+    for (const resolution of intentGroup) {
       if (resolution.matchType === 'category_expansion') continue;
       const ref = toRef(resolution);
       excludedBrands = excludedBrands.filter((brand) => !isSameBrandRef(brand, ref));
     }
 
-    const isMultiBrand =
-      group.length >= 2 || group.some((r) => r.matchType === 'category_expansion');
-    if (!isMultiBrand) {
-      currentBrand = toRef(group[0]);
+    if (intentGroup.length > 0) {
+      const isMultiBrand =
+        intentGroup.length >= 2 || intentGroup.some((r) => r.matchType === 'category_expansion');
+      if (!isMultiBrand) {
+        currentBrand = toRef(intentGroup[0]);
+      }
+    } else if (
+      currentBrand === null &&
+      historyGroup.length === 1 &&
+      !excludedBrands.some((brand) => isSameBrandRef(brand, toRef(historyGroup[0])))
+    ) {
+      currentBrand = toRef(historyGroup[0]);
     }
   }
 
@@ -160,10 +174,12 @@ function dedupeByBrand(resolutions: BrandResolution[]): BrandResolution[] {
   for (const resolution of resolutions) {
     const key = resolution.canonicalName!;
     const existing = byBrand.get(key);
-    // 保留档位更高（confidence 更高）的一条，品类展开档不覆盖显式命中档
-    if (!existing || resolution.confidence > existing.confidence) {
-      byBrand.set(key, resolution);
-    }
+    // 保留档位更高（confidence 更高）的一条，品类展开档不覆盖显式命中档；
+    // 履历标记 OR 合并——规则轨从原句判出的确定性履历证据，不被 LLM 轨的
+    // 裸品牌名条目（无语境、档位更高）在去重时冲掉。
+    const winner = !existing || resolution.confidence > existing.confidence ? resolution : existing;
+    const historyContext = existing?.historyContext || resolution.historyContext;
+    byBrand.set(key, historyContext ? { ...winner, historyContext: true } : winner);
   }
   return Array.from(byBrand.values());
 }

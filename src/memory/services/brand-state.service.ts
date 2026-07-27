@@ -316,6 +316,9 @@ export class BrandStateService {
         matchedText: r.matchedText,
         sourceText: r.sourceText,
         confidence: r.confidence,
+        // 履历语境标记（2026-07-27）：true = 该命中被 reducer 按履历提及处理
+        //（不顶替在位品牌）。每日观测据此核对闸门行为。
+        historyContext: r.historyContext ?? false,
       })),
       initialized: params.initialized,
       late: params.late,

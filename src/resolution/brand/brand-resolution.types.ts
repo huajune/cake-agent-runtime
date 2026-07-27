@@ -57,6 +57,14 @@ export interface BrandResolution {
   /** 规则评分，不代表统计概率（档位见 §7.4）。 */
   confidence: number;
 
+  /**
+   * 该命中处于确定性**履历/过往就职语境**（有限模式清单，见 polarity-rules.ts
+   * isBrandSpanHistoryContext）。语义是"有证据表明这是记忆性提及"，缺省即无证据——
+   * 只在判定为 true 时携带，跨轨去重按 OR 合并（确定性证据优先，不被裸品牌名条目冲掉）。
+   * reducer 对履历提及不解除排斥、不顶替已确立的 currentBrand（2026-07-27 审计）。
+   */
+  historyContext?: true;
+
   ambiguous: boolean;
   candidates?: BrandCandidate[];
 }
