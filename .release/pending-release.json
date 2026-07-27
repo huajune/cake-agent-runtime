@@ -260,6 +260,38 @@
         "两次完整 pre-push 均通过 lint、format、typecheck、前后端 build 与全量 Jest；最新基线为 369 个测试套件、5702 个测试通过。",
         "GitHub CI 与 AI Review 正在对最新 develop 基线复核。"
       ]
+    },
+    {
+      "number": "746",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/746",
+      "title": "履历/定位/回声语境闸——三病灶收敛 currentBrand 污染",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-746",
+        "Merge branch 'codex/fix-pr-728' into codex/fix-pr-746"
+      ],
+      "summary": [
+        "履历/定位/回声语境闸——三病灶收敛currentBrand污染",
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-746",
+        "Merge branch 'codex/fix-pr-728' into codex/fix-pr-746",
+        "履历/定位/回声语境闸——三病灶收敛 currentBrand 污染"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-746",
+        "Merge branch 'codex/fix-pr-728' into codex/fix-pr-746"
+      ],
+      "optimizations": [],
+      "ops": [
+        "履历/定位/回声语境闸——三病灶收敛currentBrand污染"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全部生产实证原文入测试用例，含反向保护（\"肯德基做兼职可以吗\"不标履历、裸品牌名不算回声、\"生鲜超市\"单独指名仍命中）",
+        "刷新 develop 后的 pre-push 全量 CI：370 suites / 5735 tests（6 skipped）✅，lint --max-warnings=0 ✅，format ✅，typecheck ✅，build:ci ✅"
+      ]
     }
   ],
   "lastRelease": {

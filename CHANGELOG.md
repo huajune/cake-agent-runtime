@@ -14,7 +14,7 @@
 **预计版本**: `v10.31.0`
 **最近更新**: `2026-07-27`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #739 回填 v10.30.0 发布结果
@@ -69,6 +69,10 @@
 - PR #728 城市同名别名在地名短语中不再塌缩成品牌
 - PR #728 收紧城市同名地名续接判据
 - PR #728 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728
+- PR #746 履历/定位/回声语境闸——三病灶收敛currentBrand污染
+- PR #746 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-746
+- PR #746 Merge branch 'codex/fix-pr-728' into codex/fix-pr-746
+- PR #746 履历/定位/回声语境闸——三病灶收敛 currentBrand 污染
 
 ### 新功能
 - PR #747 `image_description_not_saved` replan→observe：纯流程违规，replan 全文重写曾编造考勤扣款政策并投递（trace batch_6a38e61c…）
@@ -88,6 +92,8 @@
 - PR #747 结论定性修正——本方案是架构调整非推翻，补落地风险分级(补环先行/拆解灰度后行)
 - PR #747 口径对齐 v10.30.0 已发版——回归闸二期/settlement修复引用从'PR #731'…
 - PR #728 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728
+- PR #746 Merge remote-tracking branch 'origin/develop' into codex/fix-pr-746
+- PR #746 Merge branch 'codex/fix-pr-728' into codex/fix-pr-746
 
 ### 优化调整
 - 无
@@ -128,6 +134,7 @@
 - PR #747 同步 develop 并收口规则冲突
 - PR #728 城市同名别名在地名短语中不再塌缩成品牌
 - PR #728 收紧城市同名地名续接判据
+- PR #746 履历/定位/回声语境闸——三病灶收敛currentBrand污染
 
 ### 配置变更
 - 无
@@ -146,6 +153,8 @@
 - PR #728 定向品牌测试通过。
 - PR #728 两次完整 pre-push 均通过 lint、format、typecheck、前后端 build 与全量 Jest；最新基线为 369 个测试套件、5702 个测试通过。
 - PR #728 GitHub CI 与 AI Review 正在对最新 develop 基线复核。
+- PR #746 全部生产实证原文入测试用例，含反向保护（"肯德基做兼职可以吗"不标履历、裸品牌名不算回声、"生鲜超市"单独指名仍命中）
+- PR #746 刷新 develop 后的 pre-push 全量 CI：370 suites / 5735 tests（6 skipped）✅，lint --max-warnings=0 ✅，format ✅，typecheck ✅，build:ci ✅
 <!-- release:pending:end -->
 
 ## [10.30.0] - 2026-07-27
