@@ -70,6 +70,33 @@ describe('job-policy-parser', () => {
     },
   );
 
+  it.each([
+    '成都你六姐-上海宝山海江新天地店-后厨（有证、有经验约）-小时工',
+    '洗碗工（有证约）',
+    '前厅服务员（有证有经验约）',
+  ])(
+    'treats 有证约 jobName variants (顿号并列拆断) as before_interview: %s (badcase a8gh8d9m)',
+    (jobName) => {
+      const analysis = buildJobPolicyAnalysis({
+        basicInfo: { jobId: 1, jobName },
+        hiringRequirement: { certificate: { healthCertificate: '食品健康证' } },
+        interviewProcess: {},
+      } as never);
+
+      expect(analysis.normalizedRequirements.healthCertGate).toBe('before_interview');
+    },
+  );
+
+  it('does not treat unrelated 有证/约 wording as before_interview', () => {
+    const analysis = buildJobPolicyAnalysis({
+      basicInfo: { jobId: 1, jobName: '服务员' },
+      hiringRequirement: { certificate: { healthCertificate: '食品健康证' } },
+      interviewProcess: { firstInterview: { interviewDemand: '有证的优先，面试可约周一到周五' } },
+    } as never);
+
+    expect(analysis.normalizedRequirements.healthCertGate).toBe('before_onboard');
+  });
+
   it('should remove clearly expired date constraints but keep active notes', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-03-30T08:00:00.000Z'));
 
