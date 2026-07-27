@@ -150,6 +150,68 @@ shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evid
 
 规则生命周期（双环的连接约定）：**badcase 实证（trace）→ 进 L1 确定性检查或 shadow 观测 → 精度达标才 enforce/进硬规则 → 持续监控命中率与假阳 → 长期 0 命中或假阳超标则退役**。7-10 硬规则大规模下线（20 条）就是没有这个生命周期时欠下的债——规则只进不出、精度无人监控。
 
+### 4.1 三条数据流的读写边界
+
+#### 流 1｜事前环（实时，每回合，毫秒级）
+
+```
+候选人消息
+ → 输入守卫
+ → generator 首版草稿
+ → hard-rules 检测（10 条，全量回合）
+     ├─ 无命中 ─────────────────────────────→ sanitizer → 投递
+     ├─ 命中·白名单规则（store_status 等 3 条）
+     │    → 动作阶梯修复 → 回归闸 + 二审 → 收敛 ─→ sanitizer → 投递
+     └─ 命中·非白名单规则（job_detail 等）
+          → observe：首版原样放行 ──────────────→ sanitizer → 投递
+ 语义审查 shadow（门控，~33% 带证据回合）→ 只写档案，不动文本
+
+ 写入：guardrail_review_records   ← 命中/observe 证据、修复轨迹、semantic_reviews
+       message_processing_records ← trace_id + reply_preview（投递物全文）
+       agent_execution_events     ← 工具调用轨迹
+```
+
+与现状的差别只有一处分流：非白名单命中从"进 repair"改道"observe 放行"。
+**observe 档案是两环之间的接口**——事前环不动手，但把证据完整留下，等事后环接盘。
+
+#### 流 2｜事后环（离线，每日 T+1）
+
+```
+读取（只读生产表，join 键 = trace_id）：
+  昨日 message_processing_records 全量（~1200 轮/日，取 reply_preview＝投递物）
+  ⋈ guardrail_review_records（observe 档案 + shadow findings）
+  ⋈ 工具轨迹（agent_invocation / agent_execution_events）
+
+  L0：semantic_reviews findings → 按 chat 去重 → 高置信过滤 → 轻量复核 ─┐
+  L1：确定性检查 × 全量投递物（日期星期校验/文本vs工具事实/悬空承诺   ├→ 确认 badcase
+      次日兑现/静默丢消息/宣称已报名无 booking/同题追问）              │
+  L2：盲区 67% + 高危切片抽样 → LLM 评审 ─────────────────────────────┘
+
+写入：badcase findings 表（唯一新增的表：类型/来源层 L0-L2/置信/trace_id/证据）
+出口：飞书日报（清单+环比）；高置信案例 → test-suite 回归资产（策展机器复用）
+```
+
+两个关键性质：**① 审查对象换了**——事前环审草稿，事后环审 `reply_preview`（候选人真正收到
+的文本），直接修掉"审的不是投递物"缺陷（周二→周一类 repair 引入错误在此必被 L1 日期校验
+抓到）；**② 单向依赖**——事后环只读生产表、只写自己的表，不回写任何热路径，离线环整个
+挂掉消息链路零感知。
+
+#### 流 3｜反馈流（按需，人审 + 代码发布，刻意不自动化）
+
+```
+badcase findings → 归因 → 三路出口：
+  ① 生成侧根修：prompt / 记忆 / 工具描述 → 首版质量提升（走正常 PR 发版）
+  ② 新检查候选：先进 L1 确定性检查或 shadow 规则 → 精度达标 → 才升硬规则/enforce
+  ③ 发牌调整：两期战绩数据 → 白名单发牌/收牌（改规则目录 repairAction，走 PR）
+```
+
+badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），离线环的误判不会自动污染线上
+行为——即 §4 生命周期在数据流层面的落法。发牌切换的验收数据也从流 2 日报出来，形成
+"切一条规则 → 看一周日报 → 再切下一条"的闭环。
+
+**基础设施增量**：流 1 只改分流逻辑（表全现成）、流 3 是流程约定（零代码）；真正新建的
+只有流 2 的一张 findings 表 + 一个每日任务——这也是 P0（L0 日报）能低成本启动的原因。
+
 ## 5. 分阶段落地
 
 | 阶段 | 内容 | 成本 | 依赖 |
