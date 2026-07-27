@@ -319,7 +319,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal:
       '本轮 duliday_job_list 返回的正式/培训薪资方案 salaryPeriod，以及回复中的结算断言。',
     residualRisk:
-      '非标准结算别名需要随生产样本扩充；无本轮工具结果时交由补查规则处理。' +
+      '非标准结算别名需要随生产样本扩充；本轮工具全查无时由 settlement_no_evidence_assertion 兜接。' +
       '2026-07-21 起句子已把周期限定在阶梯/差价/培训范围内即豁免（不再要求岗位数据也编码了对应补充方案），' +
       '代价是"阶梯差价日结"这类补充项本身说错的场景不再拦截，交语义审查。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
@@ -327,6 +327,25 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版把某一项的结算周期说成了整份工资的结算周期。请严格按本轮岗位数据重写：先说清正式工资的结算周期，' +
       '再在同一句里点明阶梯差价/培训费用等补充项各自的结算方式（例如「基础工资日结，超 100 小时的阶梯差价月结」）；' +
       '候选人没问到的补充项不要主动展开，不要用综合月薪单位推断结算周期。',
+  },
+  {
+    id: 'settlement_no_evidence_assertion',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '本轮岗位查询全部失败/查无且会话无出处时，拦住凭通识断言日结/周结/月结的结算编造。',
+    riskGoal:
+      '结算方式直接影响候选人决策；查无岗位时的结算断言必然是通识/他品牌规则填空（2026-07-27 复测双证：查无仍称"都是月结"/"日结当天发"）。',
+    exogenousSignal:
+      '本轮 duliday_job_list 全部 error/查无（无 markdown 与 rawData）+ 助手侧历史无该结算词 + 回复中的结算断言。',
+    residualRisk:
+      '往轮助手卡片含该结算词即豁免（旧数据可能已过期，交语义审查）；候选人提问中的结算词不构成出处；' +
+      '断言判定与 settlement_cycle_mismatch 共用否定/愿望/前瞻词表，新形态假阳随生产样本迭代。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版在本轮岗位查询全部失败/查无的情况下断言了结算周期，该结论没有任何工具出处，当前文本不可发送。' +
+      '请重写：如实说明目前暂时没查到匹配的在招岗位、结算等细节需以查到的岗位数据为准；' +
+      '禁止用"一般都是/通常"类通识或其他品牌的结算规则填空，也不要沿用已查不到岗位的历史结算信息。',
   },
   {
     id: 'unsupported_store_status_speculation',
@@ -379,7 +398,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '若渠道未把 imageMessageIds 透传到 OutputGuardInput，图片纯元信息场景仍需后续接入。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。',
+      '上一版回复已经基于图片/表情内容做判断，但没有成功调用 save_image_description 保存描述，当前文本不可发送。请先调用 save_image_description 保存每张图片/表情的事实描述；如果看不清，应明确说看不清并请候选人重发清晰图片。' +
+      // 2026-07-27 审计：本规则是纯流程违规——上一版文本内容本身没有问题，缺的只是工具调用。
+      // trace batch_6a38e61c…：replan 放开重写后把首版谨慎的"建议问店长"改成编造的
+      // "考勤系统半小时内晚退不扣款"政策并实际投递。补调工具后必须回到原文。
+      '保存完成后，上一版文本内容本身没有违规，请以上一版原文为基础尽量逐字保留输出，不要重新组织内容、不要新增任何原文没有的结论或政策性断言。',
     repairToolNames: ['save_image_description'],
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];

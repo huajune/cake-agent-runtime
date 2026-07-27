@@ -1,225 +1,251 @@
 {
-  "baseVersion": "10.29.0",
-  "nextVersion": "10.30.0",
-  "updatedAt": "2026-07-24",
+  "baseVersion": "10.30.0",
+  "nextVersion": "10.31.0",
+  "updatedAt": "2026-07-27",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "739",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/739",
+      "title": "回填 v10.30.0 发布结果",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "回填 v10.30.0 发布结果",
+        "GitHub Release / tag 已创建",
+        "Build and Deploy #30235700533：test / deploy / notify 全部成功",
+        "`cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次",
+        "公网 `/agent/health`：healthy，Redis / Supabase 正常",
+        "启动后生产消息持续处理；无 ERROR / FATAL",
+        "#738 已完成 `master → develop` 回同步"
+      ],
+      "summary": [
+        "回填 v10.30.0 发布结果",
+        "GitHub Release / tag 已创建",
+        "Build and Deploy #30235700533：test / deploy / notify 全部成功",
+        "`cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次",
+        "公网 `/agent/health`：healthy，Redis / Supabase 正常",
+        "启动后生产消息持续处理；无 ERROR / FATAL",
+        "#738 已完成 `master → develop` 回同步"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "GitHub Release / tag 已创建",
+        "Build and Deploy #30235700533：test / deploy / notify 全部成功",
+        "`cake-agent-runtime:v10.30.0`：running / healthy，重启 0 次",
+        "公网 `/agent/health`：healthy，Redis / Supabase 正常",
+        "启动后生产消息持续处理；无 ERROR / FATAL",
+        "#738 已完成 `master → develop` 回同步",
+        "回填 v10.30.0 发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "742",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/742",
+      "title": "行为类 badcase 簇五处修复（区名映射/刚性时段/改期转人工/发薪合规/已拒条件）",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件"
+      ],
+      "summary": [
+        "行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件",
+        "行为类 badcase 簇五处修复（区名映射/刚性时段/改期转人工/发薪合规/已拒条件）"
+      ],
+      "features": [],
+      "fixes": [
+        "行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "jest：invite-city-gate.spec + duliday-job-list.tool.spec 94/94 通过；pre-push 全量 ci:check 通过",
+        "真实链路验证批 `1fe43230`（本分支 server 重跑 14 条原失败 case）：8 翻正，逐条评审已落 TEST 库"
+      ]
+    },
+    {
+      "number": "745",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/745",
+      "title": "settlement 规则族补形态二——查无岗位时的无证据结算断言",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "settlement 规则族补形态二——查无岗位时的无证据结算断言"
+      ],
+      "summary": [
+        "settlement 规则族补形态二——查无岗位时的无证据结算断言"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "settlement 规则族补形态二——查无岗位时的无证据结算断言"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
-    "version": "10.29.0",
-    "date": "2026-07-24",
+    "version": "10.30.0",
+    "date": "2026-07-27",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "711",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/711",
-        "title": "发版底账回填业务改动",
+        "number": "725",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/725",
+        "title": "回填 v10.29.0 发布结果",
         "author": "huajune",
-        "mergedAt": "2026-07-23",
+        "mergedAt": "2026-07-24",
         "businessUpdates": [
-          "发版底账回填业务改动"
+          "回填 v10.29.0 发布结果",
+          "将 v10.29.0 底账状态更新为“已发布”",
+          "回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果",
+          "记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收",
+          "记录 `master → develop` 回同步 #724 和未发生回滚"
         ],
         "summary": [
-          "发版底账回填业务改动"
+          "回填 v10.29.0 发布结果",
+          "将 v10.29.0 底账状态更新为“已发布”",
+          "回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果",
+          "记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收",
+          "记录 `master → develop` 回同步 #724 和未发生回滚"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "将 v10.28.0 状态更新为已发布",
-          "回填 Release、部署 workflow、正式发布时间、生产镜像与健康检查",
-          "记录飞书通知成功、master → develop 回同步 #710 与无回滚结论",
-          "保留独立回归批次证据，并再次注明未触碰 `tz2607-*` 与批次 `56d30741`",
-          "发版底账回填业务改动"
+          "将 v10.29.0 底账状态更新为“已发布”",
+          "回填 GitHub Release、部署 workflow、正式发布时间与飞书通知结果",
+          "记录生产镜像、健康接口、依赖检查、重启次数与部署后日志验收",
+          "记录 `master → develop` 回同步 #724 和未发生回滚",
+          "回填 v10.29.0 发布结果"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run ci:check`：366 个测试套件、5609 个测试通过，6 个跳过",
           "Prettier 与 `git diff --check` 通过",
-          "生产容器 `cake-agent-runtime:v10.28.0` 为 `running / healthy`",
+          "pre-push 全量校验通过：367 个测试套件、5643 个测试通过，6 个跳过",
+          "生产容器 `cake-agent-runtime:v10.29.0` 为 `running / healthy`，重启 0 次",
           "`/agent/health` 返回 healthy，Redis、Supabase 均正常"
         ]
       },
       {
-        "number": "713",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/713",
-        "title": "发版通知业务改动为空时禁止回退",
+        "number": "729",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/729",
+        "title": "兼职岗被说成全职月结（chat 6a62c6f8）三层修复",
         "author": "huajune",
-        "mergedAt": "2026-07-23",
+        "mergedAt": "2026-07-27",
         "businessUpdates": [
-          "发版通知业务改动为空时禁止回退"
+          "兼职岗被说成全职月结（chat 6a62c6f8）三层修复"
         ],
         "summary": [
-          "发版通知业务改动为空时禁止回退"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "区分“没有结构化元数据”和“结构化业务条目被全部过滤”",
-          "前者继续兼容 CHANGELOG，后者明确显示本次无候选人/运营可感知业务改动",
-          "防止已经过滤的底账/发布流程内容被 CHANGELOG 回退重新捞回",
-          "发版通知业务改动为空时禁止回退"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "通知格式测试：13/13 通过",
-          "`pnpm run ci:check`：366 个测试套件、5610 个测试通过，6 个跳过",
-          "使用最终 v10.29.0 元数据预演：仅显示“本次无候选人/运营可感知业务改动”"
-        ]
-      },
-      {
-        "number": "715",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/715",
-        "title": "姓名解锁句式补强（本名直答/裸吗问句/无键名表单）",
-        "author": "huajune",
-        "mergedAt": "2026-07-24",
-        "businessUpdates": [
-          "姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）",
-          "姓名解锁句式补强（本名直答/裸吗问句/无键名表单）"
-        ],
-        "summary": [
-          "姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）",
-          "姓名解锁句式补强（本名直答/裸吗问句/无键名表单）"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "姓名解锁句式补强——本名直答/裸吗问句/无键名表单回复（badcase 6a609570）"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": []
-      },
-      {
-        "number": "717",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/717",
-        "title": "语义判定三分法全链路盘点与迁移方案",
-        "author": "huajune",
-        "mergedAt": "2026-07-24",
-        "businessUpdates": [
-          "语义判定三分法全链路盘点与迁移方案"
-        ],
-        "summary": [
-          "语义判定三分法全链路盘点与迁移方案"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "语义判定三分法全链路盘点与迁移方案"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": []
-      },
-      {
-        "number": "716",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/716",
-        "title": "收口守卫、人工介入与复聊质量修复",
-        "author": "huajune",
-        "mergedAt": "2026-07-24",
-        "businessUpdates": [
-          "出站守卫 repair 质量四批修复（2026-07-24 审计）",
-          "修正 request_handoff 前置条件中的遗留矛盾触发词",
-          "修正 RecordHandoffInput 注释中过时的枚举数量",
-          "修复 aggregate_hourly_stats tool_agg 键名漂移并回填 30 天"
-        ],
-        "summary": [
-          "出站守卫 repair 质量四批修复（2026-07-24 审计）",
-          "request_handoff 原因枚举拆细 + 人工介入卡片增强",
-          "request_handoff 描述改为不限会话阶段",
-          "修正 request_handoff 前置条件中的遗留矛盾触发词",
-          "system_blocked 文案去黑话，改为运营视角表述",
-          "salary_admin_inquiry 禁止空头承诺，改为先查证再当轮转人工",
-          "candidate-consultation 合同类咨询与 salary_admin_inquiry 口径对齐",
-          "岗位字段缺值场景改为当轮转人工，删除\"帮你确认下\"豁免",
-          "修正 RecordHandoffInput 注释中过时的枚举数量",
-          "修复 aggregate_hourly_stats tool_agg 键名漂移并回填 30 天",
-          "salary_admin_inquiry 卡片展示岗位数据缺口供运营补录",
-          "salary_admin_inquiry 告警卡片改紫色与紧急红卡区分",
-          "missingJobInfo 落 handoff_events.missing_job_info 底账列",
-          "锁定复聊详情抽屉底层滚动",
-          "恢复候选池复用场景的推店锚点",
-          "对齐岗位数据缺口转人工契约",
-          "建立本批发版底账",
-          "同步同批发版改动",
-          "补齐联合头验证证据",
-          "收口守卫、人工介入与复聊质量修复"
+          "兼职岗被说成全职月结（chat 6a62c6f8）三层修复"
         ],
         "features": [],
         "fixes": [
-          "出站守卫 repair 质量四批修复（2026-07-24 审计）",
-          "修正 request_handoff 前置条件中的遗留矛盾触发词",
-          "修正 RecordHandoffInput 注释中过时的枚举数量",
-          "修复 aggregate_hourly_stats tool_agg 键名漂移并回填 30 天"
+          "兼职岗被说成全职月结（chat 6a62c6f8）三层修复"
         ],
         "optimizations": [],
-        "ops": [
-          "request_handoff 原因枚举拆细 + 人工介入卡片增强",
-          "request_handoff 描述改为不限会话阶段",
-          "system_blocked 文案去黑话，改为运营视角表述",
-          "salary_admin_inquiry 禁止空头承诺，改为先查证再当轮转人工",
-          "candidate-consultation 合同类咨询与 salary_admin_inquiry 口径对齐",
-          "岗位字段缺值场景改为当轮转人工，删除\"帮你确认下\"豁免",
-          "salary_admin_inquiry 卡片展示岗位数据缺口供运营补录",
-          "salary_admin_inquiry 告警卡片改紫色与紧急红卡区分",
-          "missingJobInfo 落 handoff_events.missing_job_info 底账列",
-          "锁定复聊详情抽屉底层滚动",
-          "恢复候选池复用场景的推店锚点",
-          "对齐岗位数据缺口转人工契约",
-          "建立本批发版底账",
-          "同步同批发版改动",
-          "补齐联合头验证证据"
-        ],
+        "ops": [],
         "config": [],
         "envFiles": [],
         "verification": [
-          "最终联合头 `8448e5d3` 的 `pnpm run ci:check`：lint / format / typecheck / Web build / Nest build 全部通过。",
-          "Jest：367 suites、5643 tests 通过；1 suite / 6 tests 按项目配置跳过。",
-          "`pnpm run test:di-smoke`：完整 AppModule 依赖图实例化通过。",
-          "定向 Agent / Guardrail / 复聊 14 suites、377 tests 通过；通知卡 18 tests 通过。",
-          "两条真实 Agent P0 回归经人工 trace 评审通过：姓名确认解除阻塞；合同类型缺失时先查岗再 `salary_admin_inquiry`，`missingJobInfo=[合同类型]`。",
-          "正式回归数据集新增 2 条幂等资产，0 失败。",
-          "测试库、生产库 migration 状态一致；生产新增列可查询，小时 RPC 返回真实工具名的非空 `tool_stats`。",
-          "浏览器确认复聊页面/路由可加载；本地候选人数据接口失败导致无可打开记录，抽屉滚轮实操记为 P1 非阻断限制，双根节点锁定及 cleanup 恢复已做代码核对。"
+          "新增 3 个测试组（labor-form 选择疑问句 8 例、唯一岗自动锁焦 2 例、job-detail 守卫新分支 7 例）",
+          "`tests/memory` + `tests/agent` + `tests/tools` 全量：**3099 passed / 6 skipped，0 fail**；typecheck、eslint 干净"
         ]
       },
       {
-        "number": "721",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/721",
-        "title": "固化 v10.29.0 发版底账",
+        "number": "730",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/730",
+        "title": "日巡检四项 badcase 修复（2026-07-24 批次）",
         "author": "huajune",
-        "mergedAt": "2026-07-24",
+        "mergedAt": "2026-07-27",
         "businessUpdates": [
-          "固化 v10.29.0 发版底账",
-          "将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`",
-          "补齐 PR #715、#716、#717、#720 的合入与验证证据",
-          "标记 v10.29.0 发布前门禁已完成"
+          "日巡检四项 badcase 修复（2026-07-24 批次）"
         ],
         "summary": [
-          "固化 v10.29.0 发版底账",
-          "将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`",
-          "补齐 PR #715、#716、#717、#720 的合入与验证证据",
-          "标记 v10.29.0 发布前门禁已完成"
+          "日巡检四项 badcase 修复（2026-07-24 批次）"
+        ],
+        "features": [],
+        "fixes": [
+          "日巡检四项 badcase 修复（2026-07-24 批次）"
+        ],
+        "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "新增回归：identity provenance 4 例、invite 城市门青岛 2 例、geo resolver 崂山 golden、reengagement 婉拒/已报告完成 2 例 + prompt 防线断言",
+          "`tests/memory/facts/ + tests/resolution/geo/ + tests/agent/reengagement/reengagement.agent.spec.ts + tests/memory/services/ + tests/tools/`：1500+ 用例全绿",
+          "`tsc --noEmit` / `eslint --max-warnings=0` / pre-push 全量 ci:check 通过"
+        ]
+      },
+      {
+        "number": "731",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/731",
+        "title": "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+        "author": "huajune",
+        "mergedAt": "2026-07-27",
+        "businessUpdates": [
+          "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+          "出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定",
+          "评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案"
+        ],
+        "summary": [
+          "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+          "出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定",
+          "评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "将本批待发布底账固化为 `docs/releases/2026/v10.29.0.md`",
-          "补齐 PR #715、#716、#717、#720 的合入与验证证据",
-          "标记 v10.29.0 发布前门禁已完成",
-          "固化 v10.29.0 发版底账"
+          "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+          "出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定",
+          "评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run release:ledger:check`",
-          "pre-push 全量校验：367 个测试套件通过，5643 个测试通过，6 个跳过",
-          "lint、format、typecheck、Web build、Nest build 均通过"
+          "`repair-regression.util.spec.ts`：+10 用例（生产案正反向、星期纠错不误伤、跨年推断、booking 降级四个负例）",
+          "`hard-rules.service.spec.ts`：+3 用例（两类假阳豁免 + 愿望复述禁跨句反例）",
+          "全量：191/191 pass（两 spec）+ runner 53/53 pass + typecheck + lint 全绿"
+        ]
+      },
+      {
+        "number": "735",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/735",
+        "title": "固化 v10.30.0 发版底账",
+        "author": "huajune",
+        "mergedAt": "2026-07-27",
+        "businessUpdates": [
+          "固化 v10.30.0 发版底账"
+        ],
+        "summary": [
+          "固化 v10.30.0 发版底账"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "固化 v10.30.0 发版底账"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm run release:ledger:check` 通过",
+          "联合头定向测试：9 suites、382/382 tests 通过",
+          "联合头 `pnpm run ci:check`：368 suites、5681 tests 通过，1 suite / 6 tests 按配置跳过",
+          "真实 Agent：4 passed / 1 skipped / 0 failed；两批已同步生产测试看板，`warnings=[]`",
+          "无 migration、环境变量或部署配置变更"
         ]
       }
     ]

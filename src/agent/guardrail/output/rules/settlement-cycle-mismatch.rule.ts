@@ -93,7 +93,19 @@ function splitClaimSentences(text: string): string[] {
 // 2026-07-24 审计追补「不支持|没找到|未找到|找不到」："也不支持日结或周结"整句失防
 // （trace batch_6a61a550…，rewrite 为修它追加了无依据的月结断言）。
 const NEGATION_PREFIX =
-  '不是|并非|不按|不算|没有|没找到|未找到|找不到|没|无|暂无|不提供|不做|不支持';
+  '不是|并非|不按|不算|没有|没找到|未找到|找不到|没排到|排不到|没|无|暂无|不提供|不做|不支持';
+
+// 后缀否定：否定词在结算词之后（"日结的暂时没排到哈"）。前缀正则不认这种语序，
+// 2026-07-27 审计 FP：trace batch_6a62db88…（"日结的暂时没排到哈"被判声称日结，
+// rewrite 空转丢了"时薪 20 多"）。间隔同样禁跨逗号/顿号。
+const NEGATION_SUFFIX =
+  '没排到|排不到|没找到|找不到|没约到|约不到|没有|暂时没|暂无|没了|不做|不支持';
+
+// 愿望复述：句子在复述候选人自己的诉求（"你想找日结、只做一周左右的岗位是吧"），
+// 不是对焦点岗位的结算承诺。问号被 splitClaimSentences 剥掉、"吧"不在疑问词表，
+// 这类句子会漏进断言判定（2026-07-27 审计 FP：trace batch_6a63278c…）。
+// 窗口禁跨逗号/顿号，避免"你想找日结，这家就是日结"里第二个断言被连带豁免。
+const DESIRE_ECHO_PREFIX = '你想找|你想要|你是想|你想|你要|想找|要找';
 
 // 前瞻/他岗语境：句子谈的是"其他岗位/未来供给/别家的灵工单"，不是焦点岗位的结算承诺。
 // 2026-07-24 审计："后面有周结/日结的新岗位第一时间通知你"、"海底捞……灵工单（短期/日结）"
@@ -108,6 +120,12 @@ function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean
   if (!pattern?.test(sentence)) return false;
   if (/[吗么嘛？?]|是不是|是否/u.test(sentence)) return false;
   if (PROSPECTIVE_CONTEXT_PATTERN.test(sentence)) return false;
+  if (new RegExp(`(?:${DESIRE_ECHO_PREFIX})[^，。；、]{0,6}${cycle}`, 'u').test(sentence)) {
+    return false;
+  }
+  if (new RegExp(`${cycle}[^，。；、]{0,4}(?:${NEGATION_SUFFIX})`, 'u').test(sentence)) {
+    return false;
+  }
   // 间隔禁跨逗号/顿号：保证"这家不是月结，是日结"里的"日结"仍算断言。
   // 并列穿透只走显式可选组「…或/、//」一次（如"没找到其他周结或日结的岗位"——「日结」
   // 距否定词 7 字超出旧窗口，alternation 后段照旧假阳，2026-07-24 审计）。基础间隔
@@ -116,6 +134,68 @@ function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean
     `(?:${NEGATION_PREFIX})[^，。；、]{0,5}(?:[^，。；、]{0,4}[或、/])?[^，。；、]?${cycle}`,
     'u',
   ).test(sentence);
+}
+
+/** 助手侧历史文本（含往轮岗位卡片）。候选人提问（"日结月结？"）不构成结算出处，故只取 assistant。 */
+function readAssistantHistoryText(recentMessages: readonly unknown[]): string {
+  const parts: string[] = [];
+  for (const message of recentMessages) {
+    if (!message || typeof message !== 'object') continue;
+    const record = message as { role?: unknown; content?: unknown };
+    if (record.role !== 'assistant' || typeof record.content !== 'string') continue;
+    parts.push(record.content);
+  }
+  return parts.join('\n');
+}
+
+/**
+ * 形态二：无证据结算断言（2026-07-27 复测双证 RT-009/RT-010，badcase psx3d3f4/831tvtl0）。
+ *
+ * 形态一（detectSettlementCycleMismatch）只在本轮工具**有**结算数据时对账；
+ * 本轮 duliday_job_list 全部失败/查无时 truth=null 直接放行——恰好放过了
+ * "查无仍自信断言「都是月结」/「日结当天发」"这类纯编造（模型用通识或
+ * 其他品牌规则填空）。本形态补上这半边：
+ *
+ * - 触发条件：本轮调过 duliday_job_list 且**没有任何一次**返回岗位数据
+ *   （全部 error / success:false / 无 markdown 与 rawData）；
+ * - 出处豁免：该结算词在**助手侧历史**（往轮真实岗位卡片）出现过则不拦
+ *   ——候选人自己的提问（"日结月结？"）不算出处；
+ * - 断言判定复用形态一全部假阳防线（疑问句/否定前后缀/愿望复述/前瞻语境/补充结算限定）。
+ *
+ * 快环确定性动作（2026-07-27 架构裁定合规）：纯文本与工具结果比较，无 LLM 参与。
+ */
+export function detectSettlementNoEvidenceAssertion(
+  replyText: string,
+  toolCalls: AgentToolCall[],
+  recentMessages: readonly unknown[] = [],
+): RuleContradiction | null {
+  const jobListCalls = toolCalls.filter((call) => call.toolName === 'duliday_job_list');
+  if (jobListCalls.length === 0) return null;
+  const anyProductive = jobListCalls.some((call) => {
+    if (call.status === 'error' || !call.result) return false;
+    const result = call.result as Record<string, unknown>;
+    return typeof result.markdown === 'string' || Boolean(result.rawData);
+  });
+  if (anyProductive) return null; // 有数据一律走形态一的对账逻辑
+
+  const assistantHistory = readAssistantHistoryText(recentMessages);
+  for (const { cycle, pattern } of CYCLE_PATTERNS) {
+    if (pattern.test(assistantHistory)) continue; // 往轮卡片出现过该结算词：出处判定豁免
+    const claims = splitClaimSentences(replyText).filter((sentence) =>
+      sentenceAssertsCycle(sentence, cycle),
+    );
+    for (const sentence of claims) {
+      if (SUPPLEMENTAL_CONTEXT_PATTERN.test(sentence)) continue;
+      return {
+        ruleId: 'settlement_no_evidence_assertion',
+        label:
+          `本轮岗位查询全部失败/查无、会话历史亦无出处，回复却断言“${cycle}”` +
+          '——结算周期是影响候选人决策的关键事实，禁止用通识或其他品牌规则填空',
+        action: GUARDRAIL_ACTION.REVISE,
+      };
+    }
+  }
+  return null;
 }
 
 /** 正式工资结算为主口径；培训/阶梯月补只有在回复写清范围时才能作为“月结”依据。 */

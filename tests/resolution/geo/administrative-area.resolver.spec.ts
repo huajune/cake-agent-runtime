@@ -26,6 +26,15 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
       expect(resolveCityFromDistrict('慈溪')).toBe('宁波');
     });
 
+    it('崂山区 → 青岛（badcase recvqhLOPwv0m9，2026-07-24 业务足迹补录）', () => {
+      expect(resolveCityFromDistrict('崂山区')).toBe('青岛');
+      expect(resolveCityFromDistrict('崂山')).toBe('青岛');
+      expect(resolveCityFromDistrict('市南区')).toBe('青岛');
+      // 裸"市南/平度"不收（撞"超市南边"/"水平度"），保持保守
+      expect(resolveCityFromDistrict('市南')).toBeNull();
+      expect(resolveCityFromDistrict('平度市')).toBe('青岛');
+    });
+
     it('golden：延吉市 → 延边朝鲜族自治州（县级市映射并入区县表）', () => {
       expect(resolveCityFromDistrict('延吉市')).toBe('延边朝鲜族自治州');
     });
