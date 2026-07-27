@@ -104,7 +104,9 @@ describe('HardRulesService', () => {
       },
     };
 
-    it('replans the production case when settlement is asked without a focus-job lookup', () => {
+    it('observes (reply stays sendable) the production case when settlement is asked without a focus-job lookup', () => {
+      // 2026-07-27 发牌切换：replan → observe。本规则曾是三期审计全部重度已投递伤害
+      // 的宿主（事实反转/周二改周一），降档后首版直投、命中留档给事后环 L1 抽查。
       const result = service.check({
         replyText: '这边是按月结算的，具体发薪规则我帮你确认下。',
         toolCalls: [],
@@ -117,8 +119,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'job_detail_lookup_required',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
@@ -452,7 +454,8 @@ describe('HardRulesService', () => {
       );
     });
 
-    it('still replans when the focus job is known but was not looked up', () => {
+    it('still observes when the focus job is known but was not looked up', () => {
+      // 2026-07-27 发牌切换：replan → observe（同上，命中留档不再触发 repair）。
       const result = service.check({
         replyText: '这家的班次是 09:00-18:00。',
         toolCalls: [],
@@ -468,8 +471,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'job_detail_lookup_required',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );

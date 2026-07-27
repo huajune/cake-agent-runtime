@@ -68,7 +68,7 @@ repair 的存在前提——"带违规反馈的第二次生成会比第一次好
 | `unsupported_store_status_speculation` | rewrite 3/3 教科书级最小修复 | **保留 rewrite** |
 | `unsupported_schedule_window_claim` | 累计 8/8 二审通过 | **保留 rewrite** |
 | `settlement_cycle_mismatch` | 本期精确率 0%（语序假阳三期未收敛） | **收回 ✅ 已切 observe（2026-07-27 本 PR）**，观察期精确率 ≥90% 两周再申请 |
-| `job_detail_lookup_required` | 命中最大户，三期全部重度已投递伤害的宿主 | **收回 → observe**（待日报 L1-lite 矛盾抽查跑稳后切，§6） |
+| `job_detail_lookup_required` | 命中最大户，三期全部重度已投递伤害的宿主 | **收回 ✅ 已切 observe（2026-07-27 本 PR）**；接盘=日报 4.5 的 L1 矛盾抽查（同步上线，满足 §6"先于或同步"） |
 | `image_description_not_saved` | replan 修出编造扣薪政策并投递 | **收回 ✅ 已切 observe（2026-07-27 本 PR）**；"补调工具+原文照发"副作用补执行为后续项 |
 | `requested_brand_mismatch` | 07-24 窗口 replan 7/7 二审通过（07-27 勘误补录，初版发牌表漏列） | **暂维持 replan**，待专项审计后裁定——若达准入线即为"条件项两步拆解"首个用户 |
 
@@ -289,13 +289,13 @@ badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），�
 |---|---|---|---|
 | P0 ✅ 已上线（2026-07-27） | L0：昨日 shadow findings triage + 本地 md 日报（`daily-badcase-scan`，每日 09:00，Fable 会话查看） | 低（一条查询+一个 scheduled task） | 无 |
 | P1 | L1：确定性全量回扫（先上日期星期/悬空承诺/静默丢消息三项） | 中（纯函数+SQL，零 LLM） | 复用 `detectRepairRegression`/硬规则纯函数 |
-| P2 ⏳ 第一批已切（2026-07-27 本 PR） | repair 发牌切换：settlement / image_desc 已降 observe（规则实现+目录+测试三处，455 测试全绿）；日报新增 4.5 发牌验收栏目。剩余：job_detail 切换（等 L1-lite 矛盾抽查跑稳）、brand_mismatch 专项审计、REPLAN 枚举清理（等最后雇主裁定后） | 中 | 日报 4.5 栏目逐条验收 |
+| P2 ✅ 发牌切换完成（2026-07-27 本 PR） | settlement / image_desc / **job_detail** 三条全部降 observe（规则实现+目录+测试三处，470 测试全绿）；catalog seed 的 `action` 改为可省略、**缺省即 OBSERVE**（默认值翻转的类型层落地）；日报新增 4.5 发牌验收 + 4.6 L1 回扫（日期星期校验/悬空承诺核验，同步上线满足 §6）。剩余仅两项且被共识锁定：brand_mismatch 专项审计（暂维持 replan 是裁定不是欠账）、REPLAN 枚举删除（等 brand_mismatch 裁定后其无雇主时执行） | 中 | 日报 4.5/4.6 栏目逐日验收，重度伤害=回滚信号 |
 | P3 | L2 LLM 抽扫 + 自动策展进 test-suite；"新增政策断言溯源"检测 | 高 | P0/P1 数据校准抽样策略 |
 
 ## 6. 残留风险与观测锚点
 
 - 回归闸是枚举式的，会出现第五种形态——接受，由事后检测环兜住并按 §4 生命周期补形态。
-- `job_detail_lookup_required` 按 §2.2 收回动手权降 observe 后，~14 条/天真违规首版将直接投递；事后环 L1 的"投递文本 vs 工具事实矛盾"检查是指定接盘方——**该检查项必须先于（或同步于）此规则的发牌切换上线**，否则出现保护真空。
+- `job_detail_lookup_required` 已于 2026-07-27 收回动手权降 observe（与日报 4.5 的 L1 矛盾抽查同步上线，约束满足）；~14 条/天真违规首版直投的实际代价由日报逐日验收，**出现编造政策/事实反转/星期写错级伤害即为发牌回滚信号**。
 - 观测锚点：`reason_code` 的 `repair_regression_reverted:*` 前缀 = 回归闸命中率；L0/L1 md 日报的日环比 = Agent 质量趋势；shadow findings 消费率 = 事后环健康度。
 - 每 2 天的 guardrail-accuracy-audit（审守卫自身的 repair 质量）继续运行，未来直接消费 L0/L1 产出作为输入。
 

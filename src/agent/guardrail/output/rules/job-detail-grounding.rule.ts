@@ -158,6 +158,14 @@ export function detectJobDetailLookupRequired(
   return {
     ruleId: 'job_detail_lookup_required',
     label: `候选人追问当前岗位详情(${fields})，但精简记忆缺字段或该字段要求实时刷新，本轮未按 jobId=${focusJob.jobId} 调用 duliday_job_list`,
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌切换：主分支 replan → observe（docs/architecture/
+    // guardrail-chain-assessment-and-rebuild.md §2.2/§2.4）。本规则是三期审计全部
+    // 重度已投递伤害的宿主——replan 重生成曾把正确首版改成事实反转（trace
+    // batch_6a59dcad…"要求"→"奥乐齐没岗位"）、把工具盖章的"周二"改成"周一"并降级
+    // 已成功报名（trace batch_6a630be4…），且反馈注入/首版注入/白名单补 geocode 等
+    // 提示层防护均被击穿。降 observe 后首版直投（多为"未现查即答详情"级轻问题），
+    // 接盘方=事后环 L1 投递文本 vs 工具事实矛盾抽查（每日 badcase 日报 4.5 栏目，
+    // 与本切换同步上线，满足 §6 硬约束）。
+    action: GUARDRAIL_ACTION.OBSERVE,
   };
 }

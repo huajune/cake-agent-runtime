@@ -50,11 +50,18 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   repairToolNames: readonly string[];
 }
 
-type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy> &
-  Partial<OutputRulePolicy>;
+type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy | 'action'> &
+  Partial<OutputRulePolicy> & {
+    /**
+     * 2026-07-27 发牌制（评估文档 §2.2）：缺省 observe——新规则默认只观测不动手，
+     * repair 动手权（revise/replan/block）须以生产战绩显式申领后填写。
+     */
+    action?: GuardrailRuleAction;
+  };
 
 function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCatalogMetadata {
-  const derived = deriveRulePolicy(rule.action);
+  const action = rule.action ?? GUARDRAIL_ACTION.OBSERVE;
+  const derived = deriveRulePolicy(action);
   const feedbackPolicy =
     rule.feedbackPolicy ??
     (derived.currentReplySendable
@@ -72,6 +79,7 @@ function applyDefaultOutputRulePolicy(rule: OutputRuleCatalogSeed): OutputRuleCa
         : `上一版回复命中 ${rule.id}，当前文本不可发送。只修改造成违规的部分：删除未接地承诺、内部实现或不合规表达；未涉及违规的内容（岗位信息、表单字段、时间选项等）原样保留，只输出候选人可见回复。`),
     repairToolNames: rule.repairToolNames ?? [],
     ...rule,
+    action,
   };
 }
 
@@ -277,7 +285,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_detail_lookup_required',
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌切换：replan → observe（评估文档 §2.2/§2.4）。三期审计全部重度
+    // 已投递伤害的宿主（事实反转 6a59dcad/周二改周一 6a630be4/内容坍缩 6a62d97b），
+    // 提示层防护均证明被击穿。observe 后首版直投，接盘方=每日 badcase 日报 4.5 栏目
+    // 的 L1 投递文本 vs 工具事实矛盾抽查（同步上线，满足 §6）。
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       '候选人追问已展示岗位详情时，强制明确当前岗位并按 jobId 补查动态或缺失字段后再回答。',
@@ -291,10 +303,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
       '候选人正在追问已展示岗位详情，但当前岗位不明确、精简记忆没有对应字段，或该字段要求实时刷新。不要凭综合薪资单位、品牌常识或历史话术推断；当前焦点岗位明确时使用其 jobId 调用 duliday_job_list，只按本轮结果回答；当前焦点岗位不明确时先确认候选人问的是哪家门店/岗位。若本轮查询无结果，只能说明本次未查到，不得断言该区域没有岗位，不得删除上一版已向候选人展示过的岗位信息。',
-    // geocode 与 duliday_job_list 同予（对齐 unsupported_store_status_speculation）：
-    // 2026-07-24 审计 P0-2，白名单缺地理召回时 replan 无法复现首版的距离召回，
-    // "本轮查不到"被翻译成"附近没有岗位"（trace batch_6a606ac5…，事实反转已投递）。
-    repairToolNames: ['geocode', 'duliday_job_list'],
+    // 2026-07-27 降 observe 后不再进 replan，工具白名单摘除（原 ['geocode',
+    // 'duliday_job_list']，2026-07-24 审计 P0-2 补齐地理召回的历史见 git）。feedback
+    // 保留，供未来重新申请动手权时复用。
   },
   {
     id: 'unsupported_schedule_window_claim',
