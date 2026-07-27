@@ -93,6 +93,38 @@
         "`tests/memory/facts/ + tests/resolution/geo/ + tests/agent/reengagement/reengagement.agent.spec.ts + tests/memory/services/ + tests/tools/`：1500+ 用例全绿",
         "`tsc --noEmit` / `eslint --max-warnings=0` / pre-push 全量 ci:check 通过"
       ]
+    },
+    {
+      "number": "731",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/731",
+      "title": "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+        "出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定",
+        "评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案"
+      ],
+      "summary": [
+        "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+        "出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定",
+        "评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "repair 回归闸补事实改动/承诺降级形态，settlement 补语序假阳",
+        "出站守卫 repair 链路架构评估——检测保留、repair 收权的分层裁定",
+        "评估范围从 repair 一段扩到 guardrail 全链路+双环质量体系重建方案"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`repair-regression.util.spec.ts`：+10 用例（生产案正反向、星期纠错不误伤、跨年推断、booking 降级四个负例）",
+        "`hard-rules.service.spec.ts`：+3 用例（两类假阳豁免 + 愿望复述禁跨句反例）",
+        "全量：191/191 pass（两 spec）+ runner 53/53 pass + typecheck + lint 全绿"
+      ]
     }
   ],
   "lastRelease": {
