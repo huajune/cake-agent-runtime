@@ -691,6 +691,61 @@ describe('HardRulesService', () => {
       });
     });
 
+    // 2026-07-27 守卫审计：窗口内命中 2/2 全假阳（精确率 0%），两类语序缺口各补回归。
+    describe('production false positives (2026-07-27 audit)', () => {
+      const monthlyOnlyCall = {
+        toolName: 'duliday_job_list',
+        args: { jobIdList: [1] },
+        status: 'ok' as const,
+        result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 月结算, 15号发薪' },
+      };
+
+      // trace batch_6a62db88…：否定词在结算词之后，前缀否定正则不认这种语序；
+      // rewrite 空转还丢了"时薪 20 多"。
+      it('does not treat postfix negation "日结的暂时没排到" as an assertion', () => {
+        const result = service.check({
+          replyText: '日结的暂时没排到哈，不过有普通兼职，像哈根达斯、肯德基这些，时薪20多，长期稳定。',
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '呀日结兼职吗',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      // trace batch_6a63278c…：复述候选人诉求的确认句。"是吧"的问号被分句剥掉、
+      // "吧"不在疑问词表，落进断言判定。
+      it('does not treat a desire echo "你想找日结…是吧" as an assertion', () => {
+        const result = service.check({
+          replyText:
+            '必胜客这家不是日结的哈，是月结算，每月 10 号发工资。你想找日结、只做一周左右的岗位是吧？我帮你看看附近有没有这种短期的日结岗。',
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '是日结工资吗',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+
+      // 愿望复述豁免禁跨句：确认句豁免不得连带豁免后续真断言。
+      it('still blocks an assertion following a desire echo in a separate sentence', () => {
+        const result = service.check({
+          replyText: '你想找日结是吧？这家就是日结的，当天干完当天结。',
+          toolCalls: [monthlyOnlyCall],
+          userMessage: '有日结吗',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'settlement_cycle_mismatch',
+        );
+      });
+    });
+
     it('does not use another job lookup to validate the current focus job settlement', () => {
       const result = service.check({
         replyText: '这个岗位是月结。',
