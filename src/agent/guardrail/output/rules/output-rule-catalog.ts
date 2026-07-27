@@ -311,7 +311,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'settlement_cycle_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
+    // 2026-07-27 发牌切换第一批：revise → observe。三期审计假阳触发本目录"精确率 <70%
+    // 应自动降 observe"治理条款；同 PR 已修否定语序假阳，observe 期重新累计精确率，
+    // 连续两周 ≥90% 可重新申请 revise（评估文档 §2.2 发牌表）。
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       '本轮岗位工具已返回结算口径时，拦住把正式工资日结与培训/阶梯月补混成整份工资月结。',
@@ -370,7 +373,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'image_description_not_saved',
-    action: GUARDRAIL_ACTION.REPLAN,
+    // 2026-07-27 发牌切换第一批：replan → observe。纯流程违规（缺工具调用，文本无错），
+    // replan 全文重写曾引入编造并投递（trace batch_6a38e61c…编造考勤扣款政策）。终态
+    // "补调工具+原文照发"副作用补执行未实现前先 observe，命中由每日 badcase 日报追踪
+    // （评估文档 §2.2/§2.4）。
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住当前轮有图片/表情消息，但回复基于图片内容判断时没有成功保存图片描述的情况。',
     riskGoal: '视觉内容必须先结构化保存，避免图片识别事实无法进入后续记忆和报名链路。',
@@ -384,7 +391,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       // trace batch_6a38e61c…：replan 放开重写后把首版谨慎的"建议问店长"改成编造的
       // "考勤系统半小时内晚退不扣款"政策并实际投递。补调工具后必须回到原文。
       '保存完成后，上一版文本内容本身没有违规，请以上一版原文为基础尽量逐字保留输出，不要重新组织内容、不要新增任何原文没有的结论或政策性断言。',
-    repairToolNames: ['save_image_description'],
+    // 2026-07-27 降 observe 后不再进 replan，工具白名单随之摘除；上方 feedback 保留，
+    // 供未来实现"补调工具+原文照发"或重新申请动手权时复用。
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 

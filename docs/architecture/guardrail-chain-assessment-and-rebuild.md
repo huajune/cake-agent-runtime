@@ -67,9 +67,10 @@ repair 的存在前提——"带违规反馈的第二次生成会比第一次好
 | `internal_output_leak` | 确定性剥离 100%（fence_stripped） | 保留（非 LLM） |
 | `unsupported_store_status_speculation` | rewrite 3/3 教科书级最小修复 | **保留 rewrite** |
 | `unsupported_schedule_window_claim` | 累计 8/8 二审通过 | **保留 rewrite** |
-| `settlement_cycle_mismatch` | 本期精确率 0%（语序假阳三期未收敛） | **收回**，修好规则精度再申请 |
-| `job_detail_lookup_required` | 命中最大户，三期全部重度已投递伤害的宿主 | **收回 → observe**，交事后环 |
-| `image_description_not_saved` | replan 修出编造扣薪政策并投递 | **收回** → 补调工具 + 原文照发 |
+| `settlement_cycle_mismatch` | 本期精确率 0%（语序假阳三期未收敛） | **收回 ✅ 已切 observe（2026-07-27 本 PR）**，观察期精确率 ≥90% 两周再申请 |
+| `job_detail_lookup_required` | 命中最大户，三期全部重度已投递伤害的宿主 | **收回 → observe**（待日报 L1-lite 矛盾抽查跑稳后切，§6） |
+| `image_description_not_saved` | replan 修出编造扣薪政策并投递 | **收回 ✅ 已切 observe（2026-07-27 本 PR）**；"补调工具+原文照发"副作用补执行为后续项 |
+| `requested_brand_mismatch` | 07-24 窗口 replan 7/7 二审通过（07-27 勘误补录，初版发牌表漏列） | **暂维持 replan**，待专项审计后裁定——若达准入线即为"条件项两步拆解"首个用户 |
 
 白名单准入标准（也是退出标准）：**违规句可精确定位 + 修法唯一 + rewrite 窄改**；连续两期变好率 <70% 或出现任一已投递退步即收回。仓库先例：2026-07-21 已把 job_detail"焦点不明确"分支降 observe（理由相同——repair 轮内入参不变必然复燃），本方案是把该局部决定升格为 repair 层的默认策略。
 
@@ -120,8 +121,8 @@ repair 的存在前提——"带违规反馈的第二次生成会比第一次好
 
 推理链摊开（避免"怎么突然不用拆了"的误读）：
 
-1. **replan 不是独立系统，是被规则"雇佣"的**：链路里没有自主运行的 replan 模块，每条规则登记时声明命中后走哪条修复路径（`action: REPLAN/REVISE`）。replan 只有两个雇主：`job_detail_lookup_required` 与 `image_description_not_saved`。
-2. **发牌表把它的雇主全开除了**：job_detail 收回动手权（observe，不修了）；image_desc 改"补调工具 + 原文照发"（不需要重新生成文本）。**雇主没了，replan 变成没有航班的登机口——不需要拆除航站楼，自然没人走。**"退役"= 代码还在、调用次数归零。
+1. **replan 不是独立系统，是被规则"雇佣"的**：链路里没有自主运行的 replan 模块，每条规则登记时声明命中后走哪条修复路径（`action: REPLAN/REVISE`）。replan 的雇主有三个：`job_detail_lookup_required`、`image_description_not_saved`、`requested_brand_mismatch`（07-27 勘误：初版误记两个——brand_mismatch 在 07-27 窗口零命中被漏，07-24 窗口 7/7 二审通过，是目录内战绩最好的 replan 规则，其修复确实需要换品牌重查工具，为"条件项两步拆解"的真实候选；对它的发牌裁定待专项审计，暂维持现状）。
+2. **发牌表开除了其中两个雇主**：job_detail 收回动手权（observe，不修了）；image_desc 改 observe（终态"补调工具 + 原文照发"实现前先原样投递）。job_detail/image_desc 切换后，replan 仅剩 brand_mismatch 一个低频雇主——退役=调用次数趋零，非硬删除。
 3. **为什么"不拆"反而对**：原两步拆解（取数归 generator 只跑工具文本丢弃、写字统一归 ReplyRepairAgent）是给 replan 做安全化手术，前提是它还有活干。发牌后其服务对象已被裁定不值得修（三期数据：对这两条规则做任何 inline 修复期望为负）——**给没有调用者的路径做安全化改造是纯浪费**。拆解降级为条件项：仅当未来某规则以生产数据挣到"补取数修复"资格时再做（零件现成：`mergeToolCallsForRevisedResult`、ReplyRepairAgent 的 `toolCalls`+`repairContext` 通道，届时是接线不是新造）；按 §2.1 第一性原理，这一天大概率不来——"补事实"的正确位置在慢环根修。
 4. **job_detail 的违规不是没人管，是换人管**：今天=命中→replan→二审→投修复版（60% 变好但全部重度伤害产自此路）；终态=命中→observe 首版原样投递+证据留档→次日事后环 L1 扫投递物对照工具事实→系统性形态走生成侧根修。代价 ~14 条/天轻违规首版直投，换重度伤害归零——§6 的"L1 接盘检查先上线"硬约束由此而来。
 5. **枚举是退役的保险栓**：直接从现有 `action` 枚举**删除 REPLAN 值**（`repairMode`/`repairToolNames` 字段随之陪葬）——退役不是"恰好没人用"的偶然状态，而是类型层面硬约束；未来想给新规则配"重新规划回复"，必须先回本文档打这场架。
@@ -288,7 +289,7 @@ badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），�
 |---|---|---|---|
 | P0 ✅ 已上线（2026-07-27） | L0：昨日 shadow findings triage + 本地 md 日报（`daily-badcase-scan`，每日 09:00，Fable 会话查看） | 低（一条查询+一个 scheduled task） | 无 |
 | P1 | L1：确定性全量回扫（先上日期星期/悬空承诺/静默丢消息三项） | 中（纯函数+SQL，零 LLM） | 复用 `detectRepairRegression`/硬规则纯函数 |
-| P2 | repair 发牌切换：`action` 枚举减法（删 REPLAN、observe 转正为默认）+ 按规则逐条灰度收回（settlement / image_desc → job_detail），replan 随之退役 | 中 | PR #731 合入后；P0/P1 日报作逐条验收 |
+| P2 ⏳ 第一批已切（2026-07-27 本 PR） | repair 发牌切换：settlement / image_desc 已降 observe（规则实现+目录+测试三处，455 测试全绿）；日报新增 4.5 发牌验收栏目。剩余：job_detail 切换（等 L1-lite 矛盾抽查跑稳）、brand_mismatch 专项审计、REPLAN 枚举清理（等最后雇主裁定后） | 中 | 日报 4.5 栏目逐条验收 |
 | P3 | L2 LLM 抽扫 + 自动策展进 test-suite；"新增政策断言溯源"检测 | 高 | P0/P1 数据校准抽样策略 |
 
 ## 6. 残留风险与观测锚点

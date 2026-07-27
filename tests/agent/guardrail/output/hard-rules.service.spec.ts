@@ -1353,7 +1353,9 @@ describe('HardRulesService', () => {
       }
     });
 
-    it('asks for a scoped replan when reply uses image facts without saving image description', () => {
+    it('observes (reply stays sendable) when reply uses image facts without saving image description', () => {
+      // 2026-07-27 发牌切换第一批：replan → observe。replan 全文重写曾把无错首版改出
+      // 编造政策并投递（trace batch_6a38e61c…），降档后回复原样投递、命中只留档。
       const result = service.check({
         replyText: '图片里是健康证，我看到了，可以继续帮你报名。',
         userMessage: '[图片 messageId=img-1]',
@@ -1364,8 +1366,8 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'image_description_not_saved',
-            action: GUARDRAIL_ACTION.REPLAN,
-            currentReplySendable: false,
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
           }),
         ]),
       );
