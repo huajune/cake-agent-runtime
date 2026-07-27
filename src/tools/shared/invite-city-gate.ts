@@ -15,7 +15,12 @@ import { inferCitiesFromDistrictMentions } from '@tools/shared/district-city-map
  * 字面匹配漏掉了区级地名 → 城市的确定性推断，新增出处
  * ③ 候选人原文出现全国无歧义的区级地名，且其所属城市与入参一致
  *   （district_inference，静态映射见 district-city-map.ts）。
- * 这是临时方案；geocode 结果穿线等完整出处链路待地址识别全链路改造统一落地。
+ *
+ * 2026-07-27 证据化穿线（badcase 6a671722 沈阳 / 6a618a6e 上海浦东 GPS 连拒 3 次）：
+ * geocode unique 确权与定位分享逆解析现已按 source='tool' 写入 sessionFacts.pref.city
+ * （memory-lifecycle save_attested_city / extractFacts 定位注入），本 gate 的
+ * session_fact 档（① 会话记忆）即可命中——工具确权是外生证据，不属于"模型自证"。
+ * district-city-map 仍是兜底档，待 resolution/geo 行政区划库补全后按其 TODO 下线。
  *
  * 判定只读、不产生副作用；拒绝均为可恢复（reject_collect 语义）：
  * - city_conflict：会话记忆有城市且与入参不一致 → 模型应改用 expectedCity 或先与候选人确认；

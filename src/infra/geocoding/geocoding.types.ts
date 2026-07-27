@@ -16,6 +16,15 @@ export interface GeocodeResult {
   latitude: number;
 }
 
+/** 逆地理编码结果（坐标 → 行政区划）；定位分享消息的城市证据化用。 */
+export interface ReverseGeocodeResult {
+  province: string;
+  /** 城市名（直辖市时高德 city 为空，已用 province 兜底，保证非空）。 */
+  city: string;
+  district: string;
+  formattedAddress: string;
+}
+
 /** 候选来源：POI 搜索适合地标，结构化 geocode 适合道路/街道/行政区。 */
 export type GeocodeCandidateSource = 'poi' | 'structured';
 

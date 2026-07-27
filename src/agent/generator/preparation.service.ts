@@ -14,6 +14,7 @@ import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting
 import { SpongeService } from '@sponge/sponge.service';
 import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
+import type { CityAttestation } from '@shared-types/tool.types';
 import {
   type RecommendedJobSummary,
   type WeworkSessionState,
@@ -66,6 +67,8 @@ export interface PreparedAgentContext {
     imageBrandResolutions: BrandResolution[];
     /** 本轮 duliday_job_list 查询签名（跨轮重复查询检测，回合收尾落会话记忆）。 */
     jobListQuerySignature: string | null;
+    /** 本轮 geocode unique 解析确权的城市（回合收尾写 pref.city，source='tool'）。 */
+    cityAttestation: CityAttestation | null;
   };
   /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
   contactName?: string;
@@ -231,6 +234,7 @@ export class PreparationService {
       candidatePool: null,
       imageBrandResolutions: [],
       jobListQuerySignature: null,
+      cityAttestation: null,
     };
     const toolContext = buildToolContext({
       params,

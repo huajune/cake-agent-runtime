@@ -1,5 +1,5 @@
 import { ModelMessage } from 'ai';
-import { ToolBuildContext } from '@shared-types/tool.types';
+import { CityAttestation, ToolBuildContext } from '@shared-types/tool.types';
 import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@memory/facts/labor-form';
 import {
@@ -38,6 +38,7 @@ export function buildToolContext(input: {
     candidatePool: RecommendedJobSummary[] | null;
     imageBrandResolutions: BrandResolution[];
     jobListQuerySignature: string | null;
+    cityAttestation: CityAttestation | null;
   };
   contactBrandAliases: string[];
   /** 本轮生效的会话品牌状态（持久化状态或首轮 seed），透传给工具兜底。 */
@@ -106,6 +107,9 @@ export function buildToolContext(input: {
     },
     onImageBrandResolved: (resolutions) => {
       turnState.imageBrandResolutions.push(...resolutions);
+    },
+    onCityResolved: (attestation) => {
+      turnState.cityAttestation = attestation;
     },
     botUserId: params.botUserId,
     contactName: params.contactName,

@@ -29,6 +29,24 @@ export interface GeocodeResolvedAnchor {
   city: string | null;
 }
 
+/**
+ * 本轮工具确权的候选人城市（候选人资料证据化：证据渠道 T2「工具确权」）。
+ *
+ * 背景（badcase 6a671722 沈阳 / 6a618a6e 上海浦东）：geocode 已 unique 解析出城市
+ * 并按该城市查完岗位，但结论只活在工具结果文本里，没有写入 sessionFacts.pref.city，
+ * 导致 invite 城市门反复要求候选人重报城市。该结构把确权结果穿线到 turn-finalizer，
+ * 回合收尾统一落会话事实（source='tool'）。
+ */
+export interface CityAttestation {
+  /** 解析出的城市名（可带"市"后缀，落库时归一化为裸名）。 */
+  city: string;
+  district?: string | null;
+  /** 人类可读证据（如 formattedAddress），入库前截断，仅服务排障。 */
+  evidence: string;
+  /** 证据渠道；目前仅 geocode 唯一解析。 */
+  source: 'geocode_unique';
+}
+
 /** geocode 用的本轮可信位置锚点；只来自候选人高置信事实或真人招募经理最近确认。 */
 export interface GeocodeLocationAnchor {
   city?: string;
@@ -146,6 +164,12 @@ export interface ToolBuildContext {
    * 同 bookingSucceeded 的回合内直写模式）。
    */
   geocodeResolvedAnchors?: GeocodeResolvedAnchor[];
+  /**
+   * geocode unique 解析出城市时的确权回调（同 onJobsFetched 的回合内直写模式）：
+   * 暂存到 turnState，回合收尾由 memory lifecycle 写入 sessionFacts.pref.city
+   * （source='tool'）。同轮多次解析后到覆盖先到（以最新解析为准）。
+   */
+  onCityResolved?: (attestation: CityAttestation) => void;
   /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
   currentFocusJob?: RecommendedJobSummary | null;
   /**

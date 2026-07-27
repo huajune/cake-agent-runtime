@@ -546,6 +546,179 @@ describe('SessionService', () => {
     });
   });
 
+  describe('saveToolAttestedCity（候选人资料证据化 A1）', () => {
+    const attestation = {
+      city: '沈阳市',
+      district: '浑南区',
+      evidence: 'geocode 唯一解析：辽宁省沈阳市浑南区奥体中心(公交站)',
+      source: 'geocode_unique' as const,
+    };
+
+    const stateWithCity = (city: Record<string, unknown> | null) => ({
+      content: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          preferences: { ...FALLBACK_EXTRACTION.preferences, city },
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+    });
+
+    it('无既有城市 → 写入 pref.city（source=tool, high, 裸名归一化）', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+
+      const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', attestation);
+
+      expect(outcome).toBe('written');
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({
+              city: factValue('沈阳', { confidence: 'high', source: 'tool' }),
+            }),
+          }),
+        }),
+        86400,
+      );
+    });
+
+    it('既有同城事实 → 跳过不重写', async () => {
+      mockRedisStore.get.mockResolvedValue(
+        stateWithCity({ value: '沈阳', confidence: 'high', source: 'rule', evidence: 'x' }),
+      );
+
+      const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', attestation);
+
+      expect(outcome).toBe('skipped_same_city');
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
+    });
+
+    it('与既有 high 城市冲突 → 不覆盖（城市切换只能走候选人亲证）', async () => {
+      mockRedisStore.get.mockResolvedValue(
+        stateWithCity({ value: '上海', confidence: 'high', source: 'rule', evidence: 'x' }),
+      );
+
+      const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', attestation);
+
+      expect(outcome).toBe('skipped_city_conflict');
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
+    });
+
+    it('既有城市为低置信兼容值 → 允许覆盖', async () => {
+      mockRedisStore.get.mockResolvedValue(
+        stateWithCity({ value: '上海', confidence: 'unknown', source: 'memory', evidence: 'x' }),
+      );
+
+      const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', attestation);
+
+      expect(outcome).toBe('written');
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({
+              city: factValue('沈阳', { confidence: 'high', source: 'tool' }),
+            }),
+          }),
+        }),
+        86400,
+      );
+    });
+  });
+
+  describe('定位分享城市证据化（A2）', () => {
+    const locationShareMessage =
+      '[位置分享] 黎明村98号楼（No Address） [经纬度:31.269528,121.695882]';
+
+    const mockGeocoding = {
+      reverseGeocode: jest.fn(),
+    };
+
+    const buildServiceWithGeocoding = () =>
+      new SessionService(
+        mockRedisStore as never,
+        mockConfig as never,
+        mockLlm as never,
+        mockSponge as never,
+        mockSystemConfig as never,
+        undefined,
+        mockGeocoding as never,
+      );
+
+    beforeEach(() => {
+      mockGeocoding.reverseGeocode.mockReset();
+    });
+
+    it('本轮定位分享且无文本城市 → 逆解析城市按 source=tool 入档', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+      mockGeocoding.reverseGeocode.mockResolvedValue({
+        province: '上海市',
+        city: '上海市',
+        district: '浦东新区',
+        formattedAddress: '上海市浦东新区曹路镇黎明村98号楼',
+      });
+
+      const svc = buildServiceWithGeocoding();
+      await svc.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '想找下午到晚上的兼职' },
+        { role: 'assistant', content: '你在哪个区域呀' },
+        { role: 'user', content: locationShareMessage },
+      ]);
+
+      expect(mockGeocoding.reverseGeocode).toHaveBeenCalledWith(121.695882, 31.269528);
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({
+              city: factValue('上海', { confidence: 'high', source: 'tool' }),
+            }),
+          }),
+        }),
+        86400,
+      );
+    });
+
+    it('本轮文本已给出高置信城市 → 不调逆解析（T1 亲证优先）', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      const svc = buildServiceWithGeocoding();
+      await svc.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: `我在北京找工作 ${locationShareMessage}` },
+      ]);
+
+      expect(mockGeocoding.reverseGeocode).not.toHaveBeenCalled();
+    });
+
+    it('引用块内的定位分享不算候选人自己的位置', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      const svc = buildServiceWithGeocoding();
+      await svc.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: `[引用 经理：${locationShareMessage}]\n这是哪里` },
+      ]);
+
+      expect(mockGeocoding.reverseGeocode).not.toHaveBeenCalled();
+    });
+
+    it('未注入 GeocodingService 时静默跳过（向后兼容）', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: locationShareMessage },
+      ]);
+
+      expect(mockRedisStore.patchHash).toHaveBeenCalled();
+    });
+  });
+
   describe('pure-acknowledgment gate', () => {
     const existingFactsState = () => ({
       content: {

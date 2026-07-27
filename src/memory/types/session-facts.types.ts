@@ -370,6 +370,7 @@ export const SessionFactSourceSchema = z.enum([
   'system',
   'memory',
   'derived',
+  'tool',
 ]);
 
 export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
@@ -391,6 +392,7 @@ export const SESSION_FACT_SOURCE_DESCRIPTIONS: Record<SessionFactSource, string>
   system: '外部系统或平台接口补充得到。',
   memory: '历史记忆或旧结构兼容迁移得到。',
   derived: '由其他字段推导得到，例如由区/地标白名单反推出城市。',
+  tool: '本会话工具执行结果确权得到（如 geocode 唯一解析、定位分享逆解析），外生出处非模型自报。',
 };
 
 /** 持久化 sessionFacts 字段值：字段自身携带置信度、来源和证据。 */

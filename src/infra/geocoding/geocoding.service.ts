@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
-import { GeocodeCandidate, GeocodeResult } from './geocoding.types';
+import { GeocodeCandidate, GeocodeResult, ReverseGeocodeResult } from './geocoding.types';
 import {
   classifyGeocodeQuery,
   hasContextualGenericPoiPrefix,
@@ -20,6 +20,8 @@ import {
 
 const AMAP_PLACE_API = 'https://restapi.amap.com/v3/place/text';
 const AMAP_GEOCODE_API = 'https://restapi.amap.com/v3/geocode/geo';
+const AMAP_REGEO_API = 'https://restapi.amap.com/v3/geocode/regeo';
+const REGEO_CACHE_PREFIX = 'geocode:regeo:v1:';
 const CACHE_PREFIX = 'geocode:v2:';
 // v3: 候选结构新增 source/precision/confidence，并合并 structured geocode 候选
 const CANDIDATES_CACHE_PREFIX = 'geocode:candidates:v3:';
@@ -86,6 +88,61 @@ export class GeocodingService {
     await this.redisService.setex(cacheKey, CACHE_TTL_SECONDS, result);
 
     return result;
+  }
+
+  /**
+   * 逆地理编码：经纬度 → 行政区划（候选人资料证据化 A2）。
+   *
+   * 定位分享消息的坐标是候选人给出的最强位置证据（badcase 6a618a6e：候选人发了
+   * GPS 定位，invite 城市门仍连拒 3 次要求字面报城市）。渲染文本常无城市名
+   * （"黎明村98号楼（No Address）"），必须坐标反解。
+   * 文档：https://lbs.amap.com/api/webservice/guide/api/georegeo#regeo
+   */
+  async reverseGeocode(longitude: number, latitude: number): Promise<ReverseGeocodeResult | null> {
+    if (!this.apiKey) {
+      this.logger.warn('缺少 AMAP_API_KEY，逆地理编码不可用');
+      return null;
+    }
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+
+    // 5 位小数（约 1m）截断做缓存 key，同点微差不重复请求
+    const cacheKey = `${REGEO_CACHE_PREFIX}${longitude.toFixed(5)},${latitude.toFixed(5)}`;
+    const cached = await this.redisService.get<ReverseGeocodeResult>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const params = new URLSearchParams({
+        key: this.apiKey,
+        location: `${longitude.toFixed(6)},${latitude.toFixed(6)}`,
+        extensions: 'base',
+        output: 'JSON',
+      });
+      const response = await fetchWithTimeout(`${AMAP_REGEO_API}?${params}`);
+      if (!response.ok) {
+        this.logger.warn(`高德逆地理编码 HTTP 失败: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      if (data.status !== '1' || !data.regeocode) return null;
+      const component = (data.regeocode.addressComponent ?? {}) as Record<string, unknown>;
+      const province = str(component.province);
+      // 直辖市 city 为 []，用 province 兜底（"上海市"）
+      const city = str(component.city) || province;
+      if (!city) return null;
+
+      const result: ReverseGeocodeResult = {
+        province,
+        city,
+        district: str(component.district),
+        formattedAddress: str(data.regeocode.formatted_address),
+      };
+      await this.redisService.setex(cacheKey, CACHE_TTL_SECONDS, result);
+      return result;
+    } catch (err) {
+      this.logger.error('高德逆地理编码失败', err);
+      return null;
+    }
   }
 
   /**
