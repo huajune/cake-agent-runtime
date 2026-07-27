@@ -129,9 +129,8 @@ shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evid
 
 ### 出口
 
-- 独立落库表（观测按维度分表约定），字段含 finding 类型/置信/trace_id/判定依据；
-- 飞书日报（当日 badcase 清单 + 环比）；
-- 高置信案例自动策展进 test-suite 回归资产（复用 analyze-chat-badcases 的策展机器）。
+- **P0 形态**：本地 md 日报——scheduled task 每日产出报告文件，直接在 Fable 会话里查看（同 guardrail-accuracy-audit 报告模式，用户裁定：不做飞书日报）；
+- **P3 形态**：独立落库表（finding 类型/置信/trace_id/判定依据）+ 高置信案例自动策展进 test-suite 回归资产（复用 analyze-chat-badcases 的策展机器）。
 
 ## 4. 双环闭环：badcase 驱动的规则生命周期
 
@@ -187,8 +186,8 @@ shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evid
       次日兑现/静默丢消息/宣称已报名无 booking/同题追问）              │
   L2：盲区 67% + 高危切片抽样 → LLM 评审 ─────────────────────────────┘
 
-写入：badcase findings 表（唯一新增的表：类型/来源层 L0-L2/置信/trace_id/证据）
-出口：飞书日报（清单+环比）；高置信案例 → test-suite 回归资产（策展机器复用）
+出口：P0＝本地 md 日报（scheduled task 产出，Fable 会话查看）
+      P3＝findings 落库表 + 高置信案例 → test-suite 回归资产（策展机器复用）
 ```
 
 两个关键性质：**① 审查对象换了**——事前环审草稿，事后环审 `reply_preview`（候选人真正收到
@@ -209,14 +208,15 @@ badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），�
 行为——即 §4 生命周期在数据流层面的落法。发牌切换的验收数据也从流 2 日报出来，形成
 "切一条规则 → 看一周日报 → 再切下一条"的闭环。
 
-**基础设施增量**：流 1 只改分流逻辑（表全现成）、流 3 是流程约定（零代码）；真正新建的
-只有流 2 的一张 findings 表 + 一个每日任务——这也是 P0（L0 日报）能低成本启动的原因。
+**基础设施增量**：流 1 只改分流逻辑（表全现成）、流 3 是流程约定（零代码）；P0 阶段真正
+新建的只有一个每日 scheduled task（md 日报），findings 落库表推迟到 P3——这也是 P0 能
+零生产改动启动的原因。
 
 ## 5. 分阶段落地
 
 | 阶段 | 内容 | 成本 | 依赖 |
 |---|---|---|---|
-| P0 | L0：昨日 shadow findings triage + 飞书日报 | 低（一条查询+一个定时任务） | 无 |
+| P0 | L0：昨日 shadow findings triage + 本地 md 日报（Fable 会话查看） | 低（一条查询+一个 scheduled task） | 无 |
 | P1 | L1：确定性全量回扫（先上日期星期/悬空承诺/静默丢消息三项） | 中（纯函数+SQL，零 LLM） | 复用 `detectRepairRegression`/硬规则纯函数 |
 | P2 | repair 发牌切换：`repairAction` 显式化（默认 observe）+ 按规则逐条灰度收回（settlement / image_desc → job_detail），replan 随之退役 | 中 | PR #731 合入后；P0/P1 日报作逐条验收 |
 | P3 | L2 LLM 抽扫 + 自动策展进 test-suite；"新增政策断言溯源"检测 | 高 | P0/P1 数据校准抽样策略 |
@@ -225,7 +225,7 @@ badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），�
 
 - 回归闸是枚举式的，会出现第五种形态——接受，由事后检测环兜住并按 §4 生命周期补形态。
 - `job_detail_lookup_required` 按 §2.2 收回动手权降 observe 后，~14 条/天真违规首版将直接投递；事后环 L1 的"投递文本 vs 工具事实矛盾"检查是指定接盘方——**该检查项必须先于（或同步于）此规则的发牌切换上线**，否则出现保护真空。
-- 观测锚点：`reason_code` 的 `repair_regression_reverted:*` 前缀 = 回归闸命中率；L0/L1 落库表的日环比 = Agent 质量趋势；shadow findings 消费率 = 事后环健康度。
+- 观测锚点：`reason_code` 的 `repair_regression_reverted:*` 前缀 = 回归闸命中率；L0/L1 md 日报的日环比 = Agent 质量趋势；shadow findings 消费率 = 事后环健康度。
 - 每 2 天的 guardrail-accuracy-audit（审守卫自身的 repair 质量）继续运行，未来直接消费 L0/L1 产出作为输入。
 
 ## 7. 结论
