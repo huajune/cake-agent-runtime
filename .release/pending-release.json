@@ -67,6 +67,32 @@
         "新增 3 个测试组（labor-form 选择疑问句 8 例、唯一岗自动锁焦 2 例、job-detail 守卫新分支 7 例）",
         "`tests/memory` + `tests/agent` + `tests/tools` 全量：**3099 passed / 6 skipped，0 fail**；typecheck、eslint 干净"
       ]
+    },
+    {
+      "number": "730",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/730",
+      "title": "日巡检四项 badcase 修复（2026-07-24 批次）",
+      "author": "huajune",
+      "mergedAt": "2026-07-27",
+      "businessUpdates": [
+        "日巡检四项 badcase 修复（2026-07-24 批次）"
+      ],
+      "summary": [
+        "日巡检四项 badcase 修复（2026-07-24 批次）"
+      ],
+      "features": [],
+      "fixes": [
+        "日巡检四项 badcase 修复（2026-07-24 批次）"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增回归：identity provenance 4 例、invite 城市门青岛 2 例、geo resolver 崂山 golden、reengagement 婉拒/已报告完成 2 例 + prompt 防线断言",
+        "`tests/memory/facts/ + tests/resolution/geo/ + tests/agent/reengagement/reengagement.agent.spec.ts + tests/memory/services/ + tests/tools/`：1500+ 用例全绿",
+        "`tsc --noEmit` / `eslint --max-warnings=0` / pre-push 全量 ci:check 通过"
+      ]
     }
   ],
   "lastRelease": {
