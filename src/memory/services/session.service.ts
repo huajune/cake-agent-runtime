@@ -1404,7 +1404,7 @@ export class SessionService {
 
   /**
    * LLM 按 session-extraction prompt 对"单独的区/镇/街道"留 null city（防跨城同名）。
-   * 但 DISTRICT_TO_CITY / LOCATION_TO_CITY 白名单恰好已经把跨城同名排除，剩下的
+   * 但 UNIQUE_SUBDIVISION_TO_CITY / UNIQUE_PLACE_ALIAS_TO_CITY 白名单恰好已经把跨城同名排除，剩下的
    * （青浦/浦东/朝阳/海淀…）应当无歧义补出。此处用确定性兜底覆盖 LLM 的保守留空，
    * 避免"高置信明明能识别，sessionFacts 却 city=null"的尴尬（badcase: 候选人多轮
    * 反复说"青浦区/金泽"，Agent 仍被硬约束卡在"当前没有已确认城市"循环里反问）。

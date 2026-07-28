@@ -1473,7 +1473,7 @@ describe('SessionService', () => {
 
     it('should backfill city from whitelist district when LLM leaves city null', async () => {
       // LLM 按 session-extraction prompt 对单独区名留 null city（防跨城同名）。
-      // 但 DISTRICT_TO_CITY 白名单已经把跨城同名排除，应当用确定性兜底补 city。
+      // 但 UNIQUE_SUBDIVISION_TO_CITY 白名单已经把跨城同名排除，应当用确定性兜底补 city。
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(
         mockStructured({

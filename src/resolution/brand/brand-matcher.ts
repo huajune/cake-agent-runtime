@@ -13,7 +13,7 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
-import { DISTRICT_TO_CITY } from '@resolution/geo';
+import { listUniqueDistrictCityEntries } from '@resolution/geo';
 import {
   BRAND_CONFIDENCE,
   truncateSourceText,
@@ -55,7 +55,7 @@ const CONFIDENCE_BY_MATCH_TYPE: Record<BrandMatchType, number> = {
   category_expansion: BRAND_CONFIDENCE.categoryExpansion,
 };
 
-const DISTRICT_SUFFIXES_BY_CITY = Object.entries(DISTRICT_TO_CITY).reduce(
+const DISTRICT_SUFFIXES_BY_CITY = listUniqueDistrictCityEntries().reduce(
   (index, [district, city]) => {
     const normalizedCity = normalizeForBrandMatch(city);
     const normalizedDistrict = normalizeForBrandMatch(district);

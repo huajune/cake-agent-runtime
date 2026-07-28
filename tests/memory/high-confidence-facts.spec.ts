@@ -674,9 +674,26 @@ describe('extractHighConfidenceFacts', () => {
     },
   );
 
+  it('区名唯一映射在查询路径生效（黄埔案，2026-07-28 收编）："黄埔区"→广州、"宝安"→深圳', () => {
+    // 此前 黄埔→广州 只存在于 invite 城市门私表，提取路径不认——候选人报"黄埔区"
+    // 仍被追问城市。统一到 UNIQUE_SUBDIVISION_TO_CITY 后提取层直接推导，补录只改一处。
+    expect(extractHighConfidenceFacts(['我在黄埔区这边找工作'], brandData)?.preferences.city).toEqual({
+      value: '广州',
+      confidence: 'high',
+      source: 'rule',
+      evidence: 'unique_district_alias',
+    });
+    expect(extractHighConfidenceFacts(['人在宝安'], brandData)?.preferences.city).toEqual({
+      value: '深圳',
+      confidence: 'high',
+      source: 'rule',
+      evidence: 'unique_district_alias',
+    });
+  });
+
   it('should extract city from whitelist district even when preceded by greetings or positional verbs', () => {
     // badcase: 候选人发"你好我在青浦区"，贪婪正则把整段当成区名归一化为
-    // "你好我在青浦"，导致 DISTRICT_TO_CITY 永远查不到，city 留空，下游硬约束
+    // "你好我在青浦"，导致 UNIQUE_SUBDIVISION_TO_CITY 永远查不到，city 留空，下游硬约束
     // 进入"当前没有已确认城市"分支，Agent 反复反问城市。修复后应正确识别青浦→上海。
     const greeted = extractHighConfidenceFacts(['你好我在青浦区'], brandData);
     expect(greeted?.preferences.city).toEqual({
@@ -814,7 +831,7 @@ describe('extractHighConfidenceFacts', () => {
   });
 
   it('golden（Phase 0 基线）：余姚市 经区县白名单命中"余姚"推导宁波（方案 9.2 双轨现状）', () => {
-    // 提取层现状：DISTRICT_TO_CITY 的"余姚"在三轮扫描的 district 轮先命中，
+    // 提取层现状：UNIQUE_SUBDIVISION_TO_CITY 的"余姚"在三轮扫描的 district 轮先命中，
     // city 推导为宁波；全国显式表的"余姚市→余姚"在此路径不生效。
     // Phase 3 海绵口径验证 + 县级市补录后，工具边界的转换将另行加测；本用例锁提取层不漂移。
     const result = extractHighConfidenceFacts(['我在余姚市这边'], brandData);

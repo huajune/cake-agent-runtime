@@ -17,27 +17,8 @@ module.exports = {
   },
   ignorePatterns: ['.eslintrc.js'],
   overrides: [
-    {
-      // 旧路径收口：新代码禁止 import memory/facts/geo-mappings，一律改 @resolution/geo。
-      // excludedFiles 是迁移期存量消费者豁免清单（§4 依赖盘点），Phase 2 逐边界迁移后清零；
-      // 门面文件本身不 import 旧路径，无需豁免。
-      files: ['src/**/*.ts'],
-      excludedFiles: [
-      ],
-      rules: {
-        'no-restricted-imports': [
-          'error',
-          {
-            patterns: [
-              {
-                group: ['**/facts/geo-mappings', '@memory/facts/geo-mappings'],
-                message: '请从 @resolution/geo 导入（旧路径门面将于 Phase 5 删除，geo-domain-refactor-plan §12）',
-              },
-            ],
-          },
-        ],
-      },
-    },
+    // 旧路径 memory/facts/geo-mappings 的 no-restricted-imports 规则已随门面删除
+    // 一并移除（Phase 5 收口，geo-domain-refactor-plan §12：门面删除后此条随文件消失）。
     {
       // resolution 确定性解析层依赖隔离（geo-domain-refactor-plan v3.1 §12）：
       // 只允许被 memory/agent/tools/guardrail/infra 依赖，禁止反向依赖业务与基础设施。
