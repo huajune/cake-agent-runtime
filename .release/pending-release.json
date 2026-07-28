@@ -229,6 +229,28 @@
       "verification": [
         "typecheck / lint 干净；受影响 18 套件 269 用例通过；新增 util spec 6 例（含 badcase 坐标原样还原、引用块、坐标残片负例）"
       ]
+    },
+    {
+      "number": "809",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/809",
+      "title": "汇总 v10.33.0 统一发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "汇总 v10.33.0 统一发版底账"
+      ],
+      "summary": [
+        "汇总 v10.33.0 统一发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "汇总 v10.33.0 统一发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
