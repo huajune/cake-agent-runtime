@@ -303,6 +303,38 @@
         "guardrail + memory + tools/shared + observability 全目录：51 suites / 1294 tests 全过",
         "已知边界（有意取舍）：词表门是宽松取向，只拦\"零身份语境凭空发明\"；候选人已谈到学生话题后的错误布尔仍靠提示词身份粘性 + 档5 兜底。"
       ]
+    },
+    {
+      "number": "770",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/770",
+      "title": "触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "Merge origin/develop into fix/badcase-20260728-reengagement-gates",
+        "Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…"
+      ],
+      "summary": [
+        "触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达",
+        "Merge origin/develop into fix/badcase-20260728-reengagement-gates",
+        "Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge origin/develop into fix/badcase-20260728-reengagement-gates",
+        "Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…"
+      ],
+      "optimizations": [],
+      "ops": [
+        "触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "processor +4 例：丢 turn 拦停 / 已处理（含主动沉默）不拦 / 宽限期内不拦 / 查询失败放行",
+        "touch-ledger +1 例：回话打断冷却 / 连续未回仍冷却 / 缺参保持旧行为",
+        "全部触及 suites：4 passed, 133 tests；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过"
+      ]
     }
   ],
   "lastRelease": {
