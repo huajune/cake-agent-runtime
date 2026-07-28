@@ -486,7 +486,11 @@ describe('HardRulesService', () => {
       toolName: 'duliday_job_list',
       args: { jobIdList: [5025072856] },
       status: 'ok' as const,
-      result: { success: false, _outcome: '未找到符合条件的岗位', errorType: 'job_list.no_results' },
+      result: {
+        success: false,
+        _outcome: '未找到符合条件的岗位',
+        errorType: 'job_list.no_results',
+      },
     };
     const erroredJobListCall = {
       toolName: 'duliday_job_list',
@@ -596,6 +600,61 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
         'settlement_no_evidence_assertion',
       );
+    });
+
+    describe('payday 子项（badcase recviaaF780Ag2：发薪时点臆答）', () => {
+      it.each([
+        '工资是每周三发薪的，放心。',
+        '这边做完当天发薪。',
+        '工资次日到账。',
+        '每月15号发工资。',
+      ])('fires on fabricated payday claim after fruitless queries: %s', (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [failedJobListCall],
+          userMessage: '工资什么时候发',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'settlement_no_evidence_assertion',
+        );
+      });
+
+      it('exempts payday already presented in assistant history cards (宽口径出处)', () => {
+        const result = service.check({
+          replyText: '这家是每周三发薪的。',
+          toolCalls: [failedJobListCall],
+          userMessage: '几号发工资',
+          recentMessages: [
+            { role: 'assistant', content: '薪资：14.8 元/时起，周结每周三发\n要求：18-45 岁' },
+          ],
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_no_evidence_assertion',
+        );
+      });
+
+      it.each([
+        '发薪时间我这边还真不确定，帮你问下门店哈。',
+        '不是当天发薪，具体发薪时间以门店为准。',
+        '你想当天发薪的话，我帮你多留意下。',
+        '当天发你面试地址，别担心。',
+        '工资什么时候发我帮你确认下？',
+      ])('does NOT fire on negation/desire/non-payday wording: %s', (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [failedJobListCall],
+          userMessage: '工资什么时候发',
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'settlement_no_evidence_assertion',
+        );
+      });
     });
   });
 
@@ -749,7 +808,8 @@ describe('HardRulesService', () => {
       // 追加了无依据的月结断言。
       it('does not treat "不支持日结或周结" as an assertion', () => {
         const result = service.check({
-          replyText: '目前沈河区这边在招的岗位都要求至少做 6 个月以上，暂时没有短期的，也不支持日结或周结。',
+          replyText:
+            '目前沈河区这边在招的岗位都要求至少做 6 个月以上，暂时没有短期的，也不支持日结或周结。',
           toolCalls: [monthlyOnlyCall],
           userMessage: '那短期要吗？',
           chatId: 'chat-1',
@@ -777,8 +837,14 @@ describe('HardRulesService', () => {
       // trace batch_6a5db79e…：描述另一家的灵工单属性；trace batch_6a5ee3e8…：
       // 未来供给承诺——都不是焦点岗位的结算断言。
       it.each([
-        ['灵工单属性', '之前截图里那个海底捞捞面师是 7 月 24 号一天的灵工单（短期/日结），不是长期能一直排的兼职。'],
-        ['未来供给', '你看是接受可可牛月结的，还是我先帮你进兼职群，后面有周结/日结的新岗位第一时间通知你。'],
+        [
+          '灵工单属性',
+          '之前截图里那个海底捞捞面师是 7 月 24 号一天的灵工单（短期/日结），不是长期能一直排的兼职。',
+        ],
+        [
+          '未来供给',
+          '你看是接受可可牛月结的，还是我先帮你进兼职群，后面有周结/日结的新岗位第一时间通知你。',
+        ],
       ])('exempts prospective/other-job cycle mentions (%s)', (_label, replyText) => {
         const result = service.check({
           replyText,
@@ -827,7 +893,8 @@ describe('HardRulesService', () => {
       // rewrite 空转还丢了"时薪 20 多"。
       it('does not treat postfix negation "日结的暂时没排到" as an assertion', () => {
         const result = service.check({
-          replyText: '日结的暂时没排到哈，不过有普通兼职，像哈根达斯、肯德基这些，时薪20多，长期稳定。',
+          replyText:
+            '日结的暂时没排到哈，不过有普通兼职，像哈根达斯、肯德基这些，时薪20多，长期稳定。',
           toolCalls: [monthlyOnlyCall],
           userMessage: '呀日结兼职吗',
           chatId: 'chat-1',
