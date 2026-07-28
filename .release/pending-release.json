@@ -195,6 +195,40 @@
         "`datetime.section.spec.ts` 既有用例全过（重构无行为变化）。",
         "全量 `ci:check`（lint + typecheck + 全部测试）经 pre-push 钩子通过。"
       ]
+    },
+    {
+      "number": "798",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/798",
+      "title": "定位分享轮内锚点——prep 逆解析 seed geocodeResolvedAnchors（A2 同轮空档）",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "prep 构建 toolContext 后：当前 user 块含 `[经纬度:lat,lng]` 时（引用块剥离、多条取最新）逆地理解析，seed 进 `geocodeResolvedAnchors`（精确坐标，areaLevelQuery=false）——invite 城市门 **turn_geocode 档**与 job_list 距离口径同轮直接可用",
+        "坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定"
+      ],
+      "summary": [
+        "定位分享轮内锚点——prep 阶段逆解析坐标 seed geocodeResolvedAnchors（A2 同轮空档）",
+        "prep 构建 toolContext 后：当前 user 块含 `[经纬度:lat,lng]` 时（引用块剥离、多条取最新）逆地理解析，seed 进 `geocodeResolvedAnchors`（精确坐标，areaLevelQuery=false）——invite 城市门 **turn_geocode 档**与 job_list 距离口径同轮直接可用",
+        "逆解析与 extractFacts A2 **共用 30 天 Redis 缓存键**，全轮至多一次真实高德请求；失败/服务缺失静默跳过（维持既有行为，不让高德抖动影响主链）",
+        "坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定",
+        "定位分享轮内锚点——prep 逆解析 seed geocodeResolvedAnchors（A2 同轮空档）"
+      ],
+      "features": [],
+      "fixes": [
+        "prep 构建 toolContext 后：当前 user 块含 `[经纬度:lat,lng]` 时（引用块剥离、多条取最新）逆地理解析，seed 进 `geocodeResolvedAnchors`（精确坐标，areaLevelQuery=false）——invite 城市门 **turn_geocode 档**与 job_list 距离口径同轮直接可用",
+        "坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定"
+      ],
+      "optimizations": [
+        "逆解析与 extractFacts A2 **共用 30 天 Redis 缓存键**，全轮至多一次真实高德请求；失败/服务缺失静默跳过（维持既有行为，不让高德抖动影响主链）"
+      ],
+      "ops": [
+        "定位分享轮内锚点——prep 阶段逆解析坐标 seed geocodeResolvedAnchors（A2 同轮空档）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "typecheck / lint 干净；受影响 18 套件 269 用例通过；新增 util spec 6 例（含 badcase 坐标原样还原、引用块、坐标残片负例）"
+      ]
     }
   ],
   "lastRelease": {
