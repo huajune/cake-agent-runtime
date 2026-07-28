@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AlertLevel } from '@enums/alert.enum';
 import { RedisService } from '@infra/redis/redis.service';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { GeocodeCandidate, GeocodeResult, ReverseGeocodeResult } from './geocoding.types';
 import {
   classifyGeocodeQuery,
@@ -28,6 +30,19 @@ const CANDIDATES_CACHE_PREFIX = 'geocode:candidates:v3:';
 const CACHE_TTL_SECONDS = 30 * 24 * 3600; // 30 天
 const DEFAULT_CANDIDATES_LIMIT = 5;
 
+/**
+ * 配额/密钥类 infocode——命中即地理解析全线不可用（非单次查询问题），必须升级为 ERROR 告警。
+ * 文档：https://lbs.amap.com/api/webservice/guide/tools/info
+ */
+const AMAP_SYSTEMIC_INFOCODES = new Set([
+  '10001', // INVALID_USER_KEY
+  '10003', // DAILY_QUERY_OVER_LIMIT（key 日配额超限）
+  '10004', // ACCESS_TOO_FREQUENT（QPS 超限）
+  '10009', // USERKEY_PLAT_NOMATCH（key 与平台不匹配）
+  '10013', // KEY 被删除
+  '10044', // USER_DAILY_QUERY_OVER_LIMIT（账号日配额超限，次日 0 点重置）
+]);
+
 /** 高德返回的空字段是 []，需统一转成字符串 */
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
@@ -53,6 +68,8 @@ export class GeocodingService {
   constructor(
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
+    // 与 SupabaseService 同款：@Global ObservabilityModule 提供，单测/工具进程缺席时降级为仅日志
+    @Optional() private readonly incidentReporter?: IncidentReporterService,
   ) {
     this.apiKey = this.configService.get<string>('AMAP_API_KEY', '');
   }
@@ -124,7 +141,15 @@ export class GeocodingService {
       }
 
       const data = await response.json();
-      if (data.status !== '1' || !data.regeocode) return null;
+      if (data.status !== '1') {
+        this.reportAmapFailure(
+          'reverseGeocode',
+          data,
+          `${longitude.toFixed(5)},${latitude.toFixed(5)}`,
+        );
+        return null;
+      }
+      if (!data.regeocode) return null;
       const component = (data.regeocode.addressComponent ?? {}) as Record<string, unknown>;
       const province = str(component.province);
       // 直辖市 city 为 []，用 province 兜底（"上海市"）
@@ -239,7 +264,11 @@ export class GeocodingService {
       }
 
       const data = await response.json();
-      if (data.status !== '1' || !Array.isArray(data.pois) || data.pois.length === 0) {
+      if (data.status !== '1') {
+        this.reportAmapFailure('fetchPoiCandidates', data, address);
+        return [];
+      }
+      if (!Array.isArray(data.pois) || data.pois.length === 0) {
         return [];
       }
 
@@ -348,7 +377,11 @@ export class GeocodingService {
       }
 
       const data = await response.json();
-      if (data.status !== '1' || !Array.isArray(data.pois) || data.pois.length === 0) {
+      if (data.status !== '1') {
+        this.reportAmapFailure('searchPoi', data, address);
+        return null;
+      }
+      if (!Array.isArray(data.pois) || data.pois.length === 0) {
         return null;
       }
 
@@ -408,7 +441,11 @@ export class GeocodingService {
       }
 
       const data = await response.json();
-      if (data.status !== '1' || !Array.isArray(data.geocodes) || data.geocodes.length === 0) {
+      if (data.status !== '1') {
+        this.reportAmapFailure('geocodeStructured', data, address);
+        return null;
+      }
+      if (!Array.isArray(data.geocodes) || data.geocodes.length === 0) {
         return null;
       }
 
@@ -437,5 +474,44 @@ export class GeocodingService {
       this.logger.error('高德 geocode 失败', err);
       return null;
     }
+  }
+
+  /**
+   * AMAP 业务层失败（status !== '1'）上报：落 monitoring_error_logs + 飞书告警。
+   *
+   * 配额/密钥类 infocode（见 AMAP_SYSTEMIC_INFOCODES）意味着地理解析对所有候选人
+   * 降级为"查无结果"，与单条地址解析不出来性质不同，只打日志会静默吞掉整条链路
+   * 的失败（2026-07-28 生产账号日配额耗尽、监控 0 感知）。dedupe 按 infocode 聚合，
+   * 飞书侧由 ALERT_THROTTLE 节流，monitoring_error_logs 每次都落。
+   */
+  private reportAmapFailure(action: string, data: unknown, query: string): void {
+    const body = (data ?? {}) as Record<string, unknown>;
+    const infocode = str(body.infocode) || 'unknown';
+    const info = str(body.info) || 'unknown';
+    const systemic = AMAP_SYSTEMIC_INFOCODES.has(infocode);
+
+    this.logger.warn(
+      `高德 API 业务失败 [${action}] infocode=${infocode} info=${info} query="${query}"`,
+    );
+
+    this.incidentReporter?.notifyAsync({
+      source: {
+        subsystem: 'infra',
+        component: 'GeocodingService',
+        action,
+        trigger: 'tool',
+      },
+      code: systemic ? 'geocoding.amap_quota_or_key' : 'geocoding.amap_api_error',
+      summary: systemic
+        ? `高德配额/密钥不可用（${infocode} ${info}），地理解析全线降级为查无结果`
+        : `高德 API 返回异常（${infocode} ${info}）`,
+      error: `AMAP ${action} 业务失败: infocode=${infocode} info=${info}`,
+      severity: systemic ? AlertLevel.ERROR : AlertLevel.WARNING,
+      diagnostics: {
+        category: 'amap_api',
+        payload: { infocode, info, query },
+      },
+      dedupe: { key: `geocoding.amap:${infocode}` },
+    });
   }
 }

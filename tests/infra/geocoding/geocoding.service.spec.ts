@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { RedisService } from '@infra/redis/redis.service';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 describe('GeocodingService', () => {
   let service: GeocodingService;
@@ -19,6 +20,10 @@ describe('GeocodingService', () => {
   const mockRedisService = {
     get: jest.fn(),
     setex: jest.fn(),
+  };
+
+  const mockIncidentReporter = {
+    notifyAsync: jest.fn(),
   };
 
   /** 构造高德 /v3/place/text 成功返回 */
@@ -41,6 +46,7 @@ describe('GeocodingService', () => {
         GeocodingService,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: RedisService, useValue: mockRedisService },
+        { provide: IncidentReporterService, useValue: mockIncidentReporter },
       ],
     }).compile();
 
@@ -715,6 +721,99 @@ describe('GeocodingService', () => {
       const candidates = await service.searchCandidates('马陆');
 
       expect(candidates).toEqual([]);
+    });
+  });
+
+  describe('AMAP 业务失败上报（2026-07-28 生产配额耗尽 0 感知）', () => {
+    const mockAmapError = (infocode: string, info: string) => ({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ status: '0', info, infocode }),
+    });
+
+    it('配额类 infocode 10044 → ERROR 级告警，dedupe 按 infocode 聚合', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockAmapError('10044', 'USER_DAILY_QUERY_OVER_LIMIT'));
+
+      const result = await service.geocode('川沙百联', '上海');
+
+      expect(result).toBeNull();
+      expect(redisService.setex).not.toHaveBeenCalled();
+      // POI + 结构化兜底各上报一次
+      expect(mockIncidentReporter.notifyAsync).toHaveBeenCalledTimes(2);
+      expect(mockIncidentReporter.notifyAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'geocoding.amap_quota_or_key',
+          severity: 'error',
+          dedupe: { key: 'geocoding.amap:10044' },
+          source: expect.objectContaining({ component: 'GeocodingService', action: 'searchPoi' }),
+        }),
+      );
+    });
+
+    it('key 日配额 10003 同样按配额类升级为 ERROR', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockAmapError('10003', 'DAILY_QUERY_OVER_LIMIT'));
+
+      await service.searchCandidates('马陆', '上海');
+
+      expect(mockIncidentReporter.notifyAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'geocoding.amap_quota_or_key',
+          severity: 'error',
+          dedupe: { key: 'geocoding.amap:10003' },
+        }),
+      );
+    });
+
+    it('非配额类 infocode → WARNING 级告警', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockAmapError('30001', 'ENGINE_RESPONSE_DATA_ERROR'));
+
+      const result = await service.geocode('川沙百联', '上海');
+
+      expect(result).toBeNull();
+      expect(mockIncidentReporter.notifyAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'geocoding.amap_api_error',
+          severity: 'warning',
+          dedupe: { key: 'geocoding.amap:30001' },
+        }),
+      );
+    });
+
+    it('status=1 空结果是正常业务语义，不告警', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(mockPlaceResponse([]))
+        .mockResolvedValueOnce(mockGeocodeResponse([]));
+
+      const result = await service.geocode('不存在的地方');
+
+      expect(result).toBeNull();
+      expect(mockIncidentReporter.notifyAsync).not.toHaveBeenCalled();
+    });
+
+    it('reverseGeocode status!=1 也上报', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockAmapError('10044', 'USER_DAILY_QUERY_OVER_LIMIT')) as never;
+
+      const result = await service.reverseGeocode(121.6, 31.2);
+
+      expect(result).toBeNull();
+      expect(mockIncidentReporter.notifyAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'geocoding.amap_quota_or_key',
+          severity: 'error',
+          source: expect.objectContaining({ action: 'reverseGeocode' }),
+        }),
+      );
     });
   });
 });

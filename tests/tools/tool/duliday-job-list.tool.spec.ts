@@ -495,6 +495,36 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.brand.brandSource).toBe('model_input');
   });
 
+  it('剥离泛化统称"店员"后再查（badcase 6a66d888：果蔬好·天津有岗却因"店员"精确类目过滤查空）', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJobData({
+          basicInfo: {
+            jobId: 1,
+            brandName: '果蔬好',
+            jobName: '果蔬好-天津乐提港店-收银员-小时工',
+          },
+        }),
+      ],
+      total: 1,
+    });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['天津'],
+      jobCategoryList: ['店员'],
+    });
+
+    // 送往上游的类目参数里不再含"店员"（剥离后为空），避免精确类目过滤把在招岗位查空
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ jobCategoryList: [] }),
+    );
+    // 观测：被剥离的泛化词落在 queryMeta 上，供排障对账
+    expect(result.queryMeta.jobCategoryUmbrellaStripped).toEqual(['店员']);
+    // 结果非空：候选人拿到该品牌在招岗位，而非"查无"
+    expect(result.resultCount).toBe(1);
+  });
+
   it('rejects unverified brand inputs（Gattouzo 昵称臆造 → rejected，不查询不静默放行）', async () => {
     const result = await executeTool(
       {

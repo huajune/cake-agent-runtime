@@ -3,7 +3,7 @@
  *
  * 仅收录高置信度、跨城市唯一的名称（业务运营决策，人工维护，§9.1 第 2 类数据）。
  */
-export const LOCATION_TO_CITY: Record<string, string> = {
+export const UNIQUE_PLACE_ALIAS_TO_CITY: Record<string, string> = {
   // 上海
   陆家嘴: '上海',
   徐家汇: '上海',

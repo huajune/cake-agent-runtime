@@ -214,6 +214,47 @@ describe('scenario-registry', () => {
       expect(r.reason).toBe('candidate_replied_after_anchor');
     });
 
+    describe('replied rule vs processed watermark（timeout 静默丢弃盲区，chat 6a62c6f8）', () => {
+      const GRACE_MS = 10 * 60_000;
+      const repliedAt = anchorAt + 1_000;
+
+      it('does not stop when the reply was silently dropped (watermark behind, grace elapsed)', () => {
+        // 候选人锚点后回话，但回合从未成功收尾（timeout 丢弃）→ 水位停在锚点前
+        const state = baseState({
+          lastCandidateMessageAt: repliedAt,
+          lastProcessedCandidateMessageAt: anchorAt - 1,
+        });
+        const r = shouldStop(scenario, state, anchorAt, { now: repliedAt + GRACE_MS });
+        expect(r.stop).toBe(false);
+      });
+
+      it('still stops when the reply was successfully processed', () => {
+        const state = baseState({
+          lastCandidateMessageAt: repliedAt,
+          lastProcessedCandidateMessageAt: repliedAt,
+        });
+        const r = shouldStop(scenario, state, anchorAt, { now: repliedAt + GRACE_MS });
+        expect(r).toEqual({ stop: true, reason: 'candidate_replied_after_anchor' });
+      });
+
+      it('stops within the processing grace window (message may still be in flight)', () => {
+        // 回话刚发出、可能还在 debounce/生成中：宽限期内按会被正常回复对待，照旧停发
+        const state = baseState({
+          lastCandidateMessageAt: repliedAt,
+          lastProcessedCandidateMessageAt: anchorAt - 1,
+        });
+        const r = shouldStop(scenario, state, anchorAt, { now: repliedAt + GRACE_MS - 1 });
+        expect(r).toEqual({ stop: true, reason: 'candidate_replied_after_anchor' });
+      });
+
+      it('keeps the legacy replied-means-stop behavior when the watermark is absent', () => {
+        // 部署前旧会话没有水位字段，无法判定是否被处理 → 保持旧行为停发
+        const state = baseState({ lastCandidateMessageAt: repliedAt });
+        const r = shouldStop(scenario, state, anchorAt, { now: repliedAt + GRACE_MS });
+        expect(r).toEqual({ stop: true, reason: 'candidate_replied_after_anchor' });
+      });
+    });
+
     it('stops store follow-ups when the candidate has joined a group', () => {
       const storeScenario = getScenario('store_presented_no_reply')!;
       const state = baseState({

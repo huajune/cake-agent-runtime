@@ -23,6 +23,7 @@ import { MessageProcessingFailureService } from './message-processing-failure.se
 import { ImageDescriptionService } from './image-description.service';
 import { ImageBrandBackfillService } from './image-brand-backfill.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
+import { SessionService } from '@memory/services/session.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
@@ -93,6 +94,7 @@ export class ReplyWorkflowService {
     private readonly reengagementAnchors: ReengagementAnchorService,
     private readonly alertNotifier: AlertNotifierService,
     private readonly imageBrandBackfill: ImageBrandBackfillService,
+    private readonly session: SessionService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -431,6 +433,12 @@ export class ReplyWorkflowService {
         this.monitoringService.recordSuccess(traceId, skippedMetadata);
         // 回复未送达给候选人：记用户侧记忆但不投影助手轮次，避免下一轮幽灵复聊。
         agentResult.turnFinalizer?.settle({ delivered: false });
+        // 有意沉默也是成功处理：推进复聊「已处理」水位，与旧的回话即停行为保持一致。
+        this.advanceProcessedCandidateWatermark(
+          params.primaryMessage,
+          agentCallParams,
+          allMessages,
+        );
         await this.markMessagesAsProcessed(processedMessageIds);
         await this.ackPendingIfMerged(chatId, consumedPending);
         return;
@@ -480,6 +488,7 @@ export class ReplyWorkflowService {
       );
 
       this.monitoringService.recordSuccess(traceId, successMetadata);
+      this.advanceProcessedCandidateWatermark(params.primaryMessage, agentCallParams, allMessages);
       await this.markMessagesAsProcessed(processedMessageIds);
       await this.ackPendingIfMerged(chatId, consumedPending);
 
@@ -848,6 +857,39 @@ export class ReplyWorkflowService {
     parsed: ReturnType<typeof MessageParser.parse>,
   ): string {
     return parsed.imContactId || messageData.externalUserId || parsed.chatId;
+  }
+
+  /**
+   * 回合成功收尾（正常投递或有意沉默）后推进「候选人消息已处理」水位，取本轮消费的
+   * 候选人消息最大回调时间戳——与入站层 lastCandidateMessageAt 同一时间源可直接比对。
+   * timeout 静默丢弃的消息永远不会走到这里，复聊 shouldStop 据此识别无人搭理的回话。
+   * 仅个人单聊（与 lastCandidateMessageAt 口径对齐）；fire-and-forget，失败不影响主流程。
+   */
+  private advanceProcessedCandidateWatermark(
+    primaryMessage: EnterpriseMessageCallbackDto,
+    sessionRef: { corpId: string; userId: string; sessionId: string },
+    allMessages: EnterpriseMessageCallbackDto[],
+  ): void {
+    if (primaryMessage.imRoomId) return;
+    const maxTimestamp = allMessages.reduce((max, message) => {
+      const timestamp = Number(message.timestamp);
+      return Number.isFinite(timestamp) && timestamp > max ? timestamp : max;
+    }, 0);
+    if (maxTimestamp <= 0) return;
+    void this.session
+      .recordCandidateMessagesProcessed(
+        sessionRef.corpId,
+        sessionRef.userId,
+        sessionRef.sessionId,
+        new Date(maxTimestamp),
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `[reengagement] lastProcessedCandidateMessageAt 写入失败 [${sessionRef.sessionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
   }
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
