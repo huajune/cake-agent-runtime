@@ -141,6 +141,33 @@
         "生产飞书 schema 对账：20/20，问题原因 22 个选项",
         "目标 Wiki/Docx 机器人真实读写权限验证"
       ]
+    },
+    {
+      "number": "799",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/799",
+      "title": "真人回复后停止报名后触达",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "真人回复后停止报名后触达"
+      ],
+      "summary": [
+        "真人回复后停止报名后触达"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "真人回复后停止报名后触达"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "Node `22.16.0`",
+        "定向 Jest：`follow-up.processor.spec.ts` + `scenario-registry.spec.ts`，97 tests passed，`--watchman=false`",
+        "lint / format / typecheck / geo validate / build 全绿",
+        "全量 Jest：373 suites、5910 tests passed（6 skipped），`--watchman=false`"
+      ]
     }
   ],
   "lastRelease": {
