@@ -14,7 +14,7 @@
 **预计版本**: `v10.33.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #794 回填 v10.32.0 发布结果
@@ -25,12 +25,21 @@
 - PR #800 证据化方案账目更新——§16.3 P1 交付账 + §16.4 两轮发版验证 + §17 Phas…
 - PR #800 候选人认知体系四文档整体化——三轴定位互引 + 记忆真相文档漂移修正 + 判定机制交点对账
 - PR #800 沈阳/佛山补录 + 硬约束段合并顺序统一（证据化收尾两项）
+- PR #802 自动化治理追踪与反馈原因
+- PR #802 关联 BadCase 治理 PR
+- PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
+- PR #802 测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。
+- PR #802 状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。
 
 ### 新功能
-- 无
+- PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
+- PR #802 状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。
 
 ### 问题修复
 - PR #800 候选人认知体系四文档整体化——三轴定位互引 + 记忆真相文档漂移修正 + 判定机制交点对账
+- PR #802 解决旧「分类」列混入测试错误码、运营原因不可控的问题；新增「问题原因」列并保留旧列兼容历史数据。
+- PR #802 解决测试证据仅在备注堆 ID、单批次可能误关单的问题。
+- PR #802 测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。
 
 ### 优化调整
 - PR #800 硬约束段合并顺序统一为本轮高置信优先（证据化 Phase 0 第 2 条）
@@ -40,18 +49,31 @@
 - PR #796 geo 方案交付状态对齐 v3.4——定稿待批改已交付、Phase 4/5 标注落地、shadow…
 - PR #800 沈阳/佛山业务足迹补录——区名策展表 12 条 + 裸名城市 2 条（证据化族 badcase 城市）
 - PR #800 证据化方案账目更新——§16.3 P1 交付账 + §16.4 两轮发版验证 + §17 Phas…
+- PR #802 已按 expand-only 在生产 BadCase 表新增 19 个缺失字段：字段总数 22→41，治理字段 20/20。
+- PR #802 新增历史证据盘点/回填脚本，默认只读。
+- PR #802 更新 analyze-chat-badcases skill，固定 reviewerSource=claude、正确批次同步命令与文档累计规则。
+- PR #802 自动化治理追踪与反馈原因
+- PR #802 关联 BadCase 治理 PR
 
 ### 配置变更
-- 无
+- PR #802 FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN
+- PR #802 BADCASE_GOVERNANCE_DOC_SYNC_ENABLED
 
 ### 环境变量提醒
-- 无
+- PR #802 检测到环境变量相关文件变更：`.env.example`、`src/infra/config/env.validation.ts`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #794 文档 Prettier 与 `git diff --check` 通过
 - PR #794 pre-push 全量门禁：373 suites / 5906 tests（6 skipped）
 - PR #800 预推全量 CI（lint/format/typecheck/geo:validate/build/test:ci 5917 用例）通过
 - PR #800 新增 geo golden 6 例（badcase 城市正例 + 常用词负例）、硬约束合并语义 2 例
+- PR #802 pnpm run ci:check（pre-push hook）
+- PR #802 4 suites / 36 个定向测试
+- PR #802 全量 Jest：375 suites、5915 tests；1 suite/6 tests 按配置 skipped
+- PR #802 AppModule DI smoke
+- PR #802 后端/Web build、typecheck、lint、format、geo:validate
+- PR #802 生产飞书 schema 对账：20/20，问题原因 22 个选项
+- PR #802 目标 Wiki/Docx 机器人真实读写权限验证
 <!-- release:pending:end -->
 
 ## [10.32.0] - 2026-07-28

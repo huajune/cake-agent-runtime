@@ -86,6 +86,61 @@
         "预推全量 CI（lint/format/typecheck/geo:validate/build/test:ci 5917 用例）通过",
         "新增 geo golden 6 例（badcase 城市正例 + 常用词负例）、硬约束合并语义 2 例"
       ]
+    },
+    {
+      "number": "802",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/802",
+      "title": "自动化治理追踪与反馈原因",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。",
+        "状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。",
+        "解决旧「分类」列混入测试错误码、运营原因不可控的问题；新增「问题原因」列并保留旧列兼容历史数据。",
+        "解决测试证据仅在备注堆 ID、单批次可能误关单的问题。",
+        "测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。"
+      ],
+      "summary": [
+        "自动化治理追踪与反馈原因",
+        "关联 BadCase 治理 PR",
+        "Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。",
+        "测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。",
+        "状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。"
+      ],
+      "features": [
+        "Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。",
+        "状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。"
+      ],
+      "fixes": [
+        "解决旧「分类」列混入测试错误码、运营原因不可控的问题；新增「问题原因」列并保留旧列兼容历史数据。",
+        "解决测试证据仅在备注堆 ID、单批次可能误关单的问题。",
+        "测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "已按 expand-only 在生产 BadCase 表新增 19 个缺失字段：字段总数 22→41，治理字段 20/20。",
+        "新增历史证据盘点/回填脚本，默认只读。",
+        "更新 analyze-chat-badcases skill，固定 reviewerSource=claude、正确批次同步命令与文档累计规则。",
+        "自动化治理追踪与反馈原因",
+        "关联 BadCase 治理 PR"
+      ],
+      "config": [
+        "FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN",
+        "BADCASE_GOVERNANCE_DOC_SYNC_ENABLED"
+      ],
+      "envFiles": [
+        ".env.example",
+        "src/infra/config/env.validation.ts"
+      ],
+      "verification": [
+        "pnpm run ci:check（pre-push hook）",
+        "4 suites / 36 个定向测试",
+        "全量 Jest：375 suites、5915 tests；1 suite/6 tests 按配置 skipped",
+        "AppModule DI smoke",
+        "后端/Web build、typecheck、lint、format、geo:validate",
+        "生产飞书 schema 对账：20/20，问题原因 22 个选项",
+        "目标 Wiki/Docx 机器人真实读写权限验证"
+      ]
     }
   ],
   "lastRelease": {
