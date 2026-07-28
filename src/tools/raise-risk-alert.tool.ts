@@ -48,6 +48,7 @@ const RISK_TYPE_LABELS: Record<ToolRiskType, string> = {
   interview_result_inquiry: '面试结果追问',
   // input 层确定性拦截专用类型；本工具的 inputSchema 未开放给模型，仅为类型完整。
   human_handoff_request: '候选人主动要求人工',
+  disability_disclosure: '候选人披露残障身份',
 };
 
 function extractLatestUserMessageFromToolContext(messages: unknown[]): string {
