@@ -213,7 +213,10 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('brandIdList');
   });
 
-  it('prefers sessionFacts over highConfidenceFacts when both have a value (no merge conflict)', () => {
+  it('本轮高置信值覆盖旧 session 值（Phase 0 第 2 条：与工具层合并口径统一）', () => {
+    // 候选人上轮说 5000+、本轮改口 8000+：硬约束段必须跟随最新表达——
+    // 工具层 mergeSessionFactsWithHighConfidence 一直如此，prompt 层此前相反
+    // （旧值压新值，候选人刚改口的条件在硬约束段被无视）。
     const session = cloneFallback();
     session.preferences.salary = '5000+';
     const high = cloneHighConfidenceFallback();
@@ -225,8 +228,21 @@ describe('HardConstraintsSection', () => {
       highConfidenceFacts: high,
     });
 
+    expect(output).toContain('意向薪资: 8000+');
+    expect(output).not.toContain('意向薪资: 5000+');
+  });
+
+  it('本轮无该字段线索时沿用 session 值（覆盖仅发生在本轮确有新值）', () => {
+    const session = cloneFallback();
+    session.preferences.salary = '5000+';
+
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: session,
+      highConfidenceFacts: cloneHighConfidenceFallback(),
+    });
+
     expect(output).toContain('意向薪资: 5000+');
-    expect(output).not.toContain('意向薪资: 8000+');
   });
 
   it('prefers the current explicit labor form over stale session labor form', () => {
