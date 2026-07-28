@@ -23,6 +23,7 @@ import {
   detectMetaNarrationReply,
   detectOutputLeak,
 } from './rules/internal-info-leaks.rule';
+import { detectBookingReceiptMismatch } from './rules/booking-receipt.rule';
 import { detectJobDetailLookupRequired } from './rules/job-detail-grounding.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
 import { detectUnsupportedScheduleWindowClaim } from './rules/schedule-window-claims.rule';
@@ -213,6 +214,12 @@ export class HardRulesService {
     );
     if (settlementCycleMismatch) {
       contradictions.push(this.withRulePolicy(settlementCycleMismatch));
+    }
+
+    // booking 成功后的回执对账：不可逆副作用与回复必须一致（问日期=矛盾，零播报=observe）。
+    const bookingReceiptMismatch = detectBookingReceiptMismatch(text, toolCalls);
+    if (bookingReceiptMismatch) {
+      contradictions.push(this.withRulePolicy(bookingReceiptMismatch));
     }
 
     // 形态二：本轮岗位查询全查无时的无证据结算断言（形态一 truth=null 放行的半边）。

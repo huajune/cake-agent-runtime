@@ -381,6 +381,27 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '岗位工具不掌握这些运营状态；请只说“目前暂时没查到匹配的在招岗位”，并根据已成功执行的后续工具自然承接，禁止补充任何原因猜测。',
   },
   {
+    id: 'booking_receipt_mismatch',
+    // 形态 A（问日期且无确认口径）＝REVISE：与已提交工单直接矛盾，近零假阳；
+    // 形态 B（零播报）在规则实现内自降 OBSERVE 落档累计精确率。
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      'duliday_interview_booking 成功后的回执对账：拦住“工单已建单却仍问候选人定哪天”，观察“零播报”。',
+    riskGoal:
+      '预约提交是不可逆副作用；回复与其矛盾会让候选人以为没约上而重复提交（撞 already_booked）或直接流失' +
+      '（badcase recvoFsFPZHTxw / yfrc6wb9，7-27 复测 RT-016 实锤 prompt 层播报硬指令被击穿）。',
+    exogenousSignal:
+      '本轮 duliday_interview_booking result.success=true（真实工单）+ 回复文本的日期征询/播报缺失。',
+    residualRisk:
+      '窗口制“已约好+问几点到店”经确认口径豁免；预约时间与候选人口头要求不一致（王真宝案）需要' +
+      '语义比对候选人诉求，不在本规则确定性能力内，留语义审查/离线环。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '本轮预约已真实提交成功，但上一版回复仍在问候选人面试定哪天/几点，与已提交的工单矛盾，当前文本不可发送。' +
+      '请重写：明确告知候选人报名已成功，并按工具返回的 _confirmedInterviewTimeHuman 与 guide 字段复述面试时间、形式和注意事项；不得再征询日期。',
+  },
+  {
     id: 'requested_brand_mismatch',
     // 2026-07-27 发牌专项审计：replan → observe。生产抽样 3/3 假阳（门店名被
     // extractStructuredJobTitleBrands 当品牌名，"江南赋店/置汇旭辉店/枫蓝国际"），

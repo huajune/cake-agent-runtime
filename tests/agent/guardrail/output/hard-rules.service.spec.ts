@@ -2316,4 +2316,84 @@ describe('HardRulesService', () => {
       expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeUndefined();
     });
   });
+  describe('booking receipt mismatch（badcase recvoFsFPZHTxw / RT-016 回执错位）', () => {
+    const successfulBooking = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 527344 },
+      status: 'ok' as const,
+      result: {
+        success: true,
+        _confirmedInterviewTimeHuman: '6 月 18 号（周四）上午 10 点',
+      },
+    };
+
+    it('revises when reply still asks which day after a committed booking (RT-016 shape)', () => {
+      const result = service.check({
+        replyText: '好的，你定哪一天方便呢？',
+        toolCalls: [successfulBooking],
+        userMessage: '20号全天都可以',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+    });
+
+    it('revises on time-selection asks without any confirmation wording', () => {
+      const result = service.check({
+        replyText: '你看选个时间，几号方便？',
+        toolCalls: [successfulBooking],
+        userMessage: '好的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it('allows window-style arrival ask when the booking is confirmed in the same reply', () => {
+      const result = service.check({
+        replyText: '已帮你约好周四的面试，13:30-16:30 之间到就行，你几点方便到店？',
+        toolCalls: [successfulBooking],
+        userMessage: '周四可以',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('observes when reply is silent about the booking result (yfrc6wb9 shape)', () => {
+      const result = service.check({
+        replyText: '好的收到～有问题随时找我。',
+        toolCalls: [successfulBooking],
+        userMessage: '嗯嗯',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('observe');
+    });
+
+    it('passes a proper receipt reply', () => {
+      const result = service.check({
+        replyText:
+          '面试已经帮你登记好了，时间是 6 月 18 号（周四）上午 10 点，到店跟前台说独立客介绍来的。',
+        toolCalls: [successfulBooking],
+        userMessage: '好的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('stays silent without a successful booking this turn', () => {
+      const result = service.check({
+        replyText: '你定哪一天方便呢？',
+        toolCalls: [],
+        userMessage: '想约面试',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+  });
 });
