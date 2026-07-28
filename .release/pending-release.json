@@ -52,6 +52,40 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "800",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/800",
+      "title": "沈阳/佛山补录 + 硬约束段合并顺序统一（证据化收尾两项）",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "候选人认知体系四文档整体化——三轴定位互引 + 记忆真相文档漂移修正 + 判定机制交点对账"
+      ],
+      "summary": [
+        "沈阳/佛山业务足迹补录——区名策展表 12 条 + 裸名城市 2 条（证据化族 badcase 城市）",
+        "硬约束段合并顺序统一为本轮高置信优先（证据化 Phase 0 第 2 条）",
+        "证据化方案账目更新——§16.3 P1 交付账 + §16.4 两轮发版验证 + §17 Phas…",
+        "候选人认知体系四文档整体化——三轴定位互引 + 记忆真相文档漂移修正 + 判定机制交点对账",
+        "沈阳/佛山补录 + 硬约束段合并顺序统一（证据化收尾两项）"
+      ],
+      "features": [],
+      "fixes": [
+        "候选人认知体系四文档整体化——三轴定位互引 + 记忆真相文档漂移修正 + 判定机制交点对账"
+      ],
+      "optimizations": [
+        "硬约束段合并顺序统一为本轮高置信优先（证据化 Phase 0 第 2 条）"
+      ],
+      "ops": [
+        "沈阳/佛山业务足迹补录——区名策展表 12 条 + 裸名城市 2 条（证据化族 badcase 城市）",
+        "证据化方案账目更新——§16.3 P1 交付账 + §16.4 两轮发版验证 + §17 Phas…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "预推全量 CI（lint/format/typecheck/geo:validate/build/test:ci 5917 用例）通过",
+        "新增 geo golden 6 例（badcase 城市正例 + 常用词负例）、硬约束合并语义 2 例"
+      ]
     }
   ],
   "lastRelease": {
