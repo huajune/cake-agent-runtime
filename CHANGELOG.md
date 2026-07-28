@@ -14,7 +14,7 @@
 **预计版本**: `v10.32.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 7
+**累计 PR**: 8
 
 ### 更新摘要
 - PR #761 回填 v10.31.0 发布结果 (#760)
@@ -43,6 +43,13 @@
 - PR #771 高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警
 - PR #764 确定性剥离泛化统称"店员/员工"出 jobCategoryList——防在招岗位被误判查无
 - PR #764 剥离泛化统称"店员/员工"出 jobCategoryList——防在招岗位被误判查无
+- PR #781 Phase 5 收口——删旧路径门面与过渡期数据表导出
+- PR #781 清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…
+- PR #781 invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径
+- PR #781 brand-matcher 切 listUniqueDistrictCityEntries 稳定 API
+- PR #781 §9.5 数据表改名落地——名称对齐真实语义
+- PR #781 Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关
+- PR #781 地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化
 
 ### 新功能
 - PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
@@ -72,12 +79,18 @@
 - PR #777 pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…
 - PR #766 停止条件区分「已回话」与「回话被 timeout 静默丢弃」
 - PR #771 高德配额耗尽补落库告警
+- PR #781 Phase 5 收口——删旧路径门面与过渡期数据表导出
+- PR #781 清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…
+- PR #781 invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径
+- PR #781 brand-matcher 切 listUniqueDistrictCityEntries 稳定 API
+- PR #781 §9.5 数据表改名落地——名称对齐真实语义
+- PR #781 Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
-- 无
+- PR #781 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #761 与 master PR #760 的台账内容一致
@@ -97,6 +110,8 @@
 - PR #764 `search.util.spec.ts` +4 例（剥离/保留/去空白/无泛化词）
 - PR #764 `duliday-job-list.tool.spec.ts` +1 例：断言送 sponge 的 `jobCategoryList` 不再含"店员"、`resultCount=1` 非空、`queryMeta.jobCategoryUmbrellaStripped=["店员"]`
 - PR #764 全套：2 suites 110 passed；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过
+- PR #781 全量 jest：370 suites / 5766 tests 全绿（含 #765 turn_geocode 5 用例、生成表+开关 6 新用例）
+- PR #781 typecheck / lint / format / geo:validate / build:ci 全通过（pre-push 钩子完整跑过）
 <!-- release:pending:end -->
 
 ## [10.31.0] - 2026-07-27
