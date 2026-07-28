@@ -75,6 +75,11 @@ describe('ReplyRepairAgent', () => {
     expect(call.system).toContain('上海餐饮兼职群');
     expect(call.system).toContain('餐饮：1 个群');
     expect(call.system).toContain('出站策略');
+    // 时间锚：repair 晚于历史消息发生，无锚会照抄历史里的相对日期
+    //（badcase batch_6a66f559…："明天 7 月 28 日"在 7-28 当天投递）
+    expect(call.system).toContain('# 当前时间（相对日期以此为准）');
+    expect(call.system).toContain('今天：');
+    expect(call.system).toContain('明天：');
     expect(call.system).not.toContain('confirmedInterviewTimeHuman');
     expect(call.system).not.toContain('duliday_interview_booking(');
     // 真实对话历史走 messages 槽，不再塞进 system
