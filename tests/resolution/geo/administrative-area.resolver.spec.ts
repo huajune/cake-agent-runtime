@@ -110,6 +110,29 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
     });
   });
 
+  describe('district-city-map 收编条目（2026-07-28 统一到 DISTRICT_TO_CITY）', () => {
+    it('黄埔→广州、宝安→深圳（黄埔案：区名报出后查询路径应默认所属城市）', () => {
+      expect(resolveCityFromDistrict('黄埔')).toBe('广州');
+      expect(resolveCityFromDistrict('黄埔区')).toBe('广州');
+      expect(resolveCityFromDistrict('宝安')).toBe('深圳');
+      // 上海黄浦（浦字不同）不受影响
+      expect(resolveCityFromDistrict('黄浦')).toBe('上海');
+    });
+
+    it('原私表条目并入后生效：川沙→上海、南开区→天津、渝中→重庆', () => {
+      expect(resolveCityFromDistrict('川沙')).toBe('上海');
+      expect(resolveCityFromDistrict('南开区')).toBe('天津');
+      expect(resolveCityFromDistrict('渝中')).toBe('重庆');
+    });
+
+    it('带后缀收录口径：裸"红桥/南开/静海"不推导（北京红桥市场、南开大学/中学误命中防线）', () => {
+      expect(resolveCityFromDistrict('红桥')).toBeNull();
+      expect(resolveCityFromDistrict('静海')).toBeNull();
+      // 裸南开：normalizeDistrictForLookup 不会补"区"，命中不了带后缀 key
+      expect(DISTRICT_TO_CITY['南开']).toBeUndefined();
+    });
+  });
+
   describe('行政区数据现状基线（方案 9.2 已知缺陷，迁移期不修正）', () => {
     it('golden：延吉市在全国显式表与县级市映射中双轨在册', () => {
       expect(NATIONAL_CITY_SUFFIX_TO_CITY['延吉市']).toBe('延吉');

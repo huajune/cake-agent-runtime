@@ -1,5 +1,9 @@
 import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
-import { inferCitiesFromDistrictMentions } from '@tools/shared/district-city-map';
+import {
+  resolveCityFromDistrict,
+  resolveCityFromLocation,
+  scanGeoSignalsFromText,
+} from '@resolution/geo';
 
 /**
  * invite_to_group 城市 provenance gate（tool guardrail，纯函数）。
@@ -8,26 +12,34 @@ import { inferCitiesFromDistrictMentions } from '@tools/shared/district-city-map
  * invite 的 city 入参完全信模型自报——与 booking 曾经信 `prechecked` 是同一个
  * "模型自证"模式。拉群是不可逆副作用，city 必须能追溯到外生出处：
  * ① 会话记忆里的高置信城市事实（确定性抽取写入），或
- * ② 候选人本会话原文里出现过该城市（含定位消息渲染文本）。
+ * ② 候选人本会话原文里出现过该城市（含定位消息渲染文本），或
+ * ③ 候选人原文命中 @resolution/geo 地名白名单（区名唯一映射 / 高置信地标），
+ *   且推导城市与入参一致（district_inference），或
+ * ④ 本轮 geocode unique 解析确权过该城市（turn_geocode，#765 补"轮末写档、
+ *   下轮才进 session_fact"的同轮时序空档）。
  * 模型参数单独不构成依据（HC-2 权威字段准入的同一原则）。
  *
- * 2026-07-20 放宽（badcase：候选人说"顺义区马坡镇"/"浦东川沙"仍被反问城市）：
- * 字面匹配漏掉了区级地名 → 城市的确定性推断，新增出处
- * ③ 候选人原文出现全国无歧义的区级地名，且其所属城市与入参一致
- *   （district_inference，静态映射见 district-city-map.ts）。
- *
- * 2026-07-27 证据化穿线（badcase 6a671722 沈阳 / 6a618a6e 上海浦东 GPS 连拒 3 次）：
- * geocode unique 确权与定位分享逆解析现已按 source='tool' 写入 sessionFacts.pref.city
- * （memory-lifecycle save_attested_city / extractFacts 定位注入），本 gate 的
- * session_fact 档（① 会话记忆）即可命中——工具确权是外生证据，不属于"模型自证"。
- * district-city-map 仍是兜底档，待 resolution/geo 行政区划库补全后按其 TODO 下线。
+ * 演进史：
+ * - 2026-07-20 放宽（badcase：候选人说"顺义区马坡镇"/"浦东川沙"仍被反问城市）：
+ *   字面匹配漏掉区级地名 → 城市的确定性推断，新增 district_inference 档
+ *   （静态映射曾落 tools 层私表 district-city-map.ts）。
+ * - 2026-07-27 证据化穿线（badcase 6a671722 沈阳 / 6a618a6e 上海浦东 GPS 连拒 3 次）：
+ *   geocode unique 确权与定位分享逆解析现已按 source='tool' 写入 sessionFacts.pref.city
+ *   （memory-lifecycle save_attested_city / extractFacts 定位注入），跨轮场景由
+ *   session_fact 档（①）命中——工具确权是外生证据，不属于"模型自证"。
+ * - 2026-07-28 #765：turn_geocode 档补同轮时序空档（④）。
+ * - 2026-07-28 收编：district-city-map.ts 私表删除——与 @resolution/geo 的
+ *   DISTRICT_TO_CITY 双轨维护、每补一个区名只修一半（拉群门认、查询路径不认，
+ *   青岛批次即被迫双写两表）。③ 现统一走 geo 白名单扫描；朝阳/通州等业务偏置
+ *   条目随统一对齐提取层口径（同一句话提取层本就写 city 高置信事实，gate 下一轮
+ *   凭 ① 放行——此前的"更严"只在同轮内生效，跨轮不成立，属幻觉严格性）。
  *
  * 判定只读、不产生副作用；拒绝均为可恢复（reject_collect 语义）：
  * - city_conflict：会话记忆有城市且与入参不一致 → 模型应改用 expectedCity 或先与候选人确认；
  * - city_unverified：任何出处都找不到该城市 → 模型应先向候选人确认所在城市。
  *
  * 已知边界（catalog residualRisk 同步登记）：
- * - 候选人原文提到他人城市/曾居城市时仍会放行（出处判定不是意图判定，区名档同）；
+ * - 候选人原文提到他人城市/曾居城市时仍会放行（出处判定不是意图判定，区名/地标档同）；
  * - 跨会话回访客户城市只在长期画像里、本会话未提及时会被要求重新确认城市。
  */
 
@@ -62,6 +74,28 @@ export interface InviteCityGateInput {
   turnResolvedCities?: readonly (string | null | undefined)[];
 }
 
+/**
+ * 候选人原文经 geo 白名单扫描可推导的城市集合（归一化裸名）。
+ * 覆盖区名唯一映射（顺义→北京、黄埔→广州）与高置信地标（陆家嘴→上海）；
+ * 出处判定不做意图判定：提到他人城市/否定语境仍会被计入（与 user_text 档同限制）。
+ */
+function inferCitiesFromGeoSignals(userTexts: readonly string[]): Set<string> {
+  const cities = new Set<string>();
+  for (const text of userTexts) {
+    if (!text) continue;
+    const scan = scanGeoSignalsFromText(text);
+    for (const hit of scan.districtHits) {
+      const city = resolveCityFromDistrict(hit.key);
+      if (city) cities.add(normalizeCity(city));
+    }
+    for (const location of scan.locations) {
+      const city = resolveCityFromLocation(location);
+      if (city) cities.add(normalizeCity(city));
+    }
+  }
+  return cities;
+}
+
 export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGateVerdict {
   const requested = normalizeCity(input.requestedCity);
   const session = normalizeCity(input.sessionCity);
@@ -78,10 +112,10 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
     }
   }
 
-  // 区级地名确定性推断：候选人报了无歧义区名（如"顺义区马坡镇"→北京），
-  // 视同报了所属城市。与 user_text 同级，优先于 session 冲突判定
-  //（候选人本轮报的区代表当前位置，允许覆盖旧会话事实）。
-  if (inferCitiesFromDistrictMentions(input.userTexts).has(requested)) {
+  // 地名白名单确定性推断：候选人报了唯一区名（"顺义区马坡镇"→北京）或高置信
+  // 地标（"陆家嘴"→上海），视同报了所属城市。与 user_text 同级，优先于 session
+  // 冲突判定（候选人本轮报的区代表当前位置，允许覆盖旧会话事实）。
+  if (inferCitiesFromGeoSignals(input.userTexts).has(requested)) {
     return { decision: 'allow', matchedBy: 'district_inference' };
   }
 

@@ -674,6 +674,23 @@ describe('extractHighConfidenceFacts', () => {
     },
   );
 
+  it('区名唯一映射在查询路径生效（黄埔案，2026-07-28 收编）："黄埔区"→广州、"宝安"→深圳', () => {
+    // 此前 黄埔→广州 只存在于 invite 城市门私表，提取路径不认——候选人报"黄埔区"
+    // 仍被追问城市。统一到 DISTRICT_TO_CITY 后提取层直接推导，补录只改一处。
+    expect(extractHighConfidenceFacts(['我在黄埔区这边找工作'], brandData)?.preferences.city).toEqual({
+      value: '广州',
+      confidence: 'high',
+      source: 'rule',
+      evidence: 'unique_district_alias',
+    });
+    expect(extractHighConfidenceFacts(['人在宝安'], brandData)?.preferences.city).toEqual({
+      value: '深圳',
+      confidence: 'high',
+      source: 'rule',
+      evidence: 'unique_district_alias',
+    });
+  });
+
   it('should extract city from whitelist district even when preceded by greetings or positional verbs', () => {
     // badcase: 候选人发"你好我在青浦区"，贪婪正则把整段当成区名归一化为
     // "你好我在青浦"，导致 DISTRICT_TO_CITY 永远查不到，city 留空，下游硬约束
