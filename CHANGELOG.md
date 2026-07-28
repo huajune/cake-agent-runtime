@@ -14,7 +14,7 @@
 **预计版本**: `v10.33.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #794 回填 v10.32.0 发布结果
@@ -31,6 +31,7 @@
 - PR #802 测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。
 - PR #802 状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。
 - PR #799 真人回复后停止报名后触达
+- PR #801 人工升级对账认可 raise_risk_alert + repair 注入当前时间锚
 
 ### 新功能
 - PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
@@ -56,6 +57,7 @@
 - PR #802 自动化治理追踪与反馈原因
 - PR #802 关联 BadCase 治理 PR
 - PR #799 真人回复后停止报名后触达
+- PR #801 人工升级对账认可 raise_risk_alert + repair 注入当前时间锚
 
 ### 配置变更
 - PR #802 FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN
@@ -80,6 +82,10 @@
 - PR #799 定向 Jest：`follow-up.processor.spec.ts` + `scenario-registry.spec.ts`，97 tests passed，`--watchman=false`
 - PR #799 lint / format / typecheck / geo validate / build 全绿
 - PR #799 全量 Jest：373 suites、5910 tests passed（6 skipped），`--watchman=false`
+- PR #801 `hard-rules.service.spec.ts` 新增 2 例：raise_risk_alert 成功→放行（复刻本 badcase 话术）；raise_risk_alert 失败（accepted=false）→仍命中。
+- PR #801 `reply-repair.agent.spec.ts` 断言 system 含时间锚段。
+- PR #801 `datetime.section.spec.ts` 既有用例全过（重构无行为变化）。
+- PR #801 全量 `ci:check`（lint + typecheck + 全部测试）经 pre-push 钩子通过。
 <!-- release:pending:end -->
 
 ## [10.32.0] - 2026-07-28

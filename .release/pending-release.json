@@ -168,6 +168,33 @@
         "lint / format / typecheck / geo validate / build 全绿",
         "全量 Jest：373 suites、5910 tests passed（6 skipped），`--watchman=false`"
       ]
+    },
+    {
+      "number": "801",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/801",
+      "title": "人工升级对账认可 raise_risk_alert + repair 注入当前时间锚",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "人工升级对账认可 raise_risk_alert + repair 注入当前时间锚"
+      ],
+      "summary": [
+        "人工升级对账认可 raise_risk_alert + repair 注入当前时间锚"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "人工升级对账认可 raise_risk_alert + repair 注入当前时间锚"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`hard-rules.service.spec.ts` 新增 2 例：raise_risk_alert 成功→放行（复刻本 badcase 话术）；raise_risk_alert 失败（accepted=false）→仍命中。",
+        "`reply-repair.agent.spec.ts` 断言 system 含时间锚段。",
+        "`datetime.section.spec.ts` 既有用例全过（重构无行为变化）。",
+        "全量 `ci:check`（lint + typecheck + 全部测试）经 pre-push 钩子通过。"
+      ]
     }
   ],
   "lastRelease": {
