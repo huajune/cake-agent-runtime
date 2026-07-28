@@ -14,7 +14,7 @@
 **预计版本**: `v10.32.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 10
+**累计 PR**: 11
 
 ### 更新摘要
 - PR #761 回填 v10.31.0 发布结果 (#760)
@@ -56,6 +56,13 @@
 - PR #770 触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达
 - PR #770 Merge origin/develop into fix/badcase-20260728-reengagement-gates
 - PR #770 Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…
+- PR #778 面试取消人工介入卡 orange→red 对齐紧急度
+- PR #778 tool_call 事件补 errorType/apiCode 供失败子类统计
+- PR #778 Merge remote-tracking branch 'origin/develop' into feat/tool-call-err…
+- PR #778 `observer.interface.ts`：`tool_call` 事件加 `errorType`（**复用 `ToolErrorType` 单一权威枚举**，非裸 string）/ `apiCode`（海绵外部开放码，保持 `string|number` 不本地枚举化）。
+- PR #778 `tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。
+- PR #778 `tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。
+- PR #778 观测: tool_call 补 errorType/apiCode + 取消人工介入卡改红
 
 ### 新功能
 - PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
@@ -63,6 +70,8 @@
 - PR #774 **时序关键位**：确认应答恰是纯应答词，会命中纯应答闸门提前返回——裁决在闸门前计算，纯应答轮命中时跳过 LLM 但单写 city
 - PR #774 发问方不限 Agent/真人经理；引用块内确认句不算
 - PR #771 单测：新增 5 条业务失败上报用例，全 spec 39 通过。
+- PR #778 `tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。
+- PR #778 Merge remote-tracking branch 'origin/develop' into feat/tool-call-err…
 
 ### 问题修复
 - PR #765 与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内
@@ -77,6 +86,7 @@
 - PR #772 身份红线复发修复——is_student首写门+守卫档5
 - PR #770 Merge origin/develop into fix/badcase-20260728-reengagement-gates
 - PR #770 Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…
+- PR #778 `tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。
 
 ### 优化调整
 - 无
@@ -96,6 +106,9 @@
 - PR #781 Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关
 - PR #772 Merge origin/develop into claude/distracted-bose-3a19ff
 - PR #770 触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达
+- PR #778 `observer.interface.ts`：`tool_call` 事件加 `errorType`（**复用 `ToolErrorType` 单一权威枚举**，非裸 string）/ `apiCode`（海绵外部开放码，保持 `string|number` 不本地枚举化）。
+- PR #778 面试取消人工介入卡 orange→red 对齐紧急度
+- PR #778 tool_call 事件补 errorType/apiCode 供失败子类统计
 
 ### 配置变更
 - 无
@@ -129,6 +142,9 @@
 - PR #770 processor +4 例：丢 turn 拦停 / 已处理（含主动沉默）不拦 / 宽限期内不拦 / 查询失败放行
 - PR #770 touch-ledger +1 例：回话打断冷却 / 连续未回仍冷却 / 缺参保持旧行为
 - PR #770 全部触及 suites：4 passed, 133 tests；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过
+- PR #778 `tsc --noEmit` 通过（主树 + worktree 对 develop base 各跑一次）
+- PR #778 相关测试全绿：`tool-call-analysis.spec`（含新 helper 单测）、`booking-card.renderer.spec`、观测层 4 个 spec
+- PR #778 `eslint --max-warnings=0` 干净
 <!-- release:pending:end -->
 
 ## [10.31.0] - 2026-07-27
