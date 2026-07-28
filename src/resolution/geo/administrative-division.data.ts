@@ -5,15 +5,16 @@
  * - Phase 4 生成化前维持人工白名单 + 小步补录；
  * - "朝阳 → 北京"等条目是刻意业务偏置（其余同名行政区不在业务区域），
  *   将来接入国家数据交叉校验时按 override 豁免，不得被"纠正"；
- * - SUPPORTED_CITY_PREFIXES 实为"高置信裸地名别名表"（现状混入省份"江西"），
- *   §9.5 计划改名，迁移期保持原名与语义。
+ * - §9.5 改名已落地（2026-07-28）：SUPPORTED_CITY_PREFIXES → HIGH_CONFIDENCE_BARE_LOCATION_ALIASES、
+ *   DISTRICT_TO_CITY → UNIQUE_SUBDIVISION_TO_CITY、LOCATION_TO_CITY → UNIQUE_PLACE_ALIAS_TO_CITY，
+ *   语义随名称对齐（裸地名别名表可合法含省级条目如"江西"，不再伪装城市表）。
  */
 
 /** 直辖市（前缀识别：用户常用"上海浦东"这种省略"市"字的紧凑表达） */
 export const MUNICIPALITIES = ['北京', '上海', '天津', '重庆'] as const;
 
-/** 显式城市名（用于"北京/上海/武汉…"开头识别） */
-export const SUPPORTED_CITY_PREFIXES = [
+/** 高置信裸地名别名（用于"北京/上海/武汉…"开头识别；含省级条目"江西"属业务用法） */
+export const HIGH_CONFIDENCE_BARE_LOCATION_ALIASES = [
   '北京',
   '上海',
   '天津',
@@ -58,7 +59,7 @@ export const COUNTY_LEVEL_CITY_TO_PREFECTURE: Record<string, string> = {
  * 仅收录高置信度、无歧义的区名（多个城市共享的区名必须排除，避免误判）。
  * extractor 对本轮消息里抽到的区直接走这张表推导城市。
  */
-export const DISTRICT_TO_CITY: Record<string, string> = {
+export const UNIQUE_SUBDIVISION_TO_CITY: Record<string, string> = {
   // 北京
   东城: '北京',
   西城: '北京',

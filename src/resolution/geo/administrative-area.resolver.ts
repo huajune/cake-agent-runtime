@@ -10,8 +10,8 @@
 import type { GeoSignalConflictShadow, ParentAdministrativeArea } from './geo.types';
 import {
   COUNTY_LEVEL_CITY_TO_PREFECTURE,
-  DISTRICT_TO_CITY,
-  SUPPORTED_CITY_PREFIXES,
+  UNIQUE_SUBDIVISION_TO_CITY,
+  HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
 } from './administrative-division.data';
 import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
 import { normalizeDistrictForLookup } from './geo-name.normalizer';
@@ -19,7 +19,7 @@ import { resolveCityFromLocation } from './place-alias.resolver';
 
 /** 已知城市名全集：业务高置信裸地名别名 + 全国显式城市表的标准名（去重）。 */
 const KNOWN_CITY_NAMES: readonly string[] = [
-  ...SUPPORTED_CITY_PREFIXES,
+  ...HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
   ...new Set(Object.values(NATIONAL_CITY_SUFFIX_TO_CITY)),
 ];
 
@@ -29,7 +29,7 @@ const KNOWN_CITY_NAMES: readonly string[] = [
  */
 export function resolveCityFromDistrict(candidate: string): string | null {
   const normalized = normalizeDistrictForLookup(candidate);
-  return DISTRICT_TO_CITY[candidate] ?? DISTRICT_TO_CITY[normalized] ?? null;
+  return UNIQUE_SUBDIVISION_TO_CITY[candidate] ?? UNIQUE_SUBDIVISION_TO_CITY[normalized] ?? null;
 }
 
 /**
@@ -113,7 +113,7 @@ export function resolveParentAdministrativeArea(input: string): ParentAdministra
  * 文本是否以已知城市名开头、且后面还有更具体内容（"常州钟楼区" → true，"常州" → false）。
  *
  * 供 infra/geocoding 的查询分类器判断"文本自带城市线索、可走结构化地址"（§11.1 消费场景）。
- * 替代消费方直接拼接 SUPPORTED_CITY_PREFIXES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
+ * 替代消费方直接拼接 HIGH_CONFIDENCE_BARE_LOCATION_ALIASES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
  * （§8.1 过渡期导出收口，Phase 5）。
  */
 /**
@@ -123,7 +123,7 @@ export function resolveParentAdministrativeArea(input: string): ParentAdministra
  * 不作为公共 API（§8.1 终态原则：行政区关系一律通过 resolver 查询）。
  */
 export function listUniqueDistrictCityEntries(): ReadonlyArray<readonly [string, string]> {
-  return Object.entries(DISTRICT_TO_CITY);
+  return Object.entries(UNIQUE_SUBDIVISION_TO_CITY);
 }
 
 export function hasKnownCityPrefix(text: string): boolean {

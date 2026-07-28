@@ -1,18 +1,18 @@
 import { matchInUncoveredSegments, scanWhitelistKeysByLongest } from '@resolution/geo';
 // 数据表不是公共 API（Phase 5 过渡期导出已收口）；域内测试直连数据模块。
-import { DISTRICT_TO_CITY } from '@resolution/geo/administrative-division.data';
+import { UNIQUE_SUBDIVISION_TO_CITY } from '@resolution/geo/administrative-division.data';
 
 describe('resolution/geo matching（Phase 0 golden cases 平移）', () => {
   describe('scanWhitelistKeysByLongest（最长优先 + 字符覆盖继承）', () => {
     it('golden：浦东新区航头镇 → "浦东新区"先被认领，不被"浦东"抢占', () => {
-      const scan = scanWhitelistKeysByLongest('浦东新区航头镇', DISTRICT_TO_CITY);
+      const scan = scanWhitelistKeysByLongest('浦东新区航头镇', UNIQUE_SUBDIVISION_TO_CITY);
       expect(scan.hits.map((hit) => hit.key)).toEqual(['浦东新区']);
       expect(scan.hits[0]).toEqual({ key: '浦东新区', start: 0, end: 4 });
     });
 
     it('covered 长度恒等于消息长度，且命中区间互不重叠（15.3 不变量）', () => {
       const message = '我在浦东新区航头镇附近找兼职';
-      const scan = scanWhitelistKeysByLongest(message, DISTRICT_TO_CITY);
+      const scan = scanWhitelistKeysByLongest(message, UNIQUE_SUBDIVISION_TO_CITY);
       expect(scan.covered).toHaveLength(message.length);
       const seen = new Array(message.length).fill(false);
       for (const hit of scan.hits) {
@@ -27,7 +27,7 @@ describe('resolution/geo matching（Phase 0 golden cases 平移）', () => {
       const cityScan = scanWhitelistKeysByLongest('上海浦东', { 上海: '上海' });
       const districtScan = scanWhitelistKeysByLongest(
         '上海浦东',
-        DISTRICT_TO_CITY,
+        UNIQUE_SUBDIVISION_TO_CITY,
         cityScan.covered,
       );
       expect(cityScan.hits.map((hit) => hit.key)).toEqual(['上海']);
@@ -37,7 +37,7 @@ describe('resolution/geo matching（Phase 0 golden cases 平移）', () => {
 
   describe('matchInUncoveredSegments（未覆盖段正则兜底）', () => {
     it('只在白名单未认领的字符段上匹配 raw district', () => {
-      const scan = scanWhitelistKeysByLongest('浦东新区航头镇', DISTRICT_TO_CITY);
+      const scan = scanWhitelistKeysByLongest('浦东新区航头镇', UNIQUE_SUBDIVISION_TO_CITY);
       const raw = matchInUncoveredSegments(
         '浦东新区航头镇',
         scan.covered,
