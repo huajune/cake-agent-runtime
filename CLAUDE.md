@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cake Agent Runtime — DuLiDay（独立客）旗下的招聘专用 AI Agent 运行时，通过企业微信渠道为餐饮连锁企业提供智能招聘对话服务。后端 NestJS，前端 `web/`（React 18 + Vite 的运营 Dashboard），随主服务一起构建部署。
 
-**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Vercel AI SDK | Supabase (Postgres) | Upstash Redis | Bull Queue | React 18 + Vite (web/)
-
 ## Development Commands
 
 ```bash
@@ -46,7 +44,7 @@ pnpm run db:status:test      # / db:status:prod 查看迁移状态
 
 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `infra/`。
 **`infra/` 禁止 import `biz/`、`channels/`、`agent/`。**
-**`resolution/` 只依赖 `sponge/`**（可被 memory/agent/tools/guardrail 依赖，禁止反向 import）。
+**`resolution/` 至多依赖 `sponge/`**（brand 用；geo 取零出向依赖），可被 memory/agent/tools/guardrail/infra 依赖，禁止反向 import。
 
 ```
 src/
@@ -55,6 +53,8 @@ src/
 ├── llm/                # LLM 执行器（llm-executor：底层 generateText 封装、重试）
 ├── resolution/brand/   # 品牌解析域（唯一居所）：目录索引/匹配/极性/品类展开/状态 reducer/同音回指/公司名规范化
 │                       #   纯确定性代码零 LLM；resolve() 输出标准品牌+极性+置信度；只依赖 sponge 品牌目录
+├── resolution/geo/     # 地理解析域（唯一真相源）：行政区层级/县级市映射/白名单三轮扫描/地标别名/歧义策略/冲突检测
+│                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
 ├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
 ├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / procedural(阶段) / long-term(画像)
 │                       #   + settlement(空闲沉淀) / facts(规则提取) / stores(Redis+Supabase 适配)
@@ -98,10 +98,6 @@ supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
 出站守卫（output guardrail）三档：确定性 hard-rules → LLM 语义审查（shadow/enforce 由 `system_config.agent_reply_config` 控制）→ sanitizer；审查全程档案落 `guardrail_review_records`。
 
 复聊（reengagement）是独立链路：**不复用主 generator**，走 ProactiveComposer（事实齐全场景用确定性模板，话术场景用一次性 completion 调用），全生命周期落 `reengagement_touch_records`。
-
-### Path Aliases (tsconfig.json)
-
-`@infra/* @agent/* @channels/* @wecom/* @biz/* @providers/* @tools/* @memory/* @mcp/* @sponge/* @resolution/* @observability/* @notification/* @analytics/* @enums/* @evaluation/* @test-suite/* @shared-types/*`
 
 ## Configuration
 
