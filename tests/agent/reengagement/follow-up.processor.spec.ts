@@ -48,6 +48,8 @@ describe('FollowUpProcessor', () => {
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
   let messageTracking: { recordProactiveTurn: jest.Mock };
+  let chatSession: { getChatHistory: jest.Mock };
+  let messageProcessing: { getLatestReceivedAtByChatId: jest.Mock };
   let sponge: {
     getWorkOrderById: jest.Mock;
     fetchJobs: jest.Mock;
@@ -113,6 +115,15 @@ describe('FollowUpProcessor', () => {
       trackDeliveryUnknown: jest.fn(),
     };
     messageTracking = { recordProactiveTurn: jest.fn() };
+    // 候选人待答闸默认不命中：我方说了最后一句
+    chatSession = {
+      getChatHistory: jest
+        .fn()
+        .mockResolvedValue([
+          { role: 'assistant', content: '好的', timestamp: Date.now() - 60_000 },
+        ]),
+    };
+    messageProcessing = { getLatestReceivedAtByChatId: jest.fn().mockResolvedValue(null) };
     delivery = {
       deliver: jest.fn().mockResolvedValue({
         success: true,
@@ -133,6 +144,8 @@ describe('FollowUpProcessor', () => {
       systemConfig as never,
       tracking as never,
       messageTracking as never,
+      chatSession as never,
+      messageProcessing as never,
       sponge as never,
       longTerm as never,
       scheduler as never,
@@ -144,6 +157,67 @@ describe('FollowUpProcessor', () => {
     buildProcessor().onModuleInit();
 
     expect(queue.process).toHaveBeenCalledWith(REENGAGEMENT_JOB_NAME, 2, expect.any(Function));
+  });
+
+  it('候选人待答闸：最后一条候选人消息从未进处理管道时停止触达（badcase recvqz4yWbdIKm 静默丢 turn）', async () => {
+    const lastUserAt = Date.now() - 30 * 60 * 1000; // 30 分钟前，远超宽限期
+    chatSession.getChatHistory.mockResolvedValue([
+      { role: 'assistant', content: '帮你约好了', timestamp: lastUserAt - 60_000 },
+      { role: 'user', content: '因为我是暑假工', timestamp: lastUserAt },
+    ]);
+    // 最近处理记录早于候选人最后消息 → 该轮被静默丢弃
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(lastUserAt - 10 * 60 * 1000);
+
+    await buildProcessor().process(makeJob());
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'pending_candidate_message',
+    );
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    expect(delivery.deliver).not.toHaveBeenCalled();
+  });
+
+  it('候选人待答闸：轮次已进管道（含主动沉默）时不拦', async () => {
+    const lastUserAt = Date.now() - 30 * 60 * 1000;
+    chatSession.getChatHistory.mockResolvedValue([
+      { role: 'user', content: '好的谢谢', timestamp: lastUserAt },
+    ]);
+    // 处理记录 received_at 覆盖了该消息（Agent 主动沉默也有记录）
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(lastUserAt + 1_000);
+
+    await buildProcessor().process(makeJob());
+
+    expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'pending_candidate_message',
+    );
+  });
+
+  it('候选人待答闸：消息在宽限期内（可能在途 debounce）不拦', async () => {
+    const lastUserAt = Date.now() - 2 * 60 * 1000; // 2 分钟前，宽限期 10 分钟内
+    chatSession.getChatHistory.mockResolvedValue([
+      { role: 'user', content: '在吗', timestamp: lastUserAt },
+    ]);
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(null);
+
+    await buildProcessor().process(makeJob());
+
+    expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'pending_candidate_message',
+    );
+  });
+
+  it('候选人待答闸：历史查询失败 fail open 放行', async () => {
+    chatSession.getChatHistory.mockRejectedValue(new Error('supabase down'));
+
+    await buildProcessor().process(makeJob());
+
+    expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'pending_candidate_message',
+    );
   });
 
   it('drops in-flight jobs without generating when the master switch is off', async () => {
