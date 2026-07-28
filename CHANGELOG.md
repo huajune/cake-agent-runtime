@@ -14,7 +14,7 @@
 **预计版本**: `v10.33.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 7
+**累计 PR**: 8
 
 ### 更新摘要
 - PR #794 回填 v10.32.0 发布结果
@@ -37,6 +37,7 @@
 - PR #798 逆解析与 extractFacts A2 **共用 30 天 Redis 缓存键**，全轮至多一次真实高德请求；失败/服务缺失静默跳过（维持既有行为，不让高德抖动影响主链）
 - PR #798 坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定
 - PR #798 定位分享轮内锚点——prep 逆解析 seed geocodeResolvedAnchors（A2 同轮空档）
+- PR #809 汇总 v10.33.0 统一发版底账
 
 ### 新功能
 - PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
@@ -67,6 +68,7 @@
 - PR #799 真人回复后停止报名后触达
 - PR #801 人工升级对账认可 raise_risk_alert + repair 注入当前时间锚
 - PR #798 定位分享轮内锚点——prep 阶段逆解析坐标 seed geocodeResolvedAnchors（A2 同轮空档）
+- PR #809 汇总 v10.33.0 统一发版底账
 
 ### 配置变更
 - PR #802 FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN
