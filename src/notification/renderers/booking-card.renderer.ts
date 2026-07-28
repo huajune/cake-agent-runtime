@@ -157,9 +157,9 @@ export class BookingCardRenderer {
     );
 
     return this.cardBuilder.buildMarkdownCard({
-      title: '⚠️ 面试预约已取消 · 需要人工确认',
+      title: '🚨 面试预约已取消 · 需要人工确认',
       content: sections.join('\n\n'),
-      color: 'orange',
+      color: 'red',
       atUsers: payload.atUsers,
       atAll: payload.atAll,
     });
