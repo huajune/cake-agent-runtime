@@ -14,13 +14,9 @@
 **预计版本**: `v10.32.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 15
+**累计 PR**: 16
 
 ### 更新摘要
-- PR #769 候选人主动披露残障身份时静默交由真人判断，禁止自动筛选或模板式拒绝
-- PR #773 查不到岗位依据时不再臆答“当天发薪、次日到账、每周三发工资”等发薪时点
-- PR #775 候选人只说“我三点过去”时也会重新核验报名截止时间，避免沿用过期承诺
-- PR #776 预约建单成功后必须明确播报结果，不再反问候选人“定哪一天”
 - PR #761 回填 v10.31.0 发布结果 (#760)
 - PR #761 同步 v10.31.0 最终发布结果
 - PR #765 invite 城市门补同轮时序空档——第四档出处 turn_geocode 消费本轮 geocodeResolve…
@@ -67,6 +63,11 @@
 - PR #778 `tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。
 - PR #778 `tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。
 - PR #778 观测: tool_call 补 errorType/apiCode + 取消人工介入卡改红
+- PR #769 残障身份披露确定性静默转人工
+- PR #773 无岗位证据时禁止断言具体发薪时点
+- PR #775 裸钟点动身场景强制重新核验报名截止时间
+- PR #776 建单成功后回复必须与预约结果一致
+- PR #789 补齐 v10.32.0 发版底账
 
 ### 新功能
 - PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
@@ -76,6 +77,8 @@
 - PR #771 单测：新增 5 条业务失败上报用例，全 spec 39 通过。
 - PR #778 `tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。
 - PR #778 Merge remote-tracking branch 'origin/develop' into feat/tool-call-err…
+- PR #769 残障身份披露确定性静默转人工
+- PR #776 预约成功回执对账守卫
 
 ### 问题修复
 - PR #765 与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内
@@ -91,6 +94,8 @@
 - PR #770 Merge origin/develop into fix/badcase-20260728-reengagement-gates
 - PR #770 Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…
 - PR #778 `tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。
+- PR #773 无岗位证据时禁止断言具体发薪时点
+- PR #775 裸钟点动身场景强制重新核验报名截止时间
 
 ### 优化调整
 - 无
@@ -113,6 +118,7 @@
 - PR #778 `observer.interface.ts`：`tool_call` 事件加 `errorType`（**复用 `ToolErrorType` 单一权威枚举**，非裸 string）/ `apiCode`（海绵外部开放码，保持 `string|number` 不本地枚举化）。
 - PR #778 面试取消人工介入卡 orange→red 对齐紧急度
 - PR #778 tool_call 事件补 errorType/apiCode 供失败子类统计
+- PR #789 补齐 v10.32.0 发版底账
 
 ### 配置变更
 - 无
@@ -149,6 +155,16 @@
 - PR #778 `tsc --noEmit` 通过（主树 + worktree 对 develop base 各跑一次）
 - PR #778 相关测试全绿：`tool-call-analysis.spec`（含新 helper 单测）、`booking-card.renderer.spec`、观测层 4 个 spec
 - PR #778 `eslint --max-warnings=0` 干净
+- PR #769 输入守卫 110 tests 通过；其中残障自述、资格询问和家属提及负例共 15 个
+- PR #773 hard-rules 套件 191 tests 通过，新增 10 个发薪时点正反例
+- PR #775 preparation 套件 76 tests 通过，覆盖 7 个正例和 6 个负例
+- PR #776 出站守卫 333 tests 通过，新增 6 个预约回执正反例
+- PR #789 pre-push 完整门禁通过：373 suites / 5906 tests（6 skipped）
+- PR #789 最终组合头定向测试：12 suites / 573 tests
+- PR #789 真实 Agent 发布回归：4/4 runtime success；人工评审 3 passed / 0 failed / 1 skipped，可评估通过率 100%
+- PR #789 生产测试看板已同步：batch `138e2d45-3fa8-4f2a-a752-029bf491a8d7`，4 条执行，0 pending
+- PR #789 `release:ledger:check`、`git diff --check` 通过
+- PR #789 生产 migration 与本地一致；新增地理灰度开关生产缺省关闭
 <!-- release:pending:end -->
 
 ## [10.31.0] - 2026-07-27
