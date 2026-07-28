@@ -183,6 +183,7 @@ export class HardRulesService {
       params.memorySnapshot,
       params.userMessage,
       params.recentMessages,
+      params.recentUserTexts,
     );
     if (identityMisregistrationCoaching) {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));

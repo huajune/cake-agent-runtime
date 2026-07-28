@@ -134,6 +134,18 @@ export type AgentEvent = AgentEventContext &
         /** 是否图片补写（§10.3）路径。 */
         late: boolean;
       }
+    /**
+     * 抽取臆造字段拦截（is_student 首写证据门等，badcase 2026-07-28 chat 6a673402…）：
+     * 首写无会话证据的身份字段被字段级丢弃。正常量级应接近零，持续出现即抽取
+     * 模型指令遵循劣化信号，日巡检据此核对。
+     */
+    | {
+        type: 'extraction_field_dropped';
+        userId?: string;
+        field: string;
+        droppedValue: string;
+        reason: string;
+      }
   );
 
 export interface Observer {
