@@ -229,6 +229,50 @@
         "`duliday-job-list.tool.spec.ts` +1 例：断言送 sponge 的 `jobCategoryList` 不再含\"店员\"、`resultCount=1` 非空、`queryMeta.jobCategoryUmbrellaStripped=[\"店员\"]`",
         "全套：2 suites 110 passed；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过"
       ]
+    },
+    {
+      "number": "781",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/781",
+      "title": "地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "Phase 5 收口——删旧路径门面与过渡期数据表导出",
+        "清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…",
+        "invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径",
+        "brand-matcher 切 listUniqueDistrictCityEntries 稳定 API",
+        "§9.5 数据表改名落地——名称对齐真实语义",
+        "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关",
+        "地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化"
+      ],
+      "summary": [
+        "Phase 5 收口——删旧路径门面与过渡期数据表导出",
+        "清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…",
+        "invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径",
+        "brand-matcher 切 listUniqueDistrictCityEntries 稳定 API",
+        "§9.5 数据表改名落地——名称对齐真实语义",
+        "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关",
+        "地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "Phase 5 收口——删旧路径门面与过渡期数据表导出",
+        "清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…",
+        "invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径",
+        "brand-matcher 切 listUniqueDistrictCityEntries 稳定 API",
+        "§9.5 数据表改名落地——名称对齐真实语义",
+        "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "全量 jest：370 suites / 5766 tests 全绿（含 #765 turn_geocode 5 用例、生成表+开关 6 新用例）",
+        "typecheck / lint / format / geo:validate / build:ci 全通过（pre-push 钩子完整跑过）"
+      ]
     }
   ],
   "lastRelease": {
