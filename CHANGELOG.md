@@ -14,7 +14,7 @@
 **预计版本**: `v10.33.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #794 回填 v10.32.0 发布结果
@@ -30,6 +30,7 @@
 - PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
 - PR #802 测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。
 - PR #802 状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。
+- PR #799 真人回复后停止报名后触达
 
 ### 新功能
 - PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
@@ -54,6 +55,7 @@
 - PR #802 更新 analyze-chat-badcases skill，固定 reviewerSource=claude、正确批次同步命令与文档累计规则。
 - PR #802 自动化治理追踪与反馈原因
 - PR #802 关联 BadCase 治理 PR
+- PR #799 真人回复后停止报名后触达
 
 ### 配置变更
 - PR #802 FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN
@@ -74,6 +76,10 @@
 - PR #802 后端/Web build、typecheck、lint、format、geo:validate
 - PR #802 生产飞书 schema 对账：20/20，问题原因 22 个选项
 - PR #802 目标 Wiki/Docx 机器人真实读写权限验证
+- PR #799 Node `22.16.0`
+- PR #799 定向 Jest：`follow-up.processor.spec.ts` + `scenario-registry.spec.ts`，97 tests passed，`--watchman=false`
+- PR #799 lint / format / typecheck / geo validate / build 全绿
+- PR #799 全量 Jest：373 suites、5910 tests passed（6 skipped），`--watchman=false`
 <!-- release:pending:end -->
 
 ## [10.32.0] - 2026-07-28
