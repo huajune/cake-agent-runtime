@@ -521,9 +521,7 @@ export default function ReengagementDetailDrawer({
   const feedbackChatHistory = useMemo(() => {
     const lines = recentMessages.map((msg) => {
       const name =
-        msg.role === 'assistant'
-          ? msg.managerName || '接管账号'
-          : msg.candidateName || '候选人';
+        msg.role === 'assistant' ? msg.managerName || '接管账号' : msg.candidateName || '候选人';
       return `[${formatDateTime(msg.timestamp)} ${name}] ${msg.content}`;
     });
     const touchText = record?.generated_text?.trim();
@@ -966,6 +964,8 @@ export default function ReengagementDetailDrawer({
           feedbackType={feedback.feedbackType}
           scenarioType={feedback.scenarioType}
           remark={feedback.remark}
+          priority={feedback.priority}
+          expectedBehavior={feedback.expectedBehavior}
           isSubmitting={feedback.isSubmitting}
           chatHistoryPreview={feedbackChatHistory}
           submitError={feedback.submitError}
@@ -976,6 +976,8 @@ export default function ReengagementDetailDrawer({
           onClose={feedback.closeModal}
           onScenarioTypeChange={feedback.setScenarioType}
           onRemarkChange={feedback.setRemark}
+          onPriorityChange={feedback.setPriority}
+          onExpectedBehaviorChange={feedback.setExpectedBehavior}
           onSubmit={handleSubmitFeedback}
         />
       </div>

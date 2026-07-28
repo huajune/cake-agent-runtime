@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { X, Loader2, Sparkles, AlertTriangle, ImagePlus } from 'lucide-react';
 import { FeedbackType } from '@/api/services/agent-test.service';
 import { SCENARIO_TYPE_OPTIONS } from '../../constants';
+import { BADCASE_PRIORITY_OPTIONS } from '../../constants';
+import type { BadcasePriority } from '@/api/types/agent-test.types';
 import { MAX_FEEDBACK_SCREENSHOTS } from '../../hooks/useFeedback';
 import { CustomSelect } from '../CustomSelect';
 import styles from './index.module.scss';
@@ -13,10 +15,12 @@ export interface FeedbackModalProps {
   feedbackType: FeedbackType | null;
   scenarioType: string;
   remark: string;
+  priority: BadcasePriority;
+  expectedBehavior: string;
   isSubmitting: boolean;
   chatHistoryPreview: string;
   submitError?: string | null;
-  /** 场景分类选项，缺省为主聊 13 类；复聊页传入专属选项 */
+  /** 问题原因选项，缺省为主聊 15 类；复聊页传入专属选项 */
   scenarioOptions?: Array<{ value: string; label: string }>;
   screenshots?: string[];
   onAddScreenshots?: (files: Iterable<File>) => void;
@@ -24,6 +28,8 @@ export interface FeedbackModalProps {
   onClose: () => void;
   onScenarioTypeChange: (type: string) => void;
   onRemarkChange: (remark: string) => void;
+  onPriorityChange: (priority: BadcasePriority) => void;
+  onExpectedBehaviorChange: (expectedBehavior: string) => void;
   onSubmit: () => void;
 }
 
@@ -35,6 +41,8 @@ export function FeedbackModal({
   feedbackType,
   scenarioType,
   remark,
+  priority,
+  expectedBehavior,
   isSubmitting,
   chatHistoryPreview,
   submitError,
@@ -45,6 +53,8 @@ export function FeedbackModal({
   onClose,
   onScenarioTypeChange,
   onRemarkChange,
+  onPriorityChange,
+  onExpectedBehaviorChange,
   onSubmit,
 }: FeedbackModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -76,9 +86,7 @@ export function FeedbackModal({
         </div>
 
         <div className={styles.modalHeader}>
-          <h3>
-            {isGoodCase ? '标记为 Good Case' : '标记为 Bad Case'}
-          </h3>
+          <h3>{isGoodCase ? '标记为 Good Case' : '标记为 Bad Case'}</h3>
           <button className={styles.modalClose} onClick={onClose}>
             <X size={18} />
           </button>
@@ -94,15 +102,36 @@ export function FeedbackModal({
           )}
 
           {!isGoodCase && (
-            <div className={styles.formGroup}>
-              <label>场景分类（可选）</label>
-              <CustomSelect
-                value={scenarioType}
-                options={scenarioOptions}
-                onChange={onScenarioTypeChange}
-                placeholder="请选择..."
-              />
-            </div>
+            <>
+              <div className={styles.formGroup}>
+                <label>问题原因（可选）</label>
+                <CustomSelect
+                  value={scenarioType}
+                  options={scenarioOptions}
+                  onChange={onScenarioTypeChange}
+                  placeholder="请选择..."
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>影响级别</label>
+                <CustomSelect
+                  value={priority}
+                  options={[...BADCASE_PRIORITY_OPTIONS]}
+                  onChange={(value) => onPriorityChange(value as BadcasePriority)}
+                  placeholder="请选择..."
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>期望正确处理方式（可选）</label>
+                <textarea
+                  value={expectedBehavior}
+                  onChange={(event) => onExpectedBehaviorChange(event.target.value)}
+                  placeholder="例如：信息不确定时先追问，不要直接推荐岗位"
+                  className={styles.formTextarea}
+                  rows={2}
+                />
+              </div>
+            </>
           )}
 
           <div className={styles.formGroup}>
@@ -118,9 +147,7 @@ export function FeedbackModal({
 
           {screenshotsEnabled && (
             <div className={styles.formGroup}>
-              <label>
-                截图（可选，最多 {MAX_FEEDBACK_SCREENSHOTS} 张、合计 10MB，可粘贴）
-              </label>
+              <label>截图（可选，最多 {MAX_FEEDBACK_SCREENSHOTS} 张、合计 10MB，可粘贴）</label>
               <div className={styles.screenshotGrid}>
                 {screenshots.map((dataUrl, index) => (
                   <div key={index} className={styles.screenshotThumb}>
@@ -165,9 +192,7 @@ export function FeedbackModal({
           <div className={styles.chatPreview}>
             <label>
               <Sparkles size={12} /> 将提交的聊天记录
-              <span className={styles.charCount}>
-                {chatHistoryPreview.length} 字符
-              </span>
+              <span className={styles.charCount}>{chatHistoryPreview.length} 字符</span>
             </label>
             <pre>{chatHistoryPreview}</pre>
           </div>

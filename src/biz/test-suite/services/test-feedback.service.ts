@@ -19,6 +19,8 @@ export class TestFeedbackService {
       chatHistory: request.chatHistory,
       userMessage: request.userMessage,
       errorType: request.errorType,
+      priority: request.priority,
+      expectedBehavior: request.expectedBehavior,
       remark: request.remark,
       chatId: request.chatId,
       messageId: request.messageId,

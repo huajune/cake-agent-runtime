@@ -350,9 +350,22 @@ export class TestExecutionRepository extends BaseRepository {
    */
   async findBatchTraceByBatchId(
     batchId: string,
-  ): Promise<Pick<TestExecution, 'id' | 'review_status' | 'execution_status' | 'source_trace'>[]> {
-    return this.select('id,review_status,execution_status,source_trace', (q) =>
-      q.eq('batch_id', batchId).order('created_at'),
+  ): Promise<
+    Pick<
+      TestExecution,
+      | 'id'
+      | 'case_id'
+      | 'review_status'
+      | 'execution_status'
+      | 'source_trace'
+      | 'conversation_snapshot_id'
+      | 'reviewer_source'
+      | 'reviewed_at'
+    >[]
+  > {
+    return this.select(
+      'id,case_id,review_status,execution_status,source_trace,conversation_snapshot_id,reviewer_source,reviewed_at',
+      (q) => q.eq('batch_id', batchId).order('created_at'),
     );
   }
 
