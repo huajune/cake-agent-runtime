@@ -1,5 +1,7 @@
 import { Controller, Post, Body, HttpCode } from '@nestjs/common';
 import { ChatRecordSyncService } from './chat-record.service';
+import { FeishuBitableSyncService } from './bitable-sync.service';
+import { BadcaseGovernanceDocumentService } from './badcase-governance-document.service';
 
 /**
  * 飞书同步控制器
@@ -7,7 +9,23 @@ import { ChatRecordSyncService } from './chat-record.service';
  */
 @Controller('feishu/sync')
 export class FeishuSyncController {
-  constructor(private readonly chatRecordSyncService: ChatRecordSyncService) {}
+  constructor(
+    private readonly chatRecordSyncService: ChatRecordSyncService,
+    private readonly bitableSyncService: FeishuBitableSyncService,
+    private readonly badcaseGovernanceDocumentService: BadcaseGovernanceDocumentService,
+  ) {}
+
+  @Post('badcase-governance/schema')
+  @HttpCode(200)
+  async ensureBadcaseGovernanceSchema(@Body() body: { apply?: boolean }) {
+    return this.bitableSyncService.ensureBadcaseGovernanceFields(body.apply === true);
+  }
+
+  @Post('badcase-governance/document-check')
+  @HttpCode(200)
+  async checkBadcaseGovernanceDocument() {
+    return this.badcaseGovernanceDocumentService.checkAccess();
+  }
 
   /**
    * 触发手动同步（前一天数据）

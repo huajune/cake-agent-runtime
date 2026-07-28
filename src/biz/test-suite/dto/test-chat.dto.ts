@@ -963,10 +963,24 @@ export class SubmitFeedbackRequestDto {
   @IsString()
   userMessage?: string;
 
-  @ApiPropertyOptional({ description: '错误类型（仅 badcase）' })
+  @ApiPropertyOptional({ description: '运营问题原因（仅 badcase，历史字段名 errorType）' })
   @IsOptional()
   @IsString()
   errorType?: string;
+
+  @ApiPropertyOptional({
+    description: 'BadCase 优先级',
+    enum: ['P0', 'P1', 'P2'],
+    default: 'P2',
+  })
+  @IsOptional()
+  @IsIn(['P0', 'P1', 'P2'])
+  priority?: 'P0' | 'P1' | 'P2';
+
+  @ApiPropertyOptional({ description: '期望的正确处理方式' })
+  @IsOptional()
+  @IsString()
+  expectedBehavior?: string;
 
   @ApiPropertyOptional({ description: '备注' })
   @IsOptional()

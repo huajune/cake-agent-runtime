@@ -70,7 +70,7 @@ description: 抽样分析 Agent 生产对话或 BadCase / GoodCase 反馈样本�
 
 - `badcaseId`: 优先取 `问题ID / 用例名称 / record_id`
 - `submittedAt`: `提交时间 / 创建时间 / 咨询时间`
-- `category`: `分类 / 错误分类`
+- `category`: `问题原因 / 分类 / 错误分类`（Web 新反馈优先写 `问题原因`，历史记录兼容旧列）
 - `status`: `状态`
 - `priority`: `优先级`
 - `source`: `来源`
@@ -343,7 +343,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 
 1. 先在测试环境通过评审 API 完成评审写入。通过、失败、跳过/资产不可评估要有明确 `review_status / review_comment / failure_reason`；不要只凭 HTTP `success` 判业务通过，也不要只修改生产库导致测试环境和生产评审状态分叉。
 2. 收集本轮需要展示的目标 `batchId`，排除临时 smoke、误建批次和与本轮无关的历史批次。
-3. 运行 `pnpm sync:test-suite:prod -- <batchId...>`。脚本只把现有 `test_batches / test_executions / test_conversation_snapshots` upsert 到生产库，不触发批次执行、不调用模型、不发送候选人消息。
+3. 运行 `node scripts/sync-test-suite-batches-to-prod.js <batchId...>`。不要用 `pnpm --` 透传参数。脚本只把现有 `test_batches / test_executions / test_conversation_snapshots` upsert 到生产库，不触发批次执行、不调用模型、不发送候选人消息。
 4. 同步输出中 `warnings` 必须为空，且 `production.executionCount` 必须等于这些批次在测试环境的执行记录总数；否则不能宣称同步成功。
 5. 用 `.env.production` 的 `API_GUARD_TOKEN` 查询生产端 `GET /test-suite/batches/:id` 和 `GET /test-suite/batches/:id/executions`，全量核对批次名称、状态、总数、通过/失败/待评审（含 skipped）分布，以及至少一条执行详情中的实际回复、工具调用和评审备注。
 6. 对用户报告两套口径：Dashboard 的 `pass_rate`（通常以总 case 数为分母）以及剔除 skipped/资产不可评估后的可评估通过率，避免两者看起来矛盾。
@@ -360,6 +360,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 
 人工评审时要把“系统记录”和“飞书回写”一起收口：
 
+- 本 skill 代执行评审时，`reviewerSource` 必须显式传 `claude`；不能省略、不能写成 `manual / api / system`
 - 场景测试执行 `PATCH /test-suite/executions/:id/review` 后，应自动把 `测试集` 的 `测试状态 / 最近测试时间 / 测试批次 / 错误原因 / 评审摘要` 回写到飞书
 - 回归验证执行 `PATCH /test-suite/conversations/turns/:executionId/review` 后，应自动把 `验证集` 的 `测试状态 / 最近测试时间 / 测试批次 / 相似度分数 / 最低分 / 评估摘要` 回写到飞书
 - 回归验证批次统计必须按验证样本聚合 turn 级评审：任一 turn 人审失败则整条验证样本失败，任一 turn 待评审则整条验证样本待评审；不要只用平均相似度判断整条样本通过
@@ -367,6 +368,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 - 批量评审/批量执行后必须做全量对账，不要只抽样：`测试集` 记录数和本地 `test_executions` 去重 case 数一致，`验证集` 记录数和本地 `test_conversation_snapshots` 一致，且没有 `待测试` 残留
 - 如果发现本地已完成但飞书仍是 `待测试`，先按本地批次结果补写飞书，再回写源 `BadCase` 状态；不要基于未对齐的飞书状态更新样本池
 - 如果飞书字段已更新但线上页面没变，不要误判为回写失败；`https://cake.duliday.com/web/test-suite` 读的是生产 test-suite 数据库，不是飞书表
+- 本地 Jest 必须先 `nvm use 22.16.0`，并显式加 `--watchman=false`
 
 评审弹窗展示信息时，优先使用 test-suite 当前执行记录里已经稳定保存的上下文：
 
@@ -394,6 +396,16 @@ BadCase 状态只保留 4 个运营可判断状态：
 - 测试已跑但还需人工确认，或场景测试已通过但回归验证失败：`待验证`
 - 定向测试/回归验证已通过，或已确认无需继续处理：`已解决`
 
+状态关闭必须读取并合并 `测试证据JSON`，不能只看当前批次：
+
+- `测试证据JSON` 使用版本化结构，分别保存最近的 `scenario` 与 `conversation` 证据；每条至少包含 `batchId / assetIds / executionIds / reviewStatus / reviewerSources / reviewedAt`
+- `测试CaseID / 测试执行ID / 测试批次ID` 保存 scenario 最近证据；`验证CaseID / 验证执行ID / 验证批次ID` 保存 conversation 最近证据
+- `评审来源` 必须能看出两侧证据的 reviewer source；本 skill 产生的证据应为 `claude`
+- 两侧最近证据均为 `passed` 才允许把 `证据结论` 判为 `passed` 并写 `已解决`
+- 任一侧失败写 `待验证`；任一侧待评审写 `处理中`；仅有一侧通过仍是 `待验证`，不得关闭
+- 状态变化同时写 `状态更新时间`；首次满足双门禁时写 `解决时间` 和 `处理结论=修复验证通过`
+- 不要继续把所有 ID 拼进 `修复说明`。`修复说明` 只保留面向人的改动、风险与结论摘要，机器可追踪 ID 放结构化证据列
+
 历史状态合并规则：
 
 - `待修复 / 修复中 / 待测试` 统一并入 `处理中`
@@ -402,12 +414,29 @@ BadCase 状态只保留 4 个运营可判断状态：
 回写字段优先级：
 
 - `状态`：按上面的状态流转写入
+- `状态更新时间 / 解决时间 / 处理结论`：支撑治理文档按真实状态事件形成历史追踪线，不能用飞书最后修改时间代替
+- `待确认方`：仅填 `无 / 运营 / 产品 / 技术 / 数据`；需要运营或产品拍板时必须明确填写
+- `上线时间 / 观察截止时间`：已上线但还不能关闭时，写 `处理结论=已上线待观察` 并填写观察窗口
+- `测试证据JSON / 证据结论 / 证据更新时间` 与两组 Case/执行/批次 ID：保存可机器对账的测试证据链
 - `根因层`：`prompt / stage / tool / data / memory / workflow / policy / unknown`
 - `修复说明`：写清修复文件/策略、正式用例 ID、验证批次 ID、是否有残余风险
 - `最近复现时间`：本轮最终验证或复跑时间
 - `复现次数`：只有本轮确实统计过复现次数时再写，不要编造
 
-如果本轮导入了正式资产，应在 `修复说明` 里写明 `caseId / validationId / recordId / batchId`，因为源样本池本身不一定有专门的关联字段；正式血缘关系仍以 `资产关联` 表为准。
+如果是历史记录、证据字段尚未建立或链路过粗，先运行 `node scripts/backfill-badcase-evidence.js` 做 dry-run；确认盘点范围后才加 `--apply`。回填按历史批次从旧到新合并，并遵循相同双门禁，不能为了清账伪造缺失的一侧证据。
+
+### Step 10A. 治理进展文档累计更新
+
+不再发送 BadCase 周报。每次源 BadCase 状态与证据成功回写后，把本轮变化累计追加到飞书 Wiki `BadCase 治理进展同步`：
+
+- 追加位置固定在 `三、主要治理批次` 末尾、`四、近两周状态清账说明` 之前
+- 沿用现有格式：`月 日 时:分：BadCase 治理更新` 三级标题，下面用项目符号列出问题类型、BadCase ID、标题、状态、批次和证据结论
+- 同一批状态回写只追加一个治理事件，不要每条 BadCase 各建一个小节
+- 每个事件写入稳定 `治理事件ID`；写前扫描文档，命中相同事件 ID 时跳过，保证重试幂等
+- 历史证据批量回填必须关闭文档同步，避免把清账脚本展开成大量伪“新进展”
+- 文档同步失败不能回滚已经成功的 BadCase 状态，但必须在日志与最终报告中明确暴露
+
+启用前先调用 `POST /feishu/sync/badcase-governance/document-check` 做只读检查。生产配置 `FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN`，确认机器人具备 Docx 编辑权限后再设置 `BADCASE_GOVERNANCE_DOC_SYNC_ENABLED=true`。关闭开关时只生成 dry-run 日志，不写文档。
 
 ### Step 11.（可选）广播
 

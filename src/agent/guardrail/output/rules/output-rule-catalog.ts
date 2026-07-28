@@ -238,15 +238,16 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
-      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功 request_handoff。',
+      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功的人工升级动作（request_handoff 或 raise_risk_alert）。',
     riskGoal: '防止 Agent 口头承诺人工跟进却没有落 handoff、暂停托管或通知负责人。',
     exogenousSignal:
-      '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true。',
+      '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true 或 raise_risk_alert.accepted=true' +
+      '（2026-07-28 补：badcase batch_6a66f559… raise_risk_alert 同样暂停托管+人工接手，只认 request_handoff 会把真承诺判成空头）。',
     residualRisk:
       '不含同事、负责人、店长、门店、招聘经理、转人工等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的 request_handoff，当前文本不可发送。请删除“同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。',
+      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的人工升级动作（request_handoff / raise_risk_alert），当前文本不可发送。请删除“同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。',
     // 2026-07-27 降 revise 后白名单摘除（原 ['request_handoff']；rewrite 无工具，
     // 补执行 handoff 的修复形态见评估文档 §2.4 条件项）。
   },

@@ -100,9 +100,7 @@ const ChatInputPanel = memo(function ChatInputPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const selectedModelOption = availableModelOptions.find((o) => o.id === modelId);
-  const advancedModelSummary = modelId
-    ? selectedModelOption?.name || modelId
-    : '默认模型';
+  const advancedModelSummary = modelId ? selectedModelOption?.name || modelId : '默认模型';
 
   return (
     <div className={styles.inputPanel}>
@@ -378,23 +376,24 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     source: 'agent_test',
     onError: (error) => setLocalError(error),
   });
+  const { clearSuccess: clearFeedbackSuccess, submit: submitFeedback } = feedback;
 
   const [isIdModalOpen, setIsIdModalOpen] = useState(false);
 
   // 清空（包括反馈状态）
   const handleClear = useCallback(() => {
     handleChatClear();
-    feedback.clearSuccess();
-  }, [feedback.clearSuccess, handleChatClear]);
+    clearFeedbackSuccess();
+  }, [clearFeedbackSuccess, handleChatClear]);
 
   // 提交反馈
   const handleSubmitFeedback = useCallback(() => {
     const userMessage = extractLastUserMessage(historyText);
-    void feedback.submit({
+    void submitFeedback({
       chatHistory: historyText,
       userMessage,
     });
-  }, [feedback.submit, historyText]);
+  }, [historyText, submitFeedback]);
 
   return (
     <div className={styles.chatTester}>
@@ -489,7 +488,13 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                     </button>
                   </div>
                   <MessagePartsAdapter
-                    message={latestAssistantMessage ?? { id: 'loading', role: 'assistant' as const, parts: [] }}
+                    message={
+                      latestAssistantMessage ?? {
+                        id: 'loading',
+                        role: 'assistant' as const,
+                        parts: [],
+                      }
+                    }
                     isStreaming={true}
                     renderTextAsMarkdown={true}
                   />
@@ -550,6 +555,8 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
         feedbackType={feedback.feedbackType}
         scenarioType={feedback.scenarioType}
         remark={feedback.remark}
+        priority={feedback.priority}
+        expectedBehavior={feedback.expectedBehavior}
         isSubmitting={feedback.isSubmitting}
         chatHistoryPreview={historyText.trim()}
         submitError={feedback.submitError}
@@ -559,6 +566,8 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
         onClose={feedback.closeModal}
         onScenarioTypeChange={feedback.setScenarioType}
         onRemarkChange={feedback.setRemark}
+        onPriorityChange={feedback.setPriority}
+        onExpectedBehaviorChange={feedback.setExpectedBehavior}
         onSubmit={handleSubmitFeedback}
       />
 

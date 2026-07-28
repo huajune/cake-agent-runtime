@@ -178,6 +178,14 @@ export class EnvironmentVariables {
   FEISHU_BITABLE_BADCASE_TABLE_ID?: string;
 
   @IsOptional()
+  @IsString({ message: 'FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN 必须是字符串' })
+  FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN?: string;
+
+  @IsOptional()
+  @IsString({ message: 'BADCASE_GOVERNANCE_DOC_SYNC_ENABLED 必须是字符串' })
+  BADCASE_GOVERNANCE_DOC_SYNC_ENABLED?: string;
+
+  @IsOptional()
   @IsString({ message: 'FEISHU_BITABLE_GOODCASE_APP_TOKEN 必须是字符串' })
   FEISHU_BITABLE_GOODCASE_APP_TOKEN?: string;
 

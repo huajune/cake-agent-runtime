@@ -15,50 +15,62 @@ export class DateTimeSection implements PromptSection {
   readonly name = 'datetime';
 
   build(ctx: PromptContext): string {
-    const now = new Date();
-    const currentText = ctx.currentTimeText ?? this.formatNow(now);
+    return buildDateTimeGroundingLines(new Date(), ctx.currentTimeText).join('\n');
+  }
+}
 
-    const lines: string[] = [`当前时间：${currentText}`];
+/**
+ * 当前时间 + 今天/明天/后天/大后天映射的 grounding 行（系统侧日历计算）。
+ *
+ * 主链路 DateTimeSection 与 ReplyRepairAgent 共用：任何产出候选人可见文本的
+ * LLM 调用都需要这份锚——没有它，相对日期只能从历史消息里猜（badcase
+ * batch_6a66f559…：repair 无时间锚，把当天 15:00 的真实约面复述成
+ * "明天…不是今天"，劝退了正在等面的候选人）。
+ */
+export function buildDateTimeGroundingLines(
+  now: Date = new Date(),
+  currentTextOverride?: string,
+): string[] {
+  const lines: string[] = [`当前时间：${currentTextOverride ?? formatNowText(now)}`];
 
-    const offsetLabels: Array<[number, string]> = [
-      [0, '今天'],
-      [1, '明天'],
-      [2, '后天'],
-      [3, '大后天'],
-    ];
-    for (const [offset, label] of offsetLabels) {
-      lines.push(`${label}：${this.formatDateWithWeekday(now, offset)}`);
-    }
-
-    return lines.join('\n');
+  const offsetLabels: Array<[number, string]> = [
+    [0, '今天'],
+    [1, '明天'],
+    [2, '后天'],
+    [3, '大后天'],
+  ];
+  for (const [offset, label] of offsetLabels) {
+    lines.push(`${label}：${formatDateWithWeekday(now, offset)}`);
   }
 
-  private formatNow(now: Date = new Date()): string {
-    return now.toLocaleString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
+  return lines;
+}
 
-  private formatDateWithWeekday(now: Date, offsetDays: number): string {
-    const target = new Date(now.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-    const date = target.toLocaleDateString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const weekday = target.toLocaleDateString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      weekday: 'long',
-    });
-    // toLocaleDateString 可能返回 "2026/04/29"，统一成 "2026-04-29"
-    const normalizedDate = date.replace(/\//g, '-').replace(/-(\d)(?=-|$)/g, '-0$1');
-    return `${normalizedDate} ${weekday}`;
-  }
+function formatNowText(now: Date): string {
+  return now.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatDateWithWeekday(now: Date, offsetDays: number): string {
+  const target = new Date(now.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+  const date = target.toLocaleDateString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const weekday = target.toLocaleDateString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'long',
+  });
+  // toLocaleDateString 可能返回 "2026/04/29"，统一成 "2026-04-29"
+  const normalizedDate = date.replace(/\//g, '-').replace(/-(\d)(?=-|$)/g, '-0$1');
+  return `${normalizedDate} ${weekday}`;
 }

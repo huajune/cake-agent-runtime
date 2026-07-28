@@ -83,9 +83,17 @@ describe('confirmation-facts（确认问答裁决，候选人资料证据化 P1�
       expect(fact).toMatchObject({ city: '武汉' });
     });
 
-    it('确认句城市不在 geo 词典（裸名"佛山"）→ 宁可漏不产出（随区划库扩容自动变宽）', () => {
+    it('裸名"佛山"随区划库补录后可产出（原"宁可漏"边界，2026-07-28 数据补录反转为正例）', () => {
       const fact = resolveConfirmedCityFact([
         { role: 'assistant', content: '你现在主要是在佛山这边找工作对吧？' },
+        { role: 'user', content: '好' },
+      ]);
+      expect(fact).toMatchObject({ city: '佛山', reply: '好' });
+    });
+
+    it('词典外城市仍不产出（宁可漏原则保持，如"香格里拉"）', () => {
+      const fact = resolveConfirmedCityFact([
+        { role: 'assistant', content: '你是在香格里拉这边找工作对吧？' },
         { role: 'user', content: '好' },
       ]);
       expect(fact).toBeNull();

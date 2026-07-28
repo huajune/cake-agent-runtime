@@ -19,6 +19,7 @@ import {
   BadcaseDerivedStatus,
   FeishuBitableSyncService,
 } from '@biz/feishu-sync/bitable-sync.service';
+import type { BadcaseEvidenceUpdate } from '@biz/feishu-sync/badcase-governance.types';
 import {
   BatchStatus,
   ExecutionStatus,
@@ -690,9 +691,8 @@ export class TestBatchService {
    * 批次完成后，把派生用例的评审结果聚合回写到 BadCase 样本池的"状态"字段。
    *
    * 聚合规则（按 sourceTrace.badcaseRecordIds 分组）：
-   * - 任一执行评审失败 → 待验证
-   * - 全部通过 → 已解决
-   * - 仍有 PENDING → 处理中
+   * 单批次只形成一侧证据；最终状态由飞书同步服务合并历史证据后按双门禁判定：
+   * scenario 与 conversation 最近一次证据均通过，才允许写为已解决。
    *
    * 此方法仅在批次进入 COMPLETED 时触发；不阻断批次状态推进，异常仅记录日志。
    */
@@ -719,6 +719,80 @@ export class TestBatchService {
   }
 
   /**
+   * 从历史已完成批次重建 BadCase 证据台账。
+   * 默认仅盘点；apply=true 时按批次时间从旧到新合并，确保“最近证据”判定稳定。
+   */
+  async backfillBadcaseEvidence(
+    options: {
+      apply?: boolean;
+      maxBatches?: number;
+    } = {},
+  ): Promise<{
+    apply: boolean;
+    batchesScanned: number;
+    batchesWithEvidence: number;
+    evidenceUpdates: number;
+    badcaseRecordIds: string[];
+    schema?: Awaited<ReturnType<FeishuBitableSyncService['ensureBadcaseGovernanceFields']>>;
+    errors: string[];
+  }> {
+    const apply = options.apply === true;
+    const maxBatches = Math.min(Math.max(options.maxBatches || 2000, 1), 5000);
+    const pageSize = 200;
+    const batches: TestBatch[] = [];
+    for (let offset = 0; offset < maxBatches; offset += pageSize) {
+      const page = await this.batchRepository.findMany(
+        Math.min(pageSize, maxBatches - offset),
+        offset,
+      );
+      batches.push(...page.data);
+      if (batches.length >= page.total || page.data.length < pageSize) break;
+    }
+
+    const completedBatches = batches
+      .filter((batch) => batch.status === BatchStatus.COMPLETED)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const badcaseRecordIds = new Set<string>();
+    let batchesWithEvidence = 0;
+    let evidenceUpdates = 0;
+    const errors: string[] = [];
+    const pendingUpdates: Awaited<ReturnType<TestBatchService['aggregateBadcaseStatusUpdates']>> =
+      [];
+    const schema = apply
+      ? await this.feishuBitableSync.ensureBadcaseGovernanceFields(true)
+      : await this.feishuBitableSync.ensureBadcaseGovernanceFields(false);
+
+    for (const batch of completedBatches) {
+      try {
+        const items = await this.aggregateBadcaseStatusUpdates(batch);
+        if (items.length === 0) continue;
+        batchesWithEvidence += 1;
+        evidenceUpdates += items.length;
+        items.forEach((item) => badcaseRecordIds.add(item.recordId));
+        pendingUpdates.push(...items);
+      } catch (error) {
+        errors.push(`${batch.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (apply && pendingUpdates.length > 0) {
+      const result = await this.feishuBitableSync.updateBadcaseStatuses(pendingUpdates, {
+        syncGovernanceDocument: false,
+      });
+      errors.push(...result.errors);
+    }
+
+    return {
+      apply,
+      batchesScanned: completedBatches.length,
+      batchesWithEvidence,
+      evidenceUpdates,
+      badcaseRecordIds: [...badcaseRecordIds],
+      schema,
+      errors,
+    };
+  }
+
+  /**
    * 聚合批次内 sourceTrace.badcaseRecordIds → 派生 BadCase 状态。
    * 同时处理用例测试（执行级 trace）和回归验证（快照级 trace）两类批次。
    */
@@ -728,26 +802,65 @@ export class TestBatchService {
       status: BadcaseDerivedStatus;
       batchId: string;
       summary: string;
+      evidence: BadcaseEvidenceUpdate;
     }>
   > {
     const aggregates = new Map<
       string,
-      { passed: number; failed: number; pending: number; total: number }
+      {
+        passed: number;
+        failed: number;
+        pending: number;
+        total: number;
+        assetIds: Set<string>;
+        executionIds: Set<string>;
+        reviewerSources: Set<string>;
+        reviewedAt: string | null;
+      }
     >();
 
     const accumulate = (
       reviewStatus: ReviewStatus | null | undefined,
       recordIds: string[] | undefined,
+      evidence: {
+        assetId?: string | null;
+        executionIds?: string[];
+        reviewerSources?: Array<string | null | undefined>;
+        reviewedAt?: string | null;
+      },
     ) => {
       if (!recordIds?.length) return;
       for (const recordId of recordIds) {
         const id = recordId?.trim();
         if (!id) continue;
-        const stat = aggregates.get(id) || { passed: 0, failed: 0, pending: 0, total: 0 };
+        const stat = aggregates.get(id) || {
+          passed: 0,
+          failed: 0,
+          pending: 0,
+          total: 0,
+          assetIds: new Set<string>(),
+          executionIds: new Set<string>(),
+          reviewerSources: new Set<string>(),
+          reviewedAt: null,
+        };
         stat.total += 1;
         if (reviewStatus === ReviewStatus.PASSED) stat.passed += 1;
         else if (reviewStatus === ReviewStatus.FAILED) stat.failed += 1;
         else stat.pending += 1;
+        if (evidence.assetId) stat.assetIds.add(evidence.assetId);
+        for (const executionId of evidence.executionIds || []) {
+          if (executionId) stat.executionIds.add(executionId);
+        }
+        for (const reviewerSource of evidence.reviewerSources || []) {
+          if (reviewerSource) stat.reviewerSources.add(reviewerSource);
+        }
+        if (
+          evidence.reviewedAt &&
+          (!stat.reviewedAt ||
+            new Date(evidence.reviewedAt).getTime() > new Date(stat.reviewedAt).getTime())
+        ) {
+          stat.reviewedAt = evidence.reviewedAt;
+        }
         aggregates.set(id, stat);
       }
     };
@@ -769,8 +882,8 @@ export class TestBatchService {
           hasPassed: false,
         };
         if (exec.review_status === ReviewStatus.FAILED) cur.hasFailed = true;
-        else if (exec.review_status === ReviewStatus.PENDING) cur.hasPending = true;
         else if (exec.review_status === ReviewStatus.PASSED) cur.hasPassed = true;
+        else cur.hasPending = true;
         reviewBySnapshot.set(sourceId, cur);
       }
 
@@ -781,16 +894,34 @@ export class TestBatchService {
         const review = reviewBySnapshot.get(snapshot.id);
         const derived = review?.hasFailed
           ? ReviewStatus.FAILED
-          : review?.hasPending || (!review && !snapshot.avg_similarity_score)
+          : review?.hasPending || !review
             ? ReviewStatus.PENDING
             : ReviewStatus.PASSED;
-        accumulate(derived, recordIds);
+        const snapshotExecutions = turnExecutions.filter(
+          (execution) => execution.conversation_snapshot_id === snapshot.id,
+        );
+        accumulate(derived, recordIds, {
+          assetId: snapshot.conversation_id || snapshot.id,
+          executionIds: snapshotExecutions.map((execution) => execution.id),
+          reviewerSources: snapshotExecutions.map((execution) => execution.reviewer_source),
+          reviewedAt:
+            snapshotExecutions
+              .map((execution) => execution.reviewed_at)
+              .filter((value): value is string => !!value)
+              .sort()
+              .at(-1) || null,
+        });
       }
     } else {
       const executions = await this.executionRepository.findBatchTraceByBatchId(batch.id);
       for (const exec of executions) {
         const trace = exec.source_trace as TestSourceTrace | null;
-        accumulate(exec.review_status, trace?.badcaseRecordIds);
+        accumulate(exec.review_status, trace?.badcaseRecordIds, {
+          assetId: exec.case_id,
+          executionIds: [exec.id],
+          reviewerSources: [exec.reviewer_source],
+          reviewedAt: exec.reviewed_at,
+        });
       }
     }
 
@@ -799,6 +930,7 @@ export class TestBatchService {
       status: BadcaseDerivedStatus;
       batchId: string;
       summary: string;
+      evidence: BadcaseEvidenceUpdate;
     }> = [];
     for (const [recordId, stat] of aggregates) {
       const status: BadcaseDerivedStatus =
@@ -808,6 +940,15 @@ export class TestBatchService {
         status,
         batchId: batch.id,
         summary: `批次 ${batch.id}: 派生用例 ${stat.total} 个，通过 ${stat.passed}，失败 ${stat.failed}，待评审 ${stat.pending}`,
+        evidence: {
+          kind: batch.test_type === TestType.CONVERSATION ? 'conversation' : 'scenario',
+          batchId: batch.id,
+          assetIds: [...stat.assetIds],
+          executionIds: [...stat.executionIds],
+          reviewStatus: stat.failed > 0 ? 'failed' : stat.pending > 0 ? 'pending' : 'passed',
+          reviewerSources: [...stat.reviewerSources],
+          reviewedAt: stat.reviewedAt,
+        },
       });
     }
     return items;
