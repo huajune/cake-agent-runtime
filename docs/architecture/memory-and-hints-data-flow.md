@@ -1,6 +1,14 @@
 # 记忆与线索数据流
 
-**最后更新**：2026-06-16
+**最后更新**：2026-07-28
+
+> **体系定位**：本文属"候选人认知体系"三轴中的**记忆本体轴**（数据流细节层），与
+> [memory-system-architecture.md](./memory-system-architecture.md)（架构总览层）成对维护。
+> 字段的**证据采信分级与消费准入**（谁能写入、写入算几分、什么动作需要几分）以
+> [candidate-fact-evidence-adjudication-plan.md](./candidate-fact-evidence-adjudication-plan.md) §0 为上位总纲；
+> **判定机制分类**（规则 vs 语义 vs 向量的分界）见
+> [semantic-decision-taxonomy-plan.md](./semantic-decision-taxonomy-plan.md)。四份共享同一条宪法：
+> 确定性守门、LLM 只降级不放权（HC-2）。
 
 本文是记忆与线索链路的独立真相文档，描述当前真实生效的数据流、字段结构、消费规则和关键边界：哪些数据只是本轮线索，哪些会进入 Redis 会话事实，哪些会沉淀到长期画像，以及大模型和工具分别如何消费。
 
@@ -115,6 +123,7 @@ flowchart TD
 | `system` | 外部系统或平台接口补充 |
 | `memory` | 历史记忆或旧结构兼容迁移 |
 | `derived` | 由其他字段推导，例如区/地标反推城市 |
+| `tool` | 本会话工具执行结果确权（geocode 唯一解析、定位分享逆解析；2026-07-27 证据化 A1/A2 新增，外生出处非模型自报） |
 | `booking` | 预约/报名成功后写入长期画像 |
 | `extraction` | 会话沉淀时从 `sessionFacts` 抽取后写入长期画像 |
 | `enrichment` | 外部画像补全链路写入 |
@@ -186,7 +195,7 @@ flowchart TD
 | Prompt 段 | 来源 | 内容 |
 |-----------|------|------|
 | `[历史背景｜来自候选人此前在本平台的咨询]` | `longTerm.origin.fromOtherConversation` | 仅全新 chat 首聊且长期记忆来自别的会话时渲染：泛指"候选人此前与另一位招聘顾问沟通过"，提示模型不要假装自己聊过、不点名同事 |
-| `[用户档案]` | 长期 `profile_facts` | 全字段值 + 置信度 + 来源 + 更新日期（**不带 evidence 全文**） |
+| `[用户档案]` | 长期 `profile_facts` | 全字段值 + 置信度 + 来源 + 更新日期（**不带 evidence 全文**）+ **展示出处门**（2026-07-27 证据化 C 项：历史沉淀字段预填/复述必须披露来源并请候选人确认，否认即弃用——badcase 赵堤案/佛山案） |
 | `[历史求职意向]` | 长期 `preference_facts` | 跨会话稳定意向 + 更新日期 + “本次优先”指引；过期 `available_after` 不渲染 |
 | `[会话记忆]` | Redis `sessionMemory` | `sessionFacts`、岗位池、已展示岗位、当前焦点岗位、已邀群 |
 | `[本轮高置信线索]` | 当前轮 `highConfidenceFacts` | 与会话记忆不冲突的当前消息线索 |
@@ -239,7 +248,7 @@ flowchart TD
 1. `sessionFacts` unwrap `minConfidence=high`
 2. `highConfidenceFacts` filter `confidence=high`
 
-Prompt 里的合并规则是：`sessionFacts` 高置信优先，当前轮高置信只补 session 中缺失的字段。当前轮冲突字段会在 `[本轮待确认线索]` 中提醒模型处理。
+Prompt 里的合并规则是：**当前轮高置信优先覆盖旧 session 值**（2026-07-28 PR #800 与工具层 `mergeSessionFactsWithHighConfidence` 统一口径，证据化 Phase 0 第 2 条；此前是"session 优先、本轮仅补缺"，候选人刚改口的字段工具按新值过滤、prompt 却念旧值）。本轮无该字段线索时沿用 session 值。
 
 硬约束字段：
 
@@ -305,14 +314,14 @@ flowchart TD
 | `currentFocusJob` | 当前焦点岗位 | 会话级状态 |
 | `recentBrandPool` | 最近展示/推荐/焦点岗位品牌去重 | 给品牌别名回指使用 |
 
-注意：这和 prompt 的 hard constraints 合并规则不同。
+两处合并策略已统一（2026-07-28 PR #800，证据化 Phase 0 第 2 条）：
 
 | 场景 | 合并策略 |
 |------|----------|
-| Prompt hard constraints | session 高置信优先，本轮高置信只补缺失；冲突交给待确认线索 |
+| Prompt hard constraints | **本轮高置信非空字段覆盖旧 session 高置信**（与工具层同口径） |
 | ToolBuildContext.sessionFacts | 本轮高置信非空字段覆盖旧 session 高置信 |
 
-原因是：工具上下文更强调“当前消息刚补充的字段必须马上可用”，例如候选人刚说“我 24”，precheck 这一轮就要拿到 24；prompt 则需要更谨慎地处理跨轮冲突。
+历史注记：此前 prompt 层是"session 优先、本轮仅补缺"——候选人刚说"我 24"，precheck 这一轮拿到 24 而 prompt 硬约束段仍念旧值，两处自相矛盾，已抹平。跨轮冲突提醒仍由 `[本轮待确认线索]` 承担。
 
 ### 6.2 precheck 字段来源规则
 
@@ -351,7 +360,8 @@ flowchart TD
   B --> D["session_turn_end_updates"]
   D --> E["save_candidate_pool"]
   D --> F["project_assistant_turn"]
-  D --> G["extract_facts"]
+  D --> AC["save_attested_city（本轮 geocode 确权城市入档，source='tool'）"]
+  AC --> G["extract_facts"]
   G --> S["trimToCurrentSessionSegment 截当前会话段"]
   S --> T["纯应答闸门：isPureAcknowledgment 且规则零命中 → 跳过 LLM"]
   T --> H["LLM 结构化提取"]
@@ -366,7 +376,7 @@ flowchart TD
 1. 从当前 normalized messages 拆出 `conversationHistory` 和 `currentMessage`。
 2. `trimToCurrentSessionSegment()` 按消息间隙（≥`settlementGapSeconds`）截到最近连续会话段，避免跨会话串味。
 3. 如果 Redis 已有 `facts`，只回看最近 `SESSION_EXTRACTION_INCREMENTAL_MESSAGES` 条历史。
-4. 纯应答闸门：`isPureAcknowledgment()` 命中且当前消息规则零命中时，跳过 LLM 提取直接复用旧 facts（提取降本）。
+4. 纯应答闸门：`isPureAcknowledgment()` 命中且当前消息规则零命中时，跳过 LLM 提取直接复用旧 facts（提取降本）。**例外（2026-07-28 证据化 P1）**：确认问答裁决（`confirmation-facts.ts`，Agent 城市确认句 + 纯肯定应答）在闸门**之前**计算——确认应答恰是纯应答词，命中时跳过 LLM 但单写 `pref.city`（source='candidate'）。定位分享轮同理由 `buildLocationShareCityFact` 逆解析入档（source='tool'）。
 5. 重新拉品牌表（命中品牌带别名、其余仅名称，`formatBrandSection`），重新跑规则/别名识别。
 6. 构造 extraction prompt：注入 `[当前时间]`（时间锚定，相对时间换算绝对日期）+ `[已确认事实]`，提取原则为**增量式**（补充/纠正，非累积重抽）。
 7. LLM 根据对话和规则线索输出结构化事实；可输出 `explicit_provenance{field, quote}`，经候选人原文/phone 格式校验后把 medium 升 high（白名单 `EXPLICIT_UPGRADE_FIELDS`，排除 name 与事务字段）。

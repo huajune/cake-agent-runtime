@@ -73,9 +73,11 @@ export class HardConstraintsSection implements PromptSection {
   /**
    * 合并 sessionFacts（已确认）与 highConfidenceFacts（本轮新增）。
    *
-   * 取并集：sessionFacts 已有的优先保留；highConfidenceFacts 仅补充 sessionFacts 缺失的字段。
-   * 唯一例外是 labor_form：它是可变求职意向，且岗位工具本身也采用“当前轮明确表达覆盖旧值”口径，
-   * 因此这里必须同步优先当前轮高置信值，避免 prompt 说“兼职硬过滤”、工具实际按“暑假工”过滤。
+   * 取并集，**本轮高置信值优先覆盖旧 session 值**（候选人资料证据化 Phase 0 第 2 条）：
+   * 工具层 tool-context.builder 的 mergeSessionFactsWithHighConfidence 一直是"本轮非 null
+   * 高置信覆盖旧值"，本段此前却是"旧值优先、本轮仅补缺"——prompt 与工具对同一字段
+   * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
+   * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
    */
   private mergeFacts(
     sessionFacts: EntityExtractionResult | SessionFacts | null,
@@ -96,8 +98,8 @@ export class HardConstraintsSection implements PromptSection {
 
     const interview = {
       ...this.emptyInterviewInfo(),
-      ...this.dropNulls(highConfidenceValues?.interview_info),
       ...this.dropNulls(highConfidenceSessionFacts?.interview_info),
+      ...this.dropNulls(highConfidenceValues?.interview_info),
     };
 
     const highConfidenceLaborForm = highConfidenceValues?.preferences.labor_form ?? null;
@@ -116,57 +118,57 @@ export class HardConstraintsSection implements PromptSection {
       // 品牌不再读 preferences.brands（字段已退役，§19.6）；软提示行直读 sessionBrandState。
       brands: null,
       brand_ids:
-        highConfidenceSessionFacts?.preferences.brand_ids ??
         highConfidenceValues?.preferences.brand_ids ??
+        highConfidenceSessionFacts?.preferences.brand_ids ??
         null,
       salary:
-        highConfidenceSessionFacts?.preferences.salary ??
         highConfidenceValues?.preferences.salary ??
+        highConfidenceSessionFacts?.preferences.salary ??
         null,
       position:
-        highConfidenceSessionFacts?.preferences.position ??
         highConfidenceValues?.preferences.position ??
+        highConfidenceSessionFacts?.preferences.position ??
         null,
       schedule:
-        highConfidenceSessionFacts?.preferences.schedule ??
         highConfidenceValues?.preferences.schedule ??
+        highConfidenceSessionFacts?.preferences.schedule ??
         null,
       city:
-        highConfidenceSessionFacts?.preferences.city ??
         highConfidenceValues?.preferences.city ??
+        highConfidenceSessionFacts?.preferences.city ??
         null,
       district:
-        highConfidenceSessionFacts?.preferences.district ??
         highConfidenceValues?.preferences.district ??
+        highConfidenceSessionFacts?.preferences.district ??
         null,
       location:
-        highConfidenceSessionFacts?.preferences.location ??
         highConfidenceValues?.preferences.location ??
+        highConfidenceSessionFacts?.preferences.location ??
         null,
       labor_form: activeLaborForm,
       delayed_intent:
-        highConfidenceSessionFacts?.preferences.delayed_intent ??
         highConfidenceValues?.preferences.delayed_intent ??
+        highConfidenceSessionFacts?.preferences.delayed_intent ??
         null,
       short_term:
-        highConfidenceSessionFacts?.preferences.short_term ??
         highConfidenceValues?.preferences.short_term ??
+        highConfidenceSessionFacts?.preferences.short_term ??
         null,
       open_position:
-        highConfidenceSessionFacts?.preferences.open_position ??
         highConfidenceValues?.preferences.open_position ??
+        highConfidenceSessionFacts?.preferences.open_position ??
         null,
       time_windows:
-        highConfidenceSessionFacts?.preferences.time_windows ??
         highConfidenceValues?.preferences.time_windows ??
+        highConfidenceSessionFacts?.preferences.time_windows ??
         null,
       schedule_constraint:
-        highConfidenceSessionFacts?.preferences.schedule_constraint ??
         highConfidenceValues?.preferences.schedule_constraint ??
+        highConfidenceSessionFacts?.preferences.schedule_constraint ??
         null,
       available_after:
-        highConfidenceSessionFacts?.preferences.available_after ??
         highConfidenceValues?.preferences.available_after ??
+        highConfidenceSessionFacts?.preferences.available_after ??
         null,
     };
 
