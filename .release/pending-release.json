@@ -335,6 +335,47 @@
         "touch-ledger +1 例：回话打断冷却 / 连续未回仍冷却 / 缺参保持旧行为",
         "全部触及 suites：4 passed, 133 tests；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过"
       ]
+    },
+    {
+      "number": "778",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/778",
+      "title": "观测: tool_call 补 errorType/apiCode + 取消人工介入卡改红",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "`tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。",
+        "Merge remote-tracking branch 'origin/develop' into feat/tool-call-err…",
+        "`tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。"
+      ],
+      "summary": [
+        "面试取消人工介入卡 orange→red 对齐紧急度",
+        "tool_call 事件补 errorType/apiCode 供失败子类统计",
+        "Merge remote-tracking branch 'origin/develop' into feat/tool-call-err…",
+        "`observer.interface.ts`：`tool_call` 事件加 `errorType`（**复用 `ToolErrorType` 单一权威枚举**，非裸 string）/ `apiCode`（海绵外部开放码，保持 `string|number` 不本地枚举化）。",
+        "`tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。",
+        "`tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。",
+        "观测: tool_call 补 errorType/apiCode + 取消人工介入卡改红"
+      ],
+      "features": [
+        "`tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。",
+        "Merge remote-tracking branch 'origin/develop' into feat/tool-call-err…"
+      ],
+      "fixes": [
+        "`tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "`observer.interface.ts`：`tool_call` 事件加 `errorType`（**复用 `ToolErrorType` 单一权威枚举**，非裸 string）/ `apiCode`（海绵外部开放码，保持 `string|number` 不本地枚举化）。",
+        "面试取消人工介入卡 orange→red 对齐紧急度",
+        "tool_call 事件补 errorType/apiCode 供失败子类统计"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc --noEmit` 通过（主树 + worktree 对 develop base 各跑一次）",
+        "相关测试全绿：`tool-call-analysis.spec`（含新 helper 单测）、`booking-card.renderer.spec`、观测层 4 个 spec",
+        "`eslint --max-warnings=0` 干净"
+      ]
     }
   ],
   "lastRelease": {
