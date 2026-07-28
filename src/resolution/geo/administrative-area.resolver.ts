@@ -8,9 +8,20 @@
  */
 
 import type { GeoSignalConflictShadow, ParentAdministrativeArea } from './geo.types';
-import { COUNTY_LEVEL_CITY_TO_PREFECTURE, DISTRICT_TO_CITY } from './administrative-division.data';
+import {
+  COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  DISTRICT_TO_CITY,
+  SUPPORTED_CITY_PREFIXES,
+} from './administrative-division.data';
+import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
 import { normalizeDistrictForLookup } from './geo-name.normalizer';
 import { resolveCityFromLocation } from './place-alias.resolver';
+
+/** 已知城市名全集：业务高置信裸地名别名 + 全国显式城市表的标准名（去重）。 */
+const KNOWN_CITY_NAMES: readonly string[] = [
+  ...SUPPORTED_CITY_PREFIXES,
+  ...new Set(Object.values(NATIONAL_CITY_SUFFIX_TO_CITY)),
+];
 
 /**
  * 单个 district 名 → 城市（命中白名单则返回 city，否则 null）。
@@ -96,4 +107,17 @@ export function resolveParentAdministrativeArea(input: string): ParentAdministra
   const parentCity = COUNTY_LEVEL_CITY_TO_PREFECTURE[canonicalName];
   if (!parentCity) return null;
   return { input, canonicalName, level: 'county_level_city', parentCity };
+}
+
+/**
+ * 文本是否以已知城市名开头、且后面还有更具体内容（"常州钟楼区" → true，"常州" → false）。
+ *
+ * 供 infra/geocoding 的查询分类器判断"文本自带城市线索、可走结构化地址"（§11.1 消费场景）。
+ * 替代消费方直接拼接 SUPPORTED_CITY_PREFIXES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
+ * （§8.1 过渡期导出收口，Phase 5）。
+ */
+export function hasKnownCityPrefix(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return KNOWN_CITY_NAMES.some((city) => trimmed.startsWith(city) && trimmed.length > city.length);
 }

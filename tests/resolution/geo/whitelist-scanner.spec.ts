@@ -1,8 +1,6 @@
-import {
-  DISTRICT_TO_CITY,
-  matchInUncoveredSegments,
-  scanWhitelistKeysByLongest,
-} from '@resolution/geo';
+import { matchInUncoveredSegments, scanWhitelistKeysByLongest } from '@resolution/geo';
+// 数据表不是公共 API（Phase 5 过渡期导出已收口）；域内测试直连数据模块。
+import { DISTRICT_TO_CITY } from '@resolution/geo/administrative-division.data';
 
 describe('resolution/geo matching（Phase 0 golden cases 平移）', () => {
   describe('scanWhitelistKeysByLongest（最长优先 + 字符覆盖继承）', () => {

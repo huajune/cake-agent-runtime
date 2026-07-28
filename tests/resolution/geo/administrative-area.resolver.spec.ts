@@ -1,14 +1,17 @@
 import {
-  COUNTY_LEVEL_CITY_TO_PREFECTURE,
   detectGeoSignalConflict,
-  DISTRICT_TO_CITY,
-  LOCATION_TO_CITY,
-  NATIONAL_CITY_SUFFIX_TO_CITY,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
-  SUPPORTED_CITY_PREFIXES,
 } from '@resolution/geo';
+// 数据表不是公共 API（Phase 5 过渡期导出已收口）；域内测试断言数据现状时直连数据模块。
+import {
+  COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  DISTRICT_TO_CITY,
+  SUPPORTED_CITY_PREFIXES,
+} from '@resolution/geo/administrative-division.data';
+import { NATIONAL_CITY_SUFFIX_TO_CITY } from '@resolution/geo/explicit-city.data';
+import { LOCATION_TO_CITY } from '@resolution/geo/place-alias.data';
 
 describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）', () => {
   describe('resolveCityFromDistrict（唯一区县白名单）', () => {
