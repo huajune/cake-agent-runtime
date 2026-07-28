@@ -14,7 +14,7 @@
 **预计版本**: `v10.32.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #761 回填 v10.31.0 发布结果 (#760)
@@ -33,17 +33,31 @@
 - PR #777 pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…
 - PR #777 pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）
 - PR #766 停止条件区分「已回话」与「回话被 timeout 静默丢弃」
+- PR #771 高德配额耗尽补落库告警
+- PR #771 `geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：
+- PR #771 经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；
+- PR #771 配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；
+- PR #771 `dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；
+- PR #771 `status = '1'` 但 0 结果的正常"查无"语义不变、不告警；
+- PR #771 单测：新增 5 条业务失败上报用例，全 spec 39 通过。
+- PR #771 高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警
 
 ### 新功能
 - PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
 - PR #774 **宁可漏不可错**：肯定词表窄于 isPureAcknowledgment（"在吗/收到/谢谢"不算）；确认片段禁跨逗号（防"之前在上海，现在是在武汉对吧"错关联）；多城/词典外城市不产出
 - PR #774 **时序关键位**：确认应答恰是纯应答词，会命中纯应答闸门提前返回——裁决在闸门前计算，纯应答轮命中时跳过 LLM 但单写 city
 - PR #774 发问方不限 Agent/真人经理；引用块内确认句不算
+- PR #771 单测：新增 5 条业务失败上报用例，全 spec 39 通过。
 
 ### 问题修复
 - PR #765 与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内
 - PR #765 与 district_inference 同级、优先于 session 冲突判定（本轮位置线索代表当前位置）；会话档案的冲突不覆盖规则仍由 saveToolAttestedCity 收尾把关
 - PR #765 invite 城市门补同轮时序空档——第四档出处 turn_geocode 消费本轮 geocodeResolve…
+- PR #771 `geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：
+- PR #771 经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；
+- PR #771 配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；
+- PR #771 `dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；
+- PR #771 `status = '1'` 但 0 结果的正常"查无"语义不变、不告警；
 
 ### 优化调整
 - 无
@@ -54,6 +68,7 @@
 - PR #774 确认问答裁决入档——Agent城市确认句+纯肯定应答=候选人亲证（证据化P1）
 - PR #777 pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…
 - PR #766 停止条件区分「已回话」与「回话被 timeout 静默丢弃」
+- PR #771 高德配额耗尽补落库告警
 
 ### 配置变更
 - 无
@@ -75,6 +90,7 @@
 - PR #766 `scenario-registry.spec.ts`：timeout 丢弃轮不算已回话（不停发）/ 正常回话仍停 / 宽限期内仍停 / 旧数据无水位保持旧行为
 - PR #766 `reply-workflow.service.spec.ts`：成功投递与有意沉默均推进水位（取回调时间戳）、群聊不推进
 - PR #766 全量：370 suites / 5757 tests 通过；`tsc --noEmit`、`eslint --max-warnings=0` 通过
+- PR #771 `tsc --noEmit` ✅ / 改动文件 eslint `--max-warnings=0` ✅ / `geocoding.service.spec.ts` 39/39 ✅
 <!-- release:pending:end -->
 
 ## [10.31.0] - 2026-07-27
