@@ -1,3 +1,8 @@
+import {
+  isIdentityAskMessage,
+  stripMessageDecorations,
+} from '@tools/shared/identity-statement.util';
+
 /**
  * 占位身份识别 — 提示词示例值回声（example echo）防线。
  *
@@ -111,4 +116,33 @@ export function assertExtractionIdentityProvenance(output: unknown, promptText: 
       throw new Error(`提取输出的姓名在提取上下文中无出处（疑似臆造身份）: name=${name}`);
     }
   }
+}
+
+// —— is_student 首写证据门（badcase 2026-07-28，chat 6a673402…）——————————————
+
+// 候选人侧身份词汇。宽松取向：门的职责是拦"零身份语境凭空发明布尔值"，不是精确
+// 判定身份——宁可放过含糊语境，不可错杀合法提取（错杀会重蹈 6a448d09 追问死锁）。
+const IS_STUDENT_TOPIC_RE =
+  /学生|社会人士|社会人|在读|在校|上学|读书|学信网|毕业|退休|宝妈|应届|大一|大二|大三|大四|研究生|高中生|本科|大专|上班族|已经工作|工作了|在上班|暑假|暑期|寒假/u;
+
+/**
+ * 会话段内是否存在 is_student 的可辩护提取语境：
+ * - 候选人消息（剥引用块/时间戳后）含身份词汇；或
+ * - 助手发过身份追问/确认/二选一问句（isIdentityAskMessage）——覆盖
+ *   "你是社会人士对吧？→ 是的"类确认式作答；表单模板行刻意不算
+ *   （模板在场不代表候选人谈过身份）。
+ *
+ * 背景：chat 6a673402 抽取模型在候选人只说过"川沙"时输出 is_student=false，
+ * evidence 原文自证"未提及，不填"仍照写，随后经 [已确认事实] 逐轮延续。布尔值
+ * 无法像 name/phone 做 prompt 子串出处校验（assertExtractionIdentityProvenance），
+ * 改用本词表证据门；由调用方限定"首写"（旧值为空）时生效，已确认值的沿用不受影响。
+ */
+export function hasIsStudentTopicEvidence(
+  userTexts: readonly string[],
+  assistantTexts: readonly string[],
+): boolean {
+  if (userTexts.some((text) => IS_STUDENT_TOPIC_RE.test(stripMessageDecorations(text)))) {
+    return true;
+  }
+  return assistantTexts.some((text) => isIdentityAskMessage(text));
 }

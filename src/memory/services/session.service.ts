@@ -71,6 +71,7 @@ import { sanitizeInterviewName } from '../facts/name-guard';
 import {
   assertExtractionIdentityProvenance,
   assertNoExtractionExampleEcho,
+  hasIsStudentTopicEvidence,
 } from '../facts/placeholder-identity';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
@@ -813,6 +814,36 @@ export class SessionService {
     );
     if (locationCityFact) {
       newFacts.preferences.city = locationCityFact;
+    }
+
+    // is_student 首写证据门（badcase 2026-07-28 chat 6a673402…）：抽取模型可在零身份
+    // 语境下凭空发明布尔身份（该案候选人只说过"川沙"，evidence 自证"未提及，不填"
+    // 仍输出 false），随后经 [已确认事实] 逐轮延续，毒化身份守卫第 4 档与展示层。
+    // 字段级丢弃而非整轮判失败——同轮其它字段可能是合法提取（该案同轮 city=上海
+    // 即合法），name/phone 的 throw 全轮策略在此会连坐。
+    const previousIsStudent = unwrapSessionFactValue(previousFacts?.interview_info.is_student);
+    const extractedIsStudent = unwrapSessionFactValue(newFacts.interview_info.is_student);
+    if (
+      typeof previousIsStudent !== 'boolean' &&
+      typeof extractedIsStudent === 'boolean' &&
+      !hasIsStudentTopicEvidence(
+        userMessages,
+        scopedMessages.filter((m) => m.role === 'assistant').map((m) => m.content),
+      )
+    ) {
+      newFacts.interview_info.is_student = null;
+      this.logger.warn(
+        `[extractFacts] is_student 首写无会话身份语境，丢弃臆造值 ${extractedIsStudent}`,
+      );
+      this.tracer?.emit({
+        type: 'extraction_field_dropped',
+        corpId,
+        userId,
+        chatId: sessionId,
+        field: 'is_student',
+        droppedValue: String(extractedIsStudent),
+        reason: 'first_write_no_identity_context',
+      });
     }
 
     // 确认问答裁决（非纯应答轮路径，如"好的，我25岁"带出其他事实时）：

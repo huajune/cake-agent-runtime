@@ -17,6 +17,8 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'semantic_review',
   // 歧义词形现场：不写状态故 brand_state_change 看不见，量级=冲突别名频率（每天个位数）
   'brand_resolution_ambiguous',
+  // 抽取臆造字段拦截：量级应接近零，出现即弱模型劣化信号，必须可查（不能只打日志）
+  'extraction_field_dropped',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;
