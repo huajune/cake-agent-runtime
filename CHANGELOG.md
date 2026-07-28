@@ -14,7 +14,7 @@
 **预计版本**: `v10.32.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #761 回填 v10.31.0 发布结果 (#760)
@@ -41,6 +41,8 @@
 - PR #771 `status = '1'` 但 0 结果的正常"查无"语义不变、不告警；
 - PR #771 单测：新增 5 条业务失败上报用例，全 spec 39 通过。
 - PR #771 高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警
+- PR #764 确定性剥离泛化统称"店员/员工"出 jobCategoryList——防在招岗位被误判查无
+- PR #764 剥离泛化统称"店员/员工"出 jobCategoryList——防在招岗位被误判查无
 
 ### 新功能
 - PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
@@ -58,6 +60,7 @@
 - PR #771 配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；
 - PR #771 `dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；
 - PR #771 `status = '1'` 但 0 结果的正常"查无"语义不变、不告警；
+- PR #764 确定性剥离泛化统称"店员/员工"出 jobCategoryList——防在招岗位被误判查无
 
 ### 优化调整
 - 无
@@ -91,6 +94,9 @@
 - PR #766 `reply-workflow.service.spec.ts`：成功投递与有意沉默均推进水位（取回调时间戳）、群聊不推进
 - PR #766 全量：370 suites / 5757 tests 通过；`tsc --noEmit`、`eslint --max-warnings=0` 通过
 - PR #771 `tsc --noEmit` ✅ / 改动文件 eslint `--max-warnings=0` ✅ / `geocoding.service.spec.ts` 39/39 ✅
+- PR #764 `search.util.spec.ts` +4 例（剥离/保留/去空白/无泛化词）
+- PR #764 `duliday-job-list.tool.spec.ts` +1 例：断言送 sponge 的 `jobCategoryList` 不再含"店员"、`resultCount=1` 非空、`queryMeta.jobCategoryUmbrellaStripped=["店员"]`
+- PR #764 全套：2 suites 110 passed；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过
 <!-- release:pending:end -->
 
 ## [10.31.0] - 2026-07-27

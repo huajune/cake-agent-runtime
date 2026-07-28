@@ -202,6 +202,33 @@
       "verification": [
         "`tsc --noEmit` ✅ / 改动文件 eslint `--max-warnings=0` ✅ / `geocoding.service.spec.ts` 39/39 ✅"
       ]
+    },
+    {
+      "number": "764",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/764",
+      "title": "剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
+      ],
+      "summary": [
+        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无",
+        "剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
+      ],
+      "features": [],
+      "fixes": [
+        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`search.util.spec.ts` +4 例（剥离/保留/去空白/无泛化词）",
+        "`duliday-job-list.tool.spec.ts` +1 例：断言送 sponge 的 `jobCategoryList` 不再含\"店员\"、`resultCount=1` 非空、`queryMeta.jobCategoryUmbrellaStripped=[\"店员\"]`",
+        "全套：2 suites 110 passed；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过"
+      ]
     }
   ],
   "lastRelease": {
