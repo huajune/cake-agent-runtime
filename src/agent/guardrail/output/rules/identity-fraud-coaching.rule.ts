@@ -3,6 +3,7 @@ import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import {
   findLatestExplicitIdentityEvidence,
   matchIdentityEvidence,
+  stripMessageDecorations,
 } from '@tools/shared/identity-statement.util';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
@@ -58,6 +59,18 @@ const COERCED_SUMMER_DENIAL_PATTERN =
 const STUDENT_IDENTITY_RECLASSIFICATION_PATTERN =
   /(?:不算|不是|不属于)(?:在校)?学生(?:了|身份|本人|哈|吧|呀|哦|$|[，,。！？!?\n])|(?:按|算作|视为|当作?)(?:社会身份|社会人士)|(?:可以|能)[^。！？\n]{0,12}(?:按社会身份|做社会兼职|报社会兼职)/;
 
+// 档5（badcase 2026-07-28 chat 6a673402…）：候选人以条件/让步语气"报价"社会人士身份
+// （"如果没有，我可以是社会人士"）。这类措辞被共享识别器刻意拒认——不构成真实自报，
+// 改口核实机制（2026-07-15 产品裁定）同样要求先核实——Agent 顺水推舟指示按社会人士
+// 登记/代填即教唆。本档只依赖会话原文：不依赖记忆 is_student（可被抽取污染，该案
+// 被臆造成 false 致档4 失效）也不依赖本轮 precheck（该案 tools=[] 致档3 失效）。
+const CONDITIONAL_IDENTITY_OFFER_PATTERN =
+  /(?:可以|也能|能|就当|当作?|算作?|就按)(?:我)?(?:是|成|作|按)[^。！？\n]{0,4}(?:社会人士|社会人|非学生|不是学生)/u;
+// "资料里的身份直接填社会人士"：填/写/选/报动词直接接身份值、无成/为/按连接词，
+// REGISTER 两模式均不覆盖；锚定"身份"字段词，避免误伤"帮你找社会人士的岗位"。
+const IDENTITY_FIELD_FILL_PATTERN =
+  /身份[^。！？\n]{0,6}(?:填|写|选|报|登记)[^。！？\n]{0,4}(?:社会人士|社会人|非学生|不是学生)/u;
+
 function readBooleanFact(
   memorySnapshot: AgentMemorySnapshot | undefined,
   key: string,
@@ -72,7 +85,7 @@ function readBooleanFact(
 /**
  * 检测教唆候选人以不实身份登记/隐瞒身份的话术。
  *
- * 触发分四档：
+ * 触发分五档：
  * 1. 审核规避语境（"为了过系统审核…登记"）→ 无条件违规；
  * 2. 隐瞒身份建议（"别说你是暑假工"）→ 无条件违规；
  * 3. 身份改写登记（"按非暑假工登记/登记成社会人士"）→ 本轮 precheck 存在
@@ -82,6 +95,10 @@ function readBooleanFact(
  *    本档把诚实回复误判成造假教唆 block）。
  * 4. 记忆已确认学生，回复却自行宣布“不算学生/按社会身份”→ 无需本轮工具即可违规；
  *    仅候选人本轮明确自报“我不是学生/我是社会人士”时豁免陈旧记忆。
+ * 5. 候选人条件式身份报价（"如果没有，我可以是社会人士"——识别器拒认的非自报措辞）
+ *    + 回复含改判/代填/指示填写句式 → 违规；不依赖记忆与本轮 precheck（badcase
+ *    6a673402：is_student 被抽取污染成 false 且 tools=[]，档3/档4 双双失效）。
+ *    真实自报（"我是社会人士"）走共享识别器命中豁免，本档天然不触碰 6a448d09 死锁场景。
  */
 export function detectIdentityMisregistrationCoaching(
   text: string,
@@ -89,6 +106,7 @@ export function detectIdentityMisregistrationCoaching(
   memorySnapshot?: AgentMemorySnapshot,
   userMessage?: string,
   recentMessages?: unknown[],
+  recentUserTexts?: readonly string[],
 ): RuleContradiction | null {
   const auditEvasion = AUDIT_EVASION_PATTERN.test(text);
   const concealment = IDENTITY_CONCEALMENT_PATTERN.test(text);
@@ -114,18 +132,40 @@ export function detectIdentityMisregistrationCoaching(
     readBooleanFact(memorySnapshot, 'interview.is_student') === true &&
     !candidateSelfReportedNonStudent &&
     STUDENT_IDENTITY_RECLASSIFICATION_PATTERN.test(text);
+  // 档5：条件式身份报价 × 教唆句式。报价扫描候选人近几轮原文（剥引用块/时间戳，
+  // 引用的是助手话术不算候选人报价）；真实自报已被 candidateSelfReportedNonStudent
+  // 豁免捕获，能走到这里的"社会人士"措辞都是识别器拒认的非自报形态。
+  const conditionalIdentityOffer =
+    !candidateSelfReportedNonStudent &&
+    [...(recentUserTexts ?? []), ...(userMessage ? [userMessage] : [])].some((message) =>
+      CONDITIONAL_IDENTITY_OFFER_PATTERN.test(stripMessageDecorations(message)),
+    );
+  const conditionalOfferCoaching =
+    conditionalIdentityOffer &&
+    (STUDENT_IDENTITY_RECLASSIFICATION_PATTERN.test(text) ||
+      IDENTITY_FIELD_FILL_PATTERN.test(text) ||
+      IDENTITY_REWRITE_THEN_REGISTER_PATTERN.test(text) ||
+      REGISTER_AS_IDENTITY_PATTERN.test(text) ||
+      AGENT_AUTOFILL_IDENTITY_PATTERN.test(text));
 
   if (
     !auditEvasion &&
     !concealment &&
     !coercedSummerDenial &&
     !identityRewrite &&
-    !contradictsKnownStudentIdentity
+    !contradictsKnownStudentIdentity &&
+    !conditionalOfferCoaching
   ) {
     return null;
   }
 
-  if (!auditEvasion && !concealment && !coercedSummerDenial && !contradictsKnownStudentIdentity) {
+  if (
+    !auditEvasion &&
+    !concealment &&
+    !coercedSummerDenial &&
+    !contradictsKnownStudentIdentity &&
+    !conditionalOfferCoaching
+  ) {
     // 第 3 档需要 precheck 作为"身份尚未确认/身份冲突"的结构化佐证。
     // 扫描本轮全部 precheck，而不是只看最后一次：模型可能先命中守卫或 missingFields，
     // 随后通过代填身份再调一次把最后结果洗成 ready_to_book。
@@ -154,7 +194,9 @@ export function detectIdentityMisregistrationCoaching(
         ? '要求候选人复述“不是暑假工”以完成登记/预约'
         : contradictsKnownStudentIdentity
           ? '会话事实仍为学生，Agent 却擅自改判为非学生/社会人士'
-          : '身份仍是 precheck 缺失字段时，Agent 擅自代填非学生/社会人士口径';
+          : conditionalOfferCoaching
+            ? '候选人仅条件式提出“可以是社会人士”（未真实自报），Agent 顺势指示按社会人士登记'
+            : '身份仍是 precheck 缺失字段时，Agent 擅自代填非学生/社会人士口径';
   return {
     ruleId: 'identity_misregistration_coaching',
     label:
