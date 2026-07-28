@@ -28,6 +28,30 @@
         "文档 Prettier 与 `git diff --check` 通过",
         "pre-push 全量门禁：373 suites / 5906 tests（6 skipped）"
       ]
+    },
+    {
+      "number": "796",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/796",
+      "title": "geo 方案交付状态对齐 v3.4",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "geo 方案交付状态对齐 v3.4——定稿待批改已交付、Phase 4/5 标注落地、shadow…",
+        "geo 方案交付状态对齐 v3.4"
+      ],
+      "summary": [
+        "geo 方案交付状态对齐 v3.4——定稿待批改已交付、Phase 4/5 标注落地、shadow…",
+        "geo 方案交付状态对齐 v3.4"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "geo 方案交付状态对齐 v3.4——定稿待批改已交付、Phase 4/5 标注落地、shadow…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
