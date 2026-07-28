@@ -10,20 +10,12 @@
       "title": "同步 v10.31.0 最终发布结果",
       "author": "huajune",
       "mergedAt": "2026-07-27",
-      "businessUpdates": [
-        "回填 v10.31.0 发布结果 (#760)",
-        "同步 v10.31.0 最终发布结果"
-      ],
-      "summary": [
-        "回填 v10.31.0 发布结果 (#760)",
-        "同步 v10.31.0 最终发布结果"
-      ],
+      "businessUpdates": [""],
+      "summary": ["回填 v10.31.0 发布结果 (#760)", "同步 v10.31.0 最终发布结果"],
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": [
-        "回填 v10.31.0 发布结果 (#760)"
-      ],
+      "ops": ["回填 v10.31.0 发布结果 (#760)"],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -39,12 +31,7 @@
       "title": "invite 城市门补同轮时序空档——turn_geocode 档消费本轮 geocode 确权",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "解析城市与请求城市不一致时不构成证据（新增负例测试）",
-        "与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内",
-        "与 district_inference 同级、优先于 session 冲突判定（本轮位置线索代表当前位置）；会话档案的冲突不覆盖规则仍由 saveToolAttestedCity 收尾把关",
-        "invite 城市门补同轮时序空档——第四档出处 turn_geocode 消费本轮 geocodeResolve…"
-      ],
+      "businessUpdates": [""],
       "summary": [
         "invite 城市门补同轮时序空档——第四档出处 turn_geocode 消费本轮 geocodeResolve…",
         "与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内",
@@ -52,9 +39,7 @@
         "解析城市与请求城市不一致时不构成证据（新增负例测试）",
         "invite 城市门补同轮时序空档——turn_geocode 档消费本轮 geocode 确权"
       ],
-      "features": [
-        "解析城市与请求城市不一致时不构成证据（新增负例测试）"
-      ],
+      "features": ["解析城市与请求城市不一致时不构成证据（新增负例测试）"],
       "fixes": [
         "与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内",
         "与 district_inference 同级、优先于 session 冲突判定（本轮位置线索代表当前位置）；会话档案的冲突不覆盖规则仍由 saveToolAttestedCity 收尾把关",
@@ -75,11 +60,7 @@
       "title": "确认问答裁决入档——城市确认句+纯肯定应答=候选人亲证（证据化 P1）",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "**宁可漏不可错**：肯定词表窄于 isPureAcknowledgment（\"在吗/收到/谢谢\"不算）；确认片段禁跨逗号（防\"之前在上海，现在是在武汉对吧\"错关联）；多城/词典外城市不产出",
-        "**时序关键位**：确认应答恰是纯应答词，会命中纯应答闸门提前返回——裁决在闸门前计算，纯应答轮命中时跳过 LLM 但单写 city",
-        "发问方不限 Agent/真人经理；引用块内确认句不算"
-      ],
+      "businessUpdates": [""],
       "summary": [
         "确认问答裁决入档——Agent城市确认句+纯肯定应答=候选人亲证（证据化P1）",
         "**宁可漏不可错**：肯定词表窄于 isPureAcknowledgment（\"在吗/收到/谢谢\"不算）；确认片段禁跨逗号（防\"之前在上海，现在是在武汉对吧\"错关联）；多城/词典外城市不产出",
@@ -112,10 +93,7 @@
       "title": "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…",
-        "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）"
-      ],
+      "businessUpdates": [""],
       "summary": [
         "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…",
         "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）"
@@ -123,9 +101,7 @@
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": [
-        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…"
-      ],
+      "ops": ["pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…"],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -139,18 +115,12 @@
       "title": "停止条件区分「已回话」与「回话被 timeout 静默丢弃」",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
-      ],
-      "summary": [
-        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
-      ],
+      "businessUpdates": [""],
+      "summary": ["停止条件区分「已回话」与「回话被 timeout 静默丢弃」"],
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": [
-        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
-      ],
+      "ops": ["停止条件区分「已回话」与「回话被 timeout 静默丢弃」"],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -165,14 +135,7 @@
       "title": "高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。",
-        "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
-        "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
-        "配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；",
-        "`dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；",
-        "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；"
-      ],
+      "businessUpdates": [""],
       "summary": [
         "高德配额耗尽补落库告警",
         "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
@@ -183,9 +146,7 @@
         "单测：新增 5 条业务失败上报用例，全 spec 39 通过。",
         "高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警"
       ],
-      "features": [
-        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。"
-      ],
+      "features": ["单测：新增 5 条业务失败上报用例，全 spec 39 通过。"],
       "fixes": [
         "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
         "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
@@ -194,9 +155,7 @@
         "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；"
       ],
       "optimizations": [],
-      "ops": [
-        "高德配额耗尽补落库告警"
-      ],
+      "ops": ["高德配额耗尽补落库告警"],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -209,17 +168,13 @@
       "title": "剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
-      ],
+      "businessUpdates": ["“店员/员工”等泛称不再误过滤收银、理货、促销等真实在招岗位"],
       "summary": [
         "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无",
         "剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
       ],
       "features": [],
-      "fixes": [
-        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
-      ],
+      "fixes": ["确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"],
       "optimizations": [],
       "ops": [],
       "config": [],
@@ -237,13 +192,7 @@
       "author": "huajune",
       "mergedAt": "2026-07-28",
       "businessUpdates": [
-        "Phase 5 收口——删旧路径门面与过渡期数据表导出",
-        "清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…",
-        "invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径",
-        "brand-matcher 切 listUniqueDistrictCityEntries 稳定 API",
-        "§9.5 数据表改名落地——名称对齐真实语义",
-        "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关",
-        "地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化"
+        "同轮定位结果、城市确认问答和区名映射统一生效，减少重复追问城市与跨城误判"
       ],
       "summary": [
         "Phase 5 收口——删旧路径门面与过渡期数据表导出",
@@ -266,9 +215,7 @@
         "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关"
       ],
       "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
+      "envFiles": [".env.example"],
       "verification": [
         "全量 jest：370 suites / 5766 tests 全绿（含 #765 turn_geocode 5 用例、生成表+开关 6 新用例）",
         "typecheck / lint / format / geo:validate / build:ci 全通过（pre-push 钩子完整跑过）"
@@ -280,22 +227,16 @@
       "title": "P0诚信红线复发修复——is_student首写证据门+身份教唆守卫档5（badcase 6a673402）",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "身份红线复发修复——is_student首写门+守卫档5"
-      ],
+      "businessUpdates": ["学生身份必须按真实信息填写，系统不再接受或教唆改填“社会人士”"],
       "summary": [
         "身份红线复发修复——is_student首写门+守卫档5",
         "Merge origin/develop into claude/distracted-bose-3a19ff",
         "P0诚信红线复发修复——is_student首写证据门+身份教唆守卫档5（badcase 6a673402）"
       ],
       "features": [],
-      "fixes": [
-        "身份红线复发修复——is_student首写门+守卫档5"
-      ],
+      "fixes": ["身份红线复发修复——is_student首写门+守卫档5"],
       "optimizations": [],
-      "ops": [
-        "Merge origin/develop into claude/distracted-bose-3a19ff"
-      ],
+      "ops": ["Merge origin/develop into claude/distracted-bose-3a19ff"],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -310,10 +251,7 @@
       "title": "触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "Merge origin/develop into fix/badcase-20260728-reengagement-gates",
-        "Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…"
-      ],
+      "businessUpdates": ["候选人消息尚未处理时暂停主动提醒；候选人重新回复后允许新的跟进节奏"],
       "summary": [
         "触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达",
         "Merge origin/develop into fix/badcase-20260728-reengagement-gates",
@@ -325,9 +263,7 @@
         "Merge remote-tracking branch 'origin/develop' into fix/badcase-202607…"
       ],
       "optimizations": [],
-      "ops": [
-        "触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达"
-      ],
+      "ops": ["触达双闸——候选人待答前置闸 + 冷却只数连续无回应触达"],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -342,11 +278,7 @@
       "title": "观测: tool_call 补 errorType/apiCode + 取消人工介入卡改红",
       "author": "huajune",
       "mergedAt": "2026-07-28",
-      "businessUpdates": [
-        "`tool-call-analysis.ts`：新增纯函数 `extractToolErrorType` / `extractToolApiCode`（+单测）。",
-        "Merge remote-tracking branch 'origin/develop' into feat/tool-call-err…",
-        "`tool-set.util.ts`：emit 时从 `result` 提取填入。repository 用 `...payload` 兜底自动入库，**无需改 persister/repository**；成功态 `errorType` 为 `undefined`，JSON 序列化自动省略，不污染成功事件。"
-      ],
+      "businessUpdates": ["面试取消后的人工确认卡升级为红色紧急提醒，降低门店未及时获知取消的风险"],
       "summary": [
         "面试取消人工介入卡 orange→red 对齐紧急度",
         "tool_call 事件补 errorType/apiCode 供失败子类统计",
@@ -376,6 +308,70 @@
         "相关测试全绿：`tool-call-analysis.spec`（含新 helper 单测）、`booking-card.renderer.spec`、观测层 4 个 spec",
         "`eslint --max-warnings=0` 干净"
       ]
+    },
+    {
+      "number": "769",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/769",
+      "title": "残障身份披露确定性静默转人工",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": ["候选人主动披露残障身份时静默交由真人判断，禁止自动筛选或模板式拒绝"],
+      "summary": ["残障身份披露确定性静默转人工"],
+      "features": ["残障身份披露确定性静默转人工"],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": ["输入守卫 110 tests 通过；其中残障自述、资格询问和家属提及负例共 15 个"]
+    },
+    {
+      "number": "773",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/773",
+      "title": "无岗位证据时禁止断言具体发薪时点",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": ["查不到岗位依据时不再臆答“当天发薪、次日到账、每周三发工资”等发薪时点"],
+      "summary": ["无岗位证据时禁止断言具体发薪时点"],
+      "features": [],
+      "fixes": ["无岗位证据时禁止断言具体发薪时点"],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": ["hard-rules 套件 191 tests 通过，新增 10 个发薪时点正反例"]
+    },
+    {
+      "number": "775",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/775",
+      "title": "裸钟点动身场景强制重新核验报名截止时间",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": ["候选人只说“我三点过去”时也会重新核验报名截止时间，避免沿用过期承诺"],
+      "summary": ["裸钟点动身场景强制重新核验报名截止时间"],
+      "features": [],
+      "fixes": ["裸钟点动身场景强制重新核验报名截止时间"],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": ["preparation 套件 76 tests 通过，覆盖 7 个正例和 6 个负例"]
+    },
+    {
+      "number": "776",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/776",
+      "title": "建单成功后回复必须与预约结果一致",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": ["预约建单成功后必须明确播报结果，不再反问候选人“定哪一天”"],
+      "summary": ["建单成功后回复必须与预约结果一致"],
+      "features": ["预约成功回执对账守卫"],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": ["出站守卫 333 tests 通过，新增 6 个预约回执正反例"]
     }
   ],
   "lastRelease": {
@@ -437,9 +433,7 @@
           "行为类 badcase 簇五处修复（区名映射/刚性时段/改期转人工/发薪合规/已拒条件）"
         ],
         "features": [],
-        "fixes": [
-          "行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件"
-        ],
+        "fixes": ["行为类 badcase 簇五处修复——区名映射/刚性时段/改期转人工/发薪合规/已拒条件"],
         "optimizations": [],
         "ops": [],
         "config": [],
@@ -455,18 +449,12 @@
         "title": "settlement 规则族补形态二——查无岗位时的无证据结算断言",
         "author": "huajune",
         "mergedAt": "2026-07-27",
-        "businessUpdates": [
-          "settlement 规则族补形态二——查无岗位时的无证据结算断言"
-        ],
-        "summary": [
-          "settlement 规则族补形态二——查无岗位时的无证据结算断言"
-        ],
+        "businessUpdates": ["settlement 规则族补形态二——查无岗位时的无证据结算断言"],
+        "summary": ["settlement 规则族补形态二——查无岗位时的无证据结算断言"],
         "features": [],
         "fixes": [],
         "optimizations": [],
-        "ops": [
-          "settlement 规则族补形态二——查无岗位时的无证据结算断言"
-        ],
+        "ops": ["settlement 规则族补形态二——查无岗位时的无证据结算断言"],
         "config": [],
         "envFiles": [],
         "verification": []
@@ -477,23 +465,16 @@
         "title": "有证约岗位对无证候选人补三层拦截",
         "author": "huajune",
         "mergedAt": "2026-07-27",
-        "businessUpdates": [
-          "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744"
-        ],
+        "businessUpdates": ["Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744"],
         "summary": [
           "有证约岗位对无证候选人补三层拦截",
           "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744",
           "以权威岗位策略收口有证约闸门"
         ],
         "features": [],
-        "fixes": [
-          "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744"
-        ],
+        "fixes": ["Merge remote-tracking branch 'origin/develop' into codex/fix-pr-744"],
         "optimizations": [],
-        "ops": [
-          "有证约岗位对无证候选人补三层拦截",
-          "以权威岗位策略收口有证约闸门"
-        ],
+        "ops": ["有证约岗位对无证候选人补三层拦截", "以权威岗位策略收口有证约闸门"],
         "config": [],
         "envFiles": [],
         "verification": [
@@ -615,23 +596,16 @@
         "title": "城市同名别名在地名短语中不再塌缩成品牌",
         "author": "huajune",
         "mergedAt": "2026-07-27",
-        "businessUpdates": [
-          "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"
-        ],
+        "businessUpdates": ["Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"],
         "summary": [
           "城市同名别名在地名短语中不再塌缩成品牌",
           "收紧城市同名地名续接判据",
           "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"
         ],
         "features": [],
-        "fixes": [
-          "Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"
-        ],
+        "fixes": ["Merge remote-tracking branch 'origin/develop' into codex/fix-pr-728"],
         "optimizations": [],
-        "ops": [
-          "城市同名别名在地名短语中不再塌缩成品牌",
-          "收紧城市同名地名续接判据"
-        ],
+        "ops": ["城市同名别名在地名短语中不再塌缩成品牌", "收紧城市同名地名续接判据"],
         "config": [],
         "envFiles": [],
         "verification": [
@@ -662,9 +636,7 @@
           "Merge branch 'codex/fix-pr-728' into codex/fix-pr-746"
         ],
         "optimizations": [],
-        "ops": [
-          "履历/定位/回声语境闸——三病灶收敛currentBrand污染"
-        ],
+        "ops": ["履历/定位/回声语境闸——三病灶收敛currentBrand污染"],
         "config": [],
         "envFiles": [],
         "verification": [
