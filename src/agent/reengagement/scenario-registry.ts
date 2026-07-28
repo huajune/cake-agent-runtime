@@ -378,11 +378,37 @@ export function computeFireAt(
 }
 
 /**
+ * 「锚点后已回话」判定的处理在途宽限：候选人刚回话时消息可能还在 debounce 合并窗口
+ * 或 Agent 处理中（水位尚未推进），此窗口内仍按「会被正常回复」对待、照旧停发；
+ * 超过宽限仍未推进水位，才认定回话被静默丢弃（如 timeout）。卡住的 processing 记录
+ * 30 分钟才被兜底标 timeout，10 分钟足够覆盖正常轮的合并 + 生成 + 投递耗时。
+ */
+const REPLY_PROCESSING_GRACE_MS = 10 * MINUTE;
+
+/**
+ * 候选人锚点后的回话是否无人搭理（入站时间超过了已处理水位且已过在途宽限）。
+ *
+ * lastCandidateMessageAt 在入站接收层写入，被 timeout 静默丢弃的消息也会计入；
+ * 只有回合成功收尾（正常回复或有意沉默）才推进 lastProcessedCandidateMessageAt 水位。
+ * 生产实锤 chat 6a62c6f8：候选人连发两条均 timeout 丢弃，却被当「已回话」停掉
+ * address_missing 触达，候选人彻底没人理。水位缺失（部署前旧会话）时无法判定，
+ * 按已回话停发保持旧行为。
+ */
+function isCandidateReplyUnattended(state: AuthoritativeSessionState, now: number): boolean {
+  const { lastCandidateMessageAt, lastProcessedCandidateMessageAt } = state;
+  if (lastCandidateMessageAt == null || lastProcessedCandidateMessageAt == null) return false;
+  if (lastProcessedCandidateMessageAt >= lastCandidateMessageAt) return false;
+  return now - lastCandidateMessageAt >= REPLY_PROCESSING_GRACE_MS;
+}
+
+/**
  * 调 LLM 之前的代码停止条件（读权威状态）。
  *
  * - terminal ∈ {booked, handed_off, rejected, onboarded} → 停
  *   booking.succeeded 锚点允许 booked/handed_off 继续，由场景 stopUnless 自己判断。
  * - lastCandidateMessageAt > anchorAt（候选人在锚点后已回话）→ 停
+ *   收紧：回话必须已被系统成功处理（lastProcessedCandidateMessageAt 水位覆盖）才算数；
+ *   被 timeout 静默丢弃、超过在途宽限仍无人搭理的回话不停发（见 isCandidateReplyUnattended）。
  *   例外：booking.succeeded 锚点且任务带 workOrderId（opts.externallyVerifiable）时豁免——
  *   候选人报名后回一句"好的"不该杀掉面试提醒；报名是否仍有效改由 processor 到点向
  *   海绵工单现状 + active_booking 面试时间核验（work_order_not_active / interview_time_changed）。
@@ -393,7 +419,7 @@ export function shouldStop(
   scenario: FollowUpScenario,
   state: AuthoritativeSessionState,
   anchorAt: number,
-  opts?: { externallyVerifiable?: boolean },
+  opts?: { externallyVerifiable?: boolean; now?: number },
 ): ShouldStopResult {
   const bookingSucceededFollowUp =
     scenario.anchorEvent === 'booking.succeeded' &&
@@ -413,7 +439,8 @@ export function shouldStop(
   if (
     !repliedRuleExempt &&
     state.lastCandidateMessageAt != null &&
-    state.lastCandidateMessageAt > anchorAt
+    state.lastCandidateMessageAt > anchorAt &&
+    !isCandidateReplyUnattended(state, opts?.now ?? Date.now())
   ) {
     return { stop: true, reason: 'candidate_replied_after_anchor' };
   }

@@ -66,6 +66,7 @@ import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
 import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
+import { resolveConfirmedCityFact } from '../facts/confirmation-facts';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import {
   assertExtractionIdentityProvenance,
@@ -450,6 +451,9 @@ export class SessionService {
     const lastCandidateMessageAt = state.lastCandidateMessageAt
       ? Date.parse(state.lastCandidateMessageAt)
       : NaN;
+    const lastProcessedCandidateMessageAt = state.lastProcessedCandidateMessageAt
+      ? Date.parse(state.lastProcessedCandidateMessageAt)
+      : NaN;
 
     return {
       collectedFields,
@@ -461,6 +465,9 @@ export class SessionService {
       terminal: state.terminal ?? undefined,
       lastCandidateMessageAt: Number.isFinite(lastCandidateMessageAt)
         ? lastCandidateMessageAt
+        : undefined,
+      lastProcessedCandidateMessageAt: Number.isFinite(lastProcessedCandidateMessageAt)
+        ? lastProcessedCandidateMessageAt
         : undefined,
     };
   }
@@ -599,6 +606,22 @@ export class SessionService {
     });
   }
 
+  /**
+   * 推进「候选人消息已被成功处理」时间水位（复聊停止判定的第二信号）。
+   * 由 reply-workflow 在回合成功收尾（正常投递或有意沉默）时按本轮消费的候选人消息
+   * 最大时间戳调用；timeout 静默丢弃的消息不会推进水位，复聊据此识别无人搭理的回话。
+   */
+  async recordCandidateMessagesProcessed(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    at: Date,
+  ): Promise<void> {
+    await this.patchSessionState(corpId, userId, sessionId, {
+      lastProcessedCandidateMessageAt: at.toISOString(),
+    });
+  }
+
   // ==================== projection ====================
 
   async projectAssistantTurn(params: {
@@ -707,10 +730,40 @@ export class SessionService {
     // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
     const lastUserText = MessageParser.stripTimeContext(userMessages.at(-1) ?? '').trim();
     const currentLaborFormIntent = decideLaborFormIntent(lastUserText);
+
+    // 确认问答裁决（候选人资料证据化 P1，badcase 6a671722："是在沈阳市对吧？"→"好的"）：
+    // 必须在纯应答闸门之前算——确认应答（"好的/对/嗯"）恰恰是纯应答词，走闸门
+    // 早退会把系统自己发起的确认协议的答案丢掉。纯正则零 LLM，成本可忽略。
+    const confirmedCity = resolveConfirmedCityFact(scopedMessages);
+    const confirmedCityFact: SessionFactValue<string> | null = confirmedCity
+      ? {
+          value: confirmedCity.city,
+          confidence: 'high',
+          source: 'candidate',
+          evidence: truncateEvidence(
+            `确认应答：「${confirmedCity.question}」→「${confirmedCity.reply}」`,
+          ),
+          extractedAt: new Date().toISOString(),
+        }
+      : null;
+
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
       const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
       if (!currentTurnRuleHits) {
-        this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
+        // 纯应答轮唯一可能携带的新事实就是确认裁决：有则单写 city 后再早退
+        if (confirmedCityFact) {
+          const cityOnlyFacts = SessionFactsSchema.parse({
+            ...FALLBACK_EXTRACTION,
+            preferences: { ...FALLBACK_EXTRACTION.preferences, city: confirmedCityFact },
+            reasoning: '确认问答裁决入档（纯应答轮）',
+          }) as SessionFacts;
+          await this.saveFacts(corpId, userId, sessionId, cityOnlyFacts);
+          this.logger.log(
+            `[extractFacts] 确认问答裁决入档: pref.city=${confirmedCityFact.value}（纯应答轮，跳过 LLM 提取）`,
+          );
+        } else {
+          this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
+        }
         return { llmDegraded: false, brandIntents: [] };
       }
     }
@@ -791,6 +844,16 @@ export class SessionService {
         droppedValue: String(extractedIsStudent),
         reason: 'first_write_no_identity_context',
       });
+    }
+
+    // 确认问答裁决（非纯应答轮路径，如"好的，我25岁"带出其他事实时）：
+    // 本轮文本/定位已产出高置信城市则让位（显式线索优先于确认推断）。
+    if (
+      confirmedCityFact &&
+      !(newFacts.preferences.city && newFacts.preferences.city.confidence === 'high')
+    ) {
+      newFacts.preferences.city = confirmedCityFact;
+      this.logger.log(`[extractFacts] 确认问答裁决入档: pref.city=${confirmedCityFact.value}`);
     }
 
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
@@ -1372,7 +1435,7 @@ export class SessionService {
 
   /**
    * LLM 按 session-extraction prompt 对"单独的区/镇/街道"留 null city（防跨城同名）。
-   * 但 DISTRICT_TO_CITY / LOCATION_TO_CITY 白名单恰好已经把跨城同名排除，剩下的
+   * 但 UNIQUE_SUBDIVISION_TO_CITY / UNIQUE_PLACE_ALIAS_TO_CITY 白名单恰好已经把跨城同名排除，剩下的
    * （青浦/浦东/朝阳/海淀…）应当无歧义补出。此处用确定性兜底覆盖 LLM 的保守留空，
    * 避免"高置信明明能识别，sessionFacts 却 city=null"的尴尬（badcase: 候选人多轮
    * 反复说"青浦区/金泽"，Agent 仍被硬约束卡在"当前没有已确认城市"循环里反问）。

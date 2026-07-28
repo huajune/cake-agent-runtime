@@ -399,6 +399,21 @@ export class DataCleanupService implements OnModuleInit {
       const updatedCount = await this.messageProcessingService.timeoutStuckRecords(30);
       if (updatedCount > 0) {
         this.logger.log(`[数据清理] 已将 ${updatedCount} 条卡住的 processing 记录标记为 timeout`);
+        // timeout = 候选人消息被静默丢弃、无任何回复（生产日均 ~7 条，曾连带复聊误停，
+        // 见 chat 6a62c6f8）。此前只有日志可查，按批告警到飞书让静默丢消息可被运营看见。
+        this.exceptionNotifier?.notifyAsync({
+          source: {
+            subsystem: 'monitoring',
+            component: 'DataCleanupService',
+            action: 'timeout-stuck-processing-records',
+            trigger: 'cron',
+          },
+          code: 'message.processing_timeout',
+          summary: `${updatedCount} 条消息处理记录卡住超 30 分钟被标记 timeout（候选人消息可能被静默丢弃），请在消息处理页按 status=timeout 排查`,
+          error: `stuck processing records marked timeout: ${updatedCount}`,
+          severity: AlertLevel.WARNING,
+          diagnostics: { messageCount: updatedCount },
+        });
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

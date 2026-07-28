@@ -126,6 +126,12 @@ export const INPUT_RISK_TYPE = {
   INTERVIEW_RESULT_INQUIRY: 'interview_result_inquiry',
   /** 候选人主动明确要求转人工（badcase 6a5df7e7：礼貌要人工无响应，升级辱骂才触发拦截）。 */
   HUMAN_HANDOFF_REQUEST: 'human_handoff_request',
+  /**
+   * 候选人主动披露残障身份或询问残障者能否应聘（badcase gkaszeip/zmuhev8o 簇）。
+   * 产品+运营裁定（2026-07-28）：一律静默转人工，由真人判断沟通方式；
+   * Agent 不得输出任何自动话术——"委婉拒绝"属残障就业歧视，法律红线，绝不自动化。
+   */
+  DISABILITY_DISCLOSURE: 'disability_disclosure',
 } as const;
 
 export const INPUT_RISK_TYPES = Object.values(INPUT_RISK_TYPE);

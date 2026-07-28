@@ -1,14 +1,17 @@
 import {
-  COUNTY_LEVEL_CITY_TO_PREFECTURE,
   detectGeoSignalConflict,
-  DISTRICT_TO_CITY,
-  LOCATION_TO_CITY,
-  NATIONAL_CITY_SUFFIX_TO_CITY,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
-  SUPPORTED_CITY_PREFIXES,
 } from '@resolution/geo';
+// 数据表不是公共 API（Phase 5 过渡期导出已收口）；域内测试断言数据现状时直连数据模块。
+import {
+  COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  UNIQUE_SUBDIVISION_TO_CITY,
+  HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
+} from '@resolution/geo/administrative-division.data';
+import { NATIONAL_CITY_SUFFIX_TO_CITY } from '@resolution/geo/explicit-city.data';
+import { UNIQUE_PLACE_ALIAS_TO_CITY } from '@resolution/geo/place-alias.data';
 
 describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）', () => {
   describe('resolveCityFromDistrict（唯一区县白名单）', () => {
@@ -107,6 +110,29 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
     });
   });
 
+  describe('district-city-map 收编条目（2026-07-28 统一到 UNIQUE_SUBDIVISION_TO_CITY）', () => {
+    it('黄埔→广州、宝安→深圳（黄埔案：区名报出后查询路径应默认所属城市）', () => {
+      expect(resolveCityFromDistrict('黄埔')).toBe('广州');
+      expect(resolveCityFromDistrict('黄埔区')).toBe('广州');
+      expect(resolveCityFromDistrict('宝安')).toBe('深圳');
+      // 上海黄浦（浦字不同）不受影响
+      expect(resolveCityFromDistrict('黄浦')).toBe('上海');
+    });
+
+    it('原私表条目并入后生效：川沙→上海、南开区→天津、渝中→重庆', () => {
+      expect(resolveCityFromDistrict('川沙')).toBe('上海');
+      expect(resolveCityFromDistrict('南开区')).toBe('天津');
+      expect(resolveCityFromDistrict('渝中')).toBe('重庆');
+    });
+
+    it('带后缀收录口径：裸"红桥/南开/静海"不推导（北京红桥市场、南开大学/中学误命中防线）', () => {
+      expect(resolveCityFromDistrict('红桥')).toBeNull();
+      expect(resolveCityFromDistrict('静海')).toBeNull();
+      // 裸南开：normalizeDistrictForLookup 不会补"区"，命中不了带后缀 key
+      expect(UNIQUE_SUBDIVISION_TO_CITY['南开']).toBeUndefined();
+    });
+  });
+
   describe('行政区数据现状基线（方案 9.2 已知缺陷，迁移期不修正）', () => {
     it('golden：延吉市在全国显式表与县级市映射中双轨在册', () => {
       expect(NATIONAL_CITY_SUFFIX_TO_CITY['延吉市']).toBe('延吉');
@@ -119,23 +145,23 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
       // COUNTY_LEVEL_CITY_TO_PREFECTURE（届时更新本用例），此前锁定现状。
       expect(NATIONAL_CITY_SUFFIX_TO_CITY['余姚市']).toBe('余姚');
       expect(NATIONAL_CITY_SUFFIX_TO_CITY['慈溪市']).toBe('慈溪');
-      expect(DISTRICT_TO_CITY['余姚']).toBe('宁波');
+      expect(UNIQUE_SUBDIVISION_TO_CITY['余姚']).toBe('宁波');
       expect(COUNTY_LEVEL_CITY_TO_PREFECTURE['余姚市']).toBeUndefined();
       expect(COUNTY_LEVEL_CITY_TO_PREFECTURE['慈溪市']).toBeUndefined();
     });
 
     it(
-      'golden：SUPPORTED_CITY_PREFIXES 现状混入省份"江西"——它实际是"高置信裸地名别名表"' +
+      'golden：HIGH_CONFIDENCE_BARE_LOCATION_ALIASES 现状混入省份"江西"——它实际是"高置信裸地名别名表"' +
         '而非纯城市表（9.5 将改名，改名前锁定现状语义）',
       () => {
-        expect(SUPPORTED_CITY_PREFIXES).toContain('江西');
+        expect(HIGH_CONFIDENCE_BARE_LOCATION_ALIASES).toContain('江西');
       },
     );
 
     it('15.3 不变量：区县/地标白名单不存在空 key，映射值非空', () => {
       for (const [key, value] of [
-        ...Object.entries(DISTRICT_TO_CITY),
-        ...Object.entries(LOCATION_TO_CITY),
+        ...Object.entries(UNIQUE_SUBDIVISION_TO_CITY),
+        ...Object.entries(UNIQUE_PLACE_ALIAS_TO_CITY),
         ...Object.entries(COUNTY_LEVEL_CITY_TO_PREFECTURE),
       ]) {
         expect(key.trim()).toBe(key);

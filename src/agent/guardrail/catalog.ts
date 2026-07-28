@@ -65,6 +65,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
   unsupported_store_status_speculation:
     'agent/guardrail/output/rules/store-status-speculation.rule.ts（HardRulesService 调度）',
+  booking_receipt_mismatch:
+    'agent/guardrail/output/rules/booking-receipt.rule.ts（HardRulesService 调度）',
 };
 
 export interface GuardrailCatalogEntry {

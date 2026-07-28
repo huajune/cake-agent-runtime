@@ -30,7 +30,8 @@ export interface RiskInterventionPayload extends InterventionBase {
     | 'complaint_risk'
     | 'escalation'
     | 'interview_result_inquiry'
-    | 'human_handoff_request';
+    | 'human_handoff_request'
+    | 'disability_disclosure';
   riskLabel: string;
   summary: string;
   reason: string;

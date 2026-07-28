@@ -270,8 +270,9 @@ export function buildInviteToGroupTool(
           }
 
           // 城市 provenance gate（badcase recvk28F1xrsKj 拉错城市群）：
-          // city 入参必须能追溯到会话城市事实、候选人原文城市名或无歧义区级
-          // 地名（顺义→北京 等，见 district-city-map.ts），模型自报不构成依据。
+          // city 入参必须能追溯到会话城市事实、候选人原文城市名、geo 地名白名单
+          // 推断（顺义→北京 等，见 @resolution/geo）或本轮 geocode 确权城市
+          //（geocodeResolvedAnchors 穿线，#765），模型自报不构成依据。
           // 会话城市事实的合法来源含 rule/llm/derived 之外的 'tool'（geocode unique
           // 确权、定位分享逆解析，2026-07-27 证据化穿线）——按置信度采信，不挑 source。
           // 会话事实读取失败按 null 降级（gate 仍可凭候选人原文放行），不让 Redis 抖动挡住拉群。
@@ -294,6 +295,9 @@ export function buildInviteToGroupTool(
             requestedCity: city,
             sessionCity,
             userTexts: extractUserTexts(context.messages),
+            // 同轮 geocode unique 确权城市：补"轮末写档、下轮生效"的时序空档
+            //（geocode → 无岗 → invite 常在同一轮发生）。
+            turnResolvedCities: (context.geocodeResolvedAnchors ?? []).map((anchor) => anchor.city),
           });
           if (cityGateVerdict.decision === 'reject') {
             if (cityGateVerdict.reason === 'city_conflict') {
