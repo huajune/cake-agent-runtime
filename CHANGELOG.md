@@ -14,7 +14,7 @@
 **预计版本**: `v10.32.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 8
+**累计 PR**: 9
 
 ### 更新摘要
 - PR #761 回填 v10.31.0 发布结果 (#760)
@@ -50,6 +50,9 @@
 - PR #781 §9.5 数据表改名落地——名称对齐真实语义
 - PR #781 Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关
 - PR #781 地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化
+- PR #772 身份红线复发修复——is_student首写门+守卫档5
+- PR #772 Merge origin/develop into claude/distracted-bose-3a19ff
+- PR #772 P0诚信红线复发修复——is_student首写证据门+身份教唆守卫档5（badcase 6a673402）
 
 ### 新功能
 - PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
@@ -68,6 +71,7 @@
 - PR #771 `dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；
 - PR #771 `status = '1'` 但 0 结果的正常"查无"语义不变、不告警；
 - PR #764 确定性剥离泛化统称"店员/员工"出 jobCategoryList——防在招岗位被误判查无
+- PR #772 身份红线复发修复——is_student首写门+守卫档5
 
 ### 优化调整
 - 无
@@ -85,6 +89,7 @@
 - PR #781 brand-matcher 切 listUniqueDistrictCityEntries 稳定 API
 - PR #781 §9.5 数据表改名落地——名称对齐真实语义
 - PR #781 Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关
+- PR #772 Merge origin/develop into claude/distracted-bose-3a19ff
 
 ### 配置变更
 - 无
@@ -112,6 +117,9 @@
 - PR #764 全套：2 suites 110 passed；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过
 - PR #781 全量 jest：370 suites / 5766 tests 全绿（含 #765 turn_geocode 5 用例、生成表+开关 6 新用例）
 - PR #781 typecheck / lint / format / geo:validate / build:ci 全通过（pre-push 钩子完整跑过）
+- PR #772 typecheck ✅ lint ✅
+- PR #772 guardrail + memory + tools/shared + observability 全目录：51 suites / 1294 tests 全过
+- PR #772 已知边界（有意取舍）：词表门是宽松取向，只拦"零身份语境凭空发明"；候选人已谈到学生话题后的错误布尔仍靠提示词身份粘性 + 档5 兜底。
 <!-- release:pending:end -->
 
 ## [10.31.0] - 2026-07-27
