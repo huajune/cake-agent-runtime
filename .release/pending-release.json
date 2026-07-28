@@ -158,6 +158,50 @@
         "`reply-workflow.service.spec.ts`：成功投递与有意沉默均推进水位（取回调时间戳）、群聊不推进",
         "全量：370 suites / 5757 tests 通过；`tsc --noEmit`、`eslint --max-warnings=0` 通过"
       ]
+    },
+    {
+      "number": "771",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/771",
+      "title": "高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。",
+        "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
+        "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
+        "配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；",
+        "`dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；",
+        "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；"
+      ],
+      "summary": [
+        "高德配额耗尽补落库告警",
+        "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
+        "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
+        "配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；",
+        "`dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；",
+        "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；",
+        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。",
+        "高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警"
+      ],
+      "features": [
+        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。"
+      ],
+      "fixes": [
+        "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
+        "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
+        "配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；",
+        "`dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；",
+        "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；"
+      ],
+      "optimizations": [],
+      "ops": [
+        "高德配额耗尽补落库告警"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc --noEmit` ✅ / 改动文件 eslint `--max-warnings=0` ✅ / `geocoding.service.spec.ts` 39/39 ✅"
+      ]
     }
   ],
   "lastRelease": {
