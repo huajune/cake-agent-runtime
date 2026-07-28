@@ -1,6 +1,6 @@
 # 地理领域改造方案：resolution/geo 迁移与现网行为修复
 
-> 状态：定稿待批（v3）
+> 状态：已交付（Phase 0–3 + 工作流 B 随 v10.24.0 于 2026-07-22 上线生产；Phase 4 生成化、Phase 5 删门面、§9.5 改名随 PR #781 于 2026-07-28 合入 develop 待发版；唯一余留：冲突检测 enforce 决策，见 17.4 标注）
 > 适用仓库：`cake-agent-runtime`
 > 定稿日期：2026-07-21（修订历史见第 22 节）
 > 关联问题：候选人输入"延吉市/延吉"时岗位查询返回 0 条（点位修复已随 2026-07-10 PR #499 上线，见 2.1）；2026-07 反馈池地理类 badcase 复核（见 3）
@@ -208,7 +208,7 @@ src/resolution/geo/                          # 文件平铺，与 resolution/bra
 src/tools/duliday/job-list/
 └── sponge-area-filter.util.ts              # 海绵行政区适配（自岗位工具抽出，见 11.2）
 
-scripts/geo/                                 # Phase 4 独立后续项，主线不建
+scripts/geo/                                 # Phase 4 已交付（PR #781）：data/ 数据集快照 + 生成/校验脚本
 ├── generate-administrative-divisions.ts
 └── validate-administrative-divisions.ts
 ```
@@ -388,6 +388,8 @@ src/resolution/geo/admin/
 - 生成数据数量相对上一版本异常增减（Phase 4）。
 
 ### 9.5 命名调整
+
+> ✅ 已落地（2026-07-28，PR #781）：前三项改名完成，`COUNTY_LEVEL_CITY_TO_PREFECTURE` 已从公共出口收回、仅经 resolver API（8.3）访问。
 
 逐步淘汰含义过宽的名字，迁移期保留旧别名导出，消费者迁完再删除：
 
@@ -575,11 +577,13 @@ export * from '@resolution/geo';
 3. **补录前先验证**：用真实海绵查询抽样确认县级市存储口径（余姚、慈溪、昆山至少各一例）——延边一例不足以外推；
 4. 业务足迹内县级市补录进映射（如 `余姚市/慈溪市 → 宁波`，9.2），这是延吉类隐患在在营城市的直接闭环，**不等 Phase 4**；
 5. 补测试：县级市、普通地级市、直辖市、未知城市、混合多城市、兜底防串城；
-6. **地理信号冲突检测**（独立提交，显式行为变更，**shadow → enforce 两段发版**，见 17.4）：`resolveCityFromGeoSignals` 多信号指向不同城市时返回 `ambiguous` + `candidates`，不再先命中先赢（8.2，现网实证见 3）；先 shadow 观测冲突频率 1~2 周，enforce 后 memory 消费侧同步处理 ambiguous 分支（保守留空，交上游澄清）。
+6. **地理信号冲突检测**（独立提交，显式行为变更，**shadow → enforce 两段发版**，见 17.4）：`resolveCityFromGeoSignals` 多信号指向不同城市时返回 `ambiguous` + `candidates`，不再先命中先赢（8.2，现网实证见 3）；先 shadow 观测冲突频率（原定 1~2 周，2026-07-22 用户裁定压缩为最多 1 周、≤2026-07-29 决策），enforce 后 memory 消费侧同步处理 ambiguous 分支（保守留空，交上游澄清）。
 
 完成标准：岗位工具零行政区知识；余姚类查询有测试锁定；冲突信号用例（15.2）通过。
 
 ### Phase 4：全国行政区数据生成化（独立后续项，不阻塞收口）
+
+> ✅ 已交付（2026-07-28，PR #781）：china-division 2.7.0 快照落盘 `scripts/geo/data/`（来源/sha256/更新流程见其 README）；`geo:generate` 产出 `administrative-division.generated.ts`，`geo:validate` 做与人工策展表的一致性及漂移校验；人工偏置条目按 override 豁免（9.3）。
 
 Phase 0–3 + Phase 5 构成工作流 A 主线；Phase 4 单独立项排期。它的价值是把县级市修复从"逐城补录"升级为"全国覆盖"，启动前提：
 
@@ -590,6 +594,8 @@ Phase 0–3 + Phase 5 构成工作流 A 主线；Phase 4 单独立项排期。�
 5. 全国父子关系批量接入用短期开关 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` 灰度（17.2）。
 
 ### Phase 5：收口与删除兼容层
+
+> ✅ 已交付（2026-07-28，PR #781）：`src/memory/facts/geo-mappings.ts` 门面与 index 过渡期数据表导出已删，ESLint 兼容豁免收口；memory/guardrail 相关文档的旧引用同步清理。
 
 1. 观察至少一个发布周期；
 2. `rg` 确认无旧路径引用后，删除 `src/memory/facts/geo-mappings.ts` 门面；
@@ -774,7 +780,7 @@ interface GeoQueryMeta {
 
 | 改动 | 处置 | 原因 |
 | --- | --- | --- |
-| 冲突检测（Phase 3 第 6 步） | 先 shadow 1~2 周再 enforce：新逻辑并行计算，仅把"本应 ambiguous 但现行取了先命中"的案例落 `GeoQueryMeta`，不改返回值；确认冲突频率与样本质量后切换 | 现网实证仅 2 例，真实频率未知；纯函数双跑成本趋零 |
+| 冲突检测（Phase 3 第 6 步） | 先 shadow 再 enforce（原定 1~2 周，2026-07-22 裁定压缩为 ≤1 周、07-29 决策；shadow 自 v10.24.0 上线，截至 07-28 每日观测累计零冲突样本）：新逻辑并行计算，仅把"本应 ambiguous 但现行取了先命中"的案例落 `GeoQueryMeta`，不改返回值；确认冲突频率与样本质量后切换 | 现网实证仅 2 例，真实频率未知；纯函数双跑成本趋零 |
 | 全国映射（Phase 4） | 开关关闭状态下 shadow 计算全国映射与补录白名单的 diff 并落观测，确认无害再开 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` | 海绵口径全国一致性只有抽样结论 |
 | B-1 / B-2、县级市补录、迁移本身 | **不新建 shadow**：`district_level_distance_claim` 硬规则与语义评审 shadow 本就在生产运行，即现成观测层；补录靠逐条映射观测 + 0 结果率告警 + area guard + 按条回滚 | 观测网已存在，重复建设无增益 |
 
@@ -904,3 +910,4 @@ interface GeoQueryMeta {
 | v3.1 | 2026-07-21 | 新增 17.4 发版后处置与 shadow 判定：仅冲突检测与全国映射两处 shadow 两段发版，其余复用现有观测网；补发版后真实流量验证清单 |
 | v3.2 | 2026-07-22 | 按 chat 6a60528bce406a6aee8004f9 实证扩展 B-1：模型自编坐标（偏差 3.7km）纳入修复范围——工具边界坐标偏差校验 + `anchor.source` 增加 `model_supplied` 档 |
 | v3.3 | 2026-07-22 | 用户裁定：`resolution/geo` 目录改文件平铺（与 `resolution/brand` 一致），§7 树同步；职责分域仅作为命名/边界概念保留 |
+| v3.4 | 2026-07-28 | 交付状态对齐（非方案变更）：Phase 0–3 + 工作流 B 随 v10.24.0（07-22）上线生产；Phase 4 生成化、Phase 5 删门面、§9.5 改名随 PR #781（07-28）合入 develop 待发版；shadow 观测窗按 07-22 用户裁定压缩为 ≤1 周（07-29 决策 enforce），正文"1~2 周"口径作废 |
