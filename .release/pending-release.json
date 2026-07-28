@@ -105,6 +105,33 @@
         "typecheck / lint 干净；confirmation-facts 纯函数 spec 15 例 + session 集成 3 例，91 用例全绿",
         "与 geo-phase5 分支无文件冲突（本 PR 只动 memory 域）"
       ]
+    },
+    {
+      "number": "777",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/777",
+      "title": "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…",
+        "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）"
+      ],
+      "summary": [
+        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…",
+        "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "typecheck / lint 干净；reengagement 全域 9 套件 194 用例通过",
+        "新增分类器 spec 11 例，含三条 badcase 的直接还原、僵尸单/时间窗边界、多工单取舍"
+      ]
     }
   ],
   "lastRelease": {
