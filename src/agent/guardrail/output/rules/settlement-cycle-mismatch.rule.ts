@@ -136,6 +136,56 @@ function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean
   ).test(sentence);
 }
 
+// ==================== 形态二扩展：发薪时点（payday）无证据断言 ====================
+// badcase recviaaF780Ag2（2026-07-27 路线更新「payday 臆答」）：结算周期之外，
+// "当天发薪/次日到账/每周三发工资/每月15号发"这类**发薪时点**断言同样影响候选人
+// 决策；岗位数据的结算周期自由文本（"周结算, 每周三发薪"）才是唯一口径，本轮查无
+// 时凭通识/其他品牌规则填空同属编造。词形刻意收窄到强发薪语义（发薪/发工资/到账/
+// 结工资），不收裸"发"——"当天发你定位/次日发面试地址"是高频无害表达。
+const PAYDAY_ASSERTION_PATTERNS: readonly RegExp[] = [
+  /(?:当天|当日|次日|隔天|第二天)[^，。；、]{0,2}(?:发薪|发工资|结工资|发钱|到账)/u,
+  /(?:工资|薪水|薪资)[^，。；、]{0,6}(?:当天|当日|次日|隔天|第二天)[^，。；、]{0,2}(?:发|结|到账)/u,
+  /每(?:周|星期)[一二三四五六日天][^，。；、]{0,4}(?:发薪|发工资|到账)/u,
+  /每月\s*\d{1,2}\s*[号日][^，。；、]{0,4}(?:发薪|发工资|到账|发)/u,
+  /发薪日(?:是|为|定在)[^，。；、]{0,8}/u,
+];
+
+// 历史出处豁免用宽口径：往轮卡片常写"周结每周三发/每月15号发"（不带"薪"字），
+// 豁免判定必须比断言判定松，否则真实出处会被自己的窄词形漏掉造成假阳。
+const PAYDAY_HISTORY_HINT_PATTERN =
+  /每(?:周|星期)[一二三四五六日天][^，。；、]{0,4}(?:发|到账)|(?:当天|当日|次日|隔天|第二天)[^，。；、]{0,2}(?:发|结|到账)|每月\s*\d{1,2}\s*[号日][^，。；、]{0,4}(?:发|到账)|发薪日/u;
+
+const REGEX_ESCAPE_PATTERN = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * 发薪时点断言判定：复用形态二全套假阳防线（疑问句/前瞻语境/愿望复述/否定前后缀），
+ * 否定窗口以命中原文为锚（payday 词形不定长，无法像 cycle 那样用枚举词构窗）。
+ */
+function sentenceAssertsPayday(sentence: string): string | null {
+  const matched = PAYDAY_ASSERTION_PATTERNS.map((pattern) => sentence.match(pattern)?.[0]).find(
+    Boolean,
+  );
+  if (!matched) return null;
+  if (/[吗么嘛？?]|是不是|是否/u.test(sentence)) return null;
+  if (PROSPECTIVE_CONTEXT_PATTERN.test(sentence)) return null;
+  const escaped = matched.replace(REGEX_ESCAPE_PATTERN, '\\$&');
+  if (new RegExp(`(?:${DESIRE_ECHO_PREFIX})[^，。；、]{0,6}${escaped}`, 'u').test(sentence)) {
+    return null;
+  }
+  if (new RegExp(`${escaped}[^，。；、]{0,4}(?:${NEGATION_SUFFIX})`, 'u').test(sentence)) {
+    return null;
+  }
+  if (
+    new RegExp(
+      `(?:${NEGATION_PREFIX})[^，。；、]{0,5}(?:[^，。；、]{0,4}[或、/])?[^，。；、]?${escaped}`,
+      'u',
+    ).test(sentence)
+  ) {
+    return null;
+  }
+  return matched;
+}
+
 /** 助手侧历史文本（含往轮岗位卡片）。候选人提问（"日结月结？"）不构成结算出处，故只取 assistant。 */
 function readAssistantHistoryText(recentMessages: readonly unknown[]): string {
   const parts: string[] = [];
@@ -191,6 +241,24 @@ export function detectSettlementNoEvidenceAssertion(
         label:
           `本轮岗位查询全部失败/查无、会话历史亦无出处，回复却断言“${cycle}”` +
           '——结算周期是影响候选人决策的关键事实，禁止用通识或其他品牌规则填空',
+        action: GUARDRAIL_ACTION.REVISE,
+      };
+    }
+  }
+
+  // payday 子项：发薪时点断言。历史豁免同样按"往轮助手卡片出现过发薪表述"粗粒度放行
+  // （observe 期宁松勿紧，精确的时点对账留给形态一族后续扩展）。
+  const historyHasPayday = PAYDAY_HISTORY_HINT_PATTERN.test(assistantHistory);
+  if (!historyHasPayday) {
+    for (const sentence of splitClaimSentences(replyText)) {
+      if (SUPPLEMENTAL_CONTEXT_PATTERN.test(sentence)) continue;
+      const payday = sentenceAssertsPayday(sentence);
+      if (!payday) continue;
+      return {
+        ruleId: 'settlement_no_evidence_assertion',
+        label:
+          `本轮岗位查询全部失败/查无、会话历史亦无出处，回复却断言发薪时点“${payday}”` +
+          '——发薪时间是影响候选人决策的关键事实，禁止用通识或其他品牌规则填空',
         action: GUARDRAIL_ACTION.REVISE,
       };
     }

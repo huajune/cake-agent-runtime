@@ -68,6 +68,211 @@
         "typecheck / lint:check 干净",
         "gate + invite 套件 66 用例通过（新增 5 例：两条生产残留 case 的直接还原 + 冲突覆盖 + 负例 + 空锚点安全）"
       ]
+    },
+    {
+      "number": "774",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/774",
+      "title": "确认问答裁决入档——城市确认句+纯肯定应答=候选人亲证（证据化 P1）",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "**宁可漏不可错**：肯定词表窄于 isPureAcknowledgment（\"在吗/收到/谢谢\"不算）；确认片段禁跨逗号（防\"之前在上海，现在是在武汉对吧\"错关联）；多城/词典外城市不产出",
+        "**时序关键位**：确认应答恰是纯应答词，会命中纯应答闸门提前返回——裁决在闸门前计算，纯应答轮命中时跳过 LLM 但单写 city",
+        "发问方不限 Agent/真人经理；引用块内确认句不算"
+      ],
+      "summary": [
+        "确认问答裁决入档——Agent城市确认句+纯肯定应答=候选人亲证（证据化P1）",
+        "**宁可漏不可错**：肯定词表窄于 isPureAcknowledgment（\"在吗/收到/谢谢\"不算）；确认片段禁跨逗号（防\"之前在上海，现在是在武汉对吧\"错关联）；多城/词典外城市不产出",
+        "**时序关键位**：确认应答恰是纯应答词，会命中纯应答闸门提前返回——裁决在闸门前计算，纯应答轮命中时跳过 LLM 但单写 city",
+        "发问方不限 Agent/真人经理；引用块内确认句不算",
+        "已知边界：城市识别依赖 geo 词典，裸名\"佛山\"类暂不产出，**随 geo-phase5 区划库扩容自动变宽**（与并行分支 chore/geo-phase5-closeout 天然协同，无文件交集）",
+        "确认问答裁决入档——城市确认句+纯肯定应答=候选人亲证（证据化 P1）"
+      ],
+      "features": [
+        "**宁可漏不可错**：肯定词表窄于 isPureAcknowledgment（\"在吗/收到/谢谢\"不算）；确认片段禁跨逗号（防\"之前在上海，现在是在武汉对吧\"错关联）；多城/词典外城市不产出",
+        "**时序关键位**：确认应答恰是纯应答词，会命中纯应答闸门提前返回——裁决在闸门前计算，纯应答轮命中时跳过 LLM 但单写 city",
+        "发问方不限 Agent/真人经理；引用块内确认句不算"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "已知边界：城市识别依赖 geo 词典，裸名\"佛山\"类暂不产出，**随 geo-phase5 区划库扩容自动变宽**（与并行分支 chore/geo-phase5-closeout 天然协同，无文件交集）",
+        "确认问答裁决入档——Agent城市确认句+纯肯定应答=候选人亲证（证据化P1）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "typecheck / lint 干净；confirmation-facts 纯函数 spec 15 例 + session 集成 3 例，91 用例全绿",
+        "与 geo-phase5 分支无文件冲突（本 PR 只动 memory 域）"
+      ]
+    },
+    {
+      "number": "777",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/777",
+      "title": "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…",
+        "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）"
+      ],
+      "summary": [
+        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…",
+        "pre_booking 带外工单核验——human_oob 确定性切片（证据化 P1）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "pre_booking 带外工单核验——经理带外约面/已面试的候选人不再被复聊骚扰（证据化P1 h…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "typecheck / lint 干净；reengagement 全域 9 套件 194 用例通过",
+        "新增分类器 spec 11 例，含三条 badcase 的直接还原、僵尸单/时间窗边界、多工单取舍"
+      ]
+    },
+    {
+      "number": "766",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/766",
+      "title": "停止条件区分「已回话」与「回话被 timeout 静默丢弃」",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
+      ],
+      "summary": [
+        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`scenario-registry.spec.ts`：timeout 丢弃轮不算已回话（不停发）/ 正常回话仍停 / 宽限期内仍停 / 旧数据无水位保持旧行为",
+        "`reply-workflow.service.spec.ts`：成功投递与有意沉默均推进水位（取回调时间戳）、群聊不推进",
+        "全量：370 suites / 5757 tests 通过；`tsc --noEmit`、`eslint --max-warnings=0` 通过"
+      ]
+    },
+    {
+      "number": "771",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/771",
+      "title": "高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。",
+        "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
+        "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
+        "配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；",
+        "`dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；",
+        "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；"
+      ],
+      "summary": [
+        "高德配额耗尽补落库告警",
+        "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
+        "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
+        "配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；",
+        "`dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；",
+        "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；",
+        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。",
+        "高德 AMAP 配额/密钥失败补 monitoring_error_logs 落库 + 飞书告警"
+      ],
+      "features": [
+        "单测：新增 5 条业务失败上报用例，全 spec 39 通过。"
+      ],
+      "fixes": [
+        "`geocode` 全部 4 条 AMAP 请求路径（searchPoi / fetchPoiCandidates / geocodeStructured / reverseGeocode）对 `status !== '1'` 响应统一走 `reportAmapFailure`：",
+        "经 `IncidentReporterService`（`@Optional` 注入，与 SupabaseService 同款）落 `monitoring_error_logs` + 飞书告警；",
+        "配额/密钥类 infocode（10001/10003/10004/10009/10013/10044）升级 **ERROR**，其余 **WARNING**；",
+        "`dedupe` 按 infocode 聚合，飞书侧由 ALERT_THROTTLE（5min/3 条）节流；",
+        "`status = '1'` 但 0 结果的正常\"查无\"语义不变、不告警；"
+      ],
+      "optimizations": [],
+      "ops": [
+        "高德配额耗尽补落库告警"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc --noEmit` ✅ / 改动文件 eslint `--max-warnings=0` ✅ / `geocoding.service.spec.ts` 39/39 ✅"
+      ]
+    },
+    {
+      "number": "764",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/764",
+      "title": "剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
+      ],
+      "summary": [
+        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无",
+        "剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
+      ],
+      "features": [],
+      "fixes": [
+        "确定性剥离泛化统称\"店员/员工\"出 jobCategoryList——防在招岗位被误判查无"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`search.util.spec.ts` +4 例（剥离/保留/去空白/无泛化词）",
+        "`duliday-job-list.tool.spec.ts` +1 例：断言送 sponge 的 `jobCategoryList` 不再含\"店员\"、`resultCount=1` 非空、`queryMeta.jobCategoryUmbrellaStripped=[\"店员\"]`",
+        "全套：2 suites 110 passed；`tsc --noEmit` 0 错；eslint --max-warnings=0 通过"
+      ]
+    },
+    {
+      "number": "781",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/781",
+      "title": "地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "Phase 5 收口——删旧路径门面与过渡期数据表导出",
+        "清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…",
+        "invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径",
+        "brand-matcher 切 listUniqueDistrictCityEntries 稳定 API",
+        "§9.5 数据表改名落地——名称对齐真实语义",
+        "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关",
+        "地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化"
+      ],
+      "summary": [
+        "Phase 5 收口——删旧路径门面与过渡期数据表导出",
+        "清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…",
+        "invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径",
+        "brand-matcher 切 listUniqueDistrictCityEntries 稳定 API",
+        "§9.5 数据表改名落地——名称对齐真实语义",
+        "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关",
+        "地理领域改造收尾——Phase 5 收口 + 区名映射统一 + §9.5 改名 + Phase 4 全国数据生成化"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "Phase 5 收口——删旧路径门面与过渡期数据表导出",
+        "清理 geo-mappings 过时引用——memory 架构树与 guardrail 设计文档随…",
+        "invite 城市门接 geocode 确权出处 + 区名映射统一进查询路径",
+        "brand-matcher 切 listUniqueDistrictCityEntries 稳定 API",
+        "§9.5 数据表改名落地——名称对齐真实语义",
+        "Phase 4 全国行政区数据生成化——generated/overrides 分离 + 校验进 CI + 灰度开关"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "全量 jest：370 suites / 5766 tests 全绿（含 #765 turn_geocode 5 用例、生成表+开关 6 新用例）",
+        "typecheck / lint / format / geo:validate / build:ci 全通过（pre-push 钩子完整跑过）"
+      ]
     }
   ],
   "lastRelease": {

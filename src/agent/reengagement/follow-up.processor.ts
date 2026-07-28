@@ -30,6 +30,7 @@ import {
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
+import { evaluateOutOfBandWorkOrders, type OutOfBandWorkOrderVerdict } from './oob-work-order';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ReengagementAgentExecution } from './reengagement.agent';
 import {
@@ -269,6 +270,7 @@ export class FollowUpProcessor implements OnModuleInit {
     // 1) 停止条件（代码，调 LLM 之前）
     const stop = shouldStop(scenario, state, anchorAt, {
       externallyVerifiable: job.data.workOrderId != null,
+      now,
     });
     if (stop.stop) {
       this.logger.log(
@@ -311,6 +313,23 @@ export class FollowUpProcessor implements OnModuleInit {
       }
       if (scenarioCode === 'interview_reminder' && bookingContext.interviewAt! <= now) {
         this.tracking.trackStopped(identity, 'interview_time_passed');
+        return;
+      }
+    }
+
+    // 1.55) pre_booking 带外工单核验（human_oob 确定性切片，badcase recvqgvKqRAcKg 族）：
+    // pre_booking 场景只认 Agent 自建 terminal 态，经理带外约面/拒面、候选人已面试的
+    // 事实只在海绵工单里。到点按手机号查该候选人全部工单，在途/已推进即停。
+    // 无手机号或查询失败按放行降级（该闸历史上不存在，fail open 仅维持现状，
+    // 不让海绵抖动放大成全量复聊静默）。
+    if (scenario.phase === 'pre_booking') {
+      const oobVerdict = await this.checkOutOfBandWorkOrderAtFire(state, channelIdentity?.botImId);
+      if (oobVerdict) {
+        this.logger.log(
+          `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${oobVerdict.reason}` +
+            `（带外工单 workOrderId=${oobVerdict.workOrderId ?? '-'}）`,
+        );
+        this.tracking.trackStopped(identity, oobVerdict.reason);
         return;
       }
     }
@@ -495,6 +514,33 @@ export class FollowUpProcessor implements OnModuleInit {
       `[reengagement] 渠道身份兜底无结果，按空身份落库 sessionId=${jobData.sessionRef.sessionId}`,
     );
     return fromJob;
+  }
+
+  /**
+   * pre_booking 带外工单核验：按候选人手机号查海绵全部工单，交给纯分类器判停。
+   *
+   * 手机号来源是权威状态的 collectedFields（booking 写回或候选人自陈）；拿不到
+   * 手机号说明该候选人极大概率没走过任何报名流程，跳过核验不算漏。
+   * 查询失败 fail open：pre_booking 历史上没有这道闸，降级即维持现状行为。
+   */
+  private async checkOutOfBandWorkOrderAtFire(
+    state: AuthoritativeSessionState,
+    botImId?: string,
+  ): Promise<OutOfBandWorkOrderVerdict | null> {
+    const phone = state.collectedFields?.phone?.value?.trim();
+    if (!phone || !/^1\d{10}$/.test(phone)) return null;
+    try {
+      const result = await this.sponge.fetchSignupWorkOrders(
+        { phone },
+        botImId ? { botImId } : undefined,
+      );
+      return evaluateOutOfBandWorkOrders(result.workOrders ?? [], Date.now());
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 带外工单核验失败（fail open 放行）: ${this.errorMessage(error)}`,
+      );
+      return null;
+    }
   }
 
   /**

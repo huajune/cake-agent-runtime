@@ -153,6 +153,7 @@ describe('SessionService', () => {
         invitedGroups: null,
         terminal: null,
         lastCandidateMessageAt: null,
+        lastProcessedCandidateMessageAt: null,
         brand_state: null,
         lastJobListQuery: null,
       });
@@ -716,6 +717,76 @@ describe('SessionService', () => {
       ]);
 
       expect(mockRedisStore.patchHash).toHaveBeenCalled();
+    });
+  });
+
+  describe('确认问答裁决入档（P1 confirmation）', () => {
+    const factsState = () => ({
+      content: {
+        facts: { ...FALLBACK_EXTRACTION },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+    });
+
+    it('纯应答轮命中确认裁决 → 跳过 LLM 但单写 pref.city（source=candidate）', async () => {
+      mockRedisStore.get.mockResolvedValue(factsState());
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '日结的最好' },
+        { role: 'assistant', content: '方便确认下你是在沈阳市对吧？确认后我拉你进兼职群' },
+        { role: 'user', content: '好的' },
+      ]);
+
+      expect(mockLlm.generateStructured).not.toHaveBeenCalled();
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({
+              city: factValue('沈阳', { confidence: 'high', source: 'candidate' }),
+            }),
+          }),
+        }),
+        86400,
+      );
+    });
+
+    it('纯应答轮无确认句 → 维持原有跳过行为不写库', async () => {
+      mockRedisStore.get.mockResolvedValue(factsState());
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'assistant', content: '这家必胜客薪资 2000-2300 元/月' },
+        { role: 'user', content: '好的' },
+      ]);
+
+      expect(mockLlm.generateStructured).not.toHaveBeenCalled();
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
+    });
+
+    it('非纯应答轮（应答附带其他事实）走完整提取并注入确认城市', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'assistant', content: '你是在沈阳市对吧？' },
+        { role: 'user', content: '对' },
+        { role: 'user', content: '我25岁' },
+      ]);
+
+      expect(mockLlm.generateStructured).toHaveBeenCalled();
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({
+              city: factValue('沈阳', { confidence: 'high', source: 'candidate' }),
+            }),
+          }),
+        }),
+        86400,
+      );
     });
   });
 
@@ -1402,7 +1473,7 @@ describe('SessionService', () => {
 
     it('should backfill city from whitelist district when LLM leaves city null', async () => {
       // LLM 按 session-extraction prompt 对单独区名留 null city（防跨城同名）。
-      // 但 DISTRICT_TO_CITY 白名单已经把跨城同名排除，应当用确定性兜底补 city。
+      // 但 UNIQUE_SUBDIVISION_TO_CITY 白名单已经把跨城同名排除，应当用确定性兜底补 city。
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(
         mockStructured({

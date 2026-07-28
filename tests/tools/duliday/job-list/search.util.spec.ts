@@ -8,6 +8,7 @@ import {
   formatScheduleConstraintLabel,
   haversineDistance,
   scoreJobAgainstRequestedCategories,
+  stripGenericPositionUmbrella,
 } from '@tools/duliday/job-list/search.util';
 
 describe('job-list search util', () => {
@@ -306,6 +307,32 @@ describe('job-list search util', () => {
         reason: '岗位是全周强排班，与"只做周末"冲突',
       },
     ]);
+  });
+
+  describe('stripGenericPositionUmbrella（剥离泛化统称词，生产 badcase 6a66d888）', () => {
+    it('剥离"店员"及其变体，保留具体工种', () => {
+      const { cleaned, removed } = stripGenericPositionUmbrella(['店员', '收银员']);
+      expect(cleaned).toEqual(['收银员']);
+      expect(removed).toEqual(['店员']);
+    });
+
+    it('剥离"员工/工作人员"等纯统称', () => {
+      const { cleaned, removed } = stripGenericPositionUmbrella(['员工', '工作人员', '店员岗']);
+      expect(cleaned).toEqual([]);
+      expect(removed).toEqual(['员工', '工作人员', '店员岗']);
+    });
+
+    it('去空白、忽略空串，不误伤具体工种', () => {
+      const { cleaned, removed } = stripGenericPositionUmbrella([' 店员 ', '', '分拣员', '骑手']);
+      expect(cleaned).toEqual(['分拣员', '骑手']);
+      expect(removed).toEqual(['店员']);
+    });
+
+    it('无泛化词时原样保留', () => {
+      const { cleaned, removed } = stripGenericPositionUmbrella(['理货员', '促销员']);
+      expect(cleaned).toEqual(['理货员', '促销员']);
+      expect(removed).toEqual([]);
+    });
   });
 });
 

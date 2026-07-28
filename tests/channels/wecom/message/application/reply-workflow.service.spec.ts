@@ -100,6 +100,7 @@ describe('ReplyWorkflowService', () => {
   const session = {
     saveTerminalState: jest.fn(),
     recordCandidateActivity: jest.fn(),
+    recordCandidateMessagesProcessed: jest.fn(),
   };
   const alertNotifier = {
     sendSimpleAlert: jest.fn().mockResolvedValue(true),
@@ -268,6 +269,7 @@ describe('ReplyWorkflowService', () => {
     followUpScheduler.stopPendingJobsForSessionScenario.mockResolvedValue({ stopped: 1 });
     session.saveTerminalState.mockResolvedValue(undefined);
     session.recordCandidateActivity.mockResolvedValue(undefined);
+    session.recordCandidateMessagesProcessed.mockResolvedValue(undefined);
     interventionService.dispatch.mockResolvedValue({
       dispatched: true,
       paused: true,
@@ -300,6 +302,7 @@ describe('ReplyWorkflowService', () => {
       reengagementAnchors,
       alertNotifier as never,
       imageBrandBackfill as never,
+      session as never,
     );
   });
 
@@ -350,6 +353,25 @@ describe('ReplyWorkflowService', () => {
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('advances the processed-candidate watermark with the message callback timestamp on success', async () => {
+    await service.processSingleMessage(createMessage());
+    await flush();
+
+    expect(session.recordCandidateMessagesProcessed).toHaveBeenCalledWith(
+      'corp-1',
+      'im-contact-1',
+      'chat-1',
+      new Date(1713168000000),
+    );
+  });
+
+  it('does not advance the processed-candidate watermark for group chats', async () => {
+    await service.processSingleMessage(createMessage({ imRoomId: 'room-1' }));
+    await flush();
+
+    expect(session.recordCandidateMessagesProcessed).not.toHaveBeenCalled();
   });
 
   it('does not freeze callback token or api type into reengagement identities', async () => {
@@ -520,6 +542,13 @@ describe('ReplyWorkflowService', () => {
 
     expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    // 有意沉默也是成功处理：复聊「已处理」水位照常推进，回话即停的旧行为不变
+    expect(session.recordCandidateMessagesProcessed).toHaveBeenCalledWith(
+      'corp-1',
+      'im-contact-1',
+      'chat-1',
+      new Date(1713168000000),
+    );
   });
 
   it('runtime gate 短路（任意工具 shortCircuited:true）→ 跳过发送', async () => {

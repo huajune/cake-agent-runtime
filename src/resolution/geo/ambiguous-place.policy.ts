@@ -5,7 +5,7 @@
  * 仅凭 LLM 通识根本无法唯一对应某城市。geocode 工具命中这条黑名单时
  * 强制 Agent 先反问候选人城市，禁止凭通识补 city。
  *
- * 与"白名单 + 通识"的分工：白名单（DISTRICT_TO_CITY / LOCATION_TO_CITY）
+ * 与"白名单 + 通识"的分工：白名单（UNIQUE_SUBDIVISION_TO_CITY / UNIQUE_PLACE_ALIAS_TO_CITY）
  * 是高置信唯一对应；本黑名单是高置信非唯一。两者之间的灰区交给
  * LLM 通识 + geocode 多候选验证。
  *

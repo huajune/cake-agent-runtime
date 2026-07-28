@@ -8,9 +8,31 @@
  */
 
 import type { GeoSignalConflictShadow, ParentAdministrativeArea } from './geo.types';
-import { COUNTY_LEVEL_CITY_TO_PREFECTURE, DISTRICT_TO_CITY } from './administrative-division.data';
+import {
+  COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  UNIQUE_SUBDIVISION_TO_CITY,
+  HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
+} from './administrative-division.data';
+import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
+import { NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE } from './administrative-division.generated';
 import { normalizeDistrictForLookup } from './geo-name.normalizer';
 import { resolveCityFromLocation } from './place-alias.resolver';
+
+/**
+ * 全国县级市映射灰度开关（方案 §17.2，Phase 4 短期开关，收敛后删除）。
+ *
+ * geo 域零依赖、非 Nest module，无法走 ConfigService；直接读 process.env
+ * 是方案预期内的短期形态。每次调用实时读取（不缓存），便于测试与运维即改即生效。
+ */
+function isNationalCountyMappingEnabled(): boolean {
+  return process.env.GEO_NATIONAL_COUNTY_MAPPING_ENABLED === 'true';
+}
+
+/** 已知城市名全集：业务高置信裸地名别名 + 全国显式城市表的标准名（去重）。 */
+const KNOWN_CITY_NAMES: readonly string[] = [
+  ...HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
+  ...new Set(Object.values(NATIONAL_CITY_SUFFIX_TO_CITY)),
+];
 
 /**
  * 单个 district 名 → 城市（命中白名单则返回 city，否则 null）。
@@ -18,7 +40,7 @@ import { resolveCityFromLocation } from './place-alias.resolver';
  */
 export function resolveCityFromDistrict(candidate: string): string | null {
   const normalized = normalizeDistrictForLookup(candidate);
-  return DISTRICT_TO_CITY[candidate] ?? DISTRICT_TO_CITY[normalized] ?? null;
+  return UNIQUE_SUBDIVISION_TO_CITY[candidate] ?? UNIQUE_SUBDIVISION_TO_CITY[normalized] ?? null;
 }
 
 /**
@@ -87,13 +109,47 @@ export function detectGeoSignalConflict(
  * resolveParentAdministrativeArea('延吉') →
  *   { input:'延吉', canonicalName:'延吉市', level:'county_level_city', parentCity:'延边朝鲜族自治州' }
  *
- * 未收录（含待 Phase 3 补录的余姚/慈溪类）返回 null，不猜父级。
+ * 查询顺序：人工策展表（COUNTY_LEVEL_CITY_TO_PREFECTURE，海绵口径逐条实证）始终
+ * 优先；未命中且 GEO_NATIONAL_COUNTY_MAPPING_ENABLED=true 时回退全国生成表
+ * （administrative-division.generated.ts，Phase 4 灰度接入）。开关关闭时未收录
+ * 条目（含待补录的余姚/慈溪类）返回 null，不猜父级。
  */
 export function resolveParentAdministrativeArea(input: string): ParentAdministrativeArea | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
   const canonicalName = trimmed.endsWith('市') ? trimmed : `${trimmed}市`;
-  const parentCity = COUNTY_LEVEL_CITY_TO_PREFECTURE[canonicalName];
-  if (!parentCity) return null;
-  return { input, canonicalName, level: 'county_level_city', parentCity };
+  const curatedParent = COUNTY_LEVEL_CITY_TO_PREFECTURE[canonicalName];
+  if (curatedParent) {
+    return { input, canonicalName, level: 'county_level_city', parentCity: curatedParent };
+  }
+  if (isNationalCountyMappingEnabled()) {
+    const nationalParent = NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE[canonicalName];
+    if (nationalParent) {
+      return { input, canonicalName, level: 'county_level_city', parentCity: nationalParent };
+    }
+  }
+  return null;
+}
+
+/**
+ * 文本是否以已知城市名开头、且后面还有更具体内容（"常州钟楼区" → true，"常州" → false）。
+ *
+ * 供 infra/geocoding 的查询分类器判断"文本自带城市线索、可走结构化地址"（§11.1 消费场景）。
+ * 替代消费方直接拼接 HIGH_CONFIDENCE_BARE_LOCATION_ALIASES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
+ * （§8.1 过渡期导出收口，Phase 5）。
+ */
+/**
+ * 区名唯一映射的全量条目（district → city）只读视图。
+ *
+ * 供跨域消费方（brand 城市同形词门槛按城市索引区名后缀）建索引；Record 本身
+ * 不作为公共 API（§8.1 终态原则：行政区关系一律通过 resolver 查询）。
+ */
+export function listUniqueDistrictCityEntries(): ReadonlyArray<readonly [string, string]> {
+  return Object.entries(UNIQUE_SUBDIVISION_TO_CITY);
+}
+
+export function hasKnownCityPrefix(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return KNOWN_CITY_NAMES.some((city) => trimmed.startsWith(city) && trimmed.length > city.length);
 }
