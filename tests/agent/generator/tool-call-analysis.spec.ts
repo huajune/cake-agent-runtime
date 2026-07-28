@@ -6,6 +6,8 @@ import {
   computeResultCount,
   computeToolCallStatus,
   countToolCallsByName,
+  extractToolApiCode,
+  extractToolErrorType,
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
   hasCommittedSideEffect,
@@ -431,6 +433,47 @@ describe('tool-call-analysis', () => {
 
     it('returns false for empty tool calls', () => {
       expect(hasCommittedSideEffect([])).toBe(false);
+    });
+  });
+
+  describe('extractToolErrorType', () => {
+    it('returns the errorType string on a buildToolError result', () => {
+      expect(extractToolErrorType({ success: false, errorType: 'cancel.rejected' })).toBe(
+        'cancel.rejected',
+      );
+      expect(
+        extractToolErrorType({ success: false, errorType: 'modify_interview.request_failed' }),
+      ).toBe('modify_interview.request_failed');
+    });
+
+    it('returns undefined for success results (errorType null) so they carry no key', () => {
+      expect(extractToolErrorType({ success: true, errorType: null, workOrderId: 1 })).toBeUndefined();
+      expect(extractToolErrorType({ success: true })).toBeUndefined();
+    });
+
+    it('returns undefined for non-object / empty-string / missing errorType', () => {
+      expect(extractToolErrorType(undefined)).toBeUndefined();
+      expect(extractToolErrorType(null)).toBeUndefined();
+      expect(extractToolErrorType('cancel.rejected')).toBeUndefined();
+      expect(extractToolErrorType([{ errorType: 'x' }])).toBeUndefined();
+      expect(extractToolErrorType({ errorType: '' })).toBeUndefined();
+    });
+  });
+
+  describe('extractToolApiCode', () => {
+    it('returns the numeric downstream code (sponge business reject)', () => {
+      expect(extractToolApiCode({ errorType: 'cancel.rejected', apiCode: 30003 })).toBe(30003);
+    });
+
+    it('returns a non-empty string code', () => {
+      expect(extractToolApiCode({ errorType: 'x', apiCode: 'E_FULL' })).toBe('E_FULL');
+    });
+
+    it('returns undefined when apiCode is absent (request_failed / success)', () => {
+      expect(extractToolApiCode({ errorType: 'cancel.request_failed', reason: 'timeout' })).toBeUndefined();
+      expect(extractToolApiCode({ success: true })).toBeUndefined();
+      expect(extractToolApiCode({ apiCode: '' })).toBeUndefined();
+      expect(extractToolApiCode(undefined)).toBeUndefined();
     });
   });
 });

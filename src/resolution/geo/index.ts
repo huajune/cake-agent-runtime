@@ -21,6 +21,8 @@ export type {
 export { normalizeCityName, normalizeDistrictForLookup } from './geo-name.normalizer';
 export {
   detectGeoSignalConflict,
+  hasKnownCityPrefix,
+  listUniqueDistrictCityEntries,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
@@ -31,18 +33,5 @@ export { scanGeoSignalsFromText } from './geo-text-scan';
 export { hasGenericAmbiguousSuffix, GENERIC_AMBIGUOUS_SUFFIXES } from './ambiguous-place.policy';
 export { NATIONAL_CITY_BARE_NAMES } from './explicit-city.data';
 
-// —— 过渡期导出（消费者收口后随 Phase 5 删除）——
-// Phase 1 门面必须兜住现存全部导入符号（§4 依赖清单），否则迁移首日即编译失败。
-// 收口条件：三轮扫描编排迁入 scanGeoSignalsFromText（Phase 2）且岗位工具改用
-// resolveParentAdministrativeArea（Phase 3）之后，全库不再有文件需要触碰底层 Record。
-/** @deprecated 请改用 scanGeoSignalsFromText / resolveParentAdministrativeArea 等 API */
-export {
-  MUNICIPALITIES,
-  SUPPORTED_CITY_PREFIXES,
-  DISTRICT_TO_CITY,
-  COUNTY_LEVEL_CITY_TO_PREFECTURE,
-} from './administrative-division.data';
-/** @deprecated 同上 */
-export { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
-/** @deprecated 同上 */
-export { LOCATION_TO_CITY } from './place-alias.data';
+// 过渡期数据表导出已随 Phase 5 收口删除（§8.1）：行政区关系一律通过 resolver 查询，
+// 数据常量不是公共 API。域内测试需要断言数据现状时，直接从数据模块相对导入。

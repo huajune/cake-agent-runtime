@@ -78,6 +78,33 @@ const INTERVIEW_RESULT_INQUIRY_KEYWORDS = [
 const HUMAN_HANDOFF_EXACT_KEYWORDS = ['转人工', '转接人工'] as const;
 const HUMAN_HANDOFF_SHORT_KEYWORDS = ['找人工', '人工客服', '叫人工', '要人工'] as const;
 const HUMAN_HANDOFF_SHORT_MESSAGE_MAX_LENGTH = 8;
+
+/**
+ * 残障身份主动披露（产品+运营裁定 2026-07-28，badcase gkaszeip/zmuhev8o 簇：
+ * 聋哑候选人被约到拒收门店辗转两店当面被拒）：候选人主动披露残障身份或询问残障者
+ * 能否应聘时，确定性静默转人工，由真人判断如何沟通处理；Agent 不得输出任何自动
+ * 话术——"委婉拒绝"属残障就业歧视（《残疾人保障法》），绝不自动化，也不建
+ * 岗位侧筛选字段。
+ *
+ * 边界（防误伤 + 防画像）：
+ * - 只认**明确自述**与**资格询问**两种形态；严禁任何推断式识别（打字习惯、
+ *   表达方式、语音使用等一律不算）。
+ * - 自述式要求"我/本人"与"是/有"紧邻，天然排除"我爸是残疾人要照顾"等家属
+ *   描述——家属情况不是候选人本人身份，不触发。
+ */
+const DISABILITY_TERM =
+  '(?:聋哑|听障|听力障碍|视障|视力障碍|言语障碍|语言障碍|肢体残疾|残疾|残障|哑巴)';
+const DISABILITY_DISCLOSURE_PATTERNS: readonly RegExp[] = [
+  // 明确自述：我是聋哑人 / 我有残疾证 / 本人属于听障
+  new RegExp(`(?:我|本人)(?:是|有|也是|就是|属于)[的个]?${DISABILITY_TERM}`),
+  /(?:我|本人)(?:听不见|听不到|耳朵听不(?:见|到|清))/,
+  /我的?残疾证/,
+  // 资格询问（问者自涉）：聋哑人能做吗 / 残疾人要不要 / 收不收听障
+  new RegExp(
+    `${DISABILITY_TERM}(?:人|人士)?[^，。！？!?\\n]{0,6}(?:能|可以|行不行|要不要|收不收|招不招)`,
+  ),
+  new RegExp(`(?:招|收|要)(?:不(?:招|收|要))?[^，。！？!?\\n]{0,4}${DISABILITY_TERM}`),
+];
 /** 表情占位（[强]/[微笑]…）与标点，短消息长度判定前剥除。 */
 const EMOJI_PLACEHOLDER_RE = /\[[^\]]{1,8}\]/g;
 const PUNCTUATION_RE = /[\s，。！？!?~～、.…；;：:"'“”‘’()（）]/gu;
@@ -212,7 +239,32 @@ export class RiskInterceptService {
       return humanHandoffResult;
     }
 
+    const disabilityResult = this.detectDisabilityDisclosure(content);
+    if (disabilityResult.hit) {
+      return disabilityResult;
+    }
+
     return { hit: false };
+  }
+
+  /** 残障身份主动披露：见 DISABILITY_* 常量注释（只认明确自述/资格询问，禁推断）。 */
+  private detectDisabilityDisclosure(content: string): InputRiskDetectionResult {
+    const normalized = this.normalize(content);
+    const matched = DISABILITY_DISCLOSURE_PATTERNS.find((pattern) => pattern.test(normalized));
+    if (!matched) {
+      return { hit: false };
+    }
+
+    return {
+      hit: true,
+      riskType: 'disability_disclosure',
+      riskLabel: '候选人披露残障身份',
+      summary:
+        '候选人主动披露残障身份或询问残障者能否应聘，已静默暂停托管。合规敏感（残障就业受法律保护）：' +
+        '请真人尽快用同一账号自然接续，按岗位实际情况人工判断与沟通；不要使用任何模板式拒绝话术，' +
+        '不要提及 AI、机器人或转接。',
+      reason: `命中残障身份披露模式：${matched.source}`,
+    };
   }
 
   /** 候选人主动要求转人工：见 HUMAN_HANDOFF_* 常量注释（词表边界 + 短消息防误伤）。 */

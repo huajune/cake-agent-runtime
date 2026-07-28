@@ -6,6 +6,7 @@
  */
 
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
+import type { ToolErrorType } from '@tools/types/tool-error-types';
 import type { AgentToolCall } from './generator.types';
 
 /**
@@ -132,6 +133,41 @@ export function computeToolCallStatus(
     if (obj.skipped === true) return 'ok';
   }
   return 'unknown';
+}
+
+/**
+ * 从工具返回值提取 errorType（buildToolError 约定的机器可读错误分类）。
+ *
+ * 成功态 errorType 为 null → 返回 undefined，仅失败态携带非空 errorType。
+ * 落进 tool_call 观测事件 payload，供按失败子类低成本统计（如改约/取消工具的
+ * `*_request_failed` 瞬时抖动 vs `*_rejected` 业务拒绝），无需回刨
+ * message_processing_records 的大 jsonb（该列无索引、逐行解压会拖慢生产）。
+ */
+export function extractToolErrorType(result: unknown): ToolErrorType | undefined {
+  const obj = asRecord(result);
+  if (!obj) return undefined;
+  // errorType 恒由 buildToolError 产出，值域即 TOOL_ERROR_TYPES；从 unknown 结果读出后按该契约
+  // 收窄为 ToolErrorType——单一权威定义在 tool-error-types.ts，此处复用、不另立字符串类型。
+  return typeof obj.errorType === 'string' && obj.errorType.length > 0
+    ? (obj.errorType as ToolErrorType)
+    : undefined;
+}
+
+/**
+ * 提取工具透传的下游接口返回码（buildToolError 的 `details.apiCode`，被展开到返回值顶层；
+ * 如海绵 cancel/modify 的业务 code）。
+ *
+ * 仅业务拒绝态携带（`*_rejected`）；瞬时抛错自纠（`*_request_failed`，details 只有 reason）
+ * 与成功态均无此字段。与 errorType 一起落观测事件，用于区分"接口业务拒绝（有 apiCode）"
+ * 与"接口抖动/超时（无 apiCode）"——后者才是加重试可能捞回的类别。
+ */
+export function extractToolApiCode(result: unknown): string | number | undefined {
+  const obj = asRecord(result);
+  if (!obj) return undefined;
+  const code = obj.apiCode;
+  if (typeof code === 'number' && Number.isFinite(code)) return code;
+  if (typeof code === 'string' && code.length > 0) return code;
+  return undefined;
 }
 
 /**

@@ -1,6 +1,7 @@
 import {
   assertExtractionIdentityProvenance,
   assertNoExtractionExampleEcho,
+  hasIsStudentTopicEvidence,
   isPlaceholderPhone,
   isPromptExampleName,
 } from '@memory/facts/placeholder-identity';
@@ -142,5 +143,56 @@ describe('assertExtractionIdentityProvenance', () => {
     ).not.toThrow();
     expect(() => assertExtractionIdentityProvenance(null, PROMPT)).not.toThrow();
     expect(() => assertExtractionIdentityProvenance({}, PROMPT)).not.toThrow();
+  });
+});
+
+describe('hasIsStudentTopicEvidence（is_student 首写证据门，badcase 6a673402）', () => {
+  it('生产复现：候选人只说过"川沙"、助手只发过岗位卡片 → 无证据（该轮臆造 false 应被丢弃）', () => {
+    expect(
+      hasIsStudentTopicEvidence(
+        ['我通过了你的联系人验证请求，现在我们可以开始聊天了', '川沙'],
+        [
+          '你好呀～我们这边对接的门店全国连锁，就近给你分配比较方便。问下你现在主要在哪个区域呀？',
+          '川沙这边查到 4 个岗位：前厅服务员，班次 11:00-14:00，基础 24 元/小时，20-50 岁，需食品健康证',
+        ],
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    '不是学生',
+    '我还在读书',
+    '已经工作了',
+    '身份（学生/社会人士）：社会',
+    '请问能接受学生吗',
+    '我刚高考完想找暑期工作',
+  ])('候选人消息含身份词汇即有证据：%s', (text) => {
+    expect(hasIsStudentTopicEvidence([text], [])).toBe(true);
+  });
+
+  it('助手身份追问在场即有证据（覆盖"是社会人士对吧？→ 是的"确认式作答）', () => {
+    expect(hasIsStudentTopicEvidence(['是的'], ['你是社会人士对吧？'])).toBe(true);
+    expect(hasIsStudentTopicEvidence(['社会'], ['目前是学生还是社会人士？'])).toBe(true);
+  });
+
+  it('助手仅发过收资表单模板不算证据（模板在场≠候选人谈过身份）', () => {
+    expect(
+      hasIsStudentTopicEvidence(
+        ['好的，我明天下午有空'],
+        ['报名需要你发我这些资料：\n姓名：\n身份（学生/社会人士）：\n过往公司+岗位+年限：'],
+      ),
+    ).toBe(false);
+  });
+
+  it('候选人引用块里的身份词剥离后不算证据', () => {
+    expect(hasIsStudentTopicEvidence(['[引用 辛瑜琦：这家目前只招社会人士]\n好的'], [])).toBe(
+      false,
+    );
+  });
+
+  it('时间戳后缀不干扰词汇识别', () => {
+    expect(hasIsStudentTopicEvidence(['不是学生\n[消息发送时间：2026-07-27 18:49 星期一]'], [])).toBe(
+      true,
+    );
   });
 });

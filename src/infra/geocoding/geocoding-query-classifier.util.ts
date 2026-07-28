@@ -1,8 +1,4 @@
-import {
-  hasGenericAmbiguousSuffix,
-  NATIONAL_CITY_SUFFIX_TO_CITY,
-  SUPPORTED_CITY_PREFIXES,
-} from '@resolution/geo';
+import { hasGenericAmbiguousSuffix, hasKnownCityPrefix } from '@resolution/geo';
 import type { GeocodeQueryKind } from './geocoding.types';
 
 const METRO_STATION_PATTERN = /(?:地铁站|地铁|站)$/;
@@ -11,10 +7,6 @@ const ADMIN_AREA_PATTERN = /[一-龥]{2,}(?:省|市|区|县|镇|乡|街道)$/;
 const SPECIFIC_POI_PATTERN =
   /(?:广场|商场|购物中心|公园|小区|大厦|中心|商圈|市场|酒店|学校|医院|湾|坊)$/;
 const EXPLICIT_ADMIN_CONTEXT_PATTERN = /(?:省|市|自治州|地区)/;
-const EMBEDDED_CITY_PREFIXES = [
-  ...SUPPORTED_CITY_PREFIXES,
-  ...new Set(Object.values(NATIONAL_CITY_SUFFIX_TO_CITY)),
-];
 
 /**
  * 将候选人给出的地点线索先粗分类型，再决定该走 POI、结构化地址，还是两者合并。
@@ -46,9 +38,7 @@ export function hasEmbeddedCityHint(address: string): boolean {
   const trimmed = address.trim();
   if (!trimmed) return false;
   if (EXPLICIT_ADMIN_CONTEXT_PATTERN.test(trimmed)) return true;
-  return EMBEDDED_CITY_PREFIXES.some(
-    (city) => trimmed.startsWith(city) && trimmed.length > city.length,
-  );
+  return hasKnownCityPrefix(trimmed);
 }
 
 /**

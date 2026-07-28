@@ -313,3 +313,49 @@ export function filterJobsByRequestedCategories(jobs: any[], jobCategoryList: st
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
+ * 泛化统称类岗位工种词——候选人口语里的「店员/员工/工作人员」并不是 sponge 岗位分类轴上的
+ * 具体工种，而是「门店里干活的人」的笼统称呼。把它们塞进 jobCategoryList 会做 API 精确类目
+ * 过滤，几乎必然 0 命中（商超/连锁的真实工种是收银员/理货员/促销员/保洁员…，没有叫「店员」
+ * 的类目），且本地关键词兜底（{@link filterJobsByRequestedCategories}）也匹配不上——「店员」
+ * 不是任何真实工种名的子串，两字词又够不到字符重叠兜底。结果是明明有同品牌同商圈在招岗位，
+ * 却因这一个泛化词被误判「查无」。
+ *
+ * 生产 badcase 实证（chat 6a66d888，果蔬好·天津）：候选人「我想应聘店员」→ jobCategoryList=
+ * ["店员"] → 果蔬好乐提港店 6 个真实岗位（收银员/理货员/促销员/保洁员）被过滤为空，坐标放宽
+ * 到 30km 仍空。剥离「店员」后由品牌 + 城市/坐标继续召回，即可正常返回这些岗位。
+ *
+ * 只剥离「纯泛化统称」——它们语义上等价于「员工」，任何品牌都不会把岗位分类命名成这些词；
+ * 「收银员/分拣员/骑手」等具体工种一律不动。
+ */
+export const GENERIC_POSITION_UMBRELLA_WORDS = new Set<string>([
+  '店员',
+  '店员岗',
+  '门店店员',
+  '员工',
+  '普通员工',
+  '工作人员',
+]);
+
+/**
+ * 从 jobCategoryList 中剥离泛化统称词（{@link GENERIC_POSITION_UMBRELLA_WORDS}）。
+ * 与 stripLaborFormFromCategories 同形：返回剥离后的 cleaned 与被剥离的 removed，供观测日志/queryMeta 使用。
+ */
+export function stripGenericPositionUmbrella(categories: readonly string[]): {
+  cleaned: string[];
+  removed: string[];
+} {
+  const cleaned: string[] = [];
+  const removed: string[] = [];
+  for (const raw of categories) {
+    const trimmed = typeof raw === 'string' ? raw.trim() : '';
+    if (!trimmed) continue;
+    if (GENERIC_POSITION_UMBRELLA_WORDS.has(trimmed)) {
+      removed.push(trimmed);
+    } else {
+      cleaned.push(trimmed);
+    }
+  }
+  return { cleaned, removed };
+}

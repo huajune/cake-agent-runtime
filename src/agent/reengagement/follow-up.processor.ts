@@ -9,6 +9,8 @@ import {
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
@@ -30,6 +32,7 @@ import {
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
+import { evaluateOutOfBandWorkOrders, type OutOfBandWorkOrderVerdict } from './oob-work-order';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ReengagementAgentExecution } from './reengagement.agent';
 import {
@@ -146,6 +149,8 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly systemConfig: SystemConfigService,
     private readonly tracking: ReengagementTrackingService,
     private readonly messageTracking: MessageTrackingService,
+    private readonly chatSession: ChatSessionService,
+    private readonly messageProcessing: MessageProcessingService,
     private readonly sponge: SpongeService,
     private readonly longTerm: LongTermService,
     private readonly scheduler: FollowUpSchedulerService,
@@ -269,12 +274,33 @@ export class FollowUpProcessor implements OnModuleInit {
     // 1) 停止条件（代码，调 LLM 之前）
     const stop = shouldStop(scenario, state, anchorAt, {
       externallyVerifiable: job.data.workOrderId != null,
+      now,
     });
     if (stop.stop) {
       this.logger.log(
         `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${stop.reason}`,
       );
       this.tracking.trackStopped(identity, stop.reason ?? 'stopped');
+      return;
+    }
+
+    // 1.4) 候选人待答前置闸：候选人最后一条消息晚于我方最后一条消息，且从未进过
+    // 处理管道（无对应 message_processing_record）时，说明该轮被静默丢弃、候选人
+    // 还在等回复——任何主动触达都不该压在未答消息上面（badcase recvqz4yWbdIKm：
+    // 候选人 7/24 自曝暑假工身份的三条消息被丢，7/27 面试提醒照发触怒候选人）。
+    // 与"Agent 主动沉默"区分：主动沉默的轮次有处理记录，本闸不拦。
+    // 命中即停止并落触达底账（reason=pending_candidate_message），该信号同时是
+    // 主链丢消息的显性化探针，值得告警排查。
+    const pendingCandidateMessageAt = await this.detectPendingCandidateMessage(
+      sessionRef.sessionId,
+      now,
+    );
+    if (pendingCandidateMessageAt != null) {
+      this.logger.warn(
+        `[reengagement] 候选人待答闸命中，停止 ${scenarioCode} sessionId=${sessionRef.sessionId} ` +
+          `候选人最后消息 ${new Date(pendingCandidateMessageAt).toISOString()} 未被处理（疑似主链丢 turn）`,
+      );
+      this.tracking.trackStopped(identity, 'pending_candidate_message');
       return;
     }
 
@@ -315,10 +341,32 @@ export class FollowUpProcessor implements OnModuleInit {
       }
     }
 
-    // 1.6) 同 session 触达冷却：跨场景兜底互斥，避免候选人短时间内收到感知重复追问。
+    // 1.55) pre_booking 带外工单核验（human_oob 确定性切片，badcase recvqgvKqRAcKg 族）：
+    // pre_booking 场景只认 Agent 自建 terminal 态，经理带外约面/拒面、候选人已面试的
+    // 事实只在海绵工单里。到点按手机号查该候选人全部工单，在途/已推进即停。
+    // 无手机号或查询失败按放行降级（该闸历史上不存在，fail open 仅维持现状，
+    // 不让海绵抖动放大成全量复聊静默）。
+    if (scenario.phase === 'pre_booking') {
+      const oobVerdict = await this.checkOutOfBandWorkOrderAtFire(state, channelIdentity?.botImId);
+      if (oobVerdict) {
+        this.logger.log(
+          `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${oobVerdict.reason}` +
+            `（带外工单 workOrderId=${oobVerdict.workOrderId ?? '-'}）`,
+        );
+        this.tracking.trackStopped(identity, oobVerdict.reason);
+        return;
+      }
+    }
+
+    // 1.6) 同 session 触达冷却：跨场景兜底互斥，避免候选人短时间内收到**连续无回应**
+    // 追问。候选人在上次触达后已回话时冷却不适用（对话恢复过，本次锚点是新一段
+    // 沉默）——否则开场唤醒会把 booking_incomplete 等深漏斗跟进一并压住
+    // （badcase recvqD1PRROepW）。
     if (
       !scenario.sessionCooldownExempt &&
-      (await this.touchLedger.isInSessionTouchCooldown(sessionRef.sessionId, now))
+      (await this.touchLedger.isInSessionTouchCooldown(sessionRef.sessionId, now, {
+        candidateRepliedAt: state.lastCandidateMessageAt ?? null,
+      }))
     ) {
       this.logger.log(
         `[reengagement] 同会话触达冷却，丢弃 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
@@ -495,6 +543,75 @@ export class FollowUpProcessor implements OnModuleInit {
       `[reengagement] 渠道身份兜底无结果，按空身份落库 sessionId=${jobData.sessionRef.sessionId}`,
     );
     return fromJob;
+  }
+
+  /**
+   * 候选人待答检测（触达前置闸 1.4 的实现）。
+   *
+   * 判定条件（全部满足才算"待答"，返回候选人最后消息时间戳；否则 null）：
+   * 1. 会话最后一条消息是候选人的（role=user；AI 回复与真人手打均落 role=assistant，
+   *    任一方说了最后一句都不算待答）；
+   * 2. 该消息已超过宽限期（避免把在途 debounce/处理中的轮次误判为丢失）；
+   * 3. 该消息从未进入处理管道——chat 最近一条 message_processing_record 的
+   *    received_at 早于该消息（留合并批次锚点容差）。**有处理记录即不拦**：
+   *    Agent 主动沉默是合法出站结果，其轮次有记录。
+   *
+   * 历史/流水查询失败一律 fail open（返回 null 放行触达）——本闸是体验加固，
+   * 不能因观测数据不可用把复聊整体憋死。
+   */
+  private async detectPendingCandidateMessage(
+    sessionId: string,
+    now: number,
+  ): Promise<number | null> {
+    const GRACE_MS = 10 * 60 * 1000;
+    // received_at 是 debounce 合并批次的锚点，可能略早于批内最后一条消息的存储时间戳
+    const MERGE_TOLERANCE_MS = 2 * 60 * 1000;
+    try {
+      const history = await this.chatSession.getChatHistory(sessionId, 10);
+      if (history.length === 0) return null;
+      const last = history[history.length - 1];
+      if (last.role !== 'user') return null;
+      const lastUserAt = last.timestamp;
+      if (!Number.isFinite(lastUserAt)) return null;
+      if (now - lastUserAt < GRACE_MS) return null;
+      const latestProcessedAt = await this.messageProcessing.getLatestReceivedAtByChatId(sessionId);
+      if (latestProcessedAt != null && latestProcessedAt >= lastUserAt - MERGE_TOLERANCE_MS) {
+        return null;
+      }
+      return lastUserAt;
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 候选人待答检测失败，按放行处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * pre_booking 带外工单核验：按候选人手机号查海绵全部工单，交给纯分类器判停。
+   *
+   * 手机号来源是权威状态的 collectedFields（booking 写回或候选人自陈）；拿不到
+   * 手机号说明该候选人极大概率没走过任何报名流程，跳过核验不算漏。
+   * 查询失败 fail open：pre_booking 历史上没有这道闸，降级即维持现状行为。
+   */
+  private async checkOutOfBandWorkOrderAtFire(
+    state: AuthoritativeSessionState,
+    botImId?: string,
+  ): Promise<OutOfBandWorkOrderVerdict | null> {
+    const phone = state.collectedFields?.phone?.value?.trim();
+    if (!phone || !/^1\d{10}$/.test(phone)) return null;
+    try {
+      const result = await this.sponge.fetchSignupWorkOrders(
+        { phone },
+        botImId ? { botImId } : undefined,
+      );
+      return evaluateOutOfBandWorkOrders(result.workOrders ?? [], Date.now());
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 带外工单核验失败（fail open 放行）: ${this.errorMessage(error)}`,
+      );
+      return null;
+    }
   }
 
   /**

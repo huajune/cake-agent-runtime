@@ -590,8 +590,9 @@ src/memory/
 │
 ├── facts/                            # 规则 / 别名识别
 │   ├── high-confidence-facts.ts      # 当前轮高置信识别（旁路），含 FIELD_EXTRACTORS 注册表
+│   │                                 #   地理扫描消费 @resolution/geo 的 scanGeoSignalsFromText
+│   │                                 #   （原 geo-mappings.ts 已迁出为 src/resolution/geo 域并删除门面）
 │   ├── fact-merge.util.ts            # 规则/LLM 合并 + 跨轮置信度守卫共享原语
-│   ├── geo-mappings.ts               # 城市 / 区域 / 商圈别名
 │   ├── labor-form.ts                 # 用工形式规范化
 │   └── name-guard.ts                 # 姓名真伪判定
 │

@@ -139,13 +139,42 @@ describe('evaluateInviteCityGate', () => {
     ).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
   });
 
-  it('does not treat ambiguous district names (朝阳/通州) as provenance', () => {
+  it('accepts business-biased district names (朝阳/通州) after unifying on @resolution/geo whitelist', () => {
+    // 2026-07-28 裁定翻转：原私表按"全国无重名"拒收朝阳（长春）/通州（南通），
+    // 但提取层对同一句话本就按业务偏置写 city=北京 高置信事实，gate 下一轮凭
+    // session_fact 放行——原"更严"仅同轮内生效，属幻觉严格性。统一对齐提取层口径。
     const verdict = evaluateInviteCityGate({
       requestedCity: '北京',
       sessionCity: null,
       userTexts: ['我在朝阳这边', '通州也行'],
     });
-    expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('allows via district inference for 黄埔→广州 / 宝安→深圳 (unified geo whitelist)', () => {
+    expect(
+      evaluateInviteCityGate({
+        requestedCity: '广州',
+        sessionCity: null,
+        userTexts: ['我在黄埔区这边找工作'],
+      }),
+    ).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+    expect(
+      evaluateInviteCityGate({
+        requestedCity: '深圳',
+        sessionCity: null,
+        userTexts: ['宝安这边有吗'],
+      }),
+    ).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
+  });
+
+  it('allows via landmark inference (陆家嘴→上海, high-confidence place alias via geo scan)', () => {
+    const verdict = evaluateInviteCityGate({
+      requestedCity: '上海',
+      sessionCity: null,
+      userTexts: ['我在陆家嘴上班，想找附近兼职'],
+    });
+    expect(verdict).toEqual({ decision: 'allow', matchedBy: 'district_inference' });
   });
 
   it('district inference for a different city is not evidence for the requested city', () => {
@@ -164,5 +193,60 @@ describe('evaluateInviteCityGate', () => {
       userTexts: ['我在沪上找活'],
     });
     expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+  });
+
+  describe('turn_geocode 档（同轮 geocode 确权，v10.31.0 残留同轮空档修复）', () => {
+    it('allows when this turn geocode uniquely resolved the requested city (badcase 6a680c63: 高明万悦天地→佛山)', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '佛山市',
+        sessionCity: null,
+        userTexts: ['高明万悦天地这边有招人吗'],
+        turnResolvedCities: ['佛山市'],
+      });
+      expect(verdict).toEqual({ decision: 'allow', matchedBy: 'turn_geocode' });
+    });
+
+    it('normalizes 市 suffix between requested and resolved city (badcase 6a66d0f8: 莘庄→上海)', () => {
+      // 原 badcase 文本"莘庄附近…"在统一 geo 白名单后会先被 district_inference
+      // 命中（莘庄是高置信地标）；此处改用不撞白名单的文本，保持本用例
+      // 专测 turn_geocode 档的"市"后缀归一化路径。
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '上海市',
+        sessionCity: null,
+        userTexts: ['这附近有日结工作吗？'],
+        turnResolvedCities: ['上海'],
+      });
+      expect(verdict).toEqual({ decision: 'allow', matchedBy: 'turn_geocode' });
+    });
+
+    it('turn geocode wins over conflicting session fact (fresh location clue this turn)', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '佛山',
+        sessionCity: '上海',
+        userTexts: ['高明万悦天地这边有招人吗'],
+        turnResolvedCities: ['佛山市'],
+      });
+      expect(verdict).toEqual({ decision: 'allow', matchedBy: 'turn_geocode' });
+    });
+
+    it('a resolved city different from the requested one is not evidence', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '广州',
+        sessionCity: null,
+        userTexts: ['高明万悦天地这边有招人吗'],
+        turnResolvedCities: ['佛山市'],
+      });
+      expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    });
+
+    it('null/empty anchors are ignored safely', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '杭州',
+        sessionCity: null,
+        userTexts: [],
+        turnResolvedCities: [null, undefined, ''],
+      });
+      expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    });
   });
 });

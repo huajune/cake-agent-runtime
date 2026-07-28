@@ -960,6 +960,12 @@ export interface WeworkSessionState {
   /** 候选人最后一次入站消息时间（ISO）；复聊 shouldStop 用「锚点后已回话」停发。可选：旧数据无此键。 */
   lastCandidateMessageAt?: string | null;
   /**
+   * 已被系统成功处理（正常回复或有意沉默）的候选人消息时间水位（ISO）。
+   * 与 lastCandidateMessageAt 比对可识别被 timeout 静默丢弃的回话（复聊停止判定用）。
+   * 可选：旧数据无此键。
+   */
+  lastProcessedCandidateMessageAt?: string | null;
+  /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
    * 写入只经 turn-finalizer 的 brand_state reducer（单一门）；preferences.brands 是它的只读投影。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
@@ -1002,6 +1008,7 @@ export const WeworkSessionStateSchema = z.object({
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
   terminal: z.enum(['booked', 'handed_off', 'rejected', 'onboarded']).nullable().optional(),
   lastCandidateMessageAt: z.string().nullable().optional(),
+  lastProcessedCandidateMessageAt: z.string().nullable().optional(),
   brand_state: PersistedBrandStateSchema.nullable().optional(),
   lastJobListQuery: JobListQueryRecordSchema.nullable().optional(),
 });
@@ -1015,6 +1022,7 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   invitedGroups: null,
   terminal: null,
   lastCandidateMessageAt: null,
+  lastProcessedCandidateMessageAt: null,
   brand_state: null,
   lastJobListQuery: null,
 };

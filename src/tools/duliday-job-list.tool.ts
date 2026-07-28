@@ -48,6 +48,7 @@ import {
   filterJobsToAppliedBrands,
   formatScheduleConstraintLabel,
   haversineDistance,
+  stripGenericPositionUmbrella,
 } from '@tools/duliday/job-list/search.util';
 import {
   buildBrandQueryPlan,
@@ -195,7 +196,7 @@ const inputSchema = z.object({
     .optional()
     .default([])
     .describe(
-      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n严禁填入"全职"、"兼职"、"小时工"、"寒假工"、"暑假工"、"临时工"等用工形式词——用工形式是岗位的 laborForm 属性、不是岗位工种，按工具的用工形式过滤处理（候选人意向已从会话事实自动读取），不要塞进 jobCategoryList。若召回为空，先清空 jobCategoryList 放宽重查。',
+      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n也不要填"店员""员工""工作人员"等泛化统称——它们不是具体工种(商超/连锁的真实工种是收银员/理货员/促销员/保洁员…)，作类目过滤只会误伤把在招岗位查成空；候选人只说"想应聘店员"时靠品牌+城市/坐标召回即可。\n严禁填入"全职"、"兼职"、"小时工"、"寒假工"、"暑假工"、"临时工"等用工形式词——用工形式是岗位的 laborForm 属性、不是岗位工种，按工具的用工形式过滤处理（候选人意向已从会话事实自动读取），不要塞进 jobCategoryList。若召回为空，先清空 jobCategoryList 放宽重查。',
     ),
   brandIdList: z
     .array(z.number().int())
@@ -792,13 +793,24 @@ export function buildJobListTool(
           });
         }
 
-        // 兜底：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
+        // 兜底 1：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
         // 用工形式是岗位 laborForm 属性，不是岗位工种，不应作为 category 查询条件。
-        const { cleaned: sanitizedJobCategoryList, removed: removedCategoryWords } =
-          stripLaborFormFromCategories(jobCategoryList);
+        const laborFormStrip = stripLaborFormFromCategories(jobCategoryList);
+        // 兜底 2：剔除「店员/员工/工作人员」等泛化统称——它们不是 sponge 岗位分类轴上的具体工种，
+        // 作精确类目过滤几乎必然 0 命中（真实工种是收银员/理货员/促销员…），会把同品牌同商圈的
+        // 在招岗位误判为「查无」（生产 badcase：果蔬好·天津 chat 6a66d888）。
+        const umbrellaStrip = stripGenericPositionUmbrella(laborFormStrip.cleaned);
+        const sanitizedJobCategoryList = umbrellaStrip.cleaned;
+        const removedCategoryWords = laborFormStrip.removed;
+        const removedUmbrellaCategoryWords = umbrellaStrip.removed;
         if (removedCategoryWords.length > 0) {
           logger.warn(
             `jobCategoryList 兜底剔除用工形式词: ${removedCategoryWords.join('、')}（原始: ${JSON.stringify(jobCategoryList)}）`,
+          );
+        }
+        if (removedUmbrellaCategoryWords.length > 0) {
+          logger.warn(
+            `jobCategoryList 兜底剔除泛化统称词: ${removedUmbrellaCategoryWords.join('、')}（原始: ${JSON.stringify(jobCategoryList)}）`,
           );
         }
 
@@ -1581,6 +1593,9 @@ export function buildJobListTool(
           result.queryMeta = {
             storeMatchStrategy,
             jobCategoryMatchStrategy,
+            // 泛化统称（店员/员工…）被确定性剥离出 jobCategoryList 的记录，供排障对账
+            jobCategoryUmbrellaStripped:
+              removedUmbrellaCategoryWords.length > 0 ? removedUmbrellaCategoryWords : null,
             // 跨轮重复查询：本轮实质过滤条件与上一轮完全一致（观测排障用）
             repeatQuery: isRepeatQuery
               ? { repeated: true, previousTurnId: previousQuery?.turnId ?? null }

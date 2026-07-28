@@ -101,6 +101,29 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     expect(await ledger.countSentIn24h('s1', now)).toBe(1);
   });
 
+  it('候选人在上次触达后已回话 → 冷却不适用（badcase recvqD1PRROepW 深漏斗跟进被开场唤醒压住）', async () => {
+    const now = 100 * 60 * 60 * 1000;
+    await ledger.markSent('a', 's1', now);
+    const later = now + 60 * 60 * 1000; // 仍在 2h 冷却窗内
+
+    // 候选人在触达后回了话：冷却被对话恢复打断
+    expect(
+      await ledger.isInSessionTouchCooldown('s1', later, {
+        candidateRepliedAt: now + 10 * 60 * 1000,
+      }),
+    ).toBe(false);
+    // 候选人最后发言早于触达（连续无回应追问）：冷却仍生效
+    expect(
+      await ledger.isInSessionTouchCooldown('s1', later, {
+        candidateRepliedAt: now - 10 * 60 * 1000,
+      }),
+    ).toBe(true);
+    // 不传候选人时间戳：保持旧行为
+    expect(await ledger.isInSessionTouchCooldown('s1', later, { candidateRepliedAt: null })).toBe(
+      true,
+    );
+  });
+
   it('failed/unknown do NOT count toward frequency (only sent does)', async () => {
     const now = 100 * 60 * 60 * 1000;
     await ledger.reserve('a');

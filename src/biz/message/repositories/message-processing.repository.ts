@@ -129,6 +129,31 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
+   * 会话最近一条处理记录的 received_at（毫秒时间戳）。
+   *
+   * 供复聊触达前置闸判断"候选人最后一条消息是否进过处理管道"：候选人消息晚于
+   * 该时间戳且超出宽限期，说明该轮从未被处理（静默丢 turn），任何主动触达都应
+   * 暂停。无记录/查询失败返回 null，由调用方 fail open。
+   */
+  async getLatestReceivedAtByChatId(chatId: string): Promise<number | null> {
+    if (!this.isAvailable()) {
+      return null;
+    }
+    try {
+      const rows = await this.select<{ received_at: string }>('received_at', (q) =>
+        q.eq('chat_id', chatId).order('received_at', { ascending: false }).limit(1),
+      );
+      const raw = rows[0]?.received_at;
+      if (!raw) return null;
+      const ts = new Date(raw).getTime();
+      return Number.isFinite(ts) ? ts : null;
+    } catch (error) {
+      this.logger.error(`[消息处理记录] 查询会话最近处理时间失败 [${chatId}]:`, error);
+      return null;
+    }
+  }
+
+  /**
    * 获取最慢的处理请求（按 AI 处理耗时降序）
    */
   async getSlowestMessages(
