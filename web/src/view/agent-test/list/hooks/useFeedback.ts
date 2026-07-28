@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { ApiError, NetworkError } from '@/api/client';
 import { submitFeedback, FeedbackType } from '@/api/services/agent-test.service';
 import type { FeedbackSource, FeedbackSourceTrace } from '@/api/types/agent-test.types';
+import type { BadcasePriority } from '@/api/types/agent-test.types';
 
 export const MAX_FEEDBACK_SCREENSHOTS = 5;
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
@@ -20,6 +21,8 @@ export interface UseFeedbackReturn {
   feedbackType: FeedbackType | null;
   scenarioType: string;
   remark: string;
+  priority: BadcasePriority;
+  expectedBehavior: string;
   screenshots: string[];
   isSubmitting: boolean;
   successType: FeedbackType | null;
@@ -30,6 +33,8 @@ export interface UseFeedbackReturn {
   closeModal: () => void;
   setScenarioType: (type: string) => void;
   setRemark: (remark: string) => void;
+  setPriority: (priority: BadcasePriority) => void;
+  setExpectedBehavior: (expectedBehavior: string) => void;
   addScreenshots: (files: Iterable<File>) => void;
   removeScreenshot: (index: number) => void;
   submit: (payload: {
@@ -90,6 +95,8 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
   const [feedbackType, setFeedbackType] = useState<FeedbackType | null>(null);
   const [scenarioType, setScenarioType] = useState('');
   const [remark, setRemark] = useState('');
+  const [priority, setPriority] = useState<BadcasePriority>('P2');
+  const [expectedBehavior, setExpectedBehavior] = useState('');
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successType, setSuccessType] = useState<FeedbackType | null>(null);
@@ -99,6 +106,8 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
     setFeedbackType(type);
     setScenarioType('');
     setRemark('');
+    setPriority('P2');
+    setExpectedBehavior('');
     setScreenshots([]);
     setSubmitError(null);
     setIsOpen(true);
@@ -109,6 +118,8 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
     setFeedbackType(null);
     setScenarioType('');
     setRemark('');
+    setPriority('P2');
+    setExpectedBehavior('');
     setScreenshots([]);
     setSubmitError(null);
   }, []);
@@ -198,7 +209,10 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
           type: submittedType,
           chatHistory: chatHistory.trim(),
           userMessage: userMessage?.trim() || undefined,
-          errorType: scenarioType || undefined, // 后端历史字段名，实际承载 BadCase「分类」
+          errorType: scenarioType || undefined, // 后端历史字段名，实际承载 BadCase「问题原因」
+          priority: submittedType === 'badcase' ? priority : undefined,
+          expectedBehavior:
+            submittedType === 'badcase' ? expectedBehavior.trim() || undefined : undefined,
           remark: remark || undefined,
           chatId,
           messageId,
@@ -231,7 +245,17 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
         setIsSubmitting(false);
       }
     },
-    [feedbackType, scenarioType, remark, screenshots, source, closeModal, onError],
+    [
+      feedbackType,
+      scenarioType,
+      priority,
+      expectedBehavior,
+      remark,
+      screenshots,
+      source,
+      closeModal,
+      onError,
+    ],
   );
 
   const clearSuccess = useCallback(() => {
@@ -243,6 +267,8 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
     feedbackType,
     scenarioType,
     remark,
+    priority,
+    expectedBehavior,
     screenshots,
     isSubmitting,
     successType,
@@ -251,6 +277,8 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
     closeModal,
     setScenarioType,
     setRemark,
+    setPriority,
+    setExpectedBehavior,
     addScreenshots,
     removeScreenshot,
     submit,

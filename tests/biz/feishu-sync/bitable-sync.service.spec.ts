@@ -27,6 +27,11 @@ describe('FeishuBitableSyncService', () => {
           { field_name: '标题' },
           { field_name: '状态' },
           { field_name: '优先级' },
+          { field_name: '期望处理方式' },
+          { field_name: '首次发现时间' },
+          { field_name: '状态更新时间' },
+          { field_name: '处理结论' },
+          { field_name: '待确认方' },
           { field_name: '来源' },
           { field_name: '亮点类型' },
           { field_name: '是否可复用' },
@@ -36,6 +41,7 @@ describe('FeishuBitableSyncService', () => {
           { field_name: '聊天记录' },
           { field_name: '用户消息' },
           { field_name: '用例名称' },
+          { field_name: '问题原因' },
           { field_name: '分类' },
           { field_name: '备注' },
           { field_name: 'chatId' },
@@ -188,6 +194,8 @@ describe('FeishuBitableSyncService', () => {
         chatHistory: '用户: 你好\nAgent: 您好！',
         userMessage: '你好',
         errorType: '信息错误',
+        priority: 'P1',
+        expectedBehavior: '先核实薪资口径',
         remark: '薪资数据不准确',
         chatId: 'chat_001',
         messageId: 'msg_001',
@@ -205,9 +213,14 @@ describe('FeishuBitableSyncService', () => {
           问题主键: expect.any(String),
           标题: '薪资数据不准确',
           状态: '待分析',
-          优先级: 'P2',
+          优先级: 'P1',
+          期望处理方式: '先核实薪资口径',
+          首次发现时间: expect.any(Number),
+          状态更新时间: expect.any(Number),
+          处理结论: '待归因',
+          待确认方: '无',
           来源: 'AgentTest',
-          分类: '信息错误',
+          问题原因: '信息错误',
           chatId: 'chat_001',
           message_id: 'msg_001',
           traceId: 'trace_001',
@@ -497,9 +510,12 @@ describe('FeishuBitableSyncService', () => {
 
   describe('updateBadcaseStatuses', () => {
     const updateRecord = jest.fn();
+    const getRecord = jest.fn();
     beforeEach(() => {
       updateRecord.mockReset();
+      getRecord.mockReset();
       (mockBitableApi as unknown as { updateRecord: jest.Mock }).updateRecord = updateRecord;
+      (mockBitableApi as unknown as { getRecord: jest.Mock }).getRecord = getRecord;
       mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
     });
 
@@ -558,6 +574,64 @@ describe('FeishuBitableSyncService', () => {
       expect(result.success).toBe(1);
       expect(result.failed).toBe(1);
       expect(result.errors).toEqual(['rec_b: rate limited']);
+    });
+
+    it('should require both scenario and conversation evidence before resolving', async () => {
+      mockBitableApi.getFields.mockResolvedValue([
+        { field_name: '状态' },
+        { field_name: '解决时间' },
+        { field_name: '处理结论' },
+        { field_name: '测试证据JSON' },
+        { field_name: '证据结论' },
+        { field_name: '评审来源' },
+      ] as any);
+      let storedFields: Record<string, unknown> = { 状态: '处理中' };
+      getRecord.mockImplementation(async () => ({
+        record_id: 'rec_a',
+        fields: storedFields,
+      }));
+      updateRecord.mockImplementation(async (_app, _table, _record, fields) => {
+        storedFields = { ...storedFields, ...fields };
+        return { success: true };
+      });
+
+      await service.updateBadcaseStatuses([
+        {
+          recordId: 'rec_a',
+          status: '已解决',
+          evidence: {
+            kind: 'scenario',
+            batchId: 'batch-s',
+            assetIds: ['case-1'],
+            executionIds: ['exec-1'],
+            reviewStatus: 'passed',
+            reviewerSources: ['claude'],
+            reviewedAt: '2026-07-28T01:00:00.000Z',
+          },
+        },
+      ]);
+      expect(storedFields['状态']).toBe('待验证');
+      expect(storedFields['解决时间']).toBeUndefined();
+
+      await service.updateBadcaseStatuses([
+        {
+          recordId: 'rec_a',
+          status: '已解决',
+          evidence: {
+            kind: 'conversation',
+            batchId: 'batch-c',
+            assetIds: ['validation-1'],
+            executionIds: ['exec-2'],
+            reviewStatus: 'passed',
+            reviewerSources: ['claude'],
+            reviewedAt: '2026-07-28T02:00:00.000Z',
+          },
+        },
+      ]);
+      expect(storedFields['状态']).toBe('已解决');
+      expect(storedFields['解决时间']).toEqual(expect.any(Number));
+      expect(storedFields['处理结论']).toBe('修复验证通过');
+      expect(storedFields['评审来源']).toEqual(['claude']);
     });
   });
 });

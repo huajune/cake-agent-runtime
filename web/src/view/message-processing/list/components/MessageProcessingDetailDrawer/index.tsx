@@ -50,8 +50,12 @@ export default function MessageProcessingDetailDrawer({
     isSubmitting,
     openModal,
     remark,
+    priority,
+    expectedBehavior,
     scenarioType,
     setRemark,
+    setPriority,
+    setExpectedBehavior,
     setScenarioType,
     submit,
     submitError,
@@ -329,12 +333,16 @@ export default function MessageProcessingDetailDrawer({
           feedbackType={feedbackType}
           scenarioType={scenarioType}
           remark={remark}
+          priority={priority}
+          expectedBehavior={expectedBehavior}
           isSubmitting={isSubmitting}
           chatHistoryPreview={chatHistoryPreview}
           submitError={submitError}
           onClose={closeModal}
           onScenarioTypeChange={setScenarioType}
           onRemarkChange={setRemark}
+          onPriorityChange={setPriority}
+          onExpectedBehaviorChange={setExpectedBehavior}
           onSubmit={handleSubmitFeedback}
         />
       </div>

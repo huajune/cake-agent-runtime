@@ -74,10 +74,14 @@ export default function MessageDetail({
     isSubmitting,
     openModal,
     remark,
+    priority,
+    expectedBehavior,
     removeScreenshot,
     scenarioType,
     screenshots,
     setRemark,
+    setPriority,
+    setExpectedBehavior,
     setScenarioType,
     submit,
     submitError,
@@ -101,10 +105,9 @@ export default function MessageDetail({
       messages
         .map((msg) => {
           const isAssistant = isAssistantMessage(msg);
-          const displayName =
-            isAssistant
-              ? msg.managerName || currentSession?.managerName || '招募经理'
-              : msg.candidateName || currentSession?.candidateName || '候选人';
+          const displayName = isAssistant
+            ? msg.managerName || currentSession?.managerName || '招募经理'
+            : msg.candidateName || currentSession?.candidateName || '候选人';
           return `[${formatTime(msg.timestamp)} ${displayName}] ${msg.content}`;
         })
         .join('\n'),
@@ -116,9 +119,7 @@ export default function MessageDetail({
     [messages],
   );
   const lastUserMessage = lastUserMessageRecord?.content;
-  const lastUserMessageId = lastUserMessageRecord
-    ? getMessageId(lastUserMessageRecord)
-    : undefined;
+  const lastUserMessageId = lastUserMessageRecord ? getMessageId(lastUserMessageRecord) : undefined;
   const sourceTrace = useMemo<FeedbackSourceTrace | undefined>(() => {
     if (!selectedChatId) return undefined;
     const relatedMessageIds = messages
@@ -305,6 +306,8 @@ export default function MessageDetail({
         feedbackType={feedbackType}
         scenarioType={scenarioType}
         remark={remark}
+        priority={priority}
+        expectedBehavior={expectedBehavior}
         isSubmitting={isSubmitting}
         chatHistoryPreview={chatHistoryPreview}
         submitError={submitError}
@@ -314,6 +317,8 @@ export default function MessageDetail({
         onClose={closeModal}
         onScenarioTypeChange={setScenarioType}
         onRemarkChange={setRemark}
+        onPriorityChange={setPriority}
+        onExpectedBehaviorChange={setExpectedBehavior}
         onSubmit={handleSubmitFeedback}
       />
     </div>

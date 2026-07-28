@@ -266,8 +266,11 @@ flowchart LR
 
 测试完成后，还要回写源样本池：
 
-- `BadCase` 状态收敛为 `待分析 / 处理中 / 待验证 / 已解决`：未分析写 `待分析`，已确认要修、修复中或修完待测写 `处理中`，测试后仍需人工确认写 `待验证`，已解决或无需修复写 `已解决`
-- `修复说明` 应写清修复点、正式用例 ID、验证批次 ID、残余风险
+- `BadCase` 状态收敛为 `待分析 / 处理中 / 待验证 / 已解决`：未分析写 `待分析`，已确认要修、修复中或修完待测写 `处理中`，测试后仍需人工确认写 `待验证`
+- 只有最近一次场景测试与最近一次回归验证都通过，才能写 `已解决`；仅一侧通过仍写 `待验证`
+- `测试证据JSON` 分别保存 scenario / conversation 的 `batchId / assetIds / executionIds / reviewStatus / reviewerSources / reviewedAt`，两组可读 ID 列用于运营快速定位
+- `修复说明` 只写修复点和残余风险，不再充当机器证据 ID 的堆放字段
+- 状态变化写 `状态更新时间`；双门禁首次通过写 `解决时间` 与 `处理结论=修复验证通过`
 - `根因层` 应标注 `prompt / stage / tool / data / memory / workflow / policy / unknown`
 - `最近复现时间` 写本轮最终验证或复跑时间
 - 正式资产之间的血缘仍以 `资产关联` 表为准；源样本池只保留便于运营查看的收尾摘要
@@ -280,7 +283,7 @@ flowchart LR
 
 如果还需要让线上页面 `https://cake.duliday.com/web/test-suite` 同步看到这轮批次，仅回写飞书还不够，还要把测试环境批次同步到生产 test-suite 数据库：
 
-- 运行 `pnpm sync:test-suite:prod -- <batchId...>`
+- 运行 `node scripts/sync-test-suite-batches-to-prod.js <batchId...>`
 - 该脚本会把 `test_batches / test_executions / test_conversation_snapshots` 同步到生产 test-suite 数据库
 - 建议在本轮批次评审状态确认后再同步，避免把中间态批次写到线上页面
 

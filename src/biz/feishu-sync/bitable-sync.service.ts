@@ -9,6 +9,17 @@ import {
 import { AlertLevel } from '@enums/alert.enum';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { FeedbackSourceTraceService } from './feedback-source-trace.service';
+import {
+  BadcaseEvidenceUpdate,
+  BadcasePriority,
+  getLatestBadcaseEvidence,
+  mergeBadcaseEvidence,
+  parseBadcaseEvidenceLedger,
+} from './badcase-governance.types';
+import {
+  BadcaseGovernanceDocumentItem,
+  BadcaseGovernanceDocumentService,
+} from './badcase-governance-document.service';
 
 /**
  * Agent 测试反馈数据
@@ -18,6 +29,8 @@ export interface AgentTestFeedback {
   chatHistory: string; // 格式化的聊天记录
   userMessage?: string; // 用户消息（最后一条用户输入）
   errorType?: string; // 错误类型（仅 badcase）
+  priority?: BadcasePriority; // BadCase 优先级
+  expectedBehavior?: string; // 期望的正确处理方式
   remark?: string; // 备注
   chatId?: string; // 会话 ID
   messageId?: string; // 触发消息 ID
@@ -66,11 +79,13 @@ export class FeishuBitableSyncService {
     candidateName: ['候选人微信昵称', '候选人姓名', '参与者', '姓名'],
     managerName: ['招募经理姓名', '招募经理', '负责人'],
     consultTime: ['咨询时间', '提交时间', '创建时间'],
+    firstSeenAt: ['首次发现时间'],
     chatHistory: ['聊天记录', '完整对话记录', '对话记录'],
     userMessage: ['用户消息', '问题', '用户输入'],
     caseName: ['用例名称'],
     title: ['标题', '名称'],
-    category: ['分类', '错误分类'],
+    category: ['问题原因', '分类', '错误分类'],
+    expectedBehavior: ['期望处理方式', '期望行为'],
     remark: ['备注', '说明', '附注'],
     chatId: ['chatId', '会话ID', '会话 Id', '会话ID（chatId）'],
     messageId: ['message_id', 'messageId', 'MessageID', '消息ID', '触发MessageID'],
@@ -103,6 +118,23 @@ export class FeishuBitableSyncService {
     lastVerifiedBatch: ['最近验证批次', 'lastVerifiedBatch', '验证批次'],
     lastReproducedAt: ['最近复现时间', '最近验证时间', 'lastReproducedAt'],
     repairNote: ['修复说明', 'repairNote'],
+    statusUpdatedAt: ['状态更新时间'],
+    resolvedAt: ['解决时间'],
+    treatmentConclusion: ['处理结论'],
+    deployedAt: ['上线时间'],
+    observationUntil: ['观察截止时间'],
+    pendingParty: ['待确认方'],
+    currentOwner: ['当前责任人'],
+    evidenceJson: ['测试证据JSON'],
+    evidenceSummary: ['证据结论'],
+    evidenceUpdatedAt: ['证据更新时间'],
+    scenarioAssetIds: ['测试CaseID'],
+    scenarioExecutionIds: ['测试执行ID'],
+    scenarioBatchIds: ['测试批次ID'],
+    conversationAssetIds: ['验证CaseID'],
+    conversationExecutionIds: ['验证执行ID'],
+    conversationBatchIds: ['验证批次ID'],
+    reviewerSources: ['评审来源'],
   } as const;
 
   /**
@@ -113,6 +145,64 @@ export class FeishuBitableSyncService {
    */
   static readonly BADCASE_DERIVED_STATUSES = ['处理中', '待验证', '已解决'] as const;
 
+  static readonly BADCASE_GOVERNANCE_FIELDS = [
+    { name: '首次发现时间', type: 5 },
+    {
+      name: '问题原因',
+      type: 3,
+      options: [
+        '1-不该触达（工单/条件误判）',
+        '2-品牌/门店识别',
+        '3-地区/位置/距离',
+        '4-岗位推荐-范围/门店/距离',
+        '5-岗位推荐-条件/班次不匹配',
+        '6-岗位详情/薪资/福利口径',
+        '7-报名/收资',
+        '8-预约/取消/改期',
+        '9-已约面/入职跟进',
+        '10-拉群/无岗维护',
+        '11-多消息/引用/上下文承接',
+        '12-图片/证件识别',
+        '13-情绪/话术',
+        '14-人工/非Agent归因',
+        '15-其他',
+        '2-触达时机错误（过早/过晚）',
+        '3-重复打扰（"已提醒过"误判）',
+        '4-场景挂错',
+        '5-话术事实错误（岗位/时间/状态不符）',
+        '6-语气/话术不当',
+        '7-取消/改期后仍按旧状态触达',
+        '8-其他',
+      ],
+    },
+    { name: '期望处理方式', type: 1 },
+    { name: '状态更新时间', type: 5 },
+    { name: '解决时间', type: 5 },
+    {
+      name: '处理结论',
+      type: 3,
+      options: ['待归因', '修复验证通过', '已上线待观察', '非Agent', '重复', '过时', '转产品需求'],
+    },
+    { name: '上线时间', type: 5 },
+    { name: '观察截止时间', type: 5 },
+    { name: '待确认方', type: 3, options: ['无', '运营', '产品', '技术', '数据'] },
+    { name: '当前责任人', type: 1 },
+    { name: '测试证据JSON', type: 1 },
+    { name: '证据结论', type: 1 },
+    { name: '证据更新时间', type: 5 },
+    { name: '测试CaseID', type: 1 },
+    { name: '测试执行ID', type: 1 },
+    { name: '测试批次ID', type: 1 },
+    { name: '验证CaseID', type: 1 },
+    { name: '验证执行ID', type: 1 },
+    { name: '验证批次ID', type: 1 },
+    {
+      name: '评审来源',
+      type: 4,
+      options: ['manual', 'codex', 'claude', 'system', 'api'],
+    },
+  ] as const;
+
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
     private readonly bitableApi: FeishuBitableApiService,
@@ -121,6 +211,8 @@ export class FeishuBitableSyncService {
     private readonly configService?: ConfigService,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
+    @Optional()
+    private readonly governanceDocumentService?: BadcaseGovernanceDocumentService,
   ) {}
 
   /**
@@ -244,6 +336,17 @@ export class FeishuBitableSyncService {
       if (feedback.remark) {
         remarkParts.push(feedback.remark);
       }
+      if (feedback.expectedBehavior) {
+        const expectedBehaviorField = resolveFieldName(this.feedbackFieldAliases.expectedBehavior);
+        if (expectedBehaviorField) {
+          recordFields[expectedBehaviorField] = this.bitableApi.truncateText(
+            feedback.expectedBehavior,
+            2000,
+          );
+        } else if (remarkField) {
+          remarkParts.push(`期望处理方式：${feedback.expectedBehavior}`);
+        }
+      }
 
       if (feedback.chatId) {
         if (chatIdField) {
@@ -300,10 +403,15 @@ export class FeishuBitableSyncService {
 
       const sourceLabel = this.resolveFeedbackSourceLabel(feedback.source);
       if (feedback.type === 'badcase') {
+        const now = Date.now();
         setField(this.feedbackFieldAliases.issueId, feedbackId);
         setField(this.feedbackFieldAliases.status, '待分析');
-        setField(this.feedbackFieldAliases.priority, 'P2');
+        setField(this.feedbackFieldAliases.priority, feedback.priority || 'P2');
         setField(this.feedbackFieldAliases.source, sourceLabel);
+        setField(this.feedbackFieldAliases.firstSeenAt, now);
+        setField(this.feedbackFieldAliases.statusUpdatedAt, now);
+        setField(this.feedbackFieldAliases.treatmentConclusion, '待归因');
+        setField(this.feedbackFieldAliases.pendingParty, '无');
 
         if (feedback.errorType) {
           setField(this.feedbackFieldAliases.category, feedback.errorType);
@@ -349,7 +457,9 @@ export class FeishuBitableSyncService {
       status: BadcaseDerivedStatus;
       batchId?: string;
       summary?: string;
+      evidence?: BadcaseEvidenceUpdate;
     }>,
+    options: { syncGovernanceDocument?: boolean } = {},
   ): Promise<{ success: number; failed: number; errors: string[] }> {
     if (items.length === 0) {
       return { success: 0, failed: 0, errors: [] };
@@ -365,6 +475,19 @@ export class FeishuBitableSyncService {
     let lastVerifiedBatchField: string | undefined;
     let lastReproducedAtField: string | undefined;
     let repairNoteField: string | undefined;
+    let evidenceJsonField: string | undefined;
+    let evidenceSummaryField: string | undefined;
+    let evidenceUpdatedAtField: string | undefined;
+    let statusUpdatedAtField: string | undefined;
+    let resolvedAtField: string | undefined;
+    let treatmentConclusionField: string | undefined;
+    let scenarioAssetIdsField: string | undefined;
+    let scenarioExecutionIdsField: string | undefined;
+    let scenarioBatchIdsField: string | undefined;
+    let conversationAssetIdsField: string | undefined;
+    let conversationExecutionIdsField: string | undefined;
+    let conversationBatchIdsField: string | undefined;
+    let reviewerSourcesField: string | undefined;
     try {
       const fields = await this.bitableApi.getFields(tableConfig.appToken, tableConfig.tableId);
       const existingFieldNames = new Set(fields.map((field) => field.field_name));
@@ -387,6 +510,21 @@ export class FeishuBitableSyncService {
       repairNoteField = this.feedbackFieldAliases.repairNote.find((alias) =>
         existingFieldNames.has(alias),
       );
+      const resolve = (aliases: readonly string[]) =>
+        aliases.find((alias) => existingFieldNames.has(alias));
+      evidenceJsonField = resolve(this.feedbackFieldAliases.evidenceJson);
+      evidenceSummaryField = resolve(this.feedbackFieldAliases.evidenceSummary);
+      evidenceUpdatedAtField = resolve(this.feedbackFieldAliases.evidenceUpdatedAt);
+      statusUpdatedAtField = resolve(this.feedbackFieldAliases.statusUpdatedAt);
+      resolvedAtField = resolve(this.feedbackFieldAliases.resolvedAt);
+      treatmentConclusionField = resolve(this.feedbackFieldAliases.treatmentConclusion);
+      scenarioAssetIdsField = resolve(this.feedbackFieldAliases.scenarioAssetIds);
+      scenarioExecutionIdsField = resolve(this.feedbackFieldAliases.scenarioExecutionIds);
+      scenarioBatchIdsField = resolve(this.feedbackFieldAliases.scenarioBatchIds);
+      conversationAssetIdsField = resolve(this.feedbackFieldAliases.conversationAssetIds);
+      conversationExecutionIdsField = resolve(this.feedbackFieldAliases.conversationExecutionIds);
+      conversationBatchIdsField = resolve(this.feedbackFieldAliases.conversationBatchIds);
+      reviewerSourcesField = resolve(this.feedbackFieldAliases.reviewerSources);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[BadcaseStatus] 读取 badcase 表字段失败: ${errorMessage}`);
@@ -397,43 +535,235 @@ export class FeishuBitableSyncService {
     let success = 0;
     let failed = 0;
     const errors: string[] = [];
-
+    const documentItems: BadcaseGovernanceDocumentItem[] = [];
+    const groupedItems = new Map<string, (typeof items)[number][]>();
     for (const item of items) {
-      const fields: Record<string, unknown> = { [statusFieldName]: item.status };
-      if (lastVerifiedBatchField && item.batchId) {
-        fields[lastVerifiedBatchField] = item.batchId;
-      }
-      if (lastReproducedAtField) {
-        fields[lastReproducedAtField] = now;
-      }
-      if (repairNoteField && item.summary) {
-        fields[repairNoteField] = this.bitableApi.truncateText(item.summary, 1000);
-      }
+      const group = groupedItems.get(item.recordId) || [];
+      group.push(item);
+      groupedItems.set(item.recordId, group);
+    }
 
+    for (const [recordId, group] of groupedItems) {
+      const item = group[group.length - 1];
+      const evidenceUpdates = group
+        .map((entry) => entry.evidence)
+        .filter((entry): entry is BadcaseEvidenceUpdate => !!entry);
       try {
+        let derivedStatus = item.status;
+        const fields: Record<string, unknown> = {};
+        let currentRecordFields: Record<string, unknown> = {};
+        if (evidenceUpdates.length > 0 && !evidenceJsonField) {
+          const latestEvidence = evidenceUpdates[evidenceUpdates.length - 1];
+          derivedStatus = latestEvidence.reviewStatus === 'pending' ? '处理中' : '待验证';
+          this.logger.warn(`[BadcaseStatus] ${recordId} 缺少测试证据JSON字段，禁止按单批次关闭`);
+        }
+        if (evidenceUpdates.length > 0 && evidenceJsonField) {
+          const record = await this.bitableApi.getRecord(
+            tableConfig.appToken,
+            tableConfig.tableId,
+            recordId,
+          );
+          currentRecordFields = record.fields;
+          let ledger = parseBadcaseEvidenceLedger(record.fields[evidenceJsonField]);
+          for (const evidence of evidenceUpdates) {
+            ledger = mergeBadcaseEvidence(ledger, evidence);
+          }
+          derivedStatus =
+            ledger.overallStatus === 'passed'
+              ? '已解决'
+              : ledger.overallStatus === 'pending'
+                ? '处理中'
+                : '待验证';
+          const scenario = getLatestBadcaseEvidence(ledger, 'scenario');
+          const conversation = getLatestBadcaseEvidence(ledger, 'conversation');
+          fields[evidenceJsonField] = JSON.stringify(ledger);
+          if (evidenceSummaryField) {
+            fields[evidenceSummaryField] = this.buildEvidenceSummary(
+              ledger.overallStatus,
+              scenario,
+              conversation,
+            );
+          }
+          if (evidenceUpdatedAtField) fields[evidenceUpdatedAtField] = now;
+          if (scenarioAssetIdsField)
+            fields[scenarioAssetIdsField] = scenario?.assetIds.join('\n') || '';
+          if (scenarioExecutionIdsField) {
+            fields[scenarioExecutionIdsField] = scenario?.executionIds.join('\n') || '';
+          }
+          if (scenarioBatchIdsField) fields[scenarioBatchIdsField] = scenario?.batchId || '';
+          if (conversationAssetIdsField) {
+            fields[conversationAssetIdsField] = conversation?.assetIds.join('\n') || '';
+          }
+          if (conversationExecutionIdsField) {
+            fields[conversationExecutionIdsField] = conversation?.executionIds.join('\n') || '';
+          }
+          if (conversationBatchIdsField) {
+            fields[conversationBatchIdsField] = conversation?.batchId || '';
+          }
+          if (reviewerSourcesField) {
+            fields[reviewerSourcesField] = [
+              ...(scenario?.reviewerSources || []),
+              ...(conversation?.reviewerSources || []),
+            ].filter((value, index, values) => values.indexOf(value) === index);
+          }
+        }
+        fields[statusFieldName] = derivedStatus;
+        if (
+          statusUpdatedAtField &&
+          (evidenceUpdates.length === 0 || currentRecordFields[statusFieldName] !== derivedStatus)
+        ) {
+          fields[statusUpdatedAtField] = now;
+        }
+        if (derivedStatus === '已解决') {
+          if (
+            resolvedAtField &&
+            currentRecordFields[statusFieldName] !== '已解决' &&
+            !currentRecordFields[resolvedAtField]
+          ) {
+            fields[resolvedAtField] = now;
+          }
+          if (treatmentConclusionField) fields[treatmentConclusionField] = '修复验证通过';
+        } else if (resolvedAtField && currentRecordFields[statusFieldName] === '已解决') {
+          fields[resolvedAtField] = null;
+          if (treatmentConclusionField) fields[treatmentConclusionField] = '待归因';
+        }
+        if (lastVerifiedBatchField && item.batchId) {
+          fields[lastVerifiedBatchField] = item.batchId;
+        }
+        if (lastReproducedAtField) {
+          fields[lastReproducedAtField] = now;
+        }
+        if (repairNoteField && item.summary) {
+          fields[repairNoteField] = this.bitableApi.truncateText(item.summary, 1000);
+        }
+
         const result = await this.bitableApi.updateRecord(
           tableConfig.appToken,
           tableConfig.tableId,
-          item.recordId,
+          recordId,
           fields,
         );
         if (result.success) {
           success += 1;
+          documentItems.push({
+            recordId,
+            badcaseId: this.readFeishuText(
+              currentRecordFields[
+                this.feedbackFieldAliases.issueId.find((name) => name in currentRecordFields) || ''
+              ],
+            ),
+            title: this.readFeishuText(
+              currentRecordFields[
+                this.feedbackFieldAliases.title.find((name) => name in currentRecordFields) || ''
+              ],
+            ),
+            category: this.readFeishuText(
+              currentRecordFields[
+                this.feedbackFieldAliases.category.find((name) => name in currentRecordFields) || ''
+              ],
+            ),
+            status: derivedStatus,
+            batchId: item.batchId,
+            evidenceSummary: evidenceSummaryField
+              ? this.readFeishuText(
+                  fields[evidenceSummaryField] || currentRecordFields[evidenceSummaryField],
+                )
+              : undefined,
+          });
         } else {
           failed += 1;
-          errors.push(`${item.recordId}: ${result.error || '未知错误'}`);
+          errors.push(`${recordId}: ${result.error || '未知错误'}`);
         }
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         failed += 1;
-        errors.push(`${item.recordId}: ${errorMessage}`);
+        errors.push(`${recordId}: ${errorMessage}`);
       }
     }
 
     this.logger.log(
-      `[BadcaseStatus] 状态回写完成 success=${success} failed=${failed} total=${items.length}`,
+      `[BadcaseStatus] 状态回写完成 success=${success} failed=${failed} total=${groupedItems.size}`,
     );
+    if (
+      options.syncGovernanceDocument !== false &&
+      documentItems.length > 0 &&
+      this.governanceDocumentService
+    ) {
+      const documentResult = await this.governanceDocumentService.appendUpdate({
+        items: documentItems,
+      });
+      if (!documentResult.success) {
+        this.logger.warn(
+          `[BadcaseStatus] 状态已回写，但治理文档同步失败: ${documentResult.error || '未知错误'}`,
+        );
+      }
+    }
     return { success, failed, errors };
+  }
+
+  async ensureBadcaseGovernanceFields(apply = false): Promise<{
+    existing: string[];
+    missing: string[];
+    created: string[];
+  }> {
+    const tableConfig = this.bitableApi.getTableConfig('badcase');
+    if (!tableConfig.appToken || !tableConfig.tableId) {
+      throw new Error('badcase 表配置不完整');
+    }
+    const fields = await this.bitableApi.getFields(tableConfig.appToken, tableConfig.tableId);
+    const existingNames = new Set(fields.map((field) => field.field_name));
+    const missing = FeishuBitableSyncService.BADCASE_GOVERNANCE_FIELDS.filter(
+      (field) => !existingNames.has(field.name),
+    );
+    const created: string[] = [];
+    if (apply) {
+      for (const field of missing) {
+        await this.bitableApi.createField(
+          tableConfig.appToken,
+          tableConfig.tableId,
+          field.name,
+          field.type,
+          'options' in field ? [...field.options] : undefined,
+        );
+        created.push(field.name);
+      }
+    }
+    return {
+      existing: FeishuBitableSyncService.BADCASE_GOVERNANCE_FIELDS.filter((field) =>
+        existingNames.has(field.name),
+      ).map((field) => field.name),
+      missing: missing.map((field) => field.name),
+      created,
+    };
+  }
+
+  private buildEvidenceSummary(
+    overallStatus: string,
+    scenario?: { batchId: string; reviewStatus: string },
+    conversation?: { batchId: string; reviewStatus: string },
+  ): string {
+    const label = (entry?: { batchId: string; reviewStatus: string }) =>
+      entry ? `${entry.reviewStatus}（${entry.batchId}）` : '缺失';
+    return `总判定：${overallStatus}；测试集：${label(scenario)}；验证集：${label(conversation)}`;
+  }
+
+  private readFeishuText(value: unknown): string | undefined {
+    if (typeof value === 'string') return value.trim() || undefined;
+    if (typeof value === 'number') return String(value);
+    if (Array.isArray(value)) {
+      const text = value
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item === 'object' && 'text' in item) {
+            return String((item as { text: unknown }).text);
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('、');
+      return text || undefined;
+    }
+    return undefined;
   }
 
   // ==================== 私有方法 ====================
