@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.33.0] - 2026-07-28
 
-**预计版本**: `v10.33.0`
-**最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 8
 
 ### 更新摘要
 - PR #794 回填 v10.32.0 发布结果
@@ -98,7 +94,6 @@
 - PR #801 `datetime.section.spec.ts` 既有用例全过（重构无行为变化）。
 - PR #801 全量 `ci:check`（lint + typecheck + 全部测试）经 pre-push 钩子通过。
 - PR #798 typecheck / lint 干净；受影响 18 套件 269 用例通过；新增 util spec 6 例（含 badcase 坐标原样还原、引用块、坐标残片负例）
-<!-- release:pending:end -->
 
 ## [10.32.0] - 2026-07-28
 
