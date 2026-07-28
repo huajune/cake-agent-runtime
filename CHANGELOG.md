@@ -12,19 +12,26 @@
 ## 待发布
 
 **预计版本**: `v10.32.0`
-**最近更新**: `2026-07-27`
+**最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #761 回填 v10.31.0 发布结果 (#760)
 - PR #761 同步 v10.31.0 最终发布结果
+- PR #765 invite 城市门补同轮时序空档——第四档出处 turn_geocode 消费本轮 geocodeResolve…
+- PR #765 与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内
+- PR #765 与 district_inference 同级、优先于 session 冲突判定（本轮位置线索代表当前位置）；会话档案的冲突不覆盖规则仍由 saveToolAttestedCity 收尾把关
+- PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
+- PR #765 invite 城市门补同轮时序空档——turn_geocode 档消费本轮 geocode 确权
 
 ### 新功能
-- 无
+- PR #765 解析城市与请求城市不一致时不构成证据（新增负例测试）
 
 ### 问题修复
-- 无
+- PR #765 与 save_attested_city **同一证据源**（amap 解析，外生非模型自报，HC-2 原则不变），只是消费时机提前到轮内
+- PR #765 与 district_inference 同级、优先于 session 冲突判定（本轮位置线索代表当前位置）；会话档案的冲突不覆盖规则仍由 saveToolAttestedCity 收尾把关
+- PR #765 invite 城市门补同轮时序空档——第四档出处 turn_geocode 消费本轮 geocodeResolve…
 
 ### 优化调整
 - 无
@@ -43,6 +50,8 @@
 - PR #761 git diff --check 通过
 - PR #761 pre-push 完整 CI：370 suites / 5751 tests 通过（6 skipped）
 - PR #761 仅文档变更，不改变版本、运行时代码或部署配置
+- PR #765 typecheck / lint:check 干净
+- PR #765 gate + invite 套件 66 用例通过（新增 5 例：两条生产残留 case 的直接还原 + 冲突覆盖 + 负例 + 空锚点安全）
 <!-- release:pending:end -->
 
 ## [10.31.0] - 2026-07-27
