@@ -132,6 +132,32 @@
         "typecheck / lint 干净；reengagement 全域 9 套件 194 用例通过",
         "新增分类器 spec 11 例，含三条 badcase 的直接还原、僵尸单/时间窗边界、多工单取舍"
       ]
+    },
+    {
+      "number": "766",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/766",
+      "title": "停止条件区分「已回话」与「回话被 timeout 静默丢弃」",
+      "author": "huajune",
+      "mergedAt": "2026-07-28",
+      "businessUpdates": [
+        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
+      ],
+      "summary": [
+        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "停止条件区分「已回话」与「回话被 timeout 静默丢弃」"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`scenario-registry.spec.ts`：timeout 丢弃轮不算已回话（不停发）/ 正常回话仍停 / 宽限期内仍停 / 旧数据无水位保持旧行为",
+        "`reply-workflow.service.spec.ts`：成功投递与有意沉默均推进水位（取回调时间戳）、群聊不推进",
+        "全量：370 suites / 5757 tests 通过；`tsc --noEmit`、`eslint --max-warnings=0` 通过"
+      ]
     }
   ],
   "lastRelease": {
