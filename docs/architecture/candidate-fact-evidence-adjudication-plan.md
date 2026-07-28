@@ -1,5 +1,14 @@
 # 候选人资料证据化与裁决收口方案
 
+> **体系定位**：本文属"候选人认知体系"三轴中的**证据准入轴**（证据出处、采信分级、消费准入），
+> §0 总纲是另两轴中涉及事实采信内容的上位口径。姊妹文档——**记忆本体轴**：
+> [memory-system-architecture.md](./memory-system-architecture.md)（架构总览）+
+> [memory-and-hints-data-flow.md](./memory-and-hints-data-flow.md)（数据流细节，信封/source/confidence
+> 的实现真相在彼处）；**判定机制轴**：
+> [semantic-decision-taxonomy-plan.md](./semantic-decision-taxonomy-plan.md)（一个判定该用规则还是
+> LLM 仲裁——本方案的 confirmation 纯规则识别器与其姓名仲裁器试点的分野对账见其 §3.2）。
+> 四份共享同一条宪法：确定性守门、LLM 只降级不放权（HC-2）。
+>
 > 状态：部分交付（城市字段证据化 P0 已上线，见 §16；报名字段 Claim/快照体系仍为设计草案）
 > 目标：解决候选人最新自报资料、会话事实、长期 Profile 与模型工具入参之间的冲突，同时保留模型的语义理解和纠错能力。
 > 实施原则：复用已完成的“学生 / 社会人士身份识别统一”姿势，分阶段演进，不一次性重写记忆系统和报名工具。

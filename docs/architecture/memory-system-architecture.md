@@ -1,10 +1,16 @@
 # Agent 记忆系统架构
 
-**最后更新**：2026-06-16
+**最后更新**：2026-07-28
 
 > 这份文档描述当前主链路中真正生效的实现。模块内部的详细职责分解参见
 > [`src/memory/README.md`](../../src/memory/README.md)。
 > 端到端数据流参见 [`memory-and-hints-data-flow.md`](./memory-and-hints-data-flow.md)。
+>
+> **体系定位**：本文属"候选人认知体系"三轴中的**记忆本体轴**（架构总览层）。
+> 字段的证据采信分级与消费准入以
+> [candidate-fact-evidence-adjudication-plan.md](./candidate-fact-evidence-adjudication-plan.md) §0 为上位总纲；
+> 判定机制分类见 [semantic-decision-taxonomy-plan.md](./semantic-decision-taxonomy-plan.md)。
+> 四份共享同一条宪法：确定性守门、LLM 只降级不放权（HC-2）。
 
 ---
 
@@ -356,7 +362,11 @@ interface SummaryEntry {
 3. 分支 B：session_turn_end_updates（串行，避免 Redis 状态互覆盖）
    ├── save_candidate_pool         (ctx.candidatePool → lastCandidatePool)
    ├── project_assistant_turn      (岗位投影 → presentedJobs / currentFocusJob)
-   └── extract_facts               (后置 LLM 事实提取 → facts)
+   ├── save_attested_city          (本轮 geocode unique 确权城市 → pref.city，source='tool'；
+   │                                排在 extract_facts 前，本轮候选人原文城市可覆盖工具确权。
+   │                                冲突不覆盖：与既有 high 城市不一致时等候选人亲证。证据化 A1)
+   └── extract_facts               (后置 LLM 事实提取 → facts；内含确认问答裁决与
+                                    定位分享逆解析两条旁路注入，见数据流文档 §7)
 4. 把每一步的 success/skipped/failure 写入 message_processing_records.post_processing_status
 ```
 
@@ -523,6 +533,7 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
 | `system` | 外部系统或平台接口补充得到 |
 | `memory` | 历史记忆或旧结构兼容迁移得到 |
 | `derived` | 由其他字段推导得到，例如由区/地标白名单反推出城市 |
+| `tool` | 本会话工具执行结果确权（geocode 唯一解析 / 定位分享逆解析），外生出处非模型自报——session 层专用（2026-07-27 证据化 A1/A2 新增；长期画像 `ProfileFactSource` 暂未含此值） |
 | `booking` | 预约/报名成功后写入长期档案，是长期画像的最高质量来源 |
 | `extraction` | 会话沉淀时从 sessionFacts 抽取后写入长期档案；原 sessionFact 来源会记录在 evidence 中 |
 | `enrichment` | 外部画像补全链路写入，例如客户详情接口补充性别 |
