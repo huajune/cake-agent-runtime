@@ -450,6 +450,9 @@ export class SessionService {
     const lastCandidateMessageAt = state.lastCandidateMessageAt
       ? Date.parse(state.lastCandidateMessageAt)
       : NaN;
+    const lastProcessedCandidateMessageAt = state.lastProcessedCandidateMessageAt
+      ? Date.parse(state.lastProcessedCandidateMessageAt)
+      : NaN;
 
     return {
       collectedFields,
@@ -461,6 +464,9 @@ export class SessionService {
       terminal: state.terminal ?? undefined,
       lastCandidateMessageAt: Number.isFinite(lastCandidateMessageAt)
         ? lastCandidateMessageAt
+        : undefined,
+      lastProcessedCandidateMessageAt: Number.isFinite(lastProcessedCandidateMessageAt)
+        ? lastProcessedCandidateMessageAt
         : undefined,
     };
   }
@@ -596,6 +602,22 @@ export class SessionService {
   ): Promise<void> {
     await this.patchSessionState(corpId, userId, sessionId, {
       lastCandidateMessageAt: at.toISOString(),
+    });
+  }
+
+  /**
+   * 推进「候选人消息已被成功处理」时间水位（复聊停止判定的第二信号）。
+   * 由 reply-workflow 在回合成功收尾（正常投递或有意沉默）时按本轮消费的候选人消息
+   * 最大时间戳调用；timeout 静默丢弃的消息不会推进水位，复聊据此识别无人搭理的回话。
+   */
+  async recordCandidateMessagesProcessed(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    at: Date,
+  ): Promise<void> {
+    await this.patchSessionState(corpId, userId, sessionId, {
+      lastProcessedCandidateMessageAt: at.toISOString(),
     });
   }
 

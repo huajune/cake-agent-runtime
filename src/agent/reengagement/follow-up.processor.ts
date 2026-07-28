@@ -270,6 +270,7 @@ export class FollowUpProcessor implements OnModuleInit {
     // 1) 停止条件（代码，调 LLM 之前）
     const stop = shouldStop(scenario, state, anchorAt, {
       externallyVerifiable: job.data.workOrderId != null,
+      now,
     });
     if (stop.stop) {
       this.logger.log(

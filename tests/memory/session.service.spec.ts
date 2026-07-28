@@ -153,6 +153,7 @@ describe('SessionService', () => {
         invitedGroups: null,
         terminal: null,
         lastCandidateMessageAt: null,
+        lastProcessedCandidateMessageAt: null,
         brand_state: null,
         lastJobListQuery: null,
       });
