@@ -14,8 +14,19 @@ import {
   HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
 } from './administrative-division.data';
 import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
+import { NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE } from './administrative-division.generated';
 import { normalizeDistrictForLookup } from './geo-name.normalizer';
 import { resolveCityFromLocation } from './place-alias.resolver';
+
+/**
+ * 全国县级市映射灰度开关（方案 §17.2，Phase 4 短期开关，收敛后删除）。
+ *
+ * geo 域零依赖、非 Nest module，无法走 ConfigService；直接读 process.env
+ * 是方案预期内的短期形态。每次调用实时读取（不缓存），便于测试与运维即改即生效。
+ */
+function isNationalCountyMappingEnabled(): boolean {
+  return process.env.GEO_NATIONAL_COUNTY_MAPPING_ENABLED === 'true';
+}
 
 /** 已知城市名全集：业务高置信裸地名别名 + 全国显式城市表的标准名（去重）。 */
 const KNOWN_CITY_NAMES: readonly string[] = [
@@ -98,15 +109,26 @@ export function detectGeoSignalConflict(
  * resolveParentAdministrativeArea('延吉') →
  *   { input:'延吉', canonicalName:'延吉市', level:'county_level_city', parentCity:'延边朝鲜族自治州' }
  *
- * 未收录（含待 Phase 3 补录的余姚/慈溪类）返回 null，不猜父级。
+ * 查询顺序：人工策展表（COUNTY_LEVEL_CITY_TO_PREFECTURE，海绵口径逐条实证）始终
+ * 优先；未命中且 GEO_NATIONAL_COUNTY_MAPPING_ENABLED=true 时回退全国生成表
+ * （administrative-division.generated.ts，Phase 4 灰度接入）。开关关闭时未收录
+ * 条目（含待补录的余姚/慈溪类）返回 null，不猜父级。
  */
 export function resolveParentAdministrativeArea(input: string): ParentAdministrativeArea | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
   const canonicalName = trimmed.endsWith('市') ? trimmed : `${trimmed}市`;
-  const parentCity = COUNTY_LEVEL_CITY_TO_PREFECTURE[canonicalName];
-  if (!parentCity) return null;
-  return { input, canonicalName, level: 'county_level_city', parentCity };
+  const curatedParent = COUNTY_LEVEL_CITY_TO_PREFECTURE[canonicalName];
+  if (curatedParent) {
+    return { input, canonicalName, level: 'county_level_city', parentCity: curatedParent };
+  }
+  if (isNationalCountyMappingEnabled()) {
+    const nationalParent = NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE[canonicalName];
+    if (nationalParent) {
+      return { input, canonicalName, level: 'county_level_city', parentCity: nationalParent };
+    }
+  }
+  return null;
 }
 
 /**

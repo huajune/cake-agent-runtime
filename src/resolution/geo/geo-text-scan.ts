@@ -24,10 +24,9 @@ import { matchInUncoveredSegments, scanWhitelistKeysByLongest } from './whitelis
  * 给 scanWhitelistKeysByLongest 作为 city 维度的输入。
  */
 const CITY_DICT: Record<string, true> = Object.fromEntries(
-  Array.from(new Set<string>([...MUNICIPALITIES, ...HIGH_CONFIDENCE_BARE_LOCATION_ALIASES])).map((city) => [
-    city,
-    true,
-  ]),
+  Array.from(new Set<string>([...MUNICIPALITIES, ...HIGH_CONFIDENCE_BARE_LOCATION_ALIASES])).map(
+    (city) => [city, true],
+  ),
 );
 
 /** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
@@ -43,8 +42,16 @@ const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开�
 export function scanGeoSignalsFromText(message: string): GeoTextScanResult {
   // 三轮串联扫描，covered 区间逐轮累积，避免后轮再去消费前轮已认领的字符
   const cityScan = scanWhitelistKeysByLongest(message, CITY_DICT);
-  const districtScan = scanWhitelistKeysByLongest(message, UNIQUE_SUBDIVISION_TO_CITY, cityScan.covered);
-  const locationScan = scanWhitelistKeysByLongest(message, UNIQUE_PLACE_ALIAS_TO_CITY, districtScan.covered);
+  const districtScan = scanWhitelistKeysByLongest(
+    message,
+    UNIQUE_SUBDIVISION_TO_CITY,
+    cityScan.covered,
+  );
+  const locationScan = scanWhitelistKeysByLongest(
+    message,
+    UNIQUE_PLACE_ALIAS_TO_CITY,
+    districtScan.covered,
+  );
 
   const city = resolveCity(message, cityScan, districtScan, locationScan);
 
