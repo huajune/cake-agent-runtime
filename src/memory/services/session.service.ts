@@ -66,6 +66,7 @@ import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
 import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
+import { resolveConfirmedCityFact } from '../facts/confirmation-facts';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import {
   assertExtractionIdentityProvenance,
@@ -706,10 +707,40 @@ export class SessionService {
     // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
     const lastUserText = MessageParser.stripTimeContext(userMessages.at(-1) ?? '').trim();
     const currentLaborFormIntent = decideLaborFormIntent(lastUserText);
+
+    // 确认问答裁决（候选人资料证据化 P1，badcase 6a671722："是在沈阳市对吧？"→"好的"）：
+    // 必须在纯应答闸门之前算——确认应答（"好的/对/嗯"）恰恰是纯应答词，走闸门
+    // 早退会把系统自己发起的确认协议的答案丢掉。纯正则零 LLM，成本可忽略。
+    const confirmedCity = resolveConfirmedCityFact(scopedMessages);
+    const confirmedCityFact: SessionFactValue<string> | null = confirmedCity
+      ? {
+          value: confirmedCity.city,
+          confidence: 'high',
+          source: 'candidate',
+          evidence: truncateEvidence(
+            `确认应答：「${confirmedCity.question}」→「${confirmedCity.reply}」`,
+          ),
+          extractedAt: new Date().toISOString(),
+        }
+      : null;
+
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
       const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
       if (!currentTurnRuleHits) {
-        this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
+        // 纯应答轮唯一可能携带的新事实就是确认裁决：有则单写 city 后再早退
+        if (confirmedCityFact) {
+          const cityOnlyFacts = SessionFactsSchema.parse({
+            ...FALLBACK_EXTRACTION,
+            preferences: { ...FALLBACK_EXTRACTION.preferences, city: confirmedCityFact },
+            reasoning: '确认问答裁决入档（纯应答轮）',
+          }) as SessionFacts;
+          await this.saveFacts(corpId, userId, sessionId, cityOnlyFacts);
+          this.logger.log(
+            `[extractFacts] 确认问答裁决入档: pref.city=${confirmedCityFact.value}（纯应答轮，跳过 LLM 提取）`,
+          );
+        } else {
+          this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
+        }
         return { llmDegraded: false, brandIntents: [] };
       }
     }
@@ -760,6 +791,16 @@ export class SessionService {
     );
     if (locationCityFact) {
       newFacts.preferences.city = locationCityFact;
+    }
+
+    // 确认问答裁决（非纯应答轮路径，如"好的，我25岁"带出其他事实时）：
+    // 本轮文本/定位已产出高置信城市则让位（显式线索优先于确认推断）。
+    if (
+      confirmedCityFact &&
+      !(newFacts.preferences.city && newFacts.preferences.city.confidence === 'high')
+    ) {
+      newFacts.preferences.city = confirmedCityFact;
+      this.logger.log(`[extractFacts] 确认问答裁决入档: pref.city=${confirmedCityFact.value}`);
     }
 
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
