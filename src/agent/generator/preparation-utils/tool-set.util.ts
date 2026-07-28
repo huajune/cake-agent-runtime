@@ -5,6 +5,8 @@ import { type GeneratorToolMode } from '../generator.types';
 import {
   computeResultCount,
   computeToolCallStatus,
+  extractToolApiCode,
+  extractToolErrorType,
   SIDE_EFFECT_TOOLS,
 } from '../tool-call-analysis';
 
@@ -52,6 +54,11 @@ export function wrapToolsWithTiming(
             resultCount,
             status: computeToolCallStatus(result, resultCount, undefined, undefined, name),
             sideEffect: SIDE_EFFECT_TOOLS.has(name),
+            // errorType/apiCode 落 payload：失败子类（*_request_failed 抖动 vs *_rejected 业务拒绝）
+            // 由此变廉价索引查询，无需回刨 message_processing_records 大 jsonb。成功态为 undefined，
+            // JSON 序列化时自动省略，不污染成功事件。
+            errorType: extractToolErrorType(result),
+            apiCode: extractToolApiCode(result),
           });
           return result;
         } catch (error) {

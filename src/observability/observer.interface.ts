@@ -5,6 +5,7 @@ import type {
   BrandResolutionSource,
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
+import type { ToolErrorType } from '@tools/types/tool-error-types';
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -72,6 +73,16 @@ export type AgentEvent = AgentEventContext &
         status?: AgentToolCallStatus;
         resultCount?: number;
         sideEffect?: boolean;
+        /**
+         * buildToolError 的机器可读错误分类；成功态为 undefined（见 extractToolErrorType）。
+         * 类型复用 tool-error-types 的单一权威枚举 ToolErrorType，不另立字符串。
+         */
+        errorType?: ToolErrorType;
+        /**
+         * 工具透传的下游接口返回码（如海绵业务 code 30003）；仅业务拒绝态携带（见 extractToolApiCode）。
+         * 这是外部系统（海绵）的开放码域、非本仓库领域枚举，故保持 string | number 原样，不本地枚举化。
+         */
+        apiCode?: string | number;
       }
     | { type: 'tool_error'; toolName: string; error: string; durationMs?: number }
     | { type: 'memory_recall'; userId: string; found: boolean }

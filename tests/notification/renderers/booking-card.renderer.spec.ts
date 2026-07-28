@@ -134,8 +134,8 @@ describe('BookingCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '⚠️ 面试预约已取消 · 需要人工确认',
-        color: 'orange',
+        title: '🚨 面试预约已取消 · 需要人工确认',
+        color: 'red',
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
