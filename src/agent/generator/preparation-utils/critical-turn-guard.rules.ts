@@ -50,6 +50,20 @@ export const CRITICAL_TURN_GUARD_RULES: CriticalTurnGuardRule[] = [
       '本轮候选人指定了面试日期。未调用 duliday_interview_precheck(requestedDate=候选人指定日期) 前，最终回复严禁说“可以/能约/通常可以/一般可以/帮你登记/帮你预约”，也不要催更近日期、改成其他日期时间或继续收整套资料。若 jobId/当前岗位不明确，先确认门店/岗位，不能直接承诺该日期可约；若 job_list 没查到当前岗位，也只能先确认门店/岗位。',
   },
   {
+    id: 'interview_time_only_precheck_first',
+    target: 'current',
+    // CUTOFF 缺口（badcase recvhv3W5Dy24G / SCN-PREBOOK-20260511-CUTOFF，2026-07-28）：
+    // 日期在上一轮敲定（"今天可以吗"），本轮只剩裸钟点+动身/征询（"我三点过去/三点吧"）。
+    // interview_date_precheck_first 要求日期词，本形态扫不到——历史里"今天可以"的说法
+    // 可能已过报名截止，模型顺着旧承诺直接登记。
+    // 词形边界："X点到/去"后跟数字或汉数为时段区间（"三点到五点"），不算动身。
+    patterns: [
+      /[一二两三四五六七八九十\d]{1,2}\s*点\s*(?:半|一刻|[0-5]?\d\s*分)?\s*(?:钟)?\s*(?:过去|过来|到店|出发|到(?![一二两三四五六七八九十\d])|去(?![一二两三四五六七八九十\d])|来得及|来|吧|可以|行|方便)/u,
+    ],
+    guard:
+      '本轮候选人只给了具体钟点（如"我三点过去/三点吧"），面试日期来自上文约定。历史对话里任何"今天可以/当天可约"的说法都可能已过该日报名截止，严禁沿用。最终回复在本轮调用 duliday_interview_precheck（requestedDate=上文约定的那一天）之前，严禁说"可以/没问题/帮你登记/帮你约/记上了"，也不得继续收资推进；precheck 返回 date_unavailable 或该日期不在 bookableSlots/已过 registrationDeadline 时，必须如实说明该日期约不了，并给出最近的可约时段。',
+  },
+  {
     id: 'health_cert_is_not_major',
     target: 'combined',
     patterns: [/健康证/, /专业|食品|新媒体|填写错误|职业/],
