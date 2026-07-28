@@ -119,6 +119,11 @@ export class MessageProcessingService {
     return this.messageProcessingRepository.getMessageStats(startTime, endTime);
   }
 
+  /** 会话最近一条处理记录的 received_at；供复聊触达前置闸判断候选人消息是否进过管道。 */
+  async getLatestReceivedAtByChatId(chatId: string): Promise<number | null> {
+    return this.messageProcessingRepository.getLatestReceivedAtByChatId(chatId);
+  }
+
   /**
    * 获取指定日期范围内的活跃用户
    */

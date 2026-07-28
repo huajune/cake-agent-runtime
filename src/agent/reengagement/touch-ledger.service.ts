@@ -117,9 +117,28 @@ return 1
     );
   }
 
-  async isInSessionTouchCooldown(sessionId: string, now: number): Promise<boolean> {
+  /**
+   * 同会话触达冷却。语义是"连续两次**无回应**主动触达的最小间隔"——防的是候选人
+   * 短时间内被连环追问；候选人在上次触达之后已经回过话时，上次触达已经"落地"
+   * （对话恢复过），本次锚点是新一段沉默，冷却不适用。
+   *
+   * badcase recvqD1PRROepW（chat 6a672f5b）：开场唤醒 18:14 发出后候选人回来聊到
+   * 选岗选时间，随后收资中断；两次 booking_incomplete 深漏斗跟进都被开场唤醒消耗的
+   * 冷却窗压住（stopped=session_touch_cooldown），候选人流失。
+   *
+   * @param candidateRepliedAt 候选人最近一条消息时间戳；晚于上次触达即视为冷却已被
+   *   对话恢复打断。不传/为空时保持旧行为（纯时间窗冷却），fail conservative。
+   */
+  async isInSessionTouchCooldown(
+    sessionId: string,
+    now: number,
+    options?: { candidateRepliedAt?: number | null },
+  ): Promise<boolean> {
     const lastTouchAt = await this.getLastTouchAt(sessionId);
-    return lastTouchAt != null && now - lastTouchAt < this.SESSION_TOUCH_COOLDOWN_MS;
+    if (lastTouchAt == null || now - lastTouchAt >= this.SESSION_TOUCH_COOLDOWN_MS) return false;
+    const candidateRepliedAt = options?.candidateRepliedAt;
+    if (candidateRepliedAt != null && candidateRepliedAt > lastTouchAt) return false;
+    return true;
   }
 
   /**
