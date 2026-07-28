@@ -165,4 +165,56 @@ describe('evaluateInviteCityGate', () => {
     });
     expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
   });
+
+  describe('turn_geocode 档（同轮 geocode 确权，v10.31.0 残留同轮空档修复）', () => {
+    it('allows when this turn geocode uniquely resolved the requested city (badcase 6a680c63: 高明万悦天地→佛山)', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '佛山市',
+        sessionCity: null,
+        userTexts: ['高明万悦天地这边有招人吗'],
+        turnResolvedCities: ['佛山市'],
+      });
+      expect(verdict).toEqual({ decision: 'allow', matchedBy: 'turn_geocode' });
+    });
+
+    it('normalizes 市 suffix between requested and resolved city (badcase 6a66d0f8: 莘庄→上海)', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '上海市',
+        sessionCity: null,
+        userTexts: ['莘庄附近有日结工作吗？'],
+        turnResolvedCities: ['上海'],
+      });
+      expect(verdict).toEqual({ decision: 'allow', matchedBy: 'turn_geocode' });
+    });
+
+    it('turn geocode wins over conflicting session fact (fresh location clue this turn)', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '佛山',
+        sessionCity: '上海',
+        userTexts: ['高明万悦天地这边有招人吗'],
+        turnResolvedCities: ['佛山市'],
+      });
+      expect(verdict).toEqual({ decision: 'allow', matchedBy: 'turn_geocode' });
+    });
+
+    it('a resolved city different from the requested one is not evidence', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '广州',
+        sessionCity: null,
+        userTexts: ['高明万悦天地这边有招人吗'],
+        turnResolvedCities: ['佛山市'],
+      });
+      expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    });
+
+    it('null/empty anchors are ignored safely', () => {
+      const verdict = evaluateInviteCityGate({
+        requestedCity: '杭州',
+        sessionCity: null,
+        userTexts: [],
+        turnResolvedCities: [null, undefined, ''],
+      });
+      expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    });
+  });
 });

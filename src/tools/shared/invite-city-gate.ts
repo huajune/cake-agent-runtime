@@ -32,7 +32,10 @@ import { inferCitiesFromDistrictMentions } from '@tools/shared/district-city-map
  */
 
 export type InviteCityGateVerdict =
-  | { decision: 'allow'; matchedBy: 'session_fact' | 'user_text' | 'district_inference' }
+  | {
+      decision: 'allow';
+      matchedBy: 'session_fact' | 'user_text' | 'district_inference' | 'turn_geocode';
+    }
   | {
       decision: 'reject';
       reason: 'city_conflict' | 'city_unverified';
@@ -47,6 +50,16 @@ export interface InviteCityGateInput {
   sessionCity: string | null;
   /** 本会话候选人侧原文（user role 文本）。 */
   userTexts: readonly string[];
+  /**
+   * 本轮 geocode unique 解析确权的城市（context.geocodeResolvedAnchors）。
+   *
+   * 同轮时序空档（v10.31.0 发版后残留 2 例实证，chat 6a680c63"高明万悦天地"/
+   * 6a66d0f8"莘庄"）：城市确权走回合收尾写档、下轮才进 sessionCity，而
+   * geocode → job_list 无岗 → invite 常发生在同一轮，闸门看不到本轮刚确权的
+   * 城市。这里把轮内锚点作为第四档出处直接消费——与 save_attested_city 同一
+   * 证据源（amap 解析，外生非模型自报），只是消费时机提前到轮内。
+   */
+  turnResolvedCities?: readonly (string | null | undefined)[];
 }
 
 export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGateVerdict {
@@ -70,6 +83,16 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
   //（候选人本轮报的区代表当前位置，允许覆盖旧会话事实）。
   if (inferCitiesFromDistrictMentions(input.userTexts).has(requested)) {
     return { decision: 'allow', matchedBy: 'district_inference' };
+  }
+
+  // 本轮 geocode 确权档：同样优先于 session 冲突判定——本轮解析基于候选人
+  // 本轮位置线索（geocode 自身有 anchor gate 防错解析），代表当前位置；
+  // 会话档案的冲突不覆盖规则仍由 saveToolAttestedCity 在收尾时把关。
+  const turnResolved = (input.turnResolvedCities ?? [])
+    .map((city) => normalizeCity(city ?? null))
+    .filter(Boolean);
+  if (turnResolved.includes(requested)) {
+    return { decision: 'allow', matchedBy: 'turn_geocode' };
   }
 
   if (session) {
