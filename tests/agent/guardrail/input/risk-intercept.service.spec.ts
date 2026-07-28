@@ -177,7 +177,9 @@ describe('RiskInterceptService', () => {
 
     it('does NOT hit when 人工客服 appears inside a long job inquiry (防误伤)', async () => {
       await expect(
-        service.precheck(baseInput({ scanContent: '你们那个人工客服的岗位还在招人吗，待遇怎么样' })),
+        service.precheck(
+          baseInput({ scanContent: '你们那个人工客服的岗位还在招人吗，待遇怎么样' }),
+        ),
       ).resolves.toEqual({ hit: false });
     });
 
@@ -191,6 +193,57 @@ describe('RiskInterceptService', () => {
       await expect(
         service.precheck(baseInput({ scanContent: '转人工，你们是骗子吗，滚' })),
       ).resolves.toMatchObject({ hit: true, riskType: 'abuse' });
+    });
+  });
+
+  describe('disability_disclosure（残障身份披露静默转人工，产品裁定 2026-07-28）', () => {
+    it.each([
+      '我是聋哑人，可以做这个工作吗',
+      '本人是残疾人',
+      '我有残疾证',
+      '我听不见，只能打字交流',
+      '我是听障人士',
+      '你好，我就是残疾人可以吗',
+    ])('detects explicit self-disclosure: %s', async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
+        hit: true,
+        riskType: 'disability_disclosure',
+      });
+    });
+
+    it.each(['聋哑人能做吗', '残疾人要不要', '你们收不收听障的', '招不招残疾人', '要残疾证的人吗'])(
+      'detects self-implicating eligibility question: %s',
+      async (scanContent) => {
+        await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
+          hit: true,
+          riskType: 'disability_disclosure',
+        });
+      },
+    );
+
+    it.each([
+      '我爸是残疾人，平时要照顾他，只能做白班',
+      '我妈妈有残疾证，家里离不开人',
+      '之前在残联做过志愿者',
+      '门店有残疾人通道吗',
+    ])('does NOT hit third-party/incidental mentions (防画像误伤): %s', async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({
+        hit: false,
+      });
+    });
+
+    it('summary instructs human takeover without AI exposure or template rejection', async () => {
+      const evaluation = await service.evaluate(baseInput({ scanContent: '我是聋哑人' }));
+      expect(evaluation.hit).toBe(true);
+      expect(evaluation.sideEffect).toMatchObject({
+        kind: 'conversation_risk',
+        riskType: 'disability_disclosure',
+      });
+      const summary =
+        evaluation.sideEffect?.kind === 'conversation_risk' ? evaluation.sideEffect.summary : '';
+      expect(summary).toContain('静默暂停');
+      expect(summary).toContain('不要提及 AI');
+      expect(summary).toContain('不要使用任何模板式拒绝话术');
     });
   });
 });
