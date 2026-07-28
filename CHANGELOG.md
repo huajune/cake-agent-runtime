@@ -8,6 +8,41 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.34.0`
+**最近更新**: `2026-07-28`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #813 回填 v10.33.0 发布结果
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #813 回填 v10.33.0 发布结果
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #813 pre-push ci:check：376 suites / 5933 tests，6 skipped
+- PR #813 部署工作流：https://github.com/huajune/cake-agent-runtime/actions/runs/30357841117
+- PR #813 Release：https://github.com/huajune/cake-agent-runtime/releases/tag/v10.33.0
+<!-- release:pending:end -->
+
 ## [10.33.0] - 2026-07-28
 
 **来源分支**: `develop`
