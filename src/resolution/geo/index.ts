@@ -22,6 +22,7 @@ export { normalizeCityName, normalizeDistrictForLookup } from './geo-name.normal
 export {
   detectGeoSignalConflict,
   hasKnownCityPrefix,
+  listUniqueDistrictCityEntries,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,

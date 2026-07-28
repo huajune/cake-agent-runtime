@@ -116,6 +116,16 @@ export function resolveParentAdministrativeArea(input: string): ParentAdministra
  * 替代消费方直接拼接 SUPPORTED_CITY_PREFIXES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
  * （§8.1 过渡期导出收口，Phase 5）。
  */
+/**
+ * 区名唯一映射的全量条目（district → city）只读视图。
+ *
+ * 供跨域消费方（brand 城市同形词门槛按城市索引区名后缀）建索引；Record 本身
+ * 不作为公共 API（§8.1 终态原则：行政区关系一律通过 resolver 查询）。
+ */
+export function listUniqueDistrictCityEntries(): ReadonlyArray<readonly [string, string]> {
+  return Object.entries(DISTRICT_TO_CITY);
+}
+
 export function hasKnownCityPrefix(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
