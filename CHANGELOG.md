@@ -14,7 +14,7 @@
 **预计版本**: `v10.33.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #794 回填 v10.32.0 发布结果
@@ -32,6 +32,11 @@
 - PR #802 状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。
 - PR #799 真人回复后停止报名后触达
 - PR #801 人工升级对账认可 raise_risk_alert + repair 注入当前时间锚
+- PR #798 定位分享轮内锚点——prep 阶段逆解析坐标 seed geocodeResolvedAnchors（A2 同轮空档）
+- PR #798 prep 构建 toolContext 后：当前 user 块含 `[经纬度:lat,lng]` 时（引用块剥离、多条取最新）逆地理解析，seed 进 `geocodeResolvedAnchors`（精确坐标，areaLevelQuery=false）——invite 城市门 **turn_geocode 档**与 job_list 距离口径同轮直接可用
+- PR #798 逆解析与 extractFacts A2 **共用 30 天 Redis 缓存键**，全轮至多一次真实高德请求；失败/服务缺失静默跳过（维持既有行为，不让高德抖动影响主链）
+- PR #798 坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定
+- PR #798 定位分享轮内锚点——prep 逆解析 seed geocodeResolvedAnchors（A2 同轮空档）
 
 ### 新功能
 - PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
@@ -42,9 +47,12 @@
 - PR #802 解决旧「分类」列混入测试错误码、运营原因不可控的问题；新增「问题原因」列并保留旧列兼容历史数据。
 - PR #802 解决测试证据仅在备注堆 ID、单批次可能误关单的问题。
 - PR #802 测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。
+- PR #798 prep 构建 toolContext 后：当前 user 块含 `[经纬度:lat,lng]` 时（引用块剥离、多条取最新）逆地理解析，seed 进 `geocodeResolvedAnchors`（精确坐标，areaLevelQuery=false）——invite 城市门 **turn_geocode 档**与 job_list 距离口径同轮直接可用
+- PR #798 坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定
 
 ### 优化调整
 - PR #800 硬约束段合并顺序统一为本轮高置信优先（证据化 Phase 0 第 2 条）
+- PR #798 逆解析与 extractFacts A2 **共用 30 天 Redis 缓存键**，全轮至多一次真实高德请求；失败/服务缺失静默跳过（维持既有行为，不让高德抖动影响主链）
 
 ### 运维与流程
 - PR #794 回填 v10.32.0 发布结果
@@ -58,6 +66,7 @@
 - PR #802 关联 BadCase 治理 PR
 - PR #799 真人回复后停止报名后触达
 - PR #801 人工升级对账认可 raise_risk_alert + repair 注入当前时间锚
+- PR #798 定位分享轮内锚点——prep 阶段逆解析坐标 seed geocodeResolvedAnchors（A2 同轮空档）
 
 ### 配置变更
 - PR #802 FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN
@@ -86,6 +95,7 @@
 - PR #801 `reply-repair.agent.spec.ts` 断言 system 含时间锚段。
 - PR #801 `datetime.section.spec.ts` 既有用例全过（重构无行为变化）。
 - PR #801 全量 `ci:check`（lint + typecheck + 全部测试）经 pre-push 钩子通过。
+- PR #798 typecheck / lint 干净；受影响 18 套件 269 用例通过；新增 util spec 6 例（含 badcase 坐标原样还原、引用块、坐标残片负例）
 <!-- release:pending:end -->
 
 ## [10.32.0] - 2026-07-28
