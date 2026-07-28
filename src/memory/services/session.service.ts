@@ -56,7 +56,6 @@ import {
   detectBrandAliasHints,
   extractHighConfidenceFacts,
   filterHighConfidenceFacts,
-  stripQuotedBlocks,
   unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
@@ -67,6 +66,7 @@ import type { BrandItem } from '@/sponge/sponge.types';
 import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { resolveConfirmedCityFact } from '../facts/confirmation-facts';
+import { parseLocationShareCoords } from '../facts/location-share';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import {
   assertExtractionIdentityProvenance,
@@ -1101,15 +1101,12 @@ export class SessionService {
     return SessionFactsSchema.parse(facts) as SessionFacts;
   }
 
-  /** 定位分享渲染文本中的经纬度（`[经纬度:lat,lng]`，见 MessageParser 渲染约定）。 */
-  private static readonly LOCATION_SHARE_COORDS_PATTERN =
-    /\[经纬度:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g;
-
   /**
    * 本轮候选人定位分享 → 逆地理编码 → 城市事实（A2）。
    *
-   * 只扫当前 user 消息块（尾部连续 user 段），引用块先剥离（转发的经理定位不算
-   * 候选人自己的位置）；多条定位取最后一条（最新位置）。逆解失败/服务缺失静默跳过。
+   * 只扫当前 user 消息块（尾部连续 user 段）；坐标解析（含引用块剥离、多条取最新）
+   * 收拢在 parseLocationShareCoords（preparation 轮内锚点与本方法共用同一份约定）。
+   * 逆解失败/服务缺失静默跳过。
    */
   private async buildLocationShareCityFact(
     currentTurnUserTexts: readonly string[],
@@ -1118,18 +1115,7 @@ export class SessionService {
     if (!this.geocoding) return null;
     if (existingCity && existingCity.confidence === 'high') return null;
 
-    let coords: { latitude: number; longitude: number } | null = null;
-    for (const text of currentTurnUserTexts) {
-      const cleaned = stripQuotedBlocks(MessageParser.stripTimeContext(text));
-      if (!cleaned.includes('[位置分享]')) continue;
-      for (const match of cleaned.matchAll(SessionService.LOCATION_SHARE_COORDS_PATTERN)) {
-        const latitude = Number(match[1]);
-        const longitude = Number(match[2]);
-        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-          coords = { latitude, longitude };
-        }
-      }
-    }
+    const coords = parseLocationShareCoords(currentTurnUserTexts);
     if (!coords) return null;
 
     const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
