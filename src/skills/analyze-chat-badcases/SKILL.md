@@ -70,7 +70,7 @@ description: 抽样分析 Agent 生产对话或 BadCase / GoodCase 反馈样本�
 
 - `badcaseId`: 优先取 `问题ID / 用例名称 / record_id`
 - `submittedAt`: `提交时间 / 创建时间 / 咨询时间`
-- `category`: `分类 / 错误分类`
+- `category`: `问题原因 / 分类 / 错误分类`（Web 新反馈优先写 `问题原因`，历史记录兼容旧列）
 - `status`: `状态`
 - `priority`: `优先级`
 - `source`: `来源`

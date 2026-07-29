@@ -971,12 +971,16 @@ export class SubmitFeedbackRequestDto {
   @IsString()
   userMessage?: string;
 
-  @ApiPropertyOptional({ description: '运营场景分类（仅 badcase，历史字段名 errorType）' })
+  @ApiPropertyOptional({ description: '运营问题原因（仅 badcase，历史字段名 errorType）' })
   @IsOptional()
   @IsString()
   errorType?: string;
 
-  @ApiPropertyOptional({ description: 'BadCase 优先级', enum: ['P0', 'P1', 'P2'], default: 'P2' })
+  @ApiPropertyOptional({
+    description: 'BadCase 优先级',
+    enum: ['P0', 'P1', 'P2'],
+    default: 'P2',
+  })
   @IsOptional()
   @IsIn(['P0', 'P1', 'P2'])
   priority?: 'P0' | 'P1' | 'P2';

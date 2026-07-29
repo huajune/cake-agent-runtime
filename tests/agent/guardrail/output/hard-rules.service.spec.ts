@@ -2175,6 +2175,46 @@ describe('HardRulesService', () => {
       );
     });
 
+    it('allows the promise when raise_risk_alert committed a human escalation (badcase batch_6a66f559…)', () => {
+      // 面试官缺席场景：raise_risk_alert 已生效 = 暂停托管 + 飞书告警 + 下一轮人工
+      // 接手，"让同事确认"是真承诺；只认 request_handoff 曾把这条正确回复判成
+      // P0 空头承诺，无工具 rewrite 幻觉出"面试是明天"劝退了正在等面的候选人。
+      const result = service.check({
+        replyText:
+          '理解哈，等了这么久确实让人着急。我让同事帮你确认下面试那边的情况，稍等一会儿，你先别关页面。',
+        toolCalls: [
+          {
+            toolName: 'raise_risk_alert',
+            args: { riskType: 'escalation', reason: '候选人等待面试官超 20 分钟未入会' },
+            result: { accepted: true },
+          },
+        ],
+        chatId: '6a66f559ce406a6aee97d7ed',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it('does not accept a failed raise_risk_alert as grounding', () => {
+      const result = service.check({
+        replyText: '我让同事帮你确认下面试那边的情况，稍等一会儿。',
+        toolCalls: [
+          {
+            toolName: 'raise_risk_alert',
+            args: { riskType: 'escalation', reason: '缺少 chatId' },
+            result: { accepted: false, error: true },
+          },
+        ],
+        chatId: 'chat-risk-alert-failed',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
     it('also replans collective promises phrased with 我们', () => {
       const result = service.check({
         replyText: '我们这边会让门店负责人核实一下，晚点回复你。',

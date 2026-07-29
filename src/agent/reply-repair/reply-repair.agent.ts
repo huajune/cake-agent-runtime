@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { AgentToolCall } from '@agent/generator/generator.types';
+import { buildDateTimeGroundingLines } from '@agent/generator/context/sections/datetime.section';
 import type { GuardViolation } from '@shared-types/guardrail.contract';
 import { GuardrailReviewPacketBuilder } from '../guardrail/output/llm/review-packet.builder';
 import type { GuardrailReviewPacket } from '../guardrail/output/llm/review-packet.types';
@@ -44,6 +45,13 @@ export class ReplyRepairAgent {
         '尤其是逐项列出的报名表字段、岗位详情、时间选项等结构化内容，保持原有分行格式，禁止合并压缩成一句话。',
       '禁止输出工具调用、JSON、Markdown 代码块、解释过程。',
       '不要承诺“稍后帮你查/我去确认/马上帮你看”等本轮无法兑现的动作。',
+      '',
+      // 时间锚：repair 必然晚于历史消息发生，无锚时相对日期只能从历史里猜
+      //（badcase batch_6a66f559…：把当天 15:00 的真实约面复述成"明天…不是今天"）。
+      '# 当前时间（相对日期以此为准）',
+      ...buildDateTimeGroundingLines(),
+      '对话历史与草稿可能产生于更早的时刻，里面的"今天/明天"等相对说法以其原发送时间为基准，可能已过时；' +
+        '改写涉及日期时间时一律按上方当前时间重新表述，不得照抄历史消息里的相对日期。',
       '',
       '# 待修复的草稿回复（被出站守卫拦下，不能直接发送）',
       `"""${input.originalReply.trim()}"""`,
