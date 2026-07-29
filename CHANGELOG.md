@@ -14,10 +14,9 @@
 **预计版本**: `v10.36.0`
 **最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 1
 
 ### 更新摘要
-- PR #834 回填 v10.35.0 发布结果
 - PR #836 修复 Agent 响应时间线顺序
 - PR #836 记录 v10.36.0 验证结果
 
@@ -31,7 +30,6 @@
 - 无
 
 ### 运维与流程
-- PR #834 回填 v10.35.0 发布结果
 - PR #836 记录 v10.36.0 验证结果
 
 ### 配置变更
@@ -41,8 +39,6 @@
 - 无
 
 ### 验证记录
-- PR #834 `git diff --check`
-- PR #834 pre-push `pnpm run ci:check`：377 suites / 5961 tests passed（1 suite / 6 tests skipped）
 - PR #836 `pnpm run ci:check`：378 suites / 5964 tests 通过
 - PR #836 `pnpm run test:di-smoke`：通过
 - PR #836 `pnpm run build:web`、`pnpm run typecheck`：通过
