@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.35.0] - 2026-07-29
 
-**预计版本**: `v10.35.0`
-**最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #824 回填 v10.34.0 发布结果
@@ -62,7 +58,6 @@
 - PR #829 `pnpm release:ledger:check`
 - PR #829 `git diff --check`
 - PR #829 pre-push `pnpm run ci:check`：377 suites / 5961 tests passed（1 suite / 6 tests skipped）
-<!-- release:pending:end -->
 
 ## [10.34.0] - 2026-07-29
 
