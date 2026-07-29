@@ -8,6 +8,40 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.36.0`
+**最近更新**: `2026-07-29`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #834 回填 v10.35.0 发布结果
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #834 回填 v10.35.0 发布结果
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #834 `git diff --check`
+- PR #834 pre-push `pnpm run ci:check`：377 suites / 5961 tests passed（1 suite / 6 tests skipped）
+<!-- release:pending:end -->
+
 ## [10.35.0] - 2026-07-29
 
 **来源分支**: `develop`
