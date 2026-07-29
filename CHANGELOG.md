@@ -8,6 +8,43 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.36.0`
+**最近更新**: `2026-07-29`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #836 修复 Agent 响应时间线顺序
+- PR #836 记录 v10.36.0 验证结果
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #836 修复 Agent 响应时间线顺序
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #836 记录 v10.36.0 验证结果
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #836 `pnpm run ci:check`：378 suites / 5964 tests 通过
+- PR #836 `pnpm run test:di-smoke`：通过
+- PR #836 `pnpm run build:web`、`pnpm run typecheck`：通过
+- PR #836 使用生产记录 `batch_6a69d0b7ce406a6aeeca14ad_1785320390297` 本地页面回放，顺序确认为 reasoning → tool → reasoning → tool → reasoning → text
+<!-- release:pending:end -->
+
 ## [10.35.0] - 2026-07-29
 
 **来源分支**: `develop`
@@ -22,6 +59,7 @@
 - PR #827 合并解冲突收尾——反馈分类断言对齐「分类」列（问题原因列已废弃）
 - PR #827 BadCase 分类写入侧白名单归一，防选项池再污染
 - PR #827 AI SDK v7 升级收拢——语义审查生产修复 + BadCase 治理台账 + 面试群边界守卫
+- PR #829 固化 v10.35.0 发版底账
 
 ### 新功能
 - PR #827 Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…
@@ -39,6 +77,7 @@
 - PR #827 升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置
 - PR #827 BadCase 治理台账双门禁 + 反馈分级与治理文档同步
 - PR #827 语义审查适配 AI SDK v7 + 面试群边界守卫 + repair 回归闸对齐设计
+- PR #829 固化 v10.35.0 发版底账
 
 ### 配置变更
 - 无
@@ -53,6 +92,9 @@
 - PR #824 `git diff --check` 通过
 - PR #827 全量 Jest 379 套件通过（见 CI）；typecheck / ESLint（--max-warnings=0）/ web tsc 全绿
 - PR #827 涉改 16 测试套件本地逐一复跑通过；新增 conversation-normalizer v7 契约测试
+- PR #829 `pnpm release:ledger:check`
+- PR #829 `git diff --check`
+- PR #829 pre-push `pnpm run ci:check`：377 suites / 5961 tests passed（1 suite / 6 tests skipped）
 
 ## [10.34.0] - 2026-07-29
 

@@ -1,9 +1,40 @@
 {
   "baseVersion": "10.35.0",
-  "nextVersion": "10.35.0",
+  "nextVersion": "10.36.0",
   "updatedAt": "2026-07-29",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "836",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/836",
+      "title": "修复 Agent 响应时间线顺序",
+      "author": "huajune",
+      "mergedAt": "2026-07-29",
+      "businessUpdates": [
+        "修复 Agent 响应时间线顺序"
+      ],
+      "summary": [
+        "修复 Agent 响应时间线顺序",
+        "记录 v10.36.0 验证结果"
+      ],
+      "features": [],
+      "fixes": [
+        "修复 Agent 响应时间线顺序"
+      ],
+      "optimizations": [],
+      "ops": [
+        "记录 v10.36.0 验证结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`：378 suites / 5964 tests 通过",
+        "`pnpm run test:di-smoke`：通过",
+        "`pnpm run build:web`、`pnpm run typecheck`：通过",
+        "使用生产记录 `batch_6a69d0b7ce406a6aeeca14ad_1785320390297` 本地页面回放，顺序确认为 reasoning → tool → reasoning → tool → reasoning → text"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.35.0",
     "date": "2026-07-29",
@@ -74,6 +105,32 @@
         "verification": [
           "全量 Jest 379 套件通过（见 CI）；typecheck / ESLint（--max-warnings=0）/ web tsc 全绿",
           "涉改 16 测试套件本地逐一复跑通过；新增 conversation-normalizer v7 契约测试"
+        ]
+      },
+      {
+        "number": "829",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/829",
+        "title": "固化 v10.35.0 发版底账",
+        "author": "huajune",
+        "mergedAt": "2026-07-29",
+        "businessUpdates": [
+          "固化 v10.35.0 发版底账"
+        ],
+        "summary": [
+          "固化 v10.35.0 发版底账"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "固化 v10.35.0 发版底账"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm release:ledger:check`",
+          "`git diff --check`",
+          "pre-push `pnpm run ci:check`：377 suites / 5961 tests passed（1 suite / 6 tests skipped）"
         ]
       }
     ]
