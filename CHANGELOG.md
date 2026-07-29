@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.34.0] - 2026-07-29
 
-**预计版本**: `v10.34.0`
-**最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 4
 
 ### 更新摘要
 - PR #813 回填 v10.33.0 发布结果
@@ -76,7 +72,6 @@
 - PR #820 最终回复明确两个群分开，面试群使用“我这边接着发你邀请”，未声称已发送，未暴露身份切换。
 - PR #820 正式测试集已幂等新增 `SCN-20260729-INTERVIEW-GROUP-001`（Feishu record `recvqJEwCUUH8J`，生产证据已脱敏）。
 - PR #820 批次已同步生产 Dashboard 并回读：total=1, passed=1, failed=0, pending=0, pass_rate=100%，warnings=[]。
-<!-- release:pending:end -->
 
 ## [10.33.0] - 2026-07-28
 
