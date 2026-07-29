@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai';
 import type { MessageRecord, MessageRecordMemorySnapshot } from '@/api/types/chat.types';
+import { buildAgentResponseTimeline, type AgentTimelinePart } from './agent-response-timeline';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -169,49 +170,6 @@ function buildToolPart(params: {
     state,
     errorText,
   } as UIMessage['parts'][number];
-}
-
-function buildToolParts(toolCalls: AnyRecord[]): UIMessage['parts'] {
-  return toolCalls.reduce<UIMessage['parts']>((acc, toolCall, index) => {
-    const toolName =
-      asString(toolCall.toolName) ||
-      asString(toolCall.tool) ||
-      asString(toolCall.name) ||
-      `tool-${index + 1}`;
-    const errorText = asString(toolCall.errorText) || asString(toolCall.error);
-    const output =
-      toolCall.result ?? toolCall.output ?? (errorText ? { error: errorText } : undefined);
-    const explicitState = asString(toolCall.state);
-
-    acc.push(
-      buildToolPart({
-        toolName,
-        toolCallId: asString(toolCall.toolCallId) || `${toolName}-${index}`,
-        input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
-        output,
-        errorText,
-        state:
-          explicitState === 'error' ||
-          explicitState === 'output-error' ||
-          explicitState === 'input-error' ||
-          explicitState === 'output-denied'
-            ? 'output-error'
-            : output !== undefined || explicitState === 'output-available'
-              ? 'output-available'
-              : 'input-available',
-      }),
-    );
-
-    return acc;
-  }, []);
-}
-
-function hasPartType(parts: UIMessage['parts'], type: 'text' | 'reasoning'): boolean {
-  return parts.some((part) => part.type === type);
-}
-
-function hasToolPart(parts: UIMessage['parts']): boolean {
-  return parts.some((part) => part.type.startsWith('tool-'));
 }
 
 function normalizeMessageParts(parts: unknown): UIMessage['parts'] {
@@ -388,63 +346,36 @@ export function getAssistantRenderableMessage(message: MessageRecord): UIMessage
   const response = getInvocationResponse(message);
   const responseMessages = asArray<AnyRecord>(response?.messages);
   const directToolCalls = asArray<AnyRecord>(response?.toolCalls);
-  const directToolParts = buildToolParts(directToolCalls);
   const reply = asRecord(response?.reply);
   const replyReasoning = asString(reply?.reasoning) || asString(response?.reasoningPreview);
   const replyContent =
     asString(reply?.content) || asString(response?.replyPreview) || message.replyPreview;
-  const renderableParts = buildRenderablePartsFromResponseMessages(responseMessages);
+  const responseParts = buildRenderablePartsFromResponseMessages(
+    responseMessages,
+  ) as AgentTimelinePart[];
+  const timelineParts = buildAgentResponseTimeline({
+    steps: message.agentSteps,
+    responseParts,
+    directToolCalls: directToolCalls.map((toolCall) => ({
+      toolName:
+        asString(toolCall.toolName) ||
+        asString(toolCall.tool) ||
+        asString(toolCall.name) ||
+        'unknown-tool',
+      args: toolCall.input ?? toolCall.args ?? toolCall.arguments,
+      result: toolCall.result ?? toolCall.output,
+      status: asString(toolCall.status),
+    })),
+    finalReasoning: replyReasoning,
+    finalText: replyContent,
+  });
 
-  if (renderableParts.length > 0) {
-    const enrichedParts = [...renderableParts];
-
-    if (replyReasoning && !hasPartType(enrichedParts, 'reasoning')) {
-      enrichedParts.unshift({
-        type: 'reasoning',
-        text: replyReasoning,
-      } as UIMessage['parts'][number]);
-    }
-
-    if (directToolParts.length > 0 && !hasToolPart(enrichedParts)) {
-      const firstTextIndex = enrichedParts.findIndex((part) => part.type === 'text');
-      if (firstTextIndex >= 0) {
-        enrichedParts.splice(firstTextIndex, 0, ...directToolParts);
-      } else {
-        enrichedParts.push(...directToolParts);
-      }
-    }
-
-    if (replyContent && !hasPartType(enrichedParts, 'text')) {
-      enrichedParts.push(buildTextPart(replyContent));
-    }
-
-    return {
-      id: `assistant-renderable-${message.messageId || message.chatId}`,
-      role: 'assistant',
-      parts: enrichedParts,
-    } as UIMessage;
-  }
-
-  const syntheticParts: UIMessage['parts'] = [];
-  if (replyReasoning) {
-    syntheticParts.push({
-      type: 'reasoning',
-      text: replyReasoning,
-    } as UIMessage['parts'][number]);
-  }
-
-  syntheticParts.push(...directToolParts);
-
-  if (replyContent) {
-    syntheticParts.push(buildTextPart(replyContent));
-  }
-
-  if (syntheticParts.length === 0) return undefined;
+  if (timelineParts.length === 0) return undefined;
 
   return {
-    id: `assistant-synthetic-${message.messageId || message.chatId}`,
+    id: `assistant-timeline-${message.messageId || message.chatId}`,
     role: 'assistant',
-    parts: syntheticParts,
+    parts: timelineParts as UIMessage['parts'],
   } as UIMessage;
 }
 
