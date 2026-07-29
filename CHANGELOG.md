@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.36.0] - 2026-07-29
 
-**预计版本**: `v10.36.0`
-**最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #836 修复 Agent 响应时间线顺序
@@ -43,7 +39,6 @@
 - PR #836 `pnpm run test:di-smoke`：通过
 - PR #836 `pnpm run build:web`、`pnpm run typecheck`：通过
 - PR #836 使用生产记录 `batch_6a69d0b7ce406a6aeeca14ad_1785320390297` 本地页面回放，顺序确认为 reasoning → tool → reasoning → tool → reasoning → text
-<!-- release:pending:end -->
 
 ## [10.35.0] - 2026-07-29
 
