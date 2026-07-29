@@ -22,6 +22,8 @@ describe('TestFeedbackService', () => {
         chatHistory: 'history',
         userMessage: 'message',
         errorType: 'guardrail',
+        priority: 'P1',
+        expectedBehavior: '信息不确定时先追问',
         remark: 'remark',
         traceId: 'trace-1',
         candidateName: '候选人',
@@ -40,6 +42,8 @@ describe('TestFeedbackService', () => {
         userMessage: 'message',
         traceId: 'trace-1',
         candidateName: '候选人',
+        priority: 'P1',
+        expectedBehavior: '信息不确定时先追问',
       }),
     );
   });

@@ -354,6 +354,12 @@ export class TestSuiteController {
     return this.feedbackService.submitFeedback(request);
   }
 
+  @Post('badcase-governance/backfill-evidence')
+  @ApiOperation({ summary: '盘点或回填 BadCase 历史测试证据（默认 dry-run）' })
+  async backfillBadcaseEvidence(@Body() request: { apply?: boolean; maxBatches?: number }) {
+    return this.batchService.backfillBadcaseEvidence(request);
+  }
+
   // ==================== 回归验证 ====================
 
   @Post('conversations/sync')
