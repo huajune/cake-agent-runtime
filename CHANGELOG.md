@@ -8,6 +8,42 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.35.0`
+**最近更新**: `2026-07-29`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #824 回填 v10.34.0 发布结果
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #824 回填 v10.34.0 发布结果
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #824 完整 `pnpm run ci:check`：376 passed suites，1 skipped；5951 passed tests，6 skipped
+- PR #824 生产容器 `cake-agent-runtime:v10.34.0`：healthy，0 重启
+- PR #824 生产机本地及公网 `/agent/health`：healthy，Redis / Supabase 通过
+- PR #824 `git diff --check` 通过
+<!-- release:pending:end -->
+
 ## [10.34.0] - 2026-07-29
 
 **来源分支**: `develop`
