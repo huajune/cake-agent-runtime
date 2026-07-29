@@ -3,7 +3,35 @@
   "nextVersion": "10.35.0",
   "updatedAt": "2026-07-29",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "824",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/824",
+      "title": "回填 v10.34.0 发布结果",
+      "author": "ArielZhu",
+      "mergedAt": "2026-07-29",
+      "businessUpdates": [
+        "回填 v10.34.0 发布结果"
+      ],
+      "summary": [
+        "回填 v10.34.0 发布结果"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "回填 v10.34.0 发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "完整 `pnpm run ci:check`：376 passed suites，1 skipped；5951 passed tests，6 skipped",
+        "生产容器 `cake-agent-runtime:v10.34.0`：healthy，0 重启",
+        "生产机本地及公网 `/agent/health`：healthy，Redis / Supabase 通过",
+        "`git diff --check` 通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.34.0",
     "date": "2026-07-29",
