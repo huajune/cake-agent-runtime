@@ -14,13 +14,17 @@
 **预计版本**: `v10.34.0`
 **最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #813 回填 v10.33.0 发布结果
 - PR #816 升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置
 - PR #816 merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…
 - PR #816 AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置
+- PR #817 生产与 CI 运行时 Node 22 → 24
+- PR #817 **Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）
+- PR #817 **4 个 workflow 共 9 处** `node-version: '22'` → `'24'`
+- PR #817 `engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制
 
 ### 新功能
 - 无
@@ -34,6 +38,10 @@
 ### 运维与流程
 - PR #813 回填 v10.33.0 发布结果
 - PR #816 升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置
+- PR #817 **Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）
+- PR #817 **4 个 workflow 共 9 处** `node-version: '22'` → `'24'`
+- PR #817 `engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制
+- PR #817 生产与 CI 运行时 Node 22 → 24
 
 ### 配置变更
 - 无

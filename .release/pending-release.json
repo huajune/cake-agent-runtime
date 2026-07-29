@@ -63,6 +63,37 @@
         "升级后真实 API 冒烟：deepseek-v4-pro（deep+effort）与 qwen3.6/3.7（fast/deep）原生多步工具调用干净、零伪 tool_call 文本",
         "降级链配置 API 实测三态：保存生效（source=db_override）/ 脏 ID 400 拒绝 / 清空回退 env"
       ]
+    },
+    {
+      "number": "817",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/817",
+      "title": "生产与 CI 运行时 Node 22 → 24",
+      "author": "huajune",
+      "mergedAt": "2026-07-29",
+      "businessUpdates": [
+        "生产与 CI 运行时 Node 22 → 24",
+        "**Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）",
+        "**4 个 workflow 共 9 处** `node-version: '22'` → `'24'`",
+        "`engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制"
+      ],
+      "summary": [
+        "生产与 CI 运行时 Node 22 → 24",
+        "**Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）",
+        "**4 个 workflow 共 9 处** `node-version: '22'` → `'24'`",
+        "`engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "**Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）",
+        "**4 个 workflow 共 9 处** `node-version: '22'` → `'24'`",
+        "`engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制",
+        "生产与 CI 运行时 Node 22 → 24"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
