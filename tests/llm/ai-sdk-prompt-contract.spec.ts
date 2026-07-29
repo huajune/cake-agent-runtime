@@ -12,12 +12,12 @@ const mockGenerateResult = {
 };
 
 describe('AI SDK prompt contract', () => {
-  it('accepts a system prompt with a non-empty prompt', async () => {
+  it('accepts instructions with a non-empty prompt', async () => {
     const model = new MockLanguageModelV3({ doGenerate: mockGenerateResult });
 
     const result = await generateText({
       model,
-      system: '复聊系统上下文',
+      instructions: '复聊系统上下文',
       prompt: '请根据以上上下文生成本次复聊消息。',
       maxRetries: 0,
     });
@@ -30,13 +30,30 @@ describe('AI SDK prompt contract', () => {
     ]);
   });
 
+  it('rejects system messages embedded in messages before calling the provider', async () => {
+    const model = new MockLanguageModelV3({ doGenerate: mockGenerateResult });
+
+    await expect(
+      generateText({
+        model,
+        messages: [
+          { role: 'system', content: '复聊系统上下文' },
+          { role: 'user', content: '请生成本次复聊消息。' },
+        ],
+        maxRetries: 0,
+      }),
+    ).rejects.toThrow('System messages are not allowed');
+
+    expect(model.doGenerateCalls).toHaveLength(0);
+  });
+
   it('rejects empty messages before calling the provider', async () => {
     const model = new MockLanguageModelV3({ doGenerate: mockGenerateResult });
 
     await expect(
       generateText({
         model,
-        system: '复聊系统上下文',
+        instructions: '复聊系统上下文',
         messages: [],
         maxRetries: 0,
       }),

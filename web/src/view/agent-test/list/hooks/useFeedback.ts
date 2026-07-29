@@ -209,7 +209,7 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
           type: submittedType,
           chatHistory: chatHistory.trim(),
           userMessage: userMessage?.trim() || undefined,
-          errorType: scenarioType || undefined, // 后端历史字段名，实际承载 BadCase「问题原因」
+          errorType: scenarioType || undefined, // 后端历史字段名，实际承载 BadCase「分类」
           priority: submittedType === 'badcase' ? priority : undefined,
           expectedBehavior:
             submittedType === 'badcase' ? expectedBehavior.trim() || undefined : undefined,

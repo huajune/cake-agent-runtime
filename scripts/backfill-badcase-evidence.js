@@ -15,7 +15,7 @@ const readArg = (prefix, fallback) => {
   return item ? item.slice(prefix.length + 1) : fallback;
 };
 const apply = args.has('--apply');
-const baseUrl = readArg('--base-url', process.env.BADCASE_GOVERNANCE_API_BASE_URL || 'http://127.0.0.1:8586');
+const baseUrl = readArg('--base-url', process.env.BADCASE_GOVERNANCE_API_BASE_URL || 'http://127.0.0.1:8585');
 const maxBatches = Number(readArg('--max-batches', '2000'));
 const token = process.env.API_GUARD_TOKEN;
 

@@ -122,9 +122,7 @@ function buildDebugRequestContext(request?: AnyRecord): AnyRecord | undefined {
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
-function buildMemorySnapshotPayload(
-  snapshot?: MessageRecordMemorySnapshot,
-): AnyRecord | undefined {
+function buildMemorySnapshotPayload(snapshot?: MessageRecordMemorySnapshot): AnyRecord | undefined {
   if (!snapshot) return undefined;
 
   const entries: AnyRecord = {};
@@ -593,7 +591,8 @@ export function getResponseText(message: MessageRecord): string {
 /**
  * 把 agentRequest 还原成可读的最终提示词全文。
  *
- * agent_invocation.request.agentRequest 里存了完整的 system prompt（含注入的
+ * agent_invocation.request.agentRequest 里存了完整的 instructions（旧记录为 system，
+ * 含注入的
  * [用户档案] / [会话记忆] / [历史求职意向] 等记忆段）和消息序列，但 "LLM 请求"
  * tab 以 JSON 展示，长文本被转义成单行没法读——排障时"模型到底看到了什么记忆"
  * 一直回答不了（张漪 case 排查时只能去库里 substring）。这里拼成纯文本面板。
@@ -608,9 +607,11 @@ function buildFinalPromptText(agentRequest?: AnyRecord): string | undefined {
     sections.push(`模型: ${modelId}`);
   }
 
-  const system = asString(agentRequest.system);
-  if (system) {
-    sections.push(`━━━━━━━━━━ System Prompt（${system.length} 字符） ━━━━━━━━━━\n\n${system}`);
+  const instructions = asString(agentRequest.instructions) ?? asString(agentRequest.system);
+  if (instructions) {
+    sections.push(
+      `━━━━━━━━━━ Instructions（${instructions.length} 字符） ━━━━━━━━━━\n\n${instructions}`,
+    );
   }
 
   const messages = asArray<AnyRecord>(agentRequest.messages);
@@ -655,7 +656,7 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
       key: 'final-prompt',
       label: '最终提示词',
       description:
-        '发往大模型的完整 system prompt（含 [用户档案]/[会话记忆]/[历史求职意向] 等注入的记忆段）与消息序列，纯文本可读视图',
+        '发往大模型的完整 instructions（兼容旧记录的 system，含 [用户档案]/[会话记忆]/[历史求职意向] 等注入的记忆段）与消息序列，纯文本可读视图',
       data: finalPromptText,
     });
   }

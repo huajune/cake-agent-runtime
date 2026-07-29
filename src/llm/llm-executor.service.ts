@@ -497,16 +497,20 @@ export class LlmExecutorService {
 
     // 注意：多步循环早已从 maxSteps 迁移到 stopWhen，这里必须按 tools 是否存在分支；
     // 旧的 `'maxSteps' in options` 判断恒为 false，导致追溯快照永远缺 toolNames。
+    const instructionSnapshot =
+      options.instructions !== undefined
+        ? { instructions: options.instructions }
+        : { system: options.system };
     const params =
       options.tools && Object.keys(options.tools).length > 0
         ? {
-            system: options.system,
+            ...instructionSnapshot,
             messages: options.messages,
             maxOutputTokens: options.maxOutputTokens,
             toolNames: Object.keys(options.tools),
           }
         : {
-            system: options.system,
+            ...instructionSnapshot,
             messages: options.messages,
             prompt: 'prompt' in options ? options.prompt : undefined,
             maxOutputTokens: options.maxOutputTokens,

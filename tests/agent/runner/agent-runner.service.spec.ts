@@ -830,9 +830,7 @@ describe('AgentRunnerService.runTurn', () => {
   });
 
   it('repairs a legacy image-description decision without granting any tool access', async () => {
-    generator.invoke.mockResolvedValueOnce(
-      makeResult({ text: '图片里是健康证，可以继续报名。' }),
-    );
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '图片里是健康证，可以继续报名。' }));
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'replan',
@@ -1127,6 +1125,9 @@ describe('AgentRunnerService.runTurn', () => {
             evidence: '详情字段需实时刷新',
             suggestion: '按 jobId 补查后回答',
             recoverability: 'recoverable' as const,
+            // 生产上 revise 档一律派生 currentReplySendable=false（deriveRulePolicy）；
+            // mock 保持同形态，防止"用该字段判定禁回退"的恒真条件回潮（2026-07-29）。
+            currentReplySendable: false,
           },
         ],
         ruleIds: ['job_detail_lookup_required'],
@@ -1155,6 +1156,122 @@ describe('AgentRunnerService.runTurn', () => {
         traceId: 'msg-regression',
         repaired: true,
         reasonCode: 'repair_regression_reverted:structure_collapsed',
+      }),
+    );
+  });
+
+  it('keeps the passing no-job repair when the first reply fabricated jobs from empty tool results', async () => {
+    const firstReply = [
+      '帮你查了下，附近有几家在招的：',
+      '',
+      '肯德基-深圳爱联店（距离约0.5km）',
+      '服务员-小时工，22元/小时，每月15号发薪',
+      '',
+      '必胜客-深圳龙岗万达店（距离约2.8km）',
+      '服务员-小时工，23元/小时，每月15号发薪',
+      '',
+      'M Stand-深圳大运天地店（距离约3.2km）',
+      '咖啡师-全职，综合薪资6000-8000元/月，每月20号发薪',
+    ].join('\n');
+    const revisedReply =
+      '帮你查了下，目前暂时没查到你位置附近匹配的在招岗位。我已经邀请你进深圳餐饮兼职群，群里会发最新岗位信息。';
+    const emptyJobCall = {
+      toolName: 'duliday_job_list',
+      args: { cityNameList: ['深圳'] },
+      result: { success: false, errorType: 'job_list.no_results' },
+      status: 'empty' as const,
+    };
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: firstReply,
+        toolCalls: [emptyJobCall, { ...emptyJobCall }],
+      }),
+    );
+    replyRepairAgent.repair.mockResolvedValueOnce(revisedReply);
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise' as const,
+        riskLevel: 'medium' as const,
+        violations: [
+          {
+            type: 'settlement_no_evidence_assertion',
+            evidence: '查岗全部为空却断言发薪时间',
+            suggestion: '删除无依据岗位并按空结果回复',
+            recoverability: 'recoverable' as const,
+            currentReplySendable: false,
+          },
+        ],
+        ruleIds: ['settlement_no_evidence_assertion'],
+        blockedRuleIds: ['settlement_no_evidence_assertion'],
+        repairMode: 'rewrite' as const,
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '[位置分享] 新竹东雅筑' },
+      context: { messageId: 'batch-empty-job-hallucination' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(revisedReply);
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'batch-empty-job-hallucination',
+        repaired: true,
+        finalDecision: 'pass',
+        reasonCode: undefined,
+      }),
+    );
+  });
+
+  it('blocks both versions when a regressed repair follows a non-fail-open first reply (P0 leak)', async () => {
+    // 对齐 guardrail-chain-assessment-and-rebuild.md §2.3 ④：检出回归时 P1/P2 回退首版、
+    // P0 两版都不投。首版是泄漏类红线内容时，回退等于把守卫已否决的文本重新投递。
+    const firstReply = [
+      '要帮你登记预约的话，先把下面资料发我：',
+      '姓名：',
+      '联系电话：',
+      '性别：',
+      '年龄：',
+      '面试时间：',
+      '应聘门店：上海佘山旭辉里店',
+    ].join('\n');
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: firstReply }));
+    replyRepairAgent.repair.mockResolvedValueOnce('你把姓名和电话发我就行。');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise' as const,
+        riskLevel: 'medium' as const,
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '泄漏内部实现',
+            suggestion: '删除内部内容',
+            recoverability: 'non_recoverable' as const,
+            currentReplySendable: false,
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite' as const,
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '怎么报名' },
+      context: { messageId: 'msg-non-sendable-regression' },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.reply).toBeUndefined();
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-non-sendable-regression',
+        repaired: true,
+        finalDecision: 'block',
+        reasonCode: 'repair_regression_blocked:structure_collapsed',
       }),
     );
   });

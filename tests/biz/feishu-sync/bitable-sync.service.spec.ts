@@ -41,7 +41,6 @@ describe('FeishuBitableSyncService', () => {
           { field_name: '聊天记录' },
           { field_name: '用户消息' },
           { field_name: '用例名称' },
-          { field_name: '问题原因' },
           { field_name: '分类' },
           { field_name: '备注' },
           { field_name: 'chatId' },
@@ -220,12 +219,33 @@ describe('FeishuBitableSyncService', () => {
           处理结论: '待归因',
           待确认方: '无',
           来源: 'AgentTest',
-          问题原因: '信息错误',
+          // '信息错误' 不在分类白名单：归一到 15-其他，原始标签落备注（防选项池再污染）
+          分类: '15-其他',
+          备注: expect.stringContaining('原始错误标签：信息错误'),
           chatId: 'chat_001',
           message_id: 'msg_001',
           traceId: 'trace_001',
         }),
       );
+    });
+
+    it('should pass whitelisted category through without normalization', async () => {
+      mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
+      mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_new' });
+
+      await service.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory: 'history',
+        errorType: '5-岗位详情、薪资与福利',
+      });
+
+      expect(mockBitableApi.createRecord).toHaveBeenLastCalledWith(
+        badcaseTableConfig.appToken,
+        badcaseTableConfig.tableId,
+        expect.objectContaining({ 分类: '5-岗位详情、薪资与福利' }),
+      );
+      const fields = mockBitableApi.createRecord.mock.calls.at(-1)?.[2] as Record<string, unknown>;
+      expect(String(fields['备注'] ?? '')).not.toContain('原始错误标签');
     });
 
     it('should map feedback source to Chinese labels for 来源 column', async () => {

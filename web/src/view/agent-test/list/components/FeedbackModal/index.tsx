@@ -20,7 +20,7 @@ export interface FeedbackModalProps {
   isSubmitting: boolean;
   chatHistoryPreview: string;
   submitError?: string | null;
-  /** 问题原因选项，缺省为主聊 15 类；复聊页传入专属选项 */
+  /** 场景分类选项，缺省为主聊 15 类；复聊页传入专属选项 */
   scenarioOptions?: Array<{ value: string; label: string }>;
   screenshots?: string[];
   onAddScreenshots?: (files: Iterable<File>) => void;
@@ -104,7 +104,7 @@ export function FeedbackModal({
           {!isGoodCase && (
             <>
               <div className={styles.formGroup}>
-                <label>问题原因（可选）</label>
+                <label>场景分类（可选）</label>
                 <CustomSelect
                   value={scenarioType}
                   options={scenarioOptions}

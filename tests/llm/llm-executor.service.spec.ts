@@ -134,6 +134,33 @@ describe('LlmExecutorService', () => {
   }
 
   describe('generate', () => {
+    it('passes instructions through to AI SDK and the prepared request snapshot', async () => {
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+      const onPreparedRequest = jest.fn();
+
+      await service.generate({
+        role: ModelRole.Chat,
+        instructions: '主聊系统指令',
+        messages: [{ role: 'user', content: '你好' }],
+        disableFallbacks: true,
+        onPreparedRequest,
+      });
+
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instructions: '主聊系统指令',
+          messages: [{ role: 'user', content: '你好' }],
+        }),
+      );
+      expect(mockGenerateText.mock.calls[0][0]).not.toHaveProperty('system');
+      expect(onPreparedRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instructions: '主聊系统指令',
+          messages: [{ role: 'user', content: '你好' }],
+        }),
+      );
+    });
+
     it('should use adaptive thinking for Anthropic Claude 4.7 models', async () => {
       mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
 
