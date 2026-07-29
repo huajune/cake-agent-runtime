@@ -11,13 +11,13 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v10.33.0`
+**预计版本**: `v10.34.0`
 **最近更新**: `2026-07-28`
 **来源分支**: `develop`
 **累计 PR**: 1
 
 ### 更新摘要
-- PR #794 回填 v10.32.0 发布结果
+- PR #813 回填 v10.33.0 发布结果
 
 ### 新功能
 - 无
@@ -29,7 +29,7 @@
 - 无
 
 ### 运维与流程
-- PR #794 回填 v10.32.0 发布结果
+- PR #813 回填 v10.33.0 发布结果
 
 ### 配置变更
 - 无
@@ -38,9 +38,97 @@
 - 无
 
 ### 验证记录
+- PR #813 pre-push ci:check：376 suites / 5933 tests，6 skipped
+- PR #813 部署工作流：https://github.com/huajune/cake-agent-runtime/actions/runs/30357841117
+- PR #813 Release：https://github.com/huajune/cake-agent-runtime/releases/tag/v10.33.0
+<!-- release:pending:end -->
+
+## [10.33.0] - 2026-07-28
+
+**来源分支**: `develop`
+
+### 更新摘要
+- PR #794 回填 v10.32.0 发布结果
+- PR #796 geo 方案交付状态对齐 v3.4——定稿待批改已交付、Phase 4/5 标注落地、shadow…
+- PR #796 geo 方案交付状态对齐 v3.4
+- PR #800 沈阳/佛山业务足迹补录——区名策展表 12 条 + 裸名城市 2 条（证据化族 badcase 城市）
+- PR #800 硬约束段合并顺序统一为本轮高置信优先（证据化 Phase 0 第 2 条）
+- PR #800 证据化方案账目更新——§16.3 P1 交付账 + §16.4 两轮发版验证 + §17 Phas…
+- PR #800 候选人认知体系四文档整体化——三轴定位互引 + 记忆真相文档漂移修正 + 判定机制交点对账
+- PR #800 沈阳/佛山补录 + 硬约束段合并顺序统一（证据化收尾两项）
+- PR #802 自动化治理追踪与反馈原因
+- PR #802 关联 BadCase 治理 PR
+- PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
+- PR #802 测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。
+- PR #802 状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。
+- PR #799 真人回复后停止报名后触达
+- PR #801 人工升级对账认可 raise_risk_alert + repair 注入当前时间锚
+- PR #798 定位分享轮内锚点——prep 阶段逆解析坐标 seed geocodeResolvedAnchors（A2 同轮空档）
+- PR #798 prep 构建 toolContext 后：当前 user 块含 `[经纬度:lat,lng]` 时（引用块剥离、多条取最新）逆地理解析，seed 进 `geocodeResolvedAnchors`（精确坐标，areaLevelQuery=false）——invite 城市门 **turn_geocode 档**与 job_list 距离口径同轮直接可用
+- PR #798 逆解析与 extractFacts A2 **共用 30 天 Redis 缓存键**，全轮至多一次真实高德请求；失败/服务缺失静默跳过（维持既有行为，不让高德抖动影响主链）
+- PR #798 坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定
+- PR #798 定位分享轮内锚点——prep 逆解析 seed geocodeResolvedAnchors（A2 同轮空档）
+- PR #809 汇总 v10.33.0 统一发版底账
+
+### 新功能
+- PR #802 Web BadCase 反馈新增独立「问题原因」、P0/P1/P2 与期望处理方式；主聊 15 类、复聊 8 类。
+- PR #802 状态/证据更新会幂等累计到飞书《BadCase 治理进展同步》，历史回填默认 dry-run 且不写文档。
+
+### 问题修复
+- PR #800 候选人认知体系四文档整体化——三轴定位互引 + 记忆真相文档漂移修正 + 判定机制交点对账
+- PR #802 解决旧「分类」列混入测试错误码、运营原因不可控的问题；新增「问题原因」列并保留旧列兼容历史数据。
+- PR #802 解决测试证据仅在备注堆 ID、单批次可能误关单的问题。
+- PR #802 测试证据改为 scenario + conversation 双门禁，两侧最新评审均通过才自动写「已解决」。
+- PR #798 prep 构建 toolContext 后：当前 user 块含 `[经纬度:lat,lng]` 时（引用块剥离、多条取最新）逆地理解析，seed 进 `geocodeResolvedAnchors`（精确坐标，areaLevelQuery=false）——invite 城市门 **turn_geocode 档**与 job_list 距离口径同轮直接可用
+- PR #798 坐标解析收拢 `@memory/facts/location-share`（session.service 同步切换），三处消费一份约定
+
+### 优化调整
+- PR #800 硬约束段合并顺序统一为本轮高置信优先（证据化 Phase 0 第 2 条）
+- PR #798 逆解析与 extractFacts A2 **共用 30 天 Redis 缓存键**，全轮至多一次真实高德请求；失败/服务缺失静默跳过（维持既有行为，不让高德抖动影响主链）
+
+### 运维与流程
+- PR #794 回填 v10.32.0 发布结果
+- PR #796 geo 方案交付状态对齐 v3.4——定稿待批改已交付、Phase 4/5 标注落地、shadow…
+- PR #800 沈阳/佛山业务足迹补录——区名策展表 12 条 + 裸名城市 2 条（证据化族 badcase 城市）
+- PR #800 证据化方案账目更新——§16.3 P1 交付账 + §16.4 两轮发版验证 + §17 Phas…
+- PR #802 已按 expand-only 在生产 BadCase 表新增 19 个缺失字段：字段总数 22→41，治理字段 20/20。
+- PR #802 新增历史证据盘点/回填脚本，默认只读。
+- PR #802 更新 analyze-chat-badcases skill，固定 reviewerSource=claude、正确批次同步命令与文档累计规则。
+- PR #802 自动化治理追踪与反馈原因
+- PR #802 关联 BadCase 治理 PR
+- PR #799 真人回复后停止报名后触达
+- PR #801 人工升级对账认可 raise_risk_alert + repair 注入当前时间锚
+- PR #798 定位分享轮内锚点——prep 阶段逆解析坐标 seed geocodeResolvedAnchors（A2 同轮空档）
+- PR #809 汇总 v10.33.0 统一发版底账
+
+### 配置变更
+- PR #802 FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN
+- PR #802 BADCASE_GOVERNANCE_DOC_SYNC_ENABLED
+
+### 环境变量提醒
+- PR #802 检测到环境变量相关文件变更：`.env.example`、`src/infra/config/env.validation.ts`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
 - PR #794 文档 Prettier 与 `git diff --check` 通过
 - PR #794 pre-push 全量门禁：373 suites / 5906 tests（6 skipped）
-<!-- release:pending:end -->
+- PR #800 预推全量 CI（lint/format/typecheck/geo:validate/build/test:ci 5917 用例）通过
+- PR #800 新增 geo golden 6 例（badcase 城市正例 + 常用词负例）、硬约束合并语义 2 例
+- PR #802 pnpm run ci:check（pre-push hook）
+- PR #802 4 suites / 36 个定向测试
+- PR #802 全量 Jest：375 suites、5915 tests；1 suite/6 tests 按配置 skipped
+- PR #802 AppModule DI smoke
+- PR #802 后端/Web build、typecheck、lint、format、geo:validate
+- PR #802 生产飞书 schema 对账：20/20，问题原因 22 个选项
+- PR #802 目标 Wiki/Docx 机器人真实读写权限验证
+- PR #799 Node `22.16.0`
+- PR #799 定向 Jest：`follow-up.processor.spec.ts` + `scenario-registry.spec.ts`，97 tests passed，`--watchman=false`
+- PR #799 lint / format / typecheck / geo validate / build 全绿
+- PR #799 全量 Jest：373 suites、5910 tests passed（6 skipped），`--watchman=false`
+- PR #801 `hard-rules.service.spec.ts` 新增 2 例：raise_risk_alert 成功→放行（复刻本 badcase 话术）；raise_risk_alert 失败（accepted=false）→仍命中。
+- PR #801 `reply-repair.agent.spec.ts` 断言 system 含时间锚段。
+- PR #801 `datetime.section.spec.ts` 既有用例全过（重构无行为变化）。
+- PR #801 全量 `ci:check`（lint + typecheck + 全部测试）经 pre-push 钩子通过。
+- PR #798 typecheck / lint 干净；受影响 18 套件 269 用例通过；新增 util spec 6 例（含 badcase 坐标原样还原、引用块、坐标残片负例）
 
 ## [10.32.0] - 2026-07-28
 

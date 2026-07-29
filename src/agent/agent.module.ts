@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { BizModule } from '@biz/biz.module';
@@ -38,6 +39,7 @@ import {
 @Module({
   imports: [
     ConfigModule,
+    GeocodingModule,
     BizModule,
     ToolModule,
     GroupTaskModule,

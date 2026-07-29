@@ -189,6 +189,7 @@ export type FeedbackType = 'badcase' | 'goodcase';
 
 /** 反馈来源渠道：agent 测试页 / 主聊记录页 / 复聊页 */
 export type FeedbackSource = 'agent_test' | 'chat_record' | 'reengagement';
+export type BadcasePriority = 'P0' | 'P1' | 'P2';
 
 export interface FeedbackSourceTrace {
   badcaseIds?: string[];
@@ -210,6 +211,8 @@ export interface SubmitFeedbackRequest {
   chatHistory: string;
   userMessage?: string;
   errorType?: string;
+  priority?: BadcasePriority;
+  expectedBehavior?: string;
   remark?: string;
   chatId?: string;
   messageId?: string;

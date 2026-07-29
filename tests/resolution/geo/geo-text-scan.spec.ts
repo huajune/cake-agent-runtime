@@ -24,6 +24,38 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
     expect(scan.districts).toEqual(['青浦']);
   });
 
+  it('沈阳批次：我在浑南区 → unique_district_alias 推导沈阳（badcase 6a671722）', () => {
+    const scan = scanGeoSignalsFromText('我在浑南区');
+    expect(scan.city).toEqual({ value: '沈阳', evidence: 'unique_district_alias' });
+    expect(scan.districts).toContain('浑南');
+  });
+
+  it('佛山批次：高明万悦天地这边有招人吗 → 高明区带后缀才推导（badcase 6a680c63）', () => {
+    // "高明"是常用词（聪明），裸词不推导；带"区"后缀才确定性映射
+    expect(scanGeoSignalsFromText('你真高明').city).toBeNull();
+    const scan = scanGeoSignalsFromText('我在高明区这边');
+    expect(scan.city).toEqual({ value: '佛山', evidence: 'unique_district_alias' });
+  });
+
+  it('佛山批次：南海区/三水区带后缀推导，裸词不误命中（南海=海域语料）', () => {
+    expect(scanGeoSignalsFromText('南海诸岛').city).toBeNull();
+    expect(scanGeoSignalsFromText('我在南海区万达').city).toEqual({
+      value: '佛山',
+      evidence: 'unique_district_alias',
+    });
+  });
+
+  it('裸名城市补录：沈阳/佛山 直接抽 city（explicit_city）', () => {
+    expect(scanGeoSignalsFromText('我在沈阳找工作').city).toEqual({
+      value: '沈阳',
+      evidence: 'explicit_city',
+    });
+    expect(scanGeoSignalsFromText('佛山这边有单吗').city).toEqual({
+      value: '佛山',
+      evidence: 'explicit_city',
+    });
+  });
+
   it('golden：陆家嘴 → hotspot_alias 推导上海，locations 命中地标', () => {
     const scan = scanGeoSignalsFromText('我在陆家嘴上班');
     expect(scan.city).toEqual({ value: '上海', evidence: 'hotspot_alias' });

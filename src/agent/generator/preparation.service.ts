@@ -3,6 +3,8 @@ import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { decideLaborFormIntent } from '@memory/facts/labor-form';
+import { parseLocationShareCoords } from '@memory/facts/location-share';
+import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import { BrandStateService, type TurnBrandContext } from '@memory/services/brand-state.service';
@@ -110,7 +112,42 @@ export class PreparationService {
     private readonly hostingMemberConfig: HostingMemberConfigService,
     @Optional()
     private readonly tracer?: AgentTracerService,
+    @Optional()
+    private readonly geocoding?: GeocodingService,
   ) {}
+
+  /**
+   * 定位分享轮内锚点（候选人资料证据化，badcase 6a6846e2）：候选人本轮发定位时，
+   * prep 阶段就逆解析坐标并 seed 进 geocodeResolvedAnchors——A2 的落档在轮末，
+   * 若本轮 job_list 直接吃坐标、不调 geocode，invite 城市门四档出处全空仍会误拒。
+   * 逆解析走 30 天 Redis 缓存（与 extractFacts A2 同 key，全轮至多一次真实请求）；
+   * 失败/服务缺失静默跳过，仅维持既有行为。
+   */
+  private async seedLocationShareAnchor(
+    toolContext: ReturnType<typeof buildToolContext>,
+    currentUserMessage: string | undefined,
+  ): Promise<void> {
+    if (!this.geocoding || !currentUserMessage) return;
+    const coords = parseLocationShareCoords([currentUserMessage]);
+    if (!coords) return;
+    try {
+      const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
+      if (!regeo?.city?.trim()) return;
+      (toolContext.geocodeResolvedAnchors ??= []).push({
+        longitude: coords.longitude,
+        latitude: coords.latitude,
+        areaLevelQuery: false,
+        areaName: null,
+        city: regeo.city.trim(),
+      });
+      this.logger.log(
+        `[prepare] 定位分享轮内锚点: city=${regeo.city}（invite 城市门 turn_geocode 档可用）`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[prepare] 定位分享逆解析失败（跳过轮内锚点）: ${message}`);
+    }
+  }
 
   async prepare(
     params: GeneratorInvokeParams,
@@ -250,6 +287,7 @@ export class PreparationService {
       currentLaborFormIntent,
       bookingWorkOrderJobIds: bookingContext.jobIds,
     });
+    await this.seedLocationShareAnchor(toolContext, currentUserMessage);
     const toolExecutionTimings = new Map<string, number>();
     const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
     const tools = wrapToolsWithTiming(

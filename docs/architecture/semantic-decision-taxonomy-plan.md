@@ -1,6 +1,15 @@
 # 语义判定三分法：全链路盘点与迁移方案
 
-> 2026-07-24 | 状态：待评审
+> 2026-07-24 | 状态：待评审（2026-07-28 补体系定位与证据化交点注记）
+>
+> **体系定位**：本文属"候选人认知体系"三轴中的**判定机制轴**（一个判定该用正则/词表、
+> LLM 仲裁还是向量，如何迁移）。与之正交的两轴：**记忆本体**见
+> [memory-system-architecture.md](./memory-system-architecture.md) +
+> [memory-and-hints-data-flow.md](./memory-and-hints-data-flow.md)；**证据采信与消费准入**
+> （判定产出的事实算几分、什么动作能消费）见
+> [candidate-fact-evidence-adjudication-plan.md](./candidate-fact-evidence-adjudication-plan.md) §0。
+> 四份共享同一条宪法：确定性守门、LLM 只降级不放权（HC-2）——本文 §3.1 规则 6/§4 规则 3
+> 与证据化方案"model_assertion 不采信"是同一条原则的两个投影。
 >
 > 背景：BadCase 治理过程中暴露出一个系统性架构问题——大量**语义仲裁**（候选人是否确认了姓名、是否在拒绝暑假工、是否辱骂、是否想换品牌）由**正则/词表**承担。每个 badcase 修一轮词表（#684 → #715 姓名句式已是第二轮补丁），词表越长越脆，长尾永远追不完。本方案按三分法原则对全链路判定点做一次性盘点定性，并给出分档迁移计划。
 
@@ -107,6 +116,16 @@ evaluateBookingNameGate 即将 reject
 ```
 
 enforce 后：`AFFIRMATIVE_ANSWER_RE`、问句尾缀白名单、`isNameProvidedAfterAsk` 冻结不再扩表（保留作快轨），新句式一律由仲裁器接住。`countRealNameAsks ≥2 → handoff` 保底逻辑不变。
+
+**与证据化方案的交点对账（2026-07-28）**：证据化 P1 已在**相邻治理点**（城市确认问答，
+`memory/facts/confirmation-facts.ts`，PR #774）交付了一个**纯规则**确认识别器——确认句式 +
+窄肯定词表 + geo 词典单城验证，零 LLM 直接进快环。它与本节的姓名仲裁器**不冲突且互补**：
+城市值有封闭词典可确定性验证（宁可漏），姓名值无词典可验（两轮词表已证不可穷举），
+所以城市走纯规则、姓名走"快轨冻结 + 仲裁器复核放行位"分别成立——正是 §1 三分法的
+预期分野。两点后续应共享的资产：① 肯定应答词表（confirmation-facts 的
+`PURE_AFFIRMATION_PATTERN` 与 precheck-core 的 `AFFIRMATIVE_ANSWER_RE` 现为两份，
+仲裁器落地时应收拢为一份共享词表）；② 仲裁器 confirmed 的姓名应按证据化 §0.1 写入
+档案（source='confirmation'，T1 亲证），成为 name gate 的合法出处而不只是单次放行。
 
 ### 3.3 第二批仲裁器（P2，2-3 周）
 
