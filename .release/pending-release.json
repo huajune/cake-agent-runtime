@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.33.0",
   "nextVersion": "10.34.0",
-  "updatedAt": "2026-07-28",
+  "updatedAt": "2026-07-29",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -28,6 +28,40 @@
         "pre-push ci:check：376 suites / 5933 tests，6 skipped",
         "部署工作流：https://github.com/huajune/cake-agent-runtime/actions/runs/30357841117",
         "Release：https://github.com/huajune/cake-agent-runtime/releases/tag/v10.33.0"
+      ]
+    },
+    {
+      "number": "816",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/816",
+      "title": "AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置",
+      "author": "huajune",
+      "mergedAt": "2026-07-29",
+      "businessUpdates": [
+        "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置",
+        "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…",
+        "AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置"
+      ],
+      "summary": [
+        "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置",
+        "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…",
+        "AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…"
+      ],
+      "ops": [
+        "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "typecheck / lint(--max-warnings=0) / **375 套件 5925 测试全绿** / nest build / web 构建",
+        "升级后真实 API 冒烟：deepseek-v4-pro（deep+effort）与 qwen3.6/3.7（fast/deep）原生多步工具调用干净、零伪 tool_call 文本",
+        "降级链配置 API 实测三态：保存生效（source=db_override）/ 脏 ID 400 拒绝 / 清空回退 env"
       ]
     }
   ],

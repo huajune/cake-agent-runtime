@@ -12,12 +12,15 @@
 ## 待发布
 
 **预计版本**: `v10.34.0`
-**最近更新**: `2026-07-28`
+**最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #813 回填 v10.33.0 发布结果
+- PR #816 升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置
+- PR #816 merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…
+- PR #816 AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置
 
 ### 新功能
 - 无
@@ -26,21 +29,25 @@
 - 无
 
 ### 优化调整
-- 无
+- PR #816 merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…
 
 ### 运维与流程
 - PR #813 回填 v10.33.0 发布结果
+- PR #816 升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
-- 无
+- PR #816 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #813 pre-push ci:check：376 suites / 5933 tests，6 skipped
 - PR #813 部署工作流：https://github.com/huajune/cake-agent-runtime/actions/runs/30357841117
 - PR #813 Release：https://github.com/huajune/cake-agent-runtime/releases/tag/v10.33.0
+- PR #816 typecheck / lint(--max-warnings=0) / **375 套件 5925 测试全绿** / nest build / web 构建
+- PR #816 升级后真实 API 冒烟：deepseek-v4-pro（deep+effort）与 qwen3.6/3.7（fast/deep）原生多步工具调用干净、零伪 tool_call 文本
+- PR #816 降级链配置 API 实测三态：保存生效（source=db_override）/ 脏 ID 400 拒绝 / 清空回退 env
 <!-- release:pending:end -->
 
 ## [10.33.0] - 2026-07-28
