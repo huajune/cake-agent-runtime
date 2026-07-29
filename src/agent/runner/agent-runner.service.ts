@@ -440,39 +440,61 @@ export class AgentRunnerService {
     }
     // 确定性 repair 回归闸门（2026-07-24 审计 P1-5）：二审只判"修复版是否违规"，不比较
     // "相对首版是否退步"——结构压扁/结论反转的修复版曾带着二审 pass 直接投递
-    // （trace batch_6a606ac5…）。检出回归且首版属 P1/P2 可恢复档时弃用修复版、回退首版；
-    // 首版是 P0（不可 fail-open）时不回退——此时修复版仍是唯一可投递的选择。
-    // fence_stripped 是逐字剥围栏，不可能回归，跳过检测。
+    // （trace batch_6a606ac5…）。检测需同时读取真实岗位证据，避免把删除幻觉岗位误判
+    // 为退化。fence_stripped 是逐字剥围栏，不可能回归，跳过检测。
     const regression =
       fenceStrippedText === null
         ? detectRepairRegression(firstText, revisedText, {
             committedSideEffects: committed || undefined,
+            jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
           })
         : null;
-    const regressionRevert = regression !== null && this.isFirstReplyFailOpenEligible(decision);
+    // 检出回归后的收敛对齐 guardrail-chain-assessment-and-rebuild.md §2.3 ④：
+    // 首版可 fail-open（P1/P2 全部可恢复且非高风险）→ 回退首版；
+    // 首版不可 fail-open（P0/泄漏类/高风险）→ 两版都不投，静默 block 并留档——
+    // 修复版已证明退化，首版又是守卫明确否决的泄漏/红线内容，谁都不能进投递链。
+    // 注意不能用 violation.currentReplySendable 判定：revise 档一律派生为 false，
+    // 会把"P1/P2 回退首版"整条路径变成不可达（2026-07-29 复审修正）。
+    const regressionBlock = regression !== null && !this.isFirstReplyFailOpenEligible(decision);
+    const regressionRevert = regression !== null && !regressionBlock;
+    if (regressionBlock) {
+      this.logger.warn(
+        `[invokeReviewed] repair 回归（${regression}）且首版不可 fail-open，两版都不投递: ` +
+          `rules=${decision.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
+      );
+    }
     if (regressionRevert) {
       this.logger.warn(
         `[invokeReviewed] repair 回归（${regression}），弃用修复版回退首版: ` +
           `rules=${decision.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
       );
     }
-    const finalDecision: OutputGuardDecision = wantsRepairAgain
-      ? failOpenEligible
-        ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
-        : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
-      : regressionRevert
-        ? { ...decision2, reasonCode: `repair_regression_reverted:${regression}` }
-        : fenceStrippedText !== null
-          ? // 确定性剥围栏放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
-            { ...decision2, reasonCode: decision2.reasonCode ?? 'fence_stripped' }
-          : decision2;
-    const finalResult = wantsRepairAgain
-      ? failOpenEligible && (this.isSecondDecisionWorse(decision, decision2) || regressionRevert)
-        ? first
-        : { ...revised, toolCalls: reviewedToolCalls }
-      : regressionRevert
-        ? first
-        : { ...revised, toolCalls: reviewedToolCalls };
+    const finalDecision: OutputGuardDecision = regressionBlock
+      ? {
+          ...decision2,
+          decision: 'block',
+          riskLevel: decision.riskLevel,
+          reasonCode: `repair_regression_blocked:${regression}`,
+        }
+      : wantsRepairAgain
+        ? failOpenEligible
+          ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
+          : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
+        : regressionRevert
+          ? { ...decision2, reasonCode: `repair_regression_reverted:${regression}` }
+          : fenceStrippedText !== null
+            ? // 确定性剥围栏放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
+              { ...decision2, reasonCode: decision2.reasonCode ?? 'fence_stripped' }
+            : decision2;
+    const finalResult = regressionBlock
+      ? { ...revised, toolCalls: reviewedToolCalls }
+      : wantsRepairAgain
+        ? failOpenEligible && (this.isSecondDecisionWorse(decision, decision2) || regressionRevert)
+          ? first
+          : { ...revised, toolCalls: reviewedToolCalls }
+        : regressionRevert
+          ? first
+          : { ...revised, toolCalls: reviewedToolCalls };
     const finalRevised = finalResult !== first;
     this.persistReviewRecord(ctx, {
       firstReply: firstText,
@@ -625,6 +647,27 @@ export class AgentRunnerService {
     return (
       decision.riskLevel !== 'high' &&
       decision.violations.every((violation) => violation.recoverability !== 'non_recoverable')
+    );
+  }
+
+  /**
+   * 返回本轮查岗证据三态：
+   * - true：至少一次 duliday_job_list 有正向成功信号/非空结果；
+   * - false：调用过查岗，但没有一次返回可用岗位；
+   * - undefined：本轮未调用查岗。
+   *
+   * 中间一次成功、随后复核为空时仍返回 true，和 review packet “优先取最后一次可用
+   * 结果”的证据语义保持一致。
+   */
+  private resolveJobEvidenceAvailability(toolCalls: AgentToolCall[]): boolean | undefined {
+    const jobListCalls = toolCalls.filter((call) => call.toolName === 'duliday_job_list');
+    if (jobListCalls.length === 0) return undefined;
+    return jobListCalls.some(
+      (call) =>
+        (typeof call.resultCount === 'number' && call.resultCount > 0) ||
+        call.status === 'ok' ||
+        call.status === 'narrow' ||
+        isToolSuccess(call.result),
     );
   }
 

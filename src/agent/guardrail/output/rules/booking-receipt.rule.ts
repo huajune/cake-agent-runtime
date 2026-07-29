@@ -37,12 +37,83 @@ function findSuccessfulBooking(toolCalls: AgentToolCall[]): AgentToolCall | null
   return null;
 }
 
+function findSuccessfulJobPoolInvite(toolCalls: AgentToolCall[]): AgentToolCall | null {
+  for (const call of toolCalls) {
+    if (call.toolName !== 'invite_to_group' || call.status === 'error') continue;
+    const result =
+      call.result && typeof call.result === 'object' && !Array.isArray(call.result)
+        ? (call.result as Record<string, unknown>)
+        : null;
+    if (result?.success === true && result.groupPurpose === 'job_pool') return call;
+  }
+  return null;
+}
+
+function requiresManualInterviewGroup(booking: AgentToolCall): boolean {
+  const result =
+    booking.result && typeof booking.result === 'object' && !Array.isArray(booking.result)
+      ? (booking.result as Record<string, unknown>)
+      : null;
+  const handling =
+    result?.interviewGroupHandling &&
+    typeof result.interviewGroupHandling === 'object' &&
+    !Array.isArray(result.interviewGroupHandling)
+      ? (result.interviewGroupHandling as Record<string, unknown>)
+      : null;
+  return handling?.required === true && handling.delivery === 'manual';
+}
+
+const INTERVIEW_GROUP_COMPLETION_CLAIM_PATTERN =
+  /面试群[^。！？\n]{0,18}(?:已经|已|刚)[^。！？\n]{0,10}(?:发|拉|邀请)|(?:已经|已|刚)[^。！？\n]{0,12}(?:发|拉|邀请)[^。！？\n]{0,12}面试群/u;
+const INTERVIEW_GROUP_IDENTITY_SPLIT_PATTERN =
+  /(?:工作人员|运营|人工|机器人|同事)[^。！？\n]{0,16}(?:发|拉|邀请|处理|接手)|(?:转交|转给|切换|接管)[^。！？\n]{0,12}(?:工作人员|运营|人工|同事)/u;
+const MEETING_GROUP_PROMISE_PATTERN = /腾讯会议|会议链接|按时入会|上线入会/u;
+const GROUP_PURPOSE_DISTINCTION_PATTERN =
+  /兼职[^。！？\n]{0,30}(?:群|岗位信息)[\s\S]{0,100}面试群[\s\S]{0,40}(?:接着|随后|稍后|单独)[^。！？\n]{0,12}(?:发|邀请)|面试群[\s\S]{0,40}(?:接着|随后|稍后|单独)[^。！？\n]{0,12}(?:发|邀请)[\s\S]{0,100}兼职[^。！？\n]{0,30}(?:群|岗位信息)/u;
+
 export function detectBookingReceiptMismatch(
   replyText: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
   const booking = findSuccessfulBooking(toolCalls);
   if (!booking || !replyText.trim()) return null;
+
+  if (requiresManualInterviewGroup(booking)) {
+    if (INTERVIEW_GROUP_IDENTITY_SPLIT_PATTERN.test(replyText)) {
+      return {
+        ruleId: 'booking_receipt_mismatch',
+        label:
+          '面试群补发由当前企微账号无感承接，回复却出现工作人员/运营/人工/同事接手等身份切换表述，' +
+          '会暴露账号背后的执行切换',
+        action: GUARDRAIL_ACTION.REVISE,
+      };
+    }
+
+    if (INTERVIEW_GROUP_COMPLETION_CLAIM_PATTERN.test(replyText)) {
+      return {
+        ruleId: 'booking_receipt_mismatch',
+        label:
+          '本岗位面试群只能由当前企微账号随后手动发送，回复却声称面试群已经发送/已拉入；' +
+          '这会把未来动作说成已完成',
+        action: GUARDRAIL_ACTION.REVISE,
+      };
+    }
+
+    const jobPoolInvite = findSuccessfulJobPoolInvite(toolCalls);
+    if (
+      jobPoolInvite &&
+      MEETING_GROUP_PROMISE_PATTERN.test(replyText) &&
+      !GROUP_PURPOSE_DISTINCTION_PATTERN.test(replyText)
+    ) {
+      return {
+        ruleId: 'booking_receipt_mismatch',
+        label:
+          '本轮 invite_to_group 发送的是兼职岗位信息群，回复却没有把它与待手动发送的面试群区分，' +
+          '容易让候选人误以为兼职群会发送腾讯会议链接',
+        action: GUARDRAIL_ACTION.REVISE,
+      };
+    }
+  }
 
   if (DATE_ASK_PATTERN.test(replyText) && !CONFIRMATION_PATTERN.test(replyText)) {
     return {

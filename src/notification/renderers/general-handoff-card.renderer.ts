@@ -8,7 +8,12 @@ import { GeneralHandoffNotificationPayload } from '../types/general-handoff-noti
  * 时效敏感的转人工原因：候选人可能已在途/正在等待，超时未跟进直接丢单。
  * （改约类 24h 真人跟进率长期偏低，卡片顶部显式标急以对齐处理优先级。）
  */
-const URGENT_REASON_CODES = new Set(['modify_appointment', 'no_reception', 'booking_conflict']);
+const URGENT_REASON_CODES = new Set([
+  'modify_appointment',
+  'no_reception',
+  'booking_conflict',
+  'interview_group_invite_required',
+]);
 
 @Injectable()
 export class GeneralHandoffCardRenderer {

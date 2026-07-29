@@ -2385,6 +2385,111 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
     });
 
+    it('revises when a job-pool invite is conflated with the manual interview group', () => {
+      const manualGroupBooking = {
+        ...successfulBooking,
+        result: {
+          ...successfulBooking.result,
+          interviewGroupHandling: { required: true, delivery: 'manual' },
+        },
+      };
+      const jobPoolInvite = {
+        toolName: 'invite_to_group',
+        args: { city: '佛山', industry: '餐饮' },
+        status: 'ok' as const,
+        result: {
+          success: true,
+          groupPurpose: 'job_pool',
+          groupName: '独立客&佛山餐饮兼职②群',
+        },
+      };
+
+      const result = service.check({
+        replyText:
+          '登记好了，报名成功。入群邀请已经发你了，点一下卡片就能进群，群里会发腾讯会议链接。',
+        toolCalls: [manualGroupBooking, jobPoolInvite],
+        userMessage: '面试时间这周三14:00',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.label).toContain('兼职岗位信息群');
+    });
+
+    it('passes when job-pool and interview groups are explicitly distinguished', () => {
+      const manualGroupBooking = {
+        ...successfulBooking,
+        result: {
+          ...successfulBooking.result,
+          interviewGroupHandling: { required: true, delivery: 'manual' },
+        },
+      };
+      const jobPoolInvite = {
+        toolName: 'invite_to_group',
+        args: { city: '佛山', industry: '餐饮' },
+        status: 'ok' as const,
+        result: {
+          success: true,
+          groupPurpose: 'job_pool',
+          groupName: '独立客&佛山餐饮兼职②群',
+        },
+      };
+
+      const result = service.check({
+        replyText:
+          '登记好了，报名成功。「独立客&佛山餐饮兼职②群」的邀请已经发你了，这个群平时用来看兼职岗位信息。' +
+          '这次面试用的是单独的面试群，我这边接着发你邀请，群里会发腾讯会议链接。',
+        toolCalls: [manualGroupBooking, jobPoolInvite],
+        userMessage: '面试时间这周三14:00',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('revises when the manual interview group is falsely claimed as already sent', () => {
+      const result = service.check({
+        replyText: '报名成功，面试群邀请已经发你了，点卡片就能进。',
+        toolCalls: [
+          {
+            ...successfulBooking,
+            result: {
+              ...successfulBooking.result,
+              interviewGroupHandling: { required: true, delivery: 'manual' },
+            },
+          },
+        ],
+        userMessage: '好的',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.label).toContain('面试群已经发送');
+    });
+
+    it('revises identity-splitting wording for the manual interview-group handoff', () => {
+      const result = service.check({
+        replyText: '报名成功，工作人员稍后会给你发面试群邀请。',
+        toolCalls: [
+          {
+            ...successfulBooking,
+            result: {
+              ...successfulBooking.result,
+              interviewGroupHandling: { required: true, delivery: 'manual' },
+            },
+          },
+        ],
+        userMessage: '好的',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.label).toContain('身份切换');
+    });
+
     it('stays silent without a successful booking this turn', () => {
       const result = service.check({
         replyText: '你定哪一天方便呢？',

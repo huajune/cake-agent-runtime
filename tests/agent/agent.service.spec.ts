@@ -78,7 +78,7 @@ describe('GeneratorAgent', () => {
       await onPreparedRequest?.({
         modelId: 'openai/gpt-5.1',
         fallbackModelIds: ['openai/gpt-5-mini'],
-        system: 'test system prompt',
+        instructions: 'test system prompt',
         messages: [{ role: 'user', content: 'Hello' }],
         maxOutputTokens: 4096,
         maxSteps: 5,
@@ -126,7 +126,7 @@ describe('GeneratorAgent', () => {
         modelId: 'openai/gpt-5.1',
         disableFallbacks: true,
         thinking: { type: 'enabled', budgetTokens: 4000 },
-        system: 'test system prompt',
+        instructions: 'test system prompt',
         messages: [{ role: 'user', content: 'Hello' }],
       }),
     );
@@ -140,11 +140,48 @@ describe('GeneratorAgent', () => {
       expect.objectContaining({
         modelId: 'openai/gpt-5.1',
         fallbackModelIds: ['openai/gpt-5-mini'],
+        instructions: 'test system prompt',
       }),
     );
     expect(result.responseMessages).toEqual([
       { role: 'assistant', content: [{ type: 'text', text: 'Hello!' }] },
     ]);
+  });
+
+  it('should override multi-step tool instructions without reintroducing system messages', async () => {
+    mockPreparation.prepare.mockResolvedValue({
+      ...preparedContext,
+      tools: {
+        skip_reply: {},
+        duliday_job_list: {},
+      },
+    });
+
+    await service.invoke(invokeParams);
+
+    const call = mockLlm.generate.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.instructions).toBe('test system prompt');
+    expect(call).not.toHaveProperty('system');
+
+    const prepareStep = call.prepareStep as (input: unknown) => unknown;
+    const preparedStep = await Promise.resolve(
+      prepareStep({
+        steps: [
+          {
+            toolCalls: [{ toolName: 'duliday_job_list' }],
+            toolResults: [],
+          },
+        ],
+      }),
+    );
+
+    expect(preparedStep).toEqual(
+      expect.objectContaining({
+        activeTools: ['duliday_job_list'],
+        instructions: expect.stringContaining('test system prompt'),
+      }),
+    );
+    expect(preparedStep).not.toHaveProperty('system');
   });
 
   it('should use env thinking budget when request does not override thinking', async () => {
@@ -512,6 +549,13 @@ describe('GeneratorAgent', () => {
 
     await service.stream({ ...invokeParams, onFinish });
 
+    expect(mockLlm.stream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: 'test system prompt',
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    );
+    expect(mockLlm.stream.mock.calls[0][0]).not.toHaveProperty('system');
     expect(onFinish).toHaveBeenCalledWith(
       expect.objectContaining({
         text: ctaText,
@@ -594,6 +638,7 @@ describe('GeneratorAgent', () => {
     expect(recoveryCall).toEqual(
       expect.objectContaining({
         thinking: { type: 'disabled', budgetTokens: 0 },
+        instructions: expect.stringContaining('[空响应恢复模式]'),
       }),
     );
     expect(recoveryCall).not.toHaveProperty('tools');

@@ -61,6 +61,46 @@ export function isOnlineInterview(params: {
   return ONLINE_INTERVIEW_SIGNAL_PATTERN.test(freeText);
 }
 
+export interface ManualInterviewGroupHandling {
+  required: true;
+  delivery: 'manual';
+  groupNameHint?: string;
+  candidateGuide: string;
+}
+
+const INTERVIEW_GROUP_SIGNAL_PATTERN = /面试群/u;
+const INTERVIEW_GROUP_NAME_PATTERN = /((?:[\u4e00-\u9fa5A-Za-z0-9&·_-]{1,16})面试群)/u;
+
+/**
+ * 识别“预约成功后需要由当前企微账号手动补发面试群”的岗位流程。
+ *
+ * invite_to_group 只能发送兼职岗位信息群，不能完成面试群邀请。这里把两类群的
+ * 语义边界固化为 booking 结构化结果，供 Agent 回执和 post-delivery handoff 共用。
+ */
+export function resolveManualInterviewGroupHandling(params: {
+  interviewRemark?: string | null;
+  flowDescription?: string | null;
+}): ManualInterviewGroupHandling | null {
+  const policyText = [params.interviewRemark, params.flowDescription]
+    .filter((text): text is string => Boolean(text?.trim()))
+    .join('\n');
+  if (!INTERVIEW_GROUP_SIGNAL_PATTERN.test(policyText)) return null;
+
+  const rawGroupName = policyText.match(INTERVIEW_GROUP_NAME_PATTERN)?.[1];
+  const groupNameHint = rawGroupName
+    ?.replace(/^(?:让人选|请候选人|候选人)?(?:添加|加入|进入|进)/u, '')
+    .trim();
+
+  return {
+    required: true,
+    delivery: 'manual',
+    ...(groupNameHint ? { groupNameHint } : {}),
+    candidateGuide:
+      '这次面试用的是单独的面试群，我这边接着发你邀请。收到后进群备注好姓名+手机号，' +
+      '群里会发腾讯会议链接，到时候按时上线入会就行。',
+  };
+}
+
 /**
  * 构造候选人到店报到时的自报家门脚本。
  *

@@ -58,6 +58,42 @@ describe('detectRepairRegression', () => {
     expect(detectRepairRegression(first, revised)).toBe('polarity_reversed');
   });
 
+  it('accepts deleting fabricated job cards when all job-list calls had no evidence', () => {
+    const first = [
+      '帮你查了下，附近有几家在招的：',
+      '肯德基-深圳爱联店（距离约0.5km）',
+      '服务员-小时工，22元/小时，每月15号发薪',
+      '必胜客-深圳龙岗万达店（距离约2.8km）',
+      '服务员-小时工，23元/小时，每月15号发薪',
+      'M Stand-深圳大运天地店（距离约3.2km）',
+      '咖啡师-全职，综合薪资6000-8000元/月，每月20号发薪',
+    ].join('\n');
+    const revised =
+      '帮你查了下，目前暂时没查到你位置附近匹配的在招岗位。我已经邀请你进深圳餐饮兼职群，群里会发最新岗位信息。';
+
+    expect(
+      detectRepairRegression(first, revised, {
+        jobEvidenceAvailable: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('still rejects deleting grounded job cards when a job-list call had evidence', () => {
+    const first = [
+      '肯德基-深圳爱联店（距离约0.5km）',
+      '服务员-小时工，22元/小时',
+      '必胜客-深圳龙岗万达店（距离约2.8km）',
+      '服务员-小时工，23元/小时',
+    ].join('\n');
+    const revised = '目前暂时没查到你位置附近匹配的在招岗位。';
+
+    expect(
+      detectRepairRegression(first, revised, {
+        jobEvidenceAvailable: true,
+      }),
+    ).not.toBeNull();
+  });
+
   // trace batch_6a616f5b…：结算口径精确化，三家门店结构逐字保留——最优修复，不得误伤。
   it('accepts a good repair that keeps structure and refines facts', () => {
     const first = [
@@ -118,9 +154,7 @@ describe('detectRepairRegression', () => {
 
     it('does not flag when weekday is unchanged', () => {
       const revisedSameWeekday = weekdayFirst.replace('已帮你成功提交报名！', '报名提交好啦！');
-      expect(
-        detectRepairRegression(weekdayFirst, revisedSameWeekday, { now: NOW }),
-      ).toBeNull();
+      expect(detectRepairRegression(weekdayFirst, revisedSameWeekday, { now: NOW })).toBeNull();
     });
 
     it('handles 星期X notation and spaced dates', () => {

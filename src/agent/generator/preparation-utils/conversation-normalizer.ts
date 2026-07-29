@@ -125,13 +125,8 @@ function toModelMessages(messages: GeneratorInputMessage[], enableVision: boolea
       };
     }
 
-    if (message.role === 'system') {
-      return {
-        role: 'system',
-        content: textContent,
-      };
-    }
-
+    // system 等其余角色一律走下面的 user 兜底：AI SDK v7 禁止 messages 内出现
+    // system 角色（系统级指令唯一入口是 instructions），内部链路也从不生成它。
     return {
       role: 'user',
       content: textContent,

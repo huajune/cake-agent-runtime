@@ -727,6 +727,56 @@ describe('buildInterviewBookingTool', () => {
     expect(result._onSiteScript).toBeUndefined();
   });
 
+  it('预约备注要求面试群时声明人工补发 sideEffect，并保留兼职群自动邀请指引', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              firstInterviewWay: '视频面试',
+              firstInterviewDesc:
+                '让人选添加佛山面试群，备注好名字＋手机号码，在群里发腾讯会议链接，请在规定时间入会',
+            },
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      workOrderId: 453619,
+    });
+
+    const result = await executeTool(validInput);
+
+    expect(result.success).toBe(true);
+    expect(result.interviewGroupHandling).toEqual(
+      expect.objectContaining({
+        required: true,
+        delivery: 'manual',
+        groupNameHint: '佛山面试群',
+      }),
+    );
+    expect(result._manualInterviewGroupGuide).toContain('我这边接着发你邀请');
+    expect(result._manualInterviewGroupGuide).not.toMatch(/工作人员|运营|人工|机器人/);
+    expect(result._replyInstruction).toContain('invite_to_group');
+    expect(result._replyInstruction).toContain('兼职岗位信息群');
+    expect(result.sideEffect).toEqual(
+      expect.objectContaining({
+        kind: 'general_handoff',
+        reasonCode: 'interview_group_invite_required',
+        workOrderId: 453619,
+        idempotencyKey: 'sess-1:interview_group_invite:453619',
+      }),
+    );
+    expect(result.sideEffect.actionAdvice).toContain('补发佛山面试群邀请');
+    expect(result.sideEffect.actionAdvice).toContain('兼职岗位信息群由Agent自动发送');
+    // 面试群 handoff 会在候选人回执真实投递后统一暂停+告警，不重复发普通预约成功卡。
+    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+  });
+
   describe('wait_notice（岗位未配置面试时段，等通知）', () => {
     it('should book without interviewTime for jobs without interview windows', async () => {
       // 默认 makeJob 无任何面试窗口（等通知岗位）；带"面试时间"标签验证回填"等待通知"

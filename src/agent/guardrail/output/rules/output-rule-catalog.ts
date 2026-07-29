@@ -387,19 +387,24 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
-      'duliday_interview_booking 成功后的回执对账：拦住“工单已建单却仍问候选人定哪天”，观察“零播报”。',
+      'duliday_interview_booking 成功后的回执对账：拦住“工单已建单却仍问候选人定哪天”、' +
+      '“把兼职群冒充面试群”及“手动面试群尚未发送却声称已发”，观察“零播报”。',
     riskGoal:
       '预约提交是不可逆副作用；回复与其矛盾会让候选人以为没约上而重复提交（撞 already_booked）或直接流失' +
-      '（badcase recvoFsFPZHTxw / yfrc6wb9，7-27 复测 RT-016 实锤 prompt 层播报硬指令被击穿）。',
+      '；兼职群与面试群混淆会让候选人在错误群里等待会议链接' +
+      '（badcase chat 6a684089ce406a6aeed49d8d）。',
     exogenousSignal:
-      '本轮 duliday_interview_booking result.success=true（真实工单）+ 回复文本的日期征询/播报缺失。',
+      '本轮 booking success、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实 +' +
+      ' 回复文本的日期征询、播报缺失或群用途表述。',
     residualRisk:
       '窗口制“已约好+问几点到店”经确认口径豁免；预约时间与候选人口头要求不一致（王真宝案）需要' +
       '语义比对候选人诉求，不在本规则确定性能力内，留语义审查/离线环。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '本轮预约已真实提交成功，但上一版回复仍在问候选人面试定哪天/几点，与已提交的工单矛盾，当前文本不可发送。' +
-      '请重写：明确告知候选人报名已成功，并按工具返回的 _confirmedInterviewTimeHuman 与 guide 字段复述面试时间、形式和注意事项；不得再征询日期。',
+      '本轮预约已真实提交成功，但上一版回执与工具事实不一致，当前文本不可发送。请重写：明确告知候选人报名已成功，' +
+      '并按工具返回的 _confirmedInterviewTimeHuman 与 guide 字段复述面试时间、形式和注意事项；不得再征询日期。' +
+      '若 booking 要求手动补发面试群：把 invite_to_group 返回的实际群名明确说成兼职岗位信息群；' +
+      '再按 _manualInterviewGroupGuide 说明面试群“我这边接着发你邀请”，严禁声称面试群已发，也不得暴露人工/运营/账号接管。',
   },
   {
     id: 'requested_brand_mismatch',
