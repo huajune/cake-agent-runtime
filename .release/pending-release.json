@@ -94,6 +94,53 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "820",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/820",
+      "title": "区分兼职群与面试群承接",
+      "author": "huajune",
+      "mergedAt": "2026-07-29",
+      "businessUpdates": [
+        "为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。",
+        "从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。",
+        "候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。",
+        "出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。",
+        "接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。"
+      ],
+      "summary": [
+        "区分兼职群与面试群承接",
+        "补充 PR 820 发版底账",
+        "为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。",
+        "从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。",
+        "候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。",
+        "出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。",
+        "接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。"
+      ],
+      "features": [],
+      "fixes": [
+        "为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。",
+        "从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。",
+        "候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。",
+        "出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。",
+        "接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "区分兼职群与面试群承接",
+        "补充 PR 820 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`：376 suites passed（1 skipped），5951 tests passed（6 skipped）。",
+        "Node 22.16 定向测试：6 suites / 385 tests passed。",
+        "真实 Agent 回归：batch `cd8b1ec2-9c04-4c51-be8f-33a2273b9fee`，1/1 passed；执行 `6d9b48a4-f131-444c-9b7f-a738c9676f2d`。",
+        "实际链路：precheck → booking success → `invite_to_group(groupPurpose=job_pool)`；booking 结果含 `general_handoff(reasonCode=interview_group_invite_required)`。",
+        "最终回复明确两个群分开，面试群使用“我这边接着发你邀请”，未声称已发送，未暴露身份切换。",
+        "正式测试集已幂等新增 `SCN-20260729-INTERVIEW-GROUP-001`（Feishu record `recvqJEwCUUH8J`，生产证据已脱敏）。",
+        "批次已同步生产 Dashboard 并回读：total=1, passed=1, failed=0, pending=0, pass_rate=100%，warnings=[]。"
+      ]
     }
   ],
   "lastRelease": {

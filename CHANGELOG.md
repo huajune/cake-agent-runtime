@@ -14,7 +14,7 @@
 **预计版本**: `v10.34.0`
 **最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #813 回填 v10.33.0 发布结果
@@ -25,12 +25,23 @@
 - PR #817 **Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）
 - PR #817 **4 个 workflow 共 9 处** `node-version: '22'` → `'24'`
 - PR #817 `engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制
+- PR #820 区分兼职群与面试群承接
+- PR #820 补充 PR 820 发版底账
+- PR #820 为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。
+- PR #820 从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。
+- PR #820 候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。
+- PR #820 出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。
+- PR #820 接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #820 为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。
+- PR #820 从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。
+- PR #820 候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。
+- PR #820 出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。
+- PR #820 接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。
 
 ### 优化调整
 - PR #816 merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…
@@ -42,6 +53,8 @@
 - PR #817 **4 个 workflow 共 9 处** `node-version: '22'` → `'24'`
 - PR #817 `engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制
 - PR #817 生产与 CI 运行时 Node 22 → 24
+- PR #820 区分兼职群与面试群承接
+- PR #820 补充 PR 820 发版底账
 
 ### 配置变更
 - 无
@@ -56,6 +69,13 @@
 - PR #816 typecheck / lint(--max-warnings=0) / **375 套件 5925 测试全绿** / nest build / web 构建
 - PR #816 升级后真实 API 冒烟：deepseek-v4-pro（deep+effort）与 qwen3.6/3.7（fast/deep）原生多步工具调用干净、零伪 tool_call 文本
 - PR #816 降级链配置 API 实测三态：保存生效（source=db_override）/ 脏 ID 400 拒绝 / 清空回退 env
+- PR #820 `pnpm run ci:check`：376 suites passed（1 skipped），5951 tests passed（6 skipped）。
+- PR #820 Node 22.16 定向测试：6 suites / 385 tests passed。
+- PR #820 真实 Agent 回归：batch `cd8b1ec2-9c04-4c51-be8f-33a2273b9fee`，1/1 passed；执行 `6d9b48a4-f131-444c-9b7f-a738c9676f2d`。
+- PR #820 实际链路：precheck → booking success → `invite_to_group(groupPurpose=job_pool)`；booking 结果含 `general_handoff(reasonCode=interview_group_invite_required)`。
+- PR #820 最终回复明确两个群分开，面试群使用“我这边接着发你邀请”，未声称已发送，未暴露身份切换。
+- PR #820 正式测试集已幂等新增 `SCN-20260729-INTERVIEW-GROUP-001`（Feishu record `recvqJEwCUUH8J`，生产证据已脱敏）。
+- PR #820 批次已同步生产 Dashboard 并回读：total=1, passed=1, failed=0, pending=0, pass_rate=100%，warnings=[]。
 <!-- release:pending:end -->
 
 ## [10.33.0] - 2026-07-28
