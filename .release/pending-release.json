@@ -5,31 +5,6 @@
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "834",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/834",
-      "title": "回填 v10.35.0 发布结果",
-      "author": "huajune",
-      "mergedAt": "2026-07-29",
-      "businessUpdates": [
-        "回填 v10.35.0 发布结果"
-      ],
-      "summary": [
-        "回填 v10.35.0 发布结果"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "回填 v10.35.0 发布结果"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`git diff --check`",
-        "pre-push `pnpm run ci:check`：377 suites / 5961 tests passed（1 suite / 6 tests skipped）"
-      ]
-    },
-    {
       "number": "836",
       "url": "https://github.com/huajune/cake-agent-runtime/pull/836",
       "title": "修复 Agent 响应时间线顺序",
