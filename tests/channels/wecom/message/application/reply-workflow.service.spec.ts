@@ -709,6 +709,57 @@ describe('ReplyWorkflowService', () => {
     );
   });
 
+  it('预约成功待补发面试群 → 先投递双群区分回执，再暂停托管并通知真人', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text:
+        '报名成功。「佛山餐饮兼职群」的邀请已经发你了，这个群平时用来看兼职岗位信息。' +
+        '这次面试用的是单独的面试群，我这边接着发你邀请。',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 528546 },
+          result: {
+            success: true,
+            workOrderId: 453619,
+            sideEffect: {
+              kind: 'general_handoff',
+              source: 'agent_tool',
+              alertLabel: '预约成功待补发面试群',
+              reasonCode: 'interview_group_invite_required',
+              reason: '预约成功，需手动补发佛山面试群邀请',
+              actionAdvice: '立即使用当前企微账号补发面试群',
+              workOrderId: 453619,
+              idempotencyKey: 'chat-1:interview_group_invite:453619',
+              recordHandoff: true,
+            },
+          },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 5, totalTokens: 6 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('单独的面试群') }),
+      expect.anything(),
+      true,
+    );
+    expect(interventionService.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'general_handoff',
+        alertLabel: '预约成功待补发面试群',
+        reasonCode: 'interview_group_invite_required',
+        workOrderId: 453619,
+      }),
+    );
+    expect(deliveryService.deliverReply.mock.invocationCallOrder[0]).toBeLessThan(
+      interventionService.dispatch.mock.invocationCallOrder[0],
+    );
+  });
+
   it('schedules booking_incomplete follow-up when accepted precheck still needs fields', async () => {
     runner.invoke.mockResolvedValueOnce({
       text: '还差学历，补一下我帮你约',

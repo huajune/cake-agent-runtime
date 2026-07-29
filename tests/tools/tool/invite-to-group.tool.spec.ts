@@ -88,10 +88,13 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.inviteDelivery).toBe('direct_add');
+    expect(result.groupPurpose).toBe('job_pool');
     expect(result.inviteMode).toBeUndefined();
     expect(result.groupName).toBe('上海兼职群1号');
     expect(result._outcome).toContain('直接加入');
     expect(result._replyInstruction).toContain('已帮你加入了');
+    expect(result._replyInstruction).toContain('兼职岗位信息');
+    expect(result._replyInstruction).toContain('不是面试群');
     expect(result._replyInstruction).toContain('不要输出任何群链接');
     // 拉群成功 → group.invited（按本轮 turn + 群去重，幂等键含 chatId:group:<群名>）
     expect(mockOpsEventsRecorder.recordEvent).toHaveBeenCalledWith(
@@ -162,9 +165,13 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.inviteDelivery).toBe('invite_card');
+    expect(result.groupPurpose).toBe('job_pool');
     expect(result.inviteMode).toBeUndefined();
     expect(result._outcome).toContain('邀请卡片');
-    expect(result._replyInstruction).toContain('入群邀请已经发你了');
+    expect(result._replyInstruction).toContain('上海兼职群1号');
+    expect(result._replyInstruction).toContain('邀请已经发你了');
+    expect(result._replyInstruction).toContain('不是面试群');
+    expect(result._replyInstruction).toContain('不得把腾讯会议链接');
     expect(result._replyInstruction).toContain(
       '禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接',
     );
@@ -595,7 +602,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.inviteDelivery).toBe('invite_card');
     expect(result.groupName).toBe('上海零售①');
     expect(result._outcome).toContain('入群邀请卡片');
-    expect(result._replyInstruction).toContain('入群邀请已经发你了');
+    expect(result._replyInstruction).toContain('邀请已经发你了');
     // 只调一次拉群接口，不再换下一个候选群重发卡片
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
     expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();

@@ -137,6 +137,11 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(card.content as string).toContain(
         "> <font color='red'>**⏱ 时效敏感**：候选人可能已在途或正在等待，请尽快跟进</font>",
       );
+
+      const interviewGroupCard = renderer.buildCard(
+        buildPayload({ reasonCode: 'interview_group_invite_required' }),
+      );
+      expect(interviewGroupCard.content as string).toContain('⏱ 时效敏感');
     });
 
     it('omits urgency banner for non-urgent or missing reason codes', () => {
@@ -181,9 +186,7 @@ describe('GeneralHandoffCardRenderer', () => {
     });
 
     it('falls back to placeholder when focus job is missing, omits block without missingJobInfo', () => {
-      const withGapNoJob = renderer.buildCard(
-        buildPayload({ missingJobInfo: ['转正政策'] }),
-      );
+      const withGapNoJob = renderer.buildCard(buildPayload({ missingJobInfo: ['转正政策'] }));
       expect(withGapNoJob.content as string).toContain('未定位到焦点岗位');
 
       const noGap = renderer.buildCard(buildPayload({ missingJobInfo: [] }));

@@ -52,7 +52,15 @@ const UNDELIVERED_PRELUDE_REMINDER =
 const NOT_FRIEND_CONTINUE_INSTRUCTION =
   '候选人当前无法被拉进群（候选人侧关系问题，多为已删除/拉黑接客账号）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容、不要承诺拉群。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
 
-const DESCRIPTION = `邀请候选人加入企微兼职群。
+const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
+
+## 群用途边界（硬规则）
+- 本工具只能发送**兼职岗位信息群**，返回的 groupPurpose 固定为 "job_pool"。
+- 本工具不能发送面试群。即使本轮预约成功、岗位备注提到“面试群/腾讯会议链接”，也不得把本工具选中的兼职群说成面试群。
+- 预约成功且 booking 返回 interviewGroupHandling.required=true 时，最终回复必须明确区分：
+  1. 本工具返回的实际 groupName 是兼职岗位信息群，邀请已发送/已加入；
+  2. 本次面试使用单独的面试群，按 booking 的 _manualInterviewGroupGuide 告知“我这边接着发你邀请”。
+- 腾讯会议链接、面试通知、姓名+手机号备注要求只能关联“面试群”，不得接在兼职群说明后让候选人误以为两者是同一个群。
 
 ## 触发场景（满足任一即可）
 1. **首次面试预约成功后** — duliday_interview_booking 返回 success: true（必须检查 _outcome 字段确认预约成功），且已知候选人城市时，在同轮调用。仅限本会话首次预约成功时触发，后续再预约不再重复拉群
@@ -86,6 +94,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 - inviteDelivery：拉群投递方式
   - "direct_add"（群<40人，已直接拉入）→ 告知候选人"已帮你加入了XX群"
   - "invite_card"（群>=40人，企微已自动发送入群邀请卡片）→ 告知候选人"入群邀请已经发你了，点一下卡片就能进群"
+- groupPurpose：固定为 "job_pool"，表示兼职岗位信息群，不是面试群
 - _replyInstruction：成功后必须严格遵守的话术指令；尤其 inviteDelivery="invite_card" 时，禁止输出、编造或粘贴任何群链接 / URL
 - matchedIndustry：实际命中群的行业；与入参 industry 不一致说明触发了回退
 - fallbackUsed：是否触发行业回退（入参 industry 在该城市无匹配群时为 true）
@@ -198,11 +207,13 @@ export function buildInviteToGroupTool(
             success: true,
             alreadyInGroup: true,
             groupName,
+            groupPurpose: 'job_pool',
             city,
             industry: industry ?? undefined,
             _outcome: '候选人已在该群中（实时核验）',
             _replyInstruction:
-              `候选人已经在「${groupName}」里，不要承诺拉群、不要再次发起邀请；` +
+              `候选人已经在兼职岗位信息群「${groupName}」里，不要承诺拉群、不要再次发起邀请；` +
+              '这个群不是面试群，不得把腾讯会议链接或面试通知关联到这个群；' +
               `候选人主动问群相关问题时按"你已经在${groupName}里了"口径回应，其余情况不主动提及群。` +
               `记忆已写入，同会话后续不再重复触发本工具。`,
           };
@@ -337,11 +348,15 @@ export function buildInviteToGroupTool(
               success: true,
               simulated: true,
               groupName: `${city}兼职群（测试模拟）`,
+              groupPurpose: 'job_pool',
               city,
               industry: industry ?? undefined,
               inviteDelivery: 'invite_card',
               _outcome: '【测试链路模拟】已向候选人发送入群邀请卡片（未触达真实企业接口）',
-              _replyInstruction: `企微已向候选人发送入群邀请卡片。入群确认句必须原样说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
+              _replyInstruction:
+                `企微已向候选人发送兼职岗位信息群"${city}兼职群（测试模拟）"的邀请卡片。` +
+                `回复时必须带实际群名并说明这是兼职岗位信息群、不是面试群；不得把腾讯会议链接或面试通知关联到这个群；` +
+                `禁止输出、编造或粘贴任何群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
             };
           }
 
@@ -544,6 +559,7 @@ export function buildInviteToGroupTool(
             return {
               success: true,
               groupName: targetGroup.groupName,
+              groupPurpose: 'job_pool',
               city,
               industry: industry ?? undefined,
               inviteDelivery,
@@ -557,8 +573,8 @@ export function buildInviteToGroupTool(
                   ? '候选人已被直接加入目标兼职群'
                   : '已向候选人发送入群邀请卡片',
               _replyInstruction: isDirectAdd
-                ? `候选人已被直接加入"${targetGroup.groupName}"。回复时可以说"已帮你加入了${targetGroup.groupName}"；不要输出任何群链接或二维码。${UNDELIVERED_PRELUDE_REMINDER}`
-                : `企微已向候选人发送入群邀请卡片。入群确认句必须原样说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
+                ? `候选人已被直接加入兼职岗位信息群"${targetGroup.groupName}"。回复时必须带实际群名并说明用途，例如"已帮你加入了「${targetGroup.groupName}」，这个群平时用来看兼职岗位信息"；这是兼职群，不是面试群，不得把腾讯会议链接或面试通知关联到这个群；不要输出任何群链接或二维码。${UNDELIVERED_PRELUDE_REMINDER}`
+                : `企微已向候选人发送兼职岗位信息群"${targetGroup.groupName}"的邀请卡片。回复时必须带实际群名并说明用途，例如"「${targetGroup.groupName}」的邀请已经发你了，点一下卡片就能进，这个群平时用来看兼职岗位信息"；这是兼职群，不是面试群，不得把腾讯会议链接或面试通知关联到这个群；禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
             };
           }
 
