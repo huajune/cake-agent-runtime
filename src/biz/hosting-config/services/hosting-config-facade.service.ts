@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { MODEL_DICTIONARY } from '@providers/models';
 import { supportsVision } from '@providers/types';
 import {
+  AgentFallbackChainEntry,
+  AgentFallbackChains,
   AgentReplyConfig,
   AgentModelConfigKey,
   DEFAULT_AGENT_REPLY_CONFIG,
@@ -60,6 +62,7 @@ export class HostingConfigFacadeService {
     config: AgentReplyConfig;
     defaults: AgentReplyConfig;
     resolvedModels: ResolvedAgentModels;
+    fallbackChains: AgentFallbackChains;
     groupTaskConfig: GroupTaskConfig;
   }> {
     const config = await this.systemConfigService.getAgentReplyConfig();
@@ -68,8 +71,43 @@ export class HostingConfigFacadeService {
       config,
       defaults: DEFAULT_AGENT_REPLY_CONFIG,
       resolvedModels: this.resolveAgentModels(config),
+      fallbackChains: this.resolveFallbackChains(config),
       groupTaskConfig,
     };
+  }
+
+  /**
+   * 汇总生效降级链（Dashboard 展示/编辑用）：Dashboard 配置优先于环境变量，
+   * 与运行时 getFallbackChainOverride 的优先级语义一致。
+   */
+  private resolveFallbackChains(config: AgentReplyConfig): AgentFallbackChains {
+    const parseEnv = (raw: string | undefined): string[] =>
+      raw
+        ?.split(',')
+        .map((modelId) => modelId.trim())
+        .filter(Boolean) ?? [];
+
+    const defaultEntry: AgentFallbackChainEntry =
+      config.defaultFallbackModelIds.length > 0
+        ? { chain: config.defaultFallbackModelIds, source: 'db_override' }
+        : {
+            chain: parseEnv(this.configService.get<string>('AGENT_DEFAULT_FALLBACKS')),
+            source: 'environment',
+          };
+
+    const roles = ['chat', 'extract', 'vision', 'evaluate', 'review', 'repair', 'reengagement'];
+    const roleOverrides: Record<string, AgentFallbackChainEntry> = {};
+    for (const role of roles) {
+      if (role === 'vision' && config.visionFallbackModelIds.length > 0) {
+        roleOverrides[role] = { chain: config.visionFallbackModelIds, source: 'db_override' };
+        continue;
+      }
+      const raw = this.configService.get<string>(`AGENT_${role.toUpperCase()}_FALLBACKS`);
+      if (raw?.trim()) {
+        roleOverrides[role] = { chain: parseEnv(raw), source: 'environment' };
+      }
+    }
+    return { default: defaultEntry, roleOverrides };
   }
 
   /**
@@ -203,6 +241,23 @@ export class HostingConfigFacadeService {
       }
       if (field === 'visionModelId' && !supportsVision(modelId)) {
         throw new BadRequestException(`visionModelId 必须是多模态模型: ${modelId} 不支持图片输入`);
+      }
+    }
+
+    // 降级链字段：每个 ID 都必须在模型字典中登记。
+    for (const field of ['defaultFallbackModelIds', 'visionFallbackModelIds'] as const) {
+      const raw = body[field];
+      if (raw === undefined) continue;
+      if (!Array.isArray(raw)) {
+        throw new BadRequestException(`${field} 必须是模型 ID 数组`);
+      }
+      for (const item of raw) {
+        const modelId = typeof item === 'string' ? item.trim() : '';
+        if (!modelId || !MODEL_DICTIONARY[modelId]) {
+          throw new BadRequestException(
+            `${field} 含未登记的模型 ID: ${String(item)}（可用清单见 GET /agent/models）`,
+          );
+        }
       }
     }
   }

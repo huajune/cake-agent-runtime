@@ -11,6 +11,7 @@ import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRe
 import type {
   AgentModelConfigKey,
   AgentReplyConfig,
+  AgentReplyThinkingEffort,
   AgentReplyThinkingMode,
 } from '@/api/types/config.types';
 import type { ReengagementScenario } from '@/api/types/reengagement.types';
@@ -81,6 +82,31 @@ const thinkingModeOptions: Array<{ value: AgentReplyThinkingMode; label: string;
 function getThinkingModeLabel(value?: string): string {
   return thinkingModeOptions.find((option) => option.value === value)?.label ?? '极速模式';
 }
+
+const thinkingEffortOptions: Array<{
+  value: AgentReplyThinkingEffort;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'low', label: '轻度', hint: '少量推理，响应更快、成本更低。' },
+  { value: 'medium', label: '中度', hint: '平衡推理深度与响应速度。' },
+  { value: 'high', label: '重度', hint: '最强推理深度（历史默认行为）。' },
+];
+
+function getThinkingEffortLabel(value?: string): string {
+  return thinkingEffortOptions.find((option) => option.value === value)?.label ?? '重度';
+}
+
+/** 降级链展示用的角色中文名（与模型路由区块的角色命名保持一致） */
+const FALLBACK_ROLE_LABELS: Record<string, string> = {
+  chat: '企微聊天',
+  extract: '事实提取',
+  vision: '图片理解',
+  evaluate: '对话质量评估',
+  review: '守卫语义审查',
+  repair: '守卫修复',
+  reengagement: '复聊',
+};
 
 /** 功能模块运行状态三态：关闭 → Shadow 观测（只记录）→ 真实生效 */
 type ModuleRunState = 'off' | 'shadow' | 'live';
@@ -183,7 +209,7 @@ export default function Config() {
     </span>
   );
 
-  const handleConfigChange = (key: string, value: number | boolean | string) => {
+  const handleConfigChange = (key: string, value: number | boolean | string | string[]) => {
     setEditingConfig((prev) => ({ ...prev, [key]: value }));
     setDirtyFields((prev) => {
       const persistedValue = agentConfigData?.config[key as keyof AgentReplyConfig];
@@ -392,7 +418,15 @@ export default function Config() {
   const thinkingModeDefaultValue = String(
     getDefaultValue('wecomCallbackThinkingMode') ?? 'fast',
   ) as AgentReplyThinkingMode;
+  const thinkingEffortValue = String(
+    getCurrentValue('wecomCallbackThinkingEffort') ?? 'high',
+  ) as AgentReplyThinkingEffort;
+  const thinkingEffortDefaultValue = String(
+    getDefaultValue('wecomCallbackThinkingEffort') ?? 'high',
+  ) as AgentReplyThinkingEffort;
   const currentMergeWindow = Number(getCurrentValue('initialMergeWindowMs') ?? 0);
+  // env 降级链快照：只读展示，来源 AGENT_DEFAULT_FALLBACKS / AGENT_{ROLE}_FALLBACKS
+  const fallbackChains = agentConfigData?.fallbackChains;
   // 出站守卫开关直接读服务端最新值（3s 轮询），不进 editingConfig 表单态——切换即保存
   const guardrailLlmEnabled = Boolean(agentConfigData?.config.outputGuardrailLlmEnabled);
   const guardrailShadowEnabled = Boolean(
@@ -660,6 +694,120 @@ export default function Config() {
               </div>
               <div className={styles.modelGrid}>{modelRoleFields.map(renderModelCell)}</div>
             </div>
+
+            {fallbackChains ? (
+              <div className={styles.settingsPanel}>
+                <div
+                  className={`${styles.settingRow} ${isModified('defaultFallbackModelIds') ? styles.settingRowModified : ''}`}
+                >
+                  <div className={styles.settingBody}>
+                    <div className={styles.settingHeading}>
+                      <span className={styles.settingLabel}>默认降级链</span>
+                      <span className={styles.modifiedBadge}>
+                        {fallbackChains.default.source === 'db_override'
+                          ? 'Dashboard 配置'
+                          : 'env 默认'}
+                      </span>
+                    </div>
+                    <p className={styles.settingDescription}>
+                      主模型不可用时按此顺序换用降级模型；链上含识图模型时，纯文本主聊的图片轮也会整轮切到首个识图候选。
+                      逗号分隔的模型 ID，留空回退环境变量 AGENT_DEFAULT_FALLBACKS，保存后约 5
+                      秒生效。
+                    </p>
+                    <div className={styles.settingMeta}>
+                      <span>
+                        当前生效: {fallbackChains.default.chain.join(' → ') || '未配置'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.controlBlock}>
+                    <input
+                      type="text"
+                      className={styles.selectInput}
+                      placeholder="留空走 env，如 qwen/qwen3.7-plus, anthropic/claude-sonnet-5"
+                      value={((getCurrentValue('defaultFallbackModelIds') as string[]) ?? []).join(
+                        ', ',
+                      )}
+                      onChange={(e) =>
+                        handleConfigChange(
+                          'defaultFallbackModelIds',
+                          e.target.value
+                            .split(',')
+                            .map((id) => id.trim())
+                            .filter(Boolean),
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className={`${styles.settingRow} ${isModified('visionFallbackModelIds') ? styles.settingRowModified : ''}`}
+                >
+                  <div className={styles.settingBody}>
+                    <div className={styles.settingHeading}>
+                      <span className={styles.settingLabel}>图片理解降级链</span>
+                      <span className={styles.modifiedBadge}>
+                        {fallbackChains.roleOverrides.vision?.source === 'db_override'
+                          ? 'Dashboard 配置'
+                          : 'env 默认'}
+                      </span>
+                    </div>
+                    <p className={styles.settingDescription}>
+                      图片理解角色专属降级链，优先于默认链；建议保持与主链跨厂商（qwen 主模型挂掉时靠它兜底识图）。
+                      留空回退环境变量 AGENT_VISION_FALLBACKS。
+                    </p>
+                    <div className={styles.settingMeta}>
+                      <span>
+                        当前生效:{' '}
+                        {fallbackChains.roleOverrides.vision?.chain.join(' → ') || '未配置'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.controlBlock}>
+                    <input
+                      type="text"
+                      className={styles.selectInput}
+                      placeholder="留空走 env，如 anthropic/claude-sonnet-5"
+                      value={((getCurrentValue('visionFallbackModelIds') as string[]) ?? []).join(
+                        ', ',
+                      )}
+                      onChange={(e) =>
+                        handleConfigChange(
+                          'visionFallbackModelIds',
+                          e.target.value
+                            .split(',')
+                            .map((id) => id.trim())
+                            .filter(Boolean),
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+
+                {Object.entries(fallbackChains.roleOverrides)
+                  .filter(([role]) => role !== 'vision')
+                  .map(([role, entry]) => (
+                    <div className={styles.settingRow} key={role}>
+                      <div className={styles.settingBody}>
+                        <div className={styles.settingHeading}>
+                          <span className={styles.settingLabel}>
+                            {FALLBACK_ROLE_LABELS[role] ?? role}降级链
+                          </span>
+                          <span className={styles.modifiedBadge}>env · 只读</span>
+                        </div>
+                        <p className={styles.settingDescription}>
+                          该角色专属降级链（AGENT_{role.toUpperCase()}
+                          _FALLBACKS），优先于默认链生效。
+                        </p>
+                      </div>
+                      <div className={styles.controlBlock}>
+                        <span className={styles.controlValue}>{entry.chain.join(' → ')}</span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            ) : null}
           </section>
 
           <section id="config-reply" className={styles.moduleSection}>
@@ -717,6 +865,50 @@ export default function Config() {
                   </select>
                 </div>
               </div>
+
+              {thinkingModeValue === 'deep' ? (
+                <div
+                  className={`${styles.settingRow} ${isModified('wecomCallbackThinkingEffort') ? styles.settingRowModified : ''}`}
+                >
+                  <div className={styles.settingBody}>
+                    <div className={styles.settingHeading}>
+                      <span className={styles.settingLabel}>深度思考档位</span>
+                      {isModified('wecomCallbackThinkingEffort') ? (
+                        <span className={styles.modifiedBadge}>覆盖默认</span>
+                      ) : null}
+                    </div>
+                    <p className={styles.settingDescription}>
+                      深度思考模式下的推理强度档位（低/中/高），按各家模型的 reasoning effort
+                      能力映射；极速模式下此项不生效。
+                    </p>
+                    <div className={styles.settingMeta}>
+                      <span>适用于新的企微回调请求</span>
+                      <span>默认: {getThinkingEffortLabel(thinkingEffortDefaultValue)}</span>
+                    </div>
+                  </div>
+                  <div className={styles.controlBlock}>
+                    <span className={styles.controlValue}>
+                      {getThinkingEffortLabel(thinkingEffortValue)}
+                    </span>
+                    <select
+                      className={styles.selectInput}
+                      value={thinkingEffortValue}
+                      onChange={(e) =>
+                        handleConfigChange(
+                          'wecomCallbackThinkingEffort',
+                          e.target.value as AgentReplyThinkingEffort,
+                        )
+                      }
+                    >
+                      {thinkingEffortOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label} · {option.hint}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : null}
 
               {renderNumberSetting(numberConfigMeta.typingSpeedCharsPerSec)}
               {renderNumberSetting(numberConfigMeta.paragraphGapMs)}

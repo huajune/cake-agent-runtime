@@ -194,6 +194,14 @@ export class ThinkingConfigDto {
   @IsInt()
   @Min(0)
   budgetTokens: number;
+
+  @ApiPropertyOptional({
+    description: '深度思考档位（enabled 时生效，缺省 high）',
+    enum: ['low', 'medium', 'high'],
+  })
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high'])
+  effort?: 'low' | 'medium' | 'high';
 }
 
 /**

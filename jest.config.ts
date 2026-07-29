@@ -8,7 +8,22 @@ const config: JestConfigWithTsJest = {
   // AppModule 装配冒烟测试实例化真实 Bull/ioredis 客户端，遗留重连句柄会让
   // 默认全量跑挂住；它由专用配置 jest.di-smoke.config.ts（--forceExit）单独执行。
   testPathIgnorePatterns: ['<rootDir>/tests/app-module.smoke.spec.ts'],
+  // ai@7 / @ai-sdk/* / @openrouter 自 v7 线起为纯 ESM 包；jest 29 的 CJS 运行时
+  // 无法直接 require，必须让 ts-jest 把它们转译成 CJS（pnpm 布局下真实路径在
+  // node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/，两段都要豁免）。
+  transformIgnorePatterns: [
+    '/node_modules/(?!\\.pnpm|ai/|@ai-sdk/|@openrouter/|@workflow/|eventsource-parser)',
+    '/node_modules/\\.pnpm/(?!(ai@|@ai-sdk\\+|@openrouter\\+|@workflow\\+|eventsource-parser@))',
+  ],
   transform: {
+    // node_modules 里被豁免的 ESM 包走带 allowJs 的 ts-jest 转译成 CJS；
+    // 项目自身的 scripts/*.js（含 shebang）保持默认条目原样通过，不能开 allowJs。
+    '[/\\\\]node_modules[/\\\\].+\\.(t|j)s$': [
+      'ts-jest',
+      {
+        tsconfig: { allowJs: true },
+      },
+    ],
     '^.+\\.(t|j)s$': [
       'ts-jest',
       {

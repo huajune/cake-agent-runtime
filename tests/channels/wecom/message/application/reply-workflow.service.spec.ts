@@ -76,6 +76,10 @@ describe('ReplyWorkflowService', () => {
     describeAndUpdateAsync: jest.fn(),
     awaitVision: jest.fn().mockResolvedValue(undefined),
   };
+  // 默认全链纯文本（预描述路径）：图片记忆兜底不触发，既有用例行为不变。
+  const llm = {
+    supportsVisionInput: jest.fn().mockResolvedValue(false),
+  };
   const imageBrandBackfill = {
     detectMissingImages: jest.fn().mockReturnValue([]),
     scheduleBackfill: jest.fn(),
@@ -256,6 +260,7 @@ describe('ReplyWorkflowService', () => {
       },
     });
     runtimeConfig.getMergeDelayMs.mockReturnValue(3500);
+    llm.supportsVisionInput.mockResolvedValue(false);
     processingFailureService.inferErrorType.mockReturnValue('message');
     processingFailureService.handleProcessingError.mockResolvedValue(undefined);
     runner.precheckInboundOutcome.mockResolvedValue(null);
@@ -303,6 +308,7 @@ describe('ReplyWorkflowService', () => {
       alertNotifier as never,
       imageBrandBackfill as never,
       session as never,
+      llm as never,
     );
   });
 
@@ -700,6 +706,57 @@ describe('ReplyWorkflowService', () => {
     );
     expect(interventionService.dispatch.mock.invocationCallOrder[0]).toBeLessThan(
       deduplicationService.markMessageAsProcessedAsync.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('预约成功待补发面试群 → 先投递双群区分回执，再暂停托管并通知真人', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text:
+        '报名成功。「佛山餐饮兼职群」的邀请已经发你了，这个群平时用来看兼职岗位信息。' +
+        '这次面试用的是单独的面试群，我这边接着发你邀请。',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 528546 },
+          result: {
+            success: true,
+            workOrderId: 453619,
+            sideEffect: {
+              kind: 'general_handoff',
+              source: 'agent_tool',
+              alertLabel: '预约成功待补发面试群',
+              reasonCode: 'interview_group_invite_required',
+              reason: '预约成功，需手动补发佛山面试群邀请',
+              actionAdvice: '立即使用当前企微账号补发面试群',
+              workOrderId: 453619,
+              idempotencyKey: 'chat-1:interview_group_invite:453619',
+              recordHandoff: true,
+            },
+          },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 5, totalTokens: 6 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('单独的面试群') }),
+      expect.anything(),
+      true,
+    );
+    expect(interventionService.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'general_handoff',
+        alertLabel: '预约成功待补发面试群',
+        reasonCode: 'interview_group_invite_required',
+        workOrderId: 453619,
+      }),
+    );
+    expect(deliveryService.deliverReply.mock.invocationCallOrder[0]).toBeLessThan(
+      interventionService.dispatch.mock.invocationCallOrder[0],
     );
   });
 
@@ -1648,6 +1705,76 @@ describe('ReplyWorkflowService', () => {
       }),
     );
     expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', messages.length);
+  });
+
+  describe('图片记忆确定性兜底（backfillMissingImageDescriptions）', () => {
+    type BackfillParams = {
+      imageMessageIds: string[];
+      imageUrls: string[];
+      visualMessageTypes: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
+      overrideModelId?: string;
+      toolCalls?: Array<{ toolName: string; args: Record<string, unknown> }>;
+      contactName: string;
+      logPrefix: string;
+    };
+    const invokeBackfill = (params: BackfillParams) =>
+      (
+        service as unknown as {
+          backfillMissingImageDescriptions: (p: BackfillParams) => void;
+        }
+      ).backfillMissingImageDescriptions(params);
+
+    const baseParams = {
+      imageMessageIds: ['img-1', 'img-2'],
+      imageUrls: ['https://cdn.example.com/1.png', 'https://cdn.example.com/2.png'],
+      visualMessageTypes: { 'img-1': MessageType.IMAGE, 'img-2': MessageType.IMAGE } as Record<
+        string,
+        MessageType.IMAGE | MessageType.EMOTION
+      >,
+      contactName: '张三',
+      logPrefix: '[test]',
+    };
+
+    it('多模态主路径下漏调 save_image_description 的图片触发 vision 补描述', async () => {
+      llm.supportsVisionInput.mockResolvedValue(true);
+
+      invokeBackfill({
+        ...baseParams,
+        toolCalls: [{ toolName: 'save_image_description', args: { messageId: 'img-1' } }],
+      });
+      await flush();
+
+      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledTimes(1);
+      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
+        'img-2',
+        'https://cdn.example.com/2.png',
+        MessageType.IMAGE,
+      );
+    });
+
+    it('全部图片都已通过工具固化时不触发兜底', async () => {
+      llm.supportsVisionInput.mockResolvedValue(true);
+
+      invokeBackfill({
+        ...baseParams,
+        toolCalls: [
+          { toolName: 'save_image_description', args: { messageId: 'img-1' } },
+          { toolName: 'save_image_description', args: { messageId: 'img-2' } },
+        ],
+      });
+      await flush();
+
+      expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
+    });
+
+    it('全链纯文本（预描述路径）时不触发兜底，避免重复描述', async () => {
+      llm.supportsVisionInput.mockResolvedValue(false);
+
+      invokeBackfill({ ...baseParams, toolCalls: [] });
+      await flush();
+
+      expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
+    });
   });
 });
 

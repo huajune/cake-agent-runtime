@@ -117,6 +117,7 @@ describe('MessageRuntimeConfigService', () => {
       thinking: {
         type: 'enabled',
         budgetTokens: 4000,
+        effort: 'high',
       },
     });
   });

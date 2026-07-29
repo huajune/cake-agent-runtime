@@ -250,6 +250,48 @@ describe('SystemConfigService', () => {
     });
   });
 
+  // ==================== getFallbackChainOverride ====================
+
+  describe('getFallbackChainOverride', () => {
+    const withConfig = (partial: Record<string, unknown>) => {
+      (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, ...partial };
+      (service as any).agentReplyConfigExpiry = Date.now() + 60_000;
+    };
+
+    it('returns the default chain for any role when configured', async () => {
+      withConfig({
+        defaultFallbackModelIds: ['qwen/qwen3.7-plus', 'anthropic/claude-sonnet-5'],
+      });
+      await expect(service.getFallbackChainOverride('chat')).resolves.toEqual([
+        'qwen/qwen3.7-plus',
+        'anthropic/claude-sonnet-5',
+      ]);
+      await expect(service.getFallbackChainOverride('review')).resolves.toEqual([
+        'qwen/qwen3.7-plus',
+        'anthropic/claude-sonnet-5',
+      ]);
+    });
+
+    it('prefers the vision-specific chain for the vision role', async () => {
+      withConfig({
+        defaultFallbackModelIds: ['qwen/qwen3.7-plus'],
+        visionFallbackModelIds: ['anthropic/claude-sonnet-5'],
+      });
+      await expect(service.getFallbackChainOverride('vision')).resolves.toEqual([
+        'anthropic/claude-sonnet-5',
+      ]);
+      await expect(service.getFallbackChainOverride('chat')).resolves.toEqual([
+        'qwen/qwen3.7-plus',
+      ]);
+    });
+
+    it('returns undefined when nothing configured (falls back to env chains)', async () => {
+      withConfig({});
+      await expect(service.getFallbackChainOverride('chat')).resolves.toBeUndefined();
+      await expect(service.getFallbackChainOverride('vision')).resolves.toBeUndefined();
+    });
+  });
+
   // ==================== getAgentReplyConfig ====================
 
   describe('getAgentReplyConfig', () => {

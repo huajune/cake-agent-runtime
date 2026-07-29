@@ -37,6 +37,8 @@ import {
   buildOnSiteScript,
   isOnlineInterview,
   formatInterviewTimeForReply,
+  resolveManualInterviewGroupHandling,
+  type ManualInterviewGroupHandling,
 } from '@tools/duliday/booking/booking-reply-format.util';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
@@ -633,6 +635,7 @@ export function buildInterviewBookingTool(
         const genderLabel = getSpongeGenderLabelById(genderId) ?? undefined;
         const ageText = normalizeAgeText(age);
         let interviewType: string | undefined;
+        let manualInterviewGroupHandling: ManualInterviewGroupHandling | null = null;
         let requestInfo: Record<string, unknown> = {
           jobId,
           interviewTime,
@@ -813,6 +816,10 @@ export function buildInterviewBookingTool(
             undefined;
           interviewType = resolveInterviewType(job);
           const bookingPolicyAnalysis = buildJobPolicyAnalysis(job);
+          manualInterviewGroupHandling = resolveManualInterviewGroupHandling({
+            interviewRemark: bookingPolicyAnalysis.normalizedRequirements.interviewRemark,
+            flowDescription: bookingPolicyAnalysis.interviewMeta.demand,
+          });
           const onlineInterview = isOnlineInterview({
             interviewType,
             interviewRemark: bookingPolicyAnalysis.normalizedRequirements.interviewRemark,
@@ -1052,7 +1059,12 @@ export function buildInterviewBookingTool(
                 // 3 分钟后重复提交撞 already_booked。成功播报是硬约束，不是可选项。
                 _replyInstruction:
                   '预约已成功提交。本轮回复**必须**明确向候选人确认报名成功，并按下方 _confirmedInterviewTimeHuman / 各 guide 字段复述面试安排；' +
-                  '严禁不提报名结果、只回答候选人其他问题或静默。',
+                  '严禁不提报名结果、只回答候选人其他问题或静默。' +
+                  (manualInterviewGroupHandling
+                    ? '本岗位需要单独的面试群且只能由当前企微账号随后手动发送；预约成功后仍按既有规则调用 invite_to_group 发送兼职岗位信息群，' +
+                      '最终回复必须带兼职群实际群名和用途，并明确它不是面试群；再按 _manualInterviewGroupGuide 说明面试群邀请会接着单独发送。' +
+                      '全程使用“我”的口径，禁止出现工作人员、运营、人工、机器人或账号接管等身份切换表述。'
+                    : ''),
                 // 历史 badcase keciu6u6 / waugdoxa / 2za5e0ek：约面成功后 Agent 漏说具体时间点、漏教候选人到店脚本。
                 // 这两个字段是工具事实，Agent 必须照实复述（在 Agent prompt 的"## 硬规则"段有强约束）。
                 // 等通知岗位（无 interviewTime）没有时间点可复述、也没有到店环节，
@@ -1091,6 +1103,31 @@ export function buildInterviewBookingTool(
                         '该岗位不选面试时间。告知候选人报名资料已提交成功，面试官会直接打电话联系（请保持电话畅通、留意陌生来电）；严禁编造具体面试时间或到店时间。',
                       _resultDisclaimer: '具体面试安排以面试官电话沟通为准',
                     }),
+                ...(manualInterviewGroupHandling
+                  ? {
+                      interviewGroupHandling: manualInterviewGroupHandling,
+                      _manualInterviewGroupGuide: manualInterviewGroupHandling.candidateGuide,
+                      sideEffect: {
+                        kind: 'general_handoff' as const,
+                        source: 'agent_tool' as const,
+                        alertLabel: '预约成功待补发面试群',
+                        reasonCode: 'interview_group_invite_required',
+                        reason:
+                          `预约已成功，岗位流程要求加入${
+                            manualInterviewGroupHandling.groupNameHint ?? '面试群'
+                          }后获取腾讯会议链接；Agent只能发送兼职岗位信息群，` +
+                          '需使用当前企微账号手动补发面试群邀请。',
+                        actionAdvice: `请立即使用当前企微账号给候选人补发${
+                          manualInterviewGroupHandling.groupNameHint ?? '面试群'
+                        }邀请；兼职岗位信息群由Agent自动发送，无需重复发送。`,
+                        workOrderId: result.workOrderId ?? null,
+                        idempotencyKey:
+                          `${context.sessionId}:interview_group_invite:` +
+                          `${result.workOrderId ?? `${jobId}:${interviewTime ?? 'wait_notice'}`}`,
+                        recordHandoff: true,
+                      },
+                    }
+                  : {}),
               }
             : {
                 ...result,
@@ -1103,25 +1140,30 @@ export function buildInterviewBookingTool(
                 }),
               };
 
-          void sendInterviewBookingNotification(
-            {
-              candidateName: name,
-              contactName: context.contactName,
-              phone,
-              genderLabel,
-              ageText,
-              interviewTime: interviewTime ?? '等待通知（面试官电话联系）',
-              interviewType,
-              brandName: resolvedBrandName,
-              storeName: resolvedStoreName,
-              jobName: resolvedJobName,
-              jobId,
-              botUserName: context.botUserId,
-              toolOutput: toolResult,
-              botImId: context.botImId,
-            },
-            privateChatNotifier,
-          );
+          // 需要人工补发面试群时，toolResult.sideEffect 会在候选人回复完成投递后统一执行
+          // 「暂停托管 + @对应负责人告警」。不再并发发送普通预约成功卡，避免同一预约
+          // 出现两张内部通知、运营重复处理。其它预约沿用原成功/失败通知。
+          if (!result.success || !manualInterviewGroupHandling) {
+            void sendInterviewBookingNotification(
+              {
+                candidateName: name,
+                contactName: context.contactName,
+                phone,
+                genderLabel,
+                ageText,
+                interviewTime: interviewTime ?? '等待通知（面试官电话联系）',
+                interviewType,
+                brandName: resolvedBrandName,
+                storeName: resolvedStoreName,
+                jobName: resolvedJobName,
+                jobId,
+                botUserName: context.botUserId,
+                toolOutput: toolResult,
+                botImId: context.botImId,
+              },
+              privateChatNotifier,
+            );
+          }
 
           return toolResult;
         } catch (err) {

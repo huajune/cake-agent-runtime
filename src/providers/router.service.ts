@@ -13,10 +13,10 @@ export interface ModelRoute {
  * 对标 ZeroClaw src/providers/router.rs 的 RouterProvider。
  *
  * 通过环境变量配置角色映射：
- *   AGENT_CHAT_MODEL=qwen/qwen3.6-plus
- *   AGENT_CHAT_FALLBACKS=deepseek/deepseek-v4-flash,anthropic/claude-sonnet-4-6
- *   AGENT_EXTRACT_MODEL=openai/gpt-5-mini
- *   AGENT_VISION_MODEL=qwen/qwen3.6-plus
+ *   AGENT_CHAT_MODEL=qwen/qwen3.7-plus
+ *   AGENT_CHAT_FALLBACKS=deepseek/deepseek-v4-flash,anthropic/claude-sonnet-5
+ *   AGENT_EXTRACT_MODEL=deepseek/deepseek-v4-pro
+ *   AGENT_VISION_MODEL=qwen/qwen3-vl-plus
  */
 @Injectable()
 export class RouterService {

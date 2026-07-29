@@ -130,6 +130,7 @@ describe('buildInterviewPrecheckTool', () => {
     });
     return builtTool.execute(input as any, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined as any,
     }) as any;
@@ -146,6 +147,7 @@ describe('buildInterviewPrecheckTool', () => {
     )(context);
     const result = (await builtTool.execute(input as any, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined as any,
     })) as any;

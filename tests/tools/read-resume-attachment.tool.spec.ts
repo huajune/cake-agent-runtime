@@ -40,6 +40,7 @@ describe('buildReadResumeAttachmentTool', () => {
     const builtTool = builder({} as never);
     return (builtTool as any).execute(input, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined,
     }) as any;
