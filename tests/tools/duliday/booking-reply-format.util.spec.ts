@@ -2,6 +2,7 @@ import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
   isOnlineInterview,
+  resolveManualInterviewGroupHandling,
 } from '@tools/duliday/booking/booking-reply-format.util';
 
 describe('formatInterviewTimeForReply', () => {
@@ -121,5 +122,33 @@ describe('isOnlineInterview (badcase chat 6a5f3080 线上面试误发到店话�
         isOnlineInterview({ interviewRemark: '到店面试请保持电话畅通，有变动会电话联系' }),
       ).toBe(false);
     });
+  });
+});
+
+describe('resolveManualInterviewGroupHandling', () => {
+  it('识别面试群人工补发流程并生成本人连续口径', () => {
+    const result = resolveManualInterviewGroupHandling({
+      interviewRemark:
+        '让人选添加佛山面试群，备注好名字＋手机号码，在群里发腾讯会议链接，请在规定时间入会',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        required: true,
+        delivery: 'manual',
+        groupNameHint: '佛山面试群',
+      }),
+    );
+    expect(result?.candidateGuide).toContain('我这边接着发你邀请');
+    expect(result?.candidateGuide).toContain('备注好姓名+手机号');
+    expect(result?.candidateGuide).not.toMatch(/工作人员|运营|人工|机器人/);
+  });
+
+  it('普通线上面试不触发面试群人工补发', () => {
+    expect(
+      resolveManualInterviewGroupHandling({
+        flowDescription: '面试官先电话沟通，合适后通知下一步',
+      }),
+    ).toBeNull();
   });
 });
