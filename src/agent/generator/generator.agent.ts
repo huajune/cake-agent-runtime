@@ -92,7 +92,7 @@ export class GeneratorAgent {
 
   /** 非流式执行入口。 */
   async invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
-    const enableVision = this.llm.supportsVisionInput({
+    const enableVision = await this.llm.supportsVisionInput({
       role: ModelRole.Chat,
       modelId: params.modelId,
       disableFallbacks: params.disableFallbacks,
@@ -173,7 +173,7 @@ export class GeneratorAgent {
       onFinish?: (result: GeneratorRunResult) => Promise<void> | void;
     },
   ): Promise<GeneratorStreamResult> {
-    const enableVision = this.llm.supportsVisionInput({
+    const enableVision = await this.llm.supportsVisionInput({
       role: ModelRole.Chat,
       modelId: params.modelId,
       disableFallbacks: params.disableFallbacks,
@@ -326,10 +326,8 @@ export class GeneratorAgent {
         `工具调用硬截断: blocked=${blocked.join(',')} stepCount=${steps.length} sessionId=${sessionId}`,
       );
 
-      // activeTools 在 SDK 内部要求是 keyof TOOLS；这里 TOOLS 是 ToolSet 索引签名，
-      // 直接用 string[] 在运行时一致，仅做类型 cast。
       return {
-        activeTools: activeTools as Array<string | number | symbol>,
+        activeTools,
         system,
       };
     };

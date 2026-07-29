@@ -70,6 +70,13 @@ export class SystemConfigService {
           ? config.wecomCallbackModelId.trim()
           : DEFAULT_AGENT_REPLY_CONFIG.wecomCallbackModelId,
       wecomCallbackThinkingMode: config?.wecomCallbackThinkingMode === 'deep' ? 'deep' : 'fast',
+      wecomCallbackThinkingEffort:
+        config?.wecomCallbackThinkingEffort === 'low' ||
+        config?.wecomCallbackThinkingEffort === 'medium'
+          ? config.wecomCallbackThinkingEffort
+          : DEFAULT_AGENT_REPLY_CONFIG.wecomCallbackThinkingEffort,
+      defaultFallbackModelIds: this.normalizeModelIdList(config?.defaultFallbackModelIds),
+      visionFallbackModelIds: this.normalizeModelIdList(config?.visionFallbackModelIds),
       extractModelId:
         typeof config?.extractModelId === 'string'
           ? config.extractModelId.trim()
@@ -175,6 +182,19 @@ export class SystemConfigService {
         config?.reengagementScenarioDelayMinutes,
       ),
     };
+  }
+
+  /** 降级链数组只保留非空字符串项并去重；非数组一律按未配置处理。 */
+  private normalizeModelIdList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return Array.from(
+      new Set(
+        value
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    );
   }
 
   /** 场景级灰度 map 只保留 boolean 值项，其余丢弃（防脏数据把开关搞成 truthy 字符串）。 */
@@ -329,6 +349,22 @@ export class SystemConfigService {
       reengagement: config.reengagementModelId,
     };
     return byRole[role]?.trim() || undefined;
+  }
+
+  /**
+   * 按角色返回运行时降级链覆盖（Dashboard 配置非空时生效）。
+   * 角色专属链（目前仅 vision）优先于默认链；两者都未配置返回 undefined，
+   * 走 AGENT_{ROLE}_FALLBACKS / AGENT_DEFAULT_FALLBACKS 环境变量链。
+   */
+  async getFallbackChainOverride(role: string): Promise<string[] | undefined> {
+    const config = await this.getAgentReplyConfig();
+    if (role === 'vision' && config.visionFallbackModelIds.length > 0) {
+      return config.visionFallbackModelIds;
+    }
+    if (config.defaultFallbackModelIds.length > 0) {
+      return config.defaultFallbackModelIds;
+    }
+    return undefined;
   }
 
   async getAgentReplyConfig(): Promise<AgentReplyConfig> {

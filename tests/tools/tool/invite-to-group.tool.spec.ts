@@ -71,6 +71,7 @@ describe('buildInviteToGroupTool', () => {
     const builtTool = builder({ ...mockContext, ...overrideContext });
     return builtTool.execute(input as any, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined as any,
     }) as any;
@@ -858,6 +859,7 @@ describe('buildInviteToGroupTool', () => {
 
     const result = await builtTool.execute({ city: '上海' } as any, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined as any,
     });
@@ -907,6 +909,7 @@ describe('buildInviteToGroupTool', () => {
       const builtTool = builder({ ...mockContext, ...overrideContext });
       return builtTool.execute(input as any, {
         toolCallId: 'test',
+        context: {},
         messages: [],
         abortSignal: undefined as any,
       }) as any;

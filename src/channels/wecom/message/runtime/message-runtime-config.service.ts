@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   AgentReplyConfig,
+  AgentThinkingEffort,
   AgentThinkingMode,
 } from '@biz/hosting-config/types/hosting-config.types';
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
@@ -38,6 +39,7 @@ export class MessageRuntimeConfigService implements OnModuleInit {
   private typingConfig: MessageTypingConfig;
   private overrideModelId?: string;
   private wecomThinkingMode: AgentThinkingMode;
+  private wecomThinkingEffort: AgentThinkingEffort;
   private readonly wecomDeepThinkingBudgetTokens: number;
   private lastSyncedAt = 0;
   private syncPromise?: Promise<void>;
@@ -55,6 +57,7 @@ export class MessageRuntimeConfigService implements OnModuleInit {
       paragraphGapMs: 2000,
     };
     this.wecomThinkingMode = 'fast';
+    this.wecomThinkingEffort = 'high';
     this.wecomDeepThinkingBudgetTokens = this.resolveWecomDeepThinkingBudgetTokens();
 
     this.systemConfigService.onAiReplyChange((enabled) => {
@@ -144,6 +147,7 @@ export class MessageRuntimeConfigService implements OnModuleInit {
           ? {
               type: 'enabled',
               budgetTokens: this.wecomDeepThinkingBudgetTokens,
+              effort: this.wecomThinkingEffort,
             }
           : {
               type: 'disabled',
@@ -155,6 +159,11 @@ export class MessageRuntimeConfigService implements OnModuleInit {
   private applyAgentReplyConfig(config: AgentReplyConfig): void {
     this.overrideModelId = config.wecomCallbackModelId?.trim() || undefined;
     this.wecomThinkingMode = config.wecomCallbackThinkingMode === 'deep' ? 'deep' : 'fast';
+    this.wecomThinkingEffort =
+      config.wecomCallbackThinkingEffort === 'low' ||
+      config.wecomCallbackThinkingEffort === 'medium'
+        ? config.wecomCallbackThinkingEffort
+        : 'high';
     const nextMergeDelayMs = config.initialMergeWindowMs || 2000;
     const nextTypingSpeed =
       config.typingSpeedCharsPerSec ||

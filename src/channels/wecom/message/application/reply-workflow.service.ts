@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { ModelRole } from '@/llm/llm.types';
+import { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
@@ -95,6 +98,7 @@ export class ReplyWorkflowService {
     private readonly alertNotifier: AlertNotifierService,
     private readonly imageBrandBackfill: ImageBrandBackfillService,
     private readonly session: SessionService,
+    private readonly llm: LlmExecutorService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -371,6 +375,20 @@ export class ReplyWorkflowService {
         );
       }
       // turn-end 触发推迟到投递结局已知之后（见下方守卫/投递分支），此处不再立即触发。
+
+      // 图片记忆确定性兜底：多模态主路径的跨轮图片记忆依赖模型自觉调用
+      // save_image_description；本轮有图但漏调时用 vision 角色补描述回写 DB，
+      // 保证「图片必然沉淀为文字记忆」的下限。预描述路径（全链纯文本）本身
+      // 就是确定性回写，方法内部会识别并跳过。
+      this.backfillMissingImageDescriptions({
+        imageMessageIds,
+        imageUrls,
+        visualMessageTypes,
+        overrideModelId,
+        toolCalls: agentResult.toolCalls,
+        contactName,
+        logPrefix,
+      });
 
       if (agentResult.isFallback) {
         void this.processingFailureService.sendFallbackAlert({
@@ -698,6 +716,61 @@ export class ReplyWorkflowService {
         visualMessageTypes: undefined,
       });
     }
+  }
+
+  /**
+   * 图片记忆确定性兜底（仅多模态主路径生效）。
+   *
+   * 链上有认图候选时，图片以原图直达 Agent，跨轮记忆依赖模型自觉调用
+   * save_image_description 固化为文字；模型漏调时这里用 vision 角色异步补描述回写，
+   * 把「图片跨轮记忆必然存在」从模型自觉降级为确定性下限。
+   * 全链纯文本（预描述路径）时入站已确定性回写，直接返回避免重复描述。
+   */
+  private backfillMissingImageDescriptions(params: {
+    imageMessageIds: string[];
+    imageUrls: string[];
+    visualMessageTypes: VisualMessageTypes;
+    overrideModelId?: string;
+    toolCalls?: AgentToolCall[];
+    contactName: string;
+    logPrefix: string;
+  }): void {
+    const { imageMessageIds, imageUrls, visualMessageTypes, toolCalls, contactName, logPrefix } =
+      params;
+    if (imageMessageIds.length === 0) return;
+
+    void (async () => {
+      try {
+        const visionCapable = await this.llm.supportsVisionInput({
+          role: ModelRole.Chat,
+          modelId: params.overrideModelId,
+        });
+        if (!visionCapable) return;
+
+        const savedIds = new Set(
+          (toolCalls ?? [])
+            .filter((call) => call.toolName === 'save_image_description')
+            .map((call) => call.args?.messageId)
+            .filter((messageId): messageId is string => typeof messageId === 'string'),
+        );
+
+        imageMessageIds.forEach((messageId, index) => {
+          if (savedIds.has(messageId)) return;
+          const imageUrl = imageUrls[index];
+          if (!imageUrl) return;
+          this.logger.warn(
+            `${logPrefix}[${contactName}] 图片轮未调用 save_image_description，触发 vision 兜底补描述: ${messageId}`,
+          );
+          this.imageDescription.describeAndUpdateAsync(
+            messageId,
+            imageUrl,
+            visualMessageTypes[messageId] ?? MessageType.IMAGE,
+          );
+        });
+      } catch (error) {
+        this.logger.warn(`${logPrefix}[${contactName}] 图片描述兜底触发失败`, error);
+      }
+    })();
   }
 
   private async prepareRuntimeCompatibilityDescriptions(params: {

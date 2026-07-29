@@ -408,10 +408,12 @@ export class AcceptInboundMessageService {
     }
 
     const { overrideModelId } = await this.runtimeConfig.resolveWecomChatModelSelection();
-    const shouldDescribeBeforeAgent = !this.llm.supportsVisionInput({
+    // 链上（主模型或降级链）存在认图候选时不预描述：原图直达 Agent，由认图候选整轮处理；
+    // 全链纯文本时保持 vision 角色预描述兜底。
+    const shouldDescribeBeforeAgent = !(await this.llm.supportsVisionInput({
       role: ModelRole.Chat,
       modelId: overrideModelId,
-    });
+    }));
 
     if (!shouldDescribeBeforeAgent) {
       return;

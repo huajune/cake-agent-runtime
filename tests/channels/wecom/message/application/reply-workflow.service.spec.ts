@@ -76,6 +76,10 @@ describe('ReplyWorkflowService', () => {
     describeAndUpdateAsync: jest.fn(),
     awaitVision: jest.fn().mockResolvedValue(undefined),
   };
+  // 默认全链纯文本（预描述路径）：图片记忆兜底不触发，既有用例行为不变。
+  const llm = {
+    supportsVisionInput: jest.fn().mockResolvedValue(false),
+  };
   const imageBrandBackfill = {
     detectMissingImages: jest.fn().mockReturnValue([]),
     scheduleBackfill: jest.fn(),
@@ -256,6 +260,7 @@ describe('ReplyWorkflowService', () => {
       },
     });
     runtimeConfig.getMergeDelayMs.mockReturnValue(3500);
+    llm.supportsVisionInput.mockResolvedValue(false);
     processingFailureService.inferErrorType.mockReturnValue('message');
     processingFailureService.handleProcessingError.mockResolvedValue(undefined);
     runner.precheckInboundOutcome.mockResolvedValue(null);
@@ -303,6 +308,7 @@ describe('ReplyWorkflowService', () => {
       alertNotifier as never,
       imageBrandBackfill as never,
       session as never,
+      llm as never,
     );
   });
 
@@ -1648,6 +1654,76 @@ describe('ReplyWorkflowService', () => {
       }),
     );
     expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', messages.length);
+  });
+
+  describe('图片记忆确定性兜底（backfillMissingImageDescriptions）', () => {
+    type BackfillParams = {
+      imageMessageIds: string[];
+      imageUrls: string[];
+      visualMessageTypes: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
+      overrideModelId?: string;
+      toolCalls?: Array<{ toolName: string; args: Record<string, unknown> }>;
+      contactName: string;
+      logPrefix: string;
+    };
+    const invokeBackfill = (params: BackfillParams) =>
+      (
+        service as unknown as {
+          backfillMissingImageDescriptions: (p: BackfillParams) => void;
+        }
+      ).backfillMissingImageDescriptions(params);
+
+    const baseParams = {
+      imageMessageIds: ['img-1', 'img-2'],
+      imageUrls: ['https://cdn.example.com/1.png', 'https://cdn.example.com/2.png'],
+      visualMessageTypes: { 'img-1': MessageType.IMAGE, 'img-2': MessageType.IMAGE } as Record<
+        string,
+        MessageType.IMAGE | MessageType.EMOTION
+      >,
+      contactName: '张三',
+      logPrefix: '[test]',
+    };
+
+    it('多模态主路径下漏调 save_image_description 的图片触发 vision 补描述', async () => {
+      llm.supportsVisionInput.mockResolvedValue(true);
+
+      invokeBackfill({
+        ...baseParams,
+        toolCalls: [{ toolName: 'save_image_description', args: { messageId: 'img-1' } }],
+      });
+      await flush();
+
+      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledTimes(1);
+      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
+        'img-2',
+        'https://cdn.example.com/2.png',
+        MessageType.IMAGE,
+      );
+    });
+
+    it('全部图片都已通过工具固化时不触发兜底', async () => {
+      llm.supportsVisionInput.mockResolvedValue(true);
+
+      invokeBackfill({
+        ...baseParams,
+        toolCalls: [
+          { toolName: 'save_image_description', args: { messageId: 'img-1' } },
+          { toolName: 'save_image_description', args: { messageId: 'img-2' } },
+        ],
+      });
+      await flush();
+
+      expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
+    });
+
+    it('全链纯文本（预描述路径）时不触发兜底，避免重复描述', async () => {
+      llm.supportsVisionInput.mockResolvedValue(false);
+
+      invokeBackfill({ ...baseParams, toolCalls: [] });
+      await flush();
+
+      expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
+    });
   });
 });
 

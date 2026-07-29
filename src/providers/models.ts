@@ -18,28 +18,25 @@ export interface ModelEntry {
 }
 
 export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
+  // 收录原则（2026-07-28 产品裁定）：每家厂商只保留各档位的**最新**在售模型，
+  // 上一代模型即使官方仍 Active 也不收录；新一代发布后应同步替换对应档位。
+  // ⚠️ 本字典是 supportsVision 的单一事实源、Dashboard 模型覆盖保存校验的白名单；
+  // 运行时 resolve() 不查本字典，历史配置里的旧 ID 仍可执行（但图片轮会走 fallback）。
   // ==================== Anthropic ====================
-  'anthropic/claude-opus-4-8': {
+  'anthropic/claude-opus-5': {
     provider: 'anthropic',
-    name: 'Claude Opus 4.8',
-    description: 'Claude Opus 4.8 (旗舰推理 / 长程自治 Agent / 知识工作 / 多模态 / 长上下文)',
-    releasedAt: '2026-05-28',
+    name: 'Claude Opus 5',
+    description: 'Claude Opus 5 (旗舰推理 / 1M 上下文 / 自适应思考+五档 effort / 多模态)',
+    releasedAt: '2026-07-24',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'anthropic/claude-opus-4-7': {
+  'anthropic/claude-sonnet-5': {
     provider: 'anthropic',
-    name: 'Claude Opus 4.7',
-    description: 'Claude Opus 4.7 (旗舰推理 / 全栈架构 / 工具调用 / 多模态 / 长上下文)',
-    releasedAt: '2026-04-16',
-    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
-  },
-  'anthropic/claude-sonnet-4-6': {
-    provider: 'anthropic',
-    name: 'Claude Sonnet 4.6',
+    name: 'Claude Sonnet 5',
     description:
-      'Claude Sonnet 4.6 (综合推理 / Claude Code 默认首选 / 工具调用 / 多模态 / 长上下文)',
-    releasedAt: '2026-02-17',
-    capabilities: ['tool-use', 'multimodal', 'thinking', 'long-context'],
+      'Claude Sonnet 5 (Agent 编码/工具调用主力 / 近 Opus 性能低价位 / 多模态 / 长上下文)',
+    releasedAt: '2026-06-30',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'anthropic/claude-haiku-4-5': {
     provider: 'anthropic',
@@ -50,63 +47,50 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== OpenAI ====================
-  'openai/gpt-5.5': {
+  'openai/gpt-5.6-sol': {
     provider: 'openai',
-    name: 'GPT-5.5',
-    description: 'GPT-5.5 (旗舰推理 / 复杂专业工作 / 工具调用 / 多模态 / 长上下文)',
-    releasedAt: '2026-04-23',
+    name: 'GPT-5.6 Sol',
+    description: 'GPT-5.6 Sol (旗舰档 / 最难任务 / 1.05M 上下文 / 工具调用 / 多模态)',
+    releasedAt: '2026-07-09',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'openai/gpt-5.4-thinking': {
+  'openai/gpt-5.6-terra': {
     provider: 'openai',
-    name: 'GPT-5.4 Thinking',
-    description:
-      'GPT-5.4 Thinking (深度推理 / 工具调用 / 多模态 / 长上下文 / API 使用 gpt-5.4 + reasoning_effort)',
-    releasedAt: '2026-03-05',
+    name: 'GPT-5.6 Terra',
+    description: 'GPT-5.6 Terra (均衡档 / 日常工作 / 1.05M 上下文 / 工具调用 / 多模态)',
+    releasedAt: '2026-07-09',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'openai/gpt-5.4': {
+  'openai/gpt-5.6-luna': {
     provider: 'openai',
-    name: 'GPT-5.4',
-    description: 'GPT-5.4 (通用旗舰 / 深度推理 / 工具调用 / 多模态 / 长上下文)',
-    releasedAt: '2026-03-05',
+    name: 'GPT-5.6 Luna',
+    description: 'GPT-5.6 Luna (高速低成本档 / 1.05M 上下文 / 工具调用 / 多模态)',
+    releasedAt: '2026-07-09',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'openai/gpt-5.4-mini': {
-    provider: 'openai',
-    name: 'GPT-5.4 Mini',
-    description: 'GPT-5.4 Mini (高性价比 / 轻量任务 / 工具调用 / 多模态 / 长上下文)',
-    releasedAt: '2026-03-17',
-    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
-  },
-
   // ==================== Google ====================
-  'google/gemini-3.1-pro': {
+  // 2026-07-28 实测 v1beta/models 校正：3.1 Pro 官方只有 -preview 后缀 ID（裸
+  // gemini-3.1-pro 打过去 404）；gemini-3-flash 同理只有 preview 且已被
+  // 3.5/3.6 Flash 取代，直接移除。
+  'google/gemini-3.1-pro-preview': {
     provider: 'google',
-    name: 'Gemini 3.1 Pro',
-    description: 'Gemini 3.1 Pro (旗舰推理 / 2M 上下文 / 代码分析 / 工具调用 / 原生多模态)',
+    name: 'Gemini 3.1 Pro (Preview)',
+    description: 'Gemini 3.1 Pro Preview (旗舰推理 / 2M 上下文 / 代码分析 / 工具调用 / 原生多模态)',
     releasedAt: '2026-02-19',
     capabilities: ['thinking', 'long-context', 'tool-use', 'multimodal'],
   },
-  'google/gemini-3-flash': {
+  'google/gemini-3.6-flash': {
     provider: 'google',
-    name: 'Gemini 3 Flash',
-    description: 'Gemini 3 Flash (极速响应 / 工具调用 / 原生多模态 / 长上下文)',
-    releasedAt: '2025-12-17',
+    name: 'Gemini 3.6 Flash',
+    description: 'Gemini 3.6 Flash (新一代主力 / 1M 上下文 / 较 3.5 Flash 更省 token / 多模态)',
+    releasedAt: '2026-07-21',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'google/gemini-3.5-flash': {
+  'google/gemini-3.5-flash-lite': {
     provider: 'google',
-    name: 'Gemini 3.5 Flash',
-    description: 'Gemini 3.5 Flash (新一代极速版 / 工具调用 / 原生多模态 / 长上下文)',
-    releasedAt: '2026-05-19',
-    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
-  },
-  'google/gemini-3.1-flash-lite': {
-    provider: 'google',
-    name: 'Gemini 3.1 Flash-Lite',
-    description: 'Gemini 3.1 Flash-Lite (低成本 / 轻量响应 / 工具调用 / 原生多模态 / 长上下文)',
-    releasedAt: '2026-05-07',
+    name: 'Gemini 3.5 Flash-Lite',
+    description: 'Gemini 3.5 Flash-Lite (低成本轻量档 / 工具调用 / 原生多模态 / 长上下文)',
+    releasedAt: '2026-07-21',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
 
@@ -134,19 +118,12 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     releasedAt: '2026-06-02',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'qwen/qwen3.6-max-preview': {
+  'qwen/qwen3.7-max': {
     provider: 'qwen',
-    name: 'qwen3.6-max-preview',
-    description: 'Qwen3.6 Max Preview (纯文本 / 深度思考 / 工具调用 / 256K 上下文)',
-    releasedAt: '2026-04-20',
-    capabilities: ['tool-use', 'thinking', 'long-context'],
-  },
-  'qwen/qwen3.6-plus': {
-    provider: 'qwen',
-    name: 'Qwen3.6 Plus',
-    description: 'Qwen3.6 Plus (增强推理 / 原生思考模式 / 工具调用 / 多模态 / 长上下文)',
-    releasedAt: '2026-04-02',
-    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
+    name: 'Qwen3.7 Max',
+    description: 'Qwen3.7 Max (旗舰档 / 1M 上下文 / 原生深度思考 / 工具调用)',
+    releasedAt: '2026-05-20',
+    capabilities: ['thinking', 'tool-use', 'long-context'],
   },
   'qwen/qwen3-vl-plus': {
     provider: 'qwen',

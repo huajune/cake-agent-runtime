@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsObject,
   IsOptional,
@@ -50,6 +51,20 @@ export class UpdateAgentReplyConfigDto {
   @IsOptional()
   @IsIn(['fast', 'deep'])
   wecomCallbackThinkingMode?: 'fast' | 'deep';
+
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high'])
+  wecomCallbackThinkingEffort?: 'low' | 'medium' | 'high';
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  defaultFallbackModelIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  visionFallbackModelIds?: string[];
 
   @IsOptional()
   @IsNumber()

@@ -627,7 +627,9 @@ export function buildJobListTool(
       spongeTokenContext
         ? spongeService.fetchJobs(params, spongeTokenContext)
         : spongeService.fetchJobs(params);
-    return tool({
+    // v7 的 tool() 多重载对本工具的大 schema + 长 execute 推断失败（塌成
+    // Tool<never,never,CONTEXT> 报 FlexibleSchema<never>），必须显式钉死泛型。
+    const jobListTool = tool<z.output<typeof inputSchema>, unknown, Record<string, unknown>>({
       description: DESCRIPTION,
       inputSchema,
       execute: async ({
@@ -1726,5 +1728,6 @@ export function buildJobListTool(
         }
       },
     });
+    return jobListTool;
   };
 }

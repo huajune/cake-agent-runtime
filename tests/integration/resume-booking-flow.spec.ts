@@ -245,6 +245,7 @@ describe('resume booking flow', () => {
     )(context);
     return builtTool.execute(input as never, {
       toolCallId: 'precheck-test',
+      context: {},
       messages: [],
       abortSignal: undefined as never,
     }) as Promise<any>;
@@ -261,6 +262,7 @@ describe('resume booking flow', () => {
 
     return builtTool.execute(input as never, {
       toolCallId: 'booking-test',
+      context: {},
       messages: [],
       abortSignal: undefined as never,
     }) as Promise<any>;

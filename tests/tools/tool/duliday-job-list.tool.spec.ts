@@ -98,6 +98,7 @@ describe('buildJobListTool', () => {
     const builtTool = builder(ctx);
     return builtTool.execute(input as any, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined as any,
     }) as any;
@@ -2321,7 +2322,7 @@ describe('buildJobListTool', () => {
           cityNameList: ['北京'],
           regionNameList: ['海淀区'],
         } as any,
-        { toolCallId: 'test', messages: [], abortSignal: undefined as any },
+        { toolCallId: 'test', context: {}, messages: [], abortSignal: undefined as any },
       )) as any;
       /* eslint-enable @typescript-eslint/no-explicit-any */
 

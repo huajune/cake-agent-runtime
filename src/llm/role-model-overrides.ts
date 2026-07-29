@@ -12,4 +12,10 @@ export const ROLE_MODEL_OVERRIDES = Symbol('ROLE_MODEL_OVERRIDES');
 export interface RoleModelOverridesProvider {
   /** 返回该角色的运行时覆盖模型 ID；无覆盖返回 undefined（走环境变量角色路由）。 */
   getRoleModelOverride(role: string): Promise<string | undefined>;
+  /**
+   * 返回该角色的运行时降级链覆盖（Dashboard 配置）；无覆盖返回 undefined
+   * （走 AGENT_{ROLE}_FALLBACKS / AGENT_DEFAULT_FALLBACKS 环境变量链）。
+   * 优先级契约与模型覆盖一致：调用方显式 fallbacks > 本覆盖 > 环境变量。
+   */
+  getFallbackChainOverride?(role: string): Promise<string[] | undefined>;
 }
