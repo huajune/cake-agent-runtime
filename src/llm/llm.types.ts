@@ -9,7 +9,16 @@ export enum ModelRole {
   Repair = 'repair',
 }
 
+/**
+ * 深度思考档位（各 provider 能力交集：anthropic effort / openai reasoningEffort /
+ * google thinkingLevel / deepseek reasoningEffort / qwen reasoningEffort 均支持这三档）。
+ * provider 专有的 minimal/xhigh/max 等档位刻意不纳入，保证配置可跨模型迁移。
+ */
+export type LlmThinkingEffort = 'low' | 'medium' | 'high';
+
 export interface LlmThinkingConfig {
   type: 'enabled' | 'disabled';
   budgetTokens: number;
+  /** 深度思考档位；仅 type='enabled' 时生效，缺省按 high（保持历史行为）。 */
+  effort?: LlmThinkingEffort;
 }

@@ -19,6 +19,7 @@ import { SystemConfigService } from './services/system-config.service';
       provide: ROLE_MODEL_OVERRIDES,
       useFactory: (systemConfig: SystemConfigService): RoleModelOverridesProvider => ({
         getRoleModelOverride: (role) => systemConfig.getRoleModelOverride(role),
+        getFallbackChainOverride: (role) => systemConfig.getFallbackChainOverride(role),
       }),
       inject: [SystemConfigService],
     },

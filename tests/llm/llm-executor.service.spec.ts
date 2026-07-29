@@ -404,40 +404,52 @@ describe('LlmExecutorService', () => {
   });
 
   describe('supportsVisionInput', () => {
-    it('should return true when the primary model supports vision', () => {
+    it('should return true when the primary model supports vision', async () => {
       mockSupportsVision.mockReturnValue(true);
 
-      expect(
+      await expect(
         service.supportsVisionInput({
           role: ModelRole.Vision,
         }),
-      ).toBe(true);
+      ).resolves.toBe(true);
 
       expect(mockSupportsVision).toHaveBeenNthCalledWith(1, primaryModelId);
       expect(mockSupportsVision).toHaveBeenCalledTimes(1);
     });
 
-    it('should ignore text-only fallbacks when the primary model supports vision', () => {
+    it('should ignore text-only fallbacks when the primary model supports vision', async () => {
       mockSupportsVision.mockImplementation((modelId: string) => modelId === primaryModelId);
 
-      expect(
+      await expect(
         service.supportsVisionInput({
           role: ModelRole.Vision,
         }),
-      ).toBe(true);
+      ).resolves.toBe(true);
 
       expect(mockSupportsVision).toHaveBeenCalledTimes(1);
       expect(mockSupportsVision).toHaveBeenCalledWith(primaryModelId);
     });
 
-    it('should return false when the primary model lacks vision support', () => {
+    it('should return true when only a fallback supports vision (whole-turn switch)', async () => {
+      // 2026-07-28 语义：链上任一候选认图即按多模态构建请求，
+      // 纯文本主模型在生成时被 vision 闸门跳过，整轮落到认图 fallback。
       mockSupportsVision.mockImplementation((modelId: string) => modelId !== primaryModelId);
 
-      expect(
+      await expect(
         service.supportsVisionInput({
           role: ModelRole.Vision,
         }),
-      ).toBe(false);
+      ).resolves.toBe(true);
+    });
+
+    it('should return false when no candidate on the route supports vision', async () => {
+      mockSupportsVision.mockReturnValue(false);
+
+      await expect(
+        service.supportsVisionInput({
+          role: ModelRole.Vision,
+        }),
+      ).resolves.toBe(false);
     });
   });
 
@@ -527,6 +539,69 @@ describe('LlmExecutorService', () => {
       await overriddenService.generate({ role: ModelRole.Evaluate, prompt: 'hi' });
 
       expect(getGenerateModelIds()).toEqual([primaryModelId]);
+    });
+  });
+
+  describe('fallback chain overrides（运行时降级链覆盖）', () => {
+    const dbChain = ['qwen/qwen3.7-plus', 'anthropic/claude-sonnet-5'];
+
+    function makeServiceWithChainOverride(
+      getFallbackChainOverride: (role: string) => Promise<string[] | undefined>,
+    ) {
+      return new LlmExecutorService(
+        mockRouter as unknown as RouterService,
+        mockRegistry as unknown as RegistryService,
+        mockReliable as unknown as ReliableService,
+        undefined,
+        {
+          getRoleModelOverride: jest.fn().mockResolvedValue(undefined),
+          getFallbackChainOverride,
+        },
+      );
+    }
+
+    it('调用方未显式传 fallbacks 时应用 Dashboard 降级链覆盖', async () => {
+      const getChain = jest.fn().mockResolvedValue(dbChain);
+      const overriddenService = makeServiceWithChainOverride(getChain);
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      await overriddenService.generate({ role: ModelRole.Chat, prompt: 'hi' });
+
+      expect(getChain).toHaveBeenCalledWith('chat');
+      expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ fallbacks: dbChain }),
+      );
+    });
+
+    it('调用方显式 fallbacks 优先于降级链覆盖', async () => {
+      const getChain = jest.fn().mockResolvedValue(dbChain);
+      const overriddenService = makeServiceWithChainOverride(getChain);
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      await overriddenService.generate({
+        role: ModelRole.Chat,
+        fallbacks: ['deepseek/deepseek-v4-flash'],
+        prompt: 'hi',
+      });
+
+      expect(getChain).not.toHaveBeenCalled();
+      expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ fallbacks: ['deepseek/deepseek-v4-flash'] }),
+      );
+    });
+
+    it('覆盖源读取失败时回退环境变量链，不阻塞生成', async () => {
+      const overriddenService = makeServiceWithChainOverride(
+        jest.fn().mockRejectedValue(new Error('redis down')),
+      );
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      const result = await overriddenService.generate({ role: ModelRole.Chat, prompt: 'hi' });
+
+      expect(result.text).toBe('mock response');
+      expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ fallbacks: undefined }),
+      );
     });
   });
 });

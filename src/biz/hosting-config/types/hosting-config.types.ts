@@ -10,10 +10,14 @@ export interface SystemConfig {
  */
 export type AgentThinkingMode = 'fast' | 'deep';
 
+/** 深度思考档位（deep 模式下生效）；与 LlmThinkingEffort 同构，取各 provider 能力交集。 */
+export type AgentThinkingEffort = 'low' | 'medium' | 'high';
+
 export interface AgentReplyConfig {
   // 模型配置
   wecomCallbackModelId: string; // 企微消息回调使用的聊天模型 ID；空字符串表示走默认角色路由
   wecomCallbackThinkingMode: AgentThinkingMode; // 企微消息回调使用的思考模式
+  wecomCallbackThinkingEffort: AgentThinkingEffort; // deep 模式下的思考档位（fast 模式忽略）
   extractModelId: string; // 事实提取/沉淀摘要使用的模型 ID；空字符串表示走 extract 角色路由（AGENT_EXTRACT_MODEL）
   // 其余角色的运行时模型覆盖（空字符串 = 走对应 AGENT_{ROLE}_MODEL 环境变量路由）。
   // chat 角色刻意不入此列：企微回调链路沿用 wecomCallbackModelId 专用通道。
@@ -22,6 +26,10 @@ export interface AgentReplyConfig {
   reviewModelId: string; // 出站守卫语义审查角色覆盖（AGENT_REVIEW_MODEL）
   repairModelId: string; // 出站守卫修复器角色覆盖（AGENT_REPAIR_MODEL）
   reengagementModelId: string; // 复聊语义判定/生成角色覆盖（AGENT_REENGAGEMENT_MODEL）
+
+  // 降级链运行时覆盖（空数组 = 走对应环境变量链）。
+  defaultFallbackModelIds: string[]; // 覆盖 AGENT_DEFAULT_FALLBACKS（所有角色共享；含主聊图片轮的识图兜底）
+  visionFallbackModelIds: string[]; // 覆盖 AGENT_VISION_FALLBACKS（图片理解角色专属，优先于默认链）
 
   // 消息聚合配置
   initialMergeWindowMs: number; // 距离最后一条用户消息静默多久后触发一次 Agent 请求（毫秒）
@@ -82,18 +90,38 @@ export interface ResolvedAgentModel {
 
 export type ResolvedAgentModels = Record<AgentModelConfigKey, ResolvedAgentModel>;
 
+/** 单条降级链的生效值与来源（db_override=Dashboard 配置；environment=部署环境变量）。 */
+export interface AgentFallbackChainEntry {
+  chain: string[];
+  source: 'db_override' | 'environment';
+}
+
+/**
+ * 模型降级链的生效快照（Dashboard 展示/编辑用）。
+ * 优先级：Dashboard 配置（defaultFallbackModelIds / visionFallbackModelIds）> 环境变量链。
+ */
+export interface AgentFallbackChains {
+  /** 默认降级链（所有角色共享；含主聊图片轮的识图兜底） */
+  default: AgentFallbackChainEntry;
+  /** 有专属链的角色 → 生效链（优先于默认链） */
+  roleOverrides: Record<string, AgentFallbackChainEntry>;
+}
+
 /**
  * Agent 回复策略配置默认值
  */
 export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   wecomCallbackModelId: '',
   wecomCallbackThinkingMode: 'fast',
+  wecomCallbackThinkingEffort: 'high', // 与历史行为一致（deep 模式此前固定按 high 档执行）
   extractModelId: '',
   visionModelId: '',
   evaluateModelId: '',
   reviewModelId: '',
   repairModelId: '',
   reengagementModelId: '',
+  defaultFallbackModelIds: [],
+  visionFallbackModelIds: [],
   initialMergeWindowMs: 3000, // 默认 3000ms
   typingDelayPerCharMs: 125, // 兼容旧字段 (1000/8)
   typingSpeedCharsPerSec: 8, // 默认 8 字符/秒

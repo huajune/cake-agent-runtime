@@ -117,6 +117,7 @@ describe('buildInterviewBookingTool', () => {
     const builtTool = builder(toolContext);
     const result = (await builtTool.execute(input as any, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined as any,
     })) as any;

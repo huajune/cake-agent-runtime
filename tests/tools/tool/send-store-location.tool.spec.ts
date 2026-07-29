@@ -70,6 +70,7 @@ describe('buildSendStoreLocationTool', () => {
     });
     return builtTool.execute(input as any, {
       toolCallId: 'test',
+      context: {},
       messages: [],
       abortSignal: undefined as any,
     }) as any;

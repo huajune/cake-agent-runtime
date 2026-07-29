@@ -228,18 +228,22 @@ export class LlmExecutorService {
     return result.text;
   }
 
-  supportsVisionInput(options: {
+  /**
+   * 当前路由（primary + 降级链）是否有任一候选支持图片输入。
+   *
+   * 语义（2026-07-28 裁定）：只要链上存在认图候选就按多模态构建请求——纯文本主模型
+   * （如 deepseek）会在生成时被 vision 闸门跳过，整轮落到链上首个认图候选亲眼看图，
+   * 取代旧的「主模型不认图就预描述转文字」间接路径（信息保真更高、save_image_description
+   * 回到一手描述）。链上全为纯文本模型时返回 false，入站预描述路径保持原样兜底。
+   */
+  async supportsVisionInput(options: {
     role?: ModelRole | string;
     modelId?: string;
     fallbacks?: string[];
     disableFallbacks?: boolean;
-  }): boolean {
-    const plan = this.resolveExecutionPlan(options);
-    // Whether to build the primary request as multimodal should be decided by the
-    // primary model. Requiring every fallback to support vision disables image
-    // parts whenever a text-only fallback is configured, forcing unnecessary
-    // pre-agent image description even though the normal path can see images directly.
-    return supportsVision(plan.primaryModelId);
+  }): Promise<boolean> {
+    const plan = await this.resolveExecutionPlanWithOverrides(options);
+    return this.iterateCandidateModels(plan).some((modelId) => supportsVision(modelId));
   }
 
   /**
@@ -253,18 +257,32 @@ export class LlmExecutorService {
     fallbacks?: string[];
     disableFallbacks?: boolean;
   }): Promise<ExecutionPlan> {
-    if (!options.modelId?.trim() && this.roleModelOverrides) {
-      const role = String(options.role ?? ModelRole.Chat);
+    const effective = { ...options };
+    const role = String(options.role ?? ModelRole.Chat);
+
+    // 降级链覆盖：调用方未显式传 fallbacks 时，Dashboard 配置的链优先于环境变量链。
+    if (effective.fallbacks === undefined && !effective.disableFallbacks) {
+      try {
+        const chain = await this.roleModelOverrides?.getFallbackChainOverride?.(role);
+        if (chain?.length) {
+          effective.fallbacks = chain;
+        }
+      } catch (error) {
+        this.logger.warn(`读取降级链覆盖失败，回退环境变量链: role=${role}`, error);
+      }
+    }
+
+    if (!effective.modelId?.trim() && this.roleModelOverrides) {
       try {
         const override = await this.roleModelOverrides.getRoleModelOverride(role);
         if (override) {
-          return this.resolveExecutionPlan({ ...options, modelId: override });
+          return this.resolveExecutionPlan({ ...effective, modelId: override });
         }
       } catch (error) {
         this.logger.warn(`读取角色模型覆盖失败，回退环境变量路由: role=${role}`, error);
       }
     }
-    return this.resolveExecutionPlan(options);
+    return this.resolveExecutionPlan(effective);
   }
 
   private resolveExecutionPlan(options: {
@@ -368,6 +386,8 @@ export class LlmExecutorService {
 
     const isDeepMode = thinking.type === 'enabled';
     const budgetTokens = thinking.budgetTokens > 0 ? thinking.budgetTokens : 1024;
+    // 深度思考档位：缺省 high 保持历史行为；仅深度模式使用。
+    const effort = thinking.effort ?? 'high';
 
     if (!isDeepMode) {
       switch (provider) {
@@ -388,30 +408,32 @@ export class LlmExecutorService {
       case 'anthropic':
         if (this.requiresAdaptiveAnthropicThinking(modelId)) {
           return {
-            anthropic: { thinking: { type: 'adaptive' }, effort: 'high' },
+            anthropic: { thinking: { type: 'adaptive' }, effort },
           } as ProviderOptions;
         }
         return { anthropic: { thinking: { type: 'enabled', budgetTokens } } } as ProviderOptions;
       case 'deepseek':
-        return { deepseek: { thinking: { type: 'enabled' } } } as ProviderOptions;
+        return {
+          deepseek: { thinking: { type: 'enabled' }, reasoningEffort: effort },
+        } as ProviderOptions;
       case 'google':
         return {
           google: {
             thinkingConfig: {
               thinkingBudget: budgetTokens,
-              thinkingLevel: 'high',
+              thinkingLevel: effort,
             },
           },
         } as ProviderOptions;
       case 'openai':
-        return { openai: { reasoningEffort: 'high' } } as ProviderOptions;
+        return { openai: { reasoningEffort: effort } } as ProviderOptions;
       case 'qwen':
-        return { qwen: { enable_thinking: true, reasoningEffort: 'high' } } as ProviderOptions;
+        return { qwen: { enable_thinking: true, reasoningEffort: effort } } as ProviderOptions;
       case 'moonshotai':
       case 'ohmygpt':
       case 'gateway':
       case 'openrouter':
-        return { openai: { reasoningEffort: 'high' } } as ProviderOptions;
+        return { openai: { reasoningEffort: effort } } as ProviderOptions;
       default:
         return undefined;
     }
@@ -419,8 +441,12 @@ export class LlmExecutorService {
 
   private requiresAdaptiveAnthropicThinking(modelId: string): boolean {
     const anthropicModelId = modelId.split('/').pop() ?? modelId;
-    const match = /^claude-(?:opus|sonnet)-4-(\d+)/.exec(anthropicModelId);
-    return match ? Number(match[1]) >= 7 : false;
+    const match = /^claude-(?:opus|sonnet|fable)-(\d+)(?:-(\d+))?/.exec(anthropicModelId);
+    if (!match) return false;
+    const major = Number(match[1]);
+    const minor = match[2] === undefined ? 0 : Number(match[2]);
+    // 4.7+ 起 adaptive thinking + effort 成为推荐配置；5 系（Opus 5/Sonnet 5/Fable 5）默认自适应。
+    return major > 4 || (major === 4 && minor >= 7);
   }
 
   private buildGenerateParams(
@@ -469,19 +495,20 @@ export class LlmExecutorService {
       request.fallbackModelIds = plan.fallbackModelIds;
     }
 
+    // 注意：多步循环早已从 maxSteps 迁移到 stopWhen，这里必须按 tools 是否存在分支；
+    // 旧的 `'maxSteps' in options` 判断恒为 false，导致追溯快照永远缺 toolNames。
     const params =
-      'maxSteps' in options
+      options.tools && Object.keys(options.tools).length > 0
         ? {
             system: options.system,
             messages: options.messages,
             maxOutputTokens: options.maxOutputTokens,
-            maxSteps: options.maxSteps,
-            toolNames: Object.keys(options.tools ?? {}),
+            toolNames: Object.keys(options.tools),
           }
         : {
             system: options.system,
             messages: options.messages,
-            prompt: options.prompt,
+            prompt: 'prompt' in options ? options.prompt : undefined,
             maxOutputTokens: options.maxOutputTokens,
           };
 
