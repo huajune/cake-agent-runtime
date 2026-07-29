@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.35.0] - 2026-07-29
 
-**预计版本**: `v10.35.0`
-**最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #824 回填 v10.34.0 发布结果
@@ -57,7 +53,6 @@
 - PR #824 `git diff --check` 通过
 - PR #827 全量 Jest 379 套件通过（见 CI）；typecheck / ESLint（--max-warnings=0）/ web tsc 全绿
 - PR #827 涉改 16 测试套件本地逐一复跑通过；新增 conversation-normalizer v7 契约测试
-<!-- release:pending:end -->
 
 ## [10.34.0] - 2026-07-29
 
