@@ -14,22 +14,35 @@
 **预计版本**: `v10.35.0`
 **最近更新**: `2026-07-29`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #824 回填 v10.34.0 发布结果
+- PR #827 升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置
+- PR #827 merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…
+- PR #827 BadCase 治理台账双门禁 + 反馈分级与治理文档同步
+- PR #827 语义审查适配 AI SDK v7 + 面试群边界守卫 + repair 回归闸对齐设计
+- PR #827 Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…
+- PR #827 合并解冲突收尾——反馈分类断言对齐「分类」列（问题原因列已废弃）
+- PR #827 BadCase 分类写入侧白名单归一，防选项池再污染
+- PR #827 AI SDK v7 升级收拢——语义审查生产修复 + BadCase 治理台账 + 面试群边界守卫
 
 ### 新功能
-- 无
+- PR #827 Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…
 
 ### 问题修复
 - 无
 
 ### 优化调整
-- 无
+- PR #827 merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…
+- PR #827 合并解冲突收尾——反馈分类断言对齐「分类」列（问题原因列已废弃）
+- PR #827 BadCase 分类写入侧白名单归一，防选项池再污染
 
 ### 运维与流程
 - PR #824 回填 v10.34.0 发布结果
+- PR #827 升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置
+- PR #827 BadCase 治理台账双门禁 + 反馈分级与治理文档同步
+- PR #827 语义审查适配 AI SDK v7 + 面试群边界守卫 + repair 回归闸对齐设计
 
 ### 配置变更
 - 无
@@ -42,6 +55,8 @@
 - PR #824 生产容器 `cake-agent-runtime:v10.34.0`：healthy，0 重启
 - PR #824 生产机本地及公网 `/agent/health`：healthy，Redis / Supabase 通过
 - PR #824 `git diff --check` 通过
+- PR #827 全量 Jest 379 套件通过（见 CI）；typecheck / ESLint（--max-warnings=0）/ web tsc 全绿
+- PR #827 涉改 16 测试套件本地逐一复跑通过；新增 conversation-normalizer v7 契约测试
 <!-- release:pending:end -->
 
 ## [10.34.0] - 2026-07-29
