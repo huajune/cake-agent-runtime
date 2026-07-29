@@ -1,218 +1,79 @@
 {
-  "baseVersion": "10.34.0",
+  "baseVersion": "10.35.0",
   "nextVersion": "10.35.0",
   "updatedAt": "2026-07-29",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "824",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/824",
-      "title": "回填 v10.34.0 发布结果",
-      "author": "ArielZhu",
-      "mergedAt": "2026-07-29",
-      "businessUpdates": [
-        "回填 v10.34.0 发布结果"
-      ],
-      "summary": [
-        "回填 v10.34.0 发布结果"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "回填 v10.34.0 发布结果"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "完整 `pnpm run ci:check`：376 passed suites，1 skipped；5951 passed tests，6 skipped",
-        "生产容器 `cake-agent-runtime:v10.34.0`：healthy，0 重启",
-        "生产机本地及公网 `/agent/health`：healthy，Redis / Supabase 通过",
-        "`git diff --check` 通过"
-      ]
-    },
-    {
-      "number": "827",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/827",
-      "title": "AI SDK v7 升级收拢——语义审查生产修复 + BadCase 治理台账 + 面试群边界守卫",
-      "author": "huajune",
-      "mergedAt": "2026-07-29",
-      "businessUpdates": [
-        "Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…"
-      ],
-      "summary": [
-        "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置",
-        "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…",
-        "BadCase 治理台账双门禁 + 反馈分级与治理文档同步",
-        "语义审查适配 AI SDK v7 + 面试群边界守卫 + repair 回归闸对齐设计",
-        "Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…",
-        "合并解冲突收尾——反馈分类断言对齐「分类」列（问题原因列已废弃）",
-        "BadCase 分类写入侧白名单归一，防选项池再污染",
-        "AI SDK v7 升级收拢——语义审查生产修复 + BadCase 治理台账 + 面试群边界守卫"
-      ],
-      "features": [
-        "Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…"
-      ],
-      "fixes": [],
-      "optimizations": [
-        "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…",
-        "合并解冲突收尾——反馈分类断言对齐「分类」列（问题原因列已废弃）",
-        "BadCase 分类写入侧白名单归一，防选项池再污染"
-      ],
-      "ops": [
-        "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置",
-        "BadCase 治理台账双门禁 + 反馈分级与治理文档同步",
-        "语义审查适配 AI SDK v7 + 面试群边界守卫 + repair 回归闸对齐设计"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "全量 Jest 379 套件通过（见 CI）；typecheck / ESLint（--max-warnings=0）/ web tsc 全绿",
-        "涉改 16 测试套件本地逐一复跑通过；新增 conversation-normalizer v7 契约测试"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.34.0",
+    "version": "10.35.0",
     "date": "2026-07-29",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "813",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/813",
-        "title": "回填 v10.33.0 发布结果",
-        "author": "huajune",
-        "mergedAt": "2026-07-28",
+        "number": "824",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/824",
+        "title": "回填 v10.34.0 发布结果",
+        "author": "ArielZhu",
+        "mergedAt": "2026-07-29",
         "businessUpdates": [
-          "回填 v10.33.0 发布结果"
+          "回填 v10.34.0 发布结果"
         ],
         "summary": [
-          "回填 v10.33.0 发布结果"
+          "回填 v10.34.0 发布结果"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "回填 v10.33.0 发布结果"
+          "回填 v10.34.0 发布结果"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "pre-push ci:check：376 suites / 5933 tests，6 skipped",
-          "部署工作流：https://github.com/huajune/cake-agent-runtime/actions/runs/30357841117",
-          "Release：https://github.com/huajune/cake-agent-runtime/releases/tag/v10.33.0"
+          "完整 `pnpm run ci:check`：376 passed suites，1 skipped；5951 passed tests，6 skipped",
+          "生产容器 `cake-agent-runtime:v10.34.0`：healthy，0 重启",
+          "生产机本地及公网 `/agent/health`：healthy，Redis / Supabase 通过",
+          "`git diff --check` 通过"
         ]
       },
       {
-        "number": "816",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/816",
-        "title": "AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置",
+        "number": "827",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/827",
+        "title": "AI SDK v7 升级收拢——语义审查生产修复 + BadCase 治理台账 + 面试群边界守卫",
         "author": "huajune",
         "mergedAt": "2026-07-29",
         "businessUpdates": [
-          "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置",
-          "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…",
-          "AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置"
+          "Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…"
         ],
         "summary": [
           "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置",
           "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…",
-          "AI SDK v7 升级 + 思考分档 + 注册表收缩 + 图片轮直达 + 降级链可配置"
+          "BadCase 治理台账双门禁 + 反馈分级与治理文档同步",
+          "语义审查适配 AI SDK v7 + 面试群边界守卫 + repair 回归闸对齐设计",
+          "Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…",
+          "合并解冲突收尾——反馈分类断言对齐「分类」列（问题原因列已废弃）",
+          "BadCase 分类写入侧白名单归一，防选项池再污染",
+          "AI SDK v7 升级收拢——语义审查生产修复 + BadCase 治理台账 + 面试群边界守卫"
         ],
-        "features": [],
+        "features": [
+          "Merge remote-tracking branch 'origin/feat/ai-sdk-v7-upgrade' into fea…"
+        ],
         "fixes": [],
         "optimizations": [
-          "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…"
+          "merge: 合并 origin/develop（v10.34.0 + badcase 治理），解 test-chat.dto 冲突取 d…",
+          "合并解冲突收尾——反馈分类断言对齐「分类」列（问题原因列已废弃）",
+          "BadCase 分类写入侧白名单归一，防选项池再污染"
         ],
         "ops": [
-          "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置"
-        ],
-        "config": [],
-        "envFiles": [
-          ".env.example"
-        ],
-        "verification": [
-          "typecheck / lint(--max-warnings=0) / **375 套件 5925 测试全绿** / nest build / web 构建",
-          "升级后真实 API 冒烟：deepseek-v4-pro（deep+effort）与 qwen3.6/3.7（fast/deep）原生多步工具调用干净、零伪 tool_call 文本",
-          "降级链配置 API 实测三态：保存生效（source=db_override）/ 脏 ID 400 拒绝 / 清空回退 env"
-        ]
-      },
-      {
-        "number": "817",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/817",
-        "title": "生产与 CI 运行时 Node 22 → 24",
-        "author": "huajune",
-        "mergedAt": "2026-07-29",
-        "businessUpdates": [
-          "生产与 CI 运行时 Node 22 → 24",
-          "**Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）",
-          "**4 个 workflow 共 9 处** `node-version: '22'` → `'24'`",
-          "`engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制"
-        ],
-        "summary": [
-          "生产与 CI 运行时 Node 22 → 24",
-          "**Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）",
-          "**4 个 workflow 共 9 处** `node-version: '22'` → `'24'`",
-          "`engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "**Dockerfile**：两阶段基础镜像 `node:22-bookworm-slim` → `node:24-bookworm-slim`（digest 钉版，取自 Docker Hub manifest list）",
-          "**4 个 workflow 共 9 处** `node-version: '22'` → `'24'`",
-          "`engines` 保持 `>=22`：代码在两版均可运行，本 PR 只切运行时，本地开发不强制",
-          "生产与 CI 运行时 Node 22 → 24"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": []
-      },
-      {
-        "number": "820",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/820",
-        "title": "区分兼职群与面试群承接",
-        "author": "huajune",
-        "mergedAt": "2026-07-29",
-        "businessUpdates": [
-          "为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。",
-          "从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。",
-          "候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。",
-          "出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。",
-          "接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。"
-        ],
-        "summary": [
-          "区分兼职群与面试群承接",
-          "补充 PR 820 发版底账",
-          "为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。",
-          "从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。",
-          "候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。",
-          "出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。",
-          "接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。"
-        ],
-        "features": [],
-        "fixes": [
-          "为 `invite_to_group` 明确 `groupPurpose=job_pool`，回复必须带实际群名、说明这是兼职岗位信息群且不是面试群。",
-          "从岗位面试备注识别“单独面试群”流程；预约成功仍自动发送兼职群，同时生成 `interview_group_invite_required` 的 `general_handoff` 副作用。",
-          "候选人话术固定为同一身份承接：`这次面试用的是单独的面试群，我这边接着发你邀请…`，禁止“已发”、工作人员/运营/人工/同事/机器人等表述。",
-          "出站硬规则拦截面试群虚假已发送、群用途混淆和身份暴露话术。",
-          "接管卡片标为紧急；投递顺序测试确认候选人回复先送达，再暂停托管并通知补发面试群。"
-        ],
-        "optimizations": [],
-        "ops": [
-          "区分兼职群与面试群承接",
-          "补充 PR 820 发版底账"
+          "升级 AI SDK v7 + 思考分档 + 模型注册表收缩 + 图片轮直达认图候选 + 降级链可配置",
+          "BadCase 治理台账双门禁 + 反馈分级与治理文档同步",
+          "语义审查适配 AI SDK v7 + 面试群边界守卫 + repair 回归闸对齐设计"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run ci:check`：376 suites passed（1 skipped），5951 tests passed（6 skipped）。",
-          "Node 22.16 定向测试：6 suites / 385 tests passed。",
-          "真实 Agent 回归：batch `cd8b1ec2-9c04-4c51-be8f-33a2273b9fee`，1/1 passed；执行 `6d9b48a4-f131-444c-9b7f-a738c9676f2d`。",
-          "实际链路：precheck → booking success → `invite_to_group(groupPurpose=job_pool)`；booking 结果含 `general_handoff(reasonCode=interview_group_invite_required)`。",
-          "最终回复明确两个群分开，面试群使用“我这边接着发你邀请”，未声称已发送，未暴露身份切换。",
-          "正式测试集已幂等新增 `SCN-20260729-INTERVIEW-GROUP-001`（Feishu record `recvqJEwCUUH8J`，生产证据已脱敏）。",
-          "批次已同步生产 Dashboard 并回读：total=1, passed=1, failed=0, pending=0, pass_rate=100%，warnings=[]。"
+          "全量 Jest 379 套件通过（见 CI）；typecheck / ESLint（--max-warnings=0）/ web tsc 全绿",
+          "涉改 16 测试套件本地逐一复跑通过；新增 conversation-normalizer v7 契约测试"
         ]
       }
     ]
