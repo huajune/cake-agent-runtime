@@ -84,7 +84,7 @@ export class FeishuBitableSyncService {
     userMessage: ['用户消息', '问题', '用户输入'],
     caseName: ['用例名称'],
     title: ['标题', '名称'],
-    category: ['问题原因', '分类', '错误分类'],
+    category: ['分类', '错误分类'],
     expectedBehavior: ['期望处理方式', '期望行为'],
     remark: ['备注', '说明', '附注'],
     chatId: ['chatId', '会话ID', '会话 Id', '会话ID（chatId）'],
@@ -145,36 +145,41 @@ export class FeishuBitableSyncService {
    */
   static readonly BADCASE_DERIVED_STATUSES = ['处理中', '待验证', '已解决'] as const;
 
+  /**
+   * BadCase「分类」单选列的合法取值：主聊 13+2 口径（对齐《BadCase 治理进展同步》
+   * 已修复问题类型）+ 复聊专属 8 类 + 未分类。写入侧唯一闸口——飞书对未知取值会
+   * 自动创建选项，白名单外的原始标签一律归「15-其他」并把原值写进备注。
+   * 与 web/src/view/agent-test/list/constants/index.ts 的下拉选项保持同步。
+   */
+  static readonly BADCASE_CATEGORY_WHITELIST = new Set<string>([
+    '1-地区、城市与位置识别',
+    '2-品牌与门店识别',
+    '3-就近岗位推荐',
+    '4-岗位条件与班次匹配',
+    '5-岗位详情、薪资与福利',
+    '6-报名与收资',
+    '7-预约、取消与改期',
+    '8-线上面试与到店引导',
+    '9-无岗承接与拉群',
+    '10-重复回复与收口节奏',
+    '11-图片与上下文理解',
+    '12-内部术语与异常输出',
+    '13-敏感条件与合规表达',
+    '14-人工/非Agent归因',
+    '15-其他',
+    '1-不该触达（工单/条件误判）',
+    '2-触达时机错误（过早/过晚）',
+    '3-重复打扰（"已提醒过"误判）',
+    '4-场景挂错',
+    '5-话术事实错误（岗位/时间/状态不符）',
+    '6-语气/话术不当',
+    '7-取消/改期后仍按旧状态触达',
+    '8-其他',
+    '未分类',
+  ]);
+
   static readonly BADCASE_GOVERNANCE_FIELDS = [
     { name: '首次发现时间', type: 5 },
-    {
-      name: '问题原因',
-      type: 3,
-      options: [
-        '1-不该触达（工单/条件误判）',
-        '2-品牌/门店识别',
-        '3-地区/位置/距离',
-        '4-岗位推荐-范围/门店/距离',
-        '5-岗位推荐-条件/班次不匹配',
-        '6-岗位详情/薪资/福利口径',
-        '7-报名/收资',
-        '8-预约/取消/改期',
-        '9-已约面/入职跟进',
-        '10-拉群/无岗维护',
-        '11-多消息/引用/上下文承接',
-        '12-图片/证件识别',
-        '13-情绪/话术',
-        '14-人工/非Agent归因',
-        '15-其他',
-        '2-触达时机错误（过早/过晚）',
-        '3-重复打扰（"已提醒过"误判）',
-        '4-场景挂错',
-        '5-话术事实错误（岗位/时间/状态不符）',
-        '6-语气/话术不当',
-        '7-取消/改期后仍按旧状态触达',
-        '8-其他',
-      ],
-    },
     { name: '期望处理方式', type: 1 },
     { name: '状态更新时间', type: 5 },
     { name: '解决时间', type: 5 },
@@ -336,6 +341,18 @@ export class FeishuBitableSyncService {
       if (feedback.remark) {
         remarkParts.push(feedback.remark);
       }
+      // 「分类」是单选列，飞书会为任何未知取值自动创建选项——analyze-skill 等自动提交
+      // 曾把 semantic_review 规则串原样塞进 errorType，把选项池污染到 174 个（2026-07-29
+      // 已存量清洗）。写入侧白名单归一：白名单外的原始标签归「15-其他」，原值落备注保留取证。
+      const normalizedCategory =
+        feedback.type === 'badcase' && feedback.errorType
+          ? FeishuBitableSyncService.BADCASE_CATEGORY_WHITELIST.has(feedback.errorType)
+            ? feedback.errorType
+            : '15-其他'
+          : undefined;
+      if (feedback.errorType && normalizedCategory === '15-其他') {
+        remarkParts.push(`原始错误标签：${feedback.errorType}`);
+      }
       if (feedback.expectedBehavior) {
         const expectedBehaviorField = resolveFieldName(this.feedbackFieldAliases.expectedBehavior);
         if (expectedBehaviorField) {
@@ -413,8 +430,8 @@ export class FeishuBitableSyncService {
         setField(this.feedbackFieldAliases.treatmentConclusion, '待归因');
         setField(this.feedbackFieldAliases.pendingParty, '无');
 
-        if (feedback.errorType) {
-          setField(this.feedbackFieldAliases.category, feedback.errorType);
+        if (normalizedCategory) {
+          setField(this.feedbackFieldAliases.category, normalizedCategory);
         }
       } else {
         setField(this.feedbackFieldAliases.sampleId, feedbackId);

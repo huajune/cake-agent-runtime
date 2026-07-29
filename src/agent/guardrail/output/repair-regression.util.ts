@@ -15,9 +15,9 @@
  * - 既成副作用被降级：booking 已成功、首版如实说"已提交报名"，修复版改口
  *   "正在帮你核对并提交，稍后给你回执"——回执永远不会来（同 trace）。
  *
- * 命中任一形态即判定 repair 回归，runner 应弃用修复版、回退首版
- * （reason_code=repair_regression_reverted:<形态>）。检测刻意保守：宁可漏判
- * 交给二审，不误伤正常的精简改写。
+ * 命中任一形态即判定 repair 回归；runner 再结合首版是否明确可发送决定：
+ * 可发送才允许回退首版，首版已明确不可发送则两版都不投递。检测刻意保守：
+ * 宁可漏判交给二审，不误伤正常的精简改写。
  */
 
 export type RepairRegressionKind =
@@ -29,6 +29,16 @@ export type RepairRegressionKind =
 export interface RepairRegressionContext {
   /** agent-runner 的 summarizeCommittedSideEffects 产物；含 duliday_interview_booking 时启用副作用降级检测。 */
   committedSideEffects?: string;
+  /**
+   * 本轮 duliday_job_list 是否返回过可用岗位证据：
+   * - true：至少一次调用有可用岗位结果；
+   * - false：调用过查岗，但所有结果均无可用岗位；
+   * - undefined：本轮未查岗或无法判定。
+   *
+   * 只有明确为 false 时，才允许 repair 把首版无依据的岗位列表纠正成无岗口径，
+   * 避免把“删除幻觉事实”误判成结构压扁/结论反转。
+   */
+  jobEvidenceAvailable?: boolean;
   /** 仅测试注入；生产走系统时钟。用于把"M月D日"推断到最近的完整年份以计算真实星期。 */
   now?: Date;
 }
@@ -144,8 +154,15 @@ export function detectRepairRegression(
   const revised = revisedText.trim();
   if (!first || !revised || first === revised) return null;
 
+  const firstJobFactLines = countJobFactLines(first);
+  const removesUngroundedJobClaims =
+    context?.jobEvidenceAvailable === false &&
+    firstJobFactLines >= 2 &&
+    !NO_JOB_CLAIM_PATTERN.test(first) &&
+    NO_JOB_CLAIM_PATTERN.test(revised);
+
   const firstStructured = countStructuredLines(first);
-  if (firstStructured >= 3) {
+  if (!removesUngroundedJobClaims && firstStructured >= 3) {
     const revisedStructured = countStructuredLines(revised);
     const collapsed =
       revisedStructured * 3 < firstStructured && revised.length < first.length * 0.6;
@@ -153,7 +170,8 @@ export function detectRepairRegression(
   }
 
   if (
-    countJobFactLines(first) >= 2 &&
+    !removesUngroundedJobClaims &&
+    firstJobFactLines >= 2 &&
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised)
   ) {

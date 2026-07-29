@@ -112,7 +112,7 @@ export class GeneratorAgent {
         modelId: params.modelId,
         disableFallbacks: params.disableFallbacks,
         thinking: this.resolveThinkingConfig(params.thinking),
-        system: ctx.finalPrompt,
+        instructions: ctx.finalPrompt,
         messages: ctx.normalizedMessages,
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
@@ -193,7 +193,7 @@ export class GeneratorAgent {
         modelId: params.modelId,
         disableFallbacks: params.disableFallbacks,
         thinking: this.resolveThinkingConfig(params.thinking),
-        system: ctx.finalPrompt,
+        instructions: ctx.finalPrompt,
         messages: ctx.normalizedMessages,
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
@@ -266,14 +266,14 @@ export class GeneratorAgent {
    * 3. **副作用工具成功后屏蔽**：booking/invite/cancel/modify 本轮已成功执行一次后
    *    禁止重复调用（防重复提交预约等）；失败后的重试不受限（允许修正参数自纠错）。
    *
-   * 屏蔽方式 = activeTools 白名单移除 + system 末尾拼拦截说明。备选方案 stopWhen
+   * 屏蔽方式 = activeTools 白名单移除 + instructions 末尾拼拦截说明。备选方案 stopWhen
    * 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能用其他工具或
    * 文本完成本轮。
    */
   private buildPrepareStep(ctx: PreparedAgentContext): PrepareStepFn | undefined {
     const baseTools = Object.keys(ctx.tools ?? {});
     if (baseTools.length === 0) return undefined;
-    const baseSystem = ctx.finalPrompt;
+    const baseInstructions = ctx.finalPrompt;
     const sessionId = ctx.sessionId;
     const logger = this.logger;
 
@@ -319,8 +319,10 @@ export class GeneratorAgent {
       }
       const sideEffectNotice = buildSideEffectBlockNotice(sideEffectBlocked);
       if (sideEffectNotice) noticeParts.push(sideEffectNotice);
-      const system =
-        noticeParts.length > 0 ? `${baseSystem}\n\n${noticeParts.join('\n')}` : baseSystem;
+      const instructions =
+        noticeParts.length > 0
+          ? `${baseInstructions}\n\n${noticeParts.join('\n')}`
+          : baseInstructions;
 
       logger.warn(
         `工具调用硬截断: blocked=${blocked.join(',')} stepCount=${steps.length} sessionId=${sessionId}`,
@@ -328,7 +330,7 @@ export class GeneratorAgent {
 
       return {
         activeTools,
-        system,
+        instructions,
       };
     };
   }
@@ -603,7 +605,7 @@ export class GeneratorAgent {
         modelId: params.modelId,
         disableFallbacks: params.disableFallbacks,
         thinking: { type: 'disabled', budgetTokens: 0 },
-        system: `${ctx.finalPrompt}\n\n[空响应恢复模式]\n只输出一条候选人可见的中文回复。不要提系统、工具、模型、thinking、恢复或异常。不要调用工具。`,
+        instructions: `${ctx.finalPrompt}\n\n[空响应恢复模式]\n只输出一条候选人可见的中文回复。不要提系统、工具、模型、thinking、恢复或异常。不要调用工具。`,
         prompt: this.buildEmptyTextRecoveryPrompt(result, ctx),
         maxOutputTokens: Math.min(this.maxOutputTokens, 800),
       });
