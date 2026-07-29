@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Dependency Installation
-FROM node:22-bookworm-slim@sha256:c29352e5563688e726158e23480bc2d4bd0af23bbdd055f8b837a12ecfd6a2a1 AS deps
+FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS deps
 WORKDIR /app
 
 # Install a fixed pnpm version to keep dependency resolution reproducible.
@@ -44,7 +44,7 @@ RUN pnpm run build
 RUN CI=true pnpm prune --prod
 
 # Stage 3: Runner
-FROM node:22-bookworm-slim@sha256:c29352e5563688e726158e23480bc2d4bd0af23bbdd055f8b837a12ecfd6a2a1 AS runner
+FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
