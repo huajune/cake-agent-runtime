@@ -1,6 +1,7 @@
 # 地理领域改造方案：resolution/geo 迁移与现网行为修复
 
-> 状态：已交付（Phase 0–3 + 工作流 B 随 v10.24.0 于 2026-07-22 上线生产；Phase 4 生成化、Phase 5 删门面、§9.5 改名随 PR #781 于 2026-07-28 合入 develop 待发版；唯一余留：冲突检测 enforce 决策，见 17.4 标注）
+> 状态：已交付（Phase 0–3 + 工作流 B 随 v10.24.0 于 2026-07-22 上线生产；Phase 4 生成化、Phase 5 删门面、§9.5 改名随 PR #781 于 2026-07-28 合入 develop，**已随 v10.35.0 发到生产**；工程项全部收尾）
+> 余留两项，均非工程实现：① 冲突检测 enforce 决策 —— **2026-07-29 决策日结论为 no-go**，需先补同形地名消解，见 17.4；② 县级市补录消化 —— `DEFERRED_COUNTY_BACKFILL` 现存 23 条待逐条实证（不止余姚/慈溪），见 Phase 3 第 4 步
 > 适用仓库：`cake-agent-runtime`
 > 定稿日期：2026-07-21（修订历史见第 22 节）
 > 关联问题：候选人输入"延吉市/延吉"时岗位查询返回 0 条（点位修复已随 2026-07-10 PR #499 上线，见 2.1）；2026-07 反馈池地理类 badcase 复核（见 3）
@@ -466,7 +467,7 @@ sequenceDiagram
 
 修复设计——**杠杆放在工具输出文本**（门店名照抄类 badcase 证明模型会高保真照抄工具文本，把正确表述放进被照抄的文本里是最稳的一层）：
 
-1. **锚点精度与坐标均确定性传递**：geocode 的 `areaLevelQuery` 经回合上下文（ToolBuildContext / `GeoQueryMeta.anchor`）传给岗位工具，**不依赖模型转抄参数**。坐标本身同样不可信任模型转抄：实证 chat `6a60528bce406a6aee8004f9`（2026-07-22）中，模型在"5km 复查"轮未调 geocode、自编了一组与真实锚点偏差约 3.7km 的坐标，导致该轮 5 公里圈画错位置（4.5km 的门店被算成 1.2km，本轮结论未出错纯属年龄过滤兜住）。修法：岗位工具边界校验模型传入坐标与会话内最近一次 geocode 结果的偏差，超过 1km 记 `GeoQueryMeta.anchor.source='model_supplied'` 观测（shadow 先行，是否强制回退 geocode 坐标待观测数据决策）；
+1. **锚点精度与坐标均确定性传递**：geocode 的 `areaLevelQuery` 经回合上下文（ToolBuildContext / `GeoQueryMeta.anchor`）传给岗位工具，**不依赖模型转抄参数**。坐标本身同样不可信任模型转抄：实证 chat `6a60528bce406a6aee8004f9`（2026-07-22）中，模型在"5km 复查"轮未调 geocode、自编了一组与真实锚点偏差约 3.7km 的坐标，导致该轮 5 公里圈画错位置（4.5km 的门店被算成 1.2km，本轮结论未出错纯属年龄过滤兜住）。修法：岗位工具边界校验模型传入坐标与会话内最近一次 geocode 结果的偏差，超过 1km 记 `model_supplied` 观测（shadow 先行，是否强制回退 geocode 坐标待观测数据决策）。**落地形态与本段描述不同**：实现除了给 `anchor.source` 加 `model_supplied` 档，还拆出了 `anchor.coordsProvenance` / `anchor.coordsDeviationKm` 两个独立字段（见 16.1），观测查询以后两者为准。截至 2026-07-29 生产累计 `model_supplied` 为 0（分布为 turn_geocode / unreferenced），"是否强制回退"因缺少正样本仍未决策；
 2. **距离渲染带估算标记**：区级锚点下，岗位工具输出的距离一律渲染为"约 X.Xkm（按 XX 区估算）"，结果头部声明"本次定位为区级代表点，距离为估算值"；
 3. **工具 description 补一条约束**（prompt 分层原则：工具强绑定约束放工具侧）：区级定位下回复须用估算表述，或先追问具体位置/商圈/定位；
 4. **守卫规则保留为后盾，不下线**：上游修复生效后 `district_level_distance_claim` 拦截量应趋零——这本身就是验收指标（16.2 的对账口径）。
@@ -576,8 +577,11 @@ export * from '@resolution/geo';
 2. 适配器改用 `resolveParentAdministrativeArea`，岗位工具不再 import 任何行政区映射常量；
 3. **补录前先验证**：用真实海绵查询抽样确认县级市存储口径（余姚、慈溪、昆山至少各一例）——延边一例不足以外推；
 4. 业务足迹内县级市补录进映射（如 `余姚市/慈溪市 → 宁波`，9.2），这是延吉类隐患在在营城市的直接闭环，**不等 Phase 4**；
+   - 交付现状（2026-07-29）：**补录尚未消化，规模远大于余姚/慈溪两条**。`resolution/geo/administrative-division.overrides.ts` 的 `DEFERRED_COUNTY_BACKFILL` 现登记 **23 条**（余姚/慈溪为原始 2 条，其余 21 条为 2026-07-28 `geo:validate` 首跑按余姚防线检查项 7 扫出的同构隐患 + 沈阳补录连带登记）。校验对已登记条目降级为提示，补录完成后须从表内移除，否则校验报冗余。
+   - 分组与可行性：**苏州系**（太仓/常熟/张家港）可凭昆山已有实证（`storeCityName=苏州市 + storeRegionName=昆山市`）优先按同法确认；**宁波系**（余姚/慈溪）阻塞于宁波全城 0 在库岗位，无真实数据可验证；**其余**（青岛系胶州/莱西/平度、宜昌系宜都/当阳/枝江、荆州系松滋/洪湖/石首/监利、黄冈系麻城/武穴、襄阳系枣阳/宜城/老河口、赣州系瑞金/龙南、沈阳新民）均未做海绵抽样验证。
+   - 兜底：开启 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` 后这些条目走 Phase 4 全国生成表，故"未补录"不等于"必然 0 结果"；但开关缺省关，当前仍按未收录处理（`resolveParentAdministrativeArea` 返回 null，不猜父级）。
 5. 补测试：县级市、普通地级市、直辖市、未知城市、混合多城市、兜底防串城；
-6. **地理信号冲突检测**（独立提交，显式行为变更，**shadow → enforce 两段发版**，见 17.4）：`resolveCityFromGeoSignals` 多信号指向不同城市时返回 `ambiguous` + `candidates`，不再先命中先赢（8.2，现网实证见 3）；先 shadow 观测冲突频率（原定 1~2 周，2026-07-22 用户裁定压缩为最多 1 周、≤2026-07-29 决策），enforce 后 memory 消费侧同步处理 ambiguous 分支（保守留空，交上游澄清）。
+6. **地理信号冲突检测**（独立提交，显式行为变更，**shadow → enforce 两段发版**，见 17.4）：`resolveCityFromGeoSignals` 多信号指向不同城市时返回 `ambiguous` + `candidates`，不再先命中先赢（8.2，现网实证见 3）；先 shadow 观测冲突频率（原定 1~2 周，2026-07-22 用户裁定压缩为最多 1 周、≤2026-07-29 决策），enforce 后 memory 消费侧同步处理 ambiguous 分支（保守留空，交上游澄清）。**决策结果：2026-07-29 判定 no-go，enforce 未开启，shadow 继续；前置条件见 17.4.1。**
 
 完成标准：岗位工具零行政区知识；余姚类查询有测试锁定；冲突信号用例（15.2）通过。
 
@@ -711,10 +715,16 @@ interface GeoQueryMeta {
    * 锚点精度切分距离类问题。也是工作流 B-1 的精度传递通道（11.3）。
    */
   anchor: {
-    source: 'geocode' | 'session_fact' | 'user_location_share' | 'model_supplied' | null;
+    // 实现只产出 'geocode' | 'model_supplied' | null；'session_fact' / 'user_location_share'
+    // 是定稿期预留档，落地后未接线也未产出过，勿按这两个值写查询（2026-07-29 生产核实）
+    source: 'geocode' | 'model_supplied' | null;
     // model_supplied = 模型传入坐标与会话内 geocode 结果偏差超阈值（实证见 11.3 修复点 1）
     precision: 'poi' | 'area_level' | null; // area_level = 行政区代表点
     areaLevelQuery: boolean;
+    areaName: string | null; // 区级锚点的行政区名，用于"按XX估算"话术回填
+    // 以下两字段为 v3.2 自编坐标观测的实际落地形态（定稿只写了 source 增档，实现拆成独立字段）
+    coordsProvenance: 'turn_geocode' | 'model_supplied' | 'unreferenced' | null;
+    coordsDeviationKm: number | null; // 仅 model_supplied 时有值
   };
   providerFilters: { cityNameList: string[]; regionNameList: string[] };
   fallbackTriggered: boolean;
@@ -780,7 +790,7 @@ interface GeoQueryMeta {
 
 | 改动 | 处置 | 原因 |
 | --- | --- | --- |
-| 冲突检测（Phase 3 第 6 步） | 先 shadow 再 enforce（原定 1~2 周，2026-07-22 裁定压缩为 ≤1 周、07-29 决策；shadow 自 v10.24.0 上线，截至 07-28 每日观测累计零冲突样本）：新逻辑并行计算，仅把"本应 ambiguous 但现行取了先命中"的案例落 `GeoQueryMeta`，不改返回值；确认冲突频率与样本质量后切换 | 现网实证仅 2 例，真实频率未知；纯函数双跑成本趋零 |
+| 冲突检测（Phase 3 第 6 步） | 先 shadow 再 enforce（原定 1~2 周，2026-07-22 裁定压缩为 ≤1 周、07-29 决策）。**决策已出：no-go，enforce 暂不开启，详见下方"17.4.1 enforce 决策记录"** | 现网实证仅 2 例，真实频率未知；纯函数双跑成本趋零 |
 | 全国映射（Phase 4） | 开关关闭状态下 shadow 计算全国映射与补录白名单的 diff 并落观测，确认无害再开 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` | 海绵口径全国一致性只有抽样结论 |
 | B-1 / B-2、县级市补录、迁移本身 | **不新建 shadow**：`district_level_distance_claim` 硬规则与语义评审 shadow 本就在生产运行，即现成观测层；补录靠逐条映射观测 + 0 结果率告警 + area guard + 按条回滚 | 观测网已存在，重复建设无增益 |
 
@@ -789,6 +799,32 @@ interface GeoQueryMeta {
 - **PR B-1/B-2 上线**：当天抽 1~2 条真实 trace 确认工具输出带估算标记 / 前置城市披露；一周后对账 `district_level_distance_claim` 拦截量环比（16.2）；两周后重跑 badcase 地理专项复核（语义评审持续自动进样本池），确认三个问题簇收敛——此为工作流 B 的最终闭环；
 - **PR 2/3（迁移）上线**：当天抽真实 trace 确认 `GeoQueryMeta` 出现在 `message_processing_records`；跑一条延吉真实查询确认转换链路无回归；观察一个发布周期且 `rg` 无旧路径引用后，才进 Phase 5 删门面；
 - **PR 4（补录 + 冲突检测）上线**：每条新映射当天用真实海绵查询逐条验证；冲突检测按 shadow → enforce 两段独立发版。
+
+### 17.4.1 enforce 决策记录（2026-07-29，结论：no-go）
+
+shadow 窗口 2026-07-22（v10.24.0）→ 07-29，累计**样本 1 条**（07-27 前为 0，故 07-27 曾预批"若 07-28/29 仍为 0 则按零噪音直接开 enforce"）。决策日当天出现的唯一样本判定为**噪音**，推翻该预案：
+
+| 项 | 内容 |
+| --- | --- |
+| 样本 | `message_processing_records` id 225908，2026-07-29 10:30 UTC |
+| 输入 | 一条 `[位置分享]`，地址「北京市房山区长阳镇…」，**自带精确经纬度** |
+| candidates | 北京（matchedText「房山」）、宜昌（matchedText「长阳」） |
+| firstHitCity | 北京 —— **现行"先命中先赢"结果正确** |
+| anchor | `source=geocode, precision=poi, coordsProvenance=turn_geocode` —— 该轮实际处理结果无误 |
+
+**根因：同形地名跨层级。** 长阳既是宜昌下辖县（`UNIQUE_SUBDIVISION_TO_CITY` 收录为 `长阳: '宜昌'`），也是北京房山下辖镇。§9.2 声明的收录不变式"多个城市共享的区名必须排除"只按**区/县级**排查过，跨层级（县 vs 镇/街道）同形是漏网类别。
+
+**为何 no-go**：按 enforce 语义（`detectGeoSignalConflict` 非 null → 跳过 `resolveCityFromGeoSignals` 回填、留 `city=null` 让 Agent 反问），本例会让 Agent 对一条已携带精确坐标的位置分享反问"你在哪个城市"——净误伤，且误伤面正是信息最充分的输入类型。零噪音前提不成立。
+
+**开 enforce 的前置条件（任一）**：
+
+1. **同城包含消解**：候选 A 的 matchedText 若是候选 B 城市的下辖地名，判为同一地点、不计冲突；
+2. **精确坐标豁免**：本轮已有 geocode/位置分享坐标时不做冲突拦截（坐标本身是比文本更强的证据）；
+3. **同形地名清表**：对 `UNIQUE_SUBDIVISION_TO_CITY` 全表做镇/街道级同形扫描（Phase 4 已 vendored 的 `china-division` 生成表可直接比对），把长阳类条目剔除或降权。
+
+补充观测缺口：`detectGeoSignalConflict` 的两个调用点（`session.service.ts` `backfillCityFromWhitelist`、`duliday-job-list.tool.ts` 的 `queryMeta`）都只传 `district`/`location`，**不传已确立的会话 city**。本例文本第一轮扫描就显式命中了「北京市」，冲突检测却对此失明。把已知 city 传入并用于候选消解，是上述条件 1 的最小实现路径。
+
+同形地名是脏别名问题的地理侧镜像，与品牌域 `cityHomograph` 门槛（"鄂尔多斯东胜"被塌缩成服装品牌）同类。
 
 ## 18. 风险与应对
 
@@ -911,3 +947,4 @@ interface GeoQueryMeta {
 | v3.2 | 2026-07-22 | 按 chat 6a60528bce406a6aee8004f9 实证扩展 B-1：模型自编坐标（偏差 3.7km）纳入修复范围——工具边界坐标偏差校验 + `anchor.source` 增加 `model_supplied` 档 |
 | v3.3 | 2026-07-22 | 用户裁定：`resolution/geo` 目录改文件平铺（与 `resolution/brand` 一致），§7 树同步；职责分域仅作为命名/边界概念保留 |
 | v3.4 | 2026-07-28 | 交付状态对齐（非方案变更）：Phase 0–3 + 工作流 B 随 v10.24.0（07-22）上线生产；Phase 4 生成化、Phase 5 删门面、§9.5 改名随 PR #781（07-28）合入 develop 待发版；shadow 观测窗按 07-22 用户裁定压缩为 ≤1 周（07-29 决策 enforce），正文"1~2 周"口径作废 |
+| v3.5 | 2026-07-29 | 交付状态对齐（非方案变更）：① PR #781 那批已随 **v10.35.0** 发到生产，"待发版"口径作废；② 新增 **17.4.1 enforce 决策记录**——决策日唯一 shadow 样本（房山长阳/宜昌长阳同形地名）判为噪音，结论 **no-go**，并给出三条前置条件与"冲突检测对已确立会话 city 失明"的观测缺口；③ 16.1 `anchor` 契约与实现对齐——补 `areaName` / `coordsProvenance` / `coordsDeviationKm`，并标注 `source` 的 `session_fact` / `user_location_share` 两档从未产出；④ Phase 3 第 4 步补县级市补录真实进度——`DEFERRED_COUNTY_BACKFILL` 现存 23 条（非余姚/慈溪两条），按苏州系/宁波系/未验证系分组给可行性 |
