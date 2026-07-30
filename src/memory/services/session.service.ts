@@ -71,7 +71,10 @@ import { sanitizeInterviewName } from '../facts/name-guard';
 import {
   assertExtractionIdentityProvenance,
   assertNoExtractionExampleEcho,
+  hasFieldProvenanceInWindow,
+  hasHealthCertificateTopicEvidence,
   hasIsStudentTopicEvidence,
+  isStorableCandidatePhone,
 } from '../facts/placeholder-identity';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
@@ -546,6 +549,55 @@ export class SessionService {
     });
   }
 
+  /**
+   * 把工具已判定失效（海绵查不到：下架/满员）的岗位从会话岗位记忆里剔除。
+   *
+   * 覆盖 lastCandidatePool / presentedJobs / currentFocusJob 三处——它们同时是
+   * 下一轮 prompt 的岗位来源与 precheck/booking 的 jobId provenance 集，漏掉任一处
+   * 死岗位就会被重新喂给模型。
+   *
+   * 背景（badcase chat 6a685393，jobId 528572）：岗位失效后仍留在记忆中，模型连续
+   * 3 轮拿同一 jobId 重试 precheck，每轮都 job_not_found，最终转人工。
+   *
+   * @returns 实际被移除的 jobId（用于观测；空数组表示记忆里本就没有它们）
+   */
+  async dropInvalidatedJobs(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    jobIds: number[],
+  ): Promise<number[]> {
+    if (jobIds.length === 0) return [];
+
+    const dead = new Set(jobIds);
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    const removed = new Set<number>();
+
+    const prune = (jobs: RecommendedJobSummary[] | null | undefined) => {
+      const kept = (jobs ?? []).filter((job) => {
+        if (!dead.has(job.jobId)) return true;
+        removed.add(job.jobId);
+        return false;
+      });
+      return { kept, changed: kept.length !== (jobs ?? []).length };
+    };
+
+    const candidatePool = prune(state.lastCandidatePool);
+    const presented = prune(state.presentedJobs);
+    const focusIsDead = state.currentFocusJob ? dead.has(state.currentFocusJob.jobId) : false;
+    if (focusIsDead && state.currentFocusJob) removed.add(state.currentFocusJob.jobId);
+
+    if (!candidatePool.changed && !presented.changed && !focusIsDead) return [];
+
+    await this.patchSessionState(corpId, userId, sessionId, {
+      ...(candidatePool.changed ? { lastCandidatePool: candidatePool.kept } : {}),
+      ...(presented.changed ? { presentedJobs: presented.kept } : {}),
+      ...(focusIsDead ? { currentFocusJob: null } : {}),
+    });
+
+    return [...removed];
+  }
+
   async saveCurrentFocusJob(
     corpId: string,
     userId: string,
@@ -821,15 +873,15 @@ export class SessionService {
     // 仍输出 false），随后经 [已确认事实] 逐轮延续，毒化身份守卫第 4 档与展示层。
     // 字段级丢弃而非整轮判失败——同轮其它字段可能是合法提取（该案同轮 city=上海
     // 即合法），name/phone 的 throw 全轮策略在此会连坐。
+    const assistantTexts = scopedMessages
+      .filter((m) => m.role === 'assistant')
+      .map((m) => m.content);
     const previousIsStudent = unwrapSessionFactValue(previousFacts?.interview_info.is_student);
     const extractedIsStudent = unwrapSessionFactValue(newFacts.interview_info.is_student);
     if (
       typeof previousIsStudent !== 'boolean' &&
       typeof extractedIsStudent === 'boolean' &&
-      !hasIsStudentTopicEvidence(
-        userMessages,
-        scopedMessages.filter((m) => m.role === 'assistant').map((m) => m.content),
-      )
+      !hasIsStudentTopicEvidence(userMessages, assistantTexts)
     ) {
       newFacts.interview_info.is_student = null;
       this.logger.warn(
@@ -846,6 +898,84 @@ export class SessionService {
       });
     }
 
+    // 明示型字段臆造门（badcase 2026-07-29 chat 6a69674e… / 6a69790b…）：抽取模型在
+    // reasoning 自证"用户没有提供其它信息，所有字段均省略"的同一次输出里，写下了整套
+    // 臆造档案（phone="18"/"100％"、has_health_certificate="有"、applied_store="人民广场店"、
+    // 户籍"江苏"…），随后经 [已确认事实] 全程沿用。三道门按字段自身的可推断性分工，
+    // 都做字段级丢弃（与 is_student 门同策略，避免 throw 连坐同轮合法字段）。
+    const provenanceContext = [...userMessages, ...assistantTexts];
+    const dropInterviewField = (
+      field: keyof SessionFacts['interview_info'],
+      droppedValue: unknown,
+      reason: string,
+      logMessage: string,
+    ): void => {
+      (newFacts.interview_info as unknown as Record<string, unknown>)[field] = null;
+      this.logger.warn(logMessage);
+      this.tracer?.emit({
+        type: 'extraction_field_dropped',
+        corpId,
+        userId,
+        chatId: sessionId,
+        field,
+        droppedValue: String(droppedValue),
+        reason,
+      });
+    };
+
+    // 手机号形态门：非 11 位手机号形态一律丢（出处门只管 ≥7 位数字流，短垃圾值绕过）。
+    const extractedPhone = unwrapSessionFactValue(newFacts.interview_info.phone);
+    const droppedPhone =
+      typeof extractedPhone === 'string' && !isStorableCandidatePhone(extractedPhone);
+    if (droppedPhone) {
+      dropInterviewField(
+        'phone',
+        extractedPhone,
+        'invalid_phone_shape',
+        `[extractFacts] phone 非 11 位手机号形态，丢弃臆造值「${extractedPhone}」`,
+      );
+    }
+
+    // 门店/户籍窗口出处门：两字段规则均已声明只能来自明示，值必是对话里出现过的串；
+    // 只在"与旧值不同"时校验，已确立的旧值沿用不受影响。
+    for (const field of ['applied_store', 'household_register_province'] as const) {
+      const extracted = unwrapSessionFactValue(newFacts.interview_info[field]);
+      const previous = unwrapSessionFactValue(previousFacts?.interview_info[field]);
+      if (
+        typeof extracted === 'string' &&
+        extracted !== previous &&
+        !hasFieldProvenanceInWindow(extracted, provenanceContext)
+      ) {
+        dropInterviewField(
+          field,
+          extracted,
+          'no_provenance_in_window',
+          `[extractFacts] ${field} 在会话窗口无出处，丢弃臆造值「${extracted}」`,
+        );
+      }
+    }
+
+    // 健康证首写证据门：值域是短词无法做子串出处校验，改用话题词证据门（同 is_student）。
+    // 该字段直接放行 booking 有证 gate，是本组臆造字段里后果最重的一个。
+    const previousHealthCert = unwrapSessionFactValue(
+      previousFacts?.interview_info.has_health_certificate,
+    );
+    const extractedHealthCert = unwrapSessionFactValue(
+      newFacts.interview_info.has_health_certificate,
+    );
+    if (
+      previousHealthCert == null &&
+      extractedHealthCert != null &&
+      !hasHealthCertificateTopicEvidence(userMessages, assistantTexts)
+    ) {
+      dropInterviewField(
+        'has_health_certificate',
+        extractedHealthCert,
+        'first_write_no_health_cert_context',
+        `[extractFacts] has_health_certificate 首写无健康证语境，丢弃臆造值「${String(extractedHealthCert)}」`,
+      );
+    }
+
     // 确认问答裁决（非纯应答轮路径，如"好的，我25岁"带出其他事实时）：
     // 本轮文本/定位已产出高置信城市则让位（显式线索优先于确认推断）。
     if (
@@ -858,7 +988,12 @@ export class SessionService {
 
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
+    // 形态门丢弃的 phone 还要显式清 Redis：下一轮 [已确认事实] 会把旧脏值再喂回抽取，
+    // deepMerge "null 不覆盖" 会让丢弃只在本轮生效，脏号继续沿用。
     const nameStillNull = droppedName && !unwrapSessionFactValue(newFacts.interview_info.name);
+    const forceNullInterviewFields: (keyof EntityExtractionResult['interview_info'])[] = [];
+    if (nameStillNull) forceNullInterviewFields.push('name');
+    if (droppedPhone) forceNullInterviewFields.push('phone');
     const persistedLaborForm = unwrapSessionFactValue(previousFacts?.preferences.labor_form);
     const laborFormExplicitlyCleared =
       currentLaborFormIntent.kind === 'clear' &&
@@ -871,7 +1006,7 @@ export class SessionService {
       preferences: { ...newFacts.preferences, brands: null },
     };
     await this.saveFacts(corpId, userId, sessionId, factsForSave, {
-      forceNullFields: nameStillNull ? ['name'] : undefined,
+      forceNullFields: forceNullInterviewFields.length > 0 ? forceNullInterviewFields : undefined,
       forceNullPreferenceFields: laborFormExplicitlyCleared ? ['labor_form'] : undefined,
     });
 
@@ -1430,6 +1565,11 @@ export class SessionService {
     if (facts.preferences.city) return facts;
     // 冲突 shadow（方案 §8.2 / Phase 3）：多信号指向不同城市时现行先命中先赢；
     // 落库观测走岗位工具 queryMeta.geoSignalConflictShadow，这里仅辅助定位。
+    //
+    // 不传 knownCity：本方法在 L1 已对 facts.preferences.city 非空早返回，走到这里
+    // city 必为空，已知城市裁决在此天然无从谈起。这也意味着 enforce（本方法是其落点）
+    // 无法靠"已知城市裁决"降低误伤面——真正的防线是脏别名清表
+    // （DIRTY_ALIAS_EXCLUSIONS + geo:validate 检查项 8），见方案 §17.4.1。
     const conflictShadow = detectGeoSignalConflict(
       facts.preferences.district,
       facts.preferences.location,

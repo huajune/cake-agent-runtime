@@ -8,6 +8,82 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.37.0`
+**最近更新**: `2026-07-30`
+**来源分支**: `develop`
+**累计 PR**: 5
+
+### 更新摘要
+- PR #843 抽取臆造档案四道字段门（badcase 2026-07-29）
+- PR #843 残障资格疑问句式补全 + 昵称字面不当候选人事实
+- PR #843 拉群时机三档确定性闸门（badcase 63eefu6c）
+- PR #843 治理文档同步的启用状态与触发边界改为如实描述
+- PR #843 抽取臆造档案字段门 + 残障资格疑问句式 + 拉群时机闸门（badcase 2026-07-29 巡检）
+- PR #846 阶梯薪资计算基数禁自行推断，改走转人工确认
+- PR #846 健康证口径须两段一起给，不得只说"面试不需要"
+- PR #846 岗位事实口径两处收口——阶梯薪资计算基数、健康证面试/入职两段
+- PR #848 geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…
+- PR #848 脏别名清表 + 冲突检测裁决标记 + 看板失败口径
+- PR #848 转人工底账落当轮焦点岗位 jobId
+- PR #848 失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId
+- PR #848 2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置
+- PR #848 未跟踪的图表/脚本资产按仓库惯例归位
+- PR #848 清理两个已终结的一次性脚本 + 修 diagrams 索引错行
+- PR #848 转人工 jobId 底账 + 失效岗位记忆剔除 + 07-30 守卫审计批
+- PR #847 修复治理文档同步从未触发与删列后的关闭死锁
+- PR #847 Merge develop and resolve badcase governance SOP
+- PR #849 首版悬空承诺落观测档 + 品牌数字写法差异不再判串台
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #847 修复治理文档同步从未触发与删列后的关闭死锁
+- PR #847 Merge develop and resolve badcase governance SOP
+
+### 优化调整
+- PR #843 抽取臆造档案四道字段门（badcase 2026-07-29）
+
+### 运维与流程
+- PR #843 残障资格疑问句式补全 + 昵称字面不当候选人事实
+- PR #843 拉群时机三档确定性闸门（badcase 63eefu6c）
+- PR #843 治理文档同步的启用状态与触发边界改为如实描述
+- PR #846 阶梯薪资计算基数禁自行推断，改走转人工确认
+- PR #846 健康证口径须两段一起给，不得只说"面试不需要"
+- PR #848 geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…
+- PR #848 脏别名清表 + 冲突检测裁决标记 + 看板失败口径
+- PR #848 转人工底账落当轮焦点岗位 jobId
+- PR #848 失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId
+- PR #848 2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置
+- PR #848 未跟踪的图表/脚本资产按仓库惯例归位
+- PR #848 清理两个已终结的一次性脚本 + 修 diagrams 索引错行
+- PR #849 首版悬空承诺落观测档 + 品牌数字写法差异不再判串台
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #843 新增 24 例单测（形态门 / 出处门 / 健康证话题门 / name 前缀门 / 残障疑问句式 + 生产复现回归 + 合法提取不误伤）
+- PR #843 `tests/memory` 全绿；全量 jest `5997 passed`
+- PR #843 `lint:check` / `format:check` / `typecheck` / `geo:validate` / `nest build` 全部本地跑通
+- PR #843 一处既有断言随行为变更更新：`021-1234567` 座机此前"降级保留 medium"，现在整字段丢弃（座机对 precheck/booking/预填都无用，留着只会被预填进收资表）
+- PR #846 `tests/tools/duliday` 608 passed
+- PR #846 `typecheck` / `prettier` 全绿
+- PR #846 两处均为提示词文本各新增一行，无代码路径变更
+- PR #847 `pnpm run lint:check` / `pnpm run typecheck` 通过
+- PR #847 `pnpm exec jest --watchman=false` 全量 **380 suites / 5982 passed**
+- PR #847 新增 18 条针对性用例：证据反查（双侧通过/单侧 partial/最近批次失败/同批 pending/不串其他 recordId/异常降级）、统计刷新（改对六块/不误伤流水/无数字不写/dry-run/稳定 eventId 幂等）、删列后的关闭判定三态
+- PR #849 新增 `dangling-promise.rule.spec.ts`（7 条：2 条实证命中 + 5 条不误杀）
+- PR #849 新增 `brand-name-errors.rule.spec.ts`（5 条）——**`detectRequestedBrandMismatch` 此前零测试覆盖**
+- PR #849 全量 **5976 passed / 380 suites**，pre-push CI 全绿
+<!-- release:pending:end -->
+
 ## [10.36.0] - 2026-07-29
 
 **来源分支**: `develop`

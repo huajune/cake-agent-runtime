@@ -653,5 +653,101 @@ describe('FeishuBitableSyncService', () => {
       expect(storedFields['处理结论']).toBe('修复验证通过');
       expect(storedFields['评审来源']).toEqual(['claude']);
     });
+
+    // 2026-07-29 清理删掉了「测试证据JSON」列，此前这会让双门禁永远关不成已解决
+    describe('测试证据JSON 列缺失时（2026-07-29 清理后的真实表结构）', () => {
+      beforeEach(() => {
+        mockBitableApi.getFields.mockResolvedValue([
+          { field_name: '状态' },
+          { field_name: '修复说明' },
+          { field_name: '最近验证批次' },
+        ] as any);
+        updateRecord.mockResolvedValue({ success: true });
+      });
+
+      it('调用方给了生产库台账且两侧都通过时，仍然允许关闭', async () => {
+        await service.updateBadcaseStatuses([
+          {
+            recordId: 'rec_a',
+            status: '已解决',
+            evidence: {
+              kind: 'conversation',
+              batchId: 'batch-c',
+              assetIds: ['validation-1'],
+              executionIds: ['exec-2'],
+              reviewStatus: 'passed',
+              reviewerSources: ['claude'],
+              reviewedAt: '2026-07-29T02:00:00.000Z',
+            },
+            ledger: {
+              schemaVersion: 1,
+              updatedAt: '2026-07-29T02:00:00.000Z',
+              scenario: [
+                {
+                  kind: 'scenario',
+                  batchId: 'batch-s',
+                  assetIds: ['case-1'],
+                  executionIds: ['exec-1'],
+                  reviewStatus: 'passed',
+                  reviewerSources: ['claude'],
+                  reviewedAt: '2026-07-29T01:00:00.000Z',
+                },
+              ],
+              conversation: [],
+              overallStatus: 'partial',
+            },
+          },
+        ]);
+
+        expect(updateRecord.mock.calls[0][3]['状态']).toBe('已解决');
+      });
+
+      it('台账只有一侧通过时不关闭', async () => {
+        await service.updateBadcaseStatuses([
+          {
+            recordId: 'rec_a',
+            status: '已解决',
+            evidence: {
+              kind: 'scenario',
+              batchId: 'batch-s',
+              assetIds: ['case-1'],
+              executionIds: ['exec-1'],
+              reviewStatus: 'passed',
+              reviewerSources: ['claude'],
+              reviewedAt: '2026-07-29T01:00:00.000Z',
+            },
+            ledger: {
+              schemaVersion: 1,
+              updatedAt: '2026-07-29T01:00:00.000Z',
+              scenario: [],
+              conversation: [],
+              overallStatus: 'missing',
+            },
+          },
+        ]);
+
+        expect(updateRecord.mock.calls[0][3]['状态']).toBe('待验证');
+      });
+
+      it('既无列也无台账时退回保守档，不写已解决', async () => {
+        await service.updateBadcaseStatuses([
+          {
+            recordId: 'rec_a',
+            status: '已解决',
+            evidence: {
+              kind: 'scenario',
+              batchId: 'batch-s',
+              assetIds: ['case-1'],
+              executionIds: ['exec-1'],
+              reviewStatus: 'passed',
+              reviewerSources: ['claude'],
+              reviewedAt: '2026-07-29T01:00:00.000Z',
+            },
+          },
+        ]);
+
+        expect(updateRecord.mock.calls[0][3]['状态']).toBe('待验证');
+      });
+    });
   });
 });

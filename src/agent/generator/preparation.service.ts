@@ -71,6 +71,8 @@ export interface PreparedAgentContext {
     jobListQuerySignature: string | null;
     /** 本轮 geocode unique 解析确权的城市（回合收尾写 pref.city，source='tool'）。 */
     cityAttestation: CityAttestation | null;
+    /** 本轮被工具判定失效（海绵查不到）的 jobId；回合收尾从会话记忆剔除，防跨轮重试死岗位。 */
+    invalidatedJobIds: number[];
   };
   /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
   contactName?: string;
@@ -272,6 +274,7 @@ export class PreparationService {
       imageBrandResolutions: [],
       jobListQuerySignature: null,
       cityAttestation: null,
+      invalidatedJobIds: [],
     };
     const toolContext = buildToolContext({
       params,

@@ -11,6 +11,7 @@ import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { SessionService } from '@memory/services/session.service';
 import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
+import { evaluateInviteTimingGate } from '@tools/shared/invite-timing-gate';
 import { extractUserTexts } from '@tools/shared/precheck-core';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -106,6 +107,9 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 - 若 errorType=invite.invalid_city_scope，说明你把区域/区县误传给了 city。必须立即用工具返回的 expectedCity 重新调用 invite_to_group；不要调用 request_handoff，也不要说"该区域暂无兼职群"
 - 若 errorType=invite.city_conflict，说明你传的城市与会话记忆中的城市不一致。候选人没明确说换城市时，改用返回的 expectedCity 重新调用；否则先向候选人确认城市，不要转人工
 - 若 errorType=invite.city_unverified，说明该城市没有出处依据（会话记忆和候选人原文都没有）。先向候选人确认所在城市再调用；本轮不要提群相关内容，不要转人工
+- 若 errorType=invite.no_job_result，说明本轮还没跑过 duliday_job_list（突兀拉群被拦）。先查岗给出结论再决定是否拉群；本轮不要提群相关内容，不要转人工
+- 若 errorType=invite.booking_in_progress，说明候选人本轮正在推进报名/约面（问怎么报名、几点面试等）。直接回答他的问题并把这单约面推下去，本轮不要提群相关内容，不要转人工
+- 若 errorType=invite.already_invited，说明本会话已给该城市拉过群。按返回的群名据实回应（"邀请已经发过了"），不要再次发起邀请，不要转人工
 - 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
   - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（errorType=invite.no_group_in_city / invite.no_group_available）、或"候选人非外部联系人/已拉黑删好友"（errorType=invite.candidate_not_friend）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要用**完成口径**声称群相关动作已发生
@@ -335,6 +339,69 @@ export function buildInviteToGroupTool(
               outcome: 'city 入参在会话记忆与候选人原文中均无依据',
               replyInstruction:
                 '该城市在会话记忆和候选人原文里都找不到依据，不能据此拉群。请先向候选人确认所在城市（例如"方便说下你现在在哪个城市吗"），得到明确回复后再调用本工具；本轮不要提群相关内容，也不要调用 request_handoff。',
+              details: { city, industry: industry ?? undefined },
+            });
+          }
+
+          // 时机 gate（badcase 63eefu6c / chat 6a68392b，2026-07-29）：同会话两次把要全职的
+          // 候选人拉进兼职群 —— 一次在查岗结论出来之前，一次在候选人问"直接去门店面试吗"
+          // （报名推进信号）时。三条禁止项都已写在工具描述里，模型照样不遵循，落成确定性闸门。
+          // invitedGroups 读取失败按空降级（不让 Redis 抖动挡住合法拉群）。
+          let invitedGroups: { groupName?: string | null; city?: string | null }[] = [];
+          if (sessionService) {
+            try {
+              const state = await sessionService.getSessionState(
+                context.corpId,
+                context.userId,
+                context.sessionId,
+              );
+              invitedGroups = state?.invitedGroups ?? [];
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : String(error);
+              logger.warn(`读取 invitedGroups 失败（时机 gate 按空降级）: ${message}`);
+            }
+          }
+          const timingVerdict = evaluateInviteTimingGate({
+            requestedCity: city,
+            jobListExecutedThisTurn: context.jobListExecutedThisTurn === true,
+            bookingSucceeded: context.bookingSucceeded,
+            invitedGroups,
+            currentUserMessage: context.currentUserMessage,
+          });
+          if (timingVerdict.decision === 'reject') {
+            logger.warn(
+              `invite_to_group 时机 gate 拒绝: reason=${timingVerdict.reason}, city=${city} (user=${context.userId})`,
+            );
+            if (timingVerdict.reason === 'already_invited_city') {
+              const groupName = timingVerdict.invitedGroupName;
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.INVITE_ALREADY_INVITED,
+                outcome: '本会话已给该城市拉过群，不重复邀请',
+                replyInstruction:
+                  `本会话此前已经给候选人发过${groupName ? `「${groupName}」` : '兼职岗位信息群'}的邀请，` +
+                  '不要再次发起邀请、不要说"已拉你进群"。候选人主动问群相关问题时按"邀请已经发过了，点卡片就能进"口径回应；' +
+                  '其余情况不主动提群，正常回应候选人本轮的问题。不要调用 request_handoff。',
+                details: { city, groupName, industry: industry ?? undefined },
+              });
+            }
+            if (timingVerdict.reason === 'no_job_result_this_turn') {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.INVITE_NO_JOB_RESULT,
+                outcome: '本轮尚未给出查岗结论，不能直接拉群',
+                replyInstruction:
+                  '本轮还没有查岗结论，候选人不知道是有岗还是没岗就收到群邀请会困惑。' +
+                  '请先调用 duliday_job_list 查岗：有合适岗位就推荐岗位，确认没有再按拉群流程收口' +
+                  '（拉群前仍需先问候选人是否愿意放宽条件）。本轮不要提群相关内容，也不要调用 request_handoff。',
+                details: { city, industry: industry ?? undefined },
+              });
+            }
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.INVITE_BOOKING_IN_PROGRESS,
+              outcome: '候选人正在推进报名/约面，拉群会打断成单',
+              replyInstruction:
+                '候选人本轮在问报名或面试怎么走，说明他正推进某个具体岗位 —— 拉群是"无岗维护"场景，' +
+                '此时拉群等于打断成单。请直接回答候选人的问题并把这单约面推下去（该跑 precheck 就跑 precheck、' +
+                '该收资就收资）。本轮不要提群相关内容，也不要调用 request_handoff。',
               details: { city, industry: industry ?? undefined },
             });
           }

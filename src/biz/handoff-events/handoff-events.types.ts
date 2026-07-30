@@ -22,6 +22,13 @@ export interface RecordHandoffInput {
   botImId?: string | null;
   /** modify_appointment 等场景关联的工单 ID（来自 active_booking）。 */
   workOrderId?: number | null;
+  /**
+   * 转人工当轮的焦点岗位 jobId：落 handoff_events.job_id + ops_events payload。
+   *
+   * 运营的「岗位数据缺口榜」「满岗信号榜」按它定位该改哪个岗位。无焦点岗位
+   * （纯闲聊、开场即转人工）时为 null，属正常缺失。
+   */
+  jobId?: number | null;
   /** 去重键：同 (corpId, idempotencyKey) 仅记一次。 */
   idempotencyKey: string;
   occurredAt?: Date;

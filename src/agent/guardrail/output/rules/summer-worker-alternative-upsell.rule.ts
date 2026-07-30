@@ -57,6 +57,27 @@ function candidateExplicitlyAcceptsAlternatives(userMessage: string | undefined)
   return USER_ACCEPTS_ALTERNATIVES.some((pattern) => pattern.test(text));
 }
 
+/**
+ * 暑假工身份属于第三方而非候选人本人（"我妹妹也可以过去做，只不过她暑假工"）。
+ *
+ * 本规则的产品意图是"别拿其他用工形式软磨硬泡一个明确要暑假工的人"；主体是他人时
+ * 这层保护不适用——候选人自己谈的仍是常规岗位，删掉本人向的内容才是伤害。
+ * 2026-07-30 审计 P1-5 实例 …_1785209582843：候选人问"需要多少人 + 妹妹是暑假工"，
+ * 规则命中后反馈强制"只输出一句无岗答复"，两个提问与本人在谈的前厅岗位线索全被抹掉。
+ */
+const THIRD_PARTY_REFERENT =
+  '(?:妹妹|弟弟|姐姐|哥哥|朋友|同学|同事|亲戚|孩子|儿子|女儿|侄女|侄子|表妹|表弟|表姐|表哥|老乡)';
+const SUMMER_INTENT_BELONGS_TO_THIRD_PARTY = [
+  new RegExp(`${THIRD_PARTY_REFERENT}[^。！？\\n]{0,20}暑假工`),
+  new RegExp(`暑假工[^。！？\\n]{0,12}${THIRD_PARTY_REFERENT}`),
+];
+
+function summerIntentBelongsToThirdParty(userMessage: string | undefined): boolean {
+  const text = userMessage?.trim() ?? '';
+  if (!text) return false;
+  return SUMMER_INTENT_BELONGS_TO_THIRD_PARTY.some((pattern) => pattern.test(text));
+}
+
 function hasActiveSummerWorkerIntent(recentUserTexts: string[] | undefined): boolean {
   if (!recentUserTexts?.length) return false;
 
@@ -82,6 +103,7 @@ export function detectSummerWorkerAlternativeUpsell(
     return null;
   }
   if (candidateExplicitlyAcceptsAlternatives(userMessage)) return null;
+  if (summerIntentBelongsToThirdParty(userMessage)) return null;
   if (!containsActionableAlternativeUpsell(text)) return null;
 
   return {

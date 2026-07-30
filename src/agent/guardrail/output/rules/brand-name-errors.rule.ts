@@ -1,6 +1,9 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
+import {
+  normalizeBrandNameForComparison,
+  normalizeForBrandMatch,
+} from '@resolution/brand/brand-normalize';
 import { resolveFuzzyConfidence } from '@resolution/brand/fuzzy-recall';
 
 /**
@@ -200,6 +203,9 @@ function cleanClaimedBrandTitle(value: string): string | null {
 function isGroundedBrandClaim(claimed: string, groundedBrands: Set<string>): boolean {
   const normalizedClaimed = normalizeForBrandMatch(claimed);
   if (!normalizedClaimed) return false;
+  // 数字写法差异（「你6姐」vs「你六姐」）也算对上：两侧都已是品牌名，不涉及
+  // 手机号/时间段这类数字上下文，可以安全折叠。2026-07-29 假阳实证。
+  const foldedClaimed = normalizeBrandNameForComparison(claimed);
   for (const grounded of groundedBrands) {
     const normalizedGrounded = normalizeForBrandMatch(grounded);
     if (!normalizedGrounded) continue;
@@ -207,6 +213,15 @@ function isGroundedBrandClaim(claimed: string, groundedBrands: Set<string>): boo
     if (
       normalizedClaimed.includes(normalizedGrounded) ||
       normalizedGrounded.includes(normalizedClaimed)
+    ) {
+      return true;
+    }
+    const foldedGrounded = normalizeBrandNameForComparison(grounded);
+    if (!foldedGrounded) continue;
+    if (
+      foldedClaimed === foldedGrounded ||
+      foldedClaimed.includes(foldedGrounded) ||
+      foldedGrounded.includes(foldedClaimed)
     ) {
       return true;
     }

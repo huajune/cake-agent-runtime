@@ -500,6 +500,103 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.reply?.text).toBe('帮你看了下附近的岗位，稍后发你详情。');
   });
 
+  // 2026-07-30 守卫审计 P0-2：2026-07-28 15:05–15:11 模型降级窗口，模型把工具调用
+  // 语法当正文吐出，rewrite 在零事实上重写，4/4 编出薪资/门店/伪造报名链接并投递。
+  it('tool-call artifact draft converges to silence instead of free-form rewrite', async () => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: 'geocode(address="大良", city="佛山")' }),
+    );
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'block',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'internal_output_leak',
+          evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=geocode）',
+          suggestion: '删除泄漏内容',
+          recoverability: 'non_recoverable',
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['internal_output_leak'],
+      blockedRuleIds: ['internal_output_leak'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '广东省佛山市顺德区大良' },
+      context: { messageId: 'trace-tool-artifact-1' },
+    });
+
+    // 残文剥完无一字可留，"其余内容逐字保留"退化成自由创作——不进 repair、不送二审。
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outputGuard.check).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.guardrail).toEqual(
+      expect.objectContaining({
+        reasonCode: 'tool_call_artifact_silenced',
+        ruleBlocked: true,
+      }),
+    );
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'block',
+        reasonCode: 'tool_call_artifact_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
+  // 2026-07-30 守卫审计 P0-3：候选人问日结岗，模型回了一整篇后端接口设计答案，
+  // 剥掉围栏后词库不再命中，快通道逐字放行——整篇跨域内容投递给了候选人。
+  it('technical-documentation draft skips the fence fast path and goes to LLM repair', async () => {
+    const draft = [
+      '明白。既然 TjybappHousingConfirm 表中的金额字段已经是"元 × 10000"的整型存储，接口返回时直接透传原值即可。',
+      '',
+      '```json',
+      '{',
+      '"confirm_id": "C202310250001",',
+      '"amount": 150000',
+      '}',
+      '```',
+      '',
+      '### 核心映射规则',
+      '| 原始表字段 | 返回JSON字段 | 处理方式 |',
+      '| amount | amount | 整型原值透传 |',
+    ].join('\n');
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    replyRepairAgent.repair.mockResolvedValueOnce('日结的岗位我帮你留意下，你在哪个区呀？');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=^```）',
+            suggestion: '删除泄漏内容',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '那有日结的岗吗' },
+      context: { messageId: 'trace-fence-techdoc-1' },
+    });
+
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outcome.reply?.text).toBe('日结的岗位我帮你留意下，你在哪个区呀？');
+    expect(outcome.reply?.text).not.toContain('TjybappHousingConfirm');
+  });
+
   it('meta narration block converges to silence without repair or handoff side effect', async () => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({ text: '（本轮为真人招募经理与候选人直接沟通，AI 保持静默，不插入回复）' }),

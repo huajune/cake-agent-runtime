@@ -12,6 +12,7 @@ import {
   detectBrandAliasFuzzyMatchIgnored,
   detectRequestedBrandMismatch,
 } from './rules/brand-name-errors.rule';
+import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectHandoffPromiseWithoutHandoff } from './rules/handoff-promises.rule';
@@ -285,6 +286,11 @@ export class HardRulesService {
     const requestedBrandMismatch = detectRequestedBrandMismatch(text, toolCalls);
     if (requestedBrandMismatch) {
       contradictions.push(this.withRulePolicy(requestedBrandMismatch));
+    }
+
+    const danglingPromise = detectDanglingReplyPromise(text, toolCalls);
+    if (danglingPromise) {
+      contradictions.push(this.withRulePolicy(danglingPromise));
     }
 
     const brandAliasFuzzyMatchIgnored = detectBrandAliasFuzzyMatchIgnored(text, toolCalls);

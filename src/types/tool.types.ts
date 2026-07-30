@@ -91,6 +91,12 @@ export interface ToolBuildContext {
   /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */
   bookingSucceeded?: boolean;
   /**
+   * 本轮是否已执行过 duliday_job_list（即已有可告知候选人的查岗结论）。
+   * 由 duliday_job_list 写入，invite_to_group 的时机 gate 读取，用于拦"突兀拉群"
+   * （badcase 63eefu6c：查岗结论出来前 1 分钟就发了群邀请）。
+   */
+  jobListExecutedThisTurn?: boolean;
+  /**
    * 本轮工具实时解析出的工单号。用于处理“海绵已存在工单，但工单挂在另一微信联系人，
    * 或当前用户的 active_booking 尚未写入”的情况：改约/取消工具拿到有效工单后写入，
    * request_handoff 可据此关联正确工单并避免误判首次约面。
@@ -190,6 +196,22 @@ export interface ToolBuildContext {
    * 缺省（test/debug 链路未注入）时工具跳过该闸门，保持向后兼容。
    */
   isRecalledJobId?: (jobId: number) => boolean;
+  /**
+   * 本会话已召回过的 jobId 列表（与 isRecalledJobId 同源）。
+   * 仅供出处闸门在拒绝时把「有哪些合法 jobId」写进 replyInstruction——
+   * 否则模型只被告知"这个不对"、拿不到对的，只能再猜一个。
+   */
+  recalledJobIds?: number[];
+  /**
+   * 工具确认岗位在海绵已查不到（下架/满员/失效）时回调。
+   * 回合收尾由 memory lifecycle 把该 jobId 从会话记忆（lastCandidatePool /
+   * presentedJobs / currentFocusJob）剔除。
+   *
+   * 背景（badcase chat 6a685393，jobId 528572 M Stand 中大天地店）：岗位失效后仍留在
+   * 会话记忆里，模型每轮都从记忆取到它重试 precheck，连撞 3 轮才转人工——工具层
+   * 已判死的岗位必须同步从记忆里移除，否则下一轮又被喂回去。
+   */
+  onJobInvalidated?: (jobId: number) => void;
   /**
    * 本会话最近推荐过的品牌名集合（去重）。
    *

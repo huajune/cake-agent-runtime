@@ -637,14 +637,22 @@ export function buildInterviewPrecheckTool(
         // 此时不打 sponge 接口、也不回 job_not_found（"未找到岗位"会被模型脑补成"岗位下架了"，
         // 进而沿错误叙事继续推进），直接要求先 duliday_job_list 召回拿真实 jobId。
         if (context.isRecalledJobId && !context.isRecalledJobId(jobId)) {
+          // 闸门有两种触发情形，话术必须分开：会话零召回 vs 已召回但这个 jobId 不在其中。
+          // 后者若沿用"还没召回过任何岗位"的措辞，是在对模型说假话（它确实召回过），
+          // 且不给出合法 jobId，模型只能再猜一个。
+          const recalled = context.recalledJobIds ?? [];
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED,
             outcome: '前置校验拦截（jobId 无召回出处）',
             replyInstruction:
-              '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 precheck。' +
-              '先和候选人确认意向品牌/城市/门店，调 duliday_job_list 召回岗位，再用召回结果里的真实 jobId 调本工具。' +
+              (recalled.length === 0
+                ? '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 precheck。' +
+                  '先和候选人确认意向品牌/城市/门店，调 duliday_job_list 召回岗位，再用召回结果里的真实 jobId 调本工具。'
+                : `当前 jobId=${jobId} 不在本会话召回过的岗位里，禁止使用。` +
+                  `本会话合法的 jobId 只有：${recalled.join('、')}——请从中选择候选人当前在聊的那个重调本工具；` +
+                  '都不是候选人要的就先调 duliday_job_list 重新召回，不要自己改数字试。') +
               '严禁凭印象或历史拼 jobId，也严禁把候选人姓名/电话/年龄等字段编造进来——这些只能来自候选人本轮亲口提供。',
-            details: { jobId },
+            details: { jobId, recalledJobIds: recalled },
           });
         }
 
@@ -665,12 +673,19 @@ export function buildInterviewPrecheckTool(
 
           const job = jobs[0];
           if (!job?.basicInfo) {
+            // 岗位已失效（下架/满员）。同步从会话记忆剔除，否则它仍留在
+            // presentedJobs/currentFocusJob 里，下一轮又被喂回来重试——badcase chat
+            // 6a685393 就是同一个 jobId 连撞 3 轮 job_not_found 后转人工。
+            context.onJobInvalidated?.(jobId);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
-              outcome: '前置校验失败（未找到岗位）',
+              outcome: '前置校验失败（岗位已失效）',
               replyInstruction:
-                '当前 jobId 对应的岗位查不到。先用 duliday_job_list 重新核对岗位状态；' +
-                '不要透露 jobId 或接口细节给候选人。',
+                `jobId=${jobId} 这个岗位已经查不到（下架或名额已满），已从会话岗位记忆中移除。` +
+                '**禁止再用同一个 jobId 重试本工具**——重试结果必然相同。' +
+                '改用 duliday_job_list 重新召回可选岗位；召回为空时按拉群优先阶梯兜底，' +
+                '不要对候选人复读"没有"。不要透露 jobId 或接口细节给候选人，也不要说"岗位下架了"' +
+                '之类未经确认的结论，只说这家目前排不上、换一家看看。',
               details: { jobId, detailedReason: `未找到 jobId=${jobId} 对应的岗位` },
             });
           }
@@ -1206,7 +1221,7 @@ export function buildInterviewPrecheckTool(
                 : nextAction === 'collect_fields'
                   ? identityAskEscalated
                     ? '预检卡在"身份"字段：已向候选人追问过多次且其已作答，系统仍无法核验。禁止再次追问身份、禁止重复调用本工具；本轮必须调用 request_handoff（reasonCode="system_blocked"，reason 说明身份字段无法核验需人工登记），并告知候选人资料已记录、人工会尽快完成登记。'
-                    : `预检尚未通过，只缺：${checklist.missingFields.join('、')}。请一次性向候选人补问这些字段；候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
+                    : `预检尚未通过，只缺：${checklist.missingFields.join('、')}。请一次性向候选人补问这些字段。注意查看对话历史：若上一轮刚发过这份资料清单而候选人尚未填写，本轮只需换个说法简短催填（如"上面那几项资料填一下发我，我马上帮你约"），禁止逐字重发整份清单，也不要复述上一轮已确认的面试时间等信息；仅当清单已隔了多轮对话时才重发一次。候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
                   : nextAction === 'wait_for_health_certificate'
                     ? '当前岗位要求面试前持有健康证，候选人目前无证、在办或仅愿意办理，禁止继续收资或 booking。请说明拿到证后还需重新查询届时岗位是否在招及可约时段；严禁说可以先约面、证到了就能约上或保证届时有名额。'
                     : '按 nextAction 处理当前预检结果；duliday_interview_booking 返回 success=true 前，禁止声称已登记、已报名或已预约。',

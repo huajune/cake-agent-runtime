@@ -94,6 +94,50 @@ describe('buildRequestHandoffTool', () => {
     });
   });
 
+  // jobId 让运营的「岗位数据缺口榜 / 满岗信号榜」能直接定位到该改哪个岗位。
+  // 背景：2026-07-30 周报里纯咨询会话 18/27 无法定位岗位，因为底账只有 work_order_id。
+  describe('jobId 落底账', () => {
+    const focusJob = { jobId: 528572, brandName: 'M Stand', jobName: '店员', storeName: '中大天地店' };
+
+    it('优先用本轮焦点岗位', async () => {
+      const tool = buildTool({
+        ...mockContext,
+        currentFocusJob: focusJob as never,
+        activeBookingJobIds: [999888],
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (tool as any).execute({
+        reasonCode: 'salary_admin_inquiry',
+        reason: '候选人追问发薪主体，岗位字段没有答案',
+        missingJobInfo: ['发薪主体'],
+      });
+
+      expect(result.sideEffect).toEqual(expect.objectContaining({ jobId: 528572 }));
+    });
+
+    it('无焦点岗位时退回在约岗位', async () => {
+      const tool = buildTool({ ...mockContext, activeBookingJobIds: [999888, 777666] });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (tool as any).execute({
+        reasonCode: 'booking_conflict',
+        reason: '门店查不到预约',
+      });
+
+      expect(result.sideEffect).toEqual(expect.objectContaining({ jobId: 999888 }));
+    });
+
+    it('两者都没有时落 null，不做兜底猜测', async () => {
+      const tool = buildTool();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (tool as any).execute({
+        reasonCode: 'other',
+        reason: '候选人咨询 B 端合作，超出服务范围',
+      });
+
+      expect(result.sideEffect).toEqual(expect.objectContaining({ jobId: null }));
+    });
+  });
+
   it('returns a handoff sideEffect intent for outcome-layer dispatch', async () => {
     longTermService.getActiveBooking.mockResolvedValue({
       work_order_id: 5001,

@@ -38,6 +38,11 @@ export interface GeneralHandoffSideEffectIntent extends TurnSideEffectBase {
   missingJobInfo?: string[];
   stage?: string | null;
   workOrderId?: number | null;
+  /**
+   * 转人工当轮的焦点岗位 jobId，落 handoff_events.job_id + ops_events payload。
+   * 供运营按岗位定位「该改哪个岗位数据 / 该给哪个岗位加名额」。
+   */
+  jobId?: number | null;
   botImId?: string;
   idempotencyKey?: string;
   /** 是否写 handoff_events / ops_events 底账。兼容旧已写入场景时可置 false。 */

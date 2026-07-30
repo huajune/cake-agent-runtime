@@ -29,6 +29,33 @@ describe('isDanglingCheckReply', () => {
     expect(isDanglingCheckReply('薪资 24 元一小时，你看下合不合适')).toBe(false);
   });
 
+  // 2026-07-30 守卫审计 P1-6：生产 trace …_1785222662530 同时踩中两个漏判
+  // （归一化 40 字超长度闸 + 「有没有」里的「没」被当成否定结论），已投递。
+  it('命中承诺 + 稍等的长句（地名/岗位一多就超 30 字）', () => {
+    expect(
+      isDanglingCheckReply(
+        '好的，我在这边帮你查一下深圳龙岗丹竹头附近有没有咖啡店、棋牌室、网吧的招聘，稍等哈。',
+      ),
+    ).toBe(true);
+  });
+
+  it('「有没有」不再被当成否定结论', () => {
+    expect(isDanglingCheckReply('我帮你看下附近有没有岗位')).toBe(true);
+  });
+
+  it('真否定结论仍然放行', () => {
+    expect(isDanglingCheckReply('我帮你查了下，附近没找到合适的岗位')).toBe(false);
+    expect(isDanglingCheckReply('帮你确认过了，这家没在招')).toBe(false);
+  });
+
+  it('长文本带实质内容且无等待指令时仍放行', () => {
+    expect(
+      isDanglingCheckReply(
+        '我帮你查一下深圳龙岗丹竹头附近的咖啡店、棋牌室、网吧，你先说下能接受的通勤距离',
+      ),
+    ).toBe(false);
+  });
+
   it('放行空文本与长文本', () => {
     expect(isDanglingCheckReply('')).toBe(false);
     expect(

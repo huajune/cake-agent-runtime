@@ -396,34 +396,30 @@ BadCase 状态只保留 4 个运营可判断状态：
 - 测试已跑但还需人工确认，或场景测试已通过但回归验证失败：`待验证`
 - 定向测试/回归验证已通过，或已确认无需继续处理：`已解决`
 
-状态关闭必须读取并合并 `测试证据JSON`，不能只看当前批次：
+**双门禁不看单批次**：scenario（测试集）与 conversation（验证集）两侧最近一次证据都为 `passed` 才允许写 `已解决`；任一侧失败写 `待验证`，任一侧待评审写 `处理中`，只有一侧通过仍是 `待验证`，不得关闭。
 
-- `测试证据JSON` 使用版本化结构，分别保存最近的 `scenario` 与 `conversation` 证据；每条至少包含 `batchId / assetIds / executionIds / reviewStatus / reviewerSources / reviewedAt`
-- `测试CaseID / 测试执行ID / 测试批次ID` 保存 scenario 最近证据；`验证CaseID / 验证执行ID / 验证批次ID` 保存 conversation 最近证据
-- `评审来源` 必须能看出两侧证据的 reviewer source；本 skill 产生的证据应为 `claude`
-- 两侧最近证据均为 `passed` 才允许把 `证据结论` 判为 `passed` 并写 `已解决`
-- 任一侧失败写 `待验证`；任一侧待评审写 `处理中`；仅有一侧通过仍是 `待验证`，不得关闭
-- 状态变化同时写 `状态更新时间`；首次满足双门禁时写 `解决时间` 和 `处理结论=修复验证通过`
-- 不要继续把所有 ID 拼进 `修复说明`。`修复说明` 只保留面向人的改动、风险与结论摘要，机器可追踪 ID 放结构化证据列
+证据的真相源是生产库的 `test_executions / test_conversation_snapshots`（按 `source_trace.badcaseRecordIds` 反查），不是飞书表。走 `POST /test-suite/executions/:id/write-back` 时 `BadcaseEvidenceResolverService` 会自动现查现算，不需要人工拼台账。
+
+**飞书表当前只有 22 列**（2026-07-29 清理后）：
+`问题主键 / 问题ID / 标题 / 根因层 / 来源 / chatId / 候选人微信昵称 / 招募经理姓名 / 咨询时间 / 分类 / 聊天记录 / 用户消息 / 首次发现时间 / 最近复现时间 / 复现次数 / 备注 / 用例名称 / 优先级 / 状态 / 修复说明 / 最近验证批次 / 截图`
+
+那次清理删掉了 GPT 误建的治理列（`测试证据JSON / 证据结论 / 证据更新时间 / 状态更新时间 / 解决时间 / 处理结论 / 待确认方 / 当前责任人 / 期望处理方式 / 测试CaseID / 测试执行ID / 测试批次ID / 验证CaseID / 验证执行ID / 验证批次ID / 评审来源 / 上线时间 / 观察截止时间`）。**不要因为下面提到过它们就自行重建**——删除是用户裁定；确需重启治理台账时唯一入口是 `POST /feishu/sync/badcase-governance/schema {apply:true}`（幂等），且必须先经用户拍板。回写逻辑对这些列做的是"存在才写"，缺列不报错。
 
 历史状态合并规则：
 
 - `待修复 / 修复中 / 待测试` 统一并入 `处理中`
 - `已过时` 统一并入 `已解决`
 
-回写字段优先级：
+回写字段优先级（只列当前真实存在的列）：
 
 - `状态`：按上面的状态流转写入
-- `状态更新时间 / 解决时间 / 处理结论`：支撑治理文档按真实状态事件形成历史追踪线，不能用飞书最后修改时间代替
-- `待确认方`：仅填 `无 / 运营 / 产品 / 技术 / 数据`；需要运营或产品拍板时必须明确填写
-- `上线时间 / 观察截止时间`：已上线但还不能关闭时，写 `处理结论=已上线待观察` 并填写观察窗口
-- `测试证据JSON / 证据结论 / 证据更新时间` 与两组 Case/执行/批次 ID：保存可机器对账的测试证据链
 - `根因层`：`prompt / stage / tool / data / memory / workflow / policy / unknown`
-- `修复说明`：写清修复文件/策略、正式用例 ID、验证批次 ID、是否有残余风险
+- `修复说明`：面向人的结论——根因一句话 + 改了什么/PR 号 + 验证批次或核验窗口 + 残余风险。已上线但还不能关闭的，在这里写明"已上线待观察 + 观察截止日"；需要运营或产品拍板的，写明"待确认方：运营/产品"
+- `最近验证批次`：机器可追踪的批次 ID 放这里，不要堆进 `修复说明`
 - `最近复现时间`：本轮最终验证或复跑时间
 - `复现次数`：只有本轮确实统计过复现次数时再写，不要编造
 
-如果是历史记录、证据字段尚未建立或链路过粗，先运行 `node scripts/backfill-badcase-evidence.js` 做 dry-run；确认盘点范围后才加 `--apply`。回填按历史批次从旧到新合并，并遵循相同双门禁，不能为了清账伪造缺失的一侧证据。
+如果历史记录的证据链过粗，先运行 `node scripts/backfill-badcase-evidence.js` 做 dry-run；确认盘点范围后才加 `--apply`。回填按历史批次从旧到新合并，并遵循相同双门禁，不能为了清账伪造缺失的一侧证据。
 
 ### Step 10A. 治理进展文档累计更新
 
@@ -433,8 +429,24 @@ BadCase 状态只保留 4 个运营可判断状态：
 - 沿用现有格式：`月 日 时:分：BadCase 治理更新` 三级标题，下面用项目符号列出问题类型、BadCase ID、标题、状态、批次和证据结论
 - 同一批状态回写只追加一个治理事件，不要每条 BadCase 各建一个小节
 - 每个事件写入稳定 `治理事件ID`；写前扫描文档，命中相同事件 ID 时跳过，保证重试幂等
+- 追加的同时会把「一、整体进展」的剩余数与更新时间、「五、当前剩余问题」的剩余数与三态分布刷新成实时值。这两处是静态数字，不跟着改就会逐日变假（7-28 写的 55 到 7-30 已经是 60）
 - 历史证据批量回填必须关闭文档同步，避免把清账脚本展开成大量伪“新进展”
 - 文档同步失败不能回滚已经成功的 BadCase 状态，但必须在日志与最终报告中明确暴露
+
+**生产已配置完毕（2026-07-29 起）**：运行容器已加载
+`FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN` 与
+`BADCASE_GOVERNANCE_DOC_SYNC_ENABLED=true`。要复核可调用
+`POST /feishu/sync/badcase-governance/document-check`（只读，返回
+title/blockCount/insertionIndex）。不要把它当成“尚未启用”而跳过本步，也不要在文档、
+日志或代码中记录 token 值。
+
+**只能有一个写入口。** 三条路径按场景选一条，同一批变更绝不能既走接口又手写——事件 ID 命名不同不会互相去重，会追加出重复小节：
+
+| 场景 | 入口 | 事件 ID |
+|---|---|---|
+| 测试执行评审回写 | `POST /test-suite/executions/:id/write-back`（自动触发） | `bcg-<内容哈希>` |
+| 每日巡检等直接改飞书表的链路 | `POST /feishu/sync/badcase-governance/document-append` | 调用方传稳定值，如 `bcg-daily-triage-20260730` |
+| 文档被人手改过、只想把数字拉回真实值 | `POST /feishu/sync/badcase-governance/document-refresh-summary` | 不产生事件 |
 
 启用前先调用 `POST /feishu/sync/badcase-governance/document-check` 做只读检查。生产配置 `FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN`，确认机器人具备 Docx 编辑权限后再设置 `BADCASE_GOVERNANCE_DOC_SYNC_ENABLED=true`。关闭开关时只生成 dry-run 日志，不写文档。
 

@@ -10,6 +10,10 @@ import {
   ExecutionFilters,
 } from '../types/test-suite.types';
 import { countScenarioDialogueTurns } from '../utils/scenario-turn-count.util';
+import {
+  BADCASE_EVIDENCE_SCAN_LIMIT,
+  buildBadcaseRecordIdFilter,
+} from '../utils/badcase-evidence-filter.util';
 
 /**
  * 测试执行记录 Repository
@@ -366,6 +370,68 @@ export class TestExecutionRepository extends BaseRepository {
     return this.select(
       'id,case_id,review_status,execution_status,source_trace,conversation_snapshot_id,reviewer_source,reviewed_at',
       (q) => q.eq('batch_id', batchId).order('created_at'),
+    );
+  }
+
+  /**
+   * 按 BadCase recordId 反查「用例测试」侧的执行证据（跨批次）。
+   *
+   * source_trace 上有 GIN 索引，用 jsonb contains 谓词走索引。
+   * conversation_snapshot_id 为空的才是用例测试执行——回归验证侧的来源标记挂在快照上，不在执行上。
+   */
+  async findScenarioEvidenceByBadcaseRecordIds(
+    recordIds: string[],
+  ): Promise<
+    Pick<
+      TestExecution,
+      | 'id'
+      | 'case_id'
+      | 'batch_id'
+      | 'review_status'
+      | 'reviewer_source'
+      | 'reviewed_at'
+      | 'created_at'
+      | 'source_trace'
+    >[]
+  > {
+    const filter = buildBadcaseRecordIdFilter(recordIds);
+    if (!filter) return [];
+    return this.select(
+      'id,case_id,batch_id,review_status,reviewer_source,reviewed_at,created_at,source_trace',
+      (q) =>
+        q
+          .is('conversation_snapshot_id', null)
+          .or(filter)
+          .order('created_at', { ascending: false })
+          .limit(BADCASE_EVIDENCE_SCAN_LIMIT),
+    );
+  }
+
+  /**
+   * 按对话快照 ID 批量取轮次执行结果，用于推导回归验证侧的证据。
+   */
+  async findByConversationSnapshotIds(
+    snapshotIds: string[],
+  ): Promise<
+    Pick<
+      TestExecution,
+      | 'id'
+      | 'conversation_snapshot_id'
+      | 'batch_id'
+      | 'review_status'
+      | 'reviewer_source'
+      | 'reviewed_at'
+      | 'created_at'
+    >[]
+  > {
+    if (snapshotIds.length === 0) return [];
+    return this.select(
+      'id,conversation_snapshot_id,batch_id,review_status,reviewer_source,reviewed_at,created_at',
+      (q) =>
+        q
+          .in('conversation_snapshot_id', snapshotIds)
+          .order('created_at', { ascending: false })
+          .limit(BADCASE_EVIDENCE_SCAN_LIMIT),
     );
   }
 

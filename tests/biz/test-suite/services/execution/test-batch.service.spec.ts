@@ -7,6 +7,7 @@ import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.s
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
 import { FeishuBitableSyncService } from '@biz/feishu-sync/bitable-sync.service';
+import { BadcaseEvidenceResolverService } from '@biz/test-suite/services/badcase-evidence-resolver.service';
 import {
   BatchStatus,
   ExecutionStatus,
@@ -68,6 +69,10 @@ describe('TestBatchService', () => {
     updateBadcaseStatuses: jest.fn().mockResolvedValue({ success: 0, failed: 0, errors: [] }),
   };
 
+  const mockBadcaseEvidenceResolver = {
+    resolveLedgers: jest.fn().mockResolvedValue(new Map()),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -78,6 +83,10 @@ describe('TestBatchService', () => {
         { provide: TestWriteBackService, useValue: mockWriteBackService },
         { provide: TestExecutionService, useValue: mockExecutionService },
         { provide: ConfigService, useValue: mockConfigService },
+        {
+          provide: BadcaseEvidenceResolverService,
+          useValue: mockBadcaseEvidenceResolver,
+        },
         { provide: FeishuBitableSyncService, useValue: mockFeishuBitableSync },
       ],
     }).compile();
