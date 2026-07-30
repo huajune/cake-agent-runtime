@@ -42,6 +42,37 @@
         "`lint:check` / `format:check` / `typecheck` / `geo:validate` / `nest build` 全部本地跑通",
         "一处既有断言随行为变更更新：`021-1234567` 座机此前\"降级保留 medium\"，现在整字段丢弃（座机对 precheck/booking/预填都无用，留着只会被预填进收资表）"
       ]
+    },
+    {
+      "number": "846",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/846",
+      "title": "岗位事实口径两处收口——阶梯薪资计算基数、健康证面试/入职两段",
+      "author": "huajune",
+      "mergedAt": "2026-07-30",
+      "businessUpdates": [
+        "阶梯薪资计算基数禁自行推断，改走转人工确认",
+        "健康证口径须两段一起给，不得只说\"面试不需要\"",
+        "岗位事实口径两处收口——阶梯薪资计算基数、健康证面试/入职两段"
+      ],
+      "summary": [
+        "阶梯薪资计算基数禁自行推断，改走转人工确认",
+        "健康证口径须两段一起给，不得只说\"面试不需要\"",
+        "岗位事实口径两处收口——阶梯薪资计算基数、健康证面试/入职两段"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "阶梯薪资计算基数禁自行推断，改走转人工确认",
+        "健康证口径须两段一起给，不得只说\"面试不需要\""
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tests/tools/duliday` 608 passed",
+        "`typecheck` / `prettier` 全绿",
+        "两处均为提示词文本各新增一行，无代码路径变更"
+      ]
     }
   ],
   "lastRelease": {
