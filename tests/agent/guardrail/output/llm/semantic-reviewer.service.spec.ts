@@ -127,6 +127,13 @@ describe('SemanticReviewerService', () => {
       expect(service.shouldReview(packet)).toBe(true);
     });
 
+    it('无证据但断言具体发薪日 → 触发（chat 6a68392b）', () => {
+      const packet = makePacket({
+        draftReply: '这家门店每月 15 号发薪。',
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
     it('无证据但宣称已完成报名/预约 → 触发', () => {
       const packet = makePacket({ draftReply: '推荐你去这家门店，已帮你预约面试' });
       expect(service.shouldReview(packet)).toBe(true);

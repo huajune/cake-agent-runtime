@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ModelRole } from '@/llm/llm.types';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { hasQuantifiedJobFact } from '../job-fact-signals.util';
 import type { GuardrailReviewPacket } from './review-packet.types';
 
 export const SEMANTIC_REVIEW_FINDING_CODES = [
@@ -86,10 +87,8 @@ function hasAnyReviewEvidence(packet: GuardrailReviewPacket): boolean {
 }
 
 const UNGROUNDED_FACT_CLAIM_PATTERNS: readonly RegExp[] = [
-  /\d+(?:\.\d+)?\s*(?:元|块)\s*\/?\s*(?:小?时|天|月)/u,
+  // 口语里常省略“元/小时”等单位（如“时薪 20-30”），不属于共享的结构化事实形态。
   /(?:时薪|日薪|月薪|综合薪资|保底)[^。！？\n]{0,8}\d/u,
-  /\d+(?:\.\d+)?\s*(?:公里|km|KM)/u,
-  /\d{1,2}\s*[:：]\s*\d{2}\s*[-—~至到]\s*\d{1,2}\s*[:：]\s*\d{2}/u,
   /[^\s。！？\n]{2,12}店(?:）|\))?(?:的)?[^。！？\n]{0,6}(?:岗位|服务员|咖啡师|店员|小时工|全职|兼职|后厨|收银|分拣|理货)/u,
   /已(?:经)?(?:帮你|给你)?(?:提交|报名|预约|约好|登记)/u,
   /https?:\/\//u,
@@ -145,7 +144,10 @@ export class SemanticReviewerService {
    */
   private assertsFactWithoutAnyEvidence(packet: GuardrailReviewPacket): boolean {
     if (hasAnyReviewEvidence(packet)) return false;
-    return UNGROUNDED_FACT_CLAIM_PATTERNS.some((pattern) => pattern.test(packet.draftReply));
+    return (
+      hasQuantifiedJobFact(packet.draftReply) ||
+      UNGROUNDED_FACT_CLAIM_PATTERNS.some((pattern) => pattern.test(packet.draftReply))
+    );
   }
 
   async review(packet: GuardrailReviewPacket): Promise<SemanticReviewVerdict> {
