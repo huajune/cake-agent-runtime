@@ -14,7 +14,7 @@
 **预计版本**: `v10.37.0`
 **最近更新**: `2026-07-30`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #843 抽取臆造档案四道字段门（badcase 2026-07-29）
@@ -33,12 +33,15 @@
 - PR #848 未跟踪的图表/脚本资产按仓库惯例归位
 - PR #848 清理两个已终结的一次性脚本 + 修 diagrams 索引错行
 - PR #848 转人工 jobId 底账 + 失效岗位记忆剔除 + 07-30 守卫审计批
+- PR #847 修复治理文档同步从未触发与删列后的关闭死锁
+- PR #847 Merge develop and resolve badcase governance SOP
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #847 修复治理文档同步从未触发与删列后的关闭死锁
+- PR #847 Merge develop and resolve badcase governance SOP
 
 ### 优化调整
 - PR #843 抽取臆造档案四道字段门（badcase 2026-07-29）
@@ -71,6 +74,9 @@
 - PR #846 `tests/tools/duliday` 608 passed
 - PR #846 `typecheck` / `prettier` 全绿
 - PR #846 两处均为提示词文本各新增一行，无代码路径变更
+- PR #847 `pnpm run lint:check` / `pnpm run typecheck` 通过
+- PR #847 `pnpm exec jest --watchman=false` 全量 **380 suites / 5982 passed**
+- PR #847 新增 18 条针对性用例：证据反查（双侧通过/单侧 partial/最近批次失败/同批 pending/不串其他 recordId/异常降级）、统计刷新（改对六块/不误伤流水/无数字不写/dry-run/稳定 eventId 幂等）、删列后的关闭判定三态
 <!-- release:pending:end -->
 
 ## [10.36.0] - 2026-07-29
