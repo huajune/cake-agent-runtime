@@ -121,6 +121,25 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
+    id: 'invite_timing_gate',
+    stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
+    action: GUARDRAIL_ACTION.REJECT_COLLECT,
+    coverage: GUARDRAIL_COVERAGE.CODE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '拉群时机三档确定性闸门：本会话已给同城市拉过群 / 本轮还没跑过 duliday_job_list（突兀拉群）/ 候选人本轮正在推进报名约面（打断成单）→ 拒绝调用。预约成功后拉群（场景 1）豁免后两档。',
+    riskGoal:
+      '工具描述里的三条前置条件与禁止项只靠提示词约束，模型不遵循时会重复骚扰候选人、在查岗结论前突兀拉群、或在成单临门时打断（badcase 63eefu6c 同会话连犯两条）。',
+    source: 'tools/shared/invite-timing-gate.ts + tools/invite-to-group.tool.ts',
+    exogenousSignal:
+      '会话记忆 invitedGroups（已拉群事实）+ 本轮 duliday_job_list 执行标记（jobListExecutedThisTurn 回合内直写）+ 候选人本轮原话',
+    residualRisk:
+      '推进信号靠词表识别，口语变体（"那我明天过去吧"）仍会漏；候选人换城市时按放行处理，不拦跨城重复拉群。',
+    verification: 'tests/tools/shared/invite-timing-gate.spec.ts',
+    owner: 'tools-runtime',
+    status: 'active',
+  },
+  {
     id: 'booking_screening_answers',
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,

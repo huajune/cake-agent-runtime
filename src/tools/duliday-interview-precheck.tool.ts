@@ -1221,7 +1221,7 @@ export function buildInterviewPrecheckTool(
                 : nextAction === 'collect_fields'
                   ? identityAskEscalated
                     ? '预检卡在"身份"字段：已向候选人追问过多次且其已作答，系统仍无法核验。禁止再次追问身份、禁止重复调用本工具；本轮必须调用 request_handoff（reasonCode="system_blocked"，reason 说明身份字段无法核验需人工登记），并告知候选人资料已记录、人工会尽快完成登记。'
-                    : `预检尚未通过，只缺：${checklist.missingFields.join('、')}。请一次性向候选人补问这些字段；候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
+                    : `预检尚未通过，只缺：${checklist.missingFields.join('、')}。请一次性向候选人补问这些字段。注意查看对话历史：若上一轮刚发过这份资料清单而候选人尚未填写，本轮只需换个说法简短催填（如"上面那几项资料填一下发我，我马上帮你约"），禁止逐字重发整份清单，也不要复述上一轮已确认的面试时间等信息；仅当清单已隔了多轮对话时才重发一次。候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
                   : nextAction === 'wait_for_health_certificate'
                     ? '当前岗位要求面试前持有健康证，候选人目前无证、在办或仅愿意办理，禁止继续收资或 booking。请说明拿到证后还需重新查询届时岗位是否在招及可约时段；严禁说可以先约面、证到了就能约上或保证届时有名额。'
                     : '按 nextAction 处理当前预检结果；duliday_interview_booking 返回 success=true 前，禁止声称已登记、已报名或已预约。',

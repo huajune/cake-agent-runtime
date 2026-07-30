@@ -436,7 +436,13 @@ BadCase 状态只保留 4 个运营可判断状态：
 - 历史证据批量回填必须关闭文档同步，避免把清账脚本展开成大量伪“新进展”
 - 文档同步失败不能回滚已经成功的 BadCase 状态，但必须在日志与最终报告中明确暴露
 
-启用前先调用 `POST /feishu/sync/badcase-governance/document-check` 做只读检查。生产配置 `FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN`，确认机器人具备 Docx 编辑权限后再设置 `BADCASE_GOVERNANCE_DOC_SYNC_ENABLED=true`。关闭开关时只生成 dry-run 日志，不写文档。
+**生产已配置完毕（2026-07-29 起）**：`/data/cake/.env.production` 里 `FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN=WUEzwZlYOienOgkw7z1cpeOVnBB`（Wiki 节点 token，服务内部 `get_node` 解析成 docx）+ `BADCASE_GOVERNANCE_DOC_SYNC_ENABLED=true`，运行容器已加载。要复核随时打 `POST /feishu/sync/badcase-governance/document-check`（只读，返回 title/blockCount/insertionIndex）。**不要再把它当"尚未启用"跳过本步。**
+
+**自动同步只覆盖一条路径，日常巡检必须手工补**：`appendUpdate` 的唯一调用方是 `bitable-sync.service.updateBadcaseStatuses`，而它只由 `test-batch.service` 在**测试批次跑完派生 BadCase 状态**时触发，且没有 HTTP 出口。本 skill 的日常巡检大多是"分析定性 → 直接改飞书表状态"，走脚本直连 bitable，**绕开了整条服务链路，治理事件不会自动产生**（2026-07-29 至 07-30 就是这么漏的：配置全对，只是没有触发点）。所以：
+
+- 只要本轮状态回写不是由测试批次派生的，就必须按上面的格式**手工追加**一个治理事件；
+- 手工追加同样走 `.env.production` 凭证打 docx `blocks/{root}/children`（`index` 取"四、"章节在根块 children 里的下标），写前扫全文做治理事件ID 幂等；
+- 批次派生的回写不要重复手工追加，避免同一批出现两个事件。
 
 ### Step 11.（可选）广播
 

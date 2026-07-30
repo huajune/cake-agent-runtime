@@ -12,6 +12,10 @@ describe('buildInviteToGroupTool', () => {
     messages: [{ role: 'user', content: '你好，我在上海找兼职' }],
     botUserId: 'chat-bot-weixin',
     botImId: 'chat-bot-im-id',
+    // 时机 gate 要求本轮已给出查岗结论；本文件测的是选群/投递链路，
+    // 默认按"已查过岗"建模（生产上拉群必在查岗之后）。时机 gate 自身的
+    // 三档判定见 tests/tools/shared/invite-timing-gate.spec.ts。
+    jobListExecutedThisTurn: true,
   };
 
   const makeGroup = (overrides: Partial<GroupContext> = {}): GroupContext => ({
@@ -122,6 +126,63 @@ describe('buildInviteToGroupTool', () => {
       }),
     );
     expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
+  });
+
+  // badcase 63eefu6c / chat 6a68392bce406a6aee39dd0a（2026-07-29）：同会话两次拉群 ——
+  // 一次在查岗结论出来前，一次在候选人问"直接去门店面试吗还是怎么样"时。
+  describe('时机 gate 端到端（badcase 63eefu6c）', () => {
+    it('本轮未查岗就拉群：拒绝且不触达企业接口', async () => {
+      const result = await executeTool({ city: '上海' }, { jobListExecutedThisTurn: false });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_JOB_RESULT);
+      expect(result._replyInstruction).toContain('duliday_job_list');
+      expect(result._replyInstruction).toContain('不要调用 request_handoff');
+      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('候选人正在追问报名/面试怎么走：拒绝拉群，指令回到约面收尾', async () => {
+      const result = await executeTool(
+        { city: '上海' },
+        { currentUserMessage: '直接去门店面试吗还是怎么样' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_BOOKING_IN_PROGRESS);
+      expect(result._replyInstruction).toContain('打断成单');
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('本会话已给同城市拉过群：拒绝重复邀请并带出群名', async () => {
+      const sessionService = {
+        getSessionState: jest.fn().mockResolvedValue({
+          invitedGroups: [{ groupName: '独立客&上海餐饮兼职②群', city: '上海' }],
+        }),
+        getFacts: jest.fn().mockResolvedValue(null),
+      };
+
+      const result = await executeTool({ city: '上海' }, undefined, { sessionService });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_ALREADY_INVITED);
+      expect(result._replyInstruction).toContain('独立客&上海餐饮兼职②群');
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('读取 invitedGroups 失败时按空降级，不挡住合法拉群', async () => {
+      mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 10 })]);
+      mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
+      const sessionService = {
+        getSessionState: jest.fn().mockRejectedValue(new Error('redis down')),
+        getFacts: jest.fn().mockResolvedValue(null),
+      };
+
+      const result = await executeTool({ city: '上海' }, undefined, { sessionService });
+      await flushAsyncEvents();
+
+      expect(result.success).toBe(true);
+    });
   });
 
   it('rejects district-level city input and instructs retry with city-level expectedCity', async () => {
