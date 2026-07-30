@@ -20,6 +20,8 @@
  * 宁可漏判交给二审，不误伤正常的精简改写。
  */
 
+import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
+
 export type RepairRegressionKind =
   | 'structure_collapsed'
   | 'polarity_reversed'
@@ -48,10 +50,9 @@ const FORM_FIELD_LINE_PATTERN = /^[-•\s]*[^：:\n]{1,14}[：:]/u;
 
 /**
  * 岗位事实行：含距离/时薪/班次时段等硬数据的行。首版出现多行即认为在向候选人
- * 展示具体岗位内容。
+ * 展示具体岗位内容。定义与语义 shadow 门控共用，见 job-fact-signals.util.ts。
  */
-const JOB_FACT_PATTERN =
-  /\d+(?:\.\d+)?\s*(?:公里|km|KM)|\d+\s*元\/(?:小?时|天|月)|\d{1,2}[:：]\d{2}\s*[-—~至]\s*\d{1,2}[:：]\d{2}/u;
+const JOB_FACT_PATTERN = QUANTIFIED_JOB_FACT_PATTERN;
 
 /** 无岗断言：修复版声称附近/该区域没有（在招）岗位。 */
 const NO_JOB_CLAIM_PATTERN =

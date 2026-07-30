@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ModelRole } from '@/llm/llm.types';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { hasQuantifiedJobFact } from '../job-fact-signals.util';
 import type { GuardrailReviewPacket } from './review-packet.types';
 
 export const SEMANTIC_REVIEW_FINDING_CODES = [
@@ -84,8 +85,21 @@ export class SemanticReviewerService {
       Boolean(packet.evidence.booking) && /预约|报名|面试|到店|二维码|地址|时间/.test(reply);
     const hasSentLocationClaim =
       Boolean(packet.evidence.sentLocation) && /地址|位置|定位|导航|面试|门店/.test(reply);
+    // 零证据下的岗位事实断言：查过岗但一条可核验证据都没拿到，回复却给出距离/时薪/
+    // 发薪日这类只可能来自工具的量化事实——编造风险最高的一类回合，恰恰被上面
+    // "有证据才审"的四个触发器全部跳过（它们都以 evidence 存在为前提）。
+    // 实证：2026-07-29 13:50 chat 6a68392b，duliday_job_list 连返两次 empty，
+    // 首版编出 3 家深圳门店全套薪资/距离/发薪日，semantic_reviews 落成空数组；
+    // 当日同形态（job_list 仅 empty + 无其他证据 + 回复含量化岗位事实）共 20 个回合
+    // 全部零语义评审。
+    const hasUngroundedJobFactClaim =
+      jobList !== undefined && !jobList.hasEvidence && hasQuantifiedJobFact(reply);
     return (
-      hasJobRecommendation || hasGeoOrBrandAmbiguity || hasBookingStateClaim || hasSentLocationClaim
+      hasJobRecommendation ||
+      hasGeoOrBrandAmbiguity ||
+      hasBookingStateClaim ||
+      hasSentLocationClaim ||
+      hasUngroundedJobFactClaim
     );
   }
 
@@ -105,6 +119,7 @@ export class SemanticReviewerService {
         '3. active_booking_state_conflict：booking 证据显示已约/失败/线上线下/面试时间地址等状态，但回复与其冲突或漏关键状态。',
         '证据读取要求：',
         '- jobList.hasEvidence=true 表示已有可核验岗位证据；即使 jobList.jobs=[]，只要 markdownExcerpt 存在也不能说“无岗位数据/无证据支撑”。',
+        '- 反之 jobList.hasEvidence=false（查过岗但一条可核验岗位都没拿到）时，回复给出任何具体门店名、距离、时薪、发薪日、班次或福利，都是无出处编造，判 job_recommendation_not_best_supported（高置信）——候选人会按虚构岗位做决策。此时只有“暂时没查到匹配在招岗位”这类如实口径可以放行。',
         '- 品牌名里可以包含地名，且与门店所在城市无关（如「成都你六姐」是在上海等地经营的连锁品牌，「北京华联」同理）。品牌名中的地名一律不作为地理冲突依据，只看门店/距离字段；仅凭品牌名判 brand_or_geo_ambiguity_ignored 属误判。',
         '- 候选人提供的姓名疑似微信昵称时，回复要求其补充真实姓名是既定报名流程，不是 active_booking_state_conflict，即使 precheck 已返回 ready_to_book。',
         '- 回复以完成口径宣称报名/预约已完成（「已帮你报名」「已报名成功」「已登记好」「已提交预约」等），但本轮 toolCalls 中没有 duliday_interview_booking 成功证据、booking 证据里也没有对应工单时，判 active_booking_state_conflict（高置信）——候选人会基于虚假的已报名状态空等。征询式（「要不要帮你报名」）与进行式（「我这就帮你提交」）不算完成口径，放行。',

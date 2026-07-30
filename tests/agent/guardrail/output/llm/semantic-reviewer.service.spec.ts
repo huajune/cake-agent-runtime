@@ -61,10 +61,40 @@ describe('SemanticReviewerService', () => {
       expect(service.shouldReview(packet)).toBe(true);
     });
 
-    it('jobs 为空且无 markdownExcerpt → 跳过（与有 excerpt 的对照）', () => {
+    // 零证据编造档（2026-07-29 chat 6a68392b 实证）：查过岗但零证据，回复却给量化
+    // 岗位事实——旧门控四个触发器都以 evidence 存在为前提，把这类最高风险回合全放过。
+    it('零证据 + 回复含时薪 → 触发（无出处编造，不再因缺证据而跳过）', () => {
       const packet = makePacket({
         draftReply: '推荐你去静安寺店，薪资 24 元/小时',
         evidence: { jobList: { args: {}, hasEvidence: false, jobs: [], requestedBrands: [] } },
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('零证据 + 回复含距离与发薪日 → 触发', () => {
+      const packet = makePacket({
+        draftReply: '肯德基-深圳爱联店（距离约0.5km）\n服务员-小时工，每月15号发薪\n班次：早晚轮班',
+        evidence: {
+          jobList: { args: {}, hasEvidence: false, jobs: [], requestedBrands: [], status: 'empty' },
+        },
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('零证据 + 如实说没查到岗位 → 不触发（正确口径不烧评审）', () => {
+      const packet = makePacket({
+        draftReply: '帮你查了下，目前暂时没查到您位置附近匹配的在招岗位，要不要扩大点范围？',
+        evidence: {
+          jobList: { args: {}, hasEvidence: false, jobs: [], requestedBrands: [], status: 'empty' },
+        },
+      });
+      expect(service.shouldReview(packet)).toBe(false);
+    });
+
+    it('本轮未查岗（无 jobList 证据字段）+ 回复含时薪 → 不触发（不误伤复述历史岗位）', () => {
+      const packet = makePacket({
+        draftReply: '你之前看的那家是 24 元/小时',
+        evidence: {},
       });
       expect(service.shouldReview(packet)).toBe(false);
     });
