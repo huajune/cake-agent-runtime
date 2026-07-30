@@ -170,6 +170,56 @@
         "新增 `brand-name-errors.rule.spec.ts`（5 条）——**`detectRequestedBrandMismatch` 此前零测试覆盖**",
         "全量 **5976 passed / 380 suites**，pre-push CI 全绿"
       ]
+    },
+    {
+      "number": "845",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/845",
+      "title": "语义 shadow 补零证据编造档，岗位硬事实信号收拢单一定义",
+      "author": "huajune",
+      "mergedAt": "2026-07-30",
+      "businessUpdates": [
+        "`shouldReview` 新增第五触发器 `hasUngroundedJobFactClaim`：`jobList` 证据存在但 `hasEvidence=false`，且回复含只可能来自工具的量化事实（距离 / 时薪 / 发薪日 / 班次时段）。",
+        "如实说「没查到岗位」**不触发**（正确口径不烧评审）；",
+        "本轮未查岗（无 `jobList` 字段）**不触发**（不误伤复述历史岗位）。",
+        "补 reviewer 指令：`hasEvidence=false` 下给出任何具体门店/距离/时薪/发薪日/班次/福利即判 `job_recommendation_not_best_supported`（高置信）。**没有这条，新触发器只会产出全 pass**——原指令只写了 `hasEvidence=true` 侧的读法。",
+        "岗位硬事实正则抽到 `job-fact-signals.util.ts` 单一定义，repair 回归闸与语义门控共用，避免口径漂移（回归闸行为不变，原正则等值迁移）。",
+        "锁死空召回读数不变量：`duliday_job_list` 空态 `isToolSuccess=false` + `status='empty'`——这是回归闸 `jobEvidenceAvailable` 判 `false` 的前提，此前只有 util 层测试，**工具结果形态这一环无覆盖**。"
+      ],
+      "summary": [
+        "语义 shadow 补零证据编造档，岗位硬事实信号收拢单一定义",
+        "覆盖岗位硬事实信号",
+        "接回岗位事实共享信号",
+        "`shouldReview` 新增第五触发器 `hasUngroundedJobFactClaim`：`jobList` 证据存在但 `hasEvidence=false`，且回复含只可能来自工具的量化事实（距离 / 时薪 / 发薪日 / 班次时段）。",
+        "如实说「没查到岗位」**不触发**（正确口径不烧评审）；",
+        "本轮未查岗（无 `jobList` 字段）**不触发**（不误伤复述历史岗位）。",
+        "补 reviewer 指令：`hasEvidence=false` 下给出任何具体门店/距离/时薪/发薪日/班次/福利即判 `job_recommendation_not_best_supported`（高置信）。**没有这条，新触发器只会产出全 pass**——原指令只写了 `hasEvidence=true` 侧的读法。",
+        "岗位硬事实正则抽到 `job-fact-signals.util.ts` 单一定义，repair 回归闸与语义门控共用，避免口径漂移（回归闸行为不变，原正则等值迁移）。",
+        "锁死空召回读数不变量：`duliday_job_list` 空态 `isToolSuccess=false` + `status='empty'`——这是回归闸 `jobEvidenceAvailable` 判 `false` 的前提，此前只有 util 层测试，**工具结果形态这一环无覆盖**。"
+      ],
+      "features": [
+        "`shouldReview` 新增第五触发器 `hasUngroundedJobFactClaim`：`jobList` 证据存在但 `hasEvidence=false`，且回复含只可能来自工具的量化事实（距离 / 时薪 / 发薪日 / 班次时段）。"
+      ],
+      "fixes": [
+        "如实说「没查到岗位」**不触发**（正确口径不烧评审）；",
+        "本轮未查岗（无 `jobList` 字段）**不触发**（不误伤复述历史岗位）。",
+        "补 reviewer 指令：`hasEvidence=false` 下给出任何具体门店/距离/时薪/发薪日/班次/福利即判 `job_recommendation_not_best_supported`（高置信）。**没有这条，新触发器只会产出全 pass**——原指令只写了 `hasEvidence=true` 侧的读法。",
+        "岗位硬事实正则抽到 `job-fact-signals.util.ts` 单一定义，repair 回归闸与语义门控共用，避免口径漂移（回归闸行为不变，原正则等值迁移）。",
+        "锁死空召回读数不变量：`duliday_job_list` 空态 `isToolSuccess=false` + `status='empty'`——这是回归闸 `jobEvidenceAvailable` 判 `false` 的前提，此前只有 util 层测试，**工具结果形态这一环无覆盖**。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "语义 shadow 补零证据编造档，岗位硬事实信号收拢单一定义",
+        "覆盖岗位硬事实信号",
+        "接回岗位事实共享信号"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 `5968 passed / 0 failed`（378 suites）",
+        "`lint:check` / `format:check` / `typecheck` 全绿",
+        "新增 4 条 `shouldReview` 用例（两正两负）+ 1 条空召回读数不变量用例",
+        "原 `'jobs 为空且无 markdownExcerpt → 跳过'` 用例改写为「零证据 + 含时薪 → 触发」——它编码的正是本次要修的旧行为"
+      ]
     }
   ],
   "lastRelease": {
