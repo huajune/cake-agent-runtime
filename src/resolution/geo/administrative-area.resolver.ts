@@ -15,7 +15,7 @@ import {
 } from './administrative-division.data';
 import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
 import { NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE } from './administrative-division.generated';
-import { normalizeDistrictForLookup } from './geo-name.normalizer';
+import { normalizeCityName, normalizeDistrictForLookup } from './geo-name.normalizer';
 import { resolveCityFromLocation } from './place-alias.resolver';
 
 /**
@@ -81,6 +81,18 @@ export function resolveCityFromGeoSignals(
 export function detectGeoSignalConflict(
   districts: readonly string[] | null | undefined,
   locations: readonly string[] | null | undefined,
+  options?: {
+    /**
+     * 会话内已确立的城市。给出且命中某个候选时，判定为"已被已知城市裁决"——
+     * 返回值带 `adjudicatedByKnownCity`，消费方须视为**非真冲突**（见 §17.4.1）。
+     *
+     * 注意作用域：enforce 的落点 `backfillCityFromWhitelist` 仅在 city 为空时才运行，
+     * 那里天然拿不到已知城市，故本参数**对 enforce 无效**，只服务岗位工具侧的
+     * shadow 观测降噪。真正降低 enforce 误伤面的是脏别名清表
+     * （DIRTY_ALIAS_EXCLUSIONS + geo:validate 检查项 8）。
+     */
+    knownCity?: string | null;
+  },
 ): GeoSignalConflictShadow | null {
   const candidates: GeoSignalConflictShadow['candidates'] = [];
   const seenCities = new Set<string>();
@@ -100,7 +112,17 @@ export function detectGeoSignalConflict(
     push(resolveCityFromLocation(location), 'hotspot_alias', location);
   }
   if (candidates.length < 2) return null;
-  return { candidates, firstHitCity: candidates[0].city };
+
+  const knownCity = normalizeCityName(options?.knownCity);
+  const adjudicated = knownCity
+    ? candidates.find((candidate) => normalizeCityName(candidate.city) === knownCity)
+    : undefined;
+
+  return {
+    candidates,
+    firstHitCity: candidates[0].city,
+    ...(adjudicated ? { adjudicatedByKnownCity: adjudicated.city } : {}),
+  };
 }
 
 /**
