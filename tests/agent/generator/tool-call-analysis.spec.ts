@@ -379,6 +379,24 @@ describe('tool-call-analysis', () => {
       expect(isToolSuccess({ workOrderId: 456 })).toBe(true);
     });
 
+    // repair 回归闸的 jobEvidenceAvailable 依赖这条：agent-runner 的
+    // resolveJobEvidenceAvailability 用 isToolSuccess 兜底判"本轮是否拿到岗位证据"，
+    // 若空召回被读成 success，structure_collapsed 会把"删掉编造岗位"的正确改写误判
+    // 成结构塌缩并回退首版（2026-07-29 chat 6a68392b 已投递编造的完整成因）。
+    // 生产实测形态（batch_6a68392b…）：success:false + errorType:'job_list.no_results'。
+    it('treats an empty duliday_job_list result as non-success and status empty', () => {
+      const emptyJobList = {
+        success: false,
+        errorType: 'job_list.no_results',
+        _outcome: '未找到符合条件的岗位',
+        noMatchScript: '换个区域看看？',
+      };
+      expect(isToolSuccess(emptyJobList)).toBe(false);
+      expect(
+        computeToolCallStatus(emptyJobList, undefined, undefined, undefined, 'duliday_job_list'),
+      ).toBe('empty');
+    });
+
     it('does not treat zero workOrderId as success', () => {
       expect(isToolSuccess({ workOrderId: 0 })).toBe(false);
     });
@@ -447,7 +465,9 @@ describe('tool-call-analysis', () => {
     });
 
     it('returns undefined for success results (errorType null) so they carry no key', () => {
-      expect(extractToolErrorType({ success: true, errorType: null, workOrderId: 1 })).toBeUndefined();
+      expect(
+        extractToolErrorType({ success: true, errorType: null, workOrderId: 1 }),
+      ).toBeUndefined();
       expect(extractToolErrorType({ success: true })).toBeUndefined();
     });
 
@@ -470,7 +490,9 @@ describe('tool-call-analysis', () => {
     });
 
     it('returns undefined when apiCode is absent (request_failed / success)', () => {
-      expect(extractToolApiCode({ errorType: 'cancel.request_failed', reason: 'timeout' })).toBeUndefined();
+      expect(
+        extractToolApiCode({ errorType: 'cancel.request_failed', reason: 'timeout' }),
+      ).toBeUndefined();
       expect(extractToolApiCode({ success: true })).toBeUndefined();
       expect(extractToolApiCode({ apiCode: '' })).toBeUndefined();
       expect(extractToolApiCode(undefined)).toBeUndefined();

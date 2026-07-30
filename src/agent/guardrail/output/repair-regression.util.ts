@@ -1,3 +1,5 @@
+import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
+
 /**
  * 确定性 repair 回归检测（纯函数，零 LLM）。
  *
@@ -46,13 +48,6 @@ export interface RepairRegressionContext {
 /** 表单字段行：`姓名：` / `联系电话：13xxx` / `面试时间（…）：` 等短标签开头的行。 */
 const FORM_FIELD_LINE_PATTERN = /^[-•\s]*[^：:\n]{1,14}[：:]/u;
 
-/**
- * 岗位事实：距离/时薪/班次时段等硬数据。首版出现多处即认为在向候选人展示具体
- * 岗位内容（按次数统计，散文式与分行式同等达标，见 countJobFactOccurrences）。
- */
-const JOB_FACT_PATTERN =
-  /\d+(?:\.\d+)?\s*(?:公里|km|KM)|\d+\s*元\/(?:小?时|天|月)|\d{1,2}[:：]\d{2}\s*[-—~至]\s*\d{1,2}[:：]\d{2}/u;
-
 /** 无岗断言：修复版声称附近/该区域没有（在招）岗位。 */
 const NO_JOB_CLAIM_PATTERN =
   /(?:没找到|没查到|未找到|找不到|暂时?没有|暂无)[^。！？!?\n]{0,12}(?:岗位|工作|在招)|(?:岗位|工作)[^。！？!?\n]{0,8}(?:没有|暂无|没找到|没查到)/u;
@@ -66,7 +61,7 @@ function splitLines(text: string): string[] {
 
 function countStructuredLines(text: string): number {
   return splitLines(text).filter(
-    (line) => FORM_FIELD_LINE_PATTERN.test(line) || JOB_FACT_PATTERN.test(line),
+    (line) => FORM_FIELD_LINE_PATTERN.test(line) || QUANTIFIED_JOB_FACT_PATTERN.test(line),
   ).length;
 }
 
@@ -79,7 +74,7 @@ function countStructuredLines(text: string): number {
  * 两个检测器都没拦住并已投递。改为全局计数后，散文与分行结构同等达标。
  */
 function countJobFactOccurrences(text: string): number {
-  return text.match(new RegExp(JOB_FACT_PATTERN, 'gu'))?.length ?? 0;
+  return text.match(new RegExp(QUANTIFIED_JOB_FACT_PATTERN, 'gu'))?.length ?? 0;
 }
 
 /** 日期+星期标注：`7月28日（周二）` / `7 月 28 日（星期二）`。捕获组：月、日、星期字。 */
