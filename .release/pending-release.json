@@ -115,6 +115,35 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "847",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/847",
+      "title": "修复治理文档同步从未触发与删列后的关闭死锁",
+      "author": "huajune",
+      "mergedAt": "2026-07-30",
+      "businessUpdates": [
+        "修复治理文档同步从未触发与删列后的关闭死锁",
+        "Merge develop and resolve badcase governance SOP"
+      ],
+      "summary": [
+        "修复治理文档同步从未触发与删列后的关闭死锁",
+        "Merge develop and resolve badcase governance SOP"
+      ],
+      "features": [],
+      "fixes": [
+        "修复治理文档同步从未触发与删列后的关闭死锁",
+        "Merge develop and resolve badcase governance SOP"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run lint:check` / `pnpm run typecheck` 通过",
+        "`pnpm exec jest --watchman=false` 全量 **380 suites / 5982 passed**",
+        "新增 18 条针对性用例：证据反查（双侧通过/单侧 partial/最近批次失败/同批 pending/不串其他 recordId/异常降级）、统计刷新（改对六块/不误伤流水/无数字不写/dry-run/稳定 eventId 幂等）、删列后的关闭判定三态"
+      ]
     }
   ],
   "lastRelease": {
