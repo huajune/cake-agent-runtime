@@ -637,14 +637,22 @@ export function buildInterviewPrecheckTool(
         // 此时不打 sponge 接口、也不回 job_not_found（"未找到岗位"会被模型脑补成"岗位下架了"，
         // 进而沿错误叙事继续推进），直接要求先 duliday_job_list 召回拿真实 jobId。
         if (context.isRecalledJobId && !context.isRecalledJobId(jobId)) {
+          // 闸门有两种触发情形，话术必须分开：会话零召回 vs 已召回但这个 jobId 不在其中。
+          // 后者若沿用"还没召回过任何岗位"的措辞，是在对模型说假话（它确实召回过），
+          // 且不给出合法 jobId，模型只能再猜一个。
+          const recalled = context.recalledJobIds ?? [];
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED,
             outcome: '前置校验拦截（jobId 无召回出处）',
             replyInstruction:
-              '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 precheck。' +
-              '先和候选人确认意向品牌/城市/门店，调 duliday_job_list 召回岗位，再用召回结果里的真实 jobId 调本工具。' +
+              (recalled.length === 0
+                ? '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 precheck。' +
+                  '先和候选人确认意向品牌/城市/门店，调 duliday_job_list 召回岗位，再用召回结果里的真实 jobId 调本工具。'
+                : `当前 jobId=${jobId} 不在本会话召回过的岗位里，禁止使用。` +
+                  `本会话合法的 jobId 只有：${recalled.join('、')}——请从中选择候选人当前在聊的那个重调本工具；` +
+                  '都不是候选人要的就先调 duliday_job_list 重新召回，不要自己改数字试。') +
               '严禁凭印象或历史拼 jobId，也严禁把候选人姓名/电话/年龄等字段编造进来——这些只能来自候选人本轮亲口提供。',
-            details: { jobId },
+            details: { jobId, recalledJobIds: recalled },
           });
         }
 
@@ -665,12 +673,19 @@ export function buildInterviewPrecheckTool(
 
           const job = jobs[0];
           if (!job?.basicInfo) {
+            // 岗位已失效（下架/满员）。同步从会话记忆剔除，否则它仍留在
+            // presentedJobs/currentFocusJob 里，下一轮又被喂回来重试——badcase chat
+            // 6a685393 就是同一个 jobId 连撞 3 轮 job_not_found 后转人工。
+            context.onJobInvalidated?.(jobId);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
-              outcome: '前置校验失败（未找到岗位）',
+              outcome: '前置校验失败（岗位已失效）',
               replyInstruction:
-                '当前 jobId 对应的岗位查不到。先用 duliday_job_list 重新核对岗位状态；' +
-                '不要透露 jobId 或接口细节给候选人。',
+                `jobId=${jobId} 这个岗位已经查不到（下架或名额已满），已从会话岗位记忆中移除。` +
+                '**禁止再用同一个 jobId 重试本工具**——重试结果必然相同。' +
+                '改用 duliday_job_list 重新召回可选岗位；召回为空时按拉群优先阶梯兜底，' +
+                '不要对候选人复读"没有"。不要透露 jobId 或接口细节给候选人，也不要说"岗位下架了"' +
+                '之类未经确认的结论，只说这家目前排不上、换一家看看。',
               details: { jobId, detailedReason: `未找到 jobId=${jobId} 对应的岗位` },
             });
           }

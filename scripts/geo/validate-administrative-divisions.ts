@@ -10,7 +10,9 @@
  *  6. 区名表键的全国唯一性：对照 areas.json，跨城重名键必须在
  *     BUSINESS_BIASED_SUBDIVISION_ALIASES 登记（业务偏置显式化，防静默误判）；
  *  7. 余姚防线：全国显式城市表中属于业务城市辖下的县级市，必须已补录县级市映射
- *     或在 DEFERRED_COUNTY_BACKFILL 登记（登记冗余同样报错，防补录后忘清）。
+ *     或在 DEFERRED_COUNTY_BACKFILL 登记（登记冗余同样报错，防补录后忘清）；
+ *  8. 脏别名排除表守门：DIRTY_ALIAS_EXCLUSIONS 登记的键不得出现在区名表/地标表
+ *     （跨层级同形与泛词，areas.json 只到区县级看不见，靠人工登记 + 本项防回填）。
  */
 
 import { readFileSync } from 'fs';
@@ -23,6 +25,7 @@ import { NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE } from '../../src/resolution/g
 import {
   BUSINESS_BIASED_SUBDIVISION_ALIASES,
   DEFERRED_COUNTY_BACKFILL,
+  DIRTY_ALIAS_EXCLUSIONS,
   VENDOR_NAME_OVERRIDES,
 } from '../../src/resolution/geo/administrative-division.overrides';
 import { NATIONAL_CITY_SUFFIX_TO_CITY } from '../../src/resolution/geo/explicit-city.data';
@@ -128,15 +131,20 @@ const cities = JSON.parse(readFileSync(join(__dirname, 'data/cities.json'), 'utf
 }>;
 const cityNameByCode = new Map(cities.map((city) => [city.code, city.name]));
 for (const key of Object.keys(UNIQUE_SUBDIVISION_TO_CITY)) {
-  const parentCities = new Set<string>();
+  // 按 cityCode 而非城市名去重：直辖市在 cities.json 里名字统一是"市辖区"，
+  // 若按名字去重，两个直辖市共享同一区名会塌缩成 1 个、让跨城重名静默过关。
+  // （当前数据集实算 0 例，属防御性加固；城市名仅用于报错可读性。）
+  const parentCityCodes = new Set<string>();
+  const parentCityNames = new Set<string>();
   for (const area of areas) {
     if (area.name === key || normalizeDistrictForLookup(area.name) === key) {
-      parentCities.add(cityNameByCode.get(area.cityCode) ?? area.cityCode);
+      parentCityCodes.add(area.cityCode);
+      parentCityNames.add(cityNameByCode.get(area.cityCode) ?? area.cityCode);
     }
   }
   check(
-    parentCities.size <= 1 || BUSINESS_BIASED_SUBDIVISION_ALIASES.has(key),
-    `区名「${key}」全国跨城重名（${[...parentCities].join('/')}）但未登记 BUSINESS_BIASED_SUBDIVISION_ALIASES`,
+    parentCityCodes.size <= 1 || BUSINESS_BIASED_SUBDIVISION_ALIASES.has(key),
+    `区名「${key}」全国跨城重名（${[...parentCityNames].join('/')}）但未登记 BUSINESS_BIASED_SUBDIVISION_ALIASES`,
   );
 }
 for (const key of BUSINESS_BIASED_SUBDIVISION_ALIASES) {
@@ -165,6 +173,18 @@ for (const [countyWithSuffix, parent] of Object.entries(NATIONAL_COUNTY_LEVEL_CI
   );
 }
 
+// 8. 脏别名排除表守门：登记为"刻意不收"的键不得被回填进区名表/地标表
+for (const [alias, reason] of DIRTY_ALIAS_EXCLUSIONS) {
+  check(
+    !(alias in UNIQUE_SUBDIVISION_TO_CITY),
+    `脏别名「${alias}」已登记 DIRTY_ALIAS_EXCLUSIONS（刻意不收）但出现在 UNIQUE_SUBDIVISION_TO_CITY：${reason}`,
+  );
+  check(
+    !(alias in UNIQUE_PLACE_ALIAS_TO_CITY),
+    `脏别名「${alias}」已登记 DIRTY_ALIAS_EXCLUSIONS（刻意不收）但出现在 UNIQUE_PLACE_ALIAS_TO_CITY：${reason}`,
+  );
+}
+
 if (errors.length > 0) {
   // eslint-disable-next-line no-console
   console.error(`geo:validate 失败（${errors.length} 项）：`);
@@ -175,4 +195,4 @@ if (errors.length > 0) {
   process.exit(1);
 }
 // eslint-disable-next-line no-console
-console.log('geo:validate 通过（7 类检查全绿）');
+console.log('geo:validate 通过（8 类检查全绿）');

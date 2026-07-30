@@ -549,6 +549,55 @@ export class SessionService {
     });
   }
 
+  /**
+   * 把工具已判定失效（海绵查不到：下架/满员）的岗位从会话岗位记忆里剔除。
+   *
+   * 覆盖 lastCandidatePool / presentedJobs / currentFocusJob 三处——它们同时是
+   * 下一轮 prompt 的岗位来源与 precheck/booking 的 jobId provenance 集，漏掉任一处
+   * 死岗位就会被重新喂给模型。
+   *
+   * 背景（badcase chat 6a685393，jobId 528572）：岗位失效后仍留在记忆中，模型连续
+   * 3 轮拿同一 jobId 重试 precheck，每轮都 job_not_found，最终转人工。
+   *
+   * @returns 实际被移除的 jobId（用于观测；空数组表示记忆里本就没有它们）
+   */
+  async dropInvalidatedJobs(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    jobIds: number[],
+  ): Promise<number[]> {
+    if (jobIds.length === 0) return [];
+
+    const dead = new Set(jobIds);
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    const removed = new Set<number>();
+
+    const prune = (jobs: RecommendedJobSummary[] | null | undefined) => {
+      const kept = (jobs ?? []).filter((job) => {
+        if (!dead.has(job.jobId)) return true;
+        removed.add(job.jobId);
+        return false;
+      });
+      return { kept, changed: kept.length !== (jobs ?? []).length };
+    };
+
+    const candidatePool = prune(state.lastCandidatePool);
+    const presented = prune(state.presentedJobs);
+    const focusIsDead = state.currentFocusJob ? dead.has(state.currentFocusJob.jobId) : false;
+    if (focusIsDead && state.currentFocusJob) removed.add(state.currentFocusJob.jobId);
+
+    if (!candidatePool.changed && !presented.changed && !focusIsDead) return [];
+
+    await this.patchSessionState(corpId, userId, sessionId, {
+      ...(candidatePool.changed ? { lastCandidatePool: candidatePool.kept } : {}),
+      ...(presented.changed ? { presentedJobs: presented.kept } : {}),
+      ...(focusIsDead ? { currentFocusJob: null } : {}),
+    });
+
+    return [...removed];
+  }
+
   async saveCurrentFocusJob(
     corpId: string,
     userId: string,
@@ -1516,6 +1565,11 @@ export class SessionService {
     if (facts.preferences.city) return facts;
     // 冲突 shadow（方案 §8.2 / Phase 3）：多信号指向不同城市时现行先命中先赢；
     // 落库观测走岗位工具 queryMeta.geoSignalConflictShadow，这里仅辅助定位。
+    //
+    // 不传 knownCity：本方法在 L1 已对 facts.preferences.city 非空早返回，走到这里
+    // city 必为空，已知城市裁决在此天然无从谈起。这也意味着 enforce（本方法是其落点）
+    // 无法靠"已知城市裁决"降低误伤面——真正的防线是脏别名清表
+    // （DIRTY_ALIAS_EXCLUSIONS + geo:validate 检查项 8），见方案 §17.4.1。
     const conflictShadow = detectGeoSignalConflict(
       facts.preferences.district,
       facts.preferences.location,

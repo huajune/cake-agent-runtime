@@ -82,6 +82,14 @@ export interface GeoSignalConflictShadow {
   }>;
   /** 现行先命中先赢实际采用的城市（= candidates[0].city），证明行为未变。 */
   firstHitCity: string;
+  /**
+   * 候选歧义已被"会话内已确立城市"裁决 → **不构成真冲突**，enforce 不得据此拦截。
+   *
+   * 典型形态是同形地名噪音：一个地址被拆成两城（"北京市房山区长阳镇" → 北京+宜昌）。
+   * 仍返回非 null 是为了让消解次数可观测（否则裁决掉的样本在 GeoQueryMeta 里消失，
+   * 无法回答"清表/消解到底救了多少次"）；消费方按本字段存在与否区分噪音与真冲突。
+   */
+  adjudicatedByKnownCity?: string;
 }
 
 /** 白名单最长优先扫描的单次命中。 */

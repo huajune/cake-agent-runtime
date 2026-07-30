@@ -47,6 +47,11 @@ export interface MemoryLifecycleTurnContext {
   imageBrandResolutions?: BrandResolution[] | null;
   /** 本轮 geocode unique 解析确权的城市；回合结束写入 pref.city（source='tool'）。 */
   cityAttestation?: CityAttestation | null;
+  /**
+   * 本轮工具判定失效（海绵查不到）的 jobId；回合结束从会话岗位记忆剔除，
+   * 避免下一轮模型又从记忆取到死岗位重试 precheck（badcase chat 6a685393）。
+   */
+  invalidatedJobIds?: number[] | null;
 }
 
 interface StepOutcome<T = void> {
@@ -476,6 +481,23 @@ export class MemoryLifecycleService {
       steps.push(
         this.buildSkippedStep('project_assistant_turn', '本轮没有 assistantText，跳过岗位记忆投影'),
       );
+    }
+
+    // 死岗位剔除：必须排在 save_candidate_pool 与 project_assistant_turn 之后——
+    // 前者刚写入本轮候选池、后者会依据回复文本重设 currentFocusJob，若先剔除，
+    // 这两步会把同一个死岗位重新写回记忆，下一轮模型照样取到它重试。
+    if (ctx.invalidatedJobIds?.length) {
+      const dropResult = await this.runMeasuredStep('drop_invalidated_jobs', async () => {
+        return await this.session.dropInvalidatedJobs(
+          ctx.corpId,
+          ctx.userId,
+          ctx.sessionId,
+          ctx.invalidatedJobIds ?? [],
+        );
+      });
+      steps.push(dropResult.step);
+    } else {
+      steps.push(this.buildSkippedStep('drop_invalidated_jobs', '本轮没有失效岗位需要剔除'));
     }
 
     // 工具确权城市入档（候选人资料证据化 A1）：排在 extract_facts 之前——若本轮候选人

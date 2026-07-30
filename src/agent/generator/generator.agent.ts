@@ -356,6 +356,7 @@ export class GeneratorAgent {
         imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
         jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
         cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
+        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
       };
     },
     assistantText?: string,
@@ -373,6 +374,7 @@ export class GeneratorAgent {
         imageBrandResolutions: ctx.turnState.imageBrandResolutions,
         jobListQuerySignature: ctx.turnState.jobListQuerySignature,
         cityAttestation: ctx.turnState.cityAttestation,
+        invalidatedJobIds: ctx.turnState.invalidatedJobIds,
       },
       assistantText,
     );
@@ -394,6 +396,7 @@ export class GeneratorAgent {
         imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
         jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
         cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
+        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
       };
     },
     assistantText?: string,
@@ -421,6 +424,7 @@ export class GeneratorAgent {
         imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
         jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
         cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
+        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
       };
     },
     messageId: string | undefined,

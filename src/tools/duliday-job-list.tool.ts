@@ -1598,6 +1598,9 @@ export function buildJobListTool(
           }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;
+          const knownCityFactValue = readFactValue(context.sessionFacts?.preferences?.city);
+          const knownCityForConflict =
+            typeof knownCityFactValue === 'string' ? knownCityFactValue : null;
           result.queryMeta = {
             storeMatchStrategy,
             jobCategoryMatchStrategy,
@@ -1634,9 +1637,12 @@ export function buildJobListTool(
             // 地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）：会话事实的多个
             // 地理信号指向不同城市时记录"本应 ambiguous"案例，仅观测不干预——
             // 现行先命中先赢行为不变；enforce 需 shadow 观测 1~2 周后人工决策（§17.4）。
+            // 传已确立会话城市做候选裁决：命中即打 adjudicatedByKnownCity，标记为
+            // 同形地名一类噪音而非真冲突（§17.4.1），让 shadow 累计能分开两者。
             geoSignalConflictShadow: detectGeoSignalConflict(
               context.sessionFacts?.preferences?.district ?? null,
               context.sessionFacts?.preferences?.location ?? null,
+              { knownCity: knownCityForConflict },
             ),
             distanceThresholdKm: maxKm ?? null,
             distanceScanPages,

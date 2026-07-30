@@ -1644,6 +1644,35 @@ describe('HardRulesService', () => {
       },
     );
 
+    // 2026-07-30 审计 P1-5：暑假工身份属于第三方时豁免——候选人本人谈的仍是常规岗位，
+    // 生产实例 …_1785209582843 因误判把候选人的两个提问与本人岗位线索一并抹掉。
+    it('exempts turns where the summer-worker subject is a third party', () => {
+      const result = service.check({
+        replyText:
+          '暑假工的话附近暂时没有合适的岗位，妹妹这边先安排不了。你自己找常规兼职的话，这个前厅岗位可以继续约，要不要把资料发我登记一下？',
+        toolCalls: [summerWorkerEmptyToolCall],
+        userMessage: '你这个兼职需要多少人？我妹妹也可以过去做 只不过她暑假工',
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'summer_worker_alternative_upsell',
+      );
+    });
+
+    it('still fires when the candidate themselves wants a summer job', () => {
+      const result = service.check({
+        replyText: '暑假工暂时没有，要不要考虑普通兼职？',
+        toolCalls: [summerWorkerEmptyToolCall],
+        userMessage: '我是学生，只做暑假工',
+        silent: true,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'summer_worker_alternative_upsell',
+      );
+    });
+
     it('allows the direct summer-worker rejection', () => {
       const result = service.check({
         replyText: '抱歉，你附近暂时没有合适的暑假工岗位。',
@@ -2366,6 +2395,62 @@ describe('HardRulesService', () => {
         _confirmedInterviewTimeHuman: '6 月 18 号（周四）上午 10 点',
       },
     };
+
+    // 形态 C（2026-07-30 审计 P1-7）：booking 失败却宣称正在/已经提交。
+    const failedBooking = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 527344 },
+      status: 'error' as const,
+      result: { success: false },
+    };
+
+    it('revises when booking failed but reply claims it is being submitted (…_1785332310556)', () => {
+      const result = service.check({
+        replyText: '好的，信息都收到啦，我现在帮你提交两家门店的面试预约',
+        toolCalls: [failedBooking],
+        userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      // 失败路径必须带自己的 feedback，不能复用"本轮预约已真实提交成功"的成功路径口径
+      expect(hit?.feedbackToGenerator).toContain('并未提交成功');
+      expect(hit?.feedbackToGenerator).not.toContain('已真实提交成功');
+    });
+
+    it('revises when booking failed but reply claims completion', () => {
+      const result = service.check({
+        replyText: '已经帮你约好啦，等通知就行',
+        toolCalls: [failedBooking],
+        userMessage: '好的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it('passes when the failure is disclosed honestly', () => {
+      const result = service.check({
+        replyText: '不好意思，这次预约没提交成功，我重新帮你试一下',
+        toolCalls: [failedBooking],
+        userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('passes when no booking was attempted at all', () => {
+      const result = service.check({
+        replyText: '好的，我现在帮你提交预约',
+        toolCalls: [],
+        userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
 
     it('revises when reply still asks which day after a committed booking (RT-016 shape)', () => {
       const result = service.check({
