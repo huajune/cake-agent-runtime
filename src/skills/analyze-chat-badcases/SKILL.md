@@ -433,6 +433,13 @@ BadCase 状态只保留 4 个运营可判断状态：
 - 历史证据批量回填必须关闭文档同步，避免把清账脚本展开成大量伪“新进展”
 - 文档同步失败不能回滚已经成功的 BadCase 状态，但必须在日志与最终报告中明确暴露
 
+**生产已配置完毕（2026-07-29 起）**：运行容器已加载
+`FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN` 与
+`BADCASE_GOVERNANCE_DOC_SYNC_ENABLED=true`。要复核可调用
+`POST /feishu/sync/badcase-governance/document-check`（只读，返回
+title/blockCount/insertionIndex）。不要把它当成“尚未启用”而跳过本步，也不要在文档、
+日志或代码中记录 token 值。
+
 **只能有一个写入口。** 三条路径按场景选一条，同一批变更绝不能既走接口又手写——事件 ID 命名不同不会互相去重，会追加出重复小节：
 
 | 场景 | 入口 | 事件 ID |

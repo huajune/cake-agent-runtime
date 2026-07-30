@@ -943,7 +943,9 @@ describe('SessionService', () => {
       );
     });
 
-    it('rejects phone upgrade when value is not a valid mobile number', async () => {
+    // 形态门（badcase 2026-07-29）上线后，非手机号形态不再"降级保留"而是整字段丢弃：
+    // 座机/垃圾值对 precheck/booking/预填都无用，留着只会被预填进收资表。
+    it('drops phone entirely when value is not a valid mobile number', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(
         mockStructured(
@@ -955,8 +957,7 @@ describe('SessionService', () => {
         { role: 'user', content: '电话 021-1234567' },
       ]);
 
-      const info = savedInterviewInfo();
-      expect(info.phone).toEqual(expect.objectContaining({ confidence: 'medium', source: 'llm' }));
+      expect(savedInterviewInfo().phone).toBeNull();
     });
 
     it('marks gender_source candidate alongside gender upgrade', async () => {
@@ -972,6 +973,78 @@ describe('SessionService', () => {
       const info = savedInterviewInfo();
       expect(info.gender).toEqual(expect.objectContaining({ confidence: 'high' }));
       expect(info.gender_source).toEqual(expect.objectContaining({ value: 'candidate' }));
+    });
+  });
+
+  // badcase 2026-07-29 chat 6a69674e…（昵称"18"）/ 6a69790b…（昵称"100％"）：抽取模型在
+  // reasoning 自证"用户没有提供其它信息，所有字段均省略"的同一次输出里，写下整套臆造档案，
+  // 随后经 [已确认事实] 全程沿用（脏 phone/健康证/门店在会话里活了一整天）。
+  describe('臆造档案字段门（badcase 2026-07-29）', () => {
+    const llmOutput = (info: Partial<EntityExtractionResult['interview_info']>) => ({
+      ...FALLBACK_EXTRACTION,
+      interview_info: { ...FALLBACK_EXTRACTION.interview_info, ...info },
+      explicit_provenance: null,
+      reasoning: '用户说"我是18"是打招呼语，用户没有提供其他任何信息，因此所有字段均省略',
+    });
+
+    const savedInterviewInfo = () => {
+      const saved = mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as {
+        facts: { interview_info: Record<string, { value: unknown } | null> };
+      };
+      return saved.facts.interview_info;
+    };
+
+    it('生产复现：昵称"18"轮的整套臆造字段全部丢弃', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutput({
+            name: '我是18',
+            phone: '18',
+            has_health_certificate: '有',
+            applied_store: '人民广场店',
+            household_register_province: '江苏',
+          }),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我是18' },
+      ]);
+
+      const info = savedInterviewInfo();
+      expect(info.name).toBeNull();
+      expect(info.phone).toBeNull();
+      expect(info.has_health_certificate).toBeNull();
+      expect(info.applied_store).toBeNull();
+      expect(info.household_register_province).toBeNull();
+    });
+
+    it('有出处的合法提取不受影响（助手推荐过的门店 + 谈过健康证）', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutput({
+            phone: '18271421690',
+            has_health_certificate: '有',
+            applied_store: '东方渔人码头店',
+          }),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '想去这家' },
+        {
+          role: 'assistant',
+          content: '离你最近的是成都你六姐（东方渔人码头店），入职前要办食品健康证',
+        },
+        { role: 'user', content: '健康证我有，电话 18271421690' },
+      ]);
+
+      const info = savedInterviewInfo();
+      expect(info.phone).toEqual(expect.objectContaining({ value: '18271421690' }));
+      expect(info.has_health_certificate).toEqual(expect.objectContaining({ value: '有' }));
+      expect(info.applied_store).toEqual(expect.objectContaining({ value: '东方渔人码头店' }));
     });
   });
 
