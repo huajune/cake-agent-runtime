@@ -1,9 +1,12 @@
 import {
   assertExtractionIdentityProvenance,
   assertNoExtractionExampleEcho,
+  hasFieldProvenanceInWindow,
+  hasHealthCertificateTopicEvidence,
   hasIsStudentTopicEvidence,
   isPlaceholderPhone,
   isPromptExampleName,
+  isStorableCandidatePhone,
 } from '@memory/facts/placeholder-identity';
 
 describe('isPlaceholderPhone', () => {
@@ -193,6 +196,76 @@ describe('hasIsStudentTopicEvidence（is_student 首写证据门，badcase 6a673
   it('时间戳后缀不干扰词汇识别', () => {
     expect(hasIsStudentTopicEvidence(['不是学生\n[消息发送时间：2026-07-27 18:49 星期一]'], [])).toBe(
       true,
+    );
+  });
+});
+
+// —— badcase 2026-07-29 chat 6a69674e…（昵称"18"）/ 6a69790b…（昵称"100％"）——————
+// 抽取模型在 reasoning 自证"所有字段均省略"的同一次输出里写下整套臆造档案。
+
+describe('isStorableCandidatePhone', () => {
+  it.each(['13800138000', '15914396033', '158 8726 5838'])('11 位手机号形态放行 %s', (phone) => {
+    expect(isStorableCandidatePhone(phone)).toBe(true);
+  });
+
+  it.each(['18', '100％', '', null, undefined, '021-88886666', '1234567890'])(
+    '非 11 位手机号形态拒绝 %s',
+    (phone) => {
+      expect(isStorableCandidatePhone(phone)).toBe(false);
+    },
+  );
+});
+
+describe('hasFieldProvenanceInWindow', () => {
+  it('候选人原文出现过即有出处', () => {
+    expect(hasFieldProvenanceInWindow('鼓楼', ['我在南京鼓楼区'])).toBe(true);
+  });
+
+  it('助手推荐过的门店名算出处（applied_store 合法来源之一）', () => {
+    expect(
+      hasFieldProvenanceInWindow('大运天地店', ['1', 'M Stand-深圳大运天地店（距离约3.2km）']),
+    ).toBe(true);
+  });
+
+  it('括号/空格包装差异不影响命中', () => {
+    expect(
+      hasFieldProvenanceInWindow('东方渔人码头店', ['成都你六姐（东方渔人码头店），0.9公里']),
+    ).toBe(true);
+  });
+
+  it('窗口里没出现过的示例值判无出处', () => {
+    expect(hasFieldProvenanceInWindow('人民广场店', ['浑南', '我是18'])).toBe(false);
+    expect(hasFieldProvenanceInWindow('江苏', ['我是18', '我25'])).toBe(false);
+  });
+
+  it('过短值不参与出处判定（避免单字噪音）', () => {
+    expect(hasFieldProvenanceInWindow('有', ['随便什么都行'])).toBe(true);
+  });
+});
+
+describe('hasHealthCertificateTopicEvidence', () => {
+  it.each(['我有健康证', '健康证还没办', '需要体检吗'])('候选人提过即有证据：%s', (text) => {
+    expect(hasHealthCertificateTopicEvidence([text], [])).toBe(true);
+  });
+
+  it('助手告知过健康证要求即有证据', () => {
+    expect(hasHealthCertificateTopicEvidence(['好的'], ['这些岗位都要求入职前办食品健康证'])).toBe(
+      true,
+    );
+  });
+
+  it('全程没谈过健康证时无证据（臆造 has_health_certificate="有" 的实际语境）', () => {
+    expect(
+      hasHealthCertificateTopicEvidence(
+        ['我是18', '浑南'],
+        ['你大概在哪个区或者商圈呀？我帮你看看附近有没有合适的岗位'],
+      ),
+    ).toBe(false);
+  });
+
+  it('引用块里的健康证不算候选人谈过', () => {
+    expect(hasHealthCertificateTopicEvidence(['[引用 祝东升：需要办健康证]\n好的'], [])).toBe(
+      false,
     );
   });
 });
