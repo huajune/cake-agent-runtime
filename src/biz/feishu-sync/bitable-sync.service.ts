@@ -11,7 +11,9 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 import { FeedbackSourceTraceService } from './feedback-source-trace.service';
 import {
   BadcaseEvidenceUpdate,
+  BadcaseEvidenceLedger,
   BadcasePriority,
+  createEmptyBadcaseEvidenceLedger,
   getLatestBadcaseEvidence,
   mergeBadcaseEvidence,
   parseBadcaseEvidenceLedger,
@@ -19,6 +21,7 @@ import {
 import {
   BadcaseGovernanceDocumentItem,
   BadcaseGovernanceDocumentService,
+  BadcaseOpenCounts,
 } from './badcase-governance-document.service';
 
 /**
@@ -475,6 +478,12 @@ export class FeishuBitableSyncService {
       batchId?: string;
       summary?: string;
       evidence?: BadcaseEvidenceUpdate;
+      /**
+       * 调用方从生产库反推出的证据台账（真相源）。
+       * 飞书的「测试证据JSON」列存在时以列为准并继续写列；列被删时用它兜底，
+       * 这样双门禁不依赖飞书表结构，2026-07-29 删列后的关闭死锁才解得开。
+       */
+      ledger?: BadcaseEvidenceLedger;
     }>,
     options: { syncGovernanceDocument?: boolean } = {},
   ): Promise<{ success: number; failed: number; errors: string[] }> {
@@ -570,9 +579,20 @@ export class FeishuBitableSyncService {
         const fields: Record<string, unknown> = {};
         let currentRecordFields: Record<string, unknown> = {};
         if (evidenceUpdates.length > 0 && !evidenceJsonField) {
-          const latestEvidence = evidenceUpdates[evidenceUpdates.length - 1];
-          derivedStatus = latestEvidence.reviewStatus === 'pending' ? '处理中' : '待验证';
-          this.logger.warn(`[BadcaseStatus] ${recordId} 缺少测试证据JSON字段，禁止按单批次关闭`);
+          // 飞书列缺失时改用调用方给的生产库台账；两者都没有才退回"不许关闭"的保守档
+          let ledger = item.ledger;
+          for (const evidence of evidenceUpdates) {
+            ledger = mergeBadcaseEvidence(ledger ?? createEmptyBadcaseEvidenceLedger(), evidence);
+          }
+          if (ledger) {
+            derivedStatus = this.deriveStatusFromLedger(ledger);
+          } else {
+            const latestEvidence = evidenceUpdates[evidenceUpdates.length - 1];
+            derivedStatus = latestEvidence.reviewStatus === 'pending' ? '处理中' : '待验证';
+            this.logger.warn(
+              `[BadcaseStatus] ${recordId} 既无测试证据JSON列也无生产库台账，禁止按单批次关闭`,
+            );
+          }
         }
         if (evidenceUpdates.length > 0 && evidenceJsonField) {
           const record = await this.bitableApi.getRecord(
@@ -585,12 +605,7 @@ export class FeishuBitableSyncService {
           for (const evidence of evidenceUpdates) {
             ledger = mergeBadcaseEvidence(ledger, evidence);
           }
-          derivedStatus =
-            ledger.overallStatus === 'passed'
-              ? '已解决'
-              : ledger.overallStatus === 'pending'
-                ? '处理中'
-                : '待验证';
+          derivedStatus = this.deriveStatusFromLedger(ledger);
           const scenario = getLatestBadcaseEvidence(ledger, 'scenario');
           const conversation = getLatestBadcaseEvidence(ledger, 'conversation');
           fields[evidenceJsonField] = JSON.stringify(ledger);
@@ -708,14 +723,56 @@ export class FeishuBitableSyncService {
     ) {
       const documentResult = await this.governanceDocumentService.appendUpdate({
         items: documentItems,
+        summaryCounts: await this.countOpenBadcases().catch((error: unknown) => {
+          this.logger.warn(
+            `[BadcaseStatus] 未解决数统计失败，本次跳过治理文档数字刷新: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return undefined;
+        }),
       });
       if (!documentResult.success) {
         this.logger.warn(
           `[BadcaseStatus] 状态已回写，但治理文档同步失败: ${documentResult.error || '未知错误'}`,
         );
       }
+      if (documentResult.summary?.error) {
+        this.logger.warn(
+          `[BadcaseStatus] 治理文档已追加，但统计数字刷新失败: ${documentResult.summary.error}`,
+        );
+      }
     }
     return { success, failed, errors };
+  }
+
+  /** 双门禁：两侧最近证据都通过才允许关闭，任一侧待评审归处理中，其余归待验证 */
+  private deriveStatusFromLedger(ledger: BadcaseEvidenceLedger): BadcaseDerivedStatus {
+    if (ledger.overallStatus === 'passed') return '已解决';
+    if (ledger.overallStatus === 'pending') return '处理中';
+    return '待验证';
+  }
+
+  /**
+   * 统计 BadCase 表当前未解决数（待分析 / 处理中 / 待验证）。
+   * 治理文档「一、整体进展」「五、当前剩余问题」的数字以此为准。
+   */
+  async countOpenBadcases(): Promise<BadcaseOpenCounts> {
+    const tableConfig = this.bitableApi.getTableConfig('badcase');
+    if (!tableConfig.appToken || !tableConfig.tableId) {
+      throw new Error('badcase 表配置不完整');
+    }
+    const [待分析, 处理中, 待验证] = await Promise.all(
+      (['待分析', '处理中', '待验证'] as const).map((status) =>
+        this.bitableApi.countRecordsByFieldValue(
+          tableConfig.appToken,
+          tableConfig.tableId,
+          '状态',
+          status,
+        ),
+      ),
+    );
+    return { 待分析, 处理中, 待验证 };
   }
 
   async ensureBadcaseGovernanceFields(apply = false): Promise<{
