@@ -416,9 +416,13 @@ export function buildInterviewBookingTool(
               outcome: '预约拦截（jobId 无召回出处）',
               replyInstruction:
                 'runtime 已短路本轮，禁止继续生成回复或调用其他工具；该会话需要人工确认 jobId 来源。' +
-                '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 booking。' +
+                ((context.recalledJobIds ?? []).length === 0
+                  ? '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 booking。'
+                  : `当前 jobId=${jobId} 不在本会话召回过的岗位里（合法的只有：${(
+                      context.recalledJobIds ?? []
+                    ).join('、')}），禁止凭空 booking。`) +
                 '先调 duliday_job_list 召回岗位拿真实 jobId，再走 duliday_interview_precheck，nextAction=ready_to_book 后才能调本工具。',
-              details: { jobId },
+              details: { jobId, recalledJobIds: context.recalledJobIds ?? [] },
             }),
             shortCircuited: true,
             gateRejected: true,
@@ -673,14 +677,17 @@ export function buildInterviewBookingTool(
 
           const job = jobs[0];
           if (!job?.basicInfo) {
+            // 与 precheck 同口径：岗位已失效，同步从会话记忆剔除，避免下一轮重试死岗位。
+            context.onJobInvalidated?.(jobId);
             return markBookingFailed(
               context,
               buildToolError({
                 errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_FOUND,
-                outcome: '预约失败（未找到岗位）',
+                outcome: '预约失败（岗位已失效）',
                 replyInstruction:
-                  '当前 jobId 对应的岗位查不到。用招募者口吻安抚"我帮你查下这家店"，' +
-                  '调用 duliday_job_list 重新核对岗位状态；不要透露 jobId 或接口细节。',
+                  `jobId=${jobId} 这个岗位已经查不到（下架或名额已满），已从会话岗位记忆中移除。` +
+                  '**禁止再用同一个 jobId 重试本工具**。用招募者口吻安抚"我帮你查下这家店"，' +
+                  '再调用 duliday_job_list 重新召回可选岗位；不要透露 jobId 或接口细节。',
                 details: {
                   jobId,
                   detailedReason: `未找到 jobId=${jobId} 对应的岗位，无法回填 customerLabelList`,
@@ -1121,6 +1128,7 @@ export function buildInterviewBookingTool(
                           manualInterviewGroupHandling.groupNameHint ?? '面试群'
                         }邀请；兼职岗位信息群由Agent自动发送，无需重复发送。`,
                         workOrderId: result.workOrderId ?? null,
+                        jobId,
                         idempotencyKey:
                           `${context.sessionId}:interview_group_invite:` +
                           `${result.workOrderId ?? `${jobId}:${interviewTime ?? 'wait_notice'}`}`,

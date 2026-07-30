@@ -191,6 +191,22 @@ export interface ToolBuildContext {
    */
   isRecalledJobId?: (jobId: number) => boolean;
   /**
+   * 本会话已召回过的 jobId 列表（与 isRecalledJobId 同源）。
+   * 仅供出处闸门在拒绝时把「有哪些合法 jobId」写进 replyInstruction——
+   * 否则模型只被告知"这个不对"、拿不到对的，只能再猜一个。
+   */
+  recalledJobIds?: number[];
+  /**
+   * 工具确认岗位在海绵已查不到（下架/满员/失效）时回调。
+   * 回合收尾由 memory lifecycle 把该 jobId 从会话记忆（lastCandidatePool /
+   * presentedJobs / currentFocusJob）剔除。
+   *
+   * 背景（badcase chat 6a685393，jobId 528572 M Stand 中大天地店）：岗位失效后仍留在
+   * 会话记忆里，模型每轮都从记忆取到它重试 precheck，连撞 3 轮才转人工——工具层
+   * 已判死的岗位必须同步从记忆里移除，否则下一轮又被喂回去。
+   */
+  onJobInvalidated?: (jobId: number) => void;
+  /**
    * 本会话最近推荐过的品牌名集合（去重）。
    *
    * 来源：sessionMemory.presentedJobs ∪ sessionMemory.lastCandidatePool 的 brandName。
