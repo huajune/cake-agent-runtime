@@ -154,6 +154,11 @@ export function buildRequestHandoffTool(
           .catch(() => null);
         const workOrderId = activeBooking?.work_order_id ?? context.runtimeWorkOrderId ?? null;
 
+        // 转人工当轮的焦点岗位：让运营的「岗位数据缺口榜 / 满岗信号榜」能直接定位到岗位。
+        // 优先本轮焦点岗位；没有焦点岗位（如只有进行中工单）时退回在约岗位。
+        // 纯闲聊/开场即转人工时为 null，属正常缺失，不做兜底猜测。
+        const jobId = context.currentFocusJob?.jobId ?? context.activeBookingJobIds?.[0] ?? null;
+
         // 守卫：候选人要求"改期/取消"但根本没有已确认预约 → 这其实是首次约面意向。
         // 返回 shortCircuited:false（不短路），让 runtime 继续、Agent 按首次约面流程推进。
         if (reasonCode === 'modify_appointment' && workOrderId == null) {
@@ -205,6 +210,7 @@ export function buildRequestHandoffTool(
             stage: context.currentStage ?? null,
             botImId: context.botImId,
             workOrderId,
+            jobId,
             recordHandoff: true,
           },
           instruction:

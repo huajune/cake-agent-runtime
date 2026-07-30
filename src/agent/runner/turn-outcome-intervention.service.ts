@@ -215,6 +215,7 @@ export class TurnOutcomeInterventionService {
         stage: intent.stage ?? null,
         botImId: intent.botImId ?? context.botImId,
         workOrderId: intent.workOrderId ?? null,
+        jobId: intent.jobId ?? null,
         idempotencyKey,
         occurredAt,
       });

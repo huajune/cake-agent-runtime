@@ -173,11 +173,14 @@ export function classifyReviewedOutcome(
   const gateReject = toolCalls.find(isHandoffGateRejectedToolCall);
   const handoffCall = requestHandoff ?? gateReject;
   if (handoffCall) {
-    const args = handoffCall.args as { reasonCode?: unknown; reason?: unknown } | undefined;
+    const args = handoffCall.args as
+      | { reasonCode?: unknown; reason?: unknown; jobId?: unknown }
+      | undefined;
     const callResult = handoffCall.result as
       | {
           reasonCode?: unknown;
           workOrderId?: unknown;
+          jobId?: unknown;
           handoffReason?: unknown;
           actionAdvice?: unknown;
           _outcome?: unknown;
@@ -223,6 +226,13 @@ export function classifyReviewedOutcome(
           ? callResult.actionAdvice
           : undefined,
       workOrderId: typeof callResult?.workOrderId === 'number' ? callResult.workOrderId : undefined,
+      // booking/precheck 闸门拦截时，入参 jobId 就是本轮尝试的岗位，直接落底账供运营定位。
+      jobId:
+        typeof args?.jobId === 'number'
+          ? args.jobId
+          : typeof callResult?.jobId === 'number'
+            ? callResult.jobId
+            : undefined,
       idempotencyKey,
       alreadyDispatched,
       recordHandoff: !alreadyDispatched,
