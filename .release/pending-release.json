@@ -220,6 +220,41 @@
         "新增 4 条 `shouldReview` 用例（两正两负）+ 1 条空召回读数不变量用例",
         "原 `'jobs 为空且无 markdownExcerpt → 跳过'` 用例改写为「零证据 + 含时薪 → 触发」——它编码的正是本次要修的旧行为"
       ]
+    },
+    {
+      "number": "855",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/855",
+      "title": "补充 v10.37.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-07-30",
+      "businessUpdates": [
+        "补充 v10.37.0 发版底账",
+        "补充 v10.37.0 发版范围、风险与回滚路径",
+        "记录全量 CI、真实 Agent 批次、正式测试资产和生产 Dashboard 对账证据",
+        "记录测试库与生产库 migration MCP 校验结果"
+      ],
+      "summary": [
+        "补充 v10.37.0 发版底账",
+        "补充 v10.37.0 发版范围、风险与回滚路径",
+        "记录全量 CI、真实 Agent 批次、正式测试资产和生产 Dashboard 对账证据",
+        "记录测试库与生产库 migration MCP 校验结果"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补充 v10.37.0 发版范围、风险与回滚路径",
+        "记录全量 CI、真实 Agent 批次、正式测试资产和生产 Dashboard 对账证据",
+        "记录测试库与生产库 migration MCP 校验结果",
+        "补充 v10.37.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`node scripts/check-release-ledger.js`",
+        "`pnpm exec prettier --check docs/releases/2026/v10.37.0.md`",
+        "`pnpm run ci:check`：383 suites / 6097 tests 通过"
+      ]
     }
   ],
   "lastRelease": {

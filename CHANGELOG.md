@@ -14,7 +14,7 @@
 **预计版本**: `v10.37.0`
 **最近更新**: `2026-07-30`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #843 抽取臆造档案四道字段门（badcase 2026-07-29）
@@ -45,6 +45,10 @@
 - PR #845 补 reviewer 指令：`hasEvidence=false` 下给出任何具体门店/距离/时薪/发薪日/班次/福利即判 `job_recommendation_not_best_supported`（高置信）。**没有这条，新触发器只会产出全 pass**——原指令只写了 `hasEvidence=true` 侧的读法。
 - PR #845 岗位硬事实正则抽到 `job-fact-signals.util.ts` 单一定义，repair 回归闸与语义门控共用，避免口径漂移（回归闸行为不变，原正则等值迁移）。
 - PR #845 锁死空召回读数不变量：`duliday_job_list` 空态 `isToolSuccess=false` + `status='empty'`——这是回归闸 `jobEvidenceAvailable` 判 `false` 的前提，此前只有 util 层测试，**工具结果形态这一环无覆盖**。
+- PR #855 补充 v10.37.0 发版底账
+- PR #855 补充 v10.37.0 发版范围、风险与回滚路径
+- PR #855 记录全量 CI、真实 Agent 批次、正式测试资产和生产 Dashboard 对账证据
+- PR #855 记录测试库与生产库 migration MCP 校验结果
 
 ### 新功能
 - PR #845 `shouldReview` 新增第五触发器 `hasUngroundedJobFactClaim`：`jobList` 证据存在但 `hasEvidence=false`，且回复含只可能来自工具的量化事实（距离 / 时薪 / 发薪日 / 班次时段）。
@@ -78,6 +82,10 @@
 - PR #845 语义 shadow 补零证据编造档，岗位硬事实信号收拢单一定义
 - PR #845 覆盖岗位硬事实信号
 - PR #845 接回岗位事实共享信号
+- PR #855 补充 v10.37.0 发版范围、风险与回滚路径
+- PR #855 记录全量 CI、真实 Agent 批次、正式测试资产和生产 Dashboard 对账证据
+- PR #855 记录测试库与生产库 migration MCP 校验结果
+- PR #855 补充 v10.37.0 发版底账
 
 ### 配置变更
 - 无
@@ -103,6 +111,9 @@
 - PR #845 `lint:check` / `format:check` / `typecheck` 全绿
 - PR #845 新增 4 条 `shouldReview` 用例（两正两负）+ 1 条空召回读数不变量用例
 - PR #845 原 `'jobs 为空且无 markdownExcerpt → 跳过'` 用例改写为「零证据 + 含时薪 → 触发」——它编码的正是本次要修的旧行为
+- PR #855 `node scripts/check-release-ledger.js`
+- PR #855 `pnpm exec prettier --check docs/releases/2026/v10.37.0.md`
+- PR #855 `pnpm run ci:check`：383 suites / 6097 tests 通过
 <!-- release:pending:end -->
 
 ## [10.36.0] - 2026-07-29
