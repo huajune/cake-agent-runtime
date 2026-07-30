@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1400" viewBox="0 0 1440 1400">
+  <defs>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#183153" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="context-stroke"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="1400" fill="#f8fafc"/>
+  <text x="82" y="82" fill="#183153" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="600" letter-spacing="0.2"><tspan x="82" dy="0">蛋糕agent</tspan></text>
+  <text x="84" y="112" fill="#5c677d" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="84" dy="0">每一轮对话都经过实时防护、全量巡检与自动修复闭环</tspan></text>
+  <rect x="1130" y="48" width="230" height="54" rx="14" fill="#e7f5ff" stroke="#1971c2" stroke-width="1"/>
+  <text x="1155" y="82" fill="#1864ab" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600" letter-spacing="0"><tspan x="1155" dy="0">≈ 1,200 轮 / 天</tspan></text>
+  <rect x="60" y="145" width="1320" height="260" rx="14" fill="#f1f8ff" stroke="#a5d8ff" stroke-width="1"/>
+  <rect x="82" y="163" width="236" height="40" rx="14" fill="#d0ebff" stroke="#1971c2" stroke-width="1"/>
+  <text x="102" y="190" fill="#1864ab" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="400" letter-spacing="0"><tspan x="102" dy="0">第一道 · 回复发出前</tspan></text>
+  <text x="1160" y="189" fill="#5c7cfa" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="400" letter-spacing="0"><tspan x="1160" dy="0">实时 · 每条回复</tspan></text>
+  <rect x="96" y="220" width="230" height="112" rx="14" fill="#d0ebff" stroke="#1971c2" stroke-width="2" filter="url(#soft-shadow)"/>
+  <ellipse cx="129" cy="253" rx="17" ry="17" fill="#1971c2" stroke="#1971c2" stroke-width="1"/>
+  <text x="124" y="259" fill="#ffffff" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="124" dy="0">1</tspan></text>
+  <text x="160" y="256" fill="#1971c2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600" letter-spacing="0"><tspan x="160" dy="0">候选人提问</tspan></text>
+  <text x="116" y="300" fill="#495057" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="116" dy="0">进入 Agent 对话上下文</tspan></text>
+  <rect x="390" y="220" width="230" height="112" rx="14" fill="#e5dbff" stroke="#4263eb" stroke-width="2" filter="url(#soft-shadow)"/>
+  <ellipse cx="423" cy="253" rx="17" ry="17" fill="#7048e8" stroke="#7048e8" stroke-width="1"/>
+  <text x="418" y="259" fill="#ffffff" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="418" dy="0">2</tspan></text>
+  <text x="454" y="256" fill="#4263eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600" letter-spacing="0"><tspan x="454" dy="0">Agent 生成回复</tspan></text>
+  <text x="410" y="300" fill="#495057" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="410" dy="0">结合岗位库与会话信息</tspan></text>
+  <rect x="684" y="220" width="230" height="112" rx="14" fill="#fff3bf" stroke="#e67700" stroke-width="3" filter="url(#soft-shadow)"/>
+  <ellipse cx="717" cy="253" rx="17" ry="17" fill="#f08c00" stroke="#f08c00" stroke-width="1"/>
+  <text x="712" y="259" fill="#ffffff" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="712" dy="0">3</tspan></text>
+  <text x="748" y="256" fill="#e67700" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600" letter-spacing="0"><tspan x="748" dy="0">守卫检查</tspan></text>
+  <text x="704" y="300" fill="#495057" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="704" dy="0">事实对账 · 承诺校验 · 风险拦截</tspan></text>
+  <rect x="978" y="220" width="230" height="112" rx="14" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="2" filter="url(#soft-shadow)"/>
+  <ellipse cx="1011" cy="253" rx="17" ry="17" fill="#37b24d" stroke="#37b24d" stroke-width="1"/>
+  <text x="1006" y="259" fill="#ffffff" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="1006" dy="0">4</tspan></text>
+  <text x="1042" y="256" fill="#2b8a3e" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600" letter-spacing="0"><tspan x="1042" dy="0">发给候选人</tspan></text>
+  <text x="998" y="300" fill="#495057" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="998" dy="0">只发送检查通过的版本</tspan></text>
+  <polyline points="330,276 382,276" fill="none" stroke="#748ffc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="624,276 676,276" fill="none" stroke="#748ffc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="918,276 970,276" fill="none" stroke="#51cf66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <text x="928" y="262" fill="#2b8a3e" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400" letter-spacing="0"><tspan x="928" dy="0">通过</tspan></text>
+  <rect x="498" y="348" width="640" height="38" rx="14" fill="#fff9db" stroke="#fcc419" stroke-width="1"/>
+  <text x="518" y="372" fill="#7c4a03" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="518" dy="0">编造薪资/门店、假称“已报名”“已发邀请”等内容，会在发出前被拦截或改写</tspan></text>
+  <rect x="60" y="435" width="1320" height="108" rx="14" fill="#edf2ff" stroke="#364fc7" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="60" y="435" width="14" height="108" rx="14" fill="#4c6ef5" stroke="#364fc7" stroke-width="0"/>
+  <text x="100" y="478" fill="#364fc7" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="21" font-weight="600" letter-spacing="0"><tspan x="100" dy="0">观测底座 · 全程留档</tspan></text>
+  <text x="100" y="508" fill="#495057" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="400" letter-spacing="0"><tspan x="100" dy="0">每轮对话内容、岗位查询、检查结果与最终回复均可逐条回溯，为巡检和修复提供证据链</tspan></text>
+  <text x="1188" y="487" fill="#364fc7" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="1188" dy="0">完整可追溯</tspan></text>
+  <text x="80" y="612" fill="#2b8a3e" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="0"><tspan x="80" dy="0">第二道 · 每日全量巡检</tspan></text>
+  <text x="1115" y="611" fill="#2f9e44" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="1115" dy="0">每天 06:00</tspan></text>
+  <rect x="80" y="632" width="620" height="164" rx="14" fill="#ebfbee" stroke="#2f9e44" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="102" y="652" width="176" height="36" rx="14" fill="#d3f9d8" stroke="#2f9e44" stroke-width="1"/>
+  <text x="122" y="677" fill="#2b8a3e" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="122" dy="0">自动巡检 · 主通道</tspan></text>
+  <text x="108" y="726" fill="#343a40" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="108" dy="0">9 个维度扫描前一天全部对话</tspan><tspan x="108" dy="23.2">输出问题清单并与前一天环比</tspan><tspan x="108" dy="23.2">连续出问题的会话自动提高优先级</tspan></text>
+  <rect x="740" y="632" width="620" height="164" rx="14" fill="#f3f0ff" stroke="#6741d9" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="762" y="652" width="162" height="36" rx="14" fill="#e5dbff" stroke="#6741d9" stroke-width="1"/>
+  <text x="782" y="677" fill="#5f3dc4" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="782" dy="0">运营反馈 · 补充</tspan></text>
+  <text x="768" y="726" fill="#343a40" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="768" dy="0">补充系统尚未识别的问题</tspan><tspan x="768" dy="23.2">统一填入 BadCase 表</tspan><tspan x="768" dy="23.2">无需在群里 @，修复环会自动领取</tspan></text>
+  <polyline points="390,800 390,856 610,856" fill="none" stroke="#2f9e44" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1050,800 1050,856 830,856" fill="none" stroke="#6741d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <rect x="270" y="872" width="900" height="184" rx="14" fill="#fff4e6" stroke="#e8590c" stroke-width="3" filter="url(#soft-shadow)"/>
+  <rect x="298" y="894" width="252" height="40" rx="14" fill="#ffe8cc" stroke="#e8590c" stroke-width="1"/>
+  <text x="318" y="922" fill="#d9480f" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="400" letter-spacing="0"><tspan x="318" dy="0">第三道 · 每日自动修复环</tspan></text>
+  <text x="1006" y="922" fill="#e8590c" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400" letter-spacing="0"><tspan x="1006" dy="0">每天 07:00</tspan></text>
+  <text x="310" y="975" fill="#343a40" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="400" letter-spacing="0"><tspan x="310" dy="0">汇总巡检清单 + BadCase 未解决项  →  逐条根因分析  →  按风险分流  →  自动回写处理状态</tspan></text>
+  <rect x="314" y="1004" width="332" height="34" rx="14" fill="#d3f9d8" stroke="#2f9e44" stroke-width="1"/>
+  <text x="336" y="1026" fill="#2b8a3e" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="336" dy="0">低风险：直接改代码并验证</tspan></text>
+  <rect x="792" y="1004" width="332" height="34" rx="14" fill="#fff3bf" stroke="#e67700" stroke-width="1"/>
+  <text x="814" y="1026" fill="#d9480f" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="814" dy="0">高风险：先产出决策报告</tspan></text>
+  <polyline points="482,1058 482,1116" fill="none" stroke="#2f9e44" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="958,1058 958,1116" fill="none" stroke="#6741d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <rect x="80" y="1124" width="620" height="124" rx="14" fill="#ebfbee" stroke="#2f9e44" stroke-width="2" filter="url(#soft-shadow)"/>
+  <text x="108" y="1166" fill="#2b8a3e" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="600" letter-spacing="0"><tspan x="108" dy="0">修复沉淀为新的检查项</tspan></text>
+  <text x="108" y="1199" fill="#495057" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="400" letter-spacing="0"><tspan x="108" dy="0">下次巡检自动带上（现有 ⑥⑦⑨ 即由此沉淀）</tspan></text>
+  <rect x="740" y="1124" width="620" height="124" rx="14" fill="#f3f0ff" stroke="#6741d9" stroke-width="2" filter="url(#soft-shadow)"/>
+  <text x="768" y="1166" fill="#5f3dc4" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="600" letter-spacing="0"><tspan x="768" dy="0">治理文档自动更新</tspan></text>
+  <text x="768" y="1199" fill="#495057" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="400" letter-spacing="0"><tspan x="768" dy="0">修复进展自动写入；运营订阅后可及时收到更新</tspan></text>
+  <polyline points="80,1188 42,1188 42,682 110,682" fill="none" stroke="#2f9e44" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 8" marker-end="url(#arrowhead)"/>
+  <text x="8" y="880" fill="#2b8a3e" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="400" letter-spacing="0"><tspan x="8" dy="0">闭</tspan><tspan x="8" dy="24.3">环</tspan></text>
+  <rect x="60" y="1280" width="1320" height="72" rx="14" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1" stroke-dasharray="10 8"/>
+  <text x="84" y="1316" fill="#5c677d" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400" letter-spacing="0"><tspan x="84" dy="0">边界：守卫检查负责“能否与岗位库对账”；候选人体感、业务口径、岗位数据源问题由运营反馈补齐。</tspan></text>
+</svg>

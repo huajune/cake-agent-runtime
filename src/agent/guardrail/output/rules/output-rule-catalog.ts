@@ -176,13 +176,18 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '候选人明确找暑假工且本轮工具确认暑假工过滤后为空时，拦住主动劝转普通兼职、小时工、全职或长期兼职的话术。',
     riskGoal: '确保暑假工无岗时直接拒绝，不用其他用工形式进行违背候选人明确意向的软性转化。',
     exogenousSignal:
-      'duliday_job_list 的暑假工空结果，或最近候选人消息中仍有效的暑假工意向 + 本轮候选人未主动改口。',
+      'duliday_job_list 的暑假工空结果，或最近候选人消息中仍有效的暑假工意向 + 本轮候选人未主动改口' +
+      '（2026-07-30 补：暑假工身份属于妹妹/同学等第三方时豁免，本人谈的仍是常规岗位）。',
     residualRisk:
       '超过最近消息窗口的暑假工意向依赖会话事实；未出现替代用工形式词的隐晦劝转仍可能漏检。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    // 2026-07-30 审计 P1-5：原反馈把"最小修复"写成了格式硬约束（"只输出一句…不要追加
+    // 问题"），生产实例 …_1785209582843 因此把候选人的两个提问与本人在谈的岗位线索
+    // 一并抹掉。改为与其它规则一致的"只删违规部分、其余逐字保留"口径。
     feedbackToGenerator:
       '上一版回复在本轮已经确认没有暑假工岗位后，仍主动询问或建议候选人考虑普通兼职、小时工、全职或长期兼职，当前文本不可发送。' +
-      '请只输出一句直接、礼貌的无岗答复，例如：“抱歉，你附近暂时没有合适的暑假工岗位。”不要追加问题、替代岗位、后续劝转或其他用工形式。',
+      '请删除针对暑假工的替代用工形式劝转与追问（如“要不要看看小时工/全职”），如实保留“暂时没有合适的暑假工岗位”这一结论；' +
+      '回复中对候选人本人其他问题的回答、本人正在推进的岗位或约面信息等未被点名的内容，必须逐字保留，不要压缩成一句话。',
   },
   {
     id: 'discriminatory_screening_leak',
@@ -198,6 +203,20 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     feedbackPolicy: GUARDRAIL_FEEDBACK_POLICY.REDACTED,
     feedbackToGenerator:
       '上一版回复包含高敏感筛选条件或以高敏感属性作为拒绝理由，当前文本禁止发送。请重新生成：不要提及户籍、籍贯、民族、专业、婚育等门槛；不要解释具体不通过原因；核对专业只能开放式问"你学的什么专业"，不得把排除条件塞进问句；婚育信息禁止询问、复述或确认；改为中性承接，可以推荐其他岗位、继续收集必要信息，或说明需要同事确认。',
+  },
+  {
+    id: 'dangling_reply_promise',
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '观察首版回复只给将来时查询承诺（"我帮你查下X"）、没有任何结果性内容的样本。',
+    riskGoal: '候选人收到承诺后再无下文，会一直空等——量化首版悬空规模，供升档决策。',
+    exogenousSignal:
+      '复用 runner 的 isDanglingCheckReply 纯谓词（短文本 + 将来时承诺 + 无结果性标记）。',
+    residualRisk:
+      '消费者：日报 L1 与运营复盘；退场条件：累计两周精确率 <70% 则删除。' +
+      '刻意不升 REVISE——repair 工具已被移除，改写只会把承诺改成"暂时没岗位"的编造；' +
+      '根治在生成侧（candidate-consultation 已补"不得以裸承诺结束回合"）。',
+    verification: 'tests/agent/guardrail/output/rules/dangling-promise.rule.spec.ts',
   },
   {
     id: 'proactive_insurance_policy_mention',
@@ -384,19 +403,20 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   {
     id: 'booking_receipt_mismatch',
     // 形态 A（问日期且无确认口径）＝REVISE：与已提交工单直接矛盾，近零假阳；
-    // 形态 B（零播报）在规则实现内自降 OBSERVE 落档累计精确率。
+    // 形态 B（零播报）在规则实现内自降 OBSERVE 落档累计精确率；
+    // 形态 C（booking 失败却称正在/已提交）＝REVISE，自带失败路径 feedback 覆盖。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
-      'duliday_interview_booking 成功后的回执对账：拦住“工单已建单却仍问候选人定哪天”、' +
-      '“把兼职群冒充面试群”及“手动面试群尚未发送却声称已发”，观察“零播报”。',
+      'duliday_interview_booking 的回执对账：拦住“工单已建单却仍问候选人定哪天”、' +
+      '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”及“调用失败却称正在/已提交”，观察“零播报”。',
     riskGoal:
       '预约提交是不可逆副作用；回复与其矛盾会让候选人以为没约上而重复提交（撞 already_booked）或直接流失' +
       '；兼职群与面试群混淆会让候选人在错误群里等待会议链接' +
       '（badcase chat 6a684089ce406a6aeed49d8d）。',
     exogenousSignal:
-      '本轮 booking success、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实 +' +
-      ' 回复文本的日期征询、播报缺失或群用途表述。',
+      '本轮 booking success/error、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实 +' +
+      ' 回复文本的日期征询、播报缺失、群用途表述或提交进行时宣称。',
     residualRisk:
       '窗口制“已约好+问几点到店”经确认口径豁免；预约时间与候选人口头要求不一致（王真宝案）需要' +
       '语义比对候选人诉求，不在本规则确定性能力内，留语义审查/离线环。',

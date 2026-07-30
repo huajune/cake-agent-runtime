@@ -1,3 +1,5 @@
+import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
+
 /**
  * 确定性 repair 回归检测（纯函数，零 LLM）。
  *
@@ -46,13 +48,6 @@ export interface RepairRegressionContext {
 /** 表单字段行：`姓名：` / `联系电话：13xxx` / `面试时间（…）：` 等短标签开头的行。 */
 const FORM_FIELD_LINE_PATTERN = /^[-•\s]*[^：:\n]{1,14}[：:]/u;
 
-/**
- * 岗位事实行：含距离/时薪/班次时段等硬数据的行。首版出现多行即认为在向候选人
- * 展示具体岗位内容。
- */
-const JOB_FACT_PATTERN =
-  /\d+(?:\.\d+)?\s*(?:公里|km|KM)|\d+\s*元\/(?:小?时|天|月)|\d{1,2}[:：]\d{2}\s*[-—~至]\s*\d{1,2}[:：]\d{2}/u;
-
 /** 无岗断言：修复版声称附近/该区域没有（在招）岗位。 */
 const NO_JOB_CLAIM_PATTERN =
   /(?:没找到|没查到|未找到|找不到|暂时?没有|暂无)[^。！？!?\n]{0,12}(?:岗位|工作|在招)|(?:岗位|工作)[^。！？!?\n]{0,8}(?:没有|暂无|没找到|没查到)/u;
@@ -66,12 +61,20 @@ function splitLines(text: string): string[] {
 
 function countStructuredLines(text: string): number {
   return splitLines(text).filter(
-    (line) => FORM_FIELD_LINE_PATTERN.test(line) || JOB_FACT_PATTERN.test(line),
+    (line) => FORM_FIELD_LINE_PATTERN.test(line) || QUANTIFIED_JOB_FACT_PATTERN.test(line),
   ).length;
 }
 
-function countJobFactLines(text: string): number {
-  return splitLines(text).filter((line) => JOB_FACT_PATTERN.test(line)).length;
+/**
+ * 岗位事实的**出现次数**（不是行数）。
+ *
+ * 2026-07-30 审计 P2-8：原实现按行统计，首版把多个岗位写成一段散文（单行）时
+ * 计数恒为 1，`polarity_reversed` 的 `>= 2` 门槛永远够不到——2026-07-27 生产实例
+ * batch_6a6726d4… 首版散文式给出最高薪岗位、修复版反转成"附近 10 公里内没岗位"，
+ * 两个检测器都没拦住并已投递。改为全局计数后，散文与分行结构同等达标。
+ */
+function countJobFactOccurrences(text: string): number {
+  return text.match(new RegExp(QUANTIFIED_JOB_FACT_PATTERN, 'gu'))?.length ?? 0;
 }
 
 /** 日期+星期标注：`7月28日（周二）` / `7 月 28 日（星期二）`。捕获组：月、日、星期字。 */
@@ -137,7 +140,7 @@ const BOOKING_PENDING_PATTERN =
  *
  * - structure_collapsed：首版含 ≥3 行结构化内容（表单字段/岗位事实），修复版结构化行数
  *   掉到首版 1/3 以下且总长缩水到 60% 以下。单独的长度缩水不算——精简是合法修复。
- * - polarity_reversed：首版含 ≥2 行岗位事实（正在展示具体岗位）且自身没有无岗断言，
+ * - polarity_reversed：首版含 ≥2 处岗位事实（正在展示具体岗位）且自身没有无岗断言，
  *   修复版新增了"附近没有岗位"类断言。首版本来就说无岗时不判（无极性变化）。
  * - fact_mutated：首版与修复版对同一个"M月D日"标注了不同星期，且首版星期与真实
  *   历法一致——修复版把对的改错了。首版本来就错、修复版纠正时不判（那是修好）。
@@ -154,10 +157,10 @@ export function detectRepairRegression(
   const revised = revisedText.trim();
   if (!first || !revised || first === revised) return null;
 
-  const firstJobFactLines = countJobFactLines(first);
+  const firstJobFacts = countJobFactOccurrences(first);
   const removesUngroundedJobClaims =
     context?.jobEvidenceAvailable === false &&
-    firstJobFactLines >= 2 &&
+    firstJobFacts >= 2 &&
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised);
 
@@ -171,7 +174,7 @@ export function detectRepairRegression(
 
   if (
     !removesUngroundedJobClaims &&
-    firstJobFactLines >= 2 &&
+    firstJobFacts >= 2 &&
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised)
   ) {

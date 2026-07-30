@@ -221,6 +221,22 @@ describe('RiskInterceptService', () => {
       },
     );
 
+    // badcase 2026-07-29 chat 6a69c1ed…：「招吗/收吗/要吗」这类动词后置疑问句原先全部漏网，
+    // Agent 直答"招的"并继续推岗，是本档唯一的暴露口。
+    it.each([
+      '残疾人招吗',
+      '精神残疾招的？',
+      '你们听障收吗',
+      '肢体残疾要吗',
+      '残疾人招不',
+      '聋哑人收吗',
+    ])('detects verb-final eligibility question: %s', async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
+        hit: true,
+        riskType: 'disability_disclosure',
+      });
+    });
+
     it.each([
       '我爸是残疾人，平时要照顾他，只能做白班',
       '我妈妈有残疾证，家里离不开人',

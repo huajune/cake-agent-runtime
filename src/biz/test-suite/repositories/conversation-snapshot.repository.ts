@@ -8,6 +8,10 @@ import {
   UpdateConversationSourceData,
   ConversationSourceFilters,
 } from '../types/test-suite.types';
+import {
+  BADCASE_EVIDENCE_SCAN_LIMIT,
+  buildBadcaseRecordIdFilter,
+} from '../utils/badcase-evidence-filter.util';
 
 /**
  * 对话快照 Repository
@@ -25,6 +29,27 @@ export class ConversationSnapshotRepository extends BaseRepository {
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
     this.logger.log('ConversationSnapshotRepository 初始化完成');
+  }
+
+  /**
+   * 按 BadCase recordId 反查「回归验证」侧的对话快照（跨批次）。
+   * 验证集的来源标记挂在快照上，source_trace 有 GIN 索引。
+   */
+  async findByBadcaseRecordIds(
+    recordIds: string[],
+  ): Promise<
+    Array<
+      Pick<
+        ConversationSnapshotRecord,
+        'id' | 'conversation_id' | 'batch_id' | 'source_trace' | 'created_at'
+      >
+    >
+  > {
+    const filter = buildBadcaseRecordIdFilter(recordIds);
+    if (!filter) return [];
+    return this.select('id,conversation_id,batch_id,source_trace,created_at', (q) =>
+      q.or(filter).order('created_at', { ascending: false }).limit(BADCASE_EVIDENCE_SCAN_LIMIT),
+    );
   }
 
   // ==================== 基础 CRUD ====================

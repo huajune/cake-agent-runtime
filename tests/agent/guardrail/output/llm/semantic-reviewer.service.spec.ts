@@ -61,12 +61,14 @@ describe('SemanticReviewerService', () => {
       expect(service.shouldReview(packet)).toBe(true);
     });
 
-    it('jobs 为空且无 markdownExcerpt → 跳过（与有 excerpt 的对照）', () => {
+    it('jobs 为空且无 markdownExcerpt → job 推荐档不触发（与有 excerpt 的对照）', () => {
+      // 该对照的 job 推荐档语义由上一条（fact-free 回复）守住；此处回复带了具体薪资，
+      // 2026-07-30 起改由零证据档接管——没有任何岗位数据却报时薪，正是要审的形态。
       const packet = makePacket({
         draftReply: '推荐你去静安寺店，薪资 24 元/小时',
         evidence: { jobList: { args: {}, hasEvidence: false, jobs: [], requestedBrands: [] } },
       });
-      expect(service.shouldReview(packet)).toBe(false);
+      expect(service.shouldReview(packet)).toBe(true);
     });
 
     it('有 markdownExcerpt 但回复是纯寒暄 → 不触发（措辞条件仍然生效）', () => {
@@ -113,9 +115,82 @@ describe('SemanticReviewerService', () => {
       expect(service.shouldReview(packet)).toBe(false);
     });
 
-    it('有触发措辞但无任何证据 → 不触发（LLM 不能自证，无证据不审）', () => {
+    // —— 零证据事实断言（2026-07-30 审计 P0-1）——————————————————————
+    // 原口径是"无证据不审"（LLM 不能自证）。审计证明这恰恰是最危险的盲区：
+    // evidence 门控只能发现"与证据矛盾"，看不见"凭空生成"。2026-07-28 15:05 降级
+    // 窗口 5 例零工具编造（薪资/门店/伪造报名链接）因此全数免检投递。现在改为
+    // "无证据 + 给出可核验的具体事实"才触发；无证据的寒暄/问区域仍然不审。
+    it('无证据但断言具体薪资 → 触发（trace …_1785222323383）', () => {
+      const packet = makePacket({
+        draftReply: '海珠那边岗位时薪普遍在20-30左右，月结的基本都有提成或补贴。',
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('无证据但断言具体发薪日 → 触发（chat 6a68392b）', () => {
+      const packet = makePacket({
+        draftReply: '这家门店每月 15 号发薪。',
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('无证据但宣称已完成报名/预约 → 触发', () => {
       const packet = makePacket({ draftReply: '推荐你去这家门店，已帮你预约面试' });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('无证据但指名门店岗位 → 触发（trace …_1785222571474）', () => {
+      const packet = makePacket({
+        draftReply: '好的，那咱们就定 M Stand 海珠万达广场店的咖啡师小时工',
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('无证据但发出报名链接 → 触发（trace …_1785222633954）', () => {
+      const packet = makePacket({
+        draftReply: '点这里进入报名表：https://work.weixin.qq.com/xxxxxx',
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    it('无证据且只是问区域/寒暄 → 仍不触发（不为零工具轮次徒增审查）', () => {
+      expect(
+        service.shouldReview(makePacket({ draftReply: '你好呀～方便说下你在哪个区吗？' })),
+      ).toBe(false);
+      expect(
+        service.shouldReview(
+          makePacket({ draftReply: '大部分基础岗位都接受无经验，店里会有人带的。' }),
+        ),
+      ).toBe(false);
+    });
+
+    it('查无岗位（jobList 对象在但为空）后仍报薪资 → 触发：同样没有可核验依据', () => {
+      const packet = makePacket({
+        draftReply: '这家时薪 24 元/小时',
+        evidence: { jobList: { args: {}, hasEvidence: false, jobs: [], requestedBrands: [] } },
+      });
+      expect(service.shouldReview(packet)).toBe(true);
+    });
+
+    // 2026-07-30 生产回放：首版实现漏算 precheck，新触发样本 10/12 是 precheck 给出的
+    // 合法面试窗口（10:00-16:00）。hasAnyReviewEvidence 必须与 packet.evidence 字段集同步。
+    it('precheck 证据在场时不触发（合法面试窗口不是凭空生成）', () => {
+      const packet = makePacket({
+        draftReply: '这家是视频面试，周一至周五 10:00-16:00 都能约，当天 10 点前报名就行',
+        evidence: { precheck: { status: 'ready_to_book' } as never },
+      });
       expect(service.shouldReview(packet)).toBe(false);
+    });
+
+    it('有真实岗位证据时不走零证据档（交给第 1 类）', () => {
+      const packet = makePacket({
+        draftReply: '这家时薪 24 元/小时',
+        evidence: {
+          jobList: { args: {}, hasEvidence: true, jobs: [{ jobId: 101 }], requestedBrands: [] },
+        },
+      });
+      // 第 1 类的措辞条件命中（"薪资"族），走的是 job 推荐档而非零证据档
+      expect(service.shouldReview(packet)).toBe(true);
     });
   });
 

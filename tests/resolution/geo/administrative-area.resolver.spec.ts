@@ -197,5 +197,59 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
       expect(detectGeoSignalConflict(['鼓楼区'], ['万达广场'])).toBeNull();
       expect(detectGeoSignalConflict(null, null)).toBeNull();
     });
+
+    it('已确立会话城市命中候选 → 打 adjudicatedByKnownCity（非真冲突，enforce 不得拦）', () => {
+      const shadow = detectGeoSignalConflict(['静安区'], ['光谷'], { knownCity: '武汉' });
+      expect(shadow?.adjudicatedByKnownCity).toBe('武汉');
+      // 候选清单与先命中城市保持原样，便于对账"裁决前本来是什么"
+      expect(shadow?.firstHitCity).toBe('上海');
+      expect(shadow?.candidates).toHaveLength(2);
+    });
+
+    it('已确立城市带"市"后缀也能裁决（归一化后比对）', () => {
+      expect(
+        detectGeoSignalConflict(['静安区'], ['光谷'], { knownCity: '上海市' })
+          ?.adjudicatedByKnownCity,
+      ).toBe('上海');
+    });
+
+    it('已确立城市不在候选内 / 未传 → 仍是真冲突，不打裁决标记', () => {
+      expect(
+        detectGeoSignalConflict(['静安区'], ['光谷'], { knownCity: '广州' }),
+      ).not.toHaveProperty('adjudicatedByKnownCity');
+      expect(detectGeoSignalConflict(['静安区'], ['光谷'], { knownCity: null })).not.toHaveProperty(
+        'adjudicatedByKnownCity',
+      );
+      expect(detectGeoSignalConflict(['静安区'], ['光谷'])).not.toHaveProperty(
+        'adjudicatedByKnownCity',
+      );
+    });
+  });
+
+  describe('脏别名排除（DIRTY_ALIAS_EXCLUSIONS，2026-07-29 生产实证）', () => {
+    it('长阳：跨层级同形已移出白名单，不再解析出城市', () => {
+      expect(resolveCityFromDistrict('长阳')).toBeNull();
+      expect(resolveCityFromDistrict('长阳镇')).toBeNull();
+    });
+
+    it('长阳退出后，「北京市房山区长阳镇」形态不再产生跨城冲突（mpr 225908 回归）', () => {
+      // 该样本正是 enforce 决策判 no-go 的唯一依据：房山→北京、长阳→宜昌 两候选
+      expect(detectGeoSignalConflict(['房山', '长阳'], null)).toBeNull();
+      expect(resolveCityFromGeoSignals(['房山', '长阳'], null)).toEqual({
+        value: '北京',
+        evidence: 'unique_district_alias',
+      });
+    });
+
+    it('公安：泛词已移出，「公安局」类表述不再误判成荆州', () => {
+      expect(resolveCityFromDistrict('公安')).toBeNull();
+      expect(resolveCityFromDistrict('公安县')).toBeNull();
+    });
+
+    it('同批未被移出的宜昌/荆州区名仍正常解析（确认移出范围最小）', () => {
+      expect(resolveCityFromDistrict('五峰')).toBe('宜昌');
+      expect(resolveCityFromDistrict('秭归')).toBe('宜昌');
+      expect(resolveCityFromDistrict('监利')).toBe('荆州');
+    });
   });
 });

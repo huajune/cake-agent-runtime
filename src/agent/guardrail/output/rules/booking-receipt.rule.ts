@@ -14,6 +14,8 @@ import type { RuleContradiction } from '../output-rule.types';
  *   （「你定哪天/几号方便/什么时候有空」）——直接与已提交的工单矛盾；
  * - 形态 B（OBSERVE）：回复完全未提报名/预约结果（一个报名类词都没有）——
  *   播报缺失，候选人不知已报名；表述方式多样，先 observe 落档累计精确率。
+ * - 形态 C（REVISE，2026-07-30 审计 P1-7）：booking **失败**却宣称正在/已经提交——
+ *   与形态 A 镜像，对账的是失败路径。
  */
 const DATE_ASK_PATTERN =
   /(?:你|您)(?:定|看|选|挑)[^，。！？!?\n]{0,6}(?:哪一?天|几号|几点|什么时候|时间)|(?:哪一?天|几号|几点|什么时候)[^，。！？!?\n]{0,4}(?:方便|有空|合适|可以|行)[^，。！？!?\n]{0,4}[？?]?|(?:选|挑|定)(?:个|一个)[^，。！？!?\n]{0,4}(?:时间|日子|时段)/u;
@@ -24,6 +26,32 @@ const BOOKING_MENTION_PATTERN = /报名|预约|登记|约好|约上|已(?:帮你
 // 你几点方便到店"是合法话术——确认在场时的时间征询不算回执矛盾。
 const CONFIRMATION_PATTERN =
   /已(?:经)?(?:帮你|给你)?(?:约|报名|登记|提交|预约)|(?:约|登记|报名|预约)(?:好|上|成功)|帮你(?:约|报)(?:好|上)/u;
+
+// —— 失败路径（2026-07-30 审计 P1-7）————————————————————————————————
+// 形态 C：booking 调用失败/报错，回复却以进行时或完成时宣称在提交/已提交预约。
+// 生产实例 …_1785332310556：duliday_interview_booking status=error，回复"好的，信息
+// 都收到啦，我现在帮你提交两家门店的面试预约"——语义 shadow 判 high 置信 block，
+// 硬规则却整条放行（对账前提是 booking 成功，失败即提前 return）。候选人会一直等
+// 一个永远不来的回执。
+const BOOKING_IN_FLIGHT_CLAIM_PATTERN =
+  /(?:现在|这就|马上|立刻|立即|正在|稍后)[^，。！？!?\n]{0,8}(?:帮你|给你)?[^，。！？!?\n]{0,6}(?:提交|报名|预约)/u;
+
+/** 如实披露失败：说了没成功/失败/再试，就不是假宣称。 */
+const BOOKING_FAILURE_ACKNOWLEDGED_PATTERN =
+  /(?:提交|报名|预约|约)[^。！？\n]{0,8}(?:失败|没成功|未成功|不成功|没约上|没成|出了点问题|有点问题)|(?:失败|没能|未能|没有)[^。！？\n]{0,6}(?:提交|报名|预约)|重新(?:试|提交|约)|稍后(?:再|重新)(?:试|约|提交)/u;
+
+function findFailedBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
+  for (const call of toolCalls) {
+    if (call.toolName !== 'duliday_interview_booking') continue;
+    if (call.status === 'error') return call;
+    const result =
+      call.result && typeof call.result === 'object' && !Array.isArray(call.result)
+        ? (call.result as Record<string, unknown>)
+        : null;
+    if (result?.success === false) return call;
+  }
+  return null;
+}
 
 function findSuccessfulBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
   for (const call of toolCalls) {
@@ -75,8 +103,32 @@ export function detectBookingReceiptMismatch(
   replyText: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
+  if (!replyText.trim()) return null;
+
   const booking = findSuccessfulBooking(toolCalls);
-  if (!booking || !replyText.trim()) return null;
+  if (!booking) {
+    const failedBooking = findFailedBooking(toolCalls);
+    if (
+      failedBooking &&
+      !BOOKING_FAILURE_ACKNOWLEDGED_PATTERN.test(replyText) &&
+      (BOOKING_IN_FLIGHT_CLAIM_PATTERN.test(replyText) || CONFIRMATION_PATTERN.test(replyText))
+    ) {
+      return {
+        ruleId: 'booking_receipt_mismatch',
+        label:
+          '本轮 duliday_interview_booking 调用失败，回复却宣称正在提交或已提交面试预约' +
+          '——回执永远不会来，候选人会一直空等（badcase …_1785332310556）',
+        action: GUARDRAIL_ACTION.REVISE,
+        // 目录里的 feedback 是为成功路径写的（"本轮预约已真实提交成功"），直接复用会
+        // 指示重写者把失败说成成功。失败路径必须带自己的口径。
+        feedbackToGenerator:
+          '本轮 duliday_interview_booking 调用失败，预约并未提交成功，但上一版回复宣称正在提交或已经提交，当前文本不可发送。' +
+          '请如实告知候选人这次没有提交成功、你会重新帮他提交或稍后再试，不要给出任何"等回执/等通知"的暗示；' +
+          '回复中与预约状态无关的内容（岗位信息、候选人问题的回答等）逐字保留。',
+      };
+    }
+    return null;
+  }
 
   if (requiresManualInterviewGroup(booking)) {
     if (INTERVIEW_GROUP_IDENTITY_SPLIT_PATTERN.test(replyText)) {

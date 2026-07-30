@@ -53,6 +53,7 @@ export class HandoffRecorderService {
         reason: input.reason ?? null,
         stage: input.stage ?? null,
         work_order_id: input.workOrderId ?? null,
+        job_id: input.jobId ?? null,
         missing_job_info: input.missingJobInfo?.length ? input.missingJobInfo : null,
       },
     });

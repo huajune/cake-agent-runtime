@@ -156,12 +156,12 @@ export const UNIQUE_SUBDIVISION_TO_CITY: Record<string, string> = {
   远安: '宜昌',
   兴山: '宜昌',
   秭归: '宜昌',
-  长阳: '宜昌',
+  // 长阳 已移出：跨层级同形（宜昌长阳县 vs 北京房山长阳镇），见 overrides 的 DIRTY_ALIAS_EXCLUSIONS
   五峰: '宜昌',
   // 荆州
   荆州: '荆州',
   沙市: '荆州',
-  公安: '荆州',
+  // 公安 已移出：泛词撞语料（公安县 vs "公安/公安局"），见 overrides 的 DIRTY_ALIAS_EXCLUSIONS
   石首: '荆州',
   洪湖: '荆州',
   松滋: '荆州',

@@ -79,6 +79,23 @@ export function hasStructuredNameSubmission(
   return false;
 }
 
+/**
+ * 自我介绍前缀（"我是" / "你好我是" / "我叫"）。
+ *
+ * badcase 2026-07-29 chat 6a69674e…：候选人昵称是"18"，打招呼语整条就是"我是18"，
+ * 抽取模型把**带前缀的整句**"我是18"当成 name 输出。`isFromAutoGreeting` 比对的是
+ * 前缀剥离后的昵称（"18"），整句形态与之不等 → 昵称漏网，name="我是18" 连同臆造的
+ * phone/健康证一起在会话里存活了一整天。
+ *
+ * 真名不可能以"我是/我叫"开头，故此前缀既用于比对前归一化，也单独作为丢弃信号。
+ */
+const SELF_INTRO_PREFIX_REGEX = /^\s*(?:(?:你好|您好|hi|hello)[，,。！!\s]*)?我(?:是|叫)\s*/iu;
+
+/** 剥离 name 值上的自我介绍前缀；无前缀时原样返回。 */
+export function stripSelfIntroPrefix(name: string): string {
+  return name.replace(SELF_INTRO_PREFIX_REGEX, '').trim();
+}
+
 export interface SanitizeNameResult {
   sanitized: EntityExtractionResult;
   droppedName: string | null;
@@ -90,7 +107,10 @@ export function sanitizeInterviewName(
 ): SanitizeNameResult {
   const name = facts.interview_info?.name?.trim();
   if (!name) return { sanitized: facts, droppedName: null };
-  if (!isFromAutoGreeting(name, userMessages)) {
+  // 前缀形态（"我是18"）先归一化再比对昵称；带前缀本身即非真名，两条路径都走 drop。
+  const stripped = stripSelfIntroPrefix(name);
+  const hasSelfIntroPrefix = stripped !== name;
+  if (!hasSelfIntroPrefix && !isFromAutoGreeting(name, userMessages)) {
     return { sanitized: facts, droppedName: null };
   }
   // 即使 name 来自"我是xx"打招呼语，只要候选人后续按结构化模板回填"姓名：xx"，就视为可信，

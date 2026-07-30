@@ -46,6 +46,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/summer-worker-alternative-upsell.rule.ts（HardRulesService 调度）',
   requested_brand_mismatch:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
+  dangling_reply_promise:
+    'agent/guardrail/output/rules/dangling-promise.rule.ts（HardRulesService 调度）',
   discriminatory_screening_leak:
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   internal_output_leak:

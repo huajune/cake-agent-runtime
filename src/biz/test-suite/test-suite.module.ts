@@ -11,6 +11,7 @@ import { TestExecutionService } from './services/test-execution.service';
 import { TestBatchService } from './services/test-batch.service';
 import { TestImportService } from './services/test-import.service';
 import { TestWriteBackService } from './services/test-write-back.service';
+import { BadcaseEvidenceResolverService } from './services/badcase-evidence-resolver.service';
 import { ConversationTestService } from './services/conversation-test.service';
 import { CuratedDatasetImportService } from './services/curated-dataset-import.service';
 import { CuratedDatasetPayloadBuilderService } from './services/curated-dataset-payload-builder.service';
@@ -84,6 +85,7 @@ import { MemoryFixtureService } from './services/memory-fixture.service';
     // Services（注意：TestWriteBackService 和 TestExecutionService 需在 TestBatchService 之前）
     TestExecutionService,
     TestWriteBackService,
+    BadcaseEvidenceResolverService,
     TestBatchService,
     ConversationTestService,
     CuratedDatasetPayloadBuilderService,

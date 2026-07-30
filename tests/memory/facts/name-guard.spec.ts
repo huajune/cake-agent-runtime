@@ -67,6 +67,23 @@ describe('name-guard', () => {
       expect(result.sanitized).toBe(facts);
     });
 
+    // badcase 2026-07-29 chat 6a69674e…：昵称是"18"，抽取模型输出带前缀的整句"我是18"，
+    // 与前缀剥离后的昵称"18"不等 → 原 sanitizer 漏网，脏 name 存活整场会话。
+    it.each(['我是18', '你好，我是18', '我叫18', '我是100％'])(
+      'drops name that still carries the self-intro prefix: %s',
+      (name) => {
+        const result = sanitizeInterviewName(buildFacts(name), [name, '浑南']);
+        expect(result.droppedName).toBe(name);
+        expect(result.sanitized.interview_info.name).toBeNull();
+      },
+    );
+
+    it('前缀门不误伤含"我"的真名（未命中前缀正则）', () => {
+      const result = sanitizeInterviewName(buildFacts('王我是'), ['姓名：王我是']);
+      expect(result.droppedName).toBeNull();
+      expect(result.sanitized.interview_info.name).toBe('王我是');
+    });
+
     it('drops name sourced from 我是xx auto-greeting', () => {
       const facts = buildFacts('执子之魂');
       const result = sanitizeInterviewName(facts, ['我是执子之魂', '健康证有的']);

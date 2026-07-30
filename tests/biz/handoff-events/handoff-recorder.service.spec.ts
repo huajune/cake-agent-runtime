@@ -28,6 +28,7 @@ describe('HandoffRecorderService', () => {
       stage: 'booking_followup',
       botImId: 'bot-1',
       workOrderId: 12345,
+      jobId: 528572,
       missingJobInfo: ['trial_period'],
       idempotencyKey: 'trace-1',
       occurredAt,
@@ -44,6 +45,7 @@ describe('HandoffRecorderService', () => {
       stage: 'booking_followup',
       botImId: 'bot-1',
       workOrderId: 12345,
+      jobId: 528572,
       missingJobInfo: ['trial_period'],
       idempotencyKey: 'trace-1',
       occurredAt,
@@ -61,9 +63,30 @@ describe('HandoffRecorderService', () => {
         reason: '候选人想改面试时间',
         stage: 'booking_followup',
         work_order_id: 12345,
+        job_id: 528572,
         missing_job_info: ['trial_period'],
       },
     });
+  });
+
+  // 运营的「岗位数据缺口榜 / 满岗信号榜」按 job_id 定位岗位；缺失必须是显式 null
+  // 而不是 undefined（undefined 会被 supabase-js 整列省略，列上不会写 null）。
+  it('normalises a missing jobId to null on both the ledger row and the ops event payload', async () => {
+    const service = new HandoffRecorderService(repository as never, opsEventsRecorder as never);
+
+    await service.record({
+      corpId: 'corp-1',
+      chatId: 'chat-1',
+      reasonCode: 'salary_admin_inquiry',
+      missingJobInfo: ['发薪主体'],
+      idempotencyKey: 'trace-3',
+    });
+
+    expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ job_id: null }),
+      }),
+    );
   });
 
   it('still records the ops event when handoff_events insert throws', async () => {
@@ -88,6 +111,7 @@ describe('HandoffRecorderService', () => {
           reason: null,
           stage: null,
           work_order_id: null,
+          job_id: null,
           missing_job_info: null,
         }),
       }),

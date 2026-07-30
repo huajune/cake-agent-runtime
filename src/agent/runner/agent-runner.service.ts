@@ -25,6 +25,8 @@ import { classifyReviewedOutcome } from './turn-outcome';
 import { isDanglingCheckReply } from './dangling-reply';
 import {
   detectOutputLeak,
+  hasTechnicalDocumentationShape,
+  isToolCallArtifactOnly,
   stripMarkdownCodeFences,
 } from '../guardrail/output/rules/internal-info-leaks.rule';
 import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
@@ -225,17 +227,17 @@ export class AgentRunnerService {
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
     const firstStep = this.toGuardrailStep('first', decision);
 
-    // 元叙述旁白 = 模型的静默意图漏成了正文（badcase chat 6a5740ff…：真人经理接管
-    // 期间模型输出"（AI 保持静默，不插入回复）"被投递）。这种轮次的正确结局是整轮
-    // 沉默——repair 重写只会把"不该说话的轮次"改写成另一句插话，因此与悬空承接句
-    // 同理直接收敛为 block（沉默 + 落审查档案），不进 repair、不送二审。
-    if (decision.decision === 'block' && this.isOnlyMetaNarrationBlock(decision)) {
+    // 直达静默：这两类首版重写只会产出"另一条不该发的文本"，与悬空承接句同理
+    // 收敛为 block（沉默 + 落审查档案），不进 repair、不送二审。
+    const silenceReason = this.resolveDirectSilenceReason(decision, firstText);
+    if (silenceReason) {
       const silencedDecision: OutputGuardDecision = {
         ...decision,
-        reasonCode: 'meta_narration_silenced',
+        reasonCode: silenceReason,
       };
       this.logger.warn(
-        `[invokeReviewed] 首版为元叙述旁白，收敛为 block（整轮静默）: text="${firstText.slice(0, 80)}"`,
+        `[invokeReviewed] 首版命中直达静默（${silenceReason}），收敛为 block（整轮静默）: ` +
+          `text="${firstText.slice(0, 80)}"`,
       );
       this.persistReviewRecord(ctx, {
         firstReply: firstText,
@@ -682,20 +684,51 @@ export class AgentRunnerService {
    * fence-only 泄漏的确定性最小修复：不可发送命中仅为 internal_output_leak，且剥掉
    * markdown 围栏标记后词库再无任何命中 → 返回剥离后的文本（围栏内正文逐字保留）。
    * 其余情况（混合命中、剥完仍有泄漏、剥完为空）返回 null，交给常规 LLM repair。
+   *
+   * 领域合规前置（2026-07-30 审计 P0-3）：快通道的隐含前提是"围栏是这条回复唯一的
+   * 问题"，而 2026-07-28 生产实例证明该前提会被整篇跨域内容击穿——候选人问日结岗，
+   * 模型回了一整篇后端接口设计答案，剥完围栏词库不再命中，逐字放行投递给了候选人。
+   * 剥离产物呈技术文档形态时不走快通道，交给常规 repair（该路径还会过回归闸）。
    */
   private tryStripFenceOnlyLeak(decision: OutputGuardDecision, text: string): string | null {
     if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
     const stripped = stripMarkdownCodeFences(text);
     if (!stripped || stripped === text) return null;
     if (detectOutputLeak(stripped)) return null;
+    if (hasTechnicalDocumentationShape(stripped)) {
+      this.logger.warn(
+        `[invokeReviewed] fence-only 命中但剥离产物呈技术文档形态，放弃确定性快通道: ` +
+          `text="${stripped.slice(0, 80)}"`,
+      );
+      return null;
+    }
     return stripped;
   }
 
   /**
-   * 首审仅命中 meta_narration_reply（元叙述旁白）时直达静默：这种回复代表模型本轮
-   * 的真实意图是"不说话"，重写修复没有意义（修出来的仍是不该发的插话）。混合命中
-   * 其它 block 规则时不走此捷径，仍按常规 repair 流程保守处理。
+   * 直达静默判据——两类首版进 repair 只会产出另一条不该发的文本：
+   *
+   * - `meta_narration_silenced`：元叙述旁白（badcase chat 6a5740ff…：真人经理接管期间
+   *   模型输出"（AI 保持静默，不插入回复）"被投递）。模型本轮的真实意图就是不说话。
+   * - `tool_call_artifact_silenced`：整条首版只是工具调用残文（2026-07-30 审计 P0-2，
+   *   2026-07-28 15:05–15:11 模型降级窗口）。泄漏反馈要求"其余内容逐字保留"，而残文
+   *   剥完无一字可留，rewrite 只能凭空创作——当时 4/4 例编出薪资/门店/伪造报名链接
+   *   并全部投递。没有事实可依时，沉默是唯一安全的结局。
+   *
+   * 混合命中其它 block 规则时都不走捷径，仍按常规 repair 流程保守处理。
    */
+  private resolveDirectSilenceReason(
+    decision: OutputGuardDecision,
+    firstText: string,
+  ): string | null {
+    if (decision.decision !== 'block') return null;
+    if (this.isOnlyMetaNarrationBlock(decision)) return 'meta_narration_silenced';
+    if (this.isOnlyInternalOutputLeakBlock(decision) && isToolCallArtifactOnly(firstText)) {
+      return 'tool_call_artifact_silenced';
+    }
+    return null;
+  }
+
   private isOnlyMetaNarrationBlock(decision: OutputGuardDecision): boolean {
     return (
       decision.blockedRuleIds.length > 0 &&

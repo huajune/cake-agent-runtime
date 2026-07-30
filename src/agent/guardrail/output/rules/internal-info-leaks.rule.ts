@@ -126,6 +126,65 @@ export function stripMarkdownCodeFences(content: string): string {
     .trim();
 }
 
+// —— 残文与跨域形态识别（2026-07-30 守卫审计 P0-2 / P0-3）————————————————
+
+/** 工具调用骨架：XML 标签、`toolName(args)` 调用式、字面量与括号。 */
+const TOOL_CALL_SKELETON_PATTERNS: readonly RegExp[] = [
+  /<\/?(?:tool_call|tool_use|invoke|parameter|function_calls?)\b[^>]*>/gi,
+  new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\s*\\([^()]*\\)`, 'g'),
+  /(["'])(?:\\.|(?!\1)[^\\])*\1/g,
+  new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`, 'g'),
+  /\b(?:true|false|null|name|arguments|parameters?)\b/gi,
+  /[\d\s{}[\]<>()=,:;.、，。：；"'`|/\\-]+/g,
+];
+
+/**
+ * 整条回复只是工具调用残文——模型没发起工具调用，而是把调用语法当正文吐了出来
+ * （2026-07-28 15:05–15:11 生产降级：`<tool_call><invoke name="duliday_job_list">…`、
+ * `{"name":"geocode",…}`、`geocode(address="海珠", city="广州")`、裸串 `duliday_job_list`）。
+ *
+ * 这种输入不能进 rewrite：泄漏反馈要求"其余内容逐字保留"，而残文剥完无一字可留，
+ * 指令退化成自由创作——当时 4/4 例编出了薪资、门店岗位乃至字面占位的伪造报名链接
+ * 并全部投递。正确结局与元叙述旁白同型：整轮静默。
+ *
+ * 判据：剥掉工具调用骨架与字面量后，不再剩下任何可读字符（汉字/字母）。
+ */
+export function isToolCallArtifactOnly(content: string): boolean {
+  const text = content?.trim() ?? '';
+  if (!text) return false;
+  if (!detectOutputLeak(text)) return false;
+  const residue = TOOL_CALL_SKELETON_PATTERNS.reduce(
+    (acc, pattern) => acc.replace(pattern, ''),
+    text,
+  );
+  return !/[\p{Script=Han}A-Za-z]/u.test(residue);
+}
+
+/**
+ * 技术文档形态：markdown 表格/标题、JSON 键值对、长驼峰标识符、接口术语。
+ *
+ * 用于给"剥围栏即完整修复"的确定性快通道加前置闸——2026-07-28 生产实例：候选人问
+ * 日结岗，模型回了一整篇后端接口设计答案（`TjybappHousingConfirm` 表金额透传、JSON
+ * 示例、字段映射表）。围栏只是它最表层的问题，剥掉围栏后词库不再命中，快通道遂
+ * 逐字放行，整篇跨域内容投递给了候选人。
+ *
+ * 要求至少两类信号同时出现：报名表模板（逐项"姓名："）不含其中任何一类，
+ * 2026-07-21 锚定判例的最小修复路径不受影响。
+ */
+const TECHNICAL_DOC_PATTERNS: readonly RegExp[] = [
+  /^\s*\|[^\n|]*\|[^\n|]*\|/m,
+  /^\s*#{1,6}\s+\S/m,
+  /["'][\w-]+["']\s*:\s*(?:["'\d[{]|true|false|null)/,
+  /\b[a-z]+[A-Z][a-zA-Z0-9]{2,}\b|\b[A-Z][a-z]+[A-Z][a-zA-Z0-9]{2,}\b/,
+  /接口|字段|参数名|返回值|数据库|整型|字符串|透传|前端|后端|调用方|存储/,
+];
+
+export function hasTechnicalDocumentationShape(content: string): boolean {
+  const text = content?.trim() ?? '';
+  if (!text) return false;
+  return TECHNICAL_DOC_PATTERNS.filter((pattern) => pattern.test(text)).length >= 2;
+}
+
 /**
  * 人设露馅：Agent 人设是真人招募经理，说"转人工/人工客服"等词等于自曝机器人身份。
  *

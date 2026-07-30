@@ -39,6 +39,8 @@ export function buildToolContext(input: {
     imageBrandResolutions: BrandResolution[];
     jobListQuerySignature: string | null;
     cityAttestation: CityAttestation | null;
+    /** 本轮被工具判定失效（海绵查不到）的 jobId；回合收尾从会话记忆剔除。 */
+    invalidatedJobIds: number[];
   };
   contactBrandAliases: string[];
   /** 本轮生效的会话品牌状态（持久化状态或首轮 seed），透传给工具兜底。 */
@@ -128,6 +130,18 @@ export function buildToolContext(input: {
     isRecalledJobId: (jobId: number) =>
       turnStartRecalledJobIds.has(jobId) ||
       (turnState.candidatePool?.some((j) => j.jobId === jobId) ?? false),
+    // 闸门拒绝时把合法 jobId 一并告知模型；本轮新召回的排在前面（更可能是候选人当前在聊的）。
+    get recalledJobIds() {
+      return [
+        ...(turnState.candidatePool?.map((j) => j.jobId) ?? []),
+        ...turnStartRecalledJobIds,
+      ].filter((id, i, arr) => arr.indexOf(id) === i);
+    },
+    onJobInvalidated: (jobId: number) => {
+      if (!turnState.invalidatedJobIds.includes(jobId)) {
+        turnState.invalidatedJobIds.push(jobId);
+      }
+    },
     token: params.token,
     imContactId: params.imContactId,
     imRoomId: params.imRoomId,

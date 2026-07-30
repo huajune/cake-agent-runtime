@@ -254,6 +254,34 @@ export class FeishuBitableApiService {
   }
 
   /**
+   * 统计单选字段取某个值的记录数。
+   *
+   * 走 records/search 只读 total，page_size=1 不拉记录体——这张表已有 3800+ 行，
+   * 用 getAllRecords 数一遍要翻近 40 页。
+   */
+  async countRecordsByFieldValue(
+    appToken: string,
+    tableId: string,
+    fieldName: string,
+    value: string,
+  ): Promise<number> {
+    const response = await this.feishuApi.post<FeishuResponse<{ total?: number }>>(
+      `/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`,
+      {
+        filter: {
+          conjunction: 'and',
+          conditions: [{ field_name: fieldName, operator: 'is', value: [value] }],
+        },
+      },
+      { params: { page_size: 1 } },
+    );
+    if (response.data.code !== 0) {
+      throw new Error(`统计记录数失败(${fieldName}=${value}): ${response.data.msg}`);
+    }
+    return response.data.data?.total ?? 0;
+  }
+
+  /**
    * 按条件查询记录
    */
   async queryRecords(

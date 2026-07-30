@@ -37,6 +37,28 @@ export interface BadcaseGovernanceDocumentItem {
 export interface BadcaseGovernanceDocumentUpdate {
   items: BadcaseGovernanceDocumentItem[];
   occurredAt?: Date;
+  /**
+   * 调用方指定的稳定事件 ID（如每日巡检的 `bcg-daily-triage-20260730`）。
+   * 不传则按 items 内容哈希生成。两种命名不会互相去重，同一批变更只能用一种。
+   */
+  eventId?: string;
+  /** 追加成功后是否顺带刷新「一、整体进展」「五、当前剩余问题」的统计数字，默认 true */
+  refreshSummary?: boolean;
+  /** 刷新统计所需的未解决数分布；缺省则跳过刷新 */
+  summaryCounts?: BadcaseOpenCounts;
+}
+
+export interface BadcaseOpenCounts {
+  待分析: number;
+  处理中: number;
+  待验证: number;
+}
+
+export interface BadcaseSummaryRefreshResult {
+  attempted: boolean;
+  updatedBlocks: number;
+  total: number;
+  error?: string;
 }
 
 @Injectable()
@@ -70,19 +92,22 @@ export class BadcaseGovernanceDocumentService {
     skipped: boolean;
     dryRun: boolean;
     eventId: string;
+    summary?: BadcaseSummaryRefreshResult;
     error?: string;
   }> {
     if (update.items.length === 0) {
       return { success: true, skipped: true, dryRun: true, eventId: '' };
     }
 
-    const eventId = this.buildEventId(update.items);
+    const eventId = update.eventId?.trim() || this.buildEventId(update.items);
     const writeEnabled =
       this.configService.get<string>('BADCASE_GOVERNANCE_DOC_SYNC_ENABLED', 'false') === 'true';
     try {
       const document = await this.loadDocument();
       if (document.blocks.some((block) => this.readBlockText(block).includes(eventId))) {
-        return { success: true, skipped: true, dryRun: !writeEnabled, eventId };
+        // 事件已存在：追加跳过，但统计数字仍要对齐到最新（同日多次运行时数字才不会停在首次的值）
+        const summary = await this.refreshSummary(update);
+        return { success: true, skipped: true, dryRun: !writeEnabled, eventId, summary };
       }
 
       const children = this.buildUpdateBlocks(update, eventId);
@@ -107,11 +132,153 @@ export class BadcaseGovernanceDocumentService {
       this.logger.log(
         `[BadcaseGovernanceDoc] 已追加治理进展 event=${eventId} items=${update.items.length}`,
       );
-      return { success: true, skipped: false, dryRun: false, eventId };
+      const summary = await this.refreshSummary(update);
+      return { success: true, skipped: false, dryRun: false, eventId, summary };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[BadcaseGovernanceDoc] 更新失败 event=${eventId}: ${message}`);
       return { success: false, skipped: false, dryRun: !writeEnabled, eventId, error: message };
+    }
+  }
+
+  /**
+   * 把「一、整体进展」和「五、当前剩余问题」里的统计数字对齐到真实未解决数。
+   *
+   * 追加式写入只动「三、主要治理批次」，这两处静态数字不改就会逐日变假
+   * （7-28 写的 55 到 7-30 已经是 60）。按章节定位后逐块 PATCH，只改数字与更新时间，
+   * 不重排结构；任何一处没找到都记 warn 而不是抛错——文档是人和机器共同维护的，
+   * 措辞被人改过时应当降级为"少改一处"，不能因此让整次同步失败。
+   */
+  async refreshSummary(
+    update: BadcaseGovernanceDocumentUpdate,
+  ): Promise<BadcaseSummaryRefreshResult> {
+    const counts = update.summaryCounts;
+    if (update.refreshSummary === false || !counts) {
+      return { attempted: false, updatedBlocks: 0, total: 0 };
+    }
+    const total = counts.待分析 + counts.处理中 + counts.待验证;
+    const writeEnabled =
+      this.configService.get<string>('BADCASE_GOVERNANCE_DOC_SYNC_ENABLED', 'false') === 'true';
+
+    try {
+      const document = await this.loadDocument();
+      const rewrites = this.collectSummaryRewrites(document, counts, total, update.occurredAt);
+      if (rewrites.length === 0) {
+        this.logger.warn('[BadcaseGovernanceDoc] 未定位到任何统计数字块，跳过刷新');
+        return { attempted: true, updatedBlocks: 0, total };
+      }
+      if (!writeEnabled) {
+        this.logger.log(
+          `[BadcaseGovernanceDoc] dry-run 统计刷新 total=${total} blocks=${rewrites.length}`,
+        );
+        return { attempted: true, updatedBlocks: 0, total };
+      }
+      for (const rewrite of rewrites) {
+        await this.patchBlockText(
+          document.documentId,
+          rewrite.blockId,
+          rewrite.blockType,
+          rewrite.text,
+        );
+      }
+      this.logger.log(
+        `[BadcaseGovernanceDoc] 统计数字已刷新 total=${total} blocks=${rewrites.length}`,
+      );
+      return { attempted: true, updatedBlocks: rewrites.length, total };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[BadcaseGovernanceDoc] 统计刷新失败: ${message}`);
+      return { attempted: true, updatedBlocks: 0, total, error: message };
+    }
+  }
+
+  private collectSummaryRewrites(
+    document: { node: WikiNode; documentId: string; blocks: DocxBlock[] },
+    counts: BadcaseOpenCounts,
+    total: number,
+    occurredAt?: Date,
+  ): Array<{ blockId: string; blockType: number; text: string }> {
+    const blockById = new Map(document.blocks.map((block) => [block.block_id, block]));
+    const root = blockById.get(document.documentId);
+    const order = (root?.children || [])
+      .map((id) => blockById.get(id))
+      .filter((block): block is DocxBlock => !!block);
+    const headingIndex = (prefix: string) =>
+      order.findIndex(
+        (block) => block.block_type === 4 && this.readBlockText(block).startsWith(prefix),
+      );
+    const sectionThree = headingIndex('三、');
+    const sectionFive = headingIndex('五、');
+
+    // 「三、主要治理批次」里逐日追加的条目也可能出现「待分析」等字样，
+    // 所以两组规则各自限定扫描区间，绝不跨进批次流水。
+    const headRange = order.slice(0, sectionThree >= 0 ? sectionThree : order.length);
+    const tailRange = sectionFive >= 0 ? order.slice(sectionFive) : [];
+
+    const dateText = this.formatSummaryDate(occurredAt || new Date());
+    const rewrites: Array<{ blockId: string; blockType: number; text: string }> = [];
+    const pushFirstMatch = (
+      range: DocxBlock[],
+      pattern: RegExp,
+      replace: (text: string) => string,
+    ) => {
+      const block = range.find((item) => pattern.test(this.readBlockText(item)));
+      if (!block) return;
+      const current = this.readBlockText(block);
+      const next = replace(current);
+      if (next === current) return;
+      rewrites.push({ blockId: block.block_id, blockType: block.block_type, text: next });
+    };
+
+    pushFirstMatch(headRange, /当前剩余\s*\d+\s*个未解决问题/, (text) =>
+      text.replace(/当前剩余\s*\d+\s*个未解决问题/, `当前剩余 ${total} 个未解决问题`),
+    );
+    pushFirstMatch(headRange, /^更新时间：/, () => `更新时间：${dateText}`);
+    pushFirstMatch(tailRange, /目前剩余\s*\d+\s*个未解决问题/, (text) =>
+      text.replace(/目前剩余\s*\d+\s*个未解决问题/, `目前剩余 ${total} 个未解决问题`),
+    );
+    for (const [label, value] of [
+      ['待分析', counts.待分析],
+      ['处理中', counts.处理中],
+      ['待验证', counts.待验证],
+    ] as const) {
+      const pattern = new RegExp(`^${label}：\\s*\\d+\\s*个`);
+      pushFirstMatch(tailRange, pattern, (text) => text.replace(pattern, `${label}：${value} 个`));
+    }
+    return rewrites;
+  }
+
+  private formatSummaryDate(date: Date): string {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    }).formatToParts(date);
+    const pick = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((item) => item.type === type)?.value || '';
+    return `${pick('year')} 年 ${pick('month')} 月 ${pick('day')} 日`;
+  }
+
+  private async patchBlockText(
+    documentId: string,
+    blockId: string,
+    blockType: number,
+    text: string,
+  ): Promise<void> {
+    const response = await this.feishuApi.patch<FeishuResponse<Record<string, unknown>>>(
+      `/docx/v1/documents/${documentId}/blocks/${blockId}`,
+      {
+        update_text_elements: {
+          elements: [this.textElement(text)],
+        },
+      },
+      { params: { document_revision_id: -1 } },
+    );
+    if (response.data.code !== 0) {
+      throw new Error(
+        `块 ${blockId}(type=${blockType}) 更新失败: ${response.data.code} ${response.data.msg}`,
+      );
     }
   }
 

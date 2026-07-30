@@ -183,6 +183,46 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.detailedReason).toContain('jobId=999');
   });
 
+  // 死岗位跨轮重试（badcase chat 6a685393，jobId 528572 M Stand 中大天地店）：
+  // 岗位失效后仍留在会话记忆，模型连撞 3 轮 job_not_found 才转人工。
+  describe('岗位失效后从会话记忆剔除', () => {
+    it('job_not_found 时回调 onJobInvalidated，交回合收尾剔除记忆', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
+      const onJobInvalidated = jest.fn();
+
+      const result = await executeTool(
+        { jobId: 528572, requestedDate: '2026-04-08' },
+        { isRecalledJobId: () => true, onJobInvalidated },
+      );
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+      expect(onJobInvalidated).toHaveBeenCalledWith(528572);
+    });
+
+    it('话术明确禁止同 jobId 重试（原话术只说"重新核对状态"，模型照旧重试）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
+
+      const result = await executeTool(
+        { jobId: 528572, requestedDate: '2026-04-08' },
+        { isRecalledJobId: () => true },
+      );
+
+      expect(result._replyInstruction).toContain('禁止再用同一个 jobId 重试');
+      expect(result._replyInstruction).toContain('528572');
+    });
+
+    it('未注入 onJobInvalidated（test/debug 链路）时不炸', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
+
+      const result = await executeTool(
+        { jobId: 528572, requestedDate: '2026-04-08' },
+        { isRecalledJobId: () => true },
+      );
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    });
+  });
+
   describe('jobId provenance 闸门', () => {
     it('jobId 不在本会话召回集时拦截幻觉，不打 Sponge 接口', async () => {
       // 空会话约面意向幻觉簇：候选人只发"应聘"，模型凭空编出 jobId + 候选人报名表
@@ -208,6 +248,26 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result.success).toBe(false);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED);
       expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+
+    it('会话已召回过岗位时，话术列出合法 jobId 而不是谎称"还没召回过任何岗位"', async () => {
+      const result = await executeTool(
+        { jobId: 999001, requestedDate: '2026-04-08' },
+        { isRecalledJobId: () => false, recalledJobIds: [528339, 528572] },
+      );
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED);
+      expect(result._replyInstruction).toContain('528339、528572');
+      expect(result._replyInstruction).not.toContain('还没有通过 duliday_job_list 召回过任何岗位');
+    });
+
+    it('会话零召回时仍用"还没召回过任何岗位"话术', async () => {
+      const result = await executeTool(
+        { jobId: 999001, requestedDate: '2026-04-08' },
+        { isRecalledJobId: () => false, recalledJobIds: [] },
+      );
+
+      expect(result._replyInstruction).toContain('还没有通过 duliday_job_list 召回过任何岗位');
     });
 
     it('jobId 命中本会话召回集时放行（自救闭环：先 job_list 再 precheck）', async () => {
