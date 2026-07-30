@@ -200,6 +200,20 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版回复包含高敏感筛选条件或以高敏感属性作为拒绝理由，当前文本禁止发送。请重新生成：不要提及户籍、籍贯、民族、专业、婚育等门槛；不要解释具体不通过原因；核对专业只能开放式问"你学的什么专业"，不得把排除条件塞进问句；婚育信息禁止询问、复述或确认；改为中性承接，可以推荐其他岗位、继续收集必要信息，或说明需要同事确认。',
   },
   {
+    id: 'dangling_reply_promise',
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '观察首版回复只给将来时查询承诺（"我帮你查下X"）、没有任何结果性内容的样本。',
+    riskGoal: '候选人收到承诺后再无下文，会一直空等——量化首版悬空规模，供升档决策。',
+    exogenousSignal:
+      '复用 runner 的 isDanglingCheckReply 纯谓词（短文本 + 将来时承诺 + 无结果性标记）。',
+    residualRisk:
+      '消费者：日报 L1 与运营复盘；退场条件：累计两周精确率 <70% 则删除。' +
+      '刻意不升 REVISE——repair 工具已被移除，改写只会把承诺改成"暂时没岗位"的编造；' +
+      '根治在生成侧（candidate-consultation 已补"不得以裸承诺结束回合"）。',
+    verification: 'tests/agent/guardrail/output/rules/dangling-promise.rule.spec.ts',
+  },
+  {
     id: 'proactive_insurance_policy_mention',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
