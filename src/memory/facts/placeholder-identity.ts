@@ -118,6 +118,75 @@ export function assertExtractionIdentityProvenance(output: unknown, promptText: 
   }
 }
 
+// —— 手机号形态门（badcase 2026-07-29，chat 6a69674e… / 6a69790b…）————————————
+
+/**
+ * 抽取输出的手机号形态校验。
+ *
+ * `assertExtractionIdentityProvenance` 的出处门只在数字流 ≥7 位时生效——短垃圾值
+ * （昵称"18"、"100％"）位数不够，直接绕过出处校验落库，随后经 [已确认事实] 逐轮沿用，
+ * 并被预填进收资表发给候选人。
+ *
+ * 不变式：interview_info.phone 只有一种合法形态——11 位中国大陆手机号；任何其它形态
+ * 对下游（precheck/booking/预填）都无用且有害，字段级丢弃不损失任何真实信息。
+ */
+export function isStorableCandidatePhone(phone: string | null | undefined): boolean {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  return /^1\d{10}$/.test(digits);
+}
+
+// —— 明示型字段窗口出处门（badcase 2026-07-29，同上两 chat）————————————————
+
+/** 出处比对归一化：去空白与常见分隔/括号，容忍"M Stand（大运天地店）"式包装差异。 */
+function normalizeForProvenance(text: string): string {
+  return text.replace(/[\s()（）【】\[\]{}·・\-—－_、,，。.]/gu, '');
+}
+
+/**
+ * 字段值在本轮抽取上下文（候选人原文 + 助手原文 + 旧值）中是否有出处。
+ *
+ * 适用范围严格限定于**字段定义本身已声明"只能来自明示"**的字段：
+ * - applied_store：候选人自述或助手推荐过的门店名，必是对话文本里出现过的串；
+ * - household_register_province：字段规则明写"只在候选人主动透露时提取，不得据现居地推断"。
+ *
+ * 刻意不覆盖可合法推断的字段（education 由"读大三"推出"本科在读"、height 由
+ * "一米七五"推出"175"），避免出处门错杀真实提取。
+ */
+export function hasFieldProvenanceInWindow(
+  value: string | null | undefined,
+  contextTexts: readonly string[],
+): boolean {
+  const normalizedValue = normalizeForProvenance((value ?? '').trim());
+  if (normalizedValue.length < 2) return true;
+  return contextTexts.some((text) => normalizeForProvenance(text).includes(normalizedValue));
+}
+
+// —— 健康证首写证据门（badcase 2026-07-29，同上两 chat）——————————————————
+
+/**
+ * 健康证话题词。与 is_student 证据门同一取向：宽松，只拦"零语境凭空发明"。
+ * 口语简称（"有证的吧""还没办证""要带证吗"）一并收进来——宁可放过含糊语境，
+ * 不可错杀真实提取。
+ */
+const HEALTH_CERT_TOPIC_RE =
+  /健康证|健康证明|健证|食品证|防疫证|健康检查|体检|(?:有|没|无|不|办|考|带|需要|要)证/u;
+
+/**
+ * 会话段内是否谈过健康证。
+ *
+ * 背景：两例 chat 的抽取输出在全程没出现过"健康证"三个字的会话里写下
+ * has_health_certificate="有"。该值会直接放行 booking 的有证 gate，是本组臆造字段里
+ * 后果最重的一个（无证候选人被约到要求持证的岗位）。值域只有"有/无/愿意办理"等短词，
+ * 无法做子串出处校验，改用与 is_student 同构的话题词证据门，由调用方限定首写时生效。
+ */
+export function hasHealthCertificateTopicEvidence(
+  userTexts: readonly string[],
+  assistantTexts: readonly string[],
+): boolean {
+  const hit = (text: string): boolean => HEALTH_CERT_TOPIC_RE.test(stripMessageDecorations(text));
+  return userTexts.some(hit) || assistantTexts.some(hit);
+}
+
 // —— is_student 首写证据门（badcase 2026-07-28，chat 6a673402…）——————————————
 
 // 候选人侧身份词汇。宽松取向：门的职责是拦"零身份语境凭空发明布尔值"，不是精确

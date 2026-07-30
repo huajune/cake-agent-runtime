@@ -150,6 +150,21 @@ export const TOOL_ERROR_TYPES = {
    * 模型应先向候选人确认所在城市，得到明确回复后再调用本工具。
    */
   INVITE_CITY_UNVERIFIED: 'invite.city_unverified',
+  /**
+   * 时机 gate：本会话已给该城市拉过群，重复邀请只会骚扰候选人。
+   * 模型应据实回应"你已经在 X 群里了"，不要再次发起邀请。
+   */
+  INVITE_ALREADY_INVITED: 'invite.already_invited',
+  /**
+   * 时机 gate：本轮还没跑过 duliday_job_list，候选人不知道有岗没岗就收到群邀请（突兀拉群）。
+   * 模型应先查岗并给出结论，再决定是否拉群。
+   */
+  INVITE_NO_JOB_RESULT: 'invite.no_job_result',
+  /**
+   * 时机 gate：候选人本轮正在推进某岗位的报名/约面（问怎么报名、几点面试…）。
+   * 拉群是"无岗维护"场景，此时拉群等于打断成单。
+   */
+  INVITE_BOOKING_IN_PROGRESS: 'invite.booking_in_progress',
   INVITE_NO_GROUP_AVAILABLE: 'invite.no_group_available',
   INVITE_NO_GROUP_IN_CITY: 'invite.no_group_in_city',
   INVITE_GROUP_FULL: 'invite.group_full',

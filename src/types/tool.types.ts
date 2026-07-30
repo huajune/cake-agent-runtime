@@ -91,6 +91,12 @@ export interface ToolBuildContext {
   /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */
   bookingSucceeded?: boolean;
   /**
+   * 本轮是否已执行过 duliday_job_list（即已有可告知候选人的查岗结论）。
+   * 由 duliday_job_list 写入，invite_to_group 的时机 gate 读取，用于拦"突兀拉群"
+   * （badcase 63eefu6c：查岗结论出来前 1 分钟就发了群邀请）。
+   */
+  jobListExecutedThisTurn?: boolean;
+  /**
    * 本轮工具实时解析出的工单号。用于处理“海绵已存在工单，但工单挂在另一微信联系人，
    * 或当前用户的 active_booking 尚未写入”的情况：改约/取消工具拿到有效工单后写入，
    * request_handoff 可据此关联正确工单并避免误判首次约面。
