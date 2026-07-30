@@ -11,7 +11,6 @@ This directory is the durable source of truth for editable architecture diagrams
 | Guardrail architecture | `guardrail-architecture.excalidraw` |
 | Memory system architecture | `memory-system-architecture.excalidraw` |
 | Evidence-first resolution and guardrail feedback loop | `evidence-first-resolution-and-guardrails.excalidraw` |
-| Shareable evidence-first decision architecture | `evidence-first-decision-architecture.excalidraw` |
 | Agent quality assurance (three-tier defence) | `agent-quality-assurance.excalidraw` + `.svg` |
 
 > `agent-quality-assurance.*` is **generated**, not hand-drawn — edit
