@@ -144,6 +144,32 @@
         "`pnpm exec jest --watchman=false` 全量 **380 suites / 5982 passed**",
         "新增 18 条针对性用例：证据反查（双侧通过/单侧 partial/最近批次失败/同批 pending/不串其他 recordId/异常降级）、统计刷新（改对六块/不误伤流水/无数字不写/dry-run/稳定 eventId 幂等）、删列后的关闭判定三态"
       ]
+    },
+    {
+      "number": "849",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/849",
+      "title": "首版悬空承诺落观测档 + 品牌数字写法差异不再判串台",
+      "author": "huajune",
+      "mergedAt": "2026-07-30",
+      "businessUpdates": [
+        "首版悬空承诺落观测档 + 品牌数字写法差异不再判串台"
+      ],
+      "summary": [
+        "首版悬空承诺落观测档 + 品牌数字写法差异不再判串台"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "首版悬空承诺落观测档 + 品牌数字写法差异不再判串台"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 `dangling-promise.rule.spec.ts`（7 条：2 条实证命中 + 5 条不误杀）",
+        "新增 `brand-name-errors.rule.spec.ts`（5 条）——**`detectRequestedBrandMismatch` 此前零测试覆盖**",
+        "全量 **5976 passed / 380 suites**，pre-push CI 全绿"
+      ]
     }
   ],
   "lastRelease": {
