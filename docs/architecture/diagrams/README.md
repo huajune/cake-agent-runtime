@@ -12,6 +12,12 @@ This directory is the durable source of truth for editable architecture diagrams
 | Memory system architecture | `memory-system-architecture.excalidraw` |
 | Evidence-first resolution and guardrail feedback loop | `evidence-first-resolution-and-guardrails.excalidraw` |
 | Shareable evidence-first decision architecture | `evidence-first-decision-architecture.excalidraw` |
+| Agent quality assurance (three-tier defence) | `agent-quality-assurance.excalidraw` + `.svg` |
+
+> `agent-quality-assurance.*` is **generated**, not hand-drawn — edit
+> `scripts/diagrams/build-agent-quality-excalidraw.mjs` and re-run it, then
+> `scripts/diagrams/render-agent-quality-preview.mjs` to refresh the SVG. Editing the
+> `.excalidraw` in the web app works for a one-off tweak but the next build overwrites it.
 
 The first four diagrams form the system-level reading path: start with the system
 boundary, follow a message through the runtime, inspect the main business state
