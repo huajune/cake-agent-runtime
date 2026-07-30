@@ -58,6 +58,16 @@ describe('detectRepairRegression', () => {
     expect(detectRepairRegression(first, revised)).toBe('polarity_reversed');
   });
 
+  // 2026-07-30 审计 P2-8：岗位事实原按"行"统计，首版写成一段散文时计数恒为 1，
+  // >=2 的门槛永远够不到——trace batch_6a6726d4… 首版散文式给出最高薪岗位、修复版
+  // 反转成"附近 10 公里内没岗位"，两个检测器都没拦住并已投递。
+  it('detects polarity reversal when the first reply is a single prose paragraph', () => {
+    const first =
+      '你要工资高一点、累点无所谓的话，奥乐齐分拣这个岗位比较合适，首月保底 6760 元，离你 3.2 公里，班次是 07:00-19:00。';
+    const revised = '你附近 10 公里内暂时没找到合适的岗位，先帮你进兼职群，有新岗我第一时间叫你。';
+    expect(detectRepairRegression(first, revised)).toBe('polarity_reversed');
+  });
+
   it('accepts deleting fabricated job cards when all job-list calls had no evidence', () => {
     const first = [
       '帮你查了下，附近有几家在招的：',

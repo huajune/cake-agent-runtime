@@ -22,16 +22,31 @@ const PROMISE_PATTERN =
  * 结果性/推进性内容标记：出现任一说明回复里带了实质结论或把对话推进给了候选人
  * （否定结论、在招状态、薪资/距离数字、反问收集信息、转人工衔接），不算悬空。
  * 完成态（了/到/啦/过/已经）说明"查"已经发生并有下文，是结果陈述不是空头承诺。
+ *
+ * 2026-07-30 审计 P1-6：`没` 原为裸字，把"帮你查一下附近**有没有**咖啡店"里的疑问
+ * 语气词当成了否定结论，承诺式疑问句因此永久免检（生产实例 …_1785222662530 已投递）。
+ * 现要求 `没` 后接结论性成分才算落地。
  */
 const GROUNDED_PATTERN =
-  /没|暂|无|已|了|到|啦|过|在招|元|块|公里|千米|km|KM|群|同事|人工|吗|？|\?|哪|多少|几点|什么时候|方便/;
+  /(?<!有)没(?:找到|查到|有岗|在招|了|得|人)|暂|无|已|了|到|啦|过|在招|元|块|公里|千米|km|KM|群|同事|人工|吗|？|\?|哪|多少|几点|什么时候|方便/;
 
 /** 归一化后超过该长度的回复默认视为带实质内容，不参与悬空判定。 */
 const MAX_DANGLING_LENGTH = 30;
 
+/**
+ * 承诺 + 等待指令共现（"我帮你查下 X，稍等哈"）：这个组合几乎不可能是实质回复，
+ * 长度豁免对它不成立——报个地名加几个岗位类型就轻松超过 30 字
+ * （生产实例 …_1785222662530 归一化 40 字，直接被长度闸放行）。
+ */
+const WAIT_INSTRUCTION_PATTERN =
+  /稍等|等我|马上(?:回|告诉|发)|一会儿?(?:告诉|回|发)你|等下(?:告诉|回|发)/;
+
 export function isDanglingCheckReply(text: string): boolean {
   const normalized = text.replace(/\s+/g, '');
-  if (!normalized || normalized.length > MAX_DANGLING_LENGTH) return false;
+  if (!normalized) return false;
   if (!PROMISE_PATTERN.test(normalized)) return false;
+  const lengthExempt =
+    normalized.length > MAX_DANGLING_LENGTH && !WAIT_INSTRUCTION_PATTERN.test(normalized);
+  if (lengthExempt) return false;
   return !GROUNDED_PATTERN.test(normalized);
 }
