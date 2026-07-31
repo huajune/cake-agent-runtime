@@ -449,6 +449,9 @@ export class AgentRunnerService {
         ? detectRepairRegression(firstText, revisedText, {
             committedSideEffects: committed || undefined,
             jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
+            // 首审规则 id：本轮根本没调查岗工具时 jobEvidenceAvailable 是 undefined，
+            // 逃生口够不着，只能靠"零证据类规则触发"这条判据识别"删幻觉 ≠ 结构塌缩"。
+            triggeredRuleIds: decision.ruleIds,
           })
         : null;
     // 检出回归后的收敛对齐 guardrail-chain-assessment-and-rebuild.md §2.3 ④：

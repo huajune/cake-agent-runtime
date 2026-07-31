@@ -19,6 +19,8 @@ import { detectHandoffPromiseWithoutHandoff } from './rules/handoff-promises.rul
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
+import { detectJobFactsWithoutLookup } from './rules/job-facts-without-lookup.rule';
+import { detectOnlineInterviewLocationClaim } from './rules/online-interview-location.rule';
 import {
   detectHumanServicePhraseLeak,
   detectMetaNarrationReply,
@@ -232,6 +234,23 @@ export class HardRulesService {
     );
     if (settlementNoEvidenceAssertion) {
       contradictions.push(this.withRulePolicy(settlementNoEvidenceAssertion));
+    }
+
+    // 形态三：本轮一次岗位数据都没拿到（含根本没调查岗工具）却投递量化岗位事实。
+    // 与形态二互补：那条管"查过但查无"，这条管"根本没查"。
+    const jobFactsWithoutLookup = detectJobFactsWithoutLookup(
+      text,
+      toolCalls,
+      params.recentMessages ?? [],
+    );
+    if (jobFactsWithoutLookup) {
+      contradictions.push(this.withRulePolicy(jobFactsWithoutLookup));
+    }
+
+    // 线上/AI/视频/电话面试却给到店指引——候选人会白跑一趟门店。
+    const onlineInterviewLocationClaim = detectOnlineInterviewLocationClaim(text, toolCalls);
+    if (onlineInterviewLocationClaim) {
+      contradictions.push(this.withRulePolicy(onlineInterviewLocationClaim));
     }
 
     const unsupportedScheduleWindowClaim = detectUnsupportedScheduleWindowClaim(
