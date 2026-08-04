@@ -386,6 +386,46 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '禁止用"一般都是/通常"类通识或其他品牌的结算规则填空，也不要沿用已查不到岗位的历史结算信息。',
   },
   {
+    id: 'job_facts_without_any_lookup',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '本轮一次岗位数据都没拿到时，拦住凭空投递门店名、距离、时薪、班次、发薪日、年龄段的量化岗位事实。',
+    riskGoal:
+      '与 settlement_no_evidence_assertion 互补覆盖"无出处岗位事实"的另一半：那条管"查过但查无"，本条管"根本没查"。' +
+      '2026-07-30 生产 10 回合/8 会话实证（tool_calls 为空或只含非岗位工具，却投递整套量化细节），语义层判 8 条 block 但 shadow 拦不住投递。',
+    exogenousSignal:
+      '本轮无任何 duliday_job_list 可用结果 + 回复中的量化岗位事实 + 该数值在本轮工具结果与助手历史中均无出处。',
+    residualRisk:
+      '出处比对是数值骨架级的字符串比对，不做语义解析：往轮助手卡片里出现过的数值一律豁免（可能是往轮自己编的，' +
+      '交语义审查与跨轮编造治理）；非量化的定性描述（工作内容、面试形式）不在射程内；' +
+      '归一化只处理空白/全半角/时-小时/公里-km 等已知写法差异，新写法差异可能造成假阳，随生产样本迭代。',
+    verification: 'tests/agent/guardrail/output/job-facts-without-lookup.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版在本轮完全没有拿到岗位数据的情况下给出了具体的门店、距离、薪资、班次、发薪日或年龄要求，' +
+      '这些数值没有任何工具出处，当前文本不可发送。请重写：需要岗位信息时先调用 duliday_job_list 查，' +
+      '只转述本轮查到的结果；暂时查不到就如实说明，不要用品牌常识、其他门店的行情或印象里的数字填空。',
+  },
+  {
+    id: 'online_interview_location_claim',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '面试方式为线上/AI/视频/电话（无需到店）时，拦住"面试定位已发你/点开看导航/直接去店里面试"这类到店指引。',
+    riskGoal:
+      '候选人会为一场线上面试白跑一趟门店。2026-07-30 连续第二天复发、当日 4 次（6a6ab32a/6a6af9d4 两轮/6a5dbb50），07-29 另有 6a69674e 同型。',
+    exogenousSignal:
+      'send_store_location 结果的 interviewMethod / locationNotRequired / destination + 回复中的到店或面试定位声称。',
+    residualRisk:
+      'destination=store（候选人问工作地点）整条豁免，代价是该分支里把工作门店说成面试地点的情形仍交语义审查；' +
+      'interviewMethod 同时含线下字样时保守放行（线上初筛+线下复试）；未调 send_store_location 的到店声称不在射程内。',
+    verification: 'tests/agent/guardrail/output/online-interview-location.rule.spec.ts',
+    feedbackToGenerator:
+      '本次面试无需到店（线上/AI/视频/电话面试），上一版却告诉候选人已发面试定位、让他点开导航或直接去门店面试，' +
+      '当前文本不可发送。请重写：说清面试是线上进行的、如何参加（链接/来电等按本轮工具结果转述），' +
+      '不要给到店指引；确实需要说明门店位置时，必须讲明那是工作门店、不是面试地点。',
+  },
+  {
     id: 'unsupported_store_status_speculation',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
