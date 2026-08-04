@@ -37,6 +37,10 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/handoff-promises.rule.ts（HardRulesService 调度）',
   identity_misregistration_coaching:
     'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts（HardRulesService 调度）',
+  experience_fraud_coaching:
+    'agent/guardrail/output/rules/experience-fraud-coaching.rule.ts（HardRulesService 调度）',
+  screening_rejection_override:
+    'agent/guardrail/output/rules/screening-rejection-override.rule.ts（HardRulesService 调度）',
   image_description_not_saved:
     'agent/guardrail/output/rules/visual-message-errors.rule.ts（HardRulesService 调度）',
   repeated_reply: 'agent/guardrail/output/rules/repeated-reply.rule.ts（HardRulesService 调度）',

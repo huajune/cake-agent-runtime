@@ -169,6 +169,43 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '禁止任何"先按XX登记/面试再说/别提暑假工"式的绕审建议。',
   },
   {
+    id: 'experience_fraud_coaching',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '候选人自曝报名经历是编造的（"随便写的/填的是假的"）后，拦住教唆其面试时声称做过/有经验、' +
+      '或以"门店不查过往记录"背书的回复。引导如实说"没做过愿意学"的口径不拦。',
+    riskGoal:
+      '诚信红线：禁止在明知候选人经历造假时教唆其在面试中维持虚假口径（badcase scyjp2kx，chat 6a702fae）。',
+    exogenousSignal: '候选人近轮消息的造假自曝模式 + 回复文本的声称经历教唆/不查记录背书模式。',
+    residualRisk:
+      '自曝措辞变体（"其实我没干过那行"类无关键词表述）依赖正则补样本；年龄/健康证等其他字段造假教唆仍未覆盖。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '候选人已明确说明其登记的工作经历是编造的，上一版回复却教唆其在面试中声称做过/有经验（或以"不查记录"背书），当前文本不可发送，这是诚信红线。' +
+      '请改写为如实口径：引导候选人面试时如实说明没有相关经历、表达愿意学习即可；该岗位若不要求经验，直接说明岗位接受新手；' +
+      '登记信息与事实不符时主动引导更正，禁止任何"就说做过/不查记录/随便写没事"式话术。回复中未被点名的其他内容（面试时间、地址等）逐字保留。',
+  },
+  {
+    id: 'screening_rejection_override',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '本轮 precheck 返回敏感拒绝态（age/student/household/health_certificate_rejected）或 booking 返回 booking.rejected 时，' +
+      '拦"确认有误/条件符合"翻案话术与对被拒岗位的继续预约承诺。转推其它岗位不拦。',
+    riskGoal:
+      '防止模型在候选人追问下推翻工具的内部筛选拒绝结论、对必然失败的岗位反复承诺报名（badcase weurg1xg，chat 6a6c688b：户籍拒绝被翻案成"你的条件是符合的"）。',
+    exogenousSignal:
+      'duliday_interview_precheck.nextAction 四类拒绝态 / duliday_interview_booking.errorType=booking.rejected + 回复文本的翻案/承诺模式（句级绑定被拒岗位名）。',
+    residualRisk:
+      '跨轮翻案（本轮无工具调用时宣称"条件符合"）不在口径内，依赖 prompt 拒绝粘性口径与语义档；翻案措辞变体需随 badcase 补样本。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '本轮工具已明确返回该岗位的内部筛选拒绝结论，上一版回复却宣称"确认有误/条件符合"或继续承诺帮候选人预约该岗位，当前文本不可发送。' +
+      '请改写为：用中性理由说明当前岗位暂不匹配（严禁透露或暗示户籍、年龄、身份等具体筛选条件，也不得说"审核没过"），' +
+      '然后自然转推其它合适岗位或拉群收口；回复中对候选人其他问题的回答等未被点名的内容逐字保留。',
+  },
+  {
     id: 'summer_worker_alternative_upsell',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,

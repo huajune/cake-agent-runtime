@@ -211,8 +211,13 @@ export function compressWeekdays(days: string): string {
   return tokens.join(', ');
 }
 
-/** 检测 lines 中是否含"全周强排班"信号（每天/做六休一/固定排班 等） */
+/**
+ * 检测 lines 中是否含"全周强排班"信号（每天/做六休一 等）。
+ *
+ * 「固定排班」不算全周信号：它是时段固定标签，可与「每周至少上岗 2 天」共存
+ * （badcase id4zx7q9），凭它打"工作日也要配合"提示会误导模型拒掉周末可做岗。
+ */
 export function hasFullWeekOrRigidSchedule(lines: string[]): boolean {
   const text = lines.join('\n');
-  return /每天|周一至周日|做六休一|固定排班|05:00\s*-\s*23:00|早开晚结/.test(text);
+  return /每天|周一至周日|做六休一|05:00\s*-\s*23:00|早开晚结/.test(text);
 }

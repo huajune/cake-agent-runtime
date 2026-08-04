@@ -15,7 +15,9 @@ import {
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectHandoffPromiseWithoutHandoff } from './rules/handoff-promises.rule';
+import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
+import { detectScreeningRejectionOverride } from './rules/screening-rejection-override.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
 import {
@@ -187,6 +189,22 @@ export class HardRulesService {
     );
     if (identityMisregistrationCoaching) {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
+    }
+
+    // 经历轴诚信红线：仅在候选人自曝造假后触发，与身份轴规则同族分治。
+    const experienceFraudCoaching = detectExperienceFraudCoaching(
+      text,
+      params.userMessage,
+      params.recentUserTexts,
+    );
+    if (experienceFraudCoaching) {
+      contradictions.push(this.withRulePolicy(experienceFraudCoaching));
+    }
+
+    // 敏感筛选拒绝翻案：本轮 precheck/booking 已给出结构化拒绝时，回复不得翻案或继续承诺被拒岗位。
+    const screeningRejectionOverride = detectScreeningRejectionOverride(text, toolCalls);
+    if (screeningRejectionOverride) {
+      contradictions.push(this.withRulePolicy(screeningRejectionOverride));
     }
 
     const summerWorkerAlternativeUpsell = detectSummerWorkerAlternativeUpsell(

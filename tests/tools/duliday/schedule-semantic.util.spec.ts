@@ -63,6 +63,46 @@ describe('classifyScheduleSemantic', () => {
     expect(classifyScheduleSemantic({ workTimeText })).not.toContain('requires_full_week');
   });
 
+  it('badcase id4zx7q9: 固定排班 label with 每周至少 2 天 is flexible, not full week', () => {
+    // 哈根达斯又一城：排班类型「固定排班」+ 每周至少上岗 2 天，周末可做，
+    // 曾被 /固定排班/ 文本判据误判 requires_full_week 致"只周末"候选人被告知无岗。
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: {
+        onWorkLimitType: '至少上岗',
+        onWorkTimeUnit: '天',
+        onWorkTime: 2,
+      },
+      dayWorkTime: {
+        arrangementType: '固定排班',
+        combinedArrangement: [
+          { combinedArrangementStartTime: '09:30', combinedArrangementEndTime: '22:30' },
+        ],
+      },
+    });
+
+    const semantics = classifyScheduleSemantic({ workTimeText });
+    expect(semantics).not.toContain('requires_full_week');
+    expect(semantics).toContain('flexible');
+    expect(matchScheduleConstraint(semantics, { onlyWeekends: true })).toEqual({ matched: true });
+  });
+
+  it('固定排班 label alone (no weekly-days data) is not full week', () => {
+    const workTimeText = JSON.stringify({ dayWorkTime: { arrangementType: '固定排班' } });
+
+    expect(classifyScheduleSemantic({ workTimeText })).not.toContain('requires_full_week');
+  });
+
+  it('explicit full-week text still wins over low weekly-days structure', () => {
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: { onWorkLimitType: '至少上岗', onWorkTimeUnit: '天', onWorkTime: 2 },
+      dayWorkTime: { workTimeRemark: '做六休一' },
+    });
+
+    const semantics = classifyScheduleSemantic({ workTimeText });
+    expect(semantics).toContain('requires_full_week');
+    expect(matchScheduleConstraint(semantics, { onlyWeekends: true }).matched).toBe(false);
+  });
+
   it('detects 通宵 shift code as evening_compatible', () => {
     const workTimeText = JSON.stringify({
       dayWorkTime: {

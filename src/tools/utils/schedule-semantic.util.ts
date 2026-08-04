@@ -29,12 +29,16 @@ export type ScheduleSemantic =
   | 'flexible'
   | 'unknown';
 
+// 注意：「固定排班」不在此列——现网 dayWorkTime.arrangementType 的「固定排班」是
+// **时段固定**标签（相对自由排班/自定义工时），与每周出勤频次无关，可与
+// 「每周至少上岗 2 天」共存。badcase id4zx7q9（chat 6a6c14f0）：哈根达斯周末可做岗
+// （固定排班 + 每周至少 2 天）被该标签误判 requires_full_week，"只周末"候选人
+// 被谎称 10km 无岗；每周全勤判定交给结构化 weeklyWorkDays>=5 与显式文本信号。
 const FULL_WEEK_PATTERNS = [
   /每天/,
   /周一至周日/,
   /做六休一/,
   /早开晚结/,
-  /固定排班/,
   /05[:：]00\s*[-—–~]\s*23[:：]00/,
 ];
 
@@ -143,6 +147,13 @@ function deriveStructuredScheduleSemantics(
 
   if (weeklyWorkDays !== null && weeklyWorkDays >= 5) {
     return ['requires_full_week'];
+  }
+  // 每周出勤门槛 ≤2 天：纯周末（周六+周日）即可满足，具体天数按门店协调，
+  // 视为 flexible 让"只周末/每周最多两天"候选人可见该岗。显式冲突文本
+  // （做六休一/周末必到等）在 matchScheduleConstraint 中先于 flexible 判定，
+  // 不会被本信号覆盖。3-4 天维持保守排除（仅两个周末日无法满足）。
+  if (weeklyWorkDays !== null && weeklyWorkDays <= 2) {
+    return ['flexible'];
   }
   return [];
 }

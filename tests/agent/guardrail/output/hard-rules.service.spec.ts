@@ -1964,6 +1964,163 @@ describe('HardRulesService', () => {
     });
   });
 
+  describe('experience_fraud_coaching (badcase scyjp2kx chat 6a702fae 教唆谎称盒马经历)', () => {
+    const admissionTexts = ['那天有的小姐妹让我随便写的，我写的盒马', '就是没有，随便写的'];
+
+    it('flags the coaching verbatim from the badcase（教说做过+编造更自然）', () => {
+      const result = service.check({
+        replyText:
+          '没事的，这家奥乐齐不查过往记录的，面试的时候直接说就行。你就说之前在盒马做过一段时间，现在想换个离家近的继续做，这样反而更自然。',
+        toolCalls: [],
+        userMessage: '但是之前上面信息填进去是有做过呀',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'experience_fraud_coaching',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('flags "如实说有相关经验" coaching after fabrication admission', () => {
+      const result = service.check({
+        replyText: '有盒马分拣经验其实是加分项呀，面试时如实说有相关经验就行，店里会更愿意要的。',
+        toolCalls: [],
+        userMessage: '可是她们都说要有经验的，所以我就想随便填个会不会好点',
+        recentUserTexts: ['过往公司也是随便写的，没事吧'],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('experience_fraud_coaching');
+    });
+
+    it('allows the honest correction coaching（就说之前没做过，愿意学）', () => {
+      const result = service.check({
+        replyText:
+          '这家奥乐齐不需要经验，没做过也没关系。面试的时候如果被问到，你就说之前没做过，但是愿意学就行，这家接受新手的。',
+        toolCalls: [],
+        userMessage: '就是没有，随便写的',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it('does not flag experience advice without any fabrication admission（真有经验的正常辅导）', () => {
+      const result = service.check({
+        replyText: '你有盒马分拣经验的话，面试时如实说有相关经验就行，是加分项。',
+        toolCalls: [],
+        userMessage: '我之前在盒马做过一年分拣',
+        recentUserTexts: ['我之前在盒马做过一年分拣'],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it('does not flag replies without coaching phrasing even after admission', () => {
+      const result = service.check({
+        replyText: '这家不需要经验，新手也能做，登记信息我帮你更正一下，面试如实说明就好。',
+        toolCalls: [],
+        userMessage: '过往公司也是随便写的，没事吧',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+  });
+
+  describe('screening_rejection_override (badcase weurg1xg chat 6a6c688b 户籍拒绝被翻案)', () => {
+    const householdRejectedPrecheck = [
+      {
+        toolName: 'duliday_interview_precheck',
+        args: { jobId: 528682 },
+        result: {
+          success: true,
+          nextAction: 'household_rejected',
+          job: {
+            jobId: 528682,
+            jobName: '果蔬好-天津乐提港店-收银员-小时工',
+            brandName: '果蔬好',
+            storeName: '天津乐提港店',
+          },
+          ageBoundary: { severity: 'pass', candidateAge: 39, requiredMin: 25, requiredMax: 40 },
+        },
+        status: 'ok',
+      },
+    ] as never;
+
+    const bookingRejected = [
+      {
+        toolName: 'duliday_interview_booking',
+        args: { jobId: 528683 },
+        result: {
+          success: false,
+          errorType: 'booking.rejected',
+          _outcome: '预约失败（候选人与岗位内部硬性条件冲突）',
+        },
+        status: 'ok',
+      },
+    ] as never;
+
+    it('flags the reversal verbatim from the badcase（确认有误+条件符合+承诺预约被拒岗位）', () => {
+      const result = service.check({
+        replyText:
+          '不是年龄问题，39岁符合的，果蔬好要求25-40岁。刚才是我这边确认有误，抱歉哈。资料收到了，我帮你预约果蔬好收银员。',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '是年龄不合适吗？',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'screening_rejection_override',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('flags "你的条件是符合的" reversal after booking.rejected', () => {
+      const result = service.check({
+        replyText: '抱歉，是我这边确认有误，你的条件是符合的。我重新帮你确认下预约信息。',
+        toolCalls: bookingRejected,
+        userMessage: '这个岗位也不合适吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
+    });
+
+    it('allows the neutral mismatch relay with a pivot to another brand', () => {
+      const result = service.check({
+        replyText:
+          '刚帮你确认了下，果蔬好这家店暂时不太匹配，我帮你看看其他合适的。肯德基（滨津店）晚班服务员离你0.5km，我帮你约这家的面试？',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '好的',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('does not flag reversal wording without any rejection evidence this turn', () => {
+      const result = service.check({
+        replyText: '抱歉，刚才是我这边确认有误，这家的班次其实是三选一，不用全部出勤。',
+        toolCalls: [],
+        userMessage: '班次是不是都要上？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+  });
+
   describe('service basics', () => {
     it('does not throw when reply is empty', () => {
       const result = service.check({ replyText: '', toolCalls: [] });

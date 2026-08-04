@@ -1081,7 +1081,10 @@ export function buildInterviewBookingTool(
                     ? {
                         _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime),
                         _aiInterviewGuide:
-                          '该岗位是 AI 面试，无需到店；请提醒候选人按面试通知里的入口和要求在线完成，不要发送到店报到或携带证件话术。',
+                          '该岗位是 AI 面试，无需到店；请提醒候选人按面试通知里的入口和要求在线完成，不要发送到店报到或携带证件话术。' +
+                          // badcase recvpYfDLkx4Fz：预约日期只是系统登记信息，AI 面试在通知时限内可提前完成，
+                          // 候选人问"必须明天做吗/能提前吗"时不得按预约日咬死。
+                          '预约的面试时间是系统登记时段，不是"到点开考"：候选人收到面试通知/面试码后在通知规定的时限内完成即可，一般可以提前做，具体以通知为准。',
                         _resultDisclaimer: '具体面试要求和结果以 AI 面试通知为准',
                       }
                     : onlineInterview

@@ -65,5 +65,7 @@ describe('job-list helpers util', () => {
 
     expect(hasFullWeekOrRigidSchedule(['每天 05:00 - 23:00', '固定排班'])).toBe(true);
     expect(hasFullWeekOrRigidSchedule(['仅周末短班'])).toBe(false);
+    // 「固定排班」是时段固定标签，不是每周全勤信号（badcase id4zx7q9）
+    expect(hasFullWeekOrRigidSchedule(['排班类型: 固定排班', '每周: 至少上岗 2 天'])).toBe(false);
   });
 });

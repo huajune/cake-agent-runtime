@@ -624,12 +624,18 @@ export class FeishuBitableSyncService {
             ].filter((value, index, values) => values.indexOf(value) === index);
           }
         }
-        fields[statusFieldName] = derivedStatus;
-        if (
-          statusUpdatedAtField &&
-          (evidenceUpdates.length === 0 || currentRecordFields[statusFieldName] !== derivedStatus)
-        ) {
-          fields[statusUpdatedAtField] = now;
+        // 暂搁置 = 运营裁定「现状无法根治」的搁置态：批次回写只有在修复真正验证通过（已解决）
+        // 时才允许解除，其余派生状态不得把搁置记录拉回流转。
+        const keepShelved =
+          currentRecordFields[statusFieldName] === '暂搁置' && derivedStatus !== '已解决';
+        if (!keepShelved) {
+          fields[statusFieldName] = derivedStatus;
+          if (
+            statusUpdatedAtField &&
+            (evidenceUpdates.length === 0 || currentRecordFields[statusFieldName] !== derivedStatus)
+          ) {
+            fields[statusUpdatedAtField] = now;
+          }
         }
         if (derivedStatus === '已解决') {
           if (
@@ -679,7 +685,7 @@ export class FeishuBitableSyncService {
                 this.feedbackFieldAliases.category.find((name) => name in currentRecordFields) || ''
               ],
             ),
-            status: derivedStatus,
+            status: keepShelved ? '暂搁置' : derivedStatus,
             batchId: item.batchId,
             evidenceSummary: evidenceSummaryField
               ? this.readFeishuText(
