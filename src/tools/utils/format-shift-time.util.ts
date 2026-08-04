@@ -101,10 +101,41 @@ function formatWindowSlot(slot: ShiftSlot, dayMin: number): string {
   return `${range} 排班窗口（每日至少 ${dayMin} 小时）`;
 }
 
-/** 海绵2.0 排班类型字符串（满足其中一个.../满足所有.../灵活排班）。 */
+/** 海绵2.0 排班类型字符串（固定排班/组合排班制/灵活排班，历史上也出现过整句描述）。 */
 function arrangementTypeOf(workTime: WorkTimeInput): string {
   const t = workTime?.dayWorkTime?.arrangementType;
   return typeof t === 'string' ? t : '';
+}
+
+/**
+ * 排班类型语义（arrangementType 的唯一判据，班次口径的单一定义处）。
+ *
+ * - `all_required`：组合排班制——列出的时段**全部**都要出勤；
+ * - `pick_one`：固定排班制——只能在列出的时段里选其一，不能自定义时段；
+ * - `flexible`：灵活/弹性排班——门店按窗口安排；
+ * - `unknown`：字段缺失或未知取值，调用方按各自兜底处理。
+ */
+export type ArrangementKind = 'all_required' | 'pick_one' | 'flexible' | 'unknown';
+
+/**
+ * 归一 arrangementType。**必须同时认短标签与整句描述**。
+ *
+ * badcase 2026-07-30（4dif1onb / pk40rrml）：张家口必胜客值班经理是组合排班制（三个时段
+ * 全部要出勤），Agent 却答"班次三选一"，候选人接受其一后才发现口径不符。根因是本判据
+ * 原先只匹配整句形态（`/所有/`、`/其中一个/`），而现网只下发短标签——2026-07-30
+ * 14:00-17:00 生产窗口实测 138 个岗位块：`固定排班` 127、`组合排班制` 8、`灵活排班` 3，
+ * 整句形态 0 条。于是 all_required 与 pick_one 两条判据双双恒不命中，只有 `灵活排班`
+ * 因为短标签自带"灵活"二字侥幸还在工作。
+ *
+ * 顺序不可调换：`组合排班制`/`固定排班` 都含"排班"，必须先判灵活、再判组合、最后固定。
+ */
+export function classifyArrangementType(raw: unknown): ArrangementKind {
+  const text = typeof raw === 'string' ? raw : '';
+  if (!text) return 'unknown';
+  if (/弹性|灵活/.test(text)) return 'flexible';
+  if (/所有|组合排班/.test(text)) return 'all_required';
+  if (/其中一|固定排班/.test(text)) return 'pick_one';
+  return 'unknown';
 }
 
 /** 每日最少工时（海绵2.0 落在 dayWorkTime.fixedTime.perDayMinWorkHours，可能为字符串）。 */
@@ -147,8 +178,10 @@ type SelectionMode = 'single' | 'pick_one' | 'by_weekday' | 'all_required';
 function inferSelectionMode(workTime: WorkTimeInput, slots: ShiftSlot[]): SelectionMode {
   if (slots.length === 1) return 'single';
 
-  // arrangementType="满足所有时段才可安排上岗"（组合排班制）→ 全部需出勤
-  if (/所有/.test(arrangementTypeOf(workTime))) return 'all_required';
+  // 组合排班制 → 列出的时段全部需出勤
+  if (classifyArrangementType(arrangementTypeOf(workTime)) === 'all_required') {
+    return 'all_required';
+  }
 
   // 兜底：perDayMinWorkHours 超过任意单段时长，说明单选一段不足以满足最低工时，
   // 所有班次都必须出勤（典型：两段各 2h + perDayMinWorkHours=4 → 全部都要做）。
@@ -158,21 +191,18 @@ function inferSelectionMode(workTime: WorkTimeInput, slots: ShiftSlot[]): Select
     if (dayMin > maxSingleSlotHours) return 'all_required';
   }
 
-  // "满足其中一个时段即可安排上岗"（固定排班制）默认语义=候选人选其一。
+  // 固定排班制默认语义=候选人在已开时段里选其一。
   return 'pick_one';
 }
 
 /**
- * 灵活排班识别 — arrangementType 含"灵活/弹性"。
+ * 灵活排班识别 — arrangementType 归一后为 `flexible`。
  *
- * 海绵2.0 已知 arrangementType 取值：
- * - '满足其中一个时段即可安排上岗'（固定排班制）
- * - '满足所有时段才可安排上岗'（组合排班制）
- * - '灵活排班'
+ * 海绵2.0 现网 arrangementType 取值为短标签（`固定排班` / `组合排班制` / `灵活排班`）；
  * 只有"灵活排班"在缺少具体 fixedTime 时段时才回退到弹性概要。
  */
 function looksLikeFlexibleArrangement(workTime: WorkTimeInput): boolean {
-  return /弹性|灵活/.test(arrangementTypeOf(workTime));
+  return classifyArrangementType(arrangementTypeOf(workTime)) === 'flexible';
 }
 
 function composeFlexibleSummary(workTime: WorkTimeInput): string | null {

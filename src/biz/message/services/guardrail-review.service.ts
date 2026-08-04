@@ -54,6 +54,11 @@ export class GuardrailReviewService {
     return appended;
   }
 
+  /** 时间窗内产出过语义评审的档案条数；语义评审覆盖率看门狗用。 */
+  async countSemanticReviewsBetween(from: Date, to: Date): Promise<number> {
+    return this.repository.countWithSemanticReviewsBetween(from, to);
+  }
+
   async cleanupExpiredReviews(retentionDays: number): Promise<number> {
     return this.repository.cleanupExpiredReviews(retentionDays);
   }

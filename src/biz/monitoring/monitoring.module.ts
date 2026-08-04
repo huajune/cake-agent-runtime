@@ -22,6 +22,7 @@ import { MonitoringProbeService } from './services/maintenance/monitoring-probe.
 import { DailyStatsAggregatorService } from './services/projections/daily-stats-aggregator.service';
 import { HourlyStatsAggregatorService } from './services/projections/hourly-stats-aggregator.service';
 import { AnalyticsAlertService } from './services/alerts/analytics-alert.service';
+import { SemanticReviewCoverageWatchdog } from './services/alerts/semantic-review-coverage.watchdog';
 import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 
 // Cleanup (数据清理)
@@ -97,6 +98,7 @@ import { AGENT_EVENT_PERSISTER } from '@observability/persistence/agent-event-pe
     DailyStatsAggregatorService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
+    SemanticReviewCoverageWatchdog,
     ExtractionAccuracyService,
     // Cleanup
     DataCleanupService,
