@@ -111,7 +111,11 @@ function formatInterviewDecisionSummary(
   addSummaryLine(
     lines,
     '学生身份要求',
-    studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）',
+    // badcase fazpqciu：不接受学生的门槛被卡片省略，候选人收资填完"学生"才被拒，
+    // 整轮收资作废。该门槛可公开（非敏感条件），在推荐与收资两个决策点都要前置。
+    studentRequirement === '不接受学生'
+      ? '不接受学生（可公开门槛：推荐卡片必须写明；候选人身份未知时，先单独确认身份再发收资表）'
+      : (studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）'),
   );
 
   if (policy.highlights.requirementHighlights.length > 0) {

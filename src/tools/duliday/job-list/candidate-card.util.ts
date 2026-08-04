@@ -140,6 +140,9 @@ function buildRequirementPart(hr: HardRequirements, ageText: string | null): str
   if (ageText && ageText !== '不限') parts.push(ageText);
   if (hr.gender === 'female') parts.push('仅限女');
   else if (hr.gender === 'male') parts.push('仅限男');
+  // badcase fazpqciu：学生门槛是可公开条件，卡片省略会让候选人收资填完"学生"才被拒。
+  if (hr.student === 'social_only') parts.push('只招社会人士（不接受学生）');
+  else if (hr.student === 'student_only') parts.push('仅限学生');
   if (hr.healthCert === 'required_before_interview') parts.push('面试前需食品健康证');
   else if (hr.healthCert === 'required_before_onboard') parts.push('入职前办食品健康证');
   if (hr.household) {

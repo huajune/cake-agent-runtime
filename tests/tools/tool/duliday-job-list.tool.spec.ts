@@ -1001,6 +1001,31 @@ describe('buildJobListTool', () => {
     ]);
   });
 
+  it('renders the screen-before-recommend student gate in card and interview summary (badcase fazpqciu)', async () => {
+    const job = makeJobData({
+      hiringRequirement: {
+        basicPersonalRequirements: { minAge: 20, maxAge: 35 },
+        certificate: { healthCertificate: '需健康证' },
+        remark: '不招学生',
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    // 紧凑候选人卡片：学生门槛与年龄/健康证同等展示
+    const compact = await executeTool(mockContext, { ...defaultInput });
+    expect(compact.markdown).toContain('只招社会人士（不接受学生）');
+
+    // 约面重点：附带先筛后推决策点提示
+    const detailed = await executeTool(mockContext, {
+      ...defaultInput,
+      includeHiringRequirement: true,
+      includeInterviewProcess: true,
+    });
+    expect(detailed.markdown).toContain(
+      '**学生身份要求**: 不接受学生（可公开门槛：推荐卡片必须写明；候选人身份未知时，先单独确认身份再发收资表）',
+    );
+  });
+
   it('should keep explicit meal and accommodation facts in the compact job summary', async () => {
     const job = makeJobData({
       welfare: {
