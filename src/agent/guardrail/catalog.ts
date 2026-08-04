@@ -71,6 +71,10 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
   settlement_no_evidence_assertion:
     'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
+  job_facts_without_any_lookup:
+    'agent/guardrail/output/rules/job-facts-without-lookup.rule.ts（HardRulesService 调度）',
+  online_interview_location_claim:
+    'agent/guardrail/output/rules/online-interview-location.rule.ts（HardRulesService 调度）',
   unsupported_store_status_speculation:
     'agent/guardrail/output/rules/store-status-speculation.rule.ts（HardRulesService 调度）',
   booking_receipt_mismatch:

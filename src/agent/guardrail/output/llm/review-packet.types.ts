@@ -12,6 +12,7 @@ export interface GuardrailReviewPacket {
     booking?: BookingEvidence;
     geocode?: GeocodeEvidence;
     sentLocation?: SentLocationEvidence;
+    groupInvite?: GroupInviteEvidence;
   };
   policies: {
     redLines: string[];
@@ -83,6 +84,18 @@ export interface GeocodeEvidence {
   /** unique 解析常没有 candidates 数组；有坐标即代表地理解析成功。 */
   hasResolvedCoordinate: boolean;
   candidates: string[];
+}
+
+/**
+ * 群邀请证据（2026-08-04 审计 P1-6）：`fact_asserted_without_any_evidence` 曾把
+ * 当轮 `invite_to_group:ok` 支撑的"群邀请已经发你了"判成"没有任何下发证据"
+ * （trace …_1785451709779 硬假阳）——evidence 字段集漏了群邀请这一类。
+ */
+export interface GroupInviteEvidence {
+  success: boolean;
+  groupName?: string;
+  alreadyInGroup?: boolean;
+  errorType?: string;
 }
 
 export interface SentLocationEvidence {

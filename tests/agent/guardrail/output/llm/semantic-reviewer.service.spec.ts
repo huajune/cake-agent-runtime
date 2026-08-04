@@ -192,6 +192,18 @@ describe('SemanticReviewerService', () => {
       // 第 1 类的措辞条件命中（"薪资"族），走的是 job 推荐档而非零证据档
       expect(service.shouldReview(packet)).toBe(true);
     });
+
+    // 2026-08-04 审计 P1-6（trace …_1785451709779 硬假阳）：当轮 invite_to_group:ok
+    // 支撑的"群邀请已经发你了"被判"没有任何下发证据"——evidence 字段集第二次漏项
+    // （上次是 precheck）。groupInvite 在场即不属零证据档。
+    it('groupInvite 证据在场时不触发零证据档（群邀请宣称有下发证据）', () => {
+      const packet = makePacket({
+        draftReply:
+          '咱们这边在你附近 10 公里内暂时没找到合适的岗位，「独立客&上海餐饮兼职13群」的邀请已经发你了，点一下卡片就能进，后续有合适的我会第一时间@你',
+        evidence: { groupInvite: { success: true, groupName: '独立客&上海餐饮兼职13群' } },
+      });
+      expect(service.shouldReview(packet)).toBe(false);
+    });
   });
 
   describe('review', () => {

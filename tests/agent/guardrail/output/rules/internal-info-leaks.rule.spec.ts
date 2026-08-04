@@ -3,6 +3,7 @@ import {
   hasTechnicalDocumentationShape,
   isToolCallArtifactOnly,
   stripMarkdownCodeFences,
+  tryUnwrapEnvelopeReply,
 } from '@agent/guardrail/output/rules/internal-info-leaks.rule';
 
 describe('stripMarkdownCodeFences', () => {
@@ -69,7 +70,9 @@ describe('isToolCallArtifactOnly', () => {
 
   it('识别 JSON 残文（trace …_1785222466898）', () => {
     expect(
-      isToolCallArtifactOnly('{"name": "geocode", "parameters": {"address": "沈河区东陵路", "city": "沈阳"}}'),
+      isToolCallArtifactOnly(
+        '{"name": "geocode", "parameters": {"address": "沈河区东陵路", "city": "沈阳"}}',
+      ),
     ).toBe(true);
   });
 
@@ -80,14 +83,111 @@ describe('isToolCallArtifactOnly', () => {
   });
 
   it('放行含候选人可见正文的回复——哪怕它同时泄漏了工具名', () => {
-    expect(
-      isToolCallArtifactOnly('我调用 duliday_job_list 帮你查了下，海珠这边有三家在招'),
-    ).toBe(false);
+    expect(isToolCallArtifactOnly('我调用 duliday_job_list 帮你查了下，海珠这边有三家在招')).toBe(
+      false,
+    );
   });
 
   it('放行正常回复与空文本', () => {
     expect(isToolCallArtifactOnly('好的，你在哪个区呀？我帮你看看附近的岗位')).toBe(false);
     expect(isToolCallArtifactOnly('')).toBe(false);
+  });
+
+  // 2026-08-04 审计漏杀实证：`<function invite_to_group>` 流进 rewrite 编出
+  // "已经拉你进群了"并投递（…_1785727574268）；`</thinking><function=skip_reply>`
+  // 同窗漏判（…_1785809940049）。旧 XML 组只认 function_call/s，参数值也剥不掉。
+  it('识别 <function> 裸标签残文（trace …_1785727574268）', () => {
+    const draft = [
+      '<function invite_to_group>',
+      '<parameter=city>',
+      '上海',
+      '</parameter>',
+      '<parameter=industry>',
+      '餐饮',
+      '</parameter>',
+      '</function>',
+    ].join('\n');
+    expect(isToolCallArtifactOnly(draft)).toBe(true);
+  });
+
+  it('识别 thinking + function= 残文（trace …_1785809940049）', () => {
+    expect(isToolCallArtifactOnly('</thinking>\n\n<function=skip_reply>\n</function>')).toBe(true);
+  });
+
+  // 2026-08-04 审计静默误伤 ×2：JSON 信封裹着完整正文，字符串字面量剥离把好回复
+  // 连壳剥掉后被判纯残文整轮静默。信封不算残文，应走拆封路径。
+  it('JSON 信封不算残文（trace …_1785736076695 / …_1785820152687）', () => {
+    expect(
+      isToolCallArtifactOnly(
+        '{"censorStatus":"ok","_replyInstruction":"不客气～面试当天记得带好身份证，有问题随时找我哈"}',
+      ),
+    ).toBe(false);
+    expect(
+      isToolCallArtifactOnly(
+        '{\n"agent_response": "好的，我帮你看下罗湖附近在招的岗位哈～\\n\\n先问下，你倾向哪类工作呀？比如餐饮、零售、咖啡茶饮这些，还是不限品牌都可以看看？"\n}',
+      ),
+    ).toBe(false);
+  });
+
+  it('tool_use 信封仍判残文（trace …_1785746625937，reason 是内部理由非话术）', () => {
+    expect(
+      isToolCallArtifactOnly(
+        '{"type":"tool_use","id":"toolu_bdrk_01QZ7X8Y9Z0A1B2C3D4E5F6G","name":"request_handoff","input":{"reasonCode":"salary_admin_inquiry","reason":"候选人追问必胜客十里河店培训期具体天数，岗位数据未明确该信息","missingJobInfo":["培训期天数"],"actionAdvice":"确认必胜客十里河店的培训期天数并告知候选人"}}',
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('tryUnwrapEnvelopeReply', () => {
+  it('拆出 censorStatus 信封正文（trace …_1785736076695）', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"censorStatus":"ok","_replyInstruction":"不客气～面试当天记得带好身份证，有问题随时找我哈"}',
+      ),
+    ).toBe('不客气～面试当天记得带好身份证，有问题随时找我哈');
+  });
+
+  it('拆出 agent_response 信封正文（trace …_1785820152687）', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{\n"agent_response": "好的，我帮你看下罗湖附近在招的岗位哈～先问下，你倾向哪类工作呀？"\n}',
+      ),
+    ).toBe('好的，我帮你看下罗湖附近在招的岗位哈～先问下，你倾向哪类工作呀？');
+  });
+
+  it('tool_use 结构键一律不拆（内部升级理由不是候选人话术）', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"type":"tool_use","name":"request_handoff","input":{"reason":"候选人追问必胜客十里河店培训期具体天数"}}',
+      ),
+    ).toBeNull();
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"name":"geocode","arguments":{"address":"沈河区东陵路","city":"沈阳"}}',
+      ),
+    ).toBeNull();
+  });
+
+  it('多个候选正文时不猜测', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"a":"你好呀我是招聘经理今天有岗位","b":"另一条完整中文回复内容在这里"}',
+      ),
+    ).toBeNull();
+  });
+
+  it('正文自身带泄漏形态时不拆', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"agent_response":"阶段已切换到岗位咨询阶段，等待候选人反馈意向信息"}',
+      ),
+    ).toBeNull();
+  });
+
+  it('非 JSON / 短中文 / 非对象不拆', () => {
+    expect(tryUnwrapEnvelopeReply('好的，我帮你看下')).toBeNull();
+    expect(tryUnwrapEnvelopeReply('{"censorStatus":"ok"}')).toBeNull();
+    expect(tryUnwrapEnvelopeReply('["好的，我帮你看下罗湖附近在招的岗位哈"]')).toBeNull();
   });
 });
 

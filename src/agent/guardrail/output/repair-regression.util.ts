@@ -41,9 +41,30 @@ export interface RepairRegressionContext {
    * 避免把“删除幻觉事实”误判成结构压扁/结论反转。
    */
   jobEvidenceAvailable?: boolean;
+  /**
+   * 本轮触发的守卫规则 id（首审判定结果）。
+   *
+   * 零证据类规则（见 ZERO_EVIDENCE_RULE_IDS）触发时，repair 的**正确产物本来就是**
+   * 删掉那些无出处的岗位事实——此时结构塌缩不是退化，是修对了。
+   */
+  triggeredRuleIds?: readonly string[];
   /** 仅测试注入；生产走系统时钟。用于把"M月D日"推断到最近的完整年份以计算真实星期。 */
   now?: Date;
 }
+
+/**
+ * 零证据类规则：命中即说明首版的岗位事实没有工具出处。
+ *
+ * 2026-07-30 扫描日报建议动作 1 的完整口径是「repair 由零证据类规则触发，**或**该回合
+ * duliday_job_list 返回 empty 时，禁用 structure_collapsed 回退」。PR #845 只实现了后半句
+ * （jobEvidenceAvailable === false）。前半句在"本轮根本没调查岗工具"时才是唯一有效的判据
+ * ——那种情况下 resolveJobEvidenceAvailability 返回 undefined 而非 false，逃生口够不着，
+ * 修复版仍会被 structure_collapsed 回退，等于把 2026-07-29 那次整单编造投递原样复现一遍。
+ */
+const ZERO_EVIDENCE_RULE_IDS: ReadonlySet<string> = new Set([
+  'settlement_no_evidence_assertion',
+  'job_facts_without_any_lookup',
+]);
 
 /** 表单字段行：`姓名：` / `联系电话：13xxx` / `面试时间（…）：` 等短标签开头的行。 */
 const FORM_FIELD_LINE_PATTERN = /^[-•\s]*[^：:\n]{1,14}[：:]/u;
@@ -158,8 +179,11 @@ export function detectRepairRegression(
   if (!first || !revised || first === revised) return null;
 
   const firstJobFacts = countJobFactOccurrences(first);
+  const zeroEvidenceContext =
+    context?.jobEvidenceAvailable === false ||
+    (context?.triggeredRuleIds ?? []).some((id) => ZERO_EVIDENCE_RULE_IDS.has(id));
   const removesUngroundedJobClaims =
-    context?.jobEvidenceAvailable === false &&
+    zeroEvidenceContext &&
     firstJobFacts >= 2 &&
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised);

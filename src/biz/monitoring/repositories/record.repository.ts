@@ -171,6 +171,20 @@ export class MonitoringRecordRepository extends BaseRepository {
     });
   }
 
+  /**
+   * 时间窗内成功回合数（语义评审覆盖率看门狗的分母）。
+   *
+   * 时间列必须用 `received_at`——本表没有 `created_at` 索引，按 created_at 过滤会退化成全表扫描。
+   */
+  async countSuccessfulTurnsBetween(from: Date, to: Date): Promise<number> {
+    return this.count((q) =>
+      q
+        .gte('received_at', from.toISOString())
+        .lt('received_at', to.toISOString())
+        .eq('status', 'success'),
+    );
+  }
+
   /** 最早的流水记录时间（原始表数据覆盖起点，受保留期清理影响前移）；表为空返回 null */
   async getEarliestRecordDate(): Promise<Date | null> {
     const row = await this.selectOne<{ received_at: string }>('received_at', (q) =>

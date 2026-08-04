@@ -568,6 +568,67 @@ describe('HardRulesService', () => {
       );
     });
 
+    // 2026-08-04 审计假阳 …_1785472764565 / …_1785487619837："关于日结的问题"是话题
+    // 指代不是断言，整段本已明说"结算方式没法确认"，却被拦并 rewrite 成"好的，那你先忙"。
+    it('topic reference "关于日结的问题" is not an assertion (audit …_1785472764565)', () => {
+      const result = service.check({
+        replyText:
+          '关于日结的问题，我刚才仔细查了下附近 10 公里内的岗位，目前这边确实还没有新的岗位上来，所以结算方式暂时也没法确认。\n\n有合适的我会主动联系你。',
+        toolCalls: [failedJobListCall, erroredJobListCall],
+        userMessage: '好',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    // 话题指代只剥指代片段不豁免整句：同句后半的真断言仍要捕获。
+    it('topic reference followed by a real assertion still fires', () => {
+      const result = service.check({
+        replyText: '关于日结的问题，这家就是日结的。',
+        toolCalls: [failedJobListCall],
+        userMessage: '好',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    // 2026-08-04 审计假阳 …_1785400091574：「日结」与「没找到」同子句内隔 8 字，
+    // 旧后缀否定窗口(4)跨不过去，把候选人的诉求词判成断言。
+    it('same-clause suffix negation beyond 4 chars is exempt (audit …_1785400091574)', () => {
+      const result = service.check({
+        replyText:
+          '肯德基的日结兼职在你附近暂时没找到在招的，我先帮你留意着\n\n你已经在餐饮兼职群里了，后续有肯德基或其他合适的日结岗位上线，我会在群里第一时间通知你',
+        toolCalls: [failedJobListCall, erroredJobListCall],
+        userMessage: '嗷，现在没有啊',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('backfills the matched phrase into feedbackToGenerator', () => {
+      const result = service.check({
+        replyText: '这两家肯德基都是月结，每月发薪。',
+        toolCalls: [failedJobListCall],
+        userMessage: '日结月结',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find(
+        (item) => item.ruleId === 'settlement_no_evidence_assertion',
+      );
+      expect(hit?.feedbackToGenerator).toContain('「月结」');
+      expect(hit?.feedbackToGenerator).toContain('逐字保留');
+    });
+
     it('yields to 形态一 when any job_list call produced data', () => {
       const result = service.check({
         replyText: '这家是月结，15号发薪。',
@@ -2323,6 +2384,33 @@ describe('HardRulesService', () => {
       ).toBeDefined();
     });
 
+    // 2026-08-04 审计 P1-5（trace …_1785743845189）：无升级动作时反馈若仍教
+    // "改成'我帮你问下同事'"，处方逐字就是 handoff_promise 的违规要件——repair 照做
+    // 被二审 P0 打死成沉默。反馈必须按本轮有无真实升级动作分叉。
+    it('feedback forbids promise substitution when no escalation happened (deadlock fix)', () => {
+      const result = service.check({
+        replyText: '看到啦，我这边帮你人工确认下承揽协议的状态，弄好了跟你说哈。',
+        toolCalls: [{ toolName: 'save_image_description', args: {}, result: { success: true } }],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
+      expect(hit?.feedbackToGenerator).toContain('不得');
+      expect(hit?.feedbackToGenerator).not.toContain('只把露馅措辞改成人设内口径');
+    });
+
+    it('feedback keeps the 同事 rephrase when a real escalation happened this turn', () => {
+      const result = service.check({
+        replyText: '我这边帮你人工确认下面试安排，稍等哈。',
+        toolCalls: [{ toolName: 'raise_risk_alert', args: {}, result: { accepted: true } }],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
+      expect(hit?.feedbackToGenerator).toContain('我帮你问下同事');
+      expect(hit?.feedbackToGenerator).not.toContain('不得');
+    });
+
     it('does not flag incidental 人工 substring across word boundaries', () => {
       const result = service.check({
         replyText: '这家门店招人工作日白班为主，周末可以轮休。',
@@ -2634,6 +2722,43 @@ describe('HardRulesService', () => {
         replyText: '不好意思，这次预约没提交成功，我重新帮你试一下',
         toolCalls: [failedBooking],
         userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    // 2026-08-04 审计 P0-3：booking 失败后 repair 产出的"那就给你约/定在明天…"敲定式
+    // 宣称没有"已/正在"词形，旧 pattern 跨不住，二审复跑本规则照样放行
+    // （trace …_1785740343589 / …_1785748484273）。
+    it('revises settled-claim phrasing after failed booking (repair product …_1785740343589)', () => {
+      const result = service.check({
+        replyText: '资料都收到啦，那就给你约明天（8月4日）下午1点半的面试哈',
+        toolCalls: [failedBooking],
+        userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it('revises 定在 settled-claim after failed booking (repair product …_1785748484273)', () => {
+      const result = service.check({
+        replyText:
+          '好的，那就定在明天（8月4日）上午10点。另外这家门店可能会安排你去不同餐厅工作，你这边能接受吗',
+        toolCalls: [failedBooking],
+        userMessage: '10点吧',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it('honest retry with 那就-style follow-up still passes', () => {
+      const result = service.check({
+        replyText: '刚才没提交成功，那就明天再帮你重新提交哈',
+        toolCalls: [failedBooking],
+        userMessage: '好',
         chatId: 'chat-1',
       });
 

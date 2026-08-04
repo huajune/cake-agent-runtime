@@ -18,7 +18,7 @@
 
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
 import type { JobDetail } from '@sponge/sponge.types';
-import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
+import { classifyArrangementType, composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import {
   buildJobPolicyAnalysis,
   cleanPolicyText,
@@ -703,13 +703,16 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
   const arrangementType = hasValue(day.arrangementType) ? String(day.arrangementType) : '';
   if (arrangementType) {
     pushField(lines, '排班类型', arrangementType);
-    // 组合排班制（满足所有时段）：下列时段全部都要出勤，不能只挑一段。
-    if (/所有/.test(arrangementType)) {
+    // 语义判据统一走 classifyArrangementType（短标签与整句形态都认）；本地正则曾只匹配
+    // 整句，现网短标签下两个分支双双恒不命中，见该函数注释里的 badcase 4dif1onb。
+    const arrangementKind = classifyArrangementType(arrangementType);
+    if (arrangementKind === 'all_required') {
+      // 组合排班制：下列时段全部都要出勤，不能只挑一段。
       lines.push(
-        '- **班次硬约束提示**: 该岗位为组合排班制，下面列出的「可排时段」**全部都要出勤**，候选人不能只挑其中一段',
+        '- **班次硬约束提示**: 该岗位为组合排班制，下面列出的「可排时段」**全部都要出勤**，候选人不能只挑其中一段；不得说成"任选其一/几选一"',
       );
-    } else if (/其中一个|其中一/.test(arrangementType)) {
-      // 固定排班制（满足其中一个时段即可）：候选人只能从已开时段里选，不能自定义时段。
+    } else if (arrangementKind === 'pick_one') {
+      // 固定排班制：候选人只能从已开时段里选，不能自定义时段。
       // historical badcase jj2zct43：固定排班制被答成"面试时沟通你想排哪些时段"，让候选人误以为可自选。
       lines.push(
         '- **班次自选边界**: 该岗位为固定排班制，候选人**只能在下面列出的「可排时段」里选**，不能自由挑选未列出的时段；门店按候选人可上班时间在已开时段里排班',
