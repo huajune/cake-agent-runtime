@@ -1,9 +1,37 @@
 {
   "baseVersion": "10.37.0",
   "nextVersion": "10.38.0",
-  "updatedAt": "2026-07-30",
+  "updatedAt": "2026-08-04",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "863",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/863",
+      "title": "零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门（07-31 日报 P0）",
+      "author": "huajune",
+      "mergedAt": "2026-08-04",
+      "businessUpdates": [
+        "补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门",
+        "零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门（07-31 日报 P0）"
+      ],
+      "summary": [
+        "补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门",
+        "零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门（07-31 日报 P0）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tests/agent/` **1077 passed**（含 guardrail 566）",
+        "typecheck ✅ / eslint（改动文件）✅"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.37.0",
     "date": "2026-07-30",
