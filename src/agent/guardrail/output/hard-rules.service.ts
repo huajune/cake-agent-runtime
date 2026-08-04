@@ -15,7 +15,10 @@ import {
 import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
-import { detectHandoffPromiseWithoutHandoff } from './rules/handoff-promises.rule';
+import {
+  detectHandoffPromiseWithoutHandoff,
+  hasCommittedHumanEscalation,
+} from './rules/handoff-promises.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
@@ -317,7 +320,10 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(brandAliasFuzzyMatchIgnored));
     }
 
-    const humanServicePhraseLeak = detectHumanServicePhraseLeak(text);
+    const humanServicePhraseLeak = detectHumanServicePhraseLeak(
+      text,
+      hasCommittedHumanEscalation(toolCalls),
+    );
     if (humanServicePhraseLeak) {
       contradictions.push(this.withRulePolicy(humanServicePhraseLeak));
     }

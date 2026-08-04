@@ -282,4 +282,46 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(excerpt.length).toBeLessThan(4100);
     expect(excerpt).toContain('（岗位详情已截断）');
   });
+
+  // 2026-08-04 审计 P1-6（trace …_1785451709779）：invite_to_group:ok 支撑的
+  // "群邀请已经发你了"被零证据档判成"没有任何下发证据"——packet 缺群邀请证据类。
+  it('extracts group invite evidence from invite_to_group calls', () => {
+    const packet = builder.build({
+      reply: '「独立客&上海餐饮兼职13群」的邀请已经发你了，点一下卡片就能进',
+      toolCalls: [
+        {
+          toolName: 'invite_to_group',
+          args: { city: '上海' },
+          result: { success: true, groupName: '独立客&上海餐饮兼职13群', groupPurpose: 'job_pool' },
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.groupInvite).toEqual({
+      success: true,
+      groupName: '独立客&上海餐饮兼职13群',
+      alreadyInGroup: undefined,
+      errorType: undefined,
+    });
+  });
+
+  it('keeps invite failure evidence with errorType (not treated as success)', () => {
+    const packet = builder.build({
+      reply: '好的',
+      toolCalls: [
+        {
+          toolName: 'invite_to_group',
+          args: {},
+          result: { success: false, errorType: 'invite.group_full' },
+          status: 'error',
+        },
+      ],
+    });
+
+    expect(packet.evidence.groupInvite).toMatchObject({
+      success: false,
+      errorType: 'invite.group_full',
+    });
+  });
 });

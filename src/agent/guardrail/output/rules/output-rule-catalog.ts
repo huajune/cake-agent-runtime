@@ -257,16 +257,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
-      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功的人工升级动作（request_handoff 或 raise_risk_alert）。',
+      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功的人工升级动作（request_handoff、raise_risk_alert 或预约失败自动暂停）。',
     riskGoal: '防止 Agent 口头承诺人工跟进却没有落 handoff、暂停托管或通知负责人。',
     exogenousSignal:
-      '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true 或 raise_risk_alert.accepted=true' +
-      '（2026-07-28 补：badcase batch_6a66f559… raise_risk_alert 同样暂停托管+人工接手，只认 request_handoff 会把真承诺判成空头）。',
+      '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true / raise_risk_alert.accepted=true / duliday_interview_booking.hostingPaused=true' +
+      '（2026-07-28 补：badcase batch_6a66f559… raise_risk_alert 同样暂停托管+人工接手，只认 request_handoff 会把真承诺判成空头；' +
+      '2026-08-04 审计补：预约失败时 booking 工具自动暂停托管且 replyInstruction 亲自指示"让同事确认"衔接语，不认打标会把工具教的如实话术判成 P0，trace …740343589/…748484273）。',
     residualRisk:
       '不含同事、负责人、店长、门店、招聘经理、转人工等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    // 2026-08-04 审计 P0-1：加"不得新增事实"硬约束——首版整条只有承诺句时，"只保留
+    // 已确认的事实"保留的是空集，旧反馈会把 rewrite 逼成自由创作（生产 4 例编出
+    // 着装要求/"已拉你进群"/约面时间，2 例投递）。整条皆承诺的形态由 runner 的
+    // handoff_promise_only_reply_silenced 闸直接收敛，不进 rewrite。
     feedbackToGenerator:
-      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的人工升级动作（request_handoff / raise_risk_alert），当前文本不可发送。请删除“同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。',
+      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的人工升级动作（request_handoff / raise_risk_alert / 预约失败自动暂停），当前文本不可发送。请删除“同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。' +
+      '严禁为填补删除承诺留下的空缺而新增任何本轮工具结果之外的事实（着装/班次/薪资/面试时间/已完成动作等都算）；若删除承诺后没有其他实质内容可保留，就只输出一句不含新事实、不含新承诺的自然收束。',
     // 2026-07-27 降 revise 后白名单摘除（原 ['request_handoff']；rewrite 无工具，
     // 补执行 handoff 的修复形态见评估文档 §2.4 条件项）。
   },

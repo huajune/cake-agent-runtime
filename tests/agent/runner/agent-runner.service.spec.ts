@@ -465,6 +465,132 @@ describe('AgentRunnerService.runTurn', () => {
     );
   });
 
+  // 2026-08-04 审计 P0-1（trace …_1785489639414）：首版整条只有"让同事确认"承诺，
+  // 删承诺后无内容可保留，rewrite 曾编出"衣服方面店里没有特殊要求"投递。该形态
+  // 直接收敛静默，不进 rewrite。
+  it('handoff-promise-only first reply is silenced instead of rewritten', async () => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: '衣服要求我让同事确认下，有消息告诉你' }),
+    );
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'revise',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'handoff_promise_without_handoff',
+          evidence: '回复承诺已让同事/负责人后续确认，但本轮没有成功的人工升级动作',
+          suggestion: '删除跟进承诺，其余内容逐字保留',
+          recoverability: 'recoverable',
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['handoff_promise_without_handoff'],
+      blockedRuleIds: ['handoff_promise_without_handoff'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '上班衣服上有什么要求吗' },
+      context: { messageId: 'trace-handoff-only-silence-1' },
+    });
+
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outcome.kind).not.toBe('reply');
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'block',
+        reasonCode: 'handoff_promise_only_reply_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
+  // 2026-08-04 审计 P0-2：JSON 信封形态（trace …_1785820152687）——旧链路误判纯残文
+  // 整轮静默，把信封里的完整好回复一起吞掉。正解：确定性拆封放出正文，走二审后投递。
+  it('JSON envelope reply is unwrapped deterministically instead of being silenced', async () => {
+    const draft =
+      '{\n"agent_response": "好的，我帮你看下罗湖附近在招的岗位哈～先问下，你倾向哪类工作呀？"\n}';
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=json）',
+            suggestion: '删除泄漏内容',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '罗湖谢谢' },
+      context: { messageId: 'trace-envelope-unwrap-1' },
+    });
+
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(
+      '好的，我帮你看下罗湖附近在招的岗位哈～先问下，你倾向哪类工作呀？',
+    );
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'pass',
+        reasonCode: 'envelope_unwrapped',
+        repaired: true,
+      }),
+    );
+  });
+
+  // tool_use 信封（trace …_1785746625937）里的 reason 是内部升级理由不是话术，
+  // 必须维持 tool_call_artifact_silenced 直达静默，不得拆封投递。
+  it('tool_use envelope stays silenced (not unwrapped)', async () => {
+    const draft =
+      '{"type":"tool_use","id":"toolu_x","name":"request_handoff","input":{"reason":"候选人追问必胜客十里河店培训期具体天数，岗位数据未明确该信息"}}';
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'block',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'internal_output_leak',
+          evidence: '回复疑似泄漏 Agent 内部状态/工具实现',
+          suggestion: '删除泄漏内容',
+          recoverability: 'non_recoverable',
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['internal_output_leak'],
+      blockedRuleIds: ['internal_output_leak'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '培训几天' },
+      context: { messageId: 'trace-envelope-tooluse-1' },
+    });
+
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outcome.kind).not.toBe('reply');
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'block',
+        reasonCode: 'tool_call_artifact_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
   it('mixed internal leak (fence + tool name) falls back to LLM repair', async () => {
     const draft = ['```json', '{"name":"duliday_job_list"}', '```', '给你看下岗位'].join('\n');
     generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
@@ -885,8 +1011,13 @@ describe('AgentRunnerService.runTurn', () => {
   });
 
   it('does not fail open the P0 handoff promise when the rewrite repair stays in violation', async () => {
+    // 首版带实质内容（班次信息），绕开 handoff_promise_only_reply_silenced 直达静默闸，
+    // 保持本用例对"rewrite 后仍违规 → 不 fail-open"路径的覆盖。
     generator.invoke.mockResolvedValueOnce(
-      makeResult({ text: '我让同事帮你确认下，稍后给你答复。', toolCalls: [] }),
+      makeResult({
+        text: '这家班次是 08:00-17:00，做五休二。我让同事帮你确认下，稍后给你答复。',
+        toolCalls: [],
+      }),
     );
     const p0Violation = {
       type: 'handoff_promise_without_handoff',

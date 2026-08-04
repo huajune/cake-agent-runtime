@@ -115,7 +115,16 @@ const DESIRE_ECHO_PREFIX = '你想找|你想要|你是想|你想|你要|想找|�
 const PROSPECTIVE_CONTEXT_PATTERN =
   /其他[^，。；]{0,8}岗位|新岗位|灵工单|第一时间|后面有|后续(?:有|如果)|发(?:到)?群里/u;
 
-function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean {
+// 话题指代：「关于日结的问题」「你问的日结」是在点名话题，不是对岗位断言结算周期。
+// 2026-08-04 审计假阳 ×2（`…_1785472764565`"关于日结的问题…所以结算方式暂时也没法确认"
+// 整段本就合规，rewrite 压成"好的，那你先忙"信息全丢；`…_1785487619837` 同形态 fail-open）。
+// 判定前把该片段从句子里剥掉再跑全部检查——只剥指代片段而非豁免整句，
+// 保证"关于日结的问题，这家就是日结的"里的真断言仍被捕获。
+const TOPIC_REFERENCE_PATTERN =
+  /(?:关于|至于|说到|你(?:说|问|提)的)[^，。；、]{0,4}(?:当日结|当天结|按周结|按月结|日结|周结|月结|次月)(?:的问题|的事|方面)?/gu;
+
+function sentenceAssertsCycle(rawSentence: string, cycle: SettlementCycle): boolean {
+  const sentence = rawSentence.replace(TOPIC_REFERENCE_PATTERN, '');
   const pattern = CYCLE_PATTERNS.find((entry) => entry.cycle === cycle)?.pattern;
   if (!pattern?.test(sentence)) return false;
   if (/[吗么嘛？?]|是不是|是否/u.test(sentence)) return false;
@@ -123,7 +132,10 @@ function sentenceAssertsCycle(sentence: string, cycle: SettlementCycle): boolean
   if (new RegExp(`(?:${DESIRE_ECHO_PREFIX})[^，。；、]{0,6}${cycle}`, 'u').test(sentence)) {
     return false;
   }
-  if (new RegExp(`${cycle}[^，。；、]{0,4}(?:${NEGATION_SUFFIX})`, 'u').test(sentence)) {
+  // 后缀否定窗口 4→16：仍禁跨逗号/顿号（子句边界），但允许同子句内隔着修饰语的否定
+  // （2026-08-04 审计假阳 `…_1785400091574`"肯德基的日结兼职在你附近暂时没找到在招的"
+  // ——「日结」到「没找到」隔 8 字，旧窗口跨不过去，把候选人的诉求词判成断言）。
+  if (new RegExp(`${cycle}[^，。；、]{0,16}(?:${NEGATION_SUFFIX})`, 'u').test(sentence)) {
     return false;
   }
   // 间隔禁跨逗号/顿号：保证"这家不是月结，是日结"里的"日结"仍算断言。
@@ -242,6 +254,13 @@ export function detectSettlementNoEvidenceAssertion(
           `本轮岗位查询全部失败/查无、会话历史亦无出处，回复却断言“${cycle}”` +
           '——结算周期是影响候选人决策的关键事实，禁止用通识或其他品牌规则填空',
         action: GUARDRAIL_ACTION.REVISE,
+        // 回填实际命中的断言短语，替代目录里的通用模板（2026-08-04 审计：9 条命中反馈
+        // 一字不差，rewrite 分不清哪句是违规，把候选人自己的"日结"诉求限定也连坐删掉，
+        // 还生成过与上文薪资数字打架的"目前暂时没查到结算等细节"）。
+        feedbackToGenerator:
+          `上一版在本轮岗位查询全部失败/查无、会话历史亦无出处的情况下断言了「${cycle}」（原句：“${sentence.slice(0, 40)}”），该结论没有工具出处，当前文本不可发送。` +
+          '请只删除或改写这一处结算断言（可改为"结算方式需以查到的岗位数据为准"），禁止用通识或其他品牌的结算规则填空；' +
+          '候选人自己提出的结算偏好词（如"想找日结的"）、你对候选人其他问题的回答、进群/后续通知安排等其余内容逐字保留，不要整段重写。',
       };
     }
   }
@@ -260,6 +279,9 @@ export function detectSettlementNoEvidenceAssertion(
           `本轮岗位查询全部失败/查无、会话历史亦无出处，回复却断言发薪时点“${payday}”` +
           '——发薪时间是影响候选人决策的关键事实，禁止用通识或其他品牌规则填空',
         action: GUARDRAIL_ACTION.REVISE,
+        feedbackToGenerator:
+          `上一版在本轮岗位查询全部失败/查无、会话历史亦无出处的情况下断言了发薪时点「${payday}」，该结论没有工具出处，当前文本不可发送。` +
+          '请只删除或改写这一处发薪时点断言（可改为"发薪时间需以查到的岗位数据为准"），禁止用通识或其他品牌的结算规则填空；其余内容逐字保留，不要整段重写。',
       };
     }
   }
