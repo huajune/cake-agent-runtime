@@ -2199,13 +2199,115 @@ describe('HardRulesService', () => {
 
     it('does not flag replies without coaching phrasing even after admission', () => {
       const result = service.check({
-        replyText: '这家不需要经验，新手也能做，登记信息我帮你更正一下，面试如实说明就好。',
+        replyText: '这家不需要经验，新手也能做。登记信息能改就从原渠道更正，面试时如实说明就好。',
         toolCalls: [],
         userMessage: '过往公司也是随便写的，没事吧',
         recentUserTexts: admissionTexts,
       });
 
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it('revises an unsupported promise to edit the fabricated application record (release v10.38.0 case 05)', () => {
+      const result = service.check({
+        replyText:
+          '面试时建议如实说没有做过，不用靠编经历来加分。要不我把你报名表里的这段经历先改掉？',
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      const hit = result.contradictions.find(
+        (c) => c.ruleId === 'application_record_update_promise',
+      );
+      expect(hit?.action).toBe('revise');
+      expect(hit?.feedbackToGenerator).toContain('原报名渠道');
+    });
+
+    it.each([
+      ['省略宾语', '你重新说一下真实情况，我帮你更新一下。'],
+      ['宾语前置', '报名表我帮你改一下。'],
+      ['改下短形', '我帮你改下报名表。'],
+      ['近轮指向明确的省略主语动作', '好，我来改一下。'],
+      ['引号强调的真实承诺', '我可以按你说的“帮你更新报名信息”。'],
+      ['句末口语尾缀', '我帮你更新一下哈。'],
+      ['连续白名单修饰词', '我这边可以先帮你更新一下。'],
+      ['省略第一人称主语', '好的，帮你更新一下。'],
+    ])('revises unsupported application-record promises with %s', (_shape, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it.each([
+      ['否定能力归属', '不是我帮你修改报名表，需要你从原渠道自己改。'],
+      ['引用旧错误话术', '这里不能说“我帮你更新报名信息”，你要自己更正。'],
+      ['主语后的明确否定', '我不能帮你把报名表改掉，请从原渠道更正。'],
+      ['主语后的能力否定', '我无法把报名表改掉，只能请你自行更正。'],
+      ['反向归属否定', '不用我帮你更新报名信息，请你自己从原渠道操作。'],
+      ['上一版错误话术复述', '上一版“我帮你更新报名信息”的说法不对，请你自行更正。'],
+      ['引用后否定做不到', '“我帮你改报名表”这件事我做不了，你得从原渠道改。'],
+      ['引用后否定办不到', '“我帮你更新报名信息”这个我办不到，请你自己更正。'],
+    ])('allows a compliant repair that %s', (_shape, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it('passes the second guardrail review after an unsafe draft is repaired', () => {
+      const unsafeDraft = service.check({
+        replyText: '这段经历我帮你改一下。',
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+      const repairedDraft = service.check({
+        replyText: '不能由我修改报名表，请从原报名渠道自行更正。',
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      expect(unsafeDraft.contradictions.map((c) => c.ruleId)).toContain(
+        'application_record_update_promise',
+      );
+      expect(repairedDraft.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it('allows telling the candidate to correct the record themselves', () => {
+      const result = service.check({
+        replyText:
+          '别继续说有这段经历。能从原报名渠道更正就先更正，改不了就在面试时主动说明真实情况。',
+        toolCalls: [],
+        userMessage: '盒马经历是我瞎填的。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it('does not infer a fabricated record without candidate admission', () => {
+      const result = service.check({
+        replyText: '我可以帮你更新报名信息。',
+        toolCalls: [],
+        userMessage: '我的联系方式换了。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
     });
   });
 
@@ -2903,6 +3005,195 @@ describe('HardRulesService', () => {
         replyText: '好的，我现在帮你提交预约',
         toolCalls: [],
         userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('revises when candidate says not to book but reply still pushes registration (release v10.38.0 case 09)', () => {
+      const result = service.check({
+        replyText:
+          '到店前需要先帮你报名约面，不然店里没法接待。你先登记下，我安排个时间让你过去，这样门店也知道你要来。',
+        toolCalls: [],
+        userMessage:
+          '我还没报名也没约面，想先自己去门店看看情况，可以吗？先别帮我报名，也别发定位。',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.feedbackToGenerator).toContain('尊重候选人暂不报名');
+    });
+
+    it('revises a softer booking CTA after the candidate explicitly opts out', () => {
+      const result = service.check({
+        replyText: '到店前需要先报名约面，不然店里没法接待。你方便的话我先帮你登记下？',
+        toolCalls: [],
+        userMessage: '我先不预约，只想问能不能直接去。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it.each([
+      '那先登记一下，我再安排时间。',
+      '你先把报名信息填一下。',
+      '把资料发我，我给你安排个时间过去。',
+      '咱们先登记下。',
+      '我来安排个面试时间给你。',
+      '我现在给你安排个时间。',
+    ])('revises additional booking advances after an explicit opt-out: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '先别帮我报名。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it.each(['我不想报名了。', '暂缓报名。', '报名先放一放。', '先放一放。'])(
+      'recognizes a natural current booking opt-out: %s',
+      (userMessage) => {
+        const result = service.check({
+          replyText: '我现在给你安排个时间。',
+          toolCalls: [],
+          userMessage,
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+      },
+    );
+
+    it.each([
+      ['先不要提交。', '我先帮你报名。'],
+      ['先别给我报了。', '我先帮你报名。'],
+      ['我先不报名。', '那登记一下吧。'],
+    ])('recognizes additional opt-out wording: %s', (userMessage, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it.each([
+      ['我先不报名，等我想好了再帮我报名。', '我先帮你报名。'],
+      ['先别预约，之后需要时再帮我预约。', '我现在帮你预约。'],
+      ['暂时不登记，等我确认后再登记。', '那先登记一下。'],
+      ['我先不报名，到时候再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，过两天再帮我报名。', '我现在帮你报名。'],
+      ['我先不报名，稍后再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，晚点再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，改天再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，想好了再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，有需要时再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，下次再帮我报名。', '我现在帮你报名。'],
+      ['我先不报名，有空再帮我报名。', '我现在帮你报名。'],
+      ['我先不报名，过一阵子再帮我报名。', '我现在帮你报名。'],
+    ])(
+      'does not treat a future conditional authorization as current consent: %s',
+      (userMessage, replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [],
+          userMessage,
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+      },
+    );
+
+    it.each([
+      ['先别报名 A 店，帮我报名 B 店。', '那我先帮你报名 B 店。'],
+      ['先不预约明天，改约后天。', '那我先帮你预约后天。'],
+      ['报名信息不用重复确认了，直接帮我提交。', '那我先帮你报名。'],
+      ['我先不报名，算了，那再帮我报名一次。', '那我先帮你报名。'],
+      ['我先不报名。现在想好了，帮我报名吧。', '那我先帮你报名。'],
+      ['我先不报名，后来考虑好了，现在帮我报名。', '那我先帮你报名。'],
+      ['我先不报名，已经决定好了，直接提交吧。', '那我先帮你报名。'],
+      ['我之前不想报名，之后想了想，还是帮我报名吧。', '那我先帮你报名。'],
+      ['我先不报名，之后考虑了一下，现在帮我报名。', '那我先帮你报名。'],
+      ['我先不报名，晚点再说吧，还是帮我报名吧。', '那我先帮你报名。'],
+    ])('honors the later positive booking instruction: %s', (userMessage, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('abstains when positive and negative instructions target different stores', () => {
+      const result = service.check({
+        replyText: '那我先帮你报名B店。',
+        toolCalls: [],
+        userMessage: 'B店帮我报名，A店先别报名。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('uses the last generic booking instruction after the candidate changes their mind', () => {
+      const optOutResult = service.check({
+        replyText: '我先帮你报名。',
+        toolCalls: [],
+        userMessage: '帮我报名吧……算了，报名先放一放。',
+        chatId: 'chat-1',
+      });
+      const proceedResult = service.check({
+        replyText: '我先帮你报名。',
+        toolCalls: [],
+        userMessage: '先别报名，还是帮我报名吧。',
+        chatId: 'chat-1',
+      });
+
+      expect(optOutResult.contradictions.map((c) => c.ruleId)).toContain(
+        'booking_receipt_mismatch',
+      );
+      expect(proceedResult.contradictions.map((c) => c.ruleId)).not.toContain(
+        'booking_receipt_mismatch',
+      );
+    });
+
+    it('allows an explicitly deferred booking offer after opt-out', () => {
+      const result = service.check({
+        replyText: '好的，这轮先不报名。等你想好后，我再帮你安排面试时间。',
+        toolCalls: [],
+        userMessage: '我不想报名了。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('allows the process explanation while respecting the current booking opt-out', () => {
+      const result = service.check({
+        replyText: '未报名约面时不建议直接到店，不然门店没法接待。好的，这轮先不帮你报名。',
+        toolCalls: [],
+        userMessage: '先别帮我报名，我只是问问能不能直接去。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('does not apply the opt-out override when the candidate wants to proceed', () => {
+      const result = service.check({
+        replyText: '你先登记下，我安排个时间让你过去。',
+        toolCalls: [],
+        userMessage: '可以，帮我报名吧。',
         chatId: 'chat-1',
       });
 

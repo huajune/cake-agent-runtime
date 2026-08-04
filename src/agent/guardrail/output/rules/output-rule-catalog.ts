@@ -187,6 +187,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '登记信息与事实不符时主动引导更正，禁止任何"就说做过/不查记录/随便写没事"式话术。回复中未被点名的其他内容（面试时间、地址等）逐字保留。',
   },
   {
+    id: 'application_record_update_promise',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '候选人自曝报名经历造假后，拦住“我把报名表改掉/我帮你更新登记信息”等无工具支撑的既有报名资料修改承诺。',
+    riskGoal: '避免候选人误以为虚假报名资料已经被 Agent 修改，继续带着错误资料进入面试或后续流程。',
+    exogenousSignal: '候选人近轮消息的造假自曝模式 + 回复文本的第一人称报名表/登记信息修改承诺。',
+    residualRisk:
+      '未明确点名报名表/登记信息的省略宾语承诺仍需语义审查；未来若新增真实修改工具，应把成功回执接入豁免。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '当前没有修改既有报名表或登记资料的工具，上一版“我把报名表改掉/我帮你更新”属于无动作支撑的能力承诺，当前文本不可发送。' +
+      '请引导候选人从原报名渠道自行更正；暂时改不了时，在面试中主动说明真实情况。保留诚信纠正内容，删除由 Agent 修改既有资料的承诺，不得新增岗位事实。',
+  },
+  {
     id: 'screening_rejection_override',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
@@ -510,19 +525,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'booking_receipt_mismatch',
     // 形态 A（问日期且无确认口径）＝REVISE：与已提交工单直接矛盾，近零假阳；
     // 形态 B（零播报）在规则实现内自降 OBSERVE 落档累计精确率；
-    // 形态 C（booking 失败却称正在/已提交）＝REVISE，自带失败路径 feedback 覆盖。
+    // 形态 C（booking 失败却称正在/已提交）＝REVISE，自带失败路径 feedback 覆盖；
+    // 形态 D（候选人明确先别报名却继续推进）＝REVISE，自带候选人意愿路径 feedback。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       'duliday_interview_booking 的回执对账：拦住“工单已建单却仍问候选人定哪天”、' +
-      '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”及“调用失败却称正在/已提交”，观察“零播报”。',
+      '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”、“调用失败却称正在/已提交”' +
+      '及“候选人明确先别报名却仍催登记/承诺安排”，观察“零播报”。',
     riskGoal:
       '预约提交是不可逆副作用；回复与其矛盾会让候选人以为没约上而重复提交（撞 already_booked）或直接流失' +
       '；兼职群与面试群混淆会让候选人在错误群里等待会议链接' +
       '（badcase chat 6a684089ce406a6aeed49d8d）。',
     exogenousSignal:
-      '本轮 booking success/error、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实 +' +
-      ' 回复文本的日期征询、播报缺失、群用途表述或提交进行时宣称。',
+      '本轮 booking success/error、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实，' +
+      '候选人当前报名/预约意愿，以及回复文本的日期征询、播报缺失、群用途表述或提交推进宣称。',
     residualRisk:
       '窗口制“已约好+问几点到店”经确认口径豁免；预约时间与候选人口头要求不一致（王真宝案）需要' +
       '语义比对候选人诉求，不在本规则确定性能力内，留语义审查/离线环。',

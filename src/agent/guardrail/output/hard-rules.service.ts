@@ -16,6 +16,7 @@ import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectDateReferenceMismatch } from './rules/date-reference-mismatch.rule';
+import { detectUnsupportedApplicationRecordUpdatePromise } from './rules/application-record-update-promise.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import {
   detectHandoffPromiseWithoutHandoff,
@@ -208,6 +209,15 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(experienceFraudCoaching));
     }
 
+    const applicationRecordUpdatePromise = detectUnsupportedApplicationRecordUpdatePromise(
+      text,
+      params.userMessage,
+      params.recentUserTexts,
+    );
+    if (applicationRecordUpdatePromise) {
+      contradictions.push(this.withRulePolicy(applicationRecordUpdatePromise));
+    }
+
     // 敏感筛选拒绝翻案：本轮 precheck/booking 已给出结构化拒绝时，回复不得翻案或继续承诺被拒岗位。
     const screeningRejectionOverride = detectScreeningRejectionOverride(text, toolCalls);
     if (screeningRejectionOverride) {
@@ -249,7 +259,11 @@ export class HardRulesService {
     }
 
     // booking 成功后的回执对账：不可逆副作用与回复必须一致（问日期=矛盾，零播报=observe）。
-    const bookingReceiptMismatch = detectBookingReceiptMismatch(text, toolCalls);
+    const bookingReceiptMismatch = detectBookingReceiptMismatch(
+      text,
+      toolCalls,
+      params.userMessage,
+    );
     if (bookingReceiptMismatch) {
       contradictions.push(this.withRulePolicy(bookingReceiptMismatch));
     }

@@ -16,6 +16,9 @@ import type { RuleContradiction } from '../output-rule.types';
  *   播报缺失，候选人不知已报名；表述方式多样，先 observe 落档累计精确率。
  * - 形态 C（REVISE，2026-07-30 审计 P1-7）：booking **失败**却宣称正在/已经提交——
  *   与形态 A 镜像，对账的是失败路径。
+ * - 形态 D（REVISE，2026-08-04 发版回归）：候选人本轮明确说“先别报名/预约”，
+ *   回复却仍催其登记或直接承诺安排面试时间——即使没有真实调用工具，也违背了
+ *   候选人的当前明确指令。
  */
 const DATE_ASK_PATTERN =
   /(?:你|您)(?:定|看|选|挑)[^，。！？!?\n]{0,6}(?:哪一?天|几号|几点|什么时候|时间)|(?:哪一?天|几号|几点|什么时候)[^，。！？!?\n]{0,4}(?:方便|有空|合适|可以|行)[^，。！？!?\n]{0,4}[？?]?|(?:选|挑|定)(?:个|一个)[^，。！？!?\n]{0,4}(?:时间|日子|时段)/u;
@@ -47,6 +50,158 @@ const BOOKING_SETTLED_CLAIM_PATTERN =
 /** 如实披露失败：说了没成功/失败/再试，就不是假宣称。 */
 const BOOKING_FAILURE_ACKNOWLEDGED_PATTERN =
   /(?:提交|报名|预约|约)[^。！？\n]{0,8}(?:失败|没成功|未成功|不成功|没约上|没成|出了点问题|有点问题)|(?:失败|没能|未能|没有)[^。！？\n]{0,6}(?:提交|报名|预约)|重新(?:试|提交|约)|稍后(?:再|重新)(?:试|约|提交)/u;
+
+// 候选人明确要求本轮不要推进预约。只认当前 userMessage，避免把历史犹豫错误套到新一轮。
+// 事件式而非单布尔正则：同轮“先别报 A 店，帮我报 B 店”以后一个明确意图为准；
+// 正向事件落在 opt-out 文本内部（如“别帮我报名”里的“帮我报名”）时不重复计数。
+const BOOKING_OPT_OUT_EVENT_PATTERN =
+  /(?:我)?(?:先|暂时|暂且|目前|现在)?(?:别|不要|不用|不|不想|不打算|先不|暂不|暂缓|暂停)(?:再)?(?:帮我|给我)?(?:报名|登记|预约|约面|提交|报(?!价|销|税|警|数|表))(?:了)?|(?:报名|登记|预约|约面|提交|报(?!价|销|税|警|数|表))(?:这事|这件事|这边)?(?:先|暂时|暂且)?(?:别|不要|不用|不做|不办|暂缓|暂停|放一放)|(?:^|[，,。！？!?\s])(?:这事|这件事|这个)?(?:先|暂时)?放一放(?:吧|了)?(?=$|[，,。！？!?\s])/gu;
+
+const BOOKING_PROCEED_EVENT_PATTERN =
+  /(?:帮我|给我|替我|请|麻烦你|可以|同意|确认|那就|直接|现在|马上|这就)(?:再|继续|直接)?[^，,。！？!?\n]{0,6}(?:报(?:名)?|登记|预约|约面|提交)|(?:改|换)(?:报(?:名)?|约(?:面|预约)?|登记)|重新(?:报(?:名)?|登记|预约|约面)|(?:报名|登记|预约|约面)[^，,。！？!?\n]{0,6}(?:吧|可以|没问题|同意|确认|继续)|直接(?:帮我|给我)?提交/gu;
+
+type BookingIntentEvent = {
+  kind: 'opt_out' | 'proceed';
+  index: number;
+  end: number;
+};
+
+function rangesOverlap(left: BookingIntentEvent, right: BookingIntentEvent): boolean {
+  return left.index < right.end && right.index < left.end;
+}
+
+const FUTURE_BOOKING_PROCEED_PREFIX_PATTERN =
+  /(?:等|等到|待)[^。！？!?\n]{0,24}(?:再|时|后)[^。！？!?\n]{0,8}$|(?:以后|之后|回头|到时候|届时|稍后|晚点|晚些时候|改天|下次|过(?:两|几|\d+)天|过(?:一)?阵子|过段时间|有空(?:时|的时候)?|有需要时|需要时)[^。！？!?\n]{0,16}$|(?:想|考虑|决定)(?:好|清楚)(?:了)?(?:以后|之后|后|再)[^。！？!?\n]{0,12}$/u;
+const BOOKING_INTENT_TARGET_PATTERN =
+  /[A-Za-z0-9]{1,8}\s*店|今天|明天|后天|大后天|周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[号日]?/gu;
+
+function isFutureBookingProceed(userMessage: string, event: BookingIntentEvent): boolean {
+  const beforeEvent = userMessage.slice(0, event.index);
+  const clauseStart = Math.max(
+    beforeEvent.lastIndexOf('，'),
+    beforeEvent.lastIndexOf(','),
+    beforeEvent.lastIndexOf('。'),
+    beforeEvent.lastIndexOf('！'),
+    beforeEvent.lastIndexOf('？'),
+    beforeEvent.lastIndexOf('!'),
+    beforeEvent.lastIndexOf('?'),
+    beforeEvent.lastIndexOf('；'),
+    beforeEvent.lastIndexOf(';'),
+    beforeEvent.lastIndexOf('\n'),
+  );
+  const eventContext = userMessage.slice(Math.max(clauseStart + 1, event.index - 48), event.end);
+  return FUTURE_BOOKING_PROCEED_PREFIX_PATTERN.test(eventContext);
+}
+
+function extractIntentTargets(userMessage: string, event: BookingIntentEvent): ReadonlySet<string> {
+  const before = userMessage.slice(0, event.index);
+  const clauseStart = Math.max(
+    before.lastIndexOf('，'),
+    before.lastIndexOf(','),
+    before.lastIndexOf('。'),
+    before.lastIndexOf('！'),
+    before.lastIndexOf('？'),
+    before.lastIndexOf('!'),
+    before.lastIndexOf('?'),
+  );
+  const after = userMessage.slice(event.end);
+  const boundaryOffsets = ['，', ',', '。', '！', '？', '!', '?']
+    .map((boundary) => after.indexOf(boundary))
+    .filter((offset) => offset >= 0);
+  const clauseEnd =
+    event.end + (boundaryOffsets.length > 0 ? Math.min(...boundaryOffsets) : after.length);
+  const clause = userMessage.slice(clauseStart + 1, clauseEnd);
+  return new Set(
+    Array.from(clause.matchAll(BOOKING_INTENT_TARGET_PATTERN), (match) =>
+      match[0].replace(/\s+/gu, ''),
+    ),
+  );
+}
+
+function hasAmbiguousIntentTargets(
+  userMessage: string,
+  events: readonly BookingIntentEvent[],
+): boolean {
+  const targetSets = events.map((event) => extractIntentTargets(userMessage, event));
+  if (targetSets.every((targets) => targets.size === 0)) return false;
+  if (targetSets.some((targets) => targets.size === 0)) return true;
+
+  const [firstTargets, ...remainingTargets] = targetSets;
+  return !Array.from(firstTargets).some((target) =>
+    remainingTargets.every((targets) => targets.has(target)),
+  );
+}
+
+function resolveLatestBookingIntent(userMessage?: string): BookingIntentEvent['kind'] | null {
+  if (!userMessage?.trim()) return null;
+
+  const optOutEvents: BookingIntentEvent[] = Array.from(
+    userMessage.matchAll(BOOKING_OPT_OUT_EVENT_PATTERN),
+    (match) => ({
+      kind: 'opt_out' as const,
+      index: match.index ?? 0,
+      end: (match.index ?? 0) + match[0].length,
+    }),
+  );
+  if (optOutEvents.length === 0) return null;
+
+  const proceedEvents: BookingIntentEvent[] = Array.from(
+    userMessage.matchAll(BOOKING_PROCEED_EVENT_PATTERN),
+    (match) => ({
+      kind: 'proceed' as const,
+      index: match.index ?? 0,
+      end: (match.index ?? 0) + match[0].length,
+    }),
+  )
+    .filter((event) => !optOutEvents.some((optOut) => rangesOverlap(event, optOut)))
+    .filter((event) => !isFutureBookingProceed(userMessage, event));
+
+  if (
+    proceedEvents.length > 0 &&
+    hasAmbiguousIntentTargets(userMessage, [...optOutEvents, ...proceedEvents])
+  ) {
+    // 同轮对不同门店/日期既拒绝又授权时，确定性规则无法可靠绑定回复目标，交语义审查。
+    return null;
+  }
+
+  const latest = [...optOutEvents, ...proceedEvents]
+    .sort((left, right) => left.index - right.index || left.end - right.end)
+    .at(-1);
+  return latest?.kind ?? null;
+}
+
+// 只拦“当前继续推进”的窄词形；“到店前需要先报名约面”这类流程说明不会命中。
+const BOOKING_ADVANCE_PATTERNS = [
+  /(?:^|[，,。！？!?\n；;])(?:(?:那|要不|你|您|咱们|我们)(?:这边)?(?:先|现在|直接)?|(?:先|现在|直接))(?:把)?(?:报名信息|登记信息)?(?:填(?:一下|下)?|登记(?:一下|下)?|报名(?:一下|下)?|预约(?:一下|下)?|约面)(?:一下|下)?(?:吧|哈)?(?=$|[，,。！？!?\n；;])/gu,
+  /(?:^|[，,。！？!?\n；;])(?:你|您)?(?:先)?把(?:报名信息|登记信息|报名资料|资料)(?:填(?:一下|下)?|发(?:给)?我|补(?:一下|下)?|提交(?:一下|下)?)/gu,
+  /我(?:这边)?(?:来|先|现在|马上|再)?(?:帮你|给你)?(?:报名|登记|预约|约面|报(?!价|销|税|警|数|表))(?:一下|下)?/gu,
+  /我(?:这边)?(?:来|先|现在|马上|再)?(?:帮你|给你)?安排(?:个|一个|一下)?(?:面试)?时间/gu,
+] as const;
+
+const NEGATED_BOOKING_ADVANCE_PREFIX_PATTERN =
+  /(?:不是|并非|不会|不能|不该|不再|不由|不用|无需|别|不要)(?:由)?[^，,。！？!?\n]{0,8}$/u;
+const DEFERRED_BOOKING_CONSENT_PREFIX_PATTERN =
+  /(?:等|等到|待|如果|要是)[^。！？!?\n]{0,24}(?:同意|确认|决定|想好|想报名|要报名|主动提出)[^。！？!?\n]{0,12}$/u;
+
+function stripQuotedBookingText(text: string): string {
+  return text.replace(
+    /“[^”]*”|「[^」]*」|『[^』]*』|‘[^’]*’|"[^"\n]*"|'[^'\n]*'|`[^`\n]*`/gu,
+    (quoted) => ' '.repeat(quoted.length),
+  );
+}
+
+function containsBookingAdvance(replyText: string): boolean {
+  const candidateVisibleText = stripQuotedBookingText(replyText);
+  for (const pattern of BOOKING_ADVANCE_PATTERNS) {
+    for (const match of candidateVisibleText.matchAll(pattern)) {
+      const prefix = candidateVisibleText.slice(0, match.index ?? 0);
+      if (NEGATED_BOOKING_ADVANCE_PREFIX_PATTERN.test(prefix)) continue;
+      if (DEFERRED_BOOKING_CONSENT_PREFIX_PATTERN.test(prefix)) continue;
+      return true;
+    }
+  }
+  return false;
+}
 
 function findFailedBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
   for (const call of toolCalls) {
@@ -110,8 +265,22 @@ const GROUP_PURPOSE_DISTINCTION_PATTERN =
 export function detectBookingReceiptMismatch(
   replyText: string,
   toolCalls: AgentToolCall[],
+  userMessage?: string,
 ): RuleContradiction | null {
   if (!replyText.trim()) return null;
+
+  if (resolveLatestBookingIntent(userMessage) === 'opt_out' && containsBookingAdvance(replyText)) {
+    return {
+      ruleId: 'booking_receipt_mismatch',
+      label:
+        '候选人本轮明确要求先别报名/预约，回复却仍催其登记或承诺安排面试时间，违背当前明确指令',
+      action: GUARDRAIL_ACTION.REVISE,
+      feedbackToGenerator:
+        '候选人本轮已经明确说先别报名/预约。上一版在解释到店流程后仍催候选人登记或承诺安排面试时间，当前文本不可发送。' +
+        '请只说明“未报名约面时不建议直接到店，否则门店无法接待”，并尊重候选人暂不报名的决定；等候选人主动同意后再推进。' +
+        '不得催其登记，也不得声称或承诺已经/将要安排面试时间；其余未被点名的内容逐字保留。',
+    };
+  }
 
   const booking = findSuccessfulBooking(toolCalls);
   if (!booking) {
