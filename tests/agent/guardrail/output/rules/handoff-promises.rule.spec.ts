@@ -21,6 +21,96 @@ describe('detectHandoffPromiseWithoutHandoff', () => {
     });
   });
 
+  it('无升级动作时命中让同事发送资料的承诺（v10.38.0 真实 Agent 回归）', () => {
+    expect(
+      detectHandoffPromiseWithoutHandoff(
+        '办理费用一般 100 元左右，需要自费办理，公司不报销哈。具体办理地点我让同事发你一份门店认可的机构清单，稍等～',
+        [],
+      ),
+    ).toMatchObject({
+      ruleId: 'handoff_promise_without_handoff',
+    });
+  });
+
+  it('“发现”不是发送资料承诺', () => {
+    expect(
+      detectHandoffPromiseWithoutHandoff('我让同事发现了一个数据问题，已经修好了。', []),
+    ).toBeNull();
+  });
+
+  it.each(['稍后同事会把清单发给你。', '同事稍后会发你一份清单。', '我会请同事把清单发给你。'])(
+    '覆盖常见的同事后续发送资料句式：%s',
+    (reply) => {
+      expect(detectHandoffPromiseWithoutHandoff(reply, [])).toMatchObject({
+        ruleId: 'handoff_promise_without_handoff',
+      });
+    },
+  );
+
+  it.each(['同事稍后不会发资料。', '我让同事不要发资料，避免发错。'])(
+    '否定的发送动作不是后续承诺：%s',
+    (reply) => {
+      expect(detectHandoffPromiseWithoutHandoff(reply, [])).toBeNull();
+      expect(isHandoffPromiseOnlyReply(reply)).toBe(false);
+    },
+  );
+
+  it.each([
+    '我让同事不要发资料，但我会让负责人发你一份新清单。',
+    '同事稍后不会发资料，但负责人稍后会发你清单。',
+    '我让同事不要发资料，之后负责人会联系你。',
+  ])('同句先否定旧动作、再承诺新动作时仍命中：%s', (reply) => {
+    expect(detectHandoffPromiseWithoutHandoff(reply, [])).toMatchObject({
+      ruleId: 'handoff_promise_without_handoff',
+    });
+  });
+
+  it.each([
+    '我让同事不用再确认，直接发你一份清单。',
+    '我让同事不要再核实，直接发你资料。',
+    '我让同事无需回复，直接发你清单。',
+    '我让同事别联系你，改成发你资料。',
+  ])('后半句省略人工主语、改为正向动作时仍命中：%s', (reply) => {
+    expect(detectHandoffPromiseWithoutHandoff(reply, [])).toMatchObject({
+      ruleId: 'handoff_promise_without_handoff',
+    });
+  });
+
+  it.each([
+    '我让同事不用再确认，直接把机构清单发给你。',
+    '我让同事不用再确认，把机构清单发给你。',
+    '我让同事不用回复，稍后把清单发你。',
+    '我让同事不用回复，然后把资料发给你。',
+  ])('后半句宾语前置的发送承诺仍命中：%s', (reply) => {
+    expect(detectHandoffPromiseWithoutHandoff(reply, [])).toMatchObject({
+      ruleId: 'handoff_promise_without_handoff',
+    });
+  });
+
+  it('同一人工主语后的动作全部是否定时仍放行', () => {
+    expect(
+      detectHandoffPromiseWithoutHandoff('我让同事不用再确认，也不要发你资料。', []),
+    ).toBeNull();
+  });
+
+  it.each([
+    '我让同事别联系你，我自己回复你就行。',
+    '我让同事不用再确认，我直接发你现有清单。',
+    '我让负责人不要处理，我自己来处理。',
+    '我让店长不用回复，我来答复你。',
+    '我让同事不用回复，你回复我就行。',
+    '我让同事不要发资料，现有资料提供的信息已经够了。',
+    '我让同事别联系你，联系方式已经发过了。',
+    '我让负责人不要处理，这个处理结果已经作废。',
+    '我让同事不用回复，回复已经收到了。',
+    '我让同事别联系你，联系已经中断了。',
+    '我让负责人不用答复，答复已经发来了。',
+    '我让同事不要处理，处理已经完成了。',
+  ])('后续出现新主语或动作名词时不继承人工主体：%s', (reply) => {
+    expect(detectHandoffPromiseWithoutHandoff(reply, [])).toBeNull();
+    expect(isHandoffPromiseOnlyReply(reply)).toBe(false);
+  });
+
   it('request_handoff dispatched=true 豁免', () => {
     const calls = [call('request_handoff', { dispatched: true })];
     expect(detectHandoffPromiseWithoutHandoff(PROMISE, calls)).toBeNull();

@@ -270,6 +270,7 @@ export class HardRulesService {
       text,
       toolCalls,
       params.recentMessages ?? [],
+      params.memorySnapshot?.currentFocusJob?.jobId,
     );
     if (jobFactsWithoutLookup) {
       contradictions.push(this.withRulePolicy(jobFactsWithoutLookup));
@@ -285,6 +286,8 @@ export class HardRulesService {
       text,
       toolCalls,
       params.memorySnapshot?.currentFocusJob?.jobId,
+      params.userMessage,
+      params.recentUserTexts,
     );
     if (unsupportedScheduleWindowClaim) {
       contradictions.push(this.withRulePolicy(unsupportedScheduleWindowClaim));

@@ -420,6 +420,121 @@ describe('HardRulesService', () => {
         'job_detail_lookup_required',
       );
     });
+
+    it('rejects recommending 做一休一 to a candidate capped at two days per week', () => {
+      const result = service.check({
+        replyText: '你需要找明确写“每周可两天”“做一休一”“只周末”或者排班灵活的岗位。',
+        toolCalls: [],
+        userMessage: '我每周最多只能上两天。',
+        recentUserTexts: ['我每周最多只能上两天。'],
+        chatId: 'release-v10.38.0-schedule-frequency',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'unsupported_schedule_window_claim',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            label: expect.stringContaining('平均每周约 3.5 天'),
+          }),
+        ]),
+      );
+    });
+
+    it('allows explaining that 做一休一 exceeds a two-day weekly cap', () => {
+      const result = service.check({
+        replyText: '做一休一平均每周要上三到四天，不符合你每周最多两天的要求。',
+        toolCalls: [],
+        userMessage: '我每周最多只能上两天。',
+        recentUserTexts: ['我每周最多只能上两天。'],
+        chatId: 'chat-cycle-mismatch-explained',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it('allows 做一休一 when the weekly cap is four days', () => {
+      const result = service.check({
+        replyText: '你可以考虑做一休一的岗位。',
+        toolCalls: [],
+        userMessage: '我每周最多只能上四天。',
+        recentUserTexts: ['我每周最多只能上四天。'],
+        chatId: 'chat-cycle-within-cap',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it('does not infer a weekly cap when the candidate never stated one', () => {
+      const result = service.check({
+        replyText: '你可以考虑做一休一的岗位。',
+        toolCalls: [],
+        userMessage: '我想找排班规律一点的岗位。',
+        recentUserTexts: ['我想找排班规律一点的岗位。'],
+        chatId: 'chat-cycle-no-cap',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it('uses the latest explicit weekly cap instead of a stricter stale value', () => {
+      const result = service.check({
+        replyText: '你可以考虑做一休一的岗位。',
+        toolCalls: [],
+        userMessage: '现在我一周最多能上四天。',
+        recentUserTexts: ['我每周最多只能上两天。', '现在我一周最多能上四天。'],
+        chatId: 'chat-cycle-updated-cap',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it.each(['以前每周最多两天，现在每周可以上四天了', '现在每周最多四天，不是之前每周最多两天'])(
+      'ignores historical or explicitly negated caps: %s',
+      (userMessage) => {
+        const result = service.check({
+          replyText: '你可以考虑做一休一的岗位。',
+          toolCalls: [],
+          userMessage,
+          chatId: 'chat-cycle-semantic-cap-update',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'unsupported_schedule_window_claim',
+        );
+      },
+    );
+
+    it('binds negation to each cycle mention instead of the whole sentence', () => {
+      const safe = service.check({
+        replyText: '建议不要考虑做一休一。',
+        toolCalls: [],
+        userMessage: '我一周最多只能上两天。',
+        chatId: 'chat-cycle-negated',
+      });
+      expect(safe.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+
+      const unsafe = service.check({
+        replyText: '不建议做二休一，可以考虑做一休一。',
+        toolCalls: [],
+        userMessage: '我一周最多只能上两天。',
+        chatId: 'chat-cycle-mixed-polarity',
+      });
+      expect(unsafe.contradictions.map((item) => item.ruleId)).toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
   });
 
   // 2026-07-21 守卫审计：本分支要求的补救是"先反问哪家门店"这一对话行为，而规则拿不到
@@ -2452,6 +2567,24 @@ describe('HardRulesService', () => {
         currentReplySendable: false,
         repairMode: 'rewrite',
         repairToolNames: [],
+      });
+    });
+
+    it('requires a rewrite when the reply promises a colleague will send materials without handoff', () => {
+      const result = service.check({
+        replyText:
+          '办理费用一般 100 元左右，需要自费办理，公司不报销哈。具体办理地点我让同事发你一份门店认可的机构清单，稍等～',
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee',
+      });
+
+      expect(
+        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
+      ).toMatchObject({
+        action: 'revise',
+        severity: 'P0',
+        currentReplySendable: false,
+        repairMode: 'rewrite',
       });
     });
 
