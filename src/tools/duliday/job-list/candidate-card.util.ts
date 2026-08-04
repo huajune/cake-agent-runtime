@@ -140,9 +140,8 @@ function buildRequirementPart(hr: HardRequirements, ageText: string | null): str
   if (ageText && ageText !== '不限') parts.push(ageText);
   if (hr.gender === 'female') parts.push('仅限女');
   else if (hr.gender === 'male') parts.push('仅限男');
-  // badcase fazpqciu：学生门槛是可公开条件，卡片省略会让候选人收资填完"学生"才被拒。
-  if (hr.student === 'social_only') parts.push('只招社会人士（不接受学生）');
-  else if (hr.student === 'student_only') parts.push('仅限学生');
+  // 学生身份门槛不上候选人卡片（2026-08-04 用户裁定）：已知学生时 job_list 查询侧
+  // 已自动剔除不接受学生岗；身份未知时走收资前单问确认，不在卡片展示身份筛选信息。
   if (hr.healthCert === 'required_before_interview') parts.push('面试前需食品健康证');
   else if (hr.healthCert === 'required_before_onboard') parts.push('入职前办食品健康证');
   if (hr.household) {
