@@ -534,6 +534,7 @@ describe('FeishuBitableSyncService', () => {
     beforeEach(() => {
       updateRecord.mockReset();
       getRecord.mockReset();
+      getRecord.mockResolvedValue({ record_id: 'rec_default', fields: {} });
       (mockBitableApi as unknown as { updateRecord: jest.Mock }).updateRecord = updateRecord;
       (mockBitableApi as unknown as { getRecord: jest.Mock }).getRecord = getRecord;
       mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
@@ -747,6 +748,87 @@ describe('FeishuBitableSyncService', () => {
         ]);
 
         expect(updateRecord.mock.calls[0][3]['状态']).toBe('待验证');
+      });
+
+      it('现有状态为暂搁置时，单侧证据不得把它覆盖回待验证', async () => {
+        getRecord.mockResolvedValueOnce({
+          record_id: 'rec_a',
+          fields: { 状态: '暂搁置', 问题ID: 'bc-shelved' },
+        });
+
+        await service.updateBadcaseStatuses(
+          [
+            {
+              recordId: 'rec_a',
+              status: '已解决',
+              evidence: {
+                kind: 'scenario',
+                batchId: 'batch-s',
+                assetIds: ['case-1'],
+                executionIds: ['exec-1'],
+                reviewStatus: 'passed',
+                reviewerSources: ['claude'],
+                reviewedAt: '2026-08-04T01:00:00.000Z',
+              },
+              ledger: {
+                schemaVersion: 1,
+                updatedAt: '2026-08-04T01:00:00.000Z',
+                scenario: [],
+                conversation: [],
+                overallStatus: 'missing',
+              },
+            },
+          ],
+          { syncGovernanceDocument: false },
+        );
+
+        expect(getRecord).toHaveBeenCalledTimes(1);
+        expect(updateRecord.mock.calls[0][3]).not.toHaveProperty('状态');
+      });
+
+      it('现有状态为暂搁置时，双门都通过仍允许解除为已解决', async () => {
+        getRecord.mockResolvedValueOnce({
+          record_id: 'rec_a',
+          fields: { 状态: '暂搁置', 问题ID: 'bc-shelved' },
+        });
+
+        await service.updateBadcaseStatuses(
+          [
+            {
+              recordId: 'rec_a',
+              status: '已解决',
+              evidence: {
+                kind: 'conversation',
+                batchId: 'batch-c',
+                assetIds: ['validation-1'],
+                executionIds: ['exec-2'],
+                reviewStatus: 'passed',
+                reviewerSources: ['claude'],
+                reviewedAt: '2026-08-04T02:00:00.000Z',
+              },
+              ledger: {
+                schemaVersion: 1,
+                updatedAt: '2026-08-04T01:00:00.000Z',
+                scenario: [
+                  {
+                    kind: 'scenario',
+                    batchId: 'batch-s',
+                    assetIds: ['case-1'],
+                    executionIds: ['exec-1'],
+                    reviewStatus: 'passed',
+                    reviewerSources: ['claude'],
+                    reviewedAt: '2026-08-04T01:00:00.000Z',
+                  },
+                ],
+                conversation: [],
+                overallStatus: 'partial',
+              },
+            },
+          ],
+          { syncGovernanceDocument: false },
+        );
+
+        expect(updateRecord.mock.calls[0][3]['状态']).toBe('已解决');
       });
     });
   });

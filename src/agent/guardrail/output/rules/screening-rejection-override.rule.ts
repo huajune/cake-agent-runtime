@@ -43,10 +43,14 @@ interface RejectedJobRef {
 
 function collectRejectedJobs(toolCalls: AgentToolCall[]): {
   rejected: boolean;
+  bookingRejected: boolean;
+  bookingSucceeded: boolean;
   jobs: RejectedJobRef[];
 } {
   const jobs: RejectedJobRef[] = [];
   let rejected = false;
+  let bookingRejected = false;
+  let bookingSucceeded = false;
   for (const call of toolCalls) {
     const result = asRecord(call.result);
     if (!result) continue;
@@ -65,9 +69,13 @@ function collectRejectedJobs(toolCalls: AgentToolCall[]): {
     }
     if (call.toolName === 'duliday_interview_booking' && result.errorType === 'booking.rejected') {
       rejected = true;
+      bookingRejected = true;
+    }
+    if (call.toolName === 'duliday_interview_booking' && result.success === true) {
+      bookingSucceeded = true;
     }
   }
-  return { rejected, jobs };
+  return { rejected, bookingRejected, bookingSucceeded, jobs };
 }
 
 /**
@@ -77,24 +85,32 @@ export function detectScreeningRejectionOverride(
   text: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  const { rejected, jobs } = collectRejectedJobs(toolCalls);
+  const { rejected, bookingRejected, bookingSucceeded, jobs } = collectRejectedJobs(toolCalls);
   if (!rejected) return null;
 
   const reversal = REJECTION_REVERSAL_PATTERN.test(text);
+  // booking.rejected 的既有错误结构只有 jobId，没有可用于回复句绑定的岗位名。
+  // 该工具已经明确拒绝了本轮预约，因此之后仍出现预约/报名承诺就属于同一失败
+  // 动作的错误回执；不能因 jobs 为空而漏过。
+  const promiseAfterBookingRejection =
+    bookingRejected && !bookingSucceeded && BOOKING_PROMISE_PATTERN.test(text);
   const promiseToRejectedJob =
-    jobs.length > 0 &&
-    text
-      .split(/[。！？\n]/u)
-      .some(
-        (sentence) =>
-          BOOKING_PROMISE_PATTERN.test(sentence) &&
-          jobs.some((job) => job.nameTokens.some((token) => sentence.includes(token))),
-      );
+    promiseAfterBookingRejection ||
+    (jobs.length > 0 &&
+      text
+        .split(/[。！？\n]/u)
+        .some(
+          (sentence) =>
+            BOOKING_PROMISE_PATTERN.test(sentence) &&
+            jobs.some((job) => job.nameTokens.some((token) => sentence.includes(token))),
+        ));
   if (!reversal && !promiseToRejectedJob) return null;
 
   const reason = reversal
     ? '本轮工具已返回内部筛选拒绝，回复却宣称"确认有误/条件符合"翻案'
-    : '本轮工具已返回内部筛选拒绝，回复仍承诺帮候选人预约/报名被拒岗位';
+    : bookingRejected
+      ? '本轮预约工具已返回内部筛选拒绝，回复仍继续承诺预约/报名'
+      : '本轮工具已返回内部筛选拒绝，回复仍承诺帮候选人预约/报名被拒岗位';
   return {
     ruleId: 'screening_rejection_override',
     label:

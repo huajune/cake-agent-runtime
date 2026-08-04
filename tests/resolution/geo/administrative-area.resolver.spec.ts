@@ -1,5 +1,6 @@
 import {
   detectGeoSignalConflict,
+  isKnownCanonicalAdministrativeAreaName,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
@@ -108,6 +109,22 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
       expect(resolveParentAdministrativeArea('火星')).toBeNull();
       expect(resolveParentAdministrativeArea('  ')).toBeNull();
     });
+  });
+
+  describe('isKnownCanonicalAdministrativeAreaName（结构化字段成员判定）', () => {
+    it.each(['上海', '巴音郭楞蒙古自治州', '克孜勒苏柯尔克孜自治州'])(
+      '接受仓库行政区数据中的 canonical 名称 %s',
+      (name) => {
+        expect(isKnownCanonicalAdministrativeAreaName(name)).toBe(true);
+      },
+    );
+
+    it.each(['杜撰测试蒙古自治州', '我想去巴音郭楞蒙古自治州'])(
+      '拒绝仅有行政后缀或带句式前缀的伪 canonical 值 %s',
+      (name) => {
+        expect(isKnownCanonicalAdministrativeAreaName(name)).toBe(false);
+      },
+    );
   });
 
   describe('district-city-map 收编条目（2026-07-28 统一到 UNIQUE_SUBDIVISION_TO_CITY）', () => {

@@ -577,7 +577,15 @@ export class FeishuBitableSyncService {
       try {
         let derivedStatus = item.status;
         const fields: Record<string, unknown> = {};
-        let currentRecordFields: Record<string, unknown> = {};
+        // 当前真实 BadCase 表已删除「测试证据JSON」等治理列，但「暂搁置」保护、
+        // 状态时间戳和治理文档摘要仍依赖现有记录。统一读取一次，避免无证据列时
+        // currentRecordFields 永远为空、把运营裁定的「暂搁置」覆盖回流转态。
+        const currentRecord = await this.bitableApi.getRecord(
+          tableConfig.appToken,
+          tableConfig.tableId,
+          recordId,
+        );
+        const currentRecordFields: Record<string, unknown> = currentRecord.fields;
         if (evidenceUpdates.length > 0 && !evidenceJsonField) {
           // 飞书列缺失时改用调用方给的生产库台账；两者都没有才退回"不许关闭"的保守档
           let ledger = item.ledger;
@@ -595,13 +603,7 @@ export class FeishuBitableSyncService {
           }
         }
         if (evidenceUpdates.length > 0 && evidenceJsonField) {
-          const record = await this.bitableApi.getRecord(
-            tableConfig.appToken,
-            tableConfig.tableId,
-            recordId,
-          );
-          currentRecordFields = record.fields;
-          let ledger = parseBadcaseEvidenceLedger(record.fields[evidenceJsonField]);
+          let ledger = parseBadcaseEvidenceLedger(currentRecordFields[evidenceJsonField]);
           for (const evidence of evidenceUpdates) {
             ledger = mergeBadcaseEvidence(ledger, evidence);
           }

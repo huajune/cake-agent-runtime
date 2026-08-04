@@ -38,6 +38,23 @@ function defaultWindow() {
   return [monday, nextMonday];
 }
 
+/**
+ * CLI 的 YYYY-MM-DD 表示运行机器本地时区的 00:00。
+ * `new Date('YYYY-MM-DD')` 按 UTC 解析，会让上海周报窗口整体后移 8 小时。
+ */
+function parseWindowBoundary(value, fallback) {
+  if (!value) return fallback;
+  const trimmed = value.trim();
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  const parsed = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`无效日期边界: ${value}`);
+  }
+  return parsed;
+}
+
 function toTimestamp(value) {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') return Date.parse(value);
@@ -93,8 +110,8 @@ async function fetchAllRecords(token, appToken, tableId) {
 async function main() {
   const env = loadEnv();
   const [defaultStart, defaultEnd] = defaultWindow();
-  const start = process.argv[2] ? new Date(process.argv[2]) : defaultStart;
-  const end = process.argv[3] ? new Date(process.argv[3]) : defaultEnd;
+  const start = parseWindowBoundary(process.argv[2], defaultStart);
+  const end = parseWindowBoundary(process.argv[3], defaultEnd);
 
   const token = await fetchTenantToken(env);
   const all = await fetchAllRecords(
@@ -121,7 +138,11 @@ async function main() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch((error) => {
-  console.error(`[weekly-ops-report] ${error.message}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`[weekly-ops-report] ${error.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = { defaultWindow, parseWindowBoundary };

@@ -14,6 +14,7 @@
  * - weekend_only_compatible：明确允许只周末做
  * - evening_compatible：明确含晚班时段
  * - morning_compatible：明确含早班时段
+ * - low_weekly_frequency：结构化数据明确每周出勤不超过 2 天（只说明周频，不说明日内时段）
  * - flexible：自定义工时 / 可选时段 / 短班灵活
  * - unknown：数据缺失
  *
@@ -26,6 +27,7 @@ export type ScheduleSemantic =
   | 'weekend_only_compatible'
   | 'evening_compatible'
   | 'morning_compatible'
+  | 'low_weekly_frequency'
   | 'flexible'
   | 'unknown';
 
@@ -148,12 +150,11 @@ function deriveStructuredScheduleSemantics(
   if (weeklyWorkDays !== null && weeklyWorkDays >= 5) {
     return ['requires_full_week'];
   }
-  // 每周出勤门槛 ≤2 天：纯周末（周六+周日）即可满足，具体天数按门店协调，
-  // 视为 flexible 让"只周末/每周最多两天"候选人可见该岗。显式冲突文本
-  // （做六休一/周末必到等）在 matchScheduleConstraint 中先于 flexible 判定，
-  // 不会被本信号覆盖。3-4 天维持保守排除（仅两个周末日无法满足）。
+  // 每周出勤门槛 ≤2 天：纯周末（周六+周日）即可满足，且与“每周最多两天”兼容。
+  // 这只是一条周频信号，不能推导日内时段灵活；必须与 flexible 分开，避免误放
+  // “只做晚班/只做早班”的候选人。3-4 天维持保守排除（仅两个周末日无法满足）。
   if (weeklyWorkDays !== null && weeklyWorkDays <= 2) {
-    return ['flexible'];
+    return ['low_weekly_frequency'];
   }
   return [];
 }
@@ -195,10 +196,11 @@ export interface CandidateScheduleConstraint {
  *
  * 规则（保守，只在明确冲突时返回 false）：
  * - onlyWeekends：requires_full_week / mandatory_weekend_days 都不兼容（候选人不能配合工作日）；
- *   只有 weekend_only_compatible / flexible 才兼容
+ *   只有 weekend_only_compatible / low_weekly_frequency / flexible 才兼容
  * - onlyEvenings：requires_full_week / morning_only 不兼容；evening_compatible / flexible 兼容
  * - onlyMornings：evening_only 不兼容；morning_compatible / flexible 兼容
- * - maxDaysPerWeek <= 2：requires_full_week / mandatory_weekend_days 不兼容
+ * - maxDaysPerWeek <= 2：requires_full_week / mandatory_weekend_days 不兼容；
+ *   low_weekly_frequency 明确兼容
  *
  * 返回 { matched, reason }：reason 给具体不兼容原因。
  */
@@ -220,8 +222,9 @@ export function matchScheduleConstraint(
       // 周六周日要给班 + 工作日也要给班 → 不能"只周末"
       return { matched: false, reason: '岗位除周末外还要工作日给班，与"只做周末"冲突' };
     }
-    if (has('weekend_only_compatible') || has('flexible')) return { matched: true };
-    return { matched: false, reason: '岗位排班未明确允许只做周末' };
+    if (!has('weekend_only_compatible') && !has('low_weekly_frequency') && !has('flexible')) {
+      return { matched: false, reason: '岗位排班未明确允许只做周末' };
+    }
   }
 
   if (constraint.onlyEvenings) {
@@ -232,16 +235,18 @@ export function matchScheduleConstraint(
     if (has('morning_compatible') && !has('evening_compatible')) {
       return { matched: false, reason: '岗位仅安排早班，与"只做晚班"冲突' };
     }
-    if (has('evening_compatible') || has('flexible')) return { matched: true };
-    return { matched: false, reason: '岗位排班未明确含晚班' };
+    if (!has('evening_compatible') && !has('flexible')) {
+      return { matched: false, reason: '岗位排班未明确含晚班' };
+    }
   }
 
   if (constraint.onlyMornings) {
-    if (has('morning_compatible') || has('flexible')) return { matched: true };
     if (has('evening_compatible') && !has('morning_compatible')) {
       return { matched: false, reason: '岗位仅安排晚班，与"只做早班"冲突' };
     }
-    return { matched: false, reason: '岗位排班未明确含早班' };
+    if (!has('morning_compatible') && !has('flexible')) {
+      return { matched: false, reason: '岗位排班未明确含早班' };
+    }
   }
 
   if (typeof constraint.maxDaysPerWeek === 'number' && constraint.maxDaysPerWeek <= 2) {
@@ -251,6 +256,7 @@ export function matchScheduleConstraint(
         reason: `岗位需要每周≥3 天给班，与候选人"每周最多 ${constraint.maxDaysPerWeek} 天"冲突`,
       };
     }
+    if (has('low_weekly_frequency')) return { matched: true };
   }
 
   return { matched: true };

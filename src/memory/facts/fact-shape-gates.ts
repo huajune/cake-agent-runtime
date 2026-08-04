@@ -12,6 +12,8 @@
  * - 形状门：city/age 的值必须长得像城市/年龄，否则字段级丢弃。
  */
 
+import { isKnownCanonicalAdministrativeAreaName } from '@resolution/geo';
+
 /** 同一字符串值命中 ≥N 个字段视为扇出广播（判据来自污染实测：name=age=gender 同值）。 */
 export const SCALAR_FANOUT_FIELD_THRESHOLD = 3;
 
@@ -36,18 +38,20 @@ export function detectScalarFanoutValues(fields: Record<string, unknown>): Set<s
   return fanout;
 }
 
-// 城市名不含句读/空白/数字，也不会以疑问尾词收尾；行政区划全名（含"县/旗"）
-// 不超过 8 个汉字（pref.city 存的是去"市"后缀的市名，更短）。
+// 城市名不含句读/空白/数字，也不会以疑问尾词收尾。8 字内沿用宽松形状门；
+// 更长值只接受仓库行政区数据中的 canonical 名称，不整体放开长句或伪行政名。
 const CITY_FORBIDDEN_CHARS = /[？?！!。.，,、；;：:\s\d]/u;
 const CITY_INTERROGATIVE_TAIL = /(?:吗|呢|吧|呀|啊)$/u;
+const CITY_SHORT_VALUE_MAX_LENGTH = 8;
 
 /** 城市值形状门：过滤"晚上才可以，有吗？"这类整句/疑问文本。 */
 export function isPlausibleCityValue(value: string): boolean {
   const trimmed = value.trim();
-  if (trimmed.length < 2 || trimmed.length > 8) return false;
+  if (trimmed.length < 2) return false;
   if (CITY_FORBIDDEN_CHARS.test(trimmed)) return false;
   if (CITY_INTERROGATIVE_TAIL.test(trimmed)) return false;
-  return true;
+  if (trimmed.length <= CITY_SHORT_VALUE_MAX_LENGTH) return true;
+  return isKnownCanonicalAdministrativeAreaName(trimmed);
 }
 
 /** 年龄值形状门：必须能解析出 14-70 的单一数字（"39"/"39岁"合法，区间与整句不合法）。 */

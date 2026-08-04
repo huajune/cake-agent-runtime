@@ -41,14 +41,21 @@ describe('detectScalarFanoutValues (badcase 6a6c4c13 标量扇出污染)', () =>
 });
 
 describe('isPlausibleCityValue', () => {
-  it.each(['东莞', '上海', '呼和浩特', '巴音郭楞'])('放行真实城市名 %s', (city) => {
-    expect(isPlausibleCityValue(city)).toBe(true);
-  });
+  it.each(['东莞', '上海', '呼和浩特', '巴音郭楞', '巴音郭楞蒙古自治州', '克孜勒苏柯尔克孜自治州'])(
+    '放行真实城市名 %s',
+    (city) => {
+      expect(isPlausibleCityValue(city)).toBe(true);
+    },
+  );
 
   it.each([
     '晚上才可以，有吗？',
     '晚上才可以有吗',
     '我在广东不是上海哈是的呢',
+    '我在广东不是上海哈是的',
+    '我在广东不是上海这个城市',
+    '杜撰测试蒙古自治州',
+    '我想去巴音郭楞蒙古自治州',
     '上海？',
     '城市 未知',
     '静安区123',

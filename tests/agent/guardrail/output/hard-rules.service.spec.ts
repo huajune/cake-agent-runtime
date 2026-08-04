@@ -2095,6 +2095,48 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
     });
 
+    it('flags a continued booking promise after booking.rejected even without reversal wording', () => {
+      const result = service.check({
+        replyText: '没关系，我继续帮你预约这个岗位，稍后把结果发你。',
+        toolCalls: bookingRejected,
+        userMessage: '这个岗位也不合适吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
+    });
+
+    it('allows a neutral mismatch relay after booking.rejected when no booking is promised', () => {
+      const result = service.check({
+        replyText: '刚确认了下，这个岗位目前暂不匹配，我再帮你看看其他合适的岗位。',
+        toolCalls: bookingRejected,
+        userMessage: '这个岗位也不合适吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('allows reporting a different booking that succeeded later in the same turn', () => {
+      const result = service.check({
+        replyText: '第一家暂不匹配，另一家已经帮你预约成功了。',
+        toolCalls: [
+          ...bookingRejected,
+          {
+            toolName: 'duliday_interview_booking',
+            args: { jobId: 528684 },
+            result: { success: true, workOrderId: 'wo-1' },
+            status: 'ok',
+          },
+        ] as never,
+        userMessage: '两家都帮我试试',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
     it('allows the neutral mismatch relay with a pivot to another brand', () => {
       const result = service.check({
         replyText:
