@@ -19,7 +19,11 @@ import {
   BadcaseDerivedStatus,
   FeishuBitableSyncService,
 } from '@biz/feishu-sync/bitable-sync.service';
-import type { BadcaseEvidenceUpdate } from '@biz/feishu-sync/badcase-governance.types';
+import type {
+  BadcaseEvidenceLedger,
+  BadcaseEvidenceUpdate,
+} from '@biz/feishu-sync/badcase-governance.types';
+import { BadcaseEvidenceResolverService } from './badcase-evidence-resolver.service';
 import {
   BatchStatus,
   ExecutionStatus,
@@ -73,6 +77,7 @@ export class TestBatchService {
     private readonly executionService: TestExecutionService,
     private readonly configService: ConfigService,
     private readonly feishuBitableSync: FeishuBitableSyncService,
+    private readonly badcaseEvidenceResolver: BadcaseEvidenceResolverService,
   ) {
     this.batchConcurrency = this.readPositiveInt('TEST_SUITE_BATCH_CONCURRENCY', 20, {
       min: 1,
@@ -708,7 +713,9 @@ export class TestBatchService {
         return;
       }
 
-      const result = await this.feishuBitableSync.updateBadcaseStatuses(items);
+      const result = await this.feishuBitableSync.updateBadcaseStatuses(
+        await this.attachEvidenceLedgers(items),
+      );
       this.logger.log(
         `[BadcaseStatus] 批次 ${batchId} 派生 BadCase 状态回写: 成功=${result.success} 失败=${result.failed} 总计=${items.length}`,
       );
@@ -775,9 +782,10 @@ export class TestBatchService {
       }
     }
     if (apply && pendingUpdates.length > 0) {
-      const result = await this.feishuBitableSync.updateBadcaseStatuses(pendingUpdates, {
-        syncGovernanceDocument: false,
-      });
+      const result = await this.feishuBitableSync.updateBadcaseStatuses(
+        await this.attachEvidenceLedgers(pendingUpdates),
+        { syncGovernanceDocument: false },
+      );
       errors.push(...result.errors);
     }
 
@@ -790,6 +798,23 @@ export class TestBatchService {
       schema,
       errors,
     };
+  }
+
+  /**
+   * 给回写项挂上从生产库反推的双侧证据台账。
+   *
+   * 飞书「测试证据JSON」列在 2026-07-29 被清理，回写侧不能再依赖它做跨批次合并；
+   * 生产库本来就是证据真相源，这里现查现算传下去即可。反查失败只降级为不带台账
+   * （回写侧退回保守状态），不阻断状态回写本身。
+   */
+  private async attachEvidenceLedgers<
+    T extends { recordId: string; ledger?: BadcaseEvidenceLedger },
+  >(items: T[]): Promise<T[]> {
+    const ledgers = await this.badcaseEvidenceResolver.resolveLedgers(
+      items.map((item) => item.recordId),
+    );
+    if (ledgers.size === 0) return items;
+    return items.map((item) => ({ ...item, ledger: ledgers.get(item.recordId) }));
   }
 
   /**

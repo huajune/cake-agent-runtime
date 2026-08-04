@@ -147,6 +147,24 @@ export class FeishuApiService {
   }
 
   /**
+   * 发送 PATCH 请求（自动带 Token）
+   */
+  async patch<T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig,
+  ): Promise<AxiosResponse<T>> {
+    const token = await this.getToken();
+    return this.http.patch<T>(url, data, {
+      ...config,
+      headers: {
+        ...config?.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  /**
    * 发送 DELETE 请求（自动带 Token）
    */
   async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
