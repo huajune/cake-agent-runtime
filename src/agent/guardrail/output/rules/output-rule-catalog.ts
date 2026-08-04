@@ -206,6 +206,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '然后自然转推其它合适岗位或拉群收口；回复中对候选人其他问题的回答等未被点名的内容逐字保留。',
   },
   {
+    id: 'date_reference_mismatch',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '回复中"今天/明天/后天 + (M月D日)"连用且日期与相对日词按当前日历不符时拦截（如当天 7-28 却说"明天 7 月 28 日"）。',
+    riskGoal:
+      '防止日历错乱话术误导候选人空等或错过面试（badcase nau6xunv：当天面试被说成"明天 7 月 28 日，不是今天"，候选人被劝停等待）。',
+    exogenousSignal: '回复文本的相对日词+具体日期共现模式 × 系统当前日期（Asia/Shanghai）。',
+    residualRisk: '无具体日期的裸相对日词（"明天面试"）与星期几错配不在口径内，交语义层。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复里的相对日词与具体日期按真实日历对不上（见证据），当前文本不可发送。' +
+      '请按系统当前日期改正——只修正错误的相对日词或日期本身，面试时间等其余事实与内容逐字保留，不要改动预约本身的日期结论。',
+  },
+  {
     id: 'summer_worker_alternative_upsell',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,

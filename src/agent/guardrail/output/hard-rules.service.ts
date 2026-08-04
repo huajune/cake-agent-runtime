@@ -15,6 +15,7 @@ import {
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectHandoffPromiseWithoutHandoff } from './rules/handoff-promises.rule';
+import { detectDateReferenceMismatch } from './rules/date-reference-mismatch.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectScreeningRejectionOverride } from './rules/screening-rejection-override.rule';
@@ -205,6 +206,12 @@ export class HardRulesService {
     const screeningRejectionOverride = detectScreeningRejectionOverride(text, toolCalls);
     if (screeningRejectionOverride) {
       contradictions.push(this.withRulePolicy(screeningRejectionOverride));
+    }
+
+    // 相对日词与括注日期对账：日历事实可确定性校验，日期错乱会让候选人错过/空等面试。
+    const dateReferenceMismatch = detectDateReferenceMismatch(text);
+    if (dateReferenceMismatch) {
+      contradictions.push(this.withRulePolicy(dateReferenceMismatch));
     }
 
     const summerWorkerAlternativeUpsell = detectSummerWorkerAlternativeUpsell(

@@ -1001,6 +1001,58 @@ describe('buildJobListTool', () => {
     ]);
   });
 
+  describe('jobIdList provenance gate (badcase 6a6c4c13 幻觉参数查询)', () => {
+    it('blocks jobIdList entries never recalled in this session', async () => {
+      const gatedContext: ToolBuildContext = {
+        ...mockContext,
+        isRecalledJobId: (jobId: number) => jobId === 528697,
+        recalledJobIds: [528697],
+      };
+
+      const result = await executeTool(gatedContext, {
+        ...defaultInput,
+        jobIdList: [53035],
+        cityNameList: ['上海'],
+        brandAliasList: ['新白鹿'],
+      });
+
+      expect(result.errorType).toBe('job_list.jobid_no_provenance');
+      expect(result._replyInstruction).toContain('53035');
+      expect(result._replyInstruction).toContain('528697');
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+
+    it('blocks with zero-recall wording when session has no recalled jobs', async () => {
+      const gatedContext: ToolBuildContext = {
+        ...mockContext,
+        isRecalledJobId: () => false,
+        recalledJobIds: [],
+      };
+
+      const result = await executeTool(gatedContext, {
+        ...defaultInput,
+        jobIdList: [53035],
+      });
+
+      expect(result.errorType).toBe('job_list.jobid_no_provenance');
+      expect(result._replyInstruction).toContain('禁止凭空按 jobId 查询');
+    });
+
+    it('allows re-querying a legitimately recalled jobId', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+      const gatedContext: ToolBuildContext = {
+        ...mockContext,
+        isRecalledJobId: (jobId: number) => jobId === 1,
+        recalledJobIds: [1],
+      };
+
+      const result = await executeTool(gatedContext, { ...defaultInput, jobIdList: [1] });
+
+      expect(result.errorType).toBeUndefined();
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+  });
+
   describe('student identity hard filter (badcase fazpqciu 先筛后推)', () => {
     const socialOnlyJob = (jobId: number, brandName: string) =>
       makeJobData({

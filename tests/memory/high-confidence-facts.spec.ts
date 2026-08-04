@@ -429,6 +429,30 @@ describe('extractHighConfidenceFacts', () => {
     });
   });
 
+  it.each([
+    '都是需要有食品健康证是吗',
+    '需要健康证吗',
+    '是不是要先办健康证？',
+    '这个岗位要求食品健康证吧',
+  ])('badcase zj8b3rj1: 疑问句/要求转述不算持有健康证: %s', (message) => {
+    expect(
+      extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+    ).toBeUndefined();
+  });
+
+  it('裸类型词仅被提及不算持有（需持有动词或完成表述）', () => {
+    expect(
+      extractHighConfidenceFacts(['上岗前需要食品健康证'], brandData)?.interview_info
+        .has_health_certificate,
+    ).toBeUndefined();
+    expect(
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts(['食品健康证我已经办好了'], brandData)?.interview_info
+          .has_health_certificate,
+      ),
+    ).toBe('有');
+  });
+
   it('should distinguish health certificate type from missing certificate wording', () => {
     expect(
       unwrapHighConfidenceValue(

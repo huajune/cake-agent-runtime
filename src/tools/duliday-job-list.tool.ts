@@ -683,6 +683,28 @@ export function buildJobListTool(
         // 文案并禁止逐字复读，四个无岗出口共用同一判定。
         const priorNoMatchReplySent = hasPriorNoMatchReply(context.messages ?? []);
 
+        // jobIdList provenance 闸门（badcase 6a6c4c13：候选人全程只聊东莞长安晚班兼职，
+        // 模型却在收尾轮凭空查 jobIdList=[53035]+新白鹿+上海——预训练知识幻觉成查询参数，
+        // 还经无岗脚本把"新白鹿在上海"说给了候选人）。与 precheck/booking 的同名闸门同口径：
+        // 按 jobId 精查只能用本会话真实召回过的 jobId；幻觉参数直接拦截，不打接口。
+        if (jobIdList.length > 0 && context.isRecalledJobId) {
+          const unrecalledJobIds = jobIdList.filter((id) => !context.isRecalledJobId!(id));
+          if (unrecalledJobIds.length > 0) {
+            const recalled = context.recalledJobIds ?? [];
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_JOBID_NO_PROVENANCE,
+              outcome: '查询拦截（jobIdList 含无召回出处的 jobId）',
+              replyInstruction:
+                (recalled.length === 0
+                  ? `jobIdList=[${unrecalledJobIds.join('、')}] 在本会话没有任何来源——会话还没召回过岗位，禁止凭空按 jobId 查询。`
+                  : `jobIdList 中的 [${unrecalledJobIds.join('、')}] 不在本会话召回过的岗位里（合法 jobId：${recalled.join('、')}），禁止使用。`) +
+                '请去掉 jobIdList，按候选人本轮真实意向（城市/位置/品牌/工种）用常规参数查询；' +
+                '严禁把本次拦截的品牌/城市/岗位名当作事实写进给候选人的话术。',
+              details: { unrecalledJobIds, recalledJobIds: recalled },
+            });
+          }
+        }
+
         // ==================== 品牌入口标准化 + 查询计划（§8.1/§8.2） ====================
         // 别名经品牌目录解析成唯一标准品牌（冲突/未命中进 rejected，不形成品牌过滤）；
         // 会话品牌兜底只读 SessionBrandState.currentBrand（昵称品牌经首轮 seed 已在其中，
