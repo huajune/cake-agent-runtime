@@ -108,15 +108,12 @@ function formatInterviewDecisionSummary(
   }
 
   const studentRequirement = inferStudentRequirement(policy);
+  // 该行是给模型的纯事实；先筛后推的行为口径（已知学生查询侧已过滤/身份未知
+  // 收资前单问/身份信息不上卡片）在 candidate-consultation.md，不在数据行里复述。
   addSummaryLine(
     lines,
     '学生身份要求',
-    // badcase fazpqciu：候选人收资填完"学生"才被拒，整轮收资作废。先筛后推口径
-    //（2026-08-04 用户裁定）：已知学生时查询侧已自动剔除该类岗；身份未知时收资前
-    // 先单独确认；身份筛选信息不写进候选人可见的推荐卡片。
-    studentRequirement === '不接受学生'
-      ? '不接受学生（内部筛选口径，不要写进候选人可见的推荐卡片；候选人身份未知时，发收资表前先单独确认身份）'
-      : (studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）'),
+    studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）',
   );
 
   if (policy.highlights.requirementHighlights.length > 0) {

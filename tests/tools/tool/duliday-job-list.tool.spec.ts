@@ -1089,15 +1089,13 @@ describe('buildJobListTool', () => {
     expect(compact.markdown).not.toContain('只招社会人士');
     expect(compact.markdown).not.toContain('不接受学生');
 
-    // 约面重点（模型内部上下文）：标注内部筛选口径与收资前单问
+    // 约面重点（模型内部上下文）：保留纯事实行，行为口径在 prompt 不在数据行
     const detailed = await executeTool(mockContext, {
       ...defaultInput,
       includeHiringRequirement: true,
       includeInterviewProcess: true,
     });
-    expect(detailed.markdown).toContain(
-      '**学生身份要求**: 不接受学生（内部筛选口径，不要写进候选人可见的推荐卡片；候选人身份未知时，发收资表前先单独确认身份）',
-    );
+    expect(detailed.markdown).toContain('**学生身份要求**: 不接受学生');
   });
 
   it('should keep explicit meal and accommodation facts in the compact job summary', async () => {
