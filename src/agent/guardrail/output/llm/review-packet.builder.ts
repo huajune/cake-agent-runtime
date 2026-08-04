@@ -3,6 +3,7 @@ import type { AgentToolCall } from '@agent/generator/generator.types';
 import type {
   BookingEvidence,
   GeocodeEvidence,
+  GroupInviteEvidence,
   GuardrailReviewPacket,
   JobListEvidence,
   JobListEvidenceItem,
@@ -31,6 +32,7 @@ export class GuardrailReviewPacketBuilder {
         booking: this.buildBookingEvidence(input.toolCalls),
         geocode: this.buildGeocodeEvidence(input.toolCalls),
         sentLocation: this.buildSentLocationEvidence(input.toolCalls),
+        groupInvite: this.buildGroupInviteEvidence(input.toolCalls),
       },
       policies: {
         redLines: input.redLines ?? [],
@@ -206,6 +208,26 @@ export class GuardrailReviewPacketBuilder {
         })
         .filter((value): value is string => Boolean(value))
         .slice(0, 5),
+    };
+  }
+
+  /**
+   * 群邀请证据（2026-08-04 审计 P1-6）：invite_to_group 的下发结果。缺了它，
+   * `fact_asserted_without_any_evidence` 会把当轮 invite:ok 支撑的"群邀请已经发你了"
+   * 判成零证据编造（trace …_1785451709779 硬假阳）。
+   */
+  private buildGroupInviteEvidence(toolCalls: AgentToolCall[]): GroupInviteEvidence | undefined {
+    const call = [...toolCalls]
+      .reverse()
+      .find((item) => item.toolName === 'invite_to_group' && item.result);
+    const result = readRecord(call?.result);
+    if (!result) return undefined;
+
+    return {
+      success: result.success === true,
+      groupName: readString(result.groupName),
+      alreadyInGroup: readBoolean(result.alreadyInGroup),
+      errorType: readString(result.errorType),
     };
   }
 

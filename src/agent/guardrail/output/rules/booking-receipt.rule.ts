@@ -36,6 +36,14 @@ const CONFIRMATION_PATTERN =
 const BOOKING_IN_FLIGHT_CLAIM_PATTERN =
   /(?:现在|这就|马上|立刻|立即|正在|稍后)[^，。！？!?\n]{0,8}(?:帮你|给你)?[^，。！？!?\n]{0,6}(?:提交|报名|预约)/u;
 
+// 敲定式宣称（2026-08-04 审计 P0-3）：booking 失败后 repair 曾产出"那就给你约明天
+// （8月4日）下午1点半的面试哈"/"好的，那就定在明天上午10点"——没有"已/正在"词形，
+// 上面两个 pattern 都跨不住，二审对修复版复跑本规则时照样放行。"那就约/定"的口吻
+// 向候选人传达的是预约已敲定，而工单根本没提交成功（trace …_1785740343589 /
+// …_1785748484273，幸被投递层 hosting_paused 丢弃）。
+const BOOKING_SETTLED_CLAIM_PATTERN =
+  /那就(?:帮你|给你)?(?:约|定|安排)|(?:约|定)在(?:明天|今天|后天|周[一二三四五六日天]|\d{1,2}月\d{1,2}[号日]|\d{1,2}[点:：])/u;
+
 /** 如实披露失败：说了没成功/失败/再试，就不是假宣称。 */
 const BOOKING_FAILURE_ACKNOWLEDGED_PATTERN =
   /(?:提交|报名|预约|约)[^。！？\n]{0,8}(?:失败|没成功|未成功|不成功|没约上|没成|出了点问题|有点问题)|(?:失败|没能|未能|没有)[^。！？\n]{0,6}(?:提交|报名|预约)|重新(?:试|提交|约)|稍后(?:再|重新)(?:试|约|提交)/u;
@@ -111,7 +119,9 @@ export function detectBookingReceiptMismatch(
     if (
       failedBooking &&
       !BOOKING_FAILURE_ACKNOWLEDGED_PATTERN.test(replyText) &&
-      (BOOKING_IN_FLIGHT_CLAIM_PATTERN.test(replyText) || CONFIRMATION_PATTERN.test(replyText))
+      (BOOKING_IN_FLIGHT_CLAIM_PATTERN.test(replyText) ||
+        CONFIRMATION_PATTERN.test(replyText) ||
+        BOOKING_SETTLED_CLAIM_PATTERN.test(replyText))
     ) {
       return {
         ruleId: 'booking_receipt_mismatch',
