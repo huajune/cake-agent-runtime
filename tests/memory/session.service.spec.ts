@@ -1476,6 +1476,32 @@ describe('SessionService', () => {
       );
     });
 
+    it('should not persist a health-certificate consultation as application willingness', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          ...FALLBACK_EXTRACTION,
+          reasoning: '健康证办理费用咨询，不提取候选人证件状态',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '食品健康证哪里能免费办？公司会全额报销吗？' },
+      ]);
+
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              has_health_certificate: null,
+            }),
+          }),
+        }),
+        86400,
+      );
+    });
+
     it('should backfill rule facts when LLM returns null for a field', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(

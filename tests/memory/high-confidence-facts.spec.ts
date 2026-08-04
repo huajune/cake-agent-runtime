@@ -485,6 +485,12 @@ describe('extractHighConfidenceFacts', () => {
     '目前没有健康证，但确定上岗前会去办',
     '我愿意入职前再办一张食品健康证',
     '后面去体检办健康证没问题',
+    '我没有健康证，可以去办',
+    '健康证暂时没有，入职前我会去办',
+    '我愿意办健康证，费用怎么报销？',
+    '我愿意办健康证，健康证费用怎么报销？',
+    '健康证费用怎么报销？我愿意去办健康证',
+    '我没有健康证，可以去免费办理',
   ])(
     'should treat future health-certificate commitment as accepting application: %s',
     (message) => {
@@ -513,7 +519,31 @@ describe('extractHighConfidenceFacts', () => {
     );
   });
 
-  it.each(['健康证怎么办呀？', '能不能办健康证？', '这个需要我去办健康证吗？'])(
+  it.each([
+    '健康证怎么办呀？',
+    '能不能办健康证？',
+    '这个需要我去办健康证吗？',
+    '食品健康证哪里能免费办？公司会全额报销吗？',
+    '健康证哪里能办？',
+    '健康证可以线上办理吗？',
+    '公司会帮我办健康证吗？',
+    '公司会不会帮我办健康证？',
+    '健康证后期会去办吗？',
+    '健康证入职前会去办吗？',
+    '健康证后期怎么办？',
+    '健康证入职前怎么办呢？',
+    '入职前可以办理健康证吗？',
+    '后面可以去办健康证吗？',
+    '你们接受办健康证吗？',
+    '公司愿意帮我办健康证吗？',
+    '门店准备统一办健康证吗？',
+    '办健康证要多少钱，公司会报销吗？',
+    '健康证办理费用公司会全额报销吗？',
+    '健康证怎么办？我是本地人。',
+    '健康证哪里办？其他材料已经办好了。',
+    '健康证哪里办？我愿意办理入职手续。',
+    '健康证怎么办？我准备办银行卡。',
+  ])(
     'should not treat a health-certificate question as an application commitment: %s',
     (message) => {
       expect(
@@ -525,18 +555,46 @@ describe('extractHighConfidenceFacts', () => {
   );
 
   it.each([
+    '我没有健康证，健康证哪里能免费办？',
+    '我没有健康证，可以免费办理吗？',
+    '我没有健康证，公司会帮我办吗？',
+    '我没有健康证，我可以办理入职。',
+  ])(
+    'should preserve an explicit missing-certificate status before a consultation: %s',
+    (message) => {
+      expect(
+        unwrapHighConfidenceValue(
+          extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+        ),
+      ).toBe('无');
+    },
+  );
+
+  it.each([
     '我不打算办健康证',
     '后面也不会去办食品健康证',
     '不愿意去体检然后办健康证',
     '不可以去体检然后办健康证',
     '我不太愿意后面再去体检然后办一张食品健康证',
     '健康证我不考虑之后再去办理',
+    '我不愿意办健康证，健康证费用怎么报销？',
   ])('should keep explicit refusal authoritative: %s', (message) => {
     expect(
       unwrapHighConfidenceValue(
         extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
       ),
     ).toBe('无且不接受办理健康证');
+  });
+
+  it.each([
+    ['我原本不愿意办健康证，但现在愿意办健康证', '无但接受办理健康证'],
+    ['我原本愿意办健康证，但现在不愿意办健康证', '无且不接受办理健康证'],
+  ])('should let the latest explicit clause win: %s', (message, expected) => {
+    expect(
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+      ),
+    ).toBe(expected);
   });
 
   it('should treat admitted or enrolled graduate students as student identity', () => {
@@ -701,7 +759,9 @@ describe('extractHighConfidenceFacts', () => {
   it('区名唯一映射在查询路径生效（黄埔案，2026-07-28 收编）："黄埔区"→广州、"宝安"→深圳', () => {
     // 此前 黄埔→广州 只存在于 invite 城市门私表，提取路径不认——候选人报"黄埔区"
     // 仍被追问城市。统一到 UNIQUE_SUBDIVISION_TO_CITY 后提取层直接推导，补录只改一处。
-    expect(extractHighConfidenceFacts(['我在黄埔区这边找工作'], brandData)?.preferences.city).toEqual({
+    expect(
+      extractHighConfidenceFacts(['我在黄埔区这边找工作'], brandData)?.preferences.city,
+    ).toEqual({
       value: '广州',
       confidence: 'high',
       source: 'rule',
