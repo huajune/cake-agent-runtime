@@ -30,6 +30,33 @@
         "`tests/agent/` **1077 passed**（含 guardrail 566）",
         "typecheck ✅ / eslint（改动文件）✅"
       ]
+    },
+    {
+      "number": "864",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/864",
+      "title": "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸等七连修",
+      "author": "ArielZhu",
+      "mergedAt": "2026-08-04",
+      "businessUpdates": [
+        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…"
+      ],
+      "summary": [
+        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…",
+        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸等七连修"
+      ],
+      "features": [],
+      "fixes": [
+        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "jest **6158 通过 / 385 suites**（含 22 个新增用例，全部取自本期审计的生产 trace 原文）",
+        "`lint:check`、`typecheck` 干净",
+        "语义档改动维持 **shadow**，不含任何 enforce 开关"
+      ]
     }
   ],
   "lastRelease": {
