@@ -262,6 +262,28 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "881",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/881",
+      "title": "清理 v10.38.0 待发布元数据噪音（#874 评审 P1-5）",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "清理 v10.38.0 待发布元数据噪音（#874 评审 P1-5）"
+      ],
+      "summary": [
+        "清理 v10.38.0 待发布元数据噪音（#874 评审 P1-5）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "清理 v10.38.0 待发布元数据噪音（#874 评审 P1-5）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
