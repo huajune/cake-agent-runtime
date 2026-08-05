@@ -107,7 +107,13 @@ interface VisualFactField {
 | P1 渠道预描述（`ImageDescriptionService`） | `generate`（自由文本）→ 拼前缀回写 | 换 `llm.generateStructured`（`llm-executor.service.ts:143` 已有，session 抽取在用）出 VisualFactSheet；`rawDescription` 照旧回写文本 |
 | P2 Agent 工具（`save_image_description`） | 主模型看图后把自由文本填进 `description` 参数 | inputSchema 增加 `kind` 与 `fields`（可选），主模型看图时顺手结构化；工具内做校验与归属默认值补齐 |
 
-两条路径共用同一个新模块（暂名 `src/channels/wecom/message/utils/visual-fact.util.ts`：schema 定义 + 归属默认规则 + 文本渲染），**顺手归并 F1/F2 简历硬编码的两份复制**——`resume` kind 就是 `isResumeImageDescription` 的正名。
+两条路径共用同一个新域 **`src/resolution/visual/`**（schema 定义 + 归属默认规则 + 校验 + 文本渲染/解析），**顺手归并 F1/F2 简历硬编码的两份复制**——`resume` kind 就是 `isResumeImageDescription` 的正名。
+
+**为什么放 `resolution/` 而不是渠道层**（2026-08-05 评审意见采纳）：
+
+1. **多渠道前瞻**：未来接入企微之外的渠道时，图片事实的 schema、归属规则、渲染格式都必须一致，放 `channels/wecom/` 下等于宣布它是企微私有物；
+2. **修掉一个现存分层违规**：今天 `src/tools/save-image-description.tool.ts` 就在 import `@channels/wecom/message/utils/message-parser.util` 的 `isResumeImageDescription`——tools 反向依赖渠道层。搬进 `resolution/visual/` 后该 import 转正；
+3. **完全符合 `resolution/` 域的既有定义**：与 brand/geo 同构——纯确定性零 LLM、零出向依赖（vision 的 LLM 调用留在 channels/tools 调用方，`resolution/visual` 只持有 schema 与规则，正如 brand 域的 LLM 调用留在外面、matcher 纯确定性）；`channels → resolution` 的依赖方向已有先例（`image-brand-backfill.service.ts`）。
 
 ### 3.3 存储与传递：文本照旧 + 结构化旁路（复用品牌域先例）
 
@@ -121,7 +127,29 @@ interface VisualFactField {
 | turn-finalizer 统一写入 | 同 |
 | `applyLateImageResolutions`（描述晚到，渠道层重新持锁补写） | `applyLateVisualFacts` —— **`oaz6inzf` 的疑似时序缺口天然被这条路径兜住** |
 
-持久化：`chat_messages` 增 `visual_facts` jsonb 列（迁移，`IF NOT EXISTS` 幂等；测试库先行，生产 push 与代码发版同步——仓库红线）。Redis 消息窗口对象同步带该字段，`updateMessageContent` 现有的同步刷新机制顺带覆盖。**刻意不新增 Redis 唯一事实源 key**（Redis 事实源清单是事故审计项，不扩）。
+#### 持久化：`chat_messages.visual_facts` jsonb 列
+
+**它是什么**：图片/表情消息在 `chat_messages` 里本来就各占一行（vision 描述今天就是靠 `updateMessageContent` 回写进该行的 `content`）。本方案在同一行旁边加一个可空 jsonb 列，把结构化 sheet 与它的文本描述**存在同一行**：
+
+```
+chat_messages 某一行（仅图片/表情消息非空）
+├── content:      "[图片消息] BOSS直聘岗位截图：…"   ← 现状，给 C1 主模型看，不动
+└── visual_facts: {"kind":"job_posting","fields":[…]} ← 新增，给确定性消费者用
+```
+
+- **写路径**：与描述回写同一时机同一调用（`updateMessageContent` 扩一个可选参数），不新增写库次数；
+- **读路径**：短期记忆加载 `chat_messages` 组窗口时顺带带出，消息窗口对象多一个字段——C2/C3/C4/C6 从对象上取 sheet，不再解析文本；
+- **成本**：可空列在 Postgres 里是元数据级 DDL（瞬时，不重写表）；不回填历史（旧行为 NULL → 消费端视同 `kind=other`，行为等同现状）；不建索引（没有按 kind 检索的查询场景）。
+
+**为什么必须落库，而不是只放内存/Redis**——比较过的三个替代：
+
+| 替代方案 | 为什么不行 |
+|---|---|
+| 不存，每次从描述文本里再解析 | 这就是今天的病根：7 个消费点各自解析同一坨文本 |
+| 只挂 Redis 消息窗口 | 窗口有 TTL、重启即失；事实抽取的增量窗口、复聊、测试回放都要跨轮重读消息——volatile 存储撑不住；且 Redis 唯一事实源 key 清单是事故审计项，刻意不扩 |
+| 独立新表 `visual_facts(message_id, …)` | 多一次 join、多一套生命周期管理，换不到任何好处——sheet 与消息严格一对一，生命周期完全等同该行消息 |
+
+Redis 消息窗口对象同步带该字段（`updateMessageContent` 现有的同步刷 Redis 机制顺带覆盖）——Redis 是缓存，库里是真相源。迁移走仓库红线：`IF NOT EXISTS` 幂等、测试库先行、生产 push 与代码发版同步、上线后真实写入验证。
 
 ### 3.4 消费规则（三判据落到 7 个消费点）
 
@@ -144,7 +172,7 @@ C2 的 4 个调用点（`session.service.ts:812/834`、`memory-lifecycle.service
 | 期 | 内容 | 量 | 出口判据 |
 |---|---|---|---|
 | **Phase 0 · 补盘** | 盘点 §6 的 5 项未验证问题：`awaitVision` 超时率（生产查询）、P1/P2 同轮相对时序与互覆盖、多图行为（`vkikct39` 即一轮 3 张）、表情消息是否进事实层、C1 对前缀的实际降权表现 | 0.5d | 结论回填本方案；若时序结论推翻 §3.3 旁路设计则先修订再动工 |
-| **Phase 1 · 生产出口结构化（shadow）** | 新模块 + P1 `generateStructured` + P2 inputSchema + `visual_facts` 列迁移（测试库）+ 归并简历硬编码；**只落库不改任何消费行为**；每日扫描日报加一节：kind 分布 / 结构化成功率 / 归属分布 | 1.5-2d | 结构化成功率 ≥95%（失败降级 `kind=other` + rawDescription，行为等同现状）；`resume` kind 与旧硬编码判定一致率 100%（并跑对照） |
+| **Phase 1 · 生产出口结构化（shadow）** | `src/resolution/visual/` 新域 + P1 `generateStructured` + P2 inputSchema + `visual_facts` 列迁移（测试库）+ 归并简历硬编码；**只落库不改任何消费行为**；每日扫描日报加一节：kind 分布 / 结构化成功率 / 归属分布 | 1.5-2d | 结构化成功率 ≥95%（失败降级 `kind=other` + rawDescription，行为等同现状）；`resume` kind 与旧硬编码判定一致率 100%（并跑对照） |
 | **Phase 2 · 高危消费切换** | R1（身份）+ R3（地理）。R1 落地时 PR #870 的门保留但判据换源；`extraction_field_dropped` tracer 事件沿用（reason 细分 `ownership_publisher`） | 1.5d | badcase 复测：`vkikct39` / `oaz6inzf` / `x3pdj7qh` 策展 scenarioCase 全过；身份字段误杀率通过现有 13 例回归 + 新增地图/简历正例守住 |
 | **Phase 3 · 品牌与提示词** | R2（发布方剔除，含 hints 轨接入来源）+ R4（kind 标注进窗口 + prompt 口径） | 1d | 品牌劫持场景 scenarioCase 过；`umr69uqq` 场景观测两周无复发（prompt 档，不设硬门槛） |
 | **Phase 4 · 清债** | 删 `visual-description.ts` 前缀猜测（测试断言迁移到新判据）、删两处简历硬编码、盘点文档标注「已被 schema 取代」 | 0.5d | 全量回归绿；grep 无 `isResumeImageDescription` 残留 |
