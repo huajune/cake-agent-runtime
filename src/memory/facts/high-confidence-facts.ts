@@ -348,20 +348,30 @@ export function extractHighConfidenceFacts(
   }
 
   // 自陈收窄（badcase 2026-08-04 vkikct39）：候选人转发的第三方岗位截图，其 vision
-  // 描述被回写进用户消息内容，描述里发布方的手机号与"18-40岁"岗位年龄区间会被下面
-  // 的提取器当成候选人自陈。与 stripQuotedBlocks 同一理由：第三方内容不是自陈。
-  const selfReportedMessages = keepSelfReportedMessages(normalizedMessages);
+  // 描述被回写进用户消息内容，描述里**发布方**的手机号与"18-40岁"岗位年龄区间会被
+  // 身份字段提取器当成候选人自陈。与 stripQuotedBlocks 同一理由：第三方内容不是自陈。
+  //
+  // 收窄范围严格限定在 interview_info（"候选人是谁"）+ gender：
+  // - preferences（薪资/班次/工种/用工形式）与 city/district/location 刻意不收窄——
+  //   候选人发地图截图指位置是被期待的能力（badcase oaz6inzf 的诉求正是"图上已经
+  //   看到是北京了还问城市"），一刀切会把它打掉；
+  // - 品牌线索同理，图片品牌解析是 §10.2 的显式通道。
+  const selfReported = new Set(keepSelfReportedMessages(normalizedMessages));
 
-  for (const message of selfReportedMessages) {
+  for (const message of normalizedMessages) {
+    const isSelfReported = selfReported.has(message);
+
     // 注册表驱动：统一应用所有"无字段间联动"的标量/数组提取器（见 FIELD_EXTRACTORS）。
     for (const extractor of FIELD_EXTRACTORS) {
+      if (extractor.group === 'interview_info' && !isSelfReported) continue;
       applyFieldExtractor(extractor, message, facts, reasons);
     }
 
     // ── 以下为带字段间联动 / 自定义合并语义的特殊字段，保留在循环内手写 ──
 
     // gender：提取成功时联动写入 gender_source='candidate'，注册表的单字段模型表达不了。
-    const gender = extractGender(message);
+    // 同属身份字段：岗位截图里的"仅限男"不是候选人性别。
+    const gender = isSelfReported ? extractGender(message) : null;
     if (gender && !facts.interview_info.gender) {
       facts.interview_info.gender = ruleValue(gender, {
         evidence: `性别识别：${gender}`,
@@ -374,7 +384,10 @@ export function extractHighConfidenceFacts(
 
     // is_student + education：一次 extractStudentInfo 同时产出两个字段（且 is_student 走
     // boolean null 判定，education 在缺失时还有 extractEducation 兜底），强耦合不拆。
-    const studentInfo = extractStudentInfo(message);
+    // 同属身份字段：岗位截图里的"限在校大学生/大专以上"是岗位要求，不是候选人学历。
+    const studentInfo = isSelfReported
+      ? extractStudentInfo(message)
+      : { isStudent: null, education: null };
     if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
       facts.interview_info.is_student = ruleValue(studentInfo.isStudent, {
         evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
