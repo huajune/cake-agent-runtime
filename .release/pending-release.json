@@ -3,7 +3,70 @@
   "nextVersion": "10.40.0",
   "updatedAt": "2026-08-05",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "885",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/885",
+      "title": "图片信息结构化全链路——生产/存储/消费一次落地",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "fixture 换生产真实字符串——修复空转的年龄断言",
+        "白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正",
+        "prettier 修复 describe 长行",
+        "prettier 引号修复",
+        "描述缺失读时懒补写——33% 裸占位归因后的定向修复",
+        "修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量"
+      ],
+      "summary": [
+        "第三方岗位截图夺号——图片描述不得当候选人自陈身份",
+        "自陈收窄限定在身份字段，不外溢到地理/偏好",
+        "姓名形态门与 #865 经理名门合并，复用同一 extractedName",
+        "fixture 换生产真实字符串——修复空转的年龄断言",
+        "图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地",
+        "白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正",
+        "key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证",
+        "prettier 修复 describe 长行",
+        "prettier 引号修复",
+        "kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口",
+        "废弃入站图片预描述分支——主聊按输入换模型后的死枝清理",
+        "描述缺失读时懒补写——33% 裸占位归因后的定向修复",
+        "修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量",
+        "visual-fact 批次发版底账（pending，P0 待真实链路回归）",
+        "图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示",
+        "图片信息结构化全链路——生产/存储/消费一次落地"
+      ],
+      "features": [],
+      "fixes": [
+        "fixture 换生产真实字符串——修复空转的年龄断言",
+        "白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正",
+        "prettier 修复 describe 长行",
+        "prettier 引号修复",
+        "描述缺失读时懒补写——33% 裸占位归因后的定向修复",
+        "修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量"
+      ],
+      "optimizations": [
+        "姓名形态门与 #865 经理名门合并，复用同一 extractedName"
+      ],
+      "ops": [
+        "第三方岗位截图夺号——图片描述不得当候选人自陈身份",
+        "自陈收窄限定在身份字段，不外溢到地理/偏好",
+        "图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地",
+        "key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证",
+        "kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口",
+        "废弃入站图片预描述分支——主聊按输入换模型后的死枝清理",
+        "visual-fact 批次发版底账（pending，P0 待真实链路回归）",
+        "图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 `tests/resolution/visual`（10 例：归属默认/降级/round-trip/与旧正则逐字一致）+ `tests/memory/facts/visual-fact-scoping.spec.ts`（6 例，每条带无 sheet 回落对照）",
+        "既有断言仅两个 spec 因 `updateMessageContent` 第三参更新",
+        "**全量 394 suites / 6484 passed**；`tsc --noEmit`、`eslint`（全部改动文件）绿"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.39.0",
     "date": "2026-08-05",
