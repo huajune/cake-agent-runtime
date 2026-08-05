@@ -9,7 +9,7 @@
 > LLM 仲裁——本方案的 confirmation 纯规则识别器与其姓名仲裁器试点的分野对账见其 §3.2）。
 > 四份共享同一条宪法：确定性守门、LLM 只降级不放权（HC-2）。
 >
-> 状态：部分交付（城市字段证据化 P0 已上线，见 §16；报名字段 Claim/快照体系仍为设计草案）
+> 状态：主体已交付（城市线 P0/P1 已上线见 §16；报名字段 Claim/裁决/快照体系已实现并以 shadow 模式接线见 §18；Phase 4 旧路径删除待 enforce 观测期后）
 > 目标：解决候选人最新自报资料、会话事实、长期 Profile 与模型工具入参之间的冲突，同时保留模型的语义理解和纠错能力。
 > 实施原则：复用已完成的“学生 / 社会人士身份识别统一”姿势，分阶段演进，不一次性重写记忆系统和报名工具。
 > 2026-07-27 修订：补 §0 统一证据模型总纲（三个"不统一"病理 + 采信分级 + 准入矩阵）、§15 badcase 族与生产量化、§16 已交付切片（PR #748）与执行裁定。原 §1-§14 的报名字段设计不变，是本模型在"报名字段 × 不可逆副作用"象限的具体化。
@@ -594,3 +594,31 @@ precheckId
 4. **展示门效果**：预填类 badcase 是否归零（回归 EVID-005 未能诱发目标行为，生产是唯一观测面；复发则启动出站文本级二层门）。
 
 同时保持的纪律：2026-07-27~28 两天已合 8 个 PR 动了记忆/闸门/复聊/geo 四个域，Phase 1/2 是结构性改造，应在上述观测追平变更后启动，由各自的 badcase 驱动（报名字段族当前最热的赵堤案已被入库门 #730 + 展示门 #748C 双门压制）。
+
+## 18. 已交付切片：报名字段 Claim/裁决/快照体系（2026-08-05，shadow 首发）
+
+§17 门槛的执行裁定（2026-08-05）：门槛 1/2 已达标（city_unverified 日量 ≤2、oob_* 一周 6 次命中形态健康），门槛 4 的臆造族持续出新变体（7-29 #843 四道字段门、8-03 标量扇出 #865）恰恰证明单点门打地鼠的边际成本在上升——用户裁定将其认定为启动 Phase 1/2 的正向信号，一次性交付 §4-§12 主体，以 shadow 模式接线。
+
+### 18.1 落地内容
+
+| 项 | 实现 | 代码位置 |
+|---|---|---|
+| §4.1 CandidateFactClaim | 十字段 × set/correct/confirm/clear × rule/model/confirmation_resolver/human；证据锚定以 **quote 子串核验**为主体（消息管道无稳定 messageId，messageIndex 仅排障辅助） | `src/memory/facts/candidate/candidate-fact-claim.types.ts` |
+| §5.2 字段风险三分级 | strict_identity（name/phone 证据须逐字含值）/ normalizable（quote 确定性复算等价）/ boolean_identity（唯一识别器担保，模型 claim 走词典复核） | `candidate-fact-policy.ts` |
+| §12-4 口语归一化 | "一米六三"→163、"九十二斤"→46kg（斤减半）、"03年的"→年龄，纯白名单换算 | `candidate-fact-normalizers.ts` |
+| §4.2 EffectiveCandidateProfile | accepted/historical_unconfirmed/conflicted/missing 四态；clear 屏蔽历史线索复活；冲突不静默二选一 | `candidate-effective-profile.ts` |
+| §5 裁决器 | 纯函数零 LLM：quote 出处验证 → 值-证据复算 → 同字段归并（correct/clear 最新胜、同值高优先 producer 胜、异值判 conflicted）；legacy 裸值全文推导补录（§10 双读） | `candidate-fact-adjudicator.ts` |
+| §9 producers | direct-field（逐条消息锚定，复用 candidate-field-parser 单字段函数）/ identity（收编 IdentityEvidence，改口未核实不产 claim）/ model（显式 claims + 裸字段 legacy 转译） | `producers/` |
+| §6.2 precheck 接线 | `candidateClaims` 入参（带 quote 声明）+ 全量裁决 + 响应 `factAdjudication` 视图（rejected/conflicted/historicalUnconfirmed + 行动指引）；enforce 模式下无据模型裸值剔出 knownFieldMap | `duliday-interview-precheck.tool.ts` |
+| §4.3/§6.3 快照与 booking 闸 | precheck 即存 Redis 快照（TTL 2h，precheckId=`pc_{turnId}_{jobId}` 幂等）；booking 回传 precheckId 对账七字段 + 消息水位 + jobId，差异 emit 观测；enforce 拒绝要求重新 precheck | `precheck-snapshot.types.ts` / `candidate-snapshot.service.ts` / `duliday/booking/snapshot-gate.util.ts` |
+| §7 Prompt 收口 | `[用户档案]` 三态：待确认线索（既有出处门）+ **已失效段**（本会话有更新值的历史字段只声明失效、不渲染旧值）；模型挑战裁决口径入 precheck description | `memory-block.formatter.ts` |
+| §11 观测 | 新事件 `fact_adjudication`（precheck 裁决档案 + booking_gate 差异档案），PII 纪律：不携带值与 quote 原文；入 ALWAYS_PERSISTED 白名单落 `agent_execution_events` | `observer.interface.ts` / `persisting-observer.ts` |
+| §12 测试矩阵 | 15 条全覆盖（41 个新用例）：矩阵 1-15 对应 adjudicator/normalizers/identity-producer/snapshot-gate/runner 五个 spec | `tests/memory/facts/candidate/` / `tests/tools/duliday/booking/` |
+
+### 18.2 灰度与执行裁定
+
+1. **shadow 首发**（`CANDIDATE_FACT_ADJUDICATION_MODE`，默认 shadow）：裁决全量计算+落观测+响应携带视图，但 knownFieldMap 的 2026-07-17 显式入参兼容口径、booking 提交行为**零变化**——裁决器虽为纯确定性，其拒绝面（quote 核验/推导等价）尚无生产分布数据，直接 enforce 会复活"字段卡死 collect_fields 空转"badcase（7-17 紧急口径的由来）。
+2. **enforce 切换门槛**：`fact_adjudication` 事件观测 ≥1 周，rejected 中假阳（候选人确实说过但 quote 核验漏判）占比明确后再切；切换即完成方案 §13 验收 5（模型无证据提交不能进 booking）。
+3. **Phase 4（删旧裸字段/兼容路径）按 §8 原文执行**：enforce 稳定后才动，本次刻意不删。
+4. **快照对账范围从窄启动**：educationId/householdRegisterProvinceId 的 Sponge 数字 ID ↔ claim 标签映射对账留 enforce 前增强。
+5. **human_oob producer 已留位**（producer='human'）：带外语义识别仍按"实时反馈循环行不通"裁定归离线环，当前无写入方。

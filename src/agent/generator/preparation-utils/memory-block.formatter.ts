@@ -45,7 +45,11 @@ export function buildMemoryBlock(
   return (
     formatCrossConversationNotice(memory.longTerm.origin?.fromOtherConversation ?? false) +
     formatContactNamePreferenceHint(contactName, contactBrandAliases) +
-    formatProfile(memory.longTerm.profile) +
+    formatProfile(
+      memory.longTerm.profile,
+      unwrapSessionFacts(memory.sessionMemory?.facts ?? null, { minConfidence: 'high' })
+        ?.interview_info ?? null,
+    ) +
     formatLongTermPreferences(memory.longTerm.preferences ?? null) +
     (memory.sessionMemory
       ? formatSessionFacts(memory.sessionMemory, activeLaborForm, currentLaborFormIntent)
@@ -137,41 +141,70 @@ function formatRealtimeGroups(groups: RealtimeGroupStatus[]): string {
   );
 }
 
-/** 把长期档案渲染成 prompt 片段。 */
-function formatProfile(profile: UserProfileFacts | null): string {
+/**
+ * 把长期档案渲染成 prompt 片段。
+ *
+ * §7 Prompt 收口（证据化方案）：不把多个版本都描述成"已知信息"。
+ * 本会话已有同字段高置信事实且值不同的历史字段，进"已失效"段——只声明失效、
+ * 不渲染旧值（渲染出来模型仍可能抄走）；其余历史字段进"待确认线索"段。
+ */
+function formatProfile(
+  profile: UserProfileFacts | null,
+  sessionInterviewInfo: Record<string, unknown> | null,
+): string {
   if (!profile) return '';
 
-  const lines: string[] = [];
-  if (profile.name)
-    lines.push(`- 姓名: ${profile.name.value}${formatProfileFactMeta(profile.name)}`);
-  if (profile.phone)
-    lines.push(`- 联系方式: ${profile.phone.value}${formatProfileFactMeta(profile.phone)}`);
-  if (profile.gender)
-    lines.push(`- 性别: ${profile.gender.value}${formatProfileFactMeta(profile.gender)}`);
-  if (profile.age) lines.push(`- 年龄: ${profile.age.value}${formatProfileFactMeta(profile.age)}`);
-  if (profile.is_student)
-    lines.push(
-      `- 是否学生: ${profile.is_student.value ? '是' : '否'}${formatProfileFactMeta(profile.is_student)}`,
-    );
-  if (profile.education)
-    lines.push(`- 学历: ${profile.education.value}${formatProfileFactMeta(profile.education)}`);
-  if (profile.has_health_certificate)
-    lines.push(
-      `- 健康证: ${profile.has_health_certificate.value}${formatProfileFactMeta(profile.has_health_certificate)}`,
-    );
+  const fieldRows: Array<{
+    label: string;
+    sessionKey: string;
+    fact: UserProfileFacts[keyof UserProfileFacts];
+  }> = [
+    { label: '姓名', sessionKey: 'name', fact: profile.name },
+    { label: '联系方式', sessionKey: 'phone', fact: profile.phone },
+    { label: '性别', sessionKey: 'gender', fact: profile.gender },
+    { label: '年龄', sessionKey: 'age', fact: profile.age },
+    { label: '是否学生', sessionKey: 'is_student', fact: profile.is_student },
+    { label: '学历', sessionKey: 'education', fact: profile.education },
+    { label: '健康证', sessionKey: 'has_health_certificate', fact: profile.has_health_certificate },
+  ];
 
-  if (lines.length === 0) return '';
+  const lines: string[] = [];
+  const invalidatedLabels: string[] = [];
+  for (const { label, sessionKey, fact } of fieldRows) {
+    if (!fact) continue;
+    const sessionValue = sessionInterviewInfo?.[sessionKey];
+    const hasNewerSessionValue =
+      sessionValue !== null &&
+      sessionValue !== undefined &&
+      sessionValue !== '' &&
+      String(sessionValue).trim() !== String(fact.value).trim();
+    if (hasNewerSessionValue) {
+      invalidatedLabels.push(label);
+      continue;
+    }
+    const rendered =
+      typeof fact.value === 'boolean' ? (fact.value ? '是' : '否') : String(fact.value);
+    lines.push(`- ${label}: ${rendered}${formatProfileFactMeta(fact)}`);
+  }
+
+  if (lines.length === 0 && invalidatedLabels.length === 0) return '';
   // 展示出处门（badcase 6a4f520a 赵堤案：历史档案被整张预填进报名表甩给候选人；
   // badcase 6a61bb34："哪里看出来之前在上海的"——旧档案被当断言复述引发投诉）：
   // 历史沉淀字段对候选人只能以"披露 + 请确认"口径使用，不得当作本次已确认的事实。
-  return (
-    `\n\n[用户档案]\n\n` +
-    `_以下字段来自**历史会话沉淀**，未经本次会话确认。使用规则：\n` +
-    `- 预填报名表/提交预约前，必须向候选人披露并逐项确认（口径如"帮你把之前登记过的信息带出来了，你看下对不对"），不得不加说明地当作候选人本次刚提供的信息直接使用；\n` +
-    `- 向候选人复述这些信息时用披露句式（"我记得你之前提过…现在还是吗"），不得说成候选人本次已确认；\n` +
-    `- 候选人表示某项不对/不认识时，立即弃用该历史值，按候选人本次说法重新收集。_\n\n` +
-    lines.join('\n')
-  );
+  const pendingSection =
+    lines.length > 0
+      ? `_以下字段来自**历史会话沉淀**，未经本次会话确认。使用规则：\n` +
+        `- 预填报名表/提交预约前，必须向候选人披露并逐项确认（口径如"帮你把之前登记过的信息带出来了，你看下对不对"），不得不加说明地当作候选人本次刚提供的信息直接使用；\n` +
+        `- 向候选人复述这些信息时用披露句式（"我记得你之前提过…现在还是吗"），不得说成候选人本次已确认；\n` +
+        `- 候选人表示某项不对/不认识时，立即弃用该历史值，按候选人本次说法重新收集。_\n\n` +
+        lines.join('\n')
+      : '';
+  const invalidatedSection =
+    invalidatedLabels.length > 0
+      ? `${lines.length > 0 ? '\n\n' : ''}_已失效历史资料：${invalidatedLabels.join('、')}——` +
+        `历史值已被本次会话的候选人最新信息取代，**严禁继续使用或复述历史值**，一律以会话记忆中的当前值为准。_`
+      : '';
+  return `\n\n[用户档案]\n\n` + pendingSection + invalidatedSection;
 }
 
 function formatProfileFactMeta(value: {

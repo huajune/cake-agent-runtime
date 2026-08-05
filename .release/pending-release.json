@@ -1,9 +1,37 @@
 {
   "baseVersion": "10.38.0",
-  "nextVersion": "10.38.0",
+  "nextVersion": "10.39.0",
   "updatedAt": "2026-08-05",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "886",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/886",
+      "title": "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
+        "补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）"
+      ],
+      "summary": [
+        "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
+        "补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
+        "补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.38.0",
     "date": "2026-08-05",

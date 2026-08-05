@@ -77,6 +77,22 @@ import {
   extractHardRequirements,
   isHouseholdRequirementViolated,
 } from '@tools/duliday/job-list/hard-requirements.util';
+import {
+  CandidateClaimInputSchema,
+  type CandidateClaimField,
+} from '@memory/facts/candidate/candidate-fact-claim.types';
+import {
+  runCandidateFactAdjudication,
+  type AdjudicationRunResult,
+} from '@memory/facts/candidate/adjudication-runner';
+import type {
+  ProfileHintFacts,
+  SessionAcceptedFacts,
+} from '@memory/facts/candidate/candidate-effective-profile';
+import type { LegacyCandidateArgs } from '@memory/facts/candidate/producers/model-claim.producer';
+import type { PrecheckSnapshot } from '@memory/facts/candidate/precheck-snapshot.types';
+import type { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
+import type { AgentEvent } from '@/observability/observer.interface';
 
 // 保留 age util 的符号 re-export，兼容 tests/tools/tool/duliday-interview-precheck.age-boundary.spec
 export {
@@ -110,6 +126,7 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - candidateLaborForm：候选人本轮明确表达的用工形式或对"是否暑假工"的回答，如"暑假工"、"不是暑假工"、"长期兼职"。暑假工状态默认是"否"；只有当前可见原话或本次显式参数明确为暑假工时才启用暑假工岗位限制。候选人主动表示长期可做时，按其最新长期意向继续常规岗位。
 - candidateInterviewTime / candidateGender / candidateEducation / candidateHasHealthCertificate / candidateIsStudent / candidateUploadResume / candidateHeight / candidateWeight / candidateHouseholdProvince：候选人本轮已明确补充的预约字段。只传候选人答案，不要传岗位要求；这些字段与旧记忆冲突时，以本轮显式入参为准。**当 missingFields 含 身高/体重/户籍省份 且候选人本轮已给出时，务必用 candidateHeight/candidateWeight/candidateHouseholdProvince 传进来，否则会一直卡在 collect_fields 无法进 booking**
 - candidateSupplementAnswers：候选人本轮已答的岗位补充标签（collect 型，如 居住地址/意向区域/周末两天是否在/每天可以出勤的时间/能做到什么时候/不要早班要周末和全天）的回答，key 用标签名、value 用候选人答案。**与 booking 的 supplementAnswers 同源**：只要候选人在对话里给出了这些补充标签的答案，就必须在本字段一并传入，否则这些标签会一直留在 missingFields、nextAction 永远卡在 collect_fields 无法进 booking。只传候选人答案，禁止传岗位筛选要求
+- candidateClaims（推荐）：候选人资料的带证据声明数组。需要归一化理解（"一米六三"→身高163）或纠正/清除旧资料（operation=correct/clear）时用它，每条附候选人原话 quote。返回的 factAdjudication 是裁决结果：rejectedClaims 里的值缺原话依据，禁止当作已确认资料使用或复述；factAdjudication.precheckId 在调 duliday_interview_booking 时原样回传（precheckId 入参），供系统对账你提交的最终资料与本次预检一致
 - **一次性传全已知字段，禁止"残缺入参先调、补字段再调"**：调用本工具前，先把候选人当轮及历史**已经明确给出的所有字段**（年龄/性别/学历/健康证/面试日期时间等）整理齐再调用；严禁用残缺入参先调一次、看到 collect_fields 后把本就已知的字段补进去对同一岗位重调一遍——同一轮内对同一岗位重复 precheck 会触发 tool_loop 并平白拖慢一整轮响应。collect_fields 只应由候选人**确实尚未提供**的字段触发
 
 ## 返回字段
@@ -294,6 +311,17 @@ const inputSchema = z.object({
       '候选人本轮已答的岗位补充标签（collect 型）回答，key 必须是标签名（如 居住地址、意向区域、周末两天是否在、每天可以出勤的时间、能做到什么时候、不要早班要周末和全天）。' +
         '与 booking 的 supplementAnswers 同源同义：只要候选人在对话里给出了这些补充标签的答案，就必须在本字段一并传入，' +
         '否则这些标签会一直留在 missingFields、nextAction 永远卡在 collect_fields 无法进 booking。只传候选人答案，禁止传岗位筛选要求。',
+    ),
+  candidateClaims: z
+    .array(CandidateClaimInputSchema)
+    .max(20)
+    .optional()
+    .describe(
+      '（推荐）候选人资料的带证据声明。每条声明包含字段名、值和候选人原话逐字片段 quote。' +
+        '当你从候选人消息中理解出需要归一化的资料（"一米六三"→身高163、"九十二斤"→体重46、"我03年的"→年龄）、' +
+        '或候选人纠正/否定了旧资料（operation=correct/clear）时，用本字段提交你的结构化理解。' +
+        'quote 必须能在候选人消息里原样找到，否则该声明会被判无证据拒绝。' +
+        '与 candidateName 等裸字段可并存；声明会经过确定性裁决，结果在返回的 factAdjudication 中。',
     ),
 });
 
@@ -586,9 +614,152 @@ function removeProfileOnlyCandidateFields(
   }
 }
 
+// ==================== 候选人事实裁决（证据化 Phase 1/2 接线） ====================
+
+/**
+ * 裁决依赖（可选注入，缺省时裁决静默跳过——test/debug 直建工具的旧调用零改动）。
+ *
+ * mode 语义（方案 §10 双读灰度）：
+ * - shadow（默认）：全量裁决 + 落观测 + 响应携带裁决视图，但 knownFieldMap 行为
+ *   不变（2026-07-17 的显式入参兼容口径原样保留）；
+ * - enforce：裁决为 rejected 的**模型无据裸值**从 knownFieldMap 剔除（回到
+ *   missingFields 走补问），规则/会话/亲证值不受影响。差异率稳定前禁止切 enforce。
+ */
+export interface PrecheckAdjudicationDeps {
+  mode: 'shadow' | 'enforce';
+  snapshots?: Pick<CandidateSnapshotService, 'save'>;
+  observer?: { emit: (event: AgentEvent) => void };
+}
+
+/** claim 字段名 → checklist 中文字段名（enforce 剔除与响应摘要共用）。 */
+const CLAIM_FIELD_TO_CHECKLIST: Record<CandidateClaimField, string> = {
+  name: '姓名',
+  phone: '联系电话',
+  gender: '性别',
+  age: '年龄',
+  isStudent: '身份',
+  education: '学历',
+  healthCertificate: '健康证情况',
+  height: '身高',
+  weight: '体重',
+  householdProvince: '户籍省份',
+};
+
+/** 会话已提取事实（unwrap 后裸值形态）→ 裁决基线。 */
+function buildSessionAcceptedFacts(
+  info: Record<string, unknown> | null | undefined,
+): SessionAcceptedFacts {
+  if (!info) return {};
+  const mapping: Array<[CandidateClaimField, unknown]> = [
+    ['name', info.name],
+    ['phone', info.phone],
+    ['gender', info.gender],
+    ['age', info.age],
+    ['isStudent', info.is_student],
+    ['education', info.education],
+    ['healthCertificate', info.has_health_certificate],
+    ['height', info.height],
+    ['weight', info.weight],
+    ['householdProvince', info.household_register_province],
+  ];
+  const facts: SessionAcceptedFacts = {};
+  for (const [field, value] of mapping) {
+    if (value === null || value === undefined || value === '') continue;
+    facts[field] = { value: value as string | number | boolean };
+  }
+  return facts;
+}
+
+/** 长期画像 → 待确认线索（historical_unconfirmed，绝不直接采信）。 */
+function buildProfileHintFacts(
+  profile: Record<string, unknown> | null | undefined,
+): ProfileHintFacts {
+  if (!profile) return {};
+  const mapping: Array<[CandidateClaimField, unknown]> = [
+    ['name', profile.name],
+    ['phone', profile.phone],
+    ['gender', profile.gender],
+    ['age', profile.age],
+    ['isStudent', profile.is_student],
+    ['education', profile.education],
+    ['healthCertificate', profile.has_health_certificate],
+  ];
+  const hints: ProfileHintFacts = {};
+  for (const [field, value] of mapping) {
+    if (value === null || value === undefined || value === '') continue;
+    hints[field] = value as string | number | boolean;
+  }
+  return hints;
+}
+
+/** 裁决结果 → 工具响应摘要（给模型看的裁决视图 + 行动指引）。 */
+function buildFactAdjudicationSummary(
+  result: AdjudicationRunResult,
+  precheckId: string | undefined,
+  mode: 'shadow' | 'enforce',
+): Record<string, unknown> {
+  const rejected = result.adjudicated
+    .filter((entry) => entry.decision === 'rejected')
+    .map((entry) => ({
+      field: entry.claim.field,
+      producer: entry.claim.producer,
+      reason: entry.rejectionReason,
+    }));
+  const historicalUnconfirmed = Object.entries(result.profile.fields)
+    .filter(([, field]) => field.status === 'historical_unconfirmed')
+    .map(([fieldName]) => fieldName);
+  const conflicted = Object.entries(result.profile.fields)
+    .filter(([, field]) => field.status === 'conflicted')
+    .map(([fieldName]) => fieldName);
+
+  return stripNullish({
+    precheckId,
+    factsVersion: result.factsVersion,
+    mode,
+    rejectedClaims: rejected.length > 0 ? rejected : undefined,
+    conflictedFields: conflicted.length > 0 ? conflicted : undefined,
+    historicalUnconfirmedFields:
+      historicalUnconfirmed.length > 0 ? historicalUnconfirmed : undefined,
+    note:
+      rejected.length > 0 || conflicted.length > 0
+        ? '部分资料声明未通过证据裁决（rejectedClaims/conflictedFields）：这些值缺少候选人原话依据或多来源冲突。' +
+          '不要把它们当作已确认资料复述或提交；需要时向候选人确认后，用 candidateClaims 附上原话 quote 重新提交。' +
+          'historicalUnconfirmedFields 是历史档案线索，只能用"我记得你之前提过…现在还是吗"的披露句式向候选人求证，禁止断言。'
+        : undefined,
+  });
+}
+
+/** 裁决结果 → 观测事件（PII 纪律：不携带字段值与 quote 原文）。 */
+function emitFactAdjudicationEvent(
+  deps: PrecheckAdjudicationDeps,
+  context: Parameters<ToolBuilder>[0],
+  result: AdjudicationRunResult,
+  precheckId: string | undefined,
+): void {
+  deps.observer?.emit({
+    type: 'fact_adjudication',
+    stage: 'precheck',
+    mode: deps.mode,
+    userId: context.userId,
+    precheckId,
+    factsVersion: result.factsVersion,
+    decisions: result.adjudicated.map((entry) => ({
+      field: entry.claim.field,
+      producer: entry.claim.producer,
+      operation: entry.claim.operation,
+      interpretation: entry.claim.interpretation,
+      decision: entry.decision,
+      rejectionReason: entry.rejectionReason,
+      supersededByClaimId: entry.supersededByClaimId,
+      claimId: entry.claim.claimId,
+    })),
+  });
+}
+
 export function buildInterviewPrecheckTool(
   spongeService: SpongeService,
   opsEventsRecorder: OpsEventsRecorderService,
+  adjudicationDeps?: PrecheckAdjudicationDeps,
 ): ToolBuilder {
   return (context) =>
     tool({
@@ -611,6 +782,7 @@ export function buildInterviewPrecheckTool(
         candidateWeight,
         candidateHouseholdProvince,
         candidateSupplementAnswers,
+        candidateClaims,
       }) => {
         const effectiveRequestedDate =
           requestedDate ?? deriveRequestedDateFromInterviewTime(candidateInterviewTime);
@@ -1005,6 +1177,59 @@ export function buildInterviewPrecheckTool(
             summerWorkerIntent,
           });
 
+          // —— 候选人事实裁决（证据化 Phase 1/2）——————————————————————
+          // 模型显式 claims + 旧裸字段 legacy 转译 + 规则逐条锚定 + 身份唯一识别器，
+          // 统一走确定性裁决器。shadow 模式只观测不改行为；enforce 模式把"模型
+          // 无据裸值"从 knownFieldMap 剔除（关闭 Prompt 旧值自证路径）。
+          let adjudicationResult: AdjudicationRunResult | null = null;
+          if (adjudicationDeps) {
+            try {
+              adjudicationResult = runCandidateFactAdjudication({
+                messages: context.messages,
+                modelClaimInputs: candidateClaims,
+                legacyArgs: stripNullish({
+                  name: normalizeCandidateNameInput(candidateName),
+                  phone: normalizeCandidatePhoneInput(candidatePhone),
+                  age: normalizeCandidateAgeInput(candidateAge),
+                  gender: normalizeCandidateGenderInput(candidateGender),
+                  education: normalizeCandidateEducationInput(candidateEducation),
+                  healthCertificate: normalizedCandidateHealthCertificate,
+                  isStudent: normalizedIsStudentInput,
+                  height: normalizeCandidateNumberInput(candidateHeight),
+                  weight: normalizeCandidateNumberInput(candidateWeight),
+                  householdProvince: normalizeCandidateHouseholdProvinceInput(
+                    candidateHouseholdProvince,
+                  ),
+                }) as LegacyCandidateArgs,
+                sessionAccepted: buildSessionAcceptedFacts(
+                  context.sessionFacts?.interview_info as Record<string, unknown> | null,
+                ),
+                profileHints: buildProfileHintFacts(
+                  context.profile as unknown as Record<string, unknown> | null,
+                ),
+              });
+
+              if (adjudicationDeps.mode === 'enforce') {
+                // 只剔除"模型无据"的字段：该字段的全部有效来源均为 rejected 的
+                // model claim（quote 找不到/推导不出），且会话/画像亦无该值。
+                for (const entry of adjudicationResult.adjudicated) {
+                  if (entry.decision !== 'rejected' || entry.claim.producer !== 'model') continue;
+                  const field = entry.claim.field;
+                  const status = adjudicationResult.profile.fields[field]?.status;
+                  if (status === 'accepted') continue;
+                  delete knownFieldMap[CLAIM_FIELD_TO_CHECKLIST[field]];
+                }
+              }
+            } catch (error) {
+              // 裁决是旁路增强：任何异常不得阻断预检主链路（fail open + 告警日志）。
+              logger.warn(
+                `候选人事实裁决异常（fail open）: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          }
+
           const requiredFields = [
             ...API_BOOKING_USER_REQUIRED_FIELDS,
             ...analysis.fieldGuidance.screeningFields,
@@ -1192,6 +1417,36 @@ export function buildInterviewPrecheckTool(
           // precheck.passed：候选人本轮通过某岗位预检、可进入约面 → 记一次。fire-and-forget。
           // 幂等键按「本轮 turn + jobId」而非「每候选人一次」：daily_ops_report 是当天事件数，
           // 若用 userId 终身键，同一候选人后续天数/换岗位再次通过预检会被压成 0。turnId 缺省（test/debug）回退时间戳。
+          // PrecheckSnapshot（方案 §4.3/Phase 3）：预检产生裁决视图即存不可变快照，
+          // booking 凭 precheckId 对账最终 payload。precheckId 用 turnId 派生——同批
+          // 输入 Bull 重跑得到同 id 幂等覆盖；候选人新消息后水位变化，旧快照对不上账。
+          const precheckId = adjudicationResult
+            ? `pc_${context.turnId ?? Date.now().toString()}_${jobId}`
+            : undefined;
+          if (adjudicationResult && adjudicationDeps) {
+            emitFactAdjudicationEvent(adjudicationDeps, context, adjudicationResult, precheckId);
+            if (precheckId && adjudicationDeps.snapshots) {
+              const snapshot: PrecheckSnapshot = {
+                precheckId,
+                factsVersion: adjudicationResult.factsVersion,
+                messageWatermark: adjudicationResult.messageWatermark,
+                jobId,
+                effectiveProfile: adjudicationResult.profile,
+                acceptedClaimIds: adjudicationResult.adjudicated
+                  .filter((entry) => entry.decision === 'accepted')
+                  .map((entry) => entry.claim.claimId),
+                missingFields: (
+                  Object.keys(CLAIM_FIELD_TO_CHECKLIST) as CandidateClaimField[]
+                ).filter((field) =>
+                  checklist.missingFields.includes(CLAIM_FIELD_TO_CHECKLIST[field]),
+                ),
+                createdAt: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+              };
+              void adjudicationDeps.snapshots.save(context.corpId, context.userId, snapshot);
+            }
+          }
+
           if (nextAction === 'ready_to_book') {
             // booking 必须复用本次预检已经验证过的同一份候选人事实，避免重新读取尚未
             // 持久化的 session 快照后出现“预检通过、最终报名缺证据/冲突”的分叉。
@@ -1213,6 +1468,14 @@ export function buildInterviewPrecheckTool(
           return stripNullish({
             success: true,
             nextAction,
+            // 候选人事实裁决视图（证据化）：拒绝/冲突/历史待确认摘要 + booking 对账凭据。
+            factAdjudication: adjudicationResult
+              ? buildFactAdjudicationSummary(
+                  adjudicationResult,
+                  precheckId,
+                  adjudicationDeps?.mode ?? 'shadow',
+                )
+              : undefined,
             _replyInstruction:
               nextAction === 'ready_to_book'
                 ? sameJobActiveOrder

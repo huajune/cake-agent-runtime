@@ -30,6 +30,7 @@ const BOT_TO_RECEIVER = {
   1688855171908166: { openId: 'ou_e6868065cb0baa3c0304441a6a8c16e7', name: '李宇航' },
   1688854363869800: { openId: 'ou_9834f6ccffb3abdbeeabbc28581af6df', name: '祝东升' },
   1688857592548257: { openId: 'ou_9834f6ccffb3abdbeeabbc28581af6df', name: '祝东升' },
+  1688856098846503: { openId: 'ou_9834f6ccffb3abdbeeabbc28581af6df', name: '祝东升' },
   1688854359801821: { openId: 'ou_954fb7341fd7fdd320de2d419d26df19', name: '南瓜' },
   1688854263771949: { openId: 'ou_12cf003c378f89299f8ccf32252c22c0', name: '盼盼' },
   1688855753660960: { openId: 'ou_6d3f217a88b5033ff256c64492e52ae7', name: '小阳' },
