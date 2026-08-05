@@ -244,6 +244,16 @@ export class ChatSessionService {
     return chatId !== null;
   }
 
+  /** 拉取会话内描述缺失的裸视觉消息（读时懒补写数据源）。 */
+  async getBareVisualMessages(
+    chatId: string,
+    options?: { sinceTimestamp?: number; limit?: number },
+  ): Promise<
+    Array<{ messageId: string; content: string; payload: Record<string, unknown> | null }>
+  > {
+    return this.chatMessageRepository.getBareVisualMessagesByChat(chatId, options);
+  }
+
   /** 拉取会话内视觉消息的结构化事实（visual-fact-structuring 消费侧读路径）。 */
   async getVisualFacts(
     chatId: string,

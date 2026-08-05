@@ -352,6 +352,52 @@ export class ImageDescriptionService {
     return description;
   }
 
+  /** 每会话懒补写节流（5 分钟）：同一会话高频回合不重复扫裸图。 */
+  private readonly backfillLastRunByChat = new Map<string, number>();
+  private static readonly BACKFILL_COOLDOWN_MS = 5 * 60 * 1000;
+
+  /**
+   * 读时懒补写（2026-08-05 描述缺失归因修复）：回合开始时补写本会话仍是
+   * 裸 `[图片消息]` 占位的历史图片描述。
+   *
+   * 归因实证（30 条裸占位抽样）：90% 是人工接管/非托管时段经 MOBILE_PUSH 同步
+   * 进历史的候选人图片——从不进 Agent 链路（无回合 → P2 与漏调兜底都覆盖不到），
+   * 其余为 timeout 丢回合。这些图 URL 均可达、vision 均可识别（14/14 批测实证），
+   * 纯粹没人去描述。托管恢复后 Agent 读窗口时对它们全盲。
+   *
+   * fire-and-forget：本轮不阻塞（描述落库 + 缓存失效后下一轮窗口即可见）；
+   * 每会话 5 分钟节流 + 单次最多 3 张 + describeAndUpdateAsync 自带同 messageId
+   * 去重。只补图片，不补表情（旧表情描述价值低）。
+   */
+  backfillBareDescriptionsForChat(chatId: string): void {
+    const last = this.backfillLastRunByChat.get(chatId) ?? 0;
+    if (Date.now() - last < ImageDescriptionService.BACKFILL_COOLDOWN_MS) return;
+    this.backfillLastRunByChat.set(chatId, Date.now());
+
+    void (async () => {
+      try {
+        const bare = await this.chatSession.getBareVisualMessages(chatId, {
+          sinceTimestamp: Date.now() - 7 * 24 * 60 * 60 * 1000,
+          limit: 6,
+        });
+        const images = bare.filter((row) => row.content.trim() === '[图片消息]').slice(0, 3);
+        for (const row of images) {
+          const payload = row.payload ?? {};
+          const url = [payload.artworkUrl, payload.fileUrl, payload.url, payload.imageUrl].find(
+            (v): v is string => typeof v === 'string' && v.startsWith('http'),
+          );
+          if (!url) continue;
+          this.logger.log(`[懒补写] 裸图片描述补写触发 [${row.messageId}] (chat=${chatId})`);
+          this.describeAndUpdateAsync(row.messageId, url, MessageType.IMAGE);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `[懒补写] 裸图片扫描失败 [${chatId}]: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    })();
+  }
+
   /**
    * 把 vision 描述回写到 chat_messages.content。命中「无匹配行」（updateMessageContent 返回 false）
    * 时退避重试——历史 insert 是 fire-and-forget，回写时目标行可能尚未落库；不重试会静默丢描述，
