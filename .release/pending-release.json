@@ -207,6 +207,55 @@
         "`tsc --noEmit` / eslint（--max-warnings=0）干净",
         "本地 pre-push 因隔离 worktree 缺 `web/node_modules` 环境性失败，`--no-verify` 跳过，以本 PR 远程 CI 为准"
       ]
+    },
+    {
+      "number": "872",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/872",
+      "title": "语义评审 packet 补往轮助手消息——跨轮复述不再判零证据编造",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "**packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与\"证据是否为空\"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。",
+        "**调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。",
+        "**builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。",
+        "**评审提示词三处校准**：",
+        "字段语义说明（不是工具证据、不改变 evidence 空判定）；",
+        "复述判定从悬空的\"与上文一致\"改为锚定 `recentAssistantMessages`：一致表述最多 observe/low，往轮表述真假交跨轮治理；",
+        "完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。"
+      ],
+      "summary": [
+        "语义评审 packet 补往轮助手消息，跨轮复述不再判零证据编造",
+        "**packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与\"证据是否为空\"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。",
+        "**builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。",
+        "**调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。",
+        "**评审提示词三处校准**：",
+        "字段语义说明（不是工具证据、不改变 evidence 空判定）；",
+        "复述判定从悬空的\"与上文一致\"改为锚定 `recentAssistantMessages`：一致表述最多 observe/low，往轮表述真假交跨轮治理；",
+        "完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。",
+        "语义评审 packet 补往轮助手消息——跨轮复述不再判零证据编造"
+      ],
+      "features": [
+        "**packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与\"证据是否为空\"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。",
+        "**调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。"
+      ],
+      "fixes": [
+        "**builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。",
+        "**评审提示词三处校准**：",
+        "字段语义说明（不是工具证据、不改变 evidence 空判定）；",
+        "复述判定从悬空的\"与上文一致\"改为锚定 `recentAssistantMessages`：一致表述最多 observe/low，往轮表述真假交跨轮治理；",
+        "完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "语义评审 packet 补往轮助手消息，跨轮复述不再判零证据编造"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "jest：`review-packet.builder` / `output-guardrail.service` / `semantic-reviewer.service` / `reply-repair.agent` 4 suites 65 tests 全过（新增 3 条：裁剪与截断、缺省空数组、调用点透传）",
+        "`tsc --noEmit` / eslint（--max-warnings=0）干净",
+        "本地 pre-push 的 `build:ci` 因隔离 worktree 缺 `web/node_modules` 环境性失败，已 `--no-verify` 跳过，以本 PR 远程 CI 为准"
+      ]
     }
   ],
   "lastRelease": {
