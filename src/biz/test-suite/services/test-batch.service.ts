@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { GeneratorToolMode } from '@agent/generator/generator.types';
 import {
   CreateBatchRequestDto,
   UpdateReviewRequestDto,
@@ -215,6 +216,11 @@ export class TestBatchService {
         : undefined,
       imageUrls,
       scenario: this.readString(testInput, 'scenario') || this.readString(agentRequest, 'scenario'),
+      toolMode:
+        this.readToolMode(testInput, 'toolMode') || this.readToolMode(agentRequest, 'toolMode'),
+      allowedToolNames:
+        this.readToolAllowlist(testInput, 'allowedToolNames') ??
+        this.readToolAllowlist(agentRequest, 'allowedToolNames'),
       saveExecution: false,
       caseId: execution.case_id,
       caseName: execution.case_name || undefined,
@@ -430,6 +436,21 @@ export class TestBatchService {
     if (!Array.isArray(value)) return undefined;
     const items = value.filter((item): item is string => typeof item === 'string' && !!item);
     return items.length > 0 ? items : undefined;
+  }
+
+  private readToolMode(
+    record: Record<string, unknown>,
+    key: string,
+  ): GeneratorToolMode | undefined {
+    const value = this.readString(record, key);
+    return value === 'scenario' || value === 'readonly' || value === 'none' ? value : undefined;
+  }
+
+  private readToolAllowlist(record: Record<string, unknown>, key: string): string[] | undefined {
+    const value = record[key];
+    if (!Array.isArray(value)) return undefined;
+    if (!value.every((item) => typeof item === 'string')) return undefined;
+    return value;
   }
 
   private extractExecutionError(result: TestChatResponse): string | null {

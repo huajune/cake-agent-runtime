@@ -67,6 +67,10 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   quota_promise: 'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
   job_detail_lookup_required:
     'agent/guardrail/output/rules/job-detail-grounding.rule.ts（HardRulesService 调度）',
+  combination_schedule_weekly_generalization:
+    'agent/guardrail/output/rules/ungrounded-generalizations.rule.ts（HardRulesService 调度）',
+  health_certificate_generalization:
+    'agent/guardrail/output/rules/ungrounded-generalizations.rule.ts（HardRulesService 调度）',
   unsupported_schedule_window_claim:
     'agent/guardrail/output/rules/schedule-window-claims.rule.ts（HardRulesService 调度）',
   settlement_cycle_mismatch:

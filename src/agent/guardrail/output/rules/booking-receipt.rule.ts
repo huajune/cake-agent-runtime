@@ -18,7 +18,8 @@ import type { RuleContradiction } from '../output-rule.types';
  *   与形态 A 镜像，对账的是失败路径。
  * - 形态 D（REVISE，2026-08-04 发版回归）：候选人本轮明确说“先别报名/预约”，
  *   回复却仍催其登记或直接承诺安排面试时间——即使没有真实调用工具，也违背了
- *   候选人的当前明确指令。
+ *   候选人的当前明确指令；候选人同时想自行到店时，也不得在提示流程后又附和
+ *   “那你先自己看看”。
  */
 const DATE_ASK_PATTERN =
   /(?:你|您)(?:定|看|选|挑)[^，。！？!?\n]{0,6}(?:哪一?天|几号|几点|什么时候|时间)|(?:哪一?天|几号|几点|什么时候)[^，。！？!?\n]{0,4}(?:方便|有空|合适|可以|行)[^，。！？!?\n]{0,4}[？?]?|(?:选|挑|定)(?:个|一个)[^，。！？!?\n]{0,4}(?:时间|日子|时段)/u;
@@ -47,9 +48,16 @@ const BOOKING_IN_FLIGHT_CLAIM_PATTERN =
 const BOOKING_SETTLED_CLAIM_PATTERN =
   /那就(?:帮你|给你)?(?:约|定|安排)|(?:约|定)在(?:明天|今天|后天|周[一二三四五六日天]|\d{1,2}月\d{1,2}[号日]|\d{1,2}[点:：])/u;
 
-/** 如实披露失败：说了没成功/失败/再试，就不是假宣称。 */
+/** 如实披露失败：只认本轮没有提交成功的事实，不把未来重试承诺当作失败回执。 */
 const BOOKING_FAILURE_ACKNOWLEDGED_PATTERN =
-  /(?:提交|报名|预约|约)[^。！？\n]{0,8}(?:失败|没成功|未成功|不成功|没约上|没成|出了点问题|有点问题)|(?:失败|没能|未能|没有)[^。！？\n]{0,6}(?:提交|报名|预约)|重新(?:试|提交|约)|稍后(?:再|重新)(?:试|约|提交)/u;
+  /(?:提交|报名|预约|约)[^。！？\n]{0,10}(?:失败|没(?:有)?成功|未成功|不成功|没约上|没成|出了点问题|有点问题)|(?:失败|没能|未能|没有)[^。！？\n]{0,8}(?:提交|报名|预约|约上)|(?:没|未)(?:有|能)?(?:提交|报名|预约)成功/u;
+
+// booking 已失败后，回复不能凭空承诺由当前账号再试、重新提交或稍后推进。
+// 这类承诺既没有对应工具事实，也会击穿“只问本次结果时确认失败后立即结束”的终止约束。
+const BOOKING_RETRY_PROMISE_PATTERN =
+  /(?:我|我们|我这边|这边)[^。！？\n]{0,12}(?:现在|马上|立即|这就|稍后|晚点|明天|回头|一会儿|之后|重新|再)[^。！？\n]{0,10}(?:试|提交|报名|预约|约)|(?:稍后|晚点|明天|回头|一会儿|之后)[^。！？\n]{0,10}(?:我|我们|这边)?[^。！？\n]{0,8}(?:帮你|给你|重新|再)[^。！？\n]{0,8}(?:试|提交|报名|预约|约)|(?:重新|再)(?:帮你|给你)[^。！？\n]{0,4}(?:试|提交|报名|预约|约)/gu;
+const NEGATED_BOOKING_RETRY_PATTERN =
+  /(?:不能|不会|不再|不要|别|不得|不应|不可以|不可|无需|无法|没法|不承诺)[^，,；;。！？!?\n]{0,18}(?:试|提交|报名|预约|约)/u;
 
 // 候选人明确要求本轮不要推进预约。只认当前 userMessage，避免把历史犹豫错误套到新一轮。
 // 事件式而非单布尔正则：同轮“先别报 A 店，帮我报 B 店”以后一个明确意图为准；
@@ -190,6 +198,30 @@ function stripQuotedBookingText(text: string): string {
   );
 }
 
+function containsBookingRetryPromise(replyText: string): boolean {
+  const candidateVisibleText = stripQuotedBookingText(replyText);
+  for (const match of candidateVisibleText.matchAll(BOOKING_RETRY_PROMISE_PATTERN)) {
+    const index = match.index ?? 0;
+    const before = candidateVisibleText.slice(0, index);
+    const clauseStart = Math.max(
+      before.lastIndexOf('，'),
+      before.lastIndexOf(','),
+      before.lastIndexOf('；'),
+      before.lastIndexOf(';'),
+      before.lastIndexOf('。'),
+      before.lastIndexOf('！'),
+      before.lastIndexOf('？'),
+      before.lastIndexOf('!'),
+      before.lastIndexOf('?'),
+      before.lastIndexOf('\n'),
+    );
+    const localClause = candidateVisibleText.slice(clauseStart + 1, index + match[0].length);
+    if (NEGATED_BOOKING_RETRY_PATTERN.test(localClause)) continue;
+    return true;
+  }
+  return false;
+}
+
 function containsBookingAdvance(replyText: string): boolean {
   const candidateVisibleText = stripQuotedBookingText(replyText);
   for (const pattern of BOOKING_ADVANCE_PATTERNS) {
@@ -201,6 +233,22 @@ function containsBookingAdvance(replyText: string): boolean {
     }
   }
   return false;
+}
+
+const DIRECT_VISIT_INTENT_PATTERN =
+  /(?:想|准备|打算|要|先|直接|自己)[^。！？!?\n]{0,12}(?:去|到|过去)[^。！？!?\n]{0,8}(?:门店|店里|店)|(?:去|到|过去)[^。！？!?\n]{0,8}(?:门店|店里|店)[^。！？!?\n]{0,8}(?:看看|看下|问问|了解)|(?:那|要不)?(?:我)?(?:先|直接|自己){1,3}(?:去|过去|前往)(?:现场)?(?:看看|看下|问问|了解)?/u;
+
+const DIRECT_VISIT_ENCOURAGEMENT_PATTERNS = [
+  /(?:^|[，,。！？!?\n；;])(?:那就|那|好|好的|可以|行|没问题)?(?:你)?(?:先)?(?:自己)?看看(?:情况)?(?:吧|哈)?(?=$|[，,。！？!?\n；;])/gu,
+  /(?:^|[，,。！？!?\n；;])(?:那就|那|好|好的|可以|行|没问题)?(?:你)?(?:先)?(?:自己)?(?:去|过去|到店|去店里|到门店)[^。！？!?\n]{0,6}(?:看看|看下|问问|了解)/gu,
+  /(?:^|[，,。！？!?\n；;])(?:可以|行|没问题|好的?)(?:让你)?(?:直接|自行|自己)?(?:去|过去|前往|到店|去店里|到门店)(?:吧|哈)?(?=$|[，,。！？!?\n；;])/gu,
+] as const;
+
+function containsDirectVisitEncouragement(replyText: string): boolean {
+  const candidateVisibleText = stripQuotedBookingText(replyText);
+  return DIRECT_VISIT_ENCOURAGEMENT_PATTERNS.some((pattern) =>
+    Array.from(candidateVisibleText.matchAll(pattern)).some((match) => Boolean(match[0].trim())),
+  );
 }
 
 function findFailedBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
@@ -269,7 +317,25 @@ export function detectBookingReceiptMismatch(
 ): RuleContradiction | null {
   if (!replyText.trim()) return null;
 
-  if (resolveLatestBookingIntent(userMessage) === 'opt_out' && containsBookingAdvance(replyText)) {
+  const latestBookingIntent = resolveLatestBookingIntent(userMessage);
+  if (
+    latestBookingIntent === 'opt_out' &&
+    userMessage &&
+    DIRECT_VISIT_INTENT_PATTERN.test(userMessage) &&
+    containsDirectVisitEncouragement(replyText)
+  ) {
+    return {
+      ruleId: 'booking_receipt_mismatch',
+      label:
+        '候选人明确暂不报名且想自行到店，回复在提示流程后仍附和其“先自己看看”，变相鼓励未预约到店',
+      action: GUARDRAIL_ACTION.REVISE,
+      feedbackToGenerator:
+        '候选人本轮明确暂不报名，上一版虽然说明未报名到店可能无法接待，却又用“那你先自己看看/先过去了解下”等话术附和其自行到店，当前文本不可发送。' +
+        '请删除该附和，只保留“到店前需要先报名约面，否则门店无法接待”的流程说明，并以“既然暂不报名，这轮先不推进”收口；不得提供定位或到店指引。',
+    };
+  }
+
+  if (latestBookingIntent === 'opt_out' && containsBookingAdvance(replyText)) {
     return {
       ruleId: 'booking_receipt_mismatch',
       label:
@@ -285,24 +351,28 @@ export function detectBookingReceiptMismatch(
   const booking = findSuccessfulBooking(toolCalls);
   if (!booking) {
     const failedBooking = findFailedBooking(toolCalls);
+    const retryPromise = failedBooking ? containsBookingRetryPromise(replyText) : false;
     if (
       failedBooking &&
-      !BOOKING_FAILURE_ACKNOWLEDGED_PATTERN.test(replyText) &&
-      (BOOKING_IN_FLIGHT_CLAIM_PATTERN.test(replyText) ||
-        CONFIRMATION_PATTERN.test(replyText) ||
-        BOOKING_SETTLED_CLAIM_PATTERN.test(replyText))
+      (retryPromise ||
+        (!BOOKING_FAILURE_ACKNOWLEDGED_PATTERN.test(replyText) &&
+          (BOOKING_IN_FLIGHT_CLAIM_PATTERN.test(replyText) ||
+            CONFIRMATION_PATTERN.test(replyText) ||
+            BOOKING_SETTLED_CLAIM_PATTERN.test(replyText))))
     ) {
       return {
         ruleId: 'booking_receipt_mismatch',
-        label:
-          '本轮 duliday_interview_booking 调用失败，回复却宣称正在提交或已提交面试预约' +
-          '——回执永远不会来，候选人会一直空等（badcase …_1785332310556）',
+        label: retryPromise
+          ? '本轮 duliday_interview_booking 调用失败，回复却承诺由当前账号重新提交或稍后再试'
+          : '本轮 duliday_interview_booking 调用失败，回复却宣称正在提交或已提交面试预约' +
+            '——回执永远不会来，候选人会一直空等（badcase …_1785332310556）',
         action: GUARDRAIL_ACTION.REVISE,
         // 目录里的 feedback 是为成功路径写的（"本轮预约已真实提交成功"），直接复用会
         // 指示重写者把失败说成成功。失败路径必须带自己的口径。
         feedbackToGenerator:
-          '本轮 duliday_interview_booking 调用失败，预约并未提交成功，但上一版回复宣称正在提交或已经提交，当前文本不可发送。' +
-          '请如实告知候选人这次没有提交成功、你会重新帮他提交或稍后再试，不要给出任何"等回执/等通知"的暗示；' +
+          '本轮 duliday_interview_booking 调用失败，预约并未提交成功。上一版回复宣称正在/已经提交，或承诺重新提交、稍后再试，当前文本不可发送。' +
+          '请只如实告知候选人这次没有提交成功；不得承诺以后重试、重新提交、确认或通知，也不要给出任何“等回执/等通知”的暗示。' +
+          '如果候选人只问本次预约结果，必须在确认失败事实处结束，不得添加下一步建议；' +
           '回复中与预约状态无关的内容（岗位信息、候选人问题的回答等）逐字保留。',
       };
     }
