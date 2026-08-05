@@ -26,22 +26,15 @@
 - PR #862 班次口径判据认现网短标签 + 语义评审停摆看门狗（badcase 2026-07-31 巡检）
 - PR #865 geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…
 - PR #865 脏别名清表 + 冲突检测裁决标记 + 看板失败口径
-- PR #865 转人工底账落当轮焦点岗位 jobId
 - PR #865 失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId
-- PR #865 2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置
-- PR #865 未跟踪的图表/脚本资产按仓库惯例归位
-- PR #865 清理两个已终结的一次性脚本 + 修 diagrams 索引错行
-- PR #865 Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id
 - PR #865 8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周
 - PR #865 先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径
 - PR #865 先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 约面重点学生身份行回归纯事实，不在数据行复述行为指令
 - PR #865 8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等
 - PR #865 城市/区县轮通名后缀拒绝——宝安公路/宝山中街/洪湖公园类跨城误命中收口
-- PR #865 架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库
 - PR #865 weekly-ops-report 周报 skill 入库——SKILL 定义+badcase 采集脚本+三…
 - PR #865 补齐 8-04 发版阻断回归
-- PR #865 Merge origin/develop into feat/handoff-job-id
 - PR #865 记录 8-04 全量回归结果
 - PR #865 拦截地点与健康证咨询误写
 - PR #865 收口发版真实回归阻断
@@ -49,8 +42,7 @@
 - PR #865 巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周
 - PR #865 先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等
-- PR #865 架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐
-- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它
+- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链；周五 18:00 定时任务依赖它
 - PR #865 8-04 巡检修复批 + geo 通名后缀收口 + 图表/周报 skill 资产入库
 - PR #876 v10.38.0 发版评审四项 P1 收口
 - PR #876 v10.38.0 发版评审四项 P1 收口（大后天误判/翻案句绑定/健康证外地限定/看门狗读开关）
@@ -68,8 +60,6 @@
 - PR #878 回同步 v10.38.0 候选分支收口提交至 develop
 
 ### 新功能
-- PR #865 Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id
-- PR #865 Merge origin/develop into feat/handoff-job-id
 - PR #872 **packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与"证据是否为空"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。
 - PR #872 **调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。
 
@@ -79,7 +69,7 @@
 - PR #865 先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 约面重点学生身份行回归纯事实，不在数据行复述行为指令
 - PR #865 未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等
-- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它
+- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链；周五 18:00 定时任务依赖它
 - PR #865 8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周
 - PR #865 8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等
 - PR #872 **builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。
@@ -89,8 +79,6 @@
 - PR #872 完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。
 
 ### 优化调整
-- PR #865 架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐
-- PR #865 架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库
 
 ### 运维与流程
 - PR #863 补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门
@@ -98,11 +86,7 @@
 - PR #862 语义评审停摆看门狗，观测盲区不再靠隔天人工追问发现
 - PR #865 geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…
 - PR #865 脏别名清表 + 冲突检测裁决标记 + 看板失败口径
-- PR #865 转人工底账落当轮焦点岗位 jobId
 - PR #865 失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId
-- PR #865 2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置
-- PR #865 未跟踪的图表/脚本资产按仓库惯例归位
-- PR #865 清理两个已终结的一次性脚本 + 修 diagrams 索引错行
 - PR #865 先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径
 - PR #865 先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 约面重点学生身份行回归纯事实，不在数据行复述行为指令
@@ -135,7 +119,6 @@
 - PR #862 ⚠️ `analytics-dashboard.service.spec.ts` 有 1 条失败，已在 clean `origin/develop` 上复现，
 - PR #865 `ci:check` 全绿：lint + typecheck + 6127 测试通过
 - PR #865 geo 专项：`tests/resolution/geo/geo-text-scan.spec.ts` 21/21（含 mpr 223305/223843/225370 生产样本回归）
-- PR #865 图表构建确定性已验证：重跑 build 脚本与现存 .excalidraw 逐字节一致
 - PR #876 jest：受影响 6 suites **603 passed**；`tests/memory` + `tests/agent/guardrail` 全量 **1554 passed / 1 skipped**
 - PR #876 `tsc --noEmit` / eslint（--max-warnings=0）干净
 - PR #876 本地 pre-push 因隔离 worktree 缺 `web/node_modules` 环境性失败，`--no-verify` 跳过，以本 PR 远程 CI 为准
