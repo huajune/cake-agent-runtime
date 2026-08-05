@@ -48,6 +48,11 @@ import {
   evaluateBookingPhoneGate,
 } from '@tools/shared/precheck-core';
 import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
+import { extractCandidateTexts } from '@memory/facts/candidate/adjudication-runner';
+import { computeCandidateMessageWatermark } from '@memory/facts/candidate/precheck-snapshot.types';
+import { evaluateSnapshotGate } from '@tools/duliday/booking/snapshot-gate.util';
+import type { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
+import type { AgentEvent } from '@/observability/observer.interface';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -250,6 +255,14 @@ const inputSchema = z.object({
   brandName: z.string().optional().describe('品牌名称，仅用于通知展示'),
   storeName: z.string().optional().describe('门店名称，仅用于通知展示'),
   jobName: z.string().optional().describe('岗位名称，仅用于通知展示'),
+  precheckId: z
+    .string()
+    .optional()
+    .describe(
+      '本轮 duliday_interview_precheck 返回的 factAdjudication.precheckId，原样回传。' +
+        '系统用它核对你提交的最终资料与预检裁决快照一致（防止旧记忆资料在预检后混入）。' +
+        'precheck 没有返回该字段时不传，禁止编造。',
+    ),
   prechecked: z
     .object({
       nextAction: z
@@ -280,6 +293,16 @@ const inputSchema = z.object({
     ),
 });
 
+/**
+ * booking 快照对账依赖（可选注入；缺省时对账静默跳过，test/debug 直建工具零改动）。
+ * mode=shadow：差异只落观测与日志；mode=enforce：差异直接拒绝提交要求重新 precheck。
+ */
+export interface BookingAdjudicationDeps {
+  mode: 'shadow' | 'enforce';
+  snapshots?: Pick<CandidateSnapshotService, 'load'>;
+  observer?: { emit: (event: AgentEvent) => void };
+}
+
 export interface InterviewBookingNotificationInfo {
   contactName?: string;
   candidateName: string;
@@ -303,6 +326,7 @@ export function buildInterviewBookingTool(
   userHostingService: UserHostingService,
   longTermService: LongTermService,
   opsEventsRecorder: OpsEventsRecorderService,
+  adjudicationDeps?: BookingAdjudicationDeps,
 ): ToolBuilder {
   return (context) => {
     const spongeTokenContext = buildSpongeTokenContext(context);
@@ -331,6 +355,7 @@ export function buildInterviewBookingTool(
         storeName,
         jobName,
         prechecked,
+        precheckId,
       }) => {
         // 测试链路 PII 白名单闸门：booking 真调海绵生产网关，测试重放必须用
         // 假身份（2026-07-27 误建真实工单 453264 事故后固化为系统校验）。
@@ -633,6 +658,68 @@ export function buildInterviewBookingTool(
               details: { ...authorityFailure },
             }),
           );
+        }
+
+        // —— PrecheckSnapshot 对账闸（证据化 Phase 3，§10 灰度：差异记录先行）——
+        // 模型回传 precheckId 时，载入预检裁决快照核对最终 payload：水位失效
+        // （precheck 后候选人又发消息）与字段偏离（模型混入旧记忆值）都会被记录。
+        // shadow 只落观测；enforce 直接拒绝要求重新 precheck。快照缺失按 fail open
+        // 放行（Redis 抖动/TTL 过期不得阻断报名）。
+        if (precheckId && adjudicationDeps?.snapshots) {
+          try {
+            const snapshot = await adjudicationDeps.snapshots.load(
+              context.corpId,
+              context.userId,
+              precheckId,
+            );
+            if (snapshot) {
+              const gate = evaluateSnapshotGate({
+                snapshot,
+                payload: { name, phone, age, genderId, height, weight, hasHealthCertificate },
+                jobId,
+                currentMessageWatermark: computeCandidateMessageWatermark(
+                  extractCandidateTexts(context.messages),
+                ),
+              });
+              if (gate.mismatchedFields.length > 0) {
+                logger.warn(
+                  `[booking] 快照对账不一致(${adjudicationDeps.mode}): chatId=${context.sessionId}, ` +
+                    `precheckId=${precheckId}, mismatch=${gate.mismatchedFields.join('|')}`,
+                );
+                adjudicationDeps.observer?.emit({
+                  type: 'fact_adjudication',
+                  stage: 'booking_gate',
+                  mode: adjudicationDeps.mode,
+                  userId: context.userId,
+                  precheckId,
+                  factsVersion: snapshot.factsVersion,
+                  decisions: [],
+                  mismatchedFields: gate.mismatchedFields,
+                });
+                if (adjudicationDeps.mode === 'enforce') {
+                  return markBookingFailed(
+                    context,
+                    buildToolError({
+                      errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+                      outcome: '预约失败（提交资料与预检裁决快照不一致）',
+                      replyInstruction:
+                        `提交的资料与本轮预检快照不一致（${gate.mismatchedFields.join('、')}）。` +
+                        '候选人可能刚补充了新资料，或部分入参没有候选人原话依据。' +
+                        '重新调 duliday_interview_precheck（把候选人最新明确提供的资料经 candidateClaims 附原话提交），' +
+                        '拿到新的 precheckId 后再 booking。禁止沿用旧值直接重试。',
+                      details: { precheckId, mismatchedFields: gate.mismatchedFields },
+                    }),
+                  );
+                }
+              }
+            }
+          } catch (error) {
+            logger.warn(
+              `[booking] 快照对账异常（fail open）: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
         }
 
         const resolvedUploadResume = resolveUploadResume(uploadResume, context);

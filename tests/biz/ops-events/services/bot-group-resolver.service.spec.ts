@@ -30,6 +30,11 @@ describe('BotGroupResolverService', () => {
       managerName: 'XinYuQi',
       groupName: '瑜琦组',
     });
+    expect(service.resolve('1688856098846503')).toEqual({
+      managerName: 'LiYuHang',
+      groupName: '小祝组',
+    });
+    expect(service.resolveAgentId('1688856098846503')).toBe('LiYuHang-cake-2');
   });
 
   it('strips prod-sync: prefix on numeric ids before lookup', () => {
@@ -39,6 +44,11 @@ describe('BotGroupResolverService', () => {
       groupName: '宇航组',
     });
     expect(service.resolveAgentId('prod-sync:1688855171908166')).toBe('LiYuHang-cake-1');
+    expect(service.resolve('prod-sync:1688856098846503')).toEqual({
+      managerName: 'LiYuHang',
+      groupName: '小祝组',
+    });
+    expect(service.resolveAgentId('prod-sync:1688856098846503')).toBe('LiYuHang-cake-2');
   });
 
   it('resolves guoxiaoyang (晓阳组) on both bare and synced forms', () => {
