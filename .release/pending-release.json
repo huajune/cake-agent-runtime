@@ -183,6 +183,28 @@
         "新增 2 例：badcase 同型（薪资段整段在截断点后 → 补录出现、且只补薪资段不带福利）；薪资段完整在窗口内 → 不补录",
         "`review-packet.builder.spec` 10/10、`semantic-reviewer.service.spec` 25/25 通过；typecheck / eslint 全净"
       ]
+    },
+    {
+      "number": "899",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/899",
+      "title": "测试链图片工具保真 + v10.40.0 发版底账定版",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "测试链图片工具保真 + v10.40.0 发版底账定版"
+      ],
+      "summary": [
+        "测试链图片工具保真 + v10.40.0 发版底账定版"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "测试链图片工具保真 + v10.40.0 发版底账定版"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
