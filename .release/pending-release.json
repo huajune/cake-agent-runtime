@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.37.0",
   "nextVersion": "10.38.0",
-  "updatedAt": "2026-08-04",
+  "updatedAt": "2026-08-05",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -87,6 +87,97 @@
         "`pnpm test tests/tools/ tests/biz/monitoring/`：1631 passed",
         "typecheck ✅ / eslint（改动文件）✅",
         "⚠️ `analytics-dashboard.service.spec.ts` 有 1 条失败，已在 clean `origin/develop` 上复现，"
+      ]
+    },
+    {
+      "number": "865",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/865",
+      "title": "8-04 巡检修复批 + geo 通名后缀收口 + 图表/周报 skill 资产入库",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id",
+        "Merge origin/develop into feat/handoff-job-id",
+        "巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
+        "先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片",
+        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
+        "未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等",
+        "weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它",
+        "8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
+        "8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等"
+      ],
+      "summary": [
+        "geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…",
+        "脏别名清表 + 冲突检测裁决标记 + 看板失败口径",
+        "转人工底账落当轮焦点岗位 jobId",
+        "失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId",
+        "2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置",
+        "未跟踪的图表/脚本资产按仓库惯例归位",
+        "清理两个已终结的一次性脚本 + 修 diagrams 索引错行",
+        "Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id",
+        "8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
+        "先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径",
+        "先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片",
+        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
+        "8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等",
+        "城市/区县轮通名后缀拒绝——宝安公路/宝山中街/洪湖公园类跨城误命中收口",
+        "架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库",
+        "weekly-ops-report 周报 skill 入库——SKILL 定义+badcase 采集脚本+三…",
+        "补齐 8-04 发版阻断回归",
+        "Merge origin/develop into feat/handoff-job-id",
+        "记录 8-04 全量回归结果",
+        "拦截地点与健康证咨询误写",
+        "收口发版真实回归阻断",
+        "尊重报名退出并拦截资料修改空头承诺",
+        "巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
+        "先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片",
+        "未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等",
+        "架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐",
+        "weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它",
+        "8-04 巡检修复批 + geo 通名后缀收口 + 图表/周报 skill 资产入库"
+      ],
+      "features": [
+        "Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id",
+        "Merge origin/develop into feat/handoff-job-id"
+      ],
+      "fixes": [
+        "巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
+        "先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片",
+        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
+        "未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等",
+        "weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它",
+        "8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
+        "8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等"
+      ],
+      "optimizations": [
+        "架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐",
+        "架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库"
+      ],
+      "ops": [
+        "geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…",
+        "脏别名清表 + 冲突检测裁决标记 + 看板失败口径",
+        "转人工底账落当轮焦点岗位 jobId",
+        "失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId",
+        "2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置",
+        "未跟踪的图表/脚本资产按仓库惯例归位",
+        "清理两个已终结的一次性脚本 + 修 diagrams 索引错行",
+        "先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径",
+        "先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片",
+        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
+        "城市/区县轮通名后缀拒绝——宝安公路/宝山中街/洪湖公园类跨城误命中收口",
+        "weekly-ops-report 周报 skill 入库——SKILL 定义+badcase 采集脚本+三…",
+        "补齐 8-04 发版阻断回归",
+        "记录 8-04 全量回归结果",
+        "拦截地点与健康证咨询误写",
+        "收口发版真实回归阻断",
+        "尊重报名退出并拦截资料修改空头承诺"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`ci:check` 全绿：lint + typecheck + 6127 测试通过",
+        "geo 专项：`tests/resolution/geo/geo-text-scan.spec.ts` 21/21（含 mpr 223305/223843/225370 生产样本回归）",
+        "图表构建确定性已验证：重跑 build 脚本与现存 .excalidraw 逐字节一致"
       ]
     }
   ],
