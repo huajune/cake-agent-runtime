@@ -127,6 +127,34 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "896",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/896",
+      "title": "补齐陈美嘉托管账号配置迁移",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "补齐陈美嘉托管账号配置迁移"
+      ],
+      "summary": [
+        "补齐陈美嘉托管账号配置迁移"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补齐陈美嘉托管账号配置迁移"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`",
+        "406 个测试套件通过，1 个跳过",
+        "6778 项测试通过，6 项跳过",
+        "`pnpm config:hosting:check:test`",
+        "`pnpm config:hosting:check:prod`"
+      ]
     }
   ],
   "lastRelease": {

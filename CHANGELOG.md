@@ -14,7 +14,7 @@
 **预计版本**: `v10.40.0`
 **最近更新**: `2026-08-05`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
@@ -44,6 +44,7 @@
 - PR #873 记忆与状态全局视图——三角色心智模型
 - PR #873 图片信息链路现状架构文档（前身：立项三件套）
 - PR #894 补充 v10.39.0 发版底账
+- PR #896 补齐陈美嘉托管账号配置迁移
 
 ### 新功能
 - 无
@@ -78,6 +79,7 @@
 - PR #873 增数据流时序节——一张图片的一生（17 步 + 接管期平行线）
 - PR #873 记忆与状态全局视图——三角色心智模型
 - PR #894 补充 v10.39.0 发版底账
+- PR #896 补齐陈美嘉托管账号配置迁移
 
 ### 配置变更
 - 无
@@ -89,6 +91,11 @@
 - PR #885 新增 `tests/resolution/visual`（10 例：归属默认/降级/round-trip/与旧正则逐字一致）+ `tests/memory/facts/visual-fact-scoping.spec.ts`（6 例，每条带无 sheet 回落对照）
 - PR #885 既有断言仅两个 spec 因 `updateMessageContent` 第三参更新
 - PR #885 **全量 394 suites / 6484 passed**；`tsc --noEmit`、`eslint`（全部改动文件）绿
+- PR #896 `pnpm run ci:check`
+- PR #896 406 个测试套件通过，1 个跳过
+- PR #896 6778 项测试通过，6 项跳过
+- PR #896 `pnpm config:hosting:check:test`
+- PR #896 `pnpm config:hosting:check:prod`
 <!-- release:pending:end -->
 
 ## [10.39.0] - 2026-08-05
