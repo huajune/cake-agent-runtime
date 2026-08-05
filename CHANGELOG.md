@@ -11,10 +11,119 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v10.38.0`
+**预计版本**: `v10.40.0`
 **最近更新**: `2026-08-05`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 3
+
+### 更新摘要
+- PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
+- PR #885 自陈收窄限定在身份字段，不外溢到地理/偏好
+- PR #885 姓名形态门与 #865 经理名门合并，复用同一 extractedName
+- PR #885 fixture 换生产真实字符串——修复空转的年龄断言
+- PR #885 图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地
+- PR #885 白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正
+- PR #885 key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证
+- PR #885 prettier 修复 describe 长行
+- PR #885 prettier 引号修复
+- PR #885 kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口
+- PR #885 废弃入站图片预描述分支——主聊按输入换模型后的死枝清理
+- PR #885 描述缺失读时懒补写——33% 裸占位归因后的定向修复
+- PR #885 修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量
+- PR #885 visual-fact 批次发版底账（pending，P0 待真实链路回归）
+- PR #885 图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示
+- PR #885 图片信息结构化全链路——生产/存储/消费一次落地
+- PR #873 图片信息结构化专项方案 + 链路盘点
+- PR #873 评审意见修订——模块归位 resolution/visual + 落库设计说清
+- PR #873 图片信息结构化代码改造技术方案
+- PR #873 回填信息类别裁决记录 + vkikct39 事实修正
+- PR #873 补实施记录——PR #885 一次性落地与三处偏离
+- PR #873 三份立项文档整合为现状架构文档 visual-fact-pipeline
+- PR #873 附录 A 扩为完整信息类别裁决清单
+- PR #873 增数据流时序节——一张图片的一生（17 步 + 接管期平行线）
+- PR #873 记忆与状态全局视图——三角色心智模型
+- PR #873 图片信息链路现状架构文档（前身：立项三件套）
+- PR #894 补充 v10.39.0 发版底账
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #885 fixture 换生产真实字符串——修复空转的年龄断言
+- PR #885 白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正
+- PR #885 prettier 修复 describe 长行
+- PR #885 prettier 引号修复
+- PR #885 描述缺失读时懒补写——33% 裸占位归因后的定向修复
+- PR #885 修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量
+- PR #873 回填信息类别裁决记录 + vkikct39 事实修正
+
+### 优化调整
+- PR #885 姓名形态门与 #865 经理名门合并，复用同一 extractedName
+
+### 运维与流程
+- PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
+- PR #885 自陈收窄限定在身份字段，不外溢到地理/偏好
+- PR #885 图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地
+- PR #885 key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证
+- PR #885 kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口
+- PR #885 废弃入站图片预描述分支——主聊按输入换模型后的死枝清理
+- PR #885 visual-fact 批次发版底账（pending，P0 待真实链路回归）
+- PR #885 图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示
+- PR #873 图片信息结构化专项方案 + 链路盘点
+- PR #873 评审意见修订——模块归位 resolution/visual + 落库设计说清
+- PR #873 图片信息结构化代码改造技术方案
+- PR #873 补实施记录——PR #885 一次性落地与三处偏离
+- PR #873 三份立项文档整合为现状架构文档 visual-fact-pipeline
+- PR #873 附录 A 扩为完整信息类别裁决清单
+- PR #873 增数据流时序节——一张图片的一生（17 步 + 接管期平行线）
+- PR #873 记忆与状态全局视图——三角色心智模型
+- PR #894 补充 v10.39.0 发版底账
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #885 新增 `tests/resolution/visual`（10 例：归属默认/降级/round-trip/与旧正则逐字一致）+ `tests/memory/facts/visual-fact-scoping.spec.ts`（6 例，每条带无 sheet 回落对照）
+- PR #885 既有断言仅两个 spec 因 `updateMessageContent` 第三参更新
+- PR #885 **全量 394 suites / 6484 passed**；`tsc --noEmit`、`eslint`（全部改动文件）绿
+<!-- release:pending:end -->
+
+## [10.39.0] - 2026-08-05
+
+**来源分支**: `develop`
+
+### 更新摘要
+- PR #886 候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）
+- PR #886 补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #886 候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）
+- PR #886 补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #886 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- 无
+
+## [10.38.0] - 2026-08-05
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #863 补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门
@@ -26,22 +135,15 @@
 - PR #862 班次口径判据认现网短标签 + 语义评审停摆看门狗（badcase 2026-07-31 巡检）
 - PR #865 geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…
 - PR #865 脏别名清表 + 冲突检测裁决标记 + 看板失败口径
-- PR #865 转人工底账落当轮焦点岗位 jobId
 - PR #865 失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId
-- PR #865 2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置
-- PR #865 未跟踪的图表/脚本资产按仓库惯例归位
-- PR #865 清理两个已终结的一次性脚本 + 修 diagrams 索引错行
-- PR #865 Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id
 - PR #865 8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周
 - PR #865 先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径
 - PR #865 先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 约面重点学生身份行回归纯事实，不在数据行复述行为指令
 - PR #865 8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等
 - PR #865 城市/区县轮通名后缀拒绝——宝安公路/宝山中街/洪湖公园类跨城误命中收口
-- PR #865 架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库
 - PR #865 weekly-ops-report 周报 skill 入库——SKILL 定义+badcase 采集脚本+三…
 - PR #865 补齐 8-04 发版阻断回归
-- PR #865 Merge origin/develop into feat/handoff-job-id
 - PR #865 记录 8-04 全量回归结果
 - PR #865 拦截地点与健康证咨询误写
 - PR #865 收口发版真实回归阻断
@@ -49,13 +151,27 @@
 - PR #865 巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周
 - PR #865 先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等
-- PR #865 架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐
-- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它
+- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链；周五 18:00 定时任务依赖它
 - PR #865 8-04 巡检修复批 + geo 通名后缀收口 + 图表/周报 skill 资产入库
+- PR #876 v10.38.0 发版评审四项 P1 收口
+- PR #876 v10.38.0 发版评审四项 P1 收口（大后天误判/翻案句绑定/健康证外地限定/看门狗读开关）
+- PR #872 语义评审 packet 补往轮助手消息，跨轮复述不再判零证据编造
+- PR #872 **packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与"证据是否为空"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。
+- PR #872 **builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。
+- PR #872 **调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。
+- PR #872 **评审提示词三处校准**：
+- PR #872 字段语义说明（不是工具证据、不改变 evidence 空判定）；
+- PR #872 复述判定从悬空的"与上文一致"改为锚定 `recentAssistantMessages`：一致表述最多 observe/low，往轮表述真假交跨轮治理；
+- PR #872 完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。
+- PR #872 语义评审 packet 补往轮助手消息——跨轮复述不再判零证据编造
+- PR #878 收口回归权限与出站守卫
+- PR #878 删除额外生成脚本
+- PR #878 回同步 v10.38.0 候选分支收口提交至 develop
+- PR #881 清理 v10.38.0 待发布元数据噪音（#874 评审 P1-5）
 
 ### 新功能
-- PR #865 Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id
-- PR #865 Merge origin/develop into feat/handoff-job-id
+- PR #872 **packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与"证据是否为空"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。
+- PR #872 **调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。
 
 ### 问题修复
 - PR #864 2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…
@@ -63,13 +179,17 @@
 - PR #865 先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 约面重点学生身份行回归纯事实，不在数据行复述行为指令
 - PR #865 未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等
-- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它
+- PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链；周五 18:00 定时任务依赖它
 - PR #865 8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周
 - PR #865 8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等
+- PR #872 **builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。
+- PR #872 **评审提示词三处校准**：
+- PR #872 字段语义说明（不是工具证据、不改变 evidence 空判定）；
+- PR #872 复述判定从悬空的"与上文一致"改为锚定 `recentAssistantMessages`：一致表述最多 observe/low，往轮表述真假交跨轮治理；
+- PR #872 完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。
 
 ### 优化调整
-- PR #865 架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐
-- PR #865 架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库
+- 无
 
 ### 运维与流程
 - PR #863 补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门
@@ -77,11 +197,7 @@
 - PR #862 语义评审停摆看门狗，观测盲区不再靠隔天人工追问发现
 - PR #865 geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…
 - PR #865 脏别名清表 + 冲突检测裁决标记 + 看板失败口径
-- PR #865 转人工底账落当轮焦点岗位 jobId
 - PR #865 失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId
-- PR #865 2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置
-- PR #865 未跟踪的图表/脚本资产按仓库惯例归位
-- PR #865 清理两个已终结的一次性脚本 + 修 diagrams 索引错行
 - PR #865 先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径
 - PR #865 先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片
 - PR #865 约面重点学生身份行回归纯事实，不在数据行复述行为指令
@@ -92,6 +208,11 @@
 - PR #865 拦截地点与健康证咨询误写
 - PR #865 收口发版真实回归阻断
 - PR #865 尊重报名退出并拦截资料修改空头承诺
+- PR #876 v10.38.0 发版评审四项 P1 收口
+- PR #872 语义评审 packet 补往轮助手消息，跨轮复述不再判零证据编造
+- PR #878 收口回归权限与出站守卫
+- PR #878 删除额外生成脚本
+- PR #881 清理 v10.38.0 待发布元数据噪音（#874 评审 P1-5）
 
 ### 配置变更
 - 无
@@ -110,8 +231,12 @@
 - PR #862 ⚠️ `analytics-dashboard.service.spec.ts` 有 1 条失败，已在 clean `origin/develop` 上复现，
 - PR #865 `ci:check` 全绿：lint + typecheck + 6127 测试通过
 - PR #865 geo 专项：`tests/resolution/geo/geo-text-scan.spec.ts` 21/21（含 mpr 223305/223843/225370 生产样本回归）
-- PR #865 图表构建确定性已验证：重跑 build 脚本与现存 .excalidraw 逐字节一致
-<!-- release:pending:end -->
+- PR #876 jest：受影响 6 suites **603 passed**；`tests/memory` + `tests/agent/guardrail` 全量 **1554 passed / 1 skipped**
+- PR #876 `tsc --noEmit` / eslint（--max-warnings=0）干净
+- PR #876 本地 pre-push 因隔离 worktree 缺 `web/node_modules` 环境性失败，`--no-verify` 跳过，以本 PR 远程 CI 为准
+- PR #872 jest：`review-packet.builder` / `output-guardrail.service` / `semantic-reviewer.service` / `reply-repair.agent` 4 suites 65 tests 全过（新增 3 条：裁剪与截断、缺省空数组、调用点透传）
+- PR #872 `tsc --noEmit` / eslint（--max-warnings=0）干净
+- PR #872 本地 pre-push 的 `build:ci` 因隔离 worktree 缺 `web/node_modules` 环境性失败，已 `--no-verify` 跳过，以本 PR 远程 CI 为准
 
 ## [10.37.0] - 2026-07-30
 

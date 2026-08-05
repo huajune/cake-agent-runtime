@@ -9,6 +9,7 @@ import type { UserProfile } from '@memory/types/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
 import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
 import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
+import type { FinalizedVisualFactSheet } from '@resolution/visual';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -156,6 +157,14 @@ export interface ToolBuildContext {
    * 解析结果挂回合上下文，供 turn-finalizer 统一写 brand_state；不干预本轮查询。
    */
   onImageBrandResolved?: (resolutions: BrandResolution[], meta: { messageId: string }) => void;
+  /**
+   * save_image_description 落描述时同步产出的视觉事实 sheet（visual-fact-structuring，
+   * 镜像 onImageBrandResolved）。挂回合上下文供同轮工具（invite 城市门）与
+   * turn-finalizer 消费；不干预本轮查询。
+   */
+  onVisualFactsResolved?: (sheet: FinalizedVisualFactSheet, meta: { messageId: string }) => void;
+  /** 本轮已产出的视觉事实（同轮消费读取口，与 onVisualFactsResolved 配对）。 */
+  turnVisualFactSheets?: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
   /** 本轮前置高置信识别结果（含字段级置信度/证据），仅当前轮有效。 */
   highConfidenceFacts?: HighConfidenceFacts | null;
   /**

@@ -23,6 +23,9 @@ function buildRegistry() {
     {} as never,
     {} as never,
     {} as never,
+    // candidateSnapshotService / agentTracer（证据化裁决依赖）
+    { save: jest.fn(), load: jest.fn() } as never,
+    { emit: jest.fn() } as never,
   );
 }
 

@@ -398,4 +398,33 @@ describe('GuardrailReviewPacketBuilder', () => {
       errorType: 'invite.group_full',
     });
   });
+
+  it('forwards recent assistant texts for cross-turn restatement adjudication (最近 8 条、单条 600 字截断)', () => {
+    const texts = [
+      '',
+      '   ',
+      ...Array.from({ length: 9 }, (_, i) => `往轮回复${i}`),
+      `必胜客保利大都汇，日结当天发薪。${'班次详情'.repeat(200)}`,
+    ];
+
+    const packet = builder.build({
+      reply: '就是昨天说的那家',
+      toolCalls: [],
+      recentAssistantTexts: texts,
+    });
+
+    expect(packet.recentAssistantMessages).toHaveLength(8);
+    // 空白条被剔除后取最近 8 条：往轮回复 2..8 + 超长条
+    expect(packet.recentAssistantMessages[0]).toBe('往轮回复2');
+    const last = packet.recentAssistantMessages.at(-1)!;
+    expect(last).toHaveLength(601); // 600 字符 + 截断省略号
+    expect(last.startsWith('必胜客保利大都汇，日结当天发薪。')).toBe(true);
+    expect(last.endsWith('…')).toBe(true);
+  });
+
+  it('defaults recentAssistantMessages to empty array when not provided (repair 等旁路调用方)', () => {
+    const packet = builder.build({ reply: '你好', toolCalls: [] });
+
+    expect(packet.recentAssistantMessages).toEqual([]);
+  });
 });

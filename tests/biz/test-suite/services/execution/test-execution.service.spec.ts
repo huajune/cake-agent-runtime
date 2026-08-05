@@ -330,6 +330,50 @@ describe('TestExecutionService', () => {
       );
     });
 
+    it('should pass explicit physical tool restrictions and persist them for audit', async () => {
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
+      mockExecutionRepository.create.mockResolvedValue({ id: 'exec-tool-mode' } as any);
+
+      const result = await service.executeTest({
+        ...baseRequest,
+        saveExecution: true,
+        toolMode: 'readonly',
+        allowedToolNames: ['duliday_job_list'],
+      });
+
+      expect(loop.invokeReviewed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolMode: 'readonly',
+          allowedToolNames: ['duliday_job_list'],
+        }),
+        expect.anything(),
+      );
+      expect(result.request.body).toEqual(
+        expect.objectContaining({
+          toolMode: 'readonly',
+          allowedToolNames: ['duliday_job_list'],
+        }),
+      );
+      expect(executionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          testInput: expect.objectContaining({
+            toolMode: 'readonly',
+            allowedToolNames: ['duliday_job_list'],
+          }),
+        }),
+      );
+    });
+
+    it('should keep the default scenario tool behavior when restrictions are omitted', async () => {
+      mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
+
+      await service.executeTest(baseRequest);
+
+      const runnerParams = loop.invokeReviewed.mock.calls[0][0];
+      expect(runnerParams.toolMode).toBeUndefined();
+      expect(runnerParams.allowedToolNames).toBeUndefined();
+    });
+
     it('should switch to released strategy when bot ids are provided', async () => {
       mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());
 
@@ -501,6 +545,33 @@ describe('TestExecutionService', () => {
         }),
       );
     });
+
+    it('should apply explicit physical tool restrictions to stream execution', async () => {
+      mockLoop.stream.mockResolvedValue({
+        streamResult: { textStream: {} },
+        entryStage: 'trust_building',
+      } as any);
+
+      const result = await service.executeTestStreamWithMeta({
+        message: '只查岗位，不执行报名',
+        userId: 'user-1',
+        toolMode: 'readonly',
+        allowedToolNames: ['duliday_job_list'],
+      });
+
+      expect(loop.stream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolMode: 'readonly',
+          allowedToolNames: ['duliday_job_list'],
+        }),
+      );
+      expect(result.agentRequest).toEqual(
+        expect.objectContaining({
+          toolMode: 'readonly',
+          allowedToolNames: ['duliday_job_list'],
+        }),
+      );
+    });
   });
 
   describe('resolveHistoryForAgent', () => {
@@ -551,6 +622,30 @@ describe('TestExecutionService', () => {
           message: '你好',
         }),
       ).toEqual([]);
+    });
+  });
+
+  describe('convertVercelAIToTestRequest', () => {
+    it('should preserve explicit physical tool restrictions from the dashboard transport', () => {
+      const { testRequest } = service.convertVercelAIToTestRequest({
+        messages: [
+          {
+            id: 'message-1',
+            role: MessageRole.USER,
+            parts: [{ type: 'text', text: '只查岗位' }],
+          },
+        ],
+        userId: 'user-1',
+        toolMode: 'readonly',
+        allowedToolNames: ['duliday_job_list'],
+      });
+
+      expect(testRequest).toEqual(
+        expect.objectContaining({
+          toolMode: 'readonly',
+          allowedToolNames: ['duliday_job_list'],
+        }),
+      );
     });
   });
 

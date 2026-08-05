@@ -36,6 +36,7 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
       '[图片消息] 一张招聘海报，包含门店地址和薪资信息',
+      undefined,
     );
   });
 
@@ -84,10 +85,12 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
       '[图片消息] 第一张图片描述',
+      undefined,
     );
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-2',
       '[图片消息] 第二张图片描述',
+      undefined,
     );
   });
 
@@ -108,10 +111,12 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-emoji-1',
       '[表情消息] 微笑表情',
+      undefined,
     );
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
       '[图片消息] 一张招聘海报',
+      undefined,
     );
   });
 
@@ -137,6 +142,7 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
       '[图片消息] 简历图片：姓名兮兮，手机号18271421690，籍贯启东，身高163cm。\n简历附件：https://example.com/artwork/abc123.jpg',
+      undefined,
     );
   });
 
@@ -161,10 +167,12 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
       '[图片消息] Boss直聘简历列表截图，展示多个候选岗位',
+      undefined,
     );
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-emoji-1',
       '[表情消息] 微笑',
+      undefined,
     );
   });
 
@@ -184,6 +192,7 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-1',
       '[图片消息] 手写简历，包含姓名与电话',
+      undefined,
     );
   });
 
@@ -205,6 +214,7 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-unknown-kind',
       '[图片消息] 未标注类型的描述',
+      undefined,
     );
   });
 });

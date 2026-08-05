@@ -1,373 +1,165 @@
 {
-  "baseVersion": "10.37.0",
-  "nextVersion": "10.38.0",
+  "baseVersion": "10.39.0",
+  "nextVersion": "10.40.0",
   "updatedAt": "2026-08-05",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "863",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/863",
-      "title": "零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门（07-31 日报 P0）",
-      "author": "huajune",
-      "mergedAt": "2026-08-04",
-      "businessUpdates": [
-        "补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门",
-        "零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门（07-31 日报 P0）"
-      ],
-      "summary": [
-        "补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门",
-        "零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门（07-31 日报 P0）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`tests/agent/` **1077 passed**（含 guardrail 566）",
-        "typecheck ✅ / eslint（改动文件）✅"
-      ]
-    },
-    {
-      "number": "864",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/864",
-      "title": "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸等七连修",
-      "author": "ArielZhu",
-      "mergedAt": "2026-08-04",
-      "businessUpdates": [
-        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…"
-      ],
-      "summary": [
-        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…",
-        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸等七连修"
-      ],
-      "features": [],
-      "fixes": [
-        "2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "jest **6158 通过 / 385 suites**（含 22 个新增用例，全部取自本期审计的生产 trace 原文）",
-        "`lint:check`、`typecheck` 干净",
-        "语义档改动维持 **shadow**，不含任何 enforce 开关"
-      ]
-    },
-    {
-      "number": "862",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/862",
-      "title": "班次口径判据认现网短标签 + 语义评审停摆看门狗（badcase 2026-07-31 巡检）",
-      "author": "huajune",
-      "mergedAt": "2026-08-04",
-      "businessUpdates": [
-        "班次口径判据认现网短标签，组合排班制不再被答成\"任选其一\"",
-        "语义评审停摆看门狗，观测盲区不再靠隔天人工追问发现",
-        "班次口径判据认现网短标签 + 语义评审停摆看门狗（badcase 2026-07-31 巡检）"
-      ],
-      "summary": [
-        "班次口径判据认现网短标签，组合排班制不再被答成\"任选其一\"",
-        "语义评审停摆看门狗，观测盲区不再靠隔天人工追问发现",
-        "班次口径判据认现网短标签 + 语义评审停摆看门狗（badcase 2026-07-31 巡检）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "班次口径判据认现网短标签，组合排班制不再被答成\"任选其一\"",
-        "语义评审停摆看门狗，观测盲区不再靠隔天人工追问发现"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm test tests/tools/ tests/biz/monitoring/`：1631 passed",
-        "typecheck ✅ / eslint（改动文件）✅",
-        "⚠️ `analytics-dashboard.service.spec.ts` 有 1 条失败，已在 clean `origin/develop` 上复现，"
-      ]
-    },
-    {
-      "number": "865",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/865",
-      "title": "8-04 巡检修复批 + geo 通名后缀收口 + 图表/周报 skill 资产入库",
+      "number": "885",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/885",
+      "title": "图片信息结构化全链路——生产/存储/消费一次落地",
       "author": "huajune",
       "mergedAt": "2026-08-05",
       "businessUpdates": [
-        "Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id",
-        "Merge origin/develop into feat/handoff-job-id",
-        "巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
-        "先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片",
-        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
-        "未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等",
-        "weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它",
-        "8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
-        "8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等"
+        "fixture 换生产真实字符串——修复空转的年龄断言",
+        "白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正",
+        "prettier 修复 describe 长行",
+        "prettier 引号修复",
+        "描述缺失读时懒补写——33% 裸占位归因后的定向修复",
+        "修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量"
       ],
       "summary": [
-        "geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…",
-        "脏别名清表 + 冲突检测裁决标记 + 看板失败口径",
-        "转人工底账落当轮焦点岗位 jobId",
-        "失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId",
-        "2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置",
-        "未跟踪的图表/脚本资产按仓库惯例归位",
-        "清理两个已终结的一次性脚本 + 修 diagrams 索引错行",
-        "Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id",
-        "8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
-        "先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径",
-        "先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片",
-        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
-        "8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等",
-        "城市/区县轮通名后缀拒绝——宝安公路/宝山中街/洪湖公园类跨城误命中收口",
-        "架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库",
-        "weekly-ops-report 周报 skill 入库——SKILL 定义+badcase 采集脚本+三…",
-        "补齐 8-04 发版阻断回归",
-        "Merge origin/develop into feat/handoff-job-id",
-        "记录 8-04 全量回归结果",
-        "拦截地点与健康证咨询误写",
-        "收口发版真实回归阻断",
-        "尊重报名退出并拦截资料修改空头承诺",
-        "巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
-        "先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片",
-        "未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等",
-        "架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐",
-        "weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它",
-        "8-04 巡检修复批 + geo 通名后缀收口 + 图表/周报 skill 资产入库"
+        "第三方岗位截图夺号——图片描述不得当候选人自陈身份",
+        "自陈收窄限定在身份字段，不外溢到地理/偏好",
+        "姓名形态门与 #865 经理名门合并，复用同一 extractedName",
+        "fixture 换生产真实字符串——修复空转的年龄断言",
+        "图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地",
+        "白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正",
+        "key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证",
+        "prettier 修复 describe 长行",
+        "prettier 引号修复",
+        "kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口",
+        "废弃入站图片预描述分支——主聊按输入换模型后的死枝清理",
+        "描述缺失读时懒补写——33% 裸占位归因后的定向修复",
+        "修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量",
+        "visual-fact 批次发版底账（pending，P0 待真实链路回归）",
+        "图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示",
+        "图片信息结构化全链路——生产/存储/消费一次落地"
       ],
-      "features": [
-        "Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id",
-        "Merge origin/develop into feat/handoff-job-id"
-      ],
+      "features": [],
       "fixes": [
-        "巡检修复：AI 面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
-        "先筛后推：学生门槛进推荐卡片 → 改为查询侧确定性过滤，身份信息撤出候选人卡片",
-        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
-        "未修根因簇批量修复：扇出熔断 / 幻觉参数闸 / 健康证疑问句守卫 / 日期对账规则等",
-        "weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它",
-        "8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周",
-        "8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等"
+        "fixture 换生产真实字符串——修复空转的年龄断言",
+        "白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正",
+        "prettier 修复 describe 长行",
+        "prettier 引号修复",
+        "描述缺失读时懒补写——33% 裸占位归因后的定向修复",
+        "修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量"
       ],
       "optimizations": [
-        "架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐",
-        "架构图脚本化生成补全——guardrail 重构 + 记忆关系/候选人档案图入库"
+        "姓名形态门与 #865 经理名门合并，复用同一 extractedName"
       ],
       "ops": [
-        "geo 方案交付状态对齐 v3.5——enforce 决策 no-go 记录、anchor 契约对…",
-        "脏别名清表 + 冲突检测裁决标记 + 看板失败口径",
-        "转人工底账落当轮焦点岗位 jobId",
-        "失效岗位回合收尾剔除会话记忆 + 出处闸门告知合法 jobId",
-        "2026-07-30 守卫审计批——零证据事实断言入 P0、工具残文直达静默、fence 快通道加领域前置",
-        "未跟踪的图表/脚本资产按仓库惯例归位",
-        "清理两个已终结的一次性脚本 + 修 diagrams 索引错行",
-        "先筛后推——学生门槛进推荐卡片 + 收资前身份确认口径",
-        "先筛后推改为查询侧确定性过滤，身份信息撤出候选人卡片",
-        "约面重点学生身份行回归纯事实，不在数据行复述行为指令",
-        "城市/区县轮通名后缀拒绝——宝安公路/宝山中街/洪湖公园类跨城误命中收口",
-        "weekly-ops-report 周报 skill 入库——SKILL 定义+badcase 采集脚本+三…",
-        "补齐 8-04 发版阻断回归",
-        "记录 8-04 全量回归结果",
-        "拦截地点与健康证咨询误写",
-        "收口发版真实回归阻断",
-        "尊重报名退出并拦截资料修改空头承诺"
+        "第三方岗位截图夺号——图片描述不得当候选人自陈身份",
+        "自陈收窄限定在身份字段，不外溢到地理/偏好",
+        "图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地",
+        "key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证",
+        "kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口",
+        "废弃入站图片预描述分支——主聊按输入换模型后的死枝清理",
+        "visual-fact 批次发版底账（pending，P0 待真实链路回归）",
+        "图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示"
       ],
       "config": [],
       "envFiles": [],
       "verification": [
-        "`ci:check` 全绿：lint + typecheck + 6127 测试通过",
-        "geo 专项：`tests/resolution/geo/geo-text-scan.spec.ts` 21/21（含 mpr 223305/223843/225370 生产样本回归）",
-        "图表构建确定性已验证：重跑 build 脚本与现存 .excalidraw 逐字节一致"
+        "新增 `tests/resolution/visual`（10 例：归属默认/降级/round-trip/与旧正则逐字一致）+ `tests/memory/facts/visual-fact-scoping.spec.ts`（6 例，每条带无 sheet 回落对照）",
+        "既有断言仅两个 spec 因 `updateMessageContent` 第三参更新",
+        "**全量 394 suites / 6484 passed**；`tsc --noEmit`、`eslint`（全部改动文件）绿"
       ]
+    },
+    {
+      "number": "873",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/873",
+      "title": "图片信息链路现状架构文档（前身：立项三件套）",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "回填信息类别裁决记录 + vkikct39 事实修正"
+      ],
+      "summary": [
+        "图片信息结构化专项方案 + 链路盘点",
+        "评审意见修订——模块归位 resolution/visual + 落库设计说清",
+        "图片信息结构化代码改造技术方案",
+        "回填信息类别裁决记录 + vkikct39 事实修正",
+        "补实施记录——PR #885 一次性落地与三处偏离",
+        "三份立项文档整合为现状架构文档 visual-fact-pipeline",
+        "附录 A 扩为完整信息类别裁决清单",
+        "增数据流时序节——一张图片的一生（17 步 + 接管期平行线）",
+        "记忆与状态全局视图——三角色心智模型",
+        "图片信息链路现状架构文档（前身：立项三件套）"
+      ],
+      "features": [],
+      "fixes": [
+        "回填信息类别裁决记录 + vkikct39 事实修正"
+      ],
+      "optimizations": [],
+      "ops": [
+        "图片信息结构化专项方案 + 链路盘点",
+        "评审意见修订——模块归位 resolution/visual + 落库设计说清",
+        "图片信息结构化代码改造技术方案",
+        "补实施记录——PR #885 一次性落地与三处偏离",
+        "三份立项文档整合为现状架构文档 visual-fact-pipeline",
+        "附录 A 扩为完整信息类别裁决清单",
+        "增数据流时序节——一张图片的一生（17 步 + 接管期平行线）",
+        "记忆与状态全局视图——三角色心智模型"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "894",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/894",
+      "title": "补充 v10.39.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "补充 v10.39.0 发版底账"
+      ],
+      "summary": [
+        "补充 v10.39.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补充 v10.39.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
-    "version": "10.37.0",
-    "date": "2026-07-30",
+    "version": "10.39.0",
+    "date": "2026-08-05",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "843",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/843",
-        "title": "抽取臆造档案字段门 + 残障资格疑问句式 + 拉群时机闸门（badcase 2026-07-29 巡检）",
+        "number": "886",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/886",
+        "title": "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
         "author": "huajune",
-        "mergedAt": "2026-07-30",
+        "mergedAt": "2026-08-05",
         "businessUpdates": [
-          "收资记忆抽取增加字段与来源门，避免把臆造内容或昵称写入候选人档案",
-          "补全残障资格疑问句式识别，并为拉群时机增加确定性闸门"
+          "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
+          "补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）"
         ],
         "summary": [
-          "收资记忆抽取增加字段与来源门，避免把臆造内容或昵称写入候选人档案",
-          "补全残障资格疑问句式识别，并为拉群时机增加确定性闸门"
-        ],
-        "features": [],
-        "fixes": [
-          "收资记忆抽取增加字段与来源门，避免把臆造内容或昵称写入候选人档案",
-          "补全残障资格疑问句式识别，并为拉群时机增加确定性闸门"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "新增 24 例回归测试；全量测试、lint、format、typecheck、geo 校验与构建通过"
-        ]
-      },
-      {
-        "number": "844",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/844",
-        "title": "收资清单催填时禁止逐字重复整份模板",
-        "author": "ArielZhu",
-        "mergedAt": "2026-07-30",
-        "businessUpdates": [
-          "催填候选人收资信息时只询问缺失项，不再逐字重复整份模板"
-        ],
-        "summary": [
-          "催填候选人收资信息时只询问缺失项，不再逐字重复整份模板"
-        ],
-        "features": [],
-        "fixes": [
-          "催填候选人收资信息时只询问缺失项，不再逐字重复整份模板"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "相关提示词与收资流程回归通过"
-        ]
-      },
-      {
-        "number": "845",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/845",
-        "title": "语义 shadow 补零证据编造档，岗位硬事实信号收拢单一定义",
-        "author": "huajune",
-        "mergedAt": "2026-07-30",
-        "businessUpdates": [
-          "查岗没有有效证据时，具体薪资、距离、发薪日与班次会进入语义审查",
-          "岗位硬事实信号收拢为单一定义，并接回语义审查与 repair 回归生产路径"
-        ],
-        "summary": [
-          "查岗没有有效证据时，具体薪资、距离、发薪日与班次会进入语义审查",
-          "岗位硬事实信号收拢为单一定义，并接回语义审查与 repair 回归生产路径"
-        ],
-        "features": [],
-        "fixes": [
-          "查岗没有有效证据时，具体薪资、距离、发薪日与班次会进入语义审查",
-          "岗位硬事实信号收拢为单一定义，并接回语义审查与 repair 回归生产路径"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "定向 66/66、全量 384 suites / 6121 tests、typecheck 与构建通过"
-        ]
-      },
-      {
-        "number": "846",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/846",
-        "title": "岗位事实口径两处收口——阶梯薪资计算基数、健康证面试/入职两段",
-        "author": "huajune",
-        "mergedAt": "2026-07-30",
-        "businessUpdates": [
-          "阶梯薪资计算基数不确定时不再自行推断，改为转人工确认",
-          "健康证口径同时说明面试与入职两个阶段的要求"
-        ],
-        "summary": [
-          "阶梯薪资计算基数不确定时不再自行推断，改为转人工确认",
-          "健康证口径同时说明面试与入职两个阶段的要求"
-        ],
-        "features": [],
-        "fixes": [
-          "阶梯薪资计算基数不确定时不再自行推断，改为转人工确认",
-          "健康证口径同时说明面试与入职两个阶段的要求"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "岗位工具测试 608 条通过；typecheck 与格式检查通过"
-        ]
-      },
-      {
-        "number": "847",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/847",
-        "title": "修复治理文档同步从未触发与删列后的关闭死锁",
-        "author": "huajune",
-        "mergedAt": "2026-07-30",
-        "businessUpdates": [
-          "修复治理文档同步从未触发，以及删列后无法关闭治理项的问题"
-        ],
-        "summary": [
-          "修复治理文档同步从未触发，以及删列后无法关闭治理项的问题"
+          "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
+          "补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "修复治理文档同步从未触发，以及删列后无法关闭治理项的问题"
+          "候选人事实 Claim 裁决体系——证据化方案 §4-§12 主体交付（shadow 首发）",
+          "补齐 candidate 裁决域全部源文件的直属 spec（评审 blocking 项）"
         ],
         "config": [],
-        "envFiles": [],
-        "verification": [
-          "新增 18 条针对性用例；全量 380 suites / 5982 tests 通过"
-        ]
-      },
-      {
-        "number": "848",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/848",
-        "title": "转人工 jobId 底账 + 失效岗位记忆剔除 + 07-30 守卫审计批",
-        "author": "huajune",
-        "mergedAt": "2026-07-30",
-        "businessUpdates": [
-          "转人工底账记录当轮焦点 jobId，并在岗位失效后剔除对应会话记忆",
-          "补强零证据事实、工具残文等出站守卫，并修正 Dashboard 失败率口径"
+        "envFiles": [
+          ".env.example"
         ],
-        "summary": [
-          "转人工底账记录当轮焦点 jobId，并在岗位失效后剔除对应会话记忆",
-          "补强零证据事实、工具残文等出站守卫，并修正 Dashboard 失败率口径"
-        ],
-        "features": [],
-        "fixes": [
-          "转人工底账记录当轮焦点 jobId，并在岗位失效后剔除对应会话记忆",
-          "补强零证据事实、工具残文等出站守卫，并修正 Dashboard 失败率口径"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "发版集成 CI：383 suites / 6097 tests 通过",
-          "测试库与生产库 migration 均通过 MCP 应用及结构/语义校验",
-          "真实 Agent 批次 7/7 执行、4/4 可评估场景通过，正式测试资产与生产 Dashboard 已同步",
-          "生产托管配置核验通过"
-        ]
-      },
-      {
-        "number": "849",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/849",
-        "title": "首版悬空承诺落观测档 + 品牌数字写法差异不再判串台",
-        "author": "huajune",
-        "mergedAt": "2026-07-30",
-        "businessUpdates": [
-          "首版悬空承诺进入观测；品牌中文数字与阿拉伯数字写法差异不再误判串台"
-        ],
-        "summary": [
-          "首版悬空承诺进入观测；品牌中文数字与阿拉伯数字写法差异不再误判串台"
-        ],
-        "features": [],
-        "fixes": [
-          "首版悬空承诺进入观测；品牌中文数字与阿拉伯数字写法差异不再误判串台"
-        ],
-        "optimizations": [],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "新增 12 条直接回归测试；全量 380 suites / 5976 tests 通过"
-        ]
+        "verification": []
       }
     ]
   }

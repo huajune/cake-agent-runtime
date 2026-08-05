@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
@@ -36,12 +37,28 @@ export class SemanticReviewCoverageWatchdog {
     private readonly guardrailReviewService: GuardrailReviewService,
     private readonly alertService: AlertNotifierService,
     private readonly configService: ConfigService,
+    private readonly systemConfigService: SystemConfigService,
   ) {}
 
   /** 每小时第 5 分钟检查上一个完整小时，给异步追加的语义评审留出落库余量。 */
   @Cron('5 * * * *', { timeZone: 'Asia/Shanghai' })
   async checkPreviousHourCoverage(): Promise<void> {
     if (this.configService.get<string>('READ_ONLY_PREVIEW') === 'true') return;
+
+    // 语义档被运营在 Dashboard 有意关停（shadow 与 enforce 均关）时，评审归零是
+    // 期望状态而非停摆——每小时误报一次恰是本判据自称要避免的"狼来了"。开关读取
+    // 失败按开启处理：宁可多查一轮，不能因配置抖动漏掉真停摆。
+    try {
+      const replyConfig = await this.systemConfigService.getAgentReplyConfig();
+      if (
+        !replyConfig.outputGuardrailLlmEnabled &&
+        !replyConfig.outputGuardrailSemanticShadowEnabled
+      ) {
+        return;
+      }
+    } catch {
+      // 继续检查
+    }
 
     const to = new Date();
     to.setMinutes(0, 0, 0);

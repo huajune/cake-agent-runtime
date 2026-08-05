@@ -389,8 +389,11 @@ describe('PreparationService', () => {
       duliday_job_list: {},
       recall_history: {},
       duliday_interview_booking: {},
+      duliday_cancel_work_order: {},
       duliday_modify_interview_time: {},
       invite_to_group: {},
+      send_store_location: {},
+      raise_risk_alert: {},
       request_handoff: {},
       skip_reply: {},
     });
@@ -1063,7 +1066,9 @@ describe('PreparationService', () => {
 
     expect(result.finalPrompt).toContain('[预约状态]');
     expect(result.finalPrompt).toContain('没有任何进行中的报名/预约工单');
-    expect(result.finalPrompt).toContain('严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径');
+    expect(result.finalPrompt).toContain(
+      '严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径',
+    );
     // 段名必须与 [当前预约信息] 区分——后者的存在性被工具指令当作"已有预约"信号
     expect(result.finalPrompt).not.toContain('[当前预约信息]');
   });

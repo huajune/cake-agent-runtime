@@ -64,6 +64,7 @@ import {
 import {
   detectBrandAliasHints,
   extractHighConfidenceFacts,
+  stripQuotedBlocks,
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
@@ -85,6 +86,17 @@ import {
   hasIsStudentTopicEvidence,
   isStorableCandidatePhone,
 } from '../facts/placeholder-identity';
+import { hasSelfReportedPhoneProvenance, isDigitsOnlyName } from '../facts/visual-description';
+import {
+  fieldValues,
+  isSelfReportedVisualMessage,
+  isVisualDescriptionText,
+  parseStoredVisualFactSheet,
+  type FinalizedVisualFactSheet,
+} from '@resolution/visual';
+import { stripTimeContextSuffix } from '../facts/name-guard';
+import { scanGeoSignalsFromText } from '@resolution/geo';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   hasMeaningfulValue,
@@ -128,6 +140,8 @@ export class SessionService {
     private readonly tracer?: AgentTracerService,
     @Optional()
     private readonly geocoding?: GeocodingService,
+    @Optional()
+    private readonly chatSession?: ChatSessionService,
   ) {}
 
   // ==================== store ====================
@@ -761,6 +775,46 @@ export class SessionService {
     const conversationHistory = allHistory.slice(0, -1);
     const userMessages = scopedMessages.filter((m) => m.role === 'user').map((m) => m.content);
 
+    // 视觉事实读路径（visual-fact-structuring §3.3）：窗口含视觉消息时拉本会话 sheet，
+    // 以「剥时间后缀的内容」等值匹配——描述由 updateMessageContent 整条写入，
+    // 窗口内容与库中逐字一致（时间后缀是窗口侧注入的，匹配前剥掉）。
+    // 拉取失败/无 sheet 一律回落 PR #870 的文本前缀判定，行为等同现状。
+    const visualKey = (text: string): string => stripTimeContextSuffix(text).trim();
+    let visualSheetsByContent: Map<string, FinalizedVisualFactSheet> | undefined;
+    if (this.chatSession && userMessages.some((m) => isVisualDescriptionText(visualKey(m)))) {
+      try {
+        const rows = await this.chatSession.getVisualFacts(sessionId, {
+          sinceTimestamp: Date.now() - this.config.historyWindowSeconds * 1000,
+        });
+        const map = new Map<string, FinalizedVisualFactSheet>();
+        for (const row of rows) {
+          const sheet = parseStoredVisualFactSheet(row.visualFacts);
+          if (sheet && !sheet.degraded) map.set(row.content.trim(), sheet);
+        }
+        if (map.size > 0) visualSheetsByContent = map;
+      } catch (error) {
+        this.logger.warn(
+          `[extractFacts] 视觉事实拉取失败（回落文本前缀判定）: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    const sheetOf = (text: string): FinalizedVisualFactSheet | undefined =>
+      visualSheetsByContent?.get(visualKey(text));
+    // 自陈语料（裁决 A.2 通道③入口）：手打文本 + 候选人自陈材料（简历/证件）。
+    // 引用块剥离（评审阻断项，2026-08-05）：候选人引用回复经理消息时，
+    // `[引用 店长：…电话138…]` 引用块携带经理原文——不剥则经理号码被当自陈出处，
+    // foreignPhone 门失效，P0 经引用向量复现。被引用内容的合法证据来源是
+    // assistantTexts（原始助手消息本就在其中），从自陈语料剥除不损失证据。
+    const typedOrSelfMaterialMessages = userMessages
+      .filter((m) => {
+        const key = visualKey(m);
+        if (!isVisualDescriptionText(key)) return true;
+        return isSelfReportedVisualMessage(key, sheetOf(m));
+      })
+      .map((m) => stripQuotedBlocks(m));
+
     const previousFacts = await this.getFacts(corpId, userId, sessionId);
     // 事实提取每轮都会触发，但不是每轮都全量重算：
     // - 首次提取：使用当前会话段里的全部历史
@@ -809,7 +863,9 @@ export class SessionService {
       : null;
 
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
-      const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
+      const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData, {
+        visualSheetsByContent,
+      });
       if (!currentTurnRuleHits) {
         // 纯应答轮唯一可能携带的新事实就是确认裁决：有则单写 city 后再早退
         if (confirmedCityFact) {
@@ -831,7 +887,9 @@ export class SessionService {
 
     // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
-    const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
+    const ruleFacts = extractHighConfidenceFacts(userMessages, brandData, {
+      visualSheetsByContent,
+    });
     const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
     const prompt = buildSessionExtractionPrompt(
       brandData,
@@ -877,6 +935,39 @@ export class SessionService {
       newFacts.preferences.city = locationCityFact;
     }
 
+    // 地图截图城市确权（visual-fact-structuring R3，badcase oaz6inzf / x3pdj7qh）：
+    // 本轮末尾连续 user 块里的 map_location sheet，其 city/address 字段经 geo 白名单
+    // 确权后按 source='tool' 入档——与定位分享（A2）同级证据、同让位规则：
+    // 本轮文本已产出高置信城市时让位（T1 亲证 > T2 工具确权）。
+    if (
+      visualSheetsByContent &&
+      !(newFacts.preferences.city && newFacts.preferences.city.confidence === 'high')
+    ) {
+      outer: for (const text of currentTurnUserTexts) {
+        const sheet = sheetOf(text);
+        if (!sheet || sheet.kind !== 'map_location') continue;
+        const candidates = [
+          ...fieldValues(sheet, 'city'),
+          ...fieldValues(sheet, 'address'),
+          ...fieldValues(sheet, 'candidate_address'),
+        ];
+        for (const candidate of candidates) {
+          const scan = scanGeoSignalsFromText(candidate);
+          const city = scan.city?.value?.trim().replace(/市$/, '');
+          if (!city) continue;
+          newFacts.preferences.city = {
+            value: city,
+            confidence: 'high',
+            source: 'tool',
+            evidence: truncateEvidence(`地图截图城市确权：${candidate}`),
+            extractedAt: new Date().toISOString(),
+          };
+          this.logger.log(`[extractFacts] 地图截图城市确权入档: pref.city=${city}（source=tool）`);
+          break outer;
+        }
+      }
+    }
+
     // is_student 首写证据门（badcase 2026-07-28 chat 6a673402…）：抽取模型可在零身份
     // 语境下凭空发明布尔身份（该案候选人只说过"川沙"，evidence 自证"未提及，不填"
     // 仍输出 false），随后经 [已确认事实] 逐轮延续，毒化身份守卫第 4 档与展示层。
@@ -890,7 +981,7 @@ export class SessionService {
     if (
       typeof previousIsStudent !== 'boolean' &&
       typeof extractedIsStudent === 'boolean' &&
-      !hasIsStudentTopicEvidence(userMessages, assistantTexts)
+      !hasIsStudentTopicEvidence(typedOrSelfMaterialMessages, assistantTexts)
     ) {
       newFacts.interview_info.is_student = null;
       this.logger.warn(
@@ -947,11 +1038,28 @@ export class SessionService {
       );
     }
 
+    // 姓名形态门（badcase 2026-08-04 vkikct39，同案）：同一次抽取把手机号写进了 name
+    // （evidence 原文："**name / phone**：沿用已确认事实 13788930869"）。
+    // sanitizeInterviewName 只拦"我是XX"打招呼语昵称，纯数字值直接穿透，随后被当真名
+    // 预填进收资表。与上面的经理名门同属 name 字段，共用 extractedName。
+    const droppedDigitsName =
+      !droppedQuotedSpeakerName &&
+      typeof extractedName === 'string' &&
+      isDigitsOnlyName(extractedName);
+    if (droppedDigitsName) {
+      dropInterviewField(
+        'name',
+        extractedName,
+        'digits_only_name',
+        `[extractFacts] name 为纯数字形态（疑似手机号错填姓名），丢弃「${extractedName}」`,
+      );
+    }
+
     // 手机号形态门：非 11 位手机号形态一律丢（出处门只管 ≥7 位数字流，短垃圾值绕过）。
     const extractedPhone = unwrapSessionFactValue(newFacts.interview_info.phone);
-    const droppedPhone =
+    const invalidPhoneShape =
       typeof extractedPhone === 'string' && !isStorableCandidatePhone(extractedPhone);
-    if (droppedPhone) {
+    if (invalidPhoneShape) {
       dropInterviewField(
         'phone',
         extractedPhone,
@@ -959,6 +1067,30 @@ export class SessionService {
         `[extractFacts] phone 非 11 位手机号形态，丢弃臆造值「${extractedPhone}」`,
       );
     }
+
+    // 第三方截图夺号门（badcase 2026-08-04 vkikct39，chat 6a714c00…，P0）：
+    // assertExtractionIdentityProvenance 的出处门认整个提取 prompt，**包含图片描述**，
+    // 于是候选人转发的 BOSS 直聘岗位截图里**发布方**的手机号，形态合法（11 位）、
+    // 出处也"找得到"，一路落进 interview_info.phone，最后被提交进真实报名 ——
+    // AI 面试短信发到了招募经理手机上。号码必须是候选人自己敲出来的（或来自他本人的
+    // 简历图片），只在与旧值不同时校验，已确立的号码沿用不受影响。
+    const previousPhone = unwrapSessionFactValue(previousFacts?.interview_info.phone);
+    const foreignPhone =
+      !invalidPhoneShape &&
+      typeof extractedPhone === 'string' &&
+      extractedPhone !== previousPhone &&
+      !hasSelfReportedPhoneProvenance(extractedPhone, typedOrSelfMaterialMessages, {
+        prefiltered: true,
+      });
+    if (foreignPhone) {
+      dropInterviewField(
+        'phone',
+        extractedPhone,
+        'phone_not_self_reported',
+        `[extractFacts] phone 只出现在图片描述等第三方内容中，丢弃非自陈号码「${extractedPhone}」`,
+      );
+    }
+    const droppedPhone = invalidPhoneShape || foreignPhone;
 
     // 门店/户籍窗口出处门：两字段规则均已声明只能来自明示，值必是对话里出现过的串；
     // 只在"与旧值不同"时校验，已确立的旧值沿用不受影响。
@@ -990,7 +1122,7 @@ export class SessionService {
     if (
       previousHealthCert == null &&
       extractedHealthCert != null &&
-      !hasHealthCertificateTopicEvidence(userMessages, assistantTexts)
+      !hasHealthCertificateTopicEvidence(typedOrSelfMaterialMessages, assistantTexts)
     ) {
       dropInterviewField(
         'has_health_certificate',
@@ -1075,7 +1207,8 @@ export class SessionService {
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
     // 形态门丢弃的 phone 还要显式清 Redis：下一轮 [已确认事实] 会把旧脏值再喂回抽取，
     // deepMerge "null 不覆盖" 会让丢弃只在本轮生效，脏号继续沿用。
-    const nameStillNull = droppedName && !unwrapSessionFactValue(newFacts.interview_info.name);
+    const nameStillNull =
+      (droppedName || droppedDigitsName) && !unwrapSessionFactValue(newFacts.interview_info.name);
     const forceNullInterviewFields: (keyof EntityExtractionResult['interview_info'])[] = [];
     if (nameStillNull) forceNullInterviewFields.push('name');
     // 引用发言人名同理显式清 Redis：上一轮可能已把经理名写进档案（or9d6viv 实锤），
@@ -1290,7 +1423,15 @@ export class SessionService {
 
       const quote = entry.quote?.trim();
       if (!quote || quote.length < 2) continue;
-      if (!userMessages.some((message) => message.includes(quote))) {
+      // 裁决 B3：phone 的升级 quote 只认候选人手打文本——证件/简历图描述里的号码
+      // quote 不得作为升 high 依据（medium 锁定，须经确认问答升级）。其余字段照旧。
+      const quoteCorpus =
+        field === 'phone'
+          ? userMessages
+              .filter((message) => !isVisualDescriptionText(stripTimeContextSuffix(message).trim()))
+              .map((message) => stripQuotedBlocks(message))
+          : userMessages;
+      if (!quoteCorpus.some((message) => message.includes(quote))) {
         this.logger.debug(
           `[extractFacts] explicit_provenance quote 未在候选人消息中找到，拒绝升级 ${field}`,
         );

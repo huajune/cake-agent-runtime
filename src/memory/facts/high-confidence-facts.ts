@@ -13,8 +13,14 @@ import {
   type ScheduleConstraintFact,
 } from '../types/session-facts.types';
 import { scanGeoSignalsFromText } from '@resolution/geo';
-import { isLikelyRealChineseName } from './name-guard';
+import { isLikelyRealChineseName, stripTimeContextSuffix } from './name-guard';
 import { decideLaborFormIntent } from './labor-form';
+import {
+  fieldValues,
+  isSelfReportedVisualMessage,
+  isVisualDescriptionText,
+  type FinalizedVisualFactSheet,
+} from '@resolution/visual';
 
 // ── 个人信息关键词 ─────────────────────────────────────────────────────────
 
@@ -320,9 +326,66 @@ function applyFieldExtractor(
   reasons.push(toReason(label));
 }
 
+/** 每条消息的提取授权域（visual-fact-structuring 附录 A 三通道模型的规则轨投影）。 */
+interface MessageExtractionScope {
+  /** 身份字段（interview_info + gender + is_student/education）。 */
+  identity: boolean;
+  /** 手机号单列：证件/简历图上的号码按裁决 B3 不得经规则轨落 high（LLM 轨 medium + 确认升级）。 */
+  phone: boolean;
+  /** 偏好标量（薪资/班次/用工形式/工种等）。 */
+  preferences: boolean;
+  /** 地理信号（city/district/location）。 */
+  geo: boolean;
+}
+
+const SCOPE_ALL: MessageExtractionScope = {
+  identity: true,
+  phone: true,
+  preferences: true,
+  geo: true,
+};
+const SCOPE_NONE: MessageExtractionScope = {
+  identity: false,
+  phone: false,
+  preferences: false,
+  geo: false,
+};
+
+/**
+ * 按消息类别 + sheet kind 决定提取授权域：
+ * - 手打文本：全量（现状）
+ * - 简历/证件（sheet 或文本标记）：身份可提，phone 除外（B3）；偏好/地理照旧
+ * - map_location：仅地理——候选人用地图指自己的位置
+ * - job_posting/chat_screenshot/其它 sheet：全关（岗位卡薪资≠期望薪资 R1e；门店城市≠候选人城市）
+ * - 视觉消息无 sheet（旧数据/降级）：身份关、偏好+地理开（= PR #870 行为，不劣化地图定位）
+ */
+function resolveExtractionScope(
+  message: string,
+  sheet: FinalizedVisualFactSheet | null | undefined,
+): MessageExtractionScope {
+  if (!isVisualDescriptionText(message)) return SCOPE_ALL;
+  if (sheet && !sheet.degraded) {
+    if (sheet.kind === 'resume' || sheet.kind === 'certificate') {
+      return { identity: true, phone: false, preferences: true, geo: true };
+    }
+    if (sheet.kind === 'map_location') return { ...SCOPE_NONE, geo: true };
+    return SCOPE_NONE;
+  }
+  if (isSelfReportedVisualMessage(message)) {
+    return { identity: true, phone: false, preferences: true, geo: true };
+  }
+  return { ...SCOPE_NONE, preferences: true, geo: true };
+}
+
+export interface ExtractHighConfidenceOptions {
+  /** 剥时间后缀内容 → sheet 的映射（visual-fact-structuring 消费侧读路径）。 */
+  visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
+}
+
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
+  options?: ExtractHighConfidenceOptions,
 ): HighConfidenceFacts | null {
   const normalizedMessages = userMessages
     .map((message) => stripQuotedBlocks(message.trim()))
@@ -331,11 +394,25 @@ export function extractHighConfidenceFacts(
 
   const facts = cloneFallbackExtraction();
   const reasons: string[] = [];
+  // 查表键必须剥时间后缀（评审阻断项，2026-08-05）：map 键是 DB 原始内容（无后缀），
+  // 而生产窗口消息带 injectTimeContext 注入的 `\n[消息发送时间：…]` 后缀——不剥则
+  // 查表永远 miss，sheet 授权域静默失效、全部回落文本兜底（测试曾因 fixture 无后缀漏过）。
+  const sheetFor = (message: string): FinalizedVisualFactSheet | undefined =>
+    options?.visualSheetsByContent?.get(stripTimeContextSuffix(message).trim());
 
   // 品牌收口（§9.2）：本函数不再内联直写 preferences.brands——品牌真相唯一存储是
   // brand_state（写入只经 turn-finalizer 的 reducer），preferences.brands 退化为只读投影。
   // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
-  const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
+  // R2 发布方剔除：带 job_posting sheet 的消息，品牌线索只吃 key=brand 字段值
+  // （发布方公司名在 key=publisher，不进品牌语料）；其余消息照旧全文。
+  const hintCorpus = normalizedMessages.map((message) => {
+    const sheet = sheetFor(message);
+    if (sheet && !sheet.degraded && sheet.kind === 'job_posting') {
+      return fieldValues(sheet, 'brand').join('；');
+    }
+    return message;
+  });
+  const aliasHints = detectBrandAliasHints(hintCorpus.filter(Boolean), brandData);
   if (aliasHints.length > 0) {
     reasons.push(
       ...aliasHints.map(
@@ -345,16 +422,34 @@ export function extractHighConfidenceFacts(
     );
   }
 
+  // 自陈收窄（badcase 2026-08-04 vkikct39）：候选人转发的第三方岗位截图，其 vision
+  // 描述被回写进用户消息内容，描述里**发布方**的手机号与"18-40岁"岗位年龄区间会被
+  // 身份字段提取器当成候选人自陈。与 stripQuotedBlocks 同一理由：第三方内容不是自陈。
+  //
+  // 收窄范围严格限定在 interview_info（"候选人是谁"）+ gender：
+  // - preferences（薪资/班次/工种/用工形式）与 city/district/location 刻意不收窄——
+  //   候选人发地图截图指位置是被期待的能力（badcase oaz6inzf 的诉求正是"图上已经
+  //   看到是北京了还问城市"），一刀切会把它打掉；
+  // - 品牌线索同理，图片品牌解析是 §10.2 的显式通道。
   for (const message of normalizedMessages) {
+    const scope = resolveExtractionScope(message, sheetFor(message));
+    const isSelfReported = scope.identity;
+
     // 注册表驱动：统一应用所有"无字段间联动"的标量/数组提取器（见 FIELD_EXTRACTORS）。
     for (const extractor of FIELD_EXTRACTORS) {
+      if (extractor.group === 'interview_info') {
+        if (!scope.identity) continue;
+        if (extractor.field === 'phone' && !scope.phone) continue;
+      }
+      if (extractor.group === 'preferences' && !scope.preferences) continue;
       applyFieldExtractor(extractor, message, facts, reasons);
     }
 
     // ── 以下为带字段间联动 / 自定义合并语义的特殊字段，保留在循环内手写 ──
 
     // gender：提取成功时联动写入 gender_source='candidate'，注册表的单字段模型表达不了。
-    const gender = extractGender(message);
+    // 同属身份字段：岗位截图里的"仅限男"不是候选人性别。
+    const gender = isSelfReported ? extractGender(message) : null;
     if (gender && !facts.interview_info.gender) {
       facts.interview_info.gender = ruleValue(gender, {
         evidence: `性别识别：${gender}`,
@@ -367,7 +462,10 @@ export function extractHighConfidenceFacts(
 
     // is_student + education：一次 extractStudentInfo 同时产出两个字段（且 is_student 走
     // boolean null 判定，education 在缺失时还有 extractEducation 兜底），强耦合不拆。
-    const studentInfo = extractStudentInfo(message);
+    // 同属身份字段：岗位截图里的"限在校大学生/大专以上"是岗位要求，不是候选人学历。
+    const studentInfo = isSelfReported
+      ? extractStudentInfo(message)
+      : { isStudent: null, education: null };
     if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
       facts.interview_info.is_student = ruleValue(studentInfo.isStudent, {
         evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
@@ -379,7 +477,8 @@ export function extractHighConfidenceFacts(
         evidence: `学历识别：${studentInfo.education}`,
       });
       reasons.push(`学历识别：${studentInfo.education}`);
-    } else if (!studentInfo.education) {
+    } else if (!studentInfo.education && scope.identity) {
+      // 兜底路径同受身份域门控（评审阻断项）：岗位截图"学历要求：大专以上"不得入档
       const explicitEducation = extractEducation(message);
       if (explicitEducation && !facts.interview_info.education) {
         facts.interview_info.education = ruleValue(explicitEducation, {
@@ -389,7 +488,9 @@ export function extractHighConfidenceFacts(
       }
     }
 
-    const scheduleConstraint = extractScheduleConstraintStructured(message);
+    const scheduleConstraint = scope.preferences
+      ? extractScheduleConstraintStructured(message)
+      : null;
     if (scheduleConstraint) {
       const existingConstraint = unwrapHighConfidenceValue(facts.preferences.schedule_constraint);
       const merged: ScheduleConstraintFact = {
@@ -410,7 +511,9 @@ export function extractHighConfidenceFacts(
       reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
     }
 
-    const availableAfter = extractAvailableAfterDate(message, formatLocalDate(new Date()));
+    const availableAfter = scope.preferences
+      ? extractAvailableAfterDate(message, formatLocalDate(new Date()))
+      : null;
     if (availableAfter) {
       facts.preferences.available_after = ruleValue(availableAfter, {
         evidence: `未来日期硬约束：${availableAfter.date}`,
@@ -418,7 +521,9 @@ export function extractHighConfidenceFacts(
       reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
     }
 
-    const location = extractLocation(message);
+    const location = scope.geo
+      ? extractLocation(message)
+      : { city: null, district: [], location: [] };
     if (location.city) {
       facts.preferences.city = ruleValue(location.city.value, {
         evidence: location.city.evidence,
@@ -1189,7 +1294,11 @@ function extractHealthCertificate(message: string): string | null {
         /(?:费用|收费|报销|补贴|免费|线上|线下)/u.test(clause)) ||
         /(?:可以|可|能|会|愿意|接受|打算|准备|考虑|入职前|上岗前|后期|后面|之后|到时|到时候|公司|门店|你们|平台|单位|医院|社区).{0,16}(?:去|帮我|统一|负责)?办(?:理)?(?:一下|了)?(?:吗|么|呢)?[?？!！。；;，,]?$/u.test(
           clause,
-        ));
+        ) ||
+        // 跨分句资质限定语：「我有健康证，但是外地的/是外地办的」——限定语分句里没有
+        // "健康证"字样，不继承话题就永远够不到"非本地"判定（消息级正则改逐分句时引入
+        // 的回归）。异地证按"有"直通会与 precheck「异地证一律不能按有提交」口径相撞。
+        /(?:外地|异地|(?:不是|非)本地)/u.test(clause));
     const scopedClause = mentionsHealthCertificate
       ? clause
       : inheritsHealthCertificateTopic

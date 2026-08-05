@@ -303,11 +303,17 @@ describe('tool-call-analysis', () => {
         { toolResults: [{ toolName: 'invite_to_group', output: { accepted: true } }] },
       ];
       expect(findSucceededSideEffectTools(steps)).toEqual(['invite_to_group']);
-      expect(SIDE_EFFECT_TOOLS.has('duliday_cancel_work_order')).toBe(true);
-      expect(SIDE_EFFECT_TOOLS.has('duliday_modify_interview_time')).toBe(true);
-      expect(SIDE_EFFECT_TOOLS.has('send_store_location')).toBe(true);
-      expect(SIDE_EFFECT_TOOLS.has('raise_risk_alert')).toBe(true);
-      expect(SIDE_EFFECT_TOOLS.has('request_handoff')).toBe(true);
+      expect([...SIDE_EFFECT_TOOLS].sort()).toEqual(
+        [
+          'duliday_interview_booking',
+          'invite_to_group',
+          'duliday_cancel_work_order',
+          'duliday_modify_interview_time',
+          'send_store_location',
+          'raise_risk_alert',
+          'request_handoff',
+        ].sort(),
+      );
     });
   });
 

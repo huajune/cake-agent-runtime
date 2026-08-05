@@ -207,11 +207,14 @@ export class OutputGuardrailService {
     // 按优先级聚合 rule 档决策：block > replan > revise > observe > pass
     const ruleDecision = this.mergeRuleDecision(ruleResult.contradictions);
 
-    // packet 只裁剪本轮已有信息（同步、无 IO），shadow 与 enforce 共用同一份证据。
+    // packet 只裁剪已在手的信息（同步、无额外 IO），shadow 与 enforce 共用同一份证据。
+    // 往轮助手文本复用上面 rule 档的同一次短期记忆读取——语义档与规则档
+    // （job_facts_without_any_lookup 的出处豁免）看到同一份跨轮复述信号。
     const packet = this.packetBuilder.build({
       reply,
       toolCalls: input.toolCalls,
       userMessage: input.userMessage,
+      recentAssistantTexts,
       redLines: input.redLines,
       outputRuleHits: ruleIds,
     });

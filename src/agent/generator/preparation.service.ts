@@ -10,6 +10,7 @@ import { MemoryConfig } from '@memory/memory.config';
 import { BrandStateService, type TurnBrandContext } from '@memory/services/brand-state.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
+import type { FinalizedVisualFactSheet } from '@resolution/visual';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
@@ -67,6 +68,8 @@ export interface PreparedAgentContext {
     candidatePool: RecommendedJobSummary[] | null;
     /** save_image_description 落描述时同步解析出的图片品牌（§10.2 回合上下文）。 */
     imageBrandResolutions: BrandResolution[];
+    /** 本轮视觉事实 sheet（visual-fact-structuring，同轮工具与回合收尾消费）。 */
+    visualFactSheets: Array<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
     /** 本轮 duliday_job_list 查询签名（跨轮重复查询检测，回合收尾落会话记忆）。 */
     jobListQuerySignature: string | null;
     /** 本轮 geocode unique 解析确权的城市（回合收尾写 pref.city，source='tool'）。 */
@@ -272,6 +275,7 @@ export class PreparationService {
     const turnState: PreparedAgentContext['turnState'] = {
       candidatePool: null,
       imageBrandResolutions: [],
+      visualFactSheets: [],
       jobListQuerySignature: null,
       cityAttestation: null,
       invalidatedJobIds: [],

@@ -30,9 +30,17 @@ const REJECTED_NEXT_ACTIONS = new Set([
   'health_certificate_rejected',
 ]);
 
-// "刚才是我这边确认有误 / 是我看错了 / 你的条件是符合的" 类翻案表述
-const REJECTION_REVERSAL_PATTERN =
-  /(?:确认|核实|看)(?:有误|错了?)|条件(?:是|都)?(?:符合|没问题|满足)/u;
+// "刚才是我这边确认有误 / 是我看错了" 类翻案表述。这一支不做岗位绑定：
+// 该词形本身就是对本轮拒绝结论的推翻，与具体岗位名无关。
+const REJECTION_SELF_CORRECTION_PATTERN = /(?:确认|核实|看)(?:有误|错了?)/u;
+
+// "你的条件是符合的" 类翻案表述。这一支必须做句级岗位绑定：被拒后转推其它岗位
+// 是本规则 label 亲自要求的正确动作，而合规转推常带"肯德基这家你条件是符合的"
+// ——不绑定会把处方本身打成违规（评审 874 实证假阳）。绑定判据：翻案句里出现
+// 被拒岗位的名称 token 才算翻案；booking.rejected 无岗位名可绑时维持整句判定。
+// 代价：不点名的裸"你条件是符合的"翻案漏过——生产 badcase 里该形态总是伴随
+// "确认有误"或对被拒岗位的点名承诺出现，由另两支兜住。
+const CONDITION_REVERSAL_PATTERN = /条件(?:是|都)?(?:符合|没问题|满足)/u;
 
 // "帮你预约/报名/登记/提交" 类推进承诺（句级与被拒岗位名共现才算）
 const BOOKING_PROMISE_PATTERN = /(?:帮|给|替)你(?:预约|约面?|报名?|登记|提交)/u;
@@ -88,7 +96,12 @@ export function detectScreeningRejectionOverride(
   const { rejected, bookingRejected, bookingSucceeded, jobs } = collectRejectedJobs(toolCalls);
   if (!rejected) return null;
 
-  const reversal = REJECTION_REVERSAL_PATTERN.test(text);
+  const conditionReversal = text.split(/[。！？\n]/u).some((sentence) => {
+    if (!CONDITION_REVERSAL_PATTERN.test(sentence)) return false;
+    if (jobs.length === 0) return true;
+    return jobs.some((job) => job.nameTokens.some((token) => sentence.includes(token)));
+  });
+  const reversal = REJECTION_SELF_CORRECTION_PATTERN.test(text) || conditionReversal;
   // booking.rejected 的既有错误结构只有 jobId，没有可用于回复句绑定的岗位名。
   // 该工具已经明确拒绝了本轮预约，因此之后仍出现预约/报名承诺就属于同一失败
   // 动作的错误回执；不能因 jobs 为空而漏过。

@@ -306,6 +306,14 @@ export function buildInviteToGroupTool(
               logger.warn(`读取会话城市事实失败（gate 按无事实降级）: ${message}`);
             }
           }
+          // 顺序恢复提示（visual-fact §二A ⑩）：本轮有图片但尚未 save_image_description
+          // 时，地图截图的城市线索还没进 turnState——拒绝理由里给模型一条确定性恢复路径。
+          const hasUnsavedImages =
+            (context.imageMessageIds?.length ?? 0) > 0 &&
+            (context.turnVisualFactSheets?.length ?? 0) === 0;
+          const unsavedImageHint = hasUnsavedImages
+            ? '本轮候选人发了图片但你还没调用 save_image_description；若图片是位置/地图截图，先保存描述再重试本工具，城市核验会采信图中位置。'
+            : '';
           const cityGateVerdict = evaluateInviteCityGate({
             requestedCity: city,
             sessionCity,
@@ -313,6 +321,7 @@ export function buildInviteToGroupTool(
             // 同轮 geocode unique 确权城市：补"轮末写档、下轮生效"的时序空档
             //（geocode → 无岗 → invite 常在同一轮发生）。
             turnResolvedCities: (context.geocodeResolvedAnchors ?? []).map((anchor) => anchor.city),
+            turnVisualSheets: context.turnVisualFactSheets,
           });
           if (cityGateVerdict.decision === 'reject') {
             if (cityGateVerdict.reason === 'city_conflict') {
@@ -323,7 +332,8 @@ export function buildInviteToGroupTool(
                 errorType: TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT,
                 outcome: 'city 入参与会话记忆中的城市不一致',
                 replyInstruction:
-                  '你传入的 city 与候选人会话记忆中的城市不一致。若候选人本轮没有明确说换城市，请改用 expectedCity 重新调用 invite_to_group；若你认为候选人换了城市，先向候选人确认所在城市，本轮不要提群相关内容，也不要调用 request_handoff。',
+                  '你传入的 city 与候选人会话记忆中的城市不一致。若候选人本轮没有明确说换城市，请改用 expectedCity 重新调用 invite_to_group；若你认为候选人换了城市，先向候选人确认所在城市，本轮不要提群相关内容，也不要调用 request_handoff。' +
+                  unsavedImageHint,
                 details: {
                   city,
                   expectedCity: cityGateVerdict.expectedCity,
@@ -338,7 +348,8 @@ export function buildInviteToGroupTool(
               errorType: TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED,
               outcome: 'city 入参在会话记忆与候选人原文中均无依据',
               replyInstruction:
-                '该城市在会话记忆和候选人原文里都找不到依据，不能据此拉群。请先向候选人确认所在城市（例如"方便说下你现在在哪个城市吗"），得到明确回复后再调用本工具；本轮不要提群相关内容，也不要调用 request_handoff。',
+                '该城市在会话记忆和候选人原文里都找不到依据，不能据此拉群。请先向候选人确认所在城市（例如"方便说下你现在在哪个城市吗"），得到明确回复后再调用本工具；本轮不要提群相关内容，也不要调用 request_handoff。' +
+                unsavedImageHint,
               details: { city, industry: industry ?? undefined },
             });
           }

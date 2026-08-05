@@ -98,8 +98,6 @@ describe('AcceptInboundMessageService', () => {
       imageDescription as never,
       wecomObservability as never,
       monitoringService as never,
-      runtimeConfig as never,
-      llm as never,
       longTerm as never,
       session as never,
       opsEventsRecorder as never,
@@ -634,43 +632,16 @@ describe('AcceptInboundMessageService', () => {
       );
     });
 
-    it('prepareImageIfNeeded 应使用 payload.artworkUrl 而非重新调 API', async () => {
+    it('入站不再预描述候选人图片（分支已废弃：主聊按输入换模型，极端场景走运行时兼容重跑）', async () => {
       imageDescription.resolveArtworkUrl.mockResolvedValue(ARTWORK_URL);
-      imageDescription.awaitVision.mockResolvedValue(undefined);
-      llm.supportsVisionInput.mockReturnValue(false);
 
       await service.execute(createImageMessage());
       await new Promise((resolve) => setImmediate(resolve));
 
-      // resolveArtworkUrl 只在 enrichImagePayload 调了一次
+      // enrichImagePayload 照常解析原图（P2 主路径依赖 payload.artworkUrl）
       expect(imageDescription.resolveArtworkUrl).toHaveBeenCalledTimes(1);
-
-      // describeAndUpdateAsync 收到的是原图 URL（不是压缩图）
-      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
-        'msg-1',
-        ARTWORK_URL,
-        MessageType.IMAGE,
-      );
-    });
-
-    it('原图获取失败时应回退到压缩图，不阻塞流程', async () => {
-      imageDescription.resolveArtworkUrl.mockResolvedValue(COMPRESSED_URL);
-      imageDescription.awaitVision.mockResolvedValue(undefined);
-      llm.supportsVisionInput.mockReturnValue(false);
-
-      const message = createImageMessage();
-      await service.execute(message);
-      await new Promise((resolve) => setImmediate(resolve));
-
-      // payload 不应写入 artworkUrl（因为返回值 === 压缩图）
-      expect(message.payload).not.toHaveProperty('artworkUrl');
-
-      // vision 描述仍然用压缩图继续（降级而非报错）
-      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
-        'msg-1',
-        COMPRESSED_URL,
-        MessageType.IMAGE,
-      );
+      // 但不再触发入站预描述
+      expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
     });
 
     it('自发图片消息也应获取原图后再存记录', async () => {
