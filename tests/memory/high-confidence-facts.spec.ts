@@ -480,6 +480,26 @@ describe('extractHighConfidenceFacts', () => {
     ).toBe('无');
   });
 
+  it.each(['我有健康证，但是外地的', '我有健康证，是外地办的', '我有健康证，不是本地的'])(
+    'keeps cross-clause non-local qualifier from upgrading to 有: %s（评审 874 P1-3 回归）',
+    (message) => {
+      expect(
+        unwrapHighConfidenceValue(
+          extractHighConfidenceFacts([message], brandData)?.interview_info.has_health_certificate,
+        ),
+      ).toBe('非本地健康证');
+    },
+  );
+
+  it('still extracts 有 when the follow-up clause has no qualifier', () => {
+    expect(
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts(['我有健康证，明天就能到岗'], brandData)?.interview_info
+          .has_health_certificate,
+      ),
+    ).toBe('有');
+  });
+
   it.each([
     '如果面试上了，他后期会去体检，然后办一个健康证',
     '目前没有健康证，但确定上岗前会去办',
