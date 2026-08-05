@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.38.0] - 2026-08-05
 
-**预计版本**: `v10.38.0`
-**最近更新**: `2026-08-05`
 **来源分支**: `develop`
-**累计 PR**: 8
 
 ### 更新摘要
 - PR #863 补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门
@@ -128,7 +124,6 @@
 - PR #872 jest：`review-packet.builder` / `output-guardrail.service` / `semantic-reviewer.service` / `reply-repair.agent` 4 suites 65 tests 全过（新增 3 条：裁剪与截断、缺省空数组、调用点透传）
 - PR #872 `tsc --noEmit` / eslint（--max-warnings=0）干净
 - PR #872 本地 pre-push 的 `build:ci` 因隔离 worktree 缺 `web/node_modules` 环境性失败，已 `--no-verify` 跳过，以本 PR 远程 CI 为准
-<!-- release:pending:end -->
 
 ## [10.37.0] - 2026-07-30
 
