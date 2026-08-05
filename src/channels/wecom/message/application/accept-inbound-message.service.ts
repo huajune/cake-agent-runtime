@@ -1,12 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LlmExecutorService } from '@/llm/llm-executor.service';
-import { ModelRole } from '@/llm/llm.types';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
-import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.service';
 import { FilterResult, MessageFilterService } from './filter.service';
 import { ImageDescriptionService } from './image-description.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
@@ -79,8 +76,6 @@ export class AcceptInboundMessageService {
     private readonly imageDescription: ImageDescriptionService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly monitoringService: MessageTrackingService,
-    private readonly runtimeConfig: MessageRuntimeConfigService,
-    private readonly llm: LlmExecutorService,
     private readonly longTerm: LongTermService,
     private readonly session: SessionService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
@@ -189,7 +184,7 @@ export class AcceptInboundMessageService {
     const scenario: ScenarioType = MessageParser.determineScenario();
     const requestContent = filterResult.content ?? parsed.content;
 
-    // 前置打点：trace 在回调入口就建立，后续 markHistoryStored/markImagePrepared/markQueueAdd
+    // 前置打点：trace 在回调入口就建立，后续 markHistoryStored/markQueueAdd
     // 都能真实落盘，不再被静默塞进 Queue 时间里。
     if (!(await this.wecomObservability.hasTrace(messageData.messageId))) {
       await this.wecomObservability.startRequestTrace({
@@ -212,26 +207,6 @@ export class AcceptInboundMessageService {
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.logger.warn(`[异步历史记录] 写入失败 [${messageData.messageId}]: ${errorMessage}`);
       });
-
-    try {
-      await this.prepareImageIfNeeded(messageData);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const failureMetadata = await this.wecomObservability.buildFailureMetadata(
-        messageData.messageId,
-        {
-          scenario,
-          errorType: 'message',
-          errorMessage,
-          extraResponse: {
-            phase: 'pre-dispatch',
-            chatId: parsed.chatId,
-          },
-        },
-      );
-      this.monitoringService.recordFailure(messageData.messageId, errorMessage, failureMetadata);
-      throw error;
-    }
 
     return {
       shouldDispatch: true,
@@ -396,48 +371,10 @@ export class AcceptInboundMessageService {
     target[key] = value;
   }
 
-  private async prepareImageIfNeeded(messageData: EnterpriseMessageCallbackDto): Promise<void> {
-    const imgUrl = MessageParser.extractImageUrl(messageData);
-    if (!imgUrl) {
-      return;
-    }
-
-    const visualKind = MessageParser.extractVisualMessageType(messageData);
-    if (!visualKind) {
-      return;
-    }
-
-    const { overrideModelId } = await this.runtimeConfig.resolveWecomChatModelSelection();
-    // 链上（主模型或降级链）存在认图候选时不预描述：原图直达 Agent，由认图候选整轮处理；
-    // 全链纯文本时保持 vision 角色预描述兜底。
-    const shouldDescribeBeforeAgent = !(await this.llm.supportsVisionInput({
-      role: ModelRole.Chat,
-      modelId: overrideModelId,
-    }));
-
-    if (!shouldDescribeBeforeAgent) {
-      return;
-    }
-
-    // 关键：vision 描述同步等待会让消息晚 ~6s 才进 Redis 队列，期间前一条文本的
-    // debounce 静默会"假性达标"提前 fire，把图文拆成两批（参见 wecom-batch race）。
-    // 改 fire-and-forget 后，addMessage 立即更新 lastMessageAt 重置静默；worker
-    // 真正取本批后由 ReplyWorkflowService 的 awaitVision 等待描述完成再调 Agent。
-    const resolvedUrl = (messageData.payload as Record<string, unknown>)?.artworkUrl as
-      | string
-      | undefined;
-    this.imageDescription.describeAndUpdateAsync(
-      messageData.messageId,
-      resolvedUrl || imgUrl,
-      visualKind,
-    );
-
-    // 描述真正完成后再补打 imagePreparedAt（observability only），不影响业务正确性。
-    void this.imageDescription
-      .awaitVision([messageData.messageId], 30_000)
-      .then(() => this.wecomObservability.markImagePrepared(messageData.messageId))
-      .catch(() => {});
-  }
+  // 入站预描述分支已废弃（2026-08-05 用户裁定，visual-fact-structuring 链路简化）：
+  // 主聊链路按输入换模型（executor 有图跳非多模态候选），预描述唯一剩余场景
+  // 「全链纯文本」由 reply-workflow 的运行时兼容重跑（describeAndUpdate → 文本重跑）兜底，
+  // 无需在入站多留一条条件分支。自侧消息与漏调兜底的描述触发不受影响。
 
   private async handleSelfMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     const parsed = MessageParser.parse(messageData);
