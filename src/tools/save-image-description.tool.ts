@@ -20,7 +20,6 @@ import { MessageType } from '@enums/message-callback.enum';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import {
-  VISUAL_FACT_FIELD_KEYS,
   VISUAL_FACT_KINDS,
   fieldValues,
   finalizeVisualFactSheet,
@@ -60,7 +59,8 @@ const inputSchema = z.object({
   fields: z
     .array(
       z.object({
-        key: z.enum(VISUAL_FACT_FIELD_KEYS),
+        // string 而非 enum：坏 key 由 finalize 白名单过滤，不让整次工具调用校验失败
+        key: z.string(),
         value: z.string(),
         ownership: z
           .enum(['candidate', 'publisher', 'third_party', 'unknown'])

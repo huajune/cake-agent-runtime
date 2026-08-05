@@ -62,6 +62,24 @@ describe('resolution/visual · finalizeVisualFactSheet', () => {
     expect(finalizeVisualFactSheet({ kind: 'other' }, '').degraded).toBe(true);
   });
 
+  it('白名单外 key 只丢字段不拖垮整表（批测 32/50 实证：模型常发明 position/distance 等 key）', () => {
+    const sheet = finalizeVisualFactSheet(
+      {
+        kind: 'job_posting',
+        fields: [
+          { key: 'position', value: '服务员' },
+          { key: 'distance', value: '3.3km' },
+          { key: 'brand', value: '达美乐' },
+        ],
+      },
+      DESC,
+    );
+    expect(sheet.degraded).toBe(false);
+    expect(sheet.kind).toBe('job_posting');
+    expect(sheet.fields).toHaveLength(1);
+    expect(sheet.fields[0].key).toBe('brand');
+  });
+
   it('空值字段被剔除；kind 合法但 fields 缺省时按空数组', () => {
     const sheet = finalizeVisualFactSheet(
       { kind: 'map_location', fields: [{ key: 'city', value: '  ' }] },

@@ -53,7 +53,11 @@ export const FIELD_OWNERSHIPS = ['candidate', 'publisher', 'third_party', 'unkno
 export type FieldOwnership = (typeof FIELD_OWNERSHIPS)[number];
 
 export const VisualFactFieldSchema = z.object({
-  key: z.enum(VISUAL_FACT_FIELD_KEYS),
+  // 刻意收 string 而非 enum（2026-08-05 生产 50 图批测实证：32/50 的模型输出含
+  // 白名单外 key，如 position/distance/welfare——严格 enum 会让一个坏 key 拖垮
+  // 整张 sheet 的 safeParse 触发全量降级）。白名单过滤在 finalizeVisualFactSheet
+  // 做：坏字段丢弃、好字段保留，kind 判定不受牵连。
+  key: z.string().min(1),
   value: z.string().min(1),
   // 生产端可缺省，finalizeVisualFactSheet 按 kind 补默认值
   ownership: z.enum(FIELD_OWNERSHIPS).optional(),

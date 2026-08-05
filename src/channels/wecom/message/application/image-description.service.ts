@@ -7,7 +7,6 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import { MessageType } from '@enums/message-callback.enum';
 import { isResumeImageDescription, stripResumeAttachmentLines } from '../utils/message-parser.util';
 import {
-  VISUAL_FACT_FIELD_KEYS,
   VISUAL_FACT_KINDS,
   finalizeVisualFactSheet,
   type FinalizedVisualFactSheet,
@@ -36,7 +35,8 @@ const VISION_SHEET_SCHEMA = z.object({
   fields: z
     .array(
       z.object({
-        key: z.enum(VISUAL_FACT_FIELD_KEYS),
+        // string 而非 enum：白名单过滤在 finalize 做（一个坏 key 不拖垮整张 sheet）
+        key: z.string(),
         value: z.string(),
         ownership: z
           .enum(['candidate', 'publisher', 'third_party', 'unknown'])

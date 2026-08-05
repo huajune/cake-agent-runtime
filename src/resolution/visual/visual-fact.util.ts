@@ -1,4 +1,5 @@
 import {
+  VISUAL_FACT_FIELD_KEYS,
   VisualFactSheetSchema,
   type FieldOwnership,
   type FinalizedVisualFactField,
@@ -47,11 +48,14 @@ export function finalizeVisualFactSheet(
   const kind = parsed.data.kind;
   const fields: FinalizedVisualFactField[] = [];
   for (const field of parsed.data.fields) {
+    // 白名单过滤（非整表拒绝）：模型常发明 key（position/distance/welfare…，
+    // 批测 32/50 命中）——坏字段丢弃即可，kind 与其余字段照常生效。
+    if (!(VISUAL_FACT_FIELD_KEYS as readonly string[]).includes(field.key)) continue;
     const value = field.value.trim();
     if (!value) continue;
     let ownership = field.ownership ?? KIND_DEFAULT_OWNERSHIP[kind];
     if (CANDIDATE_KEYS_ON_PUBLISHER_KINDS.has(field.key)) ownership = 'candidate';
-    fields.push({ key: field.key, value, ownership });
+    fields.push({ key: field.key as FinalizedVisualFactField['key'], value, ownership });
   }
   return { kind, fields, rawDescription, degraded: false };
 }
