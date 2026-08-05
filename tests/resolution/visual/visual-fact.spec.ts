@@ -80,7 +80,7 @@ describe('resolution/visual · finalizeVisualFactSheet', () => {
     expect(sheet.fields[0].key).toBe('brand');
   });
 
-  it('身份证形态的值一律丢弃（B3\'：模型无视证件号禁令的确定性兜底）', () => {
+  it("身份证形态的值一律丢弃（B3'：模型无视证件号禁令的确定性兜底）", () => {
     const sheet = finalizeVisualFactSheet(
       {
         kind: 'certificate',
