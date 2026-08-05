@@ -6,6 +6,13 @@ import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { MessageType } from '@enums/message-callback.enum';
 import { isResumeImageDescription, stripResumeAttachmentLines } from '../utils/message-parser.util';
+import {
+  VISUAL_FACT_FIELD_KEYS,
+  VISUAL_FACT_KINDS,
+  finalizeVisualFactSheet,
+  type FinalizedVisualFactSheet,
+} from '@resolution/visual';
+import { z } from 'zod';
 
 /** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */
 export type VisualMessageKind = MessageType.IMAGE | MessageType.EMOTION;
@@ -17,6 +24,29 @@ export interface ArtworkContext {
   imContactId?: string;
   imRoomId?: string;
 }
+
+/** P1 结构化输出 schema：描述 + kind + fields（归属可缺省，finalize 按 kind 补）。 */
+const VISION_SHEET_SCHEMA = z.object({
+  description: z.string().describe('图片内容的中文描述，遵循系统提示词里的各类图片提取要求'),
+  kind: z
+    .enum(VISUAL_FACT_KINDS)
+    .describe(
+      'job_posting=招聘平台岗位截图/卡片/海报；map_location=地图/定位/导航/门店位置；resume=简历本体；chat_screenshot=聊天记录截图；certificate=健康证等证件；other=其他',
+    ),
+  fields: z
+    .array(
+      z.object({
+        key: z.enum(VISUAL_FACT_FIELD_KEYS),
+        value: z.string(),
+        ownership: z
+          .enum(['candidate', 'publisher', 'third_party', 'unknown'])
+          .optional()
+          .describe('该值归谁：候选人本人/发布方（招聘方）/其他第三方/不确定'),
+      }),
+    )
+    .default([])
+    .describe('图上的关键结构化值；身份证号/证件号不要写入'),
+});
 
 function formatDescription(kind: VisualMessageKind, description: string): string {
   const prefix = kind === MessageType.EMOTION ? '[表情消息]' : '[图片消息]';
@@ -64,6 +94,14 @@ export class ImageDescriptionService {
     '\n- 聊天截图：提取关键对话内容',
     '\n- 表情包/表情贴图：只输出表情传达的情绪或动作，控制在 4-12 个字，如"思考"、"微笑"、"比心"、"点头OK"；不要描述角色外观、颜色、姿势细节，也不要猜测台词或意图（如"我懂了"、"我在想主意"）',
     '\n不要添加评价、建议或主观判断（如"建议候选人重新办理"），只如实提取图片上看得见的事实。',
+  ].join('');
+
+  /** 结构化输出补充口径（仅结构化路径附加）。 */
+  private readonly STRUCTURED_SUFFIX = [
+    '\n\n同时给出结构化判定：kind 按图片类型；fields 逐个列出图上的关键值并标注归属（ownership）。',
+    '岗位截图上的电话/年龄要求/薪资是发布方的（publisher）；候选人自己的简历/证件上的信息是 candidate；',
+    '聊天截图里分不清归谁就 unknown。岗位页上的"我的地址：XX"/"距我X km"是候选人设备上的地址，key 用 candidate_address。',
+    '身份证号/证件号不要写进 fields。',
   ].join('');
 
   constructor(
@@ -215,23 +253,67 @@ export class ImageDescriptionService {
         ? '请用 4-12 个字描述这个表情传达的情绪或动作。不要描述角色外观、颜色、姿势细节，也不要猜测台词或意图。'
         : '请描述这张图片的内容。';
 
-    const result = await this.llm.generate({
-      role: ModelRole.Vision,
-      disableFallbacks: true,
-      system: this.SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image' as const, image: parsedUrl },
-            { type: 'text' as const, text: promptText },
+    // 视觉事实结构化（P1 生产者）：图片优先走结构化输出（描述 + kind + fields）；
+    // 任何失败回退纯文本路径——降级不是失败，是回到结构化之前的行为。表情不结构化。
+    let description = '';
+    let sheet: FinalizedVisualFactSheet | null = null;
+    let usageTokens: number | undefined;
+    if (kind !== MessageType.EMOTION) {
+      try {
+        const structured = await this.llm.generateStructured({
+          role: ModelRole.Vision,
+          disableFallbacks: true,
+          schema: VISION_SHEET_SCHEMA,
+          outputName: 'VisualFactSheet',
+          system: this.SYSTEM_PROMPT + this.STRUCTURED_SUFFIX,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image' as const, image: parsedUrl },
+                { type: 'text' as const, text: promptText },
+              ],
+            },
           ],
-        },
-      ],
-      maxOutputTokens: kind === MessageType.EMOTION ? 64 : 256,
-    });
-
-    const description = result.text.trim();
+          maxOutputTokens: 512,
+        });
+        const out = structured.output as z.infer<typeof VISION_SHEET_SCHEMA>;
+        description = (out.description ?? '').trim();
+        if (description) {
+          const finalized = finalizeVisualFactSheet(
+            { kind: out.kind, fields: out.fields ?? [] },
+            description,
+          );
+          sheet = finalized.degraded ? null : finalized;
+        }
+        usageTokens = structured.usage?.totalTokens;
+      } catch (error) {
+        this.logger.warn(
+          `图片结构化描述失败，回退纯文本 [${messageId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    if (!description) {
+      const result = await this.llm.generate({
+        role: ModelRole.Vision,
+        disableFallbacks: true,
+        system: this.SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image' as const, image: parsedUrl },
+              { type: 'text' as const, text: promptText },
+            ],
+          },
+        ],
+        maxOutputTokens: kind === MessageType.EMOTION ? 64 : 256,
+      });
+      description = result.text.trim();
+      usageTokens = result.usage.totalTokens;
+    }
     if (!description) {
       this.logger.warn(`${this.kindLabel(kind)}描述返回空结果 [${messageId}]`);
       return null;
@@ -243,17 +325,25 @@ export class ImageDescriptionService {
     // booking 经 uploadAttachmentFromUrl 上传图片拿 cloudStorageKey 提交。
     // 先剥离视觉描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
     // 一行，避免重复行（badcase chat 6a2fac72…：单条简历消息出现两条相同"简历附件"）。
-    const isResumeImage = kind === MessageType.IMAGE && isResumeImageDescription(description);
+    // 简历判定双保险（并跑对照）：sheet resume kind 与旧文本标记任一命中即走简历链路。
+    const legacyResume = kind === MessageType.IMAGE && isResumeImageDescription(description);
+    const sheetResume = sheet?.kind === 'resume';
+    if (sheet && legacyResume !== sheetResume) {
+      this.logger.warn(
+        `[visual-fact] resume 判定分歧 [${messageId}]: legacy=${legacyResume} sheet=${sheet.kind}`,
+      );
+    }
+    const isResumeImage = legacyResume || (kind === MessageType.IMAGE && sheetResume);
     const content = isResumeImage
       ? `${formatDescription(kind, stripResumeAttachmentLines(description))}\n简历附件：${imageUrl}`
       : formatDescription(kind, description);
 
-    await this.writeBackDescription(messageId, content, kind);
+    await this.writeBackDescription(messageId, content, kind, sheet ?? undefined);
 
     this.consecutiveFailures = 0;
 
     this.logger.log(
-      `${this.kindLabel(kind)}描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${result.usage.totalTokens}`,
+      `${this.kindLabel(kind)}描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${usageTokens ?? 0}`,
     );
     return description;
   }
@@ -267,11 +357,16 @@ export class ImageDescriptionService {
     messageId: string,
     content: string,
     kind: VisualMessageKind,
+    sheet?: FinalizedVisualFactSheet,
   ): Promise<void> {
     for (let attempt = 1; attempt <= this.WRITEBACK_MAX_ATTEMPTS; attempt++) {
       let updated = false;
       try {
-        updated = await this.chatSession.updateMessageContent(messageId, content);
+        updated = await this.chatSession.updateMessageContent(
+          messageId,
+          content,
+          sheet as unknown as Record<string, unknown> | undefined,
+        );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.logger.warn(

@@ -224,10 +224,17 @@ export class ChatSessionService {
    * DB 更新成功后直接作废该会话的短期记忆 list 缓存；下次读取 cache miss 会从 DB
    * 重新 backfill。这比原先的「lrange → parse → 改内容 → del → 全量 rpush」更简单且原子。
    */
-  async updateMessageContent(messageId: string, content: string): Promise<boolean> {
+  async updateMessageContent(
+    messageId: string,
+    content: string,
+    // 视觉事实旁路：与描述同一次 update 写 visual_facts；缓存失效机制天然覆盖
+    //（del → 下次 cache miss 从 DB 回填，新列随行带出）。
+    visualFacts?: Record<string, unknown>,
+  ): Promise<boolean> {
     const { chatId } = await this.chatMessageRepository.updateContentByMessageId(
       messageId,
       content,
+      visualFacts,
     );
     if (chatId && this.redisService) {
       await this.redisService.del(buildChatHistoryCacheKey(chatId)).catch((error) => {
@@ -235,6 +242,14 @@ export class ChatSessionService {
       });
     }
     return chatId !== null;
+  }
+
+  /** 拉取会话内视觉消息的结构化事实（visual-fact-structuring 消费侧读路径）。 */
+  async getVisualFacts(
+    chatId: string,
+    options?: { sinceTimestamp?: number; limit?: number },
+  ): Promise<Array<{ content: string; visualFacts: Record<string, unknown> }>> {
+    return this.chatMessageRepository.getVisualFactsByChat(chatId, options);
   }
 
   // ==================== 内部工具方法 ====================

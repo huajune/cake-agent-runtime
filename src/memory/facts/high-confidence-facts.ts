@@ -15,7 +15,12 @@ import {
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import { isLikelyRealChineseName } from './name-guard';
 import { decideLaborFormIntent } from './labor-form';
-import { keepSelfReportedMessages } from './visual-description';
+import {
+  fieldValues,
+  isSelfReportedVisualMessage,
+  isVisualDescriptionText,
+  type FinalizedVisualFactSheet,
+} from '@resolution/visual';
 
 // ── 个人信息关键词 ─────────────────────────────────────────────────────────
 
@@ -321,9 +326,66 @@ function applyFieldExtractor(
   reasons.push(toReason(label));
 }
 
+/** 每条消息的提取授权域（visual-fact-structuring 附录 A 三通道模型的规则轨投影）。 */
+interface MessageExtractionScope {
+  /** 身份字段（interview_info + gender + is_student/education）。 */
+  identity: boolean;
+  /** 手机号单列：证件/简历图上的号码按裁决 B3 不得经规则轨落 high（LLM 轨 medium + 确认升级）。 */
+  phone: boolean;
+  /** 偏好标量（薪资/班次/用工形式/工种等）。 */
+  preferences: boolean;
+  /** 地理信号（city/district/location）。 */
+  geo: boolean;
+}
+
+const SCOPE_ALL: MessageExtractionScope = {
+  identity: true,
+  phone: true,
+  preferences: true,
+  geo: true,
+};
+const SCOPE_NONE: MessageExtractionScope = {
+  identity: false,
+  phone: false,
+  preferences: false,
+  geo: false,
+};
+
+/**
+ * 按消息类别 + sheet kind 决定提取授权域：
+ * - 手打文本：全量（现状）
+ * - 简历/证件（sheet 或文本标记）：身份可提，phone 除外（B3）；偏好/地理照旧
+ * - map_location：仅地理——候选人用地图指自己的位置
+ * - job_posting/chat_screenshot/其它 sheet：全关（岗位卡薪资≠期望薪资 R1e；门店城市≠候选人城市）
+ * - 视觉消息无 sheet（旧数据/降级）：身份关、偏好+地理开（= PR #870 行为，不劣化地图定位）
+ */
+function resolveExtractionScope(
+  message: string,
+  sheet: FinalizedVisualFactSheet | null | undefined,
+): MessageExtractionScope {
+  if (!isVisualDescriptionText(message)) return SCOPE_ALL;
+  if (sheet && !sheet.degraded) {
+    if (sheet.kind === 'resume' || sheet.kind === 'certificate') {
+      return { identity: true, phone: false, preferences: true, geo: true };
+    }
+    if (sheet.kind === 'map_location') return { ...SCOPE_NONE, geo: true };
+    return SCOPE_NONE;
+  }
+  if (isSelfReportedVisualMessage(message)) {
+    return { identity: true, phone: false, preferences: true, geo: true };
+  }
+  return { ...SCOPE_NONE, preferences: true, geo: true };
+}
+
+export interface ExtractHighConfidenceOptions {
+  /** 剥时间后缀内容 → sheet 的映射（visual-fact-structuring 消费侧读路径）。 */
+  visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
+}
+
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
+  options?: ExtractHighConfidenceOptions,
 ): HighConfidenceFacts | null {
   const normalizedMessages = userMessages
     .map((message) => stripQuotedBlocks(message.trim()))
@@ -332,12 +394,22 @@ export function extractHighConfidenceFacts(
 
   const facts = cloneFallbackExtraction();
   const reasons: string[] = [];
+  const sheetFor = (message: string): FinalizedVisualFactSheet | undefined =>
+    options?.visualSheetsByContent?.get(message.trim());
 
   // 品牌收口（§9.2）：本函数不再内联直写 preferences.brands——品牌真相唯一存储是
   // brand_state（写入只经 turn-finalizer 的 reducer），preferences.brands 退化为只读投影。
   // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
-  // 品牌线索仍吃全量语料：图片品牌解析是 §10.2 的显式通道，不受自陈收窄影响。
-  const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
+  // R2 发布方剔除：带 job_posting sheet 的消息，品牌线索只吃 key=brand 字段值
+  // （发布方公司名在 key=publisher，不进品牌语料）；其余消息照旧全文。
+  const hintCorpus = normalizedMessages.map((message) => {
+    const sheet = sheetFor(message);
+    if (sheet && !sheet.degraded && sheet.kind === 'job_posting') {
+      return fieldValues(sheet, 'brand').join('；');
+    }
+    return message;
+  });
+  const aliasHints = detectBrandAliasHints(hintCorpus.filter(Boolean), brandData);
   if (aliasHints.length > 0) {
     reasons.push(
       ...aliasHints.map(
@@ -356,14 +428,17 @@ export function extractHighConfidenceFacts(
   //   候选人发地图截图指位置是被期待的能力（badcase oaz6inzf 的诉求正是"图上已经
   //   看到是北京了还问城市"），一刀切会把它打掉；
   // - 品牌线索同理，图片品牌解析是 §10.2 的显式通道。
-  const selfReported = new Set(keepSelfReportedMessages(normalizedMessages));
-
   for (const message of normalizedMessages) {
-    const isSelfReported = selfReported.has(message);
+    const scope = resolveExtractionScope(message, sheetFor(message));
+    const isSelfReported = scope.identity;
 
     // 注册表驱动：统一应用所有"无字段间联动"的标量/数组提取器（见 FIELD_EXTRACTORS）。
     for (const extractor of FIELD_EXTRACTORS) {
-      if (extractor.group === 'interview_info' && !isSelfReported) continue;
+      if (extractor.group === 'interview_info') {
+        if (!scope.identity) continue;
+        if (extractor.field === 'phone' && !scope.phone) continue;
+      }
+      if (extractor.group === 'preferences' && !scope.preferences) continue;
       applyFieldExtractor(extractor, message, facts, reasons);
     }
 
@@ -409,7 +484,9 @@ export function extractHighConfidenceFacts(
       }
     }
 
-    const scheduleConstraint = extractScheduleConstraintStructured(message);
+    const scheduleConstraint = scope.preferences
+      ? extractScheduleConstraintStructured(message)
+      : null;
     if (scheduleConstraint) {
       const existingConstraint = unwrapHighConfidenceValue(facts.preferences.schedule_constraint);
       const merged: ScheduleConstraintFact = {
@@ -430,7 +507,9 @@ export function extractHighConfidenceFacts(
       reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
     }
 
-    const availableAfter = extractAvailableAfterDate(message, formatLocalDate(new Date()));
+    const availableAfter = scope.preferences
+      ? extractAvailableAfterDate(message, formatLocalDate(new Date()))
+      : null;
     if (availableAfter) {
       facts.preferences.available_after = ruleValue(availableAfter, {
         evidence: `未来日期硬约束：${availableAfter.date}`,
@@ -438,7 +517,9 @@ export function extractHighConfidenceFacts(
       reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
     }
 
-    const location = extractLocation(message);
+    const location = scope.geo
+      ? extractLocation(message)
+      : { city: null, district: [], location: [] };
     if (location.city) {
       facts.preferences.city = ruleValue(location.city.value, {
         evidence: location.city.evidence,

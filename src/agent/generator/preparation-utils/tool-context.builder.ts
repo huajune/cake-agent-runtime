@@ -1,6 +1,7 @@
 import { ModelMessage } from 'ai';
 import { CityAttestation, ToolBuildContext } from '@shared-types/tool.types';
 import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
+import type { FinalizedVisualFactSheet } from '@resolution/visual';
 import { type LaborFormIntentDecision } from '@memory/facts/labor-form';
 import {
   filterHighConfidenceFacts,
@@ -37,6 +38,8 @@ export function buildToolContext(input: {
   turnState: {
     candidatePool: RecommendedJobSummary[] | null;
     imageBrandResolutions: BrandResolution[];
+    /** 本轮视觉事实 sheet（visual-fact-structuring，镜像 imageBrandResolutions）。 */
+    visualFactSheets: Array<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
     jobListQuerySignature: string | null;
     cityAttestation: CityAttestation | null;
     /** 本轮被工具判定失效（海绵查不到）的 jobId；回合收尾从会话记忆剔除。 */
@@ -110,6 +113,10 @@ export function buildToolContext(input: {
     onImageBrandResolved: (resolutions) => {
       turnState.imageBrandResolutions.push(...resolutions);
     },
+    onVisualFactsResolved: (sheet, meta) => {
+      turnState.visualFactSheets.push({ messageId: meta.messageId, sheet });
+    },
+    turnVisualFactSheets: turnState.visualFactSheets,
     onCityResolved: (attestation) => {
       turnState.cityAttestation = attestation;
     },

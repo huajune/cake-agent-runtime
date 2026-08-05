@@ -65,12 +65,19 @@ export function keepSelfReportedMessages(messages: readonly string[]): string[] 
 export function hasSelfReportedPhoneProvenance(
   phone: string | null | undefined,
   messages: readonly string[],
+  options?: {
+    /**
+     * true = 调用方已按自陈判据过滤过语料（如 session.service 的
+     * typedOrSelfMaterialMessages，含 sheet 判定的证件/简历消息——文本标记
+     * 兜底认不出证件类，二次过滤会把它们误剔），跳过内部 keepSelfReportedMessages。
+     */
+    prefiltered?: boolean;
+  },
 ): boolean {
   const digits = (phone ?? '').replace(/\D/g, '');
   if (digits.length < 7) return true;
-  return keepSelfReportedMessages(messages).some((message) =>
-    message.replace(/\D/g, '').includes(digits),
-  );
+  const corpus = options?.prefiltered ? messages : keepSelfReportedMessages(messages);
+  return corpus.some((message) => message.replace(/\D/g, '').includes(digits));
 }
 
 /**

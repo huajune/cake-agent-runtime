@@ -27,9 +27,9 @@ import { ScenarioType } from '@enums/agent.enum';
  * 命中后由 ImageDescriptionService / save_image_description 在回写内容时追加
  * "简历附件：URL" 行，复用 PDF 文件简历的事实提取（extractUploadResume）与报名上传链路。
  */
-export function isResumeImageDescription(description: string): boolean {
-  return /^[「\[【]?(?:手写)?(?:简历|履历)/u.test(description.trim());
-}
+// 已迁入 @resolution/visual（visual-fact-structuring R5：单一来源，channels/tools 共用）；
+// 原位 re-export 兼容既有调用方。判据不得在两处漂移。
+export { isResumeImageDescription, stripResumeAttachmentLines } from '@resolution/visual';
 
 /**
  * 剥离描述文本里已存在的「简历附件：…」行。
@@ -39,14 +39,6 @@ export function isResumeImageDescription(description: string): boolean {
  * ImageDescriptionService / save_image_description 再无条件追加一行就会出现重复行，
  * 污染历史与会话事实。统一先剥离描述里的旧附件行，再以解析到的权威 URL 追加唯一一行。
  */
-export function stripResumeAttachmentLines(description: string): string {
-  return description
-    .split('\n')
-    .filter((line) => !/^\s*简历附件\s*[：:]/.test(line))
-    .join('\n')
-    .replace(/\n{2,}/g, '\n')
-    .trim();
-}
 
 /**
  * 消息解析工具类

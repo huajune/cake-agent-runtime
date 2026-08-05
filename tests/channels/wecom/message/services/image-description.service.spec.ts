@@ -82,6 +82,7 @@ describe('ImageDescriptionService', () => {
       expect(mockChatSessionService.updateMessageContent).toHaveBeenCalledWith(
         'msg-123',
         `[图片消息] ${description}`,
+        undefined,
       );
     });
 
@@ -140,6 +141,7 @@ describe('ImageDescriptionService', () => {
       expect(mockChatSessionService.updateMessageContent).toHaveBeenLastCalledWith(
         'msg-retry',
         `[图片消息] ${description}`,
+        undefined,
       );
     });
 
@@ -177,6 +179,7 @@ describe('ImageDescriptionService', () => {
       expect(mockChatSessionService.updateMessageContent).toHaveBeenCalledWith(
         'msg-emoji-1',
         `[表情消息] ${description}`,
+        undefined,
       );
     });
   });

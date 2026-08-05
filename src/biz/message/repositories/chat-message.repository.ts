@@ -643,19 +643,56 @@ export class ChatMessageRepository extends BaseRepository {
   async updateContentByMessageId(
     messageId: string,
     content: string,
+    // 视觉事实旁路（visual-fact-structuring §3.3）：与描述文本同一次 update 落
+    // visual_facts jsonb，保证 sheet 与 content 永远同源成对（后写者赢，不撕裂）。
+    visualFacts?: Record<string, unknown>,
   ): Promise<{ chatId: string | null }> {
     if (!this.isAvailable()) {
       return { chatId: null };
     }
 
     try {
-      const rows = await this.update<ChatMessageRecord>({ content }, (q) =>
+      const patch: Record<string, unknown> = { content };
+      if (visualFacts !== undefined) patch.visual_facts = visualFacts;
+      const rows = await this.update<ChatMessageRecord>(patch, (q) =>
         q.eq('message_id', messageId),
       );
       return { chatId: rows[0]?.chat_id ?? null };
     } catch (error) {
       this.logger.error(`更新消息 content 失败 [${messageId}]:`, error);
       return { chatId: null };
+    }
+  }
+
+  /**
+   * 拉取会话内视觉消息的结构化事实（visual-fact-structuring 消费侧读路径）。
+   *
+   * 供事实抽取/geocode 锚点按「剥时间后缀的窗口内容」匹配 sheet——消息窗口对象
+   * 不携带 messageId 贯穿到抽取层，内容等值匹配是最小侵入的关联方式（描述由
+   * updateMessageContent 整条写入，窗口读到的 content 与库中逐字一致）。
+   */
+  async getVisualFactsByChat(
+    chatId: string,
+    options?: { sinceTimestamp?: number; limit?: number },
+  ): Promise<Array<{ content: string; visualFacts: Record<string, unknown> }>> {
+    if (!this.isAvailable()) return [];
+    try {
+      const results = await this.select<{
+        content: string;
+        visual_facts: Record<string, unknown> | null;
+      }>('content,visual_facts', (q) => {
+        let query = q.eq('chat_id', chatId).not('visual_facts', 'is', null);
+        if (options?.sinceTimestamp) {
+          query = query.gte('timestamp', new Date(options.sinceTimestamp).toISOString());
+        }
+        return query.order('timestamp', { ascending: false }).limit(options?.limit ?? 40);
+      });
+      return results
+        .filter((row) => row.visual_facts != null)
+        .map((row) => ({ content: row.content, visualFacts: row.visual_facts! }));
+    } catch (error) {
+      this.logger.error(`拉取视觉事实失败 [${chatId}]:`, error);
+      return [];
     }
   }
 

@@ -4,6 +4,11 @@ import {
   resolveCityFromLocation,
   scanGeoSignalsFromText,
 } from '@resolution/geo';
+import {
+  fieldValues,
+  isVisualDescriptionText,
+  type FinalizedVisualFactSheet,
+} from '@resolution/visual';
 
 /**
  * invite_to_group 城市 provenance gate（tool guardrail，纯函数）。
@@ -46,7 +51,12 @@ import {
 export type InviteCityGateVerdict =
   | {
       decision: 'allow';
-      matchedBy: 'session_fact' | 'user_text' | 'district_inference' | 'turn_geocode';
+      matchedBy:
+        | 'session_fact'
+        | 'user_text'
+        | 'district_inference'
+        | 'turn_geocode'
+        | 'turn_map_screenshot';
     }
   | {
       decision: 'reject';
@@ -72,6 +82,12 @@ export interface InviteCityGateInput {
    * 证据源（amap 解析，外生非模型自报），只是消费时机提前到轮内。
    */
   turnResolvedCities?: readonly (string | null | undefined)[];
+  /**
+   * 本轮视觉事实 sheet（context.turnVisualFactSheets，visual-fact-structuring R3）。
+   * map_location 截图的城市字段是候选人位置证据，作第五档出处；job_posting 的
+   * 门店城市不算（badcase x3pdj7qh：截图门店城市被当候选人城市拉错群）。
+   */
+  turnVisualSheets?: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
 }
 
 /**
@@ -83,6 +99,10 @@ function inferCitiesFromGeoSignals(userTexts: readonly string[]): Set<string> {
   const cities = new Set<string>();
   for (const text of userTexts) {
     if (!text) continue;
+    // R3 负向面（badcase x3pdj7qh）：视觉描述里的城市（岗位截图门店地、第三方
+    // 聊天截图）不算候选人位置出处。地图截图的城市走 turnVisualSheets/sessionCity
+    //（source=tool）两条正向通道，不再从描述全文里捞。
+    if (isVisualDescriptionText(text.trim())) continue;
     const scan = scanGeoSignalsFromText(text);
     for (const hit of scan.districtHits) {
       const city = resolveCityFromDistrict(hit.key);
@@ -127,6 +147,27 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
     .filter(Boolean);
   if (turnResolved.includes(requested)) {
     return { decision: 'allow', matchedBy: 'turn_geocode' };
+  }
+
+  // 本轮地图截图档（visual-fact-structuring R3，badcase oaz6inzf）：map_location
+  // sheet 的城市字段是候选人用来指自己位置的证据，经 geo 白名单归一后作第五档
+  // 出处。job_posting / 聊天截图的城市不进本档（那是门店/他人的位置）。
+  const sheetCities = new Set<string>();
+  for (const entry of input.turnVisualSheets ?? []) {
+    if (entry.sheet.kind !== 'map_location') continue;
+    const candidates = [
+      ...fieldValues(entry.sheet, 'city'),
+      ...fieldValues(entry.sheet, 'address'),
+      ...fieldValues(entry.sheet, 'candidate_address'),
+    ];
+    for (const candidate of candidates) {
+      const scan = scanGeoSignalsFromText(candidate);
+      const city = scan.city?.value ? normalizeCity(scan.city.value) : null;
+      if (city) sheetCities.add(city);
+    }
+  }
+  if (sheetCities.has(requested)) {
+    return { decision: 'allow', matchedBy: 'turn_map_screenshot' };
   }
 
   if (session) {

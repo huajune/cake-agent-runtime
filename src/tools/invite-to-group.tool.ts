@@ -313,6 +313,7 @@ export function buildInviteToGroupTool(
             // 同轮 geocode unique 确权城市：补"轮末写档、下轮生效"的时序空档
             //（geocode → 无岗 → invite 常在同一轮发生）。
             turnResolvedCities: (context.geocodeResolvedAnchors ?? []).map((anchor) => anchor.city),
+            turnVisualSheets: context.turnVisualFactSheets,
           });
           if (cityGateVerdict.decision === 'reject') {
             if (cityGateVerdict.reason === 'city_conflict') {
