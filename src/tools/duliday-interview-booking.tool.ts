@@ -1081,7 +1081,10 @@ export function buildInterviewBookingTool(
                     ? {
                         _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime),
                         _aiInterviewGuide:
-                          '该岗位是 AI 面试，无需到店；请提醒候选人按面试通知里的入口和要求在线完成，不要发送到店报到或携带证件话术。',
+                          '该岗位是 AI 面试，无需到店；请提醒候选人按面试通知里的入口和要求在线完成，不要发送到店报到或携带证件话术。' +
+                          // badcase recvpYfDLkx4Fz：预约日期只是系统登记信息，AI 面试在通知时限内可提前完成，
+                          // 候选人问"必须明天做吗/能提前吗"时不得按预约日咬死。
+                          '预约的面试时间是系统登记时段，不是"到点开考"：候选人收到面试通知/面试码后在通知规定的时限内完成即可，一般可以提前做，具体以通知为准。',
                         _resultDisclaimer: '具体面试要求和结果以 AI 面试通知为准',
                       }
                     : onlineInterview
@@ -1146,6 +1149,12 @@ export function buildInterviewBookingTool(
                     '预约未成功。请以真人招募者口吻用一句话向候选人说明"我让同事确认一下，稍等"之类的衔接语，自主组织措辞；不要透露具体报错或接口细节，不要提及机器人/托管/系统/自动等字眼，也不要继续推进其他任务。',
                   details: { requestInfo },
                 }),
+                // 下方对本分支触发 pauseUserHostingAsync（自动暂停托管→飞书告警→真人接管）。
+                // 显式打标供出站守卫对账：replyInstruction 指示的"让同事确认"衔接语在本
+                // 形态下是如实陈述，handoff_promise_without_handoff 不应再判空头承诺
+                // （2026-08-04 守卫审计：…740343589/…748484273 假阳 × 有害重写）。
+                // pause 是 fire-and-forget，极小概率失败仅落 error 日志，此处按已触发计。
+                hostingPaused: true,
               };
 
           // 需要人工补发面试群时，toolResult.sideEffect 会在候选人回复完成投递后统一执行
@@ -1202,16 +1211,21 @@ export function buildInterviewBookingTool(
             `[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`,
           );
 
-          const toolResult = buildToolError({
-            errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
-            outcome: '预约失败',
-            replyInstruction:
-              '预约未成功。请以真人招募者口吻用一句话向候选人说明"我让同事确认一下，稍等"之类的衔接语，自主组织措辞；不要透露具体报错或接口细节，不要提及机器人/托管/系统/自动等字眼，也不要继续推进其他任务。',
-            details: {
-              requestInfo,
-              reason: err instanceof Error ? err.message : '未知错误',
-            },
-          });
+          const toolResult = {
+            ...buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
+              outcome: '预约失败',
+              replyInstruction:
+                '预约未成功。请以真人招募者口吻用一句话向候选人说明"我让同事确认一下，稍等"之类的衔接语，自主组织措辞；不要透露具体报错或接口细节，不要提及机器人/托管/系统/自动等字眼，也不要继续推进其他任务。',
+              details: {
+                requestInfo,
+                reason: err instanceof Error ? err.message : '未知错误',
+              },
+            }),
+            // 同上方 BOOKING_REJECTED 分支：本分支同样触发自动暂停托管+真人接管，
+            // 打标供 handoff_promise_without_handoff 对账（2026-08-04 守卫审计）。
+            hostingPaused: true,
+          };
 
           void sendInterviewBookingNotification(
             {

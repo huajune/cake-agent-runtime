@@ -282,4 +282,75 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(excerpt.length).toBeLessThan(4100);
     expect(excerpt).toContain('（岗位详情已截断）');
   });
+
+  // 2026-08-04 审计 P1-6（trace …_1785451709779）：invite_to_group:ok 支撑的
+  // "群邀请已经发你了"被零证据档判成"没有任何下发证据"——packet 缺群邀请证据类。
+  it('extracts group invite evidence from invite_to_group calls', () => {
+    const packet = builder.build({
+      reply: '「独立客&上海餐饮兼职13群」的邀请已经发你了，点一下卡片就能进',
+      toolCalls: [
+        {
+          toolName: 'invite_to_group',
+          args: { city: '上海' },
+          result: { success: true, groupName: '独立客&上海餐饮兼职13群', groupPurpose: 'job_pool' },
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.groupInvite).toEqual({
+      success: true,
+      groupName: '独立客&上海餐饮兼职13群',
+      alreadyInGroup: undefined,
+      errorType: undefined,
+    });
+  });
+
+  it('keeps invite failure evidence with errorType (not treated as success)', () => {
+    const packet = builder.build({
+      reply: '好的',
+      toolCalls: [
+        {
+          toolName: 'invite_to_group',
+          args: {},
+          result: { success: false, errorType: 'invite.group_full' },
+          status: 'error',
+        },
+      ],
+    });
+
+    expect(packet.evidence.groupInvite).toMatchObject({
+      success: false,
+      errorType: 'invite.group_full',
+    });
+  });
+
+  it('forwards recent assistant texts for cross-turn restatement adjudication (最近 8 条、单条 600 字截断)', () => {
+    const texts = [
+      '',
+      '   ',
+      ...Array.from({ length: 9 }, (_, i) => `往轮回复${i}`),
+      `必胜客保利大都汇，日结当天发薪。${'班次详情'.repeat(200)}`,
+    ];
+
+    const packet = builder.build({
+      reply: '就是昨天说的那家',
+      toolCalls: [],
+      recentAssistantTexts: texts,
+    });
+
+    expect(packet.recentAssistantMessages).toHaveLength(8);
+    // 空白条被剔除后取最近 8 条：往轮回复 2..8 + 超长条
+    expect(packet.recentAssistantMessages[0]).toBe('往轮回复2');
+    const last = packet.recentAssistantMessages.at(-1)!;
+    expect(last).toHaveLength(601); // 600 字符 + 截断省略号
+    expect(last.startsWith('必胜客保利大都汇，日结当天发薪。')).toBe(true);
+    expect(last.endsWith('…')).toBe(true);
+  });
+
+  it('defaults recentAssistantMessages to empty array when not provided (repair 等旁路调用方)', () => {
+    const packet = builder.build({ reply: '你好', toolCalls: [] });
+
+    expect(packet.recentAssistantMessages).toEqual([]);
+  });
 });

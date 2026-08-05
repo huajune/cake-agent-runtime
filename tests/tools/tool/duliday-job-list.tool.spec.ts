@@ -1001,6 +1001,155 @@ describe('buildJobListTool', () => {
     ]);
   });
 
+  describe('jobIdList provenance gate (badcase 6a6c4c13 幻觉参数查询)', () => {
+    it('blocks jobIdList entries never recalled in this session', async () => {
+      const gatedContext: ToolBuildContext = {
+        ...mockContext,
+        isRecalledJobId: (jobId: number) => jobId === 528697,
+        recalledJobIds: [528697],
+      };
+
+      const result = await executeTool(gatedContext, {
+        ...defaultInput,
+        jobIdList: [53035],
+        cityNameList: ['上海'],
+        brandAliasList: ['新白鹿'],
+      });
+
+      expect(result.errorType).toBe('job_list.jobid_no_provenance');
+      expect(result._replyInstruction).toContain('53035');
+      expect(result._replyInstruction).toContain('528697');
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+
+    it('blocks with zero-recall wording when session has no recalled jobs', async () => {
+      const gatedContext: ToolBuildContext = {
+        ...mockContext,
+        isRecalledJobId: () => false,
+        recalledJobIds: [],
+      };
+
+      const result = await executeTool(gatedContext, {
+        ...defaultInput,
+        jobIdList: [53035],
+      });
+
+      expect(result.errorType).toBe('job_list.jobid_no_provenance');
+      expect(result._replyInstruction).toContain('禁止凭空按 jobId 查询');
+    });
+
+    it('allows re-querying a legitimately recalled jobId', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+      const gatedContext: ToolBuildContext = {
+        ...mockContext,
+        isRecalledJobId: (jobId: number) => jobId === 1,
+        recalledJobIds: [1],
+      };
+
+      const result = await executeTool(gatedContext, { ...defaultInput, jobIdList: [1] });
+
+      expect(result.errorType).toBeUndefined();
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+  });
+
+  describe('student identity hard filter (badcase fazpqciu 先筛后推)', () => {
+    const socialOnlyJob = (jobId: number, brandName: string) =>
+      makeJobData({
+        basicInfo: { jobId, brandName },
+        hiringRequirement: {
+          basicPersonalRequirements: { minAge: 20, maxAge: 35 },
+          remark: '不招学生',
+        },
+      });
+    const openJob = (jobId: number, brandName: string) =>
+      makeJobData({
+        basicInfo: { jobId, brandName },
+        hiringRequirement: { basicPersonalRequirements: { minAge: 18, maxAge: 40 } },
+      });
+    const studentContext = {
+      ...mockContext,
+      sessionFacts: {
+        interview_info: { is_student: true },
+      } as ToolBuildContext['sessionFacts'],
+    };
+
+    it('excludes 不接受学生 jobs for a known student and discloses the filtering', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [socialOnlyJob(1, '拉瓦萨'), openJob(2, '成都你六姐')],
+        total: 2,
+      });
+
+      const result = await executeTool(studentContext, { ...defaultInput });
+
+      expect(result.markdown).not.toContain('拉瓦萨');
+      expect(result.markdown).toContain('成都你六姐');
+      expect(result.markdown).toContain('已剔除 1 个「不接受学生」的岗位');
+      expect(result.queryMeta.studentIdentityFilter).toEqual(
+        expect.objectContaining({ applied: true, excludedCount: 1 }),
+      );
+    });
+
+    it('returns student_filter_empty with noMatchScript when all jobs reject students', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [socialOnlyJob(1, '拉瓦萨'), socialOnlyJob(2, '肯德基')],
+        total: 2,
+      });
+
+      const result = await executeTool(studentContext, { ...defaultInput });
+
+      expect(result.errorType).toBe('job_list.student_filter_empty');
+      expect(result.noMatchScript?.nextToolCall).toBe('invite_to_group');
+      expect(result._replyInstruction).toContain('严禁');
+      expect(result.queryMeta.studentIdentityFilter.excludedCount).toBe(2);
+    });
+
+    it('does not filter when is_student is false or unknown（false 有污染史不可作过滤依据）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [socialOnlyJob(1, '拉瓦萨')],
+        total: 1,
+      });
+
+      const falseContext = {
+        ...mockContext,
+        sessionFacts: {
+          interview_info: { is_student: false },
+        } as ToolBuildContext['sessionFacts'],
+      };
+      const filtered = await executeTool(falseContext, { ...defaultInput });
+      expect(filtered.markdown).toContain('拉瓦萨');
+      expect(filtered.queryMeta.studentIdentityFilter).toEqual({ applied: false });
+
+      const unknownResult = await executeTool(mockContext, { ...defaultInput });
+      expect(unknownResult.markdown).toContain('拉瓦萨');
+      expect(unknownResult.queryMeta.studentIdentityFilter).toEqual({ applied: false });
+    });
+  });
+
+  it('keeps the student gate off candidate cards but flags it in interview summary (badcase fazpqciu)', async () => {
+    const job = makeJobData({
+      hiringRequirement: {
+        basicPersonalRequirements: { minAge: 20, maxAge: 35 },
+        certificate: { healthCertificate: '需健康证' },
+        remark: '不招学生',
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    // 候选人可见卡片不展示身份筛选信息（2026-08-04 用户裁定）
+    const compact = await executeTool(mockContext, { ...defaultInput });
+    expect(compact.markdown).not.toContain('只招社会人士');
+    expect(compact.markdown).not.toContain('不接受学生');
+
+    // 约面重点（模型内部上下文）：保留纯事实行，行为口径在 prompt 不在数据行
+    const detailed = await executeTool(mockContext, {
+      ...defaultInput,
+      includeHiringRequirement: true,
+      includeInterviewProcess: true,
+    });
+    expect(detailed.markdown).toContain('**学生身份要求**: 不接受学生');
+  });
+
   it('should keep explicit meal and accommodation facts in the compact job summary', async () => {
     const job = makeJobData({
       welfare: {

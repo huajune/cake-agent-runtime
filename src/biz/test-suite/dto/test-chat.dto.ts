@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { GeneratorToolMode } from '@agent/generator/generator.types';
 import {
   ExecutionStatus,
   ReviewStatus,
@@ -240,6 +241,25 @@ export class VercelAIChatRequestDto {
   @IsString()
   scenario?: string;
 
+  @ApiPropertyOptional({
+    description:
+      '测试链路物理工具模式：none 不暴露工具，readonly 剔除副作用工具；缺省保持正常场景工具集',
+    enum: ['scenario', 'readonly', 'none'],
+  })
+  @IsOptional()
+  @IsIn(['scenario', 'readonly', 'none'])
+  toolMode?: GeneratorToolMode;
+
+  @ApiPropertyOptional({
+    description: '测试链路精确工具白名单；在 toolMode 过滤后的工具集上再取交集',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(32)
+  @IsString({ each: true })
+  allowedToolNames?: string[];
+
   @ApiPropertyOptional({ description: '是否保存执行记录', default: false })
   @IsOptional()
   @IsBoolean()
@@ -321,6 +341,25 @@ export class TestChatRequestDto {
   @IsOptional()
   @IsString()
   scenario?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '测试链路物理工具模式：none 不暴露工具，readonly 剔除副作用工具；缺省保持正常场景工具集',
+    enum: ['scenario', 'readonly', 'none'],
+  })
+  @IsOptional()
+  @IsIn(['scenario', 'readonly', 'none'])
+  toolMode?: GeneratorToolMode;
+
+  @ApiPropertyOptional({
+    description: '测试链路精确工具白名单；在 toolMode 过滤后的工具集上再取交集',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(32)
+  @IsString({ each: true })
+  allowedToolNames?: string[];
 
   @ApiPropertyOptional({ description: '是否保存执行记录', default: true })
   @IsOptional()

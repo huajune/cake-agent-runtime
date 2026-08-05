@@ -565,6 +565,27 @@ describe('OutputGuardrailService', () => {
     );
   });
 
+  it('往轮助手文本进语义 packet：与规则档共用同一次短期记忆读取（跨轮复述判定信号）', async () => {
+    const reviewer = noTriggerReviewer();
+    const { service, packetBuilder, shortTerm } = build(false, makeRuleResult(), reviewer);
+    shortTerm.getMessages.mockResolvedValue([
+      { role: 'assistant', content: '帮你查了下，必胜客保利大都汇在招，日结当天发薪' },
+      { role: 'user', content: '那家几点上班' },
+      { role: 'assistant', content: '班次有三个时段可选' },
+    ]);
+
+    await service.check(baseInput({ chatId: 'chat-restate' }));
+
+    expect(packetBuilder.build).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recentAssistantTexts: [
+          '帮你查了下，必胜客保利大都汇在招，日结当天发薪',
+          '班次有三个时段可选',
+        ],
+      }),
+    );
+  });
+
   it('silent（advisory）：reviewer 故障 + 高风险 → 仍 block，但不 fire 故障告警', async () => {
     const reviewer = {
       shouldReview: jest.fn().mockReturnValue(false),

@@ -42,6 +42,7 @@ import {
 import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
+  applyStudentIdentityConstraint,
   collectLaborFormAnomalies,
   filterJobsByRequestedCategories,
   filterJobsExcludingBrands,
@@ -366,6 +367,23 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
 }
 
 /**
+ * 解析候选人是否学生（高置信线索优先，其次会话事实；不依赖 LLM 入参）。
+ *
+ * 只用于学生身份硬过滤：仅 true（候选人明确自报学生）触发；false 有抽取
+ * 污染史（badcase 6a673402 凭空落 false），调用方不得据 false 做过滤。
+ */
+function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
+  const sources = [
+    readHighConfidenceFactValue(context.highConfidenceFacts?.interview_info?.is_student),
+    readFactValue(context.sessionFacts?.interview_info?.is_student),
+  ];
+  for (const source of sources) {
+    if (typeof source === 'boolean') return source;
+  }
+  return null;
+}
+
+/**
  * 解析候选人想要的用工形式。
  *
  * 只从已确定性提取的会话事实读取（高置信线索优先，其次会话事实），
@@ -664,6 +682,28 @@ export function buildJobListTool(
         // B7 二次无岗升级（badcase 6a5df7e7）：本会话已发过无岗话术时，noMatchScript 出二档
         // 文案并禁止逐字复读，四个无岗出口共用同一判定。
         const priorNoMatchReplySent = hasPriorNoMatchReply(context.messages ?? []);
+
+        // jobIdList provenance 闸门（badcase 6a6c4c13：候选人全程只聊东莞长安晚班兼职，
+        // 模型却在收尾轮凭空查 jobIdList=[53035]+新白鹿+上海——预训练知识幻觉成查询参数，
+        // 还经无岗脚本把"新白鹿在上海"说给了候选人）。与 precheck/booking 的同名闸门同口径：
+        // 按 jobId 精查只能用本会话真实召回过的 jobId；幻觉参数直接拦截，不打接口。
+        if (jobIdList.length > 0 && context.isRecalledJobId) {
+          const unrecalledJobIds = jobIdList.filter((id) => !context.isRecalledJobId!(id));
+          if (unrecalledJobIds.length > 0) {
+            const recalled = context.recalledJobIds ?? [];
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_JOBID_NO_PROVENANCE,
+              outcome: '查询拦截（jobIdList 含无召回出处的 jobId）',
+              replyInstruction:
+                (recalled.length === 0
+                  ? `jobIdList=[${unrecalledJobIds.join('、')}] 在本会话没有任何来源——会话还没召回过岗位，禁止凭空按 jobId 查询。`
+                  : `jobIdList 中的 [${unrecalledJobIds.join('、')}] 不在本会话召回过的岗位里（合法 jobId：${recalled.join('、')}），禁止使用。`) +
+                '请去掉 jobIdList，按候选人本轮真实意向（城市/位置/品牌/工种）用常规参数查询；' +
+                '严禁把本次拦截的品牌/城市/岗位名当作事实写进给候选人的话术。',
+              details: { unrecalledJobIds, recalledJobIds: recalled },
+            });
+          }
+        }
 
         // ==================== 品牌入口标准化 + 查询计划（§8.1/§8.2） ====================
         // 别名经品牌目录解析成唯一标准品牌（冲突/未命中进 rejected，不形成品牌过滤）；
@@ -1542,6 +1582,54 @@ export function buildJobListTool(
             }
           }
 
+          // 学生身份硬过滤（先筛后推，badcase fazpqciu）：候选人已明确学生身份时，
+          // "不接受学生"的岗位在查询侧直接剔除，不进推荐池。从确定性会话事实读取，
+          // 不依赖 LLM 入参；is_student=false 有抽取污染史，只有 true 触发过滤。
+          const candidateIsStudent = resolveCandidateIsStudent(context);
+          const studentFilterResult = applyStudentIdentityConstraint(jobs, candidateIsStudent);
+          let studentFilterNotice: string | null = null;
+          if (studentFilterResult.applied) {
+            jobs = studentFilterResult.jobs;
+            total = jobs.length;
+            if (studentFilterResult.excluded.length > 0 && jobs.length === 0) {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.JOB_LIST_STUDENT_FILTER_EMPTY,
+                outcome: '本轮召回岗位全部不接受学生，按候选人学生身份过滤后为空',
+                replyInstruction:
+                  '候选人已明确是学生，本轮召回的岗位经「学生身份要求」核对后全部只招社会人士，已被剔除。' +
+                  '**按 noMatchScript.candidateMessage 如实告知附近岗位暂不接受学生**（学生门槛是可公开条件，可以明说），' +
+                  '然后调用 invite_to_group 拉群维护，后续有接受学生的岗位再通知。' +
+                  '**严禁**建议候选人按社会人士登记、隐瞒学生身份或"先报上再说"（诚信红线），' +
+                  '也不得把被剔除的岗位包装回去。',
+                details: {
+                  queryMeta: {
+                    studentIdentityFilter: {
+                      applied: true,
+                      excludedCount: studentFilterResult.excluded.length,
+                      excludedExamples: studentFilterResult.excluded.slice(0, 3),
+                    },
+                  },
+                  noMatchScript: buildNoMatchScript({
+                    priorNoMatchReplySent,
+                    brandLabels: brandAliasList,
+                    storeLabels: storeNameList,
+                    cityLabels: normalizedCityNameList,
+                    regionLabels: normalizedRegionNameList,
+                    maxKm: maxKm ?? null,
+                    identityConstraintLabel: '学生可做',
+                  }),
+                },
+              });
+            }
+            if (studentFilterResult.excluded.length > 0) {
+              // 知情披露：部分岗位被身份过滤剔除时向模型说明，避免它按记忆中的
+              // 品牌数量口径（如"附近有3家哈根达斯"）与过滤后结果自相矛盾。
+              studentFilterNotice =
+                `ℹ️ 候选人已明确学生身份：本轮已剔除 ${studentFilterResult.excluded.length} 个「不接受学生」的岗位，` +
+                '以下仅展示学生可做/未标注学生限制的岗位。不得再推荐被剔除岗位；候选人点名问到时，如实说明该岗只招社会人士。';
+            }
+          }
+
           const flags: ProgressiveDisclosureFlags = {
             includeBasicInfo,
             includeJobSalary,
@@ -1585,6 +1673,7 @@ export function buildJobListTool(
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               summerWorkerStrictNotice,
               laborFormRelaxNotice,
+              studentFilterNotice,
               ageScreeningSummary?.markdown,
               jobsMarkdown,
             ].filter((section): section is string => Boolean(section));
@@ -1665,6 +1754,13 @@ export function buildJobListTool(
                   ...(candidateLaborForm === '暑假工'
                     ? {}
                     : { excludedExamples: laborFormFilterResult.excluded.slice(0, 5) }),
+                }
+              : { applied: false },
+            studentIdentityFilter: studentFilterResult.applied
+              ? {
+                  applied: true,
+                  excludedCount: studentFilterResult.excluded.length,
+                  excludedExamples: studentFilterResult.excluded.slice(0, 5),
                 }
               : { applied: false },
             // 不符合新契约的岗位用工形式数据（不兼容不兜底，暴露出来修数据源头）

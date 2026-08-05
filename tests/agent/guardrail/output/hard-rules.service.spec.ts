@@ -17,6 +17,235 @@ describe('HardRulesService', () => {
   const check = (replyText: string) =>
     service.check({ replyText, toolCalls: [], chatId: 'chat-1', userId: 'user-1' });
 
+  describe('ungrounded generalizations', () => {
+    const successfulJobLookup = {
+      toolName: 'duliday_job_list',
+      args: { cityNameList: ['张家口'] },
+      result: {
+        resultCount: 1,
+        markdown: '班次：组合排班，每周 5 天；健康证：入职前办妥。',
+      },
+      resultCount: 1,
+      status: 'narrow' as const,
+    };
+
+    it('revises a weekly-frequency floor generalized from combination scheduling', () => {
+      const result = service.check({
+        replyText:
+          '组合排班不是每天早中晚全上。不过这类排班通常对每周出勤天数有底线要求，你每周最多两天很难匹配。',
+        toolCalls: [],
+        userMessage:
+          '组合排班是不是代表早中晚每天全部都上？我每周最多只能上两天，只解释标签和周频。',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'combination_schedule_weekly_generalization',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            feedbackToGenerator: expect.stringContaining('每周最多几天是独立的周频约束'),
+          }),
+        ]),
+      );
+    });
+
+    it('allows separating combination scheduling from the job-specific weekly requirement', () => {
+      const result = service.check({
+        replyText:
+          '组合排班表示早中晚等班次会组合或轮换安排，不等于一天三个时段全上。每周最多两天是独立的周频约束，是否匹配要另看具体岗位。',
+        toolCalls: [],
+        userMessage: '组合排班是什么意思？我每周最多只能上两天。',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'combination_schedule_weekly_generalization',
+      );
+    });
+
+    it('does not let one successful job lookup support a generic combination-schedule claim', () => {
+      const result = service.check({
+        replyText: '这类排班每周至少要出勤五天，你每周最多两天不匹配。',
+        toolCalls: [successfulJobLookup],
+        userMessage: '组合排班是不是每天早中晚全上？我每周最多只能上两天。',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'combination_schedule_weekly_generalization',
+      );
+    });
+
+    it('allows a weekly-frequency claim explicitly scoped to one concrete job', () => {
+      const result = service.check({
+        replyText:
+          '组合排班表示班次会轮换。这个岗位的详情写明每周至少出勤五天，你每周最多两天与该岗位不匹配。',
+        toolCalls: [successfulJobLookup],
+        userMessage: '组合排班是不是每天早中晚全上？我每周最多只能上两天。',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'combination_schedule_weekly_generalization',
+      );
+    });
+
+    it('does not treat a failed job lookup as weekly-frequency evidence', () => {
+      const result = service.check({
+        replyText: '这类排班通常对周出勤有底线，每周两天很难匹配。',
+        toolCalls: [
+          {
+            ...successfulJobLookup,
+            result: { errorType: 'JOB_LIST_FAILED' },
+            resultCount: 0,
+            status: 'error' as const,
+          },
+        ],
+        userMessage: '组合排班是不是每天都要上？我一周只能两天。',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'combination_schedule_weekly_generalization',
+      );
+    });
+
+    it('does not apply the combination-schedule rule to an unrelated weekly-frequency question', () => {
+      const result = service.check({
+        replyText: '这个岗位每周出勤有最低要求，两天不匹配。',
+        toolCalls: [],
+        userMessage: '这个月结岗位一周要上几天？',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'combination_schedule_weekly_generalization',
+      );
+    });
+
+    it('still revises a generic floor after a safe clause when a contrast introduces the claim', () => {
+      const result = service.check({
+        replyText: '组合排班不代表固定周频，但这类排班通常有每周出勤底线，两天很难匹配。',
+        toolCalls: [],
+        userMessage: '组合排班是什么意思？我每周最多只能上两天。',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'combination_schedule_weekly_generalization',
+      );
+    });
+
+    it.each([
+      '组合排班和每周出勤是两个维度，具体需要依据岗位要求判断。',
+      '组合排班不一定有固定周频，每周具体要看岗位要求。',
+    ])('allows a locally bounded combination-schedule explanation: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '组合排班是什么意思？我每周最多只能上两天。',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'combination_schedule_weekly_generalization',
+      );
+    });
+
+    it('revises an unsupported health-certificate stage proportion while preserving the universal requirement', () => {
+      const result = service.check({
+        replyText:
+          '餐饮岗位按规定最终都是需要办理健康证的。大部分门店录用后再办，只有极少数要求面试前有证。',
+        toolCalls: [],
+        userMessage: '一般情况下，所有餐饮岗位都必须有食品健康证吗？不同岗位要求会不会不一样？',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'health_certificate_generalization',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            feedbackToGenerator: expect.stringContaining('餐饮类工作一律需要食品健康证'),
+          }),
+        ]),
+      );
+    });
+
+    it('allows the confirmed universal requirement with a job-specific stage boundary', () => {
+      const result = service.check({
+        replyText: '餐饮类工作一律需要食品健康证，具体需要在哪个阶段具备，以具体岗位当前要求为准。',
+        toolCalls: [],
+        userMessage: '所有餐饮岗位都必须有健康证吗？不同岗位会不会不一样？',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'health_certificate_generalization',
+      );
+    });
+
+    it('allows a health-certificate claim scoped to the returned result set', () => {
+      const result = service.check({
+        replyText: '这批岗位都要求入职前办理健康证。',
+        toolCalls: [successfulJobLookup],
+        userMessage: '所有餐饮岗位都必须有健康证吗？',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'health_certificate_generalization',
+      );
+    });
+
+    it('allows the confirmed industry-wide health-certificate requirement after a job lookup', () => {
+      const result = service.check({
+        replyText: '所有餐饮岗位最终都需要办理健康证。',
+        toolCalls: [successfulJobLookup],
+        userMessage: '所有餐饮岗位都必须有健康证吗？',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'health_certificate_generalization',
+      );
+    });
+
+    it.each(['做餐饮都得办健康证，具体还是要看岗位。', '餐饮类工作一律要健康证。'])(
+      'allows the confirmed universal health-certificate requirement: %s',
+      (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [successfulJobLookup],
+          userMessage: '一般情况下，所有餐饮岗位都必须有食品健康证吗？',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'health_certificate_generalization',
+        );
+      },
+    );
+
+    it.each([
+      '餐饮类工作一律需要健康证，具体办理阶段以岗位要求为准。',
+      '一般要看具体岗位，面试前是否需要有证也以岗位为准。',
+      '办理阶段通常不能一概而论，面试前还是入职后要看具体岗位。',
+    ])('allows a bounded health-certificate stage claim: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '一般情况下，所有餐饮岗位都必须有食品健康证吗？',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'health_certificate_generalization',
+      );
+    });
+
+    it('does not apply the general-health rule to a fee question or unrelated proportions', () => {
+      const result = service.check({
+        replyText: '办理费用一般 100 元左右，需要自费；大部分材料现场提交就行。',
+        toolCalls: [],
+        userMessage: '健康证办理费用是多少？',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'health_certificate_generalization',
+      );
+    });
+  });
+
   describe('store status speculation', () => {
     const noMatchLookup = {
       toolName: 'duliday_job_list',
@@ -420,6 +649,121 @@ describe('HardRulesService', () => {
         'job_detail_lookup_required',
       );
     });
+
+    it('rejects recommending 做一休一 to a candidate capped at two days per week', () => {
+      const result = service.check({
+        replyText: '你需要找明确写“每周可两天”“做一休一”“只周末”或者排班灵活的岗位。',
+        toolCalls: [],
+        userMessage: '我每周最多只能上两天。',
+        recentUserTexts: ['我每周最多只能上两天。'],
+        chatId: 'release-v10.38.0-schedule-frequency',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'unsupported_schedule_window_claim',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            label: expect.stringContaining('平均每周约 3.5 天'),
+          }),
+        ]),
+      );
+    });
+
+    it('allows explaining that 做一休一 exceeds a two-day weekly cap', () => {
+      const result = service.check({
+        replyText: '做一休一平均每周要上三到四天，不符合你每周最多两天的要求。',
+        toolCalls: [],
+        userMessage: '我每周最多只能上两天。',
+        recentUserTexts: ['我每周最多只能上两天。'],
+        chatId: 'chat-cycle-mismatch-explained',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it('allows 做一休一 when the weekly cap is four days', () => {
+      const result = service.check({
+        replyText: '你可以考虑做一休一的岗位。',
+        toolCalls: [],
+        userMessage: '我每周最多只能上四天。',
+        recentUserTexts: ['我每周最多只能上四天。'],
+        chatId: 'chat-cycle-within-cap',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it('does not infer a weekly cap when the candidate never stated one', () => {
+      const result = service.check({
+        replyText: '你可以考虑做一休一的岗位。',
+        toolCalls: [],
+        userMessage: '我想找排班规律一点的岗位。',
+        recentUserTexts: ['我想找排班规律一点的岗位。'],
+        chatId: 'chat-cycle-no-cap',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it('uses the latest explicit weekly cap instead of a stricter stale value', () => {
+      const result = service.check({
+        replyText: '你可以考虑做一休一的岗位。',
+        toolCalls: [],
+        userMessage: '现在我一周最多能上四天。',
+        recentUserTexts: ['我每周最多只能上两天。', '现在我一周最多能上四天。'],
+        chatId: 'chat-cycle-updated-cap',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
+
+    it.each(['以前每周最多两天，现在每周可以上四天了', '现在每周最多四天，不是之前每周最多两天'])(
+      'ignores historical or explicitly negated caps: %s',
+      (userMessage) => {
+        const result = service.check({
+          replyText: '你可以考虑做一休一的岗位。',
+          toolCalls: [],
+          userMessage,
+          chatId: 'chat-cycle-semantic-cap-update',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'unsupported_schedule_window_claim',
+        );
+      },
+    );
+
+    it('binds negation to each cycle mention instead of the whole sentence', () => {
+      const safe = service.check({
+        replyText: '建议不要考虑做一休一。',
+        toolCalls: [],
+        userMessage: '我一周最多只能上两天。',
+        chatId: 'chat-cycle-negated',
+      });
+      expect(safe.contradictions.map((item) => item.ruleId)).not.toContain(
+        'unsupported_schedule_window_claim',
+      );
+
+      const unsafe = service.check({
+        replyText: '不建议做二休一，可以考虑做一休一。',
+        toolCalls: [],
+        userMessage: '我一周最多只能上两天。',
+        chatId: 'chat-cycle-mixed-polarity',
+      });
+      expect(unsafe.contradictions.map((item) => item.ruleId)).toContain(
+        'unsupported_schedule_window_claim',
+      );
+    });
   });
 
   // 2026-07-21 守卫审计：本分支要求的补救是"先反问哪家门店"这一对话行为，而规则拿不到
@@ -566,6 +910,67 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
         'settlement_no_evidence_assertion',
       );
+    });
+
+    // 2026-08-04 审计假阳 …_1785472764565 / …_1785487619837："关于日结的问题"是话题
+    // 指代不是断言，整段本已明说"结算方式没法确认"，却被拦并 rewrite 成"好的，那你先忙"。
+    it('topic reference "关于日结的问题" is not an assertion (audit …_1785472764565)', () => {
+      const result = service.check({
+        replyText:
+          '关于日结的问题，我刚才仔细查了下附近 10 公里内的岗位，目前这边确实还没有新的岗位上来，所以结算方式暂时也没法确认。\n\n有合适的我会主动联系你。',
+        toolCalls: [failedJobListCall, erroredJobListCall],
+        userMessage: '好',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    // 话题指代只剥指代片段不豁免整句：同句后半的真断言仍要捕获。
+    it('topic reference followed by a real assertion still fires', () => {
+      const result = service.check({
+        replyText: '关于日结的问题，这家就是日结的。',
+        toolCalls: [failedJobListCall],
+        userMessage: '好',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    // 2026-08-04 审计假阳 …_1785400091574：「日结」与「没找到」同子句内隔 8 字，
+    // 旧后缀否定窗口(4)跨不过去，把候选人的诉求词判成断言。
+    it('same-clause suffix negation beyond 4 chars is exempt (audit …_1785400091574)', () => {
+      const result = service.check({
+        replyText:
+          '肯德基的日结兼职在你附近暂时没找到在招的，我先帮你留意着\n\n你已经在餐饮兼职群里了，后续有肯德基或其他合适的日结岗位上线，我会在群里第一时间通知你',
+        toolCalls: [failedJobListCall, erroredJobListCall],
+        userMessage: '嗷，现在没有啊',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'settlement_no_evidence_assertion',
+      );
+    });
+
+    it('backfills the matched phrase into feedbackToGenerator', () => {
+      const result = service.check({
+        replyText: '这两家肯德基都是月结，每月发薪。',
+        toolCalls: [failedJobListCall],
+        userMessage: '日结月结',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find(
+        (item) => item.ruleId === 'settlement_no_evidence_assertion',
+      );
+      expect(hit?.feedbackToGenerator).toContain('「月结」');
+      expect(hit?.feedbackToGenerator).toContain('逐字保留');
     });
 
     it('yields to 形态一 when any job_list call produced data', () => {
@@ -971,6 +1376,11 @@ describe('HardRulesService', () => {
       '不好意思，门店不接受少数民族',
       '这个岗位有户籍要求，你可能不行',
       '你的户籍不符合门店要求，看看别的吧',
+      '这家对常驻地有要求，你方便说下你常驻在哪个城市吗？',
+      '门店对居住地有限制，你现在住哪里？',
+      '这家对常驻地有明确要求，你方便说下吗？',
+      '门店对居住地有一定限制，你现在住哪里？',
+      '这个岗位对所在城市有硬性要求。',
       // 专业类筛选条件外露（badcase 2026-07-06：与籍贯/民族同样处理）
       '专业不是新媒体或食品相关的吧？',
       '你不会是食品相关专业吧',
@@ -1003,6 +1413,10 @@ describe('HardRulesService', () => {
       // 宣布"无限制"是合规的
       '这个岗位性别年龄不限，户籍也不限的',
       '这家对户籍没有要求，放心报名',
+      '方便问一下你常驻在哪个城市吗？我帮你看下匹配的岗位',
+      '这家对常驻地没有要求，外地居住也可以',
+      '这家对常驻地不作要求，外地也可以',
+      '门店对居住地不设限制，放心报名',
       '这个岗位只写了要食品健康证，没提地域限制。具体外地证能不能用我帮你跟门店确认下',
       // 催收资料场景误用"不要"
       '麻烦把籍贯发我一下哈，不要发错啦',
@@ -1964,6 +2378,511 @@ describe('HardRulesService', () => {
     });
   });
 
+  describe('experience_fraud_coaching (badcase scyjp2kx chat 6a702fae 教唆谎称盒马经历)', () => {
+    const admissionTexts = ['那天有的小姐妹让我随便写的，我写的盒马', '就是没有，随便写的'];
+
+    it('flags the coaching verbatim from the badcase（教说做过+编造更自然）', () => {
+      const result = service.check({
+        replyText:
+          '没事的，这家奥乐齐不查过往记录的，面试的时候直接说就行。你就说之前在盒马做过一段时间，现在想换个离家近的继续做，这样反而更自然。',
+        toolCalls: [],
+        userMessage: '但是之前上面信息填进去是有做过呀',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'experience_fraud_coaching',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('flags "如实说有相关经验" coaching after fabrication admission', () => {
+      const result = service.check({
+        replyText: '有盒马分拣经验其实是加分项呀，面试时如实说有相关经验就行，店里会更愿意要的。',
+        toolCalls: [],
+        userMessage: '可是她们都说要有经验的，所以我就想随便填个会不会好点',
+        recentUserTexts: ['过往公司也是随便写的，没事吧'],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('experience_fraud_coaching');
+    });
+
+    it.each([
+      '面试时建议把这段经历包装成做过盒马分拣。',
+      '把工作经历美化成有盒马经验，会更容易通过。',
+    ])('flags packaging fabricated experience without an explicit speech cue: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('experience_fraud_coaching');
+    });
+
+    it.each([
+      '不要把这段经历包装成做过盒马，应如实说明。',
+      '把经历包装成有盒马经验的说法不真实，要改回真实经历。',
+      '与其说自己有相关经验，不如如实说没有。',
+    ])('allows explicit rejection or correction of fabricated experience: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it('allows the honest correction coaching（就说之前没做过，愿意学）', () => {
+      const result = service.check({
+        replyText:
+          '这家奥乐齐不需要经验，没做过也没关系。面试的时候如果被问到，你就说之前没做过，但是愿意学就行，这家接受新手的。',
+        toolCalls: [],
+        userMessage: '就是没有，随便写的',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it.each([
+      '建议面试时如实说没有相关经验，表达愿意学、能吃苦。',
+      '面试时请如实说自己未有这方面经验，但愿意从头学习。',
+      '可以坦诚说自己无相关经验，不要继续使用虚假经历。',
+      '你就说之前没有在盒马做过，愿意学。',
+      '面试时说自己不具有相关经验。',
+      '不要说有相关经验，应该如实说明没有做过。',
+      '你不能就说之前在盒马做过，要如实说明。',
+      '不能认为门店不查过往记录，还是要如实说明。',
+      '“门店不查记录”这种说法不对，不能抱侥幸。',
+    ])('allows negated experience claims after fabrication admission: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it.each([
+      '别说没做过，直接说有相关经验。',
+      '我不能承诺录用，但你就说之前在盒马做过。',
+      '没事，门店不会核查报名资料。',
+      '虽然不能保证门店不查记录，但你就说之前做过。',
+      '你就说没做过分拣，但在盒马干过一段时间。',
+      '你就说没有相关经验，但有盒马经历。',
+      '不要说自己没经验而是有相关经验。',
+      '不是不能说之前在盒马做过。',
+      '面试时说明自己有盒马经验就行。',
+      '面试时声称自己有盒马经验就行。',
+      '面试时表示自己有盒马经验就行。',
+      '别担心，面试时就说有相关经验。',
+      '面试时不能不说自己有相关经验。',
+      '面试时不得不说自己有相关经验。',
+      '面试时先如实说有没有相关经验都行，但你就说有相关经验。',
+      '面试时先如实说有还是没有相关经验都行，但你就说有相关经验。',
+      '面试时就讲自己有相关经验。',
+      '跟面试官讲自己在盒马做过。',
+      '面试时告诉店长自己有相关经验。',
+      '面试官问起就答有相关经验。',
+      '面试时你就说有相关经验才行。',
+      '你得说有三年经验才能报名。',
+      '面试时说有盒马经验才能应聘。',
+    ])('still flags positive coaching when another negated phrase is present: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('experience_fraud_coaching');
+    });
+
+    it.each([
+      '面试官问有经验吗，你就说有',
+      '如果问你有没有经验，就回答有',
+      '如果问你有没有经验，就答“有”',
+      '面试时别忘了说自己有相关经验',
+      '不要忘记告诉店长自己在盒马做过',
+      '别漏说自己有盒马经验',
+    ])('flags affirmative coaching with an elliptical answer or non-omission: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('experience_fraud_coaching');
+    });
+
+    it.each([
+      '不要在面试时说有相关经验，应如实说明。',
+      '我不建议你说有相关经验。',
+      '面试时要如实说有没有相关经验。',
+      '面试时如实说自己到底有没有相关经验。',
+      '面试时如实说有无经验都可以，关键是不能编造。',
+      '面试时如实说有还是没有相关经验。',
+      '面试时说有或者没有相关经验都行，不能编。',
+      '面试时照实说有或没有相关经验。',
+      '面试时如实说明自己有过什么经验、没做过什么。',
+      '面试时说有必要说明自己的真实经历。',
+      '不要说岗位应该有相关经验要求，应说明自己没经验。',
+      '岗位说明有相关经验要求，但你没有相关经验，应如实说明。',
+      '不要跟面试官说有相关经验，应如实说明。',
+      '不能对面试官说自己有盒马经验。',
+      '不建议在面试时跟店长说有相关经验。',
+      '别当着店长的面说自己做过。',
+      '不要再说自己有相关经验。',
+      '不要主动说自己有相关经验。',
+      '不要继续说有经验。',
+      '不要轻易说自己有相关经验。',
+      '不要随便说自己有盒马经验。',
+      '不要在面试的时候说有相关经验。',
+      '不要和面试官说自己做过。',
+      '不建议你在面试的时候说有经验。',
+      '千万不要再随便说自己有经验。',
+      '请勿再说自己有相关经验，要如实说明。',
+      '不可以随便说自己有相关经验。',
+      '面试时如实说明自己有哪方面的经验。',
+      '这不代表门店不查记录。',
+      '并不是说门店不查记录。',
+      '我没有说门店不查记录。',
+    ])('allows locally negated coaching or record-check claims: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it.each([
+      '你刚才说自己有盒马经验是随便填的，我明白了',
+      '你说自己有盒马经验是瞎填的，我明白了',
+      '你是说报名表里写的有盒马经验其实不真实吗？',
+      '你刚才告诉我自己有盒马经验是瞎填的，我会按真实情况处理',
+      '如果你确实有其他相关经验，可以说有相关经验；没有就如实说没有',
+      '只有确实做过，面试时才能说自己做过',
+      '只有你确实有相关经验时，才能说有相关经验',
+      '前提是你确实做过盒马，面试时才能说自己做过',
+      '岗位介绍说有相关经验会优先，但没有就如实说明',
+      '面试官说有相关经验会优先，但你没有就如实说没有',
+      '招聘信息表示有经验会加分，但你没有就如实说没有',
+      '门店告诉你有相关经验会加分，但没有也没关系',
+      '我没法答应你有经验就一定会录用',
+      '没必要跟面试官说自己有相关经验，如实说明没有即可',
+      '无需声称自己有盒马经验',
+      '不必说自己做过',
+      '你不该说自己有盒马经验',
+      '面试时如实回答做过还是没做过',
+    ])(
+      'allows replay, truthful conditions, third-party facts, and genuine negation: %s',
+      (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [],
+          userMessage: '我报名表里的盒马经历是随便写的。',
+          recentUserTexts: admissionTexts,
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+          'experience_fraud_coaching',
+        );
+      },
+    );
+
+    it('does not flag experience advice without any fabrication admission（真有经验的正常辅导）', () => {
+      const result = service.check({
+        replyText: '你有盒马分拣经验的话，面试时如实说有相关经验就行，是加分项。',
+        toolCalls: [],
+        userMessage: '我之前在盒马做过一年分拣',
+        recentUserTexts: ['我之前在盒马做过一年分拣'],
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it('does not flag replies without coaching phrasing even after admission', () => {
+      const result = service.check({
+        replyText: '这家不需要经验，新手也能做。登记信息能改就从原渠道更正，面试时如实说明就好。',
+        toolCalls: [],
+        userMessage: '过往公司也是随便写的，没事吧',
+        recentUserTexts: admissionTexts,
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('experience_fraud_coaching');
+    });
+
+    it('revises an unsupported promise to edit the fabricated application record (release v10.38.0 case 05)', () => {
+      const result = service.check({
+        replyText:
+          '面试时建议如实说没有做过，不用靠编经历来加分。要不我把你报名表里的这段经历先改掉？',
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      const hit = result.contradictions.find(
+        (c) => c.ruleId === 'application_record_update_promise',
+      );
+      expect(hit?.action).toBe('revise');
+      expect(hit?.feedbackToGenerator).toContain('原报名渠道');
+    });
+
+    it.each([
+      ['省略宾语', '你重新说一下真实情况，我帮你更新一下。'],
+      ['宾语前置', '报名表我帮你改一下。'],
+      ['改下短形', '我帮你改下报名表。'],
+      ['近轮指向明确的省略主语动作', '好，我来改一下。'],
+      ['引号强调的真实承诺', '我可以按你说的“帮你更新报名信息”。'],
+      ['句末口语尾缀', '我帮你更新一下哈。'],
+      ['连续白名单修饰词', '我这边可以先帮你更新一下。'],
+      ['省略第一人称主语', '好的，帮你更新一下。'],
+    ])('revises unsupported application-record promises with %s', (_shape, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it.each([
+      ['否定能力归属', '不是我帮你修改报名表，需要你从原渠道自己改。'],
+      ['引用旧错误话术', '这里不能说“我帮你更新报名信息”，你要自己更正。'],
+      ['主语后的明确否定', '我不能帮你把报名表改掉，请从原渠道更正。'],
+      ['主语后的能力否定', '我无法把报名表改掉，只能请你自行更正。'],
+      ['反向归属否定', '不用我帮你更新报名信息，请你自己从原渠道操作。'],
+      ['上一版错误话术复述', '上一版“我帮你更新报名信息”的说法不对，请你自行更正。'],
+      ['引用后否定做不到', '“我帮你改报名表”这件事我做不了，你得从原渠道改。'],
+      ['引用后否定办不到', '“我帮你更新报名信息”这个我办不到，请你自己更正。'],
+    ])('allows a compliant repair that %s', (_shape, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it('passes the second guardrail review after an unsafe draft is repaired', () => {
+      const unsafeDraft = service.check({
+        replyText: '这段经历我帮你改一下。',
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+      const repairedDraft = service.check({
+        replyText: '不能由我修改报名表，请从原报名渠道自行更正。',
+        toolCalls: [],
+        userMessage: '我报名表里的盒马经历是随便写的。',
+      });
+
+      expect(unsafeDraft.contradictions.map((c) => c.ruleId)).toContain(
+        'application_record_update_promise',
+      );
+      expect(repairedDraft.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it('allows telling the candidate to correct the record themselves', () => {
+      const result = service.check({
+        replyText:
+          '别继续说有这段经历。能从原报名渠道更正就先更正，改不了就在面试时主动说明真实情况。',
+        toolCalls: [],
+        userMessage: '盒马经历是我瞎填的。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
+    });
+
+    it('does not infer a fabricated record without candidate admission', () => {
+      const result = service.check({
+        replyText: '我可以帮你更新报名信息。',
+        toolCalls: [],
+        userMessage: '我的联系方式换了。',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'application_record_update_promise',
+      );
+    });
+  });
+
+  describe('screening_rejection_override (badcase weurg1xg chat 6a6c688b 户籍拒绝被翻案)', () => {
+    const householdRejectedPrecheck = [
+      {
+        toolName: 'duliday_interview_precheck',
+        args: { jobId: 528682 },
+        result: {
+          success: true,
+          nextAction: 'household_rejected',
+          job: {
+            jobId: 528682,
+            jobName: '果蔬好-天津乐提港店-收银员-小时工',
+            brandName: '果蔬好',
+            storeName: '天津乐提港店',
+          },
+          ageBoundary: { severity: 'pass', candidateAge: 39, requiredMin: 25, requiredMax: 40 },
+        },
+        status: 'ok',
+      },
+    ] as never;
+
+    const bookingRejected = [
+      {
+        toolName: 'duliday_interview_booking',
+        args: { jobId: 528683 },
+        result: {
+          success: false,
+          errorType: 'booking.rejected',
+          _outcome: '预约失败（候选人与岗位内部硬性条件冲突）',
+        },
+        status: 'ok',
+      },
+    ] as never;
+
+    it('flags the reversal verbatim from the badcase（确认有误+条件符合+承诺预约被拒岗位）', () => {
+      const result = service.check({
+        replyText:
+          '不是年龄问题，39岁符合的，果蔬好要求25-40岁。刚才是我这边确认有误，抱歉哈。资料收到了，我帮你预约果蔬好收银员。',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '是年龄不合适吗？',
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'screening_rejection_override',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+    });
+
+    it('flags "你的条件是符合的" reversal after booking.rejected', () => {
+      const result = service.check({
+        replyText: '抱歉，是我这边确认有误，你的条件是符合的。我重新帮你确认下预约信息。',
+        toolCalls: bookingRejected,
+        userMessage: '这个岗位也不合适吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
+    });
+
+    it('flags a continued booking promise after booking.rejected even without reversal wording', () => {
+      const result = service.check({
+        replyText: '没关系，我继续帮你预约这个岗位，稍后把结果发你。',
+        toolCalls: bookingRejected,
+        userMessage: '这个岗位也不合适吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
+    });
+
+    it('allows a neutral mismatch relay after booking.rejected when no booking is promised', () => {
+      const result = service.check({
+        replyText: '刚确认了下，这个岗位目前暂不匹配，我再帮你看看其他合适的岗位。',
+        toolCalls: bookingRejected,
+        userMessage: '这个岗位也不合适吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('allows reporting a different booking that succeeded later in the same turn', () => {
+      const result = service.check({
+        replyText: '第一家暂不匹配，另一家已经帮你预约成功了。',
+        toolCalls: [
+          ...bookingRejected,
+          {
+            toolName: 'duliday_interview_booking',
+            args: { jobId: 528684 },
+            result: { success: true, workOrderId: 'wo-1' },
+            status: 'ok',
+          },
+        ] as never,
+        userMessage: '两家都帮我试试',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('allows the neutral mismatch relay with a pivot to another brand', () => {
+      const result = service.check({
+        replyText:
+          '刚帮你确认了下，果蔬好这家店暂时不太匹配，我帮你看看其他合适的。肯德基（滨津店）晚班服务员离你0.5km，我帮你约这家的面试？',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '好的',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('does not flag reversal wording without any rejection evidence this turn', () => {
+      const result = service.check({
+        replyText: '抱歉，刚才是我这边确认有误，这家的班次其实是三选一，不用全部出勤。',
+        toolCalls: [],
+        userMessage: '班次是不是都要上？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('allows "条件是符合的" said about a different pivot job（评审 874 实证假阳回归）', () => {
+      const result = service.check({
+        replyText:
+          '果蔬好这边暂时不太匹配，先不推进了。不过肯德基金运店这家你条件是符合的，要不要帮你预约这家？',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '那还有别的吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('still flags "条件是符合的" when the sentence names the rejected job', () => {
+      const result = service.check({
+        replyText: '重新看了下，果蔬好这家你条件是符合的，我帮你继续推进。',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '真的不行吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
+    });
+  });
+
   describe('service basics', () => {
     it('does not throw when reply is empty', () => {
       const result = service.check({ replyText: '', toolCalls: [] });
@@ -2124,6 +3043,33 @@ describe('HardRulesService', () => {
       ).toBeDefined();
     });
 
+    // 2026-08-04 审计 P1-5（trace …_1785743845189）：无升级动作时反馈若仍教
+    // "改成'我帮你问下同事'"，处方逐字就是 handoff_promise 的违规要件——repair 照做
+    // 被二审 P0 打死成沉默。反馈必须按本轮有无真实升级动作分叉。
+    it('feedback forbids promise substitution when no escalation happened (deadlock fix)', () => {
+      const result = service.check({
+        replyText: '看到啦，我这边帮你人工确认下承揽协议的状态，弄好了跟你说哈。',
+        toolCalls: [{ toolName: 'save_image_description', args: {}, result: { success: true } }],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
+      expect(hit?.feedbackToGenerator).toContain('不得');
+      expect(hit?.feedbackToGenerator).not.toContain('只把露馅措辞改成人设内口径');
+    });
+
+    it('feedback keeps the 同事 rephrase when a real escalation happened this turn', () => {
+      const result = service.check({
+        replyText: '我这边帮你人工确认下面试安排，稍等哈。',
+        toolCalls: [{ toolName: 'raise_risk_alert', args: {}, result: { accepted: true } }],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
+      expect(hit?.feedbackToGenerator).toContain('我帮你问下同事');
+      expect(hit?.feedbackToGenerator).not.toContain('不得');
+    });
+
     it('does not flag incidental 人工 substring across word boundaries', () => {
       const result = service.check({
         replyText: '这家门店招人工作日白班为主，周末可以轮休。',
@@ -2166,6 +3112,216 @@ describe('HardRulesService', () => {
         repairMode: 'rewrite',
         repairToolNames: [],
       });
+    });
+
+    it('requires a rewrite when the reply promises a colleague will send materials without handoff', () => {
+      const result = service.check({
+        replyText:
+          '办理费用一般 100 元左右，需要自费办理，公司不报销哈。具体办理地点我让同事发你一份门店认可的机构清单，稍等～',
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee',
+      });
+
+      expect(
+        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
+      ).toMatchObject({
+        action: 'revise',
+        severity: 'P0',
+        currentReplySendable: false,
+        repairMode: 'rewrite',
+      });
+    });
+
+    it('requires a rewrite for a self-promised material lookup that cannot finish this turn', () => {
+      const result = service.check({
+        replyText:
+          '健康证办理费用一般100元左右，需要自费办理哈。具体办理地点要看门店认可的机构，我这边确认下有没有清单材料，有的话发你。',
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee-self-follow-up',
+      });
+
+      expect(
+        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
+      ).toMatchObject({
+        action: 'revise',
+        severity: 'P0',
+        currentReplySendable: false,
+        repairMode: 'rewrite',
+      });
+    });
+
+    it('requires a rewrite for a future material send promise without a committed action', () => {
+      const result = service.check({
+        replyText:
+          '健康证办理费用一般100元左右，需要自费办理，公司不报销。具体办理地点以门店认可的机构清单为准，到时候我会把清单发你。',
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee-future-send',
+      });
+
+      expect(
+        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
+      ).toMatchObject({
+        action: 'revise',
+        severity: 'P0',
+        currentReplySendable: false,
+        repairMode: 'rewrite',
+      });
+    });
+
+    it('requires a rewrite for a subjectless future material notice promise', () => {
+      const result = service.check({
+        replyText:
+          '健康证办理费用一般100元左右，需要自费办理，公司不报销。具体去哪里办以门店认可的机构清单为准，到时候会告诉你认可哪些体检点。',
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee-future-notice',
+      });
+
+      expect(
+        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
+      ).toMatchObject({
+        action: 'revise',
+        severity: 'P0',
+        currentReplySendable: false,
+        repairMode: 'rewrite',
+      });
+    });
+
+    it('allows a grounded boundary statement without promising a later send', () => {
+      const result = service.check({
+        replyText:
+          '健康证办理费用一般100元左右，需要自费办理。具体办理地点以门店认可的机构清单为准。',
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee-grounded',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it.each([
+      '我不能承诺到时候把清单发你，具体以门店认可的机构清单为准。',
+      '我不承诺到时候把清单发你，具体以门店认可的机构清单为准。',
+      '到时候不会把清单发你，请直接向门店确认认可机构。',
+      '到时候不能把清单发你，请直接向门店确认认可机构。',
+      '“到时候我会把清单发你”这种承诺不能说，具体以门店认可清单为准。',
+      '稍后如果你拿到清单，可以告诉你朋友办理地点。',
+      '稍后拿到清单，可以告诉你的朋友办理地点。',
+      '到时候有资料的话，可以发给你的同事。',
+      '晚点拿到链接后发给你朋友就行。',
+      '稍后不会告诉你认可机构。',
+      '到时候不能跟你说办理地点。',
+      '我不会承诺到时候把清单发你。',
+      '不能指望我到时候把清单发你。',
+      '回头看，相关资料我已经发给你了。',
+      '稍后我不一定会把清单发你，请以门店为准。',
+      '稍后可能会把清单发给你，请以门店为准。',
+      '清单可能会发给你，请以门店为准。',
+      '到时候不一定告诉你认可机构。',
+      '稍后我不保证会把清单发你。',
+      '到时候不承诺把资料发你。',
+      '稍后我不一定能把清单发你。',
+      '稍后如果有资料，可以发给你的老师。',
+      '稍后拿到材料后回复你的主管。',
+      '资料昨天发给你了。',
+      '资料上周发给你了。',
+      '不会忘记提醒同事不要把清单发给你。',
+      '稍后拿到资料后发给你室友即可。',
+      '回头看，相关资料昨晚发给你了。',
+      '到时候也许没法把清单发你。',
+      '之后的材料上周发给你了。',
+      '回头看，相关资料昨晚发给你。',
+      '到时候可能没办法把清单发你。',
+      '稍后不见得能把资料发给你。',
+      '稍后我把资料发给你家长。',
+      '晚点我把清单发给你爱人。',
+      '稍后我把清单发一份给你的同事。',
+      '到时候我会把清单发过去给你朋友。',
+    ])('allows an explicit denial of a future material promise: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee-denied-follow-up',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it.each([
+      '到时候我不会忘记把清单发给你。',
+      '到时候清单不会漏发给你。',
+      '稍后我不会忘了把资料发你。',
+      '我这边拿到机构清单后发你。',
+      '我查到机构清单就发你。',
+      '清单我晚点发你。',
+      '稍后你提醒我，我会把清单发你。',
+      '到时候你再问我，我把资料发给你。',
+      '晚点你联系我，我会告诉你认可机构。',
+      '稍后如果你需要，我会把清单发你。',
+      '我拿到你要的机构清单后发你。',
+      '我查到你需要的资料后发给你。',
+      '稍后我把之前确认好的清单发给你。',
+      '稍后我把刚才整理的资料发给你。',
+      '稍后我已经整理好的资料会发给你。',
+      '之后我已经拿到清单了，会发给你。',
+      '晚点已经准备好的清单我发你。',
+      '我确认好清单就发你。',
+      '我核实好后发你。',
+      '我问清楚了告诉你。',
+      '我有清单了就发你。',
+      '有清单的话我再发你。',
+      '清单等我确认好了发你。',
+      '我拿到清单马上发你。',
+      '晚点没有问题的话我把清单发你。',
+      '不用你提醒我也会把清单发你。',
+      '稍后发给你的是门店认可的机构清单。',
+      '晚点告诉你的是具体办理地点。',
+      '我确认好后给你发。',
+      '有清单了我再给你发。',
+      '晚点我给你发清单。',
+      '我查清楚后通知你。',
+      '有结果了我通知你。',
+      '我问好了就告诉你。',
+      '我查清楚以后把资料发你。',
+      '资料等我核实完就发你。',
+      '我一有清单就发你。',
+      '等有了清单我就发你。',
+      '结果出来后我告诉你。',
+      '我查到结果后回复你。',
+      '我问清楚后回复你。',
+      '我帮你问问，有消息了马上通知你。',
+      '我帮你问问，有消息通知你。',
+      '我确认后回复你。',
+      '等门店确认后我回复你。',
+      '稍后我给你发同事整理的资料。',
+      '稍后我把清单发一份给你。',
+      '清单会发给你。',
+      '到时候你会收到我发的清单。',
+      '到时候我会把清单发过去给你。',
+    ])('still flags a semantically positive self follow-up promise: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee-positive-self-follow-up',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
+    });
+
+    it('still flags a real future promise after an unrelated denial clause', () => {
+      const result = service.check({
+        replyText: '我不能承诺具体发送时间，但到时候我会把门店认可的机构清单发你。',
+        toolCalls: [],
+        chatId: 'release-v10.38.0-health-fee-positive-after-denial',
+      });
+
+      expect(result.contradictions.map((item) => item.ruleId)).toContain(
+        'handoff_promise_without_handoff',
+      );
     });
 
     it('allows the promise when request_handoff was actually dispatched', () => {
@@ -2292,8 +3448,12 @@ describe('HardRulesService', () => {
 
     it.each([
       '这个岗位的具体安排以门店同事确认结果为准。',
-      '我先核对一下现有资料，确认好再回复你。',
       '你可以联系门店负责人咨询具体排班。',
+      '我确认后不会回复你，请直接咨询门店。',
+      '我确认后已经回复你了。',
+      '门店确认后回复你。',
+      '系统确认后会自动通知你。',
+      '我确认后回复你的主管。',
     ])('does not flag a boundary statement without an agent follow-up promise: %s', (replyText) => {
       const result = service.check({ replyText, toolCalls: [], chatId: 'chat-boundary' });
 
@@ -2430,7 +3590,7 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
     });
 
-    it('passes when the failure is disclosed honestly', () => {
+    it('revises an unsupported immediate retry promise even when failure is disclosed', () => {
       const result = service.check({
         replyText: '不好意思，这次预约没提交成功，我重新帮你试一下',
         toolCalls: [failedBooking],
@@ -2438,7 +3598,71 @@ describe('HardRulesService', () => {
         chatId: 'chat-1',
       });
 
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.feedbackToGenerator).toContain('不得承诺以后重试');
+    });
+
+    it('passes a terminal factual failure disclosure without any future promise', () => {
+      const result = service.check({
+        replyText: '不好意思，这次预约没提交成功。',
+        toolCalls: [failedBooking],
+        userMessage: '只告诉我这次成功没，不要再提交。',
+        chatId: 'chat-1',
+      });
+
       expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it.each([
+      '不好意思，这次预约没提交成功。我不能承诺稍后再试。',
+      '不好意思，这次预约没提交成功。“我稍后再试”这种承诺不能说。',
+    ])('allows an explicit denial of an unsupported retry promise: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [failedBooking],
+        userMessage: '只告诉我这次成功没，不要再提交。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    // 2026-08-04 审计 P0-3：booking 失败后 repair 产出的"那就给你约/定在明天…"敲定式
+    // 宣称没有"已/正在"词形，旧 pattern 跨不住，二审复跑本规则照样放行
+    // （trace …_1785740343589 / …_1785748484273）。
+    it('revises settled-claim phrasing after failed booking (repair product …_1785740343589)', () => {
+      const result = service.check({
+        replyText: '资料都收到啦，那就给你约明天（8月4日）下午1点半的面试哈',
+        toolCalls: [failedBooking],
+        userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it('revises 定在 settled-claim after failed booking (repair product …_1785748484273)', () => {
+      const result = service.check({
+        replyText:
+          '好的，那就定在明天（8月4日）上午10点。另外这家门店可能会安排你去不同餐厅工作，你这边能接受吗',
+        toolCalls: [failedBooking],
+        userMessage: '10点吧',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it('revises a future retry promise after an honest failure disclosure', () => {
+      const result = service.check({
+        replyText: '刚才没提交成功，那就明天再帮你重新提交哈',
+        toolCalls: [failedBooking],
+        userMessage: '好',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
     });
 
     it('passes when no booking was attempted at all', () => {
@@ -2446,6 +3670,239 @@ describe('HardRulesService', () => {
         replyText: '好的，我现在帮你提交预约',
         toolCalls: [],
         userMessage: '对的',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('revises when candidate says not to book but reply still pushes registration (release v10.38.0 case 09)', () => {
+      const result = service.check({
+        replyText:
+          '到店前需要先帮你报名约面，不然店里没法接待。你先登记下，我安排个时间让你过去，这样门店也知道你要来。',
+        toolCalls: [],
+        userMessage:
+          '我还没报名也没约面，想先自己去门店看看情况，可以吗？先别帮我报名，也别发定位。',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.feedbackToGenerator).toContain('尊重候选人暂不报名');
+    });
+
+    it('revises a softer booking CTA after the candidate explicitly opts out', () => {
+      const result = service.check({
+        replyText: '到店前需要先报名约面，不然店里没法接待。你方便的话我先帮你登记下？',
+        toolCalls: [],
+        userMessage: '我先不预约，只想问能不能直接去。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it.each([
+      '那先登记一下，我再安排时间。',
+      '你先把报名信息填一下。',
+      '把资料发我，我给你安排个时间过去。',
+      '咱们先登记下。',
+      '我来安排个面试时间给你。',
+      '我现在给你安排个时间。',
+    ])('revises additional booking advances after an explicit opt-out: %s', (replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage: '先别帮我报名。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it.each(['我不想报名了。', '暂缓报名。', '报名先放一放。', '先放一放。'])(
+      'recognizes a natural current booking opt-out: %s',
+      (userMessage) => {
+        const result = service.check({
+          replyText: '我现在给你安排个时间。',
+          toolCalls: [],
+          userMessage,
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+      },
+    );
+
+    it.each([
+      ['先不要提交。', '我先帮你报名。'],
+      ['先别给我报了。', '我先帮你报名。'],
+      ['我先不报名。', '那登记一下吧。'],
+    ])('recognizes additional opt-out wording: %s', (userMessage, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it.each([
+      ['我先不报名，等我想好了再帮我报名。', '我先帮你报名。'],
+      ['先别预约，之后需要时再帮我预约。', '我现在帮你预约。'],
+      ['暂时不登记，等我确认后再登记。', '那先登记一下。'],
+      ['我先不报名，到时候再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，过两天再帮我报名。', '我现在帮你报名。'],
+      ['我先不报名，稍后再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，晚点再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，改天再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，想好了再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，有需要时再帮我报名。', '我先帮你报名。'],
+      ['我先不报名，下次再帮我报名。', '我现在帮你报名。'],
+      ['我先不报名，有空再帮我报名。', '我现在帮你报名。'],
+      ['我先不报名，过一阵子再帮我报名。', '我现在帮你报名。'],
+    ])(
+      'does not treat a future conditional authorization as current consent: %s',
+      (userMessage, replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [],
+          userMessage,
+          chatId: 'chat-1',
+        });
+
+        expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+      },
+    );
+
+    it.each([
+      ['先别报名 A 店，帮我报名 B 店。', '那我先帮你报名 B 店。'],
+      ['先不预约明天，改约后天。', '那我先帮你预约后天。'],
+      ['报名信息不用重复确认了，直接帮我提交。', '那我先帮你报名。'],
+      ['我先不报名，算了，那再帮我报名一次。', '那我先帮你报名。'],
+      ['我先不报名。现在想好了，帮我报名吧。', '那我先帮你报名。'],
+      ['我先不报名，后来考虑好了，现在帮我报名。', '那我先帮你报名。'],
+      ['我先不报名，已经决定好了，直接提交吧。', '那我先帮你报名。'],
+      ['我之前不想报名，之后想了想，还是帮我报名吧。', '那我先帮你报名。'],
+      ['我先不报名，之后考虑了一下，现在帮我报名。', '那我先帮你报名。'],
+      ['我先不报名，晚点再说吧，还是帮我报名吧。', '那我先帮你报名。'],
+    ])('honors the later positive booking instruction: %s', (userMessage, replyText) => {
+      const result = service.check({
+        replyText,
+        toolCalls: [],
+        userMessage,
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('abstains when positive and negative instructions target different stores', () => {
+      const result = service.check({
+        replyText: '那我先帮你报名B店。',
+        toolCalls: [],
+        userMessage: 'B店帮我报名，A店先别报名。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('uses the last generic booking instruction after the candidate changes their mind', () => {
+      const optOutResult = service.check({
+        replyText: '我先帮你报名。',
+        toolCalls: [],
+        userMessage: '帮我报名吧……算了，报名先放一放。',
+        chatId: 'chat-1',
+      });
+      const proceedResult = service.check({
+        replyText: '我先帮你报名。',
+        toolCalls: [],
+        userMessage: '先别报名，还是帮我报名吧。',
+        chatId: 'chat-1',
+      });
+
+      expect(optOutResult.contradictions.map((c) => c.ruleId)).toContain(
+        'booking_receipt_mismatch',
+      );
+      expect(proceedResult.contradictions.map((c) => c.ruleId)).not.toContain(
+        'booking_receipt_mismatch',
+      );
+    });
+
+    it('allows an explicitly deferred booking offer after opt-out', () => {
+      const result = service.check({
+        replyText: '好的，这轮先不报名。等你想好后，我再帮你安排面试时间。',
+        toolCalls: [],
+        userMessage: '我不想报名了。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('allows the process explanation while respecting the current booking opt-out', () => {
+      const result = service.check({
+        replyText: '未报名约面时不建议直接到店，不然门店没法接待。好的，这轮先不帮你报名。',
+        toolCalls: [],
+        userMessage: '先别帮我报名，我只是问问能不能直接去。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it.each([
+      '那你先自己看看，后续想报名再找我。',
+      '可以，你先去店里看看情况吧。',
+      '那就先过去了解一下。',
+      '可以直接过去。',
+      '可以自行前往。',
+    ])('revises encouragement to visit a store after opting out of booking: %s', (replyText) => {
+      const result = service.check({
+        replyText: '未报名约面直接过去的话门店可能没法接待。' + replyText,
+        toolCalls: [],
+        userMessage:
+          '我还没报名也没约面，想先自己去门店看看情况，可以吗？先别帮我报名，也别发定位。',
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'booking_receipt_mismatch');
+      expect(hit?.action).toBe('revise');
+      expect(hit?.feedbackToGenerator).toContain('这轮先不推进');
+    });
+
+    it('revises direct-visit encouragement when the store is only implied by context', () => {
+      const result = service.check({
+        replyText: '可以，你先自己过去看看。',
+        toolCalls: [],
+        userMessage: '那我自己过去看看，先不报名。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('booking_receipt_mismatch');
+    });
+
+    it('does not mistake job-information review for an encouraged store visit', () => {
+      const result = service.check({
+        replyText:
+          '未报名约面时不建议直接到店，不然门店没法接待。你先自己看看岗位信息，既然暂不报名，这轮先不推进。',
+        toolCalls: [],
+        userMessage:
+          '我还没报名也没约面，想先自己去门店看看情况，可以吗？先别帮我报名，也别发定位。',
+        chatId: 'chat-1',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain('booking_receipt_mismatch');
+    });
+
+    it('does not apply the opt-out override when the candidate wants to proceed', () => {
+      const result = service.check({
+        replyText: '你先登记下，我安排个时间让你过去。',
+        toolCalls: [],
+        userMessage: '可以，帮我报名吧。',
         chatId: 'chat-1',
       });
 

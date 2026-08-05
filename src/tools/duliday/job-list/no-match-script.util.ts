@@ -21,6 +21,8 @@ export interface NoMatchQueryContext {
   regionLabels?: string[];
   maxKm?: number | null;
   scheduleConstraintLabel?: string | null;
+  /** 身份硬门槛过滤标签（如"学生可做"），进 querySummary 观测口径 */
+  identityConstraintLabel?: string | null;
   /**
    * 本会话是否已发送过一次"暂时没有岗位"类话术（由调用方从消息历史判定）。
    * true 时输出二档话术：不再逐字重复一档句式，改为"确认当前确实没有 + 已记录意向 +
@@ -92,7 +94,8 @@ function buildQuerySummary(ctx: NoMatchQueryContext): string {
   const placeText = place ? `（${place}）` : '';
   const distanceText = ctx.maxKm != null ? `，附近 ${ctx.maxKm}km 内` : '';
   const scheduleText = ctx.scheduleConstraintLabel ? `，限 ${ctx.scheduleConstraintLabel}` : '';
-  return `${subject}${placeText}${distanceText}${scheduleText}`;
+  const identityText = ctx.identityConstraintLabel ? `，限 ${ctx.identityConstraintLabel}` : '';
+  return `${subject}${placeText}${distanceText}${scheduleText}${identityText}`;
 }
 
 /**

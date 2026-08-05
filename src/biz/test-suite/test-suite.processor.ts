@@ -7,6 +7,7 @@ import { TestExecutionService } from './services/test-execution.service';
 import { TestBatch } from './entities/test-batch.entity';
 import { RedisService } from '@infra/redis/redis.service';
 import { ExecutionStatus, MessageRole, BatchStatus } from './enums/test.enum';
+import type { GeneratorToolMode } from '@agent/generator/generator.types';
 import type {
   MemoryAssertions,
   MemoryFixtureSetup,
@@ -26,6 +27,8 @@ export interface TestJobData {
   message: string;
   history?: Array<{ role: MessageRole; content: string }>;
   expectedOutput?: string;
+  toolMode?: GeneratorToolMode;
+  allowedToolNames?: string[];
   sourceTrace?: TestSourceTrace | null;
   memorySetup?: MemoryFixtureSetup | null;
   memoryAssertions?: MemoryAssertions | null;
@@ -195,6 +198,8 @@ export class TestSuiteProcessor implements OnModuleInit {
       message,
       history,
       expectedOutput,
+      toolMode,
+      allowedToolNames,
       sourceTrace,
       memorySetup,
       memoryAssertions,
@@ -218,6 +223,9 @@ export class TestSuiteProcessor implements OnModuleInit {
         caseName,
         category,
         expectedOutput,
+        // undefined 继续由生成链路按 scenario 处理；空数组必须原样保留，表示无工具授权。
+        toolMode,
+        allowedToolNames,
         sourceTrace: sourceTrace ?? undefined,
         memorySetup: memorySetup ?? undefined,
         memoryAssertions: memoryAssertions ?? undefined,
@@ -447,6 +455,8 @@ export class TestSuiteProcessor implements OnModuleInit {
       message: string;
       history?: Array<{ role: MessageRole; content: string }>;
       expectedOutput?: string;
+      toolMode?: GeneratorToolMode;
+      allowedToolNames?: string[];
       sourceTrace?: TestSourceTrace | null;
       memorySetup?: MemoryFixtureSetup | null;
       memoryAssertions?: MemoryAssertions | null;
@@ -473,6 +483,8 @@ export class TestSuiteProcessor implements OnModuleInit {
         message: testCase.message,
         history: testCase.history,
         expectedOutput: testCase.expectedOutput,
+        toolMode: testCase.toolMode,
+        allowedToolNames: testCase.allowedToolNames,
         sourceTrace: testCase.sourceTrace,
         memorySetup: testCase.memorySetup,
         memoryAssertions: testCase.memoryAssertions,

@@ -6,12 +6,27 @@ export interface GuardrailReviewPacket {
     messageType: 'text' | 'image' | 'emotion' | 'quote' | 'revoke';
     timestamp?: number;
   }>;
+  /**
+   * 往轮助手已发出的候选人可见回复（正序，最近在最后；条数与单条长度均截断）。
+   *
+   * 跨轮复述判定的依据（2026-08-05）：evidence 是回合作用域，reviewer 结构上看不见
+   * 往轮事实，曾把「对上一轮真实 jobList 结果的忠实复述」（07-31 扫描附录 A，10 例
+   * 推翻 6 例）与「昨日 invite_to_group:ok 之后的『之前已拉你进群』」（08-05 附录 A，
+   * 8/8 假阳）判成零证据编造。规则档已在 job_facts_without_any_lookup 用助手历史做
+   * 出处豁免，本字段把同一信号接给语义档。
+   *
+   * ⚠️ 它不是工具证据：不进 evidence、不参与"证据是否为空"的判定（EVIDENCE_KEYS
+   * 编译期穷尽断言强制了这一边界），只用于区分「跨轮复述」与「本轮新编造」；
+   * 往轮表述本身的真假交跨轮编造治理。
+   */
+  recentAssistantMessages: string[];
   evidence: {
     jobList?: JobListEvidence;
     precheck?: PrecheckEvidence;
     booking?: BookingEvidence;
     geocode?: GeocodeEvidence;
     sentLocation?: SentLocationEvidence;
+    groupInvite?: GroupInviteEvidence;
   };
   policies: {
     redLines: string[];
@@ -83,6 +98,18 @@ export interface GeocodeEvidence {
   /** unique 解析常没有 candidates 数组；有坐标即代表地理解析成功。 */
   hasResolvedCoordinate: boolean;
   candidates: string[];
+}
+
+/**
+ * 群邀请证据（2026-08-04 审计 P1-6）：`fact_asserted_without_any_evidence` 曾把
+ * 当轮 `invite_to_group:ok` 支撑的"群邀请已经发你了"判成"没有任何下发证据"
+ * （trace …_1785451709779 硬假阳）——evidence 字段集漏了群邀请这一类。
+ */
+export interface GroupInviteEvidence {
+  success: boolean;
+  groupName?: string;
+  alreadyInGroup?: boolean;
+  errorType?: string;
 }
 
 export interface SentLocationEvidence {

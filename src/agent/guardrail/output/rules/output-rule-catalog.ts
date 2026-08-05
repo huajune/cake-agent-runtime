@@ -169,6 +169,73 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '禁止任何"先按XX登记/面试再说/别提暑假工"式的绕审建议。',
   },
   {
+    id: 'experience_fraud_coaching',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '候选人自曝报名经历是编造的（"随便写的/填的是假的"）后，拦住教唆其面试时声称做过/有经验、' +
+      '或以"门店不查过往记录"背书的回复。引导如实说"没做过愿意学"的口径不拦。',
+    riskGoal:
+      '诚信红线：禁止在明知候选人经历造假时教唆其在面试中维持虚假口径（badcase scyjp2kx，chat 6a702fae）。',
+    exogenousSignal: '候选人近轮消息的造假自曝模式 + 回复文本的声称经历教唆/不查记录背书模式。',
+    residualRisk:
+      '自曝措辞变体（"其实我没干过那行"类无关键词表述）依赖正则补样本；年龄/健康证等其他字段造假教唆仍未覆盖。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '候选人已明确说明其登记的工作经历是编造的，上一版回复却教唆其在面试中声称做过/有经验（或以"不查记录"背书），当前文本不可发送，这是诚信红线。' +
+      '请改写为如实口径：引导候选人面试时如实说明没有相关经历、表达愿意学习即可；该岗位若不要求经验，直接说明岗位接受新手；' +
+      '登记信息与事实不符时主动引导更正，禁止任何"就说做过/不查记录/随便写没事"式话术。回复中未被点名的其他内容（面试时间、地址等）逐字保留。',
+  },
+  {
+    id: 'application_record_update_promise',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '候选人自曝报名经历造假后，拦住“我把报名表改掉/我帮你更新登记信息”等无工具支撑的既有报名资料修改承诺。',
+    riskGoal: '避免候选人误以为虚假报名资料已经被 Agent 修改，继续带着错误资料进入面试或后续流程。',
+    exogenousSignal: '候选人近轮消息的造假自曝模式 + 回复文本的第一人称报名表/登记信息修改承诺。',
+    residualRisk:
+      '未明确点名报名表/登记信息的省略宾语承诺仍需语义审查；未来若新增真实修改工具，应把成功回执接入豁免。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '当前没有修改既有报名表或登记资料的工具，上一版“我把报名表改掉/我帮你更新”属于无动作支撑的能力承诺，当前文本不可发送。' +
+      '请引导候选人从原报名渠道自行更正；暂时改不了时，在面试中主动说明真实情况。保留诚信纠正内容，删除由 Agent 修改既有资料的承诺，不得新增岗位事实。',
+  },
+  {
+    id: 'screening_rejection_override',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '本轮 precheck 返回敏感拒绝态（age/student/household/health_certificate_rejected）或 booking 返回 booking.rejected 时，' +
+      '拦"确认有误/条件符合"翻案话术与对被拒岗位的继续预约承诺。转推其它岗位不拦。',
+    riskGoal:
+      '防止模型在候选人追问下推翻工具的内部筛选拒绝结论、对必然失败的岗位反复承诺报名（badcase weurg1xg，chat 6a6c688b：户籍拒绝被翻案成"你的条件是符合的"）。',
+    exogenousSignal:
+      'duliday_interview_precheck.nextAction 四类拒绝态 / duliday_interview_booking.errorType=booking.rejected + 回复文本的翻案/承诺模式（句级绑定被拒岗位名）。',
+    residualRisk:
+      '跨轮翻案（本轮无工具调用时宣称"条件符合"）不在口径内，依赖 prompt 拒绝粘性口径与语义档；翻案措辞变体需随 badcase 补样本。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '本轮工具已明确返回该岗位的内部筛选拒绝结论，上一版回复却宣称"确认有误/条件符合"或继续承诺帮候选人预约该岗位，当前文本不可发送。' +
+      '请改写为：用中性理由说明当前岗位暂不匹配（严禁透露或暗示户籍、年龄、身份等具体筛选条件，也不得说"审核没过"），' +
+      '然后自然转推其它合适岗位或拉群收口；回复中对候选人其他问题的回答等未被点名的内容逐字保留。',
+  },
+  {
+    id: 'date_reference_mismatch',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '回复中"今天/明天/后天 + (M月D日)"连用且日期与相对日词按当前日历不符时拦截（如当天 7-28 却说"明天 7 月 28 日"）。',
+    riskGoal:
+      '防止日历错乱话术误导候选人空等或错过面试（badcase nau6xunv：当天面试被说成"明天 7 月 28 日，不是今天"，候选人被劝停等待）。',
+    exogenousSignal: '回复文本的相对日词+具体日期共现模式 × 系统当前日期（Asia/Shanghai）。',
+    residualRisk: '无具体日期的裸相对日词（"明天面试"）与星期几错配不在口径内，交语义层。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版回复里的相对日词与具体日期按真实日历对不上（见证据），当前文本不可发送。' +
+      '请按系统当前日期改正——只修正错误的相对日词或日期本身，面试时间等其余事实与内容逐字保留，不要改动预约本身的日期结论。',
+  },
+  {
     id: 'summer_worker_alternative_upsell',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -257,16 +324,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
-      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功的人工升级动作（request_handoff 或 raise_risk_alert）。',
+      '回复承诺由自己、同事、负责人或店长在本轮之后继续确认/联系/发送资料时，要求本轮存在成功的人工升级动作（request_handoff、raise_risk_alert 或预约失败自动暂停）。',
     riskGoal: '防止 Agent 口头承诺人工跟进却没有落 handoff、暂停托管或通知负责人。',
     exogenousSignal:
-      '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true 或 raise_risk_alert.accepted=true' +
-      '（2026-07-28 补：badcase batch_6a66f559… raise_risk_alert 同样暂停托管+人工接手，只认 request_handoff 会把真承诺判成空头）。',
+      '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true / raise_risk_alert.accepted=true / duliday_interview_booking.hostingPaused=true' +
+      '（2026-07-28 补：badcase batch_6a66f559… raise_risk_alert 同样暂停托管+人工接手，只认 request_handoff 会把真承诺判成空头；' +
+      '2026-08-04 审计补：预约失败时 booking 工具自动暂停托管且 replyInstruction 亲自指示"让同事确认"衔接语，不认打标会把工具教的如实话术判成 P0，trace …740343589/…748484273）。',
     residualRisk:
       '不含同事、负责人、店长、门店、招聘经理、转人工等主体的隐晦未来承诺暂不拦截，以免误伤普通即时答复。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    // 2026-08-04 审计 P0-1：加"不得新增事实"硬约束——首版整条只有承诺句时，"只保留
+    // 已确认的事实"保留的是空集，旧反馈会把 rewrite 逼成自由创作（生产 4 例编出
+    // 着装要求/"已拉你进群"/约面时间，2 例投递）。整条皆承诺的形态由 runner 的
+    // handoff_promise_only_reply_silenced 闸直接收敛，不进 rewrite。
     feedbackToGenerator:
-      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的人工升级动作（request_handoff / raise_risk_alert），当前文本不可发送。请删除“同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。',
+      '上一版回复承诺了由自己或同事/负责人在本轮之后继续确认、联系、发送资料，但本轮没有成功的人工升级动作（request_handoff / raise_risk_alert / 预约失败自动暂停），当前文本不可发送。请删除“我确认后发你/同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。' +
+      '严禁为填补删除承诺留下的空缺而新增任何本轮工具结果之外的事实（着装/班次/薪资/面试时间/已完成动作等都算）；若删除承诺后没有其他实质内容可保留，就只输出一句不含新事实、不含新承诺的自然收束。',
     // 2026-07-27 降 revise 后白名单摘除（原 ['request_handoff']；rewrite 无工具，
     // 补执行 handoff 的修复形态见评估文档 §2.4 条件项）。
   },
@@ -332,17 +405,55 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     // 保留，供未来重新申请动手权时复用。
   },
   {
+    id: 'combination_schedule_weekly_generalization',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '候选人询问“组合排班”标签时，拦截把该标签本身泛化成固定周出勤底线或低周频难匹配。',
+    riskGoal: '避免把日内班次组合/轮换与每周出勤频次混成同一约束，导致低周频候选人被无依据拒绝。',
+    exogenousSignal:
+      '本轮候选人对组合排班的明确问句 + 回复中的泛化排班作用域 + 周频底线/难匹配断言。',
+    residualRisk:
+      '只覆盖明确泛化作用域、周频词与底线/匹配结论；明确归属于具体岗位或本次结果集的陈述不在本规则范围内，由岗位事实规则对账。更隐晦的“这类岗不适合你”仍交语义审查。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版把“组合排班”标签本身泛化成了每周出勤底线或“每周两天难匹配”，当前文本不可发送。' +
+      '请只说明：组合排班表示早/中/晚等班次会组合或轮换安排，不等于一天三个时段全部都上；每周最多几天是独立的周频约束，是否匹配要另看具体岗位明确的每周出勤要求。' +
+      '不要补写“这类排班通常至少几天/有周频底线/很难匹配”等无岗位依据的结论，其余内容原样保留。',
+  },
+  {
+    id: 'health_certificate_generalization',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '候选人一般询问健康证时，允许餐饮类工作统一办证口径，拦截无依据的行业办理阶段比例断言。',
+    riskGoal: '避免把“大部分录用后办、极少数面试前办”等猜测当成行业流程，误导候选人判断约面门槛。',
+    exogenousSignal: '本轮一般性健康证问句 + 回复中的大部分/少数/极少数办理阶段泛化词形。',
+    residualRisk:
+      '只覆盖未被局部否定、提问或尾随反驳的办理阶段比例词；“餐饮类工作一律需要健康证”是已确认业务口径，不在拦截范围。具体岗位阶段仍由岗位事实规则对账。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版编造了“大部分/少数/极少数餐饮岗位在某阶段办证”的比例，当前文本不可发送。' +
+      '请保留正确口径“餐饮类工作一律需要食品健康证”，并把办理阶段改为“具体需要在哪个阶段具备，以具体岗位当前要求为准”。' +
+      '不要补写任何岗位占比，也不要把候选人的疑问写成其已持证或愿意办理的事实；其余内容原样保留。',
+  },
+  {
     id: 'unsupported_schedule_window_claim',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '拦截把岗位已给固定班次擅自缩短、改写成工具未列出的“可协调时段”。',
-    riskGoal: '避免候选人依据虚构排班承诺报名，到店后才发现必须做到岗位规定时间。',
-    exogenousSignal: '当前 jobId 的 duliday_job_list 工作时间结果 + 回复中的明确时间段和协调承诺。',
+    description:
+      '拦截把岗位已给固定班次擅自缩短成工具未列出的“可协调时段”，以及把超过候选人每周上限的做X休Y循环正向推荐为合适方案。',
+    riskGoal:
+      '避免候选人依据虚构排班承诺报名，到店后才发现必须做到岗位规定时间或实际周频超过自身上限。',
+    exogenousSignal:
+      '当前 jobId 的 duliday_job_list 工作时间结果 + 回复中的明确时间段和协调承诺；或候选人明确的每周最多 N 天 + 回复正向推荐的做X休Y循环。',
     residualRisk:
-      '没有数字时间段的含蓄承诺交语义审查；本轮没有岗位补查时由 job_detail_lookup_required 先 replan。',
+      '没有数字时间段的含蓄承诺交语义审查；做X休Y仅按 7×工作天/(工作天+休息天) 的平均周频判定，' +
+      '不推断节假日、调班或其它复杂排班；本轮没有岗位补查时由 job_detail_lookup_required 兜接。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:
-      '上一版把当前岗位班次改写成了工具未列出的可协调时段，当前文本不可发送。请只转述本轮 duliday_job_list 明确列出的完整工作班次；候选人无法满足时，如实说明当前岗位时间不匹配，并按已有流程查询其他岗位或说明需要跟门店再确认。禁止说“一般没问题/不会强制/可以协调”为候选人缩短班次。',
+      '上一版把当前岗位班次改写成了工具未列出的可协调时段，或把平均周频超过候选人上限的做X休Y循环列为合适方案，当前文本不可发送。' +
+      '请只转述本轮 duliday_job_list 明确列出的完整班次；候选人无法满足时，如实说明不匹配并按已有流程查询其他岗位。' +
+      '禁止说“一般没问题/不会强制/可以协调”为候选人缩短班次，也不得把做一休一当作每周最多一至两天的方案。',
   },
   {
     id: 'settlement_cycle_mismatch',
@@ -386,6 +497,48 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '禁止用"一般都是/通常"类通识或其他品牌的结算规则填空，也不要沿用已查不到岗位的历史结算信息。',
   },
   {
+    id: 'job_facts_without_any_lookup',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '拦住无出处岗位事实：零查岗轮凭空投递门店名、距离、时薪、班次、发薪日、年龄段，或在成功结果未给经验字段时断言“不要求经验/接受新手”。',
+    riskGoal:
+      '与 settlement_no_evidence_assertion 互补覆盖"无出处岗位事实"的另一半：那条管"查过但查无"，本条管"根本没查"。' +
+      '同时防止模型在岗位工具只返回其它字段时，凭通识补齐经验门槛。2026-07-30 生产 10 回合/8 会话实证' +
+      '（tool_calls 为空或只含非岗位工具，却投递整套量化细节），语义层判 8 条 block 但 shadow 拦不住投递。',
+    exogenousSignal:
+      '量化事实看本轮是否有 duliday_job_list 可用结果及工具/助手历史数值出处；正向经验门槛必须在成功工具结果或助手历史中有明确同极性出处。',
+    residualRisk:
+      '出处比对是数值骨架级的字符串比对，不做语义解析：往轮助手卡片里出现过的数值一律豁免（可能是往轮自己编的，' +
+      '交语义审查与跨轮编造治理）；定性事实仅覆盖“不要求经验/接受新手”的封闭正向词形，问句、条件句、否定和明确不确定表达不算正向证据；' +
+      '其它非量化描述（工作内容、面试形式）不在射程内；' +
+      '归一化只处理空白/全半角/时-小时/公里-km 等已知写法差异，新写法差异可能造成假阳，随生产样本迭代。',
+    verification: 'tests/agent/guardrail/output/job-facts-without-lookup.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版在本轮完全没有拿到岗位数据的情况下给出了具体的门店、距离、薪资、班次、发薪日、年龄要求或经验门槛，' +
+      '这些事实没有任何工具出处，当前文本不可发送。请重写：需要岗位信息时先调用 duliday_job_list 查，' +
+      '只转述本轮查到的结果；暂时查不到就如实说明，不要用品牌常识、其他门店的行情或印象里的数字填空。',
+  },
+  {
+    id: 'online_interview_location_claim',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '面试方式为线上/AI/视频/电话（无需到店）时，拦住"面试定位已发你/点开看导航/直接去店里面试"这类到店指引。',
+    riskGoal:
+      '候选人会为一场线上面试白跑一趟门店。2026-07-30 连续第二天复发、当日 4 次（6a6ab32a/6a6af9d4 两轮/6a5dbb50），07-29 另有 6a69674e 同型。',
+    exogenousSignal:
+      'send_store_location 结果的 interviewMethod / locationNotRequired / destination + 回复中的到店或面试定位声称。',
+    residualRisk:
+      'destination=store（候选人问工作地点）整条豁免，代价是该分支里把工作门店说成面试地点的情形仍交语义审查；' +
+      'interviewMethod 同时含线下字样时保守放行（线上初筛+线下复试）；未调 send_store_location 的到店声称不在射程内。',
+    verification: 'tests/agent/guardrail/output/online-interview-location.rule.spec.ts',
+    feedbackToGenerator:
+      '本次面试无需到店（线上/AI/视频/电话面试），上一版却告诉候选人已发面试定位、让他点开导航或直接去门店面试，' +
+      '当前文本不可发送。请重写：说清面试是线上进行的、如何参加（链接/来电等按本轮工具结果转述），' +
+      '不要给到店指引；确实需要说明门店位置时，必须讲明那是工作门店、不是面试地点。',
+  },
+  {
     id: 'unsupported_store_status_speculation',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -404,19 +557,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'booking_receipt_mismatch',
     // 形态 A（问日期且无确认口径）＝REVISE：与已提交工单直接矛盾，近零假阳；
     // 形态 B（零播报）在规则实现内自降 OBSERVE 落档累计精确率；
-    // 形态 C（booking 失败却称正在/已提交）＝REVISE，自带失败路径 feedback 覆盖。
+    // 形态 C（booking 失败却称正在/已提交）＝REVISE，自带失败路径 feedback 覆盖；
+    // 形态 D（候选人明确先别报名却继续推进，或附和未预约自行到店）＝REVISE，
+    // 自带候选人意愿路径 feedback。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       'duliday_interview_booking 的回执对账：拦住“工单已建单却仍问候选人定哪天”、' +
-      '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”及“调用失败却称正在/已提交”，观察“零播报”。',
+      '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”、“调用失败却称正在/已提交”' +
+      '及“候选人明确先别报名却仍催登记/承诺安排或附和未预约自行到店”，观察“零播报”。',
     riskGoal:
       '预约提交是不可逆副作用；回复与其矛盾会让候选人以为没约上而重复提交（撞 already_booked）或直接流失' +
       '；兼职群与面试群混淆会让候选人在错误群里等待会议链接' +
       '（badcase chat 6a684089ce406a6aeed49d8d）。',
     exogenousSignal:
-      '本轮 booking success/error、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实 +' +
-      ' 回复文本的日期征询、播报缺失、群用途表述或提交进行时宣称。',
+      '本轮 booking success/error、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实，' +
+      '候选人当前报名/预约意愿与自行到店意图，以及回复文本的日期征询、播报缺失、群用途表述、提交推进或到店附和。',
     residualRisk:
       '窗口制“已约好+问几点到店”经确认口径豁免；预约时间与候选人口头要求不一致（王真宝案）需要' +
       '语义比对候选人诉求，不在本规则确定性能力内，留语义审查/离线环。',

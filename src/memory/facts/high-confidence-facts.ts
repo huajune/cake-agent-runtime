@@ -1028,45 +1028,206 @@ function isLikelyLocationOrSchoolName(message: string): boolean {
   return /(小学部|初中部|高中部|中学部|大学城|学校|校区|学院|幼儿园|附小)/.test(message);
 }
 
-function extractHealthCertificate(message: string): string | null {
-  // “怎么办/能不能办”只是在询问流程或可行性，不能据此推断候选人承诺或拒绝办理。
+const HEALTH_CERTIFICATE_CONSULTATION_TERMS = [
+  '哪里',
+  '哪儿',
+  '何处',
+  '什么地方',
+  '怎么办',
+  '怎么去办',
+  '如何办',
+  '能不能办',
+  '可不可以办',
+  '可以不可以办',
+  '要不要办',
+  '多少钱',
+] as const;
+
+/** 按自然标点保留分句边界，避免后半句咨询抹掉前半句的明确办理承诺。 */
+function splitHealthCertificateClauses(message: string): string[] {
+  return message
+    .split(/(?<=[，,。！？?!；;\n])/u)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+}
+
+type HealthCertificateFact =
+  | '有'
+  | '无'
+  | '非本地健康证'
+  | '无但接受办理健康证'
+  | '无且不接受办理健康证';
+
+function isHealthCertificateQuestionForm(clause: string): boolean {
+  return /[？?]|(?:吗|么|呢)(?:[啊呀嘛])?(?:[！。])?$/u.test(clause);
+}
+
+function hasHealthCertificateThirdPartySubject(clause: string): boolean {
+  return /(?:公司|门店|你们|平台|单位|医院|社区)/u.test(clause) && /办(?:理)?/u.test(clause);
+}
+
+/**
+ * 只识别同一分句内的办理流程/费用咨询。
+ *
+ * “能/会/可以”本身只是弱情态词；出现在“哪里能办”“公司会帮办吗”等问句时，
+ * 不能升级成候选人接受办理。明确的“愿意/准备/入职前会去办”仍由承诺词优先放行。
+ */
+function isHealthCertificateConsultationClause(clause: string): boolean {
+  if (!clause.includes('健康证')) return false;
+
+  const hasDirectQuestion = HEALTH_CERTIFICATE_CONSULTATION_TERMS.some((term) =>
+    clause.includes(term),
+  );
+  if (hasDirectQuestion) return true;
+
+  const hasQuestionForm = isHealthCertificateQuestionForm(clause);
+  const hasConsultationTopic = /免费|费用|收费|报销|补贴|线上|线下/u.test(clause);
+  const hasWeakApplicationModal =
+    /(?<![不没未无非])(?:能|会|可以|可)[^，,。！？?!；;\n]{0,12}办(?:理)?[^，,。！？?!；;\n]{0,8}健康证|健康证[^，,。！？?!；;\n]{0,16}(?<![不没未无非])(?:能|会|可以|可)[^，,。！？?!；;\n]{0,12}办(?:理)?/u.test(
+      clause,
+    );
+  const hasThirdPartySubject = hasHealthCertificateThirdPartySubject(clause);
+
+  return (
+    hasThirdPartySubject ||
+    (hasQuestionForm &&
+      (hasConsultationTopic || hasWeakApplicationModal || /办(?:理)?/u.test(clause)))
+  );
+}
+
+function extractDeclaredHealthCertificateStatus(clause: string): HealthCertificateFact | null {
   if (
-    /(?:怎么办|怎么(?:去)?办|如何办|能不能办|可不可以办|可以不可以办|要不要办).{0,8}健康证/.test(
-      message,
-    )
+    /健康证\s*[：:]\s*(?:无|没有)(?:$|[\s，,。；;])/u.test(clause) ||
+    /(?<!有)(?:没有(?:食品|餐饮|零售)?(?:类)?健康证|没健康证|无健康证)/u.test(clause)
   ) {
-    return null;
+    return '无';
   }
   if (
-    /(?:拒绝|没法|无法|(?:不|没|未)(?:太|怎么|很)?(?:接受|愿意|想|打算|准备|考虑|会|能|可以)).{0,24}(?:去|再)?(?:体检.{0,10})?办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|不(?:去|再)?办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|健康证.{0,24}(?:拒绝|没法|无法|(?:不|没|未)(?:太|怎么|很)?(?:接受|愿意|想|打算|准备|考虑|会|能|可以)).{0,12}(?:去|再)?办(?:理)?/.test(
-      message,
+    /健康证.{0,6}(?:不是|非)本地|(?:外地|异地).{0,3}健康证|健康证.{0,4}(?:外地|异地)/u.test(clause)
+  ) {
+    return '非本地健康证';
+  }
+  return null;
+}
+
+function extractHealthCertificateClause(clause: string): HealthCertificateFact | null {
+  const declaredStatus = extractDeclaredHealthCertificateStatus(clause);
+  const hasThirdPartySubject = hasHealthCertificateThirdPartySubject(clause);
+  const hasDirectConsultation = HEALTH_CERTIFICATE_CONSULTATION_TERMS.some((term) =>
+    clause.includes(term),
+  );
+
+  // “能不能办 / 可不可以办”内部包含“不能办 / 不可以办”字面子串，必须先按
+  // 固定咨询句式处理，不能让下方拒办正则截走。
+  if (hasDirectConsultation) return declaredStatus;
+
+  // 第三方“公司不会帮办”等咨询也含“不...会...办”。只有没有第三方主语时，
+  // 才把拒办词视为候选人本人立场。
+  if (
+    !hasThirdPartySubject &&
+    /(?:拒绝|没法|无法|(?:不|没|未)(?:太|怎么|很)?(?:接受|愿意|想|打算|准备|考虑|会|能|可以)).{0,24}(?:去|再)?(?:体检.{0,10})?办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|不(?:去|再)?办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|健康证.{0,24}(?:拒绝|没法|无法|(?:不|没|未)(?:太|怎么|很)?(?:接受|愿意|想|打算|准备|考虑|会|能|可以)).{0,12}(?:去|再)?办(?:理)?/u.test(
+      clause,
     )
   ) {
     return '无且不接受办理健康证';
   }
+
+  // 咨询只跳过当前分句；同句已明确“无证/异地证”时仍保留已声明状态。
+  if (isHealthCertificateConsultationClause(clause)) return declaredStatus;
+
   // 生产口语常把意愿说成“后期去体检，然后办一个健康证”，而不使用标准的
   // “可以办健康证”。这类带明确将来/意愿动词的表述与标准枚举语义一致。
   if (
-    /(?<![不没未无非])(?:接受|愿意|可以|可|能|会|打算|准备|考虑|确定|后期|后面|之后|到时|到时候|入职前|上岗前).{0,24}(?:去|再)?(?:体检.{0,10})?办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|去体检.{0,12}办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|健康证.{0,30}(?<![不没未无非])(?:接受|愿意|可以|能|会|打算|准备|考虑|确定).{0,12}(?:去|再)?办(?:理)?/.test(
-      message,
+    !hasThirdPartySubject &&
+    !isHealthCertificateQuestionForm(clause) &&
+    /(?<![不没未无非])(?:接受|愿意|可以|可|能|会|打算|准备|考虑|确定|后期|后面|之后|到时|到时候|入职前|上岗前).{0,24}(?:去|再)?(?:体检.{0,10})?办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|去体检.{0,12}办(?:理)?(?:一个|一张)?(?:食品|餐饮|零售)?(?:类)?健康证|健康证.{0,30}(?<![不没未无非])(?:接受|愿意|可以|能|会|打算|准备|考虑|确定).{0,12}(?:去|再)?办(?:理)?/u.test(
+      clause,
     )
   ) {
     return '无但接受办理健康证';
   }
+
+  if (declaredStatus) return declaredStatus;
+
+  // 疑问句守卫（badcase zj8b3rj1，chat 6a68622d：「都是需要有食品健康证是吗」是在问
+  // 岗位要求，不是自报有证；此前裸类型词命中「有」让疑问句直通报名有证 gate）。
+  // 岗位要求转述（"需要健康证"）同样不是持有声明。只挡「有」档，负向/意愿档在上方已返回。
   if (
-    /健康证\s*[：:]\s*(?:无|没有)(?:$|[\s，,。；;])/u.test(message) ||
-    /没有(?:食品|餐饮|零售)?(?:类)?健康证|没健康证|无健康证/.test(message)
-  )
-    return '无';
-  if (
-    /健康证.{0,6}(?:不是|非)本地|(?:外地|异地).{0,3}健康证|健康证.{0,4}(?:外地|异地)/.test(message)
+    /健康证[^。！？\n]{0,8}(?:是吗|对吗|吗|么|吧|呢)|健康证[^。！？\n]{0,6}[？?]|(?:需要|要求|是不是要|要不要|用不用|必须|得)(?:先)?(?:有|办|持有?)?[^。！？\n]{0,8}健康证/u.test(
+      clause,
+    )
   ) {
-    return '非本地健康证';
+    return null;
   }
-  if (/有健康证|本地.{0,4}健康证|健康证.{0,4}本地|(?:食品|餐饮|零售)(?:类)?健康证/.test(message)) {
+  // 「有」必须是持有声明：有+证（可带类型词），或证+办好/拿到类完成表述；
+  // 裸类型词（"食品健康证"仅被提及）不再视为持有证据。
+  if (
+    /有(?:食品|餐饮|零售)?(?:类)?健康证|本地.{0,4}健康证|健康证.{0,4}本地|(?:食品|餐饮|零售)?(?:类)?健康证.{0,6}(?:办好了?|办过|已办|办了|拿到|在手)/u.test(
+      clause,
+    )
+  ) {
     return '有';
   }
   return null;
+}
+
+function extractHealthCertificate(message: string): string | null {
+  if (!message.includes('健康证')) return null;
+
+  let latestFact: HealthCertificateFact | null = null;
+  let pendingClauses: string[] = [];
+  let hasHealthCertificateTopic = false;
+
+  for (const clause of splitHealthCertificateClauses(message)) {
+    // “我没有健康证，可以去办/公司会帮我办吗”后半句常省略“健康证”。
+    // 只有话题已出现且当前句仍带办理/费用线索时才继承，避免把后续无关的
+    // “我本地人/材料办好了”误判为持有健康证。
+    const mentionsHealthCertificate = clause.includes('健康证');
+    const inheritsHealthCertificateTopic =
+      hasHealthCertificateTopic &&
+      ((isHealthCertificateQuestionForm(clause) &&
+        /(?:费用|收费|报销|补贴|免费|线上|线下)/u.test(clause)) ||
+        /(?:可以|可|能|会|愿意|接受|打算|准备|考虑|入职前|上岗前|后期|后面|之后|到时|到时候|公司|门店|你们|平台|单位|医院|社区).{0,16}(?:去|帮我|统一|负责)?办(?:理)?(?:一下|了)?(?:吗|么|呢)?[?？!！。；;，,]?$/u.test(
+          clause,
+        ) ||
+        // 跨分句资质限定语：「我有健康证，但是外地的/是外地办的」——限定语分句里没有
+        // "健康证"字样，不继承话题就永远够不到"非本地"判定（消息级正则改逐分句时引入
+        // 的回归）。异地证按"有"直通会与 precheck「异地证一律不能按有提交」口径相撞。
+        /(?:外地|异地|(?:不是|非)本地)/u.test(clause));
+    const scopedClause = mentionsHealthCertificate
+      ? clause
+      : inheritsHealthCertificateTopic
+        ? `健康证${clause}`
+        : clause;
+    if (mentionsHealthCertificate) hasHealthCertificateTopic = true;
+    const directFact = extractHealthCertificateClause(scopedClause);
+
+    if (directFact) {
+      latestFact = directFact;
+      pendingClauses = [];
+      continue;
+    }
+
+    if (isHealthCertificateConsultationClause(scopedClause)) {
+      // 咨询是边界，但不是事实：不能抹掉前面已经确认的承诺/拒绝/证件状态。
+      pendingClauses = [];
+      continue;
+    }
+
+    pendingClauses.push(clause);
+    const pendingText = pendingClauses.join('');
+    if (!pendingText.includes('健康证')) continue;
+
+    // 兼容承诺跨多个逗号分句的口语，例如“如果面试上了，他后期会去体检，
+    // 然后办一个健康证”。组合只包含连续非咨询分句，避免问句与立场串线。
+    const bufferedFact = extractHealthCertificateClause(pendingText);
+    if (bufferedFact) {
+      latestFact = bufferedFact;
+      pendingClauses = [];
+    }
+  }
+
+  return latestFact;
 }
 
 function extractExperience(message: string): string | null {
@@ -1427,17 +1588,63 @@ const NEARBY_LOCATION_STOPWORDS = new Set([
   '上班的地方',
 ]);
 
+/**
+ * “X 附近”中的 X 可能是查岗动作而不是地点。
+ *
+ * 例如“直接编一家附近门店”“帮我找一家附近的店”会被宽松兜底捕获为
+ * “直接编一家 / 帮我找一家”。只拦动作词 + 可选数量/分类词的尾部，保留
+ * “人民广场 / 张江高科 / 回龙观”等真实地点及“查桥镇”这类含同形字的地名。
+ */
+const NON_LOCATION_NEARBY_ACTION_TAIL_PATTERN =
+  /(?:编|找|查|搜|看|推荐|介绍|选|挑)(?:一|两|几)?(?:个|家|些|下)?$/u;
+
+/**
+ * 只剔除有明确查询语义的前缀，不剥裸单字“查”，以免把“查桥镇”改坏。
+ * 返回 null 表示整个候选只是“找我/查一下我”这类动作语。
+ */
+function normalizeNearbyLocationCandidate(candidate: string): string | null {
+  if (/^(?:找|查|搜|看)(?:一?下)?(?:我|我家|这边|这里|那边|那里)$/u.test(candidate)) {
+    return null;
+  }
+
+  const delegatedActionPrefix =
+    /^(?:(?:请|麻烦)(?:你)?(?:帮|替|给)|(?:帮|替|给))(?:我)?(?:查询|搜索|检索|搜寻|查找|推荐|介绍|查|搜|找|看|选|挑)(?:一?下)?/u;
+  const explicitIntentPrefix =
+    /^(?:直接|随便|我(?:想|要|想要))(?:查询|搜索|检索|搜寻|查找|推荐|介绍|查|搜|找|看|编|选|挑)(?:一?下)?/u;
+  const unambiguousActionPrefix = /^(?:查询|搜索|检索|搜寻|查找|查一下|搜一下|找一下)/u;
+
+  let normalized = candidate;
+  let removedActionPrefix = false;
+  for (const pattern of [delegatedActionPrefix, explicitIntentPrefix, unambiguousActionPrefix]) {
+    const next = normalized.replace(pattern, '');
+    if (next === normalized) continue;
+    normalized = next;
+    removedActionPrefix = true;
+    break;
+  }
+
+  // “一家/一个/我这边”只能在前面确实剔除了查询动作后再清理；
+  // 否则会把“家乐福/一大会址/两路口/个旧”这些真实地名截断。
+  if (!removedActionPrefix) return candidate;
+  normalized = normalized
+    .replace(/^(?:一?下)?(?:我|我家|这边|这里|那边|那里)?(?:一|两|几)?(?:个|家|些)?/u, '')
+    .trim();
+
+  return normalized || null;
+}
+
 function extractNearbyLocations(message: string, districts: string[]): string[] {
   const nearbyMatch = message.match(
     /(?:我在|人在|在|住在)?([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:附近|旁边)/,
   );
   if (!nearbyMatch?.[1]) return [];
 
-  const location = nearbyMatch[1].trim();
+  const location = normalizeNearbyLocationCandidate(nearbyMatch[1].trim());
   if (!location) return [];
   // 泛指词（"公司附近/家附近"）不是地名直接丢弃；带前缀的（"我公司附近"）按后缀命中也丢
   if (NEARBY_LOCATION_STOPWORDS.has(location)) return [];
   if ([...NEARBY_LOCATION_STOPWORDS].some((word) => location.endsWith(word))) return [];
+  if (NON_LOCATION_NEARBY_ACTION_TAIL_PATTERN.test(location)) return [];
   if (districts.some((district) => location.includes(district))) return [];
   return [location];
 }

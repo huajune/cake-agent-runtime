@@ -128,15 +128,81 @@ export function stripMarkdownCodeFences(content: string): string {
 
 // —— 残文与跨域形态识别（2026-07-30 守卫审计 P0-2 / P0-3）————————————————
 
-/** 工具调用骨架：XML 标签、`toolName(args)` 调用式、字面量与括号。 */
+/**
+ * 工具调用骨架：XML 标签、`toolName(args)` 调用式、字面量与括号。
+ *
+ * 2026-08-04 审计修正：
+ * - XML 交替组补 `function(?:_calls?)?` 与 `thinking`——生产实测漏杀
+ *   `<function invite_to_group>`（rewrite 编出"已经拉你进群了"并投递）与
+ *   `</thinking>\n<function=skip_reply>`（旧组只匹配 function_call/s）；
+ * - 补 `<parameter…>值` 剥除——XML 形态的参数值不带引号（`<parameter=city>上海`），
+ *   字符串字面量模式剥不掉，残渣带汉字致整条漏判为"非残文"流进 rewrite。
+ *   值吃到下一个 `<` 为止，闭合标签缺失（截断输出）也能剥净。
+ */
 const TOOL_CALL_SKELETON_PATTERNS: readonly RegExp[] = [
-  /<\/?(?:tool_call|tool_use|invoke|parameter|function_calls?)\b[^>]*>/gi,
+  /<parameter\b[^>]*>[^<]*/gi,
+  /<\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking)\b[^>]*>/gi,
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\s*\\([^()]*\\)`, 'g'),
   /(["'])(?:\\.|(?!\1)[^\\])*\1/g,
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`, 'g'),
   /\b(?:true|false|null|name|arguments|parameters?)\b/gi,
   /[\d\s{}[\]<>()=,:;.、，。：；"'`|/\\-]+/g,
 ];
+
+/**
+ * JSON 信封：模型把本想发的正文包进了 JSON 信封再当回复吐出（2026-08-04 生产实测两形态：
+ * `{"censorStatus":"ok","_replyInstruction":"不客气～…"}`、`{"agent_response":"好的，我帮你…"}`）。
+ *
+ * 这种形态曾被 isToolCallArtifactOnly 误判成纯残文整轮静默——字符串字面量剥离把
+ * 信封里的完整好回复连壳一起剥掉了。正解与剥围栏同型：确定性拆封、逐字放出正文。
+ *
+ * 防反例（同窗口生产实测 `{"type":"tool_use","name":"request_handoff","input":{"reason":"候选人追问…"}}`）：
+ * tool_use 信封的 reason 同样是长中文，但那是内部升级理由不是候选人话术——含
+ * type/name/input/arguments 等调用结构键的对象一律不拆，维持静默。
+ */
+const ENVELOPE_TOOL_STRUCTURE_KEYS = new Set([
+  'type',
+  'name',
+  'tool',
+  'toolname',
+  'tool_name',
+  'function',
+  'input',
+  'arguments',
+  'parameters',
+]);
+const ENVELOPE_MIN_HAN_CHARS = 6;
+
+function countHanChars(text: string): number {
+  return text.match(/\p{Script=Han}/gu)?.length ?? 0;
+}
+
+export function tryUnwrapEnvelopeReply(content: string): string | null {
+  const text = content?.trim() ?? '';
+  if (!text.startsWith('{') || !text.endsWith('}')) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null; // 解析不了的伪 JSON 不猜测，交回残文判定/常规 repair
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  if (Object.keys(record).some((key) => ENVELOPE_TOOL_STRUCTURE_KEYS.has(key.toLowerCase()))) {
+    return null;
+  }
+  // 仅取顶层字符串值里"像候选人话术"的候选：中文量足够、自身无任何泄漏形态、
+  // 非技术文档。恰好一条才拆——多条无法确定哪条是正文，宁可维持原收敛。
+  const candidates = Object.values(record).filter(
+    (value): value is string =>
+      typeof value === 'string' &&
+      countHanChars(value) >= ENVELOPE_MIN_HAN_CHARS &&
+      !detectOutputLeak(value) &&
+      !hasTechnicalDocumentationShape(value),
+  );
+  if (candidates.length !== 1) return null;
+  return candidates[0].trim();
+}
 
 /**
  * 整条回复只是工具调用残文——模型没发起工具调用，而是把调用语法当正文吐了出来
@@ -148,11 +214,14 @@ const TOOL_CALL_SKELETON_PATTERNS: readonly RegExp[] = [
  * 并全部投递。正确结局与元叙述旁白同型：整轮静默。
  *
  * 判据：剥掉工具调用骨架与字面量后，不再剩下任何可读字符（汉字/字母）。
+ * 可拆封的 JSON 信封（见 tryUnwrapEnvelopeReply）不算残文——里面有完整正文可放出，
+ * 静默会把好回复一起吞掉（2026-08-04 审计静默误伤 ×2）。
  */
 export function isToolCallArtifactOnly(content: string): boolean {
   const text = content?.trim() ?? '';
   if (!text) return false;
   if (!detectOutputLeak(text)) return false;
+  if (tryUnwrapEnvelopeReply(text) !== null) return false;
   const residue = TOOL_CALL_SKELETON_PATTERNS.reduce(
     (acc, pattern) => acc.replace(pattern, ''),
     text,
@@ -205,7 +274,16 @@ const HUMAN_SERVICE_PHRASE_PATTERN =
 // 刻意不入表："人工审核"（描述门店/品牌侧简历审核外部流程，属合法业务表述，
 // precheck wait_notice 话术已改为"先进入审核"避免主动引导该词形）。
 
-export function detectHumanServicePhraseLeak(content: string): RuleContradiction | null {
+/**
+ * 反馈按"本轮是否有真实人工升级动作"分叉（2026-08-04 审计 P1-5，trace …_1785743845189）：
+ * 目录反馈的处方"改成'我帮你问下同事'"逐字就是 handoff_promise_without_handoff 的
+ * 违规构成要件——repair 照做后被二审 P0 打死，任何"说了人工 + 本轮无升级动作"的
+ * 轮次注定沉默。无升级动作时反馈必须要求删除露馅措辞**且不得替换成任何跟进承诺**。
+ */
+export function detectHumanServicePhraseLeak(
+  content: string,
+  hasCommittedEscalation = false,
+): RuleContradiction | null {
   if (!content) return null;
   if (!HUMAN_SERVICE_PHRASE_PATTERN.test(content)) return null;
   return {
@@ -213,6 +291,12 @@ export function detectHumanServicePhraseLeak(content: string): RuleContradiction
     label:
       '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
     action: GUARDRAIL_ACTION.REVISE,
+    feedbackToGenerator: hasCommittedEscalation
+      ? '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
+        '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。'
+      : '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
+        '删除露馅措辞，且**不得**把它替换成"我帮你问下同事/让同事联系你"等任何跟进承诺——本轮没有真实的人工升级动作，替换成承诺会构成新的空头承诺违规。' +
+        '只保留已确认的事实与候选人可自行进行的下一步；若删除后没有其他实质内容，就只输出一句不含承诺、不含新事实的自然收束。',
   };
 }
 

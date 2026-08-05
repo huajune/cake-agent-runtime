@@ -119,6 +119,22 @@ export class GuardrailReviewRepository extends BaseRepository {
   }
 
   /**
+   * 时间窗内产出过语义评审的档案条数（覆盖率看门狗用）。
+   *
+   * `semantic_reviews` 由语义 shadow 异步追加；语义评审整体停摆时该计数会掉到 0，
+   * 而硬规则命中仍在写行——所以只能数带语义评审的行，不能数总行数。
+   */
+  async countWithSemanticReviewsBetween(from: Date, to: Date): Promise<number> {
+    return this.count((q) =>
+      q
+        .gte('created_at', from.toISOString())
+        .lt('created_at', to.toISOString())
+        .not('semantic_reviews', 'is', null)
+        .neq('semantic_reviews', '[]'),
+    );
+  }
+
+  /**
    * 清理过期守卫审查档案。
    *
    * guardrail_review_records 是 message_processing_records 的 trace 附属证据，

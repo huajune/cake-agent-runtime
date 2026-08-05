@@ -23,11 +23,13 @@ import type {
 } from '@biz/message/types/guardrail-review.types';
 import { classifyReviewedOutcome } from './turn-outcome';
 import { isDanglingCheckReply } from './dangling-reply';
+import { isHandoffPromiseOnlyReply } from '../guardrail/output/rules/handoff-promises.rule';
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
   isToolCallArtifactOnly,
   stripMarkdownCodeFences,
+  tryUnwrapEnvelopeReply,
 } from '../guardrail/output/rules/internal-info-leaks.rule';
 import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
 import { detectRepairRegression } from '../guardrail/output/repair-regression.util';
@@ -233,6 +235,9 @@ export class AgentRunnerService {
     if (silenceReason) {
       const silencedDecision: OutputGuardDecision = {
         ...decision,
+        // handoff_promise_only_reply_silenced 的首审是 revise 档，静默收敛必须显式压成
+        // block——沿用 revise 会让 finalize 把首版当可投递文本发出去。
+        decision: 'block',
         reasonCode: silenceReason,
       };
       this.logger.warn(
@@ -276,6 +281,18 @@ export class AgentRunnerService {
     // 跳过 LLM 重写（2026-07-21 badcase：rewrite 把围栏里的报名表模板压成一句话流水账）。
     // 剥离产物仍走下方二审，二审才是放行依据。
     const fenceStrippedText = this.tryStripFenceOnlyLeak(decision, firstText);
+    // 第二条确定性快通道（2026-08-04 审计 P0-2）：JSON 信封拆封。模型把完整正文包进
+    // `{"agent_response":"…"}` 类信封，旧链路误判纯残文整轮静默（好回复被吞）。拆封
+    // 产物与剥围栏同样走二审 + 悬空检测。
+    const envelopeUnwrappedText =
+      fenceStrippedText === null ? this.tryUnwrapEnvelopeLeak(decision, firstText) : null;
+    const deterministicRepairText = fenceStrippedText ?? envelopeUnwrappedText;
+    const deterministicReasonCode =
+      fenceStrippedText !== null
+        ? 'fence_stripped'
+        : envelopeUnwrappedText !== null
+          ? 'envelope_unwrapped'
+          : null;
 
     // repair（hard cap 1）：统一走独立 ReplyRepairAgent 受约束重写——replan（重进
     // generator 重取数+重写全文）已于 2026-07-27 发牌切换整体退役（评估文档 §2.4），
@@ -284,11 +301,12 @@ export class AgentRunnerService {
     this.logger.log(
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}` +
-        (fenceStrippedText !== null ? '，fence-only 命中走确定性剥围栏，跳过 LLM 重写' : ''),
+        (fenceStrippedText !== null ? '，fence-only 命中走确定性剥围栏，跳过 LLM 重写' : '') +
+        (envelopeUnwrappedText !== null ? '，JSON 信封命中走确定性拆封，跳过 LLM 重写' : ''),
     );
     const revised =
-      fenceStrippedText !== null
-        ? this.buildRepairedResult(first, fenceStrippedText)
+      deterministicRepairText !== null
+        ? this.buildRepairedResult(first, deterministicRepairText)
         : this.buildRepairedResult(
             first,
             await this.replyRepairAgent.repair({
@@ -443,12 +461,16 @@ export class AgentRunnerService {
     // 确定性 repair 回归闸门（2026-07-24 审计 P1-5）：二审只判"修复版是否违规"，不比较
     // "相对首版是否退步"——结构压扁/结论反转的修复版曾带着二审 pass 直接投递
     // （trace batch_6a606ac5…）。检测需同时读取真实岗位证据，避免把删除幻觉岗位误判
-    // 为退化。fence_stripped 是逐字剥围栏，不可能回归，跳过检测。
+    // 为退化。fence_stripped / envelope_unwrapped 是逐字剥离/提取，不可能回归，跳过检测
+    // ——拆封产物相对信封原文本就是"结构骤变"，跑回归闸只会误报。
     const regression =
-      fenceStrippedText === null
+      deterministicRepairText === null
         ? detectRepairRegression(firstText, revisedText, {
             committedSideEffects: committed || undefined,
             jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
+            // 首审规则 id：本轮根本没调查岗工具时 jobEvidenceAvailable 是 undefined，
+            // 逃生口够不着，只能靠"零证据类规则触发"这条判据识别"删幻觉 ≠ 结构塌缩"。
+            triggeredRuleIds: decision.ruleIds,
           })
         : null;
     // 检出回归后的收敛对齐 guardrail-chain-assessment-and-rebuild.md §2.3 ④：
@@ -484,9 +506,9 @@ export class AgentRunnerService {
           : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
         : regressionRevert
           ? { ...decision2, reasonCode: `repair_regression_reverted:${regression}` }
-          : fenceStrippedText !== null
-            ? // 确定性剥围栏放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
-              { ...decision2, reasonCode: decision2.reasonCode ?? 'fence_stripped' }
+          : deterministicReasonCode !== null
+            ? // 确定性剥围栏/拆信封放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
+              { ...decision2, reasonCode: decision2.reasonCode ?? deterministicReasonCode }
             : decision2;
     const finalResult = regressionBlock
       ? { ...revised, toolCalls: reviewedToolCalls }
@@ -706,7 +728,27 @@ export class AgentRunnerService {
   }
 
   /**
-   * 直达静默判据——两类首版进 repair 只会产出另一条不该发的文本：
+   * JSON 信封的确定性最小修复（2026-08-04 审计 P0-2）：不可发送命中仅为
+   * internal_output_leak，且整条首版是"正文被包进 JSON 信封"的形态
+   * （`{"agent_response":"好的，我帮你看下罗湖…"}`、`{"censorStatus":"ok","_replyInstruction":"不客气～…"}`）
+   * → 拆出信封内正文逐字放行。生产实测该形态曾被残文判据误伤成整轮静默——
+   * 字符串字面量剥离把好回复连壳一起剥掉了。
+   *
+   * 拆封判定（含 tool_use 结构键黑名单、唯一候选、正文自身无泄漏/非技术文档）
+   * 收敛在 tryUnwrapEnvelopeReply；拆封产物仍走二审 + 悬空承接句检测，二审才是放行依据。
+   */
+  private tryUnwrapEnvelopeLeak(decision: OutputGuardDecision, text: string): string | null {
+    if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
+    const unwrapped = tryUnwrapEnvelopeReply(text);
+    if (unwrapped === null) return null;
+    this.logger.warn(
+      `[invokeReviewed] 首版为 JSON 信封形态，确定性拆封放出正文: text="${unwrapped.slice(0, 80)}"`,
+    );
+    return unwrapped;
+  }
+
+  /**
+   * 直达静默判据——三类首版进 repair 只会产出另一条不该发的文本：
    *
    * - `meta_narration_silenced`：元叙述旁白（badcase chat 6a5740ff…：真人经理接管期间
    *   模型输出"（AI 保持静默，不插入回复）"被投递）。模型本轮的真实意图就是不说话。
@@ -714,17 +756,31 @@ export class AgentRunnerService {
    *   2026-07-28 15:05–15:11 模型降级窗口）。泄漏反馈要求"其余内容逐字保留"，而残文
    *   剥完无一字可留，rewrite 只能凭空创作——当时 4/4 例编出薪资/门店/伪造报名链接
    *   并全部投递。没有事实可依时，沉默是唯一安全的结局。
+   * - `handoff_promise_only_reply_silenced`：整条首版剥掉"让同事确认"承诺句后无实质
+   *   内容（2026-08-04 审计 P0-1）。"删除承诺、其余逐字保留"在这种形态下保留的是
+   *   空集，rewrite 被逼成自由创作——生产 4 例编出着装要求/"已拉你进群"/约面时间，
+   *   2 例投递。同理收敛为沉默。
    *
-   * 混合命中其它 block 规则时都不走捷径，仍按常规 repair 流程保守处理。
+   * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
    */
   private resolveDirectSilenceReason(
     decision: OutputGuardDecision,
     firstText: string,
   ): string | null {
-    if (decision.decision !== 'block') return null;
-    if (this.isOnlyMetaNarrationBlock(decision)) return 'meta_narration_silenced';
-    if (this.isOnlyInternalOutputLeakBlock(decision) && isToolCallArtifactOnly(firstText)) {
-      return 'tool_call_artifact_silenced';
+    if (decision.decision === 'block') {
+      if (this.isOnlyMetaNarrationBlock(decision)) return 'meta_narration_silenced';
+      if (this.isOnlyInternalOutputLeakBlock(decision) && isToolCallArtifactOnly(firstText)) {
+        return 'tool_call_artifact_silenced';
+      }
+      return null;
+    }
+    if (
+      decision.decision === 'revise' &&
+      decision.violations.length > 0 &&
+      decision.violations.every((v) => v.type === 'handoff_promise_without_handoff') &&
+      isHandoffPromiseOnlyReply(firstText)
+    ) {
+      return 'handoff_promise_only_reply_silenced';
     }
     return null;
   }
