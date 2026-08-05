@@ -155,6 +155,34 @@
         "`pnpm config:hosting:check:test`",
         "`pnpm config:hosting:check:prod`"
       ]
+    },
+    {
+      "number": "875",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/875",
+      "title": "语义评审 markdown 摘录截断补录被截岗位的薪资信息段",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "Merge origin/develop into fix branch（冲突：语义评审提示词两行并存——recentAssistantM…"
+      ],
+      "summary": [
+        "语义评审 markdown 摘录截断补录被截岗位的薪资信息段",
+        "Merge origin/develop into fix branch（冲突：语义评审提示词两行并存——recentAssistantM…"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge origin/develop into fix branch（冲突：语义评审提示词两行并存——recentAssistantM…"
+      ],
+      "optimizations": [],
+      "ops": [
+        "语义评审 markdown 摘录截断补录被截岗位的薪资信息段"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 2 例：badcase 同型（薪资段整段在截断点后 → 补录出现、且只补薪资段不带福利）；薪资段完整在窗口内 → 不补录",
+        "`review-packet.builder.spec` 10/10、`semantic-reviewer.service.spec` 25/25 通过；typecheck / eslint 全净"
+      ]
     }
   ],
   "lastRelease": {

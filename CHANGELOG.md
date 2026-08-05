@@ -14,7 +14,7 @@
 **预计版本**: `v10.40.0`
 **最近更新**: `2026-08-05`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
@@ -45,6 +45,8 @@
 - PR #873 图片信息链路现状架构文档（前身：立项三件套）
 - PR #894 补充 v10.39.0 发版底账
 - PR #896 补齐陈美嘉托管账号配置迁移
+- PR #875 语义评审 markdown 摘录截断补录被截岗位的薪资信息段
+- PR #875 Merge origin/develop into fix branch（冲突：语义评审提示词两行并存——recentAssistantM…
 
 ### 新功能
 - 无
@@ -57,6 +59,7 @@
 - PR #885 描述缺失读时懒补写——33% 裸占位归因后的定向修复
 - PR #885 修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量
 - PR #873 回填信息类别裁决记录 + vkikct39 事实修正
+- PR #875 Merge origin/develop into fix branch（冲突：语义评审提示词两行并存——recentAssistantM…
 
 ### 优化调整
 - PR #885 姓名形态门与 #865 经理名门合并，复用同一 extractedName
@@ -80,6 +83,7 @@
 - PR #873 记忆与状态全局视图——三角色心智模型
 - PR #894 补充 v10.39.0 发版底账
 - PR #896 补齐陈美嘉托管账号配置迁移
+- PR #875 语义评审 markdown 摘录截断补录被截岗位的薪资信息段
 
 ### 配置变更
 - 无
@@ -96,6 +100,8 @@
 - PR #896 6778 项测试通过，6 项跳过
 - PR #896 `pnpm config:hosting:check:test`
 - PR #896 `pnpm config:hosting:check:prod`
+- PR #875 新增 2 例：badcase 同型（薪资段整段在截断点后 → 补录出现、且只补薪资段不带福利）；薪资段完整在窗口内 → 不补录
+- PR #875 `review-packet.builder.spec` 10/10、`semantic-reviewer.service.spec` 25/25 通过；typecheck / eslint 全净
 <!-- release:pending:end -->
 
 ## [10.39.0] - 2026-08-05
