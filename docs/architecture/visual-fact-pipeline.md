@@ -56,6 +56,48 @@
 └──────────────────────────────────────────────────────────┘
 ```
 
+
+## 二A、数据流时序（一张图片的一生）
+
+> §二是静态结构，本节是时间顺序——编号即先后。
+
+```
+━━ 阶段 0 · 入站（Agent 未跑）━━━━━━━━━━━━━━━━━━━━━━━━
+① enrichImagePayload：回调报文 → payload.artworkUrl
+② 存历史：DB 插行 { content:"[图片消息]"(裸占位), payload } → 镜像 Redis 窗口
+③ 进 debounce 队列（此处已无任何 vision 动作——入站预描述分支已删）
+
+━━ 阶段 1 · 图片当轮（回合执行中）━━━━━━━━━━━━━━━━━━━
+④ 回合入口：懒补写 fire-and-forget（扫历史裸图，非本轮这张）
+⑤ preparation：窗口(裸占位) + payload.artworkUrl 作 image part → 模型消息
+⑥ 主模型直接看原图（识图不经任何工具）
+⑦ 模型调 save_image_description(description, kind, fields)——存款动作
+⑧ 工具内 finalize → 一次双写：DB 同行 {content:描述, visual_facts:sheet} + del Redis 缓存
+⑨ 出生即消费（同函数内）：brand 字段→品牌解析→turnState；sheet→turnState.visualFactSheets
+⑩ 同轮稍后工具读内存旁路：invite 城市门 turn_map_screenshot 档
+⑪ 回复 → 出站守卫 → 投递
+
+━━ 阶段 2 · 回合收尾（投递后异步）━━━━━━━━━━━━━━━━━━━
+⑫ 漏调兜底：toolCalls 缺 save_image_description 的图 → P1 补（回到⑧写法）
+⑬ 事实抽取（sheet 最大消费时刻）：
+   a 查 DB（visual_facts IS NOT NULL）→ Map<剥后缀内容, sheet>（内容等值 join）
+   b 规则轨 sheetFor 查表 → 授权域开关（§五矩阵）
+   c LLM 轨 + phone 三向量门 + 话题证据门（语料按 sheet 圈定自陈材料）
+   d map_location 城市 → geo 白名单确权 → pref.city (source='tool')
+   e 写 Redis sessionFacts（带 source/confidence）
+⑭ turnState.imageBrandResolutions → reducer → brand_state
+
+━━ 阶段 3 · 后续任意轮 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⑮ 模型读描述文本（sheet 从不进提示词）
+⑯ 每次收尾重复⑬：历史图 sheet 从 DB 重拉，授权域终身生效
+⑰ precheck/booking 预填只读 sessionFacts 的 high 字段——sheet 从不直接进工具
+
+━━ 平行线 · 接管期图片（无回合）━━━━━━━━━━━━━━━━━━━━
+Ⓐ 只走阶段 0；Ⓑ 托管恢复后首个回合④懒补写捡起→P1 落库；Ⓒ 之后进⑮⑯循环
+```
+
+三条关键顺序关系：⑧ 落库先于 ⑬ 抽取（抽取查 DB 必得本轮 sheet，无须内存穿线；⑩ 旁路只为回合中途的工具存在）；sheet 两次出生消费（⑨⑩）+ 终身 DB 消费（⑬⑯）；模型视野「原图→描述文本」与 sheet 流完全平行，互不穿越。
+
 ## 三、核心数据结构
 
 `src/resolution/visual/`（与 brand/geo 同构的解析域：纯确定性、零 LLM、仅依赖 zod）：
