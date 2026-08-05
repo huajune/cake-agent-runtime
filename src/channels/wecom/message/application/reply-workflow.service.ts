@@ -270,9 +270,9 @@ export class ReplyWorkflowService {
       },
     } as const;
 
-    // 兼容描述等待：只有主聊天模型不支持 vision 时，accept-inbound 才会提前触发图片描述。
-    // 多模态主路径没有 in-flight 任务，这里会立即返回；文本兼容路径则等描述写回后再进 Agent。
-    await this.ensureCompatibilityDescriptionsReady(imageMessageIds, contactName, logPrefix);
+    // 读时懒补写：接管/非托管时段沉积的裸图片描述在回合开始时补上
+    //（fire-and-forget，本轮不阻塞；描述缺失归因 2026-08-05：90% 来自无回合时段）。
+    this.imageDescription.backfillBareDescriptionsForChat?.(chatId);
 
     // 首次调用延迟 turn-end：若随后检测到新消息会走 replay 丢弃本次回复，
     // 记忆投影/事实提取也必须一同被丢弃，否则会把「未发出的回复」污染到 session 记忆里。
@@ -353,9 +353,6 @@ export class ReplyWorkflowService {
           traceId,
           newMessages.map((message) => message.messageId),
         );
-
-        // Replay 合入的新消息也可能走文本兼容描述；多模态主路径这里通常是 no-op。
-        await this.ensureCompatibilityDescriptionsReady(imageMessageIds, contactName, logPrefix);
 
         agentResult = await this.callAgentWithVisualCompatibilityFallback({
           ...agentCallParams,
@@ -1067,7 +1064,8 @@ export class ReplyWorkflowService {
    * 等待文本兼容路径的图片/表情描述完成（已完成的立即返回；超时则放行）。
    *
    * 正常多模态路径由主模型直接读取 image part，这里不会有 in-flight 描述任务。
-   * 只有主模型不支持 vision，或多模态调用失败后进入运行时降级，才依赖图片描述回写短期记忆。
+   * 仅运行时降级路径调用（多模态调用失败 → 描述转文字重跑）；入站预描述分支已废弃
+   *（2026-08-05，主聊按输入换模型后该分支永久 no-op）。
    */
   private async ensureCompatibilityDescriptionsReady(
     visualMessageIds: string[],
