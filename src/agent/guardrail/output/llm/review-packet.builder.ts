@@ -14,9 +14,16 @@ export interface BuildReviewPacketInput {
   reply: string;
   toolCalls: AgentToolCall[];
   userMessage?: string;
+  /** 短期记忆里的往轮助手文本（正序）。缺省为空——repair 等旁路调用方无需提供。 */
+  recentAssistantTexts?: string[];
   redLines?: string[];
   outputRuleHits?: string[];
 }
+
+// 往轮助手消息进 packet 的预算：条数取最近 8 条覆盖常见"查岗→展示→追问"链，
+// 单条 600 字符足够容纳一条多门店推荐卡片；再长的尾部对复述判定无增量，只烧 token。
+const RECENT_ASSISTANT_MESSAGES_LIMIT = 8;
+const RECENT_ASSISTANT_MESSAGE_MAX_CHARS = 600;
 
 @Injectable()
 export class GuardrailReviewPacketBuilder {
@@ -26,6 +33,7 @@ export class GuardrailReviewPacketBuilder {
       latestUserMessages: input.userMessage
         ? [{ role: 'user', content: input.userMessage, messageType: 'text' }]
         : [],
+      recentAssistantMessages: this.buildRecentAssistantMessages(input.recentAssistantTexts),
       evidence: {
         jobList: this.buildJobListEvidence(input.toolCalls),
         precheck: this.buildPrecheckEvidence(input.toolCalls),
@@ -39,6 +47,19 @@ export class GuardrailReviewPacketBuilder {
         outputRuleHits: input.outputRuleHits ?? [],
       },
     };
+  }
+
+  /** 裁剪往轮助手文本：去空白条、保留最近 N 条、单条超预算截尾（复述核验只需前段的事实主体）。 */
+  private buildRecentAssistantMessages(texts?: string[]): string[] {
+    if (!texts?.length) return [];
+    return texts
+      .filter((text) => text.trim().length > 0)
+      .slice(-RECENT_ASSISTANT_MESSAGES_LIMIT)
+      .map((text) =>
+        text.length > RECENT_ASSISTANT_MESSAGE_MAX_CHARS
+          ? `${text.slice(0, RECENT_ASSISTANT_MESSAGE_MAX_CHARS)}…`
+          : text,
+      );
   }
 
   private buildJobListEvidence(toolCalls: AgentToolCall[]): JobListEvidence | undefined {

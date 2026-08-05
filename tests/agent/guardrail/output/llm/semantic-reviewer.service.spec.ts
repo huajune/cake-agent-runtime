@@ -11,6 +11,7 @@ function makePacket(overrides: Partial<GuardrailReviewPacket> = {}): GuardrailRe
   return {
     draftReply: '你好',
     latestUserMessages: [],
+    recentAssistantMessages: [],
     evidence: {},
     policies: { redLines: [], outputRuleHits: [] },
     ...overrides,
