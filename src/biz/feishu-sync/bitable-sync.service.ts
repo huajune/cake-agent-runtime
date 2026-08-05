@@ -577,7 +577,15 @@ export class FeishuBitableSyncService {
       try {
         let derivedStatus = item.status;
         const fields: Record<string, unknown> = {};
-        let currentRecordFields: Record<string, unknown> = {};
+        // 当前真实 BadCase 表已删除「测试证据JSON」等治理列，但「暂搁置」保护、
+        // 状态时间戳和治理文档摘要仍依赖现有记录。统一读取一次，避免无证据列时
+        // currentRecordFields 永远为空、把运营裁定的「暂搁置」覆盖回流转态。
+        const currentRecord = await this.bitableApi.getRecord(
+          tableConfig.appToken,
+          tableConfig.tableId,
+          recordId,
+        );
+        const currentRecordFields: Record<string, unknown> = currentRecord.fields;
         if (evidenceUpdates.length > 0 && !evidenceJsonField) {
           // 飞书列缺失时改用调用方给的生产库台账；两者都没有才退回"不许关闭"的保守档
           let ledger = item.ledger;
@@ -595,13 +603,7 @@ export class FeishuBitableSyncService {
           }
         }
         if (evidenceUpdates.length > 0 && evidenceJsonField) {
-          const record = await this.bitableApi.getRecord(
-            tableConfig.appToken,
-            tableConfig.tableId,
-            recordId,
-          );
-          currentRecordFields = record.fields;
-          let ledger = parseBadcaseEvidenceLedger(record.fields[evidenceJsonField]);
+          let ledger = parseBadcaseEvidenceLedger(currentRecordFields[evidenceJsonField]);
           for (const evidence of evidenceUpdates) {
             ledger = mergeBadcaseEvidence(ledger, evidence);
           }
@@ -639,12 +641,18 @@ export class FeishuBitableSyncService {
             ].filter((value, index, values) => values.indexOf(value) === index);
           }
         }
-        fields[statusFieldName] = derivedStatus;
-        if (
-          statusUpdatedAtField &&
-          (evidenceUpdates.length === 0 || currentRecordFields[statusFieldName] !== derivedStatus)
-        ) {
-          fields[statusUpdatedAtField] = now;
+        // 暂搁置 = 运营裁定「现状无法根治」的搁置态：批次回写只有在修复真正验证通过（已解决）
+        // 时才允许解除，其余派生状态不得把搁置记录拉回流转。
+        const keepShelved =
+          currentRecordFields[statusFieldName] === '暂搁置' && derivedStatus !== '已解决';
+        if (!keepShelved) {
+          fields[statusFieldName] = derivedStatus;
+          if (
+            statusUpdatedAtField &&
+            (evidenceUpdates.length === 0 || currentRecordFields[statusFieldName] !== derivedStatus)
+          ) {
+            fields[statusUpdatedAtField] = now;
+          }
         }
         if (derivedStatus === '已解决') {
           if (
@@ -694,7 +702,7 @@ export class FeishuBitableSyncService {
                 this.feedbackFieldAliases.category.find((name) => name in currentRecordFields) || ''
               ],
             ),
-            status: derivedStatus,
+            status: keepShelved ? '暂搁置' : derivedStatus,
             batchId: item.batchId,
             evidenceSummary: evidenceSummaryField
               ? this.readFeishuText(

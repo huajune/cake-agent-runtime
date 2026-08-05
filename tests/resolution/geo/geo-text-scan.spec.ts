@@ -110,4 +110,58 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
     expect(scan.districtHits).toEqual([{ key: '浦东', start: 2, end: 4 }]);
     expect(scan.locationHits).toEqual([]);
   });
+
+  /**
+   * 通名后缀拒绝（2026-07-29 生产 shadow：4 天 6 条地理信号冲突，6/6 是同一个根因——
+   * 裸词 indexOf 把"路/街/公园"专名里的区名字样当成行政区命中，一个地址被拆成两城）。
+   * 逐条锁死原文形态，防回归。
+   */
+  describe('通名后缀拒绝（生产冲突样本回归）', () => {
+    it('mpr 223305/223342/223354：上海位置分享含"宝安公路"，不得命中深圳宝安区', () => {
+      const scan = scanGeoSignalsFromText('宝山区新顾村大家园(C区)（宝山区宝安公路）');
+      expect(scan.city).toEqual({ value: '上海', evidence: 'unique_district_alias' });
+      expect(scan.districts).not.toContain('宝安');
+    });
+
+    it('mpr 223843：北京位置分享含"宝山中街"，不得命中上海宝山区', () => {
+      const scan = scanGeoSignalsFromText('海淀区田村阜石路93号院(宝山中街北)（海淀区宝山中街）');
+      expect(scan.city).toEqual({ value: '北京', evidence: 'unique_district_alias' });
+      expect(scan.districts).not.toContain('宝山');
+    });
+
+    it('mpr 225370：深圳罗湖的"洪湖公园/洪湖路"不得命中荆州洪湖', () => {
+      expect(scanGeoSignalsFromText('罗湖区洪湖公园附近').city).toEqual({
+        value: '深圳',
+        evidence: 'unique_district_alias',
+      });
+      expect(scanGeoSignalsFromText('罗湖区洪湖路').districts).not.toContain('洪湖');
+    });
+
+    it('城市裸名同样收口："上海路"（南京路名）不得推导出上海', () => {
+      expect(scanGeoSignalsFromText('上海路').city).toBeNull();
+    });
+
+    it('行政后缀放行：区/街道 不是通名，裸词与"我在XX"召回不受影响', () => {
+      // "街道"必须放行（街(?!道)），否则青浦街道会被误拒
+      expect(scanGeoSignalsFromText('我在青浦街道').city).toEqual({
+        value: '上海',
+        evidence: 'unique_district_alias',
+      });
+      expect(scanGeoSignalsFromText('我在宝山').city).toEqual({
+        value: '上海',
+        evidence: 'unique_district_alias',
+      });
+      expect(scanGeoSignalsFromText('我在宝山区').city).toEqual({
+        value: '上海',
+        evidence: 'unique_district_alias',
+      });
+    });
+
+    it('地标轮不开拒绝：陆家嘴/五道口后接通名仍应命中', () => {
+      expect(scanGeoSignalsFromText('陆家嘴广场').city).toEqual({
+        value: '上海',
+        evidence: 'hotspot_alias',
+      });
+    });
+  });
 });

@@ -171,6 +171,21 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('"每天/周一至周日"不等于"可只排周末"');
   });
 
+  it('明确做一休一不满足每周最多一至两天，避免低周频语义串线', () => {
+    const high = cloneHighConfidenceFallback();
+    high.preferences.schedule = highConfidenceValue('每周最多两天', '班次识别：每周最多两天');
+
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: cloneFallback(),
+      highConfidenceFacts: high,
+    });
+
+    expect(output).toContain('"做一休一"通常每周出勤 3–4 天');
+    expect(output).toContain('不满足"每周最多 1–2 天"');
+    expect(output).toContain('不得把它列为低周频候选人的合适方案');
+  });
+
   it('品牌口径改读 SessionBrandState：currentBrand + excludedBrands（§14.4/goal #10）', () => {
     const output = section.build({
       ...baseCtx,

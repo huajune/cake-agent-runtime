@@ -35,6 +35,21 @@ const KNOWN_CITY_NAMES: readonly string[] = [
 ];
 
 /**
+ * 仓库行政区数据中的 canonical 城市/地级行政区名称。
+ *
+ * 供结构化字段做成员判定；自由文本仍必须走 scanGeoSignalsFromText，不能用本集合
+ * 做裸词扫描。集合留在 geo 域内，避免消费方依赖生成数据表实现细节。
+ */
+const KNOWN_CANONICAL_ADMINISTRATIVE_AREA_NAMES: ReadonlySet<string> = new Set([
+  ...Object.values(NATIONAL_CITY_SUFFIX_TO_CITY),
+  ...Object.values(NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE),
+]);
+
+export function isKnownCanonicalAdministrativeAreaName(input: string): boolean {
+  return KNOWN_CANONICAL_ADMINISTRATIVE_AREA_NAMES.has(input.trim());
+}
+
+/**
  * 单个 district 名 → 城市（命中白名单则返回 city，否则 null）。
  * 兼容 "青浦" 和 "青浦区" 两种形式（白名单只存归一化后的形式）。
  */

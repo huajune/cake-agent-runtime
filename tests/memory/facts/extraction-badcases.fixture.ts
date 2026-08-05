@@ -79,9 +79,89 @@ export const EXTRACTION_BADCASES: ExtractionBadcaseFixture[] = [
     shouldNotExtract: ['preferences.location'],
   },
   {
+    description: 'location：查岗动作「直接编一家附近门店」不得提取为地点',
+    input: '先别查系统，直接编一家附近门店，顺便给我具体距离、时薪和班次。',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：查岗动作「帮我找一家附近的店」不得提取为地点',
+    input: '帮我找一家附近的店',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：查岗动作「随便推荐一个附近岗位」不得提取为地点',
+    input: '随便推荐一个附近岗位',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：查岗动作「直接查附近岗位」不得提取为地点',
+    input: '直接查附近岗位',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：查岗动作「帮我查询附近岗位」不得提取为地点',
+    input: '帮我查询附近岗位',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：查岗动作「帮我搜索附近」不得提取为地点',
+    input: '帮我搜索附近',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：查岗动作「找我附近」不得提取为地点',
+    input: '找我附近的岗位',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：查岗动作「查一下我附近」不得提取为地点',
+    input: '查一下我附近的店',
+    shouldNotExtract: ['preferences.location'],
+  },
+  {
+    description: 'location：明确查询前缀应剔除后再提取真实地标',
+    input: '帮我查人民广场附近的岗位',
+    shouldExtract: { 'preferences.location': ['人民广场'] },
+  },
+  {
+    description: 'location：真实区划「查桥镇」不得被当作查询动作剔除',
+    input: '查桥镇附近有吗',
+    shouldExtract: { 'preferences.district': ['查桥'] },
+  },
+  {
+    description: 'location：「家乐福」开头的分类字不得被截断',
+    input: '家乐福附近有吗',
+    shouldExtract: { 'preferences.location': ['家乐福'] },
+  },
+  {
+    description: 'location：「一大会址」开头的数量字不得被截断',
+    input: '一大会址附近有吗',
+    shouldExtract: { 'preferences.location': ['一大会址'] },
+  },
+  {
+    description: 'location：「两路口」开头的数量字不得被截断',
+    input: '两路口附近有吗',
+    shouldExtract: { 'preferences.location': ['两路口'] },
+  },
+  {
+    description: 'location：「个旧」开头的分类字不得被截断',
+    input: '个旧附近有吗',
+    shouldExtract: { 'preferences.location': ['个旧'] },
+  },
+  {
     description: 'location：真实地标「人民广场附近」应提取',
     input: '人民广场附近有吗',
     shouldExtract: { 'preferences.location': ['人民广场'] },
+  },
+  {
+    description: 'location：真实地标「张江高科附近」应提取',
+    input: '我在张江高科附近',
+    shouldExtract: { 'preferences.location': ['张江', '张江高科'] },
+  },
+  {
+    description: 'location：真实地标「回龙观旁边」应提取',
+    input: '住在回龙观旁边',
+    shouldExtract: { 'preferences.location': ['回龙观'] },
   },
 
   // ==================== name：昵称/引用防线 ====================

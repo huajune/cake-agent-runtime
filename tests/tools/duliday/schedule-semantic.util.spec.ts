@@ -63,6 +63,80 @@ describe('classifyScheduleSemantic', () => {
     expect(classifyScheduleSemantic({ workTimeText })).not.toContain('requires_full_week');
   });
 
+  it('derives low weekly frequency, not time flexibility, from perWeekWorkDays <= 2', () => {
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: { perWeekWorkDays: 2, perWeekRestDays: 5 },
+    });
+
+    const semantics = classifyScheduleSemantic({ workTimeText });
+    expect(semantics).toContain('low_weekly_frequency');
+    expect(semantics).not.toContain('flexible');
+  });
+
+  it('badcase id4zx7q9: 固定排班 label with 每周至少 2 天 has low weekly frequency', () => {
+    // 哈根达斯又一城：排班类型「固定排班」+ 每周至少上岗 2 天，周末可做，
+    // 曾被 /固定排班/ 文本判据误判 requires_full_week 致"只周末"候选人被告知无岗。
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: {
+        onWorkLimitType: '至少上岗',
+        onWorkTimeUnit: '天',
+        onWorkTime: 2,
+      },
+      dayWorkTime: {
+        arrangementType: '固定排班',
+        combinedArrangement: [
+          { combinedArrangementStartTime: '09:30', combinedArrangementEndTime: '22:30' },
+        ],
+      },
+    });
+
+    const semantics = classifyScheduleSemantic({ workTimeText });
+    expect(semantics).not.toContain('requires_full_week');
+    expect(semantics).not.toContain('flexible');
+    expect(semantics).toContain('low_weekly_frequency');
+    expect(matchScheduleConstraint(semantics, { onlyWeekends: true })).toEqual({ matched: true });
+  });
+
+  it.each([
+    ['onlyEvenings', { onlyEvenings: true }],
+    ['onlyMornings', { onlyMornings: true }],
+  ] as const)('does not treat low weekly frequency as %s compatibility', (_label, constraint) => {
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: {
+        onWorkLimitType: '至少上岗',
+        onWorkTimeUnit: '天',
+        onWorkTime: 2,
+      },
+      dayWorkTime: {
+        arrangementType: '固定排班',
+        combinedArrangement: [
+          { combinedArrangementStartTime: '08:00', combinedArrangementEndTime: '12:00' },
+        ],
+      },
+    });
+
+    const semantics = classifyScheduleSemantic({ workTimeText });
+    expect(semantics).toContain('low_weekly_frequency');
+    expect(matchScheduleConstraint(semantics, constraint).matched).toBe(false);
+  });
+
+  it('固定排班 label alone (no weekly-days data) is not full week', () => {
+    const workTimeText = JSON.stringify({ dayWorkTime: { arrangementType: '固定排班' } });
+
+    expect(classifyScheduleSemantic({ workTimeText })).not.toContain('requires_full_week');
+  });
+
+  it('explicit full-week text still wins over low weekly-days structure', () => {
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: { onWorkLimitType: '至少上岗', onWorkTimeUnit: '天', onWorkTime: 2 },
+      dayWorkTime: { workTimeRemark: '做六休一' },
+    });
+
+    const semantics = classifyScheduleSemantic({ workTimeText });
+    expect(semantics).toContain('requires_full_week');
+    expect(matchScheduleConstraint(semantics, { onlyWeekends: true }).matched).toBe(false);
+  });
+
   it('detects 通宵 shift code as evening_compatible', () => {
     const workTimeText = JSON.stringify({
       dayWorkTime: {
@@ -99,6 +173,7 @@ describe('matchScheduleConstraint', () => {
   describe('onlyWeekends', () => {
     it.each([
       [['weekend_only_compatible'], true, undefined],
+      [['low_weekly_frequency'], true, undefined],
       [['flexible'], true, undefined],
       [['requires_full_week'], false, '岗位是全周强排班，与"只做周末"冲突'],
       [['mandatory_weekend_days'], false, '岗位除周末外还要工作日给班，与"只做周末"冲突'],
@@ -124,6 +199,7 @@ describe('matchScheduleConstraint', () => {
     it.each([
       [['evening_compatible'], true, undefined],
       [['flexible'], true, undefined],
+      [['low_weekly_frequency'], false, '岗位排班未明确含晚班'],
       [['morning_compatible'], false, '岗位仅安排早班，与"只做晚班"冲突'],
       [['requires_full_week'], false, '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认'],
       [['unknown'], false, '岗位排班未明确含晚班'],
@@ -147,12 +223,22 @@ describe('matchScheduleConstraint', () => {
         reason: '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认',
       });
     });
+
+    it('does not let a low weekly signal mask a concurrent evening constraint', () => {
+      expect(
+        matchScheduleConstraint(['low_weekly_frequency'], {
+          onlyWeekends: true,
+          onlyEvenings: true,
+        }),
+      ).toEqual({ matched: false, reason: '岗位排班未明确含晚班' });
+    });
   });
 
   describe('onlyMornings', () => {
     it.each([
       [['morning_compatible'], true, undefined],
       [['flexible'], true, undefined],
+      [['low_weekly_frequency'], false, '岗位排班未明确含早班'],
       [['evening_compatible'], false, '岗位仅安排晚班，与"只做早班"冲突'],
       [['unknown'], false, '岗位排班未明确含早班'],
     ] satisfies Array<[ScheduleSemantic[], boolean, string | undefined]>)(
@@ -170,6 +256,7 @@ describe('matchScheduleConstraint', () => {
     it.each([
       [['requires_full_week'], 2, false],
       [['mandatory_weekend_days'], 2, false],
+      [['low_weekly_frequency'], 2, true],
       [['flexible'], 2, true],
       [['requires_full_week'], 3, true],
     ] satisfies Array<[ScheduleSemantic[], number, boolean]>)(

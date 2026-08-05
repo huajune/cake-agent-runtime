@@ -15,11 +15,15 @@ import {
 import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
+import { detectDateReferenceMismatch } from './rules/date-reference-mismatch.rule';
+import { detectUnsupportedApplicationRecordUpdatePromise } from './rules/application-record-update-promise.rule';
+import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import {
   detectHandoffPromiseWithoutHandoff,
   hasCommittedHumanEscalation,
 } from './rules/handoff-promises.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
+import { detectScreeningRejectionOverride } from './rules/screening-rejection-override.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
 import { detectJobFactsWithoutLookup } from './rules/job-facts-without-lookup.rule';
@@ -195,6 +199,37 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
     }
 
+    // 经历轴诚信红线：仅在候选人自曝造假后触发，与身份轴规则同族分治。
+    const experienceFraudCoaching = detectExperienceFraudCoaching(
+      text,
+      params.userMessage,
+      params.recentUserTexts,
+    );
+    if (experienceFraudCoaching) {
+      contradictions.push(this.withRulePolicy(experienceFraudCoaching));
+    }
+
+    const applicationRecordUpdatePromise = detectUnsupportedApplicationRecordUpdatePromise(
+      text,
+      params.userMessage,
+      params.recentUserTexts,
+    );
+    if (applicationRecordUpdatePromise) {
+      contradictions.push(this.withRulePolicy(applicationRecordUpdatePromise));
+    }
+
+    // 敏感筛选拒绝翻案：本轮 precheck/booking 已给出结构化拒绝时，回复不得翻案或继续承诺被拒岗位。
+    const screeningRejectionOverride = detectScreeningRejectionOverride(text, toolCalls);
+    if (screeningRejectionOverride) {
+      contradictions.push(this.withRulePolicy(screeningRejectionOverride));
+    }
+
+    // 相对日词与括注日期对账：日历事实可确定性校验，日期错乱会让候选人错过/空等面试。
+    const dateReferenceMismatch = detectDateReferenceMismatch(text);
+    if (dateReferenceMismatch) {
+      contradictions.push(this.withRulePolicy(dateReferenceMismatch));
+    }
+
     const summerWorkerAlternativeUpsell = detectSummerWorkerAlternativeUpsell(
       text,
       toolCalls,
@@ -224,7 +259,11 @@ export class HardRulesService {
     }
 
     // booking 成功后的回执对账：不可逆副作用与回复必须一致（问日期=矛盾，零播报=observe）。
-    const bookingReceiptMismatch = detectBookingReceiptMismatch(text, toolCalls);
+    const bookingReceiptMismatch = detectBookingReceiptMismatch(
+      text,
+      toolCalls,
+      params.userMessage,
+    );
     if (bookingReceiptMismatch) {
       contradictions.push(this.withRulePolicy(bookingReceiptMismatch));
     }
@@ -245,6 +284,7 @@ export class HardRulesService {
       text,
       toolCalls,
       params.recentMessages ?? [],
+      params.memorySnapshot?.currentFocusJob?.jobId,
     );
     if (jobFactsWithoutLookup) {
       contradictions.push(this.withRulePolicy(jobFactsWithoutLookup));
@@ -260,6 +300,8 @@ export class HardRulesService {
       text,
       toolCalls,
       params.memorySnapshot?.currentFocusJob?.jobId,
+      params.userMessage,
+      params.recentUserTexts,
     );
     if (unsupportedScheduleWindowClaim) {
       contradictions.push(this.withRulePolicy(unsupportedScheduleWindowClaim));

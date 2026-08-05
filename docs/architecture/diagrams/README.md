@@ -8,15 +8,19 @@ This directory is the durable source of truth for editable architecture diagrams
 | WeCom message lifecycle | `wecom-message-lifecycle.excalidraw` |
 | Booking and handoff state machine | `booking-handoff-state-machine.excalidraw` |
 | Observability data lineage | `observability-data-lineage.excalidraw` |
-| Guardrail architecture | `guardrail-architecture.excalidraw` |
+| Guardrail architecture | `guardrail-architecture.excalidraw` + `.svg` |
 | Memory system architecture | `memory-system-architecture.excalidraw` |
+| Candidate memory relationship system | `memory-relationship-system.excalidraw` + `.svg` |
+| Candidate profile model | `candidate-profile-model.excalidraw` + `.svg` |
 | Evidence-first resolution and guardrail feedback loop | `evidence-first-resolution-and-guardrails.excalidraw` |
 | Agent quality assurance (three-tier defence) | `agent-quality-assurance.excalidraw` + `.svg` |
 
-> `agent-quality-assurance.*` is **generated**, not hand-drawn — edit
-> `scripts/diagrams/build-agent-quality-excalidraw.mjs` and re-run it, then
-> `scripts/diagrams/render-agent-quality-preview.mjs` to refresh the SVG. Editing the
-> `.excalidraw` in the web app works for a one-off tweak but the next build overwrites it.
+> `agent-quality-assurance.*`, `guardrail-architecture.*`,
+> `memory-relationship-system.*`, and `candidate-profile-model.*` are **generated**,
+> not hand-drawn. Edit their matching `scripts/diagrams/build-*.mjs` source and re-run
+> it, then run the matching `render-*-preview.mjs` script to refresh the SVG. Editing
+> the `.excalidraw` in the web app works for a one-off tweak but the next build
+> overwrites it.
 
 The first four diagrams form the system-level reading path: start with the system
 boundary, follow a message through the runtime, inspect the main business state

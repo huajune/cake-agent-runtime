@@ -60,6 +60,245 @@ describe('detectJobFactsWithoutLookup', () => {
       const hit = detectJobFactsWithoutLookup('对，就是 22 元/时。', [], [user('是 22 元/时吗')]);
       expect(hit).not.toBeNull();
     });
+
+    it('flags an unsupported accepts-newcomers claim after job tools were blocked', () => {
+      const hit = detectJobFactsWithoutLookup('这家后厨小时工岗位不强制要求过往经验，接受新手。', [
+        call({
+          status: 'error',
+          result: { success: false, errorType: 'job_list.jobid_no_provenance' },
+        }),
+      ]);
+
+      expect(hit?.label).toMatch(/不强制要求过往经验|接受新手/u);
+      expect(hit?.label).toContain('没有同一岗位的明确正向经验门槛出处');
+    });
+
+    it('does not accept the candidate question as evidence for an accepts-newcomers claim', () => {
+      expect(
+        detectJobFactsWithoutLookup('对，这家接受新手。', [], [user('这家接受新手吗？')]),
+      ).not.toBeNull();
+    });
+
+    it('does not accept wording inside a failed tool payload as experience evidence', () => {
+      expect(
+        detectJobFactsWithoutLookup('这家接受新手。', [
+          call({
+            status: 'error',
+            result: {
+              success: false,
+              replyInstruction: '当前无岗位证据，不得说这家接受新手',
+            },
+          }),
+        ]),
+      ).not.toBeNull();
+    });
+
+    it('still flags a positive claim followed by an “以门店为准” hedge', () => {
+      expect(detectJobFactsWithoutLookup('这家接受新手，具体以门店为准。', [])).not.toBeNull();
+    });
+
+    it('does not treat uncertain assistant history as positive experience evidence', () => {
+      expect(
+        detectJobFactsWithoutLookup(
+          '这家接受新手。',
+          [],
+          [assistant('这家是否接受新手，我还没查到。')],
+        ),
+      ).not.toBeNull();
+    });
+
+    it('does not treat a successful warning payload as positive experience evidence', () => {
+      expect(
+        detectJobFactsWithoutLookup('这家接受新手。', [
+          call({
+            toolName: 'duliday_interview_precheck',
+            result: { replyInstruction: '未明确是否接受新手，不得承诺' },
+          }),
+        ]),
+      ).not.toBeNull();
+    });
+
+    it('requires explicit experience evidence even when job lookup returned other fields', () => {
+      expect(
+        detectJobFactsWithoutLookup('这家接受新手。', [
+          call({
+            toolName: 'duliday_job_list',
+            result: { markdown: '门店：静安店；班次：18:00-22:00' },
+          }),
+        ]),
+      ).not.toBeNull();
+    });
+
+    it('covers common open-experience wording variants', () => {
+      expect(detectJobFactsWithoutLookup('这家对经验没要求，零基础可做。', [])).not.toBeNull();
+      expect(detectJobFactsWithoutLookup('这个岗位没干过也能做。', [])).not.toBeNull();
+    });
+
+    it('does not let an unrelated negation suppress an unsupported experience claim', () => {
+      expect(detectJobFactsWithoutLookup('这家不包住但接受新手。', [])).not.toBeNull();
+    });
+
+    it('binds positive experience evidence to the explicitly named store', () => {
+      const calls = [
+        call({
+          toolName: 'duliday_job_list',
+          result: {
+            rawData: [
+              { jobId: 1, storeName: 'A店', experience: '经验不限' },
+              { jobId: 2, storeName: 'B店', experience: '要求一年经验' },
+            ],
+          },
+        }),
+      ];
+
+      expect(detectJobFactsWithoutLookup('B店接受新手。', calls)).not.toBeNull();
+      expect(detectJobFactsWithoutLookup('B店，接受新手。', calls)).not.toBeNull();
+      expect(detectJobFactsWithoutLookup('A店接受新手。', calls)).toBeNull();
+      expect(detectJobFactsWithoutLookup('A店，接受新手。', calls)).toBeNull();
+    });
+
+    it('binds generic experience claims to the current focus job id', () => {
+      const calls = [
+        call({
+          toolName: 'duliday_job_list',
+          result: {
+            rawData: [
+              { jobId: 1, storeName: 'A店', experience: '经验不限' },
+              { jobId: 2, storeName: 'B店', experience: '要求一年经验' },
+            ],
+          },
+        }),
+      ];
+
+      expect(detectJobFactsWithoutLookup('这家接受新手。', calls, [], 2)).not.toBeNull();
+      expect(detectJobFactsWithoutLookup('这家接受新手。', calls, [], 1)).toBeNull();
+    });
+
+    it('does not let a longer, earlier store name hijack the nearest explicit store assertion', () => {
+      const calls = [
+        call({
+          result: {
+            rawData: [
+              { jobId: 1, storeName: '上海很长的A店', experience: '经验不限' },
+              { jobId: 2, storeName: 'B店', experience: '要求一年经验' },
+            ],
+          },
+        }),
+      ];
+
+      expect(
+        detectJobFactsWithoutLookup('上海很长的A店经验不限，B店接受新手。', calls),
+      ).not.toBeNull();
+    });
+
+    it('does not use assistant history from another store for a generic current-focus claim', () => {
+      const calls = [
+        call({
+          result: {
+            rawData: [
+              { jobId: 1, storeName: 'A店', experience: '经验不限' },
+              { jobId: 2, storeName: 'B店', experience: '要求一年经验' },
+            ],
+          },
+        }),
+      ];
+
+      expect(
+        detectJobFactsWithoutLookup(
+          '这家接受新手。',
+          calls,
+          [assistant('A店经验不限，接受新手。')],
+          2,
+        ),
+      ).not.toBeNull();
+      expect(
+        detectJobFactsWithoutLookup('这家接受新手。', [], [assistant('A店经验不限。')], 2),
+      ).not.toBeNull();
+    });
+
+    it('requires an explicit store or current focus for a generic claim across multiple jobs', () => {
+      const multiJobCall = call({
+        result: {
+          rawData: [
+            { jobId: 1, storeName: 'A店', experience: '经验不限' },
+            { jobId: 2, storeName: 'B店', experience: '要求一年经验' },
+          ],
+        },
+      });
+
+      expect(detectJobFactsWithoutLookup('这家接受新手。', [multiJobCall])).not.toBeNull();
+      expect(
+        detectJobFactsWithoutLookup('这家接受新手。', [
+          call({
+            result: { rawData: [{ jobId: 1, storeName: 'A店', experience: '经验不限' }] },
+          }),
+        ]),
+      ).toBeNull();
+      expect(
+        detectJobFactsWithoutLookup('这两家都接受新手。', [
+          call({
+            result: {
+              rawData: [
+                { jobId: 1, storeName: 'A店', experience: '经验不限' },
+                { jobId: 2, storeName: 'B店', experience: '接受新手' },
+              ],
+            },
+          }),
+        ]),
+      ).toBeNull();
+    });
+
+    it('ignores filtered-out queryMeta examples when evaluating returned jobs', () => {
+      const markdown = `# 在招岗位（共 1 个）
+
+## 1. A岗位
+
+- **门店**: A店
+- **经验岗位类型**: 经验不限
+- **jobId**: 1`;
+      const calls = [
+        call({
+          result: {
+            markdown,
+            queryMeta: {
+              scheduleFilter: {
+                excludedExamples: [
+                  { jobId: 2, storeName: 'B店', reason: '排班不匹配', experience: '接受新手' },
+                ],
+              },
+            },
+          },
+        }),
+      ];
+
+      expect(detectJobFactsWithoutLookup('这家接受新手。', calls)).toBeNull();
+      expect(detectJobFactsWithoutLookup('B店接受新手。', calls)).not.toBeNull();
+    });
+
+    it('keeps store, experience, and jobId bound within each production markdown job block', () => {
+      const markdown = `# 在招岗位（共 2 个）
+
+## 1. A岗位
+
+- **门店**: A店
+- **经验岗位类型**: 经验不限
+- **jobId**: 1
+
+---
+
+## 2. B岗位
+
+- **门店**: B店
+- **最低工作经验**: 1 年
+- **jobId**: 2`;
+      const calls = [call({ result: { markdown } })];
+
+      expect(detectJobFactsWithoutLookup('A店这个岗位接受新手。', calls)).toBeNull();
+      expect(detectJobFactsWithoutLookup('B店，接受新手。', calls)).not.toBeNull();
+      expect(detectJobFactsWithoutLookup('推荐A店，接受新手。', calls)).toBeNull();
+      expect(detectJobFactsWithoutLookup('这家接受新手。', calls, [], 1)).toBeNull();
+      expect(detectJobFactsWithoutLookup('这家接受新手。', calls, [], 2)).not.toBeNull();
+    });
   });
 
   describe('放行：有出处或本轮拿到岗位数据', () => {
@@ -103,6 +342,34 @@ describe('detectJobFactsWithoutLookup', () => {
     it('passes replies with no quantitative job facts', () => {
       expect(
         detectJobFactsWithoutLookup('你好呀，方便说下你在哪个区域吗？我帮你看看附近的岗位。', []),
+      ).toBeNull();
+    });
+
+    it('passes an accepts-newcomers claim grounded in assistant history', () => {
+      expect(
+        detectJobFactsWithoutLookup(
+          '对，这家不需要相关经验，接受新手。',
+          [],
+          [assistant('岗位要求：经验不限，接受新手')],
+        ),
+      ).toBeNull();
+    });
+
+    it('passes an accepts-newcomers claim grounded in a non-job tool result', () => {
+      expect(
+        detectJobFactsWithoutLookup('这家经验不限，新手可以做。', [
+          call({
+            toolName: 'duliday_interview_precheck',
+            result: { job: { experienceRequirement: '不限经验' } },
+          }),
+        ]),
+      ).toBeNull();
+    });
+
+    it('passes questions, conditions, and explicit uncertainty about experience requirements', () => {
+      expect(detectJobFactsWithoutLookup('这家是否接受新手，我目前还没查到。', [])).toBeNull();
+      expect(
+        detectJobFactsWithoutLookup('如果岗位不要求经验，面试时如实说没做过就行。', []),
       ).toBeNull();
     });
 

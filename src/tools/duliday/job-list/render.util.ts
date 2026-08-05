@@ -108,6 +108,8 @@ function formatInterviewDecisionSummary(
   }
 
   const studentRequirement = inferStudentRequirement(policy);
+  // 该行是给模型的纯事实；先筛后推的行为口径（已知学生查询侧已过滤/身份未知
+  // 收资前单问/身份信息不上卡片）在 candidate-consultation.md，不在数据行里复述。
   addSummaryLine(
     lines,
     '学生身份要求',
@@ -759,12 +761,13 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
   pushLongText(lines, '休息说明', wt.restTimeDesc);
   pushLongText(lines, '工时备注', sanitizeConstraintText(asString(wt.workTimeRemark)));
 
-  // 全周强排班提示：文本命中（做六休一/固定排班...）或结构化每周出勤≥5 天。
+  // 全周强排班提示：文本命中（每天/做六休一...）或结构化每周出勤≥5 天。
+  // 「固定排班」标签不触发（时段固定≠每周全勤，badcase id4zx7q9）。
   const weeklyWorkDays = cleanNumber(wm.perWeekWorkDays);
   const structuralRigid = typeof weeklyWorkDays === 'number' && weeklyWorkDays >= 5;
   if (structuralRigid || hasFullWeekOrRigidSchedule(lines)) {
     lines.push(
-      '- **排班硬约束提示**: "每天/做六休一/周一至周日/固定排班"表示工作日也要配合；候选人只做周末、每周最多几天、做一休一、下班后或只做晚班时，不能把该岗位说成"周末能排"或"晚班能排"。',
+      '- **排班硬约束提示**: "每天/做六休一/周一至周日"表示工作日也要配合；候选人只做周末、每周最多几天、做一休一、下班后或只做晚班时，不能把该岗位说成"周末能排"或"晚班能排"。',
     );
   }
 

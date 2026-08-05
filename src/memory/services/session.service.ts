@@ -40,13 +40,22 @@ import {
   toSessionFacts,
   truncateEvidence,
   unwrapSessionFactValue,
+  INTERVIEW_INFO_FIELD_KEYS,
+  PREFERENCE_FIELD_KEYS,
 } from '../types/session-facts.types';
+import {
+  detectScalarFanoutValues,
+  isPlausibleAgeValue,
+  isPlausibleCityValue,
+  SCALAR_FANOUT_FIELD_THRESHOLD,
+} from '../facts/fact-shape-gates';
 import type {
   AuthoritativeSessionState,
   CollectedField,
   FieldProvenance,
 } from '../types/authoritative-session-state.types';
 import { parseCandidateFieldsFromText } from '@tools/shared/candidate-field-parser';
+import { isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import {
   buildSessionExtractionPrompt,
@@ -923,6 +932,21 @@ export class SessionService {
       });
     };
 
+    // 引用发言人姓名门（badcase or9d6viv，chat 6a6c4e4e：interview.name 被写成经理显示名
+    // "辛瑜琦"——它只以"[引用 辛瑜琦：…]"前缀出现在候选人消息里，7-21 的 booking 预填闸
+    // 拦得住预填、拦不住抽取首写）。名字只以引用前缀发言人身份出现=极可能是经理名，字段级丢弃。
+    const extractedName = unwrapSessionFactValue(newFacts.interview_info.name);
+    const droppedQuotedSpeakerName =
+      typeof extractedName === 'string' && isNameOnlyQuotedSpeaker(extractedName, scopedMessages);
+    if (droppedQuotedSpeakerName) {
+      dropInterviewField(
+        'name',
+        extractedName,
+        'quoted_speaker_name',
+        `[extractFacts] name 只以引用前缀发言人身份出现（极可能是经理名），丢弃「${extractedName}」`,
+      );
+    }
+
     // 手机号形态门：非 11 位手机号形态一律丢（出处门只管 ≥7 位数字流，短垃圾值绕过）。
     const extractedPhone = unwrapSessionFactValue(newFacts.interview_info.phone);
     const droppedPhone =
@@ -976,6 +1000,67 @@ export class SessionService {
       );
     }
 
+    // 标量扇出熔断（badcase 6a6c4c13：整句"晚上才可以，有吗？"同轮写进 city/salary/age，
+    // 2026-08-03 抽样 12% 会话中招）：同一非空字符串被同轮抽取写进 ≥3 个字段，必是提取
+    // 输出错位/裸标量广播。该值的所有字段整组丢弃（字段级，不连坐同轮其它合法字段）。
+    const fanoutScan: Record<string, unknown> = {};
+    for (const field of INTERVIEW_INFO_FIELD_KEYS) {
+      fanoutScan[`interview_info.${field}`] = unwrapSessionFactValue(
+        newFacts.interview_info[field] as never,
+      );
+    }
+    for (const field of PREFERENCE_FIELD_KEYS) {
+      fanoutScan[`preferences.${field}`] = unwrapSessionFactValue(
+        (newFacts.preferences as unknown as Record<string, unknown>)[field] as never,
+      );
+    }
+    const fanoutValues = detectScalarFanoutValues(fanoutScan);
+    if (fanoutValues.size > 0) {
+      for (const [fieldPath, value] of Object.entries(fanoutScan)) {
+        if (typeof value !== 'string' || !fanoutValues.has(value.trim())) continue;
+        const [group, field] = fieldPath.split('.') as ['interview_info' | 'preferences', string];
+        (newFacts[group] as unknown as Record<string, unknown>)[field] = null;
+        this.logger.warn(
+          `[extractFacts] 标量扇出熔断：${fieldPath} 与 ≥${SCALAR_FANOUT_FIELD_THRESHOLD - 1} 个其他字段同值，丢弃「${value}」`,
+        );
+        this.tracer?.emit({
+          type: 'extraction_field_dropped',
+          corpId,
+          userId,
+          chatId: sessionId,
+          field,
+          droppedValue: String(value),
+          reason: 'scalar_fanout',
+        });
+      }
+    }
+
+    // 城市/年龄形状门（同案）：垃圾城市曾被归一化抬成 high/explicit_city，还会压制
+    // 下方确认问答裁决的真实城市，必须在裁决前清掉。
+    const shapeGateCity = unwrapSessionFactValue(newFacts.preferences.city);
+    if (typeof shapeGateCity === 'string' && !isPlausibleCityValue(shapeGateCity)) {
+      newFacts.preferences.city = null;
+      this.logger.warn(`[extractFacts] pref.city 形状非法，丢弃臆造值「${shapeGateCity}」`);
+      this.tracer?.emit({
+        type: 'extraction_field_dropped',
+        corpId,
+        userId,
+        chatId: sessionId,
+        field: 'city',
+        droppedValue: shapeGateCity,
+        reason: 'invalid_city_shape',
+      });
+    }
+    const shapeGateAge = unwrapSessionFactValue(newFacts.interview_info.age);
+    if (shapeGateAge != null && !isPlausibleAgeValue(shapeGateAge)) {
+      dropInterviewField(
+        'age',
+        shapeGateAge,
+        'invalid_age_shape',
+        `[extractFacts] age 形状非法（须为 14-70 单一数字），丢弃臆造值「${String(shapeGateAge)}」`,
+      );
+    }
+
     // 确认问答裁决（非纯应答轮路径，如"好的，我25岁"带出其他事实时）：
     // 本轮文本/定位已产出高置信城市则让位（显式线索优先于确认推断）。
     if (
@@ -993,6 +1078,11 @@ export class SessionService {
     const nameStillNull = droppedName && !unwrapSessionFactValue(newFacts.interview_info.name);
     const forceNullInterviewFields: (keyof EntityExtractionResult['interview_info'])[] = [];
     if (nameStillNull) forceNullInterviewFields.push('name');
+    // 引用发言人名同理显式清 Redis：上一轮可能已把经理名写进档案（or9d6viv 实锤），
+    // 仅本轮丢弃会被 deepMerge "null 不覆盖" 保留旧脏值。
+    if (droppedQuotedSpeakerName && !forceNullInterviewFields.includes('name')) {
+      forceNullInterviewFields.push('name');
+    }
     if (droppedPhone) forceNullInterviewFields.push('phone');
     const persistedLaborForm = unwrapSessionFactValue(previousFacts?.preferences.labor_form);
     const laborFormExplicitlyCleared =

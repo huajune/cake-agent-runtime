@@ -1,0 +1,68 @@
+import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import type { RuleContradiction } from '../output-rule.types';
+
+/**
+ * 相对日词与具体日期的一致性对账规则。
+ *
+ * badcase nau6xunv（chat 6a66f559，2026-07-28）：复聊已正确提醒"今天15:00的视频
+ * 面试"，两小时后主链回复却说"你的面试是安排在明天 7 月 28 日 15:00，不是今天哦"
+ * ——当天就是 7 月 28 日。候选人被误导停止等待，险些错过当天面试。
+ * 同族 b4echyzh：今天下午的面试被说成明天下午。
+ *
+ * 职责：回复中出现"今天/明天/后天 + (M月D日)"连用时，按当前日期（Asia/Shanghai）
+ * 确定性对账；日期与相对日词不符即拦截（REVISE）。
+ *
+ * 不负责：
+ * - 不猜没有具体日期的相对日词（"明天面试"无从对账，交语义层）；
+ * - 不校验星期几（周几与日期的映射交语义层）。
+ */
+
+const RELATIVE_DATE_PATTERN =
+  /(今天|明天|后天)[^。！？\n]{0,6}[（(]?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/gu;
+
+const RELATIVE_OFFSET: Record<string, number> = { 今天: 0, 明天: 1, 后天: 2 };
+
+const CST_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function cstYmd(date: Date): { year: number; month: number; day: number } {
+  const shifted = new Date(date.getTime() + CST_OFFSET_MS);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * 检测"今天/明天/后天 + (M月D日)"与当前日期的矛盾。
+ *
+ * 跨年容差：只按月/日比对期望日（元旦前后"明天（1月1日）"仍正确对账）。
+ */
+export function detectDateReferenceMismatch(
+  text: string,
+  now: Date = new Date(),
+): RuleContradiction | null {
+  for (const match of text.matchAll(RELATIVE_DATE_PATTERN)) {
+    const word = match[1];
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isInteger(month) || !Number.isInteger(day)) continue;
+    const expected = cstYmd(addDays(now, RELATIVE_OFFSET[word] ?? 0));
+    if (expected.month === month && expected.day === day) continue;
+
+    const today = cstYmd(now);
+    return {
+      ruleId: 'date_reference_mismatch',
+      label:
+        `回复把 ${month} 月 ${day} 日说成"${word}"，但今天是 ${today.month} 月 ${today.day} 日，` +
+        `"${word}"应为 ${expected.month} 月 ${expected.day} 日。日期错乱会误导候选人错过或空等面试，` +
+        '必须按真实日历改正相对日词或具体日期',
+      action: GUARDRAIL_ACTION.REVISE,
+    };
+  }
+  return null;
+}

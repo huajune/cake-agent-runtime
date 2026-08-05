@@ -17,6 +17,7 @@ import {
 } from '@tools/utils/schedule-semantic.util';
 import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+import { extractHardRequirements } from '@tools/duliday/job-list/hard-requirements.util';
 import {
   isHardFilteredLaborForm,
   isJobAxisLaborForm,
@@ -175,6 +176,47 @@ export function applyScheduleConstraint(
   }
 
   return { jobs: kept, excluded };
+}
+
+export interface StudentIdentityFilterResult {
+  applied: boolean;
+  jobs: any[];
+  excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }>;
+}
+
+/**
+ * 按候选人学生身份硬过滤岗位（先筛后推，badcase fazpqciu：拉瓦萨「不接受学生」
+ * 岗被推荐并收完整张报名表，候选人填完"学生"才被 precheck 拒绝）。
+ *
+ * 只在 candidateIsStudent === true 时过滤（剔除 student='social_only' 的岗位）：
+ * - true 来自候选人明确自报，可信；
+ * - false 有抽取污染史（badcase 6a673402：evidence 自证"不填"仍落 false），
+ *   不能据此隐藏"仅限学生"岗位，false/null 一律不过滤；
+ * - 身份未知时的处理走推荐卡片披露 + 收资前单问（prompt 层先筛后推规则）。
+ */
+export function applyStudentIdentityConstraint(
+  jobs: any[],
+  candidateIsStudent: boolean | null,
+): StudentIdentityFilterResult {
+  if (candidateIsStudent !== true) {
+    return { applied: false, jobs, excluded: [] };
+  }
+  const excluded: StudentIdentityFilterResult['excluded'] = [];
+  const kept: any[] = [];
+  for (const job of jobs) {
+    const policy = buildJobPolicyAnalysis(job);
+    const hr = extractHardRequirements(job, policy);
+    if (hr.student === 'social_only') {
+      excluded.push({
+        jobId: typeof job?.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
+        brandName: typeof job?.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
+        reason: '岗位不接受学生，与候选人已明确的学生身份冲突',
+      });
+    } else {
+      kept.push(job);
+    }
+  }
+  return { applied: true, jobs: kept, excluded };
 }
 
 export interface LaborFormFilterResult {

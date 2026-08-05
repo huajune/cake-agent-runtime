@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1740" height="1510" viewBox="0 0 1740 1510">
+  <defs>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.09"/>
+    </filter>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="context-stroke"/>
+    </marker>
+  </defs>
+  <rect width="1740" height="1510" fill="#f8fafc"/>
+  <text x="64" y="76" fill="#0f172a" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="600"><tspan x="64" dy="0">Cake Agent · Guardrail 双环架构</tspan></text>
+  <text x="66" y="107" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="66" dy="0">实时三层防线守住输入、动作与候选人可见回复；事后环用真实投递物反哺规则、生成与回归资产</tspan></text>
+  <rect x="1330" y="46" width="106" height="34" rx="12" fill="#cffafe" stroke="#0891b2" stroke-width="1"/>
+  <text x="1352" y="68" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1352" dy="0">observe</tspan></text>
+  <rect x="1448" y="46" width="106" height="34" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="1"/>
+  <text x="1473" y="68" fill="#d97706" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1473" dy="0">revise</tspan></text>
+  <rect x="1566" y="46" width="106" height="34" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="1"/>
+  <text x="1592" y="68" fill="#dc2626" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1592" dy="0">block</tspan></text>
+  <rect x="48" y="132" width="1640" height="800" rx="12" fill="#f8fbff" stroke="#bfdbfe" stroke-width="2"/>
+  <rect x="68" y="150" width="304" height="38" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="1"/>
+  <text x="88" y="176" fill="#2563eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="400"><tspan x="88" dy="0">事前实时环 · 每轮 / 热路径</tspan></text>
+  <text x="1495" y="172" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1495" dy="0">只读审查 + 单轮有界修复</tspan></text>
+  <rect x="82" y="226" width="154" height="100" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="100" y="262" fill="#2563eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="600"><tspan x="100" dy="0">候选人消息</tspan></text>
+  <text x="100" y="294" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="100" dy="0">文本 / 图片</tspan><tspan x="100" dy="19.88">多消息批次</tspan></text>
+  <rect x="290" y="204" width="254" height="154" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="306" y="219" width="100" height="28" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="318" y="238" fill="#7c3aed" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="318" dy="0">PRE-AGENT</tspan></text>
+  <text x="308" y="277" fill="#7c3aed" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600"><tspan x="308" dy="0">Input Guardrail</tspan></text>
+  <text x="308" y="305" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="308" dy="0">Prompt injection → 加固 / 观测</tspan><tspan x="308" dy="19.88">高置信风险 → pause hosting</tspan><tspan x="308" dy="19.88">命中即短路，不进入 Agent</tspan></text>
+  <rect x="612" y="204" width="270" height="154" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="628" y="219" width="104" height="28" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="1"/>
+  <text x="640" y="238" fill="#2563eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="640" dy="0">GENERATOR</tspan></text>
+  <text x="630" y="277" fill="#2563eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600"><tspan x="630" dy="0">Chat Agent Loop</tspan></text>
+  <text x="630" y="305" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="630" dy="0">Prompt 负责预防与生成</tspan><tspan x="630" dy="19.88">记忆 / 岗位 / 地理证据参与决策</tspan><tspan x="630" dy="19.88">工具结果成为外生 ground truth</tspan></text>
+  <rect x="950" y="226" width="178" height="100" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <text x="968" y="262" fill="#d97706" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="600"><tspan x="968" dy="0">首版草稿</tspan></text>
+  <text x="968" y="294" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="968" dy="0">候选人可见文本</tspan><tspan x="968" dy="19.88">尚未允许投递</tspan></text>
+  <polyline points="236,276 282,276" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="544,276 604,276" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="882,276 942,276" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <rect x="290" y="396" width="254" height="90" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+  <text x="308" y="430" fill="#dc2626" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="308" dy="0">guardrail_blocked / inbound</tspan></text>
+  <text x="308" y="463" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="308" dy="0">暂停托管 · 告警 · 不生成回复</tspan></text>
+  <polyline points="417,358 417,388" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <text x="429" y="379" fill="#dc2626" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="429" dy="0">高风险</tspan></text>
+  <rect x="612" y="410" width="516" height="166" rx="12" fill="#cffafe" stroke="#0891b2" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="628" y="425" width="120" height="28" rx="12" fill="#cffafe" stroke="#0891b2" stroke-width="1"/>
+  <text x="640" y="444" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="640" dy="0">TOOL RUNTIME</tspan></text>
+  <text x="630" y="483" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="600"><tspan x="630" dy="0">Tool Guardrail · 副作用前门禁</tspan></text>
+  <text x="630" y="511" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="630" dy="0">jobId 出处 / precheck 契约 / 真名与姓名权威</tspan><tspan x="630" dy="19.88">拉群城市与时机 / 筛选题 / 岗位硬要求</tspan><tspan x="630" dy="19.88">拒绝动作时返回结构化 collect / reject / handoff 结果</tspan></text>
+  <polyline points="720,358 720,402" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="790,410 790,366" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9 7" marker-end="url(#arrowhead)"/>
+  <text x="668" y="386" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="668" dy="0">tool call</tspan></text>
+  <text x="804" y="386" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="804" dy="0">result / side effect</tspan></text>
+  <rect x="1172" y="204" width="478" height="528" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="3" filter="url(#soft-shadow)"/>
+  <rect x="1192" y="222" width="224" height="36" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="1"/>
+  <text x="1210" y="246" fill="#d97706" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="1210" dy="0">Output Guardrail · Veto</tspan></text>
+  <text x="1455" y="245" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="1455" dy="0">runtime flags</tspan></text>
+  <rect x="1200" y="280" width="196" height="82" rx="12" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+  <text x="1218" y="314" fill="#94a3b8" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="1218" dy="0">审查前净化</tspan></text>
+  <text x="1218" y="346" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="1218" dy="0">仅剥时间标记</tspan><tspan x="1218" dy="17.04">保留泄漏证据</tspan></text>
+  <rect x="1420" y="280" width="204" height="82" rx="12" fill="#cffafe" stroke="#0891b2" stroke-width="2"/>
+  <text x="1438" y="314" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="1438" dy="0">Evidence Packet</tspan></text>
+  <text x="1438" y="346" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="1438" dy="0">裁剪 toolCalls / 用户消息</tspan><tspan x="1438" dy="17.04">redLines / rule hits</tspan></text>
+  <rect x="1200" y="386" width="196" height="112" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="1218" y="420" fill="#7c3aed" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="1218" dy="0">① Hard Rules</tspan></text>
+  <text x="1218" y="452" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="1218" dy="0">确定性优先</tspan><tspan x="1218" dy="17.04">缺省 observe</tspan><tspan x="1218" dy="17.04">发牌后才可 revise / block</tspan></text>
+  <rect x="1420" y="386" width="204" height="112" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="1438" y="420" fill="#2563eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="1438" dy="0">② Semantic Reviewer</tspan></text>
+  <text x="1438" y="452" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="1438" dy="0">trigger + shadow / enforce</tspan><tspan x="1438" dy="17.04">只凭 evidence 裁决</tspan><tspan x="1438" dy="17.04">低置信强制降 observe</tspan></text>
+  <rect x="1268" y="532" width="288" height="86" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <text x="1286" y="567" fill="#d97706" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="400"><tspan x="1286" dy="0">③ 合并裁决</tspan></text>
+  <text x="1286" y="598" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="1286" dy="0">block &gt; revise &gt; observe &gt; pass</tspan><tspan x="1286" dy="17.04">高风险故障 fail-close；普通语义 fail-open</tspan></text>
+  <polyline points="1128,276 1164,276" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1128,494 1162,494 1162,324 1412,324" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9 7" marker-end="url(#arrowhead)"/>
+  <polyline points="1298,362 1298,378" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1522,362 1522,378" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1298,498 1298,520 1368,520" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1522,498 1522,520 1454,520" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <rect x="1180" y="776" width="224" height="112" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="1198" y="811" fill="#16a34a" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="400"><tspan x="1198" dy="0">PASS / OBSERVE</tspan></text>
+  <text x="1198" y="844" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1198" dy="0">最终 sanitizer</tspan><tspan x="1198" dy="19.88">→ delivery 投递候选人</tspan></text>
+  <rect x="1430" y="776" width="224" height="112" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+  <text x="1448" y="811" fill="#dc2626" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="400"><tspan x="1448" dy="0">REVISE / BLOCK</tspan></text>
+  <text x="1448" y="844" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1448" dy="0">进入一次受控修复</tspan><tspan x="1448" dy="19.88">或封闭形态直达静默</tspan></text>
+  <polyline points="1370,618 1370,702 1292,702 1292,768" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1450,618 1450,702 1542,702 1542,768" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <rect x="80" y="636" width="1018" height="252" rx="12" fill="#fff7ed" stroke="#fed7aa" stroke-width="2" filter="url(#soft-shadow)"/>
+  <text x="102" y="672" fill="#d97706" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="600"><tspan x="102" dy="0">受控 Repair · hard cap = 1</tspan></text>
+  <rect x="104" y="702" width="206" height="146" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+  <text x="122" y="736" fill="#dc2626" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="122" dy="0">封闭形态</tspan></text>
+  <text x="122" y="769" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="122" dy="0">元旁白 / 工具残文</tspan><tspan x="122" dy="18.46">→ 直达静默</tspan><tspan x="122" dy="18.46">不让 LLM 再写一遍</tspan></text>
+  <rect x="330" y="702" width="206" height="146" rx="12" fill="#cffafe" stroke="#0891b2" stroke-width="2"/>
+  <text x="348" y="736" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="348" dy="0">确定性快通道</tspan></text>
+  <text x="348" y="769" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="348" dy="0">仅围栏泄漏</tspan><tspan x="348" dy="18.46">→ 机械剥离</tspan><tspan x="348" dy="18.46">正文逐字保留</tspan></text>
+  <rect x="556" y="702" width="240" height="146" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <text x="574" y="736" fill="#d97706" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="574" dy="0">ReplyRepairAgent</tspan></text>
+  <text x="574" y="769" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="574" dy="0">独立 Repair 模型 · 无工具</tspan><tspan x="574" dy="18.46">只做最小必要改写</tspan><tspan x="574" dy="18.46">注入时间锚 / 证据 / 已提交副作用</tspan></text>
+  <rect x="816" y="702" width="258" height="146" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="834" y="736" fill="#7c3aed" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="834" dy="0">二审 + 回归闸 + 收敛</tspan></text>
+  <text x="834" y="769" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="834" dy="0">再跑 output guardrail</tspan><tspan x="834" dy="18.46">比较首版与修复版是否退步</tspan><tspan x="834" dy="18.46">P1/P2 fail-open；P0 失败 block</tspan></text>
+  <polyline points="1542,888 1542,910 298,910 298,834" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="310,775 808,775" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9 7" marker-end="url(#arrowhead)"/>
+  <polyline points="536,775 808,775" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="796,775 808,775" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="945,702 945,672 1292,672 1292,798" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9 7" marker-end="url(#arrowhead)"/>
+  <text x="1005" y="662" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="1005" dy="0">采纳修复版 / 回退首版 / 两版都不投</tspan></text>
+  <rect x="48" y="956" width="1640" height="178" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="68" y="974" width="286" height="36" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="88" y="998" fill="#7c3aed" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="88" dy="0">可观测证据面 · trace_id 贯通</tspan></text>
+  <rect x="82" y="1026" width="410" height="82" rx="12" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="100" y="1060" fill="#7c3aed" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="100" dy="0">guardrail_review_records</tspan></text>
+  <text x="100" y="1092" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="100" dy="0">首版 / 修复版 / violation / semantic review / 最终裁决</tspan></text>
+  <rect x="526" y="1026" width="410" height="82" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <text x="544" y="1060" fill="#2563eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="544" dy="0">message_processing_records</tspan></text>
+  <text x="544" y="1092" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="544" dy="0">guardrail_input / output 紧凑 trace + reply_preview 投递物</tspan></text>
+  <rect x="970" y="1026" width="330" height="82" rx="12" fill="#ffffff" stroke="#0891b2" stroke-width="2"/>
+  <text x="988" y="1060" fill="#0891b2" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="988" dy="0">agent_execution_events</tspan></text>
+  <text x="988" y="1092" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="988" dy="0">工具调用轨迹 / 真实副作用 / 错误</tspan></text>
+  <rect x="1334" y="1026" width="320" height="82" rx="12" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <text x="1352" y="1060" fill="#dc2626" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="400"><tspan x="1352" dy="0">告警与调试视图</tspan></text>
+  <text x="1352" y="1092" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="400"><tspan x="1352" dy="0">reviewer 故障 / 守卫命中 / 完整时间线</tspan></text>
+  <polyline points="1610,888 1610,948" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9 7" marker-end="url(#arrowhead)"/>
+  <rect x="48" y="1160" width="1640" height="300" rx="12" fill="#f7fff9" stroke="#bbf7d0" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="68" y="1178" width="318" height="38" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="88" y="1204" fill="#16a34a" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="400"><tspan x="88" dy="0">事后离线环 · T+1 / 真实投递物</tspan></text>
+  <text x="1325" y="1201" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1325" dy="0">离线失败不影响消息热路径</tspan></text>
+  <rect x="82" y="1240" width="374" height="162" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="100" y="1276" fill="#16a34a" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="600"><tspan x="100" dy="0">L0 / L1 / L2 每日扫描</tspan></text>
+  <text x="100" y="1308" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="100" dy="0">消费 shadow findings</tspan><tspan x="100" dy="19.88">确定性全量回扫 reply_preview</tspan><tspan x="100" dy="19.88">高危切片 LLM 定向抽扫</tspan><tspan x="100" dy="19.88">跨轮承诺 / 静默 / 重复追问可见</tspan></text>
+  <rect x="500" y="1240" width="330" height="162" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <text x="518" y="1276" fill="#d97706" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="600"><tspan x="518" dy="0">BadCase Findings</tspan></text>
+  <text x="518" y="1308" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="518" dy="0">按 trace 复核与归因</tspan><tspan x="518" dy="19.88">本地 md 日报 / 审计样本</tspan><tspan x="518" dy="19.88">高置信案例进入回归资产</tspan></text>
+  <rect x="874" y="1240" width="444" height="162" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="892" y="1276" fill="#7c3aed" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="600"><tspan x="892" dy="0">反馈流 · 刻意走 PR / 发布</tspan></text>
+  <text x="892" y="1308" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="892" dy="0">① 生成侧根修：prompt / memory / tool 描述</tspan><tspan x="892" dy="19.88">② 新检查先 shadow / observe，精度达标再 enforce</tspan><tspan x="892" dy="19.88">③ 两期战绩决定发牌 / 收牌，长期无效则退役</tspan></text>
+  <rect x="1362" y="1240" width="292" height="162" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="1380" y="1276" fill="#2563eb" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="600"><tspan x="1380" dy="0">统一 Catalog</tspan></text>
+  <text x="1380" y="1308" fill="#64748b" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="400"><tspan x="1380" dy="0">input / tool / output</tspan><tspan x="1380" dy="19.88">外生信号 · action · owner</tspan><tspan x="1380" dy="19.88">验证证据 · residual risk</tspan></text>
+  <polyline points="286,1134 286,1232" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9 7" marker-end="url(#arrowhead)"/>
+  <polyline points="456,1321 492,1321" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="830,1321 866,1321" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1318,1321 1354,1321" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowhead)"/>
+  <polyline points="1508,1240 1508,1168 448,1168 448,1016" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9 7" marker-end="url(#arrowhead)"/>
+  <text x="854" y="1155" fill="#16a34a" font-family="PingFang SC, Noto Sans SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="400"><tspan x="854" dy="0">新规则 / 新回归形态 / action 发牌调整</tspan></text>
+</svg>
