@@ -16,8 +16,6 @@
  * 高优先级的"先看这里"提示。
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export type WelfareKind = 'company' | 'allowance' | 'self_or_none' | 'unspecified';
 
 export interface WelfareFacts {
@@ -129,7 +127,7 @@ function hasNumericAllowance(...values: unknown[]): boolean {
  */
 export function extractWelfareFacts(welfare: unknown): WelfareFacts {
   if (!welfare || typeof welfare !== 'object') return { ...EMPTY_WELFARE_FACTS };
-  const w = welfare as any;
+  const w = welfare as Record<string, unknown>;
 
   const cateringAllowance = hasNumericAllowance(w.cateringSalary);
   const accommodationAllowance = hasNumericAllowance(w.accommodationAllowance);
