@@ -91,6 +91,34 @@ describe('规则轨 · sheet 授权域', () => {
     expect(withSheet?.interview_info.phone ?? null).toBeNull();
   });
 
+  // 评审阻断项回归（2026-08-05）：生产窗口消息带 injectTimeContext 时间后缀，
+  // sheetFor 查表键若不剥后缀则 sheet 授权域静默失效——fixture 必须带真实后缀。
+  it('带时间后缀的窗口消息仍能命中 sheet（生产真实形态）', () => {
+    const suffixed = `${JOB_DESC}\n[消息发送时间：2026-08-05 14:00 星期三]`;
+    const facts = extractHighConfidenceFacts([suffixed], [], {
+      visualSheetsByContent: sheets([[JOB_DESC, jobSheet]]),
+    });
+    // sheet 命中 → job_posting 全关（薪资/年龄都不提取）
+    expect(facts?.preferences.salary ?? null).toBeNull();
+    expect(facts?.interview_info.age ?? null).toBeNull();
+  });
+
+  // 评审阻断项回归：education 兜底路径同受身份域门控——
+  // 岗位截图"学历要求：大专以上"不得被 extractEducation 兜底捡走。
+  it('岗位截图里的学历要求不进 education（兜底路径门控）', () => {
+    const desc = '[图片消息] BOSS直聘岗位截图：学历要求：大专以上，经验不限';
+    const sheet = finalizeVisualFactSheet({ kind: 'job_posting' }, desc);
+    const withSheet = extractHighConfidenceFacts([desc], [], {
+      visualSheetsByContent: sheets([[desc, sheet]]),
+    });
+    const withoutSheet = extractHighConfidenceFacts([desc], []);
+    expect(withSheet?.interview_info.education ?? null).toBeNull();
+    expect(withoutSheet?.interview_info.education ?? null).toBeNull();
+    // 对照：手打自述学历照常提取
+    const typed = extractHighConfidenceFacts(['我是大专学历'], []);
+    expect(typed?.interview_info.education?.value ?? null).not.toBeNull();
+  });
+
   it('手打文本不受任何影响', () => {
     const facts = extractHighConfidenceFacts(['我今年22岁，想找佛山的兼职'], [], {
       visualSheetsByContent: sheets([]),

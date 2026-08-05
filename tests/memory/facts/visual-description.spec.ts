@@ -64,6 +64,21 @@ describe('visual-description（第三方图片内容不得当候选人自陈）'
       expect(hasSelfReportedPhoneProvenance('13788930869', ['我的电话 137 8893 0869'])).toBe(true);
     });
 
+    // 评审阻断项（引用向量）：调用方（session.service）构建自陈语料时必须先剥引用块——
+    // 引用块里是经理原文，其中的号码不是候选人自陈。本用例钉住纯函数层面的语义：
+    // 语料剥净后，仅存在于引用块中的号码判无出处。
+    it('引用块里的经理号码不算自陈出处（语料须先剥引用块）', () => {
+      const rawWithQuote = '[引用 店长：有问题打我电话13800001111] 好的';
+      const stripped = '好的'; // stripQuotedBlocks(rawWithQuote) 的结果
+      expect(hasSelfReportedPhoneProvenance('13800001111', [stripped], { prefiltered: true })).toBe(
+        false,
+      );
+      // 反面：不剥引用块时会误判有出处——这正是调用方必须剥的原因
+      expect(
+        hasSelfReportedPhoneProvenance('13800001111', [rawWithQuote], { prefiltered: true }),
+      ).toBe(true);
+    });
+
     it('候选人简历图片里的号码有出处', () => {
       const resume = '[图片消息] 简历图片：姓名 李耀海，手机号 13788930869';
       expect(hasSelfReportedPhoneProvenance(POSTER_PHONE, [resume])).toBe(true);

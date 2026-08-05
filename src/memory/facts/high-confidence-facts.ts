@@ -13,7 +13,7 @@ import {
   type ScheduleConstraintFact,
 } from '../types/session-facts.types';
 import { scanGeoSignalsFromText } from '@resolution/geo';
-import { isLikelyRealChineseName } from './name-guard';
+import { isLikelyRealChineseName, stripTimeContextSuffix } from './name-guard';
 import { decideLaborFormIntent } from './labor-form';
 import {
   fieldValues,
@@ -394,8 +394,11 @@ export function extractHighConfidenceFacts(
 
   const facts = cloneFallbackExtraction();
   const reasons: string[] = [];
+  // 查表键必须剥时间后缀（评审阻断项，2026-08-05）：map 键是 DB 原始内容（无后缀），
+  // 而生产窗口消息带 injectTimeContext 注入的 `\n[消息发送时间：…]` 后缀——不剥则
+  // 查表永远 miss，sheet 授权域静默失效、全部回落文本兜底（测试曾因 fixture 无后缀漏过）。
   const sheetFor = (message: string): FinalizedVisualFactSheet | undefined =>
-    options?.visualSheetsByContent?.get(message.trim());
+    options?.visualSheetsByContent?.get(stripTimeContextSuffix(message).trim());
 
   // 品牌收口（§9.2）：本函数不再内联直写 preferences.brands——品牌真相唯一存储是
   // brand_state（写入只经 turn-finalizer 的 reducer），preferences.brands 退化为只读投影。
@@ -474,7 +477,8 @@ export function extractHighConfidenceFacts(
         evidence: `学历识别：${studentInfo.education}`,
       });
       reasons.push(`学历识别：${studentInfo.education}`);
-    } else if (!studentInfo.education) {
+    } else if (!studentInfo.education && scope.identity) {
+      // 兜底路径同受身份域门控（评审阻断项）：岗位截图"学历要求：大专以上"不得入档
       const explicitEducation = extractEducation(message);
       if (explicitEducation && !facts.interview_info.education) {
         facts.interview_info.education = ruleValue(explicitEducation, {

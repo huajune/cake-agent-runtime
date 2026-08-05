@@ -64,6 +64,7 @@ import {
 import {
   detectBrandAliasHints,
   extractHighConfidenceFacts,
+  stripQuotedBlocks,
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
@@ -802,11 +803,17 @@ export class SessionService {
     const sheetOf = (text: string): FinalizedVisualFactSheet | undefined =>
       visualSheetsByContent?.get(visualKey(text));
     // 自陈语料（裁决 A.2 通道③入口）：手打文本 + 候选人自陈材料（简历/证件）。
-    const typedOrSelfMaterialMessages = userMessages.filter((m) => {
-      const key = visualKey(m);
-      if (!isVisualDescriptionText(key)) return true;
-      return isSelfReportedVisualMessage(key, sheetOf(m));
-    });
+    // 引用块剥离（评审阻断项，2026-08-05）：候选人引用回复经理消息时，
+    // `[引用 店长：…电话138…]` 引用块携带经理原文——不剥则经理号码被当自陈出处，
+    // foreignPhone 门失效，P0 经引用向量复现。被引用内容的合法证据来源是
+    // assistantTexts（原始助手消息本就在其中），从自陈语料剥除不损失证据。
+    const typedOrSelfMaterialMessages = userMessages
+      .filter((m) => {
+        const key = visualKey(m);
+        if (!isVisualDescriptionText(key)) return true;
+        return isSelfReportedVisualMessage(key, sheetOf(m));
+      })
+      .map((m) => stripQuotedBlocks(m));
 
     const previousFacts = await this.getFacts(corpId, userId, sessionId);
     // 事实提取每轮都会触发，但不是每轮都全量重算：
@@ -1420,9 +1427,9 @@ export class SessionService {
       // quote 不得作为升 high 依据（medium 锁定，须经确认问答升级）。其余字段照旧。
       const quoteCorpus =
         field === 'phone'
-          ? userMessages.filter(
-              (message) => !isVisualDescriptionText(stripTimeContextSuffix(message).trim()),
-            )
+          ? userMessages
+              .filter((message) => !isVisualDescriptionText(stripTimeContextSuffix(message).trim()))
+              .map((message) => stripQuotedBlocks(message))
           : userMessages;
       if (!quoteCorpus.some((message) => message.includes(quote))) {
         this.logger.debug(
