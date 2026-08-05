@@ -80,6 +80,21 @@ describe('resolution/visual · finalizeVisualFactSheet', () => {
     expect(sheet.fields[0].key).toBe('brand');
   });
 
+  it('身份证形态的值一律丢弃（B3\'：模型无视证件号禁令的确定性兜底）', () => {
+    const sheet = finalizeVisualFactSheet(
+      {
+        kind: 'certificate',
+        fields: [
+          { key: 'other', value: '412727200401157416' },
+          { key: 'name', value: '毛梦港' },
+        ],
+      },
+      '健康证截图',
+    );
+    expect(sheet.fields).toHaveLength(1);
+    expect(sheet.fields[0].key).toBe('name');
+  });
+
   it('空值字段被剔除；kind 合法但 fields 缺省时按空数组', () => {
     const sheet = finalizeVisualFactSheet(
       { kind: 'map_location', fields: [{ key: 'city', value: '  ' }] },

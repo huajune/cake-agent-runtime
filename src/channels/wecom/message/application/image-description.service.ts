@@ -35,8 +35,10 @@ const VISION_SHEET_SCHEMA = z.object({
   fields: z
     .array(
       z.object({
-        // string 而非 enum：白名单过滤在 finalize 做（一个坏 key 不拖垮整张 sheet）
-        key: z.string(),
+        // string 而非 enum（白名单过滤在 finalize 做）；词表写进 describe 保持模型可见
+        key: z
+          .string()
+          .describe('只能用这些值：phone / name / age_range / brand / brand_id / publisher / store / address / city / candidate_address / salary_text / shift_text / cert_type / cert_issue_date / other'),
         value: z.string(),
         ownership: z
           .enum(['candidate', 'publisher', 'third_party', 'unknown'])

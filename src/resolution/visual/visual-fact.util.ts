@@ -25,6 +25,14 @@ const KIND_DEFAULT_OWNERSHIP: Record<VisualFactKind, FieldOwnership> = {
 const CANDIDATE_KEYS_ON_PUBLISHER_KINDS = new Set(['candidate_address']);
 
 /**
+ * 证件号确定性清洗（裁决 B3'：证件号不设 key、不入档）。
+ * P2 批测实证：模型会无视"证件号不要写"的提示词指令（写出 证件号码/健康证证号
+ * 字段）——中文 key 本会被白名单拦下，但若值被塞进合法 key（如 other），
+ * 提示词防线就穿了。按值形态兜底：15/18 位身份证形态一律丢弃。
+ */
+const ID_NUMBER_VALUE_RE = /^\d{15}(\d{2}[0-9Xx])?$/;
+
+/**
  * finalize：解析 + 校验 + 补归属默认值。任何失败一律降级
  * `{kind:'other', fields:[], degraded:true}`——降级不是失败，是回到今天的纯文本行为。
  */
@@ -53,6 +61,7 @@ export function finalizeVisualFactSheet(
     if (!(VISUAL_FACT_FIELD_KEYS as readonly string[]).includes(field.key)) continue;
     const value = field.value.trim();
     if (!value) continue;
+    if (ID_NUMBER_VALUE_RE.test(value.replace(/\s/g, ''))) continue;
     let ownership = field.ownership ?? KIND_DEFAULT_OWNERSHIP[kind];
     if (CANDIDATE_KEYS_ON_PUBLISHER_KINDS.has(field.key)) ownership = 'candidate';
     fields.push({ key: field.key as FinalizedVisualFactField['key'], value, ownership });
