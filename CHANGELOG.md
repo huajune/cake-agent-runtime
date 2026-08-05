@@ -14,7 +14,7 @@
 **预计版本**: `v10.38.0`
 **最近更新**: `2026-08-05`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #863 补零查岗轮岗位事实编造 + 线上面试到店指引两道确定性闸门
@@ -54,10 +54,21 @@
 - PR #865 8-04 巡检修复批 + geo 通名后缀收口 + 图表/周报 skill 资产入库
 - PR #876 v10.38.0 发版评审四项 P1 收口
 - PR #876 v10.38.0 发版评审四项 P1 收口（大后天误判/翻案句绑定/健康证外地限定/看门狗读开关）
+- PR #872 语义评审 packet 补往轮助手消息，跨轮复述不再判零证据编造
+- PR #872 **packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与"证据是否为空"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。
+- PR #872 **builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。
+- PR #872 **调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。
+- PR #872 **评审提示词三处校准**：
+- PR #872 字段语义说明（不是工具证据、不改变 evidence 空判定）；
+- PR #872 复述判定从悬空的"与上文一致"改为锚定 `recentAssistantMessages`：一致表述最多 observe/low，往轮表述真假交跨轮治理；
+- PR #872 完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。
+- PR #872 语义评审 packet 补往轮助手消息——跨轮复述不再判零证据编造
 
 ### 新功能
 - PR #865 Merge remote-tracking branch 'origin/develop' into feat/handoff-job-id
 - PR #865 Merge origin/develop into feat/handoff-job-id
+- PR #872 **packet 顶层新增 `recentAssistantMessages`**（往轮助手可见回复，正序）。刻意**不放进 `evidence`**：它不是工具证据、不参与"证据是否为空"的判定（`EVIDENCE_KEYS` 编译期穷尽断言强制该边界），只用于区分「跨轮复述」与「本轮新编造」。
+- PR #872 **调用点零新增 IO**：复用 rule 档同一次 `readRecentTexts` 短期记忆读取，语义档与规则档看到同一份跨轮信号；repair 等旁路调用方缺省为空。
 
 ### 问题修复
 - PR #864 2026-08-04 审计修复批——booking 假阳止血 + 拆信封 + 承诺空集闸 + settle…
@@ -68,6 +79,11 @@
 - PR #865 weekly-ops-report 周报 skill：SKILL 定义 + 飞书 badcase 采集脚本（凭证走 env）+ 软链 + 三期周报存档；周五 18:00 定时任务依赖它
 - PR #865 8-04 巡检修复——AI面试提前做口径、暂搁置状态、两条诚信硬规则、固定排班误判全周
 - PR #865 8-04 未修根因簇批量修复——扇出熔断/幻觉参数闸/健康证疑问句守卫/日期对账规则等
+- PR #872 **builder 裁剪**：剔空白条、取最近 8 条、单条 600 字符截尾（一条多门店推荐卡片够用，再长只烧 token）。
+- PR #872 **评审提示词三处校准**：
+- PR #872 字段语义说明（不是工具证据、不改变 evidence 空判定）；
+- PR #872 复述判定从悬空的"与上文一致"改为锚定 `recentAssistantMessages`：一致表述最多 observe/low，往轮表述真假交跨轮治理；
+- PR #872 完成态报名宣称若往轮已告知过，属复述不判高置信；仅当本轮 booking 证据与其矛盾（预约失败/已取消）时按证据冲突处理。
 
 ### 优化调整
 - PR #865 架构图脚本化生成补全：guardrail-architecture 重构 + memory-relationship-system / candidate-profile-model 两套生成式图 + README 索引对齐
@@ -95,6 +111,7 @@
 - PR #865 收口发版真实回归阻断
 - PR #865 尊重报名退出并拦截资料修改空头承诺
 - PR #876 v10.38.0 发版评审四项 P1 收口
+- PR #872 语义评审 packet 补往轮助手消息，跨轮复述不再判零证据编造
 
 ### 配置变更
 - 无
@@ -117,6 +134,9 @@
 - PR #876 jest：受影响 6 suites **603 passed**；`tests/memory` + `tests/agent/guardrail` 全量 **1554 passed / 1 skipped**
 - PR #876 `tsc --noEmit` / eslint（--max-warnings=0）干净
 - PR #876 本地 pre-push 因隔离 worktree 缺 `web/node_modules` 环境性失败，`--no-verify` 跳过，以本 PR 远程 CI 为准
+- PR #872 jest：`review-packet.builder` / `output-guardrail.service` / `semantic-reviewer.service` / `reply-repair.agent` 4 suites 65 tests 全过（新增 3 条：裁剪与截断、缺省空数组、调用点透传）
+- PR #872 `tsc --noEmit` / eslint（--max-warnings=0）干净
+- PR #872 本地 pre-push 的 `build:ci` 因隔离 worktree 缺 `web/node_modules` 环境性失败，已 `--no-verify` 跳过，以本 PR 远程 CI 为准
 <!-- release:pending:end -->
 
 ## [10.37.0] - 2026-07-30
