@@ -43,6 +43,10 @@ import {
 } from './rules/settlement-cycle-mismatch.rule';
 import { detectUnsupportedStoreStatusSpeculation } from './rules/store-status-speculation.rule';
 import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
+import {
+  detectCombinationScheduleWeeklyGeneralization,
+  detectHealthCertificateGeneralization,
+} from './rules/ungrounded-generalizations.rule';
 import { detectImageDescriptionNotSaved } from './rules/visual-message-errors.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from './output-rule.types';
 import { OUTPUT_RULE_CATALOG, type OutputRuleCatalogMetadata } from './rules/output-rule-catalog';
@@ -305,6 +309,24 @@ export class HardRulesService {
     );
     if (unsupportedScheduleWindowClaim) {
       contradictions.push(this.withRulePolicy(unsupportedScheduleWindowClaim));
+    }
+
+    const combinationScheduleWeeklyGeneralization = detectCombinationScheduleWeeklyGeneralization(
+      text,
+      toolCalls,
+      params.userMessage,
+    );
+    if (combinationScheduleWeeklyGeneralization) {
+      contradictions.push(this.withRulePolicy(combinationScheduleWeeklyGeneralization));
+    }
+
+    const healthCertificateGeneralization = detectHealthCertificateGeneralization(
+      text,
+      toolCalls,
+      params.userMessage,
+    );
+    if (healthCertificateGeneralization) {
+      contradictions.push(this.withRulePolicy(healthCertificateGeneralization));
     }
 
     const unsupportedStoreStatusSpeculation = detectUnsupportedStoreStatusSpeculation(
