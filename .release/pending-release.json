@@ -105,6 +105,28 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "894",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/894",
+      "title": "补充 v10.39.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "补充 v10.39.0 发版底账"
+      ],
+      "summary": [
+        "补充 v10.39.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补充 v10.39.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
