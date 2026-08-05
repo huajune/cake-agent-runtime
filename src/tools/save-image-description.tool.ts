@@ -38,7 +38,7 @@ const DESCRIPTION = `保存图片或表情内容描述。当用户发送了图�
 只提取事实信息，不要添加评价或建议。
 
 同时给出结构化判定（kind 与 fields，帮助系统区分"图里的信息归谁"）：
-- kind：job_posting=招聘平台岗位截图/卡片/海报；map_location=地图/定位/导航/门店位置；resume=简历本体；chat_screenshot=聊天记录截图；certificate=健康证等证件；other=其他。
+- kind：job_posting=招聘平台岗位截图/卡片/海报；map_location=地图/定位/导航/门店位置；resume=简历本体；chat_screenshot=聊天记录截图；certificate=健康证等证件；other=其他。流程状态类界面（视频会议等待页/AI面试结束页/订单日程页/审核结果页等）归 other，不要硬塞进最近的类。
 - fields：图上的关键值逐个列出。岗位截图上的电话/年龄要求/薪资是发布方的（ownership=publisher）；候选人自己的简历/证件上的信息是 candidate；聊天截图里分不清归谁就 unknown。岗位页上的"我的地址：XX"/"距我X km"是候选人设备上的地址，key 用 candidate_address。身份证号/证件号不要写进 fields。`;
 
 const inputSchema = z.object({

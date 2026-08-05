@@ -102,7 +102,7 @@ export class ImageDescriptionService {
 
   /** 结构化输出补充口径（仅结构化路径附加）。 */
   private readonly STRUCTURED_SUFFIX = [
-    '\n\n同时给出结构化判定：kind 按图片类型；fields 逐个列出图上的关键值并标注归属（ownership）。',
+    '\n\n同时给出结构化判定：kind 按图片类型；流程状态类界面（视频会议等待页/AI面试结束页/订单日程页/审核结果页等）归 other，不要硬塞进最近的类；fields 逐个列出图上的关键值并标注归属（ownership）。',
     '岗位截图上的电话/年龄要求/薪资是发布方的（publisher）；候选人自己的简历/证件上的信息是 candidate；',
     '聊天截图里分不清归谁就 unknown。岗位页上的"我的地址：XX"/"距我X km"是候选人设备上的地址，key 用 candidate_address。',
     '身份证号/证件号不要写进 fields。',
