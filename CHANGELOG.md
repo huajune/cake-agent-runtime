@@ -8,6 +8,68 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.40.0`
+**最近更新**: `2026-08-05`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
+- PR #885 自陈收窄限定在身份字段，不外溢到地理/偏好
+- PR #885 姓名形态门与 #865 经理名门合并，复用同一 extractedName
+- PR #885 fixture 换生产真实字符串——修复空转的年龄断言
+- PR #885 图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地
+- PR #885 白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正
+- PR #885 key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证
+- PR #885 prettier 修复 describe 长行
+- PR #885 prettier 引号修复
+- PR #885 kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口
+- PR #885 废弃入站图片预描述分支——主聊按输入换模型后的死枝清理
+- PR #885 描述缺失读时懒补写——33% 裸占位归因后的定向修复
+- PR #885 修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量
+- PR #885 visual-fact 批次发版底账（pending，P0 待真实链路回归）
+- PR #885 图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示
+- PR #885 图片信息结构化全链路——生产/存储/消费一次落地
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #885 fixture 换生产真实字符串——修复空转的年龄断言
+- PR #885 白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正
+- PR #885 prettier 修复 describe 长行
+- PR #885 prettier 引号修复
+- PR #885 描述缺失读时懒补写——33% 裸占位归因后的定向修复
+- PR #885 修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量
+
+### 优化调整
+- PR #885 姓名形态门与 #865 经理名门合并，复用同一 extractedName
+
+### 运维与流程
+- PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
+- PR #885 自陈收窄限定在身份字段，不外溢到地理/偏好
+- PR #885 图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地
+- PR #885 key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证
+- PR #885 kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口
+- PR #885 废弃入站图片预描述分支——主聊按输入换模型后的死枝清理
+- PR #885 visual-fact 批次发版底账（pending，P0 待真实链路回归）
+- PR #885 图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #885 新增 `tests/resolution/visual`（10 例：归属默认/降级/round-trip/与旧正则逐字一致）+ `tests/memory/facts/visual-fact-scoping.spec.ts`（6 例，每条带无 sheet 回落对照）
+- PR #885 既有断言仅两个 spec 因 `updateMessageContent` 第三参更新
+- PR #885 **全量 394 suites / 6484 passed**；`tsc --noEmit`、`eslint`（全部改动文件）绿
+<!-- release:pending:end -->
+
 ## [10.39.0] - 2026-08-05
 
 **来源分支**: `develop`
