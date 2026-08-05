@@ -42,8 +42,10 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
+import { AgentTracerService } from '@/observability/agent-tracer.service';
 
 /**
  * 统一工具注册表
@@ -86,9 +88,17 @@ export class ToolRegistryService {
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
     private readonly brandResolutionService: BrandResolutionService,
+    candidateSnapshotService: CandidateSnapshotService,
+    agentTracer: AgentTracerService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
+    // 候选人事实裁决模式（证据化 §10 灰度）：shadow=只观测不改行为（默认），
+    // enforce=无据模型裸值剔出 checklist + booking 快照差异硬拒。差异率稳定前勿切。
+    const adjudicationMode =
+      configService.get<string>('CANDIDATE_FACT_ADJUDICATION_MODE', 'shadow') === 'enforce'
+        ? ('enforce' as const)
+        : ('shadow' as const);
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
@@ -121,6 +131,11 @@ export class ToolRegistryService {
           userHostingService,
           longTermService,
           opsEventsRecorder,
+          {
+            mode: adjudicationMode,
+            snapshots: candidateSnapshotService,
+            observer: agentTracer,
+          },
         ),
       }),
 
@@ -128,7 +143,11 @@ export class ToolRegistryService {
         name: 'duliday_interview_precheck',
         description:
           '面试前置校验（按岗位返回可约日期/时段、备注解析后的字段建议、报名补充信息；不真正提交预约）',
-        create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder),
+        create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder, {
+          mode: adjudicationMode,
+          snapshots: candidateSnapshotService,
+          observer: agentTracer,
+        }),
       }),
 
       duliday_cancel_work_order: createToolDefinition({

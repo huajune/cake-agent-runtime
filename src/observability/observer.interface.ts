@@ -146,6 +146,32 @@ export type AgentEvent = AgentEventContext &
         droppedValue: string;
         reason: string;
       }
+    /**
+     * 候选人事实裁决档案（证据化方案 §11）：precheck 每次裁决一条、booking
+     * 快照对账不一致时一条。decisions 刻意不携带字段值与 quote 原文（PII 纪律，
+     * 方案 §11"完整证据仅进入受控审计存储"）——值本体可经 trace_id join
+     * message_processing_records 的工具入参回查。
+     */
+    | {
+        type: 'fact_adjudication';
+        stage: 'precheck' | 'booking_gate';
+        mode: 'shadow' | 'enforce';
+        userId?: string;
+        precheckId?: string;
+        factsVersion?: number;
+        decisions: Array<{
+          field: string;
+          producer: string;
+          operation: string;
+          interpretation: string;
+          decision: string;
+          rejectionReason?: string;
+          supersededByClaimId?: string;
+          claimId: string;
+        }>;
+        /** booking_gate 专用：payload 与快照不一致的字段名（含水位失效伪字段）。 */
+        mismatchedFields?: string[];
+      }
   );
 
 export interface Observer {

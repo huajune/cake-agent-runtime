@@ -15,6 +15,7 @@ import { LongTermService } from './services/long-term.service';
 import { SettlementService } from './services/settlement.service';
 import { MemoryEnrichmentService } from './services/memory-enrichment.service';
 import { MemoryLifecycleService } from './services/memory-lifecycle.service';
+import { CandidateSnapshotService } from './services/candidate-snapshot.service';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 
@@ -47,6 +48,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     SettlementService,
     MemoryEnrichmentService,
     MemoryLifecycleService,
+    CandidateSnapshotService,
     MemoryService,
   ],
   exports: [
@@ -56,6 +58,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     LongTermService,
     ShortTermService,
     BrandStateService,
+    CandidateSnapshotService,
   ],
 })
 export class MemoryModule {}

@@ -19,6 +19,8 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'brand_resolution_ambiguous',
   // 抽取臆造字段拦截：量级应接近零，出现即弱模型劣化信号，必须可查（不能只打日志）
   'extraction_field_dropped',
+  // 候选人事实裁决档案：claim 接受率/拒绝原因分布是证据化 Phase 1/2 的核心观测
+  'fact_adjudication',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;
