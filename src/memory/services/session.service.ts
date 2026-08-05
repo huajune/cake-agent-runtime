@@ -948,6 +948,23 @@ export class SessionService {
       );
     }
 
+    // 姓名形态门（badcase 2026-08-04 vkikct39，同案）：同一次抽取把手机号写进了 name
+    // （evidence 原文："**name / phone**：沿用已确认事实 13788930869"）。
+    // sanitizeInterviewName 只拦"我是XX"打招呼语昵称，纯数字值直接穿透，随后被当真名
+    // 预填进收资表。与上面的经理名门同属 name 字段，共用 extractedName。
+    const droppedDigitsName =
+      !droppedQuotedSpeakerName &&
+      typeof extractedName === 'string' &&
+      isDigitsOnlyName(extractedName);
+    if (droppedDigitsName) {
+      dropInterviewField(
+        'name',
+        extractedName,
+        'digits_only_name',
+        `[extractFacts] name 为纯数字形态（疑似手机号错填姓名），丢弃「${extractedName}」`,
+      );
+    }
+
     // 手机号形态门：非 11 位手机号形态一律丢（出处门只管 ≥7 位数字流，短垃圾值绕过）。
     const extractedPhone = unwrapSessionFactValue(newFacts.interview_info.phone);
     const invalidPhoneShape =
@@ -982,20 +999,6 @@ export class SessionService {
       );
     }
     const droppedPhone = invalidPhoneShape || foreignPhone;
-
-    // 姓名形态门（同案）：同一次抽取把手机号写进了 name（evidence 原文
-    // "**name / phone**：沿用已确认事实 13788930869"）。sanitizeInterviewName 只拦
-    // "我是XX"打招呼语昵称，纯数字值直接穿透，随后被当真名预填进收资表。
-    const extractedName = unwrapSessionFactValue(newFacts.interview_info.name);
-    const droppedDigitsName = typeof extractedName === 'string' && isDigitsOnlyName(extractedName);
-    if (droppedDigitsName) {
-      dropInterviewField(
-        'name',
-        extractedName,
-        'digits_only_name',
-        `[extractFacts] name 为纯数字形态（疑似手机号错填姓名），丢弃「${extractedName}」`,
-      );
-    }
 
     // 门店/户籍窗口出处门：两字段规则均已声明只能来自明示，值必是对话里出现过的串；
     // 只在"与旧值不同"时校验，已确立的旧值沿用不受影响。
