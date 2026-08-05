@@ -11,12 +11,14 @@ export interface BotGroupInfo {
  *
  * 正常情况下 resolve() 走「从第三方托管平台（Stride）动态拉取」的映射（见 refreshGroupMap），
  * 本表仅作**离线兜底**：Stride 不可用或冷启动尚未拉到时用，保证盘子不崩。
- * 无需再手工维护——新增 / 改名 / 加 bot 由 Stride 自动带出。
+ * 分组本身可由 Stride 自动带出；但下方 AGENT_ID_BY_BOT 也由本表生成，所以新增 bot
+ * 仍需登记在这里，确保离线归属和花卷 agentId 都稳定。
  */
 const BOT_GROUP_TABLE: Record<string, BotGroupInfo> = {
   '1688855974513959': { managerName: 'gaoyaqi', groupName: '琪琪组' },
   '1688854363869800': { managerName: 'ZhuDongSheng', groupName: '小祝组' },
   '1688857592548257': { managerName: 'HeMin', groupName: '小祝组' },
+  '1688856098846503': { managerName: 'LiYuHang', groupName: '小祝组' },
   '1688854359801821': { managerName: 'LiHanTing', groupName: '南瓜组' },
   '1688855171908166': { managerName: 'LiYuHang', groupName: '宇航组' },
   '1688854747775509': { managerName: 'WuPanPan', groupName: '盼盼组' },
