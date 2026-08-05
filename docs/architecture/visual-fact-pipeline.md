@@ -1,6 +1,7 @@
 # 图片信息链路架构（Visual Fact Pipeline）
 
 > **现状架构文档**（描述已实现的系统，非方案）。实现于 [PR #885](https://github.com/huajune/cake-agent-runtime/pull/885)（基于 [#870](https://github.com/huajune/cake-agent-runtime/pull/870)），基准 `feat/visual-fact-structuring @ 8693ea3e`。
+> 全局记忆与状态视图（本文的原文附件/结算判据在全景中的位置）见 [memory-and-state.md](./memory-and-state.md)。
 > 前身三份立项文档（产品方案 / 技术方案 / 链路盘点，2026-08-05）已由本文取代，全文保留在 git 历史与 PR #873 讨论中；本文附录 A 继承其中的**裁决记录**——那仍是字段白名单与提示词口径的唯一权威。
 
 ---
