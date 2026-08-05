@@ -256,6 +256,33 @@
         "`tsc --noEmit` / eslint（--max-warnings=0）干净",
         "本地 pre-push 的 `build:ci` 因隔离 worktree 缺 `web/node_modules` 环境性失败，已 `--no-verify` 跳过，以本 PR 远程 CI 为准"
       ]
+    },
+    {
+      "number": "878",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/878",
+      "title": "回同步 v10.38.0 候选分支收口提交至 develop",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "收口回归权限与出站守卫",
+        "删除额外生成脚本",
+        "回同步 v10.38.0 候选分支收口提交至 develop"
+      ],
+      "summary": [
+        "收口回归权限与出站守卫",
+        "删除额外生成脚本",
+        "回同步 v10.38.0 候选分支收口提交至 develop"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "收口回归权限与出站守卫",
+        "删除额外生成脚本"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
