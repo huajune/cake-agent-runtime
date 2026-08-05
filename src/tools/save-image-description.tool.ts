@@ -64,7 +64,9 @@ const inputSchema = z.object({
         //（岗位名称/姓名…351 字段仅 9 个合法），词表可见性是软引导的前提。
         key: z
           .string()
-          .describe('只能用这些值：phone / name / age_range / brand / brand_id / publisher / store / address / city / candidate_address / salary_text / shift_text / cert_type / cert_issue_date / other'),
+          .describe(
+            '只能用这些值：phone / name / age_range / brand / brand_id / publisher / store / address / city / candidate_address / salary_text / shift_text / cert_type / cert_issue_date / other',
+          ),
         value: z.string(),
         ownership: z
           .enum(['candidate', 'publisher', 'third_party', 'unknown'])
