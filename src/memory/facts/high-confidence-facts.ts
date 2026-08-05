@@ -15,6 +15,7 @@ import {
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import { isLikelyRealChineseName } from './name-guard';
 import { decideLaborFormIntent } from './labor-form';
+import { keepSelfReportedMessages } from './visual-description';
 
 // ── 个人信息关键词 ─────────────────────────────────────────────────────────
 
@@ -335,6 +336,7 @@ export function extractHighConfidenceFacts(
   // 品牌收口（§9.2）：本函数不再内联直写 preferences.brands——品牌真相唯一存储是
   // brand_state（写入只经 turn-finalizer 的 reducer），preferences.brands 退化为只读投影。
   // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
+  // 品牌线索仍吃全量语料：图片品牌解析是 §10.2 的显式通道，不受自陈收窄影响。
   const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
   if (aliasHints.length > 0) {
     reasons.push(
@@ -345,7 +347,12 @@ export function extractHighConfidenceFacts(
     );
   }
 
-  for (const message of normalizedMessages) {
+  // 自陈收窄（badcase 2026-08-04 vkikct39）：候选人转发的第三方岗位截图，其 vision
+  // 描述被回写进用户消息内容，描述里发布方的手机号与"18-40岁"岗位年龄区间会被下面
+  // 的提取器当成候选人自陈。与 stripQuotedBlocks 同一理由：第三方内容不是自陈。
+  const selfReportedMessages = keepSelfReportedMessages(normalizedMessages);
+
+  for (const message of selfReportedMessages) {
     // 注册表驱动：统一应用所有"无字段间联动"的标量/数组提取器（见 FIELD_EXTRACTORS）。
     for (const extractor of FIELD_EXTRACTORS) {
       applyFieldExtractor(extractor, message, facts, reasons);

@@ -85,6 +85,7 @@ import {
   hasIsStudentTopicEvidence,
   isStorableCandidatePhone,
 } from '../facts/placeholder-identity';
+import { hasSelfReportedPhoneProvenance, isDigitsOnlyName } from '../facts/visual-description';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   hasMeaningfulValue,
@@ -949,14 +950,50 @@ export class SessionService {
 
     // 手机号形态门：非 11 位手机号形态一律丢（出处门只管 ≥7 位数字流，短垃圾值绕过）。
     const extractedPhone = unwrapSessionFactValue(newFacts.interview_info.phone);
-    const droppedPhone =
+    const invalidPhoneShape =
       typeof extractedPhone === 'string' && !isStorableCandidatePhone(extractedPhone);
-    if (droppedPhone) {
+    if (invalidPhoneShape) {
       dropInterviewField(
         'phone',
         extractedPhone,
         'invalid_phone_shape',
         `[extractFacts] phone 非 11 位手机号形态，丢弃臆造值「${extractedPhone}」`,
+      );
+    }
+
+    // 第三方截图夺号门（badcase 2026-08-04 vkikct39，chat 6a714c00…，P0）：
+    // assertExtractionIdentityProvenance 的出处门认整个提取 prompt，**包含图片描述**，
+    // 于是候选人转发的 BOSS 直聘岗位截图里**发布方**的手机号，形态合法（11 位）、
+    // 出处也"找得到"，一路落进 interview_info.phone，最后被提交进真实报名 ——
+    // AI 面试短信发到了招募经理手机上。号码必须是候选人自己敲出来的（或来自他本人的
+    // 简历图片），只在与旧值不同时校验，已确立的号码沿用不受影响。
+    const previousPhone = unwrapSessionFactValue(previousFacts?.interview_info.phone);
+    const foreignPhone =
+      !invalidPhoneShape &&
+      typeof extractedPhone === 'string' &&
+      extractedPhone !== previousPhone &&
+      !hasSelfReportedPhoneProvenance(extractedPhone, userMessages);
+    if (foreignPhone) {
+      dropInterviewField(
+        'phone',
+        extractedPhone,
+        'phone_not_self_reported',
+        `[extractFacts] phone 只出现在图片描述等第三方内容中，丢弃非自陈号码「${extractedPhone}」`,
+      );
+    }
+    const droppedPhone = invalidPhoneShape || foreignPhone;
+
+    // 姓名形态门（同案）：同一次抽取把手机号写进了 name（evidence 原文
+    // "**name / phone**：沿用已确认事实 13788930869"）。sanitizeInterviewName 只拦
+    // "我是XX"打招呼语昵称，纯数字值直接穿透，随后被当真名预填进收资表。
+    const extractedName = unwrapSessionFactValue(newFacts.interview_info.name);
+    const droppedDigitsName = typeof extractedName === 'string' && isDigitsOnlyName(extractedName);
+    if (droppedDigitsName) {
+      dropInterviewField(
+        'name',
+        extractedName,
+        'digits_only_name',
+        `[extractFacts] name 为纯数字形态（疑似手机号错填姓名），丢弃「${extractedName}」`,
       );
     }
 
@@ -1075,7 +1112,8 @@ export class SessionService {
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
     // 形态门丢弃的 phone 还要显式清 Redis：下一轮 [已确认事实] 会把旧脏值再喂回抽取，
     // deepMerge "null 不覆盖" 会让丢弃只在本轮生效，脏号继续沿用。
-    const nameStillNull = droppedName && !unwrapSessionFactValue(newFacts.interview_info.name);
+    const nameStillNull =
+      (droppedName || droppedDigitsName) && !unwrapSessionFactValue(newFacts.interview_info.name);
     const forceNullInterviewFields: (keyof EntityExtractionResult['interview_info'])[] = [];
     if (nameStillNull) forceNullInterviewFields.push('name');
     // 引用发言人名同理显式清 Redis：上一轮可能已把经理名写进档案（or9d6viv 实锤），
