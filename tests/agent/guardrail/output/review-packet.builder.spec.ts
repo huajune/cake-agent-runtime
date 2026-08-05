@@ -283,6 +283,80 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(excerpt).toContain('（岗位详情已截断）');
   });
 
+  // 2026-08-04 badcase（trace batch_6a719fde…_1785831840599）：markdown 全长 7372，
+  // 达美乐详情段（基础薪资 13.8 元/时）整段落在 4000 字截断点之后，reviewer 只看到
+  // 顶部卡片的「0-110 元/天」，把模型正确投递的时薪判成编造。
+  it('appends salary sections of truncated job details to the markdown excerpt', () => {
+    const markdown = [
+      '# 在招岗位（共 3 个）',
+      '> 3. **达美乐（大良观绿路分店） - 兼职通岗服务员，5.7km**',
+      '>    薪资：0-110 元/天',
+      '岗'.repeat(4200), // 模拟前两个岗位详情段撑爆 4000 字窗口
+      '## 3. 达美乐-大良观绿路分店-兼职通岗服务员-小时工 (兼职通岗服务员)',
+      '### 基本信息',
+      '- **品牌**: 达美乐 (ID: 10451)',
+      '### 薪资信息',
+      '#### 薪资方案 1（正式）',
+      '- **结算周期**: 月结算, 5号发薪',
+      '- **基础薪资**: 13.8 元/时',
+      '- **综合薪资**: 0-110 元/天',
+      '- **节假日薪资**: 34.5 元/时',
+      '### 福利信息',
+      '- **住宿**: 无住宿福利',
+      '---',
+    ].join('\n');
+
+    const packet = builder.build({
+      reply: '附近还有家达美乐，5.7公里，13.8元/时',
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: { cityNameList: ['佛山'] },
+          result: { markdown },
+          resultCount: 3,
+          status: 'ok',
+        },
+      ],
+    });
+
+    const excerpt = packet.evidence.jobList?.markdownExcerpt ?? '';
+    expect(excerpt).toContain('（岗位详情已截断）');
+    expect(excerpt).toContain('【截断补录·岗位薪资信息】');
+    expect(excerpt).toContain('## 3. 达美乐-大良观绿路分店-兼职通岗服务员-小时工');
+    expect(excerpt).toContain('- **基础薪资**: 13.8 元/时');
+    expect(excerpt).toContain('- **节假日薪资**: 34.5 元/时');
+    // 只补薪资段，不把福利等其余详情也带进补录
+    expect(excerpt).not.toContain('- **住宿**: 无住宿福利');
+  });
+
+  it('does not append salary sections already fully visible in the excerpt window', () => {
+    const markdown = [
+      '# 在招岗位（共 1 个）',
+      '## 1. 必胜客-佛山嘉信PH-餐厅服务员-小时工 (餐厅服务员)',
+      '### 薪资信息',
+      '- **基础薪资**: 12.8 元/时',
+      '### 福利信息',
+      '岗'.repeat(5000), // 超长部分全在薪资段之后
+    ].join('\n');
+
+    const packet = builder.build({
+      reply: '推荐必胜客',
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: {},
+          result: { markdown },
+          resultCount: 1,
+          status: 'ok',
+        },
+      ],
+    });
+
+    const excerpt = packet.evidence.jobList?.markdownExcerpt ?? '';
+    expect(excerpt).toContain('（岗位详情已截断）');
+    expect(excerpt).not.toContain('【截断补录·岗位薪资信息】');
+  });
+
   // 2026-08-04 审计 P1-6（trace …_1785451709779）：invite_to_group:ok 支撑的
   // "群邀请已经发你了"被零证据档判成"没有任何下发证据"——packet 缺群邀请证据类。
   it('extracts group invite evidence from invite_to_group calls', () => {

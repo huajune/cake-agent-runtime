@@ -643,19 +643,98 @@ export class ChatMessageRepository extends BaseRepository {
   async updateContentByMessageId(
     messageId: string,
     content: string,
+    // 视觉事实旁路（visual-fact-structuring §3.3）：与描述文本同一次 update 落
+    // visual_facts jsonb，保证 sheet 与 content 永远同源成对（后写者赢，不撕裂）。
+    visualFacts?: Record<string, unknown>,
   ): Promise<{ chatId: string | null }> {
     if (!this.isAvailable()) {
       return { chatId: null };
     }
 
     try {
-      const rows = await this.update<ChatMessageRecord>({ content }, (q) =>
+      const patch: Record<string, unknown> = { content };
+      if (visualFacts !== undefined) patch.visual_facts = visualFacts;
+      const rows = await this.update<ChatMessageRecord>(patch, (q) =>
         q.eq('message_id', messageId),
       );
       return { chatId: rows[0]?.chat_id ?? null };
     } catch (error) {
       this.logger.error(`更新消息 content 失败 [${messageId}]:`, error);
       return { chatId: null };
+    }
+  }
+
+  /**
+   * 拉取会话内「描述缺失」的裸视觉消息（visual-fact-structuring 读时懒补写）。
+   *
+   * 2026-08-05 归因实证（30 条裸占位抽样）：90% 是人工接管/非托管时段经
+   * MOBILE_PUSH 同步进历史的候选人图片——从不进 Agent 链路，没有任何回合，
+   * P2/漏调兜底天然覆盖不到；其余为 timeout 丢回合。这些图在托管恢复后进入
+   * 消息窗口时对 Agent 全盲。读时补写：回合开始时按会话捞出裸图，交给
+   * ImageDescriptionService 补描述（fire-and-forget，本轮或下一轮生效）。
+   */
+  async getBareVisualMessagesByChat(
+    chatId: string,
+    options?: { sinceTimestamp?: number; limit?: number },
+  ): Promise<
+    Array<{ messageId: string; content: string; payload: Record<string, unknown> | null }>
+  > {
+    if (!this.isAvailable()) return [];
+    try {
+      const results = await this.select<{
+        message_id: string;
+        content: string;
+        payload: Record<string, unknown> | null;
+      }>('message_id,content,payload', (q) => {
+        let query = q
+          .eq('chat_id', chatId)
+          .eq('role', 'user')
+          .in('content', ['[图片消息]', '[表情消息]']);
+        if (options?.sinceTimestamp) {
+          query = query.gte('timestamp', new Date(options.sinceTimestamp).toISOString());
+        }
+        return query.order('timestamp', { ascending: false }).limit(options?.limit ?? 5);
+      });
+      return results.map((row) => ({
+        messageId: row.message_id,
+        content: row.content,
+        payload: row.payload,
+      }));
+    } catch (error) {
+      this.logger.error(`拉取裸视觉消息失败 [${chatId}]:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * 拉取会话内视觉消息的结构化事实（visual-fact-structuring 消费侧读路径）。
+   *
+   * 供事实抽取/geocode 锚点按「剥时间后缀的窗口内容」匹配 sheet——消息窗口对象
+   * 不携带 messageId 贯穿到抽取层，内容等值匹配是最小侵入的关联方式（描述由
+   * updateMessageContent 整条写入，窗口读到的 content 与库中逐字一致）。
+   */
+  async getVisualFactsByChat(
+    chatId: string,
+    options?: { sinceTimestamp?: number; limit?: number },
+  ): Promise<Array<{ content: string; visualFacts: Record<string, unknown> }>> {
+    if (!this.isAvailable()) return [];
+    try {
+      const results = await this.select<{
+        content: string;
+        visual_facts: Record<string, unknown> | null;
+      }>('content,visual_facts', (q) => {
+        let query = q.eq('chat_id', chatId).not('visual_facts', 'is', null);
+        if (options?.sinceTimestamp) {
+          query = query.gte('timestamp', new Date(options.sinceTimestamp).toISOString());
+        }
+        return query.order('timestamp', { ascending: false }).limit(options?.limit ?? 40);
+      });
+      return results
+        .filter((row) => row.visual_facts != null)
+        .map((row) => ({ content: row.content, visualFacts: row.visual_facts! }));
+    } catch (error) {
+      this.logger.error(`拉取视觉事实失败 [${chatId}]:`, error);
+      return [];
     }
   }
 

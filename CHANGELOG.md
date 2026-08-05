@@ -8,6 +8,104 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.40.0`
+**最近更新**: `2026-08-05`
+**来源分支**: `develop`
+**累计 PR**: 6
+
+### 更新摘要
+- PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
+- PR #885 自陈收窄限定在身份字段，不外溢到地理/偏好
+- PR #885 姓名形态门与 #865 经理名门合并，复用同一 extractedName
+- PR #885 fixture 换生产真实字符串——修复空转的年龄断言
+- PR #885 图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地
+- PR #885 白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正
+- PR #885 key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证
+- PR #885 prettier 修复 describe 长行
+- PR #885 prettier 引号修复
+- PR #885 kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口
+- PR #885 废弃入站图片预描述分支——主聊按输入换模型后的死枝清理
+- PR #885 描述缺失读时懒补写——33% 裸占位归因后的定向修复
+- PR #885 修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量
+- PR #885 visual-fact 批次发版底账（pending，P0 待真实链路回归）
+- PR #885 图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示
+- PR #885 图片信息结构化全链路——生产/存储/消费一次落地
+- PR #873 图片信息结构化专项方案 + 链路盘点
+- PR #873 评审意见修订——模块归位 resolution/visual + 落库设计说清
+- PR #873 图片信息结构化代码改造技术方案
+- PR #873 回填信息类别裁决记录 + vkikct39 事实修正
+- PR #873 补实施记录——PR #885 一次性落地与三处偏离
+- PR #873 三份立项文档整合为现状架构文档 visual-fact-pipeline
+- PR #873 附录 A 扩为完整信息类别裁决清单
+- PR #873 增数据流时序节——一张图片的一生（17 步 + 接管期平行线）
+- PR #873 记忆与状态全局视图——三角色心智模型
+- PR #873 图片信息链路现状架构文档（前身：立项三件套）
+- PR #894 补充 v10.39.0 发版底账
+- PR #896 补齐陈美嘉托管账号配置迁移
+- PR #875 语义评审 markdown 摘录截断补录被截岗位的薪资信息段
+- PR #875 Merge origin/develop into fix branch（冲突：语义评审提示词两行并存——recentAssistantM…
+- PR #899 测试链图片工具保真 + v10.40.0 发版底账定版
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #885 fixture 换生产真实字符串——修复空转的年龄断言
+- PR #885 白名单外 key 只丢字段不拖垮整表——50 图生产批测实证修正
+- PR #885 prettier 修复 describe 长行
+- PR #885 prettier 引号修复
+- PR #885 描述缺失读时懒补写——33% 裸占位归因后的定向修复
+- PR #885 修复 AI 评审三条阻断项——sheet 查表键/education 兜底/引用块夺号向量
+- PR #873 回填信息类别裁决记录 + vkikct39 事实修正
+- PR #875 Merge origin/develop into fix branch（冲突：语义评审提示词两行并存——recentAssistantM…
+
+### 优化调整
+- PR #885 姓名形态门与 #865 经理名门合并，复用同一 extractedName
+
+### 运维与流程
+- PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
+- PR #885 自陈收窄限定在身份字段，不外溢到地理/偏好
+- PR #885 图片信息结构化全链路——VisualFactSheet 生产/存储/消费一次落地
+- PR #885 key 词表写回 describe + 证件号形态值确定性清洗——P2 批测两实证
+- PR #885 kind 口径补流程状态类归 other——批测 10 分歧中 6 张的词表缺口
+- PR #885 废弃入站图片预描述分支——主聊按输入换模型后的死枝清理
+- PR #885 visual-fact 批次发版底账（pending，P0 待真实链路回归）
+- PR #885 图片轮工具调用顺序——save_image_description 先行口径 + invite 拒绝恢复提示
+- PR #873 图片信息结构化专项方案 + 链路盘点
+- PR #873 评审意见修订——模块归位 resolution/visual + 落库设计说清
+- PR #873 图片信息结构化代码改造技术方案
+- PR #873 补实施记录——PR #885 一次性落地与三处偏离
+- PR #873 三份立项文档整合为现状架构文档 visual-fact-pipeline
+- PR #873 附录 A 扩为完整信息类别裁决清单
+- PR #873 增数据流时序节——一张图片的一生（17 步 + 接管期平行线）
+- PR #873 记忆与状态全局视图——三角色心智模型
+- PR #894 补充 v10.39.0 发版底账
+- PR #896 补齐陈美嘉托管账号配置迁移
+- PR #875 语义评审 markdown 摘录截断补录被截岗位的薪资信息段
+- PR #899 测试链图片工具保真 + v10.40.0 发版底账定版
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #885 新增 `tests/resolution/visual`（10 例：归属默认/降级/round-trip/与旧正则逐字一致）+ `tests/memory/facts/visual-fact-scoping.spec.ts`（6 例，每条带无 sheet 回落对照）
+- PR #885 既有断言仅两个 spec 因 `updateMessageContent` 第三参更新
+- PR #885 **全量 394 suites / 6484 passed**；`tsc --noEmit`、`eslint`（全部改动文件）绿
+- PR #896 `pnpm run ci:check`
+- PR #896 406 个测试套件通过，1 个跳过
+- PR #896 6778 项测试通过，6 项跳过
+- PR #896 `pnpm config:hosting:check:test`
+- PR #896 `pnpm config:hosting:check:prod`
+- PR #875 新增 2 例：badcase 同型（薪资段整段在截断点后 → 补录出现、且只补薪资段不带福利）；薪资段完整在窗口内 → 不补录
+- PR #875 `review-packet.builder.spec` 10/10、`semantic-reviewer.service.spec` 25/25 通过；typecheck / eslint 全净
+<!-- release:pending:end -->
+
 ## [10.39.0] - 2026-08-05
 
 **来源分支**: `develop`

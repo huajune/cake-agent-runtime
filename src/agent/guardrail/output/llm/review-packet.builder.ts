@@ -331,14 +331,60 @@ function readBrandQueryMeta(
 
 /** markdown 证据摘录上限：开头的岗位卡片汇总区（推荐对话用模板）通常在前 4000 字内。 */
 const MARKDOWN_EXCERPT_MAX_CHARS = 4000;
+/** 薪资补录上限：单岗薪资段实测 300-600 字，8 岗以内的主流形态兜得住。 */
+const SALARY_APPENDIX_MAX_CHARS = 2400;
+const JOB_DETAIL_HEADING_PATTERN = /^## \d+\.\s.*$/gm;
+const SALARY_SECTION_HEADING = '### 薪资信息';
 
 function readMarkdownExcerpt(result: unknown): string | undefined {
   const record = readRecord(result);
   const markdown = readString(record?.markdown);
   if (!markdown) return undefined;
-  return markdown.length > MARKDOWN_EXCERPT_MAX_CHARS
-    ? `${markdown.slice(0, MARKDOWN_EXCERPT_MAX_CHARS)}\n…（岗位详情已截断）`
-    : markdown;
+  if (markdown.length <= MARKDOWN_EXCERPT_MAX_CHARS) return markdown;
+  const excerpt = `${markdown.slice(0, MARKDOWN_EXCERPT_MAX_CHARS)}\n…（岗位详情已截断）`;
+  const appendix = buildTruncatedSalaryAppendix(markdown, MARKDOWN_EXCERPT_MAX_CHARS);
+  return appendix ? `${excerpt}\n\n${appendix}` : excerpt;
+}
+
+/**
+ * 2026-08-04 badcase（trace batch_6a719fde…_1785831840599）：markdown 全长 7372，
+ * 达美乐详情段起于 5380、「基础薪资: 13.8 元/时」在 6379——4000 字截断后 reviewer
+ * 只剩顶部卡片的「0-110 元/天」（卡片综合薪资优先、从不显示 basicSalary），
+ * 把模型正确投递的时薪判成编造并要求改写。截断时把被截岗位的「薪资信息」段
+ * 原文补录回证据，薪资 ground truth 不再取决于岗位排在 markdown 的第几位。
+ */
+function buildTruncatedSalaryAppendix(markdown: string, cutoff: number): string | undefined {
+  const headings = [...markdown.matchAll(JOB_DETAIL_HEADING_PATTERN)];
+  const blocks: string[] = [];
+  headings.forEach((heading, index) => {
+    const sectionStart = heading.index;
+    if (sectionStart === undefined) return;
+    const sectionEnd = headings[index + 1]?.index ?? markdown.length;
+    const salaryStart = markdown.indexOf(SALARY_SECTION_HEADING, sectionStart);
+    if (salaryStart < 0 || salaryStart >= sectionEnd) return;
+    const salaryEnd = findSalarySectionEnd(
+      markdown,
+      salaryStart + SALARY_SECTION_HEADING.length,
+      sectionEnd,
+    );
+    // 薪资段完整落在摘录窗口内的岗位无须补录；被截断（哪怕只截了后半）就整段补。
+    if (salaryEnd <= cutoff) return;
+    blocks.push(`${heading[0]}\n${markdown.slice(salaryStart, salaryEnd).trimEnd()}`);
+  });
+  if (blocks.length === 0) return undefined;
+  const body = blocks.join('\n');
+  const capped =
+    body.length > SALARY_APPENDIX_MAX_CHARS
+      ? `${body.slice(0, SALARY_APPENDIX_MAX_CHARS)}\n…（薪资补录已截断）`
+      : body;
+  return `【截断补录·岗位薪资信息】以下岗位的详情段被上方截断，其薪资字段以本补录为准：\n${capped}`;
+}
+
+function findSalarySectionEnd(markdown: string, from: number, sectionEnd: number): number {
+  const boundaries = [markdown.indexOf('\n### ', from), markdown.indexOf('\n---', from)].filter(
+    (idx) => idx >= 0 && idx < sectionEnd,
+  );
+  return boundaries.length > 0 ? Math.min(...boundaries) : sectionEnd;
 }
 
 function readDistanceKm(record: Record<string, unknown>): number | undefined {
