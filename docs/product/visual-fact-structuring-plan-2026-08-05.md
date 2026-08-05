@@ -2,7 +2,9 @@
 
 > 立项日期：2026-08-05 ｜ 状态：待评审
 > 基准代码：`origin/develop @ 5a6ce7c3` ｜ 配套盘点：[docs/technical/visual-fact-pipeline-inventory-2026-08-05.md](../technical/visual-fact-pipeline-inventory-2026-08-05.md)
-> 直接诱因：badcase `vkikct39`（P0，2026-08-04）——候选人转发的招聘平台岗位截图里**发布方**的手机号与「18-40岁」岗位年龄区间被当成候选人自陈，随报名提交进真实工单，AI 面试短信发到了招募经理手机上。
+> 直接诱因：badcase `vkikct39`（P0，2026-08-04）——候选人转发的 BOSS 直聘截图被当成候选人自陈：交换微信截图里**招聘者（招募经理本人）的微信号**进了报名电话，岗位卡里「面试基本都过，**18岁以上**+健康证即可」被提成候选人年龄 18，随报名提交进真实工单，AI 面试短信发到了经理自己的手机上（运营原话「报名填我的电话干嘛」）。同案还把岗位卡「薪资5000-6000元/月」记成了候选人期望薪资 `pref.salary=6000元/月`。
+>
+> ⚠️ 事实修正（2026-08-05 复核）：早期版本写「18-40岁」，实际生产字符串是「18岁以上」——**这个差别是要害**：`extractAge` 既有的岗位范围守卫能拦「年龄要求18-40岁」（带触发词），拦不住「面试基本都过，18岁以上」（无触发词），后者才是真实穿透路径。
 
 ---
 
@@ -88,7 +90,12 @@ interface VisualFactSheet {
 }
 
 interface VisualFactField {
-  /** 收敛的字段名：phone / age_range / brand / publisher / store / address / city / salary_text / shift_text / name / cert_type … */
+  /** 收敛的字段名：phone / name / age_range / brand / brand_id / publisher / store /
+   *  address / city / candidate_address / salary_text / shift_text / cert_type / cert_issue_date …
+   *  - brand_id：我方平台截图自带品牌ID（如 [10006]），确定性锚点直通 brandIdList（裁决 A2）
+   *  - candidate_address：岗位页「我的地址：XX街道」/「距我 X km」锚点——候选人设备上的
+   *    真实地址，证据强度不低于定位分享，今天零消费（裁决 A7）
+   *  - 刻意不设：身份证号/证件号——booking 用不到，纯隐私暴露面，vision 不转写为字段（裁决 B3） */
   key: string;
   value: string;
   /** 判据二：归谁的。kind 决定默认值，字段级可覆盖（聊天截图必须逐字段判） */
@@ -96,9 +103,11 @@ interface VisualFactField {
 }
 ```
 
-**归属默认规则**（vision 提示词内置，字段级可覆盖）：`job_posting` → 全部 `publisher`；`resume` → 全部 `candidate`；`map_location` → 位置类字段 `candidate`（候选人用它指自己的位置）；`chat_screenshot` → 逐字段判，判不了给 `unknown`；`unknown` 一律按第三方处理（**宁可要求候选人重说一遍，不可把陌生人信息当自陈**——与 PR #870 的残余风险取向一致）。
+**归属默认规则**（vision 提示词内置，字段级可覆盖）：`job_posting` → 全部 `publisher`（`candidate_address` 例外，归 `candidate`）；`resume` → 全部 `candidate`；`map_location` → 位置类字段 `candidate`（候选人用它指自己的位置）；`chat_screenshot` → 逐字段判，判不了给 `unknown`；`unknown` 一律按第三方处理（**宁可要求候选人重说一遍，不可把陌生人信息当自陈**——与 PR #870 的残余风险取向一致）。
 
-**判据三（可不可信）不进 schema，进消费规则**：`job_posting` 的薪资/班次/年龄字段天然是「候选人看到的版本」，消费规则规定其只能作**查询线索**（引导调 `duliday_job_list`），不得直接作岗位事实投递（§3.4-R4）。
+**置信度规则（2026-08-05 裁决 B3）**：证件/简历图上的 `phone` 即使归属 `candidate`，入档一律压 `confidence=medium`——办证登记的号码可能是旧号/代办号。booking/precheck 预填只信 high，medium 须经**确认问答**（"电话就用 176···6584 这个吗？"）升级后才可预填；升级机制复用现有 `EXPLICIT_UPGRADE_FIELDS` + 确认问答裁决，零新造。
+
+**判据三（可不可信）不进 schema，进消费规则**：`job_posting` 的薪资/班次/年龄字段天然是「候选人看到的版本」，走附录 A 的**通道②（语境信息）**——主模型可见、不进查询参数、不进档案，回答须以 `duliday_job_list` 当前结果为准（§3.4-R4）。
 
 ### 3.2 两个结构化点（对应两条生产路径）
 
@@ -155,9 +164,9 @@ Redis 消息窗口对象同步带该字段（`updateMessageContent` 现有的同
 
 | 规则 | 消费点 | 内容 | 根除的 badcase |
 |---|---|---|---|
-| **R1 身份自陈判据** | C2 规则轨 / C3 LLM 轨 / C4 出处门 | 身份字段（`interview_info` + gender + is_student/education）只吃：手打文本 + `resume` kind 且 `ownership=candidate` 的字段。**替代 PR #870 的文本前缀猜测**——`visual-description.ts` 的判据从「前缀像不像图片」换成「sheet 说归谁」，该文件在 Phase 4 删除 | `vkikct39` |
+| **R1 身份自陈判据** | C2 规则轨 / C3 LLM 轨 / C4 出处门 | 身份字段（`interview_info` + gender + is_student/education）只吃：手打文本 + `resume` kind 且 `ownership=candidate` 的字段。**替代 PR #870 的文本前缀猜测**——`visual-description.ts` 的判据从「前缀像不像图片」换成「sheet 说归谁」，该文件在 Phase 4 删除。**R1e 扩展（2026-08-05 实锤后新增）**：`ownership=publisher` 字段同样不得进 `preferences`——同案 `pref.salary` 被岗位卡「5000-6000元/月」写成候选人期望薪资；有归属判据后可安全收窄 preferences（不伤地图定位，那是 `map_location`+`candidate`），这正是 PR #870 靠文本猜测做不到的一刀 | `vkikct39`（phone/age/**salary**） |
 | **R2 发布方剔除** | C5 品牌双轨 | `fields` 中 `key=publisher` 或 `ownership=publisher` 的公司名/品牌名**不进** `brandResolution.resolve`；意向品牌只取 `key=brand`（候选人看中的岗位品牌）。规则 hints 轨（现在无来源标记）一并接入 | 品牌劫持 |
-| **R3 地图直通定位** | C6 geo / invite 城市门 | `map_location` 的 `city/address` 字段直接进 geocode 锚点链（`geocode-location-anchor` 已有消费口），与「定位分享城市证据化」（A2，`buildLocationShareCityFact`）同级证据；**`job_posting` 的门店地址不进候选人位置**，只作岗位查询线索 | `oaz6inzf`、`x3pdj7qh` |
+| **R3 地图直通定位** | C6 geo / invite 城市门 | `map_location` 的 `city/address` 字段直接进 geocode 锚点链（`geocode-location-anchor` 已有消费口），与「定位分享城市证据化」（A2，`buildLocationShareCityFact`）同级证据；**`candidate_address`（岗位页「我的地址」）同级接入**（裁决 A7，样本实证今天零消费的位置金矿）；**`job_posting` 的门店地址不进候选人位置**，只作岗位查询线索 | `oaz6inzf`、`x3pdj7qh`、`yh5wgnnc` 族 |
 | **R4 截图岗位需查证** | C1 提示词 | `job_posting` 的窗口文本带 kind 标注 + prompt 一条口径：「截图上的岗位信息是候选人看到的版本，薪资/班次/在招状态必须以 `duliday_job_list` 当前结果为准，不得直接确认或比对」。**先 prompt + 观测，不立守卫**（兜底边界原则：确定性档位须 badcase 实证） | `umr69uqq` |
 | **R5 简历链路正名** | C7 | `resume` kind 替代 `isResumeImageDescription` 双份硬编码；`简历附件：URL` 行保留（下游 F3 正则不动） | —（清债） |
 
@@ -219,3 +228,70 @@ C2 的 4 个调用点（`session.service.ts:812/834`、`memory-lifecycle.service
 | 7-10 守卫下线裁定 | 不新增出站硬规则，全部改造在抽取/解析层 |
 | 类型单一收拢不散 | VisualFactSheet 单点定义；品牌域 `BrandResolutionSource` 保留不动（它是品牌解析的内部来源枚举，与消息级 sheet 正交） |
 | 迁移先测试后生产、与发版同步 | §3.3 / §5 已列 |
+
+---
+
+## 附录 A · 图片信息类别与裁决记录（2026-08-05）
+
+> 依据：生产抽样 60 条候选人侧图片消息（2026-08-01 ~ 08-05 12:00，`chat_messages`）。
+> 其中 **20 条为裸 `[图片消息]` 占位（描述缺失率 ~33%）**——Phase 0 补盘项之一已由此获得首个实测量级。
+> 裁决人：jiezhu ｜ 本附录是 §3.1 字段白名单与 vision 提示词口径的唯一依据，改动须回到这里。
+
+### A.1 有效描述的图片类型分布（40 条）
+
+| 类型 | 占比 | 典型 |
+|---|---|---|
+| 岗位类（BOSS 岗位卡 / 本平台找工作页 / 海报 / 岗位详情） | ~38% | 达美乐岗位卡、必胜客列表页 |
+| BOSS/微信聊天截图（含交换微信页） | ~15% | 交换微信号、招聘话术问答 |
+| 地图 / 导航 / 地铁线路 | ~13% | 高德门店位、通勤路线、7号线站点 |
+| 证件与自陈材料（健康证 / 简历） | ~8% | 健康证含姓名证号手机号 |
+| 流程状态（AI 面试页 / 会议等候 / 排班日历 / 承揽页） | ~10% | 「本场面试已结束」 |
+| 无关噪音（助力码 / 好友资料页 / 自拍） | ~10% | 拼多多助力码 |
+| 其他（面试安排群聊 / 考勤发薪截图） | ~8% | 群聊含他人面试安排 |
+
+### A.2 信息用途三通道（消费模型）
+
+```
+通道① 进查询参数（确定性，仅四类字段够格）
+    brand / brand_id / store / candidate_address(含 map_location 的定位点)
+    → brandAliasList / brandIdList / searchJobName / geocode location
+通道② 进对话语境（主模型可见；不进参数、不进档案）
+    薪资文案、班次、年龄门槛、工作内容、第三方对话内容、流程状态
+    → 配 prompt 口径：回答前调工具，数字以工具结果为准
+通道③ 进候选人档案（唯一入口：ownership=candidate 的自陈材料字段）
+    简历/健康证字段（phone 压 medium + 确认升级）、candidate_address、map_location 定位
+```
+
+### A.3 裁决终态表
+
+| # | 信息 | 裁决 | 备注 |
+|---|---|---|---|
+| A1 | 品牌/门店名 | 通道①+③（意向线索） | 现状品牌轨保留 |
+| A2 | **品牌ID（我方截图自带）** | **通道①** | 绕过别名匹配全部歧义，白捡 |
+| A3 | 岗位薪资类文案 | **通道②** | 禁入 `pref.salary`（本案实锤污染） |
+| A4 | 岗位年龄/证件/学历门槛 | **通道②** | 禁入身份档案（本案实锤 `age=18`） |
+| A5 | 班次/结算周期 | **通道②** | R4 prompt：以 job_list 为准 |
+| A6 | 发布方/招聘者信息（公司、经纪人名、资质） | **废弃** | 不进任何档案与解析（品牌劫持 + 本案经理微信号） |
+| A7 | **「我的地址」/「距我 X km」** | **通道③（位置证据）** | 候选人设备真实地址，今天零消费 |
+| A8 | 工作内容/福利文案 | 通道② | — |
+| B1 | 简历全套字段 | 通道③ | 现状正名（`resume` kind） |
+| B2 | 健康证：有证/发证日期/从业范围 | **通道③** | 直接补齐收资字段，少问一轮 |
+| B3 | 证件上的手机号 | **通道③ + `confidence=medium` + 确认升级** | 用户裁定：可当自陈但非高置信 |
+| B3' | 证件号（身份证号） | **废弃（不设 key）** | booking 用不到，纯暴露面 |
+| C1 | 地图定位点/导航起点 | 通道③（位置证据） | `oaz6inzf` 根除点 |
+| C2 | 目标门店位置 | 通道①（查询线索） | — |
+| C3 | 地铁线路站点列表 | **仅展示（通道②）** | 意图模糊，不结构化 |
+| D1 | 交换微信展示的号码 | **废弃** | 本案 P0：经理本人微信号 |
+| D2 | 招聘者营销话术数字 | **废弃**（语境里可见但零结构化） | 「18岁以上」「13.8元/时」 |
+| D3 | 候选人在第三方平台的发言 | **仅展示（通道②）** | 真实意愿信号但出处弱，用前须当面确认 |
+| D4 | 群聊截图里**他人**的 PII | **raw 保真 + 零结构化 + prompt 防复述** | 用户裁定：不丢信息、不打码（含手机号）；加一条口径「截图中他人的姓名/电话/面试安排不得向当前候选人复述」，不加硬规则 |
+| E1/E2 | 流程状态/排班考勤 | 仅展示（通道②） | — |
+| F | 噪音（助力码/自拍/好友页/假订单） | `kind=other`，零结构化 | 真伪鉴别不做（既有非目标） |
+
+### A.4 本次裁决对正文的改动落点
+
+- §3.1：fields 增 `brand_id` / `candidate_address` / `cert_issue_date`，证件号明确不设 key；新增置信度规则（B3）
+- §3.4-R1：新增 R1e（publisher 字段禁入 preferences——`pref.salary` 实锤）
+- §3.4-R3：`candidate_address` 接入定位证据链（A7）
+- §3.4-R4：口径增补「截图中他人 PII 不得复述」（D4）
+- Phase 0：描述缺失率已有 33% 首测值，该项优先级上调
