@@ -7,17 +7,32 @@ import { SemanticReviewCoverageWatchdog } from '@biz/monitoring/services/alerts/
  * 停摆命中、有评审不告警、低峰量能不告警。
  */
 describe('SemanticReviewCoverageWatchdog', () => {
-  const buildWatchdog = (successfulTurns: number, semanticReviews: number) => {
+  const buildWatchdog = (
+    successfulTurns: number,
+    semanticReviews: number,
+    replyConfig: Record<string, unknown> = {
+      outputGuardrailLlmEnabled: false,
+      outputGuardrailSemanticShadowEnabled: true,
+    },
+  ) => {
     const countSuccessfulTurnsBetween = jest.fn().mockResolvedValue(successfulTurns);
     const countSemanticReviewsBetween = jest.fn().mockResolvedValue(semanticReviews);
     const sendSimpleAlert = jest.fn().mockResolvedValue(true);
+    const getAgentReplyConfig = jest.fn().mockResolvedValue(replyConfig);
     const watchdog = new SemanticReviewCoverageWatchdog(
       { countSuccessfulTurnsBetween } as never,
       { countSemanticReviewsBetween } as never,
       { sendSimpleAlert } as never,
       { get: jest.fn().mockReturnValue(undefined) } as never,
+      { getAgentReplyConfig } as never,
     );
-    return { watchdog, countSuccessfulTurnsBetween, countSemanticReviewsBetween, sendSimpleAlert };
+    return {
+      watchdog,
+      countSuccessfulTurnsBetween,
+      countSemanticReviewsBetween,
+      sendSimpleAlert,
+      getAgentReplyConfig,
+    };
   };
 
   it('alerts when a busy hour produced zero semantic reviews', async () => {
@@ -59,6 +74,28 @@ describe('SemanticReviewCoverageWatchdog', () => {
     expect(to.getMinutes()).toBe(0);
     expect(to.getSeconds()).toBe(0);
     expect(to.getMilliseconds()).toBe(0);
+  });
+
+  // 两周判决期里"关停语义档"是候选结局之一；有意关停时评审归零是期望状态。
+  it('stays silent when both semantic toggles are intentionally off, without querying counts', async () => {
+    const { watchdog, sendSimpleAlert, countSuccessfulTurnsBetween } = buildWatchdog(651, 0, {
+      outputGuardrailLlmEnabled: false,
+      outputGuardrailSemanticShadowEnabled: false,
+    });
+
+    await watchdog.checkPreviousHourCoverage();
+
+    expect(countSuccessfulTurnsBetween).not.toHaveBeenCalled();
+    expect(sendSimpleAlert).not.toHaveBeenCalled();
+  });
+
+  it('still checks when the toggle read itself fails (fail-open towards checking)', async () => {
+    const { watchdog, sendSimpleAlert, getAgentReplyConfig } = buildWatchdog(651, 0);
+    getAgentReplyConfig.mockRejectedValue(new Error('config down'));
+
+    await watchdog.checkPreviousHourCoverage();
+
+    expect(sendSimpleAlert).toHaveBeenCalledTimes(1);
   });
 
   it('never throws when the database call fails', async () => {

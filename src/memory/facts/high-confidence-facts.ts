@@ -1189,7 +1189,11 @@ function extractHealthCertificate(message: string): string | null {
         /(?:费用|收费|报销|补贴|免费|线上|线下)/u.test(clause)) ||
         /(?:可以|可|能|会|愿意|接受|打算|准备|考虑|入职前|上岗前|后期|后面|之后|到时|到时候|公司|门店|你们|平台|单位|医院|社区).{0,16}(?:去|帮我|统一|负责)?办(?:理)?(?:一下|了)?(?:吗|么|呢)?[?？!！。；;，,]?$/u.test(
           clause,
-        ));
+        ) ||
+        // 跨分句资质限定语：「我有健康证，但是外地的/是外地办的」——限定语分句里没有
+        // "健康证"字样，不继承话题就永远够不到"非本地"判定（消息级正则改逐分句时引入
+        // 的回归）。异地证按"有"直通会与 precheck「异地证一律不能按有提交」口径相撞。
+        /(?:外地|异地|(?:不是|非)本地)/u.test(clause));
     const scopedClause = mentionsHealthCertificate
       ? clause
       : inheritsHealthCertificateTopic

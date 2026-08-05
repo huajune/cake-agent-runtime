@@ -2439,6 +2439,29 @@ describe('HardRulesService', () => {
         'screening_rejection_override',
       );
     });
+
+    it('allows "条件是符合的" said about a different pivot job（评审 874 实证假阳回归）', () => {
+      const result = service.check({
+        replyText:
+          '果蔬好这边暂时不太匹配，先不推进了。不过肯德基金运店这家你条件是符合的，要不要帮你预约这家？',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '那还有别的吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
+        'screening_rejection_override',
+      );
+    });
+
+    it('still flags "条件是符合的" when the sentence names the rejected job', () => {
+      const result = service.check({
+        replyText: '重新看了下，果蔬好这家你条件是符合的，我帮你继续推进。',
+        toolCalls: householdRejectedPrecheck,
+        userMessage: '真的不行吗？',
+      });
+
+      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
+    });
   });
 
   describe('service basics', () => {

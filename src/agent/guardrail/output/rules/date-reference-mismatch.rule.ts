@@ -17,10 +17,14 @@ import type { RuleContradiction } from '../output-rule.types';
  * - 不校验星期几（周几与日期的映射交语义层）。
  */
 
+// 「大后天」必须独立成词：否则会被交替组里的「后天」从第二个字起吃掉，把 +3 天
+// 的正确表述按 +2 天判成错配——列面试时段时「后天/大后天」并排出现是高频话术
+//（2026-08-04 生产 chat 6a3ccb21「大后天（8月7日）」即为正确回复，误判即误修）。
+// 交替组把「大后天」放在「后天」之前，扫描到「大」时即整词命中，不会留给「后天」。
 const RELATIVE_DATE_PATTERN =
-  /(今天|明天|后天)[^。！？\n]{0,6}[（(]?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/gu;
+  /(大后天|今天|明天|后天)[^。！？\n]{0,6}[（(]?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/gu;
 
-const RELATIVE_OFFSET: Record<string, number> = { 今天: 0, 明天: 1, 后天: 2 };
+const RELATIVE_OFFSET: Record<string, number> = { 今天: 0, 明天: 1, 后天: 2, 大后天: 3 };
 
 const CST_OFFSET_MS = 8 * 60 * 60 * 1000;
 
