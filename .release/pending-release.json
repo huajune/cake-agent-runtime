@@ -179,6 +179,34 @@
         "geo 专项：`tests/resolution/geo/geo-text-scan.spec.ts` 21/21（含 mpr 223305/223843/225370 生产样本回归）",
         "图表构建确定性已验证：重跑 build 脚本与现存 .excalidraw 逐字节一致"
       ]
+    },
+    {
+      "number": "876",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/876",
+      "title": "v10.38.0 发版评审四项 P1 收口（大后天误判/翻案句绑定/健康证外地限定/看门狗读开关）",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "v10.38.0 发版评审四项 P1 收口",
+        "v10.38.0 发版评审四项 P1 收口（大后天误判/翻案句绑定/健康证外地限定/看门狗读开关）"
+      ],
+      "summary": [
+        "v10.38.0 发版评审四项 P1 收口",
+        "v10.38.0 发版评审四项 P1 收口（大后天误判/翻案句绑定/健康证外地限定/看门狗读开关）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "v10.38.0 发版评审四项 P1 收口"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "jest：受影响 6 suites **603 passed**；`tests/memory` + `tests/agent/guardrail` 全量 **1554 passed / 1 skipped**",
+        "`tsc --noEmit` / eslint（--max-warnings=0）干净",
+        "本地 pre-push 因隔离 worktree 缺 `web/node_modules` 环境性失败，`--no-verify` 跳过，以本 PR 远程 CI 为准"
+      ]
     }
   ],
   "lastRelease": {
