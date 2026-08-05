@@ -65,6 +65,46 @@
         "既有断言仅两个 spec 因 `updateMessageContent` 第三参更新",
         "**全量 394 suites / 6484 passed**；`tsc --noEmit`、`eslint`（全部改动文件）绿"
       ]
+    },
+    {
+      "number": "873",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/873",
+      "title": "图片信息链路现状架构文档（前身：立项三件套）",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "回填信息类别裁决记录 + vkikct39 事实修正"
+      ],
+      "summary": [
+        "图片信息结构化专项方案 + 链路盘点",
+        "评审意见修订——模块归位 resolution/visual + 落库设计说清",
+        "图片信息结构化代码改造技术方案",
+        "回填信息类别裁决记录 + vkikct39 事实修正",
+        "补实施记录——PR #885 一次性落地与三处偏离",
+        "三份立项文档整合为现状架构文档 visual-fact-pipeline",
+        "附录 A 扩为完整信息类别裁决清单",
+        "增数据流时序节——一张图片的一生（17 步 + 接管期平行线）",
+        "记忆与状态全局视图——三角色心智模型",
+        "图片信息链路现状架构文档（前身：立项三件套）"
+      ],
+      "features": [],
+      "fixes": [
+        "回填信息类别裁决记录 + vkikct39 事实修正"
+      ],
+      "optimizations": [],
+      "ops": [
+        "图片信息结构化专项方案 + 链路盘点",
+        "评审意见修订——模块归位 resolution/visual + 落库设计说清",
+        "图片信息结构化代码改造技术方案",
+        "补实施记录——PR #885 一次性落地与三处偏离",
+        "三份立项文档整合为现状架构文档 visual-fact-pipeline",
+        "附录 A 扩为完整信息类别裁决清单",
+        "增数据流时序节——一张图片的一生（17 步 + 接管期平行线）",
+        "记忆与状态全局视图——三角色心智模型"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
