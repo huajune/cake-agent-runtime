@@ -300,3 +300,15 @@ P2 是主模型看图的即时产物，P1 是异步兜底/补写（`describeForB
 
 1. **Redis 一致性机制**：产品方案 §3.3 早版写"updateMessageContent 同步刷新 Redis 顺带覆盖"——实际机制是 **del 缓存 → 下次读取从 DB 回填**（`chat-session.service.ts:227-236`），对本方案更有利：缓存侧零改动，一致性由回填天然保证。
 2. **`payload` 列已存在**：`chat_messages` 已有 jsonb 列 `payload`（渠道原始报文）。不复用的理由见 §3.1——"渠道给我们的" vs "我们理解出来的"，语义与信任级别不同。
+
+---
+
+## 11. 实施记录（2026-08-05 晚，PR #885 一次性落地）
+
+用户裁定「一口气完成整个链路改造」，四期主体随 [PR #885](https://github.com/huajune/cake-agent-runtime/pull/885) 单 PR 落地。相对本文的三处实施偏离：
+
+1. **shadow 闸门 → 运行时降级兜底**：不设观察期门槛；sheet 缺失/解析失败 → `kind=other` → 行为逐字等同现状，P1 结构化失败回退纯文本 `generate` 路径。resume 新旧双判并跑保留（分歧 warn 落日志），Phase 4 删除项未做。
+2. **Design B 存储读路径取代 §3.4 的窗口对象穿线**：消费侧（session.service 事实抽取）按「剥时间后缀内容」等值匹配 `getVisualFactsByChat(chatId)` 拉 sheet——描述由 `updateMessageContent` 整条写入，窗口与库中内容逐字一致，免去 ShortTermMessage→缓存→ModelMessage 五层改造；`getChatHistory`/缓存 util/窗口类型全部未动。
+3. **Phase 3 kind 标注前缀暂缓**（改存储文本格式波及 startsWith 判定面大），R4 仅落 prompt 口径；`geocode-location-anchor` 未改（其锚点来源是人工经理消息与 sessionFacts，已在源头净化）。
+
+置信度与来源三道闸（评审追问后定版，同产品方案 §3.1）：ownership 门（进档前）→ 确定性赋值（map 城市过 geo 白名单确权才 `tool/high`；证件/简历 phone 锁 medium，explicit-upgrade 的 phone quote 只认手打文本）→ 既有消费闸门原样兜底。
