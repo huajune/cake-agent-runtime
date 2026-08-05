@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.40.0] - 2026-08-05
 
-**预计版本**: `v10.40.0`
-**最近更新**: `2026-08-05`
 **来源分支**: `develop`
-**累计 PR**: 6
 
 ### 更新摘要
 - PR #885 第三方岗位截图夺号——图片描述不得当候选人自陈身份
@@ -104,7 +100,6 @@
 - PR #896 `pnpm config:hosting:check:prod`
 - PR #875 新增 2 例：badcase 同型（薪资段整段在截断点后 → 补录出现、且只补薪资段不带福利）；薪资段完整在窗口内 → 不补录
 - PR #875 `review-packet.builder.spec` 10/10、`semantic-reviewer.service.spec` 25/25 通过；typecheck / eslint 全净
-<!-- release:pending:end -->
 
 ## [10.39.0] - 2026-08-05
 
