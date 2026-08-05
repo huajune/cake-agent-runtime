@@ -27,6 +27,30 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "906",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/906",
+      "title": "v10.40.0 底账补记 P0 同族场景生产自然复现证据",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "补记 P0 同族场景生产自然复现验证证据",
+        "v10.40.0 底账补记 P0 同族场景生产自然复现证据"
+      ],
+      "summary": [
+        "补记 P0 同族场景生产自然复现验证证据",
+        "v10.40.0 底账补记 P0 同族场景生产自然复现证据"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补记 P0 同族场景生产自然复现验证证据"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
