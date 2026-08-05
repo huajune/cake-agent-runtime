@@ -324,7 +324,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
-      '回复承诺同事、负责人或店长后续确认/联系候选人时，要求本轮存在成功的人工升级动作（request_handoff、raise_risk_alert 或预约失败自动暂停）。',
+      '回复承诺由自己、同事、负责人或店长在本轮之后继续确认/联系/发送资料时，要求本轮存在成功的人工升级动作（request_handoff、raise_risk_alert 或预约失败自动暂停）。',
     riskGoal: '防止 Agent 口头承诺人工跟进却没有落 handoff、暂停托管或通知负责人。',
     exogenousSignal:
       '同事/负责人后续动作承诺词形（2026-07-21 补"转人工"式承诺，badcase chat 6a5f4549）+ 本轮 request_handoff.dispatched=true / raise_risk_alert.accepted=true / duliday_interview_booking.hostingPaused=true' +
@@ -338,7 +338,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     // 着装要求/"已拉你进群"/约面时间，2 例投递）。整条皆承诺的形态由 runner 的
     // handoff_promise_only_reply_silenced 闸直接收敛，不进 rewrite。
     feedbackToGenerator:
-      '上一版回复承诺了“让同事/负责人后续确认、联系或答复”，但本轮没有成功的人工升级动作（request_handoff / raise_risk_alert / 预约失败自动暂停），当前文本不可发送。请删除“同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。' +
+      '上一版回复承诺了由自己或同事/负责人在本轮之后继续确认、联系、发送资料，但本轮没有成功的人工升级动作（request_handoff / raise_risk_alert / 预约失败自动暂停），当前文本不可发送。请删除“我确认后发你/同事会确认/稍后联系/帮你转人工”等跟进承诺，只保留并陈述当前已确认的事实与候选人可自行进行的下一步；其余未被点名的内容逐字保留。' +
       '严禁为填补删除承诺留下的空缺而新增任何本轮工具结果之外的事实（着装/班次/薪资/面试时间/已完成动作等都算）；若删除承诺后没有其他实质内容可保留，就只输出一句不含新事实、不含新承诺的自然收束。',
     // 2026-07-27 降 revise 后白名单摘除（原 ['request_handoff']；rewrite 无工具，
     // 补执行 handoff 的修复形态见评估文档 §2.4 条件项）。
@@ -403,6 +403,38 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     // 2026-07-27 降 observe 后不再进 replan，工具白名单摘除（原 ['geocode',
     // 'duliday_job_list']，2026-07-24 审计 P0-2 补齐地理召回的历史见 git）。feedback
     // 保留，供未来重新申请动手权时复用。
+  },
+  {
+    id: 'combination_schedule_weekly_generalization',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '候选人询问“组合排班”标签时，拦截把该标签本身泛化成固定周出勤底线或低周频难匹配。',
+    riskGoal: '避免把日内班次组合/轮换与每周出勤频次混成同一约束，导致低周频候选人被无依据拒绝。',
+    exogenousSignal:
+      '本轮候选人对组合排班的明确问句 + 回复中的泛化排班作用域 + 周频底线/难匹配断言。',
+    residualRisk:
+      '只覆盖明确泛化作用域、周频词与底线/匹配结论；明确归属于具体岗位或本次结果集的陈述不在本规则范围内，由岗位事实规则对账。更隐晦的“这类岗不适合你”仍交语义审查。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版把“组合排班”标签本身泛化成了每周出勤底线或“每周两天难匹配”，当前文本不可发送。' +
+      '请只说明：组合排班表示早/中/晚等班次会组合或轮换安排，不等于一天三个时段全部都上；每周最多几天是独立的周频约束，是否匹配要另看具体岗位明确的每周出勤要求。' +
+      '不要补写“这类排班通常至少几天/有周频底线/很难匹配”等无岗位依据的结论，其余内容原样保留。',
+  },
+  {
+    id: 'health_certificate_generalization',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '候选人一般询问健康证时，允许餐饮类工作统一办证口径，拦截无依据的行业办理阶段比例断言。',
+    riskGoal: '避免把“大部分录用后办、极少数面试前办”等猜测当成行业流程，误导候选人判断约面门槛。',
+    exogenousSignal: '本轮一般性健康证问句 + 回复中的大部分/少数/极少数办理阶段泛化词形。',
+    residualRisk:
+      '只覆盖未被局部否定、提问或尾随反驳的办理阶段比例词；“餐饮类工作一律需要健康证”是已确认业务口径，不在拦截范围。具体岗位阶段仍由岗位事实规则对账。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '上一版编造了“大部分/少数/极少数餐饮岗位在某阶段办证”的比例，当前文本不可发送。' +
+      '请保留正确口径“餐饮类工作一律需要食品健康证”，并把办理阶段改为“具体需要在哪个阶段具备，以具体岗位当前要求为准”。' +
+      '不要补写任何岗位占比，也不要把候选人的疑问写成其已持证或愿意办理的事实；其余内容原样保留。',
   },
   {
     id: 'unsupported_schedule_window_claim',
@@ -526,20 +558,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     // 形态 A（问日期且无确认口径）＝REVISE：与已提交工单直接矛盾，近零假阳；
     // 形态 B（零播报）在规则实现内自降 OBSERVE 落档累计精确率；
     // 形态 C（booking 失败却称正在/已提交）＝REVISE，自带失败路径 feedback 覆盖；
-    // 形态 D（候选人明确先别报名却继续推进）＝REVISE，自带候选人意愿路径 feedback。
+    // 形态 D（候选人明确先别报名却继续推进，或附和未预约自行到店）＝REVISE，
+    // 自带候选人意愿路径 feedback。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       'duliday_interview_booking 的回执对账：拦住“工单已建单却仍问候选人定哪天”、' +
       '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”、“调用失败却称正在/已提交”' +
-      '及“候选人明确先别报名却仍催登记/承诺安排”，观察“零播报”。',
+      '及“候选人明确先别报名却仍催登记/承诺安排或附和未预约自行到店”，观察“零播报”。',
     riskGoal:
       '预约提交是不可逆副作用；回复与其矛盾会让候选人以为没约上而重复提交（撞 already_booked）或直接流失' +
       '；兼职群与面试群混淆会让候选人在错误群里等待会议链接' +
       '（badcase chat 6a684089ce406a6aeed49d8d）。',
     exogenousSignal:
       '本轮 booking success/error、interviewGroupHandling、invite_to_group.groupPurpose 等工具事实，' +
-      '候选人当前报名/预约意愿，以及回复文本的日期征询、播报缺失、群用途表述或提交推进宣称。',
+      '候选人当前报名/预约意愿与自行到店意图，以及回复文本的日期征询、播报缺失、群用途表述、提交推进或到店附和。',
     residualRisk:
       '窗口制“已约好+问几点到店”经确认口径豁免；预约时间与候选人口头要求不一致（王真宝案）需要' +
       '语义比对候选人诉求，不在本规则确定性能力内，留语义审查/离线环。',

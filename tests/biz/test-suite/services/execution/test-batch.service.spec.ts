@@ -320,6 +320,8 @@ describe('TestBatchService', () => {
         test_input: {
           message: '上次我说我喜欢什么口味？',
           imageUrls: ['https://example.com/a.png'],
+          toolMode: 'readonly',
+          allowedToolNames: [],
           memorySetup: { episodic: [{ key: 'flavor', value: '草莓' }] },
           memoryAssertions: { mustRecall: ['草莓'] },
         },
@@ -384,6 +386,8 @@ describe('TestBatchService', () => {
           memorySetup: { episodic: [{ key: 'flavor', value: '草莓' }] },
           memoryAssertions: { mustRecall: ['草莓'] },
           userId: 'user-1',
+          toolMode: 'readonly',
+          allowedToolNames: [],
         }),
       );
       expect(executionRepository.updateExecution).toHaveBeenCalledWith(
@@ -519,7 +523,7 @@ describe('TestBatchService', () => {
       review_status: ReviewStatus.PASSED,
     } as TestExecution;
 
-    const mockStats = {
+    const _mockStats = {
       totalCases: 5,
       executedCount: 5,
       passedCount: 5,
