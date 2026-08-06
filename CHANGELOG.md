@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 15
+**累计 PR**: 16
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -56,6 +56,8 @@
 - PR #933 **按月计薪岗位**：不得用月薪折算时薪（折算值与结算口径不符，到店必生纠纷）；每日工时按 `workTime` 字段答，字段空才转。
 - PR #909 收拢 job-list 工具层类型债到领域契约 JobDetail
 - PR #909 Merge origin/develop into chore/tech-debt-20260805-types
+- PR #932 删除注释清洗排查确认的四组零消费方死代码
+- PR #932 Merge origin/develop into chore/remove-dead-code-20260806
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -101,6 +103,8 @@
 - PR #933 按运营口径把薪资/健康证/食宿类咨询改为可自答
 - PR #909 收拢 job-list 工具层类型债到领域契约 JobDetail
 - PR #909 Merge origin/develop into chore/tech-debt-20260805-types
+- PR #932 删除注释清洗排查确认的四组零消费方死代码
+- PR #932 Merge origin/develop into chore/remove-dead-code-20260806
 
 ### 配置变更
 - 无
@@ -123,6 +127,9 @@
 - PR #929 全库 **6875 passed / 0 failed**；`tests/agent/guardrail` **1006 passed**
 - PR #929 新增 5 条回归：未给日期→REVISE、给月日放行、只给星期放行、`8月6号`写法放行、等通知岗位不适用
 - PR #929 `tsc --noEmit` / `eslint --max-warnings=0` 均通过
+- PR #932 ✅ `pnpm run typecheck`
+- PR #932 ✅ `pnpm run lint:check`（--max-warnings=0）
+- PR #932 ✅ `npx jest --no-watchman` 全量：**412 套件 / 6868 测试全过**（较基线少 1 套件即删除的 llm-reviewer spec）
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05

@@ -419,6 +419,35 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "932",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/932",
+      "title": "删除注释清洗排查确认的四组零消费方死代码",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "删除注释清洗排查确认的四组零消费方死代码",
+        "Merge origin/develop into chore/remove-dead-code-20260806"
+      ],
+      "summary": [
+        "删除注释清洗排查确认的四组零消费方死代码",
+        "Merge origin/develop into chore/remove-dead-code-20260806"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "删除注释清洗排查确认的四组零消费方死代码",
+        "Merge origin/develop into chore/remove-dead-code-20260806"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "✅ `pnpm run typecheck`",
+        "✅ `pnpm run lint:check`（--max-warnings=0）",
+        "✅ `npx jest --no-watchman` 全量：**412 套件 / 6868 测试全过**（较基线少 1 套件即删除的 llm-reviewer spec）"
+      ]
     }
   ],
   "lastRelease": {
