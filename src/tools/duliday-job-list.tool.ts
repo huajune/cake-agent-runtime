@@ -29,6 +29,7 @@ import {
 import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
+import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import {
   filterJobsToRequestedAdministrativeArea,
@@ -207,7 +208,7 @@ const inputSchema = z.object({
       '品牌ID列表；Boss直聘岗位标题中形如 "[10239]" 的方括号纯数字是品牌ID，应填为 brandIdList=[10239]，不要当作 jobId/薪资/编号',
     ),
   brandFilterMode: z
-    .enum(['enforce', 'exclude', 'clear', 'browse_all'])
+    .enum(BRAND_FILTER_MODES)
     .optional()
     .describe(
       '品牌过滤形态（可选）。enforce=仅查询指定品牌（品牌列表非空时的默认语义，通常无需显式传）；' +
