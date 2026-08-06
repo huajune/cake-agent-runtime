@@ -640,6 +640,37 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "943",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/943",
+      "title": "治理文档改按日聚合，并修好高亮块内抬头数字不刷新",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "治理文档改按日聚合，并修好高亮块内抬头数字不刷新"
+      ],
+      "summary": [
+        "治理文档改按日聚合，并修好高亮块内抬头数字不刷新"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "治理文档改按日聚合，并修好高亮块内抬头数字不刷新"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全库 **6904 passed / 0 failed**；`tests/biz/feishu-sync` **66 passed**",
+        "新增 4 条回归：",
+        "当日已有小节时只追加条目、且插到小节末尾（不含 heading3、不含「本次更新：」）",
+        "新的一天新建小节、标题不含时分",
+        "同事件 ID 重复运行仍跳过",
+        "callout 内的抬头剩余数与更新时间可被刷新",
+        "既有用例「inserts a dated update before section four」的标题预期同步去掉时分",
+        "`tsc --noEmit` / `eslint --max-warnings=0` 均通过"
+      ]
     }
   ],
   "lastRelease": {
