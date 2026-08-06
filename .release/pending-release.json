@@ -73,6 +73,32 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "915",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/915",
+      "title": "收资字段名与裁决观测词表收拢（期 2）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "收资字段名与裁决观测词表收拢（期 2）"
+      ],
+      "summary": [
+        "收资字段名与裁决观测词表收拢（期 2）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "收资字段名与裁决观测词表收拢（期 2）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "**jest 410 suites · 6820 tests 全通过**",
+        "**precheck 域 9 suites · 179 tests 全通过**",
+        "新增 spec 逐一断言全部取值与顺序未变"
+      ]
     }
   ],
   "lastRelease": {
