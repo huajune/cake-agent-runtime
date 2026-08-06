@@ -10,6 +10,7 @@ import type {
   PostProcessingStatus,
 } from '@shared-types/tracking.types';
 import type { GuardrailInputTrace, GuardrailTurnTrace } from '@shared-types/guardrail.contract';
+import type { MessageProcessingStatus } from '@enums/message.enum';
 
 /**
  * 聊天消息输入格式
@@ -65,7 +66,7 @@ export interface MessageProcessingRecordInput {
   messagePreview?: string;
   replyPreview?: string;
   replySegments?: number;
-  status: 'processing' | 'success' | 'failure' | 'timeout';
+  status: MessageProcessingStatus;
   error?: string;
   alertType?: AlertErrorType;
   scenario?: string;
