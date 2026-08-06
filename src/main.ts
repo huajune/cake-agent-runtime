@@ -118,7 +118,7 @@ async function bootstrap() {
   // 获取 Reflector 实例（用于读取装饰器元数据）
   const reflector = app.get(Reflector);
 
-  // 全局注册响应拦截器（统一包装所有响应）
+  // 全局注册响应拦截器（统一包装响应；@RawResponse 标记的端点例外）
   app.useGlobalInterceptors(new ResponseInterceptor(reflector));
 
   // 全局注册参数校验管道（让 DTO 装饰器真正成为运行时防线）
@@ -131,7 +131,7 @@ async function bootstrap() {
   // 让 MessageProcessor 排空 in-flight 消息后再退出，避免候选人消息被吞
   app.enableShutdownHooks();
 
-  // 从配置服务获取端口和环境
+  // 从配置服务获取运行环境（端口已在 bootstrap 开头直接读 process.env）
   const configService = app.get(ConfigService);
   const nodeEnv = configService.get<string>('NODE_ENV')!;
 

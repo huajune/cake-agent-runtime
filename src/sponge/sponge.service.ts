@@ -73,7 +73,8 @@ function extractSpongeTraceId(headers: Headers): string | null {
  * 海绵数据服务 — 杜力岱业务数据 HTTP 客户端
  *
  * 负责调用海绵平台 API（岗位查询、面试预约等）。
- * Token 通过 ConfigService 内部管理，工具层无需关心认证。
+ * Token 优先按调用方传入的 tokenContext.botImId 从 system_config.hosting_member_config
+ * 解析，查不到再回退 ConfigService 的 DULIDAY_API_TOKEN；工具层只需透传 tokenContext。
  * BI 相关功能委托给 SpongeBiService。
  */
 @Injectable()
@@ -882,7 +883,7 @@ export class SpongeService {
   /**
    * 获取面试名单
    *
-   * POST /persistence/ai/api/interview/schedule
+   * POST {SPONGE_API_BASE_URL}/ai/api/interview/schedule（海绵2.0 网关，随 job/list 一并迁移）
    * 认证方式与岗位接口一致（Duliday-Token）
    */
   async fetchInterviewSchedule(params: InterviewScheduleParams): Promise<InterviewScheduleItem[]> {

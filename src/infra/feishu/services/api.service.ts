@@ -36,7 +36,7 @@ export class FeishuApiService {
   private readonly appSecret: string;
 
   constructor(private readonly configService: ConfigService) {
-    // 优先使用代码配置，其次使用环境变量
+    // 从环境变量读取（FEISHU_APP_ID / FEISHU_APP_SECRET），未配置时为空字符串
     this.appId = this.loadAppId();
     this.appSecret = this.loadAppSecret();
 

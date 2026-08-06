@@ -30,7 +30,7 @@ export class ReliableService {
   /**
    * 错误分类（对标 ZeroClaw classify_error）
    *
-   * - non_retryable: 401/403/404, 认证/模型不存在/余额不足
+   * - non_retryable: 400/401/403/404, 参数错误/认证/模型不存在/余额不足
    * - rate_limited: 429
    * - retryable: 5xx, timeout, 网络错误
    */

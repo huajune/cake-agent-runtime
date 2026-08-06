@@ -38,7 +38,7 @@ import { HttpExceptionFilter } from '@infra/server/response/filters/http-excepti
  * - Provider Layer: 多模型 Provider + 容错 + 路由（@Global）
  * - AI Capability Layer: 工具、MCP、记忆、海绵数据（独立模块）
  * - Observability: Observer 可观测性
- * - Agent Layer: 编排 + Profile + 策略
+ * - Agent Layer: 编排（runner / generator / guardrail / reengagement）
  * - Channel Layer: 企业微信渠道
  * - Business Layer: 监控、用户、消息等业务逻辑
  */
@@ -69,15 +69,15 @@ import { HttpExceptionFilter } from '@infra/server/response/filters/http-excepti
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
     BizModule,
     OpsEventsModule, // 运营事件底账（@Global，写入侧统一入口 OpsEventsRecorderService）
-    HostingMemberConfigModule, // 托管成员统一配置（@Global，飞书接收人 + 海绵 token，按经理索引）
+    HostingMemberConfigModule, // 托管成员统一配置（@Global，飞书接收人 + 海绵 token，按 botImId 索引）
     HandoffEventsModule, // 转人工触发底账（@Global，写入侧入口 HandoffRecorderService）
-    HuajuneModule, // 花卷招聘事件上报（@Global，fire-and-forget）
+    HuajuneModule, // 花卷招聘事件上报（@Global；2026-06 起调用方已全部移除，模块保留待用）
 
     // ==================== AI 基础设施 (AI Infrastructure) ====================
     ProvidersModule, // 多模型 Provider（@Global，三层架构）
     ToolModule, // 工具注册表 + 内置工具
     McpModule, // MCP 客户端
-    MemoryModule, // 记忆服务（Redis-backed）
+    MemoryModule, // 记忆服务（Redis + Supabase 双存储）
     SpongeModule, // 海绵数据服务（岗位/面试 HTTP）
     EvaluationModule, // Agent 评估（LLM 评分 + 对话解析）
     AnalyticsModule, // 纯分析内核（规则、趋势、指标计算）
@@ -87,7 +87,7 @@ import { HttpExceptionFilter } from '@infra/server/response/filters/http-excepti
     // ==================== 业务域 (Business Domains) ====================
     AgentModule, // AI Agent 编排
     WecomModule, // 企业微信渠道
-    TestSuiteModule, // Agent 测试套件（独立于 BizModule，避免循环依赖）
+    TestSuiteModule, // Agent 测试套件（顶层挂载；内部直接 import BizModule / AgentModule / EvaluationModule）
   ],
   providers: [HttpExceptionFilter, { provide: APP_GUARD, useClass: ApiTokenGuard }],
 })

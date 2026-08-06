@@ -97,7 +97,7 @@ export type AgentEvent = AgentEventContext &
     | { type: 'memory_store'; userId: string; keys: string[] }
     /**
      * 会话品牌状态迁移（§12 长期事件）：前后快照 + 触发它的解析结果。
-     * 仅状态实际变化时发射；它是品牌链路上唯一不可重放的信息，并承担历史回放职责。
+     * 仅状态实际变化时发射；它是品牌链路上不可重放信息之一（另一类见 brand_resolution_ambiguous），承担历史回放职责。
      */
     | {
         type: 'brand_state_change';

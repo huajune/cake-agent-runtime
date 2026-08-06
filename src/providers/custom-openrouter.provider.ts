@@ -3,7 +3,7 @@ import { createOpenRouter, type OpenRouterProvider } from '@openrouter/ai-sdk-pr
 /**
  * 自定义 OpenRouter Provider
  *
- * 基于官方 @openrouter/ai-sdk-provider（原生支持 AI SDK ProviderV3）。
+ * 基于官方 @openrouter/ai-sdk-provider（原生支持 AI SDK ProviderV4）。
  * 为 Kimi K2 模型注入自定义 fetch，修复流式 tool_calls.type 为空字符串的 bug。
  */
 

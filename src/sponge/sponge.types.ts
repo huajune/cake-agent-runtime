@@ -340,7 +340,8 @@ export interface InterviewBookingResult {
  * Sponge `customerLabel.value` 字段最大长度。
  *
  * 来源：杜力岱后台对岗位补充字段值的硬约束。booking 工具的 customer-label
- * builder 在拼装入参前会先按本常量裁剪/校验，避免接口报错。
+ * builder 在拼装入参前按本常量校验；超长直接报错拒绝整次报名
+ * （BOOKING_INVALID_CUSTOMER_LABEL_VALUES），不做裁剪。
  */
 export const SPONGE_CUSTOMER_LABEL_MAX_LENGTH = 51;
 

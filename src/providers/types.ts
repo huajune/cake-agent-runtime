@@ -64,8 +64,8 @@ import { modelHasCapability } from './models';
  * 检测模型是否支持多模态 vision（图片输入）
  *
  * 以 MODEL_DICTIONARY.capabilities 中的 'multimodal' 标签为单一来源。
- * 支持嵌套路由格式如 openrouter/anthropic/claude-sonnet-4、ohmygpt/gemini-2.5-pro
- * （resolveModelCapabilities 会按后缀逐级回退查找）。
+ * 支持嵌套路由格式如 openrouter/anthropic/claude-sonnet-5（resolveModelCapabilities 按后缀
+ * 逐级回退查找，至少需 3 段；ohmygpt/xxx 这类 2 段 provider/model 只走直接匹配，不触发回退）。
  * 未登记的模型保守返回 false，上层据此降级为文字描述。
  */
 export function supportsVision(modelId: string): boolean {

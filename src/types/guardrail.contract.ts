@@ -283,8 +283,8 @@ export interface GuardVerdict {
  * 出站守卫单次审查的紧凑摘要（观测/落库用）。
  *
  * 刻意不带 violations 证据/建议全文：这份结构会随每条 turn 写进
- * `message_processing_records.guardrail` 列，必须保持 KB 级（ttft deTOAST 教训）；
- * 证据全文只进调试链路（debug-chat / test-suite trace）。
+ * `message_processing_records.guardrail_output` 列，必须保持 KB 级（ttft deTOAST 教训）；
+ * 证据全文另落 guardrail_review_records（生产与调试链路通用）。
  */
 export interface GuardrailReviewStepTrace {
   /** first=首版审查；revised=受控修复后的二审。 */
@@ -318,7 +318,8 @@ export interface GuardrailTurnTrace {
 
 /**
  * 入站守卫拦截摘要（写入 `message_processing_records.guardrail_input`，仅拦截命中时非空）。
- * 与 runner `TurnOutcome.intercept` 对应：本轮不跑 Agent，guardrail 内部已 dispatch 人工介入。
+ * 与 runner `TurnOutcome.kind==='guardrail_blocked'`（phase='inbound'）对应：本轮不跑 Agent；
+ * guardrail 只声明 sideEffects 意图，人工介入由渠道侧 TurnOutcomeInterventionService.commit 执行。
  */
 export interface GuardrailInputTrace {
   decision: InputDecision;

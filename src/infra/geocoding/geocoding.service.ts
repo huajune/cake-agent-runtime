@@ -179,7 +179,8 @@ export class GeocodingService {
    * - 空 → 反问"换个地名"
    *
    * 与单结果 `geocode()` 的差异：
-   * - city 为空时不调用结构化 geocode（结构化兜底默认返回 1 条，无法反映跨城歧义）
+   * - city 为空时，只有地址文本自带城市/省份线索（hasEmbeddedCityHint）且 POI 查无结果才补一次
+   *   结构化 geocode；无任何城市线索时不调用（结构化兜底默认返回 1 条，无法反映跨城歧义）
    * - city 已明确时，POI + structured 合并，覆盖道路/街道这类 POI 搜不到的地址
    * - POI 搜索不强制 `citylimit`，city 为空时高德全国搜索
    * - 缓存独立 key（candidates vs single result 不互通）
