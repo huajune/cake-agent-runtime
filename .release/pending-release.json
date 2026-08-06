@@ -124,6 +124,28 @@
         "**jest 409 suites · 6814 tests 全通过**",
         "**web `tsc --noEmit` 通过**（前端类型改动已验证）"
       ]
+    },
+    {
+      "number": "923",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/923",
+      "title": "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
+      ],
+      "summary": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
