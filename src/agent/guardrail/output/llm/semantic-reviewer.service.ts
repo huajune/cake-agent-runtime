@@ -19,23 +19,6 @@ export const SEMANTIC_REVIEW_FINDING_CODES = [
 
 export type SemanticReviewFindingCode = (typeof SEMANTIC_REVIEW_FINDING_CODES)[number];
 
-/** replan 时代的恢复能力声明，退役（2026-07-27）后无任何消费方；保留仅备 §2.4 重新申领动手权，待删。 */
-export const SEMANTIC_REVIEW_FINDING_POLICIES = {
-  job_recommendation_not_best_supported: {
-    repairToolNames: ['geocode', 'duliday_job_list'],
-  },
-  brand_or_geo_ambiguity_ignored: {
-    repairToolNames: ['geocode', 'duliday_job_list'],
-  },
-  active_booking_state_conflict: {
-    repairToolNames: ['send_store_location', 'request_handoff'],
-  },
-  // 本轮零证据，没有任何工具产物可供二次取数——只能删除无据事实，不存在工具修复路径。
-  fact_asserted_without_any_evidence: {
-    repairToolNames: [],
-  },
-} as const satisfies Record<SemanticReviewFindingCode, { repairToolNames: readonly string[] }>;
-
 const semanticReviewSchema = z.object({
   decision: z.enum(OUTPUT_DECISIONS),
   confidence: z.enum(GUARDRAIL_RISK_LEVELS),

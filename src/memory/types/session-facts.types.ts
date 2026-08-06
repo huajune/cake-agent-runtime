@@ -3,7 +3,6 @@ import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.type
 import { WELFARE_KINDS } from '@tools/duliday/job-list/welfare-facts.util';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
-import type { MemoryEntry } from '../stores/store.types';
 
 // ==================== 1. 提取 schema（LLM 输出结构） ====================
 
@@ -1043,16 +1042,3 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
 export type SessionFactsRedisContent = Partial<WeworkSessionState>;
 
 export const SessionFactsRedisContentSchema = WeworkSessionStateSchema.partial();
-
-/** Redis 中 session-facts 层实际存储的 entry 结构。 */
-export type SessionFactsRedisEntry = MemoryEntry<SessionFactsRedisContent>;
-
-/**
- * 结构化短期记忆层的持久化结果形状。当前无任何消费方（残留类型，待删）；
- * 实际写入是 `factsv2:*` hash，`facts:*` 单 key 是只读迁移遗留、禁止新写入。
- */
-export interface SessionFactsStorageResult {
-  source: 'redis';
-  keyPattern: 'facts:{corpId}:{userId}:{sessionId}';
-  entry: SessionFactsRedisEntry | null;
-}

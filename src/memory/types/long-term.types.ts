@@ -237,20 +237,6 @@ export interface SummaryData {
   lastSettledBySession?: Record<string, string> | null;
 }
 
-/** agent_long_term_memories 行中的回调元信息。 */
-export interface LongTermMemoryMetadata {
-  createdAt: string;
-  updatedAt: string;
-  messageMetadata: MessageMetadata | null;
-}
-
-/** 长期记忆层在业务上的完整状态视图。 */
-export interface LongTermMemoryState {
-  profile: UserProfileFacts | null;
-  summary: SummaryData | null;
-  metadata: LongTermMemoryMetadata | null;
-}
-
 /** agent_long_term_memories 表行类型（每用户一行，Profile facts + Summary jsonb）。 */
 /**
  * 候选人当前有效/待处理预约工单指针。
@@ -286,13 +272,6 @@ export interface AgentLongTermMemoryRow {
   active_booking?: ActiveBooking | null;
   created_at: string;
   updated_at: string;
-}
-
-/** 长期记忆层的真实持久化结果。 */
-export interface LongTermStorageResult {
-  source: 'supabase';
-  table: 'agent_long_term_memories';
-  row: AgentLongTermMemoryRow | null;
 }
 
 // ==================== 长期求职意向（preference_facts） ====================

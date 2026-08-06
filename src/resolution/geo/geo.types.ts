@@ -4,9 +4,8 @@
  * 与 `resolution/brand` 的 resolve 契约刻意同构：状态 + 标准实体 + 证据，
  * 评审与观测复用同一套心智（geo-domain-refactor-plan v3.1 §8.2）。
  *
- * 现有函数保持字符串签名（与迁移前行为等价）。GeoResolution 是与 brand resolve()
- * 同构的目标结果模型，当前无消费方——Phase 3 冲突检测最终以 GeoSignalConflictShadow
- * 契约落地；长期无人接采可删。
+ * 现有函数保持字符串签名（与迁移前行为等价）；Phase 3 冲突检测最终以
+ * GeoSignalConflictShadow 契约落地。
  */
 
 /** 行政级别。 */
@@ -18,25 +17,6 @@ export type AdministrativeLevel =
   | 'county'
   | 'township'
   | 'place';
-
-/** 解析证据：resolved 结果必须带证据，不确定时返回 ambiguous/unresolved，禁止猜测。 */
-export type GeoResolutionEvidence =
-  | 'explicit_city_name'
-  | 'unique_district_alias'
-  | 'county_parent_relation'
-  | 'hotspot_alias'
-  | 'geocode_resolved';
-
-/** 地理解析结果模型（§8.2）。 */
-export interface GeoResolution {
-  status: 'resolved' | 'ambiguous' | 'unresolved';
-  city: string | null;
-  district: string | null;
-  level: AdministrativeLevel | null;
-  evidence: GeoResolutionEvidence | null;
-  matchedText: string | null;
-  candidates?: string[];
-}
 
 /** 县级行政区 → 上级地级行政区的解析结果（§8.3）。 */
 export interface ParentAdministrativeArea {
