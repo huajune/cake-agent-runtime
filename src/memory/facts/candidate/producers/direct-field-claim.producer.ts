@@ -16,6 +16,17 @@ import { deriveFieldValueFromQuote } from '../candidate-fact-normalizers';
 
 const DIRECT_FIELDS = CANDIDATE_CLAIM_FIELDS.filter((field) => field !== 'isStudent');
 
+/**
+ * quote 上限。裁决器会用存下来的 quote **原样复算**值，因此推导输入必须与存储证据
+ * 完全一致——否则规则轨会产出自己的验证器拒绝的 claim。
+ *
+ * 生产实测（2026-08-06，chat 6a714c00）：旧实现用全文推导、按 200 字截断存 quote，
+ * 一条 442 字消息里位于截断点之后的年龄信号复算失败，rule_age_1 被判
+ * `value_not_derivable`。上限抬到 1000 字覆盖长表单/长描述，同时保持
+ * "推导输入 = 存储证据"的不变式：超限部分不参与推导，也就不会产出无据 claim。
+ */
+export const RULE_CLAIM_QUOTE_MAX_CHARS = 1000;
+
 export interface ProduceDirectClaimsParams {
   /** 候选人消息文本（剥引用块/时间后缀后），按会话顺序排列。 */
   candidateTexts: readonly string[];
@@ -29,10 +40,11 @@ export function produceDirectFieldClaims(params: ProduceDirectClaimsParams): Can
   let sequence = 0;
 
   for (const [messageIndex, text] of params.candidateTexts.entries()) {
-    const trimmed = text.trim();
-    if (!trimmed) continue;
+    // 推导输入即存储证据：先截断再推导，保证裁决器复算必然成功。
+    const quote = text.trim().slice(0, RULE_CLAIM_QUOTE_MAX_CHARS);
+    if (!quote) continue;
     for (const field of DIRECT_FIELDS) {
-      const value = deriveFieldValueFromQuote(field, trimmed, now);
+      const value = deriveFieldValueFromQuote(field, quote, now);
       if (value === null) continue;
       claims.push({
         claimId: `rule_${field}_${(sequence += 1)}`,
@@ -41,7 +53,7 @@ export function produceDirectFieldClaims(params: ProduceDirectClaimsParams): Can
         operation: 'set',
         producer: 'rule',
         interpretation: 'direct',
-        evidence: { quote: trimmed.slice(0, 200), messageIndex },
+        evidence: { quote, messageIndex },
         assertedAt: params.assertedAt,
       });
     }
