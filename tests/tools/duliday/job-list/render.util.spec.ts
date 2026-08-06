@@ -302,6 +302,33 @@ describe('job-list render util', () => {
       expect(bannerIdx).toBeGreaterThan(titleIdx);
     });
 
+    // 2026-08-06 badcase（chat 6a744a86，记录 249939）：banner 里写着"不掌握候选人户籍时
+    // 按敏感门槛话术委婉了解后内部判断"，模型照做，发出「这家对户籍有要求，方便问一下你
+    // 老家是哪里的吗」。banner 与岗位数据同在当轮上下文、比系统提示词更贴近决策，敏感门槛
+    // 文案只准写禁令、不准派采集动作——这条钉死该边界，防止后人再把"先确认"写回来。
+    it('户籍 banner 只给禁令，不得指派任何向候选人采集籍贯的动作', () => {
+      const job = makeJob(1);
+      job.hiringRequirement = {
+        basicPersonalRequirements: { minAge: 18, maxAge: 50, genderRequirement: '不限' },
+        requirementsForHometown: {
+          nativePlaceRequirementType: '不要',
+          nativePlaces: ['上海市'],
+        },
+        certificate: { healthCertificate: '食品健康证' },
+        figure: '不限',
+      } as typeof job.hiringRequirement;
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+      expect(markdown).toContain('不接受 上海市');
+      expect(markdown).toContain('严禁外显');
+      // 采集动作的历史措辞与其近亲，一个都不许再出现
+      for (const directive of ['委婉了解', '先确认', '确认后再', '问清楚', '了解后内部判断']) {
+        expect(markdown).not.toContain(directive);
+      }
+      // 反向要求必须在场：明确告诉模型"不要追问"，并指出兜底在别处
+      expect(markdown).toContain('不要追问');
+    });
+
     it('renders only health cert before_onboard when nothing else specified', () => {
       const job = makeJob(1);
       job.hiringRequirement = {

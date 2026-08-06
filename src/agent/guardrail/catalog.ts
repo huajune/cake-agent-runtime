@@ -58,6 +58,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/dangling-promise.rule.ts（HardRulesService 调度）',
   discriminatory_screening_leak:
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
+  sensitive_origin_probe:
+    'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   internal_output_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   meta_narration_reply:

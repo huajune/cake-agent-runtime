@@ -557,7 +557,9 @@ export class OutputGuardrailService {
    * 语义 finding 的风险优先级。booking 状态冲突与 rule 档"工具失败假成功/预检阻断仍承诺"
    * 同属 P0 域（发出去即误导候选人预约状态，不可挽回）；零证据事实断言同为 P0——候选人
    * 会据编造的薪资/门店/报名链接白跑或交出个人信息，且本轮没有任何工具产物可供纠正
-   * （2026-07-30 审计 P0-1）；品牌/地理歧义是强业务风险 P1；推荐非最优是质量问题 P2。
+   * （2026-07-30 审计 P0-1）；敏感筛选外露/打听同为 P0——地域歧视话术发出即构成不可撤回的
+   * 聊天证据，且候选人当场质问后基本必然流失（2026-08-06 chat 6a744a86）；
+   * 品牌/地理歧义是强业务风险 P1；推荐非最优是质量问题 P2。
    * 该优先级经 resolveLlmRiskLevel 传导到 riskLevel，决定 repair 上限用尽后能否
    * fail-open（runner §9）。
    */
@@ -569,6 +571,7 @@ export class OutputGuardrailService {
     brand_or_geo_ambiguity_ignored: GUARDRAIL_PRIORITY.P1,
     active_booking_state_conflict: GUARDRAIL_PRIORITY.P0,
     fact_asserted_without_any_evidence: GUARDRAIL_PRIORITY.P0,
+    sensitive_screening_disclosure_or_probe: GUARDRAIL_PRIORITY.P0,
   };
 
   /** 把 semantic finding 映射成 GuardViolation（喂回 repair prompt）。 */

@@ -15,6 +15,7 @@ export const SEMANTIC_REVIEW_FINDING_CODES = [
   'brand_or_geo_ambiguity_ignored',
   'active_booking_state_conflict',
   'fact_asserted_without_any_evidence',
+  'sensitive_screening_disclosure_or_probe',
 ] as const;
 
 export type SemanticReviewFindingCode = (typeof SEMANTIC_REVIEW_FINDING_CODES)[number];
@@ -103,6 +104,24 @@ const UNGROUNDED_FACT_CLAIM_PATTERNS: readonly RegExp[] = [
   /https?:\/\//u,
 ];
 
+// —— 敏感筛选轴触发器 ————————————————————————————————————————
+/**
+ * 回复是否碰到地域/民族/婚育这条敏感筛选轴（导出仅供单测）。
+ *
+ * 这是**审查触发器**，不是判据：它刻意比硬规则的正则宽，因为它的价值恰恰在于覆盖
+ * 正则写不出的形态。2026-08-06 badcase（chat 6a744a86）里「这家对户籍有要求，方便
+ * 问一下你老家是哪里的吗」硬规则漏拦、语义档也 pass——语义档当时压根没有这个维度，
+ * 就算 shouldReview 放行了也只按"岗位推荐"四类去看，看不见歧视问题。
+ *
+ * 刻意不收 `专业`：它在正常话术里太常见（"我们很专业"），当触发器会把大量无关回合
+ * 拖进 LLM 审查；该轴由硬规则的反问式/排除式模式覆盖（2026-07-06 已同口径落地）。
+ */
+export function touchesSensitiveScreeningAxis(reply: string): boolean {
+  return /户籍|户口|籍贯|老家|哪里人|哪儿人|哪边人|哪个省|本地人|民族|婚育|婚姻|已婚|未婚|生育/u.test(
+    reply,
+  );
+}
+
 /** 判定裁决中是否存在疑似被约束解码截断的 finding 文本（导出仅供单测）。 */
 export function hasTruncatedFindingText(verdict: SemanticReviewVerdict): boolean {
   return verdict.findings.some((finding) =>
@@ -133,7 +152,8 @@ export class SemanticReviewerService {
       hasGeoOrBrandAmbiguity ||
       hasBookingStateClaim ||
       hasSentLocationClaim ||
-      this.assertsFactWithoutAnyEvidence(packet)
+      this.assertsFactWithoutAnyEvidence(packet) ||
+      touchesSensitiveScreeningAxis(reply)
     );
   }
 
@@ -171,7 +191,7 @@ export class SemanticReviewerService {
         'jobList.markdownExcerpt 是岗位工具返回的 markdown 原文摘录（结构化 jobs 为空时它就是岗位事实的 ground truth，其中"品牌（门店）"格式里括号前是品牌名、括号内是门店名，不要把品牌名误读为城市）。',
         'recentAssistantMessages 是本会话往轮已发送给候选人的助手回复（正序，最近在最后）。它不是工具证据、不改变 evidence 是否为空的判定，只用于区分「跨轮复述」与「本轮新编造」——evidence 只含本轮工具结果，往轮查到并已告知候选人的事实（岗位详情、群邀请、报名状态等）在本轮 evidence 里必然缺席，不能因此判编造。',
         '摘录超长会被截断；若末尾存在「截断补录·岗位薪资信息」段，被截断岗位的薪资字段以该补录为准。顶部卡片的"薪资：X"是压缩摘要（综合薪资优先），不是该岗位薪资字段的全集——回复里的薪资数字能在补录段或详情段对上就不是编造。',
-        '只检查四类问题：',
+        '只检查五类问题：',
         '1. job_recommendation_not_best_supported：岗位推荐与 jobList 证据、距离排序、候选人指定品牌或班次明显冲突。',
         '2. brand_or_geo_ambiguity_ignored：地理或品牌证据不确定，但回复直接下结论。',
         '3. active_booking_state_conflict：booking 证据显示已约/失败/线上线下/面试时间地址等状态，但回复与其冲突或漏关键状态。',
@@ -179,6 +199,11 @@ export class SemanticReviewerService {
         '   本类要区分"凭空生成"与"跨轮复述"，复述判定以 recentAssistantMessages 为准：回复中的事实（数值、门店、岗位详情、群邀请、报名状态）能在其中找到一致表述的，属复述——最多 observe 或 low 置信，不要 revise/block，把合法复述改掉会让候选人丢失已经沟通过的信息；往轮表述本身是否真实交跨轮治理，不在本轮裁决。',
         '   判 high 置信只限不可能来自复述的形态——回复里给出 recentAssistantMessages 中从未出现过的报名/表单链接（链接只能来自工具下发）、首次以完成口径宣称已提交/已报名/已预约（该状态在往轮助手消息中从未出现）、内容与候选人的问题或招聘场景明显不相干（如接口设计、代码、其它领域答案）、或对话刚开始（recentAssistantMessages 为空或全是寒暄）就报出具体门店薪资。',
         '   注意：本轮没查到岗位与本轮没有任何证据是两回事，jobList 存在但为空属第 1 类，不要用本类。',
+        '5. sensitive_screening_disclosure_or_probe：回复把户籍/籍贯/民族/地域/婚育这类敏感门槛**说给候选人**，或反过来**向候选人打听**籍贯、老家、是不是本地人。',
+        '   本类只看 draftReply 的话术合规性，不需要 evidence 支撑：即使岗位数据里确实写着户籍限制，说出去或据此打听同样违规——它是地域歧视纠纷与不可逆聊天证据风险，与该限制是否属实无关。',
+        '   判：把筛选条件本身说出去（「这家对户籍有要求」「不要 X 地人」，含改名成「这家对常驻地/居住地有要求」的变体）；口头索取出身地（「你老家是哪里的」「你是哪里人」「你是本地人吗」），含为此编造的借口（「登记/系统/流程需要核对户籍」——不存在这种流程需要）。',
+        '   不判：收资 checklist 里的「籍贯/户籍：」表单字段是既定报名流程；开放式问常驻城市或意向城市（「你常驻在哪个城市」「想去哪个城市工作」）；「不限户籍/哪里人都能报」这类放宽口径；候选人自己主动说了老家后助手中性承接；与筛选无关的关怀话术（「回老家路上注意安全」「周末回老家影响出勤吗」）。',
+        '   命中时 confidence 填 high、repairMode 用 rewrite，feedbackToGenerator 要求删除该问句或该条件表述、其余内容逐字保留。',
         '证据读取要求：',
         '- jobList.hasEvidence=true 表示已有可核验岗位证据；即使 jobList.jobs=[]，只要 markdownExcerpt 存在也不能说“无岗位数据/无证据支撑”。',
         '- 品牌名里可以包含地名，且与门店所在城市无关（如「成都你六姐」是在上海等地经营的连锁品牌，「北京华联」同理）。品牌名中的地名一律不作为地理冲突依据，只看门店/距离字段；仅凭品牌名判 brand_or_geo_ambiguity_ignored 属误判。',

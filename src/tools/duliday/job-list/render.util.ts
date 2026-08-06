@@ -164,7 +164,16 @@ const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> =
  * 设计要点：
  * - 只有任一字段非 unspecified/any 时才输出；岗位真没要求时不污染上下文。
  * - 用 "> ⚠️ 候选人硬性约束" 引用块包裹，让 LLM 容易识别这是不可妥协的硬规则。
- * - 文案直接告诉 LLM 该如何处理（询问 / 拦 booking），避免它把硬约束当软建议处理。
+ * - 文案直接告诉 LLM 该如何处理，避免它把硬约束当软建议处理。
+ *
+ * ⚠️ 户籍这类敏感门槛的文案**只准写禁令，不准派采集动作**——banner 与岗位数据同在
+ * 当轮上下文里、比系统提示词更贴近决策，一旦写"不掌握时先确认/委婉了解"，模型就会
+ * 真的去问候选人籍贯，把内部筛选条件捅到台面上。2026-08-06 badcase
+ * （chat 6a744a86，记录 249939）：banner 写着"不掌握候选人户籍时按敏感门槛话术委婉
+ * 了解后内部判断"，模型据此发出「这家对户籍有要求，方便问一下你老家是哪里的吗」，
+ * 候选人当场质问"为什么找工作还要问我户籍"。30 天内同族探问 6 条。
+ * 该门槛真正的执行点在 booking-guards 的 isHouseholdRequirementViolated 硬闸，
+ * 数据来自收资 checklist 的「籍贯/户籍」字段（表单场景合规），不需要口头打听。
  */
 function renderHardRequirementsBanner(hr: HardRequirements): string {
   const lines: string[] = [];
@@ -177,7 +186,10 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
   if (hr.household) {
     const verb = hr.household.mode === 'include' ? '仅接受' : '不接受';
     lines.push(
-      `- **户籍**：${verb} ${hr.household.regions.join('/')}（🔒 仅供内部筛选，**严禁把该户籍限制原样写进岗位介绍/要求或当拒绝理由告诉候选人**——涉地域歧视极易起纠纷；不掌握候选人户籍时按敏感门槛话术委婉了解后内部判断，不符则以排班/距离等中性理由转推其他岗位）`,
+      `- **户籍**：${verb} ${hr.household.regions.join('/')}（🔒 仅供内部筛选，**严禁外显**：不得写进岗位介绍/要求，不得当拒绝理由，` +
+        `**也不得为核对该门槛向候选人打听籍贯/老家/是不是本地人**——涉地域歧视极易起纠纷。` +
+        `候选人未主动透露户籍时**不要追问**，按其余条件正常推进即可：该门槛由收资 checklist 的「籍贯/户籍」字段与 booking 前的硬闸兜底；` +
+        `已知不符则以排班/距离等中性理由转推其他岗位）`,
     );
   }
 
