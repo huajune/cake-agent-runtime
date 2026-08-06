@@ -260,6 +260,31 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "917",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/917",
+      "title": "爽约不取消的时点前提同步到全部四处口径",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "爽约不取消的时点前提同步到全部四处口径"
+      ],
+      "summary": [
+        "爽约不取消的时点前提同步到全部四处口径"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "爽约不取消的时点前提同步到全部四处口径"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全库 **6814 passed / 0 failed**",
+        "`tsc --noEmit`、`eslint --max-warnings=0` 均通过"
+      ]
     }
   ],
   "lastRelease": {
