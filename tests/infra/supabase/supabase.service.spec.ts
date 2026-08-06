@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { SCHEDULE_CRON_OPTIONS } from '@nestjs/schedule/dist/schedule.constants';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 
 // Mock @supabase/supabase-js
@@ -102,6 +103,19 @@ describe('SupabaseService', () => {
 
     it('should return null for Supabase client', () => {
       expect(uninitializedService.getSupabaseClient()).toBeNull();
+    });
+  });
+
+  describe('keep-alive cron 的时区', () => {
+    // 不显式指定 timeZone 会跟随服务器时区（生产容器 UTC），注释写的"凌晨 3 点"
+    // 与实际执行时间（上海 11:00）对不上，排障时容易被误导。
+    it('keep-alive 必须锁定 Asia/Shanghai，而不是跟随服务器时区', () => {
+      const options = Reflect.getMetadata(
+        SCHEDULE_CRON_OPTIONS,
+        SupabaseService.prototype.keepAlive,
+      );
+
+      expect(options?.timeZone).toBe('Asia/Shanghai');
     });
   });
 });
