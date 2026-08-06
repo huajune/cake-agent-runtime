@@ -476,6 +476,31 @@
         "全量 **6897 测试通过**、typecheck 零错误、lint `--max-warnings=0` 零告警",
         "无 DB 迁移、无配置变更；仍为 shadow 模式"
       ]
+    },
+    {
+      "number": "942",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/942",
+      "title": "按 cooperationMode 契约实现发薪/签约主体自答",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "按 cooperationMode 契约实现发薪/签约主体自答"
+      ],
+      "summary": [
+        "按 cooperationMode 契约实现发薪/签约主体自答"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "按 cooperationMode 契约实现发薪/签约主体自答"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "渲染 5 条：BPO 结论、RPO 结论（含\"不得把 BPO 的独立客结论泄漏到 RPO\"的负向断言）、两种模式都带 🔒 禁术语标注、大小写/空格容错、字段缺失整段不渲染",
+        "schema 4 条：BPO/RPO 保留、缺失通过、null 通过、非字符串不通过（防止有人改 strict/omit 时静默吞字段）"
+      ]
     }
   ],
   "lastRelease": {
