@@ -1,7 +1,7 @@
 /**
  * 工具调用结果分析工具
  *
- * 同时被 runner.service（generateText 路径）和 ai-stream-trace（streamText 路径）使用，
+ * 同时被 generator.agent（generateText 路径）和 ai-stream-trace（streamText 路径）使用，
  * 保证 tool_calls jsonb 的 resultCount / status 语义一致。
  */
 
@@ -217,7 +217,8 @@ export function isForbiddenForProactive(toolName: string): boolean {
  *
  * ⚠️ 必须用**正向成功信号**判定，不能用 `'errorType' in result`：booking 成功结果
  * 显式带 `errorType: null`（见 duliday-interview-booking.tool），`'errorType' in r`
- * 对成功也为 true，会把成功预约误判成"无副作用"→ HC-1 revise 走全量重跑 → 重复 booking。
+ * 对成功也为 true，会把成功预约误判成"无副作用"→ prepareStep 不屏蔽副作用工具、
+ * replay 不跳过 → 重复 booking。
  *
  * 正向信号：success/accepted/dispatched===true，或带 workOrderId（booking 成功回执）。
  * 其余（含 buildToolError 的 `typeof errorType === 'string'`）一律非成功。
@@ -243,8 +244,8 @@ export function isSideEffectCommitted(result: unknown): boolean {
  * HC-1：本轮（扁平化 toolCalls）是否已提交过任一副作用工具且成功。
  *
  * 与 `findSucceededSideEffectTools`（基于 steps，prepareStep 内屏蔽用）区别：本函数
- * 作用于 runner/turn 层的 `AgentToolCall[]`（含 `.result`），供 revise 分支判定
- * "是否只能无工具文本重写"。
+ * 作用于 runner/turn 层的 `AgentToolCall[]`（含 `.result`），供出站守卫
+ * resolveHighRiskTrigger 判定本轮是否已有既成副作用（决定高风险强制审查档）。
  */
 export function hasCommittedSideEffect(
   toolCalls: Array<{ toolName: string; result?: unknown }>,

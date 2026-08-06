@@ -84,7 +84,8 @@ export interface TurnOutcome {
   responseMessages?: GeneratorRunResult['responseMessages'];
   /**
    * guardrail_blocked 的处置意图。默认不允许裸静默；如未来确需静默，必须显式置 silent。
-   * 当前线上策略：入站/出站守卫拦截均通过 sideEffects 触发人工兜底。
+   * 当前线上策略：守卫拦截默认通过 sideEffects 触发人工兜底；例外是出站
+   * meta_narration 静默（真人插话场景不自动派人工，仅落审查档案）。
    */
   disposition?: 'side_effects' | 'silent';
   /** reengagement/观测用：本回合命中的主动场景码。 */

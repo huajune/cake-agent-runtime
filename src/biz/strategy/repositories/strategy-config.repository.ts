@@ -28,7 +28,8 @@ export class StrategyConfigRepository extends BaseRepository {
   }
 
   /**
-   * 查询当前激活的策略配置记录（兼容旧调用，默认读 released）
+   * 查询当前激活的策略配置记录（默认读 released）。当前无生产调用方（读取统一走
+   * StrategyService.getActiveConfig），待删。
    */
   async findActiveConfig(): Promise<StrategyConfigRecord | null> {
     return this.findByStatus('released');

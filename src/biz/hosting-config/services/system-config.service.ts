@@ -325,11 +325,6 @@ export class SystemConfigService {
   // ==================== Agent 回复策略配置 ====================
 
   /**
-   * 获取 Agent 回复策略配置
-   *
-   * 本地热缓存有效期内直接返回，否则按 Redis → DB 顺序回源
-   */
-  /**
    * 事实提取模型覆盖：后台配置非空时返回该模型 ID，否则 undefined（走 extract 角色路由）。
    */
   async getExtractModelOverride(): Promise<string | undefined> {
@@ -371,6 +366,11 @@ export class SystemConfigService {
     return undefined;
   }
 
+  /**
+   * 获取 Agent 回复策略配置
+   *
+   * 本地热缓存有效期内直接返回，否则按 Redis → DB 顺序回源
+   */
   async getAgentReplyConfig(): Promise<AgentReplyConfig> {
     if (this.agentReplyConfig && Date.now() < this.agentReplyConfigExpiry) {
       return this.agentReplyConfig;

@@ -19,9 +19,9 @@ import { GroupTaskConfig } from '@biz/group-task/group-task.types';
 /**
  * 系统配置门面服务
  *
- * 统一协调 Agent 配置、黑名单等 biz 层操作。
- * 运行时开关（AI 回复、消息聚合）和 Worker 管理由 Controller 直接调用
- * wecom 域服务处理，避免 biz/ 对 wecom/ 的跨域依赖。
+ * 统一协调 Agent 配置、运行时开关（AI 回复、消息聚合）、黑名单等 biz 层操作。
+ * 开关经 SystemConfigService 落 DB，wecom 侧通过变更回调订阅生效；Worker 管理在
+ * wecom 域自己的 MessageOpsController，避免 biz/ 对 wecom/ 的跨域依赖。
  */
 @Injectable()
 export class HostingConfigFacadeService {

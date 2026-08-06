@@ -61,7 +61,7 @@ export interface PreparedAgentContext {
   /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
   botImId?: string;
   maxSteps: number;
-  /** 本轮入口阶段；由 recruitmentCase + procedural currentStage 共同解析出的 effectiveStage。 */
+  /** 本轮入口阶段：procedural currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
   entryStage: string | null;
   /** 本轮临时状态；回合结束时统一交给 memory lifecycle。 */
   turnState: {
@@ -84,7 +84,7 @@ export interface PreparedAgentContext {
   /**
    * toolCallId → 工具 execute 的真实执行耗时（毫秒）。
    * 由 prepare 阶段的 timing wrapper 在每次工具执行时写入；
-   * runner.buildRunResult 按 toolCallId 合并进 AgentToolCall.durationMs，
+   * GeneratorAgent.buildRunResult 按 toolCallId 合并进 AgentToolCall.durationMs，
    * 与"步骤墙钟"（含 LLM 思考/输出时间）区分开。
    */
   toolExecutionTimings: Map<string, number>;

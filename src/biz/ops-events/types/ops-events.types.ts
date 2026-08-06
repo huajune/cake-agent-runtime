@@ -8,9 +8,9 @@
 /**
  * 蛋糕产品事件名。
  *
- * 前 13 个进 daily_ops_report 投影（见 ops_event_projection_column RPC）。
- * booking.canceled / booking.interview_modified 为工单自助变更事件，目前只写 ops_events 底账、
- * 暂未建 daily_ops_report 投影列（不影响现有漏斗卡片）。
+ * 除 candidate.hired 外均进 daily_ops_report 投影（见 ops_event_projection_column RPC，
+ * 含 booking.canceled → booking_cancel_count / booking.interview_modified →
+ * interview_modified_count，迁移 20260608120000）；candidate.hired 只写 ops_events 底账，不投影。
  */
 export const OPS_EVENT_NAMES = [
   'friend.added',
@@ -85,13 +85,14 @@ export interface CandidateMessageResult {
 }
 
 /**
- * 待轮询入职状态的工单（已 booking.succeeded、尚未 candidate.hired）。
- * 由 15min 海绵状态轮询 cron 消费，candidate.hired 后即从待轮询集合移除。
+ * 待轮询面试结果的工单（已 booking.succeeded、尚未 interview.passed）。
+ * 由 15min 海绵状态轮询 cron 消费，interview.passed 后即从待轮询集合移除
+ * （统计收口到面试通过，不采集入职）。
  */
 export interface PendingHireWorkOrder {
   workOrderId: number;
   corpId: string;
-  /** 透传自 booking.succeeded，供 interview.passed/candidate.hired 的 cohort 归属。 */
+  /** 透传自 booking.succeeded，供 interview.passed 的 cohort 归属。 */
   userId: string | null;
   chatId: string | null;
   botImId: string | null;

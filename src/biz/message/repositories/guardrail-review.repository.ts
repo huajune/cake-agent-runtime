@@ -17,7 +17,8 @@ import type {
 /**
  * 出站守卫审查档案 Repository。
  *
- * 稀疏附属表：仅守卫命中回合写入，与 message_processing_records 按 trace_id 1:0..1 关联。
+ * 稀疏附属表：硬规则有信号的回合由 runner 写档；语义评审（shadow/enforce）跑过的回合
+ * 由异步追加补最小基线行（含 pass 判例）。与 message_processing_records 按 trace_id 1:0..1 关联。
  * 存首版全文/违规证据全文/重写版全文——紧凑摘要（guardrail_output 列）刻意不带的部分，
  * 供 Dashboard 详情页还原「首版 → 首审意见 → 重写版 → 二审」全过程。
  */

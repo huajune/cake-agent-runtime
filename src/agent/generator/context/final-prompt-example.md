@@ -7,25 +7,32 @@
 ```text
 finalPrompt =
   systemPrompt
-  + optionalGuardSuffix
+  + guardSuffix
+  + criticalTurnGuard
+  + reviseNotice
+  + proactiveDirective
 ```
 
 其中：
 
 - `systemPrompt`：`ContextService.compose()`
-- `optionalGuardSuffix`：仅在命中 prompt injection 风险时，由 `PromptInjectionService.GUARD_SUFFIX` 追加
+- `guardSuffix`：仅在命中 prompt injection 风险时，由 `PromptInjectionService.GUARD_SUFFIX` 追加
+- `criticalTurnGuard`：本轮命中关键形态时追加的动态硬禁令
+- `reviseNotice`：HC-1 修复回合的重写指令（正常回合为空）
+- `proactiveDirective`：主动/复聊回合的 directive（被动回合为空）
 
-正常情况下没有 `optionalGuardSuffix`。
+正常被动回合下，后四段通常都为空。
 
 ## systemPrompt 顶层结构
 
-`candidate-consultation` 现在按 5 个顶层块拼接：
+`candidate-consultation` 现在按 6 个顶层块拼接：
 
 1. `identity`
 2. `base-manual`
 3. `policy`
 4. `runtime-context`
-5. `final-check`
+5. `group-inventory`
+6. `final-check`
 
 也就是：
 
@@ -89,8 +96,10 @@ finalPrompt =
 - `runtime-context` 聚合本轮运行时信息，内部顺序是：
   1. `stage-strategy`
   2. `memory`
-  3. `datetime`
-  4. `channel`
+  3. `turn-hints`
+  4. `hard-constraints`
+  5. `datetime`
+  6. `channel`
 - `final-check` 独立放在最后，确保“发送前自检”真的是最后一块。
 
 ## 配置边界
@@ -130,21 +139,23 @@ finalPrompt =
 
 ## memoryBlock 结构
 
-`memoryBlock` 由四部分按顺序组成：
+`memoryBlock`（由 `memory-block.formatter` 渲染）按顺序组成：
 
-1. `[用户档案]`
-2. `[会话记忆]`
-3. `[本轮高置信线索]`
-4. `[本轮待确认线索]`
+1. 跨会话来源口径（长期记忆来自另一段会话时）
+2. 企微备注品牌
+3. `[用户档案]`
+4. `[历史求职意向]`
+5. `[会话记忆]`
+6. `[候选人当前所在兼职群]`
+7. `[当前预约信息]` / `[预约状态]`
 
 其中：
 
-- `[用户档案]`、`[会话记忆]` 是持久化记忆
-- `[本轮高置信线索]` 是当前轮前置识别的 sidecar 注入，用于帮助理解当前消息
-- `[本轮待确认线索]` 是当前轮识别出的冲突线索，用于提醒模型是否需要澄清
+- 上述各段都是持久化记忆的投影
+- `[本轮高置信线索]`、`[本轮待确认线索]` **不属于 memoryBlock**，由 `turn-hints` 段独立渲染（见 runtime-context 顺序）
 - `highConfidenceFacts` 只用于 prompt 侧理解，不写入持久化会话记忆，也不参与 `extractAndSave()` 落库
 
-如果四部分都为空，`runtime-context` 中不会出现记忆块。
+如果各部分都为空，`runtime-context` 中不会出现记忆块。
 
 示例：
 
