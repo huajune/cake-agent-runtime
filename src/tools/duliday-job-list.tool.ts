@@ -833,7 +833,7 @@ export function buildJobListTool(
               '(2) 候选人提到的地点不是通用后缀类（万达广场/天街/火车站/购物中心 等跨城同名）时，' +
               '优先调用 `geocode` 工具——你对地名→城市映射有高置信通识就把城市传给 geocode，' +
               '没把握就 city 留空让 geocode 自己判定；geocode 返回 unique 即可拿到 city 重调本工具；' +
-              '(3) 仅当 geocode 报 GEOCODE_AMBIGUOUS_SUFFIX 或 ambiguous 多候选时，才中性反问候选人所在城市；' +
+              `(3) 仅当 geocode 报 ${TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX} 或 ambiguous 多候选时，才中性反问候选人所在城市；` +
               '反问必须中性，不得带具体城市名（"是 X 城市吗"会构成诱导）。',
           });
         }

@@ -287,7 +287,7 @@ const inputSchema = z.object({
     .optional()
     .describe(
       '【硬约束】调本工具前必须先调 duliday_interview_precheck，把返回结果中的 nextAction 与 missingFieldsCount 原样填入本字段。' +
-        '漏填、nextAction !== "ready_to_book" 或 missingFieldsCount > 0 时，booking 工具直接返回 BOOKING_REJECTED，不会调 sponge API。' +
+        `漏填、nextAction !== "ready_to_book" 或 missingFieldsCount > 0 时，booking 工具直接返回 ${TOOL_ERROR_TYPES.BOOKING_REJECTED}，不会调 sponge API。` +
         '字段技术上可选只是为了让 schema 不卡校验、缺失时能走友好错误返回（带 replyInstruction），业务语义上仍必填——' +
         '如果本轮没调 precheck，**不要瞎填**，直接漏掉，工具会回错让你先去调 precheck。',
     ),
