@@ -12,19 +12,6 @@ export enum ScenarioType {
 }
 
 /**
- * 上下文策略枚举
- * 定义 Agent 处理上下文获取失败时的策略
- */
-export enum ContextStrategy {
-  /** 抛出错误，中断请求 */
-  ERROR = 'error',
-  /** 跳过失败的上下文，继续请求 */
-  SKIP = 'skip',
-  /** 在响应中报告失败，但继续请求 */
-  REPORT = 'report',
-}
-
-/**
  * Agent 调用方身份。
  *
  * 替代历史上分散在 `userMessage !== undefined` / `corpId === 'test' | 'debug'` 的隐式推导，
