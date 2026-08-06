@@ -114,6 +114,15 @@ describe('isToolCallArtifactOnly', () => {
     expect(isToolCallArtifactOnly('</thinking>\n\n<function=skip_reply>\n</function>')).toBe(true);
   });
 
+  // 2026-08-06 生产实证（运营反馈 8pu8f8we，chat 6a72a29d… 08-05 10:42）：整条回复
+  // 只有 `</function_calls>` 一个裸闭合标签，原样投递给候选人。既往同族残文都另带
+  // 已注册工具名（skip_reply 等）而被工具名词条兜住，这条不带任何工具名，直接穿透。
+  it('识别裸 </function_calls> 闭合标签残文（badcase 8pu8f8we）', () => {
+    expect(isToolCallArtifactOnly('</function_calls>')).toBe(true);
+    expect(isToolCallArtifactOnly('<function_calls>')).toBe(true);
+    expect(isToolCallArtifactOnly('</function_call>')).toBe(true);
+  });
+
   // 2026-08-04 审计静默误伤 ×2：JSON 信封裹着完整正文，字符串字面量剥离把好回复
   // 连壳剥掉后被判纯残文整轮静默。信封不算残文，应走拆封路径。
   it('JSON 信封不算残文（trace …_1785736076695 / …_1785820152687）', () => {
@@ -237,5 +246,31 @@ describe('hasTechnicalDocumentationShape', () => {
   it('放行只含单一弱信号的正常回复', () => {
     expect(hasTechnicalDocumentationShape('这个岗位要求填几个字段，你把姓名发我就行')).toBe(false);
     expect(hasTechnicalDocumentationShape('')).toBe(false);
+  });
+});
+
+/**
+ * 2026-08-06 巡检：泄漏检测与残文剥离的 XML 标签判据曾单边漂移——08-04 审计只扩了
+ * 剥离侧的交替组，检测侧仍是窄的 `<\/?tool_call>`，裸 `</function_calls>` 因此穿透
+ * 出站守卫投递给候选人（badcase 8pu8f8we）。两侧现共用 TOOL_CALL_XML_TAG_SOURCE。
+ */
+describe('detectOutputLeak — 工具调用 XML 标签', () => {
+  it.each([
+    '</function_calls>',
+    '<function_calls>',
+    '</function_call>',
+    '<tool_call>',
+    '</tool_use>',
+    '<invoke name="foo">',
+    '</thinking>',
+  ])('命中工具调用标签形态：%s', (draft) => {
+    expect(detectOutputLeak(draft)).not.toBeNull();
+  });
+
+  it('放行不含工具调用标签的正常候选人话术', () => {
+    expect(detectOutputLeak('好的，你在哪个区呀？我帮你看看附近的岗位')).toBeNull();
+    expect(detectOutputLeak('薪资是基础 24 元/时，月工时超 40 小时的部分 26 元/时')).toBeNull();
+    // 中文正文里出现半角尖括号不应被误判成标签
+    expect(detectOutputLeak('面试时间 10:00 <到> 12:00 之间都可以')).toBeNull();
   });
 });
