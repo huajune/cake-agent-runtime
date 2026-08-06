@@ -89,10 +89,10 @@ function countStructuredLines(text: string): number {
 /**
  * 岗位事实的**出现次数**（不是行数）。
  *
- * 2026-07-30 审计 P2-8：原实现按行统计，首版把多个岗位写成一段散文（单行）时
+ * 2026-07-30 审计 P2-8：若按行统计，首版把多个岗位写成一段散文（单行）时
  * 计数恒为 1，`polarity_reversed` 的 `>= 2` 门槛永远够不到——2026-07-27 生产实例
  * batch_6a6726d4… 首版散文式给出最高薪岗位、修复版反转成"附近 10 公里内没岗位"，
- * 两个检测器都没拦住并已投递。改为全局计数后，散文与分行结构同等达标。
+ * 两个检测器都没拦住并已投递。全局计数下，散文与分行结构同等达标。
  */
 function countJobFactOccurrences(text: string): number {
   return text.match(new RegExp(QUANTIFIED_JOB_FACT_PATTERN, 'gu'))?.length ?? 0;

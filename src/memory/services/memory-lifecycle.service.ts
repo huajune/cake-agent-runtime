@@ -436,9 +436,9 @@ export class MemoryLifecycleService {
   ): Promise<PostProcessingStepStatus[]> {
     const steps: PostProcessingStepStatus[] = [];
 
-    // session state 已改为 hash 字段级原子写（save* 只 HSET 自己的字段），跨字段并发
-    // 不再互相覆盖。这里保留串行执行是为了步骤间的数据依赖（projectAssistantTurn 读
-    // saveLastCandidatePool 刚写入的候选池）与 step 统计顺序，不再承担防覆盖职责。
+    // session state 是 hash 字段级原子写（save* 只 HSET 自己的字段），跨字段并发
+    // 不会互相覆盖。这里的串行执行是为了步骤间的数据依赖（projectAssistantTurn 读
+    // saveLastCandidatePool 刚写入的候选池）与 step 统计顺序，不承担防覆盖职责。
     if (ctx.candidatePool?.length) {
       const candidatePoolResult = await this.runMeasuredStep('save_candidate_pool', async () => {
         await this.session.saveLastCandidatePool(
@@ -523,7 +523,7 @@ export class MemoryLifecycleService {
     const extractFactsResult = await this.runMeasuredStep('extract_facts', async () => {
       return await this.session.extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages);
     });
-    // LLM 提取降级（fallback 空值）此前被吞掉、step 仍标 success，提取实际成功率
+    // LLM 提取降级（fallback 空值）若被吞掉、step 仍标 success，提取实际成功率
     // 不可观测。这里把降级显式标成 failure step，使整轮落 completed_with_errors。
     if (extractFactsResult.step.status === 'success' && extractFactsResult.value?.llmDegraded) {
       steps.push(

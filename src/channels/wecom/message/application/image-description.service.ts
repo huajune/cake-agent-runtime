@@ -253,7 +253,7 @@ export class ImageDescriptionService {
         : '请描述这张图片的内容。';
 
     // 视觉事实结构化（P1 生产者）：图片优先走结构化输出（描述 + kind + fields）；
-    // 任何失败回退纯文本路径——降级不是失败，是回到结构化之前的行为。表情不结构化。
+    // 任何失败回退纯文本路径——降级不是失败，纯文本描述本身就是可用产物。表情不结构化。
     let description = '';
     let sheet: FinalizedVisualFactSheet | null = null;
     let usageTokens: number | undefined;

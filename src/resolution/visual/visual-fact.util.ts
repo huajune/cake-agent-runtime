@@ -94,7 +94,7 @@ export function fieldValues(
 
 // ── 窗口文本渲染与识别（自 channels/wecom message-parser 收拢） ──────────────
 
-/** vision 描述回写前缀。Phase 3 的 kind 标注前缀暂缓（改存储格式波及面大）。 */
+/** vision 描述回写前缀。kind 标注前缀已裁定取消（visual-fact-pipeline.md A.3：改存储格式波及面大，kind 只走 prompt 口径）。 */
 export const IMAGE_MESSAGE_PREFIX = '[图片消息]';
 export const EMOTION_MESSAGE_PREFIX = '[表情消息]';
 
@@ -105,9 +105,10 @@ export function isVisualDescriptionText(message: string | null | undefined): boo
 }
 
 /**
- * 简历图片识别（原 channels/wecom/message-parser 的 isResumeImageDescription
- * **逐字迁入**，正名为 resume kind 的文本兜底；sheet 缺失/降级时仍靠它保住简历链路。
- * 原位保留 re-export 以兼容既有调用方；判据不得与旧实现漂移——并跑对照要求 100% 一致）。
+ * 简历图片识别：resume kind 的文本兜底判据，sheet 缺失/降级时靠它保住简历链路
+ * （channels/wecom message-parser 处保留同名 re-export，既有调用方仍从原路径导入）。
+ * 判据不得与 vision prompt 的 resume 口径漂移：save-image-description.tool 与
+ * image-description.service 仍在做 legacy vs sheet 并跑分歧告警，删旧判据前需一致率达标。
  */
 export function isResumeImageDescription(description: string): boolean {
   return /^[「\[【]?(?:手写)?(?:简历|履历)/u.test(description.trim());

@@ -40,8 +40,8 @@ export function deriveRulePolicy(action: GuardrailRuleAction): {
  * - revise：内容不可发，LLM 受约束重写被点名句即可修复；
  * - block：内容不可发，高风险且不可 fail-open；runner 仍先尝试一次受控重写，救不活才硬拦。
  *
- * 2026-07-27 起 REPLAN 从本联合类型删除（发牌切换收尾，硬规则目录零雇主）：
- * "重新规划整段回复"不再是任何规则可声明的修复方式——三期审计证明该机制是全部
+ * REPLAN 不在本联合类型内（2026-07-27 发牌切换收尾退役，硬规则目录零雇主）：
+ * "重新规划整段回复"不是任何规则可声明的修复方式——三期审计证明该机制是全部
  * 已投递伤害的宿主（docs/architecture/guardrail-chain-assessment-and-rebuild.md §2）。
  * 未来需要"补取事实"式修复的规则，走 §2.4 条件项两步拆解（取数归 generator、
  * 写字归 ReplyRepairAgent），必须先修订该文档再扩本类型。
@@ -59,7 +59,7 @@ export interface OutputRulePolicy {
   dataSensitivity: GuardrailDataSensitivity;
   feedbackPolicy: GuardrailFeedbackPolicy;
   feedbackToGenerator: string;
-  /** replan 时允许恢复阶段调用的最小工具集合；非 replan 规则默认为空。 */
+  /** replan 退役（2026-07-27）后恒为空；字段保留兼容历史档案与 §2.4 未来重新申领动手权。 */
   repairToolNames?: readonly string[];
 }
 

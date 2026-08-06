@@ -79,14 +79,15 @@ export type GuardrailCoverage = (typeof GUARDRAIL_COVERAGES)[number];
  * 统一决策枚举（按层取子集）：
  * - input：`pass | block`
  * - tool ：`allow | reject_collect | reject_hard`
- * - output：`pass | observe | revise | replan | block`
+ * - output：`pass | observe | revise | replan | block`（replan 已于 2026-07-27 退役，
+ *   枚举值保留仅容忍历史档案与模型输出，落地前一律折叠为 revise）
  *
  * output 层优先级（严重度递增）：pass < observe < revise < replan < block
  * - pass：无违规，内容可发
  * - observe：发现软性问题，内容仍可发，打标记录
  * - revise：内容不可发，LLM 重写文案
- * - replan：内容不可发，LLM 重走工具再生成
- * - block：内容不可发，不修复，硬拦
+ * - replan：（退役）历史语义为重走工具再生成，现流程折叠为 revise
+ * - block：内容不可发；runner 先做一次受控重写自救，二审仍违规才硬拦
  */
 export const GUARDRAIL_DECISION = {
   PASS: 'pass',

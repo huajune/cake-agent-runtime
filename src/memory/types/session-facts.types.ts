@@ -976,7 +976,8 @@ export interface WeworkSessionState {
   lastProcessedCandidateMessageAt?: string | null;
   /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
-   * 写入只经 turn-finalizer 的 brand_state reducer（单一门）；preferences.brands 是它的只读投影。
+   * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
+   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6），读边界恒 null。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;
@@ -1046,7 +1047,10 @@ export const SessionFactsRedisContentSchema = WeworkSessionStateSchema.partial()
 /** Redis 中 session-facts 层实际存储的 entry 结构。 */
 export type SessionFactsRedisEntry = MemoryEntry<SessionFactsRedisContent>;
 
-/** 结构化短期记忆层的真实持久化结果。 */
+/**
+ * 结构化短期记忆层的持久化结果形状。当前无任何消费方（残留类型，待删）；
+ * 实际写入是 `factsv2:*` hash，`facts:*` 单 key 是只读迁移遗留、禁止新写入。
+ */
 export interface SessionFactsStorageResult {
   source: 'redis';
   keyPattern: 'facts:{corpId}:{userId}:{sessionId}';

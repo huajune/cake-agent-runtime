@@ -40,7 +40,7 @@ const VISION_AWAIT_TIMEOUT_MS = 15_000;
 /**
  * 同一回合最多吸收三批 Agent 运行期间到达的新消息。
  *
- * 旧逻辑只允许 replay 一次：如果候选人在第一次 replay 期间继续补充，新消息会被拆成
+ * 只允许 replay 一次不够：候选人在第一次 replay 期间继续补充时，新消息会被拆成
  * follow-up，旧回复和新回复紧挨着投递，语义上很像重复发送。三次足以覆盖常见的连续补充，
  * 同时保留硬上限，避免候选人持续输入时一个 worker 永不结束。
  */
@@ -300,7 +300,7 @@ export class ReplyWorkflowService {
     // 这些记忆领域不变式，渠道只负责上报投递结局（见末尾 finally 的 whenSettled）。
     try {
       // 投递前重跑：每次 Agent 生成结束都检查运行期间到达的新消息，并在有界次数内继续
-      // 合并重跑。旧逻辑只检查首次生成，候选人在第一次 replay 期间继续补充时会被拆成
+      // 合并重跑。只检查首次生成不够：候选人在第一次 replay 期间继续补充时会被拆成
       // follow-up，导致两批高度相似的回复紧挨着投递。
       let replayAttempt = 0;
       while (replayAttempt < MAX_REPLAY_ATTEMPTS) {

@@ -1505,7 +1505,7 @@ function resolveUploadResumeFileName(
 
 function resolveCandidateIsStudentForBooking(context: ToolBuildContext): boolean | undefined {
   // 统一走共享识别器（只读候选人 user 消息、剥引用块/时间戳、子句级锚定）。
-  // 旧实现对"全窗口拼接文本"做子串测试，Agent 模板"身份（学生还是社会人士）："
+  // 不得对"全窗口拼接文本"做子串测试：Agent 模板"身份（学生还是社会人士）："
   // 自带"社会人士"子串，任何出现过该模板的会话都会被误判为非学生。
   const currentUserEntry = context.currentUserMessage
     ? [{ role: 'user', content: context.currentUserMessage }]

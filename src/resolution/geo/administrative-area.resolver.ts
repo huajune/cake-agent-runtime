@@ -91,7 +91,8 @@ export function resolveCityFromGeoSignals(
  * 与 resolveCityFromGeoSignals 的先命中先赢不同，本函数扫描**全部**信号并
  * 收集去重后的城市候选；≥2 个不同城市即"本应 ambiguous"（现网实证：
  * badcase xnp1u820 "成都的 + 静安区"、i2vljy1u）。仅供观测落 GeoQueryMeta，
- * 不参与任何行为决策；enforce 切换需 shadow 观测 1~2 周后人工决策（§17.4）。
+ * 不参与任何行为决策；enforce 首轮决策已于 2026-07-29 判 no-go（唯一冲突样本系
+ * 长阳同形地名误报，见 overrides），重启 enforce 须先补同形地名消解（§17.4.1）。
  */
 export function detectGeoSignalConflict(
   districts: readonly string[] | null | undefined,
@@ -169,13 +170,6 @@ export function resolveParentAdministrativeArea(input: string): ParentAdministra
 }
 
 /**
- * 文本是否以已知城市名开头、且后面还有更具体内容（"常州钟楼区" → true，"常州" → false）。
- *
- * 供 infra/geocoding 的查询分类器判断"文本自带城市线索、可走结构化地址"（§11.1 消费场景）。
- * 替代消费方直接拼接 HIGH_CONFIDENCE_BARE_LOCATION_ALIASES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
- * （§8.1 过渡期导出收口，Phase 5）。
- */
-/**
  * 区名唯一映射的全量条目（district → city）只读视图。
  *
  * 供跨域消费方（brand 城市同形词门槛按城市索引区名后缀）建索引；Record 本身
@@ -185,6 +179,13 @@ export function listUniqueDistrictCityEntries(): ReadonlyArray<readonly [string,
   return Object.entries(UNIQUE_SUBDIVISION_TO_CITY);
 }
 
+/**
+ * 文本是否以已知城市名开头、且后面还有更具体内容（"常州钟楼区" → true，"常州" → false）。
+ *
+ * 供 infra/geocoding 的查询分类器判断"文本自带城市线索、可走结构化地址"（§11.1 消费场景）。
+ * 替代消费方直接拼接 HIGH_CONFIDENCE_BARE_LOCATION_ALIASES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
+ * （§8.1 过渡期导出收口，Phase 5）。
+ */
 export function hasKnownCityPrefix(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;

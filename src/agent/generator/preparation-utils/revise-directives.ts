@@ -105,9 +105,9 @@ export function buildReviseUserDirective(params: GeneratorInvokeParams): string 
   if (violations.length > 0) {
     // evidence 必须与 suggestion 一起给：本案证据（如 "未按 jobId=528499 调用
     // duliday_job_list"、命中的具体字段）只存在于 evidence，而 suggestion 是规则目录里
-    // 的静态策略文本，逐条命中都一样。2026-07-21 审计：本函数此前只渲染 suggestion，
-    // 于是在**注意力最强的对话末尾通道**里，模型被要求"用其 jobId 调用 duliday_job_list"
-    // 却拿不到 jobId 是多少——replan 二审失败样本中 49% 根本没调该工具。
+    // 的静态策略文本，逐条命中都一样。若只渲染 suggestion，
+    // 则在**注意力最强的对话末尾通道**里，模型被要求"用其 jobId 调用 duliday_job_list"
+    // 却拿不到 jobId 是多少——2026-07-21 审计中 replan 二审失败样本 49% 根本没调该工具。
     lines.push(
       `需修正的问题：\n${violations
         .map((v) => {

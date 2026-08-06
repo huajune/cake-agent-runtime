@@ -123,7 +123,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       );
 
       // 只在最终失败（重试耗尽）时触发告警，中间重试噪音靠 logger 即可。
-      // 不加这条，prod 此前一周有多天全员静默失败都没人感知 —— 必须补。
+      // 没有这条告警，prod 曾有一周多天全员静默失败都没人感知 —— 不可省。
       if (job.attemptsMade >= attempts) {
         this.notifyJobExhausted(job, error);
       }

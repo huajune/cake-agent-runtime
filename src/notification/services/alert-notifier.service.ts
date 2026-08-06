@@ -34,7 +34,7 @@ export class AlertNotifierService implements OnApplicationBootstrap {
   // 不能在构造器注入 ALERT_LOG_PERSISTER：token 由 @Global MonitoringModule 提供，
   // 而 MonitoringModule 又 imports NotificationModule，构造期注入会形成
   // provider 级循环依赖，Nest 实例加载静默死锁（v5.14.0 生产启动卡死事故）。
-  // 改为应用装配完成后经 ModuleRef 懒解析。
+  // 故在应用装配完成后经 ModuleRef 懒解析。
   private alertLogPersister?: AlertLogPersister;
 
   constructor(

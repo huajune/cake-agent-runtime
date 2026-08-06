@@ -159,7 +159,7 @@ export class BusinessMetricRuleEngine {
     const warning = Math.floor(critical * 0.7);
 
     // 阈值语义是「X 次/小时」，直接用真 1h 窗口判定。
-    // 旧实现用 errorCountLast24Hours/24（24h 均值），把"10/h"实际门槛抬成 240/天，
+    // 若用 errorCountLast24Hours/24（24h 均值），会把"10/h"实际门槛抬成 240/天，
     // 日均个位数错误下永不触发。
     if (errorCountLastHour > critical) {
       return [

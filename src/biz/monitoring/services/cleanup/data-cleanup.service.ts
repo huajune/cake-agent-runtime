@@ -179,7 +179,7 @@ export class DataCleanupService implements OnModuleInit {
   /**
    * 每小时兜底：将卡住的 processing 记录标记为 timeout（>30 分钟）。
    *
-   * 原先仅在启动时与每日凌晨 3 点执行，发版重启时被杀死的 in-flight 记录
+   * 若只在启动时与每日凌晨 3 点执行，发版重启时被杀死的 in-flight 记录
    * 会在看板上以「处理中」挂最长一天，运营误以为消息还会被处理。
    * 与 onModuleInit 中的调用不冲突：onModuleInit 处理启动时遗留，此处兜底日间新卡住记录。
    */
@@ -400,7 +400,7 @@ export class DataCleanupService implements OnModuleInit {
       if (updatedCount > 0) {
         this.logger.log(`[数据清理] 已将 ${updatedCount} 条卡住的 processing 记录标记为 timeout`);
         // timeout = 候选人消息被静默丢弃、无任何回复（生产日均 ~7 条，曾连带复聊误停，
-        // 见 chat 6a62c6f8）。此前只有日志可查，按批告警到飞书让静默丢消息可被运营看见。
+        // 见 chat 6a62c6f8）。只落日志运营无感知，按批告警到飞书让静默丢消息可被运营看见。
         this.exceptionNotifier?.notifyAsync({
           source: {
             subsystem: 'monitoring',
