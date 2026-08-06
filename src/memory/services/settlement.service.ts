@@ -37,26 +37,29 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职�
 /**
  * 沉淀服务 — 基于 DB 时间戳的间隔检测，将闲置会话记忆沉淀到长期记忆
  *
- * ## 设计背景
+ * ## 设计约束
  *
- * 旧实现用 Redis 中的 `lastSessionActiveAt` 判断是否超时，但 Redis key 与沉淀
- * 阈值共用同一个 TTL，导致"能检测到 activeAt 时，距离它写入还不足 sessionTtl；
- * 等到真正超时时，key 已经 expire，永远读不到"——形成死锁，沉淀从未触发过。
+ * 不能用 Redis 中的 `lastSessionActiveAt` 判断是否超时：Redis key 与沉淀
+ * 阈值共用同一个 TTL 时，"能检测到 activeAt 时，距离它写入还不足 sessionTtl；
+ * 等到真正超时时，key 已经 expire，永远读不到"——形成死锁，沉淀永远不触发。
  *
- * ## 新实现
+ * ## 实现
  *
- * 不再依赖 Redis 中的活跃时间戳，改用两个持久化数据源：
+ * 不依赖 Redis 中的活跃时间戳，用两个持久化数据源：
  * - `agent_long_term_memories.summary_data.lastSettledMessageAt`（Supabase 永久）：上次已沉淀到哪条消息
  * - `chat_messages` 表里的真实消息时间戳：用来找会话间隔
  *
  * 检测逻辑：
- * 1. 读取 `lastSettledMessageAt`（若为 null，无历史可沉淀，跳过）
+ * 1. 读取沉淀边界：会话级 `lastSettledBySession[sessionId]` 优先，用户级
+ *    `lastSettledMessageAt` 回退；为 null 时冷启动——把边界初始化到最新消息后返回，
+ *    跳过历史全量沉淀
  * 2. 查询 `lastSettledMessageAt` 之后的所有消息，找最近一段会话的开始时间
  * 3. 若（当前会话第一条消息时间 - 上一段会话最后一条消息时间）>= settlementGapSeconds，
  *    认为上一段会话已闲置结束，对其执行沉淀
  * 4. 用当前 sessionFacts 作为已校验事实参考，生成摘要
- * 5. 写入 `summary_data`，更新 `lastSettledMessageAt`
- * 6. 将 sessionFacts 中的身份字段写入长期 profile_facts
+ * 5. 写入 `summary_data`，更新会话级沉淀边界（RPC 带 p_session_id）
+ * 6. 将 sessionFacts 沉淀进长期档案：身份字段写 profile_facts，偏好快照写
+ *    preference_facts，品牌快照随沉淀一并写入
  */
 @Injectable()
 export class SettlementService {
@@ -152,7 +155,7 @@ export class SettlementService {
   /**
    * 从沉淀边界开始分页扫描消息，寻找首个会话断层（相邻消息间隔 ≥ settlementGap）。
    *
-   * 修复：旧实现只取边界后最旧的 500 条，长会话（边界后 >500 条且断层在更后面）
+   * 必须分页扫下去：若只取边界后最旧的 500 条，长会话（边界后 >500 条且断层在更后面）
    * 永远扫不到断层，`lastSettledMessageAt` 不再前进，该用户从此永不沉淀，
    * 且每轮重复拉同样 500 条做无效扫描。
    */

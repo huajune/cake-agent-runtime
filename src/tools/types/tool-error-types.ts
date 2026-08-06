@@ -119,8 +119,9 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   /**
    * @deprecated 自 [松绑 city 必填 + 引入多候选验证] 之后，
-   * geocode 工具不再因为 city 缺失硬报错——除非命中
-   * `GENERIC_AMBIGUOUS_SUFFIX` 黑名单。常量保留只为兼容历史 badcase 记录。
+   * geocode 工具不再因为 city 缺失硬报错——除非命中 geocode.tool.ts 的
+   * 「通用后缀黑名单」（万达广场/购物中心/裸通名车站 等跨城同名），那条路径报的是
+   * GEOCODE_AMBIGUOUS_SUFFIX。常量保留只为兼容历史 badcase 记录。
    */
   GEOCODE_CITY_REQUIRED: 'geocode.city_required',
   GEOCODE_AMBIGUOUS_SUFFIX: 'geocode.ambiguous_suffix',

@@ -144,7 +144,8 @@ return 1
   /**
    * 补偿查询入口：扫描状态不明的触达槽，供运维/人工核对外部平台投递状态。
    *
-   * 返回的 key 是业务幂等键（`${sessionId}:${scenarioCode}:${anchorAt}`），不含 Redis 前缀。
+   * 返回的 key 是业务幂等键（`${sessionId}:${scenarioCode}:${anchorEventId}`，与
+   * ReengagementTrackingService.touchKey 同源），不含 Redis 前缀。
    */
   async listUnknownSlots(limit = 100): Promise<UnknownTouchSlot[]> {
     const result: UnknownTouchSlot[] = [];

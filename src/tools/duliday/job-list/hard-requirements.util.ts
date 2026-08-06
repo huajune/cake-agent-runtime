@@ -24,6 +24,8 @@ function asRecord(value: unknown): UnknownRecord | null {
   return value && typeof value === 'object' ? (value as UnknownRecord) : null;
 }
 
+import type { HealthCertGate } from '@tools/utils/job-policy-parser';
+
 export type GenderRequirement = 'male' | 'female' | 'any' | 'unspecified';
 
 export type HouseholdRequirementMode = 'include' | 'exclude';
@@ -166,12 +168,28 @@ const CERT_REQUIRED_BEFORE_INTERVIEW = /面试前|上岗前必须|必备|必须�
 const CERT_BEFORE_ONBOARD = /入职前办|上岗前办|可入职后|录用后办|入职后/;
 const CERT_NOT_REQUIRED = /不需要|无需|不必/;
 
+function isHealthCertGate(value: unknown): value is HealthCertGate {
+  return (
+    value === 'before_interview' ||
+    value === 'before_onboard' ||
+    value === 'not_required' ||
+    value === 'unknown'
+  );
+}
+
 /**
  * 从 healthCertGate + healthCertificateRequirement 文本派生健康证 enum。
  *
  * 优先级：明确字段 (healthCertGate) > 文本关键词推断 > 默认 unspecified。
  */
-function normalizeHealthCert(gate: unknown, requirementText: unknown): HealthCertRequirement {
+function normalizeHealthCert(
+  // 收成域类型而非 unknown：实参来源是有类型的 normalized?.healthCertGate，
+  // 收 unknown 等于把类型丢掉——下面三行与字面量比对，档位改名/加档时静默落空，
+  // 掉进正则兜底后保守判成 required_before_onboard，即「面试前必须持证」被
+  // 悄悄派生成「入职前办即可」，无错无日志。
+  gate: HealthCertGate | null | undefined,
+  requirementText: unknown,
+): HealthCertRequirement {
   if (gate === 'before_interview') return 'required_before_interview';
   if (gate === 'before_onboard') return 'required_before_onboard';
   if (gate === 'not_required') return 'not_required';
@@ -244,12 +262,13 @@ export function extractHardRequirements(
   const normalized = asRecord(
     policy?.normalizedRequirements ?? job?._policy?.normalizedRequirements,
   );
+  const healthCertGate = normalized?.healthCertGate;
 
   return {
     gender: normalizeGender(basic.genderRequirement),
     household: normalizeHousehold(hometown),
     healthCert: normalizeHealthCert(
-      normalized?.healthCertGate,
+      isHealthCertGate(healthCertGate) ? healthCertGate : undefined,
       normalized?.healthCertificateRequirement,
     ),
     student: normalizeStudentRequirement(
@@ -259,5 +278,3 @@ export function extractHardRequirements(
     ),
   };
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

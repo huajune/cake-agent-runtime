@@ -1,9 +1,9 @@
 /**
  * 托管成员（经理/账号）统一配置。
  *
- * 把原先分散三处、各按 botImId 手维护的「挂在人身上」的配置收口到一份（system_config）：
- * - 飞书接收人 openId（原 src/infra/feishu/constants/receivers.ts 硬编码）
- * - 海绵 Duliday token（原 sponge_token_config）
+ * 各按 botImId 手维护的「挂在人身上」的配置统一收口在一份（system_config）：
+ * - 飞书接收人 openId（miss 时回退 src/infra/feishu/constants/receivers.ts 硬编码）
+ * - 海绵 Duliday token（唯一 DB 配置源；miss 时调用方回退 DULIDAY_API_TOKEN）
  *
  * 以 botImId（wecom 系统分配的稳定数字 id，与硬编码 BOT_TO_RECEIVER 同 key）为 key，
  * 而非可改名的 wecomUserId。未来 web 配置页读写此 key。

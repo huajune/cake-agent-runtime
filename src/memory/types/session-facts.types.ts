@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
+import { WELFARE_KINDS } from '@tools/duliday/job-list/welfare-facts.util';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
-import { factConfidenceRank } from './confidence-rank';
+import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
 import type { MemoryEntry } from '../stores/store.types';
 
 // ==================== 1. 提取 schema（LLM 输出结构） ====================
@@ -270,7 +272,7 @@ export const BrandIntentEntrySchema = z.object({
         '"换个品牌/这个不考虑"等无具体品牌的排斥填 null',
     ),
   polarity: z
-    .enum(['positive', 'negative', 'browse_all'])
+    .enum(BRAND_INTENT_POLARITIES)
     .describe('positive=意向/询问/提及；negative=排斥（含指代排斥）；browse_all=明确不限品牌'),
 });
 
@@ -362,7 +364,9 @@ export const PREFERENCE_FIELD_KEYS = [
 export type InterviewInfoFieldKey = (typeof INTERVIEW_INFO_FIELD_KEYS)[number];
 export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 
-export const SessionFactConfidenceSchema = z.enum(['high', 'medium', 'low', 'unknown']);
+// 降序元组来自 confidence-rank（唯一权威）；顺序沿用历史 high-first，
+// 保证发给抽取模型的 JSON schema 逐字节不变。
+export const SessionFactConfidenceSchema = z.enum(FACT_CONFIDENCE_LEVELS_DESC);
 export const SessionFactSourceSchema = z.enum([
   'candidate',
   'llm',
@@ -833,12 +837,9 @@ export function toSessionFacts(
 // ==================== 2. 业务状态（当前会话的结构化短期记忆） ====================
 
 /** 候选岗位池摘要 — 复用 jobId 和补充查询 */
-export const RecommendedJobWelfareKindSchema = z.enum([
-  'company',
-  'allowance',
-  'self_or_none',
-  'unspecified',
-]);
+// 词表权威在 tools/duliday/job-list/welfare-facts.util（WelfareKind 的居所）。
+// 本 schema 参与 Redis 落盘校验，漂移即整份会话状态归空——故不留手抄口。
+export const RecommendedJobWelfareKindSchema = z.enum(WELFARE_KINDS);
 
 export type RecommendedJobWelfareKind = z.infer<typeof RecommendedJobWelfareKindSchema>;
 
@@ -927,8 +928,16 @@ export interface InvitedGroupRecord {
   invitedAt: string;
 }
 
-/** 会话终态（复聊停止条件的权威信号）。 */
-export type SessionTerminalState = 'booked' | 'handed_off' | 'rejected' | 'onboarded';
+/**
+ * 会话终态（复聊停止条件的权威信号）。
+ *
+ * ⚠️ 加档必须走本常量：Redis 落盘校验 SessionFactsRedisContentSchema 用的就是它。
+ * 写侧 interface 放行而读侧 z.enum 不认时，getSessionState 的 safeParse 失败会
+ * **整份会话状态归 EMPTY_SESSION_STATE**（facts/池/brand_state 全丢）且只留一条
+ * warn，终态随之丢失、复聊继续触达已终态候选人。
+ */
+export const SESSION_TERMINAL_STATES = ['booked', 'handed_off', 'rejected', 'onboarded'] as const;
+export type SessionTerminalState = (typeof SESSION_TERMINAL_STATES)[number];
 
 /**
  * 最近一次 duliday_job_list 的查询签名记录。
@@ -967,7 +976,8 @@ export interface WeworkSessionState {
   lastProcessedCandidateMessageAt?: string | null;
   /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
-   * 写入只经 turn-finalizer 的 brand_state reducer（单一门）；preferences.brands 是它的只读投影。
+   * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
+   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6），读边界恒 null。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;
@@ -1006,7 +1016,7 @@ export const WeworkSessionStateSchema = z.object({
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
-  terminal: z.enum(['booked', 'handed_off', 'rejected', 'onboarded']).nullable().optional(),
+  terminal: z.enum(SESSION_TERMINAL_STATES).nullable().optional(),
   lastCandidateMessageAt: z.string().nullable().optional(),
   lastProcessedCandidateMessageAt: z.string().nullable().optional(),
   brand_state: PersistedBrandStateSchema.nullable().optional(),
@@ -1037,7 +1047,10 @@ export const SessionFactsRedisContentSchema = WeworkSessionStateSchema.partial()
 /** Redis 中 session-facts 层实际存储的 entry 结构。 */
 export type SessionFactsRedisEntry = MemoryEntry<SessionFactsRedisContent>;
 
-/** 结构化短期记忆层的真实持久化结果。 */
+/**
+ * 结构化短期记忆层的持久化结果形状。当前无任何消费方（残留类型，待删）；
+ * 实际写入是 `factsv2:*` hash，`facts:*` 单 key 是只读迁移遗留、禁止新写入。
+ */
 export interface SessionFactsStorageResult {
   source: 'redis';
   keyPattern: 'facts:{corpId}:{userId}:{sessionId}';

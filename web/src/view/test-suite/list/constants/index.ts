@@ -13,6 +13,10 @@ export const BATCH_STATUS_CONFIG = {
   reviewing: { text: '评审中', className: 'reviewing' },
   completed: { text: '已完成', className: 'completed' },
   created: { text: '已创建', className: 'created' },
+  // 后端 BatchStatus 有 CANCELLED='cancelled'，此前前端未登记：
+  // getBatchStatusDisplay 的 `|| BATCH_STATUS_CONFIG.created` 兜底会把已取消的
+  // 批次显示成「已创建」——不是没标签，是**显示错标签**。
+  cancelled: { text: '已取消', className: 'cancelled' },
 } as const;
 
 export type BatchStatus = keyof typeof BATCH_STATUS_CONFIG;

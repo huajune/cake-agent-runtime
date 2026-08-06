@@ -400,8 +400,8 @@ export function extractHighConfidenceFacts(
   const sheetFor = (message: string): FinalizedVisualFactSheet | undefined =>
     options?.visualSheetsByContent?.get(stripTimeContextSuffix(message).trim());
 
-  // 品牌收口（§9.2）：本函数不再内联直写 preferences.brands——品牌真相唯一存储是
-  // brand_state（写入只经 turn-finalizer 的 reducer），preferences.brands 退化为只读投影。
+  // 品牌收口（§9.2）：本函数不内联直写 preferences.brands——品牌真相唯一存储是
+  // brand_state（写入只经 reducer），preferences.brands 已退役（§19.6）、读边界恒 null。
   // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
   // R2 发布方剔除：带 job_posting sheet 的消息，品牌线索只吃 key=brand 字段值
   // （发布方公司名在 key=publisher，不进品牌语料）；其余消息照旧全文。
@@ -1255,7 +1255,7 @@ function extractHealthCertificateClause(clause: string): HealthCertificateFact |
   if (declaredStatus) return declaredStatus;
 
   // 疑问句守卫（badcase zj8b3rj1，chat 6a68622d：「都是需要有食品健康证是吗」是在问
-  // 岗位要求，不是自报有证；此前裸类型词命中「有」让疑问句直通报名有证 gate）。
+  // 岗位要求，不是自报有证；缺此守卫时裸类型词命中「有」会让疑问句直通报名有证 gate）。
   // 岗位要求转述（"需要健康证"）同样不是持有声明。只挡「有」档，负向/意愿档在上方已返回。
   if (
     /健康证[^。！？\n]{0,8}(?:是吗|对吗|吗|么|吧|呢)|健康证[^。！？\n]{0,6}[？?]|(?:需要|要求|是不是要|要不要|用不用|必须|得)(?:先)?(?:有|办|持有?)?[^。！？\n]{0,8}健康证/u.test(

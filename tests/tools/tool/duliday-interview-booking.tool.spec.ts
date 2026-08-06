@@ -1624,4 +1624,59 @@ describe('buildInterviewBookingTool', () => {
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1', expect.any(Object));
   });
+
+  // 海绵业务码透传（2026-08-06 周报：43 次 booking.rejected 因缺 apiCode 无法细分
+  // 名额满/归属冲突/年龄拦截）。apiCode 的有无同时充当「海绵拒绝」与「本地闸门拦下」
+  // 的判别位，故正反两条一起锁死。
+  describe('海绵拒绝的 apiCode 透传', () => {
+    it('走完 bookInterview 后被海绵拒绝时，透传 apiCode/apiMessage 供观测落库', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({
+        success: false,
+        code: 30003,
+        message: '用户已报名该品牌',
+        errorList: null,
+      });
+
+      const result = await executeTool({
+        ...validInput,
+        educationId: 2,
+        householdRegisterProvinceId: 310000,
+        height: 172,
+      });
+      await flushAsyncEvents();
+
+      expect(result).toMatchObject({
+        success: false,
+        errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+        apiCode: 30003,
+        apiMessage: '用户已报名该品牌',
+      });
+    });
+
+    it('海绵未给 message 时 apiMessage 落 null，不落 undefined', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({ success: false, code: 500 });
+
+      const result = await executeTool({
+        ...validInput,
+        educationId: 2,
+        householdRegisterProvinceId: 310000,
+        height: 172,
+      });
+      await flushAsyncEvents();
+
+      expect(result).toMatchObject({ apiCode: 500, apiMessage: null });
+    });
+
+    it('本地闸门拦下的 BOOKING_REJECTED 不带 apiCode（没请求过海绵）', async () => {
+      const { prechecked, ...inputWithoutPrechecked } = validInput;
+      void prechecked;
+      const result = await executeTool(inputWithoutPrechecked);
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+      expect(result.apiCode).toBeUndefined();
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+  });
 });

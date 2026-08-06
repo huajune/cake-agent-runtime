@@ -14,7 +14,8 @@ export type HuajuneEventType =
   | 'interview_booked'
   | 'candidate_hired';
 
-export type HuajuneSourcePlatform = 'zhipin' | 'yupao' | 'duliday';
+export const HUAJUNE_SOURCE_PLATFORMS = ['zhipin', 'yupao', 'duliday'] as const;
+export type HuajuneSourcePlatform = (typeof HUAJUNE_SOURCE_PLATFORMS)[number];
 
 export interface HuajuneCandidate {
   /** 候选人姓名（必填）。 */

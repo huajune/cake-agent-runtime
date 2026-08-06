@@ -295,5 +295,3 @@ export function renderMultiStoreBrandWarning(
   }
   return lines.join('\n') + '\n\n';
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

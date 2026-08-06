@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.40.0",
   "nextVersion": "10.41.0",
-  "updatedAt": "2026-08-05",
+  "updatedAt": "2026-08-06",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -24,6 +24,330 @@
       "ops": [
         "v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）"
       ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "906",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/906",
+      "title": "v10.40.0 底账补记 P0 同族场景生产自然复现证据",
+      "author": "huajune",
+      "mergedAt": "2026-08-05",
+      "businessUpdates": [
+        "补记 P0 同族场景生产自然复现验证证据",
+        "v10.40.0 底账补记 P0 同族场景生产自然复现证据"
+      ],
+      "summary": [
+        "补记 P0 同族场景生产自然复现验证证据",
+        "v10.40.0 底账补记 P0 同族场景生产自然复现证据"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补记 P0 同族场景生产自然复现验证证据"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "908",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/908",
+      "title": "三张词表收拢回 resolution/visual 单一居所",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "三张词表收拢回 resolution/visual 单一居所"
+      ],
+      "summary": [
+        "三张词表收拢回 resolution/visual 单一居所"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "三张词表收拢回 resolution/visual 单一居所"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "915",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/915",
+      "title": "收资字段名与裁决观测词表收拢（期 2）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "收资字段名与裁决观测词表收拢（期 2）"
+      ],
+      "summary": [
+        "收资字段名与裁决观测词表收拢（期 2）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "收资字段名与裁决观测词表收拢（期 2）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "**jest 410 suites · 6820 tests 全通过**",
+        "**precheck 域 9 suites · 179 tests 全通过**",
+        "新增 spec 逐一断言全部取值与顺序未变"
+      ]
+    },
+    {
+      "number": "916",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/916",
+      "title": "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
+      ],
+      "summary": [
+        "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
+      ],
+      "features": [
+        "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "**jest 409 suites · 6814 tests 全通过**",
+        "**web `tsc --noEmit` 通过**（前端类型改动已验证）"
+      ]
+    },
+    {
+      "number": "923",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/923",
+      "title": "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
+      ],
+      "summary": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "924",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/924",
+      "title": "批次列表补 cancelled 状态（已取消不再显示成「已创建」）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "`BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`",
+        "补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块"
+      ],
+      "summary": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
+        "批次列表补 cancelled 状态（已取消不再显示成「已创建」）",
+        "`BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`",
+        "补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块"
+      ],
+      "features": [],
+      "fixes": [
+        "`BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`",
+        "补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块"
+      ],
+      "optimizations": [],
+      "ops": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
+        "批次列表补 cancelled 状态（已取消不再显示成「已创建」）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "922",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/922",
+      "title": "errorType 提示词写法改为线上真值 + 闸门补检查",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "errorType 提示词写法改为线上真值 + 闸门补检查",
+        "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
+      ],
+      "summary": [
+        "errorType 提示词写法改为线上真值 + 闸门补检查",
+        "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "errorType 提示词写法改为线上真值 + 闸门补检查",
+        "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "930",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/930",
+      "title": "全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "修正过时注释，变更叙事统一为现状约束口径"
+      ],
+      "summary": [
+        "删除同义反复的 JSDoc 头注释",
+        "修正过时注释，变更叙事统一为现状约束口径",
+        "全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理"
+      ],
+      "features": [],
+      "fixes": [
+        "修正过时注释，变更叙事统一为现状约束口径"
+      ],
+      "optimizations": [],
+      "ops": [
+        "删除同义反复的 JSDoc 头注释"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "非注释行变更全量机审：除上述 4 处字符串外**零代码变更**（含行尾注释宿主行逐行核对）",
+        "typecheck / lint:check / geo:validate（8 类全绿）/ vocab:validate（5 项全绿）/ 全量 jest **413 套件 6870 条全部通过**",
+        "多代理排查 + 主会话逐条抽验；一处代理过度删除（visual-fact 并跑对照约束被叙事改写误删）经交叉比对发现并恢复",
+        "排查中确认的四组零引用死代码（旧 llm-reviewer、SEMANTIC_REVIEW_FINDING_POLICIES、*StorageResult 类型族、GeoResolution）**不在本 PR 删除**，已另立任务"
+      ]
+    },
+    {
+      "number": "910",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/910",
+      "title": "清理实测确认的死代码，收拢消息状态与配置键",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "清理实测确认的死代码，收拢消息状态与配置键",
+        "历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；",
+        "\"处理期间收集新消息\"由 debounce + Redis pending/ack（`message.processor.ts`）承担。"
+      ],
+      "summary": [
+        "清理实测确认的死代码，收拢消息状态与配置键",
+        "历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；",
+        "\"处理期间收集新消息\"由 debounce + Redis pending/ack（`message.processor.ts`）承担。"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；",
+        "\"处理期间收集新消息\"由 debounce + Redis pending/ack（`message.processor.ts`）承担。",
+        "清理实测确认的死代码，收拢消息状态与配置键"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "917",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/917",
+      "title": "爽约不取消的时点前提同步到全部四处口径",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "爽约不取消的时点前提同步到全部四处口径"
+      ],
+      "summary": [
+        "爽约不取消的时点前提同步到全部四处口径"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "爽约不取消的时点前提同步到全部四处口径"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全库 **6814 passed / 0 failed**",
+        "`tsc --noEmit`、`eslint --max-warnings=0` 均通过"
+      ]
+    },
+    {
+      "number": "929",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/929",
+      "title": "booking 已建单必须把面试日期告知候选人（形态 E）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "**判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。",
+        "**不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。",
+        "**等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。",
+        "**解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。"
+      ],
+      "summary": [
+        "booking 已建单必须把面试日期告知候选人（形态 E）",
+        "**判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。",
+        "**不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。",
+        "**等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。",
+        "**解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。"
+      ],
+      "features": [],
+      "fixes": [
+        "**判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。",
+        "**不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。",
+        "**等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。",
+        "**解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "booking 已建单必须把面试日期告知候选人（形态 E）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全库 **6875 passed / 0 failed**；`tests/agent/guardrail` **1006 passed**",
+        "新增 5 条回归：未给日期→REVISE、给月日放行、只给星期放行、`8月6号`写法放行、等通知岗位不适用",
+        "`tsc --noEmit` / `eslint --max-warnings=0` 均通过"
+      ]
+    },
+    {
+      "number": "925",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/925",
+      "title": "badcase 策展新增前置状态闸门与品牌输入轨澄清",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
+        "出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）",
+        "badcase 策展新增前置状态闸门与品牌输入轨澄清"
+      ],
+      "summary": [
+        "badcase 策展新增前置状态闸门与品牌输入轨澄清",
+        "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
+        "出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）"
+      ],
+      "features": [
+        "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
+        "出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）",
+        "badcase 策展新增前置状态闸门与品牌输入轨澄清"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
       "config": [],
       "envFiles": [],
       "verification": []

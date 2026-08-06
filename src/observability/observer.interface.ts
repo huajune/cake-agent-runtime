@@ -6,6 +6,14 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import type { ToolErrorType } from '@tools/types/tool-error-types';
+import type {
+  CandidateClaimDecision,
+  CandidateClaimField,
+  CandidateClaimProducer,
+  CandidateClaimRejectionReason,
+  CandidateFactInterpretation,
+  CandidateFactOperation,
+} from '@memory/facts/candidate/candidate-fact-claim.types';
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -159,13 +167,16 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         precheckId?: string;
         factsVersion?: number;
+        // 六个字段一律复用裁决域权威类型，不另立 string（与本文件 errorType 用
+        // ToolErrorType 同口径）：观测字段与产出方漂移会让日巡检按错的取值集聚合，
+        // 而裸 string 下这种漂移零信号。
         decisions: Array<{
-          field: string;
-          producer: string;
-          operation: string;
-          interpretation: string;
-          decision: string;
-          rejectionReason?: string;
+          field: CandidateClaimField;
+          producer: CandidateClaimProducer;
+          operation: CandidateFactOperation;
+          interpretation: CandidateFactInterpretation;
+          decision: CandidateClaimDecision;
+          rejectionReason?: CandidateClaimRejectionReason;
           supersededByClaimId?: string;
           claimId: string;
         }>;

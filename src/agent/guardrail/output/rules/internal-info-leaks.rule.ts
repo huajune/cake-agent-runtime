@@ -52,6 +52,25 @@ const TOOL_NAMES = [
   'send_store_location',
 ] as const;
 
+/**
+ * 工具调用 XML 标签形态——**泄漏检测与残文剥离共用的单一真相源**。
+ *
+ * 2026-08-06 生产 badcase（运营反馈 `8pu8f8we`，chat `6a72a29d…` 08-05 10:42）：
+ * 整条回复只有一个闭合标签 `</function_calls>`，被原样投递给候选人，候选人回了
+ * 一个「？」，Agent 三分钟后才以"抱歉刚才在帮你查～"补救。
+ *
+ * 根因是同族判据单边漂移：2026-08-04 审计把**残文剥离**的交替组从 `function_call/s`
+ * 扩到了 `function(?:_calls?)?` 与 `thinking`，却漏改**泄漏检测**侧——那里一直是窄的
+ * `<\/?tool_call>`。`isToolCallArtifactOnly` 以 `detectOutputLeak` 为前置闸，检测不
+ * 命中就直接短路返回 false，于是这条残文既没被拦、也没走整轮静默。
+ * 既往同族残文之所以侥幸被捕，是因为正文里另带了已注册工具名（`skip_reply` 等）
+ * 命中了工具名词条，并非 XML 标签判据生效。
+ *
+ * 两处共用同一份来源，杜绝再次单边扩展。
+ */
+const TOOL_CALL_XML_TAG_SOURCE =
+  '<\\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking)\\b[^>]*>';
+
 const PATTERNS: RegExp[] = [
   // 模型把阶段术语 / 内部状态字段直接说出来
   new RegExp(STAGE_TERMS.map(escapeRegex).join('|')),
@@ -74,7 +93,7 @@ const PATTERNS: RegExp[] = [
   // 3 条 JSON 原文穿透旧词库发给了候选人（06:14/06:40/06:41 三单）
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`),
   // 工具调用 JSON 骨架（未注册工具名/MCP 动态工具也能兜住）
-  /<\/?tool_call>/i,
+  new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'i'),
   /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
   /["']arguments["']\s*:\s*\{/,
   // 整条回复以 JSON 开头（`{"`、`[{`、`["`）——自然语言回复不存在这种开头
@@ -141,7 +160,7 @@ export function stripMarkdownCodeFences(content: string): string {
  */
 const TOOL_CALL_SKELETON_PATTERNS: readonly RegExp[] = [
   /<parameter\b[^>]*>[^<]*/gi,
-  /<\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking)\b[^>]*>/gi,
+  new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'gi'),
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\s*\\([^()]*\\)`, 'g'),
   /(["'])(?:\\.|(?!\1)[^\\])*\1/g,
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`, 'g'),
@@ -272,7 +291,7 @@ export function hasTechnicalDocumentationShape(content: string): boolean {
 const HUMAN_SERVICE_PHRASE_PATTERN =
   /转人工|人工客服|人工坐席|转接人工|人工渠道|人工登记|人工确认|人工介入|人工处理|人工跟进|真人招募经理|真人经理|真人客服|专人联系|专人跟进|专人对接/;
 // 刻意不入表："人工审核"（描述门店/品牌侧简历审核外部流程，属合法业务表述，
-// precheck wait_notice 话术已改为"先进入审核"避免主动引导该词形）。
+// precheck wait_notice 话术用"先进入审核"避免主动引导该词形）。
 
 /**
  * 反馈按"本轮是否有真实人工升级动作"分叉（2026-08-04 审计 P1-5，trace …_1785743845189）：

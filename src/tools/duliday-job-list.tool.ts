@@ -29,6 +29,7 @@ import {
 import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
+import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import {
   filterJobsToRequestedAdministrativeArea,
@@ -207,7 +208,7 @@ const inputSchema = z.object({
       '品牌ID列表；Boss直聘岗位标题中形如 "[10239]" 的方括号纯数字是品牌ID，应填为 brandIdList=[10239]，不要当作 jobId/薪资/编号',
     ),
   brandFilterMode: z
-    .enum(['enforce', 'exclude', 'clear', 'browse_all'])
+    .enum(BRAND_FILTER_MODES)
     .optional()
     .describe(
       '品牌过滤形态（可选）。enforce=仅查询指定品牌（品牌列表非空时的默认语义，通常无需显式传）；' +
@@ -782,11 +783,11 @@ export function buildJobListTool(
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
         // 拉回候选人原话（badcase 簇 schedule_constraint_forgotten）。
-        // 升级（badcase batch_6a4e430dce406a6aee7a3421）：模型传了约束也不再整体采信——
+        // 模型传了约束也不整体采信（badcase batch_6a4e430dce406a6aee7a3421）：
         // 候选人要"周六的兼职"，模型却传 {onlyEvenings:true} 把"周六"弄丢。持久化约束
-        // 是候选人原话的高置信沉淀，改为与模型入参逐字段合并：模型显式传的字段保留
+        // 是候选人原话的高置信沉淀，须与模型入参逐字段合并：模型显式传的字段保留
         // （本轮新信息优先），漏传的字段由持久化约束补齐；空对象 {} 视同未传
-        // （此前 {} 是 truthy，会绕过兜底）。
+        // （{} 是 truthy，不显式排除会绕过兜底）。
         const persistedConstraint = context.sessionFacts?.preferences?.schedule_constraint ?? null;
         if (persistedConstraint) {
           const persistedInput = {
@@ -832,7 +833,7 @@ export function buildJobListTool(
               '(2) 候选人提到的地点不是通用后缀类（万达广场/天街/火车站/购物中心 等跨城同名）时，' +
               '优先调用 `geocode` 工具——你对地名→城市映射有高置信通识就把城市传给 geocode，' +
               '没把握就 city 留空让 geocode 自己判定；geocode 返回 unique 即可拿到 city 重调本工具；' +
-              '(3) 仅当 geocode 报 GEOCODE_AMBIGUOUS_SUFFIX 或 ambiguous 多候选时，才中性反问候选人所在城市；' +
+              `(3) 仅当 geocode 报 ${TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX} 或 ambiguous 多候选时，才中性反问候选人所在城市；` +
               '反问必须中性，不得带具体城市名（"是 X 城市吗"会构成诱导）。',
           });
         }

@@ -1,10 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ChatService } from './chat.service';
 
-/**
- * 会话管理控制器
- * 提供会话列表和聊天历史查询接口
- */
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}

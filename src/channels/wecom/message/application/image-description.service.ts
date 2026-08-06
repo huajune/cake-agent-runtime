@@ -7,6 +7,9 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import { MessageType } from '@enums/message-callback.enum';
 import { isResumeImageDescription, stripResumeAttachmentLines } from '../utils/message-parser.util';
 import {
+  FIELD_OWNERSHIPS,
+  VISUAL_FACT_FIELD_KEY_PROMPT,
+  VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
   finalizeVisualFactSheet,
   type FinalizedVisualFactSheet,
@@ -27,23 +30,15 @@ export interface ArtworkContext {
 /** P1 结构化输出 schema：描述 + kind + fields（归属可缺省，finalize 按 kind 补）。 */
 const VISION_SHEET_SCHEMA = z.object({
   description: z.string().describe('图片内容的中文描述，遵循系统提示词里的各类图片提取要求'),
-  kind: z
-    .enum(VISUAL_FACT_KINDS)
-    .describe(
-      'job_posting=招聘平台岗位截图/卡片/海报；map_location=地图/定位/导航/门店位置；resume=简历本体；chat_screenshot=聊天记录截图；certificate=健康证等证件；other=其他',
-    ),
+  kind: z.enum(VISUAL_FACT_KINDS).describe(VISUAL_FACT_KIND_PROMPT),
   fields: z
     .array(
       z.object({
         // string 而非 enum（白名单过滤在 finalize 做）；词表写进 describe 保持模型可见
-        key: z
-          .string()
-          .describe(
-            '只能用这些值：phone / name / age_range / brand / brand_id / publisher / store / address / city / candidate_address / salary_text / shift_text / cert_type / cert_issue_date / other',
-          ),
+        key: z.string().describe(VISUAL_FACT_FIELD_KEY_PROMPT),
         value: z.string(),
         ownership: z
-          .enum(['candidate', 'publisher', 'third_party', 'unknown'])
+          .enum(FIELD_OWNERSHIPS)
           .optional()
           .describe('该值归谁：候选人本人/发布方（招聘方）/其他第三方/不确定'),
       }),
@@ -258,7 +253,7 @@ export class ImageDescriptionService {
         : '请描述这张图片的内容。';
 
     // 视觉事实结构化（P1 生产者）：图片优先走结构化输出（描述 + kind + fields）；
-    // 任何失败回退纯文本路径——降级不是失败，是回到结构化之前的行为。表情不结构化。
+    // 任何失败回退纯文本路径——降级不是失败，纯文本描述本身就是可用产物。表情不结构化。
     let description = '';
     let sheet: FinalizedVisualFactSheet | null = null;
     let usageTokens: number | undefined;

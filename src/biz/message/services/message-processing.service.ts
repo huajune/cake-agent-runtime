@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MessageProcessingRepository } from '../repositories/message-processing.repository';
 import { MessageProcessingRecordInput } from '../types/message.types';
 import { GuardrailReviewService } from './guardrail-review.service';
+import type { MessageProcessingStatus } from '@enums/message.enum';
 
 /**
  * 消息处理记录服务
@@ -62,7 +63,7 @@ export class MessageProcessingService {
   async getMessageProcessingRecords(query: {
     startDate?: string;
     endDate?: string;
-    status?: 'processing' | 'success' | 'failure' | 'timeout';
+    status?: MessageProcessingStatus;
     chatId?: string;
     userName?: string;
     managerName?: string | string[];
@@ -162,7 +163,7 @@ export class MessageProcessingService {
   async getRecordsByTimestamps(options: {
     startTime?: number;
     endTime?: number;
-    status?: 'processing' | 'success' | 'failure' | 'timeout';
+    status?: MessageProcessingStatus;
     chatIds?: string[];
     limit?: number;
     offset?: number;

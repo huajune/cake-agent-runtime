@@ -117,7 +117,7 @@ export function extractSalaryFacts(jobSalary: unknown): SalaryFacts {
     }
 
     // 试用期/培训期薪资既可能出现在顶层 probationSalary 块，也可能仅作为
-    // salaryScenarioList 里的一条（salaryType="试用期"/"培训期"），后者此前被漏判。
+    // salaryScenarioList 里的一条（salaryType="试用期"/"培训期"），两处都必须认。
     if (typeof s.salaryType === 'string' && /试用期|培训期|试工/.test(s.salaryType)) {
       facts.hasProbationSalary = true;
     }

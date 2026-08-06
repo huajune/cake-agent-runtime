@@ -24,7 +24,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
  *
  * 分为三层：
  * - facade: MemoryService
- * - domain services: services/ 下的 short-term / long-term / procedural / settlement / session / enrichment / lifecycle
+ * - domain services: services/ 下的 short-term / long-term / procedural / settlement / session / enrichment / lifecycle / brand-state / candidate-snapshot
  * - stores: Redis / Supabase 基础设施
  */
 @Module({

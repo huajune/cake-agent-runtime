@@ -79,14 +79,15 @@ export type GuardrailCoverage = (typeof GUARDRAIL_COVERAGES)[number];
  * 统一决策枚举（按层取子集）：
  * - input：`pass | block`
  * - tool ：`allow | reject_collect | reject_hard`
- * - output：`pass | observe | revise | replan | block`
+ * - output：`pass | observe | revise | replan | block`（replan 已于 2026-07-27 退役，
+ *   枚举值保留仅容忍历史档案与模型输出，落地前一律折叠为 revise）
  *
  * output 层优先级（严重度递增）：pass < observe < revise < replan < block
  * - pass：无违规，内容可发
  * - observe：发现软性问题，内容仍可发，打标记录
  * - revise：内容不可发，LLM 重写文案
- * - replan：内容不可发，LLM 重走工具再生成
- * - block：内容不可发，不修复，硬拦
+ * - replan：（退役）历史语义为重走工具再生成，现流程折叠为 revise
+ * - block：内容不可发；runner 先做一次受控重写自救，二审仍违规才硬拦
  */
 export const GUARDRAIL_DECISION = {
   PASS: 'pass',
@@ -119,6 +120,32 @@ export type OutputDecision = Extract<
   | typeof GUARDRAIL_DECISION.BLOCK
 >;
 
+/**
+ * OutputDecision 的**有序**元组。语义严重度升序（pass → block），语义审查的
+ * z.enum 与优先级合并都以此为准。
+ *
+ * 为什么单列而不用 GUARDRAIL_DECISIONS：后者混了 input 层的 allow/reject_*，
+ * 不是 output 层的合法取值集。
+ */
+export const OUTPUT_DECISIONS = [
+  GUARDRAIL_DECISION.PASS,
+  GUARDRAIL_DECISION.OBSERVE,
+  GUARDRAIL_DECISION.REVISE,
+  GUARDRAIL_DECISION.REPLAN,
+  GUARDRAIL_DECISION.BLOCK,
+] as const;
+
+// 元组与 OutputDecision 成员集合恒等的编译期证明（任一方增删档位即报错）。
+type _AssertOutputDecisionsCover =
+  Exclude<OutputDecision, (typeof OUTPUT_DECISIONS)[number]> extends never ? true : never;
+type _AssertOutputDecisionsNoExtra =
+  Exclude<(typeof OUTPUT_DECISIONS)[number], OutputDecision> extends never ? true : never;
+const _outputDecisionParity: [_AssertOutputDecisionsCover, _AssertOutputDecisionsNoExtra] = [
+  true,
+  true,
+];
+void _outputDecisionParity;
+
 /** Input 层风险类型码（对应 risk-intercept.service 的检测分类）。 */
 export const INPUT_RISK_TYPE = {
   ABUSE: 'abuse',
@@ -144,9 +171,28 @@ export const GUARDRAIL_RISK_LEVEL = {
   HIGH: 'high',
 } as const;
 
-export const GUARDRAIL_RISK_LEVELS = Object.values(GUARDRAIL_RISK_LEVEL);
+/**
+ * 有序元组（低→高）。刻意不用 `Object.values()`：那返回可变数组，`z.enum` 要
+ * readonly tuple；而语义审查的 confidence 字段正是靠它生成模型可见 schema。
+ * 下方类型断言保证元组与 GUARDRAIL_RISK_LEVEL 成员集合恒等。
+ */
+export const GUARDRAIL_RISK_LEVELS = [
+  GUARDRAIL_RISK_LEVEL.LOW,
+  GUARDRAIL_RISK_LEVEL.MEDIUM,
+  GUARDRAIL_RISK_LEVEL.HIGH,
+] as const;
 
 export type GuardrailRiskLevel = (typeof GUARDRAIL_RISK_LEVELS)[number];
+
+type _AssertRiskLevelsCover =
+  Exclude<
+    (typeof GUARDRAIL_RISK_LEVEL)[keyof typeof GUARDRAIL_RISK_LEVEL],
+    GuardrailRiskLevel
+  > extends never
+    ? true
+    : never;
+const _riskLevelParity: _AssertRiskLevelsCover = true;
+void _riskLevelParity;
 
 /** 被命中内容本身的数据敏感等级；不要和风险严重度混用。 */
 export const GUARDRAIL_DATA_SENSITIVITY = {
@@ -186,9 +232,23 @@ export const GUARDRAIL_REPAIR_MODE = {
   REPLAN: 'replan',
 } as const;
 
-export const GUARDRAIL_REPAIR_MODES = Object.values(GUARDRAIL_REPAIR_MODE);
+/** 有序元组（理由同 GUARDRAIL_RISK_LEVELS：z.enum 需要 readonly tuple）。 */
+export const GUARDRAIL_REPAIR_MODES = [
+  GUARDRAIL_REPAIR_MODE.REWRITE,
+  GUARDRAIL_REPAIR_MODE.REPLAN,
+] as const;
 
 export type GuardrailRepairMode = (typeof GUARDRAIL_REPAIR_MODES)[number];
+
+type _AssertRepairModesCover =
+  Exclude<
+    (typeof GUARDRAIL_REPAIR_MODE)[keyof typeof GUARDRAIL_REPAIR_MODE],
+    GuardrailRepairMode
+  > extends never
+    ? true
+    : never;
+const _repairModeParity: _AssertRepairModesCover = true;
+void _repairModeParity;
 
 /** 单条违规意见（HC-1 revise 回路注入用）。 */
 export interface GuardViolation {

@@ -95,9 +95,6 @@ export interface ExecutionRecordUpdate {
   };
 }
 
-/**
- * 测试套件任务队列处理器
- */
 @Injectable()
 export class TestSuiteProcessor implements OnModuleInit {
   private readonly logger = new Logger(TestSuiteProcessor.name);

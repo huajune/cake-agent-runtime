@@ -12,25 +12,75 @@
 ## 待发布
 
 **预计版本**: `v10.41.0`
-**最近更新**: `2026-08-05`
+**最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 13
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
 - PR #903 v10.40.0 发布结果补记
+- PR #906 补记 P0 同族场景生产自然复现验证证据
+- PR #906 v10.40.0 底账补记 P0 同族场景生产自然复现证据
+- PR #908 三张词表收拢回 resolution/visual 单一居所
+- PR #915 收资字段名与裁决观测词表收拢（期 2）
+- PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
+- PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
+- PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
+- PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
+- PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
+- PR #922 补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态
+- PR #930 删除同义反复的 JSDoc 头注释
+- PR #930 修正过时注释，变更叙事统一为现状约束口径
+- PR #930 全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理
+- PR #910 清理实测确认的死代码，收拢消息状态与配置键
+- PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
+- PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
+- PR #917 爽约不取消的时点前提同步到全部四处口径
+- PR #929 booking 已建单必须把面试日期告知候选人（形态 E）
+- PR #929 **判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。
+- PR #929 **不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。
+- PR #929 **等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。
+- PR #929 **解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。
+- PR #925 badcase 策展新增前置状态闸门与品牌输入轨澄清
+- PR #925 出现在候选人自己打的消息里 → `user_text` 轨，**应采信**
+- PR #925 出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）
 
 ### 新功能
-- 无
+- PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
+- PR #925 出现在候选人自己打的消息里 → `user_text` 轨，**应采信**
+- PR #925 出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）
+- PR #925 badcase 策展新增前置状态闸门与品牌输入轨澄清
 
 ### 问题修复
-- 无
+- PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
+- PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
+- PR #930 修正过时注释，变更叙事统一为现状约束口径
+- PR #929 **判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。
+- PR #929 **不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。
+- PR #929 **等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。
+- PR #929 **解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。
 
 ### 优化调整
 - 无
 
 ### 运维与流程
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
+- PR #906 补记 P0 同族场景生产自然复现验证证据
+- PR #908 三张词表收拢回 resolution/visual 单一居所
+- PR #915 收资字段名与裁决观测词表收拢（期 2）
+- PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
+- PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
+- PR #922 补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态
+- PR #930 删除同义反复的 JSDoc 头注释
+- PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
+- PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
+- PR #910 清理实测确认的死代码，收拢消息状态与配置键
+- PR #917 爽约不取消的时点前提同步到全部四处口径
+- PR #929 booking 已建单必须把面试日期告知候选人（形态 E）
 
 ### 配置变更
 - 无
@@ -39,7 +89,20 @@
 - 无
 
 ### 验证记录
-- 无
+- PR #915 **jest 410 suites · 6820 tests 全通过**
+- PR #915 **precheck 域 9 suites · 179 tests 全通过**
+- PR #915 新增 spec 逐一断言全部取值与顺序未变
+- PR #916 **jest 409 suites · 6814 tests 全通过**
+- PR #916 **web `tsc --noEmit` 通过**（前端类型改动已验证）
+- PR #930 非注释行变更全量机审：除上述 4 处字符串外**零代码变更**（含行尾注释宿主行逐行核对）
+- PR #930 typecheck / lint:check / geo:validate（8 类全绿）/ vocab:validate（5 项全绿）/ 全量 jest **413 套件 6870 条全部通过**
+- PR #930 多代理排查 + 主会话逐条抽验；一处代理过度删除（visual-fact 并跑对照约束被叙事改写误删）经交叉比对发现并恢复
+- PR #930 排查中确认的四组零引用死代码（旧 llm-reviewer、SEMANTIC_REVIEW_FINDING_POLICIES、*StorageResult 类型族、GeoResolution）**不在本 PR 删除**，已另立任务
+- PR #917 全库 **6814 passed / 0 failed**
+- PR #917 `tsc --noEmit`、`eslint --max-warnings=0` 均通过
+- PR #929 全库 **6875 passed / 0 failed**；`tests/agent/guardrail` **1006 passed**
+- PR #929 新增 5 条回归：未给日期→REVISE、给月日放行、只给星期放行、`8月6号`写法放行、等通知岗位不适用
+- PR #929 `tsc --noEmit` / `eslint --max-warnings=0` 均通过
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05

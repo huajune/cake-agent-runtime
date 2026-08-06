@@ -5,8 +5,8 @@ import { isDanglingCheckReply } from '@agent/runner/dangling-reply';
 /**
  * 首版投递物的悬空承接句观测。
  *
- * 背景：`isDanglingCheckReply` 此前只作用于 repair 产物（agent-runner 的 invokeReviewed
- * 里对 revisedText 判定，命中收敛为 block）。**首版直投完全不检测**——而首版才是绝大
+ * 背景：`isDanglingCheckReply` 只作用于 repair 产物（agent-runner 的 invokeReviewed
+ * 里对 revisedText 判定，命中收敛为 block），**首版直投不在其覆盖内**——而首版才是绝大
  * 多数投递物。2026-07-29 日报 L1 回扫实证两条真悬空（chat 6a69ba9f 16:36、6a69be5c），
  * 都是"我先帮你查下 X，稍等哈"独立成句发出后再无下文，候选人一直空等。
  *

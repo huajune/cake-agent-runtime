@@ -140,7 +140,7 @@ export const GUARDRAIL_CATALOG: GuardrailCatalogEntry[] = [
     riskGoal: '辱骂、投诉风险、面试结果追问、主动要求转人工等高风险会话进入 Agent 前暂停托管。',
     source: 'agent/guardrail/input/risk-intercept.service.ts',
     exogenousSignal:
-      '高置信关键词规则（abuse / complaint_risk / interview_result_inquiry / human_handoff_request）',
+      '高置信关键词规则（abuse / complaint_risk / interview_result_inquiry / human_handoff_request / disability_disclosure）',
     residualRisk: '隐晦投诉或无关键词升级仍可能漏检。',
     verification: 'tests/agent/guardrail/input/risk-intercept.service.spec.ts',
     owner: 'agent-runtime',
@@ -183,7 +183,8 @@ export const GUARDRAIL_CATALOG: GuardrailCatalogEntry[] = [
     source:
       'agent/guardrail/output/llm/semantic-reviewer.service.ts（OutputGuardrailService 组合器调度）',
     exogenousSignal: 'toolCalls.result + memory + redLines（接地才有信号）',
-    residualRisk: '默认由 OUTPUT_GUARDRAIL_LLM_ENABLED 灰度控制；关闭时只剩确定性 rule 档。',
+    residualRisk:
+      '开关主控是托管配置 agent_reply_config（Dashboard 即时生效），env OUTPUT_GUARDRAIL_LLM_ENABLED 仅为 DB 未持久化时的 bootstrap 默认；关闭时只剩确定性 rule 档。',
     verification: 'tests/agent/guardrail/output/output-guardrail.service.spec.ts',
     owner: 'agent-runtime',
     status: 'active',

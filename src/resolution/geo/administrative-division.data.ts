@@ -2,9 +2,10 @@
  * 行政区基础数据 + 业务高置信别名（自 memory/facts/geo-mappings.ts 行为等价迁移，Phase 1）。
  *
  * 维护口径（geo-domain-refactor-plan v3.1 §9）：
- * - Phase 4 生成化前维持人工白名单 + 小步补录；
- * - "朝阳 → 北京"等条目是刻意业务偏置（其余同名行政区不在业务区域），
- *   将来接入国家数据交叉校验时按 override 豁免，不得被"纠正"；
+ * - 本表不在 Phase 4 生成化范围内（生成化只覆盖县级市映射），长期维持人工白名单 + 小步补录；
+ * - "朝阳 → 北京"等条目是刻意业务偏置（其余同名行政区不在业务区域），已由 geo:validate
+ *   对照国家数据交叉校验、经 overrides 的 BUSINESS_BIASED_SUBDIVISION_ALIASES 登记豁免，
+ *   不得被"纠正"；新增跨城重名条目必须同步登记；
  * - §9.5 改名已落地（2026-07-28）：SUPPORTED_CITY_PREFIXES → HIGH_CONFIDENCE_BARE_LOCATION_ALIASES、
  *   DISTRICT_TO_CITY → UNIQUE_SUBDIVISION_TO_CITY、LOCATION_TO_CITY → UNIQUE_PLACE_ALIAS_TO_CITY，
  *   语义随名称对齐（裸地名别名表可合法含省级条目如"江西"，不再伪装城市表）。

@@ -3,10 +3,6 @@ import { MessageSenderService } from './message-sender.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
 
-/**
- * 消息发送控制器
- * 提供消息发送接口（单发、群发）
- */
 @Controller('message')
 export class MessageSenderController {
   constructor(private readonly messageSenderService: MessageSenderService) {}

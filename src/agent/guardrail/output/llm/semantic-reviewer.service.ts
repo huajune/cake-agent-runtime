@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ModelRole } from '@/llm/llm.types';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
+import {
+  GUARDRAIL_REPAIR_MODES,
+  GUARDRAIL_RISK_LEVELS,
+  OUTPUT_DECISIONS,
+} from '@shared-types/guardrail.contract';
 import { hasQuantifiedJobFact } from '../job-fact-signals.util';
 import type { GuardrailReviewPacket } from './review-packet.types';
 
@@ -14,7 +19,7 @@ export const SEMANTIC_REVIEW_FINDING_CODES = [
 
 export type SemanticReviewFindingCode = (typeof SEMANTIC_REVIEW_FINDING_CODES)[number];
 
-/** 每个语义 finding 自带恢复能力声明，与 code 定义同处维护。 */
+/** replan 时代的恢复能力声明，退役（2026-07-27）后无任何消费方；保留仅备 §2.4 重新申领动手权，待删。 */
 export const SEMANTIC_REVIEW_FINDING_POLICIES = {
   job_recommendation_not_best_supported: {
     repairToolNames: ['geocode', 'duliday_job_list'],
@@ -32,8 +37,8 @@ export const SEMANTIC_REVIEW_FINDING_POLICIES = {
 } as const satisfies Record<SemanticReviewFindingCode, { repairToolNames: readonly string[] }>;
 
 const semanticReviewSchema = z.object({
-  decision: z.enum(['pass', 'observe', 'revise', 'replan', 'block']),
-  confidence: z.enum(['low', 'medium', 'high']),
+  decision: z.enum(OUTPUT_DECISIONS),
+  confidence: z.enum(GUARDRAIL_RISK_LEVELS),
   findings: z
     .array(
       z.object({
@@ -41,7 +46,7 @@ const semanticReviewSchema = z.object({
         evidencePath: z.string(),
         evidenceQuote: z.string(),
         userImpact: z.string(),
-        repairMode: z.enum(['rewrite', 'replan']),
+        repairMode: z.enum(GUARDRAIL_REPAIR_MODES),
         feedbackToGenerator: z.string(),
       }),
     )
@@ -73,7 +78,7 @@ function isLikelyTruncatedText(value: string): boolean {
  * 漏掉一类就会把该类证据支撑的合法回复误判成"凭空生成"。这条已经翻车两次：
  * 2026-07-30 首版漏 precheck（回放新触发样本 10/12 是 precheck 给出的合法面试窗口）；
  * 2026-08-04 审计再漏群邀请（invite_to_group:ok 支撑的"群邀请已经发你了"被判
- * "没有任何下发证据"，trace …_1785451709779 硬假阳）。故改为按字段清单遍历 +
+ * "没有任何下发证据"，trace …_1785451709779 硬假阳）。故按字段清单遍历 +
  * 编译期双向穷尽断言：evidence 加新字段而清单没跟上，或清单写了不存在的字段，
  * 都会直接编译报错，杜绝第三次漂移。
  * jobList 特殊：对象存在但 jobs 与 markdownExcerpt 都空＝查无岗位，不算可核验证据。
@@ -186,7 +191,7 @@ export class SemanticReviewerService {
         '1. job_recommendation_not_best_supported：岗位推荐与 jobList 证据、距离排序、候选人指定品牌或班次明显冲突。',
         '2. brand_or_geo_ambiguity_ignored：地理或品牌证据不确定，但回复直接下结论。',
         '3. active_booking_state_conflict：booking 证据显示已约/失败/线上线下/面试时间地址等状态，但回复与其冲突或漏关键状态。',
-        '4. fact_asserted_without_any_evidence：evidence 完全为空（jobList/precheck/booking/geocode/sentLocation/groupInvite 全无），回复却给出具体的岗位或预约事实——薪资数字、距离、班次时段、指名门店的岗位、完成态报名/预约、报名链接。groupInvite.success=true 时"群邀请已发你了/已拉你进群"是有下发证据的如实陈述，不属于本类。',
+        `4. fact_asserted_without_any_evidence：evidence 完全为空（${EVIDENCE_KEYS.join('/')} 全无），回复却给出具体的岗位或预约事实——薪资数字、距离、班次时段、指名门店的岗位、完成态报名/预约、报名链接。groupInvite.success=true 时"群邀请已发你了/已拉你进群"是有下发证据的如实陈述，不属于本类。`,
         '   本类要区分"凭空生成"与"跨轮复述"，复述判定以 recentAssistantMessages 为准：回复中的事实（数值、门店、岗位详情、群邀请、报名状态）能在其中找到一致表述的，属复述——最多 observe 或 low 置信，不要 revise/block，把合法复述改掉会让候选人丢失已经沟通过的信息；往轮表述本身是否真实交跨轮治理，不在本轮裁决。',
         '   判 high 置信只限不可能来自复述的形态——回复里给出 recentAssistantMessages 中从未出现过的报名/表单链接（链接只能来自工具下发）、首次以完成口径宣称已提交/已报名/已预约（该状态在往轮助手消息中从未出现）、内容与候选人的问题或招聘场景明显不相干（如接口设计、代码、其它领域答案）、或对话刚开始（recentAssistantMessages 为空或全是寒暄）就报出具体门店薪资。',
         '   注意：本轮没查到岗位与本轮没有任何证据是两回事，jobList 存在但为空属第 1 类，不要用本类。',
@@ -285,9 +290,11 @@ export class SemanticReviewerService {
     decision: SemanticReviewVerdict['decision'],
     findings: SemanticReviewVerdict['findings'],
   ): SemanticReviewVerdict['decision'] {
-    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4），语义档
-    // 裁决无条件归一为 revise——schema 仍容忍模型输出 'replan'（避免结构化输出
-    // 重试），但它永远不会传出本方法，runner 的 replan 执行路径已删除。
+    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4）。本方法把
+    // 'replan' 归一为 revise，但只在证据兜底剔除 finding 的分支被调用
+    // （applyEvidenceBackstop 未剔除时原样返回 verdict）；未归一的 'replan' 由
+    // output-guardrail 的 applyConfidenceBackstop 兜底折叠。schema 仍容忍模型输出
+    // 'replan'（避免结构化输出重试），runner 的 replan 执行路径已删除。
     const allowed = new Set(findings.map((finding) => finding.repairMode));
     if (decision === 'replan') return 'revise';
     if (decision === 'block' && !allowed.has('replan')) return 'revise';
