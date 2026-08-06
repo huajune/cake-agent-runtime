@@ -4,6 +4,7 @@
  */
 
 import { ScenarioType } from '@enums/agent.enum';
+import type { MessageProcessingStatus } from '@enums/message.enum';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -124,7 +125,7 @@ export interface MessageProcessingRecord {
   prepDuration?: number;
 
   // 状态
-  status: 'processing' | 'success' | 'failure' | 'timeout';
+  status: MessageProcessingStatus;
   error?: string;
   isFallback?: boolean;
   fallbackSuccess?: boolean;

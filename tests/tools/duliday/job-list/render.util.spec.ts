@@ -146,6 +146,56 @@ describe('job-list render util', () => {
     });
   });
 
+  // 2026-08-06 运营口径：发薪日默认「次月发上月」，没有当月发当月的情况。
+  // 候选人高频追问"X 号上班当月能不能发薪"，裸"15号发薪"会被读成当月。
+  describe('月结发薪日归属月份标注', () => {
+    const salaryFlags: ProgressiveDisclosureFlags = {
+      includeBasicInfo: true,
+      includeJobSalary: true,
+      includeWelfare: false,
+      includeHiringRequirement: false,
+      includeWorkTime: false,
+      includeInterviewProcess: false,
+    };
+
+    const withSalary = (scenario: Record<string, unknown>) => {
+      const job = makeJob(1);
+      job.jobSalary = { salaryScenarioList: [scenario] } as typeof job.jobSalary;
+      return formatJobsToMarkdown([job], 1, 1, 10, salaryFlags);
+    };
+
+    it('月结 + 具体几号时标注次月发上月', () => {
+      const markdown = withSalary({ salaryType: '小时工', salaryPeriod: '月结算', payday: '15号' });
+      expect(markdown).toContain('15号发薪（次月15号发上月工资，无当月发当月）');
+    });
+
+    it('周结不加标注（该口径只适用月结）', () => {
+      const markdown = withSalary({
+        salaryType: '小时工',
+        salaryPeriod: '周结算',
+        payday: '每周三',
+      });
+      expect(markdown).toContain('每周三发薪');
+      expect(markdown).not.toContain('发上月工资');
+    });
+
+    it('月结但 payday 非"N号"形态时不臆造归属月份', () => {
+      const markdown = withSalary({
+        salaryType: '小时工',
+        salaryPeriod: '月结算',
+        payday: '月底',
+      });
+      expect(markdown).toContain('月底发薪');
+      expect(markdown).not.toContain('发上月工资');
+    });
+
+    it('缺 salaryPeriod 时不标注（无法判定是否月结）', () => {
+      const markdown = withSalary({ salaryType: '小时工', payday: '10号' });
+      expect(markdown).toContain('10号发薪');
+      expect(markdown).not.toContain('发上月工资');
+    });
+  });
+
   describe('hard-requirements banner', () => {
     const detailFlags: ProgressiveDisclosureFlags = {
       includeBasicInfo: true,

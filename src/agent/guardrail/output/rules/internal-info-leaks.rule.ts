@@ -52,6 +52,25 @@ const TOOL_NAMES = [
   'send_store_location',
 ] as const;
 
+/**
+ * 工具调用 XML 标签形态——**泄漏检测与残文剥离共用的单一真相源**。
+ *
+ * 2026-08-06 生产 badcase（运营反馈 `8pu8f8we`，chat `6a72a29d…` 08-05 10:42）：
+ * 整条回复只有一个闭合标签 `</function_calls>`，被原样投递给候选人，候选人回了
+ * 一个「？」，Agent 三分钟后才以"抱歉刚才在帮你查～"补救。
+ *
+ * 根因是同族判据单边漂移：2026-08-04 审计把**残文剥离**的交替组从 `function_call/s`
+ * 扩到了 `function(?:_calls?)?` 与 `thinking`，却漏改**泄漏检测**侧——那里一直是窄的
+ * `<\/?tool_call>`。`isToolCallArtifactOnly` 以 `detectOutputLeak` 为前置闸，检测不
+ * 命中就直接短路返回 false，于是这条残文既没被拦、也没走整轮静默。
+ * 既往同族残文之所以侥幸被捕，是因为正文里另带了已注册工具名（`skip_reply` 等）
+ * 命中了工具名词条，并非 XML 标签判据生效。
+ *
+ * 两处共用同一份来源，杜绝再次单边扩展。
+ */
+const TOOL_CALL_XML_TAG_SOURCE =
+  '<\\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking)\\b[^>]*>';
+
 const PATTERNS: RegExp[] = [
   // 模型把阶段术语 / 内部状态字段直接说出来
   new RegExp(STAGE_TERMS.map(escapeRegex).join('|')),
@@ -74,7 +93,7 @@ const PATTERNS: RegExp[] = [
   // 3 条 JSON 原文穿透旧词库发给了候选人（06:14/06:40/06:41 三单）
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`),
   // 工具调用 JSON 骨架（未注册工具名/MCP 动态工具也能兜住）
-  /<\/?tool_call>/i,
+  new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'i'),
   /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
   /["']arguments["']\s*:\s*\{/,
   // 整条回复以 JSON 开头（`{"`、`[{`、`["`）——自然语言回复不存在这种开头
@@ -141,7 +160,7 @@ export function stripMarkdownCodeFences(content: string): string {
  */
 const TOOL_CALL_SKELETON_PATTERNS: readonly RegExp[] = [
   /<parameter\b[^>]*>[^<]*/gi,
-  /<\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking)\b[^>]*>/gi,
+  new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'gi'),
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\s*\\([^()]*\\)`, 'g'),
   /(["'])(?:\\.|(?!\1)[^\\])*\1/g,
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`, 'g'),

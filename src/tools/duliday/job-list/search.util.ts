@@ -26,6 +26,7 @@ import {
   matchesLaborForm,
   sanitizeLaborFormForDisplay,
 } from '@memory/facts/labor-form';
+import type { JobDetail } from '@sponge/sponge.types';
 
 const EARTH_RADIUS_KM = 6371;
 
@@ -48,9 +49,10 @@ function normalizeKeyword(value: string | null | undefined): string {
   return value.toLowerCase().replace(/[^a-z0-9一-龥]/g, '');
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-export function scoreJobAgainstRequestedCategories(job: any, jobCategoryList: string[]): number {
+export function scoreJobAgainstRequestedCategories(
+  job: JobDetail,
+  jobCategoryList: string[],
+): number {
   const requestedKeywords = jobCategoryList.map((item) => normalizeKeyword(item)).filter(Boolean);
 
   if (requestedKeywords.length === 0) return 0;
@@ -96,7 +98,7 @@ export interface BrandEqualityTarget {
   canonicalNames: string[];
 }
 
-function matchesBrandTarget(job: any, target: BrandEqualityTarget): boolean {
+function matchesBrandTarget(job: JobDetail, target: BrandEqualityTarget): boolean {
   const jobBrandId = typeof job?.basicInfo?.brandId === 'number' ? job.basicInfo.brandId : null;
   if (jobBrandId != null && target.brandIds.includes(jobBrandId)) return true;
   const jobBrandName = normalizeForBrandMatch(
@@ -113,7 +115,10 @@ function matchesBrandTarget(job: any, target: BrandEqualityTarget): boolean {
  * 入口标准化（§8.2）落地后过滤条件是品牌 ID/标准品牌名，本地过滤退化为**等值比较**
  * （§5.1：私有包含匹配策略 normalizeKeyword + 单向 includes 已废弃）。
  */
-export function filterJobsToAppliedBrands(jobs: any[], target: BrandEqualityTarget): any[] {
+export function filterJobsToAppliedBrands(
+  jobs: JobDetail[],
+  target: BrandEqualityTarget,
+): JobDetail[] {
   if (target.brandIds.length === 0 && target.canonicalNames.length === 0) return jobs;
   return jobs.filter((job) => matchesBrandTarget(job, target));
 }
@@ -122,7 +127,10 @@ export function filterJobsToAppliedBrands(jobs: any[], target: BrandEqualityTarg
  * exclude 模式的本地后过滤（§8.1）：Duliday 岗位接口没有品牌排除参数，只能召回后剔除。
  * 受分页扫描上限影响可能出现召回空洞（已知局限，queryMeta 如实记录 filterMode=exclude）。
  */
-export function filterJobsExcludingBrands(jobs: any[], target: BrandEqualityTarget): any[] {
+export function filterJobsExcludingBrands(
+  jobs: JobDetail[],
+  target: BrandEqualityTarget,
+): JobDetail[] {
   if (target.brandIds.length === 0 && target.canonicalNames.length === 0) return jobs;
   return jobs.filter((job) => !matchesBrandTarget(job, target));
 }
@@ -141,14 +149,14 @@ export function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): s
  * 不兼容岗位被剔除并附原因。
  */
 export function applyScheduleConstraint(
-  jobs: any[],
+  jobs: JobDetail[],
   constraint: CandidateScheduleConstraint | undefined,
 ): {
-  jobs: any[];
+  jobs: JobDetail[];
   excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }>;
 } {
   const excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }> = [];
-  const kept: any[] = [];
+  const kept: JobDetail[] = [];
 
   for (const job of jobs) {
     const analysis = buildJobPolicyAnalysis(job);
@@ -180,7 +188,7 @@ export function applyScheduleConstraint(
 
 export interface StudentIdentityFilterResult {
   applied: boolean;
-  jobs: any[];
+  jobs: JobDetail[];
   excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }>;
 }
 
@@ -195,14 +203,14 @@ export interface StudentIdentityFilterResult {
  * - 身份未知时的处理走推荐卡片披露 + 收资前单问（prompt 层先筛后推规则）。
  */
 export function applyStudentIdentityConstraint(
-  jobs: any[],
+  jobs: JobDetail[],
   candidateIsStudent: boolean | null,
 ): StudentIdentityFilterResult {
   if (candidateIsStudent !== true) {
     return { applied: false, jobs, excluded: [] };
   }
   const excluded: StudentIdentityFilterResult['excluded'] = [];
-  const kept: any[] = [];
+  const kept: JobDetail[] = [];
   for (const job of jobs) {
     const policy = buildJobPolicyAnalysis(job);
     const hr = extractHardRequirements(job, policy);
@@ -222,7 +230,7 @@ export function applyStudentIdentityConstraint(
 export interface LaborFormFilterResult {
   /** 是否实际启用了硬过滤。 */
   applied: boolean;
-  jobs: any[];
+  jobs: JobDetail[];
   excluded: Array<{
     jobId: number | null;
     brandName: string | null;
@@ -244,7 +252,7 @@ export interface LaborFormFilterResult {
  */
 function buildLaborFormKeepPredicate(
   wanted: string | null | undefined,
-): ((job: any) => boolean) | null {
+): ((job: JobDetail) => boolean) | null {
   if (!isHardFilteredLaborForm(wanted)) return null;
   return (job) =>
     matchesLaborForm(job?.basicInfo?.laborForm, job?.basicInfo?.partTimeJobType, wanted);
@@ -262,7 +270,7 @@ function buildLaborFormKeepPredicate(
  * （如"附近这几家是常规兼职岗，没有暑假工"）。
  */
 export function applyLaborFormConstraint(
-  jobs: any[],
+  jobs: JobDetail[],
   wanted: string | null | undefined,
 ): LaborFormFilterResult {
   const keep = buildLaborFormKeepPredicate(wanted);
@@ -270,9 +278,9 @@ export function applyLaborFormConstraint(
     return { applied: false, jobs, excluded: [], relaxedToFamily: false };
   }
 
-  const partition = (predicate: (job: any) => boolean) => {
+  const partition = (predicate: (job: JobDetail) => boolean) => {
     const excluded: LaborFormFilterResult['excluded'] = [];
-    const kept: any[] = [];
+    const kept: JobDetail[] = [];
     for (const job of jobs) {
       if (predicate(job)) {
         kept.push(job);
@@ -321,7 +329,7 @@ export interface LaborFormAnomaly {
  * 匹配层（matchesLaborForm / 家族放宽）不兜底这些脏数据——它们匹配不上是**预期行为**；
  * 本函数的职责是让问题可见，推动上游改数据本身。
  */
-export function collectLaborFormAnomalies(jobs: any[]): LaborFormAnomaly[] {
+export function collectLaborFormAnomalies(jobs: JobDetail[]): LaborFormAnomaly[] {
   const anomalies: LaborFormAnomaly[] = [];
   for (const job of jobs) {
     const laborForm = sanitizeLaborFormForDisplay(job?.basicInfo?.laborForm);
@@ -346,15 +354,16 @@ export function collectLaborFormAnomalies(jobs: any[]): LaborFormAnomaly[] {
   return anomalies;
 }
 
-export function filterJobsByRequestedCategories(jobs: any[], jobCategoryList: string[]): any[] {
+export function filterJobsByRequestedCategories(
+  jobs: JobDetail[],
+  jobCategoryList: string[],
+): JobDetail[] {
   return jobs
     .map((job) => ({ job, score: scoreJobAgainstRequestedCategories(job, jobCategoryList) }))
     .filter(({ score }) => score >= 6)
     .sort((a, b) => b.score - a.score)
     .map(({ job }) => job);
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
  * 泛化统称类岗位工种词——候选人口语里的「店员/员工/工作人员」并不是 sponge 岗位分类轴上的

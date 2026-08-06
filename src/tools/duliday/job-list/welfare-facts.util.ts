@@ -16,8 +16,6 @@
  * 高优先级的"先看这里"提示。
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
  * 福利档位。记忆层的 RecommendedJobWelfareKindSchema 从本常量派生——该 schema
  * 参与 Redis 落盘校验，两边漂移时 getSessionState 的 safeParse 失败会**整份会话
@@ -78,13 +76,21 @@ const SELF_OR_NONE_TOKENS = new Set([
   '不承担',
 ]);
 
-function classifyWelfareValue(raw: unknown, hasAllowance: boolean): WelfareKind {
+function classifyWelfareValue(
+  raw: unknown,
+  hasAllowance: boolean,
+  // 字段缺失/空值时的归类。吃住两项传 'self_or_none'：运营口径（2026-08-06）
+  // "吃和住都在岗位福利中，没有填就默认没有"——welfare 对象存在但没填吃/住，
+  // 应直接按"无"答复候选人，而不是 ❓ 未明确 → 转人工。保险不适用该默认
+  // （敏感字段，未明确时不得替公司断言"无保险"）。
+  defaultKind: WelfareKind = 'unspecified',
+): WelfareKind {
   if (raw === null || raw === undefined) {
-    return hasAllowance ? 'allowance' : 'unspecified';
+    return hasAllowance ? 'allowance' : defaultKind;
   }
   const text = typeof raw === 'string' ? raw.trim() : '';
   if (!text) {
-    return hasAllowance ? 'allowance' : 'unspecified';
+    return hasAllowance ? 'allowance' : defaultKind;
   }
 
   // 完全匹配优先
@@ -135,7 +141,7 @@ function hasNumericAllowance(...values: unknown[]): boolean {
  */
 export function extractWelfareFacts(welfare: unknown): WelfareFacts {
   if (!welfare || typeof welfare !== 'object') return { ...EMPTY_WELFARE_FACTS };
-  const w = welfare as any;
+  const w = welfare as Record<string, unknown>;
 
   const cateringAllowance = hasNumericAllowance(w.cateringSalary);
   const accommodationAllowance = hasNumericAllowance(w.accommodationAllowance);
@@ -147,9 +153,18 @@ export function extractWelfareFacts(welfare: unknown): WelfareFacts {
         .filter((item: string) => item.length > 0)
     : [];
 
+  // welfare 块**确实加载过**（对象非空）时，吃/住缺失才按"无"归类（运营口径：没填=没有）。
+  // 空对象 {} 仍归 unspecified——它代表"没有任何信息"而非"填了但为空"，此时替门店
+  // 断言"不包吃住"是编造。实测口径：includeWelfare=false 时海绵返回的是 welfare=null
+  // （已被上面的 typeof 判断挡在外面），includeWelfare=true 时 catering/accommodation
+  // 必然带值，所以本默认在现网基本不触发，是防御性安全网而非主路径。
+  const loaded = Object.keys(w).length > 0;
+  const missingKind: WelfareKind = loaded ? 'self_or_none' : 'unspecified';
+
   return {
-    meals: classifyWelfareValue(w.catering, cateringAllowance),
-    accommodation: classifyWelfareValue(w.accommodation, accommodationAllowance),
+    meals: classifyWelfareValue(w.catering, cateringAllowance, missingKind),
+    accommodation: classifyWelfareValue(w.accommodation, accommodationAllowance, missingKind),
+    // 保险是敏感字段：未配置时不得替公司断言"无保险"，保持未明确。
     insurance: classifyWelfareValue(w.haveInsurance, false),
     hasTrafficAllowance: trafficAllowance,
     hasPromotionWelfare:
@@ -161,7 +176,7 @@ export function extractWelfareFacts(welfare: unknown): WelfareFacts {
 const KIND_LABEL: Record<WelfareKind, string> = {
   company: '✅ 公司提供',
   allowance: '💵 仅给补贴（不直接提供）',
-  self_or_none: '❌ 无（员工自理 / 公司不提供）',
+  self_or_none: '❌ 无（员工自理 / 公司不提供 / 未配置默认无）',
   unspecified: '❓ 未明确',
 };
 
@@ -194,6 +209,12 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   lines.push(
     '> 🎁 **福利字段速览**（reply 时只能主动引用员工餐/住宿/交通补贴/晋升/其它福利里的"✅ 公司提供"和"💵 仅补贴"项目；"❌ 无"项目不得包装成"有"；保险/社保严禁主动提及）',
   );
+  // 本 banner 一出现就是吃/住的最终答案，模型不得再以"岗位没有这个字段"为由转人工。
+  // 2026-08-06 周报：食宿类缺口 7 项提及全部转人工，而实测 catering/accommodation
+  // 在 includeWelfare=true 时 20/20 均有值——转人工发生在"没重查"或"有值仍不敢答"。
+  lines.push(
+    '> ⚠️ 本速览即员工餐/住宿的**最终事实**：候选人问包不包吃住/有没有员工餐时按上面各项直接答（含"❌ 无"），**不得**回"岗位没写/我确认下"，也**不得**为此调 `request_handoff`。',
+  );
   lines.push(`> - 员工餐：${KIND_LABEL[facts.meals]}`);
   lines.push(`> - 住宿：${KIND_LABEL[facts.accommodation]}`);
   lines.push(`> - 保险（敏感，仅候选人主动问时可答）：${INSURANCE_LABEL[facts.insurance]}`);
@@ -208,5 +229,3 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   lines.push('');
   return lines.join('\n');
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

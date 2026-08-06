@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
+import { SystemConfigKey } from '@enums/hosting-config.enum';
 
 /**
  * 小组黑名单 Repository
@@ -28,7 +29,7 @@ export class GroupBlacklistRepository extends BaseRepository {
     }
 
     const result = await this.selectOne<{ value: GroupBlacklistItem[] }>('value', (q) =>
-      q.eq('key', 'group_blacklist'),
+      q.eq('key', SystemConfigKey.GROUP_BLACKLIST),
     );
 
     if (result && Array.isArray(result.value)) {
@@ -51,12 +52,12 @@ export class GroupBlacklistRepository extends BaseRepository {
 
     const updated = await this.update<{ key: string; value: GroupBlacklistItem[] }>(
       { value: items },
-      (q) => q.eq('key', 'group_blacklist'),
+      (q) => q.eq('key', SystemConfigKey.GROUP_BLACKLIST),
     );
 
     if (!updated || updated.length === 0) {
       await this.insert({
-        key: 'group_blacklist',
+        key: SystemConfigKey.GROUP_BLACKLIST,
         value: items,
         description: '小组黑名单（不触发AI回复但记录历史）',
       });

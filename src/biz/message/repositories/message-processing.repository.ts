@@ -3,6 +3,7 @@ import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { MessageProcessingDbRecord } from '../entities/message-processing.entity';
 import { MessageProcessingRecordInput } from '../types/message.types';
+import type { MessageProcessingStatus } from '@enums/message.enum';
 
 interface MessageProcessingFilters {
   userName?: string;
@@ -198,7 +199,7 @@ export class MessageProcessingRepository extends BaseRepository {
     endTime?: number;
     startDate?: Date;
     endDate?: Date;
-    status?: 'processing' | 'success' | 'failure' | 'timeout';
+    status?: MessageProcessingStatus;
     chatId?: string;
     /** 多 chatId 过滤（小组筛选下推 DB，避免先 limit 截断再内存过滤导致小组指标被低估）。 */
     chatIds?: string[];
@@ -284,7 +285,7 @@ export class MessageProcessingRepository extends BaseRepository {
     endTime?: number;
     startDate?: Date;
     endDate?: Date;
-    status?: 'processing' | 'success' | 'failure' | 'timeout';
+    status?: MessageProcessingStatus;
     chatId?: string;
     chatIds?: string[];
     userName?: string;
@@ -1051,7 +1052,7 @@ export class MessageProcessingRepository extends BaseRepository {
       messagePreview: record.message_preview,
       replyPreview: record.reply_preview,
       replySegments: record.reply_segments,
-      status: record.status as 'processing' | 'success' | 'failure' | 'timeout',
+      status: record.status as MessageProcessingStatus,
       error: record.error,
       alertType: record.alert_type as MessageProcessingRecordInput['alertType'],
       scenario: record.scenario,

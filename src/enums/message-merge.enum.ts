@@ -9,13 +9,3 @@ export enum ConversationStatus {
   /** 处理中：Agent 正在处理消息 */
   PROCESSING = 'processing',
 }
-
-/**
- * 溢出策略枚举
- */
-export enum OverflowStrategy {
-  /** 只取最新的 N 条消息 */
-  TAKE_LATEST = 'take-latest',
-  /** 全部聚合（不推荐） */
-  TAKE_ALL = 'take-all',
-}
