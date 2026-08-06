@@ -11,7 +11,11 @@ import {
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
 } from '@memory/facts/high-confidence-facts';
-import { type LongTermPreferenceFacts, type UserProfileFacts } from '@memory/types/long-term.types';
+import {
+  type LongTermPreferenceFacts,
+  type LongTermPreferenceFieldKey,
+  type UserProfileFacts,
+} from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
   type RecommendedJobSummary,
@@ -230,7 +234,10 @@ function formatProfileFactMeta(value: {
 function formatLongTermPreferences(preferences: LongTermPreferenceFacts | null): string {
   if (!preferences) return '';
 
-  const labels: Record<string, string> = {
+  // 穷尽映射：本表就是 [历史求职意向] 区块的渲染白名单（下方按 Object.entries 遍历），
+  // 往 LONG_TERM_PREFERENCE_FIELD_KEYS 加字段而漏登记，该意向会沉淀入库却永不进
+  // prompt。收成 Record<LongTermPreferenceFieldKey, …> 让这种遗漏在编译期就失败。
+  const labels: Record<LongTermPreferenceFieldKey, string> = {
     city: '意向城市',
     district: '意向区域',
     location: '意向地点',

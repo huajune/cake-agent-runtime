@@ -26,7 +26,8 @@ export type BrandMatchType =
  * 意图极性（3 值，§6.3）：默认 positive（提及即兴趣，业务裁定）；
  * "换个品牌"归入品牌为空的 negative；"品牌不限"为 browse_all。
  */
-export type BrandIntentPolarity = 'positive' | 'negative' | 'browse_all';
+export const BRAND_INTENT_POLARITIES = ['positive', 'negative', 'browse_all'] as const;
+export type BrandIntentPolarity = (typeof BRAND_INTENT_POLARITIES)[number];
 
 export interface BrandCandidate {
   canonicalName: string;
@@ -118,7 +119,8 @@ export interface PersistedBrandState extends SessionBrandState {
 // ==================== 工具品牌控制（§8.1） ====================
 
 /** duliday_job_list 入参（可选）；只描述查询形态，品牌来源单独记录在 BrandSource。 */
-export type BrandFilterMode = 'enforce' | 'exclude' | 'clear' | 'browse_all';
+export const BRAND_FILTER_MODES = ['enforce', 'exclude', 'clear', 'browse_all'] as const;
+export type BrandFilterMode = (typeof BRAND_FILTER_MODES)[number];
 
 /**
  * queryMeta 记录品牌来源（生产 brandAliasSource 的扶正）。

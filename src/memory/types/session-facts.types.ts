@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
-import { factConfidenceRank } from './confidence-rank';
+import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
 import type { MemoryEntry } from '../stores/store.types';
 
 // ==================== 1. 提取 schema（LLM 输出结构） ====================
@@ -270,7 +271,7 @@ export const BrandIntentEntrySchema = z.object({
         '"换个品牌/这个不考虑"等无具体品牌的排斥填 null',
     ),
   polarity: z
-    .enum(['positive', 'negative', 'browse_all'])
+    .enum(BRAND_INTENT_POLARITIES)
     .describe('positive=意向/询问/提及；negative=排斥（含指代排斥）；browse_all=明确不限品牌'),
 });
 
@@ -362,7 +363,9 @@ export const PREFERENCE_FIELD_KEYS = [
 export type InterviewInfoFieldKey = (typeof INTERVIEW_INFO_FIELD_KEYS)[number];
 export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 
-export const SessionFactConfidenceSchema = z.enum(['high', 'medium', 'low', 'unknown']);
+// 降序元组来自 confidence-rank（唯一权威）；顺序沿用历史 high-first，
+// 保证发给抽取模型的 JSON schema 逐字节不变。
+export const SessionFactConfidenceSchema = z.enum(FACT_CONFIDENCE_LEVELS_DESC);
 export const SessionFactSourceSchema = z.enum([
   'candidate',
   'llm',
@@ -927,8 +930,16 @@ export interface InvitedGroupRecord {
   invitedAt: string;
 }
 
-/** 会话终态（复聊停止条件的权威信号）。 */
-export type SessionTerminalState = 'booked' | 'handed_off' | 'rejected' | 'onboarded';
+/**
+ * 会话终态（复聊停止条件的权威信号）。
+ *
+ * ⚠️ 加档必须走本常量：Redis 落盘校验 SessionFactsRedisContentSchema 用的就是它。
+ * 写侧 interface 放行而读侧 z.enum 不认时，getSessionState 的 safeParse 失败会
+ * **整份会话状态归 EMPTY_SESSION_STATE**（facts/池/brand_state 全丢）且只留一条
+ * warn，终态随之丢失、复聊继续触达已终态候选人。
+ */
+export const SESSION_TERMINAL_STATES = ['booked', 'handed_off', 'rejected', 'onboarded'] as const;
+export type SessionTerminalState = (typeof SESSION_TERMINAL_STATES)[number];
 
 /**
  * 最近一次 duliday_job_list 的查询签名记录。
@@ -1006,7 +1017,7 @@ export const WeworkSessionStateSchema = z.object({
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
-  terminal: z.enum(['booked', 'handed_off', 'rejected', 'onboarded']).nullable().optional(),
+  terminal: z.enum(SESSION_TERMINAL_STATES).nullable().optional(),
   lastCandidateMessageAt: z.string().nullable().optional(),
   lastProcessedCandidateMessageAt: z.string().nullable().optional(),
   brand_state: PersistedBrandStateSchema.nullable().optional(),
