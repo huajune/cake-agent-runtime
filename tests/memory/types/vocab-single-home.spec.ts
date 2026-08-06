@@ -10,10 +10,12 @@ import {
 import {
   BrandIntentEntrySchema,
   SESSION_TERMINAL_STATES,
+  RecommendedJobWelfareKindSchema,
   SessionFactConfidenceSchema,
   WeworkSessionStateSchema,
 } from '@/memory/types/session-facts.types';
 import { LONG_TERM_PREFERENCE_FIELD_KEYS } from '@/memory/types/long-term.types';
+import { WELFARE_KINDS } from '@/tools/duliday/job-list/welfare-facts.util';
 import {
   BRAND_FILTER_MODES,
   BRAND_INTENT_POLARITIES,
@@ -72,6 +74,20 @@ describe('词表单一居所 · 期 0', () => {
 
     it('brandFilterMode 取值与顺序不变', () => {
       expect([...BRAND_FILTER_MODES]).toEqual(['enforce', 'exclude', 'clear', 'browse_all']);
+    });
+  });
+
+  describe('福利档位（同属 Redis 落盘 schema，爆炸半径同终态）', () => {
+    it('WELFARE_KINDS 取值与顺序不变', () => {
+      expect([...WELFARE_KINDS]).toEqual(['company', 'allowance', 'self_or_none', 'unspecified']);
+    });
+
+    it.each([...WELFARE_KINDS])('welfareKind=%s 能通过记忆层 schema 校验', (kind) => {
+      expect(RecommendedJobWelfareKindSchema.safeParse(kind).success).toBe(true);
+    });
+
+    it('未登记的福利档位被拒绝（证明校验非恒真）', () => {
+      expect(RecommendedJobWelfareKindSchema.safeParse('not_a_kind').success).toBe(false);
     });
   });
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
+import { WELFARE_KINDS } from '@tools/duliday/job-list/welfare-facts.util';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
 import type { MemoryEntry } from '../stores/store.types';
@@ -836,12 +837,9 @@ export function toSessionFacts(
 // ==================== 2. 业务状态（当前会话的结构化短期记忆） ====================
 
 /** 候选岗位池摘要 — 复用 jobId 和补充查询 */
-export const RecommendedJobWelfareKindSchema = z.enum([
-  'company',
-  'allowance',
-  'self_or_none',
-  'unspecified',
-]);
+// 词表权威在 tools/duliday/job-list/welfare-facts.util（WelfareKind 的居所）。
+// 本 schema 参与 Redis 落盘校验，漂移即整份会话状态归空——故不留手抄口。
+export const RecommendedJobWelfareKindSchema = z.enum(WELFARE_KINDS);
 
 export type RecommendedJobWelfareKind = z.infer<typeof RecommendedJobWelfareKindSchema>;
 

@@ -19,6 +19,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { HealthCertGate } from '@tools/utils/job-policy-parser';
+
 export type GenderRequirement = 'male' | 'female' | 'any' | 'unspecified';
 
 export type HouseholdRequirementMode = 'include' | 'exclude';
@@ -166,7 +168,14 @@ const CERT_NOT_REQUIRED = /不需要|无需|不必/;
  *
  * 优先级：明确字段 (healthCertGate) > 文本关键词推断 > 默认 unspecified。
  */
-function normalizeHealthCert(gate: unknown, requirementText: unknown): HealthCertRequirement {
+function normalizeHealthCert(
+  // 收成域类型而非 unknown：实参来源是有类型的 normalized?.healthCertGate，
+  // 收 unknown 等于把类型丢掉——下面三行与字面量比对，档位改名/加档时静默落空，
+  // 掉进正则兜底后保守判成 required_before_onboard，即「面试前必须持证」被
+  // 悄悄派生成「入职前办即可」，无错无日志。
+  gate: HealthCertGate | null | undefined,
+  requirementText: unknown,
+): HealthCertRequirement {
   if (gate === 'before_interview') return 'required_before_interview';
   if (gate === 'before_onboard') return 'required_before_onboard';
   if (gate === 'not_required') return 'not_required';
