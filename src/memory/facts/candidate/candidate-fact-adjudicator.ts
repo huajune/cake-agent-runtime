@@ -195,7 +195,8 @@ export function adjudicateCandidateClaims(params: AdjudicateParams): Adjudicatio
   // "模型无据率"这个 enforce 核心指标（badcase 6a7446eb：姓名经索名问答确证后，同值裸值
   // 仍被记一条 no_candidate_evidence）。superseded 才是诚实结论。
   for (const entry of adjudicated) {
-    if (entry.decision !== 'rejected' || entry.rejectionReason !== 'no_candidate_evidence') continue;
+    if (entry.decision !== 'rejected' || entry.rejectionReason !== 'no_candidate_evidence')
+      continue;
     const winner = validByField
       .get(entry.claim.field)
       ?.find(
