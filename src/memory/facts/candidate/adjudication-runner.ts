@@ -1,5 +1,6 @@
 import { stripMessageDecorations } from '@tools/shared/identity-statement.util';
 import { extractMessageText } from '@tools/duliday/precheck/collection-strategy.util';
+import { resolveNameAnsweredToRealNameAsk } from '@tools/shared/precheck-core';
 import { isResumeImageMessage, isVisualSourcePart } from '../visual-description';
 import type {
   AdjudicatedClaim,
@@ -96,8 +97,30 @@ export function runCandidateFactAdjudication(params: RunAdjudicationParams): Adj
   const messageWatermark = computeCandidateMessageWatermark(candidateTexts);
   const factsVersion = deriveFactsVersion(messageWatermark);
 
+  // 真名索取问答（badcase 6a7446eb）：Agent 问真名、候选人裸名直答。逐条文本的
+  // parseName 只认"姓名：X"/"我叫X"结构化形态，裸名答推导不出——不补这条轨，模型
+  // 传来的正确姓名会被判 no_candidate_evidence（生产实测 name 字段该拒因当日 40 条，
+  // 本族占相当比例）。证据是跨轮问答对，故用完整 messages 而非 candidateTexts。
+  const nameAnswer = resolveNameAnsweredToRealNameAsk(params.messages);
+
   const claims: CandidateFactClaim[] = [
     ...produceDirectFieldClaims({ candidateTexts, assertedAt, now }),
+    ...(nameAnswer
+      ? [
+          {
+            claimId: 'confirmation_name_1',
+            field: 'name' as const,
+            value: nameAnswer.name,
+            operation: 'set' as const,
+            producer: 'confirmation_resolver' as const,
+            // 值本体在候选人应答里（不是问句里），故按 direct 校验——严格身份字段要求
+            // 证据逐字含值，用问句作基准会被判自由推导。问句仅作审计上下文留存。
+            interpretation: 'direct' as const,
+            evidence: { quote: nameAnswer.quote, agentQuestionQuote: nameAnswer.askQuote },
+            assertedAt,
+          },
+        ]
+      : []),
     ...(params.legacyArgs ? produceLegacyModelClaims(params.legacyArgs, assertedAt) : []),
     ...(params.modelClaimInputs ? produceModelClaims(params.modelClaimInputs, assertedAt) : []),
   ];

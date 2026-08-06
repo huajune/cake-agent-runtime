@@ -55,7 +55,7 @@ import type {
   FieldProvenance,
 } from '../types/authoritative-session-state.types';
 import { parseCandidateFieldsFromText } from '@tools/shared/candidate-field-parser';
-import { isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
+import { isNameAnsweredToRealNameAsk, isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import {
   buildSessionExtractionPrompt,
@@ -906,12 +906,30 @@ export class SessionService {
       brandIntents: rawBrandIntents,
       degraded: llmDegraded,
     } = await this.callLLM(prompt);
-    // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
-    const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmRaw, userMessages);
+    // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位。
+    // 真名索取问答豁免（badcase 2026-08-06 chat 6a7446eb）：候选人开场"我是张丽鑫"命中
+    // 打招呼语判据，但 Agent 随后明确问真名、她单独回了"张丽鑫"——被问之后给出的名字是
+    // 真名亲证，不能再当昵称丢弃，否则 name 永远进不了档、Agent 反复追问同一个问题。
+    const llmExtractedName = llmRaw.interview_info?.name?.trim();
+    const nameAnsweredToAsk =
+      !!llmExtractedName && isNameAnsweredToRealNameAsk(llmExtractedName, scopedMessages);
+    const { sanitized: sanitizedLlm, droppedName } = nameAnsweredToAsk
+      ? { sanitized: llmRaw, droppedName: null }
+      : sanitizeInterviewName(llmRaw, userMessages);
     if (droppedName) {
       this.logger.log(
         `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
       );
+      // 该丢弃此前只有日志、无观测档，同案排障只能靠"快照里 name 恒为 null"反推。
+      this.tracer?.emit({
+        type: 'extraction_field_dropped',
+        corpId,
+        userId,
+        chatId: sessionId,
+        field: 'name',
+        droppedValue: droppedName,
+        reason: 'auto_greeting_nickname',
+      });
     }
     const newFacts = this.applyExplicitProvenanceUpgrade(
       this.mergeRuleAndLlmFacts(sanitizedLlm, highConfidenceRuleFacts),
