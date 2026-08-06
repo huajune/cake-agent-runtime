@@ -285,6 +285,44 @@
         "全库 **6814 passed / 0 failed**",
         "`tsc --noEmit`、`eslint --max-warnings=0` 均通过"
       ]
+    },
+    {
+      "number": "929",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/929",
+      "title": "booking 已建单必须把面试日期告知候选人（形态 E）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "**判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。",
+        "**不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。",
+        "**等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。",
+        "**解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。"
+      ],
+      "summary": [
+        "booking 已建单必须把面试日期告知候选人（形态 E）",
+        "**判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。",
+        "**不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。",
+        "**等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。",
+        "**解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。"
+      ],
+      "features": [],
+      "fixes": [
+        "**判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。",
+        "**不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。",
+        "**等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。",
+        "**解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "booking 已建单必须把面试日期告知候选人（形态 E）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全库 **6875 passed / 0 failed**；`tests/agent/guardrail` **1006 passed**",
+        "新增 5 条回归：未给日期→REVISE、给月日放行、只给星期放行、`8月6号`写法放行、等通知岗位不适用",
+        "`tsc --noEmit` / `eslint --max-warnings=0` 均通过"
+      ]
     }
   ],
   "lastRelease": {
