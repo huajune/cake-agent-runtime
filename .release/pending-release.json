@@ -540,6 +540,31 @@
         "typecheck / lint / geo:validate / vocab:validate / 全量 jest **415 套件 6916 条全部通过**（已合并最新 develop 后重跑）。",
         "每条修正均由主会话独立复核决定性事实后落改；驳回了子代理依据不成立的结论（`REVISION_FORBIDDEN_TOOLS` 被误判「零消费」，实际同文件即有消费方）；两条飞书外部文档断言由主会话自行查证官方文档确认。"
       ]
+    },
+    {
+      "number": "949",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/949",
+      "title": "忽略 logs/ 本地台账，撤出误提交的观测日志",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "忽略 logs/ 本地台账，撤出误提交的观测日志",
+        "撤出误提交的本地观测台账"
+      ],
+      "summary": [
+        "忽略 logs/ 本地台账，撤出误提交的观测日志",
+        "撤出误提交的本地观测台账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "忽略 logs/ 本地台账，撤出误提交的观测日志",
+        "撤出误提交的本地观测台账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
