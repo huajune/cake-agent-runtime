@@ -26,6 +26,7 @@ import { join } from 'path';
 
 import { VALID_LABOR_FORMS } from '@memory/facts/labor-form';
 import { AGENT_TOOL_CALL_STATUSES } from '@shared-types/agent-telemetry.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const REPO_ROOT = join(__dirname, '../..');
 
@@ -170,6 +171,66 @@ checkMembersPresent(
     if (!failures.some((f) => f.check === check)) {
       passed.push(`${check}（${authority.length} 个码 × 3 处一致）`);
     }
+  }
+}
+
+// ── 检查 4：提示词里提到的 errorType 必须是线上真值，且不得写成常量 KEY ──────
+//
+// 病根：`buildToolError` 吐给模型的是**值**（`geocode.unresolved_address`），
+// 而提示词里手写的是**常量 KEY**（`GEOCODE_UNRESOLVED_ADDRESS`）——模型被告知去
+// 认一个它永远收不到的字符串。同一份提示词里 `booking.rejected` 又是写对的，
+// 说明正确写法早有先例，只是没有任何东西拦住写错的那几处。
+//
+// 只查一个方向：出现了 TOOL_ERROR_TYPES 的 **KEY**（SCREAMING_SNAKE）→ 必然写错。
+// 只在"该 token 恰好是某个 errorType 的 key"时才报，因此零假阳性——
+// CURRENT_TIME / GUARD_SUFFIX 这类正常占位符不会被误伤。
+//
+// ⚠️ 刻意**不**查反方向（"dotted token 必须是合法真值"）：TOOL_ERROR_TYPES 的
+// 命名规范是「namespace 与工具名对齐」，于是工具**参数路径**与 errorType **取值**
+// 形状完全相同——`geocode.city`（geocode 工具的 city 入参）与
+// `geocode.city_required`（errorType）无法靠形状区分。实测该方向会把前者报成
+// 拼错。要修只能维护一张"已知非 errorType 的 dotted token"白名单，那种名单必然
+// 腐烂，收益不抵维护成本。
+{
+  const check = 'errorType 提示词写法 ↔ 线上真值';
+  const PROMPT_ASSETS = [
+    'src/agent/generator/context/prompts/candidate-consultation.md',
+    'src/tools/geocode.tool.ts',
+    'src/tools/duliday-job-list.tool.ts',
+    'src/tools/duliday-interview-precheck.tool.ts',
+    'src/tools/duliday-interview-booking.tool.ts',
+    'src/tools/invite-to-group.tool.ts',
+    'src/tools/request-handoff.tool.ts',
+  ];
+  const entries = Object.entries(TOOL_ERROR_TYPES) as Array<[string, string]>;
+  const keyToValue = new Map(entries);
+
+  for (const relPath of PROMPT_ASSETS) {
+    let source: string;
+    try {
+      source = read(relPath);
+    } catch {
+      continue; // 文件不存在（重命名/删除）不在本检查职责内
+    }
+
+    // 反引号里的 SCREAMING_SNAKE token 若恰是某个 errorType 的 key → 写错了
+    for (const m of source.matchAll(/`\\?`?([A-Z][A-Z0-9_]{5,})\\?`?`/g)) {
+      const token = m[1];
+      const value = keyToValue.get(token);
+      if (value) {
+        failures.push({
+          check,
+          detail:
+            `${relPath} 写的是常量 KEY \`${token}\`，但模型实收的是值 \`${value}\`` +
+            `（buildToolError 吐的是值）。请改写成 \`${value}\`；.ts 资产可直接内插 TOOL_ERROR_TYPES.${token}。`,
+        });
+      }
+    }
+
+  }
+
+  if (!failures.some((f) => f.check === check)) {
+    passed.push(`${check}（${PROMPT_ASSETS.length} 份提示词资产 × ${entries.length} 个 errorType）`);
   }
 }
 
