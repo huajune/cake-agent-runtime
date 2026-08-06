@@ -213,17 +213,31 @@ checkMembersPresent(
       continue; // 文件不存在（重命名/删除）不在本检查职责内
     }
 
-    // 反引号里的 SCREAMING_SNAKE token 若恰是某个 errorType 的 key → 写错了
-    for (const m of source.matchAll(/`\\?`?([A-Z][A-Z0-9_]{5,})\\?`?`/g)) {
-      const token = m[1];
-      const value = keyToValue.get(token);
-      if (value) {
-        failures.push({
-          check,
-          detail:
-            `${relPath} 写的是常量 KEY \`${token}\`，但模型实收的是值 \`${value}\`` +
-            `（buildToolError 吐的是值）。请改写成 \`${value}\`；.ts 资产可直接内插 TOOL_ERROR_TYPES.${token}。`,
-        });
+    // 逐行扫 SCREAMING_SNAKE token，命中 errorType key 即写错。
+    //
+    // 刻意**不**要求反引号包裹：首版只匹配反引号内的，漏掉了
+    // duliday-job-list.tool.ts 里裸写在 replyInstruction 字符串中的一处
+    // （该串直发模型）——覆盖面缺口由 PR 评审实测指出。
+    //
+    // 代价是要跳过注释行：.ts 文件里在注释中提常量名是正常写法（那不进 prompt），
+    // 只有进字符串的才会被模型看到。按行首形态跳过 // 与块注释续行即可，
+    // 不必上 AST——本检查的目标是拦住"写进提示词"，不是做静态分析。
+    for (const rawLine of source.split('\n')) {
+      const trimmed = rawLine.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue;
+      for (const m of trimmed.matchAll(/([A-Z][A-Z0-9_]{5,})/g)) {
+        const token = m[1];
+        // 代码里正常引用常量（TOOL_ERROR_TYPES.XXX）不算写进提示词
+        if (trimmed.includes(`TOOL_ERROR_TYPES.${token}`)) continue;
+        const value = keyToValue.get(token);
+        if (value) {
+          failures.push({
+            check,
+            detail:
+              `${relPath} 写的是常量 KEY \`${token}\`，但模型实收的是值 \`${value}\`` +
+              `（buildToolError 吐的是值）。请改写成 \`${value}\`；.ts 资产可直接内插 TOOL_ERROR_TYPES.${token}。`,
+          });
+        }
       }
     }
 
