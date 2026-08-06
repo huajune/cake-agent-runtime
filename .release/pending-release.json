@@ -671,6 +671,32 @@
         "既有用例「inserts a dated update before section four」的标题预期同步去掉时分",
         "`tsc --noEmit` / `eslint --max-warnings=0` 均通过"
       ]
+    },
+    {
+      "number": "958",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/958",
+      "title": "在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实",
+      "author": "ArielZhu",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实"
+      ],
+      "summary": [
+        "在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`lint:check`（CI 范围 `src/**/*.ts`）✅",
+        "`typecheck` ✅",
+        "全量 **6965 passed / 6 skipped，零失败** ✅"
+      ]
     }
   ],
   "lastRelease": {
