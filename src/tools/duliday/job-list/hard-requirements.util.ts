@@ -17,7 +17,12 @@
  *  - 仅做派生不做校验——booking-guards 是另一层
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+type UnknownRecord = Record<string, unknown>;
+
+/** raw 值是对象时按 Record 读取，否则 null（等价于原先的 `typeof x === 'object'` 守卫）。 */
+function asRecord(value: unknown): UnknownRecord | null {
+  return value && typeof value === 'object' ? (value as UnknownRecord) : null;
+}
 
 import type { HealthCertGate } from '@tools/utils/job-policy-parser';
 
@@ -140,7 +145,7 @@ const HOUSEHOLD_INCLUDE_TYPES = new Set(['限', '只要', '只接受', '白名�
  */
 function normalizeHousehold(hometown: unknown): HouseholdRequirement | null {
   if (!hometown || typeof hometown !== 'object') return null;
-  const h = hometown as any;
+  const h = hometown as UnknownRecord;
   const typeRaw =
     typeof h.nativePlaceRequirementType === 'string' ? h.nativePlaceRequirementType.trim() : '';
   const placesRaw = Array.isArray(h.nativePlaces) ? h.nativePlaces : [];
@@ -162,6 +167,15 @@ function normalizeHousehold(hometown: unknown): HouseholdRequirement | null {
 const CERT_REQUIRED_BEFORE_INTERVIEW = /面试前|上岗前必须|必备|必须有|凭证.*入职/;
 const CERT_BEFORE_ONBOARD = /入职前办|上岗前办|可入职后|录用后办|入职后/;
 const CERT_NOT_REQUIRED = /不需要|无需|不必/;
+
+function isHealthCertGate(value: unknown): value is HealthCertGate {
+  return (
+    value === 'before_interview' ||
+    value === 'before_onboard' ||
+    value === 'not_required' ||
+    value === 'unknown'
+  );
+}
 
 /**
  * 从 healthCertGate + healthCertificateRequirement 文本派生健康证 enum。
@@ -234,25 +248,27 @@ function normalizeStudentRequirement(
 export function extractHardRequirements(
   job:
     | {
-        hiringRequirement?: any;
-        _policy?: { normalizedRequirements?: any };
+        hiringRequirement?: unknown;
+        _policy?: { normalizedRequirements?: unknown };
       }
     | null
     | undefined,
-  policy?: { normalizedRequirements?: any } | null,
+  policy?: { normalizedRequirements?: unknown } | null,
 ): HardRequirements {
-  const req = job?.hiringRequirement;
+  const req = asRecord(job?.hiringRequirement);
   // sponge raw 用 basicPersonalRequirements；render/job-policy-parser 都按此 key 解构。
-  const basic =
-    (req && typeof req === 'object' && (req.basicPersonalRequirements || req.basic)) || {};
-  const hometown = (req && typeof req === 'object' && req.requirementsForHometown) || null;
-  const normalized = policy?.normalizedRequirements ?? job?._policy?.normalizedRequirements;
+  const basic = asRecord((req && (req.basicPersonalRequirements || req.basic)) || {}) ?? {};
+  const hometown = (req && req.requirementsForHometown) || null;
+  const normalized = asRecord(
+    policy?.normalizedRequirements ?? job?._policy?.normalizedRequirements,
+  );
+  const healthCertGate = normalized?.healthCertGate;
 
   return {
     gender: normalizeGender(basic.genderRequirement),
     household: normalizeHousehold(hometown),
     healthCert: normalizeHealthCert(
-      normalized?.healthCertGate,
+      isHealthCertGate(healthCertGate) ? healthCertGate : undefined,
       normalized?.healthCertificateRequirement,
     ),
     student: normalizeStudentRequirement(
@@ -262,5 +278,3 @@ export function extractHardRequirements(
     ),
   };
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

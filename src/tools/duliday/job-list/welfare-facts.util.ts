@@ -16,8 +16,6 @@
  * 高优先级的"先看这里"提示。
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
  * 福利档位。记忆层的 RecommendedJobWelfareKindSchema 从本常量派生——该 schema
  * 参与 Redis 落盘校验，两边漂移时 getSessionState 的 safeParse 失败会**整份会话
@@ -143,7 +141,7 @@ function hasNumericAllowance(...values: unknown[]): boolean {
  */
 export function extractWelfareFacts(welfare: unknown): WelfareFacts {
   if (!welfare || typeof welfare !== 'object') return { ...EMPTY_WELFARE_FACTS };
-  const w = welfare as any;
+  const w = welfare as Record<string, unknown>;
 
   const cateringAllowance = hasNumericAllowance(w.cateringSalary);
   const accommodationAllowance = hasNumericAllowance(w.accommodationAllowance);
@@ -231,5 +229,3 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   lines.push('');
   return lines.join('\n');
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

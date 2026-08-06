@@ -1147,7 +1147,9 @@ export function formatJobsToMarkdown(
     '若仅福利备注里出现"暑假工/寒假工薪资 X 元/时"，但结构化字段不是寒假工/暑假工，' +
     '只能说明这是一档薪资条件，**不得把岗位用工类型改写成寒假工/暑假工**。\n\n';
 
-  md += renderCandidateCardsBanner(jobs, distanceAnchor);
+  // 本函数入参声明为 unknown[]（渲染层对 raw 结构全程逐字段兜底），
+  // 而卡片层已收拢到领域契约 JobDetail；此处按同一 raw 契约断言，运行时值不变。
+  md += renderCandidateCardsBanner(jobs as JobDetail[], distanceAnchor);
 
   // 同品牌多门店强约束置顶（同品牌两家被压缩成"有肯德基、肯德基"）
   const multiStoreSection = renderMultiStoreBrandWarning(brandGroups);
