@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 9
+**累计 PR**: 10
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -34,6 +34,9 @@
 - PR #930 删除同义反复的 JSDoc 头注释
 - PR #930 修正过时注释，变更叙事统一为现状约束口径
 - PR #930 全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理
+- PR #910 清理实测确认的死代码，收拢消息状态与配置键
+- PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
+- PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -57,6 +60,9 @@
 - PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
 - PR #922 补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态
 - PR #930 删除同义反复的 JSDoc 头注释
+- PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
+- PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
+- PR #910 清理实测确认的死代码，收拢消息状态与配置键
 
 ### 配置变更
 - 无
