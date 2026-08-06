@@ -7,6 +7,7 @@ import {
   isSelfReportedVisualMessage,
   isVisualDescriptionText,
   parseStoredVisualFactSheet,
+  sanitizeVisualDescription,
   stripResumeAttachmentLines,
   stripVisualPrefix,
 } from '@/resolution/visual';
@@ -137,6 +138,38 @@ describe('resolution/visual · 文本识别（与 channels 旧实现逐字一致
     expect(isVisualDescriptionText(`${EMOTION_MESSAGE_PREFIX} 微笑`)).toBe(true);
     expect(isVisualDescriptionText('我在里水')).toBe(false);
     expect(stripVisualPrefix('[图片消息] 简历图片：张三')).toBe('简历图片：张三');
+  });
+
+  describe('rawDescription 证件号脱敏（08-07 扫描日报红标 2，chat 6a1e42e6）', () => {
+    it('masks 18-digit and 15-digit ID numbers in free text', () => {
+      expect(sanitizeVisualDescription('张三 13800000000 身份证 440582199003072316 入职')).toBe(
+        '张三 13800000000 身份证 [身份证号已脱敏] 入职',
+      );
+      expect(sanitizeVisualDescription('旧证号 440582900307231')).toBe('旧证号 [身份证号已脱敏]');
+      expect(sanitizeVisualDescription('尾号带X 44058219900307231X')).toBe(
+        '尾号带X [身份证号已脱敏]',
+      );
+    });
+
+    it('leaves phone numbers and other digit runs alone（手机号是要真消费的字段）', () => {
+      const desc = '联系电话 13800000000，会议号 8123456789，工号 12345';
+      expect(sanitizeVisualDescription(desc)).toBe(desc);
+    });
+
+    it('does not touch longer digit runs (19+ 位银行卡等，宁可漏不可错)', () => {
+      const desc = '卡号 6222020200112345678';
+      expect(sanitizeVisualDescription(desc)).toBe(desc);
+    });
+
+    it('finalize 与 parseStored 两侧的 rawDescription 都已脱敏', () => {
+      const raw = '员工名单：李四 13900000000 440582199003072316';
+      const sheet = finalizeVisualFactSheet({ kind: 'other', fields: [] }, raw);
+      expect(sheet.rawDescription).not.toContain('440582199003072316');
+      expect(sheet.rawDescription).toContain('[身份证号已脱敏]');
+      // 存量行读取路径同样过一遍，无需迁移即可止血
+      const stored = parseStoredVisualFactSheet({ kind: 'other', fields: [], rawDescription: raw });
+      expect(stored?.rawDescription).not.toContain('440582199003072316');
+    });
   });
 
   it('isSelfReportedVisualMessage：sheet 优先、文本标记兜底', () => {

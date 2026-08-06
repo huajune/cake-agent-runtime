@@ -12,6 +12,7 @@ import {
   VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
   finalizeVisualFactSheet,
+  sanitizeVisualDescription,
   type FinalizedVisualFactSheet,
 } from '@resolution/visual';
 import { z } from 'zod';
@@ -318,6 +319,9 @@ export class ImageDescriptionService {
       this.logger.warn(`${this.kindLabel(kind)}描述返回空结果 [${messageId}]`);
       return null;
     }
+    // 证件号脱敏：sheet 侧 finalizeVisualFactSheet 内部已做，这里补 content 一侧，
+    // 保证 chat_messages 的 content 与 visual_facts 同源同脱敏（红标 2，chat 6a1e42e6）。
+    description = sanitizeVisualDescription(description);
 
     // 简历图片：追加 "简历附件：URL" 行，让候选人发的手写简历/简历照片走与
     // PDF 文件简历相同的链路 —— extractUploadResume 的标注行分支会捕获该 URL，

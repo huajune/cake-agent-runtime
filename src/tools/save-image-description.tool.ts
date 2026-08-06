@@ -26,6 +26,7 @@ import {
   VISUAL_FACT_KINDS,
   fieldValues,
   finalizeVisualFactSheet,
+  sanitizeVisualDescription,
   isResumeImageDescription,
   stripResumeAttachmentLines,
 } from '@resolution/visual';
@@ -109,6 +110,9 @@ export function buildSaveImageDescriptionTool(
 
         const prefix = resolvePrefix(messageId, visualMessageTypes);
         const sheet = finalizeVisualFactSheet({ kind, fields }, description);
+        // 证件号脱敏（红标 2，chat 6a1e42e6）：sheet 的 rawDescription 由 finalize 内部
+        // 处理，content 一侧在这里对齐，二者永远同源同脱敏。
+        const safeDescription = sanitizeVisualDescription(description);
         // 简历判定双保险（并跑对照）：sheet 的 resume kind 与旧文本标记任一命中即走
         // 简历链路；两者不一致记 warn 供并跑对照统计，删旧判据前需一致率达标。
         const legacyResume = isResumeImageDescription(description);
@@ -123,8 +127,8 @@ export function buildSaveImageDescriptionTool(
             ? imageUrlsByMessageId?.[messageId]
             : undefined;
         const content = resumeUrl
-          ? `${prefix} ${stripResumeAttachmentLines(description)}\n简历附件：${resumeUrl}`
-          : `${prefix} ${description}`;
+          ? `${prefix} ${stripResumeAttachmentLines(safeDescription)}\n简历附件：${resumeUrl}`
+          : `${prefix} ${safeDescription}`;
         await chatSession.updateMessageContent(
           messageId,
           content,
