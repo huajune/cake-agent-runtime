@@ -590,6 +590,31 @@
         "两条回归用例均做了**反向验证**：把修复退回去，正好这两条失败；修复在则全过——确认不是恒真的空测试。",
         "typecheck / lint / 全量 jest **415 套件 6919 条通过**。"
       ]
+    },
+    {
+      "number": "953",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/953",
+      "title": "supabase keep-alive cron 锁定上海时区",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "supabase keep-alive cron 锁定上海时区"
+      ],
+      "summary": [
+        "supabase keep-alive cron 锁定上海时区"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "supabase keep-alive cron 锁定上海时区"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "回归用例已**双向验证**：修复在则 7 条全过，退回修复则该条精确失败——确认不是恒真的空测试。",
+        "typecheck / lint / 全量 jest **415 套件 6920 条通过**。"
+      ]
     }
   ],
   "lastRelease": {
