@@ -105,7 +105,14 @@ export interface AgentInvocationRecord {
 
 // ==================== 消息处理记录 ====================
 
-export type MessageRecordToolCallStatus = 'ok' | 'empty' | 'narrow' | 'error';
+/**
+ * 与后端 `src/types/agent-telemetry.types.ts` 的 AgentToolCallStatus 对齐。
+ *
+ * 前后端物理隔离、无共享类型包，只能各写一份——所以由
+ * `scripts/vocab/validate-vocab-parity.ts` 在 ci:check 里做一致性校验。
+ * 本类型此前缺 'unknown'（后端 2026 年加档时前端没跟），已补齐。
+ */
+export type MessageRecordToolCallStatus = 'ok' | 'empty' | 'narrow' | 'unknown' | 'error';
 
 export interface MessageRecordToolCall {
   toolName: string;
