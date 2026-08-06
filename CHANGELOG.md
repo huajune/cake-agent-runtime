@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 18
+**累计 PR**: 19
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -61,6 +61,12 @@
 - PR #944 按 cooperationMode 契约实现发薪/签约主体自答
 - PR #944 候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格
 - PR #942 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #947 修正 channels/tools/group-task 域过时注释
+- PR #947 Merge remote-tracking branch 'origin/develop' into chore/stale-commen…
+- PR #947 修正 agent/monitoring/test-suite/biz 域过时注释
+- PR #947 修正 infra/providers/sponge/observability 等基础域过时注释
+- PR #947 修正 custom-openai provider 的 SDK 版本引用
+- PR #947 全库注释清洗第二轮——channels/tools/biz/agent/infra 等剩余域过时注释
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -83,6 +89,10 @@
 - PR #929 **不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。
 - PR #929 **等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。
 - PR #929 **解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。
+- PR #947 修正 channels/tools/group-task 域过时注释
+- PR #947 修正 agent/monitoring/test-suite/biz 域过时注释
+- PR #947 修正 infra/providers/sponge/observability 等基础域过时注释
+- PR #947 修正 custom-openai provider 的 SDK 版本引用
 
 ### 优化调整
 - 无
@@ -111,6 +121,7 @@
 - PR #944 按 cooperationMode 契约实现发薪/签约主体自答
 - PR #944 候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格
 - PR #942 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #947 Merge remote-tracking branch 'origin/develop' into chore/stale-commen…
 
 ### 配置变更
 - 无
@@ -140,6 +151,9 @@
 - PR #944 无 DB 迁移、无配置变更；仍为 shadow 模式
 - PR #942 渲染 5 条：BPO 结论、RPO 结论（含"不得把 BPO 的独立客结论泄漏到 RPO"的负向断言）、两种模式都带 🔒 禁术语标注、大小写/空格容错、字段缺失整段不渲染
 - PR #942 schema 4 条：BPO/RPO 保留、缺失通过、null 通过、非字符串不通过（防止有人改 strict/omit 时静默吞字段）
+- PR #947 非注释行全量机审：除 4 处有意修正的字符串外零代码变更——守卫目录元数据 3 处（豁免窗口实为 8 条、开关主控已是 `agent_reply_config`、关键词规则清单补 `disability_disclosure`）+ 群任务报错文案 1 处（`imBotId` 来源 `botInfo.weixin` → `wxid`，排障时会指错字段）。
+- PR #947 typecheck / lint / geo:validate / vocab:validate / 全量 jest **415 套件 6916 条全部通过**（已合并最新 develop 后重跑）。
+- PR #947 每条修正均由主会话独立复核决定性事实后落改；驳回了子代理依据不成立的结论（`REVISION_FORBIDDEN_TOOLS` 被误判「零消费」，实际同文件即有消费方）；两条飞书外部文档断言由主会话自行查证官方文档确认。
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05

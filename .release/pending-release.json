@@ -501,6 +501,45 @@
         "渲染 5 条：BPO 结论、RPO 结论（含\"不得把 BPO 的独立客结论泄漏到 RPO\"的负向断言）、两种模式都带 🔒 禁术语标注、大小写/空格容错、字段缺失整段不渲染",
         "schema 4 条：BPO/RPO 保留、缺失通过、null 通过、非字符串不通过（防止有人改 strict/omit 时静默吞字段）"
       ]
+    },
+    {
+      "number": "947",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/947",
+      "title": "全库注释清洗第二轮——channels/tools/biz/agent/infra 等剩余域过时注释",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "修正 channels/tools/group-task 域过时注释",
+        "修正 agent/monitoring/test-suite/biz 域过时注释",
+        "修正 infra/providers/sponge/observability 等基础域过时注释",
+        "修正 custom-openai provider 的 SDK 版本引用"
+      ],
+      "summary": [
+        "修正 channels/tools/group-task 域过时注释",
+        "Merge remote-tracking branch 'origin/develop' into chore/stale-commen…",
+        "修正 agent/monitoring/test-suite/biz 域过时注释",
+        "修正 infra/providers/sponge/observability 等基础域过时注释",
+        "修正 custom-openai provider 的 SDK 版本引用",
+        "全库注释清洗第二轮——channels/tools/biz/agent/infra 等剩余域过时注释"
+      ],
+      "features": [],
+      "fixes": [
+        "修正 channels/tools/group-task 域过时注释",
+        "修正 agent/monitoring/test-suite/biz 域过时注释",
+        "修正 infra/providers/sponge/observability 等基础域过时注释",
+        "修正 custom-openai provider 的 SDK 版本引用"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Merge remote-tracking branch 'origin/develop' into chore/stale-commen…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "非注释行全量机审：除 4 处有意修正的字符串外零代码变更——守卫目录元数据 3 处（豁免窗口实为 8 条、开关主控已是 `agent_reply_config`、关键词规则清单补 `disability_disclosure`）+ 群任务报错文案 1 处（`imBotId` 来源 `botInfo.weixin` → `wxid`，排障时会指错字段）。",
+        "typecheck / lint / geo:validate / vocab:validate / 全量 jest **415 套件 6916 条全部通过**（已合并最新 develop 后重跑）。",
+        "每条修正均由主会话独立复核决定性事实后落改；驳回了子代理依据不成立的结论（`REVISION_FORBIDDEN_TOOLS` 被误判「零消费」，实际同文件即有消费方）；两条飞书外部文档断言由主会话自行查证官方文档确认。"
+      ]
     }
   ],
   "lastRelease": {
