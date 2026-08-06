@@ -318,7 +318,7 @@ export function bookingFollowUpAnchorId(
 
 /**
  * 面试时间原始值 → 毫秒时间戳。接受数字时间戳或 `YYYY-MM-DD HH:mm`（海绵格式，按 Asia/Shanghai 解析）。
- * anchor 锚点提取与 processor 到点改期比对共用，保证两端解析口径一致。
+ * booking-context 工单上下文解析与 oob-work-order 带外核验共用（均在 processor 到点执行），保证两处口径一致。
  */
 export function parseInterviewTimestamp(raw: unknown): number | undefined {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
@@ -411,7 +411,8 @@ function isCandidateReplyUnattended(state: AuthoritativeSessionState, now: numbe
  *   被 timeout 静默丢弃、超过在途宽限仍无人搭理的回话不停发（见 isCandidateReplyUnattended）。
  *   例外：booking.succeeded 锚点且任务带 workOrderId（opts.externallyVerifiable）时豁免——
  *   候选人报名后回一句"好的"不该杀掉面试提醒；报名是否仍有效改由 processor 到点向
- *   海绵工单现状 + active_booking 面试时间核验（work_order_not_active / interview_time_changed）。
+ *   海绵实时工单核验（work_order_not_active / interview_time_changed，见 booking-context，
+ *   不读本地 active_booking 快照）。
  *   不带 workOrderId 的存量任务无核验能力，保留回话即停的旧行为。
  * - 场景特定 stopUnless 不成立 → 停
  */

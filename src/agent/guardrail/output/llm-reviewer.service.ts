@@ -27,7 +27,8 @@ const _reviewerDecisionParity: _AssertReviewerDecisionsAreOutputSubset = true;
 void _reviewerDecisionParity;
 
 /**
- * 出站 LLM 守卫（OutputGuardrail 的 llm 档）。
+ * 已退役：现役 llm 档是 SemanticReviewerService（见 output-guardrail.service.ts），
+ * 本服务已从 guardrail.module 摘除，src/ 零调用方（仅 spec 引用），留档待删。
  *
  * 设计铁律（§2.5 / §5.2）：模型层只判**规则表达不了的语义/语气/意图**，且输入必须带
  * grounding（reply + 本轮 toolCalls.result + memory + redLines）——只有接地才带来"新外生

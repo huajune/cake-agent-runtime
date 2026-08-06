@@ -9,7 +9,8 @@ import { HostingMemberConfig, HostingMemberEntry } from '../types/hosting-member
  *
  * 用 botImId（wecom 系统分配的稳定数字 id，与硬编码 BOT_TO_RECEIVER 同 key）而非 wecomUserId
  * （可改的名字）。直接 config[botImId] 命中，无需绕 Stride 查经理。
- * 全程带硬编码/旧配置兜底：DB 未填时行为与原先一致（线上零中断）。
+ * 全程带兜底：DB 未填时飞书接收人回退硬编码 BOT_TO_RECEIVER、海绵 token 由调用方
+ * 回退 DULIDAY_API_TOKEN，线上零中断。
  *
  * @Global 注入：飞书 notifier、海绵 service 等可直接注入，无需各自 import 模块，避免 DI 环。
  */

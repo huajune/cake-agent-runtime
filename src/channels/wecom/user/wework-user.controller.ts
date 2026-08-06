@@ -1,10 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { WeworkUserService } from './wework-user.service';
 
-/**
- * 企业成员管理控制器
- * 提供企业内部成员查询接口
- */
 @Controller('user')
 export class WeworkUserController {
   constructor(private readonly userService: WeworkUserService) {}

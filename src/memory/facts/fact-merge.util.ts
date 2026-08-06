@@ -5,9 +5,8 @@
  * - 「值相等判断」（isSameFactValue）；
  * - 「值是否有意义」（hasMeaningfulValue）。
  *
- * 同轮 rule×LLM 的统一字段合并（取代旧 [c] mergeHighConfidenceRuleFacts +
- * [d] applyHighConfidenceMetadata 的两次遍历）由 SessionService.mergeRuleFactsIntoLlm
- * 调用本文件的原语完成；跨轮置信度守卫（mergeFactsWithConfidenceGuard）也共用这些原语。
+ * 同轮 rule×LLM 的统一字段合并由 SessionService.mergeRuleAndLlmFacts 调用本文件的
+ * 原语单遍完成；跨轮置信度守卫（mergeFactsWithConfidenceGuard）也共用这些原语。
  */
 
 /** 字段值是否「有意义」：null/undefined/空串/空数组 视为无值；boolean（含 false）有值。 */

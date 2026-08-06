@@ -411,8 +411,8 @@ export class FollowUpProcessor implements OnModuleInit {
     // 3) 投递 + 触达底账（shadow 只记不发）。真实发送前由统一投递层再次检查
     // 当前会话是否仍处于托管状态；已暂停/取消托管则整条跳过。
     // 无投递端口绑定时强制 shadow；否则读运行时配置（与开头的总开关同一次读取）。
-    // 所有未投递分支的 runTurnEnd 一律 includeAssistantText:false：候选人没收到这条文本，
-    // 若照常投影成助手轮次，下一轮真实对话会引用一段候选人从未见过的"跟进"（HC-4 幽灵回复）。
+    // 所有未投递分支都不把生成文本写进记忆（复聊链路不走 runner，本 processor 全程不投影助手轮次）：
+    // 候选人没收到这条文本，若被投影成助手轮次，下一轮真实对话会引用一段候选人从未见过的"跟进"（HC-4 幽灵回复）。
     // 场景级灰度（Dashboard 可配）：场景开关 × 报名后大开关叠加
     const rolloutEnabled = resolveRolloutEnabled(scenario, runtime);
     const shadow = !this.delivery || runtime.reengagementShadow;

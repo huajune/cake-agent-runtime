@@ -13,10 +13,8 @@ import {
 /**
  * 短期记忆服务 — 对话窗口管理
  *
- * 从 chat_messages（Supabase 永久存储）中读取最近 N 条消息，
- * 按窗口策略（条数 + 时间 + 字符上限）裁剪后输出给 Agent。
- *
- * 统一了原先分散在 MessageHistoryService.getHistory() + GeneratorAgent.trimMessages() 中的逻辑。
+ * 热路径读 Redis 窗口缓存（provenance 版本校验），miss/降版本回退 chat_messages
+ * （Supabase 永久存储）并回填缓存；按窗口策略（条数 + 时间 + 字符上限）裁剪后输出给 Agent。
  */
 @Injectable()
 export class ShortTermService {
@@ -32,7 +30,7 @@ export class ShortTermService {
   /**
    * 获取会话的短期记忆（裁剪后的消息窗口）
    *
-   * 1. 从 chat_messages 取最近 N 条 + 时间窗口内
+   * 1. 优先读 Redis 窗口缓存；miss/降版本回退 chat_messages（最近 N 条 + 时间窗口）并回填缓存
    * 2. 注入时间上下文
    * 3. 按字符上限裁剪
    */

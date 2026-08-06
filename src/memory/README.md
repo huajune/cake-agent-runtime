@@ -40,12 +40,13 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 外部模块只应该通过 [memory.service.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/memory.service.ts) 使用记忆能力。
 
-当前 facade 只有 4 个入口：
+入口按用途分组（完整签名以 memory.service.ts 为准）：
 
-- `onTurnStart(corpId, userId, sessionId, currentMessages?)`
-- `onTurnEnd(ctx, assistantText?)`
-- `getSummaryData(corpId, userId)`
-- `setStage(corpId, userId, sessionId, state)`
+- 主链路：`onTurnStart(corpId, userId, sessionId, currentUserMessage?)` / `onTurnEnd(ctx, assistantText?)`
+- 复聊召回：`recallForProactiveFollowUp`
+- 工具/阶段：`saveInvitedGroup` / `setStage` / `getStage`
+- 长期档案：`getSummaryData` / `saveProfile`
+- 清理（测试/运维）：`clearSessionMemory` / `clearLongTermMemory`
 
 其中：
 
@@ -113,6 +114,10 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `presentedJobs`
 - `currentFocusJob`
 - `invitedGroups`
+- `terminal`（会话终态，复聊停发的权威信号）
+- `lastCandidateMessageAt` / `lastProcessedCandidateMessageAt`（候选人消息时间与已处理水位，复聊停止判定用）
+- `brand_state`（品牌真相唯一存储；`preferences.brands` 已退役）
+- `lastJobListQuery`（最近一次岗位查询签名，跨轮重复查询检测）
 
 存储位置：
 
@@ -211,12 +216,13 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 | `booking` | 预约/报名成功后写入长期档案，是长期画像的最高质量来源 |
 | `extraction` | 会话沉淀时从 sessionFacts 抽取后写入长期档案；原 sessionFact 来源会记录在 evidence 中 |
 | `enrichment` | 外部画像补全链路写入，例如客户详情接口补充性别 |
+| `tool` | 本会话工具执行结果确权（geocode、定位分享逆解析、地图截图确权等外生出处，非模型自报） |
 
 注意：
 
 - `source` 说明字段产生路径，不等同于置信度；最终能否进入工具判断看 `confidence`
 - `highConfidenceFacts` 当前只会出现 `source=rule/system`，且不持久化
-- `sessionFacts` 主要出现 `source=llm/rule/system/memory/derived`
+- `sessionFacts` 主要出现 `source=llm/rule/system/memory/derived/tool/candidate`
 - 长期 `profile_facts` 主要出现 `source=booking/extraction/enrichment`
 
 来源声明置信度升级：LLM 可输出 `explicit_provenance{field, quote}`，quote 经候选人原文验证（phone 还加格式校验）后，把 medium 升为 high/candidate；仅限白名单 `EXPLICIT_UPGRADE_FIELDS`（排除 `name` 与 `applied_store`/`interview_time` 等事务字段）。
@@ -258,7 +264,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 2. 长期 `profile_facts` / `preference_facts` 非空
 3. 长期记忆来自别的会话：优先看逐字段血缘 `originSessionId !== 当前 sessionId`；存量无血缘时回退 `summary_data.lastSettledBySession` / `recent[].sessionId` 去掉当前会话后仍有其它会话
 
-渲染由 `generator/preparation.service.ts` 的 `formatCrossConversationNotice()` 处理，置真时在档案/意向前插一段泛指口径（不点名具体招募经理、不假装是本会话聊过）。粒度上：数据血缘逐字段精确记录，展示口径是会话级泛指。
+渲染由 `generator/preparation-utils/memory-block.formatter.ts` 的 `formatCrossConversationNotice()` 处理，置真时在档案/意向前插一段泛指口径（不点名具体招募经理、不假装是本会话聊过）。粒度上：数据血缘逐字段精确记录，展示口径是会话级泛指。
 
 ## Agent 如何消费 onTurnStart 的结果
 
@@ -290,14 +296,13 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 实际编排也在 [memory-lifecycle.service.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/memory-lifecycle.service.ts)。
 
-流程顺序很重要：
+流程分两条并行分支（`Promise.allSettled`），分支内顺序很重要：
 
-1. 取最后一条 user 消息
-2. 读取旧的 `sessionState`
-3. 用旧 `sessionState.facts` 启动 settlement 检测（同时把 `ctx.botImId` 传下去作为沉淀字段的 bot 血缘）
-4. 把本轮工具查到的 `candidatePool` 落到 `lastCandidatePool`
-5. 如果本轮有 assistant 回复，做岗位投影
-6. 对完整对话做后置结构化事实提取并写回
+1. 取最后一条 user 消息、读取旧的 `sessionState`
+2. settlement 分支：用旧 `sessionState.facts` 启动沉淀检测（`ctx.botImId` 作为沉淀字段的 bot 血缘）
+3. 会话收尾分支（串行）：落 `lastCandidatePool` → 落 `lastJobListQuery` → 岗位投影 →
+   剔除失效岗位 → 落工具确权城市 → 后置结构化事实提取 → `brand_state` reducer 收尾
+   （品牌归并不因提取失败跳过）
 
 ## 会话记忆里的两类核心推导
 
@@ -334,7 +339,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 7. 基于 user 文本重新做品牌 alias hints 和规则高置信识别
 8. 构造 extraction prompt（注入 `[当前时间]` 要求绝对日期、`[已确认事实]`，提取原则为增量式而非累积式）
 9. 调 extract 模型输出结构化对象
-10. 用 `mergeDetectedBrands()` 做品牌 alias 兜底合并
+10. LLM 输出的 `brand_intents` 经 `validateBrandIntents` 目录验证（回声/回流闸）后随 lifecycle 返回，由回合收尾的 `brand_state` reducer 统一归并；facts 内 `preferences.brands` 恒置 null
 11. 用 `mergeRuleAndLlmFacts()` 单遍合并规则与 LLM 事实（替代原两层合并），共享原语在 `facts/fact-merge.util.ts`
 12. `saveFacts()` 经 `mergeFactsWithConfidenceGuard()` 深度合并回 Redis：跨轮低置信不覆盖高置信
 

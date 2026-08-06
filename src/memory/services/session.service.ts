@@ -415,8 +415,8 @@ export class SessionService {
    * deepMerge 对 SessionFactValue 是逐 key 递归：新值非空就连 value 带 confidence 一起
    * 覆盖，完全不比较新旧置信度。生产 badcase（chat 69a13e919d6d3a463b0a37c6）：候选人
    * 明确确认的 applied_position="后厨" 被后续轮 LLM 推断 "内场"(medium) 覆盖。
-   * Profile 层（Supabase RPC）有 "high 不被非 high 覆盖" 守卫，session 层此前没有——
-   * 这里补齐同等语义：新值置信度严格低于旧值时，保留旧值整体（含元数据）。
+   * Profile 层（Supabase RPC）有 "high 不被非 high 覆盖" 守卫，session 层必须有
+   * 同等语义：新值置信度严格低于旧值时，保留旧值整体（含元数据）。
    * 数组字段维持累积语义，不受守卫影响。
    */
   private mergeFactsWithConfidenceGuard(prev: SessionFacts, incoming: SessionFacts): SessionFacts {
@@ -1553,8 +1553,7 @@ export class SessionService {
   }
 
   /**
-   * 同轮 rule × LLM 统一合并（取代旧 [c] mergeHighConfidenceRuleFacts +
-   * [d] applyHighConfidenceMetadata 的两次遍历）。
+   * 同轮 rule × LLM 统一合并。
    *
    * 一次遍历对每个字段决定胜者值与最终元数据：
    * - 标量：通常由 LLM 非空值优先、rule 在 LLM 空时补位。健康证是有限枚举且
@@ -1562,14 +1561,14 @@ export class SessionService {
    *   “愿意/拒绝办理”压缩回含义不完整的“无”。
    * - 数组（brands/position/district/location/time_windows）：LLM 与 rule 累积去重。
    * - 元数据：rule 该字段高置信有值，且 LLM 无值（rule 补位）或与 rule 同值（二者一致）时，
-   *   最终元数据采用 rule（high/rule）；否则保留 LLM（medium/llm）。这是旧 [c]+[d]
-   *   叠加后的实际语义（先值合并，再用规则高置信值重打元数据）。
+   *   最终元数据采用 rule（high/rule）；否则保留 LLM（medium/llm）。即「先值合并，
+   *   再用规则高置信值重打元数据」。
    *
    * gender/gender_source（联动）、schedule_constraint（逐子字段 ?? 合并）、city
    * （CityFact 值合并 + 经 toSessionFacts 的 derived/CityFact 归一化）行为难以套进
    * 统一标量/数组形态，保留为下方手写分支；它们仍共用同一套「rule 元数据归属」判定。
    *
-   * reasoning：追加规则参考线索，并作为 LLM 取胜字段的 evidence（与旧实现一致）。
+   * reasoning：追加规则参考线索，并作为 LLM 取胜字段的 evidence。
    */
   private mergeRuleAndLlmFacts(
     llmFacts: EntityExtractionResult,

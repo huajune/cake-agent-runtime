@@ -272,7 +272,7 @@ export function hasTechnicalDocumentationShape(content: string): boolean {
 const HUMAN_SERVICE_PHRASE_PATTERN =
   /转人工|人工客服|人工坐席|转接人工|人工渠道|人工登记|人工确认|人工介入|人工处理|人工跟进|真人招募经理|真人经理|真人客服|专人联系|专人跟进|专人对接/;
 // 刻意不入表："人工审核"（描述门店/品牌侧简历审核外部流程，属合法业务表述，
-// precheck wait_notice 话术已改为"先进入审核"避免主动引导该词形）。
+// precheck wait_notice 话术用"先进入审核"避免主动引导该词形）。
 
 /**
  * 反馈按"本轮是否有真实人工升级动作"分叉（2026-08-04 审计 P1-5，trace …_1785743845189）：

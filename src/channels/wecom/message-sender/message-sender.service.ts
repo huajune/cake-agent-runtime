@@ -4,10 +4,6 @@ import { ApiConfigService } from '@infra/config/api-config.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
 
-/**
- * 消息发送服务
- * 负责消息的发送（单发、群发）
- */
 @Injectable()
 export class MessageSenderService {
   private readonly logger = new Logger(MessageSenderService.name);

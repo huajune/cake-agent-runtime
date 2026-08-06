@@ -724,7 +724,7 @@ export class AnalyticsDashboardService {
     const activeUserWindowEnd = new Date();
 
     // 小组 chat_id 集合按 (start,end,groups) 各算一次即可复用：当前/对比/近1h 三窗口 + 托管用户数
-    // 都从这三个集合派生，避免对 user_activity 重复分页扫描（此前 getGroupActiveUserCount 会再扫一遍）。
+    // 都从这三个集合派生，避免对 user_activity 重复分页扫描。
     const [currentChatIds, previousChatIds, activeUserChatIds] = await Promise.all([
       this.getGroupChatIds(currentStartDate, currentEndDate, groups),
       this.getGroupChatIds(previousStartDate, previousEndDate, groups),

@@ -19,7 +19,7 @@ export const SEMANTIC_REVIEW_FINDING_CODES = [
 
 export type SemanticReviewFindingCode = (typeof SEMANTIC_REVIEW_FINDING_CODES)[number];
 
-/** 每个语义 finding 自带恢复能力声明，与 code 定义同处维护。 */
+/** replan 时代的恢复能力声明，退役（2026-07-27）后无任何消费方；保留仅备 §2.4 重新申领动手权，待删。 */
 export const SEMANTIC_REVIEW_FINDING_POLICIES = {
   job_recommendation_not_best_supported: {
     repairToolNames: ['geocode', 'duliday_job_list'],
@@ -78,7 +78,7 @@ function isLikelyTruncatedText(value: string): boolean {
  * 漏掉一类就会把该类证据支撑的合法回复误判成"凭空生成"。这条已经翻车两次：
  * 2026-07-30 首版漏 precheck（回放新触发样本 10/12 是 precheck 给出的合法面试窗口）；
  * 2026-08-04 审计再漏群邀请（invite_to_group:ok 支撑的"群邀请已经发你了"被判
- * "没有任何下发证据"，trace …_1785451709779 硬假阳）。故改为按字段清单遍历 +
+ * "没有任何下发证据"，trace …_1785451709779 硬假阳）。故按字段清单遍历 +
  * 编译期双向穷尽断言：evidence 加新字段而清单没跟上，或清单写了不存在的字段，
  * 都会直接编译报错，杜绝第三次漂移。
  * jobList 特殊：对象存在但 jobs 与 markdownExcerpt 都空＝查无岗位，不算可核验证据。
@@ -290,9 +290,11 @@ export class SemanticReviewerService {
     decision: SemanticReviewVerdict['decision'],
     findings: SemanticReviewVerdict['findings'],
   ): SemanticReviewVerdict['decision'] {
-    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4），语义档
-    // 裁决无条件归一为 revise——schema 仍容忍模型输出 'replan'（避免结构化输出
-    // 重试），但它永远不会传出本方法，runner 的 replan 执行路径已删除。
+    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4）。本方法把
+    // 'replan' 归一为 revise，但只在证据兜底剔除 finding 的分支被调用
+    // （applyEvidenceBackstop 未剔除时原样返回 verdict）；未归一的 'replan' 由
+    // output-guardrail 的 applyConfidenceBackstop 兜底折叠。schema 仍容忍模型输出
+    // 'replan'（避免结构化输出重试），runner 的 replan 执行路径已删除。
     const allowed = new Set(findings.map((finding) => finding.repairMode));
     if (decision === 'replan') return 'revise';
     if (decision === 'block' && !allowed.has('replan')) return 'revise';

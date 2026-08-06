@@ -121,7 +121,7 @@ export interface AgentFallbackChains {
 export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   wecomCallbackModelId: '',
   wecomCallbackThinkingMode: 'fast',
-  wecomCallbackThinkingEffort: 'high', // 与历史行为一致（deep 模式此前固定按 high 档执行）
+  wecomCallbackThinkingEffort: 'high', // deep 模式按 high 档执行是既定语义，默认值与之一致
   extractModelId: '',
   visionModelId: '',
   evaluateModelId: '',

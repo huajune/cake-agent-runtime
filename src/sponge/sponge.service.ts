@@ -183,8 +183,8 @@ export class SpongeService {
     }
 
     if (parsed.data.code !== 0) {
-      // 历史上这里曾静默吞错返回 empty，导致 "lng/lat 缺 range" 之类的参数错被
-      // 误判为"没岗位"。改为抛错以便上层暴露真实原因。
+      // 这里不能静默吞错返回 empty，否则 "lng/lat 缺 range" 之类的参数错会被
+      // 误判为"没岗位"。必须抛错以便上层暴露真实原因。
       const reason = data?.message ?? `code=${parsed.data.code}`;
       this.logger.warn(`岗位查询返回非零: ${reason}`);
       throw new Error(`岗位查询失败: ${reason}`);

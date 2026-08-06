@@ -41,7 +41,7 @@ const HUMAN_INTERVENTION_SOURCES = new Set<MessageSource>([
 // 人工介入信号只认「真人手打文字」。仅 TEXT 类型才算真人介入，其余一律不暂停托管：
 // 图片/语音/表情/卡片等结构化或非逐字输入都排除。典型误报：invite_to_group 成功后平台向候选人
 // 发出的「入群邀请卡片」会以自发消息回灌（isSelf=true + source=MOBILE_PUSH + messageType=ROOM_INVITE），
-// 旧逻辑只看 source 不看 messageType，把它误判成真人介入 → 误暂停托管 + 误告警（2026-06-17 李宇杭 case）。
+// 只看 source 不看 messageType 会把它误判成真人介入 → 误暂停托管 + 误告警（2026-06-17 李宇杭 case）。
 const HUMAN_INTERVENTION_MESSAGE_TYPE = MessageType.TEXT;
 
 // 暂停托管暗号：真人手打文字内容必须恰好等于「~」才触发暂停，避免经理日常正常回复被误判为介入。

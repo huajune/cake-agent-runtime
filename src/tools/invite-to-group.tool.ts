@@ -254,7 +254,7 @@ export function buildInviteToGroupTool(
 
           // 前置已在群闸门（badcase batch_6a4790c7ce406a6aeee9c102）：候选人已在
           // 目标城市兼职群时，业务目标已达成，直接短路成功——不再要求城市出处。
-          // 此前该核验排在城市 provenance gate 之后：模型无视"已在群"注入调用本
+          // 本核验必须排在城市 provenance gate 之前，否则模型无视"已在群"注入调用本
           // 工具、city 又缺出处时，工具回 city_unverified 并引导模型追问城市继续
           // 推进拉群，候选人被反复纠缠。实时群成员关系本身就是该城市的最强依据。
           // 群列表走缓存（不 forceRefresh），任何失败静默降级回原流程。
@@ -485,7 +485,7 @@ export function buildInviteToGroupTool(
           }
 
           // 实时成员预检（兜底档）：前置闸门走缓存群列表，这里用 forceRefresh 后的
-          // 群列表再核一次，覆盖缓存缺群的窗口。此前只能靠拉群接口的 -9 错误码事后
+          // 群列表再核一次，覆盖缓存缺群的窗口。缺此预检只能靠拉群接口的 -9 错误码事后
           // 发现（实测单次 20-30s），且拉群记忆存会话层（TTL 2 天）过期后会重复发起
           // 邀请；实时成员关系（10 分钟缓存）是唯一可靠事实源，候选人退群后缓存过期
           // 也会自然恢复可邀请状态。
@@ -569,8 +569,8 @@ export function buildInviteToGroupTool(
             }
 
             // 企微 errcode=-12：外部联系人无法被直接拉入群，平台已改发入群邀请卡片、
-            // 等候选人同意后入群。卡片已实际触达候选人，是投递成功而非失败——此前
-            // 把 -12 当拒绝继续换下一个群重试，候选人一次收到该城市该行业全部候选群
+            // 等候选人同意后入群。卡片已实际触达候选人，是投递成功而非失败——若
+            // 把 -12 当拒绝继续换下一个群重试，候选人会一次收到该城市该行业全部候选群
             // 的邀请卡片（badcase batch_6a4f77b6ce406a6aeefd34a9：上海零售 5 群连发 5 张卡）。
             const inviteCardSentPendingConsent =
               !inviteApiResult.accepted && isInviteCardSentPendingConsent(inviteApiResult);
