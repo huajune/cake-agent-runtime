@@ -11,7 +11,11 @@
  * booking 侧 defense-in-depth 的姓名闸门，不改 precheck 内部。
  */
 
-import { isFromAutoGreeting, stripTimeContextSuffix } from '@memory/facts/name-guard';
+import {
+  isFromAutoGreeting,
+  isStrictRealChineseName,
+  stripTimeContextSuffix,
+} from '@memory/facts/name-guard';
 import { parseName } from './candidate-field-parser';
 
 /** 从归一化消息（ModelMessage 形态）里抽出全部 user 文本。 */
@@ -183,6 +187,79 @@ export function isNameProvidedAfterAsk(name: string, messages: readonly unknown[
   return false;
 }
 
+/**
+ * assistant 的**开放式真名索取问句**（"方便问一下你的真实姓名吗"/"门店登记需要本名"）。
+ *
+ * 与 `countRealNameAsks` 的词表同源但更宽：那边只统计追问次数，这边要作为证据闸门的
+ * 锚点，需覆盖"本名/全名/身份证上的姓名"等同义表述。
+ */
+const REAL_NAME_ASK_RE =
+  /(真实姓名|身份证上的(?:本名|姓名)|本名|全名)|(?:问|发|提供|留|填|报|给|确认)[^，。！？?!；;\n]{0,10}(?:姓名|名字)|(?:姓名|名字)[^，。！？?!；;\n]{0,10}(?:发|提供|留|填|报|给)/u;
+
+/** 裸名应答的可选自述前缀（"我叫X"/"就叫X"/"名字是X"）。 */
+const BARE_NAME_ANSWER_PREFIX_RE =
+  /^(?:我(?:的)?(?:名字|大名)?(?:是|叫)?|就(?:是|叫)|名字(?:是|叫)?|姓名(?:是|叫)?)/u;
+
+/**
+ * 不能当姓名的应答词（负向门）。
+ *
+ * `isStrictRealChineseName` 只校验"2-4 个汉字 + 非占位前缀"，寒暄与推脱词形态上完全
+ * 合规——自测实证："稍等"被判合法姓名。索名问句之后的应答尤其高发这类词，故本闸门
+ * 必须自带负向表：应答/寒暄、延迟推脱、疑问抗拒三类。
+ */
+const NON_NAME_REPLY_RE =
+  /^(?:好的?|好呀|好嘞|嗯+|可以|行|是的?|对的?|没事|没问题|收到|知道了?|明白了?|了解|谢谢|辛苦了|麻烦了|在的?|在吗|你好|您好|哦+|噢|稍等|等等|等一下|等下|马上|一会|待会|回头|再说|什么|啥|为什么|为啥|干嘛|干什么|不用|不想|不方便|算了|没有|保密|隐私|真名|本名|姓名|名字)$/u;
+
+/**
+ * 「Agent 开放式索要真名 → 候选人裸名直答」= 真名亲证。
+ *
+ * 缺口实证（badcase 2026-08-06，chat 6a7446eb，trace batch_…_1786005914536）：
+ * 候选人手打的开场白"我是张丽鑫"命中打招呼语昵称判据（她的微信昵称其实是"AAA春日"，
+ * 这里 XX 位恰恰是真名）；Agent 随后问"门店登记需要本名，方便问一下你的真实姓名吗"，
+ * 候选人**单独回了一条"张丽鑫"**——已有两个逃生口都够不着：
+ * `isNameProvidedAfterAsk` 要求应答里"姓名 + 11 位手机号"同现，
+ * `isNameConfirmedInDialogue` 要求问句里已含该名 + 肯定应答。
+ * 结果真名被判昵称：sessionFacts.name 全程为 null（7 轮快照实证）、booking 报
+ * `suspiciousName: 张丽鑫`、Agent 把同一个问题问了两遍。
+ *
+ * 判据（三条同时满足，宁可漏不可错）：
+ * 1. 存在 assistant 真名索取问句；
+ * 2. **紧随其后的第一条** user 消息（剥引用块/时间后缀）整条就是这个名字
+ *    （允许"我叫X/就是X"等自述前缀与尾部语气词标点，不允许夹带其它内容）；
+ * 3. 该名通过中文真名形态校验。
+ *
+ * 与"防昵称"初衷不冲突：它要求候选人是在**被明确问真名之后**给出的，昵称党不会在
+ * 这个语境下把昵称当本名报——而这恰恰是最自然的一条真名提供路径。
+ */
+export function resolveNameAnsweredToRealNameAsk(
+  messages: readonly unknown[],
+): { name: string; quote: string; askQuote: string } | null {
+  const turns = extractDialogueTurns(messages);
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].role !== 'assistant' || !REAL_NAME_ASK_RE.test(turns[i].text)) continue;
+    for (let j = i + 1; j < turns.length; j++) {
+      if (turns[j].role !== 'user') continue;
+      const raw = stripQuoteBlocks(stripTimeContextSuffix(turns[j].text)).trim();
+      const candidate = raw
+        .replace(BARE_NAME_ANSWER_PREFIX_RE, '')
+        .replace(/[\s，,。.！!？?~～、;；:：]+$/u, '')
+        .trim();
+      if (candidate && !NON_NAME_REPLY_RE.test(candidate) && isStrictRealChineseName(candidate)) {
+        return { name: candidate, quote: raw, askQuote: turns[i].text };
+      }
+      break; // 只认紧随其后的第一条 user 消息，避免远处无关消息被错误归因
+    }
+  }
+  return null;
+}
+
+/** 指定姓名是否由「真名索取问答」确证。 */
+export function isNameAnsweredToRealNameAsk(name: string, messages: readonly unknown[]): boolean {
+  const target = name?.trim();
+  if (!target) return false;
+  return resolveNameAnsweredToRealNameAsk(messages)?.name === target;
+}
+
 export function isNameConfirmedInDialogue(name: string, messages: readonly unknown[]): boolean {
   const target = name?.trim();
   if (!target || target.length < 2) return false;
@@ -251,6 +328,9 @@ export function evaluateBookingNameGate(
   // "就是X"/确认问答对/身份证图片证据（badcase g4ytra23 死锁修复）。
   if (isNameConfirmedInDialogue(target, messages)) return { decision: 'allow' };
   if (isNameProvidedAfterAsk(target, messages)) return { decision: 'allow' };
+  // 开放式索名 → 裸名直答（badcase 6a7446eb）：最自然的真名提供路径，上面两个
+  // 逃生口都够不着（一个要名+手机号同现，一个要问句里已含该名）。
+  if (isNameAnsweredToRealNameAsk(target, messages)) return { decision: 'allow' };
   if (isNameOnlyQuotedSpeaker(target, messages)) {
     return {
       decision: 'reject_collect',

@@ -189,6 +189,26 @@ export function adjudicateCandidateClaims(params: AdjudicateParams): Adjudicatio
     }
   }
 
+  // 裸值与有据 claim 同值 → superseded 而非"无据"。
+  // legacy 裸值自己没带 quote，靠全文推导补录；当另一条**带真实证据**的 claim 已就同一
+  // 字段采信了等价值时，这个值其实是有据的，只是证据不在它自己身上——判 rejected 会污染
+  // "模型无据率"这个 enforce 核心指标（badcase 6a7446eb：姓名经索名问答确证后，同值裸值
+  // 仍被记一条 no_candidate_evidence）。superseded 才是诚实结论。
+  for (const entry of adjudicated) {
+    if (entry.decision !== 'rejected' || entry.rejectionReason !== 'no_candidate_evidence') continue;
+    const winner = validByField
+      .get(entry.claim.field)
+      ?.find(
+        (accepted) =>
+          accepted.decision === 'accepted' &&
+          candidateValuesEquivalent(entry.claim.field, accepted.claim.value, entry.claim.value),
+      );
+    if (!winner) continue;
+    entry.decision = 'superseded';
+    entry.rejectionReason = undefined;
+    entry.supersededByClaimId = winner.claim.claimId;
+  }
+
   const profile = buildEffectiveProfile({
     adjudicated,
     sessionAccepted: params.sessionAccepted,
