@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
+import { HUAJUNE_SOURCE_PLATFORMS } from './huajune.types';
 import type {
   HuajuneCandidate,
   HuajuneEvent,
@@ -8,7 +9,7 @@ import type {
   HuajuneSourcePlatform,
 } from './huajune.types';
 
-const VALID_PLATFORMS: HuajuneSourcePlatform[] = ['zhipin', 'yupao', 'duliday'];
+const VALID_PLATFORMS: readonly HuajuneSourcePlatform[] = HUAJUNE_SOURCE_PLATFORMS;
 
 interface BaseReportInput {
   agentId: string;

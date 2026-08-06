@@ -47,11 +47,33 @@ export const FIELD_ORDER = [
   '过往公司+岗位+年限',
   '应聘门店',
   '应聘岗位',
-];
+] as const;
 
-export const TEMPLATE_CORE_FIELDS = ['姓名', '联系电话', '性别', '年龄', '面试时间', '应聘门店'];
+/**
+ * checklist 合法字段名。
+ *
+ * as const 的动机不是洁癖：这些中文字段名会被别处当 **map 的键**用来定位
+ * checklist 条目（如 precheck 里的 CLAIM_FIELD_TO_CHECKLIST），而那些 map 原先
+ * 的值类型是裸 string——写错一个字（多个空格、换个近义词）不会报错，只会让
+ * `delete knownFieldMap[...]` 之类的操作静默落空。有了这个类型，写错即编译报错。
+ */
+export type ChecklistField = (typeof FIELD_ORDER)[number];
 
-export const FIELD_LABELS: Record<string, string> = {
+export const TEMPLATE_CORE_FIELDS = [
+  '姓名',
+  '联系电话',
+  '性别',
+  '年龄',
+  '面试时间',
+  '应聘门店',
+] as const satisfies readonly ChecklistField[];
+
+/**
+ * 字段名 → 对候选人展示的标签。**刻意部分覆盖**（18 个字段里只重命名 6 个，
+ * 其余走 `?? field` 用原名），所以是 Partial 而非全量 Record——套全量会把
+ * 「大多数字段无需改名」这个合法设计判成错。
+ */
+export const FIELD_LABELS: Partial<Record<ChecklistField, string>> = {
   联系电话: '联系方式',
   是否暑假工: '是否暑假工',
   健康证情况: '健康证',
@@ -205,12 +227,16 @@ export function buildKnownFieldMap(params: {
 export function orderFields(fields: string[]): string[] {
   const uniqueFields = dedupeStrings(fields);
   const ordered = FIELD_ORDER.filter((field) => uniqueFields.includes(field));
-  const rest = uniqueFields.filter((field) => !FIELD_ORDER.includes(field)).sort();
+  // 入参是任意 string（含 API 返回的未知字段），拓宽后再判归属。
+  const rest = uniqueFields
+    .filter((field) => !(FIELD_ORDER as readonly string[]).includes(field))
+    .sort();
   return [...ordered, ...rest];
 }
 
 export function formatTemplateFieldLabel(field: string): string {
-  return FIELD_LABELS[field] ?? field;
+  // 入参可能是 API 返回的未知字段：查不到就用原名（Partial 表的既有语义）。
+  return FIELD_LABELS[field as ChecklistField] ?? field;
 }
 
 export function buildChecklistTemplate(params: {
@@ -246,7 +272,9 @@ export function buildChecklistTemplate(params: {
     ...knownOptionalFields,
   ]);
   const coreFields = TEMPLATE_CORE_FIELDS.filter((field) => orderedFields.includes(field));
-  const dynamicFields = orderedFields.filter((field) => !TEMPLATE_CORE_FIELDS.includes(field));
+  const dynamicFields = orderedFields.filter(
+    (field) => !(TEMPLATE_CORE_FIELDS as readonly string[]).includes(field),
+  );
   const displayOrder = [...coreFields, ...dynamicFields];
 
   const missingFields = displayOrder.filter((field) => !params.knownFieldMap[field]);

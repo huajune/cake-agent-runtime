@@ -10,7 +10,8 @@ import {
  * 策略配置数据库记录
  * @table strategy_config
  */
-export type StrategyConfigStatus = 'testing' | 'released' | 'archived';
+export const STRATEGY_CONFIG_STATUSES = ['testing', 'released', 'archived'] as const;
+export type StrategyConfigStatus = (typeof STRATEGY_CONFIG_STATUSES)[number];
 
 export interface StrategyConfigRecord {
   id: string;
