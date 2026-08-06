@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 19
+**累计 PR**: 20
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -67,6 +67,8 @@
 - PR #947 修正 infra/providers/sponge/observability 等基础域过时注释
 - PR #947 修正 custom-openai provider 的 SDK 版本引用
 - PR #947 全库注释清洗第二轮——channels/tools/biz/agent/infra 等剩余域过时注释
+- PR #949 忽略 logs/ 本地台账，撤出误提交的观测日志
+- PR #949 撤出误提交的本地观测台账
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -122,6 +124,8 @@
 - PR #944 候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格
 - PR #942 按 cooperationMode 契约实现发薪/签约主体自答
 - PR #947 Merge remote-tracking branch 'origin/develop' into chore/stale-commen…
+- PR #949 忽略 logs/ 本地台账，撤出误提交的观测日志
+- PR #949 撤出误提交的本地观测台账
 
 ### 配置变更
 - 无
