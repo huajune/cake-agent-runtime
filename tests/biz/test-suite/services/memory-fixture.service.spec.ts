@@ -24,6 +24,11 @@ describe('MemoryFixtureService', () => {
     seedFixtureBrandState: jest.fn(),
   };
 
+  const mockLongTermService = {
+    setActiveBooking: jest.fn(),
+    clearActiveBooking: jest.fn(),
+  };
+
   const scope = {
     corpId: 'corp-1',
     userId: 'user-1',
@@ -36,6 +41,7 @@ describe('MemoryFixtureService', () => {
       mockMemoryService as any,
       mockSessionService as any,
       mockBrandStateService as any,
+      mockLongTermService as any,
     );
   });
 
@@ -196,5 +202,89 @@ describe('MemoryFixtureService', () => {
         updatedAtMs: undefined,
       },
     );
+  });
+});
+
+/**
+ * 预约工单前置状态注入（2026-08-06）。
+ *
+ * 单轮 scenarioCase 的 chatHistory 只是消息回放，不重建跨轮状态：badcase au5gy9hy
+ * 因会话内没有真实工单，模型自行臆造工单号 WO_2100366180047430400（超出安全整数范围
+ * 致工具报错），判据整个落空。改约 / 预约错门店 / 线上面试不得跳过同族均卡在这里。
+ */
+describe('MemoryFixtureService — activeBookings 前置状态', () => {
+  let service: MemoryFixtureService;
+
+  const mockMemoryService = {
+    clearSessionMemory: jest.fn(),
+    saveInvitedGroup: jest.fn(),
+    saveProfile: jest.fn(),
+    setStage: jest.fn(),
+    getStage: jest.fn(),
+  };
+  const mockSessionService = {
+    saveFacts: jest.fn(),
+    saveLastCandidatePool: jest.fn(),
+    saveLastJobListQuery: jest.fn(),
+    savePresentedJobs: jest.fn(),
+    saveCurrentFocusJob: jest.fn(),
+    getSessionState: jest.fn(),
+  };
+  const mockBrandStateService = { seedFixtureBrandState: jest.fn() };
+  const mockLongTermService = { setActiveBooking: jest.fn(), clearActiveBooking: jest.fn() };
+  const scope = { corpId: 'corp-1', userId: 'user-1', sessionId: 'session-1' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new MemoryFixtureService(
+      mockMemoryService as any,
+      mockSessionService as any,
+      mockBrandStateService as any,
+      mockLongTermService as any,
+    );
+  });
+
+  it('注入 activeBookings 时写入长期记忆的预约工单指针', async () => {
+    await service.seed(scope, {
+      activeBookings: [{ workOrderId: 448367, jobId: 520738 }, { workOrderId: 448402 }],
+    });
+
+    expect(mockLongTermService.setActiveBooking).toHaveBeenCalledTimes(2);
+    expect(mockLongTermService.setActiveBooking).toHaveBeenNthCalledWith(
+      1,
+      'corp-1',
+      'user-1',
+      448367,
+      { job_id: 520738 },
+    );
+    // jobId 缺省落 null，与生产 setActiveBooking 的 metadata 契约一致
+    expect(mockLongTermService.setActiveBooking).toHaveBeenNthCalledWith(
+      2,
+      'corp-1',
+      'user-1',
+      448402,
+      { job_id: null },
+    );
+  });
+
+  it('未提供 activeBookings 时不触碰长期记忆', async () => {
+    await service.seed(scope, { facts: { candidateName: '张三' } });
+    expect(mockLongTermService.setActiveBooking).not.toHaveBeenCalled();
+  });
+
+  it('workOrderId 非法时抛错，避免静默种出坏 fixture', async () => {
+    await expect(
+      service.seed(scope, { activeBookings: [{ workOrderId: Number.NaN }] }),
+    ).rejects.toThrow('workOrderId');
+  });
+
+  it('reset 会清掉预约工单指针，防止跨执行泄漏', async () => {
+    await service.reset(scope);
+    expect(mockMemoryService.clearSessionMemory).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'session-1',
+    );
+    expect(mockLongTermService.clearActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1');
   });
 });
