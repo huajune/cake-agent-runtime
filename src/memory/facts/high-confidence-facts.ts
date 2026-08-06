@@ -1341,13 +1341,19 @@ function extractExperience(message: string): string | null {
   )?.[1];
   if (labeled) return sanitizeExperienceText(labeled);
 
-  const durationPattern =
-    '(?:\\d+|[一二两三四五六七八九十半]+)\\s*(?:个?多?月|个月|月多|月|年多?|年)';
+  // 时长里的空白只允许行内空格/制表符：`\s` 会吃掉 `\n`，让匹配跨行拼接。
+  // badcase 2026-08-06 chat 6a1e42c5（近 7 天 9 个会话、34 个 turn 同形态）：
+  // 候选人按收资模板换行回填"电话13872896163\n年龄22"，正文由"电话1387289616"起头、
+  // `\d+` 吃掉"3"、`\s*` 跨过换行、`年` 取自下一行"年龄"，得到
+  // interview.experience="电话13872896163年"（source=rule / confidence=high），
+  // 并已随 precheck 的 templateText 渲染成"过往公司+岗位+年限：电话13872896163年"。
+  const inlineSpace = '[ \\t]*';
+  const durationPattern = `(?:\\d+|[一二两三四五六七八九十半]+)${inlineSpace}(?:个?多?月|个月|月多|月|年多?|年)`;
   const rolePattern =
     '(?:服务员|店员|收银员?|后厨|前厅|补货|分拣|打包|营业员|导购|咖啡师|饭店|餐饮)';
 
   const explicit = new RegExp(
-    `((?:肯德基|KFC|[一-龥A-Za-z0-9]{2,20}(?:店|饭店|餐厅|自助|烤肉|咖啡|超市)?)[^，。,.!！?？\\n]{0,12}(?:${rolePattern})?[^，。,.!！?？\\n]{0,6}(?:做了|做|干了|干|工作了)?\\s*${durationPattern})`,
+    `((?:肯德基|KFC|[一-龥A-Za-z0-9]{2,20}(?:店|饭店|餐厅|自助|烤肉|咖啡|超市)?)[^，。,.!！?？\\n]{0,12}(?:${rolePattern})?[^，。,.!！?？\\n]{0,6}(?:做了|做|干了|干|工作了)?${inlineSpace}${durationPattern})`,
     'iu',
   ).exec(message)?.[1];
   if (explicit) return sanitizeExperienceText(explicit);
@@ -1366,6 +1372,14 @@ function sanitizeExperienceText(value: string): string | null {
     .replace(/\s+/g, '');
   if (!text) return null;
   if (!/(?:\d+|[一二两三四五六七八九十半]).*(?:月|年)/.test(text)) return null;
+  // 第二道门：正则跨行是已修的首因，但"电话行被当经历"这一类结果无论从哪条路径产生
+  // 都不该入档——它会随 booking 的"过往公司+岗位+年限"字段提交到工单。
+  // 只用手机号形态判定：观测到的 4 种脏值形态全部含 11 位手机号
+  // （6a1e42c5「电话13872896163年」/ 6a6837b6「手机号：17696566584年」/
+  //   6a6c5634「联系方式：19663930499年」/ 6a6ac29b「庞子瑞18036615809女8月」），
+  // 而真实经历不会内嵌手机号。刻意不按"电话/手机"标签词拒——"华为手机店做了3年"
+  // "电话客服干了2年"都是合法经历，标签门会误杀且无实证收益。
+  if (/1[3-9]\d{9}/u.test(text)) return null;
   return text.length > 80 ? text.slice(0, 80) : text;
 }
 

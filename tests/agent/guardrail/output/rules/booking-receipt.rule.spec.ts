@@ -62,3 +62,94 @@ describe('detectBookingReceiptMismatch — 形态 E：已建单但未告知日�
     ).toBeNull();
   });
 });
+
+/**
+ * 形态 F（2026-08-06 badcase chat 6a1e42c5 trace …_1785977561594）：候选人要把面试从
+ * 15:00 改到 15:30。precheck 已返回在途工单 455384 并在 _replyInstruction 点名
+ * "改时间用 duliday_modify_interview_time（传该工单号）"，模型一个工具没调，
+ * 回复却确认了"你说的15:30这个时间没问题"。工单至今是 15:00，候选人会按 15:30 到店白跑。
+ *
+ * 该轮首审只命中 handoff_promise_without_handoff（首版是"让同事帮你确认下"），
+ * repair 把承诺洗成确认后二审无规则可拦——本规则补的就是这条路径。
+ */
+describe('detectBookingReceiptMismatch — 形态 F：在途工单未改约却确认新时间', () => {
+  const precheckWithActiveOrder = (interviewTime = '2026-08-06 15:00') =>
+    [
+      {
+        toolName: 'duliday_interview_precheck',
+        status: 'ok',
+        result: {
+          duplicateBookingGuard: {
+            workOrderId: 455384,
+            currentStatus: '约面待确认',
+            interviewTime,
+          },
+        },
+      },
+    ] as never[];
+
+  const okModify = {
+    toolName: 'duliday_modify_interview_time',
+    status: 'ok',
+    result: { success: true },
+  } as never;
+
+  it('生产原文：确认 15:30 但工单是 15:00 且未改约 → REVISE', () => {
+    const found = detectBookingReceiptMismatch(
+      '我是高雅琪，负责这边岗位对接的招聘经理。\n\n你说的15:30这个时间没问题。',
+      precheckWithActiveOrder(),
+    );
+    expect(found?.ruleId).toBe('interview_time_change_unconfirmed');
+    expect(found?.action).toBe('revise');
+    expect(found?.label).toContain('455384');
+    expect(found?.feedbackToGenerator).toContain('2026-08-06 15:00');
+  });
+
+  it.each(['3点半没问题', '下午3点半可以的', '就15:30，安排好了'])(
+    '口语钟点写法 %s 同样命中',
+    (reply) => {
+      expect(detectBookingReceiptMismatch(reply, precheckWithActiveOrder())?.ruleId).toBe(
+        'interview_time_change_unconfirmed',
+      );
+    },
+  );
+
+  it('本轮成功改约后放行——工单已经改了，确认是如实陈述', () => {
+    expect(
+      detectBookingReceiptMismatch('你说的15:30这个时间没问题。', [
+        ...precheckWithActiveOrder(),
+        okModify,
+      ] as never[]),
+    ).toBeNull();
+  });
+
+  it('复述工单既有时间不算改约，必须放行', () => {
+    expect(
+      detectBookingReceiptMismatch(
+        '你后台已经登记好了，预约是今天下午15:00，这个时间没问题',
+        precheckWithActiveOrder(),
+      ),
+    ).toBeNull();
+  });
+
+  it('没有在途工单时不判——正常首次约面确认时间是合法的', () => {
+    expect(
+      detectBookingReceiptMismatch('你说的15:30这个时间没问题。', [
+        {
+          toolName: 'duliday_interview_precheck',
+          status: 'ok',
+          result: { nextAction: 'ready_to_book' },
+        },
+      ] as never[]),
+    ).toBeNull();
+  });
+
+  it('只复述工单、不确认任何钟点时放行', () => {
+    expect(
+      detectBookingReceiptMismatch(
+        '你在这个岗位已经有一条约面记录了，我先帮你核对下',
+        precheckWithActiveOrder(),
+      ),
+    ).toBeNull();
+  });
+});

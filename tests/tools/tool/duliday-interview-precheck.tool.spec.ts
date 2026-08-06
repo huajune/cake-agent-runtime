@@ -1954,6 +1954,89 @@ describe('buildInterviewPrecheckTool', () => {
       expect(mockSpongeService.fetchSignupWorkOrders).not.toHaveBeenCalled();
     });
 
+    // ===== 视觉事实回流查重（badcase 2026-08-06 chat 6a1e42c5 trace …_1785977093673）=====
+    // 候选人发后台工单截图，save_image_description 已按 ownership=candidate 落档手机号，
+    // 模型下一轮却只传 jobId → 在途工单探测整段跳过 → duplicateBookingGuard 不触发 →
+    // Agent 重复收资并断言"你这边资料还没登记完整"，而对方后台早已登记（工单 455384）。
+    const visualSheetContext = (fields: Array<{ key: string; value: string; ownership: string }>) =>
+      ({
+        messages: [{ role: 'user', content: '这个门店' }] as never,
+        turnVisualFactSheets: [{ messageId: 'm1', sheet: { fields } }],
+      }) as never;
+
+    it('模型漏传手机号时，用截图里 ownership=candidate 的手机号完成查重', async () => {
+      socialOnlyJobFixture();
+      mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({
+        total: 1,
+        workOrders: [
+          {
+            workOrderId: 455384,
+            jobId: 100,
+            currentStatus: '约面待确认',
+            interviewTime: '2026-08-06 15:00',
+            signUpTime: '2026-08-06 08:31',
+          },
+        ],
+      });
+
+      const { candidatePhone: _omitted, ...inputWithoutPhone } = readyInput;
+      const result = await executeTool(
+        inputWithoutPhone,
+        visualSheetContext([{ key: 'phone', value: '13872896163', ownership: 'candidate' }]),
+      );
+
+      expect(mockSpongeService.fetchSignupWorkOrders).toHaveBeenCalledWith(
+        { phone: '13872896163' },
+        expect.anything(),
+      );
+      expect(result.duplicateBookingGuard).toEqual(
+        expect.objectContaining({ workOrderId: 455384 }),
+      );
+    });
+
+    it('截图手机号只用于查重，不得满足收资清单', async () => {
+      socialOnlyJobFixture();
+      mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
+
+      const { candidatePhone: _omitted, ...inputWithoutPhone } = readyInput;
+      const result = await executeTool(
+        inputWithoutPhone,
+        visualSheetContext([{ key: 'phone', value: '13872896163', ownership: 'candidate' }]),
+      );
+
+      // 截图里的姓名/电话未必是对话方本人（本案"颜端樟"是对方代第三人登记），
+      // 拿它满足收资等于复刻「第三方截图夺号」——联系电话必须仍留在缺失项里。
+      expect(result.bookingChecklist?.missingFields).toContain('联系电话');
+      expect(result.bookingChecklist?.templateText).not.toContain('13872896163');
+    });
+
+    it('发布方标注的手机号不参与查重（只认 ownership=candidate）', async () => {
+      socialOnlyJobFixture();
+
+      const { candidatePhone: _omitted, ...inputWithoutPhone } = readyInput;
+      await executeTool(
+        inputWithoutPhone,
+        visualSheetContext([{ key: 'phone', value: '13872896163', ownership: 'publisher' }]),
+      );
+
+      expect(mockSpongeService.fetchSignupWorkOrders).not.toHaveBeenCalled();
+    });
+
+    it('模型显式传入的手机号优先于截图', async () => {
+      socialOnlyJobFixture();
+      mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
+
+      await executeTool(
+        readyInput,
+        visualSheetContext([{ key: 'phone', value: '13872896163', ownership: 'candidate' }]),
+      );
+
+      expect(mockSpongeService.fetchSignupWorkOrders).toHaveBeenCalledWith(
+        { phone: '13800138000' },
+        expect.anything(),
+      );
+    });
+
     // ===== 2026-07-15 生产语料：时间戳后缀击穿 v10.13.0 整句锚定 + 模板措辞漂移 =====
 
     it.each([

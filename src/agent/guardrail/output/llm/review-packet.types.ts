@@ -27,6 +27,7 @@ export interface GuardrailReviewPacket {
     geocode?: GeocodeEvidence;
     sentLocation?: SentLocationEvidence;
     groupInvite?: GroupInviteEvidence;
+    visualFacts?: VisualFactsEvidence;
   };
   policies: {
     redLines: string[];
@@ -110,6 +111,26 @@ export interface GroupInviteEvidence {
   groupName?: string;
   alreadyInGroup?: boolean;
   errorType?: string;
+}
+
+/**
+ * 视觉事实证据（badcase 2026-08-06 chat 6a1e42c5 trace …_1785977093673）：
+ * 候选人发来后台工单截图，save_image_description 已把「预约面试时间 2026/08/06 15:00」
+ * 结构化落档，助手据此回"你现在是想确认今天15点这个面试对吧"。但 packet 的工具白名单
+ * 当时只收 6 个 duliday/geo 类工具，reviewer 看不到截图，判了
+ * `active_booking_state_conflict`——"没有任何 booking/precheck 证据显示候选人已预约"。
+ * 与 groupInvite（2026-08-04 P1-6）同源：证据包缺一类工具，就制造一类硬假阳。
+ *
+ * ownership 必须原样带上：截图里的字段分候选人自陈与发布方标注两类，
+ * 混为一谈正是"发布方品牌劫持"类误判的温床，reviewer 需要自行区分。
+ */
+export interface VisualFactsEvidence {
+  sheets: Array<{
+    kind?: string;
+    /** vision 原始描述，截断防爆 packet。 */
+    description?: string;
+    fields: Array<{ key: string; value: string; ownership?: string }>;
+  }>;
 }
 
 export interface SentLocationEvidence {
