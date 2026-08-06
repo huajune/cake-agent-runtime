@@ -394,6 +394,31 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "909",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/909",
+      "title": "收拢 job-list 工具层类型债到领域契约 JobDetail",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "收拢 job-list 工具层类型债到领域契约 JobDetail",
+        "Merge origin/develop into chore/tech-debt-20260805-types"
+      ],
+      "summary": [
+        "收拢 job-list 工具层类型债到领域契约 JobDetail",
+        "Merge origin/develop into chore/tech-debt-20260805-types"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "收拢 job-list 工具层类型债到领域契约 JobDetail",
+        "Merge origin/develop into chore/tech-debt-20260805-types"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
