@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.40.0",
   "nextVersion": "10.41.0",
-  "updatedAt": "2026-08-05",
+  "updatedAt": "2026-08-06",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -47,6 +47,28 @@
       "optimizations": [],
       "ops": [
         "补记 P0 同族场景生产自然复现验证证据"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "908",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/908",
+      "title": "三张词表收拢回 resolution/visual 单一居所",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "三张词表收拢回 resolution/visual 单一居所"
+      ],
+      "summary": [
+        "三张词表收拢回 resolution/visual 单一居所"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "三张词表收拢回 resolution/visual 单一居所"
       ],
       "config": [],
       "envFiles": [],
