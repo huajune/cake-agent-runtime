@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 16
+**累计 PR**: 18
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -58,6 +58,9 @@
 - PR #909 Merge origin/develop into chore/tech-debt-20260805-types
 - PR #932 删除注释清洗排查确认的四组零消费方死代码
 - PR #932 Merge origin/develop into chore/remove-dead-code-20260806
+- PR #944 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #944 候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格
+- PR #942 按 cooperationMode 契约实现发薪/签约主体自答
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -105,6 +108,9 @@
 - PR #909 Merge origin/develop into chore/tech-debt-20260805-types
 - PR #932 删除注释清洗排查确认的四组零消费方死代码
 - PR #932 Merge origin/develop into chore/remove-dead-code-20260806
+- PR #944 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #944 候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格
+- PR #942 按 cooperationMode 契约实现发薪/签约主体自答
 
 ### 配置变更
 - 无
@@ -130,6 +136,10 @@
 - PR #932 ✅ `pnpm run typecheck`
 - PR #932 ✅ `pnpm run lint:check`（--max-warnings=0）
 - PR #932 ✅ `npx jest --no-watchman` 全量：**412 套件 / 6868 测试全过**（较基线少 1 套件即删除的 llm-reviewer spec）
+- PR #944 全量 **6897 测试通过**、typecheck 零错误、lint `--max-warnings=0` 零告警
+- PR #944 无 DB 迁移、无配置变更；仍为 shadow 模式
+- PR #942 渲染 5 条：BPO 结论、RPO 结论（含"不得把 BPO 的独立客结论泄漏到 RPO"的负向断言）、两种模式都带 🔒 禁术语标注、大小写/空格容错、字段缺失整段不渲染
+- PR #942 schema 4 条：BPO/RPO 保留、缺失通过、null 通过、非字符串不通过（防止有人改 strict/omit 时静默吞字段）
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05

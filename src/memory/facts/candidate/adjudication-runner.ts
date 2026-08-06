@@ -1,5 +1,6 @@
 import { stripMessageDecorations } from '@tools/shared/identity-statement.util';
 import { extractMessageText } from '@tools/duliday/precheck/collection-strategy.util';
+import { isResumeImageMessage, isVisualSourcePart } from '../visual-description';
 import type {
   AdjudicatedClaim,
   CandidateClaimField,
@@ -56,14 +57,31 @@ export interface AdjudicationRunResult {
   factsVersion: number;
 }
 
-/** 提取候选人侧原文（user 角色，剥引用块/时间后缀），保持会话顺序。 */
+/**
+ * 提取候选人侧**自陈**原文（user 角色，剥引用块/时间后缀/视觉描述），保持会话顺序。
+ *
+ * 视觉来源剔除（生产实测 2026-08-06，chat 6a714c00）：`save_image_description` 把
+ * vision 描述回写进 user 消息，第三方截图里的招聘者手机号、岗位门槛年龄因此与候选人
+ * 手打文本并列。本函数产出的文本集是 claim 的 **quote 验证基准**——不剔除等于把
+ * "截图里出现过"当成"候选人说过"，第三方号码可在无冲突时直接 accepted 进快照
+ * （与 [[project_badcase_image_identity_hijack]] / PR #870 同族，那次收窄的是抽取侧）。
+ *
+ * 逐 part 判定而非整条：多模态 content 数组扁平化后，描述前面还挂着
+ * `[图片 messageId=…]` 占位标签，消息级 startsWith 判据会落空。
+ * 候选人自己的简历图片是自陈材料，按既有裁定保留。
+ */
 export function extractCandidateTexts(messages: unknown[]): string[] {
   const texts: string[] = [];
   for (const message of messages) {
     if (!message || typeof message !== 'object') continue;
     const record = message as Record<string, unknown>;
     if (record.role !== 'user') continue;
-    const raw = extractMessageText(record.content);
+
+    const parts = Array.isArray(record.content) ? record.content : [record.content];
+    const selfReportedParts = parts
+      .map((part) => extractMessageText(part))
+      .filter((text) => text && (!isVisualSourcePart(text) || isResumeImageMessage(text)));
+    const raw = selfReportedParts.join(' ').trim();
     if (!raw) continue;
     const cleaned = stripMessageDecorations(raw);
     if (cleaned) texts.push(cleaned);

@@ -24,6 +24,16 @@
 /** vision 描述回写前缀，与 `save-image-description.tool.ts` 的 `resolvePrefix` 对齐。 */
 const VISUAL_MESSAGE_PREFIXES = ['[图片消息]', '[表情消息]'] as const;
 
+/**
+ * 多模态消息里的视觉占位标签（`[图片 messageId=…]` / `[表情 messageId=…]`），
+ * 与 `save-image-description.tool.ts` 的选图标签同源。
+ *
+ * 与上面的前缀常量分开判定：多 part 消息扁平化后，描述文本前面还会挂着这个标签
+ * （生产实例 chat 6a714c00 的 content 数组是 `[图片 messageId=…]` + image + `[图片消息] 描述`），
+ * 整条 startsWith 判据会因此落空。
+ */
+const VISUAL_PLACEHOLDER_TAG_REGEX = /^\s*\[(?:图片|表情)\s+messageId=[^\]]*\]\s*$/u;
+
 /** 简历图片标记：描述开头的"简历图片："与回写追加的"简历附件："行。 */
 const RESUME_MARKER_REGEX = /简历图片：|(?:^|\n)简历附件：/u;
 
@@ -36,6 +46,18 @@ const RESUME_MARKER_REGEX = /简历图片：|(?:^|\n)简历附件：/u;
 export function isVisualDescriptionMessage(message: string | null | undefined): boolean {
   const trimmed = (message ?? '').trim();
   return VISUAL_MESSAGE_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+}
+
+/**
+ * 单个内容 part 是否属于视觉来源（描述回写 或 选图占位标签）。
+ *
+ * 面向多模态 content 数组的逐 part 判定：整条消息扁平化后前缀会被占位标签顶掉，
+ * 消息级 startsWith 判据失效，故按 part 判。
+ */
+export function isVisualSourcePart(part: string | null | undefined): boolean {
+  const trimmed = (part ?? '').trim();
+  if (!trimmed) return false;
+  return isVisualDescriptionMessage(trimmed) || VISUAL_PLACEHOLDER_TAG_REGEX.test(trimmed);
 }
 
 /** 是否为候选人自己的简历图片（自陈材料，不做第三方收窄）。 */
