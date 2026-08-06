@@ -141,7 +141,8 @@ export class ConversationParserService {
 
   /**
    * 从 GeneratorRunResult 提取工具调用
-   * 新架构下 GeneratorRunResult 不包含工具调用明细，返回空数组
+   * GeneratorRunResult.toolCalls 已含结构化工具调用序列；本方法当前无调用方，
+   * 恒返回空数组，需要工具调用请直接读 result.toolCalls。
    */
   extractToolCalls(_result: GeneratorRunResult): unknown[] {
     return [];

@@ -3,7 +3,9 @@
  *
  * Node 原生 fetch 没有整体超时（undici 仅有 headers 阶段的默认超时，响应体可以无限挂起）。
  * 下游 API（海绵/托管平台等）一旦卡顿，会直接拖住 Agent 的工具执行循环，候选人 30s+ 无回复，
- * 且排障时无法区分"模型慢"还是"工具慢"。所有出站 fetch 必须经过本封装。
+ * 且排障时无法区分"模型慢"还是"工具慢"。新增/修改的出站 fetch 应优先经过本封装；
+ * 现存少数例外（Supabase 客户端注入的 fetch、简历下载、OpenRouter 自定义 fetch、原图拉取）
+ * 各自实现了独立超时，未接入本封装。
  */
 
 export const DEFAULT_FETCH_TIMEOUT_MS = 20_000;

@@ -12,14 +12,11 @@ import { MessagePipelineService } from '../application/pipeline.service';
 import { MessageWorkerManagerService } from './message-worker-manager.service';
 
 /**
- * 消息队列处理器（精简版 v2）
+ * Bull 'process' 任务消费者（Job 由 SimpleMergeService 创建）。
  *
- * 重构亮点：
- * - 直接依赖回复工作流编排，而非反向依赖入口服务
- * - 仅保留队列管理和任务调度逻辑
- * - 从 884 行精简到 ~200 行
- *
- * Job name: 'process'（由 SimpleMergeService 创建）
+ * 职责：per-chat 处理锁（90s 租约+心跳）→ 静默窗口复查 → pending 快照 →
+ * 托管暂停复查 → 委托 MessagePipelineService；含 SIGTERM 优雅排空。
+ * 直接依赖回复工作流编排，而非反向依赖入口服务。
  */
 @Injectable()
 export class MessageProcessor implements OnModuleInit, OnModuleDestroy {

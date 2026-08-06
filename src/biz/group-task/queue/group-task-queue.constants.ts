@@ -3,7 +3,7 @@ import { GroupContext, GroupTaskType, TimeSlot } from '../group-task.types';
 /**
  * 群任务 Bull 队列
  *
- * 三类 Job 解耦发送流程，让单群失败可独立重试、进程重启不丢消息：
+ * 四类 Job 解耦发送流程，让单群失败可独立重试、进程重启不丢消息：
  *   Plan     → 从 cron/手动触发入口产生，负责分组 + 排程
  *   Prepare  → 每 (city+industry) 一个，拉数据 + 生成消息 + 缓存 + 派发 Send
  *   Send     → 每群一个，幂等发送 + 品牌轮转 + 写结果

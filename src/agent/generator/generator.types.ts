@@ -86,18 +86,19 @@ export interface GeneratorInvokeParams {
   toolMode?: GeneratorToolMode;
   /**
    * 精确工具授权。提供时在 toolMode 的基础工具集上再取白名单交集。
-   * Guardrail replan 必须使用该字段，不能借用粗粒度 readonly 模式。
+   * 当前生产消费方是 test-suite 保真链路（replan 退役后守卫不再传工具白名单）。
    */
   allowedToolNames?: string[];
   /**
    * HC-1 revise 回路：带上一版回复被出站守卫拦下的违规意见重生成，
    * 注入 system prompt 让模型只修正这些问题、不重跑业务逻辑。
+   * replan 退役（2026-07-27）后生产链路不再传入，修复统一走 ReplyRepairAgent。
    */
   reviseFeedback?: GuardViolation[];
   /**
-   * 出站守卫修复回合：output guardrail replan 修复时由 runner 传入，把被拦下的
-   * 首版原文注入 prompt，要求模型在其基础上做定向修复而非从零重写
-   * （rewrite 模式走独立 ReplyRepairAgent，不经此字段）。
+   * 出站守卫修复回合：把被拦下的首版原文注入 prompt，要求模型定向修复而非从零重写。
+   * replan 退役（2026-07-27）后生产链路不再传入——修复统一走独立的 ReplyRepairAgent，
+   * 不经本字段。
    */
   guardrailRepair?: {
     originalReply: string;
@@ -105,8 +106,9 @@ export interface GeneratorInvokeParams {
     feedbackToGenerator?: string;
   };
   /**
-   * HC-1：本轮已提交且不可撤销的副作用摘要（如「已为候选人预约 X 门店面试」）。
-   * 用于 revise 回路：让模型知晓既成事实，既不声称未发生、也不重复执行。
+   * HC-1：本轮已提交且不可撤销的副作用摘要（如「已为候选人预约 X 门店面试」），
+   * 让模型知晓既成事实，既不声称未发生、也不重复执行。
+   * 现由 ReplyRepairAgent 以独立入参消费，不经本字段传入 generator。
    */
   committedSideEffects?: string;
   /**
@@ -166,7 +168,7 @@ export interface GeneratorInvokeParams {
   /**
    * 延迟 turn-end 生命周期到调用方显式触发。
    *
-   * 默认 false：模型返回后 runner 内部 fire-and-forget 触发 onTurnEnd（记忆投影/事实提取）。
+   * 默认 false：模型返回后 GeneratorAgent 内部 fire-and-forget 触发 onTurnEnd（记忆投影/事实提取）。
    *
    * 开启后：runner 不再自动触发，`GeneratorRunResult.runTurnEnd` 暴露一个 dispatcher 给调用方。
    * 适用于 replay 场景——首次生成的回复需要被丢弃，其记忆副作用也不能执行；

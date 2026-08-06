@@ -6,14 +6,14 @@
  * screeningChecks 警告硬塞数据。下列四类硬规则在 precheck 已经做过一次，
  * booking 在调 sponge API 之前再跑一次，作为 server-side 兜底：
  *
- * 1. 真实姓名 (isLikelyRealChineseName)
+ * 1. 真实姓名 (isStrictRealChineseName)
  *    — badcase 簇 booking_real_name_required (5 cases)
  * 2. 面试时段 (validateInterviewTimeAgainstSchedule)
  *    — badcase 簇 booking_same_day_cutoff (5 cases) + invalid_interview_time_slot
  * 3. 筛选答案 (findScreeningFailure)
  *    — badcase 69e9bba2 (agent 把不合格候选人直接送进 booking)
  * 4. 候选人 facts 与岗位硬性约束冲突 (extractHardRequirements + candidate facts)
- *    — gender / healthCert 两类，从 raw + policy 派生的 enum 与候选人入参对账
+ *    — gender / household / healthCert / student 四类，从 raw + policy 派生的 enum 与候选人入参对账
  *
  * 与 precheck 共用底层函数（name-guard / interview-window / supplement-label-classifier /
  * hard-requirements），不存在双口径漂移风险；多花的成本是 booking 路径上一次本地数据计算

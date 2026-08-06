@@ -243,7 +243,8 @@ export class MessageCallbackAdapterService {
    * 说明：
    * - 小组级回调没有 orgId 字段
    * - 使用固定值标识来自小组级回调
-   * - orgId 仅用于日志和统计，不影响业务逻辑
+   * - 注意：该固定值会作为 corpId 进入记忆键与 ops_events 维度（对同一候选人恒定即可，
+   *   企业级/小组级两种回调格式不可对同一批用户混用）
    */
   private extractOrgIdFromToken(token: string): string {
     this.logger.debug(`生成 orgId for 小组级回调: token=${this.maskToken(token)}`);

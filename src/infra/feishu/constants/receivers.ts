@@ -19,8 +19,10 @@ export const FEISHU_RECEIVER_USERS = {
 } as const satisfies Record<string, FeishuReceiver>;
 
 /**
- * 托管 bot wxid → 飞书接收人映射。
- * 用于群任务通知时 @对应负责人。
+ * 托管 bot（botImId）→ 飞书接收人映射。
+ * 作为 HostingMemberConfigService.resolveFeishuReceiver 的硬编码兜底（DB 未配置接收人时），
+ * 服务于转人工/ops 事件/预约取消/对话风险/消息处理失败等告警场景。
+ * group-task 不走此映射，直接硬编码 FEISHU_RECEIVER_USERS。
  */
 export const BOT_TO_RECEIVER: Record<string, FeishuReceiver> = {
   '1688855974513959': FEISHU_RECEIVER_USERS.GAO_YAQI, // 琪琪组 - 高雅琪

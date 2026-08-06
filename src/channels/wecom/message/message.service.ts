@@ -174,7 +174,7 @@ export class MessageService implements OnModuleInit {
   }
 
   /**
-   * 处理聚合后的消息（供 MessageProcessor 调用）
+   * 处理聚合后的消息。当前无生产调用方（MessageProcessor 直接走 MessagePipelineService），待删。
    */
   async processMergedMessages(
     messages: EnterpriseMessageCallbackDto[],

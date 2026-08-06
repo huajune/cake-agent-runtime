@@ -93,7 +93,8 @@ export function isCommittedRequestHandoffCall(call: AgentToolCall): boolean {
  * 纯函数、无副作用：runner 的 `runTurn`（主动复聊）与 WeCom 被动入站链路共享同一处分类逻辑，
  * 保证「同样的生成结果 → 同样的终态判定」，让 runner 的 outcome 测试同时守护真实入站路径。
  *
- * 优先级：出站 block → 转人工（committed request_handoff / booking gate hard-reject）→
+ * 优先级：出站 block → 转人工（committed request_handoff / booking 溯源 gate /
+ * modify 工单归属 gate hard-reject）→
  * 沉默（短路 / 空文本）→ 可投递回复。
  */
 export function classifyReviewedOutcome(
@@ -168,7 +169,8 @@ export function classifyReviewedOutcome(
     };
   }
 
-  // handoff：request_handoff 或 booking gate hard-reject；副作用统一从 sideEffects 出口执行。
+  // handoff：request_handoff、booking 溯源 gate 或 modify 工单归属 gate hard-reject；
+  // 副作用统一从 sideEffects 出口执行。
   const requestHandoff = toolCalls.find(isCommittedRequestHandoffCall);
   const gateReject = toolCalls.find(isHandoffGateRejectedToolCall);
   const handoffCall = requestHandoff ?? gateReject;

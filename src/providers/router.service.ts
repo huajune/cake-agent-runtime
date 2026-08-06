@@ -94,7 +94,7 @@ export class RouterService {
     return route;
   }
 
-  /** 兼容 chat turn 路径的便捷别名。 */
+  /** chat turn 路径的便捷别名；当前仅被单测覆盖，生产路径（llm-executor）直接调 resolveRoute。 */
   resolveForTurn(options: {
     overrideModelId?: string;
     fallbacks?: string[];

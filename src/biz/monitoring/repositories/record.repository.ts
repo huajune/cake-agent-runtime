@@ -633,8 +633,8 @@ export class MonitoringRecordRepository extends BaseRepository {
   }
 
   /**
-   * Fallback for environments where the DB RPC is still on the pre-tool_calls
-   * version and returns an empty result even though current rows contain tools.
+   * Fallback used only when the get_dashboard_tool_stats RPC is missing/unavailable
+   * (rpc() returned null). An empty RPC result is trusted and does NOT trigger this scan.
    */
   private async getDashboardToolStatsFromToolCalls(
     startDate: Date,

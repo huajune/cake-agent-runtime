@@ -375,8 +375,8 @@ export class ReplyWorkflowService {
 
       // 图片记忆确定性兜底：多模态主路径的跨轮图片记忆依赖模型自觉调用
       // save_image_description；本轮有图但漏调时用 vision 角色补描述回写 DB，
-      // 保证「图片必然沉淀为文字记忆」的下限。预描述路径（全链纯文本）本身
-      // 就是确定性回写，方法内部会识别并跳过。
+      // 保证「图片必然沉淀为文字记忆」的下限。全链纯文本时描述已由运行时兼容重跑
+      // 确定性写回，方法内部识别并跳过。
       this.backfillMissingImageDescriptions({
         imageMessageIds,
         imageUrls,
@@ -721,7 +721,7 @@ export class ReplyWorkflowService {
    * 链上有认图候选时，图片以原图直达 Agent，跨轮记忆依赖模型自觉调用
    * save_image_description 固化为文字；模型漏调时这里用 vision 角色异步补描述回写，
    * 把「图片跨轮记忆必然存在」从模型自觉降级为确定性下限。
-   * 全链纯文本（预描述路径）时入站已确定性回写，直接返回避免重复描述。
+   * 全链纯文本时描述已由运行时兼容重跑（多模态调用失败→转写后重跑）确定性写回，直接返回避免重复描述。
    */
   private backfillMissingImageDescriptions(params: {
     imageMessageIds: string[];

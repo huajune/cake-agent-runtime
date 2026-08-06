@@ -174,7 +174,7 @@ export class ReengagementTouchRepository extends BaseRepository {
   }
 
   /**
-   * 删除过期触达行。审计底账保留期比原始流水（message_processing_records 30 天）更长。
+   * 删除过期触达行。审计底账保留期比原始流水（message_processing_records，默认 60 天）更长。
    * @returns 删除的行数
    */
   async cleanupExpiredRecords(retentionDays: number): Promise<number> {

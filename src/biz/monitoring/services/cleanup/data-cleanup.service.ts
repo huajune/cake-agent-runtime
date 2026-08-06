@@ -15,7 +15,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 /**
  * 数据清理服务（分层存储策略）
  *
- * 清理顺序（每日凌晨 3 点）:
+ * 清理顺序（每日 03:00，服务器时区；生产容器为 UTC，即上海 11:00）:
  * 1. NULL agent_invocation（>N 天）— 释放 TOAST 空间，保留记录本身；
  *    agent_steps/tool_calls 不提前 NULL（工具统计兜底 RPC + badcase 证据需要处理链窗口），
  *    随消息处理行删除统一回收
@@ -140,7 +140,7 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
-   * 每天凌晨 3 点执行分层清理
+   * 每天 03:00（服务器时区，未指定 timeZone；生产容器 UTC = 上海 11:00）执行分层清理
    */
   @Cron('0 3 * * *')
   async cleanupExpiredData(): Promise<void> {
@@ -343,7 +343,7 @@ export class DataCleanupService implements OnModuleInit {
   /**
    * 清理二次触发触达底账（reengagement_touch_records）
    * - >30 天：NULL generated_text（单列大文本，事后追溯价值随时间衰减）
-   * - >90 天：DELETE 整行（审计底账保留期比 30 天原始流水更长）
+   * - >90 天：DELETE 整行（审计底账保留期比原始流水的默认 60 天更长）
    * 两步独立 try/catch：NULL 化失败不阻断行删除。
    */
   private async cleanupReengagementTouches(): Promise<{

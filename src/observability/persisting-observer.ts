@@ -13,7 +13,8 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'tool_error',
   // 品牌状态迁移：仅状态变化时发射，前后快照不可重放，必须落库（§12）
   'brand_state_change',
-  // 语义评审分母：每次 shadow/enforce 评审一条（日均几百），pass 判例仅此一处可查
+  // 语义评审分母：每次 shadow/enforce 评审一条（日均几百），是评审"总运行次数"的可靠计数源
+  // （guardrail_review_records 按 trace 稀疏存储，不天然是分母）
   'semantic_review',
   // 歧义词形现场：不写状态故 brand_state_change 看不见，量级=冲突别名频率（每天个位数）
   'brand_resolution_ambiguous',

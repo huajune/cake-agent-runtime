@@ -376,8 +376,10 @@ export class TestExecutionRepository extends BaseRepository {
   /**
    * 按 BadCase recordId 反查「用例测试」侧的执行证据（跨批次）。
    *
-   * source_trace 上有 GIN 索引，用 jsonb contains 谓词走索引。
-   * conversation_snapshot_id 为空的才是用例测试执行——回归验证侧的来源标记挂在快照上，不在执行上。
+   * source_trace 上是整列 GIN 索引，但这里用的是抽取路径谓词（source_trace->'badcaseRecordIds'
+   * @> …），吃不到该索引；扫描量靠 conversation_snapshot_id 过滤 + 扫描上限兜住。
+   * conversation_snapshot_id 为空的才是用例测试执行——回归验证的轮次执行也带着从快照复制来的
+   * source_trace（executeTurn 建行时写入），必须 IS NULL 排除，避免混入用例侧证据。
    */
   async findScenarioEvidenceByBadcaseRecordIds(
     recordIds: string[],

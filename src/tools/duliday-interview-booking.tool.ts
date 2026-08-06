@@ -804,7 +804,7 @@ export function buildInterviewBookingTool(
           }
 
           // Defense-in-depth: 在调 sponge bookInterview 之前再跑一次 precheck 已经做过的
-          // 三类硬规则校验（真名 / 时段 / 筛选答案）。LLM 偶发会跳过 precheck 直接调本工具，
+          // 四类硬规则校验（真名 / 时段 / 筛选答案 / 岗位硬性约束）。LLM 偶发会跳过 precheck 直接调本工具，
           // 这里作为 server-side 兜底——详见 booking-guards.util.ts。
           const guardFailure = runBookingGuards({
             job,
@@ -1247,7 +1247,7 @@ export function buildInterviewBookingTool(
                     apiMessage: result.message ?? null,
                   },
                 }),
-                // 下方对本分支触发 pauseUserHostingAsync（自动暂停托管→飞书告警→真人接管）。
+                // 上方 !result.success 分支已触发 pauseUserHostingAsync（自动暂停托管→飞书告警→真人接管）。
                 // 显式打标供出站守卫对账：replyInstruction 指示的"让同事确认"衔接语在本
                 // 形态下是如实陈述，handoff_promise_without_handoff 不应再判空头承诺
                 // （2026-08-04 守卫审计：…740343589/…748484273 假阳 × 有害重写）。

@@ -72,7 +72,7 @@ import {
     AgentRunnerService,
     TurnOutcomeInterventionService,
     AgentHealthService,
-    // reengagement（复聊 shadow）
+    // reengagement（复聊二次触达；shadow/投递由 Dashboard 运行时开关控制）
     FollowUpSchedulerService,
     FollowUpProcessor,
     TouchLedgerService,

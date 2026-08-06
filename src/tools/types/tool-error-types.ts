@@ -19,8 +19,9 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   // duliday_interview_booking
   // 注意：时段/筛选答案/真实姓名等硬规则由 duliday_interview_precheck 前置拦截，
-  // 本工具只保留接口契约层面的入参校验、active case 兜底、customerLabel 构造、
-  // 海绵接口结果错误。
+  // booking 侧提交海绵前会重跑同族硬规则（booking-guards defense-in-depth），并做
+  // jobId/姓名/手机号溯源闸门与候选人快照对账；本分节错误码覆盖接口契约入参校验、
+  // 上述闸门拒绝、active case 兜底、customerLabel 构造与海绵接口结果错误。
   // ============================================================
   BOOKING_ALREADY_BOOKED: 'booking.already_booked',
   BOOKING_MISSING_FIELDS: 'booking.missing_fields',
@@ -254,8 +255,8 @@ export interface ToolErrorReturn {
  * - 异常 catch 的 err.message 应放进 `details.reason`（不进 prompt），不要拼到 _replyInstruction
  *
  * @param successField 成功标志的字段名。通用工具用 'success'；
- *                     request_handoff 用 'dispatched'，raise_risk_alert 用 'accepted'，
- *                     recall_history 用 'found'
+ *                     request_handoff 用 'dispatched'，raise_risk_alert 用 'accepted'；
+ *                     'found' 为 recall_history 的成功字段名预留（该工具无错误返回，不经本工厂）
  */
 export function buildToolError(args: {
   errorType: ToolErrorType;

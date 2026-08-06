@@ -69,8 +69,8 @@ export const TEMPLATE_CORE_FIELDS = [
 ] as const satisfies readonly ChecklistField[];
 
 /**
- * 字段名 → 对候选人展示的标签。**刻意部分覆盖**（18 个字段里只重命名 6 个，
- * 其余走 `?? field` 用原名），所以是 Partial 而非全量 Record——套全量会把
+ * 字段名 → 对候选人展示的标签。**刻意部分覆盖**（大多数字段无需改名，走 `?? field`
+ * 用原名，仅少数重命名/加消歧说明），所以是 Partial 而非全量 Record——套全量会把
  * 「大多数字段无需改名」这个合法设计判成错。
  */
 export const FIELD_LABELS: Partial<Record<ChecklistField, string>> = {

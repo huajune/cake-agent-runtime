@@ -97,7 +97,7 @@ export class ChatSessionService {
   }
 
   /**
-   * 获取聊天趋势（兼容旧监控接口）
+   * 获取聊天趋势。当前无生产调用方（/analytics/chat-trend 走 AnalyticsQueryService），待删。
    */
   async getChatTrend(days: number = 7): Promise<
     Array<{

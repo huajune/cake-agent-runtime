@@ -9,20 +9,22 @@ export interface GeneralHandoffNotificationMessage {
 /**
  * 通用人工介入告警 payload。
  *
- * 与 OnboardFollowup 区别：**不依赖 recruitmentCase**。
- * 适用场景：候选人需要人工介入（无群可拉、流程异常等）但当前会话还没有
- * onboard_followup case 时——比如 `request_handoff` 在 no_active_case 分支
- * 仍要把事件交给招募经理跟进，不能只暂停托管。
+ * recruitment_cases 废弃后 handoff 不再区分 onboard/general（见 intervention.service），
+ * 本 payload 是人工介入告警的唯一形状，不依赖任何 case 状态机。
+ * 适用场景：候选人需要人工介入（无群可拉、流程异常等），事件要交给招募经理跟进，
+ * 不能只暂停托管。
  */
 export interface GeneralHandoffNotificationPayload {
   alertLabel: string;
   /**
    * 可选：完整覆盖卡片标题。缺省用 `🚨 候选人需人工介入 · {alertLabel}`。
-   * 真人介入告警用它沿用原文案标题「真人介入聊天，已自动暂停托管 · 需要人工介入」。
+   * 真人介入告警用它沿用原文案标题「🚨 真人介入聊天，已自动暂停托管」。
    */
   titleOverride?: string;
   /**
-   * 转人工原因代码（request_handoff 枚举）。卡片据此分时效等级；
+   * 转人工原因代码：多数来自 request_handoff 的枚举，但部分工具会直接构造 sideEffect 写入
+   * 枚举外的值（如 booking 的 interview_group_invite_required），故类型留 string。
+   * 卡片据此分时效等级；
    * 缺省（如真人介入告警）不分级。
    */
   reasonCode?: string;

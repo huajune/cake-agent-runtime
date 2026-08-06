@@ -20,7 +20,11 @@ class FeishuSendError extends Error {
   }
 }
 
-/** 飞书自定义机器人限流相关 code，遇到应退避重试。文档：9499=too many request。 */
+/**
+ * 退避重试的 code 集合。11232 是自定义机器人限流码（每分钟 100 次 / 每秒 5 次）。
+ * 注意 9499 实为请求体格式错误（Bad Request：卡片 JSON 非法或体积超 20KB），并非限流；
+ * 它留在集合里意味着格式错误也会被重试三次，重试不可能成功——待复核是否移出。
+ */
 const RETRYABLE_FEISHU_CODES = new Set<number>([9499, 11232]);
 
 /**

@@ -21,7 +21,7 @@ export type { FilterResult } from '../types';
 /**
  * 消息过滤服务
  * 负责对接收到的消息进行各种过滤检查
- * 只处理：私聊、用户发送、手机推送、文本消息、非空内容
+ * 只处理：私聊、非自发、手机推送(MOBILE_PUSH)、支持的消息类型（文本/文件/位置/语音/表情/图片/小程序）、非空内容
  */
 @Injectable()
 export class MessageFilterService {

@@ -199,7 +199,7 @@ export class AcceptInboundMessageService {
     await this.enrichImagePayload(messageData);
 
     // 历史记录异步化：chat_messages INSERT（Supabase）+ short-term cache（Redis）总计
-    // 约 500ms-2s，阻塞了 PreDispatch。Agent 在 ≥10s 静默窗口后才读历史，
+    // 约 500ms-2s，阻塞了 PreDispatch。Agent 在静默窗口（initialMergeWindowMs，DB 可调）之后才读历史，
     // 异步写入有充裕时间完成。失败降级：下一轮看不到本轮 user 消息。
     void this.recordUserMessageToHistory(messageData, filterResult.content)
       .then(() => this.wecomObservability.markHistoryStored(messageData.messageId))
@@ -242,10 +242,11 @@ export class AcceptInboundMessageService {
    *
    * 生产实测：候选人加好友时微信会以普通 user 消息（MOBILE_PUSH）推送握手语
    * （「我是{昵称}」「请求添加你为朋友」「我通过了你的…验证请求」），Agent 直接回它即开场白；
-   * 不存在独立的「新增客户回调 / NEW_CUSTOMER_ANSWER_SOP」入口（线上未配 SOP）。因此：
+   * friend.added 的主信号是 /new-customer RPA 回调（线上未配 NEW_CUSTOMER_ANSWER_SOP），
+   * 本路径是消息反推兜底。因此：
    * - **friend.added（加好友数）**：任何候选人首条消息都代表新好友，幂等键 `userId:friend_added`
-   *   去重 → 每候选人一次；为省 RPC，仅在「握手语」或「首条真实消息(破冰)」时尝试。首次真正插入时
-   *   顺带开户长期记忆元数据。
+   *   去重 → 每候选人一次；为省 RPC，仅在「握手语」或「首条真实消息(破冰)」时尝试。同时
+   *   无条件确保长期记忆开户（幂等，与 friend.added 是否新插入解耦）。
    * - **candidate.message_received + 破冰(candidate.engaged)**：排除「加好友纯默认招呼语」
    *   （见 isPureFriendAddGreeting）——这些不算候选人真实开口；带求职意图的「我是找工作的」仍计入。
    *
