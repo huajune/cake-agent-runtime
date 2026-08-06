@@ -20,10 +20,6 @@ export interface CustomerDetailResponse {
   [key: string]: unknown;
 }
 
-/**
- * 客户管理服务
- * 专注于客户关系管理（CRM）功能
- */
 @Injectable()
 export class CustomerService {
   private readonly logger = new Logger(CustomerService.name);
