@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 8
+**累计 PR**: 9
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -31,6 +31,9 @@
 - PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
 - PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
 - PR #922 补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态
+- PR #930 删除同义反复的 JSDoc 头注释
+- PR #930 修正过时注释，变更叙事统一为现状约束口径
+- PR #930 全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -38,6 +41,7 @@
 ### 问题修复
 - PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
 - PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
+- PR #930 修正过时注释，变更叙事统一为现状约束口径
 
 ### 优化调整
 - 无
@@ -52,6 +56,7 @@
 - PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
 - PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
 - PR #922 补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态
+- PR #930 删除同义反复的 JSDoc 头注释
 
 ### 配置变更
 - 无
@@ -65,6 +70,10 @@
 - PR #915 新增 spec 逐一断言全部取值与顺序未变
 - PR #916 **jest 409 suites · 6814 tests 全通过**
 - PR #916 **web `tsc --noEmit` 通过**（前端类型改动已验证）
+- PR #930 非注释行变更全量机审：除上述 4 处字符串外**零代码变更**（含行尾注释宿主行逐行核对）
+- PR #930 typecheck / lint:check / geo:validate（8 类全绿）/ vocab:validate（5 项全绿）/ 全量 jest **413 套件 6870 条全部通过**
+- PR #930 多代理排查 + 主会话逐条抽验；一处代理过度删除（visual-fact 并跑对照约束被叙事改写误删）经交叉比对发现并恢复
+- PR #930 排查中确认的四组零引用死代码（旧 llm-reviewer、SEMANTIC_REVIEW_FINDING_POLICIES、*StorageResult 类型族、GeoResolution）**不在本 PR 删除**，已另立任务
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
