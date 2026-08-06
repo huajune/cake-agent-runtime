@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 11
+**累计 PR**: 12
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -38,6 +38,11 @@
 - PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
 - PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
 - PR #917 爽约不取消的时点前提同步到全部四处口径
+- PR #929 booking 已建单必须把面试日期告知候选人（形态 E）
+- PR #929 **判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。
+- PR #929 **不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。
+- PR #929 **等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。
+- PR #929 **解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -46,6 +51,10 @@
 - PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
 - PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
 - PR #930 修正过时注释，变更叙事统一为现状约束口径
+- PR #929 **判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。
+- PR #929 **不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。
+- PR #929 **等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。
+- PR #929 **解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。
 
 ### 优化调整
 - 无
@@ -65,6 +74,7 @@
 - PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
 - PR #910 清理实测确认的死代码，收拢消息状态与配置键
 - PR #917 爽约不取消的时点前提同步到全部四处口径
+- PR #929 booking 已建单必须把面试日期告知候选人（形态 E）
 
 ### 配置变更
 - 无
@@ -84,6 +94,9 @@
 - PR #930 排查中确认的四组零引用死代码（旧 llm-reviewer、SEMANTIC_REVIEW_FINDING_POLICIES、*StorageResult 类型族、GeoResolution）**不在本 PR 删除**，已另立任务
 - PR #917 全库 **6814 passed / 0 failed**
 - PR #917 `tsc --noEmit`、`eslint --max-warnings=0` 均通过
+- PR #929 全库 **6875 passed / 0 failed**；`tests/agent/guardrail` **1006 passed**
+- PR #929 新增 5 条回归：未给日期→REVISE、给月日放行、只给星期放行、`8月6号`写法放行、等通知岗位不适用
+- PR #929 `tsc --noEmit` / `eslint --max-warnings=0` 均通过
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
