@@ -138,6 +138,48 @@ describe('extractHighConfidenceFacts', () => {
     );
   });
 
+  describe('工作经历不得跨行吞掉手机号（badcase 2026-08-06 chat 6a1e42c5）', () => {
+    // 候选人按收资模板换行回填时，durationPattern 里的 `\s*` 会吃掉 `\n`：
+    // 正文从"电话1387289616"起头、`\d+` 吃掉"3"、跨行后由下一行"年龄"的"年"收尾，
+    // 得到 experience="电话13872896163年"（source=rule/confidence=high），
+    // 并已渲染进 precheck 的"过往公司+岗位+年限"，会随 booking 提交到工单。
+    it('模板回填的电话行不再被当成工作经历', () => {
+      const result = extractHighConfidenceFacts(
+        [
+          '大米先生\n姓名颜端樟   \n电话13872896163  \n年龄22    \n性别男   \n有无健康证 无\n下午3点半',
+        ],
+        brandData,
+      );
+
+      expect(unwrapHighConfidenceValue(result?.interview_info.experience)).toBeNull();
+      // 同一条消息里本该抽到的字段不能被误伤
+      expect(unwrapHighConfidenceValue(result?.interview_info.phone)).toBe('13872896163');
+      expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('22');
+    });
+
+    it.each([
+      ['手机号：17696566584\n年龄20', '6a6837b6'],
+      ['联系方式：19663930499\n年龄：26', '6a6c5634'],
+      ['庞子瑞18036615809女\n8月能到岗', '6a6ac29b'],
+    ])('生产同形态脏值 %s 不入档（chat %s）', (message) => {
+      const result = extractHighConfidenceFacts([message], brandData);
+      expect(unwrapHighConfidenceValue(result?.interview_info.experience)).toBeNull();
+    });
+
+    it('真实经历不因本次收紧而回退', () => {
+      // 行内空格仍要容忍，且"手机店/电话客服"这类含联系方式字样的合法经历必须放过
+      // ——判据只能是 11 位手机号形态，不能是"电话/手机"标签词。
+      // 注：捕获含"在"前缀是既有行为，本次未改动，如实断言。
+      for (const [message, expected] of [
+        ['肯德基服务员 4 个多月', '肯德基服务员4个多月'],
+        ['在华为手机店做了3年', '在华为手机店做了3年'],
+      ] as const) {
+        const result = extractHighConfidenceFacts([message], brandData);
+        expect(unwrapHighConfidenceValue(result?.interview_info.experience)).toBe(expected);
+      }
+    });
+  });
+
   it('should extract resume upload URL when the file name looks like a resume', () => {
     const result = extractHighConfidenceFacts(
       [

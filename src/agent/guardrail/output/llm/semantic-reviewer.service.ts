@@ -73,6 +73,7 @@ const EVIDENCE_KEYS = [
   'geocode',
   'sentLocation',
   'groupInvite',
+  'visualFacts',
 ] as const;
 type EvidenceKey = (typeof EVIDENCE_KEYS)[number];
 type _AssertEvidenceKeysExhaustive = [
@@ -188,6 +189,8 @@ export class SemanticReviewerService {
         '- sentLocation.addressConflict=true 表示面试地址与工作门店不同。仅当 destination=interview 时，回复必须说清两者差异，且不得把 storeAddress 当成面试目的地；destination=store 表示候选人明确询问工作地点，不要求额外展开面试地址，但不得把工作门店说成面试地点。',
         '- sentLocation.destination=interview 时，回复必须称其为面试定位；不得说已发门店定位或声称应去工作门店面试。',
         '- 只有 sentLocation.interviewMethod 明确为线下/到店/现场面试时才允许声称有面试地址或已发面试定位。线上/AI/视频/电话面试或 locationNotRequired=true 时，任何到店、面试地址或面试定位声称都是 active_booking_state_conflict。',
+        '- visualFacts 是候选人本轮发来的图片被结构化后的事实（save_image_description 落档）。它与工具返回同为一等证据：截图里写明的预约时间、工单状态、门店、岗位，回复据此如实陈述**不属于** active_booking_state_conflict，不得因为 booking/precheck 里没有对应记录就判冲突——候选人的报名可能来自别的渠道，本轮工具查不到不等于不存在。',
+        '- visualFacts.sheets[].fields[].ownership 必须区分：candidate=候选人自陈（如本人姓名、电话），publisher=截图里发布方/平台侧标注（如品牌、门店、岗位名、专员）。publisher 字段只说明截图内容，**不能**据以断言这就是候选人本人的资料或意向；把发布方字段当成候选人自陈是已知的误判源。',
         '- “地图未更新/新店刚入驻/地址没错”等解释必须在 evidence 中有明确依据；否则按 active_booking_state_conflict 要求删除。',
         '裁决要求：',
         '- 每条 finding 必须给出 evidencePath（指向 packet 中的证据字段）和 evidenceQuote（回复原文）。',

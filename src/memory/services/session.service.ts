@@ -913,13 +913,19 @@ export class SessionService {
     const llmExtractedName = llmRaw.interview_info?.name?.trim();
     const nameAnsweredToAsk =
       !!llmExtractedName && isNameAnsweredToRealNameAsk(llmExtractedName, scopedMessages);
-    const { sanitized: sanitizedLlm, droppedName } = nameAnsweredToAsk
-      ? { sanitized: llmRaw, droppedName: null }
+    const {
+      sanitized: sanitizedLlm,
+      droppedName,
+      droppedReason,
+    } = nameAnsweredToAsk
+      ? { sanitized: llmRaw, droppedName: null, droppedReason: null }
       : sanitizeInterviewName(llmRaw, userMessages);
     if (droppedName) {
-      this.logger.log(
-        `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
-      );
+      const reasonText =
+        droppedReason === 'honorific_suffix'
+          ? `丢弃称谓/商号形态的姓名"${droppedName}"（称谓后缀结尾，非本人姓名）`
+          : `丢弃来自"我是xx"打招呼语的昵称"${droppedName}"`;
+      this.logger.log(`[extractFacts] ${reasonText}，不写入 interview_info.name`);
       // 该丢弃此前只有日志、无观测档，同案排障只能靠"快照里 name 恒为 null"反推。
       this.tracer?.emit({
         type: 'extraction_field_dropped',
@@ -928,7 +934,7 @@ export class SessionService {
         chatId: sessionId,
         field: 'name',
         droppedValue: droppedName,
-        reason: 'auto_greeting_nickname',
+        reason: droppedReason ?? 'auto_greeting_nickname',
       });
     }
     const newFacts = this.applyExplicitProvenanceUpgrade(

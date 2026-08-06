@@ -1,6 +1,6 @@
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import type { RuleContradiction } from '../output-rule.types';
+import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**
  * booking 回执对账（badcase recvoFsFPZHTxw / 7-27 复测 RT-016 第二失败形态）。
@@ -348,12 +348,104 @@ const MEETING_GROUP_PROMISE_PATTERN = /腾讯会议|会议链接|按时入会|�
 const GROUP_PURPOSE_DISTINCTION_PATTERN =
   /兼职[^。！？\n]{0,30}(?:群|岗位信息)[\s\S]{0,100}面试群[\s\S]{0,40}(?:接着|随后|稍后|单独)[^。！？\n]{0,12}(?:发|邀请)|面试群[\s\S]{0,40}(?:接着|随后|稍后|单独)[^。！？\n]{0,12}(?:发|邀请)[\s\S]{0,100}兼职[^。！？\n]{0,30}(?:群|岗位信息)/u;
 
+/**
+ * 本轮 precheck 返回的在途工单（duplicateBookingGuard）。
+ *
+ * precheck 命中它时会在 _replyInstruction 里点名"改时间用 duliday_modify_interview_time
+ * （传该工单号）"；模型不照做时，工单时间与回复口径就会分叉。
+ */
+function findActiveWorkOrderGuard(
+  toolCalls: AgentToolCall[],
+): { workOrderId?: number; interviewTime?: string } | null {
+  for (const call of [...toolCalls].reverse()) {
+    if (call.toolName !== 'duliday_interview_precheck' || call.status === 'error') continue;
+    const guard = asRecord(asRecord(call.result)?.duplicateBookingGuard);
+    if (!guard) continue;
+    return {
+      workOrderId: typeof guard.workOrderId === 'number' ? guard.workOrderId : undefined,
+      interviewTime: typeof guard.interviewTime === 'string' ? guard.interviewTime : undefined,
+    };
+  }
+  return null;
+}
+
+/** 本轮是否成功改约。 */
+function hasSuccessfulModify(toolCalls: AgentToolCall[]): boolean {
+  return toolCalls.some(
+    (call) =>
+      call.toolName === 'duliday_modify_interview_time' &&
+      call.status !== 'error' &&
+      asRecord(call.result)?.success === true,
+  );
+}
+
+/** 回复里对某个钟点的确认口径："15:30没问题" / "3点半可以" / "就约十五点半"。 */
+const TIME_CONFIRMATION_PATTERN =
+  /(?:\d{1,2}\s*[:：]\s*\d{2}|\d{1,2}\s*点(?:半|\d{1,2}分?)?|[一二三四五六七八九十]+\s*点(?:半)?)[^。！？!?\n]{0,12}(?:没问题|可以的?|行的?|OK|ok|安排好了?|定了?|没得问题|已(?:经)?(?:改|调整|安排|确认)好?)/u;
+
+/** 把 `2026-08-06 15:00` / `2026/08/06 15:00` 里的钟点归一成分钟数，用于比对。 */
+function extractWorkOrderMinutes(interviewTime: string | undefined): number | null {
+  const match = /(\d{1,2})\s*[:：]\s*(\d{2})/u.exec(interviewTime ?? '');
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/** 回复里被确认的钟点（分钟数）；识别 `15:30` / `3点半` / `下午3点` 三类写法。 */
+function extractConfirmedMinutes(replyText: string): number[] {
+  const result: number[] = [];
+  for (const match of replyText.matchAll(/(\d{1,2})\s*[:：]\s*(\d{2})/gu)) {
+    result.push(Number(match[1]) * 60 + Number(match[2]));
+  }
+  for (const match of replyText.matchAll(/(下午|晚上|中午)?\s*(\d{1,2})\s*点\s*(半|\d{1,2})?/gu)) {
+    let hour = Number(match[2]);
+    if (match[1] && hour < 12) hour += 12;
+    const minute = match[3] === '半' ? 30 : match[3] ? Number(match[3]) : 0;
+    result.push(hour * 60 + minute);
+  }
+  return result;
+}
+
 export function detectBookingReceiptMismatch(
   replyText: string,
   toolCalls: AgentToolCall[],
   userMessage?: string,
 ): RuleContradiction | null {
   if (!replyText.trim()) return null;
+
+  // 形态 F（badcase 2026-08-06 chat 6a1e42c5 trace …_1785977561594）：
+  // precheck 已返回在途工单 455384（约面时间 15:00）并点名改时间要调
+  // duliday_modify_interview_time，模型零工具调用，回复却确认了"15:30没问题"。
+  // 工单至今是 15:00，候选人会按 15:30 到店白跑一趟——不可挽回，故 REVISE 而非 OBSERVE。
+  // 该轮首审只命中了 handoff_promise_without_handoff（"让同事确认下"），repair 删掉承诺
+  // 改成"没问题"后二审无人可拦；回归闸的 commitment_upgraded 是并联防线，本规则则覆盖
+  // "模型首版就直接确认"这条 repair 链够不着的路径。
+  const activeGuard = findActiveWorkOrderGuard(toolCalls);
+  if (activeGuard && !hasSuccessfulModify(toolCalls) && TIME_CONFIRMATION_PATTERN.test(replyText)) {
+    const workOrderMinutes = extractWorkOrderMinutes(activeGuard.interviewTime);
+    const confirmedMinutes = extractConfirmedMinutes(replyText);
+    // 只在回复确认的钟点与工单**不同**时判——复述工单既有时间是如实陈述，必须放行。
+    const confirmsDifferentTime =
+      workOrderMinutes === null
+        ? confirmedMinutes.length > 0
+        : confirmedMinutes.some((minutes) => minutes !== workOrderMinutes);
+    if (confirmsDifferentTime) {
+      return {
+        ruleId: 'interview_time_change_unconfirmed',
+        label:
+          `本轮 precheck 返回在途工单${activeGuard.workOrderId ? `（${activeGuard.workOrderId}）` : ''}` +
+          `约面时间为 ${activeGuard.interviewTime ?? '既有时间'}，回复却确认了另一个时间，` +
+          '但本轮没有成功的 duliday_modify_interview_time——工单未改，候选人会按错误时间到店',
+        action: GUARDRAIL_ACTION.REVISE,
+        feedbackToGenerator:
+          '本轮预检返回候选人在该岗位已有在途工单，约面时间是 ' +
+          `${activeGuard.interviewTime ?? '工单上的既有时间'}，而本轮并没有成功调用 duliday_modify_interview_time 改约。` +
+          '上一版回复却确认了另一个面试时间，当前文本不可发送——工单没改，候选人会按你确认的时间白跑一趟。' +
+          '请删除对新时间的任何确认、应允或"没问题/可以"类表述，改为如实告知工单上现在的时间，' +
+          '并说明改时间需要重新处理。严禁新增本轮工具结果之外的任何时间事实，也不得承诺由自己或同事稍后确认；' +
+          '其余未被点名的内容逐字保留。',
+      };
+    }
+  }
 
   const latestBookingIntent = resolveLatestBookingIntent(userMessage);
   if (

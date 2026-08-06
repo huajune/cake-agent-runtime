@@ -24,6 +24,7 @@ import {
   SupplementClassification,
 } from '@tools/utils/supplement-label-classifier';
 import { isStrictRealChineseName } from '@memory/facts/name-guard';
+import { fieldValues } from '@resolution/visual';
 import { isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
 import {
   normalizeEducationValue,
@@ -1376,7 +1377,23 @@ export function buildInterviewPrecheckTool(
                 isSameJob: boolean;
               }>
             | undefined;
-          const lookupPhone = (knownFieldMap['联系电话'] ?? '').replace(/\D/g, '');
+          // 视觉事实回流（badcase 2026-08-06 chat 6a1e42c5 trace …_1785977093673）：
+          // 候选人发来后台工单截图，save_image_description 已把手机号按
+          // ownership=candidate 结构化落档，但模型下一轮调 precheck 时只传了 jobId
+          // ——工具描述已明写"看到就必须传 candidateName/candidatePhone"，模型没照做
+          // （纯提示词约束在本仓库反复被实测击穿）。没有手机号 → 在途工单探测整段跳过 →
+          // duplicateBookingGuard 不触发 → Agent 以为要重新开单，重复收资并断言
+          // "你这边资料还没登记完整"，而对方后台早已登记（工单 455384）。
+          //
+          // ⚠️ 只回灌给这一次**只读查询**，绝不写进 knownFieldMap：截图里的姓名/电话未必是
+          // 对话方本人（本案的"颜端樟"就是对方代第三人登记的），拿它去满足收资清单等于
+          // 复刻 badcase「第三方截图夺号」。查重的最坏结果只是查出一张工单再去核对，安全。
+          const visualCandidatePhone = (context.turnVisualFactSheets ?? [])
+            .flatMap((entry) => fieldValues(entry.sheet, 'phone', 'candidate'))
+            .map((value) => value.replace(/\D/g, ''))
+            .find((value) => /^1\d{10}$/.test(value));
+          const lookupPhone =
+            (knownFieldMap['联系电话'] ?? '').replace(/\D/g, '') || (visualCandidatePhone ?? '');
           if (
             /^1\d{10}$/.test(lookupPhone) &&
             typeof spongeService.fetchSignupWorkOrders === 'function'

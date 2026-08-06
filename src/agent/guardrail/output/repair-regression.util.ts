@@ -17,6 +17,11 @@ import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
  * - 既成副作用被降级：booking 已成功、首版如实说"已提交报名"，修复版改口
  *   "正在帮你核对并提交，稍后给你回执"——回执永远不会来（同 trace）。
  *
+ * 追加形态（2026-08-06 badcase chat 6a1e42c5，前四形态方向全是"已完成→降级"暴露的盲区）：
+ * - 待办承诺被升级：首版"让同事帮你确认下能不能改"被守卫判 P0 承诺无支撑，repair 删掉承诺
+ *   后用"你说的15:30这个时间没问题"填坑——首版只是没定，修复版成了已定，工单实际未改
+ *   （trace …_1785977561594）。守卫这一轮是净负贡献：准确识别了风险，却产出更危险的话术。
+ *
  * 命中任一形态即判定 repair 回归；runner 再结合首版是否明确可发送决定：
  * 可发送才允许回退首版，首版已明确不可发送则两版都不投递。检测刻意保守：
  * 宁可漏判交给二审，不误伤正常的精简改写。
@@ -26,7 +31,8 @@ export type RepairRegressionKind =
   | 'structure_collapsed'
   | 'polarity_reversed'
   | 'fact_mutated'
-  | 'commitment_downgraded';
+  | 'commitment_downgraded'
+  | 'commitment_upgraded';
 
 export interface RepairRegressionContext {
   /** agent-runner 的 summarizeCommittedSideEffects 产物；含 duliday_interview_booking 时启用副作用降级检测。 */
@@ -148,6 +154,25 @@ function computeActualWeekday(month: number, day: number, now: Date): number | n
   return best === null ? null : best.getDay();
 }
 
+/**
+ * 承诺类规则：命中即说明守卫已认定首版存在"无真实动作支撑的跟进承诺"。
+ * commitment_upgraded 只在这些规则触发的轮次生效——正常轮次里"没问题"是合法应答，
+ * 无差别检测会把大量正常改写判成回归。
+ */
+const PROMISE_RULE_IDS: ReadonlySet<string> = new Set([
+  'handoff_promise_without_handoff',
+  'dangling_reply_promise',
+  'application_record_update_promise',
+]);
+
+/** 跟进承诺：让同事确认 / 我再核实下 / 稍等 / 稍后告诉你。 */
+const FOLLOW_UP_PROMISE_PATTERN =
+  /(?:同事|负责人|专员|经理|人工)[^。！？!?\n]{0,8}(?:确认|联系|处理|跟进|核实)|我(?:这边)?(?:再|去|先)?(?:确认|核实|问)(?:一)?下|稍等|稍后[^。！？!?\n]{0,6}(?:回复|告诉|联系|通知|确认)/u;
+
+/** 确认语：把"待办"说成"已定"。 */
+const AFFIRMATION_PATTERN =
+  /没问题|可以的|没得问题|安排好了|已(?:经)?(?:改|调整|安排|确认)好|就这么定|定好了/u;
+
 /** 首版对已成事实的成功宣称：已提交报名/报名成功/已帮你预约等。 */
 const BOOKING_DONE_PATTERN =
   /已(?:经)?(?:帮你)?(?:成功)?(?:提交|报名|预约|约好)|(?:报名|预约|提交)(?:已(?:经)?)?成功/u;
@@ -225,6 +250,30 @@ export function detectRepairRegression(
     BOOKING_PENDING_PATTERN.test(revised)
   ) {
     return 'commitment_downgraded';
+  }
+
+  // commitment_upgraded：与上一条方向相反，是删承诺删过了头。
+  // badcase 2026-08-06 chat 6a1e42c5（trace …_1785977561594）：候选人要把面试从 15:00
+  // 改到 15:30，precheck 已返回在途工单 455384 并点名"改时间用
+  // duliday_modify_interview_time"，模型一个工具没调，首版写「让同事帮你确认下能不能改，
+  // 稍等」→ 守卫正确命中 handoff_promise_without_handoff(P0)。repair 的 suggestion 白纸黑字
+  // 写了"严禁新增本轮工具结果之外的事实（面试时间也算）"，rewrite 却产出「你说的15:30这个
+  // 时间没问题」，二审 pass 后投递——首版只是"还没定"，修复版变成"已经定了"。工单至今仍是
+  // 15:00，候选人会按 15:30 到店。
+  //
+  // 首版承诺被删是修对了，问题在于用确认语填了坑。只在承诺类规则触发的轮次判定，
+  // 且首版本身不含确认语（首版就说"没问题"是另一个问题，交硬规则）。
+  const promiseRuleTriggered = (context?.triggeredRuleIds ?? []).some((id) =>
+    PROMISE_RULE_IDS.has(id),
+  );
+  if (
+    promiseRuleTriggered &&
+    FOLLOW_UP_PROMISE_PATTERN.test(first) &&
+    !FOLLOW_UP_PROMISE_PATTERN.test(revised) &&
+    !AFFIRMATION_PATTERN.test(first) &&
+    AFFIRMATION_PATTERN.test(revised)
+  ) {
+    return 'commitment_upgraded';
   }
 
   return null;

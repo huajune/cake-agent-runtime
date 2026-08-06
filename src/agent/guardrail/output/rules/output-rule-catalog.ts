@@ -588,6 +588,35 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '再按 _manualInterviewGroupGuide 说明面试群“我这边接着发你邀请”，严禁声称面试群已发，也不得暴露人工/运营/账号接管。',
   },
   {
+    id: 'interview_time_change_unconfirmed',
+    // badcase 2026-08-06 chat 6a1e42c5（trace …_1785977561594）：候选人要把面试从 15:00
+    // 改到 15:30，precheck 已返回在途工单 455384 并在 _replyInstruction 点名
+    // "改时间用 duliday_modify_interview_time（传该工单号）"，模型一个工具没调。
+    // 首审只命中 handoff_promise_without_handoff（首版"让同事帮你确认下"），
+    // repair 删掉承诺改成"你说的15:30这个时间没问题"，二审无规则可拦，直接投递。
+    // 与回归闸的 commitment_upgraded 并联：那条管 repair 链，这条管"模型首版就直接确认"。
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '在途工单改约对账：precheck 返回 duplicateBookingGuard 时，回复确认了与工单不同的' +
+      '面试钟点，但本轮没有成功的 duliday_modify_interview_time。',
+    riskGoal:
+      '工单时间未改而候选人以为已改，会按错误时间到店白跑一趟——门店无接待记录，' +
+      '属不可挽回损失，故定 P0/REVISE 而非观察。',
+    exogenousSignal:
+      '本轮 duliday_interview_precheck 返回的 duplicateBookingGuard.interviewTime、' +
+      'duliday_modify_interview_time 的成功与否，以及回复文本中被确认的钟点。',
+    residualRisk:
+      '钟点识别覆盖 `15:30` / `3点半` / `下午3点` 三类写法；纯口语相对时间' +
+      '（"晚一点"/"提前半小时"）不在确定性能力内，留语义审查。' +
+      '复述工单既有时间已按钟点相等豁免，不误伤如实陈述。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '本轮预检显示候选人在该岗位已有在途工单，且本轮没有成功改约。上一版回复确认了工单之外的' +
+      '面试时间，当前文本不可发送。请如实告知工单上现在的时间，删除对新时间的确认或应允；' +
+      '严禁新增本轮工具结果之外的时间事实，也不得承诺由自己或同事稍后确认。',
+  },
+  {
     id: 'requested_brand_mismatch',
     // 2026-07-27 发牌专项审计：replan → observe。生产抽样 3/3 假阳（门店名被
     // extractStructuredJobTitleBrands 当品牌名，"江南赋店/置汇旭辉店/枫蓝国际"），

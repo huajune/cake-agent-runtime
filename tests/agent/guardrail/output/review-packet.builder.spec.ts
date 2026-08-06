@@ -399,6 +399,67 @@ describe('GuardrailReviewPacketBuilder', () => {
     });
   });
 
+  // badcase 2026-08-06 chat 6a1e42c5 trace …_1785977093673：候选人发后台工单截图，
+  // save_image_description 已落档「预约面试时间 2026/08/06 15:00」，助手据此回
+  // "你现在是想确认今天15点这个面试对吧"。packet 当时不收该工具 → reviewer 判
+  // active_booking_state_conflict「没有任何 booking/precheck 证据显示候选人已预约」。
+  describe('视觉事实证据（badcase 6a1e42c5）', () => {
+    const screenshotCall = {
+      toolName: 'save_image_description',
+      args: {
+        kind: 'chat_screenshot',
+        description:
+          '后台工单截图：候选人颜端樟，岗位大米先生-丁香国际-前厅服务-小时工，预约面试时间2026/08/06 15:00',
+        fields: [
+          { key: 'name', value: '颜端樟', ownership: 'candidate' },
+          { key: 'brand', value: '大米先生', ownership: 'publisher' },
+          { key: 'other', value: '预约面试时间 2026/08/06 15:00', ownership: 'publisher' },
+        ],
+      },
+      result: { success: true },
+      status: 'ok' as const,
+    };
+
+    it('把截图结构化字段带进 evidence，并保留 ownership', () => {
+      const packet = builder.build({ reply: '看到了', toolCalls: [screenshotCall] });
+
+      expect(packet.evidence.visualFacts?.sheets).toHaveLength(1);
+      expect(packet.evidence.visualFacts?.sheets[0]).toMatchObject({
+        kind: 'chat_screenshot',
+        fields: [
+          { key: 'name', value: '颜端樟', ownership: 'candidate' },
+          { key: 'brand', value: '大米先生', ownership: 'publisher' },
+          { key: 'other', value: '预约面试时间 2026/08/06 15:00', ownership: 'publisher' },
+        ],
+      });
+    });
+
+    it('内容载体是 args 而非 result——result 只有 success 也必须产出证据', () => {
+      const packet = builder.build({ reply: '看到了', toolCalls: [screenshotCall] });
+      expect(packet.evidence.visualFacts).toBeDefined();
+    });
+
+    it('无图片轮不产出该段', () => {
+      const packet = builder.build({ reply: '你好', toolCalls: [] });
+      expect(packet.evidence.visualFacts).toBeUndefined();
+    });
+
+    it('丢弃 key/value 残缺的字段，全空则整段不产出', () => {
+      const packet = builder.build({
+        reply: '看到了',
+        toolCalls: [
+          {
+            toolName: 'save_image_description',
+            args: { fields: [{ key: 'name' }, { value: '孤值' }] },
+            result: { success: true },
+            status: 'ok',
+          },
+        ],
+      });
+      expect(packet.evidence.visualFacts).toBeUndefined();
+    });
+  });
+
   it('forwards recent assistant texts for cross-turn restatement adjudication (最近 8 条、单条 600 字截断)', () => {
     const texts = [
       '',

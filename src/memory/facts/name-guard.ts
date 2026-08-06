@@ -96,9 +96,28 @@ export function stripSelfIntroPrefix(name: string): string {
   return name.replace(SELF_INTRO_PREFIX_REGEX, '').trim();
 }
 
+/**
+ * 称谓后缀：以此结尾的字符串是称呼或商号，不是姓名。
+ *
+ * badcase 2026-08-06 chat 6a1e42c5：候选人首句"大门先生直接去门店面试"里的
+ * "大门先生"是品牌「大米先生」的错字，抽取器却判成"用户自报称呼"，写进
+ * interview_info.name 并连带从"先生"推出 gender=男，跨 3 个 turn 未被纠正
+ * （T3 的 evidence 甚至写"用户未否认此称呼，因此保留"，把 Agent 自己的误称当默认确认）。
+ *
+ * 刻意不用品牌目录做判据：该轮 duliday_job_list 对"大门先生"返回的正是
+ * queryMeta.brand.rejected=[{reason:'unmatched'}]——错字品牌不在目录里，目录门拦不住。
+ * 称谓后缀才是稳定判据，且对"大米先生"这类**在目录里**的商号同样生效。
+ * 中文人名不会以这些词收尾，误伤面为零。
+ */
+const HONORIFIC_SUFFIX_REGEX = /(?:先生|女士|小姐|夫人|太太|老师|师傅|老板)$/u;
+
+/** 姓名丢弃归因，用于观测档区分不同拦截路径。 */
+export type DroppedNameReason = 'auto_greeting_nickname' | 'honorific_suffix';
+
 export interface SanitizeNameResult {
   sanitized: EntityExtractionResult;
   droppedName: string | null;
+  droppedReason: DroppedNameReason | null;
 }
 
 export function sanitizeInterviewName(
@@ -106,18 +125,27 @@ export function sanitizeInterviewName(
   userMessages: readonly string[],
 ): SanitizeNameResult {
   const name = facts.interview_info?.name?.trim();
-  if (!name) return { sanitized: facts, droppedName: null };
+  if (!name) return { sanitized: facts, droppedName: null, droppedReason: null };
+  // 称谓/商号后缀独立于昵称路径：它不来自"我是xx"打招呼语，也不会被结构化回填救回
+  // ——候选人真按模板填"姓名：大米先生"时那也不是本人姓名。故置于所有逃生口之前。
+  if (HONORIFIC_SUFFIX_REGEX.test(name)) {
+    return {
+      sanitized: { ...facts, interview_info: { ...facts.interview_info, name: null } },
+      droppedName: name,
+      droppedReason: 'honorific_suffix',
+    };
+  }
   // 前缀形态（"我是18"）先归一化再比对昵称；带前缀本身即非真名，两条路径都走 drop。
   const stripped = stripSelfIntroPrefix(name);
   const hasSelfIntroPrefix = stripped !== name;
   if (!hasSelfIntroPrefix && !isFromAutoGreeting(name, userMessages)) {
-    return { sanitized: facts, droppedName: null };
+    return { sanitized: facts, droppedName: null, droppedReason: null };
   }
   // 即使 name 来自"我是xx"打招呼语，只要候选人后续按结构化模板回填"姓名：xx"，就视为可信，
   // 不再 drop。badcase ci7iigv4 / 362ketwp：T1 打招呼"我是赵堤"，T9 按 booking checklist
   // 填"姓名：赵堤"，原 sanitizer 仍按 T1 一刀切丢弃，导致 booking 缺真名。
   if (hasStructuredNameSubmission(name, userMessages)) {
-    return { sanitized: facts, droppedName: null };
+    return { sanitized: facts, droppedName: null, droppedReason: null };
   }
   return {
     sanitized: {
@@ -125,6 +153,7 @@ export function sanitizeInterviewName(
       interview_info: { ...facts.interview_info, name: null },
     },
     droppedName: name,
+    droppedReason: 'auto_greeting_nickname',
   };
 }
 
@@ -151,6 +180,11 @@ function checkChineseName(value: string | null | undefined, regex: RegExp): bool
   for (const prefix of PLACEHOLDER_PREFIX_BLACKLIST) {
     if (trimmed.startsWith(prefix)) return false;
   }
+  // 称谓/商号后缀在所有姓名校验器上统一拒。放在这里而不是只放 sanitizeInterviewName：
+  // 真名索取问答逃生口（isNameAnsweredToRealNameAsk）整条绕过 sanitizer，而
+  // "大米先生"恰是 4 汉字、能过 REAL_NAME_STRICT_REGEX——只在 sanitizer 设门会被架空，
+  // 且 booking 姓名闸门同样该拒。遵循 9fdbf84c 立的"一处识别器、多处消费"纪律。
+  if (HONORIFIC_SUFFIX_REGEX.test(trimmed)) return false;
   return true;
 }
 
