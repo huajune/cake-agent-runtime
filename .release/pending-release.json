@@ -323,6 +323,34 @@
         "新增 5 条回归：未给日期→REVISE、给月日放行、只给星期放行、`8月6号`写法放行、等通知岗位不适用",
         "`tsc --noEmit` / `eslint --max-warnings=0` 均通过"
       ]
+    },
+    {
+      "number": "925",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/925",
+      "title": "badcase 策展新增前置状态闸门与品牌输入轨澄清",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
+        "出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）",
+        "badcase 策展新增前置状态闸门与品牌输入轨澄清"
+      ],
+      "summary": [
+        "badcase 策展新增前置状态闸门与品牌输入轨澄清",
+        "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
+        "出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）"
+      ],
+      "features": [
+        "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
+        "出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）",
+        "badcase 策展新增前置状态闸门与品牌输入轨澄清"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
