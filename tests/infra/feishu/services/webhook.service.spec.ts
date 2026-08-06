@@ -235,6 +235,37 @@ describe('FeishuWebhookService', () => {
       expect(businessCalls).toHaveLength(1);
     });
 
+    // 业务 code 级重试判定：只有限流码该退避重发，格式错误重发必然再失败。
+    it('retries on the rate-limit business code 11232', async () => {
+      const postSpy = jest
+        .spyOn(service['httpClient'], 'post')
+        .mockResolvedValueOnce({ data: { code: 11232, msg: 'too many request' } } as never)
+        .mockResolvedValueOnce({ data: { code: 0 } } as never);
+
+      const result = await service.sendMessage('PRIVATE_CHAT_MONITOR', { msg_type: 'interactive' });
+
+      expect(result).toBe(true);
+      expect(postSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('does NOT retry on business code 9499 (Bad Request，非限流：重发必然再失败)', async () => {
+      const postSpy = jest
+        .spyOn(service['httpClient'], 'post')
+        .mockImplementation((url: string) =>
+          url === ALERT_URL
+            ? (Promise.resolve({ data: { code: 0 } }) as never)
+            : (Promise.resolve({ data: { code: 9499, msg: 'Bad Request' } }) as never),
+        );
+
+      const result = await service.sendMessage('PRIVATE_CHAT_MONITOR', { msg_type: 'interactive' });
+
+      expect(result).toBe(false);
+      // 业务通道只尝试 1 次（不重试），失败告警仍补发到 ALERT
+      const businessCalls = postSpy.mock.calls.filter(([url]) => url === PRIVATE_URL);
+      expect(businessCalls).toHaveLength(1);
+      expect(postSpy.mock.calls.some(([url]) => url === ALERT_URL)).toBe(true);
+    });
+
     it('gives up after MAX attempts on persistent retryable error and posts a failure alert', async () => {
       const postSpy = jest
         .spyOn(service['httpClient'], 'post')

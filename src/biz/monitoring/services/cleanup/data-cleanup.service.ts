@@ -15,7 +15,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 /**
  * 数据清理服务（分层存储策略）
  *
- * 清理顺序（每日 03:00，服务器时区；生产容器为 UTC，即上海 11:00）:
+ * 清理顺序（每日 03:00 上海时区）:
  * 1. NULL agent_invocation（>N 天）— 释放 TOAST 空间，保留记录本身；
  *    agent_steps/tool_calls 不提前 NULL（工具统计兜底 RPC + badcase 证据需要处理链窗口），
  *    随消息处理行删除统一回收
@@ -140,9 +140,12 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
-   * 每天 03:00（服务器时区，未指定 timeZone；生产容器 UTC = 上海 11:00）执行分层清理
+   * 每天 03:00（上海时区）执行分层清理。
+   *
+   * 必须显式指定 timeZone：生产容器时区是 UTC，不指定会让这批重 DELETE 落在上海 11:00
+   * 的业务高峰上（本库有过 dashboard 轮询 + 应用重试打满连接池导致全线 522 的事故）。
    */
-  @Cron('0 3 * * *')
+  @Cron('0 3 * * *', { timeZone: 'Asia/Shanghai' })
   async cleanupExpiredData(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
 
