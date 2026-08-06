@@ -448,6 +448,34 @@
         "✅ `pnpm run lint:check`（--max-warnings=0）",
         "✅ `npx jest --no-watchman` 全量：**412 套件 / 6868 测试全过**（较基线少 1 套件即删除的 llm-reviewer spec）"
       ]
+    },
+    {
+      "number": "944",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/944",
+      "title": "候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "按 cooperationMode 契约实现发薪/签约主体自答",
+        "候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格"
+      ],
+      "summary": [
+        "按 cooperationMode 契约实现发薪/签约主体自答",
+        "候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "按 cooperationMode 契约实现发薪/签约主体自答",
+        "候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 **6897 测试通过**、typecheck 零错误、lint `--max-warnings=0` 零告警",
+        "无 DB 迁移、无配置变更；仍为 shadow 模式"
+      ]
     }
   ],
   "lastRelease": {
