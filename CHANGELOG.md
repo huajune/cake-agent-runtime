@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -25,12 +25,17 @@
 - PR #915 收资字段名与裁决观测词表收拢（期 2）
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
 - PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
+- PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
+- PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
 
 ### 问题修复
-- 无
+- PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
+- PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
 
 ### 优化调整
 - 无
@@ -41,6 +46,8 @@
 - PR #908 三张词表收拢回 resolution/visual 单一居所
 - PR #915 收资字段名与裁决观测词表收拢（期 2）
 - PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
 
 ### 配置变更
 - 无

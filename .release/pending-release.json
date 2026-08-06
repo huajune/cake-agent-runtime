@@ -146,6 +146,36 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "924",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/924",
+      "title": "批次列表补 cancelled 状态（已取消不再显示成「已创建」）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "`BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`",
+        "补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块"
+      ],
+      "summary": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
+        "批次列表补 cancelled 状态（已取消不再显示成「已创建」）",
+        "`BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`",
+        "补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块"
+      ],
+      "features": [],
+      "fixes": [
+        "`BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`",
+        "补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块"
+      ],
+      "optimizations": [],
+      "ops": [
+        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
+        "批次列表补 cancelled 状态（已取消不再显示成「已创建」）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
