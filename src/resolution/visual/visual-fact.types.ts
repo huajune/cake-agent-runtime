@@ -24,6 +24,27 @@ export const VISUAL_FACT_KINDS = [
 export type VisualFactKind = (typeof VISUAL_FACT_KINDS)[number];
 
 /**
+ * kind 词表的模型侧释义。`Record<VisualFactKind, …>` 是硬约束：往
+ * VISUAL_FACT_KINDS 加一档而不写释义，编译期即报错。
+ */
+const VISUAL_FACT_KIND_GLOSSES: Record<VisualFactKind, string> = {
+  job_posting: '招聘平台岗位截图/卡片/海报',
+  map_location: '地图/定位/导航/门店位置',
+  resume: '简历本体',
+  chat_screenshot: '聊天记录截图',
+  certificate: '健康证等证件',
+  other: '其他',
+};
+
+/**
+ * 两个生产者（channels P1 预描述 / tools P2 工具）schema 共用的 kind 释义串。
+ * 手抄一份到 describe 里就会漂移——词表是模型唯一的可见来源，此处是唯一产出点。
+ */
+export const VISUAL_FACT_KIND_PROMPT = VISUAL_FACT_KINDS.map(
+  (kind) => `${kind}=${VISUAL_FACT_KIND_GLOSSES[kind]}`,
+).join('；');
+
+/**
  * 字段 key 白名单（裁决 A2/A7/B3）：
  * - brand_id：我方平台截图自带品牌ID（如 [10006]），确定性锚点直通 brandIdList；
  * - candidate_address：岗位页「我的地址：XX街道」/「距我 X km」锚点——候选人设备
@@ -48,6 +69,16 @@ export const VISUAL_FACT_FIELD_KEYS = [
   'other',
 ] as const;
 export type VisualFactFieldKey = (typeof VISUAL_FACT_FIELD_KEYS)[number];
+
+/**
+ * key 词表的模型侧提示串（两个生产者共用）。
+ *
+ * 这里 schema 刻意收 string 而非 enum（见 VisualFactFieldSchema 注释），白名单只在
+ * finalize 过滤——意味着模型能否产出合法 key，**全靠这句 describe**。词表若与
+ * VISUAL_FACT_FIELD_KEYS 漂移，finalize 会接受一个模型从没被告知存在的 key：
+ * 不报错、不抛类型错，只是静默少收一类事实。故由常量单向生成，不留手抄口。
+ */
+export const VISUAL_FACT_FIELD_KEY_PROMPT = `只能用这些值：${VISUAL_FACT_FIELD_KEYS.join(' / ')}`;
 
 export const FIELD_OWNERSHIPS = ['candidate', 'publisher', 'third_party', 'unknown'] as const;
 export type FieldOwnership = (typeof FIELD_OWNERSHIPS)[number];
