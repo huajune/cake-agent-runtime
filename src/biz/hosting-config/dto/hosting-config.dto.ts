@@ -9,6 +9,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
+import { AGENT_THINKING_EFFORTS, AGENT_THINKING_MODES } from '../types/hosting-config.types';
 
 // ==================== 运行时开关 ====================
 
@@ -49,11 +50,11 @@ export class UpdateAgentReplyConfigDto {
   reengagementModelId?: string;
 
   @IsOptional()
-  @IsIn(['fast', 'deep'])
+  @IsIn(AGENT_THINKING_MODES)
   wecomCallbackThinkingMode?: 'fast' | 'deep';
 
   @IsOptional()
-  @IsIn(['low', 'medium', 'high'])
+  @IsIn(AGENT_THINKING_EFFORTS)
   wecomCallbackThinkingEffort?: 'low' | 'medium' | 'high';
 
   @IsOptional()

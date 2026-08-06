@@ -3,11 +3,28 @@ import { z } from 'zod';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
+import { GUARDRAIL_DECISION, GUARDRAIL_RISK_LEVELS } from '@shared-types/guardrail.contract';
 import type {
   GuardViolation,
   GuardrailRiskLevel,
   OutputDecision,
 } from '@shared-types/guardrail.contract';
+
+/**
+ * 本档（legacy llm-reviewer）自己的决策子集：只产 pass/revise/block，
+ * 不产 observe/replan。刻意与 OUTPUT_DECISIONS 分开——它是更窄的子集，
+ * 由下方类型断言保证仍是 OutputDecision 的合法子集。
+ */
+const LLM_REVIEWER_DECISIONS = [
+  GUARDRAIL_DECISION.PASS,
+  GUARDRAIL_DECISION.REVISE,
+  GUARDRAIL_DECISION.BLOCK,
+] as const;
+
+type _AssertReviewerDecisionsAreOutputSubset =
+  Exclude<(typeof LLM_REVIEWER_DECISIONS)[number], OutputDecision> extends never ? true : never;
+const _reviewerDecisionParity: _AssertReviewerDecisionsAreOutputSubset = true;
+void _reviewerDecisionParity;
 
 /**
  * 出站 LLM 守卫（OutputGuardrail 的 llm 档）。
@@ -147,11 +164,11 @@ const VIOLATION_TYPES = [
 
 const VERDICT_SCHEMA = z.object({
   decision: z
-    .enum(['pass', 'revise', 'block'])
+    .enum(LLM_REVIEWER_DECISIONS)
     .describe(
       'pass=无问题放行；revise=有可修正的语义/语气问题，需带意见重写；block=严重到必须丢弃',
     ),
-  riskLevel: z.enum(['low', 'medium', 'high']).describe('本条回复的整体风险等级'),
+  riskLevel: z.enum(GUARDRAIL_RISK_LEVELS).describe('本条回复的整体风险等级'),
   violations: z
     .array(
       z.object({
