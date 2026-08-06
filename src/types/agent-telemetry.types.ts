@@ -13,7 +13,8 @@
  * - unknown: 返回成功但结果结构无法推断条数
  * - error: 工具抛异常 / 返回 errorType、error 字段或成功标记为 false
  */
-export type AgentToolCallStatus = 'ok' | 'empty' | 'narrow' | 'unknown' | 'error';
+export const AGENT_TOOL_CALL_STATUSES = ['ok', 'empty', 'narrow', 'unknown', 'error'] as const;
+export type AgentToolCallStatus = (typeof AGENT_TOOL_CALL_STATUSES)[number];
 
 export interface AgentToolCall {
   toolName: string;
