@@ -220,6 +220,37 @@ function asNumber(value: unknown): number | null {
 
 // ==================== 模块 1：基本信息 ====================
 
+/**
+ * 合作模式（basicInfo.cooperationMode，海绵 2026-08-06 新增）→ 发薪/签约主体口径。
+ *
+ * 候选人高频追问"工资是你们发还是门店发""签的是谁的合同"，答案完全由合作模式决定，
+ * 而 BPO/RPO 是商业内部术语，直接把裸值丢给模型有两个风险：一是它可能原样说给候选人，
+ * 二是它得自己记住映射关系。所以这里**只输出结论**，裸值仅作 🔒 内部标注保留。
+ *
+ * 口径来源：2026-08-06 运营确认。注意两条规则的 RPO 分支**不一样**——
+ * 发薪在 RPO 下两种都可能（必须转人工），签约在 RPO 下主体确定是客户（只是形式不定）。
+ */
+function renderCooperationModeLines(rawMode: string | null): string[] {
+  const mode = rawMode?.trim().toUpperCase();
+  if (mode !== 'BPO' && mode !== 'RPO') return [];
+
+  const lines = [
+    `- **合作模式**: ${mode}（🔒 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式" 字样**，只用它推出下面两条结论）`,
+  ];
+  if (mode === 'BPO') {
+    lines.push(
+      '  - **发薪主体**: 由独立客发薪（结论确定，候选人问"工资是你们发还是门店发"时可直接答，不必转人工）',
+      '  - **签约主体**: 与独立客签约，形式是**灵活用工协议**（不签劳动合同）；候选人问"签的是谁的合同"时按此答，但不要把协议说成劳动合同',
+    );
+  } else {
+    lines.push(
+      '  - **发薪主体**: ⚠️ 本模式下发薪方两种都有可能，**无法自答**——候选人问发薪主体时必须当轮 `request_handoff(reasonCode="salary_admin_inquiry")`，严禁猜"是我们发/是门店发"',
+      '  - **签约主体**: 与**客户（品牌方）**签约，可如实告知签约对象是品牌方；但**是协议还是合同取决于客户**，不得断言具体形式，候选人追问形式时转人工',
+    );
+  }
+  return lines;
+}
+
 function renderBasicInfoSection(
   basicInfo: unknown,
   distanceKm: number | null | undefined,
@@ -238,6 +269,9 @@ function renderBasicInfoSection(
   pushField(lines, '用工形式', sanitizeLaborFormForDisplay(asString(bi.laborForm)));
   // 兼职细分轴：laborForm=兼职 时的 寒假工/暑假工/小时工
   pushField(lines, '兼职类型', sanitizeLaborFormForDisplay(asString(bi.partTimeJobType)));
+  // 合作模式 → 发薪/签约主体结论。字段为空（海绵发布前的老数据）时不输出任何行，
+  // 此时 candidate-consultation.md 的兜底规则仍要求这两类问题转人工。
+  lines.push(...renderCooperationModeLines(asString(bi.cooperationMode)));
   pushLongText(lines, '工作内容', bi.jobContent);
 
   const brand = formatNameWithId(bi.brandName, bi.brandId);

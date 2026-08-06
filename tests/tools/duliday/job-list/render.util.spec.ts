@@ -146,6 +146,68 @@ describe('job-list render util', () => {
     });
   });
 
+  // 海绵 2026-08-06 新增 basicInfo.cooperationMode（BPO/RPO），决定发薪主体与签约主体。
+  // 渲染层只输出结论、不让模型自己记映射；裸值仅作 🔒 内部标注。
+  describe('合作模式 → 发薪/签约主体结论', () => {
+    // 只开 includeBasicInfo 会命中 isMinimalMode（走一行式摘要，不渲染基本信息段），
+    // 所以再开一个开关强制进详情模式。
+    const basicFlags: ProgressiveDisclosureFlags = {
+      includeBasicInfo: true,
+      includeJobSalary: true,
+      includeWelfare: false,
+      includeHiringRequirement: false,
+      includeWorkTime: false,
+      includeInterviewProcess: false,
+    };
+
+    const withMode = (mode: unknown) => {
+      const job = makeJob(1);
+      (job.basicInfo as Record<string, unknown>).cooperationMode = mode;
+      return formatJobsToMarkdown([job], 1, 1, 10, basicFlags);
+    };
+
+    it('BPO：发薪与签约都可自答', () => {
+      const markdown = withMode('BPO');
+      expect(markdown).toContain('**发薪主体**: 由独立客发薪');
+      expect(markdown).toContain('可直接答，不必转人工');
+      expect(markdown).toContain('与独立客签约，形式是**灵活用工协议**');
+      expect(markdown).not.toContain('无法自答');
+    });
+
+    it('RPO：签约主体可答但发薪主体必须转人工（两条规则的 RPO 分支不同）', () => {
+      const markdown = withMode('RPO');
+      expect(markdown).toContain('发薪方两种都有可能');
+      expect(markdown).toContain('request_handoff(reasonCode="salary_admin_inquiry")');
+      expect(markdown).toContain('与**客户（品牌方）**签约');
+      expect(markdown).toContain('是协议还是合同取决于客户');
+      // 不得把 BPO 的独立客结论泄漏到 RPO
+      expect(markdown).not.toContain('由独立客发薪');
+    });
+
+    it('两种模式都标 🔒 禁止对候选人提及术语', () => {
+      for (const mode of ['BPO', 'RPO']) {
+        const markdown = withMode(mode);
+        expect(markdown).toContain('严禁对候选人提及 "BPO/RPO/合作模式" 字样');
+      }
+    });
+
+    it('大小写/空格容错', () => {
+      expect(withMode(' bpo ')).toContain('由独立客发薪');
+      expect(withMode('rpo')).toContain('发薪方两种都有可能');
+    });
+
+    it('字段缺失/空/未知值时整段不渲染（海绵发布前老数据）', () => {
+      // 发布前岗位没有该键，此时不得输出任何发薪/签约结论，
+      // 由 candidate-consultation.md 的兜底规则转人工。
+      for (const mode of [undefined, null, '', '   ', 'UNKNOWN']) {
+        const markdown = withMode(mode);
+        expect(markdown).not.toContain('合作模式');
+        expect(markdown).not.toContain('发薪主体');
+        expect(markdown).not.toContain('签约主体');
+      }
+    });
+  });
+
   // 2026-08-06 运营口径：发薪日默认「次月发上月」，没有当月发当月的情况。
   // 候选人高频追问"X 号上班当月能不能发薪"，裸"15号发薪"会被读成当月。
   describe('月结发薪日归属月份标注', () => {

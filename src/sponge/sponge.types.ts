@@ -60,6 +60,18 @@ export interface JobBasicInfo {
   laborForm?: string;
   /** 兼职类型（laborForm=兼职 时的细分）：寒假工 / 暑假工 / 小时工 */
   partTimeJobType?: string;
+  /**
+   * 合作模式：`BPO` / `RPO`（海绵 2026-08-06 新增，发布前老数据为空）。
+   *
+   * 决定**发薪主体**与**签约主体**，是这两类高频咨询能否自答的唯一依据：
+   * - BPO：独立客发薪；与独立客签约，形式为灵活用工协议（不签劳动合同）
+   * - RPO：发薪方两种都可能 → 必须转人工；签约方是客户（品牌方），
+   *   但协议还是合同取决于客户，不得断言
+   *
+   * ⚠️ 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式" 字样**，只用它推出结论。
+   * 字段为空（发布前数据 / 未回填）时按"无依据"处理，两类问题一律转人工。
+   */
+  cooperationMode?: string;
   /** @deprecated 现网不返回，见上方说明 */
   requirementNum?: number;
   /** @deprecated 现网在 hiringRequirement.basicPersonalRequirements.minAge */
@@ -92,6 +104,8 @@ export const JobBasicInfoSchema = z
     jobContent: NullableOptionalStringSchema,
     laborForm: NullableOptionalStringSchema,
     partTimeJobType: NullableOptionalStringSchema,
+    // 海绵 2026-08-06 新增；nullish 保证发布前的老数据（无此键）照样通过校验。
+    cooperationMode: NullableOptionalStringSchema,
     requirementNum: NullableOptionalNumberSchema,
     minAge: NullableOptionalNumberSchema,
     maxAge: NullableOptionalNumberSchema,
