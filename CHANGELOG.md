@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 20
+**累计 PR**: 21
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -69,6 +69,7 @@
 - PR #947 全库注释清洗第二轮——channels/tools/biz/agent/infra 等剩余域过时注释
 - PR #949 忽略 logs/ 本地台账，撤出误提交的观测日志
 - PR #949 撤出误提交的本地观测台账
+- PR #950 9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -126,6 +127,7 @@
 - PR #947 Merge remote-tracking branch 'origin/develop' into chore/stale-commen…
 - PR #949 忽略 logs/ 本地台账，撤出误提交的观测日志
 - PR #949 撤出误提交的本地观测台账
+- PR #950 9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区
 
 ### 配置变更
 - 无
@@ -158,6 +160,8 @@
 - PR #947 非注释行全量机审：除 4 处有意修正的字符串外零代码变更——守卫目录元数据 3 处（豁免窗口实为 8 条、开关主控已是 `agent_reply_config`、关键词规则清单补 `disability_disclosure`）+ 群任务报错文案 1 处（`imBotId` 来源 `botInfo.weixin` → `wxid`，排障时会指错字段）。
 - PR #947 typecheck / lint / geo:validate / vocab:validate / 全量 jest **415 套件 6916 条全部通过**（已合并最新 develop 后重跑）。
 - PR #947 每条修正均由主会话独立复核决定性事实后落改；驳回了子代理依据不成立的结论（`REVISION_FORBIDDEN_TOOLS` 被误判「零消费」，实际同文件即有消费方）；两条飞书外部文档断言由主会话自行查证官方文档确认。
+- PR #950 两条回归用例均做了**反向验证**：把修复退回去，正好这两条失败；修复在则全过——确认不是恒真的空测试。
+- PR #950 typecheck / lint / 全量 jest **415 套件 6919 条通过**。
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05

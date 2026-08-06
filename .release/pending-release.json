@@ -565,6 +565,31 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "950",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/950",
+      "title": "9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区"
+      ],
+      "summary": [
+        "9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "两条回归用例均做了**反向验证**：把修复退回去，正好这两条失败；修复在则全过——确认不是恒真的空测试。",
+        "typecheck / lint / 全量 jest **415 套件 6919 条通过**。"
+      ]
     }
   ],
   "lastRelease": {
