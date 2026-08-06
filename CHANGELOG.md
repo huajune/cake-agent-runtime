@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -24,6 +24,7 @@
 - PR #908 三张词表收拢回 resolution/visual 单一居所
 - PR #915 收资字段名与裁决观测词表收拢（期 2）
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
+- PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -39,6 +40,7 @@
 - PR #906 补记 P0 同族场景生产自然复现验证证据
 - PR #908 三张词表收拢回 resolution/visual 单一居所
 - PR #915 收资字段名与裁决观测词表收拢（期 2）
+- PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
 
 ### 配置变更
 - 无
