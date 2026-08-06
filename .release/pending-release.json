@@ -99,6 +99,31 @@
         "**precheck 域 9 suites · 179 tests 全通过**",
         "新增 spec 逐一断言全部取值与顺序未变"
       ]
+    },
+    {
+      "number": "916",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/916",
+      "title": "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
+      ],
+      "summary": [
+        "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
+      ],
+      "features": [
+        "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "**jest 409 suites · 6814 tests 全通过**",
+        "**web `tsc --noEmit` 通过**（前端类型改动已验证）"
+      ]
     }
   ],
   "lastRelease": {
