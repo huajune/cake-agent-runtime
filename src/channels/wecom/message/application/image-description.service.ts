@@ -58,9 +58,10 @@ function formatDescription(kind: VisualMessageKind, description: string): string
  * 异步调用 vision 模型对图片进行描述，将结果回写到 chat_messages.content。
  * 这样短期记忆读取历史时，Agent 能理解图片内容而非仅看到 "[图片消息]"。
  *
- * 模型选择：AGENT_VISION_MODEL → AGENT_CHAT_MODEL（由共享 LLM Executor 做角色路由）
- * 调用方式：fire-and-forget，不阻塞消息主流程；通过 inFlight 追踪让 worker 在
- * 真正读取历史前 awaitVision 等待完成。
+ * 模型选择：Vision 角色路由（显式覆盖 > Dashboard 角色覆盖 > AGENT_VISION_MODEL），
+ * disableFallbacks 不做跨角色降级；结构化输出失败时同角色回退纯文本描述。
+ * 调用方式：fire-and-forget，不阻塞消息主流程；inFlight 追踪供运行时降级重跑路径
+ * （reply-workflow 的 awaitVision）等待完成，并为各兜底触发做同 messageId 去重。
  */
 @Injectable()
 export class ImageDescriptionService {

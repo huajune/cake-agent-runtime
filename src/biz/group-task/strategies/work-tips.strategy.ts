@@ -19,7 +19,7 @@ function getISOWeekNumber(date: Date): number {
  *
  * - 纯 AI 生成，无需外部数据
  * - 每周六 15:00 发到所有兼职群
- * - 用周数作为种子，保证同一周所有群收到相同主题
+ * - 把周数写进提示词作主题提示，降低同周主题漂移（非硬保证；各 city+industry 分组独立生成）
  */
 @Injectable()
 export class WorkTipsStrategy implements NotificationStrategy {

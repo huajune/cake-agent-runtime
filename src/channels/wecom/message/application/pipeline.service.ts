@@ -6,17 +6,11 @@ import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 /**
  * 消息处理管线服务
  *
- * 对外暴露：
- *   execute(dto)             — 完整管线入口（MessageService 唯一调用点）
- *   processSingleMessage()   — 直发路径
- *   processMergedMessages()  — 聚合路径（MessageProcessor 调用）
- *
- * 管线步骤全部私有，由 execute() 内部编排：
- *   step0: handleSelfMessage
- *   step1: filterMessage（只判断，不写副作用）
- *   step2: checkDuplication
- *   step3: recordHistory（含 historyOnly 分支）
- *   step4: recordMonitoring
+ * 门面，对外暴露三个入口：
+ *   execute(dto)             — 完整入站管线，委托 AcceptInboundMessageService
+ *                              （自发消息/过滤/去重/写历史/前置打点）；MessageService 唯一调用点
+ *   processSingleMessage()   — 直发路径，委托 ReplyWorkflowService
+ *   processMergedMessages()  — 聚合路径，委托 ReplyWorkflowService（MessageProcessor 调用）
  */
 @Injectable()
 export class MessagePipelineService {

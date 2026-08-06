@@ -53,7 +53,7 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
   lines.push(title);
   lines.push('');
 
-  // 订单列表（最多展示 10 个）
+  // 订单列表（按场次选取，最多 MAX_ORDERS 个）
   for (const order of displayOrders) {
     const revenue = order[BI_FIELD_NAMES.EXPECTED_REVENUE];
     const store = order[BI_FIELD_NAMES.STORE_NAME] || '未知';

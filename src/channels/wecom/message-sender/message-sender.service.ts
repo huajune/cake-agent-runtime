@@ -115,7 +115,7 @@ export class MessageSenderService {
       return result;
     } catch (error) {
       // 不在中间层打印日志，避免日志重复
-      // 由顶层服务（MessageService）统一处理错误日志
+      // 由调用方（MessageDeliveryService / 失败兜底链路）统一记错误日志
       throw error;
     }
   }

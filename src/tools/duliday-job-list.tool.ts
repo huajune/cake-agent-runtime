@@ -887,7 +887,8 @@ export function buildJobListTool(
               }
             : location;
 
-        // 点名品牌意向：品牌查询有独立的"距离豁免 + 0 条放宽"逻辑（line 425-427），区级兜底
+        // 点名品牌意向：品牌查询有独立的"距离豁免 + 0 条放宽"处理（见 DESCRIPTION
+        // 「点名品牌豁免距离上限」条目与各 hasBrandIntent 绕行点），区级兜底
         // 一律绕开，避免给品牌结果套上 maxKm 距离帽把远处的品牌门店藏掉。查询品牌条件来自
         // 入口标准化后的 brandPlan（enforce 档，含会话品牌兜底），故兜底品牌也走品牌豁免。
         const hasBrandIntent = brandAliasList.length > 0 || brandIdList.length > 0;

@@ -36,9 +36,9 @@ export interface IdentityEvidence {
 // —— 消息装饰清洗 ————————————————————————————————————————————————
 // 企微引用块：引用的是对方消息，不代表候选人自述。
 const QUOTE_BLOCK_RE = /\[引用[^\n]*?\]\s*/g;
-// 短期记忆注入的时间后缀（src/memory/services/session.service.ts），与
-// name-guard / candidate-field-parser 的剥离口径一致；debounce 合并消息可能
-// 内嵌多个，全局剥离并保留换行以维持子句边界。
+// 短期记忆注入的时间后缀（MessageParser.injectTimeContext，经 short-term.service
+// 注入窗口消息），与 name-guard / candidate-field-parser 的剥离口径一致；debounce
+// 合并消息可能内嵌多个，全局剥离并保留换行以维持子句边界。
 const TIME_CONTEXT_RE = /\s*\[消息发送时间：[^\]]*\]/gu;
 
 /** 剥离引用块与时间戳装饰。所有身份匹配前必须先过这一步。 */

@@ -89,7 +89,7 @@ import {
     MessageWorkerManagerService,
     MessageService,
     MessageProcessor,
-    // 子服务（8个核心服务，按职责分类）
+    // 子服务（按职责分类）
     MessageDeduplicationService, // 消息去重
     MessageFilterService, // 消息过滤
     SelfMessageFilterRule,

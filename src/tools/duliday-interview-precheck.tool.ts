@@ -1111,8 +1111,9 @@ export function buildInterviewPrecheckTool(
           // 真名可疑标记：knownFieldMap.姓名 已填，但不像真实姓名（可能是微信昵称
           // 或占位字符串）。
           //
-          // booking 工具已经不再做 isStrictRealChineseName 二次校验（信任 precheck），
-          // 所以这里必须把可疑姓名从 knownFieldMap 中剔除，让"姓名"自然落入 missingFields，
+          // booking 侧只有 runBookingGuards.checkRealName 的纯形态兜底（isStrictRealChineseName，
+          // 2-4 字），拦不住形态合规的昵称/引用前缀名，所以这里必须把可疑姓名从
+          // knownFieldMap 中剔除，让"姓名"自然落入 missingFields，
           // 模板里"姓名："会留空，Agent 必须补问真名后再走 booking。
           const knownName = knownFieldMap['姓名'];
           // 三层判定：

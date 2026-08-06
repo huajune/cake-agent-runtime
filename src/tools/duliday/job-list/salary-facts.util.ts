@@ -9,8 +9,7 @@
  * 让 LLM 在 render 顶部就看到"薪资速览"（哪些字段有 / 哪些字段没有），
  * 把"工具没返回 X 就别说 X"这件事从 prompt 红线层下沉到数据契约层。
  *
- * 同时给 reply-fact-guard 提供一个稳定的结构化检查点：替代 ad-hoc
- * hasNonEmptyHolidayOrOvertimeSalary，统一从这一层取信号。
+ * 消费方是 render 的薪资速览 banner 与 candidate-card 的阶梯薪资行，统一从这一层取信号。
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

@@ -66,7 +66,7 @@ interface WecomTraceTimings {
   deliveryEndAt?: number;
   fallbackStartAt?: number;
   fallbackEndAt?: number;
-  /** Agent 主动沉默时间戳（调用 skip_reply 工具 → 跳过投递） */
+  /** 非 reply 终态时间戳（skip_reply 主动沉默/守卫拦截/handoff/工具短路 → 跳过投递） */
   replySkippedAt?: number;
   completedAt?: number;
 }
@@ -359,7 +359,7 @@ export class WecomMessageObservabilityService {
   }
 
   /**
-   * 标记本轮为主动沉默：skip_reply 工具被调用，不发送任何消息。
+   * 标记本轮为非 reply 终态（skip_reply 主动沉默/守卫拦截/handoff/工具短路），不发送任何消息。
    *
    * 仍写入 delivery 时间戳与零片段 deliveryResult，确保耗时统计与流水结构完整。
    */

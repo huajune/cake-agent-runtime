@@ -1,15 +1,8 @@
 /**
- * 企微 Agent 类型定义
+ * 企微 Agent 类型定义（历史遗留：全库当前无任何 import，死码候选待删）。
  *
- * 迁移自原 agent 模块:
- * - types/reply-policy.ts → 漏斗阶段、回复需求、风险标记、回合规划
- * - lib/tools/wework/types.ts → 实体提取、计划输出
- * - lib/memory/wework/session-memory.ts → 会话状态、推荐岗位摘要
- *
- * 设计原则：
- * - Zod schema 用于运行时验证（分类 Agent、事实提取）
- * - 纯 TS 类型用于编译期检查
- * - 企微场景 channelType 默认 "private"，排除 private_channel 阶段
+ * 迁移自原 agent 模块（reply-policy / wework tools / session-memory）；
+ * 现行事实提取用 @memory/types/session-facts.types，阶段目标在 biz/strategy。
  */
 
 import { z } from 'zod';

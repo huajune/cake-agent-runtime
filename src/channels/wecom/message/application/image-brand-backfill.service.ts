@@ -2,7 +2,7 @@
  * 图片描述缺失的品牌补写链路（§10.3）。
  *
  * 主路径的描述回写靠工具提示词驱动（"你必须调用"），模型可能忘调——该图品牌将
- * 永远进不了 brand_state。turn-finalizer（回合终局确定后）用**结构化 messageType**
+ * 永远进不了 brand_state。reply-workflow 在回合终局确定后用**结构化 messageType**
  * 检测本轮图片消息缺描述（§10.4：以 ingress 的 MessageType 编码 + save_image_description
  * 工具调用记录为准，不嗅探内容前缀），触发一次异步 Vision 补写；补写完成后走同一条
  * resolve → reducer 链路落状态，带两道防护：
@@ -83,7 +83,8 @@ export class ImageBrandBackfillService {
   }
 
   /**
-   * 触发异步补写（fire-and-forget）：调用点在回合终局确定、处理锁释放之后。
+   * 触发异步补写（fire-and-forget）：调用点在回合终局确定后（reply-workflow 的
+   * finally，此时原 worker 仍持处理锁；补写链路自行退避重试拿锁）。
    * turnMs 为本轮收尾时间戳，作为"过期即弃"的轮次锚点。
    */
   scheduleBackfill(params: {
