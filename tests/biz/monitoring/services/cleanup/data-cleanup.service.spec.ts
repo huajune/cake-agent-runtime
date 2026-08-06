@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { SCHEDULE_CRON_OPTIONS } from '@nestjs/schedule/dist/schedule.constants';
 import { DataCleanupService } from '@biz/monitoring/services/cleanup/data-cleanup.service';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -342,6 +343,19 @@ describe('DataCleanupService', () => {
         reengagementTouchTexts: 0,
         reengagementTouchRecords: 3,
       });
+    });
+  });
+
+  describe('每日清理 cron 的时区', () => {
+    // 生产容器时区是 UTC：不显式指定 timeZone 会把这批重 DELETE 落到上海 11:00 的
+    // 业务高峰上（历史事故：轮询 + 重试打满连接池导致全线 522）。
+    it('每日清理必须锁定 Asia/Shanghai，而不是跟随服务器时区', () => {
+      const options = Reflect.getMetadata(
+        SCHEDULE_CRON_OPTIONS,
+        DataCleanupService.prototype.cleanupExpiredData,
+      );
+
+      expect(options?.timeZone).toBe('Asia/Shanghai');
     });
   });
 });
