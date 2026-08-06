@@ -276,6 +276,44 @@ function findSuccessfulBooking(toolCalls: AgentToolCall[]): AgentToolCall | null
   return null;
 }
 
+/**
+ * 取 booking 成功结果里的人类可读面试时间（`8月6日（周四）14:00`）。
+ *
+ * 该字段由 formatInterviewTimeForReply 生成，**自带星期**，是候选人唯一能用来核对
+ * "约的是不是我要的那天"的锚点。等通知岗位（wait_notice，无 interviewTime）不产出
+ * 该字段，本形态自然不适用。
+ */
+function readConfirmedInterviewTimeHuman(booking: AgentToolCall): string | null {
+  const result =
+    booking.result && typeof booking.result === 'object' && !Array.isArray(booking.result)
+      ? (booking.result as Record<string, unknown>)
+      : null;
+  const value = result?._confirmedInterviewTimeHuman;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/**
+ * 回复是否把已建单的那一天告诉了候选人。
+ *
+ * 判据刻意宽松——只要**月日**或**星期**任一出现即放行：目的是保证候选人拿得到可核对
+ * 的锚点，不是规定话术怎么写。日期与星期是否自洽由 date_reference_mismatch 负责，
+ * 本规则不重复对账，避免同一条回复被两条规则夹击。
+ */
+function replyStatesBookedDate(replyText: string, confirmedTimeHuman: string): boolean {
+  if (replyText.includes(confirmedTimeHuman)) return true;
+  // 容忍空格与「日/号」两种写法：生产走 formatInterviewTimeForReply（`8月6日（周四）14:00`），
+  // 但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），解析过严会把
+  // 已如实播报日期的回复误判成未播报。
+  const parsed = confirmedTimeHuman.match(
+    /(\d{1,2})\s*月\s*(\d{1,2})\s*[日号](?:\s*（\s*(周.)\s*）)?/u,
+  );
+  if (!parsed) return false;
+  const [, month, day, weekday] = parsed;
+  const monthDay = new RegExp(`${month}\\s*月\\s*${day}\\s*[日号]`, 'u');
+  if (monthDay.test(replyText)) return true;
+  return weekday ? replyText.includes(weekday) : false;
+}
+
 function findSuccessfulJobPoolInvite(toolCalls: AgentToolCall[]): AgentToolCall | null {
   for (const call of toolCalls) {
     if (call.toolName !== 'invite_to_group' || call.status === 'error') continue;
@@ -433,6 +471,22 @@ export function detectBookingReceiptMismatch(
         '本轮 duliday_interview_booking 已成功提交工单，回复却完全未向候选人播报报名结果' +
         '（badcase yfrc6wb9：候选人不知已报名，重复提交撞 already_booked）',
       action: GUARDRAIL_ACTION.OBSERVE,
+    };
+  }
+
+  // 形态 E：工单已按某个具体日期建单，回复却没把这个日期告诉候选人。
+  const confirmedTime = readConfirmedInterviewTimeHuman(booking);
+  if (confirmedTime && !replyStatesBookedDate(replyText, confirmedTime)) {
+    return {
+      ruleId: 'booking_receipt_mismatch',
+      label:
+        `本轮 duliday_interview_booking 已按「${confirmedTime}」建单，回复却没有把这个日期告诉候选人` +
+        '——候选人无从发现日期被约错（badcase 0091mnfr：候选人选周三、工单落周四，次日到店下车才发现）',
+      action: GUARDRAIL_ACTION.REVISE,
+      feedbackToGenerator:
+        `本轮预约已真实提交成功，工单登记的面试时间是「${confirmedTime}」。上一版回复没有把这个日期原样告诉候选人，当前文本不可发送。` +
+        `请在回复中**逐字**给出「${confirmedTime}」（含月日与括号里的星期），让候选人能立刻核对是不是他要的那天；` +
+        '其余未被点名的内容逐字保留，不要改变已确认的事实，也不要再向候选人征询日期。',
     };
   }
 
