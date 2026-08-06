@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 10
+**累计 PR**: 11
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -37,6 +37,7 @@
 - PR #910 清理实测确认的死代码，收拢消息状态与配置键
 - PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
 - PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
+- PR #917 爽约不取消的时点前提同步到全部四处口径
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -63,6 +64,7 @@
 - PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
 - PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
 - PR #910 清理实测确认的死代码，收拢消息状态与配置键
+- PR #917 爽约不取消的时点前提同步到全部四处口径
 
 ### 配置变更
 - 无
@@ -80,6 +82,8 @@
 - PR #930 typecheck / lint:check / geo:validate（8 类全绿）/ vocab:validate（5 项全绿）/ 全量 jest **413 套件 6870 条全部通过**
 - PR #930 多代理排查 + 主会话逐条抽验；一处代理过度删除（visual-fact 并跑对照约束被叙事改写误删）经交叉比对发现并恢复
 - PR #930 排查中确认的四组零引用死代码（旧 llm-reviewer、SEMANTIC_REVIEW_FINDING_POLICIES、*StorageResult 类型族、GeoResolution）**不在本 PR 删除**，已另立任务
+- PR #917 全库 **6814 passed / 0 failed**
+- PR #917 `tsc --noEmit`、`eslint --max-warnings=0` 均通过
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
