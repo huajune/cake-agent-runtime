@@ -512,9 +512,25 @@ export class OutputGuardrailService {
   }
 
   private mergeByPriority(a: OutputDecision, b: OutputDecision): OutputDecision {
-    // replan 已退役（2026-07-27）：任何来源都不再产出该档，优先级序列中移除。
-    const PRIORITY: OutputDecision[] = ['block', 'revise', 'observe', 'pass'];
-    return PRIORITY.find((d) => d === a || d === b) ?? GUARDRAIL_DECISION.PASS;
+    // 数字越大越严重；两者取严。
+    //
+    // 收成 Record<OutputDecision, number> 的理由（本次词表收拢的核心动机）：
+    // 原实现是 `PRIORITY.find(...) ?? PASS` 的**有序数组 + fail-open 兜底**——
+    // 往 OutputDecision 加一档而忘了登记进数组，find 落空即静默返回 PASS，
+    // 也就是把本该拦截的裁决放行。安全闸的兜底方向不该是"放行"，而且这种遗漏
+    // 当时零编译信号。改成穷尽映射后，加档不登记即**编译期报错**。
+    //
+    // replan 已退役（2026-07-27）：任何来源都不再产出该档。这里仍必须给它一个
+    // 优先级（穷尽性要求），取与 revise 同级——万一有历史数据带回该档，按可修复
+    // 处理而不是被当成 pass 放掉。
+    const PRIORITY: Record<OutputDecision, number> = {
+      [GUARDRAIL_DECISION.BLOCK]: 4,
+      [GUARDRAIL_DECISION.REVISE]: 3,
+      [GUARDRAIL_DECISION.REPLAN]: 3,
+      [GUARDRAIL_DECISION.OBSERVE]: 2,
+      [GUARDRAIL_DECISION.PASS]: 1,
+    };
+    return PRIORITY[a] >= PRIORITY[b] ? a : b;
   }
 
   /** 把 rule 命中映射成 GuardViolation（用于 revise 回路喂回意见）。 */

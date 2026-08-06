@@ -26,7 +26,8 @@ export type GeneratorThinkingConfig = LlmThinkingConfig;
  *   not a literal read-only guarantee because some internal state projection tools are retained
  * - none: no tools at all
  */
-export type GeneratorToolMode = 'scenario' | 'readonly' | 'none';
+export const GENERATOR_TOOL_MODES = ['scenario', 'readonly', 'none'] as const;
+export type GeneratorToolMode = (typeof GENERATOR_TOOL_MODES)[number];
 
 // HC-1 revise 回路注入用的违规意见，单一数据源在中立 Guardrail 契约里。
 export type { GuardViolation } from '@shared-types/guardrail.contract';

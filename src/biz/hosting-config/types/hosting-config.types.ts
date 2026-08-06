@@ -1,3 +1,5 @@
+import { LLM_THINKING_EFFORTS, type LlmThinkingEffort } from '@/llm/llm.types';
+
 /**
  * 系统配置接口
  */
@@ -8,10 +10,16 @@ export interface SystemConfig {
 /**
  * Agent 回复策略配置
  */
-export type AgentThinkingMode = 'fast' | 'deep';
+export const AGENT_THINKING_MODES = ['fast', 'deep'] as const;
+export type AgentThinkingMode = (typeof AGENT_THINKING_MODES)[number];
 
-/** 深度思考档位（deep 模式下生效）；与 LlmThinkingEffort 同构，取各 provider 能力交集。 */
-export type AgentThinkingEffort = 'low' | 'medium' | 'high';
+/**
+ * 深度思考档位（deep 模式下生效）。**直接复用 LlmThinkingEffort**，不再手写同构副本：
+ * 放开第四档时若只改 llm 侧，这里的手写联合与下游 @IsIn 都不会报错，运营在
+ * Dashboard 选新档会静默 400。
+ */
+export type AgentThinkingEffort = LlmThinkingEffort;
+export const AGENT_THINKING_EFFORTS = LLM_THINKING_EFFORTS;
 
 export interface AgentReplyConfig {
   // 模型配置

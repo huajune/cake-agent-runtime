@@ -14,7 +14,8 @@ export enum ModelRole {
  * google thinkingLevel / deepseek reasoningEffort / qwen reasoningEffort 均支持这三档）。
  * provider 专有的 minimal/xhigh/max 等档位刻意不纳入，保证配置可跨模型迁移。
  */
-export type LlmThinkingEffort = 'low' | 'medium' | 'high';
+export const LLM_THINKING_EFFORTS = ['low', 'medium', 'high'] as const;
+export type LlmThinkingEffort = (typeof LLM_THINKING_EFFORTS)[number];
 
 export interface LlmThinkingConfig {
   type: 'enabled' | 'disabled';
