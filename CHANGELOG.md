@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-06`
 **来源分支**: `develop`
-**累计 PR**: 23
+**累计 PR**: 24
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -73,6 +73,7 @@
 - PR #953 supabase keep-alive cron 锁定上海时区
 - PR #955 被问真名后的裸名直答不再判昵称——真名索取问答识别器
 - PR #955 补 prettier 换行（pre-commit 钩子改动未随提交入库）
+- PR #943 治理文档改按日聚合，并修好高亮块内抬头数字不刷新
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -134,6 +135,7 @@
 - PR #953 supabase keep-alive cron 锁定上海时区
 - PR #955 被问真名后的裸名直答不再判昵称——真名索取问答识别器
 - PR #955 补 prettier 换行（pre-commit 钩子改动未随提交入库）
+- PR #943 治理文档改按日聚合，并修好高亮块内抬头数字不刷新
 
 ### 配置变更
 - 无
@@ -170,6 +172,14 @@
 - PR #950 typecheck / lint / 全量 jest **415 套件 6919 条通过**。
 - PR #953 回归用例已**双向验证**：修复在则 7 条全过，退回修复则该条精确失败——确认不是恒真的空测试。
 - PR #953 typecheck / lint / 全量 jest **415 套件 6920 条通过**。
+- PR #943 全库 **6904 passed / 0 failed**；`tests/biz/feishu-sync` **66 passed**
+- PR #943 新增 4 条回归：
+- PR #943 当日已有小节时只追加条目、且插到小节末尾（不含 heading3、不含「本次更新：」）
+- PR #943 新的一天新建小节、标题不含时分
+- PR #943 同事件 ID 重复运行仍跳过
+- PR #943 callout 内的抬头剩余数与更新时间可被刷新
+- PR #943 既有用例「inserts a dated update before section four」的标题预期同步去掉时分
+- PR #943 `tsc --noEmit` / `eslint --max-warnings=0` 均通过
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
