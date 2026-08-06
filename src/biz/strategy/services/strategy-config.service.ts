@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '../repositories/strategy-changelog.repository';
-import { StrategyConfigRecord, StrategyConfigStatus } from '../entities/strategy-config.entity';
+import {
+  StrategyConfigRecord,
+  StrategyConfigStatus,
+  STRATEGY_CONFIG_STATUSES,
+} from '../entities/strategy-config.entity';
 import {
   StrategyPersona,
   StrategyStageGoals,
@@ -14,7 +18,7 @@ import {
   StrategyRoleSetting,
 } from '../types/strategy.types';
 
-const VALID_STATUS_VALUES: StrategyConfigStatus[] = ['testing', 'released', 'archived'];
+const VALID_STATUS_VALUES: readonly StrategyConfigStatus[] = STRATEGY_CONFIG_STATUSES;
 
 /**
  * 策略配置 Service

@@ -46,6 +46,7 @@ import {
   buildEnumHintsForMissing,
   buildKnownFieldMap,
   normalizeChecklistField,
+  type ChecklistField,
 } from '@tools/duliday/precheck/checklist.util';
 import {
   extractSupplementAnswerFromMessages,
@@ -631,8 +632,15 @@ export interface PrecheckAdjudicationDeps {
   observer?: { emit: (event: AgentEvent) => void };
 }
 
-/** claim 字段名 → checklist 中文字段名（enforce 剔除与响应摘要共用）。 */
-const CLAIM_FIELD_TO_CHECKLIST: Record<CandidateClaimField, string> = {
+/**
+ * claim 字段名 → checklist 中文字段名（enforce 剔除与响应摘要共用）。
+ *
+ * 值类型收成 ChecklistField 而非裸 string：本表的值被直接当 knownFieldMap 的键用
+ * （`delete knownFieldMap[CLAIM_FIELD_TO_CHECKLIST[field]]`），写错一个字不会报错，
+ * 只会让 delete 静默落空——被裁决 rejected 的无据裸值就此照常进报名，
+ * 防伪造闸门无声失效。现在写错即编译报错。
+ */
+const CLAIM_FIELD_TO_CHECKLIST: Record<CandidateClaimField, ChecklistField> = {
   name: '姓名',
   phone: '联系电话',
   gender: '性别',
