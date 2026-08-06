@@ -176,6 +176,31 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "922",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/922",
+      "title": "errorType 提示词写法改为线上真值 + 闸门补检查",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "errorType 提示词写法改为线上真值 + 闸门补检查",
+        "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
+      ],
+      "summary": [
+        "errorType 提示词写法改为线上真值 + 闸门补检查",
+        "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "errorType 提示词写法改为线上真值 + 闸门补检查",
+        "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
