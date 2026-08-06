@@ -615,6 +615,31 @@
         "回归用例已**双向验证**：修复在则 7 条全过，退回修复则该条精确失败——确认不是恒真的空测试。",
         "typecheck / lint / 全量 jest **415 套件 6920 条通过**。"
       ]
+    },
+    {
+      "number": "955",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/955",
+      "title": "被问真名后的裸名直答不再判昵称——真名索取问答识别器",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "被问真名后的裸名直答不再判昵称——真名索取问答识别器",
+        "补 prettier 换行（pre-commit 钩子改动未随提交入库）"
+      ],
+      "summary": [
+        "被问真名后的裸名直答不再判昵称——真名索取问答识别器",
+        "补 prettier 换行（pre-commit 钩子改动未随提交入库）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "被问真名后的裸名直答不再判昵称——真名索取问答识别器",
+        "补 prettier 换行（pre-commit 钩子改动未随提交入库）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
