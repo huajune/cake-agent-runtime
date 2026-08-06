@@ -1,10 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 
-/**
- * 客户管理控制器
- * 专注于客户关系管理（CRM）功能
- */
 @Controller('customer')
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) {}

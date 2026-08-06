@@ -232,8 +232,8 @@ export class PreparationService {
       currentLaborFormIntent,
     );
     const persistedStage = memory.procedural.currentStage ?? undefined;
-    // 程序性阶段存 Redis（TTL 2 天），过期后此前隐式兜底到策略第一个阶段——
-    // 已服务过的老候选人回访被当新客从 trust_building 重走（张漪 case：6-03 已
+    // 程序性阶段存 Redis（TTL 2 天），过期后若隐式兜底到策略第一个阶段——
+    // 已服务过的老候选人回访会被当新客从 trust_building 重走（张漪 case：6-03 已
     // 约面，6-08/6-10 回访都从信任建立重来）。长期画像已有身份字段即视为老用户，
     // 回访直接进入岗位咨询阶段。
     const returningUserStage = persistedStage

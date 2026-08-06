@@ -212,8 +212,8 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // 锁改为短租约（90s）+ 处理期间心跳续期：长 Agent 调用不丢锁，
-      // 进程崩溃后孤悬锁最长一个租约即让位（旧实现固定 300s）。
+      // 锁是短租约（90s）+ 处理期间心跳续期：长 Agent 调用靠续期不丢锁，
+      // 进程崩溃后孤悬锁最长一个租约即让位（固定长 TTL 会拖长让位时间）。
       stopLockHeartbeat = this.simpleMergeService.startLockHeartbeat(chatId, lockOwner);
 
       this.logger.log(`[Bull] 开始处理任务 ${job.id}, chatId: ${chatId}`);

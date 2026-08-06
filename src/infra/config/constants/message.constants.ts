@@ -12,13 +12,6 @@
 
 // 以下配置为硬编码，不支持动态调整
 export const ENABLE_MESSAGE_MERGE = true; // 启用消息聚合
-export const MAX_RETRY_COUNT = 1; // Agent 响应后重试次数
-export const MIN_MESSAGE_LENGTH_TO_RETRY = 2; // 触发重试的最小消息长度
-export const COLLECT_MESSAGES_DURING_PROCESSING = true; // 处理期间收集新消息
-
-// 消息溢出策略
-export type OverflowStrategyType = 'take-latest' | 'take-all';
-export const OVERFLOW_STRATEGY: OverflowStrategyType = 'take-latest';
 
 // ==================== 消息发送配置 ====================
 
@@ -38,8 +31,7 @@ export const TYPING_RANDOM_VARIATION = 0.2; // 随机波动比例 (±20%)
 
 // ==================== 消息历史配置 ====================
 
-export const MAX_HISTORY_PER_CHAT = 60; // 每会话最大消息数
-export const HISTORY_TTL_MS = 7200000; // 历史消息 TTL（2 小时）
+export const MAX_HISTORY_PER_CHAT = 60; // 每会话最大消息数（历史按条数封顶，无 TTL）
 
 // ==================== HTTP 配置 ====================
 

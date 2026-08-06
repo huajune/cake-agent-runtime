@@ -3,6 +3,7 @@ import { ChatSessionService } from './services/chat-session.service';
 import { GuardrailReviewService } from './services/guardrail-review.service';
 import { MessageProcessingService } from './services/message-processing.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
+import type { MessageProcessingStatus } from '@enums/message.enum';
 
 /**
  * 消息查询控制器
@@ -106,7 +107,7 @@ export class MessageController {
   async getMessageProcessingRecords(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('status') status?: 'processing' | 'success' | 'failure' | 'timeout',
+    @Query('status') status?: MessageProcessingStatus,
     @Query('chatId') chatId?: string,
     @Query('userName') userName?: string,
     @Query('managerName') managerName?: string | string[],

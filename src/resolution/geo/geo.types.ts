@@ -4,7 +4,8 @@
  * 与 `resolution/brand` 的 resolve 契约刻意同构：状态 + 标准实体 + 证据，
  * 评审与观测复用同一套心智（geo-domain-refactor-plan v3.1 §8.2）。
  *
- * 迁移期约定：现有函数保持字符串签名（行为等价，Phase 1/2 不改语义）。
+ * 现有函数保持字符串签名（与迁移前行为等价）；Phase 3 冲突检测最终以
+ * GeoSignalConflictShadow 契约落地。
  */
 
 /** 行政级别。 */

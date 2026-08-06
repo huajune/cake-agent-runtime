@@ -75,7 +75,7 @@ export class HardConstraintsSection implements PromptSection {
    *
    * 取并集，**本轮高置信值优先覆盖旧 session 值**（候选人资料证据化 Phase 0 第 2 条）：
    * 工具层 tool-context.builder 的 mergeSessionFactsWithHighConfidence 一直是"本轮非 null
-   * 高置信覆盖旧值"，本段此前却是"旧值优先、本轮仅补缺"——prompt 与工具对同一字段
+   * 高置信覆盖旧值"，本段若取"旧值优先、本轮仅补缺"——prompt 与工具就会对同一字段
    * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
    * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
    */

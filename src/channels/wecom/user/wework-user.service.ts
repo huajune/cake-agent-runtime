@@ -2,10 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@infra/client-http/http.service';
 import { ApiConfigService } from '@infra/config/api-config.service';
 
-/**
- * 企业成员管理服务
- * 负责企业内部成员的查询和管理
- */
 @Injectable()
 export class WeworkUserService {
   private readonly logger = new Logger(WeworkUserService.name);

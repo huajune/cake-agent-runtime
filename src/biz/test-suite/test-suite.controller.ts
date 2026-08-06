@@ -46,9 +46,6 @@ import {
 } from './dto/conversation-test.dto';
 import { BatchSource, ExecutionStatus, ReviewStatus, TestType } from './enums/test.enum';
 
-/**
- * 测试套件控制器
- */
 @ApiTags('测试套件')
 @Controller('test-suite')
 export class TestSuiteController {

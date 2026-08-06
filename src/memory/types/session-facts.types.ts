@@ -975,7 +975,8 @@ export interface WeworkSessionState {
   lastProcessedCandidateMessageAt?: string | null;
   /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
-   * 写入只经 turn-finalizer 的 brand_state reducer（单一门）；preferences.brands 是它的只读投影。
+   * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
+   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6），读边界恒 null。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;

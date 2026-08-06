@@ -222,7 +222,8 @@ export class ChatSessionService {
    * 更新消息的 content（按 messageId）
    *
    * DB 更新成功后直接作废该会话的短期记忆 list 缓存；下次读取 cache miss 会从 DB
-   * 重新 backfill。这比原先的「lrange → parse → 改内容 → del → 全量 rpush」更简单且原子。
+   * 重新 backfill。不做「lrange → parse → 改内容 → del → 全量 rpush」的缓存内改写
+   * ——作废重灌更简单且原子。
    */
   async updateMessageContent(
     messageId: string,

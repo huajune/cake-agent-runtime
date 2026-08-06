@@ -232,7 +232,7 @@ export interface SummaryData {
   lastSettledMessageAt: string | null;
   /**
    * 按会话（sessionId=chatId，bot 维度）隔离的沉淀边界。
-   * 修复双 bot 场景：bot A 推进用户级边界后，bot B 边界之前的消息永不沉淀。
+   * 双 bot 场景必须隔离：共用用户级边界时，bot A 推进后 bot B 边界之前的消息永不沉淀。
    */
   lastSettledBySession?: Record<string, string> | null;
 }

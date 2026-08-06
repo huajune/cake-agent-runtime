@@ -7,10 +7,10 @@ import { deepMerge } from './deep-merge.util';
  * Redis 存储后端
  *
  * 通用 Redis key-value 存储，支持可配置 TTL 和可选 deepMerge。
- * MemoryService 按类别（stage / facts / profile-cache）委派到此后端。
+ * Session/Procedural/BrandState/CandidateSnapshot 各 service 按自己的 key 前缀
+ * （factsv2 / stage / precheck-snapshot 等）使用此后端。
  *
  * 这里不关心具体业务字段名，例如：
- * - `lastSessionActiveAt`
  * - `currentStage / fromStage`
  * - `presentedJobs`
  *

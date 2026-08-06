@@ -53,8 +53,8 @@ export const FIELD_ORDER = [
  * checklist 合法字段名。
  *
  * as const 的动机不是洁癖：这些中文字段名会被别处当 **map 的键**用来定位
- * checklist 条目（如 precheck 里的 CLAIM_FIELD_TO_CHECKLIST），而那些 map 原先
- * 的值类型是裸 string——写错一个字（多个空格、换个近义词）不会报错，只会让
+ * checklist 条目（如 precheck 里的 CLAIM_FIELD_TO_CHECKLIST），那些 map 的值
+ * 若是裸 string——写错一个字（多个空格、换个近义词）不会报错，只会让
  * `delete knownFieldMap[...]` 之类的操作静默落空。有了这个类型，写错即编译报错。
  */
 export type ChecklistField = (typeof FIELD_ORDER)[number];

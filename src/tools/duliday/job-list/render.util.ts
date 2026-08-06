@@ -315,7 +315,18 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
 
   const periodParts: string[] = [];
   if (hasValue(scenario.salaryPeriod)) periodParts.push(String(scenario.salaryPeriod));
-  if (hasValue(scenario.payday)) periodParts.push(`${scenario.payday}发薪`);
+  if (hasValue(scenario.payday)) {
+    // 月结的发薪日平台全局口径是"次月发上月"，没有当月发当月的情况（2026-08-06 运营确认）。
+    // 候选人高频追问"X 号上班当月 X 号能不能发薪"，裸"15号发薪"会被理解成当月 →
+    // 月结 + 具体几号时显式标注归属月份，模型照读即可；周结/日结不适用不标。
+    const isMonthly =
+      hasValue(scenario.salaryPeriod) && String(scenario.salaryPeriod).includes('月');
+    const paydayText =
+      isMonthly && /^\d+\s*号$/.test(String(scenario.payday).trim())
+        ? `${scenario.payday}发薪（次月${scenario.payday}发上月工资，无当月发当月）`
+        : `${scenario.payday}发薪`;
+    periodParts.push(paydayText);
+  }
   if (periodParts.length) lines.push(`- **结算周期**: ${periodParts.join(', ')}`);
 
   const basic = asRecord(scenario.basicSalary);
@@ -506,10 +517,12 @@ function renderWelfareSection(welfareInput: unknown): string {
 
   pushLongText(lines, '备注', welfare.memo);
 
-  if (lines.length === 0) return '';
   // 福利速览 banner 放在 section 头部：把"员工自理/不购买"这类易被压缩成"有"的
   // 字面值显式标 ❌ 无；保险是敏感政策，只给内部判断，不能作为普通福利主动引用。
+  // banner 非空时即使 raw 明细为空也要输出（welfare 对象存在但吃/住未配置 →
+  // banner 按运营口径默认标 ❌ 无，这条信息本身就是给模型的答案，不能因明细空而吞掉）。
   const factsBanner = renderWelfareFactsBanner(extractWelfareFacts(welfare));
+  if (lines.length === 0 && !factsBanner) return '';
   return '### 福利信息\n' + factsBanner + lines.join('\n') + '\n\n';
 }
 

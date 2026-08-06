@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MemoryService } from '@memory/memory.service';
 import { SessionService } from '@memory/services/session.service';
 import { BrandStateService } from '@memory/services/brand-state.service';
+import { LongTermService } from '@memory/services/long-term.service';
 import {
   EntityExtractionResultSchema,
   FALLBACK_EXTRACTION,
@@ -28,10 +29,14 @@ export class MemoryFixtureService {
     private readonly memoryService: MemoryService,
     private readonly sessionService: SessionService,
     private readonly brandStateService: BrandStateService,
+    private readonly longTermService: LongTermService,
   ) {}
 
   async reset(scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId'>): Promise<void> {
     await this.memoryService.clearSessionMemory(scope.corpId, scope.userId, scope.sessionId);
+    // active_booking 挂在长期记忆（按 corpId+userId），不随会话记忆清除；
+    // 不清会让上一轮 fixture 注入的工单泄漏进下一次执行，把「无预约」用例污染成「有预约」。
+    await this.longTermService.clearActiveBooking(scope.corpId, scope.userId);
   }
 
   async cleanup(scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId'>): Promise<void> {
@@ -114,6 +119,16 @@ export class MemoryFixtureService {
 
     for (const group of this.normalizeInvitedGroups(setup.invitedGroups)) {
       await this.memoryService.saveInvitedGroup(scope.corpId, scope.userId, scope.sessionId, group);
+    }
+
+    // 预约工单指针：写在 profile 之前，保证 [当前预约信息] 与画像同轮可见。
+    for (const booking of setup.activeBookings ?? []) {
+      if (!Number.isFinite(booking?.workOrderId)) {
+        throw new Error('memorySetup.activeBookings[].workOrderId 必须是有效数字');
+      }
+      await this.longTermService.setActiveBooking(scope.corpId, scope.userId, booking.workOrderId, {
+        job_id: booking.jobId ?? null,
+      });
     }
 
     if (setup.profile) {
