@@ -201,6 +201,37 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "930",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/930",
+      "title": "全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "修正过时注释，变更叙事统一为现状约束口径"
+      ],
+      "summary": [
+        "删除同义反复的 JSDoc 头注释",
+        "修正过时注释，变更叙事统一为现状约束口径",
+        "全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理"
+      ],
+      "features": [],
+      "fixes": [
+        "修正过时注释，变更叙事统一为现状约束口径"
+      ],
+      "optimizations": [],
+      "ops": [
+        "删除同义反复的 JSDoc 头注释"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "非注释行变更全量机审：除上述 4 处字符串外**零代码变更**（含行尾注释宿主行逐行核对）",
+        "typecheck / lint:check / geo:validate（8 类全绿）/ vocab:validate（5 项全绿）/ 全量 jest **413 套件 6870 条全部通过**",
+        "多代理排查 + 主会话逐条抽验；一处代理过度删除（visual-fact 并跑对照约束被叙事改写误删）经交叉比对发现并恢复",
+        "排查中确认的四组零引用死代码（旧 llm-reviewer、SEMANTIC_REVIEW_FINDING_POLICIES、*StorageResult 类型族、GeoResolution）**不在本 PR 删除**，已另立任务"
+      ]
     }
   ],
   "lastRelease": {
