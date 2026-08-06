@@ -110,10 +110,15 @@ export class BadcaseGovernanceDocumentService {
         return { success: true, skipped: true, dryRun: !writeEnabled, eventId, summary };
       }
 
-      const children = this.buildUpdateBlocks(update, eventId);
+      // 同日已有小节时追加到它末尾，否则在「四、」之前新建当日小节。
+      const dayTitle = this.buildDayTitle(update.occurredAt || new Date());
+      const daySectionIndex = this.resolveDaySectionAppendIndex(document, dayTitle);
+      const insertAt = daySectionIndex ?? document.insertionIndex;
+      const children = this.buildUpdateBlocks(update, eventId, daySectionIndex !== null);
       if (!writeEnabled) {
         this.logger.log(
-          `[BadcaseGovernanceDoc] dry-run event=${eventId} items=${update.items.length} index=${document.insertionIndex}`,
+          `[BadcaseGovernanceDoc] dry-run event=${eventId} items=${update.items.length} ` +
+            `index=${insertAt} mode=${daySectionIndex === null ? 'new-section' : 'append-to-day'}`,
         );
         return { success: true, skipped: false, dryRun: true, eventId };
       }
@@ -121,7 +126,7 @@ export class BadcaseGovernanceDocumentService {
       const response = await this.feishuApi.post<FeishuResponse<Record<string, unknown>>>(
         `/docx/v1/documents/${document.documentId}/blocks/${document.documentId}/children`,
         {
-          index: document.insertionIndex,
+          index: insertAt,
           children,
         },
         { params: { document_revision_id: -1 } },
@@ -201,9 +206,23 @@ export class BadcaseGovernanceDocumentService {
   ): Array<{ blockId: string; blockType: number; text: string }> {
     const blockById = new Map(document.blocks.map((block) => [block.block_id, block]));
     const root = blockById.get(document.documentId);
-    const order = (root?.children || [])
-      .map((id) => blockById.get(id))
-      .filter((block): block is DocxBlock => !!block);
+    // 按文档顺序展开根级块及其后代。
+    //
+    // 只扫根级会漏掉容器块内部的文本：文档抬头的「当前剩余 N 个未解决问题」与
+    // 「更新时间：…」写在高亮块（callout, block_type 19）里，callout 自身没有文本、
+    // 文本挂在它的 children 上，因此旧实现的正则永远匹配不到，抬头数字长期停在
+    // 首次写入的值（2026-08-06 巡检实测：正文已刷成 39，抬头仍是 65）。
+    const order: DocxBlock[] = [];
+    const walk = (ids: string[] | undefined, depth: number) => {
+      for (const id of ids || []) {
+        const block = blockById.get(id);
+        if (!block) continue;
+        order.push(block);
+        if (depth > 0) walk(block.children, depth - 1);
+      }
+    };
+    walk(root?.children, 3);
+    // 章节标题恒在根级，展开后仍能正确切分区间。
     const headingIndex = (prefix: string) =>
       order.findIndex(
         (block) => block.block_type === 4 && this.readBlockText(block).startsWith(prefix),
@@ -351,29 +370,60 @@ export class BadcaseGovernanceDocumentService {
     return blocks;
   }
 
+  /** 当日小节标题（不含时分）：同一天的多次治理事件共用它。 */
+  private buildDayTitle(occurredAt: Date): string {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      month: 'numeric',
+      day: 'numeric',
+    }).formatToParts(occurredAt);
+    const pick = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((item) => item.type === type)?.value || '';
+    return `${pick('month')} 月 ${pick('day')} 日`;
+  }
+
+  /**
+   * 定位当日小节，返回「该小节末尾」在根级 children 中的插入位置。
+   *
+   * 小节范围 = 当日 H3 起，到下一个根级标题（H2/H3）之前；找不到下一个标题时
+   * 退回「四、」章节之前的安全位置。返回 null 表示当日还没有小节，需新建。
+   */
+  private resolveDaySectionAppendIndex(
+    document: { documentId: string; blocks: DocxBlock[]; insertionIndex: number },
+    dayTitle: string,
+  ): number | null {
+    const blockById = new Map(document.blocks.map((block) => [block.block_id, block]));
+    const children = blockById.get(document.documentId)?.children || [];
+    const expected = `${dayTitle}：BadCase 治理更新`;
+    const headingAt = children.findIndex((id) => {
+      const block = blockById.get(id);
+      return block?.block_type === 5 && this.readBlockText(block).trim() === expected;
+    });
+    if (headingAt < 0) return null;
+    for (let i = headingAt + 1; i < children.length; i += 1) {
+      const type = blockById.get(children[i])?.block_type;
+      if (type === 4 || type === 5) return i;
+    }
+    return document.insertionIndex;
+  }
+
   private buildUpdateBlocks(
     update: BadcaseGovernanceDocumentUpdate,
     eventId: string,
+    existingDaySection: boolean,
   ): Array<Record<string, unknown>> {
     const occurredAt = update.occurredAt || new Date();
-    const dateParts = new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(occurredAt);
-    const part = (type: Intl.DateTimeFormatPartTypes) =>
-      dateParts.find((item) => item.type === type)?.value || '';
-    const dateTitle = `${part('month')} 月 ${part('day')} 日 ${part('hour')}:${part('minute')}`;
     const displayedItems = update.items.slice(0, 40);
-    const blocks: Array<Record<string, unknown>> = [
-      this.heading3Block(`${dateTitle}：BadCase 治理更新`),
-      this.textBlock('本次更新：'),
-      ...displayedItems.map((item) => this.bulletBlock(this.formatItem(item))),
-    ];
+    // 同日多次运行只保留一个小节：已存在当日小节时只追加条目，不再新建标题。
+    // 旧实现按「月 日 时:分」建标题，2026-08-06 单日跑了 11 次巡检就堆出 20 个小节，
+    // 同一条 case 在不同小节里状态互相矛盾，运营从上往下读看不出最终状态。
+    const blocks: Array<Record<string, unknown>> = existingDaySection
+      ? [...displayedItems.map((item) => this.bulletBlock(this.formatItem(item)))]
+      : [
+          this.heading3Block(`${this.buildDayTitle(occurredAt)}：BadCase 治理更新`),
+          this.textBlock('本次更新：'),
+          ...displayedItems.map((item) => this.bulletBlock(this.formatItem(item))),
+        ];
     if (update.items.length > displayedItems.length) {
       blocks.push(
         this.bulletBlock(

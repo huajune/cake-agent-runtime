@@ -169,3 +169,85 @@ describe('BadcaseGovernanceDocumentService - 统计数字刷新', () => {
     expect(result.summary?.updatedBlocks).toBe(6);
   });
 });
+
+/**
+ * 抬头数字藏在高亮块（callout）里（2026-08-06 实测缺陷）。
+ *
+ * 旧实现只扫根级 children，而文档抬头的「当前剩余 N 个未解决问题」与「更新时间：…」
+ * 写在 callout 内部——callout 自身没有文本、文本挂在它的 children 上，正则永远匹配
+ * 不到，抬头数字长期停在首次写入的值（正文已刷成 39，抬头仍是 65）。
+ */
+describe('BadcaseGovernanceDocumentService - 抬头在高亮块内也要刷新', () => {
+  const documentId = 'docx-1';
+  const node = (id: string, content: string, blockType = 2, extra = {}) => ({
+    block_id: id,
+    block_type: blockType,
+    [blockType === 12 ? 'bullet' : blockType === 4 ? 'heading2' : 'text']: {
+      elements: [{ text_run: { content } }],
+    },
+    parent_id: documentId,
+    ...extra,
+  });
+
+  const blocks = [
+    {
+      block_id: documentId,
+      block_type: 1,
+      children: ['callout', 'h1', 'h3', 'h4', 'h5', 'five-intro'],
+    },
+    // callout 自身无文本，抬头两行是它的 children
+    { block_id: 'callout', block_type: 19, children: ['intro', 'updated-at'] },
+    node('intro', '目前 BadCase 池累计约 686 个运营反馈，当前剩余 65 个未解决问题。'),
+    node('updated-at', '更新时间：2026 年 7 月 31 日'),
+    node('h1', '一、整体进展', 4),
+    node('h3', '三、主要治理批次', 4),
+    node('h4', '四、近两周状态清账说明', 4),
+    node('h5', '五、当前剩余问题', 4),
+    node('five-intro', '目前剩余 65 个未解决问题，状态为：'),
+  ];
+
+  const config = {
+    get: jest.fn((key: string, fallback?: string) => {
+      if (key === 'FEISHU_BADCASE_GOVERNANCE_WIKI_TOKEN') return 'wiki-1';
+      if (key === 'BADCASE_GOVERNANCE_DOC_SYNC_ENABLED') return 'true';
+      return fallback;
+    }),
+  };
+  const feishuApi = { get: jest.fn(), post: jest.fn(), patch: jest.fn() };
+  const service = new BadcaseGovernanceDocumentService(config as never, feishuApi as never);
+
+  const patchedText = (blockId: string): string | undefined => {
+    const call = feishuApi.patch.mock.calls.find(([url]) => (url as string).endsWith(blockId));
+    return call?.[1]?.update_text_elements?.elements?.[0]?.text_run?.content;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    feishuApi.get.mockImplementation((url: string) => {
+      if (url.includes('get_node')) {
+        return Promise.resolve({
+          data: {
+            code: 0,
+            data: { node: { obj_type: 'docx', obj_token: documentId, title: 'T' } },
+          },
+        });
+      }
+      return Promise.resolve({ data: { code: 0, data: { items: blocks } } });
+    });
+    feishuApi.patch.mockResolvedValue({ data: { code: 0, msg: 'success' } });
+  });
+
+  it('刷新时能改到 callout 内部的剩余数与更新时间', async () => {
+    const result = await service.refreshSummary({
+      occurredAt: new Date('2026-08-06T02:00:00.000Z'),
+      items: [],
+      summaryCounts: { 待分析: 27, 处理中: 6, 待验证: 6 },
+    });
+
+    expect(result.attempted).toBe(true);
+    expect(result.total).toBe(39);
+    expect(patchedText('intro')).toContain('当前剩余 39 个未解决问题');
+    expect(patchedText('updated-at')).toBe('更新时间：2026 年 8 月 6 日');
+    expect(patchedText('five-intro')).toContain('目前剩余 39 个未解决问题');
+  });
+});
