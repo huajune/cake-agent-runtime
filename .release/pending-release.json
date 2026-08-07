@@ -887,6 +887,46 @@
         "v10.41.0 飞书通知内容无发送预览",
         "`git diff --check`"
       ]
+    },
+    {
+      "number": "970",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/970",
+      "title": "记录 v10.41.0 发布豁免与数据库状态",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "记录 v10.41.0 发布豁免与数据库状态",
+        "记录发布负责人对真实 Agent 回放、Sponge 联调、Dashboard/UI 与生产 API 对账的风险接受，明确“未执行不等于验证通过”",
+        "将 P0 收敛为已有自动化、CI 和 release 镜像可证明的范围，保留凭据处置为唯一发布阻断",
+        "记录 release code head Linux/amd64 镜像构建证据",
+        "记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移"
+      ],
+      "summary": [
+        "记录 v10.41.0 发布豁免与数据库状态",
+        "记录发布负责人对真实 Agent 回放、Sponge 联调、Dashboard/UI 与生产 API 对账的风险接受，明确“未执行不等于验证通过”",
+        "将 P0 收敛为已有自动化、CI 和 release 镜像可证明的范围，保留凭据处置为唯一发布阻断",
+        "记录 release code head Linux/amd64 镜像构建证据",
+        "记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "记录发布负责人对真实 Agent 回放、Sponge 联调、Dashboard/UI 与生产 API 对账的风险接受，明确“未执行不等于验证通过”",
+        "将 P0 收敛为已有自动化、CI 和 release 镜像可证明的范围，保留凭据处置为唯一发布阻断",
+        "记录 release code head Linux/amd64 镜像构建证据",
+        "记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移",
+        "记录 v10.41.0 发布豁免与数据库状态"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "推送前完整 `ci:check`：417 suites、7055 tests 通过",
+        "`git diff --check`",
+        "`db:status:test`：132/132",
+        "`db:status:prod`：132/132",
+        "Release ledger check 当前按预期只剩 `P0-02=待轮换`"
+      ]
     }
   ],
   "lastRelease": {
