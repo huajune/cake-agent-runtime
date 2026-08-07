@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 26
+**累计 PR**: 27
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -80,6 +80,7 @@
 - PR #961 **`discriminatory_screening_leak` 补漏** — 属性与「要求/限制」之间允许白名单连接成分（`户籍这块有要求`）。连接词用白名单而非 `.{0,4}`，保证「户籍没有要求」这类合规安抚仍放行。同族的「常驻地」改名变体当初打补丁时就带了 `(?:有)?`，基础形态一直没回补。
 - PR #961 **新增 `sensitive_origin_probe`（P0 / BLOCK）** — 姊妹规则只管「说出去」，这条管「问回来」。收资表单字段与开放式问常驻/意向城市不受影响。
 - PR #961 **语义评审新增第 5 类 `sensitive_screening_disclosure_or_probe`（P0）** — 并让该轴自身可独立触发审查（原本零证据的纯话术回合根本不进审查）。
+- PR #960 手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -147,6 +148,7 @@
 - PR #955 补 prettier 换行（pre-commit 钩子改动未随提交入库）
 - PR #943 治理文档改按日聚合，并修好高亮块内抬头数字不刷新
 - PR #961 Agent 不再主动打听候选人籍贯——户籍门槛只准内部判断
+- PR #960 手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏
 
 ### 配置变更
 - 无
@@ -194,6 +196,9 @@
 - PR #958 `lint:check`（CI 范围 `src/**/*.ts`）✅
 - PR #958 `typecheck` ✅
 - PR #958 全量 **6965 passed / 6 skipped，零失败** ✅
+- PR #960 `tests/tools/shared/precheck-core.spec.ts`：新增 4 条（解锁 / 否定应答仍拒 / 无疑问标记仍拒 / 肯定应答归属远处问句仍拒）
+- PR #960 `tests/resolution/visual/visual-fact.spec.ts`：新增 4 条（18 位 + 15 位 + 尾号 X 脱敏 / 手机号与短数字串不动 / 19 位不动 / finalize 与 parseStored 两侧）
+- PR #960 `npx jest tests/resolution tests/tools tests/channels` → **2314 passed**，`tsc --noEmit` 通过，改动文件 eslint `--max-warnings=0` 通过
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
