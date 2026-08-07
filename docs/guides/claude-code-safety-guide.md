@@ -2,13 +2,17 @@
 
 > 如何安全地使用Claude Code进行开发，避免数据丢失
 
-**最后更新**：2025-11-05 16:30:00
+**最后更新**：2026-08-07
 
 ---
 
 ## 🛡️ 已启用的安全防护
 
 本项目已配置完整的Claude Code安全防护机制，包括：
+
+共享安全基线位于 `.claude/settings.json`。个人权限和本机配置应写入已被
+Git 忽略的 `.claude/settings.local.json`，禁止在命令白名单中写入 Token、
+密码或其他凭据。
 
 ### 1. 危险命令黑名单
 
@@ -132,7 +136,7 @@ git checkout backup-xxx
 
 **强烈不推荐！只在绝对必要时使用！**
 
-编辑 `.claude/settings.local.json`：
+编辑仅供本机使用、且已被 Git 忽略的 `.claude/settings.local.json`：
 
 ```json
 {
@@ -212,7 +216,7 @@ git checkout -b feature/new-feature
 ## 🔗 相关文档
 
 - **安全防护脚本（hooks）**：[../.claude/hooks/README.md](../../.claude/hooks/README.md)
-- **Claude Code配置**：[../.claude/settings.local.json](../../.claude/settings.local.json)
+- **Claude Code共享配置**：[../../.claude/settings.json](../../.claude/settings.json)
 - **开发工作流**：[development-guide.md](development-guide.md)
 
 ---

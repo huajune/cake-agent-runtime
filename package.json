@@ -21,7 +21,7 @@
     "start:dev": "pnpm run build:web && nest start --watch",
     "start:prod": "node dist/main",
     "web:dev": "cd web && pnpm run dev",
-    "install:all": "pnpm install --ignore-scripts && cd web && pnpm install",
+    "install:all": "pnpm install --ignore-scripts",
     "test": "jest",
     "test:badcase:p1": "jest tests/badcase/p1-curated-badcase-regression.spec.ts --watchman=false",
     "eval:summer-worker-agent": "ts-node -r tsconfig-paths/register --project scripts/tsconfig.json scripts/eval-summer-worker-agent.ts",
@@ -111,11 +111,7 @@
       "tmp": "0.2.7",
       "validator": "13.15.35",
       "ws": "8.21.0"
-    },
-    "onlyBuiltDependencies": [
-      "nodejieba",
-      "supabase"
-    ]
+    }
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",

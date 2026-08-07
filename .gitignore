@@ -78,4 +78,5 @@ supabase/.temp/
 supabase/.env
 .claude/worktrees/
 .claude/*.lock
+/.claude/settings.local.json
 .scratch/
