@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.43.0] - 2026-08-07
 
-**预计版本**: `v10.43.0`
-**最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #988 新增临时只读工作流，定位生产机 npm 出站故障
@@ -57,7 +53,6 @@
 - PR #990 `bash -n scripts/deploy-remote.sh` 通过
 - PR #992 `node scripts/check-release-ledger.js` → ✅ 通过
 - PR #992 `prettier --write` 已格式化
-<!-- release:pending:end -->
 
 ## [10.42.0] - 2026-08-07
 
