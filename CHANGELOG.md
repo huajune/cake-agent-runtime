@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.42.0] - 2026-08-07
 
-**预计版本**: `v10.42.0`
-**最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #980 构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞
@@ -41,7 +37,6 @@
 - PR #980 `bash -n scripts/deploy-remote.sh` 语法通过
 - PR #980 **BuildKit entitlement 已实测排除**：本机 `docker build --network=host`（docker driver + 同一 `# syntax=docker/dockerfile:1.7` frontend）构建成功，不存在 `network.host is not allowed`
 - PR #980 无运行时代码变更，不涉及 DB 迁移与环境变量
-<!-- release:pending:end -->
 
 ## [10.41.0] - 2026-08-07
 
