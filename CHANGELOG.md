@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 34
+**累计 PR**: 35
 
 ### 更新摘要
 - PR #908 三张词表收拢回 resolution/visual 单一居所
@@ -103,6 +103,10 @@
 - PR #970 将 P0 收敛为已有自动化、CI 和 release 镜像可证明的范围，保留凭据处置为唯一发布阻断
 - PR #970 记录 release code head Linux/amd64 镜像构建证据
 - PR #970 记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移
+- PR #972 收紧聊天消息匿名列权限
+- PR #972 撤销 anon/authenticated 对 chat_messages 的全列 SELECT
+- PR #972 仅保留 id、chat_id 两个 Realtime 所需标识列
+- PR #972 保持后端 service_role 数据访问不变
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -147,6 +151,9 @@
 - PR #968 从 v10.41.0 待发布元数据中移除已属于 v10.40 的 #903/#906，并补齐遗漏的 #911/#912/#913/#914/#931
 - PR #968 将候选人/运营可见的发布摘要收敛为 10 条本版本真实业务变化
 - PR #968 修正显式空 `businessUpdates` 时错误回退到技术变更列表的问题，并补充回归测试
+- PR #972 撤销 anon/authenticated 对 chat_messages 的全列 SELECT
+- PR #972 仅保留 id、chat_id 两个 Realtime 所需标识列
+- PR #972 保持后端 service_role 数据访问不变
 
 ### 优化调整
 - PR #911 记忆与 Redis schema 族词表收拢回单一居所（期 0）
@@ -201,6 +208,7 @@
 - PR #970 记录 release code head Linux/amd64 镜像构建证据
 - PR #970 记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移
 - PR #970 记录 v10.41.0 发布豁免与数据库状态
+- PR #972 收紧聊天消息匿名列权限
 
 ### 配置变更
 - PR #966 `strictDepBuilds: true`
@@ -277,6 +285,12 @@
 - PR #970 `db:status:test`：132/132
 - PR #970 `db:status:prod`：132/132
 - PR #970 Release ledger check 当前按预期只剩 `P0-02=待轮换`
+- PR #972 测试库迁移已应用，local/remote 对齐到 20260807130000
+- PR #972 生产库迁移已应用，local/remote 对齐到 20260807130000
+- PR #972 测试/生产：匿名最小列查询 200，敏感列查询 401
+- PR #972 生产：service_role 敏感列查询 200
+- PR #972 测试/生产 Realtime 均成功 SUBSCRIBED
+- PR #972 pnpm run ci:check 通过：417 suites passed、7055 tests passed、1 suite/6 tests skipped
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05

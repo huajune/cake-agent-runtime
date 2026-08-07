@@ -927,6 +927,44 @@
         "`db:status:prod`：132/132",
         "Release ledger check 当前按预期只剩 `P0-02=待轮换`"
       ]
+    },
+    {
+      "number": "972",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/972",
+      "title": "收紧聊天消息匿名列权限",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "撤销 anon/authenticated 对 chat_messages 的全列 SELECT",
+        "仅保留 id、chat_id 两个 Realtime 所需标识列",
+        "保持后端 service_role 数据访问不变"
+      ],
+      "summary": [
+        "收紧聊天消息匿名列权限",
+        "撤销 anon/authenticated 对 chat_messages 的全列 SELECT",
+        "仅保留 id、chat_id 两个 Realtime 所需标识列",
+        "保持后端 service_role 数据访问不变"
+      ],
+      "features": [],
+      "fixes": [
+        "撤销 anon/authenticated 对 chat_messages 的全列 SELECT",
+        "仅保留 id、chat_id 两个 Realtime 所需标识列",
+        "保持后端 service_role 数据访问不变"
+      ],
+      "optimizations": [],
+      "ops": [
+        "收紧聊天消息匿名列权限"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "测试库迁移已应用，local/remote 对齐到 20260807130000",
+        "生产库迁移已应用，local/remote 对齐到 20260807130000",
+        "测试/生产：匿名最小列查询 200，敏感列查询 401",
+        "生产：service_role 敏感列查询 200",
+        "测试/生产 Realtime 均成功 SUBSCRIBED",
+        "pnpm run ci:check 通过：417 suites passed、7055 tests passed、1 suite/6 tests skipped"
+      ]
     }
   ],
   "lastRelease": {
