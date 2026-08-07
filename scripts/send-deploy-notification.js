@@ -202,9 +202,9 @@ function readStructuredBusinessUpdates(releaseTag = getReleaseTag()) {
     const entryTitle = formatReleaseText(entry.title, { includePrReference: false });
     if (entryTitle && isReleaseProcessUpdate(entryTitle)) continue;
 
-    const businessUpdates = Array.isArray(entry.businessUpdates) ? entry.businessUpdates : [];
-    const fallbackUpdates = businessUpdates.length
-      ? businessUpdates
+    const hasStructuredBusinessUpdates = Array.isArray(entry.businessUpdates);
+    const fallbackUpdates = hasStructuredBusinessUpdates
+      ? entry.businessUpdates
       : [...(entry.features || []), ...(entry.fixes || [])];
     for (const item of fallbackUpdates) {
       const text = formatReleaseText(item, { includePrReference: false });

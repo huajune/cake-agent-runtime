@@ -210,6 +210,32 @@ fs.rmSync(metadataFile, { force: true });
     expect(markdown).not.toContain('不应该走到这里');
   });
 
+  it('treats an explicit empty businessUpdates list as no candidate-facing change', () => {
+    const markdown = runNode(`
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const metadataFile = path.join(os.tmpdir(), \`release-metadata-empty-business-\${process.pid}.json\`);
+fs.writeFileSync(metadataFile, JSON.stringify({
+  nextVersion: '10.41.0',
+  entries: [{
+    title: '只影响工程流程的改动',
+    businessUpdates: [],
+    features: ['不应回退展示的技术 feature'],
+    fixes: ['不应回退展示的技术 fix']
+  }]
+}));
+process.env.RELEASE_METADATA_FILE = metadataFile;
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v10.41.0', deployResult: 'success' }));
+fs.rmSync(metadataFile, { force: true });
+`);
+
+    expect(markdown).toContain('- 本次无候选人/运营可感知业务改动。');
+    expect(markdown).not.toContain('不应回退展示的技术 feature');
+    expect(markdown).not.toContain('不应回退展示的技术 fix');
+  });
+
   it('filters release-process maintenance from candidate-facing business updates', () => {
     const markdown = runNode(`
 const fs = require('fs');

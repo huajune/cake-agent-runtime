@@ -5,62 +5,12 @@
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "903",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/903",
-      "title": "v10.40.0 发布结果补记",
-      "author": "huajune",
-      "mergedAt": "2026-08-05",
-      "businessUpdates": [
-        "v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）",
-        "v10.40.0 发布结果补记"
-      ],
-      "summary": [
-        "v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）",
-        "v10.40.0 发布结果补记"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "906",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/906",
-      "title": "v10.40.0 底账补记 P0 同族场景生产自然复现证据",
-      "author": "huajune",
-      "mergedAt": "2026-08-05",
-      "businessUpdates": [
-        "补记 P0 同族场景生产自然复现验证证据",
-        "v10.40.0 底账补记 P0 同族场景生产自然复现证据"
-      ],
-      "summary": [
-        "补记 P0 同族场景生产自然复现验证证据",
-        "v10.40.0 底账补记 P0 同族场景生产自然复现证据"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "补记 P0 同族场景生产自然复现验证证据"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
       "number": "908",
       "url": "https://github.com/huajune/cake-agent-runtime/pull/908",
       "title": "三张词表收拢回 resolution/visual 单一居所",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "三张词表收拢回 resolution/visual 单一居所"
-      ],
+      "businessUpdates": [],
       "summary": [
         "三张词表收拢回 resolution/visual 单一居所"
       ],
@@ -80,9 +30,7 @@
       "title": "收资字段名与裁决观测词表收拢（期 2）",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "收资字段名与裁决观测词表收拢（期 2）"
-      ],
+      "businessUpdates": [],
       "summary": [
         "收资字段名与裁决观测词表收拢（期 2）"
       ],
@@ -106,9 +54,7 @@
       "title": "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
-      ],
+      "businessUpdates": [],
       "summary": [
         "新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）"
       ],
@@ -131,9 +77,7 @@
       "title": "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
-      ],
+      "businessUpdates": [],
       "summary": [
         "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）"
       ],
@@ -148,14 +92,125 @@
       "verification": []
     },
     {
+      "number": "911",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/911",
+      "title": "记忆与 Redis schema 族词表收拢回单一居所（期 0）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [],
+      "summary": [
+        "记忆与 Redis schema 族词表收拢回单一居所（期 0）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "记忆与 Redis schema 族词表收拢回单一居所（期 0）"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "完整 CI 通过：410 suites / 6826 tests，schema 取值与顺序保持一致"
+      ]
+    },
+    {
+      "number": "914",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/914",
+      "title": "守卫裁决与工具契约族词表收拢 + PRIORITY 改穷尽映射（期 1）",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [],
+      "summary": [
+        "守卫裁决与工具契约族词表收拢 + PRIORITY 改穷尽映射（期 1）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "守卫裁决与工具契约族词表收拢 + PRIORITY 改穷尽映射（期 1）"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "完整 CI 通过：410 suites / 6841 tests，守卫域 1001 tests"
+      ]
+    },
+    {
+      "number": "913",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/913",
+      "title": "booking 海绵拒绝透传 apiCode/apiMessage 供观测落库",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [],
+      "summary": [
+        "booking 海绵拒绝透传 apiCode/apiMessage 供观测落库"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "booking 海绵拒绝透传 apiCode/apiMessage 供观测落库"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "定向正反向回归及全量 6817 tests 通过"
+      ]
+    },
+    {
+      "number": "912",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/912",
+      "title": "泄漏检测补齐工具调用 XML 标签，修复裸标签投递",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [
+        "修复工具调用 XML 裸标签被直接发送给候选人的问题。"
+      ],
+      "summary": [
+        "泄漏检测补齐工具调用 XML 标签，修复裸标签投递"
+      ],
+      "features": [],
+      "fixes": [
+        "泄漏检测补齐工具调用 XML 标签，修复裸标签投递"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "守卫域 983 tests、全量 6823 tests、lint 与 typecheck 通过"
+      ]
+    },
+    {
+      "number": "931",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/931",
+      "title": "memorySetup 支持注入已确认预约工单",
+      "author": "huajune",
+      "mergedAt": "2026-08-06",
+      "businessUpdates": [],
+      "summary": [
+        "memorySetup 支持注入已确认预约工单"
+      ],
+      "features": [
+        "memorySetup 支持注入已确认预约工单"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "test-suite 285 tests、全量 6874 tests、lint 与 typecheck 通过"
+      ]
+    },
+    {
       "number": "924",
       "url": "https://github.com/huajune/cake-agent-runtime/pull/924",
       "title": "批次列表补 cancelled 状态（已取消不再显示成「已创建」）",
       "author": "huajune",
       "mergedAt": "2026-08-06",
       "businessUpdates": [
-        "`BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`",
-        "补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块"
+        "取消状态与爽约口径更一致：已取消批次不再显示为“已创建”，过时预约不再被误取消。"
       ],
       "summary": [
         "WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）",
@@ -183,10 +238,7 @@
       "title": "errorType 提示词写法改为线上真值 + 闸门补检查",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "errorType 提示词写法改为线上真值 + 闸门补检查",
-        "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
-      ],
+      "businessUpdates": [],
       "summary": [
         "errorType 提示词写法改为线上真值 + 闸门补检查",
         "补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态"
@@ -208,9 +260,7 @@
       "title": "全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "修正过时注释，变更叙事统一为现状约束口径"
-      ],
+      "businessUpdates": [],
       "summary": [
         "删除同义反复的 JSDoc 头注释",
         "修正过时注释，变更叙事统一为现状约束口径",
@@ -239,11 +289,7 @@
       "title": "清理实测确认的死代码，收拢消息状态与配置键",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "清理实测确认的死代码，收拢消息状态与配置键",
-        "历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；",
-        "\"处理期间收集新消息\"由 debounce + Redis pending/ack（`message.processor.ts`）承担。"
-      ],
+      "businessUpdates": [],
       "summary": [
         "清理实测确认的死代码，收拢消息状态与配置键",
         "历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；",
@@ -267,9 +313,7 @@
       "title": "爽约不取消的时点前提同步到全部四处口径",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "爽约不取消的时点前提同步到全部四处口径"
-      ],
+      "businessUpdates": [],
       "summary": [
         "爽约不取消的时点前提同步到全部四处口径"
       ],
@@ -293,10 +337,7 @@
       "author": "huajune",
       "mergedAt": "2026-08-06",
       "businessUpdates": [
-        "**判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。",
-        "**不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。",
-        "**等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。",
-        "**解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。"
+        "已建预约必须告知可核对的面试日期，等通知岗位继续保持豁免。"
       ],
       "summary": [
         "booking 已建单必须把面试日期告知候选人（形态 E）",
@@ -330,11 +371,7 @@
       "title": "badcase 策展新增前置状态闸门与品牌输入轨澄清",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
-        "出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）",
-        "badcase 策展新增前置状态闸门与品牌输入轨澄清"
-      ],
+      "businessUpdates": [],
       "summary": [
         "badcase 策展新增前置状态闸门与品牌输入轨澄清",
         "出现在候选人自己打的消息里 → `user_text` 轨，**应采信**",
@@ -359,13 +396,7 @@
       "author": "huajune",
       "mergedAt": "2026-08-06",
       "businessUpdates": [
-        "**薪资细则必须实时重查**：`candidate-consultation.md` 把\"福利追问必须实时重查\"扩为\"福利与**薪资细则**追问必须实时重查\"，覆盖阶梯算法/结算周期/发薪日/社保要求/每日工时；要求照 description 括注原文答，**禁止自行推断算法**，也**禁止因记忆摘要没有就直接转人工**。",
-        "**发薪日归属月份**：`render.util.ts` 月结 + \"N号\" → `15号发薪（次月15号发上月工资，无当月发当月）`。周结、非\"N号\"形态（\"月底\"）、缺 `salaryPeriod` 均不加标注。",
-        "**健康证**：补\"电子版与纸质版同等有效\"、\"默认要求应聘城市本地证\"两条；原\"不报销\"绝对化改为\"默认不报销，岗位福利字段写明报销的除外\"。",
-        "**社保准入**：显式区分 ①公司买不买保险（`welfare.haveInsurance`）②候选人社保状况是否准入门槛（`socialSecurityList`）——此前 ② 有字段却因 ① 没写而被整体转人工。",
-        "**食宿**：welfare 已加载但吃/住未配置 → 判 ❌ 无（原 ❓ 未明确 → 转人工）；banner 增加\"本速览即最终事实，不得为此调 request_handoff\"声明。",
-        "**发薪主体 / 签约主体**：取决于合作模式，而合作模式在海绵两个接口里都没有。一律转人工，**严禁替公司认领**\"工资是独立客发的/和独立客签\"，也禁止沿用会话内旧说法（不同品牌结论不同）。",
-        "**按月计薪岗位**：不得用月薪折算时薪（折算值与结算口径不符，到店必生纠纷）；每日工时按 `workTime` 字段答，字段空才转。"
+        "薪资、健康证、食宿和社保门槛等咨询可按岗位实时信息回答。"
       ],
       "summary": [
         "按运营口径把薪资/健康证/食宿类咨询改为可自答",
@@ -401,10 +432,7 @@
       "title": "收拢 job-list 工具层类型债到领域契约 JobDetail",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "收拢 job-list 工具层类型债到领域契约 JobDetail",
-        "Merge origin/develop into chore/tech-debt-20260805-types"
-      ],
+      "businessUpdates": [],
       "summary": [
         "收拢 job-list 工具层类型债到领域契约 JobDetail",
         "Merge origin/develop into chore/tech-debt-20260805-types"
@@ -426,10 +454,7 @@
       "title": "删除注释清洗排查确认的四组零消费方死代码",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "删除注释清洗排查确认的四组零消费方死代码",
-        "Merge origin/develop into chore/remove-dead-code-20260806"
-      ],
+      "businessUpdates": [],
       "summary": [
         "删除注释清洗排查确认的四组零消费方死代码",
         "Merge origin/develop into chore/remove-dead-code-20260806"
@@ -456,8 +481,7 @@
       "author": "huajune",
       "mergedAt": "2026-08-06",
       "businessUpdates": [
-        "按 cooperationMode 契约实现发薪/签约主体自答",
-        "候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格"
+        "截断引用和图片描述不再被误当作候选人亲自确认的事实。"
       ],
       "summary": [
         "按 cooperationMode 契约实现发薪/签约主体自答",
@@ -484,7 +508,7 @@
       "author": "huajune",
       "mergedAt": "2026-08-06",
       "businessUpdates": [
-        "按 cooperationMode 契约实现发薪/签约主体自答"
+        "根据合作模式准确回答发薪和签约主体；信息缺失时转人工，且不暴露内部术语。"
       ],
       "summary": [
         "按 cooperationMode 契约实现发薪/签约主体自答"
@@ -508,12 +532,7 @@
       "title": "全库注释清洗第二轮——channels/tools/biz/agent/infra 等剩余域过时注释",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "修正 channels/tools/group-task 域过时注释",
-        "修正 agent/monitoring/test-suite/biz 域过时注释",
-        "修正 infra/providers/sponge/observability 等基础域过时注释",
-        "修正 custom-openai provider 的 SDK 版本引用"
-      ],
+      "businessUpdates": [],
       "summary": [
         "修正 channels/tools/group-task 域过时注释",
         "Merge remote-tracking branch 'origin/develop' into chore/stale-commen…",
@@ -547,10 +566,7 @@
       "title": "忽略 logs/ 本地台账，撤出误提交的观测日志",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "忽略 logs/ 本地台账，撤出误提交的观测日志",
-        "撤出误提交的本地观测台账"
-      ],
+      "businessUpdates": [],
       "summary": [
         "忽略 logs/ 本地台账，撤出误提交的观测日志",
         "撤出误提交的本地观测台账"
@@ -572,9 +588,7 @@
       "title": "9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区"
-      ],
+      "businessUpdates": [],
       "summary": [
         "9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区"
       ],
@@ -597,9 +611,7 @@
       "title": "supabase keep-alive cron 锁定上海时区",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "supabase keep-alive cron 锁定上海时区"
-      ],
+      "businessUpdates": [],
       "summary": [
         "supabase keep-alive cron 锁定上海时区"
       ],
@@ -622,10 +634,7 @@
       "title": "被问真名后的裸名直答不再判昵称——真名索取问答识别器",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "被问真名后的裸名直答不再判昵称——真名索取问答识别器",
-        "补 prettier 换行（pre-commit 钩子改动未随提交入库）"
-      ],
+      "businessUpdates": [],
       "summary": [
         "被问真名后的裸名直答不再判昵称——真名索取问答识别器",
         "补 prettier 换行（pre-commit 钩子改动未随提交入库）"
@@ -647,9 +656,7 @@
       "title": "治理文档改按日聚合，并修好高亮块内抬头数字不刷新",
       "author": "huajune",
       "mergedAt": "2026-08-06",
-      "businessUpdates": [
-        "治理文档改按日聚合，并修好高亮块内抬头数字不刷新"
-      ],
+      "businessUpdates": [],
       "summary": [
         "治理文档改按日聚合，并修好高亮块内抬头数字不刷新"
       ],
@@ -679,7 +686,7 @@
       "author": "ArielZhu",
       "mergedAt": "2026-08-06",
       "businessUpdates": [
-        "在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实"
+        "修复在途改约假确认、抽取污染及语义评审缺少视觉事实的问题。"
       ],
       "summary": [
         "在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实"
@@ -705,10 +712,7 @@
       "author": "huajune",
       "mergedAt": "2026-08-07",
       "businessUpdates": [
-        "**新增 `sensitive_origin_probe`（P0 / BLOCK）** — 姊妹规则只管「说出去」，这条管「问回来」。收资表单字段与开放式问常驻/意向城市不受影响。",
-        "**语义评审新增第 5 类 `sensitive_screening_disclosure_or_probe`（P0）** — 并让该轴自身可独立触发审查（原本零证据的纯话术回合根本不进审查）。",
-        "**工具层（源头）** — `render.util.ts` 户籍 banner 删掉采集指令，改为纯禁令 + 明确「不要追问」，并写明门槛的真正执行点是收资 checklist 的「籍贯/户籍」字段与 `booking-guards` 的 `isHouseholdRequirementViolated` 硬闸（表单场景合规，不需要口头打听）。",
-        "**`discriminatory_screening_leak` 补漏** — 属性与「要求/限制」之间允许白名单连接成分（`户籍这块有要求`）。连接词用白名单而非 `.{0,4}`，保证「户籍没有要求」这类合规安抚仍放行。同族的「常驻地」改名变体当初打补丁时就带了 `(?:有)?`，基础形态一直没回补。"
+        "Agent 不再主动询问候选人籍贯，户籍要求仅在内部校验。"
       ],
       "summary": [
         "Agent 不再主动打听候选人籍贯——户籍门槛只准内部判断",
@@ -740,7 +744,7 @@
       "author": "ArielZhu",
       "mergedAt": "2026-08-07",
       "businessUpdates": [
-        "手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏"
+        "姓名与手机号仅按候选人亲自确认采信，图片中的证件号会自动脱敏。"
       ],
       "summary": [
         "手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏"
@@ -766,10 +770,7 @@
       "author": "huajune",
       "mergedAt": "2026-08-07",
       "businessUpdates": [
-        "**geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。",
-        "**读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。",
-        "**存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。",
-        "城市值改为行政区数据认领，堵住假城市冲突与存量脏城市"
+        "城市值统一按行政区数据校验，并自动修复存量脏值。"
       ],
       "summary": [
         "城市值改为行政区数据认领，堵住假城市冲突与存量脏城市",
@@ -807,13 +808,7 @@
       "title": "收紧依赖安装并移除明文凭据",
       "author": "huajune",
       "mergedAt": "2026-08-07",
-      "businessUpdates": [
-        "修复个人 Claude Code 配置被提交到公开仓库、可能携带本机权限与凭据的问题",
-        "修复 `allowBuilds` 使用非布尔占位字符串、未形成有效审查策略的问题",
-        "停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`",
-        "启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装",
-        "收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装"
-      ],
+      "businessUpdates": [],
       "summary": [
         "收紧依赖安装并移除明文凭据",
         "补充 v10.41.0 发版底账",

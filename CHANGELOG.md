@@ -14,17 +14,18 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 29
+**累计 PR**: 32
 
 ### 更新摘要
-- PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
-- PR #903 v10.40.0 发布结果补记
-- PR #906 补记 P0 同族场景生产自然复现验证证据
-- PR #906 v10.40.0 底账补记 P0 同族场景生产自然复现证据
 - PR #908 三张词表收拢回 resolution/visual 单一居所
 - PR #915 收资字段名与裁决观测词表收拢（期 2）
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
 - PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #911 记忆与 Redis schema 族词表收拢回单一居所（期 0）
+- PR #914 守卫裁决与工具契约族词表收拢 + PRIORITY 改穷尽映射（期 1）
+- PR #913 booking 海绵拒绝透传 apiCode/apiMessage 供观测落库
+- PR #912 泄漏检测补齐工具调用 XML 标签，修复裸标签投递
+- PR #931 memorySetup 支持注入已确认预约工单
 - PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
 - PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
 - PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
@@ -95,6 +96,7 @@
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
+- PR #931 memorySetup 支持注入已确认预约工单
 - PR #925 出现在候选人自己打的消息里 → `user_text` 轨，**应采信**
 - PR #925 出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）
 - PR #925 badcase 策展新增前置状态闸门与品牌输入轨澄清
@@ -110,6 +112,7 @@
 - PR #964 **geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。
 
 ### 问题修复
+- PR #912 泄漏检测补齐工具调用 XML 标签，修复裸标签投递
 - PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
 - PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
 - PR #930 修正过时注释，变更叙事统一为现状约束口径
@@ -133,17 +136,18 @@
 - PR #966 收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装
 
 ### 优化调整
+- PR #911 记忆与 Redis schema 族词表收拢回单一居所（期 0）
+- PR #914 守卫裁决与工具契约族词表收拢 + PRIORITY 改穷尽映射（期 1）
 - PR #958 在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实
 - PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
 - PR #966 `install:all` 只执行一次 workspace 根安装，继续显式禁用生命周期脚本
 - PR #966 Docker 安装固定版本 pnpm 时增加 `--ignore-scripts`
 
 ### 运维与流程
-- PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
-- PR #906 补记 P0 同族场景生产自然复现验证证据
 - PR #908 三张词表收拢回 resolution/visual 单一居所
 - PR #915 收资字段名与裁决观测词表收拢（期 2）
 - PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #913 booking 海绵拒绝透传 apiCode/apiMessage 供观测落库
 - PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
 - PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
 - PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
@@ -193,6 +197,11 @@
 - PR #915 新增 spec 逐一断言全部取值与顺序未变
 - PR #916 **jest 409 suites · 6814 tests 全通过**
 - PR #916 **web `tsc --noEmit` 通过**（前端类型改动已验证）
+- PR #911 完整 CI 通过：410 suites / 6826 tests，schema 取值与顺序保持一致
+- PR #914 完整 CI 通过：410 suites / 6841 tests，守卫域 1001 tests
+- PR #913 定向正反向回归及全量 6817 tests 通过
+- PR #912 守卫域 983 tests、全量 6823 tests、lint 与 typecheck 通过
+- PR #931 test-suite 285 tests、全量 6874 tests、lint 与 typecheck 通过
 - PR #930 非注释行变更全量机审：除上述 4 处字符串外**零代码变更**（含行尾注释宿主行逐行核对）
 - PR #930 typecheck / lint:check / geo:validate（8 类全绿）/ vocab:validate（5 项全绿）/ 全量 jest **413 套件 6870 条全部通过**
 - PR #930 多代理排查 + 主会话逐条抽验；一处代理过度删除（visual-fact 并跑对照约束被叙事改写误删）经交叉比对发现并恢复
