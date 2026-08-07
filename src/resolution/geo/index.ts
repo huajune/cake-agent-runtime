@@ -21,6 +21,7 @@ export {
   detectGeoSignalConflict,
   hasKnownCityPrefix,
   isKnownCanonicalAdministrativeAreaName,
+  isRecognizedCityName,
   listUniqueDistrictCityEntries,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,

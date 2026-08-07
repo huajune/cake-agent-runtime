@@ -678,6 +678,43 @@ describe('geocode tool', () => {
       expect(result._cityConflictNotice).toBeUndefined();
     });
 
+    // 2026-08-06 生产观测：当期 14 条冲突提示里 11 条的"会话意向城市"根本不是城市，
+    // 冲突是假的、推给候选人的多余反问是真的。
+    it.each(['hello', 'null', '只晚班', '我是应聘的', '平坊'])(
+      '会话记忆城市是抽取污染残留「%s」→ 不附冲突披露（不推多余反问给候选人）',
+      async (dirtyCity) => {
+        const ctx = makeContext(dirtyCity);
+        const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+        (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+          makeCandidate({ poiName: '静安寺', district: '静安区', township: '' }),
+        ]);
+
+        const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+          address: '静安寺',
+          city: '上海',
+        })) as Record<string, unknown>;
+
+        expect(result._cityConflictNotice).toBeUndefined();
+        // 城市结论本身照常披露，不受影响
+        expect(result._cityConfirmed).toContain('上海市');
+      },
+    );
+
+    it('会话记忆城市是真实城市（海南东方市）→ 冲突披露照常', async () => {
+      const ctx = makeContext('东方');
+      const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '静安寺', district: '静安区', township: '' }),
+      ]);
+
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '静安寺',
+        city: '上海',
+      })) as Record<string, unknown>;
+
+      expect(result._cityConflictNotice).toContain('东方');
+    });
+
     it('description 声明解析成功后禁止再反问城市', () => {
       expect(toolInstance.description).toContain('_cityConfirmed');
       expect(toolInstance.description).toContain('禁止再向候选人反问');
