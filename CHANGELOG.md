@@ -8,6 +8,41 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.43.0`
+**最近更新**: `2026-08-07`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #988 新增临时只读工作流，定位生产机 npm 出站故障
+
+### 新功能
+- PR #988 新增临时只读工作流，定位生产机 npm 出站故障
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #988 YAML 解析通过（`yaml.safe_load`），`environment: production`、`workflow_dispatch` 均正确
+- PR #988 写操作扫描：全文无 `docker run` / `docker network` / `systemctl restart` / `rm`；唯一 `>` 为 `2>/dev/null`
+- PR #988 ssh-action 复用 deploy.yml 同一 commit pin（`0ff4204d59e8e51228ff73bce53f80d53301dee2`）
+<!-- release:pending:end -->
+
 ## [10.42.0] - 2026-08-07
 
 **来源分支**: `develop`
