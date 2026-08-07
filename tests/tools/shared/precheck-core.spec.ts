@@ -128,7 +128,9 @@ describe('precheck-core', () => {
     it('unlocks via 确认问答对（assistant 问"全名对吧" + user 答"是的"）', () => {
       const messages = [
         greeting,
-        asstMsg('门店登记需要用身份证上的本名，"陈佩珊"是你的全名对吧？确认下我这边就直接帮你登记了'),
+        asstMsg(
+          '门店登记需要用身份证上的本名，"陈佩珊"是你的全名对吧？确认下我这边就直接帮你登记了',
+        ),
         userMsg('是的'),
       ];
       expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(true);
@@ -151,11 +153,7 @@ describe('precheck-core', () => {
     });
 
     it('does NOT unlock when the affirmative answers an unrelated question', () => {
-      const messages = [
-        greeting,
-        asstMsg('这个岗位是早班，你时间能排开吗'),
-        userMsg('是的'),
-      ];
+      const messages = [greeting, asstMsg('这个岗位是早班，你时间能排开吗'), userMsg('是的')];
       expect(isNameConfirmedInDialogue('陈佩珊', messages)).toBe(false);
       expect(evaluateBookingNameGate('陈佩珊', messages).decision).toBe('reject_collect');
     });
@@ -179,13 +177,10 @@ describe('precheck-core', () => {
       expect(evaluateBookingNameGate('张杰', messages).decision).toBe('allow');
     });
 
-    it.each(['是本名', '就是本名', '是我真名', '本名'])(
-      'accepts 本名类直答变体: %s',
-      (answer) => {
-        const messages = [greeting, asstMsg('请问"张杰"是你的本名吗？'), userMsg(answer)];
-        expect(isNameConfirmedInDialogue('张杰', messages)).toBe(true);
-      },
-    );
+    it.each(['是本名', '就是本名', '是我真名', '本名'])('accepts 本名类直答变体: %s', (answer) => {
+      const messages = [greeting, asstMsg('请问"张杰"是你的本名吗？'), userMsg(answer)];
+      expect(isNameConfirmedInDialogue('张杰', messages)).toBe(true);
+    });
 
     it('unlocks via 应索要后的无键名表单回复（姓名+手机号连发）', () => {
       const messages = [
@@ -227,9 +222,9 @@ describe('precheck-core', () => {
 
   describe('evaluateBookingPhoneGate（badcase 6e9ar9gd 簇：编造手机号提交预约）', () => {
     it('allows a phone that appears verbatim in user text', () => {
-      expect(
-        evaluateBookingPhoneGate('15921708092', [userMsg('手机号15921708092')]).decision,
-      ).toBe('allow');
+      expect(evaluateBookingPhoneGate('15921708092', [userMsg('手机号15921708092')]).decision).toBe(
+        'allow',
+      );
     });
 
     it('allows a phone written with separators (155 2189 9062)', () => {
@@ -256,6 +251,53 @@ describe('precheck-core', () => {
 
     it('passes through empty phone (交给必填校验)', () => {
       expect(evaluateBookingPhoneGate('', [userMsg('你好')]).decision).toBe('allow');
+    });
+  });
+
+  describe('evaluateBookingPhoneGate 死锁解锁（badcase gu2kra6p，chat 6a72978f）', () => {
+    const recite = asstMsg('我记得你之前登记过姓名是蔡瑾琳，电话是17870159396，现在还是吗？');
+
+    it('allows a profile phone the candidate affirmed after the agent recited it', () => {
+      // 号码只出现在引用块里，isPhoneAuthoritative 剥引用后看不到——正是原死锁形态
+      expect(
+        evaluateBookingPhoneGate('17870159396', [
+          recite,
+          userMsg(
+            '[引用 辛瑜琦：我记得你之前登记过姓名是蔡瑾琳，电话是17870159396，现在还是吗]\n是的',
+          ),
+        ]).decision,
+      ).toBe('allow');
+    });
+
+    it('still rejects when the candidate denies the recited phone', () => {
+      expect(
+        evaluateBookingPhoneGate('17870159396', [
+          recite,
+          userMsg(
+            '[引用 辛瑜琦：我记得你之前登记过姓名是蔡瑾琳，电话是17870159396，现在还是吗]\n这里不是',
+          ),
+        ]).decision,
+      ).toBe('reject_collect');
+    });
+
+    it('still rejects a recited phone that was never put as a question', () => {
+      expect(
+        evaluateBookingPhoneGate('17870159396', [
+          asstMsg('好的，那就用 17870159396 这个电话帮你提交'),
+          userMsg('是的'),
+        ]).decision,
+      ).toBe('reject_collect');
+    });
+
+    it('does not credit an affirmative that answers a later, unrelated turn', () => {
+      expect(
+        evaluateBookingPhoneGate('17870159396', [
+          recite,
+          userMsg('先看看别的岗位'),
+          asstMsg('这家可以吗？'),
+          userMsg('是的'),
+        ]).decision,
+      ).toBe('reject_collect');
     });
   });
 });

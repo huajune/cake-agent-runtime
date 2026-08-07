@@ -18,6 +18,7 @@ export type {
 } from './visual-fact.types';
 export {
   finalizeVisualFactSheet,
+  sanitizeVisualDescription,
   parseStoredVisualFactSheet,
   fieldValues,
   isVisualDescriptionText,

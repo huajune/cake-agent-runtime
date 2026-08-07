@@ -33,13 +33,41 @@ const CANDIDATE_KEYS_ON_PUBLISHER_KINDS = new Set(['candidate_address']);
 const ID_NUMBER_VALUE_RE = /^\d{15}(\d{2}[0-9Xx])?$/;
 
 /**
+ * 自由描述里的证件号（裁决 B3' 的自由文本一侧）。
+ *
+ * 生产实证（08-07 扫描日报红标 2，chat 6a1e42e6 10:18）：候选人发来一张员工名单表格
+ * 截图，白名单**正确地**让 `fields` 为空，但同一 JSONB 的 `rawDescription` 原样留下了
+ * 整行明文——真实姓名 + 11 位手机号 + 18 位身份证号，并随 `chat_messages.content`
+ * 与 `visual_facts` 长期留存。白名单只约束 `fields`，管不到模型自由文本这一侧。
+ *
+ * 只脱敏证件号：招聘链路全程没有身份证号的消费点（`ID_NUMBER_VALUE_RE` 已经把它挡在
+ * `fields` 之外），删掉零业务损失。**手机号不在此列**——它是收资/预约要真消费的字段
+ * （简历截图里的号码会流向报名），一刀切会打断链路，策略另议。
+ *
+ * 形态：独立的 15 位或 18 位（末位可 X）数字串。19 位以上（银行卡等）不匹配，宁可漏。
+ */
+const ID_NUMBER_IN_TEXT_RE = /(?<![\dXx])(?:\d{17}[\dXx]|\d{15})(?![\dXx])/gu;
+
+const ID_NUMBER_MASK = '[身份证号已脱敏]';
+
+/**
+ * 描述文本脱敏：落库前的唯一收口点。生产者拿它处理 `chat_messages.content`，
+ * `finalizeVisualFactSheet` 处理 sheet 的 `rawDescription`；读取路径
+ * （`parseStoredVisualFactSheet`）同样过一遍，存量行读出来即已脱敏。
+ */
+export function sanitizeVisualDescription(description: string): string {
+  return description.replace(ID_NUMBER_IN_TEXT_RE, ID_NUMBER_MASK);
+}
+
+/**
  * finalize：解析 + 校验 + 补归属默认值。任何失败一律降级
  * `{kind:'other', fields:[], degraded:true}`——降级不是失败，是回到今天的纯文本行为。
  */
 export function finalizeVisualFactSheet(
   raw: unknown,
-  rawDescription: string,
+  rawDescriptionInput: string,
 ): FinalizedVisualFactSheet {
+  const rawDescription = sanitizeVisualDescription(rawDescriptionInput ?? '');
   const degraded: FinalizedVisualFactSheet = {
     kind: 'other',
     fields: [],
