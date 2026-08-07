@@ -1124,6 +1124,23 @@ describe('SessionService', () => {
 
       expect(savedPreferences().city).toEqual(expect.objectContaining({ value: '上海' }));
     });
+
+    // 强清必须看本轮末态：丢弃把 city 清空 → 确认问答裁决的"已有高置信城市则让位"守卫
+    // 随之放行 → 城市被裁定写回；此时若还按丢弃那一刻的旗标强清，会把刚裁定的城市抹掉。
+    it('同轮抽取吐脏城市 + 确认问答裁定出真实城市 → 裁定结果不被强清抹掉', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(llmOutputWithCity('hello')));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'assistant', content: '你是在沈阳市对吧？' },
+        { role: 'user', content: '对' },
+        { role: 'user', content: '我25岁' },
+      ]);
+
+      expect(savedPreferences().city).toEqual(
+        expect.objectContaining({ value: '沈阳', source: 'candidate' }),
+      );
+    });
   });
 
   describe('session segment trimming', () => {

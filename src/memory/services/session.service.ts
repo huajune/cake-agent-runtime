@@ -1263,7 +1263,10 @@ export class SessionService {
     // 存量脏值继续留在档案里，下一轮又被 [已确认事实] 喂回抽取，污染永不出清。
     const forceNullPreferenceFields: (keyof EntityExtractionResult['preferences'])[] = [];
     if (laborFormExplicitlyCleared) forceNullPreferenceFields.push('labor_form');
-    if (droppedCity) forceNullPreferenceFields.push('city');
+    // 必须看本轮末态而非丢弃那一刻：上方确认问答裁决可能在丢弃之后又写回一个合法城市
+    // （丢弃把 city 清空，恰恰让那条裁决的"本轮已有高置信城市则让位"守卫放行）。
+    // 只按 droppedCity 强清会把刚裁定的城市在合并后抹掉。
+    if (droppedCity && !newFacts.preferences.city) forceNullPreferenceFields.push('city');
     // 品牌写入收口（§9.2 三处之一）：LLM 抽出的品牌不再直接落 preferences.brands——
     // 经品牌库验证 + 极性判定转成 BrandResolution 后，与其它来源一起走 brand_state reducer。
     const factsForSave: SessionFacts = {
