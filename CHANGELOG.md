@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 27
+**累计 PR**: 28
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -81,6 +81,12 @@
 - PR #961 **新增 `sensitive_origin_probe`（P0 / BLOCK）** — 姊妹规则只管「说出去」，这条管「问回来」。收资表单字段与开放式问常驻/意向城市不受影响。
 - PR #961 **语义评审新增第 5 类 `sensitive_screening_disclosure_or_probe`（P0）** — 并让该轴自身可独立触发审查（原本零证据的纯话术回合根本不进审查）。
 - PR #960 手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏
+- PR #964 城市值改为行政区数据认领，堵住假城市冲突与存量脏城市
+- PR #964 脏城市强清改看本轮末态，避免抹掉同轮确认裁定的城市
+- PR #964 **geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。
+- PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
+- PR #964 **读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。
+- PR #964 **存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -96,6 +102,7 @@
 - PR #933 **按月计薪岗位**：不得用月薪折算时薪（折算值与结算口径不符，到店必生纠纷）；每日工时按 `workTime` 字段答，字段空才转。
 - PR #961 **新增 `sensitive_origin_probe`（P0 / BLOCK）** — 姊妹规则只管「说出去」，这条管「问回来」。收资表单字段与开放式问常驻/意向城市不受影响。
 - PR #961 **语义评审新增第 5 类 `sensitive_screening_disclosure_or_probe`（P0）** — 并让该轴自身可独立触发审查（原本零证据的纯话术回合根本不进审查）。
+- PR #964 **geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。
 
 ### 问题修复
 - PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
@@ -111,9 +118,13 @@
 - PR #947 修正 custom-openai provider 的 SDK 版本引用
 - PR #961 **工具层（源头）** — `render.util.ts` 户籍 banner 删掉采集指令，改为纯禁令 + 明确「不要追问」，并写明门槛的真正执行点是收资 checklist 的「籍贯/户籍」字段与 `booking-guards` 的 `isHouseholdRequirementViolated` 硬闸（表单场景合规，不需要口头打听）。
 - PR #961 **`discriminatory_screening_leak` 补漏** — 属性与「要求/限制」之间允许白名单连接成分（`户籍这块有要求`）。连接词用白名单而非 `.{0,4}`，保证「户籍没有要求」这类合规安抚仍放行。同族的「常驻地」改名变体当初打补丁时就带了 `(?:有)?`，基础形态一直没回补。
+- PR #964 **读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。
+- PR #964 **存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。
+- PR #964 城市值改为行政区数据认领，堵住假城市冲突与存量脏城市
 
 ### 优化调整
 - PR #958 在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实
+- PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
 
 ### 运维与流程
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -149,6 +160,7 @@
 - PR #943 治理文档改按日聚合，并修好高亮块内抬头数字不刷新
 - PR #961 Agent 不再主动打听候选人籍贯——户籍门槛只准内部判断
 - PR #960 手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏
+- PR #964 脏城市强清改看本轮末态，避免抹掉同轮确认裁定的城市
 
 ### 配置变更
 - 无
@@ -199,6 +211,9 @@
 - PR #960 `tests/tools/shared/precheck-core.spec.ts`：新增 4 条（解锁 / 否定应答仍拒 / 无疑问标记仍拒 / 肯定应答归属远处问句仍拒）
 - PR #960 `tests/resolution/visual/visual-fact.spec.ts`：新增 4 条（18 位 + 15 位 + 尾号 X 脱敏 / 手机号与短数字串不动 / 19 位不动 / finalize 与 parseStored 两侧）
 - PR #960 `npx jest tests/resolution tests/tools tests/channels` → **2314 passed**，`tsc --noEmit` 通过，改动文件 eslint `--max-warnings=0` 通过
+- PR #964 `lint:check` / `format:check` / `typecheck` / `geo:validate`（8 类全绿）/ `vocab:validate`（5 项全绿）均通过；`build:ci` 因 worktree 无 web 依赖跳过，TS 侧由 typecheck 覆盖
+- PR #964 **全量 416 suites / 7014 tests 全过**，0 失败
+- PR #964 新增回归覆盖四个落点，其中两条是 `extractAndSave` 端到端：脏城市被清出 Redis、脏城市不再冻结回填（`hello` + `district=['浦东']` → 最终存 `上海`）
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
