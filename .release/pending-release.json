@@ -758,6 +758,48 @@
         "`tests/resolution/visual/visual-fact.spec.ts`：新增 4 条（18 位 + 15 位 + 尾号 X 脱敏 / 手机号与短数字串不动 / 19 位不动 / finalize 与 parseStored 两侧）",
         "`npx jest tests/resolution tests/tools tests/channels` → **2314 passed**，`tsc --noEmit` 通过，改动文件 eslint `--max-warnings=0` 通过"
       ]
+    },
+    {
+      "number": "964",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/964",
+      "title": "城市值改为行政区数据认领，堵住假城市冲突与存量脏城市",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "**geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。",
+        "**读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。",
+        "**存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。",
+        "城市值改为行政区数据认领，堵住假城市冲突与存量脏城市"
+      ],
+      "summary": [
+        "城市值改为行政区数据认领，堵住假城市冲突与存量脏城市",
+        "脏城市强清改看本轮末态，避免抹掉同轮确认裁定的城市",
+        "**geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。",
+        "**写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。",
+        "**读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。",
+        "**存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。"
+      ],
+      "features": [
+        "**geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。"
+      ],
+      "fixes": [
+        "**读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。",
+        "**存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。",
+        "城市值改为行政区数据认领，堵住假城市冲突与存量脏城市"
+      ],
+      "optimizations": [
+        "**写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。"
+      ],
+      "ops": [
+        "脏城市强清改看本轮末态，避免抹掉同轮确认裁定的城市"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`lint:check` / `format:check` / `typecheck` / `geo:validate`（8 类全绿）/ `vocab:validate`（5 项全绿）均通过；`build:ci` 因 worktree 无 web 依赖跳过，TS 侧由 typecheck 覆盖",
+        "**全量 416 suites / 7014 tests 全过**，0 失败",
+        "新增回归覆盖四个落点，其中两条是 `extractAndSave` 端到端：脏城市被清出 Redis、脏城市不再冻结回填（`hello` + `district=['浦东']` → 最终存 `上海`）"
+      ]
     }
   ],
   "lastRelease": {
