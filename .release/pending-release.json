@@ -965,6 +965,47 @@
         "测试/生产 Realtime 均成功 SUBSCRIBED",
         "pnpm run ci:check 通过：417 suites passed、7055 tests passed、1 suite/6 tests skipped"
       ]
+    },
+    {
+      "number": "974",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/974",
+      "title": "更新 v10.41.0 安全处置证据",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "更新 Supabase 安全处置证据",
+        "补记 Supabase 新 publishable/secret key 上线、legacy key 停用和账户 Token 清理证据",
+        "补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证",
+        "明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项",
+        "更新 v10.41.0 安全处置证据"
+      ],
+      "summary": [
+        "更新 Supabase 安全处置证据",
+        "补记 Supabase 新 publishable/secret key 上线、legacy key 停用和账户 Token 清理证据",
+        "补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证",
+        "明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项",
+        "更新 v10.41.0 安全处置证据"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "更新 v10.41.0 发版台账和安全处置证据",
+        "补记 Supabase 新 publishable/secret key 上线、legacy key 停用和账户 Token 清理证据",
+        "补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证",
+        "明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项",
+        "更新 Supabase 安全处置证据"
+      ],
+      "config": [
+        "无代码配置变更；仅记录已完成的生产 Supabase 凭据迁移"
+      ],
+      "envFiles": [],
+      "verification": [
+        "pnpm run ci:check（417 suites、7055 tests 通过）",
+        "Prettier 与 git diff --check",
+        "Supabase REST/Auth/Realtime、生产健康和 migration 状态已验证",
+        "其他说明：release ledger 校验按预期仍报告 P0-02 和 P0-10 未通过；本 PR 不解除正式发版门禁。"
+      ]
     }
   ],
   "lastRelease": {
