@@ -800,6 +800,61 @@
         "**全量 416 suites / 7014 tests 全过**，0 失败",
         "新增回归覆盖四个落点，其中两条是 `extractAndSave` 端到端：脏城市被清出 Redis、脏城市不再冻结回填（`hello` + `district=['浦东']` → 最终存 `上海`）"
       ]
+    },
+    {
+      "number": "966",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/966",
+      "title": "收紧依赖安装并移除明文凭据",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "修复个人 Claude Code 配置被提交到公开仓库、可能携带本机权限与凭据的问题",
+        "修复 `allowBuilds` 使用非布尔占位字符串、未形成有效审查策略的问题",
+        "停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`",
+        "启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装",
+        "收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装"
+      ],
+      "summary": [
+        "收紧依赖安装并移除明文凭据",
+        "补充 v10.41.0 发版底账",
+        "停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`",
+        "启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装",
+        "收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装"
+      ],
+      "features": [],
+      "fixes": [
+        "修复个人 Claude Code 配置被提交到公开仓库、可能携带本机权限与凭据的问题",
+        "修复 `allowBuilds` 使用非布尔占位字符串、未形成有效审查策略的问题",
+        "停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`",
+        "启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装",
+        "收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装"
+      ],
+      "optimizations": [
+        "`install:all` 只执行一次 workspace 根安装，继续显式禁用生命周期脚本",
+        "Docker 安装固定版本 pnpm 时增加 `--ignore-scripts`"
+      ],
+      "ops": [
+        "通过 `.gitattributes` 禁止渲染已删除 local settings 的文本 diff，避免 PR 再次展示旧内容",
+        "**合并前提醒：**开发者如需保留个人 local settings，请先备份；共享 hooks 已迁入 `.claude/settings.json`",
+        "本 PR 只能阻止继续传播。已进入 Git 历史的凭据必须立即轮换；全 refs 历史清理需作为独立事故任务协调",
+        "收紧依赖安装并移除明文凭据",
+        "补充 v10.41.0 发版底账"
+      ],
+      "config": [
+        "`strictDepBuilds: true`",
+        "当前已审查的依赖安装脚本全部在 `allowBuilds` 中明确设为 `false`",
+        "删除已弃用且相互冲突的 `onlyBuiltDependencies` / `ignoredBuiltDependencies`"
+      ],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（pre-push 全量检查通过）",
+        "`pnpm run test:di-smoke`",
+        "pnpm 10.34.5 frozen lockfile 兼容性检查",
+        "Supabase CLI 在禁用依赖安装脚本后仍可运行",
+        "待提交树高风险 JWT/npm token 扫描无命中",
+        "锁文件无变化",
+        "其他说明：首次本地并行全量测试有 1 个既有缓存用例抖动，单独重跑 25/25 通过；pre-push 第二轮全量检查通过"
+      ]
     }
   ],
   "lastRelease": {
