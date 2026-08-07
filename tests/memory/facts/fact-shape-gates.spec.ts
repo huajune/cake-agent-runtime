@@ -62,6 +62,26 @@ describe('isPlausibleCityValue', () => {
   ])('拒绝整句/疑问/含标点数字文本 %s', (value) => {
     expect(isPlausibleCityValue(value)).toBe(false);
   });
+
+  // 2026-08-06 生产观测：这批短串全部穿过了旧的"8 字内自由放行"，落进 pref.city，
+  // 再由 geocode 变成推给候选人的多余城市反问。短串靠形状分辨不出真假，只能查表。
+  it.each(['hello', 'null', '只晚班', '我是应聘的', '平坊', '我是BOSS'])(
+    '拒绝行政区数据认不出的短串 %s',
+    (value) => {
+      expect(isPlausibleCityValue(value)).toBe(false);
+    },
+  );
+
+  it('放行真实县级市与同形城市名（海南东方市 / 昆山）', () => {
+    expect(isPlausibleCityValue('东方')).toBe(true);
+    expect(isPlausibleCityValue('昆山')).toBe(true);
+    expect(isPlausibleCityValue('上海市')).toBe(true);
+  });
+
+  it('区名不是城市值——归属地由 district 解析另行补出，占着 city 只会喂错城市门', () => {
+    expect(isPlausibleCityValue('浦东新区')).toBe(false);
+    expect(isPlausibleCityValue('静安区')).toBe(false);
+  });
 });
 
 describe('isPlausibleAgeValue', () => {

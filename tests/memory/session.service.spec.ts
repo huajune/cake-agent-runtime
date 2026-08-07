@@ -608,6 +608,26 @@ describe('SessionService', () => {
       expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
     });
 
+    // 存量自愈（2026-08-06 生产观测）：抽取污染写进的垃圾城市会被抬成 high 置信，
+    // 若按"high 冲突不覆盖"处理，geocode 真实确权的城市将被永久挡在门外。
+    it.each(['hello', 'null', '只晚班'])(
+      '既有 high 城市是污染残留「%s」→ 工具确权照常覆盖',
+      async (dirtyCity) => {
+        mockRedisStore.get.mockResolvedValue(
+          stateWithCity({ value: dirtyCity, confidence: 'high', source: 'rule', evidence: 'x' }),
+        );
+
+        const outcome = await service.saveToolAttestedCity(
+          'corp1',
+          'user1',
+          'session1',
+          attestation,
+        );
+
+        expect(outcome).toBe('written');
+      },
+    );
+
     it('既有城市为低置信兼容值 → 允许覆盖', async () => {
       mockRedisStore.get.mockResolvedValue(
         stateWithCity({ value: '上海', confidence: 'unknown', source: 'memory', evidence: 'x' }),
@@ -1045,6 +1065,64 @@ describe('SessionService', () => {
       expect(info.phone).toEqual(expect.objectContaining({ value: '18271421690' }));
       expect(info.has_health_certificate).toEqual(expect.objectContaining({ value: '有' }));
       expect(info.applied_store).toEqual(expect.objectContaining({ value: '东方渔人码头店' }));
+    });
+  });
+
+  describe('脏城市出清（2026-08-06 生产观测：假城市冲突）', () => {
+    const savedPreferences = () => {
+      const saved = mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as {
+        facts: { preferences: Record<string, { value: unknown } | null> };
+      };
+      return saved.facts.preferences;
+    };
+
+    const llmOutputWithCity = (city: string, district: string[] | null = null) => ({
+      ...FALLBACK_EXTRACTION,
+      preferences: { ...FALLBACK_EXTRACTION.preferences, city, district },
+      explicit_provenance: null,
+      reasoning: '',
+    });
+
+    it('脏城市不只本轮丢弃，还显式清 Redis（否则 deepMerge "null 不覆盖" 让污染永不出清）', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            preferences: {
+              ...FALLBACK_EXTRACTION.preferences,
+              city: {
+                value: 'hello',
+                confidence: 'high',
+                source: 'llm',
+                evidence: 'explicit_city',
+              },
+            },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(llmOutputWithCity('hello')));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: 'hello' },
+      ]);
+
+      expect(savedPreferences().city).toBeNull();
+    });
+
+    it('脏城市不再冻结白名单回填——本轮 district 的真实城市照常补出', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWithCity('hello', ['浦东'])),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我在浦东' },
+      ]);
+
+      expect(savedPreferences().city).toEqual(expect.objectContaining({ value: '上海' }));
     });
   });
 

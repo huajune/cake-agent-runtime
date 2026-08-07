@@ -73,7 +73,11 @@ import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { isAssistantEchoUtterance, isSystemTextReflow } from '@resolution/brand/llm-intent-guards';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
-import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
+import {
+  detectGeoSignalConflict,
+  isRecognizedCityName,
+  resolveCityFromGeoSignals,
+} from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { resolveConfirmedCityFact } from '../facts/confirmation-facts';
 import { parseLocationShareCoords } from '../facts/location-share';
@@ -345,7 +349,14 @@ export class SessionService {
     if (prev && typeof prev.value === 'string' && prev.value.trim()) {
       const prevNormalized = prev.value.trim().replace(/市$/, '');
       if (prevNormalized === normalized) return 'skipped_same_city';
-      if (sessionFactConfidenceRank(prev.confidence) >= sessionFactConfidenceRank('high')) {
+      // 既有值不是可认领的城市名时，"冲突"是抽取污染伪造的，让位于工具确权。
+      // 不这样兜，高置信垃圾城市会把 geocode 真实确权的城市永久挡在门外（存量自愈）。
+      if (!isRecognizedCityName(prevNormalized)) {
+        this.logger.warn(
+          `[saveToolAttestedCity] 既有城市「${prev.value}」非合法城市名（抽取污染残留），` +
+            `由本轮工具确权 ${normalized} 覆盖`,
+        );
+      } else if (sessionFactConfidenceRank(prev.confidence) >= sessionFactConfidenceRank('high')) {
         this.logger.log(
           `[saveToolAttestedCity] 城市冲突不覆盖：既有 ${prev.value}（${prev.confidence}/${prev.source}），` +
             `本轮工具确权 ${normalized}；等待候选人亲证后再切换`,
@@ -1194,8 +1205,10 @@ export class SessionService {
     // 城市/年龄形状门（同案）：垃圾城市曾被归一化抬成 high/explicit_city，还会压制
     // 下方确认问答裁决的真实城市，必须在裁决前清掉。
     const shapeGateCity = unwrapSessionFactValue(newFacts.preferences.city);
+    let droppedCity = false;
     if (typeof shapeGateCity === 'string' && !isPlausibleCityValue(shapeGateCity)) {
       newFacts.preferences.city = null;
+      droppedCity = true;
       this.logger.warn(`[extractFacts] pref.city 形状非法，丢弃臆造值「${shapeGateCity}」`);
       this.tracer?.emit({
         type: 'extraction_field_dropped',
@@ -1246,6 +1259,11 @@ export class SessionService {
       currentLaborFormIntent.kind === 'clear' &&
       typeof persistedLaborForm === 'string' &&
       currentLaborFormIntent.clearedValues.some((value) => value === persistedLaborForm);
+    // 脏城市与 phone 同理显式清 Redis：仅本轮丢弃会被 deepMerge "null 不覆盖" 抵消，
+    // 存量脏值继续留在档案里，下一轮又被 [已确认事实] 喂回抽取，污染永不出清。
+    const forceNullPreferenceFields: (keyof EntityExtractionResult['preferences'])[] = [];
+    if (laborFormExplicitlyCleared) forceNullPreferenceFields.push('labor_form');
+    if (droppedCity) forceNullPreferenceFields.push('city');
     // 品牌写入收口（§9.2 三处之一）：LLM 抽出的品牌不再直接落 preferences.brands——
     // 经品牌库验证 + 极性判定转成 BrandResolution 后，与其它来源一起走 brand_state reducer。
     const factsForSave: SessionFacts = {
@@ -1254,7 +1272,8 @@ export class SessionService {
     };
     await this.saveFacts(corpId, userId, sessionId, factsForSave, {
       forceNullFields: forceNullInterviewFields.length > 0 ? forceNullInterviewFields : undefined,
-      forceNullPreferenceFields: laborFormExplicitlyCleared ? ['labor_form'] : undefined,
+      forceNullPreferenceFields:
+        forceNullPreferenceFields.length > 0 ? forceNullPreferenceFields : undefined,
     });
 
     return {
@@ -1816,7 +1835,12 @@ export class SessionService {
    * 反复说"青浦区/金泽"，Agent 仍被硬约束卡在"当前没有已确认城市"循环里反问）。
    */
   private backfillCityFromWhitelist(facts: EntityExtractionResult): EntityExtractionResult {
-    if (facts.preferences.city) return facts;
+    // 非空但不是合法城市名时不算"已有城市"——否则一个 `hello` 就能把白名单回填
+    // 冻结整轮，本轮 district/location 里的真实城市线索白白丢掉（形状门要到本轮
+    // 末尾才把脏值清掉，那时回填时机已过）。
+    if (facts.preferences.city && isRecognizedCityName(facts.preferences.city.value)) {
+      return facts;
+    }
     // 冲突 shadow（方案 §8.2 / Phase 3）：多信号指向不同城市时现行先命中先赢；
     // 落库观测走岗位工具 queryMeta.geoSignalConflictShadow，这里仅辅助定位。
     //

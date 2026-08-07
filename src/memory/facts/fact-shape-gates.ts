@@ -12,7 +12,7 @@
  * - 形状门：city/age 的值必须长得像城市/年龄，否则字段级丢弃。
  */
 
-import { isKnownCanonicalAdministrativeAreaName } from '@resolution/geo';
+import { isRecognizedCityName } from '@resolution/geo';
 
 /** 同一字符串值命中 ≥N 个字段视为扇出广播（判据来自污染实测：name=age=gender 同值）。 */
 export const SCALAR_FANOUT_FIELD_THRESHOLD = 3;
@@ -38,20 +38,16 @@ export function detectScalarFanoutValues(fields: Record<string, unknown>): Set<s
   return fanout;
 }
 
-// 城市名不含句读/空白/数字，也不会以疑问尾词收尾。8 字内沿用宽松形状门；
-// 更长值只接受仓库行政区数据中的 canonical 名称，不整体放开长句或伪行政名。
-const CITY_FORBIDDEN_CHARS = /[？?！!。.，,、；;：:\s\d]/u;
-const CITY_INTERROGATIVE_TAIL = /(?:吗|呢|吧|呀|啊)$/u;
-const CITY_SHORT_VALUE_MAX_LENGTH = 8;
-
-/** 城市值形状门：过滤"晚上才可以，有吗？"这类整句/疑问文本。 */
+/**
+ * 城市值门：值必须能被行政区数据认领，否则字段级丢弃。
+ *
+ * 2026-08-06 生产观测推翻了原先"8 字内自由放行"的写法——该放行口对当期观测到的
+ * 11 个垃圾城市只拦住 3 个（`00:30`/整句/带疑问尾词的），`hello`、`null`、
+ * `只晚班`、`我是应聘的`、`平坊` 这些短串全部直通。短串靠形状分辨不出真假城市，
+ * 判据只能是数据表认领（同一批值喂给行政区表：垃圾全否、真城市全是，含海南东方市）。
+ */
 export function isPlausibleCityValue(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length < 2) return false;
-  if (CITY_FORBIDDEN_CHARS.test(trimmed)) return false;
-  if (CITY_INTERROGATIVE_TAIL.test(trimmed)) return false;
-  if (trimmed.length <= CITY_SHORT_VALUE_MAX_LENGTH) return true;
-  return isKnownCanonicalAdministrativeAreaName(trimmed);
+  return isRecognizedCityName(value);
 }
 
 /** 年龄值形状门：必须能解析出 14-70 的单一数字（"39"/"39岁"合法，区间与整句不合法）。 */

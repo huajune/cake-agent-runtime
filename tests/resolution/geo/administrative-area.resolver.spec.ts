@@ -1,6 +1,7 @@
 import {
   detectGeoSignalConflict,
   isKnownCanonicalAdministrativeAreaName,
+  isRecognizedCityName,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
@@ -267,6 +268,42 @@ describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）
       expect(resolveCityFromDistrict('五峰')).toBe('宜昌');
       expect(resolveCityFromDistrict('秭归')).toBe('宜昌');
       expect(resolveCityFromDistrict('监利')).toBe('荆州');
+    });
+  });
+  describe('isRecognizedCityName（结构化字段城市值认领）', () => {
+    it.each(['上海', '上海市', '东莞', '呼和浩特', '昆山', '延吉', '东方'])(
+      '认领真实城市/县级市 %s',
+      (city) => {
+        expect(isRecognizedCityName(city)).toBe(true);
+      },
+    );
+
+    it('认领民族自治地方的去族名简称（巴音郭楞 ↔ 巴音郭楞蒙古自治州）', () => {
+      expect(isRecognizedCityName('巴音郭楞')).toBe(true);
+      expect(isRecognizedCityName('巴音郭楞蒙古自治州')).toBe(true);
+      expect(isRecognizedCityName('克孜勒苏')).toBe(true);
+    });
+
+    // 2026-08-06 生产观测的 pref.city 污染实样：短串靠形状分辨不出真假，只能查表。
+    it.each(['hello', 'null', '只晚班', '我是应聘的', '平坊', '00:30', '我是BOSS联系你的'])(
+      '拒绝抽取污染残留 %s',
+      (value) => {
+        expect(isRecognizedCityName(value)).toBe(false);
+      },
+    );
+
+    it('拒绝区名——"是不是城市"而非"是不是地名"', () => {
+      expect(isRecognizedCityName('浦东新区')).toBe(false);
+      expect(isRecognizedCityName('朝阳区')).toBe(false);
+    });
+
+    it('拒绝残缺前缀——前缀索引只对民族自治地方开放，地级市必须精确命中', () => {
+      expect(isRecognizedCityName('呼和')).toBe(false);
+      expect(isRecognizedCityName('石家')).toBe(false);
+    });
+
+    it.each([null, undefined, '', '  ', '沪'])('拒绝空值/单字 %s', (value) => {
+      expect(isRecognizedCityName(value)).toBe(false);
     });
   });
 });

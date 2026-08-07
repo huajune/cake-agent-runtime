@@ -49,6 +49,47 @@ export function isKnownCanonicalAdministrativeAreaName(input: string): boolean {
   return KNOWN_CANONICAL_ADMINISTRATIVE_AREA_NAMES.has(input.trim());
 }
 
+/** 民族自治地方的通名后缀——这类 canonical 名在结构化字段里常被写成去族名的简称。 */
+const MULTI_ETHNIC_AREA_SUFFIX = /(?:自治州|自治区|地区|盟)$/u;
+
+/**
+ * 民族自治地方 canonical 名的前缀索引（长度 ≥2）。
+ *
+ * "巴音郭楞" 指的就是 "巴音郭楞蒙古自治州"，但简称本身不在 canonical 集合里。
+ * 族名部分写法不定（蒙古/朝鲜族/柯尔克孜…），与其枚举族名不如索引前缀。
+ * 只对民族自治地方建索引：地级市走 canonical 精确命中即可，全表建前缀会把
+ * "呼和""石家" 这类残缺串也认成合法城市。
+ */
+const MULTI_ETHNIC_AREA_NAME_PREFIXES: ReadonlySet<string> = (() => {
+  const prefixes = new Set<string>();
+  for (const name of KNOWN_CANONICAL_ADMINISTRATIVE_AREA_NAMES) {
+    if (!MULTI_ETHNIC_AREA_SUFFIX.test(name)) continue;
+    for (let length = 2; length < name.length; length += 1) {
+      prefixes.add(name.slice(0, length));
+    }
+  }
+  return prefixes;
+})();
+
+/**
+ * 结构化字段里的"城市值"能否被行政区数据认领（会话事实写入门 + geocode 冲突门共用）。
+ *
+ * 判定口径是"这是不是一个城市"，不是"这是不是一个地名"：区/镇/街道一律判否——
+ * 它们的归属地由 resolveCityFromDistrict / resolveCityFromGeoSignals 另行解析，
+ * 占着 pref.city 只会让城市门拿到错误结论。
+ *
+ * 存在的原因（2026-08-06 生产观测）：抽取污染把 `hello` / `null` / `只晚班` /
+ * `我是应聘的` 这类短串写进 pref.city，纯形状门（长度 + 标点 + 疑问尾词）对它们
+ * 全部放行，下游 geocode 据此发出"你现在是在上海市这边找工作吗"的多余反问。
+ * 短串靠形状分辨不了真假城市，只能靠数据表认领。
+ */
+export function isRecognizedCityName(value: string | null | undefined): boolean {
+  const bare = normalizeCityName(value);
+  if (!bare || bare.length < 2) return false;
+  if (isKnownCanonicalAdministrativeAreaName(bare)) return true;
+  return MULTI_ETHNIC_AREA_NAME_PREFIXES.has(bare);
+}
+
 /**
  * 单个 district 名 → 城市（命中白名单则返回 city，否则 null）。
  * 兼容 "青浦" 和 "青浦区" 两种形式（白名单只存归一化后的形式）。
