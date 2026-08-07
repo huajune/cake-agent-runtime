@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.41.0] - 2026-08-07
 
-**预计版本**: `v10.41.0`
-**最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 37
 
 ### 更新摘要
 - PR #908 三张词表收拢回 resolution/visual 单一居所
@@ -315,7 +311,6 @@
 - PR #976 `node scripts/check-release-ledger.js` → ✅ 通过
 - PR #976 `pnpm run ci:check` 全量：417 suites / 7055 tests 通过、0 失败（1 suite / 6 tests skipped）
 - PR #976 `prettier --write` 已格式化
-<!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
 
