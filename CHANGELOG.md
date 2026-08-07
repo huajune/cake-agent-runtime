@@ -14,16 +14,18 @@
 **预计版本**: `v10.43.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #988 新增临时只读工作流，定位生产机 npm 出站故障
 - PR #990 新增临时只读工作流，定位生产机 npm 出站故障
 - PR #990 npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上
+- PR #992 新增 v10.43.0 发版底账
 
 ### 新功能
 - PR #988 新增临时只读工作流，定位生产机 npm 出站故障
 - PR #990 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #992 新增 v10.43.0 发版底账
 
 ### 问题修复
 - PR #990 修复生产部署在构建期拉取依赖时连接超时、导致版本无法上线的问题
@@ -33,7 +35,11 @@
 - 无
 
 ### 运维与流程
-- 无
+- PR #992 **第三次投递 v10.41.0 载荷**。v10.41.0（两次部署失败）与 v10.42.0（一次失败）均已打 tag、已发 Release 但**从未上线**，生产至今仍跑 `v10.40.0-keyrot-86d71dc-20260807045349`。三次失败**全部**死在换容器之前，无任何停服窗口。
+- PR #992 §2 记录故障定性所依据的实测数据：npmjs / Docker Hub 均 `connect=0.000000s` 超时，npmmirror `200/0.73s`，GitHub `200/0.29s`；并明确「docker0 PMTUD 黑洞」判断**已被 v10.42.0 部署证伪**。
+- PR #992 P0 七条。其中 P0-01/P0-02 用容器内实测坐实换源对 npm 与 pnpm 同时生效、且锁文件零改动；P0-03 要求已证伪的理由必须从代码注释中清除；P0-06 核验临时诊断工作流已删除；P0-07 确认 `SEC-EXC-01` 到期日 **2026-08-14 不因连续发版顺延**。
+- PR #992 §7 如实记录 `--network=host` 那次判断失误：前提未经实测即被采用，随后被部署证伪；教训固化为「先只读探测拿数据，再改代码」。
+- PR #992 §7 同时登记三项跟进：换源撤除条件、`--network=host` 撤除条件（待补测容器侧连通性）、宿主机境外出站根因未修。
 
 ### 配置变更
 - PR #990 `Dockerfile` 新增构建参数 `NPM_REGISTRY`（默认 `https://registry.npmmirror.com`）
@@ -49,6 +55,8 @@
 - PR #990 **换源确实生效**（容器内实测）：`npm_config_registry` / `npm config get registry` / `pnpm config get registry` **三者均为** `https://registry.npmmirror.com`，pnpm 10.34.5 正确就位
 - PR #990 **锁文件零改动**：`git diff pnpm-lock.yaml` 为空——`lockfileVersion 9.0` 不含写死的 registry URL 或 `tarball` 字段，integrity 为内容哈希跨源一致
 - PR #990 `bash -n scripts/deploy-remote.sh` 通过
+- PR #992 `node scripts/check-release-ledger.js` → ✅ 通过
+- PR #992 `prettier --write` 已格式化
 <!-- release:pending:end -->
 
 ## [10.42.0] - 2026-08-07
