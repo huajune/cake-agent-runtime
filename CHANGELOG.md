@@ -8,15 +8,67 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.43.0`
+**最近更新**: `2026-08-07`
+**来源分支**: `develop`
+**累计 PR**: 3
+
+### 更新摘要
+- PR #988 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #990 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #990 npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上
+- PR #992 新增 v10.43.0 发版底账
+
+### 新功能
+- PR #988 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #990 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #992 新增 v10.43.0 发版底账
+
+### 问题修复
+- PR #990 修复生产部署在构建期拉取依赖时连接超时、导致版本无法上线的问题
+- PR #990 npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #992 **第三次投递 v10.41.0 载荷**。v10.41.0（两次部署失败）与 v10.42.0（一次失败）均已打 tag、已发 Release 但**从未上线**，生产至今仍跑 `v10.40.0-keyrot-86d71dc-20260807045349`。三次失败**全部**死在换容器之前，无任何停服窗口。
+- PR #992 §2 记录故障定性所依据的实测数据：npmjs / Docker Hub 均 `connect=0.000000s` 超时，npmmirror `200/0.73s`，GitHub `200/0.29s`；并明确「docker0 PMTUD 黑洞」判断**已被 v10.42.0 部署证伪**。
+- PR #992 P0 七条。其中 P0-01/P0-02 用容器内实测坐实换源对 npm 与 pnpm 同时生效、且锁文件零改动；P0-03 要求已证伪的理由必须从代码注释中清除；P0-06 核验临时诊断工作流已删除；P0-07 确认 `SEC-EXC-01` 到期日 **2026-08-14 不因连续发版顺延**。
+- PR #992 §7 如实记录 `--network=host` 那次判断失误：前提未经实测即被采用，随后被部署证伪；教训固化为「先只读探测拿数据，再改代码」。
+- PR #992 §7 同时登记三项跟进：换源撤除条件、`--network=host` 撤除条件（待补测容器侧连通性）、宿主机境外出站根因未修。
+
+### 配置变更
+- PR #990 `Dockerfile` 新增构建参数 `NPM_REGISTRY`（默认 `https://registry.npmmirror.com`）
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #988 YAML 解析通过（`yaml.safe_load`），`environment: production`、`workflow_dispatch` 均正确
+- PR #988 写操作扫描：全文无 `docker run` / `docker network` / `systemctl restart` / `rm`；唯一 `>` 为 `2>/dev/null`
+- PR #988 ssh-action 复用 deploy.yml 同一 commit pin（`0ff4204d59e8e51228ff73bce53f80d53301dee2`）
+- PR #990 **完整 deps 阶段实测构建成功**：`docker build --target deps --network=host`，含 `pnpm install --frozen-lockfile --ignore-scripts`
+- PR #990 **换源确实生效**（容器内实测）：`npm_config_registry` / `npm config get registry` / `pnpm config get registry` **三者均为** `https://registry.npmmirror.com`，pnpm 10.34.5 正确就位
+- PR #990 **锁文件零改动**：`git diff pnpm-lock.yaml` 为空——`lockfileVersion 9.0` 不含写死的 registry URL 或 `tarball` 字段，integrity 为内容哈希跨源一致
+- PR #990 `bash -n scripts/deploy-remote.sh` 通过
+- PR #992 `node scripts/check-release-ledger.js` → ✅ 通过
+- PR #992 `prettier --write` 已格式化
+<!-- release:pending:end -->
+
 ## [10.42.0] - 2026-08-07
 
 **来源分支**: `develop`
 
 ### 更新摘要
 - PR #980 构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞
+- PR #983 新增 v10.42.0 发版底账
 
 ### 新功能
-- 无
+- PR #983 新增 v10.42.0 发版底账
 
 ### 问题修复
 - PR #980 修复生产部署在拉取依赖时 `read ETIMEDOUT` 导致构建失败、版本无法上线的问题
@@ -26,6 +78,11 @@
 
 ### 运维与流程
 - PR #980 构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞
+- PR #983 v10.42.0 的**代码增量只有 [#980](https://github.com/huajune/cake-agent-runtime/pull/980) 一行部署脚本改动**，但**实际投递面是 v10.41.0 的全量载荷**——该版本已打 tag、已发 GitHub Release，却因构建期 `read ETIMEDOUT` 两次部署失败、**从未上线**，生产至今仍跑 `v10.40.0-keyrot-86d71dc-20260807045349`。底账据此按 v10.41.0 的完整范围评估风险，而非按「一行 shell 改动」。
+- PR #983 P0 五条：① 脚本语法与 BuildKit `network.host` entitlement 实测；② 修复同时覆盖第 9 步与第 12 步（后者每次部署都真跑，不受层缓存保护）；③ 无运行时代码变更；④ 继承 v10.41.0 全部 P0；⑤ 凭据处置状态不因换版本失真。
+- PR #983 **`SEC-EXC-01` 到期日保持 2026-08-14，不随本次发布顺延**，三项补偿控制仍明确标注为「承诺项，尚未执行」。
+- PR #983 §7 记录版本号取 10.42.0 而非严格 semver 的 10.41.1 的原因：回同步已把 develop 的 `package.json` 写为 10.42.0，故障处置期间不与发布自动化对抗。
+- PR #983 §7 同时登记两项跟进：`--network=host` 的撤除条件、宿主机 `docker0` MTU 根因未修。
 
 ### 配置变更
 - 无
@@ -37,6 +94,8 @@
 - PR #980 `bash -n scripts/deploy-remote.sh` 语法通过
 - PR #980 **BuildKit entitlement 已实测排除**：本机 `docker build --network=host`（docker driver + 同一 `# syntax=docker/dockerfile:1.7` frontend）构建成功，不存在 `network.host is not allowed`
 - PR #980 无运行时代码变更，不涉及 DB 迁移与环境变量
+- PR #983 `node scripts/check-release-ledger.js` → ✅ 通过
+- PR #983 `prettier --write` 已格式化
 
 ## [10.41.0] - 2026-08-07
 
