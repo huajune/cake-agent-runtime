@@ -1,9 +1,35 @@
 {
   "baseVersion": "10.43.0",
-  "nextVersion": "10.43.0",
+  "nextVersion": "10.44.0",
   "updatedAt": "2026-08-07",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "996",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/996",
+      "title": "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+      ],
+      "summary": [
+        "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`prettier --write` 已格式化三份文件",
+        "时间、workflow run ID、健康检查结论均取自 [部署 run 31165737816](https://github.com/huajune/cake-agent-runtime/actions/runs/31165737816) 日志与线上 `/agent/health` 实测，未凭记忆填写"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.43.0",
     "date": "2026-08-07",
