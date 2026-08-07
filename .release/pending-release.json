@@ -732,6 +732,32 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "960",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/960",
+      "title": "手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏",
+      "author": "ArielZhu",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏"
+      ],
+      "summary": [
+        "手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tests/tools/shared/precheck-core.spec.ts`：新增 4 条（解锁 / 否定应答仍拒 / 无疑问标记仍拒 / 肯定应答归属远处问句仍拒）",
+        "`tests/resolution/visual/visual-fact.spec.ts`：新增 4 条（18 位 + 15 位 + 尾号 X 脱敏 / 手机号与短数字串不动 / 19 位不动 / finalize 与 parseStored 两侧）",
+        "`npx jest tests/resolution tests/tools tests/channels` → **2314 passed**，`tsc --noEmit` 通过，改动文件 eslint `--max-warnings=0` 通过"
+      ]
     }
   ],
   "lastRelease": {
