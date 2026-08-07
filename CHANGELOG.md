@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [10.42.0] - 2026-08-07
 
-**预计版本**: `v10.42.0`
-**最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #980 构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞
@@ -49,7 +45,6 @@
 - PR #980 无运行时代码变更，不涉及 DB 迁移与环境变量
 - PR #983 `node scripts/check-release-ledger.js` → ✅ 通过
 - PR #983 `prettier --write` 已格式化
-<!-- release:pending:end -->
 
 ## [10.41.0] - 2026-08-07
 
