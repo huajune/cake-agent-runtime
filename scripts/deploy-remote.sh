@@ -231,12 +231,19 @@ promote_compose() {
 build_or_load_image() {
   if [[ "$MODE" == "build" ]]; then
     echo "Building ${IMAGE_NAME}:${IMAGE_TAG} from ${SOURCE_DIR}..."
-    # --network=host：生产机 docker0 网桥固定 1500 MTU，而到 registry.npmjs.org
-    # 的路径实际 MTU 更小、且中间设备吞掉了 ICMP「需要分片」，PMTUD 黑洞使构建
-    # 阶段拉包停在 read ETIMEDOUT（v10.41.0 两次部署都挂在此处；宿主机自身网络
-    # 无此问题）。走宿主机网络命名空间可绕开网桥，且不必改 daemon MTU——那需要
-    # 重启 Docker，会连带弹掉这台机器上另外 11 个无关容器。
-    # 服务器出站修复后应删除本行，恢复构建期网络隔离。
+    # --network=host：构建期依赖拉取走宿主机网络命名空间。
+    #
+    # 注意：本行最初按「docker0 网桥 MTU 导致 PMTUD 黑洞」的判断加入，该判断
+    # 已被 v10.42.0 部署证伪——加了本行仍然同样失败。2026-08-07 生产机只读
+    # 探测给出真实原因：registry.npmjs.org 与 registry-1.docker.io 均 HTTP 000、
+    # connect=0.000000s、45s 超时（TCP 连接根本没建立，与 MTU 无关），而
+    # api.github.com 与 registry.npmmirror.com 正常。真正的修复是 Dockerfile 里
+    # 的 NPM_REGISTRY 换源。
+    #
+    # 本行之所以保留：那次 0.73s 连通 npmmirror 的实测是在**宿主机网络**上做的，
+    # 保留它可让构建走完全相同、已被测量过的网络路径；容器经 docker0 能否同样
+    # 连通 npmmirror 尚无实测证据，不做无依据的假设。
+    # 待补测容器侧连通性、或服务器出站恢复后，应删除本行恢复构建期网络隔离。
     docker build \
       --network=host \
       --build-arg API_GUARD_TOKEN="${API_GUARD_TOKEN}" \
