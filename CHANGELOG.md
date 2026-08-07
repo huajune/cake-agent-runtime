@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 28
+**累计 PR**: 29
 
 ### 更新摘要
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -87,6 +87,11 @@
 - PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
 - PR #964 **读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。
 - PR #964 **存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。
+- PR #966 收紧依赖安装并移除明文凭据
+- PR #966 补充 v10.41.0 发版底账
+- PR #966 停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`
+- PR #966 启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装
+- PR #966 收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -121,10 +126,17 @@
 - PR #964 **读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。
 - PR #964 **存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。
 - PR #964 城市值改为行政区数据认领，堵住假城市冲突与存量脏城市
+- PR #966 修复个人 Claude Code 配置被提交到公开仓库、可能携带本机权限与凭据的问题
+- PR #966 修复 `allowBuilds` 使用非布尔占位字符串、未形成有效审查策略的问题
+- PR #966 停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`
+- PR #966 启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装
+- PR #966 收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装
 
 ### 优化调整
 - PR #958 在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实
 - PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
+- PR #966 `install:all` 只执行一次 workspace 根安装，继续显式禁用生命周期脚本
+- PR #966 Docker 安装固定版本 pnpm 时增加 `--ignore-scripts`
 
 ### 运维与流程
 - PR #903 v10.40.0 发布结果补记——写入验证通过（部署后2分钟首张sheet落库）
@@ -161,9 +173,16 @@
 - PR #961 Agent 不再主动打听候选人籍贯——户籍门槛只准内部判断
 - PR #960 手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏
 - PR #964 脏城市强清改看本轮末态，避免抹掉同轮确认裁定的城市
+- PR #966 通过 `.gitattributes` 禁止渲染已删除 local settings 的文本 diff，避免 PR 再次展示旧内容
+- PR #966 **合并前提醒：**开发者如需保留个人 local settings，请先备份；共享 hooks 已迁入 `.claude/settings.json`
+- PR #966 本 PR 只能阻止继续传播。已进入 Git 历史的凭据必须立即轮换；全 refs 历史清理需作为独立事故任务协调
+- PR #966 收紧依赖安装并移除明文凭据
+- PR #966 补充 v10.41.0 发版底账
 
 ### 配置变更
-- 无
+- PR #966 `strictDepBuilds: true`
+- PR #966 当前已审查的依赖安装脚本全部在 `allowBuilds` 中明确设为 `false`
+- PR #966 删除已弃用且相互冲突的 `onlyBuiltDependencies` / `ignoredBuiltDependencies`
 
 ### 环境变量提醒
 - 无
@@ -214,6 +233,13 @@
 - PR #964 `lint:check` / `format:check` / `typecheck` / `geo:validate`（8 类全绿）/ `vocab:validate`（5 项全绿）均通过；`build:ci` 因 worktree 无 web 依赖跳过，TS 侧由 typecheck 覆盖
 - PR #964 **全量 416 suites / 7014 tests 全过**，0 失败
 - PR #964 新增回归覆盖四个落点，其中两条是 `extractAndSave` 端到端：脏城市被清出 Redis、脏城市不再冻结回填（`hello` + `district=['浦东']` → 最终存 `上海`）
+- PR #966 `pnpm run ci:check`（pre-push 全量检查通过）
+- PR #966 `pnpm run test:di-smoke`
+- PR #966 pnpm 10.34.5 frozen lockfile 兼容性检查
+- PR #966 Supabase CLI 在禁用依赖安装脚本后仍可运行
+- PR #966 待提交树高风险 JWT/npm token 扫描无命中
+- PR #966 锁文件无变化
+- PR #966 其他说明：首次本地并行全量测试有 1 个既有缓存用例抖动，单独重跑 25/25 通过；pre-push 第二轮全量检查通过
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
