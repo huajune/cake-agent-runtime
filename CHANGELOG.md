@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 36
+**累计 PR**: 37
 
 ### 更新摘要
 - PR #908 三张词表收拢回 resolution/visual 单一居所
@@ -112,6 +112,7 @@
 - PR #974 补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证
 - PR #974 明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项
 - PR #974 更新 v10.41.0 安全处置证据
+- PR #976 v10.41.0 底账收口——P0-10 判通过，P0-02 转带期限安全例外
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -219,6 +220,11 @@
 - PR #974 补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证
 - PR #974 明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项
 - PR #974 更新 Supabase 安全处置证据
+- PR #976 **P0-10｜最终制品复核 → 通过**：在最终 release code head 跑完整 `pnpm run ci:check`（417 suites / 7055 tests 通过、0 失败）；`git diff b0a12ac8..develop` 确认已构建镜像之后**零运行时代码变更**（仅 CHANGELOG、`.release` 元数据、底账文档、一条 SQL 权限迁移）。最终 tag 镜像由合并后自动构建工作流产出，结果记入 §6。
+- PR #976 **P0-02｜飞书凭据 → 按例外放行（不是处置完成）**：值级比对确认 Git 历史中 `.claude/settings.local.json` 的明文 `app_secret` 与 `.env.production` 在用值一致，**凭据仍然有效**。#966 只停止了继续传播，未移除历史、未轮换。本项按发布负责人 2026-08-07 签发的带期限与补偿控制的独立安全例外 `SEC-EXC-01`（到期 **2026-08-14**）放行，走底账 §2 既有的替代口径。
+- PR #976 §7 新增 `SEC-EXC-01` 完整记录，刻意写成「未处置」而非「已通过」：暴露事实（明文 secret 仍在全 refs Git 历史中且仍然有效）；影响面（可换 `tenant_access_token/internal` → 多维表格读写，BadCase 表含候选人对话样本，及文档写入；告警推送走独立自定义机器人 webhook，**不依赖**该 secret；候选人主链路、企微投递、Supabase 数据面均不使用）；三项补偿控制（重置 secret + 调用日志访问审计 + 权限最小化收敛）全部标注为「承诺项，**尚未执行**」。Git 历史清理仍属独立事故任务，不在例外范围内。
+- PR #976 §1 状态、§2 高风险区域/依赖表/部署顺序、§4 build 与 CI 行、§5 闸口勾选同步为同一口径。
+- PR #976 v10.41.0 底账收口——P0-10 判通过，P0-02 转带期限安全例外
 
 ### 配置变更
 - PR #966 `strictDepBuilds: true`
@@ -306,6 +312,9 @@
 - PR #974 Prettier 与 git diff --check
 - PR #974 Supabase REST/Auth/Realtime、生产健康和 migration 状态已验证
 - PR #974 其他说明：release ledger 校验按预期仍报告 P0-02 和 P0-10 未通过；本 PR 不解除正式发版门禁。
+- PR #976 `node scripts/check-release-ledger.js` → ✅ 通过
+- PR #976 `pnpm run ci:check` 全量：417 suites / 7055 tests 通过、0 失败（1 suite / 6 tests skipped）
+- PR #976 `prettier --write` 已格式化
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
