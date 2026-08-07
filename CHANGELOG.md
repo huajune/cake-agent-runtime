@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 32
+**累计 PR**: 33
 
 ### 更新摘要
 - PR #908 三张词表收拢回 resolution/visual 单一居所
@@ -93,6 +93,11 @@
 - PR #966 停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`
 - PR #966 启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装
 - PR #966 收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装
+- PR #968 从 v10.41.0 待发布元数据中移除已属于 v10.40 的 #903/#906，并补齐遗漏的 #911/#912/#913/#914/#931
+- PR #968 将候选人/运营可见的发布摘要收敛为 10 条本版本真实业务变化
+- PR #968 修正显式空 `businessUpdates` 时错误回退到技术变更列表的问题，并补充回归测试
+- PR #968 更新发版底账，记录 #966 合并、完整 CI 与通知卡片无发送预览证据；尚未完成的 P0 保持为待验证
+- PR #968 修正 v10.41.0 元数据与通知摘要
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -134,6 +139,9 @@
 - PR #966 停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`
 - PR #966 启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装
 - PR #966 收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装
+- PR #968 从 v10.41.0 待发布元数据中移除已属于 v10.40 的 #903/#906，并补齐遗漏的 #911/#912/#913/#914/#931
+- PR #968 将候选人/运营可见的发布摘要收敛为 10 条本版本真实业务变化
+- PR #968 修正显式空 `businessUpdates` 时错误回退到技术变更列表的问题，并补充回归测试
 
 ### 优化调整
 - PR #911 记忆与 Redis schema 族词表收拢回单一居所（期 0）
@@ -142,6 +150,7 @@
 - PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
 - PR #966 `install:all` 只执行一次 workspace 根安装，继续显式禁用生命周期脚本
 - PR #966 Docker 安装固定版本 pnpm 时增加 `--ignore-scripts`
+- PR #968 更新发版底账，记录 #966 合并、完整 CI 与通知卡片无发送预览证据；尚未完成的 P0 保持为待验证
 
 ### 运维与流程
 - PR #908 三张词表收拢回 resolution/visual 单一居所
@@ -249,6 +258,10 @@
 - PR #966 待提交树高风险 JWT/npm token 扫描无命中
 - PR #966 锁文件无变化
 - PR #966 其他说明：首次本地并行全量测试有 1 个既有缓存用例抖动，单独重跑 25/25 通过；pre-push 第二轮全量检查通过
+- PR #968 `pnpm exec jest tests/scripts/send-deploy-notification.spec.ts tests/scripts/update-version-changelog.spec.ts --runInBand --watchman=false`（19/19）
+- PR #968 推送前完整 `ci:check`（417 suites、7055 tests）
+- PR #968 v10.41.0 飞书通知内容无发送预览
+- PR #968 `git diff --check`
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
