@@ -14,16 +14,20 @@
 **预计版本**: `v10.43.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #988 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #990 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #990 npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上
 
 ### 新功能
 - PR #988 新增临时只读工作流，定位生产机 npm 出站故障
+- PR #990 新增临时只读工作流，定位生产机 npm 出站故障
 
 ### 问题修复
-- 无
+- PR #990 修复生产部署在构建期拉取依赖时连接超时、导致版本无法上线的问题
+- PR #990 npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上
 
 ### 优化调整
 - 无
@@ -32,7 +36,7 @@
 - 无
 
 ### 配置变更
-- 无
+- PR #990 `Dockerfile` 新增构建参数 `NPM_REGISTRY`（默认 `https://registry.npmmirror.com`）
 
 ### 环境变量提醒
 - 无
@@ -41,6 +45,10 @@
 - PR #988 YAML 解析通过（`yaml.safe_load`），`environment: production`、`workflow_dispatch` 均正确
 - PR #988 写操作扫描：全文无 `docker run` / `docker network` / `systemctl restart` / `rm`；唯一 `>` 为 `2>/dev/null`
 - PR #988 ssh-action 复用 deploy.yml 同一 commit pin（`0ff4204d59e8e51228ff73bce53f80d53301dee2`）
+- PR #990 **完整 deps 阶段实测构建成功**：`docker build --target deps --network=host`，含 `pnpm install --frozen-lockfile --ignore-scripts`
+- PR #990 **换源确实生效**（容器内实测）：`npm_config_registry` / `npm config get registry` / `pnpm config get registry` **三者均为** `https://registry.npmmirror.com`，pnpm 10.34.5 正确就位
+- PR #990 **锁文件零改动**：`git diff pnpm-lock.yaml` 为空——`lockfileVersion 9.0` 不含写死的 registry URL 或 `tarball` 字段，integrity 为内容哈希跨源一致
+- PR #990 `bash -n scripts/deploy-remote.sh` 通过
 <!-- release:pending:end -->
 
 ## [10.42.0] - 2026-08-07

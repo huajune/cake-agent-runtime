@@ -29,6 +29,41 @@
         "写操作扫描：全文无 `docker run` / `docker network` / `systemctl restart` / `rm`；唯一 `>` 为 `2>/dev/null`",
         "ssh-action 复用 deploy.yml 同一 commit pin（`0ff4204d59e8e51228ff73bce53f80d53301dee2`）"
       ]
+    },
+    {
+      "number": "990",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/990",
+      "title": "npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "新增临时只读工作流，定位生产机 npm 出站故障",
+        "修复生产部署在构建期拉取依赖时连接超时、导致版本无法上线的问题",
+        "npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上"
+      ],
+      "summary": [
+        "新增临时只读工作流，定位生产机 npm 出站故障",
+        "npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上"
+      ],
+      "features": [
+        "新增临时只读工作流，定位生产机 npm 出站故障"
+      ],
+      "fixes": [
+        "修复生产部署在构建期拉取依赖时连接超时、导致版本无法上线的问题",
+        "npm/pnpm 换用 npmmirror 源，修复生产机拉包连不上"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [
+        "`Dockerfile` 新增构建参数 `NPM_REGISTRY`（默认 `https://registry.npmmirror.com`）"
+      ],
+      "envFiles": [],
+      "verification": [
+        "**完整 deps 阶段实测构建成功**：`docker build --target deps --network=host`，含 `pnpm install --frozen-lockfile --ignore-scripts`",
+        "**换源确实生效**（容器内实测）：`npm_config_registry` / `npm config get registry` / `pnpm config get registry` **三者均为** `https://registry.npmmirror.com`，pnpm 10.34.5 正确就位",
+        "**锁文件零改动**：`git diff pnpm-lock.yaml` 为空——`lockfileVersion 9.0` 不含写死的 registry URL 或 `tarball` 字段，integrity 为内容哈希跨源一致",
+        "`bash -n scripts/deploy-remote.sh` 通过"
+      ]
     }
   ],
   "lastRelease": {
