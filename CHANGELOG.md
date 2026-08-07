@@ -14,13 +14,14 @@
 **预计版本**: `v10.42.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #980 构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞
+- PR #983 新增 v10.42.0 发版底账
 
 ### 新功能
-- 无
+- PR #983 新增 v10.42.0 发版底账
 
 ### 问题修复
 - PR #980 修复生产部署在拉取依赖时 `read ETIMEDOUT` 导致构建失败、版本无法上线的问题
@@ -30,6 +31,11 @@
 
 ### 运维与流程
 - PR #980 构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞
+- PR #983 v10.42.0 的**代码增量只有 [#980](https://github.com/huajune/cake-agent-runtime/pull/980) 一行部署脚本改动**，但**实际投递面是 v10.41.0 的全量载荷**——该版本已打 tag、已发 GitHub Release，却因构建期 `read ETIMEDOUT` 两次部署失败、**从未上线**，生产至今仍跑 `v10.40.0-keyrot-86d71dc-20260807045349`。底账据此按 v10.41.0 的完整范围评估风险，而非按「一行 shell 改动」。
+- PR #983 P0 五条：① 脚本语法与 BuildKit `network.host` entitlement 实测；② 修复同时覆盖第 9 步与第 12 步（后者每次部署都真跑，不受层缓存保护）；③ 无运行时代码变更；④ 继承 v10.41.0 全部 P0；⑤ 凭据处置状态不因换版本失真。
+- PR #983 **`SEC-EXC-01` 到期日保持 2026-08-14，不随本次发布顺延**，三项补偿控制仍明确标注为「承诺项，尚未执行」。
+- PR #983 §7 记录版本号取 10.42.0 而非严格 semver 的 10.41.1 的原因：回同步已把 develop 的 `package.json` 写为 10.42.0，故障处置期间不与发布自动化对抗。
+- PR #983 §7 同时登记两项跟进：`--network=host` 的撤除条件、宿主机 `docker0` MTU 根因未修。
 
 ### 配置变更
 - 无
@@ -41,6 +47,8 @@
 - PR #980 `bash -n scripts/deploy-remote.sh` 语法通过
 - PR #980 **BuildKit entitlement 已实测排除**：本机 `docker build --network=host`（docker driver + 同一 `# syntax=docker/dockerfile:1.7` frontend）构建成功，不存在 `network.host is not allowed`
 - PR #980 无运行时代码变更，不涉及 DB 迁移与环境变量
+- PR #983 `node scripts/check-release-ledger.js` → ✅ 通过
+- PR #983 `prettier --write` 已格式化
 <!-- release:pending:end -->
 
 ## [10.41.0] - 2026-08-07
