@@ -2,10 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@infra/client-http/http.service';
 import { ApiConfigService } from '@infra/config/api-config.service';
 
-/**
- * 会话管理服务
- * 负责管理聊天会话列表和消息历史
- */
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);

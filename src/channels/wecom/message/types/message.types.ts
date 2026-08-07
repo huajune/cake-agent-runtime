@@ -45,7 +45,7 @@ export interface AgentReply {
 export interface AgentInvokeResult {
   reply: AgentReply;
   isFallback: boolean;
-  /** Agent 本轮主动沉默（调用了 skip_reply 工具），reply.content 可能为空 */
+  /** 本轮为非 reply 终态（skip_reply 主动沉默/守卫拦截/handoff/工具短路），reply.content 可能为空 */
   isSkipped?: boolean;
   /** guardrail_blocked 终态的归因；reply.content 仅供观测留痕，不得发送给候选人。 */
   guardrailBlocked?: TurnOutcome['guardrail'];

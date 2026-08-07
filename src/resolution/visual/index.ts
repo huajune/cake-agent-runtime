@@ -1,6 +1,8 @@
 export {
   VISUAL_FACT_KINDS,
+  VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_FIELD_KEYS,
+  VISUAL_FACT_FIELD_KEY_PROMPT,
   FIELD_OWNERSHIPS,
   VisualFactFieldSchema,
   VisualFactSheetSchema,
@@ -16,6 +18,7 @@ export type {
 } from './visual-fact.types';
 export {
   finalizeVisualFactSheet,
+  sanitizeVisualDescription,
   parseStoredVisualFactSheet,
   fieldValues,
   isVisualDescriptionText,

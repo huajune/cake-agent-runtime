@@ -47,7 +47,8 @@ export function isCandidateClaimField(value: string): value is CandidateClaimFie
  * - clear：明确否定/清除既有值（"电话别用之前那个"）。clear 不依赖
  *   "null 不覆盖"合并语义，是显式操作（方案 §5.3-3）。
  */
-export type CandidateFactOperation = 'set' | 'correct' | 'confirm' | 'clear';
+export const CANDIDATE_FACT_OPERATIONS = ['set', 'correct', 'confirm', 'clear'] as const;
+export type CandidateFactOperation = (typeof CANDIDATE_FACT_OPERATIONS)[number];
 
 /**
  * 解释方式：
@@ -131,10 +132,7 @@ export const CandidateClaimInputSchema = z.object({
   value: z
     .union([z.string(), z.number(), z.boolean(), z.null()])
     .describe('字段值；operation=clear 时传 null'),
-  operation: z
-    .enum(['set', 'correct', 'confirm', 'clear'])
-    .optional()
-    .describe('操作语义，默认 set'),
+  operation: z.enum(CANDIDATE_FACT_OPERATIONS).optional().describe('操作语义，默认 set'),
   quote: z
     .string()
     .min(1)

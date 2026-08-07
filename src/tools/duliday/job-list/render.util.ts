@@ -164,7 +164,16 @@ const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> =
  * 设计要点：
  * - 只有任一字段非 unspecified/any 时才输出；岗位真没要求时不污染上下文。
  * - 用 "> ⚠️ 候选人硬性约束" 引用块包裹，让 LLM 容易识别这是不可妥协的硬规则。
- * - 文案直接告诉 LLM 该如何处理（询问 / 拦 booking），避免它把硬约束当软建议处理。
+ * - 文案直接告诉 LLM 该如何处理，避免它把硬约束当软建议处理。
+ *
+ * ⚠️ 户籍这类敏感门槛的文案**只准写禁令，不准派采集动作**——banner 与岗位数据同在
+ * 当轮上下文里、比系统提示词更贴近决策，一旦写"不掌握时先确认/委婉了解"，模型就会
+ * 真的去问候选人籍贯，把内部筛选条件捅到台面上。2026-08-06 badcase
+ * （chat 6a744a86，记录 249939）：banner 写着"不掌握候选人户籍时按敏感门槛话术委婉
+ * 了解后内部判断"，模型据此发出「这家对户籍有要求，方便问一下你老家是哪里的吗」，
+ * 候选人当场质问"为什么找工作还要问我户籍"。30 天内同族探问 6 条。
+ * 该门槛真正的执行点在 booking-guards 的 isHouseholdRequirementViolated 硬闸，
+ * 数据来自收资 checklist 的「籍贯/户籍」字段（表单场景合规），不需要口头打听。
  */
 function renderHardRequirementsBanner(hr: HardRequirements): string {
   const lines: string[] = [];
@@ -177,7 +186,10 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
   if (hr.household) {
     const verb = hr.household.mode === 'include' ? '仅接受' : '不接受';
     lines.push(
-      `- **户籍**：${verb} ${hr.household.regions.join('/')}（🔒 仅供内部筛选，**严禁把该户籍限制原样写进岗位介绍/要求或当拒绝理由告诉候选人**——涉地域歧视极易起纠纷；不掌握候选人户籍时按敏感门槛话术委婉了解后内部判断，不符则以排班/距离等中性理由转推其他岗位）`,
+      `- **户籍**：${verb} ${hr.household.regions.join('/')}（🔒 仅供内部筛选，**严禁外显**：不得写进岗位介绍/要求，不得当拒绝理由，` +
+        `**也不得为核对该门槛向候选人打听籍贯/老家/是不是本地人**——涉地域歧视极易起纠纷。` +
+        `候选人未主动透露户籍时**不要追问**，按其余条件正常推进即可：该门槛由收资 checklist 的「籍贯/户籍」字段与 booking 前的硬闸兜底；` +
+        `已知不符则以排班/距离等中性理由转推其他岗位）`,
     );
   }
 
@@ -220,6 +232,37 @@ function asNumber(value: unknown): number | null {
 
 // ==================== 模块 1：基本信息 ====================
 
+/**
+ * 合作模式（basicInfo.cooperationMode，海绵 2026-08-06 新增）→ 发薪/签约主体口径。
+ *
+ * 候选人高频追问"工资是你们发还是门店发""签的是谁的合同"，答案完全由合作模式决定，
+ * 而 BPO/RPO 是商业内部术语，直接把裸值丢给模型有两个风险：一是它可能原样说给候选人，
+ * 二是它得自己记住映射关系。所以这里**只输出结论**，裸值仅作 🔒 内部标注保留。
+ *
+ * 口径来源：2026-08-06 运营确认。注意两条规则的 RPO 分支**不一样**——
+ * 发薪在 RPO 下两种都可能（必须转人工），签约在 RPO 下主体确定是客户（只是形式不定）。
+ */
+function renderCooperationModeLines(rawMode: string | null): string[] {
+  const mode = rawMode?.trim().toUpperCase();
+  if (mode !== 'BPO' && mode !== 'RPO') return [];
+
+  const lines = [
+    `- **合作模式**: ${mode}（🔒 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式" 字样**，只用它推出下面两条结论）`,
+  ];
+  if (mode === 'BPO') {
+    lines.push(
+      '  - **发薪主体**: 由独立客发薪（结论确定，候选人问"工资是你们发还是门店发"时可直接答，不必转人工）',
+      '  - **签约主体**: 与独立客签约，形式是**灵活用工协议**（不签劳动合同）；候选人问"签的是谁的合同"时按此答，但不要把协议说成劳动合同',
+    );
+  } else {
+    lines.push(
+      '  - **发薪主体**: ⚠️ 本模式下发薪方两种都有可能，**无法自答**——候选人问发薪主体时必须当轮 `request_handoff(reasonCode="salary_admin_inquiry")`，严禁猜"是我们发/是门店发"',
+      '  - **签约主体**: 与**客户（品牌方）**签约，可如实告知签约对象是品牌方；但**是协议还是合同取决于客户**，不得断言具体形式，候选人追问形式时转人工',
+    );
+  }
+  return lines;
+}
+
 function renderBasicInfoSection(
   basicInfo: unknown,
   distanceKm: number | null | undefined,
@@ -238,6 +281,9 @@ function renderBasicInfoSection(
   pushField(lines, '用工形式', sanitizeLaborFormForDisplay(asString(bi.laborForm)));
   // 兼职细分轴：laborForm=兼职 时的 寒假工/暑假工/小时工
   pushField(lines, '兼职类型', sanitizeLaborFormForDisplay(asString(bi.partTimeJobType)));
+  // 合作模式 → 发薪/签约主体结论。字段为空（海绵发布前的老数据）时不输出任何行，
+  // 此时 candidate-consultation.md 的兜底规则仍要求这两类问题转人工。
+  lines.push(...renderCooperationModeLines(asString(bi.cooperationMode)));
   pushLongText(lines, '工作内容', bi.jobContent);
 
   const brand = formatNameWithId(bi.brandName, bi.brandId);
@@ -315,7 +361,18 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
 
   const periodParts: string[] = [];
   if (hasValue(scenario.salaryPeriod)) periodParts.push(String(scenario.salaryPeriod));
-  if (hasValue(scenario.payday)) periodParts.push(`${scenario.payday}发薪`);
+  if (hasValue(scenario.payday)) {
+    // 月结的发薪日平台全局口径是"次月发上月"，没有当月发当月的情况（2026-08-06 运营确认）。
+    // 候选人高频追问"X 号上班当月 X 号能不能发薪"，裸"15号发薪"会被理解成当月 →
+    // 月结 + 具体几号时显式标注归属月份，模型照读即可；周结/日结不适用不标。
+    const isMonthly =
+      hasValue(scenario.salaryPeriod) && String(scenario.salaryPeriod).includes('月');
+    const paydayText =
+      isMonthly && /^\d+\s*号$/.test(String(scenario.payday).trim())
+        ? `${scenario.payday}发薪（次月${scenario.payday}发上月工资，无当月发当月）`
+        : `${scenario.payday}发薪`;
+    periodParts.push(paydayText);
+  }
   if (periodParts.length) lines.push(`- **结算周期**: ${periodParts.join(', ')}`);
 
   const basic = asRecord(scenario.basicSalary);
@@ -506,10 +563,12 @@ function renderWelfareSection(welfareInput: unknown): string {
 
   pushLongText(lines, '备注', welfare.memo);
 
-  if (lines.length === 0) return '';
   // 福利速览 banner 放在 section 头部：把"员工自理/不购买"这类易被压缩成"有"的
   // 字面值显式标 ❌ 无；保险是敏感政策，只给内部判断，不能作为普通福利主动引用。
+  // banner 非空时即使 raw 明细为空也要输出（welfare 对象存在但吃/住未配置 →
+  // banner 按运营口径默认标 ❌ 无，这条信息本身就是给模型的答案，不能因明细空而吞掉）。
   const factsBanner = renderWelfareFactsBanner(extractWelfareFacts(welfare));
+  if (lines.length === 0 && !factsBanner) return '';
   return '### 福利信息\n' + factsBanner + lines.join('\n') + '\n\n';
 }
 
@@ -1134,7 +1193,9 @@ export function formatJobsToMarkdown(
     '若仅福利备注里出现"暑假工/寒假工薪资 X 元/时"，但结构化字段不是寒假工/暑假工，' +
     '只能说明这是一档薪资条件，**不得把岗位用工类型改写成寒假工/暑假工**。\n\n';
 
-  md += renderCandidateCardsBanner(jobs, distanceAnchor);
+  // 本函数入参声明为 unknown[]（渲染层对 raw 结构全程逐字段兜底），
+  // 而卡片层已收拢到领域契约 JobDetail；此处按同一 raw 契约断言，运行时值不变。
+  md += renderCandidateCardsBanner(jobs as JobDetail[], distanceAnchor);
 
   // 同品牌多门店强约束置顶（同品牌两家被压缩成"有肯德基、肯德基"）
   const multiStoreSection = renderMultiStoreBrandWarning(brandGroups);

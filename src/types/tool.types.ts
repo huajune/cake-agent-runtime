@@ -44,7 +44,10 @@ export interface CityAttestation {
   district?: string | null;
   /** 人类可读证据（如 formattedAddress），入库前截断，仅服务排障。 */
   evidence: string;
-  /** 证据渠道；目前仅 geocode 唯一解析。 */
+  /**
+   * 证据渠道。本类型专用于 geocode 唯一解析产出的确权；其余 T2 工具确权渠道
+   * （定位分享逆解析、地图截图城市确权）不复用本类型，直接写 sessionFacts。
+   */
   source: 'geocode_unique';
 }
 
@@ -99,7 +102,8 @@ export interface ToolBuildContext {
   jobListExecutedThisTurn?: boolean;
   /**
    * 本轮工具实时解析出的工单号。用于处理“海绵已存在工单，但工单挂在另一微信联系人，
-   * 或当前用户的 active_booking 尚未写入”的情况：改约/取消工具拿到有效工单后写入，
+   * 或当前用户的 active_booking 尚未写入”的情况：改约工具拿到有效工单后写入
+   * （取消工具要求 LLM 显式传 workOrderId，不写本字段），
    * request_handoff 可据此关联正确工单并避免误判首次约面。
    */
   runtimeWorkOrderId?: number;
@@ -132,9 +136,9 @@ export interface ToolBuildContext {
    * 从企微名称备注里解析出的目标品牌标准名（运营常把「城市+品牌+门店」备注进名称，
    * 标记这位候选人冲着哪个品牌来）。prep 阶段用品牌词典匹配 contactName 得到。
    *
-   * 用途：duliday_job_list 在模型本轮没传任何品牌（brandAliasList/brandIdList 均空）时，
-   * 默认用它兜底为 brandAliasList，实现「备注品牌优先召回」。纯提示词驱动经实测不可靠
-   * （模型会忽略备注、按距离推），故在工具入参层确定性注入。
+   * 用途：品牌入口标准化后，duliday_job_list 已不读本字段兜底（会话品牌兜底只读
+   * SessionBrandState.currentBrand，旧 contact_remark 兜底档已废除）；本字段现仅用于
+   * 拼装提示词里的品牌提示文本（见 memory-block.formatter）。
    */
   contactBrandAliases?: string[];
   /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */

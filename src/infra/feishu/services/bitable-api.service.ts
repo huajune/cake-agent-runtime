@@ -404,7 +404,7 @@ export class FeishuBitableApiService {
     let success = 0;
     let failed = 0;
 
-    // 飞书 API 单次最多 500 条
+    // 飞书 batch_update 单次上限 1000 条，这里保守取 500
     const batchSize = 500;
     for (let i = 0; i < records.length; i += batchSize) {
       const chunk = records.slice(i, i + batchSize);

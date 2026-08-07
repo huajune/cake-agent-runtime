@@ -20,7 +20,8 @@ import { PromptContext, PromptSection } from './section.interface';
  * **硬约束**（6 个）：city / district / location / age / schedule / salary
  * 这些字段如果模型"忘了"，搜索结果要么完全无效（跨城/跨区），要么严重不匹配
  * （年龄差太大/班次完全冲突/薪资远低于预期），必须强制体现到查询参数中。
- * 其中 age 带弹性：差距 ≤3 岁的岗位不排除，标注"需 precheck 确认"。
+ * 其中 age 的弹性判定整体委托 precheck ageBoundary（severity=boundary 可继续推进、
+ * hard_reject 必须拦截），本段只负责禁止模型自行通融。
  *
  * **软提示**（其余字段）：gender / position / brands / education / health_cert 等
  * 这些是结果过滤/筛选条件，模型不带这些条件搜索结果集会大一些，但不会"完全无效"。
@@ -75,7 +76,7 @@ export class HardConstraintsSection implements PromptSection {
    *
    * 取并集，**本轮高置信值优先覆盖旧 session 值**（候选人资料证据化 Phase 0 第 2 条）：
    * 工具层 tool-context.builder 的 mergeSessionFactsWithHighConfidence 一直是"本轮非 null
-   * 高置信覆盖旧值"，本段此前却是"旧值优先、本轮仅补缺"——prompt 与工具对同一字段
+   * 高置信覆盖旧值"，本段若取"旧值优先、本轮仅补缺"——prompt 与工具就会对同一字段
    * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
    * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
    */

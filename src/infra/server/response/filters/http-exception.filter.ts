@@ -17,7 +17,9 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * 统一处理所有 HTTP 异常，返回标准错误响应格式
  *
  * 使用方式：
- * 1. 在 main.ts 中全局注册：app.useGlobalFilters(new HttpExceptionFilter())
+ * 1. 在 main.ts 中全局注册，须走 DI 才能注入 IncidentReporterService：
+ *    app.useGlobalFilters(app.get(HttpExceptionFilter))，并在模块 providers 中登记本类。
+ *    直接 new 会让告警依赖恒为 undefined，静默关掉 5xx 告警。
  * 2. 或者在 controller/method 上使用 @UseFilters(HttpExceptionFilter)
  *
  * 处理的异常类型：

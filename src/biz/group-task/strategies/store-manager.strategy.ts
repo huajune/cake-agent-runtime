@@ -52,7 +52,7 @@ export class StoreManagerStrategy implements NotificationStrategy {
       interviews: data.payload.interviews as InterviewScheduleItem[],
       date: data.payload.date as string,
     });
-    // 跟随消息存入 payload，由 scheduler 发送完主消息后单独发送
+    // 跟随消息存入 payload，随消息缓存进 Redis，由队列 handleSend 发完主消息后单独发送
     if (result.followUp) {
       data.payload.followUpMessage = result.followUp;
     }

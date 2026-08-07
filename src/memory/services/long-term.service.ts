@@ -155,8 +155,8 @@ export class LongTermService {
   ): Promise<void> {
     try {
       const profileFacts = this.buildProfileFactsFromSettlement(facts, origin);
-      // 求职意向同样跨会话有价值（城市/品牌/岗位/班次等），此前只活在 Redis
-      // session facts（TTL 2 天）里，候选人隔几天回来意向全部丢失、只剩摘要叙述。
+      // 求职意向同样跨会话有价值（城市/品牌/岗位/班次等），若只活在 Redis
+      // session facts（TTL 2 天）里，候选人隔几天回来意向会全部丢失、只剩摘要叙述。
       const preferenceFacts = this.buildPreferenceFactsFromSettlement(facts, origin);
       if (Object.keys(profileFacts).length === 0 && Object.keys(preferenceFacts).length === 0) {
         return;

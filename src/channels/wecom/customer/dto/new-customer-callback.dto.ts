@@ -8,7 +8,7 @@
  * - 文档示例「没有外层 data」，但实际可能带 `{ data: {...} }`，handler 两者都兼容。
  * - `imContactId`（客户系统id）与消息回调同名同源 → 与 candidate.engaged 的 user_id 可 cohort join。
  * - `createTimestamp` 为毫秒时间戳，作为 friend.added 的真实业务时间。
- * - 报文不含 orgId/corpId（以 API 文档为准），故 friend.added 统一记到 corp_id='default'。
+ * - 报文不含 orgId/corpId；corp_id 由 imBotId 查企业托管账号解析，查不到才回退 'default'（见 NewCustomerCallbackService）。
  * 文档：接口文档/企业级接口/客户接口/客户信息管理 · 新增客户回调—RPA
  */
 export interface NewCustomerCallbackPayload {

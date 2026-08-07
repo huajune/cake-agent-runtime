@@ -12,14 +12,11 @@ import { MessagePipelineService } from '../application/pipeline.service';
 import { MessageWorkerManagerService } from './message-worker-manager.service';
 
 /**
- * 消息队列处理器（精简版 v2）
+ * Bull 'process' 任务消费者（Job 由 SimpleMergeService 创建）。
  *
- * 重构亮点：
- * - 直接依赖回复工作流编排，而非反向依赖入口服务
- * - 仅保留队列管理和任务调度逻辑
- * - 从 884 行精简到 ~200 行
- *
- * Job name: 'process'（由 SimpleMergeService 创建）
+ * 职责：per-chat 处理锁（90s 租约+心跳）→ 静默窗口复查 → pending 快照 →
+ * 托管暂停复查 → 委托 MessagePipelineService；含 SIGTERM 优雅排空。
+ * 直接依赖回复工作流编排，而非反向依赖入口服务。
  */
 @Injectable()
 export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
@@ -212,8 +209,8 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // 锁改为短租约（90s）+ 处理期间心跳续期：长 Agent 调用不丢锁，
-      // 进程崩溃后孤悬锁最长一个租约即让位（旧实现固定 300s）。
+      // 锁是短租约（90s）+ 处理期间心跳续期：长 Agent 调用靠续期不丢锁，
+      // 进程崩溃后孤悬锁最长一个租约即让位（固定长 TTL 会拖长让位时间）。
       stopLockHeartbeat = this.simpleMergeService.startLockHeartbeat(chatId, lockOwner);
 
       this.logger.log(`[Bull] 开始处理任务 ${job.id}, chatId: ${chatId}`);

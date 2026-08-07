@@ -20,8 +20,6 @@
  *  - 不进入决策——这一层只是把已派生事实拼装成候选人友好句子
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { hasValue } from '@tools/duliday/job-list/helpers.util';
 import {
   formatDistanceKm,
@@ -34,6 +32,7 @@ import {
 } from '@tools/duliday/job-list/hard-requirements.util';
 import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
 import { buildJobPolicyAnalysis, sanitizeConstraintText } from '@tools/utils/job-policy-parser';
+import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
 
 export interface CandidateCard {
   jobId: number | string;
@@ -46,7 +45,7 @@ export interface CandidateCard {
 const NON_POSITION_PATTERN =
   /^(日结|周结|月结|小时工|兼职|全职|临时工|短期工|长期工|社会兼职)[\+＋]?$|^(只招|目前只|仅招)/;
 
-function resolvePositionName(bi: any): string {
+function resolvePositionName(bi: JobBasicInfo): string {
   const nick = typeof bi.jobNickName === 'string' ? bi.jobNickName.trim() : '';
   if (nick && !NON_POSITION_PATTERN.test(nick)) return nick;
   const cat = bi.jobCategoryName;
@@ -58,14 +57,32 @@ function resolvePositionName(bi: any): string {
   return '岗位';
 }
 
+/**
+ * `buildShiftPart` 实际读取的最小 workTime 字段集。
+ * 命名与外部 raw workTime 一致，作为该函数的自描述契约
+ * （同 brand-stores.util 的 `BrandSummaryJobInput`）；raw 值仍靠 `hasValue` 逐字段兜底。
+ */
+interface ShiftWorkTimeInput {
+  dayWorkTime?: {
+    combinedArrangement?: unknown;
+    fixedTime?: {
+      goToWorkStartTime?: string;
+      goOffWorkEndTime?: string;
+      goOffWorkTimeType?: string;
+      perDayMinWorkHours?: number | string;
+    };
+  } | null;
+  weekAndMonthWorkTime?: { perWeekWorkDays?: number | string } | null;
+}
+
 function buildShiftPart(workTime: unknown): string {
-  const wt = workTime as any;
-  if (!wt) return '';
+  if (!workTime) return '';
+  const wt = workTime as ShiftWorkTimeInput;
   const parts: string[] = [];
 
   // 时间段：海绵2.0 优先取 dayWorkTime.combinedArrangement（固定/组合排班的多时段），
   // 灵活排班则取 fixedTime 的上下班区间。不做计算，直接展示。
-  const day = wt?.dayWorkTime ?? {};
+  const day: NonNullable<ShiftWorkTimeInput['dayWorkTime']> = wt?.dayWorkTime ?? {};
   const combined: Array<{
     combinedArrangementStartTime?: string;
     combinedArrangementEndTime?: string;
@@ -75,7 +92,8 @@ function buildShiftPart(workTime: unknown): string {
       (s) => hasValue(s?.combinedArrangementStartTime) && hasValue(s?.combinedArrangementEndTime),
     )
     .map((s) => `${s.combinedArrangementStartTime}-${s.combinedArrangementEndTime}`);
-  const ft = day.fixedTime ?? {};
+  const ft: NonNullable<NonNullable<ShiftWorkTimeInput['dayWorkTime']>['fixedTime']> =
+    day.fixedTime ?? {};
   if (ranges.length === 0 && hasValue(ft.goToWorkStartTime) && hasValue(ft.goOffWorkEndTime)) {
     const nextDay = /次日/.test(String(ft.goOffWorkTimeType ?? '')) ? '次日' : '';
     ranges.push(`${ft.goToWorkStartTime}-${nextDay}${ft.goOffWorkEndTime}`);
@@ -87,13 +105,14 @@ function buildShiftPart(workTime: unknown): string {
   if (hasValue(dayMin)) parts.push(`每日至少 ${dayMin} 小时`);
 
   // 每周天数
-  const wm = wt?.weekAndMonthWorkTime ?? {};
+  const wm: NonNullable<ShiftWorkTimeInput['weekAndMonthWorkTime']> =
+    wt?.weekAndMonthWorkTime ?? {};
   if (hasValue(wm.perWeekWorkDays)) parts.push(`每周 ${wm.perWeekWorkDays} 天`);
 
   return parts.join('，');
 }
 
-function buildSalaryPart(job: any): string {
+function buildSalaryPart(job: JobDetail): string {
   const scenarios = Array.isArray(job?.jobSalary?.salaryScenarioList)
     ? job.jobSalary.salaryScenarioList
     : [];
@@ -111,7 +130,7 @@ function buildSalaryPart(job: any): string {
   return '';
 }
 
-function buildStairPart(job: any): string {
+function buildStairPart(job: JobDetail): string {
   const facts = extractSalaryFacts(job?.jobSalary);
   if (!facts.hasStairSalary) return '';
   const scenarios = Array.isArray(job?.jobSalary?.salaryScenarioList)
@@ -121,7 +140,7 @@ function buildStairPart(job: any): string {
     const stairs = Array.isArray(s?.stairSalaries) ? s.stairSalaries : [];
     if (stairs.length === 0) continue;
     const parts = stairs
-      .map((stair: any) => {
+      .map((stair) => {
         if (!hasValue(stair?.salary)) return null;
         const unit = stair?.salaryUnit || '元/时';
         const threshold = hasValue(stair?.fullWorkTime)
@@ -160,7 +179,7 @@ function flattenText(text: unknown): string {
     .join('；');
 }
 
-function collectRemarks(job: any): string {
+function collectRemarks(job: JobDetail): string {
   const parts: string[] = [];
   const memo = sanitizeConstraintText(flattenText(job?.welfare?.memo));
   if (memo) parts.push(`福利备注：${memo}`);
@@ -176,7 +195,7 @@ function collectRemarks(job: any): string {
  * 输出：oneLine + multiLine 两种 ready-to-send 模板字符串。
  */
 export function renderCandidateCard(
-  job: any,
+  job: JobDetail,
   index?: number,
   distanceAnchor: DistanceAnchorPrecision | null = null,
 ): CandidateCard | null {
@@ -184,7 +203,10 @@ export function renderCandidateCard(
   const bi = job.basicInfo;
   const position = resolvePositionName(bi);
   const brand = bi.brandName || '';
-  const store = normalizeStoreNameForAgent(bi.storeInfo?.storeName, bi.storeInfo?.storeCityName);
+  // storeInfo 在契约里是 raw Record：这里按预期形状断言后直接透传，
+  // 不做运行时转换（净化函数内部本就用 truthy + String() 兜底任意 raw 值）。
+  const storeInfo = bi.storeInfo as { storeName?: string; storeCityName?: string } | undefined;
+  const store = normalizeStoreNameForAgent(storeInfo?.storeName, storeInfo?.storeCityName);
   const distance =
     typeof job._distanceKm === 'number'
       ? formatDistanceKm(Math.round(job._distanceKm * 10) / 10, distanceAnchor)
@@ -237,7 +259,7 @@ export function renderCandidateCard(
  * 返回空字符串表示 jobs 为空，调用方跳过插入。
  */
 export function renderCandidateCardsBanner(
-  jobs: any[],
+  jobs: JobDetail[],
   distanceAnchor: DistanceAnchorPrecision | null = null,
 ): string {
   if (!Array.isArray(jobs) || jobs.length === 0) return '';
@@ -256,5 +278,3 @@ export function renderCandidateCardsBanner(
   lines.push('');
   return lines.join('\n');
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

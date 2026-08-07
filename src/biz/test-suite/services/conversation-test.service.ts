@@ -303,7 +303,7 @@ export class ConversationTestService {
   }
 
   /**
-   * 获取对话源所属批次 ID（兼容旧 facade）
+   * 获取对话源所属批次 ID。当前无生产调用方（仅单测引用），待删。
    */
   async getSourceBatchId(sourceId: string): Promise<string | null> {
     const source = await this.conversationSnapshotRepository.findById(sourceId);

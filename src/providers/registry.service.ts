@@ -15,12 +15,13 @@ import { MODEL_DICTIONARY, ModelEntry, getModelsByProvider } from './models';
  *
  * 只负责 "provider名 → SDK实例" 的映射，不含角色路由或容错逻辑。
  *
- * 模型 ID 格式：provider/model（如 anthropic/claude-sonnet-4-6）
+ * 模型 ID 格式：provider/model（如 anthropic/claude-sonnet-5）
  *
  * Provider 分类：
  * - 原生 SDK：anthropic, google, deepseek
  * - 自定义：openai (代理, 强制 chat 端点), openrouter (官方 SDK + Kimi K2 修复)
- * - OpenAI-compatible：qwen, moonshotai, ohmygpt
+ * - OpenAI-compatible：qwen, moonshotai, ohmygpt（PROVIDER_DEFAULTS 表）
+ *   + gateway（独立注册的自定义网关，需 GATEWAY_API_KEY / GATEWAY_BASE_URL）
  */
 @Injectable()
 export class RegistryService implements OnModuleInit {
@@ -106,7 +107,7 @@ export class RegistryService implements OnModuleInit {
       this.logger.log('Provider 已注册: gateway');
     }
 
-    // Provider SDK 返回值符合 ProviderV3 接口，但 TS 需要显式断言
+    // Provider SDK 返回值符合 ProviderV4 接口（AI SDK v7 起各 provider 均已升到 v4 spec），但 TS 需要显式断言
     this.registry = createProviderRegistry(
       providers as Parameters<typeof createProviderRegistry>[0],
       { separator: '/' },

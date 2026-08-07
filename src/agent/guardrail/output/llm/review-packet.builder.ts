@@ -24,6 +24,8 @@ export interface BuildReviewPacketInput {
 // 单条 600 字符足够容纳一条多门店推荐卡片；再长的尾部对复述判定无增量，只烧 token。
 const RECENT_ASSISTANT_MESSAGES_LIMIT = 8;
 const RECENT_ASSISTANT_MESSAGE_MAX_CHARS = 600;
+const VISUAL_SHEETS_LIMIT = 4;
+const VISUAL_DESCRIPTION_MAX_CHARS = 400;
 
 @Injectable()
 export class GuardrailReviewPacketBuilder {
@@ -41,6 +43,7 @@ export class GuardrailReviewPacketBuilder {
         geocode: this.buildGeocodeEvidence(input.toolCalls),
         sentLocation: this.buildSentLocationEvidence(input.toolCalls),
         groupInvite: this.buildGroupInviteEvidence(input.toolCalls),
+        visualFacts: this.buildVisualFactsEvidence(input.toolCalls),
       },
       policies: {
         redLines: input.redLines ?? [],
@@ -250,6 +253,38 @@ export class GuardrailReviewPacketBuilder {
       alreadyInGroup: readBoolean(result.alreadyInGroup),
       errorType: readString(result.errorType),
     };
+  }
+
+  /**
+   * 视觉事实证据：save_image_description 的**入参**才是内容载体（result 只有 success），
+   * 这与其余工具相反，故读 args 而非 result。一轮可能多张图，全部保留。
+   */
+  private buildVisualFactsEvidence(
+    toolCalls: AgentToolCall[],
+  ): GuardrailReviewPacket['evidence']['visualFacts'] {
+    const sheets = toolCalls
+      .filter((item) => item.toolName === 'save_image_description')
+      .slice(0, VISUAL_SHEETS_LIMIT)
+      .map((call) => {
+        const args = readRecord(call.args) ?? {};
+        const description = readString(args.description);
+        return {
+          kind: readString(args.kind),
+          description:
+            description && description.length > VISUAL_DESCRIPTION_MAX_CHARS
+              ? `${description.slice(0, VISUAL_DESCRIPTION_MAX_CHARS)}…`
+              : description,
+          fields: readArray(args.fields).flatMap((raw) => {
+            const field = readRecord(raw);
+            const key = readString(field?.key);
+            const value = readString(field?.value);
+            if (!key || !value) return [];
+            return [{ key, value, ownership: readString(field?.ownership) }];
+          }),
+        };
+      })
+      .filter((sheet) => sheet.fields.length > 0 || sheet.description);
+    return sheets.length > 0 ? { sheets } : undefined;
   }
 
   private buildSentLocationEvidence(

@@ -66,11 +66,11 @@ interface AgentStreamData {
 /**
  * SSE 流处理工具类
  *
- * 职责：
- * - 解析 Agent API 的流式响应
- * - 发送 SSE 事件到客户端
- * - 累积流式数据用于最终统计
- * - 处理不同格式的流式事件
+ * 服务于旧 /test-suite/chat/stream 端点：向客户端发 start/text/tool_call/metrics/done 事件、
+ * 累积流式数据用于最终统计。
+ *
+ * 注意：processChunk 的 `data: ` SSE 解析针对历史上的 SSE 上游；当前唯一喂入源是
+ * runner.stream 的裸 textStream（无 SSE 帧），那些解析分支已不生效。
  */
 export class SSEStreamHandler {
   private readonly logger = new Logger(SSEStreamHandler.name);
@@ -173,11 +173,8 @@ export class SSEStreamHandler {
   /**
    * 处理流式数据块
    *
-   * 解析 Agent API 的 SSE 格式数据，支持多种事件类型：
-   * - text-delta: 文本增量
-   * - tool-call: 工具调用开始
-   * - tool-result: 工具调用结果
-   * - finish: 完成事件（包含 usage）
+   * 历史 SSE 上游的解析：`data: ` 帧内 text-delta / tool-call / tool-result / finish 事件。
+   * 当前上游是裸 textStream，不带 SSE 帧，走末尾的纯文本增量分支。
    */
   processChunk(chunk: Buffer): void {
     const text = chunk.toString();
@@ -340,7 +337,7 @@ export class VercelAIStreamHandler {
   constructor(
     private readonly res: Response,
     private readonly logPrefix = '[AI-Stream]',
-    /** 调用方预估的 input tokens（由 AgentService.estimateInputTokens 计算） */
+    /** 调用方预估的 input tokens */
     private readonly estimatedInputTokens = 0,
   ) {}
 

@@ -44,7 +44,7 @@ export class ApiConfigService {
   /**
    * 构建完整的 API URL
    * @param endpoint - API 端点（如 '/chat/list', '/message/send'）
-   * @param version - API 版本（'stream-api' | 'v2' | 'enterprise-v2'）
+   * @param version - API 版本（'stream-api' | 'v2' | 'enterprise-v2' | 'enterprise-v1'）
    */
   buildApiUrl(
     endpoint: string,
@@ -113,7 +113,7 @@ export class ApiConfigService {
     group: {
       list: () => this.buildApiUrl('/group/list', 'enterprise-v2'),
     },
-    // 客户相关（使用 v2 API）
+    // 客户相关（list 走 v2，detail 走企业级 enterprise-v2）
     customer: {
       list: () => this.buildApiUrl('/customer/list', 'v2'),
       detail: () => this.buildApiUrl('/customer/detail', 'enterprise-v2'),

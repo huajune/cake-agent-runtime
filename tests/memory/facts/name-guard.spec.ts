@@ -3,6 +3,7 @@ import {
   hasStructuredNameSubmission,
   isFromAutoGreeting,
   isLikelyRealChineseName,
+  isStrictRealChineseName,
   sanitizeInterviewName,
 } from '@/memory/facts/name-guard';
 import {
@@ -90,6 +91,44 @@ describe('name-guard', () => {
       expect(result.droppedName).toBe('执子之魂');
       expect(result.sanitized.interview_info.name).toBeNull();
       expect(result.sanitized).not.toBe(facts);
+    });
+
+    // badcase 2026-08-06 chat 6a1e42c5：首句"大门先生直接去门店面试"里的"大门先生"是
+    // 品牌「大米先生」的错字，抽取器判成"用户自报称呼"写进 name，跨 3 个 turn 未纠正。
+    // 该轮 duliday_job_list 对"大门先生"返回 brand.rejected=unmatched——错字品牌不在
+    // 目录里，品牌目录门拦不住，只有称谓后缀是稳定判据。
+    describe('称谓/商号后缀', () => {
+      it.each(['大门先生', '大米先生', '王女士', '李老师', '张师傅'])(
+        '丢弃称谓形态的 %s 并标注归因',
+        (name) => {
+          const result = sanitizeInterviewName(buildFacts(name), ['随便一句', '再来一句']);
+          expect(result.droppedName).toBe(name);
+          expect(result.droppedReason).toBe('honorific_suffix');
+          expect(result.sanitized.interview_info.name).toBeNull();
+        },
+      );
+
+      it('结构化回填也救不回称谓——"姓名：大米先生"仍不是本人姓名', () => {
+        const result = sanitizeInterviewName(buildFacts('大米先生'), ['姓名：大米先生']);
+        expect(result.droppedName).toBe('大米先生');
+        expect(result.droppedReason).toBe('honorific_suffix');
+      });
+
+      it('不误伤以称谓用字收尾的真名', () => {
+        // "生/士/姐/师"单字结尾的真名不该被拦——判据是完整称谓词而非单字。
+        for (const name of ['陈先', '李生', '王士', '赵姐', '刘师']) {
+          const result = sanitizeInterviewName(buildFacts(name), ['你好']);
+          expect(result.droppedName).toBeNull();
+        }
+      });
+
+      it('姓名校验器同步收口，堵住真名索取问答逃生口', () => {
+        // isNameAnsweredToRealNameAsk 整条绕过 sanitizer，而"大米先生"是 4 汉字、
+        // 能过 REAL_NAME_STRICT_REGEX——门必须下沉到校验器本身，booking 闸门才一并生效。
+        expect(isLikelyRealChineseName('大米先生')).toBe(false);
+        expect(isStrictRealChineseName('大米先生')).toBe(false);
+        expect(isStrictRealChineseName('颜端樟')).toBe(true);
+      });
     });
 
     it('no-op when name is null', () => {

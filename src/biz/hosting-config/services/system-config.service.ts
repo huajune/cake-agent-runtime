@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
 import { SystemConfigRepository } from '../repositories/system-config.repository';
+import { SystemConfigKey } from '@enums/hosting-config.enum';
 import {
   SystemConfig,
   AgentReplyConfig,
@@ -244,7 +245,7 @@ export class SystemConfigService {
     this.setAiReplyEnabledCache(enabled);
 
     try {
-      await this.systemConfigRepository.setConfigValue('ai_reply_enabled', enabled);
+      await this.systemConfigRepository.setConfigValue(SystemConfigKey.AI_REPLY_ENABLED, enabled);
       this.logger.log(`AI 回复开关已更新为: ${enabled}`);
     } catch (error) {
       this.logger.error('更新 AI 回复状态到数据库失败', error);
@@ -292,7 +293,10 @@ export class SystemConfigService {
     this.setMessageMergeEnabledCache(enabled);
 
     try {
-      await this.systemConfigRepository.setConfigValue('message_merge_enabled', enabled);
+      await this.systemConfigRepository.setConfigValue(
+        SystemConfigKey.MESSAGE_MERGE_ENABLED,
+        enabled,
+      );
       this.logger.log(`消息聚合开关已更新为: ${enabled}`);
     } catch (error) {
       this.logger.error('更新消息聚合状态到数据库失败', error);
@@ -320,11 +324,6 @@ export class SystemConfigService {
 
   // ==================== Agent 回复策略配置 ====================
 
-  /**
-   * 获取 Agent 回复策略配置
-   *
-   * 本地热缓存有效期内直接返回，否则按 Redis → DB 顺序回源
-   */
   /**
    * 事实提取模型覆盖：后台配置非空时返回该模型 ID，否则 undefined（走 extract 角色路由）。
    */
@@ -367,6 +366,11 @@ export class SystemConfigService {
     return undefined;
   }
 
+  /**
+   * 获取 Agent 回复策略配置
+   *
+   * 本地热缓存有效期内直接返回，否则按 Redis → DB 顺序回源
+   */
   async getAgentReplyConfig(): Promise<AgentReplyConfig> {
     if (this.agentReplyConfig && Date.now() < this.agentReplyConfigExpiry) {
       return this.agentReplyConfig;
@@ -410,7 +414,7 @@ export class SystemConfigService {
 
     try {
       await this.systemConfigRepository.setConfigValue(
-        'agent_reply_config',
+        SystemConfigKey.AGENT_REPLY_CONFIG,
         newConfig,
         'Agent 运行时配置（模型、消息聚合、打字延迟、告警节流）',
       );
@@ -442,7 +446,9 @@ export class SystemConfigService {
    */
   async getSystemConfig(): Promise<SystemConfig | null> {
     try {
-      return await this.systemConfigRepository.getConfigValue<SystemConfig>('system_config');
+      return await this.systemConfigRepository.getConfigValue<SystemConfig>(
+        SystemConfigKey.SYSTEM_CONFIG,
+      );
     } catch (error) {
       this.logger.error('获取系统配置失败', error);
       return null;
@@ -458,7 +464,7 @@ export class SystemConfigService {
 
     try {
       await this.systemConfigRepository.setConfigValue(
-        'system_config',
+        SystemConfigKey.SYSTEM_CONFIG,
         newConfig,
         '系统配置（Worker 并发数等）',
       );
@@ -511,14 +517,16 @@ export class SystemConfigService {
         }
       }
 
-      const result = await this.systemConfigRepository.getConfigValue<unknown>('ai_reply_enabled');
+      const result = await this.systemConfigRepository.getConfigValue<unknown>(
+        SystemConfigKey.AI_REPLY_ENABLED,
+      );
 
       if (result !== null) {
         this.setAiReplyEnabledCache(result === true || result === 'true');
       } else {
         this.setAiReplyEnabledCache(defaultValue);
         await this.systemConfigRepository.setConfigValue(
-          'ai_reply_enabled',
+          SystemConfigKey.AI_REPLY_ENABLED,
           defaultValue,
           'AI 自动回复功能开关',
         );
@@ -556,15 +564,16 @@ export class SystemConfigService {
         }
       }
 
-      const result =
-        await this.systemConfigRepository.getConfigValue<unknown>('message_merge_enabled');
+      const result = await this.systemConfigRepository.getConfigValue<unknown>(
+        SystemConfigKey.MESSAGE_MERGE_ENABLED,
+      );
 
       if (result !== null) {
         this.setMessageMergeEnabledCache(result === true || result === 'true');
       } else {
         this.setMessageMergeEnabledCache(defaultValue);
         await this.systemConfigRepository.setConfigValue(
-          'message_merge_enabled',
+          SystemConfigKey.MESSAGE_MERGE_ENABLED,
           defaultValue,
           '消息聚合功能开关（多条消息合并发送给 AI）',
         );
@@ -598,17 +607,16 @@ export class SystemConfigService {
         }
       }
 
-      const result =
-        await this.systemConfigRepository.getConfigValue<Partial<AgentReplyConfig>>(
-          'agent_reply_config',
-        );
+      const result = await this.systemConfigRepository.getConfigValue<Partial<AgentReplyConfig>>(
+        SystemConfigKey.AGENT_REPLY_CONFIG,
+      );
 
       if (result !== null) {
         this.setAgentReplyConfigCache(this.normalizeAgentReplyConfig(result));
       } else {
         this.setAgentReplyConfigCache(this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG));
         await this.systemConfigRepository.setConfigValue(
-          'agent_reply_config',
+          SystemConfigKey.AGENT_REPLY_CONFIG,
           DEFAULT_AGENT_REPLY_CONFIG,
           'Agent 运行时配置（模型、消息聚合、打字延迟、告警节流）',
         );

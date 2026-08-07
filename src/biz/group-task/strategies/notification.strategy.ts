@@ -3,9 +3,10 @@ import { GroupTaskType, GroupContext, NotificationData, TimeSlot } from '../grou
 /**
  * 通知策略接口
  *
- * 四种通知类型各自实现此接口，由 GroupTaskSchedulerService 统一编排。
- * - 模板策略（兼职群/抢单群/店长群）：fetchData + buildMessage（纯模板）
- * - AI 策略（工作小贴士）：fetchData + buildPrompt（需要 AI 生成）
+ * 四种通知类型各自实现此接口，由 GroupTaskProcessor（Bull 队列 prepare/send 阶段）
+ * 驱动执行；Scheduler 只负责配置闸门与入队 plan。
+ * - 模板策略（抢单群/店长群）：fetchData + buildMessage（纯模板）
+ * - AI 策略（兼职群/工作小贴士）：fetchData + buildPrompt（需要 AI 生成）
  */
 export interface NotificationStrategy {
   /** 策略类型标识 */

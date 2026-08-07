@@ -2,7 +2,7 @@
  * Context 服务 — 系统提示词组装
  *
  * 职责：按场景组合 PromptSection，输出最终 systemPrompt 字符串。
- * 调用方（channels、biz）通过 compose() 获取 prompt，再传给 GeneratorAgent / LlmExecutorService。
+ * 唯一调用方是 PreparationService（generator 域内），compose 产物拼进 finalPrompt。
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';

@@ -656,7 +656,7 @@ export class MessageTrackingService {
    *
    * - tool_loop: 同一工具被调用 ≥ 3 次
    * - tool_empty_result: 有调用返回 0 条
-   * - tool_narrow_result: 有调用返回 1 条
+   * - tool_narrow_result: 有搜索类工具调用（NARROW_SEMANTIC_TOOLS，现仅 duliday_job_list）返回 1 条
    * - tool_chain_overlong: 本轮工具链总长 ≥ 5
    */
   private computeAnomalyFlags(toolCalls: AgentToolCall[] | undefined): AnomalyFlag[] | undefined {

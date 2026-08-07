@@ -205,6 +205,25 @@ describe('SemanticReviewerService', () => {
       });
       expect(service.shouldReview(packet)).toBe(false);
     });
+
+    // 2026-08-06 badcase（chat 6a744a86，记录 249939）：「这家对户籍有要求，方便问一下
+    // 你老家是哪里的吗」硬规则漏拦，语义档虽然被 jobList 档触发了却按四类去看、findings=[]。
+    // 补第 5 类后，这条轴自身也必须能独立触发审查——包括零证据的复聊/纯话术回合。
+    it.each([
+      '这家对户籍有要求，方便问一下你老家是哪里的吗',
+      '方便问下你是哪里人呀，公司这边登记需要核对下户籍信息',
+      '方便问下你是天津本地人吗？',
+    ])('回复碰到敏感筛选轴 → 触发（零证据也要审）：%s', (draftReply) => {
+      expect(service.shouldReview(makePacket({ draftReply }))).toBe(true);
+    });
+
+    it.each([
+      '方便问一下你常驻在哪个城市吗？我帮你看下匹配的岗位',
+      '你看哪个班次合适',
+      '我们很专业的，不是中介',
+    ])('未碰到敏感筛选轴的零证据回复 → 不触发：%s', (draftReply) => {
+      expect(service.shouldReview(makePacket({ draftReply }))).toBe(false);
+    });
   });
 
   describe('review', () => {

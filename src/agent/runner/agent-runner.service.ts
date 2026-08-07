@@ -145,8 +145,9 @@ export class AgentRunnerService {
   }
 
   /**
-   * 入站风险预检（input guardrail）。被动渠道在生成前调用一次：命中高置信度风险关键词
-   * 即返回 `{ hit: true }` + 风险归因。守卫本身**只判定不执行副作用**——人工介入
+   * 入站风险预检（input guardrail）的薄封装：命中高置信度风险关键词即返回
+   * `{ hit: true }` + 风险归因。当前无生产调用方——渠道走 runTurn，内部经
+   * precheckInboundOutcome 完成入站预检。守卫本身**只判定不执行副作用**——人工介入
    * （暂停托管 + 飞书告警）以 sideEffect intent 挂在 outcome 上，由渠道在 replay 定局后
    * 经 TurnOutcomeInterventionService.commit 统一出口执行，避免被 replay 丢弃的首版
    * 误触发暂停/告警。
@@ -204,7 +205,7 @@ export class AgentRunnerService {
    *   REPLAN、语义档裁决在 normalizeDecision 归一为 revise，本方法不再存在重进
    *   generator 的修复路径；历史语义见评估文档 §2.4。）
    *
-   * turn-end 语义：内部两次生成都强制 `deferTurnEnd`，确保被丢弃的首版不写记忆；最终采纳版的
+   * turn-end 语义：内部生成强制 `deferTurnEnd`（repair 产物复用首版的 runTurnEnd），确保被丢弃的首版不写记忆；最终采纳版的
    * `runTurnEnd` 按调用方意图处理——调用方原本要自动收尾（未显式 defer）时，pass 即 fire-and-forget
    * 触发、block 则丢弃（不写「对用户说过」记忆，呼应 HC-4）。
    *
@@ -547,7 +548,8 @@ export class AgentRunnerService {
    * 首版全文 + 违规证据全文 + 重写版全文——紧凑摘要（guardrail_output 列）刻意不带、
    * 但详情页复盘必需的部分。
    *
-   * - 仅生产回合写（有 traceId；debug-chat / test-suite 不带 traceId，天然隔离）；
+   * - 仅在带 traceId 时写。注意 debug-chat（`sessionId:时间戳`）与 test-suite（synthetic id）
+   *   也会构造 traceId，档案并非纯生产数据，按 traceId 形态区分；
    * - 仅守卫有信号时写（非 pass 或有 rule 观测命中），放行回合不产生行；
    * - fire-and-forget：三态写入结果只用于观测告警，绝不阻塞/拖垮回复链路。
    */

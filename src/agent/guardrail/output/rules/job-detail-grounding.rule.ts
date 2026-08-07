@@ -140,8 +140,8 @@ export function detectJobDetailLookupRequired(
     // 唯一已展示岗位但焦点未锁定（badcase chat 6a62c6f8，2026-07-24：单岗展示打分
     // 不足焦点悬空，“兼职还是全职的”零工具作答编出全职/月结/签合同）：追问只可能
     // 指这一个岗位，且精简记忆没有任何岗位字段可供接地，必须按该 jobId 查证。
-    // 与下方多岗分支不同，这里的补救动作原本可以通过工具调用解除；但 2026-07-27
-    // 已从类型层退役 REPLAN，job_detail 规则族统一改为 observe，由事后环接盘。
+    // 与下方多岗分支不同，这里的补救动作本可通过工具调用解除；但 REPLAN 已从类型层
+    // 退役（2026-07-27），job_detail 规则族一律 observe，由事后环接盘。
     if (presentedJobIds.length === 1) {
       const presentedJobId = presentedJobIds[0];
       if (hasFocusJobLookup(toolCalls, presentedJobId, requested)) return null;

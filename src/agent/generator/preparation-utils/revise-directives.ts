@@ -105,9 +105,9 @@ export function buildReviseUserDirective(params: GeneratorInvokeParams): string 
   if (violations.length > 0) {
     // evidence 必须与 suggestion 一起给：本案证据（如 "未按 jobId=528499 调用
     // duliday_job_list"、命中的具体字段）只存在于 evidence，而 suggestion 是规则目录里
-    // 的静态策略文本，逐条命中都一样。2026-07-21 审计：本函数此前只渲染 suggestion，
-    // 于是在**注意力最强的对话末尾通道**里，模型被要求"用其 jobId 调用 duliday_job_list"
-    // 却拿不到 jobId 是多少——replan 二审失败样本中 49% 根本没调该工具。
+    // 的静态策略文本，逐条命中都一样。若只渲染 suggestion，
+    // 则在**注意力最强的对话末尾通道**里，模型被要求"用其 jobId 调用 duliday_job_list"
+    // 却拿不到 jobId 是多少——2026-07-21 审计中 replan 二审失败样本 49% 根本没调该工具。
     lines.push(
       `需修正的问题：\n${violations
         .map((v) => {
@@ -130,17 +130,22 @@ export function buildReviseUserDirective(params: GeneratorInvokeParams): string 
   return lines.join('\n\n');
 }
 
-/** Guardrail replan 的提示必须与物理工具白名单完全一致，不能再声称笼统的“只读”。 */
+/**
+ * 带工具的修复提示必须与物理工具白名单完全一致，不能声称笼统的“只读”。
+ *
+ * replan 已于 2026-07-27 退役、生产链路不再传 reviseFeedback，本分支当前不可达；
+ * 保留以备未来按 §2.4 重新申领“取数式修复”动手权。
+ */
 function buildReplanToolConstraint(allowedToolNames?: string[]): string {
   if (allowedToolNames === undefined) {
-    // 兼容非 guardrail 的历史调用；guardrail runner 必须始终显式传入白名单。
+    // 未显式传白名单时的兜底措辞。
     return '本次只允许调用当前物理暴露的工具重新核实事实；严禁尝试任何未提供的工具。';
   }
   if (allowedToolNames.length === 0) {
     return '本次没有可用工具；只能基于已有事实修正回复，不能承诺稍后查询。';
   }
-  // 措辞必须是"必须先调用"而不是"允许调用"：replan 之所以被判 replan 而不是 rewrite，
-  // 就是因为规则认定缺的是**事实**而非措辞，不重新取数则二审必然复燃同一条规则。
+  // 措辞必须是"必须先调用"而不是"允许调用"：这类修复缺的是**事实**而非措辞，
+  // 不重新取数则二审必然复燃同一条规则。
   // 生产实测（2026-07-21）：二审通过组 96% 调了白名单工具，失败组只有 51%。
   return (
     `本次修复必须先调用以下工具重新核实或补全事实，再基于返回结果写回复：${allowedToolNames.join('、')}；` +

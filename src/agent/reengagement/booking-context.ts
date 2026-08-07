@@ -31,7 +31,7 @@ export interface ResolveReengagementBookingContextInput {
 
 /**
  * 复聊报名上下文统一解析：调用方已绑定 workOrderId 时直接查海绵，完全绕过 active_booking；
- * 只有普通对话未指定工单时，active_booking 才负责提供候选人的工单索引。海绵实时工单是
+ * 唯一调用方（复聊 processor）恒带 workOrderId，未带时回退 active_booking 索引的分支仅防御性保留（无生产触发路径）。海绵实时工单是
  * 唯一业务事实，岗位接口补面试方式/地址/要求；查询失败不使用本地快照或任务冻结值兜底。
  */
 export async function resolveReengagementBookingContext(

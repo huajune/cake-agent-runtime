@@ -18,8 +18,7 @@ import {
 import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import { extractHardRequirements } from '@tools/duliday/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import type { JobDetail } from '@sponge/sponge.types';
 
 export interface BrandStoreEntry {
   storeName: string | null;
@@ -43,8 +42,26 @@ export interface BrandNearestStoresGroup {
   nearestStores: BrandStoreEntry[];
 }
 
+/**
+ * `formatSalarySummary` 实际读取的最小 jobSalary 字段集（自描述契约，
+ * 叶子值保持 unknown，由 `!= null` / 模板串兜底任意 raw 值）。
+ */
+interface SalarySummaryJobInput {
+  jobSalary?: {
+    salaryScenarioList?: Array<{
+      comprehensiveSalary?: {
+        minComprehensiveSalary?: unknown;
+        maxComprehensiveSalary?: unknown;
+        comprehensiveSalaryUnit?: string;
+      } | null;
+      basicSalary?: { basicSalary?: unknown; basicSalaryUnit?: string } | null;
+    }> | null;
+    probationSalary?: { salary?: unknown; salaryUnit?: string } | null;
+  } | null;
+}
+
 /** 单条岗位的薪资摘要（"24-26 元/时" / 试工期 / 综合月薪）。 */
-export function formatSalarySummary(job: any): string | null {
+export function formatSalarySummary(job: SalarySummaryJobInput): string | null {
   const salary = job.jobSalary;
   if (!salary) return null;
 
@@ -122,8 +139,10 @@ function formatShiftSummary(job: BrandSummaryJobInput): string | null {
 }
 
 function formatRequirementSummary(job: BrandSummaryJobInput): string | null {
-  const policy = buildJobPolicyAnalysis(job as any);
-  const hr = extractHardRequirements(job as any, policy);
+  // BrandSummaryJobInput 是同一个 raw job 收窄到本模块读取字段后的视图，
+  // 断言回领域契约即可，运行时对象未变（两个解析器都对 raw 结构逐字段兜底）。
+  const policy = buildJobPolicyAnalysis(job as JobDetail);
+  const hr = extractHardRequirements(job, policy);
   const parts: string[] = [];
   const age = policy.normalizedRequirements.ageRequirement;
   if (age && age !== '不限') parts.push(age);
@@ -276,5 +295,3 @@ export function renderMultiStoreBrandWarning(
   }
   return lines.join('\n') + '\n\n';
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

@@ -5,7 +5,7 @@ import { createOpenAI } from '@ai-sdk/openai';
  *
  * 解决第三方代理服务不支持 /v1/responses 端点的问题。
  *
- * AI SDK v5 默认使用新的 /v1/responses 端点，
+ * AI SDK 自 v5 起默认使用 /v1/responses 端点（当前 v7 仍然如此），
  * 代理服务器（如 ohmygpt）只支持 /v1/chat/completions，
  * 因此拦截 languageModel 调用，强制使用 chat 方法。
  */

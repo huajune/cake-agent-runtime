@@ -89,9 +89,12 @@ export class SupabaseService implements OnModuleInit {
   }
 
   /**
-   * Keep-alive：每天凌晨 3 点执行一次轻量查询，防止 Supabase 免费版数据库因闲置自动暂停
+   * Keep-alive：每天凌晨 3 点（上海时区）执行一次轻量查询，防止 Supabase 免费版数据库因闲置自动暂停。
+   *
+   * 探活本身对时间点不敏感，显式锁时区是为了与全仓定点 cron 口径一致——不指定时会跟随
+   * 服务器时区（生产容器 UTC），注释与实际执行时间对不上，排障时容易被误导。
    */
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { timeZone: 'Asia/Shanghai' })
   async keepAlive(): Promise<void> {
     if (!this.isInitialized) return;
     try {

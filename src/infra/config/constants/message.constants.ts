@@ -5,31 +5,28 @@
 
 // ==================== 消息聚合配置（部分硬编码） ====================
 
-// 注意：消息聚合采用 debounce 机制，只有一个动态参数：
+// 注意：消息聚合采用 debounce 机制，有两个动态维度，均存储于 Supabase system_config 表、
+// 通过 Dashboard 动态调整：
+// - 是否启用聚合（MESSAGE_MERGE_ENABLED，见 SystemConfigService；ENABLE_MESSAGE_MERGE 环境变量
+//   只作为首次落库的种子默认值）
 // - initialMergeWindowMs: 距离最后一条消息的静默窗口（默认 3000ms）
-//   存储于 Supabase hosting_config 表，通过 Dashboard 动态调整
 //   （旧的环境变量 INITIAL_MERGE_WINDOW_MS / MAX_MERGED_MESSAGES 已废弃）
 
-// 以下配置为硬编码，不支持动态调整
+// 下面这个常量当前无人 import（开关实际读 DB），仅留作历史参考
 export const ENABLE_MESSAGE_MERGE = true; // 启用消息聚合
-export const MAX_RETRY_COUNT = 1; // Agent 响应后重试次数
-export const MIN_MESSAGE_LENGTH_TO_RETRY = 2; // 触发重试的最小消息长度
-export const COLLECT_MESSAGES_DURING_PROCESSING = true; // 处理期间收集新消息
-
-// 消息溢出策略
-export type OverflowStrategyType = 'take-latest' | 'take-all';
-export const OVERFLOW_STRATEGY: OverflowStrategyType = 'take-latest';
 
 // ==================== 消息发送配置 ====================
 
 export const ENABLE_MESSAGE_SPLIT_SEND = true; // 启用消息分段发送
-export const MESSAGE_SPLIT_MAX_SEGMENTS = 6; // 单次 AI 回复最多拆成 6 条企微消息
+// 单次 AI 回复的分段软上限：MessageSplitter 尽量控制在 6 条内，但岗位卡片/表单块要保持
+// 原子性，无法在不破坏结构的前提下继续合并时允许超出
+export const MESSAGE_SPLIT_MAX_SEGMENTS = 6;
 
 // ==================== 打字延迟配置（部分硬编码） ====================
 
-// 注意：以下配置支持 Dashboard 动态调整，默认值在 SupabaseService 中定义
+// 注意：以下配置支持 Dashboard 动态调整，默认值在 hosting-config.types.ts 的
+// DEFAULT_AGENT_REPLY_CONFIG 中定义，经 SystemConfigService 下发
 // - TYPING_SPEED_CHARS_PER_SEC: 打字速度（默认 8 字符/秒）
-// - ENABLE_TYPING_THINKING_TIME: 启用思考时间（默认 true）
 
 // 以下配置为硬编码，不支持动态调整
 export const TYPING_MIN_DELAY_MS = 800; // 最小延迟
@@ -38,8 +35,8 @@ export const TYPING_RANDOM_VARIATION = 0.2; // 随机波动比例 (±20%)
 
 // ==================== 消息历史配置 ====================
 
-export const MAX_HISTORY_PER_CHAT = 60; // 每会话最大消息数
-export const HISTORY_TTL_MS = 7200000; // 历史消息 TTL（2 小时）
+// 每会话最大消息数（历史按条数封顶；短期 Redis 缓存另叠加 TTL，见 chat-session.service.ts）
+export const MAX_HISTORY_PER_CHAT = 60;
 
 // ==================== HTTP 配置 ====================
 

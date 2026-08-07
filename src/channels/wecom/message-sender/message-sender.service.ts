@@ -4,10 +4,6 @@ import { ApiConfigService } from '@infra/config/api-config.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
 
-/**
- * 消息发送服务
- * 负责消息的发送（单发、群发）
- */
 @Injectable()
 export class MessageSenderService {
   private readonly logger = new Logger(MessageSenderService.name);
@@ -119,7 +115,7 @@ export class MessageSenderService {
       return result;
     } catch (error) {
       // 不在中间层打印日志，避免日志重复
-      // 由顶层服务（MessageService）统一处理错误日志
+      // 由调用方（MessageDeliveryService / 失败兜底链路）统一记错误日志
       throw error;
     }
   }

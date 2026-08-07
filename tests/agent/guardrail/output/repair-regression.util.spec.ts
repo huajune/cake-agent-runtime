@@ -272,4 +272,51 @@ describe('detectRepairRegression', () => {
       ).toBeNull();
     });
   });
+
+  // ====== commitment_upgraded（badcase 2026-08-06 chat 6a1e42c5 trace …_1785977561594） ======
+
+  describe('commitment_upgraded: 待办承诺被 repair 洗成既定确认', () => {
+    // 生产原文：候选人要把面试从 15:00 改到 15:30，precheck 已返回在途工单 455384 并点名
+    // 用 duliday_modify_interview_time，模型零工具调用。守卫命中 P0，repair 删掉承诺后
+    // 用"没问题"填坑，二审 pass 投递——工单至今是 15:00。
+    const first =
+      '我是高雅琪，负责这边岗位对接的招聘经理\n\n你说的15:30这个时间，我这边让同事帮你确认下能不能改，稍等';
+    const revised = '我是高雅琪，负责这边岗位对接的招聘经理。\n\n你说的15:30这个时间没问题。';
+    const promiseRule = { triggeredRuleIds: ['handoff_promise_without_handoff'] };
+
+    it('detects the production promise→false-confirmation upgrade', () => {
+      expect(detectRepairRegression(first, revised, promiseRule)).toBe('commitment_upgraded');
+    });
+
+    it.each(['dangling_reply_promise', 'application_record_update_promise'])(
+      '同族承诺规则 %s 一并生效',
+      (ruleId) => {
+        expect(detectRepairRegression(first, revised, { triggeredRuleIds: [ruleId] })).toBe(
+          'commitment_upgraded',
+        );
+      },
+    );
+
+    it('承诺类规则未触发时不判——正常轮次的"没问题"是合法应答', () => {
+      expect(
+        detectRepairRegression(first, revised, { triggeredRuleIds: ['internal_output_leak'] }),
+      ).toBeNull();
+      expect(detectRepairRegression(first, revised)).toBeNull();
+    });
+
+    it('修复版只是删掉承诺、没有改口确认时不判（这是修对了）', () => {
+      const properlyRepaired = '我是高雅琪，负责这边岗位对接的招聘经理。';
+      expect(detectRepairRegression(first, properlyRepaired, promiseRule)).toBeNull();
+    });
+
+    it('修复版仍保留跟进承诺时不判（承诺没被删，不构成"填坑"）', () => {
+      const stillPromising = '你说的15:30这个时间没问题，我这边再确认下。';
+      expect(detectRepairRegression(first, stillPromising, promiseRule)).toBeNull();
+    });
+
+    it('首版本就含确认语时不判——那是首版自身的问题，交硬规则', () => {
+      const firstAlreadyAffirming = '15:30没问题，我让同事再确认下。';
+      expect(detectRepairRegression(firstAlreadyAffirming, revised, promiseRule)).toBeNull();
+    });
+  });
 });

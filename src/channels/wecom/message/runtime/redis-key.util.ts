@@ -15,7 +15,7 @@ export class RedisKeyBuilder {
     return `${this.APP_PREFIX}:${this.MODULE}`;
   }
 
-  /** 消息去重 Key（TTL 由 DeduplicationService 控制，默认 2 小时） */
+  /** 消息去重 Key（TTL 由 DeduplicationService 控制，默认 5 分钟，MESSAGE_DEDUP_TTL_SECONDS 可调） */
   static dedup(messageId: string): string {
     return `${this.scope}:dedup:${messageId}`;
   }

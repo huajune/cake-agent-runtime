@@ -5,14 +5,14 @@
  * 可能内嵌"不要新疆西藏籍 / 仅限本地户口 / 限汉族 / 专业（非新媒、食品）/
  * 婚育要求（已婚已育）"等
  * 歧视性/排除性筛选条件。结构化字段
- * （hometown 块、户籍 banner）渲染时已带 🔒 勿透露标注，但自由文本路径此前没有
- * 针对性标注，只靠全局 prompt 规则兜底。本工具提供统一检测原语：
+ * （hometown 块、户籍 banner）渲染时已带 🔒 勿透露标注；自由文本路径没有自带
+ * 标注，只靠全局 prompt 规则兜底拦不住。本工具提供统一检测原语：
  * - 渲染层（job-list/render.util）：命中的 section 末尾追加 🔒 标注
  * - precheck 工具：screeningCriteria / screeningChecks 命中时回传 sensitiveScreeningNotice
  *
  * 口径说明：这是**宽口径**检测——岗位自由文本里出现户籍/民族等关键词几乎必然是
  * 筛选条件；误报的代价只是多一行内部提示，对候选人不可见，宁滥勿漏。
- * 出站回复侧（reply-fact-guard）需要窄口径规则避免误伤合规收资话术，不复用本 pattern。
+ * 出站回复侧（discrimination-leaks 硬规则）需要窄口径规则避免误伤合规收资话术，不复用本 pattern。
  */
 
 /**

@@ -15,7 +15,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 /**
  * 数据清理服务（分层存储策略）
  *
- * 清理顺序（每日凌晨 3 点）:
+ * 清理顺序（每日 03:00 上海时区）:
  * 1. NULL agent_invocation（>N 天）— 释放 TOAST 空间，保留记录本身；
  *    agent_steps/tool_calls 不提前 NULL（工具统计兜底 RPC + badcase 证据需要处理链窗口），
  *    随消息处理行删除统一回收
@@ -140,9 +140,12 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
-   * 每天凌晨 3 点执行分层清理
+   * 每天 03:00（上海时区）执行分层清理。
+   *
+   * 必须显式指定 timeZone：生产容器时区是 UTC，不指定会让这批重 DELETE 落在上海 11:00
+   * 的业务高峰上（本库有过 dashboard 轮询 + 应用重试打满连接池导致全线 522 的事故）。
    */
-  @Cron('0 3 * * *')
+  @Cron('0 3 * * *', { timeZone: 'Asia/Shanghai' })
   async cleanupExpiredData(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
 
@@ -179,7 +182,7 @@ export class DataCleanupService implements OnModuleInit {
   /**
    * 每小时兜底：将卡住的 processing 记录标记为 timeout（>30 分钟）。
    *
-   * 原先仅在启动时与每日凌晨 3 点执行，发版重启时被杀死的 in-flight 记录
+   * 若只在启动时与每日凌晨 3 点执行，发版重启时被杀死的 in-flight 记录
    * 会在看板上以「处理中」挂最长一天，运营误以为消息还会被处理。
    * 与 onModuleInit 中的调用不冲突：onModuleInit 处理启动时遗留，此处兜底日间新卡住记录。
    */
@@ -343,7 +346,7 @@ export class DataCleanupService implements OnModuleInit {
   /**
    * 清理二次触发触达底账（reengagement_touch_records）
    * - >30 天：NULL generated_text（单列大文本，事后追溯价值随时间衰减）
-   * - >90 天：DELETE 整行（审计底账保留期比 30 天原始流水更长）
+   * - >90 天：DELETE 整行（审计底账保留期比原始流水的默认 60 天更长）
    * 两步独立 try/catch：NULL 化失败不阻断行删除。
    */
   private async cleanupReengagementTouches(): Promise<{
@@ -400,7 +403,7 @@ export class DataCleanupService implements OnModuleInit {
       if (updatedCount > 0) {
         this.logger.log(`[数据清理] 已将 ${updatedCount} 条卡住的 processing 记录标记为 timeout`);
         // timeout = 候选人消息被静默丢弃、无任何回复（生产日均 ~7 条，曾连带复聊误停，
-        // 见 chat 6a62c6f8）。此前只有日志可查，按批告警到飞书让静默丢消息可被运营看见。
+        // 见 chat 6a62c6f8）。只落日志运营无感知，按批告警到飞书让静默丢消息可被运营看见。
         this.exceptionNotifier?.notifyAsync({
           source: {
             subsystem: 'monitoring',

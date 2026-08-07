@@ -3,7 +3,8 @@
  *
  * 设计：notification 模块对 biz 零依赖（架构分层），只声明接口 + 注入 token；
  * MonitoringModule（@Global）绑定真实实现（写 monitoring_error_logs）。
- * AlertNotifierService 通过 @Optional() @Inject(ALERT_LOG_PERSISTER) 注入，
+ * AlertNotifierService 不能在构造器注入本 token（会与 @Global MonitoringModule 形成
+ * 循环依赖死锁），而是在 onApplicationBootstrap 阶段经 ModuleRef 懒解析；
  * 未绑定时（如 notification 独立测试）静默降级为不持久化。
  */
 export interface AlertLogEntry {
@@ -31,5 +32,5 @@ export interface AlertLogPersister {
   persist(entry: AlertLogEntry): Promise<void>;
 }
 
-/** DI token：MonitoringModule 绑定实现，AlertNotifierService @Optional 注入。 */
+/** DI token：MonitoringModule 绑定实现，AlertNotifierService 经 ModuleRef 懒解析注入。 */
 export const ALERT_LOG_PERSISTER = Symbol('ALERT_LOG_PERSISTER');

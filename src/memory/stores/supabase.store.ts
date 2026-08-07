@@ -117,7 +117,7 @@ function buildActiveBookingState(bookings: ActiveBooking[]): ActiveBooking | nul
 /**
  * Supabase 存储后端 — 长期记忆（每用户一行）
  *
- * 表结构：profile_facts jsonb + summary_data jsonb + message_metadata jsonb
+ * 表结构：profile_facts / preference_facts / summary_data / message_metadata / active_booking（均 jsonb）
  * 唯一约束 (corp_id, user_id)，每用户一行。
  * Redis 2h 缓存整行数据。
  * Supabase 不可用时 graceful 降级。

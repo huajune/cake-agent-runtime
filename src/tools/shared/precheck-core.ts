@@ -11,7 +11,11 @@
  * booking 侧 defense-in-depth 的姓名闸门，不改 precheck 内部。
  */
 
-import { isFromAutoGreeting, stripTimeContextSuffix } from '@memory/facts/name-guard';
+import {
+  isFromAutoGreeting,
+  isStrictRealChineseName,
+  stripTimeContextSuffix,
+} from '@memory/facts/name-guard';
 import { parseName } from './candidate-field-parser';
 
 /** 从归一化消息（ModelMessage 形态）里抽出全部 user 文本。 */
@@ -183,6 +187,79 @@ export function isNameProvidedAfterAsk(name: string, messages: readonly unknown[
   return false;
 }
 
+/**
+ * assistant 的**开放式真名索取问句**（"方便问一下你的真实姓名吗"/"门店登记需要本名"）。
+ *
+ * 与 `countRealNameAsks` 的词表同源但更宽：那边只统计追问次数，这边要作为证据闸门的
+ * 锚点，需覆盖"本名/全名/身份证上的姓名"等同义表述。
+ */
+const REAL_NAME_ASK_RE =
+  /(真实姓名|身份证上的(?:本名|姓名)|本名|全名)|(?:问|发|提供|留|填|报|给|确认)[^，。！？?!；;\n]{0,10}(?:姓名|名字)|(?:姓名|名字)[^，。！？?!；;\n]{0,10}(?:发|提供|留|填|报|给)/u;
+
+/** 裸名应答的可选自述前缀（"我叫X"/"就叫X"/"名字是X"）。 */
+const BARE_NAME_ANSWER_PREFIX_RE =
+  /^(?:我(?:的)?(?:名字|大名)?(?:是|叫)?|就(?:是|叫)|名字(?:是|叫)?|姓名(?:是|叫)?)/u;
+
+/**
+ * 不能当姓名的应答词（负向门）。
+ *
+ * `isStrictRealChineseName` 只校验"2-4 个汉字 + 非占位前缀"，寒暄与推脱词形态上完全
+ * 合规——自测实证："稍等"被判合法姓名。索名问句之后的应答尤其高发这类词，故本闸门
+ * 必须自带负向表：应答/寒暄、延迟推脱、疑问抗拒三类。
+ */
+const NON_NAME_REPLY_RE =
+  /^(?:好的?|好呀|好嘞|嗯+|可以|行|是的?|对的?|没事|没问题|收到|知道了?|明白了?|了解|谢谢|辛苦了|麻烦了|在的?|在吗|你好|您好|哦+|噢|稍等|等等|等一下|等下|马上|一会|待会|回头|再说|什么|啥|为什么|为啥|干嘛|干什么|不用|不想|不方便|算了|没有|保密|隐私|真名|本名|姓名|名字)$/u;
+
+/**
+ * 「Agent 开放式索要真名 → 候选人裸名直答」= 真名亲证。
+ *
+ * 缺口实证（badcase 2026-08-06，chat 6a7446eb，trace batch_…_1786005914536）：
+ * 候选人手打的开场白"我是张丽鑫"命中打招呼语昵称判据（她的微信昵称其实是"AAA春日"，
+ * 这里 XX 位恰恰是真名）；Agent 随后问"门店登记需要本名，方便问一下你的真实姓名吗"，
+ * 候选人**单独回了一条"张丽鑫"**——已有两个逃生口都够不着：
+ * `isNameProvidedAfterAsk` 要求应答里"姓名 + 11 位手机号"同现，
+ * `isNameConfirmedInDialogue` 要求问句里已含该名 + 肯定应答。
+ * 结果真名被判昵称：sessionFacts.name 全程为 null（7 轮快照实证）、booking 报
+ * `suspiciousName: 张丽鑫`、Agent 把同一个问题问了两遍。
+ *
+ * 判据（三条同时满足，宁可漏不可错）：
+ * 1. 存在 assistant 真名索取问句；
+ * 2. **紧随其后的第一条** user 消息（剥引用块/时间后缀）整条就是这个名字
+ *    （允许"我叫X/就是X"等自述前缀与尾部语气词标点，不允许夹带其它内容）；
+ * 3. 该名通过中文真名形态校验。
+ *
+ * 与"防昵称"初衷不冲突：它要求候选人是在**被明确问真名之后**给出的，昵称党不会在
+ * 这个语境下把昵称当本名报——而这恰恰是最自然的一条真名提供路径。
+ */
+export function resolveNameAnsweredToRealNameAsk(
+  messages: readonly unknown[],
+): { name: string; quote: string; askQuote: string } | null {
+  const turns = extractDialogueTurns(messages);
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].role !== 'assistant' || !REAL_NAME_ASK_RE.test(turns[i].text)) continue;
+    for (let j = i + 1; j < turns.length; j++) {
+      if (turns[j].role !== 'user') continue;
+      const raw = stripQuoteBlocks(stripTimeContextSuffix(turns[j].text)).trim();
+      const candidate = raw
+        .replace(BARE_NAME_ANSWER_PREFIX_RE, '')
+        .replace(/[\s，,。.！!？?~～、;；:：]+$/u, '')
+        .trim();
+      if (candidate && !NON_NAME_REPLY_RE.test(candidate) && isStrictRealChineseName(candidate)) {
+        return { name: candidate, quote: raw, askQuote: turns[i].text };
+      }
+      break; // 只认紧随其后的第一条 user 消息，避免远处无关消息被错误归因
+    }
+  }
+  return null;
+}
+
+/** 指定姓名是否由「真名索取问答」确证。 */
+export function isNameAnsweredToRealNameAsk(name: string, messages: readonly unknown[]): boolean {
+  const target = name?.trim();
+  if (!target) return false;
+  return resolveNameAnsweredToRealNameAsk(messages)?.name === target;
+}
+
 export function isNameConfirmedInDialogue(name: string, messages: readonly unknown[]): boolean {
   const target = name?.trim();
   if (!target || target.length < 2) return false;
@@ -251,6 +328,9 @@ export function evaluateBookingNameGate(
   // "就是X"/确认问答对/身份证图片证据（badcase g4ytra23 死锁修复）。
   if (isNameConfirmedInDialogue(target, messages)) return { decision: 'allow' };
   if (isNameProvidedAfterAsk(target, messages)) return { decision: 'allow' };
+  // 开放式索名 → 裸名直答（badcase 6a7446eb）：最自然的真名提供路径，上面两个
+  // 逃生口都够不着（一个要名+手机号同现，一个要问句里已含该名）。
+  if (isNameAnsweredToRealNameAsk(target, messages)) return { decision: 'allow' };
   if (isNameOnlyQuotedSpeaker(target, messages)) {
     return {
       decision: 'reject_collect',
@@ -280,6 +360,45 @@ export function isPhoneAuthoritative(phone: string, messages: readonly unknown[]
 }
 
 /**
+ * 「Agent 复述档案手机号求证 → 候选人肯定应答」= 手机号亲证（姓名侧
+ * `isNameConfirmedInDialogue` 的手机号孪生）。
+ *
+ * 缺口实证（badcase gu2kra6p，chat 6a72978f，2026-08-06）：手机号来自长期画像，Agent
+ * 复述求证「我记得你之前登记过姓名是蔡瑾琳，电话是17870159396，现在还是吗？」，候选人
+ * 回「[引用 …] 是的」——**号码写在引用块里，`isPhoneAuthoritative` 剥引用块后手里只剩
+ * "是的"**，出处门判臆造，booking 连拒两轮。结果同一句"方便留个联系电话吗"问了 3 遍，
+ * 候选人自己把号码打出来才解锁。这与姓名侧 6a7446eb 的死锁是同一形态（候选人已明确
+ * 确认，闸门看不见），见 [[badcase-identity-evidence-deadlock]]。
+ *
+ * 判据（三条同时满足，宁可漏不可错）：
+ * 1. assistant 消息里出现该号码本身（复述档案号求证）；
+ * 2. 该消息带疑问标记（是在求证，不是单纯播报）；
+ * 3. **紧随其后的第一条** user 消息是肯定应答（复用姓名侧 `AFFIRMATIVE_ANSWER_RE`，
+ *    "这里不是""不对"等否定形态天然不匹配）。
+ *
+ * 与"防臆造"初衷不冲突：号码是当着候选人的面复述、由候选人本人拍板的，与"模型凭空
+ * 塞一个候选人从没见过的号"（6e9ar9gd 簇）不是一回事。
+ */
+export function isPhoneConfirmedInDialogue(phone: string, messages: readonly unknown[]): boolean {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!/^1\d{10}$/.test(digits)) return false;
+  const turns = extractDialogueTurns(messages);
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].role !== 'assistant') continue;
+    const askText = turns[i].text;
+    if (!askText.replace(/\D/gu, '').includes(digits)) continue;
+    if (!/(对吧|对吗|对么|对不对|是吗|是么|是吧|[吗么？?])/u.test(askText)) continue;
+    for (let j = i + 1; j < turns.length; j++) {
+      if (turns[j].role !== 'user') continue;
+      // 只认紧随其后的第一条 user 消息，避免远处无关的"嗯/对"被错误归因到这次求证。
+      if (AFFIRMATIVE_ANSWER_RE.test(normalizeShortAnswer(turns[j].text))) return true;
+      break;
+    }
+  }
+  return false;
+}
+
+/**
  * booking 提交前的手机号溯源闸门（正向证据口径）。
  *
  * 业务背景：badcase 6e9ar9gd 簇（2026-07-22）——抽取示例回声臆造的档案经"沿用"洗白后，
@@ -289,6 +408,9 @@ export function isPhoneAuthoritative(phone: string, messages: readonly unknown[]
  *
  * 与姓名闸门口径不同：姓名允许"无负向证据即放行"（裸答真名很常见），手机号採正向证据——
  * 合法手机号只可能来自候选人原文，原文里不存在即臆造/串档案，没有灰区。
+ *
+ * 唯一的解锁路径是候选人**本人当面确认**过该号码（`isPhoneConfirmedInDialogue`，
+ * badcase gu2kra6p 死锁修复）——否则闸门会把"候选人已经说过是的"也判成臆造。
  */
 export function evaluateBookingPhoneGate(
   phone: string,
@@ -297,6 +419,7 @@ export function evaluateBookingPhoneGate(
   const digits = (phone ?? '').replace(/\D/g, '');
   if (!digits) return { decision: 'allow' }; // 空值交给必填字段校验，不在本闸门重复报
   if (isPhoneAuthoritative(phone, messages)) return { decision: 'allow' };
+  if (isPhoneConfirmedInDialogue(phone, messages)) return { decision: 'allow' };
   return {
     decision: 'reject_collect',
     reason:

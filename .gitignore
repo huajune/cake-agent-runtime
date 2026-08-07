@@ -14,7 +14,8 @@
 package-lock.json
 yarn.lock
 
-# Logs
+# Logs（含定时观测任务追加写的本地台账，如 logs/observability/*.md）
+/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
@@ -77,4 +78,5 @@ supabase/.temp/
 supabase/.env
 .claude/worktrees/
 .claude/*.lock
+/.claude/settings.local.json
 .scratch/

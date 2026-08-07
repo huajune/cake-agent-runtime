@@ -18,7 +18,7 @@ import {
   resolveHumanizedDelayMs,
 } from '../utils/humanized-delay.util';
 
-/** 独立客找工作小程序默认值（可通过环境变量覆盖） */
+/** 独立客找工作小程序卡片固定文案（缩略图另走 MINIPROGRAM_THUMB_URL 环境变量） */
 const MINIPROGRAM_DEFAULTS = {
   TITLE: '独立客找工作',
   PAGE_PATH: 'pages/job/index',
@@ -104,14 +104,15 @@ export class NotificationSenderService {
   }
 
   /**
-   * 校验企业级发送所需字段齐全，否则抛错让 scheduler 计入 errors 并走到飞书卡片
+   * 校验企业级发送所需字段齐全，否则抛错让队列 handleSend 记失败快照、
+   * summarize 阶段计入 errors 并走到飞书汇总卡片
    */
   private assertEnterpriseSendable(group: GroupContext): void {
     if (!this.enterpriseToken) {
       throw new Error('STRIDE_ENTERPRISE_TOKEN 未配置，无法发送企业级消息');
     }
     if (!group.imBotId) {
-      throw new Error(`群 ${group.groupName} 缺少 imBotId（botInfo.weixin），无法发送企业级消息`);
+      throw new Error(`群 ${group.groupName} 缺少 imBotId（botInfo.wxid），无法发送企业级消息`);
     }
     if (!group.imRoomId) {
       throw new Error(`群 ${group.groupName} 缺少 imRoomId（wxid），无法发送企业级消息`);

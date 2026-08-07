@@ -9,11 +9,30 @@
  * 让 LLM 在 render 顶部就看到"薪资速览"（哪些字段有 / 哪些字段没有），
  * 把"工具没返回 X 就别说 X"这件事从 prompt 红线层下沉到数据契约层。
  *
- * 同时给 reply-fact-guard 提供一个稳定的结构化检查点：替代 ad-hoc
- * hasNonEmptyHolidayOrOvertimeSalary，统一从这一层取信号。
+ * 消费方是 render 的薪资速览 banner 与 candidate-card 的阶梯薪资行，统一从这一层取信号。
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * `extractSalaryFacts` 实际读取的最小 salaryScenario 字段集。
+ * 命名与 sponge raw 字段一致，作为本模块的自描述契约（同 brand-stores 的
+ * `BrandSummaryJobInput`）；叶子值一律 unknown，由 hasNonEmptyValue /
+ * containsNegotiable / typeof 守卫逐个兜底，不假设 raw 类型正确。
+ */
+interface RawSalaryScenario {
+  salaryType?: unknown;
+  salaryPeriod?: unknown;
+  payday?: unknown;
+  hasStairSalary?: unknown;
+  stairSalaries?: unknown;
+  basicSalary?: { basicSalary?: unknown } | null;
+  comprehensiveSalary?: {
+    minComprehensiveSalary?: unknown;
+    maxComprehensiveSalary?: unknown;
+  } | null;
+  holidaySalary?: { holidaySalaryType?: unknown; holidaySalaryDesc?: unknown } | null;
+  overtimeSalary?: { overtimeSalaryType?: unknown; overtimeSalaryDesc?: unknown } | null;
+  otherSalary?: { commission?: unknown; attendanceSalary?: unknown; performance?: unknown } | null;
+}
 
 export interface SalaryFacts {
   /** 是否至少有一个 scenario 写了 basicSalary（基础薪资） */
@@ -72,14 +91,14 @@ function containsNegotiable(value: unknown): boolean {
  */
 export function extractSalaryFacts(jobSalary: unknown): SalaryFacts {
   if (!jobSalary || typeof jobSalary !== 'object') return { ...EMPTY_SALARY_FACTS };
-  const salary = jobSalary as any;
+  const salary = jobSalary as Record<string, unknown>;
 
   const facts: SalaryFacts = { ...EMPTY_SALARY_FACTS };
 
   const scenarios = Array.isArray(salary.salaryScenarioList) ? salary.salaryScenarioList : [];
   for (const scenario of scenarios) {
     if (!scenario || typeof scenario !== 'object') continue;
-    const s = scenario as any;
+    const s = scenario as RawSalaryScenario;
 
     if (hasNonEmptyValue(s.basicSalary?.basicSalary)) facts.hasBaseSalary = true;
     if (
@@ -97,7 +116,7 @@ export function extractSalaryFacts(jobSalary: unknown): SalaryFacts {
     }
 
     // 试用期/培训期薪资既可能出现在顶层 probationSalary 块，也可能仅作为
-    // salaryScenarioList 里的一条（salaryType="试用期"/"培训期"），后者此前被漏判。
+    // salaryScenarioList 里的一条（salaryType="试用期"/"培训期"），两处都必须认。
     if (typeof s.salaryType === 'string' && /试用期|培训期|试工/.test(s.salaryType)) {
       facts.hasProbationSalary = true;
     }
@@ -129,7 +148,7 @@ export function extractSalaryFacts(jobSalary: unknown): SalaryFacts {
   }
 
   if (salary.probationSalary && typeof salary.probationSalary === 'object') {
-    const probation = salary.probationSalary as any;
+    const probation = salary.probationSalary as { salary?: unknown; salaryDescription?: unknown };
     if (hasNonEmptyValue(probation.salary) || hasNonEmptyValue(probation.salaryDescription)) {
       facts.hasProbationSalary = true;
     }
@@ -172,5 +191,3 @@ export function renderSalaryFactsBanner(facts: SalaryFacts): string {
   lines.push('');
   return lines.join('\n');
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

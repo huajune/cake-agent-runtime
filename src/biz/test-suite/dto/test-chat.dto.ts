@@ -34,6 +34,8 @@ import type {
   TestMemoryTraceBundle,
   TestSourceTrace,
 } from '../types/test-debug-trace.types';
+import { GENERATOR_TOOL_MODES } from '@agent/generator/generator.types';
+import { LLM_THINKING_EFFORTS } from '@/llm/llm.types';
 
 export class SourceTraceDto {
   @ApiPropertyOptional({ description: '来源 BadCase 稳定 ID 列表', type: [String] })
@@ -198,10 +200,10 @@ export class ThinkingConfigDto {
 
   @ApiPropertyOptional({
     description: '深度思考档位（enabled 时生效，缺省 high）',
-    enum: ['low', 'medium', 'high'],
+    enum: LLM_THINKING_EFFORTS,
   })
   @IsOptional()
-  @IsIn(['low', 'medium', 'high'])
+  @IsIn(LLM_THINKING_EFFORTS)
   effort?: 'low' | 'medium' | 'high';
 }
 
@@ -244,10 +246,10 @@ export class VercelAIChatRequestDto {
   @ApiPropertyOptional({
     description:
       '测试链路物理工具模式：none 不暴露工具，readonly 剔除副作用工具；缺省保持正常场景工具集',
-    enum: ['scenario', 'readonly', 'none'],
+    enum: GENERATOR_TOOL_MODES,
   })
   @IsOptional()
-  @IsIn(['scenario', 'readonly', 'none'])
+  @IsIn(GENERATOR_TOOL_MODES)
   toolMode?: GeneratorToolMode;
 
   @ApiPropertyOptional({
@@ -345,10 +347,10 @@ export class TestChatRequestDto {
   @ApiPropertyOptional({
     description:
       '测试链路物理工具模式：none 不暴露工具，readonly 剔除副作用工具；缺省保持正常场景工具集',
-    enum: ['scenario', 'readonly', 'none'],
+    enum: GENERATOR_TOOL_MODES,
   })
   @IsOptional()
-  @IsIn(['scenario', 'readonly', 'none'])
+  @IsIn(GENERATOR_TOOL_MODES)
   toolMode?: GeneratorToolMode;
 
   @ApiPropertyOptional({

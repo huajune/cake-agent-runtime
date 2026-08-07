@@ -111,11 +111,60 @@ describe('renderWelfareFactsBanner', () => {
     const banner = renderWelfareFactsBanner(extractWelfareFacts({ catering: '包吃' }));
     expect(banner).toContain('福利字段速览');
     expect(banner).toContain('员工餐：✅ 公司提供');
-    expect(banner).toContain('住宿：❓ 未明确');
+    // welfare 块已加载（有 catering 键）而住宿未配置 → 按运营口径判 ❌ 无，不再是 ❓ 未明确。
+    // 2026-08-06 运营：「吃和住都在岗位福利中，如果没有填就默认没有」。
+    expect(banner).toContain('住宿：❌ 无');
+    // 保险不吃该默认：敏感字段未配置时不得替公司断言"无保险"。
     expect(banner).toContain('保险（敏感，仅候选人主动问时可答）：未明确');
     expect(banner).toContain('保险/社保严禁主动提及');
     expect(banner).toContain('交通补贴：❓ 未明确');
     expect(banner).not.toContain('禁止在 reply 里声称');
+  });
+
+  // 2026-08-06 运营口径：「吃和住都在岗位福利中，如果没有填就默认没有」。
+  // 但"没填"必须区分两种形态，否则会把"没加载"误答成"没有福利"。
+  describe('吃/住未配置默认按无（运营口径）', () => {
+    it('welfare 已加载但吃/住字段缺失时判 self_or_none', () => {
+      // 只有 memo 的岗位：welfare 确实被加载过，吃住没配 → 默认没有
+      const facts = extractWelfareFacts({ memo: '门店统一安排' });
+      expect(facts.meals).toBe('self_or_none');
+      expect(facts.accommodation).toBe('self_or_none');
+    });
+
+    it('吃/住为 null 或空串时同样判 self_or_none', () => {
+      const facts = extractWelfareFacts({ catering: null, accommodation: '   ', memo: 'x' });
+      expect(facts.meals).toBe('self_or_none');
+      expect(facts.accommodation).toBe('self_or_none');
+    });
+
+    it('空对象 {} 不适用该默认，仍是 unspecified（无信息 ≠ 没有福利）', () => {
+      // 现网 includeWelfare=false 时海绵回的是 welfare=null；{} 属"加载了但啥都没有"
+      // 的退化形态，此时替门店断言"不包吃住"是编造，必须保持未明确。
+      const facts = extractWelfareFacts({});
+      expect(facts.meals).toBe('unspecified');
+      expect(facts.accommodation).toBe('unspecified');
+    });
+
+    it('welfare=null（未请求 includeWelfare）不适用该默认', () => {
+      expect(extractWelfareFacts(null).meals).toBe('unspecified');
+      expect(extractWelfareFacts(null).accommodation).toBe('unspecified');
+    });
+
+    it('缺失但有餐补/房补时仍升格为 allowance，不被默认覆盖', () => {
+      const facts = extractWelfareFacts({ cateringSalary: 15, accommodationAllowance: 800 });
+      expect(facts.meals).toBe('allowance');
+      expect(facts.accommodation).toBe('allowance');
+    });
+
+    it('保险不吃该默认：welfare 已加载但未配保险时仍是 unspecified', () => {
+      expect(extractWelfareFacts({ memo: 'x' }).insurance).toBe('unspecified');
+    });
+  });
+
+  it('banner 声明自己是吃住的最终事实，禁止据此转人工', () => {
+    const banner = renderWelfareFactsBanner(extractWelfareFacts({ catering: '无餐饮福利' }));
+    expect(banner).toContain('最终事实');
+    expect(banner).toContain('request_handoff');
   });
 
   it('renders 员工自理 case as ❌ 无, not as 有', () => {

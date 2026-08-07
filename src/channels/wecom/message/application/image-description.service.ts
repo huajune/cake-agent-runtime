@@ -7,8 +7,12 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import { MessageType } from '@enums/message-callback.enum';
 import { isResumeImageDescription, stripResumeAttachmentLines } from '../utils/message-parser.util';
 import {
+  FIELD_OWNERSHIPS,
+  VISUAL_FACT_FIELD_KEY_PROMPT,
+  VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
   finalizeVisualFactSheet,
+  sanitizeVisualDescription,
   type FinalizedVisualFactSheet,
 } from '@resolution/visual';
 import { z } from 'zod';
@@ -27,23 +31,15 @@ export interface ArtworkContext {
 /** P1 结构化输出 schema：描述 + kind + fields（归属可缺省，finalize 按 kind 补）。 */
 const VISION_SHEET_SCHEMA = z.object({
   description: z.string().describe('图片内容的中文描述，遵循系统提示词里的各类图片提取要求'),
-  kind: z
-    .enum(VISUAL_FACT_KINDS)
-    .describe(
-      'job_posting=招聘平台岗位截图/卡片/海报；map_location=地图/定位/导航/门店位置；resume=简历本体；chat_screenshot=聊天记录截图；certificate=健康证等证件；other=其他',
-    ),
+  kind: z.enum(VISUAL_FACT_KINDS).describe(VISUAL_FACT_KIND_PROMPT),
   fields: z
     .array(
       z.object({
         // string 而非 enum（白名单过滤在 finalize 做）；词表写进 describe 保持模型可见
-        key: z
-          .string()
-          .describe(
-            '只能用这些值：phone / name / age_range / brand / brand_id / publisher / store / address / city / candidate_address / salary_text / shift_text / cert_type / cert_issue_date / other',
-          ),
+        key: z.string().describe(VISUAL_FACT_FIELD_KEY_PROMPT),
         value: z.string(),
         ownership: z
-          .enum(['candidate', 'publisher', 'third_party', 'unknown'])
+          .enum(FIELD_OWNERSHIPS)
           .optional()
           .describe('该值归谁：候选人本人/发布方（招聘方）/其他第三方/不确定'),
       }),
@@ -63,9 +59,10 @@ function formatDescription(kind: VisualMessageKind, description: string): string
  * 异步调用 vision 模型对图片进行描述，将结果回写到 chat_messages.content。
  * 这样短期记忆读取历史时，Agent 能理解图片内容而非仅看到 "[图片消息]"。
  *
- * 模型选择：AGENT_VISION_MODEL → AGENT_CHAT_MODEL（由共享 LLM Executor 做角色路由）
- * 调用方式：fire-and-forget，不阻塞消息主流程；通过 inFlight 追踪让 worker 在
- * 真正读取历史前 awaitVision 等待完成。
+ * 模型选择：Vision 角色路由（显式覆盖 > Dashboard 角色覆盖 > AGENT_VISION_MODEL），
+ * disableFallbacks 不做跨角色降级；结构化输出失败时同角色回退纯文本描述。
+ * 调用方式：fire-and-forget，不阻塞消息主流程；inFlight 追踪供运行时降级重跑路径
+ * （reply-workflow 的 awaitVision）等待完成，并为各兜底触发做同 messageId 去重。
  */
 @Injectable()
 export class ImageDescriptionService {
@@ -258,7 +255,7 @@ export class ImageDescriptionService {
         : '请描述这张图片的内容。';
 
     // 视觉事实结构化（P1 生产者）：图片优先走结构化输出（描述 + kind + fields）；
-    // 任何失败回退纯文本路径——降级不是失败，是回到结构化之前的行为。表情不结构化。
+    // 任何失败回退纯文本路径——降级不是失败，纯文本描述本身就是可用产物。表情不结构化。
     let description = '';
     let sheet: FinalizedVisualFactSheet | null = null;
     let usageTokens: number | undefined;
@@ -322,6 +319,9 @@ export class ImageDescriptionService {
       this.logger.warn(`${this.kindLabel(kind)}描述返回空结果 [${messageId}]`);
       return null;
     }
+    // 证件号脱敏：sheet 侧 finalizeVisualFactSheet 内部已做，这里补 content 一侧，
+    // 保证 chat_messages 的 content 与 visual_facts 同源同脱敏（红标 2，chat 6a1e42e6）。
+    description = sanitizeVisualDescription(description);
 
     // 简历图片：追加 "简历附件：URL" 行，让候选人发的手写简历/简历照片走与
     // PDF 文件简历相同的链路 —— extractUploadResume 的标注行分支会捕获该 URL，

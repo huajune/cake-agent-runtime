@@ -232,23 +232,9 @@ export interface SummaryData {
   lastSettledMessageAt: string | null;
   /**
    * 按会话（sessionId=chatId，bot 维度）隔离的沉淀边界。
-   * 修复双 bot 场景：bot A 推进用户级边界后，bot B 边界之前的消息永不沉淀。
+   * 双 bot 场景必须隔离：共用用户级边界时，bot A 推进后 bot B 边界之前的消息永不沉淀。
    */
   lastSettledBySession?: Record<string, string> | null;
-}
-
-/** agent_long_term_memories 行中的回调元信息。 */
-export interface LongTermMemoryMetadata {
-  createdAt: string;
-  updatedAt: string;
-  messageMetadata: MessageMetadata | null;
-}
-
-/** 长期记忆层在业务上的完整状态视图。 */
-export interface LongTermMemoryState {
-  profile: UserProfileFacts | null;
-  summary: SummaryData | null;
-  metadata: LongTermMemoryMetadata | null;
 }
 
 /** agent_long_term_memories 表行类型（每用户一行，Profile facts + Summary jsonb）。 */
@@ -286,13 +272,6 @@ export interface AgentLongTermMemoryRow {
   active_booking?: ActiveBooking | null;
   created_at: string;
   updated_at: string;
-}
-
-/** 长期记忆层的真实持久化结果。 */
-export interface LongTermStorageResult {
-  source: 'supabase';
-  table: 'agent_long_term_memories';
-  row: AgentLongTermMemoryRow | null;
 }
 
 // ==================== 长期求职意向（preference_facts） ====================

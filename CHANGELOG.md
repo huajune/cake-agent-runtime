@@ -8,6 +8,315 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v10.41.0`
+**最近更新**: `2026-08-07`
+**来源分支**: `develop`
+**累计 PR**: 37
+
+### 更新摘要
+- PR #908 三张词表收拢回 resolution/visual 单一居所
+- PR #915 收资字段名与裁决观测词表收拢（期 2）
+- PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
+- PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #911 记忆与 Redis schema 族词表收拢回单一居所（期 0）
+- PR #914 守卫裁决与工具契约族词表收拢 + PRIORITY 改穷尽映射（期 1）
+- PR #913 booking 海绵拒绝透传 apiCode/apiMessage 供观测落库
+- PR #912 泄漏检测补齐工具调用 XML 标签，修复裸标签投递
+- PR #931 memorySetup 支持注入已确认预约工单
+- PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
+- PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
+- PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
+- PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
+- PR #922 补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态
+- PR #930 删除同义反复的 JSDoc 头注释
+- PR #930 修正过时注释，变更叙事统一为现状约束口径
+- PR #930 全库注释清洗——过时注释修正 + 变更叙事口径统一 + 冗余 JSDoc 清理
+- PR #910 清理实测确认的死代码，收拢消息状态与配置键
+- PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
+- PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
+- PR #917 爽约不取消的时点前提同步到全部四处口径
+- PR #929 booking 已建单必须把面试日期告知候选人（形态 E）
+- PR #929 **判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。
+- PR #929 **不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。
+- PR #929 **等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。
+- PR #929 **解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。
+- PR #925 badcase 策展新增前置状态闸门与品牌输入轨澄清
+- PR #925 出现在候选人自己打的消息里 → `user_text` 轨，**应采信**
+- PR #925 出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）
+- PR #933 按运营口径把薪资/健康证/食宿类咨询改为可自答
+- PR #933 **薪资细则必须实时重查**：`candidate-consultation.md` 把"福利追问必须实时重查"扩为"福利与**薪资细则**追问必须实时重查"，覆盖阶梯算法/结算周期/发薪日/社保要求/每日工时；要求照 description 括注原文答，**禁止自行推断算法**，也**禁止因记忆摘要没有就直接转人工**。
+- PR #933 **发薪日归属月份**：`render.util.ts` 月结 + "N号" → `15号发薪（次月15号发上月工资，无当月发当月）`。周结、非"N号"形态（"月底"）、缺 `salaryPeriod` 均不加标注。
+- PR #933 **健康证**：补"电子版与纸质版同等有效"、"默认要求应聘城市本地证"两条；原"不报销"绝对化改为"默认不报销，岗位福利字段写明报销的除外"。
+- PR #933 **社保准入**：显式区分 ①公司买不买保险（`welfare.haveInsurance`）②候选人社保状况是否准入门槛（`socialSecurityList`）——此前 ② 有字段却因 ① 没写而被整体转人工。
+- PR #933 **食宿**：welfare 已加载但吃/住未配置 → 判 ❌ 无（原 ❓ 未明确 → 转人工）；banner 增加"本速览即最终事实，不得为此调 request_handoff"声明。
+- PR #933 **发薪主体 / 签约主体**：取决于合作模式，而合作模式在海绵两个接口里都没有。一律转人工，**严禁替公司认领**"工资是独立客发的/和独立客签"，也禁止沿用会话内旧说法（不同品牌结论不同）。
+- PR #933 **按月计薪岗位**：不得用月薪折算时薪（折算值与结算口径不符，到店必生纠纷）；每日工时按 `workTime` 字段答，字段空才转。
+- PR #909 收拢 job-list 工具层类型债到领域契约 JobDetail
+- PR #909 Merge origin/develop into chore/tech-debt-20260805-types
+- PR #932 删除注释清洗排查确认的四组零消费方死代码
+- PR #932 Merge origin/develop into chore/remove-dead-code-20260806
+- PR #944 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #944 候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格
+- PR #942 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #947 修正 channels/tools/group-task 域过时注释
+- PR #947 Merge remote-tracking branch 'origin/develop' into chore/stale-commen…
+- PR #947 修正 agent/monitoring/test-suite/biz 域过时注释
+- PR #947 修正 infra/providers/sponge/observability 等基础域过时注释
+- PR #947 修正 custom-openai provider 的 SDK 版本引用
+- PR #947 全库注释清洗第二轮——channels/tools/biz/agent/infra 等剩余域过时注释
+- PR #949 忽略 logs/ 本地台账，撤出误提交的观测日志
+- PR #949 撤出误提交的本地观测台账
+- PR #950 9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区
+- PR #953 supabase keep-alive cron 锁定上海时区
+- PR #955 被问真名后的裸名直答不再判昵称——真名索取问答识别器
+- PR #955 补 prettier 换行（pre-commit 钩子改动未随提交入库）
+- PR #943 治理文档改按日聚合，并修好高亮块内抬头数字不刷新
+- PR #958 在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实
+- PR #961 Agent 不再主动打听候选人籍贯——户籍门槛只准内部判断
+- PR #961 **工具层（源头）** — `render.util.ts` 户籍 banner 删掉采集指令，改为纯禁令 + 明确「不要追问」，并写明门槛的真正执行点是收资 checklist 的「籍贯/户籍」字段与 `booking-guards` 的 `isHouseholdRequirementViolated` 硬闸（表单场景合规，不需要口头打听）。
+- PR #961 **`discriminatory_screening_leak` 补漏** — 属性与「要求/限制」之间允许白名单连接成分（`户籍这块有要求`）。连接词用白名单而非 `.{0,4}`，保证「户籍没有要求」这类合规安抚仍放行。同族的「常驻地」改名变体当初打补丁时就带了 `(?:有)?`，基础形态一直没回补。
+- PR #961 **新增 `sensitive_origin_probe`（P0 / BLOCK）** — 姊妹规则只管「说出去」，这条管「问回来」。收资表单字段与开放式问常驻/意向城市不受影响。
+- PR #961 **语义评审新增第 5 类 `sensitive_screening_disclosure_or_probe`（P0）** — 并让该轴自身可独立触发审查（原本零证据的纯话术回合根本不进审查）。
+- PR #960 手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏
+- PR #964 城市值改为行政区数据认领，堵住假城市冲突与存量脏城市
+- PR #964 脏城市强清改看本轮末态，避免抹掉同轮确认裁定的城市
+- PR #964 **geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。
+- PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
+- PR #964 **读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。
+- PR #964 **存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。
+- PR #966 收紧依赖安装并移除明文凭据
+- PR #966 补充 v10.41.0 发版底账
+- PR #966 停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`
+- PR #966 启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装
+- PR #966 收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装
+- PR #968 从 v10.41.0 待发布元数据中移除已属于 v10.40 的 #903/#906，并补齐遗漏的 #911/#912/#913/#914/#931
+- PR #968 将候选人/运营可见的发布摘要收敛为 10 条本版本真实业务变化
+- PR #968 修正显式空 `businessUpdates` 时错误回退到技术变更列表的问题，并补充回归测试
+- PR #968 更新发版底账，记录 #966 合并、完整 CI 与通知卡片无发送预览证据；尚未完成的 P0 保持为待验证
+- PR #968 修正 v10.41.0 元数据与通知摘要
+- PR #970 记录 v10.41.0 发布豁免与数据库状态
+- PR #970 记录发布负责人对真实 Agent 回放、Sponge 联调、Dashboard/UI 与生产 API 对账的风险接受，明确“未执行不等于验证通过”
+- PR #970 将 P0 收敛为已有自动化、CI 和 release 镜像可证明的范围，保留凭据处置为唯一发布阻断
+- PR #970 记录 release code head Linux/amd64 镜像构建证据
+- PR #970 记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移
+- PR #972 收紧聊天消息匿名列权限
+- PR #972 撤销 anon/authenticated 对 chat_messages 的全列 SELECT
+- PR #972 仅保留 id、chat_id 两个 Realtime 所需标识列
+- PR #972 保持后端 service_role 数据访问不变
+- PR #974 更新 Supabase 安全处置证据
+- PR #974 补记 Supabase 新 publishable/secret key 上线、legacy key 停用和账户 Token 清理证据
+- PR #974 补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证
+- PR #974 明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项
+- PR #974 更新 v10.41.0 安全处置证据
+- PR #976 v10.41.0 底账收口——P0-10 判通过，P0-02 转带期限安全例外
+
+### 新功能
+- PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
+- PR #931 memorySetup 支持注入已确认预约工单
+- PR #925 出现在候选人自己打的消息里 → `user_text` 轨，**应采信**
+- PR #925 出现在昵称/备注里 → `contact_name` 轨，**需谨慎**（历史上有脏别名误命中，见 PR #577）
+- PR #925 badcase 策展新增前置状态闸门与品牌输入轨澄清
+- PR #933 **薪资细则必须实时重查**：`candidate-consultation.md` 把"福利追问必须实时重查"扩为"福利与**薪资细则**追问必须实时重查"，覆盖阶梯算法/结算周期/发薪日/社保要求/每日工时；要求照 description 括注原文答，**禁止自行推断算法**，也**禁止因记忆摘要没有就直接转人工**。
+- PR #933 **发薪日归属月份**：`render.util.ts` 月结 + "N号" → `15号发薪（次月15号发上月工资，无当月发当月）`。周结、非"N号"形态（"月底"）、缺 `salaryPeriod` 均不加标注。
+- PR #933 **健康证**：补"电子版与纸质版同等有效"、"默认要求应聘城市本地证"两条；原"不报销"绝对化改为"默认不报销，岗位福利字段写明报销的除外"。
+- PR #933 **社保准入**：显式区分 ①公司买不买保险（`welfare.haveInsurance`）②候选人社保状况是否准入门槛（`socialSecurityList`）——此前 ② 有字段却因 ① 没写而被整体转人工。
+- PR #933 **食宿**：welfare 已加载但吃/住未配置 → 判 ❌ 无（原 ❓ 未明确 → 转人工）；banner 增加"本速览即最终事实，不得为此调 request_handoff"声明。
+- PR #933 **发薪主体 / 签约主体**：取决于合作模式，而合作模式在海绵两个接口里都没有。一律转人工，**严禁替公司认领**"工资是独立客发的/和独立客签"，也禁止沿用会话内旧说法（不同品牌结论不同）。
+- PR #933 **按月计薪岗位**：不得用月薪折算时薪（折算值与结算口径不符，到店必生纠纷）；每日工时按 `workTime` 字段答，字段空才转。
+- PR #961 **新增 `sensitive_origin_probe`（P0 / BLOCK）** — 姊妹规则只管「说出去」，这条管「问回来」。收资表单字段与开放式问常驻/意向城市不受影响。
+- PR #961 **语义评审新增第 5 类 `sensitive_screening_disclosure_or_probe`（P0）** — 并让该轴自身可独立触发审查（原本零证据的纯话术回合根本不进审查）。
+- PR #964 **geo**：新增 `isRecognizedCityName`，作为「城市值能否被行政区数据认领」的唯一判据，写入门与 geocode 冲突门共用。民族自治地方另建前缀索引（`巴音郭楞` ↔ `巴音郭楞蒙古自治州`），只对这一族开放——全表建前缀会把 `呼和`、`石家` 这类残缺串也认成城市。
+
+### 问题修复
+- PR #912 泄漏检测补齐工具调用 XML 标签，修复裸标签投递
+- PR #924 `BATCH_STATUS_CONFIG` 补 `cancelled: { text: '已取消', className: 'cancelled' }`
+- PR #924 补 `.cancelled` 样式：中性灰蓝，与既有四档**同构**（浅底 + 同色描边 + 圆点），沿用 Dashboard 浅色基调，不引入暗色块
+- PR #930 修正过时注释，变更叙事统一为现状约束口径
+- PR #929 **判据刻意宽松**——月日或星期任一出现即放行。目的是保证候选人拿得到可核对的锚点，不规定话术怎么写。
+- PR #929 **不重复对账**——日期与星期是否自洽由 `date_reference_mismatch` 负责，避免同一条回复被两条规则夹击。
+- PR #929 **等通知岗位天然豁免**——`wait_notice` 无 `interviewTime`，不产出该字段。
+- PR #929 **解析容忍空格与「日/号」**——生产走 formatter，但该字段历史上也出现过手写形态（`6 月 18 号（周四）上午 10 点`），过严会把已如实播报日期的回复误判成未播报。
+- PR #947 修正 channels/tools/group-task 域过时注释
+- PR #947 修正 agent/monitoring/test-suite/biz 域过时注释
+- PR #947 修正 infra/providers/sponge/observability 等基础域过时注释
+- PR #947 修正 custom-openai provider 的 SDK 版本引用
+- PR #961 **工具层（源头）** — `render.util.ts` 户籍 banner 删掉采集指令，改为纯禁令 + 明确「不要追问」，并写明门槛的真正执行点是收资 checklist 的「籍贯/户籍」字段与 `booking-guards` 的 `isHouseholdRequirementViolated` 硬闸（表单场景合规，不需要口头打听）。
+- PR #961 **`discriminatory_screening_leak` 补漏** — 属性与「要求/限制」之间允许白名单连接成分（`户籍这块有要求`）。连接词用白名单而非 `.{0,4}`，保证「户籍没有要求」这类合规安抚仍放行。同族的「常驻地」改名变体当初打补丁时就带了 `(?:有)?`，基础形态一直没回补。
+- PR #964 **读取侧**：`buildSessionCityConflictNotice` 在会话城市过不了认领时不再发冲突披露——存量脏值与未来新形态的污染都不该把多余反问推到候选人面前。
+- PR #964 **存量自愈两处**：`saveToolAttestedCity` 不再让高置信垃圾城市把 geocode 真实确权的城市永久挡在门外；`backfillCityFromWhitelist` 不再被垃圾城市冻结整轮回填。
+- PR #964 城市值改为行政区数据认领，堵住假城市冲突与存量脏城市
+- PR #966 修复个人 Claude Code 配置被提交到公开仓库、可能携带本机权限与凭据的问题
+- PR #966 修复 `allowBuilds` 使用非布尔占位字符串、未形成有效审查策略的问题
+- PR #966 停止跟踪并忽略个人 `.claude/settings.local.json`，将可共享的 hooks 与命令安全基线迁移到无凭据的 `.claude/settings.json`
+- PR #966 启用 pnpm 10 的严格依赖构建审查，修复无效的 `allowBuilds` 占位值，新增未审查生命周期脚本时直接阻断安装
+- PR #966 收紧 Docker 全局 pnpm 安装，并移除 workspace 中重复且会绕过脚本保护的第二次安装
+- PR #968 从 v10.41.0 待发布元数据中移除已属于 v10.40 的 #903/#906，并补齐遗漏的 #911/#912/#913/#914/#931
+- PR #968 将候选人/运营可见的发布摘要收敛为 10 条本版本真实业务变化
+- PR #968 修正显式空 `businessUpdates` 时错误回退到技术变更列表的问题，并补充回归测试
+- PR #972 撤销 anon/authenticated 对 chat_messages 的全列 SELECT
+- PR #972 仅保留 id、chat_id 两个 Realtime 所需标识列
+- PR #972 保持后端 service_role 数据访问不变
+
+### 优化调整
+- PR #911 记忆与 Redis schema 族词表收拢回单一居所（期 0）
+- PR #914 守卫裁决与工具契约族词表收拢 + PRIORITY 改穷尽映射（期 1）
+- PR #958 在途工单改约假确认 + 抽取污染 + 语义案卷缺视觉事实
+- PR #964 **写入侧**：`isPlausibleCityValue` 收敛为数据表认领；丢弃时补进 `forceNullPreferenceFields` 显式清 Redis（否则 deepMerge「null 不覆盖」让脏值留在档案里，下一轮又被 `[已确认事实]` 喂回抽取，永不出清）。
+- PR #966 `install:all` 只执行一次 workspace 根安装，继续显式禁用生命周期脚本
+- PR #966 Docker 安装固定版本 pnpm 时增加 `--ignore-scripts`
+- PR #968 更新发版底账，记录 #966 合并、完整 CI 与通知卡片无发送预览证据；尚未完成的 P0 保持为待验证
+
+### 运维与流程
+- PR #908 三张词表收拢回 resolution/visual 单一居所
+- PR #915 收资字段名与裁决观测词表收拢（期 2）
+- PR #923 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #913 booking 海绵拒绝透传 apiCode/apiMessage 供观测落库
+- PR #924 WelfareKind 与 HealthCertGate 收尾（期 0/期 2 让路项）
+- PR #924 批次列表补 cancelled 状态（已取消不再显示成「已创建」）
+- PR #922 errorType 提示词写法改为线上真值 + 闸门补检查
+- PR #922 补修 3 处裸写 errorType KEY + 闸门放宽到无反引号形态
+- PR #930 删除同义反复的 JSDoc 头注释
+- PR #910 历史消息由 `MAX_HISTORY_PER_CHAT = 60` **按条数**封顶，全仓没有第二处历史 TTL 定义；
+- PR #910 "处理期间收集新消息"由 debounce + Redis pending/ack（`message.processor.ts`）承担。
+- PR #910 清理实测确认的死代码，收拢消息状态与配置键
+- PR #917 爽约不取消的时点前提同步到全部四处口径
+- PR #929 booking 已建单必须把面试日期告知候选人（形态 E）
+- PR #933 按运营口径把薪资/健康证/食宿类咨询改为可自答
+- PR #909 收拢 job-list 工具层类型债到领域契约 JobDetail
+- PR #909 Merge origin/develop into chore/tech-debt-20260805-types
+- PR #932 删除注释清洗排查确认的四组零消费方死代码
+- PR #932 Merge origin/develop into chore/remove-dead-code-20260806
+- PR #944 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #944 候选人裁决 shadow 观测首日两处 P0——quote 截断不变式 + 图片描述作证资格
+- PR #942 按 cooperationMode 契约实现发薪/签约主体自答
+- PR #947 Merge remote-tracking branch 'origin/develop' into chore/stale-commen…
+- PR #949 忽略 logs/ 本地台账，撤出误提交的观测日志
+- PR #949 撤出误提交的本地观测台账
+- PR #950 9499 移出飞书重试集合 + 每日清理 cron 锁定上海时区
+- PR #953 supabase keep-alive cron 锁定上海时区
+- PR #955 被问真名后的裸名直答不再判昵称——真名索取问答识别器
+- PR #955 补 prettier 换行（pre-commit 钩子改动未随提交入库）
+- PR #943 治理文档改按日聚合，并修好高亮块内抬头数字不刷新
+- PR #961 Agent 不再主动打听候选人籍贯——户籍门槛只准内部判断
+- PR #960 手机号出处门认「复述求证+候选人确认」+ 视觉描述证件号脱敏
+- PR #964 脏城市强清改看本轮末态，避免抹掉同轮确认裁定的城市
+- PR #966 通过 `.gitattributes` 禁止渲染已删除 local settings 的文本 diff，避免 PR 再次展示旧内容
+- PR #966 **合并前提醒：**开发者如需保留个人 local settings，请先备份；共享 hooks 已迁入 `.claude/settings.json`
+- PR #966 本 PR 只能阻止继续传播。已进入 Git 历史的凭据必须立即轮换；全 refs 历史清理需作为独立事故任务协调
+- PR #966 收紧依赖安装并移除明文凭据
+- PR #966 补充 v10.41.0 发版底账
+- PR #970 记录发布负责人对真实 Agent 回放、Sponge 联调、Dashboard/UI 与生产 API 对账的风险接受，明确“未执行不等于验证通过”
+- PR #970 将 P0 收敛为已有自动化、CI 和 release 镜像可证明的范围，保留凭据处置为唯一发布阻断
+- PR #970 记录 release code head Linux/amd64 镜像构建证据
+- PR #970 记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移
+- PR #970 记录 v10.41.0 发布豁免与数据库状态
+- PR #972 收紧聊天消息匿名列权限
+- PR #974 更新 v10.41.0 发版台账和安全处置证据
+- PR #974 补记 Supabase 新 publishable/secret key 上线、legacy key 停用和账户 Token 清理证据
+- PR #974 补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证
+- PR #974 明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项
+- PR #974 更新 Supabase 安全处置证据
+- PR #976 **P0-10｜最终制品复核 → 通过**：在最终 release code head 跑完整 `pnpm run ci:check`（417 suites / 7055 tests 通过、0 失败）；`git diff b0a12ac8..develop` 确认已构建镜像之后**零运行时代码变更**（仅 CHANGELOG、`.release` 元数据、底账文档、一条 SQL 权限迁移）。最终 tag 镜像由合并后自动构建工作流产出，结果记入 §6。
+- PR #976 **P0-02｜飞书凭据 → 按例外放行（不是处置完成）**：值级比对确认 Git 历史中 `.claude/settings.local.json` 的明文 `app_secret` 与 `.env.production` 在用值一致，**凭据仍然有效**。#966 只停止了继续传播，未移除历史、未轮换。本项按发布负责人 2026-08-07 签发的带期限与补偿控制的独立安全例外 `SEC-EXC-01`（到期 **2026-08-14**）放行，走底账 §2 既有的替代口径。
+- PR #976 §7 新增 `SEC-EXC-01` 完整记录，刻意写成「未处置」而非「已通过」：暴露事实（明文 secret 仍在全 refs Git 历史中且仍然有效）；影响面（可换 `tenant_access_token/internal` → 多维表格读写，BadCase 表含候选人对话样本，及文档写入；告警推送走独立自定义机器人 webhook，**不依赖**该 secret；候选人主链路、企微投递、Supabase 数据面均不使用）；三项补偿控制（重置 secret + 调用日志访问审计 + 权限最小化收敛）全部标注为「承诺项，**尚未执行**」。Git 历史清理仍属独立事故任务，不在例外范围内。
+- PR #976 §1 状态、§2 高风险区域/依赖表/部署顺序、§4 build 与 CI 行、§5 闸口勾选同步为同一口径。
+- PR #976 v10.41.0 底账收口——P0-10 判通过，P0-02 转带期限安全例外
+
+### 配置变更
+- PR #966 `strictDepBuilds: true`
+- PR #966 当前已审查的依赖安装脚本全部在 `allowBuilds` 中明确设为 `false`
+- PR #966 删除已弃用且相互冲突的 `onlyBuiltDependencies` / `ignoredBuiltDependencies`
+- PR #974 无代码配置变更；仅记录已完成的生产 Supabase 凭据迁移
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #915 **jest 410 suites · 6820 tests 全通过**
+- PR #915 **precheck 域 9 suites · 179 tests 全通过**
+- PR #915 新增 spec 逐一断言全部取值与顺序未变
+- PR #916 **jest 409 suites · 6814 tests 全通过**
+- PR #916 **web `tsc --noEmit` 通过**（前端类型改动已验证）
+- PR #911 完整 CI 通过：410 suites / 6826 tests，schema 取值与顺序保持一致
+- PR #914 完整 CI 通过：410 suites / 6841 tests，守卫域 1001 tests
+- PR #913 定向正反向回归及全量 6817 tests 通过
+- PR #912 守卫域 983 tests、全量 6823 tests、lint 与 typecheck 通过
+- PR #931 test-suite 285 tests、全量 6874 tests、lint 与 typecheck 通过
+- PR #930 非注释行变更全量机审：除上述 4 处字符串外**零代码变更**（含行尾注释宿主行逐行核对）
+- PR #930 typecheck / lint:check / geo:validate（8 类全绿）/ vocab:validate（5 项全绿）/ 全量 jest **413 套件 6870 条全部通过**
+- PR #930 多代理排查 + 主会话逐条抽验；一处代理过度删除（visual-fact 并跑对照约束被叙事改写误删）经交叉比对发现并恢复
+- PR #930 排查中确认的四组零引用死代码（旧 llm-reviewer、SEMANTIC_REVIEW_FINDING_POLICIES、*StorageResult 类型族、GeoResolution）**不在本 PR 删除**，已另立任务
+- PR #917 全库 **6814 passed / 0 failed**
+- PR #917 `tsc --noEmit`、`eslint --max-warnings=0` 均通过
+- PR #929 全库 **6875 passed / 0 failed**；`tests/agent/guardrail` **1006 passed**
+- PR #929 新增 5 条回归：未给日期→REVISE、给月日放行、只给星期放行、`8月6号`写法放行、等通知岗位不适用
+- PR #929 `tsc --noEmit` / `eslint --max-warnings=0` 均通过
+- PR #932 ✅ `pnpm run typecheck`
+- PR #932 ✅ `pnpm run lint:check`（--max-warnings=0）
+- PR #932 ✅ `npx jest --no-watchman` 全量：**412 套件 / 6868 测试全过**（较基线少 1 套件即删除的 llm-reviewer spec）
+- PR #944 全量 **6897 测试通过**、typecheck 零错误、lint `--max-warnings=0` 零告警
+- PR #944 无 DB 迁移、无配置变更；仍为 shadow 模式
+- PR #942 渲染 5 条：BPO 结论、RPO 结论（含"不得把 BPO 的独立客结论泄漏到 RPO"的负向断言）、两种模式都带 🔒 禁术语标注、大小写/空格容错、字段缺失整段不渲染
+- PR #942 schema 4 条：BPO/RPO 保留、缺失通过、null 通过、非字符串不通过（防止有人改 strict/omit 时静默吞字段）
+- PR #947 非注释行全量机审：除 4 处有意修正的字符串外零代码变更——守卫目录元数据 3 处（豁免窗口实为 8 条、开关主控已是 `agent_reply_config`、关键词规则清单补 `disability_disclosure`）+ 群任务报错文案 1 处（`imBotId` 来源 `botInfo.weixin` → `wxid`，排障时会指错字段）。
+- PR #947 typecheck / lint / geo:validate / vocab:validate / 全量 jest **415 套件 6916 条全部通过**（已合并最新 develop 后重跑）。
+- PR #947 每条修正均由主会话独立复核决定性事实后落改；驳回了子代理依据不成立的结论（`REVISION_FORBIDDEN_TOOLS` 被误判「零消费」，实际同文件即有消费方）；两条飞书外部文档断言由主会话自行查证官方文档确认。
+- PR #950 两条回归用例均做了**反向验证**：把修复退回去，正好这两条失败；修复在则全过——确认不是恒真的空测试。
+- PR #950 typecheck / lint / 全量 jest **415 套件 6919 条通过**。
+- PR #953 回归用例已**双向验证**：修复在则 7 条全过，退回修复则该条精确失败——确认不是恒真的空测试。
+- PR #953 typecheck / lint / 全量 jest **415 套件 6920 条通过**。
+- PR #943 全库 **6904 passed / 0 failed**；`tests/biz/feishu-sync` **66 passed**
+- PR #943 新增 4 条回归：
+- PR #943 当日已有小节时只追加条目、且插到小节末尾（不含 heading3、不含「本次更新：」）
+- PR #943 新的一天新建小节、标题不含时分
+- PR #943 同事件 ID 重复运行仍跳过
+- PR #943 callout 内的抬头剩余数与更新时间可被刷新
+- PR #943 既有用例「inserts a dated update before section four」的标题预期同步去掉时分
+- PR #943 `tsc --noEmit` / `eslint --max-warnings=0` 均通过
+- PR #958 `lint:check`（CI 范围 `src/**/*.ts`）✅
+- PR #958 `typecheck` ✅
+- PR #958 全量 **6965 passed / 6 skipped，零失败** ✅
+- PR #960 `tests/tools/shared/precheck-core.spec.ts`：新增 4 条（解锁 / 否定应答仍拒 / 无疑问标记仍拒 / 肯定应答归属远处问句仍拒）
+- PR #960 `tests/resolution/visual/visual-fact.spec.ts`：新增 4 条（18 位 + 15 位 + 尾号 X 脱敏 / 手机号与短数字串不动 / 19 位不动 / finalize 与 parseStored 两侧）
+- PR #960 `npx jest tests/resolution tests/tools tests/channels` → **2314 passed**，`tsc --noEmit` 通过，改动文件 eslint `--max-warnings=0` 通过
+- PR #964 `lint:check` / `format:check` / `typecheck` / `geo:validate`（8 类全绿）/ `vocab:validate`（5 项全绿）均通过；`build:ci` 因 worktree 无 web 依赖跳过，TS 侧由 typecheck 覆盖
+- PR #964 **全量 416 suites / 7014 tests 全过**，0 失败
+- PR #964 新增回归覆盖四个落点，其中两条是 `extractAndSave` 端到端：脏城市被清出 Redis、脏城市不再冻结回填（`hello` + `district=['浦东']` → 最终存 `上海`）
+- PR #966 `pnpm run ci:check`（pre-push 全量检查通过）
+- PR #966 `pnpm run test:di-smoke`
+- PR #966 pnpm 10.34.5 frozen lockfile 兼容性检查
+- PR #966 Supabase CLI 在禁用依赖安装脚本后仍可运行
+- PR #966 待提交树高风险 JWT/npm token 扫描无命中
+- PR #966 锁文件无变化
+- PR #966 其他说明：首次本地并行全量测试有 1 个既有缓存用例抖动，单独重跑 25/25 通过；pre-push 第二轮全量检查通过
+- PR #968 `pnpm exec jest tests/scripts/send-deploy-notification.spec.ts tests/scripts/update-version-changelog.spec.ts --runInBand --watchman=false`（19/19）
+- PR #968 推送前完整 `ci:check`（417 suites、7055 tests）
+- PR #968 v10.41.0 飞书通知内容无发送预览
+- PR #968 `git diff --check`
+- PR #970 推送前完整 `ci:check`：417 suites、7055 tests 通过
+- PR #970 `git diff --check`
+- PR #970 `db:status:test`：132/132
+- PR #970 `db:status:prod`：132/132
+- PR #970 Release ledger check 当前按预期只剩 `P0-02=待轮换`
+- PR #972 测试库迁移已应用，local/remote 对齐到 20260807130000
+- PR #972 生产库迁移已应用，local/remote 对齐到 20260807130000
+- PR #972 测试/生产：匿名最小列查询 200，敏感列查询 401
+- PR #972 生产：service_role 敏感列查询 200
+- PR #972 测试/生产 Realtime 均成功 SUBSCRIBED
+- PR #972 pnpm run ci:check 通过：417 suites passed、7055 tests passed、1 suite/6 tests skipped
+- PR #974 pnpm run ci:check（417 suites、7055 tests 通过）
+- PR #974 Prettier 与 git diff --check
+- PR #974 Supabase REST/Auth/Realtime、生产健康和 migration 状态已验证
+- PR #974 其他说明：release ledger 校验按预期仍报告 P0-02 和 P0-10 未通过；本 PR 不解除正式发版门禁。
+- PR #976 `node scripts/check-release-ledger.js` → ✅ 通过
+- PR #976 `pnpm run ci:check` 全量：417 suites / 7055 tests 通过、0 失败（1 suite / 6 tests skipped）
+- PR #976 `prettier --write` 已格式化
+<!-- release:pending:end -->
+
 ## [10.40.0] - 2026-08-05
 
 **来源分支**: `develop`

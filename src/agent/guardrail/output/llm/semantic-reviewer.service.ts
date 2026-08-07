@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ModelRole } from '@/llm/llm.types';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
+import {
+  GUARDRAIL_REPAIR_MODES,
+  GUARDRAIL_RISK_LEVELS,
+  OUTPUT_DECISIONS,
+} from '@shared-types/guardrail.contract';
 import { hasQuantifiedJobFact } from '../job-fact-signals.util';
 import type { GuardrailReviewPacket } from './review-packet.types';
 
@@ -10,30 +15,14 @@ export const SEMANTIC_REVIEW_FINDING_CODES = [
   'brand_or_geo_ambiguity_ignored',
   'active_booking_state_conflict',
   'fact_asserted_without_any_evidence',
+  'sensitive_screening_disclosure_or_probe',
 ] as const;
 
 export type SemanticReviewFindingCode = (typeof SEMANTIC_REVIEW_FINDING_CODES)[number];
 
-/** 每个语义 finding 自带恢复能力声明，与 code 定义同处维护。 */
-export const SEMANTIC_REVIEW_FINDING_POLICIES = {
-  job_recommendation_not_best_supported: {
-    repairToolNames: ['geocode', 'duliday_job_list'],
-  },
-  brand_or_geo_ambiguity_ignored: {
-    repairToolNames: ['geocode', 'duliday_job_list'],
-  },
-  active_booking_state_conflict: {
-    repairToolNames: ['send_store_location', 'request_handoff'],
-  },
-  // 本轮零证据，没有任何工具产物可供二次取数——只能删除无据事实，不存在工具修复路径。
-  fact_asserted_without_any_evidence: {
-    repairToolNames: [],
-  },
-} as const satisfies Record<SemanticReviewFindingCode, { repairToolNames: readonly string[] }>;
-
 const semanticReviewSchema = z.object({
-  decision: z.enum(['pass', 'observe', 'revise', 'replan', 'block']),
-  confidence: z.enum(['low', 'medium', 'high']),
+  decision: z.enum(OUTPUT_DECISIONS),
+  confidence: z.enum(GUARDRAIL_RISK_LEVELS),
   findings: z
     .array(
       z.object({
@@ -41,7 +30,7 @@ const semanticReviewSchema = z.object({
         evidencePath: z.string(),
         evidenceQuote: z.string(),
         userImpact: z.string(),
-        repairMode: z.enum(['rewrite', 'replan']),
+        repairMode: z.enum(GUARDRAIL_REPAIR_MODES),
         feedbackToGenerator: z.string(),
       }),
     )
@@ -73,7 +62,7 @@ function isLikelyTruncatedText(value: string): boolean {
  * 漏掉一类就会把该类证据支撑的合法回复误判成"凭空生成"。这条已经翻车两次：
  * 2026-07-30 首版漏 precheck（回放新触发样本 10/12 是 precheck 给出的合法面试窗口）；
  * 2026-08-04 审计再漏群邀请（invite_to_group:ok 支撑的"群邀请已经发你了"被判
- * "没有任何下发证据"，trace …_1785451709779 硬假阳）。故改为按字段清单遍历 +
+ * "没有任何下发证据"，trace …_1785451709779 硬假阳）。故按字段清单遍历 +
  * 编译期双向穷尽断言：evidence 加新字段而清单没跟上，或清单写了不存在的字段，
  * 都会直接编译报错，杜绝第三次漂移。
  * jobList 特殊：对象存在但 jobs 与 markdownExcerpt 都空＝查无岗位，不算可核验证据。
@@ -85,6 +74,7 @@ const EVIDENCE_KEYS = [
   'geocode',
   'sentLocation',
   'groupInvite',
+  'visualFacts',
 ] as const;
 type EvidenceKey = (typeof EVIDENCE_KEYS)[number];
 type _AssertEvidenceKeysExhaustive = [
@@ -113,6 +103,24 @@ const UNGROUNDED_FACT_CLAIM_PATTERNS: readonly RegExp[] = [
   /已(?:经)?(?:帮你|给你)?(?:提交|报名|预约|约好|登记)/u,
   /https?:\/\//u,
 ];
+
+// —— 敏感筛选轴触发器 ————————————————————————————————————————
+/**
+ * 回复是否碰到地域/民族/婚育这条敏感筛选轴（导出仅供单测）。
+ *
+ * 这是**审查触发器**，不是判据：它刻意比硬规则的正则宽，因为它的价值恰恰在于覆盖
+ * 正则写不出的形态。2026-08-06 badcase（chat 6a744a86）里「这家对户籍有要求，方便
+ * 问一下你老家是哪里的吗」硬规则漏拦、语义档也 pass——语义档当时压根没有这个维度，
+ * 就算 shouldReview 放行了也只按"岗位推荐"四类去看，看不见歧视问题。
+ *
+ * 刻意不收 `专业`：它在正常话术里太常见（"我们很专业"），当触发器会把大量无关回合
+ * 拖进 LLM 审查；该轴由硬规则的反问式/排除式模式覆盖（2026-07-06 已同口径落地）。
+ */
+export function touchesSensitiveScreeningAxis(reply: string): boolean {
+  return /户籍|户口|籍贯|老家|哪里人|哪儿人|哪边人|哪个省|本地人|民族|婚育|婚姻|已婚|未婚|生育/u.test(
+    reply,
+  );
+}
 
 /** 判定裁决中是否存在疑似被约束解码截断的 finding 文本（导出仅供单测）。 */
 export function hasTruncatedFindingText(verdict: SemanticReviewVerdict): boolean {
@@ -144,7 +152,8 @@ export class SemanticReviewerService {
       hasGeoOrBrandAmbiguity ||
       hasBookingStateClaim ||
       hasSentLocationClaim ||
-      this.assertsFactWithoutAnyEvidence(packet)
+      this.assertsFactWithoutAnyEvidence(packet) ||
+      touchesSensitiveScreeningAxis(reply)
     );
   }
 
@@ -182,14 +191,19 @@ export class SemanticReviewerService {
         'jobList.markdownExcerpt 是岗位工具返回的 markdown 原文摘录（结构化 jobs 为空时它就是岗位事实的 ground truth，其中"品牌（门店）"格式里括号前是品牌名、括号内是门店名，不要把品牌名误读为城市）。',
         'recentAssistantMessages 是本会话往轮已发送给候选人的助手回复（正序，最近在最后）。它不是工具证据、不改变 evidence 是否为空的判定，只用于区分「跨轮复述」与「本轮新编造」——evidence 只含本轮工具结果，往轮查到并已告知候选人的事实（岗位详情、群邀请、报名状态等）在本轮 evidence 里必然缺席，不能因此判编造。',
         '摘录超长会被截断；若末尾存在「截断补录·岗位薪资信息」段，被截断岗位的薪资字段以该补录为准。顶部卡片的"薪资：X"是压缩摘要（综合薪资优先），不是该岗位薪资字段的全集——回复里的薪资数字能在补录段或详情段对上就不是编造。',
-        '只检查四类问题：',
+        '只检查五类问题：',
         '1. job_recommendation_not_best_supported：岗位推荐与 jobList 证据、距离排序、候选人指定品牌或班次明显冲突。',
         '2. brand_or_geo_ambiguity_ignored：地理或品牌证据不确定，但回复直接下结论。',
         '3. active_booking_state_conflict：booking 证据显示已约/失败/线上线下/面试时间地址等状态，但回复与其冲突或漏关键状态。',
-        '4. fact_asserted_without_any_evidence：evidence 完全为空（jobList/precheck/booking/geocode/sentLocation/groupInvite 全无），回复却给出具体的岗位或预约事实——薪资数字、距离、班次时段、指名门店的岗位、完成态报名/预约、报名链接。groupInvite.success=true 时"群邀请已发你了/已拉你进群"是有下发证据的如实陈述，不属于本类。',
+        `4. fact_asserted_without_any_evidence：evidence 完全为空（${EVIDENCE_KEYS.join('/')} 全无），回复却给出具体的岗位或预约事实——薪资数字、距离、班次时段、指名门店的岗位、完成态报名/预约、报名链接。groupInvite.success=true 时"群邀请已发你了/已拉你进群"是有下发证据的如实陈述，不属于本类。`,
         '   本类要区分"凭空生成"与"跨轮复述"，复述判定以 recentAssistantMessages 为准：回复中的事实（数值、门店、岗位详情、群邀请、报名状态）能在其中找到一致表述的，属复述——最多 observe 或 low 置信，不要 revise/block，把合法复述改掉会让候选人丢失已经沟通过的信息；往轮表述本身是否真实交跨轮治理，不在本轮裁决。',
         '   判 high 置信只限不可能来自复述的形态——回复里给出 recentAssistantMessages 中从未出现过的报名/表单链接（链接只能来自工具下发）、首次以完成口径宣称已提交/已报名/已预约（该状态在往轮助手消息中从未出现）、内容与候选人的问题或招聘场景明显不相干（如接口设计、代码、其它领域答案）、或对话刚开始（recentAssistantMessages 为空或全是寒暄）就报出具体门店薪资。',
         '   注意：本轮没查到岗位与本轮没有任何证据是两回事，jobList 存在但为空属第 1 类，不要用本类。',
+        '5. sensitive_screening_disclosure_or_probe：回复把户籍/籍贯/民族/地域/婚育这类敏感门槛**说给候选人**，或反过来**向候选人打听**籍贯、老家、是不是本地人。',
+        '   本类只看 draftReply 的话术合规性，不需要 evidence 支撑：即使岗位数据里确实写着户籍限制，说出去或据此打听同样违规——它是地域歧视纠纷与不可逆聊天证据风险，与该限制是否属实无关。',
+        '   判：把筛选条件本身说出去（「这家对户籍有要求」「不要 X 地人」，含改名成「这家对常驻地/居住地有要求」的变体）；口头索取出身地（「你老家是哪里的」「你是哪里人」「你是本地人吗」），含为此编造的借口（「登记/系统/流程需要核对户籍」——不存在这种流程需要）。',
+        '   不判：收资 checklist 里的「籍贯/户籍：」表单字段是既定报名流程；开放式问常驻城市或意向城市（「你常驻在哪个城市」「想去哪个城市工作」）；「不限户籍/哪里人都能报」这类放宽口径；候选人自己主动说了老家后助手中性承接；与筛选无关的关怀话术（「回老家路上注意安全」「周末回老家影响出勤吗」）。',
+        '   命中时 confidence 填 high、repairMode 用 rewrite，feedbackToGenerator 要求删除该问句或该条件表述、其余内容逐字保留。',
         '证据读取要求：',
         '- jobList.hasEvidence=true 表示已有可核验岗位证据；即使 jobList.jobs=[]，只要 markdownExcerpt 存在也不能说“无岗位数据/无证据支撑”。',
         '- 品牌名里可以包含地名，且与门店所在城市无关（如「成都你六姐」是在上海等地经营的连锁品牌，「北京华联」同理）。品牌名中的地名一律不作为地理冲突依据，只看门店/距离字段；仅凭品牌名判 brand_or_geo_ambiguity_ignored 属误判。',
@@ -200,6 +214,8 @@ export class SemanticReviewerService {
         '- sentLocation.addressConflict=true 表示面试地址与工作门店不同。仅当 destination=interview 时，回复必须说清两者差异，且不得把 storeAddress 当成面试目的地；destination=store 表示候选人明确询问工作地点，不要求额外展开面试地址，但不得把工作门店说成面试地点。',
         '- sentLocation.destination=interview 时，回复必须称其为面试定位；不得说已发门店定位或声称应去工作门店面试。',
         '- 只有 sentLocation.interviewMethod 明确为线下/到店/现场面试时才允许声称有面试地址或已发面试定位。线上/AI/视频/电话面试或 locationNotRequired=true 时，任何到店、面试地址或面试定位声称都是 active_booking_state_conflict。',
+        '- visualFacts 是候选人本轮发来的图片被结构化后的事实（save_image_description 落档）。它与工具返回同为一等证据：截图里写明的预约时间、工单状态、门店、岗位，回复据此如实陈述**不属于** active_booking_state_conflict，不得因为 booking/precheck 里没有对应记录就判冲突——候选人的报名可能来自别的渠道，本轮工具查不到不等于不存在。',
+        '- visualFacts.sheets[].fields[].ownership 必须区分：candidate=候选人自陈（如本人姓名、电话），publisher=截图里发布方/平台侧标注（如品牌、门店、岗位名、专员）。publisher 字段只说明截图内容，**不能**据以断言这就是候选人本人的资料或意向；把发布方字段当成候选人自陈是已知的误判源。',
         '- “地图未更新/新店刚入驻/地址没错”等解释必须在 evidence 中有明确依据；否则按 active_booking_state_conflict 要求删除。',
         '裁决要求：',
         '- 每条 finding 必须给出 evidencePath（指向 packet 中的证据字段）和 evidenceQuote（回复原文）。',
@@ -285,9 +301,11 @@ export class SemanticReviewerService {
     decision: SemanticReviewVerdict['decision'],
     findings: SemanticReviewVerdict['findings'],
   ): SemanticReviewVerdict['decision'] {
-    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4），语义档
-    // 裁决无条件归一为 revise——schema 仍容忍模型输出 'replan'（避免结构化输出
-    // 重试），但它永远不会传出本方法，runner 的 replan 执行路径已删除。
+    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4）。本方法把
+    // 'replan' 归一为 revise，但只在证据兜底剔除 finding 的分支被调用
+    // （applyEvidenceBackstop 未剔除时原样返回 verdict）；未归一的 'replan' 由
+    // output-guardrail 的 applyConfidenceBackstop 兜底折叠。schema 仍容忍模型输出
+    // 'replan'（避免结构化输出重试），runner 的 replan 执行路径已删除。
     const allowed = new Set(findings.map((finding) => finding.repairMode));
     if (decision === 'replan') return 'revise';
     if (decision === 'block' && !allowed.has('replan')) return 'revise';

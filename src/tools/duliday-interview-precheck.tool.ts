@@ -24,6 +24,7 @@ import {
   SupplementClassification,
 } from '@tools/utils/supplement-label-classifier';
 import { isStrictRealChineseName } from '@memory/facts/name-guard';
+import { fieldValues } from '@resolution/visual';
 import { isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
 import {
   normalizeEducationValue,
@@ -46,6 +47,7 @@ import {
   buildEnumHintsForMissing,
   buildKnownFieldMap,
   normalizeChecklistField,
+  type ChecklistField,
 } from '@tools/duliday/precheck/checklist.util';
 import {
   extractSupplementAnswerFromMessages,
@@ -631,8 +633,15 @@ export interface PrecheckAdjudicationDeps {
   observer?: { emit: (event: AgentEvent) => void };
 }
 
-/** claim 字段名 → checklist 中文字段名（enforce 剔除与响应摘要共用）。 */
-const CLAIM_FIELD_TO_CHECKLIST: Record<CandidateClaimField, string> = {
+/**
+ * claim 字段名 → checklist 中文字段名（enforce 剔除与响应摘要共用）。
+ *
+ * 值类型收成 ChecklistField 而非裸 string：本表的值被直接当 knownFieldMap 的键用
+ * （`delete knownFieldMap[CLAIM_FIELD_TO_CHECKLIST[field]]`），写错一个字不会报错，
+ * 只会让 delete 静默落空——被裁决 rejected 的无据裸值就此照常进报名，
+ * 防伪造闸门无声失效。现在写错即编译报错。
+ */
+const CLAIM_FIELD_TO_CHECKLIST: Record<CandidateClaimField, ChecklistField> = {
   name: '姓名',
   phone: '联系电话',
   gender: '性别',
@@ -1103,8 +1112,9 @@ export function buildInterviewPrecheckTool(
           // 真名可疑标记：knownFieldMap.姓名 已填，但不像真实姓名（可能是微信昵称
           // 或占位字符串）。
           //
-          // booking 工具已经不再做 isStrictRealChineseName 二次校验（信任 precheck），
-          // 所以这里必须把可疑姓名从 knownFieldMap 中剔除，让"姓名"自然落入 missingFields，
+          // booking 侧只有 runBookingGuards.checkRealName 的纯形态兜底（isStrictRealChineseName，
+          // 2-4 字），拦不住形态合规的昵称/引用前缀名，所以这里必须把可疑姓名从
+          // knownFieldMap 中剔除，让"姓名"自然落入 missingFields，
           // 模板里"姓名："会留空，Agent 必须补问真名后再走 booking。
           const knownName = knownFieldMap['姓名'];
           // 三层判定：
@@ -1368,7 +1378,23 @@ export function buildInterviewPrecheckTool(
                 isSameJob: boolean;
               }>
             | undefined;
-          const lookupPhone = (knownFieldMap['联系电话'] ?? '').replace(/\D/g, '');
+          // 视觉事实回流（badcase 2026-08-06 chat 6a1e42c5 trace …_1785977093673）：
+          // 候选人发来后台工单截图，save_image_description 已把手机号按
+          // ownership=candidate 结构化落档，但模型下一轮调 precheck 时只传了 jobId
+          // ——工具描述已明写"看到就必须传 candidateName/candidatePhone"，模型没照做
+          // （纯提示词约束在本仓库反复被实测击穿）。没有手机号 → 在途工单探测整段跳过 →
+          // duplicateBookingGuard 不触发 → Agent 以为要重新开单，重复收资并断言
+          // "你这边资料还没登记完整"，而对方后台早已登记（工单 455384）。
+          //
+          // ⚠️ 只回灌给这一次**只读查询**，绝不写进 knownFieldMap：截图里的姓名/电话未必是
+          // 对话方本人（本案的"颜端樟"就是对方代第三人登记的），拿它去满足收资清单等于
+          // 复刻 badcase「第三方截图夺号」。查重的最坏结果只是查出一张工单再去核对，安全。
+          const visualCandidatePhone = (context.turnVisualFactSheets ?? [])
+            .flatMap((entry) => fieldValues(entry.sheet, 'phone', 'candidate'))
+            .map((value) => value.replace(/\D/g, ''))
+            .find((value) => /^1\d{10}$/.test(value));
+          const lookupPhone =
+            (knownFieldMap['联系电话'] ?? '').replace(/\D/g, '') || (visualCandidatePhone ?? '');
           if (
             /^1\d{10}$/.test(lookupPhone) &&
             typeof spongeService.fetchSignupWorkOrders === 'function'

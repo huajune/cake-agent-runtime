@@ -1,3 +1,5 @@
+import type { SessionTerminalState } from './session-facts.types';
+
 export type FieldProvenance = 'user_text' | 'booking_writeback' | 'llm_extract' | 'model_arg';
 
 export type CandidateFieldKey =
@@ -49,5 +51,5 @@ export interface AuthoritativeSessionState {
    * 复聊停止判定须比对此水位，才能区分「已回话且被回应」与「回话被静默吞掉」。
    */
   lastProcessedCandidateMessageAt?: number;
-  terminal?: 'booked' | 'handed_off' | 'rejected' | 'onboarded';
+  terminal?: SessionTerminalState;
 }

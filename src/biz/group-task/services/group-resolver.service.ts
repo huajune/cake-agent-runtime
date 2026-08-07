@@ -79,9 +79,11 @@ export class GroupResolverService implements OnModuleInit {
    * - 兼职群: [{ name: '兼职群' }, { name: '上海' }, { name: '餐饮' }]
    *
    * 规则：
-   * - 第一个标签 = 群类型
+   * - 第一个标签 = 群类型；店长群只需一级标签（不按城市分组）
    * - 第二个标签 = 城市/主地区
    * - 第三个标签仅对兼职群视为行业
+   * - 兼职群容错：第二个标签若是行业词（餐饮/零售）且存在第三个标签，
+   *   视为 [类型, 行业, 城市] 换序写法
    */
   parseLabels(labels: RoomLabel[]): ParsedGroupTag | null {
     if (!labels || labels.length === 0) return null;

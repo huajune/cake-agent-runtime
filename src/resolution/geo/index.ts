@@ -9,8 +9,6 @@
 // —— 稳定 API（长期保留）——
 export type {
   AdministrativeLevel,
-  GeoResolution,
-  GeoResolutionEvidence,
   GeoTextScanCity,
   GeoTextScanResult,
   ParentAdministrativeArea,
@@ -23,6 +21,7 @@ export {
   detectGeoSignalConflict,
   hasKnownCityPrefix,
   isKnownCanonicalAdministrativeAreaName,
+  isRecognizedCityName,
   listUniqueDistrictCityEntries,
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,

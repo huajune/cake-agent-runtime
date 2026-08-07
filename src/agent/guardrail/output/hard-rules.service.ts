@@ -66,11 +66,12 @@ export {
  * 上一轮 invite_to_group 已成功，本轮用户回"好的"，Agent 无 tool 调用
  * 编出"群里人数满了"。
  *
- * 规则按 catalog action 决定处理方式：observe 只告警，revise/replan 会进入受控修复回路，
- * block 则直接拦截不发送。低确定性的体验类规则仍保留 observe。
+ * 规则按 catalog action 决定处理方式：observe 只告警；revise/block 当前文本不可发送，
+ * 由 runner 进入一次受控重写（replan 已于 2026-07-27 从规则 action 退役）。
+ * 低确定性的体验类规则仍保留 observe。
  *
- * 阻断规则（action='block'）：歧视性筛选条件外露这类"发出去即不可挽回"
- * 的内容直接走出站短路，runner 丢弃回复不发送。
+ * 阻断规则（action='block'）：歧视性筛选条件外露这类"发出去即不可挽回"的内容，
+ * 重写后仍需二审通过才可投递，救不活则整轮静默（meta_narration 等直达静默特例见 runner）。
  *
  * 规则维护：确定性规则按领域拆在 `output/rules/*.rule.ts`，本 service 只负责调度和告警。
  */
@@ -96,7 +97,7 @@ export class HardRulesService {
    * 纯文本 + 简单工具存在性即可判断的规则集合。
    *
    * 这里刻意只放 FactRule：
-   * - false-promises 里的“名额承诺/拉群承诺”；
+   * - false-promises 里的“名额承诺”（2026-07-10 批量下线后仅剩 quota_promise）；
    * - discrimination-leaks 里的“敏感筛选条件外露”。
    *
    * 如果规则需要读取 tool.result 里的结构化字段，或需要生成动态 label，
@@ -114,8 +115,8 @@ export class HardRulesService {
    * 检查 reply 是否与本轮 tool 调用矛盾。
    *
    * - observe 规则：命中即日志 + 落库 guardrail_review_records（不写飞书），内容仍可发送
-   * - revise/replan 规则：当前回复不可发送，由 OutputGuardrail/runner 进入受控修复
-   * - block 规则：当前回复不可发送且不可恢复，调用方必须丢弃本轮回复
+   * - revise 规则：当前回复不可发送，由 OutputGuardrail/runner 进入受控修复
+   * - block 规则：当前回复不可发送；runner 仍先尝试一次受控重写，二审仍违规才静默丢弃
    *
    * @returns 命中的规则与是否需要出站短路；调用方可记 anomaly_flag
    */

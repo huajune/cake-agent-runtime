@@ -21,8 +21,8 @@ import {
  *
  * 字段解释：
  * - id：必须与检测逻辑返回的 ruleId 完全一致；
- * - action：命中后的默认处理语义，observe=只记录，revise=要求重写，replan=重查工具，
- *   block=高风险不可恢复，先重写自救，救不活才丢弃不发送；
+ * - action：命中后的默认处理语义，observe=只记录，revise=要求重写，
+ *   block=高风险，先重写自救，救不活才丢弃不发送（replan 已于 2026-07-27 退役）；
  * - priority：风险优先级，P0 通常是合规/不可逆风险，P1 是强业务风险，P2 偏体验/质量；
  * - riskGoal：这条规则要防的真实业务风险；
  * - exogenousSignal：这条规则依赖的外生信号或词库。没有外生信号的规则要特别谨慎；
@@ -248,9 +248,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk:
       '超过最近消息窗口的暑假工意向依赖会话事实；未出现替代用工形式词的隐晦劝转仍可能漏检。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    // 2026-07-30 审计 P1-5：原反馈把"最小修复"写成了格式硬约束（"只输出一句…不要追加
-    // 问题"），生产实例 …_1785209582843 因此把候选人的两个提问与本人在谈的岗位线索
-    // 一并抹掉。改为与其它规则一致的"只删违规部分、其余逐字保留"口径。
+    // 2026-07-30 审计 P1-5：反馈若把"最小修复"写成格式硬约束（"只输出一句…不要追加
+    // 问题"），会连坐误删——生产实例 …_1785209582843 把候选人的两个提问与本人在谈的岗位线索
+    // 一并抹掉。故取与其它规则一致的"只删违规部分、其余逐字保留"口径。
     feedbackToGenerator:
       '上一版回复在本轮已经确认没有暑假工岗位后，仍主动询问或建议候选人考虑普通兼职、小时工、全职或长期兼职，当前文本不可发送。' +
       '请删除针对暑假工的替代用工形式劝转与追问（如“要不要看看小时工/全职”），如实保留“暂时没有合适的暑假工岗位”这一结论；' +
@@ -270,6 +270,25 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     feedbackPolicy: GUARDRAIL_FEEDBACK_POLICY.REDACTED,
     feedbackToGenerator:
       '上一版回复包含高敏感筛选条件或以高敏感属性作为拒绝理由，当前文本禁止发送。请重新生成：不要提及户籍、籍贯、民族、专业、婚育等门槛；不要解释具体不通过原因；核对专业只能开放式问"你学的什么专业"，不得把排除条件塞进问句；婚育信息禁止询问、复述或确认；改为中性承接，可以推荐其他岗位、继续收集必要信息，或说明需要同事确认。',
+  },
+  {
+    id: 'sensitive_origin_probe',
+    action: GUARDRAIL_ACTION.BLOCK,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '拦住主动向候选人打听籍贯、老家、是不是本地人的回复，含为此编造的行政借口。',
+    riskGoal:
+      '口头索取籍贯本身就等于告诉候选人存在地域筛选——姊妹规则只管"说出去"，这条管"问回来"。' +
+      '2026-08-06 badcase（chat 6a744a86）：Agent 问"这家对户籍有要求，方便问一下你老家是哪里的吗"，' +
+      '候选人当场质问"为什么我找工作还要问我户籍"后流失，运营反馈"无论岗位数据有没有，都不应该问"。',
+    exogenousSignal: '籍贯/老家/本地人疑问句形态词库 + 登记核对类借口搭配。',
+    residualRisk:
+      '更隐晦的探问（"你现在住的地方是自己家吗""家里离这远吗"）仍需 badcase 补词；' +
+      '合规替代品是开放式问常驻/意向城市，收资 checklist 的「籍贯/户籍：」表单字段不在覆盖范围。',
+    verification: 'tests/agent/guardrail/output/rules/discrimination-leaks.rule.spec.ts',
+    dataSensitivity: GUARDRAIL_DATA_SENSITIVITY.HIGH,
+    feedbackPolicy: GUARDRAIL_FEEDBACK_POLICY.REDACTED,
+    feedbackToGenerator:
+      '上一版回复在向候选人打听籍贯/老家/是否本地人，当前文本禁止发送。请删除该问句以及任何解释为什么要问的说法（不得说登记、核对、系统、流程需要）。岗位的户籍门槛仅供内部判断，不得追问也不得暗示其存在；需要了解地点时只能开放式问"你常驻在哪个城市"或"想去哪个城市工作"，回复其余内容逐字保留。',
   },
   {
     id: 'dangling_reply_promise',
@@ -295,7 +314,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '候选人本轮 userMessage 或近几轮消息（recentUserTexts）是否主动询问保险/社保。',
     residualRisk:
       '消费者：运营复盘；退场条件：收窄成承诺式后观察 2 周，仍全是假阳则删除并交语义档 unsupported_commitment。' +
-      '跨轮豁免窗口为近 3 条候选人消息；任职要求豁免会放行岗位硬性要求转述。',
+      '跨轮豁免窗口为近 8 条候选人消息（RECENT_USER_TEXTS_LIMIT）；任职要求豁免会放行岗位硬性要求转述。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
   },
   {
@@ -560,12 +579,16 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     // 形态 C（booking 失败却称正在/已提交）＝REVISE，自带失败路径 feedback 覆盖；
     // 形态 D（候选人明确先别报名却继续推进，或附和未预约自行到店）＝REVISE，
     // 自带候选人意愿路径 feedback。
+    // 形态 E（已按具体日期建单却没把该日期告诉候选人）＝REVISE，自带日期播报 feedback；
+    // badcase 0091mnfr：候选人选周三、工单落周四，回复只说"这就帮你提交预约"，
+    // 含"预约"二字躲过形态 B、booking 成功又不适用形态 C，候选人次日到店下车才发现。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
       'duliday_interview_booking 的回执对账：拦住“工单已建单却仍问候选人定哪天”、' +
-      '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”、“调用失败却称正在/已提交”' +
-      '及“候选人明确先别报名却仍催登记/承诺安排或附和未预约自行到店”，观察“零播报”。',
+      '“把兼职群冒充面试群”、“手动面试群尚未发送却声称已发”、“调用失败却称正在/已提交”、' +
+      '“候选人明确先别报名却仍催登记/承诺安排或附和未预约自行到店”' +
+      '及“已按具体日期建单却未把该日期告知候选人”，观察“零播报”。',
     riskGoal:
       '预约提交是不可逆副作用；回复与其矛盾会让候选人以为没约上而重复提交（撞 already_booked）或直接流失' +
       '；兼职群与面试群混淆会让候选人在错误群里等待会议链接' +
@@ -582,6 +605,35 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '并按工具返回的 _confirmedInterviewTimeHuman 与 guide 字段复述面试时间、形式和注意事项；不得再征询日期。' +
       '若 booking 要求手动补发面试群：把 invite_to_group 返回的实际群名明确说成兼职岗位信息群；' +
       '再按 _manualInterviewGroupGuide 说明面试群“我这边接着发你邀请”，严禁声称面试群已发，也不得暴露人工/运营/账号接管。',
+  },
+  {
+    id: 'interview_time_change_unconfirmed',
+    // badcase 2026-08-06 chat 6a1e42c5（trace …_1785977561594）：候选人要把面试从 15:00
+    // 改到 15:30，precheck 已返回在途工单 455384 并在 _replyInstruction 点名
+    // "改时间用 duliday_modify_interview_time（传该工单号）"，模型一个工具没调。
+    // 首审只命中 handoff_promise_without_handoff（首版"让同事帮你确认下"），
+    // repair 删掉承诺改成"你说的15:30这个时间没问题"，二审无规则可拦，直接投递。
+    // 与回归闸的 commitment_upgraded 并联：那条管 repair 链，这条管"模型首版就直接确认"。
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description:
+      '在途工单改约对账：precheck 返回 duplicateBookingGuard 时，回复确认了与工单不同的' +
+      '面试钟点，但本轮没有成功的 duliday_modify_interview_time。',
+    riskGoal:
+      '工单时间未改而候选人以为已改，会按错误时间到店白跑一趟——门店无接待记录，' +
+      '属不可挽回损失，故定 P0/REVISE 而非观察。',
+    exogenousSignal:
+      '本轮 duliday_interview_precheck 返回的 duplicateBookingGuard.interviewTime、' +
+      'duliday_modify_interview_time 的成功与否，以及回复文本中被确认的钟点。',
+    residualRisk:
+      '钟点识别覆盖 `15:30` / `3点半` / `下午3点` 三类写法；纯口语相对时间' +
+      '（"晚一点"/"提前半小时"）不在确定性能力内，留语义审查。' +
+      '复述工单既有时间已按钟点相等豁免，不误伤如实陈述。',
+    verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
+    feedbackToGenerator:
+      '本轮预检显示候选人在该岗位已有在途工单，且本轮没有成功改约。上一版回复确认了工单之外的' +
+      '面试时间，当前文本不可发送。请如实告知工单上现在的时间，删除对新时间的确认或应允；' +
+      '严禁新增本轮工具结果之外的时间事实，也不得承诺由自己或同事稍后确认。',
   },
   {
     id: 'requested_brand_mismatch',

@@ -287,7 +287,7 @@ const inputSchema = z.object({
     .optional()
     .describe(
       '【硬约束】调本工具前必须先调 duliday_interview_precheck，把返回结果中的 nextAction 与 missingFieldsCount 原样填入本字段。' +
-        '漏填、nextAction !== "ready_to_book" 或 missingFieldsCount > 0 时，booking 工具直接返回 BOOKING_REJECTED，不会调 sponge API。' +
+        `漏填、nextAction !== "ready_to_book" 或 missingFieldsCount > 0 时，booking 工具直接返回 ${TOOL_ERROR_TYPES.BOOKING_REJECTED}，不会调 sponge API。` +
         '字段技术上可选只是为了让 schema 不卡校验、缺失时能走友好错误返回（带 replyInstruction），业务语义上仍必填——' +
         '如果本轮没调 precheck，**不要瞎填**，直接漏掉，工具会回错让你先去调 precheck。',
     ),
@@ -804,7 +804,7 @@ export function buildInterviewBookingTool(
           }
 
           // Defense-in-depth: 在调 sponge bookInterview 之前再跑一次 precheck 已经做过的
-          // 三类硬规则校验（真名 / 时段 / 筛选答案）。LLM 偶发会跳过 precheck 直接调本工具，
+          // 四类硬规则校验（真名 / 时段 / 筛选答案 / 岗位硬性约束）。LLM 偶发会跳过 precheck 直接调本工具，
           // 这里作为 server-side 兜底——详见 booking-guards.util.ts。
           const guardFailure = runBookingGuards({
             job,
@@ -1234,9 +1234,20 @@ export function buildInterviewBookingTool(
                   outcome: '预约失败',
                   replyInstruction:
                     '预约未成功。请以真人招募者口吻用一句话向候选人说明"我让同事确认一下，稍等"之类的衔接语，自主组织措辞；不要透露具体报错或接口细节，不要提及机器人/托管/系统/自动等字眼，也不要继续推进其他任务。',
-                  details: { requestInfo },
+                  // apiCode/apiMessage 透传海绵后端的拒绝原因，仅供观测落库（与 cancel/modify
+                  // 同口径）。**只加在本分支**：它是全文件唯一走完 spongeService.bookInterview
+                  // 之后的拒绝态；其余 5 处 BOOKING_REJECTED 是本地闸门（未调 precheck /
+                  // nextAction 未就绪 / 姓名电话对不上等），压根没请求过海绵，天然无 apiCode。
+                  // 于是 apiCode 有无本身即可区分「本地拦下」与「海绵拒绝」——2026-08-06 周报
+                  // 里 43 次 booking.rejected 无法细分（名额满/归属冲突/年龄/口径矛盾），
+                  // 正是因为这一跳没接上。
+                  details: {
+                    requestInfo,
+                    apiCode: result.code,
+                    apiMessage: result.message ?? null,
+                  },
                 }),
-                // 下方对本分支触发 pauseUserHostingAsync（自动暂停托管→飞书告警→真人接管）。
+                // 上方 !result.success 分支已触发 pauseUserHostingAsync（自动暂停托管→飞书告警→真人接管）。
                 // 显式打标供出站守卫对账：replyInstruction 指示的"让同事确认"衔接语在本
                 // 形态下是如实陈述，handoff_promise_without_handoff 不应再判空头承诺
                 // （2026-08-04 守卫审计：…740343589/…748484273 假阳 × 有害重写）。
@@ -1505,7 +1516,7 @@ function resolveUploadResumeFileName(
 
 function resolveCandidateIsStudentForBooking(context: ToolBuildContext): boolean | undefined {
   // 统一走共享识别器（只读候选人 user 消息、剥引用块/时间戳、子句级锚定）。
-  // 旧实现对"全窗口拼接文本"做子串测试，Agent 模板"身份（学生还是社会人士）："
+  // 不得对"全窗口拼接文本"做子串测试：Agent 模板"身份（学生还是社会人士）："
   // 自带"社会人士"子串，任何出现过该模板的会话都会被误判为非学生。
   const currentUserEntry = context.currentUserMessage
     ? [{ role: 'user', content: context.currentUserMessage }]

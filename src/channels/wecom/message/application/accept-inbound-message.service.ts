@@ -41,7 +41,7 @@ const HUMAN_INTERVENTION_SOURCES = new Set<MessageSource>([
 // 人工介入信号只认「真人手打文字」。仅 TEXT 类型才算真人介入，其余一律不暂停托管：
 // 图片/语音/表情/卡片等结构化或非逐字输入都排除。典型误报：invite_to_group 成功后平台向候选人
 // 发出的「入群邀请卡片」会以自发消息回灌（isSelf=true + source=MOBILE_PUSH + messageType=ROOM_INVITE），
-// 旧逻辑只看 source 不看 messageType，把它误判成真人介入 → 误暂停托管 + 误告警（2026-06-17 李宇杭 case）。
+// 只看 source 不看 messageType 会把它误判成真人介入 → 误暂停托管 + 误告警（2026-06-17 李宇杭 case）。
 const HUMAN_INTERVENTION_MESSAGE_TYPE = MessageType.TEXT;
 
 // 暂停托管暗号：真人手打文字内容必须恰好等于「~」才触发暂停，避免经理日常正常回复被误判为介入。
@@ -199,7 +199,7 @@ export class AcceptInboundMessageService {
     await this.enrichImagePayload(messageData);
 
     // 历史记录异步化：chat_messages INSERT（Supabase）+ short-term cache（Redis）总计
-    // 约 500ms-2s，阻塞了 PreDispatch。Agent 在 ≥10s 静默窗口后才读历史，
+    // 约 500ms-2s，阻塞了 PreDispatch。Agent 在静默窗口（initialMergeWindowMs，DB 可调）之后才读历史，
     // 异步写入有充裕时间完成。失败降级：下一轮看不到本轮 user 消息。
     void this.recordUserMessageToHistory(messageData, filterResult.content)
       .then(() => this.wecomObservability.markHistoryStored(messageData.messageId))
@@ -242,10 +242,11 @@ export class AcceptInboundMessageService {
    *
    * 生产实测：候选人加好友时微信会以普通 user 消息（MOBILE_PUSH）推送握手语
    * （「我是{昵称}」「请求添加你为朋友」「我通过了你的…验证请求」），Agent 直接回它即开场白；
-   * 不存在独立的「新增客户回调 / NEW_CUSTOMER_ANSWER_SOP」入口（线上未配 SOP）。因此：
+   * friend.added 的主信号是 /new-customer RPA 回调（线上未配 NEW_CUSTOMER_ANSWER_SOP），
+   * 本路径是消息反推兜底。因此：
    * - **friend.added（加好友数）**：任何候选人首条消息都代表新好友，幂等键 `userId:friend_added`
-   *   去重 → 每候选人一次；为省 RPC，仅在「握手语」或「首条真实消息(破冰)」时尝试。首次真正插入时
-   *   顺带开户长期记忆元数据。
+   *   去重 → 每候选人一次；为省 RPC，仅在「握手语」或「首条真实消息(破冰)」时尝试。同时
+   *   无条件确保长期记忆开户（幂等，与 friend.added 是否新插入解耦）。
    * - **candidate.message_received + 破冰(candidate.engaged)**：排除「加好友纯默认招呼语」
    *   （见 isPureFriendAddGreeting）——这些不算候选人真实开口；带求职意图的「我是找工作的」仍计入。
    *

@@ -3,13 +3,14 @@ packages:
 
 minimumReleaseAge: 1440
 blockExoticSubdeps: true
+strictDepBuilds: true
 
-ignoredBuiltDependencies:
-  - nodejieba
-
+# Keep dependency lifecycle scripts denied unless a reviewed package genuinely
+# requires one. strictDepBuilds makes every new, unreviewed script fail install.
 allowBuilds:
-  '@nestjs/core': set this to true or false
-  '@parcel/watcher': set this to true or false
-  esbuild: set this to true or false
-  msgpackr-extract: set this to true or false
-  supabase: set this to true or false
+  '@nestjs/core': false
+  '@parcel/watcher': false
+  esbuild: false
+  msgpackr-extract: false
+  nodejieba: false
+  supabase: false

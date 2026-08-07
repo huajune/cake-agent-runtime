@@ -20,9 +20,13 @@ import { MessageType } from '@enums/message-callback.enum';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import {
+  FIELD_OWNERSHIPS,
+  VISUAL_FACT_FIELD_KEY_PROMPT,
+  VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
   fieldValues,
   finalizeVisualFactSheet,
+  sanitizeVisualDescription,
   isResumeImageDescription,
   stripResumeAttachmentLines,
 } from '@resolution/visual';
@@ -39,7 +43,7 @@ const DESCRIPTION = `保存图片或表情内容描述。当用户发送了图�
 只提取事实信息，不要添加评价或建议。
 
 同时给出结构化判定（kind 与 fields，帮助系统区分"图里的信息归谁"）：
-- kind：job_posting=招聘平台岗位截图/卡片/海报；map_location=地图/定位/导航/门店位置；resume=简历本体；chat_screenshot=聊天记录截图；certificate=健康证等证件；other=其他。流程状态类界面（视频会议等待页/AI面试结束页/订单日程页/审核结果页等）归 other，不要硬塞进最近的类。
+- kind：${VISUAL_FACT_KIND_PROMPT}。流程状态类界面（视频会议等待页/AI面试结束页/订单日程页/审核结果页等）归 other，不要硬塞进最近的类。
 - fields：图上的关键值逐个列出。岗位截图上的电话/年龄要求/薪资是发布方的（ownership=publisher）；候选人自己的简历/证件上的信息是 candidate；聊天截图里分不清归谁就 unknown。岗位页上的"我的地址：XX"/"距我X km"是候选人设备上的地址，key 用 candidate_address。身份证号/证件号不要写进 fields。`;
 
 const inputSchema = z.object({
@@ -63,14 +67,10 @@ const inputSchema = z.object({
         // string 而非 enum（坏 key 由 finalize 白名单过滤，不让整次调用失败）；
         // 但词表必须写进 describe——P2 批测实证：删掉 enum 后模型全用中文自由 key
         //（岗位名称/姓名…351 字段仅 9 个合法），词表可见性是软引导的前提。
-        key: z
-          .string()
-          .describe(
-            '只能用这些值：phone / name / age_range / brand / brand_id / publisher / store / address / city / candidate_address / salary_text / shift_text / cert_type / cert_issue_date / other',
-          ),
+        key: z.string().describe(VISUAL_FACT_FIELD_KEY_PROMPT),
         value: z.string(),
         ownership: z
-          .enum(['candidate', 'publisher', 'third_party', 'unknown'])
+          .enum(FIELD_OWNERSHIPS)
           .optional()
           .describe('该值归谁：候选人本人/发布方（招聘方）/其他第三方/不确定；省略按图片类型默认'),
       }),
@@ -110,6 +110,9 @@ export function buildSaveImageDescriptionTool(
 
         const prefix = resolvePrefix(messageId, visualMessageTypes);
         const sheet = finalizeVisualFactSheet({ kind, fields }, description);
+        // 证件号脱敏（红标 2，chat 6a1e42e6）：sheet 的 rawDescription 由 finalize 内部
+        // 处理，content 一侧在这里对齐，二者永远同源同脱敏。
+        const safeDescription = sanitizeVisualDescription(description);
         // 简历判定双保险（并跑对照）：sheet 的 resume kind 与旧文本标记任一命中即走
         // 简历链路；两者不一致记 warn 供并跑对照统计，删旧判据前需一致率达标。
         const legacyResume = isResumeImageDescription(description);
@@ -124,8 +127,8 @@ export function buildSaveImageDescriptionTool(
             ? imageUrlsByMessageId?.[messageId]
             : undefined;
         const content = resumeUrl
-          ? `${prefix} ${stripResumeAttachmentLines(description)}\n简历附件：${resumeUrl}`
-          : `${prefix} ${description}`;
+          ? `${prefix} ${stripResumeAttachmentLines(safeDescription)}\n简历附件：${resumeUrl}`
+          : `${prefix} ${safeDescription}`;
         await chatSession.updateMessageContent(
           messageId,
           content,

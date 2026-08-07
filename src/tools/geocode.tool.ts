@@ -22,6 +22,7 @@ import {
 } from '@infra/geocoding/geocoding-candidate-ranker.util';
 import {
   hasGenericAmbiguousSuffix,
+  isRecognizedCityName,
   normalizeCityName,
   normalizeDistrictForLookup,
 } from '@resolution/geo';
@@ -78,7 +79,7 @@ const DESCRIPTION = `将地名或地址解析为标准化的省/市/区/镇层�
 按上面第 2 条正常处理——有高置信通识就填 city（如"漕宝路"→上海），没把握就留空，
 工具会全国搜索；真撞名时返回 ambiguous 候选清单再反问。
 
-命中黑名单时 **city 必须留空**——工具会报 \`GEOCODE_AMBIGUOUS_SUFFIX\`，按 \`_replyInstruction\` 中性反问候选人所在城市，反问禁止带具体城市名。
+命中黑名单时 **city 必须留空**——工具会报 \`${TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX}\`，按 \`_replyInstruction\` 中性反问候选人所在城市，反问禁止带具体城市名。
 
 ## 返回三态
 - \`resolution=unique\` + 扁平 \`result\`：单城唯一命中，直接把 result 当结果用，组装 location 走 duliday_job_list
@@ -174,6 +175,12 @@ function buildCityDisclosure(c: GeocodeCandidate, queryAddress: string | undefin
 /**
  * 会话记忆城市与本次解析城市冲突时的知情披露（方案 11.4：不静默覆盖，
  * 也不静默沿用旧城市——由模型向候选人做一句确认后再推进）。
+ *
+ * 会话侧城市过不了行政区认领时不提冲突（2026-08-06 生产观测）：当期 14 条冲突提示
+ * 里 11 条的"会话意向城市"根本不是城市（`hello`/`null`/`只晚班`/整句），冲突是假的，
+ * 而提示的后果是真的——候选人刚发完定位还要被反问一句"你现在是在上海市这边找工作吗"。
+ * 写入侧已收紧（isPlausibleCityValue），这里再兜一道：存量脏值与未来新形态的污染
+ * 都不该把多余反问推到候选人面前。
  */
 function buildSessionCityConflictNotice(
   context: ToolBuildContext,
@@ -183,6 +190,7 @@ function buildSessionCityConflictNotice(
   const sessionCity = normalizeCityName(sessionCityRaw);
   const resolvedCity = normalizeCityName(c.city);
   if (!sessionCity || !resolvedCity || sessionCity === resolvedCity) return null;
+  if (!isRecognizedCityName(sessionCity)) return null;
   return (
     `⚠️ 本次解析城市（${c.city}）与会话记忆中的意向城市（${sessionCityRaw}）不一致。` +
     '禁止静默按新城市推进，也禁止静默沿用旧城市：先向候选人用一句话确认以哪个城市为准' +

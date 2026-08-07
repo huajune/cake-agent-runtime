@@ -105,8 +105,9 @@ export function buildResolvedCategories(brandData: BrandItem[]): ResolvedBrandCa
 /**
  * 工种后缀：品类词紧跟这些字时是**工种称谓**（"咖啡师""咖啡学徒"）而非品类意图（"咖啡店"），
  * 不进品类通道。这正是本文件开头所述"候选人说的是品类而不是『咖啡师』这个工种"的护栏——
- * 缺了它，候选人报名表里的"应聘岗位：长期晚班咖啡师"会被读成品类信号，把已确立的
- * currentBrand 改写成品类默认品牌（生产实例 6a5dbfa7：报名拉瓦萨途中翻成 M Stand）。
+ * 缺了它，候选人报名表里的"应聘岗位：长期晚班咖啡师"会被读成品类信号、当轮误展开
+ * 全品类造成召回噪音（category_default 存续期后果更重：曾把已确立的 currentBrand 改写
+ * 成默认品牌，生产实例 6a5dbfa7 报名拉瓦萨途中翻成 M Stand；该档 2026-07-20 已撤除）。
  */
 const OCCUPATION_SUFFIXES = ['师', '学徒'];
 

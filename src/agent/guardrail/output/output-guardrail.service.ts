@@ -481,9 +481,9 @@ export class OutputGuardrailService {
    * （revise/replan/block）一律降级为 observe——证据不足只能观测，不能拦截。
    */
   private applyConfidenceBackstop(verdict: SemanticReviewVerdict): OutputDecision {
-    // replan 已退役（2026-07-27）：正常路径 SemanticReviewerService.normalizeDecision
-    // 已归一，这里是纵深防御（防 reviewer 实现被替换/mock 直接注入 'replan'——
-    // mergeByPriority 的序列已无该档，漏网会被静默当 pass 吞掉）。
+    // replan 已退役（2026-07-27）：reviewer 的 normalizeDecision 只在证据兜底剔除
+    // finding 的分支运行，未剔除路径会把 'replan' 原样传出——本处归一是 enforce 链路
+    // 的必经防线（兼防 mock 注入；mergeByPriority 序列已无该档，漏网会被静默当 pass 吞掉）。
     const decision =
       (verdict.decision as OutputDecision) === GUARDRAIL_DECISION.REPLAN
         ? GUARDRAIL_DECISION.REVISE
@@ -512,9 +512,25 @@ export class OutputGuardrailService {
   }
 
   private mergeByPriority(a: OutputDecision, b: OutputDecision): OutputDecision {
-    // replan 已退役（2026-07-27）：任何来源都不再产出该档，优先级序列中移除。
-    const PRIORITY: OutputDecision[] = ['block', 'revise', 'observe', 'pass'];
-    return PRIORITY.find((d) => d === a || d === b) ?? GUARDRAIL_DECISION.PASS;
+    // 数字越大越严重；两者取严。
+    //
+    // 必须收成 Record<OutputDecision, number> 穷尽映射的理由：
+    // 若写成 `PRIORITY.find(...) ?? PASS` 的**有序数组 + fail-open 兜底**——
+    // 往 OutputDecision 加一档而忘了登记进数组，find 落空即静默返回 PASS，
+    // 也就是把本该拦截的裁决放行。安全闸的兜底方向不该是"放行"，而且这种遗漏
+    // 零编译信号。穷尽映射下，加档不登记即**编译期报错**。
+    //
+    // replan 已退役（2026-07-27）：任何来源都不再产出该档。这里仍必须给它一个
+    // 优先级（穷尽性要求），取与 revise 同级——万一有历史数据带回该档，按可修复
+    // 处理而不是被当成 pass 放掉。
+    const PRIORITY: Record<OutputDecision, number> = {
+      [GUARDRAIL_DECISION.BLOCK]: 4,
+      [GUARDRAIL_DECISION.REVISE]: 3,
+      [GUARDRAIL_DECISION.REPLAN]: 3,
+      [GUARDRAIL_DECISION.OBSERVE]: 2,
+      [GUARDRAIL_DECISION.PASS]: 1,
+    };
+    return PRIORITY[a] >= PRIORITY[b] ? a : b;
   }
 
   /** 把 rule 命中映射成 GuardViolation（用于 revise 回路喂回意见）。 */
@@ -541,7 +557,9 @@ export class OutputGuardrailService {
    * 语义 finding 的风险优先级。booking 状态冲突与 rule 档"工具失败假成功/预检阻断仍承诺"
    * 同属 P0 域（发出去即误导候选人预约状态，不可挽回）；零证据事实断言同为 P0——候选人
    * 会据编造的薪资/门店/报名链接白跑或交出个人信息，且本轮没有任何工具产物可供纠正
-   * （2026-07-30 审计 P0-1）；品牌/地理歧义是强业务风险 P1；推荐非最优是质量问题 P2。
+   * （2026-07-30 审计 P0-1）；敏感筛选外露/打听同为 P0——地域歧视话术发出即构成不可撤回的
+   * 聊天证据，且候选人当场质问后基本必然流失（2026-08-06 chat 6a744a86）；
+   * 品牌/地理歧义是强业务风险 P1；推荐非最优是质量问题 P2。
    * 该优先级经 resolveLlmRiskLevel 传导到 riskLevel，决定 repair 上限用尽后能否
    * fail-open（runner §9）。
    */
@@ -553,6 +571,7 @@ export class OutputGuardrailService {
     brand_or_geo_ambiguity_ignored: GUARDRAIL_PRIORITY.P1,
     active_booking_state_conflict: GUARDRAIL_PRIORITY.P0,
     fact_asserted_without_any_evidence: GUARDRAIL_PRIORITY.P0,
+    sensitive_screening_disclosure_or_probe: GUARDRAIL_PRIORITY.P0,
   };
 
   /** 把 semantic finding 映射成 GuardViolation（喂回 repair prompt）。 */
@@ -646,9 +665,9 @@ export interface OutputGuardDecision {
   ruleIds: string[];
   /** 当前回复不可发送的 rule id。最终是否 block 由 recoverability 与 repair 上限决定。 */
   blockedRuleIds: string[];
-  /** 本次修复建议：rewrite=无工具重写，replan=按命中规则的精确工具白名单重新规划。 */
+  /** 修复模式：replan 退役（2026-07-27）后恒为 rewrite（无工具重写），类型保留仅容忍历史档案。 */
   repairMode: GuardrailRepairMode;
-  /** 守卫声明的最小修复工具集合；runner 只执行，不解析 ruleId/finding code。 */
+  /** replan 退役后恒为空；runner 已不执行修复工具，字段保留兼容历史档案。 */
   repairToolNames?: string[];
   /** 聚合后的脱敏/普通反馈，直接进入 generator repair prompt。 */
   feedbackToGenerator?: string;

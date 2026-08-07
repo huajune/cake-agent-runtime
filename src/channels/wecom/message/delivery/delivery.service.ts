@@ -246,7 +246,8 @@ export class MessageDeliveryService implements OnModuleInit {
    * 投递前/段间统一的"已暂停托管"复查。
    *
    * 与 PausedUserFilterRule、MessageProcessor.dropIfHostingPaused 共用 `isAnyPaused`
-   * helper，保证三层 guard 语义一致：任一 ID 命中暂停即视为关托管。
+   * helper（前两层多查 externalUserId，本层 DeliveryContext 不携带该 ID；pauseUser
+   * 以 chatId 落锚，实务等价）：任一 ID 命中暂停即视为关托管。
    */
   private async shouldSkipForHostingPause(context: DeliveryContext): Promise<boolean> {
     const hit = await this.userHostingService.isAnyPaused([context.chatId, context.imContactId]);

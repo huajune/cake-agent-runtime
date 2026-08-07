@@ -177,7 +177,7 @@ export interface ReengagementCandidateOverviewRow {
   session_latest_at: string;
   /** 满足筛选的候选人总数（窗口计数，每行相同） */
   total_sessions: number;
-  /** 候选人微信昵称（chat_messages 最新一条的会话级身份，可能为空） */
+  /** 候选人微信昵称（触达行冗余的渠道身份快照，取该会话最近一条非空，可能为空） */
   candidate_name: string | null;
   /** 接管 bot 显示名（招募经理名） */
   manager_name: string | null;

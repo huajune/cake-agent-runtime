@@ -55,7 +55,7 @@ import type {
   FieldProvenance,
 } from '../types/authoritative-session-state.types';
 import { parseCandidateFieldsFromText } from '@tools/shared/candidate-field-parser';
-import { isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
+import { isNameAnsweredToRealNameAsk, isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import {
   buildSessionExtractionPrompt,
@@ -73,7 +73,11 @@ import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { isAssistantEchoUtterance, isSystemTextReflow } from '@resolution/brand/llm-intent-guards';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { BrandItem } from '@/sponge/sponge.types';
-import { detectGeoSignalConflict, resolveCityFromGeoSignals } from '@resolution/geo';
+import {
+  detectGeoSignalConflict,
+  isRecognizedCityName,
+  resolveCityFromGeoSignals,
+} from '@resolution/geo';
 import { decideLaborFormIntent } from '../facts/labor-form';
 import { resolveConfirmedCityFact } from '../facts/confirmation-facts';
 import { parseLocationShareCoords } from '../facts/location-share';
@@ -345,7 +349,14 @@ export class SessionService {
     if (prev && typeof prev.value === 'string' && prev.value.trim()) {
       const prevNormalized = prev.value.trim().replace(/市$/, '');
       if (prevNormalized === normalized) return 'skipped_same_city';
-      if (sessionFactConfidenceRank(prev.confidence) >= sessionFactConfidenceRank('high')) {
+      // 既有值不是可认领的城市名时，"冲突"是抽取污染伪造的，让位于工具确权。
+      // 不这样兜，高置信垃圾城市会把 geocode 真实确权的城市永久挡在门外（存量自愈）。
+      if (!isRecognizedCityName(prevNormalized)) {
+        this.logger.warn(
+          `[saveToolAttestedCity] 既有城市「${prev.value}」非合法城市名（抽取污染残留），` +
+            `由本轮工具确权 ${normalized} 覆盖`,
+        );
+      } else if (sessionFactConfidenceRank(prev.confidence) >= sessionFactConfidenceRank('high')) {
         this.logger.log(
           `[saveToolAttestedCity] 城市冲突不覆盖：既有 ${prev.value}（${prev.confidence}/${prev.source}），` +
             `本轮工具确权 ${normalized}；等待候选人亲证后再切换`,
@@ -415,8 +426,8 @@ export class SessionService {
    * deepMerge 对 SessionFactValue 是逐 key 递归：新值非空就连 value 带 confidence 一起
    * 覆盖，完全不比较新旧置信度。生产 badcase（chat 69a13e919d6d3a463b0a37c6）：候选人
    * 明确确认的 applied_position="后厨" 被后续轮 LLM 推断 "内场"(medium) 覆盖。
-   * Profile 层（Supabase RPC）有 "high 不被非 high 覆盖" 守卫，session 层此前没有——
-   * 这里补齐同等语义：新值置信度严格低于旧值时，保留旧值整体（含元数据）。
+   * Profile 层（Supabase RPC）有 "high 不被非 high 覆盖" 守卫，session 层必须有
+   * 同等语义：新值置信度严格低于旧值时，保留旧值整体（含元数据）。
    * 数组字段维持累积语义，不受守卫影响。
    */
   private mergeFactsWithConfidenceGuard(prev: SessionFacts, incoming: SessionFacts): SessionFacts {
@@ -906,12 +917,36 @@ export class SessionService {
       brandIntents: rawBrandIntents,
       degraded: llmDegraded,
     } = await this.callLLM(prompt);
-    // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
-    const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmRaw, userMessages);
+    // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位。
+    // 真名索取问答豁免（badcase 2026-08-06 chat 6a7446eb）：候选人开场"我是张丽鑫"命中
+    // 打招呼语判据，但 Agent 随后明确问真名、她单独回了"张丽鑫"——被问之后给出的名字是
+    // 真名亲证，不能再当昵称丢弃，否则 name 永远进不了档、Agent 反复追问同一个问题。
+    const llmExtractedName = llmRaw.interview_info?.name?.trim();
+    const nameAnsweredToAsk =
+      !!llmExtractedName && isNameAnsweredToRealNameAsk(llmExtractedName, scopedMessages);
+    const {
+      sanitized: sanitizedLlm,
+      droppedName,
+      droppedReason,
+    } = nameAnsweredToAsk
+      ? { sanitized: llmRaw, droppedName: null, droppedReason: null }
+      : sanitizeInterviewName(llmRaw, userMessages);
     if (droppedName) {
-      this.logger.log(
-        `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
-      );
+      const reasonText =
+        droppedReason === 'honorific_suffix'
+          ? `丢弃称谓/商号形态的姓名"${droppedName}"（称谓后缀结尾，非本人姓名）`
+          : `丢弃来自"我是xx"打招呼语的昵称"${droppedName}"`;
+      this.logger.log(`[extractFacts] ${reasonText}，不写入 interview_info.name`);
+      // 该丢弃此前只有日志、无观测档，同案排障只能靠"快照里 name 恒为 null"反推。
+      this.tracer?.emit({
+        type: 'extraction_field_dropped',
+        corpId,
+        userId,
+        chatId: sessionId,
+        field: 'name',
+        droppedValue: droppedName,
+        reason: droppedReason ?? 'auto_greeting_nickname',
+      });
     }
     const newFacts = this.applyExplicitProvenanceUpgrade(
       this.mergeRuleAndLlmFacts(sanitizedLlm, highConfidenceRuleFacts),
@@ -1170,8 +1205,10 @@ export class SessionService {
     // 城市/年龄形状门（同案）：垃圾城市曾被归一化抬成 high/explicit_city，还会压制
     // 下方确认问答裁决的真实城市，必须在裁决前清掉。
     const shapeGateCity = unwrapSessionFactValue(newFacts.preferences.city);
+    let droppedCity = false;
     if (typeof shapeGateCity === 'string' && !isPlausibleCityValue(shapeGateCity)) {
       newFacts.preferences.city = null;
+      droppedCity = true;
       this.logger.warn(`[extractFacts] pref.city 形状非法，丢弃臆造值「${shapeGateCity}」`);
       this.tracer?.emit({
         type: 'extraction_field_dropped',
@@ -1222,6 +1259,14 @@ export class SessionService {
       currentLaborFormIntent.kind === 'clear' &&
       typeof persistedLaborForm === 'string' &&
       currentLaborFormIntent.clearedValues.some((value) => value === persistedLaborForm);
+    // 脏城市与 phone 同理显式清 Redis：仅本轮丢弃会被 deepMerge "null 不覆盖" 抵消，
+    // 存量脏值继续留在档案里，下一轮又被 [已确认事实] 喂回抽取，污染永不出清。
+    const forceNullPreferenceFields: (keyof EntityExtractionResult['preferences'])[] = [];
+    if (laborFormExplicitlyCleared) forceNullPreferenceFields.push('labor_form');
+    // 必须看本轮末态而非丢弃那一刻：上方确认问答裁决可能在丢弃之后又写回一个合法城市
+    // （丢弃把 city 清空，恰恰让那条裁决的"本轮已有高置信城市则让位"守卫放行）。
+    // 只按 droppedCity 强清会把刚裁定的城市在合并后抹掉。
+    if (droppedCity && !newFacts.preferences.city) forceNullPreferenceFields.push('city');
     // 品牌写入收口（§9.2 三处之一）：LLM 抽出的品牌不再直接落 preferences.brands——
     // 经品牌库验证 + 极性判定转成 BrandResolution 后，与其它来源一起走 brand_state reducer。
     const factsForSave: SessionFacts = {
@@ -1230,7 +1275,8 @@ export class SessionService {
     };
     await this.saveFacts(corpId, userId, sessionId, factsForSave, {
       forceNullFields: forceNullInterviewFields.length > 0 ? forceNullInterviewFields : undefined,
-      forceNullPreferenceFields: laborFormExplicitlyCleared ? ['labor_form'] : undefined,
+      forceNullPreferenceFields:
+        forceNullPreferenceFields.length > 0 ? forceNullPreferenceFields : undefined,
     });
 
     return {
@@ -1553,8 +1599,7 @@ export class SessionService {
   }
 
   /**
-   * 同轮 rule × LLM 统一合并（取代旧 [c] mergeHighConfidenceRuleFacts +
-   * [d] applyHighConfidenceMetadata 的两次遍历）。
+   * 同轮 rule × LLM 统一合并。
    *
    * 一次遍历对每个字段决定胜者值与最终元数据：
    * - 标量：通常由 LLM 非空值优先、rule 在 LLM 空时补位。健康证是有限枚举且
@@ -1562,14 +1607,14 @@ export class SessionService {
    *   “愿意/拒绝办理”压缩回含义不完整的“无”。
    * - 数组（brands/position/district/location/time_windows）：LLM 与 rule 累积去重。
    * - 元数据：rule 该字段高置信有值，且 LLM 无值（rule 补位）或与 rule 同值（二者一致）时，
-   *   最终元数据采用 rule（high/rule）；否则保留 LLM（medium/llm）。这是旧 [c]+[d]
-   *   叠加后的实际语义（先值合并，再用规则高置信值重打元数据）。
+   *   最终元数据采用 rule（high/rule）；否则保留 LLM（medium/llm）。即「先值合并，
+   *   再用规则高置信值重打元数据」。
    *
    * gender/gender_source（联动）、schedule_constraint（逐子字段 ?? 合并）、city
    * （CityFact 值合并 + 经 toSessionFacts 的 derived/CityFact 归一化）行为难以套进
    * 统一标量/数组形态，保留为下方手写分支；它们仍共用同一套「rule 元数据归属」判定。
    *
-   * reasoning：追加规则参考线索，并作为 LLM 取胜字段的 evidence（与旧实现一致）。
+   * reasoning：追加规则参考线索，并作为 LLM 取胜字段的 evidence。
    */
   private mergeRuleAndLlmFacts(
     llmFacts: EntityExtractionResult,
@@ -1793,7 +1838,12 @@ export class SessionService {
    * 反复说"青浦区/金泽"，Agent 仍被硬约束卡在"当前没有已确认城市"循环里反问）。
    */
   private backfillCityFromWhitelist(facts: EntityExtractionResult): EntityExtractionResult {
-    if (facts.preferences.city) return facts;
+    // 非空但不是合法城市名时不算"已有城市"——否则一个 `hello` 就能把白名单回填
+    // 冻结整轮，本轮 district/location 里的真实城市线索白白丢掉（形状门要到本轮
+    // 末尾才把脏值清掉，那时回填时机已过）。
+    if (facts.preferences.city && isRecognizedCityName(facts.preferences.city.value)) {
+      return facts;
+    }
     // 冲突 shadow（方案 §8.2 / Phase 3）：多信号指向不同城市时现行先命中先赢；
     // 落库观测走岗位工具 queryMeta.geoSignalConflictShadow，这里仅辅助定位。
     //

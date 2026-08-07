@@ -5,6 +5,7 @@ import type {
 } from './candidate-fact-claim.types';
 import { validateClaimValueAgainstQuote } from './candidate-fact-policy';
 import { candidateValuesEquivalent, deriveFieldValueFromQuote } from './candidate-fact-normalizers';
+import { RULE_CLAIM_QUOTE_MAX_CHARS } from './producers/direct-field-claim.producer';
 import {
   buildEffectiveProfile,
   type EffectiveCandidateProfile,
@@ -62,16 +63,23 @@ function quoteFoundInCandidateTexts(quote: string, texts: readonly string[]): bo
   );
 }
 
-/** legacy 裸值 claim（无 quote）：尝试在候选人全文中找到可推导出等价值的原文。 */
+/**
+ * legacy 裸值 claim（无 quote）：尝试在候选人原文中找到可推导出等价值的片段。
+ *
+ * 与 direct-field producer 同一条不变式——**先截断再推导**，补录的 quote 必须
+ * 原样支撑该值，否则紧接着的 `validateClaimValueAgainstQuote` 会拒掉自己刚补录的证据
+ * （生产实测 2026-08-06：legacy 轨 1 例 `value_not_derivable` 即此形态）。
+ */
 function backfillQuoteFromCandidateTexts(
   claim: CandidateFactClaim,
   texts: readonly string[],
   now: Date,
 ): string | null {
   for (const text of texts) {
-    const derived = deriveFieldValueFromQuote(claim.field, text, now);
+    const quote = text.slice(0, RULE_CLAIM_QUOTE_MAX_CHARS);
+    const derived = deriveFieldValueFromQuote(claim.field, quote, now);
     if (derived !== null && candidateValuesEquivalent(claim.field, derived, claim.value)) {
-      return text.slice(0, 200);
+      return quote;
     }
   }
   return null;
@@ -179,6 +187,27 @@ export function adjudicateCandidateClaims(params: AdjudicateParams): Adjudicatio
       entry.decision = 'rejected';
       entry.rejectionReason = 'conflicting_evidence';
     }
+  }
+
+  // 裸值与有据 claim 同值 → superseded 而非"无据"。
+  // legacy 裸值自己没带 quote，靠全文推导补录；当另一条**带真实证据**的 claim 已就同一
+  // 字段采信了等价值时，这个值其实是有据的，只是证据不在它自己身上——判 rejected 会污染
+  // "模型无据率"这个 enforce 核心指标（badcase 6a7446eb：姓名经索名问答确证后，同值裸值
+  // 仍被记一条 no_candidate_evidence）。superseded 才是诚实结论。
+  for (const entry of adjudicated) {
+    if (entry.decision !== 'rejected' || entry.rejectionReason !== 'no_candidate_evidence')
+      continue;
+    const winner = validByField
+      .get(entry.claim.field)
+      ?.find(
+        (accepted) =>
+          accepted.decision === 'accepted' &&
+          candidateValuesEquivalent(entry.claim.field, accepted.claim.value, entry.claim.value),
+      );
+    if (!winner) continue;
+    entry.decision = 'superseded';
+    entry.rejectionReason = undefined;
+    entry.supersededByClaimId = winner.claim.claimId;
   }
 
   const profile = buildEffectiveProfile({

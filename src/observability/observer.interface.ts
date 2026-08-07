@@ -6,6 +6,14 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import type { ToolErrorType } from '@tools/types/tool-error-types';
+import type {
+  CandidateClaimDecision,
+  CandidateClaimField,
+  CandidateClaimProducer,
+  CandidateClaimRejectionReason,
+  CandidateFactInterpretation,
+  CandidateFactOperation,
+} from '@memory/facts/candidate/candidate-fact-claim.types';
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -89,7 +97,7 @@ export type AgentEvent = AgentEventContext &
     | { type: 'memory_store'; userId: string; keys: string[] }
     /**
      * 会话品牌状态迁移（§12 长期事件）：前后快照 + 触发它的解析结果。
-     * 仅状态实际变化时发射；它是品牌链路上唯一不可重放的信息，并承担历史回放职责。
+     * 仅状态实际变化时发射；它是品牌链路上不可重放信息之一（另一类见 brand_resolution_ambiguous），承担历史回放职责。
      */
     | {
         type: 'brand_state_change';
@@ -159,13 +167,16 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         precheckId?: string;
         factsVersion?: number;
+        // 六个字段一律复用裁决域权威类型，不另立 string（与本文件 errorType 用
+        // ToolErrorType 同口径）：观测字段与产出方漂移会让日巡检按错的取值集聚合，
+        // 而裸 string 下这种漂移零信号。
         decisions: Array<{
-          field: string;
-          producer: string;
-          operation: string;
-          interpretation: string;
-          decision: string;
-          rejectionReason?: string;
+          field: CandidateClaimField;
+          producer: CandidateClaimProducer;
+          operation: CandidateFactOperation;
+          interpretation: CandidateFactInterpretation;
+          decision: CandidateClaimDecision;
+          rejectionReason?: CandidateClaimRejectionReason;
           supersededByClaimId?: string;
           claimId: string;
         }>;

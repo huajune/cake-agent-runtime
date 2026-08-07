@@ -20,8 +20,17 @@ class FeishuSendError extends Error {
   }
 }
 
-/** 飞书自定义机器人限流相关 code，遇到应退避重试。文档：9499=too many request。 */
-const RETRYABLE_FEISHU_CODES = new Set<number>([9499, 11232]);
+/**
+ * 退避重试的 code 集合：只放"重发有机会成功"的瞬时故障码。
+ *
+ * 11232 = 自定义机器人限流（每机器人每分钟 100 次 / 每秒 5 次），退避后可成功。
+ *
+ * 9499 曾被误当作限流码放进本集合：它实为请求体格式错误（Bad Request，卡片 JSON 非法
+ * 或体积超 20KB），是确定性失败——同一 payload 重发必然再失败，白白拖两次退避
+ * （500ms + 1000ms）才暴露问题。移出后它走不可重试分支：立即记 error 日志并向告警群
+ * 补发失败告警，问题暴露更快。
+ */
+const RETRYABLE_FEISHU_CODES = new Set<number>([11232]);
 
 /**
  * 飞书 Webhook 基础服务
