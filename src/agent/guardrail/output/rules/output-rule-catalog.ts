@@ -272,6 +272,25 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版回复包含高敏感筛选条件或以高敏感属性作为拒绝理由，当前文本禁止发送。请重新生成：不要提及户籍、籍贯、民族、专业、婚育等门槛；不要解释具体不通过原因；核对专业只能开放式问"你学的什么专业"，不得把排除条件塞进问句；婚育信息禁止询问、复述或确认；改为中性承接，可以推荐其他岗位、继续收集必要信息，或说明需要同事确认。',
   },
   {
+    id: 'sensitive_origin_probe',
+    action: GUARDRAIL_ACTION.BLOCK,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '拦住主动向候选人打听籍贯、老家、是不是本地人的回复，含为此编造的行政借口。',
+    riskGoal:
+      '口头索取籍贯本身就等于告诉候选人存在地域筛选——姊妹规则只管"说出去"，这条管"问回来"。' +
+      '2026-08-06 badcase（chat 6a744a86）：Agent 问"这家对户籍有要求，方便问一下你老家是哪里的吗"，' +
+      '候选人当场质问"为什么我找工作还要问我户籍"后流失，运营反馈"无论岗位数据有没有，都不应该问"。',
+    exogenousSignal: '籍贯/老家/本地人疑问句形态词库 + 登记核对类借口搭配。',
+    residualRisk:
+      '更隐晦的探问（"你现在住的地方是自己家吗""家里离这远吗"）仍需 badcase 补词；' +
+      '合规替代品是开放式问常驻/意向城市，收资 checklist 的「籍贯/户籍：」表单字段不在覆盖范围。',
+    verification: 'tests/agent/guardrail/output/rules/discrimination-leaks.rule.spec.ts',
+    dataSensitivity: GUARDRAIL_DATA_SENSITIVITY.HIGH,
+    feedbackPolicy: GUARDRAIL_FEEDBACK_POLICY.REDACTED,
+    feedbackToGenerator:
+      '上一版回复在向候选人打听籍贯/老家/是否本地人，当前文本禁止发送。请删除该问句以及任何解释为什么要问的说法（不得说登记、核对、系统、流程需要）。岗位的户籍门槛仅供内部判断，不得追问也不得暗示其存在；需要了解地点时只能开放式问"你常驻在哪个城市"或"想去哪个城市工作"，回复其余内容逐字保留。',
+  },
+  {
     id: 'dangling_reply_promise',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
