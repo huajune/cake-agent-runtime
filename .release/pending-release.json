@@ -3,7 +3,36 @@
   "nextVersion": "10.42.0",
   "updatedAt": "2026-08-07",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "980",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/980",
+      "title": "构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞",
+      "author": "huajune",
+      "mergedAt": "2026-08-07",
+      "businessUpdates": [
+        "修复生产部署在拉取依赖时 `read ETIMEDOUT` 导致构建失败、版本无法上线的问题"
+      ],
+      "summary": [
+        "构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞"
+      ],
+      "features": [],
+      "fixes": [
+        "修复生产部署在拉取依赖时 `read ETIMEDOUT` 导致构建失败、版本无法上线的问题"
+      ],
+      "optimizations": [],
+      "ops": [
+        "构建走宿主机网络，绕开 docker0 的 PMTUD 黑洞"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`bash -n scripts/deploy-remote.sh` 语法通过",
+        "**BuildKit entitlement 已实测排除**：本机 `docker build --network=host`（docker driver + 同一 `# syntax=docker/dockerfile:1.7` frontend）构建成功，不存在 `network.host is not allowed`",
+        "无运行时代码变更，不涉及 DB 迁移与环境变量"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "10.41.0",
     "date": "2026-08-07",
