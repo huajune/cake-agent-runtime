@@ -231,7 +231,14 @@ promote_compose() {
 build_or_load_image() {
   if [[ "$MODE" == "build" ]]; then
     echo "Building ${IMAGE_NAME}:${IMAGE_TAG} from ${SOURCE_DIR}..."
+    # --network=host：生产机 docker0 网桥固定 1500 MTU，而到 registry.npmjs.org
+    # 的路径实际 MTU 更小、且中间设备吞掉了 ICMP「需要分片」，PMTUD 黑洞使构建
+    # 阶段拉包停在 read ETIMEDOUT（v10.41.0 两次部署都挂在此处；宿主机自身网络
+    # 无此问题）。走宿主机网络命名空间可绕开网桥，且不必改 daemon MTU——那需要
+    # 重启 Docker，会连带弹掉这台机器上另外 11 个无关容器。
+    # 服务器出站修复后应删除本行，恢复构建期网络隔离。
     docker build \
+      --network=host \
       --build-arg API_GUARD_TOKEN="${API_GUARD_TOKEN}" \
       --build-arg NEXT_PUBLIC_SUPABASE_URL="${SUPABASE_URL}" \
       --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}" \
