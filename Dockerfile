@@ -5,7 +5,7 @@ FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9
 WORKDIR /app
 
 # Install a fixed pnpm version to keep dependency resolution reproducible.
-RUN npm install -g pnpm@10.34.5
+RUN npm install -g pnpm@10.34.5 --ignore-scripts
 
 # Copy package files (including all workspace packages)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./

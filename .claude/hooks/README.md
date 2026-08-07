@@ -1,6 +1,6 @@
 # Claude Code Hooks
 
-**Last Updated**: 2025-11-13 14:10:00
+**Last Updated**: 2026-08-07
 
 This directory contains automated hook scripts for Claude Code, including safety protection, code quality, and development workflow enhancements.
 
@@ -10,7 +10,7 @@ This directory contains automated hook scripts for Claude Code, including safety
 
 ### 1. Dangerous Command Blocklist
 
-The following commands are **completely blocked** (configured in `.claude/settings.local.json` `deny` list):
+The following commands are **completely blocked** (configured in `.claude/settings.json` `deny` list):
 
 ```bash
 git restore              # Restore files (DANGEROUS: loses uncommitted changes)
@@ -120,7 +120,11 @@ To commit, run:
 
 ## 🔧 Configuration File
 
-Main configuration: `.claude/settings.local.json`
+Shared configuration: `.claude/settings.json`
+
+Machine-specific permissions belong in the Git-ignored
+`.claude/settings.local.json`. Never put tokens, passwords, or other credentials
+in either file.
 
 ```json
 {
@@ -173,7 +177,8 @@ If you need to temporarily disable safety protection:
    ```
 
 2. **Temporarily remove dangerous command restrictions** (STRONGLY NOT recommended):
-   Edit `.claude/settings.local.json`, remove commands from `deny` list
+   Do not weaken the shared `deny` list. If the operation is unavoidable, run it
+   manually in a terminal after reviewing its exact target.
 
 3. **Execute manually in terminal**:
    If you truly need to execute dangerous operations, do it manually in VSCode terminal, not through Claude Code
@@ -181,6 +186,10 @@ If you need to temporarily disable safety protection:
 ---
 
 ## 📝 Maintenance Log
+
+- 2026-08-07: Moved the shared hook and command safety baseline to
+  `.claude/settings.json`; local settings are now ignored and must not contain
+  credentials
 
 - 2025-11-13 14:10:00: Directory renamed from `scripts/` to `hooks/`
   - Added SessionStart hook for development standards reminder
