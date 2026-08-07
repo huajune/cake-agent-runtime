@@ -14,7 +14,7 @@
 **预计版本**: `v10.41.0`
 **最近更新**: `2026-08-07`
 **来源分支**: `develop`
-**累计 PR**: 35
+**累计 PR**: 36
 
 ### 更新摘要
 - PR #908 三张词表收拢回 resolution/visual 单一居所
@@ -107,6 +107,11 @@
 - PR #972 撤销 anon/authenticated 对 chat_messages 的全列 SELECT
 - PR #972 仅保留 id、chat_id 两个 Realtime 所需标识列
 - PR #972 保持后端 service_role 数据访问不变
+- PR #974 更新 Supabase 安全处置证据
+- PR #974 补记 Supabase 新 publishable/secret key 上线、legacy key 停用和账户 Token 清理证据
+- PR #974 补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证
+- PR #974 明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项
+- PR #974 更新 v10.41.0 安全处置证据
 
 ### 新功能
 - PR #916 新增 vocab:validate 跨介质词表校验并挂入 ci:check（期 4）
@@ -209,11 +214,17 @@
 - PR #970 记录测试库既有幂等配置种子已补齐，测试与生产迁移均为 132/132；生产无待执行迁移
 - PR #970 记录 v10.41.0 发布豁免与数据库状态
 - PR #972 收紧聊天消息匿名列权限
+- PR #974 更新 v10.41.0 发版台账和安全处置证据
+- PR #974 补记 Supabase 新 publishable/secret key 上线、legacy key 停用和账户 Token 清理证据
+- PR #974 补记 chat_messages 匿名列权限收紧、测试/生产 migration 133/133 与 REST/Auth/Realtime 验证
+- PR #974 明确保留飞书 App Secret 与最终 v10.41.0 制品复核两个 P0 阻断项
+- PR #974 更新 Supabase 安全处置证据
 
 ### 配置变更
 - PR #966 `strictDepBuilds: true`
 - PR #966 当前已审查的依赖安装脚本全部在 `allowBuilds` 中明确设为 `false`
 - PR #966 删除已弃用且相互冲突的 `onlyBuiltDependencies` / `ignoredBuiltDependencies`
+- PR #974 无代码配置变更；仅记录已完成的生产 Supabase 凭据迁移
 
 ### 环境变量提醒
 - 无
@@ -291,6 +302,10 @@
 - PR #972 生产：service_role 敏感列查询 200
 - PR #972 测试/生产 Realtime 均成功 SUBSCRIBED
 - PR #972 pnpm run ci:check 通过：417 suites passed、7055 tests passed、1 suite/6 tests skipped
+- PR #974 pnpm run ci:check（417 suites、7055 tests 通过）
+- PR #974 Prettier 与 git diff --check
+- PR #974 Supabase REST/Auth/Realtime、生产健康和 migration 状态已验证
+- PR #974 其他说明：release ledger 校验按预期仍报告 P0-02 和 P0-10 未通过；本 PR 不解除正式发版门禁。
 <!-- release:pending:end -->
 
 ## [10.40.0] - 2026-08-05
