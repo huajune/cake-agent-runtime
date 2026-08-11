@@ -49,25 +49,12 @@ export interface RepairRegressionContext {
   jobEvidenceAvailable?: boolean;
   /**
    * 本轮触发的守卫规则 id（首审判定结果）。
-   *
-   * 零证据类规则（见 ZERO_EVIDENCE_RULE_IDS）触发时，repair 的**正确产物本来就是**
-   * 删掉那些无出处的岗位事实——此时结构塌缩不是退化，是修对了。
+   * 承诺类回归检测只在对应守卫实际触发时启用，避免把正常应答误判为承诺升级。
    */
   triggeredRuleIds?: readonly string[];
   /** 仅测试注入；生产走系统时钟。用于把"M月D日"推断到最近的完整年份以计算真实星期。 */
   now?: Date;
 }
-
-/**
- * 零证据类规则：命中即说明首版的岗位事实没有工具出处。
- *
- * 2026-07-30 扫描日报建议动作 1 的完整口径是「repair 由零证据类规则触发，**或**该回合
- * duliday_job_list 返回 empty 时，禁用 structure_collapsed 回退」。PR #845 只实现了后半句
- * （jobEvidenceAvailable === false）。前半句在"本轮根本没调查岗工具"时才是唯一有效的判据
- * ——那种情况下 resolveJobEvidenceAvailability 返回 undefined 而非 false，逃生口够不着，
- * 修复版仍会被 structure_collapsed 回退，等于把 2026-07-29 那次整单编造投递原样复现一遍。
- */
-const ZERO_EVIDENCE_RULE_IDS: ReadonlySet<string> = new Set(['settlement_no_evidence_assertion']);
 
 /** 表单字段行：`姓名：` / `联系电话：13xxx` / `面试时间（…）：` 等短标签开头的行。 */
 const FORM_FIELD_LINE_PATTERN = /^[-•\s]*[^：:\n]{1,14}[：:]/u;
@@ -157,7 +144,6 @@ function computeActualWeekday(month: number, day: number, now: Date): number | n
  * 无差别检测会把大量正常改写判成回归。
  */
 const PROMISE_RULE_IDS: ReadonlySet<string> = new Set([
-  'handoff_promise_without_handoff',
   'dangling_reply_promise',
   'application_record_update_promise',
 ]);
@@ -201,11 +187,8 @@ export function detectRepairRegression(
   if (!first || !revised || first === revised) return null;
 
   const firstJobFacts = countJobFactOccurrences(first);
-  const zeroEvidenceContext =
-    context?.jobEvidenceAvailable === false ||
-    (context?.triggeredRuleIds ?? []).some((id) => ZERO_EVIDENCE_RULE_IDS.has(id));
   const removesUngroundedJobClaims =
-    zeroEvidenceContext &&
+    context?.jobEvidenceAvailable === false &&
     firstJobFacts >= 2 &&
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised);
@@ -253,7 +236,7 @@ export function detectRepairRegression(
   // badcase 2026-08-06 chat 6a1e42c5（trace …_1785977561594）：候选人要把面试从 15:00
   // 改到 15:30，precheck 已返回在途工单 455384 并点名"改时间用
   // duliday_modify_interview_time"，模型一个工具没调，首版写「让同事帮你确认下能不能改，
-  // 稍等」→ 守卫正确命中 handoff_promise_without_handoff(P0)。repair 的 suggestion 白纸黑字
+  // 稍等」→ 当时守卫命中 handoff_promise_without_handoff（已于 8-11 下线）。repair 的 suggestion 白纸黑字
   // 写了"严禁新增本轮工具结果之外的事实（面试时间也算）"，rewrite 却产出「你说的15:30这个
   // 时间没问题」，二审 pass 后投递——首版只是"还没定"，修复版变成"已经定了"。工单至今仍是
   // 15:00，候选人会按 15:30 到店。

@@ -1249,12 +1249,6 @@ export function buildInterviewBookingTool(
                     apiMessage: result.message ?? null,
                   },
                 }),
-                // 上方 !result.success 分支已触发 pauseUserHostingAsync（自动暂停托管→飞书告警→真人接管）。
-                // 显式打标供出站守卫对账：replyInstruction 指示的"让同事确认"衔接语在本
-                // 形态下是如实陈述，handoff_promise_without_handoff 不应再判空头承诺
-                // （2026-08-04 守卫审计：…740343589/…748484273 假阳 × 有害重写）。
-                // pause 是 fire-and-forget，极小概率失败仅落 error 日志，此处按已触发计。
-                hostingPaused: true,
               };
 
           // 需要人工补发面试群时，toolResult.sideEffect 会在候选人回复完成投递后统一执行
@@ -1322,9 +1316,6 @@ export function buildInterviewBookingTool(
                 reason: err instanceof Error ? err.message : '未知错误',
               },
             }),
-            // 同上方 BOOKING_REJECTED 分支：本分支同样触发自动暂停托管+真人接管，
-            // 打标供 handoff_promise_without_handoff 对账（2026-08-04 守卫审计）。
-            hostingPaused: true,
           };
 
           void sendInterviewBookingNotification(

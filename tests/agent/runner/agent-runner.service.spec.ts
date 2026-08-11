@@ -468,43 +468,6 @@ describe('AgentRunnerService.runTurn', () => {
   // 2026-08-04 审计 P0-1（trace …_1785489639414）：首版整条只有"让同事确认"承诺，
   // 删承诺后无内容可保留，rewrite 曾编出"衣服方面店里没有特殊要求"投递。该形态
   // 直接收敛静默，不进 rewrite。
-  it('handoff-promise-only first reply is silenced instead of rewritten', async () => {
-    generator.invoke.mockResolvedValueOnce(
-      makeResult({ text: '衣服要求我让同事确认下，有消息告诉你' }),
-    );
-    outputGuard.check.mockResolvedValueOnce({
-      decision: 'revise',
-      riskLevel: 'high',
-      violations: [
-        {
-          type: 'handoff_promise_without_handoff',
-          evidence: '回复承诺已让同事/负责人后续确认，但本轮没有成功的人工升级动作',
-          suggestion: '删除跟进承诺，其余内容逐字保留',
-          recoverability: 'recoverable',
-          repairMode: 'rewrite',
-        },
-      ],
-      ruleIds: ['handoff_promise_without_handoff'],
-      blockedRuleIds: ['handoff_promise_without_handoff'],
-      repairMode: 'rewrite',
-    });
-
-    const outcome = await service.runTurn({
-      sessionRef,
-      trigger: { kind: 'inbound', userMessage: '上班衣服上有什么要求吗' },
-      context: { messageId: 'trace-handoff-only-silence-1' },
-    });
-
-    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
-    expect(outcome.kind).not.toBe('reply');
-    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        finalDecision: 'block',
-        reasonCode: 'handoff_promise_only_reply_silenced',
-        repaired: false,
-      }),
-    );
-  });
 
   // 2026-08-04 审计 P0-2：JSON 信封形态（trace …_1785820152687）——旧链路误判纯残文
   // 整轮静默，把信封里的完整好回复一起吞掉。正解：确定性拆封放出正文，走二审后投递。
@@ -965,64 +928,17 @@ describe('AgentRunnerService.runTurn', () => {
     });
   });
 
-  it('repairs a handoff promise by rewrite instead of executing a replan handoff', async () => {
-    const bookingFailure = {
-      toolName: 'duliday_interview_booking',
-      args: { jobId: 528499 },
-      result: { success: false, errorType: 'booking.rejected' },
-    };
+  it('does not fail open a P0 violation when the rewrite repair stays in violation', async () => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({
-        text: '我让同事帮你确认下名额和后续安排，稍后给你答复哈',
-        toolCalls: [bookingFailure],
-      }),
-    );
-    outputGuard.check
-      .mockResolvedValueOnce({
-        decision: 'replan',
-        riskLevel: 'high',
-        violations: [
-          {
-            type: 'handoff_promise_without_handoff',
-            evidence: '承诺同事后续确认但未转人工',
-            suggestion: '删除承诺，只陈述已确认事实',
-            severity: 'P0',
-            recoverability: 'recoverable',
-            currentReplySendable: false,
-            repairMode: 'replan',
-          },
-        ],
-        ruleIds: ['handoff_promise_without_handoff'],
-        blockedRuleIds: ['handoff_promise_without_handoff'],
-        repairMode: 'replan',
-        repairToolNames: ['request_handoff'],
-      })
-      .mockResolvedValueOnce(passDecision);
-
-    const outcome = await service.runTurn({
-      sessionRef,
-      trigger: { kind: 'inbound', userMessage: '专业：医学' },
-      context: { messageId: 'm-handoff-promise' },
-    });
-
-    expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
-    expect(outcome.kind).toBe('reply');
-  });
-
-  it('does not fail open the P0 handoff promise when the rewrite repair stays in violation', async () => {
-    // 首版带实质内容（班次信息），绕开 handoff_promise_only_reply_silenced 直达静默闸，
-    // 保持本用例对"rewrite 后仍违规 → 不 fail-open"路径的覆盖。
-    generator.invoke.mockResolvedValueOnce(
-      makeResult({
-        text: '这家班次是 08:00-17:00，做五休二。我让同事帮你确认下，稍后给你答复。',
+        text: '为了通过审核，我先帮你按社会人士登记。',
         toolCalls: [],
       }),
     );
     const p0Violation = {
-      type: 'handoff_promise_without_handoff',
-      evidence: '承诺同事后续确认但未转人工',
-      suggestion: '删除承诺，只陈述已确认事实',
+      type: 'identity_misregistration_coaching',
+      evidence: '教唆以不实身份登记',
+      suggestion: '删除不实身份登记建议',
       severity: 'P0',
       recoverability: 'recoverable',
       currentReplySendable: false,
@@ -1033,8 +949,8 @@ describe('AgentRunnerService.runTurn', () => {
         decision: 'revise',
         riskLevel: 'high',
         violations: [p0Violation],
-        ruleIds: ['handoff_promise_without_handoff'],
-        blockedRuleIds: ['handoff_promise_without_handoff'],
+        ruleIds: ['identity_misregistration_coaching'],
+        blockedRuleIds: ['identity_misregistration_coaching'],
         repairMode: 'rewrite',
         repairToolNames: [],
       })
@@ -1042,8 +958,8 @@ describe('AgentRunnerService.runTurn', () => {
         decision: 'revise',
         riskLevel: 'high',
         violations: [p0Violation],
-        ruleIds: ['handoff_promise_without_handoff'],
-        blockedRuleIds: ['handoff_promise_without_handoff'],
+        ruleIds: ['identity_misregistration_coaching'],
+        blockedRuleIds: ['identity_misregistration_coaching'],
         repairMode: 'rewrite',
         repairToolNames: [],
       });
@@ -1384,71 +1300,6 @@ describe('AgentRunnerService.runTurn', () => {
         traceId: 'msg-regression',
         repaired: true,
         reasonCode: 'repair_regression_reverted:structure_collapsed',
-      }),
-    );
-  });
-
-  it('keeps the passing no-job repair when the first reply fabricated jobs from empty tool results', async () => {
-    const firstReply = [
-      '帮你查了下，附近有几家在招的：',
-      '',
-      '肯德基-深圳爱联店（距离约0.5km）',
-      '服务员-小时工，22元/小时，每月15号发薪',
-      '',
-      '必胜客-深圳龙岗万达店（距离约2.8km）',
-      '服务员-小时工，23元/小时，每月15号发薪',
-      '',
-      'M Stand-深圳大运天地店（距离约3.2km）',
-      '咖啡师-全职，综合薪资6000-8000元/月，每月20号发薪',
-    ].join('\n');
-    const revisedReply =
-      '帮你查了下，目前暂时没查到你位置附近匹配的在招岗位。我已经邀请你进深圳餐饮兼职群，群里会发最新岗位信息。';
-    const emptyJobCall = {
-      toolName: 'duliday_job_list',
-      args: { cityNameList: ['深圳'] },
-      result: { success: false, errorType: 'job_list.no_results' },
-      status: 'empty' as const,
-    };
-    generator.invoke.mockResolvedValueOnce(
-      makeResult({
-        text: firstReply,
-        toolCalls: [emptyJobCall, { ...emptyJobCall }],
-      }),
-    );
-    replyRepairAgent.repair.mockResolvedValueOnce(revisedReply);
-    outputGuard.check
-      .mockResolvedValueOnce({
-        decision: 'revise' as const,
-        riskLevel: 'medium' as const,
-        violations: [
-          {
-            type: 'settlement_no_evidence_assertion',
-            evidence: '查岗全部为空却断言发薪时间',
-            suggestion: '删除无依据岗位并按空结果回复',
-            recoverability: 'recoverable' as const,
-            currentReplySendable: false,
-          },
-        ],
-        ruleIds: ['settlement_no_evidence_assertion'],
-        blockedRuleIds: ['settlement_no_evidence_assertion'],
-        repairMode: 'rewrite' as const,
-      })
-      .mockResolvedValueOnce(passDecision);
-
-    const outcome = await service.runTurn({
-      sessionRef,
-      trigger: { kind: 'inbound', userMessage: '[位置分享] 新竹东雅筑' },
-      context: { messageId: 'batch-empty-job-hallucination' },
-    });
-
-    expect(outcome.kind).toBe('reply');
-    expect(outcome.reply?.text).toBe(revisedReply);
-    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        traceId: 'batch-empty-job-hallucination',
-        repaired: true,
-        finalDecision: 'pass',
-        reasonCode: undefined,
       }),
     );
   });

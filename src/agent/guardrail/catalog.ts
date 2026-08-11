@@ -33,16 +33,12 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   human_service_phrase_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
-  handoff_promise_without_handoff:
-    'agent/guardrail/output/rules/handoff-promises.rule.ts（HardRulesService 调度）',
   identity_misregistration_coaching:
     'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts（HardRulesService 调度）',
   experience_fraud_coaching:
     'agent/guardrail/output/rules/experience-fraud-coaching.rule.ts（HardRulesService 调度）',
   application_record_update_promise:
     'agent/guardrail/output/rules/application-record-update-promise.rule.ts（HardRulesService 调度）',
-  screening_rejection_override:
-    'agent/guardrail/output/rules/screening-rejection-override.rule.ts（HardRulesService 调度）',
   date_reference_mismatch:
     'agent/guardrail/output/rules/date-reference-mismatch.rule.ts（HardRulesService 调度）',
   image_description_not_saved:
@@ -76,8 +72,6 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   unsupported_schedule_window_claim:
     'agent/guardrail/output/rules/schedule-window-claims.rule.ts（HardRulesService 调度）',
   settlement_cycle_mismatch:
-    'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
-  settlement_no_evidence_assertion:
     'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
   online_interview_location_claim:
     'agent/guardrail/output/rules/online-interview-location.rule.ts（HardRulesService 调度）',

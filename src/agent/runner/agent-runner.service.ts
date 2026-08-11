@@ -23,7 +23,6 @@ import type {
 } from '@biz/message/types/guardrail-review.types';
 import { classifyReviewedOutcome } from './turn-outcome';
 import { isDanglingCheckReply } from './dangling-reply';
-import { isHandoffPromiseOnlyReply } from '../guardrail/output/rules/handoff-promises.rule';
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
@@ -758,11 +757,6 @@ export class AgentRunnerService {
    *   2026-07-28 15:05–15:11 模型降级窗口）。泄漏反馈要求"其余内容逐字保留"，而残文
    *   剥完无一字可留，rewrite 只能凭空创作——当时 4/4 例编出薪资/门店/伪造报名链接
    *   并全部投递。没有事实可依时，沉默是唯一安全的结局。
-   * - `handoff_promise_only_reply_silenced`：整条首版剥掉"让同事确认"承诺句后无实质
-   *   内容（2026-08-04 审计 P0-1）。"删除承诺、其余逐字保留"在这种形态下保留的是
-   *   空集，rewrite 被逼成自由创作——生产 4 例编出着装要求/"已拉你进群"/约面时间，
-   *   2 例投递。同理收敛为沉默。
-   *
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
    */
   private resolveDirectSilenceReason(
@@ -775,14 +769,6 @@ export class AgentRunnerService {
         return 'tool_call_artifact_silenced';
       }
       return null;
-    }
-    if (
-      decision.decision === 'revise' &&
-      decision.violations.length > 0 &&
-      decision.violations.every((v) => v.type === 'handoff_promise_without_handoff') &&
-      isHandoffPromiseOnlyReply(firstText)
-    ) {
-      return 'handoff_promise_only_reply_silenced';
     }
     return null;
   }

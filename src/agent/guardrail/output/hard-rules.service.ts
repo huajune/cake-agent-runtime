@@ -18,12 +18,7 @@ import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectDateReferenceMismatch } from './rules/date-reference-mismatch.rule';
 import { detectUnsupportedApplicationRecordUpdatePromise } from './rules/application-record-update-promise.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
-import {
-  detectHandoffPromiseWithoutHandoff,
-  hasCommittedHumanEscalation,
-} from './rules/handoff-promises.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
-import { detectScreeningRejectionOverride } from './rules/screening-rejection-override.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
 import { detectOnlineInterviewLocationClaim } from './rules/online-interview-location.rule';
@@ -36,10 +31,7 @@ import { detectBookingReceiptMismatch } from './rules/booking-receipt.rule';
 import { detectJobDetailLookupRequired } from './rules/job-detail-grounding.rule';
 import { detectRepeatedReply } from './rules/repeated-reply.rule';
 import { detectUnsupportedScheduleWindowClaim } from './rules/schedule-window-claims.rule';
-import {
-  detectSettlementCycleMismatch,
-  detectSettlementNoEvidenceAssertion,
-} from './rules/settlement-cycle-mismatch.rule';
+import { detectSettlementCycleMismatch } from './rules/settlement-cycle-mismatch.rule';
 import { detectUnsupportedStoreStatusSpeculation } from './rules/store-status-speculation.rule';
 import { detectSummerWorkerAlternativeUpsell } from './rules/summer-worker-alternative-upsell.rule';
 import {
@@ -222,12 +214,6 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(applicationRecordUpdatePromise));
     }
 
-    // 敏感筛选拒绝翻案：本轮 precheck/booking 已给出结构化拒绝时，回复不得翻案或继续承诺被拒岗位。
-    const screeningRejectionOverride = detectScreeningRejectionOverride(text, toolCalls);
-    if (screeningRejectionOverride) {
-      contradictions.push(this.withRulePolicy(screeningRejectionOverride));
-    }
-
     // 相对日词与括注日期对账：日历事实可确定性校验，日期错乱会让候选人错过/空等面试。
     const dateReferenceMismatch = detectDateReferenceMismatch(text);
     if (dateReferenceMismatch) {
@@ -270,16 +256,6 @@ export class HardRulesService {
     );
     if (bookingReceiptMismatch) {
       contradictions.push(this.withRulePolicy(bookingReceiptMismatch));
-    }
-
-    // 本轮岗位查询全查无时，拦截没有工具或助手历史出处的结算周期断言。
-    const settlementNoEvidenceAssertion = detectSettlementNoEvidenceAssertion(
-      text,
-      toolCalls,
-      params.recentMessages ?? [],
-    );
-    if (settlementNoEvidenceAssertion) {
-      contradictions.push(this.withRulePolicy(settlementNoEvidenceAssertion));
     }
 
     // 线上/AI/视频/电话面试却给到店指引——候选人会白跑一趟门店。
@@ -325,11 +301,6 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(unsupportedStoreStatusSpeculation));
     }
 
-    const handoffPromiseWithoutHandoff = detectHandoffPromiseWithoutHandoff(text, toolCalls);
-    if (handoffPromiseWithoutHandoff) {
-      contradictions.push(this.withRulePolicy(handoffPromiseWithoutHandoff));
-    }
-
     for (const rule of this.rules) {
       if (!rule.keywords.test(text)) continue;
       if (rule.ignorePredicate?.(text, toolCalls)) continue;
@@ -372,10 +343,7 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(brandAliasFuzzyMatchIgnored));
     }
 
-    const humanServicePhraseLeak = detectHumanServicePhraseLeak(
-      text,
-      hasCommittedHumanEscalation(toolCalls),
-    );
+    const humanServicePhraseLeak = detectHumanServicePhraseLeak(text);
     if (humanServicePhraseLeak) {
       contradictions.push(this.withRulePolicy(humanServicePhraseLeak));
     }
