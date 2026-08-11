@@ -137,6 +137,37 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
     });
   });
 
+  it('quote 复算统一折叠全半角、空白和标点', () => {
+    const result = adjudicate({
+      claims: [
+        claim({
+          field: 'education',
+          value: '本科',
+          evidence: { quote: '学历: 本科' },
+        }),
+      ],
+      candidateTexts: ['学历：本科'],
+    });
+    expect(result.adjudicated[0]?.decision).toBe('accepted');
+  });
+
+  it('quote 改写即使语义接近也不得命中', () => {
+    const result = adjudicate({
+      claims: [
+        claim({
+          field: 'education',
+          value: '本科',
+          evidence: { quote: '我本科毕业了' },
+        }),
+      ],
+      candidateTexts: ['我的学历是大学本科'],
+    });
+    expect(result.adjudicated[0]).toMatchObject({
+      decision: 'rejected',
+      rejectionReason: 'quote_not_found',
+    });
+  });
+
   it('§12-8 候选人否定旧资料：clear claim → 字段 missing 且屏蔽历史线索', () => {
     const result = adjudicate({
       claims: [

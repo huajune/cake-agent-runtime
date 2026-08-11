@@ -861,7 +861,12 @@ describe('SessionService', () => {
 
     const savedInterviewInfo = () => {
       const saved = mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as {
-        facts: { interview_info: Record<string, { confidence: string; source: string } | null> };
+        facts: {
+          interview_info: Record<
+            string,
+            { confidence: string; source: string; evidence?: string } | null
+          >;
+        };
       };
       return saved.facts.interview_info;
     };
@@ -907,6 +912,87 @@ describe('SessionService', () => {
 
       const info = savedInterviewInfo();
       expect(info.has_health_certificate).toEqual(
+        expect.objectContaining({ confidence: 'medium', source: 'model' }),
+      );
+    });
+
+    it('uses an original-text probe when the model omits explicit provenance', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWith({ education: '本科' }, null)),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '学历： 本科' },
+      ]);
+
+      expect(savedInterviewInfo().education).toEqual(
+        expect.objectContaining({
+          confidence: 'high',
+          source: 'candidate_quote',
+          evidence: '原文探针命中："学历： 本科"',
+        }),
+      );
+    });
+
+    it.each([
+      ['纯数字值', { age: '37' }, '我今年37'],
+      ['单字短值', { gender: '女' }, '女'],
+    ])('原文探针拒绝%s', async (_label, info, content) => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(llmOutputWith(info, null)));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [{ role: 'user', content }]);
+
+      const field = 'age' in info ? 'age' : 'gender';
+      expect(savedInterviewInfo()[field]).toEqual(
+        expect.objectContaining({ confidence: 'medium', source: 'model' }),
+      );
+    });
+
+    it('excludes quoted manager text from the original-text probe corpus', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWith({ education: '本科' }, null)),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '[引用 李经理：学历要求本科] 好的' },
+      ]);
+
+      expect(savedInterviewInfo().education).toEqual(
+        expect.objectContaining({ confidence: 'medium', source: 'model' }),
+      );
+    });
+
+    it('excludes visual descriptions from the original-text probe corpus', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWith({ education: '本科' }, null)),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '[图片消息] 简历显示学历本科' },
+      ]);
+
+      expect(savedInterviewInfo().education).toEqual(
+        expect.objectContaining({ confidence: 'medium', source: 'model' }),
+      );
+    });
+
+    it('does not add probe upgrades for name or phone', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWith({ name: '张三', phone: '13800000000' }, null)),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '姓名张三，手机号13800000000' },
+      ]);
+
+      const info = savedInterviewInfo();
+      expect(info.name).toEqual(expect.objectContaining({ confidence: 'medium', source: 'model' }));
+      expect(info.phone).toEqual(
         expect.objectContaining({ confidence: 'medium', source: 'model' }),
       );
     });

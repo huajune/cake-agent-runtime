@@ -1,6 +1,7 @@
 import {
   candidateValuesEquivalent,
   deriveFieldValueFromQuote,
+  normalizedIncludes,
   parseBirthYearAge,
   parseSpokenHeightCm,
   parseSpokenWeightKg,
@@ -32,6 +33,20 @@ describe('candidate-fact-normalizers 口语归一化（§12-4）', () => {
     expect(deriveFieldValueFromQuote('height', '身高：170')).toBe(170);
     expect(deriveFieldValueFromQuote('height', '我一米六三')).toBe(163);
     expect(deriveFieldValueFromQuote('height', '想找晚班工作')).toBeNull();
+  });
+});
+
+describe('normalizedIncludes 证据包含匹配', () => {
+  it('折叠全半角、空白和中英文标点差异', () => {
+    expect(normalizedIncludes('学历： 本 科。ＡＢＣ', '学历:本科ABC')).toBe(true);
+  });
+
+  it('不做改写或语义相似匹配', () => {
+    expect(normalizedIncludes('我的学历是大学本科', '我本科毕业了')).toBe(false);
+  });
+
+  it('空 needle 不得命中', () => {
+    expect(normalizedIncludes('任意原文', ' ，。 ')).toBe(false);
   });
 });
 

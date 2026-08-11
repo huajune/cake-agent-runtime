@@ -1,6 +1,10 @@
 import type { AdjudicatedClaim, CandidateClaimField, CandidateFactClaim } from './claim.types';
 import { validateClaimValueAgainstQuote } from './policies';
-import { candidateValuesEquivalent, deriveFieldValueFromQuote } from './normalize';
+import {
+  candidateValuesEquivalent,
+  deriveFieldValueFromQuote,
+  normalizedIncludes,
+} from './normalize';
 import { RULE_CLAIM_QUOTE_MAX_CHARS } from './producers/direct-field';
 import {
   buildEffectiveProfile,
@@ -51,12 +55,7 @@ const PRODUCER_PRIORITY: Record<CandidateFactClaim['producer'], number> = {
 };
 
 function quoteFoundInCandidateTexts(quote: string, texts: readonly string[]): boolean {
-  const needle = quote.trim();
-  if (!needle) return false;
-  const compactNeedle = needle.replace(/\s+/g, '');
-  return texts.some(
-    (text) => text.includes(needle) || text.replace(/\s+/g, '').includes(compactNeedle),
-  );
+  return texts.some((text) => normalizedIncludes(text, quote));
 }
 
 /**

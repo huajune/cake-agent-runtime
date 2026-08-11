@@ -56,6 +56,7 @@ import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/cla
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
 import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
+import { normalizedIncludes } from '@resolution/evidence/normalize';
 import {
   detectGeoSignalConflict,
   isRecognizedCityName,
@@ -1166,25 +1167,26 @@ export class SessionService {
   ]);
 
   /**
-   * 按 LLM 的来源声明升级置信度：candidate_explicit（表单回填/直接自陈）→ high/candidate。
+   * 两道确定性升档：先验证 LLM 来源声明，再以严格候选人原文补探针。
    *
    * 背景：LLM 提取整组统一打 medium，候选人在收资表单明确回填的字段（仅因规则正则
    * 没接住）也被一刀切成 medium，工具预填（只信 high）拿不到 → 重复收资。
    * 防 LLM 高报：声明必须附逐字 quote，且 quote 能在候选人消息原文中找到才生效；
-   * phone 额外做手机号格式校验。
+   * 原文探针另行排除数字值、短值、引用块和视觉描述，且不为 name/phone 自动升档。
    */
   private applyExplicitProvenanceUpgrade(
     facts: SessionFacts,
     provenance: ExplicitProvenanceEntry[],
     userMessages: string[],
   ): SessionFacts {
-    if (provenance.length === 0) return facts;
-
     const result: SessionFacts = {
       ...facts,
       interview_info: { ...facts.interview_info },
     };
     const target = result.interview_info as unknown as Record<string, unknown>;
+    const strictCandidateCorpus = userMessages
+      .map((message) => stripQuotedBlocks(stripTimeContextSuffix(message)).trim())
+      .filter((message) => message.length > 0 && !isVisualDescriptionText(message));
 
     for (const entry of provenance) {
       // 容忍 "interview_info.phone" 与 "phone" 两种写法
@@ -1195,13 +1197,8 @@ export class SessionService {
       if (!quote || quote.length < 2) continue;
       // 裁决 B3：phone 的升级 quote 只认候选人手打文本——证件/简历图描述里的号码
       // quote 不得作为升 high 依据（medium 锁定，须经确认问答升级）。其余字段照旧。
-      const quoteCorpus =
-        field === 'phone'
-          ? userMessages
-              .filter((message) => !isVisualDescriptionText(stripTimeContextSuffix(message).trim()))
-              .map((message) => stripQuotedBlocks(message))
-          : userMessages;
-      if (!quoteCorpus.some((message) => message.includes(quote))) {
+      const quoteCorpus = field === 'phone' ? strictCandidateCorpus : userMessages;
+      if (!quoteCorpus.some((message) => normalizedIncludes(message, quote))) {
         this.logger.debug(
           `[extractFacts] explicit_provenance quote 未在候选人消息中找到，拒绝升级 ${field}`,
         );
@@ -1228,6 +1225,35 @@ export class SessionService {
       this.logger.log(
         `[extractFacts] 来源声明升级：${field} medium→high（候选人明确提供，quote 已验证）`,
       );
+    }
+
+    // 模型漏报 explicit_provenance 时，以候选人手打原文做第二条确定性升档通路。
+    // 只允许低碰撞字符串；姓名/事务字段由白名单排除，手机号与短值/纯数字继续锁定。
+    for (const field of SessionService.EXPLICIT_UPGRADE_FIELDS) {
+      if (field === 'phone') continue;
+      const current = target[field];
+      if (!isSessionFactValue(current)) continue;
+      if (current.confidence !== 'medium' || current.source !== 'model') continue;
+      if (typeof current.value !== 'string') continue;
+
+      const value = current.value.trim();
+      if (value.length < 2 || /^\d+$/u.test(value.normalize('NFKC'))) continue;
+      const matchedMessage = strictCandidateCorpus.find((message) =>
+        normalizedIncludes(message, value),
+      );
+      if (!matchedMessage) continue;
+
+      const meta = {
+        confidence: 'high' as const,
+        source: 'candidate_quote' as const,
+        evidence: truncateEvidence(`原文探针命中："${matchedMessage}"`),
+        extractedAt: new Date().toISOString(),
+      };
+      target[field] = { ...current, ...meta };
+      if (field === 'gender') {
+        target.gender_source = sessionFactValue('candidate' as const, meta);
+      }
+      this.logger.log(`[extractFacts] 原文探针升级：${field} medium→high（候选人原文命中）`);
     }
 
     return result;

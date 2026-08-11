@@ -14,6 +14,22 @@ import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import type { CandidateClaimField } from './claim.types';
 
 /**
+ * 证据包含匹配的字符级归一：全半角折叠、去空白、忽略中英文标点差异。
+ *
+ * 只允许确定性的字符等价，不做分词、同义词或语义相似，避免放宽 quote 的
+ * 防臆造边界。
+ */
+function normalizeEvidenceText(text: string): string {
+  return text.normalize('NFKC').replace(/[\s\p{P}]+/gu, '');
+}
+
+export function normalizedIncludes(haystack: string, needle: string): boolean {
+  const normalizedNeedle = normalizeEvidenceText(needle);
+  if (!normalizedNeedle) return false;
+  return normalizeEvidenceText(haystack).includes(normalizedNeedle);
+}
+
+/**
  * 候选人字段归一化器（方案 §5.2「可安全归一化字段」+ §12 条目 4）。
  *
  * 两类职责：

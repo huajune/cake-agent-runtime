@@ -305,9 +305,9 @@ export const LLMEntityExtractionResultSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      '候选人明确提供的 interview_info 字段清单：仅当字段值来自结构化表单回填（「年龄：37」）' +
-        '或候选人直接自陈（"我有健康证""我今年37"）时列入，并附逐字原文片段；' +
-        '由上下文推断、或助手提及后候选人仅附和的字段一律不列',
+      '候选人明确提供的 interview_info 字段清单：凡候选人原话直接支持的字段都应列入；' +
+        'quote 必须是候选人消息中的逐字连续片段，禁止改写、翻译、概括或拼接；' +
+        '仅由上下文推断、助手提及后候选人仅附和、或转发文案中的字段一律不列，解释只写 reasoning',
     ),
   brand_intents: z
     .array(BrandIntentEntrySchema)
@@ -382,8 +382,9 @@ export const PREFERENCE_FIELD_KEYS = [
 export type InterviewInfoFieldKey = (typeof INTERVIEW_INFO_FIELD_KEYS)[number];
 export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 
-// 降序元组来自 confidence-rank（唯一权威）；顺序沿用历史 high-first，
-// 保证发给抽取模型的 JSON schema 逐字节不变。
+// 降序元组来自 confidence-rank（唯一权威），顺序沿用历史 high-first。
+// 2026-08-11 起 explicit_provenance 的逐字摘录契约已收紧，发给抽取模型的 JSON schema
+// 不再承诺跨版本逐字节不变；test-suite 旧批抽取结果跨此版本作废，必须重新执行。
 export const SessionFactConfidenceSchema = z.enum(FACT_CONFIDENCE_LEVELS_DESC);
 
 const LEGACY_SESSION_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
