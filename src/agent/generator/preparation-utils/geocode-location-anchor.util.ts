@@ -3,7 +3,7 @@ import {
   extractHighConfidenceFacts,
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
-} from '@memory/facts/high-confidence-facts';
+} from '@resolution/evidence/producers/rule-track';
 import { resolveCityFromDistrict } from '@resolution/geo';
 import type { ShortTermMessage } from '@memory/types/short-term.types';
 import type {
@@ -12,6 +12,7 @@ import type {
   HighConfidenceFacts,
 } from '@memory/types/session-facts.types';
 import type { GeocodeLocationAnchor } from '@shared-types/tool.types';
+import { stripTimeContext } from '@infra/utils/message-markup.util';
 
 const LOCATION_CONTINUATION_PATTERN =
   /(?:附近|周边|旁边|周围|这边|那边|这里|那里|近一点|近点|离这|离那)/;
@@ -28,11 +29,9 @@ function cityValue(city: CityFact | string | null | undefined): string | undefin
   return typeof city === 'string' ? city : city.value;
 }
 
-function stripTimeContext(content: string): string {
-  return content
-    .replace(/\s*(?:\[|【)消息发送时间[:：][\s\S]*?(?:\]|】|$)/g, '')
-    .replace(/\s*(?:\[|【)当前时间[:：][\s\S]*?(?:\]|】|$)/g, '')
-    .trim();
+/** 剥时间标记后 trim（标记形态见 @infra/utils/message-markup）。 */
+function stripTimeMarkers(content: string): string {
+  return stripTimeContext(content).trim();
 }
 
 function toAnchor(
@@ -101,7 +100,7 @@ export function resolveGeocodeLocationAnchor(
     const message = input.shortTermMessages[index];
     // 不跨过 Agent/自动 assistant 往更早找人工锚点；当前 user 默认回指最近一轮回复。
     if (!isHumanAgentTextMessage(message)) break;
-    const text = stripTimeContext(message.content);
+    const text = stripTimeMarkers(message.content);
     const manualAnchor = anchorFromHighConfidenceFacts(
       extractHighConfidenceFacts([text], []),
       'human_agent',

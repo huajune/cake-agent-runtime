@@ -1,25 +1,15 @@
 import type { SessionTerminalState } from './session-facts.types';
+import type {
+  CandidateCollectedField,
+  CandidateFieldKey,
+  CandidateFieldProvenance,
+} from '@resolution/candidate';
 
-export type FieldProvenance = 'user_text' | 'booking_writeback' | 'llm_extract' | 'model_arg';
-
-export type CandidateFieldKey =
-  | 'name'
-  | 'phone'
-  | 'age'
-  | 'gender'
-  | 'education'
-  | 'healthCert'
-  | 'householdProvince'
-  | 'height'
-  | 'weight'
-  | 'supplementAnswers';
-
-export interface CollectedField<T = string> {
-  value: T;
-  provenance: FieldProvenance;
-  evidence?: string;
-  at: number;
-}
+// 信封唯一定义在 @resolution/candidate/collected-fields（§2.3 信封终态）；此处仅作存储侧别名转发，
+// 供 memory/reengagement 既有消费者沿用旧名，不得在本文件重新定义字段形状。
+export type FieldProvenance = CandidateFieldProvenance;
+export type { CandidateFieldKey };
+export type CollectedField<T = string | number> = CandidateCollectedField<T>;
 
 export interface PresentedStore {
   storeId?: number | string;

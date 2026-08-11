@@ -22,7 +22,7 @@ import {
   type SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { findLatestExplicitIdentityEvidence } from '@tools/shared/identity-statement.util';
+import { findLatestExplicitIdentityEvidence } from '@resolution/candidate/student-identity';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
@@ -42,15 +42,15 @@ import {
 } from '@tools/duliday/booking/booking-reply-format.util';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { countRealNameAsks } from '@resolution/evidence/producers/name-confirmation';
 import {
-  countRealNameAsks,
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
-} from '@tools/shared/precheck-core';
-import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
-import { extractCandidateTexts } from '@memory/facts/candidate/adjudication-runner';
-import { computeCandidateMessageWatermark } from '@memory/facts/candidate/precheck-snapshot.types';
-import { evaluateSnapshotGate } from '@tools/duliday/booking/snapshot-gate.util';
+} from '@resolution/evidence/identity-gates';
+import { unwrapHighConfidenceValue } from '@resolution/evidence/producers/rule-track';
+import { extractCandidateTexts } from '@resolution/evidence/adjudicate';
+import { computeCandidateMessageWatermark } from '@resolution/evidence/snapshot';
+import { evaluateSnapshotGate } from '@resolution/evidence/snapshot-gate';
 import type { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import type { AgentEvent } from '@/observability/observer.interface';
 

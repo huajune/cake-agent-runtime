@@ -650,47 +650,18 @@ describe('SessionService', () => {
     });
   });
 
-  describe('定位分享城市证据化（A2）', () => {
-    const locationShareMessage =
-      '[位置分享] 黎明村98号楼（No Address） [经纬度:31.269528,121.695882]';
-
-    const mockGeocoding = {
-      reverseGeocode: jest.fn(),
-    };
-
-    const buildServiceWithGeocoding = () =>
-      new SessionService(
-        mockRedisStore as never,
-        mockConfig as never,
-        mockLlm as never,
-        mockSponge as never,
-        mockSystemConfig as never,
-        undefined,
-        mockGeocoding as never,
-      );
-
-    beforeEach(() => {
-      mockGeocoding.reverseGeocode.mockReset();
-    });
-
-    it('本轮定位分享且无文本城市 → 逆解析城市按 source=tool 入档', async () => {
+  describe('定位分享城市证据入档（A2）', () => {
+    it('准备阶段产出的定位分享城市证据按 source=tool 入档', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
-      mockGeocoding.reverseGeocode.mockResolvedValue({
-        province: '上海市',
+
+      const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', {
         city: '上海市',
         district: '浦东新区',
-        formattedAddress: '上海市浦东新区曹路镇黎明村98号楼',
+        evidence: '定位分享逆解析：上海市浦东新区曹路镇黎明村98号楼',
+        source: 'location_share',
       });
 
-      const svc = buildServiceWithGeocoding();
-      await svc.extractAndSave('corp1', 'user1', 'session1', [
-        { role: 'user', content: '想找下午到晚上的兼职' },
-        { role: 'assistant', content: '你在哪个区域呀' },
-        { role: 'user', content: locationShareMessage },
-      ]);
-
-      expect(mockGeocoding.reverseGeocode).toHaveBeenCalledWith(121.695882, 31.269528);
+      expect(outcome).toBe('written');
       expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
         expect.objectContaining({
@@ -702,41 +673,6 @@ describe('SessionService', () => {
         }),
         86400,
       );
-    });
-
-    it('本轮文本已给出高置信城市 → 不调逆解析（T1 亲证优先）', async () => {
-      mockRedisStore.get.mockResolvedValue(null);
-      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
-
-      const svc = buildServiceWithGeocoding();
-      await svc.extractAndSave('corp1', 'user1', 'session1', [
-        { role: 'user', content: `我在北京找工作 ${locationShareMessage}` },
-      ]);
-
-      expect(mockGeocoding.reverseGeocode).not.toHaveBeenCalled();
-    });
-
-    it('引用块内的定位分享不算候选人自己的位置', async () => {
-      mockRedisStore.get.mockResolvedValue(null);
-      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
-
-      const svc = buildServiceWithGeocoding();
-      await svc.extractAndSave('corp1', 'user1', 'session1', [
-        { role: 'user', content: `[引用 经理：${locationShareMessage}]\n这是哪里` },
-      ]);
-
-      expect(mockGeocoding.reverseGeocode).not.toHaveBeenCalled();
-    });
-
-    it('未注入 GeocodingService 时静默跳过（向后兼容）', async () => {
-      mockRedisStore.get.mockResolvedValue(null);
-      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
-
-      await service.extractAndSave('corp1', 'user1', 'session1', [
-        { role: 'user', content: locationShareMessage },
-      ]);
-
-      expect(mockRedisStore.patchHash).toHaveBeenCalled();
     });
   });
 
@@ -1517,12 +1453,12 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              // LLM 的 "本科" 优先于规则的 "本科在读"
-              education: factValue('本科', { confidence: 'medium', source: 'llm' }),
+              // 标准标签收敛后值一致，保留更高置信的规则元数据。
+              education: factValue('本科', { confidence: 'high', source: 'rule' }),
             }),
             preferences: expect.objectContaining({
-              // LLM 的 "上海" 优先于规则的 "苏州"
-              city: factValue('上海', { confidence: 'high' }),
+              // 城市仍采用 LLM 值，但未被当前轮文本直接佐证，按 D3 保持中置信。
+              city: factValue('上海', { confidence: 'medium', source: 'derived' }),
               // 规则兜底：LLM 未提取 schedule_constraint，规则补位
               schedule_constraint: factValue(
                 expect.objectContaining({

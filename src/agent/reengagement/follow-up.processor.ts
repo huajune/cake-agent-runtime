@@ -659,7 +659,8 @@ export class FollowUpProcessor implements OnModuleInit {
     state: AuthoritativeSessionState,
     botImId?: string,
   ): Promise<OutOfBandWorkOrderVerdict | null> {
-    const phone = state.collectedFields?.phone?.value?.trim();
+    const rawPhone = state.collectedFields?.phone?.value;
+    const phone = typeof rawPhone === 'string' ? rawPhone.trim() : '';
     if (!phone || !/^1\d{10}$/.test(phone)) return null;
     try {
       const result = await this.sponge.fetchSignupWorkOrders(

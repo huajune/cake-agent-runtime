@@ -1,5 +1,5 @@
-import { resolveGeocodeLocationAnchor } from '@agent/generator/geocode-location-anchor.util';
-import { extractHighConfidenceFacts } from '@memory/facts/high-confidence-facts';
+import { resolveGeocodeLocationAnchor } from '@agent/generator/preparation-utils/geocode-location-anchor.util';
+import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('resolveGeocodeLocationAnchor', () => {

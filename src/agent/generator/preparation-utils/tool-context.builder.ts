@@ -2,11 +2,11 @@ import { ModelMessage } from 'ai';
 import { CityAttestation, ToolBuildContext } from '@shared-types/tool.types';
 import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import type { FinalizedVisualFactSheet } from '@resolution/visual';
-import { type LaborFormIntentDecision } from '@memory/facts/labor-form';
+import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import {
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
-} from '@memory/facts/high-confidence-facts';
+} from '@resolution/evidence/producers/rule-track';
 import { unwrapUserProfileFacts } from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
@@ -16,7 +16,7 @@ import {
 } from '@memory/types/session-facts.types';
 import { ContextService } from '../context/context.service';
 import { type GeneratorInvokeParams } from '../generator.types';
-import { resolveGeocodeLocationAnchor } from '../geocode-location-anchor.util';
+import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
 import { type TurnStartMemory } from './memory-block.formatter';
 
 /**

@@ -13,7 +13,7 @@ import {
   isWaitNoticeInterview,
   normalizePolicyText,
 } from '@tools/utils/job-policy-parser';
-import { matchesLaborForm } from '@memory/facts/labor-form';
+import { matchesLaborForm } from '@resolution/labor-form';
 import {
   containsSensitiveScreeningText,
   SENSITIVE_SCREENING_CRITERIA_NOTICE,
@@ -23,9 +23,10 @@ import {
   classifySupplementLabel,
   SupplementClassification,
 } from '@tools/utils/supplement-label-classifier';
-import { isStrictRealChineseName } from '@memory/facts/name-guard';
+import { isStrictRealChineseName } from '@resolution/candidate/name';
+import { stripQuotedBlocks } from '@infra/utils/message-markup.util';
 import { fieldValues } from '@resolution/visual';
-import { isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
+import { isNameOnlyQuotedSpeaker } from '@resolution/evidence/identity-gates';
 import {
   normalizeEducationValue,
   normalizeGenderValue,
@@ -63,7 +64,7 @@ import {
   classifyIdentityAnswerText,
   findLatestExplicitIdentityEvidence,
   summarizeIdentityAskRounds,
-} from '@tools/shared/identity-statement.util';
+} from '@resolution/candidate/student-identity';
 import {
   buildBookableSlots,
   buildScheduleRule,
@@ -74,7 +75,7 @@ import {
   buildApiPayloadGuide,
   buildScreeningCriteria,
 } from '@tools/duliday/precheck/screening-criteria.util';
-import { isHighConfidenceValue } from '@memory/facts/high-confidence-facts';
+import { isHighConfidenceValue } from '@resolution/evidence/producers/rule-track';
 import {
   extractHardRequirements,
   isHouseholdRequirementViolated,
@@ -82,17 +83,14 @@ import {
 import {
   CandidateClaimInputSchema,
   type CandidateClaimField,
-} from '@memory/facts/candidate/candidate-fact-claim.types';
+} from '@resolution/evidence/claim.types';
 import {
   runCandidateFactAdjudication,
   type AdjudicationRunResult,
-} from '@memory/facts/candidate/adjudication-runner';
-import type {
-  ProfileHintFacts,
-  SessionAcceptedFacts,
-} from '@memory/facts/candidate/candidate-effective-profile';
-import type { LegacyCandidateArgs } from '@memory/facts/candidate/producers/model-claim.producer';
-import type { PrecheckSnapshot } from '@memory/facts/candidate/precheck-snapshot.types';
+} from '@resolution/evidence/adjudicate';
+import type { ProfileHintFacts, SessionAcceptedFacts } from '@resolution/evidence/profile';
+import type { LegacyCandidateArgs } from '@resolution/evidence/producers/model-claims';
+import type { PrecheckSnapshot } from '@resolution/evidence/snapshot';
 import type { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import type { AgentEvent } from '@/observability/observer.interface';
 
@@ -411,7 +409,7 @@ function detectSummerWorkerSignalFromMessages(messages: unknown[]): SummerWorker
     const raw = extractMessageText(record.content);
     if (!raw) continue;
     // 剥离企微引用块（引用的是对方消息，含"暑假工岗位上线通知"等干扰词）
-    const text = raw.replace(/\[引用[^\n]*?\]\s*/g, '').trim();
+    const text = stripQuotedBlocks(raw);
     if (!text || SUMMER_SIGNAL_UNCERTAINTY_PATTERN.test(text)) continue;
     if (SUMMER_SELF_DENY_PATTERN.test(text)) signal = 'not_summer_worker';
     else if (SUMMER_SELF_AFFIRM_PATTERN.test(text)) signal = 'summer_worker';
@@ -519,7 +517,7 @@ function normalizeCandidateIsStudentInput(value: unknown): string | null {
   return classifyIdentityAnswerText(text);
 }
 
-// 身份原话识别 / 追问统计统一走 @tools/shared/identity-statement.util，
+// 身份原话识别 / 追问统计统一走 @resolution/candidate/student-identity，
 // 与 booking 复核、出站守卫共用同一识别器与同一消息清洗规则（剥引用块 + 时间戳后缀）。
 function normalizeCandidateUploadResumeInput(value: unknown): string | null {
   if (typeof value !== 'string') return null;

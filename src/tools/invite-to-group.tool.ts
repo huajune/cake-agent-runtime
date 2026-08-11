@@ -6,13 +6,13 @@ import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types'
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { SessionService } from '@memory/services/session.service';
 import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
 import { evaluateInviteTimingGate } from '@tools/shared/invite-timing-gate';
-import { extractUserTexts } from '@tools/shared/precheck-core';
+import { extractUserTexts } from '@resolution/evidence/corpus';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';

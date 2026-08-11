@@ -2,7 +2,7 @@
  * 会话品牌状态存取（§9.1）。
  *
  * memory 侧不含任何迁移规则，只做「读 brand_state → 调 reducer 纯函数 → 单字段写回」；
- * 迁移规则全部在 resolution/brand/brand-state.reducer.ts。写入时机：
+ * 迁移规则全部在 resolution/evidence/brand.ts。写入时机：
  * - 常规轮：turn-finalizer 收尾序列（memory-lifecycle 的 apply_brand_state 步骤，
  *   排在 extract_facts 之后且不因其失败跳过），全程在渠道层 90s 租约处理锁内；
  * - 异步补写（§10.3）：图片描述晚到，由渠道层重新持锁后调 applyLateImageResolutions，
@@ -20,9 +20,9 @@ import { resolveBrands } from '@resolution/brand/brand-matcher';
 import {
   brandStateChanged,
   initBrandState,
-  reduceBrandState,
+  adjudicateBrandState,
   shouldDropLateResolutions,
-} from '@resolution/brand/brand-state.reducer';
+} from '@resolution/evidence/brand-policy';
 import type {
   BrandResolution,
   PersistedBrandState,
@@ -33,6 +33,7 @@ import { BRAND_EXECUTABLE_CONFIDENCE } from '@resolution/brand/brand-resolution.
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
 import { PersistedBrandStateSchema } from '../types/session-facts.types';
+import { buildSessionFactsHashKey } from './session-key';
 
 export interface TurnBrandContext {
   /** 本轮生效的品牌状态：已持久化状态，或首轮 seed 出的初始状态（未落盘）。 */
@@ -115,7 +116,7 @@ export class BrandStateService {
       initialized = true;
     }
 
-    const next = reduceBrandState(prev, params.resolutions);
+    const next = adjudicateBrandState(prev, params.resolutions);
     const changed = brandStateChanged(prev, next);
 
     // 初始化必须落盘（seed 只此一次的锚点是"字段存在"）；已存在状态只有变化才写。
@@ -168,7 +169,7 @@ export class BrandStateService {
     }
 
     const prev: SessionBrandState = persisted ?? initBrandState({});
-    const next = reduceBrandState(prev, params.resolutions);
+    const next = adjudicateBrandState(prev, params.resolutions);
     const changed = brandStateChanged(prev, next);
     if (!changed && persisted) return 'noop';
 
@@ -195,7 +196,7 @@ export class BrandStateService {
     userId: string,
     sessionId: string,
   ): Promise<PersistedBrandState | null> {
-    const hash = await this.redisStore.getHash(this.buildHashKey(corpId, userId, sessionId));
+    const hash = await this.redisStore.getHash(buildSessionFactsHashKey(corpId, userId, sessionId));
     const raw = hash?.brand_state;
     if (raw == null) return null;
     const parsed = PersistedBrandStateSchema.safeParse(raw);
@@ -229,7 +230,7 @@ export class BrandStateService {
     state: PersistedBrandState,
   ): Promise<void> {
     await this.redisStore.patchHash(
-      this.buildHashKey(corpId, userId, sessionId),
+      buildSessionFactsHashKey(corpId, userId, sessionId),
       { brand_state: state },
       this.config.sessionTtl,
     );
@@ -323,10 +324,5 @@ export class BrandStateService {
       initialized: params.initialized,
       late: params.late,
     });
-  }
-
-  /** 与 SessionService 相同的 factsv2 hash key（同一存储，单字段读写）。 */
-  private buildHashKey(corpId: string, userId: string, sessionId: string): string {
-    return `factsv2:${corpId}:${userId}:${sessionId}`;
   }
 }
