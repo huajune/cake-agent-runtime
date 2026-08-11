@@ -1,7 +1,7 @@
 # 生产记忆数据质量基线（2026-08）
 
-> 执行时间：2026-08-11 13:47–13:52（Asia/Shanghai）  
-> 生产状态：candidate-profile campaign 尚未发版，本报告是旧链路的发版前基线。  
+> 执行时间：2026-08-11 13:47–13:52（Asia/Shanghai）
+> 生产状态：candidate-profile campaign 尚未发版，本报告是旧链路的发版前基线。
 > 性质：全程只读；未修改 Supabase、Redis、环境开关或生产日志。
 
 ## 1. 执行摘要

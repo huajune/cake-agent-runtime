@@ -1,7 +1,7 @@
 # 全国县级市映射开关对照报告
 
-> 日期：2026-08-11  
-> 范围：仅比较 `resolveParentAdministrativeArea` 在 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` 关闭/开启时的返回值。  
+> 日期：2026-08-11
+> 范围：仅比较 `resolveParentAdministrativeArea` 在 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` 关闭/开启时的返回值。
 > 纪律：本报告和配套 spec **没有修改默认值、环境文件或部署配置**；开启态仅存在于测试进程内，调用后立即恢复。
 
 ## 结论

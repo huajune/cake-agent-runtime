@@ -11,18 +11,18 @@
 > 2026-08-08 定稿。行号基于当日代码，动手前用文中 grep 命令重新定位。
 
 > **评审修复补记（2026-08-10 第二批）**：name-qa 拆三归 evidence（corpus / producers/name-confirmation / identity-gates）、parse.ts→collected-fields.ts、evidence 命名清理（brand 同名冲突 / run→adjudicate / admission-shape 并入 gates）、geocode 锚点装配挪 preparation-utils、CollectedField 信封别名化归一——下文 P0–P5 章节为历史施工记录，行号与部分路径是执行前状态。
-> **执行状态更新（2026-08-11）：P6–P9 四章亦已执行完毕并通过验收（六个按工序 commit：c9eb8231→97299fcb；三大件全绿 7082 测试）。全部工序完工，本文整体转为施工历史记录。** 唯一遗留：消费权限表（P4-5）散点仅剩 2 处，见方案 §4 状态注记。
+> **执行状态更新（2026-08-11）：P6–P9、收尾-1～10 与 A1 已执行完毕并通过验收。** P0–P9 与收尾-1～10 均为施工历史；当前待执行队列仅剩收尾-11～13，列于文末。
 
 ## 执行模式：一气呵成（2026-08-08 用户裁定，覆盖下文所有"分期发版"表述）
 
 - **下文 P0–P5 是工序依赖顺序，不是发版节奏。** 全部在同一 campaign 分支连续完成，一次发版落地；代码库任何时刻不对外暴露"双轨并存/适配层/过渡期"形态。工序内部的先后（如某函数先暂放后归位）只是分支内的 commit 顺序，发版产物只有终态。
 - **开工前置 = 把 blocker 裁决一次拍完**（见文末对照表：D1 简历判据口径、D2 district 累积语义、D3 LLM 城市置信度、归一剥「省」口径）。拍完即无任何中途停点。
-- **brand 切换**：金测试全绿为切换闸（reducer spec 全集对新引擎回放，一条不许改语义）；shadow_diff 改为**发版后验证**（连续 7 天零分歧确认），不作为切换前置——这是"一气呵成"裁定买下的风险，回滚预案兜底。
+- **brand 切换**：金测试全绿为切换闸（reducer spec 全集对新引擎回放，一条不许改语义）；发版后验证改为**行为观测**（⚠️ 8-11 修正：reducer 已物理删除，无对照可 diff——「shadow_diff 后验」不成立）：`brand_state_change` 事件流发版前后分布对比 + badcase 盯防 7 天，异常即整版回滚。这是一气呵成裁定买下的风险，回滚预案兜底。
 - **回滚预案**：全程零存储迁移（方案 §6），回滚 = 应用版本整体回滚，无数据动作。
 - **并发会话冻结**：campaign 期间其他 AI 会话勿动 `src/memory`、`src/resolution`、`src/tools/shared`、`src/tools/duliday` ——提前打招呼，工作树发现他人改动即停。
 - **D4（claim shadow→enforce）不算中间态**：代码一次到终态，enforce 是运行时配置开关，何时打开是业务裁决，与代码形态无关。
 - **发版闸门（五项缺一不发；本系统单实例部署，发版天然全量）**：① 全量单测 + 金测试 + 分歧句用例绿；② 策展回归集跑真实链路（test-suite 正式回归资产，端到端最后防线）；③ 低峰窗口发（已知特性：发版重启无 drain 丢在途消息，与本次改造无关但全量发版须避峰）；④ 回滚触发条件事先写死（各围观指标的越线值发版前定好，不临场辩论）；⑤ 运行时开关（D4 enforce / D7 县级市映射）不随本次发版翻转。
-- **发版后围观清单**：`fact_adjudication` / `extraction_field_dropped` 事件量与拒因分布、brand shadow_diff 报表、booking/invite 拒绝率、守卫假阳率——异常即回滚，不修补带病版本。
+- **发版后围观清单**：`fact_adjudication` / `extraction_field_dropped` 事件量与拒因分布、brand_state_change 事件分布（对比发版前基线）、booking/invite 拒绝率、守卫假阳率——异常即回滚，不修补带病版本。
 
 ## 0. 开工前置（通用）
 
@@ -236,11 +236,11 @@ grep -rn "city-normalize" src                                             # biz 
 
 1. 按方案 §3① 映射表把 reducer 八条行为写成 `evidence/policies.ts` 的 brand 行（复合槽值 currentBrand+excludedBrands、operation=set/exclude/clear、渠道优先序 user_text>image_description、履历语境闸、赦免规则、assertedAt 水位）。
 2. 四条输入轨（hints/规则/LLM/昵称）收敛为 `evidence/producers/brand.ts`，预处理（剥引用块/时间后缀/位置分享段）统一收在 producer 入口——§19.2 的「调用方无法再漏」承诺自此对所有轨成立。
-3. **金测试**：`tests/resolution/brand/brand-state-reducer.spec.ts` 现有全集改为对新引擎回放，一条不许改语义地全绿——这是切换闸；shadow_diff 为**发版后验证**（连续 7 天零分歧确认），不阻塞 campaign（执行模式节裁定）。
+3. **金测试**：`tests/resolution/brand/brand-state-reducer.spec.ts` 现有全集改为对新引擎回放，一条不许改语义地全绿——这是切换闸；发版后验证 = brand_state_change 事件分布对比 7 天（8-11 修正：reducer 已删无对照，shadow_diff 不可用）。
 4. 删除：`brand-state.reducer.ts`；`validateBrandIntents`（session.service:1295-1350）与 `detectBrandAliasHints`（hcf 已亡，其迁移中转位置）并入 producer；`isSameBrandRef` 两份合一。BrandStateService 只剩存取（buildHashKey 自持副本在 P2 前后随手删，走 SessionService 出口）。
 5. 存储格式（brand_state 字段形态）不迁。
 
-验收：`git log --diff-filter=D` 里有 reducer；`grep -rn "brand-state.reducer" src` 为空；发版后 shadow_diff 报表连续 7 天零分歧（后验，异常即整体回滚）。
+验收：`git log --diff-filter=D` 里有 reducer；`grep -rn "brand-state.reducer" src` 为空；发版后 brand_state_change 事件分布对比 7 天（后验，异常即整体回滚；8-11 修正：无对照实现，shadow_diff 不可用）。
 
 ---
 
@@ -377,7 +377,9 @@ pnpm run typecheck && pnpm run lint:check && npx jest --watchman=false
 
 ---
 
-## 收尾 · 两项交接任务（2026-08-11，当前唯一待执行）
+## 收尾 · 已完成记录与后续治理队列（2026-08-11）
+
+> 收尾-1～10 与 A1 已完成；收尾-11～13 为后续待执行任务，勿重复前序工序。
 
 ### 收尾-1 消费权限表收口（P4-5 遗留，全库仅剩 2 散点）
 
@@ -468,3 +470,207 @@ export const ACTION_MIN_CONFIDENCE = {
 1. 写对照 spec（如 `tests/resolution/geo/national-county-mapping-diff.spec.ts`）：同一批县级市输入（含「余姚」类历史补录案例）在 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` 开/关两态下跑 `administrative-area.resolver`，输出差异表（哪些输入从 unresolved → 命中、命中到哪个城市）。
 2. 差异表贴进 PR 描述，作为用户拍「默认开启并删开关」的凭据；开关翻转与删除**留给用户终审后另行执行**。
 3. 提交（pathspec）：`test(geo): 县级市映射开关对照表`。
+
+
+### 收尾-8 兼容层清点：立即清 1 项、条件清 1 项、标注 3 项
+
+盘点结论（2026-08-11）：存储兼容分三类处置，**不是全部该清**——老 Redis 数据仍在读路径上。
+
+**A. 立即清（零风险）**：`message-parser.util.ts:40-41` 的 re-export 空壳（isResumeImageDescription / stripResumeAttachmentLines 转发）——唯一真实消费者 `image-description.service.ts:8` 改直连 `@resolution/signal/visual`，删两行转发与头注释。
+
+**B. 条件清（依赖 A1 报告数据）**：简历双判并跑 `legacyResume || sheetResume`（save-image-description.tool.ts:124-132 与 P1 引擎同款）——A1 报告的「resume 判定分歧 7 天计数」为 0 则删 legacy 文本判据整条路径；非 0 则保留并把分歧样本记 badcase。
+
+**C. 标注拆除判据（保留，但不许无限期活着）**：给以下三处加「拆除判据」注释——`session-facts.types` 的 city 三态解析（:74）、`legacySessionFactValue`（:492，unknown/memory 档）、`preferences.brands` 墓碑（session.service retireBrandsField）。拆除判据统一写为：**A1 及后续复扫中旧形态存量计数归零后删**（factsv2 无短 TTL，不能靠过期自然消亡，只能靠数据侧确认）。
+
+提交（pathspec）：`chore(candidate-profile): 兼容层清点——空壳删除与拆除判据标注`。
+
+---
+
+## 分析任务 A1 · 生产记忆数据质量审计（交 GPT 跑报告，只读不改）
+
+> 双重目的：①存量档案的**证据化/可追溯实际效果**审计（生产仍是旧链路——campaign 未发版，本报告同时是发版前基线）；②为 D4 翻转、收尾-8B 清理、Q2 升档覆盖优化提供数据。
+> **产出**：`docs/technical/memory-data-quality-baseline-2026-08.md`，结构见文末。
+
+**⚠️ 生产查询安全纪律（违反即停）**：Supabase MCP 直连生产——每条 SQL 必须自带 `SET LOCAL statement_timeout`（实测 MCP 有效，禁裸 SET）；严格串行，任一超时全停不重试；`chat_messages` 时间过滤用 `"timestamp"` 列（`created_at` 无索引）；`message_processing_records` 用 `received_at` + MATERIALIZED 两段式。Redis（Upstash MCP）只准对样本 key 串行 GET，≤60 个，禁全库 SCAN。
+
+**取样**：近 7 天活跃会话抽 50 个（message_processing_records 拿 corp_id/user_id/session_id），构造 `factsv2:{corpId}:{userId}:{sessionId}` 逐个 GET。
+
+**度量清单（按报告章节）**：
+
+| # | 度量 | 回答什么 |
+|---|---|---|
+| A | 档案信封质量：50 份 sessionFacts 逐字段统计 confidence/source/evidence 三元组覆盖率；**旧形态存量**（裸串 city、unknown/memory 档占比） | 证据化覆盖面 + 收尾-8C 的拆除判据基数 |
+| B | **可追溯复算率**：evidence/quote 摘录能否在该会话 chat_messages 原文命中（按字段分组统计命中率） | 「证据化」的硬效果——evidence 是真出处还是装饰文本 |
+| C | **medium 升档空档率**：LLM medium 值里，quote 实际可在候选人手打原文命中却未升 high 的占比（排除 phone——医嘱锁定） | Q2 的数据面：重复收资的真实代价，决定升档规则要不要扩覆盖 |
+| D | 垃圾值存量：city high 值中白名单外计数（hello/null 类）、纯数字姓名、占位手机号 | 历史污染余量，决定要不要跑一次性清洗脚本 |
+| E | `fact_adjudication` 事件 7 天拒因分布 + name 字段该拒率（agent_execution_events） | D4 发版后对比的**基线** |
+| F | 「resume 判定分歧」7 天日志计数（生产日志 grep） | 收尾-8B 的清除依据 |
+| G | visual_facts：kind 分布/degraded 率/被砍 7 键的存量行数；active_booking 死键（interview_time 等）存量行数 | 收尾-4/6 的数据面佐证 |
+
+**报告结构**：①执行摘要（每度量一行结论+红黄绿）②各度量明细（SQL 与样本量注明）③行动建议（哪些触发清理脚本/规则调整）④发版后复测清单（哪些数字发版 7 天后重跑对比）。
+
+
+### 收尾-9（终稿 8-11 四审）来源词汇根统一——六章定名，interop 拆除
+
+用户三轮裁定合并为终稿，直接实施：①不要海关，词汇在定义处就统一；②根词汇砍到六章——细分是排障信息不是词汇；③成员名按白话判据重取。
+
+#### 9.1 根词汇（唯一定义点：claim.types.ts）
+
+```ts
+/** 全库唯一「谁说的」词汇。取名判据：每个名字能自然填进「这个值是____来的」。 */
+export type CandidateFactProducer =
+  | 'candidate_quote' // 候选人原话来的：有 TA 原话背书且验证过（自陈 quote 复算 / 答问绑定问句）
+  | 'rule'            // 规则算出来的：正则/别名表/白名单推导
+  | 'model'           // 模型提出来的：LLM 结构化提取/模型工具入参
+  | 'system'          // 外部系统查来的：geocode/定位逆解析/报名表回填/画像接口补全
+  | 'manual'          // 人工定的：我方真人带外拍板（预留章，暂无写入方）
+  | 'archive';        // 档案搬来的：跨会话档案回放
+```
+
+两条立法判据随类型写进注释，防词汇再烂：
+- **待遇判据**：策略表里出现过不同待遇的差别才配当一个章；同待遇的差别住 evidence 字符串。立案证据：city 的 PRODUCER_PRIORITY 8 值实际只有 5 档待遇（rule=allowlist=6、geocode=location_share=map_screenshot=5）。
+- **取名判据**：名字必须能自然填进「这个值是____来的」。
+
+被砍细分的去处（全是已有字段，零新概念）：自陈 vs 答问 vs 推导 → `interpretation`（direct/context_confirmation/derived）；booking 高质量 vs enrichment 弱参考 → `confidence`；geocode vs 定位分享 vs 地图截图 vs 报名表等机制细节 → `evidence` 字符串（本来就写着）。
+
+#### 9.2 六套旧词汇的收敛
+
+| 旧词汇 | 处置 |
+|---|---|
+| `EvidenceProducer`（interop.ts:1） | 删除；confirmation_resolver→candidate_quote、human→manual、tool→system，其余同名 |
+| `CandidateClaimProducer`（claim.types.ts:111） | 被根词汇取代；需窄化用 `Extract<>`，禁另立类型 |
+| `CityClaimProducer`（producers/city.ts:10） | 删除；`PRODUCER_PRIORITY` 改 `Record<CandidateFactProducer, number>`：candidate_quote 7 / rule 6 / system 5 / model 3 / archive 2 / manual 8（预留，现无写入方）。合并项原分数相同，**裁决行为零变化**，city 既有 spec 必须不改断言通过 |
+| `SessionFactSource`（session-facts.types.ts:384，7 值） | `SessionFactValue.source` 类型改为根词汇；旧值规整见 9.3 |
+| `ProfileFactSource`（long-term.types.ts，9 值） | `UserProfileFactValue.source` 同上 |
+| `CollectedFieldProvenance`（interop.ts，4 值） | 退役照原判：`CollectedField.provenance` 改携带根词汇（字段名同步改 `producer`）；`AUTHORITATIVE_PROVENANCE` 白名单等价改写为根词汇子集常量：旧 user_text（≙candidate_quote/rule）与 booking_writeback（≙system）为权威，llm_extract（≙model）非权威。**语义等价逐一对应，不得顺手扩缩权**。注：旧 session `'tool'` 曾映射 llm_extract（非权威）而新表折进 system（权威）——name/phone/age/gender 四字段现网无 tool 章写入者（tool 只出现在 city），故不构成实际扩权；实施时 grep 写入点复核一遍即可 |
+
+顺手修的重复编码：[student-identity.ts:33-34](../../src/resolution/evidence/producers/student-identity.ts) producer=confirmation_resolver 与 interpretation=context_confirmation 是同义反复；统一后 producer=candidate_quote + interpretation=context_confirmation，两字段各说各的事。
+
+#### 9.3 旧数据规整（唯一 IO 细节，零迁移）
+
+规整放在存储 schema 的 parse 边界（`SessionFactValueSchema` / profile 对应 schema 的 `z.preprocess`）——这是全部读取的必经点；域内类型从此只有根词汇。只规整读入，不回写旧行，零存储迁移不破。
+
+- session 7 值：candidate→candidate_quote、llm→model、derived→rule、system→system（原值直通）、tool→system、memory→archive、rule→rule
+- profile 9 值：上述之外 booking→system、enrichment→system、extraction→archive
+- **章记原产不记运输**：settlement 写长期档时透传 session 事实自己的章，`extraction` 不再产生（其"原 sessionFact 来源记在 evidence"的注释式补丁一并删除）
+
+#### 9.4 interop 拆除与私翻死刑（承前判）
+
+- `interop.ts` 整文件删除；session.service:518-528 私有 `toCollectedFieldProvenance` 删除
+- `sessionToProducer` 的残余职责被 9.3 的 parse 边界规整吸收，不另设翻译函数
+- resolution 域终态没有「互转表」概念
+
+#### 9.5 边界与安全（8-11 已核实，实施时不必重查）
+
+- 抽取模型契约零变化：`LLMEntityExtractionResultSchema` 不含 source 枚举，source 是服务端盖章；medium→high 升级机制照旧，升级章由 'candidate' 改写 'candidate_quote'
+- 界外无读者：web/ 不消费 source 值；迁移/RPC 无按 source 过滤；长期档 JSONB 只经 supabase.store 单点读写
+
+#### 9.6 验收
+
+- 三大件全绿；city 裁决 spec 不改断言通过（行为零变化的证明）
+- 终态 grep：`grep -rn "SessionFactSource|ProfileFactSource|CityClaimProducer|EvidenceProducer|CollectedFieldProvenance|toCollectedFieldProvenance" src` 归零（9.3 parse 边界内的 legacy 字面量除外）；claim.types.ts 是全库唯一 producer 定义点
+- 提交（pathspec）：`refactor(candidate-profile): 来源词汇根统一为六章，拆除 interop 海关`
+
+
+### 收尾-10（8-11 立项）LLM 轨证据纪律——向 claim quote 标准看齐
+
+背景（A1 基线暴露的三个机制缺陷，数据见 docs/technical/memory-data-quality-baseline-2026-08.md）：
+- **B**：581 字段仅 36.3% 的 evidence 可提取候选人摘录，逐字命中率 75.8%。病根已定位：LLM 轨经 `toSessionFacts(facts, meta)` **整批共享一条 meta.evidence**，per-field 摘录只存在于规则轨和升档路径；且模型在"意译"而非"摘录"（education 50%/gender 54.5%）。
+- **C**：可探针 medium 里 51.5% 的值逐字出现在候选人原文却没升 high——升档只有"模型自报 explicit_provenance"一条触发道，模型漏报是瓶颈（52 个该报没报）。
+- 匹配器：`applyExplicitProvenanceUpgrade` 的 quote 验证是裸 `message.includes(quote)`，零归一——全半角/空白差异会静默拒绝合法升档。
+
+⚠️ **两处与报告 §10.5 建议的冲突，按本任务书执行**：
+- **name 不进任何自动升档**。`EXPLICIT_UPGRADE_FIELDS` 排除 name 是既有裁决（报名真名校验红线，升级通道只走规则的结构化姓名识别），报告把 name 列为优先试点是不知道这条裁决。name 88.9% 的空档是刻意保护，不是缺陷。
+- **phone 继续锁 medium**（既有医嘱：须经确认问答升级）。
+
+#### 10.A 抽取逐字纪律（prompt/schema 侧）
+
+1. [session-extraction.prompt.ts](../../src/memory/services/session-extraction.prompt.ts)：加逐字纪律条款——`explicit_provenance` 的 quote 必须是候选人消息中的**逐字连续片段**（禁改写/翻译/概括/拼接）；凡候选人原话直接支持的 interview_info 字段都应列入声明（现在漏报严重），仅由上下文推断的不列。解释性内容只写 `reasoning`。
+2. [session-facts.types.ts](../../src/memory/types/session-facts.types.ts) `LLMEntityExtractionResultSchema` 的 `explicit_provenance` describe 同步收紧口径。
+3. **注释义务**：此改动打破「发给抽取模型的 JSON schema 逐字节不变」的旧保证——更新该注释，注明 8-11 起口径版本变更；test-suite 旧批抽取结果跨此版本作废。
+
+#### 10.B 服务端原文探针升档（第二条触发道）
+
+在 [session.service.ts](../../src/memory/services/session.service.ts) `applyExplicitProvenanceUpgrade` 同层加探针道：模型没声明但值确实在原文里的，服务端确定性补升。
+
+1. 触发条件（全部满足）：字段 ∈ `EXPLICIT_UPGRADE_FIELDS`（复用既有白名单——name/事务字段的排除裁决自动继承）；当前 confidence=medium 且 source=model；值为**标量字符串、长度≥2、非纯数字**（短值/数字/布尔不探针——"37"这类子串撞车风险高，仍走模型声明道；实际覆盖 education/household_register_province/experience 等低碰撞字符串）。
+2. 探针语料纪律（比声明道更严，全字段一致）：候选人 user 消息经 `stripTimeContextSuffix` + `stripQuotedBlocks` + 剔除 `isVisualDescriptionText`——引用块经理话术与图片描述不得作为升档语料（沿 phone 通道 B3 既有裁决推广）。
+3. 命中动作：confidence→high、source→`candidate_quote`、evidence→`truncateEvidence(`原文探针命中："${命中摘录}"`)`、extractedAt 刷新；日志标记 `[extractFacts] 原文探针升级`（与「来源声明升级」区分，供 A1 复测 grep 分流两道贡献）。phone 即使命中也不动（白名单内但被 1 条件的 source/纯数字条件天然挡住，仍须显式测试覆盖）。
+4. 附带收益：探针命中即为该字段写入了真实摘录 evidence，直接改善 B 度量的可复算面。
+
+#### 10.C 归一包含匹配器统一
+
+1. 在 [evidence/normalize.ts](../../src/resolution/evidence/normalize.ts) 新增导出 `normalizedIncludes(haystack, needle)`：NFKC 折叠（全半角）+ 去空白 + 中英标点归一后的包含判断。纯函数零 LLM。
+2. 两个消费点统一接入：`applyExplicitProvenanceUpgrade` 的 quote 验证（替换裸 `includes`）；claim admission 的 quote 复算（GPT 先审计 admission.ts/engine.ts 现行匹配实现，统一到同一函数）。
+3. **安全边界**：归一只做字符层折叠，**禁止任何模糊/语义匹配**——quote 复算是防臆造防线（示例回声/新造身份 badcase 族），放宽到语义匹配等于拆防线。normalize spec 须含负例（改写句不得命中）。
+
+#### 10.D 验收
+
+- 三大件全绿；新增测试：探针命中/纯数字拒绝/短值拒绝/引用块语料剔除/name 不升/phone 不升/归一匹配正负例。
+- 与 campaign 同版发布；A1 §11 的发版后复测同时充当本任务前后对照（B 的 36.3%/75.8% 与 C 的 51.5% 是基线）。
+- 提交（pathspec）：`feat(candidate-profile): LLM 轨证据纪律——逐字摘录、原文探针升档、归一匹配器`
+
+
+### 收尾-11（8-11 立项）格式档证据回传——规则轨停止丢弃命中片段
+
+背景：三分法重设计版 §4（docs/architecture/semantic-decision-taxonomy-plan.md）。规则轨解析器明知命中位置却存静态标签当 evidence（[collected-fields.ts:29-37](../../src/resolution/candidate/collected-fields.ts) `put('name', parseName(text), '原文结构化姓名/我叫')`）——正则是唯一能免费给出完美可复算证据的轨道，却在主动丢弃证据。A1 基线 B 度量（可提取摘录 36.3%/逐字命中 75.8%）为对照。
+
+1. `resolution/candidate` 各解析器（parseName/parsePhone/parseAge/parseGender/parseHouseholdProvince/parseHealthCert/parseEducation/parseHeight/parseWeight）返回值升级为携带**命中片段**（值 + 原文 excerpt；签名机械改造，消费点 typecheck 收敛）。
+2. `collected-fields.ts` 的 put() evidence 改为 `truncateEvidence(命中片段)`；静态规则名仅作片段不可得时的 fallback 后缀（如 `「张三」（原文结构化姓名）`）。
+3. 审计 rule-track claim producer（evidence/producers/rule-track.ts）：claim 的 evidence.quote 若已携带片段则复用同一来源，确保规则轨两条出口（ledger collected 与 claim）证据同源，不得各剥各的（一信号一判）。
+4. 验收：三大件全绿；新增单测断言 evidence 含原文片段而非纯标签；提交（pathspec）：`refactor(candidate-profile): 规则轨证据回传命中片段`。
+
+### 收尾-12（8-11 立项）labor-form 意向三态搭抽取车（shadow 对照）
+
+背景：三分法重设计版 §3/§3.1——语义判定的正确居所是抽取调用的封闭标签位（brand_intents 样板），不是正则也不是独立仲裁器。labor-form 意向（set/clear/ignore）是 badcase 密度王且标签集现成。**须在收尾-10 之后做**（同一次抽取契约版本变更，共用一个回归窗口）。
+
+1. `LLMEntityExtractionResultSchema` 加 `labor_form_intent` 标签位：`{ intent: 'set'|'clear'|'ignore', labor_form?: string, quote: string }`（nullable optional；quote 逐字纪律同收尾-10.A；describe 写明三态语义，参照 resolution/labor-form 的 LaborFormIntentDecision 注释口径）。
+2. **shadow 对照，规则继续掌舵**：prep/lifecycle 内将抽取标签位判定与规则轨 `resolveLaborFormIntent` 结果对照，diff 落 `agent_execution_events`（eventType=`semantic_track_diff`，payload 含两轨判定、quote、traceId 可 join）；一致时不落（只记分歧，控事件量）。抽取失败/降级时无对照，静默跳过。
+3. **意向正则冻结令**：`resolution/labor-form` 意向判定正则自本任务起冻结——文件头加注释：新 badcase 不加正则分支，先查 semantic_track_diff 档案；翻转 enforce 由 diff 数据支撑后另行立项。
+4. 明确不做：本任务不改任何生效判定路径（LaborFormIntentDecision 仍由规则轨产出）、不动 matchesLaborForm 枚举匹配（那是格式档，形态正确）。
+5. 验收：三大件全绿；新增测试覆盖 diff 事件落库与降级静默；提交（pathspec）：`feat(candidate-profile): labor-form 意向抽取标签位 shadow 对照`。
+
+
+### 收尾-13A（8-11 立项）下线 job_facts_without_any_lookup 硬规则
+
+用户裁定：**下线不修补**（与 7-10 两批删 20 条硬规则同判例族）。依据 8-11 生产实测：7 天 2343 条出站审查中该规则独占 81 次拦截（=全部拦截的 57%），抽样 8 条约 80% 假阳——跨轮复述（前轮工具结果的距离/发薪日/班次被当无出处）与 visual sheet 盲区（候选人自发海报的事实被当编造）两个根因；该规则此前已打过「助手历史出处豁免」补丁仍是此假阳率，判不可修。真阳残余（如无出处发薪日）交语义档与 repair 复盘承接。
+
+拆除清单（全部落点已侦察核实）：
+
+1. 删文件：`src/agent/guardrail/output/rules/job-facts-without-lookup.rule.ts`（433 行）+ `tests/agent/guardrail/output/job-facts-without-lookup.rule.spec.ts`。
+2. [hard-rules.service.ts](../../src/agent/guardrail/output/hard-rules.service.ts)：删 :29 import 与 :286-296 调度块（「形态三」注释 + detectJobFactsWithoutLookup 调用 + push）；顺手核对形态二（settlement_no_evidence_assertion）注释中的互补表述，改为独立成立的说法。
+3. [output-rule-catalog.ts](../../src/agent/guardrail/output/rules/output-rule-catalog.ts)：删 :518-537 整个 entry（id='job_facts_without_any_lookup'）。
+4. [catalog.ts](../../src/agent/guardrail/catalog.ts)：删 :82-83 映射两行。
+5. [repair-regression.util.ts](../../src/agent/guardrail/output/repair-regression.util.ts)：`ZERO_EVIDENCE_RULE_IDS` 集合中移除该 id（集合与回退闸门保留，settlement_no_evidence_assertion 继续在内）；`repair-regression.util.spec.ts:106` 的 triggeredRuleIds 改用 settlement_no_evidence_assertion，回退闸行为断言不变。
+6. 注释处置（裁决史保留原则）：[output-guardrail.service.ts:210-212](../../src/agent/guardrail/output/output-guardrail.service.ts) 与 [review-packet.types.ts:15](../../src/agent/guardrail/output/llm/review-packet.types.ts) 提及该规则的注释**不删内容**（跨轮复述信号共享的设计依据仍有效），仅把规则名标注为「（已于 8-11 下线）」。
+7. **不许动的**：labels.ts 旧标签勿清（历史 dashboard 数据引用）；`guardrail_review_records` 历史行含该 rule_id 属正常，勿做任何数据清洗。
+8. 验收：三大件全绿；`grep -rn "job_facts_without_any_lookup" src tests` 仅剩第 6 条的历史标注注释；提交（pathspec）：`refactor(guardrail): 下线 job_facts_without_any_lookup（假阳率不可修，用户裁定）`。
+
+
+### 收尾-13B（8-11 二批）：第三批硬规则下线再加三条
+
+用户裁定三条全下线（判据延续：拿正则猜语义承诺/出处/原因的规则全病，有确定性证据基的才活）。8-11 各抽 4 条近样的判读依据：handoff_promise 4/4 假阳且直接违反「会通知你≠空头承诺」既有裁定、repair 把回复掏空成纯共情；screening_rejection_override 的「原因隐匿」职能违反「性别年龄可明说」裁定（把"要求24-50岁"洗成"综合评估不匹配"）；settlement_no_evidence 2/4 与 job_facts 同病（跨轮/引用块出处盲）。
+
+#### 13B-1 `handoff_promise_without_handoff`（接线最广，逐点审计）
+
+- 删 `rules/handoff-promises.rule.ts` + 其 spec；output-rule-catalog entry、catalog.ts 映射同前判。
+- ⚠️ **功能性耦合审计**（不只是删注释）：`agent-runner.service.ts`、`duliday-interview-booking.tool.ts`、`internal-info-leaks.rule.ts`、`booking-receipt.rule.ts` 四处引用该 id——逐点判断是注释、优先级去重还是状态传递（如 handoff 已调用标志的 plumbing）；因规则消失而变死的管线一并删，与存活规则共享的 helper 保留。
+- `repair-regression.util.ts` 的「承诺降级」回归形态若以该 id 为触发键，触发键消失后该形态死代码一并删；若形态是通用文本判定则保留。
+- 残余风险注记：其设计目标「已转人工/已叫真人」完成时态假宣称防线随规则消失，转语义档观察承接（本次抽样中该形态零命中）。
+
+#### 13B-2 `screening_rejection_override`（接线干净）
+
+- 删 `rules/screening-rejection-override.rule.ts`、catalog 两处、hard-rules.service 调度、hard-rules.service.spec 相关用例。
+- 残余风险注记：①防翻案职能（precheck 拒后模型"让同事确认名额"式翻案）转 precheck 拒绝态粘性提示词与语义档观察；②候选人将听到真实筛选原因（年龄段/身份要求）——这本就符合「性别年龄非歧视信息可明说」裁定，是回归正确行为而非风险。
+
+#### 13B-3 `settlement_no_evidence_assertion`（同文件雷）
+
+- ⚠️ 该规则与**存活规则** `settlement_cycle_mismatch` 同住 `rules/settlement-cycle-mismatch.rule.ts`——只删 no_evidence 检测器与其导出，**勿动 cycle_mismatch**（它是"回复与本轮工具结果矛盾"的确定性比对，证据基健康）。
+- `repair-regression.util.ts` 的 `ZERO_EVIDENCE_RULE_IDS` 集合随本条移除后成为空集——连集合与其分支一起删（收尾-13A 已移除另一成员），相关 spec 用例改造或删除。
+- catalog 两处、hard-rules.service 调度（形态二注释）、agent-runner.service 引用点审计同 13B-1 口径。
+
+#### 13B-4 通用条款（与 13A 相同）
+
+- labels.ts 旧标签勿清；`guardrail_review_records` 历史行勿洗。
+- 验收：三大件全绿；`grep -rn "handoff_promise_without_handoff|screening_rejection_override|settlement_no_evidence_assertion" src tests -E` 仅剩历史标注注释；提交（pathspec）：`refactor(guardrail): 第三批硬规则下线（handoff承诺/筛选原因隐匿/结算出处）`。
+- 下线后硬规则存活清单（预期）：booking_receipt_mismatch / date_reference_mismatch / internal_output_leak / human_service_phrase_leak / unsupported_store_status_speculation / unsupported_schedule_window_claim（观察）/ online_interview_location_claim（观察）及其余未涉本次判读的低频规则——全部具有确定性证据基。

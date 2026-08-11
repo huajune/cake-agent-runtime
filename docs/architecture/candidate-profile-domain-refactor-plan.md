@@ -214,7 +214,7 @@ extractAndSave 里约 520 行「事实怎么算」（11 道臆造门 + 6 条 cit
 |---|---|---|
 | `CandidateFactClaim` | **升格为全域唯一裁决通货**（不变式①） | P2 起 |
 | `HighConfidenceValue` | **退役**——规则轨变 producer 直接产 claim，包装层失去存在理由 | P3-8 |
-| `CollectedField`（HC-2 权威字段） | **退役**——出处审（quote 复算）取代 provenance 白名单；ledger 落地后工具内解析退场，`toCollectedFieldProvenance` 的有损映射随之消失 | P3-9 |
+| `CollectedField`（HC-2 权威字段） | **词汇退役、结构存续**（8-11 二审）：结构本体保留为 ledger 权威视图；其 provenance 词汇并入根词汇；8-11 三审升格：**词汇定义处统一**（用户裁定「不要海关」）——六套「谁说的」词汇（三套 producer + 两套存储 source + provenance）合一为 claim.types.ts 唯一定义的根词汇，interop.ts 文件整体删除，翻译降格为 stores 适配器 IO 细节；8-11 四审定稿六章：candidate_quote/rule/model/system/manual/archive（待遇判据=策略表待遇不同才配进词汇，city 8 值实为 5 档为证；取名判据=名字须填得进「这个值是____来的」；细分归 interpretation/confidence/evidence）（收尾-9 终稿）；结构级并入 claim 留待 ledger 稳定后再议 | 收尾-9 |
 | `VisualFactField.ownership` | 降格为 visual producer 出参，经互转表映射进 claim | P4 |
 | `BrandResolution` | 降格为 brand 策略行内部类型，对外走 claim | P5 |
 | `SessionFactValue` | **保留，降格为纯落盘格式**——不再承载裁决语义，写入前通货是 claim | 非目标（Redis 兼容） |
@@ -239,7 +239,7 @@ extractAndSave 里约 520 行「事实怎么算」（11 道臆造门 + 6 条 cit
 | 晚到丢弃 shouldDropLateResolutions | 底盘时序规则（assertedAt 水位） |
 | currentBrand + excludedBrands 复合状态 | brand 槽的值类型 = 复合结构（底盘须支持复合槽值——这是对引擎的要求，不是豁免理由） |
 
-迁移排最后一期（P5）：金测试 = reducer 现有 spec 全集对新引擎回放，加 shadow_diff 双跑（品牌域已有成功先例）；**验收物是 `brand-state.reducer.ts` 物理删除**，不是适配层永存。过渡期动作照旧：BrandStateService 删自持 `buildHashKey`（brand-state.service.ts:329-331）走 SessionService 出口；`validateBrandIntents`（session.service.ts:1295-1350）与 `detectBrandAliasHints`（hcf:536-560）先收回 brand 域；`isSameBrandRef` 两份拷贝合一。存储格式（brand_state 字段形态）与引擎解耦，可保持不迁。
+迁移排最后一期（P5）：金测试 = reducer 现有 spec 全集对新引擎回放（8-11 修正：原计划的 shadow_diff 双跑随 reducer 物理删除不可用，后验改 brand_state_change 事件分布对比）；**验收物是 `brand-state.reducer.ts` 物理删除**，不是适配层永存。过渡期动作照旧：BrandStateService 删自持 `buildHashKey`（brand-state.service.ts:329-331）走 SessionService 出口；`validateBrandIntents`（session.service.ts:1295-1350）与 `detectBrandAliasHints`（hcf:536-560）先收回 brand 域；`isSameBrandRef` 两份拷贝合一。存储格式（brand_state 字段形态）与引擎解耦，可保持不迁。
 
 **② candidate 快照 vs memory 生命周期：存储归 memory，语义归 evidence。** 快照是 precheck→booking 的事务握手状态，不是记忆——它不进 onTurnStart/onTurnEnd 是对的（勘探确认 lifecycle 全文无引用），写进 README 固化。`precheck-snapshot.types`（watermark/factsVersion）、`snapshot-gate.util`（tools/duliday/booking，三个 import 全来自 claim 域）、`CLAIM_FIELD_TO_CHECKLIST` 等三张字段映射表（precheck.tool:645-703，注释自陈"写错一个字闸门无声失效"）全部归 evidence；CandidateSnapshotService 只剩 Redis get/set。
 
@@ -255,7 +255,7 @@ extractAndSave 里约 520 行「事实怎么算」（11 道臆造门 + 6 条 cit
 
 ## 4. 执行序（一气呵成，2026-08-08 用户裁定）
 
-**P0–P5 是工序依赖顺序，不是发版节奏**：同一 campaign 分支连续完成、一次发版落地，不对外暴露过渡期/双轨/适配层形态；回滚 = 应用版本整体回滚（全程零存储迁移）。brand 切换以金测试为闸、shadow_diff 改发版后验证（连续 7 天零分歧）。开工唯一前置：D1/D2/D3/归一剥「省」四项裁决一次拍完。施工手册见 [candidate-profile-domain-implementation-guide.md](./candidate-profile-domain-implementation-guide.md)。
+**P0–P5 是工序依赖顺序，不是发版节奏**：同一 campaign 分支连续完成、一次发版落地，不对外暴露过渡期/双轨/适配层形态；回滚 = 应用版本整体回滚（全程零存储迁移）。brand 切换以金测试为闸、发版后靠 brand_state_change 事件分布对比盯 7 天（8-11 修正：reducer 已删无对照，「shadow_diff 后验」表述作废）。开工唯一前置：D1/D2/D3/归一剥「省」四项裁决一次拍完。施工手册见 [candidate-profile-domain-implementation-guide.md](./candidate-profile-domain-implementation-guide.md)。
 
 > **执行状态（2026-08-10）**：第一 campaign（P0–P5 结构性动作）已全部落地并通过验收——账本核心兑现：六个整文件删除（含 `brand-state.reducer.ts`，金测试改回放 `evidence/brand-policy`）、`memory/facts` 目录消失、ESLint 双禁令落位、session.service 让位判据 0 残留、三大件全绿（typecheck / lint / 7081 测试）。评审修复随后完成：name-qa 拆三归 evidence（corpus / producers/name-confirmation / identity-gates）、裁决史注释回填、`isDigitsOnlyName` 口径还原、evidence 命名清理（brand 同名冲突 / run→adjudicate / admission-shape 并入 gates / producers 按信号渠道命名）+ evidence/README 文件地图、`parse.ts`→`collected-fields.ts`、`CollectedField` 信封别名化归一。两笔已声明余款转入 P6/P7。
 > **终局（2026-08-11）**：P6–P9 亦全部落地（回合账本：ToolBuildContext 288→97 行五组化 + turn-ledger/drain；通货：rule-track claim 化、HighConfidenceValue 全库退役；信号轴：signal/{markers,dialogue,self-report,types,visual}、infra/utils 回归四件套；契约：各域 types 收口、tool.types 瘦身）。六个按工序 commit（c9eb8231→97299fcb），三大件全绿（7082 测试）。**唯一遗留**：消费权限表（P4-5/§3⑥）未成单一居所——实测散点仅剩 2 处（invite-to-group:310、send-store-location:181），小任务待收口。
@@ -319,7 +319,7 @@ extractAndSave 里约 520 行「事实怎么算」（11 道臆造门 + 6 条 cit
 ### Phase 5 · brand 上底盘（终态无例外的兑现）
 
 1. reducer 全部行为按 §3① 映射表写成 evidence 的 brand 策略行（复合槽值 + operation 语义 + 渠道优先序 + 语境闸）；四条输入轨（hints/规则/LLM/昵称）收敛为 producer 清单，预处理统一收在 producer 入口，兑现不变式④（一信号一判）。
-2. 金测试：reducer 现有 spec 全集对新引擎回放，全绿为前置；生产 shadow_diff 双跑对照（品牌域既有成功先例），分歧归零后切换。
+2. 金测试：reducer 现有 spec 全集对新引擎回放，全绿为前置（8-11 修正：shadow_diff 双跑随 reducer 删除不可用，后验改事件分布对比）。
 3. **验收物：`brand-state.reducer.ts` 物理删除** + ESLint/类型篱笆防再生。存储格式（brand_state 字段形态）不迁。
 4. 本期完成后，②治理层在全字段上只剩一个引擎——三条不变式全部兑现。
 
