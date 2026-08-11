@@ -410,3 +410,61 @@ export const ACTION_MIN_CONFIDENCE = {
   `docs/architecture/diagrams/candidate-profile-domain-map.html`
 - 建议信息：`docs(candidate-profile): 同步 P6-P9 执行状态与图解历史横幅`
 - ⚠️ **`docs/releases/2026/weekly-2026-08-07.md` 的 staged 删除不是本 campaign 的改动，严禁提交或还原，原样留给仓库主人处置。**
+
+
+### 收尾-3 岗位指代解析归位（独立债二清偿：session-job-matching 出 memory）
+
+性质：`extractPresentedJobs`（助手回复→本轮展示的岗位）与 `resolveCurrentFocusJob`（候选人最新话→焦点岗位/清焦点）是**岗位指代的字段解析器**（文本→岗位集合/焦点，与 brand 同音回指、geo 地名扫描同性质），实现却寄居主权方 memory——宪法违章，纯搬迁清偿。
+
+1. `git mv src/memory/services/session-job-matching.ts src/resolution/job/index.ts`（单文件域，index 即契约，labor-form 先例）。
+2. **类型随迁（必做，否则 resolution→memory 违 ESLint）**：`RecommendedJobSummary` + `RecommendedJobSummarySchema`（session-facts.types.ts:810/839）迁入 `src/resolution/job/types.ts`；`session-facts.types.ts` 改为存储侧别名转发（CollectedField 同款注释："类型唯一定义在 @resolution/job/types，此处仅作存储侧转发"），既有 import 路径经转发继续有效，域外引用不必全改。
+3. 消费者改指 `@resolution/job`：`src/memory/services/session.service.ts`、`src/agent/reengagement/anchor.service.ts`。job 域 import `@sponge/job-category.util` 合法（brand 先例）。
+4. 测试镜像随迁：`git mv tests/memory/session-job-matching.spec.ts tests/resolution/job/index.spec.ts`，内部 import 改 `@resolution/job`。
+5. 验收：`grep -rn "session-job-matching" src tests` 为空；`grep -rn "from '@memory" src/resolution` 为空；三大件全绿。
+6. 提交（pathspec）：`refactor(candidate-profile): 岗位指代解析归位 resolution/job`。
+
+### 收尾-4 active_booking 死字段清理 + 界碑注释（独立债一改判「暂住，带迁居触发条件」）
+
+裁决（jiezhu，2026-08-11 两轮讨论）：**先打扫，再立碑；暂住不是定居。**
+
+**A. 死字段清理（已验证零业务读者，零存储迁移）：**
+1. `src/memory/types/long-term.types.ts` 的 `ActiveBooking`：删除四个 @deprecated 字段（interview_time / brand_name / store_name / job_name）——grep 全库唯一触点是 store 归一化行本身（fact-lines / checklist.util 命中的是 `interview_info.interview_time`，同名不同物，勿动）。
+2. `src/memory/stores/supabase.store.ts:79-82`：删除对应四行 JSONB 归一化；老行里的死键从此被静默忽略。
+3. 过时注释清理：类型文档块里「迁移 20260630120000 改名」沿革保留一句即可；「顶层字段仍指向最近一笔，兼容旧调用方」改写为准确现状——代码侧单数 API 已由 `bookings[]` 派生（supabase.store:383-384），顶层镜像仅为**老行 JSONB 形态兼容**而保留在写入侧，不再有「旧调用方」。
+
+**B. 界碑注释（钉在清理后的 `ActiveBooking` 文档块）：**
+- **出身沿革（一句写清，防止后人误判为寄居）**：前身独立表 `interview_booking_records` 是日期×品牌×门店的聚合统计表（`UNIQUE(date,brand_name,store_name)`+计数器，逐人身份是补丁），因聚合无逐人身份、bot_im_id 裂行等病于 20260625 DROP——当年是**按性质一拆为二**：统计漏斗归 `ops_events('booking.succeeded')`，逐人当前指针归档案本列（latest_booking→active_booking）。住进档案是拆分的结果，不是无意寄居。
+- 暂住理由两条：①纯事务指针（清理后仅 work_order_id/linked_at/job_id/bookings），业务状态唯一权威是海绵；②访问模式与每用户一行的长期记忆表同构。
+- **迁居触发条件（任一出现即迁 biz 独立表）**：出现「按工单反查候选人」需求；或工单状态回流（webhook）立项。**迁居形态要求：关系指针表（corp_id+user_id+work_order_id 一行一工单，身份口径用 wecomUserId），严禁复活聚合计数表形态——老表死因。**
+- 硬纪律：**本结构禁止新增业务字段；任何「顺手存一下面试时间/门店」的提案一律拒绝。**
+
+验收：`grep -n "interview_time\|brand_name\|store_name\|job_name" src/memory/types/long-term.types.ts src/memory/stores/supabase.store.ts` 为空；三大件全绿。同步方案 §6 状态。提交（pathspec）：`refactor(candidate-profile): active_booking 死字段清理与界碑`（long-term.types.ts + supabase.store.ts）。
+
+
+### 收尾-5 D5 落地：enrichment 性别入档（gender_source='system'）
+
+裁决（jiezhu，2026-08-11）：入档，认 `gender_source='system'` 语义。现状：`memory-enrichment.service.ts:57` 每轮在档案无性别时查客户详情接口，经 `mergeSupplementalGenderClaims` 只进本轮 ruleFacts（sidecar），不落档 → 同一候选人每轮重查。
+
+1. 让补全性别沿正常裁决→落档链路持久化：`interview_info.gender` + `gender_source='system'`（producer/来源按 evidence 现行体系，出处记「客户详情接口」）。
+2. 合并策略必须保持：**候选人自陈 > system**——system 值只填空，永不覆盖自陈；候选人此后自报性别可覆盖 system 值（gender 策略行显式表态）。
+3. 验收：同一候选人第二轮日志不再出现「客户详情补充性别成功」（接口只查一次）；档案里 `gender_source='system'` 可见；自陈覆盖用例绿；三大件全绿。
+4. 提交（pathspec）：`feat(candidate-profile): enrichment 性别入档 gender_source=system`。
+
+### 收尾-6 D6 落地：visual 词表瘦身（砍 7 留 8——含两个分流槽，勿砍到 6）
+
+裁决（jiezhu，2026-08-11）：砍死键、A2/B2 承诺解绑另行立项。⚠️ **执行修正**：`publisher`/`store` 虽零读者但是**分流槽**——R2 发布方剔除靠「模型有地方放发布方名」实现，砍掉会让发布方名流进 `brand` 键（发布方品牌劫持回归）。
+
+1. `src/resolution/signal/visual/visual-fact.types.ts` 的 `VISUAL_FACT_FIELD_KEYS`：**砍 7**（name / age_range / brand_id / salary_text / shift_text / cert_type / cert_issue_date），**留 8**（phone / brand / city / address / candidate_address / other + 分流槽 publisher / store）。
+2. 给 publisher/store 加注释：「零读者但为分流槽——保护 brand 键不被发布方名/门店名污染（R2），砍除即劫持回归」。词表 prompt（VISUAL_FACT_FIELD_KEY_PROMPT）由常量生成自动变短，无需另改。
+3. 存量兼容说明：老 `visual_facts` 行里被砍 key 经 `parseStoredVisualFactSheet` 的 finalize 白名单静默丢弃——它们本就零读者，零行为影响。
+4. 文档：`docs/architecture/visual-fact-pipeline.md` 附录 A 刷新（记录本裁决：A2 品牌ID直通 / B2 健康证补齐两条承诺与词表解绑，另行立项）。
+5. 验收：vocabulary spec 更新绿；`grep -n "cert_type\|age_range\|salary_text\|shift_text\|brand_id" src/resolution/signal/visual/visual-fact.types.ts` 为空；三大件全绿。
+6. 提交（pathspec）：`refactor(candidate-profile): visual 词表瘦身（砍7留8，分流槽保留）`。
+
+### 收尾-7 D7 前置验证：县级市开关对照表（不翻开关，只出报告）
+
+裁决（jiezhu，2026-08-11）：先测后开。**本任务不翻任何环境开关**，只产出对照证据供拍板：
+
+1. 写对照 spec（如 `tests/resolution/geo/national-county-mapping-diff.spec.ts`）：同一批县级市输入（含「余姚」类历史补录案例）在 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` 开/关两态下跑 `administrative-area.resolver`，输出差异表（哪些输入从 unresolved → 命中、命中到哪个城市）。
+2. 差异表贴进 PR 描述，作为用户拍「默认开启并删开关」的凭据；开关翻转与删除**留给用户终审后另行执行**。
+3. 提交（pathspec）：`test(geo): 县级市映射开关对照表`。

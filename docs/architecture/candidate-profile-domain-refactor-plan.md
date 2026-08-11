@@ -362,22 +362,29 @@ extractAndSave 里约 520 行「事实怎么算」（11 道臆造门 + 6 条 cit
 > D0（治理层居所）已于 2026-08-08 讨论裁决，不在此列：**实现归 resolution/evidence，主权与编排归 memory**（§2.0）。
 > **落地状态（2026-08-10）**：D1/D2/D3 已随第一 campaign 按建议口径落地——D1 sheet 优先 + 文本兜底；D2 去重累积、候选人明确「不限」才清；D3 LLM 裸 city 降为 medium（invite 门/群资源块放行面收紧）。仍待拍：D4（shadow→enforce）、D5（enrichment 性别）、D6（visual 零读者 key）、D7（县级市开关）、D8（turn-finalizer 消费承诺——将由 P6 回合账本直接兑现）。
 
-| # | 问题 | 影响 |
+**已结（4/8，勿再讨论）：**
+
+| # | 结论 | 落地凭据 |
 |---|---|---|
-| D1 | 简历/自陈材料判据合并口径：sheet 优先版（认 certificate/履历/手写）vs 子串版（只认 `简历图片：`）？建议 sheet 优先 + 宽正则兜底 | claim quote 语料范围；现行误拒 |
-| D2 | district/location 只进不出的累积语义：保留还是引入清除/让位？ | 跨城搬迁后的陈旧区县噪音 |
-| D3 | LLM 城市裸值 confidence 是否降为 medium（现被 schema 抬成 high）？ | invite 城市门/群资源块放行面直接变化 |
-| D4 | claim 引擎 shadow→enforce 的判决条件与时间表（name 字段该拒因曾日 40 条，需先消化） | booking 姓名/身份闸门行为 |
-| D5 | enrichment 补全的性别要不要入档（现只写非持久化 sidecar，每轮重查外部接口） | 外部接口调用量；gender_source 语义 |
-| D6 | visual 九个零读者 field key：砍词表还是补消费（附录 A 的 A2 品牌ID直通、B2 健康证补齐两条承诺）？ | vision 提示词长度 vs 功能兑现 |
-| D7 | `GEO_NATIONAL_COUNTY_MAPPING_ENABLED` 直读 process.env 的过渡开关：默认开启并删除？ | 县级市映射覆盖面 |
-| D8 | turnVisualFactSheets 注释承诺「turn-finalizer 消费」但 runner 零引用：补实现还是删承诺？ | 文档与实现对齐 |
+| D1 | ✅ sheet 优先 + 文本兜底 | 第一 campaign 落地（signal/self-report） |
+| D2 | ✅ 去重累积、候选人明确「不限」才清 | 第一 campaign 落地 |
+| D3 | ✅ LLM 裸 city 降为 medium（放行面收紧） | 第一 campaign 落地 |
+| D8 | ✅ 由 P6 结构性兑现——`generator.agent.ts:355` `ctx.ledger.drain()` 即当年承诺的收尾消费 | P6 回合账本 |
+
+**8-11 全部拍毕（后四项裁决记录）：**
+
+| # | 裁决 | 执行去向 |
+|---|---|---|
+| D4 | ✅ 发版后 shadow **重新**积累（旧数据跨大版本作废：name 逃生口扩 4 条、rule-track claim 化已改变拒因分布），观察 ≥7 天、该拒率达标后翻 `CANDIDATE_FACT_ADJUDICATION_MODE=enforce` | 发版后围观流程，用户终审翻开关 |
+| D5 | ✅ 入档，认 `gender_source='system'` 语义；候选人自陈永远可覆盖 system 值 | 收尾-5 |
+| D6 | ✅ 砍死键、A2/B2 承诺解绑另行立项；执行修正：**砍 7 留 8**——publisher/store 是保护 brand 的分流槽（砍除即发布方劫持回归），零读者也保留 | 收尾-6 |
+| D7 | ✅ 先测后开：对照 spec 产出开/关两态差异表，凭差异表终审「默认开启并删开关」 | 收尾-7（不翻开关，只出报告） |
 
 ## 6. 非目标与接受的代价
 
 **不做：**
 - `SessionFactValue` / `brand_state` 的 Redis 落盘格式**不**迁移（三态兼容照旧）；统一发生在「进出档案的裁决通货」层，存储格式与引擎解耦。
-- long-term 沉淀链路与 Supabase 表结构不动；`active_booking` 寄居长期记忆、`session-job-matching` 寄居 memory 两条错位**登记为独立债**，不随本方案（前者要动表，后者是岗位域的事）。
+- long-term 沉淀链路与 Supabase 表结构不动。两条独立债 2026-08-11 讨论清账：`session-job-matching`（岗位指代解析寄居 memory）**清偿**——纯搬迁入 `resolution/job/`（收尾-3）；`active_booking` **改判「暂住，带迁居触发条件」**（收尾-4）——先清死字段（四个 @deprecated 字段零业务读者：接口 + store 归一化删除，零存储迁移），再立界碑：暂住理由 = 纯指针 + 访问同构；**迁居触发条件** = 出现按工单反查候选人需求或工单状态回流立项，任一出现即迁 biz 独立表（一行一工单）；硬纪律 = 禁增业务字段。注：初判引用的「零存储迁移底线」是 campaign 范围约束而非永久法则，已修正。
 - 不新增 src 根目录。
 
 **接受的代价：**
