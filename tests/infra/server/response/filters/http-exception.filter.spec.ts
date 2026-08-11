@@ -75,4 +75,51 @@ describe('HttpExceptionFilter', () => {
     expect(notifier.notifyAsync).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(404);
   });
+
+  it('should narrow structured exception fields before building the response', () => {
+    const filter = new HttpExceptionFilter();
+    const { host, json } = createHost();
+
+    filter.catch(
+      new HttpException(
+        {
+          message: ['name must not be empty'],
+          code: 'VALIDATION_ERROR',
+        },
+        HttpStatus.BAD_REQUEST,
+      ),
+      host,
+    );
+
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          message: 'Validation failed',
+          details: { validationErrors: ['name must not be empty'] },
+        }),
+      }),
+    );
+  });
+
+  it('should fall back when structured exception fields are not strings', () => {
+    const filter = new HttpExceptionFilter();
+    const { host, json } = createHost();
+
+    filter.catch(
+      new HttpException({ message: 123, code: false }, HttpStatus.BAD_REQUEST),
+      host,
+    );
+
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({
+          code: 'BAD_REQUEST',
+          message: 'Http Exception',
+        }),
+      }),
+    );
+  });
 });

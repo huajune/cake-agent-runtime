@@ -9,18 +9,18 @@ export class MessageSanitizer {
    * 脱敏消息数据
    * 移除敏感信息，用于日志记录和调试
    */
-  static sanitize(messageData: EnterpriseMessageCallbackDto): any {
-    const sanitized: any = { ...messageData };
+  static sanitize(messageData: EnterpriseMessageCallbackDto): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = { ...messageData };
 
-    // 脱敏敏感信息
-    if (sanitized.token) {
-      sanitized.token = this.sanitizeString(sanitized.token, 4, 4);
+    // 脱敏敏感信息（读原始 DTO 的强类型字段，写回副本）
+    if (messageData.token) {
+      sanitized.token = this.sanitizeString(messageData.token, 4, 4);
     }
-    if (sanitized.imBotId) {
-      sanitized.imBotId = this.sanitizeString(sanitized.imBotId, 3, 3);
+    if (messageData.imBotId) {
+      sanitized.imBotId = this.sanitizeString(messageData.imBotId, 3, 3);
     }
-    if (sanitized.orgId) {
-      sanitized.orgId = this.sanitizeString(sanitized.orgId, 3, 3);
+    if (messageData.orgId) {
+      sanitized.orgId = this.sanitizeString(messageData.orgId, 3, 3);
     }
 
     return sanitized;
