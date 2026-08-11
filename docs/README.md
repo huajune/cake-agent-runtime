@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-07-23
+**最后更新**：2026-08-11
 
 ---
 
@@ -27,6 +27,9 @@
 - **[Agent 运营手册](product/agent-for-operations.md)** 👉 — 上文的业务语言版（运营向，收录在 product/，见下方产品区）
 - **[记忆系统架构](architecture/memory-system-architecture.md)** — 四层记忆（CoALA）、Hybrid 注入/检索、空闲沉淀
 - **[记忆与线索数据流](architecture/memory-and-hints-data-flow.md)** — 记忆读写与线索注入的端到端数据流
+- **[候选人档案域重构方案](architecture/candidate-profile-domain-refactor-plan.md)** — 候选人解析、证据裁决、信号轴、回合账本与域契约的终态设计
+- **[候选人档案域实施指南](architecture/candidate-profile-domain-implementation-guide.md)** — P0–P10 施工历史及收尾-11～13 后续任务书
+- **[语义判定三分法](architecture/semantic-decision-taxonomy-plan.md)** — 正则、LLM 标签位与向量判定的准入边界
 - **[企微消息服务架构](architecture/message-service-architecture.md)** — 消息管道：去重→过滤→存储→聚合→Agent→投递
 - **[群任务通知流水线](architecture/group-task-pipeline.md)** — 群任务定时通知的运行时流水线
 - **[Gate 拒绝与人工介入流水线](architecture/handoff-gate-and-intervention-pipeline.md)** — Tool gate → LLM 短路 → Runner handoff → 底账判重 → 暂停托管与飞书告警
@@ -80,6 +83,7 @@
 - **[群任务定时通知系统](product/group-task.md)** — 群任务产品设计（运行时见 [group-task-pipeline.md](architecture/group-task-pipeline.md)）
 - **[运营数据体系 + 海绵集成 产品设计](product/ops-data-and-sponge-integration.md)** — ops_events 数据模型设计（研发向；顶部含实现校准记录）
 - **[运营数据体系 · 产品说明](product/ops-data-spec-for-operations.md)** — 上文的运营使用说明（日报/Web/埋点三出口）
+- **[收资流字段去重与一次成型](product/collection-flow-dedup-requirement.md)** — 已知字段扣除、字段集去重与缺口式追问需求草案
 
 ---
 
@@ -113,6 +117,8 @@
 ## 🛠️ 技术专题 (technical/)
 
 - **[Bull Queue 使用指南](technical/bull-queue-guide.md)** — 消息聚合队列的使用与排障
+- **[生产记忆数据质量基线](technical/memory-data-quality-baseline-2026-08.md)** — candidate-profile campaign 发版前的证据覆盖、垃圾值与兼容层基线审计
+- **[县级市映射开关对照报告](architecture/geo-national-county-mapping-diff-report.md)** — 全国县级市映射开关的只读差异证据
 
 ---
 
