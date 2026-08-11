@@ -241,23 +241,25 @@ export interface SummaryData {
 /**
  * 候选人当前有效/待处理预约工单指针。
  *
- * 对应 agent_long_term_memories.active_booking 列（迁移 20260630120000 由 latest_booking 改名，
- * JSONB 键 latest_work_order_id 同步改为 work_order_id）。
- * 业务状态每次直接查海绵。同一候选人可同时报名多个岗位，因此新数据会在
- * `bookings` 中保留多个工单；顶层字段仍指向最近一笔，兼容旧调用方。
+ * 沿革：迁移 20260630120000 将 agent_long_term_memories.latest_booking 改名为
+ * active_booking，JSONB 键 latest_work_order_id 同步改为 work_order_id。
+ *
+ * 暂住本表的边界：
+ * - 本结构仅保存 work_order_id / linked_at / job_id / bookings 事务指针；面试时间、门店等
+ *   业务状态唯一权威是海绵，使用时必须实时查询，不在长期记忆复制事实。
+ * - 访问模式是按 corpId + userId 跨会话读取，与每用户一行的长期记忆表同构。
+ * - `bookings` 保留同一候选人的多岗位工单；代码侧单数 API 从该列表派生最近一笔。
+ *   写入侧的顶层镜像仅用于兼容老行 JSONB 形态，不代表第二份业务状态。
+ *
+ * 迁居触发条件：出现“按工单反查候选人”需求，或工单状态回流（webhook）立项时，
+ * 必须迁入 biz 独立表并改为一行一工单。
+ *
+ * 硬纪律：本结构禁止新增业务字段；任何“顺手存一下面试时间/门店”的提案一律拒绝。
  */
 export interface ActiveBooking {
   work_order_id: number;
   linked_at: string;
   job_id?: number | null;
-  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存，复聊不得作为业务事实使用。 */
-  interview_time?: string | null;
-  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存。 */
-  brand_name?: string | null;
-  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存。 */
-  store_name?: string | null;
-  /** @deprecated 仅用于读取历史 JSONB；新写入不再保存。 */
-  job_name?: string | null;
   bookings?: ActiveBooking[];
 }
 

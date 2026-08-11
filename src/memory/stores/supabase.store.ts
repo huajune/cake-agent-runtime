@@ -76,10 +76,6 @@ function normalizeActiveBookingEntry(value: unknown): ActiveBooking | null {
     work_order_id: workOrderId,
     linked_at: linkedAt,
     job_id: jobId,
-    interview_time: typeof raw.interview_time === 'string' ? raw.interview_time : null,
-    brand_name: typeof raw.brand_name === 'string' ? raw.brand_name : null,
-    store_name: typeof raw.store_name === 'string' ? raw.store_name : null,
-    job_name: typeof raw.job_name === 'string' ? raw.job_name : null,
   };
 }
 
