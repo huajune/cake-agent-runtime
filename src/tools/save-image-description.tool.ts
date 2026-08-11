@@ -121,6 +121,8 @@ export function buildSaveImageDescriptionTool(
         const safeDescription = sanitizeVisualDescription(description);
         // 简历判定双保险（并跑对照）：sheet 的 resume kind 与旧文本标记任一命中即走
         // 简历链路；两者不一致记 warn 供并跑对照统计，删旧判据前需一致率达标。
+        // A1（2026-08-11）仅覆盖当前容器连续 92h23m，分歧为 0；尚未达到完整 7 天
+        // 删除门槛，故继续保留 legacy 判据。连续 7 天复扫仍为 0 后删除本并跑与 OR 路径。
         const legacyResume = isResumeImageDescription(description);
         const sheetResume = !sheet.degraded && sheet.kind === 'resume';
         if (!sheet.degraded && legacyResume !== sheetResume) {

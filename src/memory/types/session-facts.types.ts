@@ -75,6 +75,9 @@ export type CityFactEvidence = z.infer<typeof CityFactEvidenceSchema>;
  * - 字符串（旧 Redis 数据、LLM 原始输出）→ 归一化为 `{ value, confidence: 'medium', evidence: 'explicit_city' }`
  * - 对象 → 直接校验为 CityFact
  * - null/空串 → null
+ *
+ * 拆除判据：A1 及后续复扫中旧 city 字符串/旧 CityFact 形态存量计数均归零后，
+ * 删除字符串分支与旧对象兼容；factsv2 无短 TTL，不能以自然过期代替数据侧确认。
  */
 const NullableCityFactSchema = z
   .union([CityFactSchema, z.string(), z.null()])
@@ -489,6 +492,10 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
     extractedAt: z.string().optional(),
   });
 
+/**
+ * 裸值兼容信封。拆除判据：A1 及后续复扫中 unknown/memory 旧档计数归零后删除；
+ * factsv2 无短 TTL，不能以自然过期代替数据侧确认。
+ */
 function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValue<T> {
   return {
     value,

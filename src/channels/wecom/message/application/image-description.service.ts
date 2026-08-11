@@ -5,12 +5,12 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { MessageType } from '@enums/message-callback.enum';
-import { isResumeImageDescription } from '../utils/message-parser.util';
 import {
   VISUAL_FACT_FIELD_KEY_PROMPT,
   VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
   finalizeVisualFactSheet,
+  isResumeImageDescription,
   sanitizeVisualDescription,
   type FinalizedVisualFactSheet,
 } from '@resolution/signal/visual';
@@ -335,6 +335,8 @@ export class ImageDescriptionService {
     // 先剥离视觉描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
     // 一行，避免重复行（badcase chat 6a2fac72…：单条简历消息出现两条相同"简历附件"）。
     // 简历判定双保险（并跑对照）：sheet resume kind 与旧文本标记任一命中即走简历链路。
+    // A1（2026-08-11）仅覆盖当前容器连续 92h23m，分歧为 0；尚未达到完整 7 天
+    // 删除门槛，故继续保留 legacy 判据。连续 7 天复扫仍为 0 后删除本并跑与 OR 路径。
     const legacyResume = kind === MessageType.IMAGE && isResumeImageDescription(description);
     const sheetResume = sheet?.kind === 'resume';
     if (sheet && legacyResume !== sheetResume) {

@@ -211,6 +211,9 @@ export class SessionService {
    * 存储里的旧 brands 值在读边界统一抹平——deepMerge 的"null 不覆盖"语义会让
    * 收口前写入的旧值在长活跃会话里无限存续（如 6a1e42a5），逐个读方防御不如
    * 一处截断。schema 保留该字段仅为解析兼容，禁止任何读写复活。
+   *
+   * 拆除判据：A1 及后续复扫中 preferences.brands 旧值存量计数归零后删除本墓碑；
+   * factsv2 无短 TTL，不能以自然过期代替数据侧确认。
    */
   private retireBrandsField(state: WeworkSessionState): WeworkSessionState {
     if (!state.facts || state.facts.preferences.brands == null) return state;
