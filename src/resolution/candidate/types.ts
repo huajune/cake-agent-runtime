@@ -13,6 +13,12 @@ export type CandidateFieldKey =
   | 'weight'
   | 'supplementAnswers';
 
+/** 确定性解析器的统一返回信封：标准值与支持该值的候选人原文片段。 */
+export interface CandidateParseResult<T> {
+  value: T;
+  excerpt: string;
+}
+
 /** 已收集字段的值、出处与时间信封。 */
 export interface CandidateCollectedField<T = string | number> {
   value: T;

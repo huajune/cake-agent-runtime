@@ -1,4 +1,6 @@
-export function parseAge(text: string): number | null {
+import type { CandidateParseResult } from './types';
+
+export function parseAge(text: string): CandidateParseResult<number> | null {
   const structured = /(?:^|[\n\r\s])年龄\s*[：:\s]?\s*(\d{2})(?!\s*[-~至到])(?=\D|$)/u.exec(text);
   const candidateText = text
     .replace(
@@ -6,13 +8,15 @@ export function parseAge(text: string): number | null {
       '',
     )
     .replace(/\d{2}\s*[-~至到]\s*\d{2}\s*(?:周?岁|岁)?/gu, '');
-  const raw =
-    structured?.[1] ??
-    /(\d{2})\s*岁/u.exec(candidateText)?.[1] ??
-    /今年\s*(\d{2})/u.exec(candidateText)?.[1];
+  const ageWithUnit = /(\d{2})\s*岁/u.exec(candidateText);
+  const currentAge = /今年\s*(\d{2})/u.exec(candidateText);
+  const match = structured ?? ageWithUnit ?? currentAge;
+  const raw = match?.[1];
   if (!raw) return null;
   const age = Number(raw);
-  return Number.isInteger(age) && age >= 14 && age <= 70 ? age : null;
+  return Number.isInteger(age) && age >= 14 && age <= 70
+    ? { value: age, excerpt: match[0].trim() }
+    : null;
 }
 
 export function isPlausibleAgeValue(value: unknown): boolean {

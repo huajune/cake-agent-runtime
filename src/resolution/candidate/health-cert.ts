@@ -1,4 +1,5 @@
 import { SPONGE_HEALTH_CERTIFICATE_MAPPING } from '@sponge/sponge.enums';
+import type { CandidateParseResult } from './types';
 
 export type HealthCertificateFact =
   | '有'
@@ -115,14 +116,18 @@ function extractClause(clause: string): HealthCertificateFact | null {
 }
 
 /** 单一健康证识别核心：否定优先、分句判定、疑问句不猜。 */
-export function parseHealthCertificate(text: string): HealthCertificateFact | null {
+export function parseHealthCertificateMatch(
+  text: string,
+): CandidateParseResult<HealthCertificateFact> | null {
   // 收资问答里常见的紧凑回答不复述题目（“没办过，可以办”/“没有，不想办”）。
   // 只接受这两类封闭句形作为健康证字段回答，避免把任意“没有/可以办”误归因。
   const terseAnswer =
     /^\s*(?:没办过|还没办|没有)(?:[，,。；;\s]*(?:但|但是)?[，,。；;\s]*(?:可以|愿意|接受|能|不想|不愿意|不接受|不能)(?:去|再)?办)?[。！!]?\s*$/u;
   if (!hasHealthCertificateTopic(text) && !terseAnswer.test(text)) return null;
-  const scopedText = hasHealthCertificateTopic(text) ? text : `健康证${text}`;
+  const hasExplicitTopic = hasHealthCertificateTopic(text);
+  const scopedText = hasExplicitTopic ? text : `健康证${text}`;
   let latest: HealthCertificateFact | null = null;
+  let latestExcerpt: string | null = null;
   let topicSeen = false;
   let pending: string[] = [];
 
@@ -139,6 +144,7 @@ export function parseHealthCertificate(text: string): HealthCertificateFact | nu
     const direct = extractClause(scoped);
     if (direct) {
       latest = direct;
+      latestExcerpt = clause;
       pending = [];
       continue;
     }
@@ -152,11 +158,21 @@ export function parseHealthCertificate(text: string): HealthCertificateFact | nu
       const fact = extractClause(buffered);
       if (fact) {
         latest = fact;
+        latestExcerpt = buffered;
         pending = [];
       }
     }
   }
-  return latest;
+  if (!latest || !latestExcerpt) return null;
+  const excerpt =
+    !hasExplicitTopic && latestExcerpt.startsWith('健康证')
+      ? latestExcerpt.slice('健康证'.length)
+      : latestExcerpt;
+  return { value: latest, excerpt: excerpt.trim() };
+}
+
+export function parseHealthCertificate(text: string): HealthCertificateFact | null {
+  return parseHealthCertificateMatch(text)?.value ?? null;
 }
 
 export function toSpongeHealthCertCode(fact: HealthCertificateFact | null): 1 | 2 | 3 | null {
@@ -166,8 +182,10 @@ export function toSpongeHealthCertCode(fact: HealthCertificateFact | null): 1 | 
   return null;
 }
 
-export function parseHealthCert(text: string): 1 | 2 | 3 | null {
-  return toSpongeHealthCertCode(parseHealthCertificate(text));
+export function parseHealthCert(text: string): CandidateParseResult<1 | 2 | 3> | null {
+  const result = parseHealthCertificateMatch(text);
+  const value = toSpongeHealthCertCode(result?.value ?? null);
+  return result && value ? { value, excerpt: result.excerpt } : null;
 }
 
 export function normalizeHealthCertToId(value: string | number): 1 | 2 | 3 | null {

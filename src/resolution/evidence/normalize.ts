@@ -141,27 +141,27 @@ export function deriveFieldValueFromQuote(
   if (!text) return null;
   switch (field) {
     case 'name':
-      return parseName(text);
+      return parseName(text)?.value ?? null;
     case 'phone':
-      return parsePhone(text);
+      return parsePhone(text)?.value ?? null;
     case 'gender':
-      return parseGender(text);
+      return parseGender(text)?.value ?? null;
     case 'age':
-      return parseAge(text) ?? parseBirthYearAge(text, now);
+      return parseAge(text)?.value ?? parseBirthYearAge(text, now);
     case 'isStudent': {
       const identity = classifyIdentityAnswerText(text);
       return identity === null ? null : identity === '学生';
     }
     case 'education':
-      return parseEducation(text);
+      return parseEducation(text)?.value ?? null;
     case 'healthCertificate':
-      return parseHealthCert(text);
+      return parseHealthCert(text)?.value ?? null;
     case 'height':
-      return parseHeight(text) ?? parseSpokenHeightCm(text);
+      return parseHeight(text)?.value ?? parseSpokenHeightCm(text);
     case 'weight':
-      return parseWeight(text) ?? parseSpokenWeightKg(text);
+      return parseWeight(text)?.value ?? parseSpokenWeightKg(text);
     case 'householdProvince':
-      return parseHouseholdProvince(text);
+      return parseHouseholdProvince(text)?.value ?? null;
   }
 }
 

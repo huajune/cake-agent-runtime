@@ -1,4 +1,6 @@
-export function parseGender(text: string): '男' | '女' | null {
+import type { CandidateParseResult } from './types';
+
+export function parseGender(text: string): CandidateParseResult<'男' | '女'> | null {
   if (/男的女的|女的男的|男女不限/u.test(text)) return null;
   if (/(?:要|招|找|限|收)\s*(?:男|女)(?:生|士|的)?/u.test(text)) return null;
   if (/[？?]|(?:吗|么|呢|吧)(?:[啊呀嘛])?(?:[！。])?$/u.test(text)) return null;
@@ -12,7 +14,8 @@ export function parseGender(text: string): '男' | '女' | null {
   const explicit =
     /(?:我是|本人|性别)\s*[：: ]?\s*(男|女)(?:生|士|的)?/u.exec(text) ??
     /(?:^|[，,。;；！!\s])(?:就?是)?([男女])的(?=[，,。;；！!~～\s]|$)/u.exec(text);
-  return (explicit?.[1] as '男' | '女' | undefined) ?? null;
+  const value = explicit?.[1] as '男' | '女' | undefined;
+  return value ? { value, excerpt: explicit![0].trim() } : null;
 }
 
 export function normalizeGenderValue(value: unknown): '男' | '女' | null {

@@ -8,6 +8,7 @@
  */
 
 import { stripTimeContext } from '@resolution/signal/markers';
+import type { CandidateParseResult } from './types';
 
 /**
  * 微信加好友自动打招呼语「（你好，）我是XX」的昵称提取。XX 通常是微信昵称而非真名——
@@ -120,21 +121,30 @@ export function extractStructuredName(message: string): string | null {
   return isLikelyRealChineseName(candidate) ? candidate! : null;
 }
 
+/** 结构化姓名解析及其原文片段，供 claim 轨复用同一证据。 */
+export function extractStructuredNameMatch(message: string): CandidateParseResult<string> | null {
+  const cleaned = stripTimeContext(message);
+  const match = STRUCTURED_NAME_REGEX.exec(cleaned);
+  const value = match?.[1]?.trim();
+  return isLikelyRealChineseName(value) ? { value: value!, excerpt: match![0].trim() } : null;
+}
+
 /**
  * user_text 权威出处解析（booking 姓名闸门的取证函数）：只认结构化"姓名：X"与
  * 自述"我叫X"，经严格真名校验、排打招呼语昵称。产物按 candidate_quote 消费，
  * 判不出就返回 null，绝不猜。
  */
-export function parseName(text: string): string | null {
+export function parseName(text: string): CandidateParseResult<string> | null {
   const cleaned = stripTimeContext(text);
   const structured = STRUCTURED_NAME_REGEX.exec(cleaned);
   const inlineStructured = /(?:姓名|名字)\s*[：:\s]\s*([^\s。，,！!？?\n]+)/u.exec(cleaned);
   const declared = /我叫\s*([^\s。，,！!？?\n]+)/u.exec(cleaned);
-  const candidate = [structured?.[1], inlineStructured?.[1], declared?.[1]]
-    .map((value) => value?.trim())
-    .find((value): value is string => isStrictRealChineseName(value));
+  const match = [structured, inlineStructured, declared].find((item) =>
+    isStrictRealChineseName(item?.[1]?.trim()),
+  );
+  const candidate = match?.[1]?.trim();
   if (!candidate || extractAutoGreetingName(cleaned) === candidate) return null;
-  return candidate;
+  return { value: candidate, excerpt: match![0].trim() };
 }
 
 /**

@@ -52,7 +52,7 @@ export function isNameAuthoritative(name: string, messages: readonly unknown[]):
   const target = name?.trim();
   if (!target) return false;
   for (const text of extractUserTexts(messages)) {
-    if (parseName(stripQuoteBlocks(text)) === target) return true;
+    if (parseName(stripQuoteBlocks(text))?.value === target) return true;
   }
   return false;
 }

@@ -289,8 +289,8 @@ describe('extractRuleFacts', () => {
         .filter((claim) => claim.field === 'interview_info.age')
         .map((claim) => ({ value: claim.value, quote: claim.evidence.quote })),
     ).toEqual([
-      { value: '25', quote: firstMessage },
-      { value: '18', quote: secondMessage },
+      { value: '25', quote: '25岁' },
+      { value: '18', quote: '18岁' },
     ]);
     expect(
       produced?.claims

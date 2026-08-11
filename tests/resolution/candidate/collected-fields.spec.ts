@@ -20,7 +20,10 @@ import { AUTHORITATIVE_PRODUCERS } from '@resolution/candidate/types';
 describe('candidate-field-parser', () => {
   describe('parsePhone', () => {
     it('extracts an 11-digit mobile number', () => {
-      expect(parsePhone('我的电话是13912345678哈')).toBe('13912345678');
+      expect(parsePhone('我的电话是13912345678哈')).toEqual({
+        value: '13912345678',
+        excerpt: '13912345678',
+      });
     });
     it('rejects non-mobile digit runs', () => {
       expect(parsePhone('订单号 02112345678901')).toBeNull();
@@ -30,8 +33,8 @@ describe('candidate-field-parser', () => {
 
   describe('parseAge', () => {
     it('reads keyed and "N岁" forms', () => {
-      expect(parseAge('年龄：28')).toBe(28);
-      expect(parseAge('我今年35岁')).toBe(35);
+      expect(parseAge('年龄：28')).toEqual({ value: 28, excerpt: '年龄：28' });
+      expect(parseAge('我今年35岁')).toEqual({ value: 35, excerpt: '35岁' });
     });
     it('drops out-of-range ages', () => {
       expect(parseAge('我家娃8岁')).toBeNull();
@@ -41,8 +44,8 @@ describe('candidate-field-parser', () => {
 
   describe('parseGender', () => {
     it('reads explicit gender statements', () => {
-      expect(parseGender('性别：男')).toBe('男');
-      expect(parseGender('我是女的')).toBe('女');
+      expect(parseGender('性别：男')).toEqual({ value: '男', excerpt: '性别：男' });
+      expect(parseGender('我是女的')).toEqual({ value: '女', excerpt: '我是女的' });
     });
     it('does not misfire on unrelated 男/女 words', () => {
       expect(parseGender('想找女装门店的岗位')).toBeNull();
@@ -53,8 +56,8 @@ describe('candidate-field-parser', () => {
 
   describe('parseHouseholdProvince', () => {
     it('extracts province under a household anchor', () => {
-      expect(parseHouseholdProvince('户籍是黑龙江')).toBe('黑龙江');
-      expect(parseHouseholdProvince('老家四川的')).toBe('四川');
+      expect(parseHouseholdProvince('户籍是黑龙江')).toMatchObject({ value: '黑龙江' });
+      expect(parseHouseholdProvince('老家四川的')).toMatchObject({ value: '四川' });
     });
     it('returns null without anchor', () => {
       expect(parseHouseholdProvince('我在四川工作')).toBeNull();
@@ -63,15 +66,15 @@ describe('candidate-field-parser', () => {
 
   describe('parseHealthCert', () => {
     it('maps 有/无/无且不办 to 1/2/3', () => {
-      expect(parseHealthCert('我有健康证')).toBe(1);
-      expect(parseHealthCert('没有健康证')).toBe(2);
-      expect(parseHealthCert('没有健康证，也不愿意办')).toBe(3);
+      expect(parseHealthCert('我有健康证')).toEqual({ value: 1, excerpt: '我有健康证' });
+      expect(parseHealthCert('没有健康证')).toEqual({ value: 2, excerpt: '没有健康证' });
+      expect(parseHealthCert('没有健康证，也不愿意办')).toMatchObject({ value: 3 });
     });
     it('unifies question and terse-answer semantics', () => {
       expect(parseHealthCert('需要有食品健康证是吗')).toBeNull();
-      expect(parseHealthCert('我有健康证')).toBe(1);
-      expect(parseHealthCert('没办过，可以办')).toBe(2);
-      expect(parseHealthCert('没有，不想办')).toBe(3);
+      expect(parseHealthCert('我有健康证')?.value).toBe(1);
+      expect(parseHealthCert('没办过，可以办')?.value).toBe(2);
+      expect(parseHealthCert('没有，不想办')?.value).toBe(3);
     });
     it('returns null when 健康证 not mentioned', () => {
       expect(parseHealthCert('我想了解岗位')).toBeNull();
@@ -85,24 +88,24 @@ describe('candidate-field-parser', () => {
       expect(parseWeight('体重要求60公斤以下')).toBeNull();
     });
     it('accepts self-reported measurements', () => {
-      expect(parseHeight('我身高165')).toBe(165);
-      expect(parseHeight('身高:165')).toBe(165);
-      expect(parseWeight('我体重55公斤')).toBe(55);
+      expect(parseHeight('我身高165')).toEqual({ value: 165, excerpt: '身高165' });
+      expect(parseHeight('身高:165')).toEqual({ value: 165, excerpt: '身高:165' });
+      expect(parseWeight('我体重55公斤')).toEqual({ value: 55, excerpt: '体重55' });
     });
   });
 
   describe('parseEducation', () => {
     it('maps free text to Sponge labels', () => {
-      expect(parseEducation('我是大专')).toBe('大专');
-      expect(parseEducation('本科毕业')).toBe('本科');
-      expect(parseEducation('研究生')).toBe('硕士');
+      expect(parseEducation('我是大专')).toEqual({ value: '大专', excerpt: '大专' });
+      expect(parseEducation('本科毕业')).toEqual({ value: '本科', excerpt: '本科' });
+      expect(parseEducation('研究生')).toEqual({ value: '硕士', excerpt: '研究生' });
     });
   });
 
   describe('parseName', () => {
     it('accepts structured and declared real names', () => {
-      expect(parseName('姓名：王建国')).toBe('王建国');
-      expect(parseName('我叫李雷')).toBe('李雷');
+      expect(parseName('姓名：王建国')).toEqual({ value: '王建国', excerpt: '姓名：王建国' });
+      expect(parseName('我叫李雷')).toEqual({ value: '李雷', excerpt: '我叫李雷' });
     });
     it('rejects auto-greeting nicknames ("我是X")', () => {
       // "我是X" 打招呼语不算真名（无结构化/我叫锚点）
@@ -147,6 +150,8 @@ describe('candidate-field-parser', () => {
       expect(fields.age?.value).toBe(28);
       expect(fields.gender?.value).toBe('男');
       expect(fields.householdProvince?.value).toBe('黑龙江');
+      expect(fields.name?.evidence).toBe('姓名：王建国');
+      expect(fields.phone?.evidence).toBe('13912345678');
     });
 
     it('omits fields it cannot deterministically parse', () => {

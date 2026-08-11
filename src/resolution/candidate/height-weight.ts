@@ -7,20 +7,23 @@ function hasRequirementContext(text: string, marker: '身高' | '体重'): boole
   return REQUIREMENT_CONTEXT_RE.test(text.slice(Math.max(0, index - 8), index + 24));
 }
 
-export function parseHeight(text: string): number | null {
+export function parseHeight(text: string): CandidateParseResult<number> | null {
   if (hasRequirementContext(text, '身高')) return null;
-  const raw = /身高\s*[：:]?\s*(\d{2,3})(?=\s*(?:cm|厘米|公分)?(?:$|[，,。;；！!\s]))/u.exec(
+  const match = /身高\s*[：:]?\s*(\d{2,3})(?=\s*(?:cm|厘米|公分)?(?:$|[，,。;；！!\s]))/u.exec(
     text,
-  )?.[1];
+  );
+  const raw = match?.[1];
   const value = Number(raw);
-  return raw && value >= 100 && value <= 250 ? value : null;
+  return raw && value >= 100 && value <= 250 ? { value, excerpt: match![0].trim() } : null;
 }
 
-export function parseWeight(text: string): number | null {
+export function parseWeight(text: string): CandidateParseResult<number> | null {
   if (hasRequirementContext(text, '体重')) return null;
-  const raw = /体重\s*[：:]?\s*(\d{2,3})(?=\s*(?:kg|公斤|千克)?(?:$|[，,。;；！!\s]))/iu.exec(
+  const match = /体重\s*[：:]?\s*(\d{2,3})(?=\s*(?:kg|公斤|千克)?(?:$|[，,。;；！!\s]))/iu.exec(
     text,
-  )?.[1];
+  );
+  const raw = match?.[1];
   const value = Number(raw);
-  return raw && value >= 30 && value <= 200 ? value : null;
+  return raw && value >= 30 && value <= 200 ? { value, excerpt: match![0].trim() } : null;
 }
+import type { CandidateParseResult } from './types';

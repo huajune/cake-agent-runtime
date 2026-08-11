@@ -1,5 +1,6 @@
 import { findSpongeEducationIdByLabel } from '@sponge/sponge.enums';
 import { containsLocationShareMarkup } from '@resolution/signal/markers';
+import type { CandidateParseResult } from './types';
 
 const EDUCATION_KEYWORDS: Array<[RegExp, string]> = [
   [/博士/u, '博士'],
@@ -13,14 +14,15 @@ const EDUCATION_KEYWORDS: Array<[RegExp, string]> = [
   [/初中/u, '初中'],
 ];
 
-export function parseEducation(text: string): string | null {
+export function parseEducation(text: string): CandidateParseResult<string> | null {
   if (
     containsLocationShareMarkup(text) ||
     /(小学部|初中部|高中部|中学部|大学城|学校|校区|学院|幼儿园|附小)/u.test(text)
   )
     return null;
   for (const [pattern, label] of EDUCATION_KEYWORDS) {
-    if (pattern.test(text)) return label;
+    const match = pattern.exec(text);
+    if (match) return { value: label, excerpt: match[0] };
   }
   return null;
 }

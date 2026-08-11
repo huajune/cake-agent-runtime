@@ -7,17 +7,19 @@ import {
 } from '@resolution/signal/markers';
 import {
   extractStructuredName as extractCandidateStructuredName,
+  extractStructuredNameMatch as extractCandidateStructuredNameMatch,
   normalizeGenderValue as normalizeCandidateGenderValue,
   parseAge as parseCandidateAge,
   parseEducation as parseCandidateEducation,
   parseGender as parseCandidateGender,
-  parseHealthCertificate as parseCandidateHealthCertificate,
+  parseHealthCertificateMatch as parseCandidateHealthCertificateMatch,
   parseHeight as parseCandidateHeight,
   parseHouseholdProvince as parseCandidateHouseholdProvince,
   parsePhone as parseCandidatePhone,
   parseWeight as parseCandidateWeight,
   stripTimeContextSuffix,
 } from '@resolution/candidate';
+import type { CandidateParseResult } from '@resolution/candidate/types';
 import { matchIdentityStatement } from '@resolution/candidate/student-identity';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { fieldValues, type FinalizedVisualFactSheet } from '@resolution/signal/visual';
@@ -149,18 +151,24 @@ type FieldGroup = 'interview_info' | 'preferences';
 interface FieldExtractor {
   group: FieldGroup;
   field: string;
-  extract: (message: string) => string | string[] | null;
+  extract: (message: string) => string | string[] | CandidateParseResult<string | string[]> | null;
   /** evidence 文案（入库到字段元数据，服务排障）。 */
   evidence: (value: string) => string;
   /** reasoning 文案（拼进对外 reasoning 串）；缺省与 evidence 同文。 */
   reason?: (value: string) => string;
 }
 
+function isCandidateParseResult(
+  value: string | string[] | CandidateParseResult<string | string[]>,
+): value is CandidateParseResult<string | string[]> {
+  return typeof value === 'object' && !Array.isArray(value) && 'value' in value;
+}
+
 const FIELD_EXTRACTORS: FieldExtractor[] = [
   {
     group: 'interview_info',
     field: 'name',
-    extract: extractStructuredName,
+    extract: extractStructuredNameWithEvidence,
     evidence: (value) => `结构化姓名识别：${value}`,
     reason: (value) => `结构化姓名识别：${value}（来源：收资表单键值对）`,
   },
@@ -256,6 +264,8 @@ interface AppendRuleClaimParams {
   field: RuleFactFieldPath;
   value: unknown;
   message: string;
+  /** 解析器已知的精确命中片段；缺失时才回退整条候选人消息。 */
+  quote?: string;
   label: string;
   reason?: string;
   confidence?: RuleFactConfidence;
@@ -277,7 +287,9 @@ function appendRuleClaim(sink: RuleClaimSink, params: AppendRuleClaimParams): vo
     interpretation: 'direct',
     confidence: params.confidence ?? 'high',
     evidence: {
-      quote: stripTimeContextSuffix(params.message).trim().slice(0, RULE_CLAIM_QUOTE_MAX_CHARS),
+      quote: stripTimeContextSuffix(params.quote ?? params.message)
+        .trim()
+        .slice(0, RULE_CLAIM_QUOTE_MAX_CHARS),
       label: params.label,
       ...(params.evidenceCode ? { code: params.evidenceCode } : {}),
     },
@@ -312,13 +324,17 @@ function applyFieldExtractor(
     }
   }
 
-  const value = extractor.extract(message);
-  if (value === null || (Array.isArray(value) && value.length === 0)) return;
+  const extracted = extractor.extract(message);
+  if (extracted === null) return;
+  const isEvidenceResult = isCandidateParseResult(extracted);
+  const value = isEvidenceResult ? extracted.value : extracted;
+  if (Array.isArray(value) && value.length === 0) return;
   const label = Array.isArray(value) ? value.join('、') : value;
   appendRuleClaim(sink, {
     field,
     value,
     message,
+    quote: isEvidenceResult ? extracted.excerpt : undefined,
     label: extractor.evidence(label),
     reason: toReason(label),
   });
@@ -408,14 +424,16 @@ export function produceRuleFactClaims(
     if (gender) {
       appendRuleClaim(sink, {
         field: 'interview_info.gender',
-        value: gender,
+        value: gender.value,
         message,
-        label: `性别识别：${gender}`,
+        quote: gender.excerpt,
+        label: `性别识别：${gender.value}`,
       });
       appendRuleClaim(sink, {
         field: 'interview_info.gender_source',
         value: 'candidate',
         message,
+        quote: gender.excerpt,
         label: '性别来源：候选人自陈',
       });
     }
@@ -425,7 +443,7 @@ export function produceRuleFactClaims(
     // 同属身份字段：岗位截图里的"限在校大学生/大专以上"是岗位要求，不是候选人学历。
     const studentInfo = isSelfReported
       ? extractStudentInfo(message)
-      : { isStudent: null, education: null };
+      : { isStudent: null, education: null, educationExcerpt: null };
     if (studentInfo.isStudent !== null) {
       appendRuleClaim(sink, {
         field: 'interview_info.is_student',
@@ -439,6 +457,7 @@ export function produceRuleFactClaims(
         field: 'interview_info.education',
         value: studentInfo.education,
         message,
+        quote: studentInfo.educationExcerpt ?? undefined,
         label: `学历识别：${studentInfo.education}`,
       });
     } else if (!studentInfo.education && scope.identity) {
@@ -447,9 +466,10 @@ export function produceRuleFactClaims(
       if (explicitEducation) {
         appendRuleClaim(sink, {
           field: 'interview_info.education',
-          value: explicitEducation,
+          value: explicitEducation.value,
           message,
-          label: `学历识别：${explicitEducation}`,
+          quote: explicitEducation.excerpt,
+          label: `学历识别：${explicitEducation.value}`,
         });
       }
     }
@@ -623,7 +643,11 @@ export function extractStructuredName(message: string): string | null {
   return extractCandidateStructuredName(message);
 }
 
-function extractPhone(message: string): string | null {
+function extractStructuredNameWithEvidence(message: string): CandidateParseResult<string> | null {
+  return extractCandidateStructuredNameMatch(message);
+}
+
+function extractPhone(message: string): CandidateParseResult<string> | null {
   return parseCandidatePhone(message);
 }
 
@@ -634,9 +658,9 @@ function extractPhone(message: string): string | null {
  * 落在合理人类身高区间（100-250cm）才接受，避免「身高要求165以上」这类岗位
  * 要求被误捕——要求/限制语境（要求/限/需/不低于/以上/以下）一律不提取。
  */
-function extractHeight(message: string): string | null {
-  const value = parseCandidateHeight(message);
-  return value === null ? null : String(value);
+function extractHeight(message: string): CandidateParseResult<string> | null {
+  const result = parseCandidateHeight(message);
+  return result === null ? null : { value: String(result.value), excerpt: result.excerpt };
 }
 
 /**
@@ -644,9 +668,9 @@ function extractHeight(message: string): string | null {
  *
  * 同身高，落在合理区间（30-200kg）才接受；要求/限制语境一律不提取。
  */
-function extractWeight(message: string): string | null {
-  const value = parseCandidateWeight(message);
-  return value === null ? null : String(value);
+function extractWeight(message: string): CandidateParseResult<string> | null {
+  const result = parseCandidateWeight(message);
+  return result === null ? null : { value: String(result.value), excerpt: result.excerpt };
 }
 
 /**
@@ -654,48 +678,55 @@ function extractWeight(message: string): string | null {
  *
  * 不做自由文本推断（"我是安徽人"不提取），值延伸到行尾，经省份白名单校验后返回。
  */
-function extractHouseholdRegisterProvince(message: string): string | null {
+function extractHouseholdRegisterProvince(message: string): CandidateParseResult<string> | null {
   return parseCandidateHouseholdProvince(message);
 }
 
-function extractAge(message: string): string | null {
-  const value = parseCandidateAge(message);
-  return value === null ? null : String(value);
+function extractAge(message: string): CandidateParseResult<string> | null {
+  const result = parseCandidateAge(message);
+  return result === null ? null : { value: String(result.value), excerpt: result.excerpt };
 }
 
-function extractGender(message: string): string | null {
+function extractGender(message: string): CandidateParseResult<string> | null {
   return parseCandidateGender(message);
 }
 
 function extractStudentInfo(message: string): {
   isStudent: boolean | null;
   education: string | null;
+  educationExcerpt: string | null;
 } {
   if (/本科在读/.test(message)) {
-    return { isStudent: true, education: '本科' };
+    return { isStudent: true, education: '本科', educationExcerpt: '本科在读' };
   }
-  if (/硕士在读|研究生在读|研一|研二|研三/.test(message)) {
-    return { isStudent: true, education: '硕士' };
+  const master = /硕士在读|研究生在读|研一|研二|研三/.exec(message);
+  if (master) {
+    return { isStudent: true, education: '硕士', educationExcerpt: master[0] };
   }
-  if (/博士在读|博一|博二|博三/.test(message)) {
-    return { isStudent: true, education: '博士' };
+  const doctor = /博士在读|博一|博二|博三/.exec(message);
+  if (doctor) {
+    return { isStudent: true, education: '博士', educationExcerpt: doctor[0] };
   }
-  if (/考上研究生|研究生.*录取|录取.*研究生|准研究生|待入学|准备读研|读研|上研/.test(message)) {
-    return { isStudent: true, education: '硕士' };
+  const futureMaster =
+    /考上研究生|研究生.*录取|录取.*研究生|准研究生|待入学|准备读研|读研|上研/.exec(message);
+  if (futureMaster) {
+    return { isStudent: true, education: '硕士', educationExcerpt: futureMaster[0] };
   }
   const identity = matchIdentityStatement(message);
+  const education = parseCandidateEducation(message);
   return {
     isStudent: identity === null ? null : identity === '学生',
-    education: parseCandidateEducation(message),
+    education: education?.value ?? null,
+    educationExcerpt: education?.excerpt ?? null,
   };
 }
 
-function extractEducation(message: string): string | null {
+function extractEducation(message: string): CandidateParseResult<string> | null {
   return parseCandidateEducation(message);
 }
 
-function extractHealthCertificate(message: string): string | null {
-  return parseCandidateHealthCertificate(message);
+function extractHealthCertificate(message: string): CandidateParseResult<string> | null {
+  return parseCandidateHealthCertificateMatch(message);
 }
 
 function extractExperience(message: string): string | null {

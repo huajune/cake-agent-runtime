@@ -10,7 +10,17 @@ import {
   AUTHORITATIVE_PRODUCERS,
   type CandidateCollectedField,
   type CandidateFieldKey,
+  type CandidateParseResult,
 } from './types';
+
+const MAX_COLLECTED_EVIDENCE_CHARS = 200;
+
+function truncateEvidence(evidence: string): string {
+  const trimmed = evidence.trim();
+  return trimmed.length <= MAX_COLLECTED_EVIDENCE_CHARS
+    ? trimmed
+    : `${trimmed.slice(0, MAX_COLLECTED_EVIDENCE_CHARS)}…`;
+}
 
 export function isFieldAuthoritative(field?: CandidateCollectedField): boolean {
   return !!field && AUTHORITATIVE_PRODUCERS.has(field.producer);
@@ -22,9 +32,19 @@ export function parseCandidateFieldsFromText(
 ): Partial<Record<CandidateFieldKey, CandidateCollectedField>> {
   const text = userMessages.join('\n');
   const fields: Partial<Record<CandidateFieldKey, CandidateCollectedField>> = {};
-  const put = (key: CandidateFieldKey, value: string | number | null, evidence: string): void => {
-    if (value === null || value === undefined) return;
-    fields[key] = { value, producer: 'candidate_quote', evidence, at };
+  const put = <T extends string | number>(
+    key: CandidateFieldKey,
+    result: CandidateParseResult<T> | null,
+    fallbackLabel: string,
+  ): void => {
+    if (!result) return;
+    const excerpt = truncateEvidence(result.excerpt);
+    fields[key] = {
+      value: result.value,
+      producer: 'candidate_quote',
+      evidence: excerpt || `「${String(result.value)}」（${fallbackLabel}）`,
+      at,
+    };
   };
   put('name', parseName(text), '原文结构化姓名/我叫');
   put('phone', parsePhone(text), '11位手机号');
