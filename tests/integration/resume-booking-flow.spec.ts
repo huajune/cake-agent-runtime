@@ -1,10 +1,8 @@
 import { MessageParser } from '@wecom/message/utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
-import {
-  extractHighConfidenceFacts,
-  unwrapHighConfidenceValue,
-} from '@resolution/evidence/producers/rule-track';
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { getRuleFactValue } from '@resolution/evidence/merge';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
@@ -72,12 +70,10 @@ describe('resume booking flow', () => {
     );
     expect(parsed.content).toContain(`简历附件：${resumeFileUrl}`);
 
-    const highConfidenceFacts = extractHighConfidenceFacts([parsed.content], []);
-    expect(unwrapHighConfidenceValue(highConfidenceFacts?.interview_info.upload_resume)).toBe(
-      resumeFileUrl,
-    );
+    const ruleFacts = produceRuleFactClaims([parsed.content], []);
+    expect(getRuleFactValue(ruleFacts, 'interview_info.upload_resume')).toBe(resumeFileUrl);
 
-    const context = buildToolContext(parsed.content, highConfidenceFacts);
+    const context = buildToolContext(parsed.content, ruleFacts);
     const precheckResult = await executePrecheck(
       {
         jobId: 528121,
@@ -154,10 +150,10 @@ describe('resume booking flow', () => {
     );
     expect(parsed.content).not.toContain('简历附件：');
 
-    const highConfidenceFacts = extractHighConfidenceFacts([parsed.content], []);
-    expect(unwrapHighConfidenceValue(highConfidenceFacts?.interview_info.upload_resume)).toBeNull();
+    const ruleFacts = produceRuleFactClaims([parsed.content], []);
+    expect(getRuleFactValue(ruleFacts, 'interview_info.upload_resume')).toBeNull();
 
-    const context = buildToolContext(parsed.content, highConfidenceFacts);
+    const context = buildToolContext(parsed.content, ruleFacts);
     const precheckResult = await executePrecheck(
       {
         jobId: 528121,
@@ -209,7 +205,7 @@ describe('resume booking flow', () => {
 
   function buildToolContext(
     messageContent: string,
-    highConfidenceFacts: TurnLedger['ruleFacts'],
+    ruleFacts: TurnLedger['ruleFacts'],
   ): ToolBuildContext {
     return createToolContext({
       session: {
@@ -218,7 +214,7 @@ describe('resume booking flow', () => {
       },
       // B4 手机号溯源闸门要求提交的 phone 在候选人原文有出处，预置报号消息
       turnInput: { messages: [{ role: 'user', content: '电话15305186866' }, { role: 'user', content: messageContent }] },
-      ledger: { ruleFacts: highConfidenceFacts },
+      ledger: { ruleFacts: ruleFacts },
       archive: { sessionFacts: {
         interview_info: {
           ...FALLBACK_EXTRACTION.interview_info,

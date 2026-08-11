@@ -75,7 +75,7 @@ import {
   buildApiPayloadGuide,
   buildScreeningCriteria,
 } from '@tools/duliday/precheck/screening-criteria.util';
-import { isHighConfidenceValue } from '@resolution/evidence/producers/rule-track';
+import { getRuleFactValue } from '@resolution/evidence/merge';
 import {
   extractHardRequirements,
   isHouseholdRequirementViolated,
@@ -533,16 +533,11 @@ function normalizeCandidateHouseholdProvinceInput(value: unknown): string | null
   return typeof value === 'string' ? normalizePolicyText(value) || null : null;
 }
 
-function readHighConfidenceValue(value: unknown): unknown {
-  if (isHighConfidenceValue(value)) return value.confidence === 'high' ? value.value : null;
-  return value;
-}
-
 function applyCandidateFieldOverride(
   knownFieldMap: Record<string, string>,
   field: string,
   explicitValue: unknown,
-  highConfidenceValue: unknown,
+  ruleValue: unknown,
   normalize: (value: unknown) => string | null,
 ): void {
   // 紧急兼容口径（2026-07-17）：模型显式传入的 candidate 参数是本次预检的主输入，
@@ -555,9 +550,9 @@ function applyCandidateFieldOverride(
 
   // 显式参数缺失时，高置信事实仍作为兜底，避免已经确定性识别的字段重新变成缺失。
   // 身份、暑假工、健康证政策守卫及 booking 冲突校验仍独立生效。
-  const normalizedHighConfidence = normalize(readHighConfidenceValue(highConfidenceValue));
-  if (normalizedHighConfidence) {
-    knownFieldMap[field] = normalizedHighConfidence;
+  const normalizedRuleValue = normalize(ruleValue);
+  if (normalizedRuleValue) {
+    knownFieldMap[field] = normalizedRuleValue;
   }
 }
 
@@ -973,7 +968,6 @@ export function buildInterviewPrecheckTool(
                 | undefined,
             );
           }
-          const highConfidenceInfo = context.ledger.ruleFacts?.interview_info ?? null;
           const collectedFields = context.ledger.collectedFields;
           // 姓名/电话必须在下方可疑姓名校验（读取 knownFieldMap['姓名']）之前回灌：
           // 它们没有沉淀进会话事实时（候选人本轮刚报名 / 跨天回访旧事实已过期），
@@ -1003,7 +997,7 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '面试时间',
             candidateInterviewTime,
-            highConfidenceInfo?.interview_time,
+            null,
             normalizeCandidateInterviewTimeInput,
           );
           if (!knownFieldMap['面试时间']) {
@@ -1062,7 +1056,9 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '过往公司+岗位+年限',
             undefined,
-            highConfidenceInfo?.experience,
+            getRuleFactValue(context.ledger.ruleFacts, 'interview_info.experience', {
+              minConfidence: 'high',
+            }),
             normalizeCandidateUploadResumeInput,
           );
           const normalizedIsStudentInput = normalizeCandidateIsStudentInput(candidateIsStudent);
@@ -1070,7 +1066,9 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '身份',
             candidateIsStudent,
-            highConfidenceInfo?.is_student,
+            getRuleFactValue(context.ledger.ruleFacts, 'interview_info.is_student', {
+              minConfidence: 'high',
+            }),
             normalizeCandidateIsStudentInput,
           );
           const latestExplicitIdentityEvidence = findLatestExplicitIdentityEvidence(
@@ -1089,7 +1087,9 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '简历附件',
             candidateUploadResume,
-            highConfidenceInfo?.upload_resume,
+            getRuleFactValue(context.ledger.ruleFacts, 'interview_info.upload_resume', {
+              minConfidence: 'high',
+            }),
             normalizeCandidateUploadResumeInput,
           );
           applyCandidateFieldOverride(

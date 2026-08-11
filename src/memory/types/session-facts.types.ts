@@ -426,63 +426,6 @@ export function truncateEvidence(evidence: string, maxChars = MAX_FACT_EVIDENCE_
 
 export type SessionFactMaybeValue<T> = SessionFactValue<T> | null;
 
-/**
- * 本轮前置线索字段值：字段自身携带 value/confidence/source/evidence。
- *
- * highConfidenceFacts 不持久化；它是给本轮模型和工具的 runtime hint。
- * 未知置信度不进入这里，不确定就不产出字段。
- */
-export interface HighConfidenceValue<T> {
-  value: T;
-  confidence: 'high' | 'medium' | 'low';
-  source: 'rule' | 'system';
-  evidence: string;
-}
-
-export type HighConfidenceMaybeValue<T> = HighConfidenceValue<T> | null;
-
-export interface HighConfidenceInterviewInfo {
-  name: HighConfidenceMaybeValue<string>;
-  phone: HighConfidenceMaybeValue<string>;
-  gender: HighConfidenceMaybeValue<string>;
-  gender_source: HighConfidenceMaybeValue<'candidate' | 'system'>;
-  age: HighConfidenceMaybeValue<string>;
-  applied_store: HighConfidenceMaybeValue<string>;
-  applied_position: HighConfidenceMaybeValue<string>;
-  interview_time: HighConfidenceMaybeValue<string>;
-  is_student: HighConfidenceMaybeValue<boolean>;
-  education: HighConfidenceMaybeValue<string>;
-  has_health_certificate: HighConfidenceMaybeValue<string>;
-  experience?: HighConfidenceMaybeValue<string>;
-  upload_resume?: HighConfidenceMaybeValue<string>;
-  height?: HighConfidenceMaybeValue<string>;
-  weight?: HighConfidenceMaybeValue<string>;
-  household_register_province?: HighConfidenceMaybeValue<string>;
-}
-
-export interface HighConfidencePreferences {
-  brands: HighConfidenceMaybeValue<string[]>;
-  brand_ids?: HighConfidenceMaybeValue<number[]>;
-  salary: HighConfidenceMaybeValue<string>;
-  position: HighConfidenceMaybeValue<string[]>;
-  schedule: HighConfidenceMaybeValue<string>;
-  city: HighConfidenceMaybeValue<string>;
-  district: HighConfidenceMaybeValue<string[]>;
-  location: HighConfidenceMaybeValue<string[]>;
-  labor_form: HighConfidenceMaybeValue<string>;
-  delayed_intent: HighConfidenceMaybeValue<DelayedIntent>;
-  short_term: HighConfidenceMaybeValue<boolean>;
-  open_position: HighConfidenceMaybeValue<boolean>;
-  time_windows: HighConfidenceMaybeValue<string[]>;
-  schedule_constraint: HighConfidenceMaybeValue<ScheduleConstraintFact>;
-  available_after: HighConfidenceMaybeValue<AvailableAfterFact>;
-}
-
-export type HighConfidenceFacts = Omit<EntityExtractionResult, 'interview_info' | 'preferences'> & {
-  interview_info: HighConfidenceInterviewInfo;
-  preferences: HighConfidencePreferences;
-};
-
 export interface SessionInterviewInfo {
   name: SessionFactMaybeValue<string>;
   phone: SessionFactMaybeValue<string>;
@@ -644,7 +587,7 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
  * 任一 schema 多出或缺少字段、或清单漏字段，都会在模块加载（任意测试运行 / 启动）时抛错，
  * 把"新增字段漏改某处"从运行期静默丢字段提前到加载期失败。
  *
- * 参考 high-confidence-facts.ts 的 assertRegistryFieldsMirrored 模式。
+ * 参考 rule-track claim 注册表的完备性自检模式。
  */
 function assertFieldKeysMirrorSchemas(): void {
   const sameKeySet = (expected: readonly string[], actual: readonly string[]): string[] => {

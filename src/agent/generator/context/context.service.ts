@@ -14,11 +14,8 @@ import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import type {
-  EntityExtractionResult,
-  HighConfidenceFacts,
-  SessionFacts,
-} from '@memory/types/session-facts.types';
+import type { EntityExtractionResult, SessionFacts } from '@memory/types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
@@ -47,7 +44,7 @@ export interface ComposeParams {
   /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
   sessionFacts?: EntityExtractionResult | SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
-  highConfidenceFacts?: HighConfidenceFacts | null;
+  ruleFacts?: RuleFactClaims | null;
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
@@ -104,7 +101,7 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      highConfidenceFacts,
+      ruleFacts,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -124,7 +121,7 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      highConfidenceFacts,
+      ruleFacts,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,

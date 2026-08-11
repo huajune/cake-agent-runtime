@@ -1,15 +1,6 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import { formatLocalDate } from '@infra/utils/date.util';
-import type {
-  CityFact,
-  CityFactEvidence,
-  EntityExtractionResult,
-  HighConfidenceInterviewInfo,
-  HighConfidencePreferences,
-  HighConfidenceFacts,
-  HighConfidenceValue,
-  ScheduleConstraintFact,
-} from '@memory/types/session-facts.types';
+import type { CityFact } from '@memory/types/session-facts.types';
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import {
   extractLocationShareLabels,
@@ -32,6 +23,14 @@ import { matchIdentityStatement } from '@resolution/candidate/student-identity';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { fieldValues, type FinalizedVisualFactSheet } from '@resolution/visual';
 import { resolveExtractionScope } from '@resolution/evidence/admission';
+import type {
+  RuleFactClaim,
+  RuleFactClaims,
+  RuleFactConfidence,
+  RuleFactFieldPath,
+} from '@resolution/evidence/claim.types';
+import { RULE_FACT_FIELD_POLICIES } from '@resolution/evidence/policies';
+import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
 import {
   produceBrandAliasHints,
   type BrandAliasHint,
@@ -112,13 +111,6 @@ const CHINESE_NUM_MAP: Record<string, number> = {
   七: 7,
 };
 
-const CITY_FACT_EVIDENCES = new Set<CityFactEvidence>([
-  'municipality_compact',
-  'explicit_city',
-  'unique_district_alias',
-  'hotspot_alias',
-]);
-
 export type { BrandAliasHint } from '@resolution/evidence/producers/brand-intents';
 
 interface LocationSignals {
@@ -151,38 +143,23 @@ type FieldGroup = 'interview_info' | 'preferences';
  * 自动覆盖；带联动/自定义合并的字段（gender、is_student、schedule_constraint、
  * city/district/location、brands、available_after）不强塞进来，保留在循环内手写。
  *
- * merge 语义：
- *   - 'first-scalar'：先到先得，已有非空值则忽略本条（name/phone/age/... 等）
- *   - 'last-scalar' ：后到覆盖，仅用于需跟随候选人最新明确表达的 labor_form
- *   - 'union-array' ：累积去重，每条命中都并入已有数组（position 等）
+ * producer 对每条命中都发 claim；first/last/union/composite 只能由
+ * policies.ts 声明并由 evidence/merge 执行。
  */
-interface FieldExtractorBase {
+interface FieldExtractor {
   group: FieldGroup;
   field: string;
+  extract: (message: string) => string | string[] | null;
   /** evidence 文案（入库到字段元数据，服务排障）。 */
   evidence: (value: string) => string;
   /** reasoning 文案（拼进对外 reasoning 串）；缺省与 evidence 同文。 */
   reason?: (value: string) => string;
 }
 
-interface ScalarFieldExtractor extends FieldExtractorBase {
-  merge: 'first-scalar' | 'last-scalar';
-  extract: (message: string) => string | null;
-}
-
-interface ArrayFieldExtractor extends FieldExtractorBase {
-  merge: 'union-array';
-  /** 数组提取器：evidence/reason 接收原始命中片段（join('、') 后），merge 内部累积去重。 */
-  extract: (message: string) => string[];
-}
-
-type FieldExtractor = ScalarFieldExtractor | ArrayFieldExtractor;
-
 const FIELD_EXTRACTORS: FieldExtractor[] = [
   {
     group: 'interview_info',
     field: 'name',
-    merge: 'first-scalar',
     extract: extractStructuredName,
     evidence: (value) => `结构化姓名识别：${value}`,
     reason: (value) => `结构化姓名识别：${value}（来源：收资表单键值对）`,
@@ -190,14 +167,12 @@ const FIELD_EXTRACTORS: FieldExtractor[] = [
   {
     group: 'interview_info',
     field: 'phone',
-    merge: 'first-scalar',
     extract: extractPhone,
     evidence: (value) => `手机号识别：${value}`,
   },
   {
     group: 'interview_info',
     field: 'age',
-    merge: 'first-scalar',
     extract: extractAge,
     evidence: (value) => `年龄识别：${value}`,
   },
@@ -206,142 +181,174 @@ const FIELD_EXTRACTORS: FieldExtractor[] = [
     field: 'has_health_certificate',
     // 证件状态会随候选人补充意愿而演进：旧“无”必须能被最新“愿意办理”覆盖，
     // 最新明确拒绝也必须反向覆盖旧承诺。
-    merge: 'last-scalar',
     extract: extractHealthCertificate,
     evidence: (value) => `健康证识别：${value}`,
   },
   {
     group: 'interview_info',
     field: 'experience',
-    merge: 'first-scalar',
     extract: extractExperience,
     evidence: (value) => `工作经历识别：${value}`,
   },
   {
     group: 'interview_info',
     field: 'upload_resume',
-    merge: 'first-scalar',
     extract: extractUploadResume,
     evidence: (value) => `简历附件识别：${value}`,
   },
   {
     group: 'interview_info',
     field: 'height',
-    merge: 'first-scalar',
     extract: extractHeight,
     evidence: (value) => `身高识别：${value}`,
   },
   {
     group: 'interview_info',
     field: 'weight',
-    merge: 'first-scalar',
     extract: extractWeight,
     evidence: (value) => `体重识别：${value}`,
   },
   {
     group: 'interview_info',
     field: 'household_register_province',
-    merge: 'first-scalar',
     extract: extractHouseholdRegisterProvince,
     evidence: (value) => `户籍识别：${value}`,
   },
   {
     group: 'preferences',
     field: 'labor_form',
-    merge: 'last-scalar',
     extract: extractLaborForm,
     evidence: (value) => `用工形式识别：${value}`,
   },
   {
     group: 'preferences',
     field: 'salary',
-    merge: 'first-scalar',
     extract: extractSalary,
     evidence: (value) => `薪资识别：${value}`,
   },
   {
     group: 'preferences',
     field: 'schedule',
-    merge: 'first-scalar',
     extract: extractSchedule,
     evidence: (value) => `班次识别：${value}`,
   },
   {
     group: 'preferences',
     field: 'position',
-    merge: 'union-array',
     extract: extractPositions,
     evidence: (value) => `岗位识别：${value}`,
   },
 ];
 
 /** 注册表声明的字段清单：供下游镜像清单做编译期/测试期完备性校验。 */
-export const REGISTRY_FIELD_PATHS: readonly string[] = FIELD_EXTRACTORS.map(
-  (extractor) => `${extractor.group}.${extractor.field}`,
+export const REGISTRY_FIELD_PATHS: readonly RuleFactFieldPath[] = FIELD_EXTRACTORS.map(
+  (extractor) => `${extractor.group}.${extractor.field}` as RuleFactFieldPath,
 );
+
+interface RuleClaimSink {
+  claims: RuleFactClaim[];
+  reasons: string[];
+  assertedAt: string;
+  sequence: number;
+}
+
+interface AppendRuleClaimParams {
+  field: RuleFactFieldPath;
+  value: unknown;
+  message: string;
+  label: string;
+  reason?: string;
+  confidence?: RuleFactConfidence;
+  evidenceCode?: string;
+  operation?: 'set' | 'clear';
+  clearValues?: readonly unknown[];
+  producer?: RuleFactClaim['producer'];
+}
+
+function appendRuleClaim(sink: RuleClaimSink, params: AppendRuleClaimParams): void {
+  const producer = params.producer ?? 'rule';
+  sink.sequence += 1;
+  sink.claims.push({
+    claimId: `${producer}_${params.field.replace('.', '_')}_${sink.sequence}`,
+    field: params.field,
+    value: params.operation === 'clear' ? null : params.value,
+    operation: params.operation ?? 'set',
+    producer,
+    interpretation: 'direct',
+    confidence: params.confidence ?? 'high',
+    evidence: {
+      quote: stripTimeContextSuffix(params.message).trim().slice(0, RULE_CLAIM_QUOTE_MAX_CHARS),
+      label: params.label,
+      ...(params.evidenceCode ? { code: params.evidenceCode } : {}),
+    },
+    ...(params.clearValues ? { clearValues: params.clearValues } : {}),
+    reasoning: params.reason ?? params.label,
+    assertedAt: sink.assertedAt,
+  });
+  sink.reasons.push(params.reason ?? params.label);
+}
 
 function applyFieldExtractor(
   extractor: FieldExtractor,
   message: string,
-  facts: HighConfidenceFacts,
-  reasons: string[],
+  sink: RuleClaimSink,
 ): void {
-  const group = facts[extractor.group] as unknown as Record<
-    string,
-    HighConfidenceValue<unknown> | null
-  >;
   const toReason = extractor.reason ?? extractor.evidence;
+  const field = `${extractor.group}.${extractor.field}` as RuleFactFieldPath;
 
-  if (extractor.merge !== 'union-array') {
-    if (extractor.field === 'labor_form') {
-      const intent = decideLaborFormIntent(message);
-      if (intent.kind === 'ignore') return;
-      if (intent.kind === 'clear') {
-        const current = unwrapHighConfidenceValue(group[extractor.field]) as string | null;
-        if (current && intent.clearedValues.some((value) => value === current)) {
-          group[extractor.field] = null;
-        }
-        return;
-      }
+  if (extractor.field === 'labor_form') {
+    const intent = decideLaborFormIntent(message);
+    if (intent.kind === 'ignore') return;
+    if (intent.kind === 'clear') {
+      appendRuleClaim(sink, {
+        field,
+        value: null,
+        message,
+        label: `用工形式清除：${intent.clearedValues.join('、')}`,
+        operation: 'clear',
+        clearValues: intent.clearedValues,
+      });
+      return;
     }
-    const value = extractor.extract(message);
-    if (!value || (extractor.merge === 'first-scalar' && group[extractor.field])) return;
-    group[extractor.field] = ruleValue(value, { evidence: extractor.evidence(value) });
-    reasons.push(toReason(value));
-    return;
   }
 
-  // union-array：每条命中并入已有数组并去重
-  const values = extractor.extract(message);
-  if (values.length === 0) return;
-  const existing = (unwrapHighConfidenceValue(group[extractor.field]) as string[] | null) ?? [];
-  const merged = Array.from(new Set([...existing, ...values]));
-  const label = values.join('、');
-  group[extractor.field] = ruleValue(merged, { evidence: extractor.evidence(label) });
-  reasons.push(toReason(label));
+  const value = extractor.extract(message);
+  if (value === null || (Array.isArray(value) && value.length === 0)) return;
+  const label = Array.isArray(value) ? value.join('、') : value;
+  appendRuleClaim(sink, {
+    field,
+    value,
+    message,
+    label: extractor.evidence(label),
+    reason: toReason(label),
+  });
 }
 
 // 提取授权域（kind → identity/phone/preferences/geo）已收拢至
 // @resolution/visual 的 visual-fact.policy：规则只由 sheet kind 决定，与消费点无关，
 // 且在域内有 Record<VisualFactKind,…> 的加档编译期约束。
 
-export interface ExtractHighConfidenceOptions {
+export interface ProduceRuleFactClaimsOptions {
   /** 剥时间后缀内容 → sheet 的映射（visual-fact-structuring 消费侧读路径）。 */
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
 }
 
-export function extractHighConfidenceFacts(
+export function produceRuleFactClaims(
   userMessages: string[],
   brandData: BrandItem[],
-  options?: ExtractHighConfidenceOptions,
-): HighConfidenceFacts | null {
+  options?: ProduceRuleFactClaimsOptions,
+): RuleFactClaims | null {
   const normalizedMessages = userMessages
     .map((message) => stripQuotedBlocks(message.trim()))
     .filter(Boolean);
   if (normalizedMessages.length === 0) return null;
 
-  const facts = cloneFallbackExtraction();
-  const reasons: string[] = [];
+  const sink: RuleClaimSink = {
+    claims: [],
+    reasons: [],
+    assertedAt: new Date().toISOString(),
+    sequence: 0,
+  };
   // 查表键必须剥时间后缀（评审阻断项，2026-08-05）：map 键是 DB 原始内容（无后缀），
   // 而生产窗口消息带 injectTimeContext 注入的 `\n[消息发送时间：…]` 后缀——不剥则
   // 查表永远 miss，sheet 授权域静默失效、全部回落文本兜底（测试曾因 fixture 无后缀漏过）。
@@ -362,7 +369,7 @@ export function extractHighConfidenceFacts(
   });
   const aliasHints = detectBrandAliasHints(hintCorpus.filter(Boolean), brandData);
   if (aliasHints.length > 0) {
-    reasons.push(
+    sink.reasons.push(
       ...aliasHints.map(
         (hint) =>
           `品牌别名识别：用户原话"${hint.sourceText}"命中"${hint.matchedAlias}" => "${hint.brandName}"`,
@@ -390,22 +397,27 @@ export function extractHighConfidenceFacts(
         if (extractor.field === 'phone' && !scope.phone) continue;
       }
       if (extractor.group === 'preferences' && !scope.preferences) continue;
-      applyFieldExtractor(extractor, message, facts, reasons);
+      applyFieldExtractor(extractor, message, sink);
     }
 
     // ── 以下为带字段间联动 / 自定义合并语义的特殊字段，保留在循环内手写 ──
 
-    // gender：提取成功时联动写入 gender_source='candidate'，注册表的单字段模型表达不了。
+    // gender：一次识别发布 gender 与 gender_source 两条 claim。
     // 同属身份字段：岗位截图里的"仅限男"不是候选人性别。
     const gender = isSelfReported ? extractGender(message) : null;
-    if (gender && !facts.interview_info.gender) {
-      facts.interview_info.gender = ruleValue(gender, {
-        evidence: `性别识别：${gender}`,
+    if (gender) {
+      appendRuleClaim(sink, {
+        field: 'interview_info.gender',
+        value: gender,
+        message,
+        label: `性别识别：${gender}`,
       });
-      facts.interview_info.gender_source = ruleValue('candidate', {
-        evidence: '性别来源：候选人自陈',
+      appendRuleClaim(sink, {
+        field: 'interview_info.gender_source',
+        value: 'candidate',
+        message,
+        label: '性别来源：候选人自陈',
       });
-      reasons.push(`性别识别：${gender}`);
     }
 
     // is_student + education：一次 extractStudentInfo 同时产出两个字段（且 is_student 走
@@ -414,25 +426,31 @@ export function extractHighConfidenceFacts(
     const studentInfo = isSelfReported
       ? extractStudentInfo(message)
       : { isStudent: null, education: null };
-    if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
-      facts.interview_info.is_student = ruleValue(studentInfo.isStudent, {
-        evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
+    if (studentInfo.isStudent !== null) {
+      appendRuleClaim(sink, {
+        field: 'interview_info.is_student',
+        value: studentInfo.isStudent,
+        message,
+        label: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
       });
-      reasons.push(`学生身份识别：${studentInfo.isStudent ? '是' : '否'}`);
     }
-    if (studentInfo.education && !facts.interview_info.education) {
-      facts.interview_info.education = ruleValue(studentInfo.education, {
-        evidence: `学历识别：${studentInfo.education}`,
+    if (studentInfo.education) {
+      appendRuleClaim(sink, {
+        field: 'interview_info.education',
+        value: studentInfo.education,
+        message,
+        label: `学历识别：${studentInfo.education}`,
       });
-      reasons.push(`学历识别：${studentInfo.education}`);
     } else if (!studentInfo.education && scope.identity) {
       // 兜底路径同受身份域门控（评审阻断项）：岗位截图"学历要求：大专以上"不得入档
       const explicitEducation = extractEducation(message);
-      if (explicitEducation && !facts.interview_info.education) {
-        facts.interview_info.education = ruleValue(explicitEducation, {
-          evidence: `学历识别：${explicitEducation}`,
+      if (explicitEducation) {
+        appendRuleClaim(sink, {
+          field: 'interview_info.education',
+          value: explicitEducation,
+          message,
+          label: `学历识别：${explicitEducation}`,
         });
-        reasons.push(`学历识别：${explicitEducation}`);
       }
     }
 
@@ -440,78 +458,72 @@ export function extractHighConfidenceFacts(
       ? extractScheduleConstraintStructured(message)
       : null;
     if (scheduleConstraint) {
-      const existingConstraint = unwrapHighConfidenceValue(facts.preferences.schedule_constraint);
-      const merged: ScheduleConstraintFact = {
-        onlyWeekends: scheduleConstraint.onlyWeekends ?? existingConstraint?.onlyWeekends ?? null,
-        onlyEvenings: scheduleConstraint.onlyEvenings ?? existingConstraint?.onlyEvenings ?? null,
-        onlyMornings: scheduleConstraint.onlyMornings ?? existingConstraint?.onlyMornings ?? null,
-        maxDaysPerWeek:
-          scheduleConstraint.maxDaysPerWeek ?? existingConstraint?.maxDaysPerWeek ?? null,
-      };
       const labelParts: string[] = [];
-      if (merged.onlyWeekends) labelParts.push('只周末');
-      if (merged.onlyEvenings) labelParts.push('只晚班');
-      if (merged.onlyMornings) labelParts.push('只早班');
-      if (merged.maxDaysPerWeek !== null) labelParts.push(`每周≤${merged.maxDaysPerWeek}天`);
-      facts.preferences.schedule_constraint = ruleValue(merged, {
-        evidence: `班次硬约束（结构化）：${labelParts.join('、') || '空'}`,
+      if (scheduleConstraint.onlyWeekends) labelParts.push('只周末');
+      if (scheduleConstraint.onlyEvenings) labelParts.push('只晚班');
+      if (scheduleConstraint.onlyMornings) labelParts.push('只早班');
+      if (scheduleConstraint.maxDaysPerWeek !== null) {
+        labelParts.push(`每周≤${scheduleConstraint.maxDaysPerWeek}天`);
+      }
+      const label = `班次硬约束（结构化）：${labelParts.join('、') || '空'}`;
+      appendRuleClaim(sink, {
+        field: 'preferences.schedule_constraint',
+        value: scheduleConstraint,
+        message,
+        label,
       });
-      reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
     }
 
     const availableAfter = scope.preferences
       ? extractAvailableAfterDate(message, formatLocalDate(new Date()))
       : null;
     if (availableAfter) {
-      facts.preferences.available_after = ruleValue(availableAfter, {
-        evidence: `未来日期硬约束：${availableAfter.date}`,
+      appendRuleClaim(sink, {
+        field: 'preferences.available_after',
+        value: availableAfter,
+        message,
+        label: `未来日期硬约束：${availableAfter.date}`,
+        reason: `未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`,
       });
-      reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
     }
 
     const location = scope.geo
       ? extractLocation(message)
       : { city: null, district: [], location: [] };
     if (location.city) {
-      facts.preferences.city = ruleValue(location.city.value, {
-        evidence: location.city.evidence,
+      appendRuleClaim(sink, {
+        field: 'preferences.city',
+        value: location.city.value,
+        message,
+        label: `城市识别：${location.city.value}`,
         confidence: location.city.confidence,
+        evidenceCode: location.city.evidence,
+        reason: `城市识别：${location.city.value}（证据：${location.city.evidence}，置信：${location.city.confidence}）`,
       });
-      reasons.push(
-        `城市识别：${location.city.value}（证据：${location.city.evidence}，置信：${location.city.confidence}）`,
-      );
     }
     if (location.district.length > 0) {
-      const mergedDistrict = Array.from(
-        new Set([
-          ...(unwrapHighConfidenceValue(facts.preferences.district) ?? []),
-          ...location.district,
-        ]),
-      );
-      facts.preferences.district = ruleValue(mergedDistrict, {
-        evidence: `区域识别：${location.district.join('、')}`,
+      appendRuleClaim(sink, {
+        field: 'preferences.district',
+        value: location.district,
+        message,
+        label: `区域识别：${location.district.join('、')}`,
       });
-      reasons.push(`区域识别：${location.district.join('、')}`);
     }
     if (location.location.length > 0) {
-      const mergedLocation = Array.from(
-        new Set([
-          ...(unwrapHighConfidenceValue(facts.preferences.location) ?? []),
-          ...location.location,
-        ]),
-      );
-      facts.preferences.location = ruleValue(mergedLocation, {
-        evidence: `地点识别：${location.location.join('、')}`,
+      appendRuleClaim(sink, {
+        field: 'preferences.location',
+        value: location.location,
+        message,
+        label: `地点识别：${location.location.join('、')}`,
       });
-      reasons.push(`地点识别：${location.location.join('、')}`);
     }
   }
 
-  if (!hasAnyExtractedFact(facts)) return null;
+  if (sink.claims.length === 0) return null;
 
   return {
-    ...facts,
-    reasoning: reasons.length > 0 ? reasons.join('\n') : '本轮前置高置信识别',
+    claims: sink.claims,
+    reasoning: sink.reasons.length > 0 ? sink.reasons.join('\n') : '本轮前置规则识别',
   };
 }
 
@@ -529,7 +541,7 @@ export function extractHighConfidenceFacts(
  * 提取提示词，形成 Agent 说品牌 → 候选人引用 → 品牌被当作其兴趣的自污染回路。
  * 根因是调用方（session.service extractFacts）传了原始消息，而剥离契约只写在
  * stripQuotedBlocks 的注释里、无结构约束。收进入口后调用方无法再漏（幂等，
- * extractHighConfidenceFacts 侧已剥过一次也无副作用）。
+ * rule-track claim 生产侧已剥过一次也无副作用）。
  */
 export function detectBrandAliasHints(
   userMessages: string[],
@@ -550,309 +562,55 @@ export function normalizeGenderValue(value: unknown): '男' | '女' | null {
 }
 
 /**
- * 把外部补充的性别合并进高置信事实对象。
+ * 把外部补充的性别追加到同一条规则 claim 流。
  *
- * 使用浅拷贝保证不污染入参引用，并把来源标签追加到 reasoning 里，便于排障溯源。
- * "补充字段→不可变合并"的合并器：浅拷贝入参后按来源标签补写字段。
+ * 外部标签保持 low/system，不会被只消费 high 的 admission 路径误当成候选人自陈。
  */
-export function mergeSupplementalGenderFact(
-  existing: HighConfidenceFacts | null,
+export function mergeSupplementalGenderClaims(
+  existing: RuleFactClaims | null,
   gender: '男' | '女',
   sourceLabel: string,
-): HighConfidenceFacts {
-  const base: HighConfidenceFacts = existing
-    ? {
-        ...existing,
-        interview_info: { ...existing.interview_info },
-        preferences: { ...existing.preferences },
-      }
-    : cloneFallbackExtraction();
-
-  base.interview_info.gender = highConfidenceValue(gender, {
+): RuleFactClaims {
+  const sink: RuleClaimSink = {
+    claims: [...(existing?.claims ?? [])],
+    reasons: [],
+    assertedAt: new Date().toISOString(),
+    sequence: existing?.claims.length ?? 0,
+  };
+  appendRuleClaim(sink, {
+    field: 'interview_info.gender',
+    value: gender,
+    message: sourceLabel,
+    label: `${sourceLabel}补充性别：${gender}`,
     confidence: 'low',
-    source: 'system',
-    evidence: `${sourceLabel}补充性别：${gender}`,
+    producer: 'system',
   });
-  base.interview_info.gender_source = highConfidenceValue('system', {
+  appendRuleClaim(sink, {
+    field: 'interview_info.gender_source',
+    value: 'system',
+    message: sourceLabel,
+    label: `${sourceLabel}补充性别来源：系统标签`,
     confidence: 'low',
-    source: 'system',
-    evidence: `${sourceLabel}补充性别来源：系统标签`,
+    producer: 'system',
   });
   const suffix = `${sourceLabel}补充性别：${gender}`;
-  base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
-
-  return base;
-}
-
-export function unwrapHighConfidenceValue<T>(
-  value: HighConfidenceValue<T> | T | null | undefined,
-): T | null {
-  if (value === null || value === undefined) return null;
-  return isHighConfidenceValue(value) ? (value.value as T) : value;
-}
-
-export function filterHighConfidenceFacts(
-  facts: HighConfidenceFacts | null | undefined,
-): HighConfidenceFacts | null {
-  if (!facts) return null;
-
-  const filtered: HighConfidenceFacts = {
-    interview_info: {
-      name: highOnly(facts.interview_info.name),
-      phone: highOnly(facts.interview_info.phone),
-      gender: highOnly(facts.interview_info.gender),
-      gender_source: highOnly(facts.interview_info.gender_source),
-      age: highOnly(facts.interview_info.age),
-      applied_store: highOnly(facts.interview_info.applied_store),
-      applied_position: highOnly(facts.interview_info.applied_position),
-      interview_time: highOnly(facts.interview_info.interview_time),
-      is_student: highOnly(facts.interview_info.is_student),
-      education: highOnly(facts.interview_info.education),
-      has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
-      experience: highOnly(facts.interview_info.experience),
-      upload_resume: highOnly(facts.interview_info.upload_resume),
-      height: highOnly(facts.interview_info.height),
-      weight: highOnly(facts.interview_info.weight),
-      household_register_province: highOnly(facts.interview_info.household_register_province),
-    },
-    preferences: {
-      brands: highOnly(facts.preferences.brands),
-      brand_ids: highOnly(facts.preferences.brand_ids),
-      salary: highOnly(facts.preferences.salary),
-      position: highOnly(facts.preferences.position),
-      schedule: highOnly(facts.preferences.schedule),
-      city: highOnly(facts.preferences.city),
-      district: highOnly(facts.preferences.district),
-      location: highOnly(facts.preferences.location),
-      labor_form: highOnly(facts.preferences.labor_form),
-      delayed_intent: highOnly(facts.preferences.delayed_intent),
-      short_term: highOnly(facts.preferences.short_term),
-      open_position: highOnly(facts.preferences.open_position),
-      time_windows: highOnly(facts.preferences.time_windows),
-      schedule_constraint: highOnly(facts.preferences.schedule_constraint),
-      available_after: highOnly(facts.preferences.available_after),
-    },
-    reasoning: facts.reasoning,
+  return {
+    claims: sink.claims,
+    reasoning: [existing?.reasoning?.trim(), suffix].filter(Boolean).join('；'),
   };
-
-  return hasAnyHighConfidenceFact(filtered) ? filtered : null;
 }
 
-function highOnly<T>(
-  value: HighConfidenceValue<T> | null | undefined,
-): HighConfidenceValue<T> | null {
-  if (!value) return null;
-  return value.confidence === 'high' ? value : null;
-}
-
-function hasAnyHighConfidenceFact(facts: HighConfidenceFacts): boolean {
-  return (
-    Object.values(facts.interview_info as HighConfidenceInterviewInfo).some(Boolean) ||
-    Object.values(facts.preferences as HighConfidencePreferences).some(Boolean)
+/** 注册表字段必须在唯一策略表登记；producer 不再维护任何投影镜像。 */
+function assertRegistryFieldsHavePolicy(): void {
+  const missing = REGISTRY_FIELD_PATHS.filter(
+    (field) => !Object.prototype.hasOwnProperty.call(RULE_FACT_FIELD_POLICIES, field),
   );
-}
-
-function unwrapHighConfidenceCity(value: HighConfidencePreferences['city']): CityFact | null {
-  if (!value) return null;
-  const evidence = CITY_FACT_EVIDENCES.has(value.evidence as CityFactEvidence)
-    ? (value.evidence as CityFactEvidence)
-    : 'explicit_city';
-  return {
-    value: value.value,
-    confidence: value.confidence === 'low' ? 'low' : 'high',
-    evidence,
-  };
-}
-
-export function unwrapHighConfidenceFacts(
-  facts: HighConfidenceFacts | null | undefined,
-): EntityExtractionResult | null {
-  if (!facts) return null;
-  return {
-    interview_info: {
-      name: unwrapHighConfidenceValue(facts.interview_info.name),
-      phone: unwrapHighConfidenceValue(facts.interview_info.phone),
-      gender: unwrapHighConfidenceValue(facts.interview_info.gender),
-      gender_source: unwrapHighConfidenceValue(facts.interview_info.gender_source),
-      age: unwrapHighConfidenceValue(facts.interview_info.age),
-      applied_store: unwrapHighConfidenceValue(facts.interview_info.applied_store),
-      applied_position: unwrapHighConfidenceValue(facts.interview_info.applied_position),
-      interview_time: unwrapHighConfidenceValue(facts.interview_info.interview_time),
-      is_student: unwrapHighConfidenceValue(facts.interview_info.is_student),
-      education: unwrapHighConfidenceValue(facts.interview_info.education),
-      has_health_certificate: unwrapHighConfidenceValue(
-        facts.interview_info.has_health_certificate,
-      ),
-      experience: unwrapHighConfidenceValue(facts.interview_info.experience),
-      upload_resume: unwrapHighConfidenceValue(facts.interview_info.upload_resume),
-      height: unwrapHighConfidenceValue(facts.interview_info.height),
-      weight: unwrapHighConfidenceValue(facts.interview_info.weight),
-      household_register_province: unwrapHighConfidenceValue(
-        facts.interview_info.household_register_province,
-      ),
-    },
-    preferences: {
-      brands: unwrapHighConfidenceValue(facts.preferences.brands),
-      brand_ids: unwrapHighConfidenceValue(facts.preferences.brand_ids),
-      salary: unwrapHighConfidenceValue(facts.preferences.salary),
-      position: unwrapHighConfidenceValue(facts.preferences.position),
-      schedule: unwrapHighConfidenceValue(facts.preferences.schedule),
-      city: unwrapHighConfidenceCity(facts.preferences.city),
-      district: unwrapHighConfidenceValue(facts.preferences.district),
-      location: unwrapHighConfidenceValue(facts.preferences.location),
-      labor_form: unwrapHighConfidenceValue(facts.preferences.labor_form),
-      delayed_intent: unwrapHighConfidenceValue(facts.preferences.delayed_intent),
-      short_term: unwrapHighConfidenceValue(facts.preferences.short_term),
-      open_position: unwrapHighConfidenceValue(facts.preferences.open_position),
-      time_windows: unwrapHighConfidenceValue(facts.preferences.time_windows),
-      schedule_constraint: unwrapHighConfidenceValue(facts.preferences.schedule_constraint),
-      available_after: unwrapHighConfidenceValue(facts.preferences.available_after),
-    },
-    reasoning: facts.reasoning,
-  };
-}
-
-/**
- * 全字段 null 的高置信事实空模板。
- *
- * 不再手写镜像清单：直接深拷贝 FALLBACK_EXTRACTION（其 interview_info/preferences 的
- * 字段集由 session-facts.types 的单一字段清单生成，且加载期自检保证与各 schema 一致），
- * 所有字段值均为 null，结构上同时满足 HighConfidenceFacts；reasoning 也随之同步。
- */
-function cloneFallbackExtraction(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-      experience: null,
-      upload_resume: null,
-      height: null,
-      weight: null,
-      household_register_province: null,
-    },
-    preferences: {
-      brands: null,
-      brand_ids: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: '规则轨空值模板',
-  };
-}
-
-/**
- * 注册表完备性自检：每个 FIELD_EXTRACTORS 声明的字段路径，必须在三处手工镜像
- * 清单（cloneFallbackExtraction 的 null 初始化、filterHighConfidenceFacts 的 highOnly、
- * unwrapHighConfidenceFacts 的 unwrap）里都存在 key，否则该字段会被静默丢弃。
- *
- * 这里在模块加载时即刻校验，任何注册表/镜像清单失配会立即抛错（被测试或启动捕获），
- * 把"漏一处静默丢字段"从运行期隐患提前到编译/加载期失败。
- */
-function assertRegistryFieldsMirrored(): void {
-  // 用一个"所有注册表字段都填了 high 占位值"的样本驱动校验：
-  // filter/unwrap 在有事实时返回非 null，逐字段检查 key 是否被保留。
-  const probe = cloneFallbackExtraction();
-  for (const extractor of FIELD_EXTRACTORS) {
-    const group = probe[extractor.group] as unknown as Record<
-      string,
-      HighConfidenceValue<unknown> | null
-    >;
-    const placeholder = extractor.merge === 'union-array' ? ['__probe__'] : '__probe__';
-    group[extractor.field] = ruleValue(placeholder, { evidence: 'registry probe' });
-  }
-
-  const filtered = filterHighConfidenceFacts(probe);
-  const unwrapped = unwrapHighConfidenceFacts(probe);
-  const missing: string[] = [];
-
-  const keysOf = (record: object): Record<string, unknown> =>
-    record as unknown as Record<string, unknown>;
-
-  for (const extractor of FIELD_EXTRACTORS) {
-    const path = `${extractor.group}.${extractor.field}`;
-    const inClone = extractor.field in keysOf(probe[extractor.group]);
-    const inFilter = !!filtered && extractor.field in keysOf(filtered[extractor.group]);
-    const inUnwrap = !!unwrapped && extractor.field in keysOf(unwrapped[extractor.group]);
-    if (!inClone || !inFilter || !inUnwrap) missing.push(path);
-  }
-
   if (missing.length > 0) {
-    throw new Error(
-      `[high-confidence-facts] 注册表字段未在镜像清单中完整登记，会被静默丢弃：${missing.join(', ')}`,
-    );
+    throw new Error(`[rule-fact-claims] 注册表字段未登记策略：${missing.join(', ')}`);
   }
 }
 
-assertRegistryFieldsMirrored();
-
-function ruleMeta(params: {
-  evidence: string;
-  confidence?: HighConfidenceValue<unknown>['confidence'];
-}): Omit<HighConfidenceValue<unknown>, 'value'> {
-  return {
-    confidence: params.confidence ?? 'high',
-    source: 'rule',
-    evidence: params.evidence,
-  };
-}
-
-function highConfidenceValue<T>(
-  value: T,
-  meta: Omit<HighConfidenceValue<T>, 'value'>,
-): HighConfidenceValue<T> {
-  return { value, ...meta };
-}
-
-function ruleValue<T>(
-  value: T,
-  params: { evidence: string; confidence?: HighConfidenceValue<T>['confidence'] },
-): HighConfidenceValue<T> {
-  return highConfidenceValue(value, ruleMeta(params) as Omit<HighConfidenceValue<T>, 'value'>);
-}
-
-export function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'value' in value &&
-    'confidence' in value &&
-    'source' in value &&
-    'evidence' in value
-  );
-}
-
-function hasAnyExtractedFact(facts: HighConfidenceFacts): boolean {
-  return hasAnyValue(facts.interview_info) || hasAnyValue(facts.preferences);
-}
-
-function hasAnyValue(record: object): boolean {
-  return Object.values(record).some((value) => {
-    if (value === null || value === undefined) return false;
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === 'object') return true; // CityFact object
-    return value !== '';
-  });
-}
+assertRegistryFieldsHavePolicy();
 
 /**
  * 结构化收资表单中的"姓名：XX"键值对提取。

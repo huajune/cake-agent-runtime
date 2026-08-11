@@ -45,6 +45,33 @@ export const EVIDENCE_FIELDS = [
 ] as const;
 export type EvidenceField = (typeof EVIDENCE_FIELDS)[number];
 
+/** rule-track 仍会产出的完整字段路径；路径本身消除 interview/preferences 同名歧义。 */
+export const RULE_FACT_FIELD_PATHS = [
+  'interview_info.name',
+  'interview_info.phone',
+  'interview_info.gender',
+  'interview_info.gender_source',
+  'interview_info.age',
+  'interview_info.is_student',
+  'interview_info.education',
+  'interview_info.has_health_certificate',
+  'interview_info.experience',
+  'interview_info.upload_resume',
+  'interview_info.height',
+  'interview_info.weight',
+  'interview_info.household_register_province',
+  'preferences.salary',
+  'preferences.position',
+  'preferences.schedule',
+  'preferences.city',
+  'preferences.district',
+  'preferences.location',
+  'preferences.labor_form',
+  'preferences.schedule_constraint',
+  'preferences.available_after',
+] as const;
+export type RuleFactFieldPath = (typeof RULE_FACT_FIELD_PATHS)[number];
+
 export function isCandidateClaimField(value: string): value is CandidateClaimField {
   return (CANDIDATE_CLAIM_FIELDS as readonly string[]).includes(value);
 }
@@ -95,20 +122,56 @@ export interface CandidateFactEvidence {
   messageIndex?: number;
 }
 
-export interface CandidateFactClaim<T = unknown> {
+export interface FactClaim<
+  T = unknown,
+  TField extends string = string,
+  TProducer extends string = string,
+  TEvidence extends CandidateFactEvidence = CandidateFactEvidence,
+> {
   /** 会话内唯一：`{producer}_{field}_{序号}`，由 producer 统一生成。 */
   claimId: string;
-  field: CandidateClaimField;
+  field: TField;
   /** clear 操作时为 null。 */
   value: T | null;
   operation: CandidateFactOperation;
-  producer: CandidateClaimProducer;
+  producer: TProducer;
   interpretation: CandidateFactInterpretation;
-  evidence: CandidateFactEvidence;
+  evidence: TEvidence;
   /** 生产者附注（模型 claim 的推理说明等），仅审计用。 */
   reasoning?: string;
   /** ISO8601。 */
   assertedAt: string;
+}
+
+export type CandidateFactClaim<T = unknown> = FactClaim<
+  T,
+  CandidateClaimField,
+  CandidateClaimProducer
+>;
+
+export type RuleFactConfidence = 'high' | 'medium' | 'low';
+
+export interface RuleFactEvidence extends CandidateFactEvidence {
+  /** 旧规则轨 evidence 的人类可读标签；供 prompt 与持久化元数据直接复用。 */
+  label: string;
+  /** city 等字段需要保留的机器可读证据码。 */
+  code?: string;
+}
+
+/** prep 规则 producer 的统一通货；消费者只能经 evidence/merge 的字段策略裁决。 */
+export type RuleFactClaim<T = unknown> = Omit<
+  FactClaim<T, RuleFactFieldPath, 'rule' | 'system', RuleFactEvidence>,
+  'operation'
+> & {
+  operation: 'set' | 'clear';
+  confidence: RuleFactConfidence;
+  /** clear 仅用于规则轨条件清除时声明允许清掉的旧值；value 本身仍保持 null。 */
+  clearValues?: readonly unknown[];
+};
+
+export interface RuleFactClaims {
+  readonly claims: readonly RuleFactClaim[];
+  readonly reasoning: string;
 }
 
 /** 单条 claim 的裁决结论。 */

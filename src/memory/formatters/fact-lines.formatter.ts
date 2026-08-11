@@ -1,8 +1,8 @@
 import { isValidLaborForm } from '@resolution/labor-form';
+import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
+import { projectRuleFactClaims, resolveRuleFactClaims } from '@resolution/evidence/merge';
 import type {
   EntityExtractionResult,
-  HighConfidenceFacts,
-  HighConfidenceValue,
   SessionFacts,
   SessionFactValue,
 } from '../types/session-facts.types';
@@ -37,7 +37,7 @@ const STALE_FACT_THRESHOLD_MS = 24 * 60 * 60 * 1000;
  * 供 session facts 渲染和 turn hints 渲染共用，避免重复维护字段顺序/文案。
  */
 export function formatExtractionFactLines(
-  facts: EntityExtractionResult | HighConfidenceFacts | SessionFacts,
+  facts: EntityExtractionResult | SessionFacts,
   options: FactLineFormatOptions = {},
 ): string[] {
   const { interview_info: info, preferences: pref } = facts;
@@ -125,7 +125,7 @@ export function formatExtractionFactLines(
   const schedule = readFactValue(pref.schedule);
   if (schedule) lines.push(`- 意向班次: ${schedule}${meta(pref.schedule)}`);
   const city = pref.city;
-  if (isInlineHighConfidenceValue(city)) {
+  if (isSessionFactValue(city)) {
     lines.push(`- 意向城市: ${city.value}${meta(city)}`);
   } else if (city?.value) {
     lines.push(`- 意向城市: ${city.value}（置信度: ${city.confidence}）`);
@@ -168,15 +168,13 @@ export function formatExtractionFactLines(
   return lines;
 }
 
-function readFactValue<T>(
-  value: HighConfidenceValue<T> | SessionFactValue<T> | T | null | undefined,
-): T | null {
+function readFactValue<T>(value: SessionFactValue<T> | T | null | undefined): T | null {
   if (value === null || value === undefined) return null;
-  return isInlineHighConfidenceValue(value) ? value.value : value;
+  return isSessionFactValue(value) ? value.value : value;
 }
 
 function formatInlineFactMeta(value: unknown, options: FactLineFormatOptions): string {
-  if (!isInlineHighConfidenceValue(value)) return '';
+  if (!isSessionFactValue(value)) return '';
   const parts = [`置信度: ${value.confidence}`, `来源: ${value.source}`];
   if (options.includeEvidence && value.evidence?.trim()) {
     parts.push(`证据: ${value.evidence}`);
@@ -192,7 +190,7 @@ function formatInlineFactMeta(value: unknown, options: FactLineFormatOptions): s
  * 这是 7 天前的"明天"。记录时间超过 24h 即显式告警。
  */
 function formatStaleness(value: unknown): string {
-  if (!isInlineHighConfidenceValue(value)) return '';
+  if (!isSessionFactValue(value)) return '';
   const extractedAt = (value as SessionFactValue<unknown>).extractedAt;
   if (!extractedAt) return '';
   const recordedMs = Date.parse(extractedAt);
@@ -220,9 +218,7 @@ function formatBeijingDateTime(timestampMs: number): string {
   return `${value('year')}-${value('month')}-${value('day')} ${value('hour')}:${value('minute')}`;
 }
 
-function isInlineHighConfidenceValue(
-  value: unknown,
-): value is HighConfidenceValue<unknown> | SessionFactValue<unknown> {
+function isSessionFactValue(value: unknown): value is SessionFactValue<unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -231,4 +227,52 @@ function isInlineHighConfidenceValue(
     'source' in value &&
     'evidence' in value
   );
+}
+
+const FACT_LINE_FIELD_BY_LABEL: Readonly<Record<string, RuleFactFieldPath>> = {
+  姓名: 'interview_info.name',
+  联系方式: 'interview_info.phone',
+  性别: 'interview_info.gender',
+  年龄: 'interview_info.age',
+  是否学生: 'interview_info.is_student',
+  学历: 'interview_info.education',
+  健康证: 'interview_info.has_health_certificate',
+  过往工作经历: 'interview_info.experience',
+  简历附件: 'interview_info.upload_resume',
+  身高: 'interview_info.height',
+  体重: 'interview_info.weight',
+  户籍省份: 'interview_info.household_register_province',
+  用工形式: 'preferences.labor_form',
+  意向薪资: 'preferences.salary',
+  意向岗位: 'preferences.position',
+  意向班次: 'preferences.schedule',
+  意向城市: 'preferences.city',
+  意向区域: 'preferences.district',
+  意向地点: 'preferences.location',
+  结构化排班约束: 'preferences.schedule_constraint',
+  最早可面试日期: 'preferences.available_after',
+};
+
+/** 直接从 claim 流渲染规则线索；元数据来自最终获选 claim，不制造中间包装值。 */
+export function formatRuleFactClaimLines(
+  facts: RuleFactClaims | null | undefined,
+  options: Pick<FactLineFormatOptions, 'includeEvidence'> = {},
+): string[] {
+  const projected = projectRuleFactClaims(facts);
+  if (!projected) return [];
+  const resolved = new Map(resolveRuleFactClaims(facts).map((fact) => [fact.field, fact]));
+  return formatExtractionFactLines(projected).map((line) => {
+    const label = /^- ([^:]+):/u.exec(line)?.[1];
+    const field = label ? FACT_LINE_FIELD_BY_LABEL[label] : undefined;
+    const fact = field ? resolved.get(field) : undefined;
+    if (!fact) return line;
+    const parts = [`置信度: ${fact.confidence}`, `来源: ${fact.producer}`];
+    if (options.includeEvidence) {
+      parts.push(`证据: ${fact.evidence.code ?? fact.evidence.label}`);
+    }
+    const meta = `（${parts.join('，')}）`;
+    return field === 'preferences.city'
+      ? line.replace(/（置信度: (?:high|medium|low)）$/u, meta)
+      : `${line}${meta}`;
+  });
 }

@@ -1,11 +1,11 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import type { BrandAliasHint } from '@resolution/evidence/producers/rule-track';
-import { formatExtractionFactLines } from '../formatters/fact-lines.formatter';
-import type {
-  EntityExtractionResult,
-  HighConfidenceFacts,
-  SessionFacts,
-} from '../types/session-facts.types';
+import {
+  formatExtractionFactLines,
+  formatRuleFactClaimLines,
+} from '../formatters/fact-lines.formatter';
+import type { SessionFacts } from '../types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 
 /** 结构化事实提取的系统提示词。 */
 export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是结构化事实提取引擎，从招募经理与候选人的对话历史中提取结构化事实信息。
@@ -150,14 +150,12 @@ preferences（意向信息）:
  * 只输出有值的字段，避免大段"无"干扰 LLM 注意力。
  * LLM 将这些线索作为参考依据，结合对话上下文做最终判断。
  */
-function formatRuleFactsSection(
-  ruleFacts: EntityExtractionResult | HighConfidenceFacts | null,
-): string {
+function formatRuleFactsSection(ruleFacts: RuleFactClaims | null): string {
   if (!ruleFacts) return '无';
 
   // 这里是提取 LLM 的判断依据，evidence（"手机号识别：135xx"等短线索）需要保留；
   // Agent prompt 注入侧（fact-lines 默认）不带 evidence。
-  const lines = formatExtractionFactLines(ruleFacts, { includeEvidence: true });
+  const lines = formatRuleFactClaimLines(ruleFacts, { includeEvidence: true });
   return lines.length > 0 ? lines.join('\n') : '无';
 }
 
@@ -202,7 +200,7 @@ export function buildSessionExtractionPrompt(
   message: string,
   history: string[],
   aliasHints: BrandAliasHint[] = [],
-  ruleFacts: EntityExtractionResult | HighConfidenceFacts | null = null,
+  ruleFacts: RuleFactClaims | null = null,
   currentTime?: string,
   previousFacts: SessionFacts | null = null,
 ): string {

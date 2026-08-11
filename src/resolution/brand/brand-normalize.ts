@@ -1,7 +1,7 @@
 /**
  * 品牌文本归一化原语 —— 全库唯一实现（§5.1 单一居所）。
  *
- * 迁移自 memory/facts/high-confidence-facts.ts（行为一致）：
+ * 迁移自旧规则轨（行为一致）：
  * - normalizeForBrandMatch：大小写/全半角/分隔符清洗（只为对比用，展示仍保留原文）
  * - BRAND_NOISE_PATTERNS + stripBrandNoisePatterns：剥离求职意图词与语气词
  * - buildExactMatchTokens：短别名全等匹配用的 token 集

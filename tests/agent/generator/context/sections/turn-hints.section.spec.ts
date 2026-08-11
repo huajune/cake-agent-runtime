@@ -1,53 +1,7 @@
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
 import { TurnHintsSection } from '@agent/generator/context/sections/turn-hints.section';
-import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'high', source: 'rule', evidence };
-}
-
-function lowSystem<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'low', source: 'system', evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: '',
-  };
-}
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { testRuleFact, testRuleFacts } from '../../../../helpers/rule-fact-claims.fixture';
 
 describe('TurnHintsSection', () => {
   const section = new TurnHintsSection();
@@ -65,15 +19,10 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: null,
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          // brands 已随 preferences.brands 退役不再进 turn hints（§19.6），用 district 验证同一数组渲染路径
-          district: highConfidence(['杨浦区'], '区域识别：杨浦区'),
-        },
-        reasoning: '区域识别',
-      },
+      // brands 已随 preferences.brands 退役不再进 turn hints（§19.6），用 district 验证同一数组渲染路径
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+      ),
     });
 
     expect(output).toContain('[本轮高置信线索]');
@@ -85,14 +34,9 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: null,
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          city: highConfidence('上海', 'unique_district_alias'),
-        },
-        reasoning: '区映射识别',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.city', '上海', 'unique_district_alias'),
+      ),
     });
 
     expect(output).toContain('[本轮高置信线索]');
@@ -103,15 +47,18 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: null,
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        interview_info: {
-          ...emptyHighConfidenceFacts().interview_info,
-          gender: lowSystem('女', '客户详情接口补充性别：女'),
-          gender_source: lowSystem('system', '客户详情接口补充性别来源：系统标签'),
-        },
-        reasoning: '客户详情接口补充性别：女',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('interview_info.gender', '女', '客户详情接口补充性别：女', {
+          confidence: 'low',
+          producer: 'system',
+        }),
+        testRuleFact(
+          'interview_info.gender_source',
+          'system',
+          '客户详情接口补充性别来源：系统标签',
+          { confidence: 'low', producer: 'system' },
+        ),
+      ),
     });
 
     expect(output).toContain('[本轮高置信线索]');
@@ -130,15 +77,10 @@ describe('TurnHintsSection', () => {
           city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
         },
       },
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          district: highConfidence(['杨浦区'], '区域识别：杨浦区'),
-          city: highConfidence('北京', 'explicit_city'),
-        },
-        reasoning: '区域识别，城市识别',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+        testRuleFact('preferences.city', '北京', 'explicit_city'),
+      ),
     });
 
     expect(output).toContain('[本轮高置信线索]');
@@ -163,14 +105,9 @@ describe('TurnHintsSection', () => {
           city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
         },
       },
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          city: highConfidence('上海', 'explicit_city'),
-        },
-        reasoning: '同值',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.city', '上海', 'explicit_city'),
+      ),
     });
 
     expect(output).toContain('[本轮高置信线索]');
@@ -188,14 +125,9 @@ describe('TurnHintsSection', () => {
           labor_form: '兼职',
         },
       },
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          labor_form: highConfidence('暑假工', '用工形式识别：暑假工'),
-        },
-        reasoning: '当前轮改为暑假工',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+      ),
     });
 
     expect(output).toContain('[本轮高置信线索]');

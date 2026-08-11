@@ -3,14 +3,11 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
-import {
-  filterHighConfidenceFacts,
-  unwrapHighConfidenceFacts,
-} from '@resolution/evidence/producers/rule-track';
+import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { unwrapUserProfileFacts } from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
-  type HighConfidenceFacts,
   type RecommendedJobSummary,
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
@@ -66,19 +63,19 @@ export function buildToolContext(input: {
   for (const bookingWorkOrderJobId of bookingWorkOrderJobIds) {
     turnStartRecalledJobIds.add(bookingWorkOrderJobId);
   }
-  const highConfidenceSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
+  const trustedSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
     minConfidence: 'high',
   });
-  const sessionFacts = mergeSessionFactsWithHighConfidence(
-    highConfidenceSessionFacts,
-    memory.highConfidenceFacts,
+  const sessionFacts = mergeSessionFactsWithRuleClaims(
+    trustedSessionFacts,
+    memory.ruleFacts,
     currentLaborFormIntent,
   );
   const geocodeLocationAnchor = resolveGeocodeLocationAnchor({
     currentUserMessage,
     shortTermMessages: memory.shortTerm.messageWindow,
-    currentFacts: memory.highConfidenceFacts,
-    sessionFacts: highConfidenceSessionFacts,
+    currentFacts: memory.ruleFacts,
+    sessionFacts: trustedSessionFacts,
   });
   return {
     session: {
@@ -143,23 +140,23 @@ export function buildToolContext(input: {
  * 让工具（如 precheck）能拿到当前消息里刚提供的候选人字段（年龄/姓名/电话等）。
  * 非 null 的高置信值覆盖旧值，null 不覆盖。
  */
-function mergeSessionFactsWithHighConfidence(
+function mergeSessionFactsWithRuleClaims(
   sessionFacts: EntityExtractionResult | null,
-  highConfidence: HighConfidenceFacts | null,
+  ruleFacts: RuleFactClaims | null,
   currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
 ): EntityExtractionResult | null {
-  const highConfidenceValues = unwrapHighConfidenceFacts(filterHighConfidenceFacts(highConfidence));
+  const currentRuleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
   let merged: EntityExtractionResult | null;
-  if (!highConfidenceValues) {
+  if (!currentRuleValues) {
     merged = sessionFacts;
   } else if (!sessionFacts) {
-    merged = highConfidenceValues;
+    merged = currentRuleValues;
   } else {
     merged = { ...sessionFacts };
 
     // interview_info: 非 null 的高置信值覆盖旧值
     const baseInfo = { ...sessionFacts.interview_info };
-    const hcInfo = highConfidenceValues.interview_info;
+    const hcInfo = currentRuleValues.interview_info;
     for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
       if (hcInfo[key] != null) {
         (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
@@ -169,7 +166,7 @@ function mergeSessionFactsWithHighConfidence(
 
     // preferences: 非 null 的高置信值覆盖旧值
     const basePref = { ...sessionFacts.preferences };
-    const hcPref = highConfidenceValues.preferences;
+    const hcPref = currentRuleValues.preferences;
     for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
       if (hcPref[key] != null) {
         (basePref as Record<string, unknown>)[key] = hcPref[key];

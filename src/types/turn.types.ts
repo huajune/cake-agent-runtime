@@ -1,4 +1,4 @@
-import type { HighConfidenceFacts } from '@memory/types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type {
   CandidateCollectedField,
@@ -40,7 +40,7 @@ export interface TurnLedgerSnapshot {
   fetchedJobs: readonly unknown[];
   jobListQuery: { signature: string } | undefined;
   invalidatedJobIds: readonly number[];
-  ruleFacts: HighConfidenceFacts | null;
+  ruleFacts: RuleFactClaims | null;
   collectedFields: Readonly<Partial<Record<CandidateFieldKey, CandidateCollectedField>>>;
   geoSignalCities: ReadonlySet<string>;
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */

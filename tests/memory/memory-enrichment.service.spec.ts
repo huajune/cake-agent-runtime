@@ -1,49 +1,8 @@
 import { MemoryEnrichmentService } from '@memory/services/memory-enrichment.service';
-import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import type { AgentMemoryContext } from '@memory/types/memory-runtime.types';
-
-function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'high', source: 'rule', evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
-}
+import { getRuleFact } from '@resolution/evidence/merge';
+import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
 
 describe('MemoryEnrichmentService', () => {
   const mockCandidate = {
@@ -55,7 +14,7 @@ describe('MemoryEnrichmentService', () => {
   const baseSnapshot = (): AgentMemoryContext => ({
     shortTerm: { messageWindow: [] },
     sessionMemory: null,
-    highConfidenceFacts: null,
+    ruleFacts: null,
     procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     longTerm: { profile: null },
   });
@@ -114,17 +73,12 @@ describe('MemoryEnrichmentService', () => {
     expect(mockCandidate.lookupGenderFromCustomerDetail).not.toHaveBeenCalled();
   });
 
-  it('skips lookup when highConfidenceFacts already has gender', async () => {
+  it('skips lookup when ruleFacts already has gender', async () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        interview_info: {
-          ...emptyHighConfidenceFacts().interview_info,
-          gender: highConfidence('男', '性别识别：男'),
-        },
-        reasoning: 'existing',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('interview_info.gender', '男', '性别识别：男'),
+      ),
     };
 
     await service.enrich(snapshot, { token: 't', imBotId: 'b', imContactId: 'c' });
@@ -132,7 +86,7 @@ describe('MemoryEnrichmentService', () => {
     expect(mockCandidate.lookupGenderFromCustomerDetail).not.toHaveBeenCalled();
   });
 
-  it('supplements gender into highConfidenceFacts when external lookup succeeds', async () => {
+  it('supplements gender into ruleFacts when external lookup succeeds', async () => {
     mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('男');
     const snapshot = baseSnapshot();
 
@@ -147,30 +101,25 @@ describe('MemoryEnrichmentService', () => {
       imBotId: 'b',
       imContactId: 'c',
     });
-    expect(result.highConfidenceFacts?.interview_info.gender).toEqual(
+    expect(getRuleFact(result.ruleFacts, 'interview_info.gender')).toEqual(
       expect.objectContaining({
         value: '男',
         confidence: 'low',
-        source: 'system',
-        evidence: '客户详情接口补充性别：男',
+        producer: 'system',
+        evidence: expect.objectContaining({ label: '客户详情接口补充性别：男' }),
       }),
     );
-    expect(result.highConfidenceFacts?.reasoning).toContain('客户详情接口');
-    expect(snapshot.highConfidenceFacts).toBeNull(); // 原快照不被污染
+    expect(result.ruleFacts?.reasoning).toContain('客户详情接口');
+    expect(snapshot.ruleFacts).toBeNull(); // 原快照不被污染
   });
 
-  it('preserves existing highConfidenceFacts fields when merging gender', async () => {
+  it('preserves existing ruleFacts fields when merging gender', async () => {
     mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('女');
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          brands: highConfidence(['来伊份'], '品牌别名识别：来伊份'),
-        },
-        reasoning: '品牌别名识别',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.salary', '30元/时', '薪资识别：30元/时'),
+      ),
     };
 
     const result = await service.enrich(snapshot, {
@@ -179,14 +128,14 @@ describe('MemoryEnrichmentService', () => {
       imContactId: 'c',
     });
 
-    expect(result.highConfidenceFacts?.preferences.brands).toEqual(
-      expect.objectContaining({ value: ['来伊份'] }),
+    expect(getRuleFact(result.ruleFacts, 'preferences.salary')).toEqual(
+      expect.objectContaining({ value: '30元/时' }),
     );
-    expect(result.highConfidenceFacts?.interview_info.gender).toEqual(
+    expect(getRuleFact(result.ruleFacts, 'interview_info.gender')).toEqual(
       expect.objectContaining({ value: '女' }),
     );
-    expect(result.highConfidenceFacts?.reasoning).toContain('品牌别名识别');
-    expect(result.highConfidenceFacts?.reasoning).toContain('客户详情接口补充性别：女');
+    expect(result.ruleFacts?.reasoning).toContain('薪资识别');
+    expect(result.ruleFacts?.reasoning).toContain('客户详情接口补充性别：女');
   });
 
   it('swallows lookup error and returns original snapshot', async () => {

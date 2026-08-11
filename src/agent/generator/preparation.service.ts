@@ -5,7 +5,7 @@ import { ToolRegistryService } from '@tools/tool-registry.service';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { parseLocationShareCoords } from '@resolution/evidence/producers/location-share';
 import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
-import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
 import { extractCandidateTexts } from '@resolution/evidence/corpus';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
@@ -250,7 +250,7 @@ export class PreparationService {
       currentStage: stageFromResolver ?? undefined,
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
-      highConfidenceFacts: memory.highConfidenceFacts,
+      ruleFacts: memory.ruleFacts,
       currentLaborFormIntent,
       sessionBrandState: turnBrandContext.state,
       accountIdentity: {
@@ -277,7 +277,7 @@ export class PreparationService {
     // 工具上下文 + 观测快照（都消费 entryStage）。
     const candidateTexts = extractCandidateTexts(normalizedMessages);
     const ledger = createTurnLedger({
-      ruleFacts: memory.highConfidenceFacts,
+      ruleFacts: memory.ruleFacts,
       collectedFields: parseCandidateFieldsFromText(
         currentUserMessage ? [currentUserMessage] : [],
         Date.now(),
@@ -345,7 +345,7 @@ export class PreparationService {
     const text = currentUserMessage?.trim();
     if (!text) return null;
     const brandData = await this.spongeService.fetchBrandList();
-    const facts = extractHighConfidenceFacts([text], brandData);
+    const facts = produceRuleFactClaims([text], brandData);
     if (facts) this.logger.debug(`前置规则识别命中: ${facts.reasoning}`);
     return facts;
   }

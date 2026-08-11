@@ -1,56 +1,8 @@
 import { MemoryLifecycleService } from '@memory/services/memory-lifecycle.service';
-import {
-  extractHighConfidenceFacts,
-  unwrapHighConfidenceValue,
-} from '@resolution/evidence/producers/rule-track';
-import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(
-  value: T,
-  evidence: string,
-  source: HighConfidenceValue<T>['source'] = 'rule',
-): HighConfidenceValue<T> {
-  return { value, confidence: source === 'system' ? 'low' : 'high', source, evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
-}
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { getRuleFact } from '@resolution/evidence/merge';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
 
 describe('MemoryLifecycleService', () => {
   const mockShortTerm = {
@@ -103,7 +55,7 @@ describe('MemoryLifecycleService', () => {
   let service: MemoryLifecycleService;
 
   const prepRuleFacts = async (text: string) =>
-    extractHighConfidenceFacts([text], await mockSponge.fetchBrandList());
+    produceRuleFactClaims([text], await mockSponge.fetchBrandList());
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -172,7 +124,7 @@ describe('MemoryLifecycleService', () => {
     expect(mockProcedural.get).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
     expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1');
     expect(ctx.sessionMemory).not.toBeNull();
-    expect(ctx.highConfidenceFacts).toBeNull();
+    expect(ctx.ruleFacts).toBeNull();
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
@@ -346,9 +298,9 @@ describe('MemoryLifecycleService', () => {
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
     expect(ctx.sessionMemory).toBeNull();
-    expect(ctx.highConfidenceFacts?.preferences.brands).toBeNull();
-    expect(ctx.highConfidenceFacts?.reasoning).toContain('来伊份');
-    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
+    expect(ctx.ruleFacts?.claims.some((claim) => claim.field.includes('brands'))).toBe(false);
+    expect(ctx.ruleFacts?.reasoning).toContain('来伊份');
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.age')).toEqual(
       expect.objectContaining({ value: '25' }),
     );
   });
@@ -388,24 +340,24 @@ describe('MemoryLifecycleService', () => {
 
     expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
-    expect(ctx.highConfidenceFacts?.preferences.city).toEqual({
+    expect(getRuleFact(ctx.ruleFacts, 'preferences.city')).toEqual(
+      expect.objectContaining({
       value: '上海',
       confidence: 'high',
-      source: 'rule',
-      evidence: 'municipality_compact',
-    });
-    expect(unwrapHighConfidenceValue(ctx.highConfidenceFacts?.preferences.district)).toEqual([
-      '杨浦',
-    ]);
-    expect(ctx.highConfidenceFacts?.interview_info.gender).toEqual(
+      producer: 'rule',
+      evidence: expect.objectContaining({ code: 'municipality_compact' }),
+      }),
+    );
+    expect(getRuleFact(ctx.ruleFacts, 'preferences.district')?.value).toEqual(['杨浦']);
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.gender')).toEqual(
       expect.objectContaining({ value: '男' }),
     );
-    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.age')).toEqual(
       expect.objectContaining({
         value: '25',
         confidence: 'high',
-        source: 'rule',
-        evidence: '年龄识别：25',
+        producer: 'rule',
+        evidence: expect.objectContaining({ label: '年龄识别：25' }),
       }),
     );
   });
@@ -431,13 +383,9 @@ describe('MemoryLifecycleService', () => {
       { ruleFacts: await prepRuleFacts(text) },
     );
 
-    expect(ctx.highConfidenceFacts?.interview_info).toEqual(
-      expect.objectContaining({
-        name: expect.objectContaining({ value: '张琰' }),
-        phone: expect.objectContaining({ value: '19986247174' }),
-        age: expect.objectContaining({ value: '24' }),
-      }),
-    );
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.name')?.value).toBe('张琰');
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.phone')?.value).toBe('19986247174');
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.age')?.value).toBe('24');
   });
 
   it('should fallback to current user message when short-term window is empty', async () => {
@@ -481,14 +429,12 @@ describe('MemoryLifecycleService', () => {
     mockLongTerm.getProfile.mockResolvedValue(null);
     mockEnrichment.enrich.mockImplementation(async (snapshot) => ({
       ...snapshot,
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        interview_info: {
-          ...emptyHighConfidenceFacts().interview_info,
-          gender: highConfidence('男', '客户详情接口补充性别：男', 'system'),
-        },
-        reasoning: 'enriched',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('interview_info.gender', '男', '客户详情接口补充性别：男', {
+          confidence: 'low',
+          producer: 'system',
+        }),
+      ),
     }));
 
     const identity = { token: 't', imBotId: 'b', imContactId: 'c' };
@@ -497,8 +443,8 @@ describe('MemoryLifecycleService', () => {
     });
 
     expect(mockEnrichment.enrich).toHaveBeenCalledWith(expect.any(Object), identity);
-    expect(ctx.highConfidenceFacts?.interview_info.gender).toEqual(
-      expect.objectContaining({ value: '男', source: 'system' }),
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.gender')).toEqual(
+      expect.objectContaining({ value: '男', producer: 'system' }),
     );
   });
 
@@ -530,7 +476,7 @@ describe('MemoryLifecycleService', () => {
     const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1');
 
     expect(mockSponge.fetchBrandList).not.toHaveBeenCalled();
-    expect(ctx.highConfidenceFacts).toBeNull();
+    expect(ctx.ruleFacts).toBeNull();
   });
 
   it('should run detectAndSettle, project jobs, and trigger extraction on turn end', async () => {

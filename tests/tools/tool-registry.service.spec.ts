@@ -1,6 +1,7 @@
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext, type ToolContextOverrides } from '../helpers/tool-context.fixture';
+import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
 
 function buildRegistry() {
   return new ToolRegistryService(
@@ -41,21 +42,21 @@ function baseContext(overrides: ToolContextOverrides = {}): ToolBuildContext {
 }
 
 describe('ToolRegistryService', () => {
-  it('injects read_resume_attachment when resume URL is present in high-confidence facts', () => {
+  it('injects read_resume_attachment when resume URL is present in rule claims', () => {
     const registry = buildRegistry();
 
     const tools = registry.buildForScenario(
       'candidate-consultation',
       baseContext({
-        ledger: { ruleFacts: {
-          interview_info: {
-            upload_resume: {
-              value: ' https://cdn.example.com/resume.pdf ',
-              confidence: 'high',
-              evidence: '候选人发送了简历附件',
-            },
-          },
-        } as never },
+        ledger: {
+          ruleFacts: testRuleFacts(
+            testRuleFact(
+              'interview_info.upload_resume',
+              ' https://cdn.example.com/resume.pdf ',
+              '候选人发送了简历附件',
+            ),
+          ),
+        },
       }),
     );
 
@@ -65,21 +66,21 @@ describe('ToolRegistryService', () => {
     ).toContain('https://cdn.example.com/resume.pdf');
   });
 
-  it('deduplicates resume URLs across high-confidence and session facts', () => {
+  it('deduplicates resume URLs across rule claims and session facts', () => {
     const registry = buildRegistry();
 
     const tools = registry.buildForScenario(
       'candidate-consultation',
       baseContext({
-        ledger: { ruleFacts: {
-          interview_info: {
-            upload_resume: {
-              value: 'https://cdn.example.com/resume.pdf',
-              confidence: 'high',
-              evidence: '候选人发送了简历附件',
-            },
-          },
-        } as never },
+        ledger: {
+          ruleFacts: testRuleFacts(
+            testRuleFact(
+              'interview_info.upload_resume',
+              'https://cdn.example.com/resume.pdf',
+              '候选人发送了简历附件',
+            ),
+          ),
+        },
         archive: { sessionFacts: {
           interview_info: {
             upload_resume: ' https://cdn.example.com/resume.pdf ',

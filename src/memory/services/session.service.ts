@@ -16,8 +16,6 @@ import {
   type ExplicitProvenanceEntry,
   LLMEntityExtractionResultSchema,
   type EntityExtractionResult,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
   type RecommendedJobSummary,
   RecommendedJobSummarySchema,
   type ScheduleConstraintFact,
@@ -55,9 +53,8 @@ import {
 import {
   detectBrandAliasHints,
   stripQuotedBlocks,
-  filterHighConfidenceFacts,
-  unwrapHighConfidenceFacts,
 } from '@resolution/evidence/producers/rule-track';
+import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
 import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
@@ -101,6 +98,9 @@ import {
   fieldsWithMergePolicy,
   isSameFactValue,
   mergeNullableArrays,
+  projectRuleFactClaims,
+  resolveRuleFactClaims,
+  type ResolvedRuleFact,
   shouldAdoptRuleMeta,
 } from '@resolution/evidence/merge';
 import {
@@ -743,7 +743,7 @@ export class SessionService {
     sessionId: string,
     messages: { role: string; content: string }[],
     /** prep 时刻规则轨产物；与本轮 debounce 合并后的 user 输入同源。 */
-    ruleFacts: HighConfidenceFacts | null = null,
+    ruleFacts: RuleFactClaims | null = null,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
@@ -878,7 +878,6 @@ export class SessionService {
 
     // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
-    const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
     const prompt = buildSessionExtractionPrompt(
       brandData,
       currentMessage,
@@ -926,7 +925,7 @@ export class SessionService {
       });
     }
     let newFacts = this.applyExplicitProvenanceUpgrade(
-      this.mergeRuleAndLlmFacts(sanitizedLlm, highConfidenceRuleFacts),
+      this.mergeRuleAndLlmFacts(sanitizedLlm, ruleFacts),
       explicitProvenance,
       userMessages,
     );
@@ -1299,9 +1298,10 @@ export class SessionService {
    */
   private mergeRuleAndLlmFacts(
     llmFacts: EntityExtractionResult,
-    ruleFacts: HighConfidenceFacts | null,
+    ruleFacts: RuleFactClaims | null,
   ): SessionFacts {
-    if (!ruleFacts) {
+    const ruleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
+    if (!ruleValues) {
       return toSessionFacts(llmFacts, {
         confidence: 'medium',
         source: 'llm',
@@ -1317,23 +1317,20 @@ export class SessionService {
     };
     const infoMerge = merged.interview_info as unknown as Record<string, unknown>;
     const prefMerge = merged.preferences as unknown as Record<string, unknown>;
-    const ruleInfo = ruleFacts.interview_info as unknown as Record<
-      string,
-      HighConfidenceValue<unknown> | null
-    >;
-    const rulePref = ruleFacts.preferences as unknown as Record<
-      string,
-      HighConfidenceValue<unknown> | null
-    >;
+    const ruleInfo = ruleValues.interview_info as unknown as Record<string, unknown>;
+    const rulePref = ruleValues.preferences as unknown as Record<string, unknown>;
+    const resolvedRuleFacts = new Map<RuleFactFieldPath, ResolvedRuleFact>(
+      resolveRuleFactClaims(ruleFacts, { minConfidence: 'high' }).map((fact) => [fact.field, fact]),
+    );
 
     // 收集最终应采用 rule 高置信元数据的字段：`{group}.{field}` → rule 事实。
-    const ruleMetaFields = new Map<string, HighConfidenceValue<unknown>>();
+    const ruleMetaFields = new Map<string, ResolvedRuleFact>();
     const noteRuleMeta = (
       groupKey: 'interview_info' | 'preferences',
       field: string,
-      ruleFact: HighConfidenceValue<unknown> | null,
       currentValue: unknown,
     ): void => {
+      const ruleFact = resolvedRuleFacts.get(`${groupKey}.${field}` as RuleFactFieldPath);
       if (ruleFact && shouldAdoptRuleMeta(currentValue, ruleFact.value)) {
         ruleMetaFields.set(`${groupKey}.${field}`, ruleFact);
       }
@@ -1346,51 +1343,46 @@ export class SessionService {
     ] as const) {
       const fields = fieldsWithMergePolicy(groupKey, 'scalar-first');
       for (const field of fields) {
-        const ruleFact = ruleGroup[field];
-        if (!hasMeaningfulValue(target[field]) && ruleFact && hasMeaningfulValue(ruleFact.value)) {
-          target[field] = ruleFact.value;
+        const ruleValue = ruleGroup[field];
+        if (!hasMeaningfulValue(target[field]) && hasMeaningfulValue(ruleValue)) {
+          target[field] = ruleValue;
         }
-        noteRuleMeta(groupKey, field, ruleFact, target[field]);
+        noteRuleMeta(groupKey, field, target[field]);
       }
     }
 
     for (const field of fieldsWithMergePolicy('interview_info', 'rule-overrides')) {
-      const ruleFact = ruleInfo[field];
-      if (ruleFact && hasMeaningfulValue(ruleFact.value)) infoMerge[field] = ruleFact.value;
-      noteRuleMeta('interview_info', field, ruleFact, infoMerge[field]);
+      const ruleValue = ruleInfo[field];
+      if (hasMeaningfulValue(ruleValue)) infoMerge[field] = ruleValue;
+      noteRuleMeta('interview_info', field, infoMerge[field]);
     }
 
     // ── 数组字段：LLM 与 rule 累积去重 ──
     for (const field of fieldsWithMergePolicy('preferences', 'array-union')) {
-      const ruleFact = rulePref[field];
+      const ruleValue = rulePref[field];
       const mergedArray = mergeNullableArrays(
         prefMerge[field] as unknown[] | null,
-        ruleFact && hasMeaningfulValue(ruleFact.value) ? (ruleFact.value as unknown[]) : null,
+        hasMeaningfulValue(ruleValue) ? (ruleValue as unknown[]) : null,
       );
       prefMerge[field] = mergedArray;
-      noteRuleMeta('preferences', field, ruleFact, mergedArray);
+      noteRuleMeta('preferences', field, mergedArray);
     }
 
     // ── gender + gender_source：联动补位（注册表单字段模型表达不了） ──
     const ruleGender = ruleInfo.gender;
-    if (!merged.interview_info.gender && ruleGender && hasMeaningfulValue(ruleGender.value)) {
-      merged.interview_info.gender = ruleGender.value as string;
+    if (!merged.interview_info.gender && hasMeaningfulValue(ruleGender)) {
+      merged.interview_info.gender = ruleGender as string;
       merged.interview_info.gender_source =
-        (ruleInfo.gender_source?.value as 'candidate' | 'system' | undefined) ??
+        (ruleInfo.gender_source as 'candidate' | 'system' | undefined) ??
         merged.interview_info.gender_source;
     }
-    noteRuleMeta('interview_info', 'gender', ruleGender, merged.interview_info.gender);
-    noteRuleMeta(
-      'interview_info',
-      'gender_source',
-      ruleInfo.gender_source,
-      merged.interview_info.gender_source,
-    );
+    noteRuleMeta('interview_info', 'gender', merged.interview_info.gender);
+    noteRuleMeta('interview_info', 'gender_source', merged.interview_info.gender_source);
 
     // ── schedule_constraint：逐子字段 ?? 合并（LLM 优先，rule 补缺） ──
     const ruleConstraint = rulePref.schedule_constraint;
-    if (ruleConstraint && ruleConstraint.value) {
-      const r = ruleConstraint.value as ScheduleConstraintFact;
+    if (ruleConstraint) {
+      const r = ruleConstraint as ScheduleConstraintFact;
       const llmConstraint = merged.preferences.schedule_constraint;
       merged.preferences.schedule_constraint = {
         onlyWeekends: llmConstraint?.onlyWeekends ?? r.onlyWeekends ?? null,
@@ -1399,19 +1391,14 @@ export class SessionService {
         maxDaysPerWeek: llmConstraint?.maxDaysPerWeek ?? r.maxDaysPerWeek ?? null,
       };
     }
-    noteRuleMeta(
-      'preferences',
-      'schedule_constraint',
-      ruleConstraint,
-      merged.preferences.schedule_constraint,
-    );
+    noteRuleMeta('preferences', 'schedule_constraint', merged.preferences.schedule_constraint);
 
     // ── city：CityFact 值合并（LLM 空时 rule 补位），元数据按 city 字符串比较 ──
     const ruleCity = rulePref.city;
-    if (!merged.preferences.city && ruleCity && hasMeaningfulValue(ruleCity.value)) {
-      merged.preferences.city = unwrapHighConfidenceFacts(ruleFacts)?.preferences.city ?? null;
+    if (!merged.preferences.city && ruleCity) {
+      merged.preferences.city = ruleCity as EntityExtractionResult['preferences']['city'];
     }
-    noteRuleMeta('preferences', 'city', ruleCity, merged.preferences.city?.value ?? null);
+    noteRuleMeta('preferences', 'city', merged.preferences.city?.value ?? null);
 
     // reasoning：追加规则参考线索（同时作为 LLM 取胜字段的 evidence）。
     const ruleReasoning = ruleFacts.reasoning?.trim();
@@ -1434,7 +1421,7 @@ export class SessionService {
   /** 把 ruleMetaFields 列出的字段从 medium/llm 重打为 rule 的 high/rule 元数据。 */
   private stampRuleMetadata(
     sessionFacts: SessionFacts,
-    ruleMetaFields: Map<string, HighConfidenceValue<unknown>>,
+    ruleMetaFields: Map<string, ResolvedRuleFact>,
   ): SessionFacts {
     if (ruleMetaFields.size === 0) return sessionFacts;
 
@@ -1454,14 +1441,14 @@ export class SessionService {
       const current = unwrapSessionFactValue(
         target[field] as SessionFactValue<unknown> | unknown | null,
       );
-      // 防御：medium/llm 重打前再校验一次值未被偏移（与旧 applyHighConfidenceField 一致）。
+      // 防御：medium/llm 重打前再校验一次值未被偏移（与旧信封合并行为一致）。
       if (!hasMeaningfulValue(ruleFact.value)) continue;
       if (hasMeaningfulValue(current) && !isSameFactValue(current, ruleFact.value)) continue;
 
       target[field] = sessionFactValue(ruleFact.value, {
         confidence: ruleFact.confidence,
-        source: ruleFact.source,
-        evidence: truncateEvidence(ruleFact.evidence),
+        source: ruleFact.producer,
+        evidence: truncateEvidence(ruleFact.evidence.code ?? ruleFact.evidence.label),
         extractedAt: new Date().toISOString(),
       });
     }

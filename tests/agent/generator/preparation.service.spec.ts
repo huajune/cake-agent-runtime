@@ -2,50 +2,9 @@ import { PreparationService } from '@agent/generator/preparation.service';
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
-import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'high', source: 'rule', evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
-}
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { getRuleFact } from '@resolution/evidence/merge';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 describe('PreparationService', () => {
   const mockToolRegistry = {
@@ -139,7 +98,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: {
         profile: {
           name: {
@@ -246,7 +205,7 @@ describe('PreparationService', () => {
             city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
           }),
         }),
-        highConfidenceFacts: null,
+        ruleFacts: null,
       }),
     );
     // 阶段直接取程序性记忆 currentStage（recruitment_cases 已废弃，不再由 case 推导）
@@ -761,7 +720,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: {
         profile: {
           name: {
@@ -803,8 +762,9 @@ describe('PreparationService', () => {
   });
 
   it('hides non-summer historical jobs when the current intent is summer work', async () => {
-    const highConfidenceFacts = emptyHighConfidenceFacts();
-    highConfidenceFacts.preferences.labor_form = highConfidence('暑假工', '用工形式识别：暑假工');
+    const ruleFacts = testRuleFacts(
+      testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+    );
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我只找暑期工' }] },
       sessionMemory: {
@@ -848,7 +808,7 @@ describe('PreparationService', () => {
           laborForm: '全职',
         },
       },
-      highConfidenceFacts,
+      ruleFacts,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -911,7 +871,7 @@ describe('PreparationService', () => {
           partTimeJobType: '暑假工',
         },
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -961,7 +921,7 @@ describe('PreparationService', () => {
           },
         ],
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -1027,7 +987,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -1082,7 +1042,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1146,7 +1106,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我是来米' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1202,7 +1162,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '在吗' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1244,7 +1204,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1354,7 +1314,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我想改面试时间' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1407,7 +1367,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1448,7 +1408,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1484,7 +1444,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1672,7 +1632,7 @@ describe('PreparationService', () => {
         messageWindow: [],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1709,7 +1669,7 @@ describe('PreparationService', () => {
         messageWindow: [],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1742,7 +1702,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1790,15 +1750,9 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          brands: highConfidence(['来伊份'], '品牌别名识别：来伊份'),
-          city: highConfidence('北京', 'explicit_city'),
-        },
-        reasoning: '品牌别名识别，城市识别',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.city', '北京', 'explicit_city'),
+      ),
       longTerm: { profile: null },
       procedural: {
         currentStage: 'trust_building',
@@ -1825,14 +1779,13 @@ describe('PreparationService', () => {
       confidence: 'high',
       evidence: 'explicit_city',
     });
-    expect(composeArgs.highConfidenceFacts.preferences.city).toEqual({
-      value: '北京',
-      confidence: 'high',
-      source: 'rule',
-      evidence: 'explicit_city',
-    });
-    expect(composeArgs.highConfidenceFacts.preferences.brands).toEqual(
-      expect.objectContaining({ value: ['来伊份'], source: 'rule' }),
+    expect(getRuleFact(composeArgs.ruleFacts, 'preferences.city')).toEqual(
+      expect.objectContaining({
+        value: '北京',
+        confidence: 'high',
+        producer: 'rule',
+        evidence: expect.objectContaining({ label: 'explicit_city' }),
+      }),
     );
     // memoryBlock 不再包含本轮线索，交由 TurnHintsSection 渲染。
     expect(composeArgs.memoryBlock).not.toContain('[本轮高置信线索]');
@@ -1931,7 +1884,7 @@ describe('PreparationService', () => {
         messageWindow: [{ role: 'user', content: '帮我看看这张图' }],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1972,7 +1925,7 @@ describe('PreparationService', () => {
         ],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -2013,7 +1966,7 @@ describe('PreparationService', () => {
       },
       _warnings: ['shortTerm: Connection timeout'],
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -2130,7 +2083,7 @@ describe('PreparationService', () => {
         ],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });

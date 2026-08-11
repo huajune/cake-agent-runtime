@@ -1,13 +1,10 @@
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 interface PrecheckContextOverrides {
   messages?: unknown[];
@@ -22,51 +19,6 @@ interface PrecheckContextOverrides {
   collectedFields?: TurnLedger['collectedFields'];
   visualFactSheets?: TurnLedger['visualFactSheets'];
   markJobInvalidated?: TurnLedger['markJobInvalidated'];
-}
-
-function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'high', source: 'rule', evidence };
-}
-
-function lowConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'low', source: 'system', evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-      experience: null,
-    },
-    preferences: {
-      brands: null,
-      brand_ids: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
 }
 
 describe('buildInterviewPrecheckTool', () => {
@@ -1225,17 +1177,18 @@ describe('buildInterviewPrecheckTool', () => {
         }),
       ],
     });
-    const facts = emptyHighConfidenceFacts();
-    facts.interview_info.name = highConfidence('王玥', '结构化姓名识别');
-    facts.interview_info.phone = highConfidence('19290703760', '手机号识别');
-    facts.interview_info.age = highConfidence('36', '年龄识别');
-    facts.interview_info.gender = highConfidence('女', '性别识别');
-    facts.interview_info.gender_source = highConfidence('candidate', '候选人自报');
-    facts.interview_info.education = highConfidence('大专', '学历识别');
-    facts.interview_info.has_health_certificate = highConfidence('有', '健康证识别');
-    facts.interview_info.height = highConfidence('163', '身高识别');
-    facts.interview_info.weight = highConfidence('46', '体重识别');
-    facts.interview_info.household_register_province = highConfidence('天津', '户籍识别');
+    const facts = testRuleFacts(
+      testRuleFact('interview_info.name', '王玥', '结构化姓名识别'),
+      testRuleFact('interview_info.phone', '19290703760', '手机号识别'),
+      testRuleFact('interview_info.age', '36', '年龄识别'),
+      testRuleFact('interview_info.gender', '女', '性别识别'),
+      testRuleFact('interview_info.gender_source', 'candidate', '候选人自报'),
+      testRuleFact('interview_info.education', '大专', '学历识别'),
+      testRuleFact('interview_info.has_health_certificate', '有', '健康证识别'),
+      testRuleFact('interview_info.height', '163', '身高识别'),
+      testRuleFact('interview_info.weight', '46', '体重识别'),
+      testRuleFact('interview_info.household_register_province', '天津', '户籍识别'),
+    );
 
     const currentUserMessage =
       '姓名：王玥\n联系方式：19290703760\n学历：大专\n健康证：有\n籍贯：天津\n身高：163\n体重：46kg';
@@ -2453,14 +2406,12 @@ describe('buildInterviewPrecheckTool', () => {
       },
       {
         sessionFacts: FALLBACK_EXTRACTION,
-        ruleFacts: {
-          ...emptyHighConfidenceFacts(),
-          interview_info: {
-            ...emptyHighConfidenceFacts().interview_info,
-            age: lowConfidence('24', '低置信年龄'),
-          },
-          reasoning: '低置信年龄',
-        },
+        ruleFacts: testRuleFacts(
+          testRuleFact('interview_info.age', '24', '低置信年龄', {
+            confidence: 'low',
+            producer: 'system',
+          }),
+        ),
       },
     );
 
@@ -3352,10 +3303,12 @@ describe('buildInterviewPrecheckTool', () => {
       ],
     });
 
-    const ruleFacts = emptyHighConfidenceFacts();
-    ruleFacts.interview_info.experience = highConfidence(
-      '肯德基服务员4个多月',
-      '工作经历识别',
+    const ruleFacts = testRuleFacts(
+      testRuleFact(
+        'interview_info.experience',
+        '肯德基服务员4个多月',
+        '工作经历识别',
+      ),
     );
 
     const result = await executeTool(

@@ -47,7 +47,7 @@ import {
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
 } from '@resolution/evidence/identity-gates';
-import { unwrapHighConfidenceValue } from '@resolution/evidence/producers/rule-track';
+import { getRuleFactValue } from '@resolution/evidence/merge';
 import { extractCandidateTexts } from '@resolution/evidence/adjudicate';
 import { computeCandidateMessageWatermark } from '@resolution/evidence/snapshot';
 import { evaluateSnapshotGate } from '@resolution/evidence/snapshot-gate';
@@ -814,8 +814,10 @@ export function buildInterviewBookingTool(
             candidateGenderId: genderId,
             candidateHasHealthCertificate: hasHealthCertificate,
             candidateHealthCertificateFact:
-              unwrapHighConfidenceValue(
-                context.ledger.ruleFacts?.interview_info.has_health_certificate,
+              getRuleFactValue<string>(
+                context.ledger.ruleFacts,
+                'interview_info.has_health_certificate',
+                { minConfidence: 'high' },
               ) ?? context.archive.sessionFacts?.interview_info.has_health_certificate,
             candidateIsStudent: resolveCandidateIsStudentForBooking(context),
             candidateHouseholdProvinceId: householdRegisterProvinceId,
@@ -1458,11 +1460,11 @@ function normalizeResumeValue(value: unknown): string | undefined {
 
 /** 本轮高置信识别出的简历（候选人当轮刚发的文件/链接），仅当前轮有效。 */
 function getCurrentTurnResume(context: ToolBuildContext): string | undefined {
-  const currentTurnResume = context.ledger.ruleFacts?.interview_info.upload_resume;
-  if (currentTurnResume && typeof currentTurnResume === 'object' && 'value' in currentTurnResume) {
-    return normalizeResumeValue(currentTurnResume.value);
-  }
-  return undefined;
+  return normalizeResumeValue(
+    getRuleFactValue(context.ledger.ruleFacts, 'interview_info.upload_resume', {
+      minConfidence: 'high',
+    }),
+  );
 }
 
 function resolveUploadResume(uploadResume: unknown, context: ToolBuildContext): string | undefined {

@@ -1,16 +1,10 @@
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
-import {
-  extractHighConfidenceFacts,
-  filterHighConfidenceFacts,
-  unwrapHighConfidenceFacts,
-} from '@resolution/evidence/producers/rule-track';
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { resolveCityFromDistrict } from '@resolution/geo';
 import type { ShortTermMessage } from '@memory/types/short-term.types';
-import type {
-  CityFact,
-  EntityExtractionResult,
-  HighConfidenceFacts,
-} from '@memory/types/session-facts.types';
+import type { CityFact, EntityExtractionResult } from '@memory/types/session-facts.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { stripTimeContext } from '@infra/utils/message-markup.util';
 
@@ -20,7 +14,7 @@ const LOCATION_CONTINUATION_PATTERN =
 interface ResolveGeocodeLocationAnchorInput {
   currentUserMessage?: string;
   shortTermMessages: ShortTermMessage[];
-  currentFacts?: HighConfidenceFacts | null;
+  currentFacts?: RuleFactClaims | null;
   sessionFacts?: EntityExtractionResult | null;
 }
 
@@ -59,14 +53,14 @@ function toAnchor(
   };
 }
 
-function anchorFromHighConfidenceFacts(
-  facts: HighConfidenceFacts | null | undefined,
+function anchorFromRuleFacts(
+  facts: RuleFactClaims | null | undefined,
   source: GeocodeLocationAnchor['source'],
   evidence: string,
   referenceText?: string,
 ): GeocodeLocationAnchor | null {
   return toAnchor(
-    unwrapHighConfidenceFacts(filterHighConfidenceFacts(facts)),
+    projectRuleFactClaims(facts, { minConfidence: 'high' }),
     source,
     evidence,
     referenceText,
@@ -82,7 +76,7 @@ function anchorFromHighConfidenceFacts(
 export function resolveGeocodeLocationAnchor(
   input: ResolveGeocodeLocationAnchorInput,
 ): GeocodeLocationAnchor | undefined {
-  const currentAnchor = anchorFromHighConfidenceFacts(
+  const currentAnchor = anchorFromRuleFacts(
     input.currentFacts,
     'current_user',
     `当前候选人消息：${input.currentUserMessage ?? ''}`,
@@ -101,8 +95,8 @@ export function resolveGeocodeLocationAnchor(
     // 不跨过 Agent/自动 assistant 往更早找人工锚点；当前 user 默认回指最近一轮回复。
     if (!isHumanAgentTextMessage(message)) break;
     const text = stripTimeMarkers(message.content);
-    const manualAnchor = anchorFromHighConfidenceFacts(
-      extractHighConfidenceFacts([text], []),
+    const manualAnchor = anchorFromRuleFacts(
+      produceRuleFactClaims([text], []),
       'human_agent',
       `人工招募经理消息：${text}`,
       text,

@@ -1,5 +1,5 @@
 /**
- * 品牌目录索引 —— 迁移自 memory/facts/high-confidence-facts.ts 的 getBrandMatchAssets
+ * 品牌目录索引 —— 迁移自旧规则轨的 getBrandMatchAssets
  * （改名归位，非新概念），在旧候选表基础上补充解析管线需要的检索结构（§7.1）：
  *
  * - brandId → 品牌

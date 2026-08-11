@@ -1,14 +1,11 @@
 import {
   type EntityExtractionResult,
-  type HighConfidenceFacts,
   type Preferences,
   type SessionFacts,
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
-import {
-  filterHighConfidenceFacts,
-  unwrapHighConfidenceFacts,
-} from '@resolution/evidence/producers/rule-track';
+import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
@@ -34,7 +31,7 @@ export class HardConstraintsSection implements PromptSection {
   build(ctx: PromptContext): string {
     const merged = this.mergeFacts(
       ctx.sessionFacts ?? null,
-      ctx.highConfidenceFacts ?? null,
+      ctx.ruleFacts ?? null,
       ctx.currentLaborFormIntent,
     );
     const hardLines = this.collectHardConstraintLines(merged);
@@ -72,40 +69,34 @@ export class HardConstraintsSection implements PromptSection {
   }
 
   /**
-   * 合并 sessionFacts（已确认）与 highConfidenceFacts（本轮新增）。
+   * 合并 sessionFacts（已确认）与 ruleFacts（本轮新增）。
    *
    * 取并集，**本轮高置信值优先覆盖旧 session 值**（候选人资料证据化 Phase 0 第 2 条）：
-   * 工具层 tool-context.builder 的 mergeSessionFactsWithHighConfidence 一直是"本轮非 null
+   * 工具层 tool-context.builder 的 mergeSessionFactsWithRuleClaims 一直是"本轮非 null
    * 高置信覆盖旧值"，本段若取"旧值优先、本轮仅补缺"——prompt 与工具就会对同一字段
    * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
    * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
    */
   private mergeFacts(
     sessionFacts: EntityExtractionResult | SessionFacts | null,
-    highConfidenceFacts: HighConfidenceFacts | null,
+    ruleFacts: RuleFactClaims | null,
     currentLaborFormIntent: PromptContext['currentLaborFormIntent'],
   ): { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null {
-    const highConfidenceSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
-    const highConfidenceValues = unwrapHighConfidenceFacts(
-      filterHighConfidenceFacts(highConfidenceFacts),
-    );
-    if (
-      !highConfidenceSessionFacts &&
-      !highConfidenceValues &&
-      currentLaborFormIntent?.kind !== 'set'
-    ) {
+    const trustedSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
+    const currentRuleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
+    if (!trustedSessionFacts && !currentRuleValues && currentLaborFormIntent?.kind !== 'set') {
       return null;
     }
 
     const interview = {
       ...this.emptyInterviewInfo(),
-      ...this.dropNulls(highConfidenceSessionFacts?.interview_info),
-      ...this.dropNulls(highConfidenceValues?.interview_info),
+      ...this.dropNulls(trustedSessionFacts?.interview_info),
+      ...this.dropNulls(currentRuleValues?.interview_info),
     };
 
-    const highConfidenceLaborForm = highConfidenceValues?.preferences.labor_form ?? null;
-    const sessionLaborForm = highConfidenceSessionFacts?.preferences.labor_form ?? null;
-    const previousLaborForm = highConfidenceLaborForm ?? sessionLaborForm;
+    const currentRuleLaborForm = currentRuleValues?.preferences.labor_form ?? null;
+    const sessionLaborForm = trustedSessionFacts?.preferences.labor_form ?? null;
+    const previousLaborForm = currentRuleLaborForm ?? sessionLaborForm;
     const activeLaborForm =
       currentLaborFormIntent?.kind === 'set'
         ? currentLaborFormIntent.value
@@ -119,57 +110,52 @@ export class HardConstraintsSection implements PromptSection {
       // 品牌不再读 preferences.brands（字段已退役，§19.6）；软提示行直读 sessionBrandState。
       brands: null,
       brand_ids:
-        highConfidenceValues?.preferences.brand_ids ??
-        highConfidenceSessionFacts?.preferences.brand_ids ??
+        currentRuleValues?.preferences.brand_ids ??
+        trustedSessionFacts?.preferences.brand_ids ??
         null,
       salary:
-        highConfidenceValues?.preferences.salary ??
-        highConfidenceSessionFacts?.preferences.salary ??
-        null,
+        currentRuleValues?.preferences.salary ?? trustedSessionFacts?.preferences.salary ?? null,
       position:
-        highConfidenceValues?.preferences.position ??
-        highConfidenceSessionFacts?.preferences.position ??
+        currentRuleValues?.preferences.position ??
+        trustedSessionFacts?.preferences.position ??
         null,
       schedule:
-        highConfidenceValues?.preferences.schedule ??
-        highConfidenceSessionFacts?.preferences.schedule ??
+        currentRuleValues?.preferences.schedule ??
+        trustedSessionFacts?.preferences.schedule ??
         null,
-      city:
-        highConfidenceValues?.preferences.city ??
-        highConfidenceSessionFacts?.preferences.city ??
-        null,
+      city: currentRuleValues?.preferences.city ?? trustedSessionFacts?.preferences.city ?? null,
       district:
-        highConfidenceValues?.preferences.district ??
-        highConfidenceSessionFacts?.preferences.district ??
+        currentRuleValues?.preferences.district ??
+        trustedSessionFacts?.preferences.district ??
         null,
       location:
-        highConfidenceValues?.preferences.location ??
-        highConfidenceSessionFacts?.preferences.location ??
+        currentRuleValues?.preferences.location ??
+        trustedSessionFacts?.preferences.location ??
         null,
       labor_form: activeLaborForm,
       delayed_intent:
-        highConfidenceValues?.preferences.delayed_intent ??
-        highConfidenceSessionFacts?.preferences.delayed_intent ??
+        currentRuleValues?.preferences.delayed_intent ??
+        trustedSessionFacts?.preferences.delayed_intent ??
         null,
       short_term:
-        highConfidenceValues?.preferences.short_term ??
-        highConfidenceSessionFacts?.preferences.short_term ??
+        currentRuleValues?.preferences.short_term ??
+        trustedSessionFacts?.preferences.short_term ??
         null,
       open_position:
-        highConfidenceValues?.preferences.open_position ??
-        highConfidenceSessionFacts?.preferences.open_position ??
+        currentRuleValues?.preferences.open_position ??
+        trustedSessionFacts?.preferences.open_position ??
         null,
       time_windows:
-        highConfidenceValues?.preferences.time_windows ??
-        highConfidenceSessionFacts?.preferences.time_windows ??
+        currentRuleValues?.preferences.time_windows ??
+        trustedSessionFacts?.preferences.time_windows ??
         null,
       schedule_constraint:
-        highConfidenceValues?.preferences.schedule_constraint ??
-        highConfidenceSessionFacts?.preferences.schedule_constraint ??
+        currentRuleValues?.preferences.schedule_constraint ??
+        trustedSessionFacts?.preferences.schedule_constraint ??
         null,
       available_after:
-        highConfidenceValues?.preferences.available_after ??
-        highConfidenceSessionFacts?.preferences.available_after ??
+        currentRuleValues?.preferences.available_after ??
+        trustedSessionFacts?.preferences.available_after ??
         null,
     };
 

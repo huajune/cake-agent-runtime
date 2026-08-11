@@ -1,31 +1,21 @@
-import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
+import { formatRuleFactClaimLines } from '@memory/formatters/fact-lines.formatter';
 import {
-  INTERVIEW_INFO_FIELD_KEYS,
-  PREFERENCE_FIELD_KEYS,
-  type AvailableAfterFact,
   type CityFact,
-  type DelayedIntent,
   type EntityExtractionResult,
-  type HighConfidenceFacts,
-  type HighConfidenceInterviewInfo,
-  type HighConfidencePreferences,
-  type HighConfidenceValue,
-  type ScheduleConstraintFact,
   type SessionFacts,
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
+import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
+import {
+  isSameFactValue,
+  projectRuleFactClaims,
+  resolveRuleFactClaims,
+} from '@resolution/evidence/merge';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
- * 本轮线索段落
- *
- * 把本轮前置高置信识别结果拆成两部分：
- *  - 普通线索：当前轮新增、或与会话记忆不冲突的识别结果；
- *  - 待确认线索：与会话记忆已知信息存在冲突的识别结果。
- *
- * 普通线索可直接辅助 LLM 理解本轮意图；待确认线索提醒 LLM 需要澄清而非覆盖记忆。
- * 城市字段是结构化 CityFact（含 evidence/confidence），渲染时会附上证据信息，
- * Agent 可据此自主决定是否直接采用或需要澄清。
+ * 本轮规则 claim 先由统一字段策略裁决，再按是否与会话记忆冲突拆成普通/待确认视图。
+ * 本类只做展示分流，不再理解 first/last/union/composite，也不持有另一套事实包装。
  */
 export class TurnHintsSection implements PromptSection {
   readonly name = 'turn-hints';
@@ -33,20 +23,17 @@ export class TurnHintsSection implements PromptSection {
   build(ctx: PromptContext): string {
     const { normalHints, pendingHints } = this.partition(
       ctx.sessionFacts ?? null,
-      ctx.highConfidenceFacts ?? null,
+      ctx.ruleFacts ?? null,
     );
-
     const parts: string[] = [];
-    if (normalHints) parts.push(this.renderHighConfidence(normalHints));
+    if (normalHints) parts.push(this.renderCurrentHints(normalHints));
     if (pendingHints) parts.push(this.renderPendingConfirmation(pendingHints));
     return parts.join('\n\n');
   }
 
-  /** 把本轮前置高置信识别渲染成单独的 runtime hints。 */
-  private renderHighConfidence(facts: EntityExtractionResult | HighConfidenceFacts): string {
-    const lines = formatExtractionFactLines(facts);
+  private renderCurrentHints(facts: RuleFactClaims): string {
+    const lines = formatRuleFactClaimLines(facts);
     if (lines.length === 0) return '';
-
     return [
       '[本轮高置信线索]',
       '',
@@ -60,11 +47,9 @@ export class TurnHintsSection implements PromptSection {
     ].join('\n');
   }
 
-  /** 把与会话记忆冲突的当前轮识别结果渲染成待确认线索。 */
-  private renderPendingConfirmation(facts: EntityExtractionResult | HighConfidenceFacts): string {
-    const lines = formatExtractionFactLines(facts);
+  private renderPendingConfirmation(facts: RuleFactClaims): string {
+    const lines = formatRuleFactClaimLines(facts);
     if (lines.length === 0) return '';
-
     return [
       '[本轮待确认线索]',
       '',
@@ -77,341 +62,63 @@ export class TurnHintsSection implements PromptSection {
     ].join('\n');
   }
 
-  /** 把当前轮高置信识别拆成"普通线索"和"待确认线索"。 */
   private partition(
     sessionFacts: EntityExtractionResult | SessionFacts | null,
-    highConfidenceFacts: HighConfidenceFacts | null,
+    ruleFacts: RuleFactClaims | null,
   ): {
-    normalHints: HighConfidenceFacts | null;
-    pendingHints: HighConfidenceFacts | null;
+    normalHints: RuleFactClaims | null;
+    pendingHints: RuleFactClaims | null;
   } {
-    if (!highConfidenceFacts) {
-      return { normalHints: null, pendingHints: null };
+    const projected = projectRuleFactClaims(ruleFacts);
+    if (!projected) return { normalHints: null, pendingHints: null };
+
+    const comparable = unwrapSessionFacts(sessionFacts, { minConfidence: 'medium' });
+    if (!comparable) return { normalHints: ruleFacts, pendingHints: null };
+
+    const normalFields = new Set<RuleFactFieldPath>();
+    const pendingFields = new Set<RuleFactFieldPath>();
+    for (const fact of resolveRuleFactClaims(ruleFacts)) {
+      if (fact.field === 'interview_info.gender_source') continue;
+      const currentValue = this.readPath(projected, fact.field);
+      if (!this.hasValue(currentValue)) continue;
+
+      const previousValue = this.readPath(comparable, fact.field);
+      const target =
+        fact.field === 'preferences.labor_form' ||
+        !this.hasValue(previousValue) ||
+        this.valuesEqual(fact.field, previousValue, currentValue)
+          ? normalFields
+          : pendingFields;
+      target.add(fact.field);
+
+      if (fact.field === 'interview_info.gender') {
+        target.add('interview_info.gender_source');
+      }
     }
-
-    const comparableSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'medium' });
-    if (!comparableSessionFacts) {
-      return { normalHints: highConfidenceFacts, pendingHints: null };
-    }
-
-    const normalHints = this.createEmptyHighConfidenceFacts();
-    const pendingHints = this.createEmptyHighConfidenceFacts();
-    const highInfo = highConfidenceFacts.interview_info;
-    const highPref = highConfidenceFacts.preferences;
-
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.name,
-      highInfo.name,
-      (value) => {
-        normalHints.interview_info.name = value;
-      },
-      (value) => {
-        pendingHints.interview_info.name = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.phone,
-      highInfo.phone,
-      (value) => {
-        normalHints.interview_info.phone = value;
-      },
-      (value) => {
-        pendingHints.interview_info.phone = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.gender,
-      highInfo.gender,
-      (value) => {
-        normalHints.interview_info.gender = value;
-        normalHints.interview_info.gender_source = highInfo.gender_source;
-      },
-      (value) => {
-        pendingHints.interview_info.gender = value;
-        pendingHints.interview_info.gender_source = highInfo.gender_source;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.age,
-      highInfo.age,
-      (value) => {
-        normalHints.interview_info.age = value;
-      },
-      (value) => {
-        pendingHints.interview_info.age = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.applied_store,
-      highInfo.applied_store,
-      (value) => {
-        normalHints.interview_info.applied_store = value;
-      },
-      (value) => {
-        pendingHints.interview_info.applied_store = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.applied_position,
-      highInfo.applied_position,
-      (value) => {
-        normalHints.interview_info.applied_position = value;
-      },
-      (value) => {
-        pendingHints.interview_info.applied_position = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.interview_time,
-      highInfo.interview_time,
-      (value) => {
-        normalHints.interview_info.interview_time = value;
-      },
-      (value) => {
-        pendingHints.interview_info.interview_time = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.is_student,
-      highInfo.is_student,
-      (value) => {
-        normalHints.interview_info.is_student = value;
-      },
-      (value) => {
-        pendingHints.interview_info.is_student = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.education,
-      highInfo.education,
-      (value) => {
-        normalHints.interview_info.education = value;
-      },
-      (value) => {
-        pendingHints.interview_info.education = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.has_health_certificate,
-      highInfo.has_health_certificate,
-      (value) => {
-        normalHints.interview_info.has_health_certificate = value;
-      },
-      (value) => {
-        pendingHints.interview_info.has_health_certificate = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.interview_info.upload_resume,
-      highInfo.upload_resume,
-      (value) => {
-        normalHints.interview_info.upload_resume = value;
-      },
-      (value) => {
-        pendingHints.interview_info.upload_resume = value;
-      },
-    );
-
-    // 品牌不进 turn hints：写入点收口后 highPref.brands 恒 null（partition 对 null
-    // currentFact 直接早退，原防御分支实为死代码，§19.6 随投影退役一并删除）。
-    // 跨轮品牌由 hard-constraints 段直读 sessionBrandState 注入，本轮品牌意图由
-    // 模型直读原文 + 收尾 reducer 沉淀。
-    this.partitionHighValue(
-      comparableSessionFacts.preferences.salary,
-      highPref.salary,
-      (value) => {
-        normalHints.preferences.salary = value;
-      },
-      (value) => {
-        pendingHints.preferences.salary = value;
-      },
-    );
-    this.partitionHighArrayValue(
-      comparableSessionFacts.preferences.position,
-      highPref.position,
-      (value) => {
-        normalHints.preferences.position = value;
-      },
-      (value) => {
-        pendingHints.preferences.position = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.preferences.schedule,
-      highPref.schedule,
-      (value) => {
-        normalHints.preferences.schedule = value;
-      },
-      (value) => {
-        pendingHints.preferences.schedule = value;
-      },
-    );
-    this.partitionHighCityValue(
-      comparableSessionFacts.preferences.city,
-      highPref.city,
-      (value) => {
-        normalHints.preferences.city = value;
-      },
-      (value) => {
-        pendingHints.preferences.city = value;
-      },
-    );
-    this.partitionHighArrayValue(
-      comparableSessionFacts.preferences.district,
-      highPref.district,
-      (value) => {
-        normalHints.preferences.district = value;
-      },
-      (value) => {
-        pendingHints.preferences.district = value;
-      },
-    );
-    this.partitionHighArrayValue(
-      comparableSessionFacts.preferences.location,
-      highPref.location,
-      (value) => {
-        normalHints.preferences.location = value;
-      },
-      (value) => {
-        pendingHints.preferences.location = value;
-      },
-    );
-    // labor_form 是候选人可随时改口的求职意向，不是姓名/年龄一类稳定身份事实。
-    // 当前消息被规则高置信识别后直接作为 normal hint；HardConstraintsSection 和工具层
-    // 都会用它覆盖旧会话值，不能一边按新值过滤、一边把它渲染成“待确认”。
-    if (highPref.labor_form) {
-      normalHints.preferences.labor_form = highPref.labor_form;
-    }
-    this.partitionHighValue<DelayedIntent>(
-      comparableSessionFacts.preferences.delayed_intent,
-      highPref.delayed_intent,
-      (value) => {
-        normalHints.preferences.delayed_intent = value;
-      },
-      (value) => {
-        pendingHints.preferences.delayed_intent = value;
-      },
-      this.isSameJsonValue,
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.preferences.short_term,
-      highPref.short_term,
-      (value) => {
-        normalHints.preferences.short_term = value;
-      },
-      (value) => {
-        pendingHints.preferences.short_term = value;
-      },
-    );
-    this.partitionHighValue(
-      comparableSessionFacts.preferences.open_position,
-      highPref.open_position,
-      (value) => {
-        normalHints.preferences.open_position = value;
-      },
-      (value) => {
-        pendingHints.preferences.open_position = value;
-      },
-    );
-    this.partitionHighArrayValue(
-      comparableSessionFacts.preferences.time_windows,
-      highPref.time_windows,
-      (value) => {
-        normalHints.preferences.time_windows = value;
-      },
-      (value) => {
-        pendingHints.preferences.time_windows = value;
-      },
-    );
-    this.partitionHighValue<ScheduleConstraintFact>(
-      comparableSessionFacts.preferences.schedule_constraint,
-      highPref.schedule_constraint,
-      (value) => {
-        normalHints.preferences.schedule_constraint = value;
-      },
-      (value) => {
-        pendingHints.preferences.schedule_constraint = value;
-      },
-      this.isSameJsonValue,
-    );
-    this.partitionHighValue<AvailableAfterFact>(
-      comparableSessionFacts.preferences.available_after,
-      highPref.available_after,
-      (value) => {
-        normalHints.preferences.available_after = value;
-      },
-      (value) => {
-        pendingHints.preferences.available_after = value;
-      },
-      this.isSameJsonValue,
-    );
 
     return {
-      normalHints: this.hasAnyFactLines(normalHints) ? normalHints : null,
-      pendingHints: this.hasAnyFactLines(pendingHints) ? pendingHints : null,
+      normalHints: this.selectClaims(ruleFacts, normalFields),
+      pendingHints: this.selectClaims(ruleFacts, pendingFields),
     };
   }
 
-  private partitionHighValue<T>(
-    previousValue: T | null | undefined,
-    currentFact: HighConfidenceValue<T> | null,
-    onNormal: (value: HighConfidenceValue<T>) => void,
-    onPending: (value: HighConfidenceValue<T>) => void,
-    isSameValue: (previousValue: T, currentValue: T) => boolean = this.isSameScalarOrJsonValue,
-  ): void {
-    if (!currentFact) return;
-    if (!this.hasValue(currentFact.value)) return;
-    if (!this.hasValue(previousValue)) {
-      onNormal(currentFact);
-      return;
-    }
-    if (isSameValue(previousValue as T, currentFact.value)) {
-      // Keep current-round confirmations visible in [本轮线索]; sessionFacts stays the durable memory,
-      // while this section tells the model what the candidate just said.
-      onNormal(currentFact);
-      return;
-    }
-    onPending(currentFact);
+  private readPath(facts: EntityExtractionResult, path: RuleFactFieldPath): unknown {
+    const [group, field] = path.split('.') as ['interview_info' | 'preferences', string];
+    return (facts[group] as unknown as Record<string, unknown>)[field];
   }
 
-  private partitionHighCityValue(
-    previousValue: CityFact | null,
-    currentFact: HighConfidenceValue<string> | null,
-    onNormal: (value: HighConfidenceValue<string>) => void,
-    onPending: (value: HighConfidenceValue<string>) => void,
-  ): void {
-    if (!currentFact || !currentFact.value.trim()) return;
-    if (!previousValue || !previousValue.value) {
-      onNormal(currentFact);
-      return;
+  private valuesEqual(path: RuleFactFieldPath, previous: unknown, current: unknown): boolean {
+    if (path === 'preferences.city') {
+      return this.cityValue(previous) === this.cityValue(current);
     }
-    if (previousValue.value.trim() === currentFact.value.trim()) {
-      onNormal(currentFact);
-      return;
-    }
-    onPending(currentFact);
+    return isSameFactValue(previous, current);
   }
 
-  private partitionHighArrayValue(
-    previousValue: string[] | null,
-    currentFact: HighConfidenceValue<string[]> | null,
-    onNormal: (value: HighConfidenceValue<string[]>) => void,
-    onPending: (value: HighConfidenceValue<string[]>) => void,
-  ): void {
-    if (!currentFact) return;
-    const normalizedCurrent = this.normalizeStringArray(currentFact.value);
-    if (normalizedCurrent.length === 0) return;
-
-    const normalizedPrevious = this.normalizeStringArray(previousValue);
-    if (normalizedPrevious.length === 0) {
-      onNormal(currentFact);
-      return;
-    }
-    if (this.isSameStringArray(normalizedPrevious, normalizedCurrent)) {
-      onNormal(currentFact);
-      return;
-    }
-    onPending(currentFact);
+  private cityValue(value: unknown): string {
+    if (!value) return '';
+    return typeof value === 'string'
+      ? value.trim()
+      : String((value as CityFact).value ?? '').trim();
   }
 
   private hasValue(value: unknown): boolean {
@@ -422,48 +129,13 @@ export class TurnHintsSection implements PromptSection {
     return true;
   }
 
-  private isSameScalarOrJsonValue = <T>(previousValue: T, currentValue: T): boolean => {
-    if (typeof previousValue === 'boolean' || typeof currentValue === 'boolean') {
-      return previousValue === currentValue;
-    }
-    if (typeof previousValue === 'object' || typeof currentValue === 'object') {
-      return this.isSameJsonValue(previousValue, currentValue);
-    }
-    return String(previousValue).trim() === String(currentValue).trim();
-  };
-
-  private isSameJsonValue = <T>(previousValue: T, currentValue: T): boolean =>
-    JSON.stringify(previousValue) === JSON.stringify(currentValue);
-
-  private normalizeStringArray(values: string[] | null): string[] {
-    if (!values?.length) return [];
-    return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort();
-  }
-
-  private isSameStringArray(previousValue: string[], currentValue: string[]): boolean {
-    if (previousValue.length !== currentValue.length) return false;
-    return previousValue.every((value, index) => value === currentValue[index]);
-  }
-
-  private hasAnyFactLines(facts: EntityExtractionResult | HighConfidenceFacts): boolean {
-    return formatExtractionFactLines(facts).length > 0;
-  }
-
-  /**
-   * 由单一字段清单生成全字段 null 的空模板（不再手写镜像清单）。
-   *
-   * 字段清单与各 schema 的一致性由 session-facts.types 的加载期自检兜底，
-   * 因此这里生成的 key 集合与 HighConfidenceInterviewInfo / HighConfidencePreferences 对齐，
-   * 不会再出现"漏写某字段导致 partition 无法写入"的静默缺口。
-   */
-  private createEmptyHighConfidenceFacts(): HighConfidenceFacts {
-    const nullFields = <K extends string>(keys: readonly K[]): Record<K, null> =>
-      Object.fromEntries(keys.map((key) => [key, null])) as Record<K, null>;
-
-    return {
-      interview_info: nullFields(INTERVIEW_INFO_FIELD_KEYS) as HighConfidenceInterviewInfo,
-      preferences: nullFields(PREFERENCE_FIELD_KEYS) as HighConfidencePreferences,
-      reasoning: '',
-    };
+  private selectClaims(
+    facts: RuleFactClaims,
+    fields: ReadonlySet<RuleFactFieldPath>,
+  ): RuleFactClaims | null {
+    const claims = facts.claims.filter((claim) => fields.has(claim.field));
+    if (claims.length === 0) return null;
+    const selected = { claims, reasoning: facts.reasoning };
+    return formatRuleFactClaimLines(selected).length > 0 ? selected : null;
   }
 }

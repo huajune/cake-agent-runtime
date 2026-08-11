@@ -4,6 +4,7 @@ import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 interface BookingContextOverrides {
   messages?: unknown[];
@@ -1323,15 +1324,13 @@ describe('buildInterviewBookingTool', () => {
         uploadResume: 'https://wecom.example.com/file/resume.pdf',
       },
       {
-        ruleFacts: {
-          interview_info: {
-            upload_resume: {
-              value: 'https://wecom.example.com/file/resume.pdf',
-              confidence: 'high',
-              source: 'rule',
-            },
-          },
-        } as never,
+        ruleFacts: testRuleFacts(
+          testRuleFact(
+            'interview_info.upload_resume',
+            'https://wecom.example.com/file/resume.pdf',
+            '候选人发送了简历附件',
+          ),
+        ),
       },
       {
         activeBooking: {

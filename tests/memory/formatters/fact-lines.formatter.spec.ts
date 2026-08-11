@@ -1,48 +1,9 @@
-import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'high', source: 'rule', evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
-}
+  formatExtractionFactLines,
+  formatRuleFactClaimLines,
+} from '@memory/formatters/fact-lines.formatter';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 describe('formatExtractionFactLines', () => {
   afterEach(() => {
@@ -122,27 +83,15 @@ describe('formatExtractionFactLines', () => {
   });
 
   it('should render high-confidence field metadata without evidence by default', () => {
-    const facts: HighConfidenceFacts = {
-      ...emptyHighConfidenceFacts(),
-      interview_info: {
-        ...emptyHighConfidenceFacts().interview_info,
-        age: highConfidence('24', '年龄识别：24'),
-      },
-    };
-    const lines = formatExtractionFactLines(facts);
+    const facts = testRuleFacts(testRuleFact('interview_info.age', '24', '年龄识别：24'));
+    const lines = formatRuleFactClaimLines(facts);
 
     expect(lines).toEqual(['- 年龄: 24（置信度: high，来源: rule）']);
   });
 
   it('should render evidence only when includeEvidence is set (extraction prompt path)', () => {
-    const facts: HighConfidenceFacts = {
-      ...emptyHighConfidenceFacts(),
-      interview_info: {
-        ...emptyHighConfidenceFacts().interview_info,
-        age: highConfidence('24', '年龄识别：24'),
-      },
-    };
-    const lines = formatExtractionFactLines(facts, { includeEvidence: true });
+    const facts = testRuleFacts(testRuleFact('interview_info.age', '24', '年龄识别：24'));
+    const lines = formatRuleFactClaimLines(facts, { includeEvidence: true });
 
     expect(lines).toEqual(['- 年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24）']);
   });

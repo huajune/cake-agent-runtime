@@ -15,7 +15,7 @@
 
 另外还有一个旁路能力：
 
-- `highConfidenceFacts`
+- `ruleFacts`
   这是基于“当前轮新消息”的前置高置信识别结果。
   它当前会在 `memory.onTurnStart()` 中被计算出来并返回，但：
   - 会作为 prompt sidecar 注入 Agent
@@ -192,7 +192,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 ## 字段置信度与来源
 
-`highConfidenceFacts`、`sessionFacts`、长期 `profile_facts` 都使用字段级 fact wrapper。字段值本身必须解释“有多可信”和“从哪里来”。
+`ruleFacts`、`sessionFacts`、长期 `profile_facts` 都使用字段级 fact wrapper。字段值本身必须解释“有多可信”和“从哪里来”。
 
 置信度：
 
@@ -221,7 +221,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 注意：
 
 - `source` 说明字段产生路径，不等同于置信度；最终能否进入工具判断看 `confidence`
-- `highConfidenceFacts` 当前只会出现 `source=rule/system`，且不持久化
+- `ruleFacts` 当前只会出现 `source=rule/system`，且不持久化
 - `sessionFacts` 主要出现 `source=llm/rule/system/memory/derived/tool/candidate`
 - 长期 `profile_facts` 主要出现 `source=booking/extraction/enrichment`
 
@@ -245,14 +245,14 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 - `shortTerm.messageWindow`
 - `sessionMemory`
-- `highConfidenceFacts`
+- `ruleFacts`
 - `procedural`
 - `longTerm.profile` / `longTerm.preferences`
 - `longTerm.origin`（可选；`{ fromOtherConversation: true }` 时渲染层加"来自此前会话"口径）
 
 注意：
 
-- `highConfidenceFacts` 只看当前轮新消息
+- `ruleFacts` 只看当前轮新消息
 - 没拿到当前轮消息时，不会 fallback 到历史窗口
 - 当前实现里，它会进入 prompt sidecar，但不属于持久化记忆
 
@@ -274,7 +274,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 - `shortTerm.messageWindow`
 - `sessionMemory`
-- `highConfidenceFacts`
+- `ruleFacts`
 - `procedural.currentStage`
 - `longTerm.profile` / `longTerm.preferences`
 - `longTerm.origin`
@@ -340,13 +340,13 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 8. 构造 extraction prompt（注入 `[当前时间]` 要求绝对日期、`[已确认事实]`，提取原则为增量式而非累积式）
 9. 调 extract 模型输出结构化对象
 10. LLM 输出的 `brand_intents` 经 `validateBrandIntents` 目录验证（回声/回流闸）后随 lifecycle 返回，由回合收尾的 `brand_state` reducer 统一归并；facts 内 `preferences.brands` 恒置 null
-11. 用 `mergeRuleAndLlmFacts()` 单遍合并规则与 LLM 事实（替代原两层合并），共享原语在 `facts/fact-merge.util.ts`
+11. 用 `mergeRuleAndLlmFacts()` 单遍合并规则与 LLM 事实（替代原两层合并），合并策略与原语在 `@resolution/evidence/merge`（Record 按字段穷尽）
 12. `saveFacts()` 经 `mergeFactsWithConfidenceGuard()` 深度合并回 Redis：跨轮低置信不覆盖高置信
 
 这里的关键点：
 
 - 后置提取是事实落库主路径
-- `onTurnStart` 的 `highConfidenceFacts` 对象本身不落库
+- `onTurnStart` 的 `ruleFacts` 对象本身不落库
 - `onTurnEnd` 会重新跑同类规则抽取，并把可保存的结果写入 `sessionFacts`
 - 每个字段写入时打 `extractedAt` 时间锚；evidence 入库经 `truncateEvidence()` 截断 `MAX_FACT_EVIDENCE_CHARS=200` 字
 
@@ -466,4 +466,4 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - 回合结束：写回会话态并触发后置提取
 - 会话闲置结束：沉淀到长期记忆
 
-而 `highConfidenceFacts` 目前只是“当前轮前置解析 sidecar”，不是正式记忆层；它会辅助 prompt 理解。回合结束时系统会重新跑规则识别，把可保存的字段经 `sessionFacts` 链路落到 Redis。
+而 `ruleFacts` 目前只是“当前轮前置解析 sidecar”，不是正式记忆层；它会辅助 prompt 理解。回合结束时系统会重新跑规则识别，把可保存的字段经 `sessionFacts` 链路落到 Redis。

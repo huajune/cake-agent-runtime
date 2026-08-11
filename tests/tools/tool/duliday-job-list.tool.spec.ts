@@ -3,6 +3,7 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -2279,16 +2280,9 @@ describe('buildJobListTool', () => {
 
       const result = await executeTool({
         ...contextWithLaborForm('兼职'),
-        ruleFacts: {
-          preferences: {
-            labor_form: {
-              value: '暑假工',
-              confidence: 'high',
-              source: 'rule',
-              evidence: '用工形式识别：暑假工',
-            },
-          },
-        } as TurnLedger['ruleFacts'],
+        ruleFacts: testRuleFacts(
+          testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+        ),
       });
 
       expect(result.resultCount).toBe(1);

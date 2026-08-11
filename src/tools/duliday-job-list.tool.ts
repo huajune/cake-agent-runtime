@@ -36,6 +36,7 @@ import {
   normalizeSpongeCityFilters,
 } from '@tools/duliday/job-list/sponge-area-filter.util';
 import { detectGeoSignalConflict } from '@resolution/geo';
+import { getRuleFactValue } from '@resolution/evidence/merge';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
@@ -348,14 +349,11 @@ function readFactValue(value: unknown): unknown {
   return value;
 }
 
-function readHighConfidenceFactValue(value: unknown): unknown {
-  if (!isRecord(value)) return null;
-  return value.confidence === 'high' ? value.value : null;
-}
-
 function resolveCandidateAge(context: ToolBuildContext): number | null {
   const sources = [
-    readHighConfidenceFactValue(context.ledger.ruleFacts?.interview_info?.age),
+    getRuleFactValue(context.ledger.ruleFacts, 'interview_info.age', {
+      minConfidence: 'high',
+    }),
     readFactValue(context.archive.sessionFacts?.interview_info?.age),
     context.archive.profile?.age,
   ];
@@ -375,7 +373,9 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
  */
 function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
   const sources = [
-    readHighConfidenceFactValue(context.ledger.ruleFacts?.interview_info?.is_student),
+    getRuleFactValue(context.ledger.ruleFacts, 'interview_info.is_student', {
+      minConfidence: 'high',
+    }),
     readFactValue(context.archive.sessionFacts?.interview_info?.is_student),
   ];
   for (const source of sources) {
@@ -394,7 +394,9 @@ function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
  */
 function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
   const sources = [
-    readHighConfidenceFactValue(context.ledger.ruleFacts?.preferences?.labor_form),
+    getRuleFactValue(context.ledger.ruleFacts, 'preferences.labor_form', {
+      minConfidence: 'high',
+    }),
     readFactValue(context.archive.sessionFacts?.preferences?.labor_form),
   ];
   if (context.turnInput.currentLaborFormIntent?.kind === 'set') {

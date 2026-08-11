@@ -2,20 +2,19 @@
  * 姓名提取 + 高置信注入 完整数据流集成测试
  *
  * 15 个 case 覆盖：结构化表单、打招呼+表单、昵称拦截、引用块、完整画像注入、边界场景
- * 验证点：extractHighConfidenceFacts → buildSessionExtractionPrompt → sanitizeInterviewName 全链路
+ * 验证点：produceRuleFactClaims → buildSessionExtractionPrompt → sanitizeInterviewName 全链路
  */
 import {
-  extractHighConfidenceFacts,
+  produceRuleFactClaims,
   extractStructuredName,
   detectBrandAliasHints,
-  unwrapHighConfidenceValue,
 } from '@resolution/evidence/producers/rule-track';
+import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import { buildSessionExtractionPrompt } from '@memory/services/session-extraction.prompt';
 import { sanitizeInterviewName } from '@resolution/evidence/admission';
 import {
   FALLBACK_EXTRACTION,
   type EntityExtractionResult,
-  type HighConfidenceValue,
 } from '@memory/types/session-facts.types';
 
 const BRAND_DATA = [
@@ -25,25 +24,25 @@ const BRAND_DATA = [
 ];
 
 function pipeline(userMessages: string[]) {
-  const ruleFacts = extractHighConfidenceFacts(userMessages, BRAND_DATA);
+  const claims = produceRuleFactClaims(userMessages, BRAND_DATA);
+  const ruleFacts = projectRuleFactClaims(claims);
   const aliasHints = detectBrandAliasHints(userMessages, BRAND_DATA);
   const prompt = buildSessionExtractionPrompt(
     BRAND_DATA,
     `用户: ${userMessages[userMessages.length - 1]}`,
     userMessages.slice(0, -1).map((m) => `用户: ${m}`),
     aliasHints,
-    ruleFacts,
+    claims,
   );
   return { ruleFacts, prompt, aliasHints };
 }
 
-function highRuleValue<T>(value: T): Partial<HighConfidenceValue<T>> {
-  return {
-    value,
-    confidence: 'high',
-    source: 'rule',
-    evidence: expect.any(String) as unknown as string,
-  };
+function highRuleValue<T>(value: T): T {
+  return value;
+}
+
+function readProjectedValue<T>(value: T | null | undefined): T | null {
+  return value ?? null;
 }
 
 describe('姓名提取完整数据流 (15 cases)', () => {
@@ -56,14 +55,14 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       ]);
 
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('赵堤')),
+        highRuleValue('赵堤'),
       );
       expect(ruleFacts?.interview_info.phone).toEqual(
-        expect.objectContaining(highRuleValue('18800001111')),
+        highRuleValue('18800001111'),
       );
-      expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('24')));
+      expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('24'));
       expect(ruleFacts?.interview_info.gender).toEqual(
-        expect.objectContaining(highRuleValue('男')),
+        highRuleValue('男'),
       );
       expect(prompt).toContain('姓名：赵堤');
       expect(prompt).toContain('联系方式: 18800001111');
@@ -73,10 +72,10 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(['名字：李思远\n电话：13900139000\n年龄：22']);
 
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('李思远')),
+        highRuleValue('李思远'),
       );
       expect(ruleFacts?.interview_info.phone).toEqual(
-        expect.objectContaining(highRuleValue('13900139000')),
+        highRuleValue('13900139000'),
       );
       expect(prompt).toContain('姓名: 李思远');
     });
@@ -85,7 +84,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(['姓名：布买日也木\n年龄：20\n性别：男']);
 
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('布买日也木')),
+        highRuleValue('布买日也木'),
       );
       expect(prompt).toContain('姓名：布买日也木');
     });
@@ -94,7 +93,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(['姓名 王小明\n年龄 25\n电话 13700137000']);
 
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('王小明')),
+        highRuleValue('王小明'),
       );
       expect(prompt).toContain('姓名: 王小明');
     });
@@ -113,7 +112,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
 
       // 高置信层应提取结构化表单中的赵堤，不受昵称干扰
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('赵堤')),
+        highRuleValue('赵堤'),
       );
       expect(prompt).toContain('姓名：赵堤');
 
@@ -137,7 +136,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts } = pipeline(messages);
 
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('赵堤')),
+        highRuleValue('赵堤'),
       );
 
       // sanitizer：打招呼语"我是赵堤"命中 → 但结构化表单确认 → 应保留
@@ -198,7 +197,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(messages);
 
       // 应从候选人文本提取 36，不是引用块中的 35
-      expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('36')));
+      expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('36'));
       expect(prompt).toContain('年龄: 36');
       // 引用块中的经理名字不应被提取
       expect(ruleFacts?.interview_info.name ?? null).toBeNull();
@@ -212,9 +211,9 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(messages);
 
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('张伟')),
+        highRuleValue('张伟'),
       );
-      expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('28')));
+      expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('28'));
       expect(prompt).toContain('姓名：张伟');
     });
   });
@@ -228,23 +227,23 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const messages = ['上海浦东，我是男生，25岁，本科在读，有健康证，想找周末的服务员兼职'];
       const { ruleFacts, prompt } = pipeline(messages);
 
-      expect(ruleFacts?.preferences.city).toEqual(expect.objectContaining(highRuleValue('上海')));
-      expect(unwrapHighConfidenceValue(ruleFacts?.preferences.district)).toContain('浦东');
-      expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('25')));
+      expect(ruleFacts?.preferences.city?.value).toEqual(highRuleValue('上海'));
+      expect(readProjectedValue(ruleFacts?.preferences.district)).toContain('浦东');
+      expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('25'));
       expect(ruleFacts?.interview_info.gender).toEqual(
-        expect.objectContaining(highRuleValue('男')),
+        highRuleValue('男'),
       );
       expect(ruleFacts?.interview_info.is_student).toEqual(
-        expect.objectContaining(highRuleValue(true)),
+        highRuleValue(true),
       );
       expect(ruleFacts?.interview_info.education).toEqual(
-        expect.objectContaining(highRuleValue('本科')),
+        highRuleValue('本科'),
       );
       expect(ruleFacts?.interview_info.has_health_certificate).toEqual(
-        expect.objectContaining(highRuleValue('有')),
+        highRuleValue('有'),
       );
-      expect(unwrapHighConfidenceValue(ruleFacts?.preferences.position)).toContain('服务员');
-      expect(unwrapHighConfidenceValue(ruleFacts?.preferences.schedule)).toContain('周末');
+      expect(readProjectedValue(ruleFacts?.preferences.position)).toContain('服务员');
+      expect(readProjectedValue(ruleFacts?.preferences.schedule)).toContain('周末');
 
       expect(prompt).toContain('意向城市: 上海');
       expect(prompt).toContain('意向区域: 浦东');
@@ -259,12 +258,12 @@ describe('姓名提取完整数据流 (15 cases)', () => {
 
     it.skip('Case 12: 品牌别名归一化 + 城市 (品牌匹配需完整 BrandItem 结构，非本次改动范围)', () => {
       // 品牌 aliasHints 需要 detectBrandAliasHints 在 normalize 后精确匹配
-      // 但 extractHighConfidenceFacts 内部已调用 detectBrandAliasHints，直接验证结果
+      // 但 produceRuleFactClaims 内部已调用 detectBrandAliasHints，直接验证结果
       const messages = ['KFC', '我在杭州'];
       const { ruleFacts, prompt } = pipeline(messages);
 
-      expect(unwrapHighConfidenceValue(ruleFacts?.preferences.brands)).toContain('肯德基');
-      expect(ruleFacts?.preferences.city).toEqual(expect.objectContaining(highRuleValue('杭州')));
+      expect(readProjectedValue(ruleFacts?.preferences.brands)).toContain('肯德基');
+      expect(ruleFacts?.preferences.city?.value).toEqual(highRuleValue('杭州'));
 
       expect(prompt).toContain('意向品牌: 肯德基');
       expect(prompt).toContain('意向城市: 杭州');
@@ -308,15 +307,15 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(messages);
 
       // 跨消息累积
-      expect(ruleFacts?.preferences.city).toEqual(expect.objectContaining(highRuleValue('上海')));
-      expect(unwrapHighConfidenceValue(ruleFacts?.preferences.district)).toContain('浦东');
+      expect(ruleFacts?.preferences.city?.value).toEqual(highRuleValue('上海'));
+      expect(readProjectedValue(ruleFacts?.preferences.district)).toContain('浦东');
       expect(ruleFacts?.interview_info.name).toEqual(
-        expect.objectContaining(highRuleValue('陈晓华')),
+        highRuleValue('陈晓华'),
       );
       expect(ruleFacts?.interview_info.phone).toEqual(
-        expect.objectContaining(highRuleValue('15000150000')),
+        highRuleValue('15000150000'),
       );
-      expect(ruleFacts?.interview_info.age).toEqual(expect.objectContaining(highRuleValue('30')));
+      expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('30'));
 
       // prompt 应包含所有累积字段
       expect(prompt).toContain('意向城市: 上海');

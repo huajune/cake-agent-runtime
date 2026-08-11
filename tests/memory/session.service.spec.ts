@@ -2,7 +2,7 @@ import { SessionService } from '@memory/services/session.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
-import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
 
 function mockStructured(obj: unknown) {
   return {
@@ -53,7 +53,7 @@ describe('SessionService', () => {
     sessionId: string,
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   ) => {
-    const ruleFacts = extractHighConfidenceFacts(
+    const ruleFacts = produceRuleFactClaims(
       messages.filter((message) => message.role === 'user').map((message) => message.content),
       await mockSponge.fetchBrandList(),
     );

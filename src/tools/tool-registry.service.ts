@@ -46,6 +46,7 @@ import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.se
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
+import { getRuleFactValue } from '@resolution/evidence/merge';
 
 /**
  * 统一工具注册表
@@ -365,18 +366,15 @@ export class ToolRegistryService {
 
   private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
     const urls = [
-      this.normalizeHighConfidenceText(context.ledger.ruleFacts?.interview_info.upload_resume),
+      this.normalizeText(
+        getRuleFactValue(context.ledger.ruleFacts, 'interview_info.upload_resume', {
+          minConfidence: 'high',
+        }),
+      ),
       this.normalizeText(context.archive.sessionFacts?.interview_info?.upload_resume),
     ].filter((value): value is string => Boolean(value));
 
     return [...new Set(urls)].map((fileUrl) => ({ fileUrl }));
-  }
-
-  private normalizeHighConfidenceText(value: unknown): string | null {
-    if (value && typeof value === 'object' && 'value' in value) {
-      return this.normalizeText((value as { value?: unknown }).value);
-    }
-    return this.normalizeText(value);
   }
 
   private normalizeText(value: unknown): string | null {

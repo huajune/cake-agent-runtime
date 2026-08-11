@@ -2,56 +2,7 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
   buildSessionExtractionPrompt,
 } from '@memory/services/session-extraction.prompt';
-import {
-  FALLBACK_EXTRACTION,
-  type EntityExtractionResult,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(
-  value: T,
-  evidence: string,
-  confidence: HighConfidenceValue<T>['confidence'] = 'high',
-  source: HighConfidenceValue<T>['source'] = 'rule',
-): HighConfidenceValue<T> {
-  return { value, confidence, source, evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: '',
-  };
-}
+import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
 
 describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
   it('should prevent fallback recommendations from overwriting the current applied job', () => {
@@ -144,22 +95,15 @@ describe('buildSessionExtractionPrompt', () => {
   const brandData = [{ name: '肯德基', aliases: ['KFC'] }];
 
   it('should include rule facts section when ruleFacts is provided', () => {
-    const ruleFacts: EntityExtractionResult = {
-      ...FALLBACK_EXTRACTION,
-      interview_info: {
-        ...FALLBACK_EXTRACTION.interview_info,
-        name: '赵堤',
-        phone: '18800001111',
-        age: '24',
-        gender: '男',
-      },
-      preferences: {
-        ...FALLBACK_EXTRACTION.preferences,
-        city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
-        district: ['浦东'],
-      },
-      reasoning: 'test',
-    };
+    const ruleFacts = testRuleFacts(
+      testRuleFact('interview_info.name', '赵堤', '结构化姓名识别：赵堤'),
+      testRuleFact('interview_info.phone', '18800001111', '手机号识别：18800001111'),
+      testRuleFact('interview_info.age', '24', '年龄识别：24'),
+      testRuleFact('interview_info.gender', '男', '性别识别：男'),
+      testRuleFact('interview_info.gender_source', 'candidate', '性别来源：候选人自陈'),
+      testRuleFact('preferences.city', '上海', 'explicit_city'),
+      testRuleFact('preferences.district', ['浦东'], '区域识别：浦东'),
+    );
 
     const prompt = buildSessionExtractionPrompt(
       brandData,
@@ -178,26 +122,21 @@ describe('buildSessionExtractionPrompt', () => {
     expect(prompt).toContain('意向区域: 浦东');
   });
 
-  it('should pass all highConfidenceFacts to LLM with confidence/source/evidence', () => {
-    const ruleFacts: HighConfidenceFacts = {
-      ...emptyHighConfidenceFacts(),
-      interview_info: {
-        ...emptyHighConfidenceFacts().interview_info,
-        age: highConfidence('24', '年龄识别：24'),
-        gender: highConfidence('女', '客户详情接口补充性别：女', 'low', 'system'),
-        gender_source: highConfidence(
-          'system',
-          '客户详情接口补充性别来源：系统标签',
-          'low',
-          'system',
-        ),
-      },
-      preferences: {
-        ...emptyHighConfidenceFacts().preferences,
-        city: highConfidence('上海', 'explicit_city'),
-      },
-      reasoning: 'test',
-    };
+  it('should pass all ruleFacts to LLM with confidence/source/evidence', () => {
+    const ruleFacts = testRuleFacts(
+      testRuleFact('interview_info.age', '24', '年龄识别：24'),
+      testRuleFact('interview_info.gender', '女', '客户详情接口补充性别：女', {
+        confidence: 'low',
+        producer: 'system',
+      }),
+      testRuleFact(
+        'interview_info.gender_source',
+        'system',
+        '客户详情接口补充性别来源：系统标签',
+        { confidence: 'low', producer: 'system' },
+      ),
+      testRuleFact('preferences.city', '上海', 'explicit_city'),
+    );
 
     const prompt = buildSessionExtractionPrompt(brandData, 'msg', [], [], ruleFacts);
 
@@ -221,24 +160,19 @@ describe('buildSessionExtractionPrompt', () => {
       '用户: 你好',
       [],
       [],
-      FALLBACK_EXTRACTION,
+      testRuleFacts(),
     );
 
     expect(prompt).toContain('[规则模式匹配线索');
-    // FALLBACK_EXTRACTION 所有字段都是 null，应显示"无"
+    // 空 claim 流应显示"无"
     const section = prompt.split('[规则模式匹配线索')[1].split('[历史对话]')[0];
     expect(section).toContain('无');
   });
 
   it('should only include fields with values, not null fields', () => {
-    const ruleFacts: EntityExtractionResult = {
-      ...FALLBACK_EXTRACTION,
-      interview_info: {
-        ...FALLBACK_EXTRACTION.interview_info,
-        phone: '13900139000',
-      },
-      reasoning: 'test',
-    };
+    const ruleFacts = testRuleFacts(
+      testRuleFact('interview_info.phone', '13900139000', '手机号识别：13900139000'),
+    );
 
     const prompt = buildSessionExtractionPrompt(brandData, 'msg', [], [], ruleFacts);
 
@@ -249,14 +183,9 @@ describe('buildSessionExtractionPrompt', () => {
   });
 
   it('should include is_student=false as explicit signal', () => {
-    const ruleFacts: EntityExtractionResult = {
-      ...FALLBACK_EXTRACTION,
-      interview_info: {
-        ...FALLBACK_EXTRACTION.interview_info,
-        is_student: false,
-      },
-      reasoning: 'test',
-    };
+    const ruleFacts = testRuleFacts(
+      testRuleFact('interview_info.is_student', false, '学生身份识别：否'),
+    );
 
     const prompt = buildSessionExtractionPrompt(brandData, 'msg', [], [], ruleFacts);
     expect(prompt).toContain('是否学生: 否');

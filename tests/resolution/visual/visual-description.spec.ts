@@ -6,7 +6,12 @@ import { isDigitsOnlyName } from '@resolution/candidate/name';
 import { isSelfReportedVisualMessage as isResumeImageMessage } from '@resolution/visual';
 // 标记形态判定已收拢至 @infra/utils/message-markup（原 isVisualDescriptionMessage）
 import { isVisualDescriptionText as isVisualDescriptionMessage } from '@/infra/utils/message-markup.util';
-import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { projectRuleFactClaims } from '@resolution/evidence/merge';
+
+function extractRuleFacts(...args: Parameters<typeof produceRuleFactClaims>) {
+  return projectRuleFactClaims(produceRuleFactClaims(...args));
+}
 
 /**
  * badcase 2026-08-04 `vkikct39`（chat 6a714c00…，P0）：候选人转发 BOSS 直聘岗位截图，
@@ -102,7 +107,7 @@ describe('visual-description（第三方图片内容不得当候选人自陈）'
 
   describe('规则提取轨回归', () => {
     it('岗位截图里的"18岁以上"不再被提成候选人年龄', () => {
-      const facts = extractHighConfidenceFacts([BOSS_JOB_CARD], []);
+      const facts = extractRuleFacts([BOSS_JOB_CARD], []);
       expect(facts?.interview_info.age ?? null).toBeNull();
     });
 
@@ -111,17 +116,17 @@ describe('visual-description（第三方图片内容不得当候选人自陈）'
     //（该守卫只拦「要求/需要/限/须」前缀的范围句，本串没有触发词）。
     // 若本断言未来变红，说明 extractAge 口径变了，上一条用例需要重新选穿透串。
     it('对照：同串手打文本会命中既有年龄提取器', () => {
-      const facts = extractHighConfidenceFacts(['面试基本都过，18岁以上+健康证即可。'], []);
-      expect(facts?.interview_info.age?.value).toBe('18');
+      const facts = extractRuleFacts(['面试基本都过，18岁以上+健康证即可。'], []);
+      expect(facts?.interview_info.age).toBe('18');
     });
 
     it('候选人自己说的年龄仍然提取', () => {
-      const facts = extractHighConfidenceFacts(['我今年22岁'], []);
-      expect(facts?.interview_info.age?.value).toBe('22');
+      const facts = extractRuleFacts(['我今年22岁'], []);
+      expect(facts?.interview_info.age).toBe('22');
     });
 
     it('岗位截图里的"仅限男"不再被提成候选人性别', () => {
-      const facts = extractHighConfidenceFacts(
+      const facts = extractRuleFacts(
         ['[图片消息] 岗位截图：招夜班理货，要求仅限男，22-50岁'],
         [],
       );
@@ -131,7 +136,7 @@ describe('visual-description（第三方图片内容不得当候选人自陈）'
     // 收窄只针对身份字段。候选人发地图/门店截图指位置是被期待的能力
     // （badcase oaz6inzf 的诉求正是"图上已经看到是北京了还问城市"），不能被这次收窄打掉。
     it('图片描述里的城市仍然可用于定位（收窄不外溢到 preferences/地理）', () => {
-      const facts = extractHighConfidenceFacts(
+      const facts = extractRuleFacts(
         ['[图片消息] 地图截图：北京市顺义区富林路卫星店'],
         [],
       );

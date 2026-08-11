@@ -22,11 +22,8 @@ import type {
 } from '../types/long-term.types';
 import { isUserProfileFactValue } from '../types/long-term.types';
 import type { ShortTermMessage } from '../types/short-term.types';
-import {
-  type HighConfidenceFacts,
-  type RecommendedJobSummary,
-  type WeworkSessionState,
-} from '../types/session-facts.types';
+import { type RecommendedJobSummary, type WeworkSessionState } from '../types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 
 export interface MemoryLifecycleTurnContext {
   corpId: string;
@@ -52,7 +49,7 @@ export interface MemoryLifecycleTurnContext {
    */
   invalidatedJobIds?: number[] | null;
   /** prep 时刻唯一一次规则轨判定；轮末直接消费，禁止重跑。 */
-  ruleFacts: HighConfidenceFacts | null;
+  ruleFacts: RuleFactClaims | null;
 }
 
 interface StepOutcome<T = void> {
@@ -119,7 +116,7 @@ export class MemoryLifecycleService {
        */
       enrichmentIdentity?: CandidateIdentityHint;
       /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
-      ruleFacts?: HighConfidenceFacts | null;
+      ruleFacts?: RuleFactClaims | null;
     },
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
@@ -148,7 +145,7 @@ export class MemoryLifecycleService {
       sessionId,
     );
 
-    const highConfidenceFacts = options?.ruleFacts ?? null;
+    const ruleFacts = options?.ruleFacts ?? null;
     const warnings: string[] = [];
     if (includeShortTerm && this.shortTerm.lastLoadError) {
       warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
@@ -169,7 +166,7 @@ export class MemoryLifecycleService {
       },
       ...(warnings.length > 0 ? { _warnings: warnings } : {}),
       sessionMemory: hasOwnSessionMemory ? sessionState : null,
-      highConfidenceFacts,
+      ruleFacts,
       procedural: proceduralState,
       longTerm: {
         profile,

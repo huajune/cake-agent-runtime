@@ -1,11 +1,10 @@
 import { HardConstraintsSection } from '@agent/generator/context/sections/hard-constraints.section';
 import type { PromptContext } from '@agent/generator/context/sections/section.interface';
+import { FALLBACK_EXTRACTION, type EntityExtractionResult } from '@memory/types/session-facts.types';
 import {
-  FALLBACK_EXTRACTION,
-  type EntityExtractionResult,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
+  testRuleFact,
+  testRuleFacts,
+} from '../../../../helpers/rule-fact-claims.fixture';
 
 describe('HardConstraintsSection', () => {
   const section = new HardConstraintsSection();
@@ -21,53 +20,6 @@ describe('HardConstraintsSection', () => {
     reasoning: '',
   });
 
-  const highConfidenceValue = <T>(value: T, evidence: string): HighConfidenceValue<T> => ({
-    value,
-    confidence: 'high',
-    source: 'rule',
-    evidence,
-  });
-
-  const lowConfidenceValue = <T>(value: T, evidence: string): HighConfidenceValue<T> => ({
-    value,
-    confidence: 'low',
-    source: 'system',
-    evidence,
-  });
-
-  const cloneHighConfidenceFallback = (): HighConfidenceFacts => ({
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: '',
-  });
-
   it('returns empty string when no facts available at all', () => {
     expect(section.build(baseCtx)).toBe('');
   });
@@ -76,7 +28,7 @@ describe('HardConstraintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: cloneFallback(),
-      highConfidenceFacts: cloneHighConfidenceFallback(),
+      ruleFacts: testRuleFacts(),
     });
     expect(output).toBe('');
   });
@@ -156,15 +108,14 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('反问时不得带具体城市名');
   });
 
-  it('falls back to highConfidenceFacts when sessionFacts has no value for a field', () => {
+  it('falls back to ruleFacts when sessionFacts has no value for a field', () => {
     const session = cloneFallback();
-    const high = cloneHighConfidenceFallback();
-    high.preferences.schedule = highConfidenceValue('晚班', '班次识别：晚班');
+    const high = testRuleFacts(testRuleFact('preferences.schedule', '晚班', '班次识别：晚班'));
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: session,
-      highConfidenceFacts: high,
+      ruleFacts: high,
     });
 
     expect(output).toContain('班次/工时偏好: 晚班');
@@ -172,13 +123,14 @@ describe('HardConstraintsSection', () => {
   });
 
   it('明确做一休一不满足每周最多一至两天，避免低周频语义串线', () => {
-    const high = cloneHighConfidenceFallback();
-    high.preferences.schedule = highConfidenceValue('每周最多两天', '班次识别：每周最多两天');
+    const high = testRuleFacts(
+      testRuleFact('preferences.schedule', '每周最多两天', '班次识别：每周最多两天'),
+    );
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: cloneFallback(),
-      highConfidenceFacts: high,
+      ruleFacts: high,
     });
 
     expect(output).toContain('"做一休一"通常每周出勤 3–4 天');
@@ -203,13 +155,12 @@ describe('HardConstraintsSection', () => {
   });
 
   it('空品牌状态不产出品牌行（不再读 preferences.brands 投影）', () => {
-    const high = cloneHighConfidenceFallback();
-    high.preferences.schedule = highConfidenceValue('晚班', '班次识别：晚班');
+    const high = testRuleFacts(testRuleFact('preferences.schedule', '晚班', '班次识别：晚班'));
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: cloneFallback(),
-      highConfidenceFacts: high,
+      ruleFacts: high,
       sessionBrandState: { currentBrand: null, excludedBrands: [] },
     });
 
@@ -234,13 +185,12 @@ describe('HardConstraintsSection', () => {
     // （旧值压新值，候选人刚改口的条件在硬约束段被无视）。
     const session = cloneFallback();
     session.preferences.salary = '5000+';
-    const high = cloneHighConfidenceFallback();
-    high.preferences.salary = highConfidenceValue('8000+', '薪资识别：8000+');
+    const high = testRuleFacts(testRuleFact('preferences.salary', '8000+', '薪资识别：8000+'));
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: session,
-      highConfidenceFacts: high,
+      ruleFacts: high,
     });
 
     expect(output).toContain('意向薪资: 8000+');
@@ -254,7 +204,7 @@ describe('HardConstraintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: session,
-      highConfidenceFacts: cloneHighConfidenceFallback(),
+      ruleFacts: testRuleFacts(),
     });
 
     expect(output).toContain('意向薪资: 5000+');
@@ -263,13 +213,14 @@ describe('HardConstraintsSection', () => {
   it('prefers the current explicit labor form over stale session labor form', () => {
     const session = cloneFallback();
     session.preferences.labor_form = '兼职';
-    const high = cloneHighConfidenceFallback();
-    high.preferences.labor_form = highConfidenceValue('暑假工', '用工形式识别：暑假工');
+    const high = testRuleFacts(
+      testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+    );
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: session,
-      highConfidenceFacts: high,
+      ruleFacts: high,
     });
 
     expect(output).toContain('用工形式: 暑假工');
@@ -303,15 +254,22 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('用工形式: 暑假工');
   });
 
-  it('does not consume low-confidence highConfidenceFacts as query constraints', () => {
-    const high = cloneHighConfidenceFallback();
-    high.interview_info.gender = lowConfidenceValue('女', '客户详情接口补充性别：女');
-    high.preferences.city = lowConfidenceValue('上海', '低置信城市');
+  it('does not consume low-confidence ruleFacts as query constraints', () => {
+    const high = testRuleFacts(
+      testRuleFact('interview_info.gender', '女', '客户详情接口补充性别：女', {
+        confidence: 'low',
+        producer: 'system',
+      }),
+      testRuleFact('preferences.city', '上海', '低置信城市', {
+        confidence: 'low',
+        producer: 'system',
+      }),
+    );
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: cloneFallback(),
-      highConfidenceFacts: high,
+      ruleFacts: high,
     });
 
     expect(output).toBe('');

@@ -1,5 +1,5 @@
-import type { HighConfidenceFacts } from '@memory/types/session-facts.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type {
   CityAttestation,
   GeocodeResolvedAnchor,
@@ -8,7 +8,7 @@ import type {
 } from '@shared-types/turn.types';
 
 export interface CreateTurnLedgerInput {
-  ruleFacts?: HighConfidenceFacts | null;
+  ruleFacts?: RuleFactClaims | null;
   collectedFields?: Partial<Record<CandidateFieldKey, CandidateCollectedField>>;
   geoSignalCities?: Iterable<string>;
 }

@@ -9,7 +9,19 @@
  * 原语单遍完成；跨轮置信度守卫（mergeFactsWithConfidenceGuard）也共用这些原语。
  */
 
-import type { InterviewInfoFieldKey, PreferenceFieldKey } from '@memory/types/session-facts.types';
+import type {
+  CityFactEvidence,
+  EntityExtractionResult,
+  InterviewInfoFieldKey,
+  PreferenceFieldKey,
+} from '@memory/types/session-facts.types';
+import type {
+  RuleFactClaim,
+  RuleFactClaims,
+  RuleFactConfidence,
+  RuleFactFieldPath,
+} from './claim.types';
+import { RULE_FACT_FIELD_POLICIES } from './policies';
 
 export type MergePolicy = 'scalar-first' | 'rule-overrides' | 'array-union' | 'custom' | 'retired';
 
@@ -131,7 +143,7 @@ export function mergeNullableArrays<T>(
 /**
  * 某字段的最终值是否应采用 rule 的高置信元数据（high/rule）。
  *
- * 与旧 applyHighConfidenceField 的判定一致：rule 该字段有意义值，且
+ * 与退役前的规则事实合并判定一致：rule 该字段有意义值，且
  * （当前合并值无意义 ⇒ rule 补位；或当前值与 rule 值相同 ⇒ 二者一致）。
  * 当前值有意义且与 rule 不同时（LLM 取胜且值不同），保留 LLM 元数据，返回 false。
  */
@@ -139,4 +151,206 @@ export function shouldAdoptRuleMeta(currentValue: unknown, ruleValue: unknown): 
   if (!hasMeaningfulValue(ruleValue)) return false;
   if (!hasMeaningfulValue(currentValue)) return true;
   return isSameFactValue(currentValue, ruleValue);
+}
+
+const RULE_CONFIDENCE_RANK: Record<RuleFactConfidence, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
+export interface ResolvedRuleFact {
+  field: RuleFactFieldPath;
+  value: unknown;
+  confidence: RuleFactConfidence;
+  producer: RuleFactClaim['producer'];
+  evidence: RuleFactClaim['evidence'];
+  assertedAt: string;
+}
+
+export interface ResolveRuleFactOptions {
+  minConfidence?: RuleFactConfidence;
+}
+
+/** 同一条 claim 流按字段策略表裁决；producer 不持有 first/last/union/composite 逻辑。 */
+export function resolveRuleFactClaims(
+  input: RuleFactClaims | null | undefined,
+  options: ResolveRuleFactOptions = {},
+): ResolvedRuleFact[] {
+  if (!input) return [];
+  const minRank = RULE_CONFIDENCE_RANK[options.minConfidence ?? 'low'];
+  const byField = new Map<RuleFactFieldPath, RuleFactClaim[]>();
+  for (const claim of input.claims) {
+    if (RULE_CONFIDENCE_RANK[claim.confidence] < minRank) continue;
+    const policy = RULE_FACT_FIELD_POLICIES[claim.field];
+    const allowedOperations: readonly ('set' | 'clear')[] = policy.allowedOperations;
+    if (!allowedOperations.includes(claim.operation)) continue;
+    const list = byField.get(claim.field) ?? [];
+    list.push(claim);
+    byField.set(claim.field, list);
+  }
+
+  const resolved: ResolvedRuleFact[] = [];
+  for (const field of Object.keys(RULE_FACT_FIELD_POLICIES) as RuleFactFieldPath[]) {
+    const claims = byField.get(field);
+    if (!claims?.length) continue;
+    const policy = RULE_FACT_FIELD_POLICIES[field];
+    let selected: RuleFactClaim | undefined;
+    let value: unknown;
+
+    if (policy.selection === 'first-scalar') {
+      selected = claims.find(
+        (claim) => claim.operation === 'set' && hasMeaningfulValue(claim.value),
+      );
+      value = selected?.value;
+    } else if (policy.selection === 'last-scalar') {
+      for (const claim of claims) {
+        if (claim.operation === 'set' && hasMeaningfulValue(claim.value)) {
+          selected = claim;
+          value = claim.value;
+          continue;
+        }
+        if (claim.operation !== 'clear' || selected === undefined) continue;
+        const clearedValues = claim.clearValues ?? [];
+        if (
+          clearedValues.length === 0 ||
+          clearedValues.some((item) => isSameFactValue(item, value))
+        ) {
+          selected = undefined;
+          value = undefined;
+        }
+      }
+    } else if (policy.selection === 'union-array') {
+      const union: unknown[] = [];
+      for (const claim of claims) {
+        if (claim.operation === 'clear') {
+          union.splice(0, union.length);
+          selected = claim;
+          continue;
+        }
+        if (!Array.isArray(claim.value)) continue;
+        selected = claim;
+        for (const item of claim.value) {
+          if (!union.some((existing) => isSameFactValue(existing, item))) union.push(item);
+        }
+      }
+      value = union.length > 0 ? union : undefined;
+    } else {
+      const composite: Record<string, unknown> = { ...(policy.defaults ?? {}) };
+      for (const claim of claims) {
+        if (claim.operation === 'clear') {
+          for (const key of Object.keys(composite)) delete composite[key];
+          selected = claim;
+          continue;
+        }
+        if (!claim.value || typeof claim.value !== 'object' || Array.isArray(claim.value)) continue;
+        selected = claim;
+        for (const [key, item] of Object.entries(claim.value)) {
+          if (item !== null && item !== undefined) composite[key] = item;
+        }
+      }
+      value = selected ? composite : undefined;
+    }
+
+    if (!selected || !hasMeaningfulValue(value)) continue;
+    resolved.push({
+      field,
+      value,
+      confidence: selected.confidence,
+      producer: selected.producer,
+      evidence: selected.evidence,
+      assertedAt: selected.assertedAt,
+    });
+  }
+  return resolved;
+}
+
+export function getRuleFact(
+  input: RuleFactClaims | null | undefined,
+  field: RuleFactFieldPath,
+  options: ResolveRuleFactOptions = {},
+): ResolvedRuleFact | null {
+  return resolveRuleFactClaims(input, options).find((fact) => fact.field === field) ?? null;
+}
+
+export function getRuleFactValue<T>(
+  input: RuleFactClaims | null | undefined,
+  field: RuleFactFieldPath,
+  options: ResolveRuleFactOptions = {},
+): T | null {
+  return (getRuleFact(input, field, options)?.value as T | undefined) ?? null;
+}
+
+/** resolution 本地的消费视图骨架；不在证据域反向加载 memory 存储实例。 */
+function createEmptyRuleFactProjection(reasoning: string): EntityExtractionResult {
+  return {
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+      experience: null,
+      upload_resume: null,
+      height: null,
+      weight: null,
+      household_register_province: null,
+    },
+    preferences: {
+      brands: null,
+      brand_ids: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
+    reasoning,
+  };
+}
+
+/** claim 裁决结果投影为既有运行时/存储 schema；投影不再携带第二套治理语义。 */
+export function projectRuleFactClaims(
+  input: RuleFactClaims | null | undefined,
+  options: ResolveRuleFactOptions = {},
+): EntityExtractionResult | null {
+  const resolved = resolveRuleFactClaims(input, options);
+  if (resolved.length === 0) return null;
+  const projected = createEmptyRuleFactProjection(input?.reasoning ?? '规则 claim 投影');
+  for (const fact of resolved) {
+    const [group, field] = fact.field.split('.') as ['interview_info' | 'preferences', string];
+    const value =
+      fact.field === 'preferences.city'
+        ? {
+            value: String(fact.value),
+            confidence: fact.confidence,
+            evidence: normalizeCityEvidence(fact.evidence.code),
+          }
+        : fact.value;
+    (projected[group] as unknown as Record<string, unknown>)[field] = value;
+  }
+  return projected;
+}
+
+function normalizeCityEvidence(value?: string): CityFactEvidence {
+  return value === 'municipality_compact' ||
+    value === 'explicit_city' ||
+    value === 'unique_district_alias' ||
+    value === 'hotspot_alias'
+    ? value
+    : 'explicit_city';
 }

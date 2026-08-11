@@ -153,7 +153,7 @@ finalPrompt =
 
 - 上述各段都是持久化记忆的投影
 - `[本轮高置信线索]`、`[本轮待确认线索]` **不属于 memoryBlock**，由 `turn-hints` 段独立渲染（见 runtime-context 顺序）
-- `highConfidenceFacts` 只用于 prompt 侧理解，不写入持久化会话记忆，也不参与 `extractAndSave()` 落库
+- `ruleFacts` 只用于 prompt 侧理解，不写入持久化会话记忆，也不参与 `extractAndSave()` 落库
 
 如果各部分都为空，`runtime-context` 中不会出现记忆块。
 

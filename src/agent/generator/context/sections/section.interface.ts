@@ -1,8 +1,5 @@
-import type {
-  EntityExtractionResult,
-  HighConfidenceFacts,
-  SessionFacts,
-} from '@memory/types/session-facts.types';
+import type { EntityExtractionResult, SessionFacts } from '@memory/types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
@@ -28,7 +25,7 @@ export interface PromptContext {
   /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
   sessionFacts?: EntityExtractionResult | SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
-  highConfidenceFacts?: HighConfidenceFacts | null;
+  ruleFacts?: RuleFactClaims | null;
   /** 当前消息对用工形式的 set/clear/ignore 决策；用于区分撤销旧偏好与岗位事实问句。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态（currentBrand + excludedBrands，§9）；品牌提示的唯一数据源。 */

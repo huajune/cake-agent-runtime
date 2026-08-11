@@ -1,5 +1,5 @@
 /**
- * 品牌匹配主体 + 解析管线（迁移自 memory/facts/high-confidence-facts.ts 的
+ * 品牌匹配主体 + 解析管线（迁移自旧规则轨的
  * detectBrandAliasHints 匹配主体，新增置信度档位 / 极性 / 歧义 / 品牌ID 契约解析）。
  *
  * 核心导出为纯函数 resolveBrands(text, source, catalog)：单测直接注入目录，
