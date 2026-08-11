@@ -1,5 +1,4 @@
 import {
-  AUTHORITATIVE_PROVENANCE,
   isFieldAuthoritative,
   normalizeEducationToId,
   normalizeGenderToId,
@@ -16,6 +15,7 @@ import {
   parsePhone,
   parseWeight,
 } from '@resolution/candidate';
+import { AUTHORITATIVE_PROVENANCE } from '@resolution/candidate/types';
 
 describe('candidate-field-parser', () => {
   describe('parsePhone', () => {

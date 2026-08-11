@@ -6,36 +6,11 @@ import { parseHeight, parseWeight } from './height-weight';
 import { parseHouseholdProvince } from './household-province';
 import { parseName } from './name';
 import { parsePhone } from './phone';
-
-export type CandidateFieldKey =
-  | 'name'
-  | 'phone'
-  | 'age'
-  | 'gender'
-  | 'education'
-  | 'healthCert'
-  | 'householdProvince'
-  | 'height'
-  | 'weight'
-  | 'supplementAnswers';
-
-export type CandidateFieldProvenance =
-  | 'user_text'
-  | 'booking_writeback'
-  | 'llm_extract'
-  | 'model_arg';
-
-export interface CandidateCollectedField<T = string | number> {
-  value: T;
-  provenance: CandidateFieldProvenance;
-  evidence?: string;
-  at: number;
-}
-
-export const AUTHORITATIVE_PROVENANCE: ReadonlySet<CandidateFieldProvenance> = new Set([
-  'user_text',
-  'booking_writeback',
-]);
+import {
+  AUTHORITATIVE_PROVENANCE,
+  type CandidateCollectedField,
+  type CandidateFieldKey,
+} from './types';
 
 export function isFieldAuthoritative(field?: CandidateCollectedField): boolean {
   return !!field && AUTHORITATIVE_PROVENANCE.has(field.provenance);

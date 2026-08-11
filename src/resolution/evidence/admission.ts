@@ -365,7 +365,7 @@ export function applyEvidenceAdmission<T extends AdmissionFacts>(
   };
 }
 
-export interface MessageExtractionScope {
+interface MessageExtractionScope {
   readonly identity: boolean;
   readonly phone: boolean;
   readonly preferences: boolean;

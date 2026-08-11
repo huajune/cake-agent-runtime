@@ -2,11 +2,11 @@ import { hasResumeAttachmentLine, stripVisualPrefix } from '../markers';
 import {
   VISUAL_FACT_FIELD_KEYS,
   VisualFactSheetSchema,
-  type FieldOwnership,
   type FinalizedVisualFactField,
   type FinalizedVisualFactSheet,
   type VisualFactKind,
 } from './visual-fact.types';
+import type { FieldOwnership } from '../types';
 
 /**
  * 归属默认规则（裁决记录见产品方案附录 A）。字段显式给了 ownership 则尊重；

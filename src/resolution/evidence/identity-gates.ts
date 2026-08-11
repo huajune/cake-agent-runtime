@@ -25,11 +25,7 @@ import {
   isNameConfirmedInDialogue,
   isNameProvidedAfterAsk,
 } from './producers/name-confirmation';
-
-export interface NameGateVerdict {
-  decision: 'allow' | 'reject_collect';
-  reason?: string;
-}
+import type { NameGateVerdict } from './claim.types';
 
 /**
  * `name` 是否**只**以引用前缀被引用方的身份出现：命中某个引用 speaker（全等，或作为

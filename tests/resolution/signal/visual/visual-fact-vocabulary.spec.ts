@@ -1,12 +1,12 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  FIELD_OWNERSHIPS,
   VISUAL_FACT_FIELD_KEYS,
   VISUAL_FACT_FIELD_KEY_PROMPT,
   VISUAL_FACT_KINDS,
   VISUAL_FACT_KIND_PROMPT,
 } from '@/resolution/signal/visual';
+import { FIELD_OWNERSHIPS } from '@/resolution/signal/types';
 
 /**
  * 视觉事实词表的「单一居所」守卫。

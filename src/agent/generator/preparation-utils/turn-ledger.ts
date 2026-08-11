@@ -1,4 +1,4 @@
-import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate';
+import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type {
   CityAttestation,

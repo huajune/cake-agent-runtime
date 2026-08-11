@@ -1,9 +1,6 @@
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import type {
-  CandidateCollectedField,
-  CandidateFieldKey,
-} from '@resolution/candidate/collected-fields';
+import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 
 /** 本轮 geocode 成功解析的锚点记录。 */

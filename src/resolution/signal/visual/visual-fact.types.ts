@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FIELD_OWNERSHIPS, type FieldOwnership } from '../types';
 
 /**
  * 视觉信号域（resolution/signal/visual）—— 图片/表情消息结构化事实的唯一类型定义点。
@@ -81,9 +82,6 @@ export type VisualFactFieldKey = (typeof VISUAL_FACT_FIELD_KEYS)[number];
  * 不报错、不抛类型错，只是静默少收一类事实。故由常量单向生成，不留手抄口。
  */
 export const VISUAL_FACT_FIELD_KEY_PROMPT = `只能用这些值：${VISUAL_FACT_FIELD_KEYS.join(' / ')}`;
-
-export const FIELD_OWNERSHIPS = ['candidate', 'publisher', 'third_party', 'unknown'] as const;
-export type FieldOwnership = (typeof FIELD_OWNERSHIPS)[number];
 
 export const VisualFactFieldSchema = z.object({
   // 刻意收 string 而非 enum（2026-08-05 生产 50 图批测实证：32/50 的模型输出含

@@ -8,3 +8,4 @@ export * from './name';
 export * from './collected-fields';
 export * from './phone';
 export * from './student-identity';
+export * from './types';

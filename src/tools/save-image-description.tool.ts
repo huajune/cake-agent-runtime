@@ -20,7 +20,6 @@ import { MessageType } from '@enums/message-callback.enum';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import {
-  FIELD_OWNERSHIPS,
   VISUAL_FACT_FIELD_KEY_PROMPT,
   VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
@@ -29,6 +28,7 @@ import {
   sanitizeVisualDescription,
   isResumeImageDescription,
 } from '@resolution/signal/visual';
+import { FIELD_OWNERSHIPS } from '@resolution/signal/types';
 import {
   appendResumeAttachmentLine,
   EMOTION_MESSAGE_PREFIX,

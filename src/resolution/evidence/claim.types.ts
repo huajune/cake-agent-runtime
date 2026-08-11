@@ -174,6 +174,14 @@ export interface RuleFactClaims {
   readonly reasoning: string;
 }
 
+// ==================== 动作授权 verdicts ====================
+
+/** booking 姓名/手机号动作闸门的统一裁决结果。 */
+export interface NameGateVerdict {
+  decision: 'allow' | 'reject_collect';
+  reason?: string;
+}
+
 /** 单条 claim 的裁决结论。 */
 export type CandidateClaimDecision = 'accepted' | 'rejected' | 'superseded' | 'needs_confirmation';
 

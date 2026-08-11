@@ -7,7 +7,6 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import { MessageType } from '@enums/message-callback.enum';
 import { isResumeImageDescription } from '../utils/message-parser.util';
 import {
-  FIELD_OWNERSHIPS,
   VISUAL_FACT_FIELD_KEY_PROMPT,
   VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
@@ -15,6 +14,7 @@ import {
   sanitizeVisualDescription,
   type FinalizedVisualFactSheet,
 } from '@resolution/signal/visual';
+import { FIELD_OWNERSHIPS } from '@resolution/signal/types';
 import {
   appendResumeAttachmentLine,
   EMOTION_MESSAGE_PREFIX,

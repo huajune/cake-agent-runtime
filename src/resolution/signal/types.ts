@@ -9,3 +9,7 @@ export interface LocationShareCoordinates {
   latitude: number;
   longitude: number;
 }
+
+/** 视觉字段的事实所有者；跨生产者与消费端共享，归信号轴而非视觉实现所有。 */
+export const FIELD_OWNERSHIPS = ['candidate', 'publisher', 'third_party', 'unknown'] as const;
+export type FieldOwnership = (typeof FIELD_OWNERSHIPS)[number];
