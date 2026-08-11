@@ -15,6 +15,8 @@ import {
   ExplicitProvenanceEntrySchema,
   type ExplicitProvenanceEntry,
   LLMEntityExtractionResultSchema,
+  LaborFormIntentExtractionSchema,
+  type LaborFormIntentExtraction,
   type EntityExtractionResult,
   type RecommendedJobSummary,
   RecommendedJobSummarySchema,
@@ -68,7 +70,7 @@ import {
   cityClaimFromFact,
   createCityClaim,
 } from '@resolution/evidence/producers/city';
-import { decideLaborFormIntent } from '@resolution/labor-form';
+import { decideLaborFormIntent, type LaborFormIntentDecision } from '@resolution/labor-form';
 import { resolveConfirmedCityFact } from '@resolution/evidence/producers/city-confirmation';
 import { applyEvidenceAdmission, sanitizeInterviewName } from '@resolution/evidence/admission';
 import {
@@ -748,6 +750,8 @@ export class SessionService {
     messages: { role: string; content: string }[],
     /** prep 时刻规则轨产物；与本轮 debounce 合并后的 user 输入同源。 */
     ruleFacts: RuleFactClaims | null = null,
+    /** prep 时刻唯一一次 labor-form 规则轨判定；生产链路传入，直调兼容时才本地补算。 */
+    preparedLaborFormIntent?: LaborFormIntentDecision,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
@@ -842,7 +846,7 @@ export class SessionService {
     // 信息不会永久丢失：下一轮非应答消息的增量窗口仍覆盖本轮上下文（含助手
     // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
     const lastUserText = stripTimeContext(userMessages.at(-1) ?? '').trim();
-    const currentLaborFormIntent = decideLaborFormIntent(lastUserText);
+    const currentLaborFormIntent = preparedLaborFormIntent ?? decideLaborFormIntent(lastUserText);
 
     // 确认问答裁决（候选人资料证据化 P1，badcase 6a671722："是在沈阳市对吧？"→"好的"）：
     // 必须在纯应答闸门之前算——确认应答（"好的/对/嗯"）恰恰是纯应答词，走闸门
@@ -895,8 +899,17 @@ export class SessionService {
       facts: llmRaw,
       explicitProvenance,
       brandIntents: rawBrandIntents,
+      laborFormIntent: extractedLaborFormIntent,
       degraded: llmDegraded,
     } = await this.callLLM(prompt);
+    this.emitLaborFormSemanticTrackDiff({
+      corpId,
+      userId,
+      sessionId,
+      ruleDecision: currentLaborFormIntent,
+      extractionDecision: extractedLaborFormIntent,
+      degraded: llmDegraded,
+    });
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位。
     // 真名索取问答豁免（badcase 2026-08-06 chat 6a7446eb）：候选人开场"我是张丽鑫"命中
     // 打招呼语判据，但 Agent 随后明确问真名、她单独回了"张丽鑫"——被问之后给出的名字是
@@ -1083,6 +1096,7 @@ export class SessionService {
     facts: EntityExtractionResult;
     explicitProvenance: ExplicitProvenanceEntry[];
     brandIntents: BrandIntentEntry[];
+    laborFormIntent: LaborFormIntentExtraction | null;
     /** true = LLM 调用或 schema 解析失败，已降级为空提取（本轮新事实丢失，旧值不受影响）。 */
     degraded: boolean;
   }> {
@@ -1109,7 +1123,11 @@ export class SessionService {
       });
 
       // explicit_provenance / brand_intents 不属于存储态 schema，归一化前单独取出。
-      const rawOutput = result.output as { explicit_provenance?: unknown; brand_intents?: unknown };
+      const rawOutput = result.output as {
+        explicit_provenance?: unknown;
+        brand_intents?: unknown;
+        labor_form_intent?: unknown;
+      };
       const provenanceParse = z
         .array(ExplicitProvenanceEntrySchema)
         .nullable()
@@ -1122,6 +1140,12 @@ export class SessionService {
         .optional()
         .safeParse(rawOutput?.brand_intents);
       const brandIntents = brandIntentsParse.success ? (brandIntentsParse.data ?? []) : [];
+      const laborFormIntentParse = LaborFormIntentExtractionSchema.nullable()
+        .optional()
+        .safeParse(rawOutput?.labor_form_intent);
+      const laborFormIntent = laborFormIntentParse.success
+        ? (laborFormIntentParse.data ?? null)
+        : null;
 
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
       const parsed = EntityExtractionResultSchema.parse(result.output);
@@ -1129,6 +1153,7 @@ export class SessionService {
         facts: this.backfillCityFromWhitelist(parsed),
         explicitProvenance,
         brandIntents,
+        laborFormIntent,
         degraded: false,
       };
     } catch (err) {
@@ -1140,9 +1165,57 @@ export class SessionService {
         facts: FALLBACK_EXTRACTION,
         explicitProvenance: [],
         brandIntents: [],
+        laborFormIntent: null,
         degraded: true,
       };
     }
+  }
+
+  /** 仅记录 labor-form 双轨分歧；规则轨继续是唯一生效判定。 */
+  private emitLaborFormSemanticTrackDiff(params: {
+    corpId: string;
+    userId: string;
+    sessionId: string;
+    ruleDecision: LaborFormIntentDecision;
+    extractionDecision: LaborFormIntentExtraction | null;
+    degraded: boolean;
+  }): void {
+    if (params.degraded || !params.extractionDecision) return;
+
+    const ruleTrack =
+      params.ruleDecision.kind === 'set'
+        ? { intent: 'set' as const, laborForm: params.ruleDecision.value }
+        : params.ruleDecision.kind === 'clear'
+          ? { intent: 'clear' as const, laborForms: params.ruleDecision.clearedValues }
+          : { intent: 'ignore' as const };
+    const extractionTrack = {
+      intent: params.extractionDecision.intent,
+      ...(params.extractionDecision.labor_form
+        ? { laborForm: params.extractionDecision.labor_form }
+        : {}),
+    };
+    const sameIntent = ruleTrack.intent === extractionTrack.intent;
+    const sameValue =
+      !sameIntent ||
+      extractionTrack.intent === 'ignore' ||
+      (extractionTrack.intent === 'set' &&
+        ruleTrack.intent === 'set' &&
+        extractionTrack.laborForm === ruleTrack.laborForm) ||
+      (extractionTrack.intent === 'clear' &&
+        ruleTrack.intent === 'clear' &&
+        (!extractionTrack.laborForm || ruleTrack.laborForms.includes(extractionTrack.laborForm)));
+    if (sameIntent && sameValue) return;
+
+    this.tracer?.emit({
+      type: 'semantic_track_diff',
+      corpId: params.corpId,
+      userId: params.userId,
+      chatId: params.sessionId,
+      semantic: 'labor_form_intent',
+      ruleTrack,
+      extractionTrack,
+      quote: params.extractionDecision.quote,
+    });
   }
 
   /**

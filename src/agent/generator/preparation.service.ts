@@ -278,6 +278,7 @@ export class PreparationService {
     const candidateTexts = extractCandidateTexts(normalizedMessages);
     const ledger = createTurnLedger({
       ruleFacts: memory.ruleFacts,
+      laborFormIntent: currentLaborFormIntent,
       collectedFields: parseCandidateFieldsFromText(
         currentUserMessage ? [currentUserMessage] : [],
         Date.now(),

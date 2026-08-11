@@ -296,6 +296,24 @@ export const BrandIntentEntrySchema = z.object({
 
 export type BrandIntentEntry = z.infer<typeof BrandIntentEntrySchema>;
 
+/**
+ * labor-form 语义轨 shadow 标签：只描述本轮候选人的偏好变更意向，不直接驱动业务。
+ * set/clear/ignore 口径与 resolution/labor-form 的 LaborFormIntentDecision 同构；
+ * quote 必须是候选人消息中的逐字连续片段，解释性推理不得混入。
+ */
+export const LaborFormIntentExtractionSchema = z.object({
+  intent: z
+    .enum(['set', 'clear', 'ignore'])
+    .describe('set=明确选择；clear=明确排除/撤销；ignore=未表达偏好或仅核对岗位事实'),
+  labor_form: z
+    .enum(['全职', '兼职', '小时工', '寒假工', '暑假工'])
+    .optional()
+    .describe('set 时为选中的标准用工形式；clear 时可填被排除的标准用工形式'),
+  quote: z.string().describe('支持该意向的候选人原话逐字连续片段；禁止改写、翻译、概括或拼接'),
+});
+
+export type LaborFormIntentExtraction = z.infer<typeof LaborFormIntentExtractionSchema>;
+
 /** LLM 结构化输出 schema — city 字段为字符串 */
 export const LLMEntityExtractionResultSchema = z.object({
   interview_info: InterviewInfoSchema,
@@ -317,6 +335,12 @@ export const LLMEntityExtractionResultSchema = z.object({
       '本轮候选人对品牌的意图极性清单（仅本轮新表达，不复读历史）。' +
         '候选人用"这个/那个/第一个/你说的那家"等指代品牌时，必须链接到图片或此前推荐的实际品牌名再输出；' +
         '排斥表达（"X就算了""X干过了不去了""这个不考虑"）输出 negative；明确不限品牌输出 browse_all',
+    ),
+  labor_form_intent: LaborFormIntentExtractionSchema.nullable()
+    .optional()
+    .describe(
+      '本轮候选人的用工形式偏好变更标签，仅作 shadow 对照：set=明确选择，clear=明确排除/撤销，' +
+        'ignore=未表达偏好或只在核对岗位事实；quote 必须是候选人消息中的逐字连续片段',
     ),
   reasoning: z
     .string()

@@ -50,6 +50,10 @@ describe('SessionService', () => {
     ]),
   };
 
+  const mockTracer = {
+    emit: jest.fn(),
+  };
+
   let service: SessionService;
 
   const extractAndSaveWithPrepRules = async (
@@ -97,6 +101,7 @@ describe('SessionService', () => {
       mockLlm as never,
       mockSponge as never,
       mockSystemConfig as never,
+      mockTracer as never,
     );
   });
 
@@ -845,6 +850,83 @@ describe('SessionService', () => {
       const prompt = mockLlm.generateStructured.mock.calls[0][0].prompt as string;
       expect(prompt).toContain('[已确认事实');
       expect(prompt).toContain('年龄: 25');
+    });
+  });
+
+  describe('labor-form semantic track shadow comparison', () => {
+    const llmOutputWithIntent = (
+      laborFormIntent: {
+        intent: 'set' | 'clear' | 'ignore';
+        labor_form?: '全职' | '兼职' | '小时工' | '寒假工' | '暑假工';
+        quote: string;
+      },
+    ) => ({
+      ...FALLBACK_EXTRACTION,
+      labor_form_intent: laborFormIntent,
+      reasoning: 'labor-form shadow',
+    });
+
+    it('persists semantic_track_diff only when extraction and rule tracks disagree', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWithIntent({
+            intent: 'set',
+            labor_form: '小时工',
+            quote: '这个是小时工吗',
+          }),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '这个是小时工吗' },
+      ]);
+
+      expect(mockTracer.emit).toHaveBeenCalledWith({
+        type: 'semantic_track_diff',
+        corpId: 'corp1',
+        userId: 'user1',
+        chatId: 'session1',
+        semantic: 'labor_form_intent',
+        ruleTrack: { intent: 'ignore' },
+        extractionTrack: { intent: 'set', laborForm: '小时工' },
+        quote: '这个是小时工吗',
+      });
+    });
+
+    it('does not persist an event when both tracks agree', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWithIntent({
+            intent: 'set',
+            labor_form: '暑假工',
+            quote: '想找暑假工',
+          }),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我想找暑假工' },
+      ]);
+
+      expect(mockTracer.emit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'semantic_track_diff' }),
+      );
+    });
+
+    it('silently skips comparison when extraction degrades', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockRejectedValueOnce(new Error('extract down'));
+
+      const outcome = await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我想找暑假工' },
+      ]);
+
+      expect(outcome.llmDegraded).toBe(true);
+      expect(mockTracer.emit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'semantic_track_diff' }),
+      );
     });
   });
 

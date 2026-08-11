@@ -14,6 +14,7 @@ import type {
   CandidateFactInterpretation,
   CandidateFactOperation,
 } from '@resolution/evidence/claim.types';
+import type { ValidLaborForm } from '@resolution/labor-form';
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -153,6 +154,24 @@ export type AgentEvent = AgentEventContext &
         field: string;
         droppedValue: string;
         reason: string;
+      }
+    /**
+     * 封闭语义标签的双轨 shadow 分歧：仅分歧时落档，绝不改变规则轨生效结果。
+     * traceId 由 AgentTracer 的请求上下文补齐，可与消息主账本直接 join。
+     */
+    | {
+        type: 'semantic_track_diff';
+        semantic: 'labor_form_intent';
+        userId?: string;
+        ruleTrack:
+          | { intent: 'set'; laborForm: ValidLaborForm }
+          | { intent: 'clear'; laborForms: ValidLaborForm[] }
+          | { intent: 'ignore' };
+        extractionTrack: {
+          intent: 'set' | 'clear' | 'ignore';
+          laborForm?: ValidLaborForm;
+        };
+        quote: string;
       }
     /**
      * 候选人事实裁决档案（证据化方案 §11）：precheck 每次裁决一条、booking

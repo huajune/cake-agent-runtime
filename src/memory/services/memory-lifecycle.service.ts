@@ -24,6 +24,7 @@ import { isUserProfileFactValue } from '../types/long-term.types';
 import type { ShortTermMessage } from '../types/short-term.types';
 import { type RecommendedJobSummary, type WeworkSessionState } from '../types/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 
 export interface MemoryLifecycleTurnContext {
   corpId: string;
@@ -50,6 +51,8 @@ export interface MemoryLifecycleTurnContext {
   invalidatedJobIds?: number[] | null;
   /** prep 时刻唯一一次规则轨判定；轮末直接消费，禁止重跑。 */
   ruleFacts: RuleFactClaims | null;
+  /** prep 时刻规则轨的 labor-form 三态判定；轮末只消费、不重跑。 */
+  laborFormIntent: LaborFormIntentDecision;
 }
 
 interface StepOutcome<T = void> {
@@ -513,6 +516,7 @@ export class MemoryLifecycleService {
         ctx.sessionId,
         flatMessages,
         ctx.ruleFacts,
+        ctx.laborFormIntent,
       );
     });
     // LLM 提取降级（fallback 空值）若被吞掉、step 仍标 success，提取实际成功率

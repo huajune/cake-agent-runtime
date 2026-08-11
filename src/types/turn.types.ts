@@ -2,6 +2,7 @@ import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 
 /** 本轮 geocode 成功解析的锚点记录。 */
 export interface GeocodeResolvedAnchor {
@@ -38,6 +39,8 @@ export interface TurnLedgerSnapshot {
   jobListQuery: { signature: string } | undefined;
   invalidatedJobIds: readonly number[];
   ruleFacts: RuleFactClaims | null;
+  /** prep 时刻唯一一次 labor-form 规则轨判定；轮末 shadow 对照复用，禁止重跑。 */
+  laborFormIntent: LaborFormIntentDecision;
   collectedFields: Readonly<Partial<Record<CandidateFieldKey, CandidateCollectedField>>>;
   geoSignalCities: ReadonlySet<string>;
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */

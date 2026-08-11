@@ -371,6 +371,7 @@ export class GeneratorAgent {
         cityAttestation: ledger.cityAttestation ?? null,
         invalidatedJobIds: [...ledger.invalidatedJobIds],
         ruleFacts: ledger.ruleFacts,
+        laborFormIntent: ledger.laborFormIntent,
       },
       assistantText,
     );

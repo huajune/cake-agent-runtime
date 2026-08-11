@@ -2,6 +2,10 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
   buildSessionExtractionPrompt,
 } from '@memory/services/session-extraction.prompt';
+import {
+  FALLBACK_EXTRACTION,
+  LLMEntityExtractionResultSchema,
+} from '@memory/types/session-facts.types';
 import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
 
 describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
@@ -87,6 +91,25 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
       expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不等于只要暑假工');
       expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('"这个是小时工吗"');
       expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不得据此更新 labor_form');
+    });
+
+    it('defines the labor_form_intent three-state shadow label with verbatim quotes', () => {
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('用工形式意向三态（labor_form_intent）');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('set：明确选择或接受');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('clear：明确排除或撤销旧偏好');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('ignore：未表达用工形式偏好');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('quote 必须逐字取自本轮候选人原话');
+
+      const parsed = LLMEntityExtractionResultSchema.safeParse({
+        ...FALLBACK_EXTRACTION,
+        labor_form_intent: {
+          intent: 'set',
+          labor_form: '小时工',
+          quote: '想找小时工',
+        },
+        reasoning: 'candidate explicitly selected hourly work',
+      });
+      expect(parsed.success).toBe(true);
     });
   });
 });

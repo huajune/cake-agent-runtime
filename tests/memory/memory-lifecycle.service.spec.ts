@@ -494,6 +494,7 @@ describe('MemoryLifecycleService', () => {
         sessionId: 'sess-1',
         botImId: 'bot-wxid-1',
         ruleFacts: null,
+        laborFormIntent: { kind: 'ignore' },
         normalizedMessages: [
           { role: 'assistant', content: '杨浦这边有长白这家店。' },
           {
@@ -576,6 +577,7 @@ describe('MemoryLifecycleService', () => {
         { role: 'user', content: '[图片 messageId=img-1] 我想报名长白' },
       ],
       null,
+      { kind: 'ignore' },
     );
   });
 
@@ -587,6 +589,7 @@ describe('MemoryLifecycleService', () => {
         sessionId: 'sess-1',
         messageId: 'msg-1',
         ruleFacts: null,
+        laborFormIntent: { kind: 'ignore' },
         normalizedMessages: [{ role: 'user', content: '我想找长白附近的兼职' }],
         candidatePool: [
           {
@@ -642,6 +645,7 @@ describe('MemoryLifecycleService', () => {
         sessionId: 'sess-1',
         messageId: 'msg-2',
         ruleFacts: null,
+        laborFormIntent: { kind: 'ignore' },
         normalizedMessages: [{ role: 'user', content: '继续看看' }],
       },
       '好的',
@@ -672,6 +676,7 @@ describe('MemoryLifecycleService', () => {
       userId: 'user-1',
       sessionId: 'sess-1',
       ruleFacts: null,
+      laborFormIntent: { kind: 'ignore' },
       normalizedMessages: [{ role: 'assistant', content: '你好' }],
     });
 
@@ -696,6 +701,7 @@ describe('MemoryLifecycleService', () => {
           userId: 'user-1',
           sessionId: 'sess-1',
           ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '好的' }],
           cityAttestation: attestation,
         },
@@ -720,6 +726,7 @@ describe('MemoryLifecycleService', () => {
           userId: 'user-1',
           sessionId: 'sess-1',
           ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '好的' }],
         },
         '收到',
@@ -766,6 +773,7 @@ describe('MemoryLifecycleService', () => {
           messageId: 'msg-3',
           contactName: '小王 肯德基',
           ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '我想去KFC' }],
           imageBrandResolutions: [imageResolution],
         },
@@ -801,6 +809,7 @@ describe('MemoryLifecycleService', () => {
           sessionId: 'sess-1',
           messageId: 'msg-4',
           ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '不要肯德基' }],
         },
         '好的',

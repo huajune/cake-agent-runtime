@@ -1,5 +1,6 @@
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type {
   CityAttestation,
   GeocodeResolvedAnchor,
@@ -9,6 +10,7 @@ import type {
 
 export interface CreateTurnLedgerInput {
   ruleFacts?: RuleFactClaims | null;
+  laborFormIntent?: LaborFormIntentDecision;
   collectedFields?: Partial<Record<CandidateFieldKey, CandidateCollectedField>>;
   geoSignalCities?: Iterable<string>;
 }
@@ -48,6 +50,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
       return invalidatedJobIds;
     },
     ruleFacts: input.ruleFacts ?? null,
+    laborFormIntent: input.laborFormIntent ?? { kind: 'ignore' },
     collectedFields,
     geoSignalCities,
     bookingSucceeded: undefined,
@@ -86,6 +89,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
         jobListQuery: jobListQuery ? { ...jobListQuery } : undefined,
         invalidatedJobIds: [...invalidatedJobIds],
         ruleFacts: ledger.ruleFacts,
+        laborFormIntent: ledger.laborFormIntent,
         collectedFields,
         geoSignalCities: new Set(geoSignalCities),
         bookingSucceeded: ledger.bookingSucceeded,
