@@ -47,28 +47,25 @@ export const VISUAL_FACT_KIND_PROMPT = VISUAL_FACT_KINDS.map(
 ).join('；');
 
 /**
- * 字段 key 白名单（裁决 A2/A7/B3）：
- * - brand_id：我方平台截图自带品牌ID（如 [10006]），确定性锚点直通 brandIdList
- *   （直通实现走描述文本「品牌ID：」契约行，本结构化字段当前无读者，仅作冗余锚点）；
+ * 字段 key 白名单（裁决 A7/B3，2026-08-11 砍 7 留 8）：
  * - candidate_address：岗位页「我的地址：XX街道」/「距我 X km」锚点——候选人设备
  *   上的真实地址，位置证据强度不低于定位分享；
+ * - publisher / store：当前零读者但必须保留为分流槽，保护 brand 不被发布方名、
+ *   门店名污染（R2）；砍掉会让 vision 模型把无处安放的名称回填到 brand，劫持回归；
  * - 刻意不设身份证号/证件号 key：booking 用不到，纯隐私暴露面（裁决 B3'）。
+ *
+ * 已移除的旧 key 会在 finalize 白名单过滤时静默丢弃；存量 visual_facts 无需迁移。
  */
 export const VISUAL_FACT_FIELD_KEYS = [
   'phone',
-  'name',
-  'age_range',
   'brand',
-  'brand_id',
+  // 零读者分流槽：保护 brand 不被发布方名污染（R2），砍除即劫持回归。
   'publisher',
+  // 零读者分流槽：保护 brand 不被门店名污染（R2），砍除即劫持回归。
   'store',
-  'address',
   'city',
+  'address',
   'candidate_address',
-  'salary_text',
-  'shift_text',
-  'cert_type',
-  'cert_issue_date',
   'other',
 ] as const;
 export type VisualFactFieldKey = (typeof VISUAL_FACT_FIELD_KEYS)[number];

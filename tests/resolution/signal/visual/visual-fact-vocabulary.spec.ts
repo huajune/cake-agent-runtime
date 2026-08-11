@@ -25,6 +25,19 @@ const PRODUCERS = [
 ];
 
 describe('resolution/signal/visual · 词表单一居所', () => {
+  it('字段词表固定为砍 7 留 8，publisher/store 作为分流槽保留', () => {
+    expect([...VISUAL_FACT_FIELD_KEYS]).toEqual([
+      'phone',
+      'brand',
+      'publisher',
+      'store',
+      'city',
+      'address',
+      'candidate_address',
+      'other',
+    ]);
+  });
+
   it('生成的 kind 提示串覆盖且仅覆盖权威 kind 词表', () => {
     for (const kind of VISUAL_FACT_KINDS) {
       expect(VISUAL_FACT_KIND_PROMPT).toContain(`${kind}=`);
@@ -44,7 +57,7 @@ describe('resolution/signal/visual · 词表单一居所', () => {
     // ownership 内联字面量数组（本次清理掉的形态）
     expect(source).not.toMatch(/\[\s*'candidate'\s*,\s*'publisher'\s*,/);
     // key 白名单手抄进 describe（用两个相邻 key 作指纹，避免误伤单个 key 的正常引用）
-    expect(source).not.toContain('salary_text / shift_text');
+    expect(source).not.toContain('publisher / store / city');
     // kind 释义手抄进 describe
     expect(source).not.toContain('map_location=地图');
 

@@ -89,13 +89,30 @@ describe('resolution/signal/visual · finalizeVisualFactSheet', () => {
         kind: 'certificate',
         fields: [
           { key: 'other', value: '412727200401157416' },
-          { key: 'name', value: '毛梦港' },
+          { key: 'phone', value: '13500001111' },
         ],
       },
       '健康证截图',
     );
     expect(sheet.fields).toHaveLength(1);
-    expect(sheet.fields[0].key).toBe('name');
+    expect(sheet.fields[0].key).toBe('phone');
+  });
+
+  it('存量行中的已删除 key 经 finalize 白名单静默丢弃', () => {
+    const stored = parseStoredVisualFactSheet({
+      kind: 'job_posting',
+      fields: [
+        { key: 'brand_id', value: '10006' },
+        { key: 'salary_text', value: '30元/时' },
+        { key: 'brand', value: '达美乐' },
+      ],
+      rawDescription: DESC,
+    });
+
+    expect(stored?.degraded).toBe(false);
+    expect(stored?.fields).toEqual([
+      expect.objectContaining({ key: 'brand', value: '达美乐', ownership: 'publisher' }),
+    ]);
   });
 
   it('空值字段被剔除；kind 合法但 fields 缺省时按空数组', () => {

@@ -1,9 +1,6 @@
 import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
-import {
-  finalizeVisualFactSheet,
-  type FinalizedVisualFactSheet,
-} from '@/resolution/signal/visual';
+import { finalizeVisualFactSheet, type FinalizedVisualFactSheet } from '@/resolution/signal/visual';
 
 function extractRuleFacts(...args: Parameters<typeof produceRuleFactClaims>) {
   return projectRuleFactClaims(produceRuleFactClaims(...args));
@@ -24,10 +21,7 @@ describe('规则轨 · sheet 授权域', () => {
   const jobSheet = finalizeVisualFactSheet(
     {
       kind: 'job_posting',
-      fields: [
-        { key: 'brand', value: '达美乐' },
-        { key: 'salary_text', value: '5000-6000元/月' },
-      ],
+      fields: [{ key: 'brand', value: '达美乐' }],
     },
     JOB_DESC,
   );

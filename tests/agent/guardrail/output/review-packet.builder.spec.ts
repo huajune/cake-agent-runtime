@@ -421,8 +421,8 @@ describe('GuardrailReviewPacketBuilder', () => {
         description:
           '后台工单截图：候选人颜端樟，岗位大米先生-丁香国际-前厅服务-小时工，预约面试时间2026/08/06 15:00',
         fields: [
-          { key: 'name', value: '颜端樟', ownership: 'candidate' },
           { key: 'brand', value: '大米先生', ownership: 'publisher' },
+          { key: 'store', value: '丁香国际', ownership: 'publisher' },
           { key: 'other', value: '预约面试时间 2026/08/06 15:00', ownership: 'publisher' },
         ],
       },
@@ -441,8 +441,8 @@ describe('GuardrailReviewPacketBuilder', () => {
       expect(packet.evidence.visualFacts?.sheets[0]).toMatchObject({
         kind: 'chat_screenshot',
         fields: [
-          { key: 'name', value: '颜端樟', ownership: 'candidate' },
           { key: 'brand', value: '大米先生', ownership: 'publisher' },
+          { key: 'store', value: '丁香国际', ownership: 'publisher' },
           { key: 'other', value: '预约面试时间 2026/08/06 15:00', ownership: 'publisher' },
         ],
       });
@@ -468,7 +468,7 @@ describe('GuardrailReviewPacketBuilder', () => {
         toolCalls: [
           {
             toolName: 'save_image_description',
-            args: { fields: [{ key: 'name' }, { value: '孤值' }] },
+            args: { fields: [{ key: 'phone' }, { value: '孤值' }] },
             result: { success: true },
             status: 'ok',
           },
@@ -483,7 +483,7 @@ describe('GuardrailReviewPacketBuilder', () => {
         kind: 'resume',
         description: `简历：王建国，身份证号 ${idNumber}`,
         fields: [
-          { key: 'name', value: '王建国' },
+          { key: 'phone', value: '13800138000' },
           { key: 'invented_key', value: '不得进入 reviewer' },
           { key: 'other', value: idNumber },
         ],
@@ -504,7 +504,7 @@ describe('GuardrailReviewPacketBuilder', () => {
       expect(packet.evidence.visualFacts?.sheets[0]).toEqual({
         kind: 'resume',
         description: '简历：王建国，身份证号 [身份证号已脱敏]',
-        fields: [{ key: 'name', value: '王建国', ownership: 'candidate' }],
+        fields: [{ key: 'phone', value: '13800138000', ownership: 'candidate' }],
       });
     });
   });
