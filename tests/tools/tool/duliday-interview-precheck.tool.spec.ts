@@ -2348,7 +2348,7 @@ describe('buildInterviewPrecheckTool', () => {
         collectedFields: {
           age: {
             value: 24,
-            provenance: 'user_text',
+            producer: 'candidate_quote',
             evidence: '年龄数字',
             at: Date.now(),
           },

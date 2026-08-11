@@ -6,21 +6,12 @@ import {
   scanGeoSignalsFromText,
 } from '@resolution/geo';
 import { isVisualDescriptionText } from '@resolution/signal/markers';
-
-export type CityClaimProducer =
-  | 'rule'
-  | 'model'
-  | 'allowlist'
-  | 'location_share'
-  | 'map_screenshot'
-  | 'confirmation'
-  | 'geocode'
-  | 'archive';
+import type { CandidateFactProducer } from '../claim.types';
 
 export interface CityEvidenceClaim {
   value: string;
   confidence: 'high' | 'medium' | 'low' | 'unknown';
-  producer: CityClaimProducer;
+  producer: CandidateFactProducer;
   evidence: string;
   assertedAt: string;
 }
@@ -50,13 +41,11 @@ export type CityAdjudicationDecision =
   | 'reject_lower_priority'
   | 'reject_conflict';
 
-const PRODUCER_PRIORITY: Record<CityClaimProducer, number> = {
-  confirmation: 7,
+const PRODUCER_PRIORITY: Record<CandidateFactProducer, number> = {
+  manual: 8,
+  candidate_quote: 7,
   rule: 6,
-  allowlist: 6,
-  geocode: 5,
-  location_share: 5,
-  map_screenshot: 5,
+  system: 5,
   model: 3,
   archive: 2,
 };
@@ -70,7 +59,7 @@ const CONFIDENCE_PRIORITY: Record<CityEvidenceClaim['confidence'], number> = {
 
 export function createCityClaim(
   value: string,
-  producer: CityClaimProducer,
+  producer: CandidateFactProducer,
   evidence: string,
   assertedAt = new Date().toISOString(),
 ): CityEvidenceClaim | null {
@@ -90,7 +79,7 @@ export function cityClaimFromFact(
     | {
         value: string;
         confidence?: string;
-        source?: string;
+        source?: CandidateFactProducer;
         evidence?: string;
         extractedAt?: string;
       }
@@ -102,20 +91,10 @@ export function cityClaimFromFact(
     fact.confidence === 'high' || fact.confidence === 'medium' || fact.confidence === 'low'
       ? fact.confidence
       : 'unknown';
-  const producer: CityClaimProducer =
-    fact.source === 'rule'
-      ? 'rule'
-      : fact.source === 'llm'
-        ? 'model'
-        : fact.source === 'candidate'
-          ? 'confirmation'
-          : fact.source === 'tool'
-            ? 'geocode'
-            : 'archive';
   return {
     value: fact.value.trim(),
     confidence,
-    producer,
+    producer: fact.source ?? 'archive',
     evidence: fact.evidence ?? '存量城市事实',
     assertedAt: fact.extractedAt ?? new Date(0).toISOString(),
   };

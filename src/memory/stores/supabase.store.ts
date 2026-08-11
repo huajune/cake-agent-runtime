@@ -2,11 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { MemoryConfig } from '../memory.config';
+import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 import type {
   UserProfile,
+  UserProfileFactValue,
   UserProfileFacts,
   ProfileFactConfidence,
-  ProfileFactSource,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
@@ -17,7 +18,9 @@ import type {
 import {
   createEmptyUserProfileFacts,
   isUserProfileFactValue,
+  LONG_TERM_PREFERENCE_FIELD_KEYS,
   MAX_RECENT_SUMMARIES,
+  UserProfileFactValueSchema,
   userProfileFactValue,
   USER_PROFILE_FIELD_KEYS,
 } from '../types/long-term.types';
@@ -43,14 +46,27 @@ function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserP
   const raw = data as Record<string, unknown>;
 
   for (const key of USER_PROFILE_FIELD_KEYS) {
-    const value = raw[key];
-    if (isUserProfileFactValue(value)) {
-      (facts as Record<string, unknown>)[key] = value;
+    const parsed = UserProfileFactValueSchema.safeParse(raw[key]);
+    if (parsed.success) {
+      (facts as Record<string, unknown>)[key] = parsed.data;
       hasValue = true;
     }
   }
 
   return hasValue ? facts : null;
+}
+
+function normalizePreferenceFacts(
+  data: LongTermPreferenceFacts | null | undefined,
+): LongTermPreferenceFacts | null {
+  if (!data || typeof data !== 'object') return null;
+  const facts: LongTermPreferenceFacts = {};
+  const raw = data as Record<string, unknown>;
+  for (const key of LONG_TERM_PREFERENCE_FIELD_KEYS) {
+    const parsed = UserProfileFactValueSchema.safeParse(raw[key]);
+    if (parsed.success) facts[key] = parsed.data as UserProfileFactValue<unknown>;
+  }
+  return Object.keys(facts).length > 0 ? facts : null;
 }
 
 function normalizeActiveBookingEntry(value: unknown): ActiveBooking | null {
@@ -199,9 +215,7 @@ export class SupabaseStore implements MemoryStore {
     userId: string,
   ): Promise<LongTermPreferenceFacts | null> {
     const row = await this.getRow(corpId, userId);
-    const facts = row?.preference_facts;
-    if (!facts || typeof facts !== 'object') return null;
-    return Object.keys(facts).length > 0 ? facts : null;
+    return normalizePreferenceFacts(row?.preference_facts ?? null);
   }
 
   // ==================== Summary 操作 ====================
@@ -444,7 +458,7 @@ export class SupabaseStore implements MemoryStore {
   async set(key: string, content: Record<string, unknown>): Promise<void> {
     const { corpId, userId } = this.parseProfileKey(key);
     const profileFacts = this.buildProfileFactsFromPlain(content as Partial<UserProfile>, {
-      source: 'enrichment',
+      source: 'system',
       confidence: 'medium',
       evidence: '外部补充字段写入长期档案',
     });
@@ -549,7 +563,7 @@ export class SupabaseStore implements MemoryStore {
   private buildProfileFactsFromPlain(
     profile: Partial<UserProfile>,
     defaults: {
-      source: ProfileFactSource;
+      source: CandidateFactProducer;
       confidence: ProfileFactConfidence;
       evidence: string;
     },

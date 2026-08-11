@@ -26,7 +26,6 @@ import {
   SessionFactsSchema,
   SessionFactsRedisContentSchema,
   type SessionFacts,
-  type SessionFactSource,
   type SessionFactValue,
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
@@ -41,7 +40,6 @@ import {
 import type {
   AuthoritativeSessionState,
   CollectedField,
-  FieldProvenance,
 } from '../types/authoritative-session-state.types';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
@@ -322,7 +320,7 @@ export class SessionService {
   /**
    * 工具确权城市入档（候选人资料证据化 A1，badcase 6a671722 沈阳 / 6a618a6e 上海浦东）。
    *
-   * geocode unique 解析出的城市写入 pref.city（source='tool'，confidence=high），
+   * geocode unique 解析出的城市写入 pref.city（source='system'，confidence=high），
    * 让 invite 城市门的 session_fact 档与 [兼职群资源] 段不再依赖候选人字面报城市名。
    * 证据是外生工具结果（amap 解析），不是模型自报，不违背 HC-2「模型参数不自证」。
    *
@@ -343,8 +341,7 @@ export class SessionService {
 
     const state = await this.getSessionState(corpId, userId, sessionId);
     const prev = state.facts?.preferences?.city ?? null;
-    const producer = attestation.source === 'location_share' ? 'location_share' : 'geocode';
-    const incoming = createCityClaim(normalized, producer, attestation.evidence);
+    const incoming = createCityClaim(normalized, 'system', attestation.evidence);
     const adjudication = adjudicateCityClaims(cityClaimFromFact(prev), incoming);
     if (adjudication.decision === 'reject_invalid') return 'skipped_invalid';
     if (adjudication.decision === 'same_value') return 'skipped_same_city';
@@ -353,7 +350,7 @@ export class SessionService {
     const cityFact: SessionFactValue<string> = {
       value: normalized,
       confidence: 'high',
-      source: 'tool',
+      source: 'system',
       evidence: truncateEvidence(attestation.evidence),
       extractedAt: new Date().toISOString(),
     };
@@ -366,7 +363,7 @@ export class SessionService {
     }) as SessionFacts;
     await this.saveFacts(corpId, userId, sessionId, facts);
     this.logger.log(
-      `[saveToolAttestedCity] pref.city=${normalized} 已入档（source=tool, ${attestation.source}）`,
+      `[saveToolAttestedCity] pref.city=${normalized} 已入档（source=system, ${attestation.source}）`,
     );
     return 'written';
   }
@@ -469,7 +466,7 @@ export class SessionService {
       if (Number.isFinite(job.jobId)) recalledJobIds.add(job.jobId);
     }
 
-    // HC-2：当前轮候选人原文经 parser 解析为 user_text provenance；持久化 session facts
+    // HC-2：当前轮候选人原文经 parser 解析为 candidate_quote；持久化 session facts
     // 仅用于跨轮状态判断（如 booking_incomplete 复聊停止条件），不作为模型工具参数自证。
     const persistedCollectedFields = this.projectCollectedFieldsFromSessionFacts(
       state.facts,
@@ -518,20 +515,12 @@ export class SessionService {
         isSessionFactValue(fact) && fact.extractedAt ? Date.parse(fact.extractedAt) : NaN;
       collectedFields[key] = {
         value: String(value),
-        provenance: this.toCollectedFieldProvenance(
-          isSessionFactValue(fact) ? fact.source : undefined,
-        ),
+        producer: isSessionFactValue(fact) ? fact.source : 'archive',
         evidence: isSessionFactValue(fact) ? fact.evidence : undefined,
         at: Number.isFinite(extractedAt) ? extractedAt : now,
       } satisfies CollectedField;
     }
     return collectedFields;
-  }
-
-  private toCollectedFieldProvenance(source?: SessionFactSource): FieldProvenance {
-    if (source === 'candidate' || source === 'rule') return 'user_text';
-    if (source === 'system') return 'booking_writeback';
-    return 'llm_extract';
   }
 
   async saveLastCandidatePool(
@@ -862,7 +851,7 @@ export class SessionService {
       ? {
           value: confirmedCity.city,
           confidence: 'high',
-          source: 'candidate',
+          source: 'candidate_quote',
           evidence: truncateEvidence(
             `确认应答：「${confirmedCity.question}」→「${confirmedCity.reply}」`,
           ),
@@ -950,7 +939,7 @@ export class SessionService {
     }
     // 地图截图城市确权（visual-fact-structuring R3，badcase oaz6inzf / x3pdj7qh）：
     // 本轮末尾连续 user 块里的 map_location sheet，其 city/address 字段经 geo 白名单
-    // 确权后按 source='tool' 入档——与定位分享（A2）同级证据、同让位规则：
+    // 确权后按 source='system' 入档——与定位分享（A2）同级证据、同让位规则：
     // 本轮文本已产出高置信城市时让位（T1 亲证 > T2 工具确权）。
     if (visualSheetsByContent) {
       outer: for (const text of currentTurnUserTexts) {
@@ -963,17 +952,19 @@ export class SessionService {
           const mapFact: SessionFactValue<string> = {
             value: city,
             confidence: 'high',
-            source: 'tool',
+            source: 'system',
             evidence: truncateEvidence(`地图截图城市确权：${candidate}`),
             extractedAt: new Date().toISOString(),
           };
           const decision = adjudicateCityClaims(
             cityClaimFromFact(newFacts.preferences.city),
-            createCityClaim(city, 'map_screenshot', mapFact.evidence, mapFact.extractedAt),
+            createCityClaim(city, 'system', mapFact.evidence, mapFact.extractedAt),
           );
           if (decision.decision !== 'adopt') continue;
           newFacts.preferences.city = mapFact;
-          this.logger.log(`[extractFacts] 地图截图城市确权入档: pref.city=${city}（source=tool）`);
+          this.logger.log(
+            `[extractFacts] 地图截图城市确权入档: pref.city=${city}（source=system）`,
+          );
           break outer;
         }
       }
@@ -1017,7 +1008,7 @@ export class SessionService {
         cityClaimFromFact(newFacts.preferences.city),
         createCityClaim(
           confirmedCityFact.value,
-          'confirmation',
+          'candidate_quote',
           confirmedCityFact.evidence,
           confirmedCityFact.extractedAt,
         ),
@@ -1226,7 +1217,7 @@ export class SessionService {
 
       const meta = {
         confidence: 'high' as const,
-        source: 'candidate' as const,
+        source: 'candidate_quote' as const,
         evidence: truncateEvidence(`候选人明确提供："${quote}"`),
         extractedAt: new Date().toISOString(),
       };
@@ -1327,7 +1318,7 @@ export class SessionService {
     if (!ruleValues && !hasSystemGenderFallback) {
       return toSessionFacts(llmFacts, {
         confidence: 'medium',
-        source: 'llm',
+        source: 'model',
         evidence: this.buildLlmFactEvidence(llmFacts.reasoning),
         extractedAt: new Date().toISOString(),
       });
@@ -1440,17 +1431,17 @@ export class SessionService {
         .join('\n');
     }
 
-    // 先整体打 medium/llm，再把 rule 取胜字段重打 high/rule。
+    // 先整体打 medium/model，再把 rule 取胜字段重打 high/rule。
     const sessionFacts = toSessionFacts(merged, {
       confidence: 'medium',
-      source: 'llm',
+      source: 'model',
       evidence: this.buildLlmFactEvidence(merged.reasoning),
       extractedAt: new Date().toISOString(),
     });
     return this.stampRuleMetadata(sessionFacts, ruleMetaFields);
   }
 
-  /** 把 ruleMetaFields 列出的字段从 medium/llm 重打为 rule 的 high/rule 元数据。 */
+  /** 把 ruleMetaFields 列出的字段从 medium/model 重打为 rule 的 high/rule 元数据。 */
   private stampRuleMetadata(
     sessionFacts: SessionFacts,
     ruleMetaFields: Map<string, ResolvedRuleFact>,

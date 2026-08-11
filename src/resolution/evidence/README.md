@@ -11,7 +11,7 @@
 - `engine.ts` — 三道审（出处审 / 强度审 / 冲突审）
 - `policies.ts` — Record<字段, 策略行>：编译期穷尽，加字段必须表态
 - `brand-policy.ts` — 品牌策略行（复合槽值 + set/exclude/clear 替换语义，原 brand-state.reducer）
-- `normalize.ts` — 值等价比较；`interop.ts` — 来源分类学互转表（唯一居所，禁私转）
+- `normalize.ts` — 值等价比较；`claim.types.ts` — 全库唯一来源词汇定义点
 - `profile.ts` — 裁决产物视图（EffectiveCandidateProfile）
 - `adjudicate.ts` — 一次完整裁决的编排入口（组装 producers + 基线 → engine → profile）
 

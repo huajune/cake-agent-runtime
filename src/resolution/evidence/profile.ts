@@ -1,4 +1,4 @@
-import type { AdjudicatedClaim, CandidateClaimField, CandidateClaimProducer } from './claim.types';
+import type { AdjudicatedClaim, CandidateClaimField, CandidateFactProducer } from './claim.types';
 import { candidateValuesEquivalent } from './normalize';
 
 /**
@@ -19,7 +19,7 @@ export interface EffectiveCandidateField {
   acceptedClaimId?: string;
   /** 被本次裁决取代的 claimId 列表。 */
   supersededClaimIds?: string[];
-  source?: CandidateClaimProducer | 'session' | 'profile';
+  source?: CandidateFactProducer | 'session' | 'profile';
   /** 采信证据摘录（截断），审计与 Prompt 披露用。 */
   evidenceQuote?: string;
   updatedAt?: string;

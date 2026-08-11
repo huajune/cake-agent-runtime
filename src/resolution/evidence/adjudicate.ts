@@ -93,7 +93,7 @@ export function runCandidateFactAdjudication(params: RunAdjudicationParams): Adj
             field: 'name' as const,
             value: nameAnswer.name,
             operation: 'set' as const,
-            producer: 'confirmation_resolver' as const,
+            producer: 'candidate_quote' as const,
             // 值本体在候选人应答里（不是问句里），故按 direct 校验——严格身份字段要求
             // 证据逐字含值，用问句作基准会被判自由推导。问句仅作审计上下文留存。
             interpretation: 'direct' as const,

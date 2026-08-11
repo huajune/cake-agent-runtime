@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
+import {
+  CANDIDATE_FACT_PRODUCERS,
+  type CandidateFactProducer,
+} from '@resolution/evidence/claim.types';
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
 
@@ -381,18 +385,24 @@ export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 // 降序元组来自 confidence-rank（唯一权威）；顺序沿用历史 high-first，
 // 保证发给抽取模型的 JSON schema 逐字节不变。
 export const SessionFactConfidenceSchema = z.enum(FACT_CONFIDENCE_LEVELS_DESC);
-export const SessionFactSourceSchema = z.enum([
-  'candidate',
-  'llm',
-  'rule',
-  'system',
-  'memory',
-  'derived',
-  'tool',
-]);
+
+const LEGACY_SESSION_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
+  candidate: 'candidate_quote',
+  llm: 'model',
+  rule: 'rule',
+  system: 'system',
+  memory: 'archive',
+  derived: 'rule',
+  tool: 'system',
+};
+
+/** 存储读边界兼容旧 source；域内只允许六章根词汇，不回写旧行。 */
+const StoredCandidateFactProducerSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? (LEGACY_SESSION_FACT_PRODUCERS[value] ?? value) : value),
+  z.enum(CANDIDATE_FACT_PRODUCERS),
+);
 
 export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
-export type SessionFactSource = z.infer<typeof SessionFactSourceSchema>;
 
 /** sessionFacts 置信度语义。工具消费默认只信 high；prompt 会展示所有置信度。 */
 export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence, string> = {
@@ -402,22 +412,21 @@ export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence,
   unknown: '旧数据或缺少元数据的兼容值。只能作为背景信息，工具默认不消费。',
 };
 
-/** sessionFacts 来源语义。source 说明字段如何产生，不等同于字段真假。 */
-export const SESSION_FACT_SOURCE_DESCRIPTIONS: Record<SessionFactSource, string> = {
-  candidate: '候选人直接明示的结构化输入，且写入链路保留了候选人来源。',
-  llm: 'LLM 根据对话做的结构化提取。',
+/** sessionFacts 来源语义。source 说明事实出身，不等同于字段真假。 */
+export const SESSION_FACT_SOURCE_DESCRIPTIONS: Record<CandidateFactProducer, string> = {
+  candidate_quote: '候选人直接明示且经原话复算或答问绑定确认。',
   rule: '确定性规则、正则、白名单或别名表匹配得到。',
+  model: 'LLM 根据对话做的结构化提取或模型工具入参。',
   system: '外部系统或平台接口补充得到。',
-  memory: '历史记忆或旧结构兼容迁移得到。',
-  derived: '由其他字段推导得到，例如由区/地标白名单反推出城市。',
-  tool: '本会话工具执行结果确权得到（如 geocode 唯一解析、定位分享逆解析），外生出处非模型自报。',
+  manual: '真人经理带外裁决。',
+  archive: '历史记忆或跨会话档案回放得到。',
 };
 
 /** 持久化 sessionFacts 字段值：字段自身携带置信度、来源和证据。 */
 export interface SessionFactValue<T> {
   value: T;
   confidence: SessionFactConfidence;
-  source: SessionFactSource;
+  source: CandidateFactProducer;
   evidence: string;
   /** 该值被提取/写入的时刻（ISO8601）。时间敏感字段（如面试时间）渲染时据此标注陈旧度。 */
   extractedAt?: string;
@@ -487,7 +496,7 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   z.object({
     value: valueSchema,
     confidence: SessionFactConfidenceSchema,
-    source: SessionFactSourceSchema,
+    source: StoredCandidateFactProducerSchema,
     evidence: z.string(),
     extractedAt: z.string().optional(),
   });
@@ -500,7 +509,7 @@ function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValu
   return {
     value,
     confidence: 'unknown',
-    source: 'memory',
+    source: 'archive',
     evidence: evidence ?? '旧 sessionFacts 兼容迁移：字段缺少置信度元数据',
   };
 }
@@ -528,11 +537,12 @@ const NullableSessionCityFactSchema = z
       return city ? legacySessionFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
     }
     if (isSessionFactValue(value)) return value as SessionFactValue<string>;
+    const cityFact = value as CityFact;
     return {
-      value: value.value,
-      confidence: value.confidence,
+      value: cityFact.value,
+      confidence: cityFact.confidence,
       source: 'rule',
-      evidence: cityEvidenceToString(value.evidence),
+      evidence: cityEvidenceToString(cityFact.evidence),
     };
   });
 
@@ -680,7 +690,7 @@ export function sessionFactValue<T>(
   value: T,
   meta: {
     confidence: SessionFactConfidence;
-    source: SessionFactSource;
+    source: CandidateFactProducer;
     evidence: string;
     extractedAt?: string;
   },
@@ -756,7 +766,7 @@ export function toSessionFacts(
   facts: EntityExtractionResult,
   meta: {
     confidence: SessionFactConfidence;
-    source: SessionFactSource;
+    source: CandidateFactProducer;
     evidence: string;
     extractedAt?: string;
   },
@@ -765,7 +775,7 @@ export function toSessionFacts(
     value === null || value === undefined ? null : sessionFactValue(value, meta);
 
   // 字段清单驱动：interview_info 全字段 + preferences 非 city 字段统一 wrap；
-  // city 需要带上 CityFact 的 confidence/evidence 与 llm→derived 来源改写，保留显式分支。
+  // city 需要带上 CityFact 的 confidence/evidence 与 model→rule 来源改写，保留显式分支。
   const interviewInfoSource = facts.interview_info as Record<string, unknown>;
   const preferencesSource = facts.preferences as Record<string, unknown>;
   const interview_info = Object.fromEntries(
@@ -786,7 +796,7 @@ export function toSessionFacts(
         ? sessionFactValue(facts.preferences.city.value, {
             ...meta,
             confidence: facts.preferences.city.confidence,
-            source: meta.source === 'llm' ? 'derived' : meta.source,
+            source: meta.source === 'model' ? 'rule' : meta.source,
             evidence: cityEvidenceToString(facts.preferences.city.evidence),
           })
         : null,

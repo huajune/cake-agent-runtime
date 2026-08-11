@@ -9,7 +9,7 @@ import type { ToolErrorType } from '@tools/types/tool-error-types';
 import type {
   CandidateClaimDecision,
   CandidateClaimField,
-  CandidateClaimProducer,
+  CandidateFactProducer,
   CandidateClaimRejectionReason,
   CandidateFactInterpretation,
   CandidateFactOperation,
@@ -172,7 +172,7 @@ export type AgentEvent = AgentEventContext &
         // 而裸 string 下这种漂移零信号。
         decisions: Array<{
           field: CandidateClaimField;
-          producer: CandidateClaimProducer;
+          producer: CandidateFactProducer;
           operation: CandidateFactOperation;
           interpretation: CandidateFactInterpretation;
           decision: CandidateClaimDecision;

@@ -8,7 +8,7 @@ import { z } from 'zod';
  * 裁决器（candidate-fact-adjudicator）对 claim 做确定性验证后才允许其进入
  * 报名链路（precheck checklist / booking payload）。
  *
- * 与 HC-2（CollectedField/provenance 白名单）的关系：本类型是 HC-2 骨架的升级
+ * 与 HC-2（CollectedField/producer 白名单）的关系：本类型是 HC-2 骨架的升级
  * 收编——CollectedField 只回答"值从哪条链路来"，Claim 额外回答"操作语义是什么、
  * 凭哪段原话、如何被解释"，并让每次采信/拒绝产生可审计的裁决记录。
  *
@@ -44,6 +44,32 @@ export const EVIDENCE_FIELDS = [
   'brand',
 ] as const;
 export type EvidenceField = (typeof EVIDENCE_FIELDS)[number];
+
+/**
+ * 全库唯一「谁说的」词汇。取名判据：每个名字能自然填进「这个值是____来的」。
+ *
+ * 待遇判据：只有在策略表里受到不同待遇的来源才配单列一章；同待遇的机制差别
+ * （例如 geocode / 定位分享 / 地图截图）只写进 evidence，不扩充 producer 词表。
+ * 自陈、答问与推导的差别写 interpretation；booking 与 enrichment 的质量差别写
+ * confidence。
+ */
+export type CandidateFactProducer =
+  | 'candidate_quote' // 候选人原话来的：自陈 quote 复算或答问绑定问句
+  | 'rule' // 规则算出来的：正则、别名表或白名单推导
+  | 'model' // 模型提出来的：LLM 结构化提取或模型工具入参
+  | 'system' // 外部系统查来的：geocode、报名回填或画像接口补全
+  | 'manual' // 人工定的：我方真人带外拍板（预留，暂无写入方）
+  | 'archive'; // 档案搬来的：跨会话档案回放
+
+/** 存储 schema 复用根词汇，禁止在各域重新枚举 producer。 */
+export const CANDIDATE_FACT_PRODUCERS = [
+  'candidate_quote',
+  'rule',
+  'model',
+  'system',
+  'manual',
+  'archive',
+] as const satisfies readonly CandidateFactProducer[];
 
 /** rule-track 仍会产出的完整字段路径；路径本身消除 interview/preferences 同名歧义。 */
 export const RULE_FACT_FIELD_PATHS = [
@@ -101,15 +127,6 @@ export type CandidateFactInterpretation =
   | 'context_confirmation'
   | 'derived';
 
-/**
- * 生产者：
- * - rule：确定性规则解析（candidate-field-parser / identity-statement）；
- * - model：模型工具入参（显式 candidateClaims 或旧裸字段转译的 legacy claim）；
- * - confirmation_resolver：确认问答解析器；
- * - human：真人经理带外裁决（P1 human_oob 的 Claim 化预留，当前无写入方）。
- */
-export type CandidateClaimProducer = 'rule' | 'model' | 'confirmation_resolver' | 'human';
-
 export interface CandidateFactEvidence {
   /**
    * 候选人原话逐字片段（剥引用块/时间后缀后）。裁决器验证其必须能在本会话
@@ -146,7 +163,7 @@ export interface FactClaim<
 export type CandidateFactClaim<T = unknown> = FactClaim<
   T,
   CandidateClaimField,
-  CandidateClaimProducer
+  Extract<CandidateFactProducer, 'candidate_quote' | 'rule' | 'model' | 'manual'>
 >;
 
 export type RuleFactConfidence = 'high' | 'medium' | 'low';
@@ -160,7 +177,12 @@ export interface RuleFactEvidence extends CandidateFactEvidence {
 
 /** prep 规则 producer 的统一通货；消费者只能经 evidence/merge 的字段策略裁决。 */
 export type RuleFactClaim<T = unknown> = Omit<
-  FactClaim<T, RuleFactFieldPath, 'rule' | 'system', RuleFactEvidence>,
+  FactClaim<
+    T,
+    RuleFactFieldPath,
+    Extract<CandidateFactProducer, 'rule' | 'system'>,
+    RuleFactEvidence
+  >,
   'operation'
 > & {
   operation: 'set' | 'clear';

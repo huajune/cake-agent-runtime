@@ -207,25 +207,21 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 | 值 | 含义 |
 |----|------|
-| `candidate` | 候选人直接明示的结构化输入，且写入链路保留了候选人来源 |
-| `llm` | LLM 根据对话做的结构化提取 |
+| `candidate_quote` | 候选人原话背书且已复算，或答问绑定确认 |
 | `rule` | 确定性规则、正则、白名单或别名表匹配得到 |
+| `model` | LLM 根据对话做的结构化提取或模型工具入参 |
 | `system` | 外部系统或平台接口补充得到 |
-| `memory` | 历史记忆或旧结构兼容迁移得到 |
-| `derived` | 由其他字段推导得到，例如由区/地标白名单反推出城市 |
-| `booking` | 预约/报名成功后写入长期档案，是长期画像的最高质量来源 |
-| `extraction` | 会话沉淀时从 sessionFacts 抽取后写入长期档案；原 sessionFact 来源会记录在 evidence 中 |
-| `enrichment` | 外部画像补全链路写入，例如客户详情接口补充性别 |
-| `tool` | 本会话工具执行结果确权（geocode、定位分享逆解析、地图截图确权等外生出处，非模型自报） |
+| `manual` | 真人经理带外拍板（预留） |
+| `archive` | 历史记忆或跨会话档案回放得到 |
 
 注意：
 
 - `source` 说明字段产生路径，不等同于置信度；最终能否进入工具判断看 `confidence`
 - `ruleFacts` 当前只会出现 `source=rule/system`，且不持久化
-- `sessionFacts` 主要出现 `source=llm/rule/system/memory/derived/tool/candidate`
-- 长期 `profile_facts` 主要出现 `source=booking/extraction/enrichment`
+- `sessionFacts` 与长期 `profile_facts` 共用上述六章；沉淀透传 session 事实的原章
+- booking 与 enrichment 都归 `system`，质量差别由 `confidence` 表达
 
-来源声明置信度升级：LLM 可输出 `explicit_provenance{field, quote}`，quote 经候选人原文验证（phone 还加格式校验）后，把 medium 升为 high/candidate；仅限白名单 `EXPLICIT_UPGRADE_FIELDS`（排除 `name` 与 `applied_store`/`interview_time` 等事务字段）。
+来源声明置信度升级：LLM 可输出 `explicit_provenance{field, quote}`，quote 经候选人原文验证（phone 还加格式校验）后，把 medium 升为 high/candidate_quote；仅限白名单 `EXPLICIT_UPGRADE_FIELDS`（排除 `name` 与 `applied_store`/`interview_time` 等事务字段）。
 
 ## 回合开始：onTurnStart
 

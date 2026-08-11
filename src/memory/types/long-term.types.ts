@@ -1,4 +1,13 @@
-import { FACT_CONFIDENCE_RANK, type FactConfidence } from './confidence-rank';
+import { z } from 'zod';
+import {
+  CANDIDATE_FACT_PRODUCERS,
+  type CandidateFactProducer,
+} from '@resolution/evidence/claim.types';
+import {
+  FACT_CONFIDENCE_LEVELS_DESC,
+  FACT_CONFIDENCE_RANK,
+  type FactConfidence,
+} from './confidence-rank';
 /** 用户身份信息 — 长期记忆 Profile，跨会话复用 */
 export interface UserProfile {
   name: string | null;
@@ -24,16 +33,6 @@ export type UserProfileFieldKey = (typeof USER_PROFILE_FIELD_KEYS)[number];
 export type UserProfileFieldValue<K extends UserProfileFieldKey> = NonNullable<UserProfile[K]>;
 
 export type ProfileFactConfidence = FactConfidence;
-export type ProfileFactSource =
-  | 'candidate'
-  | 'llm'
-  | 'rule'
-  | 'system'
-  | 'memory'
-  | 'derived'
-  | 'booking'
-  | 'extraction'
-  | 'enrichment';
 
 /** 长期 profile_facts 置信度语义。工具消费默认只 unwrap high。 */
 export const PROFILE_FACT_CONFIDENCE_DESCRIPTIONS: Record<ProfileFactConfidence, string> = {
@@ -43,24 +42,21 @@ export const PROFILE_FACT_CONFIDENCE_DESCRIPTIONS: Record<ProfileFactConfidence,
   unknown: '旧数据或缺少元数据的兼容值。只能作为背景信息，工具默认不消费。',
 };
 
-/** 长期 profile_facts 来源语义。source 说明写入路径，不等同于置信度。 */
-export const PROFILE_FACT_SOURCE_DESCRIPTIONS: Record<ProfileFactSource, string> = {
-  candidate: '候选人直接明示的结构化输入，且写入链路保留了候选人来源。',
-  llm: 'LLM 根据对话做的结构化提取。',
+/** 长期 profile_facts 来源语义。source 说明事实出身，不等同于置信度或运输路径。 */
+export const PROFILE_FACT_SOURCE_DESCRIPTIONS: Record<CandidateFactProducer, string> = {
+  candidate_quote: '候选人直接明示且经原话复算或答问绑定确认。',
   rule: '确定性规则、正则、白名单或别名表匹配得到。',
+  model: 'LLM 根据对话做的结构化提取或模型工具入参。',
   system: '外部系统或平台接口补充得到。',
-  memory: '历史记忆或旧结构兼容迁移得到。',
-  derived: '由其他字段推导得到。',
-  booking: '预约/报名成功后写入，是当前最高质量的长期画像来源。',
-  extraction: '会话沉淀时从 sessionFacts 抽取后写入；原 sessionFact 来源应记录在 evidence 中。',
-  enrichment: '外部画像补全链路写入，例如客户详情接口补充性别。',
+  manual: '真人经理带外裁决。',
+  archive: '历史记忆或跨会话档案回放得到。',
 };
 
 /** 长期画像字段事实：字段自身携带值、置信度、来源和证据。 */
 export interface UserProfileFactValue<T> {
   value: T;
   confidence: ProfileFactConfidence;
-  source: ProfileFactSource;
+  source: CandidateFactProducer;
   evidence: string;
   /** ISO timestamp，字段最后一次被写入长期记忆的时间 */
   updatedAt: string;
@@ -73,6 +69,35 @@ export interface UserProfileFactValue<T> {
   /** 数据血缘：沉淀写入该事实的托管账号 wxid（imBotId）。可离线映射回招募经理。 */
   originBotId?: string;
 }
+
+const LEGACY_PROFILE_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
+  candidate: 'candidate_quote',
+  llm: 'model',
+  rule: 'rule',
+  system: 'system',
+  memory: 'archive',
+  derived: 'rule',
+  tool: 'system',
+  booking: 'system',
+  extraction: 'archive',
+  enrichment: 'system',
+};
+
+const StoredProfileFactProducerSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? (LEGACY_PROFILE_FACT_PRODUCERS[value] ?? value) : value),
+  z.enum(CANDIDATE_FACT_PRODUCERS),
+);
+
+/** 长期档案读边界 schema：兼容旧 source，输出只含六章根词汇。 */
+export const UserProfileFactValueSchema = z.object({
+  value: z.unknown(),
+  confidence: z.enum(FACT_CONFIDENCE_LEVELS_DESC),
+  source: StoredProfileFactProducerSchema,
+  evidence: z.string(),
+  updatedAt: z.string(),
+  originSessionId: z.string().optional(),
+  originBotId: z.string().optional(),
+});
 
 export type UserProfileFactMaybeValue<T> = UserProfileFactValue<T> | null;
 
@@ -105,7 +130,7 @@ export function userProfileFactValue<T>(
   value: T,
   meta: {
     confidence: ProfileFactConfidence;
-    source: ProfileFactSource;
+    source: CandidateFactProducer;
     evidence: string;
     updatedAt?: string;
     originSessionId?: string;
@@ -183,7 +208,7 @@ export function toUserProfileFacts(
   profile: Partial<UserProfile>,
   meta: {
     confidence: ProfileFactConfidence;
-    source: ProfileFactSource;
+    source: CandidateFactProducer;
     evidence: string;
     updatedAt?: string;
   },

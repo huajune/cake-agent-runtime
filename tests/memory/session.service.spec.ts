@@ -1,7 +1,7 @@
 import { SessionService } from '@memory/services/session.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION, SessionFactsSchema } from '@memory/types/session-facts.types';
 import {
   mergeSupplementalGenderClaims,
   produceRuleFactClaims,
@@ -100,6 +100,27 @@ describe('SessionService', () => {
     );
   });
 
+  describe('session fact source compatibility', () => {
+    it.each([
+      ['candidate', 'candidate_quote'],
+      ['llm', 'model'],
+      ['derived', 'rule'],
+      ['system', 'system'],
+      ['tool', 'system'],
+      ['memory', 'archive'],
+      ['rule', 'rule'],
+    ] as const)('normalizes legacy %s to %s at the schema boundary', (source, expected) => {
+      const facts = SessionFactsSchema.parse({
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          name: { value: '张三', confidence: 'medium', source, evidence: 'legacy' },
+        },
+      });
+      expect(facts.interview_info.name?.source).toBe(expected);
+    });
+  });
+
   describe('store methods', () => {
     it('should return empty state when no data in Redis', async () => {
       mockRedisStore.get.mockResolvedValue(null);
@@ -146,7 +167,7 @@ describe('SessionService', () => {
       const state = await service.getSessionState('corp1', 'user1', 'session1');
 
       expect(state.facts?.interview_info.age).toEqual(
-        factValue('24', { confidence: 'unknown', source: 'memory' }),
+        factValue('24', { confidence: 'unknown', source: 'archive' }),
       );
     });
 
@@ -221,8 +242,8 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              name: factValue('张三', { confidence: 'unknown', source: 'memory' }),
-              phone: factValue('13800138000', { confidence: 'unknown', source: 'memory' }),
+              name: factValue('张三', { confidence: 'unknown', source: 'archive' }),
+              phone: factValue('13800138000', { confidence: 'unknown', source: 'archive' }),
             }),
           }),
         }),
@@ -257,11 +278,11 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              height: factValue('170', { confidence: 'unknown', source: 'memory' }),
-              weight: factValue('60', { confidence: 'unknown', source: 'memory' }),
+              height: factValue('170', { confidence: 'unknown', source: 'archive' }),
+              weight: factValue('60', { confidence: 'unknown', source: 'archive' }),
               household_register_province: factValue('安徽', {
                 confidence: 'unknown',
-                source: 'memory',
+                source: 'archive',
               }),
             }),
           }),
@@ -307,7 +328,7 @@ describe('SessionService', () => {
               name: null,
               phone: factValue('13800138000', {
                 confidence: 'unknown',
-                source: 'memory',
+                source: 'archive',
               }), // 未列入 forceNullFields 的字段按常规 deepMerge 保留
             }),
           }),
@@ -375,7 +396,7 @@ describe('SessionService', () => {
           applied_position: {
             value: '内场',
             confidence: 'medium',
-            source: 'llm',
+            source: 'model',
             evidence: 'LLM 推断',
           },
         },
@@ -406,7 +427,7 @@ describe('SessionService', () => {
               applied_position: {
                 value: '后厨',
                 confidence: 'medium',
-                source: 'llm',
+                source: 'model',
                 evidence: 'LLM 提取',
               },
             },
@@ -446,7 +467,7 @@ describe('SessionService', () => {
     });
   });
 
-  describe('getAuthoritativeState (HC-2 collectedFields provenance)', () => {
+  describe('getAuthoritativeState (HC-2 collectedFields producer)', () => {
     it('projects persisted session facts into collectedFields for cross-turn stop checks', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
@@ -464,12 +485,12 @@ describe('SessionService', () => {
 
       expect(state.collectedFields.name).toMatchObject({
         value: '张三',
-        provenance: 'llm_extract',
+        producer: 'archive',
       });
       expect(state.collectedFields.age?.value).toBe('24');
     });
 
-    it('populates collectedFields from current-turn user text as user_text provenance', async () => {
+    it('populates collectedFields from current-turn user text as candidate_quote', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
           facts: null,
@@ -486,7 +507,7 @@ describe('SessionService', () => {
 
       expect(state.collectedFields.name).toMatchObject({
         value: '王建国',
-        provenance: 'user_text',
+        producer: 'candidate_quote',
         at: 5000,
       });
       expect(state.collectedFields.phone?.value).toBe('13912345678');
@@ -582,7 +603,7 @@ describe('SessionService', () => {
       },
     });
 
-    it('无既有城市 → 写入 pref.city（source=tool, high, 裸名归一化）', async () => {
+    it('无既有城市 → 写入 pref.city（source=system, high, 裸名归一化）', async () => {
       mockRedisStore.get.mockResolvedValue(null);
 
       const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', attestation);
@@ -593,7 +614,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              city: factValue('沈阳', { confidence: 'high', source: 'tool' }),
+              city: factValue('沈阳', { confidence: 'high', source: 'system' }),
             }),
           }),
         }),
@@ -645,7 +666,7 @@ describe('SessionService', () => {
 
     it('既有城市为低置信兼容值 → 允许覆盖', async () => {
       mockRedisStore.get.mockResolvedValue(
-        stateWithCity({ value: '上海', confidence: 'unknown', source: 'memory', evidence: 'x' }),
+        stateWithCity({ value: '上海', confidence: 'unknown', source: 'archive', evidence: 'x' }),
       );
 
       const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', attestation);
@@ -656,7 +677,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              city: factValue('沈阳', { confidence: 'high', source: 'tool' }),
+              city: factValue('沈阳', { confidence: 'high', source: 'system' }),
             }),
           }),
         }),
@@ -666,7 +687,7 @@ describe('SessionService', () => {
   });
 
   describe('定位分享城市证据入档（A2）', () => {
-    it('准备阶段产出的定位分享城市证据按 source=tool 入档', async () => {
+    it('准备阶段产出的定位分享城市证据按 source=system 入档', async () => {
       mockRedisStore.get.mockResolvedValue(null);
 
       const outcome = await service.saveToolAttestedCity('corp1', 'user1', 'session1', {
@@ -682,7 +703,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              city: factValue('上海', { confidence: 'high', source: 'tool' }),
+              city: factValue('上海', { confidence: 'high', source: 'system' }),
             }),
           }),
         }),
@@ -701,7 +722,7 @@ describe('SessionService', () => {
       },
     });
 
-    it('纯应答轮命中确认裁决 → 跳过 LLM 但单写 pref.city（source=candidate）', async () => {
+    it('纯应答轮命中确认裁决 → 跳过 LLM 但单写 pref.city（source=candidate_quote）', async () => {
       mockRedisStore.get.mockResolvedValue(factsState());
 
       await service.extractAndSave('corp1', 'user1', 'session1', [
@@ -716,7 +737,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              city: factValue('沈阳', { confidence: 'high', source: 'candidate' }),
+              city: factValue('沈阳', { confidence: 'high', source: 'candidate_quote' }),
             }),
           }),
         }),
@@ -752,7 +773,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              city: factValue('沈阳', { confidence: 'high', source: 'candidate' }),
+              city: factValue('沈阳', { confidence: 'high', source: 'candidate_quote' }),
             }),
           }),
         }),
@@ -863,7 +884,7 @@ describe('SessionService', () => {
       const info = savedInterviewInfo();
       // 健康证："健康证：有" 规则层无结构化提取器，靠来源声明升级通道
       expect(info.has_health_certificate).toEqual(
-        expect.objectContaining({ confidence: 'high', source: 'candidate' }),
+        expect.objectContaining({ confidence: 'high', source: 'candidate_quote' }),
       );
       // 年龄：标准表单格式规则层本就接得住（high/rule），升级通道正确跳过已 high 字段；
       // 业务语义断言是 confidence=high（工具可消费），不锁定通道
@@ -886,7 +907,7 @@ describe('SessionService', () => {
 
       const info = savedInterviewInfo();
       expect(info.has_health_certificate).toEqual(
-        expect.objectContaining({ confidence: 'medium', source: 'llm' }),
+        expect.objectContaining({ confidence: 'medium', source: 'model' }),
       );
     });
 
@@ -907,10 +928,10 @@ describe('SessionService', () => {
 
       const info = savedInterviewInfo();
       expect(info.applied_store).toEqual(
-        expect.objectContaining({ confidence: 'medium', source: 'llm' }),
+        expect.objectContaining({ confidence: 'medium', source: 'model' }),
       );
       expect(info.interview_time).toEqual(
-        expect.objectContaining({ confidence: 'medium', source: 'llm' }),
+        expect.objectContaining({ confidence: 'medium', source: 'model' }),
       );
     });
 
@@ -1112,7 +1133,7 @@ describe('SessionService', () => {
               city: {
                 value: 'hello',
                 confidence: 'high',
-                source: 'llm',
+                source: 'model',
                 evidence: 'explicit_city',
               },
             },
@@ -1157,7 +1178,7 @@ describe('SessionService', () => {
       ]);
 
       expect(savedPreferences().city).toEqual(
-        expect.objectContaining({ value: '沈阳', source: 'candidate' }),
+        expect.objectContaining({ value: '沈阳', source: 'candidate_quote' }),
       );
     });
   });
@@ -1410,7 +1431,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              name: factValue('张三', { confidence: 'medium', source: 'llm' }),
+              name: factValue('张三', { confidence: 'medium', source: 'model' }),
             }),
           }),
         }),
@@ -1541,7 +1562,7 @@ describe('SessionService', () => {
             }),
             preferences: expect.objectContaining({
               // 城市仍采用 LLM 值，但未被当前轮文本直接佐证，按 D3 保持中置信。
-              city: factValue('上海', { confidence: 'medium', source: 'derived' }),
+              city: factValue('上海', { confidence: 'medium', source: 'rule' }),
               // 规则兜底：LLM 未提取 schedule_constraint，规则补位
               schedule_constraint: factValue(
                 expect.objectContaining({
@@ -1641,7 +1662,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              name: factValue('张三', { confidence: 'medium', source: 'llm' }),
+              name: factValue('张三', { confidence: 'medium', source: 'model' }),
               phone: factValue('13800138000', { confidence: 'high', source: 'rule' }),
             }),
           }),

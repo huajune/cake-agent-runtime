@@ -7,13 +7,13 @@ import { parseHouseholdProvince } from './household-province';
 import { parseName } from './name';
 import { parsePhone } from './phone';
 import {
-  AUTHORITATIVE_PROVENANCE,
+  AUTHORITATIVE_PRODUCERS,
   type CandidateCollectedField,
   type CandidateFieldKey,
 } from './types';
 
 export function isFieldAuthoritative(field?: CandidateCollectedField): boolean {
-  return !!field && AUTHORITATIVE_PROVENANCE.has(field.provenance);
+  return !!field && AUTHORITATIVE_PRODUCERS.has(field.producer);
 }
 
 export function parseCandidateFieldsFromText(
@@ -24,7 +24,7 @@ export function parseCandidateFieldsFromText(
   const fields: Partial<Record<CandidateFieldKey, CandidateCollectedField>> = {};
   const put = (key: CandidateFieldKey, value: string | number | null, evidence: string): void => {
     if (value === null || value === undefined) return;
-    fields[key] = { value, provenance: 'user_text', evidence, at };
+    fields[key] = { value, producer: 'candidate_quote', evidence, at };
   };
   put('name', parseName(text), '原文结构化姓名/我叫');
   put('phone', parsePhone(text), '11位手机号');

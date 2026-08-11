@@ -1,13 +1,8 @@
 import type { SessionTerminalState } from './session-facts.types';
-import type {
-  CandidateCollectedField,
-  CandidateFieldKey,
-  CandidateFieldProvenance,
-} from '@resolution/candidate/types';
+import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 
 // 信封唯一定义在 @resolution/candidate/types（§2.3 信封终态）；此处仅作存储侧别名转发，
 // 供 memory/reengagement 既有消费者沿用旧名，不得在本文件重新定义字段形状。
-export type FieldProvenance = CandidateFieldProvenance;
 export type { CandidateFieldKey };
 export type CollectedField<T = string | number> = CandidateCollectedField<T>;
 

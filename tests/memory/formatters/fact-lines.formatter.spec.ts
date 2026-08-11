@@ -106,7 +106,7 @@ describe('formatExtractionFactLines', () => {
         interview_time: {
           value: '明天下午2点',
           confidence: 'medium',
-          source: 'llm',
+          source: 'model',
           evidence: 'LLM 结构化提取',
           extractedAt: staleAt,
         },
@@ -129,7 +129,7 @@ describe('formatExtractionFactLines', () => {
         applied_store: {
           value: '顺德欢乐海岸PH',
           confidence: 'high',
-          source: 'llm',
+          source: 'model',
           evidence: '候选人确认应聘门店',
           extractedAt: '2026-07-13T14:35:00+08:00',
         },
@@ -137,7 +137,7 @@ describe('formatExtractionFactLines', () => {
     } as unknown as Parameters<typeof formatExtractionFactLines>[0]);
 
     expect(lines).toContain(
-      '- 应聘门店: 顺德欢乐海岸PH（置信度: high，来源: llm）（记录时间：2026-07-13 14:35）',
+      '- 应聘门店: 顺德欢乐海岸PH（置信度: high，来源: model）（记录时间：2026-07-13 14:35）',
     );
   });
 });

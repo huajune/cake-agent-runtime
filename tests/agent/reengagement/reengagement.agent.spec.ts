@@ -617,7 +617,7 @@ describe('ReengagementAgent', () => {
       jobData: job('booking_incomplete'),
       state: baseState({
         collectedFields: {
-          name: { value: '张三', provenance: 'user_text', at: Date.now() },
+          name: { value: '张三', producer: 'candidate_quote', at: Date.now() },
         },
       }),
     });
@@ -836,8 +836,8 @@ describe('ReengagementAgent', () => {
       }),
       state: baseState({
         collectedFields: {
-          name: { value: '张三', provenance: 'user_text', at: Date.now() },
-          phone: { value: '13800000000', provenance: 'user_text', at: Date.now() },
+          name: { value: '张三', producer: 'candidate_quote', at: Date.now() },
+          phone: { value: '13800000000', producer: 'candidate_quote', at: Date.now() },
         },
       }),
     });
@@ -878,7 +878,7 @@ describe('ReengagementAgent', () => {
       jobData: job('booking_incomplete'),
       state: baseState({
         collectedFields: {
-          name: { value: '张三', provenance: 'user_text', at: Date.now() },
+          name: { value: '张三', producer: 'candidate_quote', at: Date.now() },
         },
       }),
     });

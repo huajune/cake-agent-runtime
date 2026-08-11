@@ -84,7 +84,7 @@ describe('candidate-fact-policy 字段风险三分级', () => {
         claim({
           field: 'isStudent',
           value: false,
-          producer: 'confirmation_resolver',
+          producer: 'candidate_quote',
           interpretation: 'context_confirmation',
           evidence: { quote: '是的' },
         }),

@@ -41,7 +41,7 @@ describe('MemoryEnrichmentService', () => {
           gender: {
             value: '女',
             confidence: 'high',
-            source: 'booking',
+            source: 'system',
             evidence: '测试写入',
             updatedAt: '2026-05-22T10:00:00.000Z',
           },

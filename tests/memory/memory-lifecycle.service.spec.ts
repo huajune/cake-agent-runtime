@@ -104,14 +104,14 @@ describe('MemoryLifecycleService', () => {
       name: {
         value: '张三',
         confidence: 'high',
-        source: 'booking',
+        source: 'system',
         evidence: '测试写入',
         updatedAt: '2026-05-22T10:00:00.000Z',
       },
       phone: {
         value: '138',
         confidence: 'high',
-        source: 'booking',
+        source: 'system',
         evidence: '测试写入',
         updatedAt: '2026-05-22T10:00:00.000Z',
       },
@@ -156,7 +156,7 @@ describe('MemoryLifecycleService', () => {
       name: {
         value: '张三',
         confidence: 'high' as const,
-        source: 'extraction' as const,
+        source: 'archive' as const,
         evidence: '会话沉淀提取',
         updatedAt: '2026-06-08T10:00:00.000Z',
         originSessionId: 'chat-A',
@@ -211,7 +211,7 @@ describe('MemoryLifecycleService', () => {
         name: {
           value: '张三',
           confidence: 'high',
-          source: 'booking',
+          source: 'system',
           evidence: '历史写入（无血缘）',
           updatedAt: '2026-06-05T10:00:00.000Z',
         },

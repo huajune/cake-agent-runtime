@@ -30,7 +30,7 @@ function toClaim(evidence: IdentityEvidence, assertedAt: string): CandidateFactC
     field: 'isStudent',
     value: evidence.identity === '学生',
     operation: 'set',
-    producer: evidence.source === 'confirmation' ? 'confirmation_resolver' : 'rule',
+    producer: evidence.source === 'confirmation' ? 'candidate_quote' : 'rule',
     interpretation: evidence.source === 'confirmation' ? 'context_confirmation' : 'direct',
     evidence: {
       quote: evidence.evidence.slice(0, 200),

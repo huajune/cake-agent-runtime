@@ -50,7 +50,7 @@ export interface FieldPolicy {
 
 const CANDIDATE_POLICY: FieldPolicy = {
   allowedOperations: ['set', 'correct', 'confirm', 'clear'],
-  producerPriority: ['human', 'rule', 'confirmation_resolver', 'model', 'archive'],
+  producerPriority: ['manual', 'candidate_quote', 'rule', 'model', 'archive'],
   conflict: 'reject',
 };
 
@@ -68,26 +68,17 @@ export const FIELD_POLICIES: Record<EvidenceField, FieldPolicy> = {
   householdProvince: CANDIDATE_POLICY,
   city: {
     allowedOperations: ['set', 'correct', 'confirm', 'clear'],
-    producerPriority: [
-      'confirmation',
-      'rule',
-      'allowlist',
-      'geocode',
-      'location_share',
-      'map_screenshot',
-      'model',
-      'archive',
-    ],
+    producerPriority: ['manual', 'candidate_quote', 'rule', 'system', 'model', 'archive'],
     conflict: 'latest',
   },
   district: {
     allowedOperations: ['set', 'clear'],
-    producerPriority: ['rule', 'geocode', 'model', 'archive'],
+    producerPriority: ['rule', 'system', 'model', 'archive'],
     conflict: 'union',
   },
   location: {
     allowedOperations: ['set', 'clear'],
-    producerPriority: ['rule', 'geocode', 'location_share', 'model', 'archive'],
+    producerPriority: ['rule', 'system', 'model', 'archive'],
     conflict: 'union',
   },
   brand: {

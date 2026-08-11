@@ -1,4 +1,6 @@
 import { SupabaseStore } from '@memory/stores/supabase.store';
+import { UserProfileFactValueSchema } from '@memory/types/long-term.types';
+import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 
 describe('SupabaseStore', () => {
   const mockRedis = {
@@ -43,14 +45,14 @@ describe('SupabaseStore', () => {
     value: T,
     overrides: Partial<{
       confidence: 'high' | 'medium' | 'low' | 'unknown';
-      source: 'booking' | 'extraction' | 'enrichment';
+      source: CandidateFactProducer;
       evidence: string;
       updatedAt: string;
     }> = {},
   ) => ({
     value,
     confidence: overrides.confidence ?? ('high' as const),
-    source: overrides.source ?? ('booking' as const),
+    source: overrides.source ?? ('system' as const),
     evidence: overrides.evidence ?? '测试写入',
     updatedAt: overrides.updatedAt ?? '2026-05-22T10:00:00.000Z',
   });
@@ -64,6 +66,31 @@ describe('SupabaseStore', () => {
       mockRedis as never,
       mockConfig as never,
     );
+  });
+
+  describe('profile fact source compatibility', () => {
+    it.each([
+      ['candidate', 'candidate_quote'],
+      ['llm', 'model'],
+      ['derived', 'rule'],
+      ['system', 'system'],
+      ['tool', 'system'],
+      ['memory', 'archive'],
+      ['rule', 'rule'],
+      ['booking', 'system'],
+      ['enrichment', 'system'],
+      ['extraction', 'archive'],
+    ] as const)('normalizes legacy %s to %s at the schema boundary', (source, expected) => {
+      expect(
+        UserProfileFactValueSchema.parse({
+          value: '张三',
+          confidence: 'medium',
+          source,
+          evidence: 'legacy',
+          updatedAt: '2026-05-22T10:00:00.000Z',
+        }).source,
+      ).toBe(expected);
+    });
   });
 
   describe('getProfile', () => {
@@ -287,11 +314,11 @@ describe('SupabaseStore', () => {
       });
 
       await store.upsertProfileFacts('corp1', 'user1', {
-        name: profileFact('李四', { source: 'extraction', confidence: 'medium' }),
-        phone: profileFact('139', { source: 'extraction', confidence: 'medium' }),
-        age: profileFact('25', { source: 'extraction', confidence: 'medium' }),
-        gender: profileFact('女', { source: 'extraction', confidence: 'medium' }),
-        education: profileFact('本科', { source: 'extraction', confidence: 'medium' }),
+        name: profileFact('李四', { source: 'archive', confidence: 'medium' }),
+        phone: profileFact('139', { source: 'archive', confidence: 'medium' }),
+        age: profileFact('25', { source: 'archive', confidence: 'medium' }),
+        gender: profileFact('女', { source: 'archive', confidence: 'medium' }),
+        education: profileFact('本科', { source: 'archive', confidence: 'medium' }),
       });
 
       // 关键断言：走 RPC（原子），而非 from().upsert()（非原子）
@@ -319,7 +346,7 @@ describe('SupabaseStore', () => {
           p_profile_facts: {
             name: expect.objectContaining({
               value: '张三',
-              source: 'enrichment',
+              source: 'system',
               confidence: 'medium',
             }),
           },

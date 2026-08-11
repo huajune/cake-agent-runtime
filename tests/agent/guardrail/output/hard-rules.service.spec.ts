@@ -2285,7 +2285,7 @@ describe('HardRulesService', () => {
           recommendedJobIds: [520361],
           profileKeys: null,
           sessionFacts: {
-            'interview.is_student': { value: true, confidence: 'medium', source: 'llm' },
+            'interview.is_student': { value: true, confidence: 'medium', source: 'model' },
           },
         },
         silent: true,
@@ -2312,7 +2312,7 @@ describe('HardRulesService', () => {
           recommendedJobIds: null,
           profileKeys: null,
           sessionFacts: {
-            'interview.is_student': { value: true, confidence: 'medium', source: 'llm' },
+            'interview.is_student': { value: true, confidence: 'medium', source: 'model' },
           },
         },
         silent: true,

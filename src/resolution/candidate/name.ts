@@ -122,7 +122,7 @@ export function extractStructuredName(message: string): string | null {
 
 /**
  * user_text 权威出处解析（booking 姓名闸门的取证函数）：只认结构化"姓名：X"与
- * 自述"我叫X"，经严格真名校验、排打招呼语昵称。产物按 user_text provenance 消费，
+ * 自述"我叫X"，经严格真名校验、排打招呼语昵称。产物按 candidate_quote 消费，
  * 判不出就返回 null，绝不猜。
  */
 export function parseName(text: string): string | null {

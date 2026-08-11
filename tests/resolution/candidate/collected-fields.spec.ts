@@ -15,7 +15,7 @@ import {
   parsePhone,
   parseWeight,
 } from '@resolution/candidate';
-import { AUTHORITATIVE_PROVENANCE } from '@resolution/candidate/types';
+import { AUTHORITATIVE_PRODUCERS } from '@resolution/candidate/types';
 
 describe('candidate-field-parser', () => {
   describe('parsePhone', () => {
@@ -137,12 +137,12 @@ describe('candidate-field-parser', () => {
   });
 
   describe('parseCandidateFieldsFromText (aggregate)', () => {
-    it('produces user_text provenance fields from a structured submission', () => {
+    it('produces candidate_quote fields from a structured submission', () => {
       const fields = parseCandidateFieldsFromText(
         ['姓名：王建国 电话13912345678 年龄28 性别男 户籍黑龙江'],
         1000,
       );
-      expect(fields.name).toMatchObject({ value: '王建国', provenance: 'user_text', at: 1000 });
+      expect(fields.name).toMatchObject({ value: '王建国', producer: 'candidate_quote', at: 1000 });
       expect(fields.phone?.value).toBe('13912345678');
       expect(fields.age?.value).toBe(28);
       expect(fields.gender?.value).toBe('男');
@@ -161,16 +161,18 @@ describe('candidate-field-parser', () => {
     });
   });
 
-  describe('authoritative provenance gate', () => {
-    it('only user_text / booking_writeback are authoritative', () => {
-      expect(AUTHORITATIVE_PROVENANCE.has('user_text')).toBe(true);
-      expect(AUTHORITATIVE_PROVENANCE.has('booking_writeback')).toBe(true);
-      expect(AUTHORITATIVE_PROVENANCE.has('model_arg')).toBe(false);
-      expect(AUTHORITATIVE_PROVENANCE.has('llm_extract')).toBe(false);
+  describe('authoritative producer gate', () => {
+    it('keeps candidate_quote / rule / system authoritative and model non-authoritative', () => {
+      expect(AUTHORITATIVE_PRODUCERS.has('candidate_quote')).toBe(true);
+      expect(AUTHORITATIVE_PRODUCERS.has('rule')).toBe(true);
+      expect(AUTHORITATIVE_PRODUCERS.has('system')).toBe(true);
+      expect(AUTHORITATIVE_PRODUCERS.has('model')).toBe(false);
     });
-    it('isFieldAuthoritative rejects model_arg drafts', () => {
-      expect(isFieldAuthoritative({ value: '小王', provenance: 'model_arg', at: 1 })).toBe(false);
-      expect(isFieldAuthoritative({ value: '王建国', provenance: 'user_text', at: 1 })).toBe(true);
+    it('isFieldAuthoritative rejects model drafts', () => {
+      expect(isFieldAuthoritative({ value: '小王', producer: 'model', at: 1 })).toBe(false);
+      expect(isFieldAuthoritative({ value: '王建国', producer: 'candidate_quote', at: 1 })).toBe(
+        true,
+      );
       expect(isFieldAuthoritative(undefined)).toBe(false);
     });
   });

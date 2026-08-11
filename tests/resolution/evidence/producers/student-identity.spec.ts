@@ -15,7 +15,7 @@ describe('identity-claim.producer（证据化 Phase 1：IdentityEvidence → Cla
     expect(result).toMatchObject({
       field: 'isStudent',
       value: false,
-      producer: 'confirmation_resolver',
+      producer: 'candidate_quote',
       interpretation: 'context_confirmation',
     });
   });

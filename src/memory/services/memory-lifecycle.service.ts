@@ -41,7 +41,7 @@ export interface MemoryLifecycleTurnContext {
   contactName?: string;
   /** 本轮图片描述的品牌解析结果（save_image_description execute 内同步产出，§10.2）。 */
   imageBrandResolutions?: BrandResolution[] | null;
-  /** 本轮 geocode unique 解析确权的城市；回合结束写入 pref.city（source='tool'）。 */
+  /** 本轮 geocode unique 解析确权的城市；回合结束写入 pref.city（source='system'）。 */
   cityAttestation?: CityAttestation | null;
   /**
    * 本轮工具判定失效（海绵查不到）的 jobId；回合结束从会话岗位记忆剔除，

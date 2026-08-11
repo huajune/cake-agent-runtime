@@ -44,9 +44,9 @@ export interface AdjudicationResult {
 }
 
 const PRODUCER_PRIORITY: Record<CandidateFactClaim['producer'], number> = {
-  human: 4,
+  manual: 4,
+  candidate_quote: 3,
   rule: 3,
-  confirmation_resolver: 3,
   model: 2,
 };
 
