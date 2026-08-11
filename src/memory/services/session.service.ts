@@ -96,6 +96,7 @@ import { buildSessionFactsHashKey } from './session-key';
 import {
   hasMeaningfulValue,
   fieldsWithMergePolicy,
+  getRuleFact,
   isSameFactValue,
   mergeNullableArrays,
   projectRuleFactClaims,
@@ -413,6 +414,16 @@ export class SessionService {
    */
   private mergeFactsWithConfidenceGuard(prev: SessionFacts, incoming: SessionFacts): SessionFacts {
     const merged = deepMerge(prev, incoming) as SessionFacts;
+
+    // 性别来源策略：candidate > system。系统标签只补空，因此正常 enrichment 不会在
+    // 已有性别时再产出 system 写入；这里再做跨轮防御，保证旧 candidate 档不会被任何
+    // system 兜底反向覆盖，而后续 candidate 自陈可凭 high 覆盖既有 low/system。
+    const previousGenderSource = unwrapSessionFactValue(prev.interview_info.gender_source);
+    const incomingGenderSource = unwrapSessionFactValue(incoming.interview_info.gender_source);
+    if (previousGenderSource === 'candidate' && incomingGenderSource === 'system') {
+      merged.interview_info.gender = prev.interview_info.gender;
+      merged.interview_info.gender_source = prev.interview_info.gender_source;
+    }
 
     for (const group of ['interview_info', 'preferences'] as const) {
       const prevGroup = prev[group] as unknown as Record<string, unknown>;
@@ -1301,7 +1312,16 @@ export class SessionService {
     ruleFacts: RuleFactClaims | null,
   ): SessionFacts {
     const ruleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
-    if (!ruleValues) {
+    // 外部客户详情性别保持 low/system，不能因全局 high admission 门而丢档；它只在
+    // enrichment 已确认档案为空时进入本轮 claim 流，并在此走 gender 专用落档策略。
+    // 低置信语义继续保留，工具侧仍不会把系统标签当作候选人亲证使用。
+    const supplementalGender = getRuleFact(ruleFacts, 'interview_info.gender');
+    const supplementalGenderSource = getRuleFact(ruleFacts, 'interview_info.gender_source');
+    const hasSystemGenderFallback =
+      supplementalGender?.producer === 'system' &&
+      supplementalGenderSource?.producer === 'system' &&
+      supplementalGenderSource.value === 'system';
+    if (!ruleValues && !hasSystemGenderFallback) {
       return toSessionFacts(llmFacts, {
         confidence: 'medium',
         source: 'llm',
@@ -1317,8 +1337,8 @@ export class SessionService {
     };
     const infoMerge = merged.interview_info as unknown as Record<string, unknown>;
     const prefMerge = merged.preferences as unknown as Record<string, unknown>;
-    const ruleInfo = ruleValues.interview_info as unknown as Record<string, unknown>;
-    const rulePref = ruleValues.preferences as unknown as Record<string, unknown>;
+    const ruleInfo = (ruleValues?.interview_info ?? {}) as unknown as Record<string, unknown>;
+    const rulePref = (ruleValues?.preferences ?? {}) as unknown as Record<string, unknown>;
     const resolvedRuleFacts = new Map<RuleFactFieldPath, ResolvedRuleFact>(
       resolveRuleFactClaims(ruleFacts, { minConfidence: 'high' }).map((fact) => [fact.field, fact]),
     );
@@ -1370,11 +1390,20 @@ export class SessionService {
 
     // ── gender + gender_source：联动补位（注册表单字段模型表达不了） ──
     const ruleGender = ruleInfo.gender;
-    if (!merged.interview_info.gender && hasMeaningfulValue(ruleGender)) {
-      merged.interview_info.gender = ruleGender as string;
-      merged.interview_info.gender_source =
-        (ruleInfo.gender_source as 'candidate' | 'system' | undefined) ??
-        merged.interview_info.gender_source;
+    if (hasMeaningfulValue(ruleGender)) {
+      if (!merged.interview_info.gender) {
+        merged.interview_info.gender = ruleGender as string;
+        merged.interview_info.gender_source =
+          (ruleInfo.gender_source as 'candidate' | 'system' | undefined) ??
+          merged.interview_info.gender_source;
+      }
+    } else if (hasSystemGenderFallback) {
+      // 当前档案为空时由 enrichment 产出的 system 兜底优先于本轮 LLM 猜测；它仍以
+      // low/system 元数据入档，后续候选人自陈会以 high/candidate 正常覆盖。
+      merged.interview_info.gender = supplementalGender.value as string;
+      merged.interview_info.gender_source = 'system';
+      ruleMetaFields.set('interview_info.gender', supplementalGender);
+      ruleMetaFields.set('interview_info.gender_source', supplementalGenderSource);
     }
     noteRuleMeta('interview_info', 'gender', merged.interview_info.gender);
     noteRuleMeta('interview_info', 'gender_source', merged.interview_info.gender_source);

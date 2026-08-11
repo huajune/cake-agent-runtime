@@ -2,7 +2,10 @@ import { SessionService } from '@memory/services/session.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import {
+  mergeSupplementalGenderClaims,
+  produceRuleFactClaims,
+} from '@resolution/evidence/producers/rule-track';
 
 function mockStructured(obj: unknown) {
   return {
@@ -942,6 +945,74 @@ describe('SessionService', () => {
       expect(info.gender).toEqual(expect.objectContaining({ confidence: 'high' }));
       expect(info.gender_source).toEqual(expect.objectContaining({ value: 'candidate' }));
     });
+
+    it('persists enrichment gender as low/system through the normal extraction path', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+      const systemGenderClaims = mergeSupplementalGenderClaims(null, '男', '客户详情接口');
+
+      await service.extractAndSave(
+        'corp1',
+        'user1',
+        'session1',
+        [{ role: 'user', content: '你好' }],
+        systemGenderClaims,
+      );
+
+      const info = savedInterviewInfo();
+      expect(info.gender).toEqual(
+        expect.objectContaining({
+          value: '男',
+          confidence: 'low',
+          source: 'system',
+          evidence: '客户详情接口补充性别：男',
+        }),
+      );
+      expect(info.gender_source).toEqual(
+        expect.objectContaining({ value: 'system', confidence: 'low', source: 'system' }),
+      );
+    });
+
+    it('lets a later candidate self-report override persisted system gender', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: {
+              ...FALLBACK_EXTRACTION.interview_info,
+              gender: {
+                value: '男',
+                confidence: 'low',
+                source: 'system',
+                evidence: '客户详情接口补充性别：男',
+              },
+              gender_source: {
+                value: 'system',
+                confidence: 'low',
+                source: 'system',
+                evidence: '客户详情接口补充性别来源：系统标签',
+              },
+            },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWith({ gender: '女' }, [{ field: 'gender', quote: '性别：女' }])),
+      );
+
+      await extractAndSaveWithPrepRules('session1', [{ role: 'user', content: '性别：女' }]);
+
+      const info = savedInterviewInfo();
+      expect(info.gender).toEqual(
+        expect.objectContaining({ value: '女', confidence: 'high', source: 'rule' }),
+      );
+      expect(info.gender_source).toEqual(
+        expect.objectContaining({ value: 'candidate', confidence: 'high', source: 'rule' }),
+      );
+    });
   });
 
   // badcase 2026-07-29 chat 6a69674e…（昵称"18"）/ 6a69790b…（昵称"100％"）：抽取模型在
@@ -1645,9 +1716,7 @@ describe('SessionService', () => {
         }),
       );
 
-      await extractAndSaveWithPrepRules('sess1', [
-        { role: 'user', content: '你好我在青浦区' },
-      ]);
+      await extractAndSaveWithPrepRules('sess1', [{ role: 'user', content: '你好我在青浦区' }]);
 
       expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),

@@ -76,9 +76,7 @@ describe('MemoryEnrichmentService', () => {
   it('skips lookup when ruleFacts already has gender', async () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      ruleFacts: testRuleFacts(
-        testRuleFact('interview_info.gender', '男', '性别识别：男'),
-      ),
+      ruleFacts: testRuleFacts(testRuleFact('interview_info.gender', '男', '性别识别：男')),
     };
 
     await service.enrich(snapshot, { token: 't', imBotId: 'b', imContactId: 'c' });
@@ -113,13 +111,47 @@ describe('MemoryEnrichmentService', () => {
     expect(snapshot.ruleFacts).toBeNull(); // 原快照不被污染
   });
 
+  it('only looks up once after the system gender has been persisted for the next turn', async () => {
+    mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('男');
+
+    await service.enrich(baseSnapshot(), { token: 't', imBotId: 'b', imContactId: 'c' });
+    const nextTurnSnapshot: AgentMemoryContext = {
+      ...baseSnapshot(),
+      sessionMemory: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            gender: {
+              value: '男',
+              confidence: 'low',
+              source: 'system',
+              evidence: '客户详情接口补充性别：男',
+            },
+            gender_source: {
+              value: 'system',
+              confidence: 'low',
+              source: 'system',
+              evidence: '客户详情接口补充性别来源：系统标签',
+            },
+          },
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      } as never,
+    };
+
+    await service.enrich(nextTurnSnapshot, { token: 't', imBotId: 'b', imContactId: 'c' });
+
+    expect(mockCandidate.lookupGenderFromCustomerDetail).toHaveBeenCalledTimes(1);
+  });
+
   it('preserves existing ruleFacts fields when merging gender', async () => {
     mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('女');
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.salary', '30元/时', '薪资识别：30元/时'),
-      ),
+      ruleFacts: testRuleFacts(testRuleFact('preferences.salary', '30元/时', '薪资识别：30元/时')),
     };
 
     const result = await service.enrich(snapshot, {
