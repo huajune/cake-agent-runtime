@@ -1,3 +1,4 @@
+import { hasResumeAttachmentLine, stripVisualPrefix } from '@infra/utils/message-markup.util';
 import {
   VISUAL_FACT_FIELD_KEYS,
   VisualFactSheetSchema,
@@ -120,46 +121,17 @@ export function fieldValues(
     .map((f) => f.value);
 }
 
-// ── 窗口文本渲染与识别（自 channels/wecom message-parser 收拢） ──────────────
-
-/** vision 描述回写前缀。kind 标注前缀已裁定取消（visual-fact-pipeline.md A.3：改存储格式波及面大，kind 只走 prompt 口径）。 */
-export const IMAGE_MESSAGE_PREFIX = '[图片消息]';
-export const EMOTION_MESSAGE_PREFIX = '[表情消息]';
-
-/** 整条消息是否为 vision 描述回写产物（消息级判定：描述独占一条 chat_messages 行）。 */
-export function isVisualDescriptionText(message: string | null | undefined): boolean {
-  const trimmed = (message ?? '').trim();
-  return trimmed.startsWith(IMAGE_MESSAGE_PREFIX) || trimmed.startsWith(EMOTION_MESSAGE_PREFIX);
-}
+// ── 视觉消息的域内判定（标记形态本身住 @infra/utils/message-markup） ──────────
 
 /**
- * 简历图片识别：resume kind 的文本兜底判据，sheet 缺失/降级时靠它保住简历链路
- * （channels/wecom message-parser 处保留同名 re-export，既有调用方仍从原路径导入）。
+ * 简历图片识别：resume kind 的文本兜底判据，sheet 缺失/降级时靠它保住简历链路。
  * 判据不得与 vision prompt 的 resume 口径漂移：save-image-description.tool 与
  * image-description.service 仍在做 legacy vs sheet 并跑分歧告警，删旧判据前需一致率达标。
+ *
+ * evidence/corpus 直接消费本判据，sheet 优先、文本标记兜底，避免简历口径再分叉。
  */
 export function isResumeImageDescription(description: string): boolean {
   return /^[「\[【]?(?:手写)?(?:简历|履历)/u.test(description.trim());
-}
-
-/** 剥离描述中已存在的「简历附件：…」行（原 channels 同名函数逐字迁入）。 */
-export function stripResumeAttachmentLines(description: string): string {
-  return description
-    .split('\n')
-    .filter((line) => !/^\s*简历附件\s*[：:]/.test(line))
-    .join('\n')
-    .replace(/\n{2,}/g, '\n')
-    .trim();
-}
-
-/** 消息是否携带「简历附件：URL」标注行。 */
-export function hasResumeAttachmentLine(message: string | null | undefined): boolean {
-  return /(?:^|\n)\s*简历附件\s*[：:]/.test(message ?? '');
-}
-
-/** 剥离窗口内容里的视觉前缀，得到描述本体（供文本兜底判定用）。 */
-export function stripVisualPrefix(content: string): string {
-  return content.replace(/^\s*\[(?:图片|表情)消息\]\s*/u, '');
 }
 
 /** 该视觉消息是否属于候选人自陈材料（简历/证件），sheet 优先、文本标记兜底。 */

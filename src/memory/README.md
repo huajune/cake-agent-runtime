@@ -438,12 +438,17 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `services/settlement.service.ts`
   - 会话结束后的长期沉淀
 
-- `facts/high-confidence-facts.ts`
-  - 当前轮文本的前置高置信识别（规则层）
-  - 当前不属于主记忆读写链路
+- `services/candidate-snapshot.service.ts`
+  - precheck → booking 的候选人裁决快照存取
 
-- `facts/fact-merge.util.ts`
-  - 规则事实与 LLM 事实合并、跨轮置信度守卫的共享原语
+- `services/brand-state.service.ts`
+  - 品牌状态的持锁读写；状态迁移语义在 `resolution/evidence/brand.ts`
+
+- `services/session-key.ts`
+  - 会话 Redis hash key 的唯一构造函数
+
+候选人字段判断不再位于 memory：规则 producer、准入链、合并策略与冲突裁决统一在
+`src/resolution/candidate/`、`src/resolution/evidence/`、`src/resolution/labor-form/`。
 
 ## 设计边界
 

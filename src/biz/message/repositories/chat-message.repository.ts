@@ -10,6 +10,7 @@ import {
 } from '@enums/storage-message.enum';
 import { ChatMessageRecord } from '../entities/chat-message.entity';
 import { ChatMessageInput, ChatSessionSummary } from '../types/message.types';
+import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@infra/utils/message-markup.util';
 
 /**
  * 聊天消息 Repository
@@ -689,7 +690,7 @@ export class ChatMessageRepository extends BaseRepository {
         let query = q
           .eq('chat_id', chatId)
           .eq('role', 'user')
-          .in('content', ['[图片消息]', '[表情消息]']);
+          .in('content', [IMAGE_MESSAGE_PREFIX, EMOTION_MESSAGE_PREFIX]);
         if (options?.sinceTimestamp) {
           query = query.gte('timestamp', new Date(options.sinceTimestamp).toISOString());
         }

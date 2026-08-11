@@ -7,7 +7,7 @@ import type {
 } from '@memory/types/session-facts.types';
 import type { UserProfile } from '@memory/types/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
-import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import type { FinalizedVisualFactSheet } from '@resolution/visual';
 
@@ -45,10 +45,9 @@ export interface CityAttestation {
   /** 人类可读证据（如 formattedAddress），入库前截断，仅服务排障。 */
   evidence: string;
   /**
-   * 证据渠道。本类型专用于 geocode 唯一解析产出的确权；其余 T2 工具确权渠道
-   * （定位分享逆解析、地图截图城市确权）不复用本类型，直接写 sessionFacts。
+   * 证据渠道。定位分享在 prep 阶段复用同一次逆解析结果，避免轮末二次请求。
    */
-  source: 'geocode_unique';
+  source: 'geocode_unique' | 'location_share';
 }
 
 /** geocode 用的本轮可信位置锚点；只来自候选人高置信事实或真人招募经理最近确认。 */

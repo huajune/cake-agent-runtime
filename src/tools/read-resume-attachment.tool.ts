@@ -4,6 +4,7 @@ import { PDFParse } from 'pdf-parse';
 import { z } from 'zod';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { parseFlexiblePhone } from '@resolution/candidate/phone';
 
 const logger = new Logger('read_resume_attachment');
 
@@ -250,7 +251,7 @@ function extractResumeFields(text: string): ResumeFields {
   )?.[1];
   if (name) fields.name = name.trim();
 
-  const phone = text.match(/(?<!\d)(?:\+?86[-\s]?)?(1[3-9]\d[-\s]?\d{4}[-\s]?\d{4})(?!\d)/u)?.[1];
+  const phone = parseFlexiblePhone(text);
   if (phone) fields.phone = phone.replace(/\D/g, '');
 
   const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu)?.[0];

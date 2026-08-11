@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CustomerService } from '@wecom/customer/customer.service';
-import { normalizeGenderValue } from '@memory/facts/high-confidence-facts';
+import { normalizeGenderValue } from '@resolution/candidate/gender';
 
 export interface CandidateGenderLookupParams {
   token?: string;

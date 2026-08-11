@@ -1,5 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
-import type { BrandAliasHint } from '../facts/high-confidence-facts';
+import type { BrandAliasHint } from '@resolution/evidence/producers/rule-track';
 import { formatExtractionFactLines } from '../formatters/fact-lines.formatter';
 import type {
   EntityExtractionResult,

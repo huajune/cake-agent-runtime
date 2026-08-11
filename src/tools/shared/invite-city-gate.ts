@@ -1,14 +1,12 @@
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import {
   resolveCityFromDistrict,
   resolveCityFromLocation,
   scanGeoSignalsFromText,
 } from '@resolution/geo';
-import {
-  fieldValues,
-  isVisualDescriptionText,
-  type FinalizedVisualFactSheet,
-} from '@resolution/visual';
+import type { FinalizedVisualFactSheet } from '@resolution/visual';
+import { mapLocationCityCandidates } from '@resolution/evidence/admission';
+import { isVisualDescriptionText } from '@infra/utils/message-markup.util';
 
 /**
  * invite_to_group 城市 provenance gate（tool guardrail，纯函数）。
@@ -154,13 +152,7 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
   // 出处。job_posting / 聊天截图的城市不进本档（那是门店/他人的位置）。
   const sheetCities = new Set<string>();
   for (const entry of input.turnVisualSheets ?? []) {
-    if (entry.sheet.kind !== 'map_location') continue;
-    const candidates = [
-      ...fieldValues(entry.sheet, 'city'),
-      ...fieldValues(entry.sheet, 'address'),
-      ...fieldValues(entry.sheet, 'candidate_address'),
-    ];
-    for (const candidate of candidates) {
+    for (const candidate of mapLocationCityCandidates(entry.sheet)) {
       const scan = scanGeoSignalsFromText(candidate);
       const city = scan.city?.value ? normalizeCity(scan.city.value) : null;
       if (city) sheetCities.add(city);

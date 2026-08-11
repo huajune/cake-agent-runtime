@@ -5,7 +5,7 @@ import type {
 } from '@memory/types/session-facts.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
-import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 
 /**
  * 提示词组装上下文 — 所有 section 共享

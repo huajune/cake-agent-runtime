@@ -10,6 +10,14 @@
  * - target=current：只匹配本轮用户输入（末尾连续 user 块）；
  * - target=combined：匹配近 12 条对话 + 本轮输入的拼接文本。
  */
+import { LOCATION_SHARE_MARKER_RE } from '@infra/utils/message-markup.util';
+import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
+
+const LOCATION_CONTEXT_PATTERN = new RegExp(
+  `${LOCATION_SHARE_MARKER_RE.source}|这是我住的地方|住处|地址|附近`,
+  'u',
+);
+
 export interface CriticalTurnGuardRule {
   /** 规则标识，用于排障时定位是哪条禁令被注入。 */
   id: string;
@@ -83,7 +91,7 @@ export const CRITICAL_TURN_GUARD_RULES: CriticalTurnGuardRule[] = [
     id: 'submitted_form_no_refill',
     target: 'current',
     patterns: [
-      /1[3-9]\d{9}/,
+      CANDIDATE_PHONE_RE,
       /大专|本科|中专|高中|学历|年龄|岁|时间|周[一二三四五六日天]|下午|上午/,
     ],
     guard:
@@ -99,7 +107,7 @@ export const CRITICAL_TURN_GUARD_RULES: CriticalTurnGuardRule[] = [
   {
     id: 'location_reference_needs_grounding',
     target: 'combined',
-    patterns: [/\[位置分享\]|经纬度|这是我住的地方|住处|地址|附近/],
+    patterns: [LOCATION_CONTEXT_PATTERN],
     guard:
       '近邻上下文包含位置线索。若最终回复要引用“刚才那家/这家/那个奥乐齐/附近岗位”等具体推荐，必须写清门店名或地址，并且事实来自本轮 duliday_job_list、当前焦点岗位或当前预约信息。若历史推荐只有品牌/距离/薪资而缺门店/地址，不能继续用“这家”承接，必须重新查岗或先补清门店/地址。',
   },

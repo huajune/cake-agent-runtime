@@ -5,7 +5,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { MessageType } from '@enums/message-callback.enum';
-import { isResumeImageDescription, stripResumeAttachmentLines } from '../utils/message-parser.util';
+import { isResumeImageDescription } from '../utils/message-parser.util';
 import {
   FIELD_OWNERSHIPS,
   VISUAL_FACT_FIELD_KEY_PROMPT,
@@ -15,6 +15,11 @@ import {
   sanitizeVisualDescription,
   type FinalizedVisualFactSheet,
 } from '@resolution/visual';
+import {
+  appendResumeAttachmentLine,
+  EMOTION_MESSAGE_PREFIX,
+  IMAGE_MESSAGE_PREFIX,
+} from '@infra/utils/message-markup.util';
 import { z } from 'zod';
 
 /** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */
@@ -49,7 +54,7 @@ const VISION_SHEET_SCHEMA = z.object({
 });
 
 function formatDescription(kind: VisualMessageKind, description: string): string {
-  const prefix = kind === MessageType.EMOTION ? '[表情消息]' : '[图片消息]';
+  const prefix = kind === MessageType.EMOTION ? EMOTION_MESSAGE_PREFIX : IMAGE_MESSAGE_PREFIX;
   return `${prefix} ${description}`;
 }
 
@@ -339,7 +344,7 @@ export class ImageDescriptionService {
     }
     const isResumeImage = legacyResume || (kind === MessageType.IMAGE && sheetResume);
     const content = isResumeImage
-      ? `${formatDescription(kind, stripResumeAttachmentLines(description))}\n简历附件：${imageUrl}`
+      ? appendResumeAttachmentLine(formatDescription(kind, description), imageUrl)
       : formatDescription(kind, description);
 
     await this.writeBackDescription(messageId, content, kind, sheet ?? undefined);
@@ -380,7 +385,9 @@ export class ImageDescriptionService {
           sinceTimestamp: Date.now() - 7 * 24 * 60 * 60 * 1000,
           limit: 6,
         });
-        const images = bare.filter((row) => row.content.trim() === '[图片消息]').slice(0, 3);
+        const images = bare
+          .filter((row) => row.content.trim() === IMAGE_MESSAGE_PREFIX)
+          .slice(0, 3);
         for (const row of images) {
           const payload = row.payload ?? {};
           const url = [payload.artworkUrl, payload.fileUrl, payload.url, payload.imageUrl].find(

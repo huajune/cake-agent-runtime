@@ -13,6 +13,7 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
+import { stripLocationShareMarkup } from '@infra/utils/message-markup.util';
 import { listUniqueDistrictCityEntries } from '@resolution/geo';
 import {
   BRAND_CONFIDENCE,
@@ -88,10 +89,8 @@ interface ClauseMatch {
  * （徐汇区田林路103-4号） [经纬度:…]」，"沃尔玛"命中品牌库后把已确立的主品牌
  * 成都你六姐顶下台。段内文本一律不参与品牌解析；地理语义由 geo 域承接。
  */
-const LOCATION_SHARE_SEGMENT_REGEX = /\[位置分享\][^[]*(?:\[经纬度[^\]]*\]?)?/g;
-
 function stripLocationShareSegments(text: string): string {
-  return text.replace(LOCATION_SHARE_SEGMENT_REGEX, ' ');
+  return stripLocationShareMarkup(text, ' ');
 }
 
 /**

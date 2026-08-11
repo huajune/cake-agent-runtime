@@ -28,8 +28,12 @@ import {
   finalizeVisualFactSheet,
   sanitizeVisualDescription,
   isResumeImageDescription,
-  stripResumeAttachmentLines,
 } from '@resolution/visual';
+import {
+  appendResumeAttachmentLine,
+  EMOTION_MESSAGE_PREFIX,
+  IMAGE_MESSAGE_PREFIX,
+} from '@infra/utils/message-markup.util';
 
 const logger = new Logger('save_image_description');
 
@@ -82,7 +86,9 @@ const inputSchema = z.object({
 type VisualKind = MessageType.IMAGE | MessageType.EMOTION;
 
 function resolvePrefix(messageId: string, visualMessageTypes?: Record<string, VisualKind>): string {
-  return visualMessageTypes?.[messageId] === MessageType.EMOTION ? '[表情消息]' : '[图片消息]';
+  return visualMessageTypes?.[messageId] === MessageType.EMOTION
+    ? EMOTION_MESSAGE_PREFIX
+    : IMAGE_MESSAGE_PREFIX;
 }
 
 export function buildSaveImageDescriptionTool(
@@ -123,11 +129,11 @@ export function buildSaveImageDescriptionTool(
           );
         }
         const resumeUrl =
-          prefix === '[图片消息]' && (legacyResume || sheetResume)
+          prefix === IMAGE_MESSAGE_PREFIX && (legacyResume || sheetResume)
             ? imageUrlsByMessageId?.[messageId]
             : undefined;
         const content = resumeUrl
-          ? `${prefix} ${stripResumeAttachmentLines(safeDescription)}\n简历附件：${resumeUrl}`
+          ? appendResumeAttachmentLine(`${prefix} ${safeDescription}`, resumeUrl)
           : `${prefix} ${safeDescription}`;
         await chatSession.updateMessageContent(
           messageId,
@@ -146,7 +152,7 @@ export function buildSaveImageDescriptionTool(
         // 表情消息不是品牌来源；解析失败按无品牌降级，不影响描述保存。
         // R2 发布方剔除（badcase 发布方品牌劫持）：sheet 可用且带 brand 字段时只解析
         // 候选人看中的岗位品牌值；publisher 字段（跃橙云服等发布主体）不进品牌解析。
-        if (prefix === '[图片消息]' && brandResolution && context.onImageBrandResolved) {
+        if (prefix === IMAGE_MESSAGE_PREFIX && brandResolution && context.onImageBrandResolved) {
           try {
             const brandInputs =
               !sheet.degraded && sheet.kind === 'job_posting'

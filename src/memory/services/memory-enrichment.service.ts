@@ -4,7 +4,7 @@ import {
   mergeSupplementalGenderFact,
   normalizeGenderValue,
   unwrapHighConfidenceValue,
-} from '../facts/high-confidence-facts';
+} from '@resolution/evidence/producers/rule-track';
 import { unwrapUserProfileFactValue } from '../types/long-term.types';
 import { unwrapSessionFactValue } from '../types/session-facts.types';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';

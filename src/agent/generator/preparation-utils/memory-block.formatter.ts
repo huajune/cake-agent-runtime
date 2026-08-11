@@ -6,11 +6,11 @@ import {
   matchesLaborForm,
   sanitizeJobDisplayText,
   sanitizeLaborFormForDisplay,
-} from '@memory/facts/labor-form';
+} from '@resolution/labor-form';
 import {
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
-} from '@memory/facts/high-confidence-facts';
+} from '@resolution/evidence/producers/rule-track';
 import {
   type LongTermPreferenceFacts,
   type LongTermPreferenceFieldKey,
@@ -23,6 +23,8 @@ import {
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
+import { isArchivedProfileFactSuperseded } from '@resolution/evidence/profile';
+import type { CandidateClaimField } from '@resolution/evidence/claim.types';
 
 /** 本轮 turn-start 记忆召回结果（PreparationService 及各渲染函数的公共输入形状）。 */
 export type TurnStartMemory = Awaited<ReturnType<MemoryService['onTurnStart']>>;
@@ -161,27 +163,38 @@ function formatProfile(
   const fieldRows: Array<{
     label: string;
     sessionKey: string;
+    evidenceField: CandidateClaimField;
     fact: UserProfileFacts[keyof UserProfileFacts];
   }> = [
-    { label: '姓名', sessionKey: 'name', fact: profile.name },
-    { label: '联系方式', sessionKey: 'phone', fact: profile.phone },
-    { label: '性别', sessionKey: 'gender', fact: profile.gender },
-    { label: '年龄', sessionKey: 'age', fact: profile.age },
-    { label: '是否学生', sessionKey: 'is_student', fact: profile.is_student },
-    { label: '学历', sessionKey: 'education', fact: profile.education },
-    { label: '健康证', sessionKey: 'has_health_certificate', fact: profile.has_health_certificate },
+    { label: '姓名', sessionKey: 'name', evidenceField: 'name', fact: profile.name },
+    { label: '联系方式', sessionKey: 'phone', evidenceField: 'phone', fact: profile.phone },
+    { label: '性别', sessionKey: 'gender', evidenceField: 'gender', fact: profile.gender },
+    { label: '年龄', sessionKey: 'age', evidenceField: 'age', fact: profile.age },
+    {
+      label: '是否学生',
+      sessionKey: 'is_student',
+      evidenceField: 'isStudent',
+      fact: profile.is_student,
+    },
+    { label: '学历', sessionKey: 'education', evidenceField: 'education', fact: profile.education },
+    {
+      label: '健康证',
+      sessionKey: 'has_health_certificate',
+      evidenceField: 'healthCertificate',
+      fact: profile.has_health_certificate,
+    },
   ];
 
   const lines: string[] = [];
   const invalidatedLabels: string[] = [];
-  for (const { label, sessionKey, fact } of fieldRows) {
+  for (const { label, sessionKey, evidenceField, fact } of fieldRows) {
     if (!fact) continue;
     const sessionValue = sessionInterviewInfo?.[sessionKey];
-    const hasNewerSessionValue =
-      sessionValue !== null &&
-      sessionValue !== undefined &&
-      sessionValue !== '' &&
-      String(sessionValue).trim() !== String(fact.value).trim();
+    const hasNewerSessionValue = isArchivedProfileFactSuperseded(
+      evidenceField,
+      fact.value,
+      sessionValue,
+    );
     if (hasNewerSessionValue) {
       invalidatedLabels.push(label);
       continue;

@@ -25,7 +25,7 @@ import {
   isPartTimeJobType,
   matchesLaborForm,
   sanitizeLaborFormForDisplay,
-} from '@memory/facts/labor-form';
+} from '@resolution/labor-form';
 import type { JobDetail } from '@sponge/sponge.types';
 
 const EARTH_RADIUS_KM = 6371;

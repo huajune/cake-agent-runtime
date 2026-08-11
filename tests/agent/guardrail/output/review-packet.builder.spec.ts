@@ -458,6 +458,35 @@ describe('GuardrailReviewPacketBuilder', () => {
       });
       expect(packet.evidence.visualFacts).toBeUndefined();
     });
+
+    it('复用 finalize：过滤非法 key/证件号、补 ownership，并脱敏自由描述', () => {
+      const idNumber = '310101199001011234';
+      const packet = builder.build({
+        reply: '看到了',
+        toolCalls: [
+          {
+            toolName: 'save_image_description',
+            args: {
+              kind: 'resume',
+              description: `简历：王建国，身份证号 ${idNumber}`,
+              fields: [
+                { key: 'name', value: '王建国' },
+                { key: 'invented_key', value: '不得进入 reviewer' },
+                { key: 'other', value: idNumber },
+              ],
+            },
+            result: { success: true },
+            status: 'ok',
+          },
+        ],
+      });
+
+      expect(packet.evidence.visualFacts?.sheets[0]).toEqual({
+        kind: 'resume',
+        description: '简历：王建国，身份证号 [身份证号已脱敏]',
+        fields: [{ key: 'name', value: '王建国', ownership: 'candidate' }],
+      });
+    });
   });
 
   it('forwards recent assistant texts for cross-turn restatement adjudication (最近 8 条、单条 600 字截断)', () => {

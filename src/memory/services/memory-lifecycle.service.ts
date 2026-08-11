@@ -6,7 +6,6 @@ import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-typ
 import type { CityAttestation } from '@shared-types/tool.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import { BrandStateService } from './brand-state.service';
 import { LongTermService } from './long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
@@ -14,7 +13,8 @@ import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
-import { extractHighConfidenceFacts, stripQuotedBlocks } from '../facts/high-confidence-facts';
+import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
+import { stripQuotedBlocks, stripTimeContext } from '@infra/utils/message-markup.util';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import type {
   LongTermPreferenceFacts,
@@ -597,7 +597,7 @@ export class MemoryLifecycleService {
       const message = messages[i];
       if (message.role !== 'user') break;
       const text = stripQuotedBlocks(
-        MessageParser.stripTimeContext(this.extractTextFromContent(message.content)),
+        stripTimeContext(this.extractTextFromContent(message.content)),
       ).trim();
       if (text) texts.unshift(text);
     }

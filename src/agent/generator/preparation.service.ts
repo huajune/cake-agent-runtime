@@ -2,8 +2,8 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { decideLaborFormIntent } from '@memory/facts/labor-form';
-import { parseLocationShareCoords } from '@memory/facts/location-share';
+import { decideLaborFormIntent } from '@resolution/labor-form';
+import { parseLocationShareCoords } from '@resolution/evidence/producers/location-share';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
@@ -72,7 +72,7 @@ export interface PreparedAgentContext {
     visualFactSheets: Array<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
     /** 本轮 duliday_job_list 查询签名（跨轮重复查询检测，回合收尾落会话记忆）。 */
     jobListQuerySignature: string | null;
-    /** 本轮 geocode unique 解析确权的城市（回合收尾写 pref.city，source='tool'）。 */
+    /** 本轮 geocode/定位分享解析确权的城市（回合收尾写 pref.city，source='tool'）。 */
     cityAttestation: CityAttestation | null;
     /** 本轮被工具判定失效（海绵查不到）的 jobId；回合收尾从会话记忆剔除，防跨轮重试死岗位。 */
     invalidatedJobIds: number[];
@@ -144,6 +144,12 @@ export class PreparationService {
         areaLevelQuery: false,
         areaName: null,
         city: regeo.city.trim(),
+      });
+      toolContext.onCityResolved?.({
+        city: regeo.city.trim(),
+        district: regeo.district?.trim() || null,
+        evidence: `定位分享逆解析：${regeo.formattedAddress || `${regeo.province}${regeo.city}${regeo.district}`}`,
+        source: 'location_share',
       });
       this.logger.log(
         `[prepare] 定位分享轮内锚点: city=${regeo.city}（invite 城市门 turn_geocode 档可用）`,

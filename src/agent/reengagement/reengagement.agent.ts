@@ -14,6 +14,8 @@ import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob } from './follow-up-scheduler.service';
 import type { FollowUpScenario } from './scenario-registry';
 import type { ReengagementBookingContext } from './booking-context';
+import { stripTimeContext } from '@infra/utils/message-markup.util';
+import { redactCandidatePhones } from '@resolution/candidate/phone';
 
 // 复聊记忆用主动复聊专用 recall：结构化事实已过 formatExtractionFactLines（含陈旧告警），
 // 短期消息直接复用 Generator 的窗口和时间格式，不再二次裁剪或改写。
@@ -624,8 +626,7 @@ export class ReengagementAgent {
   }
 
   private normalizeForDuplicateCheck(text: string): string {
-    return text
-      .replace(/\[消息发送时间：[^\]]*\]/g, '')
+    return stripTimeContext(text)
       .replace(/[\p{P}\p{S}\s]+/gu, '')
       .toLowerCase();
   }
@@ -654,7 +655,7 @@ export class ReengagementAgent {
     for (const name of candidateNames) {
       redacted = redacted.split(name).join('（姓名已省略）');
     }
-    return redacted.replace(/\b1[3-9]\d{9}\b/g, '（手机号已省略）');
+    return redactCandidatePhones(redacted, '（手机号已省略）');
   }
 
   private formatShanghaiTime(timestamp: number): string {

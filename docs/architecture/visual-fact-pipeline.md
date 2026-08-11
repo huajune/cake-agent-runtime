@@ -101,7 +101,9 @@
 
 ## 三、核心数据结构
 
-`src/resolution/visual/`（与 brand/geo 同构的解析域：纯确定性、零 LLM、仅依赖 zod）：
+`src/resolution/visual/`（与 brand/geo 同构的解析域：纯确定性、零 LLM、仅依赖 zod）。三个文件分工：
+`visual-fact.types`（schema + 模型侧词表）/ `visual-fact.util`（finalize 归属、脱敏、存储解析、窗口文本渲染识别）。
+消费侧授权属于候选人档案准入策略，统一位于 `resolution/evidence/admission.ts`，不再由 visual 域拥有：
 
 ```ts
 VisualFactSheet {
@@ -132,7 +134,7 @@ VisualFactSheet {
 
 **三道闸**：进档前（ownership 门：`candidate` 才可进档案）→ 入档时（确定性赋值）→ 消费时（既有闸门原样兜底：booking/precheck 预填只吃 high、brand reducer 手打赢图片、展示出处门）。
 
-**规则轨授权域**（`extractHighConfidenceFacts` 按消息 kind 分域，`resolveExtractionScope`）：
+**规则轨授权域**（`resolveExtractionScope`，居所 `resolution/evidence/admission.ts`，由 rule-track producer 逐条消息调用）：
 
 | 消息类别 | 身份域 | phone | 偏好域 | 地理域 |
 |---|---|---|---|---|
@@ -142,7 +144,7 @@ VisualFactSheet {
 | `job_posting` / `chat_screenshot` / 其它 sheet | ❌ | ❌ | ❌（R1e：岗位卡薪资≠期望薪资） | ❌（门店城市≠候选人城市） |
 | 视觉消息无 sheet（旧数据/降级） | ❌ | ❌ | ✅ | ✅（= PR #870 行为，不劣化地图定位） |
 
-**LLM 轨配套门**（`session.service`）：phone 自陈出处门语料 = 手打 + 简历/证件 sheet 消息；explicit-upgrade 的 phone quote 只认手打文本；is_student/健康证话题证据门同语料收窄。
+**LLM 轨配套门**（`resolution/evidence/admission.ts`，memory 只记录 dropped 观测）：phone 自陈出处门语料 = 手打 + 简历/证件 sheet 消息；explicit-upgrade 的 phone quote 只认手打文本；is_student/健康证话题证据门同语料收窄。
 
 **R3 地理直通**：`map_location` 的城市字段经 geo 白名单确权后按 `source='tool'` 入档（与定位分享 A2 同级同让位规则）；invite 城市门新增 `turn_map_screenshot` 档（同轮 sheet 直供），同时**剔除视觉描述全文的城市推断**（badcase `x3pdj7qh` 拉错群根治点）。
 

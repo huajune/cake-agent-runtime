@@ -189,3 +189,21 @@ export function formatLocalDateTime(date: Date): string {
   const s = String(parts.second).padStart(2, '0');
   return `${y}-${m}-${d} ${h}:${min}:${s}`;
 }
+
+/** 短期记忆时间标记使用的北京时间文本：YYYY-MM-DD HH:mm 星期X。 */
+export function formatCurrentTime(timestamp?: number): string {
+  const date = timestamp === undefined ? new Date() : new Date(timestamp);
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: LOCAL_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    weekday: 'long',
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')} ${get('weekday')}`;
+}

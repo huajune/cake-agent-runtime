@@ -1,7 +1,7 @@
 import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import type { RedisStore } from '@memory/stores/redis.store';
-import type { PrecheckSnapshot } from '@memory/facts/candidate/precheck-snapshot.types';
-import { PRECHECK_SNAPSHOT_TTL_SECONDS } from '@memory/facts/candidate/precheck-snapshot.types';
+import type { PrecheckSnapshot } from '@resolution/evidence/snapshot';
+import { PRECHECK_SNAPSHOT_TTL_SECONDS } from '@resolution/evidence/snapshot';
 
 function buildSnapshot(): PrecheckSnapshot {
   return {

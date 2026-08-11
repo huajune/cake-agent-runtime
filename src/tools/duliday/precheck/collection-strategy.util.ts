@@ -12,6 +12,9 @@ import { normalizePolicyText } from '@tools/utils/job-policy-parser';
 import { API_BOOKING_USER_REQUIRED_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 import { orderFields } from '@tools/duliday/precheck/checklist.util';
 import { dedupeStrings } from '@tools/duliday/precheck/field-normalize.util';
+import { extractMessageText } from '@infra/utils/message-markup.util';
+
+export { extractMessageText } from '@infra/utils/message-markup.util';
 
 const COLLECTION_RESISTANCE_PATTERNS = [
   { label: '这么多信息', pattern: /这么多(信息|资料|内容|东西|问题)/ },
@@ -23,26 +26,6 @@ const COLLECTION_RESISTANCE_PATTERNS = [
   { label: '烦死了', pattern: /烦死了|烦得很/ },
   { label: '滚犊子', pattern: /滚犊子|滚蛋/ },
 ] as const;
-
-export function extractMessageText(content: unknown): string {
-  if (typeof content === 'string') return content;
-
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => extractMessageText(item))
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-  }
-
-  if (content && typeof content === 'object') {
-    const record = content as Record<string, unknown>;
-    if (typeof record.text === 'string') return record.text;
-    if (typeof record.content === 'string') return record.content;
-  }
-
-  return '';
-}
 
 export function getRecentUserMessages(messages: unknown[], limit = 3): string[] {
   const texts = messages

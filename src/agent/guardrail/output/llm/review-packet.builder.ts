@@ -9,6 +9,7 @@ import type {
   JobListEvidenceItem,
   PrecheckEvidence,
 } from './review-packet.types';
+import { finalizeVisualFactSheet } from '@resolution/visual';
 
 export interface BuildReviewPacketInput {
   reply: string;
@@ -267,20 +268,19 @@ export class GuardrailReviewPacketBuilder {
       .slice(0, VISUAL_SHEETS_LIMIT)
       .map((call) => {
         const args = readRecord(call.args) ?? {};
-        const description = readString(args.description);
+        const description = readString(args.description) ?? '';
+        const sheet = finalizeVisualFactSheet(
+          { kind: args.kind, fields: args.fields },
+          description,
+        );
+        const finalizedDescription = sheet.rawDescription;
         return {
-          kind: readString(args.kind),
+          kind: sheet.kind,
           description:
-            description && description.length > VISUAL_DESCRIPTION_MAX_CHARS
-              ? `${description.slice(0, VISUAL_DESCRIPTION_MAX_CHARS)}…`
-              : description,
-          fields: readArray(args.fields).flatMap((raw) => {
-            const field = readRecord(raw);
-            const key = readString(field?.key);
-            const value = readString(field?.value);
-            if (!key || !value) return [];
-            return [{ key, value, ownership: readString(field?.ownership) }];
-          }),
+            finalizedDescription && finalizedDescription.length > VISUAL_DESCRIPTION_MAX_CHARS
+              ? `${finalizedDescription.slice(0, VISUAL_DESCRIPTION_MAX_CHARS)}…`
+              : finalizedDescription || undefined,
+          fields: sheet.fields,
         };
       })
       .filter((sheet) => sheet.fields.length > 0 || sheet.description);

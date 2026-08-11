@@ -1,7 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
+import { appendTimeContext } from '@infra/utils/message-markup.util';
+import { formatCurrentTime } from '@infra/utils/date.util';
 import { MemoryConfig } from '../memory.config';
 import type { ShortTermMessage } from '../types/short-term.types';
 import {
@@ -88,7 +89,7 @@ export class ShortTermService {
   ): ShortTermMessage[] {
     return messages.map((msg) => ({
       role: msg.role,
-      content: MessageParser.injectTimeContext(msg.content, msg.timestamp),
+      content: appendTimeContext(msg.content, formatCurrentTime(msg.timestamp)),
       source: msg.source,
       messageType: msg.messageType,
       isSelf: msg.isSelf,

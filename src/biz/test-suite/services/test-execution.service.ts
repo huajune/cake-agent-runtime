@@ -36,6 +36,7 @@ import type {
   TestRuntimeScope,
   TestSourceTrace,
 } from '../types/test-debug-trace.types';
+import { IMAGE_MESSAGE_PREFIX } from '@infra/utils/message-markup.util';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
@@ -475,13 +476,14 @@ export class TestExecutionService {
     const latestPayload = this.extractMessagePayload(latestUserMessage);
     const currentImageUrls =
       latestPayload.imageUrls.length > 0 ? latestPayload.imageUrls : request.imageUrls;
-    const messageText = latestPayload.text || (currentImageUrls?.length ? '[图片消息]' : '');
+    const messageText =
+      latestPayload.text || (currentImageUrls?.length ? IMAGE_MESSAGE_PREFIX : '');
 
     const history = transportMessages.slice(0, -1).map((msg) => {
       const payload = this.extractMessagePayload(msg);
       return {
         role: msg.role as MessageRole,
-        content: payload.text || (payload.imageUrls.length > 0 ? '[图片消息]' : ''),
+        content: payload.text || (payload.imageUrls.length > 0 ? IMAGE_MESSAGE_PREFIX : ''),
         imageUrls: payload.imageUrls.length > 0 ? payload.imageUrls : undefined,
       };
     });

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
-import { WELFARE_KINDS } from '@tools/duliday/job-list/welfare-facts.util';
+import { WELFARE_KINDS } from '@shared-types/welfare.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
 
@@ -51,7 +51,7 @@ export const CityFactEvidenceSchema = z.enum([
 
 export const CityFactSchema = z.object({
   value: z.string(),
-  confidence: z.enum(['high', 'low']),
+  confidence: z.enum(['high', 'medium', 'low']),
   evidence: CityFactEvidenceSchema,
 });
 
@@ -60,7 +60,7 @@ export type CityFactEvidence = z.infer<typeof CityFactEvidenceSchema>;
 
 /**
  * 兼容旧数据的 city 字段解析：
- * - 字符串（旧 Redis 数据、LLM 原始输出）→ 归一化为 `{ value, confidence: 'high', evidence: 'explicit_city' }`
+ * - 字符串（旧 Redis 数据、LLM 原始输出）→ 归一化为 `{ value, confidence: 'medium', evidence: 'explicit_city' }`
  * - 对象 → 直接校验为 CityFact
  * - null/空串 → null
  */
@@ -70,7 +70,7 @@ const NullableCityFactSchema = z
     if (value === null) return null;
     if (typeof value === 'string') {
       const trimmed = value.trim().replace(/市$/, '');
-      return trimmed ? { value: trimmed, confidence: 'high', evidence: 'explicit_city' } : null;
+      return trimmed ? { value: trimmed, confidence: 'medium', evidence: 'explicit_city' } : null;
     }
     return value;
   });

@@ -44,20 +44,28 @@ pnpm run db:status:test      # / db:status:prod 查看迁移状态
 
 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `infra/`。
 **`infra/` 禁止 import `biz/`、`channels/`、`agent/`。**
-**`resolution/` 至多依赖 `sponge/`**（brand 用；geo 取零出向依赖），可被 memory/agent/tools/guardrail/infra 依赖，禁止反向 import。
+**`resolution/` 至多依赖 `sponge/` 与 `infra/utils/`**（前者 brand 用；后者是零依赖纯函数抽屉，visual 认消息标记要用；geo 取零出向依赖，两个都不依赖），可被 memory/agent/tools/guardrail/infra 依赖，禁止反向 import。规则由 `.eslintrc.js` 的 `no-restricted-imports` 强制。
 
 ```
 src/
 ├── infra/              # 基础设施：config / redis / supabase / feishu / alert / http / server-response
+│   └── utils/          #   零依赖纯函数抽屉：date / string / object / fetch-timeout /
+│                       #   message-markup（消息标记协议唯一居所：时间后缀、引用块、
+│                       #   视觉前缀、简历附件、位置分享的常量+写+剥，谁加标记谁在此表态）
 ├── providers/          # 多模型三层：registry(注册) → reliable(重试/降级) → router(角色路由)
 ├── llm/                # LLM 执行器（llm-executor：底层 generateText 封装、重试）
-├── resolution/brand/   # 品牌解析域（唯一居所）：目录索引/匹配/极性/品类展开/状态 reducer/同音回指/公司名规范化
+├── resolution/candidate/ # 候选人字段解析唯一居所：姓名/电话/年龄/性别/学历/健康证/身份问答
+├── resolution/evidence/  # 候选人档案裁决底盘：claim/策略/准入链/合并表/city+brand producer/物化视图
+├── resolution/labor-form/ # 用工形式三态意向、层级匹配与展示规整
+├── resolution/brand/   # 品牌解析域：目录索引/匹配/极性/品类展开/同音回指/公司名规范化
 │                       #   纯确定性代码零 LLM；resolve() 输出标准品牌+极性+置信度；只依赖 sponge 品牌目录
 ├── resolution/geo/     # 地理解析域（唯一真相源）：行政区层级/县级市映射/白名单三轮扫描/地标别名/歧义策略/冲突检测
 │                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
+├── resolution/visual/  # 视觉证物登记：sheet schema + 模型侧词表 / finalize 归属与脱敏
+│                       #   纯确定性零 LLM 仅依赖 zod；vision 调用在 channels(兜底引擎)+tools(主路径工具)两个生产者
 ├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
 ├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / procedural(阶段) / long-term(画像)
-│                       #   + settlement(空闲沉淀) / facts(规则提取) / stores(Redis+Supabase 适配)
+│                       #   + settlement(空闲沉淀) / stores(Redis+Supabase 适配)；只持有事实，不实现字段判断
 ├── agent/              # Agent 编排
 │   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)

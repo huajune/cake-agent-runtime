@@ -4,7 +4,7 @@ import { ContactType, MessageSource, MessageType } from '@enums/message-callback
 import {
   extractHighConfidenceFacts,
   unwrapHighConfidenceValue,
-} from '@memory/facts/high-confidence-facts';
+} from '@resolution/evidence/producers/rule-track';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';

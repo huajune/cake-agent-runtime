@@ -8,8 +8,8 @@ import {
 import {
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
-} from '@memory/facts/high-confidence-facts';
-import { isHardFilteredLaborForm, isValidLaborForm } from '@memory/facts/labor-form';
+} from '@resolution/evidence/producers/rule-track';
+import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**

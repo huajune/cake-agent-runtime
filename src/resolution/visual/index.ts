@@ -21,12 +21,6 @@ export {
   sanitizeVisualDescription,
   parseStoredVisualFactSheet,
   fieldValues,
-  isVisualDescriptionText,
   isResumeImageDescription,
-  stripResumeAttachmentLines,
-  hasResumeAttachmentLine,
   isSelfReportedVisualMessage,
-  stripVisualPrefix,
-  IMAGE_MESSAGE_PREFIX,
-  EMOTION_MESSAGE_PREFIX,
 } from './visual-fact.util';

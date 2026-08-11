@@ -126,10 +126,10 @@ export interface GroupInviteEvidence {
  */
 export interface VisualFactsEvidence {
   sheets: Array<{
-    kind?: string;
+    kind: import('@resolution/visual').VisualFactKind;
     /** vision 原始描述，截断防爆 packet。 */
     description?: string;
-    fields: Array<{ key: string; value: string; ownership?: string }>;
+    fields: import('@resolution/visual').FinalizedVisualFactField[];
   }>;
 }
 

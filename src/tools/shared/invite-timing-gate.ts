@@ -1,5 +1,5 @@
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
-import { stripTimeContextSuffix } from '@memory/facts/name-guard';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
+import { stripTimeContextSuffix } from '@resolution/candidate/name';
 
 /**
  * invite_to_group 时机 gate（tool guardrail，纯函数）。

@@ -4,7 +4,7 @@ import {
   findLatestExplicitIdentityEvidence,
   matchIdentityEvidence,
   stripMessageDecorations,
-} from '@tools/shared/identity-statement.util';
+} from '@resolution/candidate/student-identity';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**

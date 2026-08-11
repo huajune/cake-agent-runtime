@@ -24,7 +24,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-import { VALID_LABOR_FORMS } from '@memory/facts/labor-form';
+import { VALID_LABOR_FORMS } from '@resolution/labor-form';
 import { AGENT_TOOL_CALL_STATUSES } from '@shared-types/agent-telemetry.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 

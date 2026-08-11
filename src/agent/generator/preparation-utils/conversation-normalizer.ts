@@ -4,6 +4,7 @@ import { CallerKind } from '@/enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
 import { type GeneratorInputMessage } from '../generator.types';
+import { formatImageCountPlaceholder } from '@infra/utils/message-markup.util';
 
 /**
  * 对话消息归一化（PreparationService 的纯函数辅助层）：
@@ -108,8 +109,7 @@ function toModelMessages(messages: GeneratorInputMessage[], enableVision: boolea
         };
       }
 
-      const fallbackText =
-        message.imageUrls.length === 1 ? '[图片消息]' : `[图片消息 ${message.imageUrls.length} 张]`;
+      const fallbackText = formatImageCountPlaceholder(message.imageUrls.length);
       return {
         role: 'user',
         content: textContent ? `${fallbackText} ${textContent}` : fallbackText,

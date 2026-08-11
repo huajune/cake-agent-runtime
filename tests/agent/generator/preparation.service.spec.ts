@@ -2158,4 +2158,55 @@ describe('PreparationService', () => {
       referenceText: '上海嘉定同济园是吧，我看下',
     });
   });
+
+  it('定位分享只逆解析一次，并把同一结果同时挂到轮内锚点与轮末城市确权', async () => {
+    const geocoding = {
+      reverseGeocode: jest.fn().mockResolvedValue({
+        province: '上海市',
+        city: '上海市',
+        district: '徐汇区',
+        formattedAddress: '上海市徐汇区田林路',
+      }),
+    };
+    service = new PreparationService(
+      mockToolRegistry as never,
+      mockMemoryService as never,
+      mockMemoryConfig as never,
+      mockContext as never,
+      mockInputGuard as never,
+      mockLongTermService as never,
+      mockSpongeService as never,
+      mockGroupResolver as never,
+      mockGroupMembership as never,
+      mockBrandStateService as never,
+      mockHostingMemberConfig as never,
+      undefined,
+      geocoding as never,
+    );
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [
+          { role: 'user', content: '[位置分享] 田林路 [经纬度:31.2,121.4]' },
+        ],
+        userId: 'user-location-share',
+        corpId: 'corp-1',
+        sessionId: 'sess-location-share',
+      },
+      'invoke',
+    );
+
+    expect(geocoding.reverseGeocode).toHaveBeenCalledTimes(1);
+    expect(geocoding.reverseGeocode).toHaveBeenCalledWith(121.4, 31.2);
+    expect(result.turnState.cityAttestation).toMatchObject({
+      city: '上海市',
+      district: '徐汇区',
+      source: 'location_share',
+    });
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls.at(-1)!;
+    expect(toolContext.geocodeResolvedAnchors).toContainEqual(
+      expect.objectContaining({ city: '上海市', longitude: 121.4, latitude: 31.2 }),
+    );
+  });
 });

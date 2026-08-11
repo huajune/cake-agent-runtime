@@ -1,4 +1,4 @@
-import { isValidLaborForm } from '../facts/labor-form';
+import { isValidLaborForm } from '@resolution/labor-form';
 import type {
   EntityExtractionResult,
   HighConfidenceFacts,

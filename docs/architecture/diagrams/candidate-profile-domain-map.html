@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <script>document.documentElement.classList.add("js")</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>候选人档案域 · 目标架构图解</title>
+    <style>
+      :root {
+        --paper: #f3efe6; --paper-2: #faf7f0; --card: #fffdf8;
+        --ink: #1d1c26; --ink-2: #44414f; --muted: #716d7c; --faint: #a39fab;
+        --line: #e4ddcf; --line-2: #d6cdba;
+        --amber: #bf7d12; --coral: #d4503e; --indigo: #4f46e5; --teal: #0e8a7d;
+        --sky: #1f86c4; --orange: #cf6d28; --violet: #7c52d6; --blue: #3b6fd4;
+        --magenta: #bf3d8c; --green: #2f9b4e;
+        --accent: var(--indigo); --accent-soft: rgba(79,70,229,0.1);
+        --serif: "Songti SC","STSong","Noto Serif SC","Source Han Serif SC",Georgia,"Times New Roman",serif;
+        --sans: "PingFang SC","Microsoft YaHei",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+        --r: 16px; --r-lg: 22px; --ease: cubic-bezier(0.2,0.8,0.25,1); --maxw: 940px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body { background: var(--paper); color: var(--ink); font-family: var(--sans); line-height: 1.78; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden; }
+      body::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background: radial-gradient(1100px 620px at 88% -6%, rgba(212,80,62,0.06), transparent 58%), radial-gradient(900px 640px at -4% 8%, rgba(79,70,229,0.05), transparent 56%), radial-gradient(900px 700px at 50% 110%, rgba(47,155,78,0.05), transparent 60%); }
+      body::after { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.5;
+        background-image: radial-gradient(rgba(29,28,38,0.04) 0.5px, transparent 0.5px); background-size: 5px 5px; mask-image: radial-gradient(circle at 50% 40%, black 30%, transparent 90%); }
+
+      .rail { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 80; }
+      .rail .fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amber), var(--coral) 30%, var(--violet) 66%, var(--green)); transition: width 0.08s linear; }
+      .wrap { position: relative; z-index: 2; max-width: var(--maxw); margin: 0 auto; padding: 0 28px 160px; }
+      code, .mono { font-family: var(--mono); font-size: 0.85em; color: var(--ink-2); background: rgba(29,28,38,0.045); padding: 1px 6px; border-radius: 6px; }
+      b { font-weight: 650; }
+
+      .spine { position: fixed; left: max(20px, calc((100vw - var(--maxw)) / 2 - 78px)); top: 50%; transform: translateY(-50%); z-index: 50; display: none; }
+      @media (min-width: 1160px) { .spine { display: block; } }
+      .spine ol { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+      .spine a { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--faint); font-size: 0.72rem; font-family: var(--mono); padding: 3px 0; transition: color 0.3s; }
+      .spine .bead { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--line-2); background: var(--paper); flex: 0 0 auto; transition: all 0.35s var(--ease); }
+      .spine a .lbl { opacity: 0; transform: translateX(-4px); transition: all 0.3s; white-space: nowrap; }
+      .spine a:hover .lbl, .spine a.active .lbl { opacity: 1; transform: none; }
+      .spine a:hover { color: var(--ink-2); }
+      .spine a.active { color: var(--ink); }
+      .spine a.active .bead { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); transform: scale(1.15); }
+
+      header.hero { padding: 110px 0 30px; }
+      .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--coral); margin-bottom: 26px; display: flex; align-items: center; gap: 12px; }
+      .eyebrow::before { content: ""; width: 30px; height: 1.5px; background: var(--coral); }
+      h1.title { font-family: var(--serif); font-weight: 700; font-size: clamp(2.2rem, 6vw, 4rem); line-height: 1.12; margin-bottom: 24px; }
+      h1.title .accent { color: var(--coral); position: relative; }
+      h1.title .accent::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0.08em; height: 0.18em; background: rgba(212,80,62,0.16); z-index: -1; border-radius: 3px; }
+      .lede { max-width: 680px; font-size: 1.14rem; color: var(--ink-2); }
+      .lede b { color: var(--ink); }
+      .quote { margin: 40px 0 0; padding: 4px 0 4px 26px; border-left: 3px solid var(--coral); max-width: 760px; }
+      .quote .q-label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin-bottom: 10px; }
+      .quote .q-text { font-family: var(--serif); font-size: clamp(1.1rem, 2.6vw, 1.42rem); line-height: 1.7; color: var(--ink); }
+      .mark { padding: 0 4px; border-radius: 4px; font-weight: 600; white-space: nowrap; }
+      .extract { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .ex { font-family: var(--mono); font-size: 0.74rem; padding: 5px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
+      .ex .k { color: var(--faint); }
+
+      .journey { margin-top: 56px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 30px 26px 22px; box-shadow: 0 30px 60px -42px rgba(29,28,38,0.4); }
+      .journey svg { width: 100%; height: auto; display: block; overflow: visible; }
+      .journey .cap { text-align: center; color: var(--muted); font-size: 0.84rem; margin-top: 18px; }
+
+      section.sec { margin-top: 104px; scroll-margin-top: 30px; }
+      .sec-head { display: grid; grid-template-columns: auto 1fr; gap: 22px; align-items: start; margin-bottom: 30px; }
+      .numeral { font-family: var(--serif); font-weight: 700; font-size: 3.6rem; line-height: 0.9; color: var(--accent); min-width: 92px; }
+      .numeral .of { display: block; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.12em; color: var(--faint); margin-top: 8px; }
+      .sec-head h2 { font-family: var(--serif); font-size: clamp(1.45rem, 3.6vw, 2rem); font-weight: 700; line-height: 1.22; }
+      .sec-head .kicker { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+      .sec-head p { color: var(--ink-2); margin-top: 12px; max-width: 720px; font-size: 1.02rem; }
+      .sec-head p code { color: var(--accent); background: var(--accent-soft); }
+      @media (max-width: 680px) { .sec-head { grid-template-columns: 1fr; gap: 8px; } .numeral { font-size: 2.6rem; } }
+
+      .js .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease); }
+      .reveal.in { opacity: 1; transform: none; }
+      .reveal.d1 { transition-delay: 0.07s; } .reveal.d2 { transition-delay: 0.14s; } .reveal.d3 { transition-delay: 0.21s; }
+      .js .draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
+      .reveal.in .draw, .journey.in .draw { stroke-dashoffset: 0; transition: stroke-dashoffset 1.5s var(--ease); }
+      .reveal.in .draw.l1, .journey.in .draw.l1 { transition-delay: 0.15s; }
+      .reveal.in .draw.l2, .journey.in .draw.l2 { transition-delay: 0.35s; }
+      .reveal.in .draw.l3, .journey.in .draw.l3 { transition-delay: 0.55s; }
+      .js .ink-fade { opacity: 0; transition: opacity 0.7s var(--ease); }
+      .reveal.in .ink-fade, .journey.in .ink-fade { opacity: 1; }
+      .reveal.in .ink-fade.f1, .journey.in .ink-fade.f1 { transition-delay: 0.5s; }
+      .reveal.in .ink-fade.f2, .journey.in .ink-fade.f2 { transition-delay: 0.85s; }
+      .reveal.in .ink-fade.f3, .journey.in .ink-fade.f3 { transition-delay: 1.2s; }
+
+      .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; }
+      .panel + .panel { margin-top: 16px; }
+      .panel h3 { font-size: 0.98rem; color: var(--accent); margin-bottom: 10px; font-weight: 700; }
+      .panel p { color: var(--ink-2); font-size: 0.92rem; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+      @media (max-width: 680px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+      .stage { margin-top: 18px; background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r); padding: 26px 22px; overflow: hidden; }
+      .stage svg { width: 100%; height: auto; display: block; overflow: visible; }
+      .flow-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      @media (max-width: 760px) { .flow-scroll svg { min-width: 760px; } }
+      .aside { display: flex; gap: 10px; align-items: flex-start; font-size: 0.86rem; color: var(--muted); margin-top: 16px; }
+      .aside .b { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-family: var(--serif); font-weight: 700; font-size: 0.8rem; }
+      .aside b { color: var(--ink-2); }
+      .split { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+      @media (max-width: 680px) { .split { grid-template-columns: 1fr; } }
+      .cell { padding: 28px 24px; }
+      .cell.no { background: linear-gradient(180deg, rgba(212,80,62,0.06), transparent); }
+      .cell.yes { background: linear-gradient(180deg, rgba(47,155,78,0.06), transparent); border-left: 1px solid var(--line); }
+      @media (max-width: 680px) { .cell.yes { border-left: none; border-top: 1px solid var(--line); } }
+      .cell .role { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+      .cell h3 { font-family: var(--serif); font-size: 1.25rem; margin: 8px 0 6px; }
+      .cell.no h3 { color: var(--coral); } .cell.yes h3 { color: var(--green); }
+      .cell p { color: var(--ink-2); font-size: 0.93rem; margin-top: 10px; }
+      .recap { background: linear-gradient(135deg, rgba(191,125,18,0.06), rgba(47,155,78,0.06)); border: 1px solid var(--line-2); }
+      .recap .flow { font-family: var(--serif); font-size: 1.08rem; line-height: 1.95; color: var(--ink); }
+      .recap .flow b { color: var(--coral); }
+      .foot { margin-top: 96px; padding-top: 26px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; color: var(--faint); font-size: 0.82rem; }
+      .foot code { background: none; padding: 0; color: var(--muted); }
+
+      /* —— 五套信封卡片 —— */
+      .env-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 18px; }
+      @media (max-width: 860px) { .env-grid { grid-template-columns: repeat(2, 1fr); } }
+      .env { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 13px; font-size: 0.78rem; }
+      .env .nm { font-family: var(--mono); font-size: 0.68rem; color: var(--ink); font-weight: 700; line-height: 1.4; word-break: break-all; }
+      .env .home { color: var(--faint); font-size: 0.68rem; margin-top: 2px; font-family: var(--mono); }
+      .env .who { margin-top: 10px; padding: 6px 8px; border-radius: 8px; background: rgba(212,80,62,0.07); }
+      .env .who .lab { font-size: 0.62rem; color: var(--faint); font-family: var(--mono); letter-spacing: 0.08em; }
+      .env .who .val { font-family: var(--mono); font-size: 0.72rem; color: #a83d2f; font-weight: 700; }
+      .env .cnt { margin-top: 8px; color: var(--muted); font-size: 0.72rem; }
+
+      /* —— 交互件:四扇门 —— */
+      .lab-box { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px; margin-top: 18px; }
+      .src-row { display: flex; flex-wrap: wrap; gap: 8px; }
+      .src-btn { font-family: var(--sans); font-size: 0.84rem; padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--line-2); background: var(--paper-2); color: var(--ink-2); cursor: pointer; transition: all 0.25s var(--ease); }
+      .src-btn:hover { border-color: #cf6d28; color: #cf6d28; }
+      .src-btn.on { background: #cf6d28; border-color: #cf6d28; color: #fff; font-weight: 600; }
+      .gates { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 20px; }
+      @media (max-width: 680px) { .gates { grid-template-columns: repeat(2, 1fr); } }
+      .gate { border-radius: 14px; padding: 16px 14px; text-align: center; border: 1.5px solid var(--line); transition: all 0.4s var(--ease); }
+      .gate .g-icon { font-size: 1.5rem; line-height: 1; }
+      .gate .g-name { font-weight: 700; font-size: 0.9rem; margin-top: 8px; }
+      .gate .g-sub { font-family: var(--mono); font-size: 0.64rem; color: var(--faint); margin-top: 3px; }
+      .gate .g-state { font-size: 0.76rem; margin-top: 8px; font-weight: 600; }
+      .gate.open { background: rgba(47,155,78,0.08); border-color: rgba(47,155,78,0.5); }
+      .gate.open .g-state { color: #237a3c; }
+      .gate.shut { background: rgba(212,80,62,0.07); border-color: rgba(212,80,62,0.45); }
+      .gate.shut .g-state { color: #a83d2f; }
+      .gate.na { background: var(--paper-2); border-style: dashed; opacity: 0.75; }
+      .gate.na .g-state { color: var(--faint); }
+      .lab-note { margin-top: 18px; padding: 14px 16px; border-radius: 12px; background: var(--paper-2); border: 1px dashed var(--line-2); font-size: 0.88rem; color: var(--ink-2); }
+      .lab-note .bc { display: inline-block; margin-top: 6px; font-family: var(--mono); font-size: 0.7rem; color: #a83d2f; background: rgba(212,80,62,0.08); padding: 2px 8px; border-radius: 6px; }
+
+      /* —— 路线图 phase 卡 —— */
+      .phase-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 18px; }
+      @media (max-width: 860px) { .phase-row { grid-template-columns: 1fr 1fr; } }
+      .ph { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 13px; font-size: 0.8rem; border-top: 3px solid #2f9b4e; }
+      .ph .pn { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; color: #237a3c; }
+      .ph .pt { font-weight: 650; margin-top: 4px; font-size: 0.84rem; }
+      .ph p { color: var(--muted); font-size: 0.75rem; margin-top: 6px; line-height: 1.6; }
+
+      table.tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 16px; background: var(--card); border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); }
+      .tbl th { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--paper-2); }
+      .tbl td { padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+      .tbl tr:last-child td { border-bottom: none; }
+      .tbl td.f { font-family: var(--mono); font-size: 0.76rem; color: var(--ink); white-space: nowrap; }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
+        .reveal { opacity: 1; transform: none; } .draw { stroke-dashoffset: 0; } .ink-fade { opacity: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="rail"><div class="fill" id="fill"></div></div>
+
+    <nav class="spine" aria-label="章节">
+      <ol>
+        <li><a href="#s1" data-s="s1"><span class="bead"></span><span class="lbl">档案袋与四个问题</span></a></li>
+        <li><a href="#s2" data-s="s2"><span class="bead"></span><span class="lbl">病灶:五套信封</span></a></li>
+        <li><a href="#s3" data-s="s3"><span class="bead"></span><span class="lbl">总图:一座法院</span></a></li>
+        <li><a href="#s4" data-s="s4"><span class="bead"></span><span class="lbl">族一:鉴定科</span></a></li>
+        <li><a href="#s5" data-s="s5"><span class="bead"></span><span class="lbl">visual:证物科</span></a></li>
+        <li><a href="#s6" data-s="s6"><span class="bead"></span><span class="lbl">evidence:合议庭</span></a></li>
+        <li><a href="#s7" data-s="s7"><span class="bead"></span><span class="lbl">交互:四扇门</span></a></li>
+        <li><a href="#s8" data-s="s8"><span class="bead"></span><span class="lbl">memory:档案室</span></a></li>
+        <li><a href="#s9" data-s="s9"><span class="bead"></span><span class="lbl">落地路线</span></a></li>
+      </ol>
+    </nav>
+
+    <div class="wrap">
+      <!-- ============ HERO ============ -->
+      <header class="hero">
+        <div class="eyebrow">CANDIDATE PROFILE DOMAIN</div>
+        <h1 class="title">一份档案,<br /><span class="accent">谁说了算</span></h1>
+        <p class="lede">招聘 Agent 的核心资产只有一份:<b>候选人档案</b>——姓名、手机号、城市、品牌意向、用工形式……这套重构给档案里的每一条信息安排唯一的负责人:<b>谁解析、谁裁决、谁保管</b>。本文是 <code>candidate-profile-domain-refactor-plan.md</code> 的图解版。</p>
+
+        <blockquote class="quote">
+          <div class="q-label">贯穿全文的案例 · 改编自真实 P0(badcase vkikct39)</div>
+          <div class="q-text">小张在同一个消息窗口里发来三样东西:一张 BOSS 直聘<span class="mark" style="background:rgba(31,134,196,0.14)">岗位截图</span>(上面印着招募经理的手机号和「18-40岁」门槛)、一句手打的「<span class="mark" style="background:rgba(14,138,125,0.14)">我叫张丽鑫,03年的,想找奶茶店的兼职,我在顺义</span>」、一条<span class="mark" style="background:rgba(212,80,62,0.12)">[引用 高雅琪:望京必胜客急招]</span> 的追问。——在旧链路上,截图里的经理手机号和「18岁」曾被当成候选人自陈提交进真实报名表,AI 面试短信发到了招募经理手机上。</div>
+          <div class="extract">
+            <span class="ex"><span class="k">name </span>张丽鑫</span>
+            <span class="ex"><span class="k">age </span>03年→23</span>
+            <span class="ex"><span class="k">brand </span>奶茶店→品类展开</span>
+            <span class="ex"><span class="k">city </span>顺义→北京</span>
+            <span class="ex"><span class="k">labor_form </span>兼职</span>
+            <span class="ex"><span class="k">⚠ 截图手机号 </span>必须拦下</span>
+            <span class="ex"><span class="k">⚠ 引用名"高雅琪" </span>必须拦下</span>
+          </div>
+        </blockquote>
+      </header>
+
+      <!-- ============ JOURNEY ============ -->
+      <div class="journey" id="journey">
+        <svg viewBox="0 0 880 150" role="img" aria-label="全流程总览">
+          <defs>
+            <linearGradient id="trk" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#bf7d12" /><stop offset="50%" stop-color="#7c52d6" /><stop offset="100%" stop-color="#2f9b4e" />
+            </linearGradient>
+            <radialGradient id="spk"><stop offset="0%" stop-color="#fff" /><stop offset="100%" stop-color="#d4503e" stop-opacity="0" /></radialGradient>
+          </defs>
+          <line x1="48" y1="70" x2="832" y2="70" stroke="#d6cdba" stroke-width="2" />
+          <line x1="48" y1="70" x2="832" y2="70" stroke="url(#trk)" stroke-width="3" pathLength="1" class="draw l1" />
+          <circle r="6" fill="url(#spk)"><animateMotion dur="6s" repeatCount="indefinite" path="M48,70 L832,70" /></circle>
+          <g text-anchor="middle">
+            <g class="ink-fade f1">
+              <circle cx="48" cy="70" r="7" fill="#bf7d12" /><text x="48" y="44" fill="#716d7c" font-size="11.5">原始消息</text>
+              <text x="48" y="98" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">手打+截图+引用</text>
+            </g>
+            <g class="ink-fade f1">
+              <circle cx="205" cy="70" r="6" fill="#d4503e" /><text x="205" y="44" fill="#716d7c" font-size="11.5">剥标记</text>
+              <text x="205" y="98" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">infra/utils</text>
+            </g>
+            <g class="ink-fade f2">
+              <circle cx="362" cy="70" r="6" fill="#0e8a7d" /><text x="362" y="44" fill="#716d7c" font-size="11.5">字段解析</text>
+              <text x="362" y="98" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">resolution·族一</text>
+            </g>
+            <g class="ink-fade f2">
+              <circle cx="519" cy="70" r="6" fill="#7c52d6" /><text x="519" y="44" fill="#716d7c" font-size="11.5">证据裁决</text>
+              <text x="519" y="98" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">resolution·族二</text>
+            </g>
+            <g class="ink-fade f3">
+              <circle cx="676" cy="70" r="6" fill="#3b6fd4" /><text x="676" y="44" fill="#716d7c" font-size="11.5">档案入库</text>
+              <text x="676" y="98" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">memory</text>
+            </g>
+            <g class="ink-fade f3">
+              <circle cx="832" cy="70" r="8" fill="#2f9b4e" /><text x="832" y="44" fill="#1d1c26" font-size="11.5" font-weight="600">业务消费</text>
+              <text x="832" y="98" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">precheck/booking/拉群</text>
+            </g>
+          </g>
+        </svg>
+        <p class="cap">小张的三条消息,从进门到写进档案再到被报名工具消费,每一站只做一件事——这就是全部架构。</p>
+      </div>
+
+      <!-- ============ 01 档案袋 ============ -->
+      <section class="sec" id="s1" style="--accent:var(--amber);--accent-soft:rgba(191,125,18,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">01<span class="of">/ 09 · 问题定义</span></div>
+          <div>
+            <div class="kicker">candidate profile</div>
+            <h2>全系统只有一份核心资产:候选人档案袋</h2>
+            <p>召回岗位要看城市和品牌意向,报名要姓名和手机号,拉群要城市,守卫要身份。所有业务动作都建立在同一件事上——<b>「关于小张,我们知道什么」</b>。把它想象成一只入职档案袋:每往里放一页纸,都必须回答四个问题。</p>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="panel reveal d1"><h3>① 这是什么字段?</h3><p>「奶茶店」是品牌线索还是工种?「顺义」是区还是城市?把自由文本翻译成标准字段值——这是<b>解析</b>问题。</p></div>
+          <div class="panel reveal d2"><h3>② 谁说的?</h3><p>是小张亲口说的,还是岗位截图上印的,还是引用气泡里经理说的?——这是<b>出处</b>问题,vkikct39 那次事故就死在这一问缺席。</p></div>
+          <div class="panel reveal d1"><h3>③ 有多可信?</h3><p>手打的真名 vs 微信昵称、白名单精确命中的城市 vs LLM 猜的城市——不是所有信息都够格进报名表。这是<b>置信</b>问题。</p></div>
+          <div class="panel reveal d2"><h3>④ 冲突了听谁的?</h3><p>上周说在杭州、今天定位在北京;截图里是必胜客、嘴上说想做奶茶——这是<b>裁决</b>问题。</p></div>
+        </div>
+        <div class="aside"><span class="b">i</span><div><b>这套架构的全部内容,就是给这四个问题各安排一个唯一的负责人。</b>①归族一解析器,②③④归族二裁决器,保管归 memory。</div></div>
+      </section>
+
+      <!-- ============ 02 病灶 ============ -->
+      <section class="sec" id="s2" style="--accent:var(--coral);--accent-soft:rgba(212,80,62,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">02<span class="of">/ 09 · 为什么要动</span></div>
+          <div>
+            <div class="kicker">status quo</div>
+            <h2>同一句话,五个部门,五张表格</h2>
+            <p>「候选人档案」从没被立为一等域。每次 badcase 打到某个字段,就围绕那个字段长出一套小系统,各带一份「信封」——值+来源+置信度+冲突规则。现在<b>同一个「小张亲口说的手机号」,在五套结构里有四个名字</b>,而全库没有一个互转函数。</p>
+          </div>
+        </div>
+        <div class="env-grid reveal d1">
+          <div class="env"><div class="nm">SessionFactValue</div><div class="home">session-facts.types:402</div><div class="who"><div class="lab">「谁说的」叫</div><div class="val">source='candidate'</div></div><div class="cnt">来源 7 值 · 置信 4 档</div></div>
+          <div class="env"><div class="nm">HighConfidenceValue</div><div class="home">session-facts.types:435</div><div class="who"><div class="lab">「谁说的」叫</div><div class="val">source='rule'</div></div><div class="cnt">来源 2 值 · 置信 3 档</div></div>
+          <div class="env"><div class="nm">CollectedField</div><div class="home">authoritative-state:3</div><div class="who"><div class="lab">「谁说的」叫</div><div class="val">provenance='user_text'</div></div><div class="cnt">来源 4 值 · 无置信</div></div>
+          <div class="env"><div class="nm">CandidateFactClaim</div><div class="home">claim.types:87</div><div class="who"><div class="lab">「谁说的」叫</div><div class="val">producer='rule'</div></div><div class="cnt">来源 4 值 + quote 证据</div></div>
+          <div class="env"><div class="nm">VisualFactField</div><div class="home">visual-fact.types:85</div><div class="who"><div class="lab">「谁说的」叫</div><div class="val">ownership='candidate'</div></div><div class="cnt">来源 4 值 · kind 6 档</div></div>
+        </div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-top:12px" class="reveal d2">另有品牌自成一套(<code>BrandResolution</code> 极性三值+数值档位)、长期画像又一套(<code>UserProfileFactValue</code> 来源 9 值)。冲突处置也各不相同:city 比置信度、brand 走替换式状态机、name 判 conflicted——三种结果互不知道对方存在。</p>
+
+        <div class="stage reveal d2 flow-scroll">
+          <svg viewBox="0 0 860 200" role="img" aria-label="memory 与 tools 的循环依赖">
+            <text x="24" y="30" fill="#a83d2f" font-size="12.5" font-weight="700">居所错位的代价:memory ↔ tools 三跳真环(ESLint 零约束)</text>
+            <g class="ink-fade f1">
+              <rect x="40" y="70" width="220" height="52" rx="12" fill="#fffdf8" stroke="#d4503e" stroke-width="1.4" />
+              <text x="150" y="92" text-anchor="middle" fill="#1d1c26" font-size="12" font-weight="600">memory/facts/candidate</text>
+              <text x="150" y="110" text-anchor="middle" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">claim 裁决引擎</text>
+            </g>
+            <g class="ink-fade f1">
+              <rect x="330" y="70" width="220" height="52" rx="12" fill="#fffdf8" stroke="#d4503e" stroke-width="1.4" />
+              <text x="440" y="92" text-anchor="middle" fill="#1d1c26" font-size="12" font-weight="600">tools/shared</text>
+              <text x="440" y="110" text-anchor="middle" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">candidate-field-parser 九个 parse*</text>
+            </g>
+            <g class="ink-fade f1">
+              <rect x="620" y="70" width="200" height="52" rx="12" fill="#fffdf8" stroke="#d4503e" stroke-width="1.4" />
+              <text x="720" y="92" text-anchor="middle" fill="#1d1c26" font-size="12" font-weight="600">memory/facts/name-guard</text>
+              <text x="720" y="110" text-anchor="middle" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">真名形态判定</text>
+            </g>
+            <path d="M260,86 L326,86" stroke="#d4503e" stroke-width="2" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="330,86 322,82 322,90" fill="#d4503e" class="ink-fade f2" />
+            <text x="295" y="76" text-anchor="middle" fill="#a83d2f" font-size="9" font-family="ui-monospace, Menlo, monospace" class="ink-fade f2">借解析器</text>
+            <path d="M550,106 L616,106" stroke="#d4503e" stroke-width="2" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="620,106 612,102 612,110" fill="#d4503e" class="ink-fade f2" />
+            <text x="585" y="126" text-anchor="middle" fill="#a83d2f" font-size="9" font-family="ui-monospace, Menlo, monospace" class="ink-fade f2">借真名判定</text>
+            <path d="M700,122 C640,178 220,178 150,126" stroke="#d4503e" stroke-width="2" stroke-dasharray="6 4" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="150,126 148,137 158,132" fill="#d4503e" class="ink-fade f3" />
+            <text x="430" y="182" text-anchor="middle" fill="#a83d2f" font-size="10" font-family="ui-monospace, Menlo, monospace" class="ink-fade f3">precheck 工具又 import 裁决引擎 → 环闭合(另有 session.service→tools 等 ≥7 条边)</text>
+          </svg>
+        </div>
+        <div class="aside"><span class="b">!</span><div><code>memory/facts/</code> 已被搬空过两次——geo、brand 各迁走一批,每个文件头都留着迁移记录。<b>剩下的不是「留下来的」,是「没搬完的」。</b></div></div>
+      </section>
+
+      <!-- ============ 03 总图 ============ -->
+      <section class="sec" id="s3" style="--accent:var(--indigo);--accent-soft:rgba(79,70,229,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">03<span class="of">/ 09 · 目标架构</span></div>
+          <div>
+            <div class="kicker">target architecture · 全景图</div>
+            <h2>一座法院:鉴定科、证物科、合议庭、档案室</h2>
+            <p>目标形态是一座分工严格的法院。<b>鉴定科</b>(族一)把方言口供翻译成标准语言;<b>证物科</b>(visual)登记封存证物;<b>合议庭</b>(evidence)裁定每条主张采不采信;<b>档案室</b>(memory)只管保管与借阅;<b>办案人员</b>(tools/agent)拿着档案办事。src 根目录数不变,resolution 一词本就双关:entity resolution(实体解析)+ conflict resolution(争议裁决)。</p>
+          </div>
+        </div>
+
+        <div class="stage reveal d1 flow-scroll">
+          <svg viewBox="0 0 900 700" role="img" aria-label="候选人档案域目标架构总图">
+            <!-- ═══ Band A 消费方 ═══ -->
+            <text x="30" y="28" fill="#716d7c" font-size="11" font-family="ui-monospace, Menlo, monospace" class="ink-fade f1">办案人员 · 消费方</text>
+            <g class="ink-fade f1">
+              <rect x="30" y="40" width="255" height="58" rx="12" fill="#fffdf8" stroke="#4f46e5" stroke-width="1.4" />
+              <text x="157" y="64" text-anchor="middle" fill="#1d1c26" font-size="12.5" font-weight="700">agent 编排/生成</text>
+              <text x="157" y="82" text-anchor="middle" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">prompt sections · 守卫 · 复聊</text>
+            </g>
+            <g class="ink-fade f1">
+              <rect x="315" y="40" width="255" height="58" rx="12" fill="#fffdf8" stroke="#4f46e5" stroke-width="1.4" />
+              <text x="442" y="64" text-anchor="middle" fill="#1d1c26" font-size="12.5" font-weight="700">tools 工具</text>
+              <text x="442" y="82" text-anchor="middle" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">precheck · booking · 拉群门 · 岗位召回</text>
+            </g>
+            <g class="ink-fade f1">
+              <rect x="600" y="40" width="270" height="58" rx="12" fill="#fffdf8" stroke="#4f46e5" stroke-width="1.4" />
+              <text x="735" y="64" text-anchor="middle" fill="#1d1c26" font-size="12.5" font-weight="700">channels 渠道</text>
+              <text x="735" y="82" text-anchor="middle" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">vision 生产者(P1 兜底引擎)</text>
+            </g>
+
+            <!-- A → B -->
+            <path d="M157,98 L157,146" stroke="#8b87a0" stroke-width="1.8" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="157,150 152,142 162,142" fill="#8b87a0" class="ink-fade f2" />
+            <path d="M400,98 L360,146" stroke="#8b87a0" stroke-width="1.8" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="358,150 355,141 364,144" fill="#8b87a0" class="ink-fade f2" />
+            <text x="248" y="130" fill="#716d7c" font-size="9.5" font-family="ui-monospace, Menlo, monospace" class="ink-fade f2">读/写档案(经服务出口)</text>
+
+            <!-- ✗ 禁行: memory ↛ tools -->
+            <g class="ink-fade f3">
+              <path d="M600,180 C680,170 700,120 640,102" stroke="#d4503e" stroke-width="1.8" stroke-dasharray="5 5" fill="none" />
+              <circle cx="672" cy="146" r="11" fill="#f3efe6" stroke="#d4503e" stroke-width="1.6" />
+              <text x="672" y="151" text-anchor="middle" fill="#d4503e" font-size="12" font-weight="700">✗</text>
+              <text x="762" y="140" fill="#a83d2f" font-size="9.5" font-family="ui-monospace, Menlo, monospace">memory ↛ tools</text>
+              <text x="762" y="154" fill="#a83d2f" font-size="9.5" font-family="ui-monospace, Menlo, monospace">tools ↛ memory/facts</text>
+              <text x="762" y="168" fill="#a39fab" font-size="9">(ESLint 双向禁令)</text>
+            </g>
+
+            <!-- ═══ Band B memory ═══ -->
+            <g class="ink-fade f2">
+              <rect x="30" y="150" width="540" height="72" rx="12" fill="rgba(59,111,212,0.07)" stroke="#3b6fd4" stroke-width="1.5" />
+              <text x="52" y="178" fill="#2a55a8" font-size="13" font-weight="700">memory · 档案室</text>
+              <text x="52" y="198" fill="#44414f" font-size="10.5">只剩不可替代的那一半:存取 / TTL / 并发 / 生命周期 / 沉淀 / 召回编排 + IO 编排(调 LLM 抽取)</text>
+              <text x="52" y="214" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">services · stores · types(存储信封) · formatters(档案读模型) —— facts/ 目录解散</text>
+            </g>
+
+            <!-- B → C -->
+            <path d="M300,222 L300,268" stroke="#8b87a0" stroke-width="1.8" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="300,272 295,264 305,264" fill="#8b87a0" class="ink-fade f2" />
+            <text x="312" y="252" fill="#716d7c" font-size="9.5" font-family="ui-monospace, Menlo, monospace" class="ink-fade f2">extractAndSave 只调裁决链+落盘</text>
+            <!-- A(tools) → C 直连 -->
+            <path d="M500,98 C560,180 620,230 620,268" stroke="#8b87a0" stroke-width="1.8" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="620,272 615,264 625,264" fill="#8b87a0" class="ink-fade f2" />
+            <text x="636" y="248" fill="#716d7c" font-size="9.5" font-family="ui-monospace, Menlo, monospace" class="ink-fade f2">工具直接调纯函数</text>
+            <text x="636" y="261" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace" class="ink-fade f2">(拉群门/快照闸/解析)</text>
+
+            <!-- ═══ Band C resolution ═══ -->
+            <g class="ink-fade f2">
+              <rect x="30" y="272" width="840" height="290" rx="16" fill="rgba(79,70,229,0.045)" stroke="#4f46e5" stroke-width="1.8" />
+              <text x="52" y="300" fill="#3c34b8" font-size="13.5" font-weight="700">resolution · 消解域</text>
+              <text x="220" y="300" fill="#716d7c" font-size="10">纯确定性 · 零 LLM · 零 IO · 可被上层依赖,禁反向 import</text>
+            </g>
+
+            <!-- 族一 -->
+            <g class="ink-fade f2">
+              <text x="52" y="330" fill="#0a6e63" font-size="10.5" font-family="ui-monospace, Menlo, monospace" font-weight="700">族一 · 字段解析(自由文本 → 该字段的标准值)</text>
+              <rect x="52" y="342" width="120" height="56" rx="10" fill="#fffdf8" stroke="#0e8a7d" stroke-width="1.3" />
+              <text x="112" y="366" text-anchor="middle" fill="#0a6e63" font-size="12" font-weight="700">brand/</text>
+              <text x="112" y="384" text-anchor="middle" fill="#a39fab" font-size="8.5">目录·极性·reducer</text>
+              <rect x="186" y="342" width="120" height="56" rx="10" fill="#fffdf8" stroke="#0e8a7d" stroke-width="1.3" />
+              <text x="246" y="366" text-anchor="middle" fill="#0a6e63" font-size="12" font-weight="700">geo/</text>
+              <text x="246" y="384" text-anchor="middle" fill="#a39fab" font-size="8.5">行政区·白名单·歧义</text>
+              <rect x="320" y="342" width="130" height="56" rx="10" fill="#fffdf8" stroke="#0e8a7d" stroke-width="1.3" />
+              <text x="385" y="366" text-anchor="middle" fill="#0a6e63" font-size="12" font-weight="700">labor-form/</text>
+              <text x="385" y="384" text-anchor="middle" fill="#a39fab" font-size="8.5">三态意向·层级匹配</text>
+              <rect x="464" y="342" width="170" height="56" rx="10" fill="rgba(14,138,125,0.08)" stroke="#0e8a7d" stroke-width="1.6" />
+              <text x="549" y="362" text-anchor="middle" fill="#0a6e63" font-size="12" font-weight="700">candidate/ ★新建</text>
+              <text x="549" y="378" text-anchor="middle" fill="#44414f" font-size="8.5">name·phone·age·gender·身高体重</text>
+              <text x="549" y="390" text-anchor="middle" fill="#44414f" font-size="8.5">健康证·学历·户籍·学生身份</text>
+            </g>
+            <!-- brand→geo 既有例外 -->
+            <path d="M172,388 L182,388" stroke="#0e8a7d" stroke-width="1.2" pathLength="1" class="draw l3" fill="none" />
+            <text x="177" y="410" text-anchor="middle" fill="#a39fab" font-size="8" class="ink-fade f3">同形地名消歧</text>
+
+            <!-- visual -->
+            <g class="ink-fade f2">
+              <rect x="668" y="342" width="176" height="56" rx="10" fill="#fffdf8" stroke="#1f86c4" stroke-width="1.4" />
+              <text x="756" y="362" text-anchor="middle" fill="#15618f" font-size="12" font-weight="700">visual/ 证物科</text>
+              <text x="756" y="380" text-anchor="middle" fill="#a39fab" font-size="8.5">sheet schema·finalize·词表</text>
+              <text x="756" y="392" text-anchor="middle" fill="#a39fab" font-size="8.5">(生产归一,不判采信)</text>
+            </g>
+
+            <!-- 族二 evidence -->
+            <g class="ink-fade f3">
+              <text x="52" y="452" fill="#5a3fb0" font-size="10.5" font-family="ui-monospace, Menlo, monospace" font-weight="700">族二 · 证据裁决(多源主张 → 采信决定)</text>
+              <rect x="52" y="464" width="792" height="76" rx="12" fill="rgba(124,82,214,0.08)" stroke="#7c52d6" stroke-width="1.7" />
+              <text x="74" y="492" fill="#5a3fb0" font-size="13" font-weight="700">evidence/ 合议庭 ★裁决唯一居所</text>
+              <text x="74" y="512" fill="#44414f" font-size="10">claim 模型+裁决器 · 逐字段风险策略 · 准入授权域(四扇门) · rule×LLM 合并策略 · 快照语义 · 来源分类学互转表</text>
+              <text x="74" y="528" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">← memory/facts/candidate/* + snapshot-gate + session.service 的 11 道臆造门 + city 让位规则</text>
+            </g>
+
+            <!-- evidence → 族一/visual 调用箭头 -->
+            <path d="M112,464 L112,402" stroke="#7c52d6" stroke-width="1.5" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="112,398 107,406 117,406" fill="#7c52d6" class="ink-fade f3" />
+            <path d="M246,464 L246,402" stroke="#7c52d6" stroke-width="1.5" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="246,398 241,406 251,406" fill="#7c52d6" class="ink-fade f3" />
+            <path d="M385,464 L385,402" stroke="#7c52d6" stroke-width="1.5" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="385,398 380,406 390,406" fill="#7c52d6" class="ink-fade f3" />
+            <path d="M549,464 L549,402" stroke="#7c52d6" stroke-width="1.5" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="549,398 544,406 554,406" fill="#7c52d6" class="ink-fade f3" />
+            <path d="M756,464 L756,402" stroke="#7c52d6" stroke-width="1.5" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="756,398 751,406 761,406" fill="#7c52d6" class="ink-fade f3" />
+            <text x="640" y="440" fill="#5a3fb0" font-size="9" font-family="ui-monospace, Menlo, monospace" class="ink-fade f3">裁决时调解析器归一复算</text>
+
+            <!-- C → D -->
+            <path d="M450,562 L450,606" stroke="#8b87a0" stroke-width="1.8" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="450,610 445,602 455,602" fill="#8b87a0" class="ink-fade f3" />
+            <text x="462" y="592" fill="#716d7c" font-size="9.5" font-family="ui-monospace, Menlo, monospace" class="ink-fade f3">剥标记 / 认前缀</text>
+
+            <!-- ═══ Band D infra ═══ -->
+            <g class="ink-fade f3">
+              <rect x="150" y="610" width="600" height="62" rx="12" fill="rgba(191,125,18,0.07)" stroke="#bf7d12" stroke-width="1.4" />
+              <text x="450" y="636" text-anchor="middle" fill="#8f5e0e" font-size="12.5" font-weight="700">infra/utils · 零依赖纯函数抽屉</text>
+              <text x="450" y="656" text-anchor="middle" fill="#716d7c" font-size="10" font-family="ui-monospace, Menlo, monospace">message-markup(消息标记协议:时间后缀/引用块/视觉前缀/简历附件) · date · string</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="grid2" style="margin-top:16px">
+          <div class="panel reveal d1"><h3>族一的准入测试</h3><p>「输入自由文本,输出<b>该字段</b>的标准值/极性/意图,零 IO 零 LLM 零状态。」——能拒绝东西:session 编排进不来,输出治理(如 <code>sanitizeBrandName</code>)进不来,任何读档案的代码进不来。</p></div>
+          <div class="panel reveal d2"><h3>族二的准入测试</h3><p>「输入多源主张,输出采信/拒绝/冲突+理由码,只准调族一做归一复算。」——能拒绝东西:IO 进不来,存储格式进不来,prompt 拼装进不来。</p></div>
+        </div>
+        <div class="aside"><span class="b">i</span><div><b>resolution 一词本来就有两义</b>:entity resolution(把「奶茶店」解析成品牌集合)与 conflict resolution(裁决冲突证词)。两族共居一域不是凑合——是词义本身。</div></div>
+      </section>
+
+      <!-- ============ 04 族一 ============ -->
+      <section class="sec" id="s4" style="--accent:var(--teal);--accent-soft:rgba(14,138,125,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">04<span class="of">/ 09 · 族一</span></div>
+          <div>
+            <div class="kicker">field parsers · brand / geo / labor-form / candidate</div>
+            <h2>鉴定科:每个翻译官只懂一种方言</h2>
+            <p>小张那句手打的话,在鉴定科被拆给四个翻译官——<b>每人只认自己那种「方言」,只输出标准语言</b>。这正是你那句裁决的落地:品牌、地址、姓名本来就是平级的候选人信息,它们的解析器也平级。brand 和 geo 早就搬进来了,这次把 labor-form 和身份字段族(candidate)也接来,四科并列。</p>
+          </div>
+        </div>
+
+        <div class="stage reveal d1 flow-scroll">
+          <svg viewBox="0 0 860 300" role="img" aria-label="案例句被四个解析器拆解">
+            <rect x="20" y="20" width="240" height="260" rx="14" fill="#fffdf8" stroke="#d6cdba" stroke-width="1.3" />
+            <text x="40" y="48" fill="#716d7c" font-size="10" font-family="ui-monospace, Menlo, monospace">小张的手打消息</text>
+            <text x="40" y="86" fill="#1d1c26" font-size="13">「我叫<tspan fill="#0e8a7d" font-weight="700">张丽鑫</tspan>,</text>
+            <text x="40" y="112" fill="#1d1c26" font-size="13"><tspan fill="#0e8a7d" font-weight="700">03年的</tspan>,想找</text>
+            <text x="40" y="138" fill="#1d1c26" font-size="13"><tspan fill="#bf7d12" font-weight="700">奶茶店</tspan>的<tspan fill="#cf6d28" font-weight="700">兼职</tspan>,</text>
+            <text x="40" y="164" fill="#1d1c26" font-size="13">我在<tspan fill="#1f86c4" font-weight="700">顺义</tspan>」</text>
+            <text x="40" y="216" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">前置:infra/utils 已剥掉</text>
+            <text x="40" y="232" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">[消息发送时间:…] 后缀</text>
+            <text x="40" y="248" fill="#a39fab" font-size="9" font-family="ui-monospace, Menlo, monospace">与 [引用 …] 块</text>
+
+            <path d="M260,70 C330,60 380,52 430,52" stroke="#0e8a7d" stroke-width="1.8" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="434,52 426,48 426,56" fill="#0e8a7d" class="ink-fade f1" />
+            <path d="M260,130 C330,120 380,118 430,118" stroke="#bf7d12" stroke-width="1.8" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="434,118 426,114 426,122" fill="#bf7d12" class="ink-fade f1" />
+            <path d="M260,150 C330,170 380,182 430,184" stroke="#cf6d28" stroke-width="1.8" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="434,184 426,180 426,188" fill="#cf6d28" class="ink-fade f2" />
+            <path d="M260,170 C330,220 380,248 430,250" stroke="#1f86c4" stroke-width="1.8" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="434,250 426,246 426,254" fill="#1f86c4" class="ink-fade f2" />
+
+            <g class="ink-fade f1">
+              <rect x="438" y="30" width="180" height="44" rx="10" fill="rgba(14,138,125,0.08)" stroke="#0e8a7d" stroke-width="1.3" />
+              <text x="528" y="48" text-anchor="middle" fill="#0a6e63" font-size="11.5" font-weight="700">resolution/candidate</text>
+              <text x="528" y="64" text-anchor="middle" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">parseName · parseBirthYearAge</text>
+            </g>
+            <g class="ink-fade f1">
+              <rect x="438" y="96" width="180" height="44" rx="10" fill="rgba(191,125,18,0.08)" stroke="#bf7d12" stroke-width="1.3" />
+              <text x="528" y="114" text-anchor="middle" fill="#8f5e0e" font-size="11.5" font-weight="700">resolution/brand</text>
+              <text x="528" y="130" text-anchor="middle" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">品类展开 · polarity=positive</text>
+            </g>
+            <g class="ink-fade f2">
+              <rect x="438" y="162" width="180" height="44" rx="10" fill="rgba(207,109,40,0.08)" stroke="#cf6d28" stroke-width="1.3" />
+              <text x="528" y="180" text-anchor="middle" fill="#9c4f1a" font-size="11.5" font-weight="700">resolution/labor-form</text>
+              <text x="528" y="196" text-anchor="middle" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">decideLaborFormIntent</text>
+            </g>
+            <g class="ink-fade f2">
+              <rect x="438" y="228" width="180" height="44" rx="10" fill="rgba(31,134,196,0.08)" stroke="#1f86c4" stroke-width="1.3" />
+              <text x="528" y="246" text-anchor="middle" fill="#15618f" font-size="11.5" font-weight="700">resolution/geo</text>
+              <text x="528" y="262" text-anchor="middle" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">unique_district_alias</text>
+            </g>
+
+            <g class="ink-fade f3">
+              <rect x="668" y="30" width="172" height="242" rx="12" fill="#fffdf8" stroke="#d6cdba" stroke-width="1.3" />
+              <text x="754" y="54" text-anchor="middle" fill="#716d7c" font-size="10" font-family="ui-monospace, Menlo, monospace">标准值(产出)</text>
+              <text x="686" y="86" fill="#0a6e63" font-size="11" font-family="ui-monospace, Menlo, monospace">name = 张丽鑫</text>
+              <text x="686" y="108" fill="#0a6e63" font-size="11" font-family="ui-monospace, Menlo, monospace">age = 23(03年→周岁)</text>
+              <text x="686" y="140" fill="#8f5e0e" font-size="11" font-family="ui-monospace, Menlo, monospace">brands = 奶茶品类集</text>
+              <text x="686" y="156" fill="#8f5e0e" font-size="11" font-family="ui-monospace, Menlo, monospace">polarity = positive</text>
+              <text x="686" y="188" fill="#9c4f1a" font-size="11" font-family="ui-monospace, Menlo, monospace">labor_form = 兼职</text>
+              <text x="686" y="220" fill="#15618f" font-size="11" font-family="ui-monospace, Menlo, monospace">city = 北京</text>
+              <text x="686" y="236" fill="#15618f" font-size="11" font-family="ui-monospace, Menlo, monospace">district = 顺义</text>
+              <text x="686" y="258" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">evidence: unique_district</text>
+            </g>
+            <path d="M618,52 L664,72" stroke="#a39fab" stroke-width="1.4" pathLength="1" class="draw l3" fill="none" />
+            <path d="M618,118 L664,140" stroke="#a39fab" stroke-width="1.4" pathLength="1" class="draw l3" fill="none" />
+            <path d="M618,184 L664,190" stroke="#a39fab" stroke-width="1.4" pathLength="1" class="draw l3" fill="none" />
+            <path d="M618,250 L664,228" stroke="#a39fab" stroke-width="1.4" pathLength="1" class="draw l3" fill="none" />
+          </svg>
+        </div>
+
+        <div class="grid2" style="margin-top:16px">
+          <div class="panel reveal d1"><h3>candidate/ 是唯一的新科室</h3><p>把散在 <code>tools/shared</code>(九个 parse*、isStudent 唯一识别器、真名问答解析)和 <code>memory/facts</code>(逐字段提取器、name-guard 纯函数)的解析器<b>合并成每字段一个</b>。合一即消灭两轨漂移——同一个字段两套正则、守卫各缺一半的时代结束。</p></div>
+          <div class="panel reveal d2"><h3>合一顺手修掉的真 bug(勘探实锤)</h3><p>「需要有健康证是吗」疑问句在 tools 轨被判<b>有证</b>直进 booking;「身高165以上能做吗」的复述门槛被当自陈身高;「要招男生吗」被提取成性别。单一解析器取<b>两轨守卫的并集</b>。</p></div>
+        </div>
+        <div class="aside"><span class="b">i</span><div>准入判据能拒绝东西:brand→geo 的同形地名消歧是<b>显式登记的例外</b>(删掉会复活两个 P0);其余解析器之间互不依赖。</div></div>
+      </section>
+
+      <!-- ============ 05 visual ============ -->
+      <section class="sec" id="s5" style="--accent:var(--sky);--accent-soft:rgba(31,134,196,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">05<span class="of">/ 09 · 证物科</span></div>
+          <div>
+            <div class="kicker">resolution/visual</div>
+            <h2>证物科只登记证物,不判案</h2>
+            <p>小张那张岗位截图进门时先到证物科:vision 模型产出描述与结构化 sheet,<code>finalizeVisualFactSheet</code> 做三道登记手续——<b>key 白名单过滤、按 kind 补 ownership 归属、身份证号脱敏</b>。到此为止。这张证物「能不能采信、能写进档案哪一格」,是合议庭的事,不是证物科的事。</p>
+          </div>
+        </div>
+
+        <div class="stage reveal d1 flow-scroll">
+          <svg viewBox="0 0 860 230" role="img" aria-label="视觉证物的登记与移交">
+            <g class="ink-fade f1">
+              <rect x="20" y="40" width="150" height="46" rx="10" fill="#fffdf8" stroke="#1f86c4" stroke-width="1.3" />
+              <text x="95" y="59" text-anchor="middle" fill="#15618f" font-size="11" font-weight="700">P2 主路径</text>
+              <text x="95" y="76" text-anchor="middle" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">save_image_description</text>
+              <rect x="20" y="120" width="150" height="46" rx="10" fill="#fffdf8" stroke="#1f86c4" stroke-width="1.3" />
+              <text x="95" y="139" text-anchor="middle" fill="#15618f" font-size="11" font-weight="700">P1 兜底引擎</text>
+              <text x="95" y="156" text-anchor="middle" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">ImageDescriptionService</text>
+            </g>
+            <path d="M170,63 C220,63 240,90 270,98" stroke="#1f86c4" stroke-width="1.8" pathLength="1" class="draw l1" fill="none" />
+            <path d="M170,143 C220,143 240,116 270,108" stroke="#1f86c4" stroke-width="1.8" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="274,103 266,99 266,107" fill="#1f86c4" class="ink-fade f2" />
+
+            <g class="ink-fade f2">
+              <rect x="278" y="70" width="200" height="66" rx="12" fill="rgba(31,134,196,0.08)" stroke="#1f86c4" stroke-width="1.5" />
+              <text x="378" y="94" text-anchor="middle" fill="#15618f" font-size="12" font-weight="700">finalize 登记三手续</text>
+              <text x="378" y="112" text-anchor="middle" fill="#44414f" font-size="9.5">key 白名单 · ownership 默认 · 证件号脱敏</text>
+              <text x="378" y="127" text-anchor="middle" fill="#a39fab" font-size="8.5" font-family="ui-monospace, Menlo, monospace">失败一律降级 kind=other(回到纯文本)</text>
+            </g>
+            <path d="M478,103 L524,103" stroke="#1f86c4" stroke-width="1.8" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="528,103 520,99 520,107" fill="#1f86c4" class="ink-fade f2" />
+
+            <g class="ink-fade f2">
+              <rect x="532" y="56" width="180" height="94" rx="12" fill="#fffdf8" stroke="#1f86c4" stroke-width="1.4" />
+              <text x="622" y="78" text-anchor="middle" fill="#15618f" font-size="11.5" font-weight="700">sheet(封存的证物袋)</text>
+              <text x="548" y="100" fill="#44414f" font-size="9.5" font-family="ui-monospace, Menlo, monospace">kind: job_posting</text>
+              <text x="548" y="116" fill="#44414f" font-size="9.5" font-family="ui-monospace, Menlo, monospace">phone→ownership:publisher</text>
+              <text x="548" y="132" fill="#44414f" font-size="9.5" font-family="ui-monospace, Menlo, monospace">brand:必胜客 · 18-40岁门槛</text>
+            </g>
+            <path d="M712,103 L758,103" stroke="#7c52d6" stroke-width="1.8" stroke-dasharray="6 4" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="762,103 754,99 754,107" fill="#7c52d6" class="ink-fade f3" />
+            <g class="ink-fade f3">
+              <rect x="766" y="70" width="80" height="66" rx="10" fill="rgba(124,82,214,0.08)" stroke="#7c52d6" stroke-width="1.4" />
+              <text x="806" y="98" text-anchor="middle" fill="#5a3fb0" font-size="11" font-weight="700">合议庭</text>
+              <text x="806" y="116" text-anchor="middle" fill="#a39fab" font-size="8.5">采信与否</text>
+            </g>
+            <text x="430" y="196" text-anchor="middle" fill="#716d7c" font-size="10" class="ink-fade f3">勘探事实:15 个 field key 里 9 个全库零读者——sheet.fields 近乎装饰,<tspan font-weight="700" fill="#15618f">kind 才是产品</tspan>(它驱动四扇门,见第 07 章)</text>
+          </svg>
+        </div>
+
+        <div class="split reveal d2" style="margin-top:16px">
+          <div class="cell no"><div class="role">曾经的误会</div><h3>visual 像 brand/geo 一样是解析器</h3><p>它没有「文本→词表」这件事:值的载体仍是描述文本,真正生效的是 kind 对档案写入的门控。把消费策略也留在 visual,等于让证物科替法官判案。</p></div>
+          <div class="cell yes"><div class="role">目标分工</div><h3>生产归一留 visual,消费策略归 evidence</h3><p>schema、finalize、模型词表(生产侧)留在证物科;<code>resolveExtractionScope</code> 授权域矩阵(消费侧)迁入合议庭,与文本来源的准入规则合成同一张表。</p></div>
+        </div>
+        <div class="aside"><span class="b">!</span><div>顺手修一个现行漏洞:守卫的 review-packet 目前<b>绕过 finalize</b> 手搓 sheet——白名单/归属/脱敏三道登记手续在评审链路全部失效(Phase 0-5)。</div></div>
+      </section>
+
+      <!-- ============ 06 evidence ============ -->
+      <section class="sec" id="s6" style="--accent:var(--violet);--accent-soft:rgba(124,82,214,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">06<span class="of">/ 09 · 族二</span></div>
+          <div>
+            <div class="kicker">resolution/evidence · claim 裁决</div>
+            <h2>合议庭:一条主张要过三道审</h2>
+            <p>任何想写进档案的信息,先变成一条<b>主张(claim)</b>:「<code>name=张丽鑫,producer=rule,quote="我叫张丽鑫,03年的"</code>」。合议庭对每条主张过三道审。这套引擎已经存在(收资证据化专项,shadow 运行中)——重构只是给它<b>正名分、迁居所、扩管辖</b>:从 precheck 的旁路视图,升格为全部档案字段的唯一裁决器。</p>
+          </div>
+        </div>
+
+        <div class="stage reveal d1 flow-scroll">
+          <svg viewBox="0 0 860 240" role="img" aria-label="claim 裁决三道审">
+            <g class="ink-fade f1">
+              <rect x="20" y="80" width="170" height="80" rx="12" fill="#fffdf8" stroke="#7c52d6" stroke-width="1.4" />
+              <text x="105" y="104" text-anchor="middle" fill="#5a3fb0" font-size="11.5" font-weight="700">一条主张 claim</text>
+              <text x="36" y="124" fill="#44414f" font-size="9" font-family="ui-monospace, Menlo, monospace">field: phone</text>
+              <text x="36" y="139" fill="#44414f" font-size="9" font-family="ui-monospace, Menlo, monospace">value: 137****(截图上的)</text>
+              <text x="36" y="153" fill="#44414f" font-size="9" font-family="ui-monospace, Menlo, monospace">producer: model</text>
+            </g>
+            <path d="M190,120 L232,120" stroke="#7c52d6" stroke-width="2" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="236,120 228,116 228,124" fill="#7c52d6" class="ink-fade f1" />
+
+            <g class="ink-fade f1">
+              <rect x="240" y="60" width="176" height="120" rx="12" fill="rgba(124,82,214,0.07)" stroke="#7c52d6" stroke-width="1.4" />
+              <text x="328" y="84" text-anchor="middle" fill="#5a3fb0" font-size="11.5" font-weight="700">① 出处审</text>
+              <text x="328" y="103" text-anchor="middle" fill="#44414f" font-size="9.5">quote 必须在候选人自陈语料</text>
+              <text x="328" y="118" text-anchor="middle" fill="#44414f" font-size="9.5">里逐字命中(剥引用块/时间</text>
+              <text x="328" y="133" text-anchor="middle" fill="#44414f" font-size="9.5">后缀/第三方图片描述)</text>
+              <text x="328" y="158" text-anchor="middle" fill="#a83d2f" font-size="9" font-family="ui-monospace, Menlo, monospace">截图手机号在这里出局 ✗</text>
+            </g>
+            <path d="M416,120 L458,120" stroke="#7c52d6" stroke-width="2" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="462,120 454,116 454,124" fill="#7c52d6" class="ink-fade f2" />
+
+            <g class="ink-fade f2">
+              <rect x="466" y="60" width="176" height="120" rx="12" fill="rgba(124,82,214,0.07)" stroke="#7c52d6" stroke-width="1.4" />
+              <text x="554" y="84" text-anchor="middle" fill="#5a3fb0" font-size="11.5" font-weight="700">② 强度审(按字段分档)</text>
+              <text x="482" y="106" fill="#44414f" font-size="9" font-family="ui-monospace, Menlo, monospace">strict_identity 证据须逐字含值</text>
+              <text x="482" y="122" fill="#44414f" font-size="9" font-family="ui-monospace, Menlo, monospace">normalizable  quote 可复算等价</text>
+              <text x="482" y="138" fill="#44414f" font-size="9" font-family="ui-monospace, Menlo, monospace">boolean_identity 识别器担保</text>
+              <text x="554" y="160" text-anchor="middle" fill="#a39fab" font-size="8.5">(name/phone 最严,age 可换算)</text>
+            </g>
+            <path d="M642,120 L684,120" stroke="#7c52d6" stroke-width="2" pathLength="1" class="draw l3" fill="none" />
+            <polygon points="688,120 680,116 680,124" fill="#7c52d6" class="ink-fade f3" />
+
+            <g class="ink-fade f3">
+              <rect x="692" y="60" width="150" height="120" rx="12" fill="rgba(124,82,214,0.07)" stroke="#7c52d6" stroke-width="1.4" />
+              <text x="767" y="84" text-anchor="middle" fill="#5a3fb0" font-size="11.5" font-weight="700">③ 冲突审</text>
+              <text x="767" y="106" text-anchor="middle" fill="#44414f" font-size="9.5">同值→高优先方赢</text>
+              <text x="767" y="122" text-anchor="middle" fill="#44414f" font-size="9" font-family="ui-monospace, Menlo, monospace">human>rule=确认>model</text>
+              <text x="767" y="140" text-anchor="middle" fill="#44414f" font-size="9.5">异值→判 conflicted</text>
+              <text x="767" y="158" text-anchor="middle" fill="#a39fab" font-size="8.5">宁可重新问,不静默二选一</text>
+            </g>
+            <text x="430" y="218" text-anchor="middle" fill="#716d7c" font-size="10" class="ink-fade f3">「高雅琪」同样死在①:它只出现在 [引用 …] 前缀里,剥掉引用块后的自陈语料里找不到它</text>
+          </svg>
+        </div>
+
+        <div class="grid2" style="margin-top:16px">
+          <div class="panel reveal d1"><h3>合议庭的新管辖(重构收编)</h3><p>session.service 里散着的 <b>11 道臆造门</b>(纯数字姓名/引用发言人/第三方号码/话题证据门…)、<b>city 的让位规则</b>(同一条判据曾手写 4 遍)、<b>rule×LLM 合并策略</b>(3 份手抄清单已漏掉 brand_ids)、<b>快照对账语义</b>——全部收进 evidence,写成按字段穷尽的 <code>Record</code>:加字段不表态,编译直接失败。</p></div>
+          <div class="panel reveal d2"><h3>来源分类学互转表</h3><p>五套「谁说的」枚举不再各说各话:evidence 持有唯一一张互转表,<code>candidate ↔ user_text ↔ rule ↔ ownership:candidate</code> 的对应关系首次显式化,有损塌缩必须写在表上,禁止再私转。</p></div>
+        </div>
+        <div class="aside"><span class="b">i</span><div><b>brand 的极性状态机不并入</b>:品牌是「状态」(要/不要/都看看,替换式)不是「标量值」,强套 claim 信封是伪统一。它保留自己的 reducer,只作为档案的一个字段接受统一读模型——这是方案里声明的非目标。</div></div>
+      </section>
+
+      <!-- ============ 07 交互:四扇门 ============ -->
+      <section class="sec" id="s7" style="--accent:var(--orange);--accent-soft:rgba(207,109,40,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">07<span class="of">/ 09 · 亲手试</span></div>
+          <div>
+            <div class="kicker">resolveExtractionScope · 授权域矩阵</div>
+            <h2>拨一拨:这条消息能写进档案的哪几格</h2>
+            <p>整套架构里最容易被误解的一件事:<b>不是所有进来的信息都有资格写档案</b>。每条消息按「来源」领到四扇门的开关组合——身份、手机号、偏好、地理。点下面的来源,看四扇门怎么变。开关逻辑与 <code>visual-fact.policy.ts</code> 的 <code>KIND_EXTRACTION_SCOPE</code> 逐字一致。</p>
+          </div>
+        </div>
+
+        <div class="lab-box reveal d1">
+          <div class="src-row" id="srcRow"></div>
+          <div class="gates">
+            <div class="gate" id="g0"><div class="g-icon">🪪</div><div class="g-name">身份域</div><div class="g-sub">name·age·gender·学历·学生身份</div><div class="g-state"></div></div>
+            <div class="gate" id="g1"><div class="g-icon">📞</div><div class="g-name">手机号</div><div class="g-sub">phone(单列一扇门)</div><div class="g-state"></div></div>
+            <div class="gate" id="g2"><div class="g-icon">💼</div><div class="g-name">偏好域</div><div class="g-sub">薪资·班次·用工形式·工种</div><div class="g-state"></div></div>
+            <div class="gate" id="g3"><div class="g-icon">📍</div><div class="g-name">地理域</div><div class="g-sub">city·district·location</div><div class="g-state"></div></div>
+          </div>
+          <div class="lab-note" id="labNote"></div>
+        </div>
+        <div class="aside"><span class="b">i</span><div>这张矩阵是 <code>Record&lt;VisualFactKind, MessageExtractionScope&gt;</code> ——<b>加一档新 kind 不表态,编译期直接报错</b>。旧实现是 if 链,新 kind 会静默落进全关兜底,事实被吞掉且无任何信号。</div></div>
+      </section>
+
+      <!-- ============ 08 memory ============ -->
+      <section class="sec" id="s8" style="--accent:var(--blue);--accent-soft:rgba(59,111,212,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">08<span class="of">/ 09 · 档案室</span></div>
+          <div>
+            <div class="kicker">memory after</div>
+            <h2>档案室退回档案室</h2>
+            <p>memory 不可替代的职责一直只有一半:<b>存取、TTL、并发、生命周期、沉淀、召回编排</b>。另一半——「事实怎么算出来」——是历史欠账挤进来的。重构后 <code>extractAndSave</code> 只剩三步:调 LLM 抽取 → 调 evidence 裁决链 → 落盘。</p>
+          </div>
+        </div>
+
+        <div class="split reveal d1">
+          <div class="cell no"><div class="role">现在</div><h3>档案室里开着庭</h3><p>session.service 单文件 1883 行,其中约 <b>520 行</b>是判据:11 道臆造门逐条内联、city 六条写入路径各带一份让位规则、rule×LLM 合并靠三份手抄字段清单(已漏 brand_ids)。改一条规则要在行间注释里考古。</p></div>
+          <div class="cell yes"><div class="role">重构后</div><h3>只管保管与借阅</h3><p>判据全部住 evidence,以字段为键、<code>Record</code> 穷尽、纯函数可单测。memory 的落盘格式(<code>SessionFactValue</code>/Redis 三态兼容)<b>一字不动</b>——统一发生在「进出档案的裁决通货」层,不动存量数据。</p></div>
+        </div>
+
+        <div class="stage reveal d2 flow-scroll">
+          <svg viewBox="0 0 860 190" role="img" aria-label="依赖环断开前后">
+            <text x="30" y="30" fill="#a83d2f" font-size="11.5" font-weight="700">Before · 双向环</text>
+            <g class="ink-fade f1">
+              <rect x="30" y="50" width="150" height="44" rx="10" fill="#fffdf8" stroke="#d4503e" stroke-width="1.3" />
+              <text x="105" y="77" text-anchor="middle" fill="#1d1c26" font-size="11.5">memory</text>
+              <rect x="240" y="50" width="150" height="44" rx="10" fill="#fffdf8" stroke="#d4503e" stroke-width="1.3" />
+              <text x="315" y="77" text-anchor="middle" fill="#1d1c26" font-size="11.5">tools</text>
+            </g>
+            <path d="M180,62 L236,62" stroke="#d4503e" stroke-width="2" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="240,62 232,58 232,66" fill="#d4503e" class="ink-fade f1" />
+            <path d="M240,82 L184,82" stroke="#d4503e" stroke-width="2" pathLength="1" class="draw l1" fill="none" />
+            <polygon points="180,82 188,78 188,86" fill="#d4503e" class="ink-fade f1" />
+            <text x="210" y="120" text-anchor="middle" fill="#a83d2f" font-size="9.5" font-family="ui-monospace, Menlo, monospace" class="ink-fade f1">≥7 条边互指</text>
+
+            <text x="480" y="30" fill="#237a3c" font-size="11.5" font-weight="700" class="ink-fade f2">After · 全部指向 resolution,单向</text>
+            <g class="ink-fade f2">
+              <rect x="480" y="50" width="140" height="44" rx="10" fill="#fffdf8" stroke="#2f9b4e" stroke-width="1.3" />
+              <text x="550" y="77" text-anchor="middle" fill="#1d1c26" font-size="11.5">memory</text>
+              <rect x="700" y="50" width="140" height="44" rx="10" fill="#fffdf8" stroke="#2f9b4e" stroke-width="1.3" />
+              <text x="770" y="77" text-anchor="middle" fill="#1d1c26" font-size="11.5">tools</text>
+              <rect x="590" y="130" width="140" height="44" rx="10" fill="rgba(47,155,78,0.08)" stroke="#2f9b4e" stroke-width="1.5" />
+              <text x="660" y="157" text-anchor="middle" fill="#237a3c" font-size="11.5" font-weight="700">resolution</text>
+            </g>
+            <path d="M566,94 L636,128" stroke="#2f9b4e" stroke-width="2" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="640,130 631,128 635,120" fill="#2f9b4e" class="ink-fade f3" />
+            <path d="M754,94 L684,128" stroke="#2f9b4e" stroke-width="2" pathLength="1" class="draw l2" fill="none" />
+            <polygon points="680,130 685,120 689,128" fill="#2f9b4e" class="ink-fade f3" />
+            <text x="660" y="110" text-anchor="middle" fill="#237a3c" font-size="9" font-family="ui-monospace, Menlo, monospace" class="ink-fade f3">ESLint 双禁令钉死</text>
+          </svg>
+        </div>
+
+        <div class="grid2" style="margin-top:16px">
+          <div class="panel reveal d1"><h3>brand_state:留在原 hash,收口 key</h3><p>品牌状态继续住 <code>factsv2</code> hash 的单字段,但 BrandStateService 删掉自己抄的那份 <code>buildHashKey</code>,读写走 SessionService 唯一出口——key 格式从此只有一处定义。</p></div>
+          <div class="panel reveal d2"><h3>precheck 快照:存储归 memory,语义归 evidence</h3><p>快照是 precheck→booking 的<b>事务握手</b>,不是记忆。水位计算、对账闸、字段映射表全归 evidence;CandidateSnapshotService 只剩 Redis get/set。</p></div>
+        </div>
+      </section>
+
+      <!-- ============ 09 路线 ============ -->
+      <section class="sec" id="s9" style="--accent:var(--green);--accent-soft:rgba(47,155,78,0.1)">
+        <div class="sec-head reveal">
+          <div class="numeral">09<span class="of">/ 09 · 落地</span></div>
+          <div>
+            <div class="kicker">rollout · 每期独立发版</div>
+            <h2>四期到位,先修 bug 再动家具</h2>
+            <p>仓库每周发版、多会话并发改码,大爆炸不可接受。分期原则:<b>每期独立可发版、独立可回滚、都有可观测的收益</b>;Phase 1 的解析器合一是行为变更(不是纯搬迁),靠「分歧句用例清单」守——每个字段采用哪个口径,在 PR 里逐条可见。</p>
+          </div>
+        </div>
+
+        <div class="phase-row reveal d1">
+          <div class="ph"><div class="pn">P0</div><div class="pt">独立修 ×8</div><p>三个真 bug(健康证疑问句/身高门槛/brand_ids 丢弃)+ 守卫 packet 走 finalize + [位置分享] 标记收口等。与重构解耦,先发免押。</p></div>
+          <div class="ph"><div class="pn">P1</div><div class="pt">立域断环</div><p>labor-form 平移;candidate/ 立域,两轨解析器合一(行为变更,用例清单守);ESLint 禁 memory→tools。</p></div>
+          <div class="ph"><div class="pn">P2</div><div class="pt">evidence 立域</div><p>claim 引擎迁出 memory;快照闸/字段映射表归位;ESLint 禁 tools→memory/facts。环封死。</p></div>
+          <div class="ph"><div class="pn">P3</div><div class="pt">策略收口</div><p>city 七路收成 producer 清单(试点);11 道门成裁决链;合并策略 Record 穷尽;来源互转表;简历判据合并。</p></div>
+          <div class="ph"><div class="pn">P4</div><div class="pt">终态归位</div><p>授权域并入 evidence;memory/facts 解散;档案读模型收口;claim shadow→enforce(业务裁决 D4)。</p></div>
+        </div>
+
+        <div class="panel reveal d2" style="margin-top:16px">
+          <h3>需要裁决的三件大事(全部清单见方案 §5,D1–D8)</h3>
+          <p><b>D1</b> 简历判据两版合并采哪个口径——现行分歧正让健康证截图在 claim 轨被误拒(quote_not_found);<b>D3</b> LLM 猜的城市要不要从 high 降 medium——直接改变拉群门放行面;<b>D4</b> claim 引擎 shadow→enforce 的判决条件与时间表。</p>
+        </div>
+        <div class="aside"><span class="b">i</span><div>诚实声明:目录树非对称(族一 4 子域 + 族二 2 子域,界线靠文档与 ESLint);brand 信封不统一;落盘格式不迁移。这些是<b>写进方案的接受项</b>,不是遗漏。</div></div>
+      </section>
+
+      <!-- ============ RECAP ============ -->
+      <section class="sec" id="recap" style="--accent:var(--magenta);--accent-soft:rgba(191,61,140,0.1)">
+        <div class="panel recap reveal">
+          <h3 style="font-size:1.05rem">一句话,记住整套架构</h3>
+          <p class="flow" style="margin-top:8px"><b>原始消息</b> → 剥标记(infra/utils) → <b>鉴定科解析</b>(族一:brand·geo·labor-form·candidate) → <b>合议庭裁决</b>(族二:evidence,三道审) → <b>档案室保管</b>(memory,只存不判) → <b>办案消费</b>(precheck·booking·拉群·prompt)。</p>
+          <p style="color:var(--muted);margin-top:12px;font-size:0.92rem">解析的只解析,裁决的只裁决,保管的只保管。四个问题——这是什么字段、谁说的、可信吗、冲突听谁的——各有唯一负责人;小张的真名与城市写进档案,截图上的手机号、门槛年龄和引用前缀里的经理名,在①出处审就出局。</p>
+        </div>
+      </section>
+
+      <div class="foot">
+        <div>候选人档案域 · 目标架构图解 · <span style="color:var(--muted)">cake-agent-runtime</span></div>
+        <div><code>docs/architecture/candidate-profile-domain-refactor-plan.md</code></div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+      const fill = $("#fill");
+      const onScroll = () => { const h = document.documentElement; const max = h.scrollHeight - h.clientHeight; fill.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%"; };
+      addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+      const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.14, rootMargin: "0px 0px -6% 0px" });
+      $$(".reveal").forEach((el) => io.observe(el));
+      addEventListener("load", () => setTimeout(() => $("#journey")?.classList.add("in"), 200));
+
+      const spineLinks = $$(".spine a");
+      const spineIO = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) spineLinks.forEach((a) => a.classList.toggle("active", a.dataset.s === e.target.id)); }), { rootMargin: "-45% 0px -50% 0px" });
+      $$("section.sec").forEach((s) => { if (s.id && s.id !== "recap") spineIO.observe(s); });
+
+      /* ── 交互件:四扇门(逻辑与 visual-fact.policy.ts 的 KIND_EXTRACTION_SCOPE 一致)── */
+      const SOURCES = [
+        { key: "typed", label: "手打文本", gates: [1, 1, 1, 1],
+          note: "四门全开。候选人亲手敲的字是最高级证词,规则轨与 LLM 轨都以它为完整语料。",
+          bc: "SCOPE_ALL · visual-fact.policy.ts" },
+        { key: "resume", label: "简历图片", gates: [1, 0, 1, 1],
+          note: "自陈材料:身份可提,唯独手机号关。简历上的号码只能经 LLM 轨落 medium,须候选人确认问答后才可升级预填——图上的字不等于亲口说。",
+          bc: "裁决 B3 · kind=resume → SCOPE_SELF_REPORTED" },
+        { key: "certificate", label: "证件图片", gates: [1, 0, 1, 1],
+          note: "健康证/学生证与简历同档:是候选人交来的自陈材料,身份域开、手机号关。",
+          bc: "kind=certificate → SCOPE_SELF_REPORTED" },
+        { key: "map", label: "地图/定位截图", gates: [0, 0, 0, 1],
+          note: "只开地理:候选人用地图指自己的位置,城市/地址经 geo 白名单确权后以 source='tool' 入档。图上不会有他的姓名年龄。",
+          bc: "kind=map_location · badcase oaz6inzf 城市确权" },
+        { key: "job", label: "岗位截图", gates: [0, 0, 0, 0],
+          note: "四门全关。「18-40岁」是门槛不是年龄,「5000-6000」是岗位薪资不是期望薪资,门店城市不是候选人城市,截图上的手机号是招募经理的——本文案例的事故正是这扇门缺失时发生的。",
+          bc: "kind=job_posting → SCOPE_NONE · badcase vkikct39 / x3pdj7qh" },
+        { key: "chat", label: "聊天记录截图", gates: [0, 0, 0, 0],
+          note: "双方信息混在同一张图里,逐字段分不清谁说的,就整档关——宁可请候选人重说一遍,不把陌生人信息当自陈。",
+          bc: "kind=chat_screenshot → SCOPE_NONE" },
+        { key: "degraded", label: "无 sheet(旧数据/降级)", gates: [0, 0, 1, 1],
+          note: "结构化失败就退回保守档:身份与手机号关,偏好和地理照旧——等同 sheet 上线前(PR #870)的行为,不劣化地图定位等既有能力。",
+          bc: "degraded → 身份关·偏好+地理开" },
+        { key: "quoted", label: "引用块内容", gates: [2, 2, 2, 2],
+          note: "四扇门都轮不到:引用气泡整段在进语料前就被剥掉(stripQuotedBlocks)。[引用 高雅琪:…] 前缀里的名字是被引用方(招募经理)的——它曾被预填成候选人姓名。",
+          bc: "message-markup · badcase 引用前缀经理名预填" },
+      ];
+      const GATE_EL = [$("#g0"), $("#g1"), $("#g2"), $("#g3")];
+      const noteEl = $("#labNote");
+      const row = $("#srcRow");
+      function renderSource(idx) {
+        $$(".src-btn", row).forEach((b, i) => b.classList.toggle("on", i === idx));
+        const s = SOURCES[idx];
+        s.gates.forEach((v, i) => {
+          const el = GATE_EL[i];
+          el.classList.remove("open", "shut", "na");
+          const st = $(".g-state", el);
+          if (v === 1) { el.classList.add("open"); st.textContent = "开 · 可写档案"; }
+          else if (v === 0) { el.classList.add("shut"); st.textContent = "关 · 不入档"; }
+          else { el.classList.add("na"); st.textContent = "整段剥离,不进语料"; }
+        });
+        noteEl.innerHTML = s.note + '<br /><span class="bc">' + s.bc + "</span>";
+      }
+      SOURCES.forEach((s, i) => {
+        const b = document.createElement("button");
+        b.className = "src-btn"; b.type = "button"; b.textContent = s.label;
+        b.addEventListener("click", () => renderSource(i));
+        row.appendChild(b);
+      });
+      renderSource(0);
+    </script>
+  </body>
+</html>

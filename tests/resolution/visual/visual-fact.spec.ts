@@ -1,16 +1,18 @@
 import {
-  EMOTION_MESSAGE_PREFIX,
-  IMAGE_MESSAGE_PREFIX,
   fieldValues,
   finalizeVisualFactSheet,
   isResumeImageDescription,
   isSelfReportedVisualMessage,
-  isVisualDescriptionText,
   parseStoredVisualFactSheet,
   sanitizeVisualDescription,
+} from '@/resolution/visual';
+import {
+  EMOTION_MESSAGE_PREFIX,
+  IMAGE_MESSAGE_PREFIX,
+  isVisualDescriptionText,
   stripResumeAttachmentLines,
   stripVisualPrefix,
-} from '@/resolution/visual';
+} from '@/infra/utils/message-markup.util';
 
 describe('resolution/visual · finalizeVisualFactSheet', () => {
   const DESC = 'BOSS直聘岗位卡片：达美乐-兼职服务员，佛山南海区桂城';

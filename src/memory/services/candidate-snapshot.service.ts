@@ -3,7 +3,7 @@ import { RedisStore } from '../stores/redis.store';
 import {
   PRECHECK_SNAPSHOT_TTL_SECONDS,
   type PrecheckSnapshot,
-} from '../facts/candidate/precheck-snapshot.types';
+} from '@resolution/evidence/snapshot';
 
 /**
  * PrecheckSnapshot 存取（方案 §4.3/§8 Phase 3）。

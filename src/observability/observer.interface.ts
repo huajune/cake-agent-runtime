@@ -13,7 +13,7 @@ import type {
   CandidateClaimRejectionReason,
   CandidateFactInterpretation,
   CandidateFactOperation,
-} from '@memory/facts/candidate/candidate-fact-claim.types';
+} from '@resolution/evidence/claim.types';
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。

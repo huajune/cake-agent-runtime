@@ -13,13 +13,13 @@ import { join } from 'path';
 import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import type {
   EntityExtractionResult,
   HighConfidenceFacts,
   SessionFacts,
 } from '@memory/types/session-facts.types';
-import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';

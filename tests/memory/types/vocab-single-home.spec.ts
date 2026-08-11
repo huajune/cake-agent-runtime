@@ -2,7 +2,7 @@ import {
   CANDIDATE_CLAIM_FIELDS,
   CandidateClaimInputSchema,
   CANDIDATE_FACT_OPERATIONS,
-} from '@/memory/facts/candidate/candidate-fact-claim.types';
+} from '@resolution/evidence/claim.types';
 import {
   FACT_CONFIDENCE_LEVELS,
   FACT_CONFIDENCE_LEVELS_DESC,

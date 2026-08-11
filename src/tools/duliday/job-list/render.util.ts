@@ -16,7 +16,7 @@
  * - format-shift-time：班次时间组合
  */
 
-import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
+import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@resolution/labor-form';
 import type { JobDetail } from '@sponge/sponge.types';
 import { classifyArrangementType, composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import {

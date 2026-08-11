@@ -16,6 +16,14 @@ import {
 } from '../ingress/message-callback.dto';
 import { MessageType } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
+import {
+  appendTimeContext,
+  EMOTION_MESSAGE_PREFIX,
+  formatLocationShare,
+  IMAGE_MESSAGE_PREFIX,
+  stripTimeContext as stripTimeMarkup,
+} from '@infra/utils/message-markup.util';
+import { formatCurrentTime as formatCurrentTimeInShanghai } from '@infra/utils/date.util';
 
 /**
  * 判断 vision 描述是否表明"这张图片本身就是一份简历"（手写简历/简历拍照/简历截图）。
@@ -27,9 +35,10 @@ import { ScenarioType } from '@enums/agent.enum';
  * 命中后由 ImageDescriptionService / save_image_description 在回写内容时追加
  * "简历附件：URL" 行，复用 PDF 文件简历的事实提取（extractUploadResume）与报名上传链路。
  */
-// 已迁入 @resolution/visual（visual-fact-structuring R5：单一来源，channels/tools 共用）；
-// 原位 re-export 兼容既有调用方。判据不得在两处漂移。
-export { isResumeImageDescription, stripResumeAttachmentLines } from '@resolution/visual';
+// 已迁出本文件：简历判据归 @resolution/visual（视觉域判定），简历附件行归
+// @infra/utils/message-markup（标记协议）。原位 re-export 兼容既有调用方。
+export { isResumeImageDescription } from '@resolution/visual';
+export { stripResumeAttachmentLines } from '@infra/utils/message-markup.util';
 
 /**
  * 消息解析工具类
@@ -106,12 +115,12 @@ export class MessageParser {
     // 表情消息 - 文字标记（vision 描述完成后由 ImageDescriptionService 回写为
     // `[表情消息] {description}`；这里只用占位前缀，避免硬编码"候选人/招募经理"主语）
     if (isEmotionPayload(messageType, payload)) {
-      return '[表情消息]';
+      return EMOTION_MESSAGE_PREFIX;
     }
 
     // 图片消息 - 文字标记（同上，role 由 chat_messages.role 区分，不放在内容里）
     if (isImagePayload(messageType, payload)) {
-      return '[图片消息]';
+      return IMAGE_MESSAGE_PREFIX;
     }
 
     // 文件消息 - 只有文件名明确像简历时，才把 fileUrl 暴露给收资/报名工具
@@ -161,8 +170,8 @@ export class MessageParser {
     }
     // 非文本引用：根据被引用消息的 type 给个占位
     const t = String(quote.type ?? '').toLowerCase();
-    if (t === '6' || t === 'image') return '[图片消息]';
-    if (t === '5' || t === 'emotion') return '[表情消息]';
+    if (t === '6' || t === 'image') return IMAGE_MESSAGE_PREFIX;
+    if (t === '5' || t === 'emotion') return EMOTION_MESSAGE_PREFIX;
     if (t === '2' || t === 'voice') return '[语音消息]';
     return '';
   }
@@ -263,25 +272,7 @@ export class MessageParser {
    * 用于发送给 AI 处理
    */
   static formatLocationAsText(payload: LocationPayload): string {
-    const { name, address, latitude, longitude } = payload;
-
-    // 构建位置描述
-    let location: string;
-    if (name && address && name !== address) {
-      location = `${name}（${address}）`;
-    } else if (address) {
-      location = address;
-    } else if (name) {
-      location = name;
-    } else {
-      location = '未知位置';
-    }
-
-    // 附加经纬度（供后续智能推荐使用）
-    const coords =
-      latitude !== undefined && longitude !== undefined ? ` [经纬度:${latitude},${longitude}]` : '';
-
-    return `[位置分享] ${location}${coords}`;
+    return formatLocationShare(payload);
   }
 
   /**
@@ -299,32 +290,7 @@ export class MessageParser {
    * @returns 格式化的时间字符串，如 "2025-12-03 17:30 星期三"
    */
   static formatCurrentTime(timestamp?: number): string {
-    // 使用北京时间 (Asia/Shanghai)
-    const date = timestamp ? new Date(timestamp) : new Date();
-
-    // 使用 Intl.DateTimeFormat 获取北京时间各部分
-    const formatter = new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      weekday: 'long',
-    });
-
-    const parts = formatter.formatToParts(date);
-    const getPart = (type: string) => parts.find((p) => p.type === type)?.value || '';
-
-    const year = getPart('year');
-    const month = getPart('month');
-    const day = getPart('day');
-    const hour = getPart('hour');
-    const minute = getPart('minute');
-    const weekday = getPart('weekday');
-
-    return `${year}-${month}-${day} ${hour}:${minute} ${weekday}`;
+    return formatCurrentTimeInShanghai(timestamp);
   }
 
   /**
@@ -335,8 +301,7 @@ export class MessageParser {
    * @returns 注入时间后的消息内容
    */
   static injectTimeContext(content: string, timestamp?: number): string {
-    const timeStr = this.formatCurrentTime(timestamp);
-    return `${content}\n[消息发送时间：${timeStr}]`;
+    return appendTimeContext(content, this.formatCurrentTime(timestamp));
   }
 
   /**
@@ -347,7 +312,6 @@ export class MessageParser {
    * `batch_69e9bba2536c9654026522da_*`）。
    */
   static stripTimeContext(content: string): string {
-    if (!content) return content;
-    return content.replace(/\n\[消息发送时间：[^\]]*\]\s*$/u, '');
+    return stripTimeMarkup(content);
   }
 }

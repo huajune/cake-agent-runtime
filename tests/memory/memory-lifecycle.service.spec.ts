@@ -1,5 +1,5 @@
 import { MemoryLifecycleService } from '@memory/services/memory-lifecycle.service';
-import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
+import { unwrapHighConfidenceValue } from '@resolution/evidence/producers/rule-track';
 import {
   FALLBACK_EXTRACTION,
   type HighConfidenceFacts,
