@@ -23,16 +23,18 @@
 岗位数据无本地存储，每次查询实时调海绵网关（`src/sponge/sponge.service.ts` 的
 `fetchJobs`，`POST {SPONGE_API_BASE_URL}/ai/api/job/list`）。查询参数：
 `cityNameList` / `regionNameList` / `brandAliasList` / `storeNameList` /
-`searchJobName` / `jobCategoryList` / `jobIdList` / `location{longitude,latitude,range}`
-/ `onlySignableJobs`，分页返回 `jobs + total`。
+`searchJobName` / `jobIdList` / `location{longitude,latitude,range}`
+/ `onlySignableJobs`，分页返回 `jobs + total`。（`jobCategoryList` 已不再下传
+API——模型猜的工种词与海绵类目字典对不上、精确匹配基本落空，改为召回后本地软排序。）
 
 召回智能全部在查询参数构造层（`src/tools/duliday/job-list/search.util.ts` 等）：
 
 - 品牌：`brandAliasList` 精确/子串匹配，0 命中时拼音模糊回指
   （`brand-fuzzy-match.util.ts`，拼音重叠 ≥0.5）；
 - 品类词（"咖啡"）：人工维护的品类→品牌清单展开（目前仅咖啡品类启用）；
-- 工种：`scoreJobAgainstRequestedCategories` 做完全相等 +10 / 包含 +6 / 字符重叠 +2
-  的软评分，**无同义词能力**；
+- 工种：不下传 API，召回后 `rankJobsByRequestedCategories` 按
+  `scoreJobAgainstRequestedCategories`（完全相等 +10 / 包含 +6 / 字符重叠 +2）做
+  本地软排序（匹配岗位排前、不过滤），**无同义词能力**；
 - 门店：`storeNameList` 是 API 侧精确匹配；
 - 距离：geocode 得坐标 → 带 `location` 扫最多 10 页 × 20 = 200 条，页序非服务端
   距离排序。

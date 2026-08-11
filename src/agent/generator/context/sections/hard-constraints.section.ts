@@ -259,7 +259,7 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (pref.position?.length) {
       lines.push(
-        `- 意向岗位: ${pref.position.join('、')}（仅当候选人**明确点名某个具体工种**时才填 jobCategoryList，且只接受具体工种如"服务员"、"收银员"，严禁填入用工形式词；这是强过滤会大幅收窄结果，宁可不填靠品牌+区域召回；若搜索结果全部不匹配候选人的时间/年龄等硬约束，应清空 jobCategoryList 放宽重查一次）`,
+        `- 意向岗位: ${pref.position.join('、')}（候选人明确点名的具体工种可填 jobCategoryList——它**只影响排序不过滤**，匹配岗位会排在结果最前；只接受具体工种如"服务员"、"收银员"，不要填用工形式词。结果里没有明确匹配工种时，按每个岗位真实的岗位名称/工作内容判断相近岗位并如实介绍，不得把其他工种包装成候选人要的工种）`,
       );
     }
     if (pref.labor_form && isValidLaborForm(pref.labor_form)) {

@@ -46,11 +46,11 @@ import {
   applyScheduleConstraint,
   applyStudentIdentityConstraint,
   collectLaborFormAnomalies,
-  filterJobsByRequestedCategories,
   filterJobsExcludingBrands,
   filterJobsToAppliedBrands,
   formatScheduleConstraintLabel,
   haversineDistance,
+  rankJobsByRequestedCategories,
   stripGenericPositionUmbrella,
 } from '@tools/duliday/job-list/search.util';
 import {
@@ -199,7 +199,7 @@ const inputSchema = z.object({
     .optional()
     .default([])
     .describe(
-      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n也不要填"店员""员工""工作人员"等泛化统称——它们不是具体工种(商超/连锁的真实工种是收银员/理货员/促销员/保洁员…)，作类目过滤只会误伤把在招岗位查成空；候选人只说"想应聘店员"时靠品牌+城市/坐标召回即可。\n严禁填入"全职"、"兼职"、"小时工"、"寒假工"、"暑假工"、"临时工"等用工形式词——用工形式是岗位的 laborForm 属性、不是岗位工种，按工具的用工形式过滤处理（候选人意向已从会话事实自动读取），不要塞进 jobCategoryList。若召回为空，先清空 jobCategoryList 放宽重查。',
+      '候选人明确点名的意向工种关键词（如"收银员""分拣员""骑手"）。**仅用于把 岗位名称/岗位类型/工作内容 匹配的岗位排到结果前面并标注，不做过滤、不会减少召回结果**——召回范围始终由城市/区域/坐标 + 品牌决定。只有候选人**明确点名具体工种**(如"我只做收银""想干分拣")时才填；没点名就留空。\n不要填：品类/行业词("咖啡""奶茶"是品牌意向，走品牌参数)；"全职""兼职""小时工""暑假工"等用工形式词(是岗位 laborForm 属性，已按会话事实自动硬过滤)。',
     ),
   brandIdList: z
     .array(z.number().int())
@@ -539,7 +539,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 | 用户场景 | 标准查询路径 |
 | --- | --- |
 | 问某具体岗位详情 | 优先 jobIdList 直查，不叠加其他 filter |
-| 问"某区域有什么" / 候选人说自己在某区（"我在浦东""浦东这边"） | **默认按就近处理**：把区/县名传给 geocode 拿坐标 → 走 location 距离召回（这样能召回跨区但更近的门店，不会被区级边界卡掉）；未确认城市时你有高置信通识就把 city 一起传，没把握就 city 留空让工具按 unique/ambiguous 三态判定，不要先反问候选人。**只有**候选人明确要"只在某区内"的硬约束时，才用 cityNameList + regionNameList 精确过滤，按需补 jobCategoryList / brandIdList |
+| 问"某区域有什么" / 候选人说自己在某区（"我在浦东""浦东这边"） | **默认按就近处理**：把区/县名传给 geocode 拿坐标 → 走 location 距离召回（这样能召回跨区但更近的门店，不会被区级边界卡掉）；未确认城市时你有高置信通识就把 city 一起传，没把握就 city 留空让工具按 unique/ambiguous 三态判定，不要先反问候选人。**只有**候选人明确要"只在某区内"的硬约束时，才用 cityNameList + regionNameList 精确过滤，按需补 brandIdList |
 | 问"附近有什么" / 给了商圈/地标 | 先 geocode 拿坐标 → 传 location 半径；若结果 ≤ 1 条**必须**去掉 location 重查全市 |
 | 用户接受了某门店但要换条件 | **先在 [会话记忆] 里查这门店所在的 region**，用 regionNameList 重查；不要直接拿口语门店名传 storeNameList |
 | 用户问"还有别的品牌吗" | **不带 brandIdList 重查**当前区域，对比之前已展示的 brand 集合，告诉用户除了已推过的还有什么 |
@@ -621,7 +621,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
    3. 严禁继续反问候选人"那别的区域 / 别的品牌 / 别的城市看看吗"；候选人主动表达扩张意愿前不再继续扩查，否则会陷入"反复问位置→反复无岗"的空转
    4. **候选人主动追问"别的地区有吗 / 别的品牌呢 / 还有其他吗"时本规则同样适用**——必须基于本轮工具结果直接告知"该品牌/城市暂时无岗 + 拉群维护"，不得借候选人的追问继续展开"其他品牌可以吗 / 看看长沙吗 / 上海杭州看看"等扩张推荐
    5. **历史轨迹打破**：即使 [会话记忆] 或对话历史里 Agent 自己上一轮提议过"换品牌/换地区/看看其他城市"，本轮一旦工具结果证实无岗，也必须打破这条轨迹直接收口，不得顺承延续旧的反问思路
-   6. **结果非空但全部不匹配**：返回的岗位全部与候选人当前硬约束冲突（如候选人要白天班但结果全是夜班、候选人年龄对所有结果都是 ageBoundary.severity="hard_reject"），视同"0 条有效结果"，必须至少放宽一个维度（优先清空 jobCategoryList）重查一次；仅在放宽后仍无有效匹配时，才走上面的兜底路径。年龄判断必须沿用 precheck 弹性口径：超岗位上限 ≤3 岁、或低于下限 ≤2 岁且候选人 ≥23 岁，属于 boundary，可继续推进；例如候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位，不得说"没有一个接受 52 岁"、不得按无岗拉群，后续用 duliday_interview_precheck 复核
+   6. **结果非空但全部不匹配**：返回的岗位全部与候选人当前硬约束冲突（如候选人要白天班但结果全是夜班、候选人年龄对所有结果都是 ageBoundary.severity="hard_reject"），视同"0 条有效结果"，必须至少放宽一个维度（如放宽距离范围、清空 regionNameList、需要放宽品牌时显式传 brandFilterMode='clear'）重查一次；仅在放宽后仍无有效匹配时，才走上面的兜底路径。年龄判断必须沿用 precheck 弹性口径：超岗位上限 ≤3 岁、或低于下限 ≤2 岁且候选人 ≥23 岁，属于 boundary，可继续推进；例如候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位，不得说"没有一个接受 52 岁"、不得按无岗拉群，后续用 duliday_interview_precheck 复核
    7. **回看候选岗位池**：新搜索无有效匹配时，必须回看 [会话记忆] 的「上轮候选岗位池」，检查是否有之前未推荐但可能匹配候选人新约束的岗位（如岗位名含"早班/晚班/开档"等班次关键词、年龄范围更宽的岗位）；候选池中有潜在匹配时，用 jobIdList 精确查询这些岗位的详情再推荐，不得仅凭本轮搜索结果就判定"附近无合适岗位"
 - **包餐/工作餐/餐补硬偏好**：候选人说"没饭吃不去了 / 拉倒了 / 不考虑 / 必须包饭"等，视为硬性拒绝或强偏好；不要安慰成"附近吃饭方便"，也不要继续收面试资料。若要继续推荐，必须本轮调用本工具且带 includeWelfare=true 查包餐/餐补/福利信息；没有匹配就说明暂时没有合适的包餐岗位，并调用 invite_to_group 维护
 - **面试相关字段**：推进面试时优先读工具结果中的「约面重点」；工具没明确时间不得编造；相对当前时间已过期的日期限制视为历史备注，不得当作当前规则输出
@@ -841,12 +841,11 @@ export function buildJobListTool(
           });
         }
 
-        // 兜底 1：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
-        // 用工形式是岗位 laborForm 属性，不是岗位工种，不应作为 category 查询条件。
+        // jobCategoryList 只做本地软排序信号、不下传 API；两道确定性剥离保住排序信号纯净度：
+        // 1）用工形式词（兼职/全职/小时工/寒假工/暑假工 等）——是岗位 laborForm 属性，已有独立硬过滤；
+        // 2）「店员/员工/工作人员」等泛化统称——不是真实工种名的子串，必然 0 命中，
+        //    会触发「无明确匹配工种」披露误导模型说"没有店员岗"（历史 badcase：果蔬好·天津 chat 6a66d888）。
         const laborFormStrip = stripLaborFormFromCategories(jobCategoryList);
-        // 兜底 2：剔除「店员/员工/工作人员」等泛化统称——它们不是 sponge 岗位分类轴上的具体工种，
-        // 作精确类目过滤几乎必然 0 命中（真实工种是收银员/理货员/促销员…），会把同品牌同商圈的
-        // 在招岗位误判为「查无」（生产 badcase：果蔬好·天津 chat 6a66d888）。
         const umbrellaStrip = stripGenericPositionUmbrella(laborFormStrip.cleaned);
         const sanitizedJobCategoryList = umbrellaStrip.cleaned;
         const removedCategoryWords = laborFormStrip.removed;
@@ -919,6 +918,9 @@ export function buildJobListTool(
         }
         const regionNameListForQuery = regionDroppedForCoords ? [] : normalizedQueryRegionNameList;
 
+        // jobCategoryList 有意不进查询参数：模型猜的工种词与海绵类目字典对不上，API 精确
+        // 匹配基本落空（"传了基本出不来岗位"）。工种意向改为召回后本地软排序 + 知情披露，
+        // 见下方 rankJobsByRequestedCategories。
         let fetchBaseParams = {
           cityNameList: cityFilterNormalization.cityNameList,
           regionNameList: regionNameListForQuery,
@@ -928,7 +930,6 @@ export function buildJobListTool(
           projectIdList,
           storeNameList,
           searchJobName: searchJobName?.trim() || undefined,
-          jobCategoryList: sanitizedJobCategoryList,
           jobIdList,
           salaryPeriodNameList: settlementPeriodList.map((p) => p.trim()).filter(Boolean),
           location: effectiveLocation,
@@ -936,7 +937,6 @@ export function buildJobListTool(
         };
         try {
           let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
-          let jobCategoryMatchStrategy: 'api_exact' | 'local_keyword_match' = 'api_exact';
           let distanceScanPages = 1;
           let distanceScanTruncated = false;
           // 观测：区级兜底是否尝试过（命中触发条件并跑了 geocode/距离召回），
@@ -979,7 +979,9 @@ export function buildJobListTool(
             projectIdList: fetchBaseParams.projectIdList,
             storeNameList: fetchBaseParams.storeNameList,
             searchJobName: fetchBaseParams.searchJobName,
-            jobCategoryList: fetchBaseParams.jobCategoryList,
+            // 类目词不再进查询参数（本地软排序信号），但仍入签名：换工种关键词重查时
+            // 排序/披露会变，不应被跨轮重复查询检测误拦。
+            jobCategoryList: sanitizedJobCategoryList,
             jobIdList: fetchBaseParams.jobIdList,
             salaryPeriodNameList: fetchBaseParams.salaryPeriodNameList,
             location: fetchBaseParams.location ?? null,
@@ -1056,26 +1058,6 @@ export function buildJobListTool(
                 jobs = filtered;
                 total = filtered.length;
               }
-            }
-          }
-
-          // 岗位类型本地兜底：当 API 对岗位类型检索不稳定时，退回到同条件宽查后，
-          // 仅基于真实岗位字段做本地匹配，不依赖手写别名字典。
-          if (jobs.length === 0 && sanitizedJobCategoryList.length > 0) {
-            // 必须复用已经过县级市映射、坐标/区域归一化的基础请求，只放宽岗位类型。
-            // 重新从原始 city/region 组装会让“延吉 → 延边州 + 延吉市”等映射失效。
-            const fallback = await fetchJobs({ ...fetchBaseParams, jobCategoryList: [] });
-
-            /* eslint-disable @typescript-eslint/no-explicit-any */
-            const filtered = filterJobsByRequestedCategories(
-              fallback.jobs as any[],
-              sanitizedJobCategoryList,
-            );
-            /* eslint-enable @typescript-eslint/no-explicit-any */
-            if (filtered.length > 0) {
-              jobCategoryMatchStrategy = 'local_keyword_match';
-              jobs = filtered;
-              total = filtered.length;
             }
           }
 
@@ -1635,6 +1617,20 @@ export function buildJobListTool(
             }
           }
 
+          // 意向工种本地软排序（不下传 API、不过滤）：明确匹配的岗位稳定分区排前
+          //（组内保持距离序），匹配情况经头部 notice 向模型知情披露，由模型按
+          // 岗位名称/工作内容自行判断相近岗位并如实告知候选人。
+          const jobCategoryRank = rankJobsByRequestedCategories(jobs, sanitizedJobCategoryList);
+          jobs = jobCategoryRank.jobs;
+          let jobCategoryNotice: string | null = null;
+          if (jobCategoryRank.applied) {
+            const requestedLabel = sanitizedJobCategoryList.join('、');
+            jobCategoryNotice =
+              jobCategoryRank.matchedCount > 0
+                ? `ℹ️ 候选人意向工种「${requestedLabel}」：已把 岗位名称/岗位类型/工作内容 明确匹配的 ${jobCategoryRank.matchedCount} 个岗位排在最前（仅排序，未过滤，其余岗位仍在列表后段）。介绍时按每个岗位的真实名称/内容说明，不得把其他工种包装成「${requestedLabel}」。`
+                : `⚠️ 本轮召回中没有 岗位名称/岗位类型/工作内容 明确匹配「${requestedLabel}」的岗位；以下为同范围其他在招岗位（工具未做工种过滤）。请先如实告知候选人"附近暂时没有明确的${requestedLabel}岗位"，再逐条按岗位名称/工作内容判断是否相近、介绍给候选人自行决定；不得把其他工种包装成「${requestedLabel}」，也不得据此直接判定无岗拉群。`;
+          }
+
           const flags: ProgressiveDisclosureFlags = {
             includeBasicInfo,
             includeJobSalary,
@@ -1679,6 +1675,7 @@ export function buildJobListTool(
               summerWorkerStrictNotice,
               laborFormRelaxNotice,
               studentFilterNotice,
+              jobCategoryNotice,
               ageScreeningSummary?.markdown,
               jobsMarkdown,
             ].filter((section): section is string => Boolean(section));
@@ -1697,7 +1694,16 @@ export function buildJobListTool(
             typeof knownCityFactValue === 'string' ? knownCityFactValue : null;
           result.queryMeta = {
             storeMatchStrategy,
-            jobCategoryMatchStrategy,
+            // 意向工种本地软排序观测（取代 API 直传时代的 jobCategoryMatchStrategy）：
+            // requested=剥离后实际参与排序的关键词，matchedCount=明确匹配数，用于评估
+            // "靠岗位名称/内容理解工种意向"的效果
+            jobCategoryRank: jobCategoryRank.applied
+              ? {
+                  requested: sanitizedJobCategoryList,
+                  matchedCount: jobCategoryRank.matchedCount,
+                  totalCount: jobs.length,
+                }
+              : null,
             // 泛化统称（店员/员工…）被确定性剥离出 jobCategoryList 的记录，供排障对账
             jobCategoryUmbrellaStripped:
               removedUmbrellaCategoryWords.length > 0 ? removedUmbrellaCategoryWords : null,

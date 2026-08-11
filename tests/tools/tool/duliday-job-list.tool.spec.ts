@@ -565,7 +565,7 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.brand.brandSource).toBe('model_input');
   });
 
-  it('剥离泛化统称"店员"后再查（badcase 6a66d888：果蔬好·天津有岗却因"店员"精确类目过滤查空）', async () => {
+  it('剥离泛化统称"店员"，排序信号与披露都不受污染（badcase 6a66d888 同源防线）', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJobData({
@@ -585,12 +585,12 @@ describe('buildJobListTool', () => {
       jobCategoryList: ['店员'],
     });
 
-    // 送往上游的类目参数里不再含"店员"（剥离后为空），避免精确类目过滤把在招岗位查空
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      expect.objectContaining({ jobCategoryList: [] }),
-    );
+    // jobCategoryList 已彻底不下传 API（本地软排序信号）
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).not.toHaveProperty('jobCategoryList');
     // 观测：被剥离的泛化词落在 queryMeta 上，供排障对账
     expect(result.queryMeta.jobCategoryUmbrellaStripped).toEqual(['店员']);
+    // "店员"剥离后无剩余关键词：不触发排序也不注入"无明确匹配工种"披露，避免误导模型说"没有店员岗"
+    expect(result.queryMeta.jobCategoryRank).toBeNull();
     // 结果非空：候选人拿到该品牌在招岗位，而非"查无"
     expect(result.resultCount).toBe(1);
   });
@@ -877,7 +877,7 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.cityFilterRecovery).toBeNull();
   });
 
-  it('keeps county-level city normalization in the job-category local fallback', async () => {
+  it('意向工种不下传 API 也不触发额外重查，县级市映射照常生效', async () => {
     const yanjiJob = makeJobData({
       basicInfo: {
         jobId: 528177,
@@ -892,9 +892,7 @@ describe('buildJobListTool', () => {
         },
       },
     });
-    mockSpongeService.fetchJobs
-      .mockResolvedValueOnce({ jobs: [], total: 0 })
-      .mockResolvedValueOnce({ jobs: [yanjiJob], total: 1 });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [yanjiJob], total: 1 });
 
     const result = await executeTool(mockContext, {
       ...defaultInput,
@@ -902,16 +900,79 @@ describe('buildJobListTool', () => {
       jobCategoryList: ['服务员'],
     });
 
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
-    expect(mockSpongeService.fetchJobs.mock.calls[1][0]).toEqual(
+    // 单次请求即召回：不存在"类目过滤查空 → 二次放宽重查"的额外 API 往返
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         cityNameList: ['延边朝鲜族自治州'],
         regionNameList: ['延吉市'],
-        jobCategoryList: [],
       }),
     );
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).not.toHaveProperty('jobCategoryList');
     expect(result.resultCount).toBe(1);
-    expect(result.queryMeta.jobCategoryMatchStrategy).toBe('local_keyword_match');
+    expect(result.queryMeta.jobCategoryRank).toEqual({
+      requested: ['服务员'],
+      matchedCount: 1,
+      totalCount: 1,
+    });
+  });
+
+  it('意向工种匹配岗位稳定分区排最前并注入 ℹ️ 排序披露（仅排序不过滤）', async () => {
+    const serviceJob = makeJobData({
+      basicInfo: {
+        jobId: 11,
+        jobName: 'KFC-朝阳店-服务员-小时工',
+        jobCategoryName: '服务员',
+        jobContent: '前台点餐',
+      },
+    });
+    const cashierJob = makeJobData({
+      basicInfo: {
+        jobId: 12,
+        jobName: 'KFC-朝阳店-收银员-小时工',
+        jobCategoryName: '收银员',
+        jobContent: '负责收银',
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [serviceJob, cashierJob], total: 2 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['北京'],
+      jobCategoryList: ['收银员'],
+    });
+
+    // 未过滤：两条岗位都在
+    expect(result.resultCount).toBe(2);
+    expect(result.queryMeta.jobCategoryRank).toEqual({
+      requested: ['收银员'],
+      matchedCount: 1,
+      totalCount: 2,
+    });
+    expect(result.markdown).toContain('明确匹配的 1 个岗位排在最前');
+    // 匹配的收银员岗位排在服务员岗位之前
+    expect(result.markdown.indexOf('收银员-小时工')).toBeLessThan(
+      result.markdown.indexOf('服务员-小时工'),
+    );
+  });
+
+  it('意向工种无明确匹配时一条不剔，注入 ⚠️ 披露引导按岗位名称/内容判断', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['北京'],
+      jobCategoryList: ['美甲师'],
+    });
+
+    // 岗位全部保留：不再出现"工种过滤查成空"
+    expect(result.resultCount).toBe(1);
+    expect(result.queryMeta.jobCategoryRank).toEqual({
+      requested: ['美甲师'],
+      matchedCount: 0,
+      totalCount: 1,
+    });
+    expect(result.markdown).toContain('没有 岗位名称/岗位类型/工作内容 明确匹配「美甲师」');
   });
 
   it('recovers an unmapped county-level city from coordinates without adopting neighboring cities', async () => {
