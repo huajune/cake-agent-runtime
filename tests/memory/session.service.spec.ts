@@ -10,6 +10,7 @@ import {
 function mockStructured(obj: unknown) {
   return {
     output: obj,
+    modelId: 'test/extract-model',
     usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
   } as never;
 }
@@ -1331,6 +1332,7 @@ describe('SessionService', () => {
             ...FALLBACK_EXTRACTION.interview_info,
             age: '21',
             gender: '女',
+            height: '170',
           },
           explicit_provenance: [
             { field: 'age', quote: '我今年21', basis: 'stated' },
@@ -1354,6 +1356,7 @@ describe('SessionService', () => {
           type: 'extraction_field_dropped',
           field: 'age',
           reason: 'no_candidate_provenance',
+          modelId: 'test/extract-model',
         }),
       );
       expect(mockTracer.emit).toHaveBeenCalledWith(
@@ -1361,6 +1364,15 @@ describe('SessionService', () => {
           type: 'extraction_field_dropped',
           field: 'gender',
           reason: 'no_candidate_provenance',
+        }),
+      );
+      expect(mockTracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'extraction_raw_output_sampled',
+          modelId: 'test/extract-model',
+          dropCount: 3,
+          droppedFields: expect.arrayContaining(['age', 'gender', 'height']),
+          rawOutput: expect.stringContaining('从用户提供的简历文件中提取'),
         }),
       );
     });

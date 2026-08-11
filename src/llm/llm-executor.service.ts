@@ -45,9 +45,12 @@ export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0],
   onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
 }
 
-type StructuredGenerateResult<TSchema extends z.ZodTypeAny> = Awaited<
-  ReturnType<typeof generateText>
-> & {
+export type LlmGenerateResult = Awaited<ReturnType<typeof generateText>> & {
+  /** 经重试/降级后真正成功返回结果的模型，而非调用方请求的首选模型。 */
+  modelId: string;
+};
+
+type StructuredGenerateResult<TSchema extends z.ZodTypeAny> = LlmGenerateResult & {
   output: z.infer<TSchema>;
 };
 
@@ -77,7 +80,7 @@ export class LlmExecutorService {
     private readonly roleModelOverrides?: RoleModelOverridesProvider,
   ) {}
 
-  async generate(options: LlmGenerateOptions): Promise<Awaited<ReturnType<typeof generateText>>> {
+  async generate(options: LlmGenerateOptions): Promise<LlmGenerateResult> {
     const { config, onPreparedRequest, thinking, validateResult, ...routeOptions } = options;
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
     const attempts: string[] = [];
@@ -115,7 +118,8 @@ export class LlmExecutorService {
           } as Parameters<typeof generateText>[0]);
           this.assertUsableChatResult(result, plan.role);
           validateResult?.(result);
-          return result;
+          // 结果对象由 AI SDK 创建；附加路由层实际 modelId，供业务观测区分首选与 fallback。
+          return Object.assign(result, { modelId });
         } catch (err) {
           lastRawError = err;
           const category = this.reliable.classifyError(err);

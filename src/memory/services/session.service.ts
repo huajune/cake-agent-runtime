@@ -933,6 +933,8 @@ export class SessionService {
       brandIntents: rawBrandIntents,
       laborFormIntent: extractedLaborFormIntent,
       degraded: llmDegraded,
+      modelId: extractionModelId,
+      rawOutput: rawExtractionOutput,
     } = skipLowInformationFirstTurn
       ? {
           facts: FALLBACK_EXTRACTION,
@@ -940,6 +942,8 @@ export class SessionService {
           brandIntents: [],
           laborFormIntent: null,
           degraded: false,
+          modelId: 'not_invoked',
+          rawOutput: null,
         }
       : await this.callLLM(prompt);
     if (skipLowInformationFirstTurn) {
@@ -955,6 +959,7 @@ export class SessionService {
       extractionDecision: extractedLaborFormIntent,
       degraded: llmDegraded,
     });
+    const extractionDrops: Array<{ field: string; reason: string }> = [];
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位。
     // 真名索取问答豁免（badcase 2026-08-06 chat 6a7446eb）：候选人开场"我是张丽鑫"命中
     // 打招呼语判据，但 Agent 随后明确问真名、她单独回了"张丽鑫"——被问之后给出的名字是
@@ -975,6 +980,8 @@ export class SessionService {
           ? `丢弃称谓/商号形态的姓名"${droppedName}"（称谓后缀结尾，非本人姓名）`
           : `丢弃来自"我是xx"打招呼语的昵称"${droppedName}"`;
       this.logger.log(`[extractFacts] ${reasonText}，不写入 interview_info.name`);
+      const reason = droppedReason ?? 'auto_greeting_nickname';
+      extractionDrops.push({ field: 'name', reason });
       // 该丢弃此前只有日志、无观测档，同案排障只能靠"快照里 name 恒为 null"反推。
       this.tracer?.emit({
         type: 'extraction_field_dropped',
@@ -983,7 +990,8 @@ export class SessionService {
         chatId: sessionId,
         field: 'name',
         droppedValue: droppedName,
-        reason: droppedReason ?? 'auto_greeting_nickname',
+        reason,
+        modelId: extractionModelId,
       });
     }
     const provenanceAdmission = this.applyExtractionProvenance(
@@ -997,6 +1005,7 @@ export class SessionService {
       this.logger.warn(
         `[extractFacts] 丢弃无候选人出处的首写字段 ${item.field}=${String(item.droppedValue)}`,
       );
+      extractionDrops.push({ field: item.field, reason: 'no_candidate_provenance' });
       this.tracer?.emit({
         type: 'extraction_field_dropped',
         corpId,
@@ -1005,6 +1014,7 @@ export class SessionService {
         field: item.field,
         droppedValue: String(item.droppedValue),
         reason: 'no_candidate_provenance',
+        modelId: extractionModelId,
       });
     }
 
@@ -1065,6 +1075,7 @@ export class SessionService {
       admission.flags;
     for (const item of admission.dropped) {
       this.logger.warn('[extractFacts] ' + item.message);
+      extractionDrops.push({ field: item.field, reason: item.reason });
       this.tracer?.emit({
         type: 'extraction_field_dropped',
         corpId,
@@ -1073,6 +1084,19 @@ export class SessionService {
         field: item.field,
         droppedValue: String(item.droppedValue),
         reason: item.reason,
+        modelId: extractionModelId,
+      });
+    }
+    if (extractionDrops.length >= 3 && rawExtractionOutput !== null) {
+      this.tracer?.emit({
+        type: 'extraction_raw_output_sampled',
+        corpId,
+        userId,
+        chatId: sessionId,
+        modelId: extractionModelId,
+        dropCount: extractionDrops.length,
+        droppedFields: extractionDrops.map((item) => item.field),
+        rawOutput: this.serializeRawExtractionOutput(rawExtractionOutput),
       });
     }
 
@@ -1158,6 +1182,10 @@ export class SessionService {
     explicitProvenance: ExplicitProvenanceEntry[];
     brandIntents: BrandIntentEntry[];
     laborFormIntent: LaborFormIntentExtraction | null;
+    /** 经 fallback 后真正成功产出该响应的模型。 */
+    modelId: string;
+    /** 仅供“同轮多字段丢弃”抽样，调用侧不得持久化 prompt。 */
+    rawOutput: unknown | null;
     /** true = LLM 调用或 schema 解析失败，已降级为空提取（本轮新事实丢失，旧值不受影响）。 */
     degraded: boolean;
   }> {
@@ -1216,6 +1244,8 @@ export class SessionService {
         brandIntents,
         laborFormIntent,
         degraded: false,
+        modelId: result.modelId,
+        rawOutput: result.output,
       };
     } catch (err) {
       // 降级影响：本轮新事实丢失（下一轮增量窗口可自然补回），旧 facts 经
@@ -1228,8 +1258,31 @@ export class SessionService {
         brandIntents: [],
         laborFormIntent: null,
         degraded: true,
+        modelId: 'unavailable',
+        rawOutput: null,
       };
     }
+  }
+
+  /** JSON 化抽取原始输出并按 UTF-8 字节数封顶 8KB；请求 prompt 永不进入该事件。 */
+  private serializeRawExtractionOutput(output: unknown): string {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(output);
+    } catch {
+      serialized = String(output);
+    }
+    const maxBytes = 8 * 1024;
+    if (Buffer.byteLength(serialized, 'utf8') <= maxBytes) return serialized;
+
+    let low = 0;
+    let high = serialized.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (Buffer.byteLength(serialized.slice(0, middle), 'utf8') <= maxBytes) low = middle;
+      else high = middle - 1;
+    }
+    return serialized.slice(0, low);
   }
 
   /** 仅记录 labor-form 双轨分歧；规则轨继续是唯一生效判定。 */

@@ -154,6 +154,17 @@ export type AgentEvent = AgentEventContext &
         field: string;
         droppedValue: string;
         reason: string;
+        /** 本次抽取经 fallback 后真正成功的模型。 */
+        modelId: string;
+      }
+    | {
+        type: 'extraction_raw_output_sampled';
+        userId?: string;
+        modelId: string;
+        dropCount: number;
+        droppedFields: string[];
+        /** 仅模型响应，不含 prompt；UTF-8 最多 8KB。 */
+        rawOutput: string;
       }
     /**
      * 封闭语义标签的双轨 shadow 分歧：仅分歧时落档，绝不改变规则轨生效结果。

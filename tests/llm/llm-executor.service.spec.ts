@@ -288,6 +288,7 @@ describe('LlmExecutorService', () => {
       });
 
       expect(result.text).toBe('fallback response');
+      expect(result.modelId).toBe(fallbackModelId);
       expect(getGenerateModelIds()).toEqual([
         primaryModelId,
         primaryModelId,
@@ -398,6 +399,7 @@ describe('LlmExecutorService', () => {
       });
 
       expect(result.output).toEqual({ score: 0.9 });
+      expect(result.modelId).toBe(fallbackModelId);
       expect(getGenerateModelIds()).toEqual([primaryModelId, primaryModelId, fallbackModelId]);
       expect(mockReliable.classifyError).toHaveBeenCalledTimes(2);
       expect(mockOutputObject).toHaveBeenCalledWith(

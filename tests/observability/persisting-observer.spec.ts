@@ -40,6 +40,27 @@ describe('PersistingObserver', () => {
     expect(persister.persist).toHaveBeenCalledTimes(4);
   });
 
+  it('always persists extraction drop diagnostics and raw-output samples', () => {
+    const observer = makeObserver();
+
+    observer.emit({
+      type: 'extraction_field_dropped',
+      field: 'age',
+      droppedValue: '21',
+      reason: 'no_candidate_provenance',
+      modelId: 'deepseek/deepseek-v3.2',
+    });
+    observer.emit({
+      type: 'extraction_raw_output_sampled',
+      modelId: 'deepseek/deepseek-v3.2',
+      dropCount: 3,
+      droppedFields: ['age', 'gender', 'height'],
+      rawOutput: '{"reasoning":"本轮无新信息"}',
+    });
+
+    expect(persister.persist).toHaveBeenCalledTimes(2);
+  });
+
   it('persists only material tool calls', () => {
     const observer = makeObserver();
 

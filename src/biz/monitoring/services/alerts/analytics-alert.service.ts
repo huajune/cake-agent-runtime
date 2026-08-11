@@ -8,6 +8,18 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { AgentExecutionEventRepository } from '../../repositories/agent-execution-event.repository';
+
+export interface ExtractionDropRateCheckResult {
+  currentDate: string;
+  currentCount: number;
+  previousDate: string;
+  previousCount: number;
+  doubled: boolean;
+  absoluteExceeded: boolean;
+  wouldAlert: boolean;
+  dryRun: boolean;
+}
 
 /**
  * 业务指标告警服务
@@ -41,6 +53,8 @@ export class AnalyticsAlertService implements OnModuleInit {
     private readonly configService: ConfigService,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
+    @Optional()
+    private readonly agentEventRepository?: AgentExecutionEventRepository,
   ) {
     this.systemConfigService.onAgentReplyConfigChange((config) => {
       this.onConfigChange(config);
@@ -130,6 +144,77 @@ export class AnalyticsAlertService implements OnModuleInit {
     }
   }
 
+  /**
+   * 每日 00:20（CST）比较前两个完整自然日的 extraction_field_dropped 数量。
+   * dryRun 只返回判定、不发通知，供发版前验收与运维探针复用。
+   */
+  @Cron('20 0 * * *', { timeZone: 'Asia/Shanghai' })
+  async checkExtractionDropRate(
+    options: { dryRun?: boolean; now?: Date } = {},
+  ): Promise<ExtractionDropRateCheckResult | null> {
+    if (this.isReadOnlyPreview() || !this.agentEventRepository) return null;
+
+    const todayStart = this.startOfShanghaiDay(options.now ?? new Date());
+    const currentFrom = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    const previousFrom = new Date(currentFrom.getTime() - 24 * 60 * 60 * 1000);
+    try {
+      const [currentCount, previousCount] = await Promise.all([
+        this.agentEventRepository.countEventsByTypeBetween(
+          'extraction_field_dropped',
+          currentFrom,
+          todayStart,
+        ),
+        this.agentEventRepository.countEventsByTypeBetween(
+          'extraction_field_dropped',
+          previousFrom,
+          currentFrom,
+        ),
+      ]);
+      const doubled = previousCount > 0 && currentCount >= previousCount * 2;
+      const absoluteExceeded = currentCount > 800;
+      const result: ExtractionDropRateCheckResult = {
+        currentDate: this.formatShanghaiDate(currentFrom),
+        currentCount,
+        previousDate: this.formatShanghaiDate(previousFrom),
+        previousCount,
+        doubled,
+        absoluteExceeded,
+        wouldAlert: doubled || absoluteExceeded,
+        dryRun: options.dryRun === true,
+      };
+
+      if (!result.wouldAlert || result.dryRun) {
+        this.logger.log(
+          `[抽取丢弃日检${result.dryRun ? '/dry-run' : ''}] ${JSON.stringify(result)}`,
+        );
+        return result;
+      }
+
+      const reasons = [
+        doubled ? `较前日达到 ${(currentCount / previousCount).toFixed(2)} 倍` : null,
+        absoluteExceeded ? '超过绝对阈值 800' : null,
+      ].filter(Boolean);
+      await this.alertService.sendSimpleAlert(
+        '抽取字段丢弃量异常',
+        [
+          `统计日：${result.currentDate}（CST）`,
+          `当日 extraction_field_dropped：${currentCount}`,
+          `前日（${result.previousDate}）：${previousCount}`,
+          `触发条件：${reasons.join('；')}`,
+          '',
+          '请按 modelId 与 rawOutput 采样排查模型切换、供应商串请求或提示词指令遵循劣化。',
+        ].join('\n'),
+        AlertLevel.ERROR,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `抽取字段丢弃日检失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
   private shouldSendAlert(key: string): boolean {
     const lastTime = this.lastAlertTimestamps.get(key);
     if (!lastTime) return true;
@@ -143,5 +228,26 @@ export class AnalyticsAlertService implements OnModuleInit {
 
   private isReadOnlyPreview(): boolean {
     return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
+  }
+
+  private startOfShanghaiDay(date: Date): Date {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const read = (type: Intl.DateTimeFormatPartTypes): number =>
+      Number(parts.find((part) => part.type === type)?.value);
+    return new Date(Date.UTC(read('year'), read('month') - 1, read('day')) - 8 * 60 * 60 * 1000);
+  }
+
+  private formatShanghaiDate(date: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
   }
 }
