@@ -18,6 +18,7 @@ import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-re
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
 import { resolveCityFromDistrict } from '@resolution/geo';
 import { hasPriorNoMatchReply } from '@tools/duliday/job-list/no-match-script.util';
+import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('invite_to_group');
 
@@ -307,7 +308,10 @@ export function buildInviteToGroupTool(
                 context.session.sessionId,
               );
               const cityFact = facts?.preferences?.city ?? null;
-              sessionCity = cityFact && cityFact.confidence === 'high' ? cityFact.value : null;
+              sessionCity =
+                cityFact && canUseFactForAction('invite_city', cityFact.confidence)
+                  ? cityFact.value
+                  : null;
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : String(error);
               logger.warn(`读取会话城市事实失败（gate 按无事实降级）: ${message}`);

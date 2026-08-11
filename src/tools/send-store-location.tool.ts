@@ -11,6 +11,7 @@ import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
+import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('send_store_location');
 
@@ -178,7 +179,9 @@ function selectInterviewLocationCandidate(
   candidates: GeocodeCandidate[],
 ): GeocodeCandidate | null {
   const reliableCandidates = candidates.filter(
-    (candidate) => candidate.confidence === 'high' && candidate.precision !== 'road',
+    (candidate) =>
+      canUseFactForAction('store_location_geocode', candidate.confidence) &&
+      candidate.precision !== 'road',
   );
   if (reliableCandidates.length === 1) return reliableCandidates[0];
 
