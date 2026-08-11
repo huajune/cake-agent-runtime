@@ -11,7 +11,7 @@
 > 2026-08-08 定稿。行号基于当日代码，动手前用文中 grep 命令重新定位。
 
 > **评审修复补记（2026-08-10 第二批）**：name-qa 拆三归 evidence（corpus / producers/name-confirmation / identity-gates）、parse.ts→collected-fields.ts、evidence 命名清理（brand 同名冲突 / run→adjudicate / admission-shape 并入 gates）、geocode 锚点装配挪 preparation-utils、CollectedField 信封别名化归一——下文 P0–P5 章节为历史施工记录，行号与部分路径是执行前状态。
-> **当前待执行 = 文末「P6 · 回合账本」与「P7 · 通货收尾」两章，其余勿重做。**
+> **执行状态更新（2026-08-11）：P6–P9 四章亦已执行完毕并通过验收（六个按工序 commit：c9eb8231→97299fcb；三大件全绿 7082 测试）。全部工序完工，本文整体转为施工历史记录。** 唯一遗留：消费权限表（P4-5）散点仅剩 2 处，见方案 §4 状态注记。
 
 ## 执行模式：一气呵成（2026-08-08 用户裁定，覆盖下文所有"分期发版"表述）
 
@@ -333,3 +333,80 @@ pnpm run typecheck && pnpm run lint:check && npx jest --watchman=false   # 三�
 2. `HighConfidenceValue` 包装/解包设施（`memory/types/high-confidence.ts`）全量退役删除；admission / merge 的输入统一为 claim 流。§2.3 信封终态表最后两行"退役"落袋，不变式①在全字段完全兑现。
 3. 行为等价守则：现有全量测试 + 分歧句用例回放全绿为闸；任何口径变化必须先在 PR 里逐条声明（同 P1 纪律）。
 4. 验收：`grep -rn "HighConfidenceValue" src` 为空（历史注释除外）；`grep -rn "filterHighConfidenceFacts\|unwrapHighConfidenceFacts" src` 为空；三大件全绿。
+
+
+---
+
+## P8 · 信号轴归拢（登记工序立名；P6 落地后任意时点执行，零行为变更）
+
+> 设计依据：方案 §2.1「两条正交轴的澄清」与 §4 Phase 8。登记处 = 每种信号唯一的"盖章+验章+归属先验"窗口；现散居三域，归拢为 resolution 第三道工序。
+
+1. 建 `src/resolution/signal/`（文件名走人话，勿沿用 markup/corpus 两个行话名）：
+   - `git mv src/infra/utils/message-markup.util.ts src/resolution/signal/markers.ts`，全库 `@infra/utils/message-markup.util` → `@resolution/signal/markers`（含 tests；写入侧 append*/format* 一并随迁——登记处有盖章权）。
+   - `evidence/corpus.ts` **按消费者拆两份**迁入：`signal/self-report.ts`（自陈判定：isSelfReportedCandidateMessage / keepSelfReportedMessages / hasSelfReportedPhoneProvenance / extractCandidateTexts，供 rule-track/admission/adjudicate）；`signal/dialogue.ts`（对话读取原语：extractUserTexts / extractDialogueTurns / stripQuoteBlocks / extractQuotedSpeakers / normalizeShortAnswer / isAffirmativeAnswer，供 name-confirmation / city-confirmation / identity-gates）。corpus.ts 删除，引用面按符号归属改指。
+   - `git mv src/resolution/visual src/resolution/signal/visual`，全库 `@resolution/visual` → `@resolution/signal/visual`（tsconfig 别名无需新增，路径直改）。
+2. `stripMessageDecorations` 自 `candidate/student-identity.ts` 迁入 `signal/markers.ts`（它就是时间+引用的复合剥离），student-identity 改 import。
+3. ESLint：核查 `grep -rn "@infra/utils" src/resolution` ——若仅剩 date.util 消费则保留窄例外、否则整条撤销 `!@infra/utils` 负向；`.eslintrc.js` 注释同步。检查 geo 专属 override 一致性。
+4. 文档刷新：CLAUDE.md 架构树（登记/解析/裁决三工序 + infra/utils 回归四件套）、`src/resolution/evidence/README.md`（corpus 指针）、`docs/architecture/visual-fact-pipeline.md` 路径。
+5. 验收：
+```bash
+grep -rn "infra/utils/message-markup\|evidence/corpus" src tests   # 为空
+grep -rn "@resolution/visual'" src tests                # 为空（已全部改 signal/visual）
+ls src/infra/utils                                      # 只剩 date/string/object/fetch-timeout
+pnpm run typecheck && pnpm run lint:check && npx jest --watchman=false
+```
+
+
+---
+
+## P9 · 域契约收口（types 约定；P8 之后执行，纯类型搬迁零行为）
+
+> ⚠️ 反模式先立牌：不得造万能 `SignalResult<T>`/统一返回信封——跨工序通货只有 claim（不变式①）。本工序只统一**契约位置**与**共享词表居所**，不统一返回结构。
+
+1. 约定：被域外 import 的 interface/type 必须住本域 `types.ts`；函数与域内中间形状不受限；labor-form 单文件域豁免。
+2. `signal/types.ts` 新建：`DialogueTurn`（自 dialogue.ts）、`LocationShareCoordinates`（自 markers.ts）、`FieldOwnership` + `FIELD_OWNERSHIPS`（自 visual/visual-fact.types.ts 升入，visual 内改 import——"归谁"是信号轴公共先验）。
+3. `candidate/types.ts` 新建：`CandidateFieldKey` / `CandidateFieldProvenance` / `CandidateCollectedField` / `AUTHORITATIVE_PROVENANCE`（自 collected-fields.ts），collected-fields 留函数；`memory/types/authoritative-session-state.types.ts` 的别名转发改指。
+4. evidence 收口：`NameGateVerdict`（identity-gates → tools 消费）迁入 `claim.types.ts` 的 verdicts 段；`MessageExtractionScope` 若仍被域外消费则同迁，否则留 admission 内部。
+5. 验收：
+```bash
+# 逐域抽查：域外 import 的类型定义处均为 types 文件
+grep -rn "import type.*from '@resolution" src --include="*.ts" | grep -v "types\|@resolution/candidate'\|@resolution/geo'\|@resolution/signal'\|@resolution/labor-form'" | head
+pnpm run typecheck && pnpm run lint:check && npx jest --watchman=false
+```
+
+
+---
+
+## 收尾 · 两项交接任务（2026-08-11，当前唯一待执行）
+
+### 收尾-1 消费权限表收口（P4-5 遗留，全库仅剩 2 散点）
+
+- 新建 `src/tools/shared/action-confidence.ts`：一张「动作 → 允许消费的最低置信档」显式表 +
+  判定函数（命名走人话，表用 `as const satisfies Record<...>`，加动作不表态即类型报错）：
+
+```ts
+import type { SessionFactConfidence } from '@memory/types/session-facts.types';
+
+/** ④使用层唯一的置信消费权限表：哪个动作要求档案值至少什么档。加动作必须在此表态。 */
+export const ACTION_MIN_CONFIDENCE = {
+  /** 拉群门读 sessionCity（invite-to-group）。 */
+  invite_city: 'high',
+  /** 发门店定位时采信 geocode 候选（send-store-location；precision 条件留调用点，非置信语义）。 */
+  store_location_geocode: 'high',
+} as const satisfies Record<string, SessionFactConfidence>;
+```
+
+- 改两处消费点读表：`src/tools/invite-to-group.tool.ts:310`（`cityFact.confidence === 'high'` → 查表）、
+  `src/tools/send-store-location.tool.ts:181`（仅置信半句换表，`precision !== 'road'` 原样留下）。
+- 测试：`tests/tools/shared/action-confidence.spec.ts`（表完备 + 两动作档位断言）。
+- 验收：`grep -rn "confidence === 'high'" src/tools --include="*.ts"` 仅剩 action-confidence.ts 自身（或为空）；三大件全绿。
+- 提交（pathspec）：`git commit -m "refactor(candidate-profile): 消费权限表收口" -- src/tools/shared/action-confidence.ts src/tools/invite-to-group.tool.ts src/tools/send-store-location.tool.ts tests/tools/shared/action-confidence.spec.ts`
+
+### 收尾-2 文档尾款提交
+
+- 只提交这三个文件（pathspec，勿 `git add -A`）：
+  `docs/architecture/candidate-profile-domain-refactor-plan.md`、
+  `docs/architecture/candidate-profile-domain-implementation-guide.md`、
+  `docs/architecture/diagrams/candidate-profile-domain-map.html`
+- 建议信息：`docs(candidate-profile): 同步 P6-P9 执行状态与图解历史横幅`
+- ⚠️ **`docs/releases/2026/weekly-2026-08-07.md` 的 staged 删除不是本 campaign 的改动，严禁提交或还原，原样留给仓库主人处置。**

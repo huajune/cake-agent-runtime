@@ -147,7 +147,9 @@ resolution = **无状态的判断力函数库**（`resolution` 一词双关：en
 ```
 src/resolution/                  # 判断力函数库：纯确定性、零 LLM、零 IO、无 NestJS module、不拥有事实
 │
-│  ── 解析工序（自由文本/信号 → 该字段的带证据主张）──
+│  ── 登记工序（信号轴，P8 终态：signal/{markers,self-report,dialogue,visual}——
+│      现散居 infra/utils(markers 前身 message-markup)、evidence(corpus)、本域 visual）──
+│  ── 解析工序（字段轴：自由文本/信号 → 该字段的带证据主张）──
 ├── brand/          # 品牌：目录/匹配/极性/品类（收编 validateBrandIntents、detectBrandAliasHints；
 │                   #   brand-state.reducer 在 campaign 内化为 evidence 的 brand 策略行并删除，终态无 reducer）
 ├── geo/            # 地理：行政区/白名单/歧义/归一（现状保持；收编省级后缀归一两份漂移）
@@ -172,6 +174,8 @@ src/resolution/                  # 判断力函数库：纯确定性、零 LLM�
 |---|---|---|
 | 解析工序各子域 | 输入自由文本/信号，输出**该字段**的带证据主张；零 IO 零 LLM 零状态 | `sanitizeBrandName`（输出治理，非解析）；session 编排；任何读档案的代码 |
 | resolution/visual | 视觉 sheet 的 schema 与**生产侧**归一（白名单/ownership 默认/脱敏） | `resolveExtractionScope`（消费策略→evidence）；vision 调用（→channels/tools） |
+
+**两条正交轴的澄清（2026-08-10，回应"visual 为何按消息类型组织"）**：字段轴（每字段唯一解析器，答"这个串是什么标准值"）与信号轴（每种信号唯一登记处，答"这条消息是什么、里面的信息归谁"）正交共存。visual 是**图片信号的登记处**，不在解析器轴上——sheet 的 field key 是**信号载荷**（vision 模型声称看到的串），不是解析产物；入档前仍须过字段解析器（map_location 的 city 过 geo 白名单、job_posting 的 brand 过 resolveBrands）与裁决。归属/可信先验是信号的属性，值语义是字段的属性。流水线：信号 → 登记 → 授权域 → 字段解析器 → 裁决——"每字段唯一解析器"不因 sheet 存在而动摇。**信号轴归拢（2026-08-10 追加裁定，P8）**：登记处现散居三域（markup@infra/utils、corpus@evidence、visual@resolution），归拢为 `resolution/signal/{markers,self-report,dialogue,visual}` 第三道工序——**登记处有盖章权**，写入侧随迁（推翻 08-07 的 infra 安置：当时的反对理由只在"resolution=解析+裁决"旧定义下成立，用户当时的直觉先于词汇）。
 | resolution/evidence | 输入多源主张（存量以入参形式传入），输出采信/拒绝/冲突 + 理由码；可调解析工序做归一复算 | 任何 IO；存储格式；prompt 拼装；LLM 调用；「何时裁/裁完归谁」的编排（→memory） |
 | memory | **事实主权域**：编排判断、拥有档案与证据链归档、TTL/并发/生命周期/沉淀/召回、LLM 抽取 IO 编排、对外唯一供数口 | 判断规则的**实现**（→evidence，memory 只调用）；可复用纯解析 |
 | tools | 工具执行上下文 + 外部系统适配；轮内可调引擎但结论必须回档 | 可复用的纯文本解析（→resolution）；自带第二套可信判断（→消费权限表） |
@@ -254,6 +258,7 @@ extractAndSave 里约 520 行「事实怎么算」（11 道臆造门 + 6 条 cit
 **P0–P5 是工序依赖顺序，不是发版节奏**：同一 campaign 分支连续完成、一次发版落地，不对外暴露过渡期/双轨/适配层形态；回滚 = 应用版本整体回滚（全程零存储迁移）。brand 切换以金测试为闸、shadow_diff 改发版后验证（连续 7 天零分歧）。开工唯一前置：D1/D2/D3/归一剥「省」四项裁决一次拍完。施工手册见 [candidate-profile-domain-implementation-guide.md](./candidate-profile-domain-implementation-guide.md)。
 
 > **执行状态（2026-08-10）**：第一 campaign（P0–P5 结构性动作）已全部落地并通过验收——账本核心兑现：六个整文件删除（含 `brand-state.reducer.ts`，金测试改回放 `evidence/brand-policy`）、`memory/facts` 目录消失、ESLint 双禁令落位、session.service 让位判据 0 残留、三大件全绿（typecheck / lint / 7081 测试）。评审修复随后完成：name-qa 拆三归 evidence（corpus / producers/name-confirmation / identity-gates）、裁决史注释回填、`isDigitsOnlyName` 口径还原、evidence 命名清理（brand 同名冲突 / run→adjudicate / admission-shape 并入 gates / producers 按信号渠道命名）+ evidence/README 文件地图、`parse.ts`→`collected-fields.ts`、`CollectedField` 信封别名化归一。两笔已声明余款转入 P6/P7。
+> **终局（2026-08-11）**：P6–P9 亦全部落地（回合账本：ToolBuildContext 288→97 行五组化 + turn-ledger/drain；通货：rule-track claim 化、HighConfidenceValue 全库退役；信号轴：signal/{markers,dialogue,self-report,types,visual}、infra/utils 回归四件套；契约：各域 types 收口、tool.types 瘦身）。六个按工序 commit（c9eb8231→97299fcb），三大件全绿（7082 测试）。**唯一遗留**：消费权限表（P4-5/§3⑥）未成单一居所——实测散点仅剩 2 处（invite-to-group:310、send-store-location:181），小任务待收口。
 
 **代码面貌账本（全部完成后的可量化验收，用户裁定 2026-08-08：交付物是代码干净，不是文档干净）：**
 `memory/facts/` 目录消失（现 19 文件 4243 行）；`high-confidence-facts.ts`（1734 行）消失；session.service 内嵌判断 -520 行；同字段解析器 22 份→8 份；city 让位 4 份→1 行策略；合并清单 3 份→1 张 Record；行政区后缀剥离 8+→1；城市归一器 3 口径→1；信封 7 套→1 通货+2 存储格式；整文件删除清单：`brand-state.reducer.ts`（P5）、`visual-description.ts`、`city-normalize.util.ts`、`fact-shape-gates.ts`、`placeholder-identity.ts`（拆两半后消失）。
@@ -334,6 +339,23 @@ extractAndSave 里约 520 行「事实怎么算」（11 道臆造门 + 6 条 cit
 1. `producers/rule-track.ts`（1375 行，原 hcf 形态整体寄居）改写为逐字段 claim producer：调 `resolution/candidate` 解析器、产出带 quote 的主张，`HighConfidenceValue` 包装/解包设施（memory/types/high-confidence.ts）随之退役删除。
 2. admission 输入统一为 claim 流——不变式①（一个引擎、一种通货）在全字段完全兑现；§2.3 信封终态表的最后两行"退役"落袋。
 3. **排序理由（为何在 P6 之后）**：账本落地后 rule-track 的身份变成"prep 时刻的 producer"，目标形态清晰，避免改两遍。行为等价靠现有全量测试 + 分歧句用例回放守。
+
+### Phase 8 · 信号轴归拢（登记工序立名；P6 落地后任意时点，勿与在飞 P6 同批文件并行）
+
+1. `resolution/signal/` 立域（文件名走人话，2026-08-10 用户纠正 markup/corpus 两个行话名）：`markers.ts`（消息标记：盖章+验章）← `infra/utils/message-markup.util.ts` 整文件含写入侧——登记处有盖章权；`self-report.ts`（自陈判定）+ `dialogue.ts`（对话读取原语：取文本/问答对/应答词表）← `evidence/corpus.ts` 按消费者拆分（前者供 rule-track/admission 圈语料，后者供 *-confirmation/identity-gates 识问答对）；`visual/` ← `resolution/visual/*` 整目录平移，引用面同步改 `@resolution/signal/visual`。
+2. `stripMessageDecorations`（时间+引用复合剥离）自 candidate/student-identity 并回 signal/markers。
+3. ESLint 收紧：撤销 resolution→`@infra/utils` 例外（前提核查：candidate/geo 无其余 infra/utils 依赖，date.util 消费点先查清）；`infra/utils` 回归 date/string/object/fetch-timeout 四件套。
+4. 依赖方向定案：signal 零出向（域内互引）；candidate/brand/geo →（解析前验章）signal；evidence → signal；memory/tools/agent/guardrail/channels → signal。
+5. 文档刷新：CLAUDE.md 架构树（三道工序）、evidence/README、visual-fact-pipeline.md 路径。
+6. 验收：`grep -rn "infra/utils/message-markup" src tests` 为空；`ls src/infra/utils` 只剩四件套；三大件全绿。零行为变更（纯搬迁 + 篱笆收紧）。
+
+### Phase 9 · 域契约收口（types 约定；P8 之后，纯类型搬迁零行为）
+
+背景（2026-08-11 用户质询"四个登记处返回结构不一样"）：resolution 导出物分三类——**原语**（串进串出，不套信封）、**登记/解析产物**（形状不必同，契约位置必须同）、**通货**（claim 唯一，不变式①）。⚠️ 反模式点名：不得以"统一返回结构"为名造万能 `SignalResult<T>` 信封——那是第八套信封复辟；统一只发生在契约位置与共享词表。
+
+1. **每域一份 `types.ts` 约定**：被域外 import 的 interface/type 必须住本域 types 文件；函数与域内中间形状不受限；单文件域（labor-form）豁免（index 即契约）。
+2. 补缺清单：`signal/types.ts`（DialogueTurn / LocationShareCoordinates / **FieldOwnership 自 visual 升入**——"归谁"是信号轴公共先验，文本归属显式化时有家可归）；`candidate/types.ts`（CandidateFieldKey / CandidateFieldProvenance / CandidateCollectedField，memory 别名转发处同步改指）；evidence 半散收口（NameGateVerdict → claim.types 或 verdicts 段、MessageExtractionScope 归 admission 对外契约）。
+3. 验收：逐域 `grep` 域外 import 的类型均出自 types 文件；三大件全绿；无任何运行时行为变更。
 
 ## 5. 待裁决清单（需要产品/技术拍板，非工程问题）
 
