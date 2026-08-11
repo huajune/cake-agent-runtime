@@ -32,6 +32,7 @@ export type GeneratorToolMode = (typeof GENERATOR_TOOL_MODES)[number];
 // HC-1 revise 回路注入用的违规意见，单一数据源在中立 Guardrail 契约里。
 export type { GuardViolation } from '@shared-types/guardrail.contract';
 import type { GuardViolation } from '@shared-types/guardrail.contract';
+import type { TurnLedger } from '@shared-types/turn.types';
 
 export interface GeneratorInputMessage {
   role: string;
@@ -197,6 +198,8 @@ export interface GeneratorRunResult {
   agentRequest?: Record<string, unknown>;
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;
+  /** agent 运行时拥有的本轮账本；runner/guardrail 仅借阅只读证据。 */
+  turnLedger?: TurnLedger;
   /**
    * 仅当 `GeneratorInvokeParams.deferTurnEnd=true` 时返回。
    *

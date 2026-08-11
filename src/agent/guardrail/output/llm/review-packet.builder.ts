@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
+import type { TurnLedger } from '@shared-types/turn.types';
 import type {
   BookingEvidence,
   GeocodeEvidence,
@@ -9,11 +10,11 @@ import type {
   JobListEvidenceItem,
   PrecheckEvidence,
 } from './review-packet.types';
-import { finalizeVisualFactSheet } from '@resolution/visual';
 
 export interface BuildReviewPacketInput {
   reply: string;
   toolCalls: AgentToolCall[];
+  turnLedger?: Pick<TurnLedger, 'visualFactSheets'>;
   userMessage?: string;
   /** 短期记忆里的往轮助手文本（正序）。缺省为空——repair 等旁路调用方无需提供。 */
   recentAssistantTexts?: string[];
@@ -44,7 +45,7 @@ export class GuardrailReviewPacketBuilder {
         geocode: this.buildGeocodeEvidence(input.toolCalls),
         sentLocation: this.buildSentLocationEvidence(input.toolCalls),
         groupInvite: this.buildGroupInviteEvidence(input.toolCalls),
-        visualFacts: this.buildVisualFactsEvidence(input.toolCalls),
+        visualFacts: this.buildVisualFactsEvidence(input.turnLedger?.visualFactSheets ?? []),
       },
       policies: {
         redLines: input.redLines ?? [],
@@ -257,22 +258,14 @@ export class GuardrailReviewPacketBuilder {
   }
 
   /**
-   * 视觉事实证据：save_image_description 的**入参**才是内容载体（result 只有 success），
-   * 这与其余工具相反，故读 args 而非 result。一轮可能多张图，全部保留。
+   * 视觉事实证据直接读回合账本；不再从 save_image_description 参数重建第二份事实。
    */
   private buildVisualFactsEvidence(
-    toolCalls: AgentToolCall[],
+    visualFactSheets: TurnLedger['visualFactSheets'],
   ): GuardrailReviewPacket['evidence']['visualFacts'] {
-    const sheets = toolCalls
-      .filter((item) => item.toolName === 'save_image_description')
+    const sheets = visualFactSheets
       .slice(0, VISUAL_SHEETS_LIMIT)
-      .map((call) => {
-        const args = readRecord(call.args) ?? {};
-        const description = readString(args.description) ?? '';
-        const sheet = finalizeVisualFactSheet(
-          { kind: args.kind, fields: args.fields },
-          description,
-        );
+      .map(({ sheet }) => {
         const finalizedDescription = sheet.rawDescription;
         return {
           kind: sheet.kind,

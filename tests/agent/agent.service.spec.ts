@@ -5,6 +5,7 @@ import { PreparationService } from '@agent/generator/preparation.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { MemoryService } from '@memory/memory.service';
+import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
 
 jest.mock('ai', () => ({
   stepCountIs: jest.fn().mockReturnValue(() => false),
@@ -50,7 +51,7 @@ describe('GeneratorAgent', () => {
     sessionId: 'sess-1',
     maxSteps: 5,
     entryStage: null,
-    turnState: { candidatePool: null },
+    ledger: createTurnLedger(),
     memorySnapshot: undefined,
   };
 
@@ -853,15 +854,15 @@ describe('GeneratorAgent', () => {
   });
 
   it('should trigger turn-end lifecycle without blocking invoke success', async () => {
+    const ledger = createTurnLedger();
+    ledger.recordFetchedJobs([{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }]);
     mockPreparation.prepare.mockResolvedValue({
       ...preparedContext,
       normalizedMessages: [
         { role: 'assistant', content: '之前给你推荐了长白门店。' },
         { role: 'user', content: '我想报名长白' },
       ],
-      turnState: {
-        candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }],
-      },
+      ledger,
     });
     mockMemoryService.onTurnEnd.mockRejectedValue(new Error('memory lifecycle failed'));
 

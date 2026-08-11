@@ -261,13 +261,13 @@ describe('PreparationService', () => {
     expect(result.normalizedMessages).toEqual([{ role: 'user', content: '短期里的当前消息' }]);
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.currentStage).toBe('job_consultation');
-    expect(toolContext.availableStages).toEqual(['trust_building', 'job_consultation']);
-    expect(toolContext.stageGoals).toEqual({
+    expect(toolContext.archive.currentStage).toBe('job_consultation');
+    expect(toolContext.archive.availableStages).toEqual(['trust_building', 'job_consultation']);
+    expect(toolContext.archive.stageGoals).toEqual({
       trust_building: { stage: 'trust_building' },
       job_consultation: { stage: 'job_consultation' },
     });
-    await toolContext.onJobsFetched?.([
+    await toolContext.ledger.recordFetchedJobs?.([
       {
         jobId: 1,
         brandName: '奥乐齐',
@@ -276,7 +276,7 @@ describe('PreparationService', () => {
       },
     ]);
 
-    expect(result.turnState.candidatePool).toEqual([
+    expect(result.ledger.fetchedJobs).toEqual([
       expect.objectContaining({ jobId: 1, storeName: '长白' }),
     ]);
   });
@@ -358,7 +358,9 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('[企微名称备注｜运营给本会话指定的目标品牌/门店]');
     expect(mockToolRegistry.buildForScenario).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ contactBrandAliases: [] }),
+      expect.objectContaining({
+        turnInput: expect.objectContaining({ contactBrandAliases: [] }),
+      }),
     );
   });
 
@@ -380,7 +382,9 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('不得从原始昵称中猜测其它品牌');
     expect(mockToolRegistry.buildForScenario).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ contactBrandAliases: ['肯德基'] }),
+      expect.objectContaining({
+        turnInput: expect.objectContaining({ contactBrandAliases: ['肯德基'] }),
+      }),
     );
   });
 
@@ -933,11 +937,11 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('旧暑假工品牌');
     expect(result.finalPrompt).not.toContain('旧暑假工焦点品牌');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.currentLaborFormIntent).toEqual({
+    expect(toolContext.turnInput.currentLaborFormIntent).toEqual({
       kind: 'clear',
       clearedValues: ['暑假工'],
     });
-    expect(toolContext.sessionFacts.preferences.labor_form).toBeNull();
+    expect(toolContext.archive.sessionFacts.preferences.labor_form).toBeNull();
   });
 
   it('renders invitedGroups in session memory to prevent duplicate invite (badcase 3g1ruov9 / 6vzw8oh3)', async () => {
@@ -1302,7 +1306,7 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('面试形式: 线下面试');
     expect(result.finalPrompt).toContain('只有明确为线下/到店/现场面试才允许');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.activeBookingJobIds).toEqual([39688]);
+    expect(toolContext.archive.activeBookingJobIds).toEqual([39688]);
   });
 
   it('线上面试只注入面试形式，不注入残留的面试地址', async () => {
@@ -1393,7 +1397,7 @@ describe('PreparationService', () => {
     // 88001 属瞬时查询失败：正常渲染 88002 的同时注入同步中提示，双轨并存
     expect(result.finalPrompt).toContain('预约信息同步中');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.isRecalledJobId?.(527350)).toBe(true);
+    expect(toolContext.archive.isRecalledJobId?.(527350)).toBe(true);
   });
 
   it('改约场景：进行中工单的 jobId 并入 provenance 集，isRecalledJobId 放行', async () => {
@@ -1434,8 +1438,8 @@ describe('PreparationService', () => {
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     // 工单 jobId 放行；其它凭空编的 jobId 仍被拦
-    expect(toolContext.isRecalledJobId?.(527349)).toBe(true);
-    expect(toolContext.isRecalledJobId?.(999999)).toBe(false);
+    expect(toolContext.archive.isRecalledJobId?.(527349)).toBe(true);
+    expect(toolContext.archive.isRecalledJobId?.(999999)).toBe(false);
   });
 
   it('改约场景：工单展示字段全缺(block 为空)时不把 jobId 当 provenance', async () => {
@@ -1471,7 +1475,7 @@ describe('PreparationService', () => {
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     // block 为空 → 模型看不到该 jobId → 不放行
-    expect(toolContext.isRecalledJobId?.(527350)).toBe(false);
+    expect(toolContext.archive.isRecalledJobId?.(527350)).toBe(false);
   });
 
   it('改约场景：海绵把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
@@ -1508,7 +1512,7 @@ describe('PreparationService', () => {
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     // 模型 precheck 传 number 527351，provenance 归一后应匹配放行
-    expect(toolContext.isRecalledJobId?.(527351)).toBe(true);
+    expect(toolContext.archive.isRecalledJobId?.(527351)).toBe(true);
   });
 
   it('预约相关回合直查海绵瞬时失败时注入同步中提示且不回退本地快照', async () => {
@@ -1545,7 +1549,7 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('旧门店');
     expect(result.finalPrompt).not.toContain('2026-04-16');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.isRecalledJobId?.(527352)).toBe(false);
+    expect(toolContext.archive.isRecalledJobId?.(527352)).toBe(false);
   });
 
   it('预约相关回合海绵明确查不到工单（指针失效）时静默跳过，不注入同步中提示', async () => {
@@ -2151,7 +2155,7 @@ describe('PreparationService', () => {
       content: expect.stringContaining('真人招募经理手动发送'),
     });
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.geocodeLocationAnchor).toMatchObject({
+    expect(toolContext.turnInput.geocodeLocationAnchor).toMatchObject({
       city: '上海',
       districts: ['嘉定'],
       source: 'human_agent',
@@ -2199,13 +2203,13 @@ describe('PreparationService', () => {
 
     expect(geocoding.reverseGeocode).toHaveBeenCalledTimes(1);
     expect(geocoding.reverseGeocode).toHaveBeenCalledWith(121.4, 31.2);
-    expect(result.turnState.cityAttestation).toMatchObject({
+    expect(result.ledger.cityAttestation).toMatchObject({
       city: '上海市',
       district: '徐汇区',
       source: 'location_share',
     });
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls.at(-1)!;
-    expect(toolContext.geocodeResolvedAnchors).toContainEqual(
+    expect(toolContext.ledger.geocodeAnchors).toContainEqual(
       expect.objectContaining({ city: '上海市', longitude: 121.4, latitude: 31.2 }),
     );
   });

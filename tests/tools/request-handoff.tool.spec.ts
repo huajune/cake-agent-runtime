@@ -1,6 +1,7 @@
 import { buildRequestHandoffTool } from '@tools/request-handoff.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { createToolContext, mergeToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildRequestHandoffTool', () => {
   const interventionService = { dispatch: jest.fn() };
@@ -9,16 +10,12 @@ describe('buildRequestHandoffTool', () => {
   const longTermService = { getActiveBooking: jest.fn() };
   const handoffRecorder = { record: jest.fn() };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    chatId: 'chat-1',
-    messages: [],
-    botUserId: 'mgr-bob',
-    botImId: 'bot-im-1',
-    contactName: 'Alice',
-  };
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
+      botUserId: 'mgr-bob', botImId: 'bot-im-1', contactName: 'Alice',
+    },
+  });
 
   const buildTool = (ctx: ToolBuildContext = mockContext) =>
     buildRequestHandoffTool(
@@ -45,7 +42,7 @@ describe('buildRequestHandoffTool', () => {
   });
 
   it('returns missing_chat_id when chatId and sessionId are both absent', async () => {
-    const tool = buildTool({ ...mockContext, chatId: undefined, sessionId: '' });
+    const tool = buildTool(mergeToolContext(mockContext, { session: { chatId: undefined, sessionId: '' } }));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
       reasonCode: 'cannot_find_store',
@@ -80,7 +77,7 @@ describe('buildRequestHandoffTool', () => {
 
   it('uses a work order resolved earlier in the same turn when the current contact has no active_booking', async () => {
     longTermService.getActiveBooking.mockResolvedValue(null);
-    const tool = buildTool({ ...mockContext, runtimeWorkOrderId: 450643 });
+    const tool = buildTool(mergeToolContext(mockContext, { ledger: { resolvedWorkOrderId: 450643 } }));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
       reasonCode: 'modify_appointment',
@@ -100,11 +97,9 @@ describe('buildRequestHandoffTool', () => {
     const focusJob = { jobId: 528572, brandName: 'M Stand', jobName: '店员', storeName: '中大天地店' };
 
     it('优先用本轮焦点岗位', async () => {
-      const tool = buildTool({
-        ...mockContext,
-        currentFocusJob: focusJob as never,
-        activeBookingJobIds: [999888],
-      });
+      const tool = buildTool(mergeToolContext(mockContext, {
+        archive: { currentFocusJob: focusJob as never, activeBookingJobIds: [999888] },
+      }));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (tool as any).execute({
         reasonCode: 'salary_admin_inquiry',
@@ -116,7 +111,7 @@ describe('buildRequestHandoffTool', () => {
     });
 
     it('无焦点岗位时退回在约岗位', async () => {
-      const tool = buildTool({ ...mockContext, activeBookingJobIds: [999888, 777666] });
+      const tool = buildTool(mergeToolContext(mockContext, { archive: { activeBookingJobIds: [999888, 777666] } }));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (tool as any).execute({
         reasonCode: 'booking_conflict',

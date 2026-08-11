@@ -1,5 +1,6 @@
 import { GeneratorAgent } from '@agent/generator/generator.agent';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
+import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
 
 /**
  * attachTurnEnd 闭包契约：deferTurnEnd 时暴露的 runTurnEnd 必须透传
@@ -21,7 +22,7 @@ describe('GeneratorAgent attachTurnEnd (runTurnEnd contract)', () => {
     sessionId: 's1',
     botImId: 'bot-1',
     normalizedMessages: [],
-    turnState: { candidatePool: undefined },
+    ledger: createTurnLedger(),
   };
 
   const attach = (service: GeneratorAgent, result: GeneratorRunResult) => {

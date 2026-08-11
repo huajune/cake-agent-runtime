@@ -8,6 +8,7 @@ import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { PreparationService, type PreparedAgentContext } from './preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
+import type { TurnLedger } from '@shared-types/turn.types';
 import {
   buildSideEffectBlockNotice,
   buildToolCallLimitNotice,
@@ -54,6 +55,11 @@ import type {
   GeneratorStreamResult,
   AgentToolCall,
 } from './generator.types';
+
+type TurnEndLifecycleContext = Pick<
+  Parameters<MemoryService['onTurnEnd']>[0],
+  'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages' | 'contactName'
+> & { ledger: TurnLedger };
 export type {
   GeneratorInputMessage,
   GeneratorInvokeParams,
@@ -150,6 +156,7 @@ export class GeneratorAgent {
         },
         agentRequest,
         memorySnapshot: ctx.memorySnapshot,
+        turnLedger: ctx.ledger,
         stepStartMs,
         stepEndWallclocks,
         toolExecutionTimings: ctx.toolExecutionTimings,
@@ -225,6 +232,7 @@ export class GeneratorAgent {
             },
             agentRequest,
             memorySnapshot: ctx.memorySnapshot,
+            turnLedger: ctx.ledger,
             stepStartMs,
             stepEndWallclocks,
             toolExecutionTimings: ctx.toolExecutionTimings,
@@ -341,26 +349,10 @@ export class GeneratorAgent {
    * 记忆收尾不阻塞主响应；失败只记日志，避免把模型成功回复拖慢或放大成整轮失败。
    */
   private async runTurnEndLifecycle(
-    ctx: Pick<
-      Parameters<MemoryService['onTurnEnd']>[0],
-      | 'corpId'
-      | 'userId'
-      | 'sessionId'
-      | 'messageId'
-      | 'botImId'
-      | 'normalizedMessages'
-      | 'contactName'
-    > & {
-      turnState: {
-        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
-        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
-        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
-        cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
-        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
-      };
-    },
+    ctx: TurnEndLifecycleContext,
     assistantText?: string,
   ): Promise<void> {
+    const ledger = ctx.ledger.drain();
     await this.memoryService.onTurnEnd(
       {
         corpId: ctx.corpId,
@@ -369,38 +361,22 @@ export class GeneratorAgent {
         messageId: ctx.messageId,
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
-        candidatePool: ctx.turnState.candidatePool,
+        candidatePool:
+          ledger.fetchedJobs.length > 0
+            ? (ledger.fetchedJobs as Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'])
+            : null,
         contactName: ctx.contactName,
-        imageBrandResolutions: ctx.turnState.imageBrandResolutions,
-        jobListQuerySignature: ctx.turnState.jobListQuerySignature,
-        cityAttestation: ctx.turnState.cityAttestation,
-        invalidatedJobIds: ctx.turnState.invalidatedJobIds,
+        imageBrandResolutions: ledger.imageBrandResolutions.flatMap((entry) => entry.resolutions),
+        jobListQuerySignature: ledger.jobListQuery?.signature ?? null,
+        cityAttestation: ledger.cityAttestation ?? null,
+        invalidatedJobIds: [...ledger.invalidatedJobIds],
+        ruleFacts: ledger.ruleFacts,
       },
       assistantText,
     );
   }
 
-  private dispatchTurnEndLifecycle(
-    ctx: Pick<
-      Parameters<MemoryService['onTurnEnd']>[0],
-      | 'corpId'
-      | 'userId'
-      | 'sessionId'
-      | 'messageId'
-      | 'botImId'
-      | 'normalizedMessages'
-      | 'contactName'
-    > & {
-      turnState: {
-        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
-        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
-        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
-        cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
-        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
-      };
-    },
-    assistantText?: string,
-  ): void {
+  private dispatchTurnEndLifecycle(ctx: TurnEndLifecycleContext, assistantText?: string): void {
     void this.runTurnEndLifecycle(ctx, assistantText).catch((err) =>
       this.logger.warn('记忆生命周期执行失败', err),
     );
@@ -415,18 +391,7 @@ export class GeneratorAgent {
    */
   private attachTurnEnd(
     result: GeneratorRunResult,
-    ctx: Pick<
-      Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'botImId' | 'normalizedMessages' | 'contactName'
-    > & {
-      turnState: {
-        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
-        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
-        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
-        cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
-        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
-      };
-    },
+    ctx: Omit<TurnEndLifecycleContext, 'messageId'>,
     messageId: string | undefined,
     assistantText: string,
     deferTurnEnd: boolean | undefined,
@@ -471,6 +436,7 @@ export class GeneratorAgent {
     usage: GeneratorRunResult['usage'];
     agentRequest?: Record<string, unknown>;
     memorySnapshot?: GeneratorRunResult['memorySnapshot'];
+    turnLedger?: TurnLedger;
     /**
      * 本轮 generate/stream 开始的 wallclock 时间（`Date.now()`）。
      * 作为第 0 步的"上一步结束时间"锚点。
@@ -565,6 +531,7 @@ export class GeneratorAgent {
       usage: params.usage,
       agentRequest: params.agentRequest,
       memorySnapshot: params.memorySnapshot,
+      turnLedger: params.turnLedger,
     };
   }
 

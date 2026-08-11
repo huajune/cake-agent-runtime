@@ -1,4 +1,11 @@
-import { isRecognizedCityName, normalizeCityName } from '@resolution/geo';
+import {
+  isRecognizedCityName,
+  normalizeCityName,
+  resolveCityFromDistrict,
+  resolveCityFromLocation,
+  scanGeoSignalsFromText,
+} from '@resolution/geo';
+import { isVisualDescriptionText } from '@infra/utils/message-markup.util';
 
 export type CityClaimProducer =
   | 'rule'
@@ -16,6 +23,24 @@ export interface CityEvidenceClaim {
   producer: CityClaimProducer;
   evidence: string;
   assertedAt: string;
+}
+
+/** 候选人文本里的区名/地标信号一次性归一成城市集合，供本轮所有消费者复用。 */
+export function inferCitiesFromGeoSignals(userTexts: readonly string[]): ReadonlySet<string> {
+  const cities = new Set<string>();
+  for (const text of userTexts) {
+    if (!text || isVisualDescriptionText(text.trim())) continue;
+    const scan = scanGeoSignalsFromText(text);
+    for (const hit of scan.districtHits) {
+      const city = resolveCityFromDistrict(hit.key);
+      if (city) cities.add(normalizeCityName(city));
+    }
+    for (const location of scan.locations) {
+      const city = resolveCityFromLocation(location);
+      if (city) cities.add(normalizeCityName(city));
+    }
+  }
+  return cities;
 }
 
 export type CityAdjudicationDecision =

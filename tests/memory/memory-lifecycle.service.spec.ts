@@ -1,5 +1,8 @@
 import { MemoryLifecycleService } from '@memory/services/memory-lifecycle.service';
-import { unwrapHighConfidenceValue } from '@resolution/evidence/producers/rule-track';
+import {
+  extractHighConfidenceFacts,
+  unwrapHighConfidenceValue,
+} from '@resolution/evidence/producers/rule-track';
 import {
   FALLBACK_EXTRACTION,
   type HighConfidenceFacts,
@@ -98,6 +101,9 @@ describe('MemoryLifecycleService', () => {
   };
 
   let service: MemoryLifecycleService;
+
+  const prepRuleFacts = async (text: string) =>
+    extractHighConfidenceFacts([text], await mockSponge.fetchBrandList());
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -333,7 +339,10 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '来一份，我25岁');
+    const text = '来一份，我25岁';
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', text, {
+      ruleFacts: await prepRuleFacts(text),
+    });
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
     expect(ctx.sessionMemory).toBeNull();
@@ -368,11 +377,13 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
+    const text = '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空';
     const ctx = await service.onTurnStart(
       'corp-1',
       'user-1',
       'sess-1',
-      '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空',
+      text,
+      { ruleFacts: await prepRuleFacts(text) },
     );
 
     expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
@@ -411,11 +422,13 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
+    const text = '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有';
     const ctx = await service.onTurnStart(
       'corp-1',
       'user-1',
       'sess-1',
-      '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有',
+      text,
+      { ruleFacts: await prepRuleFacts(text) },
     );
 
     expect(ctx.highConfidenceFacts?.interview_info).toEqual(
@@ -534,6 +547,7 @@ describe('MemoryLifecycleService', () => {
         userId: 'user-1',
         sessionId: 'sess-1',
         botImId: 'bot-wxid-1',
+        ruleFacts: null,
         normalizedMessages: [
           { role: 'assistant', content: '杨浦这边有长白这家店。' },
           {
@@ -607,10 +621,16 @@ describe('MemoryLifecycleService', () => {
       userText: '[图片 messageId=img-1] 我想报名长白',
       assistantText: '可以，我先帮你确认下长白这边的面试要求。',
     });
-    expect(mockSessionService.extractAndSave).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'assistant', content: '杨浦这边有长白这家店。' },
-      { role: 'user', content: '[图片 messageId=img-1] 我想报名长白' },
-    ]);
+    expect(mockSessionService.extractAndSave).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [
+        { role: 'assistant', content: '杨浦这边有长白这家店。' },
+        { role: 'user', content: '[图片 messageId=img-1] 我想报名长白' },
+      ],
+      null,
+    );
   });
 
   it('should persist running and final post-processing status when messageId is present', async () => {
@@ -620,6 +640,7 @@ describe('MemoryLifecycleService', () => {
         userId: 'user-1',
         sessionId: 'sess-1',
         messageId: 'msg-1',
+        ruleFacts: null,
         normalizedMessages: [{ role: 'user', content: '我想找长白附近的兼职' }],
         candidatePool: [
           {
@@ -674,6 +695,7 @@ describe('MemoryLifecycleService', () => {
         userId: 'user-1',
         sessionId: 'sess-1',
         messageId: 'msg-2',
+        ruleFacts: null,
         normalizedMessages: [{ role: 'user', content: '继续看看' }],
       },
       '好的',
@@ -703,6 +725,7 @@ describe('MemoryLifecycleService', () => {
       corpId: 'corp-1',
       userId: 'user-1',
       sessionId: 'sess-1',
+      ruleFacts: null,
       normalizedMessages: [{ role: 'assistant', content: '你好' }],
     });
 
@@ -726,6 +749,7 @@ describe('MemoryLifecycleService', () => {
           corpId: 'corp-1',
           userId: 'user-1',
           sessionId: 'sess-1',
+          ruleFacts: null,
           normalizedMessages: [{ role: 'user', content: '好的' }],
           cityAttestation: attestation,
         },
@@ -749,6 +773,7 @@ describe('MemoryLifecycleService', () => {
           corpId: 'corp-1',
           userId: 'user-1',
           sessionId: 'sess-1',
+          ruleFacts: null,
           normalizedMessages: [{ role: 'user', content: '好的' }],
         },
         '收到',
@@ -794,6 +819,7 @@ describe('MemoryLifecycleService', () => {
           sessionId: 'sess-1',
           messageId: 'msg-3',
           contactName: '小王 肯德基',
+          ruleFacts: null,
           normalizedMessages: [{ role: 'user', content: '我想去KFC' }],
           imageBrandResolutions: [imageResolution],
         },
@@ -828,6 +854,7 @@ describe('MemoryLifecycleService', () => {
           userId: 'user-1',
           sessionId: 'sess-1',
           messageId: 'msg-4',
+          ruleFacts: null,
           normalizedMessages: [{ role: 'user', content: '不要肯德基' }],
         },
         '好的',

@@ -11,7 +11,7 @@ import type {
   EntityExtractionResult,
   HighConfidenceFacts,
 } from '@memory/types/session-facts.types';
-import type { GeocodeLocationAnchor } from '@shared-types/tool.types';
+import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { stripTimeContext } from '@infra/utils/message-markup.util';
 
 const LOCATION_CONTINUATION_PATTERN =

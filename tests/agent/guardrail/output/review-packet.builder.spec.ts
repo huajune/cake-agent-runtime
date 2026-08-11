@@ -1,4 +1,14 @@
 import { GuardrailReviewPacketBuilder } from '@agent/guardrail/output/llm/review-packet.builder';
+import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
+import { finalizeVisualFactSheet } from '@resolution/visual';
+
+function visualLedger(raw: { description?: string } & Record<string, unknown>) {
+  const ledger = createTurnLedger();
+  ledger.recordVisualFacts(finalizeVisualFactSheet(raw, raw.description ?? ''), {
+    messageId: 'image-1',
+  });
+  return ledger;
+}
 
 describe('GuardrailReviewPacketBuilder', () => {
   const builder = new GuardrailReviewPacketBuilder();
@@ -421,7 +431,11 @@ describe('GuardrailReviewPacketBuilder', () => {
     };
 
     it('把截图结构化字段带进 evidence，并保留 ownership', () => {
-      const packet = builder.build({ reply: '看到了', toolCalls: [screenshotCall] });
+      const packet = builder.build({
+        reply: '看到了',
+        toolCalls: [screenshotCall],
+        turnLedger: visualLedger(screenshotCall.args),
+      });
 
       expect(packet.evidence.visualFacts?.sheets).toHaveLength(1);
       expect(packet.evidence.visualFacts?.sheets[0]).toMatchObject({
@@ -434,8 +448,12 @@ describe('GuardrailReviewPacketBuilder', () => {
       });
     });
 
-    it('内容载体是 args 而非 result——result 只有 success 也必须产出证据', () => {
-      const packet = builder.build({ reply: '看到了', toolCalls: [screenshotCall] });
+    it('内容载体是账本而非 result——result 只有 success 也必须产出证据', () => {
+      const packet = builder.build({
+        reply: '看到了',
+        toolCalls: [screenshotCall],
+        turnLedger: visualLedger(screenshotCall.args),
+      });
       expect(packet.evidence.visualFacts).toBeDefined();
     });
 
@@ -459,22 +477,24 @@ describe('GuardrailReviewPacketBuilder', () => {
       expect(packet.evidence.visualFacts).toBeUndefined();
     });
 
-    it('复用 finalize：过滤非法 key/证件号、补 ownership，并脱敏自由描述', () => {
+    it('消费工具已 finalize 的账本 sheet：过滤非法 key/证件号、补 ownership并脱敏', () => {
       const idNumber = '310101199001011234';
+      const rawSheet = {
+        kind: 'resume',
+        description: `简历：王建国，身份证号 ${idNumber}`,
+        fields: [
+          { key: 'name', value: '王建国' },
+          { key: 'invented_key', value: '不得进入 reviewer' },
+          { key: 'other', value: idNumber },
+        ],
+      };
       const packet = builder.build({
         reply: '看到了',
+        turnLedger: visualLedger(rawSheet),
         toolCalls: [
           {
             toolName: 'save_image_description',
-            args: {
-              kind: 'resume',
-              description: `简历：王建国，身份证号 ${idNumber}`,
-              fields: [
-                { key: 'name', value: '王建国' },
-                { key: 'invented_key', value: '不得进入 reviewer' },
-                { key: 'other', value: idNumber },
-              ],
-            },
+            args: rawSheet,
             result: { success: true },
             status: 'ok',
           },

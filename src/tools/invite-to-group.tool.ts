@@ -177,16 +177,16 @@ export function buildInviteToGroupTool(
         // 幂等键按「本轮 turn + 群」而非「每候选人一次」：daily_ops_report 是当天事件数，
         // 若用 userId 终身键，同一候选人后续天数/换群再次进群会被压成 0。turnId 缺省（test/debug）回退时间戳。
         const recordGroupInvited = (groupName: string): void => {
-          const turnId = context.turnId ?? Date.now().toString();
+          const turnId = context.session.turnId ?? Date.now().toString();
           void opsEventsRecorder.recordEvent({
-            corpId: context.corpId,
+            corpId: context.session.corpId,
             eventName: 'group.invited',
-            idempotencyKey: `${context.sessionId}:group:${groupName}:${turnId}`,
-            botImId: context.botImId,
-            managerName: context.botUserId,
+            idempotencyKey: `${context.session.sessionId}:group:${groupName}:${turnId}`,
+            botImId: context.session.botImId,
+            managerName: context.session.botUserId,
             sourceChannel: 'unknown',
-            userId: context.userId,
-            chatId: context.sessionId,
+            userId: context.session.userId,
+            chatId: context.session.sessionId,
             payload: { group_name: groupName, city },
           });
         };
@@ -195,17 +195,24 @@ export function buildInviteToGroupTool(
         // 供"前置已在群闸门"与"invite 前实时预检"两处复用。
         const respondAlreadyInGroup = async (groupName: string, via: string) => {
           await memoryService
-            .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
-              groupName,
-              city,
-              industry: industry ?? undefined,
-              invitedAt: new Date().toISOString(),
-            })
+            .saveInvitedGroup(
+              context.session.corpId,
+              context.session.userId,
+              context.session.sessionId,
+              {
+                groupName,
+                city,
+                industry: industry ?? undefined,
+                invitedAt: new Date().toISOString(),
+              },
+            )
             .catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : String(err);
               logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
             });
-          logger.log(`${via}：候选人已在群 ${groupName}，跳过拉群 (user=${context.userId})`);
+          logger.log(
+            `${via}：候选人已在群 ${groupName}，跳过拉群 (user=${context.session.userId})`,
+          );
           recordGroupInvited(groupName);
           return {
             success: true,
@@ -224,8 +231,8 @@ export function buildInviteToGroupTool(
         };
 
         try {
-          if (context.bookingSucceeded === false) {
-            logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.userId}`);
+          if (context.ledger.bookingSucceeded === false) {
+            logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.session.userId}`);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_BOOKING_NOT_SUCCESS,
               outcome: '本轮面试预约未成功，跳过拉群',
@@ -237,7 +244,7 @@ export function buildInviteToGroupTool(
           const districtResolvedCity = resolveCityFromDistrict(city.trim());
           if (districtResolvedCity) {
             logger.warn(
-              `invite_to_group city 入参误传为区域: city=${city}, expectedCity=${districtResolvedCity} (user=${context.userId})`,
+              `invite_to_group city 入参误传为区域: city=${city}, expectedCity=${districtResolvedCity} (user=${context.session.userId})`,
             );
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE,
@@ -258,7 +265,7 @@ export function buildInviteToGroupTool(
           // 工具、city 又缺出处时，工具回 city_unverified 并引导模型追问城市继续
           // 推进拉群，候选人被反复纠缠。实时群成员关系本身就是该城市的最强依据。
           // 群列表走缓存（不 forceRefresh），任何失败静默降级回原流程。
-          if (context.strategySource !== 'testing' && groupMembership) {
+          if (context.runtime.strategySource !== 'testing' && groupMembership) {
             try {
               const cachedGroups = await groupResolver.resolveGroups('兼职群');
               const normalizedRequestedCity = normalizeCity(city);
@@ -267,7 +274,7 @@ export function buildInviteToGroupTool(
               );
               if (requestedCityRooms.length > 0) {
                 const roomsUserIn = await groupMembership.listUserRooms(
-                  context.userId,
+                  context.session.userId,
                   requestedCityRooms.map((group) => group.imRoomId),
                 );
                 const existingGroup =
@@ -287,7 +294,7 @@ export function buildInviteToGroupTool(
           // 城市 provenance gate（badcase recvk28F1xrsKj 拉错城市群）：
           // city 入参必须能追溯到会话城市事实、候选人原文城市名、geo 地名白名单
           // 推断（顺义→北京 等，见 @resolution/geo）或本轮 geocode 确权城市
-          //（geocodeResolvedAnchors 穿线，#765），模型自报不构成依据。
+          //（ledger.geocodeAnchors 穿线，#765），模型自报不构成依据。
           // 会话城市事实的合法来源含 rule/llm/derived 之外的 'tool'（geocode unique
           // 确权、定位分享逆解析，2026-07-27 证据化穿线）——按置信度采信，不挑 source。
           // 会话事实读取失败按 null 降级（gate 仍可凭候选人原文放行），不让 Redis 抖动挡住拉群。
@@ -295,9 +302,9 @@ export function buildInviteToGroupTool(
           if (sessionService) {
             try {
               const facts = await sessionService.getFacts(
-                context.corpId,
-                context.userId,
-                context.sessionId,
+                context.session.corpId,
+                context.session.userId,
+                context.session.sessionId,
               );
               const cityFact = facts?.preferences?.city ?? null;
               sessionCity = cityFact && cityFact.confidence === 'high' ? cityFact.value : null;
@@ -307,26 +314,27 @@ export function buildInviteToGroupTool(
             }
           }
           // 顺序恢复提示（visual-fact §二A ⑩）：本轮有图片但尚未 save_image_description
-          // 时，地图截图的城市线索还没进 turnState——拒绝理由里给模型一条确定性恢复路径。
+          // 时，地图截图的城市线索还没进 ledger——拒绝理由里给模型一条确定性恢复路径。
           const hasUnsavedImages =
-            (context.imageMessageIds?.length ?? 0) > 0 &&
-            (context.turnVisualFactSheets?.length ?? 0) === 0;
+            (context.turnInput.imageMessageIds?.length ?? 0) > 0 &&
+            (context.ledger.visualFactSheets?.length ?? 0) === 0;
           const unsavedImageHint = hasUnsavedImages
             ? '本轮候选人发了图片但你还没调用 save_image_description；若图片是位置/地图截图，先保存描述再重试本工具，城市核验会采信图中位置。'
             : '';
           const cityGateVerdict = evaluateInviteCityGate({
             requestedCity: city,
             sessionCity,
-            userTexts: extractUserTexts(context.messages),
+            userTexts: extractUserTexts(context.turnInput.messages),
+            geoSignalCities: context.ledger.geoSignalCities,
             // 同轮 geocode unique 确权城市：补"轮末写档、下轮生效"的时序空档
             //（geocode → 无岗 → invite 常在同一轮发生）。
-            turnResolvedCities: (context.geocodeResolvedAnchors ?? []).map((anchor) => anchor.city),
-            turnVisualSheets: context.turnVisualFactSheets,
+            turnResolvedCities: (context.ledger.geocodeAnchors ?? []).map((anchor) => anchor.city),
+            turnVisualSheets: context.ledger.visualFactSheets,
           });
           if (cityGateVerdict.decision === 'reject') {
             if (cityGateVerdict.reason === 'city_conflict') {
               logger.warn(
-                `invite_to_group city 与会话城市事实冲突: city=${city}, expectedCity=${cityGateVerdict.expectedCity} (user=${context.userId})`,
+                `invite_to_group city 与会话城市事实冲突: city=${city}, expectedCity=${cityGateVerdict.expectedCity} (user=${context.session.userId})`,
               );
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT,
@@ -342,7 +350,7 @@ export function buildInviteToGroupTool(
               });
             }
             logger.warn(
-              `invite_to_group city 缺少出处依据（模型凭空指定）: city=${city} (user=${context.userId})`,
+              `invite_to_group city 缺少出处依据（模型凭空指定）: city=${city} (user=${context.session.userId})`,
             );
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED,
@@ -362,9 +370,9 @@ export function buildInviteToGroupTool(
           if (sessionService) {
             try {
               const state = await sessionService.getSessionState(
-                context.corpId,
-                context.userId,
-                context.sessionId,
+                context.session.corpId,
+                context.session.userId,
+                context.session.sessionId,
               );
               invitedGroups = state?.invitedGroups ?? [];
             } catch (error: unknown) {
@@ -374,14 +382,14 @@ export function buildInviteToGroupTool(
           }
           const timingVerdict = evaluateInviteTimingGate({
             requestedCity: city,
-            jobListExecutedThisTurn: context.jobListExecutedThisTurn === true,
-            bookingSucceeded: context.bookingSucceeded,
+            jobListExecuted: context.ledger.jobListExecuted === true,
+            bookingSucceeded: context.ledger.bookingSucceeded,
             invitedGroups,
-            currentUserMessage: context.currentUserMessage,
+            currentUserMessage: context.turnInput.currentUserMessage,
           });
           if (timingVerdict.decision === 'reject') {
             logger.warn(
-              `invite_to_group 时机 gate 拒绝: reason=${timingVerdict.reason}, city=${city} (user=${context.userId})`,
+              `invite_to_group 时机 gate 拒绝: reason=${timingVerdict.reason}, city=${city} (user=${context.session.userId})`,
             );
             if (timingVerdict.reason === 'already_invited_city') {
               const groupName = timingVerdict.invitedGroupName;
@@ -420,8 +428,8 @@ export function buildInviteToGroupTool(
           // testing 链路（test-suite 重放/调试）：确定性校验（区县、城市 gate）已在上方
           // 真实跑完，这里返回模拟成功、不触达企业接口——否则测试环境缺 bot 身份必失败，
           // prompt 的"invite 失败转人工"指引会把重放全部推进 handoff，拉群链路永远测不到。
-          if (context.strategySource === 'testing') {
-            logger.log(`testing 链路模拟拉群成功: city=${city} (user=${context.userId})`);
+          if (context.runtime.strategySource === 'testing') {
+            logger.log(`testing 链路模拟拉群成功: city=${city} (user=${context.session.userId})`);
             return {
               success: true,
               simulated: true,
@@ -440,7 +448,9 @@ export function buildInviteToGroupTool(
 
           const normalizedEnterpriseToken = enterpriseToken?.trim();
           if (!normalizedEnterpriseToken) {
-            logger.error(`STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${context.userId})`);
+            logger.error(
+              `STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${context.session.userId})`,
+            );
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
               outcome: '企业 Token 未配置',
@@ -448,8 +458,8 @@ export function buildInviteToGroupTool(
               details: { detailedReason: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群' },
             });
           }
-          if (!context.botImId || !context.botUserId) {
-            logger.warn(`缺少 bot 身份信息，无法拉群 (user=${context.userId})`);
+          if (!context.session.botImId || !context.session.botUserId) {
+            logger.warn(`缺少 bot 身份信息，无法拉群 (user=${context.session.userId})`);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_MISSING_BOT_IDENTITY,
               outcome: '缺少 bot 身份信息',
@@ -460,11 +470,11 @@ export function buildInviteToGroupTool(
 
           const allGroups = await groupResolver.resolveGroups('兼职群', { forceRefresh: true });
           if (allGroups.length === 0) {
-            logger.warn(`无兼职群数据 (user=${context.userId})`);
+            logger.warn(`无兼职群数据 (user=${context.session.userId})`);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE,
               outcome: '暂无可用群',
-              replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${hasPriorNoMatchReply(context.messages ?? []) ? NO_GROUP_REPEAT_ESCALATION : ''}`,
+              replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${hasPriorNoMatchReply(context.turnInput.messages ?? []) ? NO_GROUP_REPEAT_ESCALATION : ''}`,
             });
           }
 
@@ -475,11 +485,11 @@ export function buildInviteToGroupTool(
             (group) => normalizeCity(group.city) === normalizedTargetCity,
           );
           if (cityGroups.length === 0) {
-            logger.log(`城市无匹配，静默跳过: ${city} (user=${context.userId})`);
+            logger.log(`城市无匹配，静默跳过: ${city} (user=${context.session.userId})`);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY,
               outcome: '该城市无匹配群',
-              replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${hasPriorNoMatchReply(context.messages ?? []) ? NO_GROUP_REPEAT_ESCALATION : ''}`,
+              replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${hasPriorNoMatchReply(context.turnInput.messages ?? []) ? NO_GROUP_REPEAT_ESCALATION : ''}`,
               details: { city },
             });
           }
@@ -491,7 +501,10 @@ export function buildInviteToGroupTool(
           // 也会自然恢复可邀请状态。
           if (groupMembership) {
             const cityRoomIds = cityGroups.map((group) => group.imRoomId).filter(Boolean);
-            const roomsUserIn = await groupMembership.listUserRooms(context.userId, cityRoomIds);
+            const roomsUserIn = await groupMembership.listUserRooms(
+              context.session.userId,
+              cityRoomIds,
+            );
             const existingGroup =
               roomsUserIn.length > 0
                 ? cityGroups.find((group) => group.imRoomId === roomsUserIn[0])
@@ -512,7 +525,7 @@ export function buildInviteToGroupTool(
           const availableCandidates = pickAvailableGroups(candidates, memberLimit);
 
           if (availableCandidates.length === 0) {
-            logger.warn(`群已满: ${city}/${industry ?? '全行业'} (user=${context.userId})`);
+            logger.warn(`群已满: ${city}/${industry ?? '全行业'} (user=${context.session.userId})`);
             void sendGroupFullAlert({
               city,
               industry,
@@ -548,9 +561,9 @@ export function buildInviteToGroupTool(
             let inviteApiResult = await invokeAddMember({
               roomService,
               token: normalizedEnterpriseToken,
-              imBotId: context.botImId,
-              botUserId: context.botUserId,
-              contactWxid: context.userId,
+              imBotId: context.session.botImId,
+              botUserId: context.session.botUserId,
+              contactWxid: context.session.userId,
               roomWxid: targetGroup.imRoomId,
             });
 
@@ -560,9 +573,9 @@ export function buildInviteToGroupTool(
               token: normalizedEnterpriseToken,
               initialResult: inviteApiResult,
               targetGroup,
-              chatBotImId: context.botImId,
-              chatBotUserId: context.botUserId,
-              contactWxid: context.userId,
+              chatBotImId: context.session.botImId,
+              chatBotUserId: context.session.botUserId,
+              contactWxid: context.session.userId,
             });
             if (compatibilityRetryOutcome) {
               inviteApiResult = compatibilityRetryOutcome.inviteResult;
@@ -586,7 +599,7 @@ export function buildInviteToGroupTool(
 
               if (inviteApiResult.code === -10) {
                 logger.warn(
-                  `接口返回群已满，尝试下一个候选群: ${targetGroup.groupName} (user=${context.userId})`,
+                  `接口返回群已满，尝试下一个候选群: ${targetGroup.groupName} (user=${context.session.userId})`,
                 );
                 fullGroupsDuringInvite.push({
                   ...targetGroup,
@@ -599,7 +612,7 @@ export function buildInviteToGroupTool(
               // 记录后继续尝试下一个候选群，跑完全部候选再决定是回 invite_api_rejected
               // 还是 group_full 综合状态。
               logger.warn(
-                `企业级拉群接口拒绝，尝试下一个候选群: ${targetGroup.groupName} (user=${context.userId}, error=${inviteApiResult.error})`,
+                `企业级拉群接口拒绝，尝试下一个候选群: ${targetGroup.groupName} (user=${context.session.userId}, error=${inviteApiResult.error})`,
               );
               rejectedGroupsDuringInvite.push({
                 group: targetGroup,
@@ -614,9 +627,9 @@ export function buildInviteToGroupTool(
             }
 
             await memoryService.saveInvitedGroup(
-              context.corpId,
-              context.userId,
-              context.sessionId,
+              context.session.corpId,
+              context.session.userId,
+              context.session.sessionId,
               {
                 groupName: targetGroup.groupName,
                 city,
@@ -630,7 +643,7 @@ export function buildInviteToGroupTool(
             const inviteDelivery = isDirectAdd ? 'direct_add' : 'invite_card';
 
             logger.log(
-              `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed}, pendingConsent=${inviteCardSentPendingConsent})`,
+              `拉群成功: ${targetGroup.groupName} (user=${context.session.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed}, pendingConsent=${inviteCardSentPendingConsent})`,
             );
 
             recordGroupInvited(targetGroup.groupName);
@@ -672,7 +685,7 @@ export function buildInviteToGroupTool(
             rejectedGroupsDuringInvite.every((entry) => entry.code === -8);
           if (allRejectionsNotFriend) {
             logger.log(
-              `候选人非接客 bot 外部联系人(拉黑/删好友)，静默收口不告警: ${city}/${industry ?? '全行业'} (user=${context.userId}, groups=${rejectedGroupsDuringInvite.length})`,
+              `候选人非接客 bot 外部联系人(拉黑/删好友)，静默收口不告警: ${city}/${industry ?? '全行业'} (user=${context.session.userId}, groups=${rejectedGroupsDuringInvite.length})`,
             );
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_CANDIDATE_NOT_FRIEND,
@@ -686,20 +699,20 @@ export function buildInviteToGroupTool(
           // 不要被合并进"群已满"通道，运维需要区分"扩群"与"修 bot 群关系"两种动作。
           if (rejectedGroupsDuringInvite.length > 0) {
             logger.warn(
-              `所有候选群均被拒绝: ${city}/${industry ?? '全行业'} (user=${context.userId}, rejected=${rejectedGroupsDuringInvite.length}, full=${fullGroupsDuringInvite.length})`,
+              `所有候选群均被拒绝: ${city}/${industry ?? '全行业'} (user=${context.session.userId}, rejected=${rejectedGroupsDuringInvite.length}, full=${fullGroupsDuringInvite.length})`,
             );
             void sendInviteRejectedAlert({
               city,
               industry,
-              chatBotImId: context.botImId,
-              chatBotUserId: context.botUserId,
+              chatBotImId: context.session.botImId,
+              chatBotUserId: context.session.botUserId,
               scope: {
-                corpId: context.corpId,
-                userId: context.userId,
-                contactName: context.contactName,
-                chatId: context.chatId ?? context.sessionId,
-                sessionId: context.sessionId,
-                messageId: context.turnId,
+                corpId: context.session.corpId,
+                userId: context.session.userId,
+                contactName: context.session.contactName,
+                chatId: context.session.chatId ?? context.session.sessionId,
+                sessionId: context.session.sessionId,
+                messageId: context.session.turnId,
               },
               rejectedGroups: rejectedGroupsDuringInvite.map((entry) => ({
                 name: entry.group.groupName,
@@ -729,7 +742,9 @@ export function buildInviteToGroupTool(
             });
           }
 
-          logger.warn(`所有候选群均已满: ${city}/${industry ?? '全行业'} (user=${context.userId})`);
+          logger.warn(
+            `所有候选群均已满: ${city}/${industry ?? '全行业'} (user=${context.session.userId})`,
+          );
           void sendGroupFullAlert({
             city,
             industry,
@@ -755,7 +770,7 @@ export function buildInviteToGroupTool(
           });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          logger.error(`拉群失败: ${message} (user=${context.userId})`);
+          logger.error(`拉群失败: ${message} (user=${context.session.userId})`);
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.INVITE_API_FAILED,
             outcome: '拉群接口异常',

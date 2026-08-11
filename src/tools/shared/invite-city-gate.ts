@@ -1,12 +1,7 @@
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import {
-  resolveCityFromDistrict,
-  resolveCityFromLocation,
-  scanGeoSignalsFromText,
-} from '@resolution/geo';
+import { scanGeoSignalsFromText } from '@resolution/geo';
 import type { FinalizedVisualFactSheet } from '@resolution/visual';
 import { mapLocationCityCandidates } from '@resolution/evidence/admission';
-import { isVisualDescriptionText } from '@infra/utils/message-markup.util';
 
 /**
  * invite_to_group 城市 provenance gate（tool guardrail，纯函数）。
@@ -70,8 +65,10 @@ export interface InviteCityGateInput {
   sessionCity: string | null;
   /** 本会话候选人侧原文（user role 文本）。 */
   userTexts: readonly string[];
+  /** prep 时刻一次性扫描出的区名/地标城市集合。 */
+  geoSignalCities: ReadonlySet<string>;
   /**
-   * 本轮 geocode unique 解析确权的城市（context.geocodeResolvedAnchors）。
+   * 本轮 geocode unique 解析确权的城市（context.ledger.geocodeAnchors）。
    *
    * 同轮时序空档（v10.31.0 发版后残留 2 例实证，chat 6a680c63"高明万悦天地"/
    * 6a66d0f8"莘庄"）：城市确权走回合收尾写档、下轮才进 sessionCity，而
@@ -81,37 +78,11 @@ export interface InviteCityGateInput {
    */
   turnResolvedCities?: readonly (string | null | undefined)[];
   /**
-   * 本轮视觉事实 sheet（context.turnVisualFactSheets，visual-fact-structuring R3）。
+   * 本轮视觉事实 sheet（context.ledger.visualFactSheets，visual-fact-structuring R3）。
    * map_location 截图的城市字段是候选人位置证据，作第五档出处；job_posting 的
    * 门店城市不算（badcase x3pdj7qh：截图门店城市被当候选人城市拉错群）。
    */
   turnVisualSheets?: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
-}
-
-/**
- * 候选人原文经 geo 白名单扫描可推导的城市集合（归一化裸名）。
- * 覆盖区名唯一映射（顺义→北京、黄埔→广州）与高置信地标（陆家嘴→上海）；
- * 出处判定不做意图判定：提到他人城市/否定语境仍会被计入（与 user_text 档同限制）。
- */
-function inferCitiesFromGeoSignals(userTexts: readonly string[]): Set<string> {
-  const cities = new Set<string>();
-  for (const text of userTexts) {
-    if (!text) continue;
-    // R3 负向面（badcase x3pdj7qh）：视觉描述里的城市（岗位截图门店地、第三方
-    // 聊天截图）不算候选人位置出处。地图截图的城市走 turnVisualSheets/sessionCity
-    //（source=tool）两条正向通道，不再从描述全文里捞。
-    if (isVisualDescriptionText(text.trim())) continue;
-    const scan = scanGeoSignalsFromText(text);
-    for (const hit of scan.districtHits) {
-      const city = resolveCityFromDistrict(hit.key);
-      if (city) cities.add(normalizeCity(city));
-    }
-    for (const location of scan.locations) {
-      const city = resolveCityFromLocation(location);
-      if (city) cities.add(normalizeCity(city));
-    }
-  }
-  return cities;
 }
 
 export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGateVerdict {
@@ -133,7 +104,7 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
   // 地名白名单确定性推断：候选人报了唯一区名（"顺义区马坡镇"→北京）或高置信
   // 地标（"陆家嘴"→上海），视同报了所属城市。与 user_text 同级，优先于 session
   // 冲突判定（候选人本轮报的区代表当前位置，允许覆盖旧会话事实）。
-  if (inferCitiesFromGeoSignals(input.userTexts).has(requested)) {
+  if (input.geoSignalCities.has(requested)) {
     return { decision: 'allow', matchedBy: 'district_inference' };
   }
 

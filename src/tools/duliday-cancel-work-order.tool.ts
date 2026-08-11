@@ -130,11 +130,11 @@ export function buildCancelWorkOrderTool(
         jobName,
         interviewTime,
       }) => {
-        const chatId = context.chatId ?? context.sessionId;
+        const chatId = context.session.chatId ?? context.session.sessionId;
 
         // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
         // 假身份工单（与 booking 同源防线，2026-07-27 误建工单事故后固化）。
-        if (context.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
+        if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,
             outcome: '测试链路拦截：手机号不在测试白名单，未执行真实取消',
@@ -161,8 +161,8 @@ export function buildCancelWorkOrderTool(
         // Agent 声称取消一个臆造的上海预约），取消是不可逆动作，必须锚定真实工单证据。
         try {
           const activeBookings = await longTermService.getActiveBookings(
-            context.corpId,
-            context.userId,
+            context.session.corpId,
+            context.session.userId,
           );
           const ownedWorkOrderIds = activeBookings.map((b) => b.work_order_id);
           if (!ownedWorkOrderIds.includes(workOrderId)) {
@@ -305,13 +305,13 @@ export function buildCancelWorkOrderTool(
 
           // 运营事件底账：booking.canceled。幂等键用 workOrderId（一张工单仅取消一次，Bull 重试去重）。
           void opsEventsRecorder.recordEvent({
-            corpId: context.corpId,
+            corpId: context.session.corpId,
             eventName: 'booking.canceled',
             idempotencyKey: `${workOrderId}:canceled`,
-            botImId: context.botImId,
-            managerName: context.botUserId,
-            userId: context.userId,
-            chatId: context.sessionId,
+            botImId: context.session.botImId,
+            managerName: context.session.botUserId,
+            userId: context.session.userId,
+            chatId: context.session.sessionId,
             payload: {
               work_order_id: workOrderId,
               cancel_reason_id: matched.id,
@@ -326,7 +326,11 @@ export function buildCancelWorkOrderTool(
             },
           });
 
-          await longTermService.clearActiveBooking(context.corpId, context.userId, workOrderId);
+          await longTermService.clearActiveBooking(
+            context.session.corpId,
+            context.session.userId,
+            workOrderId,
+          );
 
           void sendCancelWorkOrderNotification({
             privateChatNotifier,
@@ -407,11 +411,11 @@ async function sendCancelWorkOrderNotification(params: {
   const { privateChatNotifier, context } = params;
   try {
     await privateChatNotifier.notifyInterviewCancellation({
-      botImId: context.botImId,
-      contactName: normalizeOptionalText(context.contactName) ?? undefined,
+      botImId: context.session.botImId,
+      contactName: normalizeOptionalText(context.session.contactName) ?? undefined,
       candidateName: normalizeOptionalText(params.candidateName) ?? undefined,
       phone: normalizeOptionalText(params.phone) ?? undefined,
-      botUserName: normalizeOptionalText(context.botUserId) ?? undefined,
+      botUserName: normalizeOptionalText(context.session.botUserId) ?? undefined,
       brandName: normalizeOptionalText(params.brandName) ?? undefined,
       storeName: normalizeOptionalText(params.storeName) ?? undefined,
       jobName: normalizeOptionalText(params.jobName) ?? undefined,
@@ -419,7 +423,8 @@ async function sendCancelWorkOrderNotification(params: {
       workOrderId: params.workOrderId,
       cancelReason: normalizeOptionalText(params.cancelReason) ?? undefined,
       cancelReasonDesc: normalizeOptionalText(params.cancelReasonDesc) ?? undefined,
-      userMessage: normalizeOptionalText(extractLatestUserMessage(context.messages)) ?? undefined,
+      userMessage:
+        normalizeOptionalText(extractLatestUserMessage(context.turnInput.messages)) ?? undefined,
     });
   } catch (error) {
     logger.error(

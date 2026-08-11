@@ -3,6 +3,7 @@ import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
+import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
 type ExecuteFn = (args: { address: string; city?: string | null }) => Promise<unknown>;
 
@@ -30,12 +31,11 @@ describe('geocode tool', () => {
   } as unknown as jest.Mocked<GeocodingService>;
 
   const toolBuilder = buildGeocodeTool(mockGeocodingService);
-  const toolInstance = toolBuilder({
-    userId: 'test-user',
-    corpId: 'test-corp',
-    sessionId: 'test-session',
-    messages: [],
-  });
+  const toolInstance = toolBuilder(
+    createToolContext({
+      session: { userId: 'test-user', corpId: 'test-corp', sessionId: 'test-session' },
+    }),
+  );
   const execute = (toolInstance as unknown as { execute: ExecuteFn }).execute;
 
   beforeEach(() => {
@@ -375,19 +375,18 @@ describe('geocode tool', () => {
 
   describe('可信位置锚点纠偏', () => {
     const buildContextualExecute = (
-      anchor: NonNullable<ToolBuildContext['geocodeLocationAnchor']>,
+      anchor: NonNullable<ToolBuildContext['turnInput']['geocodeLocationAnchor']>,
     ): ExecuteFn => {
-      const contextualTool = buildGeocodeTool(mockGeocodingService)({
-        userId: 'test-user',
-        corpId: 'test-corp',
-        sessionId: 'test-session',
-        messages: [],
-        geocodeLocationAnchor: anchor,
-      });
+      const contextualTool = buildGeocodeTool(mockGeocodingService)(
+        createToolContext({
+          session: { userId: 'test-user', corpId: 'test-corp', sessionId: 'test-session' },
+          turnInput: { geocodeLocationAnchor: anchor },
+        }),
+      );
       return (contextualTool as unknown as { execute: ExecuteFn }).execute;
     };
 
-    const manualAnchor: NonNullable<ToolBuildContext['geocodeLocationAnchor']> = {
+    const manualAnchor: NonNullable<ToolBuildContext['turnInput']['geocodeLocationAnchor']> = {
       city: '上海',
       districts: ['嘉定'],
       source: 'human_agent',
@@ -593,21 +592,18 @@ describe('geocode tool', () => {
 
   describe('城市结论前置披露（方案 11.4 B-2）', () => {
     function makeContext(sessionCity?: string): ToolBuildContext {
-      return {
-        userId: 'u',
-        corpId: 'c',
-        sessionId: 's',
-        messages: [],
-        ...(sessionCity
+      return createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        archive: sessionCity
           ? {
               sessionFacts: {
                 preferences: {
                   city: { value: sessionCity, confidence: 'high', evidence: 'explicit_city' },
                 },
-              } as unknown as ToolBuildContext['sessionFacts'],
+              } as unknown as ToolBuildContext['archive']['sessionFacts'],
             }
-          : {}),
-      };
+          : {},
+      });
     }
 
     it('POI 级 unique 解析 → _cityConfirmed 前置为首字段，含城市与定位点', async () => {
@@ -724,10 +720,10 @@ describe('geocode tool', () => {
 
   describe('回合上下文锚点记录（方案 11.3 B-1：areaLevelQuery 确定性传递）', () => {
     function makeContext(): ToolBuildContext {
-      return { userId: 'u', corpId: 'c', sessionId: 's', messages: [] };
+      return createToolContext({ session: { userId: 'u', corpId: 'c', sessionId: 's' } });
     }
 
-    it('区级 unique 解析 → 记录 areaLevelQuery=true + 行政区名到 context.geocodeResolvedAnchors', async () => {
+    it('区级 unique 解析 → 记录 areaLevelQuery=true + 行政区名到 context.geocodeAnchors', async () => {
       const ctx = makeContext();
       const instance = buildGeocodeTool(mockGeocodingService)(ctx);
       (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
@@ -739,8 +735,8 @@ describe('geocode tool', () => {
         city: '上海',
       });
 
-      expect(ctx.geocodeResolvedAnchors).toHaveLength(1);
-      expect(ctx.geocodeResolvedAnchors?.[0]).toMatchObject({
+      expect(ctx.ledger.geocodeAnchors).toHaveLength(1);
+      expect(ctx.ledger.geocodeAnchors[0]).toMatchObject({
         longitude: 121.27,
         latitude: 31.32,
         areaLevelQuery: true,
@@ -749,9 +745,9 @@ describe('geocode tool', () => {
       });
     });
 
-    it('unique 解析 → 触发 onCityResolved 城市确权回调（证据化 A1）', async () => {
-      const onCityResolved = jest.fn();
-      const ctx: ToolBuildContext = { ...makeContext(), onCityResolved };
+    it('unique 解析 → 触发 recordCityAttestation 城市确权回调（证据化 A1）', async () => {
+      const recordCityAttestation = jest.fn();
+      const ctx = mergeToolContext(makeContext(), { ledger: { recordCityAttestation } });
       const instance = buildGeocodeTool(mockGeocodingService)(ctx);
       (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
         makeCandidate({
@@ -769,13 +765,13 @@ describe('geocode tool', () => {
         city: '沈阳',
       });
 
-      expect(onCityResolved).toHaveBeenCalledTimes(1);
-      expect(onCityResolved.mock.calls[0][0]).toMatchObject({
+      expect(recordCityAttestation).toHaveBeenCalledTimes(1);
+      expect(recordCityAttestation.mock.calls[0][0]).toMatchObject({
         city: '沈阳市',
         district: '浑南区',
         source: 'geocode_unique',
       });
-      expect(onCityResolved.mock.calls[0][0].evidence).toContain('geocode 唯一解析');
+      expect(recordCityAttestation.mock.calls[0][0].evidence).toContain('geocode 唯一解析');
     });
 
     it('POI 级 unique 解析 → 记录 areaLevelQuery=false', async () => {
@@ -790,8 +786,8 @@ describe('geocode tool', () => {
         city: '上海',
       });
 
-      expect(ctx.geocodeResolvedAnchors).toHaveLength(1);
-      expect(ctx.geocodeResolvedAnchors?.[0]).toMatchObject({
+      expect(ctx.ledger.geocodeAnchors).toHaveLength(1);
+      expect(ctx.ledger.geocodeAnchors[0]).toMatchObject({
         areaLevelQuery: false,
         areaName: null,
       });
@@ -810,7 +806,7 @@ describe('geocode tool', () => {
       })) as Record<string, unknown>;
 
       expect(result.resolution).toBe('ambiguous');
-      expect(ctx.geocodeResolvedAnchors).toBeUndefined();
+      expect(ctx.ledger.geocodeAnchors).toHaveLength(0);
     });
   });
 });

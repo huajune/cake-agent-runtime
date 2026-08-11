@@ -26,11 +26,8 @@ import {
   normalizeCityName,
   normalizeDistrictForLookup,
 } from '@resolution/geo';
-import type {
-  GeocodeLocationAnchor,
-  ToolBuildContext,
-  ToolBuilder,
-} from '@shared-types/tool.types';
+import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
+import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('geocode');
@@ -186,7 +183,7 @@ function buildSessionCityConflictNotice(
   context: ToolBuildContext,
   c: GeocodeCandidate,
 ): string | null {
-  const sessionCityRaw = context.sessionFacts?.preferences?.city?.value ?? null;
+  const sessionCityRaw = context.archive.sessionFacts?.preferences?.city?.value ?? null;
   const sessionCity = normalizeCityName(sessionCityRaw);
   const resolvedCity = normalizeCityName(c.city);
   if (!sessionCity || !resolvedCity || sessionCity === resolvedCity) return null;
@@ -234,7 +231,7 @@ function recordResolvedAnchor(
 ): void {
   if (!Number.isFinite(c.longitude) || !Number.isFinite(c.latitude)) return;
   const { areaLevelQuery, areaName } = resolveAreaLevelAnchor(queryAddress, c);
-  (context.geocodeResolvedAnchors ??= []).push({
+  context.ledger.recordGeocodeAnchor({
     longitude: c.longitude,
     latitude: c.latitude,
     areaLevelQuery,
@@ -242,10 +239,10 @@ function recordResolvedAnchor(
     city: c.city || null,
   });
   // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
-  // unique 解析即城市确认，暂存 turnState 供回合收尾写 pref.city，让 invite 城市门
+  // unique 解析即城市确认，暂存 ledger 供回合收尾写 pref.city，让 invite 城市门
   // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
   if (c.city?.trim()) {
-    context.onCityResolved?.({
+    context.ledger.recordCityAttestation({
       city: c.city.trim(),
       district: c.district?.trim() || null,
       evidence: `geocode 唯一解析：${c.formattedAddress?.trim() || queryAddress?.trim() || c.city.trim()}`,
@@ -376,7 +373,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             normalizedCity,
           );
 
-          const locationAnchor = context.geocodeLocationAnchor;
+          const locationAnchor = context.turnInput.geocodeLocationAnchor;
           const applicableAnchor =
             locationAnchor && queryMatchesAnchorReference(trimmedAddress, locationAnchor)
               ? locationAnchor

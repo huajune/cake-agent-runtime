@@ -1,6 +1,7 @@
 import { buildCancelWorkOrderTool } from '@tools/duliday-cancel-work-order.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { createToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildCancelWorkOrderTool', () => {
   const spongeService = {
@@ -12,16 +13,13 @@ describe('buildCancelWorkOrderTool', () => {
   const longTermService = { clearActiveBooking: jest.fn(), getActiveBookings: jest.fn() };
   const privateChatNotifier = { notifyInterviewCancellation: jest.fn() };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    chatId: 'chat-1',
-    messages: [{ role: 'user', content: '那个面试我不去了，帮我取消吧' }],
-    botImId: 'bot-im-1',
-    botUserId: 'mgr-bob',
-    contactName: '候选人微信名',
-  };
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
+      botImId: 'bot-im-1', botUserId: 'mgr-bob', contactName: '候选人微信名',
+    },
+    turnInput: { messages: [{ role: 'user', content: '那个面试我不去了，帮我取消吧' }] },
+  });
 
   const buildTool = (ctx: ToolBuildContext = mockContext) =>
     buildCancelWorkOrderTool(

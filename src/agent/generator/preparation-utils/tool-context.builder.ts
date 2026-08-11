@@ -1,7 +1,7 @@
 import { ModelMessage } from 'ai';
-import { CityAttestation, ToolBuildContext } from '@shared-types/tool.types';
-import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
-import type { FinalizedVisualFactSheet } from '@resolution/visual';
+import { ToolBuildContext } from '@shared-types/tool.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import {
   filterHighConfidenceFacts,
@@ -26,7 +26,7 @@ import { type TurnStartMemory } from './memory-block.formatter';
 
 /**
  * 组装工具上下文。entryStage / availableStages 交给 advance_stage 使用；
- * onJobsFetched 回调把本轮候选池暂存到 turnState，交给 onTurnEnd 落盘。
+ * 回合内产物统一写入 ledger，交给 onTurnEnd 落盘。
  */
 export function buildToolContext(input: {
   params: GeneratorInvokeParams;
@@ -35,16 +35,7 @@ export function buildToolContext(input: {
   entryStage: string | null;
   stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
   thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
-  turnState: {
-    candidatePool: RecommendedJobSummary[] | null;
-    imageBrandResolutions: BrandResolution[];
-    /** 本轮视觉事实 sheet（visual-fact-structuring，镜像 imageBrandResolutions）。 */
-    visualFactSheets: Array<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
-    jobListQuerySignature: string | null;
-    cityAttestation: CityAttestation | null;
-    /** 本轮被工具判定失效（海绵查不到）的 jobId；回合收尾从会话记忆剔除。 */
-    invalidatedJobIds: number[];
-  };
+  ledger: TurnLedger;
   contactBrandAliases: string[];
   /** 本轮生效的会话品牌状态（持久化状态或首轮 seed），透传给工具兜底。 */
   sessionBrandState: SessionBrandState | null;
@@ -60,7 +51,7 @@ export function buildToolContext(input: {
     entryStage,
     stageGoals,
     thresholds,
-    turnState,
+    ledger,
     contactBrandAliases,
     sessionBrandState,
     currentUserMessage,
@@ -69,7 +60,7 @@ export function buildToolContext(input: {
   } = input;
   const recentBrandPool = collectRecentBrandPool(memory.sessionMemory);
   // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 进行中预约工单 jobId（改约路径）
-  // + 本轮 job_list 抓取的候选池（turnState.candidatePool 由 onJobsFetched 实时写入），
+  // + 本轮 job_list 抓取的候选池（由工具实时写入 ledger），
   // 供 precheck/booking 判定 jobId 是否有出处。
   const turnStartRecalledJobIds = collectRecentJobIds(memory.sessionMemory);
   for (const bookingWorkOrderJobId of bookingWorkOrderJobIds) {
@@ -90,73 +81,60 @@ export function buildToolContext(input: {
     sessionFacts: highConfidenceSessionFacts,
   });
   return {
-    userId: params.userId,
-    corpId: params.corpId,
-    sessionId: params.sessionId,
-    messages: normalizedMessages,
-    currentUserMessage,
-    currentLaborFormIntent,
-    thresholds,
-    imageMessageIds: params.imageMessageIds,
-    imageUrls: params.imageUrls,
-    visualMessageTypes: params.visualMessageTypes,
-    currentStage: entryStage,
-    availableStages: Object.keys(stageGoals),
-    stageGoals,
-    onJobsFetched: async (jobs) => {
-      turnState.candidatePool = jobs as RecommendedJobSummary[];
+    session: {
+      userId: params.userId,
+      corpId: params.corpId,
+      sessionId: params.sessionId,
+      chatId: params.sessionId,
+      token: params.token,
+      imContactId: params.imContactId,
+      imRoomId: params.imRoomId,
+      apiType: params.apiType,
+      botUserId: params.botUserId,
+      botImId: params.botImId,
+      groupId: params.groupId,
+      turnId: params.messageId,
+      contactName: params.contactName,
     },
-    lastJobListQuery: memory.sessionMemory?.lastJobListQuery ?? null,
-    onJobListQueryExecuted: (query) => {
-      turnState.jobListQuerySignature = query.signature;
+    archive: {
+      profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
+      sessionFacts,
+      sessionBrandState,
+      currentStage: entryStage,
+      availableStages: Object.keys(stageGoals),
+      stageGoals,
+      lastJobListQuery: memory.sessionMemory?.lastJobListQuery ?? null,
+      activeBookingJobIds: bookingWorkOrderJobIds,
+      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+      recentBrandPool,
+      bookingCandidateFacts: sessionFacts?.interview_info ?? null,
+      isRecalledJobId: (jobId: number) =>
+        turnStartRecalledJobIds.has(jobId) ||
+        (ledger.fetchedJobs as readonly RecommendedJobSummary[]).some((job) => job.jobId === jobId),
+      // 闸门拒绝时把合法 jobId 一并告知模型；本轮新召回的排在前面。
+      get recalledJobIds() {
+        return [
+          ...(ledger.fetchedJobs as readonly RecommendedJobSummary[]).map((job) => job.jobId),
+          ...turnStartRecalledJobIds,
+        ].filter((id, index, all) => all.indexOf(id) === index);
+      },
     },
-    onImageBrandResolved: (resolutions) => {
-      turnState.imageBrandResolutions.push(...resolutions);
+    turnInput: {
+      messages: normalizedMessages,
+      currentUserMessage,
+      currentLaborFormIntent,
+      imageMessageIds: params.imageMessageIds,
+      imageUrls: params.imageUrls,
+      visualMessageTypes: params.visualMessageTypes,
+      contactBrandAliases,
+      geocodeLocationAnchor,
     },
-    onVisualFactsResolved: (sheet, meta) => {
-      turnState.visualFactSheets.push({ messageId: meta.messageId, sheet });
+    ledger,
+    runtime: {
+      hasNewerUserInput: params.hasNewerUserInput,
+      strategySource: params.strategySource,
+      thresholds,
     },
-    turnVisualFactSheets: turnState.visualFactSheets,
-    onCityResolved: (attestation) => {
-      turnState.cityAttestation = attestation;
-    },
-    botUserId: params.botUserId,
-    contactName: params.contactName,
-    contactBrandAliases,
-    sessionBrandState,
-    botImId: params.botImId,
-    groupId: params.groupId,
-    strategySource: params.strategySource,
-    profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
-    sessionFacts,
-    highConfidenceFacts: memory.highConfidenceFacts,
-    geocodeLocationAnchor,
-    currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
-    activeBookingJobIds: bookingWorkOrderJobIds,
-    recentBrandPool,
-    isRecalledJobId: (jobId: number) =>
-      turnStartRecalledJobIds.has(jobId) ||
-      (turnState.candidatePool?.some((j) => j.jobId === jobId) ?? false),
-    // 闸门拒绝时把合法 jobId 一并告知模型；本轮新召回的排在前面（更可能是候选人当前在聊的）。
-    get recalledJobIds() {
-      return [
-        ...(turnState.candidatePool?.map((j) => j.jobId) ?? []),
-        ...turnStartRecalledJobIds,
-      ].filter((id, i, arr) => arr.indexOf(id) === i);
-    },
-    onJobInvalidated: (jobId: number) => {
-      if (!turnState.invalidatedJobIds.includes(jobId)) {
-        turnState.invalidatedJobIds.push(jobId);
-      }
-    },
-    token: params.token,
-    imContactId: params.imContactId,
-    imRoomId: params.imRoomId,
-    chatId: params.sessionId,
-    apiType: params.apiType,
-    turnId: params.messageId,
-    hasNewerUserInput: params.hasNewerUserInput,
-    bookingCandidateFacts: sessionFacts?.interview_info ?? null,
   };
 }
 

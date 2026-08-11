@@ -852,6 +852,7 @@ export class AgentRunnerService {
       reply: OutboundReplySanitizer.stripTimeMarkers((result.text ?? '').trim()),
       toolCalls,
       memorySnapshot: result.memorySnapshot,
+      turnLedger: result.turnLedger,
       redLines: ctx.redLines ?? [],
       userMessage: ctx.userMessage,
       chatId: ctx.chatId,

@@ -7,6 +7,7 @@ import type { SpongeInterviewSupplementDefinition } from '@sponge/sponge-job.uti
 import { SPONGE_CUSTOMER_LABEL_MAX_LENGTH } from '@sponge/sponge.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
+import { createToolContext, type ToolContextOverrides } from '../../helpers/tool-context.fixture';
 
 type SuccessResult = Extract<BuildCustomerLabelListResult, { success: true }>;
 type FailureResult = Extract<BuildCustomerLabelListResult, { success: false }>;
@@ -27,14 +28,14 @@ function def(labelName: string, labelId = labelName.length): SpongeInterviewSupp
   return { labelId, labelName, name: labelName };
 }
 
-function baseContext(override: Partial<ToolBuildContext> = {}): ToolBuildContext {
-  return {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    messages: [],
-    ...override,
-  };
+function baseContext(override: ToolContextOverrides = {}): ToolBuildContext {
+  return createToolContext({
+    session: { userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', ...override.session },
+    archive: override.archive,
+    turnInput: override.turnInput,
+    ledger: override.ledger,
+    runtime: override.runtime,
+  });
 }
 
 function baseParams(
@@ -202,10 +203,12 @@ describe('buildCustomerLabelList', () => {
         baseParams({
           supplementDefinitions: [def('身份')],
           context: baseContext({
-            sessionFacts: {
-              interview_info: { is_student: true },
+            archive: {
+              sessionFacts: {
+                interview_info: { is_student: true },
+              } as ToolBuildContext['archive']['sessionFacts'],
             },
-          } as Partial<ToolBuildContext>),
+          }),
         }),
       );
 
@@ -218,8 +221,10 @@ describe('buildCustomerLabelList', () => {
         baseParams({
           supplementDefinitions: [def('身份')],
           context: baseContext({
-            profile: { is_student: false },
-          } as Partial<ToolBuildContext>),
+            archive: {
+              profile: { is_student: false } as ToolBuildContext['archive']['profile'],
+            },
+          }),
         }),
       );
 

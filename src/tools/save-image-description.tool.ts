@@ -143,8 +143,8 @@ export function buildSaveImageDescriptionTool(
 
         // 视觉事实旁路（镜像品牌域 §10.2）：sheet 挂回合上下文，供同轮工具
         //（invite 城市门等）与 turn-finalizer 消费。
-        if (!sheet.degraded && context.onVisualFactsResolved) {
-          context.onVisualFactsResolved(sheet, { messageId });
+        if (!sheet.degraded) {
+          context.ledger.recordVisualFacts(sheet, { messageId });
         }
 
         // 图片品牌解析执行点（§10.2）：描述落库即同步经 resolve() 目录验证，结果挂
@@ -152,7 +152,7 @@ export function buildSaveImageDescriptionTool(
         // 表情消息不是品牌来源；解析失败按无品牌降级，不影响描述保存。
         // R2 发布方剔除（badcase 发布方品牌劫持）：sheet 可用且带 brand 字段时只解析
         // 候选人看中的岗位品牌值；publisher 字段（跃橙云服等发布主体）不进品牌解析。
-        if (prefix === IMAGE_MESSAGE_PREFIX && brandResolution && context.onImageBrandResolved) {
+        if (prefix === IMAGE_MESSAGE_PREFIX && brandResolution) {
           try {
             const brandInputs =
               !sheet.degraded && sheet.kind === 'job_posting'
@@ -165,7 +165,7 @@ export function buildSaveImageDescriptionTool(
               )
             ).flat();
             if (resolutions.length > 0) {
-              context.onImageBrandResolved(resolutions, { messageId });
+              context.ledger.recordImageBrands(resolutions, { messageId });
             }
           } catch (error) {
             logger.warn(

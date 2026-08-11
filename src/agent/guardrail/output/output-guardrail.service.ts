@@ -213,6 +213,7 @@ export class OutputGuardrailService {
     const packet = this.packetBuilder.build({
       reply,
       toolCalls: input.toolCalls,
+      turnLedger: input.turnLedger,
       userMessage: input.userMessage,
       recentAssistantTexts,
       redLines: input.redLines,
@@ -640,6 +641,8 @@ export class OutputGuardrailService {
 export interface OutputGuardInput {
   reply: string;
   toolCalls: AgentToolCall[];
+  /** 本轮账本只读证据；语义评审不从工具参数反解。 */
+  turnLedger?: import('@shared-types/turn.types').TurnLedger;
   memorySnapshot?: AgentMemorySnapshot;
   redLines?: string[];
   userMessage?: string;

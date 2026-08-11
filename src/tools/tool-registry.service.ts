@@ -308,22 +308,22 @@ export class ToolRegistryService {
     }
 
     // 动态注入：当前轮次有图片/表情消息时，注册 save_image_description 工具
-    if (context.imageMessageIds?.length) {
+    if (context.turnInput.imageMessageIds?.length) {
       const imageUrlsByMessageId: Record<string, string> = {};
-      context.imageMessageIds.forEach((messageId, index) => {
-        const url = context.imageUrls?.[index];
+      context.turnInput.imageMessageIds.forEach((messageId, index) => {
+        const url = context.turnInput.imageUrls?.[index];
         if (url) imageUrlsByMessageId[messageId] = url;
       });
       const imgTool = buildSaveImageDescriptionTool(
         this.chatSessionService,
-        context.imageMessageIds,
-        context.visualMessageTypes,
+        context.turnInput.imageMessageIds,
+        context.turnInput.visualMessageTypes,
         imageUrlsByMessageId,
         this.brandResolutionService,
       );
       tools['save_image_description'] = imgTool(context);
       this.logger.log(
-        `动态注入 save_image_description 工具, imageMessageIds=${context.imageMessageIds.join(',')}`,
+        `动态注入 save_image_description 工具, imageMessageIds=${context.turnInput.imageMessageIds.join(',')}`,
       );
     }
 
@@ -365,8 +365,8 @@ export class ToolRegistryService {
 
   private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
     const urls = [
-      this.normalizeHighConfidenceText(context.highConfidenceFacts?.interview_info.upload_resume),
-      this.normalizeText(context.sessionFacts?.interview_info?.upload_resume),
+      this.normalizeHighConfidenceText(context.ledger.ruleFacts?.interview_info.upload_resume),
+      this.normalizeText(context.archive.sessionFacts?.interview_info?.upload_resume),
     ].filter((value): value is string => Boolean(value));
 
     return [...new Set(urls)].map((fileUrl) => ({ fileUrl }));

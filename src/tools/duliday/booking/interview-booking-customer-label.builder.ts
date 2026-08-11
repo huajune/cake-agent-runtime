@@ -134,7 +134,7 @@ function resolveCustomerLabelValue(
   // 但原始候选人消息仍是可信的一手数据；从最近消息确定性回填，避免 booking 在
   // precheck 已收齐后又因同一个补充标签缺值而失败。
   const messageAnswer = extractSupplementAnswerFromMessages(
-    params.context.messages ?? [],
+    params.context.turnInput.messages ?? [],
     labelName,
   );
   if (messageAnswer) return messageAnswer;
@@ -265,12 +265,12 @@ function extractMessageContent(content: unknown): string {
 }
 
 function resolveIdentityLabel(context: ToolBuildContext): string | null {
-  const interviewInfo = context.sessionFacts?.interview_info;
+  const interviewInfo = context.archive.sessionFacts?.interview_info;
   if (interviewInfo?.is_student != null) {
     return interviewInfo.is_student ? '学生' : '社会人士';
   }
-  if (context.profile?.is_student != null) {
-    return context.profile.is_student ? '学生' : '社会人士';
+  if (context.archive.profile?.is_student != null) {
+    return context.archive.profile.is_student ? '学生' : '社会人士';
   }
   return null;
 }

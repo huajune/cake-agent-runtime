@@ -4,20 +4,22 @@ import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { parseLocationShareCoords } from '@resolution/evidence/producers/location-share';
+import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
+import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
+import { extractCandidateTexts } from '@resolution/evidence/corpus';
+import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import { BrandStateService, type TurnBrandContext } from '@memory/services/brand-state.service';
 import { LongTermService } from '@memory/services/long-term.service';
-import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import type { FinalizedVisualFactSheet } from '@resolution/visual';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
-import type { CityAttestation } from '@shared-types/tool.types';
+import type { TurnLedger } from '@shared-types/turn.types';
 import {
   type RecommendedJobSummary,
   type WeworkSessionState,
@@ -49,6 +51,7 @@ import {
 } from './preparation-utils/revise-directives';
 import { resolveToolsForMode, wrapToolsWithTiming } from './preparation-utils/tool-set.util';
 import { buildToolContext } from './preparation-utils/tool-context.builder';
+import { createTurnLedger } from './preparation-utils/turn-ledger';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -63,20 +66,8 @@ export interface PreparedAgentContext {
   maxSteps: number;
   /** 本轮入口阶段：procedural currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
   entryStage: string | null;
-  /** 本轮临时状态；回合结束时统一交给 memory lifecycle。 */
-  turnState: {
-    candidatePool: RecommendedJobSummary[] | null;
-    /** save_image_description 落描述时同步解析出的图片品牌（§10.2 回合上下文）。 */
-    imageBrandResolutions: BrandResolution[];
-    /** 本轮视觉事实 sheet（visual-fact-structuring，同轮工具与回合收尾消费）。 */
-    visualFactSheets: Array<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
-    /** 本轮 duliday_job_list 查询签名（跨轮重复查询检测，回合收尾落会话记忆）。 */
-    jobListQuerySignature: string | null;
-    /** 本轮 geocode/定位分享解析确权的城市（回合收尾写 pref.city，source='tool'）。 */
-    cityAttestation: CityAttestation | null;
-    /** 本轮被工具判定失效（海绵查不到）的 jobId；回合收尾从会话记忆剔除，防跨轮重试死岗位。 */
-    invalidatedJobIds: number[];
-  };
+  /** 本轮唯一回合账本；回合结束时 drain 快照统一交给 memory lifecycle。 */
+  ledger: TurnLedger;
   /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
   contactName?: string;
   /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
@@ -123,7 +114,7 @@ export class PreparationService {
 
   /**
    * 定位分享轮内锚点（候选人资料证据化，badcase 6a6846e2）：候选人本轮发定位时，
-   * prep 阶段就逆解析坐标并 seed 进 geocodeResolvedAnchors——A2 的落档在轮末，
+   * prep 阶段就逆解析坐标并 seed 进回合账本——A2 的落档在轮末，
    * 若本轮 job_list 直接吃坐标、不调 geocode，invite 城市门四档出处全空仍会误拒。
    * 逆解析走 30 天 Redis 缓存（与 extractFacts A2 同 key，全轮至多一次真实请求）；
    * 失败/服务缺失静默跳过，仅维持既有行为。
@@ -138,14 +129,14 @@ export class PreparationService {
     try {
       const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
       if (!regeo?.city?.trim()) return;
-      (toolContext.geocodeResolvedAnchors ??= []).push({
+      toolContext.ledger.recordGeocodeAnchor({
         longitude: coords.longitude,
         latitude: coords.latitude,
         areaLevelQuery: false,
         areaName: null,
         city: regeo.city.trim(),
       });
-      toolContext.onCityResolved?.({
+      toolContext.ledger.recordCityAttestation({
         city: regeo.city.trim(),
         district: regeo.district?.trim() || null,
         evidence: `定位分享逆解析：${regeo.formattedAddress || `${regeo.province}${regeo.city}${regeo.district}`}`,
@@ -188,13 +179,19 @@ export class PreparationService {
     const currentUserMessage = trailingUserContent(truncatedMessages);
     const currentLaborFormIntent = decideLaborFormIntent(currentUserMessage);
 
+    // 规则轨只在 prep 时刻运行一次；memory/tool/轮末全部消费同一份账本产物。
+    const ruleFactsPromise = this.detectRuleFacts(currentUserMessage);
+
     // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
     const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
-      this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
-        includeShortTerm: callerKind === CallerKind.WECOM,
-        shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-        enrichmentIdentity: this.buildEnrichmentIdentity(params),
-      }),
+      ruleFactsPromise.then((ruleFacts) =>
+        this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
+          includeShortTerm: callerKind === CallerKind.WECOM,
+          shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+          enrichmentIdentity: this.buildEnrichmentIdentity(params),
+          ruleFacts,
+        }),
+      ),
       // [当前预约信息] 改由 active_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
       this.loadBookingContext(
         corpId,
@@ -278,14 +275,15 @@ export class PreparationService {
     }
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
-    const turnState: PreparedAgentContext['turnState'] = {
-      candidatePool: null,
-      imageBrandResolutions: [],
-      visualFactSheets: [],
-      jobListQuerySignature: null,
-      cityAttestation: null,
-      invalidatedJobIds: [],
-    };
+    const candidateTexts = extractCandidateTexts(normalizedMessages);
+    const ledger = createTurnLedger({
+      ruleFacts: memory.highConfidenceFacts,
+      collectedFields: parseCandidateFieldsFromText(
+        currentUserMessage ? [currentUserMessage] : [],
+        Date.now(),
+      ),
+      geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
+    });
     const toolContext = buildToolContext({
       params,
       memory,
@@ -293,7 +291,7 @@ export class PreparationService {
       entryStage,
       stageGoals,
       thresholds,
-      turnState,
+      ledger,
       contactBrandAliases,
       sessionBrandState: turnBrandContext.state,
       currentUserMessage,
@@ -335,11 +333,21 @@ export class PreparationService {
       botImId: params.botImId,
       maxSteps,
       entryStage,
-      turnState,
+      ledger,
       contactName: params.contactName,
       memorySnapshot,
       toolExecutionTimings,
     };
+  }
+
+  /** 当前轮规则 producer：唯一运行点；产物随 ledger 穿过工具与轮末收编。 */
+  private async detectRuleFacts(currentUserMessage?: string) {
+    const text = currentUserMessage?.trim();
+    if (!text) return null;
+    const brandData = await this.spongeService.fetchBrandList();
+    const facts = extractHighConfidenceFacts([text], brandData);
+    if (facts) this.logger.debug(`前置规则识别命中: ${facts.reasoning}`);
+    return facts;
   }
 
   /**

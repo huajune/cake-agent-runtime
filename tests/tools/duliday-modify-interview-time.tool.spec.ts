@@ -1,21 +1,19 @@
 import { buildModifyInterviewTimeTool } from '@tools/duliday-modify-interview-time.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { createToolContext, mergeToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildModifyInterviewTimeTool', () => {
   const spongeService = { modifyInterviewTime: jest.fn() };
   const opsEventsRecorder = { recordEvent: jest.fn() };
   const longTermService = { getActiveBookings: jest.fn() };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    chatId: 'chat-1',
-    messages: [],
-    botImId: 'bot-im-1',
-    botUserId: 'mgr-bob',
-  };
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
+      botImId: 'bot-im-1', botUserId: 'mgr-bob',
+    },
+  });
 
   const buildTool = (ctx: ToolBuildContext = mockContext) =>
     buildModifyInterviewTimeTool(
@@ -29,7 +27,7 @@ describe('buildModifyInterviewTimeTool', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    delete mockContext.runtimeWorkOrderId;
+    delete mockContext.ledger.resolvedWorkOrderId;
     longTermService.getActiveBookings.mockResolvedValue([{ work_order_id: 123 }]);
     spongeService.modifyInterviewTime.mockResolvedValue({ success: true, code: 0, message: 'ok' });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
@@ -80,10 +78,9 @@ describe('buildModifyInterviewTimeTool', () => {
   });
 
   it('does not modify when the candidate only asks whether a morning slot is available', async () => {
-    const context = {
-      ...mockContext,
-      currentUserMessage: '明天上午的面试还有吗',
-    };
+    const context = mergeToolContext(mockContext, {
+      turnInput: { currentUserMessage: '明天上午的面试还有吗' },
+    });
     const tool = buildTool(context);
     const result = await exec(tool, {
       workOrderId: 450643,
@@ -99,10 +96,9 @@ describe('buildModifyInterviewTimeTool', () => {
 
   it('short-circuits to handoff before modification when the work order is not in current contact memory', async () => {
     longTermService.getActiveBookings.mockResolvedValue([]);
-    const context = {
-      ...mockContext,
-      currentUserMessage: '确定，帮我改到明天上午10点',
-    };
+    const context = mergeToolContext(mockContext, {
+      turnInput: { currentUserMessage: '确定，帮我改到明天上午10点' },
+    });
     const tool = buildTool(context);
     const result = await exec(tool, {
       workOrderId: 450643,
@@ -110,7 +106,7 @@ describe('buildModifyInterviewTimeTool', () => {
     });
 
     expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
-    expect(context.runtimeWorkOrderId).toBe(450643);
+    expect(context.ledger.resolvedWorkOrderId).toBe(450643);
     expect(result).toMatchObject({
       success: false,
       shortCircuited: true,
@@ -132,7 +128,7 @@ describe('buildModifyInterviewTimeTool', () => {
       apiCode: 500,
       apiMessage: null,
     });
-    expect(mockContext.runtimeWorkOrderId).toBe(123);
+    expect(mockContext.ledger.resolvedWorkOrderId).toBe(123);
   });
 
   it('returns MODIFY_INTERVIEW_REQUEST_FAILED when the API throws', async () => {

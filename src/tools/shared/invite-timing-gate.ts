@@ -41,7 +41,7 @@ export interface InviteTimingGateInput {
   /** 模型传入的 city 参数。 */
   requestedCity: string;
   /** 本轮是否执行过 duliday_job_list（由该工具回合内直写，同 bookingSucceeded 模式）。 */
-  jobListExecutedThisTurn: boolean;
+  jobListExecuted: boolean;
   /** 本轮 booking 是否成功；true 即工具描述的场景 1，豁免后两档。 */
   bookingSucceeded?: boolean;
   /** 会话记忆里已拉过的群（城市 + 群名）。 */
@@ -67,7 +67,7 @@ export function evaluateInviteTimingGate(input: InviteTimingGateInput): InviteTi
   // 预约成功后拉群：查岗结论与推进信号两档不适用。
   if (input.bookingSucceeded === true) return { decision: 'allow' };
 
-  if (!input.jobListExecutedThisTurn) {
+  if (!input.jobListExecuted) {
     return { decision: 'reject', reason: 'no_job_result_this_turn' };
   }
 

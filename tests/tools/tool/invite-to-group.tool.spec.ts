@@ -2,20 +2,60 @@ import { buildInviteToGroupTool } from '@tools/invite-to-group.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+
+interface InviteContextOverrides {
+  token?: string;
+  botImId?: string;
+  botUserId?: string;
+  imContactId?: string;
+  imRoomId?: string;
+  chatId?: string;
+  messages?: unknown[];
+  currentUserMessage?: string;
+  strategySource?: ToolBuildContext['runtime']['strategySource'];
+  bookingSucceeded?: boolean;
+  jobListExecuted?: boolean;
+}
 
 describe('buildInviteToGroupTool', () => {
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1',
+      botUserId: 'chat-bot-weixin', botImId: 'chat-bot-im-id',
+    },
     // 城市 provenance gate 要求 city 有出处：默认让候选人原文提到上海
-    messages: [{ role: 'user', content: '你好，我在上海找兼职' }],
-    botUserId: 'chat-bot-weixin',
-    botImId: 'chat-bot-im-id',
+    turnInput: { messages: [{ role: 'user', content: '你好，我在上海找兼职' }] },
     // 时机 gate 要求本轮已给出查岗结论；本文件测的是选群/投递链路，
     // 默认按"已查过岗"建模（生产上拉群必在查岗之后）。时机 gate 自身的
     // 三档判定见 tests/tools/shared/invite-timing-gate.spec.ts。
-    jobListExecutedThisTurn: true,
+    ledger: { jobListExecuted: true },
+  });
+
+  const buildContext = (overrides: InviteContextOverrides = {}) => {
+    const has = (key: keyof InviteContextOverrides) =>
+      Object.prototype.hasOwnProperty.call(overrides, key);
+    return mergeToolContext(mockContext, {
+      session: {
+        ...(has('token') ? { token: overrides.token } : {}),
+        ...(has('botImId') ? { botImId: overrides.botImId } : {}),
+        ...(has('botUserId') ? { botUserId: overrides.botUserId } : {}),
+        ...(has('imContactId') ? { imContactId: overrides.imContactId } : {}),
+        ...(has('imRoomId') ? { imRoomId: overrides.imRoomId } : {}),
+        ...(has('chatId') ? { chatId: overrides.chatId } : {}),
+      },
+      turnInput: {
+        ...(has('messages') ? { messages: overrides.messages ?? [] } : {}),
+        ...(has('currentUserMessage')
+          ? { currentUserMessage: overrides.currentUserMessage }
+          : {}),
+      },
+      ledger: {
+        ...(has('bookingSucceeded') ? { bookingSucceeded: overrides.bookingSucceeded } : {}),
+        ...(has('jobListExecuted') ? { jobListExecuted: overrides.jobListExecuted } : {}),
+      },
+      runtime: has('strategySource') ? { strategySource: overrides.strategySource } : {},
+    });
   };
 
   const makeGroup = (overrides: Partial<GroupContext> = {}): GroupContext => ({
@@ -58,7 +98,7 @@ describe('buildInviteToGroupTool', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (
     input: { city: string; industry?: string },
-    overrideContext?: Partial<ToolBuildContext>,
+    overrideContext?: InviteContextOverrides,
     deps?: { groupMembership?: unknown; sessionService?: unknown },
   ) => {
     const builder = buildInviteToGroupTool(
@@ -72,7 +112,7 @@ describe('buildInviteToGroupTool', () => {
       deps?.groupMembership as any,
       deps?.sessionService as any,
     );
-    const builtTool = builder({ ...mockContext, ...overrideContext });
+    const builtTool = builder(buildContext(overrideContext));
     return builtTool.execute(input as any, {
       toolCallId: 'test',
       context: {},
@@ -132,7 +172,7 @@ describe('buildInviteToGroupTool', () => {
   // 一次在查岗结论出来前，一次在候选人问"直接去门店面试吗还是怎么样"时。
   describe('时机 gate 端到端（badcase 63eefu6c）', () => {
     it('本轮未查岗就拉群：拒绝且不触达企业接口', async () => {
-      const result = await executeTool({ city: '上海' }, { jobListExecutedThisTurn: false });
+      const result = await executeTool({ city: '上海' }, { jobListExecuted: false });
 
       expect(result.success).toBe(false);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_JOB_RESULT);
@@ -961,7 +1001,7 @@ describe('buildInviteToGroupTool', () => {
     const executeToolWithSession = async (
       input: { city: string; industry?: string },
       sessionService: unknown,
-      overrideContext?: Partial<ToolBuildContext>,
+      overrideContext?: InviteContextOverrides,
     ) => {
       const builder = buildInviteToGroupTool(
         mockGroupResolver as any,
@@ -974,7 +1014,7 @@ describe('buildInviteToGroupTool', () => {
         undefined,
         sessionService as any,
       );
-      const builtTool = builder({ ...mockContext, ...overrideContext });
+      const builtTool = builder(buildContext(overrideContext));
       return builtTool.execute(input as any, {
         toolCallId: 'test',
         context: {},

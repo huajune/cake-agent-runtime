@@ -1,5 +1,6 @@
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import type { ToolBuildContext } from '@shared-types/tool.types';
+import { createToolContext, type ToolContextOverrides } from '../helpers/tool-context.fixture';
 
 function buildRegistry() {
   return new ToolRegistryService(
@@ -29,14 +30,14 @@ function buildRegistry() {
   );
 }
 
-function baseContext(overrides: Partial<ToolBuildContext> = {}): ToolBuildContext {
-  return {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'chat-1',
-    messages: [],
-    ...overrides,
-  } as ToolBuildContext;
+function baseContext(overrides: ToolContextOverrides = {}): ToolBuildContext {
+  return createToolContext({
+    session: { userId: 'user-1', corpId: 'corp-1', sessionId: 'chat-1', ...overrides.session },
+    archive: overrides.archive,
+    turnInput: overrides.turnInput,
+    ledger: overrides.ledger,
+    runtime: overrides.runtime,
+  });
 }
 
 describe('ToolRegistryService', () => {
@@ -46,7 +47,7 @@ describe('ToolRegistryService', () => {
     const tools = registry.buildForScenario(
       'candidate-consultation',
       baseContext({
-        highConfidenceFacts: {
+        ledger: { ruleFacts: {
           interview_info: {
             upload_resume: {
               value: ' https://cdn.example.com/resume.pdf ',
@@ -54,7 +55,7 @@ describe('ToolRegistryService', () => {
               evidence: '候选人发送了简历附件',
             },
           },
-        } as never,
+        } as never },
       }),
     );
 
@@ -70,7 +71,7 @@ describe('ToolRegistryService', () => {
     const tools = registry.buildForScenario(
       'candidate-consultation',
       baseContext({
-        highConfidenceFacts: {
+        ledger: { ruleFacts: {
           interview_info: {
             upload_resume: {
               value: 'https://cdn.example.com/resume.pdf',
@@ -78,12 +79,12 @@ describe('ToolRegistryService', () => {
               evidence: '候选人发送了简历附件',
             },
           },
-        } as never,
-        sessionFacts: {
+        } as never },
+        archive: { sessionFacts: {
           interview_info: {
             upload_resume: ' https://cdn.example.com/resume.pdf ',
           },
-        } as never,
+        } as never },
       }),
     );
 

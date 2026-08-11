@@ -3,7 +3,7 @@ import { MessageProcessingService } from '@biz/message/services/message-processi
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
 import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-types/tracking.types';
-import type { CityAttestation } from '@shared-types/tool.types';
+import type { CityAttestation } from '@shared-types/turn.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { BrandStateService } from './brand-state.service';
@@ -13,7 +13,6 @@ import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
-import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
 import { stripQuotedBlocks, stripTimeContext } from '@infra/utils/message-markup.util';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import type {
@@ -52,6 +51,8 @@ export interface MemoryLifecycleTurnContext {
    * 避免下一轮模型又从记忆取到死岗位重试 precheck（badcase chat 6a685393）。
    */
   invalidatedJobIds?: number[] | null;
+  /** prep 时刻唯一一次规则轨判定；轮末直接消费，禁止重跑。 */
+  ruleFacts: HighConfidenceFacts | null;
 }
 
 interface StepOutcome<T = void> {
@@ -117,6 +118,8 @@ export class MemoryLifecycleService {
        * 提供时触发 MemoryEnrichmentService。
        */
       enrichmentIdentity?: CandidateIdentityHint;
+      /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
+      ruleFacts?: HighConfidenceFacts | null;
     },
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
@@ -145,7 +148,7 @@ export class MemoryLifecycleService {
       sessionId,
     );
 
-    const highConfidenceFacts = await this.detectHighConfidenceFacts(currentUserMessage);
+    const highConfidenceFacts = options?.ruleFacts ?? null;
     const warnings: string[] = [];
     if (includeShortTerm && this.shortTerm.lastLoadError) {
       warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
@@ -414,20 +417,6 @@ export class MemoryLifecycleService {
     );
   }
 
-  private async detectHighConfidenceFacts(
-    currentUserMessage?: string,
-  ): Promise<HighConfidenceFacts | null> {
-    const trimmed = currentUserMessage?.trim();
-    if (!trimmed) return null;
-
-    const brandData = await this.sponge.fetchBrandList();
-    const highConfidenceFacts = extractHighConfidenceFacts([trimmed], brandData);
-    if (!highConfidenceFacts) return null;
-
-    this.logger.debug(`前置高置信识别命中: ${highConfidenceFacts.reasoning}`);
-    return highConfidenceFacts;
-  }
-
   private async runSessionTurnEndSteps(
     ctx: MemoryLifecycleTurnContext,
     lastUserText: string,
@@ -521,7 +510,13 @@ export class MemoryLifecycleService {
       content: this.extractTextFromContent(m.content),
     }));
     const extractFactsResult = await this.runMeasuredStep('extract_facts', async () => {
-      return await this.session.extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages);
+      return await this.session.extractAndSave(
+        ctx.corpId,
+        ctx.userId,
+        ctx.sessionId,
+        flatMessages,
+        ctx.ruleFacts,
+      );
     });
     // LLM 提取降级（fallback 空值）若被吞掉、step 仍标 success，提取实际成功率
     // 不可观测。这里把降级显式标成 failure step，使整轮落 completed_with_errors。

@@ -534,7 +534,8 @@ function normalizeCandidateHouseholdProvinceInput(value: unknown): string | null
 }
 
 function readHighConfidenceValue(value: unknown): unknown {
-  return isHighConfidenceValue(value) && value.confidence === 'high' ? value.value : null;
+  if (isHighConfidenceValue(value)) return value.confidence === 'high' ? value.value : null;
+  return value;
 }
 
 function applyCandidateFieldOverride(
@@ -574,8 +575,9 @@ function syncBookingCandidateFacts(
   context: Parameters<ToolBuilder>[0],
   knownFieldMap: Record<string, string>,
 ): void {
-  const current = context.bookingCandidateFacts ?? context.sessionFacts?.interview_info ?? {};
-  context.bookingCandidateFacts = {
+  const current =
+    context.archive.bookingCandidateFacts ?? context.archive.sessionFacts?.interview_info ?? {};
+  context.archive.bookingCandidateFacts = {
     ...current,
     ...(knownFieldMap['姓名'] ? { name: knownFieldMap['姓名'] } : {}),
     ...(knownFieldMap['联系电话'] ? { phone: knownFieldMap['联系电话'] } : {}),
@@ -747,7 +749,7 @@ function emitFactAdjudicationEvent(
     type: 'fact_adjudication',
     stage: 'precheck',
     mode: deps.mode,
-    userId: context.userId,
+    userId: context.session.userId,
     precheckId,
     factsVersion: result.factsVersion,
     decisions: result.adjudicated.map((entry) => ({
@@ -815,11 +817,11 @@ export function buildInterviewPrecheckTool(
         // 必是模型凭空生成或"召回 A 岗、另编真实 B 岗 jobId 绕过"（约面意向幻觉簇）。
         // 此时不打 sponge 接口、也不回 job_not_found（"未找到岗位"会被模型脑补成"岗位下架了"，
         // 进而沿错误叙事继续推进），直接要求先 duliday_job_list 召回拿真实 jobId。
-        if (context.isRecalledJobId && !context.isRecalledJobId(jobId)) {
+        if (context.archive.isRecalledJobId && !context.archive.isRecalledJobId(jobId)) {
           // 闸门有两种触发情形，话术必须分开：会话零召回 vs 已召回但这个 jobId 不在其中。
           // 后者若沿用"还没召回过任何岗位"的措辞，是在对模型说假话（它确实召回过），
           // 且不给出合法 jobId，模型只能再猜一个。
-          const recalled = context.recalledJobIds ?? [];
+          const recalled = context.archive.recalledJobIds ?? [];
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED,
             outcome: '前置校验拦截（jobId 无召回出处）',
@@ -855,7 +857,7 @@ export function buildInterviewPrecheckTool(
             // 岗位已失效（下架/满员）。同步从会话记忆剔除，否则它仍留在
             // presentedJobs/currentFocusJob 里，下一轮又被喂回来重试——badcase chat
             // 6a685393 就是同一个 jobId 连撞 3 轮 job_not_found 后转人工。
-            context.onJobInvalidated?.(jobId);
+            context.ledger.markJobInvalidated?.(jobId);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
               outcome: '前置校验失败（岗位已失效）',
@@ -892,7 +894,7 @@ export function buildInterviewPrecheckTool(
           // 若 Agent 本轮带的 requestedDate 早于该日期，直接判 date_unavailable，
           // 避免 Agent 继续催"今天/明天能不能面"（badcase 簇 future_date_constraint）。
           const persistedAvailableAfter =
-            context.sessionFacts?.preferences?.available_after ?? null;
+            context.archive.sessionFacts?.preferences?.available_after ?? null;
           const requestedDateBlockedByPersistedFloor =
             persistedAvailableAfter &&
             normalizedDate.date &&
@@ -955,20 +957,24 @@ export function buildInterviewPrecheckTool(
             screeningChecks.some((check) => /学生|身份/u.test(check.labelName));
 
           const knownFieldMap = buildKnownFieldMap({
-            contextProfile: context.profile ?? null,
-            sessionInterviewInfo: context.sessionFacts?.interview_info ?? null,
+            contextProfile: context.archive.profile ?? null,
+            sessionInterviewInfo: context.archive.sessionFacts?.interview_info ?? null,
             storeName,
             jobName,
           });
           // 长期画像只作为对话参考，不能单独满足本次报名收资。只有本会话已经沉淀的
           // 高置信候选人事实，或下方当前轮原话证据，才能进入 bookingChecklist。
-          if (context.currentUserMessage !== undefined) {
+          if (context.turnInput.currentUserMessage !== undefined) {
             removeProfileOnlyCandidateFields(
               knownFieldMap,
-              context.sessionFacts?.interview_info as Record<string, unknown> | null | undefined,
+              context.archive.sessionFacts?.interview_info as
+                | Record<string, unknown>
+                | null
+                | undefined,
             );
           }
-          const highConfidenceInfo = context.highConfidenceFacts?.interview_info ?? null;
+          const highConfidenceInfo = context.ledger.ruleFacts?.interview_info ?? null;
+          const collectedFields = context.ledger.collectedFields;
           // 姓名/电话必须在下方可疑姓名校验（读取 knownFieldMap['姓名']）之前回灌：
           // 它们没有沉淀进会话事实时（候选人本轮刚报名 / 跨天回访旧事实已过期），
           // buildKnownFieldMap 读不到，唯一回灌通道就是 candidateName/candidatePhone 入参。
@@ -976,21 +982,21 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '姓名',
             candidateName,
-            highConfidenceInfo?.name,
+            collectedFields.name?.value,
             normalizeCandidateNameInput,
           );
           applyCandidateFieldOverride(
             knownFieldMap,
             '联系电话',
             candidatePhone,
-            highConfidenceInfo?.phone,
+            collectedFields.phone?.value,
             normalizeCandidatePhoneInput,
           );
           applyCandidateFieldOverride(
             knownFieldMap,
             '年龄',
             candidateAge,
-            highConfidenceInfo?.age,
+            collectedFields.age?.value,
             normalizeCandidateAgeInput,
           );
           applyCandidateFieldOverride(
@@ -1002,7 +1008,7 @@ export function buildInterviewPrecheckTool(
           );
           if (!knownFieldMap['面试时间']) {
             const structuredInterviewTime = extractStructuredInterviewTimeFromMessages(
-              context.messages,
+              context.turnInput.messages,
             );
             if (structuredInterviewTime) {
               knownFieldMap['面试时间'] = structuredInterviewTime;
@@ -1012,14 +1018,14 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '性别',
             candidateGender,
-            highConfidenceInfo?.gender,
+            collectedFields.gender?.value,
             normalizeCandidateGenderInput,
           );
           applyCandidateFieldOverride(
             knownFieldMap,
             '学历',
             candidateEducation,
-            highConfidenceInfo?.education,
+            collectedFields.education?.value,
             normalizeCandidateEducationInput,
           );
           const normalizedCandidateHealthCertificate = normalizeCandidateHealthCertificateInput(
@@ -1029,16 +1035,17 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '健康证情况',
             normalizedCandidateHealthCertificate,
-            highConfidenceInfo?.has_health_certificate,
+            collectedFields.healthCert?.value,
             normalizeCandidateHealthCertificateInput,
           );
           const healthCertificateEligibility = resolveLocalHealthCertificateEligibility({
-            latestAnswer: normalizedCandidateHealthCertificate ?? context.currentUserMessage,
+            latestAnswer:
+              normalizedCandidateHealthCertificate ?? context.turnInput.currentUserMessage,
             normalizedKnownValue: knownFieldMap['健康证情况'],
             historicalValues: [
-              highConfidenceInfo?.has_health_certificate,
-              context.sessionFacts?.interview_info?.has_health_certificate,
-              context.profile?.has_health_certificate,
+              collectedFields.healthCert?.value,
+              context.archive.sessionFacts?.interview_info?.has_health_certificate,
+              context.archive.profile?.has_health_certificate,
             ],
           });
           if (healthCertificateEligibility.status === 'local_valid') {
@@ -1067,7 +1074,7 @@ export function buildInterviewPrecheckTool(
             normalizeCandidateIsStudentInput,
           );
           const latestExplicitIdentityEvidence = findLatestExplicitIdentityEvidence(
-            context.messages,
+            context.turnInput.messages,
           );
           const latestExplicitIdentity = latestExplicitIdentityEvidence?.identity ?? null;
           // 身份与其它显式 candidate 参数采用同一口径。仅保留当前原话明确自报学生
@@ -1089,21 +1096,21 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '身高',
             candidateHeight,
-            highConfidenceInfo?.height,
+            collectedFields.height?.value,
             normalizeCandidateNumberInput,
           );
           applyCandidateFieldOverride(
             knownFieldMap,
             '体重',
             candidateWeight,
-            highConfidenceInfo?.weight,
+            collectedFields.weight?.value,
             normalizeCandidateNumberInput,
           );
           applyCandidateFieldOverride(
             knownFieldMap,
             '户籍省份',
             candidateHouseholdProvince,
-            highConfidenceInfo?.household_register_province,
+            collectedFields.householdProvince?.value,
             normalizeCandidateHouseholdProvinceInput,
           );
 
@@ -1125,10 +1132,11 @@ export function buildInterviewPrecheckTool(
           //     （生产 badcase 2026-07-17/07-20：姓名预填"高雅琪"/"辛瑜琦"）。
           const nameMatchesManager =
             Boolean(knownName) &&
-            Boolean(context.botUserId) &&
-            normalizePolicyText(knownName) === normalizePolicyText(context.botUserId);
+            Boolean(context.session.botUserId) &&
+            normalizePolicyText(knownName) === normalizePolicyText(context.session.botUserId);
           const nameOnlyQuotedSpeaker =
-            Boolean(knownName) && isNameOnlyQuotedSpeaker(knownName, context.messages ?? []);
+            Boolean(knownName) &&
+            isNameOnlyQuotedSpeaker(knownName, context.turnInput.messages ?? []);
           const nameFieldLooksSuspicious =
             Boolean(knownName) &&
             (!isStrictRealChineseName(knownName) || nameMatchesManager || nameOnlyQuotedSpeaker);
@@ -1136,7 +1144,7 @@ export function buildInterviewPrecheckTool(
           // 候选人已坚持"是真实姓名"信号——疑似少数民族/特殊姓名超出 isStrictRealChineseName
           // 2-4 字汉字白名单。此时不再让 Agent 继续逼候选人改名，而是升级到 mustHandoff 由人工补录。
           const userInsistedRealName = nameFieldLooksSuspicious
-            ? detectRealNameInsistence(context.messages)
+            ? detectRealNameInsistence(context.turnInput.messages)
             : false;
           if (nameFieldLooksSuspicious) {
             delete knownFieldMap['姓名'];
@@ -1150,7 +1158,7 @@ export function buildInterviewPrecheckTool(
             if (!fieldKey || knownFieldMap[fieldKey]) continue;
             const answer =
               getSupplementAnswerValue(candidateSupplementAnswers, labelName) ??
-              extractSupplementAnswerFromMessages(context.messages, labelName);
+              extractSupplementAnswerFromMessages(context.turnInput.messages, labelName);
             if (answer) knownFieldMap[fieldKey] = answer;
           }
 
@@ -1177,7 +1185,7 @@ export function buildInterviewPrecheckTool(
 
           const summerWorkerIntent = resolveSummerWorkerIntent({
             candidateLaborForm,
-            messages: context.messages,
+            messages: context.turnInput.messages,
           });
           const temporarySummerWorkerGuard = buildTemporarySummerWorkerGuard({
             jobLaborForm: job.basicInfo?.laborForm,
@@ -1193,7 +1201,7 @@ export function buildInterviewPrecheckTool(
           if (adjudicationDeps) {
             try {
               adjudicationResult = runCandidateFactAdjudication({
-                messages: context.messages,
+                messages: context.turnInput.messages,
                 modelClaimInputs: candidateClaims,
                 legacyArgs: stripNullish({
                   name: normalizeCandidateNameInput(candidateName),
@@ -1210,10 +1218,10 @@ export function buildInterviewPrecheckTool(
                   ),
                 }) as LegacyCandidateArgs,
                 sessionAccepted: buildSessionAcceptedFacts(
-                  context.sessionFacts?.interview_info as Record<string, unknown> | null,
+                  context.archive.sessionFacts?.interview_info as Record<string, unknown> | null,
                 ),
                 profileHints: buildProfileHintFacts(
-                  context.profile as unknown as Record<string, unknown> | null,
+                  context.archive.profile as unknown as Record<string, unknown> | null,
                 ),
               });
 
@@ -1288,7 +1296,7 @@ export function buildInterviewPrecheckTool(
             hardRequirements.household,
             knownFieldMap['户籍省份'],
           );
-          const collectionResistance = detectCollectionResistance(context.messages);
+          const collectionResistance = detectCollectionResistance(context.turnInput.messages);
           const collectionStrategy =
             checklist.missingFields.length > 0
               ? buildCollectionStrategy({
@@ -1348,7 +1356,7 @@ export function buildInterviewPrecheckTool(
           // 此时禁止继续追问，指示模型直接 request_handoff——给模型确定性的退出口。
           const identityAskRounds =
             studentIdentityMustBeExplicit && checklist.missingFields.includes('身份')
-              ? summarizeIdentityAskRounds(context.messages)
+              ? summarizeIdentityAskRounds(context.turnInput.messages)
               : null;
           const identityAskEscalated =
             identityAskRounds !== null &&
@@ -1357,7 +1365,7 @@ export function buildInterviewPrecheckTool(
             identityAskRounds.userRepliedAfterLatestAsk;
           if (identityAskEscalated) {
             logger.warn(
-              `身份追问升级转人工: jobId=${jobId}, askCount=${identityAskRounds.askCount}, chatId=${context.sessionId}`,
+              `身份追问升级转人工: jobId=${jobId}, askCount=${identityAskRounds.askCount}, chatId=${context.session.sessionId}`,
             );
           }
 
@@ -1387,7 +1395,7 @@ export function buildInterviewPrecheckTool(
           // ⚠️ 只回灌给这一次**只读查询**，绝不写进 knownFieldMap：截图里的姓名/电话未必是
           // 对话方本人（本案的"颜端樟"就是对方代第三人登记的），拿它去满足收资清单等于
           // 复刻 badcase「第三方截图夺号」。查重的最坏结果只是查出一张工单再去核对，安全。
-          const visualCandidatePhone = (context.turnVisualFactSheets ?? [])
+          const visualCandidatePhone = (context.ledger.visualFactSheets ?? [])
             .flatMap((entry) => fieldValues(entry.sheet, 'phone', 'candidate'))
             .map((value) => value.replace(/\D/g, ''))
             .find((value) => /^1\d{10}$/.test(value));
@@ -1400,7 +1408,7 @@ export function buildInterviewPrecheckTool(
             try {
               const workOrdersResult = await spongeService.fetchSignupWorkOrders(
                 { phone: lookupPhone },
-                { botImId: context.botImId, botUserId: context.botUserId },
+                { botImId: context.session.botImId, botUserId: context.session.botUserId },
               );
               const activeStatuses = new Set(['约面待确认', '约面成功']);
               const activeOrders = (workOrdersResult.workOrders ?? []).filter((order) =>
@@ -1445,7 +1453,7 @@ export function buildInterviewPrecheckTool(
           // booking 凭 precheckId 对账最终 payload。precheckId 用 turnId 派生——同批
           // 输入 Bull 重跑得到同 id 幂等覆盖；候选人新消息后水位变化，旧快照对不上账。
           const precheckId = adjudicationResult
-            ? `pc_${context.turnId ?? Date.now().toString()}_${jobId}`
+            ? `pc_${context.session.turnId ?? Date.now().toString()}_${jobId}`
             : undefined;
           if (adjudicationResult && adjudicationDeps) {
             emitFactAdjudicationEvent(adjudicationDeps, context, adjudicationResult, precheckId);
@@ -1467,7 +1475,11 @@ export function buildInterviewPrecheckTool(
                 createdAt: new Date().toISOString(),
                 expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
               };
-              void adjudicationDeps.snapshots.save(context.corpId, context.userId, snapshot);
+              void adjudicationDeps.snapshots.save(
+                context.session.corpId,
+                context.session.userId,
+                snapshot,
+              );
             }
           }
 
@@ -1475,16 +1487,16 @@ export function buildInterviewPrecheckTool(
             // booking 必须复用本次预检已经验证过的同一份候选人事实，避免重新读取尚未
             // 持久化的 session 快照后出现“预检通过、最终报名缺证据/冲突”的分叉。
             syncBookingCandidateFacts(context, knownFieldMap);
-            const turnId = context.turnId ?? Date.now().toString();
+            const turnId = context.session.turnId ?? Date.now().toString();
             void opsEventsRecorder.recordEvent({
-              corpId: context.corpId,
+              corpId: context.session.corpId,
               eventName: 'precheck.passed',
-              idempotencyKey: `${context.sessionId}:precheck:${jobId}:${turnId}`,
-              botImId: context.botImId,
-              managerName: context.botUserId,
+              idempotencyKey: `${context.session.sessionId}:precheck:${jobId}:${turnId}`,
+              botImId: context.session.botImId,
+              managerName: context.session.botUserId,
               sourceChannel: 'unknown',
-              userId: context.userId,
-              chatId: context.sessionId,
+              userId: context.session.userId,
+              chatId: context.session.sessionId,
               payload: { job_id: jobId },
             });
           }

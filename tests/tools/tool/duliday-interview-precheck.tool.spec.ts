@@ -6,6 +6,23 @@ import {
   type HighConfidenceFacts,
   type HighConfidenceValue,
 } from '@memory/types/session-facts.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+
+interface PrecheckContextOverrides {
+  messages?: unknown[];
+  currentUserMessage?: string;
+  sessionFacts?: ToolBuildContext['archive']['sessionFacts'];
+  profile?: ToolBuildContext['archive']['profile'];
+  isRecalledJobId?: ToolBuildContext['archive']['isRecalledJobId'];
+  recalledJobIds?: ToolBuildContext['archive']['recalledJobIds'];
+  bookingCandidateFacts?: ToolBuildContext['archive']['bookingCandidateFacts'];
+  botUserId?: string;
+  ruleFacts?: TurnLedger['ruleFacts'];
+  collectedFields?: TurnLedger['collectedFields'];
+  visualFactSheets?: TurnLedger['visualFactSheets'];
+  markJobInvalidated?: TurnLedger['markJobInvalidated'];
+}
 
 function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
   return { value, confidence: 'high', source: 'rule', evidence };
@@ -58,12 +75,45 @@ describe('buildInterviewPrecheckTool', () => {
     fetchSignupWorkOrders: jest.fn(),
   };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    messages: [],
-  };
+  const mockContext: ToolBuildContext = createToolContext({
+    session: { userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1' },
+  });
+
+  const buildContext = (overrides: PrecheckContextOverrides = {}): ToolBuildContext =>
+    mergeToolContext(mockContext, {
+      session: overrides.botUserId === undefined ? {} : { botUserId: overrides.botUserId },
+      archive: {
+        ...(overrides.sessionFacts === undefined ? {} : { sessionFacts: overrides.sessionFacts }),
+        ...(overrides.profile === undefined ? {} : { profile: overrides.profile }),
+        ...(overrides.isRecalledJobId === undefined
+          ? {}
+          : { isRecalledJobId: overrides.isRecalledJobId }),
+        ...(overrides.recalledJobIds === undefined
+          ? {}
+          : { recalledJobIds: overrides.recalledJobIds }),
+        ...(overrides.bookingCandidateFacts === undefined
+          ? {}
+          : { bookingCandidateFacts: overrides.bookingCandidateFacts }),
+      },
+      turnInput: {
+        ...(overrides.messages === undefined ? {} : { messages: overrides.messages }),
+        ...(overrides.currentUserMessage === undefined
+          ? {}
+          : { currentUserMessage: overrides.currentUserMessage }),
+      },
+      ledger: {
+        ...(overrides.ruleFacts === undefined ? {} : { ruleFacts: overrides.ruleFacts }),
+        ...(overrides.collectedFields === undefined
+          ? {}
+          : { collectedFields: overrides.collectedFields }),
+        ...(overrides.visualFactSheets === undefined
+          ? {}
+          : { visualFactSheets: overrides.visualFactSheets }),
+        ...(overrides.markJobInvalidated === undefined
+          ? {}
+          : { markJobInvalidated: overrides.markJobInvalidated }),
+      },
+    });
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const makeJob = (overrides: any = {}) => {
@@ -118,16 +168,13 @@ describe('buildInterviewPrecheckTool', () => {
 
   const executeTool = async (
     input: Record<string, any>,
-    contextOverride: Partial<ToolBuildContext> = {},
+    contextOverride: PrecheckContextOverrides = {},
   ) => {
     const builder = buildInterviewPrecheckTool(
       mockSpongeService as never,
       { recordEvent: jest.fn() } as never,
     );
-    const builtTool = builder({
-      ...mockContext,
-      ...contextOverride,
-    });
+    const builtTool = builder(buildContext(contextOverride));
     return builtTool.execute(input as any, {
       toolCallId: 'test',
       context: {},
@@ -138,9 +185,9 @@ describe('buildInterviewPrecheckTool', () => {
 
   const executeToolWithContext = async (
     input: Record<string, any>,
-    contextOverride: Partial<ToolBuildContext> = {},
+    contextOverride: PrecheckContextOverrides = {},
   ) => {
-    const context: ToolBuildContext = { ...mockContext, ...contextOverride };
+    const context = buildContext(contextOverride);
     const builtTool = buildInterviewPrecheckTool(
       mockSpongeService as never,
       { recordEvent: jest.fn() } as never,
@@ -186,17 +233,17 @@ describe('buildInterviewPrecheckTool', () => {
   // 死岗位跨轮重试（badcase chat 6a685393，jobId 528572 M Stand 中大天地店）：
   // 岗位失效后仍留在会话记忆，模型连撞 3 轮 job_not_found 才转人工。
   describe('岗位失效后从会话记忆剔除', () => {
-    it('job_not_found 时回调 onJobInvalidated，交回合收尾剔除记忆', async () => {
+    it('job_not_found 时回调 markJobInvalidated，交回合收尾剔除记忆', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
-      const onJobInvalidated = jest.fn();
+      const markJobInvalidated = jest.fn();
 
       const result = await executeTool(
         { jobId: 528572, requestedDate: '2026-04-08' },
-        { isRecalledJobId: () => true, onJobInvalidated },
+        { isRecalledJobId: () => true, markJobInvalidated },
       );
 
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
-      expect(onJobInvalidated).toHaveBeenCalledWith(528572);
+      expect(markJobInvalidated).toHaveBeenCalledWith(528572);
     });
 
     it('话术明确禁止同 jobId 重试（原话术只说"重新核对状态"，模型照旧重试）', async () => {
@@ -211,7 +258,7 @@ describe('buildInterviewPrecheckTool', () => {
       expect(result._replyInstruction).toContain('528572');
     });
 
-    it('未注入 onJobInvalidated（test/debug 链路）时不炸', async () => {
+    it('未注入 markJobInvalidated（test/debug 链路）时不炸', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
 
       const result = await executeTool(
@@ -857,7 +904,7 @@ describe('buildInterviewPrecheckTool', () => {
 
     expect(result.nextAction).toBe('ready_to_book');
     expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
-    expect(context.bookingCandidateFacts).toEqual(
+    expect(context.archive.bookingCandidateFacts).toEqual(
       expect.objectContaining({
         name: '王小明',
         phone: '13800138000',
@@ -1205,7 +1252,7 @@ describe('buildInterviewPrecheckTool', () => {
         candidateWeight: 70,
         candidateHouseholdProvince: '安徽',
       },
-      { currentUserMessage, highConfidenceFacts: facts },
+      { currentUserMessage, ruleFacts: facts },
     );
 
     expect(result.bookingChecklist.templateText).toContain('姓名：赵堤');
@@ -1961,7 +2008,7 @@ describe('buildInterviewPrecheckTool', () => {
     const visualSheetContext = (fields: Array<{ key: string; value: string; ownership: string }>) =>
       ({
         messages: [{ role: 'user', content: '这个门店' }] as never,
-        turnVisualFactSheets: [{ messageId: 'm1', sheet: { fields } }],
+        visualFactSheets: [{ messageId: 'm1', sheet: { fields } }],
       }) as never;
 
     it('模型漏传手机号时，用截图里 ownership=candidate 的手机号完成查重', async () => {
@@ -2302,7 +2349,7 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('学历：');
   });
 
-  it('should use high-confidence highConfidenceFacts age before stale session facts', async () => {
+  it('should use prep-collected age before stale session facts', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
@@ -2345,13 +2392,13 @@ describe('buildInterviewPrecheckTool', () => {
           preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'stale context',
         },
-        highConfidenceFacts: {
-          ...emptyHighConfidenceFacts(),
-          interview_info: {
-            ...emptyHighConfidenceFacts().interview_info,
-            age: highConfidence('24', '年龄识别：24'),
+        collectedFields: {
+          age: {
+            value: 24,
+            provenance: 'user_text',
+            evidence: '年龄数字',
+            at: Date.now(),
           },
-          reasoning: '年龄识别：24',
         },
       },
     );
@@ -2370,7 +2417,7 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).not.toContain('年龄：30');
   });
 
-  it('should ignore low-confidence highConfidenceFacts age for ageBoundary and checklist prefill', async () => {
+  it('should ignore low-confidence ruleFacts age for ageBoundary and checklist prefill', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
@@ -2406,7 +2453,7 @@ describe('buildInterviewPrecheckTool', () => {
       },
       {
         sessionFacts: FALLBACK_EXTRACTION,
-        highConfidenceFacts: {
+        ruleFacts: {
           ...emptyHighConfidenceFacts(),
           interview_info: {
             ...emptyHighConfidenceFacts().interview_info,
@@ -3305,8 +3352,8 @@ describe('buildInterviewPrecheckTool', () => {
       ],
     });
 
-    const highConfidenceFacts = emptyHighConfidenceFacts();
-    highConfidenceFacts.interview_info.experience = highConfidence(
+    const ruleFacts = emptyHighConfidenceFacts();
+    ruleFacts.interview_info.experience = highConfidence(
       '肯德基服务员4个多月',
       '工作经历识别',
     );
@@ -3314,7 +3361,7 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool(
       { jobId: 100 },
       {
-        highConfidenceFacts,
+        ruleFacts,
       },
     );
 

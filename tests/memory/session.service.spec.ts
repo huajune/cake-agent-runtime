@@ -2,6 +2,7 @@ import { SessionService } from '@memory/services/session.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { extractHighConfidenceFacts } from '@resolution/evidence/producers/rule-track';
 
 function mockStructured(obj: unknown) {
   return {
@@ -47,6 +48,17 @@ describe('SessionService', () => {
   };
 
   let service: SessionService;
+
+  const extractAndSaveWithPrepRules = async (
+    sessionId: string,
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  ) => {
+    const ruleFacts = extractHighConfidenceFacts(
+      messages.filter((message) => message.role === 'user').map((message) => message.content),
+      await mockSponge.fetchBrandList(),
+    );
+    return service.extractAndSave('corp1', 'user1', sessionId, messages, ruleFacts);
+  };
 
   const changbaiJob = {
     jobId: 519709,
@@ -1408,7 +1420,7 @@ describe('SessionService', () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockRejectedValue(new Error('LLM timeout'));
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [
+      await extractAndSaveWithPrepRules('sess1', [
         { role: 'user', content: '我的电话是13800138000' },
       ]);
 
@@ -1444,7 +1456,7 @@ describe('SessionService', () => {
         }),
       );
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [
+      await extractAndSaveWithPrepRules('sess1', [
         { role: 'user', content: '我是大三本科在读，我在苏州市，只周末上班' },
       ]);
 
@@ -1487,7 +1499,7 @@ describe('SessionService', () => {
         }),
       );
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [
+      await extractAndSaveWithPrepRules('sess1', [
         { role: 'user', content: '目前没有健康证，但确定上岗前会去办。' },
       ]);
 
@@ -1549,7 +1561,7 @@ describe('SessionService', () => {
         }),
       );
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [
+      await extractAndSaveWithPrepRules('sess1', [
         { role: 'user', content: '我叫张三，电话13800138000' },
       ]);
 
@@ -1582,7 +1594,7 @@ describe('SessionService', () => {
         }),
       );
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [
+      await extractAndSaveWithPrepRules('sess1', [
         { role: 'user', content: '我是阳光明媚' },
         { role: 'assistant', content: '你好' },
         { role: 'user', content: '姓名：赵堤' },
@@ -1633,7 +1645,7 @@ describe('SessionService', () => {
         }),
       );
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [
+      await extractAndSaveWithPrepRules('sess1', [
         { role: 'user', content: '你好我在青浦区' },
       ]);
 

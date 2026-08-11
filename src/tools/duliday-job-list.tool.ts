@@ -355,9 +355,9 @@ function readHighConfidenceFactValue(value: unknown): unknown {
 
 function resolveCandidateAge(context: ToolBuildContext): number | null {
   const sources = [
-    readHighConfidenceFactValue(context.highConfidenceFacts?.interview_info?.age),
-    readFactValue(context.sessionFacts?.interview_info?.age),
-    context.profile?.age,
+    readHighConfidenceFactValue(context.ledger.ruleFacts?.interview_info?.age),
+    readFactValue(context.archive.sessionFacts?.interview_info?.age),
+    context.archive.profile?.age,
   ];
 
   for (const source of sources) {
@@ -375,8 +375,8 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
  */
 function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
   const sources = [
-    readHighConfidenceFactValue(context.highConfidenceFacts?.interview_info?.is_student),
-    readFactValue(context.sessionFacts?.interview_info?.is_student),
+    readHighConfidenceFactValue(context.ledger.ruleFacts?.interview_info?.is_student),
+    readFactValue(context.archive.sessionFacts?.interview_info?.is_student),
   ];
   for (const source of sources) {
     if (typeof source === 'boolean') return source;
@@ -394,17 +394,17 @@ function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
  */
 function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
   const sources = [
-    readHighConfidenceFactValue(context.highConfidenceFacts?.preferences?.labor_form),
-    readFactValue(context.sessionFacts?.preferences?.labor_form),
+    readHighConfidenceFactValue(context.ledger.ruleFacts?.preferences?.labor_form),
+    readFactValue(context.archive.sessionFacts?.preferences?.labor_form),
   ];
-  if (context.currentLaborFormIntent?.kind === 'set') {
-    return context.currentLaborFormIntent.value;
+  if (context.turnInput.currentLaborFormIntent?.kind === 'set') {
+    return context.turnInput.currentLaborFormIntent.value;
   }
   for (const source of sources) {
     if (typeof source !== 'string' || !isValidLaborForm(source)) continue;
     if (
-      context.currentLaborFormIntent?.kind === 'clear' &&
-      context.currentLaborFormIntent.clearedValues.some((value) => value === source)
+      context.turnInput.currentLaborFormIntent?.kind === 'clear' &&
+      context.turnInput.currentLaborFormIntent.clearedValues.some((value) => value === source)
     ) {
       return null;
     }
@@ -682,16 +682,16 @@ export function buildJobListTool(
           .filter(Boolean);
         // B7 二次无岗升级（badcase 6a5df7e7）：本会话已发过无岗话术时，noMatchScript 出二档
         // 文案并禁止逐字复读，四个无岗出口共用同一判定。
-        const priorNoMatchReplySent = hasPriorNoMatchReply(context.messages ?? []);
+        const priorNoMatchReplySent = hasPriorNoMatchReply(context.turnInput.messages ?? []);
 
         // jobIdList provenance 闸门（badcase 6a6c4c13：候选人全程只聊东莞长安晚班兼职，
         // 模型却在收尾轮凭空查 jobIdList=[53035]+新白鹿+上海——预训练知识幻觉成查询参数，
         // 还经无岗脚本把"新白鹿在上海"说给了候选人）。与 precheck/booking 的同名闸门同口径：
         // 按 jobId 精查只能用本会话真实召回过的 jobId；幻觉参数直接拦截，不打接口。
-        if (jobIdList.length > 0 && context.isRecalledJobId) {
-          const unrecalledJobIds = jobIdList.filter((id) => !context.isRecalledJobId!(id));
+        if (jobIdList.length > 0 && context.archive.isRecalledJobId) {
+          const unrecalledJobIds = jobIdList.filter((id) => !context.archive.isRecalledJobId!(id));
           if (unrecalledJobIds.length > 0) {
-            const recalled = context.recalledJobIds ?? [];
+            const recalled = context.archive.recalledJobIds ?? [];
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.JOB_LIST_JOBID_NO_PROVENANCE,
               outcome: '查询拦截（jobIdList 含无召回出处的 jobId）',
@@ -724,7 +724,7 @@ export function buildJobListTool(
           brandAliasList: brandAliasListInput,
           brandIdList: brandIdListInput,
           brandFilterMode,
-          sessionBrandState: context.sessionBrandState ?? null,
+          sessionBrandState: context.archive.sessionBrandState ?? null,
           catalog: brandCatalog,
         });
 
@@ -746,8 +746,8 @@ export function buildJobListTool(
         if (brandPlan.allRejected) {
           const rejectedInputs = brandPlan.rejected.map((item) => item.input);
           const fuzzySuggestions =
-            (context.recentBrandPool?.length ?? 0) > 0
-              ? findBrandFuzzyMatches(rejectedInputs, context.recentBrandPool ?? [])
+            (context.archive.recentBrandPool?.length ?? 0) > 0
+              ? findBrandFuzzyMatches(rejectedInputs, context.archive.recentBrandPool ?? [])
               : [];
           return buildBrandRejectedResult({
             brandPlan,
@@ -788,7 +788,8 @@ export function buildJobListTool(
         // 是候选人原话的高置信沉淀，须与模型入参逐字段合并：模型显式传的字段保留
         // （本轮新信息优先），漏传的字段由持久化约束补齐；空对象 {} 视同未传
         // （{} 是 truthy，不显式排除会绕过兜底）。
-        const persistedConstraint = context.sessionFacts?.preferences?.schedule_constraint ?? null;
+        const persistedConstraint =
+          context.archive.sessionFacts?.preferences?.schedule_constraint ?? null;
         if (persistedConstraint) {
           const persistedInput = {
             ...(persistedConstraint.onlyWeekends && { onlyWeekends: true }),
@@ -875,7 +876,7 @@ export function buildJobListTool(
         // 兜底：传了 lng/lat 但漏传 range 时，从业务阈值 max_recommend_distance_km 派生。
         // 上游 API 在 location.longitude/latitude 存在而 range 缺失时返回 code=10000，
         // 必须在请求前补齐，避免静默退化为 total=0。
-        const maxKmThreshold = context.thresholds?.find(
+        const maxKmThreshold = context.runtime.thresholds?.find(
           (t) => t.flag === 'max_recommend_distance_km',
         );
         const effectiveLocation =
@@ -983,20 +984,20 @@ export function buildJobListTool(
             candidateScheduleConstraint: candidateScheduleConstraint ?? null,
             candidateLaborForm,
           });
-          const previousQuery = context.lastJobListQuery ?? null;
+          const previousQuery = context.archive.lastJobListQuery ?? null;
           const isRepeatQuery = Boolean(
             previousQuery &&
               previousQuery.signature === querySignature &&
-              previousQuery.turnId !== (context.turnId ?? null),
+              previousQuery.turnId !== (context.session.turnId ?? null),
           );
 
           // 首次请求
           let { jobs, total } = await fetchJobs(fetchBaseParams);
-          context.onJobListQueryExecuted?.({ signature: querySignature });
+          context.ledger.recordJobListQuery({ signature: querySignature });
           // 本轮已产出查岗结论：invite_to_group 的时机 gate 据此判断"是否突兀拉群"
           //（回合内直写，同 bookingSucceeded 模式）。放在请求返回后而非入口，
           // 是因为"发过请求但抛异常"不构成可告知候选人的查岗结论。
-          context.jobListExecutedThisTurn = true;
+          context.ledger.jobListExecuted = true;
 
           // 县级市行政层级兜底（生产 badcase 6a4f83a5ce406a6aeeeab4b2）：
           // 候选人说“延吉市铁南”，确定性提取曾把“延吉”强制放进 cityNameList；但海绵
@@ -1151,7 +1152,7 @@ export function buildJobListTool(
           // 3) 其余（位置分享 / POI 级 geocode）→ poi 精确口径。
           const matchedGeocodeAnchor =
             locationLatitude != null && locationLongitude != null
-              ? (context.geocodeResolvedAnchors ?? []).find(
+              ? (context.ledger.geocodeAnchors ?? []).find(
                   (anchor) =>
                     Math.abs(anchor.longitude - locationLongitude) <=
                       GEOCODE_ANCHOR_COORD_TOLERANCE &&
@@ -1171,7 +1172,7 @@ export function buildJobListTool(
           // - model_supplied：本轮有 geocode 锚点，但坐标与所有锚点偏差 >1km——模型自编坐标；
           // - unreferenced：本轮无 geocode 锚点（改半径复查未重新 geocode / 位置分享转抄），
           //   无确定性参照，仅记量作为后续 enforce 决策依据。
-          const turnAnchors = context.geocodeResolvedAnchors ?? [];
+          const turnAnchors = context.ledger.geocodeAnchors ?? [];
           let coordsProvenance: 'turn_geocode' | 'model_supplied' | 'unreferenced' | null = null;
           let coordsDeviationKm: number | null = null;
           if (hasUserCoords) {
@@ -1203,7 +1204,7 @@ export function buildJobListTool(
               coordsProvenance = 'unreferenced';
             }
           }
-          const distanceThreshold = context.thresholds?.find(
+          const distanceThreshold = context.runtime.thresholds?.find(
             (t) => t.flag === 'max_recommend_distance_km',
           );
           const maxKm = distanceThreshold?.max;
@@ -1379,12 +1380,12 @@ export function buildJobListTool(
             const hadBrandCondition =
               brandPlan.filterMode === 'enforce' && brandPlan.applied.length > 0;
             const fuzzySuggestions =
-              hadBrandCondition && (context.recentBrandPool?.length ?? 0) > 0
+              hadBrandCondition && (context.archive.recentBrandPool?.length ?? 0) > 0
                 ? findBrandFuzzyMatches(
                     brandAliasListInput.length > 0
                       ? brandAliasListInput
                       : brandPlan.applied.map((brand) => brand.canonicalName),
-                    context.recentBrandPool ?? [],
+                    context.archive.recentBrandPool ?? [],
                   )
                 : [];
 
@@ -1689,7 +1690,7 @@ export function buildJobListTool(
           }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;
-          const knownCityFactValue = readFactValue(context.sessionFacts?.preferences?.city);
+          const knownCityFactValue = readFactValue(context.archive.sessionFacts?.preferences?.city);
           const knownCityForConflict =
             typeof knownCityFactValue === 'string' ? knownCityFactValue : null;
           result.queryMeta = {
@@ -1731,8 +1732,8 @@ export function buildJobListTool(
             // 传已确立会话城市做候选裁决：命中即打 adjudicatedByKnownCity，标记为
             // 同形地名一类噪音而非真冲突（§17.4.1），让 shadow 累计能分开两者。
             geoSignalConflictShadow: detectGeoSignalConflict(
-              context.sessionFacts?.preferences?.district ?? null,
-              context.sessionFacts?.preferences?.location ?? null,
+              context.archive.sessionFacts?.preferences?.district ?? null,
+              context.archive.sessionFacts?.preferences?.location ?? null,
               { knownCity: knownCityForConflict },
             ),
             distanceThresholdKm: maxKm ?? null,
@@ -1799,24 +1800,22 @@ export function buildJobListTool(
           };
 
           // 通知调用方已获取岗位数据
-          if (context.onJobsFetched && jobs.length > 0) {
-            await context.onJobsFetched(mapJobsToSummaries(jobs));
-          }
+          if (jobs.length > 0) context.ledger.recordFetchedJobs(mapJobsToSummaries(jobs));
 
           // job.recommended：候选人本轮被推过岗位 → 记一次。fire-and-forget。
           // 幂等键按「本轮 turn」而非「每候选人一次」：daily_ops_report 是当天事件数，
           // 若用 userId 终身键，同一候选人后续天数再次推荐会被压成 0。turnId 缺省（test/debug）回退时间戳。
           if (jobs.length > 0) {
-            const turnId = context.turnId ?? Date.now().toString();
+            const turnId = context.session.turnId ?? Date.now().toString();
             void opsEventsRecorder.recordEvent({
-              corpId: context.corpId,
+              corpId: context.session.corpId,
               eventName: 'job.recommended',
-              idempotencyKey: `${context.sessionId}:job_recommend:${turnId}`,
-              botImId: context.botImId,
-              managerName: context.botUserId,
+              idempotencyKey: `${context.session.sessionId}:job_recommend:${turnId}`,
+              botImId: context.session.botImId,
+              managerName: context.session.botUserId,
               sourceChannel: 'unknown',
-              userId: context.userId,
-              chatId: context.sessionId,
+              userId: context.session.userId,
+              chatId: context.session.sessionId,
             });
           }
 

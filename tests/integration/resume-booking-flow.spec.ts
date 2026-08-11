@@ -10,6 +10,8 @@ import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.to
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import { createToolContext } from '../helpers/tool-context.fixture';
 
 describe('resume booking flow', () => {
   const resumeFileUrl = 'https://wecom.example.com/files/renbowen-resume.pdf';
@@ -207,19 +209,17 @@ describe('resume booking flow', () => {
 
   function buildToolContext(
     messageContent: string,
-    highConfidenceFacts: ToolBuildContext['highConfidenceFacts'],
+    highConfidenceFacts: TurnLedger['ruleFacts'],
   ): ToolBuildContext {
-    return {
-      userId: 'user-1',
-      corpId: 'corp-1',
-      sessionId: '6a1ced34536c9654027defbd',
-      chatId: '6a1ced34536c9654027defbd',
-      contactName: '候选人微信名',
-      botUserId: 'manager-1',
+    return createToolContext({
+      session: {
+        userId: 'user-1', corpId: 'corp-1', sessionId: '6a1ced34536c9654027defbd',
+        chatId: '6a1ced34536c9654027defbd', contactName: '候选人微信名', botUserId: 'manager-1',
+      },
       // B4 手机号溯源闸门要求提交的 phone 在候选人原文有出处，预置报号消息
-      messages: [{ role: 'user', content: '电话15305186866' }, { role: 'user', content: messageContent }],
-      highConfidenceFacts,
-      sessionFacts: {
+      turnInput: { messages: [{ role: 'user', content: '电话15305186866' }, { role: 'user', content: messageContent }] },
+      ledger: { ruleFacts: highConfidenceFacts },
+      archive: { sessionFacts: {
         interview_info: {
           ...FALLBACK_EXTRACTION.interview_info,
           name: '任博文',
@@ -234,8 +234,8 @@ describe('resume booking flow', () => {
         },
         preferences: FALLBACK_EXTRACTION.preferences,
         reasoning: 'integration test',
-      },
-    } as ToolBuildContext;
+      } },
+    });
   }
 
   async function executePrecheck(input: Record<string, unknown>, context: ToolBuildContext) {

@@ -2,6 +2,19 @@ import { buildSendStoreLocationTool } from '@tools/send-store-location.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { SendMessageType } from '@channels/wecom/message-sender/dto/send-message.dto';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+
+interface LocationContextOverrides {
+  token?: string;
+  botImId?: string;
+  imContactId?: string;
+  imRoomId?: string;
+  chatId?: string;
+  activeBookingJobIds?: number[];
+  currentFocusJob?: ToolBuildContext['archive']['currentFocusJob'];
+  currentUserMessage?: string;
+  messages?: unknown[];
+}
 
 describe('buildSendStoreLocationTool', () => {
   const mockSpongeService = {
@@ -16,17 +29,12 @@ describe('buildSendStoreLocationTool', () => {
     searchCandidates: jest.fn(),
   };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    messages: [],
-    botImId: 'bot-im-1',
-    token: 'token-1',
-    imContactId: 'contact-1',
-    chatId: 'chat-1',
-    apiType: 'enterprise',
-    currentFocusJob: {
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', botImId: 'bot-im-1',
+      token: 'token-1', imContactId: 'contact-1', chatId: 'chat-1', apiType: 'enterprise',
+    },
+    archive: { currentFocusJob: {
       jobId: 100,
       brandName: '必胜客',
       jobName: '青塔店-兼职',
@@ -37,7 +45,35 @@ describe('buildSendStoreLocationTool', () => {
       laborForm: '兼职',
       salaryDesc: '20元/时',
       jobCategoryName: '服务员',
-    },
+    } },
+  });
+
+  const buildContext = (overrides: LocationContextOverrides = {}) => {
+    const has = (key: keyof LocationContextOverrides) =>
+      Object.prototype.hasOwnProperty.call(overrides, key);
+    return mergeToolContext(mockContext, {
+      session: {
+        ...(has('token') ? { token: overrides.token } : {}),
+        ...(has('botImId') ? { botImId: overrides.botImId } : {}),
+        ...(has('imContactId') ? { imContactId: overrides.imContactId } : {}),
+        ...(has('imRoomId') ? { imRoomId: overrides.imRoomId } : {}),
+        ...(has('chatId') ? { chatId: overrides.chatId } : {}),
+      },
+      archive: {
+        ...(overrides.activeBookingJobIds === undefined
+          ? {}
+          : { activeBookingJobIds: overrides.activeBookingJobIds }),
+        ...(overrides.currentFocusJob === undefined
+          ? {}
+          : { currentFocusJob: overrides.currentFocusJob }),
+      },
+      turnInput: {
+        ...(overrides.currentUserMessage === undefined
+          ? {}
+          : { currentUserMessage: overrides.currentUserMessage }),
+        ...(overrides.messages === undefined ? {} : { messages: overrides.messages }),
+      },
+    });
   };
 
   const makeJob = (overrides: Record<string, unknown> = {}) => ({
@@ -57,17 +93,14 @@ describe('buildSendStoreLocationTool', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (
     input: Record<string, any>,
-    contextOverride: Partial<ToolBuildContext> = {},
+    contextOverride: LocationContextOverrides = {},
   ) => {
     const builder = buildSendStoreLocationTool(
       mockSpongeService as any,
       mockMessageSenderService as any,
       mockGeocodingService as any,
     );
-    const builtTool = builder({
-      ...mockContext,
-      ...contextOverride,
-    });
+    const builtTool = builder(buildContext(contextOverride));
     return builtTool.execute(input as any, {
       toolCallId: 'test',
       context: {},

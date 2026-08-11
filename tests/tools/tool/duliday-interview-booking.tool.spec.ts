@@ -2,6 +2,18 @@ import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+
+interface BookingContextOverrides {
+  messages?: unknown[];
+  currentUserMessage?: string;
+  sessionFacts?: ToolBuildContext['archive']['sessionFacts'];
+  bookingCandidateFacts?: ToolBuildContext['archive']['bookingCandidateFacts'];
+  isRecalledJobId?: ToolBuildContext['archive']['isRecalledJobId'];
+  ruleFacts?: TurnLedger['ruleFacts'];
+  hasNewerUserInput?: ToolBuildContext['runtime']['hasNewerUserInput'];
+}
 
 describe('buildInterviewBookingTool', () => {
   const mockSpongeService = {
@@ -19,16 +31,39 @@ describe('buildInterviewBookingTool', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1',
+      contactName: '候选人微信名', botUserId: 'manager-1',
+    },
     // B4 手机号溯源闸门要求提交的 phone 在候选人原文中有出处；共享上下文里
     // 预置一条候选人报号消息，让存量用例聚焦各自原本要测的环节。
-    messages: [{ role: 'user', content: '电话13800138000' }],
-    contactName: '候选人微信名',
-    botUserId: 'manager-1',
-  };
+    turnInput: { messages: [{ role: 'user', content: '电话13800138000' }] },
+  });
+
+  const buildContext = (overrides: BookingContextOverrides = {}): ToolBuildContext =>
+    mergeToolContext(mockContext, {
+      archive: {
+        ...(overrides.sessionFacts === undefined ? {} : { sessionFacts: overrides.sessionFacts }),
+        ...(overrides.bookingCandidateFacts === undefined
+          ? {}
+          : { bookingCandidateFacts: overrides.bookingCandidateFacts }),
+        ...(overrides.isRecalledJobId === undefined
+          ? {}
+          : { isRecalledJobId: overrides.isRecalledJobId }),
+      },
+      turnInput: {
+        ...(overrides.messages === undefined ? {} : { messages: overrides.messages }),
+        ...(overrides.currentUserMessage === undefined
+          ? {}
+          : { currentUserMessage: overrides.currentUserMessage }),
+      },
+      ledger: overrides.ruleFacts === undefined ? {} : { ruleFacts: overrides.ruleFacts },
+      runtime:
+        overrides.hasNewerUserInput === undefined
+          ? {}
+          : { hasNewerUserInput: overrides.hasNewerUserInput },
+    });
 
   const validInput = {
     name: '张三',
@@ -89,7 +124,7 @@ describe('buildInterviewBookingTool', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeToolWithContext = async (
     input: Record<string, any>,
-    contextOverride: Partial<ToolBuildContext> = {},
+    contextOverride: BookingContextOverrides = {},
     options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const mockLongTermService = {
@@ -110,10 +145,7 @@ describe('buildInterviewBookingTool', () => {
       mockLongTermService as never,
       mockOpsEventsRecorder as never,
     );
-    const toolContext = {
-      ...mockContext,
-      ...contextOverride,
-    };
+    const toolContext = buildContext(contextOverride);
     const builtTool = builder(toolContext);
     const result = (await builtTool.execute(input as any, {
       toolCallId: 'test',
@@ -133,7 +165,7 @@ describe('buildInterviewBookingTool', () => {
 
   const executeTool = async (
     input: Record<string, any>,
-    contextOverride: Partial<ToolBuildContext> = {},
+    contextOverride: BookingContextOverrides = {},
     options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const { result } = await executeToolWithContext(input, contextOverride, options);
@@ -150,7 +182,7 @@ describe('buildInterviewBookingTool', () => {
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
     expect(result.missingFields).toContain('operateType');
-    expect(context.bookingSucceeded).toBe(false);
+    expect(context.ledger.bookingSucceeded).toBe(false);
     expect(result.requiredPayloadFields).toEqual([
       'jobId',
       'interviewTime',
@@ -244,7 +276,7 @@ describe('buildInterviewBookingTool', () => {
       });
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
       expect(result._replyInstruction).toContain('runtime 已短路本轮');
-      expect(context.bookingSucceeded).toBe(false);
+      expect(context.ledger.bookingSucceeded).toBe(false);
       expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
@@ -647,7 +679,7 @@ describe('buildInterviewBookingTool', () => {
       staleInput: true,
       reasonCode: 'newer_user_input_pending',
     });
-    expect(context.bookingSucceeded).toBe(false);
+    expect(context.ledger.bookingSucceeded).toBe(false);
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
@@ -1291,7 +1323,7 @@ describe('buildInterviewBookingTool', () => {
         uploadResume: 'https://wecom.example.com/file/resume.pdf',
       },
       {
-        highConfidenceFacts: {
+        ruleFacts: {
           interview_info: {
             upload_resume: {
               value: 'https://wecom.example.com/file/resume.pdf',

@@ -137,7 +137,7 @@ export function buildRequestHandoffTool(
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ reasonCode, reason, actionAdvice, missingJobInfo }) => {
-        const chatId = context.chatId ?? context.sessionId;
+        const chatId = context.session.chatId ?? context.session.sessionId;
 
         if (!chatId) {
           return buildToolError({
@@ -150,14 +150,18 @@ export function buildRequestHandoffTool(
         }
 
         const activeBooking = await longTermService
-          .getActiveBooking(context.corpId, context.userId)
+          .getActiveBooking(context.session.corpId, context.session.userId)
           .catch(() => null);
-        const workOrderId = activeBooking?.work_order_id ?? context.runtimeWorkOrderId ?? null;
+        const workOrderId =
+          activeBooking?.work_order_id ?? context.ledger.resolvedWorkOrderId ?? null;
 
         // 转人工当轮的焦点岗位：让运营的「岗位数据缺口榜 / 满岗信号榜」能直接定位到岗位。
         // 优先本轮焦点岗位；没有焦点岗位（如只有进行中工单）时退回在约岗位。
         // 纯闲聊/开场即转人工时为 null，属正常缺失，不做兜底猜测。
-        const jobId = context.currentFocusJob?.jobId ?? context.activeBookingJobIds?.[0] ?? null;
+        const jobId =
+          context.archive.currentFocusJob?.jobId ??
+          context.archive.activeBookingJobIds?.[0] ??
+          null;
 
         // 守卫：候选人要求"改期/取消"但根本没有已确认预约 → 这其实是首次约面意向。
         // 返回 shortCircuited:false（不短路），让 runtime 继续、Agent 按首次约面流程推进。
@@ -176,7 +180,7 @@ export function buildRequestHandoffTool(
 
         // botImId 缺失时，飞书告警无法 @ 到对应招募负责人（recruitment_cases 废弃后已无 case.bot_im_id
         // 可兜底）。正常生产链路 botImId 必有值；这里显式告警，让漏 @ 的边缘场景可观测、可排查。
-        if (!context.botImId) {
+        if (!context.session.botImId) {
           logger.warn(
             `request_handoff 缺少 botImId，飞书告警将无法 @ 招募负责人: chatId=${chatId}, code=${reasonCode}`,
           );
@@ -185,7 +189,11 @@ export function buildRequestHandoffTool(
         const [recentMessages, sessionState] = await Promise.all([
           chatSessionService.getChatHistory(chatId, 10).catch(() => []),
           sessionService
-            .getSessionState(context.corpId, context.userId, context.sessionId)
+            .getSessionState(
+              context.session.corpId,
+              context.session.userId,
+              context.session.sessionId,
+            )
             .catch(() => null),
         ]);
 
@@ -207,8 +215,8 @@ export function buildRequestHandoffTool(
               timestamp: m.timestamp,
             })),
             sessionState,
-            stage: context.currentStage ?? null,
-            botImId: context.botImId,
+            stage: context.archive.currentStage ?? null,
+            botImId: context.session.botImId,
             workOrderId,
             jobId,
             recordHandoff: true,

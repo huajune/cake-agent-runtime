@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { CityAttestation } from '@shared-types/tool.types';
+import type { CityAttestation } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -54,7 +54,6 @@ import {
 } from './session-extraction.prompt';
 import {
   detectBrandAliasHints,
-  extractHighConfidenceFacts,
   stripQuotedBlocks,
   filterHighConfidenceFacts,
   unwrapHighConfidenceFacts,
@@ -743,6 +742,8 @@ export class SessionService {
     userId: string,
     sessionId: string,
     messages: { role: string; content: string }[],
+    /** prep 时刻规则轨产物；与本轮 debounce 合并后的 user 输入同源。 */
+    ruleFacts: HighConfidenceFacts | null = null,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
@@ -856,10 +857,7 @@ export class SessionService {
       : null;
 
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
-      const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData, {
-        visualSheetsByContent,
-      });
-      if (!currentTurnRuleHits) {
+      if (!ruleFacts) {
         // 纯应答轮唯一可能携带的新事实就是确认裁决：有则单写 city 后再早退
         if (confirmedCityFact) {
           const cityOnlyFacts = SessionFactsSchema.parse({
@@ -880,9 +878,6 @@ export class SessionService {
 
     // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
-    const ruleFacts = extractHighConfidenceFacts(userMessages, brandData, {
-      visualSheetsByContent,
-    });
     const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
     const prompt = buildSessionExtractionPrompt(
       brandData,

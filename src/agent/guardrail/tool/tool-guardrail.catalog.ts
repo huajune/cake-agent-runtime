@@ -132,7 +132,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
       '工具描述里的三条前置条件与禁止项只靠提示词约束，模型不遵循时会重复骚扰候选人、在查岗结论前突兀拉群、或在成单临门时打断（badcase 63eefu6c 同会话连犯两条）。',
     source: 'tools/shared/invite-timing-gate.ts + tools/invite-to-group.tool.ts',
     exogenousSignal:
-      '会话记忆 invitedGroups（已拉群事实）+ 本轮 duliday_job_list 执行标记（jobListExecutedThisTurn 回合内直写）+ 候选人本轮原话',
+      '会话记忆 invitedGroups（已拉群事实）+ 回合账本 jobListExecuted 标记 + 候选人本轮原话',
     residualRisk:
       '推进信号靠词表识别，口语变体（"那我明天过去吧"）仍会漏；候选人换城市时按放行处理，不拦跨城重复拉群。',
     verification: 'tests/tools/shared/invite-timing-gate.spec.ts',

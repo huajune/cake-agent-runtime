@@ -1,20 +1,19 @@
 import { buildAdvanceStageTool } from '@tools/advance-stage.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { createToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildAdvanceStageTool', () => {
   const mockMemoryService = {
     setStage: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-123',
-    corpId: 'corp-456',
-    sessionId: 'sess-789',
-    messages: [],
-    currentStage: 'trust_building',
-    availableStages: ['trust_building', 'job_consultation', 'interview_scheduling'],
-    stageGoals: {
+  const mockContext: ToolBuildContext = createToolContext({
+    session: { userId: 'user-123', corpId: 'corp-456', sessionId: 'sess-789' },
+    archive: {
+      currentStage: 'trust_building',
+      availableStages: ['trust_building', 'job_consultation', 'interview_scheduling'],
+      stageGoals: {
       trust_building: {
         stage: 'trust_building',
         label: '建联',
@@ -42,8 +41,9 @@ describe('buildAdvanceStageTool', () => {
         ctaStrategy: ['收集预约资料'],
         disallowedActions: ['不要未预约先确认成功'],
       },
+      },
     },
-  };
+  });
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -91,15 +91,14 @@ describe('buildAdvanceStageTool', () => {
   });
 
   it('should use correct context params', async () => {
-    const customContext: ToolBuildContext = {
-      userId: 'custom-user',
-      corpId: 'custom-corp',
-      sessionId: 'custom-sess',
-      messages: [],
-      currentStage: 'job_consultation',
-      availableStages: ['trust_building', 'job_consultation', 'interview_scheduling'],
-      stageGoals: mockContext.stageGoals,
-    };
+    const customContext: ToolBuildContext = createToolContext({
+      session: { userId: 'custom-user', corpId: 'custom-corp', sessionId: 'custom-sess' },
+      archive: {
+        currentStage: 'job_consultation',
+        availableStages: ['trust_building', 'job_consultation', 'interview_scheduling'],
+        stageGoals: mockContext.archive.stageGoals,
+      },
+    });
 
     const builder = buildAdvanceStageTool(mockMemoryService as never);
     const builtTool = builder(customContext);
