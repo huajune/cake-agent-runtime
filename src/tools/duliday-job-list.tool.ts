@@ -85,6 +85,7 @@ import {
   parseCandidateAge,
   type AgeScreeningSignal,
 } from '@tools/duliday/precheck/age.util';
+import { detectPendingCollectionJobDetailFollowup } from '@tools/duliday/precheck/collection-strategy.util';
 
 // ==================== 常量 ====================
 
@@ -1642,6 +1643,9 @@ export function buildJobListTool(
 
           const formatSet = new Set(responseFormat);
           const result: Record<string, unknown> = {};
+          const collectionFollowup = detectPendingCollectionJobDetailFollowup(
+            context.turnInput.messages,
+          );
           const ageScreeningSummary = includeHiringRequirement
             ? buildJobAgeScreeningSummary(jobs, resolveCandidateAge(context))
             : null;
@@ -1670,6 +1674,9 @@ export function buildJobListTool(
               distanceAnchor,
             );
             const markdownSections = [
+              collectionFollowup
+                ? `⚠️ 候选人正在上一张收资表之后追问岗位细节。先回答本轮问题；答完只能简短催缺口：“${collectionFollowup.reminder}”。禁止重发整张资料表。`
+                : null,
               isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               summerWorkerStrictNotice,
@@ -1686,6 +1693,16 @@ export function buildJobListTool(
           }
           if (brandFilterNotice) {
             result.brandFilterNotice = brandFilterNotice;
+          }
+          if (collectionFollowup) {
+            result.collectionFollowup = {
+              mode: 'missing_only',
+              missingFields: collectionFollowup.missingFields,
+              reminder: collectionFollowup.reminder,
+            };
+            result._replyInstruction =
+              `候选人是在刚发的收资表后追问岗位细节。先按本轮岗位结果回答问题；` +
+              `答完只用“${collectionFollowup.reminder}”催填缺口，禁止逐字或改写重发整张资料表。`;
           }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;

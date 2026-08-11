@@ -10,6 +10,7 @@ interface PrecheckContextOverrides {
   messages?: unknown[];
   currentUserMessage?: string;
   sessionFacts?: ToolBuildContext['archive']['sessionFacts'];
+  candidatePrefillHints?: ToolBuildContext['archive']['candidatePrefillHints'];
   profile?: ToolBuildContext['archive']['profile'];
   isRecalledJobId?: ToolBuildContext['archive']['isRecalledJobId'];
   recalledJobIds?: ToolBuildContext['archive']['recalledJobIds'];
@@ -36,6 +37,9 @@ describe('buildInterviewPrecheckTool', () => {
       session: overrides.botUserId === undefined ? {} : { botUserId: overrides.botUserId },
       archive: {
         ...(overrides.sessionFacts === undefined ? {} : { sessionFacts: overrides.sessionFacts }),
+        ...(overrides.candidatePrefillHints === undefined
+          ? {}
+          : { candidatePrefillHints: overrides.candidatePrefillHints }),
         ...(overrides.profile === undefined ? {} : { profile: overrides.profile }),
         ...(overrides.isRecalledJobId === undefined
           ? {}
@@ -666,6 +670,32 @@ describe('buildInterviewPrecheckTool', () => {
       }),
     );
   });
+
+  it.each([
+    ['system_source', '系统标签'],
+    ['medium_confidence', 'medium 置信线索'],
+  ] as const)(
+    'should render %s gender as an inline form confirmation instead of a standalone question',
+    async (reason, instructionSource) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+      const result = await executeTool(
+        { jobId: 100 },
+        {
+          candidatePrefillHints: { gender: { value: '男', reason } },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.bookingChecklist.templateText).toContain('性别：男（如有误请改）');
+      expect(result.bookingChecklist.missingFields).not.toContain('性别');
+      expect(result.bookingChecklist.prefilledConfirmationFields).toEqual([
+        expect.objectContaining({ field: '性别', value: '男', reason }),
+      ]);
+      expect(result._replyInstruction).toContain(instructionSource);
+      expect(result._replyInstruction).toContain('严禁单独追问性别');
+    },
+  );
 
   it('should use candidateAge input as the current turn source of truth', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
@@ -2661,6 +2691,62 @@ describe('buildInterviewPrecheckTool', () => {
     expect(withAnswers.nextAction).toBe('ready_to_book');
   });
 
+  it('should ask identity once and backfill an overlapping 学信网 status label with the exact candidate answer', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { figure: '社会人士', remark: '' },
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 601, interviewSupplement: '学信网学籍状态' },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, candidateIsStudent: false },
+      {
+        messages: [
+          { role: 'assistant', content: '确认下你目前是学生还是社会人士呀？' },
+          { role: 'user', content: '社会人士' },
+        ],
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields).not.toContain('身份');
+    expect(result.bookingChecklist.missingFields).not.toContain('学信网学籍状态');
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
+    expect(result.bookingChecklist.templateText).not.toContain('学信网学籍状态：');
+    expect(result.bookingChecklist.candidateSupplementAnswers).toEqual({
+      学信网学籍状态: '社会人士',
+    });
+  });
+
+  it('should keep only the standard identity question when the overlapping label is still unanswered', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 601, interviewSupplement: '学信网学籍状态' },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.bookingChecklist.missingFields).toContain('身份');
+    expect(result.bookingChecklist.missingFields).not.toContain('学信网学籍状态');
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：');
+    expect(result.bookingChecklist.templateText).not.toContain('学信网学籍状态：');
+  });
+
   it('should clear 工作经历 label even when answered under the checklist display name (近一段工作经历 ⇄ 过往公司+岗位+年限)', async () => {
     // badcase chat 6a2fac72…：岗位后台 label 名为"近一段工作经历"，但 precheck 把它归一成
     // checklist 显示名"过往公司+岗位+年限"，Agent 按显示名回答。两端名字不同 →
@@ -3863,6 +3949,77 @@ describe('buildInterviewPrecheckTool', () => {
       // 无窗口岗位不需要 confirm_date：字段收齐即 ready_to_book
       expect(result.nextAction).toBe('ready_to_book');
       expect(result.interview.interviewTimeMode).toBe('wait_notice');
+    });
+
+    it('should not become ready_to_book until a weak gender prefill is confirmed by the candidate', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            hiringRequirement: { remark: '' },
+            interviewProcess: { interviewSupplement: [] },
+          }),
+        ],
+      });
+      const knownFacts = {
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          name: '张三',
+          phone: '13800138000',
+          age: '22',
+          education: '本科',
+          has_health_certificate: '有',
+        },
+        preferences: FALLBACK_EXTRACTION.preferences,
+        reasoning: 'test',
+      };
+
+      const pending = await executeTool(
+        { jobId: 100, candidateLaborForm: '不是暑假工，长期' },
+        {
+          sessionFacts: knownFacts,
+          candidatePrefillHints: {
+            gender: { value: '男', reason: 'system_source' },
+          },
+        },
+      );
+
+      expect(pending.bookingChecklist?.missingFields ?? []).toEqual([]);
+      expect(pending.nextAction).toBe('collect_fields');
+      expect(pending._replyInstruction).toContain('只缺：性别（表内确认）');
+
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            hiringRequirement: { remark: '' },
+            interviewProcess: { interviewSupplement: [] },
+          }),
+        ],
+      });
+      const confirmed = await executeTool(
+        {
+          jobId: 100,
+          candidateGender: '男',
+          candidateLaborForm: '不是暑假工，长期',
+        },
+        {
+          sessionFacts: knownFacts,
+          candidatePrefillHints: {
+            gender: { value: '男', reason: 'system_source' },
+          },
+          currentUserMessage: '性别男，其他都对',
+          collectedFields: {
+            gender: {
+              value: '男',
+              producer: 'candidate_quote',
+              evidence: '性别男',
+              at: Date.now(),
+            },
+          },
+        },
+      );
+
+      expect(confirmed.bookingChecklist.prefilledConfirmationFields).toBeUndefined();
+      expect(confirmed.nextAction).toBe('ready_to_book');
     });
   });
 });

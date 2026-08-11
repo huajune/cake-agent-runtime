@@ -1,5 +1,6 @@
 import { Tool, ToolSet } from 'ai';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
+import type { CandidatePrefillHints } from '@resolution/candidate/types';
 import type {
   EntityExtractionResult,
   RecommendedJobSummary,
@@ -32,6 +33,8 @@ export interface ToolSessionContext {
 export interface ToolArchiveContext {
   profile?: UserProfile | null;
   sessionFacts?: EntityExtractionResult | null;
+  /** medium/system 值的只读确认视图；不得当作已确权事实消费。 */
+  candidatePrefillHints?: CandidatePrefillHints;
   sessionBrandState?: SessionBrandState | null;
   currentStage?: string | null;
   availableStages?: string[];

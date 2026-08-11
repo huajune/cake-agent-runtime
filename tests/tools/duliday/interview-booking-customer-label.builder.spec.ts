@@ -232,6 +232,43 @@ describe('buildCustomerLabelList', () => {
       expect(result.customerLabelList[0].value).toBe('社会人士');
     });
 
+    it('copies explicit identity evidence verbatim into an overlapping 学信网 status label', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('学信网学籍状态')],
+          context: baseContext({
+            turnInput: {
+              messages: [
+                { role: 'assistant', content: '你目前是学生还是已经工作了？' },
+                { role: 'user', content: '我已经工作了' },
+              ],
+            },
+          }),
+        }),
+      );
+
+      expectSuccess(result);
+      expect(result.customerLabelList[0].value).toBe('我已经工作了');
+    });
+
+    it('does not semantically convert a stored identity boolean into a 学信网 status answer', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('学信网学籍状态')],
+          context: baseContext({
+            archive: {
+              sessionFacts: {
+                interview_info: { is_student: false },
+              } as ToolBuildContext['archive']['sessionFacts'],
+            },
+          }),
+        }),
+      );
+
+      expectFailure(result);
+      expect(result.missingSupplementLabels).toEqual(['学信网学籍状态']);
+    });
+
     it('resolves basic labels (姓名/电话/性别/年龄/面试时间) from typed params', () => {
       const result = buildCustomerLabelList(
         baseParams({

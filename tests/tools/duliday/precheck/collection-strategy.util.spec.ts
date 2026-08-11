@@ -1,10 +1,12 @@
 import {
   buildCollectionStrategy,
   detectCollectionResistance,
+  detectPendingCollectionJobDetailFollowup,
   detectRealNameInsistence,
   extractMessageText,
   getRecentUserMessages,
 } from '@tools/duliday/precheck/collection-strategy.util';
+import { COLLECTION_FLOW_DEDUP_6A75AAB3 } from '../../../biz/test-suite/fixtures/collection-flow-dedup.curated';
 
 describe('collection-strategy.util', () => {
   describe('extractMessageText', () => {
@@ -106,6 +108,34 @@ describe('collection-strategy.util', () => {
       const result = detectCollectionResistance([{ role: 'assistant', content: '请补充信息' }]);
       expect(result.detected).toBe(false);
       expect(result.latestUserMessage).toBeNull();
+    });
+  });
+
+  describe('detectPendingCollectionJobDetailFollowup', () => {
+    it('recognizes the curated 6a75aab3 shape and returns only the remaining-field reminder', () => {
+      const result = detectPendingCollectionJobDetailFollowup([
+        ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
+        { role: 'user', content: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage },
+      ]);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          latestUserMessage: '休息多久\n有饭么',
+          missingFields: ['姓名', '联系电话', '学历', '健康证情况', '学信网学籍状态'],
+        }),
+      );
+      expect(result?.reminder).toBe('还差姓名、联系电话、学历、健康证情况、学信网学籍状态这5项哈');
+      expect(result?.reminder).not.toContain('年龄：');
+      expect(result?.reminder).not.toContain('性别：');
+    });
+
+    it('does not trigger for a form answer or an unrelated message', () => {
+      expect(
+        detectPendingCollectionJobDetailFollowup([
+          ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
+          { role: 'user', content: '姓名：小王\n学历：高中' },
+        ]),
+      ).toBeNull();
     });
   });
 

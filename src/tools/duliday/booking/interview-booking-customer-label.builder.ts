@@ -13,6 +13,8 @@ import {
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { classifySupplementLabel } from '@tools/utils/supplement-label-classifier';
+import { findLatestExplicitIdentityEvidence } from '@resolution/candidate/student-identity';
+import { isIdentityStatusSupplementLabel } from '@tools/duliday/precheck/supplement-overlap.util';
 
 export interface BuildCustomerLabelListParams {
   supplementDefinitions: SpongeInterviewSupplementDefinition[];
@@ -163,6 +165,14 @@ function resolveCustomerLabelValue(
     return params.hasHealthCertificate != null
       ? getSpongeHealthCertificateLabelById(params.hasHealthCertificate)
       : null;
+  }
+
+  if (isIdentityStatusSupplementLabel(labelName)) {
+    // 与 precheck 的重叠表同源：只复制候选人的身份回答原文，不把“学生/社会人士”
+    // 语义换算成“在籍/不在籍”。模型漏传 supplementAnswers 时仍能确定性兜底。
+    return (
+      findLatestExplicitIdentityEvidence(params.context.turnInput.messages ?? [])?.evidence ?? null
+    );
   }
 
   if (/身份/.test(labelName)) {

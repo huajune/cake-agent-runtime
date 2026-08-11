@@ -242,6 +242,8 @@ export function formatTemplateFieldLabel(field: string): string {
 export function buildChecklistTemplate(params: {
   requiredFields: string[];
   knownFieldMap: Record<string, string>;
+  /** 已有弱来源值只作表单内联确认；后缀仅影响展示，不污染 knownFieldMap。 */
+  confirmationSuffixByField?: Readonly<Record<string, string>>;
   /**
    * 不进入收资清单的字段（已做 normalizeChecklistField 归一后比对）。
    * 无面试时段（等通知）岗位用它剔除"面试时间"——该字段属于 TEMPLATE_CORE_FIELDS
@@ -283,7 +285,8 @@ export function buildChecklistTemplate(params: {
     '面试要求：先将以下资料补充下发给我，我来帮你约面试',
     ...displayOrder.map((field) => {
       const value = params.knownFieldMap[field] ?? '';
-      return `${formatTemplateFieldLabel(field)}：${value}`;
+      const suffix = value ? (params.confirmationSuffixByField?.[field] ?? '') : '';
+      return `${formatTemplateFieldLabel(field)}：${value}${suffix}`;
     }),
   ];
 

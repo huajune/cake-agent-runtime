@@ -3,12 +3,16 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
+import type { CandidatePrefillHints } from '@resolution/candidate/types';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { unwrapUserProfileFacts } from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
   type RecommendedJobSummary,
+  type SessionFacts,
+  isSessionFactValue,
+  unwrapSessionFactValue,
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
 import { ContextService } from '../context/context.service';
@@ -66,6 +70,7 @@ export function buildToolContext(input: {
   const trustedSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
     minConfidence: 'high',
   });
+  const candidatePrefillHints = buildCandidatePrefillHints(memory.sessionMemory?.facts ?? null);
   const sessionFacts = mergeSessionFactsWithRuleClaims(
     trustedSessionFacts,
     memory.ruleFacts,
@@ -96,6 +101,7 @@ export function buildToolContext(input: {
     archive: {
       profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
       sessionFacts,
+      candidatePrefillHints,
       sessionBrandState,
       currentStage: entryStage,
       availableStages: Object.keys(stageGoals),
@@ -133,6 +139,28 @@ export function buildToolContext(input: {
       thresholds,
     },
   };
+}
+
+/**
+ * D5 的信任门继续生效：medium/system 性别不进入 trustedSessionFacts，只投影为
+ * 表单预填确认提示。这样工具能减少重复盘问，却不会把弱来源升级成报名事实。
+ */
+function buildCandidatePrefillHints(
+  facts: SessionFacts | EntityExtractionResult | null,
+): CandidatePrefillHints | undefined {
+  const genderFact = facts?.interview_info?.gender;
+  if (!isSessionFactValue<string>(genderFact) || !genderFact.value.trim()) return undefined;
+
+  const genderSource = unwrapSessionFactValue(facts?.interview_info?.gender_source);
+  const reason =
+    genderSource === 'system' || genderFact.source === 'system'
+      ? 'system_source'
+      : genderFact.confidence === 'medium'
+        ? 'medium_confidence'
+        : null;
+  if (!reason) return undefined;
+
+  return { gender: { value: genderFact.value.trim(), reason } };
 }
 
 /**

@@ -240,6 +240,72 @@ describe('PreparationService', () => {
     ]);
   });
 
+  it.each([
+    {
+      confidence: 'low',
+      source: 'system',
+      genderSource: {
+        value: 'system',
+        confidence: 'low',
+        source: 'system',
+        evidence: '企微客户详情',
+      },
+      reason: 'system_source',
+    },
+    {
+      confidence: 'medium',
+      source: 'model',
+      genderSource: null,
+      reason: 'medium_confidence',
+    },
+  ] as const)(
+    'projects $reason gender into confirmation hints without admitting it to trusted session facts',
+    async ({ confidence, source, genderSource, reason }) => {
+      mockMemoryService.onTurnStart.mockResolvedValueOnce({
+        shortTerm: { messageWindow: [{ role: 'user', content: '我想报名' }] },
+        sessionMemory: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: {
+              ...FALLBACK_EXTRACTION.interview_info,
+              gender: { value: '男', confidence, source, evidence: '弱来源性别' },
+              gender_source: genderSource,
+            },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+        ruleFacts: null,
+        longTerm: { profile: null },
+        procedural: {
+          currentStage: 'job_consultation',
+          fromStage: null,
+          advancedAt: null,
+          reason: null,
+        },
+      });
+
+      await service.prepare(
+        {
+          callerKind: CallerKind.WECOM,
+          messages: [{ role: 'user', content: '我想报名' }],
+          userId: 'user-1',
+          corpId: 'corp-1',
+          sessionId: 'sess-1',
+          strategySource: 'testing',
+        },
+        'invoke',
+      );
+
+      const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+      expect(toolContext.archive.candidatePrefillHints).toEqual({
+        gender: { value: '男', reason },
+      });
+      expect(toolContext.archive.sessionFacts?.interview_info?.gender).toBeNull();
+    },
+  );
+
   it('threads hosting-member account identity into compose (badcase 6a5dedb2)', async () => {
     mockHostingMemberConfig.resolveAgentAccountIdentity.mockResolvedValueOnce({
       nickname: '东升',

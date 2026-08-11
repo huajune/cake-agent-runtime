@@ -61,6 +61,10 @@ import {
   extractMessageText,
 } from '@tools/duliday/precheck/collection-strategy.util';
 import {
+  buildIdentitySupplementAnswerBackfills,
+  isIdentityStatusSupplementLabel,
+} from '@tools/duliday/precheck/supplement-overlap.util';
+import {
   classifyIdentityAnswerText,
   findLatestExplicitIdentityEvidence,
   summarizeIdentityAskRounds,
@@ -149,6 +153,8 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
 - bookingChecklist.requiredFieldsToCollectNow：当前阶段必须立刻收齐的字段（missingFields 的扁平副本，便于一次性补问；若数组非空，回复必须把这些字段写成模板让候选人一次性填齐）
 - bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
+- bookingChecklist.prefilledConfirmationFields：system/medium 等弱来源字段的“带值求证”清单；这些值只准按 templateText 的“如有误请改”形态随表确认，严禁拆成单独问题，也不得直接升级为候选人自陈
+- bookingChecklist.candidateSupplementAnswers：本轮可直接透传给 booking.supplementAnswers 的补充标签答案；其中身份与“学信网学籍状态”重叠时保留候选人身份回答原文，不做“学生→在籍”等语义换算
 - bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
 - bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
 - nameFieldGuard：仅当当前已知姓名不像真名时返回（suspicious=true）；意味着 knownFieldMap 里的"姓名"是昵称、占位串或"[引用 XXX：...]"前缀里被引用方（招募经理）的名字，**严禁**在 booking 里复用——必须先向候选人补问真实姓名后再覆写
@@ -165,6 +171,7 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
 - 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
 - 当候选人已经给过姓名、电话、年龄、学历、面试时间等字段时，使用 bookingChecklist.knownFieldMap / missingFields 只补问缺失项；不要让候选人重填已给字段
+- **system/medium 性别只作表单内联确认**：templateText 出现“性别：男/女（如有误请改）”时照此随整表发送，严禁另起一句“方便确认下性别吗”。候选人修改后再把原话作为 candidateGender 传回本工具；未修改前不得把该提示升级成 candidate 来源
 - **missingFields 是本轮唯一收资事实源**：其中包含“身份”时，必须直接询问候选人“学生还是社会人士”，严禁根据学历（含硕士）、年龄、“刚毕业”等推断后替候选人填写，也严禁回复“帮你填了/登记成社会人士”；只有候选人明确回答身份后，才能把 candidateIsStudent 传回本工具
 - **身份事实与岗位资格必须分开**：候选人历史已明确填写“身份学生”时，candidateIsStudent 必须传 true；“高考完/待录取/未收到录取通知”不能改传 false。岗位是否接受学生只由岗位数据决定，不能为了通过岗位筛选反向篡改身份参数
 - **identityFieldGuard.mustHandoff=true 时**（身份已追问 2 次、候选人已作答但系统仍无法核验）：**严禁**再让候选人重复回答身份或换参数重试本工具；必须立刻调 request_handoff(reasonCode="system_blocked") 转交同事跟进登记，并告知候选人资料已记录（对候选人只说"资料我记下了，让同事帮你跟进登记"，不说"转人工"）。反复逼候选人复读"社会人士"会直接导致流失
@@ -569,6 +576,7 @@ function deriveRequestedDateFromInterviewTime(value: unknown): string | undefine
 function syncBookingCandidateFacts(
   context: Parameters<ToolBuilder>[0],
   knownFieldMap: Record<string, string>,
+  options: { genderNeedsConfirmation?: boolean } = {},
 ): void {
   const current =
     context.archive.bookingCandidateFacts ?? context.archive.sessionFacts?.interview_info ?? {};
@@ -577,7 +585,7 @@ function syncBookingCandidateFacts(
     ...(knownFieldMap['姓名'] ? { name: knownFieldMap['姓名'] } : {}),
     ...(knownFieldMap['联系电话'] ? { phone: knownFieldMap['联系电话'] } : {}),
     ...(knownFieldMap['年龄'] ? { age: knownFieldMap['年龄'] } : {}),
-    ...(knownFieldMap['性别']
+    ...(knownFieldMap['性别'] && !options.genderNeedsConfirmation
       ? { gender: knownFieldMap['性别'], gender_source: 'candidate' as const }
       : {}),
     ...(knownFieldMap['学历'] ? { education: knownFieldMap['学历'] } : {}),
@@ -931,6 +939,9 @@ export function buildInterviewPrecheckTool(
           const collectLabelNames = labelClassifications
             .filter((lc) => lc.classification.type === 'collect')
             .map((lc) => lc.definition.name);
+          const identityOverlapLabelNames = collectLabelNames.filter(
+            isIdentityStatusSupplementLabel,
+          );
           const screeningChecks = labelClassifications
             .filter(
               (
@@ -949,7 +960,8 @@ export function buildInterviewPrecheckTool(
           const hardRequirements = extractHardRequirements(job, analysis);
           const studentIdentityMustBeExplicit =
             hardRequirements.student === 'social_only' ||
-            screeningChecks.some((check) => /学生|身份/u.test(check.labelName));
+            screeningChecks.some((check) => /学生|身份/u.test(check.labelName)) ||
+            identityOverlapLabelNames.length > 0;
 
           const knownFieldMap = buildKnownFieldMap({
             contextProfile: context.archive.profile ?? null,
@@ -957,6 +969,15 @@ export function buildInterviewPrecheckTool(
             storeName,
             jobName,
           });
+          const genderPrefillHint = context.archive.candidatePrefillHints?.gender;
+          const normalizedGenderPrefillHint = normalizeCandidateGenderInput(
+            genderPrefillHint?.value,
+          );
+          if (!knownFieldMap['性别'] && normalizedGenderPrefillHint) {
+            // medium/system 只进入“带值求证”视图，不进入 trustedSessionFacts。这里给
+            // templateText 借阅值，后续不会把它升级成 candidate 来源。
+            knownFieldMap['性别'] = normalizedGenderPrefillHint;
+          }
           // 长期画像只作为对话参考，不能单独满足本次报名收资。只有本会话已经沉淀的
           // 高置信候选人事实，或下方当前轮原话证据，才能进入 bookingChecklist。
           if (context.turnInput.currentUserMessage !== undefined) {
@@ -1014,6 +1035,13 @@ export function buildInterviewPrecheckTool(
             candidateGender,
             collectedFields.gender?.value,
             normalizeCandidateGenderInput,
+          );
+          const currentTurnGender = normalizeCandidateGenderInput(collectedFields.gender?.value);
+          const genderNeedsInlineConfirmation = Boolean(
+            genderPrefillHint &&
+              normalizedGenderPrefillHint &&
+              !currentTurnGender &&
+              knownFieldMap['性别'] === normalizedGenderPrefillHint,
           );
           applyCandidateFieldOverride(
             knownFieldMap,
@@ -1083,6 +1111,11 @@ export function buildInterviewPrecheckTool(
           ) {
             knownFieldMap['身份'] = latestExplicitIdentity;
           }
+          const effectiveCandidateSupplementAnswers = buildIdentitySupplementAnswerBackfills({
+            labelNames: identityOverlapLabelNames,
+            identityEvidence: latestExplicitIdentityEvidence,
+            providedAnswers: candidateSupplementAnswers,
+          });
           applyCandidateFieldOverride(
             knownFieldMap,
             '简历附件',
@@ -1157,7 +1190,7 @@ export function buildInterviewPrecheckTool(
             const fieldKey = normalizeChecklistField(labelName);
             if (!fieldKey || knownFieldMap[fieldKey]) continue;
             const answer =
-              getSupplementAnswerValue(candidateSupplementAnswers, labelName) ??
+              getSupplementAnswerValue(effectiveCandidateSupplementAnswers, labelName) ??
               extractSupplementAnswerFromMessages(context.turnInput.messages, labelName);
             if (answer) knownFieldMap[fieldKey] = answer;
           }
@@ -1249,14 +1282,23 @@ export function buildInterviewPrecheckTool(
           const requiredFields = [
             ...API_BOOKING_USER_REQUIRED_FIELDS,
             ...analysis.fieldGuidance.screeningFields,
+            ...(identityOverlapLabelNames.length > 0 ? ['身份'] : []),
             ...collectLabelNames,
           ];
           const checklist = buildChecklistTemplate({
             requiredFields,
             knownFieldMap,
+            confirmationSuffixByField: genderNeedsInlineConfirmation
+              ? { 性别: '（如有误请改）' }
+              : undefined,
             // 等通知岗位不收集"面试时间"——不剔除会永远留在 missingFields，
             // nextAction 卡死 collect_fields。
-            excludeFields: interviewTimeWaitNotice ? ['面试时间'] : undefined,
+            // 学籍状态类补充标签与标准“身份”字段是同一个问题：只收身份一次，
+            // 候选人原话经 effectiveCandidateSupplementAnswers 回填供应商标签。
+            excludeFields: [
+              ...(interviewTimeWaitNotice ? ['面试时间'] : []),
+              ...identityOverlapLabelNames,
+            ],
           });
 
           const upcomingTimeOptions = buildUpcomingTimeOptions(windows);
@@ -1341,7 +1383,7 @@ export function buildInterviewPrecheckTool(
                           ? 'collect_fields'
                           : requestedDateCheck?.status === 'unavailable'
                             ? 'date_unavailable'
-                            : checklist.missingFields.length > 0
+                            : checklist.missingFields.length > 0 || genderNeedsInlineConfirmation
                               ? 'collect_fields'
                               : interviewTimeWaitNotice
                                 ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
@@ -1486,7 +1528,9 @@ export function buildInterviewPrecheckTool(
           if (nextAction === 'ready_to_book') {
             // booking 必须复用本次预检已经验证过的同一份候选人事实，避免重新读取尚未
             // 持久化的 session 快照后出现“预检通过、最终报名缺证据/冲突”的分叉。
-            syncBookingCandidateFacts(context, knownFieldMap);
+            syncBookingCandidateFacts(context, knownFieldMap, {
+              genderNeedsConfirmation: genderNeedsInlineConfirmation,
+            });
             const turnId = context.session.turnId ?? Date.now().toString();
             void opsEventsRecorder.recordEvent({
               corpId: context.session.corpId,
@@ -1520,7 +1564,12 @@ export function buildInterviewPrecheckTool(
                 : nextAction === 'collect_fields'
                   ? identityAskEscalated
                     ? '预检卡在"身份"字段：已向候选人追问过多次且其已作答，系统仍无法核验。禁止再次追问身份、禁止重复调用本工具；本轮必须调用 request_handoff（reasonCode="system_blocked"，reason 说明身份字段无法核验需人工登记），并告知候选人资料已记录、人工会尽快完成登记。'
-                    : `预检尚未通过，只缺：${checklist.missingFields.join('、')}。请一次性向候选人补问这些字段。注意查看对话历史：若上一轮刚发过这份资料清单而候选人尚未填写，本轮只需换个说法简短催填（如"上面那几项资料填一下发我，我马上帮你约"），禁止逐字重发整份清单，也不要复述上一轮已确认的面试时间等信息；仅当清单已隔了多轮对话时才重发一次。候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
+                    : `预检尚未通过，只缺：${[
+                        ...checklist.missingFields,
+                        ...(genderNeedsInlineConfirmation ? ['性别（表内确认）'] : []),
+                      ].join(
+                        '、',
+                      )}。请一次性向候选人补问这些字段。${genderNeedsInlineConfirmation ? `性别来自 ${genderPrefillHint?.reason === 'system_source' ? '系统标签' : 'medium 置信线索'}，已在 templateText 中写成“性别：${knownFieldMap['性别']}（如有误请改）”；只能随整张表顺带确认，严禁单独追问性别。` : ''}注意查看对话历史：若上一轮刚发过这份资料清单而候选人尚未填写，本轮只需换个说法简短催填（如"上面那几项资料填一下发我，我马上帮你约"），禁止逐字重发整份清单，也不要复述上一轮已确认的面试时间等信息；仅当清单已隔了多轮对话时才重发一次。候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
                   : nextAction === 'wait_for_health_certificate'
                     ? '当前岗位要求面试前持有健康证，候选人目前无证、在办或仅愿意办理，禁止继续收资或 booking。请说明拿到证后还需重新查询届时岗位是否在招及可约时段；严禁说可以先约面、证到了就能约上或保证届时有名额。'
                     : '按 nextAction 处理当前预检结果；duliday_interview_booking 返回 success=true 前，禁止声称已登记、已报名或已预约。',
@@ -1665,6 +1714,20 @@ export function buildInterviewPrecheckTool(
               // 当前阶段必须立刻收齐的字段（missingFields 即时副本，扁平展示便于 Agent 一次性补问）
               requiredFieldsToCollectNow: checklist.missingFields,
               templateText: checklist.templateText,
+              prefilledConfirmationFields: genderNeedsInlineConfirmation
+                ? [
+                    {
+                      field: '性别',
+                      value: knownFieldMap['性别'],
+                      displayText: `性别：${knownFieldMap['性别']}（如有误请改）`,
+                      reason: genderPrefillHint?.reason,
+                    },
+                  ]
+                : undefined,
+              candidateSupplementAnswers:
+                Object.keys(effectiveCandidateSupplementAnswers).length > 0
+                  ? effectiveCandidateSupplementAnswers
+                  : undefined,
               enumHints,
               collectionStrategy: collectionStrategy
                 ? {

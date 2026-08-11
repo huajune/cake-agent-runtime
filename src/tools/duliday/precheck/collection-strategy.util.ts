@@ -10,7 +10,7 @@
 
 import { normalizePolicyText } from '@tools/utils/job-policy-parser';
 import { API_BOOKING_USER_REQUIRED_FIELDS } from '@tools/duliday/booking/job-booking.contract';
-import { orderFields } from '@tools/duliday/precheck/checklist.util';
+import { normalizeChecklistField, orderFields } from '@tools/duliday/precheck/checklist.util';
 import { dedupeStrings } from '@tools/duliday/precheck/field-normalize.util';
 import { extractMessageText } from '@resolution/signal/markers';
 
@@ -99,6 +99,92 @@ export function detectCollectionResistance(messages: unknown[]): {
     matchedSignals,
     latestUserMessage,
   };
+}
+
+const JOB_DETAIL_FOLLOWUP_PATTERNS: readonly RegExp[] = [
+  /(?:工作内容|主要做什么|具体做什么|是做什么|干什么|干啥)/u,
+  /(?:休息多久|休息多长|休息时间|一天几小时|上多久|工时|班次|几点上班|几点下班)/u,
+  /(?:有饭|吃饭|员工餐|包吃|餐补|住宿|包住|福利)/u,
+  /(?:工资|薪资|时薪|多少钱|结算|日结|周结|月结|发薪)/u,
+  /(?:地址|位置|在哪里|在哪儿|多远|距离|通勤)/u,
+  /(?:面试方式|怎么面试|面试流程)/u,
+];
+
+export interface PendingCollectionJobDetailFollowup {
+  missingFields: string[];
+  reminder: string;
+  latestUserMessage: string;
+}
+
+/**
+ * 候选人收到收资表后插问岗位细节：识别最近一张表里的空项，给 job-list 成功结果
+ * 追加“答完只催缺口”的结构化指令。它只解析 assistant 已发出的字段行，不臆测
+ * supplier 要求，也不把预填值当缺失。
+ */
+export function detectPendingCollectionJobDetailFollowup(
+  messages: unknown[],
+): PendingCollectionJobDetailFollowup | null {
+  const parsed = messages
+    .map((message) => {
+      if (!message || typeof message !== 'object') return null;
+      const record = message as Record<string, unknown>;
+      const text = normalizePolicyText(extractMessageText(record.content));
+      return text ? { role: record.role, text } : null;
+    })
+    .filter((message): message is { role: unknown; text: string } => Boolean(message));
+
+  let latestUserIndex = -1;
+  for (let index = parsed.length - 1; index >= 0; index -= 1) {
+    if (parsed[index].role !== 'user') continue;
+    latestUserIndex = index;
+    break;
+  }
+  if (latestUserIndex < 0) return null;
+  const latestUserMessage = parsed[latestUserIndex].text;
+  if (!JOB_DETAIL_FOLLOWUP_PATTERNS.some((pattern) => pattern.test(latestUserMessage))) return null;
+
+  const recentBeforeCurrent = parsed.slice(Math.max(0, latestUserIndex - 6), latestUserIndex);
+  for (let index = recentBeforeCurrent.length - 1; index >= 0; index -= 1) {
+    const message = recentBeforeCurrent[index];
+    if (message.role !== 'assistant') continue;
+    const missingFields = extractMissingFieldsFromSentTemplate(message.text);
+    if (missingFields.length < 2) continue;
+    return {
+      missingFields,
+      reminder: formatMissingFieldReminder(missingFields),
+      latestUserMessage,
+    };
+  }
+  return null;
+}
+
+function extractMissingFieldsFromSentTemplate(text: string): string[] {
+  const fields: string[] = [];
+  for (const line of text.split(/\r?\n/u)) {
+    const match = line.match(/^\s*(?:[-•]\s*)?([^：:\n]{1,48})\s*[：:]\s*(.*?)\s*$/u);
+    if (!match) continue;
+    const label = normalizeChecklistField(match[1]);
+    const value = match[2].trim();
+    if (!label || isCollectionTemplateHeader(label) || !isCollectionPlaceholder(value)) continue;
+    fields.push(label);
+  }
+  return dedupeStrings(fields);
+}
+
+function isCollectionTemplateHeader(label: string): boolean {
+  return /(?:面试要求|资料|清单|补充下列|帮你约)/u.test(label);
+}
+
+function isCollectionPlaceholder(value: string): boolean {
+  if (!value) return true;
+  const compact = value.replace(/\s+/gu, '');
+  return /^(?:有[\/／]无|接受[\/／]不接受|学生[\/／]社会人士|男[\/／]女)$/u.test(compact);
+}
+
+function formatMissingFieldReminder(fields: readonly string[]): string {
+  if (fields.length === 1) return `还差${fields[0]}一项哈`;
+  if (fields.length === 2) return `还差${fields.join('、')}两项哈`;
+  return `还差${fields.join('、')}这${fields.length}项哈`;
 }
 
 export function buildCollectionStrategy(params: {
