@@ -7,6 +7,7 @@
 
 **通货与引擎**
 - `claim.types.ts` — 主张（claim）与裁决结论的类型：全域唯一裁决通货
+- `types.ts` — rule claim 裁决后的域外消费视图；与 memory 存储形状同构但不反向依赖存储类型
 - `engine.ts` — 三道审（出处审 / 强度审 / 冲突审）
 - `policies.ts` — Record<字段, 策略行>：编译期穷尽，加字段必须表态
 - `brand-policy.ts` — 品牌策略行（复合槽值 + set/exclude/clear 替换语义，原 brand-state.reducer）

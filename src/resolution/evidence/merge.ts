@@ -10,18 +10,18 @@
  */
 
 import type {
-  CityFactEvidence,
-  EntityExtractionResult,
-  InterviewInfoFieldKey,
-  PreferenceFieldKey,
-} from '@memory/types/session-facts.types';
-import type {
   RuleFactClaim,
   RuleFactClaims,
   RuleFactConfidence,
   RuleFactFieldPath,
 } from './claim.types';
 import { RULE_FACT_FIELD_POLICIES } from './policies';
+import type {
+  RuleFactCity,
+  RuleFactInterviewFieldKey,
+  RuleFactPreferenceFieldKey,
+  RuleFactProjection,
+} from './types';
 
 export type MergePolicy = 'scalar-first' | 'rule-overrides' | 'array-union' | 'custom' | 'retired';
 
@@ -61,7 +61,7 @@ export const FIELD_MERGE_POLICIES = {
   time_windows: 'array-union',
   schedule_constraint: 'custom',
   available_after: 'scalar-first',
-} as const satisfies Record<InterviewInfoFieldKey | PreferenceFieldKey, MergePolicy>;
+} as const satisfies Record<RuleFactInterviewFieldKey | RuleFactPreferenceFieldKey, MergePolicy>;
 
 export function fieldsWithMergePolicy(
   group: 'interview_info' | 'preferences',
@@ -282,7 +282,7 @@ export function getRuleFactValue<T>(
 }
 
 /** resolution 本地的消费视图骨架；不在证据域反向加载 memory 存储实例。 */
-function createEmptyRuleFactProjection(reasoning: string): EntityExtractionResult {
+function createEmptyRuleFactProjection(reasoning: string): RuleFactProjection {
   return {
     interview_info: {
       name: null,
@@ -327,7 +327,7 @@ function createEmptyRuleFactProjection(reasoning: string): EntityExtractionResul
 export function projectRuleFactClaims(
   input: RuleFactClaims | null | undefined,
   options: ResolveRuleFactOptions = {},
-): EntityExtractionResult | null {
+): RuleFactProjection | null {
   const resolved = resolveRuleFactClaims(input, options);
   if (resolved.length === 0) return null;
   const projected = createEmptyRuleFactProjection(input?.reasoning ?? '规则 claim 投影');
@@ -346,7 +346,7 @@ export function projectRuleFactClaims(
   return projected;
 }
 
-function normalizeCityEvidence(value?: string): CityFactEvidence {
+function normalizeCityEvidence(value?: string): RuleFactCity['evidence'] {
   return value === 'municipality_compact' ||
     value === 'explicit_city' ||
     value === 'unique_district_alias' ||

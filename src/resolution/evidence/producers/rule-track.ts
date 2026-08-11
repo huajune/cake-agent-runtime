@@ -1,6 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import { formatLocalDate } from '@infra/utils/date.util';
-import type { CityFact } from '@memory/types/session-facts.types';
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import {
   extractLocationShareLabels,
@@ -30,6 +29,7 @@ import type {
   RuleFactFieldPath,
 } from '@resolution/evidence/claim.types';
 import { RULE_FACT_FIELD_POLICIES } from '@resolution/evidence/policies';
+import type { RuleFactCity } from '@resolution/evidence/types';
 import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
 import {
   produceBrandAliasHints,
@@ -114,7 +114,7 @@ const CHINESE_NUM_MAP: Record<string, number> = {
 export type { BrandAliasHint } from '@resolution/evidence/producers/brand-intents';
 
 interface LocationSignals {
-  city: CityFact | null;
+  city: RuleFactCity | null;
   district: string[];
   location: string[];
 }
@@ -1037,7 +1037,7 @@ function extractLocation(message: string): LocationSignals {
   const positionShareLocations = extractPositionShareLocations(message);
 
   const geoScan = scanGeoSignalsFromText(message);
-  const city: CityFact | null = geoScan.city
+  const city: RuleFactCity | null = geoScan.city
     ? { value: geoScan.city.value, confidence: 'high', evidence: geoScan.city.evidence }
     : null;
   const districts = geoScan.districts;
