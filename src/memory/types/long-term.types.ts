@@ -243,6 +243,10 @@ export interface SummaryData {
  *
  * 沿革：迁移 20260630120000 将 agent_long_term_memories.latest_booking 改名为
  * active_booking，JSONB 键 latest_work_order_id 同步改为 work_order_id。
+ * 本指针的前身 interview_booking_records 是以日期、品牌、门店为联合唯一维度的聚合
+ * 计数表，逐人身份只是后补字段；它因缺少稳定逐人身份且 bot_im_id 会造成裂行，于
+ * 20260625 删除。当时按性质一拆为二：统计漏斗归 ops_events('booking.succeeded')，
+ * 候选人的当前工单关系归档案本列。住进档案是主动拆分的结果，不是无意寄居。
  *
  * 暂住本表的边界：
  * - 本结构仅保存 work_order_id / linked_at / job_id / bookings 事务指针；面试时间、门店等
@@ -252,7 +256,8 @@ export interface SummaryData {
  *   写入侧的顶层镜像仅用于兼容老行 JSONB 形态，不代表第二份业务状态。
  *
  * 迁居触发条件：出现“按工单反查候选人”需求，或工单状态回流（webhook）立项时，
- * 必须迁入 biz 独立表并改为一行一工单。
+ * 必须迁入 biz 独立关系指针表，按 corp_id + user_id + work_order_id 一行一工单，
+ * 身份口径使用 wecomUserId；严禁复活旧聚合计数表形态。
  *
  * 硬纪律：本结构禁止新增业务字段；任何“顺手存一下面试时间/门店”的提案一律拒绝。
  */
