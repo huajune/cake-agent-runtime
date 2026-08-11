@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { CityAttestation } from '@shared-types/turn.types';
+import type { CityAttestation, TurnLedgerSnapshot } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -47,6 +47,7 @@ import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { isNameAnsweredToRealNameAsk } from '@resolution/evidence/producers/name-confirmation';
 import {
+  buildExtractionIdentityProvenanceCorpus,
   buildSessionExtractionPrompt,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
@@ -760,6 +761,11 @@ export class SessionService {
     ruleFacts: RuleFactClaims | null = null,
     /** prep 时刻唯一一次 labor-form 规则轨判定；生产链路传入，直调兼容时才本地补算。 */
     preparedLaborFormIntent?: LaborFormIntentDecision,
+    /** 本轮账本的岗位/视觉只读摘要；只增强指代承接，不参与身份出处自证。 */
+    extractionToolFacts?: Pick<
+      TurnLedgerSnapshot,
+      'fetchedJobs' | 'currentFocusJob' | 'visualFactSheets'
+    >,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
@@ -926,7 +932,13 @@ export class SessionService {
           ruleFacts,
           formatCurrentTime(),
           previousFacts,
+          extractionToolFacts ?? null,
         );
+    const identityProvenanceCorpus = buildExtractionIdentityProvenanceCorpus(
+      currentMessage,
+      messagesToProcess,
+      previousFacts,
+    );
     const {
       facts: llmRaw,
       explicitProvenance,
@@ -945,7 +957,7 @@ export class SessionService {
           modelId: 'not_invoked',
           rawOutput: null,
         }
-      : await this.callLLM(prompt);
+      : await this.callLLM(prompt, identityProvenanceCorpus);
     if (skipLowInformationFirstTurn) {
       this.logger.log(
         `[extractFacts] 首轮有效文本不足 4 字且无图片，仅处理规则事实，跳过 LLM 提取`,
@@ -1177,7 +1189,10 @@ export class SessionService {
     };
   }
 
-  private async callLLM(prompt: string): Promise<{
+  private async callLLM(
+    prompt: string,
+    identityProvenanceCorpus: string,
+  ): Promise<{
     facts: EntityExtractionResult;
     explicitProvenance: ExplicitProvenanceEntry[];
     brandIntents: BrandIntentEntry[];
@@ -1203,11 +1218,12 @@ export class SessionService {
         //（badcase 2026-07-22 张三/13800138000 假身份成单）。命中即判本次生成
         // 失败，走与 API 错误相同的重试/降级，绝不让占位身份落进事实层。
         // 身份出处门（badcase 2026-07-24 赵堤/18833669895 新造身份穿透示例名单）：
-        // name/phone 必须能在提取 prompt（消息窗口 + 已确认事实 + 图片描述）里找到，
+        // name/phone 必须能在消息窗口 + 已确认事实 + 图片描述的专用语料里找到，
+        // system prompt、规则线索与工具事实不进入搜索范围，避免示例/旁路值自证，
         // 找不到即臆造，同样判本次生成失败。
         validateOutput: (output) => {
           assertNoExtractionExampleEcho(output);
-          assertExtractionIdentityProvenance(output, prompt);
+          assertExtractionIdentityProvenance(output, identityProvenanceCorpus);
         },
       });
 

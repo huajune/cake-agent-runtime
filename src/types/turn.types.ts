@@ -3,6 +3,7 @@ import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 
 /** 本轮 geocode 成功解析的锚点记录。 */
 export interface GeocodeResolvedAnchor {
@@ -36,6 +37,8 @@ export interface TurnLedgerSnapshot {
   geocodeAnchors: readonly GeocodeResolvedAnchor[];
   cityAttestation: CityAttestation | undefined;
   fetchedJobs: readonly unknown[];
+  /** prep 时刻的当前焦点岗位；供本轮工具与轮末抽取共享同一上下文快照。 */
+  readonly currentFocusJob: RecommendedJobSummary | null;
   jobListQuery: { signature: string } | undefined;
   invalidatedJobIds: readonly number[];
   ruleFacts: RuleFactClaims | null;

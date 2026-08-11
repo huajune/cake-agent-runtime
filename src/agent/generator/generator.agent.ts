@@ -372,6 +372,11 @@ export class GeneratorAgent {
         invalidatedJobIds: [...ledger.invalidatedJobIds],
         ruleFacts: ledger.ruleFacts,
         laborFormIntent: ledger.laborFormIntent,
+        extractionToolFacts: {
+          fetchedJobs: ledger.fetchedJobs,
+          currentFocusJob: ledger.currentFocusJob,
+          visualFactSheets: ledger.visualFactSheets,
+        },
       },
       assistantText,
     );

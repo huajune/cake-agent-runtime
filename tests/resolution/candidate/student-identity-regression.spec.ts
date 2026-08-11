@@ -45,10 +45,11 @@ describe('isPromptExampleName', () => {
     expect(isPromptExampleName('张三')).toBe(true);
     expect(isPromptExampleName(' 张三 ')).toBe(true);
     expect(isPromptExampleName('李四')).toBe(true);
+    expect(isPromptExampleName('赵堤')).toBe(true);
   });
 
   it('普通姓名放行', () => {
-    expect(isPromptExampleName('赵堤')).toBe(false);
+    expect(isPromptExampleName('李梅')).toBe(false);
     expect(isPromptExampleName('张三丰')).toBe(false);
     expect(isPromptExampleName(null)).toBe(false);
   });
@@ -87,8 +88,20 @@ describe('assertNoExtractionExampleEcho', () => {
   it('正常提取输出放行', () => {
     expect(() =>
       assertNoExtractionExampleEcho(
-        baseOutput({ name: '赵堤', phone: '18912345678', experience: null }),
+        baseOutput({ name: '李梅', phone: '18912345678', experience: null }),
       ),
+    ).not.toThrow();
+  });
+
+  it('历史表单示例姓名+年龄整组回声时抛错，单字段撞值不误伤', () => {
+    expect(() =>
+      assertNoExtractionExampleEcho(baseOutput({ name: '赵堤', age: '24', phone: null })),
+    ).toThrow(/历史表单示例姓名与年龄/);
+    expect(() =>
+      assertNoExtractionExampleEcho(baseOutput({ name: '赵堤', age: '25', phone: null })),
+    ).not.toThrow();
+    expect(() =>
+      assertNoExtractionExampleEcho(baseOutput({ name: '李梅', age: '24', phone: null })),
     ).not.toThrow();
   });
 

@@ -284,6 +284,7 @@ export class PreparationService {
         Date.now(),
       ),
       geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
+      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
     });
     const toolContext = buildToolContext({
       params,

@@ -1,5 +1,6 @@
 import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
+  buildExtractionIdentityProvenanceCorpus,
   buildSessionExtractionPrompt,
 } from '@memory/services/session-extraction.prompt';
 import {
@@ -50,9 +51,9 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
       expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
         '候选人说"要全职"/"找全职" → labor_form: "全职"',
       );
-      // few-shot 示例也要同口径
+      // 字段规则与封闭白名单都保留该口径
       expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
-        '用户说"我想找兼职" / "有兼职吗" → labor_form: "兼职"',
+        '明确用工形式表述 → labor_form（按字段定义的映射规则）',
       );
     });
 
@@ -79,7 +80,12 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
     });
 
     it('should still forbid inferring labor_form from availability alone', () => {
-      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不要仅凭可用时间推理 labor_form');
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '明确用工形式表述 → labor_form（按字段定义的映射规则）',
+      );
+      expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain(
+        '口语时间/班次归一 → schedule/time_windows',
+      );
     });
 
     it('should normalize summer aliases without treating negation, uncertainty, or alternatives as summer-only', () => {
@@ -111,6 +117,33 @@ describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
       });
       expect(parsed.success).toBe(true);
     });
+  });
+
+  it('uses a closed inference allowlist and explicitly permits an empty answer', () => {
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('推断白名单制');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('白名单外的任何推断');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('本轮无新信息就交空卷');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('reasoning 固定写「本轮无新信息」');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain(
+      '结合上下文理解和常识知识推理出相关事实',
+    );
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('姓名：赵堤');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).not.toContain('18xxx');
+
+    const emptyTurn = LLMEntityExtractionResultSchema.parse({
+      ...FALLBACK_EXTRACTION,
+      reasoning: '本轮无新信息',
+    });
+    expect(Object.values(emptyTurn.interview_info).every((value) => value === null)).toBe(true);
+    expect(Object.values(emptyTurn.preferences).every((value) => value === null)).toBe(true);
+    expect(emptyTurn.reasoning).toBe('本轮无新信息');
+  });
+
+  it('forbids reasoning from inventing resume/file/material sources', () => {
+    const reasoningDescription = LLMEntityExtractionResultSchema.shape.reasoning.description;
+    expect(reasoningDescription).toContain('本轮无新信息');
+    expect(reasoningDescription).toContain('禁止叙述对话中不存在的来源');
+    expect(reasoningDescription).toContain('从简历/文件/材料中提取');
   });
 });
 
@@ -221,5 +254,80 @@ describe('buildSessionExtractionPrompt', () => {
     expect(prompt).toContain('无');
     expect(prompt).toContain('[历史对话]');
     expect(prompt).toContain('之前的消息');
+  });
+
+  it('injects fetched jobs, current focus, and visual facts from the turn ledger', () => {
+    const job = {
+      jobId: 519709,
+      brandName: '奥乐齐',
+      jobName: '分拣打包',
+      storeName: '长白店',
+      cityName: '上海',
+      regionName: '杨浦',
+      laborForm: '全职',
+      salaryDesc: '6200-9800 元/月',
+      jobCategoryName: '分拣员',
+    };
+    const prompt = buildSessionExtractionPrompt(
+      brandData,
+      '用户: 那个店我可以',
+      [],
+      [],
+      null,
+      undefined,
+      null,
+      {
+        fetchedJobs: [job],
+        currentFocusJob: { ...job, jobId: 519710, storeName: '五角场店' },
+        visualFactSheets: [
+          {
+            messageId: 'img-1',
+            sheet: {
+              kind: 'resume',
+              fields: [{ key: 'phone', value: '15887265838', ownership: 'candidate' }],
+              rawDescription: '候选人简历截图',
+              degraded: false,
+            },
+          },
+        ],
+      },
+    );
+
+    expect(prompt).toContain('[本轮工具事实]');
+    expect(prompt).toContain('本轮推荐岗位');
+    expect(prompt).toContain('jobId=519709');
+    expect(prompt).toContain('当前焦点岗位');
+    expect(prompt).toContain('jobId=519710');
+    expect(prompt).toContain('phone=15887265838（candidate）');
+  });
+
+  it('omits the tool facts section when the ledger summary is empty', () => {
+    const prompt = buildSessionExtractionPrompt(
+      brandData,
+      '用户: 你好在吗',
+      [],
+      [],
+      null,
+      undefined,
+      null,
+      { fetchedJobs: [], currentFocusJob: null, visualFactSheets: [] },
+    );
+
+    expect(prompt).not.toContain('[本轮工具事实]');
+  });
+
+  it('builds identity provenance only from the dialogue window and confirmed facts', () => {
+    const corpus = buildExtractionIdentityProvenanceCorpus(
+      '用户: 我电话 158 8726 5838',
+      ['助手: 请问怎么称呼', '用户: 我叫李梅', '[图片描述] 姓名李梅'],
+      null,
+    );
+
+    expect(corpus).toContain('我叫李梅');
+    expect(corpus).toContain('[图片描述] 姓名李梅');
+    expect(corpus).toContain('158 8726 5838');
+    expect(corpus).not.toContain(SESSION_EXTRACTION_SYSTEM_PROMPT);
+    expect(corpus).not.toContain('[本轮工具事实]');
+    expect(corpus).not.toContain('[规则模式匹配线索');
   });
 });

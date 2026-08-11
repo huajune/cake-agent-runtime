@@ -22,6 +22,7 @@ export function createToolContext(overrides: ToolContextOverrides = {}): ToolBui
     ruleFacts: overrides.ledger?.ruleFacts ?? null,
     collectedFields: overrides.ledger?.collectedFields,
     geoSignalCities: overrides.ledger?.geoSignalCities,
+    currentFocusJob: overrides.ledger?.currentFocusJob,
   });
   applyLedgerOverrides(ledger, overrides.ledger);
   return {
@@ -49,6 +50,10 @@ export function mergeToolContext(
       ruleFacts: overrides.ledger.ruleFacts ?? base.ledger.ruleFacts,
       collectedFields: overrides.ledger.collectedFields ?? base.ledger.collectedFields,
       geoSignalCities: overrides.ledger.geoSignalCities ?? base.ledger.geoSignalCities,
+      currentFocusJob:
+        overrides.ledger.currentFocusJob === undefined
+          ? base.ledger.currentFocusJob
+          : overrides.ledger.currentFocusJob,
     });
     ledger.bookingSucceeded = base.ledger.bookingSucceeded;
     ledger.jobListExecuted = base.ledger.jobListExecuted;
@@ -85,6 +90,7 @@ function applyLedgerOverrides(ledger: TurnLedger, overrides?: Partial<TurnLedger
     'geocodeAnchors',
     'cityAttestation',
     'fetchedJobs',
+    'currentFocusJob',
     'jobListQuery',
     'invalidatedJobIds',
   ]) {

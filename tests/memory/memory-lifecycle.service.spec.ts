@@ -578,6 +578,7 @@ describe('MemoryLifecycleService', () => {
       ],
       null,
       { kind: 'ignore' },
+      undefined,
     );
   });
 

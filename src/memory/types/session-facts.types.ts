@@ -261,7 +261,9 @@ export const EntityExtractionResultSchema = z.object({
   preferences: PreferencesSchema,
   reasoning: z
     .string()
-    .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),
+    .describe(
+      '提取与推理说明：列出每个字段的来源（直接提取/白名单推断），推断字段说明推理链。本轮无新信息时固定写「本轮无新信息」。禁止叙述对话中不存在的来源——本轮没有简历/文件/图片材料时，严禁写"从简历/文件/材料中提取"类表述。',
+    ),
 });
 
 /** LLM 声明的字段级依据摘录：直接陈述可升档，白名单推断只提供证据。 */
@@ -349,7 +351,9 @@ export const LLMEntityExtractionResultSchema = z.object({
     ),
   reasoning: z
     .string()
-    .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),
+    .describe(
+      '提取与推理说明：列出每个字段的来源（直接提取/白名单推断），推断字段说明推理链。本轮无新信息时固定写「本轮无新信息」。禁止叙述对话中不存在的来源——本轮没有简历/文件/图片材料时，严禁写"从简历/文件/材料中提取"类表述。',
+    ),
 });
 
 /** 实体提取结果类型 */

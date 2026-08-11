@@ -4,8 +4,14 @@ import {
   formatExtractionFactLines,
   formatRuleFactClaimLines,
 } from '../formatters/fact-lines.formatter';
-import type { SessionFacts } from '../types/session-facts.types';
+import { RecommendedJobSummarySchema, type SessionFacts } from '../types/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnLedgerSnapshot } from '@shared-types/turn.types';
+
+export type SessionExtractionToolFacts = Pick<
+  TurnLedgerSnapshot,
+  'fetchedJobs' | 'currentFocusJob' | 'visualFactSheets'
+>;
 
 /** 结构化事实提取的系统提示词。 */
 export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是结构化事实提取引擎，从招募经理与候选人的对话历史中提取结构化事实信息。
@@ -13,9 +19,10 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是结构化事实提取引�
 ## 提取原则
 - 增量式：[已确认事实] 是此前轮次已提取的结果，无需重复输出未变化的字段；你只需从本轮对话窗口中**补充新信息、纠正已确认事实中的错误**（用户改口/纠正时以最新表述为准）。没有 [已确认事实] 时按全量提取处理
 - 保留原话：除非有特殊说明，字段值保留用户的原始表述
-- 合理推理：可以根据上下文语境和常识知识进行合理推断，但不要凭空编造
+- **推断白名单制**：除直接提取外，只允许「推断白名单」一节列举的封闭推断；白名单外的任何推断——包括常识、行业惯例、示例值、"这类候选人通常如何"——一律禁止。拿不准就省略字段，省略永远优于猜测
 - 省略缺失：对话中未提及且无法合理推断的字段省略
 - **宁缺毋假（最高优先级红线）**：字段定义中的格式说明只描述形态，绝不能作为输出值；对话中没有出现、也推断不出来的信息一律省略字段，禁止用任何"看起来合理"的值补位。臆造的姓名/手机号会被直接提交到门店报名，属最高级别错误——省略字段永远优于填入猜测值
+- **本轮无新信息就交空卷**：当前消息与窗口内没有可提取的新信息时，输出空的 interview_info/preferences，reasoning 固定写「本轮无新信息」。交空卷是正确行为，不是失职；严禁为了"有产出"而从示例、常识或想象中补字段
 - **时间锚定**：每条消息末尾带有 [消息发送时间：…]，[当前时间] 段给出现在的日期。所有时间类字段（interview_time、available_after、delayed_intent.until）中的相对表述（"明天/后天/周五/下周一"）必须以**该消息的发送时间**为基准换算成绝对日期（如 "6月4日 14:00"），禁止原样存相对表述——相对时间一旦跨天就会失真
 - **旧会话事务字段不复活**：对话历史可能跨多天。更早日期的会话里确认过的 applied_store / applied_position / interview_time 属于已了结的旧报名流程；只有**最近一段连续会话**（与当前消息同日或紧密衔接）中确认/重申过的值才能提取，旧会话的不要带出来
 - **转发文案不是候选人意向**：用户转发/粘贴的招聘广告或岗位介绍（含【薪资待遇】【岗位职责】等标记、或明显是宣传文案的整段内容）里的薪资/年龄/班次/地点是**岗位要求**，不是候选人自己的条件或意向，不得提取为 salary / age / schedule 等字段；候选人转发岗位仅可作为对该岗位感兴趣的品牌意向线索
@@ -76,36 +83,22 @@ preferences（意向信息）:
 - open_position: 岗位开放标记。候选人说"什么都可以/X都行/什么工作都行/什么都能做"等宽口径句式时填 true；**此时 position 字段必须留空**，禁止把 X 锁定为单一岗位
 - time_windows: 可用时间窗口数组（保留原话，如 ["17点后"、"14点前"、"早上11点之前"]）；候选人明确给出某时间段才填，泛指"白天/晚上"等抽象表达不要填
 
-## 推理指导
+## 推断白名单
 
-你不仅要提取对话中明确提到的信息，还需要结合上下文理解和常识知识推理出相关事实。
+除直接提取外，只允许以下封闭类别的推断，白名单外一律禁止：
 
-推理示例：
-- 用户说"我在读大三" → is_student: true, education: "本科在读"
-- 用户说"今年考上研究生了/准研究生/准备读研" → is_student: true, education: "硕士待入学"
-- 用户说"社会人士，目前待岗" / "已经工作了" / "上班族" / "在 X 公司做过" / "已毕业" / "宝妈带娃" / "退休了" → is_student: false
-- 用户按表单回填"姓名：赵堤 / 联系电话：18xxx / 年龄：24" → name: "赵堤", phone: "18xxx", age: "24"（结构化键值对回填，全字段一次性提取）
-- 用户说"我只有周末有空" → schedule: "周末"（不要仅凭可用时间推理 labor_form）
-- 用户说"每周最多也就能干两天" → schedule: "每周最多两天"
-- 用户说"另一份工作是做一休一" → schedule: "做一休一"
-- 用户说"我六点才下班" → schedule: "下班后", time_windows: ["6点后"]
-- 用户说"我刚高考完想找暑期工作" → is_student: true, labor_form: "暑假工"（明确提到"暑期"才能映射到"暑假工"细分）
-- 用户说"寒假想打个工" → labor_form: "寒假工"
-- 用户说"我想找兼职" / "有兼职吗" → labor_form: "兼职"
-- 用户提到具体学校名 → 可推断 city/district（如果你知道学校所在地）
-- 用户说"洗碗工什么都可以做" / "什么工作都行" / "服务员都行随便都可以" → open_position: true，position **必须留空**（候选人是宽口径表达，不是锁定为某岗位）
-- 用户说"五一回来面试可以吗" / "下周再说吧" / "不急晚点联系" / "我想晚点再约" → delayed_intent: { until: "五一后" / "下周" / "晚点", raw: 原话片段 }
-- 用户说"我就做五一这几天" / "做几天就行" / "临时干个一周" → short_term: true
-- 用户说"早上 11 点之前都有空" / "17点之后才下班" → time_windows: ["11点前"] 或 ["17点后"]
+1. 在读/升学语境 → is_student/education（"我在读大三"→ is_student: true, education: "本科在读"；"考上研究生/准研究生/等录取通知书"→ is_student: true）
+2. 离校语境 → is_student: false（"社会人士/已经工作/上班族/在 X 公司做过/已毕业/宝妈带娃/退休了"）
+3. 结构化表单回填 → 键值对全字段一次性提取
+4. 口语时间/班次归一 → schedule/time_windows（"我六点才下班"→ schedule: "下班后", time_windows: ["6点后"]；"每周最多也就能干两天"→ schedule: "每周最多两天"）
+5. 唯一归属地标/学校 → city（严格遵守「地名识别原则」全部限制）
+6. 明确延期/短期信号 → delayed_intent / short_term（仅原话出现明确信号词）
+7. 宽口径句式 → open_position: true（position 必须留空）
+8. 明确用工形式表述 → labor_form（按字段定义的映射规则）
 
-**禁止推断入事实的红线**：
-- 候选人未明示的"班次/休息日/可用时间"绝不能凭"看起来像/可能是"等理由写入 schedule 或 time_windows。例：候选人只说"明天 9 点到 18 点上班"——不得据此推断"明天休息"或"对方明天有空面试"。这是事实层，不是 reasoning 层。
+推断要求：每条推断在 reasoning 说明推理链；不确定的推断不要填入字段；推理冲突时以候选人明确陈述为准。
 
-推理要求：
-- 推理必须有合理依据，在 reasoning 字段中说明推理链
-- 直接提取的事实和推理得出的事实都要记录
-- 推理冲突时以用户明确陈述为准
-- 不确定的推理不要填入字段，但可以在 reasoning 中提及
+**禁止推断入事实的红线**：候选人未明示的"班次/休息日/可用时间"绝不能凭"看起来像/可能是"写入 schedule 或 time_windows。例：候选人只说"明天 9 点到 18 点上班"——不得据此推断"明天休息"或"对方明天有空面试"。
 
 ## 地名识别原则
 
@@ -203,6 +196,66 @@ function formatKnownFactsSection(previousFacts: SessionFacts | null): string | n
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
+function formatJobSummary(job: unknown): string | null {
+  const parsed = RecommendedJobSummarySchema.safeParse(job);
+  if (!parsed.success) return null;
+
+  const value = parsed.data;
+  const details = [
+    `jobId=${value.jobId}`,
+    value.brandName ? `品牌=${value.brandName}` : null,
+    value.storeName ? `门店=${value.storeName}` : null,
+    value.jobName ? `岗位=${value.jobName}` : null,
+    value.cityName ? `城市=${value.cityName}` : null,
+    value.regionName ? `区域=${value.regionName}` : null,
+    value.laborForm ? `用工形式=${value.laborForm}` : null,
+  ].filter((item): item is string => Boolean(item));
+  return details.join('，');
+}
+
+/** 回合账本摘要：只注入抽取所需的岗位/视觉事实；没有事实时整段省略。 */
+function formatToolFactsSection(toolFacts: SessionExtractionToolFacts | null): string | null {
+  if (!toolFacts) return null;
+
+  const sections: string[] = [];
+  const fetchedJobs = toolFacts.fetchedJobs
+    .map(formatJobSummary)
+    .filter((line): line is string => Boolean(line));
+  if (fetchedJobs.length > 0) {
+    sections.push(`本轮推荐岗位：\n${fetchedJobs.map((line) => `- ${line}`).join('\n')}`);
+  }
+
+  const currentFocusJob = formatJobSummary(toolFacts.currentFocusJob);
+  if (currentFocusJob) sections.push(`当前焦点岗位：\n- ${currentFocusJob}`);
+
+  const visualFacts = toolFacts.visualFactSheets
+    .filter((entry) => !entry.sheet.degraded && entry.sheet.fields.length > 0)
+    .map((entry) => {
+      const fields = entry.sheet.fields
+        .map((field) => `${field.key}=${field.value}（${field.ownership}）`)
+        .join('；');
+      return `- messageId=${entry.messageId}，类型=${entry.sheet.kind}：${fields}`;
+    });
+  if (visualFacts.length > 0) sections.push(`视觉关键事实：\n${visualFacts.join('\n')}`);
+
+  return sections.length > 0 ? sections.join('\n') : null;
+}
+
+/**
+ * 身份出处门的唯一搜索语料：会话窗口（含图片描述）+ 已确认事实。
+ * 刻意排除 system prompt、品牌字典、规则线索与工具事实，避免示例值或旁路数据自证。
+ */
+export function buildExtractionIdentityProvenanceCorpus(
+  message: string,
+  history: string[],
+  previousFacts: SessionFacts | null,
+): string {
+  const knownFacts = formatKnownFactsSection(previousFacts);
+  return [...(knownFacts ? [knownFacts] : []), ...history, message]
+    .filter((part) => part.trim().length > 0)
+    .join('\n');
+}
+
 /** 组装结构化事实提取的用户提示词。 */
 export function buildSessionExtractionPrompt(
   brandData: BrandItem[],
@@ -212,6 +265,7 @@ export function buildSessionExtractionPrompt(
   ruleFacts: RuleFactClaims | null = null,
   currentTime?: string,
   previousFacts: SessionFacts | null = null,
+  toolFacts: SessionExtractionToolFacts | null = null,
 ): string {
   const brandInfo = formatBrandSection(brandData, aliasHints);
 
@@ -226,6 +280,7 @@ export function buildSessionExtractionPrompt(
       : '无';
 
   const knownFacts = formatKnownFactsSection(previousFacts);
+  const formattedToolFacts = formatToolFactsSection(toolFacts);
 
   return [
     ...(currentTime ? ['[当前时间]', currentTime, ''] : []),
@@ -241,6 +296,7 @@ export function buildSessionExtractionPrompt(
     '[规则模式匹配线索（供参考，结合上下文判断是否准确）]',
     formatRuleFactsSection(ruleFacts),
     '',
+    ...(formattedToolFacts ? ['[本轮工具事实]', formattedToolFacts, ''] : []),
     '[历史对话]',
     history.join('\n') || '无',
     '',

@@ -22,10 +22,13 @@ import { hasHealthCertificateTopic } from '@resolution/candidate/health-cert';
  */
 
 /** 提取提示词历史上出现过的示例姓名。真实重名存在，故仅作组合信号，不单独拦。 */
-const PROMPT_EXAMPLE_NAMES = new Set(['张三', '李四', '王五']);
+const PROMPT_EXAMPLE_NAMES = new Set(['张三', '李四', '王五', '赵堤']);
 
 /** 提取提示词 experience 字段的示例原文。可能与真实经历撞车，仅作组合信号。 */
 const PROMPT_EXAMPLE_EXPERIENCES = new Set(['肯德基服务员4个多月', '河南烤肉自助服务员3个月']);
+
+/** 历史提示词中同一条表单示例出现过的姓名+年龄组合；单字段撞值不拦。 */
+const PROMPT_EXAMPLE_NAME_AGE_PAIRS = new Set(['赵堤\u000024']);
 
 /**
  * 是否占位手机号：已知清单 + 后 10 位全同数字（如 11111111111）。
@@ -49,6 +52,7 @@ export function isPromptExampleName(name: string | null | undefined): boolean {
  * 判定规则：
  * - phone 为占位号 → 直接判回声（占位号不存在合法来源）
  * - name 与 experience 同时命中示例原文 → 判回声（单一命中可能是真实撞名/撞经历，放行）
+ * - name 与 age 同时命中同一条历史表单示例 → 判回声（赵堤/24 单值仍分别放行）
  */
 export function assertNoExtractionExampleEcho(output: unknown): void {
   const info = (output as { interview_info?: Record<string, unknown> } | null)?.interview_info;
@@ -71,6 +75,13 @@ export function assertNoExtractionExampleEcho(output: unknown): void {
       `提取输出同时命中示例姓名与示例经历（疑似提示词示例回声）: name=${name}, experience=${experience}`,
     );
   }
+
+  const age = typeof info.age === 'string' ? info.age.trim() : null;
+  if (name && age && PROMPT_EXAMPLE_NAME_AGE_PAIRS.has(`${name.trim()}\u0000${age}`)) {
+    throw new Error(
+      `提取输出同时命中历史表单示例姓名与年龄（疑似提示词示例回声）: name=${name}, age=${age}`,
+    );
+  }
 }
 
 /**
@@ -80,32 +91,35 @@ export function assertNoExtractionExampleEcho(output: unknown): void {
  * 即穿透，臆造档案再经 [已确认事实] 增量机制以"沿用"名义轮轮延续，最终被预填进
  * 报名收资表发给候选人。
  *
- * 不变式：name / phone 属候选人自报身份，只可能来自提取 prompt 文本
+ * 不变式：name / phone 属候选人自报身份，只可能来自专用出处语料
  * （消息窗口原文、[已确认事实] 携带的旧值、或图片描述注入文本），
  * 不存在"凭空正确"的合法来源。输出值在 prompt 中找不到即判臆造，本次生成失败
  * 走重试/降级（降级=本轮丢新事实，旧值不受影响，远优于假身份入库）。
  *
  * 匹配口径：
- * - phone：prompt 与输出都压缩为纯数字流后做子串匹配，容忍"158 8726 5838"等分隔写法；
- * - name：prompt 去空白后做子串匹配（候选人姓名在中文语料中不会被空白拆散跨行）。
+ * - phone：出处语料与输出都压缩为纯数字流后做子串匹配，容忍"158 8726 5838"等分隔写法；
+ * - name：出处语料去空白后做子串匹配（候选人姓名在中文语料中不会被空白拆散跨行）。
  */
-export function assertExtractionIdentityProvenance(output: unknown, promptText: string): void {
+export function assertExtractionIdentityProvenance(
+  output: unknown,
+  provenanceCorpus: string,
+): void {
   const info = (output as { interview_info?: Record<string, unknown> } | null)?.interview_info;
   if (!info) return;
 
   const phone = typeof info.phone === 'string' ? info.phone.trim() : '';
   const phoneDigits = phone.replace(/\D/g, '');
   if (phoneDigits.length >= 7) {
-    const promptDigits = promptText.replace(/\D/g, '');
-    if (!promptDigits.includes(phoneDigits)) {
+    const corpusDigits = provenanceCorpus.replace(/\D/g, '');
+    if (!corpusDigits.includes(phoneDigits)) {
       throw new Error(`提取输出的手机号在提取上下文中无出处（疑似臆造身份）: phone=${phone}`);
     }
   }
 
   const name = typeof info.name === 'string' ? info.name.trim() : '';
   if (name.length >= 2) {
-    const promptCondensed = promptText.replace(/\s/g, '');
-    if (!promptCondensed.includes(name)) {
+    const corpusCondensed = provenanceCorpus.replace(/\s/g, '');
+    if (!corpusCondensed.includes(name)) {
       throw new Error(`提取输出的姓名在提取上下文中无出处（疑似臆造身份）: name=${name}`);
     }
   }

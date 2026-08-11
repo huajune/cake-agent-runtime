@@ -1,6 +1,7 @@
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   CityAttestation,
   GeocodeResolvedAnchor,
@@ -13,6 +14,7 @@ export interface CreateTurnLedgerInput {
   laborFormIntent?: LaborFormIntentDecision;
   collectedFields?: Partial<Record<CandidateFieldKey, CandidateCollectedField>>;
   geoSignalCities?: Iterable<string>;
+  currentFocusJob?: RecommendedJobSummary | null;
 }
 
 /** 创建本轮唯一账本实例；内部集合不向消费者暴露可写引用。 */
@@ -21,6 +23,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
   const imageBrandResolutions: TurnLedgerSnapshot['imageBrandResolutions'][number][] = [];
   const geocodeAnchors: GeocodeResolvedAnchor[] = [];
   const fetchedJobs: unknown[] = [];
+  const currentFocusJob = input.currentFocusJob ? { ...input.currentFocusJob } : null;
   const invalidatedJobIds: number[] = [];
   const collectedFields = Object.freeze({ ...(input.collectedFields ?? {}) });
   const geoSignalCities = new Set(input.geoSignalCities ?? []);
@@ -42,6 +45,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     },
     get fetchedJobs() {
       return fetchedJobs;
+    },
+    get currentFocusJob() {
+      return currentFocusJob;
     },
     get jobListQuery() {
       return jobListQuery;
@@ -86,6 +92,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
         geocodeAnchors: geocodeAnchors.map((anchor) => ({ ...anchor })),
         cityAttestation: cityAttestation ? { ...cityAttestation } : undefined,
         fetchedJobs: [...fetchedJobs],
+        currentFocusJob: ledger.currentFocusJob ? { ...ledger.currentFocusJob } : null,
         jobListQuery: jobListQuery ? { ...jobListQuery } : undefined,
         invalidatedJobIds: [...invalidatedJobIds],
         ruleFacts: ledger.ruleFacts,

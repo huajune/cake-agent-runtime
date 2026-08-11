@@ -3,7 +3,7 @@ import { MessageProcessingService } from '@biz/message/services/message-processi
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
 import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-types/tracking.types';
-import type { CityAttestation } from '@shared-types/turn.types';
+import type { CityAttestation, TurnLedgerSnapshot } from '@shared-types/turn.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { BrandStateService } from './brand-state.service';
@@ -53,6 +53,11 @@ export interface MemoryLifecycleTurnContext {
   ruleFacts: RuleFactClaims | null;
   /** prep 时刻规则轨的 labor-form 三态判定；轮末只消费、不重跑。 */
   laborFormIntent: LaborFormIntentDecision;
+  /** 本轮账本中与事实抽取有关的只读工具摘要。 */
+  extractionToolFacts?: Pick<
+    TurnLedgerSnapshot,
+    'fetchedJobs' | 'currentFocusJob' | 'visualFactSheets'
+  >;
 }
 
 interface StepOutcome<T = void> {
@@ -517,6 +522,7 @@ export class MemoryLifecycleService {
         flatMessages,
         ctx.ruleFacts,
         ctx.laborFormIntent,
+        ctx.extractionToolFacts,
       );
     });
     // LLM 提取降级（fallback 空值）若被吞掉、step 仍标 success，提取实际成功率
