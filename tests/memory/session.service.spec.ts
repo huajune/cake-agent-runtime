@@ -826,7 +826,7 @@ describe('SessionService', () => {
       expect(mockLlm.generateStructured).toHaveBeenCalled();
     });
 
-    it('does not skip on first extraction (no previous facts) even for short messages', async () => {
+    it('skips LLM on a low-information first extraction', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
 
@@ -834,7 +834,8 @@ describe('SessionService', () => {
         { role: 'user', content: '你好' },
       ]);
 
-      expect(mockLlm.generateStructured).toHaveBeenCalled();
+      expect(mockLlm.generateStructured).not.toHaveBeenCalled();
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
     });
 
     it('injects previously confirmed facts into the incremental extraction prompt', async () => {
@@ -854,13 +855,11 @@ describe('SessionService', () => {
   });
 
   describe('labor-form semantic track shadow comparison', () => {
-    const llmOutputWithIntent = (
-      laborFormIntent: {
-        intent: 'set' | 'clear' | 'ignore';
-        labor_form?: '全职' | '兼职' | '小时工' | '寒假工' | '暑假工';
-        quote: string;
-      },
-    ) => ({
+    const llmOutputWithIntent = (laborFormIntent: {
+      intent: 'set' | 'clear' | 'ignore';
+      labor_form?: '全职' | '兼职' | '小时工' | '寒假工' | '暑假工';
+      quote: string;
+    }) => ({
       ...FALLBACK_EXTRACTION,
       labor_form_intent: laborFormIntent,
       reasoning: 'labor-form shadow',
@@ -933,7 +932,11 @@ describe('SessionService', () => {
   describe('explicit provenance confidence upgrade', () => {
     const llmOutputWith = (
       info: Partial<EntityExtractionResult['interview_info']>,
-      provenance: Array<{ field: string; quote: string }> | null,
+      provenance: Array<{
+        field: string;
+        quote: string;
+        basis?: 'stated' | 'inferred';
+      }> | null,
     ) => ({
       ...FALLBACK_EXTRACTION,
       interview_info: { ...FALLBACK_EXTRACTION.interview_info, ...info },
@@ -1012,7 +1015,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           confidence: 'high',
           source: 'candidate_quote',
-          evidence: '原文探针命中："学历： 本科"',
+          evidence: '学历： 本科',
         }),
       );
     });
@@ -1020,7 +1023,7 @@ describe('SessionService', () => {
     it.each([
       ['纯数字值', { age: '37' }, '我今年37'],
       ['单字短值', { gender: '女' }, '女'],
-    ])('原文探针拒绝%s', async (_label, info, content) => {
+    ])('原文探针通过字段解析器安全复算%s', async (_label, info, content) => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(mockStructured(llmOutputWith(info, null)));
 
@@ -1028,7 +1031,7 @@ describe('SessionService', () => {
 
       const field = 'age' in info ? 'age' : 'gender';
       expect(savedInterviewInfo()[field]).toEqual(
-        expect.objectContaining({ confidence: 'medium', source: 'model' }),
+        expect.objectContaining({ confidence: 'high', source: 'candidate_quote' }),
       );
     });
 
@@ -1039,12 +1042,10 @@ describe('SessionService', () => {
       );
 
       await service.extractAndSave('corp1', 'user1', 'session1', [
-        { role: 'user', content: '[引用 李经理：学历要求本科] 好的' },
+        { role: 'user', content: '[引用 李经理：学历要求本科] 好的我知道了' },
       ]);
 
-      expect(savedInterviewInfo().education).toEqual(
-        expect.objectContaining({ confidence: 'medium', source: 'model' }),
-      );
+      expect(savedInterviewInfo().education).toBeNull();
     });
 
     it('excludes visual descriptions from the original-text probe corpus', async () => {
@@ -1057,9 +1058,7 @@ describe('SessionService', () => {
         { role: 'user', content: '[图片消息] 简历显示学历本科' },
       ]);
 
-      expect(savedInterviewInfo().education).toEqual(
-        expect.objectContaining({ confidence: 'medium', source: 'model' }),
-      );
+      expect(savedInterviewInfo().education).toBeNull();
     });
 
     it('does not add probe upgrades for name or phone', async () => {
@@ -1133,6 +1132,52 @@ describe('SessionService', () => {
       const info = savedInterviewInfo();
       expect(info.gender).toEqual(expect.objectContaining({ confidence: 'high' }));
       expect(info.gender_source).toEqual(expect.objectContaining({ value: 'candidate' }));
+    });
+
+    it('keeps inferred provenance at medium while persisting the validated quote', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWith({ is_student: true }, [
+            { field: 'is_student', quote: '在读大三', basis: 'inferred' },
+          ]),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我现在还在读大三' },
+      ]);
+
+      expect(savedInterviewInfo().is_student).toEqual(
+        expect.objectContaining({
+          confidence: 'medium',
+          source: 'model',
+          evidence: '在读大三',
+        }),
+      );
+    });
+
+    it('keeps phone medium even when its stated quote is verified', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWith({ phone: '18271421690' }, [
+            { field: 'phone', quote: '电话18271421690', basis: 'stated' },
+          ]),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我的电话18271421690' },
+      ]);
+
+      expect(savedInterviewInfo().phone).toEqual(
+        expect.objectContaining({
+          confidence: 'medium',
+          source: 'model',
+          evidence: '电话18271421690',
+        }),
+      );
     });
 
     it('persists enrichment gender as low/system through the normal extraction path', async () => {
@@ -1273,6 +1318,84 @@ describe('SessionService', () => {
       expect(info.phone).toEqual(expect.objectContaining({ value: '18271421690' }));
       expect(info.has_health_certificate).toEqual(expect.objectContaining({ value: '有' }));
       expect(info.applied_store).toEqual(expect.objectContaining({ value: '东方渔人码头店' }));
+    });
+  });
+
+  describe('身份族首写出处门（badcase 2026-08-10）', () => {
+    it('drops fabricated age/gender and records no-candidate-provenance events', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            age: '21',
+            gender: '女',
+          },
+          explicit_provenance: [
+            { field: 'age', quote: '我今年21', basis: 'stated' },
+            { field: 'gender', quote: '我是女生', basis: 'stated' },
+          ],
+          reasoning: '从用户提供的简历文件中提取年龄与性别',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '你好我想咨询工作' },
+      ]);
+
+      const saved = mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as {
+        facts: { interview_info: Record<string, { evidence?: string } | null> };
+      };
+      expect(saved.facts.interview_info.age).toBeNull();
+      expect(saved.facts.interview_info.gender).toBeNull();
+      expect(mockTracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'extraction_field_dropped',
+          field: 'age',
+          reason: 'no_candidate_provenance',
+        }),
+      );
+      expect(mockTracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'extraction_field_dropped',
+          field: 'gender',
+          reason: 'no_candidate_provenance',
+        }),
+      );
+    });
+
+    it('stores a replayable quote as evidence instead of model reasoning', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          ...FALLBACK_EXTRACTION,
+          interview_info: { ...FALLBACK_EXTRACTION.interview_info, age: '21' },
+          explicit_provenance: [{ field: 'age', quote: '我今年21', basis: 'stated' }],
+          reasoning: '从用户提供的简历文件中提取年龄',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我今年21，想找工作' },
+      ]);
+
+      const saved = mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as {
+        facts: { interview_info: { age: { evidence: string } } };
+      };
+      expect(saved.facts.interview_info.age.evidence).toBe('我今年21');
+      expect(saved.facts.interview_info.age.evidence).not.toContain('简历');
+    });
+
+    it('skips the extract model for the incident-shaped first message', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我是.' },
+      ]);
+
+      expect(mockLlm.generateStructured).not.toHaveBeenCalled();
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
     });
   });
 
@@ -1663,7 +1786,9 @@ describe('SessionService', () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockRejectedValue(new Error('LLM timeout'));
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '你好，请帮我找工作' },
+      ]);
 
       expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
@@ -1975,7 +2100,9 @@ describe('SessionService', () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockRejectedValue(new Error('No structured output returned'));
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '你好，请帮我找工作' },
+      ]);
 
       expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.any(String),
@@ -2030,7 +2157,7 @@ describe('SessionService', () => {
 
       await service.extractAndSave('corp1', 'user1', 'sess1', [
         { role: 'system', content: 'You are a helpful assistant' },
-        { role: 'user', content: '你好' },
+        { role: 'user', content: '你好，请帮我找工作' },
       ]);
 
       const callArgs = mockLlm.generateStructured.mock.calls[0][0];

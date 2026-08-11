@@ -54,11 +54,19 @@ import {
   detectBrandAliasHints,
   stripQuotedBlocks,
 } from '@resolution/evidence/producers/rule-track';
-import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
+import type {
+  CandidateClaimField,
+  RuleFactClaims,
+  RuleFactFieldPath,
+} from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
 import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
-import { normalizedIncludes } from '@resolution/evidence/normalize';
+import {
+  candidateValuesEquivalent,
+  deriveFieldValueFromQuote,
+  normalizedIncludes,
+} from '@resolution/evidence/normalize';
 import {
   detectGeoSignalConflict,
   isRecognizedCityName,
@@ -838,8 +846,6 @@ export class SessionService {
         `(token saving: ${savingPercent}%)`,
     );
 
-    const brandData = await this.sponge.fetchBrandList();
-
     // 纯应答闸门：已有 facts、本轮最后一条用户消息是纯应答词（"好的/嗯嗯/谢谢"）、
     // 且对该消息的规则提取零命中时，跳过本轮 LLM 提取——这类轮次没有新事实，
     // 却要支付完整的提取调用（品牌列表 + 规则线索 + 历史，数千 tokens）。
@@ -864,6 +870,28 @@ export class SessionService {
         }
       : null;
 
+    // P0 止血：首轮没有任何既有档案、候选人有效文本不足 4 字且没有图片时，不把
+    // "我是." 之类空壳消息送进抽取模型。规则轨若确有命中仍会在下方单独落档；纯空轮
+    // 直接返回，既省一次调用，也从入口消除弱模型"为了交卷补整套档案"的机会。
+    const effectiveCandidateTextLength = typedOrSelfMaterialMessages
+      .join('')
+      .normalize('NFKC')
+      .replace(/[\s\p{P}\p{S}]+/gu, '').length;
+    const hasVisualMessage = userMessages.some((message) =>
+      isVisualDescriptionText(visualKey(message)),
+    );
+    const skipLowInformationFirstTurn =
+      !previousFacts &&
+      effectiveCandidateTextLength < 4 &&
+      !hasVisualMessage &&
+      this.isLowInformationFirstTurnText(lastUserText);
+    if (skipLowInformationFirstTurn && !ruleFacts && !confirmedCityFact) {
+      this.logger.log(
+        `[extractFacts] 首轮有效文本不足 4 字且无图片，跳过 LLM 提取：「${lastUserText}」`,
+      );
+      return { llmDegraded: false, brandIntents: [] };
+    }
+
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
       if (!ruleFacts) {
         // 纯应答轮唯一可能携带的新事实就是确认裁决：有则单写 city 后再早退
@@ -884,24 +912,41 @@ export class SessionService {
       }
     }
 
+    const brandData = await this.sponge.fetchBrandList();
+
     // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
-    const prompt = buildSessionExtractionPrompt(
-      brandData,
-      currentMessage,
-      messagesToProcess,
-      aliasHints,
-      ruleFacts,
-      formatCurrentTime(),
-      previousFacts,
-    );
+    const prompt = skipLowInformationFirstTurn
+      ? ''
+      : buildSessionExtractionPrompt(
+          brandData,
+          currentMessage,
+          messagesToProcess,
+          aliasHints,
+          ruleFacts,
+          formatCurrentTime(),
+          previousFacts,
+        );
     const {
       facts: llmRaw,
       explicitProvenance,
       brandIntents: rawBrandIntents,
       laborFormIntent: extractedLaborFormIntent,
       degraded: llmDegraded,
-    } = await this.callLLM(prompt);
+    } = skipLowInformationFirstTurn
+      ? {
+          facts: FALLBACK_EXTRACTION,
+          explicitProvenance: [],
+          brandIntents: [],
+          laborFormIntent: null,
+          degraded: false,
+        }
+      : await this.callLLM(prompt);
+    if (skipLowInformationFirstTurn) {
+      this.logger.log(
+        `[extractFacts] 首轮有效文本不足 4 字且无图片，仅处理规则事实，跳过 LLM 提取`,
+      );
+    }
     this.emitLaborFormSemanticTrackDiff({
       corpId,
       userId,
@@ -941,11 +986,27 @@ export class SessionService {
         reason: droppedReason ?? 'auto_greeting_nickname',
       });
     }
-    let newFacts = this.applyExplicitProvenanceUpgrade(
+    const provenanceAdmission = this.applyExtractionProvenance(
       this.mergeRuleAndLlmFacts(sanitizedLlm, ruleFacts),
       explicitProvenance,
       userMessages,
+      previousFacts,
     );
+    let newFacts = provenanceAdmission.facts;
+    for (const item of provenanceAdmission.dropped) {
+      this.logger.warn(
+        `[extractFacts] 丢弃无候选人出处的首写字段 ${item.field}=${String(item.droppedValue)}`,
+      );
+      this.tracer?.emit({
+        type: 'extraction_field_dropped',
+        corpId,
+        userId,
+        chatId: sessionId,
+        field: item.field,
+        droppedValue: String(item.droppedValue),
+        reason: 'no_candidate_provenance',
+      });
+    }
 
     const currentTurnUserTexts: string[] = [];
     for (let i = scopedMessages.length - 1; i >= 0 && scopedMessages[i].role === 'user'; i--) {
@@ -1239,6 +1300,32 @@ export class SessionService {
     'household_register_province',
   ]);
 
+  /** 首次写入必须能从候选人手打语料复算的身份族字段。 */
+  private static readonly IDENTITY_FIRST_WRITE_FIELDS = new Set([
+    'age',
+    'gender',
+    'education',
+    'height',
+    'weight',
+    'experience',
+  ]);
+
+  /** session 字段名到确定性 quote 解析器字段名的映射。 */
+  private static readonly PROVENANCE_DERIVATION_FIELDS: Readonly<
+    Record<string, CandidateClaimField>
+  > = {
+    name: 'name',
+    phone: 'phone',
+    gender: 'gender',
+    age: 'age',
+    is_student: 'isStudent',
+    education: 'education',
+    has_health_certificate: 'healthCertificate',
+    height: 'height',
+    weight: 'weight',
+    household_register_province: 'householdProvince',
+  };
+
   /**
    * 两道确定性升档：先验证 LLM 来源声明，再以严格候选人原文补探针。
    *
@@ -1247,11 +1334,15 @@ export class SessionService {
    * 防 LLM 高报：声明必须附逐字 quote，且 quote 能在候选人消息原文中找到才生效；
    * 原文探针另行排除数字值、短值、引用块和视觉描述，且不为 name/phone 自动升档。
    */
-  private applyExplicitProvenanceUpgrade(
+  private applyExtractionProvenance(
     facts: SessionFacts,
     provenance: ExplicitProvenanceEntry[],
     userMessages: string[],
-  ): SessionFacts {
+    previousFacts: SessionFacts | null,
+  ): {
+    facts: SessionFacts;
+    dropped: Array<{ field: string; droppedValue: unknown }>;
+  } {
     const result: SessionFacts = {
       ...facts,
       interview_info: { ...facts.interview_info },
@@ -1260,6 +1351,71 @@ export class SessionService {
     const strictCandidateCorpus = userMessages
       .map((message) => stripQuotedBlocks(stripTimeContextSuffix(message)).trim())
       .filter((message) => message.length > 0 && !isVisualDescriptionText(message));
+    const provenanceFields = new Set<string>();
+
+    const quoteSupportsCurrentValue = (
+      field: string,
+      quote: string,
+      currentValue: unknown,
+    ): boolean => {
+      if (field === 'experience') {
+        return normalizedIncludes(quote, String(currentValue));
+      }
+      const derivationField = SessionService.PROVENANCE_DERIVATION_FIELDS[field];
+      if (!derivationField) return false;
+      const derived = deriveFieldValueFromQuote(derivationField, quote);
+      if (derived !== null) {
+        return candidateValuesEquivalent(derivationField, derived, currentValue);
+      }
+      if (
+        SessionService.IDENTITY_FIRST_WRITE_FIELDS.has(field) &&
+        normalizedIncludes(quote, String(currentValue)) &&
+        normalizedIncludes(String(currentValue), quote)
+      ) {
+        return true;
+      }
+      // 非首写身份族的旧升档字段（健康证等）有些没有覆盖所有表单格式；它们仍可用
+      // “quote 在语料中 + 当前值逐字包含”这条保守判据。六个首写身份字段不得走此兜底。
+      return (
+        !SessionService.IDENTITY_FIRST_WRITE_FIELDS.has(field) &&
+        normalizedIncludes(quote, String(currentValue))
+      );
+    };
+
+    const applyValidatedEvidence = (
+      field: string,
+      current: SessionFactValue<unknown>,
+      quote: string,
+      basis: ExplicitProvenanceEntry['basis'],
+    ): void => {
+      provenanceFields.add(field);
+      const evidence = truncateEvidence(quote);
+      const canUpgrade =
+        basis === 'stated' &&
+        field !== 'phone' &&
+        SessionService.EXPLICIT_UPGRADE_FIELDS.has(field);
+      if (
+        canUpgrade &&
+        sessionFactConfidenceRank(current.confidence) < sessionFactConfidenceRank('high')
+      ) {
+        const meta = {
+          confidence: 'high' as const,
+          source: 'candidate_quote' as const,
+          evidence,
+          extractedAt: new Date().toISOString(),
+        };
+        target[field] = { ...current, ...meta };
+        if (field === 'gender') {
+          target.gender_source = sessionFactValue('candidate' as const, meta);
+        }
+        this.logger.log(
+          `[extractFacts] 来源声明升级：${field} medium→high（候选人明确提供，quote 已复算）`,
+        );
+        return;
+      }
+      // inferred 只提供可复算证据；phone 按纠错口径永久锁 medium，不自动升档。
+      target[field] = { ...current, evidence };
+    };
 
     for (const entry of provenance) {
       // 容忍 "interview_info.phone" 与 "phone" 两种写法
@@ -1268,68 +1424,61 @@ export class SessionService {
 
       const quote = entry.quote?.trim();
       if (!quote || quote.length < 2) continue;
-      // 裁决 B3：phone 的升级 quote 只认候选人手打文本——证件/简历图描述里的号码
-      // quote 不得作为升 high 依据（medium 锁定，须经确认问答升级）。其余字段照旧。
-      const quoteCorpus = field === 'phone' ? strictCandidateCorpus : userMessages;
-      if (!quoteCorpus.some((message) => normalizedIncludes(message, quote))) {
+      if (!strictCandidateCorpus.some((message) => normalizedIncludes(message, quote))) {
         this.logger.debug(
-          `[extractFacts] explicit_provenance quote 未在候选人消息中找到，拒绝升级 ${field}`,
+          `[extractFacts] explicit_provenance quote 未在候选人手打语料中找到，拒绝 ${field}`,
         );
         continue;
       }
 
       const current = target[field];
       if (!isSessionFactValue(current)) continue;
-      if (sessionFactConfidenceRank(current.confidence) >= sessionFactConfidenceRank('high')) {
-        continue;
-      }
       if (field === 'phone' && !isStorableCandidatePhone(String(current.value))) continue;
-
-      const meta = {
-        confidence: 'high' as const,
-        source: 'candidate_quote' as const,
-        evidence: truncateEvidence(`候选人明确提供："${quote}"`),
-        extractedAt: new Date().toISOString(),
-      };
-      target[field] = { ...current, ...meta };
-      if (field === 'gender') {
-        target.gender_source = sessionFactValue('candidate' as const, meta);
-      }
-      this.logger.log(
-        `[extractFacts] 来源声明升级：${field} medium→high（候选人明确提供，quote 已验证）`,
-      );
+      if (!quoteSupportsCurrentValue(field, quote, current.value)) continue;
+      applyValidatedEvidence(field, current, quote, entry.basis);
     }
 
-    // 模型漏报 explicit_provenance 时，以候选人手打原文做第二条确定性升档通路。
-    // 只允许低碰撞字符串；姓名/事务字段由白名单排除，手机号与短值/纯数字继续锁定。
+    // 模型漏报/错报摘录时，以候选人手打原文做第二条确定性通路。与旧的字符串包含
+    // 探针不同，这里必须能用字段解析器从原话复算到当前值；数字与单字值因此也可安全采信。
     for (const field of SessionService.EXPLICIT_UPGRADE_FIELDS) {
       if (field === 'phone') continue;
       const current = target[field];
       if (!isSessionFactValue(current)) continue;
       if (current.confidence !== 'medium' || current.source !== 'model') continue;
-      if (typeof current.value !== 'string') continue;
-
-      const value = current.value.trim();
-      if (value.length < 2 || /^\d+$/u.test(value.normalize('NFKC'))) continue;
-      const matchedMessage = strictCandidateCorpus.find((message) =>
-        normalizedIncludes(message, value),
-      );
+      if (provenanceFields.has(field)) continue;
+      const isIdentityFirstWriteField = SessionService.IDENTITY_FIRST_WRITE_FIELDS.has(field);
+      const matchedMessage = strictCandidateCorpus.find((message) => {
+        if (isIdentityFirstWriteField) {
+          return quoteSupportsCurrentValue(field, message, current.value);
+        }
+        if (typeof current.value !== 'string') return false;
+        const value = current.value.trim();
+        return (
+          value.length >= 2 &&
+          !/^\d+$/u.test(value.normalize('NFKC')) &&
+          normalizedIncludes(message, value)
+        );
+      });
       if (!matchedMessage) continue;
-
-      const meta = {
-        confidence: 'high' as const,
-        source: 'candidate_quote' as const,
-        evidence: truncateEvidence(`原文探针命中："${matchedMessage}"`),
-        extractedAt: new Date().toISOString(),
-      };
-      target[field] = { ...current, ...meta };
-      if (field === 'gender') {
-        target.gender_source = sessionFactValue('candidate' as const, meta);
-      }
-      this.logger.log(`[extractFacts] 原文探针升级：${field} medium→high（候选人原文命中）`);
+      applyValidatedEvidence(field, current, matchedMessage, 'stated');
+      this.logger.log(`[extractFacts] 原文探针复算命中：${field}`);
     }
 
-    return result;
+    const dropped: Array<{ field: string; droppedValue: unknown }> = [];
+    const previousInfo = previousFacts?.interview_info as unknown as
+      | Record<string, unknown>
+      | undefined;
+    for (const field of SessionService.IDENTITY_FIRST_WRITE_FIELDS) {
+      const current = target[field];
+      if (!isSessionFactValue(current) || current.source !== 'model') continue;
+      if (previousInfo && hasMeaningfulValue(unwrapSessionFactValue(previousInfo[field]))) continue;
+      if (provenanceFields.has(field)) continue;
+      dropped.push({ field, droppedValue: current.value });
+      target[field] = null;
+      if (field === 'gender') target.gender_source = null;
+    }
+
+    return { facts: result, dropped };
   }
 
   private ensureSessionFacts(facts: EntityExtractionResult | SessionFacts): SessionFacts {
@@ -1349,11 +1498,15 @@ export class SessionService {
     return pattern.test(text);
   }
 
-  private buildLlmFactEvidence(reasoning: string | null | undefined): string {
-    const trimmed = reasoning?.trim();
-    // evidence 只服务排障，入库前截断；reasoning 全文曾把每个字段的 evidence 撑到
-    // 600+ 字并经沉淀永久污染长期画像、重复注入 prompt。
-    return trimmed ? truncateEvidence(`LLM 结构化提取：${trimmed}`) : 'LLM 结构化提取';
+  /** 短文本里只有寒暄/应答或未完成的“我是…”开场才属于低信息，单字性别等有效值不跳。 */
+  private isLowInformationFirstTurnText(text: string): boolean {
+    return this.isPureAcknowledgment(text) || /^我是[.。…]*$/u.test(text);
+  }
+
+  private buildLlmFactEvidence(_reasoning: string | null | undefined): string {
+    // reasoning 是模型叙事，可能包含"从简历文件中提取"之类不可验证的自证；它只留在
+    // facts.reasoning 排障位，不再扇出为每个字段的 evidence。字段证据由出处摘录覆盖。
+    return 'LLM 结构化提取';
   }
 
   /**

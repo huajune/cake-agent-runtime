@@ -264,7 +264,7 @@ export const EntityExtractionResultSchema = z.object({
     .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),
 });
 
-/** LLM 声明的"候选人明确提供"字段及其原文证据。 */
+/** LLM 声明的字段级依据摘录：直接陈述可升档，白名单推断只提供证据。 */
 export const ExplicitProvenanceEntrySchema = z.object({
   field: z
     .string()
@@ -272,6 +272,10 @@ export const ExplicitProvenanceEntrySchema = z.object({
   quote: z
     .string()
     .describe('候选人原话中的逐字片段（必须能在候选人消息里原样找到，否则该声明无效）'),
+  basis: z
+    .enum(['stated', 'inferred'])
+    .default('stated')
+    .describe('stated=候选人直接陈述；inferred=仅按提示词白名单推断（只作证据，不升档）'),
 });
 
 export type ExplicitProvenanceEntry = z.infer<typeof ExplicitProvenanceEntrySchema>;
@@ -323,9 +327,10 @@ export const LLMEntityExtractionResultSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      '候选人明确提供的 interview_info 字段清单：凡候选人原话直接支持的字段都应列入；' +
+      'interview_info 字段的依据摘录清单：凡候选人原话直接支持或可按白名单推断的字段都应列入；' +
         'quote 必须是候选人消息中的逐字连续片段，禁止改写、翻译、概括或拼接；' +
-        '仅由上下文推断、助手提及后候选人仅附和、或转发文案中的字段一律不列，解释只写 reasoning',
+        'basis=stated 表示直接陈述，basis=inferred 表示白名单推断；' +
+        '助手提及后候选人仅附和、或转发文案中的字段一律不列，解释只写 reasoning',
     ),
   brand_intents: z
     .array(BrandIntentEntrySchema)
