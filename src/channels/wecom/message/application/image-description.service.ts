@@ -14,12 +14,12 @@ import {
   finalizeVisualFactSheet,
   sanitizeVisualDescription,
   type FinalizedVisualFactSheet,
-} from '@resolution/visual';
+} from '@resolution/signal/visual';
 import {
   appendResumeAttachmentLine,
   EMOTION_MESSAGE_PREFIX,
   IMAGE_MESSAGE_PREFIX,
-} from '@infra/utils/message-markup.util';
+} from '@resolution/signal/markers';
 import { z } from 'zod';
 
 /** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */

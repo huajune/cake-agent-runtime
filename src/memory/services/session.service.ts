@@ -80,14 +80,14 @@ import {
   isSelfReportedVisualMessage,
   parseStoredVisualFactSheet,
   type FinalizedVisualFactSheet,
-} from '@resolution/visual';
+} from '@resolution/signal/visual';
 import { mapLocationCityCandidates } from '@resolution/evidence/admission';
 import { stripTimeContextSuffix } from '@resolution/candidate/name';
 import {
   isVisualDescriptionText,
   parseTimeContextAt,
   stripTimeContext,
-} from '@infra/utils/message-markup.util';
+} from '@resolution/signal/markers';
 import { formatCurrentTime } from '@infra/utils/date.util';
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';

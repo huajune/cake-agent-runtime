@@ -1,5 +1,5 @@
 import { resolveNameAnsweredToRealNameAsk } from './producers/name-confirmation';
-import { extractCandidateTexts } from './corpus';
+import { extractCandidateTexts } from '@resolution/signal/self-report';
 import type {
   AdjudicatedClaim,
   CandidateClaimField,
@@ -69,7 +69,7 @@ export interface AdjudicationRunResult {
  * `[图片 messageId=…]` 占位标签，消息级 startsWith 判据会落空。
  * 候选人自己的简历图片是自陈材料，按既有裁定保留。
  */
-export { extractCandidateTexts } from './corpus';
+export { extractCandidateTexts } from '@resolution/signal/self-report';
 
 export function runCandidateFactAdjudication(params: RunAdjudicationParams): AdjudicationRunResult {
   const now = params.now ?? new Date();

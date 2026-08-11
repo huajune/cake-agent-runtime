@@ -10,7 +10,7 @@ import {
 } from '@enums/storage-message.enum';
 import { ChatMessageRecord } from '../entities/chat-message.entity';
 import { ChatMessageInput, ChatSessionSummary } from '../types/message.types';
-import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@infra/utils/message-markup.util';
+import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@resolution/signal/markers';
 
 /**
  * 聊天消息 Repository

@@ -5,7 +5,7 @@ import {
   resolveCityFromLocation,
   scanGeoSignalsFromText,
 } from '@resolution/geo';
-import { isVisualDescriptionText } from '@infra/utils/message-markup.util';
+import { isVisualDescriptionText } from '@resolution/signal/markers';
 
 export type CityClaimProducer =
   | 'rule'

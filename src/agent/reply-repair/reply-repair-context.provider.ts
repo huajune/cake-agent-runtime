@@ -5,7 +5,7 @@ import type { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { MemoryService } from '@memory/memory.service';
-import { stripTimeContext } from '@infra/utils/message-markup.util';
+import { stripTimeContext } from '@resolution/signal/markers';
 import type {
   InvitedGroupRecord,
   RecommendedJobSummary,

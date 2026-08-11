@@ -8,7 +8,7 @@ import { isNameOnlyQuotedSpeaker } from './identity-gates';
 import { isDigitsOnlyName } from '@resolution/candidate/name';
 import { isPlausibleAgeValue } from '@resolution/candidate/age';
 import { isRecognizedCityName, resolveCityFromDistrict } from '@resolution/geo';
-import { hasSelfReportedPhoneProvenance } from './corpus';
+import { hasSelfReportedPhoneProvenance } from '@resolution/signal/self-report';
 import {
   hasFieldProvenanceInWindow,
   hasHealthCertificateTopicEvidence,
@@ -16,13 +16,13 @@ import {
   isStorableCandidatePhone,
 } from './admission-gates';
 import { detectScalarFanoutValues, SCALAR_FANOUT_FIELD_THRESHOLD } from './admission-gates';
-import { isVisualDescriptionText } from '@infra/utils/message-markup.util';
+import { isVisualDescriptionText } from '@resolution/signal/markers';
 import {
   isSelfReportedVisualMessage,
   type FinalizedVisualFactSheet,
   type VisualFactFieldKey,
   type VisualFactKind,
-} from '@resolution/visual';
+} from '@resolution/signal/visual';
 
 export type DroppedNameReason = 'auto_greeting_nickname' | 'honorific_suffix';
 

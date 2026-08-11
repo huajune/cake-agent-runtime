@@ -3,7 +3,7 @@ import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { isAssistantEchoUtterance, isSystemTextReflow } from '@resolution/brand/llm-intent-guards';
-import { stripQuotedBlocks, stripTimeContext } from '@infra/utils/message-markup.util';
+import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 
 export interface BrandAliasHint {
   brandName: string;

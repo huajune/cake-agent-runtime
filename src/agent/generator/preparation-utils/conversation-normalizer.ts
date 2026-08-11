@@ -4,7 +4,7 @@ import { CallerKind } from '@/enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
 import { type GeneratorInputMessage } from '../generator.types';
-import { formatImageCountPlaceholder } from '@infra/utils/message-markup.util';
+import { formatImageCountPlaceholder } from '@resolution/signal/markers';
 
 /**
  * 对话消息归一化（PreparationService 的纯函数辅助层）：

@@ -1,7 +1,5 @@
-import {
-  isIdentityAskMessage,
-  stripMessageDecorations,
-} from '@resolution/candidate/student-identity';
+import { isIdentityAskMessage } from '@resolution/candidate/student-identity';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 import {
   isPlaceholderPhone as isCandidatePlaceholderPhone,
   isStorableCandidatePhone as isCandidatePhoneStorable,

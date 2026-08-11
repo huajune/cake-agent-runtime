@@ -24,8 +24,8 @@ import {
   SupplementClassification,
 } from '@tools/utils/supplement-label-classifier';
 import { isStrictRealChineseName } from '@resolution/candidate/name';
-import { stripQuotedBlocks } from '@infra/utils/message-markup.util';
-import { fieldValues } from '@resolution/visual';
+import { stripQuotedBlocks } from '@resolution/signal/markers';
+import { fieldValues } from '@resolution/signal/visual';
 import { isNameOnlyQuotedSpeaker } from '@resolution/evidence/identity-gates';
 import {
   normalizeEducationValue,

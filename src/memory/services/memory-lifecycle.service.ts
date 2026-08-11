@@ -13,7 +13,7 @@ import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
-import { stripQuotedBlocks, stripTimeContext } from '@infra/utils/message-markup.util';
+import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import type {
   LongTermPreferenceFacts,

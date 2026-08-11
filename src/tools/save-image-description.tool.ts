@@ -28,12 +28,12 @@ import {
   finalizeVisualFactSheet,
   sanitizeVisualDescription,
   isResumeImageDescription,
-} from '@resolution/visual';
+} from '@resolution/signal/visual';
 import {
   appendResumeAttachmentLine,
   EMOTION_MESSAGE_PREFIX,
   IMAGE_MESSAGE_PREFIX,
-} from '@infra/utils/message-markup.util';
+} from '@resolution/signal/markers';
 
 const logger = new Logger('save_image_description');
 

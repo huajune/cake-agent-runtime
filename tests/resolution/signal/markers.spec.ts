@@ -10,7 +10,7 @@ import {
   stripResumeAttachmentLines,
   stripTimeContext,
   stripVisualPrefix,
-} from '@/infra/utils/message-markup.util';
+} from '@/resolution/signal/markers';
 
 /**
  * 标记协议收口回归（2026-08-07）。

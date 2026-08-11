@@ -6,25 +6,25 @@ import {
   VISUAL_FACT_FIELD_KEY_PROMPT,
   VISUAL_FACT_KINDS,
   VISUAL_FACT_KIND_PROMPT,
-} from '@/resolution/visual';
+} from '@/resolution/signal/visual';
 
 /**
  * 视觉事实词表的「单一居所」守卫。
  *
- * 背景：kind / field key / ownership 三张词表原本在 resolution/visual 有权威常量，
+ * 背景：kind / field key / ownership 三张词表在 resolution/signal 有权威常量，
  * 却被两个生产者（channels P1 预描述、tools P2 工具）各手抄了一份进 zod schema 与
  * describe 文案。其中 key 词表最危险——schema 刻意收 string 而非 enum，模型能否
  * 产出合法 key 全靠 describe 里那句词表；漂移了不报错、不抛类型错，只是静默少收
  * 一类事实。本 spec 把「只有一处定义」变成可执行断言。
  */
 
-const REPO_SRC = join(__dirname, '../../../src');
+const REPO_SRC = join(__dirname, '../../../../src');
 const PRODUCERS = [
   'tools/save-image-description.tool.ts',
   'channels/wecom/message/application/image-description.service.ts',
 ];
 
-describe('resolution/visual · 词表单一居所', () => {
+describe('resolution/signal/visual · 词表单一居所', () => {
   it('生成的 kind 提示串覆盖且仅覆盖权威 kind 词表', () => {
     for (const kind of VISUAL_FACT_KINDS) {
       expect(VISUAL_FACT_KIND_PROMPT).toContain(`${kind}=`);
@@ -49,7 +49,7 @@ describe('resolution/visual · 词表单一居所', () => {
     expect(source).not.toContain('map_location=地图');
 
     // 反向确认：确实是从权威常量取的
-    expect(source).toContain('@resolution/visual');
+    expect(source).toContain('@resolution/signal/visual');
   });
 
   it('ownership 词表本身未被改动（消费端 finalize 默认值规则依赖此顺序与取值）', () => {

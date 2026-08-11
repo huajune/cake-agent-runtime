@@ -1,6 +1,9 @@
 import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
-import { finalizeVisualFactSheet, type FinalizedVisualFactSheet } from '@/resolution/visual';
+import {
+  finalizeVisualFactSheet,
+  type FinalizedVisualFactSheet,
+} from '@/resolution/signal/visual';
 
 function extractRuleFacts(...args: Parameters<typeof produceRuleFactClaims>) {
   return projectRuleFactClaims(produceRuleFactClaims(...args));

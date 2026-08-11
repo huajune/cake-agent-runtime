@@ -1,4 +1,4 @@
-import { hasResumeAttachmentLine, stripVisualPrefix } from '@infra/utils/message-markup.util';
+import { hasResumeAttachmentLine, stripVisualPrefix } from '../markers';
 import {
   VISUAL_FACT_FIELD_KEYS,
   VisualFactSheetSchema,
@@ -121,14 +121,14 @@ export function fieldValues(
     .map((f) => f.value);
 }
 
-// ── 视觉消息的域内判定（标记形态本身住 @infra/utils/message-markup） ──────────
+// ── 视觉消息的域内判定（标记形态本身住 ../markers） ──────────────────────────
 
 /**
  * 简历图片识别：resume kind 的文本兜底判据，sheet 缺失/降级时靠它保住简历链路。
  * 判据不得与 vision prompt 的 resume 口径漂移：save-image-description.tool 与
  * image-description.service 仍在做 legacy vs sheet 并跑分歧告警，删旧判据前需一致率达标。
  *
- * evidence/corpus 直接消费本判据，sheet 优先、文本标记兜底，避免简历口径再分叉。
+ * signal/self-report 直接消费本判据，sheet 优先、文本标记兜底，避免简历口径再分叉。
  */
 export function isResumeImageDescription(description: string): boolean {
   return /^[「\[【]?(?:手写)?(?:简历|履历)/u.test(description.trim());

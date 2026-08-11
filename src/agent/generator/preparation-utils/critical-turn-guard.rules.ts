@@ -10,7 +10,7 @@
  * - target=current：只匹配本轮用户输入（末尾连续 user 块）；
  * - target=combined：匹配近 12 条对话 + 本轮输入的拼接文本。
  */
-import { LOCATION_SHARE_MARKER_RE } from '@infra/utils/message-markup.util';
+import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
 
 const LOCATION_CONTEXT_PATTERN = new RegExp(

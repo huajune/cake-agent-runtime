@@ -6,7 +6,7 @@ import { decideLaborFormIntent } from '@resolution/labor-form';
 import { parseLocationShareCoords } from '@resolution/evidence/producers/location-share';
 import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
 import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
-import { extractCandidateTexts } from '@resolution/evidence/corpus';
+import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';

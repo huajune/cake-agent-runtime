@@ -5,7 +5,7 @@ import { scanGeoSignalsFromText } from '@resolution/geo';
 import {
   extractLocationShareLabels,
   stripQuotedBlocks as stripQuotedBlocksMarkup,
-} from '@infra/utils/message-markup.util';
+} from '@resolution/signal/markers';
 import {
   extractStructuredName as extractCandidateStructuredName,
   normalizeGenderValue as normalizeCandidateGenderValue,
@@ -21,7 +21,7 @@ import {
 } from '@resolution/candidate';
 import { matchIdentityStatement } from '@resolution/candidate/student-identity';
 import { decideLaborFormIntent } from '@resolution/labor-form';
-import { fieldValues, type FinalizedVisualFactSheet } from '@resolution/visual';
+import { fieldValues, type FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import { resolveExtractionScope } from '@resolution/evidence/admission';
 import type {
   RuleFactClaim,
@@ -126,7 +126,7 @@ interface LocationSignals {
  * 不是候选人自陈——必须在规则提取前剥离，否则所有 extract* 函数都会误提取引用块内的
  * 实体（品牌解析同理：引用块里的品牌是经理的话）。
  *
- * 标记形态（`[引用 XXX：…]` / 行首 `引用 XXX：`）见 @infra/utils/message-markup；
+ * 标记形态（`[引用 XXX：…]` / 行首 `引用 XXX：`）见 @resolution/signal/markers；
  * 此处保留具名转出，因为 6 个提取路径消费的是"提取前先剥引用"这条语义。
  */
 export const stripQuotedBlocks = stripQuotedBlocksMarkup;
@@ -325,7 +325,7 @@ function applyFieldExtractor(
 }
 
 // 提取授权域（kind → identity/phone/preferences/geo）已收拢至
-// @resolution/visual 的 visual-fact.policy：规则只由 sheet kind 决定，与消费点无关，
+// @resolution/evidence/admission：规则只由 sheet kind 决定，与消费点无关，
 // 且在域内有 Record<VisualFactKind,…> 的加档编译期约束。
 
 export interface ProduceRuleFactClaimsOptions {

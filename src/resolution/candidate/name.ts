@@ -7,7 +7,7 @@
  * 与 tools/shared/candidate-field-parser 两轨，2026-08 合一于此）。
  */
 
-import { stripTimeContext } from '@infra/utils/message-markup.util';
+import { stripTimeContext } from '@resolution/signal/markers';
 
 /**
  * 微信加好友自动打招呼语「（你好，）我是XX」的昵称提取。XX 通常是微信昵称而非真名——

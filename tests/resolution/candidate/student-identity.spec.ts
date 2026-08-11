@@ -10,9 +10,9 @@ import {
   matchIdentityStatement,
   matchIdentityEvidence,
   resolveIdentityFlipAfterRejection,
-  stripMessageDecorations,
   summarizeIdentityAskRounds,
 } from '@resolution/candidate/student-identity';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 
 const TS = '[消息发送时间：2026-07-15 17:33 星期三]';
 

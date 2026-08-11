@@ -12,9 +12,9 @@ import { normalizePolicyText } from '@tools/utils/job-policy-parser';
 import { API_BOOKING_USER_REQUIRED_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 import { orderFields } from '@tools/duliday/precheck/checklist.util';
 import { dedupeStrings } from '@tools/duliday/precheck/field-normalize.util';
-import { extractMessageText } from '@infra/utils/message-markup.util';
+import { extractMessageText } from '@resolution/signal/markers';
 
-export { extractMessageText } from '@infra/utils/message-markup.util';
+export { extractMessageText } from '@resolution/signal/markers';
 
 const COLLECTION_RESISTANCE_PATTERNS = [
   { label: '这么多信息', pattern: /这么多(信息|资料|内容|东西|问题)/ },

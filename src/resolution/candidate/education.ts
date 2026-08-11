@@ -1,5 +1,5 @@
 import { findSpongeEducationIdByLabel } from '@sponge/sponge.enums';
-import { containsLocationShareMarkup } from '@infra/utils/message-markup.util';
+import { containsLocationShareMarkup } from '@resolution/signal/markers';
 
 const EDUCATION_KEYWORDS: Array<[RegExp, string]> = [
   [/博士/u, '博士'],

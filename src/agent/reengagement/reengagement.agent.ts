@@ -14,7 +14,7 @@ import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob } from './follow-up-scheduler.service';
 import type { FollowUpScenario } from './scenario-registry';
 import type { ReengagementBookingContext } from './booking-context';
-import { stripTimeContext } from '@infra/utils/message-markup.util';
+import { stripTimeContext } from '@resolution/signal/markers';
 import { redactCandidatePhones } from '@resolution/candidate/phone';
 
 // 复聊记忆用主动复聊专用 recall：结构化事实已过 formatExtractionFactLines（含陈旧告警），

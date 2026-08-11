@@ -36,7 +36,7 @@ import type {
   TestRuntimeScope,
   TestSourceTrace,
 } from '../types/test-debug-trace.types';
-import { IMAGE_MESSAGE_PREFIX } from '@infra/utils/message-markup.util';
+import { IMAGE_MESSAGE_PREFIX } from '@resolution/signal/markers';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';

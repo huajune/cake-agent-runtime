@@ -1,6 +1,6 @@
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { scanGeoSignalsFromText } from '@resolution/geo';
-import type { FinalizedVisualFactSheet } from '@resolution/visual';
+import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import { mapLocationCityCandidates } from '@resolution/evidence/admission';
 
 /**

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * 视觉事实域（resolution/visual）—— 图片/表情消息结构化事实的唯一类型定义点。
+ * 视觉信号域（resolution/signal/visual）—— 图片/表情消息结构化事实的唯一类型定义点。
  *
  * 设计依据：docs/architecture/visual-fact-pipeline.md（附录 A 为字段白名单与裁决
  * 记录的唯一权威；前身三份 2026-08-05 立项文档已整合进该文，全文存 git 历史）。

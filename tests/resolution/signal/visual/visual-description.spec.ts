@@ -1,11 +1,10 @@
 import {
   hasSelfReportedPhoneProvenance,
   keepSelfReportedMessages,
-} from '@resolution/evidence/corpus';
+} from '@resolution/signal/self-report';
 import { isDigitsOnlyName } from '@resolution/candidate/name';
-import { isSelfReportedVisualMessage as isResumeImageMessage } from '@resolution/visual';
-// 标记形态判定已收拢至 @infra/utils/message-markup（原 isVisualDescriptionMessage）
-import { isVisualDescriptionText as isVisualDescriptionMessage } from '@/infra/utils/message-markup.util';
+import { isSelfReportedVisualMessage as isResumeImageMessage } from '@resolution/signal/visual';
+import { isVisualDescriptionText as isVisualDescriptionMessage } from '@/resolution/signal/markers';
 import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
 

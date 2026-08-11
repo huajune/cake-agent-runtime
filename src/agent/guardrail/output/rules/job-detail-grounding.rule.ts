@@ -4,7 +4,7 @@ import type {
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { stripMessageDecorations } from '@resolution/candidate/student-identity';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 import type { RuleContradiction } from '../output-rule.types';
 
 interface JobDetailQueryRule {

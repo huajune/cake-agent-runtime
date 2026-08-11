@@ -11,9 +11,11 @@
  * 同源——identity 锚定识别器整句匹配没先剥时间后缀（v10.13.0 修了也没生效）、引用
  * 前缀里招募经理的名字被当候选人姓名预填进报名。
  *
- * 放在 infra/utils 是因为剥标记的人分布在四个域，这是唯一谁都能拿、不产生反向依赖的
- * 位置（与 date.util / string.util 同性质）。新增标记请在此加一组，顺带回答"谁剥"。
+ * 标记的写入者与消费者横跨 channels/tools/memory/agent；协议本身归 resolution/signal，
+ * 由所有调用方共享。新增标记请在此加一组，顺带回答“谁写、谁剥”。
  */
+
+import type { LocationShareCoordinates } from './types';
 
 // ── 时间上下文后缀 `[消息发送时间：2026-06-03 12:11 星期三]` ──────────────────
 
@@ -79,6 +81,16 @@ const QUOTE_SPEAKER_RE = /\[引用\s*([^：\n]{1,40})：/g;
  */
 export function stripQuotedBlocks(text: string, replaceWith = ''): string {
   return text.replace(QUOTE_BLOCK_RE, replaceWith).replace(QUOTE_LINE_RE, replaceWith).trim();
+}
+
+/**
+ * 剥离引用块与时间戳装饰。候选人自陈类匹配统一先过这一步。
+ *
+ * 时间标记用 `\n` 替换而非删除：debounce 合并消息可能内嵌多个标记，直接删会把
+ * 前后两句粘成一句，破坏整句锚定判据。
+ */
+export function stripMessageDecorations(text: string): string {
+  return stripTimeContext(stripQuotedBlocks(text), '\n').trim();
 }
 
 /** 文本里所有引用前缀的发言人（被引用方显示名，多为招募经理）。 */
@@ -170,11 +182,6 @@ export const LOCATION_SHARE_MARKER_RE = /\[位置分享\]|\[经纬度:/u;
 
 const LOCATION_SHARE_BLOCK_RE = /\[位置分享\](?:(?!\[经纬度:)[^\n])*(?:\[经纬度:[^\]]+\])?/gu;
 const LOCATION_COORDS_RE = /\[经纬度:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/gu;
-
-export interface LocationShareCoordinates {
-  latitude: number;
-  longitude: number;
-}
 
 export interface LocationSharePayload {
   name?: string;

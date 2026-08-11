@@ -1,8 +1,4 @@
-import {
-  extractMessageText,
-  stripQuotedBlocks,
-  stripTimeContext,
-} from '@infra/utils/message-markup.util';
+import { extractMessageText, stripMessageDecorations } from '@resolution/signal/markers';
 
 /**
  * 候选人「学生 / 社会人士」身份自认的唯一识别器。
@@ -35,16 +31,6 @@ export interface IdentityEvidence {
   evidence: string;
   /** 会话级扫描时对应 messages 数组的位置；单消息识别不填。 */
   messageIndex?: number;
-}
-
-/**
- * 剥离引用块与时间戳装饰。所有身份匹配前必须先过这一步。
- *
- * 时间标记用 `'\n'` 替换而非删除：debounce 合并的消息会内嵌多个标记，直接删会把
- * 前后两句粘成一句，破坏整句锚定判据。标记形态见 @infra/utils/message-markup。
- */
-export function stripMessageDecorations(text: string): string {
-  return stripTimeContext(stripQuotedBlocks(text), '\n').trim();
 }
 
 // —— 单值答案分类（宽松子串级）——————————————————————————————————————

@@ -6,7 +6,7 @@ import { resolveCityFromDistrict } from '@resolution/geo';
 import type { ShortTermMessage } from '@memory/types/short-term.types';
 import type { CityFact, EntityExtractionResult } from '@memory/types/session-facts.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
-import { stripTimeContext } from '@infra/utils/message-markup.util';
+import { stripTimeContext } from '@resolution/signal/markers';
 
 const LOCATION_CONTINUATION_PATTERN =
   /(?:附近|周边|旁边|周围|这边|那边|这里|那里|近一点|近点|离这|离那)/;
@@ -23,7 +23,7 @@ function cityValue(city: CityFact | string | null | undefined): string | undefin
   return typeof city === 'string' ? city : city.value;
 }
 
-/** 剥时间标记后 trim（标记形态见 @infra/utils/message-markup）。 */
+/** 剥时间标记后 trim（标记形态见 @resolution/signal/markers）。 */
 function stripTimeMarkers(content: string): string {
   return stripTimeContext(content).trim();
 }

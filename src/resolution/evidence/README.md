@@ -23,8 +23,13 @@
 **入档准入（memory 写入前的门）**
 - `admission.ts` — 准入主链 + 授权域（哪些消息允许写哪些字段）
 - `admission-gates.ts` — 臆造门族 + 形状门（示例回声 / 出处断言 / 扇出熔断 / 城市年龄形状）
-- `corpus.ts` — 自陈语料判定原语（两侧共用底座）
 - `merge.ts` — rule claim 逐字段裁决与 rule×LLM 合并视图
+
+**跨工序信号输入（所有权在 `resolution/signal/`，evidence 只消费）**
+- `signal/self-report.ts` — 候选人自陈语料选择与手机号出处核验
+- `signal/dialogue.ts` — user 文本、对话轮次、引用发言人及确认短答
+- `signal/markers.ts` — 时间、引用、视觉、附件、位置等消息标记协议
+- `signal/visual/` — 视觉 sheet schema、归属规则、脱敏与存储解析
 
 **动作授权（tools 执行前的闸，判过即弃、不产事实）**
 - `identity-gates.ts` — booking 姓名 / 手机号闸

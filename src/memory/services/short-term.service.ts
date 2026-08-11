@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { appendTimeContext } from '@infra/utils/message-markup.util';
+import { appendTimeContext } from '@resolution/signal/markers';
 import { formatCurrentTime } from '@infra/utils/date.util';
 import { MemoryConfig } from '../memory.config';
 import type { ShortTermMessage } from '../types/short-term.types';

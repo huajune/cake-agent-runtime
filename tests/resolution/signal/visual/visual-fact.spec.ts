@@ -5,16 +5,16 @@ import {
   isSelfReportedVisualMessage,
   parseStoredVisualFactSheet,
   sanitizeVisualDescription,
-} from '@/resolution/visual';
+} from '@/resolution/signal/visual';
 import {
   EMOTION_MESSAGE_PREFIX,
   IMAGE_MESSAGE_PREFIX,
   isVisualDescriptionText,
   stripResumeAttachmentLines,
   stripVisualPrefix,
-} from '@/infra/utils/message-markup.util';
+} from '@/resolution/signal/markers';
 
-describe('resolution/visual · finalizeVisualFactSheet', () => {
+describe('resolution/signal/visual · finalizeVisualFactSheet', () => {
   const DESC = 'BOSS直聘岗位卡片：达美乐-兼职服务员，佛山南海区桂城';
 
   it('job_posting 字段默认归 publisher；candidate_address 例外归 candidate（裁决 A7）', () => {
@@ -120,7 +120,7 @@ describe('resolution/visual · finalizeVisualFactSheet', () => {
   });
 });
 
-describe('resolution/visual · 文本识别（与 channels 旧实现逐字一致）', () => {
+describe('resolution/signal/visual · 文本识别（与 channels 旧实现逐字一致）', () => {
   it('isResumeImageDescription 与旧正则同判', () => {
     expect(isResumeImageDescription('简历图片：姓名张三')).toBe(true);
     expect(isResumeImageDescription('手写简历，姓名张三')).toBe(true);

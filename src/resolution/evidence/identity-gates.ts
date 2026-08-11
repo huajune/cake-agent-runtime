@@ -8,7 +8,7 @@
  * candidate/name-qa，2026-08-10 按「动作授权归 evidence、与 city-confirmation 对称」拆分至此。
  *
  * 闸门判定用完即弃、不产事实（"判过/为何拒"由调用方落观测）；问答证据的产出在
- * ./producers/name-confirmation，语料原语在 ./corpus。
+ * ./producers/name-confirmation，语料原语在 @resolution/signal/dialogue。
  */
 
 import { isFromAutoGreeting, parseName } from '@resolution/candidate';
@@ -19,7 +19,7 @@ import {
   isAffirmativeAnswer,
   normalizeShortAnswer,
   stripQuoteBlocks,
-} from './corpus';
+} from '@resolution/signal/dialogue';
 import {
   isNameAnsweredToRealNameAsk,
   isNameConfirmedInDialogue,

@@ -4,7 +4,7 @@ import type {
   CandidateCollectedField,
   CandidateFieldKey,
 } from '@resolution/candidate/collected-fields';
-import type { FinalizedVisualFactSheet } from '@resolution/visual';
+import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 
 /** 本轮 geocode 成功解析的锚点记录。 */
 export interface GeocodeResolvedAnchor {

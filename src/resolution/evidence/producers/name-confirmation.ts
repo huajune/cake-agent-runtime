@@ -3,17 +3,17 @@
  *
  * 「Agent 索要/复述真名 → 候选人应答」的跨轮问答对，是姓名字段的亲证渠道之一：
  * 本文件只产出证据结论（某个名字被问答确证了吗），动作授权在 ../identity-gates。
- * 语料原语（extractDialogueTurns / 肯定应答词表）在 ../corpus，与 city 侧共用底座。
+ * 语料原语（extractDialogueTurns / 肯定应答词表）在 signal/dialogue，与 city 侧共用底座。
  */
 
 import { isStrictRealChineseName } from '@resolution/candidate';
-import { stripTimeContext } from '@infra/utils/message-markup.util';
+import { stripTimeContext } from '@resolution/signal/markers';
 import {
   extractDialogueTurns,
   isAffirmativeAnswer,
   normalizeShortAnswer,
   stripQuoteBlocks,
-} from '../corpus';
+} from '@resolution/signal/dialogue';
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

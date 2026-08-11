@@ -1,6 +1,5 @@
 import { scanGeoSignalsFromText } from '@resolution/geo';
-import { stripTimeContext } from '@infra/utils/message-markup.util';
-import { stripQuotedBlocks } from '@infra/utils/message-markup.util';
+import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 
 /**
  * 确认问答裁决（候选人资料证据化 P1，证据渠道 T1「confirmation」）。
@@ -44,7 +43,7 @@ const PURE_AFFIRMATION_PATTERN = new RegExp(
 );
 const MAX_AFFIRMATION_TEXT_LENGTH = 10;
 
-/** 剥时间标记后 trim（标记形态见 @infra/utils/message-markup）。 */
+/** 剥时间标记后 trim（标记形态见 @resolution/signal/markers）。 */
 function stripTimeMarkers(content: string): string {
   return stripTimeContext(content).trim();
 }

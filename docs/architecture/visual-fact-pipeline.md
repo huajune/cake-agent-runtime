@@ -101,7 +101,7 @@
 
 ## 三、核心数据结构
 
-`src/resolution/visual/`（与 brand/geo 同构的解析域：纯确定性、零 LLM、仅依赖 zod）。三个文件分工：
+`src/resolution/signal/visual/`（信号轴上的视觉解析域：纯确定性、零 LLM、仅依赖 zod）。三个文件分工：
 `visual-fact.types`（schema + 模型侧词表）/ `visual-fact.util`（finalize 归属、脱敏、存储解析、窗口文本渲染识别）。
 消费侧授权属于候选人档案准入策略，统一位于 `resolution/evidence/admission.ts`，不再由 visual 域拥有：
 

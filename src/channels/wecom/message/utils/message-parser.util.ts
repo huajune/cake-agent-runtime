@@ -22,7 +22,7 @@ import {
   formatLocationShare,
   IMAGE_MESSAGE_PREFIX,
   stripTimeContext as stripTimeMarkup,
-} from '@infra/utils/message-markup.util';
+} from '@resolution/signal/markers';
 import { formatCurrentTime as formatCurrentTimeInShanghai } from '@infra/utils/date.util';
 
 /**
@@ -35,10 +35,10 @@ import { formatCurrentTime as formatCurrentTimeInShanghai } from '@infra/utils/d
  * 命中后由 ImageDescriptionService / save_image_description 在回写内容时追加
  * "简历附件：URL" 行，复用 PDF 文件简历的事实提取（extractUploadResume）与报名上传链路。
  */
-// 已迁出本文件：简历判据归 @resolution/visual（视觉域判定），简历附件行归
-// @infra/utils/message-markup（标记协议）。原位 re-export 兼容既有调用方。
-export { isResumeImageDescription } from '@resolution/visual';
-export { stripResumeAttachmentLines } from '@infra/utils/message-markup.util';
+// 已迁出本文件：简历判据归 @resolution/signal/visual，简历附件行归
+// @resolution/signal/markers。原位 re-export 兼容既有调用方。
+export { isResumeImageDescription } from '@resolution/signal/visual';
+export { stripResumeAttachmentLines } from '@resolution/signal/markers';
 
 /**
  * 消息解析工具类

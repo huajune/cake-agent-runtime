@@ -1,4 +1,4 @@
-import { extractQuotedSpeakers, extractUserTexts } from '@resolution/evidence/corpus';
+import { extractQuotedSpeakers, extractUserTexts } from '@resolution/signal/dialogue';
 import { countRealNameAsks, isNameConfirmedInDialogue, isNameProvidedAfterAsk } from '@resolution/evidence/producers/name-confirmation';
 import { evaluateBookingNameGate, evaluateBookingPhoneGate, isNameAuthoritative, isNameOnlyQuotedSpeaker } from '@resolution/evidence/identity-gates';
 

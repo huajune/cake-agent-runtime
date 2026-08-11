@@ -3,8 +3,8 @@ import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import {
   findLatestExplicitIdentityEvidence,
   matchIdentityEvidence,
-  stripMessageDecorations,
 } from '@resolution/candidate/student-identity';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**

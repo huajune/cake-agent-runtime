@@ -2,7 +2,7 @@ import {
   VISUAL_FACT_KINDS,
   finalizeVisualFactSheet,
   type VisualFactKind,
-} from '@/resolution/visual';
+} from '@/resolution/signal/visual';
 import {
   mapLocationCityCandidates,
   resolveExtractionScope,

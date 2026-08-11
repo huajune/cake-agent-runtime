@@ -12,7 +12,7 @@ import { MemoryService } from '@memory/memory.service';
 import { SessionService } from '@memory/services/session.service';
 import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
 import { evaluateInviteTimingGate } from '@tools/shared/invite-timing-gate';
-import { extractUserTexts } from '@resolution/evidence/corpus';
+import { extractUserTexts } from '@resolution/signal/dialogue';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';

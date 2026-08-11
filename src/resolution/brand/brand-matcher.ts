@@ -13,7 +13,7 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
-import { stripLocationShareMarkup } from '@infra/utils/message-markup.util';
+import { stripLocationShareMarkup } from '@resolution/signal/markers';
 import { listUniqueDistrictCityEntries } from '@resolution/geo';
 import {
   BRAND_CONFIDENCE,

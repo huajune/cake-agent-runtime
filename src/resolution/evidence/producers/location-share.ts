@@ -1,4 +1,4 @@
-import { parseLocationShareCoordinates } from '@infra/utils/message-markup.util';
+import { parseLocationShareCoordinates } from '@resolution/signal/markers';
 
 /**
  * 定位分享消息的坐标解析（候选人资料证据化共享工具）。
