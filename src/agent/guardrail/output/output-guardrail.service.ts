@@ -209,7 +209,7 @@ export class OutputGuardrailService {
 
     // packet 只裁剪已在手的信息（同步、无额外 IO），shadow 与 enforce 共用同一份证据。
     // 往轮助手文本复用上面 rule 档的同一次短期记忆读取——语义档与规则档
-    // （job_facts_without_any_lookup 的出处豁免）看到同一份跨轮复述信号。
+    // （job_facts_without_any_lookup，已于 8-11 下线，原出处豁免）看到同一份跨轮复述信号。
     const packet = this.packetBuilder.build({
       reply,
       toolCalls: input.toolCalls,

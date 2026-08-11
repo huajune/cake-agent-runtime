@@ -516,29 +516,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '禁止用"一般都是/通常"类通识或其他品牌的结算规则填空，也不要沿用已查不到岗位的历史结算信息。',
   },
   {
-    id: 'job_facts_without_any_lookup',
-    action: GUARDRAIL_ACTION.REVISE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description:
-      '拦住无出处岗位事实：零查岗轮凭空投递门店名、距离、时薪、班次、发薪日、年龄段，或在成功结果未给经验字段时断言“不要求经验/接受新手”。',
-    riskGoal:
-      '与 settlement_no_evidence_assertion 互补覆盖"无出处岗位事实"的另一半：那条管"查过但查无"，本条管"根本没查"。' +
-      '同时防止模型在岗位工具只返回其它字段时，凭通识补齐经验门槛。2026-07-30 生产 10 回合/8 会话实证' +
-      '（tool_calls 为空或只含非岗位工具，却投递整套量化细节），语义层判 8 条 block 但 shadow 拦不住投递。',
-    exogenousSignal:
-      '量化事实看本轮是否有 duliday_job_list 可用结果及工具/助手历史数值出处；正向经验门槛必须在成功工具结果或助手历史中有明确同极性出处。',
-    residualRisk:
-      '出处比对是数值骨架级的字符串比对，不做语义解析：往轮助手卡片里出现过的数值一律豁免（可能是往轮自己编的，' +
-      '交语义审查与跨轮编造治理）；定性事实仅覆盖“不要求经验/接受新手”的封闭正向词形，问句、条件句、否定和明确不确定表达不算正向证据；' +
-      '其它非量化描述（工作内容、面试形式）不在射程内；' +
-      '归一化只处理空白/全半角/时-小时/公里-km 等已知写法差异，新写法差异可能造成假阳，随生产样本迭代。',
-    verification: 'tests/agent/guardrail/output/job-facts-without-lookup.rule.spec.ts',
-    feedbackToGenerator:
-      '上一版在本轮完全没有拿到岗位数据的情况下给出了具体的门店、距离、薪资、班次、发薪日、年龄要求或经验门槛，' +
-      '这些事实没有任何工具出处，当前文本不可发送。请重写：需要岗位信息时先调用 duliday_job_list 查，' +
-      '只转述本轮查到的结果；暂时查不到就如实说明，不要用品牌常识、其他门店的行情或印象里的数字填空。',
-  },
-  {
     id: 'online_interview_location_claim',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P1,

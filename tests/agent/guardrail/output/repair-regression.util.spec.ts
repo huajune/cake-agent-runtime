@@ -103,7 +103,7 @@ describe('detectRepairRegression', () => {
       detectRepairRegression(first, revised, {
         // 本轮零查岗 → undefined，而非 false
         jobEvidenceAvailable: undefined,
-        triggeredRuleIds: ['job_facts_without_any_lookup'],
+        triggeredRuleIds: ['settlement_no_evidence_assertion'],
       }),
     ).toBeNull();
   });

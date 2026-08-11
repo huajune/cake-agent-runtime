@@ -67,10 +67,7 @@ export interface RepairRegressionContext {
  * ——那种情况下 resolveJobEvidenceAvailability 返回 undefined 而非 false，逃生口够不着，
  * 修复版仍会被 structure_collapsed 回退，等于把 2026-07-29 那次整单编造投递原样复现一遍。
  */
-const ZERO_EVIDENCE_RULE_IDS: ReadonlySet<string> = new Set([
-  'settlement_no_evidence_assertion',
-  'job_facts_without_any_lookup',
-]);
+const ZERO_EVIDENCE_RULE_IDS: ReadonlySet<string> = new Set(['settlement_no_evidence_assertion']);
 
 /** 表单字段行：`姓名：` / `联系电话：13xxx` / `面试时间（…）：` 等短标签开头的行。 */
 const FORM_FIELD_LINE_PATTERN = /^[-•\s]*[^：:\n]{1,14}[：:]/u;

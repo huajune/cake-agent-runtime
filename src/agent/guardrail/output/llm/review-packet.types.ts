@@ -12,7 +12,7 @@ export interface GuardrailReviewPacket {
    * 跨轮复述判定的依据（2026-08-05）：evidence 是回合作用域，reviewer 结构上看不见
    * 往轮事实，曾把「对上一轮真实 jobList 结果的忠实复述」（07-31 扫描附录 A，10 例
    * 推翻 6 例）与「昨日 invite_to_group:ok 之后的『之前已拉你进群』」（08-05 附录 A，
-   * 8/8 假阳）判成零证据编造。规则档已在 job_facts_without_any_lookup 用助手历史做
+   * 8/8 假阳）判成零证据编造。规则档曾在 job_facts_without_any_lookup（已于 8-11 下线）用助手历史做
    * 出处豁免，本字段把同一信号接给语义档。
    *
    * ⚠️ 它不是工具证据：不进 evidence、不参与"证据是否为空"的判定（EVIDENCE_KEYS

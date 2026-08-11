@@ -26,7 +26,6 @@ import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-co
 import { detectScreeningRejectionOverride } from './rules/screening-rejection-override.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
-import { detectJobFactsWithoutLookup } from './rules/job-facts-without-lookup.rule';
 import { detectOnlineInterviewLocationClaim } from './rules/online-interview-location.rule';
 import {
   detectHumanServicePhraseLeak,
@@ -273,7 +272,7 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(bookingReceiptMismatch));
     }
 
-    // 形态二：本轮岗位查询全查无时的无证据结算断言（形态一 truth=null 放行的半边）。
+    // 本轮岗位查询全查无时，拦截没有工具或助手历史出处的结算周期断言。
     const settlementNoEvidenceAssertion = detectSettlementNoEvidenceAssertion(
       text,
       toolCalls,
@@ -281,18 +280,6 @@ export class HardRulesService {
     );
     if (settlementNoEvidenceAssertion) {
       contradictions.push(this.withRulePolicy(settlementNoEvidenceAssertion));
-    }
-
-    // 形态三：本轮一次岗位数据都没拿到（含根本没调查岗工具）却投递量化岗位事实。
-    // 与形态二互补：那条管"查过但查无"，这条管"根本没查"。
-    const jobFactsWithoutLookup = detectJobFactsWithoutLookup(
-      text,
-      toolCalls,
-      params.recentMessages ?? [],
-      params.memorySnapshot?.currentFocusJob?.jobId,
-    );
-    if (jobFactsWithoutLookup) {
-      contradictions.push(this.withRulePolicy(jobFactsWithoutLookup));
     }
 
     // 线上/AI/视频/电话面试却给到店指引——候选人会白跑一趟门店。
