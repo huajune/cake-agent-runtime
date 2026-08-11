@@ -674,3 +674,13 @@ export type CandidateFactProducer =
 - labels.ts 旧标签勿清；`guardrail_review_records` 历史行勿洗。
 - 验收：三大件全绿；`grep -rn "handoff_promise_without_handoff|screening_rejection_override|settlement_no_evidence_assertion" src tests -E` 仅剩历史标注注释；提交（pathspec）：`refactor(guardrail): 第三批硬规则下线（handoff承诺/筛选原因隐匿/结算出处）`。
 - 下线后硬规则存活清单（预期）：booking_receipt_mismatch / date_reference_mismatch / internal_output_leak / human_service_phrase_leak / unsupported_store_status_speculation / unsupported_schedule_window_claim（观察）/ online_interview_location_claim（观察）及其余未涉本次判读的低频规则——全部具有确定性证据基。
+
+
+### 收尾-14（8-11 立项）收资流去重三漏口——按 6a75aab3 实证堵漏
+
+需求依据：docs/product/collection-flow-dedup-requirement.md（8-11 用户批准）。⚠️ 定性：R1/R3 的机制**已存在**（precheck 的 knownFieldMap 扣除指令 :167、templateText 预填 :151、严禁分批 :172、"刚发过只简短催填"分支）——本任务不是新建机制，是以 chat `6a75aab3ce406a6aee26fcd1`（08-07 10:09-10:13）的 trace 回放为准，堵三个实证漏口。先查 `message_processing_records`/`agent_execution_events` 还原该会话三个现象的成因，再按下述方向修：
+
+1. **漏口一：已知性别仍被单独确认**（"系统标你是男生，方便确认下性别吗"）。查明 enrichment 性别（gender_source='system'）在 checklist 里的处置：若因 D5 信任层级（自陈>system）被留在 missingFields，改为**预填顺带确认**形态——预填进表单（"性别：男（如有误请改）"）不单独成问，不推翻 D5 层级。medium 置信值同此形态（需求 R1）。
+2. **漏口二：身份已答、表单仍含「学信网学籍状态」**。补充标签与标准字段建立重叠映射：missingFields 同时含「身份」与「学信网学籍状态」类标签时只问身份，候选人身份答案**原样回填**该标签的 candidateSupplementAnswers（保守版：不做学生→在籍的语义换算，换算口径留待运营确认，代码注释标注）。映射表放 precheck 侧确定性代码，禁散进提示词。
+3. **漏口三：候选人中途追问岗位细节后整表逐字重发**（答完"休息多久/有饭么"再发全表）。"刚发过只简短催填"分支的触发条件补上**本轮为岗位细节追问**的分叉；催填形态="还差 X、Y 两项哈"。不加出站硬规则（表单重发率作 observe 指标随需求验收口径统计即可）。
+4. 验收：三大件全绿；新增测试覆盖三漏口（已知字段预填不成问 / 标签重叠只问一次 / 追问后只催缺口）；6a75aab3 形态进 test-suite 策展集（需求 §4）。提交（pathspec）：`fix(tools): 收资流去重三漏口——预填确认、标签重叠、追问不重发`。
