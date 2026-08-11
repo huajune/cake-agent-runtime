@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
-import { extractPresentedJobs } from '@memory/services/session-job-matching';
+import { extractPresentedJobs } from '@resolution/job';
 import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
 import { SessionService } from '@memory/services/session.service';
 import {

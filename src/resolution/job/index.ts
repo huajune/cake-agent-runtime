@@ -1,5 +1,7 @@
-import type { RecommendedJobSummary } from '../types/session-facts.types';
 import { splitJobCategorySegments } from '@sponge/job-category.util';
+import type { RecommendedJobSummary } from './types';
+
+export type { RecommendedJobSummary } from './types';
 
 /** 从助手回复里找出本轮真正展示过的岗位。 */
 export function extractPresentedJobs(

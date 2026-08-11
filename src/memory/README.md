@@ -310,7 +310,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 入口：[SessionService.projectAssistantTurn()](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/session.service.ts)
 
-内部依赖：[session-job-matching.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/session-job-matching.ts)
+岗位指代解析器：[resolution/job](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/resolution/job/index.ts)
 
 做两件事：
 

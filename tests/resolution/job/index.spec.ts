@@ -2,10 +2,10 @@ import {
   extractPresentedJobs,
   resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
-} from '@memory/services/session-job-matching';
-import { RecommendedJobSummary } from '@memory/types/session-facts.types';
+} from '@resolution/job';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 
-describe('session-job-matching', () => {
+describe('resolution/job', () => {
   const chaoneiJob: RecommendedJobSummary = {
     jobId: 526626,
     brandName: '必胜客',

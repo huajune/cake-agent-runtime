@@ -107,7 +107,7 @@ import {
   extractPresentedJobs,
   resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
-} from './session-job-matching';
+} from '@resolution/job';
 
 /**
  * 会话记忆服务
