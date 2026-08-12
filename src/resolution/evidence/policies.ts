@@ -2,8 +2,6 @@ import type {
   CandidateClaimField,
   CandidateClaimRejectionReason,
   CandidateFactClaim,
-  EvidenceField,
-  EvidenceOperation,
   RuleFactFieldPath,
 } from './claim.types';
 import {
@@ -42,51 +40,10 @@ export const CANDIDATE_FIELD_RISK: Record<CandidateClaimField, CandidateFieldRis
   householdProvince: 'normalizable',
 };
 
-export interface FieldPolicy {
-  allowedOperations: readonly EvidenceOperation[];
-  producerPriority: readonly string[];
-  conflict: 'reject' | 'latest' | 'union' | 'composite';
-}
-
-const CANDIDATE_POLICY: FieldPolicy = {
-  allowedOperations: ['set', 'correct', 'confirm', 'clear'],
-  producerPriority: ['manual', 'candidate_quote', 'rule', 'model', 'archive'],
-  conflict: 'reject',
-};
-
-/** 策略差异只能落在这张穷尽表，字段不得自带第二套引擎。 */
-export const FIELD_POLICIES: Record<EvidenceField, FieldPolicy> = {
-  name: CANDIDATE_POLICY,
-  phone: CANDIDATE_POLICY,
-  gender: CANDIDATE_POLICY,
-  age: CANDIDATE_POLICY,
-  isStudent: CANDIDATE_POLICY,
-  education: CANDIDATE_POLICY,
-  healthCertificate: CANDIDATE_POLICY,
-  height: CANDIDATE_POLICY,
-  weight: CANDIDATE_POLICY,
-  householdProvince: CANDIDATE_POLICY,
-  city: {
-    allowedOperations: ['set', 'correct', 'confirm', 'clear'],
-    producerPriority: ['manual', 'candidate_quote', 'rule', 'system', 'model', 'archive'],
-    conflict: 'latest',
-  },
-  district: {
-    allowedOperations: ['set', 'clear'],
-    producerPriority: ['rule', 'system', 'model', 'archive'],
-    conflict: 'union',
-  },
-  location: {
-    allowedOperations: ['set', 'clear'],
-    producerPriority: ['rule', 'system', 'model', 'archive'],
-    conflict: 'union',
-  },
-  brand: {
-    allowedOperations: ['set', 'exclude', 'clear'],
-    producerPriority: ['user_text', 'image_description', 'contact_name'],
-    conflict: 'composite',
-  },
-};
+// PR #1000 评审 P3：曾有一张 FIELD_POLICIES 全字段策略表（producerPriority/conflict）
+// 声明为「策略差异唯一居所」，但引擎从未读它——真正生效的策略是下方
+// RULE_FACT_FIELD_POLICIES 与 engine/merge 的实现。为避免两套并存的假权威，已删除；
+// 若未来引擎真按表驱动，再从版本历史恢复并接线。
 
 export type RuleFactSelection = 'first-scalar' | 'last-scalar' | 'union-array' | 'composite';
 

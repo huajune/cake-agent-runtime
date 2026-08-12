@@ -35,16 +35,6 @@ export const CANDIDATE_CLAIM_FIELDS = [
 
 export type CandidateClaimField = (typeof CANDIDATE_CLAIM_FIELDS)[number];
 
-/** 全字段统一裁决底盘的字段通货；候选人报名 schema 仍只暴露上面的十字段。 */
-export const EVIDENCE_FIELDS = [
-  ...CANDIDATE_CLAIM_FIELDS,
-  'city',
-  'district',
-  'location',
-  'brand',
-] as const;
-export type EvidenceField = (typeof EVIDENCE_FIELDS)[number];
-
 /**
  * 全库唯一「谁说的」词汇。取名判据：每个名字能自然填进「这个值是____来的」。
  *
@@ -112,7 +102,6 @@ export function isCandidateClaimField(value: string): value is CandidateClaimFie
  */
 export const CANDIDATE_FACT_OPERATIONS = ['set', 'correct', 'confirm', 'clear'] as const;
 export type CandidateFactOperation = (typeof CANDIDATE_FACT_OPERATIONS)[number];
-export type EvidenceOperation = CandidateFactOperation | 'exclude';
 
 /**
  * 解释方式：

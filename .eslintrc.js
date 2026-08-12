@@ -48,9 +48,10 @@ module.exports = {
                 message: 'resolution 层禁止依赖业务/基础设施模块（仅 @infra/utils/date.util 窄例外）',
               },
               {
+                // PR #1000 评审 P3：type-only 豁免已无使用者，且与 CLAUDE.md 的
+                // 「resolution 至多依赖 sponge 与 infra/utils/date.util」矛盾，收紧为全禁。
                 group: ['@memory/*', '@/memory/*'],
-                allowTypeImports: true,
-                message: 'resolution 只允许 type-only 引用 memory 存储契约，禁止运行时反向依赖',
+                message: 'resolution 禁止依赖 memory（memory 消费 resolution，不得反向）',
               },
             ],
           },
@@ -67,22 +68,6 @@ module.exports = {
               {
                 group: ['@tools/*', '@/tools/*'],
                 message: 'memory 禁止依赖 tools（候选人档案域宪法 P1）',
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ['src/tools/**/*.ts'],
-      rules: {
-        'no-restricted-imports': [
-          'error',
-          {
-            patterns: [
-              {
-                group: ['@memory/facts/*', '@/memory/facts/*'],
-                message: 'tools 禁止依赖 memory/facts（候选人档案域宪法 P2）；服务经 DI',
               },
             ],
           },

@@ -30,8 +30,3 @@ export function isStorableCandidatePhone(phone: string | null | undefined): bool
   const normalized = phone?.replace(/\D/g, '') ?? '';
   return normalized.length === 11 && parsePhone(normalized)?.value === normalized;
 }
-
-export function hasPhoneDigitStream(text: string, phone: string): boolean {
-  const digits = text.replace(/\D/g, '');
-  return digits.includes(phone.replace(/\D/g, ''));
-}
