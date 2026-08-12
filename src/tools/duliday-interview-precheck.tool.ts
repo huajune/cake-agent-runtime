@@ -27,6 +27,7 @@ import { isStrictRealChineseName } from '@resolution/candidate/name';
 import { stripQuotedBlocks } from '@resolution/signal/markers';
 import { fieldValues } from '@resolution/signal/visual';
 import { isNameOnlyQuotedSpeaker } from '@resolution/evidence/identity-gates';
+import { isGenderConfirmedInline } from '@resolution/evidence/producers/gender-confirmation';
 import {
   normalizeEducationValue,
   normalizeGenderValue,
@@ -1037,10 +1038,18 @@ export function buildInterviewPrecheckTool(
             normalizeCandidateGenderInput,
           );
           const currentTurnGender = normalizeCandidateGenderInput(collectedFields.gender?.value);
+          // 表内确认解锁（PR #1000 评审 P0-4）：Agent 已发出「性别：X（如有误请改）」
+          // 且候选人肯定应答/同值复打后，不再要求候选人字面重打「男/女」——否则
+          // 「都对的」类应答永远清不掉确认位，ready_to_book 不可达（表内确认死锁）。
+          const genderConfirmedInline = isGenderConfirmedInline(
+            normalizedGenderPrefillHint,
+            context.turnInput.messages ?? [],
+          );
           const genderNeedsInlineConfirmation = Boolean(
             genderPrefillHint &&
               normalizedGenderPrefillHint &&
               !currentTurnGender &&
+              !genderConfirmedInline &&
               knownFieldMap['性别'] === normalizedGenderPrefillHint,
           );
           applyCandidateFieldOverride(

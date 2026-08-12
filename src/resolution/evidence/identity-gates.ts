@@ -12,6 +12,7 @@
  */
 
 import { isFromAutoGreeting, parseName } from '@resolution/candidate';
+import { isPlaceholderPhone, isStorableCandidatePhone } from '@resolution/candidate/phone';
 import {
   extractDialogueTurns,
   extractQuotedSpeakers,
@@ -20,6 +21,7 @@ import {
   normalizeShortAnswer,
   stripQuoteBlocks,
 } from '@resolution/signal/dialogue';
+import { extractCandidateTexts } from '@resolution/signal/self-report';
 import {
   isNameAnsweredToRealNameAsk,
   isNameConfirmedInDialogue,
@@ -100,15 +102,22 @@ export function evaluateBookingNameGate(
 }
 
 /**
- * 提交的手机号是否能在候选人原文中找到出处（剥引用块后按纯数字子串匹配，
+ * 提交的手机号是否能在候选人**自陈**原文中找到出处（按纯数字子串匹配，
  * 容忍"155 2189 9062"等分隔写法）。
+ *
+ * 两处收紧（PR #1000 评审 P0-8）：
+ * - 语料改用 extractCandidateTexts（自陈选择器）——引用块/时间后缀剥离之外，还剔除
+ *   非自有材料的视觉描述文本。窗口内第三方岗位截图回写的**发布方**手机号此前可以
+ *   通过本门直进 gateway 报名载荷（memory 侧 foreignPhone 门早已剔除视觉文本，
+ *   两边口径对齐）；候选人自己的简历/证件图仍保留。
+ * - 形态校验收紧为 isStorableCandidatePhone + 占位号拒绝：`/^1\d{10}$/` 会放行
+ *   `11111111111`/`13800138000` 等占位形态（gu2kra6p 族），这是进真实工单前最后
+ *   一道形态检查。
  */
 export function isPhoneAuthoritative(phone: string, messages: readonly unknown[]): boolean {
   const digits = (phone ?? '').replace(/\D/g, '');
-  if (!/^1\d{10}$/.test(digits)) return false;
-  return extractUserTexts(messages).some((text) =>
-    stripQuoteBlocks(text).replace(/\D/g, '').includes(digits),
-  );
+  if (!isStorableCandidatePhone(digits) || isPlaceholderPhone(digits)) return false;
+  return extractCandidateTexts(messages).some((text) => text.replace(/\D/g, '').includes(digits));
 }
 
 /**
@@ -133,7 +142,8 @@ export function isPhoneAuthoritative(phone: string, messages: readonly unknown[]
  */
 export function isPhoneConfirmedInDialogue(phone: string, messages: readonly unknown[]): boolean {
   const digits = (phone ?? '').replace(/\D/g, '');
-  if (!/^1\d{10}$/.test(digits)) return false;
+  // 占位号即使被候选人「对」了一声也不构成亲证（Agent 复述占位号求证的对答不能解锁）。
+  if (!isStorableCandidatePhone(digits) || isPlaceholderPhone(digits)) return false;
   const turns = extractDialogueTurns(messages);
   for (let i = 0; i < turns.length; i++) {
     if (turns[i].role !== 'assistant') continue;

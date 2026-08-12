@@ -7,7 +7,7 @@ import {
 import { isNameOnlyQuotedSpeaker } from './identity-gates';
 import { isDigitsOnlyName } from '@resolution/candidate/name';
 import { isPlausibleAgeValue } from '@resolution/candidate/age';
-import { isRecognizedCityName, resolveCityFromDistrict } from '@resolution/geo';
+import { isRecognizedCityName } from '@resolution/geo';
 import { hasSelfReportedPhoneProvenance } from '@resolution/signal/self-report';
 import {
   hasFieldProvenanceInWindow,
@@ -314,9 +314,13 @@ export function applyEvidenceAdmission<T extends AdmissionFacts>(
     );
   }
 
+  // 区县准入只做形状合法性，不做白名单裁决（PR #1000 评审 P2-3）：
+  // UNIQUE_SUBDIVISION_TO_CITY 是「区名→唯一城市」派生用的刻意窄表，规则轨故意把
+  // 白名单外的歧义区名（鼓楼类）保留给 LLM 处理——按白名单 drop-on-null 会把这些
+  // 合法偏好一并丢掉。白名单外的区名保留原值、不派生 city。
   const district = normalizeArrayValue(unwrapFactValue(preferences.district));
   if (unwrapFactValue(preferences.district) != null) {
-    const acceptedDistricts = district.filter((value) => resolveCityFromDistrict(value) !== null);
+    const acceptedDistricts = district.filter(isPlausibleLocationValue);
     const invalidDistricts = district.filter((value) => !acceptedDistricts.includes(value));
     if (invalidDistricts.length > 0) {
       replaceFactValue(
@@ -329,7 +333,7 @@ export function applyEvidenceAdmission<T extends AdmissionFacts>(
         field: 'district',
         droppedValue: invalidDistricts,
         reason: 'invalid_district_value',
-        message: `district 含非行政区值，丢弃「${invalidDistricts.join('、')}」`,
+        message: `district 含非法形状值，丢弃「${invalidDistricts.join('、')}」`,
       });
     }
   }

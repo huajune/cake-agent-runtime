@@ -39,7 +39,7 @@ describe('buildInterviewBookingTool', () => {
     },
     // B4 手机号溯源闸门要求提交的 phone 在候选人原文中有出处；共享上下文里
     // 预置一条候选人报号消息，让存量用例聚焦各自原本要测的环节。
-    turnInput: { messages: [{ role: 'user', content: '电话13800138000' }] },
+    turnInput: { messages: [{ role: 'user', content: '电话13812345678' }] },
   });
 
   const buildContext = (overrides: BookingContextOverrides = {}): ToolBuildContext =>
@@ -68,7 +68,7 @@ describe('buildInterviewBookingTool', () => {
 
   const validInput = {
     name: '张三',
-    phone: '13800138000',
+    phone: '13812345678',
     age: 25,
     genderId: 1,
     jobId: 100,
@@ -427,7 +427,7 @@ describe('buildInterviewBookingTool', () => {
       {
         messages: [
           { role: 'user', content: '我是陈佩珊' },
-          { role: 'user', content: '电话13800138000' },
+          { role: 'user', content: '电话13812345678' },
           { role: 'assistant', content: '麻烦发一下身份证上的真实姓名' },
           { role: 'user', content: '就是陈佩珊' },
         ],
@@ -446,7 +446,7 @@ describe('buildInterviewBookingTool', () => {
       {
         messages: [
           { role: 'user', content: '我是小王' },
-          { role: 'user', content: '电话13800138000' },
+          { role: 'user', content: '电话13812345678' },
           { role: 'assistant', content: '麻烦发一下身份证上的真实姓名，我帮你登记' },
           { role: 'user', content: '发了呀' },
           { role: 'assistant', content: '门店登记需要用身份证上的真实姓名哈' },
@@ -565,7 +565,7 @@ describe('buildInterviewBookingTool', () => {
 
     const result = await executeTool(validInput, {
       messages: [
-        { role: 'user', content: '电话13800138000' },
+        { role: 'user', content: '电话13812345678' },
         { role: 'assistant', content: '目前是学生还是社会人士？' },
         { role: 'user', content: '社会' },
       ],
@@ -999,7 +999,7 @@ describe('buildInterviewBookingTool', () => {
         jobId: 100,
         interviewTime: '2026-03-20 14:00:00',
         name: '张三',
-        phone: '13800138000',
+        phone: '13812345678',
         age: 25,
         genderId: 1,
         operateType: 6,
@@ -1044,7 +1044,7 @@ describe('buildInterviewBookingTool', () => {
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
         candidateName: '张三',
-        phone: '13800138000',
+        phone: '13812345678',
         genderLabel: '男',
         ageText: '25岁',
         brandName: '成都你六姐',
@@ -1106,7 +1106,7 @@ describe('buildInterviewBookingTool', () => {
       messages: [
         {
           role: 'user',
-          content: '姓名：曹旭天\n联系电话：13800138000\n出生日期：2000-10-15',
+          content: '姓名：曹旭天\n联系电话：13812345678\n出生日期：2000-10-15',
         },
       ],
     });
@@ -1152,7 +1152,7 @@ describe('buildInterviewBookingTool', () => {
       },
       {
         messages: [
-          { role: 'user', content: '电话13800138000' },
+          { role: 'user', content: '电话13812345678' },
           {
             role: 'user',
             content:
@@ -1477,7 +1477,7 @@ describe('buildInterviewBookingTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 448367,
-        phone: '13800138000',
+        phone: '13812345678',
       });
 
       const result = await executeTool(
@@ -1496,13 +1496,13 @@ describe('buildInterviewBookingTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 448367,
-        phone: '138-0013-8000',
+        phone: '138-1234-5678',
       });
 
       const result = await executeTool(
         {
           ...validInput,
-          phone: '138 0013 8000',
+          phone: '138 1234 5678',
           educationId: 2,
           householdRegisterProvinceId: 310000,
           height: 170,
@@ -1595,7 +1595,7 @@ describe('buildInterviewBookingTool', () => {
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
         candidateName: '张三',
-        phone: '13800138000',
+        phone: '13812345678',
         genderLabel: '男',
         ageText: '25岁',
         interviewTime: '2026-03-20 14:00:00',

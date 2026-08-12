@@ -94,6 +94,25 @@ describe('evidence admission chain', () => {
     ]);
   });
 
+  it('keeps whitelist-外的歧义区名（鼓楼类），不做白名单裁决（PR #1000 评审 P2-3）', () => {
+    // UNIQUE_SUBDIVISION_TO_CITY 是「区名→唯一城市」派生用的刻意窄表；规则轨故意把
+    // 白名单外区名留给 LLM 处理，准入层按白名单 drop-on-null 会把合法偏好丢掉。
+    const result = applyEvidenceAdmission({
+      facts: {
+        interview_info: {},
+        preferences: { district: ['鼓楼'] },
+      },
+      previousFacts: null,
+      messages: [],
+      userMessages: [],
+      selfReportedUserTexts: [],
+      assistantTexts: [],
+    });
+
+    expect(result.facts.preferences).toEqual({ district: ['鼓楼'] });
+    expect(result.dropped).toEqual([]);
+  });
+
   it('only clears accumulated geo preferences on explicit no-constraint language', () => {
     expect(decideGeoPreferenceClear('地区不限，位置也无所谓')).toEqual({
       district: true,

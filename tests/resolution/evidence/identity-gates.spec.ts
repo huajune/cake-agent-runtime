@@ -244,6 +244,40 @@ describe('precheck-core', () => {
     it('passes through empty phone (交给必填校验)', () => {
       expect(evaluateBookingPhoneGate('', [userMsg('你好')]).decision).toBe('allow');
     });
+
+    it('rejects a publisher phone that only exists in third-party screenshot vision text (P0-8)', () => {
+      // 第三方岗位截图回写的发布方手机号：窗口里"出现过"≠候选人"说过"。
+      const verdict = evaluateBookingPhoneGate('13777776666', [
+        userMsg('[图片消息] 招聘海报，要求18-40岁，联系电话13777776666'),
+      ]);
+      expect(verdict.decision).toBe('reject_collect');
+    });
+
+    it('keeps a phone from the candidate own resume image (自有材料是自陈)', () => {
+      expect(
+        evaluateBookingPhoneGate('15921708092', [
+          userMsg('[图片消息] 简历照片，姓名陈佩珊，联系电话15921708092'),
+        ]).decision,
+      ).toBe('allow');
+    });
+
+    it.each(['11111111111', '13800138000'])(
+      'rejects placeholder-shaped phone %s even with verbatim provenance (P0-8)',
+      (phone) => {
+        expect(evaluateBookingPhoneGate(phone, [userMsg(`电话${phone}`)]).decision).toBe(
+          'reject_collect',
+        );
+      },
+    );
+
+    it('rejects a placeholder phone even when the candidate affirmed the agent recital (gu2kra6p 族)', () => {
+      expect(
+        evaluateBookingPhoneGate('13800138000', [
+          { role: 'assistant', content: '登记的电话是13800138000，对吗？' },
+          userMsg('对'),
+        ]).decision,
+      ).toBe('reject_collect');
+    });
   });
 
   describe('evaluateBookingPhoneGate 死锁解锁（badcase gu2kra6p，chat 6a72978f）', () => {

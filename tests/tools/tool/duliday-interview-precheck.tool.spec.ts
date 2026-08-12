@@ -697,6 +697,30 @@ describe('buildInterviewPrecheckTool', () => {
     },
   );
 
+  it('候选人肯定应答表内确认后解除性别确认位（PR #1000 评审 P0-4 死锁修复）', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        candidatePrefillHints: { gender: { value: '男', reason: 'system_source' } },
+        messages: [
+          {
+            role: 'assistant',
+            content: '帮你登记需要确认：\n姓名：\n性别：男（如有误请改）\n年龄：',
+          },
+          { role: 'user', content: '都对的\n[消息发送时间：2026-08-12 14:30 星期三]' },
+        ],
+      },
+    );
+
+    expect(result.success).toBe(true);
+    // 确认位已解除：性别按普通已知字段渲染，不再挂「（如有误请改）」也不再计入缺口
+    expect(result.bookingChecklist.templateText).not.toContain('如有误请改');
+    expect(result.bookingChecklist.missingFields).not.toContain('性别');
+    expect(result.bookingChecklist.prefilledConfirmationFields ?? []).toEqual([]);
+  });
+
   it('should use candidateAge input as the current turn source of truth', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({

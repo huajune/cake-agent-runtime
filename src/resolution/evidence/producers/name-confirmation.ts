@@ -7,6 +7,7 @@
  */
 
 import { isStrictRealChineseName } from '@resolution/candidate';
+import { isPlaceholderPhone } from '@resolution/candidate/phone';
 import { stripTimeContext } from '@resolution/signal/markers';
 import {
   extractDialogueTurns,
@@ -36,7 +37,11 @@ export function isNameProvidedAfterAsk(name: string, messages: readonly unknown[
     for (let j = i + 1; j < turns.length; j++) {
       if (turns[j].role !== 'user') continue;
       const text = stripQuoteBlocks(stripTimeContext(turns[j].text));
-      if (text.includes(target) && /1\d{10}/.test(text.replace(/[\s-]/g, ''))) return true;
+      // 手机号形态收窄（PR #1000 评审 P0-8）：裸 /1\d{10}/ 会把 11111111111 等占位
+      // 形态当作"连名带手机号"的强证据。空白折叠会让号码与后续数字粘连
+      // （"张杰 15800977053 38岁"），故不加尾边界断言、但号段与占位号照拒。
+      const phoneDigits = /1[3-9]\d{9}/.exec(text.replace(/[\s-]/g, ''))?.[0];
+      if (text.includes(target) && phoneDigits && !isPlaceholderPhone(phoneDigits)) return true;
       break; // 只认紧随其后的第一条 user 消息
     }
   }
