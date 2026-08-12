@@ -477,6 +477,31 @@ describe('GuardrailReviewPacketBuilder', () => {
       expect(packet.evidence.visualFacts).toBeUndefined();
     });
 
+    it('降级 sheet 不进账本时从工具入参回退重建描述证据（PR #1000 评审 P2-9）', () => {
+      const packet = builder.build({
+        reply: '看到了，这是门店排班表',
+        toolCalls: [
+          {
+            toolName: 'save_image_description',
+            args: {
+              messageId: 'msg-degraded-1',
+              description: '一张门店排班表照片，写着早班 07:00-11:00',
+            },
+            result: { success: true },
+            status: 'ok' as const,
+          },
+        ],
+      });
+
+      expect(packet.evidence.visualFacts?.sheets).toEqual([
+        {
+          kind: 'other',
+          description: '一张门店排班表照片，写着早班 07:00-11:00',
+          fields: [],
+        },
+      ]);
+    });
+
     it('消费工具已 finalize 的账本 sheet：过滤非法 key/证件号、补 ownership并脱敏', () => {
       const idNumber = '310101199001011234';
       const rawSheet = {

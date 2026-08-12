@@ -40,8 +40,9 @@ export interface RepairRegressionContext {
   /**
    * 本轮 duliday_job_list 是否返回过可用岗位证据：
    * - true：至少一次调用有可用岗位结果；
-   * - false：调用过查岗，但所有结果均无可用岗位；
-   * - undefined：本轮未查岗或无法判定。
+   * - false：本轮无可用岗位证据（查岗全空，或根本没查——零查岗轮的岗位事实
+   *   必然无本轮工具支撑，PR #1000 评审 P0-9）；
+   * - undefined：调用方无法判定（仅测试/旁路）。
    *
    * 只有明确为 false 时，才允许 repair 把首版无依据的岗位列表纠正成无岗口径，
    * 避免把“删除幻觉事实”误判成结构压扁/结论反转。

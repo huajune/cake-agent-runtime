@@ -468,8 +468,6 @@ export class AgentRunnerService {
         ? detectRepairRegression(firstText, revisedText, {
             committedSideEffects: committed || undefined,
             jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
-            // 首审规则 id：本轮根本没调查岗工具时 jobEvidenceAvailable 是 undefined，
-            // 逃生口够不着，只能靠"零证据类规则触发"这条判据识别"删幻觉 ≠ 结构塌缩"。
             triggeredRuleIds: decision.ruleIds,
           })
         : null;
@@ -676,17 +674,20 @@ export class AgentRunnerService {
   }
 
   /**
-   * 返回本轮查岗证据三态：
+   * 返回本轮查岗证据两态：
    * - true：至少一次 duliday_job_list 有正向成功信号/非空结果；
-   * - false：调用过查岗，但没有一次返回可用岗位；
-   * - undefined：本轮未调用查岗。
+   * - false：本轮没有可用岗位证据（查了全空，或根本没查）。
    *
    * 中间一次成功、随后复核为空时仍返回 true，和 review packet “优先取最后一次可用
    * 结果”的证据语义保持一致。
    */
-  private resolveJobEvidenceAvailability(toolCalls: AgentToolCall[]): boolean | undefined {
+  private resolveJobEvidenceAvailability(toolCalls: AgentToolCall[]): boolean {
     const jobListCalls = toolCalls.filter((call) => call.toolName === 'duliday_job_list');
-    if (jobListCalls.length === 0) return undefined;
+    // 零查岗轮视同无岗位证据（PR #1000 评审 P0-9）：本轮一次查岗都没调时，首版的
+    // 岗位事实必然无本轮工具支撑——repair 诚实删除编造岗位的改写不能被判
+    // structure_collapsed 回退成编造原文投递（2026-07-29 事故形态；随规则下线删掉的
+    // ZERO_EVIDENCE_RULE_IDS 逃生舱即为此缺口而设）。
+    if (jobListCalls.length === 0) return false;
     return jobListCalls.some(
       (call) =>
         (typeof call.resultCount === 'number' && call.resultCount > 0) ||

@@ -24,6 +24,9 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'extraction_raw_output_sampled',
   // 候选人事实裁决档案：claim 接受率/拒绝原因分布是证据化 Phase 1/2 的核心观测
   'fact_adjudication',
+  // labor-form 双轨分歧档案：冻结令（2026-08-11，labor-form/index.ts）要求新 badcase
+  // 先查本事件再动正则——只进日志等于档案不存在（PR #1000 评审 P1-15）
+  'semantic_track_diff',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;
