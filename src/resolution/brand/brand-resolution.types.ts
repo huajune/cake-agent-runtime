@@ -1,5 +1,5 @@
 /**
- * BrandResolution 全链路类型契约（docs/architecture/brand-resolution-refactor.md §6/§8/§9/§11）。
+ * BrandResolution 全链路类型契约（docs/architecture/brand-resolution.md §3/§6/§7/§9）。
  *
  * 本文件只放类型与常量契约，不放实现逻辑：
  * - 解析结果（来源/匹配方式/极性/置信度/歧义）
@@ -13,7 +13,7 @@ export type BrandResolutionSource = 'user_text' | 'contact_name' | 'image_descri
 
 /**
  * 匹配方式：记录「这条结果靠什么证据在品牌库命中」。
- * 分类轴是证据形态——证据形态决定误判时的修法（§6.2），修法不同的档位不合并。
+ * 分类轴是证据形态——证据形态决定误判时的修法（§3.2），修法不同的档位不合并。
  */
 export type BrandMatchType =
   | 'brand_id'
@@ -23,7 +23,7 @@ export type BrandMatchType =
   | 'category_expansion';
 
 /**
- * 意图极性（3 值，§6.3）：默认 positive（提及即兴趣，业务裁定）；
+ * 意图极性（3 值，§3.3）：默认 positive（提及即兴趣，业务裁定）；
  * "换个品牌"归入品牌为空的 negative；"品牌不限"为 browse_all。
  */
 export const BRAND_INTENT_POLARITIES = ['positive', 'negative', 'browse_all'] as const;
@@ -55,7 +55,7 @@ export interface BrandResolution {
   matchType: BrandMatchType | null;
   intentPolarity: BrandIntentPolarity;
 
-  /** 规则评分，不代表统计概率（档位见 §7.4）。 */
+  /** 规则评分，不代表统计概率（档位见 §4.4）。 */
   confidence: number;
 
   /**
@@ -70,7 +70,7 @@ export interface BrandResolution {
   candidates?: BrandCandidate[];
 }
 
-/** §7.4 置信度档位。档位间不产生 (0.40, 0.75) 区间值，阈值即二分。 */
+/** §4.4 置信度档位。档位间不产生 (0.40, 0.75) 区间值，阈值即二分。 */
 export const BRAND_CONFIDENCE = {
   brandId: 1.0,
   canonicalExact: 0.95,
@@ -95,7 +95,7 @@ export function truncateSourceText(text: string | null | undefined): string | nu
     : `${trimmed.slice(0, SOURCE_TEXT_MAX_LENGTH)}…`;
 }
 
-// ==================== 会话品牌状态（§9） ====================
+// ==================== 会话品牌状态（§7） ====================
 
 export interface SessionBrandRef {
   canonicalName: string;
@@ -110,13 +110,13 @@ export interface SessionBrandState {
 
 /**
  * Redis 落盘形态：SessionBrandState + 变更时间锚点。
- * updatedAtMs 服务异步补写（§10.3）的「过期即弃」判定——补写结果轮次早于最后变更时间即丢弃。
+ * updatedAtMs 服务异步补写（§8.3）的「过期即弃」判定——补写结果轮次早于最后变更时间即丢弃。
  */
 export interface PersistedBrandState extends SessionBrandState {
   updatedAtMs?: number | null;
 }
 
-// ==================== 工具品牌控制（§8.1） ====================
+// ==================== 工具品牌控制（§6.1） ====================
 
 /** duliday_job_list 入参（可选）；只描述查询形态，品牌来源单独记录在 BrandSource。 */
 export const BRAND_FILTER_MODES = ['enforce', 'exclude', 'clear', 'browse_all'] as const;
@@ -124,14 +124,14 @@ export type BrandFilterMode = (typeof BRAND_FILTER_MODES)[number];
 
 /**
  * queryMeta 记录品牌来源（生产 brandAliasSource 的扶正）。
- * 昵称品牌不再是独立来源：它经 seed 进入 currentBrand（§6.3），查询侧统一表现为 session_state。
+ * 昵称品牌不再是独立来源：它经 seed 进入 currentBrand（§3.3），查询侧统一表现为 session_state。
  */
 export type BrandSource =
   | 'model_input' // 模型显式传入
   | 'session_state' // 会话品牌兜底：currentBrand（含昵称 seed 而来的首轮值）
   | 'none'; // 无品牌条件
 
-// ==================== queryMeta.brand（§11） ====================
+// ==================== queryMeta.brand（§9） ====================
 
 export interface NormalizedBrandQueryMeta {
   /** 生效查询形态（enforce/exclude/clear/browse_all） */
@@ -145,7 +145,7 @@ export interface NormalizedBrandQueryMeta {
     reason: 'unmatched' | 'ambiguous' | 'low_confidence';
     candidates?: BrandCandidate[];
   }>;
-  /** 0 结果同音回指建议（既有 aliasFuzzyMatch 链路产出），见 §8.3 */
+  /** 0 结果同音回指建议（既有 aliasFuzzyMatch 链路产出），见 §6.3 */
   fuzzySuggestions?: Array<{
     brandName: string;
     inputAlias: string;

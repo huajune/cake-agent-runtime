@@ -1,5 +1,5 @@
 /**
- * 地理解析域唯一出口（geo-domain-refactor-plan v3.1 §8.1）。
+ * 地理解析域唯一出口（docs/architecture/geo-resolution.md §3）。
  *
  * 业务代码只从 `@resolution/geo` 导入；geo 内部使用相对路径，避免经由
  * barrel 自引发循环。零出向依赖：不 import memory/agent/tools/infra/sponge，

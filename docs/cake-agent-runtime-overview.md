@@ -16,7 +16,7 @@
 | # | 来源文档 | 章节映射 |
 | - | --- | --- |
 | 1 | [agent-runtime-architecture.md](./architecture/agent-runtime-architecture.md) | §2 §3 §4 §5 §10 |
-| 2 | [memory-system-architecture.md](./architecture/memory-system-architecture.md) | §6 |
+| 2 | [memory-architecture.md](./architecture/memory-architecture.md) | §6 |
 | 3 | [message-service-architecture.md](./architecture/message-service-architecture.md) | §7 |
 | 4 | [monitoring-system-architecture.md](./architecture/monitoring-system-architecture.md) | §8 |
 | 5 | [test-suite-architecture.md](./architecture/test-suite-architecture.md) | §9 |
@@ -252,7 +252,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 - `settlementGapSeconds`：沉淀间隔阈值，默认 1 天
 - `historyWindowSeconds`：短期窗口 DB fallback 回查范围，默认 7 天
 
-> **延伸阅读**：[memory-system-architecture.md](./architecture/memory-system-architecture.md)
+> **延伸阅读**：[memory-architecture.md](./architecture/memory-architecture.md)
 
 ---
 

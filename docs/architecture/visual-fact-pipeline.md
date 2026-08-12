@@ -1,8 +1,9 @@
 # 图片信息链路架构（Visual Fact Pipeline）
 
-> **现状架构文档**（描述已实现的系统，非方案）。实现于 [PR #885](https://github.com/huajune/cake-agent-runtime/pull/885)（基于 [#870](https://github.com/huajune/cake-agent-runtime/pull/870)），基准 `feat/visual-fact-structuring @ 8693ea3e`。
-> 全局记忆与状态视图（本文的原文附件/结算判据在全景中的位置）见 [memory-and-state.md](./memory-and-state.md)。
-> 前身三份立项文档（产品方案 / 技术方案 / 链路盘点，2026-08-05）已由本文取代，全文保留在 git 历史与 PR #873 讨论中；本文附录 A 继承其中的**裁决记录**——那仍是字段白名单与提示词口径的唯一权威。
+**最后更新**：2026-08-12（对代码核实：路径 / 服务名 / 表名 / 常量）
+
+> 全局记忆与状态视图（本文的原文附件 / 结算判据在全景中的位置）见 [memory-and-state.md](./memory-and-state.md)。
+> **附录 A 是字段白名单与提示词口径的唯一权威。**
 
 ---
 
@@ -142,7 +143,7 @@ VisualFactSheet {
 | `resume` / `certificate` sheet | ✅ | ❌（B3：LLM 轨 medium + 确认问答升级才可预填） | ✅ | ✅ |
 | `map_location` sheet | ❌ | ❌ | ❌ | ✅ |
 | `job_posting` / `chat_screenshot` / 其它 sheet | ❌ | ❌ | ❌（R1e：岗位卡薪资≠期望薪资） | ❌（门店城市≠候选人城市） |
-| 视觉消息无 sheet（旧数据/降级） | ❌ | ❌ | ✅ | ✅（= PR #870 行为，不劣化地图定位） |
+| 视觉消息无 sheet（旧数据/降级） | ❌ | ❌ | ✅ | ✅（不劣化地图定位） |
 
 **LLM 轨配套门**（`resolution/evidence/admission.ts`，memory 只记录 dropped 观测）：phone 自陈出处门语料 = 手打 + 简历/证件 sheet 消息；explicit-upgrade 的 phone quote 只认手打文本；is_student/健康证话题证据门同语料收窄。
 
@@ -264,8 +265,10 @@ P1 兜底引擎同批：kind 判错≈2/50、产出 50/50。两模型准确率�
 | 视觉词表砍 7 留 8 | 2026-08-11：移除 7 个零读者 key；保留 phone/brand/city/address/candidate_address/other 与零读者分流槽 publisher/store。存量旧 key 由 finalize 白名单静默丢弃 |
 | A2/B2 承诺解绑 | 品牌 ID 直通、健康证字段补齐均需独立消费链设计，另行立项；不再用零读者 key 冒充已实现能力 |
 
-## 附录 B · 溯源
+## 附录 B · 这条链路要防的 badcase 形态
 
-- 驱动 badcase：`vkikct39`（P0 经理微信号进报名）、发布方品牌劫持、`oaz6inzf`（地图已示北京仍问城市）、`x3pdj7qh`（拉错杭州群）、`umr69uqq`（截图岗位直判班次）
-- 实现：PR #870（止血）→ PR #885（全链路 + 批测三修复 + 分支废弃 + 懒补写）；迁移 `20260805150000`
-- 前身立项文档（产品方案/技术实施方案/链路盘点，均 2026-08-05）：见本仓库 git 历史 `docs/visual-fact-plan-20260805` 分支各提交，及 PR #873 讨论
+- 经理微信号被当候选人自陈写进报名（P0）
+- 发布方品牌劫持——截图里的发布主体被当成候选人意向品牌
+- 地图定位已给出城市，仍反问「你在哪个城市」
+- 按截图里的门店拉错城市的群
+- 截图岗位的班次被直接判定为候选人可接受班次

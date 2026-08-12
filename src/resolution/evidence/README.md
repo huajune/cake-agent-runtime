@@ -1,6 +1,6 @@
 # evidence · 裁决工序（候选人档案的"信不信、冲突听谁的"唯一居所）
 
-宪法与推导见 docs/architecture/candidate-profile-domain-refactor-plan.md §2.0。白话三条：
+宪法与推导见 docs/architecture/candidate-profile-domain.md §1（域宪法）。白话三条：
 规则进 resolution（一字段一份）；事实进 memory（结论轮末落档）；一轮一判（结果挂回合上下文）。
 
 ## 文件地图（按职责分四组）

@@ -176,7 +176,7 @@ export function detectSettlementCycleMismatch(
           '/',
         )}”；培训/阶梯等补充结算不能改写成整份工资的结算周期`,
         // 2026-07-27 发牌切换第一批：revise → observe（docs/architecture/
-        // guardrail-chain-assessment-and-rebuild.md §2.2）。三期审计假阳率触发目录
+        // guardrail-quality-system.md §2.2）。三期审计假阳率触发目录
         // 治理条款"精确率 <70% 应自动降 observe"（07-21 抽样 6/6 假阳、07-27 命中
         // 2/2 均为否定句误判）；本 PR 同时修复否定语序假阳，observe 期用守卫档案
         // 重新累计精确率，连续两周 ≥90% 方可重新申请 revise。

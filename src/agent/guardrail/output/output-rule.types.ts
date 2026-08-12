@@ -42,7 +42,7 @@ export function deriveRulePolicy(action: GuardrailRuleAction): {
  *
  * REPLAN 不在本联合类型内（2026-07-27 发牌切换收尾退役，硬规则目录零雇主）：
  * "重新规划整段回复"不是任何规则可声明的修复方式——三期审计证明该机制是全部
- * 已投递伤害的宿主（docs/architecture/guardrail-chain-assessment-and-rebuild.md §2）。
+ * 已投递伤害的宿主（docs/architecture/guardrail-quality-system.md §2）。
  * 未来需要"补取事实"式修复的规则，走 §2.4 条件项两步拆解（取数归 generator、
  * 写字归 ReplyRepairAgent），必须先修订该文档再扩本类型。
  *

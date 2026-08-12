@@ -1,7 +1,14 @@
 # 记忆与状态架构（全局视图）
 
+**最后更新**：2026-08-12
+
 > 目的：一张图看清 Agent 的全部状态存储及其关系。写作原则是**减少概念**——正文只讲
 > 三个角色的心智模型，实现颗粒度的七行清单放附录（排障时用）。
+>
+> **本文是记忆链路的入口**：读完这三个角色再往下走。
+> 四层结构、**字段归属权威表**、读写时序、prompt/工具消费的完整叙述见
+> [memory-architecture.md](./memory-architecture.md)；字段的证据裁决见
+> [candidate-profile-domain.md](./candidate-profile-domain.md)。
 > 姊妹文档：[visual-fact-pipeline.md](./visual-fact-pipeline.md)（图片信息链路，本文"原文附件"与"结算判据"的细化）。
 
 ---

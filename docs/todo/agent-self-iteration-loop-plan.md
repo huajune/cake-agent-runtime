@@ -1,9 +1,23 @@
 # Agent 自迭代循环方案（离线批量审核 → 归因 → 提案 → 验证 → 灰度）
 
-> 状态：技术方案 v1（2026-07-08，待评审）
-> 定位：与 [guardrail-and-memory-redesign-plan.md](./guardrail-and-memory-redesign-plan.md)（止血版）
+> **状态：backlog，大部分已被更便宜的形态取代（2026-08-12 归档核实）。** `src/` 零痕迹、全仓零引用，
+> §7 的 PR-a/b/c 一个都没开。但**循环本身事实上在跑**，只是没落成仓库代码，而是落成 Claude 定时任务：
+> `daily-auto-scan-report`（每日 06:00，事后检测环，取代已停用的 `daily-badcase-scan`）、
+> `daily-badcase-triage`（每日 07:00，根因分析 + 修复决策 + 直接提 PR）、
+> `guardrail-accuracy-audit`（每 2 天，repair 前后质量审计）+ `analyze-chat-badcases` skill。
+> 这个形态是用户裁定的结果（§6 非目标已写明「不新建 Dashboard/统计 RPC/评估服务，分析一律直接 SQL/脚本报告」），
+> 不是降级实现。上位文档见
+> [guardrail-quality-system.md](../architecture/guardrail-quality-system.md) §3/§4。
+>
+> **真正还欠的只有一件：判官标定（§0.1 铁律 1 + §4 的每周抽检 20 条）。** 现有定时任务直接消费 LLM 判读，
+> 没有任何精度考核环节——即 §5 放权路线赖以启动的那条数据至今不存在。
+> 重开判据：定时任务的判读被证明系统性偏差（如 8-05 语义 shadow 大清算那种规模的假阳），
+> 或要把提案自动化推进到「免人工逐条确认」。
+>
+> 原状态行：技术方案 v1（2026-07-08，待评审）
+> 定位：与守卫止血版执行方案（已并入 [security-guardrails.md](../architecture/security-guardrails.md) 现状）
 > 是两条独立轨道——止血版管"发送链路不再自伤"，本方案管"质量问题自动发现、自动修复提案"。
-> 设计原则依据：[rules-vs-semantics-design-philosophy.md](./rules-vs-semantics-design-philosophy.md)
+> 设计原则依据：[rules-vs-semantics-design-philosophy.md](../architecture/rules-vs-semantics-design-philosophy.md)
 > 的 P1（质量问题的干预点在生成时与离线）、P8（升权靠数据）。
 
 ---

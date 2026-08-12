@@ -24,7 +24,7 @@
 
 所以它目前不是正式记忆层，更像当前轮的 sidecar 解析结果。
 
-完整端到端数据流见：[记忆与线索数据流](../../docs/architecture/memory-and-hints-data-flow.md)。
+完整端到端数据流见：[记忆与线索数据流](../../docs/architecture/memory-architecture.md)。
 
 ## 模块目标
 

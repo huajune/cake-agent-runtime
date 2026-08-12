@@ -2,7 +2,7 @@
 
 > 本文档描述 Cake Agent Runtime 测试套件的整体架构、设计原则和技术实现
 >
-> 最后更新：2026-04-23
+> 最后更新：2026-08-12（全文对代码核实：服务清单 / 路径 / 表名 / 代码规模）
 
 ## 目录
 
@@ -14,7 +14,6 @@
 - [可观测性与血缘](#可观测性与血缘)
 - [技术选型](#技术选型)
 - [性能优化](#性能优化)
-- [未来规划](#未来规划)
 
 ## 概述
 
@@ -51,9 +50,9 @@ Cake Agent Runtime 测试套件是一个 **AI Agent 质量评估平台**，用�
 ┌────────────────▼────────────────────────┐
 │          Backend (NestJS)               │
 │  ┌─────────────────────────────────┐   │
-│  │   TestSuiteModule (~9260 LOC)   │   │
+│  │  TestSuiteModule (~13,400 LOC)  │   │
 │  │                                 │   │
-│  │  Controller / 8 Services /      │   │
+│  │  Controller / 15 Services /     │   │
 │  │  3 Repositories / Processor     │   │
 │  └─────────────────────────────────┘   │
 └────────────────┬────────────────────────┘
@@ -78,14 +77,20 @@ Cake Agent Runtime 测试套件是一个 **AI Agent 质量评估平台**，用�
                           │
 ┌─────────────────────────▼─────────────────────────────┐
 │                     Service Layer                     │
-│                 （扁平化，无统一门面）                  │
-│  ┌────────────────────┐  ┌──────────────────────────┐ │
-│  │ TestExecutionSvc   │  │ TestBatchService         │ │
-│  │ ConversationTestSvc│  │ TestImportService        │ │
-│  │ TestWriteBackSvc   │  │ CuratedDatasetImportSvc  │ │
-│  │ LineageSyncService │  │ CuratedDatasetPayload    │ │
-│  │ AiStreamObservSvc  │  │                          │ │
-│  └────────────────────┘  └──────────────────────────┘ │
+│              （扁平化，无统一门面；共 15 个）             │
+│  执行与批次   TestExecutionService / TestBatchService  │
+│               TestSuiteQueueService                   │
+│  回归验证     ConversationTestService                  │
+│  流式出口     TestSuiteStreamingService                │
+│               AiStreamObservabilityService            │
+│  会话与夹具   TestSuiteSessionService                  │
+│               MemoryFixtureService                    │
+│  飞书往返     TestImportService / TestWriteBackService │
+│               TestFeedbackService                     │
+│  数据集与血缘 CuratedDatasetImportService              │
+│               CuratedDatasetPayloadBuilderService     │
+│               LineageSyncService                      │
+│  证据解析     BadcaseEvidenceResolverService           │
 └─────────────────────────┬─────────────────────────────┘
                           │
 ┌─────────────────────────▼─────────────────────────────┐
@@ -101,7 +106,7 @@ Cake Agent Runtime 测试套件是一个 **AI Agent 质量评估平台**，用�
 └───────────────────────────────────────────────────────┘
 ```
 
-> **注意**：早期版本存在 `TestSuiteService` 门面，当前已下线。控制器直接依赖各子服务，职责划分靠模块内约定。
+> **无统一门面**：控制器直接依赖各子服务，职责划分靠模块内约定。
 
 ### 模块组织
 
@@ -141,7 +146,13 @@ src/biz/test-suite/
 │   ├── ai-stream-observability.service.ts    # AI 流追踪入口
 │   ├── ai-stream-trace.ts                    # 流追踪主类
 │   ├── ai-stream-trace-content-store.ts      # Text / Tool / Reasoning 聚合
-│   └── ai-stream-trace-timing.ts             # 时间戳与阶段耗时
+│   ├── ai-stream-trace-timing.ts             # 时间戳与阶段耗时
+│   ├── test-suite-streaming.service.ts       # SSE / Vercel AI 两种流式出口
+│   ├── test-suite-session.service.ts         # 测试会话重置（清 memory 现场）
+│   ├── test-suite-queue.service.ts           # 批次进度 / 取消 / 队列状态 / 清失败 job
+│   ├── memory-fixture.service.ts             # 记忆夹具：reset / seed / read / cleanup
+│   ├── badcase-evidence-resolver.service.ts  # 按 recordId 批量解析 BadCase 证据账本
+│   └── test-feedback.service.ts              # 人工反馈提交（含截图，回写飞书）
 │
 ├── test-suite.module.ts               # 模块定义
 ├── test-suite.controller.ts           # HTTP / SSE 控制器
@@ -151,7 +162,7 @@ src/biz/test-suite/
     └── sse-stream-handler.ts          # 非 Vercel AI 风格 SSE 流包装
 ```
 
-**代码规模**：约 9,260 行 TypeScript（含 entities / types / repositories / services / 支撑文件）。
+**代码规模**：约 13,400 行 TypeScript（含 entities / types / repositories / services / 支撑文件）。
 
 ### HTTP 接口一览（节选）
 
@@ -574,59 +585,6 @@ CREATE INDEX idx_conversation_snapshots_batch_id ON test_conversation_snapshots(
 - **模型**：默认 `openai/gpt-4o-mini`（比 GPT-4 便宜 ~60 倍，足够评分稳定）
 - **温度**：`temperature: 0`，禁用工具，限制输出长度
 - **并发**：对单条对话的多轮评估可以 `Promise.all` 并行；跨对话仍走 Bull Queue
-
-## 未来规划
-
-### Phase 1：功能完善（已完成）
-
-- ✅ 用例测试 / 回归验证基础流程
-- ✅ 飞书导入 / 回写
-- ✅ Bull Queue 异步执行 + 进度缓存
-- ✅ LLM 自动评估（相似度 + 评估理由）
-- ✅ AI 流追踪（AiStreamTrace）
-- ✅ 资产血缘同步（LineageSync）
-- ✅ Curated Dataset upsert
-
-### Phase 2：体验优化（当前阶段）
-
-- ⏳ 实时进度 SSE / WebSocket 推送（目前靠轮询）
-- ⏳ 批量评审体验
-- ⏳ 统计图表可视化（category / failure-reason / 趋势）
-- ⏳ AiStreamTrace 数据的查询视图
-
-### Phase 3：评估能力扩展（规划中）
-
-```
-多维度评估系统
-├── LLM 评估 (已实现)
-│   └── 语义相似度 + 评估理由（EvaluationDimensions）
-├── 规则评估 (规划)
-│   ├── 关键词检查
-│   ├── 格式验证
-│   └── 敏感信息检测
-├── 性能评估 (规划)
-│   ├── 首字节 / 尾字节延迟
-│   ├── Token 消耗
-│   └── 工具调用次数 / 错误率
-└── 安全评估 (规划)
-    ├── Prompt 注入检测
-    ├── 信息泄露检测
-    └── 有害内容检测
-```
-
-### Phase 4：自动化流程（长期）
-
-- 从生产 badcase 自动沉淀测试用例 / 验证集
-- 定时自动执行评估，趋势告警
-- CI/CD 集成（PR 触发回归）
-- 评估结果自动推送（飞书 / 邮件）
-
-### Phase 5：平台化能力（远期）
-
-- 版本对比（A/B Testing、多 Prompt/模型 对照）
-- 跨租户支持
-- 评估 API 对外开放
-- 血缘图谱可视化
 
 ## 架构演进路径
 
