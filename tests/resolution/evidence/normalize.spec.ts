@@ -1,6 +1,7 @@
 import {
   candidateValuesEquivalent,
   deriveFieldValueFromQuote,
+  experienceValueSupportedByQuote,
   normalizedIncludes,
   parseBirthYearAge,
   parseSpokenHeightCm,
@@ -37,8 +38,15 @@ describe('candidate-fact-normalizers 口语归一化（§12-4）', () => {
 });
 
 describe('normalizedIncludes 证据包含匹配', () => {
-  it('折叠全半角、空白和中英文标点差异', () => {
-    expect(normalizedIncludes('学历： 本 科。ＡＢＣ', '学历:本科ABC')).toBe(true);
+  it('折叠全半角与空白差异', () => {
+    expect(normalizedIncludes('学历： 本 科ＡＢＣ', '学历:本科ABC')).toBe(true);
+  });
+
+  it('不折叠标点：否定分界不可被伪造 quote 抹掉（PR #1000 评审 P0-5）', () => {
+    // 候选人原话「不，是学生」——若折叠标点，伪造 quote「不是学生」会命中原文，
+    // 值反转被干净接受。
+    expect(normalizedIncludes('不，是学生', '不是学生')).toBe(false);
+    expect(normalizedIncludes('不，是学生', '不，是学生')).toBe(true);
   });
 
   it('不做改写或语义相似匹配', () => {
@@ -46,7 +54,30 @@ describe('normalizedIncludes 证据包含匹配', () => {
   });
 
   it('空 needle 不得命中', () => {
-    expect(normalizedIncludes('任意原文', ' ，。 ')).toBe(false);
+    expect(normalizedIncludes('任意原文', '   ')).toBe(false);
+  });
+});
+
+describe('experienceValueSupportedByQuote 合成经历出处（PR #1000 评审 P0-3）', () => {
+  it('「公司+岗位+时长」合成短句可被原话二元组覆盖支持', () => {
+    expect(
+      experienceValueSupportedByQuote('我之前在肯德基后厨干过一年', '肯德基后厨1年'),
+    ).toBe(true);
+    expect(
+      experienceValueSupportedByQuote('在麦当劳做服务员做了两年多', '麦当劳服务员2年'),
+    ).toBe(true);
+  });
+
+  it('与原话无关的臆造经历不被支持', () => {
+    expect(
+      experienceValueSupportedByQuote('我之前在肯德基后厨干过一年', '星巴克咖啡师3年'),
+    ).toBe(false);
+    expect(experienceValueSupportedByQuote('想找个兼职', '海底捞服务员2年')).toBe(false);
+  });
+
+  it('短值退回逐字包含', () => {
+    expect(experienceValueSupportedByQuote('做过饭店', '饭店')).toBe(true);
+    expect(experienceValueSupportedByQuote('没做过', '饭店')).toBe(false);
   });
 });
 

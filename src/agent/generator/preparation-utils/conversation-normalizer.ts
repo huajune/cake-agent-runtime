@@ -14,13 +14,17 @@ import { formatImageCountPlaceholder } from '@resolution/signal/markers';
 const logger = new Logger('ConversationNormalizer');
 
 /**
- * 取本轮用户输入：末尾连续的 user 块（到上一条 assistant 为止），以换行合并。
+ * 取本轮用户输入的**逐条**文本：末尾连续的 user 块（到上一条 assistant 为止）。
  *
  * 为什么不只取最后一条：合并请求（WeCom replay、test-suite 多条连发）下，
  * 末尾可能连续多条 user 且尚未有 assistant 打断。只取最后一条会让下游的
  * 高置信事实提取、阶段推断、guard 告警文本漏掉前面几条的内容。
+ *
+ * 逐消息设计的判据（身份 fallback 的疑问号门、`[图片消息]` 占位的提取授权域、
+ * `$` 锚定类正则）必须拿到分条消息才成立——规则轨等消费方用本函数，不要用
+ * 预 join 的 trailingUserContent（PR #1000 评审 P0-1）。
  */
-export function trailingUserContent(messages: GeneratorInputMessage[]): string | undefined {
+export function trailingUserMessages(messages: GeneratorInputMessage[]): string[] {
   const collected: string[] = [];
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const role = messages[i].role;
@@ -31,6 +35,12 @@ export function trailingUserContent(messages: GeneratorInputMessage[]): string |
     }
     if (role === 'assistant') break;
   }
+  return collected;
+}
+
+/** 本轮用户输入以换行合并的单串形态（prompt 拼接/日志类消费方）。 */
+export function trailingUserContent(messages: GeneratorInputMessage[]): string | undefined {
+  const collected = trailingUserMessages(messages);
   return collected.length > 0 ? collected.join('\n') : undefined;
 }
 

@@ -53,6 +53,7 @@ import {
 } from './session-extraction.prompt';
 import {
   detectBrandAliasHints,
+  produceRuleFactClaims,
   stripQuotedBlocks,
 } from '@resolution/evidence/producers/rule-track';
 import type {
@@ -66,6 +67,7 @@ import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-pre
 import {
   candidateValuesEquivalent,
   deriveFieldValueFromQuote,
+  experienceValueSupportedByQuote,
   normalizedIncludes,
 } from '@resolution/evidence/normalize';
 import {
@@ -823,13 +825,15 @@ export class SessionService {
     // `[引用 店长：…电话138…]` 引用块携带经理原文——不剥则经理号码被当自陈出处，
     // foreignPhone 门失效，P0 经引用向量复现。被引用内容的合法证据来源是
     // assistantTexts（原始助手消息本就在其中），从自陈语料剥除不损失证据。
+    // 时间后缀一并剥除（PR #1000 评审 P0-7）：`[消息发送时间：…]` 恒贡献约 20 个
+    // 有效字符，不剥则下方空轮短路门的 `<4` 永不成立，且时间数字会进 phone 出处流。
     const typedOrSelfMaterialMessages = userMessages
       .filter((m) => {
         const key = visualKey(m);
         if (!isVisualDescriptionText(key)) return true;
         return isSelfReportedVisualMessage(key, sheetOf(m));
       })
-      .map((m) => stripQuotedBlocks(m));
+      .map((m) => stripQuotedBlocks(stripTimeContextSuffix(m)));
 
     const previousFacts = await this.getFacts(corpId, userId, sessionId);
     // 事实提取每轮都会触发，但不是每轮都全量重算：
@@ -920,6 +924,31 @@ export class SessionService {
 
     const brandData = await this.sponge.fetchBrandList();
 
+    // 轮末规则轨重扫（PR #1000 评审 P0-1，develop 行为回归）：prep 期规则轨只吃原始
+    // 回调 DTO 的本轮拼接文本——图片消息在那一刻只有 [图片消息] 占位，sheet 授权域
+    //（简历/证件身份准入、R2 发布方剔除）永远够不着；重启/timeout 丢轮的规则事实也
+    // 无从自愈。这里对当前会话段逐条 user 消息带 visualSheetsByContent 重扫，作为
+    // 落档合并与提取 prompt 的规则轨输入；prep 产物仍服务轮内工具与上方纯应答闸门。
+    // enrichment 注入的 system 补充 claim（客户详情性别）不在会话文本里，重扫覆盖
+    // 不到，从入参 ruleFacts 原样保留。
+    const rescannedRuleFacts = produceRuleFactClaims(userMessages, brandData, {
+      visualSheetsByContent,
+    });
+    const supplementalSystemClaims =
+      ruleFacts?.claims.filter((claim) => claim.producer === 'system') ?? [];
+    const effectiveRuleFacts: RuleFactClaims | null =
+      rescannedRuleFacts || supplementalSystemClaims.length > 0
+        ? {
+            claims: [...(rescannedRuleFacts?.claims ?? []), ...supplementalSystemClaims],
+            reasoning: [
+              rescannedRuleFacts?.reasoning?.trim(),
+              ...supplementalSystemClaims.map((claim) => claim.reasoning),
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          }
+        : null;
+
     // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
     const prompt = skipLowInformationFirstTurn
@@ -929,7 +958,7 @@ export class SessionService {
           currentMessage,
           messagesToProcess,
           aliasHints,
-          ruleFacts,
+          effectiveRuleFacts,
           formatCurrentTime(),
           previousFacts,
           extractionToolFacts ?? null,
@@ -1007,9 +1036,9 @@ export class SessionService {
       });
     }
     const provenanceAdmission = this.applyExtractionProvenance(
-      this.mergeRuleAndLlmFacts(sanitizedLlm, ruleFacts),
+      this.mergeRuleAndLlmFacts(sanitizedLlm, effectiveRuleFacts),
       explicitProvenance,
-      userMessages,
+      typedOrSelfMaterialMessages,
       previousFacts,
     );
     let newFacts = provenanceAdmission.facts;
@@ -1067,7 +1096,18 @@ export class SessionService {
       }
     }
 
-    const geoPreferenceClear = decideGeoPreferenceClear(lastUserText);
+    // 「不限地区」清空对本轮**全部** user 消息判定（PR #1000 评审 P2-5）：debounce
+    // 合并轮里「区域不限」常不是最后一条（后面跟着「工资多少」），只看 lastUserText
+    // 永不清空。
+    const geoPreferenceClear = currentTurnUserTexts
+      .map((text) => decideGeoPreferenceClear(stripTimeContext(text).trim()))
+      .reduce(
+        (merged, decision) => ({
+          district: merged.district || decision.district,
+          location: merged.location || decision.location,
+        }),
+        { district: false, location: false },
+      );
     if (geoPreferenceClear.district) newFacts.preferences.district = null;
     if (geoPreferenceClear.location) newFacts.preferences.location = null;
 
@@ -1406,7 +1446,13 @@ export class SessionService {
   private applyExtractionProvenance(
     facts: SessionFacts,
     provenance: ExplicitProvenanceEntry[],
-    userMessages: string[],
+    /**
+     * 候选人自陈语料：手打文本 + 自有材料（简历/证件）视觉描述，引用块/时间后缀
+     * 已剥（extractFacts 的 typedOrSelfMaterialMessages）。PR #1000 评审 P0-2：
+     * 此前一刀切剔除全部视觉文本，简历/证件图携带的 age/gender/education 等六个
+     * 首写字段每轮找不到出处被置空 → 每轮重问。
+     */
+    selfReportedMessages: string[],
     previousFacts: SessionFacts | null,
   ): {
     facts: SessionFacts;
@@ -1417,9 +1463,9 @@ export class SessionService {
       interview_info: { ...facts.interview_info },
     };
     const target = result.interview_info as unknown as Record<string, unknown>;
-    const strictCandidateCorpus = userMessages
+    const strictCandidateCorpus = selfReportedMessages
       .map((message) => stripQuotedBlocks(stripTimeContextSuffix(message)).trim())
-      .filter((message) => message.length > 0 && !isVisualDescriptionText(message));
+      .filter((message) => message.length > 0);
     const provenanceFields = new Set<string>();
 
     const quoteSupportsCurrentValue = (
@@ -1428,7 +1474,9 @@ export class SessionService {
       currentValue: unknown,
     ): boolean => {
       if (field === 'experience') {
-        return normalizedIncludes(quote, String(currentValue));
+        // 合成式 experience（"公司+岗位+时长"短句）几乎不可能是原话连续子串，
+        // 逐字包含会每轮误杀首写（PR #1000 评审 P0-3）；改用确定性二元组覆盖判定。
+        return experienceValueSupportedByQuote(quote, String(currentValue));
       }
       const derivationField = SessionService.PROVENANCE_DERIVATION_FIELDS[field];
       if (!derivationField) return false;
@@ -1712,9 +1760,10 @@ export class SessionService {
           (ruleInfo.gender_source as 'candidate' | 'system' | undefined) ??
           merged.interview_info.gender_source;
       }
-    } else if (hasSystemGenderFallback) {
-      // 当前档案为空时由 enrichment 产出的 system 兜底优先于本轮 LLM 猜测；它仍以
-      // low/system 元数据入档，后续候选人自陈会以 high/candidate 正常覆盖。
+    } else if (hasSystemGenderFallback && !merged.interview_info.gender) {
+      // system 兜底只补空（与上方 rule 分支同守卫，PR #1000 评审 P2-4）：本轮 LLM
+      // 已抽到候选人自陈时不得被系统标签覆盖。它以 low/system 元数据入档，
+      // 后续候选人自陈会以 high/candidate 正常覆盖。
       merged.interview_info.gender = supplementalGender.value as string;
       merged.interview_info.gender_source = 'system';
       ruleMetaFields.set('interview_info.gender', supplementalGender);

@@ -1002,7 +1002,7 @@ describe('SessionService', () => {
       );
     });
 
-    it('uses an original-text probe when the model omits explicit provenance', async () => {
+    it('form-filled education reaches high via the turn-end rule rescan (develop parity)', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(
         mockStructured(llmOutputWith({ education: '本科' }, null)),
@@ -1012,17 +1012,19 @@ describe('SessionService', () => {
         { role: 'user', content: '学历： 本科' },
       ]);
 
+      // 轮末规则轨重扫（PR #1000 评审 P0-1）本就接得住表单回填，规则通道优先产出
+      // high/rule；业务语义断言是 confidence=high（工具可消费），不锁定通道。
       expect(savedInterviewInfo().education).toEqual(
-        expect.objectContaining({
-          confidence: 'high',
-          source: 'candidate_quote',
-          evidence: '学历： 本科',
-        }),
+        expect.objectContaining({ confidence: 'high' }),
       );
     });
 
     it.each([
-      ['纯数字值', { age: '37' }, '我今年37'],
+      [
+        '出生年口语（规则轨无该白名单映射）',
+        { age: String(new Date().getFullYear() - 2003) },
+        '我03年的',
+      ],
       ['单字短值', { gender: '女' }, '女'],
     ])('原文探针通过字段解析器安全复算%s', async (_label, info, content) => {
       mockRedisStore.get.mockResolvedValue(null);
@@ -1049,7 +1051,7 @@ describe('SessionService', () => {
       expect(savedInterviewInfo().education).toBeNull();
     });
 
-    it('excludes visual descriptions from the original-text probe corpus', async () => {
+    it('admits identity fields from resume-type self-material visual text (PR #1000 评审 P0-2)', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(
         mockStructured(llmOutputWith({ education: '本科' }, null)),
@@ -1059,6 +1061,23 @@ describe('SessionService', () => {
         { role: 'user', content: '[图片消息] 简历显示学历本科' },
       ]);
 
+      // 候选人自己的简历图是自陈材料：身份字段可入档（每轮置空重问是 P0-2 修的回归）。
+      expect(savedInterviewInfo().education).toEqual(
+        expect.objectContaining({ confidence: 'high' }),
+      );
+    });
+
+    it('excludes non-self-material visual descriptions from identity admission', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWith({ education: '本科' }, null)),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '[图片消息] 门店招聘海报，学历要求本科以上' },
+      ]);
+
+      // 第三方岗位截图不是自陈：规则轨授权域关身份位，模型首写也找不到出处 → 置空。
       expect(savedInterviewInfo().education).toBeNull();
     });
 
@@ -1068,8 +1087,9 @@ describe('SessionService', () => {
         mockStructured(llmOutputWith({ name: '张三', phone: '13800000000' }, null)),
       );
 
+      // 号码用空格分写：规则轨的连续数字提取器接不住，隔离出"只剩探针可走"的形态。
       await service.extractAndSave('corp1', 'user1', 'session1', [
-        { role: 'user', content: '姓名张三，手机号13800000000' },
+        { role: 'user', content: '姓名张三，手机号138 0000 0000' },
       ]);
 
       const info = savedInterviewInfo();
@@ -1163,20 +1183,21 @@ describe('SessionService', () => {
       mockLlm.generateStructured.mockResolvedValue(
         mockStructured(
           llmOutputWith({ phone: '18271421690' }, [
-            { field: 'phone', quote: '电话18271421690', basis: 'stated' },
+            { field: 'phone', quote: '电话182 7142 1690', basis: 'stated' },
           ]),
         ),
       );
 
+      // 号码用空格分写隔离规则轨通道，专测「声明升级不得触碰 phone」这条红线。
       await service.extractAndSave('corp1', 'user1', 'session1', [
-        { role: 'user', content: '我的电话18271421690' },
+        { role: 'user', content: '我的电话182 7142 1690' },
       ]);
 
       expect(savedInterviewInfo().phone).toEqual(
         expect.objectContaining({
           confidence: 'medium',
           source: 'model',
-          evidence: '电话18271421690',
+          evidence: '电话182 7142 1690',
         }),
       );
     });
@@ -1409,6 +1430,18 @@ describe('SessionService', () => {
       expect(mockLlm.generateStructured).not.toHaveBeenCalled();
       expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
     });
+
+    it('生产形态：时间后缀不撑破空轮短路门（PR #1000 评审 P0-7）', () => {
+      mockRedisStore.get.mockResolvedValue(null);
+
+      return service
+        .extractAndSave('corp1', 'user1', 'session1', [
+          { role: 'user', content: '我是.\n[消息发送时间：2026-08-12 14:30 星期三]' },
+        ])
+        .then(() => {
+          expect(mockLlm.generateStructured).not.toHaveBeenCalled();
+        });
+    });
   });
 
   describe('脏城市出清（2026-08-06 生产观测：假城市冲突）', () => {
@@ -1424,6 +1457,21 @@ describe('SessionService', () => {
       preferences: { ...FALLBACK_EXTRACTION.preferences, city, district },
       explicit_provenance: null,
       reasoning: '',
+    });
+
+    it('合并轮「区域不限」+「工资多少」也清空区域偏好（PR #1000 评审 P2-5）', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWithCity('上海', ['浦东新区'])),
+      );
+
+      // 「区域不限」不是本轮最后一条消息——清空判定必须覆盖全部本轮 user 消息。
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '区域不限' },
+        { role: 'user', content: '工资多少' },
+      ]);
+
+      expect(savedPreferences().district).toBeNull();
     });
 
     it('脏城市不只本轮丢弃，还显式清 Redis（否则 deepMerge "null 不覆盖" 让污染永不出清）', async () => {

@@ -14,19 +14,51 @@ import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import type { CandidateClaimField } from './claim.types';
 
 /**
- * 证据包含匹配的字符级归一：全半角折叠、去空白、忽略中英文标点差异。
+ * 证据包含匹配的字符级归一：NFKC 全半角折叠 + 去空白。
  *
- * 只允许确定性的字符等价，不做分词、同义词或语义相似，避免放宽 quote 的
- * 防臆造边界。
+ * 刻意**不折叠标点**（PR #1000 评审 P0-5）：标点承载否定分界——候选人说
+ * 「不，是学生」，若折叠标点则伪造 quote「不是学生」也能命中原文，反臆造
+ * 边界被击穿。标点容差只允许用于展示与同字段值等价比较（normalizeFieldText），
+ * 不得用于 quote 收录判定。
  */
 function normalizeEvidenceText(text: string): string {
-  return text.normalize('NFKC').replace(/[\s\p{P}]+/gu, '');
+  return text.normalize('NFKC').replace(/\s+/gu, '');
 }
 
 export function normalizedIncludes(haystack: string, needle: string): boolean {
   const normalizedNeedle = normalizeEvidenceText(needle);
   if (!normalizedNeedle) return false;
   return normalizeEvidenceText(haystack).includes(normalizedNeedle);
+}
+
+/**
+ * experience 合成值的出处支持判定（PR #1000 评审 P0-3）。
+ *
+ * 抽取提示词要求模型把工作经历「合并为 公司+岗位+时长 短句」，合成值几乎不可能是
+ * 单条消息的连续子串，逐字包含判据会把每一次首写都判无出处。这里改为确定性的
+ * 字符二元组覆盖率：值的相邻字符对（去空白标点、NFKC 折叠后）须有 ≥60% 出现在
+ * quote 中——重排/换连接词不影响命中，而与 quote 无关的臆造值覆盖率趋近 0。
+ * 短值（<4 字符）二元组过少，退回逐字包含。
+ */
+export function experienceValueSupportedByQuote(quote: string, value: string): boolean {
+  const foldNumerals = (text: string): string =>
+    text.replace(/[一二两三四五六七八九]/gu, (ch) => String(CN_DIGIT[ch] ?? ch));
+  const normalize = (text: string): string =>
+    foldNumerals(text.normalize('NFKC').replace(/[\s\p{P}]+/gu, ''));
+  const normalizedValue = normalize(value);
+  const normalizedQuote = normalize(quote);
+  if (!normalizedValue || !normalizedQuote) return false;
+  if (normalizedQuote.includes(normalizedValue)) return true;
+  if (normalizedValue.length < 4) return false;
+  const bigrams = new Set<string>();
+  for (let i = 0; i < normalizedValue.length - 1; i++) {
+    bigrams.add(normalizedValue.slice(i, i + 2));
+  }
+  let matched = 0;
+  for (const bigram of bigrams) {
+    if (normalizedQuote.includes(bigram)) matched += 1;
+  }
+  return matched / bigrams.size >= 0.6;
 }
 
 /**
