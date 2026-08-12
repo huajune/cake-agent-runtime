@@ -1,7 +1,17 @@
 # 岗位召回混合检索方案（本地索引 + 向量/词法检索）
 
-> 状态：技术方案（2026-07-07，待评审）
-> 设计原则依据：[rules-vs-semantics-design-philosophy.md](./rules-vs-semantics-design-philosophy.md)
+> **状态：backlog，从未落地（2026-08-12 归档核实）。** 2026-07-07 写完后未进入任何执行序，
+> 全仓零引用。实证：`supabase/migrations/` 无 `job_search_index` 迁移、`src/` 无
+> `search_jobs_hybrid`/JobRetrievalService、§9 的 PR-A～D 一个都没开。
+> `src/resolution/job/`（index.ts + types.ts）是收尾-3 搬 `session-job-matching` 进来的，与本方案无关。
+> 未落地原因不是被否，是本仓排期由生产事故驱动，而本方案属主动优化型（提升召回质量），
+> 没有 badcase 逼它——7 月中～8 月人力全被 badcase 治理与候选人档案域战役占满。
+> **§1 的现状盘点仍在被当作真相源维护**（08-11 `1975712b` 把 jobCategoryList 不下传 API 的改动写回了本文），
+> 所以本文有两重身份：召回链路现状记录（有效）+ 未启动的改造提案（backlog）。
+> 重开判据：出现召回不足的 badcase 实证，或岗位量级增长到结构化召回明显不够用。
+>
+> 原状态行：技术方案（2026-07-07，待评审）
+> 设计原则依据：[rules-vs-semantics-design-philosophy.md](../architecture/rules-vs-semantics-design-philosophy.md)
 > ——检索技术的合法位置是**召回与路由**，不是裁决；本方案严守"索引只负责找到岗位，
 > 事实永远来自实时 API"这条红线。
 
@@ -318,7 +328,7 @@ JobRetrievalService.geo 检索（radius 默认 10km，top 30 家最近门店的 
 | PR-C | 工具集成（Stage2 扩面 + 地理并行）+ flag + 集成测试 | PR-B |
 | PR-D | 离线评测集 + 评测脚本 + 灰度观测口径 | PR-B（可与 PR-C 并行） |
 
-执行须知同 [guardrail-and-memory-redesign-plan.md](./guardrail-and-memory-redesign-plan.md) §8
+执行须知见 [security-guardrails.md](../architecture/security-guardrails.md)
 （分支/测试/迁移/规范），此处不重复。
 
 ---

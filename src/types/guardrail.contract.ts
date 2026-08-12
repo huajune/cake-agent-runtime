@@ -3,7 +3,7 @@
  *
  * `agent/guardrail/*`（input/output 决策层）与物理留在 `tools/` 的 tool guardrail
  * （BookingGuardrail 等）共用本契约。tools 不反向依赖 agent，二者都只 import 本中立层，
- * 故 `agent → tools` 单向、无环（见 [agent-reliability-refactor-2026-06.md] §7）。
+ * 故 `agent → tools` 单向、无环（见 docs/architecture/agent-runtime-architecture.md §10 模块依赖图）。
  *
  * 设计要点（§2.5 设计铁律）：
  * - guardrail 是**决策层**：只读、有否决权、决策是 veto 而非建议。

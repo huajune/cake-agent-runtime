@@ -1,5 +1,5 @@
 /**
- * 行政区数据校验（geo-domain-refactor-plan §9.4，Phase 4 起进 CI：pnpm run geo:validate）。
+ * 行政区数据校验（docs/architecture/geo-resolution.md §5.3，进 CI：pnpm run geo:validate）。
  *
  * 检查项：
  *  1. 手工数据表源文件无字面量重复键（对象字面量重复键会静默覆盖，运行时不可见）；

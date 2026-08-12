@@ -471,7 +471,7 @@ export class AgentRunnerService {
             triggeredRuleIds: decision.ruleIds,
           })
         : null;
-    // 检出回归后的收敛对齐 guardrail-chain-assessment-and-rebuild.md §2.3 ④：
+    // 检出回归后的收敛对齐 guardrail-quality-system.md §2.3 ④：
     // 首版可 fail-open（P1/P2 全部可恢复且非高风险）→ 回退首版；
     // 首版不可 fail-open（P0/泄漏类/高风险）→ 两版都不投，静默 block 并留档——
     // 修复版已证明退化，首版又是守卫明确否决的泄漏/红线内容，谁都不能进投递链。

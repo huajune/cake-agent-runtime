@@ -20,10 +20,8 @@ const INPUTS = [
   ...NATIONAL_ONLY_SAMPLE,
   ...NEGATIVE_CONTROLS,
 ];
-const REPORT_PATH = join(
-  __dirname,
-  '../../../docs/architecture/geo-national-county-mapping-diff-report.md',
-);
+/** 对照表住在地理域现状文档的「开放项 · 全国映射开关」小节（原独立报告已并入）。 */
+const REPORT_PATH = join(__dirname, '../../../docs/architecture/geo-resolution.md');
 
 function resolveBatch(enabled: boolean): Map<string, ResolutionLabel> {
   const previous = process.env.GEO_NATIONAL_COUNTY_MAPPING_ENABLED;

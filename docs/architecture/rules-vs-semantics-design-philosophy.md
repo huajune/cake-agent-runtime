@@ -1,11 +1,13 @@
 # 确定性规则与语义理解的分工哲学
 
+**最后更新**：2026-08-12（对代码核实：路径 / 服务名 / 表名 / 常量）
+
 > 状态：设计原则基线（2026-07-07）
 > 起因：对全项目 110+ 条规则机制的审计，以及 `guardrail_review_records` 上线首两日（2026-07-06 ~ 07-07）
 > 生产数据复盘。本文档回答一个问题：**什么事情该交给确定性系统（正则/词库/闸门），
 > 什么事情该交给 LLM 或交互设计，以及为什么。**
 >
-> 配套执行文档：[guardrail-and-memory-redesign-plan.md](./guardrail-and-memory-redesign-plan.md)
+> 配套现状文档：[security-guardrails.md](./security-guardrails.md)；全链路评估与双环重建方案见 [guardrail-quality-system.md](./guardrail-quality-system.md)
 
 ---
 

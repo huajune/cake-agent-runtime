@@ -439,4 +439,4 @@ Dashboard 常用页：测试套件列表（历史评估/通过率）、测试套
 - [业务流程详细说明](business-flows.md) — 完整招聘业务全流程
 - [产品定义](product-definition.md) — 产品定位与能力边界
 - [拉人进群产品设计](invite-to-group.md) — 兼职群运营策略
-- [记忆系统架构](../architecture/memory-system-architecture.md) / [测试套件架构](../architecture/test-suite-architecture.md) — 记忆/测试深入
+- [记忆系统架构](../architecture/memory-architecture.md) / [测试套件架构](../architecture/test-suite-architecture.md) — 记忆/测试深入

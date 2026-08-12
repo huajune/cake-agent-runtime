@@ -15,7 +15,7 @@ export interface UnknownTouchSlot {
  *   命中其它（reserved/attempted）→ duplicate_inflight（上次未确认，可恢复）。
  * - 频控 24h ≤ 2 **只数 sent**（reserved/failed/unknown 不计——否则投递失败重投会被误算成多次触达）。
  * - 一旦进入 delivery_attempted，就处于"外部平台可能已发出"区间，不得盲目重投，
- *   必须靠 ReengagementDeliveryPort 的渠道侧幂等或补偿（见 agent-reengagement-design.md §4）。
+ *   必须靠 ReengagementDeliveryPort 的渠道侧幂等或补偿（见 docs/architecture/reengagement-pipeline.md §5.2）。
  */
 @Injectable()
 export class TouchLedgerService {

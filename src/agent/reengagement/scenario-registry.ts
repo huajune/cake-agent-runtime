@@ -92,7 +92,7 @@ function shanghaiHourOnInterviewDay(interviewAt: number, hour: number): number {
 }
 
 /**
- * 7 个需求场景 → 锚点/延迟/stopUnless 映射（见 agent-reengagement-design.md §5）。
+ * 7 个需求场景 → 锚点/延迟/stopUnless 映射（见 docs/architecture/reengagement-pipeline.md §3）。
  *
  * 场景级灰度以托管配置 reengagementScenarioRollout 为准（Dashboard 可配，即时生效），
  * defaultRolloutEnabled 只是未配置时的回退：第一版放开锚点明确的三个
