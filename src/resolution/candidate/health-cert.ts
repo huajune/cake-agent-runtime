@@ -61,7 +61,12 @@ function declaredStatus(clause: string): HealthCertificateFact | null {
   }
   if (
     /健康证\s*[：:]\s*(?:无|没有)(?:$|[\s，,。；;])/u.test(clause) ||
-    /(?<!有)(?:没有(?:食品|餐饮|零售)?(?:类)?健康证|没健康证|无健康证|没办过)/u.test(clause)
+    /(?<!有)(?:没有(?:食品|餐饮|零售)?(?:类)?健康证|没健康证|无健康证)/u.test(clause) ||
+    // 裸「没办过」必须与健康证同子句（PR #1000 评审 P0-6）：跨子句 latest-wins 下，
+    // 「我有健康证，社保还没办过」的第二子句会把终值翻成「无」。紧凑答「没办过」
+    // 经 terseAnswer/inherits 路径已被补上「健康证」前缀，同子句判据不损失召回。
+    (/(?:食品|餐饮|零售)?(?:类)?健康证/u.test(clause) &&
+      /(?<!有)(?:还?没办过|还没办)/u.test(clause))
   ) {
     return '无';
   }
@@ -169,10 +174,6 @@ export function parseHealthCertificateMatch(
       ? latestExcerpt.slice('健康证'.length)
       : latestExcerpt;
   return { value: latest, excerpt: excerpt.trim() };
-}
-
-export function parseHealthCertificate(text: string): HealthCertificateFact | null {
-  return parseHealthCertificateMatch(text)?.value ?? null;
 }
 
 export function toSpongeHealthCertCode(fact: HealthCertificateFact | null): 1 | 2 | 3 | null {

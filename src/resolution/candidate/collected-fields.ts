@@ -1,3 +1,4 @@
+import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 import { parseAge } from './age';
 import { parseEducation } from './education';
 import { parseGender } from './gender';
@@ -30,7 +31,13 @@ export function parseCandidateFieldsFromText(
   userMessages: readonly string[],
   at: number,
 ): Partial<Record<CandidateFieldKey, CandidateCollectedField>> {
-  const text = userMessages.join('\n');
+  // 逐条清洗后再 join（PR #1000 评审 P1-11）：不剥时间后缀则 `$` 锚定判据
+  // （健康证紧凑答「没办过，可以办」等）在生产形态下永不成立；不剥引用块则
+  // `[引用 店长：…138…]` 里经理的手机号/姓名会被当候选人字段预填进 precheck。
+  const text = userMessages
+    .map((message) => stripQuotedBlocks(stripTimeContext(message, '\n')).trim())
+    .filter(Boolean)
+    .join('\n');
   const fields: Partial<Record<CandidateFieldKey, CandidateCollectedField>> = {};
   const put = <T extends string | number>(
     key: CandidateFieldKey,
