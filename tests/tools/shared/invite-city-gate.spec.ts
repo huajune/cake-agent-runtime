@@ -11,6 +11,20 @@ function evaluateGate(input: Omit<InviteCityGateInput, 'geoSignalCities'>) {
 }
 
 describe('evaluateInviteCityGate', () => {
+  it('rejects city_unverified when the requested city normalizes to null (P2-1 NPE guard)', () => {
+    // normalizeCityName 对空/纯后缀输入返回 null；不判空会 NPE 并被外层 catch
+    // 误分类成 INVITE_API_FAILED。
+    for (const requestedCity of ['', '  ', '市']) {
+      expect(
+        evaluateGate({ requestedCity, sessionCity: '上海', userTexts: ['我在上海'] }).decision,
+      ).toBe('reject');
+    }
+    expect(evaluateGate({ requestedCity: '', sessionCity: null, userTexts: [] })).toEqual({
+      decision: 'reject',
+      reason: 'city_unverified',
+    });
+  });
+
   it('allows when requested city matches session fact (normalized)', () => {
     const verdict = evaluateGate({
       requestedCity: '上海市',

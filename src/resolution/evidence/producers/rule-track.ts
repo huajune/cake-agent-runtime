@@ -773,7 +773,10 @@ function sanitizeExperienceText(value: string): string | null {
   //   6a6c5634「联系方式：19663930499年」/ 6a6ac29b「庞子瑞18036615809女8月」），
   // 而真实经历不会内嵌手机号。刻意不按"电话/手机"标签词拒——"华为手机店做了3年"
   // "电话客服干了2年"都是合法经历，标签门会误杀且无实证收益。
-  if (parseCandidatePhone(text)) return null;
+  // 裸模式补边界断言的盲区（PR #1000 评审 P2-7）：上方 replace(/\s+/g,'') 会把
+  // 换行两侧的数字粘连（"…13872896163\n22岁"→"1387289616322"），带 (?<!\d)(?!\d)
+  // 边界的 parseCandidatePhone 对粘连串失配，脏值漏网。
+  if (parseCandidatePhone(text) || /1[3-9]\d{9}/.test(text)) return null;
   return text.length > 80 ? text.slice(0, 80) : text;
 }
 

@@ -39,5 +39,12 @@ describe('resolution/geo normalization', () => {
         expect(normalizeCityName(once)).toBe(once);
       }
     });
+
+    it('剥后缀以余下 ≥2 字为限：津市市/芒市 不塌缩成单字（PR #1000 评审 P2-8）', () => {
+      expect(normalizeCityName('津市市')).toBe('津市');
+      expect(normalizeCityName('芒市')).toBe('芒市');
+      // 常规城市不受影响
+      expect(normalizeCityName('北京市')).toBe('北京');
+    });
   });
 });

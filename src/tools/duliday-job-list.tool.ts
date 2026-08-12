@@ -85,7 +85,10 @@ import {
   parseCandidateAge,
   type AgeScreeningSignal,
 } from '@tools/duliday/precheck/age.util';
-import { detectPendingCollectionJobDetailFollowup } from '@tools/duliday/precheck/collection-strategy.util';
+import {
+  buildProvidedFieldLabels,
+  detectPendingCollectionJobDetailFollowup,
+} from '@tools/duliday/precheck/collection-strategy.util';
 
 // ==================== 常量 ====================
 
@@ -1645,6 +1648,13 @@ export function buildJobListTool(
           const result: Record<string, unknown> = {};
           const collectionFollowup = detectPendingCollectionJobDetailFollowup(
             context.turnInput.messages,
+            buildProvidedFieldLabels({
+              collectedFields: context.ledger.collectedFields,
+              sessionInterviewInfo: context.archive.sessionFacts?.interview_info as
+                | Record<string, unknown>
+                | null
+                | undefined,
+            }),
           );
           const ageScreeningSummary = includeHiringRequirement
             ? buildJobAgeScreeningSummary(jobs, resolveCandidateAge(context))

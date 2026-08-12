@@ -89,6 +89,13 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
   const requested = normalizeCity(input.requestedCity);
   const session = normalizeCity(input.sessionCity);
 
+  // normalizeCityName 对空/纯后缀输入返回 null（PR #1000 评审 P2-1）：不判空则下方
+  // `requested.length` NPE，被外层 catch 误分类成 INVITE_API_FAILED 且 replyInstruction
+  // 错路由。city 入参解析不出即无出处，走 city_unverified 收集语义。
+  if (!requested) {
+    return { decision: 'reject', reason: 'city_unverified' };
+  }
+
   if (session && session === requested) {
     return { decision: 'allow', matchedBy: 'session_fact' };
   }

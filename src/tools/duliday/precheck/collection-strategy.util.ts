@@ -116,13 +116,71 @@ export interface PendingCollectionJobDetailFollowup {
   latestUserMessage: string;
 }
 
+/** collectedFields（本轮原话确定性解析）键 → 收资模板字段标签。 */
+const COLLECTED_FIELD_KEY_TO_LABEL: Readonly<Record<string, string>> = {
+  name: '姓名',
+  phone: '联系电话',
+  gender: '性别',
+  age: '年龄',
+  education: '学历',
+  healthCert: '健康证情况',
+  householdProvince: '户籍省份',
+  height: '身高',
+  weight: '体重',
+};
+
+/** sessionFacts.interview_info 键 → 收资模板字段标签。 */
+const SESSION_INFO_KEY_TO_LABEL: Readonly<Record<string, string>> = {
+  name: '姓名',
+  phone: '联系电话',
+  gender: '性别',
+  age: '年龄',
+  education: '学历',
+  has_health_certificate: '健康证情况',
+  household_register_province: '户籍省份',
+  height: '身高',
+  weight: '体重',
+  is_student: '身份',
+  experience: '过往公司+岗位+年限',
+};
+
+function unwrapValue(value: unknown): unknown {
+  if (value && typeof value === 'object' && 'value' in value) {
+    return (value as { value?: unknown }).value;
+  }
+  return value;
+}
+
+/**
+ * 从本轮确定性解析结果 + 会话事实推导「已提供字段」标签集，供催填缺口扣减
+ * （PR #1000 评审 P2-6）：缺口不能只从上次模板空行推导——模板发出后（含本轮
+ * 触发消息）候选人已回填的字段再催一遍即重复收资。
+ */
+export function buildProvidedFieldLabels(params: {
+  collectedFields?: Readonly<Record<string, unknown>> | null;
+  sessionInterviewInfo?: Readonly<Record<string, unknown>> | null;
+}): Set<string> {
+  const labels = new Set<string>();
+  for (const [key, field] of Object.entries(params.collectedFields ?? {})) {
+    const label = COLLECTED_FIELD_KEY_TO_LABEL[key];
+    if (label && field != null && unwrapValue(field) != null) labels.add(label);
+  }
+  for (const [key, label] of Object.entries(SESSION_INFO_KEY_TO_LABEL)) {
+    const value = unwrapValue(params.sessionInterviewInfo?.[key]);
+    if (value !== null && value !== undefined && String(value).trim() !== '') labels.add(label);
+  }
+  return labels;
+}
+
 /**
  * 候选人收到收资表后插问岗位细节：识别最近一张表里的空项，给 job-list 成功结果
  * 追加“答完只催缺口”的结构化指令。它只解析 assistant 已发出的字段行，不臆测
- * supplier 要求，也不把预填值当缺失。
+ * supplier 要求，也不把预填值当缺失；`providedFieldLabels` 里已提供的字段从缺口
+ * 中扣减，全部补齐则不再催。
  */
 export function detectPendingCollectionJobDetailFollowup(
   messages: unknown[],
+  providedFieldLabels?: ReadonlySet<string>,
 ): PendingCollectionJobDetailFollowup | null {
   const parsed = messages
     .map((message) => {
@@ -147,8 +205,11 @@ export function detectPendingCollectionJobDetailFollowup(
   for (let index = recentBeforeCurrent.length - 1; index >= 0; index -= 1) {
     const message = recentBeforeCurrent[index];
     if (message.role !== 'assistant') continue;
-    const missingFields = extractMissingFieldsFromSentTemplate(message.text);
-    if (missingFields.length < 2) continue;
+    const templateMissingFields = extractMissingFieldsFromSentTemplate(message.text);
+    if (templateMissingFields.length < 2) continue;
+    // 模板发出后（含本轮触发消息）已提供的字段从缺口扣减；全补齐则无缺口可催。
+    const missingFields = templateMissingFields.filter((field) => !providedFieldLabels?.has(field));
+    if (missingFields.length === 0) return null;
     return {
       missingFields,
       reminder: formatMissingFieldReminder(missingFields),

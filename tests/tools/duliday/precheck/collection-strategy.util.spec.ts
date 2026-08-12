@@ -1,6 +1,7 @@
 import {
   buildCollectionStrategy,
   detectCollectionResistance,
+  buildProvidedFieldLabels,
   detectPendingCollectionJobDetailFollowup,
   detectRealNameInsistence,
   extractMessageText,
@@ -135,6 +136,42 @@ describe('collection-strategy.util', () => {
           ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
           { role: 'user', content: '姓名：小王\n学历：高中' },
         ]),
+      ).toBeNull();
+    });
+
+    it('subtracts fields already provided since the template (PR #1000 评审 P2-6)', () => {
+      const provided = buildProvidedFieldLabels({
+        collectedFields: {
+          name: { value: '小王', producer: 'candidate_quote', evidence: '姓名：小王', at: 1 },
+          phone: { value: '13812345678', producer: 'candidate_quote', evidence: 'x', at: 1 },
+        },
+        sessionInterviewInfo: {
+          education: { value: '高中', confidence: 'high', source: 'rule' },
+          has_health_certificate: null,
+        },
+      });
+      const result = detectPendingCollectionJobDetailFollowup(
+        [
+          ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
+          { role: 'user', content: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage },
+        ],
+        provided,
+      );
+
+      expect(result?.missingFields).toEqual(['健康证情况', '学信网学籍状态']);
+      expect(result?.reminder).toBe('还差健康证情况、学信网学籍状态两项哈');
+    });
+
+    it('returns null when every template gap has been provided since', () => {
+      const provided = new Set(['姓名', '联系电话', '学历', '健康证情况', '学信网学籍状态']);
+      expect(
+        detectPendingCollectionJobDetailFollowup(
+          [
+            ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
+            { role: 'user', content: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage },
+          ],
+          provided,
+        ),
       ).toBeNull();
     });
   });
