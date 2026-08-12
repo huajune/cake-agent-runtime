@@ -1169,6 +1169,51 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.nextAction).toBe('ready_to_book');
   });
 
+  it('claim enforce 只观测不再删除 precheck 中的非空字段', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: { interviewSupplement: [] },
+        }),
+      ],
+    });
+
+    const builtTool = buildInterviewPrecheckTool(
+      mockSpongeService as never,
+      { recordEvent: jest.fn() } as never,
+      { mode: 'enforce' },
+    )(mockContext);
+    const result = (await builtTool.execute(
+      {
+        jobId: 100,
+        candidateName: '赵堤',
+        candidatePhone: '18963221030',
+        candidateAge: 36,
+        candidateGender: '女',
+        candidateEducation: '中专',
+        candidateHasHealthCertificate: '有',
+      },
+      {
+        toolCallId: 'test',
+        context: {},
+        messages: [],
+        abortSignal: undefined as any,
+      },
+    )) as any;
+
+    expect(result.factAdjudication).toEqual(
+      expect.objectContaining({
+        mode: 'enforce',
+        rejectedClaims: expect.arrayContaining([expect.objectContaining({ field: 'name' })]),
+      }),
+    );
+    expect(result.bookingChecklist.missingFields ?? []).not.toEqual(
+      expect.arrayContaining(['姓名', '联系电话', '性别', '年龄']),
+    );
+    expect(result.bookingChecklist.templateText).toContain('姓名：赵堤');
+  });
+
   it('紧急兼容：显式 candidate 参数覆盖冲突的当前轮高置信事实', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [

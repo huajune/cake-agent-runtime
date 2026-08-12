@@ -1219,17 +1219,18 @@ export function buildInterviewPrecheckTool(
                 ),
               });
 
-              if (adjudicationDeps.mode === 'enforce') {
-                // 只剔除"模型无据"的字段：该字段的全部有效来源均为 rejected 的
-                // model claim（quote 找不到/推导不出），且会话/画像亦无该值。
-                for (const entry of adjudicationResult.adjudicated) {
-                  if (entry.decision !== 'rejected' || entry.claim.producer !== 'model') continue;
-                  const field = entry.claim.field;
-                  const status = adjudicationResult.profile.fields[field]?.status;
-                  if (status === 'accepted') continue;
-                  delete knownFieldMap[CLAIM_FIELD_TO_CHECKLIST[field]];
-                }
-              }
+              // 临时关闭 claim 对 precheck 收资完整性的干预：即使裁决模式为 enforce，
+              // rejected claim 也只保留观测，不再从 knownFieldMap 删除非空值。
+              // precheck 的 missingFields 仅按字段值是否为空生成。
+              // if (adjudicationDeps.mode === 'enforce') {
+              //   for (const entry of adjudicationResult.adjudicated) {
+              //     if (entry.decision !== 'rejected' || entry.claim.producer !== 'model') continue;
+              //     const field = entry.claim.field;
+              //     const status = adjudicationResult.profile.fields[field]?.status;
+              //     if (status === 'accepted') continue;
+              //     delete knownFieldMap[CLAIM_FIELD_TO_CHECKLIST[field]];
+              //   }
+              // }
             } catch (error) {
               // 裁决是旁路增强：任何异常不得阻断预检主链路（fail open + 告警日志）。
               logger.warn(
