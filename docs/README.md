@@ -33,6 +33,7 @@
 - **[Gate 拒绝与人工介入流水线](architecture/handoff-gate-and-intervention-pipeline.md)** — Tool gate → LLM 短路 → Runner handoff → 底账判重 → 暂停托管与飞书告警
 - **[二次主动回复流水线](architecture/reengagement-pipeline.md)** — 复聊：锚点触发、停止条件与水位、outbox 幂等、带外工单核验
 - **[群任务通知流水线](architecture/group-task-pipeline.md)** — 群任务定时通知的运行时流水线
+- **[岗位召回链路现状](architecture/job-recall-chain.md)** — 实时调海绵、召回智能在查询参数构造层；含 G1-G4 已知缺口 backlog
 
 ### 候选人事实链路
 
@@ -134,9 +135,11 @@
 
 > 这些是工程 backlog / 规划稿，不代表已实现的设计。落地后应更新对应架构文档或归档。
 
-- **[Agent 高风险流程安全加固](todo/agent-safety-hardening.md)** — 安全加固 TODO（部分已并入守卫现状）
-- **[岗位召回混合检索方案](todo/job-recall-hybrid-retrieval-plan.md)** — 从未落地（2026-07-07 稿）；§1 的召回链路现状盘点仍在维护，是有效真相源
-- **[Agent 自迭代循环方案](todo/agent-self-iteration-loop-plan.md)** — 从未落成代码（2026-07-08 稿）；循环本身已由 Claude 定时任务承接，仅「判官标定」一环真欠
+- **[LLM 判官标定](todo/judge-calibration.md)** — 自迭代循环的唯一欠账：周频抽检给判官算精确率（发牌制用在 LLM-as-a-judge 上）
+- **[候选人事实裁决权改造](todo/candidate-fact-authority-refactor.md)** — P11 执行清单；P2 拆机在途，PR #1000 合入+收尾后转写现状并删除
+- **[Prompt 守卫层与命名对齐](todo/prompt-guardrail-and-naming-alignment.md)** — 已基本完成；余 C3 精确率补票与彭培恒回归案验收，收尾后删除
+- **[示例面普查底稿](todo/prompt-example-census.md)** — 一次性证据报告；红区已清洗，PR #1000 发版验收后删除（结论已沉淀进 principles/prompt-example-hygiene.md）
+- **[PR #1000 评审修复底账](todo/pr1000-review-fixes.md)** — 全部落地；PR 合入即删
 
 
 ---
