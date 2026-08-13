@@ -1,3 +1,4 @@
+import { CHINESE_WEEKDAY_ISO, isoWeekdayToJsDay } from '@infra/utils/chinese-numeral.util';
 import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
 
 /**
@@ -93,25 +94,15 @@ function countJobFactOccurrences(text: string): number {
 const DATE_WEEKDAY_PATTERN =
   /(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*[（(]\s*(?:周|星期)([一二三四五六日天])\s*[)）]/gu;
 
-const WEEKDAY_CHAR_TO_INDEX: Record<string, number> = {
-  日: 0,
-  天: 0,
-  一: 1,
-  二: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-};
-
 /** 提取文本中的日期→星期映射；同一日期在文中标注冲突时视为不可信，剔除。 */
 function extractDateWeekdays(text: string): Map<string, number> {
   const result = new Map<string, number>();
   const conflicted = new Set<string>();
   for (const match of text.matchAll(DATE_WEEKDAY_PATTERN)) {
     const key = `${Number(match[1])}-${Number(match[2])}`;
-    const weekday = WEEKDAY_CHAR_TO_INDEX[match[3]];
-    if (weekday === undefined) continue;
+    const isoWeekday = CHINESE_WEEKDAY_ISO[match[3]];
+    if (isoWeekday === undefined) continue;
+    const weekday = isoWeekdayToJsDay(isoWeekday);
     if (result.has(key) && result.get(key) !== weekday) conflicted.add(key);
     result.set(key, weekday);
   }

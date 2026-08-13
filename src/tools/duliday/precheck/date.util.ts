@@ -14,6 +14,7 @@
  */
 
 import { formatLocalDate, getTomorrowDate } from '@infra/utils/date.util';
+import { CHINESE_WEEKDAY_ISO } from '@infra/utils/chinese-numeral.util';
 import { normalizePolicyText } from '@tools/utils/job-policy-parser';
 import { getShanghaiWeekday, shiftDate } from '@tools/duliday/booking/interview-window.util';
 
@@ -73,24 +74,8 @@ export function normalizeRequestedDate(input?: string): {
 }
 
 function getWeekdayIndexFromChinese(token: string): number | null {
-  const map: Record<string, number> = {
-    一: 1,
-    二: 2,
-    三: 3,
-    四: 4,
-    五: 5,
-    六: 6,
-    日: 7,
-    天: 7,
-    1: 1,
-    2: 2,
-    3: 3,
-    4: 4,
-    5: 5,
-    6: 6,
-    7: 7,
-  };
-  return map[token] ?? null;
+  const weekday = CHINESE_WEEKDAY_ISO[token] ?? Number(token);
+  return Number.isInteger(weekday) && weekday >= 1 && weekday <= 7 ? weekday : null;
 }
 
 function getWeekdayIndexByDate(dateStr: string): number {

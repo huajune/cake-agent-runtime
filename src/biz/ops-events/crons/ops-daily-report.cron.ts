@@ -11,6 +11,7 @@ import {
   type BitableField,
 } from '@infra/feishu/services/bitable-api.service';
 import { formatLocalDate, getLocalDayStart, parseLocalDateStart } from '@infra/utils/date.util';
+import { WEEKDAY_LABELS_LONG } from '@infra/utils/chinese-numeral.util';
 import { SpongeService } from '@sponge/sponge.service';
 import type { SignupWorkOrderItem, SignupWorkOrdersResult } from '@sponge/sponge.types';
 import type { DailyOpsReportRow } from '../entities/daily-ops-report.entity';
@@ -120,8 +121,7 @@ function getWeekdayIndex(reportDate: string): number | null {
 function formatWeekday(reportDate: string): string | null {
   const index = getWeekdayIndex(reportDate);
   if (index === null) return null;
-  const labels = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-  return labels[index] ?? null;
+  return WEEKDAY_LABELS_LONG[index] ?? null;
 }
 
 /** 周末（周六/周日）不出运营日报。 */
