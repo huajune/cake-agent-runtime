@@ -214,18 +214,16 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'date_reference_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
-    description:
-      '回复中"今天/明天/后天 + (M月D日)"连用且日期与相对日词按当前日历不符时拦截（如当天 7-28 却说"明天 7 月 28 日"）。',
+    description: '观察相对日词与系统日历或本轮结构化工单/预约日期不一致的回复。',
     riskGoal:
       '防止日历错乱话术误导候选人空等或错过面试（badcase nau6xunv：当天面试被说成"明天 7 月 28 日，不是今天"，候选人被劝停等待）。',
-    exogenousSignal: '回复文本的相对日词+具体日期共现模式 × 系统当前日期（Asia/Shanghai）。',
-    residualRisk: '无具体日期的裸相对日词（"明天面试"）与星期几错配不在口径内，交语义层。',
+    exogenousSignal:
+      '回复文本的相对日词 × 系统当前日期（Asia/Shanghai）× 本轮 booking/precheck 结构化 interviewTime。',
+    residualRisk: '无结构化工单日期的裸相对日词与星期几错配不在口径内，交语义层。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复里的相对日词与具体日期按真实日历对不上（见证据），当前文本不可发送。' +
-      '请按系统当前日期改正——只修正错误的相对日词或日期本身，面试时间等其余事实与内容逐字保留，不要改动预约本身的日期结论。',
+    feedbackToGenerator: '',
   },
   {
     id: 'summer_worker_alternative_upsell',
@@ -329,23 +327,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'repeated_reply_verbatim',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P2,
-    description: '拦下与本会话已发送消息逐字相同（去空白标点后全等）的整段复读，进 repair 改写。',
+    description: '观察已被确定性投递分段去重的全等复读片段，不触发模型 repair。',
     riskGoal:
-      '全等复读是零假阳的"人机感"信号（badcase 6a5df7e7：无岗话术两轮全等复读后候选人辱骂流失），确定性进 repair 换表述并回应候选人本轮问题。',
+      '全等复读是零假阳的"人机感"信号（badcase 6a5df7e7：无岗话术两轮全等复读后候选人辱骂流失），投递前确定性删除重复段。',
     exogenousSignal: '短期记忆中本会话已投递的 assistant 消息（去空白标点后全等比对）。',
     residualRisk:
-      'repair 白改（二审失败投原首版）时回退到现状；候选人明确要求"再发一遍"的合理重发依赖 repair 上下文判断。观察期指标：上线 3 天看白改率，>30% 降级为 delivery 层全等去重。',
+      '仅删除与近 8 条已投递 assistant 分段全等且不少于 16 个归一化字符的片段；明确重发请求与短确认豁免。近似重复只观察。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
-    feedbackToGenerator:
-      '上一版回复与本会话已发送过的消息逐字相同，候选人已经收到过这句话，当前文本不可发送。请换一种表述重写，并优先回应候选人本轮消息里的具体问题；仅当候选人明确要求"再发一遍"时才可保留原文。',
+    feedbackToGenerator: '',
   },
   {
     id: 'repeated_reply',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P2,
-    description: '观察与本会话已发送消息近乎相同（相似度 ≥0.9 但非全等）的整段复读回复。',
+    description: '观察与本会话已发送消息近乎相同（相似度 ≥0.85 但非全等）的整段复读回复。',
     riskGoal: '用真实已发消息作为 ground truth，发现整段复读 badcase 簇，供生成策略治理。',
     exogenousSignal: '短期记忆中本会话已投递的 assistant 消息。',
     residualRisk:

@@ -68,6 +68,15 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
     expect(scan.districts).toEqual(['延吉市']);
   });
 
+  it('自我介绍中的姓名不作为地理证据，后续真实位置仍可抽取', () => {
+    const scan = scanGeoSignalsFromText(
+      '[图片消息]\n[引用 招聘经理：怎么称呼]\n我是黄梅\n我现在在青浦区\n[消息发送时间：2026-08-13 10:24:32]',
+    );
+    expect(scan.city).toEqual({ value: '上海', evidence: 'unique_district_alias' });
+    expect(scan.districts).toContain('青浦');
+    expect(scan.districts).not.toContain('黄梅');
+  });
+
   it('golden：余姚市 → 区县白名单"余姚"先命中推导宁波（方案 9.2 双轨现状）', () => {
     const scan = scanGeoSignalsFromText('我在余姚市这边');
     expect(scan.city).toEqual({ value: '宁波', evidence: 'unique_district_alias' });

@@ -53,6 +53,8 @@ export interface RecommendedJobSummary {
   educationRequirement?: string | null;
   healthCertificateRequirement?: string | null;
   studentRequirement?: string | null;
+  /** 岗位筛选条件是否明确要求简历。可选：历史存量记录无此字段。 */
+  resumeRequired?: boolean;
   distanceKm?: number | null;
   /** 工具查询时已获取的福利事实。可选：历史存量记录或未请求福利时无此字段。 */
   welfareFacts?: RecommendedJobWelfareFacts | null;
@@ -76,6 +78,7 @@ export const RecommendedJobSummarySchema = z.object({
   educationRequirement: z.string().nullable().optional(),
   healthCertificateRequirement: z.string().nullable().optional(),
   studentRequirement: z.string().nullable().optional(),
+  resumeRequired: z.boolean().optional(),
   distanceKm: z.number().nullable().optional(),
   welfareFacts: RecommendedJobWelfareFactsSchema.nullable().optional(),
 });

@@ -7,6 +7,7 @@ import { type GeneratorInputMessage } from '../generator.types';
 import { formatImageCountPlaceholder } from '@resolution/signal/markers';
 import { buildConversationCorpus } from '@resolution/signal/corpus';
 import type { CorpusBlock } from '@shared-types/corpus.types';
+import { StorageMessageType } from '@enums/storage-message.enum';
 
 /**
  * 对话消息归一化（PreparationService 的纯函数辅助层）：
@@ -131,7 +132,11 @@ export function extractTextFromContent(content: unknown): string {
 /** 转成 AI SDK 的 ModelMessage，并兼容图片回退文本。 */
 function toModelMessages(messages: GeneratorInputMessage[], enableVision: boolean): ModelMessage[] {
   return messages.map((message) => {
-    const textContent = extractTextFromContent(message.content);
+    const rawTextContent = extractTextFromContent(message.content);
+    const textContent =
+      message.messageType === StorageMessageType.REVOKE
+        ? `${rawTextContent}${rawTextContent.trim() ? '\n' : ''}（该消息已撤回）`
+        : rawTextContent;
     if (message.role === 'user' && message.imageUrls?.length) {
       if (enableVision) {
         const imageParts = buildImageParts(message.imageUrls, message.imageMessageIds);

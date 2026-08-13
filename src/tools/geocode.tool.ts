@@ -29,6 +29,8 @@ import {
 import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
+import { extractUserTexts } from '@resolution/signal/dialogue';
 
 const logger = new Logger('geocode');
 
@@ -198,6 +200,36 @@ function buildSessionCityConflictNotice(
 }
 
 /**
+ * geocode.city 与 invite.city 共用一套出处门：模型参数本身不构成城市证据。
+ * 无出处/与会话事实冲突时不报错、不采信，降级为 city=null 让 geocode 三态裁决。
+ */
+function resolveProvenancedCity(
+  context: ToolBuildContext,
+  requestedCity: string | null,
+): string | null {
+  if (!requestedCity) return null;
+  const cityFact = context.archive.sessionFacts?.preferences?.city;
+  const sessionCity =
+    typeof cityFact === 'string'
+      ? cityFact
+      : cityFact && typeof cityFact === 'object' && 'value' in cityFact
+        ? String(cityFact.value ?? '') || null
+        : null;
+  const verdict = evaluateInviteCityGate({
+    requestedCity,
+    sessionCity,
+    userTexts: extractUserTexts(context.turnInput.messages),
+    geoSignalCities: context.ledger.geo.signalCities,
+    turnResolvedCities: [
+      ...context.ledger.geo.anchors.map((anchor) => anchor.city),
+      context.turnInput.geocodeLocationAnchor?.city ?? '',
+    ].filter(Boolean),
+    turnVisualSheets: context.ledger.visual.factSheets,
+  });
+  return verdict.decision === 'allow' ? requestedCity : null;
+}
+
+/**
  * unique 解析结果的统一出口：记录回合锚点（11.3）+ 前置城市披露（11.4）。
  * `_cityConfirmed` 必须是返回对象的第一个字段——序列化后模型最先读到城市结论。
  */
@@ -208,6 +240,16 @@ function buildUniqueResult(params: {
   extra?: Record<string, unknown>;
 }) {
   const { context, candidate, queryAddress, extra } = params;
+  if (candidate.confidence !== 'high' && !candidateEchoesQuery(candidate, queryAddress)) {
+    return {
+      resolution: 'needs_confirmation' as const,
+      candidateLabel: candidate.poiName?.trim() || candidate.formattedAddress,
+      _replyInstruction:
+        `“${queryAddress}”与解析结果“${candidate.poiName?.trim() || candidate.formattedAddress}”不是逐字同一地点。` +
+        '先把解析到的标准地点回显给候选人确认；确认前禁止采用坐标查岗。候选人确认后再按该标准地点重调 geocode。',
+      ...(extra ?? {}),
+    };
+  }
   recordResolvedAnchor(context, candidate, queryAddress);
   const conflictNotice = buildSessionCityConflictNotice(context, candidate);
   return {
@@ -217,6 +259,16 @@ function buildUniqueResult(params: {
     result: toResultPayload(candidate, queryAddress),
     ...(extra ?? {}),
   };
+}
+
+/** 查询原文须被返回的结构化地址/POI 逐字承接；纠错改字必须先让候选人确认。 */
+function candidateEchoesQuery(candidate: GeocodeCandidate, queryAddress: string): boolean {
+  const query = normalizeReferenceText(queryAddress);
+  if (!query) return false;
+  return [candidate.poiName, candidate.township, candidate.district, candidate.formattedAddress]
+    .map(normalizeReferenceText)
+    .filter((value) => value.length >= 2)
+    .some((value) => value.includes(query) || query.includes(value));
 }
 
 /**
@@ -264,9 +316,14 @@ function candidateMatchesAnchor(
   if (expectedCity && (!resolvedCity || resolvedCity !== expectedCity)) return false;
 
   if (anchor.districts.length === 0) return true;
-  if (!candidate.district?.trim()) return false;
+  const returnedAdministrativeAreas = [candidate.district, candidate.township].filter(
+    (value): value is string => Boolean(value?.trim()),
+  );
+  if (returnedAdministrativeAreas.length === 0) return false;
   return anchor.districts.some((district) =>
-    candidateDistrictMatchesAddress([normalizeDistrictForLookup(district)], candidate.district),
+    returnedAdministrativeAreas.some((returnedArea) =>
+      candidateDistrictMatchesAddress([normalizeDistrictForLookup(district)], returnedArea),
+    ),
   );
 }
 
@@ -345,7 +402,8 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
       inputSchema,
       execute: async ({ address, city }) => {
         const trimmedAddress = address?.trim() ?? '';
-        const normalizedCity = city?.trim() || null;
+        const requestedCity = city?.trim() || null;
+        const normalizedCity = resolveProvenancedCity(context, requestedCity);
 
         if (!trimmedAddress) {
           return buildToolError({

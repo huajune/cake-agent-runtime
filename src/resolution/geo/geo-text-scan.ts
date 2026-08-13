@@ -32,6 +32,52 @@ const CITY_DICT: Record<string, true> = Object.fromEntries(
 /** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
 const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开发区))/g;
 
+const SELF_INTRO_PREFIXES = [
+  '你好，我是',
+  '您好，我是',
+  '你好我是',
+  '您好我是',
+  '我是',
+  '我叫',
+] as const;
+const SELF_INTRO_VALUE_BOUNDARIES = [
+  '\n',
+  '\r',
+  '，',
+  ',',
+  '。',
+  '！',
+  '!',
+  '？',
+  '?',
+  '；',
+  ';',
+  ' ',
+] as const;
+
+/**
+ * 加好友后的「我是 X / 我叫 X」首行是昵称自报，不是位置证据。
+ * 只按封闭前缀与边界做字符遮罩，保持后续命中的原始下标不变。
+ */
+function maskSelfIntroductionValue(message: string): string {
+  return message.split('\n').map(maskSelfIntroductionLine).join('\n');
+}
+
+function maskSelfIntroductionLine(line: string): string {
+  const leadingSpaces = line.length - line.trimStart().length;
+  const remainder = line.slice(leadingSpaces);
+  const prefix = SELF_INTRO_PREFIXES.find((candidate) => remainder.startsWith(candidate));
+  if (!prefix) return line;
+  const valueStart = leadingSpaces + prefix.length;
+  let valueEnd = line.length;
+  for (const boundary of SELF_INTRO_VALUE_BOUNDARIES) {
+    const index = line.indexOf(boundary, valueStart);
+    if (index >= valueStart && index < valueEnd) valueEnd = index;
+  }
+  if (valueEnd <= valueStart) return line;
+  return `${line.slice(0, valueStart)}${' '.repeat(valueEnd - valueStart)}${line.slice(valueEnd)}`;
+}
+
 /**
  * 三轮串联扫描 + city 推导（平移自 extractLocation 的白名单扫描段）。
  *
@@ -40,31 +86,32 @@ const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开�
  * 位置分享 / "XX附近" 等消息形态相关的抽取不在本函数职责内，由 memory 侧补充。
  */
 export function scanGeoSignalsFromText(message: string): GeoTextScanResult {
+  const scannableMessage = maskSelfIntroductionValue(message);
   // 三轮串联扫描，covered 区间逐轮累积，避免后轮再去消费前轮已认领的字符
   // city / district 轮开启通名后缀拒绝："宝安公路"不再命中深圳宝安区、"上海路"不再
   // 命中上海（2026-07-29 shadow 6/6 冲突样本的共同根因）。location 轮**不开**——
   // 地标专名与通名天然共生（"陆家嘴"/"五道口"后接 站/广场 属正常形态）。
-  const cityScan = scanWhitelistKeysByLongest(message, CITY_DICT, undefined, {
+  const cityScan = scanWhitelistKeysByLongest(scannableMessage, CITY_DICT, undefined, {
     rejectPlaceFeatureSuffix: true,
   });
   const districtScan = scanWhitelistKeysByLongest(
-    message,
+    scannableMessage,
     UNIQUE_SUBDIVISION_TO_CITY,
     cityScan.covered,
     { rejectPlaceFeatureSuffix: true },
   );
   const locationScan = scanWhitelistKeysByLongest(
-    message,
+    scannableMessage,
     UNIQUE_PLACE_ALIAS_TO_CITY,
     districtScan.covered,
   );
 
-  const city = resolveCity(message, cityScan, districtScan, locationScan);
+  const city = resolveCity(scannableMessage, cityScan, districtScan, locationScan);
 
   // district：白名单命中（归一化后） + 未覆盖区间正则兜底（白名单外，城市未知）
   const whitelistDistricts = districtScan.hits.map((hit) => normalizeDistrictForLookup(hit.key));
   const rawDistricts = matchInUncoveredSegments(
-    message,
+    scannableMessage,
     locationScan.covered,
     RAW_DISTRICT_PATTERN,
   ).map(normalizeRawDistrict);

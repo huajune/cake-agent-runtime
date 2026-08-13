@@ -28,6 +28,7 @@ import {
 } from '@tools/duliday/job-list/no-match-script.util';
 import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+import { buildScreeningCriteria } from '@tools/duliday/precheck/screening-criteria.util';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
@@ -326,6 +327,7 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
           ? healthCertificateRequirement
           : null,
       studentRequirement: inferStudentRequirement(policy),
+      resumeRequired: Boolean(buildScreeningCriteria(policy).resume),
       distanceKm: job._distanceKm != null ? Math.round(job._distanceKm * 10) / 10 : null,
       welfareFacts: welfare
         ? {
@@ -594,6 +596,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **岗位卡片必须紧凑**：单个岗位的"门店名/距离/薪资/班次/要求/工作内容"应**集中在 1-2 段**内描述（行内可用顿号/逗号/空格分隔），不要把同一岗位的各字段用"段间空行（即两个连续换行符）"拆成 5-8 个独立段落——后置的消息切分器（MessageSplitter）按段间空行拆成独立微信消息发出，会导致候选人几秒内连续收到 6-8 条同岗位碎片消息，体验"轰炸式人机"
 - **薪资字段必须带单位**：所有薪资数字必须明示单位（如"元/小时""元/月""元/单"）；**严禁**把月薪和时薪并排展示而不带单位（反例：把"X 元/月"和"X 元/小时"写成"X、X"形式，候选人会误读单位）。多岗位混合展示时，所有岗位的薪资单位都要一并标出
 - **同会话内同岗位不重复介绍**：同一会话内已经介绍过的岗位（同 jobId 或同门店名），后续轮**不要**重复发"薪资 X 元/班次 X 时间"等已说过的字段；后续轮只补新信息或推进流程，候选人追问某具体字段时再单独答
+- **工作内容只能引用岗位详情字段**：回答“具体做什么/工作内容是什么”前必须读取本轮岗位详情里的工作内容；不得根据岗位名（如“外卖员/店员/通岗”）或品牌常识自行预判职责。详情未返回工作内容时按缺字段规则补查，仍为空就如实说明需确认
 - 工作内容里出现"清洗灶台/打荷/收档/拖盘/出货"等行业短语时，必须用一句口语化解释展开，让候选人明白具体做什么；不要原样复读简短关键词
 
 ## 硬规则

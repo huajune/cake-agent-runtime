@@ -3376,6 +3376,32 @@ describe('buildInterviewPrecheckTool', () => {
     ]);
   });
 
+  it('岗位结构化条件未要求简历时忽略候选人附件，不进入收集或上传链', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        candidateUploadResume: 'https://example.com/candidate-resume.pdf',
+      },
+      {
+        messages: [
+          { role: 'user', content: '[图片消息]' },
+          {
+            role: 'user',
+            content:
+              '[引用 招聘经理：资料发我]\n简历也给你了\n[消息发送时间：2026-08-13 10:24:32]',
+          },
+        ],
+      },
+    );
+
+    expect(result.screeningCriteria?.resume).toBeUndefined();
+    expect(result.bookingChecklist.requiredFields).not.toContain('简历附件');
+    expect(result.bookingChecklist.missingFields).not.toContain('简历附件');
+    expect(result.bookingChecklist.templateText).not.toContain('简历附件：');
+  });
+
   it('should hard-reject an explicitly excluded household without exposing restricted regions', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [

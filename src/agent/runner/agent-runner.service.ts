@@ -220,13 +220,28 @@ export class AgentRunnerService {
     // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记（占全部回合 ~11%，2026-07-24 审计）：
     // 避免噪声进入 LLM 审查上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
     // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
-    const firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
+    let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
     if (!firstText || firstSkipped) {
       return this.finalizeReviewed(first, PASS_DECISION, false, wantDefer);
     }
 
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
+    if (decision.deterministicReply !== undefined) {
+      first.text = decision.deterministicReply;
+      firstText = OutboundReplySanitizer.stripTimeMarkers(decision.deterministicReply.trim());
+      const originalRunTurnEnd = first.runTurnEnd;
+      if (originalRunTurnEnd) {
+        first.runTurnEnd = (options) =>
+          originalRunTurnEnd({
+            ...options,
+            assistantTextOverride:
+              options && 'assistantTextOverride' in options
+                ? options.assistantTextOverride
+                : decision.deterministicReply,
+          });
+      }
+    }
     const firstStep = this.toGuardrailStep('first', decision);
 
     // 直达静默：这两类首版重写只会产出"另一条不该发的文本"，与悬空承接句同理
@@ -873,10 +888,14 @@ export class AgentRunnerService {
   }
 
   private buildRepairedResult(result: GeneratorRunResult, text: string): GeneratorRunResult {
+    const previousRunTurnEnd = result.runTurnEnd;
     return {
       ...result,
       text,
       responseMessages: this.repairAssistantResponseMessages(result.responseMessages, text),
+      runTurnEnd: previousRunTurnEnd
+        ? (options) => previousRunTurnEnd({ ...options, assistantTextOverride: text })
+        : undefined,
     };
   }
 

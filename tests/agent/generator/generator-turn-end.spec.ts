@@ -71,6 +71,17 @@ describe('GeneratorAgent attachTurnEnd (runTurnEnd contract)', () => {
     expect(onTurnEnd.mock.calls[0][1]).toBeUndefined();
   });
 
+  it('assistantTextOverride projects the deterministic text actually delivered', async () => {
+    const onTurnEnd = jest.fn().mockResolvedValue(undefined);
+    const service = makeService(onTurnEnd);
+    const result = makeResult();
+    attach(service, result);
+
+    await result.runTurnEnd?.({ assistantTextOverride: '删除复读段后的真实回复' });
+
+    expect(onTurnEnd.mock.calls[0][1]).toBe('删除复读段后的真实回复');
+  });
+
   it('runTurnEnd is consumed once — second call is a no-op', async () => {
     const onTurnEnd = jest.fn().mockResolvedValue(undefined);
     const service = makeService(onTurnEnd);

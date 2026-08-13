@@ -1010,6 +1010,7 @@ export function buildInterviewPrecheckTool(
           }
 
           const analysis = buildJobPolicyAnalysis(job);
+          const screeningCriteria = buildScreeningCriteria(analysis);
           const windows = analysis.interviewWindows;
 
           // 平台已支持"无面试时段"岗位（常见于电话面试流程）：岗位不配置任何
@@ -1301,15 +1302,19 @@ export function buildInterviewPrecheckTool(
             identityEvidence: latestExplicitIdentityEvidence,
             providedAnswers: candidateSupplementAnswers,
           });
-          applyCandidateFieldOverride(
-            knownFieldMap,
-            '简历附件',
-            candidateUploadResume,
-            getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
-              minConfidence: 'high',
-            }),
-            normalizeCandidateUploadResumeInput,
-          );
+          if (screeningCriteria.resume) {
+            applyCandidateFieldOverride(
+              knownFieldMap,
+              '简历附件',
+              candidateUploadResume,
+              getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
+                minConfidence: 'high',
+              }),
+              normalizeCandidateUploadResumeInput,
+            );
+          } else {
+            delete knownFieldMap['简历附件'];
+          }
           applyCandidateFieldOverride(
             knownFieldMap,
             '身高',
@@ -1566,7 +1571,6 @@ export function buildInterviewPrecheckTool(
             requestedDate: normalizedDate.date,
           });
           const scheduleRule = buildScheduleRule(windows);
-          const screeningCriteria = buildScreeningCriteria(analysis);
           // screeningCriteria 的 remark/evidence 与 screeningChecks 的 labelName 都是岗位原文，
           // 可能内嵌"不要 X 籍 / 限本地户口 / 限 X 族 / 婚育要求"类敏感筛选条件——命中时随结果回传
           // 🔒 勿透露提示，补上自由文本路径没有针对性标注的缺口。

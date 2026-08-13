@@ -3,6 +3,7 @@ import {
   normalizeConversation,
   normalizeConversationWithCorpus,
 } from '@agent/generator/preparation-utils/conversation-normalizer';
+import { StorageMessageType } from '@enums/storage-message.enum';
 
 describe('normalizeConversation', () => {
   it('downgrades system-role history messages to user context (AI SDK v7 rejects system in messages)', () => {
@@ -61,5 +62,24 @@ describe('normalizeConversation', () => {
       expect.objectContaining({ id: 'conversation-1', domain: 'evidence', role: 'user' }),
       expect.objectContaining({ id: 'conversation-2', domain: 'evidence', role: 'user' }),
     ]);
+  });
+
+  it('保留撤回消息的结构化来源标记，避免把旧文本当仍然有效的候选人证据', () => {
+    const result = normalizeConversation({
+      callerKind: CallerKind.DEBUG,
+      memoryWindow: [],
+      passedMessages: [
+        {
+          role: 'user',
+          content: '[引用 招聘经理：在哪里]\n我在深圳\n[消息发送时间：2026-08-13 10:24:31]',
+          messageType: StorageMessageType.REVOKE,
+        },
+        { role: 'user', content: '[图片消息]' },
+      ],
+      enableVision: false,
+    });
+
+    expect(result[0]).toMatchObject({ role: 'user' });
+    expect(result[0].content).toContain('（该消息已撤回）');
   });
 });

@@ -109,6 +109,37 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.reply?.text).not.toContain('[表情消息]');
   });
 
+  it('adopts deterministic segment-pruned reply without entering model repair', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    generator.invoke.mockResolvedValue(
+      makeResult({
+        text: '这家目前暂时排不上。\n\n徐汇区还有一家，我继续帮你核实',
+        runTurnEnd,
+      }),
+    );
+    outputGuard.check.mockResolvedValue({
+      ...passDecision,
+      ruleIds: ['repeated_reply_verbatim'],
+      deterministicReply: '徐汇区还有一家，我继续帮你核实',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: {
+        kind: 'inbound',
+        userMessage:
+          '[图片消息]\n[引用 招聘经理：这家排不上]\n那徐汇呢\n[消息发送时间：2026-08-13 10:24:32]',
+      },
+    });
+
+    expect(outcome.reply?.text).toBe('徐汇区还有一家，我继续帮你核实');
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    await outcome.runTurnEnd?.();
+    expect(runTurnEnd).toHaveBeenCalledWith({
+      assistantTextOverride: '徐汇区还有一家，我继续帮你核实',
+    });
+  });
+
   it('empty text or skip_reply short-circuit maps to skipped', async () => {
     generator.invoke.mockResolvedValue(
       makeResult({

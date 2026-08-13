@@ -1,4 +1,5 @@
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { MessageSplitter } from '@channels/wecom/message/utils/message-splitter.util';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**
@@ -13,18 +14,17 @@ import type { RuleContradiction } from '../output-rule.types';
  * 与 prompt 提醒的区别：这里对齐的是"真实发过什么"，模型忘了历史也拦得住。
  *
  * 分档：
- * - repeated_reply_verbatim（revise）：去空白标点后**全等**。零假阳场景——候选人已经
- *   收到过一字不差的这句话，复读必然是"人机感"（badcase 6a5df7e7：无岗话术两轮全等
- *   复读 + 不回应具体提问，候选人评价"说话跟人机一样"后辱骂流失）。进 repair 改写；
- *   repair 白改机制下最坏结果 = 投递原首版（现状），无回归风险；
- * - repeated_reply（observe）：bigram 相似度 ≥ 0.9 但非全等。措辞相近可能是合理的
+ * - repeated_reply_verbatim（observe）：delivery 同款分段后去空白标点全等；长段在组合器
+ *   里确定性删除，不进入模型 repair；
+ * - repeated_reply（observe）：bigram 相似度 ≥ 0.85 但非全等。措辞相近可能是合理的
  *   口径复述（同一岗位事实再确认），本层只观察。
  */
 
 const RECENT_WINDOW = 8;
 /** 短确认（"好的""收到"）天然会重复，只对足够长的内容判定复读。 */
 const MIN_REPEAT_LENGTH = 16;
-const SIMILARITY_THRESHOLD = 0.9;
+const SIMILARITY_THRESHOLD = 0.85;
+const RESEND_MARKERS = ['再发一遍', '重新发一遍', '再发一次', '重新发我', '重发'] as const;
 
 /** 去空白与常见标点，只留内容字符，避免标点差异躲过全等判定。 */
 function normalizeReply(text: string): string {
@@ -50,6 +50,38 @@ function bigramSimilarity(a: string, b: string): number {
   return intersection / (gramsA.size + gramsB.size - intersection);
 }
 
+export function pruneRepeatedReplySegments(
+  text: string,
+  recentAssistantTexts: readonly string[] | undefined,
+  userMessage: string | undefined,
+): { text: string; droppedSegments: string[] } {
+  if (
+    !recentAssistantTexts?.length ||
+    RESEND_MARKERS.some((marker) => userMessage?.includes(marker))
+  ) {
+    return { text, droppedSegments: [] };
+  }
+
+  const deliveredSegments = recentAssistantTexts
+    .slice(-RECENT_WINDOW)
+    .flatMap((item) => MessageSplitter.split(item))
+    .map(normalizeReply)
+    .filter((item) => item.length >= MIN_REPEAT_LENGTH);
+  const droppedSegments: string[] = [];
+  const keptSegments = MessageSplitter.split(text).filter((segment) => {
+    const normalized = normalizeReply(segment);
+    const repeated =
+      normalized.length >= MIN_REPEAT_LENGTH && deliveredSegments.includes(normalized);
+    if (repeated) droppedSegments.push(segment);
+    return !repeated;
+  });
+
+  return {
+    text: droppedSegments.length > 0 ? keptSegments.join('\n\n') : text,
+    droppedSegments,
+  };
+}
+
 /**
  * 整段复读检测：当前回复与近 N 条已发 assistant 消息近乎相同。
  */
@@ -70,11 +102,7 @@ export function detectRepeatedReply(
         ruleId: 'repeated_reply_verbatim',
         label:
           '回复与本会话已发送的消息逐字相同（去空白标点后全等），整段复读像机器人（badcase 6a5df7e7 复读两轮后候选人辱骂流失）',
-        action: GUARDRAIL_ACTION.REVISE,
-        feedbackToGenerator:
-          '上一版回复与本会话已发送过的消息逐字相同，候选人已经收到过这句话，原样复读会被当成机器人。' +
-          '请换一种表述重写，并优先回应候选人本轮消息里的具体问题（如点名的品牌、追问的范围）；' +
-          '仅当候选人明确要求"再发一遍/重新发我"时才可保留原文。只输出候选人可见回复。',
+        action: GUARDRAIL_ACTION.OBSERVE,
       };
     }
     if (similarity >= SIMILARITY_THRESHOLD) {

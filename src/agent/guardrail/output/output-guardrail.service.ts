@@ -16,6 +16,7 @@ import type {
 import type { GuardrailPriority } from '@shared-types/guardrail.contract';
 import {
   GUARDRAIL_DECISION,
+  GUARDRAIL_ACTION,
   GUARDRAIL_FEEDBACK_POLICY,
   GUARDRAIL_PRIORITY,
   GUARDRAIL_RECOVERABILITY,
@@ -31,6 +32,7 @@ import {
 } from './llm/semantic-reviewer.service';
 import type { GuardrailReviewPacket } from './llm/review-packet.types';
 import { SemanticReviewRecorderService } from './semantic-review-recorder.service';
+import { pruneRepeatedReplySegments } from './rules/repeated-reply.rule';
 
 /**
  * 出站守卫组合器（§5.2 / §7）。
@@ -182,8 +184,11 @@ export class OutputGuardrailService {
       userTexts: recentUserTexts,
       messages: recentMessages,
     } = await this.readRecentTexts(input.chatId);
+    const prunedReply = pruneRepeatedReplySegments(reply, recentAssistantTexts, input.userMessage);
+    const effectiveReply = prunedReply.text;
+    const deterministicReply = effectiveReply !== reply ? effectiveReply : undefined;
     const ruleResult = this.ruleGuard.check({
-      replyText: reply,
+      replyText: effectiveReply,
       toolCalls: input.toolCalls,
       chatId: input.chatId,
       userId: input.userId,
@@ -198,6 +203,14 @@ export class OutputGuardrailService {
       memorySnapshot: input.memorySnapshot,
       silent: input.silent,
     });
+    if (prunedReply.droppedSegments.length > 0) {
+      ruleResult.contradictions.push({
+        ruleId: 'repeated_reply_verbatim',
+        label: `已确定性删除 ${prunedReply.droppedSegments.length} 个与近 8 条已投递消息全等的分段`,
+        action: GUARDRAIL_ACTION.OBSERVE,
+        currentReplySendable: true,
+      });
+    }
     const ruleIds = ruleResult.contradictions.map((c) => c.ruleId);
     // 不可发送的规则（revise / replan / block），action=observe 的内容仍可发出。
     const blockedRuleIds = ruleResult.contradictions
@@ -211,7 +224,7 @@ export class OutputGuardrailService {
     // 往轮助手文本复用上面 rule 档的同一次短期记忆读取——语义档与规则档
     // （job_facts_without_any_lookup，已于 8-11 下线，原出处豁免）看到同一份跨轮复述信号。
     const packet = this.packetBuilder.build({
-      reply,
+      reply: effectiveReply,
       toolCalls: input.toolCalls,
       turnLedger: input.turnLedger,
       userMessage: input.userMessage,
@@ -233,21 +246,20 @@ export class OutputGuardrailService {
         ruleIds,
         blockedRuleIds,
         repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+        deterministicReply,
       };
     }
 
     // ---- llm 档（高风险或语义 contract 触发；enforce flag 关闭时最多 shadow） ----
-    const highRiskTrigger = this.resolveHighRiskTrigger(reply, input.toolCalls);
+    const highRiskTrigger = this.resolveHighRiskTrigger(effectiveReply, input.toolCalls);
     const semanticTrigger = this.semanticReviewer.shouldReview(packet);
     const shouldEnforce = flags.llmEnabled && (highRiskTrigger !== 'none' || semanticTrigger);
 
     if (!shouldEnforce) {
       this.runSemanticShadow(packet, flags, input);
-      return this.ruleOnlyDecision(
-        ruleDecision,
-        ruleResult.contradictions,
-        ruleIds,
-        blockedRuleIds,
+      return this.withDeterministicReply(
+        this.ruleOnlyDecision(ruleDecision, ruleResult.contradictions, ruleIds, blockedRuleIds),
+        deterministicReply,
       );
     }
 
@@ -281,6 +293,7 @@ export class OutputGuardrailService {
           blockedRuleIds,
           reasonCode: 'output_review_unavailable',
           repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+          deterministicReply,
         };
       }
       // 仅语义 contract 触发（体验/推荐质量类）：fail-open，回退 rule 档裁决。
@@ -296,11 +309,9 @@ export class OutputGuardrailService {
           })
           .catch(() => undefined);
       }
-      return this.ruleOnlyDecision(
-        ruleDecision,
-        ruleResult.contradictions,
-        ruleIds,
-        blockedRuleIds,
+      return this.withDeterministicReply(
+        this.ruleOnlyDecision(ruleDecision, ruleResult.contradictions, ruleIds, blockedRuleIds),
+        deterministicReply,
       );
     }
 
@@ -323,7 +334,7 @@ export class OutputGuardrailService {
       void this.recordVerdict(
         confidenceDowngraded ? 'confidence_downgraded' : 'enforce',
         verdict,
-        reply,
+        effectiveReply,
         input,
       );
     }
@@ -355,7 +366,15 @@ export class OutputGuardrailService {
       repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
       repairToolNames: [],
       feedbackToGenerator: feedbackLines || undefined,
+      deterministicReply,
     };
+  }
+
+  private withDeterministicReply(
+    decision: OutputGuardDecision,
+    deterministicReply: string | undefined,
+  ): OutputGuardDecision {
+    return deterministicReply === undefined ? decision : { ...decision, deterministicReply };
   }
 
   /** flag 关闭 / 未触发 llm 档时的纯 rule 裁决（等价旧行为）。 */
@@ -676,4 +695,6 @@ export interface OutputGuardDecision {
   feedbackToGenerator?: string;
   /** 降级/转人工归因码。 */
   reasonCode?: string;
+  /** 投递前确定性删除全等复读分段后的文本；不经过模型改写。 */
+  deterministicReply?: string;
 }

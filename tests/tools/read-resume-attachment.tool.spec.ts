@@ -1,6 +1,7 @@
 import { buildReadResumeAttachmentTool } from '@tools/read-resume-attachment.tool';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { PDFParse } from 'pdf-parse';
+import { createToolContext } from '../helpers/tool-context.fixture';
 
 const mockGetText = jest.fn();
 const mockDestroy = jest.fn();
@@ -35,9 +36,36 @@ describe('buildReadResumeAttachmentTool', () => {
   const executeTool = async (
     input: Record<string, unknown> = {},
     attachments = [{ fileUrl: resumeUrl, fileName: '张三简历.pdf' }],
+    resumeRequired = true,
   ) => {
     const builder = buildReadResumeAttachmentTool(attachments);
-    const builtTool = builder({} as never);
+    const builtTool = builder(
+      createToolContext({
+        archive: {
+          currentFocusJob: {
+            jobId: 528751,
+            brandName: '测试品牌',
+            jobName: '服务员',
+            storeName: '测试门店',
+            cityName: '上海',
+            regionName: '徐汇区',
+            laborForm: '全职',
+            salaryDesc: null,
+            jobCategoryName: null,
+            resumeRequired,
+          },
+        },
+        turnInput: {
+          messages: [
+            { role: 'user', content: '[图片消息]' },
+            {
+              role: 'user',
+              content: '[引用 招聘经理：请发简历]\n我发过了\n[消息发送时间：2026-08-13 10:24:32]',
+            },
+          ],
+        },
+      }),
+    );
     return (builtTool as any).execute(input, {
       toolCallId: 'test',
       context: {},
@@ -45,6 +73,18 @@ describe('buildReadResumeAttachmentTool', () => {
       abortSignal: undefined,
     }) as any;
   };
+
+  it('does not read or upload a resume when structured job data does not require one', async () => {
+    const result = await executeTool({}, undefined, false);
+
+    expect(result).toMatchObject({
+      success: false,
+      errorType: TOOL_ERROR_TYPES.READ_RESUME_NOT_REQUIRED,
+      jobId: 528751,
+      resumeRequired: false,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 
   it('reads the current resume attachment and returns extracted text plus field hints', async () => {
     const result = await executeTool();
@@ -118,7 +158,7 @@ describe('buildReadResumeAttachmentTool', () => {
 
   it('includes available resume URLs in the tool description', () => {
     const tool = buildReadResumeAttachmentTool([{ fileUrl: resumeUrl, fileName: '张三简历.pdf' }])(
-      {} as never,
+      createToolContext(),
     );
 
     expect((tool as any).description).toContain('张三简历.pdf');

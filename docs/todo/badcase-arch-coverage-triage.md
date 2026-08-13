@@ -36,7 +36,7 @@
 - internal_output_leak 4 次为真阳（模型降级吐工具语法，根因另案）。
 **发版验收回归案**：chat `6a7d5ff3`（本案）+ `6a740329`（08-06 同款）——AI 面试机制描述不得被拦。
 
-## B 类：现有架构上小改即可（11 条）——工程 β 执行
+## B 类：现有架构上小改即可（13 条）——工程 β 执行
 
 | ID | 诉求 | 小改 spec | 备注 |
 |---|---|---|---|
@@ -75,7 +75,7 @@
 | jtdpmy9x（假订单截图鉴伪） | 能力缺口（图片鉴伪非现有 vision kind），建议与运营对齐后转暂搁置 |
 | xgwyjn3t（发繁体字） | 低频形态；不单修，记语义层观察 |
 
-## E 类：证据不足需下钻归因（20 条）——工程 γ 执行（按 skill 观测表 SOP，产归因结论回写备注）
+## E 类：证据不足需下钻归因（21 条）——工程 γ 执行（按 skill 观测表 SOP，产归因结论回写备注）
 
 P0 优先：**hd7t8yqr**（"别人名字识别"——查是否引用块/第三方名进档案，P11 出处链应覆盖，需实证）、
 **nkyiuvdx**（"报错"——查 trace 定报错源）、**qhjyajuq**（"说帮你查却没查"——dangling promise，查 skip/工具断流）、
@@ -104,13 +104,80 @@ oo83ez03（首例）/ q9l0z11v（五险一金=岗位数据口径）/ yno1y9ir（
 
 ## 给 GPT 的执行清单（三工程，可一口气）
 
-**工程 α·飞书回写**（按本表逐条，用 .env.production 凭证走 bitable 接口）：
+**[x] 工程 α·飞书回写**（按本表逐条，用 .env.production 凭证走 bitable 接口）：
 - A 类 10 条：状态→「处理中」，修复说明追加「[2026-08-13 架构覆盖判定] 覆盖机制：◯◯（见 badcase-arch-coverage-triage.md），随 PR #1000 发版后回归验证」；
 - C 类：修复说明追加归属立项；D 类：修复说明追加裁定/观察结论与待确认方；
 - 回写纪律：**只追加不覆盖**修复说明原文；不写「已解决」（双门禁）；`暂搁置` 12 条不动。
-**工程 β·11 项小改**：按 B 类表逐项实施。纪律：全部为确定性/结构化/prompt 层改动，
+**[x] 工程 β·13 项小改**：按 B 类表逐项实施。纪律：全部为确定性/结构化/prompt 层改动，
 新增任何对开放语言的判定正则=违宪（P11）；新 observe 规则走发牌制；fgccw95r 先等 γ 定别名。
-**工程 γ·20 条下钻**：按 analyze-chat-badcases skill 的观测表 SOP（chat_messages→
+**[x] 工程 γ·21 条下钻 + 3 条关联探针**：按 analyze-chat-badcases skill 的观测表 SOP（chat_messages→
 message_processing_records→agent_execution_events→guardrail_review_records），每条产出
 根因层+结论回写备注；生产 SQL 纪律：SET LOCAL statement_timeout='25s' 严格串行。
 执行顺序：γ（P0 四条先行）→ α → β（fgccw95r 除外可并行）。
+
+---
+
+## 执行结果（2026-08-13）
+
+### 工程 γ：下钻与关联探针
+
+- P0 四条先行完成；随后完成 E 类其余 17 条，并按清单依赖补查 B 类 `fgccw95r` 与 D 类
+  `jbg8rm5g` / `bxobc2k6`，合计 24 个下钻/探针目标。每条均只追加根因、证据与处置建议，
+  原状态和既有修复说明不覆盖；幂等 dry-run 再执行变更数为 0。
+- P0 结论：`hd7t8yqr` 为第三方姓名/品牌上下文错挂，未形成候选人画像事实；`nkyiuvdx`
+  为工具链耗尽后模型泄漏 `</antThinking>`，执行状态仍记 success；`qhjyajuq` 为零工具回复留下
+  “帮你查”的悬空承诺；`i4nzjtue` 为账号昵称/姓名产品口径冲突，现行 IdentitySection 确实允许
+  账号昵称自称，不是画像出处链击穿。
+- 其余高价值结论：`fgccw95r` 是单字符昵称 `M` 被 contact_name 轨预填成 `M Stand`；
+  `hwrfamxz` 的周结数据已在工具链中但最终回复丢失；`q8e6d4dk` 把“当前东莞、条件性深圳”
+  折叠成深圳；`snivu2t8` 是模型把 `<tool_call>` 当文本输出并随后编造，不是失效岗位族；
+  `2sv9ka2i` 与 `v86kvecw` 均有较强“假/歧义 badcase”证据，保留人工裁定。
+- 2026-08-13 实时 Sponge 探针：job `528751` 仍返回电动车/餐箱/工服免费等福利字段，
+  `jbg8rm5g` 属有据事实；job `512594` 在 `onlySignableJobs=false` 下仍查无结果，历史
+  `bxobc2k6` 的住宿字段可见性问题当前因岗位下架无法复现。
+- 飞书治理事件：`bcg-badcase-deep-dive-p0-20260813`、
+  `bcg-badcase-deep-dive-remaining-20260813` 均成功；后者幂等复跑 `updatedBlocks=0`。
+
+### 工程 α：飞书追加回写
+
+- A 类 10 条全部转为「处理中」并追加架构覆盖机制；没有写「已解决」。
+- C/D 类共 13 条仅追加归属、裁定/观察结论及待确认方，状态不改；暂搁置 12 条未触碰。
+- 回写前后核对原修复说明均保留，幂等 dry-run 复跑变更数为 0。治理事件
+  `bcg-arch-coverage-triage-20260813` 成功，`updatedBlocks=0`。
+
+### 工程 β：逐项落地
+
+| 工序 | 状态 | 落地证据 |
+|---|---|---|
+| B1 `vlmnf38y` | 搭车 | `distance-render.util` 已输出不可拆的「约X.Xkm（按区估算）」并已有 fixture，本轮不再叠提示词 |
+| B2 `b4echyzh/wl9vzdbt` | 已改 | `date_reference_mismatch` 对账结构化 booking/precheck 时间，按发牌制保持 `OBSERVE` |
+| B3 `yh5wgnnc` | 已改 | geo anchor 同时接受 district/township 封闭字段匹配，川沙镇—浦东区不再假冲突 |
+| B4 `vaucmdx1` | 已改 | geocode.city 复用 invite city 出处门；无证据参数降级为 `null` 走三态解析 |
+| B5 `ys044br9` | 已改 | 「我是/我叫」封闭前缀内的自称值做等长遮罩，不进入地名白名单扫描 |
+| B6 `fgccw95r` | 已改 | γ 定位为单字符 `M`；contact_name 轨把 1–3 字符纯 ASCII 昵称统一视为低信息别名 |
+| B7 `guix88wl` | 已改 | 低置信且解析结果未逐字承接查询词时返回 `needs_confirmation`，不返回/记录坐标 |
+| B8 `6o2qyw5i` | 已改 | history 对结构化 `REVOKE` 消息追加「（该消息已撤回）」 |
+| B9 `v4s06s9h` | 已改 | 收名提示词补非常见/4–5 字姓名只中性复述确认、不质疑 |
+| B10 `0zyiwkf3` | 已改 | 岗位摘要持久化 `resumeRequired`；读简历与 precheck 上传路径均以该结构化要求为门 |
+| B11 `kj30vdbb` | 已改 | job-list 工具纪律明确工作内容只能读岗位详情，不按岗位名/品牌推断 |
+| B12 段级复读 | 已改 | 使用 delivery `MessageSplitter` 分段；近 8 条全等长段确定性删除，重发请求/短段豁免，≥0.85 仅 observe |
+| B13 拉群收口 | 已改 | 已说明无岗时只发一句进群引导，不复述原因或通知承诺 |
+
+新增/更新回归均使用生产形态语料，覆盖 `[消息发送时间：…]`、多消息、`[图片消息]` 与
+`[引用 …：…]` 块。新守卫没有新增开放自然语言判定正则；B2 与 B12 的观测规则不 revise/block。
+
+### 落地偏离说明
+
+1. 原清单标题写 B=11，但 `bcbf427c` 后续提交已追加 B12/B13；按表实际 13 项全部执行，标题与清单已校正。
+2. 原清单标题写 E=20，但正文实际枚举 P0 4 + 其余 17 = 21；本次 21 条全做，并额外执行
+   `fgccw95r`、`jbg8rm5g`、`bxobc2k6` 三个依赖探针，所以实际目标数为 24。
+3. 当前环境没有可用的生产 DB MCP/`psql` 通道，无法在会话内执行字面量
+   `SET LOCAL statement_timeout='25s'`。下钻改用 `.env.production` 已配置服务凭证的 Supabase
+   REST 做精确 chat/trace 受限读取，并严格串行；未做宽表扫库或写库。飞书追加回写仍走 bitable API。
+
+### 验证
+
+- Node.js `22.16.0` 下 `pnpm run ci:check` 全绿：lint、format、typecheck、geo/vocab 校验、
+  Web/Nest 构建均通过；Jest 430 个 suite / 7029 个测试通过（另 1 suite / 6 个测试按既有配置跳过）。
+- 全量首轮捕获简历预约集成 fixture 仍使用旧 `interviewProcess.remark` 字段；已补为生产字段
+  `interviewProcess.processDesc`，确认“补充标签本身不授权上传、明确岗位流程要求才授权”的门禁后复跑全绿。

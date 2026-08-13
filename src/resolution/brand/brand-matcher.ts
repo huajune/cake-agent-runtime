@@ -293,7 +293,12 @@ function isLowInformationShortLatinMatch(params: {
 }): boolean {
   if (params.source === 'contact_name') {
     return (
-      /^[a-z0-9]{2,3}$/.test(params.normalizedAlias) &&
+      params.normalizedAlias.length >= 1 &&
+      params.normalizedAlias.length <= 3 &&
+      [...params.normalizedAlias].every((character) => {
+        const code = character.charCodeAt(0);
+        return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+      }) &&
       params.normalizedClause === params.normalizedAlias
     );
   }

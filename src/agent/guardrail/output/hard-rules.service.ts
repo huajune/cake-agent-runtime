@@ -221,7 +221,7 @@ export class HardRulesService {
     }
 
     // 相对日词与括注日期对账：日历事实可确定性校验，日期错乱会让候选人错过/空等面试。
-    const dateReferenceMismatch = detectDateReferenceMismatch(text);
+    const dateReferenceMismatch = detectDateReferenceMismatch(text, new Date(), toolCalls);
     if (dateReferenceMismatch) {
       contradictions.push(this.withRulePolicy(dateReferenceMismatch));
     }

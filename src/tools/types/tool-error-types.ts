@@ -205,6 +205,7 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   // read_resume_attachment
   // ============================================================
+  READ_RESUME_NOT_REQUIRED: 'read_resume.not_required',
   READ_RESUME_NO_ATTACHMENT: 'read_resume.no_attachment',
   READ_RESUME_FORBIDDEN_URL: 'read_resume.forbidden_url',
   READ_RESUME_TOO_LARGE: 'read_resume.too_large',

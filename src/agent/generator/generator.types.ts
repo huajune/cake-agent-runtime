@@ -212,7 +212,11 @@ export interface GeneratorRunResult {
    * 用户侧记忆（事实提取/活跃刷新），但不把「用户没看到的回复」投影成助手轮次，避免
    * 污染下一轮 recall 与复聊判定。
    */
-  runTurnEnd?: (opts?: { includeAssistantText?: boolean }) => Promise<void>;
+  runTurnEnd?: (opts?: {
+    includeAssistantText?: boolean;
+    /** 投递前确定性改写后的真实可见文本；省略时沿用生成原文。 */
+    assistantTextOverride?: string;
+  }) => Promise<void>;
 }
 
 /** stream() 返回结果：流 + 元数据 */

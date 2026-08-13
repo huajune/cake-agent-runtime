@@ -1134,7 +1134,7 @@ describe('buildJobListTool', () => {
       hiringRequirement: {
         basicPersonalRequirements: { minAge: 18, maxAge: 35 },
         certificate: { education: '本科', healthCertificate: '需健康证' },
-        remark: '不招学生',
+        remark: '不招学生，需上传简历',
       },
     });
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
@@ -1170,6 +1170,7 @@ describe('buildJobListTool', () => {
         educationRequirement: '本科',
         healthCertificateRequirement: '需健康证',
         studentRequirement: '不接受学生',
+        resumeRequired: true,
         distanceKm: expect.any(Number),
       }),
     ]);

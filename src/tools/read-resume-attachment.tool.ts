@@ -54,12 +54,24 @@ type ResumeFields = {
 };
 
 export function buildReadResumeAttachmentTool(attachments: ResumeAttachment[]): ToolBuilder {
-  return () => {
+  return (context) => {
     const available = uniqueAttachments(attachments);
     return tool({
       description: buildDescription(available),
       inputSchema,
       execute: async ({ fileUrl, maxChars, maxPages }) => {
+        if (context.archive.currentFocusJob?.resumeRequired !== true) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.READ_RESUME_NOT_REQUIRED,
+            outcome: '未读取简历（当前岗位未明确要求简历）',
+            replyInstruction:
+              '当前焦点岗位的结构化岗位数据未明确要求简历。不要读取、解析或上传候选人的简历附件；直接继续岗位校验或报名流程。',
+            details: {
+              jobId: context.archive.currentFocusJob?.jobId ?? null,
+              resumeRequired: context.archive.currentFocusJob?.resumeRequired ?? null,
+            },
+          });
+        }
         const attachment = resolveAttachment(fileUrl, available);
         if (!attachment) {
           return buildToolError({

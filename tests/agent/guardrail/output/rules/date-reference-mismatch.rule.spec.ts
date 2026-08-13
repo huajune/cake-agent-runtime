@@ -51,4 +51,19 @@ describe('detectDateReferenceMismatch (badcase nau6xunv 当天面试被说成明
     const nye = new Date('2026-12-31T12:00:00.000Z');
     expect(detectDateReferenceMismatch('明天（1月1日）门店正常面试', nye)).toBeNull();
   });
+
+  it('对账结构化 booking 时间：生产形态回复只写错相对日也 observe', () => {
+    const hit = detectDateReferenceMismatch(
+      '[引用 招聘经理：面试已约]\n明天记得去哦～\n[消息发送时间：2026-07-28 12:01:00]',
+      now,
+      [
+        {
+          toolName: 'duliday_interview_booking',
+          args: {},
+          result: { booking: { interviewTime: '2026-07-28 15:00:00' } },
+        } as never,
+      ],
+    );
+    expect(hit).toMatchObject({ ruleId: 'date_reference_mismatch', action: 'observe' });
+  });
 });

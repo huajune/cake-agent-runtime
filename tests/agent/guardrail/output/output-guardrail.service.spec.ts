@@ -586,6 +586,39 @@ describe('OutputGuardrailService', () => {
     );
   });
 
+  it('投递前确定性删除全等旧段，并把剩余生产形态文本交给后续审查', async () => {
+    const reviewer = noTriggerReviewer();
+    const { service, packetBuilder, ruleGuard, shortTerm } = build(
+      false,
+      makeRuleResult(),
+      reviewer,
+    );
+    shortTerm.getMessages.mockResolvedValue([
+      { role: 'assistant', content: '这家目前暂时排不上，我再帮你看看其他门店' },
+      { role: 'user', content: '[图片消息]\n那徐汇呢\n[消息发送时间：2026-08-13 10:24:31]' },
+    ]);
+
+    const decision = await service.check(
+      baseInput({
+        chatId: 'chat-segment-dedupe',
+        userMessage: '那徐汇呢',
+        reply:
+          '这家目前暂时排不上，我再帮你看看其他门店。\n\n[引用 候选人：那徐汇呢]\n徐汇区还有一家，我继续帮你核实',
+      }),
+    );
+
+    expect(decision.deterministicReply).toContain('[引用 候选人：那徐汇呢]');
+    expect(decision.deterministicReply).toContain('徐汇区还有一家，我继续帮你核实');
+    expect(decision.deterministicReply).not.toContain('暂时排不上');
+    expect(decision.ruleIds).toContain('repeated_reply_verbatim');
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({ replyText: expect.not.stringContaining('暂时排不上') }),
+    );
+    expect(packetBuilder.build).toHaveBeenCalledWith(
+      expect.objectContaining({ reply: expect.not.stringContaining('暂时排不上') }),
+    );
+  });
+
   it('silent（advisory）：reviewer 故障 + 高风险 → 仍 block，但不 fire 故障告警', async () => {
     const reviewer = {
       shouldReview: jest.fn().mockReturnValue(false),

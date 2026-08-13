@@ -2676,7 +2676,7 @@ describe('HardRulesService', () => {
   });
 
   describe('repeated_reply (badcase recvlmGXDwMZrz / recvlsYa5SSOn9 / 6a5df7e7)', () => {
-    it('verbatim duplicate escalates to revise (badcase 6a5df7e7 全等复读辱骂流失)', () => {
+    it('verbatim duplicate is observe-only after deterministic delivery-shaped pruning', () => {
       const jobDetail =
         '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.2公里，感兴趣可以帮你报名。';
       const result = service.check({
@@ -2688,8 +2688,8 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply_verbatim');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
-      expect(hit?.feedbackToGenerator).toContain('换一种表述');
+      expect(hit?.action).toBe('observe');
+      expect(hit?.currentReplySendable).toBe(true);
       expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeUndefined();
     });
 
@@ -2703,10 +2703,10 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply_verbatim');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
+      expect(hit?.action).toBe('observe');
     });
 
-    it('near-duplicate (≥0.9 but not verbatim) stays observe-only', () => {
+    it('near-duplicate (≥0.85 but not verbatim) stays observe-only', () => {
       const result = service.check({
         replyText:
           '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.3公里，感兴趣可以帮你报名。',
