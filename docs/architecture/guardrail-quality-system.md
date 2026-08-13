@@ -4,7 +4,7 @@
 
 > 出站链路的**分段职权、repair 动手权、规则生命周期治理**。每条护栏的清单与实现见
 > [security-guardrails.md](./security-guardrails.md)；判定该用规则还是语义见
-> [rules-vs-semantics-design-philosophy.md](./rules-vs-semantics-design-philosophy.md)。
+> [rules-vs-semantics-design-philosophy.md](../principles/rules-vs-semantics-design-philosophy.md)。
 >
 > 核心命题：**质量保障不能只靠投递前的单轮闸门。** 事前防线只覆盖单轮可判定的违规，
 > 跨轮问题、投递物质量、未被拦下的多数回合都需要事后检测环兜底——两环缺一不可。

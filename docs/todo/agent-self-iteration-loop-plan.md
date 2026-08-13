@@ -17,7 +17,7 @@
 > 原状态行：技术方案 v1（2026-07-08，待评审）
 > 定位：与守卫止血版执行方案（已并入 [security-guardrails.md](../architecture/security-guardrails.md) 现状）
 > 是两条独立轨道——止血版管"发送链路不再自伤"，本方案管"质量问题自动发现、自动修复提案"。
-> 设计原则依据：[rules-vs-semantics-design-philosophy.md](../architecture/rules-vs-semantics-design-philosophy.md)
+> 设计原则依据：[rules-vs-semantics-design-philosophy.md](../principles/rules-vs-semantics-design-philosophy.md)
 > 的 P1（质量问题的干预点在生成时与离线）、P8（升权靠数据）。
 
 ---

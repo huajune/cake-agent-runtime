@@ -11,7 +11,7 @@
 > 重开判据：出现召回不足的 badcase 实证，或岗位量级增长到结构化召回明显不够用。
 >
 > 原状态行：技术方案（2026-07-07，待评审）
-> 设计原则依据：[rules-vs-semantics-design-philosophy.md](../architecture/rules-vs-semantics-design-philosophy.md)
+> 设计原则依据：[rules-vs-semantics-design-philosophy.md](../principles/rules-vs-semantics-design-philosophy.md)
 > ——检索技术的合法位置是**召回与路由**，不是裁决；本方案严守"索引只负责找到岗位，
 > 事实永远来自实时 API"这条红线。
 

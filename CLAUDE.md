@@ -147,5 +147,5 @@ tail -f logs/combined-$(date +%Y-%m-%d).log   # 日志
 ## Advanced Documentation
 
 - **[.claude/agents/README.md](./.claude/agents/README.md)** — 规范文档中心：code-standards / architecture-principles / frontend-standards / commit-guidelines / documentation-standards / code-quality-guardian
-- **docs/** — 架构（architecture/）、产品方案（product/）、数据库（db/）、技术调研（technical/）
+- **docs/** — 架构（architecture/）、生产实践原则（principles/：分工哲学 P1~P11、示教纪律等经验宪法）、产品方案（product/）、数据库（db/）、技术调研（technical/）
 - **src/memory/README.md**、**src/agent/guardrail/tool/README.md** — 子系统内文档

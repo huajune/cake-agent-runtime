@@ -46,7 +46,6 @@
 ### 守卫与判定哲学
 
 - **[安全护栏说明](architecture/security-guardrails.md)** ⭐ — 护栏现状总览：基础设施层 + Agent 三层守卫（input/tool/output）
-- **[确定性规则与语义理解的分工哲学](architecture/rules-vs-semantics-design-philosophy.md)** ⭐ — 设计原则基线（P1~P10），多份文档引它作依据
 - **[语义判定三分法](architecture/semantic-decision-taxonomy.md)** — 正则、LLM 标签位与向量判定的准入边界
 - **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** 🚧 — 双环质量体系；**离线环仅落成 skills，src 内未实现**
 
@@ -55,6 +54,15 @@
 - **[测试套件架构](architecture/test-suite-architecture.md)** — LLM 评分对话质量评估框架（单轮 + 多轮 + 批量 + 飞书同步）
 - **[监控系统架构](architecture/monitoring-system-architecture.md)** — 消息追踪、小时级聚合、Dashboard
 - **[Biz 分层边界规范](architecture/biz-layer-boundaries.md)** — `src/biz/**` 的 Controller / Service / Repository 分层约束
+
+---
+
+## 🧪 生产实践原则 (principles/)
+
+> 从生产事故与观测数据中蒸馏、跨功能域、对未来设计有约束力的经验总结。见 [principles/README.md](principles/README.md)。
+
+- **[确定性规则与语义理解的分工哲学](principles/rules-vs-semantics-design-philosophy.md)** ⭐ — 设计原则基线（P1~P11），多份文档引它作依据；P11=裁决权宪法（模型作证/代码公证/本人终审）
+- **[示例示教与幻觉：示教纪律](principles/prompt-example-hygiene.md)** ⭐ — 教学示例引发幻觉的三机制、全库示例面普查（130 处）、业界解法对照与示教四原则
 
 ---
 
