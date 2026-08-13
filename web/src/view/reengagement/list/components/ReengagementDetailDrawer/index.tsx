@@ -10,7 +10,7 @@ import {
   MessageSquareText,
   XCircle,
 } from 'lucide-react';
-import { formatDateTime, formatJson } from '@/utils/format';
+import { formatDateTime, formatJson, formatLocaleNumber } from '@/utils/format';
 import { asRecord } from '@/utils/object';
 import {
   useReengagementRecordDetail,
@@ -760,7 +760,7 @@ export default function ReengagementDetailDrawer({
                 </div>
                 <details className={styles.promptPanel} open>
                   <summary>
-                    展开 / 收起全文（{insight.systemPrompt.length.toLocaleString()} 字）
+                    展开 / 收起全文（{formatLocaleNumber(insight.systemPrompt.length)} 字）
                   </summary>
                   <pre className={styles.promptText}>{insight.systemPrompt}</pre>
                 </details>

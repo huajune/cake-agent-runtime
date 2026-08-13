@@ -14,6 +14,7 @@ import {
   Users,
 } from 'lucide-react';
 import heroArt from '@/assets/images/conversion-growth-hero.png';
+import { formatPercent } from '@/utils/format';
 import MetricModeTabs from '../MetricModeTabs';
 import styles from '../../styles/index.module.scss';
 
@@ -490,10 +491,6 @@ function shade(hex: string, pct: number): string {
   const p = Math.abs(pct);
   const mix = (c: number) => Math.round((target - c) * p + c);
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
-}
-
-function formatPercent(value?: number) {
-  return `${((value ?? 0) * 100).toFixed(1)}%`;
 }
 
 // 鼠标悬停在两个百分比上时的解释，帮运营理解口径。

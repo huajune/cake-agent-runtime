@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { TestExecution } from '@/api/services/agent-test.service';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
+import { formatLocaleDateTime } from '@/utils/format';
 import type { ToolCall, TokenUsage } from '../../types';
 import { buildAgentRenderableMessage } from '../../utils/agentRenderableMessage';
 import { formatReviewStatusLabel, resolveReviewerSourceLabel } from '../../utils/reviewLabel';
@@ -73,7 +74,7 @@ function formatExecutedAt(value?: string | null) {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('zh-CN', {
+  return formatLocaleDateTime(date, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -264,7 +265,7 @@ export function ExecutionDetailViewer({
   if (execution.reviewed_at) {
     reviewMetaItems.push({
       label: '评审时间',
-      value: new Date(execution.reviewed_at).toLocaleString('zh-CN', {
+      value: formatLocaleDateTime(execution.reviewed_at, {
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',

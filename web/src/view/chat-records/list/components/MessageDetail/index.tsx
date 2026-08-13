@@ -4,14 +4,14 @@ import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
 import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
+import { formatLocaleDate, formatLocaleDateTime } from '@/utils/format';
 import { MessageBubbleContent } from './MessageBubbleContent';
 import { getBubbleVariant } from './bubble-variant';
 import styles from './index.module.scss';
 
 // 格式化时间戳
 function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return date.toLocaleString('zh-CN', {
+  return formatLocaleDateTime(timestamp, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -31,7 +31,7 @@ function formatDate(timestamp: number): string {
   } else if (date.toDateString() === yesterday.toDateString()) {
     return '昨天';
   }
-  return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+  return formatLocaleDate(date, { month: 'long', day: 'numeric' });
 }
 
 function isAssistantMessage(message: ChatMessage): boolean {

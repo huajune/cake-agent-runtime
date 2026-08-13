@@ -1,5 +1,6 @@
 import { useExtractionAccuracy } from '@/hooks/analytics/useExtractionAccuracy';
 import type { ExtractionAccuracyField } from '@/api/types/monitoring.types';
+import { formatLocaleNumber } from '@/utils/format';
 import styles from './index.module.scss';
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
@@ -71,7 +72,7 @@ export default function ExtractionAccuracyCard({
               {fields.map((field) => (
                 <tr key={field.field}>
                   <td className={styles.fieldCol}>{FIELD_LABELS[field.field] ?? field.field}</td>
-                  <td className={styles.numCol}>{field.bookings.toLocaleString('zh-CN')}</td>
+                  <td className={styles.numCol}>{formatLocaleNumber(field.bookings, 'zh-CN')}</td>
                   <td className={styles.numCol}>
                     <span className={rateClass(field.coveragePct)}>
                       {formatPercent(field.coveragePct)}
@@ -87,12 +88,12 @@ export default function ExtractionAccuracyCard({
                       {formatPercent(field.highConfAccuracyPct)}
                     </span>
                     <span className={styles.subValue}>
-                      n={field.highConf.toLocaleString('zh-CN')}
+                      n={formatLocaleNumber(field.highConf, 'zh-CN')}
                     </span>
                   </td>
                   <td className={styles.numCol}>
                     <span className={field.mismatches > 0 ? styles.mismatch : undefined}>
-                      {field.mismatches.toLocaleString('zh-CN')}
+                      {formatLocaleNumber(field.mismatches, 'zh-CN')}
                     </span>
                   </td>
                 </tr>

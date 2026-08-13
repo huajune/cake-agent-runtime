@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Loader2, AlertCircle, Upload, Info } from 'lucide-react';
 import { TabSwitch } from '@/components/TabSwitch';
+import { formatLocaleDateTime } from '@/utils/format';
 import {
   useStrategyConfig,
   useReleasedConfig,
@@ -44,7 +45,7 @@ export default function Strategy() {
 
   const releasedVersion = releasedConfig?.version ?? 0;
   const releasedTime = releasedConfig?.released_at
-    ? new Date(releasedConfig.released_at).toLocaleString('zh-CN', {
+    ? formatLocaleDateTime(releasedConfig.released_at, {
         month: 'numeric',
         day: 'numeric',
         hour: '2-digit',
@@ -102,9 +103,7 @@ export default function Strategy() {
               </div>
             )}
             <button
-              className={
-                publishConfirm ? styles.publishBtnConfirm : styles.publishBtn
-              }
+              className={publishConfirm ? styles.publishBtnConfirm : styles.publishBtn}
               onClick={handlePublish}
               disabled={publishMutation.isPending}
             >
@@ -143,7 +142,8 @@ export default function Strategy() {
         <div className={styles.configBoundary}>
           <span className={styles.configBoundaryTitle}>配置边界</span>
           <p className={styles.configBoundaryDesc}>
-            主体提示词负责全局规则与工具手册；阶段目标只写阶段目标、切换信号和 CTA；政策红线只写动态业务底线与运营口径；业务阈值只写数值型约束。
+            主体提示词负责全局规则与工具手册；阶段目标只写阶段目标、切换信号和
+            CTA；政策红线只写动态业务底线与运营口径；业务阈值只写数值型约束。
           </p>
         </div>
       </div>

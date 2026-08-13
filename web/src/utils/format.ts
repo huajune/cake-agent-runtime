@@ -78,6 +78,39 @@ export function formatNumber(num: number): string {
   return num.toString();
 }
 
+/** 按浏览器当前区域格式化数字；可显式传 locale 保持调用方既有口径。 */
+export function formatLocaleNumber(value: number, locales?: string | string[]): string {
+  return value.toLocaleString(locales);
+}
+
+/** 比率 → 百分比文案。null/undefined 返回 nullText（默认兼容既有 4 处）。 */
+export function formatPercent(value?: number | null, nullText = '0.0%'): string {
+  if (value == null) return nullText;
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+type LocaleDateInput = string | number | Date;
+
+function toDate(value: LocaleDateInput): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+/** 按浏览器时区格式化日期时间；本 helper 刻意不注入 timeZone。 */
+export function formatLocaleDateTime(
+  value: LocaleDateInput,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  return toDate(value).toLocaleString('zh-CN', options);
+}
+
+/** 按浏览器时区格式化日期；本 helper 刻意不注入 timeZone。 */
+export function formatLocaleDate(
+  value: LocaleDateInput,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  return toDate(value).toLocaleDateString('zh-CN', options);
+}
+
 // 格式化相对时间（几分钟前、几小时前等）
 export function formatRelativeTime(timestamp: string | number): string {
   if (!timestamp) return '-';
