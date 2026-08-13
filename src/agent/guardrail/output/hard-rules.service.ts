@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import type {
+  HardRuleOverrideMode,
+  HardRuleOverrides,
+} from '@biz/hosting-config/types/hosting-config.types';
 import {
   GUARDRAIL_ACTION,
   GUARDRAIL_DATA_SENSITIVITY,
@@ -49,6 +53,11 @@ export {
   OUTPUT_RULE_IDS,
   type OutputRuleCatalogMetadata,
 } from './rules/output-rule-catalog';
+
+export interface HardRuleOverrideHit {
+  ruleId: string;
+  mode: HardRuleOverrideMode;
+}
 
 /**
  * Reply 后置事实对账。
@@ -100,6 +109,8 @@ export class HardRulesService {
   private readonly rulePolicyById = new Map<string, OutputRuleCatalogMetadata>(
     OUTPUT_RULE_CATALOG.map((rule) => [rule.id, rule]),
   );
+  /** 同一脏 ruleId 每进程只告警一次，避免运行时配置在热路径持续刷屏。 */
+  private readonly warnedUnknownOverrideRuleIds = new Set<string>();
 
   constructor(private readonly alertNotifier: AlertNotifierService) {}
 
@@ -133,15 +144,23 @@ export class HardRulesService {
     memorySnapshot?: AgentMemorySnapshot;
     /** 静默模式（advisory）：只返回裁决，由调用方避免写生产守卫日志。 */
     silent?: boolean;
+    /** Dashboard 运行时降档配置；只允许 off/observe。 */
+    hardRuleOverrides?: HardRuleOverrides;
+    /** 由组合器先行确定性识别、仍须统一经过 catalog policy/override 的命中。 */
+    precomputedContradictions?: RuleContradiction[];
   }): {
     hit: boolean;
     contradictions: RuleContradiction[];
+    /** 仅 override 真正作用到命中时返回；off 命中即使被丢弃也保留此审计信号。 */
+    overrideHits?: HardRuleOverrideHit[];
   } {
     const text = params.replyText ?? '';
     if (!text.trim()) return { hit: false, contradictions: [] };
 
     const toolCalls = params.toolCalls ?? [];
-    const contradictions: RuleContradiction[] = [];
+    const contradictions: RuleContradiction[] = (params.precomputedContradictions ?? []).map(
+      (contradiction) => this.withRulePolicy(contradiction),
+    );
 
     /**
      * 运行顺序说明：
@@ -359,10 +378,18 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(repeatedReply));
     }
 
-    if (contradictions.length === 0) return { hit: false, contradictions: [] };
+    const { effectiveContradictions, overrideHits } = this.applyHardRuleOverrides(
+      contradictions,
+      params.hardRuleOverrides,
+    );
+    if (effectiveContradictions.length === 0) {
+      return overrideHits.length > 0
+        ? { hit: false, contradictions: [], overrideHits }
+        : { hit: false, contradictions: [] };
+    }
 
-    const hasNonSendable = contradictions.some((c) => c.currentReplySendable === false);
-    const hasRepair = contradictions.some(
+    const hasNonSendable = effectiveContradictions.some((c) => c.currentReplySendable === false);
+    const hasRepair = effectiveContradictions.some(
       (c) => c.action === GUARDRAIL_ACTION.REVISE || c.action === GUARDRAIL_ACTION.BLOCK,
     );
     const actionLabel = hasNonSendable ? 'veto_current_reply' : hasRepair ? 'repair' : 'warn';
@@ -370,16 +397,22 @@ export class HardRulesService {
     this.logger.warn(
       `[ReplyFactGuard] 命中事实矛盾: chatId=${params.chatId ?? '-'}, userId=${params.userId ?? '-'}, action=${
         actionLabel
-      }, rules=${contradictions
+      }, rules=${effectiveContradictions
         .map((c) => c.ruleId)
         .join(',')}, replyPreview="${text.slice(0, 80)}"${params.silent ? ' [silent]' : ''}`,
     );
 
     // silent（advisory 调试流量）：只返回裁决，runner 不写生产守卫日志。
-    if (params.silent) return { hit: true, contradictions };
+    if (params.silent) {
+      return overrideHits.length > 0
+        ? { hit: true, contradictions: effectiveContradictions, overrideHits }
+        : { hit: true, contradictions: effectiveContradictions };
+    }
 
-    const p0Contradictions = contradictions.filter(
-      (contradiction) => contradiction.severity === GUARDRAIL_PRIORITY.P0,
+    const p0Contradictions = effectiveContradictions.filter(
+      (contradiction) =>
+        contradiction.severity === GUARDRAIL_PRIORITY.P0 &&
+        contradiction.currentReplySendable === false,
     );
     if (p0Contradictions.length > 0) {
       void this.alertNotifier
@@ -425,7 +458,56 @@ export class HardRulesService {
 
     // 所有 rule 命中与修复过程由 runner 统一归档到 guardrail_review_records。
     // 机器判例不自动创建 BadCase；BadCase 只接收人工确认需要修复的问题。
-    return { hit: true, contradictions };
+    return overrideHits.length > 0
+      ? { hit: true, contradictions: effectiveContradictions, overrideHits }
+      : { hit: true, contradictions: effectiveContradictions };
+  }
+
+  /**
+   * 所有规则完成评估后统一收权。未知 ruleId 不参与匹配并告警；off 命中从裁决里丢弃，
+   * observe 命中重新派生 sendable policy。overrideHits 独立返回，确保 off 仍可归档取证。
+   */
+  private applyHardRuleOverrides(
+    contradictions: RuleContradiction[],
+    configuredOverrides: HardRuleOverrides | undefined,
+  ): { effectiveContradictions: RuleContradiction[]; overrideHits: HardRuleOverrideHit[] } {
+    if (!configuredOverrides || Object.keys(configuredOverrides).length === 0) {
+      return { effectiveContradictions: contradictions, overrideHits: [] };
+    }
+
+    const overrides: HardRuleOverrides = {};
+    for (const [ruleId, mode] of Object.entries(configuredOverrides)) {
+      if (!this.rulePolicyById.has(ruleId)) {
+        if (!this.warnedUnknownOverrideRuleIds.has(ruleId)) {
+          this.warnedUnknownOverrideRuleIds.add(ruleId);
+          this.logger.warn(`[ReplyFactGuard] 忽略未知 hardRuleOverrides ruleId: ${ruleId}`);
+        }
+        continue;
+      }
+      if (mode === 'off' || mode === 'observe') overrides[ruleId] = mode;
+    }
+
+    const overrideHitsByKey = new Map<string, HardRuleOverrideHit>();
+    const effectiveContradictions = contradictions.flatMap((contradiction) => {
+      const mode = overrides[contradiction.ruleId];
+      if (!mode) return [contradiction];
+
+      const hit = { ruleId: contradiction.ruleId, mode };
+      overrideHitsByKey.set(`${mode}:${contradiction.ruleId}`, hit);
+      if (mode === 'off') return [];
+
+      return [
+        this.withRulePolicy({
+          ...contradiction,
+          action: GUARDRAIL_ACTION.OBSERVE,
+        }),
+      ];
+    });
+
+    return {
+      effectiveContradictions,
+      overrideHits: Array.from(overrideHitsByKey.values()),
+    };
   }
 
   private withRulePolicy(contradiction: RuleContradiction): RuleContradiction {

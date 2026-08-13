@@ -1,6 +1,7 @@
 export type AgentReplyThinkingMode = 'fast' | 'deep';
 /** 深度思考档位（deep 模式下生效） */
 export type AgentReplyThinkingEffort = 'low' | 'medium' | 'high';
+export type HardRuleOverrideMode = 'off' | 'observe';
 
 export interface BlacklistItem {
   groupId: string;
@@ -56,6 +57,7 @@ export interface AgentReplyConfig {
   // 出站守卫 llm 档（语义审查）灰度开关
   outputGuardrailLlmEnabled: boolean;
   outputGuardrailSemanticShadowEnabled: boolean;
+  hardRuleOverrides: Record<string, HardRuleOverrideMode>;
 
   // 主动复聊（reengagement）开关
   reengagementEnabled: boolean;

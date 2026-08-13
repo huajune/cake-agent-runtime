@@ -13,6 +13,7 @@ import type {
   AgentReplyConfig,
   AgentReplyThinkingEffort,
   AgentReplyThinkingMode,
+  HardRuleOverrideMode,
 } from '@/api/types/config.types';
 import type { ReengagementScenario } from '@/api/types/reengagement.types';
 
@@ -141,6 +142,8 @@ export default function Config() {
   const [editingConcurrency, setEditingConcurrency] = useState<number | null>(null);
   // 场景清单属于低频配置，默认折叠，主开关操作路径保持清爽
   const [scenariosExpanded, setScenariosExpanded] = useState(false);
+  const [hardRuleIdDraft, setHardRuleIdDraft] = useState('');
+  const [hardRuleModeDraft, setHardRuleModeDraft] = useState<HardRuleOverrideMode>('observe');
   const [activeSection, setActiveSection] = useState<string>(PAGE_SECTIONS[0].id);
 
   const { data: agentConfigData, isLoading: isLoadingConfig } = useAgentReplyConfig();
@@ -381,9 +384,7 @@ export default function Config() {
         <div className={styles.modelCellIdentity}>
           <div className={styles.settingHeading}>
             <span className={styles.settingLabel}>{field.label}</span>
-            {isModified(field.key) ? (
-              <span className={styles.modifiedBadge}>覆盖默认</span>
-            ) : null}
+            {isModified(field.key) ? <span className={styles.modifiedBadge}>覆盖默认</span> : null}
           </div>
           <p className={styles.modelCellHint} title={field.hint}>
             {field.hint}
@@ -432,6 +433,7 @@ export default function Config() {
   const guardrailShadowEnabled = Boolean(
     agentConfigData?.config.outputGuardrailSemanticShadowEnabled,
   );
+  const hardRuleOverrides = agentConfigData?.config.hardRuleOverrides ?? {};
   // 主动复聊开关同守卫开关：直接读服务端最新值，切换即保存
   const reengagementEnabled = Boolean(agentConfigData?.config.reengagementEnabled);
   const reengagementShadow = Boolean(agentConfigData?.config.reengagementShadow ?? true);
@@ -500,6 +502,23 @@ export default function Config() {
     } else {
       updateConfig.mutate({ outputGuardrailLlmEnabled: true });
     }
+  };
+
+  const saveHardRuleOverrides = (next: Record<string, HardRuleOverrideMode>) => {
+    updateConfig.mutate({ hardRuleOverrides: next });
+  };
+
+  const addHardRuleOverride = () => {
+    const ruleId = hardRuleIdDraft.trim();
+    if (!ruleId) return;
+    saveHardRuleOverrides({ ...hardRuleOverrides, [ruleId]: hardRuleModeDraft });
+    setHardRuleIdDraft('');
+  };
+
+  const removeHardRuleOverride = (ruleId: string) => {
+    const next = { ...hardRuleOverrides };
+    delete next[ruleId];
+    saveHardRuleOverrides(next);
   };
 
   const reengagementState: ModuleRunState = !reengagementEnabled
@@ -715,9 +734,7 @@ export default function Config() {
                       秒生效。
                     </p>
                     <div className={styles.settingMeta}>
-                      <span>
-                        当前生效: {fallbackChains.default.chain.join(' → ') || '未配置'}
-                      </span>
+                      <span>当前生效: {fallbackChains.default.chain.join(' → ') || '未配置'}</span>
                     </div>
                   </div>
                   <div className={styles.controlBlock}>
@@ -754,8 +771,8 @@ export default function Config() {
                       </span>
                     </div>
                     <p className={styles.settingDescription}>
-                      图片理解角色专属降级链，优先于默认链；建议保持与主链跨厂商（qwen 主模型挂掉时靠它兜底识图）。
-                      留空回退环境变量 AGENT_VISION_FALLBACKS。
+                      图片理解角色专属降级链，优先于默认链；建议保持与主链跨厂商（qwen
+                      主模型挂掉时靠它兜底识图）。 留空回退环境变量 AGENT_VISION_FALLBACKS。
                     </p>
                     <div className={styles.settingMeta}>
                       <span>
@@ -1028,6 +1045,87 @@ export default function Config() {
                   })}
                 </div>
               </div>
+              <div className={styles.settingRow}>
+                <div className={styles.settingBody}>
+                  <div className={styles.settingHeading}>
+                    <span className={styles.settingLabel}>硬规则运行时降档</span>
+                    <span className={styles.modifiedBadge}>
+                      {Object.keys(hardRuleOverrides).length} 条
+                    </span>
+                  </div>
+                  <p className={styles.settingDescription}>
+                    输入 catalog ruleId 后可即时设为 <strong>Observe</strong>（只记录、不拦截）或
+                    <strong> Off</strong>（停用）。这里只能降权；规则升档仍须修改代码并走发牌制。
+                  </p>
+                  <div className={styles.settingMeta}>
+                    <span>切换即时生效</span>
+                    <span>降档命中仍写守卫档案</span>
+                    <span>未知 ruleId 会被运行时忽略并告警</span>
+                  </div>
+                </div>
+                <div className={styles.hardRuleOverrideEditor}>
+                  {Object.entries(hardRuleOverrides).map(([ruleId, mode]) => (
+                    <div className={styles.hardRuleOverrideRow} key={ruleId}>
+                      <code className={styles.hardRuleOverrideId}>{ruleId}</code>
+                      <select
+                        className={styles.hardRuleOverrideSelect}
+                        value={mode}
+                        disabled={updateConfig.isPending}
+                        onChange={(event) =>
+                          saveHardRuleOverrides({
+                            ...hardRuleOverrides,
+                            [ruleId]: event.target.value as HardRuleOverrideMode,
+                          })
+                        }
+                      >
+                        <option value="observe">Observe</option>
+                        <option value="off">Off</option>
+                      </select>
+                      <button
+                        type="button"
+                        className={styles.hardRuleOverrideRemove}
+                        disabled={updateConfig.isPending}
+                        onClick={() => removeHardRuleOverride(ruleId)}
+                        aria-label={`移除 ${ruleId} 的降档配置`}
+                      >
+                        移除
+                      </button>
+                    </div>
+                  ))}
+                  <div className={styles.hardRuleOverrideRow}>
+                    <input
+                      type="text"
+                      className={styles.hardRuleOverrideInput}
+                      placeholder="catalog ruleId"
+                      value={hardRuleIdDraft}
+                      disabled={updateConfig.isPending}
+                      onChange={(event) => setHardRuleIdDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') addHardRuleOverride();
+                      }}
+                    />
+                    <select
+                      className={styles.hardRuleOverrideSelect}
+                      value={hardRuleModeDraft}
+                      disabled={updateConfig.isPending}
+                      onChange={(event) =>
+                        setHardRuleModeDraft(event.target.value as HardRuleOverrideMode)
+                      }
+                    >
+                      <option value="observe">Observe</option>
+                      <option value="off">Off</option>
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.hardRuleOverrideAdd}
+                      disabled={updateConfig.isPending || hardRuleIdDraft.trim().length === 0}
+                      onClick={addHardRuleOverride}
+                    >
+                      添加
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1183,9 +1281,7 @@ export default function Config() {
       {hasChanges ? (
         <div className={styles.saveDock}>
           <div className={styles.saveDockInfo}>
-            <span className={styles.saveDockTitle}>
-              {pendingChangeCount || 1} 项配置待保存
-            </span>
+            <span className={styles.saveDockTitle}>{pendingChangeCount || 1} 项配置待保存</span>
             <span className={styles.saveDockText}>
               保存后约 5 秒内全实例生效；运行开关类配置已经即时生效。
             </span>

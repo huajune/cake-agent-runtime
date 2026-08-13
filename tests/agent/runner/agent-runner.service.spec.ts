@@ -1554,6 +1554,32 @@ describe('AgentRunnerService.runTurn', () => {
       feedbackToGenerator: '不要给区级距离结论',
     };
 
+    it('persists an off override hit with its marker even when the effective decision is pass', async () => {
+      generator.invoke.mockResolvedValueOnce(
+        makeResult({
+          text: '[引用 候选人：现在还能报吗]\n名额放心，我帮你留着。\n[图片消息]\n[消息发送时间：2026-08-13 16:18:00]',
+        }),
+      );
+      outputGuard.check.mockResolvedValueOnce({
+        ...passDecision,
+        overrideMarkers: ['override:off:quota_promise'],
+      });
+
+      await service.runTurn({
+        sessionRef,
+        trigger: { kind: 'inbound', userMessage: '现在还能报吗' },
+        context: { messageId: 'msg-hard-rule-override' },
+      });
+
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-hard-rule-override',
+          finalDecision: 'pass',
+          reasonCode: 'override:off:quota_promise',
+        }),
+      );
+    });
+
     it('revise flow persists first draft full text, violations and revised reply', async () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '首版（含区级距离断言）' }));
       replyRepairAgent.repair.mockResolvedValueOnce('重写后的回复');

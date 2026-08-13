@@ -562,7 +562,7 @@ export class AgentRunnerService {
    *
    * - 仅在带 traceId 时写。注意 debug-chat（`sessionId:时间戳`）与 test-suite（synthetic id）
    *   也会构造 traceId，档案并非纯生产数据，按 traceId 形态区分；
-   * - 仅守卫有信号时写（非 pass 或有 rule 观测命中），放行回合不产生行；
+   * - 仅守卫有信号时写（非 pass、有 rule 观测命中或有 runtime override 命中），放行回合不产生行；
    * - fire-and-forget：三态写入结果只用于观测告警，绝不阻塞/拖垮回复链路。
    */
   private persistReviewRecord(
@@ -578,8 +578,16 @@ export class AgentRunnerService {
     },
   ): void {
     if (!ctx.traceId) return;
+    const overrideMarkers = Array.from(
+      new Set([
+        ...(data.firstDecision.overrideMarkers ?? []),
+        ...(data.revisedDecision?.overrideMarkers ?? []),
+      ]),
+    );
     const hasSignal =
-      data.firstDecision.decision !== 'pass' || data.firstDecision.ruleIds.length > 0;
+      data.firstDecision.decision !== 'pass' ||
+      data.firstDecision.ruleIds.length > 0 ||
+      overrideMarkers.length > 0;
     if (!hasSignal) return;
     if (data.repaired && (data.revisedReply === undefined || !data.revisedDecision)) {
       this.logger.warn(`[invokeReviewed] 审查档案缺少修复后内容，跳过落库: traceId=${ctx.traceId}`);
@@ -596,6 +604,9 @@ export class AgentRunnerService {
         `[invokeReviewed] block 档案缺少 reasonCode，已兜底为 unattributed_block: ` +
           `traceId=${ctx.traceId}, rules=${data.finalDecision.blockedRuleIds.join(',') || '-'}`,
       );
+    }
+    if (overrideMarkers.length > 0) {
+      reasonCode = [reasonCode, ...overrideMarkers].filter(Boolean).join('|');
     }
     const baseRecord = {
       traceId: ctx.traceId,

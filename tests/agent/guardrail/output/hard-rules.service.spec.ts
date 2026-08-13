@@ -1236,6 +1236,79 @@ describe('HardRulesService', () => {
     });
   });
 
+  describe('hardRuleOverrides runtime downgrade', () => {
+    const productionShapedReply =
+      '[引用 候选人：现在报名还来得及吗]\n名额放心，我帮你留着。\n[图片消息]\n[消息发送时间：2026-08-13 16:08:31]';
+
+    it('off drops the hit while retaining an override audit signal', () => {
+      const result = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: { quota_promise: 'off' },
+      });
+
+      expect(result.hit).toBe(false);
+      expect(result.contradictions).toEqual([]);
+      expect(result.overrideHits).toEqual([{ ruleId: 'quota_promise', mode: 'off' }]);
+    });
+
+    it('observe forces a veto rule into the sendable observe tier', () => {
+      const result = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: { quota_promise: 'observe' },
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'quota_promise',
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
+          }),
+        ]),
+      );
+      expect(result.overrideHits).toEqual([{ ruleId: 'quota_promise', mode: 'observe' }]);
+    });
+
+    it('ignores and warns on an unknown ruleId without changing known rule behavior', () => {
+      const warn = jest.spyOn((service as any).logger, 'warn');
+
+      const result = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: { catalog_rule_that_does_not_exist: 'off' },
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'quota_promise',
+            action: GUARDRAIL_ACTION.BLOCK,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '忽略未知 hardRuleOverrides ruleId: catalog_rule_that_does_not_exist',
+        ),
+      );
+    });
+
+    it('an absent override and an empty override preserve the exact existing result shape', () => {
+      const withoutConfig = service.check({ replyText: productionShapedReply, toolCalls: [] });
+      const withEmptyConfig = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: {},
+      });
+
+      expect(withEmptyConfig).toEqual(withoutConfig);
+      expect(withoutConfig).not.toHaveProperty('overrideHits');
+    });
+  });
+
   describe('existing rules regression', () => {
     it.each([
       ['badcase 原始畸形 thinking 文本', '<think>\n<think>7144679778889'],

@@ -1,5 +1,6 @@
 import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail.service';
 import type { GuardrailRuleAction } from '@agent/guardrail/output/output-rule.types';
+import type { HardRuleOverrides } from '@biz/hosting-config/types/hosting-config.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 
 describe('OutputGuardrailService', () => {
@@ -14,9 +15,11 @@ describe('OutputGuardrailService', () => {
       severity?: 'P0' | 'P1' | 'P2';
       feedbackToGenerator?: string;
     }> = [],
+    overrideHits?: Array<{ ruleId: string; mode: 'off' | 'observe' }>,
   ) => ({
     hit: contradictions.length > 0,
     contradictions,
+    ...(overrideHits ? { overrideHits } : {}),
   });
 
   const makeFinding = (over: Record<string, unknown> = {}) => ({
@@ -33,16 +36,26 @@ describe('OutputGuardrailService', () => {
     llmEnabled: boolean,
     ruleResult: ReturnType<typeof makeRuleResult>,
     semanticReviewer: { shouldReview: jest.Mock; review: jest.Mock },
-    options: { semanticShadowEnabled?: boolean; reviewModelConfigured?: boolean } = {},
+    options: {
+      semanticShadowEnabled?: boolean;
+      reviewModelConfigured?: boolean;
+      hardRuleOverrides?: HardRuleOverrides;
+    } = {},
   ) => {
     // 开关已迁到托管配置 agent_reply_config（Dashboard 即时生效）
     const systemConfig = {
       getAgentReplyConfig: jest.fn().mockResolvedValue({
         outputGuardrailLlmEnabled: llmEnabled,
         outputGuardrailSemanticShadowEnabled: options.semanticShadowEnabled ?? false,
+        hardRuleOverrides: options.hardRuleOverrides ?? {},
       }),
     };
-    const ruleGuard = { check: jest.fn().mockReturnValue(ruleResult) };
+    const ruleGuard = {
+      check: jest.fn().mockImplementation((params: { precomputedContradictions?: unknown[] }) => ({
+        ...ruleResult,
+        contradictions: [...ruleResult.contradictions, ...(params.precomputedContradictions ?? [])],
+      })),
+    };
     const packetBuilder = {
       build: jest.fn().mockReturnValue({
         draftReply: '你好，有几个门店可以看看',
@@ -109,6 +122,33 @@ describe('OutputGuardrailService', () => {
     expect(decision.decision).toBe('pass');
     expect(decision.ruleIds).toEqual(['repeated_reply']);
     expect(reviewer.review).not.toHaveBeenCalled();
+  });
+
+  it('reads hardRuleOverrides from the shared runtime config and propagates override markers', async () => {
+    const reviewer = noTriggerReviewer();
+    const { service, ruleGuard } = build(
+      false,
+      makeRuleResult([], [{ ruleId: 'quota_promise', mode: 'off' }]),
+      reviewer,
+      { hardRuleOverrides: { quota_promise: 'off' } },
+    );
+
+    const decision = await service.check(
+      baseInput({
+        reply:
+          '[引用 候选人：现在还能报吗]\n名额放心，我帮你留着。\n[图片消息]\n[消息发送时间：2026-08-13 16:12:00]',
+      }),
+    );
+
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({ hardRuleOverrides: { quota_promise: 'off' } }),
+    );
+    expect(decision).toEqual(
+      expect.objectContaining({
+        decision: 'pass',
+        overrideMarkers: ['override:off:quota_promise'],
+      }),
+    );
   });
 
   it('rule veto（block，如歧视外露）→ hard block，不调用 llm', async () => {

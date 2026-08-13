@@ -3,6 +3,7 @@ import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RouterService } from '@providers/router.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import type { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
 import { ShortTermService } from '@memory/services/short-term.service';
 import { SemanticReviewNotifierService } from '@notification/services/semantic-review-notifier.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
@@ -23,7 +24,7 @@ import {
   GUARDRAIL_REPAIR_MODE,
   GUARDRAIL_RISK_LEVEL,
 } from '@shared-types/guardrail.contract';
-import { HardRulesService } from './hard-rules.service';
+import { HardRulesService, type HardRuleOverrideHit } from './hard-rules.service';
 import type { RuleContradiction } from './output-rule.types';
 import { GuardrailReviewPacketBuilder } from './llm/review-packet.builder';
 import {
@@ -130,8 +131,10 @@ export class OutputGuardrailService {
    * llm 档开关按次读取托管配置（Dashboard 运行时配置页即时生效，支撑灰度上量与紧急熔断）。
    * SystemConfigService 内置 1s 本地热缓存 → Redis → DB → 环境变量默认值，读取不抛错。
    */
-  private async resolveLlmFlags(): Promise<{ llmEnabled: boolean; shadowEnabled: boolean }> {
-    const config = await this.systemConfig.getAgentReplyConfig();
+  private resolveLlmFlags(config: AgentReplyConfig): {
+    llmEnabled: boolean;
+    shadowEnabled: boolean;
+  } {
     let llmEnabled = config.outputGuardrailLlmEnabled;
     let shadowEnabled = config.outputGuardrailSemanticShadowEnabled;
 
@@ -184,9 +187,26 @@ export class OutputGuardrailService {
       userTexts: recentUserTexts,
       messages: recentMessages,
     } = await this.readRecentTexts(input.chatId);
+    // 与语义审查开关共用 agent_reply_config 的 1s 本地缓存 → Redis → DB 刷新语义；
+    // 同一回合只读取一次快照，避免 hard rule 与 LLM 档看到不同配置版本。
+    const runtimeConfig = await this.systemConfig.getAgentReplyConfig();
     const prunedReply = pruneRepeatedReplySegments(reply, recentAssistantTexts, input.userMessage);
-    const effectiveReply = prunedReply.text;
+    // repeated_reply_verbatim 的机械删除发生在 hard-rules 调度前；off 必须同时撤销删除效果，
+    // 但仍把预计算命中交给 hard-rules 统一 override，确保审计标记不断流。
+    const repeatedReplyOverride = runtimeConfig.hardRuleOverrides?.repeated_reply_verbatim;
+    const effectiveReply = repeatedReplyOverride === 'off' ? reply : prunedReply.text;
     const deterministicReply = effectiveReply !== reply ? effectiveReply : undefined;
+    const precomputedContradictions: RuleContradiction[] =
+      prunedReply.droppedSegments.length > 0
+        ? [
+            {
+              ruleId: 'repeated_reply_verbatim',
+              label: `已确定性删除 ${prunedReply.droppedSegments.length} 个与近 8 条已投递消息全等的分段`,
+              action: GUARDRAIL_ACTION.OBSERVE,
+              currentReplySendable: true,
+            },
+          ]
+        : [];
     const ruleResult = this.ruleGuard.check({
       replyText: effectiveReply,
       toolCalls: input.toolCalls,
@@ -202,15 +222,10 @@ export class OutputGuardrailService {
       recentMessages,
       memorySnapshot: input.memorySnapshot,
       silent: input.silent,
+      hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
+      precomputedContradictions,
     });
-    if (prunedReply.droppedSegments.length > 0) {
-      ruleResult.contradictions.push({
-        ruleId: 'repeated_reply_verbatim',
-        label: `已确定性删除 ${prunedReply.droppedSegments.length} 个与近 8 条已投递消息全等的分段`,
-        action: GUARDRAIL_ACTION.OBSERVE,
-        currentReplySendable: true,
-      });
-    }
+    const overrideMarkers = this.buildHardRuleOverrideMarkers(ruleResult.overrideHits);
     const ruleIds = ruleResult.contradictions.map((c) => c.ruleId);
     // 不可发送的规则（revise / replan / block），action=observe 的内容仍可发出。
     const blockedRuleIds = ruleResult.contradictions
@@ -233,21 +248,24 @@ export class OutputGuardrailService {
       outputRuleHits: ruleIds,
     });
 
-    const flags = await this.resolveLlmFlags();
+    const flags = this.resolveLlmFlags(runtimeConfig);
 
     if (ruleDecision === GUARDRAIL_DECISION.BLOCK) {
       this.runSemanticShadow(packet, flags, input);
-      return {
-        decision: GUARDRAIL_DECISION.BLOCK,
-        riskLevel: GUARDRAIL_RISK_LEVEL.HIGH,
-        violations: ruleResult.contradictions
-          .filter((c) => c.currentReplySendable === false)
-          .map((c) => this.ruleToViolation(c)),
-        ruleIds,
-        blockedRuleIds,
-        repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+      return this.withRuleRuntimeMetadata(
+        {
+          decision: GUARDRAIL_DECISION.BLOCK,
+          riskLevel: GUARDRAIL_RISK_LEVEL.HIGH,
+          violations: ruleResult.contradictions
+            .filter((c) => c.currentReplySendable === false)
+            .map((c) => this.ruleToViolation(c)),
+          ruleIds,
+          blockedRuleIds,
+          repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+        },
         deterministicReply,
-      };
+        overrideMarkers,
+      );
     }
 
     // ---- llm 档（高风险或语义 contract 触发；enforce flag 关闭时最多 shadow） ----
@@ -257,9 +275,10 @@ export class OutputGuardrailService {
 
     if (!shouldEnforce) {
       this.runSemanticShadow(packet, flags, input);
-      return this.withDeterministicReply(
+      return this.withRuleRuntimeMetadata(
         this.ruleOnlyDecision(ruleDecision, ruleResult.contradictions, ruleIds, blockedRuleIds),
         deterministicReply,
+        overrideMarkers,
       );
     }
 
@@ -285,16 +304,19 @@ export class OutputGuardrailService {
             })
             .catch(() => undefined);
         }
-        return {
-          decision: GUARDRAIL_DECISION.BLOCK,
-          riskLevel: GUARDRAIL_RISK_LEVEL.HIGH,
-          violations: ruleResult.contradictions.map((c) => this.ruleToViolation(c)),
-          ruleIds,
-          blockedRuleIds,
-          reasonCode: 'output_review_unavailable',
-          repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+        return this.withRuleRuntimeMetadata(
+          {
+            decision: GUARDRAIL_DECISION.BLOCK,
+            riskLevel: GUARDRAIL_RISK_LEVEL.HIGH,
+            violations: ruleResult.contradictions.map((c) => this.ruleToViolation(c)),
+            ruleIds,
+            blockedRuleIds,
+            reasonCode: 'output_review_unavailable',
+            repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+          },
           deterministicReply,
-        };
+          overrideMarkers,
+        );
       }
       // 仅语义 contract 触发（体验/推荐质量类）：fail-open，回退 rule 档裁决。
       this.logger.warn(`[OutputGuardrail] semantic reviewer 故障，语义档 fail-open: ${message}`);
@@ -309,9 +331,10 @@ export class OutputGuardrailService {
           })
           .catch(() => undefined);
       }
-      return this.withDeterministicReply(
+      return this.withRuleRuntimeMetadata(
         this.ruleOnlyDecision(ruleDecision, ruleResult.contradictions, ruleIds, blockedRuleIds),
         deterministicReply,
+        overrideMarkers,
       );
     }
 
@@ -349,32 +372,46 @@ export class OutputGuardrailService {
     ]
       .filter(Boolean)
       .join('\n');
-    return {
-      decision,
-      riskLevel: this.resolveLlmRiskLevel(
-        llmDecision,
-        actionableRules,
-        enforcedLlm ? llmViolations : [],
-      ),
-      violations: [
-        ...actionableRules.map((c) => this.ruleToViolation(c)),
-        ...(enforcedLlm ? llmViolations : []),
-      ],
-      ruleIds,
-      blockedRuleIds,
-      // replan 已退役（2026-07-27），修复模式恒为 rewrite、无工具白名单。
-      repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
-      repairToolNames: [],
-      feedbackToGenerator: feedbackLines || undefined,
+    return this.withRuleRuntimeMetadata(
+      {
+        decision,
+        riskLevel: this.resolveLlmRiskLevel(
+          llmDecision,
+          actionableRules,
+          enforcedLlm ? llmViolations : [],
+        ),
+        violations: [
+          ...actionableRules.map((c) => this.ruleToViolation(c)),
+          ...(enforcedLlm ? llmViolations : []),
+        ],
+        ruleIds,
+        blockedRuleIds,
+        // replan 已退役（2026-07-27），修复模式恒为 rewrite、无工具白名单。
+        repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+        repairToolNames: [],
+        feedbackToGenerator: feedbackLines || undefined,
+      },
       deterministicReply,
-    };
+      overrideMarkers,
+    );
   }
 
-  private withDeterministicReply(
+  private buildHardRuleOverrideMarkers(hits: HardRuleOverrideHit[] | undefined): string[] {
+    return Array.from(new Set((hits ?? []).map((hit) => `override:${hit.mode}:${hit.ruleId}`)));
+  }
+
+  /** 无 override 时不增加字段，确保默认路径返回对象形态也与现状全等。 */
+  private withRuleRuntimeMetadata(
     decision: OutputGuardDecision,
     deterministicReply: string | undefined,
+    overrideMarkers: string[],
   ): OutputGuardDecision {
-    return deterministicReply === undefined ? decision : { ...decision, deterministicReply };
+    if (deterministicReply === undefined && overrideMarkers.length === 0) return decision;
+    return {
+      ...decision,
+      ...(deterministicReply === undefined ? {} : { deterministicReply }),
+      ...(overrideMarkers.length === 0 ? {} : { overrideMarkers }),
+    };
   }
 
   /** flag 关闭 / 未触发 llm 档时的纯 rule 裁决（等价旧行为）。 */
@@ -695,6 +732,8 @@ export interface OutputGuardDecision {
   feedbackToGenerator?: string;
   /** 降级/转人工归因码。 */
   reasonCode?: string;
+  /** 硬规则运行时降档审计标记；格式 override:<off|observe>:<ruleId>。 */
+  overrideMarkers?: string[];
   /** 投递前确定性删除全等复读分段后的文本；不经过模型改写。 */
   deterministicReply?: string;
 }
