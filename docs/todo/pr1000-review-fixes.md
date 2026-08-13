@@ -53,9 +53,24 @@
 > | P3 死导出 | ◐ 部分 | 全死的 `parseHealthCertificate` 包装器与 `hasPhoneDigitStream` 已删；「仅测试引用」类（normalize*ToId 等）保留——它们是被单测锁定的契约，删除收益低 |
 > | P3 结构/效率（rule-track 拆分、TurnLedger、shim、memo） | ⚪ 裁定不随本轮 | 重构面大、与并发会话改动相邻，不在回归修复轮里做 |
 
+## 2026-08-13 复裁：一步到位批（P3-R）
+
+> 用户裁定：PR #1000 本就是重大调整、尚未 review，纯结构重构折进同一轮评审一步到位。
+> 复裁依据：**工作树已完全干净**（并发会话 WIP 全部落盘）——下表前两行的原延期理由已不成立。
+> 纪律：本批全部改动必须**行为保持**（结构移动/类型化/性能修复），任何行为变更不属于本批。
+
+| 项 | 原裁定与理由 | 理由现状 | 新裁定 |
+|---|---|---|---|
+| P3 裁决引擎下沉（IDENTITY_FIRST_WRITE_FIELDS 等自 session.service 下沉 policies） | ⚪ "另起 PR 更稳" | PR 未 review，"另起 PR"已无意义 | **✅ 本批执行** |
+| P3 品牌 memo 击穿 | ⚪ "涉并发会话未提交改动" | 工作树干净，占用解除 | **✅ 本批执行** |
+| P3 结构/效率：rule-track 拆分、TurnLedger、shim | ⚪ "重构面大、与并发改动相邻" | 相邻占用解除；TurnLedger 具体做：四域分组（visual/geo/jobs/facts）＋ `fetchedJobs: unknown[]` 按消费点最小类型化 ＋ 删 `TurnLedger` 对 extends 已含三字段的冗余重声明 | **✅ 本批执行** |
+| P3 词表/助手收拢 | ⚪ 机制类立项 | 与并发无关，立项理由仍成立 | ⚪ 维持（独立立项） |
+| P3 死导出「仅测试引用」类保留 | ◐ 契约锁定、删除收益低 | 理由仍成立 | ◐ 维持 |
+| P2 拆机（refactor 清单 D5 确认 producer 族删除 / E3 双源对账拆除 / C6 规则轨停产 claim） | 门槛：coverage delta 收敛 | **仍守门——这不是保守**：shadow 期规则轨是事实供给主力兼对照组基准，确认 producer 是模型稳定提交 confirm claim 前的活逃生舱（偏离说明⑥）；此刻物理删除会复活 g4ytra23 死锁并废掉 coverage delta 仪表。门是"作证通道成为主通道"这个生产事实，不是时间 | ⛔ 维持行为闸 |
+
 ## 工作约定（必读）
 
-- ⚠️ 工作树里 `src/resolution/brand/*`、`src/resolution/geo/{administrative-division.data,geo.types,index}.ts`、`src/memory/services/brand-state.service.ts`、`src/tools/duliday/job-list/brand-query.util.ts` 有**另一并发会话的未提交改动，不要动、不要 stash、不要一起提交**。commit 一律 pathspec 限定自己的文件。
+- ~~⚠️ 工作树里 `src/resolution/brand/*`、`src/resolution/geo/{administrative-division.data,geo.types,index}.ts`、`src/memory/services/brand-state.service.ts`、`src/tools/duliday/job-list/brand-query.util.ts` 有**另一并发会话的未提交改动，不要动、不要 stash、不要一起提交**。~~（2026-08-13 复核：工作树已干净，该占用解除。）commit 一律 pathspec 限定自己的文件。
 - 跑测试：`nvm use 22.16.0`，`pnpm run test -- <spec路径> --watchman=false`（不加 --watchman=false 会静默 0 测试）。收尾跑 `pnpm run ci:check`。
 - 多条缺陷的共因是「**单测喂干净文本，生产喂带时间后缀 + debounce 拼接 + 图片占位符的文本**」。修复时必须新增一组生产形态 fixture（消息带 `\n[消息发送时间：2026-…]` 后缀、多消息 `\n` 拼接、含 `[图片消息]` 占位、含 `[引用 …：…]` 块），用它回归所有字段解析器与规则轨。
 
