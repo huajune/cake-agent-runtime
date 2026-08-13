@@ -3,7 +3,7 @@
 > **来源**：2026-08-12 示例面普查与四层守卫架构裁定。原则依据：
 > [prompt-example-hygiene.md](../principles/prompt-example-hygiene.md)（示教四原则 + 四层架构定位）、
 > [glossary.md](../principles/glossary.md)（命名唯一权威源）、
-> [prompt-example-census.md](./prompt-example-census.md)（红黄绿区逐字原文，本清单的行动依据）。
+> 普查表（红黄绿区逐字原文，2026-08-13 红区复查全绿后已删，原文见 git 历史 docs/todo/prompt-example-census.md）。
 > **范围裁定**：不动 P11 改造的在途工序（见 [candidate-fact-authority-refactor.md](./candidate-fact-authority-refactor.md)）；
 > 收资统一（独立立项）、NEW-7 中继产品裁定、input 侧 ML 分类器（已裁定不做）均不在本清单。
 > **总纪律**：新增对开放语言的正则 = 违宪（P11），review 直接打回。本清单全部新守卫均为封闭形态

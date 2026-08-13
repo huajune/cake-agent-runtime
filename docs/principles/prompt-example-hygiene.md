@@ -6,7 +6,7 @@
 > 起因：给 Agent 的上下文里堆了大量"教学示例文案"，反而成了幻觉来源。本文回答三个问题：
 > **示例是怎么变成幻觉的（机制）、我们的示例面现状如何（普查）、业界与我们各自怎么解（对照与原则）。**
 >
-> 数据基础：[全库示例面普查（130 处逐字原文对照表）](../todo/prompt-example-census.md)；
+> 数据基础：全库示例面普查（130 处逐字原文对照表，2026-08-13 红区复查全绿后按"落地即删"规范删除，原文见 git 历史 docs/todo/prompt-example-census.md）；
 > 姊妹篇：[rules-vs-semantics-design-philosophy.md](./rules-vs-semantics-design-philosophy.md)（P11 裁决权宪法——本文档案侧防线的来源）。
 
 ---
@@ -115,7 +115,7 @@ system prompts"）——即**对喂给模型的内容本身设闸**。本文全�
 
 普查的 6 处红区清洗、Y10（turn-hints 补"提示行禁外泄"纪律行）、示例词表注册制、
 出站 canary 扫描规则、门店形 CI 补洞（BL1）与结构化语料分域（BL2）均已于 2026-08-13 落地——见
-[prompt-example-census.md §五](../todo/prompt-example-census.md)。
+普查表 §五（已删，见 git 历史 docs/todo/prompt-example-census.md）。
 
 ## 附：业界资料（2026-08-12 检索）
 

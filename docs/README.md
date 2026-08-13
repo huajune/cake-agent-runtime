@@ -136,10 +136,10 @@
 > 这些是工程 backlog / 规划稿，不代表已实现的设计。落地后应更新对应架构文档或归档。
 
 - **[LLM 判官标定](todo/judge-calibration.md)** — 自迭代循环的唯一欠账：周频抽检给判官算精确率（发牌制用在 LLM-as-a-judge 上）
-- **[候选人事实裁决权改造](todo/candidate-fact-authority-refactor.md)** — P11 执行清单；P2 拆机在途，PR #1000 合入+收尾后转写现状并删除
-- **[Prompt 守卫层与命名对齐](todo/prompt-guardrail-and-naming-alignment.md)** — 已基本完成；余 C3 精确率补票与彭培恒回归案验收，收尾后删除
-- **[示例面普查底稿](todo/prompt-example-census.md)** — 一次性证据报告；红区已清洗，PR #1000 发版验收后删除（结论已沉淀进 principles/prompt-example-hygiene.md）
-- **[PR #1000 评审修复底账](todo/pr1000-review-fixes.md)** — 全部落地；PR 合入即删
+- **[候选人事实裁决权改造](todo/candidate-fact-authority-refactor.md)** — P11 执行清单；余 P2 拆机（enforce 切换日执行），PR 合入+收尾后转写现状并删除
+- **[Prompt 守卫层与命名对齐](todo/prompt-guardrail-and-naming-alignment.md)** — 全部落地（余 C3 待观测会话）；发版验收（D4 回归案+A5 采用率观察）后删除
+- **[BadCase 架构覆盖分诊](todo/badcase-arch-coverage-triage.md)** — α/β/γ 三工程已执行；本文即发版验收清单（A 类回归验证+回归案回放+block 底账重扫），验收完成后删除
+- **[PR #1000 评审修复底账](todo/pr1000-review-fixes.md)** / **[二轮修复底账](todo/pr1000-review-round2-fixes.md)** — 两轮全部落地；合并评审的直接证据，PR 合入即删
 
 
 ---
