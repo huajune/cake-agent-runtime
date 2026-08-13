@@ -63,6 +63,7 @@
 
 - **[确定性规则与语义理解的分工哲学](principles/rules-vs-semantics-design-philosophy.md)** ⭐ — 设计原则基线（P1~P11），多份文档引它作依据；P11=裁决权宪法（模型作证/代码公证/本人终审）
 - **[示例示教与幻觉：示教纪律](principles/prompt-example-hygiene.md)** ⭐ — 教学示例引发幻觉的三机制、全库示例面普查（130 处）、业界解法对照与示教四原则
+- **[术语宪章](principles/glossary.md)** — 行业名做主名、自造词打旗：A/B/C 三层词表，学习地图 + 命名权威源
 
 ---
 

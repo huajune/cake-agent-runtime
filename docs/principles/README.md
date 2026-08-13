@@ -20,6 +20,7 @@
 
 - **[rules-vs-semantics-design-philosophy.md](./rules-vs-semantics-design-philosophy.md)** ⭐ — 确定性规则与语义理解的分工哲学（P1~P11）。全库引用最多的原则基线；P11 为裁决权宪法（模型作证、代码公证、本人终审），源自候选人事实裁决 72.3% 假阳观测与三大事故家族考古。
 - **[prompt-example-hygiene.md](./prompt-example-hygiene.md)** ⭐ — 示例示教与幻觉：教学示例引发幻觉的三机制、全库示例面普查（约 130 处）、2026-08 业界解法对照、示教四原则。
+- **[glossary.md](./glossary.md)** — 术语宪章：A 层行业规范（学习地图+检索线索）/ B 层借喻名 / C 层 ⚑ 自造词；新概念命名与代码对齐改名的唯一权威源。
 
 ## 写作规范
 
