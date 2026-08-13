@@ -73,8 +73,9 @@ export function isNameAuthoritative(name: string, messages: readonly unknown[]):
  */
 export interface BookingNameGateOptions {
   /**
-   * 本轮 precheck 裁决账本已对该姓名作证（E2「换 quote 作证」）：解锁不再靠闸门自己
-   * 长一条确认识别正则，而靠公证器认过的引文。
+   * 本轮 precheck 裁决账本已有确认级 claim（operation=confirm / context_confirmation）
+   * 对该姓名作证（E2「换 quote 作证」）。statement 级 claim 不解锁负向证据；shadow
+   * 期调用方不传本选项，继续由 legacy 确认识别路径维持原行为。
    */
   attestedByClaim?: boolean;
   /**

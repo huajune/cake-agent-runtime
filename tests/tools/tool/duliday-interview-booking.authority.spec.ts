@@ -179,7 +179,7 @@ describe('booking 报名级字段终审与姓名作证（P11 工序 D3/E2）', (
       expect(result.suspiciousName).toBe('小玥');
     });
 
-    it('公证器认过引文的姓名直接放行（不再依赖「就是X」确认识别正则）', async () => {
+    it('shadow 下 statement claim 不解锁打招呼语负向证据', async () => {
       const watermark = computeCandidateMessageWatermark(['我是小玥', '电话13812345678']);
       const result = await run(
         { ...validInput, name: '小玥' },
@@ -191,7 +191,46 @@ describe('booking 报名级字段终审与姓名作证（P11 工序 D3/E2）', (
               factsVersion: 1,
               messageWatermark: watermark,
               fields: {
-                name: { value: '小玥', status: 'accepted' },
+                name: {
+                  value: '小玥',
+                  status: 'accepted',
+                  acceptedClaimId: 'claim-name-statement',
+                },
+                phone: { value: '13812345678', status: 'accepted' },
+                age: { value: 25, status: 'accepted' },
+                gender: { value: 2, status: 'accepted' },
+                healthCertificate: { value: 1, status: 'accepted' },
+              },
+            },
+          }),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.suspiciousName).toBe('小玥');
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('enforce 下确认级姓名 claim 可压过打招呼语负向证据', async () => {
+      const watermark = computeCandidateMessageWatermark(['我是小玥', '电话13812345678']);
+      const result = await run(
+        { ...validInput, name: '小玥' },
+        {
+          mode: 'enforce',
+          messages: greetingMessages,
+          snapshot: buildSnapshot({
+            messageWatermark: watermark,
+            confirmedFields: ['name', 'age'],
+            acceptedClaimIds: ['claim-name-confirm'],
+            effectiveProfile: {
+              factsVersion: 1,
+              messageWatermark: watermark,
+              fields: {
+                name: {
+                  value: '小玥',
+                  status: 'accepted',
+                  acceptedClaimId: 'claim-name-confirm',
+                },
                 phone: { value: '13812345678', status: 'accepted' },
                 age: { value: 25, status: 'accepted' },
                 gender: { value: 2, status: 'accepted' },
@@ -203,6 +242,106 @@ describe('booking 报名级字段终审与姓名作证（P11 工序 D3/E2）', (
       );
 
       expect(result.success).toBe(true);
+      expect(mockSpongeService.bookInterview).toHaveBeenCalled();
+    });
+
+    it('enforce 下 statement 级 accepted claim 不解锁打招呼语负向证据', async () => {
+      const watermark = computeCandidateMessageWatermark(['我是小玥', '电话13812345678']);
+      const result = await run(
+        { ...validInput, name: '小玥' },
+        {
+          mode: 'enforce',
+          messages: greetingMessages,
+          snapshot: buildSnapshot({
+            messageWatermark: watermark,
+            confirmedFields: ['age'],
+            acceptedClaimIds: ['claim-name-statement'],
+            effectiveProfile: {
+              factsVersion: 1,
+              messageWatermark: watermark,
+              fields: {
+                name: {
+                  value: '小玥',
+                  status: 'accepted',
+                  acceptedClaimId: 'claim-name-statement',
+                },
+                phone: { value: '13812345678', status: 'accepted' },
+                age: { value: 25, status: 'accepted' },
+                gender: { value: 2, status: 'accepted' },
+                healthCertificate: { value: 1, status: 'accepted' },
+              },
+            },
+          }),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.suspiciousName).toBe('小玥');
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('session 基线虽为 accepted 但无 acceptedClaimId，不解锁负向证据', async () => {
+      const watermark = computeCandidateMessageWatermark(['我是小玥', '电话13812345678']);
+      const result = await run(
+        { ...validInput, name: '小玥' },
+        {
+          mode: 'enforce',
+          messages: greetingMessages,
+          snapshot: buildSnapshot({
+            messageWatermark: watermark,
+            confirmedFields: ['name', 'age'],
+            effectiveProfile: {
+              factsVersion: 1,
+              messageWatermark: watermark,
+              fields: {
+                name: { value: '小玥', status: 'accepted', source: 'session' },
+                phone: { value: '13812345678', status: 'accepted' },
+                age: { value: 25, status: 'accepted' },
+                gender: { value: 2, status: 'accepted' },
+                healthCertificate: { value: 1, status: 'accepted' },
+              },
+            },
+          }),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.suspiciousName).toBe('小玥');
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('shadow 下确认级 claim 仍走 legacy 路径，不直接作证放行', async () => {
+      const watermark = computeCandidateMessageWatermark(['我是小玥', '电话13812345678']);
+      const result = await run(
+        { ...validInput, name: '小玥' },
+        {
+          messages: greetingMessages,
+          snapshot: buildSnapshot({
+            messageWatermark: watermark,
+            confirmedFields: ['name'],
+            acceptedClaimIds: ['claim-name-confirm'],
+            effectiveProfile: {
+              factsVersion: 1,
+              messageWatermark: watermark,
+              fields: {
+                name: {
+                  value: '小玥',
+                  status: 'accepted',
+                  acceptedClaimId: 'claim-name-confirm',
+                },
+                phone: { value: '13812345678', status: 'accepted' },
+                age: { value: 25, status: 'accepted' },
+                gender: { value: 2, status: 'accepted' },
+                healthCertificate: { value: 1, status: 'accepted' },
+              },
+            },
+          }),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.suspiciousName).toBe('小玥');
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
   });
 });

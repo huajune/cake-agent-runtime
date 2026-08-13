@@ -514,8 +514,14 @@ export function buildInterviewBookingTool(
                 })
             : null;
         const enforcing = adjudicationDeps?.mode === 'enforce';
-        const nameAttestedByClaim =
+        // E2 quote 作证收紧为确认级：confirmedFields 只含 operation=confirm /
+        // context_confirmation 的 accepted claim（precheck 快照构造处即该口径），
+        // acceptedClaimId 判据排除 session 基线（基线无 claimId）。候选人本人确认过的
+        // 名字可压过打招呼语负向结论（P11 终审条款）；statement 级 claim 不解锁负向证据。
+        const nameConfirmAttested =
+          Boolean(precheckSnapshot?.confirmedFields.includes('name')) &&
           precheckSnapshot?.effectiveProfile.fields.name?.status === 'accepted' &&
+          precheckSnapshot.effectiveProfile.fields.name.acceptedClaimId != null &&
           candidateValuesEquivalent(
             'name',
             precheckSnapshot.effectiveProfile.fields.name.value,
@@ -526,8 +532,8 @@ export function buildInterviewBookingTool(
         // "我是X"打招呼语昵称出现时拒——这是 runBookingGuards.checkRealName 纯形态校验拦不住的
         // 缺口（2-4 字昵称形态合法但只是微信打招呼昵称）。先确认真名再约，不得拿昵称下真预约。
         const nameGate = evaluateBookingNameGate(name, context.turnInput.messages ?? [], {
-          // 工序 E2：公证器认过引文的姓名直接放行；enforce 起停用 legacy「就是X」正则。
-          attestedByClaim: nameAttestedByClaim,
+          // shadow 零行为：作证放行 enforce 起生效；shadow 期解锁由 legacy 正则承担（偏离⑥）。
+          attestedByClaim: enforcing && nameConfirmAttested,
           allowLegacyConfirmRegex: !enforcing,
         });
         if (nameGate.decision === 'reject_collect') {
