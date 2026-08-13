@@ -4,14 +4,12 @@ import {
   formatExtractionFactLines,
   formatRuleFactClaimLines,
 } from '../formatters/fact-lines.formatter';
-import { RecommendedJobSummarySchema, type SessionFacts } from '../types/session-facts.types';
+import type { SessionFacts } from '../types/session-facts.types';
+import { RecommendedJobSummarySchema } from '@resolution/job/types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
-import type { TurnLedgerSnapshot } from '@shared-types/turn.types';
+import type { TurnExtractionToolFacts } from '@shared-types/turn.types';
 
-export type SessionExtractionToolFacts = Pick<
-  TurnLedgerSnapshot,
-  'fetchedJobs' | 'currentFocusJob' | 'visualFactSheets'
->;
+export type SessionExtractionToolFacts = TurnExtractionToolFacts;
 
 /** 结构化事实提取的系统提示词。 */
 export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是结构化事实提取引擎，从招募经理与候选人的对话历史中提取结构化事实信息。
@@ -218,17 +216,17 @@ function formatToolFactsSection(toolFacts: SessionExtractionToolFacts | null): s
   if (!toolFacts) return null;
 
   const sections: string[] = [];
-  const fetchedJobs = toolFacts.fetchedJobs
+  const fetchedJobs = toolFacts.jobs.fetchedJobs
     .map(formatJobSummary)
     .filter((line): line is string => Boolean(line));
   if (fetchedJobs.length > 0) {
     sections.push(`本轮推荐岗位：\n${fetchedJobs.map((line) => `- ${line}`).join('\n')}`);
   }
 
-  const currentFocusJob = formatJobSummary(toolFacts.currentFocusJob);
+  const currentFocusJob = formatJobSummary(toolFacts.jobs.currentFocusJob);
   if (currentFocusJob) sections.push(`当前焦点岗位：\n- ${currentFocusJob}`);
 
-  const visualFacts = toolFacts.visualFactSheets
+  const visualFacts = toolFacts.visual.factSheets
     .filter((entry) => !entry.sheet.degraded && entry.sheet.fields.length > 0)
     .map((entry) => {
       const fields = entry.sheet.fields

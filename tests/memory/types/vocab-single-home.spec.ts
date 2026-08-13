@@ -10,10 +10,10 @@ import {
 import {
   BrandIntentEntrySchema,
   SESSION_TERMINAL_STATES,
-  RecommendedJobWelfareKindSchema,
   SessionFactConfidenceSchema,
   WeworkSessionStateSchema,
 } from '@/memory/types/session-facts.types';
+import { RecommendedJobWelfareKindSchema } from '@resolution/job/types';
 import { LONG_TERM_PREFERENCE_FIELD_KEYS } from '@/memory/types/long-term.types';
 import { WELFARE_KINDS } from '@/tools/duliday/job-list/welfare-facts.util';
 import {
@@ -41,12 +41,7 @@ function enumValues(schema: { options: readonly string[] }): string[] {
 describe('词表单一居所 · 期 0', () => {
   describe('发给模型的 schema 取值与顺序不得漂移', () => {
     it('SessionFactConfidence 保持 high-first（历史顺序，非权威表的升序）', () => {
-      expect(enumValues(SessionFactConfidenceSchema)).toEqual([
-        'high',
-        'medium',
-        'low',
-        'unknown',
-      ]);
+      expect(enumValues(SessionFactConfidenceSchema)).toEqual(['high', 'medium', 'low', 'unknown']);
       expect([...FACT_CONFIDENCE_LEVELS_DESC]).toEqual(['high', 'medium', 'low', 'unknown']);
     });
 

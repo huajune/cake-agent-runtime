@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { CityAttestation, TurnLedgerSnapshot } from '@shared-types/turn.types';
+import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -18,8 +18,6 @@ import {
   LaborFormIntentExtractionSchema,
   type LaborFormIntentExtraction,
   type EntityExtractionResult,
-  type RecommendedJobSummary,
-  RecommendedJobSummarySchema,
   type ScheduleConstraintFact,
   type InvitedGroupRecord,
   InvitedGroupRecordSchema,
@@ -39,6 +37,7 @@ import {
   truncateEvidence,
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
+import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
 import type {
   ReengagementSessionState,
   CollectedField,
@@ -56,20 +55,16 @@ import {
   produceRuleFactClaims,
   stripQuotedBlocks,
 } from '@resolution/evidence/producers/rule-track';
-import type {
-  CandidateClaimField,
-  RuleFactClaims,
-  RuleFactFieldPath,
-} from '@resolution/evidence/claim.types';
+import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
 import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
+import { normalizedIncludes } from '@resolution/evidence/normalize';
 import {
-  candidateValuesEquivalent,
-  deriveFieldValueFromQuote,
-  experienceValueSupportedByQuote,
-  normalizedIncludes,
-} from '@resolution/evidence/normalize';
+  EXPLICIT_EXTRACTION_UPGRADE_FIELDS,
+  extractionQuoteSupportsCurrentValue,
+  IDENTITY_FIRST_WRITE_FIELDS,
+} from '@resolution/evidence/policies';
 import {
   detectGeoSignalConflict,
   isRecognizedCityName,
@@ -764,10 +759,7 @@ export class SessionService {
     /** prep 时刻唯一一次 labor-form 规则轨判定；生产链路传入，直调兼容时才本地补算。 */
     preparedLaborFormIntent?: LaborFormIntentDecision,
     /** 本轮账本的岗位/视觉只读摘要；只增强指代承接，不参与身份出处自证。 */
-    extractionToolFacts?: Pick<
-      TurnLedgerSnapshot,
-      'fetchedJobs' | 'currentFocusJob' | 'visualFactSheets'
-    >,
+    extractionToolFacts?: TurnExtractionToolFacts,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
@@ -1389,53 +1381,6 @@ export class SessionService {
   }
 
   /**
-   * 候选人明确提供的字段，置信度可由 LLM 来源声明升级到 high 的白名单。
-   *
-   * 刻意排除：
-   * - name：报名真名校验红线，升级通道仍只走规则的结构化姓名识别；
-   * - applied_store / applied_position / interview_time：事务字段升 high 后，
-   *   候选人改约时新一轮 medium 提取会被置信度守卫拒绝覆盖，反而制造新 bug。
-   */
-  private static readonly EXPLICIT_UPGRADE_FIELDS = new Set([
-    'phone',
-    'gender',
-    'age',
-    'education',
-    'has_health_certificate',
-    'experience',
-    'height',
-    'weight',
-    'is_student',
-    'household_register_province',
-  ]);
-
-  /** 首次写入必须能从候选人手打语料复算的身份族字段。 */
-  private static readonly IDENTITY_FIRST_WRITE_FIELDS = new Set([
-    'age',
-    'gender',
-    'education',
-    'height',
-    'weight',
-    'experience',
-  ]);
-
-  /** session 字段名到确定性 quote 解析器字段名的映射。 */
-  private static readonly PROVENANCE_DERIVATION_FIELDS: Readonly<
-    Record<string, CandidateClaimField>
-  > = {
-    name: 'name',
-    phone: 'phone',
-    gender: 'gender',
-    age: 'age',
-    is_student: 'isStudent',
-    education: 'education',
-    has_health_certificate: 'healthCertificate',
-    height: 'height',
-    weight: 'weight',
-    household_register_province: 'householdProvince',
-  };
-
-  /**
    * 两道确定性升档：先验证 LLM 来源声明，再以严格候选人原文补探针。
    *
    * 背景：LLM 提取整组统一打 medium，候选人在收资表单明确回填的字段（仅因规则正则
@@ -1468,37 +1413,6 @@ export class SessionService {
       .filter((message) => message.length > 0);
     const provenanceFields = new Set<string>();
 
-    const quoteSupportsCurrentValue = (
-      field: string,
-      quote: string,
-      currentValue: unknown,
-    ): boolean => {
-      if (field === 'experience') {
-        // 合成式 experience（"公司+岗位+时长"短句）几乎不可能是原话连续子串，
-        // 逐字包含会每轮误杀首写（PR #1000 评审 P0-3）；改用确定性二元组覆盖判定。
-        return experienceValueSupportedByQuote(quote, String(currentValue));
-      }
-      const derivationField = SessionService.PROVENANCE_DERIVATION_FIELDS[field];
-      if (!derivationField) return false;
-      const derived = deriveFieldValueFromQuote(derivationField, quote);
-      if (derived !== null) {
-        return candidateValuesEquivalent(derivationField, derived, currentValue);
-      }
-      if (
-        SessionService.IDENTITY_FIRST_WRITE_FIELDS.has(field) &&
-        normalizedIncludes(quote, String(currentValue)) &&
-        normalizedIncludes(String(currentValue), quote)
-      ) {
-        return true;
-      }
-      // 非首写身份族的旧升档字段（健康证等）有些没有覆盖所有表单格式；它们仍可用
-      // “quote 在语料中 + 当前值逐字包含”这条保守判据。六个首写身份字段不得走此兜底。
-      return (
-        !SessionService.IDENTITY_FIRST_WRITE_FIELDS.has(field) &&
-        normalizedIncludes(quote, String(currentValue))
-      );
-    };
-
     const applyValidatedEvidence = (
       field: string,
       current: SessionFactValue<unknown>,
@@ -1508,9 +1422,7 @@ export class SessionService {
       provenanceFields.add(field);
       const evidence = truncateEvidence(quote);
       const canUpgrade =
-        basis === 'stated' &&
-        field !== 'phone' &&
-        SessionService.EXPLICIT_UPGRADE_FIELDS.has(field);
+        basis === 'stated' && field !== 'phone' && EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has(field);
       if (
         canUpgrade &&
         sessionFactConfidenceRank(current.confidence) < sessionFactConfidenceRank('high')
@@ -1537,7 +1449,7 @@ export class SessionService {
     for (const entry of provenance) {
       // 容忍 "interview_info.phone" 与 "phone" 两种写法
       const field = entry.field.includes('.') ? entry.field.split('.').pop()! : entry.field;
-      if (!SessionService.EXPLICIT_UPGRADE_FIELDS.has(field)) continue;
+      if (!EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has(field)) continue;
 
       const quote = entry.quote?.trim();
       if (!quote || quote.length < 2) continue;
@@ -1551,22 +1463,22 @@ export class SessionService {
       const current = target[field];
       if (!isSessionFactValue(current)) continue;
       if (field === 'phone' && !isStorableCandidatePhone(String(current.value))) continue;
-      if (!quoteSupportsCurrentValue(field, quote, current.value)) continue;
+      if (!extractionQuoteSupportsCurrentValue(field, quote, current.value)) continue;
       applyValidatedEvidence(field, current, quote, entry.basis);
     }
 
     // 模型漏报/错报摘录时，以候选人手打原文做第二条确定性通路。与旧的字符串包含
     // 探针不同，这里必须能用字段解析器从原话复算到当前值；数字与单字值因此也可安全采信。
-    for (const field of SessionService.EXPLICIT_UPGRADE_FIELDS) {
+    for (const field of EXPLICIT_EXTRACTION_UPGRADE_FIELDS) {
       if (field === 'phone') continue;
       const current = target[field];
       if (!isSessionFactValue(current)) continue;
       if (current.confidence !== 'medium' || current.source !== 'model') continue;
       if (provenanceFields.has(field)) continue;
-      const isIdentityFirstWriteField = SessionService.IDENTITY_FIRST_WRITE_FIELDS.has(field);
+      const isIdentityFirstWriteField = IDENTITY_FIRST_WRITE_FIELDS.has(field);
       const matchedMessage = strictCandidateCorpus.find((message) => {
         if (isIdentityFirstWriteField) {
-          return quoteSupportsCurrentValue(field, message, current.value);
+          return extractionQuoteSupportsCurrentValue(field, message, current.value);
         }
         if (typeof current.value !== 'string') return false;
         const value = current.value.trim();
@@ -1585,7 +1497,7 @@ export class SessionService {
     const previousInfo = previousFacts?.interview_info as unknown as
       | Record<string, unknown>
       | undefined;
-    for (const field of SessionService.IDENTITY_FIRST_WRITE_FIELDS) {
+    for (const field of IDENTITY_FIRST_WRITE_FIELDS) {
       const current = target[field];
       if (!isSessionFactValue(current) || current.source !== 'model') continue;
       if (previousInfo && hasMeaningfulValue(unwrapSessionFactValue(previousInfo[field]))) continue;

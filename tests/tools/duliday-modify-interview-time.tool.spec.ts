@@ -10,8 +10,12 @@ describe('buildModifyInterviewTimeTool', () => {
 
   const mockContext: ToolBuildContext = createToolContext({
     session: {
-      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
-      botImId: 'bot-im-1', botUserId: 'mgr-bob',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      chatId: 'chat-1',
+      botImId: 'bot-im-1',
+      botUserId: 'mgr-bob',
     },
   });
 
@@ -27,7 +31,7 @@ describe('buildModifyInterviewTimeTool', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    delete mockContext.ledger.resolvedWorkOrderId;
+    delete mockContext.ledger.jobs.resolvedWorkOrderId;
     longTermService.getActiveBookings.mockResolvedValue([{ work_order_id: 123 }]);
     spongeService.modifyInterviewTime.mockResolvedValue({ success: true, code: 0, message: 'ok' });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
@@ -106,7 +110,7 @@ describe('buildModifyInterviewTimeTool', () => {
     });
 
     expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
-    expect(context.ledger.resolvedWorkOrderId).toBe(450643);
+    expect(context.ledger.jobs.resolvedWorkOrderId).toBe(450643);
     expect(result).toMatchObject({
       success: false,
       shortCircuited: true,
@@ -128,7 +132,7 @@ describe('buildModifyInterviewTimeTool', () => {
       apiCode: 500,
       apiMessage: null,
     });
-    expect(mockContext.ledger.resolvedWorkOrderId).toBe(123);
+    expect(mockContext.ledger.jobs.resolvedWorkOrderId).toBe(123);
   });
 
   it('returns MODIFY_INTERVIEW_REQUEST_FAILED when the API throws', async () => {

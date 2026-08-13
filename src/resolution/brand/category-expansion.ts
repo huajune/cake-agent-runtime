@@ -74,7 +74,10 @@ export interface ResolvedBrandCategory {
 }
 
 /** 按品牌库解析每个品类的成员品牌（数据驱动 + 手工补录/排除）。 */
-export function resolveCategoryBrands(category: BrandCategory, brandData: BrandItem[]): string[] {
+export function resolveCategoryBrands(
+  category: BrandCategory,
+  brandData: ReadonlyArray<BrandItem>,
+): string[] {
   const keywords = category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean);
   const brands = new Set<string>();
 
@@ -94,7 +97,9 @@ export function resolveCategoryBrands(category: BrandCategory, brandData: BrandI
   return Array.from(brands);
 }
 
-export function buildResolvedCategories(brandData: BrandItem[]): ResolvedBrandCategory[] {
+export function buildResolvedCategories(
+  brandData: ReadonlyArray<BrandItem>,
+): ResolvedBrandCategory[] {
   return BRAND_CATEGORIES.map((category) => ({
     label: category.label,
     keywords: category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean),

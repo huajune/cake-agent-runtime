@@ -74,12 +74,6 @@ export interface AdjudicationRunResult {
   factsVersion: number;
 }
 
-/** booking 侧沿用同一份语料选择器（quote 验证基准）；文档在定义处。 */
-export {
-  extractCandidateTexts,
-  extractCandidateTextsFromCorpus,
-} from '@resolution/signal/self-report';
-
 /**
  * 我方已发消息/工具结果全集（回声检查基准）。先按封闭域标签取 evidence/tool_result，
  * teaching 即使为了 SDK 传输伪装成 user，也不会进入回声审计。

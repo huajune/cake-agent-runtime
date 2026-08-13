@@ -68,7 +68,7 @@ export interface InviteCityGateInput {
   /** prep 时刻一次性扫描出的区名/地标城市集合。 */
   geoSignalCities: ReadonlySet<string>;
   /**
-   * 本轮 geocode unique 解析确权的城市（context.ledger.geocodeAnchors）。
+   * 本轮 geocode unique 解析确权的城市（context.ledger.geo.anchors）。
    *
    * 同轮时序空档（v10.31.0 发版后残留 2 例实证，chat 6a680c63"高明万悦天地"/
    * 6a66d0f8"莘庄"）：城市确权走回合收尾写档、下轮才进 sessionCity，而
@@ -78,7 +78,7 @@ export interface InviteCityGateInput {
    */
   turnResolvedCities?: readonly (string | null | undefined)[];
   /**
-   * 本轮视觉事实 sheet（context.ledger.visualFactSheets，visual-fact-structuring R3）。
+   * 本轮视觉事实 sheet（context.ledger.visual.factSheets，visual-fact-structuring R3）。
    * map_location 截图的城市字段是候选人位置证据，作第五档出处；job_posting 的
    * 门店城市不算（badcase x3pdj7qh：截图门店城市被当候选人城市拉错群）。
    */

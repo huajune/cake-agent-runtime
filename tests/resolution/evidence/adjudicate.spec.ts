@@ -1,7 +1,5 @@
-import {
-  extractCandidateTexts,
-  runCandidateFactAdjudication,
-} from '@resolution/evidence/adjudicate';
+import { runCandidateFactAdjudication } from '@resolution/evidence/adjudicate';
+import { extractCandidateTexts } from '@resolution/signal/self-report';
 import type { CorpusBlock } from '@shared-types/corpus.types';
 
 function msg(role: 'user' | 'assistant', content: string) {

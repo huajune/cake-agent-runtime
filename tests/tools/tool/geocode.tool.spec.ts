@@ -735,8 +735,8 @@ describe('geocode tool', () => {
         city: '上海',
       });
 
-      expect(ctx.ledger.geocodeAnchors).toHaveLength(1);
-      expect(ctx.ledger.geocodeAnchors[0]).toMatchObject({
+      expect(ctx.ledger.geo.anchors).toHaveLength(1);
+      expect(ctx.ledger.geo.anchors[0]).toMatchObject({
         longitude: 121.27,
         latitude: 31.32,
         areaLevelQuery: true,
@@ -786,8 +786,8 @@ describe('geocode tool', () => {
         city: '上海',
       });
 
-      expect(ctx.ledger.geocodeAnchors).toHaveLength(1);
-      expect(ctx.ledger.geocodeAnchors[0]).toMatchObject({
+      expect(ctx.ledger.geo.anchors).toHaveLength(1);
+      expect(ctx.ledger.geo.anchors[0]).toMatchObject({
         areaLevelQuery: false,
         areaName: null,
       });
@@ -806,7 +806,7 @@ describe('geocode tool', () => {
       })) as Record<string, unknown>;
 
       expect(result.resolution).toBe('ambiguous');
-      expect(ctx.ledger.geocodeAnchors).toHaveLength(0);
+      expect(ctx.ledger.geo.anchors).toHaveLength(0);
     });
   });
 });

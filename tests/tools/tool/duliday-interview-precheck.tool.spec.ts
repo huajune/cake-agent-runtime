@@ -16,9 +16,9 @@ interface PrecheckContextOverrides {
   recalledJobIds?: ToolBuildContext['archive']['recalledJobIds'];
   bookingCandidateFacts?: ToolBuildContext['archive']['bookingCandidateFacts'];
   botUserId?: string;
-  ruleFacts?: TurnLedger['ruleFacts'];
-  collectedFields?: TurnLedger['collectedFields'];
-  visualFactSheets?: TurnLedger['visualFactSheets'];
+  ruleFacts?: TurnLedger['facts']['ruleFacts'];
+  collectedFields?: TurnLedger['facts']['collectedFields'];
+  visualFactSheets?: TurnLedger['visual']['factSheets'];
   markJobInvalidated?: TurnLedger['markJobInvalidated'];
 }
 
@@ -58,13 +58,17 @@ describe('buildInterviewPrecheckTool', () => {
           : { currentUserMessage: overrides.currentUserMessage }),
       },
       ledger: {
-        ...(overrides.ruleFacts === undefined ? {} : { ruleFacts: overrides.ruleFacts }),
-        ...(overrides.collectedFields === undefined
-          ? {}
-          : { collectedFields: overrides.collectedFields }),
-        ...(overrides.visualFactSheets === undefined
-          ? {}
-          : { visualFactSheets: overrides.visualFactSheets }),
+        facts: {
+          ...(overrides.ruleFacts === undefined ? {} : { ruleFacts: overrides.ruleFacts }),
+          ...(overrides.collectedFields === undefined
+            ? {}
+            : { collectedFields: overrides.collectedFields }),
+        },
+        visual: {
+          ...(overrides.visualFactSheets === undefined
+            ? {}
+            : { factSheets: overrides.visualFactSheets }),
+        },
         ...(overrides.markJobInvalidated === undefined
           ? {}
           : { markJobInvalidated: overrides.markJobInvalidated }),
@@ -3414,11 +3418,7 @@ describe('buildInterviewPrecheckTool', () => {
     });
 
     const ruleFacts = testRuleFacts(
-      testRuleFact(
-        'interview_info.experience',
-        '肯德基服务员4个多月',
-        '工作经历识别',
-      ),
+      testRuleFact('interview_info.experience', '肯德基服务员4个多月', '工作经历识别'),
     );
 
     const result = await executeTool(

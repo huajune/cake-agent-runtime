@@ -367,7 +367,7 @@ export class ToolRegistryService {
   private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
     const urls = [
       this.normalizeText(
-        getRuleFactValue(context.ledger.ruleFacts, 'interview_info.upload_resume', {
+        getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
           minConfidence: 'high',
         }),
       ),

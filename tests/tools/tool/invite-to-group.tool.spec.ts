@@ -21,15 +21,18 @@ interface InviteContextOverrides {
 describe('buildInviteToGroupTool', () => {
   const mockContext: ToolBuildContext = createToolContext({
     session: {
-      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1',
-      botUserId: 'chat-bot-weixin', botImId: 'chat-bot-im-id',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      botUserId: 'chat-bot-weixin',
+      botImId: 'chat-bot-im-id',
     },
     // 城市 provenance gate 要求 city 有出处：默认让候选人原文提到上海
     turnInput: { messages: [{ role: 'user', content: '你好，我在上海找兼职' }] },
     // 时机 gate 要求本轮已给出查岗结论；本文件测的是选群/投递链路，
     // 默认按"已查过岗"建模（生产上拉群必在查岗之后）。时机 gate 自身的
     // 三档判定见 tests/tools/shared/invite-timing-gate.spec.ts。
-    ledger: { jobListExecuted: true },
+    ledger: { jobs: { jobListExecuted: true } },
   });
 
   const buildContext = (overrides: InviteContextOverrides = {}) => {
@@ -46,13 +49,13 @@ describe('buildInviteToGroupTool', () => {
       },
       turnInput: {
         ...(has('messages') ? { messages: overrides.messages ?? [] } : {}),
-        ...(has('currentUserMessage')
-          ? { currentUserMessage: overrides.currentUserMessage }
-          : {}),
+        ...(has('currentUserMessage') ? { currentUserMessage: overrides.currentUserMessage } : {}),
       },
       ledger: {
-        ...(has('bookingSucceeded') ? { bookingSucceeded: overrides.bookingSucceeded } : {}),
-        ...(has('jobListExecuted') ? { jobListExecuted: overrides.jobListExecuted } : {}),
+        jobs: {
+          ...(has('bookingSucceeded') ? { bookingSucceeded: overrides.bookingSucceeded } : {}),
+          ...(has('jobListExecuted') ? { jobListExecuted: overrides.jobListExecuted } : {}),
+        },
       },
       runtime: has('strategySource') ? { strategySource: overrides.strategySource } : {},
     });

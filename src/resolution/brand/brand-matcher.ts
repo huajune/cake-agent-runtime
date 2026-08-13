@@ -101,7 +101,7 @@ function stripLocationShareSegments(text: string): string {
 export function resolveBrands(
   text: string | null | undefined,
   source: BrandResolutionSource,
-  catalog: BrandItem[],
+  catalog: ReadonlyArray<BrandItem>,
 ): BrandResolution[] {
   const trimmed = text?.trim();
   if (!trimmed || catalog.length === 0) return [];
@@ -569,7 +569,7 @@ export interface AliasResolutionOutcome {
  */
 export function resolveBrandAliasInputs(
   inputs: string[],
-  catalog: BrandItem[],
+  catalog: ReadonlyArray<BrandItem>,
 ): AliasResolutionOutcome {
   const applied = new Map<string, ResolvedAliasBrand>();
   const rejected: AliasResolutionOutcome['rejected'] = [];

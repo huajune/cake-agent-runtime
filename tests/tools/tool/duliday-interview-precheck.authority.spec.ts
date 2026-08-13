@@ -118,15 +118,12 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
     };
 
     it('enforce 下值仍进模板，只挂「如有误请改」，不把候选人打回重报', async () => {
-      const result = await run(
-        conflictingClaims,
-        {
-          mode: 'enforce',
-          context: {
-            ...conflictingMessages,
-          },
+      const result = await run(conflictingClaims, {
+        mode: 'enforce',
+        context: {
+          ...conflictingMessages,
         },
-      );
+      });
 
       expect(result.success).toBe(true);
       expect(result.factAdjudication.needsConfirmationFields).toContain('age');
@@ -230,7 +227,7 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
   describe('工序 C6：覆盖率 delta 观测', () => {
     it('解析器抓到、模型没经作证通道提交的字段落进观测事件', async () => {
       await run({ jobId: 100 }, { context: { messages: [{ role: 'user', content: '你好' }] } });
-      // ledger.collectedFields 为空 → 无 delta（不制造噪声）
+      // ledger.facts.collectedFields 为空 → 无 delta（不制造噪声）
       expect(factAdjudicationEvent()?.coverageDelta).toBeUndefined();
     });
   });
@@ -239,10 +236,15 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
     it('无引文的裸字段进不了清单（账本里没有 = 缺）', async () => {
       const result = await run(
         { jobId: 100, candidateName: '王玥', candidateAge: 24 },
-        { mode: 'enforce', context: { messages: [{ role: 'user', content: `你好 ${TIME_SUFFIX}` }] } },
+        {
+          mode: 'enforce',
+          context: { messages: [{ role: 'user', content: `你好 ${TIME_SUFFIX}` }] },
+        },
       );
 
-      expect(result.bookingChecklist.missingFields).toEqual(expect.arrayContaining(['姓名', '年龄']));
+      expect(result.bookingChecklist.missingFields).toEqual(
+        expect.arrayContaining(['姓名', '年龄']),
+      );
       expect(result.bookingChecklist.templateText).toContain('姓名：\n');
     });
 

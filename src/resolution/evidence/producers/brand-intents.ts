@@ -32,7 +32,7 @@ export function produceBrandAliasHints(
   for (const raw of userMessages) {
     const message = stripQuotedBlocks(stripTimeContext(raw));
     if (!message) continue;
-    for (const resolution of resolveBrands(message, 'user_text', [...brandData])) {
+    for (const resolution of resolveBrands(message, 'user_text', brandData)) {
       if (resolution.ambiguous || !resolution.canonicalName) continue;
       const matchedAlias =
         resolution.matchType === 'category_expansion'
@@ -80,7 +80,7 @@ export function produceValidatedBrandIntents(
       rejected.push({ brand, reason: 'system_text_reflow' });
       continue;
     }
-    const resolutions = resolveBrands(brand, 'user_text', [...brandData]).filter(
+    const resolutions = resolveBrands(brand, 'user_text', brandData).filter(
       (resolution) => !resolution.ambiguous && resolution.canonicalName !== null,
     );
     if (resolutions.length === 0) {

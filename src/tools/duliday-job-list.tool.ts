@@ -16,7 +16,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { isValidLaborForm, stripLaborFormFromCategories } from '@resolution/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -355,7 +355,7 @@ function readFactValue(value: unknown): unknown {
 
 function resolveCandidateAge(context: ToolBuildContext): number | null {
   const sources = [
-    getRuleFactValue(context.ledger.ruleFacts, 'interview_info.age', {
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.age', {
       minConfidence: 'high',
     }),
     readFactValue(context.archive.sessionFacts?.interview_info?.age),
@@ -377,7 +377,7 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
  */
 function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
   const sources = [
-    getRuleFactValue(context.ledger.ruleFacts, 'interview_info.is_student', {
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.is_student', {
       minConfidence: 'high',
     }),
     readFactValue(context.archive.sessionFacts?.interview_info?.is_student),
@@ -398,7 +398,7 @@ function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
  */
 function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
   const sources = [
-    getRuleFactValue(context.ledger.ruleFacts, 'preferences.labor_form', {
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'preferences.labor_form', {
       minConfidence: 'high',
     }),
     readFactValue(context.archive.sessionFacts?.preferences?.labor_form),
@@ -1005,7 +1005,7 @@ export function buildJobListTool(
           // 本轮已产出查岗结论：invite_to_group 的时机 gate 据此判断"是否突兀拉群"
           //（回合内直写，同 bookingSucceeded 模式）。放在请求返回后而非入口，
           // 是因为"发过请求但抛异常"不构成可告知候选人的查岗结论。
-          context.ledger.jobListExecuted = true;
+          context.ledger.jobs.jobListExecuted = true;
 
           // 县级市行政层级兜底（生产 badcase 6a4f83a5ce406a6aeeeab4b2）：
           // 候选人说“延吉市铁南”，确定性提取曾把“延吉”强制放进 cityNameList；但海绵
@@ -1140,7 +1140,7 @@ export function buildJobListTool(
           // 3) 其余（位置分享 / POI 级 geocode）→ poi 精确口径。
           const matchedGeocodeAnchor =
             locationLatitude != null && locationLongitude != null
-              ? (context.ledger.geocodeAnchors ?? []).find(
+              ? (context.ledger.geo.anchors ?? []).find(
                   (anchor) =>
                     Math.abs(anchor.longitude - locationLongitude) <=
                       GEOCODE_ANCHOR_COORD_TOLERANCE &&
@@ -1160,7 +1160,7 @@ export function buildJobListTool(
           // - model_supplied：本轮有 geocode 锚点，但坐标与所有锚点偏差 >1km——模型自编坐标；
           // - unreferenced：本轮无 geocode 锚点（改半径复查未重新 geocode / 位置分享转抄），
           //   无确定性参照，仅记量作为后续 enforce 决策依据。
-          const turnAnchors = context.ledger.geocodeAnchors ?? [];
+          const turnAnchors = context.ledger.geo.anchors ?? [];
           let coordsProvenance: 'turn_geocode' | 'model_supplied' | 'unreferenced' | null = null;
           let coordsDeviationKm: number | null = null;
           if (hasUserCoords) {
@@ -1649,7 +1649,7 @@ export function buildJobListTool(
           const collectionFollowup = detectPendingCollectionJobDetailFollowup(
             context.turnInput.messages,
             buildProvidedFieldLabels({
-              collectedFields: context.ledger.collectedFields,
+              collectedFields: context.ledger.facts.collectedFields,
               sessionInterviewInfo: context.archive.sessionFacts?.interview_info as
                 | Record<string, unknown>
                 | null

@@ -14,7 +14,7 @@ import type {
 export interface BuildReviewPacketInput {
   reply: string;
   toolCalls: AgentToolCall[];
-  turnLedger?: Pick<TurnLedger, 'visualFactSheets'>;
+  turnLedger?: Pick<TurnLedger, 'visual'>;
   userMessage?: string;
   /** 短期记忆里的往轮助手文本（正序）。缺省为空——repair 等旁路调用方无需提供。 */
   recentAssistantTexts?: string[];
@@ -46,7 +46,7 @@ export class GuardrailReviewPacketBuilder {
         sentLocation: this.buildSentLocationEvidence(input.toolCalls),
         groupInvite: this.buildGroupInviteEvidence(input.toolCalls),
         visualFacts: this.buildVisualFactsEvidence(
-          input.turnLedger?.visualFactSheets ?? [],
+          input.turnLedger?.visual.factSheets ?? [],
           input.toolCalls,
         ),
       },
@@ -266,7 +266,7 @@ export class GuardrailReviewPacketBuilder {
    * 包里看不到降级图片的描述，凭图回复会被误判无据。
    */
   private buildVisualFactsEvidence(
-    visualFactSheets: TurnLedger['visualFactSheets'],
+    visualFactSheets: TurnLedger['visual']['factSheets'],
     toolCalls: AgentToolCall[],
   ): GuardrailReviewPacket['evidence']['visualFacts'] {
     const truncate = (description: string | undefined): string | undefined =>

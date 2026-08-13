@@ -51,7 +51,7 @@ import { getRuleFactValue } from '@resolution/evidence/merge';
 import {
   extractCandidateTexts,
   extractCandidateTextsFromCorpus,
-} from '@resolution/evidence/adjudicate';
+} from '@resolution/signal/self-report';
 import {
   BOOKING_CRITICAL_FIELDS,
   computeCandidateMessageWatermark,
@@ -75,7 +75,7 @@ function markBookingFailed<T extends Record<string, unknown>>(
   context: ToolBuildContext,
   result: T,
 ): T {
-  context.ledger.bookingSucceeded = false;
+  context.ledger.jobs.bookingSucceeded = false;
   return result;
 }
 
@@ -881,7 +881,7 @@ export function buildInterviewBookingTool(
             candidateHasHealthCertificate: hasHealthCertificate,
             candidateHealthCertificateFact:
               getRuleFactValue<string>(
-                context.ledger.ruleFacts,
+                context.ledger.facts.ruleFacts,
                 'interview_info.has_health_certificate',
                 { minConfidence: 'high' },
               ) ?? context.archive.sessionFacts?.interview_info.has_health_certificate,
@@ -1046,7 +1046,7 @@ export function buildInterviewBookingTool(
               `[booking] 命中近期同岗位 active_booking 软查重，跳过重复提交: chatId=${context.session.sessionId}, jobId=${jobId}, workOrderId=${duplicateBooking.work_order_id}`,
             );
             // 候选人确已预约 → bookingSucceeded 置 true（不阻断后续拉群等流程）。
-            context.ledger.bookingSucceeded = true;
+            context.ledger.jobs.bookingSucceeded = true;
             // 候选人在预约成功后才补发简历的场景：工单已存在、系统没有补挂附件的接口，
             // 若按普通 already_booked 收口，这份真简历会被静默丢弃（工单 438358 事故的
             // 第二段）。识别到"本轮新收到简历"时改走人工补传指引。
@@ -1116,7 +1116,7 @@ export function buildInterviewBookingTool(
             spongeTokenContext,
           );
 
-          context.ledger.bookingSucceeded = result.success;
+          context.ledger.jobs.bookingSucceeded = result.success;
 
           if (!result.success) {
             void opsEventsRecorder.recordEvent({
@@ -1345,7 +1345,7 @@ export function buildInterviewBookingTool(
           return toolResult;
         } catch (err) {
           logger.error('预约面试失败', err);
-          context.ledger.bookingSucceeded = false;
+          context.ledger.jobs.bookingSucceeded = false;
 
           // 幂等键与上面「result.success===false」路径保持一致（去掉 :err 后缀）：
           // 同一 (session, job, interviewTime) 预约无论走「海绵返回失败」还是「抛异常」，
@@ -1518,7 +1518,7 @@ function normalizeResumeValue(value: unknown): string | undefined {
 /** 本轮高置信识别出的简历（候选人当轮刚发的文件/链接），仅当前轮有效。 */
 function getCurrentTurnResume(context: ToolBuildContext): string | undefined {
   return normalizeResumeValue(
-    getRuleFactValue(context.ledger.ruleFacts, 'interview_info.upload_resume', {
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
       minConfidence: 'high',
     }),
   );

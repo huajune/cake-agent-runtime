@@ -233,10 +233,15 @@ describe('PreparationService', () => {
         brandName: '奥乐齐',
         jobName: '分拣打包',
         storeName: '长白',
+        cityName: null,
+        regionName: null,
+        laborForm: null,
+        salaryDesc: null,
+        jobCategoryName: null,
       },
     ]);
 
-    expect(result.ledger.fetchedJobs).toEqual([
+    expect(result.ledger.jobs.fetchedJobs).toEqual([
       expect.objectContaining({ jobId: 1, storeName: '长白' }),
     ]);
   });
@@ -2234,13 +2239,13 @@ describe('PreparationService', () => {
 
     expect(geocoding.reverseGeocode).toHaveBeenCalledTimes(1);
     expect(geocoding.reverseGeocode).toHaveBeenCalledWith(121.4, 31.2);
-    expect(result.ledger.cityAttestation).toMatchObject({
+    expect(result.ledger.geo.cityAttestation).toMatchObject({
       city: '上海市',
       district: '徐汇区',
       source: 'location_share',
     });
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls.at(-1)!;
-    expect(toolContext.ledger.geocodeAnchors).toContainEqual(
+    expect(toolContext.ledger.geo.anchors).toContainEqual(
       expect.objectContaining({ city: '上海市', longitude: 121.4, latitude: 31.2 }),
     );
   });

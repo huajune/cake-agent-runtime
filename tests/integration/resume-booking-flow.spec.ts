@@ -205,32 +205,43 @@ describe('resume booking flow', () => {
 
   function buildToolContext(
     messageContent: string,
-    ruleFacts: TurnLedger['ruleFacts'],
+    ruleFacts: TurnLedger['facts']['ruleFacts'],
   ): ToolBuildContext {
     return createToolContext({
       session: {
-        userId: 'user-1', corpId: 'corp-1', sessionId: '6a1ced34536c9654027defbd',
-        chatId: '6a1ced34536c9654027defbd', contactName: '候选人微信名', botUserId: 'manager-1',
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: '6a1ced34536c9654027defbd',
+        chatId: '6a1ced34536c9654027defbd',
+        contactName: '候选人微信名',
+        botUserId: 'manager-1',
       },
       // B4 手机号溯源闸门要求提交的 phone 在候选人原文有出处，预置报号消息
-      turnInput: { messages: [{ role: 'user', content: '电话15305186866' }, { role: 'user', content: messageContent }] },
-      ledger: { ruleFacts: ruleFacts },
-      archive: { sessionFacts: {
-        interview_info: {
-          ...FALLBACK_EXTRACTION.interview_info,
-          name: '任博文',
-          phone: '15305186866',
-          gender: '男',
-          age: '22',
-          education: '大专',
-          has_health_certificate: '无但接受办理健康证',
-          is_student: false,
-          interview_time: null,
-          upload_resume: null,
+      turnInput: {
+        messages: [
+          { role: 'user', content: '电话15305186866' },
+          { role: 'user', content: messageContent },
+        ],
+      },
+      ledger: { facts: { ruleFacts } },
+      archive: {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '任博文',
+            phone: '15305186866',
+            gender: '男',
+            age: '22',
+            education: '大专',
+            has_health_certificate: '无但接受办理健康证',
+            is_student: false,
+            interview_time: null,
+            upload_resume: null,
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'integration test',
         },
-        preferences: FALLBACK_EXTRACTION.preferences,
-        reasoning: 'integration test',
-      } },
+      },
     });
   }
 

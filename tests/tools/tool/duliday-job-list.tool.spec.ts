@@ -20,8 +20,8 @@ type JobListTestContext = ToolBuildContext & {
   currentLaborFormIntent?: ToolBuildContext['turnInput']['currentLaborFormIntent'];
   contactBrandAliases?: string[];
   thresholds?: ToolBuildContext['runtime']['thresholds'];
-  ruleFacts?: TurnLedger['ruleFacts'];
-  geocodeAnchors?: TurnLedger['geocodeAnchors'];
+  ruleFacts?: TurnLedger['facts']['ruleFacts'];
+  geocodeAnchors?: TurnLedger['geo']['anchors'];
   recordFetchedJobs?: TurnLedger['recordFetchedJobs'];
   recordJobListQuery?: TurnLedger['recordJobListQuery'];
 };
@@ -82,10 +82,12 @@ describe('buildJobListTool', () => {
           : { contactBrandAliases: context.contactBrandAliases }),
       },
       ledger: {
-        ...(context.ruleFacts === undefined ? {} : { ruleFacts: context.ruleFacts }),
-        ...(context.geocodeAnchors === undefined
-          ? {}
-          : { geocodeAnchors: context.geocodeAnchors }),
+        facts: {
+          ...(context.ruleFacts === undefined ? {} : { ruleFacts: context.ruleFacts }),
+        },
+        geo: {
+          ...(context.geocodeAnchors === undefined ? {} : { anchors: context.geocodeAnchors }),
+        },
         ...(context.recordFetchedJobs === undefined
           ? {}
           : { recordFetchedJobs: context.recordFetchedJobs }),
@@ -315,7 +317,9 @@ describe('buildJobListTool', () => {
     const result = await executeTool(
       {
         ...mockContext,
-        sessionFacts: { interview_info: { age: '52' } } as ToolBuildContext['archive']['sessionFacts'],
+        sessionFacts: {
+          interview_info: { age: '52' },
+        } as ToolBuildContext['archive']['sessionFacts'],
       },
       {
         ...defaultInput,
@@ -365,7 +369,9 @@ describe('buildJobListTool', () => {
     const result = await executeTool(
       {
         ...mockContext,
-        sessionFacts: { interview_info: { age: '20' } } as ToolBuildContext['archive']['sessionFacts'],
+        sessionFacts: {
+          interview_info: { age: '20' },
+        } as ToolBuildContext['archive']['sessionFacts'],
       },
       {
         ...defaultInput,
@@ -1331,7 +1337,10 @@ describe('buildJobListTool', () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
 
     const recordFetchedJobs = jest.fn();
-    await executeTool({ ...mockContext, recordFetchedJobs }, { ...defaultInput, includeWelfare: true });
+    await executeTool(
+      { ...mockContext, recordFetchedJobs },
+      { ...defaultInput, includeWelfare: true },
+    );
 
     expect(recordFetchedJobs).toHaveBeenCalledWith([
       expect.objectContaining({

@@ -1166,7 +1166,7 @@ export function buildInterviewPrecheckTool(
               }
             }
           }
-          const collectedFields = context.ledger.collectedFields;
+          const collectedFields = context.ledger.facts.collectedFields;
           // 姓名/电话必须在下方可疑姓名校验（读取 knownFieldMap['姓名']）之前回灌：
           // 它们没有沉淀进会话事实时（候选人本轮刚报名 / 跨天回访旧事实已过期），
           // buildKnownFieldMap 读不到，唯一回灌通道就是 candidateName/candidatePhone 入参。
@@ -1269,7 +1269,7 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '过往公司+岗位+年限',
             undefined,
-            getRuleFactValue(context.ledger.ruleFacts, 'interview_info.experience', {
+            getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.experience', {
               minConfidence: 'high',
             }),
             normalizeCandidateUploadResumeInput,
@@ -1279,7 +1279,7 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '身份',
             candidateIsStudent,
-            getRuleFactValue(context.ledger.ruleFacts, 'interview_info.is_student', {
+            getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.is_student', {
               minConfidence: 'high',
             }),
             normalizeCandidateIsStudentInput,
@@ -1305,7 +1305,7 @@ export function buildInterviewPrecheckTool(
             knownFieldMap,
             '简历附件',
             candidateUploadResume,
-            getRuleFactValue(context.ledger.ruleFacts, 'interview_info.upload_resume', {
+            getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
               minConfidence: 'high',
             }),
             normalizeCandidateUploadResumeInput,
@@ -1698,7 +1698,7 @@ export function buildInterviewPrecheckTool(
           // ⚠️ 只回灌给这一次**只读查询**，绝不写进 knownFieldMap：截图里的姓名/电话未必是
           // 对话方本人（本案的"颜端樟"就是对方代第三人登记的），拿它去满足收资清单等于
           // 复刻 badcase「第三方截图夺号」。查重的最坏结果只是查出一张工单再去核对，安全。
-          const visualCandidatePhone = (context.ledger.visualFactSheets ?? [])
+          const visualCandidatePhone = (context.ledger.visual.factSheets ?? [])
             .flatMap((entry) => fieldValues(entry.sheet, 'phone', 'candidate'))
             .map((value) => value.replace(/\D/g, ''))
             .find((value) => /^1\d{10}$/.test(value));

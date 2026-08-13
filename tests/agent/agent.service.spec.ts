@@ -855,7 +855,19 @@ describe('GeneratorAgent', () => {
 
   it('should trigger turn-end lifecycle without blocking invoke success', async () => {
     const ledger = createTurnLedger();
-    ledger.recordFetchedJobs([{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }]);
+    ledger.recordFetchedJobs([
+      {
+        jobId: 519709,
+        brandName: '奥乐齐',
+        jobName: null,
+        storeName: '长白',
+        cityName: null,
+        regionName: null,
+        laborForm: null,
+        salaryDesc: null,
+        jobCategoryName: null,
+      },
+    ]);
     mockPreparation.prepare.mockResolvedValue({
       ...preparedContext,
       normalizedMessages: [

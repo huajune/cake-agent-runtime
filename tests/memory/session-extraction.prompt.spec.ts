@@ -185,12 +185,10 @@ describe('buildSessionExtractionPrompt', () => {
         confidence: 'low',
         producer: 'system',
       }),
-      testRuleFact(
-        'interview_info.gender_source',
-        'system',
-        '客户详情接口补充性别来源：系统标签',
-        { confidence: 'low', producer: 'system' },
-      ),
+      testRuleFact('interview_info.gender_source', 'system', '客户详情接口补充性别来源：系统标签', {
+        confidence: 'low',
+        producer: 'system',
+      }),
       testRuleFact('preferences.city', '上海', 'explicit_city'),
     );
 
@@ -211,13 +209,7 @@ describe('buildSessionExtractionPrompt', () => {
   });
 
   it('should show "无" when ruleFacts has no extracted values', () => {
-    const prompt = buildSessionExtractionPrompt(
-      brandData,
-      '用户: 你好',
-      [],
-      [],
-      testRuleFacts(),
-    );
+    const prompt = buildSessionExtractionPrompt(brandData, '用户: 你好', [], [], testRuleFacts());
 
     expect(prompt).toContain('[规则模式匹配线索');
     // 空 claim 流应显示"无"
@@ -277,19 +269,23 @@ describe('buildSessionExtractionPrompt', () => {
       undefined,
       null,
       {
-        fetchedJobs: [job],
-        currentFocusJob: { ...job, jobId: 519710, storeName: '五角场店' },
-        visualFactSheets: [
-          {
-            messageId: 'img-1',
-            sheet: {
-              kind: 'resume',
-              fields: [{ key: 'phone', value: '15887265838', ownership: 'candidate' }],
-              rawDescription: '候选人简历截图',
-              degraded: false,
+        jobs: {
+          fetchedJobs: [job],
+          currentFocusJob: { ...job, jobId: 519710, storeName: '五角场店' },
+        },
+        visual: {
+          factSheets: [
+            {
+              messageId: 'img-1',
+              sheet: {
+                kind: 'resume',
+                fields: [{ key: 'phone', value: '15887265838', ownership: 'candidate' }],
+                rawDescription: '候选人简历截图',
+                degraded: false,
+              },
             },
-          },
-        ],
+          ],
+        },
       },
     );
 
@@ -310,7 +306,7 @@ describe('buildSessionExtractionPrompt', () => {
       null,
       undefined,
       null,
-      { fetchedJobs: [], currentFocusJob: null, visualFactSheets: [] },
+      { jobs: { fetchedJobs: [], currentFocusJob: null }, visual: { factSheets: [] } },
     );
 
     expect(prompt).not.toContain('[本轮工具事实]');

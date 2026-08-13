@@ -153,7 +153,7 @@ export function buildRequestHandoffTool(
           .getActiveBooking(context.session.corpId, context.session.userId)
           .catch(() => null);
         const workOrderId =
-          activeBooking?.work_order_id ?? context.ledger.resolvedWorkOrderId ?? null;
+          activeBooking?.work_order_id ?? context.ledger.jobs.resolvedWorkOrderId ?? null;
 
         // 转人工当轮的焦点岗位：让运营的「岗位数据缺口榜 / 满岗信号榜」能直接定位到岗位。
         // 优先本轮焦点岗位；没有焦点岗位（如只有进行中工单）时退回在约岗位。

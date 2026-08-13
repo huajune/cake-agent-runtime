@@ -49,13 +49,15 @@ describe('ToolRegistryService', () => {
       'candidate-consultation',
       baseContext({
         ledger: {
-          ruleFacts: testRuleFacts(
-            testRuleFact(
-              'interview_info.upload_resume',
-              ' https://cdn.example.com/resume.pdf ',
-              '候选人发送了简历附件',
+          facts: {
+            ruleFacts: testRuleFacts(
+              testRuleFact(
+                'interview_info.upload_resume',
+                ' https://cdn.example.com/resume.pdf ',
+                '候选人发送了简历附件',
+              ),
             ),
-          ),
+          },
         },
       }),
     );
@@ -73,19 +75,23 @@ describe('ToolRegistryService', () => {
       'candidate-consultation',
       baseContext({
         ledger: {
-          ruleFacts: testRuleFacts(
-            testRuleFact(
-              'interview_info.upload_resume',
-              'https://cdn.example.com/resume.pdf',
-              '候选人发送了简历附件',
+          facts: {
+            ruleFacts: testRuleFacts(
+              testRuleFact(
+                'interview_info.upload_resume',
+                'https://cdn.example.com/resume.pdf',
+                '候选人发送了简历附件',
+              ),
             ),
-          ),
-        },
-        archive: { sessionFacts: {
-          interview_info: {
-            upload_resume: ' https://cdn.example.com/resume.pdf ',
           },
-        } as never },
+        },
+        archive: {
+          sessionFacts: {
+            interview_info: {
+              upload_resume: ' https://cdn.example.com/resume.pdf ',
+            },
+          } as never,
+        },
       }),
     );
 

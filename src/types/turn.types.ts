@@ -31,25 +31,56 @@ export interface GeocodeLocationAnchor {
   evidence: string;
 }
 
-export interface TurnLedgerSnapshot {
-  visualFactSheets: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
-  imageBrandResolutions: ReadonlyArray<{ messageId: string; resolutions: BrandResolution[] }>;
-  geocodeAnchors: readonly GeocodeResolvedAnchor[];
+export interface TurnVisualSnapshot {
+  factSheets: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
+  brandResolutions: ReadonlyArray<{ messageId: string; resolutions: BrandResolution[] }>;
+}
+
+export interface TurnGeoSnapshot {
+  anchors: readonly GeocodeResolvedAnchor[];
   cityAttestation: CityAttestation | undefined;
-  fetchedJobs: readonly unknown[];
+  signalCities: ReadonlySet<string>;
+}
+
+/**
+ * 本轮岗位召回的规范化最小载荷。
+ *
+ * 生产者在 job-list 边界已把海绵响应投影成 RecommendedJobSummary；该形状覆盖 jobId
+ * 出处闸、轮末候选池和抽取提示词的字段并集，不允许把海绵原始岗位结构泄入账本。
+ */
+export type TurnFetchedJob = RecommendedJobSummary;
+
+export interface TurnJobsSnapshot {
+  fetchedJobs: readonly TurnFetchedJob[];
   /** prep 时刻的当前焦点岗位；供本轮工具与轮末抽取共享同一上下文快照。 */
-  readonly currentFocusJob: RecommendedJobSummary | null;
-  jobListQuery: { signature: string } | undefined;
+  currentFocusJob: RecommendedJobSummary | null;
+  /** duliday_job_list 查询签名；去掉历史上的单字段对象包装。 */
+  querySignature: string | undefined;
   invalidatedJobIds: readonly number[];
-  ruleFacts: RuleFactClaims | null;
-  /** prep 时刻唯一一次 labor-form 规则轨判定；轮末 shadow 对照复用，禁止重跑。 */
-  laborFormIntent: LaborFormIntentDecision;
-  collectedFields: Readonly<Partial<Record<CandidateFieldKey, CandidateCollectedField>>>;
-  geoSignalCities: ReadonlySet<string>;
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */
   bookingSucceeded: boolean | undefined;
   jobListExecuted: boolean;
   resolvedWorkOrderId?: number;
+}
+
+export interface TurnFactsSnapshot {
+  ruleFacts: RuleFactClaims | null;
+  /** prep 时刻唯一一次 labor-form 规则轨判定；轮末 shadow 对照复用，禁止重跑。 */
+  laborFormIntent: LaborFormIntentDecision;
+  collectedFields: Readonly<Partial<Record<CandidateFieldKey, CandidateCollectedField>>>;
+}
+
+export interface TurnLedgerSnapshot {
+  visual: TurnVisualSnapshot;
+  geo: TurnGeoSnapshot;
+  jobs: TurnJobsSnapshot;
+  facts: TurnFactsSnapshot;
+}
+
+/** 轮末事实抽取只借阅岗位与视觉域的最小只读投影。 */
+export interface TurnExtractionToolFacts {
+  jobs: Pick<TurnJobsSnapshot, 'fetchedJobs' | 'currentFocusJob'>;
+  visual: Pick<TurnVisualSnapshot, 'factSheets'>;
 }
 
 /**
@@ -57,14 +88,11 @@ export interface TurnLedgerSnapshot {
  * 列表没有可写出口；所有变更都经 record* / mark*，轮末以 drain() 快照交档。
  */
 export interface TurnLedger extends TurnLedgerSnapshot {
-  bookingSucceeded: boolean | undefined;
-  jobListExecuted: boolean;
-  resolvedWorkOrderId?: number;
   recordVisualFacts(sheet: FinalizedVisualFactSheet, meta: { messageId: string }): void;
   recordImageBrands(resolutions: BrandResolution[], meta: { messageId: string }): void;
   recordGeocodeAnchor(anchor: GeocodeResolvedAnchor): void;
   recordCityAttestation(attestation: CityAttestation): void;
-  recordFetchedJobs(jobs: unknown[]): void;
+  recordFetchedJobs(jobs: TurnFetchedJob[]): void;
   recordJobListQuery(query: { signature: string }): void;
   markJobInvalidated(jobId: number): void;
   drain(): TurnLedgerSnapshot;

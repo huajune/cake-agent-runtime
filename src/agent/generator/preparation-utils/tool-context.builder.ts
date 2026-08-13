@@ -9,7 +9,6 @@ import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { unwrapUserProfileFacts } from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
-  type RecommendedJobSummary,
   type SessionFacts,
   isSessionFactValue,
   unwrapSessionFactValue,
@@ -117,11 +116,11 @@ export function buildToolContext(input: {
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
       isRecalledJobId: (jobId: number) =>
         turnStartRecalledJobIds.has(jobId) ||
-        (ledger.fetchedJobs as readonly RecommendedJobSummary[]).some((job) => job.jobId === jobId),
+        ledger.jobs.fetchedJobs.some((job) => job.jobId === jobId),
       // 闸门拒绝时把合法 jobId 一并告知模型；本轮新召回的排在前面。
       get recalledJobIds() {
         return [
-          ...(ledger.fetchedJobs as readonly RecommendedJobSummary[]).map((job) => job.jobId),
+          ...ledger.jobs.fetchedJobs.map((job) => job.jobId),
           ...turnStartRecalledJobIds,
         ].filter((id, index, all) => all.indexOf(id) === index);
       },

@@ -56,4 +56,10 @@ describe('catalog-index', () => {
       { brandName: '小龙翻大江', brandId: 6 },
     ]);
   });
+
+  it('accepts a readonly catalog without copying the memo key', () => {
+    const readonlyCatalog: ReadonlyArray<BrandItem> = catalog;
+    const first = buildBrandCatalogIndex(readonlyCatalog);
+    expect(buildBrandCatalogIndex(readonlyCatalog)).toBe(first);
+  });
 });

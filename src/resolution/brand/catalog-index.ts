@@ -154,10 +154,10 @@ export interface BrandCatalogIndex {
   categories: ResolvedBrandCategory[];
 }
 
-let indexCache: { source: BrandItem[]; index: BrandCatalogIndex } | null = null;
+let indexCache: { source: ReadonlyArray<BrandItem>; index: BrandCatalogIndex } | null = null;
 
 /** 构建（或复用缓存的）品牌目录索引。 */
-export function buildBrandCatalogIndex(brandData: BrandItem[]): BrandCatalogIndex {
+export function buildBrandCatalogIndex(brandData: ReadonlyArray<BrandItem>): BrandCatalogIndex {
   if (indexCache && indexCache.source === brandData) {
     return indexCache.index;
   }

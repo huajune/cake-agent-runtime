@@ -361,21 +361,20 @@ export class GeneratorAgent {
         messageId: ctx.messageId,
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
-        candidatePool:
-          ledger.fetchedJobs.length > 0
-            ? (ledger.fetchedJobs as Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'])
-            : null,
+        candidatePool: ledger.jobs.fetchedJobs.length > 0 ? [...ledger.jobs.fetchedJobs] : null,
         contactName: ctx.contactName,
-        imageBrandResolutions: ledger.imageBrandResolutions.flatMap((entry) => entry.resolutions),
-        jobListQuerySignature: ledger.jobListQuery?.signature ?? null,
-        cityAttestation: ledger.cityAttestation ?? null,
-        invalidatedJobIds: [...ledger.invalidatedJobIds],
-        ruleFacts: ledger.ruleFacts,
-        laborFormIntent: ledger.laborFormIntent,
+        imageBrandResolutions: ledger.visual.brandResolutions.flatMap((entry) => entry.resolutions),
+        jobListQuerySignature: ledger.jobs.querySignature ?? null,
+        cityAttestation: ledger.geo.cityAttestation ?? null,
+        invalidatedJobIds: [...ledger.jobs.invalidatedJobIds],
+        ruleFacts: ledger.facts.ruleFacts,
+        laborFormIntent: ledger.facts.laborFormIntent,
         extractionToolFacts: {
-          fetchedJobs: ledger.fetchedJobs,
-          currentFocusJob: ledger.currentFocusJob,
-          visualFactSheets: ledger.visualFactSheets,
+          jobs: {
+            fetchedJobs: ledger.jobs.fetchedJobs,
+            currentFocusJob: ledger.jobs.currentFocusJob,
+          },
+          visual: { factSheets: ledger.visual.factSheets },
         },
       },
       assistantText,

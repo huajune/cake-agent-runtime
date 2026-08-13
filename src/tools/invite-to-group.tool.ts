@@ -232,7 +232,7 @@ export function buildInviteToGroupTool(
         };
 
         try {
-          if (context.ledger.bookingSucceeded === false) {
+          if (context.ledger.jobs.bookingSucceeded === false) {
             logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.session.userId}`);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_BOOKING_NOT_SUCCESS,
@@ -295,7 +295,7 @@ export function buildInviteToGroupTool(
           // 城市 provenance gate（badcase recvk28F1xrsKj 拉错城市群）：
           // city 入参必须能追溯到会话城市事实、候选人原文城市名、geo 地名白名单
           // 推断（顺义→北京 等，见 @resolution/geo）或本轮 geocode 确权城市
-          //（ledger.geocodeAnchors 穿线，#765），模型自报不构成依据。
+          //（ledger.geo.anchors 穿线，#765），模型自报不构成依据。
           // 会话城市事实的合法来源含 rule/llm/derived 之外的 'tool'（geocode unique
           // 确权、定位分享逆解析，2026-07-27 证据化穿线）——按置信度采信，不挑 source。
           // 会话事实读取失败按 null 降级（gate 仍可凭候选人原文放行），不让 Redis 抖动挡住拉群。
@@ -321,7 +321,7 @@ export function buildInviteToGroupTool(
           // 时，地图截图的城市线索还没进 ledger——拒绝理由里给模型一条确定性恢复路径。
           const hasUnsavedImages =
             (context.turnInput.imageMessageIds?.length ?? 0) > 0 &&
-            (context.ledger.visualFactSheets?.length ?? 0) === 0;
+            (context.ledger.visual.factSheets?.length ?? 0) === 0;
           const unsavedImageHint = hasUnsavedImages
             ? '本轮候选人发了图片但你还没调用 save_image_description；若图片是位置/地图截图，先保存描述再重试本工具，城市核验会采信图中位置。'
             : '';
@@ -329,11 +329,11 @@ export function buildInviteToGroupTool(
             requestedCity: city,
             sessionCity,
             userTexts: extractUserTexts(context.turnInput.messages),
-            geoSignalCities: context.ledger.geoSignalCities,
+            geoSignalCities: context.ledger.geo.signalCities,
             // 同轮 geocode unique 确权城市：补"轮末写档、下轮生效"的时序空档
             //（geocode → 无岗 → invite 常在同一轮发生）。
-            turnResolvedCities: (context.ledger.geocodeAnchors ?? []).map((anchor) => anchor.city),
-            turnVisualSheets: context.ledger.visualFactSheets,
+            turnResolvedCities: (context.ledger.geo.anchors ?? []).map((anchor) => anchor.city),
+            turnVisualSheets: context.ledger.visual.factSheets,
           });
           if (cityGateVerdict.decision === 'reject') {
             if (cityGateVerdict.reason === 'city_conflict') {
@@ -386,8 +386,8 @@ export function buildInviteToGroupTool(
           }
           const timingVerdict = evaluateInviteTimingGate({
             requestedCity: city,
-            jobListExecuted: context.ledger.jobListExecuted === true,
-            bookingSucceeded: context.ledger.bookingSucceeded,
+            jobListExecuted: context.ledger.jobs.jobListExecuted === true,
+            bookingSucceeded: context.ledger.jobs.bookingSucceeded,
             invitedGroups,
             currentUserMessage: context.turnInput.currentUserMessage,
           });

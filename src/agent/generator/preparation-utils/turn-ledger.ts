@@ -5,6 +5,7 @@ import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   CityAttestation,
   GeocodeResolvedAnchor,
+  TurnFetchedJob,
   TurnLedger,
   TurnLedgerSnapshot,
 } from '@shared-types/turn.types';
@@ -19,48 +20,54 @@ export interface CreateTurnLedgerInput {
 
 /** 创建本轮唯一账本实例；内部集合不向消费者暴露可写引用。 */
 export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger {
-  const visualFactSheets: TurnLedgerSnapshot['visualFactSheets'][number][] = [];
-  const imageBrandResolutions: TurnLedgerSnapshot['imageBrandResolutions'][number][] = [];
+  const visualFactSheets: TurnLedgerSnapshot['visual']['factSheets'][number][] = [];
+  const imageBrandResolutions: TurnLedgerSnapshot['visual']['brandResolutions'][number][] = [];
   const geocodeAnchors: GeocodeResolvedAnchor[] = [];
-  const fetchedJobs: unknown[] = [];
+  const fetchedJobs: TurnFetchedJob[] = [];
   const currentFocusJob = input.currentFocusJob ? { ...input.currentFocusJob } : null;
   const invalidatedJobIds: number[] = [];
   const collectedFields = Object.freeze({ ...(input.collectedFields ?? {}) });
   const geoSignalCities = new Set(input.geoSignalCities ?? []);
   let cityAttestation: CityAttestation | undefined;
-  let jobListQuery: { signature: string } | undefined;
+  let jobListQuerySignature: string | undefined;
 
   const ledger: TurnLedger = {
-    get visualFactSheets() {
-      return visualFactSheets;
+    visual: {
+      get factSheets() {
+        return visualFactSheets;
+      },
+      get brandResolutions() {
+        return imageBrandResolutions;
+      },
     },
-    get imageBrandResolutions() {
-      return imageBrandResolutions;
+    geo: {
+      get anchors() {
+        return geocodeAnchors;
+      },
+      get cityAttestation() {
+        return cityAttestation;
+      },
+      signalCities: geoSignalCities,
     },
-    get geocodeAnchors() {
-      return geocodeAnchors;
+    jobs: {
+      get fetchedJobs() {
+        return fetchedJobs;
+      },
+      currentFocusJob,
+      get querySignature() {
+        return jobListQuerySignature;
+      },
+      get invalidatedJobIds() {
+        return invalidatedJobIds;
+      },
+      bookingSucceeded: undefined,
+      jobListExecuted: false,
     },
-    get cityAttestation() {
-      return cityAttestation;
+    facts: {
+      ruleFacts: input.ruleFacts ?? null,
+      laborFormIntent: input.laborFormIntent ?? { kind: 'ignore' },
+      collectedFields,
     },
-    get fetchedJobs() {
-      return fetchedJobs;
-    },
-    get currentFocusJob() {
-      return currentFocusJob;
-    },
-    get jobListQuery() {
-      return jobListQuery;
-    },
-    get invalidatedJobIds() {
-      return invalidatedJobIds;
-    },
-    ruleFacts: input.ruleFacts ?? null,
-    laborFormIntent: input.laborFormIntent ?? { kind: 'ignore' },
-    collectedFields,
-    geoSignalCities,
-    bookingSucceeded: undefined,
-    jobListExecuted: false,
     recordVisualFacts(sheet, meta) {
       visualFactSheets.push({ messageId: meta.messageId, sheet });
     },
@@ -77,33 +84,41 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
       fetchedJobs.splice(0, fetchedJobs.length, ...jobs);
     },
     recordJobListQuery(query) {
-      jobListQuery = { ...query };
+      jobListQuerySignature = query.signature;
     },
     markJobInvalidated(jobId) {
       if (!invalidatedJobIds.includes(jobId)) invalidatedJobIds.push(jobId);
     },
     drain() {
       return {
-        visualFactSheets: [...visualFactSheets],
-        imageBrandResolutions: imageBrandResolutions.map((entry) => ({
-          messageId: entry.messageId,
-          resolutions: [...entry.resolutions],
-        })),
-        geocodeAnchors: geocodeAnchors.map((anchor) => ({ ...anchor })),
-        cityAttestation: cityAttestation ? { ...cityAttestation } : undefined,
-        fetchedJobs: [...fetchedJobs],
-        currentFocusJob: ledger.currentFocusJob ? { ...ledger.currentFocusJob } : null,
-        jobListQuery: jobListQuery ? { ...jobListQuery } : undefined,
-        invalidatedJobIds: [...invalidatedJobIds],
-        ruleFacts: ledger.ruleFacts,
-        laborFormIntent: ledger.laborFormIntent,
-        collectedFields,
-        geoSignalCities: new Set(geoSignalCities),
-        bookingSucceeded: ledger.bookingSucceeded,
-        jobListExecuted: ledger.jobListExecuted,
-        ...(ledger.resolvedWorkOrderId === undefined
-          ? {}
-          : { resolvedWorkOrderId: ledger.resolvedWorkOrderId }),
+        visual: {
+          factSheets: [...visualFactSheets],
+          brandResolutions: imageBrandResolutions.map((entry) => ({
+            messageId: entry.messageId,
+            resolutions: [...entry.resolutions],
+          })),
+        },
+        geo: {
+          anchors: geocodeAnchors.map((anchor) => ({ ...anchor })),
+          cityAttestation: cityAttestation ? { ...cityAttestation } : undefined,
+          signalCities: new Set(geoSignalCities),
+        },
+        jobs: {
+          fetchedJobs: [...fetchedJobs],
+          currentFocusJob: ledger.jobs.currentFocusJob ? { ...ledger.jobs.currentFocusJob } : null,
+          querySignature: jobListQuerySignature,
+          invalidatedJobIds: [...invalidatedJobIds],
+          bookingSucceeded: ledger.jobs.bookingSucceeded,
+          jobListExecuted: ledger.jobs.jobListExecuted,
+          ...(ledger.jobs.resolvedWorkOrderId === undefined
+            ? {}
+            : { resolvedWorkOrderId: ledger.jobs.resolvedWorkOrderId }),
+        },
+        facts: {
+          ruleFacts: ledger.facts.ruleFacts,
+          laborFormIntent: ledger.facts.laborFormIntent,
+          collectedFields,
+        },
       };
     },
   };

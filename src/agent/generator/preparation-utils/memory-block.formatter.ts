@@ -15,10 +15,10 @@ import {
 } from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
-  type RecommendedJobSummary,
   type WeworkSessionState,
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import { isArchivedProfileFactSuperseded } from '@resolution/evidence/profile';
 import type { CandidateClaimField } from '@resolution/evidence/claim.types';

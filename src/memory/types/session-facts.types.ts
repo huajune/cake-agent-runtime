@@ -8,18 +8,6 @@ import {
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
 
-// 类型唯一定义在 @resolution/job/types，此处仅作存储侧转发，供既有消费者沿用旧路径。
-export {
-  RecommendedJobSummarySchema,
-  RecommendedJobWelfareFactsSchema,
-  RecommendedJobWelfareKindSchema,
-} from '@resolution/job/types';
-export type {
-  RecommendedJobSummary,
-  RecommendedJobWelfareFacts,
-  RecommendedJobWelfareKind,
-} from '@resolution/job/types';
-
 // ==================== 1. 提取 schema（LLM 输出结构） ====================
 
 /** 面试信息 schema */

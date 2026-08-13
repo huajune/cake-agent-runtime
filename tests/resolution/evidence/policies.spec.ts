@@ -1,4 +1,10 @@
-import { CANDIDATE_FIELD_RISK, MIN_QUOTE_CONTEXT_CHARS } from '@resolution/evidence/policies';
+import {
+  CANDIDATE_FIELD_RISK,
+  EXPLICIT_EXTRACTION_UPGRADE_FIELDS,
+  extractionQuoteSupportsCurrentValue,
+  IDENTITY_FIRST_WRITE_FIELDS,
+  MIN_QUOTE_CONTEXT_CHARS,
+} from '@resolution/evidence/policies';
 import {
   detectAgentEcho,
   notarizeCandidateClaim,
@@ -50,6 +56,38 @@ describe('字段风险分级与短引文门参数', () => {
   });
 });
 
+describe('session 首写出处策略归位', () => {
+  it('身份首写与显式升级字段由 evidence 策略表唯一声明', () => {
+    expect([...IDENTITY_FIRST_WRITE_FIELDS]).toEqual([
+      'age',
+      'gender',
+      'education',
+      'height',
+      'weight',
+      'experience',
+    ]);
+    expect(EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has('phone')).toBe(true);
+    expect(EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has('applied_store')).toBe(false);
+  });
+
+  it('首写字段走确定性复算，合成 experience 走 token 覆盖', () => {
+    expect(extractionQuoteSupportsCurrentValue('age', '我今年21', '21')).toBe(true);
+    expect(extractionQuoteSupportsCurrentValue('age', '想找晚班', '21')).toBe(false);
+    expect(
+      extractionQuoteSupportsCurrentValue('experience', '肯德基后厨做了一年', '肯德基后厨1年'),
+    ).toBe(true);
+    expect(
+      extractionQuoteSupportsCurrentValue('experience', '肯德基后厨做了一年', '星巴克咖啡师3年'),
+    ).toBe(false);
+  });
+
+  it('非首写升级字段保留既有单向包含兜底', () => {
+    expect(extractionQuoteSupportsCurrentValue('has_health_certificate', '健康证：有', '有')).toBe(
+      true,
+    );
+  });
+});
+
 describe('第一问·引文真伪', () => {
   const texts = ['我叫王玥', '139 0000 0002', '我一米六三'];
 
@@ -72,9 +110,10 @@ describe('第一问·引文真伪', () => {
   });
 
   it('legacy 裸值（无 quote）→ quote_not_found，不再走全文推导补录', () => {
-    expect(
-      verifyQuoteProvenance(claim({ field: 'name', value: '王玥' }), texts),
-    ).toMatchObject({ outcome: 'reject', reason: 'quote_not_found' });
+    expect(verifyQuoteProvenance(claim({ field: 'name', value: '王玥' }), texts)).toMatchObject({
+      outcome: 'reject',
+      reason: 'quote_not_found',
+    });
   });
 
   it('严格身份字段：引文与值失联即判无出处（仍是字符串包含，不是推导）', () => {
@@ -96,7 +135,11 @@ describe('第一问·引文真伪', () => {
     ).toBe('pass');
     expect(
       verifyQuoteProvenance(
-        claim({ field: 'phone', value: '13912345678', evidence: { quote: '电话１３９１２３４５６７８' } }),
+        claim({
+          field: 'phone',
+          value: '13912345678',
+          evidence: { quote: '电话１３９１２３４５６７８' },
+        }),
         ['电话１３９１２３４５６７８'],
       ).outcome,
     ).toBe('pass');
@@ -135,9 +178,10 @@ describe('第一问·引文真伪', () => {
 
 describe('第二问·值形状', () => {
   it('整句话当年龄 → invalid_value_shape', () => {
-    expect(
-      verifyValueShape(claim({ field: 'age', value: '晚上才可以，有吗？' })),
-    ).toMatchObject({ outcome: 'reject', reason: 'invalid_value_shape' });
+    expect(verifyValueShape(claim({ field: 'age', value: '晚上才可以，有吗？' }))).toMatchObject({
+      outcome: 'reject',
+      reason: 'invalid_value_shape',
+    });
   });
 
   it('占位手机号被形态门拒（gu2kra6p 族）', () => {
@@ -206,7 +250,11 @@ describe('第三问·短引文门与回声', () => {
   });
 
   it('短引文不参与回声：「男」「24」在双方文本同现是必然，判回声会打死正常自陈', () => {
-    expect(detectAgentEcho(claim({ field: 'gender', value: '男', evidence: { quote: '男' } }), ['性别：男']).outcome).toBe('pass');
+    expect(
+      detectAgentEcho(claim({ field: 'gender', value: '男', evidence: { quote: '男' } }), [
+        '性别：男',
+      ]).outcome,
+    ).toBe('pass');
   });
 });
 
@@ -220,7 +268,11 @@ describe('三问串行与 shadow 分档', () => {
   });
 
   it('shadow 期回声只记不拦（迁移三阶段 P0 零行为变化）', () => {
-    const result = notarizeCandidateClaim({ claim: echoClaim, candidateTexts: texts, assistantTexts });
+    const result = notarizeCandidateClaim({
+      claim: echoClaim,
+      candidateTexts: texts,
+      assistantTexts,
+    });
     expect(result.verdict.outcome).toBe('pass');
     expect(result.echo.outcome).toBe('needs_confirmation');
   });

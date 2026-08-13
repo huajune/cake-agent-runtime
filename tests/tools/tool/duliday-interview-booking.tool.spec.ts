@@ -12,7 +12,7 @@ interface BookingContextOverrides {
   sessionFacts?: ToolBuildContext['archive']['sessionFacts'];
   bookingCandidateFacts?: ToolBuildContext['archive']['bookingCandidateFacts'];
   isRecalledJobId?: ToolBuildContext['archive']['isRecalledJobId'];
-  ruleFacts?: TurnLedger['ruleFacts'];
+  ruleFacts?: TurnLedger['facts']['ruleFacts'];
   hasNewerUserInput?: ToolBuildContext['runtime']['hasNewerUserInput'];
 }
 
@@ -34,8 +34,11 @@ describe('buildInterviewBookingTool', () => {
 
   const mockContext: ToolBuildContext = createToolContext({
     session: {
-      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1',
-      contactName: '候选人微信名', botUserId: 'manager-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      contactName: '候选人微信名',
+      botUserId: 'manager-1',
     },
     // B4 手机号溯源闸门要求提交的 phone 在候选人原文中有出处；共享上下文里
     // 预置一条候选人报号消息，让存量用例聚焦各自原本要测的环节。
@@ -59,7 +62,8 @@ describe('buildInterviewBookingTool', () => {
           ? {}
           : { currentUserMessage: overrides.currentUserMessage }),
       },
-      ledger: overrides.ruleFacts === undefined ? {} : { ruleFacts: overrides.ruleFacts },
+      ledger:
+        overrides.ruleFacts === undefined ? {} : { facts: { ruleFacts: overrides.ruleFacts } },
       runtime:
         overrides.hasNewerUserInput === undefined
           ? {}
@@ -183,7 +187,7 @@ describe('buildInterviewBookingTool', () => {
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
     expect(result.missingFields).toContain('operateType');
-    expect(context.ledger.bookingSucceeded).toBe(false);
+    expect(context.ledger.jobs.bookingSucceeded).toBe(false);
     expect(result.requiredPayloadFields).toEqual([
       'jobId',
       'interviewTime',
@@ -277,7 +281,7 @@ describe('buildInterviewBookingTool', () => {
       });
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
       expect(result._replyInstruction).toContain('runtime 已短路本轮');
-      expect(context.ledger.bookingSucceeded).toBe(false);
+      expect(context.ledger.jobs.bookingSucceeded).toBe(false);
       expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
@@ -680,7 +684,7 @@ describe('buildInterviewBookingTool', () => {
       staleInput: true,
       reasonCode: 'newer_user_input_pending',
     });
-    expect(context.ledger.bookingSucceeded).toBe(false);
+    expect(context.ledger.jobs.bookingSucceeded).toBe(false);
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 

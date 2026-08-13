@@ -3,7 +3,7 @@ import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { decideLaborFormIntent } from '@resolution/labor-form';
-import { parseLocationShareCoords } from '@resolution/evidence/producers/location-share';
+import { parseLocationShareCoordinates } from '@resolution/signal/markers';
 import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
 import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
@@ -20,10 +20,8 @@ import { SpongeService } from '@sponge/sponge.service';
 import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
 import type { TurnLedger } from '@shared-types/turn.types';
-import {
-  type RecommendedJobSummary,
-  type WeworkSessionState,
-} from '@memory/types/session-facts.types';
+import type { WeworkSessionState } from '@memory/types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { ContextService } from './context/context.service';
 import { PromptInjectionService } from '../guardrail/input/prompt-injection.service';
 import {
@@ -131,7 +129,7 @@ export class PreparationService {
     currentUserMessage: string | undefined,
   ): Promise<void> {
     if (!this.geocoding || !currentUserMessage) return;
-    const coords = parseLocationShareCoords([currentUserMessage]);
+    const coords = parseLocationShareCoordinates([currentUserMessage]);
     if (!coords) return;
     try {
       const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);

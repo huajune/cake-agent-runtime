@@ -1,8 +1,6 @@
 import { adjudicateCandidateClaims } from '@resolution/evidence/engine';
-import {
-  extractCandidateTexts,
-  runCandidateFactAdjudication,
-} from '@resolution/evidence/adjudicate';
+import { runCandidateFactAdjudication } from '@resolution/evidence/adjudicate';
+import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { produceDirectFieldClaims } from '@resolution/evidence/producers/direct-field';
 import { produceLegacyModelClaims } from '@resolution/evidence/producers/model-claims';
 
@@ -161,9 +159,7 @@ describe('P0-2 图片描述不得作为候选人自陈证据（shadow 观测 202
     const texts = extractCandidateTexts([
       {
         role: 'user',
-        content: [
-          { type: 'text', text: '[图片消息] 简历图片：姓名王玥，联系电话13900000002' },
-        ],
+        content: [{ type: 'text', text: '[图片消息] 简历图片：姓名王玥，联系电话13900000002' }],
       },
     ]);
     expect(texts).toHaveLength(1);
