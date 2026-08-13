@@ -115,20 +115,7 @@ export class GeneratorAgent {
       const stepStartMs = Date.now();
       const stepEndWallclocks: number[] = [];
       const r = await this.llm.generate({
-        role: ModelRole.Chat,
-        modelId: params.modelId,
-        disableFallbacks: params.disableFallbacks,
-        thinking: this.resolveThinkingConfig(params.thinking),
-        instructions: ctx.finalPrompt,
-        messages: ctx.normalizedMessages,
-        tools: ctx.tools,
-        maxOutputTokens: this.maxOutputTokens,
-        stopWhen: [
-          stepCountIs(ctx.maxSteps),
-          hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
-          shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
-        ],
-        prepareStep: this.buildPrepareStep(ctx),
+        ...this.buildLlmExecutionOptions(params, ctx),
         onStepFinish: () => {
           stepEndWallclocks.push(Date.now());
         },
@@ -197,20 +184,7 @@ export class GeneratorAgent {
       const stepStartMs = Date.now();
       const stepEndWallclocks: number[] = [];
       const streamResult = await this.llm.stream({
-        role: ModelRole.Chat,
-        modelId: params.modelId,
-        disableFallbacks: params.disableFallbacks,
-        thinking: this.resolveThinkingConfig(params.thinking),
-        instructions: ctx.finalPrompt,
-        messages: ctx.normalizedMessages,
-        tools: ctx.tools,
-        maxOutputTokens: this.maxOutputTokens,
-        stopWhen: [
-          stepCountIs(ctx.maxSteps),
-          hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
-          shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
-        ],
-        prepareStep: this.buildPrepareStep(ctx),
+        ...this.buildLlmExecutionOptions(params, ctx),
         onStepFinish: () => {
           stepEndWallclocks.push(Date.now());
         },
@@ -261,6 +235,25 @@ export class GeneratorAgent {
     return {
       type: 'enabled' as const,
       budgetTokens: this.thinkingBudgetTokens,
+    };
+  }
+
+  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: PreparedAgentContext) {
+    return {
+      role: ModelRole.Chat,
+      modelId: params.modelId,
+      disableFallbacks: params.disableFallbacks,
+      thinking: this.resolveThinkingConfig(params.thinking),
+      instructions: ctx.finalPrompt,
+      messages: ctx.normalizedMessages,
+      tools: ctx.tools,
+      maxOutputTokens: this.maxOutputTokens,
+      stopWhen: [
+        stepCountIs(ctx.maxSteps),
+        hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
+        shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
+      ],
+      prepareStep: this.buildPrepareStep(ctx),
     };
   }
 

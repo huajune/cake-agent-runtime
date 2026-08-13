@@ -86,6 +86,12 @@ const EMPTY_HOURLY_AGGREGATE = {
   toolStats: {} as Record<string, number>,
 };
 
+type HourlyAggregate = typeof EMPTY_HOURLY_AGGREGATE;
+type HourlyNumericAggregate = Omit<
+  HourlyAggregate,
+  'errorTypeStats' | 'scenarioStats' | 'toolStats'
+>;
+
 const DAILY_AGG_MAPPING = {
   messageCount: { field: 'message_count', type: 'int' as const },
   successCount: { field: 'success_count', type: 'int' as const },
@@ -353,34 +359,7 @@ export class MonitoringRecordRepository extends BaseRepository {
   /**
    * 调用数据库级聚合 RPC，替代 TypeScript 侧的聚合逻辑
    */
-  async aggregateHourlyStats(
-    hourStart: Date,
-    hourEnd: Date,
-  ): Promise<{
-    messageCount: number;
-    successCount: number;
-    failureCount: number;
-    timeoutCount: number;
-    successRate: number;
-    avgDuration: number;
-    minDuration: number;
-    maxDuration: number;
-    p50Duration: number;
-    p95Duration: number;
-    p99Duration: number;
-    avgQueueDuration: number;
-    avgPrepDuration: number;
-    avgAiDuration: number;
-    avgSendDuration: number;
-    activeUsers: number;
-    activeChats: number;
-    totalTokenUsage: number;
-    fallbackCount: number;
-    fallbackSuccessCount: number;
-    errorTypeStats: Record<string, number>;
-    scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
-    toolStats: Record<string, number>;
-  } | null> {
+  async aggregateHourlyStats(hourStart: Date, hourEnd: Date): Promise<HourlyAggregate | null> {
     if (!this.isAvailable()) {
       return null;
     }
@@ -416,28 +395,7 @@ export class MonitoringRecordRepository extends BaseRepository {
         }
 
         const row = result[0];
-        const numericFields = this.mapRpcRow<{
-          messageCount: number;
-          successCount: number;
-          failureCount: number;
-          timeoutCount: number;
-          successRate: number;
-          avgDuration: number;
-          minDuration: number;
-          maxDuration: number;
-          p50Duration: number;
-          p95Duration: number;
-          p99Duration: number;
-          avgQueueDuration: number;
-          avgPrepDuration: number;
-          avgAiDuration: number;
-          avgSendDuration: number;
-          activeUsers: number;
-          activeChats: number;
-          totalTokenUsage: number;
-          fallbackCount: number;
-          fallbackSuccessCount: number;
-        }>(row, HOURLY_AGG_MAPPING);
+        const numericFields = this.mapRpcRow<HourlyNumericAggregate>(row, HOURLY_AGG_MAPPING);
 
         return {
           ...numericFields,

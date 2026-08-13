@@ -182,24 +182,7 @@ export class ConversionAnalyticsService {
       this.computePeriodCounts(filter, period, 'previous'),
     ]);
 
-    return {
-      breakIceRate: this.toMetric(cur.breakIce, cur.friendAdded, prev.breakIce, prev.friendAdded),
-      bookingRate: this.toMetric(cur.booking, cur.breakIce, prev.booking, prev.breakIce),
-      groupInviteRate: this.toMetric(
-        cur.groupInvite,
-        cur.breakIce,
-        prev.groupInvite,
-        prev.breakIce,
-      ),
-      passRate: this.toMetric(cur.interviewPass, cur.booking, prev.interviewPass, prev.booking),
-      // 收口到面试通过：整体转化率 = 面试通过 / 新增好友（不再统计入职）。
-      overallRate: this.toMetric(
-        cur.interviewPass,
-        cur.friendAdded,
-        prev.interviewPass,
-        prev.friendAdded,
-      ),
-    };
+    return this.buildKpisResponse(cur, prev);
   }
 
   private async getCohortKpis(
@@ -212,21 +195,44 @@ export class ConversionAnalyticsService {
       this.computeFriendAddedCohortCounts(filter, period, 'previous'),
     ]);
 
+    return this.buildKpisResponse(cur, prev);
+  }
+
+  private buildKpisResponse(
+    current: ConversionTrendCounts,
+    previous: ConversionTrendCounts,
+  ): ConversionKpisResponse {
     return {
-      breakIceRate: this.toMetric(cur.breakIce, cur.friendAdded, prev.breakIce, prev.friendAdded),
-      bookingRate: this.toMetric(cur.booking, cur.breakIce, prev.booking, prev.breakIce),
-      groupInviteRate: this.toMetric(
-        cur.groupInvite,
-        cur.breakIce,
-        prev.groupInvite,
-        prev.breakIce,
+      breakIceRate: this.toMetric(
+        current.breakIce,
+        current.friendAdded,
+        previous.breakIce,
+        previous.friendAdded,
       ),
-      passRate: this.toMetric(cur.interviewPass, cur.booking, prev.interviewPass, prev.booking),
+      bookingRate: this.toMetric(
+        current.booking,
+        current.breakIce,
+        previous.booking,
+        previous.breakIce,
+      ),
+      groupInviteRate: this.toMetric(
+        current.groupInvite,
+        current.breakIce,
+        previous.groupInvite,
+        previous.breakIce,
+      ),
+      passRate: this.toMetric(
+        current.interviewPass,
+        current.booking,
+        previous.interviewPass,
+        previous.booking,
+      ),
+      // 收口到面试通过：整体转化率 = 面试通过 / 新增好友（不再统计入职）。
       overallRate: this.toMetric(
-        cur.interviewPass,
-        cur.friendAdded,
-        prev.interviewPass,
-        prev.friendAdded,
+        current.interviewPass,
+        current.friendAdded,
+        previous.interviewPass,
+        previous.friendAdded,
       ),
     };
   }

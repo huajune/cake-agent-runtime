@@ -22,7 +22,6 @@ import {
 } from './curated-dataset-import.helpers';
 import {
   buildLineageTargetKey,
-  collectConversationChatIds,
   DesiredLineageRelation,
   generateLineageRelationId,
   LineageFieldKey,
@@ -33,6 +32,17 @@ import {
   lineageFieldAliases,
 } from './lineage-sync.types';
 import { normalizeSourceTrace } from './test-trace.helpers';
+
+type CuratedLineageCase = CuratedScenarioCaseDto | CuratedConversationCaseDto;
+
+interface CuratedLineageTarget {
+  targetTable: LineageTargetTable;
+  targetAssetId: string;
+  targetTitle: string;
+  targetRecordId: string;
+  curatedSourceType: string;
+  additionalChatIds?: string[];
+}
 
 @Injectable()
 export class LineageSyncService {
@@ -211,52 +221,16 @@ export class LineageSyncService {
     targetRecordId: string,
     importNote?: string,
   ): DesiredLineageRelation[] {
-    const stableTargetId = currentCase.caseId.trim();
-    const targetTitle = currentCase.caseName.trim();
-    const curatedSourceType = currentCase.sourceType || ScenarioDatasetSourceType.MANUAL;
-    const syncedAt = Date.now();
-    const sourceTrace = normalizeSourceTrace(currentCase);
-    const remark = composeRemark([
-      importNote ? `导入说明: ${importNote}` : undefined,
-      currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
-    ]);
-
-    return this.buildLineageRelationsFromSources(
-      [
-        {
-          sourceTable: 'BadCase',
-          sourceIds: normalizeIds([
-            ...(currentCase.sourceBadCaseIds || []),
-            ...(sourceTrace?.badcaseIds || []),
-          ]),
-          relationRole: '问题来源',
-        },
-        {
-          sourceTable: 'GoodCase',
-          sourceIds: normalizeIds([
-            ...(currentCase.sourceGoodCaseIds || []),
-            ...(sourceTrace?.goodcaseIds || []),
-          ]),
-          relationRole: '正样本参考',
-        },
-        {
-          sourceTable: 'Chat',
-          sourceIds: normalizeIds([
-            ...(currentCase.sourceChatIds || []),
-            ...(sourceTrace?.chatIds || []),
-          ]),
-          relationRole: '对话证据',
-        },
-      ],
+    return this.buildCuratedLineageRelations(
+      currentCase,
       {
         targetTable: '测试集',
-        targetAssetId: stableTargetId,
-        targetTitle,
+        targetAssetId: currentCase.caseId.trim(),
+        targetTitle: currentCase.caseName.trim(),
         targetRecordId,
-        curatedSourceType,
-        remark,
-        syncedAt,
+        curatedSourceType: currentCase.sourceType || ScenarioDatasetSourceType.MANUAL,
       },
+      importNote,
     );
   }
 
@@ -265,9 +239,25 @@ export class LineageSyncService {
     targetRecordId: string,
     importNote?: string,
   ): DesiredLineageRelation[] {
-    const stableTargetId = currentCase.validationId.trim();
-    const targetTitle = currentCase.validationTitle.trim();
-    const curatedSourceType = currentCase.sourceType || ConversationDatasetSourceType.PRODUCTION;
+    return this.buildCuratedLineageRelations(
+      currentCase,
+      {
+        targetTable: '验证集',
+        targetAssetId: currentCase.validationId.trim(),
+        targetTitle: currentCase.validationTitle.trim(),
+        targetRecordId,
+        curatedSourceType: currentCase.sourceType || ConversationDatasetSourceType.PRODUCTION,
+        additionalChatIds: currentCase.chatId?.trim() ? [currentCase.chatId.trim()] : undefined,
+      },
+      importNote,
+    );
+  }
+
+  private buildCuratedLineageRelations(
+    currentCase: CuratedLineageCase,
+    target: CuratedLineageTarget,
+    importNote?: string,
+  ): DesiredLineageRelation[] {
     const syncedAt = Date.now();
     const sourceTrace = normalizeSourceTrace(currentCase);
     const remark = composeRemark([
@@ -295,16 +285,20 @@ export class LineageSyncService {
         },
         {
           sourceTable: 'Chat',
-          sourceIds: collectConversationChatIds(currentCase),
+          sourceIds: normalizeIds([
+            ...(target.additionalChatIds || []),
+            ...(currentCase.sourceChatIds || []),
+            ...(sourceTrace?.chatIds || []),
+          ]),
           relationRole: '对话证据',
         },
       ],
       {
-        targetTable: '验证集',
-        targetAssetId: stableTargetId,
-        targetTitle,
-        targetRecordId,
-        curatedSourceType,
+        targetTable: target.targetTable,
+        targetAssetId: target.targetAssetId,
+        targetTitle: target.targetTitle,
+        targetRecordId: target.targetRecordId,
+        curatedSourceType: target.curatedSourceType,
         remark,
         syncedAt,
       },
