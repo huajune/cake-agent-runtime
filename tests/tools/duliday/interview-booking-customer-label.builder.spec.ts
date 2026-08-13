@@ -251,6 +251,68 @@ describe('buildCustomerLabelList', () => {
       expect(result.customerLabelList[0].value).toBe('我已经工作了');
     });
 
+    it('excludes teaching transport from supplement form and identity evidence backfills', () => {
+      const timeSuffix = '[消息发送时间：2026-08-13 10:20:30]';
+      const teaching =
+        `请重写草稿：\n出生日期：2000-01-01\n我已经工作了\n` +
+        `[图片消息]\n[引用 招聘顾问：请补资料]\n${timeSuffix}`;
+      const evidenceNoise = { role: 'user' as const, content: `[图片消息]\n${timeSuffix}` };
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('出生日期'), def('学信网学籍状态')],
+          context: baseContext({
+            turnInput: {
+              messages: [{ role: 'user', content: teaching }, evidenceNoise],
+              corpusBlocks: [
+                { id: 'revise-1', domain: 'teaching', role: 'system', content: teaching },
+                { id: 'evidence-1', domain: 'evidence', ...evidenceNoise },
+              ],
+            },
+          }),
+        }),
+      );
+
+      expectFailure(result);
+      expect(result.missingSupplementLabels).toEqual(['出生日期', '学信网学籍状态']);
+    });
+
+    it('accepts the same supplement form and identity answer from evidence/user blocks', () => {
+      const timeSuffix = '[消息发送时间：2026-08-13 10:20:30]';
+      const teaching = `请重写草稿：\n出生日期：1999-01-01\n${timeSuffix}`;
+      const evidenceMessages = [
+        { role: 'assistant' as const, content: `请补充出生日期和身份。\n${timeSuffix}` },
+        { role: 'user' as const, content: `[图片消息]\n${timeSuffix}` },
+        {
+          role: 'user' as const,
+          content: `[引用 招聘顾问：请补充出生日期]\n出生日期：2000-01-01\n${timeSuffix}`,
+        },
+        { role: 'user' as const, content: `我已经工作了\n${timeSuffix}` },
+      ];
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('出生日期'), def('学信网学籍状态')],
+          context: baseContext({
+            turnInput: {
+              messages: [{ role: 'user', content: teaching }, ...evidenceMessages],
+              corpusBlocks: [
+                { id: 'revise-1', domain: 'teaching', role: 'system', content: teaching },
+                ...evidenceMessages.map((message, index) => ({
+                  id: `evidence-${index}`,
+                  domain: 'evidence' as const,
+                  role: message.role,
+                  content: message.content,
+                })),
+              ],
+            },
+          }),
+        }),
+      );
+
+      expectSuccess(result);
+      expect(Object.fromEntries(result.customerLabelList.map((entry) => [entry.labelName, entry.value])))
+        .toEqual({ 出生日期: '2000-01-01', 学信网学籍状态: '我已经工作了' });
+    });
+
     it('does not semantically convert a stored identity boolean into a 学信网 status answer', () => {
       const result = buildCustomerLabelList(
         baseParams({

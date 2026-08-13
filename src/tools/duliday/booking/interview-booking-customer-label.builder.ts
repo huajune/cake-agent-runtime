@@ -14,6 +14,7 @@ import type { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { classifySupplementLabel } from '@tools/utils/supplement-label-classifier';
 import { findLatestExplicitIdentityEvidence } from '@resolution/candidate/student-identity';
+import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import { isIdentityStatusSupplementLabel } from '@tools/duliday/precheck/supplement-overlap.util';
 
 export interface BuildCustomerLabelListParams {
@@ -127,6 +128,9 @@ function resolveCustomerLabelValue(
   labelName: string,
   params: BuildCustomerLabelListParams,
 ): string | null {
+  const evidenceMessages = params.context.turnInput.corpusBlocks
+    ? selectEvidenceDialogueMessages(params.context.turnInput.corpusBlocks)
+    : (params.context.turnInput.messages ?? []);
   if (/简历/.test(labelName)) return normalizeText(params.uploadResume);
 
   const directAnswer = getSupplementAnswerValue(params.supplementAnswers, labelName);
@@ -135,10 +139,7 @@ function resolveCustomerLabelValue(
   // 候选人常直接回填整张「字段：值」表单。模型偶发会漏传 supplementAnswers，
   // 但原始候选人消息仍是可信的一手数据；从最近消息确定性回填，避免 booking 在
   // precheck 已收齐后又因同一个补充标签缺值而失败。
-  const messageAnswer = extractSupplementAnswerFromMessages(
-    params.context.turnInput.messages ?? [],
-    labelName,
-  );
+  const messageAnswer = extractSupplementAnswerFromMessages(evidenceMessages, labelName);
   if (messageAnswer) return messageAnswer;
 
   if (/学历/.test(labelName)) {
@@ -170,9 +171,7 @@ function resolveCustomerLabelValue(
   if (isIdentityStatusSupplementLabel(labelName)) {
     // 与 precheck 的重叠表同源：只复制候选人的身份回答原文，不把“学生/社会人士”
     // 语义换算成“在籍/不在籍”。模型漏传 supplementAnswers 时仍能确定性兜底。
-    return (
-      findLatestExplicitIdentityEvidence(params.context.turnInput.messages ?? [])?.evidence ?? null
-    );
+    return findLatestExplicitIdentityEvidence(evidenceMessages)?.evidence ?? null;
   }
 
   if (/身份/.test(labelName)) {

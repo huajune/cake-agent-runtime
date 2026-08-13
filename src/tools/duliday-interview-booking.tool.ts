@@ -58,6 +58,7 @@ import {
 } from '@resolution/evidence/snapshot';
 import { candidateValuesEquivalent } from '@resolution/evidence/normalize';
 import { evaluateSnapshotGate } from '@resolution/evidence/snapshot-gate';
+import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import type { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import type { AgentEvent } from '@/observability/observer.interface';
 
@@ -514,6 +515,9 @@ export function buildInterviewBookingTool(
                 })
             : null;
         const enforcing = adjudicationDeps?.mode === 'enforce';
+        const evidenceMessages = context.turnInput.corpusBlocks
+          ? selectEvidenceDialogueMessages(context.turnInput.corpusBlocks)
+          : (context.turnInput.messages ?? []);
         // E2 quote 作证收紧为确认级：confirmedFields 只含 operation=confirm /
         // context_confirmation 的 accepted claim（precheck 快照构造处即该口径），
         // acceptedClaimId 判据排除 session 基线（基线无 claimId）。候选人本人确认过的
@@ -531,7 +535,7 @@ export function buildInterviewBookingTool(
         // HC-2 姓名权威闸门（booking 侧 defense-in-depth，负向证据）：name 在原文里仅以
         // "我是X"打招呼语昵称出现时拒——这是 runBookingGuards.checkRealName 纯形态校验拦不住的
         // 缺口（2-4 字昵称形态合法但只是微信打招呼昵称）。先确认真名再约，不得拿昵称下真预约。
-        const nameGate = evaluateBookingNameGate(name, context.turnInput.messages ?? [], {
+        const nameGate = evaluateBookingNameGate(name, evidenceMessages, {
           // shadow 零行为：作证放行 enforce 起生效；shadow 期解锁由 legacy 正则承担（偏离⑥）。
           attestedByClaim: enforcing && nameConfirmAttested,
           allowLegacyConfirmRegex: !enforcing,
@@ -539,7 +543,7 @@ export function buildInterviewBookingTool(
         if (nameGate.decision === 'reject_collect') {
           // 同题限问（badcase g4ytra23：重复索名 4 遍）：已问过 ≥2 次仍未通过校验时，
           // 不再让模型继续追问，改走 request_handoff 由真人核实，避免死循环消耗候选人耐心。
-          const nameAskCount = countRealNameAsks(context.turnInput.messages ?? []);
+          const nameAskCount = countRealNameAsks(evidenceMessages);
           const replyInstruction =
             nameAskCount >= 2
               ? `${nameGate.reason}。你已就"真实姓名"向候选人索要过 ${nameAskCount} 次，禁止再重复索要。` +
@@ -561,7 +565,7 @@ export function buildInterviewBookingTool(
         // B4 手机号溯源闸门（正向证据）：手机号必须能在候选人原文里找到出处。抽取示例回声
         // 臆造的档案曾经"沿用"洗白后带编造手机号直达 booking（badcase 6e9ar9gd 簇），姓名之外
         // 错误代价最高的字段是手机号——门店按它联系候选人，错号=预约作废+候选人失联。
-        const phoneGate = evaluateBookingPhoneGate(phone, context.turnInput.messages ?? []);
+        const phoneGate = evaluateBookingPhoneGate(phone, evidenceMessages);
         if (phoneGate.decision === 'reject_collect') {
           return markBookingFailed(
             context,

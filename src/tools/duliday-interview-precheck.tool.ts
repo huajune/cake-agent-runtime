@@ -30,6 +30,7 @@ import type {
   CandidatePrefillHint,
 } from '@resolution/candidate/types';
 import { stripQuotedBlocks } from '@resolution/signal/markers';
+import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import { fieldValues } from '@resolution/signal/visual';
 import {
   isNameAuthoritative,
@@ -950,6 +951,9 @@ export function buildInterviewPrecheckTool(
             details: { detailedReason: normalizedDate.error },
           });
         }
+        const evidenceMessages = context.turnInput.corpusBlocks
+          ? selectEvidenceDialogueMessages(context.turnInput.corpusBlocks)
+          : (context.turnInput.messages ?? []);
 
         // jobId provenance 闸门（成员判定）：传入 jobId 不在本会话（含本轮 job_list）真实召回集时，
         // 必是模型凭空生成或"召回 A 岗、另编真实 B 岗 jobId 绕过"（约面意向幻觉簇）。
@@ -1139,7 +1143,6 @@ export function buildInterviewPrecheckTool(
            */
           const unattestedPrefilledIdentityFields: ChecklistField[] = [];
           if (prefillHints) {
-            const messages = context.turnInput.messages ?? [];
             for (const [hintField, checklistField] of Object.entries(
               PREFILL_HINT_TO_CHECKLIST,
             ) as Array<[CandidatePrefillField, ChecklistField]>) {
@@ -1152,15 +1155,15 @@ export function buildInterviewPrecheckTool(
 
               if (hintField === 'name') {
                 if (
-                  !isNameAuthoritative(normalized, messages) &&
-                  !isNameConfirmedInDialogue(normalized, messages)
+                  !isNameAuthoritative(normalized, evidenceMessages) &&
+                  !isNameConfirmedInDialogue(normalized, evidenceMessages)
                 ) {
                   unattestedPrefilledIdentityFields.push(checklistField);
                 }
               } else if (hintField === 'phone') {
                 if (
-                  !isPhoneAuthoritative(normalized, messages) &&
-                  !isPhoneConfirmedInDialogue(normalized, messages)
+                  !isPhoneAuthoritative(normalized, evidenceMessages) &&
+                  !isPhoneConfirmedInDialogue(normalized, evidenceMessages)
                 ) {
                   unattestedPrefilledIdentityFields.push(checklistField);
                 }
@@ -1200,9 +1203,8 @@ export function buildInterviewPrecheckTool(
             normalizeCandidateInterviewTimeInput,
           );
           if (!knownFieldMap['面试时间']) {
-            const structuredInterviewTime = extractStructuredInterviewTimeFromMessages(
-              context.turnInput.messages,
-            );
+            const structuredInterviewTime =
+              extractStructuredInterviewTimeFromMessages(evidenceMessages);
             if (structuredInterviewTime) {
               knownFieldMap['面试时间'] = structuredInterviewTime;
             }
@@ -1220,7 +1222,7 @@ export function buildInterviewPrecheckTool(
           // 「都对的」类应答永远清不掉确认位，ready_to_book 不可达（表内确认死锁）。
           const genderConfirmedInline = isGenderConfirmedInline(
             normalizedGenderPrefillHint,
-            context.turnInput.messages ?? [],
+            evidenceMessages,
           );
           const genderNeedsInlineConfirmation = Boolean(
             genderPrefillHint &&
@@ -1286,7 +1288,7 @@ export function buildInterviewPrecheckTool(
             normalizeCandidateIsStudentInput,
           );
           const latestExplicitIdentityEvidence = findLatestExplicitIdentityEvidence(
-            context.turnInput.messages,
+            evidenceMessages,
           );
           const latestExplicitIdentity = latestExplicitIdentityEvidence?.identity ?? null;
           // 身份与其它显式 candidate 参数采用同一口径。仅保留当前原话明确自报学生
@@ -1358,8 +1360,7 @@ export function buildInterviewPrecheckTool(
             Boolean(context.session.botUserId) &&
             normalizePolicyText(knownName) === normalizePolicyText(context.session.botUserId);
           const nameOnlyQuotedSpeaker =
-            Boolean(knownName) &&
-            isNameOnlyQuotedSpeaker(knownName, context.turnInput.messages ?? []);
+            Boolean(knownName) && isNameOnlyQuotedSpeaker(knownName, evidenceMessages);
           const nameFieldLooksSuspicious =
             Boolean(knownName) &&
             (!isStrictRealChineseName(knownName) || nameMatchesManager || nameOnlyQuotedSpeaker);
@@ -1367,7 +1368,7 @@ export function buildInterviewPrecheckTool(
           // 候选人已坚持"是真实姓名"信号——疑似少数民族/特殊姓名超出 isStrictRealChineseName
           // 2-4 字汉字白名单。此时不再让 Agent 继续逼候选人改名，而是升级到 mustHandoff 由人工补录。
           const userInsistedRealName = nameFieldLooksSuspicious
-            ? detectRealNameInsistence(context.turnInput.messages)
+            ? detectRealNameInsistence(evidenceMessages)
             : false;
           if (nameFieldLooksSuspicious) {
             delete knownFieldMap['姓名'];
@@ -1381,7 +1382,7 @@ export function buildInterviewPrecheckTool(
             if (!fieldKey || knownFieldMap[fieldKey]) continue;
             const answer =
               getSupplementAnswerValue(effectiveCandidateSupplementAnswers, labelName) ??
-              extractSupplementAnswerFromMessages(context.turnInput.messages, labelName);
+              extractSupplementAnswerFromMessages(evidenceMessages, labelName);
             if (answer) knownFieldMap[fieldKey] = answer;
           }
 
@@ -1408,7 +1409,7 @@ export function buildInterviewPrecheckTool(
 
           const summerWorkerIntent = resolveSummerWorkerIntent({
             candidateLaborForm,
-            messages: context.turnInput.messages,
+            messages: evidenceMessages,
           });
           const temporarySummerWorkerGuard = buildTemporarySummerWorkerGuard({
             jobLaborForm: job.basicInfo?.laborForm,
@@ -1601,7 +1602,7 @@ export function buildInterviewPrecheckTool(
             hardRequirements.household,
             knownFieldMap['户籍省份'],
           );
-          const collectionResistance = detectCollectionResistance(context.turnInput.messages);
+          const collectionResistance = detectCollectionResistance(evidenceMessages);
           const collectionStrategy =
             checklist.missingFields.length > 0
               ? buildCollectionStrategy({
@@ -1663,7 +1664,7 @@ export function buildInterviewPrecheckTool(
           // 此时禁止继续追问，指示模型直接 request_handoff——给模型确定性的退出口。
           const identityAskRounds =
             studentIdentityMustBeExplicit && checklist.missingFields.includes('身份')
-              ? summarizeIdentityAskRounds(context.turnInput.messages)
+              ? summarizeIdentityAskRounds(evidenceMessages)
               : null;
           const identityAskEscalated =
             identityAskRounds !== null &&

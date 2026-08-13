@@ -58,6 +58,7 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
       mode?: 'shadow' | 'enforce';
       context?: Partial<{
         messages: unknown[];
+        corpusBlocks: ToolBuildContext['turnInput']['corpusBlocks'];
         currentUserMessage: string;
         sessionFacts: ToolBuildContext['archive']['sessionFacts'];
         candidatePrefillHints: ToolBuildContext['archive']['candidatePrefillHints'];
@@ -76,6 +77,9 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
       },
       turnInput: {
         messages: options.context?.messages ?? [],
+        ...(options.context?.corpusBlocks === undefined
+          ? {}
+          : { corpusBlocks: options.context.corpusBlocks }),
         ...(options.context?.currentUserMessage === undefined
           ? {}
           : { currentUserMessage: options.context.currentUserMessage }),
@@ -229,6 +233,78 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
       await run({ jobId: 100 }, { context: { messages: [{ role: 'user', content: '你好' }] } });
       // ledger.facts.collectedFields 为空 → 无 delta（不制造噪声）
       expect(factAdjudicationEvent()?.coverageDelta).toBeUndefined();
+    });
+  });
+
+  describe('二轮工程二：补充标签回填 corpus 证据域隔离', () => {
+    const teachingContent =
+      '请按以下草稿重写：\n姓名：张三\n联系电话：13900000002\n出生日期：2000-01-01\n' +
+      `[图片消息]\n[引用 招聘顾问：请补齐资料]\n${TIME_SUFFIX}`;
+    const evidenceNoise = [
+      { role: 'assistant', content: `请补充出生日期。\n${TIME_SUFFIX}` },
+      { role: 'user', content: `[图片消息]\n${TIME_SUFFIX}` },
+    ];
+
+    beforeEach(() => {
+      const job = makeJob();
+      job.interviewProcess.interviewSupplement = [
+        { interviewSupplementId: 103, interviewSupplement: '出生日期' },
+      ];
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job] });
+    });
+
+    it('teaching 块内「出生日期：值」不参与确定性回填', async () => {
+      const result = await run(
+        { jobId: 100 },
+        {
+          context: {
+            messages: [{ role: 'user', content: teachingContent }, ...evidenceNoise],
+            corpusBlocks: [
+              { id: 'revise-1', domain: 'teaching', role: 'system', content: teachingContent },
+              ...evidenceNoise.map((message, index) => ({
+                id: `evidence-${index}`,
+                domain: 'evidence' as const,
+                role: message.role as 'user' | 'assistant',
+                content: message.content,
+              })),
+            ],
+          },
+        },
+      );
+
+      expect(result.bookingChecklist.missingFields).toContain('出生日期');
+      expect(result.bookingChecklist.templateText).not.toContain('出生日期：2000-01-01');
+    });
+
+    it('evidence/user 块内同一结构化行正常回填', async () => {
+      const evidenceForm = {
+        role: 'user',
+        content: `[引用 招聘顾问：请补齐资料]\n出生日期：2000-01-01\n${TIME_SUFFIX}`,
+      };
+      const result = await run(
+        { jobId: 100 },
+        {
+          context: {
+            messages: [
+              { role: 'user', content: teachingContent },
+              ...evidenceNoise,
+              evidenceForm,
+            ],
+            corpusBlocks: [
+              { id: 'revise-1', domain: 'teaching', role: 'system', content: teachingContent },
+              ...[...evidenceNoise, evidenceForm].map((message, index) => ({
+                id: `evidence-${index}`,
+                domain: 'evidence' as const,
+                role: message.role as 'user' | 'assistant',
+                content: message.content,
+              })),
+            ],
+          },
+        },
+      );
+
+      expect(result.bookingChecklist.missingFields).not.toContain('出生日期');
+      expect(result.bookingChecklist.templateText).toContain('出生日期：2000-01-01');
     });
   });
 

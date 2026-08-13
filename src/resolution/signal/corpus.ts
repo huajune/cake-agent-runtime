@@ -34,6 +34,20 @@ export function selectCorpusMessages(
     .map((block) => ({ role: block.role, content: block.content }));
 }
 
+/**
+ * 身份闸门与对话识别器的证据域视图：只保留 evidence 域的 user/assistant 消息。
+ * teaching（如 revise 指令的 user transport）与 tool_result 永不进入
+ * 出处判定、问答确认识别与「字段：值」表单回填。
+ */
+export function selectEvidenceDialogueMessages(
+  blocks: readonly CorpusBlock[],
+): Array<{ role: CorpusRole; content: unknown }> {
+  return selectCorpusMessages(blocks, {
+    domains: ['evidence'],
+    roles: ['user', 'assistant'],
+  });
+}
+
 function classifyMessageRole(role: unknown): { domain: CorpusDomain; role: CorpusRole } {
   if (role === 'user') return { domain: 'evidence', role: 'user' };
   if (role === 'assistant') return { domain: 'evidence', role: 'assistant' };
