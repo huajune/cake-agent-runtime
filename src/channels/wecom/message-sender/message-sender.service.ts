@@ -4,6 +4,22 @@ import { ApiConfigService } from '@infra/config/api-config.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
 
+/**
+ * 发送入参：企业级 `SendMessageDto` 字段 + 小组级 API 的路由字段。
+ *
+ * 原签名是 `SendMessageDto | any`——`| any` 会把整个联合塌成 `any`，等于没有类型。
+ * 这里如实声明：企业级字段全部可选（小组级路径不传 imBotId/imContactId 等），
+ * 另加两个只在小组级路径出现、DTO 里没有的字段。
+ */
+export type SendMessagePayload = Omit<Partial<SendMessageDto>, 'payload'> & {
+  /** 'group' 走小组级 API（token 进请求体），否则走企业级 API（token 进 URL）。 */
+  _apiType?: string;
+  /** 小组级会话 ID。 */
+  chatId?: string;
+  /** 小组级接口允许透传尚未细分建模的对象载荷。 */
+  payload?: SendMessageDto['payload'] | Record<string, unknown>;
+};
+
 @Injectable()
 export class MessageSenderService {
   private readonly logger = new Logger(MessageSenderService.name);
@@ -47,7 +63,7 @@ export class MessageSenderService {
    * @param data - 发送消息数据
    * @returns 发送结果
    */
-  async sendMessage(data: SendMessageDto | any) {
+  async sendMessage(data: SendMessagePayload) {
     try {
       // 提取字段
       const {
@@ -66,7 +82,7 @@ export class MessageSenderService {
       this.logger.debug(`[API 路由] _apiType=${_apiType}, typeof=${typeof _apiType}`);
 
       let apiUrl: string;
-      let requestBody: any;
+      let requestBody: Record<string, unknown>;
 
       if (_apiType === 'group') {
         // 小组级 API：token 在请求体中

@@ -22,7 +22,7 @@ export interface QuoteMessage {
   wxid: string; // 被引用人的wxid
   nickname: string; // 被引用人昵称
   type: string; // 消息类型
-  content: any; // 消息内容
+  content: unknown; // 消息内容
   timestamp: string; // 时间戳
 }
 
@@ -145,7 +145,7 @@ export interface LinkPayload {
 export interface WecomSystemPayload {
   // 根据实际需要定义企微系统消息的结构
   type: string;
-  content: any;
+  content: unknown;
 }
 
 /**

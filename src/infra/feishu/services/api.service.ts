@@ -99,7 +99,7 @@ export class FeishuApiService {
   /**
    * 发送 GET 请求（自动带 Token）
    */
-  async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
+  async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
     const token = await this.getToken();
     return this.http.get<T>(url, {
       ...config,
@@ -113,9 +113,9 @@ export class FeishuApiService {
   /**
    * 发送 POST 请求（自动带 Token）
    */
-  async post<T = any>(
+  async post<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
     const token = await this.getToken();
@@ -131,9 +131,9 @@ export class FeishuApiService {
   /**
    * 发送 PUT 请求（自动带 Token）
    */
-  async put<T = any>(
+  async put<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
     const token = await this.getToken();
@@ -149,9 +149,9 @@ export class FeishuApiService {
   /**
    * 发送 PATCH 请求（自动带 Token）
    */
-  async patch<T = any>(
+  async patch<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
     const token = await this.getToken();
@@ -167,7 +167,7 @@ export class FeishuApiService {
   /**
    * 发送 DELETE 请求（自动带 Token）
    */
-  async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
+  async delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
     const token = await this.getToken();
     return this.http.delete<T>(url, {
       ...config,

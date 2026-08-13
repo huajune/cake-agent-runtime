@@ -44,7 +44,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL_SERVER_ERROR';
     let message = 'Internal server error';
-    let details: any = undefined;
+    let details: unknown = undefined;
 
     // 处理 HttpException
     if (exception instanceof HttpException) {
@@ -52,16 +52,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
       const exceptionResponse = exception.getResponse();
 
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
-        const responseObj = exceptionResponse as any;
+        const responseObj = exceptionResponse as Record<string, unknown>;
+        const responseMessage = responseObj.message;
 
         // 提取错误信息
-        message = responseObj.message || exception.message;
-        code = responseObj.code || this.getErrorCodeFromStatus(status);
+        message =
+          typeof responseMessage === 'string' && responseMessage
+            ? responseMessage
+            : exception.message;
+        code =
+          typeof responseObj.code === 'string' && responseObj.code
+            ? responseObj.code
+            : this.getErrorCodeFromStatus(status);
         details = responseObj.details || responseObj.error;
 
         // 处理 class-validator 的验证错误
-        if (Array.isArray(message)) {
-          details = { validationErrors: message };
+        if (Array.isArray(responseMessage)) {
+          details = { validationErrors: responseMessage };
           message = 'Validation failed';
         }
       } else {

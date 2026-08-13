@@ -54,7 +54,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, ApiSuccessResp
    * @param data 响应数据
    * @returns 是否为标准响应格式
    */
-  private isStandardResponse(data: any): boolean {
+  private isStandardResponse(data: unknown): boolean {
     return (
       typeof data === 'object' &&
       data !== null &&

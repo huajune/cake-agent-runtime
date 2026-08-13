@@ -16,6 +16,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
+import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
 import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
 import { isValidLaborForm, stripLaborFormFromCategories } from '@memory/facts/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
@@ -287,9 +288,27 @@ const inputSchema = z.object({
     ),
 });
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * `basicInfo.storeInfo` 在领域契约里是 raw `Record<string, unknown>`（海绵按门店透传），
+ * 这里声明本工具实际读取的字段视图。仅用于类型断言，不做运行时转换。
+ */
+type StoreInfoView = {
+  storeName?: string;
+  storeAddress?: string;
+  storeCityName?: string;
+  storeRegionName?: string;
+  latitude?: unknown;
+  longitude?: unknown;
+};
 
-function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
+/**
+ * `_distanceKm` 是**本工具写上去的合成标注**（海绵不返回）：拿到候选人坐标后按 haversine
+ * 算出门店距离回写到岗位对象，供排序/半径过滤/摘要读取。`JobDetail` 的 catchall 把它读成
+ * `unknown`，这里给读写两侧一个显式契约，替代原先整段 `eslint-disable no-explicit-any`。
+ */
+type JobWithDistance = JobDetail & { _distanceKm?: number };
+
+function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
   return jobs.map((job) => {
     const policy = buildJobPolicyAnalysis(job);
     const ageRequirement = policy.normalizedRequirements.ageRequirement;
@@ -298,15 +317,19 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
     const hasWelfarePayload =
       job.welfare !== null && typeof job.welfare === 'object' && !Array.isArray(job.welfare);
     const welfare = hasWelfarePayload ? extractWelfareFacts(job.welfare) : null;
+    // storeInfo 在领域契约里是 raw Record：按预期形状断言后直接透传，不做运行时转换
+    // （与 candidate-card.util.ts 同一写法，缺字段落 undefined → `?? null`）。
+    const storeInfo = job.basicInfo.storeInfo as StoreInfoView | undefined;
+    const distanceKm = (job as JobWithDistance)._distanceKm;
 
     return {
       jobId: job.basicInfo.jobId,
       brandName: job.basicInfo.brandName ?? null,
       jobName: job.basicInfo.jobName ?? null,
-      storeName: job.basicInfo.storeInfo?.storeName ?? null,
-      storeAddress: job.basicInfo.storeInfo?.storeAddress ?? null,
-      cityName: job.basicInfo.storeInfo?.storeCityName ?? null,
-      regionName: job.basicInfo.storeInfo?.storeRegionName ?? null,
+      storeName: storeInfo?.storeName ?? null,
+      storeAddress: storeInfo?.storeAddress ?? null,
+      cityName: storeInfo?.storeCityName ?? null,
+      regionName: storeInfo?.storeRegionName ?? null,
       laborForm: job.basicInfo.laborForm ?? null,
       partTimeJobType: job.basicInfo.partTimeJobType ?? null,
       salaryDesc: formatSalarySummary(job),
@@ -321,7 +344,7 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
           ? healthCertificateRequirement
           : null,
       studentRequirement: inferStudentRequirement(policy),
-      distanceKm: job._distanceKm != null ? Math.round(job._distanceKm * 10) / 10 : null,
+      distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
       welfareFacts: welfare
         ? {
             meals: welfare.meals,
@@ -336,8 +359,6 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
     };
   });
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -432,9 +453,8 @@ interface JobAgeScreeningSummary {
   };
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 function buildJobAgeScreeningSummary(
-  jobs: any[],
+  jobs: JobDetail[],
   candidateAge: number | null,
 ): JobAgeScreeningSummary | null {
   if (candidateAge === null || jobs.length === 0) return null;
@@ -457,8 +477,8 @@ function buildJobAgeScreeningSummary(
     counts[signal.severity] += 1;
 
     if (signal.severity === 'boundary' && boundaryExamples.length < 3) {
-      const basic = job.basicInfo ?? {};
-      const storeName = basic.storeInfo?.storeName;
+      const basic = job.basicInfo ?? ({} as JobBasicInfo);
+      const storeName = (basic.storeInfo as StoreInfoView | undefined)?.storeName;
       const label = [basic.brandName, storeName, basic.jobNickName ?? basic.jobName]
         .filter(Boolean)
         .join('-');
@@ -508,7 +528,6 @@ function buildJobAgeScreeningSummary(
     },
   };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ==================== 构建函数 ====================
 
@@ -1041,13 +1060,13 @@ export function buildJobListTool(
           if (jobs.length === 0 && storeNameList.length > 0) {
             const fallback = await fetchJobs({ ...fetchBaseParams, storeNameList: [] });
             if (fallback.jobs.length > 0) {
-              /* eslint-disable @typescript-eslint/no-explicit-any */
               const lowerKeywords = storeNameList.map((s) => s.toLowerCase());
-              const filtered = fallback.jobs.filter((job: any) => {
-                const storeName = (job.basicInfo?.storeInfo?.storeName || '').toLowerCase();
+              const filtered = fallback.jobs.filter((job) => {
+                const storeName = (
+                  (job.basicInfo?.storeInfo as StoreInfoView | undefined)?.storeName || ''
+                ).toLowerCase();
                 return lowerKeywords.some((kw) => storeName.includes(kw));
               });
-              /* eslint-enable @typescript-eslint/no-explicit-any */
               if (filtered.length > 0) {
                 storeMatchStrategy = 'local_fuzzy_match';
                 jobs = filtered;
@@ -1063,12 +1082,10 @@ export function buildJobListTool(
             // 重新从原始 city/region 组装会让“延吉 → 延边州 + 延吉市”等映射失效。
             const fallback = await fetchJobs({ ...fetchBaseParams, jobCategoryList: [] });
 
-            /* eslint-disable @typescript-eslint/no-explicit-any */
             const filtered = filterJobsByRequestedCategories(
-              fallback.jobs as any[],
+              fallback.jobs,
               sanitizedJobCategoryList,
             );
-            /* eslint-enable @typescript-eslint/no-explicit-any */
             if (filtered.length > 0) {
               jobCategoryMatchStrategy = 'local_keyword_match';
               jobs = filtered;
@@ -1247,11 +1264,10 @@ export function buildJobListTool(
           }
 
           if (hasUserCoords) {
-            /* eslint-disable @typescript-eslint/no-explicit-any */
-            for (const job of jobs as any[]) {
-              const store = job.basicInfo?.storeInfo;
+            for (const job of jobs) {
+              const store = job.basicInfo?.storeInfo as StoreInfoView | undefined;
               if (store?.latitude != null && store?.longitude != null) {
-                job._distanceKm = haversineDistance(
+                (job as JobWithDistance)._distanceKm = haversineDistance(
                   locationLatitude!,
                   locationLongitude!,
                   Number(store.latitude),
@@ -1262,9 +1278,10 @@ export function buildJobListTool(
 
             if (maxKm != null) {
               const beforeCount = jobs.length;
-              jobs = (jobs as any[]).filter(
-                (job) => job._distanceKm == null || job._distanceKm <= maxKm,
-              );
+              jobs = jobs.filter((job) => {
+                const distanceKm = (job as JobWithDistance)._distanceKm;
+                return distanceKm == null || distanceKm <= maxKm;
+              });
               total = jobs.length;
               if (beforeCount > 0 && jobs.length === 0) {
                 return buildToolError({
@@ -1294,13 +1311,14 @@ export function buildJobListTool(
             }
 
             // 按距离排序（有坐标的在前，无坐标的在后）
-            (jobs as any[]).sort((a, b) => {
-              if (a._distanceKm == null && b._distanceKm == null) return 0;
-              if (a._distanceKm == null) return 1;
-              if (b._distanceKm == null) return -1;
-              return a._distanceKm - b._distanceKm;
+            jobs.sort((a, b) => {
+              const aDistanceKm = (a as JobWithDistance)._distanceKm;
+              const bDistanceKm = (b as JobWithDistance)._distanceKm;
+              if (aDistanceKm == null && bDistanceKm == null) return 0;
+              if (aDistanceKm == null) return 1;
+              if (bDistanceKm == null) return -1;
+              return aDistanceKm - bDistanceKm;
             });
-            /* eslint-enable @typescript-eslint/no-explicit-any */
           }
 
           // 品牌意向硬过滤（§8.2 入口标准化后为等值比较）：enforce 档把结果过滤到

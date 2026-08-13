@@ -8,12 +8,12 @@ export class LogSanitizer {
    * @param data 原始消息数据
    * @returns 脱敏后的数据
    */
-  static sanitizeMessageCallback(data: any): any {
+  static sanitizeMessageCallback<T>(data: T): T {
     if (!data || typeof data !== 'object') {
       return data;
     }
 
-    const sanitized = { ...data };
+    const sanitized: Record<string, unknown> = { ...(data as Record<string, unknown>) };
 
     // 脱敏 token 字段（保留前4位和后4位）
     if (sanitized.token && typeof sanitized.token === 'string') {
@@ -40,7 +40,7 @@ export class LogSanitizer {
       sanitized.content = this.truncateString(sanitized.content, 100);
     }
 
-    return sanitized;
+    return sanitized as T;
   }
 
   /**
