@@ -18,6 +18,7 @@ import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectDateReferenceMismatch } from './rules/date-reference-mismatch.rule';
 import { detectUnsupportedApplicationRecordUpdatePromise } from './rules/application-record-update-promise.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
+import { detectExampleValueLeak } from './rules/example-value-leak.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
@@ -181,6 +182,11 @@ export class HardRulesService {
     const metaNarrationReply = detectMetaNarrationReply(text);
     if (metaNarrationReply) {
       contradictions.push(this.withRulePolicy(metaNarrationReply));
+    }
+
+    const exampleValueLeak = detectExampleValueLeak(text);
+    if (exampleValueLeak) {
+      contradictions.push(this.withRulePolicy(exampleValueLeak));
     }
 
     const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(

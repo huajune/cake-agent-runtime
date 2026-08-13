@@ -38,6 +38,7 @@ priority: high
 - [Naming Conventions](#naming-conventions)
 - [File Organization](#file-organization)
 - [Error Handling](#error-handling)
+- [LLM Guardrail Standards](#llm-guardrail-standards)
 - [Forbidden Practices](#forbidden-practices)
 
 ---
@@ -561,6 +562,26 @@ async processData(id: string): Promise<Result> {
 
 ---
 
+## LLM Guardrail Standards
+
+### Open-language verdict freeze (P11)
+
+- Do not add a new regex or keyword branch that interprets open natural language and then rejects,
+  overwrites, or marks a candidate fact missing.
+- A proposed open-language detector must first run as a shadow diff with reviewable observations;
+  enforcement requires a separate, data-backed decision.
+- Deterministic verdict sites are limited to `structural_gate`, `closed_form`, `notary`, and `hint`,
+  and must be registered in `VERDICT_SITE_REGISTRY`.
+
+### Prompt example discipline
+
+- Any new fictional person name, store name, or phone number shown to the model must come from
+  `src/agent/guardrail/prompt/example-registry.ts`.
+- Prefer real runtime values or placeholders (`X`, `Y`, `N`, `A`, `B`) when an example does not need
+  a concrete canary value.
+- Do not copy the placeholder phone list; the prompt registry reuses
+  `@resolution/candidate/phone` as its single source.
+
 ## Forbidden Practices
 
 ### Absolutely Forbidden
@@ -698,6 +719,8 @@ Before committing code, verify:
 - [ ] Meaningful variable/function names
 - [ ] Comments explain WHY, not WHAT
 - [ ] No sensitive information in code
+- [ ] No new open-language regex verdict branch without a shadow-diff decision
+- [ ] New fictional prompt values come from `prompt/example-registry.ts`
 
 ---
 

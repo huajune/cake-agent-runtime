@@ -140,7 +140,7 @@ export function buildCancelWorkOrderTool(
             outcome: '测试链路拦截：手机号不在测试白名单，未执行真实取消',
             replyInstruction:
               '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝执行、未触达真实工单。' +
-              '不得谎称已取消；请如实说明未执行。测试用例应使用统一假身份（兮兮/18271421690）。',
+              '不得谎称已取消；请如实说明未执行。测试用例应使用统一假身份（兮兮/13800000000）。',
             details: { phone: maskPhoneForDetails(phone), workOrderId },
           });
         }

@@ -150,6 +150,17 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版整条是描述你自身行为的旁白说明，不是给候选人的话，当前文本不可发送。本轮若不该回复，唯一合法动作是调用 skip_reply 工具；若需要回复，请直接输出候选人可见的正文。',
   },
   {
+    id: 'example_value_leak',
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P2,
+    description: '观察回复是否带出 prompt 示例值注册表中的 canary value。',
+    riskGoal: '发现模型把虚构示例人名、门店或占位号码当作候选人事实复述给用户。',
+    exogenousSignal: 'prompt/example-registry.ts 的封闭 canary values 注册表（纯字符串包含）。',
+    residualRisk:
+      'observe 期允许候选人主动复述 canary 后的合理回显；未登记的旧示例值依赖 CI 形状扫描阻止继续扩散。',
+    verification: 'tests/agent/guardrail/output/rules/example-value-leak.rule.spec.ts',
+  },
+  {
     id: 'identity_misregistration_coaching',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,

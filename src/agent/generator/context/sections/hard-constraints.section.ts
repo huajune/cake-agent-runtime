@@ -12,7 +12,7 @@ import { PromptContext, PromptSection } from './section.interface';
 /**
  * 本轮查询约束段落（硬约束 + 软提示）
  *
- * 把 [会话记忆] / [本轮高置信线索] 中已经明确的字段分两层渲染：
+ * 把 [会话记忆] / [本轮系统疑似识别] 中可供查询的字段分两层渲染：
  *
  * **硬约束**（6 个）：city / district / location / age / schedule / salary
  * 这些字段如果模型"忘了"，搜索结果要么完全无效（跨城/跨区），要么严重不匹配
@@ -44,7 +44,7 @@ export class HardConstraintsSection implements PromptSection {
       sections.push(
         '[本轮查询硬约束]',
         '',
-        '以下硬约束来自 [会话记忆] 与 [本轮高置信线索]，是候选人已经明确表达过的核心筛选条件。',
+        '以下硬约束来自 [会话记忆] 与 [本轮系统疑似识别] 中满足查询阈值的字段。',
         '调用 duliday_job_list 时**必须**把这些约束体现到 filter 参数；缺少任一硬约束的查询结果',
         '不得用于"该候选人场景下无空缺"的结论。',
         '',
@@ -57,7 +57,7 @@ export class HardConstraintsSection implements PromptSection {
         '',
         '[本轮查询参考信息]',
         '',
-        '以下信息来自 [会话记忆] 与 [本轮高置信线索]，供查询和推荐时参考。',
+        '以下信息来自 [会话记忆] 与 [本轮系统疑似识别]，供查询和推荐时参考。',
         '这些是建议性过滤条件——优先用于结果筛选，但如果你判断提取可能有误（如从引用消息中误提取），',
         '可以根据上下文自行决定是否采纳。',
         '',

@@ -177,7 +177,7 @@ function numberOf(value: unknown): number | null {
 }
 
 /**
- * 候选人班次约束（来自 [本轮高置信线索] / [会话记忆] / 候选人当前消息）：
+ * 候选人班次约束（来自 [本轮系统疑似识别] / [会话记忆] / 候选人当前消息）：
  *
  * - onlyWeekends：候选人说"只能周末 / 周末才有空"
  * - onlyEvenings：候选人说"只做晚班 / 下班后才能 / 晚上 X 到 Y"

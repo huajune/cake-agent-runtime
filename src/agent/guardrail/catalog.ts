@@ -60,6 +60,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   meta_narration_reply:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
+  example_value_leak:
+    'agent/guardrail/output/rules/example-value-leak.rule.ts（HardRulesService 调度）',
   proactive_insurance_policy_mention:
     'agent/guardrail/output/rules/insurance-policy-claims.rule.ts（HardRulesService 调度）',
   quota_promise: 'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
