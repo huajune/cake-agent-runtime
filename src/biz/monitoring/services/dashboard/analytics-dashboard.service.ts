@@ -8,19 +8,13 @@ import {
   getLocalDayStart,
   getLocalHourStart,
 } from '@infra/utils/date.util';
-import {
-  MessageProcessingRecord,
-  MonitoringErrorLog,
-  MonitoringGlobalCounters,
-} from '@shared-types/tracking.types';
+import { MessageProcessingRecord, MonitoringErrorLog } from '@shared-types/tracking.types';
 import {
   HourlyStats,
   DashboardData,
   ScenarioUsageMetric,
   ToolUsageMetric,
   ResponseMinuteTrendPoint,
-  AlertTrendPoint,
-  AlertTypeMetric,
   TimeRange,
   TodayUser,
   BusinessMetricTrendPoint,
@@ -47,6 +41,7 @@ import {
   getDashboardTimeRangeCutoff,
   toMessageProcessingRecords,
 } from './analytics-dashboard.util';
+import { getTrendHours } from './analytics-calc.util';
 
 /** 业务指标快照（用户数 + 预约数 + 转化率） */
 export interface BusinessMetricsSnapshot {
@@ -99,14 +94,6 @@ const DETAIL_RECORD_LIMIT_BY_RANGE: Record<TimeRange, number> = {
   month: 10000,
   twoMonths: 20000,
   threeMonths: 30000,
-};
-
-const TREND_HOURS_BY_RANGE: Record<TimeRange, number> = {
-  today: 24,
-  week: 168,
-  month: 720,
-  twoMonths: 1440,
-  threeMonths: 2160,
 };
 
 /**
@@ -1956,102 +1943,10 @@ export class AnalyticsDashboardService {
     };
   }
 
-  private calculateQueueMetrics(
-    records: MessageProcessingRecord[],
-    _globalCounters: MonitoringGlobalCounters,
-  ) {
-    const queueDurations = records.filter((r) => r.queueDuration).map((r) => r.queueDuration!);
-    const avgQueueDuration =
-      queueDurations.length > 0
-        ? queueDurations.reduce((a, b) => a + b, 0) / queueDurations.length
-        : 0;
-
-    return {
-      activeRequests: 0,
-      peakActiveRequests: 0,
-      queueWaitingJobs: 0,
-      avgQueueDuration: parseFloat(avgQueueDuration.toFixed(0)),
-    };
-  }
-
-  private calculateAlertsSummary(errorLogs: MonitoringErrorLog[]) {
-    const now = Date.now();
-    const oneHourAgo = now - 60 * 60 * 1000;
-    const oneDayAgo = now - 24 * 60 * 60 * 1000;
-
-    return {
-      total: errorLogs.length,
-      lastHour: errorLogs.filter((log) => log.timestamp >= oneHourAgo).length,
-      last24Hours: errorLogs.filter((log) => log.timestamp >= oneDayAgo).length,
-      byType: this.buildAlertTypeMetrics(errorLogs),
-    };
-  }
-
   private async calculateTrends(timeRange: TimeRange) {
-    const hours = TREND_HOURS_BY_RANGE[timeRange] ?? TREND_HOURS_BY_RANGE.month;
+    const hours = getTrendHours(timeRange);
     const hourlyStats = await this.getHourlyStats(hours);
     return { hourly: hourlyStats };
-  }
-
-  // ========================================
-  // 趋势构建方法
-  // ========================================
-
-  private buildResponseTrend(
-    records: MessageProcessingRecord[],
-    timeRange: TimeRange,
-  ): ResponseMinuteTrendPoint[] {
-    return timeRange === 'today'
-      ? this.buildBucketTrend(records, (r) => this.getMinuteKey(r.receivedAt))
-      : this.buildBucketTrend(records, (r) => this.getDayKey(r.receivedAt));
-  }
-
-  private buildBucketTrend(
-    records: MessageProcessingRecord[],
-    keyFn: (r: MessageProcessingRecord) => string,
-  ): ResponseMinuteTrendPoint[] {
-    const buckets = new Map<string, { durations: number[]; success: number; total: number }>();
-
-    for (const record of records) {
-      if (record.status === 'processing' || record.totalDuration === undefined) continue;
-      const key = keyFn(record);
-      const bucket = buckets.get(key) || { durations: [], success: 0, total: 0 };
-      bucket.durations.push(record.totalDuration || 0);
-      bucket.total += 1;
-      if (record.status === 'success') bucket.success += 1;
-      buckets.set(key, bucket);
-    }
-
-    return Array.from(buckets.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([minute, bucket]) => ({
-        minute,
-        avgDuration:
-          bucket.durations.length > 0
-            ? parseFloat(
-                (bucket.durations.reduce((sum, v) => sum + v, 0) / bucket.durations.length).toFixed(
-                  2,
-                ),
-              )
-            : 0,
-        messageCount: bucket.total,
-        successRate:
-          bucket.total > 0 ? parseFloat(((bucket.success / bucket.total) * 100).toFixed(2)) : 0,
-      }));
-  }
-
-  private buildAlertTrend(logs: MonitoringErrorLog[], timeRange: TimeRange): AlertTrendPoint[] {
-    const keyFn = timeRange === 'today' ? this.getMinuteKey : this.getDayKey;
-    const buckets = new Map<string, number>();
-
-    for (const log of logs) {
-      const key = keyFn.call(this, log.timestamp);
-      buckets.set(key, (buckets.get(key) || 0) + 1);
-    }
-
-    return Array.from(buckets.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([minute, count]) => ({ minute, count }));
   }
 
   buildBusinessTrend(
@@ -2096,52 +1991,6 @@ export class AnalyticsDashboardService {
         percentage: parseFloat(((count / total) * 100).toFixed(1)),
       }))
       .sort((a, b) => b.total - a.total);
-  }
-
-  private buildAlertTypeMetrics(errorLogs: MonitoringErrorLog[]): AlertTypeMetric[] {
-    // 子系统优先聚合：新告警按 subsystem（group-task/cron/infra…），老消息失败回退 alertType。
-    const typeMap = new Map<string, number>();
-    for (const log of errorLogs) {
-      const type = log.subsystem || log.alertType || 'unknown';
-      typeMap.set(type, (typeMap.get(type) || 0) + 1);
-    }
-    const total = Array.from(typeMap.values()).reduce((acc, v) => acc + v, 0);
-    if (total === 0) return [];
-    return Array.from(typeMap.entries())
-      .map(([type, count]) => ({
-        type,
-        count,
-        percentage: parseFloat(((count / total) * 100).toFixed(1)),
-      }))
-      .sort((a, b) => b.count - a.count);
-  }
-
-  private checkBookingOutputSuccess(output: unknown): boolean {
-    if (!output || typeof output !== 'object') {
-      return false;
-    }
-
-    if (
-      (output as Record<string, unknown>).type === 'object' &&
-      (output as Record<string, unknown>).object
-    ) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const obj = (output as Record<string, unknown>).object as any;
-      return obj.success === true;
-    }
-    return (output as Record<string, unknown>).success === true;
-  }
-
-  // ========================================
-  // 时间格式化
-  // ========================================
-
-  private getMinuteKey(timestamp: number): string {
-    return formatLocalMinute(new Date(timestamp));
-  }
-
-  private getDayKey(timestamp: number): string {
-    return formatLocalDate(new Date(timestamp));
   }
 
   // ========================================
