@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -433,17 +434,13 @@ export class ImageDescriptionService {
       if (updated) return;
 
       if (attempt < this.WRITEBACK_MAX_ATTEMPTS) {
-        await this.delay(this.WRITEBACK_RETRY_BASE_DELAY_MS * attempt);
+        await sleep(this.WRITEBACK_RETRY_BASE_DELAY_MS * attempt);
       }
     }
 
     this.logger.error(
       `${this.kindLabel(kind)}描述回写失败：chat_messages 无匹配行或更新异常（已重试 ${this.WRITEBACK_MAX_ATTEMPTS} 次，历史可能始终未落库）[${messageId}]`,
     );
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

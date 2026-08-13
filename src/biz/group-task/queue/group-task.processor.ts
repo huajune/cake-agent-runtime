@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
@@ -574,12 +575,12 @@ export class GroupTaskProcessor implements OnModuleInit {
     await this.delay(remainingMs);
   }
 
-  private async releaseBotDispatchLock(lockKey: string, lockOwner: string): Promise<void> {
-    await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [lockKey], [lockOwner]);
+  private delay(ms: number): Promise<void> {
+    return sleep(ms);
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private async releaseBotDispatchLock(lockKey: string, lockOwner: string): Promise<void> {
+    await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [lockKey], [lockOwner]);
   }
 
   // ==================== Summarize ====================

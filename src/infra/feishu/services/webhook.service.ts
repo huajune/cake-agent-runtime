@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, isAxiosError } from 'axios';
@@ -167,6 +168,10 @@ export class FeishuWebhookService {
     }
   }
 
+  private sleep(ms: number): Promise<void> {
+    return sleep(ms);
+  }
+
   private buildFailureAlertCard(
     failedChannel: FeishuWebhookChannel,
     reason: string,
@@ -192,10 +197,6 @@ export class FeishuWebhookService {
         elements: [{ tag: 'markdown', content }],
       },
     };
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
@@ -133,7 +134,7 @@ export class SpongeBiService {
     const refreshed = await this.refreshBIDataSource();
     if (!refreshed) return false;
 
-    await this.delay(this.biRefreshWaitMs);
+    await sleep(this.biRefreshWaitMs);
     return true;
   }
 
@@ -229,7 +230,7 @@ export class SpongeBiService {
       offset += orders.length;
 
       if (page < BI_MAX_PAGES - 1) {
-        await this.delay(BI_PAGE_DELAY_MS);
+        await sleep(BI_PAGE_DELAY_MS);
       }
     }
 
@@ -332,9 +333,5 @@ export class SpongeBiService {
       }
       return order;
     });
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sleep } from '@infra/utils/async.util';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ExecutionStatus, ReviewStatus, ReviewerSource } from '../enums/test.enum';
@@ -245,7 +246,7 @@ export class TestExecutionRepository extends BaseRepository {
 
       if (attempt < maxAttempts) {
         this.logger.warn(`创建执行记录失败，准备重试 (${attempt}/${maxAttempts})`);
-        await this.delay(300 * attempt);
+        await sleep(300 * attempt);
       }
     }
 
@@ -270,10 +271,6 @@ export class TestExecutionRepository extends BaseRepository {
     }
 
     return null;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

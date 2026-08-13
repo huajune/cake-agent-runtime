@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
@@ -138,7 +139,7 @@ export class SimpleMergeService implements OnModuleInit {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return sleep(ms);
   }
 
   /**

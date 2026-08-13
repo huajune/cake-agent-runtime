@@ -10,6 +10,7 @@ import { networkInterfaces } from 'os';
 import { execSync } from 'child_process';
 import * as net from 'net';
 import { createGlobalValidationPipe } from '@infra/server/validation/global-validation-pipe';
+import { sleep } from '@infra/utils/async.util';
 
 /** 应用创建前即可用（Nest Logger 未接管时回落 ConsoleLogger），端口清理阶段共用。 */
 const bootstrapLogger = new Logger('Bootstrap');
@@ -87,7 +88,7 @@ async function ensurePortAvailable(port: number): Promise<void> {
     const killed = killProcessOnPort(port);
     if (killed) {
       // 等待端口释放
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await sleep(1000);
       const stillInUse = await isPortInUse(port);
       if (stillInUse) {
         throw new Error(`无法释放端口 ${port}，请手动检查`);

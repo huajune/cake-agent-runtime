@@ -2,6 +2,7 @@ import { Injectable, Module, Logger, OnApplicationShutdown } from '@nestjs/commo
 import { BullModule } from '@nestjs/bull';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import type { Redis as IORedisClient } from 'ioredis';
+import { sleepUnref } from '@infra/utils/async.util';
 
 /**
  * Bull 用自定义 createClient 时，queue.close() 不会关闭我们创建的 ioredis 连接
@@ -22,10 +23,7 @@ export class BullRedisLifecycleService implements OnApplicationShutdown {
       createdRedisClients.map(async (client) => {
         try {
           // quit 是优雅关闭（等待挂起命令）；3s 未完成则强制 disconnect。
-          await Promise.race([
-            client.quit(),
-            new Promise((resolve) => setTimeout(resolve, 3000).unref()),
-          ]);
+          await Promise.race([client.quit(), sleepUnref(3000)]);
         } catch {
           // quit 对已断开的连接会抛错，直接落到 disconnect
         } finally {

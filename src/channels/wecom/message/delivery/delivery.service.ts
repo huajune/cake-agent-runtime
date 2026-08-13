@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
@@ -259,8 +260,8 @@ export class MessageDeliveryService implements OnModuleInit {
     return this.typingPolicy.calculateDelay(text, isFirstSegment);
   }
 
-  private async sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private sleep(ms: number): Promise<void> {
+    return sleep(ms);
   }
 
   /**

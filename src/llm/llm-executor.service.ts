@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Output, generateText, streamText } from 'ai';
 import { RegistryService } from '@providers/registry.service';
@@ -137,7 +138,7 @@ export class LlmExecutorService {
           this.logger.warn(
             `${modelId} 重试 ${attempt}/${retryConfig.maxRetries}, 等待 ${backoff}ms`,
           );
-          await this.sleep(backoff);
+          await sleep(backoff);
         }
       }
     }
@@ -559,10 +560,6 @@ export class LlmExecutorService {
     };
     error.apiKey = this.getApiKey(lastRawError);
     return error;
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private getExistingAgentMeta(error: unknown): AgentError['agentMeta'] | undefined {

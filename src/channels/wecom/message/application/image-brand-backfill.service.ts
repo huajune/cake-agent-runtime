@@ -13,6 +13,7 @@
  */
 
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { MessageType } from '@enums/message-callback.enum';
@@ -145,7 +146,7 @@ export class ImageBrandBackfillService {
     for (let attempt = 1; attempt <= LOCK_RETRY_ATTEMPTS; attempt++) {
       acquired = await this.simpleMerge.acquireProcessingLock(params.chatId, ownerToken);
       if (acquired) break;
-      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_DELAY_MS));
+      await sleep(LOCK_RETRY_DELAY_MS);
     }
     if (!acquired) {
       this.lockGiveUpCount += 1;

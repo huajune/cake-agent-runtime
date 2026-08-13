@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GROUP_MESSAGE_SENDER, type GroupMessageSender } from '../providers/group-channel.provider';
@@ -258,10 +259,6 @@ export class NotificationSenderService {
     }
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
   private async sendEnterpriseGroupMessage(
     group: GroupContext,
     messageType: number,
@@ -283,6 +280,10 @@ export class NotificationSenderService {
       messageType,
       payload,
     });
+  }
+
+  private delay(ms: number): Promise<void> {
+    return sleep(ms);
   }
 
   private notifyFeishuSendFailure(

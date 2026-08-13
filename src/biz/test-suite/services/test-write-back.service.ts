@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import {
@@ -481,14 +482,10 @@ export class TestWriteBackService {
 
       if (attempt < attempts) {
         this.logger.warn(`回写飞书失败，准备重试(${attempt}/${attempts}): ${lastError}`);
-        await this.sleep(this.updateRetryDelaysMs[attempt - 1]);
+        await sleep(this.updateRetryDelaysMs[attempt - 1]);
       }
     }
 
     return { success: false, error: lastError };
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

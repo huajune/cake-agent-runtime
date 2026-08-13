@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -1027,10 +1028,6 @@ async function maybeAddChatBotToGroupAndRetryInvite(params: {
       },
     };
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isRoomNotFoundError(result: InviteApiResult): boolean {
