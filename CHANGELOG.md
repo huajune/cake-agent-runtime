@@ -12,27 +12,37 @@
 ## 待发布
 
 **预计版本**: `v10.44.0`
-**最近更新**: `2026-08-07`
+**最近更新**: `2026-08-13`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #996 补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果
+- PR #999 清理显式 any 并启用 lint 门禁
+- PR #999 将 TypeScript 显式 `any` lint 规则从关闭调整为错误，并清理本批 19 处边界类型债务
+- PR #999 为企微消息发送、回调与脱敏、HTTP/飞书 API、统一响应和岗位列表补齐 `unknown`、`Record<string, unknown>` 及领域类型
+- PR #999 修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #999 修复结构化异常中非字符串 `message` / `code` 直接进入响应字段的类型风险
+- PR #999 修复消息日志脱敏由 `unknown` 返回导致调用方丢失输入形状的问题
+- PR #999 修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力
 
 ### 优化调整
-- 无
+- PR #999 `@typescript-eslint/no-explicit-any` 升级为错误级门禁
+- PR #999 岗位列表结果改用 `JobBasicInfo`、`JobDetail`、`StoreInfoView` 与 `JobWithDistance` 显式建模
+- PR #999 将 TypeScript 显式 `any` lint 规则从关闭调整为错误，并清理本批 19 处边界类型债务
+- PR #999 为企微消息发送、回调与脱敏、HTTP/飞书 API、统一响应和岗位列表补齐 `unknown`、`Record<string, unknown>` 及领域类型
 
 ### 运维与流程
 - PR #996 补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果
+- PR #999 清理显式 any 并启用 lint 门禁
 
 ### 配置变更
-- 无
+- PR #999 仅 ESLint 静态检查规则变更；无运行时环境变量、数据库或功能开关变更
 
 ### 环境变量提醒
 - 无
@@ -40,6 +50,10 @@
 ### 验证记录
 - PR #996 `prettier --write` 已格式化三份文件
 - PR #996 时间、workflow run ID、健康检查结论均取自 [部署 run 31165737816](https://github.com/huajune/cake-agent-runtime/actions/runs/31165737816) 日志与线上 `/agent/health` 实测，未凭记忆填写
+- PR #999 `pnpm run ci:check`
+- PR #999 消息发送服务 25 个定向测试通过
+- PR #999 HTTP 异常过滤器与消息日志脱敏 23 个定向测试通过
+- PR #999 其他说明：全量 417 个测试套件、7057 个测试通过；1 套件/6 个测试按既有配置跳过
 <!-- release:pending:end -->
 
 ## [10.43.0] - 2026-08-07
