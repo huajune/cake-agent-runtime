@@ -8,7 +8,7 @@ import { parseHouseholdProvince } from './household-province';
 import { parseName } from './name';
 import { parsePhone } from './phone';
 import {
-  AUTHORITATIVE_PRODUCERS,
+  PERSISTABLE_CANDIDATE_FIELD_PRODUCERS,
   type CandidateCollectedField,
   type CandidateFieldKey,
   type CandidateParseResult,
@@ -23,8 +23,8 @@ function truncateEvidence(evidence: string): string {
     : `${trimmed.slice(0, MAX_COLLECTED_EVIDENCE_CHARS)}…`;
 }
 
-export function isFieldAuthoritative(field?: CandidateCollectedField): boolean {
-  return !!field && AUTHORITATIVE_PRODUCERS.has(field.producer);
+export function hasPersistableFieldProvenance(field?: CandidateCollectedField): boolean {
+  return !!field && PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has(field.producer);
 }
 
 export function parseCandidateFieldsFromText(

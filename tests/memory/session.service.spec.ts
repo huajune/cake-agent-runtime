@@ -473,7 +473,7 @@ describe('SessionService', () => {
     });
   });
 
-  describe('getAuthoritativeState (HC-2 collectedFields producer)', () => {
+  describe('getReengagementState (HC-2 collectedFields provenance)', () => {
     it('projects persisted session facts into collectedFields for cross-turn stop checks', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
@@ -487,7 +487,7 @@ describe('SessionService', () => {
         },
       });
 
-      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
+      const state = await service.getReengagementState('corp1', 'user1', 'session1');
 
       expect(state.collectedFields.name).toMatchObject({
         value: '张三',
@@ -506,7 +506,7 @@ describe('SessionService', () => {
         },
       });
 
-      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1', {
+      const state = await service.getReengagementState('corp1', 'user1', 'session1', {
         currentUserMessages: ['姓名：王建国 电话13912345678'],
         now: 5000,
       });
@@ -531,7 +531,7 @@ describe('SessionService', () => {
         },
       });
 
-      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
+      const state = await service.getReengagementState('corp1', 'user1', 'session1');
 
       expect(state.terminal).toBe('booked');
       expect(state.lastCandidateMessageAt).toBe(Date.parse('2026-07-02T10:00:00.000Z'));
@@ -556,7 +556,7 @@ describe('SessionService', () => {
         },
       });
 
-      const state = await service.getAuthoritativeState('corp1', 'user1', 'session1');
+      const state = await service.getReengagementState('corp1', 'user1', 'session1');
 
       expect(state.invitedGroups).toEqual(invitedGroups);
     });

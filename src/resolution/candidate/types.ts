@@ -43,8 +43,8 @@ export interface CandidatePrefillHints {
   gender?: CandidatePrefillHint;
 }
 
-/** 可直接作为权威档案事实的来源白名单。 */
-export const AUTHORITATIVE_PRODUCERS: ReadonlySet<CandidateFactProducer> = new Set([
+/** 允许作为候选人字段持久化出处的 producer 白名单。 */
+export const PERSISTABLE_CANDIDATE_FIELD_PRODUCERS: ReadonlySet<CandidateFactProducer> = new Set([
   'candidate_quote',
   'rule',
   'system',

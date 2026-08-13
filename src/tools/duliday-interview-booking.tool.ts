@@ -172,7 +172,9 @@ function normalizeBookingAuthorityValue(field: string, value: unknown): string {
 const supplementAnswersSchema = z
   .record(z.string(), z.string())
   .optional()
-  .describe('岗位补充标签回答，key 必须是标签名，例如 爱好、身份。标准字段对应标签会自动回填');
+  .describe(
+    '岗位补充标签回答，key 必须逐字使用本岗位 precheck 返回的标签原文。标准字段对应标签会自动回填',
+  );
 
 const DESCRIPTION = `预约面试。真正调用面试预约接口，提交面试时间 + 候选人信息。入参必须与 supplier/entryUser 契约保持一致。
 
@@ -367,7 +369,7 @@ export function buildInterviewBookingTool(
               outcome: '测试链路拦截：手机号不在测试白名单，未执行真实报名',
               replyInstruction:
                 '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝提交、未产生任何真实工单。' +
-                '不得谎称已报名/已登记；请如实说明报名未提交。测试用例应使用统一假身份（兮兮/18271421690）。',
+                '不得谎称已报名/已登记；请如实说明报名未提交。测试用例应使用统一假身份（兮兮/13800000000）。',
               details: { phone: maskPhoneForDetails(phone) },
             }),
           );

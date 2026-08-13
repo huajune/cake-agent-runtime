@@ -1,5 +1,5 @@
 import {
-  isFieldAuthoritative,
+  hasPersistableFieldProvenance,
   normalizeEducationToId,
   normalizeGenderToId,
   normalizeHealthCertToId,
@@ -15,7 +15,7 @@ import {
   parsePhone,
   parseWeight,
 } from '@resolution/candidate';
-import { AUTHORITATIVE_PRODUCERS } from '@resolution/candidate/types';
+import { PERSISTABLE_CANDIDATE_FIELD_PRODUCERS } from '@resolution/candidate/types';
 
 describe('candidate-field-parser', () => {
   describe('parsePhone', () => {
@@ -166,19 +166,19 @@ describe('candidate-field-parser', () => {
     });
   });
 
-  describe('authoritative producer gate', () => {
+  describe('persistable provenance gate', () => {
     it('keeps candidate_quote / rule / system authoritative and model non-authoritative', () => {
-      expect(AUTHORITATIVE_PRODUCERS.has('candidate_quote')).toBe(true);
-      expect(AUTHORITATIVE_PRODUCERS.has('rule')).toBe(true);
-      expect(AUTHORITATIVE_PRODUCERS.has('system')).toBe(true);
-      expect(AUTHORITATIVE_PRODUCERS.has('model')).toBe(false);
+      expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('candidate_quote')).toBe(true);
+      expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('rule')).toBe(true);
+      expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('system')).toBe(true);
+      expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('model')).toBe(false);
     });
-    it('isFieldAuthoritative rejects model drafts', () => {
-      expect(isFieldAuthoritative({ value: '小王', producer: 'model', at: 1 })).toBe(false);
-      expect(isFieldAuthoritative({ value: '王建国', producer: 'candidate_quote', at: 1 })).toBe(
-        true,
-      );
-      expect(isFieldAuthoritative(undefined)).toBe(false);
+    it('hasPersistableFieldProvenance rejects model drafts', () => {
+      expect(hasPersistableFieldProvenance({ value: '小王', producer: 'model', at: 1 })).toBe(false);
+      expect(
+        hasPersistableFieldProvenance({ value: '王建国', producer: 'candidate_quote', at: 1 }),
+      ).toBe(true);
+      expect(hasPersistableFieldProvenance(undefined)).toBe(false);
     });
   });
 });

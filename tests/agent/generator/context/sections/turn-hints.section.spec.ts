@@ -27,6 +27,7 @@ describe('TurnHintsSection', () => {
 
     expect(output).toContain('[本轮高置信线索]');
     expect(output).toContain('意向区域: 杨浦区');
+    expect(output).toContain('严禁向候选人复述或提及“系统识别/系统提示”字样');
     expect(output).not.toContain('[本轮待确认线索]');
   });
 

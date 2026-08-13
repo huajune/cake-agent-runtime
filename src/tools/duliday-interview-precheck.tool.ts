@@ -130,8 +130,8 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - candidateAge：候选人已明确自报的年龄。只要当前对话里能看到候选人年龄，**必须显式传入本字段**，不要只依赖记忆或运行时高置信事实；不要传岗位年龄要求。candidateAge 与记忆冲突时，以 candidateAge 作为本轮最新口径
 - candidateLaborForm：候选人本轮明确表达的用工形式或对"是否暑假工"的回答，如"暑假工"、"不是暑假工"、"长期兼职"。暑假工状态默认是"否"；只有当前可见原话或本次显式参数明确为暑假工时才启用暑假工岗位限制。候选人主动表示长期可做时，按其最新长期意向继续常规岗位。
 - candidateInterviewTime / candidateGender / candidateEducation / candidateHasHealthCertificate / candidateIsStudent / candidateUploadResume / candidateHeight / candidateWeight / candidateHouseholdProvince：候选人本轮已明确补充的预约字段。只传候选人答案，不要传岗位要求；这些字段与旧记忆冲突时，以本轮显式入参为准。**当 missingFields 含 身高/体重/户籍省份 且候选人本轮已给出时，务必用 candidateHeight/candidateWeight/candidateHouseholdProvince 传进来，否则会一直卡在 collect_fields 无法进 booking**
-- candidateSupplementAnswers：候选人本轮已答的岗位补充标签（collect 型，如 居住地址/意向区域/周末两天是否在/每天可以出勤的时间/能做到什么时候/不要早班要周末和全天）的回答，key 用标签名、value 用候选人答案。**与 booking 的 supplementAnswers 同源**：只要候选人在对话里给出了这些补充标签的答案，就必须在本字段一并传入，否则这些标签会一直留在 missingFields、nextAction 永远卡在 collect_fields 无法进 booking。只传候选人答案，禁止传岗位筛选要求
-- candidateClaims（推荐）：候选人资料的带证据声明数组。需要归一化理解（"一米六三"→身高163）或纠正/清除旧资料（operation=correct/clear）时用它，每条附候选人原话 quote。返回的 factAdjudication 是裁决结果：rejectedClaims 里的值缺原话依据，禁止当作已确认资料使用或复述；factAdjudication.precheckId 在调 duliday_interview_booking 时原样回传（precheckId 入参），供系统对账你提交的最终资料与本次预检一致
+- candidateSupplementAnswers：候选人本轮已答的岗位补充标签（collect 型）回答；key 必须逐字使用本岗位 precheck 返回的标签原文，value 用候选人答案。**与 booking 的 supplementAnswers 同源**：只要候选人在对话里给出了这些补充标签的答案，就必须在本字段一并传入，否则这些标签会一直留在 missingFields、nextAction 永远卡在 collect_fields 无法进 booking。只传候选人答案，禁止传岗位筛选要求
+- candidateClaims（推荐）：候选人资料的带证据声明数组。需要归一化理解（"两米零一"→身高201、"七十五斤"→体重37.5）或纠正/清除旧资料（operation=correct/clear）时用它，每条附候选人原话 quote。返回的 factAdjudication 是裁决结果：rejectedClaims 里的值缺原话依据，禁止当作已确认资料使用或复述；factAdjudication.precheckId 在调 duliday_interview_booking 时原样回传（precheckId 入参），供系统对账你提交的最终资料与本次预检一致
 - **一次性传全已知字段，禁止"残缺入参先调、补字段再调"**：调用本工具前，先把候选人当轮及历史**已经明确给出的所有字段**（年龄/性别/学历/健康证/面试日期时间等）整理齐再调用；严禁用残缺入参先调一次、看到 collect_fields 后把本就已知的字段补进去对同一岗位重调一遍——同一轮内对同一岗位重复 precheck 会触发 tool_loop 并平白拖慢一整轮响应。collect_fields 只应由候选人**确实尚未提供**的字段触发
 
 ## 返回字段
@@ -316,7 +316,7 @@ const inputSchema = z.object({
     )
     .optional()
     .describe(
-      '候选人本轮已答的岗位补充标签（collect 型）回答，key 必须是标签名（如 居住地址、意向区域、周末两天是否在、每天可以出勤的时间、能做到什么时候、不要早班要周末和全天）。' +
+      '候选人本轮已答的岗位补充标签（collect 型）回答，key 必须逐字使用本岗位 precheck 返回的标签原文。' +
         '与 booking 的 supplementAnswers 同源同义：只要候选人在对话里给出了这些补充标签的答案，就必须在本字段一并传入，' +
         '否则这些标签会一直留在 missingFields、nextAction 永远卡在 collect_fields 无法进 booking。只传候选人答案，禁止传岗位筛选要求。',
     ),
@@ -326,7 +326,7 @@ const inputSchema = z.object({
     .optional()
     .describe(
       '（推荐）候选人资料的带证据声明。每条声明包含字段名、值和候选人原话逐字片段 quote。' +
-        '当你从候选人消息中理解出需要归一化的资料（"一米六三"→身高163、"九十二斤"→体重46、"我03年的"→年龄）、' +
+        '当你从候选人消息中理解出需要归一化的资料（"两米零一"→身高201、"七十五斤"→体重37.5、"我03年的"→年龄）、' +
         '或候选人纠正/否定了旧资料（operation=correct/clear）时，用本字段提交你的结构化理解。' +
         'quote 必须能在候选人消息里原样找到，否则该声明会被判无证据拒绝。' +
         '与 candidateName 等裸字段可并存；声明会经过确定性裁决，结果在返回的 factAdjudication 中。',
