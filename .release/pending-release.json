@@ -71,6 +71,33 @@
         "HTTP 异常过滤器与消息日志脱敏 23 个定向测试通过",
         "其他说明：全量 417 个测试套件、7057 个测试通过；1 套件/6 个测试按既有配置跳过"
       ]
+    },
+    {
+      "number": "1001",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1001",
+      "title": "禁止主动询问候选人户籍信息",
+      "author": "huajune",
+      "mergedAt": "2026-08-13",
+      "businessUpdates": [
+        "禁止主动询问候选人户籍信息"
+      ],
+      "summary": [
+        "禁止主动询问候选人户籍信息"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "禁止主动询问候选人户籍信息"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "ESLint、Prettier、TypeScript typecheck",
+        "地理数据与词表一致性校验",
+        "Web 与后端生产构建",
+        "Jest：417 个测试套件通过，7055 个测试通过"
+      ]
     }
   ],
   "lastRelease": {
