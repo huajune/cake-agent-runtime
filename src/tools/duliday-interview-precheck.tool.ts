@@ -1287,9 +1287,8 @@ export function buildInterviewPrecheckTool(
             }),
             normalizeCandidateIsStudentInput,
           );
-          const latestExplicitIdentityEvidence = findLatestExplicitIdentityEvidence(
-            evidenceMessages,
-          );
+          const latestExplicitIdentityEvidence =
+            findLatestExplicitIdentityEvidence(evidenceMessages);
           const latestExplicitIdentity = latestExplicitIdentityEvidence?.identity ?? null;
           // 身份与其它显式 candidate 参数采用同一口径。仅保留当前原话明确自报学生
           // 的安全覆盖，避免把明确学生登记成社会人士。
@@ -1454,6 +1453,21 @@ export function buildInterviewPrecheckTool(
                 // 回声检查在 shadow 期只观测（迁移三阶段 P0），enforce 才路由转确认。
                 echoRoutesToConfirmation: adjudicationDeps.mode === 'enforce',
               });
+
+              // 偏离⑦：B1/B2 契约下模型可只发 claim 不发裸字段，shadow 也必须认账——
+              // 公证过的 accepted 值补进 knownFieldMap 空位（只补不覆盖不删除），否则已作证
+              // 字段仍判缺、候选人被重复追问。acceptedClaimId 判据排除 session 基线
+              // （基线值另有既有回灌路径，不在此重复）。enforce 下随后的 E1 账本重写仍是权威。
+              // 性别表内确认位在裁决前已计算；这里回灌 gender 不回头清位，沿用后续轮解锁路径。
+              for (const [claimField, checklistField] of Object.entries(
+                CLAIM_FIELD_TO_CHECKLIST,
+              ) as Array<[CandidateClaimField, ChecklistField]>) {
+                const entry = adjudicationResult.profile.fields[claimField];
+                if (entry?.status !== 'accepted' || entry.acceptedClaimId == null) continue;
+                if (knownFieldMap[checklistField]) continue;
+                const normalized = normalizeClaimValueForChecklist(claimField, entry.value);
+                if (normalized) knownFieldMap[checklistField] = normalized;
+              }
 
               if (adjudicationDeps.mode === 'enforce') {
                 // D1：出处存疑不再让字段出局，值照样借给 templateText 挂「如有误请改」。

@@ -1,6 +1,7 @@
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import type { AgentEvent } from '@/observability/observer.interface';
+import type { PrecheckSnapshot } from '@resolution/evidence/snapshot';
 import { createToolContext } from '../../helpers/tool-context.fixture';
 
 /**
@@ -44,10 +45,12 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
     fetchSignupWorkOrders: jest.fn(),
   };
   const events: AgentEvent[] = [];
+  const savedSnapshots: PrecheckSnapshot[] = [];
 
   beforeEach(() => {
     jest.clearAllMocks();
     events.length = 0;
+    savedSnapshots.length = 0;
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
     mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
   });
@@ -91,6 +94,11 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
       {
         mode: options.mode ?? 'shadow',
         observer: { emit: (event: AgentEvent) => events.push(event) },
+        snapshots: {
+          save: jest.fn(async (_corpId, _userId, snapshot) => {
+            savedSnapshots.push(snapshot);
+          }),
+        },
       },
     )(context);
     return (await tool.execute(input as any, {
@@ -347,6 +355,99 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
       );
 
       expect(result.bookingChecklist.missingFields).not.toContain('姓名');
+    });
+  });
+
+  describe('二轮工程三：shadow accepted claim 只补清单空位', () => {
+    const requireHeight = () => {
+      const job = makeJob();
+      job.interviewProcess.interviewSupplement = [
+        { interviewSupplementId: 4, interviewSupplement: '身高' },
+      ];
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job] });
+    };
+    const productionMessages = (candidateText: string) => [
+      { role: 'assistant', content: `请把资料发我核对。\n${TIME_SUFFIX}` },
+      { role: 'user', content: `[图片消息]\n${TIME_SUFFIX}` },
+      {
+        role: 'user',
+        content: `[引用 招聘顾问：方便说下身高吗]\n${candidateText}\n${TIME_SUFFIX}`,
+      },
+    ];
+
+    beforeEach(requireHeight);
+
+    it('claims-only 归一化值在 shadow 补入空位，不再重复追问', async () => {
+      const result = await run(
+        {
+          jobId: 100,
+          candidateClaims: [{ field: 'height', value: 163, quote: '我一米六三' }],
+        },
+        { context: { messages: productionMessages('我一米六三') } },
+      );
+
+      expect(result.bookingChecklist.missingFields).not.toContain('身高');
+      expect(result.bookingChecklist.templateText).toContain('身高：163');
+    });
+
+    it('裸字段已有不同值时 accepted claim 只补不覆盖', async () => {
+      const result = await run(
+        {
+          jobId: 100,
+          candidateHeight: 170,
+          candidateClaims: [{ field: 'height', value: 163, quote: '我一米六三' }],
+        },
+        { context: { messages: productionMessages('我一米六三') } },
+      );
+
+      expect(result.bookingChecklist.templateText).toContain('身高：170');
+      expect(result.bookingChecklist.templateText).not.toContain('身高：163');
+    });
+
+    it('rejected 与 needs_confirmation claim 均不回灌', async () => {
+      const rejected = await run(
+        {
+          jobId: 100,
+          candidateClaims: [{ field: 'height', value: 163, quote: '我一米六三' }],
+        },
+        { context: { messages: productionMessages('这个之后再说') } },
+      );
+      expect(rejected.bookingChecklist.missingFields).toContain('身高');
+
+      const conflictingMessages = [
+        ...productionMessages('我一米六三'),
+        { role: 'user', content: `后来量的是一米七零\n${TIME_SUFFIX}` },
+      ];
+      const needsConfirmation = await run(
+        {
+          jobId: 100,
+          candidateClaims: [
+            { field: 'height', value: 163, quote: '我一米六三' },
+            { field: 'height', value: 170, quote: '一米七零' },
+          ],
+        },
+        { context: { messages: conflictingMessages } },
+      );
+      expect(needsConfirmation.factAdjudication.needsConfirmationFields).toContain('height');
+      expect(needsConfirmation.bookingChecklist.missingFields).toContain('身高');
+    });
+
+    it('session accepted 基线无 acceptedClaimId，不走 claim 回灌路径', async () => {
+      const result = await run(
+        { jobId: 100 },
+        {
+          context: {
+            messages: productionMessages('资料还是和之前一样'),
+            sessionFacts: { interview_info: { height: 168 } } as never,
+          },
+        },
+      );
+
+      expect(result.bookingChecklist.templateText).toContain('身高：168');
+      expect(savedSnapshots.at(-1)?.effectiveProfile.fields.height).toEqual(
+        expect.objectContaining({ status: 'accepted', source: 'session' }),
+      );
+      expect(savedSnapshots.at(-1)?.effectiveProfile.fields.height?.acceptedClaimId).toBeUndefined();
     });
   });
 });
