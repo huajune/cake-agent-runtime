@@ -10,7 +10,7 @@ import {
 /**
  * 飞书 API 响应结构
  */
-interface FeishuResponse<T = any> {
+interface FeishuResponse<T = unknown> {
   code: number;
   msg: string;
   data?: T;
@@ -21,7 +21,7 @@ interface FeishuResponse<T = any> {
  */
 export interface BitableRecord {
   record_id: string;
-  fields: Record<string, any>;
+  fields: Record<string, unknown>;
 }
 
 /**
@@ -40,7 +40,7 @@ export interface BitableField {
  * 批量创建记录请求
  */
 export interface BatchCreateRequest {
-  fields: Record<string, any>;
+  fields: Record<string, unknown>;
 }
 
 /**
@@ -231,7 +231,7 @@ export class FeishuBitableApiService {
     let pageToken: string | undefined;
 
     do {
-      const params: Record<string, any> = { page_size: 100 };
+      const params: Record<string, unknown> = { page_size: 100 };
       if (pageToken) {
         params.page_token = pageToken;
       }
@@ -290,7 +290,7 @@ export class FeishuBitableApiService {
     filter?: string,
     pageSize = 100,
   ): Promise<BitableRecord[]> {
-    const params: Record<string, any> = { page_size: pageSize };
+    const params: Record<string, unknown> = { page_size: pageSize };
     if (filter) {
       params.filter = filter;
     }
@@ -315,7 +315,7 @@ export class FeishuBitableApiService {
   async createRecord(
     appToken: string,
     tableId: string,
-    fields: Record<string, any>,
+    fields: Record<string, unknown>,
   ): Promise<{ recordId: string }> {
     const response = await this.feishuApi.post<FeishuResponse<{ record: { record_id: string } }>>(
       `/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
@@ -357,9 +357,9 @@ export class FeishuBitableApiService {
           failed += chunk.length;
           this.logger.error(`批量创建失败: ${response.data.msg}`);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         failed += chunk.length;
-        this.logger.error(`批量创建异常: ${error.message}`);
+        this.logger.error(`批量创建异常: ${(error as Error).message}`);
       }
     }
 
@@ -375,7 +375,7 @@ export class FeishuBitableApiService {
     appToken: string,
     tableId: string,
     recordId: string,
-    fields: Record<string, any>,
+    fields: Record<string, unknown>,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await this.feishuApi.put<FeishuResponse>(
@@ -388,8 +388,8 @@ export class FeishuBitableApiService {
       }
 
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: (error as Error).message };
     }
   }
 
@@ -399,7 +399,7 @@ export class FeishuBitableApiService {
   async batchUpdateRecords(
     appToken: string,
     tableId: string,
-    records: Array<{ record_id: string; fields: Record<string, any> }>,
+    records: Array<{ record_id: string; fields: Record<string, unknown> }>,
   ): Promise<{ success: number; failed: number }> {
     let success = 0;
     let failed = 0;
@@ -421,9 +421,9 @@ export class FeishuBitableApiService {
           failed += chunk.length;
           this.logger.error(`批量更新失败: ${response.data.msg}`);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         failed += chunk.length;
-        this.logger.error(`批量更新异常: ${error.message}`);
+        this.logger.error(`批量更新异常: ${(error as Error).message}`);
       }
     }
 
@@ -450,8 +450,8 @@ export class FeishuBitableApiService {
       }
 
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: (error as Error).message };
     }
   }
 
@@ -483,9 +483,9 @@ export class FeishuBitableApiService {
           failed += chunk.length;
           this.logger.error(`批量删除失败: ${response.data.msg}`);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         failed += chunk.length;
-        this.logger.error(`批量删除异常: ${error.message}`);
+        this.logger.error(`批量删除异常: ${(error as Error).message}`);
       }
     }
 

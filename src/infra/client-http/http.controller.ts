@@ -18,7 +18,7 @@ export class HttpController {
    */
   @RawResponse() // 透传第三方 API 原始响应，不使用统一包装
   @Post('test')
-  async testApi(@Body() body: { url: string; method?: string; data?: any }) {
+  async testApi(@Body() body: { url: string; method?: string; data?: unknown }) {
     const { url, method = 'GET', data } = body;
 
     this.logger.log(`测试调用 API: ${method} ${url}`);

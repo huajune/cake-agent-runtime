@@ -6,7 +6,7 @@
 /**
  * 成功响应格式
  */
-export interface ApiSuccessResponse<T = any> {
+export interface ApiSuccessResponse<T = unknown> {
   /**
    * 请求是否成功
    */
@@ -45,7 +45,7 @@ export interface ErrorDetails {
   /**
    * 错误详细信息（可选）
    */
-  details?: any;
+  details?: unknown;
 }
 
 /**
@@ -76,7 +76,7 @@ export interface ApiErrorResponse {
 /**
  * 统一响应类型（成功或失败）
  */
-export type StandardApiResponse<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;
+export type StandardApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 /**
  * 创建成功响应的辅助函数
@@ -104,7 +104,7 @@ export function createSuccessResponse<T>(data: T, message?: string): ApiSuccessR
 export function createErrorResponse(
   code: string,
   message: string,
-  details?: any,
+  details?: unknown,
   path?: string,
 ): ApiErrorResponse {
   return {

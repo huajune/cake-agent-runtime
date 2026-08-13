@@ -24,7 +24,7 @@ export class ContactService {
     try {
       const apiUrl = this.apiConfig.endpoints.contact.list();
 
-      const params: any = { token };
+      const params: Record<string, unknown> = { token };
 
       if (current !== undefined) params.current = current;
       if (pageSize !== undefined) params.pageSize = pageSize;

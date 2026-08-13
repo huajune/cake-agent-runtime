@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.43.0",
   "nextVersion": "10.44.0",
-  "updatedAt": "2026-08-07",
+  "updatedAt": "2026-08-13",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -27,6 +27,76 @@
       "verification": [
         "`prettier --write` 已格式化三份文件",
         "时间、workflow run ID、健康检查结论均取自 [部署 run 31165737816](https://github.com/huajune/cake-agent-runtime/actions/runs/31165737816) 日志与线上 `/agent/health` 实测，未凭记忆填写"
+      ]
+    },
+    {
+      "number": "999",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/999",
+      "title": "清理显式 any 并启用 lint 门禁",
+      "author": "huajune",
+      "mergedAt": "2026-08-13",
+      "businessUpdates": [
+        "修复结构化异常中非字符串 `message` / `code` 直接进入响应字段的类型风险",
+        "修复消息日志脱敏由 `unknown` 返回导致调用方丢失输入形状的问题",
+        "修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力"
+      ],
+      "summary": [
+        "清理显式 any 并启用 lint 门禁",
+        "将 TypeScript 显式 `any` lint 规则从关闭调整为错误，并清理本批 19 处边界类型债务",
+        "为企微消息发送、回调与脱敏、HTTP/飞书 API、统一响应和岗位列表补齐 `unknown`、`Record<string, unknown>` 及领域类型",
+        "修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力"
+      ],
+      "features": [],
+      "fixes": [
+        "修复结构化异常中非字符串 `message` / `code` 直接进入响应字段的类型风险",
+        "修复消息日志脱敏由 `unknown` 返回导致调用方丢失输入形状的问题",
+        "修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力"
+      ],
+      "optimizations": [
+        "`@typescript-eslint/no-explicit-any` 升级为错误级门禁",
+        "岗位列表结果改用 `JobBasicInfo`、`JobDetail`、`StoreInfoView` 与 `JobWithDistance` 显式建模",
+        "将 TypeScript 显式 `any` lint 规则从关闭调整为错误，并清理本批 19 处边界类型债务",
+        "为企微消息发送、回调与脱敏、HTTP/飞书 API、统一响应和岗位列表补齐 `unknown`、`Record<string, unknown>` 及领域类型"
+      ],
+      "ops": [
+        "清理显式 any 并启用 lint 门禁"
+      ],
+      "config": [
+        "仅 ESLint 静态检查规则变更；无运行时环境变量、数据库或功能开关变更"
+      ],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`",
+        "消息发送服务 25 个定向测试通过",
+        "HTTP 异常过滤器与消息日志脱敏 23 个定向测试通过",
+        "其他说明：全量 417 个测试套件、7057 个测试通过；1 套件/6 个测试按既有配置跳过"
+      ]
+    },
+    {
+      "number": "1001",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1001",
+      "title": "禁止主动询问候选人户籍信息",
+      "author": "huajune",
+      "mergedAt": "2026-08-13",
+      "businessUpdates": [
+        "禁止主动询问候选人户籍信息"
+      ],
+      "summary": [
+        "禁止主动询问候选人户籍信息"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "禁止主动询问候选人户籍信息"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "ESLint、Prettier、TypeScript typecheck",
+        "地理数据与词表一致性校验",
+        "Web 与后端生产构建",
+        "Jest：417 个测试套件通过，7055 个测试通过"
       ]
     }
   ],

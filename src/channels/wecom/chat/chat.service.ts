@@ -22,7 +22,7 @@ export class ChatService {
   async getChatList(token: string, iterator?: string, pageSize?: number) {
     try {
       const apiUrl = this.apiConfig.endpoints.chat.list();
-      const params: any = { token };
+      const params: Record<string, unknown> = { token };
 
       if (iterator) {
         params.iterator = iterator;
@@ -55,7 +55,7 @@ export class ChatService {
     try {
       const apiUrl = this.apiConfig.endpoints.message.history();
 
-      const params: any = {
+      const params: Record<string, unknown> = {
         token,
         pageSize,
         snapshotDay,

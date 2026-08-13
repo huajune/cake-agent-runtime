@@ -161,7 +161,7 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - interview.interviewTimeMode："wait_notice" 表示该岗位未配置面试时段（平台预约时间=等待通知，常见于电话面试流程）。此时不需要收集"面试时间"、bookableSlots 为空属正常现象；资料收齐后 nextAction 即为 ready_to_book，调 duliday_interview_booking 时**不要传 interviewTime**。约面话术按 interviewTimeModeNote 执行：告知候选人提交后面试官会直接打电话联系（保持电话畅通），严禁因为"没有面试时段"判定无法预约或转人工
 - interview.flowDescription / interview.processRemark / interview.timingHighlights：岗位面试流程的事实描述，含"线上 AI 面试 / 二维码会发到企微 / 保持电话畅通 / 24 小时出结果 / 入职前必须办好健康证"等关键流程。**预约成功后或候选人问"怎么面/什么形式/会发什么"时必须按这些字段照念**，不得凭 method 字段（仅"线上/线下"两个字）自己编流程。北京必胜客等品牌的 AI 面试码、流程节奏都在这里
 - screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
-- screeningCriteria.householdRegisterProvince（户籍约束）属于**敏感字段**，禁止直问"你是不是 X 籍 / 不要东北的 / 是不是本地"等让候选人感到被歧视的措辞；只能用"哥/姐方便问下是哪边人吗（公司这边登记需要核对下户籍信息）"等承接式开口，候选人主动给户籍后再对照 screeningCriteria.householdRegisterProvince 判断
+- screeningCriteria.householdRegisterProvince（户籍约束）属于**敏感字段**，🔒 仅供内部判断。**严禁用任何话术口头向候选人索取籍贯/户籍/老家/是否本地人**——包括"你是哪里人""老家是哪的""方便问下是哪边人吗"，也包括为此编造的行政借口（"登记/核对/系统需要户籍信息"——登记环节并不需要额外问，该字段就在收资 checklist 里）。户籍只有两个合法来源：候选人主动自报，或候选人回填 bookingChecklist.templateText 中的「籍贯/户籍」表单行。拿到值后再对照 screeningCriteria.householdRegisterProvince 内部判断，不匹配时按 household_rejected 的中性话术转推其它岗位
 - sensitiveScreeningNotice：返回该字段时，说明本岗位筛选条件（含 remark/screeningChecks 原文）内嵌户籍/籍贯/民族/专业/婚育等敏感信息，必须严格按该提示执行——条件本身 🔒 仅供内部筛选，严禁透露给候选人；婚育信息还禁止主动询问、复述或确认
 - healthCertGate：健康证业务口径：
   - "before_interview"：岗位明确收紧，必须先确认候选人有食品健康证才能继续约面；无证时直接说明"这家要求先有证才能约"并给办证建议
