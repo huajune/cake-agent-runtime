@@ -52,20 +52,20 @@
 | # | 项 | 锚点 | 状态 |
 |---|---|---|---|
 | D1 | `needs_confirmation` 消费端：转确认字段自动进收资清单，渲染一句复述（"体重75公斤对吧？"）；肯定→confirmation 级覆盖一切；否定/改值→`operation=correct` | precheck `confirmationSuffixByField` + `prefilledConfirmationFields`（与性别表内确认同一条协议） | ☑（enforce 档，见偏离说明④） |
-| D2 | 确认的识别由模型完成（引确认对答原话提交 claim），肯定词表正则不再参与 | 工具描述写明 `operation=confirm` + `agentQuestionQuote` 用法；`就是X` 正则 enforce 下停用 | ◐（作证通道已通；三个确认 producer 与肯定词表随 D5 在 P2 删） |
+| D2 | 确认的识别由模型完成（引确认对答原话提交 claim），肯定词表正则不再参与 | 工具描述写明 `operation=confirm` + `agentQuestionQuote` 用法；`就是X` 正则 enforce 下停用 | ◐（作证通道已通；三个确认 producer 与四份肯定词表随 D5 在 P2 删） |
 | D3 | 报名级字段（name/phone/age）booking 前强制 confirmation 级（P7 本义；"指代错误"残余风险的兜底网） | `snapshot.confirmedFields` + `BOOKING_CRITICAL_FIELDS` + booking 闸门 | ☑（enforce 档；姓名/电话已有出处闸门，实际新增的是年龄那道） |
 | D4 | 身份翻转闸路由保留（改口后显式再确认，与终审原则同构，7-28 裁定勿收紧豁免） | — | ☑（未动） |
-| D5 | 【P2 阶段】三个确认 producer（name/gender/city-confirmation）+ 三份分叉肯定词表（含 `dialogue.ts` `AFFIRMATIVE_ANSWER_RE`）退役删除 | `src/resolution/evidence/producers/` + `src/resolution/signal/dialogue.ts` | ☐ |
+| D5 | 【P2 阶段】三个确认 producer（name/gender/city-confirmation）+ 四份分叉肯定词表（含 `gender-confirmation.ts` 的 `INLINE_CONFIRM_AFFIRMATION_RE` 与 `dialogue.ts` 的 `AFFIRMATIVE_ANSWER_RE`）退役删除 | `src/resolution/evidence/producers/` + `src/resolution/signal/dialogue.ts` | ☐ |
 
 ### 工序 E：消费面收编——取缔第二法庭
 
 | # | 项 | 锚点 | 状态 |
 |---|---|---|---|
 | E1 | precheck 判缺改读账本：`missing = 必填 − {accepted, confirmed}`，删自跑解析器路径。I1（门不严于执行者）从测试性质变构造性质 | precheck 裁决段（账本既是过滤器也是**取值来源**，见偏离说明⑤） | ☑（enforce 档） |
-| E2 | booking 姓名闸门按已批路线换 quote 作证：负向出处（打招呼语形态）保留、`就是X` 类确认识别正则删除、同题限问熔断保留 | `identity-gates.ts`（`attestedByClaim` / `allowLegacyConfirmRegex`）+ booking 提前载入快照 | ☑（见偏离说明⑥） |
+| E2 | booking 姓名闸门按已批路线换 quote 作证：负向出处（打招呼语形态）保留、`就是X` 类确认识别正则删除、同题限问熔断保留 | `identity-gates.ts`（`attestedByClaim` / `allowLegacyConfirmRegex`）+ booking 提前载入快照 | ☑（见偏离说明⑥；2026-08-13 二轮评审已将 `attestedByClaim` 收紧为确认级且 enforce-only） |
 | E3 | 【P2 阶段】双源对账机器拆除：`mergeRuleAndLlmFacts`、legacy superseded 双读 | `src/memory/services/session.service.ts` | ☐ |
 
-### 落地偏离说明（六条，均为执行中发现、按宪法就地裁定）
+### 落地偏离说明（七条，均为执行中发现、按宪法就地裁定）
 
 ① **A5 收拢点换了地方。** 清单原写"值形状函数原地保留、无代码变化"。九个解析文件确实一行没动，但公证第二问需要一个统一入口，因此把 `isPlausibleAgeValue` / `isPlaceholderPhone` / `isDigitsOnlyName` / `hasHonorificSuffix` 接进了 `evidence/normalize.ts` 的 `isValidCandidateFieldShape`（原先它自己内联了一份年龄区间与姓名标点判据，属重复实现）。新增判据全是封闭形态，符合 P11 身份 2；顺带消掉了"占位号形态合规"这个既有缺口。
 
@@ -77,7 +77,9 @@
 
 ⑤ **E1 的账本既是过滤器也是取值来源。** 只做"剔除账本里没有的值"会让带引文的 claim 根本进不了清单——模型得同时提交 claim 和裸字段，与 B1/B2 要退役裸字段直接矛盾。改为：accepted / needs_confirmation 的账本值经 `normalizeClaimValueForChecklist` 写进 `knownFieldMap`，其余删除。
 
-⑥ **`就是X` 正则按开关停用，不是直接删。** 清单写"删除"。但 shadow 期模型尚未稳定提交 confirm claim，此刻删掉，"就是陈佩珊"这类明确确认将无人接管，直接复活 badcase g4ytra23（booking 连拒 5 次、重复索名 4 遍）。做法：`evaluateBookingNameGate` 新增 `attestedByClaim`（公证过的引文直接放行）与 `allowLegacyConfirmRegex`（enforce 下传 false）。物理删除随 D5 在 P2 与三个确认 producer、三份分叉肯定词表一起做——它们本就是同一批要退役的东西。
+⑥ **`就是X` 正则按开关停用，不是直接删。** 清单写"删除"。但 shadow 期模型尚未稳定提交 confirm claim，此刻删掉，"就是陈佩珊"这类明确确认将无人接管，直接复活 badcase g4ytra23（booking 连拒 5 次、重复索名 4 遍）。做法：`evaluateBookingNameGate` 新增 `attestedByClaim` 与 `allowLegacyConfirmRegex`（enforce 下传 false）。2026-08-13 二轮评审进一步收紧：`attestedByClaim` 只认 `operation=confirm` / `context_confirmation` 的确认级 accepted claim，且调用方仅在 enforce 传入；statement claim、session 基线与 shadow 均不借此短路负向证据。物理删除随 D5 在 P2 与三个确认 producer、四份分叉肯定词表一起做——它们本就是同一批要退役的东西。
+
+⑦ **shadow 下 accepted claim 补位回灌。** B1/B2 已把裸字段降级为 deprecated，模型可只提交 claim；若 shadow 不认公证结果，claims-only 输入仍会被判缺并重复追问。现将带 `acceptedClaimId` 的 accepted claim 值补入 `knownFieldMap` 空位，且只补不覆盖、不删除；无 claimId 的 session 基线不走此路。enforce 下随后的 E1 账本重写仍是唯一权威取值源。这是 P0「零行为变化」的已声明例外，接住已发布的工具契约而不扩张 statement claim 的权限。
 
 ### 已落地代码清单（PR #1000）
 
@@ -108,7 +110,7 @@
 
 | 阶段 | 内容 | 切换判据 | 状态 |
 |---|---|---|---|
-| **P0 影子双跑**（零行为变化） | 三问裁决全量计算、判例落 `fact_adjudication`；A3/A4 hints 推广（D 类零风险可直上）；C4 回声只计数（`echoDetections`）；C6 coverage delta 开始记 | 新旧 diff 可解释、无未知形态 | ☑ 代码就绪（开关默认 shadow） |
+| **P0 影子双跑**（零行为变化，声明例外） | 三问裁决全量计算、判例落 `fact_adjudication`；C4 回声只计数（`echoDetections`）；C6 coverage delta 开始记。声明例外：A3/A4 hints 直上、偏离④ `needsConfirmationFields` 回传、P0-8 手机号门收紧、偏离⑦ claim 回灌补位 | 新旧 diff 可解释、无未知形态 | ☑ 代码就绪（开关默认 shadow） |
 | **P1 权力切换**（开关分级放量） | C1/C2/C3/C5 + B1/B2 + D1/D3 + E1/E2，全部挂在既有 `CANDIDATE_FACT_ADJUDICATION_MODE=enforce` 上 | §3 四个结构量达标 + 下方「切换前必验」两条 | ☐ 待判据 |
 | **P2 拆机** | D5 + E3 + rule-track 影子退休 | coverage delta ≤ 噪音水平持续两周 | ☐ 待数据 |
 

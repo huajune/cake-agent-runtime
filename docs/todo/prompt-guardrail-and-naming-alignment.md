@@ -95,7 +95,7 @@ A3 / C1 / C2 / D1 / D2：穿插做，互不依赖（全是小件）
 | # | 状态 | 项 | 内容 | 升深触发器 / 本次执行证据 |
 |---|---|---|---|---|
 | BL1 | ☑ 已执行 | CI 形状扫描的门店形空洞 | A6 新增静态门店字段示例检测：只在 `applied_store` / “应聘门店”示例与显式“门店名(称)：”结构中识别 `X店 / X广场 / X中心`，继续以 canary registry 作白名单；真实地标教学不误伤。 | 原触发器：下一次普查复查发现 CI 漏掉的红区值。执行证据：生产形态 fixture 回放旧 R3「人民广场店」时，旧 CI 漏检而新检测器报红；换回注册值「测试门店」转绿。 |
-| BL2 | ☑ 已执行 | **语料分域（示教原则 4）的结构化执法**——本层唯一值得变厚的方向 | `ContextService` 在降维成字符串前把叶子 block 标为 `teaching / evidence / tool_result`；消息归一化另保留同一封闭域旁路。内部 rewrite 指令即使为 SDK 注意力以 `user` transport 发送，语义域仍是 `teaching/system`。precheck 出处公证、回声审计及 booking 水位改为优先消费标签；旧离线调用只按封闭 role 映射补标签。 | 原触发器：教学文本穿过公证事故，或第三个手工排除消费点。此次由用户显式提前升深；代码审计同时发现 latent path：rewrite 教学指令会追加成 `user` transport，旧选择器只按 role 即具备穿入候选人证据池的通路。未虚构生产事故编号。 |
+| BL2 | ☑ 已执行 | **语料分域（示教原则 4）的结构化执法**——本层唯一值得变厚的方向 | `ContextService` 在降维成字符串前把叶子 block 标为 `teaching / evidence / tool_result`；消息归一化另保留同一封闭域旁路。内部 rewrite 指令即使为 SDK 注意力以 `user` transport 发送，语义域仍是 `teaching/system`。precheck 出处公证、回声审计及 booking 水位改为优先消费标签；旧离线调用只按封闭 role 映射补标签。2026-08-13 二轮评审补切：identity 闸门（name/phone 出处与问答识别）与补充标签「字段：值」回填两处候选人语料消费点同样切至 corpus 证据域视图——原实现只切了公证、回声、booking 水位三处。 | 原触发器：教学文本穿过公证事故，或第三个手工排除消费点。此次由用户显式提前升深；代码审计同时发现 latent path：rewrite 教学指令会追加成 `user` transport，旧选择器只按 role 即具备穿入候选人证据池的通路。未虚构生产事故编号。 |
 
 ## 附录一：B2 教义化石盘点与处置
 

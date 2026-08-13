@@ -68,6 +68,21 @@
 | P3 死导出「仅测试引用」类保留 | ◐ 契约锁定、删除收益低 | 理由仍成立 | ◐ 维持 |
 | P2 拆机（refactor 清单 D5 确认 producer 族删除 / E3 双源对账拆除 / C6 规则轨停产 claim） | 门槛：coverage delta 收敛 | **仍守门——这不是保守**：shadow 期规则轨是事实供给主力兼对照组基准，确认 producer 是模型稳定提交 confirm claim 前的活逃生舱（偏离说明⑥）；此刻物理删除会复活 g4ytra23 死锁并废掉 coverage delta 仪表。门是"作证通道成为主通道"这个生产事实，不是时间 | ⛔ 维持行为闸 |
 
+## 2026-08-13 全量评审第二轮
+
+| 项 | 发现 | 修复状态 |
+|---|---|---|
+| P0-A | booking 的 `attestedByClaim` 把 statement claim、session 基线与 shadow 都当作确认级作证，可短路姓名负向证据 | ✅ 已修：只认带 `acceptedClaimId` 的确认级 claim，且仅 enforce 传入 |
+| P0-B | identity 闸门与补充标签回填仍消费 transport messages，teaching 域 rewrite 文本可混入候选人证据 | ✅ 已修：统一优先消费 corpus evidence 视图，旧调用方保留封闭 role 回退 |
+| P1-1 | shadow 下 claims-only 提交未回灌收资清单，已公证字段仍会被判缺 | ✅ 已修：accepted claim 只补 `knownFieldMap` 空位，不覆盖、不删除，session 基线排除 |
+| P1-3 | gender 表内确认是实际裁决点但未登记，且 shadow 无落库观测 | ✅ 已修：注册表增至 17 站点；`fact_adjudication` 按相关轮次持久化 `genderInlineConfirmation` |
+| P2-1 | section 域运行时虽 fail-fast，CI 未显式覆盖全部生产叶子与全场景 compose | ✅ 已修：补生产叶子全登记与全场景 compose spec；删注册表一行的负向试验如期报红 |
+| P2-2 | E1 模式注释未说明当前轮规则轨值会被账本剔除及其迁移兜底 | ✅ 已修：注释校准为 enforce 账本唯一取值源，并列明 session 保留与切换闸口 |
+| P2-3 | A6 仅枚举已知工具，无文件系统棘轮；新增 tool 文件可能绕过 prompt 形状扫描 | ✅ 已修：15 个生产 tool 文件全部纳入登记，豁免表为空；未登记临时文件负向试验如期报红 |
+| P2-4 | TurnLedger 的零写入快照字段缺少类型层只读边界 | ✅ 已修：仅对审计确认无内部写点的快照字段补 `readonly`，可变执行状态保持可写 |
+| 裁定不修 | finalPrompt 组装存在空白字节差 | ⚪ 语义无差，不制造无收益 churn |
+| 裁定不修 | echo 基底 fallback 包含 tool role | ⚪ 现实对话窗口无 tool role，行为增量为零 |
+
 ## 工作约定（必读）
 
 - ~~⚠️ 工作树里 `src/resolution/brand/*`、`src/resolution/geo/{administrative-division.data,geo.types,index}.ts`、`src/memory/services/brand-state.service.ts`、`src/tools/duliday/job-list/brand-query.util.ts` 有**另一并发会话的未提交改动，不要动、不要 stash、不要一起提交**。~~（2026-08-13 复核：工作树已干净，该占用解除。）commit 一律 pathspec 限定自己的文件。
