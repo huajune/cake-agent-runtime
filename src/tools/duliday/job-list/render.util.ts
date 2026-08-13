@@ -17,6 +17,7 @@
  */
 
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@resolution/labor-form';
+import { asRecord } from '@infra/utils/object.util';
 import type { JobDetail } from '@sponge/sponge.types';
 import { classifyArrangementType, composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import {
@@ -209,12 +210,6 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
 }
 
 type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
 
 function asRecordArray(value: unknown): UnknownRecord[] {
   return Array.isArray(value)

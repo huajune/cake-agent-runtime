@@ -105,11 +105,5 @@ export interface FactRule {
   action: GuardrailRuleAction;
 }
 
-/**
- * 安全地把 unknown 工具结果转成普通对象。
- * 工具返回历史格式较杂，规则里统一用它读取字段，避免 null/数组/primitive 误访问。
- */
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
+/** 兼容既有守卫规则引用；实现统一收拢到 infra 工具。 */
+export { asRecord } from '@infra/utils/object.util';

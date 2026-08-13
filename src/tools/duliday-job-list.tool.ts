@@ -22,6 +22,7 @@ import { isValidLaborForm, stripLaborFormFromCategories } from '@resolution/labo
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import { isRecord } from '@infra/utils/object.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import {
   buildNoMatchScript,
@@ -365,10 +366,6 @@ function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
         : null,
     };
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function readFactValue(value: unknown): unknown {

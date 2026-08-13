@@ -1,4 +1,5 @@
 import { formatLocalDate } from '@infra/utils/date.util';
+import { asRecord } from '@infra/utils/object.util';
 import { JobDetail } from '@sponge/sponge.types';
 import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 
@@ -92,11 +93,6 @@ function hasValue(value: unknown): boolean {
   if (typeof value === 'string') return value.trim().length > 0;
   if (Array.isArray(value)) return value.length > 0;
   return true;
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as UnknownRecord;
 }
 
 function asString(value: unknown): string | null {

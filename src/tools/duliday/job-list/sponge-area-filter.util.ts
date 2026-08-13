@@ -10,6 +10,7 @@
  */
 
 import { resolveParentAdministrativeArea } from '@resolution/geo';
+import { isRecord } from '@infra/utils/object.util';
 
 export interface SpongeCityFilterNormalization {
   cityNameList: string[];
@@ -49,10 +50,6 @@ export function normalizeSpongeCityFilters(cityNames: string[]): SpongeCityFilte
     derivedRegionNameList: [...new Set(derivedRegionNameList)],
     mappings,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 /**

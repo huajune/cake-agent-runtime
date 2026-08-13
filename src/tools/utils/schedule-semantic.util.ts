@@ -7,6 +7,8 @@
  * （把"每天"说成"周末能排"），所以在工具层把语义分类做出来。
  */
 
+import { asRecord, isRecord } from '@infra/utils/object.util';
+
 /**
  * 岗位排班语义类型：
  * - requires_full_week：全周强制（每天 / 周一至周日 / 做六休一 / 早开晚结 / 05:00-23:00）
@@ -76,8 +78,6 @@ const MORNING_PATTERNS = [
 ];
 
 const FLEXIBLE_PATTERNS = [/自定义工时/, /可选时段/, /灵活排班/, /短班/, /午高峰/];
-
-type UnknownRecord = Record<string, unknown>;
 
 /**
  * 根据 workTime 段落 + interview/requirement 备注文本，分类岗位排班语义。
@@ -157,14 +157,6 @@ function deriveStructuredScheduleSemantics(
     return ['low_weekly_frequency'];
   }
   return [];
-}
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return isRecord(value) ? value : null;
 }
 
 function numberOf(value: unknown): number | null {

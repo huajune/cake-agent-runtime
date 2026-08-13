@@ -1,16 +1,10 @@
+import { asRecord } from '@infra/utils/object.util';
 import { JobDetail } from './sponge.types';
 
 export interface SpongeInterviewSupplementDefinition {
   labelId: number;
   labelName: string;
   name: string;
-}
-
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as UnknownRecord;
 }
 
 function asArray(value: unknown): unknown[] {

@@ -2,6 +2,17 @@
  * 对象工具函数
  */
 
+/** 值是普通对象（非 null、非数组）时按 Record 读取，否则 null。 */
+export function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+/** asRecord 的类型守卫形态。 */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return asRecord(value) !== null;
+}
+
 /**
  * 递归清理对象中的空值字段：
  * - null / undefined 直接剔除

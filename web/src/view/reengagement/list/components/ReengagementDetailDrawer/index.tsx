@@ -11,6 +11,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { formatDateTime, formatJson } from '@/utils/format';
+import { asRecord } from '@/utils/object';
 import {
   useReengagementRecordDetail,
   useReengagementRecords,
@@ -123,12 +124,6 @@ const OUTCOME_LABELS: Record<string, string> = {
 };
 
 type AnyRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): AnyRecord | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as AnyRecord)
-    : undefined;
-}
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
