@@ -48,6 +48,8 @@
 |---|---|---|---|
 | D1 | settlement 渲染格式钉合 | `#### 薪资方案` 标题格式被 render 侧与 `settlement-cycle-mismatch.rule` 解析侧各写一份——加 fixture spec 把两侧钉在一起（渲染真实岗位数据 → 断言规则解析器能读出 ground truth），或抽共享格式常量 | ☐ |
 | D2 | P7 补两条注记（哲学文档） | ①exemplar 段：raise_risk_alert 记为"LLM 判语义 + 受控词表 + 确定性副作用"的库内范本（⚑ raise_risk_alert 模式，见 glossary C 层）；②应验注记："name gate 拒收→确认流演进已于 2026-08-12 随 P11 执行" | `docs/principles/rules-vs-semantics-design-philosophy.md` | ☐ |
+| D3 | **jobId 出处闸门补"在途工单"来源**（2026-08-13 生产案 chat `6a589977`：候选人问自己已约岗位的发薪细节，jobId 439472 在当前预约信息里却因"本会话未召回"被拦，模型被迫盲转人工） | 三处同口径闸门（job-list:697 / precheck:965 / booking:445 共用 `context.archive.isRecalledJobId`）的出处源补上**当前预约信息/在途工单的 jobId**——工单是比会话召回更强的结构化出处（E1"门读账本"原则）；幻觉 jobId 不可能出现在真实工单里，防幻觉能力零损失。修在 archive 出处源一处，三门同愈 | ☐ |
+| D4 | **回归案登记**（不新增工序，指定验收用例） | 生产案 chat `6a7d3243`（彭培恒·健康证确认死锁，确认死锁家族第 4 变体/补充标签亚种）：候选人键值配对整表 + 两次"对"确认，precheck 仍判"有无本地健康证"缺失 → 转人工。核心字段侧=refactor D1/D2 验收用例；补充标签侧=收资立项 §3.4 表单确认 producer 验收用例。**两项目发版前必须用本案回放全绿** | ☐ |
 
 ## 执行分批（回答"是否一口气"：可以一口气，但按两批走最稳）
 
