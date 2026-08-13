@@ -77,6 +77,15 @@ M1 有个重要变体：**上下文里的数据形值被错误归属**——岗�
 
 ## 5. 防线全景（档案侧已闭环，出站侧缺一件）
 
+**架构定位——guardrail 的第四层**：本库守卫架构独立演化出 input / tool / output 三层；
+[Datadog 的业界框架](https://www.datadoghq.com/blog/llm-guardrails-best-practices/)分
+Input / **Prompt Construction** / Output 三层。两相对照：他们没有我们的 tool 层
+（副作用闸门，P1"守行为"——我们最强的一层），我们没有他们的 **Prompt Construction 层**
+（"implemented within prompt templates, adding supplemental logic and formatting to
+system prompts"）——即**对喂给模型的内容本身设闸**。本文全部内容就是这缺失第四层的宪章：
+示教四原则是它的设计原则，示例面普查是它的首次审计，示例词表注册制/turn-hints 禁外泄
+纪律行/CI 示例形状扫描是它的首批构件。完整架构 = **input / prompt / tool / output 四层**。
+
 | 方向 | 防线 | 状态 |
 |---|---|---|
 | 档案侧（示例值想进事实账本） | P11 引文公证：示例值不在候选人语料里，`quote_not_found` 直接拒 | ✅ 已上线（shadow 实证：真编造全被抓获） |
