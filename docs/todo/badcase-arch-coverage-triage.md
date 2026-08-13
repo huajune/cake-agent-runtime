@@ -23,6 +23,19 @@
 | 2obj9l7w | "不要传岗位职能为后厨" | jobCategoryList 已改"只排序不过滤"（describe :206 现状） | 需核对案发时间是否在该改动前（是则直接可关） |
 | ali3daia | "公司提供保险易被误解为社保" | WelfareFacts 契约：insurance 敏感档明文排除在可主动引用福利外 | **需验证击穿点**：查该案是主动提还是问答；主动提=渲染层违反既有契约，归 γ-下钻 |
 
+## A+ 附：rule 档 block 静默普查（2026-08-13，人工介入底账 14 天）
+
+19 次 rule 档 block（全部触发人工介入告警）中假阳 ≈50%，且 12/19 来自**分支 8-11 第三批下线、
+生产仍在跑**的两条规则（ca0ce158 删除 `handoff_promise_without_handoff` 与
+`screening_rejection_override`）——**发版即愈，预计 rule 档 block 量降约六成**：
+- handoff_promise 7 次：6 假阳（AI 面试"链接会短信发你"真实机制 ×2；"有消息通知你"
+  通知承诺族 ×4，有 notify-promise-is-ok 裁定背书）+1 真阳（退役后由 dangling_reply_promise
+  observe + 工具描述纪律接管）；
+- screening_rejection_override 5 次：~3 假阳（方向盲："看错了+报不了"朝拒绝方向的诚实纠错
+  被当翻案；否定盲："没办法帮你约"命中 `帮你约` 正则——settlement 07-21 同款教训）；
+- internal_output_leak 4 次为真阳（模型降级吐工具语法，根因另案）。
+**发版验收回归案**：chat `6a7d5ff3`（本案）+ `6a740329`（08-06 同款）——AI 面试机制描述不得被拦。
+
 ## B 类：现有架构上小改即可（11 条）——工程 β 执行
 
 | ID | 诉求 | 小改 spec | 备注 |
