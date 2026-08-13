@@ -880,6 +880,7 @@ function emitFactAdjudicationEvent(
   result: AdjudicationRunResult,
   precheckId: string | undefined,
   coverageDelta: CandidateClaimField[],
+  genderInlineConfirmation?: 'pending' | 'confirmed_inline',
 ): void {
   deps.observer?.emit({
     type: 'fact_adjudication',
@@ -891,6 +892,7 @@ function emitFactAdjudicationEvent(
     // 工序 C6 覆盖率仪表 + C4 回声误报抽查基数（判据④）。
     coverageDelta: coverageDelta.length > 0 ? coverageDelta : undefined,
     echoDetections: result.echoDetections > 0 ? result.echoDetections : undefined,
+    ...(genderInlineConfirmation ? { genderInlineConfirmation } : {}),
     decisions: result.adjudicated.map((entry) => ({
       field: entry.claim.field,
       producer: entry.claim.producer,
@@ -1784,6 +1786,11 @@ export function buildInterviewPrecheckTool(
               adjudicationResult,
               precheckId,
               computeCoverageDelta(adjudicationResult, collectedFields),
+              genderNeedsInlineConfirmation
+                ? 'pending'
+                : genderConfirmedInline
+                  ? 'confirmed_inline'
+                  : undefined,
             );
             if (precheckId && adjudicationDeps.snapshots) {
               const snapshot: PrecheckSnapshot = {

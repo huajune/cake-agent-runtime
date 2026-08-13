@@ -21,6 +21,7 @@ describe('VERDICT_SITE_REGISTRY', () => {
     'precheck_job_id_provenance',
     'booking_job_id_provenance',
     'precheck_required_field_difference',
+    'precheck_gender_inline_confirmation',
     'candidate_rule_fact_prompt_hint',
     'candidate_profile_prefill_hint',
   ] as const;

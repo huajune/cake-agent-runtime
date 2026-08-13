@@ -130,6 +130,13 @@ export const VERDICT_SITE_REGISTRY = [
     rationale: '判缺是必填字段集合减去 accepted / needs_confirmation 账本字段的集合运算。',
   },
   {
+    id: 'precheck_gender_inline_confirmation',
+    authority: 'closed_form',
+    effect: 'supersede',
+    source: 'src/resolution/evidence/producers/gender-confirmation.ts#isGenderConfirmedInline',
+    rationale: 'PR #1000 P0-4 表内确认死锁修复；D5 退役批成员，模型 confirm claim 稳定后随批拆除。',
+  },
+  {
     id: 'candidate_rule_fact_prompt_hint',
     authority: 'hint',
     effect: 'advisory',

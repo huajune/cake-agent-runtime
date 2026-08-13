@@ -244,6 +244,73 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
     });
   });
 
+  describe('二轮工程四：gender 表内确认裁决观测', () => {
+    it('等待候选人确认时 fact_adjudication 落 pending', async () => {
+      await run(
+        { jobId: 100 },
+        {
+          context: {
+            candidatePrefillHints: { gender: { value: '女', reason: 'medium_confidence' } },
+            messages: [
+              { role: 'assistant', content: `我先整理资料。\n${TIME_SUFFIX}` },
+              { role: 'user', content: `[图片消息]\n${TIME_SUFFIX}` },
+              {
+                role: 'user',
+                content: `[引用 招聘顾问：我先整理资料]\n想报名\n${TIME_SUFFIX}`,
+              },
+            ],
+          },
+        },
+      );
+
+      expect(factAdjudicationEvent()?.genderInlineConfirmation).toBe('pending');
+    });
+
+    it('紧随表内确认的肯定应答落 confirmed_inline', async () => {
+      await run(
+        { jobId: 100 },
+        {
+          context: {
+            candidatePrefillHints: { gender: { value: '女', reason: 'medium_confidence' } },
+            messages: [
+              { role: 'user', content: `[图片消息]\n${TIME_SUFFIX}` },
+              {
+                role: 'assistant',
+                content: `姓名：王玥\n性别：女（如有误请改）\n${TIME_SUFFIX}`,
+              },
+              {
+                role: 'user',
+                content: `[引用 招聘顾问：性别：女（如有误请改）]\n都对的\n${TIME_SUFFIX}`,
+              },
+            ],
+          },
+        },
+      );
+
+      expect(factAdjudicationEvent()?.genderInlineConfirmation).toBe('confirmed_inline');
+    });
+
+    it('无关轮次不携带 genderInlineConfirmation 键', async () => {
+      await run(
+        { jobId: 100 },
+        {
+          context: {
+            messages: [
+              { role: 'assistant', content: `想了解哪家门店？\n${TIME_SUFFIX}` },
+              { role: 'user', content: `[图片消息]\n${TIME_SUFFIX}` },
+              {
+                role: 'user',
+                content: `[引用 招聘顾问：想了解哪家门店]\n五角场店\n${TIME_SUFFIX}`,
+              },
+            ],
+          },
+        },
+      );
+
+      expect(factAdjudicationEvent()).not.toHaveProperty('genderInlineConfirmation');
+    });
+  });
+
   describe('二轮工程二：补充标签回填 corpus 证据域隔离', () => {
     const teachingContent =
       '请按以下草稿重写：\n姓名：张三\n联系电话：13900000002\n出生日期：2000-01-01\n' +

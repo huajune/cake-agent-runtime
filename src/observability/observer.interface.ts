@@ -219,6 +219,8 @@ export type AgentEvent = AgentEventContext &
         coverageDelta?: CandidateClaimField[];
         /** 回声检查（工序 C4）本次命中数；shadow 期用于算误报率（enforce 判据④）。 */
         echoDetections?: number;
+        /** 性别表内确认过渡识别器的裁决状态；用于 D5 退役观测。 */
+        genderInlineConfirmation?: 'pending' | 'confirmed_inline';
       }
   );
 
