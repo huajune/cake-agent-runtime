@@ -1,3 +1,4 @@
+// 同源：src/biz/strategy/types/strategy.types.ts 与 src/biz/strategy/entities/strategy-config.entity.ts —— 改动必须同步。
 export interface PersonaTextDimension {
   key: string;
   label: string;
