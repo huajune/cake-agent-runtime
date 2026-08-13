@@ -654,10 +654,11 @@ function removeProfileOnlyCandidateFields(
  * 裁决依赖（可选注入，缺省时裁决静默跳过——test/debug 直建工具的旧调用零改动）。
  *
  * mode 语义（方案 §10 双读灰度）：
- * - shadow（默认）：全量裁决 + 落观测 + 响应携带裁决视图，但 knownFieldMap 行为
- *   不变（2026-07-17 的显式入参兼容口径原样保留）；
- * - enforce：裁决为 rejected 的**模型无据裸值**从 knownFieldMap 剔除（回到
- *   missingFields 走补问），规则/会话/亲证值不受影响。差异率稳定前禁止切 enforce。
+ * - shadow（默认）：全量裁决 + 落观测 + 响应携带裁决视图；偏离⑦声明例外为 accepted
+ *   claim 只补 knownFieldMap 空位，除此之外保留 2026-07-17 显式入参兼容口径；
+ * - enforce：判缺与取值只读裁决账本；上一轮 session 值经 sessionAccepted 以 accepted
+ *   身份保留，当前轮规则轨值不在账本即剔除。由 A4 hints、C6 coverage delta 与
+ *   「切换前必验 2」兜底，差异率稳定前禁止切 enforce。
  */
 export interface PrecheckAdjudicationDeps {
   mode: 'shadow' | 'enforce';

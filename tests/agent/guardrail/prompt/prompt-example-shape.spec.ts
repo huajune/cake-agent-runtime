@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import * as ts from 'typescript';
 import { REGISTERED_PROMPT_EXAMPLE_VALUES } from '@agent/guardrail/prompt/example-registry';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
@@ -80,6 +80,21 @@ const TOOL_DESCRIPTION_BUILDERS: readonly PromptSurface[] = [
   { id: 'send-store-location', source: 'src/tools/send-store-location.tool.ts' },
   { id: 'skip-reply', source: 'src/tools/skip-reply.tool.ts' },
 ];
+
+/**
+ * 工具面扫描豁免表。初始为空；未来新增豁免必须在值中写明该 *.tool.ts 不含任何
+ * 模型可见 description/schema 文本的具体理由，禁止无理由绕过文件系统棘轮。
+ */
+const TOOL_DESCRIPTION_FILE_EXEMPTIONS: Readonly<Record<string, string>> = {};
+
+function listToolSourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const absolutePath = resolve(directory, entry.name);
+    if (entry.isDirectory()) return listToolSourceFiles(absolutePath);
+    if (!entry.isFile() || !entry.name.endsWith('.tool.ts')) return [];
+    return [relative(process.cwd(), absolutePath).replaceAll('\\', '/')];
+  });
+}
 
 const EXTRACTION_PROMPTS: readonly PromptSurface[] = [
   { id: 'session-extraction', source: 'src/memory/services/session-extraction.prompt.ts' },
@@ -196,6 +211,15 @@ describe('prompt example shape CI guard', () => {
     expect(TOOL_DESCRIPTION_BUILDERS.length).toBeGreaterThanOrEqual(13);
     expect(EXTRACTION_PROMPTS).toHaveLength(1);
     expect(new Set(ALL_SURFACES.map((surface) => surface.id)).size).toBe(ALL_SURFACES.length);
+  });
+
+  it('keeps every src/tools/**/*.tool.ts file covered by the explicit description surface', () => {
+    const toolFiles = listToolSourceFiles(resolve(process.cwd(), 'src/tools')).sort();
+    const enumerated = new Set(TOOL_DESCRIPTION_BUILDERS.map((surface) => surface.source));
+    const exempted = new Set(Object.keys(TOOL_DESCRIPTION_FILE_EXEMPTIONS));
+
+    expect(toolFiles.filter((file) => !enumerated.has(file) && !exempted.has(file))).toEqual([]);
+    expect([...exempted].filter((file) => !toolFiles.includes(file))).toEqual([]);
   });
 
   it('rejects unregistered person-name, store-name, and phone shapes from every enumerated model-visible surface', () => {

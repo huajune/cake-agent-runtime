@@ -1,6 +1,11 @@
 import { ContextService } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
+import {
+  buildPromptSectionBlocks,
+  type PromptSection,
+} from '@agent/generator/context/sections/section.interface';
+import { SCENARIO_SECTIONS } from '@agent/generator/context/scenarios/scenario.registry';
 
 describe('ContextService', () => {
   const makeConfig = (): StrategyConfigRecord =>
@@ -89,6 +94,49 @@ describe('ContextService', () => {
       mockConfigService as never,
     );
     await service.onModuleInit();
+  });
+
+  it('registers a corpus domain for every production leaf section and composes every scenario', async () => {
+    const productionLeafDomains = {
+      identity: 'teaching',
+      'base-manual': 'teaching',
+      'final-check': 'teaching',
+      'red-lines': 'teaching',
+      thresholds: 'teaching',
+      'stage-strategy': 'teaching',
+      channel: 'teaching',
+      memory: 'evidence',
+      'turn-hints': 'evidence',
+      'hard-constraints': 'evidence',
+      datetime: 'tool_result',
+      'group-inventory': 'tool_result',
+    } as const;
+    const productionShapedText = [
+      '[引用 候选人：上一轮资料]',
+      '[图片消息]',
+      '连续消息一',
+      '连续消息二',
+      '[消息发送时间：2026-08-13 10:24:31]',
+    ].join('\n');
+
+    for (const [name, domain] of Object.entries(productionLeafDomains)) {
+      const section: PromptSection = { name, build: () => productionShapedText };
+      await expect(
+        buildPromptSectionBlocks(section, { scenario: 'candidate-consultation' } as never),
+      ).resolves.toEqual([{ id: name, domain, role: 'system', content: productionShapedText }]);
+    }
+
+    for (const scenario of Object.keys(SCENARIO_SECTIONS)) {
+      const result = await service.compose({
+        scenario,
+        currentStage: 'trust_building',
+        memoryBlock: productionShapedText,
+        strategySource: 'testing',
+      });
+      expect(result.promptBlocks.every((block) => CORPUS_DOMAINS.includes(block.domain))).toBe(
+        true,
+      );
+    }
   });
 
   it('should compose candidate consultation prompt in 5 top-level blocks', async () => {
