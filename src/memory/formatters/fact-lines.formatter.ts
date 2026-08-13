@@ -1,6 +1,7 @@
 import { isValidLaborForm } from '@resolution/labor-form';
 import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
 import { projectRuleFactClaims, resolveRuleFactClaims } from '@resolution/evidence/merge';
+import { formatLocalMinute } from '@infra/utils/date.util';
 import type {
   EntityExtractionResult,
   SessionFacts,
@@ -196,26 +197,11 @@ function formatStaleness(value: unknown): string {
   const recordedMs = Date.parse(extractedAt);
   if (!Number.isFinite(recordedMs)) return '';
 
-  const recordedAt = formatBeijingDateTime(recordedMs);
+  const recordedAt = formatLocalMinute(new Date(recordedMs));
   if (Date.now() - recordedMs < STALE_FACT_THRESHOLD_MS) {
     return `（记录时间：${recordedAt}）`;
   }
   return `（⚠️记录时间：${recordedAt}；其中的相对时间表述以该记录时间为基准，可能已失效，使用前必须与候选人确认）`;
-}
-
-function formatBeijingDateTime(timestampMs: number): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(timestampMs));
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? '';
-  return `${value('year')}-${value('month')}-${value('day')} ${value('hour')}:${value('minute')}`;
 }
 
 function isSessionFactValue(value: unknown): value is SessionFactValue<unknown> {

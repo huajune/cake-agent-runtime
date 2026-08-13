@@ -85,6 +85,19 @@ export function formatLocalDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** YYYY-MM-DD 星期X（Asia/Shanghai）。 */
+export function formatLocalDateWithWeekday(date: Date): string {
+  const parts = getLocalDateTimeParts(date);
+  const y = String(parts.year).padStart(4, '0');
+  const m = String(parts.month).padStart(2, '0');
+  const d = String(parts.day).padStart(2, '0');
+  const weekday = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: LOCAL_TIMEZONE,
+    weekday: 'long',
+  }).format(date);
+  return `${y}-${m}-${d} ${weekday}`;
+}
+
 /**
  * 格式化日期为 YYYY-MM-DD HH:mm（Asia/Shanghai 时区）
  */

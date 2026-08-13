@@ -1,3 +1,4 @@
+import { formatCurrentTime, formatLocalDateWithWeekday } from '@infra/utils/date.util';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
@@ -31,7 +32,7 @@ export function buildDateTimeGroundingLines(
   now: Date = new Date(),
   currentTextOverride?: string,
 ): string[] {
-  const lines: string[] = [`当前时间：${currentTextOverride ?? formatNowText(now)}`];
+  const lines: string[] = [`当前时间：${currentTextOverride ?? formatCurrentTime(now.getTime())}`];
 
   const offsetLabels: Array<[number, string]> = [
     [0, '今天'],
@@ -46,31 +47,6 @@ export function buildDateTimeGroundingLines(
   return lines;
 }
 
-function formatNowText(now: Date): string {
-  return now.toLocaleString('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function formatDateWithWeekday(now: Date, offsetDays: number): string {
-  const target = new Date(now.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-  const date = target.toLocaleDateString('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  const weekday = target.toLocaleDateString('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'long',
-  });
-  // toLocaleDateString 可能返回 "2026/04/29"，统一成 "2026-04-29"
-  const normalizedDate = date.replace(/\//g, '-').replace(/-(\d)(?=-|$)/g, '-0$1');
-  return `${normalizedDate} ${weekday}`;
+  return formatLocalDateWithWeekday(new Date(now.getTime() + offsetDays * 86_400_000));
 }

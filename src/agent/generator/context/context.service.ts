@@ -20,6 +20,7 @@ import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
+import { formatCurrentTime } from '@infra/utils/date.util';
 import {
   buildPromptSectionBlocks,
   PromptSection,
@@ -119,7 +120,7 @@ export class ContextService implements OnModuleInit {
 
     const config = await this.strategyConfigService.getActiveConfig(strategySource);
 
-    const now = this.formatCurrentTime();
+    const now = formatCurrentTime();
 
     const groupInventoryBlock = await this.renderGroupInventoryBlock(sessionFacts);
 
@@ -301,17 +302,5 @@ export class ContextService implements OnModuleInit {
       this.logger.error(`读取文本文件失败: ${filePath}`, error);
       return undefined;
     }
-  }
-
-  private formatCurrentTime(): string {
-    return new Date().toLocaleString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   }
 }

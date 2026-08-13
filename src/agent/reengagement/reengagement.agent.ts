@@ -16,6 +16,13 @@ import type { FollowUpScenario } from './scenario-registry';
 import type { ReengagementBookingContext } from './booking-context';
 import { stripTimeContext } from '@resolution/signal/markers';
 import { redactCandidatePhones } from '@resolution/candidate/phone';
+import {
+  formatRelativeShanghaiDate,
+  formatShanghaiClock,
+  formatShanghaiDateWithWeekday,
+  formatShanghaiTime,
+  shanghaiDayNumber,
+} from './reengagement-datetime.util';
 
 // 复聊记忆用主动复聊专用 recall：结构化事实已过 formatExtractionFactLines（含陈旧告警），
 // 短期消息直接复用 Generator 的窗口和时间格式，不再二次裁剪或改写。
@@ -412,10 +419,10 @@ export class ReengagementAgent {
       '下面是本次复聊唯一可用的上下文。缺失的信息不要补全或猜测。',
       '',
       '## 时间基准',
-      `- 当前时间：${this.formatShanghaiTime(now)}`,
-      `- 今天：${this.formatShanghaiDateWithWeekday(now, 0)}`,
-      `- 明天：${this.formatShanghaiDateWithWeekday(now, 1)}`,
-      `- 后天：${this.formatShanghaiDateWithWeekday(now, 2)}`,
+      `- 当前时间：${formatShanghaiTime(now)}`,
+      `- 今天：${formatShanghaiDateWithWeekday(now, 0)}`,
+      `- 明天：${formatShanghaiDateWithWeekday(now, 1)}`,
+      `- 后天：${formatShanghaiDateWithWeekday(now, 2)}`,
       '- “今天”“明天”等相对日期必须严格以上述日期映射为基准；状态摘要已经给出相对日期口径时必须原样遵守，不得自行换算。',
       '- 近期对话里的“今天”“明天”等历史表达，必须以该条消息标注的发送时间为基准理解，不能按本次触达时间重新解释。',
       '',
@@ -535,7 +542,7 @@ export class ReengagementAgent {
       // 报名完成时间是区分“预约当轮告知”与“另行发出的提醒”的客观锚点，
       // 供 interview_reminder_already_sent 口径判定使用。
       if (Number.isFinite(ctx.jobData.anchorAt)) {
-        lines.push(`- 报名完成时间：${this.formatShanghaiTime(ctx.jobData.anchorAt)}`);
+        lines.push(`- 报名完成时间：${formatShanghaiTime(ctx.jobData.anchorAt)}`);
       }
       lines.push(`- 面试形式：${booking?.interviewType ?? '工单未提供，不得猜测'}`);
       if (booking?.brandName) lines.push(`- 品牌：${booking.brandName}`);
@@ -547,10 +554,8 @@ export class ReengagementAgent {
       if (booking?.interviewAddress) lines.push(`- 面试地址：${booking.interviewAddress}`);
       if (booking?.interviewRequirement) lines.push(`- 面试要求：${booking.interviewRequirement}`);
       if (booking?.interviewAt != null && Number.isFinite(booking.interviewAt)) {
-        lines.push(`- 面试时间：${this.formatShanghaiTime(booking.interviewAt)}`);
-        lines.push(
-          `- 面试日期相对当前：${this.formatRelativeShanghaiDate(booking.interviewAt, now)}`,
-        );
+        lines.push(`- 面试时间：${formatShanghaiTime(booking.interviewAt)}`);
+        lines.push(`- 面试日期相对当前：${formatRelativeShanghaiDate(booking.interviewAt, now)}`);
         // 窗口制岗位的工单时间只是面试窗口起点（badcase：工单 10:00、聊天约定 13:00，
         // 12:00 回访问"面试顺利吗"）。产品裁定：有明确聊天约定以聊天为准，无则以工单为准。
         lines.push(
@@ -658,26 +663,6 @@ export class ReengagementAgent {
     return redactCandidatePhones(redacted, '（手机号已省略）');
   }
 
-  private formatShanghaiTime(timestamp: number): string {
-    return new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(new Date(timestamp));
-  }
-
-  private formatRelativeShanghaiDate(timestamp: number, now: number): string {
-    const targetDay = this.shanghaiDayNumber(timestamp);
-    const currentDay = this.shanghaiDayNumber(now);
-    if (targetDay === currentDay) return '今天（只能说“今天”，不得说“明天”）';
-    if (targetDay === currentDay + 1) return '明天（只能说“明天”，不得说“今天”）';
-    return `${this.formatShanghaiDate(timestamp)}（使用具体日期，不要说“今天”或“明天”）`;
-  }
-
   private correctInterviewTemporalFacts(
     ctx: ReengagementComposeContext,
     message: string,
@@ -689,66 +674,19 @@ export class ReengagementAgent {
 
     let corrected = message;
     let reason: string | undefined;
-    const expectedClock = this.formatShanghaiClock(interviewAt);
+    const expectedClock = formatShanghaiClock(interviewAt);
     const clockPattern =
       /(?:(?:上午|下午|晚上|中午|早上|凌晨)\s*)?(?:[01]?\d|2[0-3])(?:(?:[:：][0-5]\d)|(?:点(?:半|[0-5]?\d分)?))/g;
     corrected = corrected.replace(clockPattern, expectedClock);
     if (corrected !== message) reason = 'interview_time_mismatch';
 
-    if (this.shanghaiDayNumber(interviewAt) !== this.shanghaiDayNumber(now)) {
+    if (shanghaiDayNumber(interviewAt) !== shanghaiDayNumber(now)) {
       return { text: corrected, ...(reason ? { reason } : {}) };
     }
     // 当天面试却写成“明天”是已知高频错误；确定性纠正，避免错误提醒直接触达候选人。
     const dayCorrected = corrected.replace(/明天/g, '今天');
     if (dayCorrected !== corrected && !reason) reason = 'interview_relative_day_mismatch';
     return { text: dayCorrected, ...(reason ? { reason } : {}) };
-  }
-
-  private formatShanghaiClock(timestamp: number): string {
-    return new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(new Date(timestamp));
-  }
-
-  private shanghaiDayNumber(timestamp: number): number {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(new Date(timestamp));
-    const value = (type: Intl.DateTimeFormatPartTypes) =>
-      Number(parts.find((part) => part.type === type)?.value ?? 0);
-    return Math.floor(Date.UTC(value('year'), value('month') - 1, value('day')) / 86_400_000);
-  }
-
-  private formatShanghaiDate(timestamp: number): string {
-    return new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-    }).format(new Date(timestamp));
-  }
-
-  private formatShanghaiDateWithWeekday(timestamp: number, offsetDays: number): string {
-    const target = timestamp + offsetDays * 86_400_000;
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(new Date(target));
-    const value = (type: Intl.DateTimeFormatPartTypes) =>
-      parts.find((part) => part.type === type)?.value ?? '';
-    const weekday = new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      weekday: 'long',
-    }).format(new Date(target));
-    return `${value('year')}-${value('month')}-${value('day')} ${weekday}`;
   }
 
   // 以下方法只是把 AI SDK 返回值投影成现有观测字段，不承载复聊业务逻辑。
