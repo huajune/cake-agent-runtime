@@ -4,6 +4,7 @@ import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import { getRuleFact } from '@resolution/evidence/merge';
+import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 describe('PreparationService', () => {
@@ -574,6 +575,21 @@ describe('PreparationService', () => {
     expect(content).toContain('严禁调用任何工具');
     // rewrite 模式明确禁止悬空承接句
     expect(content).toContain('只承接不给结果');
+
+    const toolContext = mockToolRegistry.buildForScenario.mock.calls.at(-1)?.[1];
+    expect(toolContext.turnInput.corpusBlocks.at(-1)).toMatchObject({
+      id: 'internal-revise-directive',
+      domain: 'teaching',
+      role: 'system',
+    });
+    expect(extractCandidateTextsFromCorpus(toolContext.turnInput.corpusBlocks)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('系统重写指令')]),
+    );
+    expect(result.promptBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'revise-notice', domain: 'teaching' }),
+      ]),
+    );
   });
 
   it('replan directive names the exact repair tool allowlist', async () => {
@@ -1816,9 +1832,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.city', '北京', 'explicit_city'),
-      ),
+      ruleFacts: testRuleFacts(testRuleFact('preferences.city', '北京', 'explicit_city')),
       longTerm: { profile: null },
       procedural: {
         currentStage: 'trust_building',
@@ -2210,9 +2224,7 @@ describe('PreparationService', () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        messages: [
-          { role: 'user', content: '[位置分享] 田林路 [经纬度:31.2,121.4]' },
-        ],
+        messages: [{ role: 'user', content: '[位置分享] 田林路 [经纬度:31.2,121.4]' }],
         userId: 'user-location-share',
         corpId: 'corp-1',
         sessionId: 'sess-location-share',

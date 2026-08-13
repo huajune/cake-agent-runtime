@@ -1423,6 +1423,7 @@ export function buildInterviewPrecheckTool(
             try {
               adjudicationResult = runCandidateFactAdjudication({
                 messages: context.turnInput.messages,
+                corpusBlocks: context.turnInput.corpusBlocks,
                 modelClaimInputs: candidateClaims,
                 legacyArgs: stripNullish({
                   name: normalizeCandidateNameInput(candidateName),

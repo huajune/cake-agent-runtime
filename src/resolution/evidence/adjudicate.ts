@@ -1,5 +1,5 @@
 import { resolveNameAnsweredToRealNameAsk } from './producers/name-confirmation';
-import { extractCandidateTexts } from '@resolution/signal/self-report';
+import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import type {
   AdjudicatedClaim,
   CandidateClaimField,
@@ -23,6 +23,8 @@ import {
   type LegacyCandidateArgs,
 } from './producers/model-claims';
 import { computeCandidateMessageWatermark, deriveFactsVersion } from './snapshot';
+import type { CorpusBlock } from '@shared-types/corpus.types';
+import { buildConversationCorpus, selectCorpusMessages } from '@resolution/signal/corpus';
 
 /**
  * 裁决编排门面：precheck 一次调用即得完整裁决结果。
@@ -41,6 +43,11 @@ import { computeCandidateMessageWatermark, deriveFactsVersion } from './snapshot
 export interface RunAdjudicationParams {
   /** 完整会话消息（原始形态；身份识别器与文本提取自带清洗）。 */
   messages: unknown[];
+  /**
+   * 与 messages 对应的结构化语料域。生产链路必须提供；缺省仅用于旧测试/离线调用，
+   * 由封闭 role 映射即时补标签。
+   */
+  corpusBlocks?: readonly CorpusBlock[];
   /** 模型显式提交的 claim（precheck candidateClaims 入参）。 */
   modelClaimInputs?: readonly CandidateClaimInput[];
   /** 旧裸字段入参（candidateName 等归一化后的值），转译为 legacy model claim。 */
@@ -68,19 +75,28 @@ export interface AdjudicationRunResult {
 }
 
 /** booking 侧沿用同一份语料选择器（quote 验证基准）；文档在定义处。 */
-export { extractCandidateTexts } from '@resolution/signal/self-report';
+export {
+  extractCandidateTexts,
+  extractCandidateTextsFromCorpus,
+} from '@resolution/signal/self-report';
 
-/** 我方已发消息全集（回声检查基准，工序 C4）。两边都是已知字符串，判定全封闭。 */
-function extractAssistantTexts(messages: readonly unknown[]): string[] {
-  return extractDialogueTurns(messages)
-    .filter((turn) => turn.role === 'assistant')
-    .map((turn) => turn.text);
+/**
+ * 我方已发消息/工具结果全集（回声检查基准）。先按封闭域标签取 evidence/tool_result，
+ * teaching 即使为了 SDK 传输伪装成 user，也不会进入回声审计。
+ */
+function extractEchoSourceTexts(corpusBlocks: readonly CorpusBlock[]): string[] {
+  const sourceMessages = selectCorpusMessages(corpusBlocks, {
+    domains: ['evidence', 'tool_result'],
+    roles: ['assistant', 'tool'],
+  }).map((message) => ({ role: 'assistant', content: message.content }));
+  return extractDialogueTurns(sourceMessages).map((turn) => turn.text);
 }
 
 export function runCandidateFactAdjudication(params: RunAdjudicationParams): AdjudicationRunResult {
   const now = params.now ?? new Date();
   const assertedAt = now.toISOString();
-  const candidateTexts = extractCandidateTexts(params.messages);
+  const corpusBlocks = params.corpusBlocks ?? buildConversationCorpus(params.messages);
+  const candidateTexts = extractCandidateTextsFromCorpus(corpusBlocks);
   const messageWatermark = computeCandidateMessageWatermark(candidateTexts);
   const factsVersion = deriveFactsVersion(messageWatermark);
 
@@ -118,7 +134,7 @@ export function runCandidateFactAdjudication(params: RunAdjudicationParams): Adj
     candidateTexts,
     // 回声检查基准（工序 C4）：我方已发消息全集。岗位卡/收资模板都在这里面，
     // 模型把自己发出去的字当候选人自陈提交时，两边逐字同现即命中。
-    assistantTexts: extractAssistantTexts(params.messages),
+    assistantTexts: extractEchoSourceTexts(corpusBlocks),
     echoRoutesToConfirmation: params.echoRoutesToConfirmation,
     sessionAccepted: params.sessionAccepted,
     profileHints: params.profileHints,

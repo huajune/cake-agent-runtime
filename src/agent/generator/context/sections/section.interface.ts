@@ -3,6 +3,7 @@ import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
+import type { CorpusDomain, PromptCorpusBlock } from '@shared-types/corpus.types';
 
 /**
  * 提示词组装上下文 — 所有 section 共享
@@ -58,6 +59,47 @@ export interface AccountIdentity {
 export interface PromptSection {
   /** 段落名称（用于日志和调试） */
   readonly name: string;
+  /** 测试/扩展 section 可显式覆盖；生产 section 统一由下方封闭注册表发牌。 */
+  readonly domain?: CorpusDomain;
   /** 构建该段落的文本 */
   build(ctx: PromptContext): Promise<string> | string;
+  /** 复合 section 展开子块，避免混合域在 join 后丢失标签。 */
+  buildBlocks?(ctx: PromptContext): Promise<PromptCorpusBlock[]> | PromptCorpusBlock[];
+}
+
+/** 生产 prompt 叶子 section → 语料域的唯一封闭注册表。 */
+const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
+  identity: 'teaching',
+  'base-manual': 'teaching',
+  'final-check': 'teaching',
+  'red-lines': 'teaching',
+  thresholds: 'teaching',
+  'stage-strategy': 'teaching',
+  channel: 'teaching',
+  memory: 'evidence',
+  'turn-hints': 'evidence',
+  'hard-constraints': 'evidence',
+  datetime: 'tool_result',
+  'group-inventory': 'tool_result',
+};
+
+/** 展开一个 section；叶子 section 由固定 domain 直接包装。 */
+export async function buildPromptSectionBlocks(
+  section: PromptSection,
+  ctx: PromptContext,
+): Promise<PromptCorpusBlock[]> {
+  if (section.buildBlocks) return section.buildBlocks(ctx);
+  const content = (await section.build(ctx)).trim();
+  if (!content) return [];
+  const domain = section.domain ?? PROMPT_SECTION_DOMAIN_REGISTRY[section.name];
+  if (!domain) throw new Error(`Prompt section 未登记语料域: ${section.name}`);
+  return [{ id: section.name, domain, role: 'system', content }];
+}
+
+/** Prompt block 的唯一降维点；标签在此之前一直保留。 */
+export function renderPromptBlocks(blocks: readonly PromptCorpusBlock[]): string {
+  return blocks
+    .map((block) => block.content.trim())
+    .filter(Boolean)
+    .join('\n\n');
 }

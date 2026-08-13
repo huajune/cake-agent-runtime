@@ -48,7 +48,10 @@ import {
   evaluateBookingPhoneGate,
 } from '@resolution/evidence/identity-gates';
 import { getRuleFactValue } from '@resolution/evidence/merge';
-import { extractCandidateTexts } from '@resolution/evidence/adjudicate';
+import {
+  extractCandidateTexts,
+  extractCandidateTextsFromCorpus,
+} from '@resolution/evidence/adjudicate';
 import {
   BOOKING_CRITICAL_FIELDS,
   computeCandidateMessageWatermark,
@@ -739,7 +742,9 @@ export function buildInterviewBookingTool(
                 payload: { name, phone, age, genderId, height, weight, hasHealthCertificate },
                 jobId,
                 currentMessageWatermark: computeCandidateMessageWatermark(
-                  extractCandidateTexts(context.turnInput.messages),
+                  context.turnInput.corpusBlocks
+                    ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks)
+                    : extractCandidateTexts(context.turnInput.messages),
                 ),
               });
               if (gate.mismatchedFields.length > 0) {

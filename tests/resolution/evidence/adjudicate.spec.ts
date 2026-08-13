@@ -2,6 +2,7 @@ import {
   extractCandidateTexts,
   runCandidateFactAdjudication,
 } from '@resolution/evidence/adjudicate';
+import type { CorpusBlock } from '@shared-types/corpus.types';
 
 function msg(role: 'user' | 'assistant', content: string) {
   return { role, content };
@@ -15,9 +16,7 @@ describe('adjudication-runner（端到端编排）', () => {
         msg('assistant', '目前是学生还是社会人士？'),
         msg('user', '社会人士，我一米六三'),
       ],
-      modelClaimInputs: [
-        { field: 'height', value: 163, quote: '我一米六三', operation: 'set' },
-      ],
+      modelClaimInputs: [{ field: 'height', value: 163, quote: '我一米六三', operation: 'set' }],
       legacyArgs: { age: '25' }, // 模型裸值：候选人从未说过 → 应 rejected
       sessionAccepted: {},
       profileHints: { phone: '13800000000' }, // 旧档案：应被本轮亲证覆盖
@@ -30,7 +29,9 @@ describe('adjudication-runner（端到端编排）', () => {
       height: 163,
     });
     expect(result.acceptedValues.age).toBeUndefined();
-    const legacyAge = result.adjudicated.find((entry) => entry.claim.claimId.startsWith('legacy_age'));
+    const legacyAge = result.adjudicated.find((entry) =>
+      entry.claim.claimId.startsWith('legacy_age'),
+    );
     expect(legacyAge?.decision).toBe('rejected');
     expect(result.profile.fields.phone?.status).toBe('accepted');
     expect(result.profile.fields.phone?.value).toBe('13900000002');
@@ -65,5 +66,78 @@ describe('adjudication-runner（端到端编排）', () => {
     const second = runCandidateFactAdjudication(input);
     expect(first.messageWatermark).toBe(second.messageWatermark);
     expect(first.factsVersion).toBe(second.factsVersion);
+  });
+
+  it('结构化分域阻止 user transport 里的教学文本穿过出处公证', () => {
+    const teachingText = [
+      '[引用 招聘经理：旧资料模板]',
+      '[图片消息]',
+      '姓名：王小明',
+      '[消息发送时间：2026-08-13 10:24:31]',
+    ].join('\n');
+    const evidenceText = [
+      '[引用 招聘经理：请说下姓名]',
+      '我住浦东，姓名稍后发',
+      '[消息发送时间：2026-08-13 10:24:32]',
+    ].join('\n');
+    const messages = [msg('user', teachingText), msg('user', evidenceText)];
+    const corpusBlocks: CorpusBlock[] = [
+      { id: 'repair-directive', domain: 'teaching', role: 'system', content: teachingText },
+      { id: 'candidate-1', domain: 'evidence', role: 'user', content: evidenceText },
+    ];
+
+    const result = runCandidateFactAdjudication({
+      messages,
+      corpusBlocks,
+      modelClaimInputs: [{ field: 'name', value: '王小明', quote: '姓名：王小明' }],
+      sessionAccepted: {},
+      profileHints: {},
+    });
+
+    expect(result.acceptedValues.name).toBeUndefined();
+    expect(
+      result.adjudicated.some(
+        (entry) => entry.claim.field === 'name' && entry.rejectionReason === 'quote_not_found',
+      ),
+    ).toBe(true);
+  });
+
+  it('回声审计只消费 evidence/tool_result 标签，不把 teaching 当我方事实文本', () => {
+    const candidateText = [
+      '[引用 招聘经理：请补学历]',
+      '[图片消息]',
+      '学历：大专',
+      '[消息发送时间：2026-08-13 10:24:31]',
+    ].join('\n');
+    const teachingText = '教学示例：学历：大专';
+    const messages = [msg('user', candidateText), msg('user', teachingText)];
+    const baseCorpus: CorpusBlock[] = [
+      { id: 'candidate-1', domain: 'evidence', role: 'user', content: candidateText },
+      { id: 'teaching-1', domain: 'teaching', role: 'system', content: teachingText },
+    ];
+    const input = {
+      messages,
+      modelClaimInputs: [{ field: 'education' as const, value: '大专', quote: '学历：大专' }],
+      sessionAccepted: {},
+      profileHints: {},
+    };
+
+    expect(
+      runCandidateFactAdjudication({ ...input, corpusBlocks: baseCorpus }).echoDetections,
+    ).toBe(0);
+    expect(
+      runCandidateFactAdjudication({
+        ...input,
+        corpusBlocks: [
+          ...baseCorpus,
+          {
+            id: 'tool-result-1',
+            domain: 'tool_result',
+            role: 'tool',
+            content: '报名表工具结果：学历：大专',
+          },
+        ],
+      }).echoDetections,
+    ).toBeGreaterThan(0);
   });
 });

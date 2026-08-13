@@ -5,6 +5,8 @@ import { MessageType } from '@enums/message-callback.enum';
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
 import { type GeneratorInputMessage } from '../generator.types';
 import { formatImageCountPlaceholder } from '@resolution/signal/markers';
+import { buildConversationCorpus } from '@resolution/signal/corpus';
+import type { CorpusBlock } from '@shared-types/corpus.types';
 
 /**
  * 对话消息归一化（PreparationService 的纯函数辅助层）：
@@ -76,7 +78,7 @@ export function truncateToCharBudget(
  *   2. 转成 ModelMessage
  *   3. 按需注入顶层图片 parts（多模态 vision）
  */
-export function normalizeConversation(input: {
+interface NormalizeConversationInput {
   callerKind: CallerKind;
   memoryWindow: GeneratorInputMessage[];
   passedMessages: GeneratorInputMessage[];
@@ -84,13 +86,34 @@ export function normalizeConversation(input: {
   imageUrls?: string[];
   imageMessageIds?: string[];
   visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
-}): ModelMessage[] {
+}
+
+export function normalizeConversation(input: NormalizeConversationInput): ModelMessage[] {
+  return normalizeConversationWithCorpus(input).messages;
+}
+
+/**
+ * 归一化消息的同时保留语义来源域。AI SDK v7 的 transport messages 不接受 system
+ * role，因此 transport 兜底与语料域必须分开：未知/system role 永远标 teaching，
+ * 不能因为落成 user transport 就进入候选人证据池。
+ */
+export function normalizeConversationWithCorpus(input: NormalizeConversationInput): {
+  messages: ModelMessage[];
+  corpusBlocks: CorpusBlock[];
+} {
   const source = input.callerKind === CallerKind.WECOM ? input.memoryWindow : input.passedMessages;
   const normalized = toModelMessages(source, input.enableVision);
   if (input.imageUrls?.length && input.enableVision) {
     injectImageParts(normalized, input.imageUrls, input.imageMessageIds, input.visualMessageTypes);
   }
-  return normalized;
+  const semanticMessages = normalized.map((message, index) => ({
+    role: source[index]?.role ?? message.role,
+    content: message.content,
+  }));
+  return {
+    messages: normalized,
+    corpusBlocks: buildConversationCorpus(semanticMessages),
+  };
 }
 
 /** 把消息内容扁平化成纯文本。 */

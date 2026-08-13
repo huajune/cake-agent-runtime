@@ -19,6 +19,7 @@ import { ContextService } from '../context/context.service';
 import { type GeneratorInvokeParams } from '../generator.types';
 import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
 import { type TurnStartMemory } from './memory-block.formatter';
+import type { CorpusBlock } from '@shared-types/corpus.types';
 
 /**
  * ToolBuildContext 组装（PreparationService 的纯函数辅助层）：
@@ -33,6 +34,8 @@ export function buildToolContext(input: {
   params: GeneratorInvokeParams;
   memory: TurnStartMemory;
   normalizedMessages: ModelMessage[];
+  /** 与 transport messages 同批的结构化语料域；内部教学指令不会冒充 user evidence。 */
+  conversationCorpusBlocks: CorpusBlock[];
   entryStage: string | null;
   stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
   thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
@@ -49,6 +52,7 @@ export function buildToolContext(input: {
     params,
     memory,
     normalizedMessages,
+    conversationCorpusBlocks,
     entryStage,
     stageGoals,
     thresholds,
@@ -124,6 +128,7 @@ export function buildToolContext(input: {
     },
     turnInput: {
       messages: normalizedMessages,
+      corpusBlocks: conversationCorpusBlocks,
       currentUserMessage,
       currentLaborFormIntent,
       imageMessageIds: params.imageMessageIds,

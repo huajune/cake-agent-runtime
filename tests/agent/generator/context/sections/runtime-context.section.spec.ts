@@ -10,12 +10,16 @@ describe('RuntimeContextSection', () => {
 
   it('should concatenate non-empty runtime sections in order', async () => {
     const section = new RuntimeContextSection(
-      { name: 'stage', build: () => '[阶段]' },
-      { name: 'memory', build: () => '[记忆]' },
-      { name: 'turn-hints', build: () => '' },
-      { name: 'hard-constraints', build: () => '[本轮查询硬约束]\n- 性别: 男' },
-      { name: 'time', build: () => '当前时间：2026-04-01' },
-      { name: 'channel', build: () => '' },
+      { name: 'stage', domain: 'teaching', build: () => '[阶段]' },
+      { name: 'memory', domain: 'evidence', build: () => '[记忆]' },
+      { name: 'turn-hints', domain: 'evidence', build: () => '' },
+      {
+        name: 'hard-constraints',
+        domain: 'evidence',
+        build: () => '[本轮查询硬约束]\n- 性别: 男',
+      },
+      { name: 'time', domain: 'tool_result', build: () => '当前时间：2026-04-01' },
+      { name: 'channel', domain: 'teaching', build: () => '' },
     );
 
     await expect(section.build(baseCtx)).resolves.toBe(
@@ -24,7 +28,7 @@ describe('RuntimeContextSection', () => {
   });
 
   it('should skip empty child sections', async () => {
-    const empty: PromptSection = { name: 'empty', build: () => '   ' };
+    const empty: PromptSection = { name: 'empty', domain: 'teaching', build: () => '   ' };
     const section = new RuntimeContextSection(empty, empty, empty, empty, empty, empty);
 
     await expect(section.build(baseCtx)).resolves.toBe('');

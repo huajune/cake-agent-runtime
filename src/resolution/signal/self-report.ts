@@ -6,6 +6,8 @@ import {
   stripTimeContext,
 } from './markers';
 import { isSelfReportedVisualMessage, type FinalizedVisualFactSheet } from './visual';
+import type { CorpusBlock } from '@shared-types/corpus.types';
+import { selectCorpusMessages } from './corpus';
 
 export interface CandidateCorpusOptions {
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
@@ -76,4 +78,14 @@ export function extractCandidateTexts(messages: readonly unknown[]): string[] {
     if (cleaned) texts.push(cleaned);
   }
   return texts;
+}
+
+/**
+ * 结构化语料版候选人自陈选择器：先按封闭标签只取 evidence/user，之后复用既有的
+ * 引用块、时间后缀与视觉来源清洗。teaching/tool_result 永不进入候选人出处池。
+ */
+export function extractCandidateTextsFromCorpus(blocks: readonly CorpusBlock[]): string[] {
+  return extractCandidateTexts(
+    selectCorpusMessages(blocks, { domains: ['evidence'], roles: ['user'] }),
+  );
 }

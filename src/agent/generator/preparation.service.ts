@@ -6,7 +6,7 @@ import { decideLaborFormIntent } from '@resolution/labor-form';
 import { parseLocationShareCoords } from '@resolution/evidence/producers/location-share';
 import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
 import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
-import { extractCandidateTexts } from '@resolution/signal/self-report';
+import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
@@ -40,7 +40,7 @@ import {
   type TurnStartMemory,
 } from './preparation-utils/memory-block.formatter';
 import {
-  normalizeConversation,
+  normalizeConversationWithCorpus,
   trailingUserContent,
   trailingUserMessages,
   truncateToCharBudget,
@@ -53,10 +53,16 @@ import {
 import { resolveToolsForMode, wrapToolsWithTiming } from './preparation-utils/tool-set.util';
 import { buildToolContext } from './preparation-utils/tool-context.builder';
 import { createTurnLedger } from './preparation-utils/turn-ledger';
+import { renderPromptBlocks } from './context/sections/section.interface';
+import type { CorpusBlock, PromptCorpusBlock } from '@shared-types/corpus.types';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
+  /** finalPrompt 降维前的结构化分域块，供审计确认教学/证据/工具结果边界。 */
+  promptBlocks: PromptCorpusBlock[];
   normalizedMessages: ModelMessage[];
+  /** 对话语料的结构化旁路；transport role 不再决定事实出处资格。 */
+  conversationCorpusBlocks: CorpusBlock[];
   memoryLoadWarning?: string;
   tools: ToolSet;
   corpId: string;
@@ -208,15 +214,16 @@ export class PreparationService {
     ]);
 
     // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
-    const normalizedMessages = normalizeConversation({
-      callerKind,
-      memoryWindow: memory.shortTerm.messageWindow,
-      passedMessages: truncatedMessages,
-      enableVision: options?.enableVision ?? false,
-      imageUrls: params.imageUrls,
-      imageMessageIds: params.imageMessageIds,
-      visualMessageTypes: params.visualMessageTypes,
-    });
+    const { messages: normalizedMessages, corpusBlocks: conversationCorpusBlocks } =
+      normalizeConversationWithCorpus({
+        callerKind,
+        memoryWindow: memory.shortTerm.messageWindow,
+        passedMessages: truncatedMessages,
+        enableVision: options?.enableVision ?? false,
+        imageUrls: params.imageUrls,
+        imageMessageIds: params.imageMessageIds,
+        visualMessageTypes: params.visualMessageTypes,
+      });
 
     // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
     const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
@@ -249,7 +256,12 @@ export class PreparationService {
     const stageFromResolver = persistedStage ?? returningUserStage;
 
     // System prompt 组装（委托 ContextService.compose）
-    const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
+    const {
+      systemPrompt,
+      promptBlocks: composedPromptBlocks,
+      stageGoals,
+      thresholds,
+    } = await this.context.compose({
       scenario,
       currentStage: stageFromResolver ?? undefined,
       memoryBlock,
@@ -279,7 +291,7 @@ export class PreparationService {
     }
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
-    const candidateTexts = extractCandidateTexts(normalizedMessages);
+    const candidateTexts = extractCandidateTextsFromCorpus(conversationCorpusBlocks);
     const ledger = createTurnLedger({
       ruleFacts: memory.ruleFacts,
       laborFormIntent: currentLaborFormIntent,
@@ -294,6 +306,7 @@ export class PreparationService {
       params,
       memory,
       normalizedMessages,
+      conversationCorpusBlocks,
       entryStage,
       stageGoals,
       thresholds,
@@ -325,12 +338,34 @@ export class PreparationService {
     const reviseUserDirective = buildReviseUserDirective(params);
     if (reviseUserDirective) {
       normalizedMessages.push({ role: 'user', content: reviseUserDirective });
+      conversationCorpusBlocks.push({
+        id: 'internal-revise-directive',
+        domain: 'teaching',
+        role: 'system',
+        content: reviseUserDirective,
+      });
     }
 
+    // 测试替身/旧调用方可能只返回 systemPrompt；生产 ContextService 始终给出逐块标签。
+    const basePromptBlocks =
+      composedPromptBlocks?.length > 0
+        ? composedPromptBlocks
+        : [this.createTeachingPromptBlock('system-prompt', systemPrompt)];
+    const promptBlocks = [
+      ...basePromptBlocks,
+      ...[
+        this.createTeachingPromptBlock('input-guard', guardSuffix),
+        this.createTeachingPromptBlock('critical-turn-guard', criticalTurnGuard),
+        this.createTeachingPromptBlock('revise-notice', reviseNotice),
+        this.createTeachingPromptBlock('proactive-directive', proactiveDirective),
+      ].filter((block) => block.content.length > 0),
+    ];
+
     return {
-      finalPrompt:
-        systemPrompt + guardSuffix + criticalTurnGuard + reviseNotice + proactiveDirective,
+      finalPrompt: renderPromptBlocks(promptBlocks),
+      promptBlocks,
       normalizedMessages,
+      conversationCorpusBlocks,
       memoryLoadWarning: memory._warnings?.join('; '),
       tools,
       corpId,
@@ -344,6 +379,10 @@ export class PreparationService {
       memorySnapshot,
       toolExecutionTimings,
     };
+  }
+
+  private createTeachingPromptBlock(id: string, content: string): PromptCorpusBlock {
+    return { id, domain: 'teaching', role: 'system', content: content.trim() };
   }
 
   /** 当前轮规则 producer（prep 运行点）：产物随 ledger 穿过工具与轮末收编。 */

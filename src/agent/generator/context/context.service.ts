@@ -20,7 +20,14 @@ import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
-import { PromptSection, PromptContext, AccountIdentity } from './sections/section.interface';
+import {
+  buildPromptSectionBlocks,
+  PromptSection,
+  PromptContext,
+  AccountIdentity,
+  renderPromptBlocks,
+} from './sections/section.interface';
+import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import { IdentitySection } from './sections/identity.section';
 import { RedLinesSection } from './sections/red-lines.section';
 import { DateTimeSection } from './sections/datetime.section';
@@ -57,6 +64,8 @@ export interface ComposeParams {
 
 export interface ComposeResult {
   systemPrompt: string;
+  /** StruQ scaffold：降为 systemPrompt 前仍保留 teaching/evidence/tool_result 标签。 */
+  promptBlocks: PromptCorpusBlock[];
   stageGoals: Record<string, StageGoalConfig>;
   thresholds: Threshold[];
 }
@@ -135,18 +144,22 @@ export class ContextService implements OnModuleInit {
       return this.compose({ ...params, scenario: DEFAULT_SCENARIO });
     }
 
-    const parts: string[] = [];
+    const rawBlocks: PromptCorpusBlock[] = [];
     for (const name of sectionNames) {
       const section = this.sections.get(name);
       if (!section) continue;
-      const text = await section.build(ctx);
-      if (text.trim()) parts.push(text.trim());
+      rawBlocks.push(...(await buildPromptSectionBlocks(section, ctx)));
     }
 
-    const systemPrompt = parts.join('\n\n').replace(/\{\{CURRENT_TIME\}\}/g, now);
+    const promptBlocks = rawBlocks.map((block) => ({
+      ...block,
+      content: block.content.replace(/\{\{CURRENT_TIME\}\}/g, now),
+    }));
+    const systemPrompt = renderPromptBlocks(promptBlocks);
 
     return {
       systemPrompt,
+      promptBlocks,
       stageGoals: this.buildStageGoalsMap(config),
       thresholds: config.red_lines.thresholds ?? [],
     };

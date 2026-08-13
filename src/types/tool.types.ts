@@ -10,6 +10,7 @@ import type { MessageType } from '@enums/message-callback.enum';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import type { GeocodeLocationAnchor, TurnLedger } from './turn.types';
+import type { CorpusBlock } from './corpus.types';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -50,6 +51,8 @@ export interface ToolArchiveContext {
 
 export interface ToolTurnInputContext {
   messages: unknown[];
+  /** 事实相关消费方优先用此结构化旁路；messages 仅保留给对话语义判定与模型 transport。 */
+  corpusBlocks?: CorpusBlock[];
   currentUserMessage?: string;
   currentLaborFormIntent?: LaborFormIntentDecision;
   imageMessageIds?: string[];

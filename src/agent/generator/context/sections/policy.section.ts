@@ -1,6 +1,12 @@
 import { RedLinesSection } from './red-lines.section';
 import { ThresholdsSection } from './thresholds.section';
-import { PromptContext, PromptSection } from './section.interface';
+import {
+  buildPromptSectionBlocks,
+  PromptContext,
+  PromptSection,
+  renderPromptBlocks,
+} from './section.interface';
+import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 
 /**
  * 政策段落 — 聚合动态红线与阈值
@@ -16,13 +22,14 @@ export class PolicySection implements PromptSection {
   ) {}
 
   async build(ctx: PromptContext): Promise<string> {
-    const parts: string[] = [];
+    return renderPromptBlocks(await this.buildBlocks(ctx));
+  }
 
+  async buildBlocks(ctx: PromptContext): Promise<PromptCorpusBlock[]> {
+    const blocks: PromptCorpusBlock[] = [];
     for (const section of [this.redLinesSection, this.thresholdsSection]) {
-      const text = await section.build(ctx);
-      if (text.trim()) parts.push(text.trim());
+      blocks.push(...(await buildPromptSectionBlocks(section, ctx)));
     }
-
-    return parts.join('\n\n');
+    return blocks;
   }
 }

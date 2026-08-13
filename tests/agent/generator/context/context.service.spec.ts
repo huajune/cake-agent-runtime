@@ -1,5 +1,6 @@
 import { ContextService } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
+import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
 
 describe('ContextService', () => {
   const makeConfig = (): StrategyConfigRecord =>
@@ -99,6 +100,18 @@ describe('ContextService', () => {
     });
 
     const prompt = result.systemPrompt;
+
+    expect(result.promptBlocks.map((block) => block.content).join('\n\n')).toBe(prompt);
+    expect(result.promptBlocks.every((block) => CORPUS_DOMAINS.includes(block.domain))).toBe(true);
+    expect(result.promptBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'base-manual', domain: 'teaching' }),
+        expect.objectContaining({ id: 'memory', domain: 'evidence' }),
+        expect.objectContaining({ id: 'datetime', domain: 'tool_result' }),
+      ]),
+    );
+    // 复合 section 必须展开，不能把 evidence/tool_result 混回一个 runtime-context 大串。
+    expect(result.promptBlocks.some((block) => block.id === 'runtime-context')).toBe(false);
 
     expect(prompt.indexOf('# 角色')).toBeGreaterThanOrEqual(0);
     expect(prompt.indexOf('# 全局工作原则')).toBeGreaterThan(prompt.indexOf('# 人格设定'));
@@ -238,7 +251,7 @@ describe('ContextService', () => {
       },
     ]);
 
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt, promptBlocks } = await service.compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
       sessionFacts: {
@@ -281,6 +294,11 @@ describe('ContextService', () => {
     // （hard-constraints 段会把"禁止凭通识补北京/重庆等城市"作为反例文案列出）
     expect(systemPrompt).not.toContain('北京餐饮兼职群');
     expect(systemPrompt).toContain('必须传对应 industry 参数');
+    expect(promptBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'group-inventory', domain: 'tool_result' }),
+      ]),
+    );
   });
 
   it('should skip group inventory block when no city is known', async () => {
