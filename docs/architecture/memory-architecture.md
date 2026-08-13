@@ -36,8 +36,8 @@
 │  长期记忆   profile_facts / preference_facts / summary                │
 │             → Supabase agent_long_term_memories + Redis 2h 缓存        │
 ├──────────── 旁路（非持久化）──────────────────────────────────────────┤
-│  本轮高置信线索  对「本轮 user 最新消息」跑一次规则轨                    │
-│                  → 注入本轮 prompt，不落库                            │
+│  本轮系统疑似识别  对「本轮 user 最新消息」跑一次规则轨                  │
+│                    → 注入本轮 prompt，不作为事实落库                    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -142,7 +142,7 @@ interface SummaryData {
 
 **不固定注入**：摘要条数不定且越积越多，固定注入浪费 token；由 `recall_history` 工具按需检索。
 
-### 2.5 旁路：本轮高置信线索
+### 2.5 旁路：本轮系统疑似识别
 
 对「本轮 user 最新消息」跑一次**规则轨**识别（品牌 / 城市 / 用工形式 / 年龄 / 身高体重 / 户籍省份等）。
 
@@ -152,7 +152,7 @@ interface SummaryData {
 **关键边界**：
 
 - 只看**当前轮新消息**，不 fallback 到历史窗口；
-- 注入本轮 prompt sidecar（`[本轮高置信线索]` / `[本轮待确认线索]`）；
+- 注入本轮 prompt sidecar（`[本轮系统疑似识别]` / `[本轮待确认线索]`）；
 - **不写入 Redis / Supabase**——它不是正式记忆层，是当前轮前置解析 sidecar。
 
 当前轮规则识别的持久化路径是 `onTurnEnd.extract_facts` **重新跑同类规则**后经 sessionFacts 写入。
@@ -220,11 +220,11 @@ time_windows  schedule_constraint  available_after
   ├── 并行读取：short-term messages（Redis→DB fallback）/ session state / procedural state
   │             / profile_facts / preference_facts / summary_data
   ├── 短期窗口空兜底
-  ├── 前置规则轨识别：currentUserMessage + brandList → highConfidenceFacts
+  ├── 前置规则轨识别：currentUserMessage + brandList → ruleFacts
   ├── 可选 enrichment：options.enrichmentIdentity 提供时向外部系统补全缺失字段
   ├── 跨会话来源研判（§2.6）
   └── 返回 MemoryRecallContext { shortTerm.messageWindow, sessionMemory,
-        highConfidenceFacts, procedural, longTerm.{profile,preferences,origin?}, _warnings? }
+        ruleFacts, procedural, longTerm.{profile,preferences,origin?}, _warnings? }
 ```
 
 ### 4.2 onTurnEnd
@@ -332,7 +332,7 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
 | `[用户档案]` | 长期 `profile_facts` | 值 + 置信度 + 来源 + 更新日期（**不带 evidence 全文**）+ **展示出处门**：历史沉淀字段预填/复述必须披露来源并请候选人确认，否认即弃用 |
 | `[历史求职意向]` | 长期 `preference_facts` | 稳定意向 + 更新日期 + 「本次优先」指引 |
 | `[会话记忆]` | Redis `sessionMemory` | sessionFacts、岗位池、已展示岗位、当前焦点岗位、已邀群 |
-| `[本轮高置信线索]` | 当前轮规则轨 | 与会话记忆**不冲突**的当前消息线索 |
+| `[本轮系统疑似识别]` | 当前轮规则轨 | 与会话记忆**不冲突**的当前消息解析候选；不构成候选人事实 |
 | `[本轮待确认线索]` | 规则轨 + sessionFacts | 与中高置信会话事实**冲突**的线索 |
 | `[本轮查询硬约束]` | high sessionFacts + high 规则轨 | 查岗必须带的 city / district / age / schedule 等 |
 
@@ -344,11 +344,11 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
 - 年龄: 24（置信度: high，来源: rule，更新日期: 2026-06-11）
 ```
 
-### 6.1 高置信 vs 待确认的分野
+### 6.1 系统疑似识别 vs 待确认的分野
 
 | 段 | 判断逻辑 | 模型应该怎么用 |
 |---|---|---|
-| `[本轮高置信线索]` | 会话中没有旧值，或与会话中 `minConfidence=medium` 的旧字段一致 | 可直接辅助理解本轮意图 |
+| `[本轮系统疑似识别]` | 会话中没有旧值，或与会话中 `minConfidence=medium` 的旧字段一致 | 可辅助理解本轮意图，不可据此提交候选人资料 |
 | `[本轮待确认线索]` | 与会话中 `minConfidence=medium` 的旧字段**冲突** | 只能用于判断是否澄清，**不能直接覆盖旧记忆** |
 
 冲突判断：标量 trim 后比较；布尔比值；数组去空去重排序后比较；复杂对象按 JSON 比较；城市比 `CityFact.value`。
@@ -359,7 +359,7 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
 
 `HardConstraintsSection` **只用高置信字段**：sessionFacts unwrap `minConfidence=high` + 规则轨 filter `confidence=high`。
 
-合并规则：**当前轮高置信优先覆盖旧 session 值**，本轮无该字段线索时沿用 session 值。
+合并规则：查询视图中，**当前轮满足阈值的规则解析值优先覆盖旧 session 值**；本轮无该字段线索时沿用 session 值。该合并只服务查询，不改变候选人事实出处。
 
 | 硬约束字段 | 为什么是硬约束 |
 |---|---|
@@ -382,37 +382,37 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
 flowchart TD
   A["longTerm.profile_facts"] --> B["unwrapUserProfileFacts(minConfidence=high)"]
   C["sessionFacts"] --> D["unwrapSessionFacts(minConfidence=high)"]
-  E["本轮规则轨"] --> F["filterHighConfidenceFacts(confidence=high)"]
-  D --> G["merge sessionFacts + 本轮高置信"]
+  E["本轮规则轨"] --> F["projectRuleFactClaims(minConfidence=high)"]
+  D --> G["merge sessionFacts + 本轮规则解析值"]
   F --> G
   B --> H["ToolBuildContext.profile"]
   G --> I["ToolBuildContext.sessionFacts"]
-  E --> J["ToolBuildContext.highConfidenceFacts 原结构"]
+  E --> J["ToolBuildContext.ledger.ruleFacts 原结构"]
 ```
 
 | 字段 | 内容 | 置信度策略 |
 |---|---|---|
 | `profile` | 长期 `profile_facts` unwrap 后的裸值 | 只保留 `high` |
-| `sessionFacts` | session facts unwrap 后再叠加本轮高置信 | 只保留 `high`；**当前轮覆盖旧值** |
-| `highConfidenceFacts` | 当前轮原始 fact wrapper | 原结构保留，工具自行判断 |
+| `sessionFacts` | session facts unwrap 后再叠加本轮规则解析值 | 只保留 `high`；**当前轮覆盖旧值** |
+| `ledger.ruleFacts` | 当前轮原始 claim wrapper | 原结构保留，工具按用途自行判断；不得把 producer 当成事实权威 |
 | `currentFocusJob` | 当前焦点岗位 | 会话级状态 |
 | `recentBrandPool` | 最近展示/推荐/焦点岗位品牌去重 | 给品牌别名回指使用 |
 
-**prompt 层与工具层必须同口径**：两处都是「本轮高置信非空字段覆盖旧 session 高置信」。两处口径若不一致，会出现候选人刚说「我 24」、precheck 拿到 24 而 prompt 硬约束段仍念旧值的自相矛盾。跨轮冲突提醒由 `[本轮待确认线索]` 承担。
+**prompt 层与工具层必须同口径**：两处都是「本轮满足查询阈值的非空解析值覆盖旧 session 高置信」。两处口径若不一致，会出现候选人刚说「我 24」、precheck 拿到 24 而 prompt 硬约束段仍念旧值的自相矛盾。跨轮冲突提醒由 `[本轮待确认线索]` 承担。
 
 ### 7.1 precheck 字段来源规则
 
 `duliday_interview_precheck` 构造 `knownFieldMap` 的优先级：
 
 ```
-显式工具入参  >  本轮高置信线索  >  高置信 session/profile
+显式工具入参  >  本轮规则解析值  >  高置信 session/profile
 ```
 
 允许显式传入：`candidateAge` / `candidateInterviewTime` / `candidateGender` / `candidateEducation` / `candidateHasHealthCertificate` / `candidateIsStudent`。
 
 ⚠️ **姓名和电话不作为显式入参**——它们来自 `profile/sessionFacts`，并由姓名闸判断是否像真名（HC-2：模型参数单独不构成权威）。
 
-模型漏传时本轮高置信会兜底，但**设计上不能依赖兜底替代显式入参**。
+模型漏传时本轮规则解析值会兜底，但**设计上不能依赖兜底替代显式入参**。
 
 年龄规则：`pass`（符合）/ `boundary`（弹性边界内可继续）/ `hard_reject`（`nextAction='age_rejected'`，禁止继续收资/约面/booking）/ `unknown`（按正常收资处理）。
 
@@ -478,8 +478,8 @@ flowchart TD
 **「模型没用上某个字段」**：
 
 1. 当前轮规则轨是否识别出该字段，且 `confidence=high`；
-2. system prompt 的 `[本轮高置信线索]` / `[本轮待确认线索]` 是否展示了它；
-3. `ToolBuildContext.sessionFacts` 是否已把本轮高置信字段叠加进去；
+2. system prompt 的 `[本轮系统疑似识别]` / `[本轮待确认线索]` 是否展示了它；
+3. `ToolBuildContext.sessionFacts` 是否已把本轮满足查询阈值的规则字段叠加进去；
 4. 工具是否只读了显式入参、没读 context 兜底；
 5. precheck 场景：模型是否应显式传 `candidateAge` 等；
 6. Redis `sessionFacts` 中该字段是否存在但**置信度不是 high**，被 unwrap 过滤；
@@ -524,7 +524,7 @@ flowchart TD
 
 - **memory 只持有事实，不实现字段判断**——判断规则住 `resolution`，memory 负责「什么时候裁、拿什么裁、裁完归谁、留多久」；
 - **编排层固定读写，LLM 不能自主决定记什么**——工具只能翻阅历史（`recall_history`）或登记副作用（`invite_to_group`）；
-- **旁路不落库**——本轮高置信线索是解析 sidecar，持久化必须走 `extract_facts`；
+- **旁路不落库**——`ruleFacts` 是本轮系统疑似识别 sidecar，持久化必须走 `extract_facts` 的证据与准入链；
 - **存储格式与裁决通货解耦**——`SessionFactValue` / `UserProfileFactValue` 是纯落盘格式，裁决语义在 claim（见 [候选人档案域 §5.2](./candidate-profile-domain.md)）。
 
 ---

@@ -6,7 +6,7 @@ import {
   ReengagementTrackingService,
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 import type { SessionRef } from '../runner/agent-runner.types';
 import {
   computeFireAt,
@@ -68,11 +68,11 @@ export interface ScheduleFollowUpInput {
   anchorEventId: string;
   anchorAt: number;
   /**
-   * 权威状态（可选）。提供时做排程前停止条件预检 + 动态延迟（如 interview_reminder
+   * 复聊会话快照（可选）。提供时做排程前停止条件预检 + 动态延迟（如 interview_reminder
    * 依赖 interviewTime）；缺省时跳过预检、用常量延迟（processor 到点会再读权威态做
    * 完整 shouldStop，不漏判）。
    */
-  state?: AuthoritativeSessionState;
+  state?: ReengagementSessionState;
   /** 报名后场景的工单 ID（processor 到点向海绵核验工单现状用）。 */
   workOrderId?: number;
   /** 只用于本次计算延迟，不写入新任务 payload。 */
@@ -83,7 +83,7 @@ export interface ScheduleFollowUpInput {
   channelIdentity?: ReengagementChannelIdentity;
 }
 
-function createEmptyState(): AuthoritativeSessionState {
+function createEmptyState(): ReengagementSessionState {
   return {
     collectedFields: {},
     recalledJobIds: new Set<number>(),

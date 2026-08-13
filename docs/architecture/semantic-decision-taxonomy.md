@@ -32,8 +32,8 @@
    ；
 2. **搭车**：不新增同步 LLM 调用——与"投递路径不加 LLM 实时判断"裁定（2026-07）零碰撞；
 3. **claim 通货**：产出为 model 章 claim 进裁决底盘，字段待遇由 policy Record 决定；
-   语义分类不需要权威章（`AUTHORITATIVE_PRODUCERS` 不含 model 是宪法，档案权威仍归
-   确定性渠道），无 HC-2 碰撞；
+   producer 只记录 provenance，不自动授予或剥夺权力；档案准入看可复算证据与结构化
+   来源，model claim 仍须经过 citation verification（引文校验），无 HC-2 碰撞；
 4. **正则退守与冻结**：既有正则降为快轨/降级兜底并冻结——新 badcase 不再加正则分支，
    先看 shadow diff，模型判错改标签位提示词。
 

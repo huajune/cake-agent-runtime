@@ -1,4 +1,4 @@
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 import {
   bookingFollowUpAnchorId,
   computeFireAt,
@@ -8,7 +8,7 @@ import {
   shouldStop,
 } from '@agent/reengagement/scenario-registry';
 
-const baseState = (over: Partial<AuthoritativeSessionState> = {}): AuthoritativeSessionState => ({
+const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSessionState => ({
   collectedFields: {},
   recalledJobIds: new Set<number>(),
   hardConstraints: [],

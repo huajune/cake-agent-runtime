@@ -6,9 +6,9 @@ import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { z } from 'zod';
 import type {
-  AuthoritativeSessionState,
+  ReengagementSessionState,
   CandidateFieldKey,
-} from '@memory/types/authoritative-session-state.types';
+} from '@memory/types/reengagement-session-state.types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob } from './follow-up-scheduler.service';
@@ -28,7 +28,7 @@ export interface ReengagementComposeContext {
   sessionRef: FollowUpJob['sessionRef'];
   scenario: FollowUpScenario;
   jobData: FollowUpJob;
-  state: AuthoritativeSessionState;
+  state: ReengagementSessionState;
   messageId?: string;
   rolloutEnabled?: boolean;
   shadow?: boolean;

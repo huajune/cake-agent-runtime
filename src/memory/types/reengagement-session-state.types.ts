@@ -12,7 +12,7 @@ export interface PresentedStore {
   presentedAt?: number;
 }
 
-export interface AuthoritativeSessionState {
+export interface ReengagementSessionState {
   collectedFields: Partial<Record<CandidateFieldKey, CollectedField>>;
   recalledJobIds: Set<number>;
   hardConstraints: Array<{

@@ -15,7 +15,7 @@ import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.u
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
@@ -197,7 +197,7 @@ export class FollowUpProcessor implements OnModuleInit {
     }
 
     const now = Date.now();
-    const loadedState = await this.session.getAuthoritativeState(
+    const loadedState = await this.session.getReengagementState(
       sessionRef.corpId,
       sessionRef.userId,
       sessionRef.sessionId,
@@ -246,7 +246,7 @@ export class FollowUpProcessor implements OnModuleInit {
             ...loadedState,
             terminal: 'booked',
             interviewAt: bookingContext.interviewAt,
-          } as AuthoritativeSessionState,
+          } as ReengagementSessionState,
           workOrderId: bookingContext.workOrderId,
           expectedInterviewAt: bookingContext.interviewAt,
           interviewType: bookingContext.interviewType,
@@ -269,7 +269,7 @@ export class FollowUpProcessor implements OnModuleInit {
     }
 
     const state = bookingContext?.interviewAt
-      ? ({ ...loadedState, interviewAt: bookingContext.interviewAt } as AuthoritativeSessionState)
+      ? ({ ...loadedState, interviewAt: bookingContext.interviewAt } as ReengagementSessionState)
       : loadedState;
 
     // 1) 停止条件（代码，调 LLM 之前）
@@ -651,12 +651,12 @@ export class FollowUpProcessor implements OnModuleInit {
   /**
    * pre_booking 带外工单核验：按候选人手机号查海绵全部工单，交给纯分类器判停。
    *
-   * 手机号来源是权威状态的 collectedFields（booking 写回或候选人自陈）；拿不到
+   * 手机号来源是复聊会话快照的 collectedFields（booking 写回或候选人自陈）；拿不到
    * 手机号说明该候选人极大概率没走过任何报名流程，跳过核验不算漏。
    * 查询失败 fail open：pre_booking 历史上没有这道闸，降级即维持现状行为。
    */
   private async checkOutOfBandWorkOrderAtFire(
-    state: AuthoritativeSessionState,
+    state: ReengagementSessionState,
     botImId?: string,
   ): Promise<OutOfBandWorkOrderVerdict | null> {
     const rawPhone = state.collectedFields?.phone?.value;
@@ -701,7 +701,7 @@ export class FollowUpProcessor implements OnModuleInit {
    */
   private async scheduleTimeChangedReplacement(
     jobData: FollowUpJob,
-    state: AuthoritativeSessionState,
+    state: ReengagementSessionState,
     newInterviewAt: number,
     bookingContext: ReengagementBookingContext,
   ): Promise<void> {
@@ -725,7 +725,7 @@ export class FollowUpProcessor implements OnModuleInit {
           ...state,
           terminal: 'booked',
           interviewAt: newInterviewAt,
-        } as AuthoritativeSessionState,
+        } as ReengagementSessionState,
         workOrderId,
         expectedInterviewAt: newInterviewAt,
         interviewType: bookingContext.interviewType,
@@ -740,7 +740,7 @@ export class FollowUpProcessor implements OnModuleInit {
 
   private async runProactiveTurn(
     jobData: FollowUpJob,
-    state: AuthoritativeSessionState,
+    state: ReengagementSessionState,
     scenario: NonNullable<ReturnType<typeof getScenario>>,
     messageId?: string,
     options?: { rolloutEnabled?: boolean; shadow?: boolean },

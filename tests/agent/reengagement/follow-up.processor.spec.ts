@@ -1,10 +1,10 @@
 import { FollowUpProcessor } from '@agent/reengagement/follow-up.processor';
 import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/follow-up-scheduler.service';
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
-const baseState = (over: Partial<AuthoritativeSessionState> = {}): AuthoritativeSessionState => ({
+const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSessionState => ({
   collectedFields: {},
   recalledJobIds: new Set<number>(),
   hardConstraints: [],
@@ -35,7 +35,7 @@ const asExecution = (outcome: Record<string, unknown>, over: Record<string, unkn
 
 describe('FollowUpProcessor', () => {
   let queue: { process: jest.Mock; add: jest.Mock };
-  let session: { getAuthoritativeState: jest.Mock };
+  let session: { getReengagementState: jest.Mock };
   let reengagementAgent: { compose: jest.Mock };
   let touchLedger: {
     isOverFrequencyLimit: jest.Mock;
@@ -62,7 +62,7 @@ describe('FollowUpProcessor', () => {
   beforeEach(() => {
     jest.useRealTimers();
     queue = { process: jest.fn(), add: jest.fn().mockResolvedValue(undefined) };
-    session = { getAuthoritativeState: jest.fn().mockResolvedValue(baseState()) };
+    session = { getReengagementState: jest.fn().mockResolvedValue(baseState()) };
     reengagementAgent = {
       compose: jest.fn().mockResolvedValue(
         asExecution({
@@ -232,7 +232,7 @@ describe('FollowUpProcessor', () => {
         currentStatus: '约面成功',
         interviewTime: '2026-07-23 18:00',
       });
-      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
       chatSession.getChatHistory.mockResolvedValue([
         {
           role: 'user',
@@ -287,7 +287,7 @@ describe('FollowUpProcessor', () => {
       currentStatus: '约面成功',
       interviewTime: '2026-07-23 14:00',
     });
-    session.getAuthoritativeState.mockResolvedValue(
+    session.getReengagementState.mockResolvedValue(
       baseState({
         terminal: 'booked',
         lastCandidateMessageAt: candidateAt,
@@ -335,7 +335,7 @@ describe('FollowUpProcessor', () => {
       currentStatus: '约面成功',
       interviewTime: '2026-07-23 14:00',
     });
-    session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
     chatSession.getChatHistory.mockResolvedValue([
       {
         role: 'user',
@@ -796,7 +796,7 @@ describe('FollowUpProcessor', () => {
     });
 
     it('tracks stopped with reason when stop condition hits', async () => {
-      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
 
       await buildProcessor().process(makeJob());
 
@@ -812,7 +812,7 @@ describe('FollowUpProcessor', () => {
         interviewTime: '2026-06-24 14:00',
       });
       touchLedger.isInSessionTouchCooldown.mockResolvedValue(true);
-      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
       await buildProcessor().process(
         makeJob({
           data: {
@@ -1097,7 +1097,7 @@ describe('FollowUpProcessor', () => {
       jest.restoreAllMocks();
       // 10:30 Shanghai，投递窗口内
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2, 30, 0));
-      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
       reengagementAgent.compose.mockResolvedValue({
         kind: 'reply',
         reply: { text: '面试提醒' },
@@ -1390,7 +1390,7 @@ describe('FollowUpProcessor', () => {
         currentStatus: '约面成功',
         interviewTime: '2026-06-25 14:00',
       });
-      session.getAuthoritativeState.mockResolvedValue(
+      session.getReengagementState.mockResolvedValue(
         baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 }),
       );
 
@@ -1401,7 +1401,7 @@ describe('FollowUpProcessor', () => {
     });
 
     it('keeps the replied-after-anchor rule for legacy jobs without workOrderId', async () => {
-      session.getAuthoritativeState.mockResolvedValue(
+      session.getReengagementState.mockResolvedValue(
         baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 }),
       );
 
@@ -1417,7 +1417,7 @@ describe('FollowUpProcessor', () => {
     });
 
     it('stops legacy booking follow-ups that have no frozen interview time', async () => {
-      session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
 
       await buildProcessor().process(
         bookingJob({ workOrderId: undefined, expectedInterviewAt: undefined }),

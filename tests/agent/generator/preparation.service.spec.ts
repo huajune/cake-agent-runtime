@@ -1854,7 +1854,7 @@ describe('PreparationService', () => {
       }),
     );
     // memoryBlock 不再包含本轮线索，交由 TurnHintsSection 渲染。
-    expect(composeArgs.memoryBlock).not.toContain('[本轮高置信线索]');
+    expect(composeArgs.memoryBlock).not.toContain('[本轮系统疑似识别]');
     expect(composeArgs.memoryBlock).not.toContain('[本轮待确认线索]');
   });
 

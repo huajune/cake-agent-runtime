@@ -22,7 +22,7 @@ Bull delayed job（jobId 幂等：sessionId:scenarioCode:anchorEventId）
     │
     ▼  到点
 FollowUpTaskProcessor
-    ├─ ① 停止条件 shouldStop（读权威状态，调 LLM 之前）
+    ├─ ① 停止条件 shouldStop（读复聊会话快照，调 LLM 之前）
     ├─ ② 频控：24h 内 sent 状态 ≤ 2
     ├─ ③ 9–21 窗口二次确认（防 delay 漂移）→ 越界则 reschedule
     ├─ ④ ReengagementAgent.compose()  ← 不开放工具
@@ -69,7 +69,7 @@ await reengagementQueue.add('follow-up', { sessionRef, scenarioCode, anchorEvent
 
 ## 4. 停止条件
 
-### 4.1 基础停止条件（调 LLM 之前，读权威状态）
+### 4.1 基础停止条件（调 LLM 之前，读复聊会话快照）
 
 - `state.terminal ∈ {booked, handed_off, rejected, onboarded}` → 停；
 - 候选人明确拒绝 → 停；
@@ -153,7 +153,7 @@ src/agent/reengagement/
 ├── oob-work-order.ts           # pre_booking 带外工单核验
 └── booking-context.ts          # 面试上下文装配
 
-依赖：BullModule(REENGAGEMENT_QUEUE) | SessionService（权威状态）| LlmExecutorService
+依赖：BullModule(REENGAGEMENT_QUEUE) | SessionService（复聊会话快照）| LlmExecutorService
       | ReengagementTrackingService（底账落库）| SystemConfigService（运行时开关）
       | ChannelDeliveryPort（可选注入）
 ```

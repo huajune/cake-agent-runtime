@@ -1,4 +1,4 @@
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 
 export type FollowUpScenarioCode =
   | 'opening_no_reply'
@@ -11,7 +11,7 @@ export type FollowUpScenarioCode =
 
 export interface FollowUpScenarioContext {
   anchorAt: number;
-  state: AuthoritativeSessionState;
+  state: ReengagementSessionState;
   /** 实时岗位详情解析出的面试形式；仅用于需要按形式区分触发时间的场景。 */
   interviewType?: string;
 }
@@ -51,10 +51,10 @@ export interface FollowUpScenario {
   defaultDelayMinutes: number;
   /** 跟进目标（喂 runner 的 proactive directive）。 */
   objective: string;
-  /** 排程前/触发时必须具备的权威状态字段（审计用）。 */
+  /** 排程前/触发时必须具备的会话证据字段（审计用）。 */
   requiredEvidence: string[];
   /** 场景是否仍成立；返回 false → 丢弃，不触发。 */
-  stopUnless: (state: AuthoritativeSessionState) => boolean;
+  stopUnless: (state: ReengagementSessionState) => boolean;
   /** 语气与禁止项（不夸大/不承诺/不骚扰/拒绝即止）。 */
   generationPolicy: string;
   /** 允许注入本场景 prompt 的结构化事实标签；近期对话不受此白名单影响。 */
@@ -287,12 +287,12 @@ export function getScenario(code: FollowUpScenarioCode): FollowUpScenario | unde
 }
 
 /** interviewTime（毫秒）从权威态推断；缺失返回 null。 */
-export function resolveInterviewAt(state: AuthoritativeSessionState): number | null {
+export function resolveInterviewAt(state: ReengagementSessionState): number | null {
   const raw = (state as { interviewAt?: unknown }).interviewAt;
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
 }
 
-export function hasInterviewAt(state: AuthoritativeSessionState): boolean {
+export function hasInterviewAt(state: ReengagementSessionState): boolean {
   return resolveInterviewAt(state) != null;
 }
 
@@ -394,7 +394,7 @@ const REPLY_PROCESSING_GRACE_MS = 10 * MINUTE;
  * address_missing 触达，候选人彻底没人理。水位缺失（部署前旧会话）时无法判定，
  * 按已回话停发保持旧行为。
  */
-function isCandidateReplyUnattended(state: AuthoritativeSessionState, now: number): boolean {
+function isCandidateReplyUnattended(state: ReengagementSessionState, now: number): boolean {
   const { lastCandidateMessageAt, lastProcessedCandidateMessageAt } = state;
   if (lastCandidateMessageAt == null || lastProcessedCandidateMessageAt == null) return false;
   if (lastProcessedCandidateMessageAt >= lastCandidateMessageAt) return false;
@@ -402,7 +402,7 @@ function isCandidateReplyUnattended(state: AuthoritativeSessionState, now: numbe
 }
 
 /**
- * 调 LLM 之前的代码停止条件（读权威状态）。
+ * 调 LLM 之前的代码停止条件（读复聊会话快照）。
  *
  * - terminal ∈ {booked, handed_off, rejected, onboarded} → 停
  *   booking.succeeded 锚点允许 booked/handed_off 继续，由场景 stopUnless 自己判断。
@@ -418,7 +418,7 @@ function isCandidateReplyUnattended(state: AuthoritativeSessionState, now: numbe
  */
 export function shouldStop(
   scenario: FollowUpScenario,
-  state: AuthoritativeSessionState,
+  state: ReengagementSessionState,
   anchorAt: number,
   opts?: { externallyVerifiable?: boolean; now?: number },
 ): ShouldStopResult {

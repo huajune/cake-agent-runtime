@@ -40,9 +40,9 @@ import {
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
 import type {
-  AuthoritativeSessionState,
+  ReengagementSessionState,
   CollectedField,
-} from '../types/authoritative-session-state.types';
+} from '../types/reengagement-session-state.types';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { isNameAnsweredToRealNameAsk } from '@resolution/evidence/producers/name-confirmation';
@@ -285,14 +285,14 @@ export class SessionService {
     return state.facts;
   }
 
-  async getAuthoritativeState(
+  async getReengagementState(
     corpId: string,
     userId: string,
     sessionId: string,
     options?: { currentUserMessages?: readonly string[]; now?: number },
-  ): Promise<AuthoritativeSessionState> {
+  ): Promise<ReengagementSessionState> {
     const state = await this.getSessionState(corpId, userId, sessionId);
-    return this.deriveAuthoritativeState(state, options);
+    return this.deriveReengagementState(state, options);
   }
 
   /**
@@ -467,10 +467,10 @@ export class SessionService {
     return merged;
   }
 
-  private deriveAuthoritativeState(
+  private deriveReengagementState(
     state: WeworkSessionState,
     options?: { currentUserMessages?: readonly string[]; now?: number },
-  ): AuthoritativeSessionState {
+  ): ReengagementSessionState {
     const recalledJobIds = new Set<number>();
     for (const job of [
       ...(state.presentedJobs ?? []),
@@ -518,9 +518,9 @@ export class SessionService {
   private projectCollectedFieldsFromSessionFacts(
     facts: SessionFacts | null | undefined,
     now: number,
-  ): AuthoritativeSessionState['collectedFields'] {
+  ): ReengagementSessionState['collectedFields'] {
     if (!facts) return {};
-    const collectedFields: AuthoritativeSessionState['collectedFields'] = {};
+    const collectedFields: ReengagementSessionState['collectedFields'] = {};
     for (const key of ['name', 'phone', 'age', 'gender'] as const) {
       const fact = facts.interview_info[key];
       const value = unwrapSessionFactValue(fact);
@@ -667,7 +667,7 @@ export class SessionService {
     corpId: string,
     userId: string,
     sessionId: string,
-    terminal: AuthoritativeSessionState['terminal'],
+    terminal: ReengagementSessionState['terminal'],
   ): Promise<void> {
     await this.patchSessionState(corpId, userId, sessionId, { terminal: terminal ?? null });
     this.logger.log(

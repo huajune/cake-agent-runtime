@@ -1,5 +1,5 @@
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 
 const context = {
   traceId: 'trace-1',
@@ -8,7 +8,7 @@ const context = {
   corpId: 'corp-1',
 };
 
-const baseState = (over: Partial<AuthoritativeSessionState> = {}): AuthoritativeSessionState => ({
+const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSessionState => ({
   collectedFields: {},
   recalledJobIds: new Set<number>(),
   hardConstraints: [],
@@ -32,7 +32,7 @@ describe('ReengagementAnchorService', () => {
   };
   let session: {
     saveTerminalState: jest.Mock;
-    getAuthoritativeState: jest.Mock;
+    getReengagementState: jest.Mock;
     getSessionState: jest.Mock;
   };
 
@@ -45,7 +45,7 @@ describe('ReengagementAnchorService', () => {
     };
     session = {
       saveTerminalState: jest.fn().mockResolvedValue(undefined),
-      getAuthoritativeState: jest.fn().mockResolvedValue(baseState()),
+      getReengagementState: jest.fn().mockResolvedValue(baseState()),
       getSessionState: jest.fn().mockResolvedValue({ lastCandidatePool: [] }),
     };
   });
@@ -144,7 +144,7 @@ describe('ReengagementAnchorService', () => {
   });
 
   it('clears the booked terminal when a cancel succeeds', async () => {
-    session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'booked' }));
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
 
     buildService().handleToolAnchors(
       {
@@ -167,7 +167,7 @@ describe('ReengagementAnchorService', () => {
   it('writes booked last when cancel and booking succeed in the same turn', async () => {
     // 换岗回合：先取消旧工单再报新岗位。clearBookedTerminal 的状态读取被拖慢，
     // 复现竞态——若清空与写 booked 不串行，clear 的写会落在 booked 之后抹掉新终态。
-    session.getAuthoritativeState.mockImplementation(
+    session.getReengagementState.mockImplementation(
       () =>
         new Promise((resolve) => setTimeout(() => resolve(baseState({ terminal: 'booked' })), 20)),
     );
@@ -199,7 +199,7 @@ describe('ReengagementAnchorService', () => {
   });
 
   it('does not touch other terminals on cancel', async () => {
-    session.getAuthoritativeState.mockResolvedValue(baseState({ terminal: 'handed_off' }));
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'handed_off' }));
 
     buildService().handleToolAnchors(
       {
@@ -323,7 +323,7 @@ describe('ReengagementAnchorService', () => {
   });
 
   it('passes current turn job-list evidence when scheduling store-presented follow-up', async () => {
-    session.getAuthoritativeState.mockResolvedValue(baseState({ presentedStores: [] }));
+    session.getReengagementState.mockResolvedValue(baseState({ presentedStores: [] }));
 
     buildService().handleDeliveredReplyAnchors(
       {
