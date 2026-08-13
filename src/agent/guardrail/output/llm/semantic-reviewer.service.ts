@@ -221,7 +221,7 @@ export class SemanticReviewerService {
         '- 每条 finding 必须给出 evidencePath（指向 packet 中的证据字段）和 evidenceQuote（回复原文）。',
         '- 所有字符串字段内禁止使用英文双引号(")；需要引用原文或品牌名时用中文引号「」，否则内容会在引号处被截断丢失。',
         '- feedbackToGenerator 写成可直接执行的改写指令，只描述候选人可见回复该怎么改。',
-        '- 如果证据不足，只能 pass 或 observe，不要 revise/replan/block；把握不高时 confidence 填 low。',
+        '- 如果证据不足，只能 pass 或 observe，不要 revise/block；把握不高时 confidence 填 low。',
       ].join('\n'),
       prompt: ['请审查以下 evidence packet，并仅返回结构化裁决：', JSON.stringify(packet)].join(
         '\n',
@@ -254,7 +254,7 @@ export class SemanticReviewerService {
     if (findings.length === 0) {
       return { ...verdict, decision: 'pass', confidence: 'low', findings };
     }
-    return { ...verdict, decision: this.normalizeDecision(verdict.decision, findings), findings };
+    return { ...verdict, decision: this.normalizeDecision(verdict.decision), findings };
   }
 
   private isContradictedByPacket(
@@ -297,18 +297,20 @@ export class SemanticReviewerService {
     );
   }
 
+  /**
+   * 证据兜底剔除部分 finding 后的裁决归一：block 降级为 revise。
+   *
+   * 原判据是"没有任何 finding 声明 repairMode=replan（即没有一条非重查不可）→ 说明
+   * 剩下的问题都能靠重写修好 → 不必 block"。replan 退役后 repairMode 恒为 rewrite，
+   * 该判据**恒成立**，2026-08-13 清理时按原语义固化为无条件降级——行为零变更，只是
+   * 不再把结论藏在一个永远为假的死值判断里。
+   *
+   * 作用面很窄：本方法只在 applyEvidenceBackstop 剔除了部分 finding 的分支被调用，
+   * 未剔除路径原样返回模型裁决，block 不受影响。
+   */
   private normalizeDecision(
     decision: SemanticReviewVerdict['decision'],
-    findings: SemanticReviewVerdict['findings'],
   ): SemanticReviewVerdict['decision'] {
-    // 2026-07-27 发牌切换收尾：replan 修复模式整体退役（评估文档 §2.4）。本方法把
-    // 'replan' 归一为 revise，但只在证据兜底剔除 finding 的分支被调用
-    // （applyEvidenceBackstop 未剔除时原样返回 verdict）；未归一的 'replan' 由
-    // output-guardrail 的 applyConfidenceBackstop 兜底折叠。schema 仍容忍模型输出
-    // 'replan'（避免结构化输出重试），runner 的 replan 执行路径已删除。
-    const allowed = new Set(findings.map((finding) => finding.repairMode));
-    if (decision === 'replan') return 'revise';
-    if (decision === 'block' && !allowed.has('replan')) return 'revise';
-    return decision;
+    return decision === 'block' ? 'revise' : decision;
   }
 }

@@ -135,6 +135,17 @@ repair 的存在前提——"带违规反馈的第二次生成会比第一次好
 4. **job_detail 的违规不是没人管，是换人管**：今天=命中→replan→二审→投修复版（60% 变好但全部重度伤害产自此路）；终态=命中→observe 首版原样投递+证据留档→次日事后环 L1 扫投递物对照工具事实→系统性形态走生成侧根修。代价 ~14 条/天轻违规首版直投，换重度伤害归零——§6 的"L1 接盘检查先上线"硬约束由此而来。
 5. **枚举是退役的保险栓**：直接从现有 `action` 枚举**删除 REPLAN 值**（`repairMode`/`repairToolNames` 字段随之陪葬）——退役不是"恰好没人用"的偶然状态，而是类型层面硬约束；未来想给新规则配"重新规划回复"，必须先回本文档打这场架。
 
+   **✅ 已落地（2026-08-13）**：`GUARDRAIL_ACTION` / `GUARDRAIL_DECISION` / `OUTPUT_DECISIONS` /
+   `GUARDRAIL_REPAIR_MODE(S)` 全部删除 REPLAN 值，`repairMode` 收成 `rewrite` 单档；死代码
+   （`buildReplanToolConstraint` 与两处 `hasReplan` 分支）删除；提示词里"不要 revise/replan/block"
+   的措辞一并摘除（模型唯一一次吐出 replan 是照抄这句）。放行判据是生产实证：退役后 17 天、
+   5726 条 `guardrail_review_records` 里模型**未在任何枚举字段**产出过该值，"留着容忍模型输出
+   避免结构化重试"的理由已无实证支撑。历史档案（459 条 `first_decision='replan'`）不受影响——
+   读取链路是 `as OutputDecision` 断言无运行时校验，Dashboard 展示走 web 侧独立词表。
+   回归闸见 `tests/agent/guardrail/vocab-single-home-guardrail.spec.ts`「replan 不得回到任何出站词表」。
+   **未做**：`repairMode`/`repairToolNames` 字段本身的删除（涉及 `guardrail_review_records.repair_mode`
+   列与 Dashboard 展示，另案）。
+
 replan 曾是三期全部已投递伤害的宿主，且提示词约束已证明天花板（周二→周一案发生在 v10.29.0 首版注入 + 双通道保留指令生效**之后**）。拆解与发牌是通往同一终点（LLM 失去整段重写权）的两条路——发牌不用动刀，还顺手回答了更根本的"该不该修"，故拆解从必做降为备用。
 
 ### 2.5 repair 还算一"层"吗——不算了，解体为三个残件
@@ -177,7 +188,7 @@ persona+红线+阶段目标）。账本：7-24 实测 1204 轮投递中仅 1.7% 
 2-3 候选、排序挑最好）——选择安全/修改危险（§8.1），最坏选中另一合格候选而非改坏好文本；
 代价是延迟与 token，按场景白名单开，不全量。这是"本轮达标"野心的合规上升通道。
 
-**待落地**：(a) **不新增任何枚举/字段，在现有类型上做减法**（用户裁定：guardrail 类型维度已够多）——`action` 枚举删除 REPLAN 值、observe 从"pass + risk_level=low"暗语转正为一等值并设为**默认**，终态 `action = OBSERVE(默认) | REVISE | BLOCK` 三值；`repairMode`/`repairToolNames` 字段删除。image_desc 的"补调工具+原文照发"不需要目录值：文本不变即 observe，缺失的工具调用作为副作用补执行（finalizer/异步皆可），与 fence_stripped 同类——代码特例，不进目录当概念。净账：类型维度 5→2（action+priority），枚举值 4→3，零新增；(b) 发牌切换按规则逐条灰度（先 settlement / image_desc，再 job_detail），每条切换后由事后环日报验收（对应检查项须先于或同步于该规则的切换上线，见 §6）。
+**待落地**：(a) **不新增任何枚举/字段，在现有类型上做减法**（用户裁定：guardrail 类型维度已够多）——~~`action` 枚举删除 REPLAN 值~~（✅ 2026-08-13 落地，见 §2.4 点 5）、observe 从"pass + risk_level=low"暗语转正为一等值并设为**默认**，终态 `action = OBSERVE(默认) | REVISE | BLOCK` 三值；`repairMode`/`repairToolNames` 字段删除（⏳ 未做，涉及 DB 列与 Dashboard）。image_desc 的"补调工具+原文照发"不需要目录值：文本不变即 observe，缺失的工具调用作为副作用补执行（finalizer/异步皆可），与 fence_stripped 同类——代码特例，不进目录当概念。净账：类型维度 5→2（action+priority），枚举值 4→3，零新增；(b) 发牌切换按规则逐条灰度（先 settlement / image_desc，再 job_detail），每条切换后由事后环日报验收（对应检查项须先于或同步于该规则的切换上线，见 §6）。
 
 ## 3. 事后检测环：每日全量自动 badcase 扫描
 

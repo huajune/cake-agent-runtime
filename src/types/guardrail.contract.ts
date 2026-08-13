@@ -41,7 +41,6 @@ export const GUARDRAIL_ACTION = {
   PROMPT_ONLY: 'prompt_only',
   OBSERVE: 'observe',
   REVISE: 'revise',
-  REPLAN: 'replan',
   BLOCK: 'block',
   PAUSE_HOSTING: 'pause_hosting',
   REJECT_COLLECT: 'reject_collect',
@@ -79,21 +78,23 @@ export type GuardrailCoverage = (typeof GUARDRAIL_COVERAGES)[number];
  * 统一决策枚举（按层取子集）：
  * - input：`pass | block`
  * - tool ：`allow | reject_collect | reject_hard`
- * - output：`pass | observe | revise | replan | block`（replan 已于 2026-07-27 退役，
- *   枚举值保留仅容忍历史档案与模型输出，落地前一律折叠为 revise）
+ * - output：`pass | observe | revise | block`
  *
- * output 层优先级（严重度递增）：pass < observe < revise < replan < block
+ * output 层优先级（严重度递增）：pass < observe < revise < block
  * - pass：无违规，内容可发
  * - observe：发现软性问题，内容仍可发，打标记录
  * - revise：内容不可发，LLM 重写文案
- * - replan：（退役）历史语义为重走工具再生成，现流程折叠为 revise
  * - block：内容不可发；runner 先做一次受控重写自救，二审仍违规才硬拦
+ *
+ * `replan`（重走工具再生成）已于 2026-07-27 退役，2026-08-13 清理出类型层：退役后
+ * 17 天 5726 条 guardrail_review_records 里模型未在任何枚举字段吐过该值，容忍位失去
+ * 实证依据。历史档案（459 条 first_decision='replan'）仍在库，但读取链路是 `as
+ * OutputDecision` 断言、无运行时校验，展示由 web 侧独立词表承担，不依赖本枚举。
  */
 export const GUARDRAIL_DECISION = {
   PASS: 'pass',
   OBSERVE: 'observe',
   REVISE: 'revise',
-  REPLAN: 'replan',
   BLOCK: 'block',
   ALLOW: 'allow',
   REJECT_COLLECT: 'reject_collect',
@@ -116,7 +117,6 @@ export type OutputDecision = Extract<
   | typeof GUARDRAIL_DECISION.PASS
   | typeof GUARDRAIL_DECISION.OBSERVE
   | typeof GUARDRAIL_DECISION.REVISE
-  | typeof GUARDRAIL_DECISION.REPLAN
   | typeof GUARDRAIL_DECISION.BLOCK
 >;
 
@@ -131,7 +131,6 @@ export const OUTPUT_DECISIONS = [
   GUARDRAIL_DECISION.PASS,
   GUARDRAIL_DECISION.OBSERVE,
   GUARDRAIL_DECISION.REVISE,
-  GUARDRAIL_DECISION.REPLAN,
   GUARDRAIL_DECISION.BLOCK,
 ] as const;
 
@@ -226,17 +225,19 @@ export const GUARDRAIL_FEEDBACK_POLICIES = Object.values(GUARDRAIL_FEEDBACK_POLI
 
 export type GuardrailFeedbackPolicy = (typeof GUARDRAIL_FEEDBACK_POLICIES)[number];
 
-/** 修复方式：纯文案重写，或允许重新规划并调用只读工具。 */
+/**
+ * 修复方式：只有"纯文案重写"一档。
+ *
+ * 原 `replan`（重新规划并调用只读工具）2026-07-27 退役、2026-08-13 清理出类型层。
+ * 保留单档枚举而不是删掉整个字段：repairMode 仍随每条 turn 落库/展示，且 §2.4 若
+ * 重新申领"取数式修复"动手权时这里是唯一的加档处。
+ */
 export const GUARDRAIL_REPAIR_MODE = {
   REWRITE: 'rewrite',
-  REPLAN: 'replan',
 } as const;
 
 /** 有序元组（理由同 GUARDRAIL_RISK_LEVELS：z.enum 需要 readonly tuple）。 */
-export const GUARDRAIL_REPAIR_MODES = [
-  GUARDRAIL_REPAIR_MODE.REWRITE,
-  GUARDRAIL_REPAIR_MODE.REPLAN,
-] as const;
+export const GUARDRAIL_REPAIR_MODES = [GUARDRAIL_REPAIR_MODE.REWRITE] as const;
 
 export type GuardrailRepairMode = (typeof GUARDRAIL_REPAIR_MODES)[number];
 
@@ -309,7 +310,7 @@ export interface GuardrailReviewStepTrace {
  */
 export interface GuardrailTurnTrace {
   steps: GuardrailReviewStepTrace[];
-  /** 是否触发过一次受控修复（revise/replan 重写）。 */
+  /** 是否触发过一次受控修复（revise/block 后的重写）。 */
   repaired: boolean;
   /** 最终裁决（可能被 repair 上限收敛覆盖，如 repair_exhausted → block）。 */
   finalDecision: OutputDecision;

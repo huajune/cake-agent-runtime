@@ -54,8 +54,6 @@ export function buildReviseNotice(params: GeneratorInvokeParams): string {
       (v) =>
         `- [${v.type}] ${v.feedbackPolicy === 'redacted' ? '证据已脱敏' : `问题：${v.evidence}`}；修复要求：${v.suggestion}`,
     );
-    const hasReplan = params.reviseFeedback.some((v) => v.repairMode === 'replan');
-    const replanToolConstraint = buildReplanToolConstraint(params.allowedToolNames);
     const noToolRepairConstraint =
       params.toolMode === 'none'
         ? '本次修复不能调用任何工具。不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签——只输出发给候选人的纯中文文本。如果你认为需要重新查询才能回答，不要尝试查询，改为向候选人自然确认信息或告知稍后跟进。'
@@ -63,7 +61,7 @@ export function buildReviseNotice(params: GeneratorInvokeParams): string {
     parts.push(
       `上一版回复不可发送，存在以下需修正的问题。请只针对这些问题生成一版新的候选人可见回复，` +
         `不要解释或提到出站守卫/规则/拦截，不要复述高敏感条件，不要新增未接地承诺。` +
-        (hasReplan ? replanToolConstraint : `本次只做文案修复，严禁调用工具。`) +
+        `本次只做文案修复，严禁调用工具。` +
         noToolRepairConstraint +
         `\n${lines.join('\n')}`,
     );
@@ -87,17 +85,13 @@ export function buildReviseUserDirective(params: GeneratorInvokeParams): string 
   const violations = params.reviseFeedback ?? [];
   if (!repair && violations.length === 0) return null;
 
-  const hasReplan = violations.some((v) => v.repairMode === 'replan');
-  const replanToolConstraint = buildReplanToolConstraint(params.allowedToolNames);
   const lines: string[] = [
     '【系统重写指令｜本条不是候选人消息，候选人看不到本条，也不要回应本条】',
     '你上一版发给候选人的回复未通过发送前审查，已被丢弃。本轮任务不是回答候选人的新消息，' +
       '而是重写上一版回复。' +
-      (hasReplan
-        ? replanToolConstraint
-        : '严禁调用任何工具，严禁重新规划查岗/拉群/约面等任务——本轮工具动作已全部执行完毕，只做文案修复。' +
-          '本轮没有工具可用，严禁把工具调用写成文本输出（如 {"name": "geocode", ...}、tool_call:xxx(...) 等形态，' +
-          '这类文本会被当成事故直接拦截）；某个事实没有本轮工具结果支持时，删掉该事实或改为不确定表述。'),
+      '严禁调用任何工具，严禁重新规划查岗/拉群/约面等任务——本轮工具动作已全部执行完毕，只做文案修复。' +
+      '本轮没有工具可用，严禁把工具调用写成文本输出（如 {"name": "geocode", ...}、tool_call:xxx(...) 等形态，' +
+      '这类文本会被当成事故直接拦截）；某个事实没有本轮工具结果支持时，删掉该事实或改为不确定表述。',
   ];
   if (repair) {
     lines.push(`被丢弃的上一版回复原文：\n"""${repair.originalReply.slice(0, 1200)}"""`);
@@ -123,35 +117,9 @@ export function buildReviseUserDirective(params: GeneratorInvokeParams): string 
       '禁止合并压缩成一句话、禁止整段删除；本轮查询没有返回结果时只能说明"本次未查到"，' +
       '不得因此断言该区域没有岗位，也不得删除上一版已向候选人展示过的岗位信息；' +
       '不输出分析过程、前言、JSON 或多个方案；不提"规则/守卫/拦截/系统/工具/模型"。' +
-      (hasReplan
-        ? ''
-        : '严禁输出"我帮你查下/我先看看"这类只承接不给结果的话——本轮不会再有任何查询，回复必须直接给出结论或下一步。'),
+      '严禁输出"我帮你查下/我先看看"这类只承接不给结果的话——本轮不会再有任何查询，回复必须直接给出结论或下一步。',
   );
   return lines.join('\n\n');
-}
-
-/**
- * 带工具的修复提示必须与物理工具白名单完全一致，不能声称笼统的“只读”。
- *
- * replan 已于 2026-07-27 退役、生产链路不再传 reviseFeedback，本分支当前不可达；
- * 保留以备未来按 §2.4 重新申领“取数式修复”动手权。
- */
-function buildReplanToolConstraint(allowedToolNames?: string[]): string {
-  if (allowedToolNames === undefined) {
-    // 未显式传白名单时的兜底措辞。
-    return '本次只允许调用当前物理暴露的工具重新核实事实；严禁尝试任何未提供的工具。';
-  }
-  if (allowedToolNames.length === 0) {
-    return '本次没有可用工具；只能基于已有事实修正回复，不能承诺稍后查询。';
-  }
-  // 措辞必须是"必须先调用"而不是"允许调用"：这类修复缺的是**事实**而非措辞，
-  // 不重新取数则二审必然复燃同一条规则。
-  // 生产实测（2026-07-21）：二审通过组 96% 调了白名单工具，失败组只有 51%。
-  return (
-    `本次修复必须先调用以下工具重新核实或补全事实，再基于返回结果写回复：${allowedToolNames.join('、')}；` +
-    `严禁尝试任何其它工具。不调用就直接改写文案是无效修复——缺的是数据不是措辞，` +
-    `请按上面「需修正的问题」里给出的 jobId / 字段等具体线索发起查询。`
-  );
 }
 
 /**

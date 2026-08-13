@@ -597,7 +597,11 @@ describe('PreparationService', () => {
     );
   });
 
-  it('replan directive names the exact repair tool allowlist', async () => {
+  // 2026-08-13 replan 清理：本例原为"replan 指令逐字列出修复工具白名单"，机制退役后
+  // 改守两条仍然有效的属性——① 即使调用方传了 allowedToolNames，修复指令也一律禁工具
+  // （replan 退役的不变量，防未来有人顺手把白名单接回重写回合）；② 本案证据必须与静态
+  // suggestion 一起出现在这条注意力最强的指令里（2026-07-21 审计教训，见 revise-directives）。
+  it('repair directive forbids tools even when an allowlist is passed, and renders case evidence', async () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
@@ -612,7 +616,7 @@ describe('PreparationService', () => {
             type: 'hallucinated_fact',
             evidence: '距离数字无工具依据',
             suggestion: '重新查岗后按工具结果重写',
-            repairMode: 'replan',
+            repairMode: 'rewrite',
           },
         ],
       },
@@ -622,11 +626,9 @@ describe('PreparationService', () => {
     const last = result.normalizedMessages[result.normalizedMessages.length - 1];
     expect(last.role).toBe('user');
     const content = last.content as string;
-    // 2026-07-21 守卫审计：措辞由"只允许调用"改为"必须先调用"——replan 判据是缺事实
-    // 而非缺措辞，不重新取数则二审必然复燃（生产：二审通过组 96% 调了工具，失败组 51%）。
-    expect(content).toContain('本次修复必须先调用以下工具');
-    expect(content).toContain('geocode、duliday_job_list');
-    expect(content).not.toContain('严禁调用任何工具');
+    expect(content).toContain('严禁调用任何工具');
+    expect(content).not.toContain('本次修复必须先调用以下工具');
+    expect(content).not.toContain('geocode、duliday_job_list');
     // 本案证据（jobId/字段等线索）必须与静态 suggestion 一起出现在这条注意力最强的指令里。
     expect(content).toContain('问题：距离数字无工具依据');
   });

@@ -22,16 +22,24 @@ import {
  */
 describe('词表单一居所 · 期 1', () => {
   describe('发给审查模型的 schema 取值与顺序不得漂移', () => {
-    it('OUTPUT_DECISIONS 保持严重度升序五档', () => {
-      expect([...OUTPUT_DECISIONS]).toEqual(['pass', 'observe', 'revise', 'replan', 'block']);
+    it('OUTPUT_DECISIONS 保持严重度升序四档', () => {
+      expect([...OUTPUT_DECISIONS]).toEqual(['pass', 'observe', 'revise', 'block']);
     });
 
     it('GUARDRAIL_RISK_LEVELS 保持 low→high', () => {
       expect([...GUARDRAIL_RISK_LEVELS]).toEqual(['low', 'medium', 'high']);
     });
 
-    it('GUARDRAIL_REPAIR_MODES 保持 rewrite→replan', () => {
-      expect([...GUARDRAIL_REPAIR_MODES]).toEqual(['rewrite', 'replan']);
+    it('GUARDRAIL_REPAIR_MODES 只剩 rewrite 单档', () => {
+      expect([...GUARDRAIL_REPAIR_MODES]).toEqual(['rewrite']);
+    });
+
+    // 2026-08-13：replan 清理出类型层后的回归闸——防有人"顺手"把它加回词表。
+    // 要重新申领取数式修复动手权，先改 guardrail-quality-system.md §2.4 再动这里。
+    it('replan 不得回到任何出站词表', () => {
+      expect([...OUTPUT_DECISIONS]).not.toContain('replan');
+      expect([...GUARDRAIL_REPAIR_MODES]).not.toContain('replan');
+      expect(Object.values(GUARDRAIL_DECISION)).not.toContain('replan');
     });
   });
 
@@ -78,7 +86,6 @@ describe('词表单一居所 · 期 1', () => {
     const rank: Record<string, number> = {
       block: 4,
       revise: 3,
-      replan: 3,
       observe: 2,
       pass: 1,
     };
@@ -91,13 +98,14 @@ describe('词表单一居所 · 期 1', () => {
       expect(newMerge(a, b)).toBe(legacyMerge(a, b));
     });
 
-    it('replan 已退役但仍必须有优先级——按可修复处理，不得降级成 pass', () => {
-      // 这是本期唯一的**刻意不等价**：旧实现下 replan 会掉进 `?? PASS`，
-      // 等于把一个非 pass 的裁决静默放行（fail-open）。新实现给它 revise 同级。
-      expect(newMerge('replan', 'pass')).toBe('replan');
+    // 2026-08-13 replan 清理：本层不再给退役档位留优先级（旧版给 replan 排了 revise 同级）。
+    // 下面这条不是"期望行为"，而是把危险**钉在案发现场**：任何未登记的裁决在优先级合并
+    // 里都会静默 fail-open 成放行。所以归一必须发生在入口 applyConfidenceBackstop
+    // （未知值 → revise），而不是靠这张表兜——真实链路的注入用例见
+    // tests/agent/guardrail/output/output-guardrail.service.spec.ts「遗留 verdict replan 归一为 revise/rewrite」。
+    it('未登记的裁决在优先级合并里会 fail-open——故必须在入口归一', () => {
+      expect(newMerge('replan', 'pass')).toBe('pass');
       expect(legacyMerge('replan', 'pass')).toBe('pass');
-      // block 仍然压过 replan
-      expect(newMerge('replan', 'block')).toBe('block');
     });
   });
 });

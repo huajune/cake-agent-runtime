@@ -23,6 +23,7 @@ import {
   GUARDRAIL_RECOVERABILITY,
   GUARDRAIL_REPAIR_MODE,
   GUARDRAIL_RISK_LEVEL,
+  OUTPUT_DECISIONS,
 } from '@shared-types/guardrail.contract';
 import { HardRulesService, type HardRuleOverrideHit } from './hard-rules.service';
 import type { RuleContradiction } from './output-rule.types';
@@ -38,7 +39,7 @@ import { pruneRepeatedReplySegments } from './rules/repeated-reply.rule';
 /**
  * 出站守卫组合器（§5.2 / §7）。
  *
- * 把确定性 rule 档与高风险才触发的 llm 档汇成一个最终裁决 `pass | revise | replan | block`：
+ * 把确定性 rule 档与高风险才触发的 llm 档汇成一个最终裁决 `pass | observe | revise | block`：
  * - rule 档（{@link HardRulesService}）：先跑、确定性、可 veto 当前回复；
  *   所有命中与修复过程统一落 `guardrail_review_records`，不自动创建 BadCase。
  * - llm 档（{@link SemanticReviewerService}）：唯一的语义 reviewer，吃
@@ -165,7 +166,7 @@ export class OutputGuardrailService {
   /**
    * 审查一条候选回复，返回组合裁决。
    *
-   * 不变量：只读、无副作用；决策是 veto（pass/revise/replan/block），不改写文本（revise 的
+   * 不变量：只读、无副作用；决策是 veto（pass/observe/revise/block），不改写文本（revise 的
    * 重写由 runner 带 violations 重新生成）。
    */
   async check(input: OutputGuardInput): Promise<OutputGuardDecision> {
@@ -227,12 +228,12 @@ export class OutputGuardrailService {
     });
     const overrideMarkers = this.buildHardRuleOverrideMarkers(ruleResult.overrideHits);
     const ruleIds = ruleResult.contradictions.map((c) => c.ruleId);
-    // 不可发送的规则（revise / replan / block），action=observe 的内容仍可发出。
+    // 不可发送的规则（revise / block），action=observe 的内容仍可发出。
     const blockedRuleIds = ruleResult.contradictions
       .filter((c) => c.currentReplySendable === false)
       .map((c) => c.ruleId);
 
-    // 按优先级聚合 rule 档决策：block > replan > revise > observe > pass
+    // 按优先级聚合 rule 档决策：block > revise > observe > pass
     const ruleDecision = this.mergeRuleDecision(ruleResult.contradictions);
 
     // packet 只裁剪已在手的信息（同步、无额外 IO），shadow 与 enforce 共用同一份证据。
@@ -386,7 +387,7 @@ export class OutputGuardrailService {
         ],
         ruleIds,
         blockedRuleIds,
-        // replan 已退役（2026-07-27），修复模式恒为 rewrite、无工具白名单。
+        // 修复模式恒为 rewrite、无工具白名单（repair 统一走 ReplyRepairAgent）。
         repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
         repairToolNames: [],
         feedbackToGenerator: feedbackLines || undefined,
@@ -421,7 +422,7 @@ export class OutputGuardrailService {
     ruleIds: string[],
     blockedRuleIds: string[],
   ): OutputGuardDecision {
-    // replan 已退役（2026-07-27）：mergeRuleDecision 只产出 block/revise/observe/pass。
+    // mergeRuleDecision 只产出 block/revise/observe/pass 四档。
     if (ruleDecision === GUARDRAIL_DECISION.REVISE) {
       const actionableRules = contradictions.filter((c) => c.currentReplySendable === false);
       return {
@@ -535,16 +536,17 @@ export class OutputGuardrailService {
 
   /**
    * "LLM 不能自证"的代码层兜底：reviewer 自评 confidence=low 时，enforce 级结论
-   * （revise/replan/block）一律降级为 observe——证据不足只能观测，不能拦截。
+   * （revise/block）一律降级为 observe——证据不足只能观测，不能拦截。
    */
   private applyConfidenceBackstop(verdict: SemanticReviewVerdict): OutputDecision {
-    // replan 已退役（2026-07-27）：reviewer 的 normalizeDecision 只在证据兜底剔除
-    // finding 的分支运行，未剔除路径会把 'replan' 原样传出——本处归一是 enforce 链路
-    // 的必经防线（兼防 mock 注入；mergeByPriority 序列已无该档，漏网会被静默当 pass 吞掉）。
-    const decision =
-      (verdict.decision as OutputDecision) === GUARDRAIL_DECISION.REPLAN
-        ? GUARDRAIL_DECISION.REVISE
-        : (verdict.decision as OutputDecision);
+    // 归一未知裁决（enforce 链路的必经防线）。原先这里只硬编码折叠退役的 'replan'；
+    // 2026-08-13 清理时改为按合法集校验——覆盖面严格更大（历史档案重放、mock/实现
+    // 替换注入、未来新增档位漏登记都吃得住），且不再依赖某个具体的死值。
+    // 方向必须是 revise 而非 pass：漏网值会在 mergeByPriority 的穷尽 Record 里取不到
+    // 优先级，静默退化成放行，正是安全闸最不该有的兜底方向。
+    const decision = OUTPUT_DECISIONS.includes(verdict.decision as OutputDecision)
+      ? (verdict.decision as OutputDecision)
+      : GUARDRAIL_DECISION.REVISE;
     const isEnforce =
       decision === GUARDRAIL_DECISION.REVISE || decision === GUARDRAIL_DECISION.BLOCK;
     if (isEnforce && verdict.confidence === 'low') {
@@ -559,8 +561,7 @@ export class OutputGuardrailService {
   }
 
   private mergeRuleDecision(contradictions: RuleContradiction[]): OutputDecision {
-    // 2026-07-27 发牌切换收尾：GuardrailRuleAction 已删 REPLAN（硬规则零雇主），
-    // 规则层聚合从此只产出 block/revise/observe/pass 四档。
+    // 2026-07-27 发牌切换收尾后，规则层聚合只产出 block/revise/observe/pass 四档。
     const actions = contradictions.map((c) => c.action);
     if (actions.includes('block')) return GUARDRAIL_DECISION.BLOCK;
     if (actions.includes('revise')) return GUARDRAIL_DECISION.REVISE;
@@ -577,13 +578,11 @@ export class OutputGuardrailService {
     // 也就是把本该拦截的裁决放行。安全闸的兜底方向不该是"放行"，而且这种遗漏
     // 零编译信号。穷尽映射下，加档不登记即**编译期报错**。
     //
-    // replan 已退役（2026-07-27）：任何来源都不再产出该档。这里仍必须给它一个
-    // 优先级（穷尽性要求），取与 revise 同级——万一有历史数据带回该档，按可修复
-    // 处理而不是被当成 pass 放掉。
+    // 运行时漏网值（类型撒谎的 as 断言、历史档案重放）由 applyConfidenceBackstop
+    // 在入口归一为 revise 挡掉，不指望本 Record 兜。
     const PRIORITY: Record<OutputDecision, number> = {
       [GUARDRAIL_DECISION.BLOCK]: 4,
       [GUARDRAIL_DECISION.REVISE]: 3,
-      [GUARDRAIL_DECISION.REPLAN]: 3,
       [GUARDRAIL_DECISION.OBSERVE]: 2,
       [GUARDRAIL_DECISION.PASS]: 1,
     };
@@ -647,7 +646,7 @@ export class OutputGuardrailService {
       // 按定义可改写修复；P0 finding 禁 fail-open 的信号由 severity → riskLevel 承载，
       // 不能留 undefined——runner 的 fail-open 闸门按 !== 'non_recoverable' 判定。
       recoverability: GUARDRAIL_RECOVERABILITY.RECOVERABLE,
-      // replan 已退役（2026-07-27）：schema 容忍的 'replan' 值在此统一折叠为 rewrite。
+      // 语义 finding 的修复方式恒为 rewrite（repairMode 已无第二档）。
       repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
     };
   }
@@ -665,7 +664,7 @@ export class OutputGuardrailService {
   /**
    * llm 档参与裁决时的组合 riskLevel。
    *
-   * revise/replan 不能短路成 medium：riskLevel=high 是 runner §9 repair 上限用尽后
+   * revise 不能短路成 medium：riskLevel=high 是 runner §9 repair 上限用尽后
    * 禁止 fail-open 的唯一档位信号。rule 档 P0（如工具失败假成功，action=revise 但
    * severity=P0）或语义档 P0 finding 命中时必须传导 high，否则语义档恰好同轮 revise
    * 会把 P0 违规"洗"成 medium → repair 两轮未净即 fail-open 发出（2026-07-06 review Critical）。
@@ -724,9 +723,9 @@ export interface OutputGuardDecision {
   ruleIds: string[];
   /** 当前回复不可发送的 rule id。最终是否 block 由 recoverability 与 repair 上限决定。 */
   blockedRuleIds: string[];
-  /** 修复模式：replan 退役（2026-07-27）后恒为 rewrite（无工具重写），类型保留仅容忍历史档案。 */
+  /** 修复模式：恒为 rewrite（无工具重写）——repairMode 自 2026-07-27 起只有这一档。 */
   repairMode: GuardrailRepairMode;
-  /** replan 退役后恒为空；runner 已不执行修复工具，字段保留兼容历史档案。 */
+  /** 恒为空；runner 已不执行修复工具，字段保留兼容历史档案。 */
   repairToolNames?: string[];
   /** 聚合后的脱敏/普通反馈，直接进入 generator repair prompt。 */
   feedbackToGenerator?: string;
