@@ -48,7 +48,9 @@ export function parseCandidateFieldsFromText(
     const excerpt = truncateEvidence(result.excerpt);
     fields[key] = {
       value: result.value,
-      producer: 'candidate_quote',
+      // 标 'rule' 而非 'candidate_quote'：这些值是正则算出来的，不是候选人原话
+      // 背书的（宪法 §6 反模式「解析产物冒充引文权威」）。
+      producer: 'rule',
       evidence: excerpt || `「${String(result.value)}」（${fallbackLabel}）`,
       at,
     };

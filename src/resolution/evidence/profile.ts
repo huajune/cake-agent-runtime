@@ -9,7 +9,15 @@ import { candidateValuesEquivalent } from './normalize';
  * Prompt 展示消费同一份视图，消除"每个消费者自带一套证据规则"的读侧分裂。
  */
 
-export type CandidateFactStatus = 'accepted' | 'historical_unconfirmed' | 'conflicted' | 'missing';
+/**
+ * 字段状态。`needs_confirmation` 取代旧的 `conflicted` 终局：出处存疑不再让字段出局，
+ * 而是带值进收资清单做一句复述——系统内终审权在候选人本人（宪法 P11）。
+ */
+export type CandidateFactStatus =
+  | 'accepted'
+  | 'historical_unconfirmed'
+  | 'needs_confirmation'
+  | 'missing';
 
 export interface EffectiveCandidateField {
   /** 裁决后的当前有效值；missing / historical_unconfirmed（未确认）时为 null 或历史值。 */
@@ -64,7 +72,8 @@ export function buildEffectiveProfile(
   const acceptedByField = new Map<CandidateClaimField, AdjudicatedClaim>();
   const supersededByField = new Map<CandidateClaimField, string[]>();
   const clearedFields = new Set<CandidateClaimField>();
-  const conflictedFields = new Set<CandidateClaimField>();
+  /** 转确认字段 → 待候选人拍板的值（取最新一条，供 D1 渲染复述句）。 */
+  const pendingConfirmation = new Map<CandidateClaimField, AdjudicatedClaim>();
 
   for (const entry of params.adjudicated) {
     const field = entry.claim.field;
@@ -74,10 +83,14 @@ export function buildEffectiveProfile(
       supersededByField.set(field, list);
       continue;
     }
-    if (entry.decision !== 'accepted') {
-      if (entry.rejectionReason === 'conflicting_evidence') conflictedFields.add(field);
+    if (entry.decision === 'needs_confirmation') {
+      const previous = pendingConfirmation.get(field);
+      if (!previous || previous.claim.assertedAt <= entry.claim.assertedAt) {
+        pendingConfirmation.set(field, entry);
+      }
       continue;
     }
+    if (entry.decision !== 'accepted') continue;
     if (entry.claim.operation === 'clear') {
       clearedFields.add(field);
       acceptedByField.delete(field);
@@ -103,6 +116,19 @@ export function buildEffectiveProfile(
     fields[field] = { value: null, status: 'missing', updatedAt: now };
   }
 
+  // 转确认在会话基线/画像**之前**落位：本轮出处存疑的字段不能因为会话里恰好躺着一个
+  // 旧值就把疑问吞掉（那是静默覆盖）。值仍带进清单——扣着值等于让候选人从头重报。
+  for (const [field, entry] of pendingConfirmation) {
+    if (fields[field]) continue; // 本轮已有 accepted/cleared 结论时不再打扰
+    fields[field] = {
+      value: (entry.claim.value as string | number | boolean | null) ?? null,
+      status: 'needs_confirmation',
+      evidenceQuote: entry.claim.evidence.quote.slice(0, 80),
+      source: entry.claim.producer,
+      updatedAt: now,
+    };
+  }
+
   for (const [field, fact] of Object.entries(params.sessionAccepted) as Array<
     [CandidateClaimField, { value: string | number | boolean; evidence?: string }]
   >) {
@@ -123,13 +149,6 @@ export function buildEffectiveProfile(
     fields[field] = { value, status: 'historical_unconfirmed', source: 'profile', updatedAt: now };
   }
 
-  for (const field of conflictedFields) {
-    // 冲突覆盖 accepted 之外的其余来源：有未解决冲突的字段不得静默采信。
-    if (fields[field]?.status !== 'accepted') {
-      fields[field] = { value: fields[field]?.value ?? null, status: 'conflicted', updatedAt: now };
-    }
-  }
-
   return {
     factsVersion: params.factsVersion,
     messageWatermark: params.messageWatermark,
@@ -146,6 +165,22 @@ export function pickAcceptedValues(
     [CandidateClaimField, EffectiveCandidateField]
   >) {
     if (entry.status === 'accepted' && entry.value !== null) values[field] = entry.value;
+  }
+  return values;
+}
+
+/**
+ * 待候选人拍板的字段值映射。消费纪律同 CandidatePrefillHint 三禁令：只准渲染成
+ * 「值（如有误请改）」随整表确认，不得据此拒绝、提交或升级来源。
+ */
+export function pickNeedsConfirmationValues(
+  profile: EffectiveCandidateProfile,
+): Partial<Record<CandidateClaimField, string | number | boolean>> {
+  const values: Partial<Record<CandidateClaimField, string | number | boolean>> = {};
+  for (const [field, entry] of Object.entries(profile.fields) as Array<
+    [CandidateClaimField, EffectiveCandidateField]
+  >) {
+    if (entry.status === 'needs_confirmation' && entry.value !== null) values[field] = entry.value;
   }
   return values;
 }

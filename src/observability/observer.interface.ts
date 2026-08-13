@@ -212,6 +212,13 @@ export type AgentEvent = AgentEventContext &
         }>;
         /** booking_gate 专用：payload 与快照不一致的字段名（含水位失效伪字段）。 */
         mismatchedFields?: string[];
+        /**
+         * 覆盖率 delta（P11 工序 C6）：规则解析器抓到、模型却没经作证通道提交的
+         * 字段。迁移期唯一的覆盖率仪表，也是 P2 拆机判据（≤ 噪音水平持续两周）。
+         */
+        coverageDelta?: CandidateClaimField[];
+        /** 回声检查（工序 C4）本次命中数；shadow 期用于算误报率（enforce 判据④）。 */
+        echoDetections?: number;
       }
   );
 

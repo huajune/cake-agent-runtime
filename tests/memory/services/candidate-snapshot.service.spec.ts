@@ -12,6 +12,7 @@ function buildSnapshot(): PrecheckSnapshot {
     effectiveProfile: { factsVersion: 7, messageWatermark: '2:5:我叫王玥', fields: {} },
     acceptedClaimIds: ['rule_name_1'],
     missingFields: [],
+    confirmedFields: [],
     createdAt: '2026-08-05T10:00:00+08:00',
     expiresAt: '2026-08-05T12:00:00+08:00',
   };

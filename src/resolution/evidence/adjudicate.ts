@@ -9,10 +9,12 @@ import type {
 import { adjudicateCandidateClaims } from './engine';
 import {
   pickAcceptedValues,
+  pickNeedsConfirmationValues,
   type EffectiveCandidateProfile,
   type ProfileHintFacts,
   type SessionAcceptedFacts,
 } from './profile';
+import { extractDialogueTurns } from '@resolution/signal/dialogue';
 import { produceDirectFieldClaims } from './producers/direct-field';
 import { produceIdentityClaim } from './producers/student-identity';
 import {
@@ -45,6 +47,11 @@ export interface RunAdjudicationParams {
   legacyArgs?: LegacyCandidateArgs;
   sessionAccepted: SessionAcceptedFacts;
   profileHints: ProfileHintFacts;
+  /**
+   * 回声检查（工序 C4）是否参与裁决。迁移三阶段 P0 只观测（false，默认）：
+   * 命中计入 `echoDetections` 供误报率抽查；P1 切换后转 needs_confirmation。
+   */
+  echoRoutesToConfirmation?: boolean;
   now?: Date;
 }
 
@@ -52,24 +59,23 @@ export interface AdjudicationRunResult {
   profile: EffectiveCandidateProfile;
   adjudicated: AdjudicatedClaim[];
   acceptedValues: Partial<Record<CandidateClaimField, string | number | boolean>>;
+  /** 待候选人拍板的字段值（工序 D1 收资清单渲染）。 */
+  needsConfirmationValues: Partial<Record<CandidateClaimField, string | number | boolean>>;
+  /** 回声检查命中数（shadow 期误报率抽查，判据④）。 */
+  echoDetections: number;
   messageWatermark: string;
   factsVersion: number;
 }
 
-/**
- * 提取候选人侧**自陈**原文（user 角色，剥引用块/时间后缀/视觉描述），保持会话顺序。
- *
- * 视觉来源剔除（生产实测 2026-08-06，chat 6a714c00）：`save_image_description` 把
- * vision 描述回写进 user 消息，第三方截图里的招聘者手机号、岗位门槛年龄因此与候选人
- * 手打文本并列。本函数产出的文本集是 claim 的 **quote 验证基准**——不剔除等于把
- * "截图里出现过"当成"候选人说过"，第三方号码可在无冲突时直接 accepted 进快照
- * （与 [[project_badcase_image_identity_hijack]] / PR #870 同族，那次收窄的是抽取侧）。
- *
- * 逐 part 判定而非整条：多模态 content 数组扁平化后，描述前面还挂着
- * `[图片 messageId=…]` 占位标签，消息级 startsWith 判据会落空。
- * 候选人自己的简历图片是自陈材料，按既有裁定保留。
- */
+/** booking 侧沿用同一份语料选择器（quote 验证基准）；文档在定义处。 */
 export { extractCandidateTexts } from '@resolution/signal/self-report';
+
+/** 我方已发消息全集（回声检查基准，工序 C4）。两边都是已知字符串，判定全封闭。 */
+function extractAssistantTexts(messages: readonly unknown[]): string[] {
+  return extractDialogueTurns(messages)
+    .filter((turn) => turn.role === 'assistant')
+    .map((turn) => turn.text);
+}
 
 export function runCandidateFactAdjudication(params: RunAdjudicationParams): AdjudicationRunResult {
   const now = params.now ?? new Date();
@@ -79,9 +85,8 @@ export function runCandidateFactAdjudication(params: RunAdjudicationParams): Adj
   const factsVersion = deriveFactsVersion(messageWatermark);
 
   // 真名索取问答（badcase 6a7446eb）：Agent 问真名、候选人裸名直答。逐条文本的
-  // parseName 只认"姓名：X"/"我叫X"结构化形态，裸名答推导不出——不补这条轨，模型
-  // 传来的正确姓名会被判 no_candidate_evidence（生产实测 name 字段该拒因当日 40 条，
-  // 本族占相当比例）。证据是跨轮问答对，故用完整 messages 而非 candidateTexts。
+  // parseName 只认"姓名：X"/"我叫X"结构化形态，裸名答匹配不上——不补这条轨，模型
+  // 传来的正确姓名在闸门侧仍无出处。证据是跨轮问答对，故用完整 messages。
   const nameAnswer = resolveNameAnsweredToRealNameAsk(params.messages);
 
   const claims: CandidateFactClaim[] = [
@@ -94,8 +99,8 @@ export function runCandidateFactAdjudication(params: RunAdjudicationParams): Adj
             value: nameAnswer.name,
             operation: 'set' as const,
             producer: 'candidate_quote' as const,
-            // 值本体在候选人应答里（不是问句里），故按 direct 校验——严格身份字段要求
-            // 证据逐字含值，用问句作基准会被判自由推导。问句仅作审计上下文留存。
+            // 值本体在候选人应答里（不是问句里），故按 direct 校验：严格身份字段要求
+            // 引文逐字含值，用问句作基准会对不上。问句仅作审计上下文留存。
             interpretation: 'direct' as const,
             evidence: { quote: nameAnswer.quote, agentQuestionQuote: nameAnswer.askQuote },
             assertedAt,
@@ -108,9 +113,13 @@ export function runCandidateFactAdjudication(params: RunAdjudicationParams): Adj
   const identityClaim = produceIdentityClaim({ messages: params.messages, assertedAt });
   if (identityClaim) claims.push(identityClaim);
 
-  const { profile, adjudicated } = adjudicateCandidateClaims({
+  const { profile, adjudicated, echoDetections } = adjudicateCandidateClaims({
     claims,
     candidateTexts,
+    // 回声检查基准（工序 C4）：我方已发消息全集。岗位卡/收资模板都在这里面，
+    // 模型把自己发出去的字当候选人自陈提交时，两边逐字同现即命中。
+    assistantTexts: extractAssistantTexts(params.messages),
+    echoRoutesToConfirmation: params.echoRoutesToConfirmation,
     sessionAccepted: params.sessionAccepted,
     profileHints: params.profileHints,
     messageWatermark,
@@ -122,6 +131,8 @@ export function runCandidateFactAdjudication(params: RunAdjudicationParams): Adj
     profile,
     adjudicated,
     acceptedValues: pickAcceptedValues(profile),
+    needsConfirmationValues: pickNeedsConfirmationValues(profile),
+    echoDetections,
     messageWatermark,
     factsVersion,
   };

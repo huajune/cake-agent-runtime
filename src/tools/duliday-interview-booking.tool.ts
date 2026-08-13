@@ -49,7 +49,11 @@ import {
 } from '@resolution/evidence/identity-gates';
 import { getRuleFactValue } from '@resolution/evidence/merge';
 import { extractCandidateTexts } from '@resolution/evidence/adjudicate';
-import { computeCandidateMessageWatermark } from '@resolution/evidence/snapshot';
+import {
+  BOOKING_CRITICAL_FIELDS,
+  computeCandidateMessageWatermark,
+} from '@resolution/evidence/snapshot';
+import { candidateValuesEquivalent } from '@resolution/evidence/normalize';
 import { evaluateSnapshotGate } from '@resolution/evidence/snapshot-gate';
 import type { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import type { AgentEvent } from '@/observability/observer.interface';
@@ -491,10 +495,38 @@ export function buildInterviewBookingTool(
           );
         }
 
+        // 预检裁决快照先载入：姓名闸门的「quote 作证」与报名级确认级判据都读它。
+        // 载不到按 fail open 走既有闸门；下方对账闸复用同一份，不重复 IO。
+        const precheckSnapshot =
+          precheckId && adjudicationDeps?.snapshots
+            ? await adjudicationDeps.snapshots
+                .load(context.session.corpId, context.session.userId, precheckId)
+                .catch((error: unknown) => {
+                  logger.warn(
+                    `[booking] 预检快照载入异常（fail open）: ${
+                      error instanceof Error ? error.message : String(error)
+                    }`,
+                  );
+                  return null;
+                })
+            : null;
+        const enforcing = adjudicationDeps?.mode === 'enforce';
+        const nameAttestedByClaim =
+          precheckSnapshot?.effectiveProfile.fields.name?.status === 'accepted' &&
+          candidateValuesEquivalent(
+            'name',
+            precheckSnapshot.effectiveProfile.fields.name.value,
+            name,
+          );
+
         // HC-2 姓名权威闸门（booking 侧 defense-in-depth，负向证据）：name 在原文里仅以
         // "我是X"打招呼语昵称出现时拒——这是 runBookingGuards.checkRealName 纯形态校验拦不住的
         // 缺口（2-4 字昵称形态合法但只是微信打招呼昵称）。先确认真名再约，不得拿昵称下真预约。
-        const nameGate = evaluateBookingNameGate(name, context.turnInput.messages ?? []);
+        const nameGate = evaluateBookingNameGate(name, context.turnInput.messages ?? [], {
+          // 工序 E2：公证器认过引文的姓名直接放行；enforce 起停用 legacy「就是X」正则。
+          attestedByClaim: nameAttestedByClaim,
+          allowLegacyConfirmRegex: !enforcing,
+        });
         if (nameGate.decision === 'reject_collect') {
           // 同题限问（badcase g4ytra23：重复索名 4 遍）：已问过 ≥2 次仍未通过校验时，
           // 不再让模型继续追问，改走 request_handoff 由真人核实，避免死循环消耗候选人耐心。
@@ -531,6 +563,37 @@ export function buildInterviewBookingTool(
                 `${phoneGate.reason}。请用"方便留个联系电话吗，门店面试前会联系你"等自然话术向候选人索要手机号，` +
                 '拿到候选人亲口发的号码后再调 duliday_interview_precheck/本工具；禁止沿用记忆档案或历史记录里来源不明的号码。',
               details: { suspiciousPhone: phone },
+            }),
+          );
+        }
+
+        // D3 报名级确认级终审网：公证三问全过也不等于值对——「我姐今年24」引文真实、
+        // 形状合法、不回声，三问一路绿灯。姓名/电话已各有出处闸门（上方两道），年龄
+        // 此前一道都没有，这里补齐。shadow 期只记不拦。
+        const unconfirmedCriticalFields = precheckSnapshot
+          ? BOOKING_CRITICAL_FIELDS.filter(
+              (field) =>
+                !precheckSnapshot.confirmedFields.includes(field) &&
+                // 姓名/电话的直接自陈出处已由上方两道闸门逐字验过（原文里找得到号码、
+                // 找不到打招呼语昵称/引用前缀名），走到这里即视为已有等效证据。年龄没有
+                // 任何出处闸门——"24"这两个字在原文里一定找得到，找到了也证明不了它是
+                // 候选人的年龄——所以它只认候选人本人的一次明确表态。
+                field === 'age',
+            )
+          : [];
+        if (enforcing && unconfirmedCriticalFields.length > 0) {
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS,
+              outcome: '预约失败（报名级字段未经候选人确认）',
+              replyInstruction:
+                `${unconfirmedCriticalFields.join('、')} 尚未由候选人本人确认过。` +
+                '请把该字段随收资表复述一次让候选人过目（如"年龄24，对吧？如有误请改"），' +
+                '候选人认可后，用 duliday_interview_precheck 的 candidateClaims 以 operation="confirm" ' +
+                '提交这条确认对答（quote 填候选人的应答原话，agentQuestionQuote 填你的复述问句），' +
+                '拿到新的 precheckId 后再调本工具。禁止跳过确认直接重试。',
+              details: { unconfirmedCriticalFields },
             }),
           );
         }
@@ -669,11 +732,7 @@ export function buildInterviewBookingTool(
         // 放行（Redis 抖动/TTL 过期不得阻断报名）。
         if (precheckId && adjudicationDeps?.snapshots) {
           try {
-            const snapshot = await adjudicationDeps.snapshots.load(
-              context.session.corpId,
-              context.session.userId,
-              precheckId,
-            );
+            const snapshot = precheckSnapshot;
             if (snapshot) {
               const gate = evaluateSnapshotGate({
                 snapshot,

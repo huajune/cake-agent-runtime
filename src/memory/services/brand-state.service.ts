@@ -2,7 +2,7 @@
  * 会话品牌状态存取（§7.2）。
  *
  * memory 侧不含任何迁移规则，只做「读 brand_state → 调 reducer 纯函数 → 单字段写回」；
- * 迁移规则全部在 resolution/evidence/brand.ts。写入时机：
+ * 迁移规则全部在 @resolution/evidence/brand-policy。写入时机：
  * - 常规轮：turn-finalizer 收尾序列（memory-lifecycle 的 apply_brand_state 步骤，
  *   排在 extract_facts 之后且不因其失败跳过），全程在渠道层 90s 租约处理锁内；
  * - 异步补写（§8.3）：图片描述晚到，由渠道层重新持锁后调 applyLateImageResolutions，

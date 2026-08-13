@@ -41,7 +41,7 @@ import {
 // ── 岗位偏好关键词 ─────────────────────────────────────────────────────────
 
 // 平台同时有全职和兼职岗位，用工形式是筛选维度。具体的偏好/否定/岗位核对语义
-// 统一由 labor-form.ts 的三态解析器处理，避免关键词裸匹配误开或误清硬约束。
+// 统一由 @resolution/labor-form 的三态解析器处理，避免关键词裸匹配误开或误清硬约束。
 const POSITION_KEYWORDS = [
   '服务员',
   '收银员',
@@ -635,7 +635,7 @@ assertRegistryFieldsHavePolicy();
 /**
  * 结构化收资表单中的"姓名：XX"键值对提取。
  *
- * 与 name-guard.ts 的 hasStructuredNameSubmission 共用同一匹配逻辑，
+ * 与 @resolution/candidate/name 的 hasStructuredNameSubmission 共用同一匹配逻辑，
  * 但定位不同：这里是"正向提取"（上游锚定），name-guard 是"事后救援"（下游补漏）。
  * 提取后经 isLikelyRealChineseName 校验，拦截昵称/乱码等非真名。
  */

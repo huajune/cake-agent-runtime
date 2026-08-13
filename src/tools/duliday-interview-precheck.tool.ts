@@ -24,9 +24,20 @@ import {
   SupplementClassification,
 } from '@tools/utils/supplement-label-classifier';
 import { isStrictRealChineseName } from '@resolution/candidate/name';
+import type {
+  CandidateFieldKey,
+  CandidatePrefillField,
+  CandidatePrefillHint,
+} from '@resolution/candidate/types';
 import { stripQuotedBlocks } from '@resolution/signal/markers';
 import { fieldValues } from '@resolution/signal/visual';
-import { isNameOnlyQuotedSpeaker } from '@resolution/evidence/identity-gates';
+import {
+  isNameAuthoritative,
+  isNameOnlyQuotedSpeaker,
+  isPhoneAuthoritative,
+  isPhoneConfirmedInDialogue,
+} from '@resolution/evidence/identity-gates';
+import { isNameConfirmedInDialogue } from '@resolution/evidence/producers/name-confirmation';
 import { isGenderConfirmedInline } from '@resolution/evidence/producers/gender-confirmation';
 import {
   normalizeEducationValue,
@@ -48,6 +59,7 @@ import {
   buildChecklistTemplate,
   buildEnumHintsForMissing,
   buildKnownFieldMap,
+  formatTemplateFieldLabel,
   normalizeChecklistField,
   type ChecklistField,
 } from '@tools/duliday/precheck/checklist.util';
@@ -126,12 +138,17 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 ## 参数
 - jobId：岗位 ID（必填）
 - requestedDate：**仅当**候选人明确说出想约的具体日期时才传入（如 today / 明天 / 下周三 / YYYY-MM-DD）。候选人只是泛泛询问时不要传。**候选人已说出想约的日期/时间时，必须把同一个值同时传给 candidateInterviewTime**——只传 requestedDate 会因"面试时间"字段缺失而卡在 collect_fields，逼你下一轮再把本就已知的日期补进去对同一岗位重调一次，凭空多一轮工具往返
-- candidateName / candidatePhone：候选人本轮在对话里给出的真实姓名 / 联系电话。**只要对话里能看到（典型如候选人本轮刚报名、或跨天回访旧会话事实已过期），就必须显式传入**——姓名/电话没有别的回灌通道，漏传会让"姓名/联系电话"一直留在 missingFields、nextAction 卡死 collect_fields，逼你反复让候选人确认。**禁止把姓名/电话塞进 candidateSupplementAnswers（那里只认岗位补充标签，会被忽略）**
-- candidateAge：候选人已明确自报的年龄。只要当前对话里能看到候选人年龄，**必须显式传入本字段**，不要只依赖记忆或运行时高置信事实；不要传岗位年龄要求。candidateAge 与记忆冲突时，以 candidateAge 作为本轮最新口径
+- **candidateClaims 是候选人资料的唯一提交通道**：候选人的姓名/电话/年龄/性别/学历/健康证/身份/身高/体重/户籍，**一律经 candidateClaims 提交，每条必须附候选人原话逐字片段 quote**。下面那批 candidateXxx 裸字段是过渡期兼容通道（deprecated），不带原话依据，正在退役——新提交一律用 candidateClaims
+- candidateName / candidatePhone（**deprecated**，请改用 candidateClaims）：候选人本轮在对话里给出的真实姓名 / 联系电话。仍传时工具会自动转成"无 quote 低置信声明"，出处公证不过即不进收资清单。**禁止把姓名/电话塞进 candidateSupplementAnswers（那里只认岗位补充标签，会被忽略）**
+- candidateAge（**deprecated**，请改用 candidateClaims）：候选人已明确自报的年龄。不要传岗位年龄要求
 - candidateLaborForm：候选人本轮明确表达的用工形式或对"是否暑假工"的回答，如"暑假工"、"不是暑假工"、"长期兼职"。暑假工状态默认是"否"；只有当前可见原话或本次显式参数明确为暑假工时才启用暑假工岗位限制。候选人主动表示长期可做时，按其最新长期意向继续常规岗位。
 - candidateInterviewTime / candidateGender / candidateEducation / candidateHasHealthCertificate / candidateIsStudent / candidateUploadResume / candidateHeight / candidateWeight / candidateHouseholdProvince：候选人本轮已明确补充的预约字段。只传候选人答案，不要传岗位要求；这些字段与旧记忆冲突时，以本轮显式入参为准。**当 missingFields 含 身高/体重/户籍省份 且候选人本轮已给出时，务必用 candidateHeight/candidateWeight/candidateHouseholdProvince 传进来，否则会一直卡在 collect_fields 无法进 booking**
 - candidateSupplementAnswers：候选人本轮已答的岗位补充标签（collect 型）回答；key 必须逐字使用本岗位 precheck 返回的标签原文，value 用候选人答案。**与 booking 的 supplementAnswers 同源**：只要候选人在对话里给出了这些补充标签的答案，就必须在本字段一并传入，否则这些标签会一直留在 missingFields、nextAction 永远卡在 collect_fields 无法进 booking。只传候选人答案，禁止传岗位筛选要求
-- candidateClaims（推荐）：候选人资料的带证据声明数组。需要归一化理解（"两米零一"→身高201、"七十五斤"→体重37.5）或纠正/清除旧资料（operation=correct/clear）时用它，每条附候选人原话 quote。返回的 factAdjudication 是裁决结果：rejectedClaims 里的值缺原话依据，禁止当作已确认资料使用或复述；factAdjudication.precheckId 在调 duliday_interview_booking 时原样回传（precheckId 入参），供系统对账你提交的最终资料与本次预检一致
+- candidateClaims：候选人一切资料的带证据声明数组，**报名资料必经此通道**。每条附候选人原话逐字片段 quote，且 quote 里的人称必须指候选人本人（"我姐今年24"不是候选人年龄，不要提交）。归一化理解（"两米零一"→身高201）、纠正/清除旧资料（operation=correct/clear）、候选人对你的确认问句作答（operation=confirm，另附 agentQuestionQuote）都走这里。
+  返回的 factAdjudication 是**出处公证**结果，不是真假判决——系统只查三件事：①这段引文在候选人原文里逐字存在吗 ②值形状合法吗 ③出处有没有存疑（引文同时出现在你自己发过的消息里、或多来源不一致）。
+  · rejectedClaims：引文找不到或值形状非法。**本轮就能修**——换一段真实存在的候选人原话重新提交即可，不用等下一轮，也不用去问候选人；
+  · needsConfirmationFields：值已经带进收资清单，只是需要候选人拍板一次，按 templateText 的"（如有误请改）"随整表确认，禁止单独追问；
+  · factAdjudication.precheckId 在调 duliday_interview_booking 时原样回传（precheckId 入参），供系统对账你提交的最终资料与本次预检一致
 - **一次性传全已知字段，禁止"残缺入参先调、补字段再调"**：调用本工具前，先把候选人当轮及历史**已经明确给出的所有字段**（年龄/性别/学历/健康证/面试日期时间等）整理齐再调用；严禁用残缺入参先调一次、看到 collect_fields 后把本就已知的字段补进去对同一岗位重调一遍——同一轮内对同一岗位重复 precheck 会触发 tool_loop 并平白拖慢一整轮响应。collect_fields 只应由候选人**确实尚未提供**的字段触发
 
 ## 返回字段
@@ -224,22 +241,22 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe(
-      '候选人本轮在对话中明确给出的真实姓名。' +
-        '当姓名只出现在对话原文、尚未沉淀进会话事实（典型如候选人本轮刚报名、或跨天回访后旧事实已过期）时，' +
-        '必须把姓名从这里传入，否则"姓名"会一直留在 missingFields、nextAction 卡死 collect_fields。只传候选人真实姓名，禁止传昵称/招募经理名。',
+      '【deprecated，改用 candidateClaims(field="name")】候选人本轮在对话中明确给出的真实姓名。' +
+        '本字段无原话依据，工具会自动转成无 quote 低置信声明，出处公证不过即不进收资清单。' +
+        '只传候选人真实姓名，禁止传昵称/招募经理名。',
     ),
   candidatePhone: z
     .string()
     .optional()
     .describe(
-      '候选人本轮在对话中明确给出的联系电话。' +
-        '当电话只出现在对话原文、尚未沉淀进会话事实时，必须把电话从这里传入，否则"联系电话"会一直留在 missingFields、nextAction 卡死 collect_fields。',
+      '【deprecated，改用 candidateClaims(field="phone")】候选人本轮在对话中明确给出的联系电话。' +
+        '本字段无原话依据，工具会自动转成无 quote 低置信声明，出处公证不过即不进收资清单。',
     ),
   candidateAge: z
     .union([z.string(), z.number()])
     .optional()
     .describe(
-      '候选人明确自报的年龄，如 24、"24"、"24岁"。只传候选人年龄，禁止传岗位年龄要求；本字段会覆盖旧记忆里的年龄。',
+      '【deprecated，改用 candidateClaims(field="age")】候选人明确自报的年龄，如 24、"24"、"24岁"。只传候选人年龄，禁止传岗位年龄要求。',
     ),
   candidateLaborForm: z
     .string()
@@ -256,16 +273,21 @@ const inputSchema = z.object({
   candidateGender: z
     .string()
     .optional()
-    .describe('候选人明确自报的性别，如 "男"、"女"、"我是男生"。禁止传岗位性别要求。'),
+    .describe(
+      '【deprecated，改用 candidateClaims(field="gender")】候选人明确自报的性别，如 "男"、"女"。禁止传岗位性别要求。',
+    ),
   candidateEducation: z
     .string()
     .optional()
-    .describe('候选人明确自报的学历，如 "高中"、"大专"、"本科在读"。禁止传岗位学历要求。'),
+    .describe(
+      '【deprecated，改用 candidateClaims(field="education")】候选人明确自报的学历，如 "高中"、"大专"。禁止传岗位学历要求。',
+    ),
   candidateHasHealthCertificate: z
     .union([z.string(), z.boolean()])
     .optional()
     .describe(
-      '候选人明确说明的健康证情况，如 "有本地健康证"、"异地健康证"、"可以重办"、"不接受办理"。只传候选人答案，禁止传岗位健康证要求。',
+      '【deprecated，改用 candidateClaims(field="healthCertificate")】候选人明确说明的健康证情况，' +
+        '如 "有本地健康证"、"异地健康证"、"可以重办"、"不接受办理"。只传候选人答案，禁止传岗位健康证要求。',
     ),
   candidateIsStudent: z
     .union([z.boolean(), z.string()])
@@ -286,19 +308,20 @@ const inputSchema = z.object({
     .union([z.string(), z.number()])
     .optional()
     .describe(
-      '候选人明确自报的身高（cm），如 170、"170"、"175cm"。仅当岗位要求身高且候选人已给出时传。',
+      '【deprecated，改用 candidateClaims(field="height")】候选人明确自报的身高（cm），如 170、"175cm"。仅当岗位要求身高且候选人已给出时传。',
     ),
   candidateWeight: z
     .union([z.string(), z.number()])
     .optional()
     .describe(
-      '候选人明确自报的体重（kg），如 60、"60"、"60kg"。仅当岗位要求体重且候选人已给出时传。',
+      '【deprecated，改用 candidateClaims(field="weight")】候选人明确自报的体重（kg），如 60、"60kg"。仅当岗位要求体重且候选人已给出时传。',
     ),
   candidateHouseholdProvince: z
     .string()
     .optional()
     .describe(
-      '候选人明确自报的户籍/籍贯省份，如 "安徽"、"安徽省"。仅当岗位有户籍要求且候选人主动给出时传，禁止用常驻城市推断。',
+      '【deprecated，改用 candidateClaims(field="householdProvince")】候选人明确自报的户籍/籍贯省份，如 "安徽"、"安徽省"。' +
+        '仅当岗位有户籍要求且候选人主动给出时传，禁止用常驻城市推断。',
     ),
   // preprocess：模型偶发把对象序列化成 JSON 字符串传入（2026-07-15 生产两连拒致空转），
   // 字符串先尝试 JSON.parse 再走 record 校验。
@@ -325,11 +348,15 @@ const inputSchema = z.object({
     .max(20)
     .optional()
     .describe(
-      '（推荐）候选人资料的带证据声明。每条声明包含字段名、值和候选人原话逐字片段 quote。' +
-        '当你从候选人消息中理解出需要归一化的资料（"两米零一"→身高201、"七十五斤"→体重37.5、"我03年的"→年龄）、' +
-        '或候选人纠正/否定了旧资料（operation=correct/clear）时，用本字段提交你的结构化理解。' +
-        'quote 必须能在候选人消息里原样找到，否则该声明会被判无证据拒绝。' +
-        '与 candidateName 等裸字段可并存；声明会经过确定性裁决，结果在返回的 factAdjudication 中。',
+      '候选人资料的带证据声明——**候选人的一切报名资料都必经本通道提交**，' +
+        '每条包含字段名、值和候选人原话逐字片段 quote。' +
+        'quote 有三条硬要求：①必须能在候选人自己发的消息里原样找到（不能引你自己发过的话、不能引岗位卡、不能引 [引用 XXX：…] 里被引用方说的话）；' +
+        '②指代必须是候选人本人（"我姐今年24"、"我们店长180"都不是候选人的资料，不要提交）；' +
+        '③要带够语境（健康证/身份这类字段，光引一个"有"或"是"不成立，引"有健康证"或连同你的问句一起用 operation=confirm 提交）。' +
+        '归一化理解（"两米零一"→身高201、"七十五斤"→体重37.5、"我03年的"→年龄）、纠正/否定旧资料（operation=correct/clear）、' +
+        '候选人对你的确认问句作答（operation=confirm）都用本字段。' +
+        'quote 找不到时该声明会被拒——这不是终局，本轮换一段真实原话重新提交即可。' +
+        'candidateName 等裸字段是过渡期兼容通道（deprecated），无原话依据、公证不过就不进收资清单。',
     ),
 });
 
@@ -721,8 +748,9 @@ function buildFactAdjudicationSummary(
   const historicalUnconfirmed = Object.entries(result.profile.fields)
     .filter(([, field]) => field.status === 'historical_unconfirmed')
     .map(([fieldName]) => fieldName);
-  const conflicted = Object.entries(result.profile.fields)
-    .filter(([, field]) => field.status === 'conflicted')
+  // 工序 C2/D1：冲突/回声/短引文不再是终局否决，而是转候选人本人终审。
+  const needsConfirmation = Object.entries(result.profile.fields)
+    .filter(([, field]) => field.status === 'needs_confirmation')
     .map(([fieldName]) => fieldName);
 
   return stripNullish({
@@ -730,17 +758,119 @@ function buildFactAdjudicationSummary(
     factsVersion: result.factsVersion,
     mode,
     rejectedClaims: rejected.length > 0 ? rejected : undefined,
-    conflictedFields: conflicted.length > 0 ? conflicted : undefined,
+    needsConfirmationFields: needsConfirmation.length > 0 ? needsConfirmation : undefined,
     historicalUnconfirmedFields:
       historicalUnconfirmed.length > 0 ? historicalUnconfirmed : undefined,
     note:
-      rejected.length > 0 || conflicted.length > 0
-        ? '部分资料声明未通过证据裁决（rejectedClaims/conflictedFields）：这些值缺少候选人原话依据或多来源冲突。' +
-          '不要把它们当作已确认资料复述或提交；需要时向候选人确认后，用 candidateClaims 附上原话 quote 重新提交。' +
+      rejected.length > 0 || needsConfirmation.length > 0
+        ? '部分资料声明未通过出处公证。rejectedClaims：这些值的引文在候选人原文里找不到（或值形状非法）——' +
+          '不要当作已确认资料复述或提交；**本轮就可以换一段真实原话重新提交 candidateClaims**，不必等下一轮。' +
+          'needsConfirmationFields：值已带进收资清单但出处存疑（多来源不一致，或引文同时出现在我方发过的消息里），' +
+          '按 templateText 里的"（如有误请改）"随整表顺带确认一次即可，严禁拆成单独追问、也严禁直接提交 booking。' +
           'historicalUnconfirmedFields 是历史档案线索，只能用"我记得你之前提过…现在还是吗"的披露句式向候选人求证，禁止断言。'
         : undefined,
   });
 }
+
+/**
+ * 覆盖率 delta（C6）：规则解析器抓到、但模型没经作证通道提交的字段。迁移期唯一的
+ * 覆盖率仪表，也是 P2 拆机判据。只记字段名不记值（PII 纪律）。
+ */
+function computeCoverageDelta(
+  result: AdjudicationRunResult,
+  collectedFields: Readonly<Partial<Record<CandidateFieldKey, { value: string | number }>>>,
+): CandidateClaimField[] {
+  const covered = new Set(
+    result.adjudicated
+      .filter((entry) => entry.decision === 'accepted' || entry.decision === 'needs_confirmation')
+      .map((entry) => entry.claim.field),
+  );
+  return (Object.keys(COLLECTED_FIELD_TO_CLAIM) as CandidateFieldKey[])
+    .filter((key) => collectedFields[key]?.value !== undefined)
+    .map((key) => COLLECTED_FIELD_TO_CLAIM[key])
+    .filter((field): field is CandidateClaimField => !!field && !covered.has(field));
+}
+
+/** 带值求证字段 → checklist 字段（工序 A3）。 */
+const PREFILL_HINT_TO_CHECKLIST: Record<CandidatePrefillField, ChecklistField> = {
+  name: '姓名',
+  phone: '联系电话',
+  gender: '性别',
+  age: '年龄',
+  education: '学历',
+  healthCert: '健康证情况',
+  householdProvince: '户籍省份',
+  height: '身高',
+  weight: '体重',
+};
+
+/**
+ * 裁决账本值 → checklist 显示值。归一化不出合法形态就返回 null（该字段按缺处理）——
+ * 宁可再问一次，不往报名表里塞形态不明的值。
+ */
+function normalizeClaimValueForChecklist(
+  field: CandidateClaimField,
+  value: string | number | boolean | null,
+): string | null {
+  if (value === null || value === undefined) return null;
+  switch (field) {
+    case 'name':
+      return normalizeCandidateNameInput(value);
+    case 'phone':
+      return normalizeCandidatePhoneInput(value);
+    case 'age':
+      return normalizeCandidateAgeInput(value);
+    case 'gender':
+      return normalizeCandidateGenderInput(value);
+    case 'education':
+      return normalizeCandidateEducationInput(value);
+    case 'healthCertificate':
+      return normalizeCandidateHealthCertificateInput(value);
+    case 'householdProvince':
+      return normalizeCandidateHouseholdProvinceInput(value);
+    case 'height':
+    case 'weight':
+      return normalizeCandidateNumberInput(value);
+    case 'isStudent':
+      return normalizeCandidateIsStudentInput(value);
+  }
+}
+
+/** 借阅弱来源值前的形态归一；归一化不出合法形态就不借（宁可再问一次）。 */
+function normalizePrefillHintValue(field: CandidatePrefillField, value: string): string | null {
+  switch (field) {
+    case 'gender':
+      return normalizeCandidateGenderInput(value);
+    case 'age':
+      return normalizeCandidateAgeInput(value);
+    case 'name':
+      return normalizeCandidateNameInput(value);
+    case 'phone':
+      return normalizeCandidatePhoneInput(value);
+    case 'education':
+      return normalizeCandidateEducationInput(value);
+    case 'healthCert':
+      return normalizeCandidateHealthCertificateInput(value);
+    case 'householdProvince':
+      return normalizeCandidateHouseholdProvinceInput(value);
+    case 'height':
+    case 'weight':
+      return normalizeCandidateNumberInput(value);
+  }
+}
+
+/** collectedFields 键 → claim 字段。supplementAnswers 不是 claim 字段，故为 Partial。 */
+const COLLECTED_FIELD_TO_CLAIM: Partial<Record<CandidateFieldKey, CandidateClaimField>> = {
+  name: 'name',
+  phone: 'phone',
+  age: 'age',
+  gender: 'gender',
+  education: 'education',
+  healthCert: 'healthCertificate',
+  householdProvince: 'householdProvince',
+  height: 'height',
+  weight: 'weight',
+};
 
 /** 裁决结果 → 观测事件（PII 纪律：不携带字段值与 quote 原文）。 */
 function emitFactAdjudicationEvent(
@@ -748,6 +878,7 @@ function emitFactAdjudicationEvent(
   context: Parameters<ToolBuilder>[0],
   result: AdjudicationRunResult,
   precheckId: string | undefined,
+  coverageDelta: CandidateClaimField[],
 ): void {
   deps.observer?.emit({
     type: 'fact_adjudication',
@@ -756,6 +887,9 @@ function emitFactAdjudicationEvent(
     userId: context.session.userId,
     precheckId,
     factsVersion: result.factsVersion,
+    // 工序 C6 覆盖率仪表 + C4 回声误报抽查基数（判据④）。
+    coverageDelta: coverageDelta.length > 0 ? coverageDelta : undefined,
+    echoDetections: result.echoDetections > 0 ? result.echoDetections : undefined,
     decisions: result.adjudicated.map((entry) => ({
       field: entry.claim.field,
       producer: entry.claim.producer,
@@ -970,15 +1104,11 @@ export function buildInterviewPrecheckTool(
             storeName,
             jobName,
           });
-          const genderPrefillHint = context.archive.candidatePrefillHints?.gender;
+          const prefillHints = context.archive.candidatePrefillHints;
+          const genderPrefillHint = prefillHints?.gender;
           const normalizedGenderPrefillHint = normalizeCandidateGenderInput(
             genderPrefillHint?.value,
           );
-          if (!knownFieldMap['性别'] && normalizedGenderPrefillHint) {
-            // medium/system 只进入“带值求证”视图，不进入 trustedSessionFacts。这里给
-            // templateText 借阅值，后续不会把它升级成 candidate 来源。
-            knownFieldMap['性别'] = normalizedGenderPrefillHint;
-          }
           // 长期画像只作为对话参考，不能单独满足本次报名收资。只有本会话已经沉淀的
           // 高置信候选人事实，或下方当前轮原话证据，才能进入 bookingChecklist。
           if (context.turnInput.currentUserMessage !== undefined) {
@@ -989,6 +1119,52 @@ export function buildInterviewPrecheckTool(
                 | null
                 | undefined,
             );
+          }
+          // 弱来源「带值求证」借阅（A3）：medium/system 值不进 trustedSessionFacts，
+          // 只借给 templateText 渲染成「（如有误请改）」，三禁令原样继承。
+          //
+          // **必须排在 removeProfileOnlyCandidateFields 之后**：那道清理按"本字段在
+          // 高置信 sessionFacts 里有没有值"删 knownFieldMap，而弱来源值按定义不在
+          // 高置信集里——排在它前面借的值会被立刻删掉，借阅等于没发生（生产里
+          // currentUserMessage 恒有值，即恒被删）。它针对的是长期画像单独满足收资，
+          // 与本通道不是一回事：这里借的值全程挂「如有误请改」、且不解除确认位。
+          /** 借阅了弱来源值、需随表求证的 checklist 字段。 */
+          const prefilledChecklistFields = new Map<ChecklistField, CandidatePrefillHint>();
+          /**
+           * 借阅的报名级身份值还没被本人认过——挡住 ready_to_book。姓名/电话是借阅
+           * 推广里唯一有真实风险的两个：借进清单后字段就离开 missingFields，precheck
+           * 能走到 ready_to_book，而 booking 的出处闸门会把它拒掉（白跑一轮）。
+           * 解锁只用既有识别器（原文出处 / 本人确认），不新造确认正则。
+           */
+          const unattestedPrefilledIdentityFields: ChecklistField[] = [];
+          if (prefillHints) {
+            const messages = context.turnInput.messages ?? [];
+            for (const [hintField, checklistField] of Object.entries(
+              PREFILL_HINT_TO_CHECKLIST,
+            ) as Array<[CandidatePrefillField, ChecklistField]>) {
+              const hint = prefillHints[hintField];
+              if (!hint) continue;
+              const normalized = normalizePrefillHintValue(hintField, hint.value);
+              if (!normalized || knownFieldMap[checklistField]) continue;
+              knownFieldMap[checklistField] = normalized;
+              prefilledChecklistFields.set(checklistField, hint);
+
+              if (hintField === 'name') {
+                if (
+                  !isNameAuthoritative(normalized, messages) &&
+                  !isNameConfirmedInDialogue(normalized, messages)
+                ) {
+                  unattestedPrefilledIdentityFields.push(checklistField);
+                }
+              } else if (hintField === 'phone') {
+                if (
+                  !isPhoneAuthoritative(normalized, messages) &&
+                  !isPhoneConfirmedInDialogue(normalized, messages)
+                ) {
+                  unattestedPrefilledIdentityFields.push(checklistField);
+                }
+              }
+            }
           }
           const collectedFields = context.ledger.collectedFields;
           // 姓名/电话必须在下方可疑姓名校验（读取 knownFieldMap['姓名']）之前回灌：
@@ -1235,11 +1411,14 @@ export function buildInterviewPrecheckTool(
             summerWorkerIntent,
           });
 
-          // —— 候选人事实裁决（证据化 Phase 1/2）——————————————————————
+          // —— 候选人事实裁决（宪法 P11：模型作证、代码公证、本人终审）—————————
           // 模型显式 claims + 旧裸字段 legacy 转译 + 规则逐条锚定 + 身份唯一识别器，
-          // 统一走确定性裁决器。shadow 模式只观测不改行为；enforce 模式把"模型
-          // 无据裸值"从 knownFieldMap 剔除（关闭 Prompt 旧值自证路径）。
+          // 统一过公证器三问（引文真伪 / 值形状 / 出处存疑）。
+          // shadow：只观测不改行为（迁移三阶段 P0）；
+          // enforce：判缺改读裁决账本（E1）+ 转确认字段带值进清单（D1）。
           let adjudicationResult: AdjudicationRunResult | null = null;
+          /** 工序 D1：本轮需候选人拍板的 checklist 字段（渲染「如有误请改」后缀）。 */
+          const needsConfirmationChecklistFields = new Set<ChecklistField>();
           if (adjudicationDeps) {
             try {
               adjudicationResult = runCandidateFactAdjudication({
@@ -1265,17 +1444,39 @@ export function buildInterviewPrecheckTool(
                 profileHints: buildProfileHintFacts(
                   context.archive.profile as unknown as Record<string, unknown> | null,
                 ),
+                // 回声检查在 shadow 期只观测（迁移三阶段 P0），enforce 才路由转确认。
+                echoRoutesToConfirmation: adjudicationDeps.mode === 'enforce',
               });
 
               if (adjudicationDeps.mode === 'enforce') {
-                // 只剔除"模型无据"的字段：该字段的全部有效来源均为 rejected 的
-                // model claim（quote 找不到/推导不出），且会话/画像亦无该值。
-                for (const entry of adjudicationResult.adjudicated) {
-                  if (entry.decision !== 'rejected' || entry.claim.producer !== 'model') continue;
-                  const field = entry.claim.field;
-                  const status = adjudicationResult.profile.fields[field]?.status;
-                  if (status === 'accepted') continue;
-                  delete knownFieldMap[CLAIM_FIELD_TO_CHECKLIST[field]];
+                // D1：出处存疑不再让字段出局，值照样借给 templateText 挂「如有误请改」。
+                // 挂 enforce 档的理由——它消费的 needs_confirmation 是 C2 的产物，
+                // 而 C2 在 shadow 期不改行为（旧路径下冲突同样什么都不做）。
+                for (const [claimField, value] of Object.entries(
+                  adjudicationResult.needsConfirmationValues,
+                ) as Array<[CandidateClaimField, string | number | boolean]>) {
+                  const checklistField = CLAIM_FIELD_TO_CHECKLIST[claimField];
+                  const normalized = normalizeClaimValueForChecklist(claimField, value);
+                  if (!normalized) continue;
+                  needsConfirmationChecklistFields.add(checklistField);
+                  if (!knownFieldMap[checklistField]) knownFieldMap[checklistField] = normalized;
+                }
+
+                // E1 判缺改读账本：missing = 必填 − {accepted, needs_confirmation}，
+                // **账本是取值来源而不只是过滤器**。旧口径逐条剔除被拒 claim，等于工具
+                // 自己另开一套证据规则；改读账本后清单与裁决同源，I1（门不严于执行者）
+                // 从测试性质变构造性质。
+                for (const [claimField, checklistField] of Object.entries(
+                  CLAIM_FIELD_TO_CHECKLIST,
+                ) as Array<[CandidateClaimField, ChecklistField]>) {
+                  const entry = adjudicationResult.profile.fields[claimField];
+                  if (entry?.status !== 'accepted' && entry?.status !== 'needs_confirmation') {
+                    delete knownFieldMap[checklistField];
+                    continue;
+                  }
+                  const normalized = normalizeClaimValueForChecklist(claimField, entry.value);
+                  if (normalized) knownFieldMap[checklistField] = normalized;
+                  else delete knownFieldMap[checklistField];
                 }
               }
             } catch (error) {
@@ -1294,12 +1495,27 @@ export function buildInterviewPrecheckTool(
             ...(identityOverlapLabelNames.length > 0 ? ['身份'] : []),
             ...collectLabelNames,
           ];
+          // 表内确认后缀合流（工序 D1）：性别弱来源预填与公证器转确认字段用同一条
+          // 协议——随整表「（如有误请改）」，不拆成单独追问（单会话单字段复述 ≤1 次）。
+          const confirmationSuffixByField: Record<string, string> = {};
+          if (genderNeedsInlineConfirmation) confirmationSuffixByField['性别'] = '（如有误请改）';
+          for (const field of needsConfirmationChecklistFields) {
+            confirmationSuffixByField[field] = '（如有误请改）';
+          }
+          for (const field of prefilledChecklistFields.keys()) {
+            // 性别有自己的确认位（genderNeedsInlineConfirmation）与解锁识别器：候选人
+            // 已肯定应答后必须撤掉后缀，否则「都对的」永远清不掉确认位，ready_to_book
+            // 不可达（PR #1000 评审 P0-4 表内确认死锁）。这里不能一刀切贴后缀。
+            if (field === '性别') continue;
+            confirmationSuffixByField[field] = '（如有误请改）';
+          }
           const checklist = buildChecklistTemplate({
             requiredFields,
             knownFieldMap,
-            confirmationSuffixByField: genderNeedsInlineConfirmation
-              ? { 性别: '（如有误请改）' }
-              : undefined,
+            confirmationSuffixByField:
+              Object.keys(confirmationSuffixByField).length > 0
+                ? confirmationSuffixByField
+                : undefined,
             // 等通知岗位不收集"面试时间"——不剔除会永远留在 missingFields，
             // nextAction 卡死 collect_fields。
             // 学籍状态类补充标签与标准“身份”字段是同一个问题：只收身份一次，
@@ -1309,6 +1525,39 @@ export function buildInterviewPrecheckTool(
               ...identityOverlapLabelNames,
             ],
           });
+
+          // 「带值求证」清单三源合流，同一条展示协议。只有性别与借阅的姓名/电话会挡
+          // ready_to_book（它们各有配套解锁识别器）；其余档挡了就没有解锁路径，会重造
+          // 表内确认死锁（PR #1000 评审 P0-4 原形）。报名级硬网在 booking（D3）。
+          const confirmationReasonByField = new Map<ChecklistField, string>();
+          for (const [field, hint] of prefilledChecklistFields) {
+            if (field === '性别') continue;
+            confirmationReasonByField.set(field, hint.reason);
+          }
+          for (const field of needsConfirmationChecklistFields) {
+            if (field === '性别') continue;
+            confirmationReasonByField.set(field, 'evidence_needs_confirmation');
+          }
+          const prefilledConfirmationFields = [
+            ...(genderNeedsInlineConfirmation && knownFieldMap['性别']
+              ? [
+                  {
+                    field: '性别' as ChecklistField,
+                    value: knownFieldMap['性别'],
+                    displayText: `性别：${knownFieldMap['性别']}（如有误请改）`,
+                    reason: genderPrefillHint?.reason,
+                  },
+                ]
+              : []),
+            ...[...confirmationReasonByField]
+              .filter(([field]) => knownFieldMap[field])
+              .map(([field, reason]) => ({
+                field,
+                value: knownFieldMap[field],
+                displayText: `${formatTemplateFieldLabel(field)}：${knownFieldMap[field]}（如有误请改）`,
+                reason,
+              })),
+          ];
 
           const upcomingTimeOptions = buildUpcomingTimeOptions(windows);
           const bookableSlots = buildBookableSlots({
@@ -1392,7 +1641,9 @@ export function buildInterviewPrecheckTool(
                           ? 'collect_fields'
                           : requestedDateCheck?.status === 'unavailable'
                             ? 'date_unavailable'
-                            : checklist.missingFields.length > 0 || genderNeedsInlineConfirmation
+                            : checklist.missingFields.length > 0 ||
+                                genderNeedsInlineConfirmation ||
+                                unattestedPrefilledIdentityFields.length > 0
                               ? 'collect_fields'
                               : interviewTimeWaitNotice
                                 ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
@@ -1507,7 +1758,13 @@ export function buildInterviewPrecheckTool(
             ? `pc_${context.session.turnId ?? Date.now().toString()}_${jobId}`
             : undefined;
           if (adjudicationResult && adjudicationDeps) {
-            emitFactAdjudicationEvent(adjudicationDeps, context, adjudicationResult, precheckId);
+            emitFactAdjudicationEvent(
+              adjudicationDeps,
+              context,
+              adjudicationResult,
+              precheckId,
+              computeCoverageDelta(adjudicationResult, collectedFields),
+            );
             if (precheckId && adjudicationDeps.snapshots) {
               const snapshot: PrecheckSnapshot = {
                 precheckId,
@@ -1518,6 +1775,19 @@ export function buildInterviewPrecheckTool(
                 acceptedClaimIds: adjudicationResult.adjudicated
                   .filter((entry) => entry.decision === 'accepted')
                   .map((entry) => entry.claim.claimId),
+                // 工序 D3：候选人对着具体值明确表过态的字段。booking 报名级闸门的判据。
+                confirmedFields: [
+                  ...new Set(
+                    adjudicationResult.adjudicated
+                      .filter(
+                        (entry) =>
+                          entry.decision === 'accepted' &&
+                          (entry.claim.operation === 'confirm' ||
+                            entry.claim.interpretation === 'context_confirmation'),
+                      )
+                      .map((entry) => entry.claim.field),
+                  ),
+                ],
                 missingFields: (
                   Object.keys(CLAIM_FIELD_TO_CHECKLIST) as CandidateClaimField[]
                 ).filter((field) =>
@@ -1576,6 +1846,7 @@ export function buildInterviewPrecheckTool(
                     : `预检尚未通过，只缺：${[
                         ...checklist.missingFields,
                         ...(genderNeedsInlineConfirmation ? ['性别（表内确认）'] : []),
+                        ...unattestedPrefilledIdentityFields.map((field) => `${field}（表内确认）`),
                       ].join(
                         '、',
                       )}。请一次性向候选人补问这些字段。${genderNeedsInlineConfirmation ? `性别来自 ${genderPrefillHint?.reason === 'system_source' ? '系统标签' : 'medium 置信线索'}，已在 templateText 中写成“性别：${knownFieldMap['性别']}（如有误请改）”；只能随整张表顺带确认，严禁单独追问性别。` : ''}注意查看对话历史：若上一轮刚发过这份资料清单而候选人尚未填写，本轮只需换个说法简短催填（如"上面那几项资料填一下发我，我马上帮你约"），禁止逐字重发整份清单，也不要复述上一轮已确认的面试时间等信息；仅当清单已隔了多轮对话时才重发一次。候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
@@ -1723,16 +1994,8 @@ export function buildInterviewPrecheckTool(
               // 当前阶段必须立刻收齐的字段（missingFields 即时副本，扁平展示便于 Agent 一次性补问）
               requiredFieldsToCollectNow: checklist.missingFields,
               templateText: checklist.templateText,
-              prefilledConfirmationFields: genderNeedsInlineConfirmation
-                ? [
-                    {
-                      field: '性别',
-                      value: knownFieldMap['性别'],
-                      displayText: `性别：${knownFieldMap['性别']}（如有误请改）`,
-                      reason: genderPrefillHint?.reason,
-                    },
-                  ]
-                : undefined,
+              prefilledConfirmationFields:
+                prefilledConfirmationFields.length > 0 ? prefilledConfirmationFields : undefined,
               candidateSupplementAnswers:
                 Object.keys(effectiveCandidateSupplementAnswers).length > 0
                   ? effectiveCandidateSupplementAnswers

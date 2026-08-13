@@ -20,12 +20,14 @@ function claim(partial: Partial<CandidateFactClaim> & Pick<CandidateFactClaim, '
 function adjudicate(params: {
   claims: CandidateFactClaim[];
   candidateTexts: string[];
+  assistantTexts?: string[];
   sessionAccepted?: Parameters<typeof adjudicateCandidateClaims>[0]['sessionAccepted'];
   profileHints?: Parameters<typeof adjudicateCandidateClaims>[0]['profileHints'];
 }) {
   const result = adjudicateCandidateClaims({
     claims: params.claims,
     candidateTexts: params.candidateTexts,
+    assistantTexts: params.assistantTexts,
     sessionAccepted: params.sessionAccepted ?? {},
     profileHints: params.profileHints ?? {},
     messageWatermark: 'w1',
@@ -81,14 +83,16 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
   });
 
   it('§12-3/15 模型从 Prompt 复制旧值、候选人从未说过 → rejected', () => {
-    // legacy 裸值（无 quote）：全文推导不出 → no_candidate_evidence
+    // legacy 裸值（无 quote）：没有引文就是没有出处 → quote_not_found。
+    // 工序 C1 废除了 no_candidate_evidence——旧口径先拿正则在候选人全文里"推导补录"
+    // 一段 quote，推不出才判无据，正是 72.3% 假阳的来源。现在不推导，只看有没有引文。
     const legacy = adjudicate({
       claims: [claim({ field: 'phone', value: '13712345678' })],
       candidateTexts: ['我想找兼职'],
     });
     expect(legacy.adjudicated[0]).toMatchObject({
       decision: 'rejected',
-      rejectionReason: 'no_candidate_evidence',
+      rejectionReason: 'quote_not_found',
     });
     expect(legacy.acceptedValues.phone).toBeUndefined();
 
@@ -120,20 +124,23 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
     expect(result.profile.fields.height).toMatchObject({ status: 'accepted', value: 163 });
   });
 
-  it('模型声明值与 quote 推导不符 → value_not_derivable（解释权有边界）', () => {
+  it('可归一化字段不再复算值：解释权归模型（工序 C1 废除 value_not_derivable）', () => {
+    // 旧口径：正则从"我一米六三"推出 163，与声明值 180 不等价 → 拒。
+    // 该口径按产者排信任（正则的算术凌驾模型的理解），是 P9 旧阶梯的教义残留，已废除。
+    // 引文真实、形状合法即采信；真出错时的兜底是报名级确认流（D3），不是正则复算。
     const result = adjudicate({
-      claims: [
-        claim({
-          field: 'height',
-          value: 180,
-          evidence: { quote: '我一米六三' },
-        }),
-      ],
+      claims: [claim({ field: 'height', value: 180, evidence: { quote: '我一米六三' } })],
       candidateTexts: ['我一米六三'],
     });
-    expect(result.adjudicated[0]).toMatchObject({
+    expect(result.adjudicated[0]?.decision).toBe('accepted');
+    // 但公证器仍守形状：越界值照拒（第二问不受影响）。
+    const outOfRange = adjudicate({
+      claims: [claim({ field: 'height', value: 999, evidence: { quote: '我一米六三' } })],
+      candidateTexts: ['我一米六三'],
+    });
+    expect(outOfRange.adjudicated[0]).toMatchObject({
       decision: 'rejected',
-      rejectionReason: 'value_not_derivable',
+      rejectionReason: 'invalid_value_shape',
     });
   });
 
@@ -199,7 +206,7 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
     expect(result.acceptedValues.age).toBeUndefined();
   });
 
-  it('同字段双有效证据值冲突 → 整字段 conflicted，不静默二选一', () => {
+  it('同字段双有效证据值冲突 → 转候选人终审，不互杀也不静默二选一（工序 C2）', () => {
     const result = adjudicate({
       claims: [
         claim({
@@ -218,8 +225,14 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
       ],
       candidateTexts: ['我24岁', '26岁也可以说'],
     });
-    expect(result.profile.fields.age?.status).toBe('conflicted');
+    // 旧行为是两条都判 rejected（连坐互杀）、字段回 missing，候选人被从头重问——
+    // 而其中一条通常是对的。现在带值进清单，由 D1 渲染一句复述让本人拍板。
+    expect(result.profile.fields.age?.status).toBe('needs_confirmation');
+    expect(result.profile.fields.age?.value).toBe(26);
     expect(result.acceptedValues.age).toBeUndefined();
+    expect(
+      result.adjudicated.every((entry) => entry.decision === 'needs_confirmation'),
+    ).toBe(true);
   });
 
   it('会话既有高置信值作为基线沿用（无新 claim 字段）', () => {
@@ -235,7 +248,7 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
     });
   });
 
-  it('严格身份字段禁自由推导：quote 不含名字本体 → rejected', () => {
+  it('严格身份字段：引文与值失联即无出处 → quote_not_found（仍是字符串包含，不是推导）', () => {
     const result = adjudicate({
       claims: [
         claim({
@@ -248,7 +261,48 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
     });
     expect(result.adjudicated[0]).toMatchObject({
       decision: 'rejected',
-      rejectionReason: 'strict_field_free_derivation',
+      rejectionReason: 'quote_not_found',
     });
+  });
+
+  it('回声检查（工序 C4）：切换后引文命中我方已发消息 → 转确认', () => {
+    const result = adjudicateCandidateClaims({
+      claims: [
+        claim({
+          field: 'householdProvince',
+          value: '安徽',
+          evidence: { quote: '户籍省份：安徽' },
+        }),
+      ],
+      candidateTexts: ['户籍省份：安徽'],
+      assistantTexts: ['面试要求：先将以下资料补充下发给我\n户籍省份：安徽'],
+      echoRoutesToConfirmation: true,
+      sessionAccepted: {},
+      profileHints: {},
+      messageWatermark: 'w1',
+      factsVersion: 1,
+      now: NOW,
+    });
+    expect(result.adjudicated[0]).toMatchObject({
+      decision: 'needs_confirmation',
+      rejectionReason: 'quote_echoes_agent_message',
+    });
+    expect(result.echoDetections).toBe(1);
+  });
+
+  it('shadow 期回声只计数不改判（迁移三阶段 P0 零行为变化）', () => {
+    const result = adjudicate({
+      claims: [
+        claim({
+          field: 'householdProvince',
+          value: '安徽',
+          evidence: { quote: '户籍省份：安徽' },
+        }),
+      ],
+      candidateTexts: ['户籍省份：安徽'],
+      assistantTexts: ['户籍省份：安徽'],
+    });
+    expect(result.adjudicated[0]?.decision).toBe('accepted');
+    expect(result.echoDetections).toBe(1);
   });
 });

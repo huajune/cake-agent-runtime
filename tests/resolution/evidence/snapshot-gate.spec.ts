@@ -20,6 +20,7 @@ function buildSnapshot(overrides?: Partial<PrecheckSnapshot>): PrecheckSnapshot 
     },
     acceptedClaimIds: [],
     missingFields: [],
+    confirmedFields: [],
     createdAt: '2026-08-05T10:00:00+08:00',
     expiresAt: '2026-08-05T12:00:00+08:00',
     ...overrides,

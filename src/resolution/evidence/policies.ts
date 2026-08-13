@@ -1,28 +1,13 @@
-import type {
-  CandidateClaimField,
-  CandidateClaimRejectionReason,
-  CandidateFactClaim,
-  RuleFactFieldPath,
-} from './claim.types';
-import {
-  candidateValuesEquivalent,
-  deriveFieldValueFromQuote,
-  isValidCandidateFieldShape,
-} from './normalize';
+import type { CandidateClaimField, RuleFactFieldPath } from './claim.types';
 
 /**
- * 字段风险分级策略（方案 §5.2）。
+ * 字段风险分级（方案 §5.2；2026-08-12 按宪法 P11 重述）。
  *
- * 三档：
- * - strict_identity（姓名/手机号）：只接受直接原文/明确纠正/绑定确认——quote 里
- *   必须逐字含所声明的值本体，禁止任何自由推导（"从语气判断她姓王"不成立）。
- * - normalizable（身高/体重/年龄/学历/户籍/性别/健康证）：允许单位换算、格式
- *   归一化与白名单语义映射，但归一化结果必须能由 quote 确定性复算。
- * - boolean_identity（学生身份）：走 identity-statement 词典分类验证，改口核实
- *   等状态机语义仍由既有 resolveIdentityFlipAfterRejection 承担，不在本层重造。
+ * 三档不再决定"允许多大程度的推导"（推导权已归还模型），只决定**出处检查形态**：
+ * - strict_identity（姓名/手机号）：值本体必须逐字落在引文内；
+ * - normalizable / boolean_identity：不复算值，只受短引文门约束。
  *
- * 本层只做"值与证据的关系"验证；quote 是否真是候选人说的（在候选人消息集中
- * 子串命中）由裁决器先行验证，进到这里的 quote 已确认出自候选人。
+ * 原 `validateClaimValueAgainstQuote` 已随 C1/C3 删除（语义否决），检查移入 ./notary.ts。
  */
 
 export type CandidateFieldRisk = 'strict_identity' | 'normalizable' | 'boolean_identity';
@@ -38,6 +23,26 @@ export const CANDIDATE_FIELD_RISK: Record<CandidateClaimField, CandidateFieldRis
   height: 'normalizable',
   weight: 'normalizable',
   householdProvince: 'normalizable',
+};
+
+/**
+ * 短引文门（C5）的逐字段最小语境字数。0 = 值本身自解释，裸答合法。
+ *
+ * 定档判据：这个值裸着出现时是否可能在答别的问题。「有」「是」能答健康证/经验/
+ * 时间/身份任意一问 → 要 3 字语境；「男」「24」「大专」裸着只可能指本字段 → 0。
+ * 姓名/手机号走严格身份路径（值必须逐字在引文里），不参与本表。
+ */
+export const MIN_QUOTE_CONTEXT_CHARS: Record<CandidateClaimField, number> = {
+  name: 0,
+  phone: 0,
+  gender: 0,
+  age: 0,
+  isStudent: 3,
+  education: 0,
+  healthCertificate: 3,
+  height: 0,
+  weight: 0,
+  householdProvince: 0,
 };
 
 // PR #1000 评审 P3：曾有一张 FIELD_POLICIES 全字段策略表（producerPriority/conflict）
@@ -100,73 +105,3 @@ export const RULE_FACT_FIELD_POLICIES = {
     allowedOperations: ['set', 'clear'],
   },
 } as const satisfies Record<RuleFactFieldPath, RuleFactFieldPolicy>;
-
-export interface ClaimValidationFailure {
-  reason: CandidateClaimRejectionReason;
-  detail: string;
-}
-
-/**
- * 验证"claim 声明的值能否被其 quote 支持"。返回 null = 通过。
- *
- * context_confirmation 解释：确认式应答（"对/是的"）本身不含值，值的合法性
- * 由绑定的 Agent 问句携带——要求 agentQuestionQuote 含值本体（严格字段）或
- * 可推导出等价值（可归一化字段）。确认只提升被询问的字段（方案 §5.2），
- * 扩散控制由 producer 侧保证（只对悬挂问句字段产 confirm claim）。
- */
-export function validateClaimValueAgainstQuote(
-  claim: CandidateFactClaim,
-  now: Date = new Date(),
-): ClaimValidationFailure | null {
-  // clear 是显式清除，不携带值，无需值验证（quote 命中候选人原文即可）。
-  if (claim.operation === 'clear') return null;
-
-  if (!isValidCandidateFieldShape(claim.field, claim.value)) {
-    return { reason: 'invalid_value_shape', detail: `值形状非法: ${String(claim.value)}` };
-  }
-
-  const risk = CANDIDATE_FIELD_RISK[claim.field];
-
-  // 身份唯一识别器（identity-statement 状态机）产出的 isStudent claim：识别器
-  // 本身就是确定性验证器（确认问句检测+纯肯定应答/二选一短答案词典），quote 是
-  // "是的"类纯应答时词典复算必然推不出值，复核交给识别器担保。模型产的身份
-  // claim 不享受此豁免，仍走下方词典复核。
-  if (risk === 'boolean_identity' && claim.producer !== 'model') {
-    return null;
-  }
-
-  const evidenceText =
-    claim.interpretation === 'context_confirmation'
-      ? (claim.evidence.agentQuestionQuote ?? '')
-      : claim.evidence.quote;
-  if (!evidenceText.trim()) {
-    return { reason: 'quote_not_found', detail: '证据文本为空' };
-  }
-
-  if (risk === 'strict_identity') {
-    // 严格身份字段：证据文本必须逐字包含值本体（手机号忽略分隔符）。
-    const value = String(claim.value ?? '').trim();
-    const haystack = claim.field === 'phone' ? evidenceText.replace(/[\s-]/g, '') : evidenceText;
-    const needle = claim.field === 'phone' ? value.replace(/\D/g, '') : value;
-    if (!needle || !haystack.includes(needle)) {
-      return {
-        reason: 'strict_field_free_derivation',
-        detail: `严格字段 ${claim.field} 的证据未逐字含值`,
-      };
-    }
-    return null;
-  }
-
-  // 可归一化字段与学生身份：从证据文本确定性复算，结果须与声明值等价。
-  const derived = deriveFieldValueFromQuote(claim.field, evidenceText, now);
-  if (derived === null) {
-    return { reason: 'value_not_derivable', detail: `无法从证据推导 ${claim.field}` };
-  }
-  if (!candidateValuesEquivalent(claim.field, derived, claim.value)) {
-    return {
-      reason: 'value_not_derivable',
-      detail: `推导值 ${String(derived)} 与声明值 ${String(claim.value)} 不等价`,
-    };
-  }
-  return null;
-}

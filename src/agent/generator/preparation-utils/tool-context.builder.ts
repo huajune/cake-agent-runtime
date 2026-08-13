@@ -3,7 +3,7 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
-import type { CandidatePrefillHints } from '@resolution/candidate/types';
+import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { unwrapUserProfileFacts } from '@memory/types/long-term.types';
@@ -141,26 +141,53 @@ export function buildToolContext(input: {
   };
 }
 
+/** 弱来源字段 → 收资表单字段键（工序 A3：从性别一个字段推广到全字段）。 */
+const PREFILL_HINT_FIELDS: ReadonlyArray<[CandidatePrefillField, string]> = [
+  ['name', 'name'],
+  ['phone', 'phone'],
+  ['gender', 'gender'],
+  ['age', 'age'],
+  ['education', 'education'],
+  ['healthCert', 'has_health_certificate'],
+  ['householdProvince', 'household_register_province'],
+  ['height', 'height'],
+  ['weight', 'weight'],
+];
+
 /**
- * D5 的信任门继续生效：medium/system 性别不进入 trustedSessionFacts，只投影为
- * 表单预填确认提示。这样工具能减少重复盘问，却不会把弱来源升级成报名事实。
+ * D5 的信任门继续生效：medium/system 事实不进入 trustedSessionFacts，只投影为
+ * 表单「带值求证」提示。工具能减少重复盘问，却不会把弱来源升级成报名事实。
+ *
+ * **2026-08-12 工序 A3**：覆盖面从性别一个字段推广到全部收资字段。三禁令
+ * （不得据此拒绝 / 提交 / 升级来源）由 CandidatePrefillHint 类型注释承载，
+ * 消费端（precheck prefilledConfirmationFields）逐字继承。
  */
 function buildCandidatePrefillHints(
   facts: SessionFacts | EntityExtractionResult | null,
 ): CandidatePrefillHints | undefined {
-  const genderFact = facts?.interview_info?.gender;
-  if (!isSessionFactValue<string>(genderFact) || !genderFact.value.trim()) return undefined;
+  const info = facts?.interview_info;
+  if (!info) return undefined;
 
-  const genderSource = unwrapSessionFactValue(facts?.interview_info?.gender_source);
-  const reason =
-    genderSource === 'system' || genderFact.source === 'system'
+  const hints: CandidatePrefillHints = {};
+  for (const [hintField, factKey] of PREFILL_HINT_FIELDS) {
+    const fact = (info as Record<string, unknown>)[factKey];
+    if (!isSessionFactValue<string | number>(fact)) continue;
+    const value = String(fact.value ?? '').trim();
+    if (!value) continue;
+
+    // 性别另有 gender_source 旁路标记（系统标签回填），一并算 system 来源。
+    const isSystemSourced =
+      fact.source === 'system' ||
+      (hintField === 'gender' && unwrapSessionFactValue(info.gender_source) === 'system');
+    const reason = isSystemSourced
       ? 'system_source'
-      : genderFact.confidence === 'medium'
+      : fact.confidence === 'medium'
         ? 'medium_confidence'
         : null;
-  if (!reason) return undefined;
-
-  return { gender: { value: genderFact.value.trim(), reason } };
+    if (!reason) continue;
+    hints[hintField] = { value, reason };
+  }
+  return Object.keys(hints).length > 0 ? hints : undefined;
 }
 
 /**

@@ -496,7 +496,7 @@ describe('SessionService', () => {
       expect(state.collectedFields.age?.value).toBe('24');
     });
 
-    it('populates collectedFields from current-turn user text as candidate_quote', async () => {
+    it('populates collectedFields from current-turn user text as rule (工序 A2)', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
           facts: null,
@@ -511,9 +511,10 @@ describe('SessionService', () => {
         now: 5000,
       });
 
+      // 工序 A2：解析产物标 'rule'，不再冒充候选人引文权威。
       expect(state.collectedFields.name).toMatchObject({
         value: '王建国',
-        producer: 'candidate_quote',
+        producer: 'rule',
         at: 5000,
       });
       expect(state.collectedFields.phone?.value).toBe('13912345678');

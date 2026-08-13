@@ -1,9 +1,26 @@
-import { CANDIDATE_FIELD_RISK, validateClaimValueAgainstQuote } from '@resolution/evidence/policies';
+import { CANDIDATE_FIELD_RISK, MIN_QUOTE_CONTEXT_CHARS } from '@resolution/evidence/policies';
+import {
+  detectAgentEcho,
+  notarizeCandidateClaim,
+  verifyQuoteContext,
+  verifyQuoteProvenance,
+  verifyValueShape,
+} from '@resolution/evidence/notary';
 import type { CandidateFactClaim } from '@resolution/evidence/claim.types';
+
+/**
+ * 公证器三问（宪法 P11 工序 C3/C4/C5）。
+ *
+ * 本文件取代原 `validateClaimValueAgainstQuote` 的测试矩阵：那套断言的是
+ * "正则推不出这个值就拒"（value_not_derivable / strict_field_free_derivation），
+ * 已随 C1 从类型层删除——它是语义否决，确定性代码在裁决点没有这项权力。
+ */
 
 const NOW = new Date('2026-08-05T10:00:00+08:00');
 
-function claim(partial: Partial<CandidateFactClaim> & Pick<CandidateFactClaim, 'field' | 'value'>): CandidateFactClaim {
+function claim(
+  partial: Partial<CandidateFactClaim> & Pick<CandidateFactClaim, 'field' | 'value'>,
+): CandidateFactClaim {
   return {
     claimId: 't1',
     operation: 'set',
@@ -15,7 +32,7 @@ function claim(partial: Partial<CandidateFactClaim> & Pick<CandidateFactClaim, '
   } as CandidateFactClaim;
 }
 
-describe('candidate-fact-policy 字段风险三分级', () => {
+describe('字段风险分级与短引文门参数', () => {
   it('风险表覆盖全部十字段', () => {
     expect(Object.keys(CANDIDATE_FIELD_RISK)).toHaveLength(10);
     expect(CANDIDATE_FIELD_RISK.name).toBe('strict_identity');
@@ -24,95 +41,197 @@ describe('candidate-fact-policy 字段风险三分级', () => {
     expect(CANDIDATE_FIELD_RISK.height).toBe('normalizable');
   });
 
-  it('strict：quote 逐字含值通过；不含判自由推导', () => {
+  it('短引文门只对语境依赖字段设正数门槛', () => {
+    expect(MIN_QUOTE_CONTEXT_CHARS.healthCertificate).toBeGreaterThan(0);
+    expect(MIN_QUOTE_CONTEXT_CHARS.isStudent).toBeGreaterThan(0);
+    // 自解释 token 裸答合法：抬高会把「性别？」→「男」这类正常应答判死。
+    expect(MIN_QUOTE_CONTEXT_CHARS.gender).toBe(0);
+    expect(MIN_QUOTE_CONTEXT_CHARS.age).toBe(0);
+  });
+});
+
+describe('第一问·引文真伪', () => {
+  const texts = ['我叫王玥', '139 0000 0002', '我一米六三'];
+
+  it('引文逐字命中候选人原文即过', () => {
     expect(
-      validateClaimValueAgainstQuote(claim({ field: 'name', value: '王玥', evidence: { quote: '我叫王玥' } }), NOW),
-    ).toBeNull();
-    expect(
-      validateClaimValueAgainstQuote(
-        claim({ field: 'name', value: '王玥', evidence: { quote: '用之前登记的名字' } }),
-        NOW,
-      ),
-    ).toMatchObject({ reason: 'strict_field_free_derivation' });
+      verifyQuoteProvenance(
+        claim({ field: 'name', value: '王玥', evidence: { quote: '我叫王玥' } }),
+        texts,
+      ).outcome,
+    ).toBe('pass');
   });
 
-  it('strict phone：忽略分隔符比对', () => {
+  it('引文不在候选人原文里 → quote_not_found（防编造的主力）', () => {
     expect(
-      validateClaimValueAgainstQuote(
+      verifyQuoteProvenance(
+        claim({ field: 'name', value: '王玥', evidence: { quote: '我的名字是王玥' } }),
+        texts,
+      ),
+    ).toMatchObject({ outcome: 'reject', reason: 'quote_not_found' });
+  });
+
+  it('legacy 裸值（无 quote）→ quote_not_found，不再走全文推导补录', () => {
+    expect(
+      verifyQuoteProvenance(claim({ field: 'name', value: '王玥' }), texts),
+    ).toMatchObject({ outcome: 'reject', reason: 'quote_not_found' });
+  });
+
+  it('严格身份字段：引文与值失联即判无出处（仍是字符串包含，不是推导）', () => {
+    expect(
+      verifyQuoteProvenance(
+        claim({ field: 'name', value: '王玥', evidence: { quote: '我一米六三' } }),
+        texts,
+      ),
+    ).toMatchObject({ outcome: 'reject', reason: 'quote_not_found' });
+  });
+
+  it('值包含检查与语料命中同口径：折空白/全半角，不折标点', () => {
+    // 语料那步已折空白，这步若用裸 includes，候选人打「我叫王 玥」会被自己人误拒。
+    expect(
+      verifyQuoteProvenance(
+        claim({ field: 'name', value: '王玥', evidence: { quote: '我叫王 玥' } }),
+        ['我叫王 玥'],
+      ).outcome,
+    ).toBe('pass');
+    expect(
+      verifyQuoteProvenance(
+        claim({ field: 'phone', value: '13912345678', evidence: { quote: '电话１３９１２３４５６７８' } }),
+        ['电话１３９１２３４５６７８'],
+      ).outcome,
+    ).toBe('pass');
+    // 值真的不在引文里仍然拒——放宽的是形态差异，不是包含关系本身。
+    expect(
+      verifyQuoteProvenance(
+        claim({ field: 'name', value: '李雷', evidence: { quote: '我叫王玥' } }),
+        ['我叫王玥'],
+      ),
+    ).toMatchObject({ outcome: 'reject', reason: 'quote_not_found' });
+  });
+
+  it('手机号忽略分隔符比对', () => {
+    expect(
+      verifyQuoteProvenance(
         claim({ field: 'phone', value: '13900000002', evidence: { quote: '139 0000 0002' } }),
-        NOW,
-      ),
-    ).toBeNull();
+        texts,
+      ).outcome,
+    ).toBe('pass');
   });
 
-  it('normalizable：quote 推导等价通过；不等价拒', () => {
+  it('可归一化字段不再复算：模型说 163、原话"一米六三"，公证器不插手语义', () => {
     expect(
-      validateClaimValueAgainstQuote(
-        claim({ field: 'height', value: 163, interpretation: 'normalized', evidence: { quote: '我一米六三' } }),
-        NOW,
-      ),
-    ).toBeNull();
+      verifyQuoteProvenance(
+        claim({
+          field: 'height',
+          value: 163,
+          interpretation: 'normalized',
+          evidence: { quote: '我一米六三' },
+        }),
+        texts,
+      ).outcome,
+    ).toBe('pass');
+  });
+});
+
+describe('第二问·值形状', () => {
+  it('整句话当年龄 → invalid_value_shape', () => {
     expect(
-      validateClaimValueAgainstQuote(
-        claim({ field: 'height', value: 180, evidence: { quote: '我一米六三' } }),
-        NOW,
-      ),
-    ).toMatchObject({ reason: 'value_not_derivable' });
+      verifyValueShape(claim({ field: 'age', value: '晚上才可以，有吗？' })),
+    ).toMatchObject({ outcome: 'reject', reason: 'invalid_value_shape' });
+  });
+
+  it('占位手机号被形态门拒（gu2kra6p 族）', () => {
+    expect(verifyValueShape(claim({ field: 'phone', value: '13800138000' }))).toMatchObject({
+      outcome: 'reject',
+      reason: 'invalid_value_shape',
+    });
+  });
+
+  it('纯数字姓名与称谓后缀被形态门拒', () => {
+    expect(verifyValueShape(claim({ field: 'name', value: '13900000002' })).outcome).toBe('reject');
+    expect(verifyValueShape(claim({ field: 'name', value: '王老师' })).outcome).toBe('reject');
   });
 
   it('clear 操作免值验证', () => {
     expect(
-      validateClaimValueAgainstQuote(
-        claim({ field: 'phone', value: null, operation: 'clear', evidence: { quote: '别用那个号了' } }),
-        NOW,
+      verifyValueShape(claim({ field: 'phone', value: null, operation: 'clear' })).outcome,
+    ).toBe('pass');
+  });
+});
+
+describe('第三问·短引文门与回声', () => {
+  it('裸「有」答健康证 → quote_too_short', () => {
+    expect(
+      verifyQuoteContext(
+        claim({ field: 'healthCertificate', value: '有', evidence: { quote: '有' } }),
       ),
-    ).toBeNull();
+    ).toMatchObject({ outcome: 'reject', reason: 'quote_too_short' });
   });
 
-  it('值形状非法直接拒（整句当年龄）', () => {
+  it('带语境的「有健康证」通过', () => {
     expect(
-      validateClaimValueAgainstQuote(
-        claim({ field: 'age', value: '晚上才可以，有吗？', evidence: { quote: '晚上才可以，有吗？' } }),
-        NOW,
-      ),
-    ).toMatchObject({ reason: 'invalid_value_shape' });
+      verifyQuoteContext(
+        claim({ field: 'healthCertificate', value: '有', evidence: { quote: '有健康证' } }),
+      ).outcome,
+    ).toBe('pass');
   });
 
-  it('boolean_identity：识别器产出（非 model）豁免词典复核，"是的"类纯应答不被误拒', () => {
+  it('绑定 Agent 问句的确认式短答豁免（防重造身份确认死锁）', () => {
     expect(
-      validateClaimValueAgainstQuote(
+      verifyQuoteContext(
         claim({
           field: 'isStudent',
           value: false,
-          producer: 'candidate_quote',
           interpretation: 'context_confirmation',
-          evidence: { quote: '是的' },
+          evidence: { quote: '是的', agentQuestionQuote: '你是社会人士对吧' },
         }),
-        NOW,
-      ),
-    ).toBeNull();
+      ).outcome,
+    ).toBe('pass');
   });
 
-  it('boolean_identity：model 产出仍走词典复核，"是的"推不出身份被拒', () => {
+  it('严格身份字段豁免短引文门：索名后单独回一条真名合法（badcase 6a7446eb）', () => {
     expect(
-      validateClaimValueAgainstQuote(
-        claim({ field: 'isStudent', value: false, producer: 'model', evidence: { quote: '是的' } }),
-        NOW,
-      ),
-    ).toMatchObject({ reason: 'value_not_derivable' });
+      verifyQuoteContext(claim({ field: 'name', value: '张丽鑫', evidence: { quote: '张丽鑫' } }))
+        .outcome,
+    ).toBe('pass');
   });
 
-  it('context_confirmation（非身份字段）以 agentQuestionQuote 为验证基准', () => {
+  it('回声：引文同时命中我方已发消息 → 转确认，不判错', () => {
     expect(
-      validateClaimValueAgainstQuote(
-        claim({
-          field: 'age',
-          value: 24,
-          interpretation: 'context_confirmation',
-          evidence: { quote: '对', agentQuestionQuote: '你是24岁对吧' },
-        }),
-        NOW,
+      detectAgentEcho(
+        claim({ field: 'householdProvince', value: '安徽', evidence: { quote: '户籍省份：安徽' } }),
+        ['面试要求：先将以下资料补充下发给我\n户籍省份：安徽'],
       ),
-    ).toBeNull();
+    ).toMatchObject({ outcome: 'needs_confirmation', reason: 'quote_echoes_agent_message' });
+  });
+
+  it('短引文不参与回声：「男」「24」在双方文本同现是必然，判回声会打死正常自陈', () => {
+    expect(detectAgentEcho(claim({ field: 'gender', value: '男', evidence: { quote: '男' } }), ['性别：男']).outcome).toBe('pass');
+  });
+});
+
+describe('三问串行与 shadow 分档', () => {
+  const texts = ['户籍省份：安徽'];
+  const assistantTexts = ['面试要求：先将以下资料补充下发给我\n户籍省份：安徽'];
+  const echoClaim = claim({
+    field: 'householdProvince',
+    value: '安徽',
+    evidence: { quote: '户籍省份：安徽' },
+  });
+
+  it('shadow 期回声只记不拦（迁移三阶段 P0 零行为变化）', () => {
+    const result = notarizeCandidateClaim({ claim: echoClaim, candidateTexts: texts, assistantTexts });
+    expect(result.verdict.outcome).toBe('pass');
+    expect(result.echo.outcome).toBe('needs_confirmation');
+  });
+
+  it('切换后回声路由 needs_confirmation', () => {
+    const result = notarizeCandidateClaim({
+      claim: echoClaim,
+      candidateTexts: texts,
+      assistantTexts,
+      echoRoutesToConfirmation: true,
+    });
+    expect(result.verdict.outcome).toBe('needs_confirmation');
   });
 });

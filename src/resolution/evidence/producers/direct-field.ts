@@ -17,13 +17,12 @@ import { deriveFieldValueFromQuote } from '../normalize';
 const DIRECT_FIELDS = CANDIDATE_CLAIM_FIELDS.filter((field) => field !== 'isStudent');
 
 /**
- * quote 上限。裁决器会用存下来的 quote **原样复算**值，因此推导输入必须与存储证据
- * 完全一致——否则规则轨会产出自己的验证器拒绝的 claim。
+ * quote 上限：**先截断再解析**，推导输入必须与存下来的证据完全一致，否则本轨会产出
+ * 自己都通不过公证的 claim。
  *
- * 生产实测（2026-08-06，chat 6a714c00）：旧实现用全文推导、按 200 字截断存 quote，
- * 一条 442 字消息里位于截断点之后的年龄信号复算失败，rule_age_1 被判
- * `value_not_derivable`。上限抬到 1000 字覆盖长表单/长描述，同时保持
- * "推导输入 = 存储证据"的不变式：超限部分不参与推导，也就不会产出无据 claim。
+ * 生产实测（2026-08-06，chat 6a714c00）：旧实现全文推导、按 200 字截断存 quote，
+ * 一条 442 字消息里位于截断点之后的年龄信号因此被拒。上限抬到 1000 字覆盖长表单
+ * 与长图片描述，超限部分不参与解析。
  */
 export const RULE_CLAIM_QUOTE_MAX_CHARS = 1000;
 

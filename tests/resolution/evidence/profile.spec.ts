@@ -73,10 +73,10 @@ describe('buildEffectiveProfile 四态视图', () => {
     expect(profile.fields.age).toMatchObject({ status: 'historical_unconfirmed', source: 'profile' });
   });
 
-  it('conflicting_evidence 的字段标 conflicted', () => {
+  it('conflicting_evidence 的字段转候选人终审（工序 C2）', () => {
     const conflicted: AdjudicatedClaim = {
       ...accepted('age', 24),
-      decision: 'rejected',
+      decision: 'needs_confirmation',
       rejectionReason: 'conflicting_evidence',
     };
     const profile = buildEffectiveProfile({
@@ -87,7 +87,9 @@ describe('buildEffectiveProfile 四态视图', () => {
       factsVersion: 1,
       now: NOW,
     });
-    expect(profile.fields.age?.status).toBe('conflicted');
+    // 冲突不再是终局否决：值带进清单做一句复述，由候选人本人拍板。
+    expect(profile.fields.age?.status).toBe('needs_confirmation');
+    expect(profile.fields.age?.value).toBe(24);
   });
 
   it('pickAcceptedValues 只取 accepted 且非空的字段', () => {

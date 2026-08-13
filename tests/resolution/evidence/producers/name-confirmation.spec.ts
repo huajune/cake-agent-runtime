@@ -99,7 +99,7 @@ describe('booking 姓名闸门放行（badcase 6a7446eb 复现）', () => {
 });
 
 describe('Claim 裁决消掉同族 name 假阳（badcase 6a7446eb）', () => {
-  it('模型裸值姓名不再被判 no_candidate_evidence', () => {
+  it('模型裸值姓名不再被判无据（同值有据 claim 已采信 → superseded）', () => {
     const result = runCandidateFactAdjudication({
       messages: BADCASE_MESSAGES,
       legacyArgs: { name: '张丽鑫', phone: '18832048339' },
@@ -108,9 +108,10 @@ describe('Claim 裁决消掉同族 name 假阳（badcase 6a7446eb）', () => {
     });
     expect(result.acceptedValues.name).toBe('张丽鑫');
     const nameDecisions = result.adjudicated.filter((entry) => entry.claim.field === 'name');
-    expect(nameDecisions.some((entry) => entry.rejectionReason === 'no_candidate_evidence')).toBe(
-      false,
-    );
+    // 工序 C1 已删除 no_candidate_evidence；裸值同值时判 superseded 而非 rejected，
+    // 否则会污染 enforce 判据②「作证通道占比」。
+    expect(nameDecisions.some((entry) => entry.decision === 'rejected')).toBe(false);
+    expect(nameDecisions.some((entry) => entry.decision === 'superseded')).toBe(true);
   });
 
   it('无索名问句时，裸名不会凭空成为已采信姓名', () => {

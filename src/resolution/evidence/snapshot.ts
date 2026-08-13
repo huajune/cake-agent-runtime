@@ -18,9 +18,22 @@ export interface PrecheckSnapshot {
   effectiveProfile: EffectiveCandidateProfile;
   acceptedClaimIds: string[];
   missingFields: CandidateClaimField[];
+  /**
+   * 已达**确认级**的字段：采信 claim 的 operation=confirm 或 context_confirmation，
+   * 即候选人对着一个具体的值明确表过态。这是唯一能兜住**指代错误**的东西——
+   * 「我姐今年24」引文真实、形状合法、三问全过，只有本人一句"对，我24"能挡下来。
+   */
+  confirmedFields: CandidateClaimField[];
   createdAt: string;
   expiresAt: string;
 }
+
+/** 报名级字段：错误代价最高、booking 前必须达确认级或有直接自陈出处（工序 D3）。 */
+export const BOOKING_CRITICAL_FIELDS = [
+  'name',
+  'phone',
+  'age',
+] as const satisfies ReadonlyArray<CandidateClaimField>;
 
 /** 快照 TTL：与会话事实同量级；过期后 booking 必须重新 precheck。 */
 export const PRECHECK_SNAPSHOT_TTL_SECONDS = 2 * 60 * 60;

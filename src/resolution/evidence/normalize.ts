@@ -10,7 +10,9 @@ import {
   parseWeight,
 } from '@resolution/candidate';
 import { classifyIdentityAnswerText } from '@resolution/candidate/student-identity';
-import { isStorableCandidatePhone } from '@resolution/candidate/phone';
+import { isPlaceholderPhone, isStorableCandidatePhone } from '@resolution/candidate/phone';
+import { isPlausibleAgeValue } from '@resolution/candidate/age';
+import { hasHonorificSuffix, isDigitsOnlyName } from '@resolution/candidate/name';
 import type { CandidateClaimField } from './claim.types';
 
 /**
@@ -65,14 +67,12 @@ export function experienceValueSupportedByQuote(quote: string, value: string): b
  * 候选人字段归一化器（方案 §5.2「可安全归一化字段」+ §12 条目 4）。
  *
  * 两类职责：
- * 1. `deriveFieldValueFromQuote`：从候选人原话片段确定性推导字段值——裁决器
- *    验证 claim 的核心（模型声明的值必须能被这段原话支持）。在
- *    candidate-field-parser 的键值对解析之上，补充口语化表达（"一米六三"
- *    "九十二斤""03年的"）的白名单换算，让模型的合理语义理解可以被确定性复核。
- * 2. `candidateValuesEquivalent`：跨表示形态的等价比较（"163cm"≡163、
- *    "安徽省"≡"安徽"），供裁决器判断规则/模型双 claim 是否同值、booking
- *    payload 是否偏离快照。口径对齐 booking 侧 normalizeBookingAuthorityValue，
- *    但实现放在 memory 层避免依赖工具内部函数。
+ * 1. `deriveFieldValueFromQuote`：从候选人原话片段确定性取值，**producer 侧**用
+ *    （direct-field 产 claim、session 的出处声明升级）。在键值对解析之上补充口语化
+ *    表达（"一米六三""九十二斤""03年的"）的白名单换算。
+ *    ⚠️ 它**不再是裁决器的验证器**：公证器不复算值（宪法 P11，见 ./notary.ts）；
+ * 2. `candidateValuesEquivalent`：跨表示形态的等价比较（"163cm"≡163、"安徽省"≡"安徽"），
+ *    供裁决器判断同字段多 claim 是否同值、booking payload 是否偏离快照。
  *
  * 纪律：全部纯函数、零 LLM；推导不出就返回 null，绝不猜。
  */
@@ -159,10 +159,8 @@ export function parseBirthYearAge(text: string, now: Date): number | null {
 // ==================== 字段级推导（quote → 值） ====================
 
 /**
- * 从候选人原话片段确定性推导字段值。返回 null = 这段话推不出该字段。
- *
- * 严格身份字段（name/phone）只走结构化解析——"自由推导"被字段策略层拒绝，
- * 这里不为它们提供口语化兜底。
+ * 从候选人原话片段确定性取值。返回 null = 这段话取不出该字段。
+ * 严格身份字段（name/phone）只走结构化解析，不提供口语化兜底。
  */
 export function deriveFieldValueFromQuote(
   field: CandidateClaimField,
@@ -255,18 +253,24 @@ export function candidateValuesEquivalent(
   return left !== '' && left === right;
 }
 
-/** 值形状合法性（裁决前的最后防线，防"整句话当值"类污染）。 */
+/**
+ * 值形状合法性——公证第二问的唯一判据。判的是值本身的形态（可枚举、不随语言分布
+ * 漂移），这是解析器转岗后保留下来的合法权力。
+ *
+ * 纪律：只准加**封闭形态**判据。"这段话像不像在说这个值"属开放语言裁决，宪法 P11
+ * 明令确定性代码在裁决点无此权力（review 直接打回）。
+ */
 export function isValidCandidateFieldShape(field: CandidateClaimField, value: unknown): boolean {
   if (value === null || value === undefined) return false;
   const text = String(value).trim();
   if (!text) return false;
   switch (field) {
     case 'phone':
-      return isStorableCandidatePhone(text);
-    case 'age': {
-      const age = Number(text.replace(/岁$/, ''));
-      return Number.isInteger(age) && age >= 14 && age <= 70;
-    }
+      // 占位号族（11111111111 / 13800138000）形态合规但一定不是真号，进真实工单
+      // 前的最后一道形态检查（gu2kra6p 族）。
+      return isStorableCandidatePhone(text) && !isPlaceholderPhone(text);
+    case 'age':
+      return isPlausibleAgeValue(text.replace(/岁$/, ''));
     case 'height': {
       const height = Number(normalizeFieldText(field, value));
       return Number.isFinite(height) && height >= 100 && height <= 250;
@@ -276,7 +280,14 @@ export function isValidCandidateFieldShape(field: CandidateClaimField, value: un
       return Number.isFinite(weight) && weight >= 30 && weight <= 200;
     }
     case 'name':
-      return text.length >= 2 && text.length <= 6 && !/[\d\s。，,？?！!]/.test(text);
+      // 纯数字姓名（手机号错填）与称谓后缀都与长度/标点判据同族，统一收在这里。
+      return (
+        text.length >= 2 &&
+        text.length <= 6 &&
+        !/[\d\s。，,？?！!]/.test(text) &&
+        !isDigitsOnlyName(text) &&
+        !hasHonorificSuffix(text)
+      );
     case 'isStudent':
       return (
         normalizeFieldText(field, value) === 'true' || normalizeFieldText(field, value) === 'false'

@@ -140,12 +140,12 @@ describe('candidate-field-parser', () => {
   });
 
   describe('parseCandidateFieldsFromText (aggregate)', () => {
-    it('produces candidate_quote fields from a structured submission', () => {
+    it('产物标 rule 而非 candidate_quote（工序 A2：解析产物不冒充引文权威）', () => {
       const fields = parseCandidateFieldsFromText(
         ['姓名：王建国 电话13912345678 年龄28 性别男 户籍黑龙江'],
         1000,
       );
-      expect(fields.name).toMatchObject({ value: '王建国', producer: 'candidate_quote', at: 1000 });
+      expect(fields.name).toMatchObject({ value: '王建国', producer: 'rule', at: 1000 });
       expect(fields.phone?.value).toBe('13912345678');
       expect(fields.age?.value).toBe(28);
       expect(fields.gender?.value).toBe('男');
@@ -167,14 +167,17 @@ describe('candidate-field-parser', () => {
   });
 
   describe('persistable provenance gate', () => {
-    it('keeps candidate_quote / rule / system authoritative and model non-authoritative', () => {
+    it('工序 A1：rule 已从权威白名单摘除（置信度是证据的属性，不是产者的属性）', () => {
       expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('candidate_quote')).toBe(true);
-      expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('rule')).toBe(true);
       expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('system')).toBe(true);
+      // 正则认不出候选人口语形态时判假阳（实测 72.3%），却因产者身份是"规则"而
+      // 自带确权资格——P9 旧阶梯的现行法条，宪法 P11 废除。
+      expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('rule')).toBe(false);
       expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('model')).toBe(false);
     });
-    it('hasPersistableFieldProvenance rejects model drafts', () => {
+    it('hasPersistableFieldProvenance rejects model and rule drafts', () => {
       expect(hasPersistableFieldProvenance({ value: '小王', producer: 'model', at: 1 })).toBe(false);
+      expect(hasPersistableFieldProvenance({ value: '小王', producer: 'rule', at: 1 })).toBe(false);
       expect(
         hasPersistableFieldProvenance({ value: '王建国', producer: 'candidate_quote', at: 1 }),
       ).toBe(true);

@@ -70,7 +70,10 @@ describe('P0-1 quote 截断与推导输入一致（shadow 观测 2026-08-06）',
     expect(selfContradictions).toEqual([]);
   });
 
-  it('legacy 裸值补录证据同样满足不变式（长消息尾部值可被补录）', () => {
+  it('legacy 裸值不再靠全文推导补录证据（工序 C1/C3）', () => {
+    // 原不变式守的是「补录的 quote 必须支撑该值」——那条链路本身（拿正则在候选人全文
+    // 里反推一段 quote 出来）已随 C3 删除：它是按产者排信任的教义遗产，也是 72.3%
+    // 假阳的来源。裸值现在只有一个诚实结论：没有引文就是没有出处，模型本轮补 quote 即可。
     const claims = produceLegacyModelClaims({ age: '24' }, AT);
     const { adjudicated } = adjudicateCandidateClaims({
       claims,
@@ -81,7 +84,33 @@ describe('P0-1 quote 截断与推导输入一致（shadow 观测 2026-08-06）',
       factsVersion: 1,
       now: NOW,
     });
-    expect(adjudicated[0].decision).toBe('accepted');
+    expect(adjudicated[0]).toMatchObject({
+      decision: 'rejected',
+      rejectionReason: 'quote_not_found',
+    });
+
+    // 同一个值改由带引文的 claim 提交即采信——出口就在本轮，不需要再问候选人。
+    const withQuote = adjudicateCandidateClaims({
+      claims: [
+        {
+          claimId: 'model_age_1',
+          field: 'age',
+          value: 24,
+          operation: 'set',
+          producer: 'model',
+          interpretation: 'direct',
+          evidence: { quote: '我24岁' },
+          assertedAt: AT,
+        },
+      ],
+      candidateTexts: ['我24岁'],
+      sessionAccepted: {},
+      profileHints: {},
+      messageWatermark: 'w',
+      factsVersion: 1,
+      now: NOW,
+    });
+    expect(withQuote.adjudicated[0].decision).toBe('accepted');
   });
 });
 
@@ -120,9 +149,10 @@ describe('P0-2 图片描述不得作为候选人自陈证据（shadow 观测 202
     // 修复前：截图文本进 quote 基准 → 号码/年龄可被补录成"候选人原话"
     expect(result.acceptedValues.phone).toBeUndefined();
     expect(result.acceptedValues.age).toBeUndefined();
+    // 工序 C1 后拒因是 quote_not_found（裸值没有引文＝没有出处），语义拒因已删。
     expect(
       result.adjudicated.every(
-        (entry) => entry.decision === 'rejected' && entry.rejectionReason === 'no_candidate_evidence',
+        (entry) => entry.decision === 'rejected' && entry.rejectionReason === 'quote_not_found',
       ),
     ).toBe(true);
   });

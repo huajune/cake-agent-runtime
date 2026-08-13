@@ -71,16 +71,37 @@ export function isNameAuthoritative(name: string, messages: readonly unknown[]):
  *   完全合规，checkRealName 与打招呼语识别都拦不住；
  * - 其余（含裸答真名"张伟"、无任何负向证据）→ allow，形态交给 checkRealName，避免误拒。
  */
+export interface BookingNameGateOptions {
+  /**
+   * 本轮 precheck 裁决账本已对该姓名作证（E2「换 quote 作证」）：解锁不再靠闸门自己
+   * 长一条确认识别正则，而靠公证器认过的引文。
+   */
+  attestedByClaim?: boolean;
+  /**
+   * 是否保留 legacy 确认识别正则（`就是X`）。默认 true 是迁移期兼容值：shadow 期模型
+   * 还没稳定提交 confirm claim，此刻删掉会复活 badcase g4ytra23（连拒 5 次、索名 4 遍）。
+   * enforce 传 false，届时 attestedByClaim 已接管。
+   */
+  allowLegacyConfirmRegex?: boolean;
+}
+
 export function evaluateBookingNameGate(
   name: string,
   messages: readonly unknown[],
+  options: BookingNameGateOptions = {},
 ): NameGateVerdict {
   const target = name?.trim();
   if (!target) return { decision: 'allow' };
+  if (options.attestedByClaim) return { decision: 'allow' };
   if (isNameAuthoritative(target, messages)) return { decision: 'allow' };
   // 解锁路径：负向证据（打招呼语昵称/引用前缀）可被候选人后续的明确确认覆盖——
   // "就是X"/确认问答对/身份证图片证据（badcase g4ytra23 死锁修复）。
-  if (isNameConfirmedInDialogue(target, messages)) return { decision: 'allow' };
+  if (
+    (options.allowLegacyConfirmRegex ?? true) &&
+    isNameConfirmedInDialogue(target, messages, { allowDirectRestatement: true })
+  ) {
+    return { decision: 'allow' };
+  }
   if (isNameProvidedAfterAsk(target, messages)) return { decision: 'allow' };
   // 开放式索名 → 裸名直答（badcase 6a7446eb）：最自然的真名提供路径，上面两个
   // 逃生口都够不着（一个要名+手机号同现，一个要问句里已含该名）。

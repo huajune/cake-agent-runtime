@@ -136,18 +136,29 @@ export function isNameAnsweredToRealNameAsk(name: string, messages: readonly unk
  *    形态匹配——注意 OCR 描述"姓名陈佩珊"无冒号分隔，`hasStructuredNameSubmission`
  *    的键值对正则覆盖不到。
  */
-export function isNameConfirmedInDialogue(name: string, messages: readonly unknown[]): boolean {
+export function isNameConfirmedInDialogue(
+  name: string,
+  messages: readonly unknown[],
+  options: {
+    /**
+     * 是否启用「就是X」直陈式确认识别（E2 的退役目标）。默认 true 是迁移期兼容值，
+     * 不是设计立场——P2 随 D5 连同三份分叉肯定词表一并删除。
+     */
+    allowDirectRestatement?: boolean;
+  } = {},
+): boolean {
   const target = name?.trim();
   if (!target || target.length < 2) return false;
   const turns = extractDialogueTurns(messages);
   const escaped = escapeRegExp(target);
   const directConfirmRe = new RegExp(`就是\\s*${escaped}`, 'u');
   const idCardRe = new RegExp(`身份证[^\\n]{0,30}?姓名\\s*[：:]?\\s*${escaped}`, 'u');
+  const allowDirect = options.allowDirectRestatement ?? true;
 
   for (const turn of turns) {
     if (turn.role !== 'user') continue;
     const text = stripQuoteBlocks(stripTimeContext(turn.text));
-    if (directConfirmRe.test(text) || idCardRe.test(text)) return true;
+    if ((allowDirect && directConfirmRe.test(text)) || idCardRe.test(text)) return true;
   }
 
   for (let i = 0; i < turns.length; i++) {

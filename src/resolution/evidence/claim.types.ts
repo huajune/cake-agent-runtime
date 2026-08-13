@@ -108,7 +108,7 @@ export type CandidateFactOperation = (typeof CANDIDATE_FACT_OPERATIONS)[number];
  * - direct：原话直接给出（"我叫王玥"）；
  * - normalized：确定性归一化（"一米六三"→163）；
  * - context_confirmation：绑定确认问句的应答（"对"确认的是被问字段）；
- * - derived：由其他字段确定性推导（预留，当前字段策略均不放行自由推导）。
+ * - derived：由其他字段确定性推导（预留位，当前无生产方）。
  */
 export type CandidateFactInterpretation =
   | 'direct'
@@ -196,14 +196,20 @@ export interface NameGateVerdict {
 /** 单条 claim 的裁决结论。 */
 export type CandidateClaimDecision = 'accepted' | 'rejected' | 'superseded' | 'needs_confirmation';
 
-/** 拒绝/待确认原因（观测 rejectionReason 的机器可读枚举）。 */
+/**
+ * 拒绝/待确认原因（观测 rejectionReason 的机器可读枚举）。
+ *
+ * 只允许**出处/形态**类原因——每条都能由确定性代码全封闭判定（字符串比对、长度、
+ * 查表）。2026-08-12 删除 `no_candidate_evidence` / `value_not_derivable` /
+ * `strict_field_free_derivation`：那是"正则推不出你这个值所以你错了"的语义否决，
+ * 宪法 P11 判定确定性代码在裁决点无此权力，删除即不可表达。判据见 ./notary.ts。
+ */
 export type CandidateClaimRejectionReason =
-  | 'quote_not_found' // quote 在候选人原文中找不到
-  | 'no_candidate_evidence' // legacy 裸值在候选人全文中推导不出等价值
-  | 'value_not_derivable' // quote 存在但按字段策略推导不出所声明的值
-  | 'strict_field_free_derivation' // 严格身份字段出现自由推导
-  | 'invalid_value_shape' // 值形状非法（年龄越界等）
-  | 'conflicting_evidence' // 同字段多条有效证据值不一致
+  | 'quote_not_found' // quote 在候选人可作证语料中找不到（含严格身份字段的值未逐字落在 quote 内）
+  | 'quote_too_short' // quote 短于该字段的最小语境长度（C5 短引文门）
+  | 'quote_echoes_agent_message' // quote 同时存在于 Agent 已发消息全集（C4 回声）→ 转确认
+  | 'invalid_value_shape' // 值形状非法（年龄越界、占位号、纯数字姓名、称谓后缀等）
+  | 'conflicting_evidence' // 同字段多条有效证据值不一致 → 转确认（C2，不再互杀）
   | 'stale_after_correction'; // 已被更新的 correct/clear 取代
 
 export interface AdjudicatedClaim<T = unknown> {
