@@ -153,7 +153,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 [runtime-context]       ← 本轮会变动的全部内容（聚合 6 个叶子 section）
   ├─ stage-strategy     · 当前阶段策略
   ├─ memory             · 用户档案 + 会话记忆 + 当前预约信息
-  ├─ turn-hints         · 本轮系统疑似识别
+  ├─ turn-hints         · 本轮解析线索
   ├─ hard-constraints   · 当下硬约束
   ├─ datetime           · 当前时间
   └─ channel            · 渠道上下文
@@ -233,7 +233,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 └──────────────────────────────────────────────────────────────┘
 
 ┌── 旁路 ruleFacts（不持久化） ───────────────────────────────┐
-│   规则 + 别名解析（品牌、城市、用工形式），属于系统疑似识别     │
+│   规则 + 别名解析（品牌、城市、用工形式），属于解析线索         │
 │   只注入本轮 prompt，不作为候选人事实入库                     │
 └──────────────────────────────────────────────────────────────┘
 ```

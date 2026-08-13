@@ -22,7 +22,7 @@
 | A1 | `AUTHORITATIVE_PRODUCERS` 摘除 `'rule'`（P9 教义现行法条，一行） | `src/resolution/candidate/types.ts` | ☑ |
 | A2 | collected-fields 产物标签改真：`producer: 'candidate_quote'` → `'rule'` | `src/resolution/candidate/collected-fields.ts`（`parseCandidateFieldsFromText` 内 `put()`） | ☑ |
 | A3 | `CandidatePrefillHint` 从 gender 一个字段推广到全字段（"带值求证"，注释里的三禁令原样继承：不得据此拒绝/提交/升级来源） | `src/resolution/candidate/types.ts` + `tool-context.builder` + precheck | ☑ |
-| A4 | 解析结果渲染进模型上下文 hints section（与 job-policy-parser 同构："系统疑似识别：年龄24（出处'今年24'），仅供参考"） | `turn-hints.section.ts` + `fact-lines.formatter`（出处截断 24 字） | ☑ |
+| A4 | 解析结果渲染进模型上下文 hints section（与 job-policy-parser 同构：“解析线索：年龄24（出处‘今年24’），仅供参考”） | `turn-hints.section.ts` + `fact-lines.formatter`（出处截断 24 字） | ☑ |
 | A5 | 值形状函数原地保留并转为公证第二问判据（`isPlausibleAgeValue` / `isStorableCandidatePhone` / `isDigitsOnlyName` / 称谓后缀 / 占位号族） | 各解析文件（原地未动）；**收拢点**改在 `evidence/normalize.ts` `isValidCandidateFieldShape` | ☑（解析文件零改动；见下方偏离说明①） |
 | A6 | `normalize*ToId` 枚举映射照旧（提交侧值映射，合法） | 各解析文件 | ☑（未动） |
 

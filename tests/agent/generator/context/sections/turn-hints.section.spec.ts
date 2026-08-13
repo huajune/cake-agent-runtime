@@ -25,9 +25,9 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮系统疑似识别]');
+    expect(output).toContain('[本轮解析线索]');
     expect(output).toContain('意向区域: 杨浦区');
-    expect(output).toContain('严禁向候选人复述或提及“系统识别/系统提示”字样');
+    expect(output).toContain('严禁向候选人复述或提及“系统识别/系统提示/系统解析”字样');
     expect(output).not.toContain('[本轮待确认线索]');
   });
 
@@ -40,7 +40,7 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮系统疑似识别]');
+    expect(output).toContain('[本轮解析线索]');
     expect(output).toContain('意向城市: 上海（置信度: high，来源: rule，证据: unique_district_alias）');
   });
 
@@ -62,7 +62,7 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮系统疑似识别]');
+    expect(output).toContain('[本轮解析线索]');
     expect(output).toContain(
       '性别: 女（系统标签，未经候选人自陈，不得用于直接排除候选人）（置信度: low，来源: system，证据: 客户详情接口补充性别：女）',
     );
@@ -84,12 +84,12 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮系统疑似识别]');
+    expect(output).toContain('[本轮解析线索]');
     expect(output).toContain('[本轮待确认线索]');
     expect(output).toContain('意向区域: 杨浦区');
     expect(output).toContain('意向城市: 北京');
 
-    const highConfidenceIndex = output.indexOf('[本轮系统疑似识别]');
+    const highConfidenceIndex = output.indexOf('[本轮解析线索]');
     const pendingIndex = output.indexOf('[本轮待确认线索]');
     const cityIndex = output.indexOf('意向城市: 北京');
     expect(pendingIndex).toBeGreaterThan(highConfidenceIndex);
@@ -111,7 +111,7 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮系统疑似识别]');
+    expect(output).toContain('[本轮解析线索]');
     expect(output).toContain('意向城市: 上海（置信度: high，来源: rule，证据: explicit_city）');
     expect(output).not.toContain('[本轮待确认线索]');
   });
@@ -131,7 +131,7 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮系统疑似识别]');
+    expect(output).toContain('[本轮解析线索]');
     expect(output).toContain('用工形式: 暑假工');
     expect(output).not.toContain('[本轮待确认线索]');
   });

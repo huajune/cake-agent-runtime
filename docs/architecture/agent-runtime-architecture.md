@@ -509,9 +509,9 @@ load_previous_state (串行)
      extract_facts           ─ LLM 提取 facts（preferences / interview_info）
 ```
 
-### 6.4 系统疑似识别（前置）
+### 6.4 解析线索（前置）
 
-规则轨在 `onTurnStart` 里对当前 user 文本做匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `ruleFacts`，以 `[本轮系统疑似识别]` 注入 Context 的 `turn-hints` section。它是当前轮解析 sidecar，不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)——`src/memory/facts/` 已随候选人档案域改造解散。
+规则轨在 `onTurnStart` 里对当前 user 文本做匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `ruleFacts`，以 `[本轮解析线索]` 注入 Context 的 `turn-hints` section。它是当前轮解析 sidecar，不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)——`src/memory/facts/` 已随候选人档案域改造解散。
 
 [src/resolution/labor-form/](../../src/resolution/labor-form/)：用工形式领域模型——岗位轴为两级结构化字段（用工形式=全职/兼职 + 兼职类型=寒假工/暑假工/小时工），候选人偏好侧为扁平词汇，匹配层做层级翻译。
 
