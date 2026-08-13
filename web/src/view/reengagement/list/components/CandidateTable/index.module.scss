@@ -12,21 +12,7 @@
 }
 
 .tableWrapper {
-  overflow-x: auto;
-  border-radius: 12px;
-
-  &::-webkit-scrollbar {
-    height: 6px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: rgba(99, 102, 241, 0.15);
-    border-radius: 3px;
-  }
+  @include monitoring-table-wrapper;
 }
 
 .table {
@@ -36,29 +22,7 @@
   font-size: 13px;
 
   th {
-    padding: 12px 16px;
-    text-align: left;
-    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-    color: #64748b;
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    white-space: nowrap;
-    border-top: 1px solid rgba(161, 173, 255, 0.16);
-    border-bottom: 1px solid rgba(161, 173, 255, 0.16);
-
-    &:first-child {
-      border-top-left-radius: 10px;
-      border-bottom-left-radius: 10px;
-      border-left: 1px solid rgba(161, 173, 255, 0.16);
-    }
-
-    &:last-child {
-      border-top-right-radius: 10px;
-      border-bottom-right-radius: 10px;
-      border-right: 1px solid rgba(161, 173, 255, 0.16);
-    }
+    @include monitoring-table-header;
   }
 
   td {
@@ -180,41 +144,15 @@ td.loading {
 }
 
 .emptyIconHalo {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 88px;
-  height: 88px;
-  margin-bottom: 18px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 38% 32%,
-    rgba($primary, 0.12),
-    rgba($primary, 0.04) 62%,
-    transparent 78%
-  );
-  animation: emptyFloat 3.2s ease-in-out infinite;
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: -10px;
-    border-radius: 50%;
-    border: 1px dashed rgba($primary, 0.18);
-  }
+  @include primary-empty-icon-halo;
 }
 
 .emptyIcon {
-  width: 36px;
-  height: 36px;
-  color: rgba($primary, 0.55);
+  @include primary-empty-icon;
 }
 
 .emptyHint {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #94a3b8;
+  @include empty-state-hint;
 }
 
 @keyframes emptyFloat {

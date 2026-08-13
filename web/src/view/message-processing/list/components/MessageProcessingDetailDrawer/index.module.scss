@@ -14,49 +14,19 @@
 
 /* ── Header ── */
 .header {
-  padding: 16px 24px 14px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.12);
-  background:
-    linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, rgba(255, 255, 255, 0.86) 48%, #fff 100%);
+  @include monitoring-detail-header;
 }
 
 .headerTop {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  @include monitoring-detail-header-top;
 }
 
 .headerTitle {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: $text-primary;
-  flex-shrink: 0;
+  @include monitoring-detail-header-title;
 }
 
 .closeBtn {
-  width: 30px;
-  height: 30px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: #fff;
-  color: $text-muted;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  line-height: 1;
-  flex-shrink: 0;
-  margin-left: auto;
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: rgba(139, 92, 246, 0.06);
-    color: $text-primary;
-    border-color: rgba(139, 92, 246, 0.22);
-  }
+  @include monitoring-detail-close-button;
 }
 
 /* ── Body layout ── */
