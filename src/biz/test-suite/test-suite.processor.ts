@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
@@ -247,7 +248,7 @@ export class TestSuiteProcessor implements OnModuleInit {
       };
     } catch (error: unknown) {
       const durationMs = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       const isTimeout = errorMessage?.includes('timeout') || durationMs >= this.jobTimeoutMs;
 
       this.logger.error(`[TestSuite] 测试执行失败: ${caseName} - ${errorMessage}`);
@@ -336,7 +337,7 @@ export class TestSuiteProcessor implements OnModuleInit {
       this.logger.debug(`[TestSuite] 标记执行记录为失败: ${caseId}`);
       return true;
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = toErrorMessage(error);
       this.logger.error(`[TestSuite] 更新执行记录失败状态失败: ${errMsg}`);
       return false;
     }
@@ -398,7 +399,7 @@ export class TestSuiteProcessor implements OnModuleInit {
     try {
       dbStats = await this.executionService.countCompletedExecutions(batchId);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[TestSuite] 查询执行记录失败: ${errorMessage}`);
       return;
     }
@@ -415,7 +416,7 @@ export class TestSuiteProcessor implements OnModuleInit {
         await this.batchService.updateBatchStatus(batchId, BatchStatus.REVIEWING);
         this.logger.log(`[TestSuite] 批次 ${batchId} 状态已更新为 reviewing`);
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.error(`[TestSuite] 更新批次状态失败: ${errorMessage}`);
       }
 

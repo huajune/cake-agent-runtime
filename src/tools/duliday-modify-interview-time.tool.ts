@@ -5,6 +5,7 @@
  * 自助优先：接口失败或无工单号时，回退 request_handoff(modify_appointment) 转人工。
  */
 
+import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -218,7 +219,7 @@ export function buildModifyInterviewTimeTool(
         } catch (err) {
           logger.error(
             `修改约面时间异常: chatId=${chatId}, workOrderId=${workOrderId}`,
-            err instanceof Error ? (err.stack ?? err.message) : String(err),
+            toErrorStack(err),
           );
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
@@ -228,7 +229,7 @@ export function buildModifyInterviewTimeTool(
             details: {
               workOrderId,
               newInterviewTime: trimmedTime,
-              reason: err instanceof Error ? err.message : '未知错误',
+              reason: toErrorMessage(err) || '未知错误',
             },
           });
         }

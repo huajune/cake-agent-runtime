@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { normalizeBotImId } from '@biz/ops-events/services/bot-group-resolver.service';
 import { BOT_TO_RECEIVER, type FeishuReceiver } from '@infra/feishu/constants/receivers';
@@ -81,7 +82,7 @@ export class HostingMemberConfigService {
         return config;
       } catch (error) {
         this.logger.warn(
-          `读取 hosting_member_config 失败，回退硬编码/旧配置: ${error instanceof Error ? error.message : String(error)}`,
+          `读取 hosting_member_config 失败，回退硬编码/旧配置: ${toErrorMessage(error)}`,
         );
         this.cache = null;
         this.cacheExpireAt = Date.now() + this.TTL_MS;

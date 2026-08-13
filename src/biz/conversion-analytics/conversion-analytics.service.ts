@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -790,9 +791,7 @@ export class ConversionAnalyticsService {
       };
       return value;
     } catch (error) {
-      this.logger.warn(
-        `读取 bot 身份别名配置失败，跳过合并: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`读取 bot 身份别名配置失败，跳过合并: ${toErrorMessage(error)}`);
       return {};
     }
   }
@@ -1033,9 +1032,7 @@ export class ConversionAnalyticsService {
       if (current?.promise === promise) {
         this.rowCache.delete(cacheKey);
       }
-      this.logger.warn(
-        `转化分析行缓存加载失败 cacheKey=${cacheKey}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`转化分析行缓存加载失败 cacheKey=${cacheKey}: ${toErrorMessage(error)}`);
       throw error;
     });
     this.rowCache.set(cacheKey, { expiresAt: now + ROW_CACHE_TTL_MS, promise });

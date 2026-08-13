@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { extractPresentedJobs } from '@resolution/job';
@@ -427,9 +428,9 @@ export class ReengagementAnchorService {
 
   private logFailure(action: string, context: AnchorContext, error: unknown): void {
     this.logger.warn(
-      `[reengagement] ${action} failed: chatId=${context.chatId}, traceId=${context.traceId}, error=${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[reengagement] ${action} failed: chatId=${context.chatId}, traceId=${context.traceId}, error=${toErrorMessage(
+        error,
+      )}`,
     );
   }
 }

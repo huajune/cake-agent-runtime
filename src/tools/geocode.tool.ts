@@ -9,6 +9,7 @@
  *     - 0 条 → GEOCODE_UNRESOLVED_ADDRESS（无法识别该地名）
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -554,7 +555,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             replyInstruction:
               '地理编码接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻说"这边稍等下"，' +
               '可先基于已知城市/区域用 duliday_job_list 兜底，或调用 request_handoff 转人工。',
-            details: { reason: err instanceof Error ? err.message : '未知错误' },
+            details: { reason: toErrorMessage(err) || '未知错误' },
           });
         }
       },

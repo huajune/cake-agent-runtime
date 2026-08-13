@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -353,7 +354,7 @@ export class TestImportService {
           ...traceBundle,
         });
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(`解析记录 ${record.record_id} 失败: ${errorMessage}`);
       }
     }
@@ -427,7 +428,7 @@ export class TestImportService {
           ...traceBundle,
         });
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(`解析对话记录 ${record.record_id} 失败: ${errorMessage}`);
       }
     }
@@ -504,7 +505,7 @@ export class TestImportService {
           ...traceBundle,
         });
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(`解析验证集记录 ${record.record_id} 失败: ${errorMessage}`);
       }
     }
@@ -758,7 +759,7 @@ export class TestImportService {
           );
         } catch (error: unknown) {
           failedCount++;
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg = toErrorMessage(error);
           this.logger.error(`对话 ${sourceId} 执行失败: ${errorMsg}`);
 
           await this.conversationSnapshotRepository.updateStatus(

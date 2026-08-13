@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional, type OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
@@ -84,9 +85,7 @@ export class AlertNotifierService implements OnApplicationBootstrap {
     }
 
     if (sendError) {
-      this.logger.error(
-        `发送告警失败: ${sendError instanceof Error ? sendError.message : String(sendError)}`,
-      );
+      this.logger.error(`发送告警失败: ${toErrorMessage(sendError)}`);
       return false;
     }
     if (willThrottle) {
@@ -117,7 +116,7 @@ export class AlertNotifierService implements OnApplicationBootstrap {
         delivered: flags.delivered,
       })
       .catch((err) => {
-        this.logger.warn(`持久化告警日志失败: ${err instanceof Error ? err.message : String(err)}`);
+        this.logger.warn(`持久化告警日志失败: ${toErrorMessage(err)}`);
       });
   }
 

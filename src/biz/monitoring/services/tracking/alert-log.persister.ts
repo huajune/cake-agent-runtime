@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import type {
   AlertLogEntry,
@@ -44,9 +45,7 @@ export class AlertLogPersisterService implements AlertLogPersister {
       });
     } catch (error) {
       // 持久化失败绝不影响告警发送主流程
-      this.logger.warn(
-        `持久化告警日志失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`持久化告警日志失败: ${toErrorMessage(error)}`);
     }
   }
 }

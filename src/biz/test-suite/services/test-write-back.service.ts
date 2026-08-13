@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import {
@@ -112,7 +113,7 @@ export class TestWriteBackService {
       }
       return records[0].record_id;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[${dataset}] 反查飞书 recordId 异常: stableId=${stableId}, ${message}`);
       return null;
     }
@@ -259,7 +260,7 @@ export class TestWriteBackService {
       this.logger.log(`回写飞书成功: ${recordId} -> ${testStatus}`);
       return { success: true };
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`回写飞书异常: ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
@@ -422,7 +423,7 @@ export class TestWriteBackService {
       this.logger.log(`回写相似度分数成功: ${recordId} -> ${avgSimilarityScore}`);
       return { success: true };
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`回写相似度分数异常: ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
@@ -475,7 +476,7 @@ export class TestWriteBackService {
 
         lastError = result.error;
       } catch (error: unknown) {
-        lastError = error instanceof Error ? error.message : String(error);
+        lastError = toErrorMessage(error);
       }
 
       if (attempt < attempts) {

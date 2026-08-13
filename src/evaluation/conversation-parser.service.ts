@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ParsedMessage, ConversationTurn, ConversationParseResult } from './evaluation.types';
 import type { GeneratorRunResult } from '@agent/generator/generator.agent';
@@ -84,7 +85,7 @@ export class ConversationParserService {
         totalTurns,
       };
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`对话解析失败: ${errorMsg}`);
       return {
         success: false,

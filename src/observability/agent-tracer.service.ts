@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OBSERVER, type AgentEvent, type Observer } from './observer.interface';
 import { RequestContextService } from './context/request-context.service';
@@ -25,11 +26,7 @@ export class AgentTracerService {
     try {
       this.observer.emit(enriched);
     } catch (error) {
-      this.logger.warn(
-        `[agent-tracer] observer dispatch failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.logger.warn(`[agent-tracer] observer dispatch failed: ${toErrorMessage(error)}`);
     }
   }
 }

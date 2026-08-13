@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GROUP_MESSAGE_SENDER, type GroupMessageSender } from '../providers/group-channel.provider';
@@ -201,7 +202,7 @@ export class NotificationSenderService {
       this.logger.log(`[兼职群] 小程序卡片已通过企业级 API 发送: ${group.groupName}`);
       return;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       throw new Error(`[兼职群] 小程序卡片发送失败 (${group.groupName}): ${message}`);
     }
   }

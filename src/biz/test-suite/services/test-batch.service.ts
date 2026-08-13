@@ -1,3 +1,4 @@
+import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { GeneratorToolMode } from '@agent/generator/generator.types';
@@ -589,7 +590,7 @@ export class TestBatchService {
         this.logger.error(
           `[syncConversationBatchStatus] 批次 ${batchId} 从 ${currentStatus} 推进到 ${status} 失败，` +
             `本轮剩余迁移被放弃（下轮 sync 会基于最新状态重试）`,
-          error instanceof Error ? error.stack : String(error),
+          toErrorStack(error),
         );
         return;
       }
@@ -741,7 +742,7 @@ export class TestBatchService {
         `[BadcaseStatus] 批次 ${batchId} 派生 BadCase 状态回写: 成功=${result.success} 失败=${result.failed} 总计=${items.length}`,
       );
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`[BadcaseStatus] 批次 ${batchId} 派生 BadCase 状态回写异常: ${errorMsg}`);
     }
   }
@@ -799,7 +800,7 @@ export class TestBatchService {
         items.forEach((item) => badcaseRecordIds.add(item.recordId));
         pendingUpdates.push(...items);
       } catch (error) {
-        errors.push(`${batch.id}: ${error instanceof Error ? error.message : String(error)}`);
+        errors.push(`${batch.id}: ${toErrorMessage(error)}`);
       }
     }
     if (apply && pendingUpdates.length > 0) {
@@ -1028,7 +1029,7 @@ export class TestBatchService {
         this.logger.warn(`飞书回写失败: ${execution.case_id} - ${result.error}`);
       }
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`飞书回写异常: ${execution.case_id} - ${errorMsg}`);
     }
   }

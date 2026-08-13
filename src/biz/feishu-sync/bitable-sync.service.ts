@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
@@ -270,7 +271,7 @@ export class FeishuBitableSyncService {
       );
       this.logger.log(`[FeishuSync] 同步完成，成功: ${result.created}，失败: ${result.failed}`);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[FeishuSync] 同步失败: ${errorMessage}`);
       this.exceptionNotifier?.notifyAsync({
         source: {
@@ -456,7 +457,7 @@ export class FeishuBitableSyncService {
       this.logger.log(`[Feedback] 成功写入 ${feedback.type} 反馈, recordId: ${result.recordId}`);
       return { success: true, recordId: result.recordId };
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[Feedback] 写入异常: ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
@@ -552,7 +553,7 @@ export class FeishuBitableSyncService {
       conversationBatchIdsField = resolve(this.feedbackFieldAliases.conversationBatchIds);
       reviewerSourcesField = resolve(this.feedbackFieldAliases.reviewerSources);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[BadcaseStatus] 读取 badcase 表字段失败: ${errorMessage}`);
       return { success: 0, failed: items.length, errors: [errorMessage] };
     }
@@ -715,7 +716,7 @@ export class FeishuBitableSyncService {
           errors.push(`${recordId}: ${result.error || '未知错误'}`);
         }
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         failed += 1;
         errors.push(`${recordId}: ${errorMessage}`);
       }
@@ -733,9 +734,7 @@ export class FeishuBitableSyncService {
         items: documentItems,
         summaryCounts: await this.countOpenBadcases().catch((error: unknown) => {
           this.logger.warn(
-            `[BadcaseStatus] 未解决数统计失败，本次跳过治理文档数字刷新: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `[BadcaseStatus] 未解决数统计失败，本次跳过治理文档数字刷新: ${toErrorMessage(error)}`,
           );
           return undefined;
         }),
@@ -894,7 +893,7 @@ export class FeishuBitableSyncService {
           FIELD_TYPE_ATTACHMENT,
         );
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(`[Feedback] 自动创建附件字段失败: ${errorMessage}`);
         remarkParts.push(`含 ${screenshots.length} 张截图，附件字段创建失败未能上传`);
         return;
@@ -918,7 +917,7 @@ export class FeishuBitableSyncService {
         );
         fileTokens.push(fileToken);
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `[Feedback] 截图上传失败 (${i + 1}/${screenshots.length}): ${errorMessage}`,
         );

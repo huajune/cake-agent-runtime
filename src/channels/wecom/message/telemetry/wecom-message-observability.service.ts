@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -318,7 +319,7 @@ export class WecomMessageObservabilityService {
     this.trackingService
       .dropMergedSourceRecords(recyclableSourceIds, targetTraceId)
       .catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = toErrorMessage(err);
         this.logger.warn(`[聚合回收] 异步清理源记录失败 batchId=${targetTraceId}: ${message}`);
       });
   }

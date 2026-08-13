@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
@@ -85,7 +86,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         );
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(`[Shutdown] 排空队列失败: ${errorMessage}`);
     } finally {
       if (timer) {
@@ -248,14 +249,14 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
       // 处理完后若又收到了新消息，则按“最后一条消息后的静默窗口”补建下一轮检查任务
       await this.simpleMergeService.checkAndProcessNewMessages(chatId);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[Bull] 任务 ${job.id} 处理失败: ${errorMessage}`);
       throw error;
     } finally {
       stopLockHeartbeat?.();
       if (lockAcquired) {
         await this.simpleMergeService.releaseProcessingLock(chatId, lockOwner).catch((error) => {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = toErrorMessage(error);
           this.logger.warn(`[Bull] 释放 chatId=${chatId} 处理锁失败: ${errorMessage}`);
         });
       }
@@ -305,7 +306,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         this.deduplicationService
           .markMessageAsProcessedAsync(message.messageId)
           .catch((error: unknown) => {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage = toErrorMessage(error);
             this.logger.warn(
               `[Bull][已暂停托管] 去重标记失败 [${message.messageId}]: ${errorMessage}`,
             );
@@ -398,7 +399,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         message: totalCleaned > 0 ? `已清理 ${totalCleaned} 个任务` : '没有需要清理的任务',
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       return {
         success: false,
         cleaned,

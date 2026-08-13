@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Output, generateText, streamText } from 'ai';
 import { RegistryService } from '@providers/registry.service';
@@ -123,7 +124,7 @@ export class LlmExecutorService {
         } catch (err) {
           lastRawError = err;
           const category = this.reliable.classifyError(err);
-          const message = err instanceof Error ? err.message : String(err);
+          const message = toErrorMessage(err);
           attempts.push(
             `${modelId} attempt ${attempt}/${retryConfig.maxRetries}: ${category}; ${message}`,
           );
@@ -199,7 +200,12 @@ export class LlmExecutorService {
           model: this.registry.resolve(modelId),
         } as Parameters<typeof streamText>[0]);
       } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
+        let err: Error;
+        if (error instanceof Error) {
+          err = error;
+        } else {
+          err = new Error(String(error));
+        }
         lastError = err;
         this.logger.warn(`流式初始化失败，尝试下一个模型: ${modelId}; ${err.message}`);
       }

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
@@ -188,7 +189,7 @@ export class ReplyWorkflowService {
         pendingAckSize: initialSnapshotSize,
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`聚合消息处理失败:`, errorMessage);
 
       const errorType = this.processingFailureService.inferErrorType(error, 'merge');
@@ -541,9 +542,7 @@ export class ReplyWorkflowService {
         });
       } catch (backfillError) {
         this.logger.warn(
-          `${logPrefix}[${contactName}] 图片描述补写触发失败: ${
-            backfillError instanceof Error ? backfillError.message : String(backfillError)
-          }`,
+          `${logPrefix}[${contactName}] 图片描述补写触发失败: ${toErrorMessage(backfillError)}`,
         );
       }
     }
@@ -555,7 +554,7 @@ export class ReplyWorkflowService {
   ): Promise<void> {
     if (outcome?.kind !== 'reply' || !outcome.sideEffects?.length) return;
     await this.outcomeFinalizer.commit(outcome, context).catch((error: unknown) => {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[ReplyOutcomeSideEffect] dispatch failed: ${errorMessage}`);
     });
   }
@@ -577,7 +576,7 @@ export class ReplyWorkflowService {
     try {
       await this.simpleMergeService.ackPendingMessages(chatId, count);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(
         `[${chatId}] ack pending 最终失败（${count} 条），已发告警: ${errorMessage}`,
       );
@@ -671,7 +670,7 @@ export class ReplyWorkflowService {
     await Promise.all(
       messageIds.map(async (messageId) => {
         await this.deduplicationService.markMessageAsProcessedAsync(messageId).catch((err) => {
-          const errorMessage = err instanceof Error ? err.message : String(err);
+          const errorMessage = toErrorMessage(err);
           this.logger.warn(`[请求流水] 去重标记失败 [${messageId}]: ${errorMessage}`);
         });
       }),
@@ -691,9 +690,9 @@ export class ReplyWorkflowService {
       }
 
       this.logger.warn(
-        `[${params.contactName ?? params.sessionId}] 多模态 Agent 调用失败，尝试图片描述文本兼容重跑: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[${params.contactName ?? params.sessionId}] 多模态 Agent 调用失败，尝试图片描述文本兼容重跑: ${toErrorMessage(
+          error,
+        )}`,
       );
 
       const prepared = await this.prepareRuntimeCompatibilityDescriptions({
@@ -849,7 +848,7 @@ export class ReplyWorkflowService {
       const guardrailBlocked: AgentInvokeResult['guardrailBlocked'] =
         outcome.kind === 'guardrail_blocked' ? outcome.guardrail : undefined;
       const turnFinalizer = TurnFinalizer.from(outcome.runTurnEnd, (err) => {
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorMessage = toErrorMessage(err);
         this.logger.warn(`[${params.contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
       });
 
@@ -892,7 +891,7 @@ export class ReplyWorkflowService {
 
       return invokeResult;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`Agent 调用异常: ${errorMessage}`);
       throw error;
     } finally {
@@ -955,9 +954,9 @@ export class ReplyWorkflowService {
       )
       .catch((error: unknown) => {
         this.logger.warn(
-          `[reengagement] lastProcessedCandidateMessageAt 写入失败 [${sessionRef.sessionId}]: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[reengagement] lastProcessedCandidateMessageAt 写入失败 [${sessionRef.sessionId}]: ${toErrorMessage(
+            error,
+          )}`,
         );
       });
   }
@@ -1033,9 +1032,7 @@ export class ReplyWorkflowService {
           })
           .catch((error: unknown) => {
             this.logger.warn(
-              `[reengagement] opening 锚点排程失败 [${traceId}]: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              `[reengagement] opening 锚点排程失败 [${traceId}]: ${toErrorMessage(error)}`,
             );
           });
         // 开场白已记录（agent.opening_sent），本轮无需再记 agent.replied
@@ -1054,7 +1051,7 @@ export class ReplyWorkflowService {
       });
       return 'reply';
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);
       return 'unknown';
     }
@@ -1136,7 +1133,7 @@ export class ReplyWorkflowService {
       );
       return { messages, snapshotSize };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(
         `[Replay] 读取 Agent 执行期间的新消息失败，跳过重跑 chatId=${chatId}: ${errorMessage}`,
       );

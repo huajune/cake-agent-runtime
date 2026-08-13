@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
 import { GeneratorAgent } from '../generator/generator.agent';
@@ -646,7 +647,7 @@ export class AgentRunnerService {
       .catch((error: unknown) => {
         this.logger.warn(
           `[invokeReviewed] 审查档案落库失败: traceId=${ctx.traceId}, ` +
-            `err=${error instanceof Error ? error.message : String(error)}`,
+            `err=${toErrorMessage(error)}`,
         );
       });
   }
@@ -892,7 +893,7 @@ export class AgentRunnerService {
     } catch (error) {
       this.logger.warn(
         `[invokeReviewed] reply repair 上下文读取失败: sessionId=${ctx.sessionRef.sessionId}, ` +
-          `err=${error instanceof Error ? error.message : String(error)}`,
+          `err=${toErrorMessage(error)}`,
       );
       return undefined;
     }
@@ -1020,7 +1021,7 @@ export class AgentRunnerService {
     } catch (error) {
       this.tracer?.emit({
         type: 'agent_error',
-        error: error instanceof Error ? error.message : String(error),
+        error: toErrorMessage(error),
       });
       throw error;
     }
@@ -1105,12 +1106,12 @@ export class AgentRunnerService {
       // 用户悬空且无人接手，必须把异常抛回渠道，由渠道 fallback/失败流水接管。
       this.logger.warn(
         `[runTurn] generation 失败: sessionId=${sessionRef.sessionId}, trigger=${trigger.kind}, ` +
-          `err=${err instanceof Error ? err.message : String(err)}`,
+          `err=${toErrorMessage(err)}`,
       );
       if (isProactive) {
         this.tracer?.emit({
           type: 'agent_error',
-          error: err instanceof Error ? err.message : String(err),
+          error: toErrorMessage(err),
         });
         return { kind: 'skipped', toolCalls: [], scenarioCode };
       }

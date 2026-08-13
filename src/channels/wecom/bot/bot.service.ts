@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@infra/client-http/http.service';
@@ -93,9 +94,7 @@ export class BotService {
         this.corpMapExpireAt = Date.now() + this.CORP_MAP_TTL_MS;
       }
     } catch (error) {
-      this.logger.warn(
-        `构建 bot→corp 映射失败，沿用旧缓存: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`构建 bot→corp 映射失败，沿用旧缓存: ${toErrorMessage(error)}`);
     }
   }
 

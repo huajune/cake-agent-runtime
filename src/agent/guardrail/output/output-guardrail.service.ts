@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RouterService } from '@providers/router.service';
@@ -122,7 +123,7 @@ export class OutputGuardrailService {
         .slice(-RECENT_USER_TEXTS_LIMIT);
       return { assistantTexts, userTexts, messages };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`[OutputGuardrail] 读取会话历史失败，跳过重复输出对账: ${message}`);
       return { assistantTexts: [], userTexts: [], messages: [] };
     }
@@ -287,7 +288,7 @@ export class OutputGuardrailService {
     try {
       verdict = await this.semanticReviewer.review(packet);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       if (highRiskTrigger !== 'none') {
         // §9 降级：副作用既成/承诺事实回复不放行未审版本，fail-close。
         this.logger.error(
@@ -472,7 +473,7 @@ export class OutputGuardrailService {
         await this.recordVerdict('shadow', verdict, packet.draftReply, input);
       })
       .catch(async (error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         this.logger.warn(`[OutputGuardrail] semantic shadow reviewer failed: ${message}`);
         await this.semanticNotifier
           .notifyReviewerFailure({

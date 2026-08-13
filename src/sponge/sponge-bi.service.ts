@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
@@ -83,7 +84,7 @@ export class SpongeBiService {
 
       return allOrders;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`获取 BI 订单失败: ${message}`);
       throw new Error(`BI 数据获取失败: ${message}`);
     }
@@ -119,7 +120,7 @@ export class SpongeBiService {
       this.logger.log(`BI 数据源刷新已触发，任务ID: ${data.response?.taskId || '未返回'}`);
       return true;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`BI 数据源刷新异常: ${message}`);
       return false;
     }

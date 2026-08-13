@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -209,9 +210,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
       );
       return { execId };
     } catch (error) {
-      this.logger.error(
-        `[${strategy.type}] plan 入队失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`[${strategy.type}] plan 入队失败: ${toErrorMessage(error)}`);
       throw error;
     }
   }

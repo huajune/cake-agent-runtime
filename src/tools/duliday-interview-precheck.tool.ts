@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -1505,11 +1506,7 @@ export function buildInterviewPrecheckTool(
               }
             } catch (error) {
               // 裁决是旁路增强：任何异常不得阻断预检主链路（fail open + 告警日志）。
-              logger.warn(
-                `候选人事实裁决异常（fail open）: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              );
+              logger.warn(`候选人事实裁决异常（fail open）: ${toErrorMessage(error)}`);
             }
           }
 
@@ -1752,9 +1749,7 @@ export function buildInterviewPrecheckTool(
                 }));
               }
             } catch (error) {
-              logger.warn(
-                `在途工单探测失败（降级跳过）: jobId=${jobId}, ${error instanceof Error ? error.message : String(error)}`,
-              );
+              logger.warn(`在途工单探测失败（降级跳过）: jobId=${jobId}, ${toErrorMessage(error)}`);
             }
           }
           const sameJobActiveOrder = existingRegistrations?.find((order) => order.isSameJob);
@@ -2054,7 +2049,7 @@ export function buildInterviewPrecheckTool(
             replyInstruction:
               '前置校验接口暂时不可用。不要把异常信息转述给候选人；用招募者口吻安抚"这边稍等下"，' +
               '可调用 request_handoff 转人工。',
-            details: { reason: err instanceof Error ? err.message : '未知错误' },
+            details: { reason: toErrorMessage(err) || '未知错误' },
           });
         }
       },

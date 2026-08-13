@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { FEISHU_RECEIVER_USERS, FeishuReceiver } from '@infra/feishu/constants/receivers';
@@ -157,7 +158,7 @@ export class OpsNotifierService {
         },
       })
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         this.logger.error(`[拉群被拒] 统一异常告警发送失败: ${message}`);
       });
 

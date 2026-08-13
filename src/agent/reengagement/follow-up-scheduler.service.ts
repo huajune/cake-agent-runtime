@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue, type JobStatus } from 'bull';
@@ -246,13 +247,8 @@ export class FollowUpSchedulerService {
       this.tracking.trackScheduled(identity, jobId, fireAt);
       return { scheduled: true, fireAt, jobId };
     } catch (error) {
-      this.logger.error(
-        `[reengagement] 排程失败 jobId=${jobId}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      this.tracking.trackScheduleError(
-        identity,
-        error instanceof Error ? error.message : String(error),
-      );
+      this.logger.error(`[reengagement] 排程失败 jobId=${jobId}: ${toErrorMessage(error)}`);
+      this.tracking.trackScheduleError(identity, toErrorMessage(error));
       return { scheduled: false, reason: 'enqueue_error' };
     }
   }
@@ -292,9 +288,7 @@ export class FollowUpSchedulerService {
       return { scheduled: true, fireAt: Date.now(), jobId };
     } catch (error) {
       this.logger.error(
-        `[reengagement] 面试排程解析任务排程失败 jobId=${jobId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[reengagement] 面试排程解析任务排程失败 jobId=${jobId}: ${toErrorMessage(error)}`,
       );
       return { scheduled: false, reason: 'booking_resolution_schedule_error', jobId };
     }
@@ -318,11 +312,7 @@ export class FollowUpSchedulerService {
       );
       return true;
     } catch (error) {
-      this.logger.warn(
-        `[reengagement] 移除任务失败 jobId=${jobId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.logger.warn(`[reengagement] 移除任务失败 jobId=${jobId}: ${toErrorMessage(error)}`);
       return false;
     }
   }
@@ -363,9 +353,9 @@ export class FollowUpSchedulerService {
       pendingJobs = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
     } catch (error) {
       this.logger.warn(
-        `[reengagement] 查询待终止任务失败 sessionId=${input.sessionRef.sessionId} scenario=${input.scenarioCode}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[reengagement] 查询待终止任务失败 sessionId=${input.sessionRef.sessionId} scenario=${input.scenarioCode}: ${toErrorMessage(
+          error,
+        )}`,
       );
       return 0;
     }
@@ -389,9 +379,7 @@ export class FollowUpSchedulerService {
         this.logger.log(`[reengagement] 已提前终止任务 jobId=${jobId} reason=${input.reason}`);
       } catch (error) {
         this.logger.warn(
-          `[reengagement] 提前终止任务失败 jobId=${jobId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[reengagement] 提前终止任务失败 jobId=${jobId}: ${toErrorMessage(error)}`,
         );
       }
     }
@@ -408,9 +396,9 @@ export class FollowUpSchedulerService {
       pendingJobs = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
     } catch (error) {
       this.logger.warn(
-        `[reengagement] 查询待触发任务失败，跳过旧任务清理 sessionId=${input.sessionRef.sessionId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[reengagement] 查询待触发任务失败，跳过旧任务清理 sessionId=${input.sessionRef.sessionId}: ${toErrorMessage(
+          error,
+        )}`,
       );
       return { removed: 0, blockedByBookingIncomplete: false };
     }
@@ -444,9 +432,7 @@ export class FollowUpSchedulerService {
         this.logger.log(`[reengagement] 新任务 ${currentJobId} 已移除旧待触发任务 jobId=${jobId}`);
       } catch (error) {
         this.logger.warn(
-          `[reengagement] 移除旧待触发任务失败 jobId=${jobId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[reengagement] 移除旧待触发任务失败 jobId=${jobId}: ${toErrorMessage(error)}`,
         );
       }
     }

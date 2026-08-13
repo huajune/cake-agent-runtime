@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 
@@ -57,7 +58,7 @@ export class BrandRotationService {
       await this.redis.setex(key, TTL_SECONDS, JSON.stringify(history));
       this.logger.debug(`[品牌轮转] ${groupId} 记录品牌: ${brand}`);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`[品牌轮转] 记录失败: ${message}`);
     }
   }
@@ -84,7 +85,7 @@ export class BrandRotationService {
     try {
       await this.redis.del(key);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`[品牌轮转] 清除历史失败: ${message}`);
     }
   }

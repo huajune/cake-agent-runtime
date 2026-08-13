@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisStore } from '../stores/redis.store';
 import {
@@ -34,9 +35,9 @@ export class CandidateSnapshotService {
       );
     } catch (error) {
       this.logger.warn(
-        `[candidate-snapshot] 保存失败（fail open）: ${snapshot.precheckId} ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[candidate-snapshot] 保存失败（fail open）: ${snapshot.precheckId} ${toErrorMessage(
+          error,
+        )}`,
       );
     }
   }
@@ -49,9 +50,7 @@ export class CandidateSnapshotService {
       return typeof snapshot.precheckId === 'string' && snapshot.effectiveProfile ? snapshot : null;
     } catch (error) {
       this.logger.warn(
-        `[candidate-snapshot] 读取失败（fail open）: ${precheckId} ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[candidate-snapshot] 读取失败（fail open）: ${precheckId} ${toErrorMessage(error)}`,
       );
       return null;
     }

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -149,9 +150,7 @@ export class ReengagementAgent {
       if (dashboard) return dashboard;
     } catch (error) {
       this.logger.warn(
-        `[reengagement] 读取复聊模型运行时覆盖失败，回退环境变量路由: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[reengagement] 读取复聊模型运行时覆盖失败，回退环境变量路由: ${toErrorMessage(error)}`,
       );
     }
     return this.reengagementModelId;
@@ -334,16 +333,19 @@ export class ReengagementAgent {
       };
     } catch (error) {
       this.logger.warn(
-        `[reengagement] reengagement agent LLM 生成失败 scenario=${ctx.scenario.code}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[reengagement] reengagement agent LLM 生成失败 scenario=${ctx.scenario.code}: ${toErrorMessage(
+          error,
+        )}`,
       );
       const decisionContractInvalid = error instanceof ReengagementOutputContractError;
       const validationReason = decisionContractInvalid
         ? 'reengagement_decision_invalid'
         : 'reengagement_agent_error';
-      const errorName = error instanceof Error ? error.name : 'UnknownError';
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      let errorName = 'UnknownError';
+      if (error instanceof Error) {
+        errorName = error.name;
+      }
+      const errorMessage = toErrorMessage(error);
       return {
         outcome: {
           kind: 'skipped',

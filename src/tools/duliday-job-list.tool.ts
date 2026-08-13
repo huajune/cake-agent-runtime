@@ -12,6 +12,7 @@
  * 导出 buildJobListTool 供注册表使用
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -739,11 +740,7 @@ export function buildJobListTool(
         try {
           brandCatalog = await spongeService.fetchBrandList();
         } catch (error) {
-          logger.warn(
-            `品牌目录拉取失败，入口标准化按空目录降级: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
+          logger.warn(`品牌目录拉取失败，入口标准化按空目录降级: ${toErrorMessage(error)}`);
         }
         const brandPlan = buildBrandQueryPlan({
           brandAliasList: brandAliasListInput,
@@ -1057,7 +1054,7 @@ export function buildJobListTool(
                 );
               }
             } catch (error: unknown) {
-              const reason = error instanceof Error ? error.message : String(error);
+              const reason = toErrorMessage(error);
               logger.warn(`城市层级过滤兜底查询失败，保留原始 0 条结果: ${reason}`);
             }
           }
@@ -1887,7 +1884,7 @@ export function buildJobListTool(
                   '先用招募者口吻说明需要再确认暑假工岗位，必要时调用 request_handoff 转人工。'
                 : '岗位查询接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻安抚"这边稍等下"，' +
                   '基于 [会话记忆] 已展示岗位维持上下文，必要时调用 request_handoff 转人工。',
-            details: { reason: err instanceof Error ? err.message : '未知错误' },
+            details: { reason: toErrorMessage(err) || '未知错误' },
           });
         }
       },

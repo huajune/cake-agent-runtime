@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GROUP_ROOM_QUERY, type GroupRoomQuery } from '../providers/group-channel.provider';
@@ -163,7 +164,7 @@ export class GroupResolverService implements OnModuleInit {
       try {
         await this.fetchGroupsFromToken(tokens[i], seen);
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         this.logger.error(`小组 [${names[i]}] 获取群列表失败: ${message}`);
       }
     }

@@ -11,6 +11,7 @@
  * 或不合法一律降级 kind=other——行为逐字等同结构化之前。
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -170,11 +171,7 @@ export function buildSaveImageDescriptionTool(
               context.ledger.recordImageBrands(resolutions, { messageId });
             }
           } catch (error) {
-            logger.warn(
-              `图片品牌解析失败（按无品牌降级）[${messageId}]: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
+            logger.warn(`图片品牌解析失败（按无品牌降级）[${messageId}]: ${toErrorMessage(error)}`);
           }
         }
 

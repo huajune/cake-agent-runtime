@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Readable } from 'stream';
 import { createHash } from 'node:crypto';
@@ -194,7 +195,7 @@ export class TestExecutionService {
       turnEnd = await this.runDeferredTurnEnd(agentResult);
       postTurnState = await this.readMemoryStateBestEffort(runtimeScope);
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       executionStatus = errorMsg.includes('timeout')
         ? ExecutionStatus.TIMEOUT
         : ExecutionStatus.FAILURE;
@@ -418,7 +419,7 @@ export class TestExecutionService {
     try {
       await this.executionRepository.updateByBatchAndCase(batchId, caseId, data);
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`更新执行记录失败: ${errorMsg}`);
       throw error;
     }
@@ -525,7 +526,7 @@ export class TestExecutionService {
       return {
         status: 'failed',
         durationMs: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error),
+        error: toErrorMessage(error),
       };
     }
   }
@@ -537,7 +538,7 @@ export class TestExecutionService {
       }
       return await this.memoryFixtureService.read(scope);
     } catch (error: unknown) {
-      return { error: error instanceof Error ? error.message : String(error) };
+      return { error: toErrorMessage(error) };
     }
   }
 

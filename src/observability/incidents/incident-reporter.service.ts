@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
@@ -30,7 +31,7 @@ export class IncidentReporterService {
       diagnostics: {
         error,
         errorMessage: diagnostics?.errorMessage || this.extractErrorMessage(error),
-        errorName: diagnostics?.errorName || (error instanceof Error ? error.name : undefined),
+        errorName: diagnostics?.errorName || this.extractErrorName(error),
         stack: diagnostics?.stack || this.buildErrorStack(error),
         category: diagnostics?.category,
         modelChain: diagnostics?.modelChain,
@@ -48,7 +49,7 @@ export class IncidentReporterService {
 
   notifyAsync(notification: IncidentNotification): void {
     void this.notify(notification).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`发送系统异常告警失败: ${message}`);
     });
   }
@@ -72,5 +73,12 @@ export class IncidentReporterService {
     }
 
     return error.stack?.split('\n').slice(0, 20).join('\n');
+  }
+
+  private extractErrorName(error: unknown): string | undefined {
+    if (error instanceof Error) {
+      return error.name;
+    }
+    return undefined;
   }
 }

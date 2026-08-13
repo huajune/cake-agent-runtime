@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { CustomerService } from '@wecom/customer/customer.service';
 import { normalizeGenderValue } from '@resolution/candidate/gender';
@@ -41,7 +42,7 @@ export class CandidateProfileEnrichmentService {
       });
       return normalizeGenderValue(detail?.data?.gender);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(
         `getCustomerDetailV2 失败，跳过性别补全: ${message} (imBotId=${imBotId ?? '-'}, wecomUserId=${wecomUserId ?? '-'})`,
       );

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
@@ -262,7 +263,7 @@ export class SessionService {
       await this.redisStore.del(legacyKey);
       this.logger.log(`[getSessionState] 旧版 session blob 已迁移为 hash: ${legacyKey}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`[getSessionState] 旧版 session blob 迁移失败（下次读取重试）: ${message}`);
     }
   }
@@ -804,9 +805,7 @@ export class SessionService {
         if (map.size > 0) visualSheetsByContent = map;
       } catch (error) {
         this.logger.warn(
-          `[extractFacts] 视觉事实拉取失败（回落文本前缀判定）: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[extractFacts] 视觉事实拉取失败（回落文本前缀判定）: ${toErrorMessage(error)}`,
         );
       }
     }

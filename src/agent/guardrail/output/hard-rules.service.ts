@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
@@ -450,9 +451,7 @@ export class HardRulesService {
           },
         })
         .catch((error: unknown) => {
-          this.logger.warn(
-            `[ReplyFactGuard] P0 告警发送失败: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          this.logger.warn(`[ReplyFactGuard] P0 告警发送失败: ${toErrorMessage(error)}`);
         });
     }
 

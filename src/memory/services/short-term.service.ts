@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { RedisService } from '@infra/redis/redis.service';
@@ -70,7 +71,7 @@ export class ShortTermService {
 
       return this.trimByChars(this.injectTimeContext(rawHistory));
     } catch (error) {
-      this.lastLoadError = error instanceof Error ? error.message : String(error);
+      this.lastLoadError = toErrorMessage(error);
       this.logger.error(`获取短期记忆失败 [${chatId}]:`, error);
       return [];
     }

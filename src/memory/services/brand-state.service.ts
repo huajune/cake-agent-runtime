@@ -13,6 +13,7 @@
  * 构造生效（注入提示词、供工具兜底），持久化仍随收尾 reducer 统一落盘。
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
@@ -257,9 +258,7 @@ export class BrandStateService {
       };
     } catch (error) {
       this.logger.warn(
-        `[brand-state] 昵称品牌解析失败（按无 seed 降级）: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[brand-state] 昵称品牌解析失败（按无 seed 降级）: ${toErrorMessage(error)}`,
       );
       return { seed: null, brands: [] };
     }

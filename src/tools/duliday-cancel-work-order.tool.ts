@@ -6,6 +6,7 @@
  * 自助优先：字典/接口失败或无工单号时，回退 request_handoff(modify_appointment) 转人工。
  */
 
+import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -182,9 +183,9 @@ export function buildCancelWorkOrderTool(
         } catch (err) {
           // 归属核验依赖本地 long-term 存储，读失败时降级放行（保持原有可取消能力），只记警告。
           logger.warn(
-            `取消前归属核验读取失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            `取消前归属核验读取失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${toErrorMessage(
+              err,
+            )}`,
           );
         }
 
@@ -219,9 +220,9 @@ export function buildCancelWorkOrderTool(
           }
         } catch (err) {
           logger.warn(
-            `取消前状态核验查询失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            `取消前状态核验查询失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${toErrorMessage(
+              err,
+            )}`,
           );
         }
 
@@ -235,14 +236,14 @@ export function buildCancelWorkOrderTool(
         } catch (err) {
           logger.error(
             `取消原因字典拉取异常: chatId=${chatId}, workOrderId=${workOrderId}`,
-            err instanceof Error ? (err.stack ?? err.message) : String(err),
+            toErrorStack(err),
           );
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.CANCEL_REASON_FETCH_FAILED,
             outcome: '取消原因字典拉取失败',
             replyInstruction:
               '暂时取不到取消原因，无法自助取消。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口细节，不要谎称已取消。',
-            details: { workOrderId, reason: err instanceof Error ? err.message : '未知错误' },
+            details: { workOrderId, reason: toErrorMessage(err) || '未知错误' },
           });
         }
 
@@ -359,7 +360,7 @@ export function buildCancelWorkOrderTool(
         } catch (err) {
           logger.error(
             `取消工单异常: chatId=${chatId}, workOrderId=${workOrderId}`,
-            err instanceof Error ? (err.stack ?? err.message) : String(err),
+            toErrorStack(err),
           );
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.CANCEL_REQUEST_FAILED,
@@ -368,7 +369,7 @@ export function buildCancelWorkOrderTool(
               '取消未成功。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口报错/技术细节，不要谎称已取消。',
             details: {
               workOrderId,
-              reason: err instanceof Error ? err.message : '未知错误',
+              reason: toErrorMessage(err) || '未知错误',
             },
           });
         }
@@ -428,9 +429,7 @@ async function sendCancelWorkOrderNotification(params: {
     });
   } catch (error) {
     logger.error(
-      `取消工单通知发送异常: workOrderId=${params.workOrderId}, error=${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `取消工单通知发送异常: workOrderId=${params.workOrderId}, error=${toErrorMessage(error)}`,
     );
   }
 }

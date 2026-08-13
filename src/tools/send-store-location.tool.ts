@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -402,9 +403,7 @@ export function buildSendStoreLocationTool(
                   geocoded = selectInterviewLocationCandidate(query, candidates);
                 } catch (error) {
                   logger.warn(
-                    `面试地址地理编码失败: jobId=${resolvedJobId}, error=${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
+                    `面试地址地理编码失败: jobId=${resolvedJobId}, error=${toErrorMessage(error)}`,
                   );
                 }
               }
@@ -493,7 +492,7 @@ export function buildSendStoreLocationTool(
               '当工具返回 _fixedReply 时，必须原样输出 _fixedReply 的内容作为本轮完整回复',
           };
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = toErrorMessage(error);
           logger.error(`门店定位发送失败: jobId=${resolvedJobId}, error=${message}`);
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.STORE_LOCATION_SEND_FAILED,

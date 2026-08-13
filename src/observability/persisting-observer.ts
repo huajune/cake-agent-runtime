@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { AgentEvent, Observer } from './observer.interface';
@@ -52,9 +53,7 @@ export class PersistingObserver implements Observer, OnApplicationBootstrap {
     if (!this.persister || !this.shouldPersist(event)) return;
 
     void this.persister.persist(event).catch((error: unknown) => {
-      this.logger.warn(
-        `[agent-events] 持久化失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`[agent-events] 持久化失败: ${toErrorMessage(error)}`);
     });
   }
 

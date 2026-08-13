@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-profile-enrichment.service';
 import {
@@ -63,7 +64,7 @@ export class MemoryEnrichmentService {
       this.logger.log(`客户详情补充性别成功: gender=${gender}`);
       return { ...snapshot, ruleFacts };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`客户详情补充性别失败: ${message}`);
       return snapshot;
     }

@@ -1,3 +1,4 @@
+import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -177,7 +178,7 @@ export class OpsDailyReportCronService {
       const reportDate = formatLocalDate(getLocalDayStart());
       await this.pushReport(reportDate);
     } catch (error) {
-      this.logger.error('运营日报推送失败', error instanceof Error ? error.stack : String(error));
+      this.logger.error('运营日报推送失败', toErrorStack(error));
     } finally {
       this.running = false;
     }
@@ -216,9 +217,7 @@ export class OpsDailyReportCronService {
     try {
       fields = await this.bitableApi.getFields(this.appToken, this.tableId);
     } catch (error) {
-      this.logger.error(
-        `运营日报: 获取飞书表字段失败，跳过本次: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`运营日报: 获取飞书表字段失败，跳过本次: ${toErrorMessage(error)}`);
       return { rows: rows.length, written: 0 };
     }
 
@@ -260,9 +259,7 @@ export class OpsDailyReportCronService {
       botByKey = await this.buildCurrentBotLookup();
     } catch (error) {
       this.logger.warn(
-        `运营日报: 获取当前托管 bot 列表失败，跳过 botId 合并: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `运营日报: 获取当前托管 bot 列表失败，跳过 botId 合并: ${toErrorMessage(error)}`,
       );
       return rows;
     }
@@ -366,9 +363,9 @@ export class OpsDailyReportCronService {
           return this.mergeSpongeMetrics(row, signupResult, passResult);
         } catch (error) {
           this.logger.warn(
-            `运营日报: 海绵工单数据覆盖失败 bot=${row.bot_im_id} date=${reportDate}，海绵口径字段留空: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `运营日报: 海绵工单数据覆盖失败 bot=${row.bot_im_id} date=${reportDate}，海绵口径字段留空: ${toErrorMessage(
+              error,
+            )}`,
           );
           return this.fallbackToProjectedMetrics(row);
         }
@@ -449,7 +446,7 @@ export class OpsDailyReportCronService {
           this.logger.warn(
             `运营日报: 海绵工单姓名查询失败 bot=${row.bot_im_id} workOrderId=${
               order.workOrderId
-            }: ${error instanceof Error ? error.message : String(error)}`,
+            }: ${toErrorMessage(error)}`,
           );
           return null;
         }

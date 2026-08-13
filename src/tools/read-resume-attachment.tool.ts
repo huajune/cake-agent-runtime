@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { PDFParse } from 'pdf-parse';
@@ -207,10 +208,7 @@ async function downloadPdf(fileUrl: string): Promise<Buffer> {
     return buffer;
   } catch (error) {
     if (error instanceof ResumeReadError) throw error;
-    throw new ResumeReadError(
-      'download_failed',
-      error instanceof Error ? error.message : String(error),
-    );
+    throw new ResumeReadError('download_failed', toErrorMessage(error));
   } finally {
     clearTimeout(timeout);
   }
@@ -232,10 +230,7 @@ async function parsePdfText(
       pagesParsed: Math.min(result.total ?? maxPages, maxPages),
     };
   } catch (error) {
-    throw new ResumeReadError(
-      'parse_failed',
-      error instanceof Error ? error.message : String(error),
-    );
+    throw new ResumeReadError('parse_failed', toErrorMessage(error));
   } finally {
     await parser.destroy().catch(() => undefined);
   }

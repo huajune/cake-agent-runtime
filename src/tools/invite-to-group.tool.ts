@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -209,7 +210,7 @@ export function buildInviteToGroupTool(
               },
             )
             .catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : String(err);
+              const msg = toErrorMessage(err);
               logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
             });
           logger.log(
@@ -288,7 +289,7 @@ export function buildInviteToGroupTool(
                 }
               }
             } catch (error: unknown) {
-              const message = error instanceof Error ? error.message : String(error);
+              const message = toErrorMessage(error);
               logger.warn(`前置已在群闸门核验失败（降级回原流程）: ${message}`);
             }
           }
@@ -314,7 +315,7 @@ export function buildInviteToGroupTool(
                   ? cityFact.value
                   : null;
             } catch (error: unknown) {
-              const message = error instanceof Error ? error.message : String(error);
+              const message = toErrorMessage(error);
               logger.warn(`读取会话城市事实失败（gate 按无事实降级）: ${message}`);
             }
           }
@@ -381,7 +382,7 @@ export function buildInviteToGroupTool(
               );
               invitedGroups = state?.invitedGroups ?? [];
             } catch (error: unknown) {
-              const message = error instanceof Error ? error.message : String(error);
+              const message = toErrorMessage(error);
               logger.warn(`读取 invitedGroups 失败（时机 gate 按空降级）: ${message}`);
             }
           }
@@ -541,7 +542,7 @@ export function buildInviteToGroupTool(
               })),
               opsNotifier,
             }).catch((error: unknown) => {
-              const message = error instanceof Error ? error.message : String(error);
+              const message = toErrorMessage(error);
               logger.error(`飞书告警发送失败: ${message}`);
             });
             return buildToolError({
@@ -728,7 +729,7 @@ export function buildInviteToGroupTool(
               })),
               opsNotifier,
             }).catch((error: unknown) => {
-              const message = error instanceof Error ? error.message : String(error);
+              const message = toErrorMessage(error);
               logger.error(`飞书告警发送失败: ${message}`);
             });
 
@@ -760,7 +761,7 @@ export function buildInviteToGroupTool(
             })),
             opsNotifier,
           }).catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error);
+            const message = toErrorMessage(error);
             logger.error(`飞书告警发送失败: ${message}`);
           });
 
@@ -774,7 +775,7 @@ export function buildInviteToGroupTool(
             },
           });
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = toErrorMessage(error);
           logger.error(`拉群失败: ${message} (user=${context.session.userId})`);
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.INVITE_API_FAILED,
@@ -966,7 +967,7 @@ async function maybeAddChatBotToGroupAndRetryInvite(params: {
       try {
         await params.roomService.syncRoom(params.token, params.chatBotImId);
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         logger.warn(`syncRoom 失败（忽略，继续重试拉人）: ${message}`);
       }
     };
@@ -1008,7 +1009,7 @@ async function maybeAddChatBotToGroupAndRetryInvite(params: {
 
     return { inviteResult: retryInviteResult, addBotResult, retryAttempts };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toErrorMessage(error);
     logger.warn(
       `接客 bot 入群补偿异常: ${params.targetGroup.groupName} ` +
         `(chatBot=${params.chatBotImId}, ownerBot=${params.targetGroup.imBotId}, error=${message})`,

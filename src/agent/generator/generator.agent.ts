@@ -1,5 +1,6 @@
 /** Agent 执行编排：prepare -> model -> turn end lifecycle。 */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { hasToolCall, stepCountIs, type generateText } from 'ai';
@@ -631,11 +632,12 @@ export class GeneratorAgent {
         },
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `空文本恢复失败: sessionId=${ctx.sessionId}; ${message}`,
-        error instanceof Error ? error.stack : undefined,
-      );
+      const message = toErrorMessage(error);
+      let stack: string | undefined;
+      if (error instanceof Error) {
+        stack = error.stack;
+      }
+      this.logger.warn(`空文本恢复失败: sessionId=${ctx.sessionId}; ${message}`, stack);
       return result;
     }
   }
@@ -753,8 +755,12 @@ export class GeneratorAgent {
       'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
     >,
   ): AgentError {
-    const error =
-      err instanceof Error ? (err as AgentError) : (new Error(String(err)) as AgentError);
+    let error: AgentError;
+    if (err instanceof Error) {
+      error = err as AgentError;
+    } else {
+      error = new Error(String(err)) as AgentError;
+    }
 
     error.isAgentError = true;
     error.agentMeta = {

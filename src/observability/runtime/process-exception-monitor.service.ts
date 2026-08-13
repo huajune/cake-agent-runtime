@@ -54,7 +54,12 @@ export class ProcessExceptionMonitorService implements OnModuleInit, OnModuleDes
   };
 
   private readonly handleUnhandledRejection = (reason: unknown): void => {
-    const error = reason instanceof Error ? reason : new Error(String(reason));
+    let error: Error;
+    if (reason instanceof Error) {
+      error = reason;
+    } else {
+      error = new Error(String(reason));
+    }
     this.logger.error(`捕获到未处理 Promise 拒绝: ${error.message}`, error.stack);
     this.incidentReporter.notifyAsync({
       source: {

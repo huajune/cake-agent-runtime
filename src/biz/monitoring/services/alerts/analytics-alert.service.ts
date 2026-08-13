@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -208,9 +209,7 @@ export class AnalyticsAlertService implements OnModuleInit {
       );
       return result;
     } catch (error) {
-      this.logger.error(
-        `抽取字段丢弃日检失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`抽取字段丢弃日检失败: ${toErrorMessage(error)}`);
       return null;
     }
   }

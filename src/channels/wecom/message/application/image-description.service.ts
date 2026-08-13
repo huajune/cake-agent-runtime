@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -146,7 +147,12 @@ export class ImageDescriptionService {
       .then(() => undefined)
       .catch((error) => {
         this.consecutiveFailures++;
-        const err = error instanceof Error ? error : new Error(String(error));
+        let err: Error;
+        if (error instanceof Error) {
+          err = error;
+        } else {
+          err = new Error(String(error));
+        }
         this.logger.error(
           `${label}描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
           err.stack,
@@ -191,9 +197,7 @@ export class ImageDescriptionService {
       this.consecutiveFailures = 0;
       return description;
     } catch (error) {
-      this.logger.warn(
-        `图片描述补写失败 [${messageId}]: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`图片描述补写失败 [${messageId}]: ${toErrorMessage(error)}`);
       return null;
     } finally {
       this.inFlight.delete(messageId);
@@ -294,11 +298,7 @@ export class ImageDescriptionService {
         }
         usageTokens = structured.usage?.totalTokens;
       } catch (error) {
-        this.logger.warn(
-          `图片结构化描述失败，回退纯文本 [${messageId}]: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+        this.logger.warn(`图片结构化描述失败，回退纯文本 [${messageId}]: ${toErrorMessage(error)}`);
       }
     }
     if (!description) {
@@ -400,9 +400,7 @@ export class ImageDescriptionService {
           this.describeAndUpdateAsync(row.messageId, url, MessageType.IMAGE);
         }
       } catch (error) {
-        this.logger.warn(
-          `[懒补写] 裸图片扫描失败 [${chatId}]: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.logger.warn(`[懒补写] 裸图片扫描失败 [${chatId}]: ${toErrorMessage(error)}`);
       }
     })();
   }
@@ -427,7 +425,7 @@ export class ImageDescriptionService {
           sheet as unknown as Record<string, unknown> | undefined,
         );
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `${this.kindLabel(kind)}描述回写异常（第 ${attempt}/${this.WRITEBACK_MAX_ATTEMPTS} 次）[${messageId}]: ${errorMessage}`,
         );
@@ -478,9 +476,7 @@ export class ImageDescriptionService {
       }
       this.logger.warn(`[原图] API 返回 errcode=${data.errcode} [${messageId}]: ${data.errmsg}`);
     } catch (err) {
-      this.logger.warn(
-        `[原图] 获取失败 [${messageId}]: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`[原图] 获取失败 [${messageId}]: ${toErrorMessage(err)}`);
     }
     return compressedUrl;
   }

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
@@ -21,7 +22,7 @@ export class MessageWorkerManagerService {
         this.logger.log(`从配置加载 Worker 并发数: ${this.currentConcurrency}`);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(`加载并发数配置失败，使用默认值: ${errorMessage}`);
     }
   }
@@ -91,7 +92,7 @@ export class MessageWorkerManagerService {
         currentConcurrency: newConcurrency,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       return {
         success: false,
         message: `修改失败: ${errorMessage}`,
