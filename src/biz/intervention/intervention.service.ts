@@ -39,7 +39,7 @@ export interface RiskInterventionPayload extends InterventionBase {
 }
 
 /**
- * 人工介入（handoff）。recruitment_cases 已废弃后 handoff 不再区分 onboard/general，
+ * 人工介入（handoff）。不区分 onboard/general，
  * 统一为暂停托管 + 飞书告警。
  */
 export interface GeneralHandoffInterventionPayload extends InterventionBase {
@@ -70,7 +70,7 @@ export interface InterventionResult {
  * 统一的人工介入编排服务。
  *
  * 输入：调用方（规则层 / Agent tool）已完成判断的介入事件
- * 输出：执行「暂停托管 + 飞书告警」的原子组合（recruitment_cases 状态机废弃后不再更新业务状态）
+ * 输出：执行「暂停托管 + 飞书告警」的原子组合（不更新任何业务状态机）
  *
  * 本服务不包含任何判断逻辑，也不决定安抚话术。
  */

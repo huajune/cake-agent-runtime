@@ -34,7 +34,7 @@
 
 ## 1. 死代码删除（零引用，可直接执行）
 
-**状态：☐ 待执行**
+**状态：☑ 已完成（2026-08-13）**
 
 三处都已核验全仓零调用方。删除符号本体 + 其上方 JSDoc。
 
@@ -65,13 +65,18 @@
  */
 ```
 
+**执行记录（2026-08-13）**：已删除 1.1–1.3 的三个退役符号及对应 JSDoc；
+`GEOCODE_CITY_REQUIRED` 按 1.4 保留，只将注释理由改为“错误码目录完整性”。交接清单原称全仓零调用方，
+但完整测试发现 `getClient` / `getChatTrend` 仍各有退役单测；经确认同步删除这些测试，并移除
+`getChatTrend` 专用的 `MonitoringRecordRepository` 注入，无其他偏离。
+
 ---
 
 ## 2. 幽灵配置：文档教人用，代码根本不读
 
-### 2.1 `ENABLE_BULL_QUEUE` ⚠️ 需人裁定，**GPT 不要自行选择方案**
+### 2.1 `ENABLE_BULL_QUEUE`——已裁定方案 B
 
-**状态：☐ 待裁定**
+**状态：☑ 已完成（2026-08-13）**
 
 - `CLAUDE.md:28`：「本地无 Redis 时设 `ENABLE_BULL_QUEUE=false`（.env.local）」
 - `docs/db/redis-schema.md:469`：同样示例
@@ -81,27 +86,48 @@
 **危害**：这是本次审计唯一有实际危害的一条。照文档做的人（含并发 AI 会话，本仓库常态）设了
 `ENABLE_BULL_QUEUE=false` 后会以为队列已关，实际毫无效果。文档承诺了一个不存在的开关。
 
-**两个方案，必须由人拍板**：
+**备选方案（已由人裁定采用 B）**：
 
 - **(A) 补实现**——在 `bull.module.ts` 真的接上开关，无 Redis 时跳过队列注册。贴合文档原意，
   但要先确认"不注册队列"时消息链路的降级路径是否成立（debounce 合并依赖 Bull job）。
 - **(B) 删文档 + 删变量**——若结论是队列本就不该关，则从 `CLAUDE.md`、`docs/db/redis-schema.md`、
   `.env.example` 三处一并删除，并在 CLAUDE.md 补一句本地无 Redis 的真实做法。
 
-裁定前 GPT 只做一件事：**把结论写进本节**，不要改代码。
+**降级链路调研结论（2026-08-13，仅回写，未改代码）**：
+
+- **完全无 Redis 时应用不能启动**：`UPSTASH_REDIS_REST_URL/TOKEN` 是必填配置，且
+  `RedisService.onModuleInit()` 会 `ping`，失败后直接抛错；因此当前不存在“无 Redis 但应用照常运行”
+  的基础降级。
+- **只有 Bull TCP Redis 不可用时也不会自动直发**：`BullQueueModule` 会依次尝试
+  `UPSTASH_REDIS_TCP_URL`、`REDIS_URL`，最后回退到本机 `localhost:6379`，没有跳过队列注册的分支。
+  debounce 开启时，`SimpleMergeService.addMessage()` 先把消息写入 REST Redis pending，再创建 Bull
+  delayed job；`queue.add` 最终抛错时，上游只记录 merge failure 并把该 messageId 标记为已处理，
+  **不会**回退调用 `processSingleMessage()`，所以该消息不会得到单条直发回复。
+- **现有唯一的“去 debounce”路径是关闭消息聚合开关**：运行时
+  `message_merge_enabled=false` 会让 `MessageService` 直接走 `processSingleMessage()`，代价是多条消息
+  不再合并。但这个开关来自 Dashboard/Supabase（`ENABLE_MESSAGE_MERGE` 只在缺省时充当种子），且
+  `BullQueueModule` / `message-merge` queue 仍会照常初始化，因此它不能让本地环境真正脱离 Redis/Bull。
+- 因而方案 A 若被选择，不能只“少注册一个 queue”：还需同时定义 merge 关闭/直发语义，并处理
+  `@InjectQueue('message-merge')` 的模块依赖；方案 B 则需明确本地必须提供可用 Redis。
+
+**执行记录（2026-08-13）**：人工核验调研结论后裁定采用方案 B。已从 `CLAUDE.md`、
+`docs/db/redis-schema.md`、`.env.example` 删除幽灵开关，并写明本地必须提供 REST + TCP Redis；
+未改任何队列或消息处理代码。
 
 ### 2.2 `SUPABASE_BRAND_CONFIG_PATH` / `SUPABASE_BUCKET_NAME`
 
-**状态：☐ 待执行**
+**状态：☑ 已完成（2026-08-13）**
 
 只存在于 `.env.example`，全仓（代码/脚本/CI/Dockerfile/文档）零引用。直接从 `.env.example` 删除
 这两行。
+
+**执行记录（2026-08-13）**：已从 `.env.example` 删除两行，未改动其他 Supabase 配置。无偏离。
 
 ---
 
 ## 3. 废弃表的注释去重
 
-**状态：☐ 待执行**
+**状态：☑ 已完成（2026-08-13）**
 
 `recruitment_cases`（表已 DROP）在代码里留下 15 处注释、`interview_booking_records` 1 处，**全部是
 注释，零代码引用**。
@@ -188,6 +214,9 @@
 账要对上：12 = 5 保留 + 6 去掉提法（§3.1 两处、§3.2、§3.3 两处、§3.4 一处）+ 1 删句（§3.5）。
 `interview_booking_records` 那处（`long-term.types.ts:271`）不在这个计数里。
 
+**执行记录（2026-08-13）**：严格按表完成 6 处去掉提法与 1 处历史 bug 删句；所有指定权威注释、
+`request-handoff` 说明、`interview_booking_records` 设计留痕和测试注释均保留。无偏离。
+
 ---
 
 ## 4. 写了到期条件、却没人回来复查的临时并跑
@@ -260,7 +289,7 @@
 
 ## 8. 建议执行顺序
 
-1. **§2.1 `ENABLE_BULL_QUEUE`** —— 唯一有实际危害的（文档在骗人），**先拿裁定**，GPT 勿自选
+1. **§2.1 `ENABLE_BULL_QUEUE`** —— ☑ 已由人裁定方案 B 并完成
 2. **§1.1–1.3** —— 三条零引用死代码，一把删，零风险
 3. **§2.2 + §1.4** —— 删两行环境变量 + 改一处注释理由
 4. **§3 注释去重** —— 8 处改动，纯注释，注意 §0.1 第 4 条红线

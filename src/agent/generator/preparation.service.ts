@@ -200,7 +200,7 @@ export class PreparationService {
           ruleFacts,
         }),
       ),
-      // [当前预约信息] 改由 active_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
+      // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
       this.loadBookingContext(
         corpId,
         userId,
@@ -234,7 +234,7 @@ export class PreparationService {
     const contactBrandAliases = turnBrandContext.nicknameBrands;
 
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
-    // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
+    // 不由任何本地 case 状态推导 onboard_followup）。
     const memoryBlock = buildMemoryBlock(
       memory,
       bookingContext.block,

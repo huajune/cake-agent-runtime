@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
-import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import { RedisService } from '@infra/redis/redis.service';
 import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
 import { MessageSource, MessageType } from '@enums/message-callback.enum';
@@ -25,10 +24,6 @@ describe('ChatSessionService', () => {
     updateContentByMessageId: jest.fn(),
     getChatMessagesByTimeRange: jest.fn(),
     cleanupChatMessages: jest.fn(),
-  };
-
-  const mockMonitoringRecordRepository = {
-    getDashboardHourlyTrend: jest.fn(),
   };
 
   const mockRedisService = {
@@ -55,7 +50,6 @@ describe('ChatSessionService', () => {
       providers: [
         ChatSessionService,
         { provide: ChatMessageRepository, useValue: mockChatMessageRepository },
-        { provide: MonitoringRecordRepository, useValue: mockMonitoringRecordRepository },
         { provide: RedisService, useValue: mockRedisService },
         { provide: ConfigService, useValue: mockConfigService },
       ],
@@ -316,55 +310,6 @@ describe('ChatSessionService', () => {
       expect(start.getMonth()).toBe(0); // January = 0
       expect(start.getDate()).toBe(1);
       expect(end.getHours()).toBe(23);
-    });
-  });
-
-  // ==================== getChatTrend ====================
-
-  describe('getChatTrend', () => {
-    it('should call monitoring repository and transform response', async () => {
-      const mockHourlyData = [
-        { hour: '2024-01-01T10:00:00Z', messageCount: 5, uniqueUsers: 3 },
-        { hour: '2024-01-01T11:00:00Z', messageCount: 8, uniqueUsers: 4 },
-      ];
-      mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue(mockHourlyData);
-
-      const result = await service.getChatTrend(7);
-
-      expect(result).toHaveLength(2);
-      expect(result[0]).toMatchObject({
-        hour: '2024-01-01T10:00:00Z',
-        message_count: 5,
-        active_users: 3,
-        active_chats: 0,
-      });
-      expect(result[1]).toMatchObject({
-        hour: '2024-01-01T11:00:00Z',
-        message_count: 8,
-        active_users: 4,
-        active_chats: 0,
-      });
-    });
-
-    it('should use default 7 days when no parameter provided', async () => {
-      mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
-
-      await service.getChatTrend();
-
-      const [startDate, endDate] =
-        mockMonitoringRecordRepository.getDashboardHourlyTrend.mock.calls[0];
-      const daysDiff = Math.round(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      expect(daysDiff).toBe(7);
-    });
-
-    it('should return empty array when no trend data', async () => {
-      mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
-
-      const result = await service.getChatTrend(3);
-
-      expect(result).toEqual([]);
     });
   });
 

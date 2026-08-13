@@ -25,7 +25,9 @@ pnpm run test -- tests/agent/runner/agent-runner.service.spec.ts --watchman=fals
 
 ⚠️ **跑测试的坑**：shell 默认 node 可能是 16（先 `node -v` 确认），本项目要求 Node 20+，实践用 `nvm use 22.16.0`；jest 不加 `--watchman=false` 会静默 0 测试无输出。
 
-⚠️ 本地无 Redis 时设 `ENABLE_BULL_QUEUE=false`（.env.local）。
+⚠️ 本地运行也必须提供可用 Redis：Service 缓存需配置 `UPSTASH_REDIS_REST_URL/TOKEN`，
+Bull 队列需配置 `UPSTASH_REDIS_TCP_URL`（或使用 `REDIS_URL` / `REDIS_HOST` 等现有 TCP 兜底）；
+无 Redis 时应用无法启动。
 
 ### Database Migrations（Supabase CLI，测试/生产隔离）
 

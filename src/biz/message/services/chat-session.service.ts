@@ -4,7 +4,6 @@ import { RedisService } from '@infra/redis/redis.service';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
 import { ChatMessageInput } from '../types/message.types';
 import { formatLocalDateTime } from '@infra/utils/date.util';
-import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import {
   toStorageMessageSource,
   toStorageMessageType,
@@ -27,7 +26,6 @@ export class ChatSessionService {
 
   constructor(
     private readonly chatMessageRepository: ChatMessageRepository,
-    @Optional() private readonly monitoringRecordRepository?: MonitoringRecordRepository,
     @Optional() private readonly redisService?: RedisService,
     @Optional() private readonly configService?: ConfigService,
   ) {}
@@ -94,36 +92,6 @@ export class ChatSessionService {
       `获取聊天会话列表（优化版）: ${formatLocalDateTime(start)} ~ ${formatLocalDateTime(end)}`,
     );
     return this.chatMessageRepository.getChatSessionListByDateRange(start, end);
-  }
-
-  /**
-   * 获取聊天趋势。当前无生产调用方（/analytics/chat-trend 走 AnalyticsQueryService），待删。
-   */
-  async getChatTrend(days: number = 7): Promise<
-    Array<{
-      hour: string;
-      message_count: number;
-      active_users: number;
-      active_chats: number;
-    }>
-  > {
-    if (!this.monitoringRecordRepository) {
-      return [];
-    }
-
-    const endDate = new Date();
-    const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
-    const records = await this.monitoringRecordRepository.getDashboardHourlyTrend(
-      startDate,
-      endDate,
-    );
-
-    return records.map((item) => ({
-      hour: item.hour,
-      message_count: item.messageCount,
-      active_users: item.uniqueUsers,
-      active_chats: 0,
-    }));
   }
 
   /**

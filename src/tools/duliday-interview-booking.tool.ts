@@ -1022,7 +1022,7 @@ export function buildInterviewBookingTool(
             logId,
           };
 
-          // 提交前软查重：recruitment_cases 废弃后，重复预约主要靠海绵约束 + active_booking
+          // 提交前软查重：重复预约主要靠海绵约束 + active_booking
           // 指针体现。这里补一道本地兜底——仅当候选人窗口内已有「同岗位」active_booking
           // 时拦截，避免 Bull 重试 / Agent 同会话重复调用生成第二张同岗位工单。
           // 不同岗位不拦截，支持候选人同时报名多个岗位。
