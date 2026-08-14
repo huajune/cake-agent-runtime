@@ -1763,7 +1763,9 @@ export function buildJobListTool(
             cityFilterRecovery,
             usedDistanceFiltering: hasUserCoords,
             // 距离锚点精度（方案 16.1 GeoQueryMeta.anchor 的 B-1 先行子集）：
-            // 区级锚点查询占比与 district_level_distance_claim 拦截量的对账口径。
+            // 区级锚点查询占比的观测口径。注意原设计里的对账对象
+            // district_level_distance_claim 规则**已于 2026-07-10 #499 删除**，
+            // 不存在"拦截量趋零"这个验收项，渲染层是唯一防线（见 §7 第 4 条）。
             anchor: {
               source:
                 regionRelaxedToLocation || matchedGeocodeAnchor
@@ -1780,9 +1782,11 @@ export function buildJobListTool(
             },
             // 地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）：会话事实的多个
             // 地理信号指向不同城市时记录"本应 ambiguous"案例，仅观测不干预——
-            // 现行先命中先赢行为不变；enforce 需 shadow 观测 1~2 周后人工决策（§17.4）。
+            // 现行先命中先赢行为不变；enforce 已于 2026-08-14 终审 no-go（3 周 25 样本
+            // 真冲突 0 起，见 docs/architecture/geo-resolution.md §9.3），本字段今后
+            // 只作排障线索，无定时观测者，勿再当"待决策 shadow"推动。
             // 传已确立会话城市做候选裁决：命中即打 adjudicatedByKnownCity，标记为
-            // 同形地名一类噪音而非真冲突（§17.4.1），让 shadow 累计能分开两者。
+            // 同形地名一类噪音而非真冲突，让累计统计能分开两者。
             geoSignalConflictShadow: detectGeoSignalConflict(
               context.archive.sessionFacts?.preferences?.district ?? null,
               context.archive.sessionFacts?.preferences?.location ?? null,
