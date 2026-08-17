@@ -6,7 +6,10 @@ import type { ResumeAttachment } from '@tools/read-resume-attachment.tool';
 
 function buildRegistry(
   options: {
-    chatSessionService?: { updateMessageContent: jest.Mock };
+    chatSessionService?: {
+      updateMessageContent?: jest.Mock;
+      getChatSessionMessages?: jest.Mock;
+    };
     llm?: object;
   } = {},
 ) {
@@ -157,6 +160,56 @@ describe('ToolRegistryService', () => {
       archive: { sessionFacts: { interview_info: { upload_resume: fileUrl } } as never },
     });
     expect(resolve(historical)).toEqual([{ fileUrl, fileName: undefined, messageId: undefined }]);
+  });
+
+  it('resolves resume images to artworkUrl and never falls back to imageUrl', async () => {
+    const staleUrl = 'https://cdn.example.com/thumbnail-expired.jpg';
+    const artworkUrl = 'https://cdn.example.com/artwork-original.jpg';
+    const getChatSessionMessages = jest.fn().mockResolvedValue({
+      chatId: 'chat-1',
+      messages: [
+        {
+          messageId: 'image-message-1',
+          role: 'user',
+          content: `[图片消息] 简历\n简历附件：${staleUrl}`,
+          messageType: 'IMAGE',
+          payload: { imageUrl: staleUrl, artworkUrl },
+        },
+      ],
+    });
+    const registry = buildRegistry({ chatSessionService: { getChatSessionMessages } });
+    const resolve = (
+      registry as unknown as {
+        resolveResumeReadTarget(
+          chatId: string,
+          attachment: ResumeAttachment,
+        ): Promise<{ fileUrl: string | null; messageId?: string; imageOriginal: boolean }>;
+      }
+    ).resolveResumeReadTarget.bind(registry);
+
+    await expect(resolve('chat-1', { fileUrl: staleUrl })).resolves.toEqual({
+      fileUrl: artworkUrl,
+      messageId: 'image-message-1',
+      imageOriginal: true,
+    });
+
+    getChatSessionMessages.mockResolvedValueOnce({
+      chatId: 'chat-1',
+      messages: [
+        {
+          messageId: 'image-message-2',
+          role: 'user',
+          content: `简历附件：${staleUrl}`,
+          messageType: 'IMAGE',
+          payload: { imageUrl: staleUrl },
+        },
+      ],
+    });
+    await expect(resolve('chat-1', { fileUrl: staleUrl })).resolves.toEqual({
+      fileUrl: null,
+      messageId: 'image-message-2',
+      imageOriginal: false,
+    });
   });
 
   it('reuses the chat message writeback path with bounded retry', async () => {

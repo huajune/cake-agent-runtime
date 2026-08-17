@@ -55,8 +55,18 @@ export interface ResumeAttachment {
   messageId?: string;
 }
 
+export interface ResumeReadTarget {
+  /** 实际下载地址；图片只能是消息 payload.artworkUrl，缺失时为 null。 */
+  fileUrl: string | null;
+  /** 只允许透传消息表里查到的真实 ID，禁止合成。 */
+  messageId?: string;
+  /** 图片地址是否已由消息 payload.artworkUrl 公证为高清原图。 */
+  imageOriginal: boolean;
+}
+
 export interface ResumeAttachmentToolDeps {
   llm: LlmExecutorService;
+  resolveReadTarget: (attachment: ResumeAttachment) => Promise<ResumeReadTarget>;
   messageWriteback: (
     messageId: string,
     content: string,
@@ -127,8 +137,23 @@ export function buildReadResumeAttachmentTool(
         }
 
         try {
-          const buffer = await downloadResumeFile(attachment.fileUrl);
+          const target = await deps.resolveReadTarget(attachment);
+          if (!target.fileUrl) {
+            throw new ResumeReadError('download_failed', 'resume image artworkUrl is unavailable');
+          }
+          const resolvedAttachment: ResumeAttachment = {
+            ...attachment,
+            fileUrl: target.fileUrl,
+            messageId: target.messageId ?? attachment.messageId,
+          };
+          const buffer = await downloadResumeFile(resolvedAttachment.fileUrl);
           const format = detectResumeFormat(buffer);
+          if (format === 'image' && !target.imageOriginal) {
+            throw new ResumeReadError(
+              'download_failed',
+              'resume image URL is not a verified artworkUrl',
+            );
+          }
           const container = await extractContainer(
             buffer,
             format,
@@ -144,7 +169,7 @@ export function buildReadResumeAttachmentTool(
 
           const modelResult = await extractAndNotarize(
             normalizedText,
-            attachment.fileName,
+            resolvedAttachment.fileName,
             container.sourceKind,
             deps.llm,
           );
@@ -155,34 +180,34 @@ export function buildReadResumeAttachmentTool(
 
           let sheetRecorded = false;
           let messageWrittenBack = false;
-          if (attachment.messageId) {
+          if (resolvedAttachment.messageId) {
             const sheet = buildResumeFactSheet(extraction, returnedText);
             if (!sheet.degraded) {
-              context.ledger.recordVisualFacts(sheet, { messageId: attachment.messageId });
+              context.ledger.recordVisualFacts(sheet, { messageId: resolvedAttachment.messageId });
               sheetRecorded = true;
-              const content = buildResumeMessageContent(attachment, returnedText);
+              const content = buildResumeMessageContent(resolvedAttachment, returnedText);
               messageWrittenBack = await deps.messageWriteback(
-                attachment.messageId,
+                resolvedAttachment.messageId,
                 content,
                 sheet,
               );
               if (!messageWrittenBack) {
-                logger.warn(`简历摘要消息回写失败 [${attachment.messageId}]`);
+                logger.warn(`简历摘要消息回写失败 [${resolvedAttachment.messageId}]`);
               }
             }
           } else {
-            logger.warn(`简历 messageId 无法定位，降级为仅 output: ${attachment.fileUrl}`);
+            logger.warn(`简历 messageId 无法定位，降级为仅 output: ${resolvedAttachment.fileUrl}`);
           }
 
           logger.log(
             `简历已读取: format=${format}, source=${container.sourceKind}, ` +
               `chars=${normalizedText.length}, fallback=${modelResult.fallbackUsed}, ` +
-              `messageId=${attachment.messageId ?? 'missing'}`,
+              `messageId=${resolvedAttachment.messageId ?? 'missing'}`,
           );
           return {
             success: true,
-            fileUrl: attachment.fileUrl,
-            fileName: attachment.fileName,
+            fileUrl: resolvedAttachment.fileUrl,
+            fileName: resolvedAttachment.fileName,
             sourceKind: container.sourceKind,
             totalPages: container.totalPages,
             pagesParsed: container.pagesParsed,

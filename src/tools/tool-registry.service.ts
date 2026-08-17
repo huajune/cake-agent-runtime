@@ -29,7 +29,9 @@ import { buildSkipReplyTool } from './skip-reply.tool';
 import {
   buildReadResumeAttachmentTool,
   type ResumeAttachment,
+  type ResumeReadTarget,
 } from './read-resume-attachment.tool';
+import { StorageMessageType } from '@enums/storage-message.enum';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
@@ -336,6 +338,8 @@ export class ToolRegistryService {
     if (resumeAttachments.length) {
       const resumeTool = buildReadResumeAttachmentTool(resumeAttachments, {
         llm: this.llm,
+        resolveReadTarget: (attachment) =>
+          this.resolveResumeReadTarget(context.session.sessionId, attachment),
         messageWriteback: (messageId, content, sheet) =>
           this.writeBackResumeMessage(messageId, content, sheet),
       });
@@ -395,6 +399,44 @@ export class ToolRegistryService {
         : undefined;
       return { fileUrl, fileName, messageId };
     });
+  }
+
+  /**
+   * 简历图片只读企微原图 artworkUrl；imageUrl 是缩略图，不允许降级使用。
+   * 旧的 upload_resume 事实可能仍指向缩略图/过期 URL，因此用真实 messageId
+   * 或历史 content 中的旧 URL 反查同一条消息，再以 payload.artworkUrl 覆盖。
+   */
+  private async resolveResumeReadTarget(
+    chatId: string,
+    attachment: ResumeAttachment,
+  ): Promise<ResumeReadTarget> {
+    const { messages } = await this.chatSessionService.getChatSessionMessages(chatId);
+    const matched = [...messages].reverse().find((message) => {
+      if (attachment.messageId) return message.messageId === attachment.messageId;
+      return message.role === 'user' && message.content.includes(attachment.fileUrl);
+    });
+
+    if (!matched) {
+      return {
+        fileUrl: attachment.fileUrl,
+        messageId: attachment.messageId,
+        imageOriginal: false,
+      };
+    }
+    if (matched.messageType !== StorageMessageType.IMAGE) {
+      return {
+        fileUrl: attachment.fileUrl,
+        messageId: matched.messageId,
+        imageOriginal: false,
+      };
+    }
+
+    const artworkUrl = this.normalizeText(matched.payload?.artworkUrl);
+    return {
+      fileUrl: artworkUrl,
+      messageId: matched.messageId,
+      imageOriginal: Boolean(artworkUrl),
+    };
   }
 
   /** 与图片描述链路相同：4 次、500ms×attempt 退避；只依赖 biz/message。 */

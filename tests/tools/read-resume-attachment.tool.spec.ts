@@ -47,11 +47,21 @@ describe('buildReadResumeAttachmentTool', () => {
     '女 | 24岁',
   ].join('\n');
   const messageWriteback = jest.fn().mockResolvedValue(true);
+  const resolveReadTarget = jest.fn(async (attachment: ResumeAttachment) => ({
+    fileUrl: attachment.fileUrl,
+    messageId: attachment.messageId,
+    imageOriginal: true,
+  }));
   const llm = {} as LlmExecutorService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     messageWriteback.mockResolvedValue(true);
+    resolveReadTarget.mockImplementation(async (attachment: ResumeAttachment) => ({
+      fileUrl: attachment.fileUrl,
+      messageId: attachment.messageId,
+      imageOriginal: true,
+    }));
     global.fetch = jest.fn().mockResolvedValue(response(Buffer.from('%PDF-1.7 fake'))) as never;
     mockExtractPdfText.mockResolvedValue({
       text: resumeText,
@@ -107,9 +117,11 @@ describe('buildReadResumeAttachmentTool', () => {
         },
       },
     });
-    const built = buildReadResumeAttachmentTool(attachments, { llm, messageWriteback })(
-      context,
-    ) as ExecutableTool;
+    const built = buildReadResumeAttachmentTool(attachments, {
+      llm,
+      resolveReadTarget,
+      messageWriteback,
+    })(context) as ExecutableTool;
     const result = await built.execute(options?.input ?? {}, {
       toolCallId: 'test',
       context: {},
@@ -236,6 +248,56 @@ describe('buildReadResumeAttachmentTool', () => {
     });
     expect(image.result).toMatchObject({ success: true, sourceKind: 'vision_transcription' });
     expect(mockTranscribeImage).toHaveBeenCalled();
+  });
+
+  it('replaces a stale image marker URL with the verified artworkUrl', async () => {
+    const staleUrl = 'https://example.com/thumbnail-expired.jpg';
+    const artworkUrl = 'https://example.com/artwork-original.jpg';
+    resolveReadTarget.mockResolvedValueOnce({
+      fileUrl: artworkUrl,
+      messageId: 'message-image',
+      imageOriginal: true,
+    });
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(response(Buffer.from([0xff, 0xd8, 0xff, 0xdb]))) as never;
+
+    const { result } = await executeTool({
+      attachments: [{ fileUrl: staleUrl, fileName: '兮兮简历.jpg' }],
+    });
+
+    expect(result).toMatchObject({ success: true, fileUrl: artworkUrl });
+    expect(global.fetch).toHaveBeenCalledWith(artworkUrl, expect.any(Object));
+    expect(messageWriteback).toHaveBeenCalledWith(
+      'message-image',
+      expect.stringContaining(`简历附件：${artworkUrl}`),
+      expect.any(Object),
+    );
+  });
+
+  it('never falls back to a thumbnail when artworkUrl is unavailable', async () => {
+    resolveReadTarget.mockResolvedValueOnce({
+      fileUrl: null,
+      messageId: 'message-image',
+      imageOriginal: false,
+    });
+
+    const { result } = await executeTool({
+      attachments: [
+        {
+          fileUrl: 'https://example.com/thumbnail.jpg',
+          fileName: '兮兮简历.jpg',
+          messageId: 'message-image',
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      errorType: TOOL_ERROR_TYPES.READ_RESUME_DOWNLOAD_FAILED,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockTranscribeImage).not.toHaveBeenCalled();
   });
 
   it('switches to fallback rules when Extract fails', async () => {
