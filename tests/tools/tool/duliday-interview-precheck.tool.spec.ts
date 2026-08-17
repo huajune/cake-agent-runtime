@@ -1186,6 +1186,54 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.nextAction).toBe('ready_to_book');
   });
 
+  it('带单位后缀的 supplement label（身高(cm)/体重(kg)）应由标准字段兜底满足', async () => {
+    // badcase g6hmu2qw（chat 6a3ccb54…）：岗位把标签配成"身高(cm)"/"体重(kg)"，与
+    // checklist 标准字段"身高"/"体重"差一个单位后缀。候选人答案经 candidateHeight/
+    // candidateWeight 只进了标准字段，supplement label 永远拿不到值 ——
+    // 生产实测 01:31→08:13 近 7 小时、20+ 次 precheck，missingFields 恒含这两项。
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 801, interviewSupplement: '身高(cm)' },
+              { interviewSupplementId: 802, interviewSupplement: '体重(kg)' },
+            ],
+            fixedInterviewTimes: [
+              {
+                interviewDate: '2026-04-08',
+                interviewStartTime: '13:30',
+                interviewEndTime: '16:30',
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      requestedDate: '2026-04-08',
+      candidateName: '兮兮',
+      candidatePhone: '18271421690',
+      candidateAge: 21,
+      candidateInterviewTime: '后天下午',
+      candidateGender: '女',
+      candidateEducation: '大专',
+      candidateHasHealthCertificate: '有',
+      candidateIsStudent: 'false',
+      candidateHeight: 165,
+      candidateWeight: 50,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('身高(cm)');
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('体重(kg)');
+    expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
+  });
+
   it('紧急兼容：candidate 显式参数无需命中当前消息文本即可完成跨轮收资', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [

@@ -231,6 +231,13 @@ function getSupplementAnswerAliases(labelName: string): string[] {
   if (/身份/.test(labelName)) return ['身份', '是否学生'];
   if (/健康证类型/.test(labelName)) return ['健康证类型'];
   if (/健康证/.test(labelName)) return ['健康证情况', '有无健康证', '是否有健康证', '健康证'];
+  // 岗位后台常把单位写进标签名（"身高(cm)" / "体重（kg）"），与 checklist 标准字段
+  // "身高" / "体重" 差一个后缀就对不上：候选人答案经 candidateHeight/candidateWeight
+  // 只进了标准字段，supplement label 永远拿不到值，卡死 collect_fields。
+  // badcase g6hmu2qw（chat 6a3ccb54…，01:31→08:13 近 7 小时、20+ 次 precheck，
+  // missingFields 恒含 身高(cm)/体重(kg)）。
+  if (/身高/.test(labelName)) return ['身高'];
+  if (/体重/.test(labelName)) return ['体重'];
   // 工作经历类标签：岗位后台 labelName 常配成"近一段工作经历"，但 precheck 把它归一成
   // checklist 显示名"过往公司+岗位+年限"，Agent 也按显示名回答。两端名字不同会导致
   // getSupplementAnswerValue 取不到答案、字段一直留在 missingFields、卡死 collect_fields
