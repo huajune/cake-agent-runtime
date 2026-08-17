@@ -23,8 +23,13 @@ import type { RuleContradiction } from '../output-rule.types';
  * 文本」里都找不到时，才算凭空捏造。任一处能对上就放行。
  */
 
-/** 量化岗位事实的取值形态。捕获整段用于出处比对，不做语义解析。 */
-const JOB_FACT_EXTRACTORS: ReadonlyArray<{ kind: string; pattern: RegExp }> = [
+/**
+ * 量化岗位事实的取值形态。捕获整段用于出处比对，不做语义解析。
+ *
+ * `valueGroup` 指定用于出处比对的捕获组；缺省用 match[0] 整段。阶梯薪资那条必须用
+ * 捕获组：档位值常写成不带单位的裸数字（见下方注释）。
+ */
+const JOB_FACT_EXTRACTORS: ReadonlyArray<{ kind: string; pattern: RegExp; valueGroup?: number }> = [
   { kind: '距离', pattern: /\d+(?:\.\d+)?\s*(?:公里|km|KM|千米)/gu },
   { kind: '薪资', pattern: /\d+(?:\.\d+)?\s*元\s*\/\s*(?:小时|小?时|天|月)/gu },
   {
@@ -33,6 +38,20 @@ const JOB_FACT_EXTRACTORS: ReadonlyArray<{ kind: string; pattern: RegExp }> = [
   },
   { kind: '发薪日', pattern: /\d{1,2}\s*号\s*(?:发薪|发工资|结算)/gu },
   { kind: '年龄段', pattern: /\d{2}\s*[-—~～至]\s*\d{2}\s*岁/gu },
+  // 阶梯薪资档位值。上面的「薪资」形态锚在单位上（`元/时`），而模型列阶梯时**只在第一档
+  // 写单位、后续档位写裸数字**——「基础13.8元/时，做满40小时涨到14.3，满80小时14.8，
+  // 满120小时15.3」里只有 13.8 被捕获（且它恰好是真值，有出处、放行），14.3/14.8/15.3
+  // 三个虚构档位对本规则完全不可见，于是整条零硬规则命中、原样投递。
+  // 生产实证：chat 6a7d92ca… 08-13 17:50:14（本轮 tool_calls=[]），海绵探针显示达美乐
+  // `hasStairSalary="无阶梯薪资"`、`stairSalaries=null`，三档全属虚构。
+  // 反向对照（必须放行）：chat …ee582952 08-13 18:26 同样零查岗，但「做满40小时26元/时、
+  // 满80小时28元/时」带单位且上一轮工具结果已给出，出处比对能对上。
+  {
+    kind: '阶梯薪资档位',
+    pattern:
+      /(?:做满|满|超过|超|累计满|累计)\s*\d+\s*(?:个)?\s*小时(?:[^\d，,。；;！？\n]{0,8})(\d+(?:\.\d+)?)/gu,
+    valueGroup: 1,
+  },
 ];
 
 /** 无岗位证据时同样不可凭通识补齐的定性经验门槛。 */
@@ -413,11 +432,11 @@ export function detectJobFactsWithoutLookup(
     if (hasJobLookupEvidence) continue;
 
     const isInterviewContext = INTERVIEW_CONTEXT_PATTERN.test(sentence);
-    for (const { kind, pattern } of JOB_FACT_EXTRACTORS) {
+    for (const { kind, pattern, valueGroup } of JOB_FACT_EXTRACTORS) {
       // 面试语境里的时间段是面试时段而非班次，出处在 booking/precheck，不归本规则管。
       if (kind === '班次' && isInterviewContext) continue;
       for (const match of sentence.matchAll(pattern)) {
-        const fact = normalizeFact(match[0]);
+        const fact = normalizeFact(valueGroup === undefined ? match[0] : (match[valueGroup] ?? ''));
         if (!fact || evidence.includes(fact)) continue;
         return {
           ruleId: 'job_facts_without_any_lookup',

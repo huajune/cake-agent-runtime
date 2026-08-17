@@ -14,6 +14,21 @@ describe('detectJobFactsWithoutLookup', () => {
   const user = (content: string) => ({ role: 'user', content });
 
   describe('命中：本轮零岗位数据且数值无出处', () => {
+    // 生产实证 6a7d92ca 08-13 17:50:14（本轮 tool_calls=[]，零硬规则命中、原样投递）：
+    // 「基础13.8元/时」是真值且上一轮工具结果里有出处，会被正确放行；虚构的三个档位
+    // 14.3/14.8/15.3 写成**不带单位的裸数字**，锚在 `元/时` 上的「薪资」形态完全看不见。
+    // 海绵探针（08-17）实证达美乐 hasStairSalary="无阶梯薪资"、stairSalaries=null。
+    it('flags fabricated stair-salary tiers written as bare numerals', () => {
+      const hit = detectJobFactsWithoutLookup(
+        '这家是阶梯薪资，基础13.8元/时，做满40小时涨到14.3，满80小时14.8，满120小时15.3，累计工时按月重新算',
+        [],
+        [assistant('达美乐（容桂桂洲大道中）- 4.0km\n薪资：13.8元/时，综合0-110元/天')],
+      );
+      expect(hit).not.toBeNull();
+      expect(hit?.ruleId).toBe('job_facts_without_any_lookup');
+      expect(hit?.label).toContain('阶梯薪资档位');
+    });
+
     // 生产实证 6a66fb44 17:57：tool_calls 为空，投递门店名 + 日结 + 三个班次时段。
     it('flags shift times invented with no tool calls at all', () => {
       const hit = detectJobFactsWithoutLookup(
@@ -302,6 +317,22 @@ describe('detectJobFactsWithoutLookup', () => {
   });
 
   describe('放行：有出处或本轮拿到岗位数据', () => {
+    // 反向对照，必须放行：chat …ee582952 08-13 18:26 同样零查岗，但阶梯档位带单位、
+    // 且上一轮（18:19，n_tools=2）工具结果已给出同样的值。真实数据的跨轮复述不得被拦。
+    it('passes stair-salary tiers restated from the previous turn', () => {
+      expect(
+        detectJobFactsWithoutLookup(
+          '成都你六姐是时薪制，基础24元/时，做满40小时26元/时、满80小时28元/时',
+          [],
+          [
+            assistant(
+              '成都你六姐（西渡连城店），5.7km，晚班收档21:00-00:00，基础24元/时，满40小时26元/时、满80小时28元/时',
+            ),
+          ],
+        ),
+      ).toBeNull();
+    });
+
     it('passes when the turn actually got job data', () => {
       expect(
         detectJobFactsWithoutLookup('这家 24 元/时，离你 2.9 公里。', [
