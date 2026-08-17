@@ -285,12 +285,28 @@ export interface SummaryData {
  * 身份口径使用 wecomUserId；严禁复活旧聚合计数表形态。
  *
  * 硬纪律：本结构禁止新增业务字段；任何“顺手存一下面试时间/门店”的提案一律拒绝。
+ *
+ * 类型拆分（core-flow-review 议题 3-2，纯编译期标注、**JSONB 存储形态与运行时读写逻辑
+ * 逐字节不变**）：此前单个 interface 同时承担"列表项"与"状态根"两种角色且允许无限自嵌
+ * （`bookings?: ActiveBooking[]`），读代码时无法从类型分辨拿到的是条目还是整块状态。
  */
-export interface ActiveBooking {
+
+/** 列表项：一笔工单关系。JSONB 里 `bookings[]` 的元素形态。 */
+export interface ActiveBookingEntry {
   work_order_id: number;
   linked_at: string;
   job_id?: number | null;
-  bookings?: ActiveBooking[];
+}
+
+/**
+ * 状态根：`active_booking` 列的整体形态。
+ *
+ * 顶层 entry 字段是**最近一笔的镜像**，仅为兼容老行 JSONB 形态而写；
+ * `bookings` 才是全量列表。读侧一律经 normalizeActiveBookings 归并两者，
+ * 不要直接依赖顶层镜像。
+ */
+export interface ActiveBookingState extends ActiveBookingEntry {
+  bookings?: ActiveBookingEntry[];
 }
 
 export interface AgentLongTermMemoryRow {
@@ -301,7 +317,7 @@ export interface AgentLongTermMemoryRow {
   preference_facts?: LongTermPreferenceFacts | null;
   summary_data?: SummaryData | null;
   message_metadata?: MessageMetadata | null;
-  active_booking?: ActiveBooking | null;
+  active_booking?: ActiveBookingState | null;
   created_at: string;
   updated_at: string;
 }

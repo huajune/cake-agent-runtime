@@ -402,4 +402,53 @@ describe('SupabaseStore', () => {
       expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
     });
   });
+
+  // 议题 3-3：单数读 API 已删除，"最近一笔 = getActiveBookings()[0]" 由调用方直接依赖。
+  // 该等价关系此前只存在于 store 实现的约定里（getActiveBooking = bookings[0] ?? null），
+  // 这里在三种存量 JSONB 形态上把它锁死。
+  describe('getActiveBookings 的存量形态与"最近一笔=[0]"等价性（议题 3-3）', () => {
+    const readWith = async (activeBooking: unknown) => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValue({ data: { active_booking: activeBooking }, error: null });
+      return store.getActiveBookings('corp1', 'user1');
+    };
+
+    it('null 形态：返回空列表，[0] 为 undefined', async () => {
+      const bookings = await readWith(null);
+
+      expect(bookings).toEqual([]);
+      expect(bookings[0]).toBeUndefined();
+    });
+
+    it('老单笔形态（顶层字段、无 bookings）：唯一一笔即 [0]', async () => {
+      const bookings = await readWith({
+        work_order_id: 5001,
+        linked_at: '2026-04-15T00:00:00.000Z',
+        job_id: 900,
+      });
+
+      expect(bookings).toEqual([
+        { work_order_id: 5001, linked_at: '2026-04-15T00:00:00.000Z', job_id: 900 },
+      ]);
+    });
+
+    it('新列表形态：按 linked_at 倒序，[0] 是最近一笔且与顶层镜像去重', async () => {
+      const bookings = await readWith({
+        work_order_id: 5002,
+        linked_at: '2026-04-16T00:00:00.000Z',
+        job_id: 902,
+        bookings: [
+          { work_order_id: 5002, linked_at: '2026-04-16T00:00:00.000Z', job_id: 902 },
+          { work_order_id: 5001, linked_at: '2026-04-15T00:00:00.000Z', job_id: 900 },
+        ],
+      });
+
+      expect(bookings.map((booking) => booking.work_order_id)).toEqual([5002, 5001]);
+      expect(bookings[0]).toEqual({
+        work_order_id: 5002,
+        linked_at: '2026-04-16T00:00:00.000Z',
+        job_id: 902,
+      });
+    });
+  });
 });

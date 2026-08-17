@@ -18,6 +18,10 @@ import {
   detectRequestedBrandMismatch,
 } from './rules/brand-name-errors.rule';
 import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
+import {
+  detectBookingPromiseWithoutBooking,
+  detectHandoffPromiseWithoutAction,
+} from './rules/promise-reconciliation.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
 import { detectDateReferenceMismatch } from './rules/date-reference-mismatch.rule';
@@ -362,6 +366,18 @@ export class HardRulesService {
     const danglingPromise = detectDanglingReplyPromise(text, toolCalls);
     if (danglingPromise) {
       contradictions.push(this.withRulePolicy(danglingPromise));
+    }
+
+    // 承诺-动作对账（议题 7-1 / 9-4）：只检测、不改文本。handoff 承诺的补动作由
+    // turn-outcome 按 ruleId 挂 sideEffect 执行；报名承诺无法自动补，纯观测。
+    const handoffPromise = detectHandoffPromiseWithoutAction(text, toolCalls);
+    if (handoffPromise) {
+      contradictions.push(this.withRulePolicy(handoffPromise));
+    }
+
+    const bookingPromise = detectBookingPromiseWithoutBooking(text, toolCalls);
+    if (bookingPromise) {
+      contradictions.push(this.withRulePolicy(bookingPromise));
     }
 
     const brandAliasFuzzyMatchIgnored = detectBrandAliasFuzzyMatchIgnored(text, toolCalls);

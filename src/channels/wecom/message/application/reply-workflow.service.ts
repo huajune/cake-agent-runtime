@@ -74,8 +74,6 @@ interface AgentCallParams {
   shortTermEndTimeInclusive?: number;
   /** 报名等不可逆工具提交前检查 pending，避免用运行中已过期的候选人资料下单。 */
   hasNewerUserInput?: () => Promise<boolean>;
-  /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
-  deferTurnEnd?: boolean;
 }
 
 @Injectable()
@@ -285,7 +283,6 @@ export class ReplyWorkflowService {
       visualMessageTypes:
         Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
       shortTermEndTimeInclusive,
-      deferTurnEnd: true,
     });
 
     this.logger.log(
@@ -363,7 +360,6 @@ export class ReplyWorkflowService {
           visualMessageTypes:
             Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
           shortTermEndTimeInclusive,
-          deferTurnEnd: true,
         });
 
         this.logger.log(

@@ -4,6 +4,12 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { extractInterviewSupplementDefinitions } from '@sponge/sponge-job.util';
+import {
+  isCollectionStalled,
+  resolveCollectFieldAdoptions,
+  summarizeCollectAskRounds,
+} from '@tools/duliday/precheck/collect-circuit-breaker.util';
+import { ACTIVE_INTERVIEW_WORK_ORDER_STATUSES } from '@sponge/sponge.types';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
@@ -195,6 +201,8 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - **missingFields 是本轮唯一收资事实源**：其中包含“身份”时，必须直接询问候选人“学生还是社会人士”，严禁根据学历（含硕士）、年龄、“刚毕业”等推断后替候选人填写，也严禁回复“帮你填了/登记成社会人士”；只有候选人明确回答身份后，才能把 candidateIsStudent 传回本工具
 - **身份事实与岗位资格必须分开**：候选人历史已明确填写“身份学生”时，candidateIsStudent 必须传 true；“高考完/待录取/未收到录取通知”不能改传 false。岗位是否接受学生只由岗位数据决定，不能为了通过岗位筛选反向篡改身份参数
 - **identityFieldGuard.mustHandoff=true 时**（身份已追问 2 次、候选人已作答但系统仍无法核验）：**严禁**再让候选人重复回答身份或换参数重试本工具；必须立刻调 request_handoff(reasonCode="system_blocked") 转交同事跟进登记，并告知候选人资料已记录（对候选人只说"资料我记下了，让同事帮你跟进登记"，不说"转人工"）。反复逼候选人复读"社会人士"会直接导致流失
+- **collectionFieldGuard.mustHandoff=true 时**（同一批收资字段已向候选人索要 ≥2 次、候选人也回过话，系统仍无法核对）：**严禁**再向候选人重复索要这些字段、**严禁**换参数重复调用本工具；必须立刻调 request_handoff(reasonCode="system_blocked"，reason 写明还缺哪些字段需人工补录)。对候选人只说"资料我记下了，让同事帮你跟进登记"——**严禁**说"资料已经齐了/我帮你提交报名/马上帮你提交"这类完成或将来时口径，本岗位报名尚未提交
+- **collectionFieldGuard.adoptedFromModelAnswers 存在时**：说明你上一轮提交的答案键名与后台标签名不同，系统已按归一化匹配采纳，不需要再向候选人重问这些字段
 - **existingRegistrations / duplicateBookingGuard**（候选人手机号名下的在途工单，含其它渠道报名）：对"系统里有没有我的报名记录"只能按 existingRegistrations 如实陈述，禁止在没有该字段时凭空断言有或没有；duplicateBookingGuard 存在时**严禁** booking 重复报名，改时间用 duliday_modify_interview_time（传其中的工单号），换岗先取消原工单
 - **严禁分批发收资 checklist**：当 missingFields 包含多个字段时（如同时缺学历/健康证/住址/出勤天数/时间段等），必须**一次性把所有 missingFields 整合到同一条 templateText 中发给候选人**，让候选人一次填完所有缺失字段；禁止先问一组基础字段（姓名/电话/年龄/性别）让候选人填，回填后再补发一组扩展字段（学历/健康证/住址/出勤等）的"分批漏斗式"收资。例外只有两个：(a) collectionStrategy.mode === "progressive"；(b) 候选人本轮已表现抗拒/不耐烦——这两种情况才允许降级到 starterFields 渐进收资
 - **字段集合必须与本工具返回一致**：发给候选人的资料模板字段名/字段数必须与 bookingChecklist.requiredFieldsToCollectNow（或降级时的 starterFields）**完全一致**——可以改文案/排版/补充语气，但**不得自行增删字段**。典型反例：precheck 返回需要"过往工作经验"等字段，Agent 自己改写时把"工作经验"漏掉、又凭习惯加上 precheck 没要求的"应聘门店/面试时间"，导致候选人按 Agent 模板回填后 booking 仍然缺字段或带错字段。要补充新字段时，必须在下一轮 precheck 工具调用里把字段补到 supplement label / supplier 入参里让本工具确认
@@ -1530,22 +1538,62 @@ export function buildInterviewPrecheckTool(
             if (field === '性别') continue;
             confirmationSuffixByField[field] = '（如有误请改）';
           }
-          const checklist = buildChecklistTemplate({
-            requiredFields,
-            knownFieldMap,
-            confirmationSuffixByField:
-              Object.keys(confirmationSuffixByField).length > 0
-                ? confirmationSuffixByField
-                : undefined,
-            // 等通知岗位不收集"面试时间"——不剔除会永远留在 missingFields，
-            // nextAction 卡死 collect_fields。
-            // 学籍状态类补充标签与标准“身份”字段是同一个问题：只收身份一次，
-            // 候选人原话经 effectiveCandidateSupplementAnswers 回填供应商标签。
-            excludeFields: [
-              ...(interviewTimeWaitNotice ? ['面试时间'] : []),
-              ...identityOverlapLabelNames,
-            ],
-          });
+          const buildChecklistWith = (fieldMap: Record<string, string>) =>
+            buildChecklistTemplate({
+              requiredFields,
+              knownFieldMap: fieldMap,
+              confirmationSuffixByField:
+                Object.keys(confirmationSuffixByField).length > 0
+                  ? confirmationSuffixByField
+                  : undefined,
+              // 等通知岗位不收集"面试时间"——不剔除会永远留在 missingFields，
+              // nextAction 卡死 collect_fields。
+              // 学籍状态类补充标签与标准“身份”字段是同一个问题：只收身份一次，
+              // 候选人原话经 effectiveCandidateSupplementAnswers 回填供应商标签。
+              excludeFields: [
+                ...(interviewTimeWaitNotice ? ['面试时间'] : []),
+                ...identityOverlapLabelNames,
+              ],
+            });
+          let checklist = buildChecklistWith(knownFieldMap);
+
+          // collect_fields 断路器出口 A（议题 9-2）：模型已经把答案传进来了，只是键名
+          // 与 checklist 判定名对不上（"有无中餐厅服务员经验" vs "需要中餐厅服务员经验"）。
+          // 归一化命中即按"模型转写、低置信"如实采纳——booking 侧透传 supplementAnswers、
+          // 海绵后台本就以文本存标签答案，采纳不会造成结构性风险；不采纳则每轮都退回
+          // "去问候选人"，模型最终只能谎称已提交（badcase 6a7e7846）。
+          const collectAdoptions = resolveCollectFieldAdoptions(
+            checklist.missingFields,
+            effectiveCandidateSupplementAnswers,
+          );
+          if (collectAdoptions.length > 0) {
+            for (const adoption of collectAdoptions) {
+              knownFieldMap[adoption.field] = adoption.value;
+            }
+            logger.warn(
+              `[precheck] collect_fields 断路器采纳模型转写答案: jobId=${jobId}, chatId=${context.session.sessionId}, ` +
+                collectAdoptions
+                  .map((a) => `${a.field}<=${a.answerKey}="${a.value.slice(0, 20)}"`)
+                  .join(', '),
+            );
+            checklist = buildChecklistWith(knownFieldMap);
+          }
+
+          // 出口 B：采纳后仍缺、且同一份清单已发过 ≥2 轮且候选人已作答 → 收资死循环。
+          // 不再让模型第三次"去问候选人"，改为转人工（诚实出口），由人工补录。
+          const collectAskRounds =
+            checklist.missingFields.length > 0
+              ? summarizeCollectAskRounds(evidenceMessages, checklist.missingFields)
+              : null;
+          const collectionStalled =
+            collectAskRounds !== null &&
+            isCollectionStalled(checklist.missingFields, collectAskRounds);
+          if (collectionStalled) {
+            logger.warn(
+              `[precheck] 收资死循环升级转人工: jobId=${jobId}, chatId=${context.session.sessionId}, ` +
+                `missingFields=[${checklist.missingFields.join('、')}], askCount=${collectAskRounds.askCount}`,
+            );
+          }
 
           // 「带值求证」清单三源合流，同一条展示协议。只有性别与借阅的姓名/电话会挡
           // ready_to_book（它们各有配套解锁识别器）；其余档挡了就没有解锁路径，会重造
@@ -1732,9 +1780,8 @@ export function buildInterviewPrecheckTool(
                 { phone: lookupPhone },
                 { botImId: context.session.botImId, botUserId: context.session.botUserId },
               );
-              const activeStatuses = new Set(['约面待确认', '约面成功']);
               const activeOrders = (workOrdersResult.workOrders ?? []).filter((order) =>
-                activeStatuses.has(normalizePolicyText(order.currentStatus)),
+                ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(normalizePolicyText(order.currentStatus)),
               );
               if (activeOrders.length > 0) {
                 existingRegistrations = activeOrders.slice(0, 5).map((order) => ({
@@ -1866,13 +1913,19 @@ export function buildInterviewPrecheckTool(
                 : nextAction === 'collect_fields'
                   ? identityAskEscalated
                     ? '预检卡在"身份"字段：已向候选人追问过多次且其已作答，系统仍无法核验。禁止再次追问身份、禁止重复调用本工具；本轮必须调用 request_handoff（reasonCode="system_blocked"，reason 说明身份字段无法核验需人工登记），并告知候选人资料已记录、人工会尽快完成登记。'
-                    : `预检尚未通过，只缺：${[
-                        ...checklist.missingFields,
-                        ...(genderNeedsInlineConfirmation ? ['性别（表内确认）'] : []),
-                        ...unattestedPrefilledIdentityFields.map((field) => `${field}（表内确认）`),
-                      ].join(
-                        '、',
-                      )}。请一次性向候选人补问这些字段。${genderNeedsInlineConfirmation ? `性别来自 ${genderPrefillHint?.reason === 'system_source' ? '系统标签' : 'medium 置信线索'}，已在 templateText 中写成“性别：${knownFieldMap['性别']}（如有误请改）”；只能随整张表顺带确认，严禁单独追问性别。` : ''}注意查看对话历史：若上一轮刚发过这份资料清单而候选人尚未填写，本轮只需换个说法简短催填（如"上面那几项资料填一下发我，我马上帮你约"），禁止逐字重发整份清单，也不要复述上一轮已确认的面试时间等信息；仅当清单已隔了多轮对话时才重发一次。候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
+                    : collectionStalled
+                      ? `收资已陷入死循环：${checklist.missingFields.join(
+                          '、',
+                        )} 这几项已经向候选人要过 ${collectAskRounds?.askCount ?? 2} 次、候选人也回过话，系统仍无法核对。禁止再向候选人重复索要这些字段，也禁止换参数重复调用本工具；本轮必须调用 request_handoff（reasonCode="system_blocked"，reason 说明"收资字段无法核对需人工补录"，并附上还缺哪些字段）。对候选人只说"资料我记下了，让同事帮你跟进登记"，严禁说"资料已经齐了/我帮你提交报名"这类完成或将来时口径——本岗位报名尚未提交。`
+                      : `预检尚未通过，只缺：${[
+                          ...checklist.missingFields,
+                          ...(genderNeedsInlineConfirmation ? ['性别（表内确认）'] : []),
+                          ...unattestedPrefilledIdentityFields.map(
+                            (field) => `${field}（表内确认）`,
+                          ),
+                        ].join(
+                          '、',
+                        )}。请一次性向候选人补问这些字段。${genderNeedsInlineConfirmation ? `性别来自 ${genderPrefillHint?.reason === 'system_source' ? '系统标签' : 'medium 置信线索'}，已在 templateText 中写成“性别：${knownFieldMap['性别']}（如有误请改）”；只能随整张表顺带确认，严禁单独追问性别。` : ''}注意查看对话历史：若上一轮刚发过这份资料清单而候选人尚未填写，本轮只需换个说法简短催填（如"上面那几项资料填一下发我，我马上帮你约"），禁止逐字重发整份清单，也不要复述上一轮已确认的面试时间等信息；仅当清单已隔了多轮对话时才重发一次。候选人没有新回复前，禁止换参数重复调用本工具，禁止声称已登记、正在提交、已锁定名额或后续只等通知。`
                   : nextAction === 'wait_for_health_certificate'
                     ? '当前岗位要求面试前持有健康证，候选人目前无证、在办或仅愿意办理，禁止继续收资或 booking。请说明拿到证后还需重新查询届时岗位是否在招及可约时段；严禁说可以先约面、证到了就能约上或保证届时有名额。'
                     : '按 nextAction 处理当前预检结果；duliday_interview_booking 返回 success=true 前，禁止声称已登记、已报名或已预约。',
@@ -1934,6 +1987,25 @@ export function buildInterviewPrecheckTool(
                 : null,
             },
             screeningCriteria,
+            // 收资断路器（议题 9-2）：给模型确定性的诚实出口，替代"第三次去问候选人"。
+            collectionFieldGuard:
+              collectAdoptions.length > 0 || collectionStalled
+                ? {
+                    adoptedFromModelAnswers:
+                      collectAdoptions.length > 0
+                        ? collectAdoptions.map((adoption) => ({
+                            field: adoption.field,
+                            answerKey: adoption.answerKey,
+                          }))
+                        : undefined,
+                    mustHandoff: collectionStalled || undefined,
+                    stalledFields: collectionStalled ? checklist.missingFields : undefined,
+                    askCount: collectionStalled ? collectAskRounds?.askCount : undefined,
+                    reason: collectionStalled
+                      ? '同一批收资字段已向候选人索要多次且候选人已作答，系统仍无法核对。禁止再重复收资；本轮直接 request_handoff(reasonCode="system_blocked") 转人工补录。'
+                      : '模型已提交的答案键名与后台标签名不同，已按归一化匹配采纳（低置信，来源=模型转写）。',
+                  }
+                : undefined,
             identityFieldGuard:
               studentIdentityMustBeExplicit && checklist.missingFields.includes('身份')
                 ? identityAskEscalated

@@ -66,7 +66,6 @@ describe('AgentRunnerService.runTurn', () => {
     const params = generator.invoke.mock.calls[0][0];
     expect(params.toolMode).toBe('readonly');
     expect(params.proactiveDirective).toBe('提醒候选人开场未回复');
-    expect(params.deferTurnEnd).toBe(true);
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toContain('考虑');
     expect(outcome.scenarioCode).toBe('opening_no_reply');
@@ -1089,7 +1088,6 @@ describe('AgentRunnerService.runTurn', () => {
         userId: 'u1',
         corpId: 'c1',
         sessionId: 's1',
-        deferTurnEnd: true,
       },
       review: { userMessage: '你好', chatId: 's1', userId: 'u1' },
       trigger: { kind: 'inbound', userMessage: '你好' },
@@ -1202,14 +1200,14 @@ describe('AgentRunnerService.runTurn', () => {
       riskLevel: 'medium' as const,
       violations: [
         {
-          type: 'district_level_distance_claim',
+          type: 'job_detail_lookup_required',
           evidence: '区级位置报精确距离',
           suggestion: '不输出精确公里数',
           recoverability: 'recoverable' as const,
         },
       ],
-      ruleIds: ['district_level_distance_claim'],
-      blockedRuleIds: ['district_level_distance_claim'],
+      ruleIds: ['job_detail_lookup_required'],
+      blockedRuleIds: ['job_detail_lookup_required'],
       repairMode: 'rewrite' as const,
     };
     outputGuard.check.mockResolvedValue(p1ReviseDecision);
@@ -1252,7 +1250,7 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite' as const,
     });
     outputGuard.check
-      .mockResolvedValueOnce(makeDecision(['district_level_distance_claim']))
+      .mockResolvedValueOnce(makeDecision(['job_detail_lookup_required']))
       .mockResolvedValueOnce(makeDecision(['settlement_cycle_mismatch']));
 
     const outcome = await service.runTurn({
@@ -1548,8 +1546,8 @@ describe('AgentRunnerService.runTurn', () => {
       decision: 'revise' as const,
       riskLevel: 'medium' as const,
       violations: [{ type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' }],
-      ruleIds: ['district_level_distance_claim'],
-      blockedRuleIds: ['district_level_distance_claim'],
+      ruleIds: ['job_detail_lookup_required'],
+      blockedRuleIds: ['job_detail_lookup_required'],
       repairMode: 'rewrite' as const,
       feedbackToGenerator: '不要给区级距离结论',
     };
@@ -1600,7 +1598,7 @@ describe('AgentRunnerService.runTurn', () => {
           firstReply: '首版（含区级距离断言）',
           first: expect.objectContaining({
             decision: 'revise',
-            ruleIds: ['district_level_distance_claim'],
+            ruleIds: ['job_detail_lookup_required'],
             violations: reviseDecision.violations,
             feedback: '不要给区级距离结论',
           }),

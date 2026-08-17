@@ -206,8 +206,10 @@ export function getSupplementAnswerValue(
 /**
  * 从候选人最近填写的结构化表单中读取岗位补充字段。
  *
- * 仅接受 user 消息中独占一行的「字段名：非空值」，不从自然语言推断，也不读取
- * assistant 消息，防止把系统发出的空模板或岗位要求误当成候选人答案。
+ * 接受两种回填形态，都只读 user 消息、都要求**字段名命中 checklist label 或其别名**——
+ * 不从自然语言推断，也不读 assistant 消息，防止把系统发出的空模板或岗位要求误当成答案：
+ *  1. 独占一行的「字段名：非空值」（模板逐行回填）；
+ *  2. 顿号/逗号切段的一行流「字段名[：]值」（移动端粘贴常见形态，议题 9-3）。
  */
 export function extractSupplementAnswerFromMessages(
   messages: readonly unknown[] | undefined,
@@ -226,13 +228,61 @@ export function extractSupplementAnswerFromMessages(
       answers[match[1]] = match[2];
     }
 
-    const answer = getSupplementAnswerValue(answers, labelName);
+    const answer =
+      getSupplementAnswerValue(answers, labelName) ?? extractInlineFormAnswer(text, labelName);
     if (answer) return answer;
   }
 
   return null;
 }
 
+/** 一行流表单的切段符：顿号 / 中英文逗号 / 分号。 */
+const INLINE_FORM_SEGMENT_RE = /[、，,；;]+/u;
+
+/**
+ * 一行流表单解析（议题 9-3）。
+ *
+ * 候选人常把模板压成一行回填（"身高153、体重130、健康证情况（有/无）无"），逐行解析
+ * 一个字段都读不出来——badcase chat 6a7e7846 里 04:03 那条一行流表单给全了资料，
+ * 四轮 precheck 仍报同样四个字段缺失。
+ *
+ * 安全边界与逐行解析一致：只读 user 消息（调用方保证）、字段名必须归一化命中 label 或
+ * 其别名才采纳；数值型字段允许省略冒号（"身高153"），非数值必须带冒号，避免把
+ * "健康证要求" 这类岗位要求文本吸成答案。
+ */
+function extractInlineFormAnswer(text: string, labelName: string): string | null {
+  const candidateKeys = [labelName, ...getSupplementAnswerAliases(labelName)];
+  const normalizedCandidateKeys = new Set(candidateKeys.map(normalizeSupplementKey));
+
+  for (const rawSegment of text.split(INLINE_FORM_SEGMENT_RE)) {
+    // 段内先做与 key 同一套归一化（NFKC / 去空白 / 去括号注记 / 剥语气前缀），
+    // 这样 `健康证情况（有/无）无`、`有无本地健康证无`、`身高153` 都能与 label 前缀对齐。
+    const segment = normalizeSupplementKey(rawSegment);
+    if (!segment) continue;
+
+    for (const key of normalizedCandidateKeys) {
+      // 单字 key 会把任意句子吸成答案；与品牌脏别名同类风险，直接排除。
+      if (key.length < 2 || !segment.startsWith(key)) continue;
+      const value = normalizeText(segment.slice(key.length).replace(/^[：:＝=]+/u, ''));
+      // 值必须存在且短——一行流表单的字段值是「153」「无」「无经验」这类，
+      // 长文本说明这不是表单段而是自然语言句子，不采纳。
+      if (value && value.length <= INLINE_FORM_VALUE_MAX_CHARS) return value;
+    }
+  }
+
+  return null;
+}
+
+/** 一行流字段值长度上限；超过即判定为自然语言而非表单回填。 */
+const INLINE_FORM_VALUE_MAX_CHARS = 20;
+
+/**
+ * 真正的语义别名兜底（同一字段的不同说法，归一化对不上的那些）。
+ *
+ * 归一化匹配（normalizeSupplementKey）是主路径；这里只保留归一后仍不相等的语义别名
+ * （籍贯/户籍、健康证情况族、工作经历族等）。新加词形前先确认归一化确实覆盖不了——
+ * 补丁式别名表是本类死循环的历史成因。
+ */
 function getSupplementAnswerAliases(labelName: string): string[] {
   if (/出生日期|出生年月|生日/.test(labelName))
     return ['出生日期', '出生年月日', '出生年月', '生日'];
@@ -250,8 +300,34 @@ function getSupplementAnswerAliases(labelName: string): string[] {
   return [];
 }
 
-function normalizeSupplementKey(value: string): string {
-  return value.replace(/\s+/gu, '').trim();
+/** 括号注记：`（有/无）`、`(cm)`、`【选填】` 等——是展示装饰，不参与键名判定。 */
+const SUPPLEMENT_ANNOTATION_RE = /[（(【[][^）)】\]]*[)）】\]]/gu;
+
+/**
+ * 键名前缀语气词。岗位后台配的是"需要中餐厅服务员经验"，模型问候选人时会自然改写成
+ * "有无中餐厅服务员经验"——两端指的是同一个字段。只剥一层，避免"是否需要 X" 被剥空。
+ */
+const SUPPLEMENT_MODAL_PREFIX_RE = /^(?:是否有|是否|有无|是不是|需要|要求|能否|可否|请填写|填写)/u;
+
+/**
+ * 补充标签键名归一（判定用，非展示用）。
+ *
+ * NFKC 折叠 + 去空白 + 去括号注记 + 剥一层语气前缀。
+ *
+ * 病根（badcase chat 6a7e7846，2026-08-14）：此前只去空白做全等比对，于是
+ * 「模型按自己问出口的名字回填」与「后台配的名字」永远对不上——
+ * supplementAnswers 键 "有无中餐厅服务员经验" 命不中 label "需要中餐厅服务员经验"，
+ * 字段永远留在 missingFields，precheck 每轮都指示"请向候选人补问"，候选人答了 3 遍
+ * 之后模型只能谎称"资料已经齐了，我帮你提交报名"（booking 从未调用）。
+ * 手工别名表按族维护是补丁式的：每出现一个新词形就再卡死一次（6a2fac72 工作经历族
+ * 是同一个 bug 的上一例）。归一化匹配替代它成为主路径，别名表退为真正的语义别名兜底。
+ */
+export function normalizeSupplementKey(value: string): string {
+  const folded = value.normalize('NFKC').replace(/\s+/gu, '').trim();
+  const withoutAnnotations = folded.replace(SUPPLEMENT_ANNOTATION_RE, '');
+  const stripped = withoutAnnotations.replace(SUPPLEMENT_MODAL_PREFIX_RE, '');
+  // 剥空说明整个键名就是语气词（"是否"/"有无"），退回上一层保留可比对形态。
+  return stripped || withoutAnnotations || folded;
 }
 
 function isUserMessage(message: unknown): message is Record<string, unknown> {

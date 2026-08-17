@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
@@ -9,6 +10,8 @@ import type {
   TurnLedger,
   TurnLedgerSnapshot,
 } from '@shared-types/turn.types';
+
+const logger = new Logger('TurnLedger');
 
 export interface CreateTurnLedgerInput {
   ruleFacts?: RuleFactClaims | null;
@@ -74,10 +77,41 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     recordImageBrands(resolutions, meta) {
       imageBrandResolutions.push({ messageId: meta.messageId, resolutions: [...resolutions] });
     },
+    recordGeoResolution(input) {
+      ledger.recordGeocodeAnchor({
+        longitude: input.longitude,
+        latitude: input.latitude,
+        areaLevelQuery: input.areaLevelQuery,
+        areaName: input.areaName,
+        city: input.city,
+      });
+      const city = input.city?.trim();
+      if (!city) return;
+      ledger.recordCityAttestation({
+        city,
+        district: input.district?.trim() || null,
+        evidence: input.evidence ?? city,
+        source: input.source,
+      });
+    },
     recordGeocodeAnchor(anchor) {
       geocodeAnchors.push({ ...anchor });
     },
     recordCityAttestation(attestation) {
+      // 证据强度优先级（议题 4-2）：真实位置（定位分享）强于文本查询解析（geocode）。
+      // 同源异城维持 last-write-wins；异源且城市相同也照常覆盖（只是刷新 evidence）。
+      if (
+        cityAttestation &&
+        cityAttestation.source === 'location_share' &&
+        attestation.source === 'geocode_unique' &&
+        cityAttestation.city !== attestation.city
+      ) {
+        logger.warn(
+          `[ledger] 同轮城市确权冲突，保留定位分享城市: kept=${cityAttestation.city}, ` +
+            `suppressed=${attestation.city}（${attestation.evidence}）`,
+        );
+        return;
+      }
       cityAttestation = { ...attestation };
     },
     recordFetchedJobs(jobs) {

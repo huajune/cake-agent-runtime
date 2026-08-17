@@ -7,7 +7,7 @@ describe('buildRequestHandoffTool', () => {
   const interventionService = { dispatch: jest.fn() };
   const chatSessionService = { getChatHistory: jest.fn() };
   const sessionService = { getSessionState: jest.fn() };
-  const longTermService = { getActiveBooking: jest.fn() };
+  const longTermService = { getActiveBookings: jest.fn() };
   const handoffRecorder = { record: jest.fn() };
 
   const mockContext: ToolBuildContext = createToolContext({
@@ -37,7 +37,7 @@ describe('buildRequestHandoffTool', () => {
       { role: 'user', content: '找不到门店啊', timestamp: 1_700_000_000_000 },
     ]);
     sessionService.getSessionState.mockResolvedValue(null);
-    longTermService.getActiveBooking.mockResolvedValue(null);
+    longTermService.getActiveBookings.mockResolvedValue([]);
     handoffRecorder.record.mockResolvedValue(undefined);
     interventionService.dispatch.mockResolvedValue({
       dispatched: true,
@@ -64,7 +64,7 @@ describe('buildRequestHandoffTool', () => {
   });
 
   it('does NOT short-circuit on modify_appointment when no active_booking exists', async () => {
-    longTermService.getActiveBooking.mockResolvedValue(null);
+    longTermService.getActiveBookings.mockResolvedValue([]);
 
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,7 +83,7 @@ describe('buildRequestHandoffTool', () => {
   });
 
   it('uses a work order resolved earlier in the same turn when the current contact has no active_booking', async () => {
-    longTermService.getActiveBooking.mockResolvedValue(null);
+    longTermService.getActiveBookings.mockResolvedValue([]);
     const tool = buildTool(
       mergeToolContext(mockContext, { ledger: { jobs: { resolvedWorkOrderId: 450643 } } }),
     );
@@ -152,10 +152,9 @@ describe('buildRequestHandoffTool', () => {
   });
 
   it('returns a handoff sideEffect intent for outcome-layer dispatch', async () => {
-    longTermService.getActiveBooking.mockResolvedValue({
-      work_order_id: 5001,
-      linked_at: '2026-04-15T00:00:00Z',
-    });
+    longTermService.getActiveBookings.mockResolvedValue([
+      { work_order_id: 5001, linked_at: '2026-04-15T00:00:00Z' },
+    ]);
 
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -7,6 +7,7 @@ import {
 } from '../generator/tool-call-analysis';
 import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.service';
 import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
+import { HANDOFF_PROMISE_RECONCILIATION_RULE_ID } from '../guardrail/output/rules/promise-reconciliation.rule';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
 import type { SessionRef, TurnOutcome, TurnTrigger } from './agent-runner.types';
 import type {
@@ -274,6 +275,19 @@ export function classifyReviewedOutcome(
     };
   }
 
+  // 承诺-动作对账补动作（议题 7-1）：模型明确承诺了一次人工升级但本轮没有 handoff
+  // 动作。正确处置不是改写/拦掉文案（消灭承诺），而是补执行 handoff 让承诺成真——
+  // 文本原样投递，真人接续兑现。直接 enforce（用户 8-14 裁定，不设 shadow 期）。
+  const promiseReconciliation = result.outputDecision.ruleIds.includes(
+    HANDOFF_PROMISE_RECONCILIATION_RULE_ID,
+  )
+    ? buildPromiseReconciliationSideEffect({
+        sessionRef,
+        turnId: messageId ?? scenarioCode ?? sessionRef.sessionId,
+        replyPreview: text,
+      })
+    : undefined;
+
   return {
     kind: 'reply',
     reply: { text },
@@ -281,8 +295,41 @@ export function classifyReviewedOutcome(
     scenarioCode,
     runTurnEnd,
     ...metadata,
-    sideEffects: toolSideEffects,
+    sideEffects: promiseReconciliation
+      ? [...toolSideEffects, promiseReconciliation]
+      : toolSideEffects,
     outputGuardrail,
+  };
+}
+
+/**
+ * handoff 承诺-动作对账的补动作意图（议题 7-1）。
+ *
+ * 复用既有 `other` reasonCode，不新开底账分桶：对运营来说这就是一次普通的"需人工跟进"，
+ * 该做的动作与模型自发 handoff 完全一样；补动作与自发 handoff 的区分只有排障需要，
+ * 由 guardrail_review_records 的 handoff_promise_reconciliation ruleId 承担，
+ * 精确率回看查那里即可。
+ */
+function buildPromiseReconciliationSideEffect(params: {
+  sessionRef: SessionRef;
+  turnId: string;
+  replyPreview: string;
+}): GeneralHandoffSideEffectIntent {
+  return {
+    kind: 'general_handoff',
+    source: 'agent_tool',
+    alertLabel: '需人工跟进（已向候选人承诺）',
+    reasonCode: 'other',
+    reason:
+      '回复已向候选人承诺人工升级（我让/找同事确认、稍后联系你），但本轮没有成功的 request_handoff / raise_risk_alert。' +
+      `回复已原样发出，需真人接续兑现该承诺；replyPreview="${params.replyPreview.slice(0, 400)}"`,
+    actionAdvice:
+      '候选人已经收到"会有人来跟进"的承诺。请按承诺内容接手该会话；若判定无需人工，直接恢复托管即可。',
+    idempotencyKey: buildHandoffIdempotencyKey({
+      chatId: params.sessionRef.sessionId,
+      turnId: params.turnId,
+    }),
+    recordHandoff: true,
   };
 }
 

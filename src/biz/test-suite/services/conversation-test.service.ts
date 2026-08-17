@@ -603,7 +603,6 @@ export class ConversationTestService {
           scenario,
           strategySource: 'testing',
           disableFallbacks: true,
-          deferTurnEnd: true,
         }),
         this.turnTimeoutMs,
         `回归验证轮次执行超时: source=${source.id}, turn=${turn.turnNumber}`,

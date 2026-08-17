@@ -295,6 +295,44 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/rules/dangling-promise.rule.spec.ts',
   },
   {
+    id: 'handoff_promise_reconciliation',
+    // 8-14 用户裁定：直接 enforce，不设 shadow 期。action 保持 OBSERVE 是**形态**声明
+    // （文本原样放行、不进 repair），不是"只记录不动手"——命中即由 turn-outcome 挂
+    // 人工介入 sideEffect（暂停托管 + 飞书通知 + handoff_events）——运营侧就是一次普通
+    // 「需人工跟进」，不新开底账分桶。
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '回复明确承诺人工升级（我让/找同事确认、稍后联系你）但本轮无 handoff 动作时，补执行人工介入让承诺成真，文本不改。',
+    riskGoal:
+      '已下线的 handoff_promise_without_handoff 拦的是文案（消灭承诺），治错了方向：候选人要的是有人真的来接。' +
+      '下线后"承诺-动作对账"无人管（human_service_phrase_leak 只管人设露馅措辞、dangling_reply_promise 只观测裸查询承诺），纯靠生成侧提示词。',
+    exogenousSignal: '本轮 toolCalls 中是否存在成功的 request_handoff / raise_risk_alert。',
+    residualRisk:
+      '词形取最窄子集（第一人称、人设内的升级承诺），沿用原规则「不拦『具体以门店确认为准』类边界声明」的排除；' +
+      '刻意不收「转人工/人工客服」词形——那是 human_service_phrase_leak 的治理对象，出站前会被改写、候选人收不到，' +
+      '改写产物在二审仍被本规则接住，两条规则正交；' +
+      '隐含承诺（"这个我再看看"）不覆盖。假阳代价 = 一次不必要的暂停 + 真人被 ping，候选人无感知、无错误投递物；' +
+      '出现假阳簇再收词形，不预设开关。精确率事后按本 ruleId 从 guardrail_review_records 回看。',
+    verification: 'tests/agent/guardrail/output/rules/promise-reconciliation.rule.spec.ts',
+    feedbackToGenerator: '',
+  },
+  {
+    id: 'booking_promise_without_booking',
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P2,
+    description: '观察"我帮你提交报名"类将来时承诺后本轮并无成功 booking 的投递物。',
+    riskGoal:
+      '收资死循环把模型逼到谎称已提交（badcase chat 6a7e7846：四轮后说"资料已经齐了，我帮你提交报名"，booking 从未调用）。' +
+      'B-5 只拦完成时态、dangling_reply_promise 只管查询承诺，报名承诺两头都不管。',
+    exogenousSignal: '本轮 toolCalls 中的 duliday_interview_booking 结果与 precheck nextAction。',
+    residualRisk:
+      '报名动作无法自动补（precheck 未通过时不能替报），故出口不是补动作而是观测；' +
+      '完成时态归 B-5 不重复覆盖。9-2 断路器落地后此形态应趋零，指标用于验证 9-2 有效性。',
+    verification: 'tests/agent/guardrail/output/rules/promise-reconciliation.rule.spec.ts',
+    feedbackToGenerator: '',
+  },
+  {
     id: 'proactive_insurance_policy_mention',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,

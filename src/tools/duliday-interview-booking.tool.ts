@@ -23,11 +23,13 @@ import {
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { findLatestExplicitIdentityEvidence } from '@resolution/candidate/student-identity';
+import { stripTimeContextSuffix } from '@resolution/candidate/name';
+import { stripQuotedBlocks } from '@resolution/signal/markers';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
-import type { ActiveBooking } from '@memory/types/long-term.types';
+import type { ActiveBookingEntry } from '@memory/types/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/booking/job-booking.contract';
@@ -96,12 +98,12 @@ function pauseUserHostingAsync(
     });
 }
 
-function isRecentBooking(booking: ActiveBooking, now = Date.now()): boolean {
+function isRecentBooking(booking: ActiveBookingEntry, now = Date.now()): boolean {
   const linkedAtMs = Date.parse(booking.linked_at);
   return Number.isFinite(linkedAtMs) && now - linkedAtMs < BOOKING_DEDUP_WINDOW_MS;
 }
 
-function isSameBookingTarget(booking: ActiveBooking, jobId: number): boolean {
+function isSameBookingTarget(booking: ActiveBookingEntry, jobId: number): boolean {
   // 旧数据没有 job_id，无法判断是否同岗位；保守按重复处理，避免部署前遗留指针导致
   // 同一候选人短时间 Bull 重试穿透。新写入的数据会带 job_id，可支持多岗位报名。
   if (booking.job_id == null) return true;
@@ -116,6 +118,44 @@ function normalizePhoneDigits(value: string | null | undefined): string {
 interface BookingAuthorityFailure {
   missingEvidenceFields: string[];
   conflictingFields: string[];
+}
+
+/**
+ * 代报豁免轨（core-flow-review 议题 8-1）。
+ *
+ * 事故（badcase chat 6a4229f2，2026-08-14）：中介联系人一轮给两个人报同一岗位，
+ * 牛艳雪成功、王淼被姓名/电话一致性闸门拒——闸门以**会话级单一身份**做比对，
+ * 单人档案装不下第二人。产品裁定：同时服务多人是应该有的能力，不建子档案，
+ * 只把报名链路上"假设单一身份"的闸门改为**按调用自包含验证**。
+ *
+ * 防臆造保护不降级，只是把验证源从"会话档案单一身份"换成"候选人消息文本逐字锚定"：
+ * 姓名与手机号**都能**在本会话候选人消息里逐字找到，才按 candidate_quote 证据放行。
+ * 这正是 candidate_quote 证据的本义——对粘贴表单场景比档案匹配更强（档案只有一个人，
+ * 表单里两个人的姓名手机号都在原文里）。任一项找不到 → 回落原有会话档案一致性闸，
+ * 张冠李戴/示例回声防线原样保留。
+ */
+function isProxyBookingAnchoredInCandidateText(
+  context: ToolBuildContext,
+  payload: { name: string; phone: string },
+): boolean {
+  const name = payload.name?.trim() ?? '';
+  const phoneDigits = normalizePhoneDigits(payload.phone);
+  // 单字姓名/短号会把任意句子吸成"逐字命中"，不给豁免。
+  if (name.length < 2 || phoneDigits.length < 7) return false;
+
+  const candidateTexts = context.turnInput.corpusBlocks
+    ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks)
+    : extractCandidateTexts(context.turnInput.messages);
+  // 与既有 quote 验证同口径：剥引用块与消息时间后缀，防止把引用的经理名当自陈。
+  const normalizedTexts = candidateTexts.map((text) =>
+    stripQuotedBlocks(stripTimeContextSuffix(text)),
+  );
+
+  const nameAnchored = normalizedTexts.some((text) => text.includes(name));
+  const phoneAnchored = normalizedTexts.some((text) =>
+    normalizePhoneDigits(text).includes(phoneDigits),
+  );
+  return nameAnchored && phoneAnchored;
 }
 
 function validateBookingCandidateAuthority(
@@ -134,6 +174,10 @@ function validateBookingCandidateAuthority(
 ): BookingAuthorityFailure | null {
   // 生产 generator 始终注入该权威视图；直接工具单测/旧 debug 调用未注入时保持兼容。
   if (context.archive.bookingCandidateFacts === undefined) return null;
+
+  // 代报豁免轨优先：payload 的姓名与手机号都能在候选人消息文本中逐字找到，
+  // 说明本次调用自包含了这个人的身份证据，不需要它与会话单一身份一致。
+  if (isProxyBookingAnchoredInCandidateText(context, payload)) return null;
 
   const facts = context.archive.bookingCandidateFacts;
   const missingEvidenceFields: string[] = [];
@@ -1034,8 +1078,13 @@ export function buildInterviewBookingTool(
           );
           // 软查重按「企微联系人 + 岗位」定位，但一个企微号可能先后给不同的人报同一岗位
           // （工单 448367→448402 事故：罗欣宇约成功后，同会话给许颖约同岗位被误判重复）。
-          // 命中指针后再用 work_order_id 反查工单上的手机号：手机号不同 = 不同候选人，放行；
-          // 只有同手机号（或查不到工单手机号时保守处理）才判定为真正的重复提交。
+          // 命中指针后再用 work_order_id 反查工单上的手机号：手机号不同 = 不同候选人，放行。
+          //
+          // 议题 8-2（用户 8-14 裁定）：**查不到既有工单手机号时也放行**，交海绵仲裁。
+          // 原"查不到就保守判重"分支在 badcase chat 6a4229f2 里击穿了这条修复本身——
+          // 刚创建 8 分钟的工单海绵侧查不到手机号，手机号明确不同的王淼被误拦，
+          // 模型还据此向候选人编造了拒绝理由。真重复由海绵服务端同手机号同岗位约束兜底
+          // （Bull 重试必然同 phone，海绵会拒），不因放行而产生重复工单。
           let duplicateBooking = recentSameJobBooking;
           if (recentSameJobBooking?.work_order_id != null) {
             const existingWorkOrder = await spongeService
@@ -1043,7 +1092,13 @@ export function buildInterviewBookingTool(
               .catch(() => null);
             const existingPhone = normalizePhoneDigits(existingWorkOrder?.phone);
             const currentPhone = normalizePhoneDigits(phone);
-            if (existingPhone && currentPhone && existingPhone !== currentPhone) {
+            if (!existingPhone) {
+              logger.log(
+                `[booking] 近期同岗位 active_booking 查不到工单手机号，放行交海绵仲裁: ` +
+                  `chatId=${context.session.sessionId}, jobId=${jobId}, workOrderId=${recentSameJobBooking.work_order_id}`,
+              );
+              duplicateBooking = undefined;
+            } else if (currentPhone && existingPhone !== currentPhone) {
               logger.log(
                 `[booking] 近期同岗位 active_booking 手机号与本次不同，判定为不同候选人，放行: ` +
                   `chatId=${context.session.sessionId}, jobId=${jobId}, workOrderId=${recentSameJobBooking.work_order_id}`,
@@ -1072,7 +1127,11 @@ export function buildInterviewBookingTool(
                   'request_handoff(reasonCode="system_blocked")，reason 写明"候选人预约后补发简历，' +
                   `需人工将简历补传到工单 ${duplicateBooking.work_order_id}"。` +
                   '对候选人只说简历已收到、会帮他跟进，不要说简历已提交成功。'
-                : '该候选人近期已成功预约过这个岗位，不要对同一岗位重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；若候选人明确要报名另一个不同岗位，可以继续对新岗位走 precheck/booking。',
+                : '该候选人近期已成功预约过这个岗位，不要对同一岗位重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；若候选人明确要报名另一个不同岗位，可以继续对新岗位走 precheck/booking。' +
+                  '⚠️ 向候选人说明时只能说"系统显示近期已有一笔该岗位的报名记录"，' +
+                  '**不得自行推断或声称**手机号相同、该号已报过名、是同一个人等具体原因——' +
+                  '本工具只告诉你存在一笔既有工单（existingWorkOrderId），没有告诉你它属于谁、用的哪个手机号。' +
+                  '候选人质疑时调 request_handoff 转人工核实，不要坚持解释。',
               details: {
                 existingWorkOrderId: duplicateBooking.work_order_id,
                 ...(freshResumeThisTurn

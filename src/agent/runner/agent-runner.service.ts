@@ -205,9 +205,9 @@ export class AgentRunnerService {
    *   REPLAN、语义档裁决在 normalizeDecision 归一为 revise，本方法不再存在重进
    *   generator 的修复路径；历史语义见评估文档 §2.4。）
    *
-   * turn-end 语义：内部生成强制 `deferTurnEnd`（repair 产物复用首版的 runTurnEnd），确保被丢弃的首版不写记忆；最终采纳版的
-   * `runTurnEnd` 按调用方意图处理——调用方原本要自动收尾（未显式 defer）时，pass 即 fire-and-forget
-   * 触发、block 则丢弃（不写「对用户说过」记忆，呼应 HC-4）。
+   * turn-end 语义：生成结果上的 `runTurnEnd` 一律原样透传给调用方（repair 产物复用首版的
+   * 闭包），由调用方在投递结局已知后触发一次——被丢弃的首版因此不会写记忆。
+   * 「生成完就 fire-and-forget」的旧默认分支已随 deferTurnEnd 开关删除（议题 5-1）。
    *
    * **flag 关闭时**（默认）：守卫只跑 rule 档；可恢复 veto 会先进一次受控 repair。
    */
@@ -215,8 +215,7 @@ export class AgentRunnerService {
     params: GeneratorInvokeParams,
     ctx: ReviewContext,
   ): Promise<ReviewedRunResult> {
-    const wantDefer = params.deferTurnEnd === true;
-    const first = await this.generator.invoke({ ...params, deferTurnEnd: true });
+    const first = await this.generator.invoke(params);
 
     // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记（占全部回合 ~11%，2026-07-24 审计）：
     // 避免噪声进入 LLM 审查上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
@@ -224,7 +223,7 @@ export class AgentRunnerService {
     let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
     if (!firstText || firstSkipped) {
-      return this.finalizeReviewed(first, PASS_DECISION, false, wantDefer);
+      return this.finalizeReviewed(first, PASS_DECISION, false);
     }
 
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
@@ -270,7 +269,6 @@ export class AgentRunnerService {
         first,
         silencedDecision,
         false,
-        wantDefer,
         this.buildGuardrailTrace([firstStep], false, silencedDecision),
       );
     }
@@ -287,7 +285,6 @@ export class AgentRunnerService {
         first,
         decision,
         false,
-        wantDefer,
         this.buildGuardrailTrace([firstStep], false, decision),
       );
     }
@@ -386,7 +383,6 @@ export class AgentRunnerService {
           first,
           failOpenDecision,
           false,
-          wantDefer,
           this.buildGuardrailTrace(
             [firstStep, this.toGuardrailStep('revised', danglingStepDecision)],
             true,
@@ -409,7 +405,6 @@ export class AgentRunnerService {
         revised,
         emptyDecision,
         true,
-        wantDefer,
         this.buildGuardrailTrace(
           danglingRepair
             ? [firstStep, this.toGuardrailStep('revised', danglingStepDecision)]
@@ -448,7 +443,6 @@ export class AgentRunnerService {
         first,
         failOpenDecision,
         false,
-        wantDefer,
         this.buildGuardrailTrace(
           [firstStep, this.toGuardrailStep('revised', decision2)],
           true,
@@ -547,7 +541,6 @@ export class AgentRunnerService {
       finalResult,
       finalDecision,
       finalRevised,
-      wantDefer,
       this.buildGuardrailTrace(
         [firstStep, this.toGuardrailStep('revised', decision2)],
         true,
@@ -951,22 +944,10 @@ export class AgentRunnerService {
     result: GeneratorRunResult,
     decision: OutputGuardDecision,
     revised: boolean,
-    wantDefer: boolean,
     guardrailTrace?: GuardrailTurnTrace,
   ): ReviewedRunResult {
-    const blocked = decision.decision === 'block';
-    if (!wantDefer) {
-      // 调用方原本要自动收尾：pass→fire-and-forget 触发；block→只记用户侧
-      // （不投影助手轮次，不写"对用户说过"记忆，但保留本轮用户事实提取）。
-      void result.runTurnEnd?.(blocked ? { includeAssistantText: false } : undefined);
-      return {
-        ...result,
-        runTurnEnd: undefined,
-        outputDecision: decision,
-        revised,
-        guardrailTrace,
-      };
-    }
+    // runTurnEnd 一律透传：触发时机（含 block 时的 includeAssistantText=false）由
+    // TurnFinalizer 在投递结局已知后统一决定，runner 不再代为触发（议题 5-1）。
     return { ...result, outputDecision: decision, revised, guardrailTrace };
   }
 
@@ -981,8 +962,8 @@ export class AgentRunnerService {
   /**
    * 编排一个回合（渠道无关，不投递）。被动/主动复用同一接缝。
    *
-   * 主动回合默认 `toolMode:'readonly'`（物理禁副作用工具）+ `deferTurnEnd`（投递成功后
-   * 由调用方触发记忆收尾）。generator 抛错（含 memory 空历史）时：**主动**回合按 `skipped`
+   * 主动回合默认 `toolMode:'readonly'`（物理禁副作用工具）；记忆收尾统一由调用方在
+   * 投递成功后经 TurnFinalizer 触发。generator 抛错（含 memory 空历史）时：**主动**回合按 `skipped`
    * 收敛（不让 reengagement 调度因单个会话失败而崩），**被动 inbound** 则抛回渠道由
    * fallback 接管（不静默吞掉候选人正在等待的回复）。
    */
@@ -1066,7 +1047,6 @@ export class AgentRunnerService {
           : [{ role: 'user', content: PROACTIVE_TRIGGER_PLACEHOLDER }],
       toolMode: req.toolMode ?? (isProactive ? 'readonly' : 'scenario'),
       proactiveDirective: isProactive ? trigger.directive : undefined,
-      deferTurnEnd: true,
       scenario: context?.scenario,
       imageUrls: trigger.kind === 'inbound' ? trigger.images : undefined,
       imageMessageIds: context?.imageMessageIds,

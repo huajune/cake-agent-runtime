@@ -152,7 +152,7 @@ export class GeneratorAgent {
 
       result = await this.recoverEmptyTextResult(result, ctx, params);
 
-      this.attachTurnEnd(result, ctx, params.messageId, result.text, params.deferTurnEnd);
+      this.attachTurnEnd(result, ctx, params.messageId, result.text);
 
       return result;
     } catch (err) {
@@ -212,7 +212,13 @@ export class GeneratorAgent {
             stepEndWallclocks,
             toolExecutionTimings: ctx.toolExecutionTimings,
           });
-          this.attachTurnEnd(result, ctx, params.messageId, result.text, params.deferTurnEnd);
+          this.attachTurnEnd(result, ctx, params.messageId, result.text);
+          // stream 路径专项（议题 5-1 第 6 条）：SSE 交互测试链此前依赖 fire-and-forget
+          // 默认分支自动收尾。开关删除后由 stream 自己在挂上闭包后立即触发，
+          // 保持既有收尾行为不变（runTurnEnd 幂等，调用方再触发一次是空操作）。
+          void result
+            .runTurnEnd?.()
+            .catch((err) => this.logger.warn('流式回合记忆生命周期执行失败', err));
           if (params.onFinish) {
             Promise.resolve(params.onFinish(result)).catch((err) =>
               this.logger.warn('流式完成回调执行失败', err),
@@ -375,32 +381,25 @@ export class GeneratorAgent {
     );
   }
 
-  private dispatchTurnEndLifecycle(ctx: TurnEndLifecycleContext, assistantText?: string): void {
-    void this.runTurnEndLifecycle(ctx, assistantText).catch((err) =>
-      this.logger.warn('记忆生命周期执行失败', err),
-    );
-  }
-
   /**
-   * 根据 deferTurnEnd 决定是 fire-and-forget 立即触发，还是把触发器暴露给调用方。
+   * 把 turn-end 触发器挂到结果上，交给调用方在本轮结局定局时触发。
    *
-   * 延迟模式用于 replay：首次生成结果可能被后续合并消息丢弃，若立即触发
-   * projectAssistantTurn/extractFacts 会把「本应丢弃」的首次回复写进 session 记忆，
-   * 污染下一轮 recall。
+   * 延迟触发是**唯一语义**（`deferTurnEnd` 开关已删除，core-flow-review 议题 5-1）：
+   * 首次生成结果可能被后续合并消息丢弃（replay），也可能被出站守卫拦下或投递失败；
+   * 生成结束就 fire-and-forget 会把「本应丢弃 / 用户根本没看到」的回复写进 session 记忆，
+   * 污染下一轮 recall 与复聊判定。生产全路径本就 defer（invokeReviewed 恒强制、
+   * test-suite 两处显式传 true），保留的默认分支只是 PR #415 重构前的世界观残留。
+   *
+   * ⚠️ 代价：没有兜底了。新调用方忘记触发 runTurnEnd = 本轮记忆写入静默丢失。
+   * 契约写在 GeneratorRunResult.runTurnEnd 的注释里。
    */
   private attachTurnEnd(
     result: GeneratorRunResult,
     ctx: Omit<TurnEndLifecycleContext, 'messageId'>,
     messageId: string | undefined,
     assistantText: string,
-    deferTurnEnd: boolean | undefined,
   ): void {
     const lifecycleCtx = { ...ctx, messageId };
-    if (!deferTurnEnd) {
-      this.dispatchTurnEndLifecycle(lifecycleCtx, assistantText);
-      return;
-    }
-
     let consumed = false;
     result.runTurnEnd = async (opts?: {
       includeAssistantText?: boolean;

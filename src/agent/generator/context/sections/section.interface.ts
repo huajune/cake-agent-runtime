@@ -1,4 +1,4 @@
-import type { EntityExtractionResult, SessionFacts } from '@memory/types/session-facts.types';
+import type { SessionFacts } from '@memory/types/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
@@ -23,10 +23,25 @@ export interface PromptContext {
   currentTimeText?: string;
   /** 候选人意向城市的兼职群资源块；由 ContextService 预渲染。 */
   groupInventoryBlock?: string;
-  /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
-  sessionFacts?: EntityExtractionResult | SessionFacts | null;
+  /**
+   * 会话记忆中的已确认提取结果（**带信封的存储态**）；供 TurnHintsSection 做冲突比对、
+   * HardConstraintsSection 做置信度门取值。
+   *
+   * 只接受 SessionFacts：裸 EntityExtractionResult 在 unwrapSessionFacts 里会在置信度
+   * 比较**之前**原样返回，minConfidence 对它完全不生效——历史上联合类型让测试全走裸态
+   * 分支，置信度门从未被执行过（core-flow-review 议题 1-1）。生产链路本就只有
+   * `memory.sessionMemory?.facts`（SessionFacts）一条来源；测试用
+   * `tests/helpers/session-facts.fixture.ts` 的 sessionFactsOf() 构造。
+   */
+  sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
   ruleFacts?: RuleFactClaims | null;
+  /**
+   * 本轮候选人消息原文（逐条，与规则轨输入同源）。
+   * TurnHintsSection 用它判定 claim 的 quote 是否"就是整条当轮消息"——是且本轮只有一条
+   * 消息时省略渲染，避免逐字段把同一条消息重复注入（议题 2-1）。
+   */
+  currentTurnTexts?: readonly string[];
   /** 当前消息对用工形式的 set/clear/ignore 决策；用于区分撤销旧偏好与岗位事实问句。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态（currentBrand + excludedBrands，§9）；品牌提示的唯一数据源。 */

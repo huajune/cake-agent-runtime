@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 
 // 导入子服务
@@ -32,6 +33,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly workerManager: MessageWorkerManagerService,
     private readonly userHostingService: UserHostingService,
     private readonly deduplicationService: MessageDeduplicationService,
+    private readonly messageTracking: MessageTrackingService,
     private readonly configService: ConfigService,
   ) {
     this.drainTimeoutMs = parseInt(
@@ -283,6 +285,12 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
    *
    * 同时把每条 messageId 标记为已处理（与 historyOnly 路径对齐），避免回调
    * 重试时再次进入 debounce 队列。
+   *
+   * 并回收这批消息在 intake 时写下的 processing 流水（core-flow-review 议题 8-4）：
+   * 本批不会再进入 Agent，也就永远不会有终态回写，行会一直停在 processing 直到
+   * 03:00 UTC cron 标 timeout。这不影响候选人（本就该由真人接），但污染观测口径
+   * ——processing 被当作"真在处理"计数。复用聚合路径既有的回收语义（删除源行 +
+   * 扣减 activeRequests），不新增状态机。
    */
   private async dropIfHostingPaused(
     chatId: string,
@@ -314,6 +322,15 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
           }),
       ),
     );
+
+    await this.messageTracking
+      .dropMergedSourceRecords(
+        messages.map((message) => message.messageId),
+        String(jobId),
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(`[Bull][已暂停托管] 回收 processing 流水失败: ${toErrorMessage(error)}`);
+      });
     return true;
   }
 

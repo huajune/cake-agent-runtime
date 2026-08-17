@@ -106,7 +106,7 @@ describe('booking 报名级字段终审与姓名作证（P11 工序 D3/E2）', (
       {
         writeFromBooking: jest.fn().mockResolvedValue(undefined),
         setActiveBooking: jest.fn().mockResolvedValue(undefined),
-        getActiveBooking: jest.fn().mockResolvedValue(null),
+        
         getActiveBookings: jest.fn().mockResolvedValue([]),
       } as never,
       { recordEvent: jest.fn().mockResolvedValue(undefined) } as never,

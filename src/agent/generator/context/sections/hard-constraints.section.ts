@@ -76,9 +76,12 @@ export class HardConstraintsSection implements PromptSection {
    * 高置信覆盖旧值"，本段若取"旧值优先、本轮仅补缺"——prompt 与工具就会对同一字段
    * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
    * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
+   *
+   * 入参只接受 SessionFacts（带信封的存储态）：裸 EntityExtractionResult 会绕过
+   * unwrapSessionFacts 的 minConfidence 比较，下面这道 high 门对它形同虚设（议题 1-1）。
    */
   private mergeFacts(
-    sessionFacts: EntityExtractionResult | SessionFacts | null,
+    sessionFacts: SessionFacts | null,
     ruleFacts: RuleFactClaims | null,
     currentLaborFormIntent: PromptContext['currentLaborFormIntent'],
   ): { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null {

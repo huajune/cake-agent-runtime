@@ -12,7 +12,8 @@ import type {
   SummaryEntry,
   MessageMetadata,
   AgentLongTermMemoryRow,
-  ActiveBooking,
+  ActiveBookingEntry,
+  ActiveBookingState,
   LongTermPreferenceFacts,
 } from '../types/long-term.types';
 import {
@@ -69,7 +70,7 @@ function normalizePreferenceFacts(
   return Object.keys(facts).length > 0 ? facts : null;
 }
 
-function normalizeActiveBookingEntry(value: unknown): ActiveBooking | null {
+function normalizeActiveBookingEntry(value: unknown): ActiveBookingEntry | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
   const workOrderId =
@@ -95,10 +96,10 @@ function normalizeActiveBookingEntry(value: unknown): ActiveBooking | null {
   };
 }
 
-function normalizeActiveBookings(value: unknown): ActiveBooking[] {
+function normalizeActiveBookings(value: unknown): ActiveBookingEntry[] {
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
   const entries = [...(Array.isArray(raw?.bookings) ? raw.bookings : []), value];
-  const byWorkOrder = new Map<number, ActiveBooking>();
+  const byWorkOrder = new Map<number, ActiveBookingEntry>();
 
   for (const entry of entries) {
     const booking = normalizeActiveBookingEntry(entry);
@@ -117,13 +118,18 @@ function normalizeActiveBookings(value: unknown): ActiveBooking[] {
   });
 }
 
-function buildActiveBookingState(bookings: ActiveBooking[]): ActiveBooking | null {
+/**
+ * 组装 active_booking 列：顶层是最近一笔的镜像（老行 JSONB 形态兼容），bookings 是全量列表。
+ *
+ * 入参恒为 normalizeActiveBookingEntry 产出的三字段对象，原实现里那次
+ * `.map(({ bookings: _bookings, ...b }) => b)` 剥离在运行时必然是恒等映射；
+ * 类型拆分后 ActiveBookingEntry 已不含 bookings，剥离随之成为死代码（议题 3-2，
+ * 落库 JSONB 逐字节不变）。
+ */
+function buildActiveBookingState(bookings: ActiveBookingEntry[]): ActiveBookingState | null {
   const [latest, ...rest] = bookings;
   if (!latest) return null;
-  return {
-    ...latest,
-    bookings: [latest, ...rest].map(({ bookings: _bookings, ...booking }) => booking),
-  };
+  return { ...latest, bookings: [latest, ...rest] };
 }
 
 /**
@@ -389,14 +395,13 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== active_booking 操作 ====================
 
-  /** 读取候选人当前有效/待处理预约工单指针。 */
-  async getActiveBooking(corpId: string, userId: string): Promise<ActiveBooking | null> {
-    const bookings = await this.getActiveBookings(corpId, userId);
-    return bookings[0] ?? null;
-  }
-
-  /** 读取候选人当前有效/待处理预约工单列表。 */
-  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBooking[]> {
+  /**
+   * 读取候选人当前有效/待处理预约工单列表（按 linked_at 倒序，[0] 即最近一笔）。
+   *
+   * 单数读 API 已于议题 3-3 删除：它的实现本就是 `bookings[0] ?? null`，
+   * 语义关系只存在于实现约定里。需要"最近一笔"的调用方直接取 [0]。
+   */
+  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
     const row = await this.getRow(corpId, userId);
     return normalizeActiveBookings(row?.active_booking ?? null);
   }
@@ -406,10 +411,10 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     workOrderId: number,
-    metadata?: Pick<ActiveBooking, 'job_id'>,
+    metadata?: Pick<ActiveBookingEntry, 'job_id'>,
   ): Promise<void> {
     const existing = await this.getActiveBookings(corpId, userId);
-    const activeBooking: ActiveBooking = {
+    const activeBooking: ActiveBookingEntry = {
       work_order_id: workOrderId,
       linked_at: new Date().toISOString(),
       job_id: metadata?.job_id ?? null,

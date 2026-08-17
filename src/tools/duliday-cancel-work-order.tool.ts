@@ -11,7 +11,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import type { FailureReasonItem } from '@sponge/sponge.types';
+import { SELF_CANCEL_BLOCKED_STATUSES, type FailureReasonItem } from '@sponge/sponge.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -196,9 +196,7 @@ export function buildCancelWorkOrderTool(
           const workOrder = await spongeService.getWorkOrderById(workOrderId, tokenContext);
           const currentStatus = workOrder?.currentStatus ?? '';
           const interviewPassed = Boolean(workOrder?.interviewPassTime);
-          const statusBlocked = ['面试成功', '上岗失败', '上岗成功', '已离职'].includes(
-            currentStatus,
-          );
+          const statusBlocked = SELF_CANCEL_BLOCKED_STATUSES.has(currentStatus);
           if (interviewPassed || statusBlocked) {
             logger.warn(
               `取消拦截（工单状态不可自助取消）: chatId=${chatId}, workOrderId=${workOrderId}, status=${currentStatus}, interviewPassTime=${workOrder?.interviewPassTime ?? '-'}`,

@@ -125,7 +125,7 @@ export interface TurnOutcome {
    */
   sideEffects?: TurnSideEffectIntent[];
   /**
-   * deferTurnEnd 时暴露给调用方，投递成功后显式触发记忆收尾。
+   * 暴露给调用方，投递结局已知后显式触发一次记忆收尾（被 TurnFinalizer 接管后置空）。
    * `includeAssistantText=false`（默认 true）：回复未真实送达（守卫拦截/沉默/投递失败）时，
    * 只记用户侧记忆，不投影助手轮次。
    */

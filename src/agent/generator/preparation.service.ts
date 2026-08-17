@@ -24,11 +24,7 @@ import type { WeworkSessionState } from '@memory/types/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { ContextService } from './context/context.service';
 import { PromptInjectionService } from '../guardrail/input/prompt-injection.service';
-import {
-  type GeneratorInputMessage,
-  type GeneratorInvokeParams,
-  type AgentMemorySnapshot,
-} from '../generator/generator.types';
+import { type GeneratorInvokeParams, type AgentMemorySnapshot } from '../generator/generator.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { CRITICAL_TURN_GUARD_RULES } from './preparation-utils/critical-turn-guard.rules';
 import {
@@ -38,16 +34,13 @@ import {
   type TurnStartMemory,
 } from './preparation-utils/memory-block.formatter';
 import {
+  extractTextFromContent,
   normalizeConversationWithCorpus,
   trailingUserContent,
   trailingUserMessages,
   truncateToCharBudget,
 } from './preparation-utils/conversation-normalizer';
-import {
-  buildProactiveDirective,
-  buildReviseNotice,
-  buildReviseUserDirective,
-} from './preparation-utils/revise-directives';
+import { buildProactiveDirective } from './preparation-utils/revise-directives';
 import { resolveToolsForMode, wrapToolsWithTiming } from './preparation-utils/tool-set.util';
 import { buildToolContext } from './preparation-utils/tool-context.builder';
 import { createTurnLedger } from './preparation-utils/turn-ledger';
@@ -91,7 +84,7 @@ export interface PreparedAgentContext {
  * 工具集构建 → 观测快照。
  *
  * 纯函数辅助层按职责拆在 preparation-utils/ 子目录：memory-block.formatter（记忆渲染）、
- * conversation-normalizer（消息归一化）、revise-directives（HC-1/主动回合指令）、
+ * conversation-normalizer（消息归一化）、revise-directives（主动回合指令）、
  * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）、
  * critical-turn-guard.rules（动态硬禁令规则表）。本类只保留需要 IO/DI 的编排逻辑。
  */
@@ -134,14 +127,11 @@ export class PreparationService {
     try {
       const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
       if (!regeo?.city?.trim()) return;
-      toolContext.ledger.recordGeocodeAnchor({
+      toolContext.ledger.recordGeoResolution({
         longitude: coords.longitude,
         latitude: coords.latitude,
         areaLevelQuery: false,
         areaName: null,
-        city: regeo.city.trim(),
-      });
-      toolContext.ledger.recordCityAttestation({
         city: regeo.city.trim(),
         district: regeo.district?.trim() || null,
         evidence: `定位分享逆解析：${regeo.formattedAddress || `${regeo.province}${regeo.city}${regeo.district}`}`,
@@ -188,7 +178,8 @@ export class PreparationService {
     // 会带视觉 sheet 对会话段重扫）。输入必须是逐条消息数组（PR #1000 评审 P0-1）：
     // 预 join 会让 `[图片消息]` 占位把整批消息拖进 identity:false 授权域、并击穿
     // 疑问号门等逐消息锚定判据。
-    const ruleFactsPromise = this.detectRuleFacts(trailingUserMessages(truncatedMessages));
+    const currentTurnTexts = trailingUserMessages(truncatedMessages);
+    const ruleFactsPromise = this.detectRuleFacts(currentTurnTexts);
 
     // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
     const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
@@ -265,6 +256,7 @@ export class PreparationService {
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       ruleFacts: memory.ruleFacts,
+      currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState: turnBrandContext.state,
       accountIdentity: {
@@ -325,24 +317,8 @@ export class PreparationService {
     );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
-    const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
-    const reviseNotice = buildReviseNotice(params);
+    const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, normalizedMessages);
     const proactiveDirective = buildProactiveDirective(params);
-
-    // HC-1 repair/revise 回合：重写指令同时追加为对话末尾的 user 消息。
-    // 只拼在超长 system 末尾时弱模型会无视它、把本轮当新对话重新规划任务
-    // （badcase batch_6a4790c7ce406a6aeee9c102：repair 模型重新计划查岗、
-    // 想调 geocode，工具已被物理移除，最终只发出一句悬空的"我帮你查下"）。
-    const reviseUserDirective = buildReviseUserDirective(params);
-    if (reviseUserDirective) {
-      normalizedMessages.push({ role: 'user', content: reviseUserDirective });
-      conversationCorpusBlocks.push({
-        id: 'internal-revise-directive',
-        domain: 'teaching',
-        role: 'system',
-        content: reviseUserDirective,
-      });
-    }
 
     // 测试替身/旧调用方可能只返回 systemPrompt；生产 ContextService 始终给出逐块标签。
     const basePromptBlocks =
@@ -354,7 +330,6 @@ export class PreparationService {
       ...[
         this.createTeachingPromptBlock('input-guard', guardSuffix),
         this.createTeachingPromptBlock('critical-turn-guard', criticalTurnGuard),
-        this.createTeachingPromptBlock('revise-notice', reviseNotice),
         this.createTeachingPromptBlock('proactive-directive', proactiveDirective),
       ].filter((block) => block.content.length > 0),
     ];
@@ -399,15 +374,26 @@ export class PreparationService {
    * 这些规则不是替代主 prompt，而是把“当前消息已经命中”的禁令放到最后，
    * 避免模型在长上下文里先承认规则、最后又被阶段策略带回收资或预约。
    * 规则本体（badcase 驱动的正则 + 禁令文案）维护在 critical-turn-guard.rules.ts。
+   *
+   * `combined` 的近邻窗口取 **normalizedMessages**（含短期记忆窗口）而非 params.messages：
+   * WECOM 生产路径 runner 只构造一条当前 user 消息，完整历史由 memory 层加载进
+   * normalizedMessages——用 params.messages 时 combined ≡ current，4 条 target='combined'
+   * 的规则（health_cert_is_not_major / post_interview_no_rebook /
+   * salary_account_no_fabricated_policy / location_reference_needs_grounding）在生产只剩
+   * "候选人单轮消息内命中全部 patterns"一种触发方式，其文案自证依赖的跨轮场景
+   * （"即使历史助手说过专业不符"、"近邻上下文显示候选人已在面试"）全部漏过，
+   * 而 test-suite/debug 传完整历史时按设计工作——测试覆盖的语义 ≠ 生产语义
+   * （core-flow-review 议题 6-1）。test-suite/debug 行为不变：其 normalizedMessages
+   * 与 params.messages 同源。
    */
   private buildCriticalTurnGuard(
     currentUserMessage: string | undefined,
-    messages: GeneratorInputMessage[],
+    messages: readonly ModelMessage[],
   ): string {
     const current = currentUserMessage ?? '';
     const recent = messages
       .slice(-12)
-      .map((message) => `${message.role}: ${message.content ?? ''}`)
+      .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
       .join('\n');
     const combined = `${recent}\n${current}`;
 

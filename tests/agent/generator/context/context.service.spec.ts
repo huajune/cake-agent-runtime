@@ -6,6 +6,7 @@ import {
   type PromptSection,
 } from '@agent/generator/context/sections/section.interface';
 import { SCENARIO_SECTIONS } from '@agent/generator/context/scenarios/scenario.registry';
+import { cityFixture, sessionFactsOf } from '../../../helpers/session-facts.fixture';
 
 describe('ContextService', () => {
   const makeConfig = (): StrategyConfigRecord =>
@@ -302,37 +303,7 @@ describe('ContextService', () => {
     const { systemPrompt, promptBlocks } = await service.compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
-      sessionFacts: {
-        interview_info: {
-          name: null,
-          phone: null,
-          gender: null,
-          age: null,
-          applied_store: null,
-          applied_position: null,
-          interview_time: null,
-          is_student: null,
-          education: null,
-          has_health_certificate: null,
-        },
-        preferences: {
-          brands: null,
-          salary: null,
-          position: null,
-          schedule: null,
-          city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
-          district: null,
-          location: null,
-          labor_form: null,
-          delayed_intent: null,
-          short_term: null,
-          open_position: null,
-          time_windows: null,
-          schedule_constraint: null,
-          available_after: null,
-        },
-        reasoning: '',
-      },
+      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
     });
 
     expect(systemPrompt).toContain('## 兼职群资源（上海）');
@@ -353,6 +324,20 @@ describe('ContextService', () => {
     const { systemPrompt } = await service.compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
+    });
+
+    expect(systemPrompt).not.toContain('## 兼职群资源');
+    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+  });
+
+  // 议题 1-2：兼职群资源块会输出「本城市群库为空 → 禁止承诺拉群」这类有行为后果的指令，
+  // 取值必须与硬约束段同门（high）。此前直读 .value 绕过置信度门，导致 prompt 里出现
+  // 硬约束段根本没有的城市。
+  it('should skip group inventory block when the city confidence is below the hard-constraint gate', async () => {
+    const { systemPrompt } = await service.compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海', 'medium') } }),
     });
 
     expect(systemPrompt).not.toContain('## 兼职群资源');

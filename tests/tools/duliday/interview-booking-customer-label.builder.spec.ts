@@ -391,4 +391,117 @@ describe('buildCustomerLabelList', () => {
       expect(result.missingSupplementLabels).toEqual(['上传简历']);
     });
   });
+
+  // 议题 9-1：键名归一化双向匹配。手工别名表按族维护是补丁式的——每出现一个新词形就
+  // 再卡死一次（badcase chat 6a7e7846 / 6a4229f2 / 6a2fac72 是同一个 bug 的三例）。
+  describe('补充标签键名归一化匹配（议题 9-1）', () => {
+    it('matches a modal-prefix paraphrase against the backend label（本案回归）', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('需要中餐厅服务员经验')],
+          // 模型按自己问出口的名字回填，与后台配的名字不同
+          supplementAnswers: { 有无中餐厅服务员经验: '无' },
+        }),
+      );
+
+      expectSuccess(result);
+      expect(result.customerLabelList[0]).toMatchObject({
+        labelName: '需要中餐厅服务员经验',
+        value: '无',
+      });
+    });
+
+    it('matches across 是否有 / 有无 / 需要 prefixes and bracket annotations', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('有无本地健康证'), def('身高(cm)')],
+          supplementAnswers: { 是否有本地健康证: '有', '身高（cm）': '165' },
+        }),
+      );
+
+      expectSuccess(result);
+      expect(result.customerLabelList.map((label) => label.value)).toEqual(['有', '165']);
+    });
+
+    it('still keeps unrelated labels apart after normalization', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('需要中餐厅服务员经验')],
+          supplementAnswers: { 有无西餐厅服务员经验: '有' },
+        }),
+      );
+
+      expectFailure(result);
+      expect(result.missingSupplementLabels).toEqual(['需要中餐厅服务员经验']);
+    });
+  });
+
+  // 议题 9-3：一行流表单。候选人把模板压成一行顿号流回填，逐行解析读不出任何字段。
+  describe('一行流表单解析（议题 9-3）', () => {
+    const inlineForm = (content: string) =>
+      baseContext({
+        turnInput: {
+          messages: [{ role: 'user', content }],
+          corpusBlocks: [
+            { id: 'evidence-1', domain: 'evidence', role: 'user', content },
+          ],
+        },
+      });
+
+    it('parses a 顿号-separated single-line form（本案 04:03 原文形态）', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('身高(cm)'), def('体重(kg)'), def('健康证情况（有/无）')],
+          context: inlineForm('身高153、体重130、健康证情况（有/无）无'),
+        }),
+      );
+
+      expectSuccess(result);
+      expect(result.customerLabelList.map((label) => label.value)).toEqual(['153', '130', '无']);
+    });
+
+    it('accepts commas and colons in the same inline form', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('需要中餐厅服务员经验')],
+          context: inlineForm('学历大专，需要中餐厅服务员经验：有一年'),
+        }),
+      );
+
+      expectSuccess(result);
+      expect(result.customerLabelList[0].value).toBe('有一年');
+    });
+
+    it('does not absorb job-requirement prose as an answer', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('需要中餐厅服务员经验')],
+          context: inlineForm('这个岗位需要中餐厅服务员经验吗，我没做过餐饮不知道行不行'),
+        }),
+      );
+
+      expectFailure(result);
+      expect(result.missingSupplementLabels).toEqual(['需要中餐厅服务员经验']);
+    });
+
+    it('does not read the inline form out of an assistant message', () => {
+      const content = '身高153、体重130';
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('身高(cm)')],
+          context: baseContext({
+            turnInput: {
+              messages: [{ role: 'assistant', content }],
+              corpusBlocks: [
+                { id: 'evidence-1', domain: 'evidence', role: 'assistant', content },
+              ],
+            },
+          }),
+        }),
+      );
+
+      expectFailure(result);
+      expect(result.missingSupplementLabels).toEqual(['身高(cm)']);
+    });
+  });
 });

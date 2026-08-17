@@ -284,24 +284,20 @@ function recordResolvedAnchor(
 ): void {
   if (!Number.isFinite(c.longitude) || !Number.isFinite(c.latitude)) return;
   const { areaLevelQuery, areaName } = resolveAreaLevelAnchor(queryAddress, c);
-  context.ledger.recordGeocodeAnchor({
+  // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
+  // unique 解析即城市确认，暂存 ledger 供回合收尾写 pref.city，让 invite 城市门
+  // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
+  // anchor 与 attestation 的成对写入由 recordGeoResolution 统一维护（议题 4-1）。
+  context.ledger.recordGeoResolution({
     longitude: c.longitude,
     latitude: c.latitude,
     areaLevelQuery,
     areaName,
     city: c.city || null,
+    district: c.district ?? null,
+    evidence: `geocode 唯一解析：${c.formattedAddress?.trim() || queryAddress?.trim() || c.city?.trim() || ''}`,
+    source: 'geocode_unique',
   });
-  // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
-  // unique 解析即城市确认，暂存 ledger 供回合收尾写 pref.city，让 invite 城市门
-  // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
-  if (c.city?.trim()) {
-    context.ledger.recordCityAttestation({
-      city: c.city.trim(),
-      district: c.district?.trim() || null,
-      evidence: `geocode 唯一解析：${c.formattedAddress?.trim() || queryAddress?.trim() || c.city.trim()}`,
-      source: 'geocode_unique',
-    });
-  }
 }
 
 function normalizeReferenceText(value: string): string {

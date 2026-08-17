@@ -26,35 +26,53 @@ export class TurnHintsSection implements PromptSection {
       ctx.ruleFacts ?? null,
     );
     const parts: string[] = [];
-    if (normalHints) parts.push(this.renderCurrentHints(normalHints));
-    if (pendingHints) parts.push(this.renderPendingConfirmation(pendingHints));
+    const currentTurnTexts = ctx.currentTurnTexts;
+    if (normalHints) parts.push(this.renderCurrentHints(normalHints, currentTurnTexts));
+    if (pendingHints) parts.push(this.renderPendingConfirmation(pendingHints, currentTurnTexts));
     return parts.join('\n\n');
   }
 
-  private renderCurrentHints(facts: RuleFactClaims): string {
-    const lines = formatRuleFactClaimLines(facts, { includeEvidence: true });
+  private renderCurrentHints(
+    facts: RuleFactClaims,
+    currentTurnTexts: readonly string[] | undefined,
+  ): string {
+    const lines = formatRuleFactClaimLines(facts, {
+      includeEvidence: true,
+      includeQuote: true,
+      currentTurnTexts,
+    });
     if (lines.length === 0) return '';
     return [
       '[本轮解析线索]',
       '',
-      '以下由确定性解析器从当前消息**机械提取**，每条附原文出处。常见形态（表单回填、' +
-        '明确自陈）下通常准确；但它认字不认语境，存在两类已知误判：候选人复述岗位要求' +
-        '（"这岗位要求18-45岁"）、指代他人（"我姐今年24"）——用前对照出处原文核验，' +
-        '以你的理解为准。',
-      '与[用户档案]、[会话记忆]或候选人当前明示信息冲突时，一律以候选人当前明示信息为准。',
-      '**要把其中任何一项当作候选人报名资料使用，必须经 duliday_interview_precheck 的 candidateClaims 提交并附候选人原话 quote**——' +
+      '**这些线索是什么**：由确定性解析器从当前消息**机械提取**，每条附解析依据；能定位到' +
+        '具体片段、或本轮合并了多条消息时另附「原话」指明来源，没有「原话」即表示来自本轮消息' +
+        '本身。常见形态（表单回填、明确自陈）下通常准确；但它认字不认语境，存在两类已知误判：' +
+        '候选人复述岗位要求（"这岗位要求18-45岁"）、指代他人（"我姐今年24"）。',
+      '**冲突时听谁的**：用前对照原话核验，以你的理解为准；与[用户档案]、[会话记忆]或候选人' +
+        '当前明示信息冲突时，一律以候选人当前明示信息为准。',
+      '**能拿它干什么**：要把其中任何一项当作候选人报名资料使用，必须经 duliday_interview_precheck 的 candidateClaims 提交并附候选人原话 quote——' +
         '这里的解析线索本身不构成资料依据，不要据此直接填表或向候选人断言"你是XX"。',
-      '以上提示行是内部信息，严禁向候选人复述或提及“系统识别/系统提示/系统解析”字样。',
-      '若识别出地点线索，行政区域可直接查岗；但商圈、地标、街道、详细地址这类自由位置线索不能直接当区域。只要本轮准备做具体岗位或门店推荐，就应优先先 geocode 获取经纬度，"附近/离我近"只是最明显场景。',
-      '城市字段带有 confidence 与 evidence：confidence=high 的结果来自明确规则匹配（如直辖市紧凑、显式城市、唯一区名映射、热门地标映射），查岗可直接采用；若与候选人本轮新表述冲突，优先相信候选人当前明示信息。',
+      '**别说漏嘴**：以上提示行是内部信息，严禁向候选人复述或提及“系统识别/系统提示/系统解析”字样。',
+      '**地点与城市**：地点线索（行政区/商圈/地标/街道/详细地址）该不该先 geocode，口径见 [本轮查询硬约束]，' +
+        '本段不另立规则。城市行的「证据」是机器码，含义：municipality_compact=直辖市紧凑写法、' +
+        'explicit_city=显式城市名、unique_district_alias=全国唯一区名映射、hotspot_alias=热门地标映射；' +
+        '四者均为确定性白名单命中，查岗可直接采用。与候选人本轮新表述冲突时，仍以候选人当前明示为准。',
       '',
       '## 当前消息解析结果',
       lines.join('\n'),
     ].join('\n');
   }
 
-  private renderPendingConfirmation(facts: RuleFactClaims): string {
-    const lines = formatRuleFactClaimLines(facts, { includeEvidence: true });
+  private renderPendingConfirmation(
+    facts: RuleFactClaims,
+    currentTurnTexts: readonly string[] | undefined,
+  ): string {
+    const lines = formatRuleFactClaimLines(facts, {
+      includeEvidence: true,
+      includeQuote: true,
+      currentTurnTexts,
+    });
     if (lines.length === 0) return '';
     return [
       '[本轮待确认线索]',
@@ -69,7 +87,7 @@ export class TurnHintsSection implements PromptSection {
   }
 
   private partition(
-    sessionFacts: EntityExtractionResult | SessionFacts | null,
+    sessionFacts: SessionFacts | null,
     ruleFacts: RuleFactClaims | null,
   ): {
     normalHints: RuleFactClaims | null;

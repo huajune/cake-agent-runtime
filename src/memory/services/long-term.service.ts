@@ -9,7 +9,7 @@ import type {
   SummaryData,
   SummaryEntry,
   MessageMetadata,
-  ActiveBooking,
+  ActiveBookingEntry,
   LongTermPreferenceFacts,
 } from '../types/long-term.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
@@ -261,20 +261,10 @@ export class LongTermService {
   // ==================== active_booking ====================
 
   /**
-   * 读取候选人当前有效/待处理预约工单指针。
+   * 读取候选人当前有效/待处理预约工单列表（按 linked_at 倒序，[0] 即最近一笔）。
    * Agent 上下文渲染 / request_handoff(modify_appointment) 守卫使用。
    */
-  async getActiveBooking(corpId: string, userId: string): Promise<ActiveBooking | null> {
-    try {
-      return await this.supabaseStore.getActiveBooking(corpId, userId);
-    } catch (error) {
-      this.logger.warn('获取 active_booking 失败', error);
-      return null;
-    }
-  }
-
-  /** 读取候选人当前有效/待处理预约工单列表。 */
-  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBooking[]> {
+  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
     try {
       return await this.supabaseStore.getActiveBookings(corpId, userId);
     } catch (error) {
@@ -290,7 +280,7 @@ export class LongTermService {
     corpId: string,
     userId: string,
     workOrderId: number,
-    metadata?: Pick<ActiveBooking, 'job_id'>,
+    metadata?: Pick<ActiveBookingEntry, 'job_id'>,
   ): Promise<void> {
     try {
       await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, metadata);

@@ -32,7 +32,7 @@ describe('resume booking flow', () => {
   const mockLongTermService = {
     writeFromBooking: jest.fn().mockResolvedValue(undefined),
     setActiveBooking: jest.fn().mockResolvedValue(undefined),
-    getActiveBooking: jest.fn().mockResolvedValue(null),
+    
     getActiveBookings: jest.fn().mockResolvedValue([]),
   };
 

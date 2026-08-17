@@ -149,9 +149,11 @@ export function buildRequestHandoffTool(
           });
         }
 
-        const activeBooking = await longTermService
-          .getActiveBooking(context.session.corpId, context.session.userId)
-          .catch(() => null);
+        // 最近一笔 = 列表首项（getActiveBookings 按 linked_at 倒序；议题 3-3 删除单数 API 后
+        // 由调用方直接取 [0]，语义不再藏在存储实现的约定里）。
+        const [activeBooking] = await longTermService
+          .getActiveBookings(context.session.corpId, context.session.userId)
+          .catch(() => []);
         const workOrderId =
           activeBooking?.work_order_id ?? context.ledger.jobs.resolvedWorkOrderId ?? null;
 

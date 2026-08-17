@@ -52,6 +52,10 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   dangling_reply_promise:
     'agent/guardrail/output/rules/dangling-promise.rule.ts（HardRulesService 调度）',
+  handoff_promise_reconciliation:
+    'agent/guardrail/output/rules/promise-reconciliation.rule.ts（HardRulesService 检测 + turn-outcome 补动作）',
+  booking_promise_without_booking:
+    'agent/guardrail/output/rules/promise-reconciliation.rule.ts（HardRulesService 调度）',
   discriminatory_screening_leak:
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   sensitive_origin_probe:

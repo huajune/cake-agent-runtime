@@ -42,7 +42,6 @@ describe('PreparationService', () => {
   };
 
   const mockLongTermService = {
-    getActiveBooking: jest.fn(),
     getActiveBookings: jest.fn(),
   };
 
@@ -74,7 +73,6 @@ describe('PreparationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
-    mockLongTermService.getActiveBooking.mockResolvedValue(null);
     mockLongTermService.getActiveBookings.mockResolvedValue([]);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
     mockSpongeService.getWorkOrderById.mockResolvedValue(null);
@@ -171,7 +169,6 @@ describe('PreparationService', () => {
   });
 
   const mockActiveBooking = (booking: Record<string, unknown> | null) => {
-    mockLongTermService.getActiveBooking.mockResolvedValue(booking);
     mockLongTermService.getActiveBookings.mockResolvedValue(booking ? [booking] : []);
   };
 
@@ -497,140 +494,6 @@ describe('PreparationService', () => {
     );
 
     expect(Object.keys(result.tools)).toEqual(['save_image_description']);
-  });
-
-  it('omits the HC-1 revise notice for a normal turn', async () => {
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '你好' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-      },
-      'invoke',
-    );
-
-    expect(result.finalPrompt).not.toContain('回复重写要求（HC-1）');
-  });
-
-  it('injects committedSideEffects + reviseFeedback into finalPrompt (HC-1)', async () => {
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '帮我约面试' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-        toolMode: 'none',
-        committedSideEffects: '已为候选人预约奥乐齐长白门店面试',
-        reviseFeedback: [
-          {
-            type: 'unsupported_commitment',
-            evidence: '回复声称"名额已留"，但本轮无对应工具结果',
-            suggestion: '只确认已提交预约，不要承诺保留名额',
-          },
-        ],
-      },
-      'invoke',
-    );
-
-    expect(result.finalPrompt).toContain('回复重写要求（HC-1）');
-    expect(result.finalPrompt).toContain('已为候选人预约奥乐齐长白门店面试');
-    expect(result.finalPrompt).toContain('[unsupported_commitment]');
-    expect(result.finalPrompt).toContain('只确认已提交预约');
-    expect(result.finalPrompt).toContain(
-      '不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签',
-    );
-  });
-
-  it('appends the HC-1 rewrite directive as a trailing user message (badcase batch_6a4790c7)', async () => {
-    // 只拼在超长 system 末尾时弱模型会无视重写指令、把 repair 回合当新对话重跑任务，
-    // 最终投递悬空的"我帮你查下"。指令必须同时出现在对话末尾（注意力最强位置）。
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '花桥中骏有岗位吗' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-        toolMode: 'none',
-        guardrailRepair: {
-          originalReply: '花桥附近暂时没合适的岗位哈，我拉你对应的餐饮兼职群',
-          ruleIds: ['group_promise_without_invite'],
-        },
-        reviseFeedback: [
-          {
-            type: 'group_promise_without_invite',
-            evidence: '承诺拉群但本轮未成功调 invite_to_group',
-            suggestion: '删除拉群承诺，按业务事实重写',
-            repairMode: 'rewrite',
-          },
-        ],
-      },
-      'invoke',
-    );
-
-    const last = result.normalizedMessages[result.normalizedMessages.length - 1];
-    expect(last.role).toBe('user');
-    const content = last.content as string;
-    expect(content).toContain('系统重写指令');
-    expect(content).toContain('花桥附近暂时没合适的岗位哈，我拉你对应的餐饮兼职群');
-    expect(content).toContain('[group_promise_without_invite]');
-    expect(content).toContain('严禁调用任何工具');
-    // rewrite 模式明确禁止悬空承接句
-    expect(content).toContain('只承接不给结果');
-
-    const toolContext = mockToolRegistry.buildForScenario.mock.calls.at(-1)?.[1];
-    expect(toolContext.turnInput.corpusBlocks.at(-1)).toMatchObject({
-      id: 'internal-revise-directive',
-      domain: 'teaching',
-      role: 'system',
-    });
-    expect(extractCandidateTextsFromCorpus(toolContext.turnInput.corpusBlocks)).not.toEqual(
-      expect.arrayContaining([expect.stringContaining('系统重写指令')]),
-    );
-    expect(result.promptBlocks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'revise-notice', domain: 'teaching' }),
-      ]),
-    );
-  });
-
-  // 2026-08-13 replan 清理：本例原为"replan 指令逐字列出修复工具白名单"，机制退役后
-  // 改守两条仍然有效的属性——① 即使调用方传了 allowedToolNames，修复指令也一律禁工具
-  // （replan 退役的不变量，防未来有人顺手把白名单接回重写回合）；② 本案证据必须与静态
-  // suggestion 一起出现在这条注意力最强的指令里（2026-07-21 审计教训，见 revise-directives）。
-  it('repair directive forbids tools even when an allowlist is passed, and renders case evidence', async () => {
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '附近有岗吗' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-        toolMode: 'scenario',
-        allowedToolNames: ['geocode', 'duliday_job_list'],
-        reviseFeedback: [
-          {
-            type: 'hallucinated_fact',
-            evidence: '距离数字无工具依据',
-            suggestion: '重新查岗后按工具结果重写',
-            repairMode: 'rewrite',
-          },
-        ],
-      },
-      'invoke',
-    );
-
-    const last = result.normalizedMessages[result.normalizedMessages.length - 1];
-    expect(last.role).toBe('user');
-    const content = last.content as string;
-    expect(content).toContain('严禁调用任何工具');
-    expect(content).not.toContain('本次修复必须先调用以下工具');
-    expect(content).not.toContain('geocode、duliday_job_list');
-    // 本案证据（jobId/字段等线索）必须与静态 suggestion 一起出现在这条注意力最强的指令里。
-    expect(content).toContain('问题：距离数字无工具依据');
   });
 
   it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
@@ -2250,5 +2113,67 @@ describe('PreparationService', () => {
     expect(toolContext.ledger.geo.anchors).toContainEqual(
       expect.objectContaining({ city: '上海市', longitude: 121.4, latitude: 31.2 }),
     );
+  });
+
+  // 议题 6-1：combined 规则的近邻窗口必须取 normalizedMessages（含短期记忆窗口）。
+  // WECOM 生产路径 params.messages 只有一条当前消息，此前 combined ≡ current，
+  // 4 条依赖历史的规则在生产全数漏过；test-suite/debug 传完整历史时反而按设计工作。
+  describe('critical-turn-guard 的 combined 近邻窗口（议题 6-1）', () => {
+    const withShortTermWindow = (window: { role: string; content: string }[]) => {
+      mockMemoryService.onTurnStart.mockResolvedValue({
+        shortTerm: { messageWindow: window },
+        sessionMemory: null,
+        ruleFacts: null,
+        longTerm: { profile: null },
+        procedural: {
+          currentStage: 'job_consultation',
+          fromStage: null,
+          advancedAt: null,
+          reason: null,
+        },
+      });
+    };
+
+    it('triggers post_interview_no_rebook from short-term history on the WECOM single-message path', async () => {
+      withShortTermWindow([
+        { role: 'assistant', content: '恭喜你面试通过了，门店那边会联系你安排入职' },
+        { role: 'user', content: '再帮我约一次' },
+      ]);
+
+      const result = await service.prepare(
+        {
+          callerKind: CallerKind.WECOM,
+          // 生产形态：runner 只构造当前这一条 user 消息，历史全在 memory 层
+          messages: [{ role: 'user', content: '再帮我约一次' }],
+          userId: 'user-guard-1',
+          corpId: 'corp-1',
+          sessionId: 'sess-guard-1',
+        },
+        'invoke',
+      );
+
+      expect(result.finalPrompt).toContain('本轮动态硬禁令');
+      expect(result.finalPrompt).toContain('近邻上下文显示候选人已在面试/入职');
+    });
+
+    it('does not trigger it when the short-term history carries no such state', async () => {
+      withShortTermWindow([
+        { role: 'assistant', content: '你好，想找哪一类岗位？' },
+        { role: 'user', content: '再帮我约一次' },
+      ]);
+
+      const result = await service.prepare(
+        {
+          callerKind: CallerKind.WECOM,
+          messages: [{ role: 'user', content: '再帮我约一次' }],
+          userId: 'user-guard-2',
+          corpId: 'corp-1',
+          sessionId: 'sess-guard-2',
+        },
+        'invoke',
+      );
+
+      expect(result.finalPrompt).not.toContain('近邻上下文显示候选人已在面试/入职');
+    });
   });
 });

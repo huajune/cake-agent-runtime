@@ -22,16 +22,15 @@ export type GeneratorThinkingConfig = LlmThinkingConfig;
  * Controls which tools are physically exposed to the model for this turn.
  *
  * - scenario: normal scenario toolset
- * - readonly: compatibility mode that excludes tools registered in SIDE_EFFECT_TOOLS; this is
- *   not a literal read-only guarantee because some internal state projection tools are retained
+ * - readonly: the physical tool constraint for proactive (reengagement) turns — the runner
+ *   defaults proactive triggers to this mode so side-effect tools registered in
+ *   SIDE_EFFECT_TOOLS cannot fire without the candidate driving the conversation. Not a literal
+ *   read-only guarantee: some internal state projection tools are retained.
  * - none: no tools at all
  */
 export const GENERATOR_TOOL_MODES = ['scenario', 'readonly', 'none'] as const;
 export type GeneratorToolMode = (typeof GENERATOR_TOOL_MODES)[number];
 
-// HC-1 revise 回路注入用的违规意见，单一数据源在中立 Guardrail 契约里。
-export type { GuardViolation } from '@shared-types/guardrail.contract';
-import type { GuardViolation } from '@shared-types/guardrail.contract';
 import type { TurnLedger } from '@shared-types/turn.types';
 
 export interface GeneratorInputMessage {
@@ -91,28 +90,6 @@ export interface GeneratorInvokeParams {
    */
   allowedToolNames?: string[];
   /**
-   * HC-1 revise 回路：带上一版回复被出站守卫拦下的违规意见重生成，
-   * 注入 system prompt 让模型只修正这些问题、不重跑业务逻辑。
-   * replan 退役（2026-07-27）后生产链路不再传入，修复统一走 ReplyRepairAgent。
-   */
-  reviseFeedback?: GuardViolation[];
-  /**
-   * 出站守卫修复回合：把被拦下的首版原文注入 prompt，要求模型定向修复而非从零重写。
-   * replan 退役（2026-07-27）后生产链路不再传入——修复统一走独立的 ReplyRepairAgent，
-   * 不经本字段。
-   */
-  guardrailRepair?: {
-    originalReply: string;
-    ruleIds: string[];
-    feedbackToGenerator?: string;
-  };
-  /**
-   * HC-1：本轮已提交且不可撤销的副作用摘要（如「已为候选人预约 X 门店面试」），
-   * 让模型知晓既成事实，既不声称未发生、也不重复执行。
-   * 现由 ReplyRepairAgent 以独立入参消费，不经本字段传入 generator。
-   */
-  committedSideEffects?: string;
-  /**
    * reengagement 主动回合的跟进目标（喂给生成方的 directive）。
    * 注入 system prompt 末尾，告诉模型"本回合是系统发起的主动跟进，目标是 X"，
    * 由模型按记忆/上下文实时生成话术（不固化模板）。被动回合不传。
@@ -166,16 +143,6 @@ export interface GeneratorInvokeParams {
    * 仅用于埋点/调试，不参与模型请求语义。
    */
   onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
-  /**
-   * 延迟 turn-end 生命周期到调用方显式触发。
-   *
-   * 默认 false：模型返回后 GeneratorAgent 内部 fire-and-forget 触发 onTurnEnd（记忆投影/事实提取）。
-   *
-   * 开启后：runner 不再自动触发，`GeneratorRunResult.runTurnEnd` 暴露一个 dispatcher 给调用方。
-   * 适用于 replay 场景——首次生成的回复需要被丢弃，其记忆副作用也不能执行；
-   * 若首次结果最终被采纳，再由调用方手动触发。
-   */
-  deferTurnEnd?: boolean;
 }
 
 export interface GeneratorRunResult {
@@ -201,11 +168,18 @@ export interface GeneratorRunResult {
   /** agent 运行时拥有的本轮账本；runner/guardrail 仅借阅只读证据。 */
   turnLedger?: TurnLedger;
   /**
-   * 仅当 `GeneratorInvokeParams.deferTurnEnd=true` 时返回。
+   * turn-end 生命周期触发器。`invoke()` / `stream()` 返回的结果上**必然存在**
+   * （attachTurnEnd 无条件挂载；fire-and-forget 默认分支已随 deferTurnEnd 开关删除）。
    *
-   * 调用方对本次生成结果「最终采纳」后需要显式调用一次，以触发 turn-end 生命周期
-   * （记忆投影/事实提取/活跃时间刷新）。若本次结果被丢弃（如 replay 首次调用），
-   * 直接忽略即可。
+   * ⚠️ **硬契约**：调用 invoke 后必须在本轮结局定局时触发一次 runTurnEnd，
+   * 否则本轮记忆投影/事实提取静默丢失——删掉 fire-and-forget 兜底后这是唯一防线。
+   * 生产链路由 TurnFinalizer 统一承担该职责；`stream()` 在 onFinish 内自触发。
+   *
+   * 类型仍为 optional：runner/turn-outcome 在把闭包交给 TurnFinalizer 后会显式置
+   * `runTurnEnd: undefined`，用"字段为空"表示"已被接管，渠道层不要再碰"。
+   *
+   * 调用方对本次生成结果「最终采纳」后调用一次即可（内部幂等，重复调用是空操作）。
+   * 若本次结果被丢弃（如 replay 首次调用），直接忽略。
    *
    * `includeAssistantText`（默认 true）：本轮回复是否真实投递给了用户。被出站守卫拦截、
    * 主动沉默、或投递阶段因托管暂停/失败而未送达时，调用方应传 `false`——此时仍记录

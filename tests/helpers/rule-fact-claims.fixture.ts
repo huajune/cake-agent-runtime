@@ -14,6 +14,8 @@ export function testRuleFact(
   options: {
     confidence?: RuleFactConfidence;
     producer?: RuleFactClaim['producer'];
+    /** 候选人原话逐字片段；不传时沿用 evidence 标签（多数用例不关心原话渲染）。 */
+    quote?: string;
   } = {},
 ): RuleFactClaim {
   const producer = options.producer ?? 'rule';
@@ -25,7 +27,7 @@ export function testRuleFact(
     producer,
     interpretation: 'direct',
     confidence: options.confidence ?? 'high',
-    evidence: { quote: evidence, label: evidence },
+    evidence: { quote: options.quote ?? evidence, label: evidence },
     assertedAt: '2026-08-11T00:00:00.000Z',
   };
 }

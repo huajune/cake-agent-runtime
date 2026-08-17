@@ -169,7 +169,6 @@ describe('ReplyWorkflowService', () => {
             : [{ role: 'user', content: '[系统主动跟进]' }],
         toolMode: req.toolMode ?? (req.trigger.kind === 'proactive' ? 'readonly' : 'scenario'),
         proactiveDirective: req.trigger.kind === 'proactive' ? req.trigger.directive : undefined,
-        deferTurnEnd: true,
         scenario: req.context?.scenario,
         imageUrls: req.trigger.kind === 'inbound' ? req.trigger.images : undefined,
         imageMessageIds: req.context?.imageMessageIds,
@@ -1217,10 +1216,6 @@ describe('ReplyWorkflowService', () => {
       // singleMessage 路径上 consumedPending 起点是 0，replay 抓取时 fromIndex 也是 0
       expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledWith('chat-1', 0);
       expect(runner.invoke).toHaveBeenCalledTimes(1);
-      // 首次调用必须启用 deferTurnEnd，以便在检测到新消息时能丢弃首次的记忆副作用
-      expect(runner.invoke.mock.calls[0][0]).toEqual(
-        expect.objectContaining({ deferTurnEnd: true }),
-      );
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
       // 无 replay：首次结果被采纳，调用方必须触发 runTurnEnd
       expect(firstRunTurnEnd).toHaveBeenCalledTimes(1);
@@ -1263,19 +1258,14 @@ describe('ReplyWorkflowService', () => {
 
       expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledTimes(2);
       expect(runner.invoke).toHaveBeenCalledTimes(2);
-      // 两次都启用 deferTurnEnd：本用例第二次生成后已无 pending，因此该结果被采纳，
-      // 由 workflow 启动并在方法返回（处理锁释放）前 await，保证记忆写入相对锁串行。
+      // turn-end 一律延迟到投递结局已知（议题 5-1：这是唯一语义）：本用例第二次生成后
+      // 已无 pending，因此该结果被采纳，由 workflow 启动并在方法返回（处理锁释放）前
+      // await，保证记忆写入相对锁串行。
       expect(runner.invoke.mock.calls[0][0]).toEqual(
-        expect.objectContaining({
-          deferTurnEnd: true,
-          shortTermEndTimeInclusive: 1713168000000,
-        }),
+        expect.objectContaining({ shortTermEndTimeInclusive: 1713168000000 }),
       );
       expect(runner.invoke.mock.calls[1][0]).toEqual(
-        expect.objectContaining({
-          deferTurnEnd: true,
-          shortTermEndTimeInclusive: 1713168002000,
-        }),
+        expect.objectContaining({ shortTermEndTimeInclusive: 1713168002000 }),
       );
       // 首次的 runTurnEnd 必须被丢弃——它承载了「未发出的首次回复」对 session 记忆的污染
       expect(firstRunTurnEnd).not.toHaveBeenCalled();
@@ -1411,7 +1401,7 @@ describe('ReplyWorkflowService', () => {
           expect.anything(),
           true,
         );
-        // 首次结果被采纳：必须显式触发 turn-end 生命周期（deferTurnEnd=true 的配套动作）
+        // 首次结果被采纳：必须显式触发 turn-end 生命周期
         expect(firstRunTurnEnd).toHaveBeenCalledTimes(1);
         // 只标记主消息已处理——后补的消息交给下一轮，不在本次 processedMessageIds 里
         expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');

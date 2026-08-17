@@ -181,7 +181,6 @@ export class TestExecutionService {
           messageId: monitoringInfo.syntheticMessageId,
           imageUrls: request.imageUrls,
           imageMessageIds: syntheticImageMessageIds,
-          deferTurnEnd: true,
         },
         {
           userMessage: request.message,

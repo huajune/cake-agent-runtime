@@ -1,6 +1,8 @@
 import { isValidLaborForm } from '@resolution/labor-form';
+import { stripTimeContextSuffix } from '@resolution/candidate/name';
 import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
 import { projectRuleFactClaims, resolveRuleFactClaims } from '@resolution/evidence/merge';
+import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
 import { formatLocalMinute } from '@infra/utils/date.util';
 import type {
   EntityExtractionResult,
@@ -10,13 +12,17 @@ import type {
 
 export interface FactLineFormatOptions {
   /**
-   * 是否在字段行内渲染 evidence 全文。
+   * 是否在字段行内渲染 evidence。
    *
-   * 默认 false：Agent prompt 注入只带（置信度/来源），evidence 是排障字段，
-   * 全文注入会把提取 reasoning 整段灌进上下文且逐字段重复（张漪 case 单轮
-   * system prompt 被撑到 27K+ 字符）。
-   * 仅事实提取 prompt 的 [规则模式匹配线索] 注入需要置 true——那里的 evidence
-   * 是"手机号识别：135xx"这类短线索，是提取 LLM 的判断依据。
+   * 默认 false：sessionFacts 侧的 evidence 可能是 LLM 轨的长文 reasoning，全文注入会
+   * 把整段推理灌进上下文且逐字段重复（张漪 case 单轮 system prompt 被撑到 27K+ 字符）。
+   *
+   * 置 true 的两处都是**规则轨** claim 注入（事实提取 prompt 的 [规则模式匹配线索]、
+   * 主 Agent prompt 的 [本轮解析线索]/[本轮待确认线索]，见 turn-hints.section）。
+   * 规则轨安全的原因：evidence 是 `年龄识别：25` / `explicit_city` 这类短标签或机器码，
+   * 不含长文；配套的 `原话` 片段也在 formatRuleFactClaimLines 里按
+   * RULE_CLAIM_QUOTE_RENDER_MAX_CHARS 截断、并对"整条当轮消息"省略渲染。
+   * 长文 evidence 只出现在 LLM 轨/sessionFacts 侧，那里一律保持默认 false。
    */
   includeEvidence?: boolean;
   /**
@@ -239,10 +245,43 @@ const FACT_LINE_FIELD_BY_LABEL: Readonly<Record<string, RuleFactFieldPath>> = {
   最早可面试日期: 'preferences.available_after',
 };
 
-/** 直接从 claim 流渲染规则线索；元数据来自最终获选 claim，不制造中间包装值。 */
+/**
+ * 规则 claim 的原话片段渲染上限。
+ *
+ * quote 默认取整条候选人消息（上限 1000 字，见 direct-field.RULE_CLAIM_QUOTE_MAX_CHARS），
+ * 逐字段渲染会把同一条消息重复 N 遍。这里只保留足以定位来源句的开头。
+ */
+export const RULE_CLAIM_QUOTE_RENDER_MAX_CHARS = 40;
+
+export interface RuleFactClaimLineOptions extends Pick<FactLineFormatOptions, 'includeEvidence'> {
+  /**
+   * 是否在 evidence 之后追加候选人逐字原话片段。
+   *
+   * 默认 false，只有主 Agent prompt 的 [本轮解析线索]/[本轮待确认线索] 置 true：
+   * 事实提取 prompt 的 [规则模式匹配线索] 与提取 LLM 共享同一份对话原文，无需重复注入。
+   */
+  includeQuote?: boolean;
+  /**
+   * 本轮候选人消息原文（逐条，与规则轨输入同源）。
+   *
+   * 用于判定 quote 是否"就是整条当轮消息"：单消息轮里那样的 quote 没有信息量
+   * （模型本来就看得到当轮消息），渲染出来只是重复注入；合并多条消息的轮次才需要
+   * 用原话指明该 claim 来自哪一条。不传则按"无法判定"处理，只渲染精确命中片段。
+   */
+  currentTurnTexts?: readonly string[];
+}
+
+/**
+ * 直接从 claim 流渲染规则线索；元数据来自最终获选 claim，不制造中间包装值。
+ *
+ * `includeEvidence` 下除了 `证据`（解析结论的机器码/中文标签）还会渲染 `原话`
+ * （候选人逐字片段）：`证据` 只是把结论重说一遍——候选人复述岗位要求
+ * （"这岗位要求18-45岁"）时渲染出的 `证据: 年龄识别：18-45` 不含任何"这句在讲岗位要求"
+ * 的信号，而这正是本段文案点名要模型防的两类误判之一（core-flow-review 议题 2-1）。
+ */
 export function formatRuleFactClaimLines(
   facts: RuleFactClaims | null | undefined,
-  options: Pick<FactLineFormatOptions, 'includeEvidence'> = {},
+  options: RuleFactClaimLineOptions = {},
 ): string[] {
   const projected = projectRuleFactClaims(facts);
   if (!projected) return [];
@@ -255,10 +294,43 @@ export function formatRuleFactClaimLines(
     const parts = [`置信度: ${fact.confidence}`, `来源: ${fact.producer}`];
     if (options.includeEvidence) {
       parts.push(`证据: ${fact.evidence.code ?? fact.evidence.label}`);
+      if (options.includeQuote) {
+        const quote = renderClaimQuote(fact.evidence.quote, options.currentTurnTexts);
+        if (quote) parts.push(`原话: ${quote}`);
+      }
     }
     const meta = `（${parts.join('，')}）`;
     return field === 'preferences.city'
       ? line.replace(/（置信度: (?:high|medium|low)）$/u, meta)
       : `${line}${meta}`;
   });
+}
+
+/**
+ * 决定是否渲染 quote，以及渲染成什么。
+ *
+ * - quote 是消息里的精确命中片段 → 一律渲染（"这句在讲什么"的唯一信号）；
+ * - quote 等于某条当轮消息全文 → 只有合并轮（当轮 >1 条消息）才渲染，用来指明来自哪条；
+ *   单消息轮省略（模型看得到当轮消息，逐字段重复注入同一条消息纯属浪费上下文）。
+ */
+function renderClaimQuote(
+  quote: string | undefined,
+  currentTurnTexts: readonly string[] | undefined,
+): string | null {
+  const trimmed = quote?.trim();
+  if (!trimmed) return null;
+  if (currentTurnTexts?.length) {
+    const isWholeMessage = currentTurnTexts.some(
+      (text) => normalizeClaimQuoteSource(text) === trimmed,
+    );
+    if (isWholeMessage && currentTurnTexts.length === 1) return null;
+  }
+  return trimmed.length > RULE_CLAIM_QUOTE_RENDER_MAX_CHARS
+    ? `${trimmed.slice(0, RULE_CLAIM_QUOTE_RENDER_MAX_CHARS)}…`
+    : trimmed;
+}
+
+/** 与 rule-track appendRuleClaim 存 quote 时的归一化保持一致，否则全等比对必失效。 */
+function normalizeClaimQuoteSource(text: string): string {
+  return stripTimeContextSuffix(text).trim().slice(0, RULE_CLAIM_QUOTE_MAX_CHARS);
 }

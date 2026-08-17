@@ -8,6 +8,7 @@ import { MessageDeduplicationService } from '@wecom/message/runtime/deduplicatio
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { MessageWorkerManagerService } from '@wecom/message/runtime/message-worker-manager.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
 describe('MessageProcessor', () => {
   let processor: MessageProcessor;
@@ -59,6 +60,10 @@ describe('MessageProcessor', () => {
     markMessageAsProcessedAsync: jest.fn().mockResolvedValue(true),
   };
 
+  const mockMessageTracking = {
+    dropMergedSourceRecords: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -70,6 +75,7 @@ describe('MessageProcessor', () => {
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: UserHostingService, useValue: mockUserHostingService },
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
+        { provide: MessageTrackingService, useValue: mockMessageTracking },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
@@ -105,6 +111,12 @@ describe('MessageProcessor', () => {
       const dropped = await (processor as any).dropIfHostingPaused('chat-123', messages, 'job-9');
 
       expect(dropped).toBe(true);
+      // 议题 8-4：本批不会再进 Agent，intake 时写下的 processing 流水必须当场回收，
+      // 否则会一直停在 processing 直到 03:00 UTC cron 标 timeout，污染观测口径。
+      expect(mockMessageTracking.dropMergedSourceRecords).toHaveBeenCalledWith(
+        messages.map((message: { messageId: string }) => message.messageId),
+        'job-9',
+      );
       expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
         'chat-123',
         'c-1',
@@ -123,6 +135,7 @@ describe('MessageProcessor', () => {
 
       expect(dropped).toBe(false);
       expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+      expect(mockMessageTracking.dropMergedSourceRecords).not.toHaveBeenCalled();
     });
   });
 

@@ -16,6 +16,7 @@ import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.u
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
+import { ACTIVE_INTERVIEW_WORK_ORDER_STATUSES } from '@sponge/sponge.types';
 import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
@@ -109,12 +110,6 @@ export class ReengagementDeliveryService
     }
   }
 }
-
-/**
- * 报名后复聊只允许仍处于约面阶段的工单。海绵 currentStatus 共 9 态；除以下两态外，
- * 其余状态都说明报名已经失败、取消，或面试结果/后续结果已经产生，不再提醒或追问。
- */
-const ACTIVE_INTERVIEW_WORK_ORDER_STATUSES = new Set(['约面待确认', '约面成功']);
 
 const BOOKING_SCHEDULE_TOLERANCE_MS = 60_000;
 

@@ -14,12 +14,31 @@ export interface GeocodeResolvedAnchor {
   city: string | null;
 }
 
-/** 本轮工具确权的候选人城市；轮末由 memory 收编。 */
+/**
+ * 本轮工具确权的候选人城市；轮末由 memory 收编（saveToolAttestedCity 经裁决写 pref.city）。
+ *
+ * **单值后写覆盖**，但按证据强度设了一道例外（议题 4-2）：
+ * `location_share`（候选人人在哪，真实位置）强于 `geocode_unique`（模型查了哪，文本解析）——
+ * prep 的定位分享 seed 恒在最前、工具轮 geocode 在后，纯时序定胜负会让"候选人先发定位、
+ * 模型又对另一城市地址 geocode 成功"的轮次以后者入档。同源异城（模型连续 geocode 多地）
+ * 维持 last-write-wins：属正常探索，最后一次最接近意图。
+ */
 export interface CityAttestation {
   city: string;
   district?: string | null;
   evidence: string;
   source: 'geocode_unique' | 'location_share';
+}
+
+/**
+ * 一次地理解析事件（坐标 + 可选城市确权）；recordGeoResolution 的入参。
+ * city 为空时只登记 anchor，不产生 attestation——这条不变式由组合方法统一维护。
+ */
+export interface GeoResolutionRecord extends GeocodeResolvedAnchor {
+  district?: string | null;
+  /** attestation 的证据文本；city 非空时必填。 */
+  evidence?: string;
+  source: CityAttestation['source'];
 }
 
 /** geocode 使用的本轮可信位置锚点。 */
@@ -93,7 +112,18 @@ export interface TurnExtractionToolFacts {
 export interface TurnLedger extends TurnLedgerSnapshot {
   recordVisualFacts(sheet: FinalizedVisualFactSheet, meta: { messageId: string }): void;
   recordImageBrands(resolutions: BrandResolution[], meta: { messageId: string }): void;
+  /**
+   * 一次地理解析事件的唯一登记入口：内部完成 anchor 追加 + city 非空时的 attestation 写入。
+   *
+   * anchor（坐标+精度，轮内工作集）与 cityAttestation（城市+证据，轮末落档）是同一事件对
+   * 两个消费域的投影，字段集几乎不重叠、生命周期相反——分开存是对的，但"先 anchor 后
+   * attestation""坐标有效但 city 为空只记 anchor"两条不变式此前由每个调用点各自维护，
+   * 新增解析入口时容易漏记一半（议题 4-1）。
+   */
+  recordGeoResolution(input: GeoResolutionRecord): void;
+  /** @internal 细粒度出口；生产代码一律走 recordGeoResolution，仅供组合方法与测试使用。 */
   recordGeocodeAnchor(anchor: GeocodeResolvedAnchor): void;
+  /** @internal 同上。写入按 CityAttestation 注释的证据强度优先级裁决。 */
   recordCityAttestation(attestation: CityAttestation): void;
   recordFetchedJobs(jobs: TurnFetchedJob[]): void;
   recordJobListQuery(query: { signature: string }): void;

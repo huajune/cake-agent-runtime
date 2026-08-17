@@ -275,6 +275,8 @@ describe('GeneratorAgent', () => {
     expect(result.text).toBe(ctaText);
     expect(result.text).not.toContain(jobText);
     expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+    // turn-end 由调用方在结局定局时触发（deferTurnEnd 开关删除后是唯一语义，议题 5-1）
+    await result.runTurnEnd?.();
     expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'sess-1' }),
       ctaText,
@@ -656,6 +658,7 @@ describe('GeneratorAgent', () => {
         finishReason: 'empty-text-recovery',
       }),
     );
+    await result.runTurnEnd?.();
     expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 'sess-1',
@@ -853,7 +856,7 @@ describe('GeneratorAgent', () => {
     });
   });
 
-  it('should trigger turn-end lifecycle without blocking invoke success', async () => {
+  it('attaches a turn-end trigger that invoke never fires itself', async () => {
     const ledger = createTurnLedger();
     ledger.recordFetchedJobs([
       {
@@ -878,21 +881,21 @@ describe('GeneratorAgent', () => {
     });
     mockMemoryService.onTurnEnd.mockRejectedValue(new Error('memory lifecycle failed'));
 
-    await expect(
-      service.invoke({
-        ...invokeParams,
-        messages: [
-          { role: 'assistant', content: '之前给你推荐了长白门店。' },
-          { role: 'user', content: '我想报名长白' },
-        ],
-      }),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        text: 'Hello!',
-        steps: 1,
-      }),
-    );
+    const result = await service.invoke({
+      ...invokeParams,
+      messages: [
+        { role: 'assistant', content: '之前给你推荐了长白门店。' },
+        { role: 'user', content: '我想报名长白' },
+      ],
+    });
 
+    expect(result).toEqual(expect.objectContaining({ text: 'Hello!', steps: 1 }));
+    // invoke 自身不再触发记忆收尾（fire-and-forget 默认分支已删，议题 5-1）
+    expect(mockMemoryService.onTurnEnd).not.toHaveBeenCalled();
+
+    // 触发权归调用方；生命周期失败沿闭包抛给调用方（生产由 TurnFinalizer 捕获），
+    // 不会影响已经返回的 invoke 结果。
+    await expect(result.runTurnEnd?.()).rejects.toThrow('memory lifecycle failed');
     expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
       expect.objectContaining({
         corpId: 'corp-1',

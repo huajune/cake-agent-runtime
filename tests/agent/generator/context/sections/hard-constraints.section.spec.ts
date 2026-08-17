@@ -1,10 +1,7 @@
 import { HardConstraintsSection } from '@agent/generator/context/sections/hard-constraints.section';
 import type { PromptContext } from '@agent/generator/context/sections/section.interface';
-import { FALLBACK_EXTRACTION, type EntityExtractionResult } from '@memory/types/session-facts.types';
-import {
-  testRuleFact,
-  testRuleFacts,
-} from '../../../../helpers/rule-fact-claims.fixture';
+import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
+import { testRuleFact, testRuleFacts } from '../../../../helpers/rule-fact-claims.fixture';
 
 describe('HardConstraintsSection', () => {
   const section = new HardConstraintsSection();
@@ -14,12 +11,6 @@ describe('HardConstraintsSection', () => {
     strategyConfig: {} as PromptContext['strategyConfig'],
   };
 
-  const cloneFallback = (): EntityExtractionResult => ({
-    interview_info: { ...FALLBACK_EXTRACTION.interview_info },
-    preferences: { ...FALLBACK_EXTRACTION.preferences },
-    reasoning: '',
-  });
-
   it('returns empty string when no facts available at all', () => {
     expect(section.build(baseCtx)).toBe('');
   });
@@ -27,7 +18,7 @@ describe('HardConstraintsSection', () => {
   it('returns empty string when both fact buckets are present but contain only nulls', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: cloneFallback(),
+      sessionFacts: sessionFactsOf(),
       ruleFacts: testRuleFacts(),
     });
     expect(output).toBe('');
@@ -46,12 +37,16 @@ describe('HardConstraintsSection', () => {
   });
 
   it('renders city/district from session facts and tells the model which filter to use', () => {
-    const facts = cloneFallback();
-    facts.preferences.city = { value: '南京', confidence: 'high', evidence: 'explicit_city' };
-    facts.preferences.district = ['秦淮区', '建邺区'];
-    facts.preferences.location = ['新街口'];
-
-    const output = section.build({ ...baseCtx, sessionFacts: facts });
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({
+        preferences: {
+          city: cityFixture('南京'),
+          district: ['秦淮区', '建邺区'],
+          location: ['新街口'],
+        },
+      }),
+    });
 
     expect(output).toContain('[本轮查询硬约束]');
     expect(output).toContain(
@@ -64,15 +59,55 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('必须先 geocode');
   });
 
-  it('surfaces interview_info constraints (gender / age / health cert / education / student)', () => {
-    const facts = cloneFallback();
-    facts.interview_info.gender = '男';
-    facts.interview_info.age = '25-40';
-    facts.interview_info.has_health_certificate = '已办';
-    facts.interview_info.education = '高中';
-    facts.interview_info.is_student = false;
+  // 议题 1-1 的负向用例：置信度门此前从未被任何测试执行过（裸态 fixture 绕开了它）。
+  // 去掉 mergeFacts 的 minConfidence:'high' 后本用例必失败。
+  it('drops a medium-confidence city from the hard-constraint block (置信度门必须真的在工作)', () => {
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({
+        preferences: { city: cityFixture('南京', 'medium'), schedule: '晚班' },
+      }),
+    });
 
-    const output = section.build({ ...baseCtx, sessionFacts: facts });
+    // 同一份 facts 里的 high 字段照常渲染，证明不是整块被丢掉
+    expect(output).toContain('班次/工时偏好: 晚班');
+    expect(output).not.toContain('城市: 南京');
+  });
+
+  it('keeps a high-confidence city in the hard-constraint block', () => {
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('南京', 'high') } }),
+    });
+
+    expect(output).toContain('城市: 南京');
+  });
+
+  it('drops medium-confidence non-city fields as well (整份信封走同一道门)', () => {
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf(
+        { preferences: { salary: '8000+' }, interview_info: { age: '25' } },
+        { confidence: 'medium' },
+      ),
+    });
+
+    expect(output).toBe('');
+  });
+
+  it('surfaces interview_info constraints (gender / age / health cert / education / student)', () => {
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({
+        interview_info: {
+          gender: '男',
+          age: '25-40',
+          has_health_certificate: '已办',
+          education: '高中',
+          is_student: false,
+        },
+      }),
+    });
 
     expect(output).toContain('性别: 男');
     expect(output).toContain('年龄: 25-40');
@@ -82,10 +117,10 @@ describe('HardConstraintsSection', () => {
   });
 
   it('renders is_student=true correctly (boolean false branch must not be skipped)', () => {
-    const facts = cloneFallback();
-    facts.interview_info.is_student = true;
-
-    const output = section.build({ ...baseCtx, sessionFacts: facts });
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({ interview_info: { is_student: true } }),
+    });
 
     expect(output).toContain('是否学生: 是');
     expect(output).toContain('学生能否安排只看岗位数据');
@@ -95,10 +130,10 @@ describe('HardConstraintsSection', () => {
   });
 
   it('routes district-without-city through geocode tri-state instead of reverse-asking the candidate', () => {
-    const facts = cloneFallback();
-    facts.preferences.district = ['房山'];
-
-    const output = section.build({ ...baseCtx, sessionFacts: facts });
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({ preferences: { district: ['房山'] } }),
+    });
 
     expect(output).toContain('区域: 房山');
     // 新策略：优先调 geocode 让工具判定（unique/ambiguous 三态），而非先反问候选人
@@ -109,12 +144,11 @@ describe('HardConstraintsSection', () => {
   });
 
   it('falls back to ruleFacts when sessionFacts has no value for a field', () => {
-    const session = cloneFallback();
     const high = testRuleFacts(testRuleFact('preferences.schedule', '晚班', '班次识别：晚班'));
 
     const output = section.build({
       ...baseCtx,
-      sessionFacts: session,
+      sessionFacts: sessionFactsOf(),
       ruleFacts: high,
     });
 
@@ -129,7 +163,7 @@ describe('HardConstraintsSection', () => {
 
     const output = section.build({
       ...baseCtx,
-      sessionFacts: cloneFallback(),
+      sessionFacts: sessionFactsOf(),
       ruleFacts: high,
     });
 
@@ -141,7 +175,7 @@ describe('HardConstraintsSection', () => {
   it('品牌口径改读 SessionBrandState：currentBrand + excludedBrands（§14.4/goal #10）', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: cloneFallback(),
+      sessionFacts: sessionFactsOf(),
       sessionBrandState: {
         currentBrand: { canonicalName: '必胜客', brandId: 10239 },
         excludedBrands: [{ canonicalName: '肯德基', brandId: 10001 }],
@@ -159,7 +193,7 @@ describe('HardConstraintsSection', () => {
 
     const output = section.build({
       ...baseCtx,
-      sessionFacts: cloneFallback(),
+      sessionFacts: sessionFactsOf(),
       ruleFacts: high,
       sessionBrandState: { currentBrand: null, excludedBrands: [] },
     });
@@ -169,10 +203,10 @@ describe('HardConstraintsSection', () => {
   });
 
   it('renders Boss title brand ids as brandIdList hints', () => {
-    const session = cloneFallback();
-    session.preferences.brand_ids = [10239];
-
-    const output = section.build({ ...baseCtx, sessionFacts: session });
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({ preferences: { brand_ids: [10239] } }),
+    });
 
     expect(output).toContain('意向品牌ID: 10239');
     expect(output).toContain('来自 Boss 岗位标题 [brand_id]');
@@ -183,13 +217,11 @@ describe('HardConstraintsSection', () => {
     // 候选人上轮说 5000+、本轮改口 8000+：硬约束段必须跟随最新表达——
     // 工具层 mergeSessionFactsWithHighConfidence 一直如此，prompt 层此前相反
     // （旧值压新值，候选人刚改口的条件在硬约束段被无视）。
-    const session = cloneFallback();
-    session.preferences.salary = '5000+';
     const high = testRuleFacts(testRuleFact('preferences.salary', '8000+', '薪资识别：8000+'));
 
     const output = section.build({
       ...baseCtx,
-      sessionFacts: session,
+      sessionFacts: sessionFactsOf({ preferences: { salary: '5000+' } }),
       ruleFacts: high,
     });
 
@@ -198,12 +230,9 @@ describe('HardConstraintsSection', () => {
   });
 
   it('本轮无该字段线索时沿用 session 值（覆盖仅发生在本轮确有新值）', () => {
-    const session = cloneFallback();
-    session.preferences.salary = '5000+';
-
     const output = section.build({
       ...baseCtx,
-      sessionFacts: session,
+      sessionFacts: sessionFactsOf({ preferences: { salary: '5000+' } }),
       ruleFacts: testRuleFacts(),
     });
 
@@ -211,15 +240,13 @@ describe('HardConstraintsSection', () => {
   });
 
   it('prefers the current explicit labor form over stale session labor form', () => {
-    const session = cloneFallback();
-    session.preferences.labor_form = '兼职';
     const high = testRuleFacts(
       testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
     );
 
     const output = section.build({
       ...baseCtx,
-      sessionFacts: session,
+      sessionFacts: sessionFactsOf({ preferences: { labor_form: '兼职' } }),
       ruleFacts: high,
     });
 
@@ -229,12 +256,9 @@ describe('HardConstraintsSection', () => {
   });
 
   it('does not fall back to stale summer labor form after the candidate explicitly excludes it', () => {
-    const session = cloneFallback();
-    session.preferences.labor_form = '暑假工';
-
     const output = section.build({
       ...baseCtx,
-      sessionFacts: session,
+      sessionFacts: sessionFactsOf({ preferences: { labor_form: '暑假工' } }),
       currentLaborFormIntent: { kind: 'clear', clearedValues: ['暑假工'] },
     });
 
@@ -242,12 +266,9 @@ describe('HardConstraintsSection', () => {
   });
 
   it('keeps the existing summer labor form when the candidate only asks about a job type', () => {
-    const session = cloneFallback();
-    session.preferences.labor_form = '暑假工';
-
     const output = section.build({
       ...baseCtx,
-      sessionFacts: session,
+      sessionFacts: sessionFactsOf({ preferences: { labor_form: '暑假工' } }),
       currentLaborFormIntent: { kind: 'ignore' },
     });
 
@@ -268,7 +289,7 @@ describe('HardConstraintsSection', () => {
 
     const output = section.build({
       ...baseCtx,
-      sessionFacts: cloneFallback(),
+      sessionFacts: sessionFactsOf(),
       ruleFacts: high,
     });
 
@@ -277,12 +298,12 @@ describe('HardConstraintsSection', () => {
 
   it('drops empty string and empty array fields from interview_info during merge', () => {
     // Empty string for gender shouldn't render a "性别: " line.
-    const session = cloneFallback();
-    session.interview_info.gender = '   ';
-    session.interview_info.age = ''; // empty
-    session.interview_info.education = '本科'; // valid
-
-    const output = section.build({ ...baseCtx, sessionFacts: session });
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({
+        interview_info: { gender: '   ', age: '', education: '本科' },
+      }),
+    });
 
     expect(output).not.toContain('性别:');
     expect(output).not.toContain('年龄:');
@@ -293,11 +314,13 @@ describe('HardConstraintsSection', () => {
     // Reproduces the production gap that motivated this section: manager said
     // "急需男生晚班打烊" but the model called duliday_job_list without filters.
     // After this section, both constraints are required to appear in the prompt.
-    const facts = cloneFallback();
-    facts.interview_info.gender = '男';
-    facts.preferences.schedule = '晚班';
-
-    const output = section.build({ ...baseCtx, sessionFacts: facts });
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: sessionFactsOf({
+        interview_info: { gender: '男' },
+        preferences: { schedule: '晚班' },
+      }),
+    });
 
     expect(output).toContain('性别: 男');
     expect(output).toContain('班次/工时偏好: 晚班');

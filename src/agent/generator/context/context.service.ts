@@ -14,7 +14,7 @@ import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import type { EntityExtractionResult, SessionFacts } from '@memory/types/session-facts.types';
+import { unwrapSessionFacts, type SessionFacts } from '@memory/types/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
@@ -49,10 +49,12 @@ export interface ComposeParams {
   channelType?: 'private' | 'group';
   currentStage?: string;
   memoryBlock?: string;
-  /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
-  sessionFacts?: EntityExtractionResult | SessionFacts | null;
+  /** 会话记忆中的已确认提取结果（带信封的存储态）；供 TurnHintsSection 做冲突比对。 */
+  sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
   ruleFacts?: RuleFactClaims | null;
+  /** 本轮候选人消息原文（逐条，与规则轨输入同源）；turn-hints 的原话渲染判据。 */
+  currentTurnTexts?: readonly string[];
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
@@ -112,6 +114,7 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       ruleFacts,
+      currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -132,6 +135,7 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       ruleFacts,
+      currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -203,11 +207,17 @@ export class ContextService implements OnModuleInit {
    *
    * - 目的：让 Agent 在调用 invite_to_group 前对该城市群库有"上帝视角"
    * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
+   *
+   * 城市取值必须与硬约束段同门（minConfidence='high'，议题 1-2）：本块不只是"参考信息"，
+   * 群库为空时会输出「禁止承诺拉群」这类有行为后果的指令，城市取错两个方向都会错。
+   * 此前直读 `.value` 绕过置信度门——Redis 旧档归一化出的 confidence='unknown' 城市
+   * 会让 prompt 里出现「兼职群资源（南京）… 禁止承诺拉群」而硬约束段根本没有该城市。
+   * 放宽的风险由 invite_to_group 自己的 invite-city-gate 兜底。
    */
-  private async renderGroupInventoryBlock(
-    sessionFacts?: EntityExtractionResult | SessionFacts | null,
-  ): Promise<string> {
-    const city = sessionFacts?.preferences?.city?.value?.trim();
+  private async renderGroupInventoryBlock(sessionFacts?: SessionFacts | null): Promise<string> {
+    const city = unwrapSessionFacts(sessionFacts, {
+      minConfidence: 'high',
+    })?.preferences.city?.value?.trim();
     if (!city) return '';
 
     let cityGroups: GroupContext[];

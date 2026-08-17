@@ -135,7 +135,6 @@ describe('buildInterviewBookingTool', () => {
     const mockLongTermService = {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
       setActiveBooking: jest.fn().mockResolvedValue(undefined),
-      getActiveBooking: jest.fn().mockResolvedValue(options.activeBooking ?? null),
       getActiveBookings: jest
         .fn()
         .mockResolvedValue(options.activeBooking ? [options.activeBooking] : []),
@@ -1318,6 +1317,11 @@ describe('buildInterviewBookingTool', () => {
     // 438358 第二段：预约成功 23 秒后候选人补发真简历，命中 already_booked 短路，
     // 真简历被静默丢弃且 Agent 回复"已提交"。现在应指示转人工补传。
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    // 议题 8-2 后"查不到工单手机号"改为放行，本例要验的是同一个人重复提交，显式给同号
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 438358,
+      phone: '13812345678',
+    });
 
     const result = await executeTool(
       {
@@ -1356,6 +1360,10 @@ describe('buildInterviewBookingTool', () => {
 
   it('keeps the plain already-booked instruction when no fresh resume arrived this turn', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 438358,
+      phone: '13812345678',
+    });
 
     const result = await executeTool(
       {
@@ -1520,7 +1528,11 @@ describe('buildInterviewBookingTool', () => {
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
 
-    it('反查工单失败（海绵异常）时应保守拦截，保留防重试兜底', async () => {
+    // 议题 8-2（用户 8-14 裁定）：查不到既有工单手机号时**放行交海绵仲裁**。
+    // 原"保守判重"分支在 badcase chat 6a4229f2 里击穿了本修复本身——刚创建 8 分钟的
+    // 工单海绵侧查不到手机号，手机号明确不同的王淼被误拦。真重复由海绵服务端
+    // 同手机号同岗位约束兜底（Bull 重试必然同 phone）。
+    it('反查工单失败（海绵异常）时放行交海绵仲裁', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockRejectedValue(new Error('sponge down'));
 
@@ -1530,12 +1542,11 @@ describe('buildInterviewBookingTool', () => {
         { activeBooking: recentActiveBooking },
       );
 
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(mockSpongeService.bookInterview).toHaveBeenCalled();
     });
 
-    it('工单缺手机号时应保守拦截', async () => {
+    it('工单缺手机号时放行交海绵仲裁（王淼案回归：新单 8 分钟内查不到手机号）', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 448367,
@@ -1543,14 +1554,23 @@ describe('buildInterviewBookingTool', () => {
       });
 
       const result = await executeTool(
-        { ...validInput, educationId: 2, householdRegisterProvinceId: 310000, height: 170 },
-        {},
+        {
+          ...validInput,
+          name: '王淼',
+          phone: '15563231209',
+          educationId: 2,
+          householdRegisterProvinceId: 310000,
+          height: 170,
+        },
+        { messages: [{ role: 'user', content: '王淼 15563231209' }] },
         { activeBooking: recentActiveBooking },
       );
 
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: '15563231209' }),
+        expect.anything(),
+      );
     });
   });
 
@@ -1714,4 +1734,88 @@ describe('buildInterviewBookingTool', () => {
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
   });
+
+  // 议题 8-1（badcase chat 6a4229f2）：中介一轮给两个人报同一岗位。会话档案只装得下
+  // 一个人，第二人被姓名/电话一致性闸门误杀。防臆造保护不降级，只是把验证源从
+  // "会话档案单一身份"换成"候选人消息文本逐字锚定"——对粘贴表单场景比档案匹配更强。
+  describe('多人代报豁免轨（议题 8-1）', () => {
+    const brokerMessage = '牛艳雪 19560645423\n王淼 15563231209\n两个人都报这个岗';
+
+    it('第二人的姓名与手机号都在候选人文本里逐字出现时放行', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({
+        success: true,
+        code: 0,
+        message: '预约成功',
+        workOrderId: 457340,
+      });
+
+      const result = await executeTool(
+        {
+          ...validInput,
+          name: '王淼',
+          phone: '15563231209',
+          educationId: 2,
+          householdRegisterProvinceId: 310000,
+          height: 170,
+        },
+        {
+          messages: [{ role: 'user', content: brokerMessage }],
+          // 会话档案锁在第一个人身上——正是本案闸门误杀的成因
+          bookingCandidateFacts: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '牛艳雪',
+            phone: '19560645423',
+          },
+        },
+      );
+
+      expect(result).toMatchObject({ success: true });
+      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+        expect.objectContaining({ name: '王淼', phone: '15563231209' }),
+        expect.anything(),
+      );
+    });
+
+    it('只有手机号在原文、姓名对不上时仍走会话档案一致性闸（张冠李戴防线不降级）', async () => {
+      const result = await executeTool(
+        { ...validInput, name: '李四', phone: '15563231209' },
+        {
+          messages: [{ role: 'user', content: brokerMessage }],
+          bookingCandidateFacts: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '牛艳雪',
+            phone: '19560645423',
+          },
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+      expect(result.conflictingFields).toEqual(['姓名', '联系电话']);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('姓名只出现在引用前缀里（经理名）不构成逐字锚定', async () => {
+      const result = await executeTool(
+        { ...validInput, name: '王淼', phone: '15563231209' },
+        {
+          messages: [
+            { role: 'user', content: '[引用 王淼：帮我报名]\n我手机号15563231209' },
+          ],
+          bookingCandidateFacts: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '牛艳雪',
+            phone: '19560645423',
+          },
+        },
+      );
+
+      // 引用前缀里的名字是被引用方（通常是招募经理），既有 isNameOnlyQuotedSpeaker
+      // 负向证据闸门会把"姓名"打回 missingFields——豁免轨不得绕过它。
+      expect(result.success).toBe(false);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+  });
+
 });
