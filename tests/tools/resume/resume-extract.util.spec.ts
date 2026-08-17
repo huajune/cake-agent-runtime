@@ -34,6 +34,10 @@ describe('resume-extract.util', () => {
         schema: RESUME_EXTRACT_SCHEMA,
         outputName: 'ResumeFields',
         prompt: '从以下规整简历文本抽取字段：\n\n姓名：兮兮\n电话：18271421690',
+        thinking: {
+          type: 'disabled',
+          budgetTokens: 0,
+        },
         maxOutputTokens: 800,
       }),
     );

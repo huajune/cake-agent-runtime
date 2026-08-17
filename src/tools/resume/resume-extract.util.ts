@@ -36,6 +36,10 @@ export async function extractResumeFieldsViaModel(
     outputName: 'ResumeFields',
     system: SYSTEM_PROMPT,
     prompt: `从以下规整简历文本抽取字段：\n\n${text}`,
+    thinking: {
+      type: 'disabled',
+      budgetTokens: 0,
+    },
     maxOutputTokens: 800,
   });
   return result.output.fields.map((field) => ({ ...field, extractedBy: 'extract_model' }));
