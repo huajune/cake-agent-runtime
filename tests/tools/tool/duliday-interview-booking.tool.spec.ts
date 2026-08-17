@@ -1530,7 +1530,7 @@ describe('buildInterviewBookingTool', () => {
 
     // 议题 8-2（用户 8-14 裁定）：查不到既有工单手机号时**放行交海绵仲裁**。
     // 原"保守判重"分支在 badcase chat 6a4229f2 里击穿了本修复本身——刚创建 8 分钟的
-    // 工单海绵侧查不到手机号，手机号明确不同的王淼被误拦。真重复由海绵服务端
+    // 工单海绵侧查不到手机号，手机号明确不同的兮兮被误拦。真重复由海绵服务端
     // 同手机号同岗位约束兜底（Bull 重试必然同 phone）。
     it('反查工单失败（海绵异常）时放行交海绵仲裁', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
@@ -1546,7 +1546,7 @@ describe('buildInterviewBookingTool', () => {
       expect(mockSpongeService.bookInterview).toHaveBeenCalled();
     });
 
-    it('工单缺手机号时放行交海绵仲裁（王淼案回归：新单 8 分钟内查不到手机号）', async () => {
+    it('工单缺手机号时放行交海绵仲裁（兮兮案回归：新单 8 分钟内查不到手机号）', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 448367,
@@ -1556,19 +1556,19 @@ describe('buildInterviewBookingTool', () => {
       const result = await executeTool(
         {
           ...validInput,
-          name: '王淼',
-          phone: '15563231209',
+          name: '兮兮',
+          phone: '18271421690',
           educationId: 2,
           householdRegisterProvinceId: 310000,
           height: 170,
         },
-        { messages: [{ role: 'user', content: '王淼 15563231209' }] },
+        { messages: [{ role: 'user', content: '兮兮 18271421690' }] },
         { activeBooking: recentActiveBooking },
       );
 
       expect(result.success).toBe(true);
       expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-        expect.objectContaining({ phone: '15563231209' }),
+        expect.objectContaining({ phone: '18271421690' }),
         expect.anything(),
       );
     });
@@ -1739,7 +1739,7 @@ describe('buildInterviewBookingTool', () => {
   // 一个人，第二人被姓名/电话一致性闸门误杀。防臆造保护不降级，只是把验证源从
   // "会话档案单一身份"换成"候选人消息文本逐字锚定"——对粘贴表单场景比档案匹配更强。
   describe('多人代报豁免轨（议题 8-1）', () => {
-    const brokerMessage = '牛艳雪 19560645423\n王淼 15563231209\n两个人都报这个岗';
+    const brokerMessage = '王五 13800138000\n兮兮 18271421690\n两个人都报这个岗';
 
     it('第二人的姓名与手机号都在候选人文本里逐字出现时放行', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
@@ -1753,8 +1753,8 @@ describe('buildInterviewBookingTool', () => {
       const result = await executeTool(
         {
           ...validInput,
-          name: '王淼',
-          phone: '15563231209',
+          name: '兮兮',
+          phone: '18271421690',
           educationId: 2,
           householdRegisterProvinceId: 310000,
           height: 170,
@@ -1764,28 +1764,28 @@ describe('buildInterviewBookingTool', () => {
           // 会话档案锁在第一个人身上——正是本案闸门误杀的成因
           bookingCandidateFacts: {
             ...FALLBACK_EXTRACTION.interview_info,
-            name: '牛艳雪',
-            phone: '19560645423',
+            name: '王五',
+            phone: '13800138000',
           },
         },
       );
 
       expect(result).toMatchObject({ success: true });
       expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-        expect.objectContaining({ name: '王淼', phone: '15563231209' }),
+        expect.objectContaining({ name: '兮兮', phone: '18271421690' }),
         expect.anything(),
       );
     });
 
     it('只有手机号在原文、姓名对不上时仍走会话档案一致性闸（张冠李戴防线不降级）', async () => {
       const result = await executeTool(
-        { ...validInput, name: '李四', phone: '15563231209' },
+        { ...validInput, name: '李四', phone: '18271421690' },
         {
           messages: [{ role: 'user', content: brokerMessage }],
           bookingCandidateFacts: {
             ...FALLBACK_EXTRACTION.interview_info,
-            name: '牛艳雪',
-            phone: '19560645423',
+            name: '王五',
+            phone: '13800138000',
           },
         },
       );
@@ -1798,15 +1798,15 @@ describe('buildInterviewBookingTool', () => {
 
     it('姓名只出现在引用前缀里（经理名）不构成逐字锚定', async () => {
       const result = await executeTool(
-        { ...validInput, name: '王淼', phone: '15563231209' },
+        { ...validInput, name: '兮兮', phone: '18271421690' },
         {
           messages: [
-            { role: 'user', content: '[引用 王淼：帮我报名]\n我手机号15563231209' },
+            { role: 'user', content: '[引用 兮兮：帮我报名]\n我手机号18271421690' },
           ],
           bookingCandidateFacts: {
             ...FALLBACK_EXTRACTION.interview_info,
-            name: '牛艳雪',
-            phone: '19560645423',
+            name: '王五',
+            phone: '13800138000',
           },
         },
       );
