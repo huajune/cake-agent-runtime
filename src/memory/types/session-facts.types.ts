@@ -524,8 +524,19 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   });
 
 /**
- * 裸值兼容信封。拆除判据：A1 及后续复扫中 unknown/memory 旧档计数归零后删除；
- * factsv2 无短 TTL，不能以自然过期代替数据侧确认。
+ * 裸值兼容信封。
+ *
+ * ⚠️ 拆除判据已失效，勿再按原判据删（2026-08-17 复扫结论）：
+ * 原判据是「unknown/memory 旧档计数归零后删除」。数据侧确实归零——全量复扫 443 份生产
+ * factsv2、13733 个字段槽位，全部是信封或 null，裸标量与 unknown/archive 旧档均为 0。
+ * 但本信封已不只是旧数据兼容层：`saveFacts(facts: EntityExtractionResult | SessionFacts)`
+ * 经 `ensureSessionFacts` 走同一个 SessionFactsSchema，而 `EntityExtractionResult` 的字段
+ * 就是裸标量——`MemoryFixtureService.seed()`（test-suite 用例种子，生产 Dashboard 在跑）
+ * 正是这么调的。删掉裸值分支后该调用会直接 Zod 抛错（已实测）。
+ *
+ * 真正的拆除前置条件：先把 saveFacts 的入参收成 SessionFacts 单一形态
+ *（调用方显式经 toSessionFacts 带上 confidence/source/evidence），届时本信封才成为纯死码。
+ * 那是 saveFacts 契约变更，不属于残留清理范围。
  */
 function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValue<T> {
   return {
@@ -550,6 +561,9 @@ function cityEvidenceToString(evidence: CityFactEvidence): string {
   return evidence;
 }
 
+// CityFact 分支不是兼容层：extractFacts 的白名单回填产出的就是 CityFact（无 source），
+// 落盘时经这里升成信封。字符串分支同上——EntityExtractionResult 侧 city 可为裸串，
+// 与 legacySessionFactValue 同一个存活理由，勿单独拆。
 const NullableSessionCityFactSchema = z
   .union([SessionFactValueSchema(z.string()), CityFactSchema, z.string(), z.null()])
   .transform((value): SessionFactValue<string> | null => {
@@ -890,7 +904,8 @@ export interface WeworkSessionState {
   /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
    * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
-   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6），读边界恒 null。
+   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6）——写入侧在
+   * saveSessionFacts 恒折成 null，禁止任何读写复活（存量 2026-08-17 复扫已归零，读边界墓碑已拆）。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;

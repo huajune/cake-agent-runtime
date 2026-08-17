@@ -581,6 +581,9 @@ export function buildInterviewBookingTool(
         // 缺口（2-4 字昵称形态合法但只是微信打招呼昵称）。先确认真名再约，不得拿昵称下真预约。
         const nameGate = evaluateBookingNameGate(name, evidenceMessages, {
           // shadow 零行为：作证放行 enforce 起生效；shadow 期解锁由 legacy 正则承担（偏离⑥）。
+          // 拆除判据（2026-08-17 改写）：原判据挂在「候选人事实裁决 §10 灰度进度」上，而
+          // enforce 开关语义已被收资表单状态机取代（docs/todo/label-driven-collection-refactor.md
+          // §2.8）——不再有独立的 enforce 切换点可等。本并跑随标签制重启批一并处置，勿单独拆。
           attestedByClaim: enforcing && nameConfirmAttested,
           allowLegacyConfirmRegex: !enforcing,
         });

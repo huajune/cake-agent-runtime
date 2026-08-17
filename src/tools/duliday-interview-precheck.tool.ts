@@ -247,6 +247,16 @@ const inputSchema = z.object({
       '仅当候选人在对话中明确说出想约的具体日期时才传入。候选人只是泛泛询问"什么时候能面试"时不要传。' +
         '支持 today、tomorrow、今天、明天、后天、本周X、下周X、4月12日、YYYY-MM-DD。',
     ),
+  // ===== 以下 9 个 candidateXxx 裸字段为过渡期兼容通道（deprecated），正在退役 =====
+  // candidateName / Phone / Age / Gender / Education / HasHealthCertificate / Height /
+  // Weight / HouseholdProvince：无原话依据，工具内部一律转成"无 quote 低置信声明"再走出处公证。
+  //
+  // 拆除判据（2026-08-17 补，原注释只写"正在退役"没有可判门槛，导致这条通道退不掉）：
+  //   ① tool_calls 统计中 claims 通道对这九个字段的覆盖率连续 14 天 100%；且
+  //   ② 同窗口内九个裸字段的入参出现次数为 0。
+  // 两条同时满足才允许删字段——只看①不够，模型可能两个通道都传。
+  // 终态归宿：本组字段不是独立退役项，最终由收资表单状态机的写入运输规范承接
+  //（docs/todo/label-driven-collection-refactor.md §2.8 总纲）；届时随状态机切换一并删除。
   candidateName: z
     .string()
     .optional()

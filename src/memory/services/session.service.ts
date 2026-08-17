@@ -202,35 +202,12 @@ export class SessionService {
     }
     const content = parsed.data as Partial<WeworkSessionState>;
 
-    return this.retireBrandsField({
+    return {
       ...EMPTY_SESSION_STATE,
       ...content,
       lastCandidatePool: content.lastCandidatePool ?? null,
       presentedJobs: content.presentedJobs ?? null,
       currentFocusJob: content.currentFocusJob ?? null,
-    });
-  }
-
-  /**
-   * preferences.brands 字段退役墓碑（§19.6，2026-07-22 取代原只读投影）。
-   *
-   * 品牌唯一真相是 brand_state；需要展示品牌的消费方一律直读 brand_state
-   * （提示词硬约束段、fact-lines 的 currentBrandName 选项、settlement 快照均已迁）。
-   * 存储里的旧 brands 值在读边界统一抹平——deepMerge 的"null 不覆盖"语义会让
-   * 收口前写入的旧值在长活跃会话里无限存续（如 6a1e42a5），逐个读方防御不如
-   * 一处截断。schema 保留该字段仅为解析兼容，禁止任何读写复活。
-   *
-   * 拆除判据：A1 及后续复扫中 preferences.brands 旧值存量计数归零后删除本墓碑；
-   * factsv2 无短 TTL，不能以自然过期代替数据侧确认。
-   */
-  private retireBrandsField(state: WeworkSessionState): WeworkSessionState {
-    if (!state.facts || state.facts.preferences.brands == null) return state;
-    return {
-      ...state,
-      facts: {
-        ...state.facts,
-        preferences: { ...state.facts.preferences, brands: null },
-      },
     };
   }
 
