@@ -27,13 +27,17 @@ describe('resume-extract.util', () => {
         extractedBy: 'extract_model',
       },
     ]);
-    expect(generateStructured).toHaveBeenCalledWith(
+    const request = generateStructured.mock.calls[0][0];
+    expect(request).toEqual(
       expect.objectContaining({
         role: 'extract',
         schema: RESUME_EXTRACT_SCHEMA,
+        outputName: 'ResumeFields',
+        prompt: '从以下规整简历文本抽取字段：\n\n姓名：兮兮\n电话：18271421690',
         maxOutputTokens: 800,
       }),
     );
+    expect(request).not.toHaveProperty('messages');
   });
 
   it('lets notary reject a model-invented field as quote_not_found', async () => {

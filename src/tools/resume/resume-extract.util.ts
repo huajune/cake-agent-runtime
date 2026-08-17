@@ -33,8 +33,9 @@ export async function extractResumeFieldsViaModel(
   const result = await llm.generateStructured({
     role: ModelRole.Extract,
     schema: RESUME_EXTRACT_SCHEMA,
+    outputName: 'ResumeFields',
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: `从以下规整简历文本抽取字段：\n\n${text}` }],
+    prompt: `从以下规整简历文本抽取字段：\n\n${text}`,
     maxOutputTokens: 800,
   });
   return result.output.fields.map((field) => ({ ...field, extractedBy: 'extract_model' }));
