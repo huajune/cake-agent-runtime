@@ -16,7 +16,7 @@ describe('collect_fields 断路器（议题 9-2）', () => {
       ]);
     });
 
-    it('adopts an answer whose key only differs by a bracket annotation（王淼案同族）', () => {
+    it('adopts an answer whose key only differs by a bracket annotation（6a4229f2 案同族）', () => {
       const adoptions = resolveCollectFieldAdoptions(['身高(cm)', '有无本地健康证'], {
         '身高（cm）': '153',
         是否有本地健康证: '有',
