@@ -236,7 +236,7 @@ for (const [claimField, checklistField] of Object.entries(CLAIM_FIELD_TO_CHECKLI
 
 **状态：☑ 已完成**
 
-1. **`docs/todo/candidate-fact-authority-refactor.md`**：
+1. **`docs/todo/label-driven-collection-refactor.md`（附录 B）**：
    - 落地偏离说明加**⑦**（shadow claim 回灌，工程三原文）；
    - 迁移三阶段表 P0 行「零行为变化」改为「零行为变化，声明例外：A3/A4 hints 直上、
      偏离④ needsConfirmationFields 回传、P0-8 手机号门收紧、偏离⑦ claim 回灌补位」；

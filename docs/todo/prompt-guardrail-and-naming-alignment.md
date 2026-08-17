@@ -4,7 +4,7 @@
 > [prompt-example-hygiene.md](../principles/prompt-example-hygiene.md)（示教四原则 + 四层架构定位）、
 > [glossary.md](../principles/glossary.md)（命名唯一权威源）、
 > 普查表（红黄绿区逐字原文，2026-08-13 红区复查全绿后已删，原文见 git 历史 docs/todo/prompt-example-census.md）。
-> **范围裁定**：不动 P11 改造的在途工序（见 [candidate-fact-authority-refactor.md](./candidate-fact-authority-refactor.md)）；
+> **范围裁定**：不动 P11 改造的在途工序（见 [收资域总纲·附录B](./label-driven-collection-refactor.md)）；
 > 收资统一（独立立项）、NEW-7 中继产品裁定、input 侧 ML 分类器（已裁定不做）均不在本清单。
 > **总纪律**：新增对开放语言的正则 = 违宪（P11），review 直接打回。本清单全部新守卫均为封闭形态
 > （canary values 字符串比对 / CI 静态扫描），不触碰该红线。
@@ -111,7 +111,7 @@ A3 / C1 / C2 / D1 / D2：穿插做，互不依赖（全是小件）
 
 - 案例：chat `6a7d3243`，彭培恒·健康证确认死锁（确认死锁家族第 4 变体/补充标签亚种）。
 - 输入特征：候选人已用键值对提交整表，并连续两次用“对”确认；系统仍把“有无本地健康证”判缺并转人工。
-- 验收归属：核心字段侧归 `candidate-fact-authority-refactor.md` D1/D2；补充标签侧归收资立项 §3.4 表单确认 producer。
+- 验收归属：核心字段侧归 收资域总纲附录B D1/D2；补充标签侧归收资立项 §3.4 表单确认 producer。
 - 本清单只登记跨项目发版前的共同回归用例，不搭建回放设施、不改收资代码。
 
 ## 落地偏离说明
