@@ -294,7 +294,7 @@ candidateHeight/Weight/HasHealthCertificate 一等参数传了值，还正确填
 本案同时录得（真实但非本循环驱动器）：
 - isStudent claim quote 实录 `"你是社会人士（不是学生）对吧\n对的"`——模型把问句拼进
   quote 硬试 context_confirmation 被必然拒绝，R1 双重绑定的生产实况；
-- 「姓名（真名）：宋子瑜」逐字 quote 在部分轮次被拒 no_candidate_evidence——
+- 「姓名（真名）：王五」（化名，候选人原消息为其真实姓名逐字实录）逐字 quote 在部分轮次被拒 no_candidate_evidence——
   72.3% 假阳家族（R10），根因仍待重放定谳；
 - shadow 回执 note 携带行动指令文案（R9，卫生问题，非本案驱动）。
 
@@ -375,7 +375,7 @@ enforce-only。**生产实际的采信体系 = 各消费点私有判据的拼图
 | R7 | 「一次性传全已知字段」指令 × legacy claim 空 quote → 全部 rejected；shadow 是噪音，**enforce 会整表重问** | model-claims.ts:57 `quote:''`；notary.ts:41-43 |
 | R8 | 出生日期反推绕过一切裁决且 shadow/enforce 行为相反 | precheck:1398-1418 |
 | R9 | **shadow 行为泄漏**：shadow 承诺只观测，但回执 note 携带行动指令（"不要复述或提交…确认后重新提交"），模型服从 → shadow 期即产生确认循环。零行为变化契约不成立 | 铁证 C ②；precheck 回执 note 文案 |
-| R10 | **no_candidate_evidence 假阳复发**：候选人逐字写过的 quote（「姓名（真名）：宋子瑜」）仍被拒，初始拒绝是循环点火器；根因待代码级复现（消息合并/截断/归一化差异候选） | 铁证 C ①；72.3% 假阳历史实测同族 |
+| R10 | **no_candidate_evidence 假阳复发**：候选人逐字写过的 quote（「姓名（真名）：王五」，化名）仍被拒，初始拒绝是循环点火器；根因待代码级复现（消息合并/截断/归一化差异候选） | 铁证 C ①；72.3% 假阳历史实测同族 |
 | R11 | **确认循环无熔断**：同字段确认 ≥2 次仍不采信时没有任何确定性出口（停止追问/带值提交/早转人工）；booking 姓名门有限问熔断，确认循环没有 → 模型转五圈才弃疗 | 铁证 C |
 | R12 | **收资字段同义未归一（铁证 B/C 的真根因）**：岗位自定义补充字段与标准字段同义但标签不同（身高(cm)/体重(kg)/有无本地健康证 vs 身高/体重/健康证情况），checklist 字面匹配 → 同义格子永空 → missingFields 死循环。与 feedback「screening label ≠ collection field」同族：岗位侧自由文本标签直进清单无归一层 | 铁证 C 276571 回执 templateText/missingFields 实录 |
 
@@ -820,7 +820,7 @@ source 记 'candidate_quote'（候选人确认即亲证）、evidence 记「确�
 
 ### 任务 B3：R10 假阳复现定位（独立侦查任务，可并行）
 
-采信专项 R10：候选人**逐字写过**的 quote（「姓名（真名）：宋子瑜」，chat 6a827105
+采信专项 R10：候选人**逐字写过**的 quote（「姓名（真名）：王五」——化名，原文为候选人真实姓名，chat 6a827105
 turn 276571，原文实证在 chat_messages 2026-08-17 02:37:56 那条）仍被 notary 拒
 `no_candidate_evidence`——72.3% 假阳家族复发，且是确认循环的点火器。
 

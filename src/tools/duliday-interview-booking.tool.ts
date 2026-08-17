@@ -1077,7 +1077,7 @@ export function buildInterviewBookingTool(
             (booking) => isRecentBooking(booking) && isSameBookingTarget(booking, jobId),
           );
           // 软查重按「企微联系人 + 岗位」定位，但一个企微号可能先后给不同的人报同一岗位
-          // （工单 448367→448402 事故：罗欣宇约成功后，同会话给许颖约同岗位被误判重复）。
+          // （工单 448367→448402 事故：第一人约成功后，同会话给第二人约同岗位被误判重复）。
           // 命中指针后再用 work_order_id 反查工单上的手机号：手机号不同 = 不同候选人，放行。
           //
           // 议题 8-2（用户 8-14 裁定）：**查不到既有工单手机号时也放行**，交海绵仲裁。

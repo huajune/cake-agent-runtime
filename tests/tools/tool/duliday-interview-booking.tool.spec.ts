@@ -1440,8 +1440,8 @@ describe('buildInterviewBookingTool', () => {
   });
 
   describe('软查重手机号交叉核验（工单 448367→448402 badcase）', () => {
-    // 同一个企微联系人先后给两个不同的人报同一岗位：罗欣宇约成功后 30 分钟内，
-    // 同会话给许颖（另一手机号）报同岗位被误判 already_booked。命中指针后应
+    // 同一个企微联系人先后给两个不同的人报同一岗位：第一人约成功后 30 分钟内，
+    // 同会话给第二人（另一手机号）报同岗位被误判 already_booked。命中指针后应
     // 反查工单手机号：不同手机号 = 不同候选人，放行。
     const recentActiveBooking = {
       work_order_id: 448367,

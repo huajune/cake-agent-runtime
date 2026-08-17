@@ -6,7 +6,7 @@ import {
 
 describe('collect_fields 断路器（议题 9-2）', () => {
   describe('resolveCollectFieldAdoptions — 出口 A：采纳模型已提交的答案', () => {
-    it('adopts an answer whose key only differs by a modal prefix（黄燕案）', () => {
+    it('adopts an answer whose key only differs by a modal prefix（6a7e7846 案）', () => {
       const adoptions = resolveCollectFieldAdoptions(['需要中餐厅服务员经验'], {
         有无中餐厅服务员经验: '无',
       });
