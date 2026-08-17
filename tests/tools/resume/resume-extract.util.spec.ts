@@ -31,6 +31,7 @@ describe('resume-extract.util', () => {
     expect(request).toEqual(
       expect.objectContaining({
         role: 'extract',
+        modelId: 'qwen/qwen3.7-plus',
         schema: RESUME_EXTRACT_SCHEMA,
         outputName: 'ResumeFields',
         prompt: '从以下规整简历文本抽取字段：\n\n姓名：兮兮\n电话：18271421690',

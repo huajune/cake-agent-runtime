@@ -1,5 +1,5 @@
 /**
- * 模型数据字典 — 所有已知模型的静态目录 (2026.07 更新版)
+ * 模型数据字典 — 所有已知模型的静态目录 (2026.08 更新版)
  *
  * RegistryService 根据已注册 Provider 过滤出当前可用模型。
  * 新增模型只需在对应 Provider 下加一行。
@@ -118,12 +118,19 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     releasedAt: '2026-06-02',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
-  'qwen/qwen3.7-max': {
+  'qwen/qwen3.8-max': {
     provider: 'qwen',
-    name: 'Qwen3.7 Max',
-    description: 'Qwen3.7 Max (旗舰档 / 1M 上下文 / 原生深度思考 / 工具调用)',
-    releasedAt: '2026-05-20',
-    capabilities: ['thinking', 'tool-use', 'long-context'],
+    name: 'Qwen3.8 Max',
+    description: 'Qwen3.8 Max (2.4T MoE 旗舰档 / 1M 上下文 / 结构化输出 / 原生多模态 / 工具调用)',
+    releasedAt: '2026-08-03',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
+  },
+  'qwen/qwen3.7-flash': {
+    provider: 'qwen',
+    name: 'Qwen3.7 Flash',
+    description: 'Qwen3.7 Flash (高速低成本档 / 1M 上下文 / 原生多模态 / 工具调用)',
+    releasedAt: '2026-07-21',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'qwen/qwen3-vl-plus': {
     provider: 'qwen',
