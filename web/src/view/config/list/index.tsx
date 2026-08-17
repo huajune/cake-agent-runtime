@@ -319,7 +319,7 @@ export default function Config() {
 
   const modelOptions = availableModelsData?.models ?? [];
 
-  // 七个角色统一走同一套模型覆盖机制（agent_reply_config），列表紧凑渲染。
+  // 八个角色统一走同一套模型覆盖机制（agent_reply_config），列表紧凑渲染。
   // 留空 = 走对应 AGENT_{ROLE}_MODEL 环境变量角色路由。
   const modelRoleFields: Array<{
     key: AgentModelConfigKey;
@@ -338,6 +338,12 @@ export default function Config() {
       label: '事实提取',
       envVar: 'AGENT_EXTRACT_MODEL',
       hint: '会话事实提取与沉淀摘要。切换后盯系统监控页「提取质量对账」。',
+    },
+    {
+      key: 'resumeExtractModelId',
+      label: '简历字段抽取',
+      envVar: 'AGENT_RESUME_EXTRACT_MODEL',
+      hint: '简历规整文本的结构化字段抽取；与会话事实提取隔离，可按简历实测结果独立切换。',
     },
     {
       key: 'visionModelId',

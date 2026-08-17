@@ -95,7 +95,16 @@ export class HostingConfigFacadeService {
             source: 'environment',
           };
 
-    const roles = ['chat', 'extract', 'vision', 'evaluate', 'review', 'repair', 'reengagement'];
+    const roles = [
+      'chat',
+      'extract',
+      'resume_extract',
+      'vision',
+      'evaluate',
+      'review',
+      'repair',
+      'reengagement',
+    ];
     const roleOverrides: Record<string, AgentFallbackChainEntry> = {};
     for (const role of roles) {
       if (role === 'vision' && config.visionFallbackModelIds.length > 0) {
@@ -123,6 +132,11 @@ export class HostingConfigFacadeService {
     }> = [
       { key: 'wecomCallbackModelId', role: 'chat', envVar: 'AGENT_CHAT_MODEL' },
       { key: 'extractModelId', role: 'extract', envVar: 'AGENT_EXTRACT_MODEL' },
+      {
+        key: 'resumeExtractModelId',
+        role: 'resume_extract',
+        envVar: 'AGENT_RESUME_EXTRACT_MODEL',
+      },
       { key: 'visionModelId', role: 'vision', envVar: 'AGENT_VISION_MODEL' },
       { key: 'evaluateModelId', role: 'evaluate', envVar: 'AGENT_EVALUATE_MODEL' },
       { key: 'reviewModelId', role: 'review', envVar: 'AGENT_REVIEW_MODEL' },
@@ -223,6 +237,7 @@ export class HostingConfigFacadeService {
     const modelFields: Array<keyof AgentReplyConfig> = [
       'wecomCallbackModelId',
       'extractModelId',
+      'resumeExtractModelId',
       'visionModelId',
       'evaluateModelId',
       'reviewModelId',

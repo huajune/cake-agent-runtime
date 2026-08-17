@@ -1,6 +1,8 @@
 export enum ModelRole {
   Chat = 'chat',
   Extract = 'extract',
+  /** 简历字段抽取；独立于会话事实提取，允许 Dashboard 单独切换模型。 */
+  ResumeExtract = 'resume_extract',
   Vision = 'vision',
   Evaluate = 'evaluate',
   /** 出站 LLM 守卫（OutputGuardrail 的 llm 档，只读、隔离上下文、强模型）。 */

@@ -6,7 +6,7 @@ import {
 } from '@tools/resume/resume-extract.util';
 
 describe('resume-extract.util', () => {
-  it('uses Extract structured output and marks every result as model testimony', async () => {
+  it('uses the configurable ResumeExtract role and marks every result as model testimony', async () => {
     const generateStructured = jest.fn().mockResolvedValue({
       output: {
         fields: [
@@ -30,8 +30,7 @@ describe('resume-extract.util', () => {
     const request = generateStructured.mock.calls[0][0];
     expect(request).toEqual(
       expect.objectContaining({
-        role: 'extract',
-        modelId: 'qwen/qwen3.7-plus',
+        role: 'resume_extract',
         schema: RESUME_EXTRACT_SCHEMA,
         outputName: 'ResumeFields',
         prompt: '从以下规整简历文本抽取字段：\n\n姓名：兮兮\n电话：18271421690',
@@ -42,6 +41,7 @@ describe('resume-extract.util', () => {
         maxOutputTokens: 800,
       }),
     );
+    expect(request).not.toHaveProperty('modelId');
     expect(request).not.toHaveProperty('messages');
   });
 

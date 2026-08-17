@@ -16,6 +16,7 @@ export interface ModelRoute {
  *   AGENT_CHAT_MODEL=qwen/qwen3.7-plus
  *   AGENT_CHAT_FALLBACKS=deepseek/deepseek-v4-flash,anthropic/claude-sonnet-5
  *   AGENT_EXTRACT_MODEL=deepseek/deepseek-v4-pro
+ *   AGENT_RESUME_EXTRACT_MODEL=qwen/qwen3.7-plus
  *   AGENT_VISION_MODEL=qwen/qwen3-vl-plus
  */
 @Injectable()

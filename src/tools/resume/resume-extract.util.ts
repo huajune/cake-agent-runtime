@@ -31,8 +31,7 @@ export async function extractResumeFieldsViaModel(
   llm: LlmExecutorService,
 ): Promise<ResumeRawField[]> {
   const result = await llm.generateStructured({
-    role: ModelRole.Extract,
-    modelId: 'qwen/qwen3.7-plus',
+    role: ModelRole.ResumeExtract,
     schema: RESUME_EXTRACT_SCHEMA,
     outputName: 'ResumeFields',
     system: SYSTEM_PROMPT,

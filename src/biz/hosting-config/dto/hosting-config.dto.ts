@@ -35,6 +35,10 @@ export class UpdateAgentReplyConfigDto {
 
   @IsOptional()
   @IsString()
+  resumeExtractModelId?: string;
+
+  @IsOptional()
+  @IsString()
   visionModelId?: string;
 
   @IsOptional()
