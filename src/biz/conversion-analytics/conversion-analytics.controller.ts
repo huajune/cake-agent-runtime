@@ -23,14 +23,13 @@ export class ConversionAnalyticsController {
   async getKpis(
     @Query('range') range?: string,
     @Query('groups') groups?: string | string[],
-    @Query('channel') channel?: string | string[],
     @Query('corpId') corpId?: string,
     @Query('mode') mode?: string,
     @Query('maturityDays') maturityDays?: string,
   ) {
     const metricMode = this.toMode(mode);
     return this.service.getKpis(
-      this.toFilter(range, groups, channel, corpId, metricMode, maturityDays),
+      this.toFilter(range, groups, corpId, metricMode, maturityDays),
       metricMode,
     );
   }
@@ -40,7 +39,6 @@ export class ConversionAnalyticsController {
     @Query('cohort') cohort?: string,
     @Query('range') range?: string,
     @Query('groups') groups?: string | string[],
-    @Query('channel') channel?: string | string[],
     @Query('corpId') corpId?: string,
     @Query('mode') mode?: string,
     @Query('maturityDays') maturityDays?: string,
@@ -48,7 +46,7 @@ export class ConversionAnalyticsController {
     const metricMode = this.toMode(mode, 'cohort');
     return this.service.getFunnel(
       cohort === 'booking' ? 'booking' : 'friend_added',
-      this.toFilter(range, groups, channel, corpId, metricMode, maturityDays),
+      this.toFilter(range, groups, corpId, metricMode, maturityDays),
       metricMode,
     );
   }
@@ -57,14 +55,13 @@ export class ConversionAnalyticsController {
   async getTrends(
     @Query('range') range?: string,
     @Query('groups') groups?: string | string[],
-    @Query('channel') channel?: string | string[],
     @Query('corpId') corpId?: string,
     @Query('mode') mode?: string,
     @Query('maturityDays') maturityDays?: string,
   ) {
     const metricMode = this.toMode(mode);
     return this.service.getTrends(
-      this.toFilter(range, groups, channel, corpId, metricMode, maturityDays),
+      this.toFilter(range, groups, corpId, metricMode, maturityDays),
       metricMode,
     );
   }
@@ -73,14 +70,13 @@ export class ConversionAnalyticsController {
   async getBots(
     @Query('range') range?: string,
     @Query('groups') groups?: string | string[],
-    @Query('channel') channel?: string | string[],
     @Query('corpId') corpId?: string,
     @Query('mode') mode?: string,
     @Query('maturityDays') maturityDays?: string,
   ) {
     const metricMode = this.toMode(mode);
     return this.service.getBots(
-      this.toFilter(range, groups, channel, corpId, metricMode, maturityDays),
+      this.toFilter(range, groups, corpId, metricMode, maturityDays),
       metricMode,
     );
   }
@@ -91,13 +87,12 @@ export class ConversionAnalyticsController {
     @Query('groups') groups?: string | string[],
     @Query('corpId') corpId?: string,
   ) {
-    return this.service.getHandoff(this.toFilter(range, groups, undefined, corpId));
+    return this.service.getHandoff(this.toFilter(range, groups, corpId));
   }
 
   private toFilter(
     rawRange?: string,
     rawGroups?: string | string[],
-    rawChannels?: string | string[],
     rawCorpId?: string,
     mode: ConversionMetricMode = 'period',
     rawMaturityDays?: string,
@@ -105,7 +100,6 @@ export class ConversionAnalyticsController {
     return {
       range: this.toRange(rawRange),
       groups: this.toList(rawGroups),
-      channels: this.toList(rawChannels),
       corpId: rawCorpId?.trim() || undefined,
       ...(mode === 'cohort' ? { maturityDays: this.toMaturityDays(rawMaturityDays) } : {}),
     };

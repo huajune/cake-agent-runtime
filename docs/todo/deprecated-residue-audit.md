@@ -221,12 +221,44 @@
 
 ## 4. 写了到期条件、却没人回来复查的临时并跑
 
-**状态：☐ 待执行（先复查判据，判据不满足就只更新注释里的复扫记录，不要删代码）**
+**状态：☑ 已执行（2026-08-17）——5 条全部复查完毕，实删 1 条（4.2），其余 4 条按判据维持并跑并回写复扫记录**
 
 这一类最容易烂成永久债——**每条都自带拆除判据，只是判据没人执行**。
 
 > **建议（需人裁定）**：给这一类定个统一机制，比如到期日进定时任务或每日 badcase 日报的检查项。
 > 否则本节只会继续变长——今天这 5 条就是这么攒出来的。
+>
+> **2026-08-17 裁定：本次不做**，建议原文保留。
+
+### 4.0 本轮执行记录（2026-08-17）
+
+| # | 结论 | 依据 |
+|---|---|---|
+| 4.1 | **不删**，注释追加 A2 复扫记录 | 本地无生产容器日志访问权，取不到完整 7 天窗口，判据无法证实 |
+| 4.2 | **已删墓碑** | 生产 factsv2 全量复扫：444/444 会话 `preferences.brands` 存量为 null，计数 = 0 |
+| 4.3 | **不删**，判据已失效 → 改写为新前置条件 | 计数虽为 0，但发现该信封另有**活跃非兼容用途**，删了会抛错（下方详述） |
+| 4.4 | **不删**，判据改写为指向现行裁定 | enforce 开关语义已被收资表单状态机取代，原判据挂靠对象已不存在 |
+| 4.5 | **不删字段**，补齐可判门槛 | 原注释只写"正在退役"无到期条件 |
+
+**Redis 存量复扫方法（一次性只读脚本，未入库）**：`.env.production` 的 UPSTASH REST 凭证，
+只发 `SCAN`（COUNT=500）+ `HGET`，批间 sleep 250ms，无任何写命令。key 前缀取自
+`src/memory/services/session-key.ts` 的 `factsv2:{corpId}:{userId}:{sessionId}` +
+`RedisService` 的 `production:` 环境前缀。
+
+**扫描结果**：全键空间 7280 个 key（15 轮），其中 factsv2 = 456~457（三次扫描间有自然增减）。
+
+| 指标 | 计数 |
+|---|---|
+| 解析成功的 facts 份数 | 443 |
+| §4.2 `preferences.brands != null` | **0**（444/444 均为显式 null） |
+| §4.3 `confidence='unknown'` 或 `source='archive'` | **0** |
+| 裸标量 / 旧 CityFact 形态字段槽位 | **0**（13733 槽位全部是信封或 null） |
+
+**量具自检**（防"0 是因为量具坏了"）：同一批数据里读出 2881 个正常信封，
+`confidence` 分布 medium 1717 / high 1162，`source` 分布 llm 1717 / rule 990 / derived 103 /
+candidate 68 / tool 1。量具能读出值，所以两个 0 是真的 0。
+（附带发现：存量 `source` 存的仍是旧生产者名 llm/candidate，靠
+`LEGACY_SESSION_FACT_PRODUCERS` 前置映射成 model/candidate_quote——**那是另一条活着的兼容层，本轮没碰**。）
 
 | # | 位置 | 自带的拆除判据 | 怎么查 |
 |---|---|---|---|
@@ -236,16 +268,89 @@
 | 4.4 | `src/tools/duliday-interview-booking.tool.ts:541` `allowLegacyConfirmRegex: !enforcing` | shadow 期负向证据解锁用，enforce 起即无用（偏离⑥） | 取决于候选人事实裁决 §10 灰度进度，查 `tool-registry.service.ts:97` 附近的模式配置与生产开关 |
 | 4.5 | `src/tools/duliday-interview-precheck.tool.ts` 的 9 个 `candidateXxx` 裸字段（`candidateName`/`Phone`/`Age`/`Gender`/`Education`/`HealthCertificate`/`Height`/`Weight`/`HouseholdProvince`） | 标了 deprecated「过渡期兼容通道，正在退役」，**但没写到期条件** | **本轮只补判据，不删字段**。需先定一个可判的门槛（如"claims 通道覆盖率连续 N 天 100% 且裸字段调用为 0"），写进工具注释；否则这条过渡通道永远退不掉 |
 
+### 4.3 详记：判据满足但**不能删**——本条是本轮最重要的发现
+
+数据侧判据（unknown/archive 计数归零）**已满足**，但按判据删除会造成生产故障，已回退。
+
+**根因：`legacySessionFactValue` 不只是旧数据兼容层，它同时是 `saveFacts` 的活跃入参强制层。**
+
+- `SessionService.saveFacts(facts: EntityExtractionResult | SessionFacts)` 经
+  `ensureSessionFacts()` 走的是同一个 `SessionFactsSchema`；
+- `EntityExtractionResult` 的字段**本来就是裸标量**，全靠 `NullableSessionFactSchema`
+  的裸值分支把它升成信封；
+- 活跃调用方：`src/biz/test-suite/services/memory-fixture.service.ts:54`
+  `MemoryFixtureService.seed()` —— 用例种子注入，**生产 Dashboard 的 test-suite 在跑**，
+  它传的就是 `resolveSessionFacts()` 返回的 `EntityExtractionResult`。
+
+**实测证据**（临时 spec，跑完即删）：删掉裸值分支后
+`SessionFactsSchema.safeParse({interview_info:{name:'张三',age:'24'}})` → `success=false`，
+报 `invalid_union … expected object, received string`。即该调用会直接抛错。
+
+⚠️ 注意：`tests/biz/test-suite/services/memory-fixture.service.spec.ts` **抓不到这个回归**
+（它 mock 了 `sessionService`，真 schema 根本没跑）。只看该 spec 绿灯会误判为安全。
+
+**新的拆除前置条件**（已写进代码注释）：先把 `saveFacts` 入参收成 `SessionFacts` 单一形态，
+调用方显式经 `toSessionFacts` 带上 confidence/source/evidence；届时本信封才成为纯死码。
+那是 `saveFacts` 契约变更，**不属于残留清理范围**，需另立项。
+
+> **对本清单方法论的教训**：本节其余各条的"存量计数归零"判据都隐含假设「该符号只服务于旧数据」。
+> 下次执行任何一条前，除了数据侧计数，必须先确认该符号没有第二个活跃用途——
+> 计数为 0 只证明"旧数据没了"，不证明"没人用了"。
+
 ---
 
 ## 5. 空操作 / 半死代码（保留理由需复查是否还成立）
 
-**状态：☐ 待执行（只需确认 + 更新注释，不改行为）**
+**状态：☑ 已完成（2026-08-17）——两条均由人裁定为"计划已死/无人使用"，已删除**
 
 | # | 位置 | 情况 | 要确认什么 |
 |---|---|---|---|
 | 5.1 | `src/biz/conversion-analytics/conversion-analytics.service.ts:1005` | `source_channel` 写入侧恒为 `'unknown'`（暂无渠道埋点），故 channels 过滤"当前为空操作"；注释称保留以便将来接真实渠道维度（§7） | 渠道埋点计划是否还在。不在就删掉这段空过滤 |
 | 5.2 | `src/biz/feishu-sync/bitable-sync.service.ts:227` | "旧版消息处理片段同步，仅保留为手动维护入口" | 这个手动入口最近是否还有人用。没有就删 |
+
+### 5.1 执行记录（2026-08-17）
+
+**裁定**：渠道埋点计划已死 → 删空过滤。
+
+链路 grep 结论：`web/src/` 前端**完全没有**渠道筛选 UI 或传参（唯一命中是
+`web/src/api/types/bot.types.ts` 里一条与本域无关的同源注释）。即整条 `channels` 链路
+从前端到 SQL 无人使用。因此不止删过滤，整条死管道一并清掉：
+
+| 文件 | 改动 |
+|---|---|
+| `conversion-analytics.service.ts` | 删 `source_channel` 过滤块 + "保留以待将来"注释；删缓存键里的 `channels` 项 |
+| `types/conversion-analytics.types.ts` | 删 `ConversionFilter.channels` 字段 |
+| `conversion-analytics.controller.ts` | 删 4 个端点的 `@Query('channel')` 形参与 `toFilter` 的 `rawChannels` 参数 |
+| `tests/…/conversion-analytics.controller.spec.ts` | 4 处调用实参与 5 处期望对象同步去掉 channels |
+| `tests/…/conversion-analytics.service.spec.ts` | 3 处 filter 字面量去掉 `channels: []` |
+
+**行为影响交代（不是零，但可接受）**：原过滤是"空操作"仅因为无人传参；若有人真传
+`?channel=wecom`，因 `source_channel` 恒为 `'unknown'`，命中结果必为**空集**。删除后同样的请求
+改为返回不过滤的全量。即唯一的行为差异发生在"传了参数"这条无人走且只会返回空集的路径上，
+实际流量下外部可观测行为零变化。
+
+### 5.2 执行记录（2026-08-17）
+
+**裁定**：手动入口连所有者都不知道存在 → 核实零调用方后删除。
+
+**零调用方核实**：全仓 grep `syncYesterday` —— 除自身定义与其专属 spec 外无任何命中；
+无 controller 路由（`feishu-sync.controller.ts` 的 `POST /feishu/sync/manual` 走的是
+`ChatRecordSyncService.manualSync()`，与本方法无关）、无 cron 注册、无脚本调用。
+⚠️ 勿与 `ChatRecordSyncService.syncYesterdayChatRecords()` 混淆——那是**现行同步链路**，一行没碰。
+
+删除清单（`src/biz/feishu-sync/bitable-sync.service.ts`）：
+
+- `syncYesterday()` 方法本体
+- 只为它服务的私有 helper：`buildFeishuRecord()` / `getYesterdayWindow()` / `isReadOnlyPreview()`
+- 随之失效的 DI：`messageProcessingService`、`configService`、`exceptionNotifier` 三个构造器参数
+  （`FeedbackSourceTraceService` 仍自行注入 `MessageProcessingService`，其 spec provider 保留）
+- 随之失效的 import：`MessageProcessingService` / `MessageProcessingRecord` /
+  `BatchCreateRequest` / `AlertLevel` / `IncidentReporterService` / `ConfigService`
+- 类 JSDoc 的"每日同步聊天记录到飞书"职责项（本就不准确：无 cron，该职责属 ChatRecordSyncService）
+- 专属测试：`tests/biz/feishu-sync/bitable-sync.service.spec.ts` 的 `describe('syncYesterday')`
+  6 个用例，及随之无用的 `chatTableConfig` / `batchCreateRecords` mock
+
+DI 构造器变更已过 `pnpm run test:di-smoke`（AppModule 完整依赖图可实例化）。
 
 ---
 
@@ -290,10 +395,27 @@
 ## 8. 建议执行顺序
 
 1. **§2.1 `ENABLE_BULL_QUEUE`** —— ☑ 已由人裁定方案 B 并完成
-2. **§1.1–1.3** —— 三条零引用死代码，一把删，零风险
-3. **§2.2 + §1.4** —— 删两行环境变量 + 改一处注释理由
-4. **§3 注释去重** —— 8 处改动，纯注释，注意 §0.1 第 4 条红线
-5. **§4.2 / §4.3** —— 两条都是"扫一次 Redis 存量即可决断"，做完能真删掉两处墓碑
-6. **§4.1** —— 取决于能否拿到 7 天生产日志；拿不到就只更新复扫记录
-7. **§4.5** —— 补到期判据（否则过渡通道永远退不掉）
-8. **§5** —— 两条确认题
+2. **§1.1–1.3** —— ☑ 三条零引用死代码，一把删，零风险
+3. **§2.2 + §1.4** —— ☑ 删两行环境变量 + 改一处注释理由
+4. **§3 注释去重** —— ☑ 8 处改动，纯注释，注意 §0.1 第 4 条红线
+5. **§4.2 / §4.3** —— ☑ 已扫。§4.2 计数 0 已删；**§4.3 计数虽 0 但发现活跃非兼容用途，不删**（见 §4.3 详记）
+6. **§4.1** —— ☑ 拿不到 7 天生产日志，只更新了复扫记录
+7. **§4.5** —— ☑ 补到期判据完成
+8. **§5** —— ☑ 两条均已裁定并删除
+
+---
+
+## 9. 全清单收尾状态（2026-08-17）
+
+§1 ☑ / §2 ☑ / §3 ☑ / §4 ☑ / §5 ☑ / §6 ☑ —— **本清单执行完毕**。
+
+仍在代码里"并跑/保留"的 4 条不是欠账，是判据未达成的显式留存，各自注释已写清下次怎么判：
+
+| 位置 | 为什么留 | 下次怎么判 |
+|---|---|---|
+| §4.1 `save-image-description.tool.ts` legacy resume | 取不到 7 天生产日志 | 先把 warn 接进告警通道或拿到容器日志 |
+| §4.3 `legacySessionFactValue` | 仍是 `saveFacts` 活跃入参强制层 | 先收 `saveFacts` 入参为 `SessionFacts` 单形态（需另立项） |
+| §4.4 `allowLegacyConfirmRegex` | enforce 切换点已不存在 | 随收资表单状态机重启批一并处置 |
+| §4.5 precheck 9 个裸字段 | 过渡通道仍在用 | claims 覆盖率连续 14 天 100% 且裸字段入参为 0 |
+
+§7「本次扫描未覆盖的面」（ts-prune 全量、docs 全量比对、前端废弃视图）仍未做，属独立轮次。

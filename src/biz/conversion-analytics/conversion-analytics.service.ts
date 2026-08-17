@@ -993,7 +993,6 @@ export class ConversionAnalyticsService {
       endDate,
       eventNames: this.normalizeListForCache(eventNames),
       corpId: filter.corpId,
-      channels: this.normalizeListForCache(filter.channels),
       groups: options.applyGroupFilter ? this.normalizeListForCache(filter.groups) : [],
       applyGroupFilter: options.applyGroupFilter,
     });
@@ -1007,11 +1006,6 @@ export class ConversionAnalyticsService {
             .lte('report_date', endDate)
             .in('event_name', eventNames);
           if (filter.corpId) query = query.eq('corp_id', filter.corpId);
-          // source_channel 写入侧目前恒为 'unknown'（暂无渠道埋点），channels 始终为空，
-          // 此过滤当前为空操作；保留以便将来接入真实渠道维度（§7）。
-          if (filter.channels.length > 0) {
-            query = query.in('source_channel', filter.channels);
-          }
           return query.order('occurred_at', { ascending: true });
         },
       );
