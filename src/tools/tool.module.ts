@@ -10,6 +10,7 @@ import { UserModule } from '@biz/user/user.module';
 import { NotificationModule } from '@notification/notification.module';
 import { InterventionModule } from '@biz/intervention/intervention.module';
 import { ToolRegistryService } from './tool-registry.service';
+import { LlmModule } from '@/llm/llm.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ToolRegistryService } from './tool-registry.service';
     UserModule,
     NotificationModule,
     InterventionModule,
+    LlmModule,
   ],
   providers: [ToolRegistryService],
   exports: [ToolRegistryService],

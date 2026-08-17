@@ -27,6 +27,20 @@ export function parseEducation(text: string): CandidateParseResult<string> | nul
   return null;
 }
 
+/**
+ * 简历文档专用学历解析：按等级降序词表取全文最高学历。
+ *
+ * 与聊天轨 parseEducation 的差别是刻意不应用学校/学院语境守卫——学校名称是简历
+ * 教育经历的正常组成部分，套用聊天守卫会把整份简历全部拒掉。
+ */
+export function parseHighestEducation(text: string): CandidateParseResult<string> | null {
+  for (const [pattern, label] of EDUCATION_KEYWORDS) {
+    const match = pattern.exec(text);
+    if (match) return { value: label, excerpt: match[0] };
+  }
+  return null;
+}
+
 export function normalizeEducationToId(value: string): number | null {
   return findSpongeEducationIdByLabel(value);
 }

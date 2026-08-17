@@ -47,6 +47,9 @@ import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-re
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
 import { getRuleFactValue } from '@resolution/evidence/merge';
+import { sleep } from '@infra/utils/async.util';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 
 /**
  * 统一工具注册表
@@ -81,6 +84,7 @@ export class ToolRegistryService {
     opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
+    private readonly llm: LlmExecutorService,
     userHostingService: UserHostingService,
     configService: ConfigService,
     interventionService: InterventionService,
@@ -330,7 +334,11 @@ export class ToolRegistryService {
 
     const resumeAttachments = this.resolveResumeAttachments(context);
     if (resumeAttachments.length) {
-      const resumeTool = buildReadResumeAttachmentTool(resumeAttachments);
+      const resumeTool = buildReadResumeAttachmentTool(resumeAttachments, {
+        llm: this.llm,
+        messageWriteback: (messageId, content, sheet) =>
+          this.writeBackResumeMessage(messageId, content, sheet),
+      });
       tools['read_resume_attachment'] = resumeTool(context);
       this.logger.log(
         `动态注入 read_resume_attachment 工具, resumeCount=${resumeAttachments.length}`,
@@ -374,7 +382,44 @@ export class ToolRegistryService {
       this.normalizeText(context.archive.sessionFacts?.interview_info?.upload_resume),
     ].filter((value): value is string => Boolean(value));
 
-    return [...new Set(urls)].map((fileUrl) => ({ fileUrl }));
+    return [...new Set(urls)].map((fileUrl) => {
+      const currentImageIndex =
+        context.turnInput.imageUrls?.findIndex((url) => url === fileUrl) ?? -1;
+      const imageMessageId =
+        currentImageIndex >= 0 ? context.turnInput.imageMessageIds?.[currentImageIndex] : undefined;
+      const currentMessage = context.turnInput.currentUserMessage ?? '';
+      const isCurrentFile = currentMessage.includes(fileUrl);
+      const messageId = imageMessageId ?? (isCurrentFile ? context.session.turnId : undefined);
+      const fileName = isCurrentFile
+        ? currentMessage.match(/文件名\s*[：:]\s*([^；;\n\r]+)/u)?.[1]?.trim()
+        : undefined;
+      return { fileUrl, fileName, messageId };
+    });
+  }
+
+  /** 与图片描述链路相同：4 次、500ms×attempt 退避；只依赖 biz/message。 */
+  private async writeBackResumeMessage(
+    messageId: string,
+    content: string,
+    sheet: FinalizedVisualFactSheet,
+  ): Promise<boolean> {
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const updated = await this.chatSessionService.updateMessageContent(
+          messageId,
+          content,
+          sheet as unknown as Record<string, unknown>,
+        );
+        if (updated) return true;
+      } catch (error) {
+        this.logger.warn(
+          `简历摘要回写异常（第 ${attempt}/${maxAttempts} 次）[${messageId}]: ${String(error)}`,
+        );
+      }
+      if (attempt < maxAttempts) await sleep(500 * attempt);
+    }
+    return false;
   }
 
   private normalizeText(value: unknown): string | null {

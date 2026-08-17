@@ -205,12 +205,12 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   // read_resume_attachment
   // ============================================================
-  READ_RESUME_NOT_REQUIRED: 'read_resume.not_required',
   READ_RESUME_NO_ATTACHMENT: 'read_resume.no_attachment',
   READ_RESUME_FORBIDDEN_URL: 'read_resume.forbidden_url',
   READ_RESUME_TOO_LARGE: 'read_resume.too_large',
   READ_RESUME_DOWNLOAD_FAILED: 'read_resume.download_failed',
   READ_RESUME_NOT_PDF: 'read_resume.not_pdf',
+  READ_RESUME_UNSUPPORTED_FORMAT: 'read_resume.unsupported_format',
   READ_RESUME_PARSE_FAILED: 'read_resume.parse_failed',
   READ_RESUME_EMPTY_TEXT: 'read_resume.empty_text',
 

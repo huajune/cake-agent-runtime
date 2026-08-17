@@ -2,8 +2,14 @@ import { ToolRegistryService } from '@tools/tool-registry.service';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext, type ToolContextOverrides } from '../helpers/tool-context.fixture';
 import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
+import type { ResumeAttachment } from '@tools/read-resume-attachment.tool';
 
-function buildRegistry() {
+function buildRegistry(
+  options: {
+    chatSessionService?: { updateMessageContent: jest.Mock };
+    llm?: object;
+  } = {},
+) {
   return new ToolRegistryService(
     {} as never,
     {} as never,
@@ -14,7 +20,8 @@ function buildRegistry() {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    (options.chatSessionService ?? {}) as never,
+    (options.llm ?? {}) as never,
     {} as never,
     {
       get: jest.fn((_key: string, defaultValue?: string) => defaultValue),
@@ -107,5 +114,76 @@ describe('ToolRegistryService', () => {
     const tools = registry.buildForScenario('candidate-consultation', baseContext());
 
     expect(tools.read_resume_attachment).toBeUndefined();
+  });
+
+  it('binds same-turn file/image URLs to their real messageId and never synthesizes one', () => {
+    const registry = buildRegistry();
+    const resolve = (
+      registry as unknown as {
+        resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[];
+      }
+    ).resolveResumeAttachments.bind(registry);
+
+    const fileUrl = 'https://cdn.example.com/fake-resume.docx';
+    const fileContext = baseContext({
+      session: { turnId: 'file-message-1' },
+      turnInput: {
+        currentUserMessage: `[文件消息] 文件名：兮兮简历.docx；文件地址：${fileUrl}\n简历附件：${fileUrl}`,
+      },
+      ledger: {
+        facts: {
+          ruleFacts: testRuleFacts(
+            testRuleFact('interview_info.upload_resume', fileUrl, '候选人发送了简历附件'),
+          ),
+        },
+      },
+    });
+    expect(resolve(fileContext)).toEqual([
+      { fileUrl, fileName: '兮兮简历.docx', messageId: 'file-message-1' },
+    ]);
+
+    const imageUrl = 'https://cdn.example.com/fake-resume.png';
+    const imageContext = baseContext({
+      turnInput: { imageUrls: [imageUrl], imageMessageIds: ['image-message-1'] },
+      archive: {
+        sessionFacts: { interview_info: { upload_resume: imageUrl } } as never,
+      },
+    });
+    expect(resolve(imageContext)).toEqual([
+      { fileUrl: imageUrl, fileName: undefined, messageId: 'image-message-1' },
+    ]);
+
+    const historical = baseContext({
+      archive: { sessionFacts: { interview_info: { upload_resume: fileUrl } } as never },
+    });
+    expect(resolve(historical)).toEqual([{ fileUrl, fileName: undefined, messageId: undefined }]);
+  });
+
+  it('reuses the chat message writeback path with bounded retry', async () => {
+    jest.useFakeTimers();
+    const updateMessageContent = jest
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error('not inserted yet'))
+      .mockResolvedValueOnce(true);
+    const registry = buildRegistry({ chatSessionService: { updateMessageContent } });
+    const writeBack = (
+      registry as unknown as {
+        writeBackResumeMessage(messageId: string, content: string, sheet: object): Promise<boolean>;
+      }
+    ).writeBackResumeMessage.bind(registry);
+    const sheet = { kind: 'resume', fields: [], rawDescription: '姓名：兮兮', degraded: false };
+
+    const result = writeBack('message-1', '[文件消息] 简历解析摘要：姓名：兮兮', sheet);
+    await jest.runAllTimersAsync();
+
+    await expect(result).resolves.toBe(true);
+    expect(updateMessageContent).toHaveBeenCalledTimes(3);
+    expect(updateMessageContent).toHaveBeenLastCalledWith(
+      'message-1',
+      '[文件消息] 简历解析摘要：姓名：兮兮',
+      sheet,
+    );
+    jest.useRealTimers();
   });
 });
