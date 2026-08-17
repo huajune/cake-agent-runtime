@@ -1,0 +1,179 @@
+# 收资表单状态机 · 实施蓝图（代码架构级）
+
+> 设计权威：`label-driven-collection-refactor.md`（总纲）§2.8 五条构造性质 + 披露策略。
+> 本文是它的实施展开：代码树、类型、签名、接线点、实现顺序、退役批、验收。
+> **阻塞条件**：海绵统一契约接口落地（重启入口=复测 100 岗覆盖度探针，总纲 §6-1'）。
+> 阻塞解除前可先行：§8 实现顺序的 1-4 步（纯逻辑+适配器，对契约只依赖类型形状）。
+
+## 1. 代码树
+
+```
+src/
+├── sponge/
+│   ├── collection-contract.types.ts        统一契约 DTO：字段定义（稳定键/fieldType/
+│   │                                         required/acceptedOptions/rejectedOptions/披露级别）
+│   └── sponge.service.ts                   +fetchCollectionContract(jobIds)：批查+按 jobId 缓存
+│                                             （随岗位召回预取；缓存失效随契约核对清单第 7 条）
+│
+├── resolution/collection/                   ★新子域：状态机纯逻辑（零 LLM 零 IO；
+│   │                                         依赖上限=sponge 类型 + resolution 兄弟域）
+│   ├── form.types.ts                       类型全集（见 §2）
+│   ├── form-machine.ts                     applyEvent(form, event) → form'  纯归约器
+│   ├── write-guards.ts                     写入公证（复用 resume-fields 公证模式：
+│   │                                         同轮证据校验/形态/归属/置信授予/notaryDrops）
+│   ├── option-matching.ts                  自然语言 → optionCode 确定性直配层
+│   │                                         （词表复用既有解析器，含糊→null 交模型作证）
+│   ├── adapters/
+│   │   ├── adapter.registry.ts             labelId/字段族 → 适配器；未知走 fieldType 通用道
+│   │   ├── identity-core.adapter.ts        name/phone/age/gender（包装既有真名/手机号/
+│   │   │                                     年龄边界解析器与闸门判据）
+│   │   ├── education.adapter.ts            normalizeEducationToId × acceptedOptions 成员判定
+│   │   └── health-certificate.adapter.ts   包装 resolveLocalHealthCertificateEligibility
+│   │                                         （三确定态→optionCode 1/2/3，两不定态→留空追问）
+│   └── disclosure-policy.ts                披露分级：契约字段优先，兜底按属性族注册表，
+│                                             未知默认禁明说；禁说词表 import 守卫红线同一常量
+│
+├── memory/
+│   ├── stores/collection-form.store.ts     Redis 实体（版本号乐观锁）+ 审计事件落库
+│   └── services/collection-form.service.ts 生命周期：loadOrCreate / applyAndPersist /
+│                                             多表单寻址（见 §5 D1）/ 跨轮存续
+│
+├── tools/
+│   ├── duliday/collection/
+│   │   ├── recap-renderer.ts               待确认槽位 → 复述文案；渲染同时产 recapIssued 事件
+│   │   └── rejection-renderer.ts           不合格 → 按披露级别渲染（禁明说档复用
+│   │                                         noMatchScript 承接家族 + 因果隔离）
+│   ├── duliday-interview-precheck.tool.ts  ★收资核重写：checklist 体系 → 表单消费（见 §6）
+│   └── duliday-interview-booking.tool.ts   ★提交切 entryUser；errorList → serverRejected 槽位事件
+│
+└── supabase/migrations/                    +collection_form_events 审计表（先测试后生产）
+```
+
+依赖方向（violate 即 eslint 拦）：tools → memory/resolution/sponge；memory → resolution；
+resolution/collection → resolution 兄弟域 + sponge 类型，**不得** import memory/tools/llm。
+LLM 只在 tools 层（选项含糊时模型作证选 optionCode，产物过 write-guards 公证）。
+
+## 2. 核心类型（form.types.ts）
+
+```ts
+type SlotKey = { kind: 'identity'; field: 'name'|'phone'|'age'|'gender' }
+             | { kind: 'label'; labelId: number };
+
+type SlotState = 'empty' | 'pending_confirm' | 'confirmed' | 'disqualified' | 'escalated';
+
+interface SlotValue { value: string; optionCodes?: string[]; sourceText: string;
+  producer: 'candidate_quote'|'rule'|'model'|'system';  // 复用全库唯一 producer 词表，署名如实
+  confidence: 'high'|'medium'; }
+
+interface FormSlot { key: SlotKey; state: SlotState; value?: SlotValue;
+  constraint: ContractFieldDef;            // 契约原文：fieldType/required/options/披露级别
+  confirmAttempts: number;                 // 熔断计数（≥2 未办结 → escalated）
+  history: SlotEvent[]; }                  // 槽位级审计（失效/改口/服务端拒绝全留痕）
+
+interface CollectionForm { formId: string; candidateRef: CandidateRef; jobId: number;
+  version: number;                          // 乐观锁
+  slots: Record<string, FormSlot>;
+  jobVerdict: 'collecting'|'disqualified'|'ready'|'submitted';
+  pendingRecap?: { slotKeys: string[]; issuedAtTurn: string }; }  // 复述事件（在案待肯定应答）
+
+type FormEvent =
+  | { type: 'valueProposed'; slot; raw: RawProposal }        // 各来源的值提案
+  | { type: 'recapIssued'; slotKeys: string[] }              // 复述落账
+  | { type: 'affirmed' }                                     // 肯定应答→pendingRecap 全槽 confirmed
+  | { type: 'corrected'; slot; raw }                         // 改口：单槽重开
+  | { type: 'invalidated'; slot; reason }                    // 显式失效（换岗重筛/errorList）
+  | { type: 'serverRejected'; slot; msg }                    // entryUser errorList 回写
+  | { type: 'submitted'; workOrderId: number };
+```
+
+## 3. 关键签名
+
+```ts
+// form-machine.ts —— 全系统唯一裁决点，纯函数，转移表穷尽（Record 穷尽纪律）
+applyEvent(form: CollectionForm, event: FormEvent, guards: WriteGuardSet): CollectionForm
+// 不变量（写成断言测试）：confirmed 槽位仅接受 corrected/invalidated；
+// affirmed 只作用于 pendingRecap 在案槽位；confirmAttempts>=2 → escalated。
+
+// write-guards.ts —— valueProposed 的入口公证（一次、同轮）
+notarizeProposal(raw: RawProposal, evidence: TurnEvidence, constraint: ContractFieldDef)
+  : { verdict: 'accept'; value: SlotValue } | { verdict: 'reject'; reason: NotaryDropReason }
+  | { verdict: 'disqualify'; hit: RejectedOptionHit }   // 先筛后收在此发生
+
+// recap-renderer.ts —— 复述由状态渲染（不是模型自由发挥后再考古）
+renderRecap(form): { text: string; recapEvent: FormEvent }
+
+// rejection-renderer.ts —— 判定如实、披露分级
+renderDisqualification(form, policy: DisclosurePolicy)
+  : { mode: 'plain'; text } | { mode: 'generic_redirect' }   // generic 走换岗承接流程，本轮不提拒因
+```
+
+## 4. 存储（memory 域）
+
+- **Redis 实体**：`collection-form:{corpId}:{userId}:{candidateRef}:{jobId}`，
+  整实体 JSON + `version` 乐观锁（CAS 重试，复用 factsv2 字段级写的并发教训——
+  PR #455 先例：读-改-写必带版本比对）；列入「丢了算事故」的 key 清单。
+- **审计事件**：每次 applyEvent 落 `collection_form_events`
+  （form_id/event_type/slot_key/payload/turn_id，与 trace_id 可 join——观测不落库=没发生）。
+- **迁移纪律**：`IF NOT EXISTS` 幂等；先 db:push:test 真实写入验证再 prod；
+  与代码发版同步（仓库事故史红线）。
+
+## 5. 设计决策点（实施前定，D1 必须过用户）
+
+- **D1 candidateRef（多表单寻址）**：建议 phone 归一值优先（11 位）；phone 未知期挂
+  会话默认表单，phone 到达时 rebind；同会话第二个 phone 出现 → 新表单（中介场景）。
+  歧义（一名多号/一号多名）→ escalated 交人工。**需用户确认建议或改**。
+- D2 errorList 的 field（展示名）→ 槽位映射：优先契约回传稳定键（核对清单第 4 条）；
+  只有展示名时按 labelTitle 匹配，失配 → 整单 escalated 不静默。
+- D3 复述节流：一轮 recap 覆盖全部 pending 槽位（不逐槽问）；escalated 话术复用
+  转人工既有口径（禁暴露 AI 身份纪律）。
+
+## 6. precheck/booking 接线（最大改动面）
+
+precheck 收资核：`buildKnownFieldMap + checklist + missingFields` 整体替换为
+`collectionFormService.loadOrCreate → 本轮消息产 valueProposed* → form 快照返回`；
+`nextAction` 从 form 派生（collecting=渲染缺口+recap / disqualified=rejection-renderer /
+ready=放行 booking）；templateText 由 form 渲染。claim 轨保留为**值提案的运输格式之一**
+（R1 schema 补 agentQuestionQuote 随本批实施）；身份闸门保留为 identity 槽位写守卫。
+booking：payload 由 form 生成（身份核 + labelList[{labelId, optionCodes|value}]）→
+entryUser → workOrder 落 submitted / errorList 逐条 serverRejected。
+
+## 7. 同批退役删除（总纲 §4 清单的执行面）
+
+checklist.util 的 FIELD_ORDER 大部/buildKnownFieldMap/missingFields 字面过滤；
+classifySupplementLabel 括号黑名单；normalizeSupplementKey+别名表+一行流解析；
+customerLabel 拼装主体；快照水位（snapshot-gate）；确认识别器族与四份肯定词表分叉
+（D5，肯定词表收拢到 dialogue 唯一居所）；E1/E2 enforce 分支（账本对象已换）；
+`allowLegacyConfirmRegex` 并跑；9 个 candidateXxx 裸字段（拆除判据已写在 precheck 注释）。
+**删除纪律**：每删一族先 grep 消费面，测试期望同步改，禁留空壳。
+
+## 8. 实现顺序（可测地基先行；1-4 步不等契约）
+
+1. `resolution/collection` 类型 + form-machine 纯归约器——**转移表穷尽测试 +
+   三铁证事件序列重放**（假身份复刻 A/B/C，断言：A 一轮确认即办结、B 双表单互不污染、
+   C 不存在第二次同题追问）；
+2. write-guards + option-matching + 三个适配器（复用既有解析器，单测全覆盖）；
+3. disclosure-policy（守卫红线词表同源接线 + 未知默认禁明说测试）；
+4. recap/rejection renderer（纯文案层，快照测试）；
+5. ——契约落地检查点：覆盖度探针复测 + contract types 对齐实际返回——
+6. sponge 契约客户端 + 缓存；memory store/service + 迁移 + 并发 CAS 测试；
+7. precheck/booking 接线重写（最大面，铁证重放跑通后才进）；
+8. §7 退役删除批 + 全量回归；
+9. 验收：三铁证重放全绿 + 验收指标探针（答后复问率 <10%/死锁 0/已确认槽位被重问=0）。
+
+## 9. Spike 清单（写码前关）
+
+S1 契约实际返回形状 vs collection-contract.types（含披露级别字段是否到位，
+   没有则 disclosure-policy 兜底注册表先行）；
+S2 D1 candidateRef 方案在中介样本上的可行性（拉生产 3 个多人会话只读验证）;
+S3 errorList 字段映射实测（测试环境 entryUser 打一次假身份提交）；
+S4 Redis 实体读写与 CAS 在 Upstash REST 上的延迟/原子性（复用 factsv2 先例核对）；
+S5 复述文案与既有回复分段/拟人化投递的兼容（\n\n 分段协议）。
+
+## 10. 红线
+
+- 判定入账永远如实（禁把披露层的委婉写进账本）；producer 署名如实（禁 system 冒名）；
+- 未知标签披露默认禁明说；禁说词表禁止另立副本；
+- fixtures 一律假身份（兮兮/18271421690）；生产探针只读+限速；
+- 并发会话纪律：动文件先查占用，commit pathspec；
+- 转移表/词表 Record 穷尽，新增事件类型漏写处理分支必须编译期报错；
+- 观测落库不落库=没做（collection_form_events 是验收项不是可选项）。
