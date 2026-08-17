@@ -1147,12 +1147,23 @@ export function buildInterviewPrecheckTool(
           // collect 型 supplement label 会进 requiredFields，但 buildKnownFieldMap 只认标准字段。
           // 优先采用模型显式传入的 candidateSupplementAnswers；若模型漏传，则从候选人最近
           // 「字段：值」表单中确定性回填。这样出生日期等动态标签不会明明已填写却反复追问。
+          //
+          // 第三档兜底读 knownFieldMap：岗位把标准字段又配了一个同义 supplement label 时
+          // （如「有无本地健康证」之于「健康证情况」），候选人的答案会被模型正确送进
+          // candidateHasHealthCertificate 等**标准字段入参**，却因为 label 名对不上而永远
+          // 满足不了这个 supplement label —— 于是 missingFields 恒为该 label、nextAction
+          // 恒为 collect_fields，模型只能把同一个问题重复问下去，报名永远提交不了。
+          // 复用 getSupplementAnswerValue 的同一套别名表，别名对得上才桥接，不做模糊猜测。
+          // badcase 实证：chat 6a7ebf32…（85 分钟 11 次 precheck）/ 6a4229f2…（10 次），
+          // missingFields 全程恒为 ["有无本地健康证"]，而 candidateHasHealthCertificate
+          // 每轮都带着"有本地健康证"传进来。
           for (const labelName of collectLabelNames) {
             const fieldKey = normalizeChecklistField(labelName);
             if (!fieldKey || knownFieldMap[fieldKey]) continue;
             const answer =
               getSupplementAnswerValue(candidateSupplementAnswers, labelName) ??
-              extractSupplementAnswerFromMessages(context.messages, labelName);
+              extractSupplementAnswerFromMessages(context.messages, labelName) ??
+              getSupplementAnswerValue(knownFieldMap, labelName);
             if (answer) knownFieldMap[fieldKey] = answer;
           }
 

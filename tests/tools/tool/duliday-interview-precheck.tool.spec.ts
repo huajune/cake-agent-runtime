@@ -1138,6 +1138,54 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
   });
 
+  it('岗位把标准字段又配成同义 supplement label 时，应由 knownFieldMap 兜底满足，不得卡死 collect_fields', async () => {
+    // badcase ukb7j8zm / 62jkwopg / rebtk232 / bxahyani / lvftx4jx（2026-08-14 P0）：
+    // 岗位补充标签配成「有无本地健康证」，与标准字段「健康证情况」同义但名字对不上。
+    // 候选人已明确回答"上海本地办的"，模型也每轮都把答案送进 candidateHasHealthCertificate，
+    // 但该答案只落进 knownFieldMap['健康证情况']，supplement label 永远拿不到值：
+    // 生产实测 chat 6a7ebf32…（85 分钟 11 次 precheck）与 6a4229f2…（10 次）的
+    // missingFields 恒为 ["有无本地健康证"]，nextAction 恒为 collect_fields，报名始终提交不了。
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: { remark: '' },
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 777, interviewSupplement: '有无本地健康证' },
+            ],
+            fixedInterviewTimes: [
+              {
+                interviewDate: '2026-04-08',
+                interviewStartTime: '13:30',
+                interviewEndTime: '16:30',
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      jobId: 100,
+      requestedDate: '2026-04-08',
+      candidateName: '兮兮',
+      candidatePhone: '18271421690',
+      candidateAge: 21,
+      candidateInterviewTime: '后天下午',
+      candidateGender: '女',
+      candidateEducation: '大专',
+      // 候选人原话"上海本地办的食品健康证"——模型送进标准字段入参，而非 supplementAnswers
+      candidateHasHealthCertificate: '有本地健康证',
+      candidateIsStudent: 'false',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields ?? []).not.toContain('有无本地健康证');
+    expect(result.bookingChecklist.missingFields ?? []).toEqual([]);
+    expect(result.nextAction).toBe('ready_to_book');
+  });
+
   it('紧急兼容：candidate 显式参数无需命中当前消息文本即可完成跨轮收资', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
