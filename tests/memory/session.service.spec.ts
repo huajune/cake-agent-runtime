@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { SessionService } from '@memory/services/session.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
@@ -199,6 +200,39 @@ describe('SessionService', () => {
         brand_state: null,
         lastJobListQuery: null,
       });
+    });
+
+    // 逐字段降级（PR #1000 发版风险修复）：整份 safeParse 会把任一字段的 schema 漂移
+    // 放大成「整份会话状态归空」——终态丢了，复聊就会继续触达已转人工的候选人。
+    it('drops only the invalid field and keeps terminal / brand_state readable', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      mockRedisStore.getHash.mockResolvedValueOnce({
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            // 词表外 source：回滚到旧代码读新数据就是这个形态。
+            name: { value: '张三', confidence: 'high', source: 'ai_guess', evidence: '我叫张三' },
+          },
+        },
+        terminal: 'handed_off',
+        brand_state: {
+          currentBrand: { canonicalName: '海底捞', brandId: 7 },
+          excludedBrands: [],
+        },
+        presentedJobs: [],
+        lastCandidateMessageAt: '2026-08-18T10:00:00.000Z',
+      });
+
+      const state = await service.getSessionState('corp1', 'user1', 'session1');
+
+      expect(state.facts).toBeNull();
+      expect(state.terminal).toBe('handed_off');
+      expect(state.brand_state?.currentBrand?.canonicalName).toBe('海底捞');
+      expect(state.presentedJobs).toEqual([]);
+      expect(state.lastCandidateMessageAt).toBe('2026-08-18T10:00:00.000Z');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('facts.interview_info.name'));
+      warnSpy.mockRestore();
     });
 
     it('should silently strip unknown lastSessionActiveAt field from old Redis data (backward compat)', async () => {

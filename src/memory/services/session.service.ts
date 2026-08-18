@@ -191,16 +191,7 @@ export class SessionService {
     if (!hashFields && !legacyContent) return { ...EMPTY_SESSION_STATE };
 
     const combined = hashFields ?? legacyContent ?? {};
-    const parsed = SessionFactsRedisContentSchema.safeParse(combined);
-    if (!parsed.success) {
-      this.logger.warn(
-        `[getSessionState] Invalid session facts entry ignored: ${parsed.error.issues
-          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
-          .join('; ')}`,
-      );
-      return { ...EMPTY_SESSION_STATE };
-    }
-    const content = parsed.data as Partial<WeworkSessionState>;
+    const content = this.parseSessionStateFields(combined);
 
     return {
       ...EMPTY_SESSION_STATE,
@@ -209,6 +200,46 @@ export class SessionService {
       presentedJobs: content.presentedJobs ?? null,
       currentFocusJob: content.currentFocusJob ?? null,
     };
+  }
+
+  /**
+   * 逐字段校验读出：坏字段丢弃并 warn，其余字段照常返回。
+   *
+   * 为什么不是整份 safeParse：Redis 是 facts / terminal / brand_state 的唯一事实源，
+   * 整份校验会把任一字段的 schema 漂移（跨版本词表不一致、脏写）放大成「整份会话状态
+   * 归空」——终态一并丢失后，复聊会继续触达已约面/已转人工的候选人。降级粒度必须是字段。
+   * 存储形态本就是按字段的 Redis hash（旧 blob 的 top-level 键同名），逐字段校验与之同构。
+   */
+  private parseSessionStateFields(combined: Record<string, unknown>): Partial<WeworkSessionState> {
+    const fieldSchemas = SessionFactsRedisContentSchema.shape as Record<string, z.ZodType>;
+    const content: Record<string, unknown> = {};
+    const invalidIssues: string[] = [];
+
+    for (const [field, rawValue] of Object.entries(combined)) {
+      const fieldSchema = fieldSchemas[field];
+      // 未注册字段：与整份 parse 的 strip 行为一致，静默丢弃。
+      if (!fieldSchema) continue;
+
+      const parsed = fieldSchema.safeParse(rawValue);
+      if (!parsed.success) {
+        invalidIssues.push(
+          ...parsed.error.issues.map(
+            (issue) =>
+              `${[field, ...issue.path.map((segment) => String(segment))].join('.')}: ${issue.message}`,
+          ),
+        );
+        continue;
+      }
+      if (parsed.data !== undefined) content[field] = parsed.data;
+    }
+
+    if (invalidIssues.length > 0) {
+      this.logger.warn(
+        `[getSessionState] Invalid session facts field(s) dropped: ${invalidIssues.join('; ')}`,
+      );
+    }
+
+    return content as Partial<WeworkSessionState>;
   }
 
   /**
