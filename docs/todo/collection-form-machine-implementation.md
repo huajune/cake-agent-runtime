@@ -8,7 +8,7 @@
 > 纯 labelId 表接不住）；③披露策略兜底注册表随 v1 必须交付（契约无披露字段而敏感标签实存：
 > 籍贯3/专业544,659/学信网族）；④年龄岗位边界仍走既有岗位数据解析（687 无值域）；
 > ⑤FILE 标签(49 上传简历)的 value 生产者=简历工具 v4 output；
-> ⑥required 无标志——按「契约返回即须收」处理；筛选=答案命中 rejectedOptions 即不合格、
+> ⑥required 无标志——按「契约返回即须收」处理；标签**零缓存实时查询**（0818 裁定，配置修改即刻生效）；筛选=答案命中 rejectedOptions 即不合格、
 > 命中 acceptedOptions 通过、映射不出即求证。
 > **挂起已解除，全部 9 步可执行。**
 
@@ -23,8 +23,8 @@ src/
 ├── sponge/
 │   ├── collection-contract.types.ts        统一契约 DTO：字段定义（稳定键/fieldType/
 │   │                                         required/acceptedOptions/rejectedOptions/披露级别）
-│   └── sponge.service.ts                   +fetchCollectionContract(jobIds)：批查+按 jobId 缓存
-│                                             （随岗位召回预取；缓存失效随契约核对清单第 7 条）
+│   └── sponge.service.ts                   +fetchCollectionContract(jobIds)：**零缓存实时查询**
+│                                             （用户裁定 0818；会话内单岗查询成本可忽略）
 │
 ├── resolution/collection/                   ★新子域：状态机纯逻辑（零 LLM 零 IO；
 │   │                                         依赖上限=sponge 类型 + resolution 兄弟域）
@@ -183,6 +183,26 @@ S2 D1 candidateRef 方案在中介样本上的可行性（拉生产 3 个多人�
 S3 errorList 字段映射实测（测试环境 entryUser 打一次假身份提交）；
 S4 Redis 实体读写与 CAS 在 Upstash REST 上的延迟/原子性（复用 factsv2 先例核对）；
 S5 复述文案与既有回复分段/拟人化投递的兼容（\n\n 分段协议）。
+
+## 9.5 收资受阻感知层（v3 终裁，2026-08-18）
+
+**裁决原则（用户裁定）：漏斗优先——降级方向永远朝"能继续报名"倒。最坏结果=多报了
+不符合要求的人（下游审核/面试/门店可截，可恢复）；绝不因配置债卡死报名
+（候选人流失不可恢复）。唯一不降级项：披露红线（禁明说永不降级为明说）。**
+
+脏配置长期存在是设计前提。八种受阻形态，每种=触发点+机内降级+落库事件：
+B1 语义不明（只收不筛，照常提交）/ B2 同表同义槽位（**问一次族内互填**，绝不连问）/
+B3 同 id 类型分裂（按本岗实际类型走通用道）/ B4 选项映射不出（熔断→带值提交优先，
+转人工兜底）/ B5 子集筛选不可见（**不本地筛**，照常提交，服务端校验晚失败兜底——
+拒绝权依据必须来自契约，不用推断行使拒绝权）/ B6 errorList 失配（唯一必转人工项：
+提交已失败且无法定位）/ B7 敏感未标记（自动按禁明说）/ B8 候选人抗拒
+（两次质疑即带已收值提交试探）。
+事件统一落 collection_form_events（新增 config_debt / slot_escalated 事件类型，零新表）。
+
+**运营回路**：config_debt 按 labelId×jobId 聚合进周报（weekly-ops-report 消费）——
+"本周实际阻塞收资的 Top 标签/岗位"，把 1538 行静态修正清单变成按生产疼痛排序的
+动态优先队列；运营增量修，债务曲线周度可见。检测器实现在
+resolution/collection/config-debt-detectors.ts（纯函数，语义族匹配器复用适配器注册表）。
 
 ## 10. 红线
 
