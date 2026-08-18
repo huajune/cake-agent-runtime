@@ -1,246 +1,227 @@
-# BookingCollectionForm · 实施蓝图（代码架构级 v2）
+# BookingCollectionForm · 实施蓝图（v3-lean）
 
-> **v2（2026-08-18）**：实体定名 BookingCollectionForm；按全量生产实测（总纲 §2.5-v2）修订——
-> ①身份核已标签化（姓名769/手机号770/年龄687/性别771，468/468），SlotKey 统一为 labelId 单形态，
-> identity 适配器按这四个全局 labelId 挂接；candidateRef = 标签 770 的槽位值（归一 11 位）；
-> ②适配器注册表改双层：labelId 精确表（13/2/4/50/49/769/770/687/771 等头部稳定项）+
-> **标题语义族兜底**（学生族/学信网族/专业族——生产实测同义标签分裂 12 个 labelId 且持续新增，
-> 纯 labelId 表接不住）；③披露策略兜底注册表随 v1 必须交付（契约无披露字段而敏感标签实存：
-> 籍贯3/专业544,659/学信网族）；④**收资判决单源=标签接口**（0818 与后端约定：minAge/maxAge、required 等判决要素全部进 batch-query 契约；岗位详情接口回归展示域，precheck 全信标签接口）；
-> ⑤FILE 标签(49 上传简历)的 value 生产者=简历工具 v4 output；
-> ⑥required 无标志——按「契约返回即须收」处理；标签**零缓存实时查询**（0818 裁定，配置修改即刻生效）；筛选=答案命中 rejectedOptions 即不合格、
-> 命中 acceptedOptions 通过、映射不出即求证。
-> **挂起已解除；D1 已确认，设计零开口（2026-08-18）。**
-> **时序闸（0818）**：判决单源化的契约 v2 spec 后端 **0819 给到**——
-> 实现顺序 1-4 步（类型/纯归约器/写守卫/选项匹配，纯地基）**不等契约、即刻可开工**；
-> 契约消费面（sponge DTO `collection-contract.types.ts`、fetchCollectionContract、
-> required/valueSpec 消费、booking payload 定稿）**等 0819 spec 到货后**：
-> 先对照 `label-contract-change-requests.md` 逐条核对（10 条哪些进了、字段形态是否一致），
-> 定稿 DTO 再接线；spec 与诉求单不一致处回到用户裁定，勿自行取舍。
+> **v3-lean（2026-08-18）**：用户裁定"设计太重"成立，v2 瘦身重写。**砍掉的每一项都回查过
+> 它当初防的 badcase——防线一条没少，少的是仪式、副本和没有数据支撑的子系统。**
+> 仍然有效的既有裁定：身份核标签化（姓名769/手机号770/年龄687/性别771，SlotKey=labelId
+> 单形态）；**收资判决单源=标签接口**（0818 与后端约定，岗位详情接口回归展示域）；
+> 标签**零缓存实时查询**；D1 phone 作人键；漏斗优先；披露红线唯一不降级；
+> FILE 标签 value 生产者=简历工具 v4；required 无标志期按「返回即须收」。
+>
+> **时序闸**：判决单源化的契约 v2 spec 后端 **0819 给到**——§8 实现顺序 1-4 步纯地基
+> 不等契约；契约消费面（DTO/fetchCollectionContract/booking payload 定稿）等 spec 到货，
+> 先对照 `label-contract-change-requests.md` 逐条核对，不一致处回用户裁定。
 
-> 设计权威：`label-driven-collection-refactor.md`（总纲）§2.8 五条构造性质 + 披露策略。
-> 本文是它的实施展开：代码树、类型、签名、接线点、实现顺序、退役批、验收。
-> 现行契约已生产兑现（总纲 §2.5-v2 全量实测）；判决单源化 v2 契约 spec 0819 到（见时序闸）。
+> 设计权威：`label-driven-collection-refactor.md`（总纲）§2.8；实施形态以本文 v3-lean 为准
+> （确认态砍除、verdict 现算、审计复用既有事件表，总纲 §2.8 细节以此为准）。
 
-## 1. 代码树
+## 0. 瘦身裁定清单（0818，用户挑战成立后逐项定案）
+
+| 砍/简化 | 替代 | 防线回查 |
+|---|---|---|
+| 事件溯源全家桶（7 事件枚举+applyEvent 归约器+collection_form_events 新表） | 快照 + 4 个写路径纯函数；审计落**既有 agent_execution_events**（同 traceId 可 join，零新表零迁移） | 观测落库裁定照样满足 |
+| 乐观锁 version+CAS | 消息处理 90s 租约锁已保证同会话单写者，表单只在回合内写 | 防的并发不存在 |
+| 每槽位 constraint 契约快照+diff 失效 | 零缓存每轮拉最新契约现判；运营中途改配置由提交时 errorList 兜底（漏斗优先） | 审计"按什么判的"记日志一行即可 |
+| 多人协议四条硬规则子系统 | v1 一条规则：检测疑似多人（新姓名+新手机号对）→ escalatedReason 转人工；**phone 人键保留** | 中介场景生产频率无数据，等数据再自动化（Spike S2 只读量化） |
+| 受阻 8 形态代码枚举+周报聚合通道 | 映射不出→fieldType 通用道收集 + configDebts 记一行账（自由文本 note）；**errorList 失配转人工是唯一保留特判**；8 形态降级为运营沟通的分析语言（见总纲），代码不建枚举 | 漏斗优先原则不变；卡片披露保留 |
+| pending_confirm/confirmed 两态 | **针对性问答即采信**：对着"你多大年龄"答"26"，这句话就是本人终审。复述只在**提交前发一次**，"不对"→改格子 | 听错/抽错由公证 sourceText 回查在写入时防；疑问句守卫在公证里；"对的"填不进格子靠 lastRecap 落账 |
+| verdict 落盘 | `verdictOf()` 纯函数现算；表上只存两个不可推导事实：workOrderId / escalatedReason | 消灭"槽位与总评分裂"这一整类同步 bug |
+
+**枚举封闭集纪律**：SlotState 三值、Verdict 五值是地板——每个值对应一种互不相同的
+Agent 行为。加新值必须先回答"哪个既有值的处理逻辑覆盖不了它"，答不上来不许加。
+
+## 1. 代码树（~10 文件，零新表零迁移）
 
 ```
 src/
 ├── sponge/
-│   ├── collection-contract.types.ts        统一契约 DTO：字段定义（稳定键/fieldType/
-│   │                                         required/acceptedOptions/rejectedOptions/披露级别）
-│   └── sponge.service.ts                   +fetchCollectionContract(jobIds)：**零缓存实时查询**
-│                                             （用户裁定 0818；会话内单岗查询成本可忽略）
+│   ├── collection-contract.types.ts        契约 DTO（0819 spec 到货定稿）
+│   └── sponge.service.ts                   +fetchCollectionContract(jobIds)：零缓存实时查询
 │
-├── resolution/collection/                   ★新子域：状态机纯逻辑（零 LLM 零 IO；
-│   │                                         依赖上限=sponge 类型 + resolution 兄弟域）
+├── resolution/collection/                   ★新子域：纯逻辑（零 LLM 零 IO）
 │   ├── form.types.ts                       类型全集（见 §2）
-│   ├── form-machine.ts                     applyEvent(form, event) → form'  纯归约器
-│   ├── write-guards.ts                     写入公证（复用 resume-fields 公证模式：
-│   │                                         同轮证据校验/形态/归属/置信授予/notaryDrops）
-│   ├── option-matching.ts                  自然语言 → optionCode 确定性直配层
-│   │                                         （词表复用既有解析器，含糊→null 交模型作证）
+│   ├── form-writes.ts                      4 个写路径纯函数 + verdictOf（见 §3；公证内联）
+│   ├── option-matching.ts                  自然语言 → optionCode 确定性直配（词表复用既有
+│   │                                         解析器；含糊→null 交模型作证，产物仍过公证）
 │   ├── adapters/
-│   │   ├── adapter.registry.ts             labelId/字段族 → 适配器；未知走 fieldType 通用道
-│   │   ├── identity-core.adapter.ts        name/phone/age/gender（包装既有真名/手机号/
-│   │   │                                     年龄边界解析器与闸门判据）
+│   │   ├── adapter.registry.ts             labelId 精确表 + 标题语义族兜底（学生族/学信网族/
+│   │   │                                     专业族生产实测 12 id 分裂）；未知走 fieldType 通用道
+│   │   ├── identity-core.adapter.ts        769/770/687/771：包装真名闸/手机号出处闸/年龄边界
+│   │   │                                     （detectAgeBoundary 弹性保留，min/max 判据改读契约）
 │   │   ├── education.adapter.ts            normalizeEducationToId × acceptedOptions 成员判定
 │   │   └── health-certificate.adapter.ts   包装 resolveLocalHealthCertificateEligibility
 │   │                                         （三确定态→optionCode 1/2/3，两不定态→留空追问）
-│   └── disclosure-policy.ts                披露分级：契约字段优先，兜底按属性族注册表，
-│                                             未知默认禁明说；禁说词表 import 守卫红线同一常量
+│   └── disclosure-policy.ts                披露分级：契约字段优先→属性族兜底注册表→未知禁明说；
+│                                             禁说词表与守卫红线同一常量
 │
 ├── memory/
-│   ├── stores/collection-form.store.ts     Redis 实体（版本号乐观锁）+ 审计事件落库
-│   └── services/collection-form.service.ts 生命周期：loadOrCreate / applyAndPersist /
-│                                             多表单寻址（见 §5 D1）/ 跨轮存续
+│   ├── stores/collection-form.store.ts     Redis 快照 `collection-form:{corpId}:{userId}:{candidateRef}:{jobId}`
+│   │                                         回合租约内单写者，整实体读写，无 CAS
+│   └── services/collection-form.service.ts loadOrCreate / persist / phone 到达 rebind
 │
-├── tools/
-│   ├── duliday/collection/
-│   │   ├── recap-renderer.ts               待确认槽位 → 复述文案；渲染同时产 recapIssued 事件
-│   │   └── rejection-renderer.ts           不合格 → 按披露级别渲染（禁明说档复用
-│   │                                         noMatchScript 承接家族 + 因果隔离）
-│   ├── duliday-interview-precheck.tool.ts  ★收资核重写：checklist 体系 → 表单消费（见 §6）
-│   └── duliday-interview-booking.tool.ts   ★提交切 entryUser；errorList → serverRejected 槽位事件
-│
-└── supabase/migrations/                    +collection_form_events 审计表（先测试后生产）
+├── tools/duliday/collection/
+│   ├── recap-renderer.ts                   提交前复述：filled 槽位 → 文案 + lastRecap 落账
+│   └── rejection-renderer.ts               disqualified → 按披露级别渲染（禁明说档走
+│                                             noMatchScript 换岗承接 + 因果隔离）
+├── tools/duliday-interview-precheck.tool.ts  ★收资核重写（见 §5）
+├── tools/duliday-interview-booking.tool.ts   ★提交切 entryUser
+└── notification/renderers/booking-card.renderer.ts  +「收资配置备注」段（读 configDebts）
 ```
 
 依赖方向（violate 即 eslint 拦）：tools → memory/resolution/sponge；memory → resolution；
 resolution/collection → resolution 兄弟域 + sponge 类型，**不得** import memory/tools/llm。
-LLM 只在 tools 层（选项含糊时模型作证选 optionCode，产物过 write-guards 公证）。
+LLM 只在 tools 层（选项含糊时模型作证选 optionCode，产物过公证）。
 
 ## 2. 核心类型（form.types.ts）
 
 ```ts
-// v2：身份核已标签化（769/770/687/771），SlotKey 统一为 labelId 单形态；
-// IDENTITY_LABEL_IDS 常量表标记身份核槽位（写守卫挂身份闸门用）
-type SlotKey = { labelId: number };
 const IDENTITY_LABEL_IDS = { name: 769, phone: 770, age: 687, gender: 771 } as const;
 
-type SlotState = 'empty' | 'pending_confirm' | 'confirmed' | 'disqualified' | 'escalated';
+type SlotState = 'empty' | 'filled' | 'disqualified';        // 封闭集（§0 纪律）
 
-interface SlotValue { value: string; optionCodes?: string[]; sourceText: string;
-  producer: 'candidate_quote'|'rule'|'model'|'system';  // 复用全库唯一 producer 词表，署名如实
-  confidence: 'high'|'medium'; }
+interface FormSlot {
+  labelId: number;
+  state: SlotState;
+  value?: { value: string; optionCodes?: string[];
+            sourceText: string;                              // 候选人原话逐字，公证回查锚点
+            producer: Producer;                              // 全库唯一词表复用，署名如实
+            confidence: 'high' | 'medium' };                 // 代码按证据形态授予，非模型自报
+  askCount: number;                                          // ≥2 仍 empty → 表级 escalatedReason
+}
 
-interface FormSlot { key: SlotKey; state: SlotState; value?: SlotValue;
-  constraint: ContractFieldDef;            // 契约原文：fieldType/required/options/披露级别
-  confirmAttempts: number;                 // 熔断计数（≥2 未办结 → escalated）
-  history: SlotEvent[]; }                  // 槽位级审计（失效/改口/服务端拒绝全留痕）
+interface BookingCollectionForm {
+  candidateRef: string;              // phone 归一 11 位（D1）；未知期 'session'，到达即 rebind
+  jobId: number;
+  slots: Record<number, FormSlot>;
+  workOrderId?: number;              // 提交成功的外部事实（不可从槽位推导）
+  escalatedReason?: string;          // 转人工触发原因（同槽 2 问不中/疑似多人/errorList 失配）
+  lastRecap?: { labelIds: number[] };          // 提交前复述在案——"不对"才能定位改哪格
+  configDebts?: { labelId: number; note: string }[];   // 配置债台账，卡片披露直读
+}
 
-interface BookingCollectionForm { formId: string; candidateRef: CandidateRef; jobId: number;
-  version: number;                          // 乐观锁
-  slots: Record<string, FormSlot>;
-  jobVerdict: 'collecting'|'disqualified'|'ready'|'submitted';
-  pendingRecap?: { slotKeys: string[]; issuedAtTurn: string }; }  // 复述事件（在案待肯定应答）
+type Verdict = 'collecting' | 'disqualified' | 'ready' | 'escalated' | 'submitted';  // 封闭集
 
-type FormEvent =
-  | { type: 'valueProposed'; slot; raw: RawProposal }        // 各来源的值提案
-  | { type: 'recapIssued'; slotKeys: string[] }              // 复述落账
-  | { type: 'affirmed' }                                     // 肯定应答→pendingRecap 全槽 confirmed
-  | { type: 'corrected'; slot; raw }                         // 改口：单槽重开
-  | { type: 'invalidated'; slot; reason }                    // 显式失效（换岗重筛/errorList）
-  | { type: 'serverRejected'; slot; msg }                    // entryUser errorList 回写
-  | { type: 'submitted'; workOrderId: number };
+function verdictOf(form: BookingCollectionForm): Verdict {
+  if (form.workOrderId) return 'submitted';
+  if (form.escalatedReason) return 'escalated';
+  if (anySlot(form, 'disqualified')) return 'disqualified';
+  if (anySlot(form, 'empty')) return 'collecting';
+  return 'ready';
+}
 ```
 
-## 3. 关键签名
+不落盘任何可推导状态；表单实体五个业务成员 + 三个可选事实位，零副本。
+
+## 3. 写路径纯函数（form-writes.ts —— 改表的唯一途径）
 
 ```ts
-// form-machine.ts —— 全系统唯一裁决点，纯函数，转移表穷尽（Record 穷尽纪律）
-applyEvent(form: BookingCollectionForm, event: FormEvent, guards: WriteGuardSet): BookingCollectionForm
-// 不变量（写成断言测试）：confirmed 槽位仅接受 corrected/invalidated；
-// affirmed 只作用于 pendingRecap 在案槽位；confirmAttempts>=2 → escalated。
+// 值写入（公证内联，一次同轮完成）：
+//   ①sourceText 逐字回查本轮全文 ②值可由 sourceText 经既有解析器推导 ③归属/形态门
+//   ④置信按证据形态查表授予 ⑤命中 rejectedOptions → 该槽 disqualified（先筛后收在此发生）
+//   身份槽位（IDENTITY_LABEL_IDS）额外挂真名闸/手机号出处闸/年龄边界（判据读契约 min/max）
+proposeValue(form, contract: ContractFieldDef, proposal: RawProposal): BookingCollectionForm
 
-// write-guards.ts —— valueProposed 的入口公证（一次、同轮）
-notarizeProposal(raw: RawProposal, evidence: TurnEvidence, constraint: ContractFieldDef)
-  : { verdict: 'accept'; value: SlotValue } | { verdict: 'reject'; reason: NotaryDropReason }
-  | { verdict: 'disqualify'; hit: RejectedOptionHit }   // 先筛后收在此发生
+// 提交前复述的结果回写："认" → 放行提交；"改某格" → 该格重开（state=empty, askCount 不清零）
+applyRecapResult(form, result: { affirmed: true } | { corrections: number[] }): BookingCollectionForm
 
-// recap-renderer.ts —— 复述由状态渲染（不是模型自由发挥后再考古）
-renderRecap(form): { text: string; recapEvent: FormEvent }
+// entryUser errorList 回写：按 labelId 定位重开该槽；定位不到 → escalatedReason（唯一必转人工）
+applyErrorList(form, errors: { labelId?: number; field: string; msg: string }[]): BookingCollectionForm
 
-// rejection-renderer.ts —— 判定如实、披露分级
-renderDisqualification(form, policy: DisclosurePolicy)
-  : { mode: 'plain'; text } | { mode: 'generic_redirect' }   // generic 走换岗承接流程，本轮不提拒因
+markSubmitted(form, workOrderId: number): BookingCollectionForm
 ```
 
-## 4. 存储（memory 域）
+全部纯函数，单测直测；持久化由 service 包一层。不变量（写成断言测试）：
+filled 槽位只能被 applyRecapResult 的 corrections 或 applyErrorList 重开——**任何路径
+不得对 filled 槽位重复发问**（反复问病根的类型级根治）。
 
-- **Redis 实体**：`collection-form:{corpId}:{userId}:{candidateRef}:{jobId}`，
-  整实体 JSON + `version` 乐观锁（CAS 重试，复用 factsv2 字段级写的并发教训——
-  PR #455 先例：读-改-写必带版本比对）；列入「丢了算事故」的 key 清单。
-- **审计事件**：每次 applyEvent 落 `collection_form_events`
-  （form_id/event_type/slot_key/payload/turn_id，与 trace_id 可 join——观测不落库=没发生）。
-- **迁移纪律**：`IF NOT EXISTS` 幂等；先 db:push:test 真实写入验证再 prod；
-  与代码发版同步（仓库事故史红线）。
+## 4. 存储与观测
 
-## 5. 设计决策点（实施前定，D1 必须过用户）
+- **Redis 快照**：整实体 JSON，key `collection-form:{corpId}:{userId}:{candidateRef}:{jobId}`；
+  回合租约（90s 心跳续期）保证单写者，无版本锁。列入「丢了算事故」key 清单。
+- **审计**：proposeValue 拒收/disqualify、escalated、config_debt、submitted 各落一条
+  `agent_execution_events`（既有表，同 traceId 可 join）。零新表、零迁移。
+- **配置债披露（用户裁定 0818）**：booking-card.renderer.ts 在报名成功卡片追加
+  「收资配置备注」段，直读 form.configDebts 逐条渲染（标签名+labelId+note）；
+  无债不加段。运营看到成功报名同时看到这单哪条配置在作妖。周报聚合暂不做——
+  configDebts 已落库（audit 事件），数据在，何时聚合是后话。
 
-- **D1 candidateRef 与多人报名协议**：candidateRef=phone 归一值（11 位，与海绵报名
-  人键同源）；phone 未知期挂会话默认表单、到达时 rebind；新（姓名+手机号）对出现即
-  开新表。**多人协议四条硬规则**：①模型当分拣员——值提案必须带归属标注；
-  ②活跃表 >1 时无标注提案一律拒收，逼模型现场向中介问清（歧义不落账）；
-  ③复述按人分组渲染=值与归属的双重终审（分拣错误由唯一知情人当场纠正）；
-  ④筛选/披露/提交/失败全部按表隔离，禁止连坐。一名多号/一号多名歧义 → escalated
-  交人工。**已确认（用户裁定 2026-08-18：phone 作人键 + 四条硬规则定案）**。
-- D2 errorList 的 field（展示名）→ 槽位映射：优先契约回传稳定键（核对清单第 4 条）；
-  只有展示名时按 labelTitle 匹配，失配 → 整单 escalated 不静默。
-- D3 复述节流：一轮 recap 覆盖全部 pending 槽位（不逐槽问）；escalated 话术复用
-  转人工既有口径（禁暴露 AI 身份纪律）。
-
-## 6. precheck/booking 接线（最大改动面）
+## 5. precheck/booking 接线（最大改动面）
 
 precheck 收资核：`buildKnownFieldMap + checklist + missingFields` 整体替换为
-`collectionFormService.loadOrCreate → 本轮消息产 valueProposed* → form 快照返回`；
-`nextAction` 从 form 派生（collecting=渲染缺口+recap / disqualified=rejection-renderer /
-ready=放行 booking）；templateText 由 form 渲染。claim 轨保留为**值提案的运输格式之一**
-（R1 schema 补 agentQuestionQuote 随本批实施）；身份闸门保留为 identity 槽位写守卫。
+`collectionFormService.loadOrCreate → 本轮消息经适配器产 proposal → proposeValue* → 快照返回`；
+`nextAction` 由 `verdictOf(form)` 唯一派生（collecting=问 empty 槽位 / disqualified=
+rejection-renderer / ready=发提交前复述 / escalated=静默转人工 / submitted=停手）；
+templateText 由 form 渲染。claim 轨保留为值提案的运输格式之一（R1 schema 补
+agentQuestionQuote 随本批实施）。
 booking：payload 由 form 生成——顶层仅 jobId + 可选 interviewTime，其余全部由
-labelList[{labelId, optionCodes|value}] 承载（身份核即 769/770/687/771 四槽，
-0818 新版契约无一等身份参数）→ entryUser → workOrder 落 submitted /
-errorList 逐条 serverRejected。
+labelList[{labelId, optionCodes|value}] 承载（身份核即 769/770/687/771 四槽，0818 新版
+契约无一等身份参数）→ entryUser → workOrder 落 markSubmitted / errorList 走 applyErrorList。
 
-**收资判决单源（0818 与后端约定；推翻同日早前"三源优先级"稿）**：
-- **展示/判决分离**：岗位详情接口只服务"向候选人介绍岗位"（薪资/内容/要求话术）；
-  **收资与筛选判决的唯一判据源 = 报名筛选标签接口（batch-query）**。收什么、
-  必不必填、选项筛（rejectedOptions）、值域筛（minAge/maxAge 等）全部由该契约承载——
-  后端已约定把判决要素补进该接口，precheck 全信契约。
-- **判决零第二源**：契约没带的判据 = 该岗没有这道筛。不回头读岗位数据补筛、
-  不走岗位自由文本解析兜底（漏斗优先，多报下游可截）。
-- `detectAgeBoundary` 弹性边界（23 floor / 下限-2 / 上限+3）是 cake 侧判定政策，
-  保留并重挂 687 槽位写守卫，但 min/max **判据改读标签契约**（顺带消除现链路
-  数字→"25-50岁"文本→正则再解析回数字的两跳）。性别同挂 771 槽位。
-- job-policy-parser 岗位侧解析族存活，但职责收窄为**展示/话术/面试窗口**；
-  其筛选消费面（screening-criteria 硬约束、age.util 的岗位判据轨、健康证文本筛）
-  随本批退役。
+**收资判决单源（0818 与后端约定）**：
+- **展示/判决分离**：岗位详情接口只服务"向候选人介绍岗位"；**收资与筛选判决的唯一
+  判据源 = 报名筛选标签接口（batch-query）**——收什么、必不必填、选项筛、值域筛
+  （minAge/maxAge 等）全部由该契约承载，precheck 全信契约。
+- **判决零第二源**：契约没带的判据 = 该岗没有这道筛。不读岗位数据补筛、不走岗位
+  自由文本解析兜底（漏斗优先，多报下游可截）。
+- job-policy-parser 岗位侧解析族存活，职责收窄为**展示/话术/面试窗口**；其筛选消费面
+  （screening-criteria 硬约束、age.util 岗位判据轨、健康证文本筛）随本批退役。
+
+## 6. 设计决策（全部已定）
+
+- **D1（已确认 0818：phone 作人键）**：candidateRef=phone 归一 11 位（与海绵人键同源）；
+  未知期挂 'session' 默认表、到达时 rebind。多人报名 v1 不建自动化协议：检测到疑似
+  多人（新姓名+新手机号对）→ escalatedReason 转人工。
+- **D2 errorList 映射**：优先契约回传 labelId（契约诉求 #2）；只有展示名时按 labelTitle
+  匹配，失配 → escalatedReason，不静默。
+- **D3 复述节流**：全程只在提交前复述一次，覆盖全部 filled 槽位；escalated 话术复用
+  转人工既有口径（禁暴露 AI 身份纪律）。
 
 ## 7. 同批退役删除（总纲 §4 清单的执行面）
 
 checklist.util 的 FIELD_ORDER 大部/buildKnownFieldMap/missingFields 字面过滤；
 classifySupplementLabel 括号黑名单；normalizeSupplementKey+别名表+一行流解析；
 customerLabel 拼装主体；快照水位（snapshot-gate）；确认识别器族与四份肯定词表分叉
-（D5，肯定词表收拢到 dialogue 唯一居所）；E1/E2 enforce 分支（账本对象已换）；
+（肯定词表收拢到 dialogue 唯一居所）；E1/E2 enforce 分支（账本对象已换）；
 `allowLegacyConfirmRegex` 并跑；9 个 candidateXxx 裸字段（拆除判据已写在 precheck 注释）。
 **删除纪律**：每删一族先 grep 消费面，测试期望同步改，禁留空壳。
 
-## 8. 实现顺序（可测地基先行；1-4 步不等契约）
+## 8. 实现顺序（1-3 步不等契约）
 
-1. `resolution/collection` 类型 + form-machine 纯归约器——**转移表穷尽测试 +
-   三铁证事件序列重放**（假身份复刻 A/B/C，断言：A 一轮确认即办结、B 双表单互不污染、
-   C 不存在第二次同题追问）；
-2. write-guards + option-matching + 三个适配器（复用既有解析器，单测全覆盖）；
-3. disclosure-policy（守卫红线词表同源接线 + 未知默认禁明说测试）；
-4. recap/rejection renderer（纯文案层，快照测试）；
-5. ——契约落地检查点：覆盖度探针复测 + contract types 对齐实际返回——
-6. sponge 契约客户端（零缓存实时查询）；memory store/service + 迁移 + 并发 CAS 测试；
-7. precheck/booking 接线重写（最大面，铁证重放跑通后才进）；
-8. §7 退役删除批 + 全量回归；
-9. 验收：三铁证重放全绿 + 验收指标探针（答后复问率 <10%/死锁 0/已确认槽位被重问=0）。
+1. form.types + form-writes 纯函数——公证/先筛后收/重开路径单测全覆盖 +
+   六事故防线断言（见 §10 验收）；
+2. option-matching + 三个适配器 + disclosure-policy（复用既有解析器与红线词表）；
+3. recap/rejection renderer（纯文案层，快照测试）；
+4. ——**0819 契约检查点**：spec 对照诉求单核对 → collection-contract.types 定稿 →
+   覆盖度探针复测——
+5. sponge 契约客户端（零缓存）+ memory store/service（Redis 快照读写）；
+6. precheck/booking 接线重写（最大面）+ booking-card 配置债段；
+7. §7 退役删除批 + 全量回归。
 
 ## 9. Spike 清单（写码前关）
 
-S1 契约实际返回形状 vs collection-contract.types（含披露级别字段是否到位，
-   没有则 disclosure-policy 兜底注册表先行）；
-S2 D1 candidateRef 方案在中介样本上的可行性（拉生产 3 个多人会话只读验证）;
-S3 errorList 字段映射实测（测试环境 entryUser 打一次假身份提交）；
-S4 Redis 实体读写与 CAS 在 Upstash REST 上的延迟/原子性（复用 factsv2 先例核对）；
-S5 复述文案与既有回复分段/拟人化投递的兼容（\n\n 分段协议）。
+S1 契约实际返回形状 vs DTO（0819；披露级别字段是否到位，没有则兜底注册表先行）；
+S2 中介多人会话生产频率只读量化（决定 v2 是否值得建自动化协议）；
+S3 errorList 字段映射实测（测试环境 entryUser 假身份提交一次）；
+S4 Redis 快照读写延迟（Upstash REST，整实体尺寸估算）；
+S5 复述文案与回复分段/拟人化投递兼容（\n\n 分段协议）。
 
-## 9.5 收资受阻感知层（v3 终裁，2026-08-18）
+## 10. 验收（六事故防线回归，全绿才算完）
 
-**裁决原则（用户裁定）：漏斗优先——降级方向永远朝"能继续报名"倒。最坏结果=多报了
-不符合要求的人（下游审核/面试/门店可截，可恢复）；绝不因配置债卡死报名
-（候选人流失不可恢复）。唯一不降级项：披露红线（禁明说永不降级为明说）。**
+| 防线 | 断言 |
+|---|---|
+| 反复问根治 | filled 槽位零重问（同会话重放：答过年龄后任何轮不再出现年龄提问） |
+| 复述落账 | "不对，电话错了"能精确重开 770 一格，其余格不动 |
+| 先筛后收 | 答案命中 rejectedOptions 当轮即 disqualified，不再收后续字段 |
+| 臆造防线 | sourceText 回查失败的提案零入账（公证拒收落审计事件） |
+| 死锁终结 | errorList 回写后 verdictOf 回到 collecting/escalated，不存在永卡 ready |
+| 熔断 | 同槽 2 问不中 → escalated，第 3 问不存在 |
 
-脏配置长期存在是设计前提。八种受阻形态，每种=触发点+机内降级+落库事件：
-B1 语义不明（只收不筛，照常提交）/ B2 同表同义槽位（**问一次族内互填**，绝不连问）/
-B3 同 id 类型分裂（按本岗实际类型走通用道）/ B4 选项映射不出（熔断→带值提交优先，
-转人工兜底）/ B5 子集筛选不可见（**不本地筛**，照常提交，服务端校验晚失败兜底——
-拒绝权依据必须来自契约，不用推断行使拒绝权）/ B6 errorList 失配（唯一必转人工项：
-提交已失败且无法定位）/ B7 敏感未标记（自动按禁明说）/ B8 候选人抗拒
-（两次质疑即带已收值提交试探）。
-事件统一落 collection_form_events（新增 config_debt / slot_escalated 事件类型，零新表）。
+指标探针：答后复问率 <10%（基线 31.5%）/ 报名死锁 0 / filled 被重问 0。
 
-**运营回路（双通道）**：
-① **逐单披露（用户裁定 0818）**：报名成功的飞书通知卡片追加「收资配置备注」段——
-该表单事件史中存在 config_debt 时，逐条列出：标签名(labelId) + 受阻形态 + 系统兜底动作
-（如「是否为社会兼职(607)/灵活用工(608)/学生兼职(609)：同表重复，已合并为一问」
-「专业（非新媒、食品）(659)：筛选方向不明，仅收集未筛」）。集成点=既有
-`src/notification/renderers/booking-card.renderer.ts`，表单 submitted 时从事件史汇总；
-无债时卡片不加段。运营看到成功报名的同时看到这单哪条配置在作妖——疼痛绑定具体订单。
-② **周报聚合**：config_debt 按 labelId×jobId 聚合进周报（weekly-ops-report 消费）——
-"本周实际阻塞收资的 Top 标签/岗位"，把 1538 行静态修正清单变成按生产疼痛排序的
-动态优先队列；运营增量修，债务曲线周度可见。
-检测器实现在 resolution/collection/config-debt-detectors.ts
-（纯函数，语义族匹配器复用适配器注册表）。
-
-## 10. 红线
+## 11. 红线
 
 - 判定入账永远如实（禁把披露层的委婉写进账本）；producer 署名如实（禁 system 冒名）；
 - 未知标签披露默认禁明说；禁说词表禁止另立副本；
 - fixtures 一律假身份（兮兮/18271421690）；生产探针只读+限速；
 - 并发会话纪律：动文件先查占用，commit pathspec；
-- 转移表/词表 Record 穷尽，新增事件类型漏写处理分支必须编译期报错；
-- 观测落库不落库=没做（collection_form_events 是验收项不是可选项）。
+- SlotState/Verdict 封闭集纪律（§0）：加值先答"既有值为何覆盖不了"；
+- 审计事件落 agent_execution_events，不落库=没做。
