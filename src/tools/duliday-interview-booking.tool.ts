@@ -421,7 +421,7 @@ export function buildInterviewBookingTool(
               outcome: '测试链路拦截：手机号不在测试白名单，未执行真实报名',
               replyInstruction:
                 '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝提交、未产生任何真实工单。' +
-                '不得谎称已报名/已登记；请如实说明报名未提交。测试用例应使用统一假身份（兮兮/13800000000）。',
+                '不得谎称已报名/已登记；请如实说明报名未提交。测试用例应使用统一假身份（兮兮/18271421690）。',
               details: { phone: maskPhoneForDetails(phone) },
             }),
           );
