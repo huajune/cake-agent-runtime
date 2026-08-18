@@ -1,14 +1,10 @@
-import { asRecord } from '@infra/utils/object.util';
 import { JobDetail } from './sponge.types';
+import { asArray, asRecord } from '@infra/utils/object.util';
 
 export interface SpongeInterviewSupplementDefinition {
   labelId: number;
   labelName: string;
   name: string;
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function asString(value: unknown): string | null {

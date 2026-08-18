@@ -2,15 +2,32 @@
  * 对象工具函数
  */
 
-/** 值是普通对象（非 null、非数组）时按 Record 读取，否则 null。 */
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
+/** 任意 JSON 对象的通用读取形态：键为字符串、值未收窄。 */
+export type UnknownRecord = Record<string, unknown>;
+
+/**
+ * unknown 是否为「普通对象」——排除 null 与数组。
+ *
+ * 海绵接口返回、工具 payload、Redis 反序列化结果这类外部数据结构不受控，
+ * 读字段前统一走这里收窄，避免对 null 取属性或把数组当对象读。
+ */
+export function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** asRecord 的类型守卫形态。 */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return asRecord(value) !== null;
+/** `isRecord` 的取值版：是普通对象则原样返回，否则 null。 */
+export function asRecord(value: unknown): UnknownRecord | null {
+  return isRecord(value) ? value : null;
+}
+
+/** 数组元素逐个按 Record 收窄，非对象元素丢弃；非数组输入返回空数组。 */
+export function asRecordArray(value: unknown): UnknownRecord[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+/** 非数组输入统一降级成空数组，便于直接 map / for-of。 */
+export function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 /**

@@ -1,6 +1,4 @@
-import { asRecord } from '@infra/utils/object.util';
-
-type UnknownRecord = Record<string, unknown>;
+import { asRecord, type UnknownRecord } from '@infra/utils/object.util';
 
 function readText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;

@@ -17,7 +17,7 @@
  */
 
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@resolution/labor-form';
-import { asRecord } from '@infra/utils/object.util';
+import { asRecord, asRecordArray } from '@infra/utils/object.util';
 import type { JobDetail } from '@sponge/sponge.types';
 import { classifyArrangementType, composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import {
@@ -207,14 +207,6 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
     '',
     '',
   ].join('\n');
-}
-
-type UnknownRecord = Record<string, unknown>;
-
-function asRecordArray(value: unknown): UnknownRecord[] {
-  return Array.isArray(value)
-    ? value.map(asRecord).filter((item): item is UnknownRecord => !!item)
-    : [];
 }
 
 function asString(value: unknown): string | null {

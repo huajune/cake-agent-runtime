@@ -9,8 +9,8 @@
  * 海绵非标准命名如出现，维护在本 util 的本地 override，不进 geo（§11.2）。
  */
 
-import { resolveParentAdministrativeArea } from '@resolution/geo';
 import { isRecord } from '@infra/utils/object.util';
+import { resolveParentAdministrativeArea } from '@resolution/geo';
 
 export interface SpongeCityFilterNormalization {
   cityNameList: string[];

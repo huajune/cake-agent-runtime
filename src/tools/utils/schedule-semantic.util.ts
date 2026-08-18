@@ -1,3 +1,4 @@
+import { asRecord, isRecord } from '@infra/utils/object.util';
 /**
  * 岗位工作时间语义分类器 + 候选人班次约束匹配。
  *
@@ -6,8 +7,6 @@
  * 早开晚结 05:00-23:00"等强排班描述。模型自己解读这些关键词容易误判
  * （把"每天"说成"周末能排"），所以在工具层把语义分类做出来。
  */
-
-import { asRecord, isRecord } from '@infra/utils/object.util';
 
 /**
  * 岗位排班语义类型：
