@@ -1,3 +1,4 @@
+import { isRecord, type UnknownRecord } from '@infra/utils/object.util';
 import type { LongTermService } from '@memory/services/long-term.service';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { JobDetail, SignupWorkOrderItem } from '@sponge/sponge.types';
@@ -119,10 +120,9 @@ function normalizeText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+/** 本模块下游一律用 `undefined` 表示"读不出对象"，故不直接用 asRecord（返回 null）。 */
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 function compact<T extends Record<string, unknown>>(value: T): T {

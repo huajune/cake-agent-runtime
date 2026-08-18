@@ -17,13 +17,7 @@
  *  - 仅做派生不做校验——booking-guards 是另一层
  */
 
-type UnknownRecord = Record<string, unknown>;
-
-/** raw 值是对象时按 Record 读取，否则 null（等价于原先的 `typeof x === 'object'` 守卫）。 */
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === 'object' ? (value as UnknownRecord) : null;
-}
-
+import { asRecord, type UnknownRecord } from '@infra/utils/object.util';
 import type { HealthCertGate } from '@tools/utils/job-policy-parser';
 
 export type GenderRequirement = 'male' | 'female' | 'any' | 'unspecified';

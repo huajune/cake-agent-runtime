@@ -12,6 +12,7 @@
  * 导出 buildJobListTool 供注册表使用
  */
 
+import { isRecord } from '@infra/utils/object.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -358,10 +359,6 @@ function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
         : null,
     };
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function readFactValue(value: unknown): unknown {

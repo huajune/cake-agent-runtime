@@ -108,8 +108,6 @@ export interface FactRule {
 /**
  * 安全地把 unknown 工具结果转成普通对象。
  * 工具返回历史格式较杂，规则里统一用它读取字段，避免 null/数组/primitive 误访问。
+ * 实现已收拢至 `@infra/utils/object.util`，此处保留规则侧的既有导入路径。
  */
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
+export { asRecord } from '@infra/utils/object.util';

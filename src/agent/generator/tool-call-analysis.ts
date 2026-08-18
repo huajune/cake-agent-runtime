@@ -5,6 +5,7 @@
  * 保证 tool_calls jsonb 的 resultCount / status 语义一致。
  */
 
+import { isRecord, type UnknownRecord } from '@infra/utils/object.util';
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
 import type { ToolErrorType } from '@tools/types/tool-error-types';
 import type { AgentToolCall } from './generator.types';
@@ -44,9 +45,9 @@ const SUCCESS_FLAG_KEYS = ['success', 'accepted', 'dispatched', 'found'] as cons
  */
 const EMPTY_RESULT_ERROR_TYPES = new Set(['job_list.no_results', 'job_list.schedule_filter_empty']);
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  return value as Record<string, unknown>;
+/** 本模块下游一律用 `undefined` 表示"读不出对象"，故不直接用 asRecord（返回 null）。 */
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 /**
