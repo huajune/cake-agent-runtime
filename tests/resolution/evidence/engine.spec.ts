@@ -82,6 +82,65 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
     expect(earlyDecision?.decision).toBe('superseded');
   });
 
+  // 同一次裁决里所有 claim 共享一个 assertedAt（adjudicate.ts 统一戳一次），
+  // 覆盖操作的"其前"只能由提交顺序表达；按时间戳比会把改正值一起杀掉。
+  it('同轮先 clear 再 set：改正值必须留下，不能被 clear 反向 supersede', () => {
+    const result = adjudicate({
+      claims: [
+        claim({
+          claimId: 'm_phone_clear',
+          field: 'phone',
+          value: null,
+          operation: 'clear',
+          evidence: { quote: '不对，那个号错了' },
+        }),
+        claim({
+          claimId: 'm_phone_set',
+          field: 'phone',
+          value: '13900000002',
+          operation: 'set',
+          evidence: { quote: '我的号是13900000002' },
+        }),
+      ],
+      candidateTexts: ['不对，那个号错了', '我的号是13900000002'],
+    });
+
+    expect(result.acceptedValues.phone).toBe('13900000002');
+    expect(
+      result.adjudicated.find((entry) => entry.claim.claimId === 'm_phone_set')?.decision,
+    ).toBe('accepted');
+    expect(
+      result.adjudicated.find((entry) => entry.claim.claimId === 'm_phone_clear')?.decision,
+    ).toBe('superseded');
+  });
+
+  // 反向锁定：同戳下排在覆盖操作之前的 claim 仍要被 supersede，别把上面的修复做过头。
+  it('同轮先 set 再 clear：clear 生效，其前的 set 仍 superseded', () => {
+    const result = adjudicate({
+      claims: [
+        claim({
+          claimId: 'm_phone_set',
+          field: 'phone',
+          value: '13900000002',
+          evidence: { quote: '我的号是13900000002' },
+        }),
+        claim({
+          claimId: 'm_phone_clear',
+          field: 'phone',
+          value: null,
+          operation: 'clear',
+          evidence: { quote: '算了这个号别用了' },
+        }),
+      ],
+      candidateTexts: ['我的号是13900000002', '算了这个号别用了'],
+    });
+
+    expect(result.acceptedValues.phone).toBeUndefined();
+    expect(
+      result.adjudicated.find((entry) => entry.claim.claimId === 'm_phone_set')?.decision,
+    ).toBe('superseded');
+  });
+
   it('§12-3/15 模型从 Prompt 复制旧值、候选人从未说过 → rejected', () => {
     // legacy 裸值（无 quote）：没有引文就是没有出处 → quote_not_found。
     // 工序 C1 废除了 no_candidate_evidence——旧口径先拿正则在候选人全文里"推导补录"

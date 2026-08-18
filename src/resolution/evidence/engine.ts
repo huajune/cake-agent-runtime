@@ -91,16 +91,27 @@ export function adjudicateCandidateClaims(params: AdjudicateParams): Adjudicatio
     if (entries.length <= 1) continue;
 
     // correct/clear 是显式覆盖操作：最新一条生效，其前的全部 superseded。
-    const lastOverride = [...entries]
-      .reverse()
-      .find((entry) => entry.claim.operation === 'correct' || entry.claim.operation === 'clear');
-    if (lastOverride) {
-      for (const entry of entries) {
-        if (entry === lastOverride) continue;
-        if (entry.claim.assertedAt <= lastOverride.claim.assertedAt) {
-          entry.decision = 'superseded';
-          entry.supersededByClaimId = lastOverride.claim.claimId;
-        }
+    //
+    // ⚠️ "其前"不能只看 assertedAt：同一次裁决里所有 claim 共享一个时间戳
+    // （adjudicate.ts 统一 now.toISOString() 戳一次后传给全部 producer），
+    // 时间戳比较会恒成立，把覆盖操作**之后**提交的 claim 也一并杀掉——
+    // 模型在同一轮先 clear 再 set 改正手机号时，改正值被静默丢弃、字段回 missing，
+    // 候选人会被重新盘问已经给过的信息。同戳时以提交顺序（数组下标）判先后。
+    const lastOverrideIndex = entries.reduce(
+      (found, entry, index) =>
+        entry.claim.operation === 'correct' || entry.claim.operation === 'clear' ? index : found,
+      -1,
+    );
+    if (lastOverrideIndex >= 0) {
+      const lastOverride = entries[lastOverrideIndex];
+      for (const [index, entry] of entries.entries()) {
+        if (index === lastOverrideIndex) continue;
+        const precedesOverride =
+          entry.claim.assertedAt < lastOverride.claim.assertedAt ||
+          (entry.claim.assertedAt === lastOverride.claim.assertedAt && index < lastOverrideIndex);
+        if (!precedesOverride) continue;
+        entry.decision = 'superseded';
+        entry.supersededByClaimId = lastOverride.claim.claimId;
       }
     }
 
