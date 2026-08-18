@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository, type QueryModifier } from '@infra/supabase/base.repository';
+import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { AgentExecutionEvent } from '@observability/persistence/agent-event-persister.interface';
 
@@ -48,24 +48,6 @@ export class AgentExecutionEventRepository extends BaseRepository {
       this.logger.error(`[Agent执行事件] 清理失败:`, error);
       throw error;
     }
-  }
-
-  /**
-   * 按事件类型提前清理（PII 承载事件的独立保留期，短于表级窗口）。
-   * 先 count 再 delete：DELETE 不回读整行，避免把一天份的 8KB payload 拉进内存。
-   */
-  async cleanupExpiredEventsByType(eventType: string, retentionDays: number): Promise<number> {
-    if (!this.isAvailable()) return 0;
-
-    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
-    const matcher: QueryModifier = (query) =>
-      query.eq('event_type', eventType).lt('created_at', cutoff);
-
-    const pending = await this.count(matcher);
-    if (pending === 0) return 0;
-
-    await this.delete(matcher);
-    return pending;
   }
 
   /** 按完整时间窗统计指定事件；分页只取 id，避免 PostgREST 1000 行上限低估日量。 */

@@ -224,17 +224,6 @@ export type AgentEvent = AgentEventContext &
       }
   );
 
-/**
- * 承载候选人 PII 的事件类型：payload 里带模型原始输出（姓名/手机号/年龄原文）。
- *
- * 这些事件的保留期比 agent_execution_events 的表级窗口更短（见 DataCleanupService），
- * 表级清理仍是兜底。新增任何"落原始文本"的事件类型必须登记到这里，否则 PII 会跟着
- * 表级窗口一直躺到 60 天。类型受 AgentEvent 约束，拼错即 typecheck 失败。
- */
-export const PII_BEARING_AGENT_EVENT_TYPES = [
-  'extraction_raw_output_sampled',
-] as const satisfies readonly AgentEvent['type'][];
-
 export interface Observer {
   emit(event: AgentEvent): void;
 }

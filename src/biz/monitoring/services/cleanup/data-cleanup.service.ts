@@ -7,7 +7,6 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { AgentExecutionEventRepository } from '../../repositories/agent-execution-event.repository';
-import { PII_BEARING_AGENT_EVENT_TYPES } from '@observability/observer.interface';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -23,8 +22,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  *    随消息处理行删除统一回收
  * 2. DELETE chat_messages（>N 天）
  * 3. DELETE guardrail_review_records（>N 天）— message_processing_records 的 trace 附属证据
- * 4. DELETE agent_execution_events：先按 PII 承载事件类型提前删（>N 天，见
- *    PII_BEARING_AGENT_EVENT_TYPES），再表级删（>M 天）— message_processing_records 的 trace 附属事件
+ * 4. DELETE agent_execution_events（>N 天）— message_processing_records 的 trace 附属事件
  * 5. DELETE message_processing_records（>N 天）— 历史数据已聚合到 monitoring_hourly_stats
  * 6. DELETE monitoring_error_logs（>N 天）
  * 7. DELETE user_activity（>N 天）
@@ -38,7 +36,6 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * - DATA_CLEANUP_PROCESSING_DAYS       (默认 60)
  * - DATA_CLEANUP_GUARDRAIL_REVIEW_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
  * - DATA_CLEANUP_AGENT_EXECUTION_EVENTS_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
- * - DATA_CLEANUP_PII_EVENTS_DAYS       (默认 30，PII 承载事件的独立短保留期)
  * - DATA_CLEANUP_CHAT_DAYS             (默认 60)
  * - DATA_CLEANUP_USER_ACTIVITY_DAYS    (默认 365)
  * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认 30)
@@ -53,7 +50,6 @@ export class DataCleanupService implements OnModuleInit {
   private readonly processingRetentionDays: number;
   private readonly guardrailReviewRetentionDays: number;
   private readonly agentExecutionEventsRetentionDays: number;
-  private readonly piiEventsRetentionDays: number;
   private readonly chatRetentionDays: number;
   private readonly userActivityRetentionDays: number;
   private readonly errorLogsRetentionDays: number;
@@ -93,11 +89,6 @@ export class DataCleanupService implements OnModuleInit {
         'DATA_CLEANUP_AGENT_EXECUTION_EVENTS_DAYS',
         String(this.processingRetentionDays),
       ),
-      10,
-    );
-    // PII 承载事件（模型原始输出含姓名/手机号）单独取更短的保留期；表级窗口仍兜底。
-    this.piiEventsRetentionDays = parseInt(
-      this.configService.get('DATA_CLEANUP_PII_EVENTS_DAYS', '30'),
       10,
     );
     this.chatRetentionDays = parseInt(this.configService.get('DATA_CLEANUP_CHAT_DAYS', '60'), 10);
@@ -170,8 +161,6 @@ export class DataCleanupService implements OnModuleInit {
     await this.cleanupGuardrailReviewRecords();
 
     // 4. 清理过期 Agent 执行事件（处理链附属证据，先删附属再删主流水）
-    //    PII 承载类型先按更短窗口删一遍，再走表级窗口
-    await this.cleanupPiiBearingAgentEvents();
     await this.cleanupAgentExecutionEvents();
 
     // 5. 清理过期消息处理记录（默认 >60 天）
@@ -265,42 +254,6 @@ export class DataCleanupService implements OnModuleInit {
       this.logger.error(`[数据清理] 清理守卫审查档案失败: ${message}`);
       this.notifyCleanupFailure('cleanup-guardrail-review-records', '清理守卫审查档案失败', error);
     }
-  }
-
-  /**
-   * 清理 PII 承载的 Agent 执行事件（默认 30 天，短于表级窗口）。
-   *
-   * extraction_raw_output_sampled 落的是模型原始结构化输出（姓名/手机号/年龄原文，8KB 封顶），
-   * 用途是区分模型幻觉与供应商串请求——排障价值只在事发后的短窗口内，没有理由跟着
-   * 表级 60 天窗口一起躺。逐类型独立 try/catch：一个类型失败不阻断其余类型与表级清理。
-   */
-  private async cleanupPiiBearingAgentEvents(): Promise<number> {
-    let deletedTotal = 0;
-
-    for (const eventType of PII_BEARING_AGENT_EVENT_TYPES) {
-      try {
-        const deletedCount = await this.agentExecutionEventRepository.cleanupExpiredEventsByType(
-          eventType,
-          this.piiEventsRetentionDays,
-        );
-        deletedTotal += deletedCount;
-        if (deletedCount > 0) {
-          this.logger.log(
-            `[数据清理] 已清理 ${deletedCount} 条 ${eventType} 事件 (${this.piiEventsRetentionDays} 天前，PII 保留期)`,
-          );
-        }
-      } catch (error: unknown) {
-        const message = toErrorMessage(error);
-        this.logger.error(`[数据清理] 清理 PII 事件 ${eventType} 失败: ${message}`);
-        this.notifyCleanupFailure(
-          'cleanup-pii-agent-events',
-          `清理 PII 事件 ${eventType} 失败`,
-          error,
-        );
-      }
-    }
-
-    return deletedTotal;
   }
 
   /**
@@ -496,7 +449,6 @@ export class DataCleanupService implements OnModuleInit {
     agentInvocations: number;
     chatMessages: number;
     guardrailReviewRecords: number;
-    piiAgentEvents: number;
     agentExecutionEvents: number;
     processingRecords: number;
     userActivity: number;
@@ -507,7 +459,6 @@ export class DataCleanupService implements OnModuleInit {
     let agentInvocations = 0;
     let chatMessages = 0;
     let guardrailReviewRecords = 0;
-    let piiAgentEvents = 0;
     let agentExecutionEvents = 0;
     let processingRecords = 0;
     let userActivity = 0;
@@ -521,7 +472,6 @@ export class DataCleanupService implements OnModuleInit {
         agentInvocations,
         chatMessages,
         guardrailReviewRecords,
-        piiAgentEvents,
         agentExecutionEvents,
         processingRecords,
         userActivity,
@@ -537,7 +487,6 @@ export class DataCleanupService implements OnModuleInit {
         agentInvocations,
         chatMessages,
         guardrailReviewRecords,
-        piiAgentEvents,
         agentExecutionEvents,
         processingRecords,
         userActivity,
@@ -568,9 +517,6 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       this.logger.warn(`[数据清理] 手动清理守卫审查档案失败: ${String(error)}`);
     }
-
-    // 内部已逐类型 try/catch，失败计 0 不抛出
-    piiAgentEvents = await this.cleanupPiiBearingAgentEvents();
 
     try {
       agentExecutionEvents = await this.agentExecutionEventRepository.cleanupExpiredEvents(
@@ -606,14 +552,13 @@ export class DataCleanupService implements OnModuleInit {
     reengagementTouchRecords = touches.recordsDeleted;
 
     this.logger.log(
-      `[数据清理] 手动清理完成: agent_invocation ${agentInvocations} 条, 聊天消息 ${chatMessages} 条, 守卫审查档案 ${guardrailReviewRecords} 条, PII 事件 ${piiAgentEvents} 条, Agent 执行事件 ${agentExecutionEvents} 条, 处理记录 ${processingRecords} 条, 用户活跃记录 ${userActivity} 条, 错误日志 ${errorLogs} 条, 触达文案 ${reengagementTouchTexts} 条, 触达记录 ${reengagementTouchRecords} 条`,
+      `[数据清理] 手动清理完成: agent_invocation ${agentInvocations} 条, 聊天消息 ${chatMessages} 条, 守卫审查档案 ${guardrailReviewRecords} 条, Agent 执行事件 ${agentExecutionEvents} 条, 处理记录 ${processingRecords} 条, 用户活跃记录 ${userActivity} 条, 错误日志 ${errorLogs} 条, 触达文案 ${reengagementTouchTexts} 条, 触达记录 ${reengagementTouchRecords} 条`,
     );
 
     return {
       agentInvocations,
       chatMessages,
       guardrailReviewRecords,
-      piiAgentEvents,
       agentExecutionEvents,
       processingRecords,
       userActivity,
