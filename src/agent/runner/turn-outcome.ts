@@ -284,7 +284,6 @@ export function classifyReviewedOutcome(
     ? buildPromiseReconciliationSideEffect({
         sessionRef,
         turnId: messageId ?? scenarioCode ?? sessionRef.sessionId,
-        replyPreview: text,
       })
     : undefined;
 
@@ -313,16 +312,13 @@ export function classifyReviewedOutcome(
 function buildPromiseReconciliationSideEffect(params: {
   sessionRef: SessionRef;
   turnId: string;
-  replyPreview: string;
 }): GeneralHandoffSideEffectIntent {
   return {
     kind: 'general_handoff',
     source: 'agent_tool',
     alertLabel: '需人工跟进（已向候选人承诺）',
     reasonCode: 'other',
-    reason:
-      '回复已向候选人承诺人工升级（我让/找同事确认、稍后联系你），但本轮没有成功的 request_handoff / raise_risk_alert。' +
-      `回复已原样发出，需真人接续兑现该承诺；replyPreview="${params.replyPreview.slice(0, 400)}"`,
+    reason: '已向候选人承诺会有人来跟进，需要真人接手兑现。',
     actionAdvice:
       '候选人已经收到"会有人来跟进"的承诺。请按承诺内容接手该会话；若判定无需人工，直接恢复托管即可。',
     idempotencyKey: buildHandoffIdempotencyKey({
