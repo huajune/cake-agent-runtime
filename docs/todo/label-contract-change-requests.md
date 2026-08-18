@@ -75,6 +75,13 @@ AI 用 requirementNote 做显式软筛（而不是从标题措辞里猜），标
 建议服务端禁止对 `disclosure: RESTRICTED` 类标签（籍贯等）配置 rejectedOptions
 （省籍/户籍筛选属歧视红线），从配置源头挡住而非依赖运营自觉。
 
+### 8.5 提供标签选项全集（子集筛选的可见性前提）
+
+实测发现存在"接受集抠项"式筛选（籍贯标签 6 个岗位排除特定省份，不配 rejectedOptions）。
+消费方**没有选项全集就无法察觉子集**——建议 batch-query 的每个 label 附
+`optionUniverse`（该标签的全部可配选项），或提供标签字典接口。没有它，
+「accepted 是全集（收集）还是子集（筛选）」对 AI 永远是盲区。
+
 ## P2（改进项）
 
 ### 9. labelInstructions 明确受众语义
