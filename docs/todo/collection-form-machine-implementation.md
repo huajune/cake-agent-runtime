@@ -10,7 +10,7 @@
 > ⑤FILE 标签(49 上传简历)的 value 生产者=简历工具 v4 output；
 > ⑥required 无标志——按「契约返回即须收」处理；标签**零缓存实时查询**（0818 裁定，配置修改即刻生效）；筛选=答案命中 rejectedOptions 即不合格、
 > 命中 acceptedOptions 通过、映射不出即求证。
-> **挂起已解除，全部 9 步可执行。**
+> **挂起已解除，全部 9 步可执行；D1 已确认，设计零开口（2026-08-18）。**
 
 > 设计权威：`label-driven-collection-refactor.md`（总纲）§2.8 五条构造性质 + 披露策略。
 > 本文是它的实施展开：代码树、类型、签名、接线点、实现顺序、退役批、验收。
@@ -138,7 +138,7 @@ renderDisqualification(form, policy: DisclosurePolicy)
   ②活跃表 >1 时无标注提案一律拒收，逼模型现场向中介问清（歧义不落账）；
   ③复述按人分组渲染=值与归属的双重终审（分拣错误由唯一知情人当场纠正）；
   ④筛选/披露/提交/失败全部按表隔离，禁止连坐。一名多号/一号多名歧义 → escalated
-  交人工。**需用户确认建议或改**。
+  交人工。**已确认（用户裁定 2026-08-18：phone 作人键 + 四条硬规则定案）**。
 - D2 errorList 的 field（展示名）→ 槽位映射：优先契约回传稳定键（核对清单第 4 条）；
   只有展示名时按 labelTitle 匹配，失配 → 整单 escalated 不静默。
 - D3 复述节流：一轮 recap 覆盖全部 pending 槽位（不逐槽问）；escalated 话术复用
@@ -201,10 +201,18 @@ B3 同 id 类型分裂（按本岗实际类型走通用道）/ B4 选项映射�
 （两次质疑即带已收值提交试探）。
 事件统一落 collection_form_events（新增 config_debt / slot_escalated 事件类型，零新表）。
 
-**运营回路**：config_debt 按 labelId×jobId 聚合进周报（weekly-ops-report 消费）——
+**运营回路（双通道）**：
+① **逐单披露（用户裁定 0818）**：报名成功的飞书通知卡片追加「收资配置备注」段——
+该表单事件史中存在 config_debt 时，逐条列出：标签名(labelId) + 受阻形态 + 系统兜底动作
+（如「是否为社会兼职(607)/灵活用工(608)/学生兼职(609)：同表重复，已合并为一问」
+「专业（非新媒、食品）(659)：筛选方向不明，仅收集未筛」）。集成点=既有
+`src/notification/renderers/booking-card.renderer.ts`，表单 submitted 时从事件史汇总；
+无债时卡片不加段。运营看到成功报名的同时看到这单哪条配置在作妖——疼痛绑定具体订单。
+② **周报聚合**：config_debt 按 labelId×jobId 聚合进周报（weekly-ops-report 消费）——
 "本周实际阻塞收资的 Top 标签/岗位"，把 1538 行静态修正清单变成按生产疼痛排序的
-动态优先队列；运营增量修，债务曲线周度可见。检测器实现在
-resolution/collection/config-debt-detectors.ts（纯函数，语义族匹配器复用适配器注册表）。
+动态优先队列；运营增量修，债务曲线周度可见。
+检测器实现在 resolution/collection/config-debt-detectors.ts
+（纯函数，语义族匹配器复用适配器注册表）。
 
 ## 10. 红线
 
