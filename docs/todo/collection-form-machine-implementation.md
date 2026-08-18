@@ -119,9 +119,13 @@ renderDisqualification(form, policy: DisclosurePolicy)
 
 ## 5. 设计决策点（实施前定，D1 必须过用户）
 
-- **D1 candidateRef（多表单寻址）**：建议 phone 归一值优先（11 位）；phone 未知期挂
-  会话默认表单，phone 到达时 rebind；同会话第二个 phone 出现 → 新表单（中介场景）。
-  歧义（一名多号/一号多名）→ escalated 交人工。**需用户确认建议或改**。
+- **D1 candidateRef 与多人报名协议**：candidateRef=phone 归一值（11 位，与海绵报名
+  人键同源）；phone 未知期挂会话默认表单、到达时 rebind；新（姓名+手机号）对出现即
+  开新表。**多人协议四条硬规则**：①模型当分拣员——值提案必须带归属标注；
+  ②活跃表 >1 时无标注提案一律拒收，逼模型现场向中介问清（歧义不落账）；
+  ③复述按人分组渲染=值与归属的双重终审（分拣错误由唯一知情人当场纠正）；
+  ④筛选/披露/提交/失败全部按表隔离，禁止连坐。一名多号/一号多名歧义 → escalated
+  交人工。**需用户确认建议或改**。
 - D2 errorList 的 field（展示名）→ 槽位映射：优先契约回传稳定键（核对清单第 4 条）；
   只有展示名时按 labelTitle 匹配，失配 → 整单 escalated 不静默。
 - D3 复述节流：一轮 recap 覆盖全部 pending 槽位（不逐槽问）；escalated 话术复用
