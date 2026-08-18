@@ -1387,6 +1387,9 @@ export function buildInterviewBookingTool(
                     apiMessage: result.message ?? null,
                   },
                 }),
+                // 本分支已自行暂停托管并发运营通知；该标记供承诺-动作对账规则识别
+                // 「升级动作已发生」，避免同一失败再补一次 handoff（双告警双底账）。
+                hostingPaused: true,
               };
 
           // 需要人工补发面试群时，toolResult.sideEffect 会在候选人回复完成投递后统一执行
@@ -1454,6 +1457,8 @@ export function buildInterviewBookingTool(
                 reason: err instanceof Error ? err.message : '未知错误',
               },
             }),
+            // 同上「海绵拒绝」分支：已自暂停，供承诺-动作对账规则免重复补动作。
+            hostingPaused: true,
           };
 
           void sendInterviewBookingNotification(

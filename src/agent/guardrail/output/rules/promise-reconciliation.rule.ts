@@ -83,6 +83,19 @@ function isSuccessfulCall(call: AgentToolCall): boolean {
   return true;
 }
 
+/**
+ * 工具结果自带 `hostingPaused: true` = 该工具已自行完成「暂停托管 + 运营通知」
+ * （当前唯一写入方是 booking 失败分支，其 replyInstruction 恰好指定"我让同事确认"类
+ * 衔接语）。升级动作已发生，再补一次就是同一失败的双份告警 + 双份底账。
+ */
+function hasSelfPausedCall(toolCalls: readonly AgentToolCall[]): boolean {
+  return toolCalls.some((call) => {
+    const result = call.result;
+    if (!result || typeof result !== 'object') return false;
+    return (result as Record<string, unknown>).hostingPaused === true;
+  });
+}
+
 /** precheck 是否已判定本轮可以直接报名；未通过时报名承诺一定是空头的。 */
 function isPrecheckReadyToBook(toolCalls: readonly AgentToolCall[]): boolean {
   return toolCalls.some((call) => {
@@ -104,6 +117,7 @@ export function detectHandoffPromiseWithoutAction(text: string, toolCalls: Agent
   if (NEGATED_PROMISE_PATTERN.test(text)) return null;
   if (!HANDOFF_PROMISE_PATTERNS.some((pattern) => pattern.test(text))) return null;
   if (hasSuccessfulCall(toolCalls, HANDOFF_ACTION_TOOL_NAMES)) return null;
+  if (hasSelfPausedCall(toolCalls)) return null;
 
   return {
     ruleId: HANDOFF_PROMISE_RECONCILIATION_RULE_ID,

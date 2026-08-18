@@ -44,6 +44,29 @@ describe('handoff 承诺-动作对账（议题 7-1）', () => {
     ).not.toBeNull();
   });
 
+  // booking 失败分支自带「暂停托管+运营通知」，且其 replyInstruction 指定的衔接语
+  // 正是"我让同事确认一下"——升级动作已发生，再补一次就是双告警双底账。
+  it('does not flag when a tool already self-paused hosting (booking failure branch)', () => {
+    expect(
+      detectHandoffPromiseWithoutAction('这边暂时没约上，我让同事确认一下，稍等哈', [
+        call('duliday_interview_booking', {
+          success: false,
+          _errorType: 'booking_request_failed',
+          hostingPaused: true,
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  // 未自暂停的 booking 失败（本地闸门类拒绝）没有任何升级动作，空头承诺仍需对账补动作。
+  it('still flags a booking failure without the self-pause marker', () => {
+    expect(
+      detectHandoffPromiseWithoutAction('我让同事确认一下，稍等哈', [
+        call('duliday_interview_booking', { success: false, _errorType: 'booking_rejected' }),
+      ]),
+    ).not.toBeNull();
+  });
+
   // 沿用已下线规则的排除设计：边界声明不是升级承诺。
   it('does not flag a boundary statement about who has the final say', () => {
     expect(
