@@ -47,7 +47,10 @@ export class CandidateSnapshotService {
       const entry = await this.redisStore.get(this.buildKey(corpId, userId, precheckId));
       if (!entry?.content) return null;
       const snapshot = entry.content as unknown as PrecheckSnapshot;
-      return typeof snapshot.precheckId === 'string' && snapshot.effectiveProfile ? snapshot : null;
+      if (typeof snapshot.precheckId !== 'string' || !snapshot.effectiveProfile) return null;
+      // confirmedFields 是后加的必填字段：TTL 窗口内可能读到旧版本代码写入的快照，
+      // 缺省回填为空数组（等价于「无确认级作证」），避免消费点空指针。
+      return { ...snapshot, confirmedFields: snapshot.confirmedFields ?? [] };
     } catch (error) {
       this.logger.warn(
         `[candidate-snapshot] 读取失败（fail open）: ${precheckId} ${toErrorMessage(error)}`,
