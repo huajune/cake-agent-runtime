@@ -222,7 +222,6 @@ describe('SystemConfigService', () => {
       (service as any).agentReplyConfig = {
         ...DEFAULT_AGENT_REPLY_CONFIG,
         extractModelId: 'deepseek/deepseek-v4-pro',
-        resumeExtractModelId: '  qwen/qwen3.7-plus  ',
         reviewModelId: '  deepseek/deepseek-v4-pro  ',
         evaluateModelId: '',
         reengagementModelId: 'deepseek/deepseek-v4-pro',
@@ -237,9 +236,6 @@ describe('SystemConfigService', () => {
       await expect(service.getRoleModelOverride('extract')).resolves.toBe(
         'deepseek/deepseek-v4-pro',
       );
-      await expect(service.getRoleModelOverride('resume_extract')).resolves.toBe(
-        'qwen/qwen3.7-plus',
-      );
       await expect(service.getRoleModelOverride('reengagement')).resolves.toBe(
         'deepseek/deepseek-v4-pro',
       );
@@ -247,17 +243,6 @@ describe('SystemConfigService', () => {
 
     it('returns undefined for empty override (falls back to env role routing)', async () => {
       await expect(service.getRoleModelOverride('evaluate')).resolves.toBeUndefined();
-    });
-
-    it('normalizes the missing resume extraction override in legacy config rows', async () => {
-      (service as any).agentReplyConfig = null;
-      (service as any).agentReplyConfigExpiry = 0;
-      const { resumeExtractModelId: _omitted, ...legacyConfig } = DEFAULT_AGENT_REPLY_CONFIG;
-      mockSystemConfigRepository.getConfigValue.mockResolvedValue(legacyConfig);
-
-      const config = await service.getAgentReplyConfig();
-
-      expect(config.resumeExtractModelId).toBe('');
     });
 
     it('returns undefined for chat: wecom callback keeps its dedicated channel', async () => {

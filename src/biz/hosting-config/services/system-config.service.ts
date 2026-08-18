@@ -83,10 +83,6 @@ export class SystemConfigService {
         typeof config?.extractModelId === 'string'
           ? config.extractModelId.trim()
           : DEFAULT_AGENT_REPLY_CONFIG.extractModelId,
-      resumeExtractModelId:
-        typeof config?.resumeExtractModelId === 'string'
-          ? config.resumeExtractModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.resumeExtractModelId,
       visionModelId:
         typeof config?.visionModelId === 'string'
           ? config.visionModelId.trim()
@@ -363,7 +359,6 @@ export class SystemConfigService {
     const config = await this.getAgentReplyConfig();
     const byRole: Record<string, string | undefined> = {
       extract: config.extractModelId,
-      resume_extract: config.resumeExtractModelId,
       vision: config.visionModelId,
       evaluate: config.evaluateModelId,
       review: config.reviewModelId,

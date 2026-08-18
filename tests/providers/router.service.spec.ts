@@ -31,16 +31,10 @@ describe('RouterService', () => {
 
   describe('listRoles', () => {
     it('should list only configured roles', () => {
-      env.AGENT_RESUME_EXTRACT_MODEL = 'qwen/qwen3.7-plus';
       env.AGENT_VISION_MODEL = 'google/gemini-2.0-flash';
       env.AGENT_EVALUATE_MODEL = 'openai/gpt-4o-mini';
 
-      expect(service.listRoles()).toEqual([
-        ModelRole.Chat,
-        ModelRole.ResumeExtract,
-        ModelRole.Vision,
-        ModelRole.Evaluate,
-      ]);
+      expect(service.listRoles()).toEqual([ModelRole.Chat, ModelRole.Vision, ModelRole.Evaluate]);
     });
 
     it('should return empty when no roles are configured', () => {
@@ -108,15 +102,6 @@ describe('RouterService', () => {
       expect(service.getRouteByRole(ModelRole.Chat)).toEqual({
         modelId: 'anthropic/claude-sonnet-4-6',
         fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
-      });
-    });
-
-    it('should resolve the dedicated resume extraction role from configuration', () => {
-      env.AGENT_RESUME_EXTRACT_MODEL = 'qwen/qwen3.7-plus';
-
-      expect(service.getRouteByRole(ModelRole.ResumeExtract)).toEqual({
-        modelId: 'qwen/qwen3.7-plus',
-        fallbacks: undefined,
       });
     });
 

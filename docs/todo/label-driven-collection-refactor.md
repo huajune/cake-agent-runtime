@@ -707,9 +707,9 @@ chat_messages 侧如需用 "timestamp" 列。
 `src/resolution/candidate/resume-fields.ts`（公证+兜底，纯函数零 LLM）。
 
 **三层技术路线**：
-- 主轨：`ModelRole.ResumeExtract` structured output，文本 → `{field, value, sourceText}[]`
+- 主轨：`ModelRole.Extract` structured output，文本 → `{field, value, sourceText}[]`
   （LLM 调用留 tools 层，resolution 层零 LLM——eslint 分层规则强制）；
-  模型只通过 Dashboard `resumeExtractModelId` / `AGENT_RESUME_EXTRACT_MODEL` 角色路由选择，
+  模型只通过 Dashboard `extractModelId` / `AGENT_EXTRACT_MODEL` 共享角色路由选择，
   DeepSeek JSON Schema 兼容行为与等条件回放结论见
   `docs/knowledge-base/01-多模型三层容错架构.md`；业务 util 禁止写 `modelId`；
 - 公证（resolution 纯函数）：①sourceText 必须是规整后原文的字面子串，失败丢整字段；

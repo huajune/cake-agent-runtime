@@ -24,7 +24,6 @@ export interface AgentReplyConfig {
   /** 图片理解角色降级链覆盖（空数组 = 走 AGENT_VISION_FALLBACKS / 默认链） */
   visionFallbackModelIds: string[];
   extractModelId: string;
-  resumeExtractModelId: string;
   // 其余角色的运行时模型覆盖（空字符串 = 走对应 AGENT_{ROLE}_MODEL 环境变量路由）
   visionModelId: string;
   evaluateModelId: string;
@@ -78,7 +77,6 @@ export interface GroupTaskConfig {
 export type AgentModelConfigKey =
   | 'wecomCallbackModelId'
   | 'extractModelId'
-  | 'resumeExtractModelId'
   | 'visionModelId'
   | 'evaluateModelId'
   | 'reviewModelId'

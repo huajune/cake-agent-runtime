@@ -33,7 +33,6 @@ describe('HostingConfigFacadeService', () => {
   const roleModels: Record<string, string> = {
     AGENT_CHAT_MODEL: 'qwen/qwen3.7-plus',
     AGENT_EXTRACT_MODEL: 'deepseek/deepseek-v4-flash',
-    AGENT_RESUME_EXTRACT_MODEL: 'qwen/qwen3.7-plus',
     AGENT_VISION_MODEL: 'qwen/qwen3-vl-plus',
   };
   const mockConfigService = {
@@ -83,10 +82,6 @@ describe('HostingConfigFacadeService', () => {
         },
         extractModelId: {
           modelId: 'deepseek/deepseek-v4-flash',
-          source: 'role_environment',
-        },
-        resumeExtractModelId: {
-          modelId: 'qwen/qwen3.7-plus',
           source: 'role_environment',
         },
         visionModelId: {
@@ -156,11 +151,7 @@ describe('HostingConfigFacadeService', () => {
     });
 
     it('accepts registered model ids for role overrides and empty string as clear', async () => {
-      const partial = {
-        reviewModelId: 'deepseek/deepseek-v4-pro',
-        resumeExtractModelId: 'qwen/qwen3.7-plus',
-        evaluateModelId: '',
-      };
+      const partial = { reviewModelId: 'deepseek/deepseek-v4-pro', evaluateModelId: '' };
       mockSystemConfigService.setAgentReplyConfig.mockResolvedValue({
         ...DEFAULT_AGENT_REPLY_CONFIG,
         ...partial,

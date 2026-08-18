@@ -35,7 +35,6 @@ export interface AgentReplyConfig {
   wecomCallbackThinkingMode: AgentThinkingMode; // 企微消息回调使用的思考模式
   wecomCallbackThinkingEffort: AgentThinkingEffort; // deep 模式下的思考档位（fast 模式忽略）
   extractModelId: string; // 事实提取/沉淀摘要使用的模型 ID；空字符串表示走 extract 角色路由（AGENT_EXTRACT_MODEL）
-  resumeExtractModelId: string; // 简历字段抽取角色覆盖；空字符串表示走 AGENT_RESUME_EXTRACT_MODEL
   // 其余角色的运行时模型覆盖（空字符串 = 走对应 AGENT_{ROLE}_MODEL 环境变量路由）。
   // chat 角色刻意不入此列：企微回调链路沿用 wecomCallbackModelId 专用通道。
   visionModelId: string; // 图片理解角色覆盖（AGENT_VISION_MODEL）
@@ -87,7 +86,6 @@ export interface AgentReplyConfig {
 export type AgentModelConfigKey =
   | 'wecomCallbackModelId'
   | 'extractModelId'
-  | 'resumeExtractModelId'
   | 'visionModelId'
   | 'evaluateModelId'
   | 'reviewModelId'
@@ -134,7 +132,6 @@ export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   wecomCallbackThinkingMode: 'fast',
   wecomCallbackThinkingEffort: 'high', // deep 模式按 high 档执行是既定语义，默认值与之一致
   extractModelId: '',
-  resumeExtractModelId: '',
   visionModelId: '',
   evaluateModelId: '',
   reviewModelId: '',
