@@ -151,8 +151,10 @@ precheck 收资核：`buildKnownFieldMap + checklist + missingFields` 整体替�
 `nextAction` 从 form 派生（collecting=渲染缺口+recap / disqualified=rejection-renderer /
 ready=放行 booking）；templateText 由 form 渲染。claim 轨保留为**值提案的运输格式之一**
 （R1 schema 补 agentQuestionQuote 随本批实施）；身份闸门保留为 identity 槽位写守卫。
-booking：payload 由 form 生成（身份核 + labelList[{labelId, optionCodes|value}]）→
-entryUser → workOrder 落 submitted / errorList 逐条 serverRejected。
+booking：payload 由 form 生成——顶层仅 jobId + 可选 interviewTime，其余全部由
+labelList[{labelId, optionCodes|value}] 承载（身份核即 769/770/687/771 四槽，
+0818 新版契约无一等身份参数）→ entryUser → workOrder 落 submitted /
+errorList 逐条 serverRejected。
 
 ## 7. 同批退役删除（总纲 §4 清单的执行面）
 
@@ -172,7 +174,7 @@ customerLabel 拼装主体；快照水位（snapshot-gate）；确认识别器�
 3. disclosure-policy（守卫红线词表同源接线 + 未知默认禁明说测试）；
 4. recap/rejection renderer（纯文案层，快照测试）；
 5. ——契约落地检查点：覆盖度探针复测 + contract types 对齐实际返回——
-6. sponge 契约客户端 + 缓存；memory store/service + 迁移 + 并发 CAS 测试；
+6. sponge 契约客户端（零缓存实时查询）；memory store/service + 迁移 + 并发 CAS 测试；
 7. precheck/booking 接线重写（最大面，铁证重放跑通后才进）；
 8. §7 退役删除批 + 全量回归；
 9. 验收：三铁证重放全绿 + 验收指标探针（答后复问率 <10%/死锁 0/已确认槽位被重问=0）。

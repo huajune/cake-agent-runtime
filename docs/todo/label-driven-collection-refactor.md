@@ -16,7 +16,7 @@
 > → §3 架构 → §4-5 退役/存活清单 → §6 开放项与契约核对清单 → §7 在途关系）；
 > 附录 = 历史底账与诊断档案。
 
-> 立项：2026-08-17。**状态：挂起，等统一契约接口落地后按契约定稿实施。**
+> 立项：2026-08-17（下段为立项时底账）。**状态更新 0818：挂起已解除（见顶部声明），所提统一契约已兑现——身份核标签化，entryUser 新版 required 只剩 jobId。**
 > 用户已向海绵后端提出（2026-08-17）：现 entryUser 的必填身份核
 > （name/phone/age/gender + interviewTime）被排除在标签查询接口之外，
 > 需要**一个接口统一返回岗位报名的全部筛选字段**（身份核与标签同构）；
@@ -38,17 +38,20 @@
 `acceptedOptions[]` + `rejectedOptions[]`（{optionCode, optionLabel}）——
 **筛选语义是数据结构**：答案命中 rejectedOption = 不允许报名。
 
-**提交报名** `POST /ai/api/workorder/entryUser`：
-必填 `jobId + name + phone + age(10-100 int) + gender(^男|女$)`，可选 `interviewTime`；
-`labelList[]`：`labelId` + (`value`：TEXT/FILE 的值) | (`options[]`：optionCode，单选一多选多)。
-labelTitle/optionLabel 可不传（服务端按 id/code 回读配置）。
+**提交报名** `POST /ai/api/workorder/entryUser`（**0818 新版契约**；旧版
+name/phone/age/gender 一等必填已废）：
+必填仅 `jobId`，可选 `interviewTime`；身份核不再是一等参数——姓名(769)/手机号(770)/
+年龄(687)/性别(771) 与其余字段一并走 `labelList[]`：`labelId` +
+(`value`：TEXT/FILE 的值) | (`options[]`：optionCode，单选一多选多)。
+labelTitle/optionLabel 可不传（仅辅助排查，服务端按 id/code 回读配置、不作校验）。
 返回：`notice`（成功文案）/ `errorList[{field,msg}]`（**字段级校验错误**）/
 `workOrder{workOrderId, signUpTime, 品牌/公司/项目/岗位, 状态文案, 薪资}`。
 
 ## 2. 结构性判定
 
-1. **身份核收缩**：一等参数只剩身份四件套+jobId。学历/健康证/身高体重/身份/户籍
-   从契约字段降级为"岗位配了标签才收"。固定词表 FIELD_ORDER 的大部分席位随之退役。
+1. **身份核标签化**（0818 新版契约定稿）：一等参数只剩 jobId，身份四件套也走
+   labelList（769/770/687/771，全量 468 岗每岗必含）。学历/健康证/身高体重/身份/户籍
+   从契约字段降级为"岗位配了标签才收"。固定词表 FIELD_ORDER 全体席位随之退役。
 2. **文本匹配层整体消失**：labelId 是收集态的键，optionCode 是答案的通货。
    labelName 字符串匹配、单位归一、同义别名，全无存在必要。
 3. **先筛后收成为结构**：收集时即刻判 accepted/rejected，不合格不再继续收资、
@@ -186,9 +189,9 @@ policy/肯定词表唯一居所——挪位为写入守卫与迁移判据，代�
 
 ```
 岗位聚焦（job_list / focusJob 确立）
-  → sponge client 新方法 batchQueryInterviewLabels(jobIds)（随岗位召回批量拉，缓存 per jobId）
+  → sponge client 新方法 batchQueryInterviewLabels(jobIds)（零缓存、每轮实时查询——0818 裁定）
   → precheck 收资模型：
-      身份核（name/phone/age/gender）——沿用既有闸门（姓名真名闸/手机号出处闸/年龄边界）
+      身份核标签（769/770/687/771）——既有闸门（姓名真名闸/手机号出处闸/年龄边界）降为槽位写守卫
       + 标签集（labelId 为键）——每标签状态机：未答 → 已答(value|optionCodes) → 不合格
   → 答案解析按 fieldType 分道：
       SINGLE/MULTIPLE_OPTION：候选人自然语言 → 封闭选项集匹配
@@ -229,7 +232,8 @@ resolveLocalHealthCertificateEligibility 不删——它从"改写 knownFieldMap
 1'. **滞后岗位政策【已消解】**：统一契约 + 全岗位保证配报名表单项，覆盖度缺口
    在源头关闭。重启时第一件事：用统一契约接口复测覆盖度（同款 100 岗批查）。
 
-1''. **统一契约核对清单**（新接口 spec 到手时逐项验收；缺项趁定稿前提给后端）：
+1''. **统一契约核对清单**（0817 预契约版底账；新契约已到手，权威契约诉求单已另立
+   `label-contract-change-requests.md`（10 条，已发后端）——本清单保留作核对痕迹）：
    1. 身份核与标签**同构**返回：每字段带稳定键、fieldType、required 标志——
       cake 不再硬编码"哪些字段存在"；
    2. **年龄边界结构化**（岗位 min/max 进契约）——替代 cake 从岗位文本解析年龄要求；
@@ -239,7 +243,7 @@ resolveLocalHealthCertificateEligibility 不删——它从"改写 knownFieldMap
    5. 筛选语义定死：acceptedOptions 白名单为主、rejectedOptions 显式负枚举为辅；
       TEXT 字段的格式/数值范围校验若有也结构化（如身高 cm 值域）；
    6. labelInstructions 的语义（展示给候选人 vs 给 AI 的收集指引）；
-   7. 岗位配置变更的缓存失效信号（updatedAt/版本号）；
+   7. ~~岗位配置变更的缓存失效信号（updatedAt/版本号）~~——0818 已撤回（零缓存裁定）；
    8. 隐私字段口径：身份证号类是否可能出现、cake 拒答边界（对齐视觉管线裁定）；
    9. **每标签的拒绝披露级别**（可明说/禁明说）进契约——海绵配置规范为准；
       契约不带时 cake 按属性族兜底映射、未知默认禁明说。
