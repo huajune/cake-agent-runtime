@@ -69,7 +69,7 @@ describe('detectBookingReceiptMismatch — 形态 E：已建单但未告知日�
  * "改时间用 duliday_modify_interview_time（传该工单号）"，模型一个工具没调，
  * 回复却确认了"你说的15:30这个时间没问题"。工单至今是 15:00，候选人会按 15:30 到店白跑。
  *
- * 该轮首审只命中 handoff_promise_without_handoff（首版是"让同事帮你确认下"），
+ * 该轮首审只命中 handoff_promise_without_handoff（已于 8-11 下线；首版是"让同事帮你确认下"），
  * repair 把承诺洗成确认后二审无规则可拦——本规则补的就是这条路径。
  */
 describe('detectBookingReceiptMismatch — 形态 F：在途工单未改约却确认新时间', () => {

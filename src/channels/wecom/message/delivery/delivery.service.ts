@@ -1,3 +1,5 @@
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
@@ -103,7 +105,7 @@ export class MessageDeliveryService implements OnModuleInit {
       return { ...result, totalTime };
     } catch (error) {
       const totalTime = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       const failureResult =
         error instanceof DeliveryFailureError
           ? { ...error.result, totalTime }
@@ -147,7 +149,7 @@ export class MessageDeliveryService implements OnModuleInit {
         totalTime: 0,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[${contactName}] 单条消息发送失败: ${errorMessage}`);
       throw error;
     }
@@ -208,7 +210,7 @@ export class MessageDeliveryService implements OnModuleInit {
         }
       } catch (error) {
         failedCount++;
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.error(
           `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败（含重试）: ${errorMessage}`,
         );
@@ -258,8 +260,8 @@ export class MessageDeliveryService implements OnModuleInit {
     return this.typingPolicy.calculateDelay(text, isFirstSegment);
   }
 
-  private async sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private sleep(ms: number): Promise<void> {
+    return sleep(ms);
   }
 
   /**
@@ -296,7 +298,7 @@ export class MessageDeliveryService implements OnModuleInit {
       } catch (error) {
         lastError = error;
         if (attempt < SEGMENT_SEND_RETRIES) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = toErrorMessage(error);
           this.logger.warn(
             `[${context.contactName}] 单段发送失败,${SEGMENT_SEND_RETRY_DELAY_MS}ms 后重试: ${errorMessage}`,
           );

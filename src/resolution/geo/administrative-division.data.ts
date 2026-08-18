@@ -1,7 +1,7 @@
 /**
  * 行政区基础数据 + 业务高置信别名（自 memory/facts/geo-mappings.ts 行为等价迁移，Phase 1）。
  *
- * 维护口径（geo-domain-refactor-plan v3.1 §9）：
+ * 维护口径（docs/architecture/geo-resolution.md §5）：
  * - 本表不在 Phase 4 生成化范围内（生成化只覆盖县级市映射），长期维持人工白名单 + 小步补录；
  * - "朝阳 → 北京"等条目是刻意业务偏置（其余同名行政区不在业务区域），已由 geo:validate
  *   对照国家数据交叉校验、经 overrides 的 BUSINESS_BIASED_SUBDIVISION_ALIASES 登记豁免，

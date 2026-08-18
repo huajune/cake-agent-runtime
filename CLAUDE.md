@@ -25,7 +25,9 @@ pnpm run test -- tests/agent/runner/agent-runner.service.spec.ts --watchman=fals
 
 ⚠️ **跑测试的坑**：shell 默认 node 可能是 16（先 `node -v` 确认），本项目要求 Node 20+，实践用 `nvm use 22.16.0`；jest 不加 `--watchman=false` 会静默 0 测试无输出。
 
-⚠️ 本地无 Redis 时设 `ENABLE_BULL_QUEUE=false`（.env.local）。
+⚠️ 本地运行也必须提供可用 Redis：Service 缓存需配置 `UPSTASH_REDIS_REST_URL/TOKEN`，
+Bull 队列需配置 `UPSTASH_REDIS_TCP_URL`（或使用 `REDIS_URL` / `REDIS_HOST` 等现有 TCP 兜底）；
+无 Redis 时应用无法启动。
 
 ### Database Migrations（Supabase CLI，测试/生产隔离）
 
@@ -44,20 +46,26 @@ pnpm run db:status:test      # / db:status:prod 查看迁移状态
 
 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `infra/`。
 **`infra/` 禁止 import `biz/`、`channels/`、`agent/`。**
-**`resolution/` 至多依赖 `sponge/`**（brand 用；geo 取零出向依赖），可被 memory/agent/tools/guardrail/infra 依赖，禁止反向 import。
+**`resolution/` 至多依赖 `sponge/` 与 `infra/utils/date.util`**（前者仅 brand 使用，后者仅规则轨解释业务日期；geo 取零出向依赖），可被 memory/agent/tools/guardrail/infra 依赖，禁止反向 import。规则由 `.eslintrc.js` 的 `no-restricted-imports` 强制。
 
 ```
 src/
 ├── infra/              # 基础设施：config / redis / supabase / feishu / alert / http / server-response
+│   └── utils/          #   零依赖纯函数抽屉：date / string / object / fetch-timeout
 ├── providers/          # 多模型三层：registry(注册) → reliable(重试/降级) → router(角色路由)
 ├── llm/                # LLM 执行器（llm-executor：底层 generateText 封装、重试）
-├── resolution/brand/   # 品牌解析域（唯一居所）：目录索引/匹配/极性/品类展开/状态 reducer/同音回指/公司名规范化
+├── resolution/candidate/ # 候选人字段解析唯一居所：姓名/电话/年龄/性别/学历/健康证/身份问答
+├── resolution/evidence/  # 候选人档案裁决底盘：claim/策略/准入链/合并表/city+brand producer/物化视图
+├── resolution/signal/    # 跨工序信号注册与解析：markers / self-report / dialogue / visual
+│                         #   写入者只登记信号；候选人自陈选择、对话问答、视觉 sheet 各归其位
+├── resolution/labor-form/ # 用工形式三态意向、层级匹配与展示规整
+├── resolution/brand/   # 品牌解析域：目录索引/匹配/极性/品类展开/同音回指/公司名规范化
 │                       #   纯确定性代码零 LLM；resolve() 输出标准品牌+极性+置信度；只依赖 sponge 品牌目录
 ├── resolution/geo/     # 地理解析域（唯一真相源）：行政区层级/县级市映射/白名单三轮扫描/地标别名/歧义策略/冲突检测
 │                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
 ├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
 ├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / procedural(阶段) / long-term(画像)
-│                       #   + settlement(空闲沉淀) / facts(规则提取) / stores(Redis+Supabase 适配)
+│                       #   + settlement(空闲沉淀) / stores(Redis+Supabase 适配)；只持有事实，不实现字段判断
 ├── agent/              # Agent 编排
 │   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
@@ -141,5 +149,5 @@ tail -f logs/combined-$(date +%Y-%m-%d).log   # 日志
 ## Advanced Documentation
 
 - **[.claude/agents/README.md](./.claude/agents/README.md)** — 规范文档中心：code-standards / architecture-principles / frontend-standards / commit-guidelines / documentation-standards / code-quality-guardian
-- **docs/** — 架构（architecture/）、产品方案（product/）、数据库（db/）、技术调研（technical/）
+- **docs/** — 架构（architecture/）、生产实践原则（principles/：分工哲学 P1~P11、示教纪律等经验宪法）、产品方案（product/）、数据库（db/）、技术调研（technical/）
 - **src/memory/README.md**、**src/agent/guardrail/tool/README.md** — 子系统内文档

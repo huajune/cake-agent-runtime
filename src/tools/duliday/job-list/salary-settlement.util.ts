@@ -1,10 +1,4 @@
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
+import { asRecord, type UnknownRecord } from '@infra/utils/object.util';
 
 function readText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;

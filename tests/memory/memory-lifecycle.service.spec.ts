@@ -1,53 +1,8 @@
 import { MemoryLifecycleService } from '@memory/services/memory-lifecycle.service';
-import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
-import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(
-  value: T,
-  evidence: string,
-  source: HighConfidenceValue<T>['source'] = 'rule',
-): HighConfidenceValue<T> {
-  return { value, confidence: source === 'system' ? 'low' : 'high', source, evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
-}
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { getRuleFact } from '@resolution/evidence/merge';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
 
 describe('MemoryLifecycleService', () => {
   const mockShortTerm = {
@@ -99,6 +54,9 @@ describe('MemoryLifecycleService', () => {
 
   let service: MemoryLifecycleService;
 
+  const prepRuleFacts = async (text: string) =>
+    produceRuleFactClaims([text], await mockSponge.fetchBrandList());
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockShortTerm.lastLoadError = null;
@@ -146,14 +104,14 @@ describe('MemoryLifecycleService', () => {
       name: {
         value: '张三',
         confidence: 'high',
-        source: 'booking',
+        source: 'system',
         evidence: '测试写入',
         updatedAt: '2026-05-22T10:00:00.000Z',
       },
       phone: {
         value: '138',
         confidence: 'high',
-        source: 'booking',
+        source: 'system',
         evidence: '测试写入',
         updatedAt: '2026-05-22T10:00:00.000Z',
       },
@@ -166,7 +124,7 @@ describe('MemoryLifecycleService', () => {
     expect(mockProcedural.get).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
     expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1');
     expect(ctx.sessionMemory).not.toBeNull();
-    expect(ctx.highConfidenceFacts).toBeNull();
+    expect(ctx.ruleFacts).toBeNull();
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
@@ -198,7 +156,7 @@ describe('MemoryLifecycleService', () => {
       name: {
         value: '张三',
         confidence: 'high' as const,
-        source: 'extraction' as const,
+        source: 'archive' as const,
         evidence: '会话沉淀提取',
         updatedAt: '2026-06-08T10:00:00.000Z',
         originSessionId: 'chat-A',
@@ -253,7 +211,7 @@ describe('MemoryLifecycleService', () => {
         name: {
           value: '张三',
           confidence: 'high',
-          source: 'booking',
+          source: 'system',
           evidence: '历史写入（无血缘）',
           updatedAt: '2026-06-05T10:00:00.000Z',
         },
@@ -333,13 +291,16 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '来一份，我25岁');
+    const text = '来一份，我25岁';
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', text, {
+      ruleFacts: await prepRuleFacts(text),
+    });
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
     expect(ctx.sessionMemory).toBeNull();
-    expect(ctx.highConfidenceFacts?.preferences.brands).toBeNull();
-    expect(ctx.highConfidenceFacts?.reasoning).toContain('来伊份');
-    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
+    expect(ctx.ruleFacts?.claims.some((claim) => claim.field.includes('brands'))).toBe(false);
+    expect(ctx.ruleFacts?.reasoning).toContain('来伊份');
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.age')).toEqual(
       expect.objectContaining({ value: '25' }),
     );
   });
@@ -368,33 +329,35 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
+    const text = '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空';
     const ctx = await service.onTurnStart(
       'corp-1',
       'user-1',
       'sess-1',
-      '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空',
+      text,
+      { ruleFacts: await prepRuleFacts(text) },
     );
 
     expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
-    expect(ctx.highConfidenceFacts?.preferences.city).toEqual({
+    expect(getRuleFact(ctx.ruleFacts, 'preferences.city')).toEqual(
+      expect.objectContaining({
       value: '上海',
       confidence: 'high',
-      source: 'rule',
-      evidence: 'municipality_compact',
-    });
-    expect(unwrapHighConfidenceValue(ctx.highConfidenceFacts?.preferences.district)).toEqual([
-      '杨浦',
-    ]);
-    expect(ctx.highConfidenceFacts?.interview_info.gender).toEqual(
+      producer: 'rule',
+      evidence: expect.objectContaining({ code: 'municipality_compact' }),
+      }),
+    );
+    expect(getRuleFact(ctx.ruleFacts, 'preferences.district')?.value).toEqual(['杨浦']);
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.gender')).toEqual(
       expect.objectContaining({ value: '男' }),
     );
-    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.age')).toEqual(
       expect.objectContaining({
         value: '25',
         confidence: 'high',
-        source: 'rule',
-        evidence: '年龄识别：25',
+        producer: 'rule',
+        evidence: expect.objectContaining({ label: '年龄识别：25' }),
       }),
     );
   });
@@ -411,20 +374,18 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
+    const text = '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有';
     const ctx = await service.onTurnStart(
       'corp-1',
       'user-1',
       'sess-1',
-      '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有',
+      text,
+      { ruleFacts: await prepRuleFacts(text) },
     );
 
-    expect(ctx.highConfidenceFacts?.interview_info).toEqual(
-      expect.objectContaining({
-        name: expect.objectContaining({ value: '张琰' }),
-        phone: expect.objectContaining({ value: '19986247174' }),
-        age: expect.objectContaining({ value: '24' }),
-      }),
-    );
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.name')?.value).toBe('张琰');
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.phone')?.value).toBe('19986247174');
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.age')?.value).toBe('24');
   });
 
   it('should fallback to current user message when short-term window is empty', async () => {
@@ -468,14 +429,12 @@ describe('MemoryLifecycleService', () => {
     mockLongTerm.getProfile.mockResolvedValue(null);
     mockEnrichment.enrich.mockImplementation(async (snapshot) => ({
       ...snapshot,
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        interview_info: {
-          ...emptyHighConfidenceFacts().interview_info,
-          gender: highConfidence('男', '客户详情接口补充性别：男', 'system'),
-        },
-        reasoning: 'enriched',
-      },
+      ruleFacts: testRuleFacts(
+        testRuleFact('interview_info.gender', '男', '客户详情接口补充性别：男', {
+          confidence: 'low',
+          producer: 'system',
+        }),
+      ),
     }));
 
     const identity = { token: 't', imBotId: 'b', imContactId: 'c' };
@@ -484,8 +443,8 @@ describe('MemoryLifecycleService', () => {
     });
 
     expect(mockEnrichment.enrich).toHaveBeenCalledWith(expect.any(Object), identity);
-    expect(ctx.highConfidenceFacts?.interview_info.gender).toEqual(
-      expect.objectContaining({ value: '男', source: 'system' }),
+    expect(getRuleFact(ctx.ruleFacts, 'interview_info.gender')).toEqual(
+      expect.objectContaining({ value: '男', producer: 'system' }),
     );
   });
 
@@ -517,7 +476,7 @@ describe('MemoryLifecycleService', () => {
     const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1');
 
     expect(mockSponge.fetchBrandList).not.toHaveBeenCalled();
-    expect(ctx.highConfidenceFacts).toBeNull();
+    expect(ctx.ruleFacts).toBeNull();
   });
 
   it('should run detectAndSettle, project jobs, and trigger extraction on turn end', async () => {
@@ -534,6 +493,8 @@ describe('MemoryLifecycleService', () => {
         userId: 'user-1',
         sessionId: 'sess-1',
         botImId: 'bot-wxid-1',
+        ruleFacts: null,
+        laborFormIntent: { kind: 'ignore' },
         normalizedMessages: [
           { role: 'assistant', content: '杨浦这边有长白这家店。' },
           {
@@ -607,10 +568,18 @@ describe('MemoryLifecycleService', () => {
       userText: '[图片 messageId=img-1] 我想报名长白',
       assistantText: '可以，我先帮你确认下长白这边的面试要求。',
     });
-    expect(mockSessionService.extractAndSave).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'assistant', content: '杨浦这边有长白这家店。' },
-      { role: 'user', content: '[图片 messageId=img-1] 我想报名长白' },
-    ]);
+    expect(mockSessionService.extractAndSave).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [
+        { role: 'assistant', content: '杨浦这边有长白这家店。' },
+        { role: 'user', content: '[图片 messageId=img-1] 我想报名长白' },
+      ],
+      null,
+      { kind: 'ignore' },
+      undefined,
+    );
   });
 
   it('should persist running and final post-processing status when messageId is present', async () => {
@@ -620,6 +589,8 @@ describe('MemoryLifecycleService', () => {
         userId: 'user-1',
         sessionId: 'sess-1',
         messageId: 'msg-1',
+        ruleFacts: null,
+        laborFormIntent: { kind: 'ignore' },
         normalizedMessages: [{ role: 'user', content: '我想找长白附近的兼职' }],
         candidatePool: [
           {
@@ -674,6 +645,8 @@ describe('MemoryLifecycleService', () => {
         userId: 'user-1',
         sessionId: 'sess-1',
         messageId: 'msg-2',
+        ruleFacts: null,
+        laborFormIntent: { kind: 'ignore' },
         normalizedMessages: [{ role: 'user', content: '继续看看' }],
       },
       '好的',
@@ -703,6 +676,8 @@ describe('MemoryLifecycleService', () => {
       corpId: 'corp-1',
       userId: 'user-1',
       sessionId: 'sess-1',
+      ruleFacts: null,
+      laborFormIntent: { kind: 'ignore' },
       normalizedMessages: [{ role: 'assistant', content: '你好' }],
     });
 
@@ -726,6 +701,8 @@ describe('MemoryLifecycleService', () => {
           corpId: 'corp-1',
           userId: 'user-1',
           sessionId: 'sess-1',
+          ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '好的' }],
           cityAttestation: attestation,
         },
@@ -749,6 +726,8 @@ describe('MemoryLifecycleService', () => {
           corpId: 'corp-1',
           userId: 'user-1',
           sessionId: 'sess-1',
+          ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '好的' }],
         },
         '收到',
@@ -794,6 +773,8 @@ describe('MemoryLifecycleService', () => {
           sessionId: 'sess-1',
           messageId: 'msg-3',
           contactName: '小王 肯德基',
+          ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '我想去KFC' }],
           imageBrandResolutions: [imageResolution],
         },
@@ -828,6 +809,8 @@ describe('MemoryLifecycleService', () => {
           userId: 'user-1',
           sessionId: 'sess-1',
           messageId: 'msg-4',
+          ruleFacts: null,
+          laborFormIntent: { kind: 'ignore' },
           normalizedMessages: [{ role: 'user', content: '不要肯德基' }],
         },
         '好的',

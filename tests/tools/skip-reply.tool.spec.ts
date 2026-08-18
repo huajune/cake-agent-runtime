@@ -1,17 +1,14 @@
 import { buildSkipReplyTool } from '@tools/skip-reply.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { createToolContext, mergeToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildSkipReplyTool', () => {
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    chatId: 'chat-1',
-    messages: [],
-    botUserId: 'mgr-bob',
-    botImId: 'bot-im-1',
-    contactName: 'Alice',
-  };
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
+      botUserId: 'mgr-bob', botImId: 'bot-im-1', contactName: 'Alice',
+    },
+  });
 
   const buildTool = (ctx: ToolBuildContext = mockContext) => buildSkipReplyTool()(ctx);
 
@@ -31,7 +28,7 @@ describe('buildSkipReplyTool', () => {
   });
 
   it('works when chatId is missing (falls back to sessionId)', async () => {
-    const tool = buildTool({ ...mockContext, chatId: undefined });
+    const tool = buildTool(mergeToolContext(mockContext, { session: { chatId: undefined } }));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({ reason: '候选人回复谢谢' });
 

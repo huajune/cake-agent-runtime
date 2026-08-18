@@ -1,3 +1,4 @@
+import { asRecord, isRecord } from '@infra/utils/object.util';
 /**
  * 岗位工作时间语义分类器 + 候选人班次约束匹配。
  *
@@ -76,8 +77,6 @@ const MORNING_PATTERNS = [
 ];
 
 const FLEXIBLE_PATTERNS = [/自定义工时/, /可选时段/, /灵活排班/, /短班/, /午高峰/];
-
-type UnknownRecord = Record<string, unknown>;
 
 /**
  * 根据 workTime 段落 + interview/requirement 备注文本，分类岗位排班语义。
@@ -159,14 +158,6 @@ function deriveStructuredScheduleSemantics(
   return [];
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return isRecord(value) ? value : null;
-}
-
 function numberOf(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -177,7 +168,7 @@ function numberOf(value: unknown): number | null {
 }
 
 /**
- * 候选人班次约束（来自 [本轮高置信线索] / [会话记忆] / 候选人当前消息）：
+ * 候选人班次约束（来自 [本轮解析线索] / [会话记忆] / 候选人当前消息）：
  *
  * - onlyWeekends：候选人说"只能周末 / 周末才有空"
  * - onlyEvenings：候选人说"只做晚班 / 下班后才能 / 晚上 X 到 Y"

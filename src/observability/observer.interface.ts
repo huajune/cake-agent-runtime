@@ -9,11 +9,12 @@ import type { ToolErrorType } from '@tools/types/tool-error-types';
 import type {
   CandidateClaimDecision,
   CandidateClaimField,
-  CandidateClaimProducer,
+  CandidateFactProducer,
   CandidateClaimRejectionReason,
   CandidateFactInterpretation,
   CandidateFactOperation,
-} from '@memory/facts/candidate/candidate-fact-claim.types';
+} from '@resolution/evidence/claim.types';
+import type { ValidLaborForm } from '@resolution/labor-form';
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -153,6 +154,35 @@ export type AgentEvent = AgentEventContext &
         field: string;
         droppedValue: string;
         reason: string;
+        /** 本次抽取经 fallback 后真正成功的模型。 */
+        modelId: string;
+      }
+    | {
+        type: 'extraction_raw_output_sampled';
+        userId?: string;
+        modelId: string;
+        dropCount: number;
+        droppedFields: string[];
+        /** 仅模型响应，不含 prompt；UTF-8 最多 8KB。 */
+        rawOutput: string;
+      }
+    /**
+     * 封闭语义标签的双轨 shadow 分歧：仅分歧时落档，绝不改变规则轨生效结果。
+     * traceId 由 AgentTracer 的请求上下文补齐，可与消息主账本直接 join。
+     */
+    | {
+        type: 'semantic_track_diff';
+        semantic: 'labor_form_intent';
+        userId?: string;
+        ruleTrack:
+          | { intent: 'set'; laborForm: ValidLaborForm }
+          | { intent: 'clear'; laborForms: ValidLaborForm[] }
+          | { intent: 'ignore' };
+        extractionTrack: {
+          intent: 'set' | 'clear' | 'ignore';
+          laborForm?: ValidLaborForm;
+        };
+        quote: string;
       }
     /**
      * 候选人事实裁决档案（证据化方案 §11）：precheck 每次裁决一条、booking
@@ -172,7 +202,7 @@ export type AgentEvent = AgentEventContext &
         // 而裸 string 下这种漂移零信号。
         decisions: Array<{
           field: CandidateClaimField;
-          producer: CandidateClaimProducer;
+          producer: CandidateFactProducer;
           operation: CandidateFactOperation;
           interpretation: CandidateFactInterpretation;
           decision: CandidateClaimDecision;
@@ -182,6 +212,15 @@ export type AgentEvent = AgentEventContext &
         }>;
         /** booking_gate 专用：payload 与快照不一致的字段名（含水位失效伪字段）。 */
         mismatchedFields?: string[];
+        /**
+         * 覆盖率 delta（P11 工序 C6）：规则解析器抓到、模型却没经作证通道提交的
+         * 字段。迁移期唯一的覆盖率仪表，也是 P2 拆机判据（≤ 噪音水平持续两周）。
+         */
+        coverageDelta?: CandidateClaimField[];
+        /** 回声检查（工序 C4）本次命中数；shadow 期用于算误报率（enforce 判据④）。 */
+        echoDetections?: number;
+        /** 性别表内确认过渡识别器的裁决状态；用于 D5 退役观测。 */
+        genderInlineConfirmation?: 'pending' | 'confirmed_inline';
       }
   );
 

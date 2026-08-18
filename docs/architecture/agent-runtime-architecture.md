@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-07-16
+**最后更新**：2026-08-12（全文对代码核实：路径 / 服务名 / 常量 / 模块依赖图）
 **面向**：研发同学
 **运营/产品视角**：[agent-for-operations.md](../product/agent-for-operations.md)
 
@@ -34,7 +34,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 ┌──────────────────────────────────────────┐
 │  Agent 编排层                             │
 │  AgentRunnerService                      │
-│   ├─ AgentPreparationService  (prepare)  │
+│   ├─ PreparationService  (prepare)  │
 │   ├─ ContextService           (compose)  │
 │   └─ LlmExecutorService       (execute)  │
 └──────────────────┬───────────────────────┘
@@ -65,22 +65,22 @@ LLM 调用边界与完整时序已收敛到本文 §3.8，不再维护独立的�
 
 ## 3. Agent 编排层
 
-> **命名更新（2026-06 可靠性重构后）**：原单一 `AgentRunnerService`（旧路径 `src/agent/runner/agent-runner.service.ts`）已拆成两层：
-> - **`GeneratorAgent`**（`src/agent/generator/generator.agent.ts`）——负责 LLM 多步工具循环与生成结果归一化（本节下文描述的"调 LLM"职责现归属它）。
+> 编排分两层：
+> - **`GeneratorAgent`**（`src/agent/generator/generator.agent.ts`）——LLM 多步工具循环与生成结果归一化。
 > - **`AgentRunnerService`**（`src/agent/runner/agent-runner.service.ts`）——回合编排接缝：`invokeReviewed`（generator → 出站守卫 → 受控 repair）、`runTurn`（渠道无关终态分类）、`precheckInboundOutcome`（入站风险预检）。
 >
-> 出站守卫见 [security-guardrails.md](./security-guardrails.md)。本节下文的 `AgentRunnerService.invoke` 语义现由 `GeneratorAgent.invoke` 承担；代码行号引用可能随重构漂移，以文件名 + 方法名为准。
+> 出站守卫见 [security-guardrails.md](./security-guardrails.md)。代码引用以文件名 + 方法名为准，不用行号。
 
 入口：[src/agent/generator/generator.agent.ts](../../src/agent/generator/generator.agent.ts)（生成）、[src/agent/runner/agent-runner.service.ts](../../src/agent/runner/agent-runner.service.ts)（编排）
 
-生成层只做两件事：**调 LLM**、**收尾**。所有准备工作下放到独立的 `AgentPreparationService`，所有 LLM 请求统一走 `LlmExecutorService`。
+生成层只做两件事：**调 LLM**、**收尾**。所有准备工作下放到独立的 `PreparationService`，所有 LLM 请求统一走 `LlmExecutorService`。
 
 ### 3.1 调用链
 
 ```
 invoke(params) / stream(params)
  │
- ├─ AgentPreparationService.prepare(params, mode, { enableVision })
+ ├─ PreparationService.prepare(params, mode, { enableVision })
  │     返回 PreparedAgentContext
  │
  ├─ LlmExecutorService.generate() / stream()
@@ -97,7 +97,7 @@ invoke(params) / stream(params)
        └─ deferTurnEnd=true  → 挂一个 runTurnEnd dispatcher 给调用方
 ```
 
-### 3.2 AgentPreparationService.prepare()
+### 3.2 PreparationService.prepare()
 
 [src/agent/generator/preparation.service.ts](../../src/agent/generator/preparation.service.ts)
 
@@ -108,8 +108,8 @@ invoke(params) / stream(params)
    - `MemoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, options)` — 记忆快照
    - `RecruitmentCaseService.getActiveOnboardFollowupCase()` — 在跟进中的面试/入职 case
 3. **消息归一化** — 按 `callerKind` 选择消息源（WECOM 用 memory 历史，其它直传），转 AI SDK `ModelMessage[]`，启用 vision 时注入顶层图片 parts
-4. **输入安全检查** — `InputGuardService.detectMessages()` 扫 prompt injection，命中时异步告警并返回 `GUARD_SUFFIX`
-5. **Context 组装** — 先用 `RecruitmentStageResolverService` 解析入口阶段（procedural > case > 当前消息），再调用 `ContextService.compose()` 产出 `systemPrompt + stageGoals + thresholds`
+4. **输入安全检查** — `InputGuardrailService.detectMessages()` 扫 prompt injection，命中时异步告警并返回 `GUARD_SUFFIX`
+5. **Context 组装** — 调 `ContextService.compose()` 产出 `systemPrompt + stageGoals + thresholds`；入口阶段在 `prepare()` 内联推导：**持久化程序阶段 > 老用户回访兜底阶段（须在策略阶段表中存在）> 策略首个 stage**
 6. **工具构建** — `ToolRegistryService.buildForScenario(scenario, toolContext)`，挂 `onJobsFetched` 回调把候选池写入 `turnState`
 7. **记忆观测快照** — 基于本轮 recall 构造 `memorySnapshot`（入口阶段 / 已展示岗位 IDs / sessionFacts 扁平化 / profile keys）
 
@@ -189,7 +189,7 @@ interface AgentRunResult {
 
 ### 3.6 prepareStep 动态工具屏蔽
 
-[runner.service.ts:241](../../src/agent/runner/agent-runner.service.ts#L241) `buildPrepareStep()` 在每一步开始前基于历史 steps 收紧 `activeTools`：
+`generator.agent.ts` 的 `buildPrepareStep()` 在每一步开始前基于历史 steps 收紧 `activeTools`：
 
 - **同名工具超限**：单轮同一工具 ≥ `MAX_SAME_TOOL_CALLS_PER_TURN` 次 → 屏蔽后续调用（典型场景：`duliday_job_list` 不断换参扩面）
 - **skip_reply 互斥**：本轮已有任一业务工具调用 → 屏蔽 `skip_reply`（沉默只允许在无业务动作的轮次）
@@ -198,7 +198,7 @@ interface AgentRunResult {
 
 ### 3.7 空文本恢复
 
-工具链偶发以"有 reasoning、有 tool results，但最终文本为空"结束。[runner.service.ts:476](../../src/agent/runner/agent-runner.service.ts#L476) `recoverEmptyTextResult()` 在这种情况下关闭工具、把已执行工具结果压缩成 transcript，让模型再补一条候选人可见回复。恢复失败则保留原空结果交上层兜底。
+工具链偶发以"有 reasoning、有 tool results，但最终文本为空"结束。`generator.agent.ts` 的 `recoverEmptyTextResult()` 在这种情况下关闭工具、把已执行工具结果压缩成 transcript，让模型再补一条候选人可见回复。恢复失败则保留原空结果交上层兜底。
 
 ### 3.8 LlmExecutorService — 共享 LLM 入口
 
@@ -211,7 +211,7 @@ stream(options: LlmStreamOptions)
 supportsVisionInput(options): boolean
 ```
 
-消费方包括：`AgentRunnerService`、`SessionService.extractAndSave`（事实提取）、`MemoryEnrichmentService`（外部画像补全）、`LlmEvaluationService`、`InputGuardService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
+消费方包括：`AgentRunnerService`、`SessionService.extractAndSave`（事实提取）、`MemoryEnrichmentService`（外部画像补全）、`LlmEvaluationService`、`InputGuardrailService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
 
 #### 分层关系
 
@@ -231,7 +231,7 @@ flowchart TD
 
 - `provider` 层只保留注册、路由和可靠性策略；
 - 真正调用 Vercel AI SDK `generateText / streamText / Output.object` 的统一入口是 `LlmExecutorService`；
-- `AgentPreparationService` 只准备上下文，不做模型选择；
+- `PreparationService` 只准备上下文，不做模型选择；
 - `AgentRunnerService` 负责编排，不直接拼 provider-specific SDK 参数；
 - `RouterService` 决定模型链，`ReliableService` 决定重试/退避，`RegistryService` 解析 provider SDK 实例。
 
@@ -256,7 +256,7 @@ Memory 调用 LLM 是职责内的事实抽取和摘要压缩，不是越过分�
 sequenceDiagram
     participant Channel as ReplyWorkflowService
     participant Runner as AgentRunnerService
-    participant Prep as AgentPreparationService
+    participant Prep as PreparationService
     participant Memory as MemoryService
     participant LLM as LlmExecutorService
     participant Router as RouterService
@@ -280,6 +280,42 @@ sequenceDiagram
 
 ---
 
+## 3.9 运行时硬约束（HC-1 ~ HC-5）
+
+源自 2026-06 可靠性架构评审，是**全库被引用最广的一组不变式**——`HC-2` 在 `identity-gates.ts`、`invite-city-gate.ts`、`session.service.ts`、`booking.tool.ts`、`claim.types.ts` 等处均以代码注释直接援引。它们约束的是「哪些判断不能交给模型」。
+
+### HC-1 · 副作用后的 revise 只能「无工具文本重写」
+
+副作用已提交的回合，出站守卫触发修复时**不能全量重跑 generator**（prepareStep 的副作用屏蔽只在同一次 AI SDK loop 内生效）。
+
+落地形态：正向副作用判定 → `toolMode:'none'` + `reviseFeedback` + `committedSideEffects` → **一次** revise → 二次审查使用 `draft.toolCalls ∪ rewritten.toolCalls` → 最终 result/outcome 保留已提交副作用的工具结果。命中 `invite_to_group` / `booking` 的回合跳过 replay。
+
+### HC-2 · 权威状态字段必须有 evidence 准入，模型工具参数单独不构成权威
+
+> **确定性守门、LLM 只降级不放权。**
+
+模型可以换个字段「自证」，因此模型入参不得直接 override 进权威态。落地：jobId provenance 成员判定、候选人原文 parser、姓名闸（负向证据口径）——**模型参数不构成 jobId / name 的 runtime 准入 evidence**。
+
+这条约束的完整体系化表达见 [候选人档案域架构](./candidate-profile-domain.md)：claim 通货的「出处审」即 HC-2 骨架的升级版。
+
+### HC-3 · `reject_hard` 的短路必须由 runner/tool runtime 保证
+
+工具内不能调另一个 AI 工具；工具自己 dispatch intervention 会破坏「只读」；只返 `_replyInstruction` 模型会忽略。
+
+落地：booking hard-reject 返回统一 `shortCircuited` gate result（携 `gateRejected + reasonCode`）→ `runner.stopWhen` 识别停 loop → `TurnOutcome.kind='handoff'` → outcome 处理层执行 handoff（pause + 告警）。**gate 只判定，不执行副作用。**
+
+### HC-4 · 记忆写入边界二分
+
+revise 前草稿、被拦草稿、未投递成功的回复**都不应写入「已对用户说过」**。落地：`deferTurnEnd` 只在最终采纳/投递路径触发；booking/handoff 等已发生副作用的回合写 `terminal`，供复聊停止条件消费。
+
+### HC-5 · 渠道无关抽离范围包含 tool 侧能力
+
+`ToolRegistryService` 依赖 `RoomService` / `MessageSenderService`，`AgentModule` import `CustomerModule`。**渠道无关不只是 `ChannelDeliveryPort`**，tool 侧渠道能力（`RoomPort` / `SenderPort`）同样需要端口化。
+
+⚠️ 该项未完成——在 tool 端口化落地前，**不可声称已达成渠道无关**。
+
+---
+
 ## 4. Context System — Prompt 组装
 
 入口：[src/agent/generator/context/context.service.ts](../../src/agent/generator/context/context.service.ts)
@@ -295,7 +331,7 @@ interface PromptSection {
 }
 ```
 
-`PromptContext` 由 prepare 阶段装配：`strategyConfig / currentStage / memoryBlock / sessionFacts / highConfidenceFacts / groupInventoryBlock / currentTimeText / channelType`。
+`PromptContext` 由 prepare 阶段装配：`strategyConfig / currentStage / memoryBlock / sessionFacts / ruleFacts / groupInventoryBlock / currentTimeText / channelType`。
 
 ### 4.2 场景注册表
 
@@ -357,7 +393,7 @@ SCENARIO_SECTIONS = {
 [final-check]
 ```
 
-`memoryBlock` 的三段由 `AgentPreparationService.buildMemoryBlock()` 组装，来源：长期档案 facts + `WeworkSessionState` + `RecruitmentCaseRecord`。
+`memoryBlock` 的三段由 ``preparation-utils/memory-block.formatter.ts` 的 `buildMemoryBlock()`` 组装，来源：长期档案 facts + `WeworkSessionState` + `RecruitmentCaseRecord`。
 
 ---
 
@@ -421,7 +457,7 @@ SCENARIO_SECTIONS = {
 
 ## 6. 记忆系统
 
-> 完整设计详见 [memory-system-architecture.md](memory-system-architecture.md)，端到端数据流见 [memory-and-hints-data-flow.md](memory-and-hints-data-flow.md)。
+> 完整设计与端到端数据流详见 [memory-architecture.md](memory-architecture.md)。
 
 ### 6.1 四类记忆
 
@@ -473,11 +509,11 @@ load_previous_state (串行)
      extract_facts           ─ LLM 提取 facts（preferences / interview_info）
 ```
 
-### 6.4 高置信识别（前置）
+### 6.4 解析线索（前置）
 
-[src/memory/facts/high-confidence-facts.ts](../../src/memory/facts/high-confidence-facts.ts) 在 `onTurnStart` 里对当前 user 文本做规则匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度的 `highConfidenceFacts` 注入到 Context 的 `turn-hints` section，让模型看到字段值、置信度和证据。
+规则轨在 `onTurnStart` 里对当前 user 文本做匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `ruleFacts`，以 `[本轮解析线索]` 注入 Context 的 `turn-hints` section。它是当前轮解析 sidecar，不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)——`src/memory/facts/` 已随候选人档案域改造解散。
 
-[src/memory/facts/labor-form.ts](../../src/memory/facts/labor-form.ts)：用工形式领域模型——岗位轴为两级结构化字段（用工形式=全职/兼职 + 兼职类型=寒假工/暑假工/小时工），候选人偏好侧为扁平词汇，匹配层做层级翻译。
+[src/resolution/labor-form/](../../src/resolution/labor-form/)：用工形式领域模型——岗位轴为两级结构化字段（用工形式=全职/兼职 + 兼职类型=寒假工/暑假工/小时工），候选人偏好侧为扁平词汇，匹配层做层级翻译。
 
 ### 6.5 外部画像补全
 
@@ -534,15 +570,18 @@ scenarioToolMap = {
 
 ### 7.3 工具构建上下文
 
-`ToolBuildContext` 由 `AgentPreparationService.buildToolContext()` 装配，含 `userId / corpId / sessionId / messages / currentStage / stageGoals / thresholds / profile / sessionFacts / currentFocusJob / onJobsFetched / token / botUserId / botImId / imContactId / imRoomId / apiType ...`。
+`ToolBuildContext` 由 ``preparation-utils/tool-context.builder.ts` 的 `buildToolContext()`` 装配，含 `userId / corpId / sessionId / messages / currentStage / stageGoals / thresholds / profile / sessionFacts / currentFocusJob / onJobsFetched / token / botUserId / botImId / imContactId / imRoomId / apiType ...`。
 
 ### 7.4 不可逆工具与 Replay 保护
 
 WeCom 链路识别以下工具为"触发后不可撤销"：
 
 ```typescript
-REPLAY_BLOCKING_TOOL_NAMES = ['advance_stage', 'invite_to_group', 'duliday_interview_booking']
+// src/agent/generator/tool-call-analysis.ts
+REPLAY_BLOCKING_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking']);
 ```
+
+⚠️ `advance_stage` **不在**该集合内——它是可重放的状态推进，不是不可逆副作用。
 
 首次 Agent 调用若命中其中任意一个，即便生成期间有新消息到达也不 replay —— 直接投递首次回复（详见 §8.3）。
 
@@ -566,7 +605,7 @@ runtime/             dedup / merge / processor / worker / redis-keys
 telemetry/           observability / trace store
 ```
 
-前置风险同步预检已归位到 `src/agent/guardrail/input/risk-intercept.service.ts`，高置信关键词检测内聚在该服务内。
+前置风险同步预检位于 `src/agent/guardrail/input/risk-intercept.service.ts`，高置信关键词检测内聚在该服务内。
 
 ### 8.1 回调处理流程
 
@@ -626,7 +665,7 @@ Agent 生成期间若用户又发了新消息，默认行为：
   ├─ 否 → 投递首次回复，显式触发 turn-end lifecycle
   └─ 是
       ↓
-    首次 toolCalls 命中 REPLAY_BLOCKING_TOOL_NAMES？
+    首次 toolCalls 命中 REPLAY_BLOCKING_TOOLS？
       ├─ 是 → 投递首次回复，触发 turn-end（副作用已固化，不能丢弃）
       └─ 否
           ↓
@@ -712,7 +751,7 @@ AppModule
 │
 ├── AgentModule
 │   ├── AgentRunnerService         编排引擎
-│   ├── AgentPreparationService    prepare 流程
+│   ├── PreparationService    prepare 流程
 │   ├── ContextService             prompt 组装
 │   ├── AgentController / AgentHealthService
 │   └── guardrail/
@@ -737,7 +776,6 @@ AppModule
 ├── BizModule
 │   ├── StrategyConfigService       策略版本（released / testing）
 │   ├── RecruitmentCaseService      面试/入职跟进 case
-│   ├── RecruitmentStageResolverService  阶段推导
 │   ├── MessageTrackingService      监控
 │   ├── HostingConfigService        托管配置
 │   ├── UserHostingService          托管状态
@@ -790,7 +828,7 @@ AppModule
    │
    └─ AgentRunnerService.invoke(params)
        │
-       ├─ AgentPreparationService.prepare()
+       ├─ PreparationService.prepare()
        │   ├─ 入参归一化 → currentUserMessage
        │   ├─ MemoryService.onTurnStart() 并行读：
        │   │   ├─ 短期：最近 60 条对话（WECOM 启用）
@@ -858,7 +896,7 @@ AppModule
 1. 创建 `src/tools/my-tool.ts`，导出 `buildMyTool()` 工厂函数
 2. 在 `ToolRegistryService` 构造函数的 `registry` 映射中注册
 3. 在 `scenarioToolMap` 中添加到目标场景
-4. 若副作用不可逆，同步更新 [reply-workflow.service.ts](../../src/channels/wecom/message/application/reply-workflow.service.ts) 的 `REPLAY_BLOCKING_TOOL_NAMES`
+4. 若副作用不可逆，同步更新 [tool-call-analysis.ts](../../src/agent/generator/tool-call-analysis.ts) 的 `REPLAY_BLOCKING_TOOLS`
 
 ### 12.3 新增 Prompt Section
 1. 实现 `PromptSection` 接口
@@ -919,7 +957,7 @@ AppModule
 
 ## 相关文档
 
-- [记忆系统架构](memory-system-architecture.md) — 四类记忆完整设计
+- [记忆系统架构](memory-architecture.md) — 四类记忆完整设计
 - [消息服务架构](message-service-architecture.md) — 消息管线详细设计
 - [监控系统架构](monitoring-system-architecture.md) — 消息追踪与分析
 - [飞书通知系统](../infrastructure/feishu-alert-system.md) — 通知渠道与接收人配置

@@ -1,18 +1,19 @@
 /**
- * 会话品牌状态存取（§9.1）。
+ * 会话品牌状态存取（§7.2）。
  *
  * memory 侧不含任何迁移规则，只做「读 brand_state → 调 reducer 纯函数 → 单字段写回」；
- * 迁移规则全部在 resolution/brand/brand-state.reducer.ts。写入时机：
+ * 迁移规则全部在 @resolution/evidence/brand-policy。写入时机：
  * - 常规轮：turn-finalizer 收尾序列（memory-lifecycle 的 apply_brand_state 步骤，
  *   排在 extract_facts 之后且不因其失败跳过），全程在渠道层 90s 租约处理锁内；
- * - 异步补写（§10.3）：图片描述晚到，由渠道层重新持锁后调 applyLateImageResolutions，
+ * - 异步补写（§8.3）：图片描述晚到，由渠道层重新持锁后调 applyLateImageResolutions，
  *   带「过期即弃」防护。
  *
- * 首次初始化（§9.4）：已验证昵称品牌 seed > 空（旧 preferences.brands 懒迁移档已于
- * 2026-07-22 退役，§19.6）；seed 状态在首轮回合准备阶段即经 deriveTurnBrandContext
+ * 首次初始化（§7.3）：已验证昵称品牌 seed > 空（旧 preferences.brands 懒迁移档已于
+ * 2026-07-22 退役，§11）；seed 状态在首轮回合准备阶段即经 deriveTurnBrandContext
  * 构造生效（注入提示词、供工具兜底），持久化仍随收尾 reducer 统一落盘。
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
@@ -20,9 +21,9 @@ import { resolveBrands } from '@resolution/brand/brand-matcher';
 import {
   brandStateChanged,
   initBrandState,
-  reduceBrandState,
+  adjudicateBrandState,
   shouldDropLateResolutions,
-} from '@resolution/brand/brand-state.reducer';
+} from '@resolution/evidence/brand-policy';
 import type {
   BrandResolution,
   PersistedBrandState,
@@ -33,6 +34,7 @@ import { BRAND_EXECUTABLE_CONFIDENCE } from '@resolution/brand/brand-resolution.
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
 import { PersistedBrandStateSchema } from '../types/session-facts.types';
+import { buildSessionFactsHashKey } from './session-key';
 
 export interface TurnBrandContext {
   /** 本轮生效的品牌状态：已持久化状态，或首轮 seed 出的初始状态（未落盘）。 */
@@ -47,7 +49,7 @@ export interface TurnBrandContext {
 export class BrandStateService {
   private readonly logger = new Logger(BrandStateService.name);
 
-  /** 异步补写「过期即弃」计数（轻量观测，§12：走日志聚合，不新增事件类型）。 */
+  /** 异步补写「过期即弃」计数（轻量观测，§10：升级飞书告警，不新增事件类型）。 */
   private lateDropCount = 0;
 
   constructor(
@@ -59,7 +61,7 @@ export class BrandStateService {
   ) {}
 
   /**
-   * 回合准备阶段派生本轮品牌上下文（§5.3 锚点一）。
+   * 回合准备阶段派生本轮品牌上下文（§2 锚点一）。
    *
    * brand_state 已存在（哪怕被 browse_all 清成空值）时永不重新 seed；
    * 不存在时按「旧并集末位 > 昵称 seed > 空」构造初始状态供本轮使用。
@@ -84,7 +86,7 @@ export class BrandStateService {
   }
 
   /**
-   * 回合收尾统一写入（§5.3 锚点二）：汇总本轮全部解析结果批量过 reducer，单字段原子替换。
+   * 回合收尾统一写入（§2 锚点二）：汇总本轮全部解析结果批量过 reducer，单字段原子替换。
    * brand_state 不存在时先执行一次初始化（prevState = seed 状态）再应用本轮结果。
    */
   async applyTurnResolutions(params: {
@@ -97,7 +99,7 @@ export class BrandStateService {
     persistedBrandState?: PersistedBrandState | null;
   }): Promise<{ changed: boolean; initialized: boolean }> {
     // 歧义现场在入口无条件记录：歧义结果不写状态，若绑在"状态变化才发事件"上，
-    // 纯歧义轮（冲突别名如「小龙」）整档零留痕（§18 观测债，2026-07-21 修复）。
+    // 纯歧义轮（冲突别名如「小龙」）整档零留痕（§11 观测债，2026-07-21 修复）。
     this.emitAmbiguousResolutions(params, params.resolutions, false);
 
     const persisted =
@@ -115,7 +117,7 @@ export class BrandStateService {
       initialized = true;
     }
 
-    const next = reduceBrandState(prev, params.resolutions);
+    const next = adjudicateBrandState(prev, params.resolutions);
     const changed = brandStateChanged(prev, next);
 
     // 初始化必须落盘（seed 只此一次的锚点是"字段存在"）；已存在状态只有变化才写。
@@ -141,7 +143,7 @@ export class BrandStateService {
   }
 
   /**
-   * 异步补写落状态（§10.3）：调用方必须已重新持有该会话的处理锁。
+   * 异步补写落状态（§8.3）：调用方必须已重新持有该会话的处理锁。
    * 携带产生轮次时间戳，早于 brand_state 最后变更时间的晚到结果只弃不写（防时间倒流）。
    */
   async applyLateImageResolutions(params: {
@@ -168,7 +170,7 @@ export class BrandStateService {
     }
 
     const prev: SessionBrandState = persisted ?? initBrandState({});
-    const next = reduceBrandState(prev, params.resolutions);
+    const next = adjudicateBrandState(prev, params.resolutions);
     const changed = brandStateChanged(prev, next);
     if (!changed && persisted) return 'noop';
 
@@ -195,7 +197,7 @@ export class BrandStateService {
     userId: string,
     sessionId: string,
   ): Promise<PersistedBrandState | null> {
-    const hash = await this.redisStore.getHash(this.buildHashKey(corpId, userId, sessionId));
+    const hash = await this.redisStore.getHash(buildSessionFactsHashKey(corpId, userId, sessionId));
     const raw = hash?.brand_state;
     if (raw == null) return null;
     const parsed = PersistedBrandStateSchema.safeParse(raw);
@@ -209,9 +211,9 @@ export class BrandStateService {
   /**
    * 测试夹具专用直写（test-suite memory-fixture）。
    *
-   * preferences.brands 已退役（§19.6），用例预设的品牌意向必须以 brand_state
+   * preferences.brands 已退役（§11），用例预设的品牌意向必须以 brand_state
    * 形态种入才对链路可见。生产路径禁止调用——生产写入仍只经 reducer
-   * （applyTurnResolutions / applyLateImageResolutions，§9.2 单一写入方）。
+   * （applyTurnResolutions / applyLateImageResolutions，§7.1 单一写入方）。
    */
   async seedFixtureBrandState(
     corpId: string,
@@ -229,7 +231,7 @@ export class BrandStateService {
     state: PersistedBrandState,
   ): Promise<void> {
     await this.redisStore.patchHash(
-      this.buildHashKey(corpId, userId, sessionId),
+      buildSessionFactsHashKey(corpId, userId, sessionId),
       { brand_state: state },
       this.config.sessionTtl,
     );
@@ -256,9 +258,7 @@ export class BrandStateService {
       };
     } catch (error) {
       this.logger.warn(
-        `[brand-state] 昵称品牌解析失败（按无 seed 降级）: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[brand-state] 昵称品牌解析失败（按无 seed 降级）: ${toErrorMessage(error)}`,
       );
       return { seed: null, brands: [] };
     }
@@ -323,10 +323,5 @@ export class BrandStateService {
       initialized: params.initialized,
       late: params.late,
     });
-  }
-
-  /** 与 SessionService 相同的 factsv2 hash key（同一存储，单字段读写）。 */
-  private buildHashKey(corpId: string, userId: string, sessionId: string): string {
-    return `factsv2:${corpId}:${userId}:${sessionId}`;
   }
 }

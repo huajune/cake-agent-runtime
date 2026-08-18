@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GeneratorAgent, type GeneratorRunResult } from '@agent/generator/generator.agent';
@@ -193,7 +194,7 @@ export class ConversationTestService {
 
       return result;
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`对话执行失败: ${errorMsg}`);
 
       await this.conversationSnapshotRepository.updateStatus(
@@ -343,7 +344,7 @@ export class ConversationTestService {
           results.push(result);
           successCount++;
         } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = toErrorMessage(error);
           this.logger.error(`对话 ${source.id} 执行失败: ${errorMessage}`);
           failedCount++;
         }
@@ -436,9 +437,7 @@ export class ConversationTestService {
       try {
         await this.batchService.updateBatchStats(source.batch_id);
       } catch (error) {
-        this.logger.warn(
-          `刷新回归验证批次统计失败: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.logger.warn(`刷新回归验证批次统计失败: ${toErrorMessage(error)}`);
       }
     }
 
@@ -483,7 +482,7 @@ export class ConversationTestService {
 
       return titleMap;
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.warn(`读取验证集标题失败，将使用本地快照字段: ${errorMsg}`);
       return new Map();
     }
@@ -604,7 +603,6 @@ export class ConversationTestService {
           scenario,
           strategySource: 'testing',
           disableFallbacks: true,
-          deferTurnEnd: true,
         }),
         this.turnTimeoutMs,
         `回归验证轮次执行超时: source=${source.id}, turn=${turn.turnNumber}`,
@@ -612,7 +610,7 @@ export class ConversationTestService {
       turnEnd = await this.runDeferredTurnEnd(loopResult);
       postTurnState = await this.readMemoryStateBestEffort(runtimeScope);
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       executionStatus = errorMsg.includes('timeout')
         ? ExecutionStatus.TIMEOUT
         : ExecutionStatus.FAILURE;
@@ -809,7 +807,7 @@ export class ConversationTestService {
       return {
         status: 'failed',
         durationMs: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error),
+        error: toErrorMessage(error),
       };
     }
   }
@@ -821,7 +819,7 @@ export class ConversationTestService {
       }
       return await this.memoryFixtureService.read(scope);
     } catch (error: unknown) {
-      return { error: error instanceof Error ? error.message : String(error) };
+      return { error: toErrorMessage(error) };
     }
   }
 
@@ -962,7 +960,7 @@ export class ConversationTestService {
         this.logger.warn(`对话 ${source.id} 回写飞书失败: ${result.error}`);
       }
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`对话 ${source.id} 回写飞书异常: ${errorMsg}`);
     }
   }

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -780,7 +781,7 @@ export class SpongeService {
   }
 
   private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    return toErrorMessage(error);
   }
 
   /**
@@ -936,7 +937,7 @@ export class SpongeService {
 
       return (parsed.data.data?.result as InterviewScheduleItem[]) || [];
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`获取面试名单失败: ${message}`);
       throw new Error(`面试名单获取失败: ${message}`);
     }

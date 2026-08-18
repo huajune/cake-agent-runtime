@@ -12,6 +12,8 @@
  * 观测（§12 轻量计数，走日志聚合）："图片无描述"漏调率与"补写过期丢弃"数。
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { MessageType } from '@enums/message-callback.enum';
@@ -105,11 +107,7 @@ export class ImageBrandBackfillService {
     );
 
     void this.runBackfill(params).catch((error) => {
-      this.logger.warn(
-        `[image-brand-backfill] 补写链路异常: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.logger.warn(`[image-brand-backfill] 补写链路异常: ${toErrorMessage(error)}`);
     });
   }
 
@@ -148,7 +146,7 @@ export class ImageBrandBackfillService {
     for (let attempt = 1; attempt <= LOCK_RETRY_ATTEMPTS; attempt++) {
       acquired = await this.simpleMerge.acquireProcessingLock(params.chatId, ownerToken);
       if (acquired) break;
-      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_DELAY_MS));
+      await sleep(LOCK_RETRY_DELAY_MS);
     }
     if (!acquired) {
       this.lockGiveUpCount += 1;

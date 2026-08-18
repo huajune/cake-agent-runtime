@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { formatDuration } from '@/utils/format';
+import { formatDuration, formatLocaleNumber } from '@/utils/format';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
 import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
@@ -210,7 +210,7 @@ export default function MessageProcessingDetailDrawer({
 
   const tokenValue =
     message.tokenUsage != null && message.tokenUsage !== 0
-      ? message.tokenUsage.toLocaleString()
+      ? formatLocaleNumber(message.tokenUsage)
       : '-';
 
   const headlineMetrics = [

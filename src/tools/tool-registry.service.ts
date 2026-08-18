@@ -29,7 +29,9 @@ import { buildSkipReplyTool } from './skip-reply.tool';
 import {
   buildReadResumeAttachmentTool,
   type ResumeAttachment,
+  type ResumeReadTarget,
 } from './read-resume-attachment.tool';
+import { StorageMessageType } from '@enums/storage-message.enum';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
@@ -46,6 +48,10 @@ import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.se
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
+import { getRuleFactValue } from '@resolution/evidence/merge';
+import { sleep } from '@infra/utils/async.util';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 
 /**
  * 统一工具注册表
@@ -80,6 +86,7 @@ export class ToolRegistryService {
     opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
+    private readonly llm: LlmExecutorService,
     userHostingService: UserHostingService,
     configService: ConfigService,
     interventionService: InterventionService,
@@ -308,28 +315,34 @@ export class ToolRegistryService {
     }
 
     // 动态注入：当前轮次有图片/表情消息时，注册 save_image_description 工具
-    if (context.imageMessageIds?.length) {
+    if (context.turnInput.imageMessageIds?.length) {
       const imageUrlsByMessageId: Record<string, string> = {};
-      context.imageMessageIds.forEach((messageId, index) => {
-        const url = context.imageUrls?.[index];
+      context.turnInput.imageMessageIds.forEach((messageId, index) => {
+        const url = context.turnInput.imageUrls?.[index];
         if (url) imageUrlsByMessageId[messageId] = url;
       });
       const imgTool = buildSaveImageDescriptionTool(
         this.chatSessionService,
-        context.imageMessageIds,
-        context.visualMessageTypes,
+        context.turnInput.imageMessageIds,
+        context.turnInput.visualMessageTypes,
         imageUrlsByMessageId,
         this.brandResolutionService,
       );
       tools['save_image_description'] = imgTool(context);
       this.logger.log(
-        `动态注入 save_image_description 工具, imageMessageIds=${context.imageMessageIds.join(',')}`,
+        `动态注入 save_image_description 工具, imageMessageIds=${context.turnInput.imageMessageIds.join(',')}`,
       );
     }
 
     const resumeAttachments = this.resolveResumeAttachments(context);
     if (resumeAttachments.length) {
-      const resumeTool = buildReadResumeAttachmentTool(resumeAttachments);
+      const resumeTool = buildReadResumeAttachmentTool(resumeAttachments, {
+        llm: this.llm,
+        resolveReadTarget: (attachment) =>
+          this.resolveResumeReadTarget(context.session.sessionId, attachment),
+        messageWriteback: (messageId, content, sheet) =>
+          this.writeBackResumeMessage(messageId, content, sheet),
+      });
       tools['read_resume_attachment'] = resumeTool(context);
       this.logger.log(
         `动态注入 read_resume_attachment 工具, resumeCount=${resumeAttachments.length}`,
@@ -365,18 +378,90 @@ export class ToolRegistryService {
 
   private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
     const urls = [
-      this.normalizeHighConfidenceText(context.highConfidenceFacts?.interview_info.upload_resume),
-      this.normalizeText(context.sessionFacts?.interview_info?.upload_resume),
+      this.normalizeText(
+        getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
+          minConfidence: 'high',
+        }),
+      ),
+      this.normalizeText(context.archive.sessionFacts?.interview_info?.upload_resume),
     ].filter((value): value is string => Boolean(value));
 
-    return [...new Set(urls)].map((fileUrl) => ({ fileUrl }));
+    return [...new Set(urls)].map((fileUrl) => {
+      const currentImageIndex =
+        context.turnInput.imageUrls?.findIndex((url) => url === fileUrl) ?? -1;
+      const imageMessageId =
+        currentImageIndex >= 0 ? context.turnInput.imageMessageIds?.[currentImageIndex] : undefined;
+      const currentMessage = context.turnInput.currentUserMessage ?? '';
+      const isCurrentFile = currentMessage.includes(fileUrl);
+      const messageId = imageMessageId ?? (isCurrentFile ? context.session.turnId : undefined);
+      const fileName = isCurrentFile
+        ? currentMessage.match(/文件名\s*[：:]\s*([^；;\n\r]+)/u)?.[1]?.trim()
+        : undefined;
+      return { fileUrl, fileName, messageId };
+    });
   }
 
-  private normalizeHighConfidenceText(value: unknown): string | null {
-    if (value && typeof value === 'object' && 'value' in value) {
-      return this.normalizeText((value as { value?: unknown }).value);
+  /**
+   * 简历图片只读企微原图 artworkUrl；imageUrl 是缩略图，不允许降级使用。
+   * 旧的 upload_resume 事实可能仍指向缩略图/过期 URL，因此用真实 messageId
+   * 或历史 content 中的旧 URL 反查同一条消息，再以 payload.artworkUrl 覆盖。
+   */
+  private async resolveResumeReadTarget(
+    chatId: string,
+    attachment: ResumeAttachment,
+  ): Promise<ResumeReadTarget> {
+    const { messages } = await this.chatSessionService.getChatSessionMessages(chatId);
+    const matched = [...messages].reverse().find((message) => {
+      if (attachment.messageId) return message.messageId === attachment.messageId;
+      return message.role === 'user' && message.content.includes(attachment.fileUrl);
+    });
+
+    if (!matched) {
+      return {
+        fileUrl: attachment.fileUrl,
+        messageId: attachment.messageId,
+        imageOriginal: false,
+      };
     }
-    return this.normalizeText(value);
+    if (matched.messageType !== StorageMessageType.IMAGE) {
+      return {
+        fileUrl: attachment.fileUrl,
+        messageId: matched.messageId,
+        imageOriginal: false,
+      };
+    }
+
+    const artworkUrl = this.normalizeText(matched.payload?.artworkUrl);
+    return {
+      fileUrl: artworkUrl,
+      messageId: matched.messageId,
+      imageOriginal: Boolean(artworkUrl),
+    };
+  }
+
+  /** 与图片描述链路相同：4 次、500ms×attempt 退避；只依赖 biz/message。 */
+  private async writeBackResumeMessage(
+    messageId: string,
+    content: string,
+    sheet: FinalizedVisualFactSheet,
+  ): Promise<boolean> {
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const updated = await this.chatSessionService.updateMessageContent(
+          messageId,
+          content,
+          sheet as unknown as Record<string, unknown>,
+        );
+        if (updated) return true;
+      } catch (error) {
+        this.logger.warn(
+          `简历摘要回写异常（第 ${attempt}/${maxAttempts} 次）[${messageId}]: ${String(error)}`,
+        );
+      }
+      if (attempt < maxAttempts) await sleep(500 * attempt);
+    }
+    return false;
   }
 
   private normalizeText(value: unknown): string | null {

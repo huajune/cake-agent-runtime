@@ -368,3 +368,445 @@ $z-tooltip: 600;
   border: 1px solid rgba(255, 255, 255, 0.5);
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
 }
+
+// 托管用户页：新增表单
+@mixin managed-user-add-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.2fr) minmax(260px, 1.5fr) 180px auto;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 24px;
+
+  input {
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: #f5f7fa;
+    color: #0f172a;
+    font-size: 13px;
+    outline: none;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+
+    &::placeholder {
+      color: #94a3b8;
+    }
+
+    &:hover {
+      background: #eff2f6;
+    }
+
+    &:focus {
+      background: #ffffff;
+      border-color: $primary;
+      box-shadow: 0 0 0 3px $primary-10;
+    }
+  }
+}
+
+// 托管用户页：列表表格
+@mixin managed-user-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+  background: #ffffff;
+
+  th {
+    padding: 14px 24px;
+    text-align: left;
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 500;
+    font-size: 13px;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+
+    &:first-child {
+      border-top-left-radius: 8px;
+      border-bottom-left-radius: 8px;
+      border-left: 1px solid #e2e8f0;
+    }
+
+    &:last-child {
+      border-top-right-radius: 8px;
+      border-bottom-right-radius: 8px;
+      border-right: 1px solid #e2e8f0;
+    }
+  }
+
+  td {
+    padding: 16px 24px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
+    transition: background 0.15s ease;
+  }
+
+  tbody tr {
+    transition: background 0.2s ease;
+
+    &:hover {
+      background: #f8fafc;
+    }
+
+    &:last-child td {
+      border-bottom: none;
+    }
+  }
+}
+
+@mixin managed-user-loading-cell {
+  padding: 56px 0 !important;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+@mixin managed-user-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+  }
+}
+
+@mixin managed-user-empty-icon-halo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgba($success, 0.14),
+    rgba($success, 0.05) 62%,
+    transparent 78%
+  );
+  animation: emptyFloat 3.2s ease-in-out infinite;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 1px dashed rgba($success, 0.25);
+  }
+}
+
+@mixin managed-user-empty-icon {
+  width: 36px;
+  height: 36px;
+  color: rgba($success, 0.65);
+}
+
+@mixin empty-state-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+@mixin managed-user-target-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+@mixin managed-user-source-tag {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+@mixin managed-user-target-id {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #94a3b8;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin managed-user-bot-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
+@mixin managed-user-reason-cell {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
+@mixin managed-user-time-cell {
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+@mixin managed-user-remove-button(
+  $button-border-color,
+  $button-color,
+  $hover-background,
+  $hover-border-color
+) {
+  border: 1px solid $button-border-color;
+  color: $button-color;
+  background: transparent;
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: $hover-background;
+    border-color: $hover-border-color;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// 监控页：表格容器与表格
+@mixin monitoring-table-section {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 18px;
+  border: 1px solid rgba(161, 173, 255, 0.14);
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(103, 80, 164, 0.05);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  margin-bottom: 24px;
+}
+
+@mixin monitoring-table-wrapper {
+  overflow-x: auto;
+  border-radius: 12px;
+
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.15);
+    border-radius: 3px;
+  }
+}
+
+@mixin monitoring-table-header {
+  padding: 12px 16px;
+  text-align: left;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  color: #64748b;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-top: 1px solid rgba(161, 173, 255, 0.16);
+  border-bottom: 1px solid rgba(161, 173, 255, 0.16);
+
+  &:first-child {
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+    border-left: 1px solid rgba(161, 173, 255, 0.16);
+  }
+
+  &:last-child {
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+    border-right: 1px solid rgba(161, 173, 255, 0.16);
+  }
+}
+
+@mixin monitoring-processing-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+
+  th {
+    @include monitoring-table-header;
+  }
+
+  td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(241, 245, 249, 0.8);
+    color: #334155;
+    transition: background 0.15s ease;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+// 监控页：详情抽屉头部
+@mixin monitoring-detail-header {
+  padding: 16px 24px 14px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.12);
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.06) 0%,
+    rgba(255, 255, 255, 0.86) 48%,
+    #fff 100%
+  );
+}
+
+@mixin monitoring-detail-header-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@mixin monitoring-detail-header-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: $text-primary;
+  flex-shrink: 0;
+}
+
+@mixin monitoring-detail-close-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #fff;
+  color: $text-muted;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: rgba(139, 92, 246, 0.06);
+    color: $text-primary;
+    border-color: rgba(139, 92, 246, 0.22);
+  }
+}
+
+// 测试集弹窗：头部分页操作
+@mixin test-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+@mixin test-modal-header-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 0 0 1px $accent-12;
+
+  button {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 0;
+    background: transparent;
+    color: #667085;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background: $accent-08;
+      color: $accent;
+    }
+
+    &:focus-visible {
+      outline: 2px solid #e9d7fe;
+      outline-offset: 1px;
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  }
+}
+
+// 表格空状态：紫色图标光晕
+@mixin primary-empty-icon-halo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgba($primary, 0.12),
+    rgba($primary, 0.04) 62%,
+    transparent 78%
+  );
+  animation: emptyFloat 3.2s ease-in-out infinite;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 1px dashed rgba($primary, 0.18);
+  }
+}
+
+@mixin primary-empty-icon {
+  width: 36px;
+  height: 36px;
+  color: rgba($primary, 0.55);
+}

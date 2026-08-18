@@ -138,6 +138,10 @@ describe('resolveBrands - 微信昵称（contact_name，§14.1）', () => {
     expect(resolveBrands('Gattouzo', 'contact_name', catalog)).toEqual([]);
   });
 
+  it('单字符英数昵称 M 不预填品牌（badcase fgccw95r）', () => {
+    expect(resolveBrands('M', 'contact_name', catalog)).toEqual([]);
+  });
+
   it('"肯德基-上海" 微信昵称产生高置信品牌', () => {
     const results = resolveBrands('肯德基-上海', 'contact_name', catalog);
     expect(names(results)).toEqual(['肯德基']);

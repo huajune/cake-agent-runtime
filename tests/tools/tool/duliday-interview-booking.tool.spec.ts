@@ -2,6 +2,19 @@ import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
+
+interface BookingContextOverrides {
+  messages?: unknown[];
+  currentUserMessage?: string;
+  sessionFacts?: ToolBuildContext['archive']['sessionFacts'];
+  bookingCandidateFacts?: ToolBuildContext['archive']['bookingCandidateFacts'];
+  isRecalledJobId?: ToolBuildContext['archive']['isRecalledJobId'];
+  ruleFacts?: TurnLedger['facts']['ruleFacts'];
+  hasNewerUserInput?: ToolBuildContext['runtime']['hasNewerUserInput'];
+}
 
 describe('buildInterviewBookingTool', () => {
   const mockSpongeService = {
@@ -19,20 +32,47 @@ describe('buildInterviewBookingTool', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
+  const mockContext: ToolBuildContext = createToolContext({
+    session: {
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      contactName: '候选人微信名',
+      botUserId: 'manager-1',
+    },
     // B4 手机号溯源闸门要求提交的 phone 在候选人原文中有出处；共享上下文里
     // 预置一条候选人报号消息，让存量用例聚焦各自原本要测的环节。
-    messages: [{ role: 'user', content: '电话13800138000' }],
-    contactName: '候选人微信名',
-    botUserId: 'manager-1',
-  };
+    turnInput: { messages: [{ role: 'user', content: '电话13812345678' }] },
+  });
+
+  const buildContext = (overrides: BookingContextOverrides = {}): ToolBuildContext =>
+    mergeToolContext(mockContext, {
+      archive: {
+        ...(overrides.sessionFacts === undefined ? {} : { sessionFacts: overrides.sessionFacts }),
+        ...(overrides.bookingCandidateFacts === undefined
+          ? {}
+          : { bookingCandidateFacts: overrides.bookingCandidateFacts }),
+        ...(overrides.isRecalledJobId === undefined
+          ? {}
+          : { isRecalledJobId: overrides.isRecalledJobId }),
+      },
+      turnInput: {
+        ...(overrides.messages === undefined ? {} : { messages: overrides.messages }),
+        ...(overrides.currentUserMessage === undefined
+          ? {}
+          : { currentUserMessage: overrides.currentUserMessage }),
+      },
+      ledger:
+        overrides.ruleFacts === undefined ? {} : { facts: { ruleFacts: overrides.ruleFacts } },
+      runtime:
+        overrides.hasNewerUserInput === undefined
+          ? {}
+          : { hasNewerUserInput: overrides.hasNewerUserInput },
+    });
 
   const validInput = {
     name: '张三',
-    phone: '13800138000',
+    phone: '13812345678',
     age: 25,
     genderId: 1,
     jobId: 100,
@@ -89,13 +129,12 @@ describe('buildInterviewBookingTool', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeToolWithContext = async (
     input: Record<string, any>,
-    contextOverride: Partial<ToolBuildContext> = {},
+    contextOverride: BookingContextOverrides = {},
     options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const mockLongTermService = {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
       setActiveBooking: jest.fn().mockResolvedValue(undefined),
-      getActiveBooking: jest.fn().mockResolvedValue(options.activeBooking ?? null),
       getActiveBookings: jest
         .fn()
         .mockResolvedValue(options.activeBooking ? [options.activeBooking] : []),
@@ -110,10 +149,7 @@ describe('buildInterviewBookingTool', () => {
       mockLongTermService as never,
       mockOpsEventsRecorder as never,
     );
-    const toolContext = {
-      ...mockContext,
-      ...contextOverride,
-    };
+    const toolContext = buildContext(contextOverride);
     const builtTool = builder(toolContext);
     const result = (await builtTool.execute(input as any, {
       toolCallId: 'test',
@@ -133,7 +169,7 @@ describe('buildInterviewBookingTool', () => {
 
   const executeTool = async (
     input: Record<string, any>,
-    contextOverride: Partial<ToolBuildContext> = {},
+    contextOverride: BookingContextOverrides = {},
     options: { activeBooking?: Record<string, unknown> | null } = {},
   ) => {
     const { result } = await executeToolWithContext(input, contextOverride, options);
@@ -150,7 +186,7 @@ describe('buildInterviewBookingTool', () => {
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
     expect(result.missingFields).toContain('operateType');
-    expect(context.bookingSucceeded).toBe(false);
+    expect(context.ledger.jobs.bookingSucceeded).toBe(false);
     expect(result.requiredPayloadFields).toEqual([
       'jobId',
       'interviewTime',
@@ -244,7 +280,7 @@ describe('buildInterviewBookingTool', () => {
       });
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
       expect(result._replyInstruction).toContain('runtime 已短路本轮');
-      expect(context.bookingSucceeded).toBe(false);
+      expect(context.ledger.jobs.bookingSucceeded).toBe(false);
       expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
@@ -394,7 +430,7 @@ describe('buildInterviewBookingTool', () => {
       {
         messages: [
           { role: 'user', content: '我是陈佩珊' },
-          { role: 'user', content: '电话13800138000' },
+          { role: 'user', content: '电话13812345678' },
           { role: 'assistant', content: '麻烦发一下身份证上的真实姓名' },
           { role: 'user', content: '就是陈佩珊' },
         ],
@@ -413,7 +449,7 @@ describe('buildInterviewBookingTool', () => {
       {
         messages: [
           { role: 'user', content: '我是小王' },
-          { role: 'user', content: '电话13800138000' },
+          { role: 'user', content: '电话13812345678' },
           { role: 'assistant', content: '麻烦发一下身份证上的真实姓名，我帮你登记' },
           { role: 'user', content: '发了呀' },
           { role: 'assistant', content: '门店登记需要用身份证上的真实姓名哈' },
@@ -532,7 +568,7 @@ describe('buildInterviewBookingTool', () => {
 
     const result = await executeTool(validInput, {
       messages: [
-        { role: 'user', content: '电话13800138000' },
+        { role: 'user', content: '电话13812345678' },
         { role: 'assistant', content: '目前是学生还是社会人士？' },
         { role: 'user', content: '社会' },
       ],
@@ -647,7 +683,7 @@ describe('buildInterviewBookingTool', () => {
       staleInput: true,
       reasonCode: 'newer_user_input_pending',
     });
-    expect(context.bookingSucceeded).toBe(false);
+    expect(context.ledger.jobs.bookingSucceeded).toBe(false);
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
@@ -966,7 +1002,7 @@ describe('buildInterviewBookingTool', () => {
         jobId: 100,
         interviewTime: '2026-03-20 14:00:00',
         name: '张三',
-        phone: '13800138000',
+        phone: '13812345678',
         age: 25,
         genderId: 1,
         operateType: 6,
@@ -1011,7 +1047,7 @@ describe('buildInterviewBookingTool', () => {
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
         candidateName: '张三',
-        phone: '13800138000',
+        phone: '13812345678',
         genderLabel: '男',
         ageText: '25岁',
         brandName: '成都你六姐',
@@ -1073,7 +1109,7 @@ describe('buildInterviewBookingTool', () => {
       messages: [
         {
           role: 'user',
-          content: '姓名：曹旭天\n联系电话：13800138000\n出生日期：2000-10-15',
+          content: '姓名：曹旭天\n联系电话：13812345678\n出生日期：2000-10-15',
         },
       ],
     });
@@ -1119,7 +1155,7 @@ describe('buildInterviewBookingTool', () => {
       },
       {
         messages: [
-          { role: 'user', content: '电话13800138000' },
+          { role: 'user', content: '电话13812345678' },
           {
             role: 'user',
             content:
@@ -1281,6 +1317,11 @@ describe('buildInterviewBookingTool', () => {
     // 438358 第二段：预约成功 23 秒后候选人补发真简历，命中 already_booked 短路，
     // 真简历被静默丢弃且 Agent 回复"已提交"。现在应指示转人工补传。
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    // 议题 8-2 后"查不到工单手机号"改为放行，本例要验的是同一个人重复提交，显式给同号
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 438358,
+      phone: '13812345678',
+    });
 
     const result = await executeTool(
       {
@@ -1291,15 +1332,13 @@ describe('buildInterviewBookingTool', () => {
         uploadResume: 'https://wecom.example.com/file/resume.pdf',
       },
       {
-        highConfidenceFacts: {
-          interview_info: {
-            upload_resume: {
-              value: 'https://wecom.example.com/file/resume.pdf',
-              confidence: 'high',
-              source: 'rule',
-            },
-          },
-        } as never,
+        ruleFacts: testRuleFacts(
+          testRuleFact(
+            'interview_info.upload_resume',
+            'https://wecom.example.com/file/resume.pdf',
+            '候选人发送了简历附件',
+          ),
+        ),
       },
       {
         activeBooking: {
@@ -1321,6 +1360,10 @@ describe('buildInterviewBookingTool', () => {
 
   it('keeps the plain already-booked instruction when no fresh resume arrived this turn', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 438358,
+      phone: '13812345678',
+    });
 
     const result = await executeTool(
       {
@@ -1397,8 +1440,8 @@ describe('buildInterviewBookingTool', () => {
   });
 
   describe('软查重手机号交叉核验（工单 448367→448402 badcase）', () => {
-    // 同一个企微联系人先后给两个不同的人报同一岗位：罗欣宇约成功后 30 分钟内，
-    // 同会话给许颖（另一手机号）报同岗位被误判 already_booked。命中指针后应
+    // 同一个企微联系人先后给两个不同的人报同一岗位：第一人约成功后 30 分钟内，
+    // 同会话给第二人（另一手机号）报同岗位被误判 already_booked。命中指针后应
     // 反查工单手机号：不同手机号 = 不同候选人，放行。
     const recentActiveBooking = {
       work_order_id: 448367,
@@ -1446,7 +1489,7 @@ describe('buildInterviewBookingTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 448367,
-        phone: '13800138000',
+        phone: '13812345678',
       });
 
       const result = await executeTool(
@@ -1465,13 +1508,13 @@ describe('buildInterviewBookingTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 448367,
-        phone: '138-0013-8000',
+        phone: '138-1234-5678',
       });
 
       const result = await executeTool(
         {
           ...validInput,
-          phone: '138 0013 8000',
+          phone: '138 1234 5678',
           educationId: 2,
           householdRegisterProvinceId: 310000,
           height: 170,
@@ -1485,7 +1528,11 @@ describe('buildInterviewBookingTool', () => {
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
 
-    it('反查工单失败（海绵异常）时应保守拦截，保留防重试兜底', async () => {
+    // 议题 8-2（用户 8-14 裁定）：查不到既有工单手机号时**放行交海绵仲裁**。
+    // 原"保守判重"分支在 badcase chat 6a4229f2 里击穿了本修复本身——刚创建 8 分钟的
+    // 工单海绵侧查不到手机号，手机号明确不同的兮兮被误拦。真重复由海绵服务端
+    // 同手机号同岗位约束兜底（Bull 重试必然同 phone）。
+    it('反查工单失败（海绵异常）时放行交海绵仲裁', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockRejectedValue(new Error('sponge down'));
 
@@ -1495,12 +1542,11 @@ describe('buildInterviewBookingTool', () => {
         { activeBooking: recentActiveBooking },
       );
 
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(mockSpongeService.bookInterview).toHaveBeenCalled();
     });
 
-    it('工单缺手机号时应保守拦截', async () => {
+    it('工单缺手机号时放行交海绵仲裁（兮兮案回归：新单 8 分钟内查不到手机号）', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
       mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
         workOrderId: 448367,
@@ -1508,14 +1554,23 @@ describe('buildInterviewBookingTool', () => {
       });
 
       const result = await executeTool(
-        { ...validInput, educationId: 2, householdRegisterProvinceId: 310000, height: 170 },
-        {},
+        {
+          ...validInput,
+          name: '兮兮',
+          phone: '18271421690',
+          educationId: 2,
+          householdRegisterProvinceId: 310000,
+          height: 170,
+        },
+        { messages: [{ role: 'user', content: '兮兮 18271421690' }] },
         { activeBooking: recentActiveBooking },
       );
 
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: '18271421690' }),
+        expect.anything(),
+      );
     });
   });
 
@@ -1564,7 +1619,7 @@ describe('buildInterviewBookingTool', () => {
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
         candidateName: '张三',
-        phone: '13800138000',
+        phone: '13812345678',
         genderLabel: '男',
         ageText: '25岁',
         interviewTime: '2026-03-20 14:00:00',
@@ -1679,4 +1734,88 @@ describe('buildInterviewBookingTool', () => {
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
   });
+
+  // 议题 8-1（badcase chat 6a4229f2）：中介一轮给两个人报同一岗位。会话档案只装得下
+  // 一个人，第二人被姓名/电话一致性闸门误杀。防臆造保护不降级，只是把验证源从
+  // "会话档案单一身份"换成"候选人消息文本逐字锚定"——对粘贴表单场景比档案匹配更强。
+  describe('多人代报豁免轨（议题 8-1）', () => {
+    const brokerMessage = '王五 13800138000\n兮兮 18271421690\n两个人都报这个岗';
+
+    it('第二人的姓名与手机号都在候选人文本里逐字出现时放行', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      mockSpongeService.bookInterview.mockResolvedValue({
+        success: true,
+        code: 0,
+        message: '预约成功',
+        workOrderId: 457340,
+      });
+
+      const result = await executeTool(
+        {
+          ...validInput,
+          name: '兮兮',
+          phone: '18271421690',
+          educationId: 2,
+          householdRegisterProvinceId: 310000,
+          height: 170,
+        },
+        {
+          messages: [{ role: 'user', content: brokerMessage }],
+          // 会话档案锁在第一个人身上——正是本案闸门误杀的成因
+          bookingCandidateFacts: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '王五',
+            phone: '13800138000',
+          },
+        },
+      );
+
+      expect(result).toMatchObject({ success: true });
+      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+        expect.objectContaining({ name: '兮兮', phone: '18271421690' }),
+        expect.anything(),
+      );
+    });
+
+    it('只有手机号在原文、姓名对不上时仍走会话档案一致性闸（张冠李戴防线不降级）', async () => {
+      const result = await executeTool(
+        { ...validInput, name: '李四', phone: '18271421690' },
+        {
+          messages: [{ role: 'user', content: brokerMessage }],
+          bookingCandidateFacts: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '王五',
+            phone: '13800138000',
+          },
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+      expect(result.conflictingFields).toEqual(['姓名', '联系电话']);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+
+    it('姓名只出现在引用前缀里（经理名）不构成逐字锚定', async () => {
+      const result = await executeTool(
+        { ...validInput, name: '兮兮', phone: '18271421690' },
+        {
+          messages: [
+            { role: 'user', content: '[引用 兮兮：帮我报名]\n我手机号18271421690' },
+          ],
+          bookingCandidateFacts: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '王五',
+            phone: '13800138000',
+          },
+        },
+      );
+
+      // 引用前缀里的名字是被引用方（通常是招募经理），既有 isNameOnlyQuotedSpeaker
+      // 负向证据闸门会把"姓名"打回 missingFields——豁免轨不得绕过它。
+      expect(result.success).toBe(false);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+  });
+
 });

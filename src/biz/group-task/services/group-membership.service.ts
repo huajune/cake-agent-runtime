@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GROUP_ROOM_QUERY, type GroupRoomQuery } from '../providers/group-channel.provider';
@@ -91,7 +92,7 @@ export class GroupMembershipService {
       const isMember = await this.redisService.sismember(key, userImContactId);
       return isMember === 1;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(
         `检查群成员关系失败 (room=${imRoomId}, user=${userImContactId}): ${message}`,
       );
@@ -134,7 +135,7 @@ export class GroupMembershipService {
       );
       return checks.filter((c) => c.isMember).map((c) => c.roomId);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`反查候选人群状态失败 (user=${userImContactId}): ${message}`);
       return [];
     }
@@ -151,7 +152,7 @@ export class GroupMembershipService {
       await this.redisService.sadd(key, userImContactId);
       await this.redisService.expire(key, GroupMembershipService.CACHE_TTL_SECONDS);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(
         `写入群成员缓存失败 (room=${imRoomId}, user=${userImContactId}): ${message}`,
       );
@@ -167,7 +168,7 @@ export class GroupMembershipService {
     try {
       await this.redisService.del(key);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`清理群成员缓存失败 (room=${imRoomId}): ${message}`);
     }
   }
@@ -237,7 +238,7 @@ export class GroupMembershipService {
           totalRooms++;
           totalMembers += members.length;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = toErrorMessage(error);
           this.logger.warn(`写入群成员缓存失败 (room=${roomId}): ${message}`);
         }
       }

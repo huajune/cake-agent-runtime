@@ -39,7 +39,7 @@ describe('LongTermService', () => {
         name: {
           value: '张三',
           confidence: 'high',
-          source: 'booking',
+          source: 'system',
           evidence: '报名成功后写入',
           updatedAt: '2026-05-22T10:00:00.000Z',
         },
@@ -49,7 +49,7 @@ describe('LongTermService', () => {
         is_student: {
           value: true,
           confidence: 'medium',
-          source: 'extraction',
+          source: 'archive',
           evidence: '会话沉淀提取',
           updatedAt: '2026-05-22T10:00:00.000Z',
         },
@@ -71,7 +71,7 @@ describe('LongTermService', () => {
       expect(mockSupabaseStore.upsertProfileFacts).not.toHaveBeenCalled();
     });
 
-    it('should save only non-null fields with enrichment medium facts', async () => {
+    it('should save only non-null fields with system medium facts', async () => {
       await service.saveProfile('corp1', 'user1', { name: '张三', phone: null, gender: '男' });
 
       expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith(
@@ -80,12 +80,12 @@ describe('LongTermService', () => {
         {
           name: expect.objectContaining({
             value: '张三',
-            source: 'enrichment',
+            source: 'system',
             confidence: 'medium',
           }),
           gender: expect.objectContaining({
             value: '男',
-            source: 'enrichment',
+            source: 'system',
             confidence: 'medium',
           }),
         },
@@ -95,7 +95,7 @@ describe('LongTermService', () => {
   });
 
   describe('writeFromBooking', () => {
-    it('should call upsertProfileFacts with booking source and high confidence', async () => {
+    it('should call upsertProfileFacts with system source and booking-level high confidence', async () => {
       await service.writeFromBooking('corp1', 'user1', {
         name: '张三',
         phone: '13800138000',
@@ -104,14 +104,14 @@ describe('LongTermService', () => {
       });
 
       expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith('corp1', 'user1', {
-        name: expect.objectContaining({ value: '张三', source: 'booking', confidence: 'high' }),
+        name: expect.objectContaining({ value: '张三', source: 'system', confidence: 'high' }),
         phone: expect.objectContaining({
           value: '13800138000',
-          source: 'booking',
+          source: 'system',
           confidence: 'high',
         }),
-        age: expect.objectContaining({ value: '22', source: 'booking', confidence: 'high' }),
-        gender: expect.objectContaining({ value: '男', source: 'booking', confidence: 'high' }),
+        age: expect.objectContaining({ value: '22', source: 'system', confidence: 'high' }),
+        gender: expect.objectContaining({ value: '男', source: 'system', confidence: 'high' }),
       });
     });
 
@@ -157,7 +157,7 @@ describe('LongTermService', () => {
   });
 
   describe('writeFromSettlement', () => {
-    it('should preserve original session fact metadata in profile evidence', async () => {
+    it('should preserve the session producer chapter and evidence when settling profile facts', async () => {
       const sessionFacts = toSessionFacts(
         {
           ...FALLBACK_EXTRACTION,
@@ -170,7 +170,7 @@ describe('LongTermService', () => {
         },
         {
           confidence: 'medium',
-          source: 'llm',
+          source: 'model',
           evidence: 'LLM 结构化提取：候选人提供了姓名和年龄',
         },
       );
@@ -186,19 +186,18 @@ describe('LongTermService', () => {
       expect(savedFacts.name).toEqual(
         expect.objectContaining({
           value: '张三',
-          source: 'extraction',
+          source: 'rule',
           confidence: 'medium',
-          evidence: expect.stringContaining('原字段来源=rule'),
         }),
       );
+      expect(savedFacts.name.evidence).not.toContain('原字段来源');
       expect(savedFacts.name.evidence).toContain('原字段置信度=high');
       expect(savedFacts.name.evidence).toContain('原证据=结构化姓名识别：张三');
       expect(savedFacts.age).toEqual(
         expect.objectContaining({
           value: '24',
-          source: 'extraction',
+          source: 'model',
           confidence: 'medium',
-          evidence: expect.stringContaining('原字段来源=llm'),
         }),
       );
     });
@@ -213,7 +212,7 @@ describe('LongTermService', () => {
           },
           reasoning: '候选人提供了姓名与品牌意向',
         },
-        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
       );
 
       // 品牌快照源已迁 brand_state（§19.6）：经 origin.brandState 传入，不再读 preferences.brands
@@ -244,7 +243,7 @@ describe('LongTermService', () => {
           interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
           reasoning: 'x',
         },
-        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
       );
 
       await service.writeFromSettlement('corp1', 'user1', sessionFacts);
@@ -273,7 +272,7 @@ describe('LongTermService', () => {
           },
           reasoning: '候选人意向提取',
         },
-        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
       );
 
       await service.writeFromSettlement('corp1', 'user1', sessionFacts, {
@@ -290,7 +289,7 @@ describe('LongTermService', () => {
       expect(saved.brands).toEqual(
         expect.objectContaining({
           value: ['必胜客'],
-          source: 'extraction',
+          source: 'rule',
           confidence: 'medium',
           evidence: '会话品牌状态快照（brand_state.currentBrand）',
         }),
@@ -312,7 +311,7 @@ describe('LongTermService', () => {
           interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
           reasoning: '仅身份信息',
         },
-        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
       );
 
       await service.writeFromSettlement('corp1', 'user1', sessionFacts);

@@ -85,10 +85,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     // 记录错误日志
-    this.logger.error(
-      `[${request.method}] ${request.url} - ${status} ${code}: ${message}`,
-      exception instanceof Error ? exception.stack : undefined,
-    );
+    let stack: string | undefined;
+    if (exception instanceof Error) {
+      stack = exception.stack;
+    }
+    this.logger.error(`[${request.method}] ${request.url} - ${status} ${code}: ${message}`, stack);
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.exceptionNotifier?.notifyAsync({

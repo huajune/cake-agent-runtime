@@ -60,15 +60,20 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
       description: DESCRIPTION,
       inputSchema,
       execute: async () => {
-        const summaryData = await memoryService.getSummaryData(context.corpId, context.userId);
+        const summaryData = await memoryService.getSummaryData(
+          context.session.corpId,
+          context.session.userId,
+        );
 
         if (!summaryData || (summaryData.recent.length === 0 && !summaryData.archive)) {
-          logger.debug(`无历史摘要: userId=${context.userId}`);
+          logger.debug(`无历史摘要: userId=${context.session.userId}`);
           return { found: false, message: '该用户无历史求职记录' };
         }
 
         const formatted = formatSummaryForTool(summaryData);
-        logger.debug(`返回历史摘要: userId=${context.userId}, recent=${summaryData.recent.length}`);
+        logger.debug(
+          `返回历史摘要: userId=${context.session.userId}, recent=${summaryData.recent.length}`,
+        );
 
         return {
           found: true,

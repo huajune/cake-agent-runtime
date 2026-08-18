@@ -99,8 +99,24 @@ const HEALTH_CERT_ENUM_HINTS = ['有', '无'];
 
 const HEALTH_CERT_TYPE_ENUM_HINTS = Object.values(SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING);
 
+/**
+ * 展示标签 → 判定字段的反查表（由 FIELD_LABELS 派生，不手抄）。
+ *
+ * 两套名字同源化（core-flow-review 议题 9-1 第 2 条）：模板渲染的是
+ * `formatTemplateFieldLabel(field)`，候选人与模型按**看到的那个名字**回填；
+ * 判定却按原始 field 比对。装饰词（"健康证"←健康证情况、"籍贯/户籍"←户籍省份、
+ * "身份（学生/社会人士）"←身份）因此会变成"模型按模板名回填、判定按后台名比对"的错位。
+ * 这里让渲染层的装饰只影响展示——判定端把展示名反查回原始 field。
+ */
+const FIELD_BY_DISPLAY_LABEL: ReadonlyMap<string, ChecklistField> = new Map(
+  Object.entries(FIELD_LABELS).map(([field, label]) => [label, field as ChecklistField]),
+);
+
 export function normalizeChecklistField(field: string | null | undefined): string {
-  const normalized = normalizePolicyText(field);
+  const displayMatch = field ? FIELD_BY_DISPLAY_LABEL.get(field.trim()) : undefined;
+  if (displayMatch) return displayMatch;
+
+  const normalized = stripFieldAnnotations(normalizePolicyText(field));
   if (!normalized) return '';
 
   if (['联系电话', '联系方式', '电话'].includes(normalized)) return '联系电话';
@@ -126,6 +142,21 @@ export function normalizeChecklistField(field: string | null | undefined): strin
   if (normalized === '面试日期') return '面试时间';
 
   return normalized;
+}
+
+/**
+ * 剥括号注记 + NFKC 折叠（议题 9-1）。
+ *
+ * 岗位后台把计量单位/取值提示写进 labelName（"身高(cm)"、"体重（kg）"、
+ * "健康证情况（有/无）"），此前这些字段与标准 checklist 字段互不相认——
+ * candidateHeight 已经填了 knownFieldMap['身高']，"身高(cm)" 仍留在 missingFields 里
+ * 反复追问（badcase chat 6a7e7846）。注记是展示装饰，不参与字段身份。
+ */
+function stripFieldAnnotations(value: string): string {
+  if (!value) return '';
+  const folded = value.normalize('NFKC');
+  const stripped = folded.replace(/[（(【[][^）)】\]]*[)）】\]]/gu, '').trim();
+  return stripped || folded.trim();
 }
 
 export function canonicalizeChecklistFields(fields: string[]): string[] {
@@ -242,6 +273,8 @@ export function formatTemplateFieldLabel(field: string): string {
 export function buildChecklistTemplate(params: {
   requiredFields: string[];
   knownFieldMap: Record<string, string>;
+  /** 已有弱来源值只作表单内联确认；后缀仅影响展示，不污染 knownFieldMap。 */
+  confirmationSuffixByField?: Readonly<Record<string, string>>;
   /**
    * 不进入收资清单的字段（已做 normalizeChecklistField 归一后比对）。
    * 无面试时段（等通知）岗位用它剔除"面试时间"——该字段属于 TEMPLATE_CORE_FIELDS
@@ -283,7 +316,8 @@ export function buildChecklistTemplate(params: {
     '面试要求：先将以下资料补充下发给我，我来帮你约面试',
     ...displayOrder.map((field) => {
       const value = params.knownFieldMap[field] ?? '';
-      return `${formatTemplateFieldLabel(field)}：${value}`;
+      const suffix = value ? (params.confirmationSuffixByField?.[field] ?? '') : '';
+      return `${formatTemplateFieldLabel(field)}：${value}${suffix}`;
     }),
   ];
 

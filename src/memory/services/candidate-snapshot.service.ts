@@ -1,9 +1,10 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisStore } from '../stores/redis.store';
 import {
   PRECHECK_SNAPSHOT_TTL_SECONDS,
   type PrecheckSnapshot,
-} from '../facts/candidate/precheck-snapshot.types';
+} from '@resolution/evidence/snapshot';
 
 /**
  * PrecheckSnapshot 存取（方案 §4.3/§8 Phase 3）。
@@ -34,9 +35,9 @@ export class CandidateSnapshotService {
       );
     } catch (error) {
       this.logger.warn(
-        `[candidate-snapshot] 保存失败（fail open）: ${snapshot.precheckId} ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[candidate-snapshot] 保存失败（fail open）: ${snapshot.precheckId} ${toErrorMessage(
+          error,
+        )}`,
       );
     }
   }
@@ -46,12 +47,13 @@ export class CandidateSnapshotService {
       const entry = await this.redisStore.get(this.buildKey(corpId, userId, precheckId));
       if (!entry?.content) return null;
       const snapshot = entry.content as unknown as PrecheckSnapshot;
-      return typeof snapshot.precheckId === 'string' && snapshot.effectiveProfile ? snapshot : null;
+      if (typeof snapshot.precheckId !== 'string' || !snapshot.effectiveProfile) return null;
+      // confirmedFields 是后加的必填字段：TTL 窗口内可能读到旧版本代码写入的快照，
+      // 缺省回填为空数组（等价于「无确认级作证」），避免消费点空指针。
+      return { ...snapshot, confirmedFields: snapshot.confirmedFields ?? [] };
     } catch (error) {
       this.logger.warn(
-        `[candidate-snapshot] 读取失败（fail open）: ${precheckId} ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[candidate-snapshot] 读取失败（fail open）: ${precheckId} ${toErrorMessage(error)}`,
       );
       return null;
     }

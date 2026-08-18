@@ -1,48 +1,10 @@
-import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'high', source: 'rule', evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
-}
+  formatExtractionFactLines,
+  formatRuleFactClaimLines,
+  RULE_CLAIM_QUOTE_RENDER_MAX_CHARS,
+} from '@memory/formatters/fact-lines.formatter';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 describe('formatExtractionFactLines', () => {
   afterEach(() => {
@@ -122,29 +84,84 @@ describe('formatExtractionFactLines', () => {
   });
 
   it('should render high-confidence field metadata without evidence by default', () => {
-    const facts: HighConfidenceFacts = {
-      ...emptyHighConfidenceFacts(),
-      interview_info: {
-        ...emptyHighConfidenceFacts().interview_info,
-        age: highConfidence('24', '年龄识别：24'),
-      },
-    };
-    const lines = formatExtractionFactLines(facts);
+    const facts = testRuleFacts(testRuleFact('interview_info.age', '24', '年龄识别：24'));
+    const lines = formatRuleFactClaimLines(facts);
 
     expect(lines).toEqual(['- 年龄: 24（置信度: high，来源: rule）']);
   });
 
   it('should render evidence only when includeEvidence is set (extraction prompt path)', () => {
-    const facts: HighConfidenceFacts = {
-      ...emptyHighConfidenceFacts(),
-      interview_info: {
-        ...emptyHighConfidenceFacts().interview_info,
-        age: highConfidence('24', '年龄识别：24'),
-      },
-    };
-    const lines = formatExtractionFactLines(facts, { includeEvidence: true });
+    const facts = testRuleFacts(
+      testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: '我24' }),
+    );
+    const lines = formatRuleFactClaimLines(facts, { includeEvidence: true });
 
+    // 原话是主 Agent prompt 侧的 opt-in（includeQuote）；提取 prompt 与提取 LLM 共享原文，不重复注入
     expect(lines).toEqual(['- 年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24）']);
+  });
+
+  // 议题 2-1：证据码只是结论的复述；候选人复述岗位要求时唯一的区分信号是逐字原话。
+  describe('原话渲染（议题 2-1）', () => {
+    it('renders the verbatim quote so a job-requirement echo is distinguishable', () => {
+      const facts = testRuleFacts(
+        testRuleFact('interview_info.age', '18-45', '年龄识别：18-45', {
+          quote: '这岗位要求18-45岁',
+        }),
+      );
+
+      const [line] = formatRuleFactClaimLines(facts, {
+        includeEvidence: true,
+        includeQuote: true,
+        currentTurnTexts: ['这岗位要求18-45岁吗', '我想问下'],
+      });
+
+      expect(line).toContain('证据: 年龄识别：18-45');
+      expect(line).toContain('原话: 这岗位要求18-45岁');
+    });
+
+    it('omits the quote on a single-message turn when it is the whole message', () => {
+      const message = '我今年24，在上海想找兼职';
+      const facts = testRuleFacts(
+        testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: message }),
+      );
+
+      const [line] = formatRuleFactClaimLines(facts, {
+        includeEvidence: true,
+        includeQuote: true,
+        currentTurnTexts: [message],
+      });
+
+      expect(line).toContain('证据: 年龄识别：24');
+      expect(line).not.toContain('原话:');
+    });
+
+    it('keeps whole-message quotes on merged turns so each claim maps to its source message', () => {
+      const first = '我今年24';
+      const second = '我在上海';
+      const lines = formatRuleFactClaimLines(
+        testRuleFacts(
+          testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: first }),
+          testRuleFact('preferences.city', '上海', 'explicit_city', { quote: second }),
+        ),
+        { includeEvidence: true, includeQuote: true, currentTurnTexts: [first, second] },
+      );
+
+      expect(lines.find((line) => line.includes('年龄'))).toContain(`原话: ${first}`);
+      expect(lines.find((line) => line.includes('意向城市'))).toContain(`原话: ${second}`);
+    });
+
+    it('truncates long quotes instead of re-injecting the whole message per field', () => {
+      const long = '我'.repeat(200);
+      const [line] = formatRuleFactClaimLines(
+        testRuleFacts(
+          testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: long }),
+        ),
+        { includeEvidence: true, includeQuote: true, currentTurnTexts: ['另一条消息', '再一条'] },
+      );
+
+      expect(line).toContain(`原话: ${'我'.repeat(RULE_CLAIM_QUOTE_RENDER_MAX_CHARS)}…`);
+      expect(line.length).toBeLessThan(120);
+    });
   });
 
   it('should warn when a time-sensitive fact is stale (extractedAt > 24h ago)', () => {
@@ -157,7 +174,7 @@ describe('formatExtractionFactLines', () => {
         interview_time: {
           value: '明天下午2点',
           confidence: 'medium',
-          source: 'llm',
+          source: 'model',
           evidence: 'LLM 结构化提取',
           extractedAt: staleAt,
         },
@@ -180,7 +197,7 @@ describe('formatExtractionFactLines', () => {
         applied_store: {
           value: '顺德欢乐海岸PH',
           confidence: 'high',
-          source: 'llm',
+          source: 'model',
           evidence: '候选人确认应聘门店',
           extractedAt: '2026-07-13T14:35:00+08:00',
         },
@@ -188,7 +205,7 @@ describe('formatExtractionFactLines', () => {
     } as unknown as Parameters<typeof formatExtractionFactLines>[0]);
 
     expect(lines).toContain(
-      '- 应聘门店: 顺德欢乐海岸PH（置信度: high，来源: llm）（记录时间：2026-07-13 14:35）',
+      '- 应聘门店: 顺德欢乐海岸PH（置信度: high，来源: model）（记录时间：2026-07-13 14:35）',
     );
   });
 });

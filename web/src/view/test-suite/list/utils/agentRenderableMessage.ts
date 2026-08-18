@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai';
+import { asRecord } from '@/utils/object';
 import type { ToolCall } from '../types';
 
 type UiPart = UIMessage['parts'][number];
@@ -8,12 +9,6 @@ interface AgentStepSummary {
   reasoningText?: string;
   text?: string;
   toolCalls?: unknown[];
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 function asNonEmptyString(value: unknown): string | undefined {

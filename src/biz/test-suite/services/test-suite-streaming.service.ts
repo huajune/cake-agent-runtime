@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { createUIMessageStream, pipeUIMessageStreamToResponse, type UIMessageChunk } from 'ai';
 import { Response } from 'express';
@@ -38,7 +39,7 @@ export class TestSuiteStreamingService {
         handler.end();
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       handler.sendError(errorMessage);
       handler.end();
     }
@@ -167,7 +168,7 @@ export class TestSuiteStreamingService {
 
             trace.finalizeSuccess();
           } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage = toErrorMessage(error);
             writer.write({
               type: 'data-observability',
               data: trace.getClientPayload('failure', errorMessage),
@@ -180,7 +181,7 @@ export class TestSuiteStreamingService {
 
       pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       trace.finalizeFailure(error);
       if (!res.headersSent) {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -224,7 +225,7 @@ export class TestSuiteStreamingService {
         reasonCode: decision.reasonCode,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`[AI-Stream] advisory 守卫审查失败（忽略）: ${message}`);
       return null;
     }

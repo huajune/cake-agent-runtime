@@ -1,5 +1,5 @@
 import { Inbox } from 'lucide-react';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatLocaleNumber } from '@/utils/format';
 import type { UserTableProps } from '../../types';
 import { AVATAR_GRADIENTS } from '../../constants';
 import { getAvatarStyle, getUserInitial } from '../../utils/helpers';
@@ -111,7 +111,7 @@ export default function UserTable({
                     </td>
                   )}
                   {!isPausedTab && (
-                    <td className={styles.tokenText}>{user.tokenUsage.toLocaleString()}</td>
+                    <td className={styles.tokenText}>{formatLocaleNumber(user.tokenUsage)}</td>
                   )}
                   {!isPausedTab && (
                     <td className={styles.timeCell} title={formatDateTime(user.firstActiveAt)}>

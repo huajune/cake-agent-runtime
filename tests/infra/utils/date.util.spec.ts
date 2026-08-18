@@ -1,5 +1,6 @@
 import {
   formatLocalDate,
+  formatLocalDateWithWeekday,
   formatLocalDateTime,
   formatLocalMinute,
   getLocalDayStart,
@@ -32,6 +33,13 @@ describe('date.util (Asia/Shanghai)', () => {
     it('should pad single-digit month and day', () => {
       const date = new Date('2026-01-05T08:00:00+08:00');
       expect(formatLocalDate(date)).toBe('2026-01-05');
+    });
+  });
+
+  describe('formatLocalDateWithWeekday', () => {
+    it('should return YYYY-MM-DD with Shanghai weekday', () => {
+      const date = new Date('2026-04-29T08:02:00.000Z');
+      expect(formatLocalDateWithWeekday(date)).toBe('2026-04-29 星期三');
     });
   });
 

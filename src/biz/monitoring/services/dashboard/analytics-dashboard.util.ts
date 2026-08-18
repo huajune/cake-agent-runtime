@@ -1,5 +1,6 @@
 import { ScenarioType } from '@enums/agent.enum';
 import { addLocalDays, getLocalDayStart } from '@infra/utils/date.util';
+import { isRecord as isPlainObject } from '@infra/utils/object.util';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import type { AgentInvocationRecord, MessageProcessingRecord } from '@shared-types/tracking.types';
 import type { TimeRange } from '../../types/analytics.types';
@@ -115,8 +116,4 @@ function isAgentInvocationRecord(value: unknown): value is AgentInvocationRecord
     isPlainObject(value.response) &&
     typeof value.isFallback === 'boolean'
   );
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

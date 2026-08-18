@@ -64,9 +64,9 @@ export function buildSkipReplyTool(): ToolBuilder {
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ reason }) => {
-        const chatId = context.chatId ?? context.sessionId;
+        const chatId = context.session.chatId ?? context.session.sessionId;
         logger.log(
-          `skip_reply: chatId=${chatId}, userId=${context.userId}, reason=${reason.trim()}`,
+          `skip_reply: chatId=${chatId}, userId=${context.session.userId}, reason=${reason.trim()}`,
         );
 
         return {

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
@@ -228,6 +229,6 @@ export class TurnOutcomeInterventionService {
   }
 
   private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    return toErrorMessage(error);
   }
 }

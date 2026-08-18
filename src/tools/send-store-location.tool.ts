@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -11,6 +12,7 @@ import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
+import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('send_store_location');
 
@@ -178,7 +180,9 @@ function selectInterviewLocationCandidate(
   candidates: GeocodeCandidate[],
 ): GeocodeCandidate | null {
   const reliableCandidates = candidates.filter(
-    (candidate) => candidate.confidence === 'high' && candidate.precision !== 'road',
+    (candidate) =>
+      canUseFactForAction('store_location_geocode', candidate.confidence) &&
+      candidate.precision !== 'road',
   );
   if (reliableCandidates.length === 1) return reliableCandidates[0];
 
@@ -227,7 +231,7 @@ export function buildSendStoreLocationTool(
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ jobId, destination }) => {
-        const resolvedJobId = jobId ?? context.currentFocusJob?.jobId ?? null;
+        const resolvedJobId = jobId ?? context.archive.currentFocusJob?.jobId ?? null;
         if (!resolvedJobId) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.STORE_LOCATION_MISSING_JOB_ID,
@@ -238,7 +242,11 @@ export function buildSendStoreLocationTool(
           });
         }
 
-        if (!context.token || !context.botImId || !(context.imContactId || context.imRoomId)) {
+        if (
+          !context.session.token ||
+          !context.session.botImId ||
+          !(context.session.imContactId || context.session.imRoomId)
+        ) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.STORE_LOCATION_MISSING_DELIVERY_CONTEXT,
             outcome: '缺少发送上下文',
@@ -279,12 +287,13 @@ export function buildSendStoreLocationTool(
           const interviewAddress = policy.interviewMeta.address;
           const interviewMethod = policy.interviewMeta.method;
           const offlineInterview = isOfflineInterviewMethod(interviewMethod);
-          const isActiveBooking = context.activeBookingJobIds?.includes(resolvedJobId) ?? false;
+          const isActiveBooking =
+            context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false;
           const explicitlyAsksForWorkplace = /上班|工作(?:地点|地址)|入职后|工作门店/u.test(
-            context.currentUserMessage ?? '',
+            context.turnInput.currentUserMessage ?? '',
           );
           const ambiguousJourneyQuestion = /地址|位置|定位|导航|怎么走|找不到|搞错|过去|到店/u.test(
-            context.currentUserMessage ?? '',
+            context.turnInput.currentUserMessage ?? '',
           );
           const wantsInterviewDestination =
             destination === 'interview' ||
@@ -324,7 +333,7 @@ export function buildSendStoreLocationTool(
             isActiveBooking,
             interviewAddress,
             offlineInterview,
-            currentUserMessage: context.currentUserMessage,
+            currentUserMessage: context.turnInput.currentUserMessage,
           });
           const interviewLocationSource = interviewAddress
             ? resolveInterviewLocationSource(interviewAddress, store.storeAddress)
@@ -394,23 +403,21 @@ export function buildSendStoreLocationTool(
                   geocoded = selectInterviewLocationCandidate(query, candidates);
                 } catch (error) {
                   logger.warn(
-                    `面试地址地理编码失败: jobId=${resolvedJobId}, error=${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
+                    `面试地址地理编码失败: jobId=${resolvedJobId}, error=${toErrorMessage(error)}`,
                   );
                 }
               }
               if (!geocoded) {
                 const fixedReply = `面试地点和工作门店不是同一个地方：工作门店是 ${store.storeName}，这次面试请去 ${interviewAddress}。暂时无法发出可靠的面试定位，我再请同事帮你确认。`;
                 await messageSenderService.sendMessage({
-                  token: context.token,
-                  imBotId: context.botImId,
-                  imContactId: context.imContactId,
-                  imRoomId: context.imRoomId,
-                  chatId: context.chatId ?? context.sessionId,
+                  token: context.session.token,
+                  imBotId: context.session.botImId,
+                  imContactId: context.session.imContactId,
+                  imRoomId: context.session.imRoomId,
+                  chatId: context.session.chatId ?? context.session.sessionId,
                   messageType: SendMessageType.TEXT,
                   payload: { text: fixedReply },
-                  _apiType: context.apiType,
+                  _apiType: context.session.apiType,
                 });
                 return buildToolError({
                   errorType: TOOL_ERROR_TYPES.STORE_LOCATION_INTERVIEW_GEOCODE_FAILED,
@@ -436,11 +443,11 @@ export function buildSendStoreLocationTool(
           }
 
           await messageSenderService.sendMessage({
-            token: context.token,
-            imBotId: context.botImId,
-            imContactId: context.imContactId,
-            imRoomId: context.imRoomId,
-            chatId: context.chatId ?? context.sessionId,
+            token: context.session.token,
+            imBotId: context.session.botImId,
+            imContactId: context.session.imContactId,
+            imRoomId: context.session.imRoomId,
+            chatId: context.session.chatId ?? context.session.sessionId,
             messageType: SendMessageType.LOCATION,
             payload: {
               accuracy: 15,
@@ -449,11 +456,11 @@ export function buildSendStoreLocationTool(
               longitude: targetLongitude,
               name: targetName,
             },
-            _apiType: context.apiType,
+            _apiType: context.session.apiType,
           });
 
           logger.log(
-            `门店定位发送成功: jobId=${resolvedJobId}, store=${store.storeName}, session=${context.sessionId}`,
+            `门店定位发送成功: jobId=${resolvedJobId}, store=${store.storeName}, session=${context.session.sessionId}`,
           );
 
           const floorHint = extractFloorHint(targetAddress);
@@ -485,13 +492,13 @@ export function buildSendStoreLocationTool(
               '当工具返回 _fixedReply 时，必须原样输出 _fixedReply 的内容作为本轮完整回复',
           };
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = toErrorMessage(error);
           logger.error(`门店定位发送失败: jobId=${resolvedJobId}, error=${message}`);
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.STORE_LOCATION_SEND_FAILED,
             outcome: '门店定位发送失败',
             replyInstruction:
-              (context.activeBookingJobIds?.includes(resolvedJobId) ?? false)
+              (context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false)
                 ? '预约场景下定位发送失败。禁止改发工作门店定位或说“地址没错”；请调用 request_handoff(cannot_find_store) 确认面试地点。'
                 : '门店定位发送失败。不要把异常信息原文转述给候选人；重新核对岗位的工作门店地址后用文字告知。',
             details: { jobId: resolvedJobId, reason: message },

@@ -528,6 +528,31 @@ describe('SystemConfigService', () => {
     });
   });
 
+  describe('hardRuleOverrides sanitization', () => {
+    it('keeps only off/observe values and defaults missing config to an empty object', async () => {
+      (service as any).agentReplyConfig = null;
+      (service as any).agentReplyConfigExpiry = 0;
+      mockRedisService.get.mockResolvedValue(null);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        hardRuleOverrides: {
+          quota_promise: 'off',
+          internal_output_leak: 'observe',
+          illegal_upgrade: 'block',
+          illegal_revise: 'revise',
+        },
+      });
+
+      const result = await service.getAgentReplyConfig();
+
+      expect(result.hardRuleOverrides).toEqual({
+        quota_promise: 'off',
+        internal_output_leak: 'observe',
+      });
+      expect(DEFAULT_AGENT_REPLY_CONFIG.hardRuleOverrides).toEqual({});
+    });
+  });
+
   // ==================== onAgentReplyConfigChange ====================
 
   describe('onAgentReplyConfigChange', () => {

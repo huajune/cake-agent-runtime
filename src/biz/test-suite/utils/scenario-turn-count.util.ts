@@ -1,3 +1,5 @@
+import { asRecord } from '@infra/utils/object.util';
+
 interface ScenarioHistoryMessage {
   role?: unknown;
   content?: unknown;
@@ -5,12 +7,6 @@ interface ScenarioHistoryMessage {
 
 const USER_ROLE_ALIASES = new Set(['user', 'candidate', 'customer']);
 const USER_ROLE_PATTERN = /(候选|求职|客户|用户|boss)/i;
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
 function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;

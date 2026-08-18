@@ -10,6 +10,7 @@ import type { CandidateIdentityHint } from './services/memory-enrichment.service
 import type { AgentMemoryContext } from './types/memory-runtime.types';
 import type { MessageMetadata, SummaryData, UserProfile } from './types/long-term.types';
 import type { InvitedGroupRecord } from './types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { ProceduralState } from './types/procedural.types';
 import { formatExtractionFactLines } from './formatters/fact-lines.formatter';
 
@@ -50,6 +51,8 @@ export class MemoryService {
       includeShortTerm?: boolean;
       shortTermEndTimeInclusive?: number;
       enrichmentIdentity?: CandidateIdentityHint;
+      /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
+      ruleFacts?: RuleFactClaims | null;
     },
   ): Promise<AgentMemoryContext> {
     return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentUserMessage, options);

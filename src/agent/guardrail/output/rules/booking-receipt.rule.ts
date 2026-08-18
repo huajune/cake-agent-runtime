@@ -416,7 +416,7 @@ export function detectBookingReceiptMismatch(
   // precheck 已返回在途工单 455384（约面时间 15:00）并点名改时间要调
   // duliday_modify_interview_time，模型零工具调用，回复却确认了"15:30没问题"。
   // 工单至今是 15:00，候选人会按 15:30 到店白跑一趟——不可挽回，故 REVISE 而非 OBSERVE。
-  // 该轮首审只命中了 handoff_promise_without_handoff（"让同事确认下"），repair 删掉承诺
+  // 该轮首审只命中了 handoff_promise_without_handoff（已于 8-11 下线；"让同事确认下"），repair 删掉承诺
   // 改成"没问题"后二审无人可拦；回归闸的 commitment_upgraded 是并联防线，本规则则覆盖
   // "模型首版就直接确认"这条 repair 链够不着的路径。
   const activeGuard = findActiveWorkOrderGuard(toolCalls);

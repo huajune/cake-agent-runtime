@@ -17,4 +17,4 @@
 4. `pnpm run geo:validate` 通过（含与人工策展表的一致性、条目数异常增减检查）后一并提交。
 
 生成产物与数据集的对应关系由 geo:validate 的漂移校验强制：只改数据集不重新生成、
-或手改生成产物，CI 会失败（geo-domain-refactor-plan §9.3/§9.4）。
+或手改生成产物，CI 会失败（docs/architecture/geo-resolution.md §5.2/§5.3）。

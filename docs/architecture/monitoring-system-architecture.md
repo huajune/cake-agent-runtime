@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - 监控数据采集、投影与查询架构
 
-**最后更新**：2026-04-23
+**最后更新**：2026-08-12（全文对代码核实：服务清单 / 表名 / RPC / 前端路径）
 
 ---
 
@@ -22,9 +22,9 @@
 
 ## 架构概览
 
-监控模块已上移至业务层 [src/biz/monitoring/](../../src/biz/monitoring/)，采用
-**「Supabase 为真 + 预聚合投影 + Redis 实时计数」** 的三段式结构。不再依赖进程内内存缓存作为主数据源，
-服务重启不会丢失可观测数据。
+监控模块位于业务层 [src/biz/monitoring/](../../src/biz/monitoring/)，采用
+**「Supabase 为真 + 预聚合投影 + Redis 实时计数」** 的三段式结构。主数据源不在进程内存里，
+服务重启不丢可观测数据。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -81,8 +81,7 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-`AnalyticsController` 暴露 `/analytics/**` API；旧的 `/monitoring/**` 路由和 Redis 快照
-(`MonitoringSnapshotService`) 已下线。
+`AnalyticsController` 暴露 `/analytics/**` API，是监控数据对外的唯一路由前缀。
 
 ---
 
@@ -96,7 +95,7 @@
 | **投影层** | Supabase `monitoring_hourly_stats` / `monitoring_daily_stats` | 永久保留 | 历史 Dashboard 查询；节省原始表扫描 |
 | **实时层** | Redis `monitoring:active_requests` / `:peak_active_requests` | 持久 (INCRBY) | 多实例共享在途请求计数、峰值 |
 
-### 为什么抛弃内存+Redis快照方案
+### 为什么以 Supabase 为真相源
 
 1. **可靠性**：监控数据不能因为进程重启归零，运维看板需要长期趋势。
 2. **多实例一致性**：Supabase 作为 SoT + Redis 计数器天然支持水平扩展。
@@ -110,8 +109,8 @@
 | `monitoring:active_requests` | INTEGER | 当前在途请求数（接收 +1 / 终态 -1） |
 | `monitoring:peak_active_requests` | INTEGER | 运行期峰值（只增不减，重置需手动） |
 
-`MonitoringGlobalCounters`（totalMessages/totalSuccess/...）仍保留，但仅作为**本实例**的心跳计数，
-Dashboard 不再依赖它给出真实值。
+`MonitoringGlobalCounters`（totalMessages/totalSuccess/...）只是**本实例**的心跳计数，
+非权威值——Dashboard 的真实数据一律取自 Supabase 与 Redis 共享计数。
 
 ---
 
@@ -549,6 +548,8 @@ CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat
 | `user_activity` | 波动 | <1 KB | <5 MB |
 
 TOAST 压力主要来源是 `agent_invocation` JSONB，因此每天凌晨把 >7 天的行置为 NULL。
+
+⚠️ **不要从 `agent_invocation` 里现算指标**：从该 JSONB 提取字段会逐行解压 TOAST，月级统计 RPC 实测曾达 52.6s。首字延迟已固化为独立列 `ttft_ms`（迁移 `20260612032136_add_ttft_ms_column.sql`），读取一律走该列。同理，按时间过滤 `message_processing_records` 要用 **`received_at`**（`created_at` 无索引），大范围聚合走 MATERIALIZED 两段式。
 
 ### Redis 命令估算
 

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import {
   Controller,
   Get,
@@ -141,7 +142,7 @@ export class AgentController {
         corpId: 'debug',
         scenario,
         callerKind: CallerKind.DEBUG,
-        error: error instanceof Error ? error.message : String(error),
+        error: toErrorMessage(error),
       });
       this.logger.error('调试聊天失败:', error);
 
@@ -173,7 +174,7 @@ export class AgentController {
         {
           success: false,
           message: 'Agent 调用失败',
-          error: error instanceof Error ? error.message : String(error),
+          error: toErrorMessage(error),
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );

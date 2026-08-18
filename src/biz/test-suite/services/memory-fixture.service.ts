@@ -8,8 +8,8 @@ import {
   FALLBACK_EXTRACTION,
   type EntityExtractionResult,
   type InvitedGroupRecord,
-  type RecommendedJobSummary,
 } from '@memory/types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { ProceduralState } from '@memory/types/procedural.types';
 import type { UserProfile } from '@memory/types/long-term.types';
 import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';

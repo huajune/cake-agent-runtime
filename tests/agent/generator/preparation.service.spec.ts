@@ -2,50 +2,10 @@ import { PreparationService } from '@agent/generator/preparation.service';
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
-import {
-  FALLBACK_EXTRACTION,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-} from '@memory/types/session-facts.types';
-
-function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
-  return { value, confidence: 'high', source: 'rule', evidence };
-}
-
-function emptyHighConfidenceFacts(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: 'test',
-  };
-}
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { getRuleFact } from '@resolution/evidence/merge';
+import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 describe('PreparationService', () => {
   const mockToolRegistry = {
@@ -82,7 +42,6 @@ describe('PreparationService', () => {
   };
 
   const mockLongTermService = {
-    getActiveBooking: jest.fn(),
     getActiveBookings: jest.fn(),
   };
 
@@ -114,7 +73,6 @@ describe('PreparationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
-    mockLongTermService.getActiveBooking.mockResolvedValue(null);
     mockLongTermService.getActiveBookings.mockResolvedValue([]);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
     mockSpongeService.getWorkOrderById.mockResolvedValue(null);
@@ -139,13 +97,13 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: {
         profile: {
           name: {
             value: '张三',
             confidence: 'high',
-            source: 'booking',
+            source: 'system',
             evidence: '测试写入',
             updatedAt: '2026-05-22T10:00:00.000Z',
           },
@@ -211,7 +169,6 @@ describe('PreparationService', () => {
   });
 
   const mockActiveBooking = (booking: Record<string, unknown> | null) => {
-    mockLongTermService.getActiveBooking.mockResolvedValue(booking);
     mockLongTermService.getActiveBookings.mockResolvedValue(booking ? [booking] : []);
   };
 
@@ -246,7 +203,7 @@ describe('PreparationService', () => {
             city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
           }),
         }),
-        highConfidenceFacts: null,
+        ruleFacts: null,
       }),
     );
     // 阶段直接取程序性记忆 currentStage（recruitment_cases 已废弃，不再由 case 推导）
@@ -261,25 +218,96 @@ describe('PreparationService', () => {
     expect(result.normalizedMessages).toEqual([{ role: 'user', content: '短期里的当前消息' }]);
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.currentStage).toBe('job_consultation');
-    expect(toolContext.availableStages).toEqual(['trust_building', 'job_consultation']);
-    expect(toolContext.stageGoals).toEqual({
+    expect(toolContext.archive.currentStage).toBe('job_consultation');
+    expect(toolContext.archive.availableStages).toEqual(['trust_building', 'job_consultation']);
+    expect(toolContext.archive.stageGoals).toEqual({
       trust_building: { stage: 'trust_building' },
       job_consultation: { stage: 'job_consultation' },
     });
-    await toolContext.onJobsFetched?.([
+    await toolContext.ledger.recordFetchedJobs?.([
       {
         jobId: 1,
         brandName: '奥乐齐',
         jobName: '分拣打包',
         storeName: '长白',
+        cityName: null,
+        regionName: null,
+        laborForm: null,
+        salaryDesc: null,
+        jobCategoryName: null,
       },
     ]);
 
-    expect(result.turnState.candidatePool).toEqual([
+    expect(result.ledger.jobs.fetchedJobs).toEqual([
       expect.objectContaining({ jobId: 1, storeName: '长白' }),
     ]);
   });
+
+  it.each([
+    {
+      confidence: 'low',
+      source: 'system',
+      genderSource: {
+        value: 'system',
+        confidence: 'low',
+        source: 'system',
+        evidence: '企微客户详情',
+      },
+      reason: 'system_source',
+    },
+    {
+      confidence: 'medium',
+      source: 'model',
+      genderSource: null,
+      reason: 'medium_confidence',
+    },
+  ] as const)(
+    'projects $reason gender into confirmation hints without admitting it to trusted session facts',
+    async ({ confidence, source, genderSource, reason }) => {
+      mockMemoryService.onTurnStart.mockResolvedValueOnce({
+        shortTerm: { messageWindow: [{ role: 'user', content: '我想报名' }] },
+        sessionMemory: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: {
+              ...FALLBACK_EXTRACTION.interview_info,
+              gender: { value: '男', confidence, source, evidence: '弱来源性别' },
+              gender_source: genderSource,
+            },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+        ruleFacts: null,
+        longTerm: { profile: null },
+        procedural: {
+          currentStage: 'job_consultation',
+          fromStage: null,
+          advancedAt: null,
+          reason: null,
+        },
+      });
+
+      await service.prepare(
+        {
+          callerKind: CallerKind.WECOM,
+          messages: [{ role: 'user', content: '我想报名' }],
+          userId: 'user-1',
+          corpId: 'corp-1',
+          sessionId: 'sess-1',
+          strategySource: 'testing',
+        },
+        'invoke',
+      );
+
+      const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+      expect(toolContext.archive.candidatePrefillHints).toEqual({
+        gender: { value: '男', reason },
+      });
+      expect(toolContext.archive.sessionFacts?.interview_info?.gender).toBeNull();
+    },
+  );
 
   it('threads hosting-member account identity into compose (badcase 6a5dedb2)', async () => {
     mockHostingMemberConfig.resolveAgentAccountIdentity.mockResolvedValueOnce({
@@ -358,7 +386,9 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('[企微名称备注｜运营给本会话指定的目标品牌/门店]');
     expect(mockToolRegistry.buildForScenario).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ contactBrandAliases: [] }),
+      expect.objectContaining({
+        turnInput: expect.objectContaining({ contactBrandAliases: [] }),
+      }),
     );
   });
 
@@ -380,7 +410,9 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('不得从原始昵称中猜测其它品牌');
     expect(mockToolRegistry.buildForScenario).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ contactBrandAliases: ['肯德基'] }),
+      expect.objectContaining({
+        turnInput: expect.objectContaining({ contactBrandAliases: ['肯德基'] }),
+      }),
     );
   });
 
@@ -462,123 +494,6 @@ describe('PreparationService', () => {
     );
 
     expect(Object.keys(result.tools)).toEqual(['save_image_description']);
-  });
-
-  it('omits the HC-1 revise notice for a normal turn', async () => {
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '你好' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-      },
-      'invoke',
-    );
-
-    expect(result.finalPrompt).not.toContain('回复重写要求（HC-1）');
-  });
-
-  it('injects committedSideEffects + reviseFeedback into finalPrompt (HC-1)', async () => {
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '帮我约面试' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-        toolMode: 'none',
-        committedSideEffects: '已为候选人预约奥乐齐长白门店面试',
-        reviseFeedback: [
-          {
-            type: 'unsupported_commitment',
-            evidence: '回复声称"名额已留"，但本轮无对应工具结果',
-            suggestion: '只确认已提交预约，不要承诺保留名额',
-          },
-        ],
-      },
-      'invoke',
-    );
-
-    expect(result.finalPrompt).toContain('回复重写要求（HC-1）');
-    expect(result.finalPrompt).toContain('已为候选人预约奥乐齐长白门店面试');
-    expect(result.finalPrompt).toContain('[unsupported_commitment]');
-    expect(result.finalPrompt).toContain('只确认已提交预约');
-    expect(result.finalPrompt).toContain(
-      '不要输出任何工具名、函数调用、JSON、方括号指令或 XML 标签',
-    );
-  });
-
-  it('appends the HC-1 rewrite directive as a trailing user message (badcase batch_6a4790c7)', async () => {
-    // 只拼在超长 system 末尾时弱模型会无视重写指令、把 repair 回合当新对话重跑任务，
-    // 最终投递悬空的"我帮你查下"。指令必须同时出现在对话末尾（注意力最强位置）。
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '花桥中骏有岗位吗' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-        toolMode: 'none',
-        guardrailRepair: {
-          originalReply: '花桥附近暂时没合适的岗位哈，我拉你对应的餐饮兼职群',
-          ruleIds: ['group_promise_without_invite'],
-        },
-        reviseFeedback: [
-          {
-            type: 'group_promise_without_invite',
-            evidence: '承诺拉群但本轮未成功调 invite_to_group',
-            suggestion: '删除拉群承诺，按业务事实重写',
-            repairMode: 'rewrite',
-          },
-        ],
-      },
-      'invoke',
-    );
-
-    const last = result.normalizedMessages[result.normalizedMessages.length - 1];
-    expect(last.role).toBe('user');
-    const content = last.content as string;
-    expect(content).toContain('系统重写指令');
-    expect(content).toContain('花桥附近暂时没合适的岗位哈，我拉你对应的餐饮兼职群');
-    expect(content).toContain('[group_promise_without_invite]');
-    expect(content).toContain('严禁调用任何工具');
-    // rewrite 模式明确禁止悬空承接句
-    expect(content).toContain('只承接不给结果');
-  });
-
-  it('replan directive names the exact repair tool allowlist', async () => {
-    const result = await service.prepare(
-      {
-        callerKind: CallerKind.WECOM,
-        messages: [{ role: 'user', content: '附近有岗吗' }],
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-        toolMode: 'scenario',
-        allowedToolNames: ['geocode', 'duliday_job_list'],
-        reviseFeedback: [
-          {
-            type: 'hallucinated_fact',
-            evidence: '距离数字无工具依据',
-            suggestion: '重新查岗后按工具结果重写',
-            repairMode: 'replan',
-          },
-        ],
-      },
-      'invoke',
-    );
-
-    const last = result.normalizedMessages[result.normalizedMessages.length - 1];
-    expect(last.role).toBe('user');
-    const content = last.content as string;
-    // 2026-07-21 守卫审计：措辞由"只允许调用"改为"必须先调用"——replan 判据是缺事实
-    // 而非缺措辞，不重新取数则二审必然复燃（生产：二审通过组 96% 调了工具，失败组 51%）。
-    expect(content).toContain('本次修复必须先调用以下工具');
-    expect(content).toContain('geocode、duliday_job_list');
-    expect(content).not.toContain('严禁调用任何工具');
-    // 本案证据（jobId/字段等线索）必须与静态 suggestion 一起出现在这条注意力最强的指令里。
-    expect(content).toContain('问题：距离数字无工具依据');
   });
 
   it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
@@ -757,13 +672,13 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: {
         profile: {
           name: {
             value: '张三',
             confidence: 'high',
-            source: 'booking',
+            source: 'system',
             evidence: '测试写入',
             updatedAt: '2026-05-22T10:00:00.000Z',
           },
@@ -799,8 +714,9 @@ describe('PreparationService', () => {
   });
 
   it('hides non-summer historical jobs when the current intent is summer work', async () => {
-    const highConfidenceFacts = emptyHighConfidenceFacts();
-    highConfidenceFacts.preferences.labor_form = highConfidence('暑假工', '用工形式识别：暑假工');
+    const ruleFacts = testRuleFacts(
+      testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+    );
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我只找暑期工' }] },
       sessionMemory: {
@@ -844,7 +760,7 @@ describe('PreparationService', () => {
           laborForm: '全职',
         },
       },
-      highConfidenceFacts,
+      ruleFacts,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -907,7 +823,7 @@ describe('PreparationService', () => {
           partTimeJobType: '暑假工',
         },
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -933,11 +849,11 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('旧暑假工品牌');
     expect(result.finalPrompt).not.toContain('旧暑假工焦点品牌');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.currentLaborFormIntent).toEqual({
+    expect(toolContext.turnInput.currentLaborFormIntent).toEqual({
       kind: 'clear',
       clearedValues: ['暑假工'],
     });
-    expect(toolContext.sessionFacts.preferences.labor_form).toBeNull();
+    expect(toolContext.archive.sessionFacts.preferences.labor_form).toBeNull();
   });
 
   it('renders invitedGroups in session memory to prevent duplicate invite (badcase 3g1ruov9 / 6vzw8oh3)', async () => {
@@ -957,7 +873,7 @@ describe('PreparationService', () => {
           },
         ],
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -1023,7 +939,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'job_consultation',
@@ -1078,7 +994,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1142,7 +1058,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我是来米' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1198,7 +1114,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '在吗' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1240,7 +1156,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1302,7 +1218,7 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain('面试形式: 线下面试');
     expect(result.finalPrompt).toContain('只有明确为线下/到店/现场面试才允许');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.activeBookingJobIds).toEqual([39688]);
+    expect(toolContext.archive.activeBookingJobIds).toEqual([39688]);
   });
 
   it('线上面试只注入面试形式，不注入残留的面试地址', async () => {
@@ -1350,7 +1266,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我想改面试时间' }] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: {
         currentStage: 'onboard_followup',
@@ -1393,7 +1309,7 @@ describe('PreparationService', () => {
     // 88001 属瞬时查询失败：正常渲染 88002 的同时注入同步中提示，双轨并存
     expect(result.finalPrompt).toContain('预约信息同步中');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.isRecalledJobId?.(527350)).toBe(true);
+    expect(toolContext.archive.isRecalledJobId?.(527350)).toBe(true);
   });
 
   it('改约场景：进行中工单的 jobId 并入 provenance 集，isRecalledJobId 放行', async () => {
@@ -1403,7 +1319,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1434,8 +1350,8 @@ describe('PreparationService', () => {
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     // 工单 jobId 放行；其它凭空编的 jobId 仍被拦
-    expect(toolContext.isRecalledJobId?.(527349)).toBe(true);
-    expect(toolContext.isRecalledJobId?.(999999)).toBe(false);
+    expect(toolContext.archive.isRecalledJobId?.(527349)).toBe(true);
+    expect(toolContext.archive.isRecalledJobId?.(999999)).toBe(false);
   });
 
   it('改约场景：工单展示字段全缺(block 为空)时不把 jobId 当 provenance', async () => {
@@ -1444,7 +1360,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1471,7 +1387,7 @@ describe('PreparationService', () => {
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     // block 为空 → 模型看不到该 jobId → 不放行
-    expect(toolContext.isRecalledJobId?.(527350)).toBe(false);
+    expect(toolContext.archive.isRecalledJobId?.(527350)).toBe(false);
   });
 
   it('改约场景：海绵把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
@@ -1480,7 +1396,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1508,7 +1424,7 @@ describe('PreparationService', () => {
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     // 模型 precheck 传 number 527351，provenance 归一后应匹配放行
-    expect(toolContext.isRecalledJobId?.(527351)).toBe(true);
+    expect(toolContext.archive.isRecalledJobId?.(527351)).toBe(true);
   });
 
   it('预约相关回合直查海绵瞬时失败时注入同步中提示且不回退本地快照', async () => {
@@ -1545,7 +1461,7 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('旧门店');
     expect(result.finalPrompt).not.toContain('2026-04-16');
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.isRecalledJobId?.(527352)).toBe(false);
+    expect(toolContext.archive.isRecalledJobId?.(527352)).toBe(false);
   });
 
   it('预约相关回合海绵明确查不到工单（指针失效）时静默跳过，不注入同步中提示', async () => {
@@ -1668,7 +1584,7 @@ describe('PreparationService', () => {
         messageWindow: [],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1705,7 +1621,7 @@ describe('PreparationService', () => {
         messageWindow: [],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1738,7 +1654,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1786,15 +1702,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      highConfidenceFacts: {
-        ...emptyHighConfidenceFacts(),
-        preferences: {
-          ...emptyHighConfidenceFacts().preferences,
-          brands: highConfidence(['来伊份'], '品牌别名识别：来伊份'),
-          city: highConfidence('北京', 'explicit_city'),
-        },
-        reasoning: '品牌别名识别，城市识别',
-      },
+      ruleFacts: testRuleFacts(testRuleFact('preferences.city', '北京', 'explicit_city')),
       longTerm: { profile: null },
       procedural: {
         currentStage: 'trust_building',
@@ -1821,17 +1729,16 @@ describe('PreparationService', () => {
       confidence: 'high',
       evidence: 'explicit_city',
     });
-    expect(composeArgs.highConfidenceFacts.preferences.city).toEqual({
-      value: '北京',
-      confidence: 'high',
-      source: 'rule',
-      evidence: 'explicit_city',
-    });
-    expect(composeArgs.highConfidenceFacts.preferences.brands).toEqual(
-      expect.objectContaining({ value: ['来伊份'], source: 'rule' }),
+    expect(getRuleFact(composeArgs.ruleFacts, 'preferences.city')).toEqual(
+      expect.objectContaining({
+        value: '北京',
+        confidence: 'high',
+        producer: 'rule',
+        evidence: expect.objectContaining({ label: 'explicit_city' }),
+      }),
     );
     // memoryBlock 不再包含本轮线索，交由 TurnHintsSection 渲染。
-    expect(composeArgs.memoryBlock).not.toContain('[本轮高置信线索]');
+    expect(composeArgs.memoryBlock).not.toContain('[本轮解析线索]');
     expect(composeArgs.memoryBlock).not.toContain('[本轮待确认线索]');
   });
 
@@ -1927,7 +1834,7 @@ describe('PreparationService', () => {
         messageWindow: [{ role: 'user', content: '帮我看看这张图' }],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1968,7 +1875,7 @@ describe('PreparationService', () => {
         ],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -2009,7 +1916,7 @@ describe('PreparationService', () => {
       },
       _warnings: ['shortTerm: Connection timeout'],
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -2126,7 +2033,7 @@ describe('PreparationService', () => {
         ],
       },
       sessionMemory: null,
-      highConfidenceFacts: null,
+      ruleFacts: null,
       longTerm: { profile: null },
       procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -2151,11 +2058,122 @@ describe('PreparationService', () => {
       content: expect.stringContaining('真人招募经理手动发送'),
     });
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
-    expect(toolContext.geocodeLocationAnchor).toMatchObject({
+    expect(toolContext.turnInput.geocodeLocationAnchor).toMatchObject({
       city: '上海',
       districts: ['嘉定'],
       source: 'human_agent',
       referenceText: '上海嘉定同济园是吧，我看下',
+    });
+  });
+
+  it('定位分享只逆解析一次，并把同一结果同时挂到轮内锚点与轮末城市确权', async () => {
+    const geocoding = {
+      reverseGeocode: jest.fn().mockResolvedValue({
+        province: '上海市',
+        city: '上海市',
+        district: '徐汇区',
+        formattedAddress: '上海市徐汇区田林路',
+      }),
+    };
+    service = new PreparationService(
+      mockToolRegistry as never,
+      mockMemoryService as never,
+      mockMemoryConfig as never,
+      mockContext as never,
+      mockInputGuard as never,
+      mockLongTermService as never,
+      mockSpongeService as never,
+      mockGroupResolver as never,
+      mockGroupMembership as never,
+      mockBrandStateService as never,
+      mockHostingMemberConfig as never,
+      undefined,
+      geocoding as never,
+    );
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '[位置分享] 田林路 [经纬度:31.2,121.4]' }],
+        userId: 'user-location-share',
+        corpId: 'corp-1',
+        sessionId: 'sess-location-share',
+      },
+      'invoke',
+    );
+
+    expect(geocoding.reverseGeocode).toHaveBeenCalledTimes(1);
+    expect(geocoding.reverseGeocode).toHaveBeenCalledWith(121.4, 31.2);
+    expect(result.ledger.geo.cityAttestation).toMatchObject({
+      city: '上海市',
+      district: '徐汇区',
+      source: 'location_share',
+    });
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls.at(-1)!;
+    expect(toolContext.ledger.geo.anchors).toContainEqual(
+      expect.objectContaining({ city: '上海市', longitude: 121.4, latitude: 31.2 }),
+    );
+  });
+
+  // 议题 6-1：combined 规则的近邻窗口必须取 normalizedMessages（含短期记忆窗口）。
+  // WECOM 生产路径 params.messages 只有一条当前消息，此前 combined ≡ current，
+  // 4 条依赖历史的规则在生产全数漏过；test-suite/debug 传完整历史时反而按设计工作。
+  describe('critical-turn-guard 的 combined 近邻窗口（议题 6-1）', () => {
+    const withShortTermWindow = (window: { role: string; content: string }[]) => {
+      mockMemoryService.onTurnStart.mockResolvedValue({
+        shortTerm: { messageWindow: window },
+        sessionMemory: null,
+        ruleFacts: null,
+        longTerm: { profile: null },
+        procedural: {
+          currentStage: 'job_consultation',
+          fromStage: null,
+          advancedAt: null,
+          reason: null,
+        },
+      });
+    };
+
+    it('triggers post_interview_no_rebook from short-term history on the WECOM single-message path', async () => {
+      withShortTermWindow([
+        { role: 'assistant', content: '恭喜你面试通过了，门店那边会联系你安排入职' },
+        { role: 'user', content: '再帮我约一次' },
+      ]);
+
+      const result = await service.prepare(
+        {
+          callerKind: CallerKind.WECOM,
+          // 生产形态：runner 只构造当前这一条 user 消息，历史全在 memory 层
+          messages: [{ role: 'user', content: '再帮我约一次' }],
+          userId: 'user-guard-1',
+          corpId: 'corp-1',
+          sessionId: 'sess-guard-1',
+        },
+        'invoke',
+      );
+
+      expect(result.finalPrompt).toContain('本轮动态硬禁令');
+      expect(result.finalPrompt).toContain('近邻上下文显示候选人已在面试/入职');
+    });
+
+    it('does not trigger it when the short-term history carries no such state', async () => {
+      withShortTermWindow([
+        { role: 'assistant', content: '你好，想找哪一类岗位？' },
+        { role: 'user', content: '再帮我约一次' },
+      ]);
+
+      const result = await service.prepare(
+        {
+          callerKind: CallerKind.WECOM,
+          messages: [{ role: 'user', content: '再帮我约一次' }],
+          userId: 'user-guard-2',
+          corpId: 'corp-1',
+          sessionId: 'sess-guard-2',
+        },
+        'invoke',
+      );
+
+      expect(result.finalPrompt).not.toContain('近邻上下文显示候选人已在面试/入职');
     });
   });
 });

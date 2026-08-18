@@ -1,3 +1,5 @@
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, isAxiosError } from 'axios';
@@ -73,7 +75,7 @@ export class FeishuWebhookService {
       } catch (error) {
         lastError = error;
         const retryable = error instanceof FeishuSendError ? error.retryable : false;
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         const canRetry = retryable && attempt < this.MAX_SEND_ATTEMPTS;
 
         if (canRetry) {
@@ -90,8 +92,11 @@ export class FeishuWebhookService {
       }
     }
 
-    const message = lastError instanceof Error ? lastError.message : String(lastError);
-    const stack = lastError instanceof Error ? lastError.stack : undefined;
+    const message = toErrorMessage(lastError);
+    let stack: string | undefined;
+    if (lastError instanceof Error) {
+      stack = lastError.stack;
+    }
     this.logger.error(
       `飞书消息发送最终失败 [${channel}]（已尝试 ${this.MAX_SEND_ATTEMPTS} 次）: ${message}`,
       stack,
@@ -141,7 +146,7 @@ export class FeishuWebhookService {
           retryable,
         );
       }
-      throw new FeishuSendError(error instanceof Error ? error.message : String(error), false);
+      throw new FeishuSendError(toErrorMessage(error), false);
     }
   }
 
@@ -159,10 +164,12 @@ export class FeishuWebhookService {
       const card = this.buildFailureAlertCard(failedChannel, reason);
       await this.sendMessageOrThrow('ALERT', card);
     } catch (error) {
-      this.logger.error(
-        `飞书发送失败告警补发也失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`飞书发送失败告警补发也失败: ${toErrorMessage(error)}`);
     }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return sleep(ms);
   }
 
   private buildFailureAlertCard(
@@ -190,10 +197,6 @@ export class FeishuWebhookService {
         elements: [{ tag: 'markdown', content }],
       },
     };
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

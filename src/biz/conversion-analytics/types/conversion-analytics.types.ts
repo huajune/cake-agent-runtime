@@ -12,7 +12,6 @@ export type ConversionMetricMode = 'period' | 'cohort';
 export interface ConversionFilter {
   range: ConversionRange;
   groups: string[];
-  channels: string[];
   corpId?: string;
   /** cohort 最少成熟天数；period 口径忽略。 */
   maturityDays?: number;

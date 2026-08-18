@@ -4,7 +4,7 @@ import {
   TEMPLATE_CORE_FIELDS,
   formatTemplateFieldLabel,
 } from '@/tools/duliday/precheck/checklist.util';
-import { CANDIDATE_CLAIM_FIELDS } from '@/memory/facts/candidate/candidate-fact-claim.types';
+import { CANDIDATE_CLAIM_FIELDS } from '@resolution/evidence/claim.types';
 import { STRATEGY_CONFIG_STATUSES } from '@/biz/strategy/entities/strategy-config.entity';
 import { HUAJUNE_SOURCE_PLATFORMS } from '@/biz/huajune/huajune.types';
 

@@ -1,7 +1,8 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
-import { extractPresentedJobs } from '@memory/services/session-job-matching';
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import { extractPresentedJobs } from '@resolution/job';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 import { SessionService } from '@memory/services/session.service';
 import {
   FollowUpSchedulerService,
@@ -28,7 +29,7 @@ interface AnchorAgentResult {
   outcome?: { kind: string };
 }
 
-type ReengagementState = AuthoritativeSessionState & { interviewAt?: number };
+type ReengagementState = ReengagementSessionState & { interviewAt?: number };
 
 @Injectable()
 export class ReengagementAnchorService {
@@ -230,10 +231,10 @@ export class ReengagementAnchorService {
 
   private async loadState(context: AnchorContext): Promise<ReengagementState> {
     const session = this.session as SessionService & {
-      getAuthoritativeState?: SessionService['getAuthoritativeState'];
+      getReengagementState?: SessionService['getReengagementState'];
     };
-    if (typeof session.getAuthoritativeState === 'function') {
-      return (await session.getAuthoritativeState(
+    if (typeof session.getReengagementState === 'function') {
+      return (await session.getReengagementState(
         context.corpId,
         context.userId,
         context.chatId,
@@ -369,7 +370,7 @@ export class ReengagementAnchorService {
 
   private extractPresentedStores(
     calls: AgentToolCall[],
-  ): AuthoritativeSessionState['presentedStores'] {
+  ): ReengagementSessionState['presentedStores'] {
     const jobIds = new Set<number>();
     for (const call of calls) {
       this.collectJobIds(call.result, jobIds);
@@ -427,9 +428,9 @@ export class ReengagementAnchorService {
 
   private logFailure(action: string, context: AnchorContext, error: unknown): void {
     this.logger.warn(
-      `[reengagement] ${action} failed: chatId=${context.chatId}, traceId=${context.traceId}, error=${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[reengagement] ${action} failed: chatId=${context.chatId}, traceId=${context.traceId}, error=${toErrorMessage(
+        error,
+      )}`,
     );
   }
 }

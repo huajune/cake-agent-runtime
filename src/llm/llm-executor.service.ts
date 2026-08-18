@@ -1,3 +1,5 @@
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Output, generateText, streamText } from 'ai';
 import { RegistryService } from '@providers/registry.service';
@@ -45,9 +47,12 @@ export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0],
   onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
 }
 
-type StructuredGenerateResult<TSchema extends z.ZodTypeAny> = Awaited<
-  ReturnType<typeof generateText>
-> & {
+export type LlmGenerateResult = Awaited<ReturnType<typeof generateText>> & {
+  /** 经重试/降级后真正成功返回结果的模型，而非调用方请求的首选模型。 */
+  modelId: string;
+};
+
+type StructuredGenerateResult<TSchema extends z.ZodTypeAny> = LlmGenerateResult & {
   output: z.infer<TSchema>;
 };
 
@@ -77,7 +82,7 @@ export class LlmExecutorService {
     private readonly roleModelOverrides?: RoleModelOverridesProvider,
   ) {}
 
-  async generate(options: LlmGenerateOptions): Promise<Awaited<ReturnType<typeof generateText>>> {
+  async generate(options: LlmGenerateOptions): Promise<LlmGenerateResult> {
     const { config, onPreparedRequest, thinking, validateResult, ...routeOptions } = options;
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
     const attempts: string[] = [];
@@ -115,11 +120,12 @@ export class LlmExecutorService {
           } as Parameters<typeof generateText>[0]);
           this.assertUsableChatResult(result, plan.role);
           validateResult?.(result);
-          return result;
+          // 结果对象由 AI SDK 创建；附加路由层实际 modelId，供业务观测区分首选与 fallback。
+          return Object.assign(result, { modelId });
         } catch (err) {
           lastRawError = err;
           const category = this.reliable.classifyError(err);
-          const message = err instanceof Error ? err.message : String(err);
+          const message = toErrorMessage(err);
           attempts.push(
             `${modelId} attempt ${attempt}/${retryConfig.maxRetries}: ${category}; ${message}`,
           );
@@ -132,7 +138,7 @@ export class LlmExecutorService {
           this.logger.warn(
             `${modelId} 重试 ${attempt}/${retryConfig.maxRetries}, 等待 ${backoff}ms`,
           );
-          await this.sleep(backoff);
+          await sleep(backoff);
         }
       }
     }
@@ -195,7 +201,12 @@ export class LlmExecutorService {
           model: this.registry.resolve(modelId),
         } as Parameters<typeof streamText>[0]);
       } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
+        let err: Error;
+        if (error instanceof Error) {
+          err = error;
+        } else {
+          err = new Error(String(error));
+        }
         lastError = err;
         this.logger.warn(`流式初始化失败，尝试下一个模型: ${modelId}; ${err.message}`);
       }
@@ -549,10 +560,6 @@ export class LlmExecutorService {
     };
     error.apiKey = this.getApiKey(lastRawError);
     return error;
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private getExistingAgentMeta(error: unknown): AgentError['agentMeta'] | undefined {

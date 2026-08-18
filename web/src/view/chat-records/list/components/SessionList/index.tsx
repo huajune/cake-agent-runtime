@@ -1,4 +1,5 @@
 import type { ChatSession } from '@/hooks/chat/useChatSessions';
+import { formatLocaleDateTime } from '@/utils/format';
 import styles from './index.module.scss';
 
 // 客户类型标签映射
@@ -11,8 +12,7 @@ const CONTACT_TYPE_LABELS: Record<string, { label: string; className: string }> 
 
 // 格式化时间戳
 function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return date.toLocaleString('zh-CN', {
+  return formatLocaleDateTime(timestamp, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -82,12 +82,27 @@ export default function SessionList({
         ) : filteredSessions.length === 0 ? (
           <div className={styles.stateContainer}>
             <div className={styles.emptyIconWrapper}>
-              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" className={styles.emptyIcon}>
+              <svg
+                width="64"
+                height="64"
+                viewBox="0 0 64 64"
+                fill="none"
+                className={styles.emptyIcon}
+              >
                 <circle cx="32" cy="32" r="31" stroke="#E6EFF5" strokeWidth="2" fill="none" />
-                <path d="M16 26C16 23.7909 17.7909 22 20 22H44C46.2091 22 48 23.7909 48 26V42C48 44.2091 46.2091 46 44 46H20C17.7909 46 16 44.2091 16 42V26Z" fill="white" stroke="#A3AED0" strokeWidth="2" />
+                <path
+                  d="M16 26C16 23.7909 17.7909 22 20 22H44C46.2091 22 48 23.7909 48 26V42C48 44.2091 46.2091 46 44 46H20C17.7909 46 16 44.2091 16 42V26Z"
+                  fill="white"
+                  stroke="#A3AED0"
+                  strokeWidth="2"
+                />
                 <path d="M32 36L16 26" stroke="#D8E3F0" strokeWidth="2" strokeLinecap="round" />
                 <path d="M32 36L48 26" stroke="#D8E3F0" strokeWidth="2" strokeLinecap="round" />
-                <path d="M42 22V18C42 16.8954 41.1046 16 40 16H36C34.8954 16 34 16.8954 34 18V22" stroke="#A3AED0" strokeWidth="2" />
+                <path
+                  d="M42 22V18C42 16.8954 41.1046 16 40 16H36C34.8954 16 34 16.8954 34 18V22"
+                  stroke="#A3AED0"
+                  strokeWidth="2"
+                />
                 <circle cx="44" cy="22" r="3" fill="#FF7596" />
               </svg>
             </div>
@@ -135,9 +150,7 @@ export default function SessionList({
                         {session.candidateName || '未知候选人'}
                       </span>
                       {contactTypeInfo.label && (
-                        <span
-                          className={`contact-type-badge ${contactTypeInfo.className}`}
-                        >
+                        <span className={`contact-type-badge ${contactTypeInfo.className}`}>
                           {contactTypeInfo.label}
                         </span>
                       )}

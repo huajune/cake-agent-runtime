@@ -95,10 +95,10 @@ export const TOOL_GUARDRAIL_CATALOG = [
     priority: GUARDRAIL_PRIORITY.P0,
     description: '姓名必须来自候选人明确自报或表单，不能把打招呼里的称呼、备注名当真名。',
     riskGoal: '候选人姓名必须来自高置信自陈或表单，不用打招呼昵称顶替。',
-    source: 'tools/shared/precheck-core.ts（evaluateBookingNameGate）',
+    source: 'resolution/evidence/identity-gates.ts（evaluateBookingNameGate）',
     exogenousSignal: '候选人原文 user_text 出处（"我是X"打招呼昵称负向证据）',
     residualRisk: '多轮姓名指代仍依赖记忆抽取质量。',
-    verification: 'tests/tools/shared/precheck-core.spec.ts',
+    verification: 'tests/resolution/evidence/identity-gates.spec.ts',
     owner: 'tools-runtime',
     status: 'active',
   },
@@ -132,7 +132,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
       '工具描述里的三条前置条件与禁止项只靠提示词约束，模型不遵循时会重复骚扰候选人、在查岗结论前突兀拉群、或在成单临门时打断（badcase 63eefu6c 同会话连犯两条）。',
     source: 'tools/shared/invite-timing-gate.ts + tools/invite-to-group.tool.ts',
     exogenousSignal:
-      '会话记忆 invitedGroups（已拉群事实）+ 本轮 duliday_job_list 执行标记（jobListExecutedThisTurn 回合内直写）+ 候选人本轮原话',
+      '会话记忆 invitedGroups（已拉群事实）+ 回合账本 jobListExecuted 标记 + 候选人本轮原话',
     residualRisk:
       '推进信号靠词表识别，口语变体（"那我明天过去吧"）仍会漏；候选人换城市时按放行处理，不拦跨城重复拉群。',
     verification: 'tests/tools/shared/invite-timing-gate.spec.ts',

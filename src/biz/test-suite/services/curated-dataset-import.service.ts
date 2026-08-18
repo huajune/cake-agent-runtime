@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   BitableField,
@@ -296,8 +297,11 @@ export class CuratedDatasetImportService {
     error: unknown,
     recordId?: string,
   ): CuratedDatasetImportFailure {
-    const message = error instanceof Error ? error.message : String(error);
-    const trace = error instanceof Error ? error.stack : undefined;
+    const message = toErrorMessage(error);
+    let trace: string | undefined;
+    if (error instanceof Error) {
+      trace = error.stack;
+    }
     this.logger.error(
       `策展数据导入失败: identifier=${identifier}, stage=${stage}, ${message}`,
       trace,

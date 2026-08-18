@@ -825,243 +825,6 @@ describe('HardRulesService', () => {
 
   // 2026-07-27 复测双证（RT-009/RT-010，badcase psx3d3f4/831tvtl0）：本轮查询全查无时
   // 形态一 truth=null 放行，模型用通识断言"都是月结"/"日结当天发"纯编造。
-  describe('settlement no-evidence assertion (形态二)', () => {
-    const failedJobListCall = {
-      toolName: 'duliday_job_list',
-      args: { jobIdList: [5025072856] },
-      status: 'ok' as const,
-      result: {
-        success: false,
-        _outcome: '未找到符合条件的岗位',
-        errorType: 'job_list.no_results',
-      },
-    };
-    const erroredJobListCall = {
-      toolName: 'duliday_job_list',
-      args: { cityNameList: ['常州'] },
-      status: 'error' as const,
-      result: null,
-    };
-
-    it('fires when all job_list calls returned no data but reply asserts monthly (RT-009 shape)', () => {
-      const result = service.check({
-        replyText: '这两家肯德基都是月结，每月发薪。',
-        toolCalls: [failedJobListCall, erroredJobListCall],
-        userMessage: '日结月结',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    it('fires on fabricated daily-pay claim after fruitless queries (RT-010 shape)', () => {
-      const result = service.check({
-        replyText: '两家都是日结，当天发薪。你看哪个方便？',
-        toolCalls: [failedJobListCall],
-        userMessage: '日结工有吗',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    it('user question wording does not count as provenance', () => {
-      const result = service.check({
-        replyText: '都是月结的。',
-        toolCalls: [failedJobListCall],
-        userMessage: '好的',
-        recentMessages: [{ role: 'user', content: '日结月结？' }],
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    it('exempts cycles already presented in assistant history cards', () => {
-      const result = service.check({
-        replyText: '这家是周结的，每周三发薪。',
-        toolCalls: [failedJobListCall],
-        userMessage: '周结吗',
-        recentMessages: [
-          { role: 'assistant', content: '薪资：14.8 元/时起，周结每周三发\n要求：18-45 岁' },
-        ],
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    it('does not fire on honest no-result replies or negated mentions', () => {
-      const result = service.check({
-        replyText: '附近暂时没有日结的岗位，目前暂时没查到匹配的在招岗位。',
-        toolCalls: [failedJobListCall],
-        userMessage: '日结工有吗',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    // 2026-08-04 审计假阳 …_1785472764565 / …_1785487619837："关于日结的问题"是话题
-    // 指代不是断言，整段本已明说"结算方式没法确认"，却被拦并 rewrite 成"好的，那你先忙"。
-    it('topic reference "关于日结的问题" is not an assertion (audit …_1785472764565)', () => {
-      const result = service.check({
-        replyText:
-          '关于日结的问题，我刚才仔细查了下附近 10 公里内的岗位，目前这边确实还没有新的岗位上来，所以结算方式暂时也没法确认。\n\n有合适的我会主动联系你。',
-        toolCalls: [failedJobListCall, erroredJobListCall],
-        userMessage: '好',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    // 话题指代只剥指代片段不豁免整句：同句后半的真断言仍要捕获。
-    it('topic reference followed by a real assertion still fires', () => {
-      const result = service.check({
-        replyText: '关于日结的问题，这家就是日结的。',
-        toolCalls: [failedJobListCall],
-        userMessage: '好',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    // 2026-08-04 审计假阳 …_1785400091574：「日结」与「没找到」同子句内隔 8 字，
-    // 旧后缀否定窗口(4)跨不过去，把候选人的诉求词判成断言。
-    it('same-clause suffix negation beyond 4 chars is exempt (audit …_1785400091574)', () => {
-      const result = service.check({
-        replyText:
-          '肯德基的日结兼职在你附近暂时没找到在招的，我先帮你留意着\n\n你已经在餐饮兼职群里了，后续有肯德基或其他合适的日结岗位上线，我会在群里第一时间通知你',
-        toolCalls: [failedJobListCall, erroredJobListCall],
-        userMessage: '嗷，现在没有啊',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    it('backfills the matched phrase into feedbackToGenerator', () => {
-      const result = service.check({
-        replyText: '这两家肯德基都是月结，每月发薪。',
-        toolCalls: [failedJobListCall],
-        userMessage: '日结月结',
-        chatId: 'chat-1',
-      });
-
-      const hit = result.contradictions.find(
-        (item) => item.ruleId === 'settlement_no_evidence_assertion',
-      );
-      expect(hit?.feedbackToGenerator).toContain('「月结」');
-      expect(hit?.feedbackToGenerator).toContain('逐字保留');
-    });
-
-    it('yields to 形态一 when any job_list call produced data', () => {
-      const result = service.check({
-        replyText: '这家是月结，15号发薪。',
-        toolCalls: [
-          failedJobListCall,
-          {
-            toolName: 'duliday_job_list',
-            args: { jobIdList: [1] },
-            status: 'ok' as const,
-            result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 月结算, 15号发薪' },
-          },
-        ],
-        userMessage: '是月结吗',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    it('stays silent when no job_list ran this turn (history-only chat)', () => {
-      const result = service.check({
-        replyText: '这家是月结哈。',
-        toolCalls: [],
-        userMessage: '月结吗',
-        chatId: 'chat-1',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'settlement_no_evidence_assertion',
-      );
-    });
-
-    describe('payday 子项（badcase recviaaF780Ag2：发薪时点臆答）', () => {
-      it.each([
-        '工资是每周三发薪的，放心。',
-        '这边做完当天发薪。',
-        '工资次日到账。',
-        '每月15号发工资。',
-      ])('fires on fabricated payday claim after fruitless queries: %s', (replyText) => {
-        const result = service.check({
-          replyText,
-          toolCalls: [failedJobListCall],
-          userMessage: '工资什么时候发',
-          chatId: 'chat-1',
-        });
-
-        expect(result.contradictions.map((item) => item.ruleId)).toContain(
-          'settlement_no_evidence_assertion',
-        );
-      });
-
-      it('exempts payday already presented in assistant history cards (宽口径出处)', () => {
-        const result = service.check({
-          replyText: '这家是每周三发薪的。',
-          toolCalls: [failedJobListCall],
-          userMessage: '几号发工资',
-          recentMessages: [
-            { role: 'assistant', content: '薪资：14.8 元/时起，周结每周三发\n要求：18-45 岁' },
-          ],
-          chatId: 'chat-1',
-        });
-
-        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-          'settlement_no_evidence_assertion',
-        );
-      });
-
-      it.each([
-        '发薪时间我这边还真不确定，帮你问下门店哈。',
-        '不是当天发薪，具体发薪时间以门店为准。',
-        '你想当天发薪的话，我帮你多留意下。',
-        '当天发你面试地址，别担心。',
-        '工资什么时候发我帮你确认下？',
-      ])('does NOT fire on negation/desire/non-payday wording: %s', (replyText) => {
-        const result = service.check({
-          replyText,
-          toolCalls: [failedJobListCall],
-          userMessage: '工资什么时候发',
-          chatId: 'chat-1',
-        });
-
-        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-          'settlement_no_evidence_assertion',
-        );
-      });
-    });
-  });
 
   describe('settlement cycle scope', () => {
     const hybridSettlementCall = {
@@ -1470,6 +1233,79 @@ describe('HardRulesService', () => {
       expect(result.hit).toBe(true);
       expect(result.contradictions.map((c) => c.ruleId)).toContain('discriminatory_screening_leak');
       expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('hardRuleOverrides runtime downgrade', () => {
+    const productionShapedReply =
+      '[引用 候选人：现在报名还来得及吗]\n名额放心，我帮你留着。\n[图片消息]\n[消息发送时间：2026-08-13 16:08:31]';
+
+    it('off drops the hit while retaining an override audit signal', () => {
+      const result = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: { quota_promise: 'off' },
+      });
+
+      expect(result.hit).toBe(false);
+      expect(result.contradictions).toEqual([]);
+      expect(result.overrideHits).toEqual([{ ruleId: 'quota_promise', mode: 'off' }]);
+    });
+
+    it('observe forces a veto rule into the sendable observe tier', () => {
+      const result = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: { quota_promise: 'observe' },
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'quota_promise',
+            action: GUARDRAIL_ACTION.OBSERVE,
+            currentReplySendable: true,
+          }),
+        ]),
+      );
+      expect(result.overrideHits).toEqual([{ ruleId: 'quota_promise', mode: 'observe' }]);
+    });
+
+    it('ignores and warns on an unknown ruleId without changing known rule behavior', () => {
+      const warn = jest.spyOn((service as any).logger, 'warn');
+
+      const result = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: { catalog_rule_that_does_not_exist: 'off' },
+      });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'quota_promise',
+            action: GUARDRAIL_ACTION.BLOCK,
+            currentReplySendable: false,
+          }),
+        ]),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '忽略未知 hardRuleOverrides ruleId: catalog_rule_that_does_not_exist',
+        ),
+      );
+    });
+
+    it('an absent override and an empty override preserve the exact existing result shape', () => {
+      const withoutConfig = service.check({ replyText: productionShapedReply, toolCalls: [] });
+      const withEmptyConfig = service.check({
+        replyText: productionShapedReply,
+        toolCalls: [],
+        hardRuleOverrides: {},
+      });
+
+      expect(withEmptyConfig).toEqual(withoutConfig);
+      expect(withoutConfig).not.toHaveProperty('overrideHits');
     });
   });
 
@@ -2285,7 +2121,7 @@ describe('HardRulesService', () => {
           recommendedJobIds: [520361],
           profileKeys: null,
           sessionFacts: {
-            'interview.is_student': { value: true, confidence: 'medium', source: 'llm' },
+            'interview.is_student': { value: true, confidence: 'medium', source: 'model' },
           },
         },
         silent: true,
@@ -2312,7 +2148,7 @@ describe('HardRulesService', () => {
           recommendedJobIds: null,
           profileKeys: null,
           sessionFacts: {
-            'interview.is_student': { value: true, confidence: 'medium', source: 'llm' },
+            'interview.is_student': { value: true, confidence: 'medium', source: 'model' },
           },
         },
         silent: true,
@@ -2730,159 +2566,6 @@ describe('HardRulesService', () => {
     });
   });
 
-  describe('screening_rejection_override (badcase weurg1xg chat 6a6c688b 户籍拒绝被翻案)', () => {
-    const householdRejectedPrecheck = [
-      {
-        toolName: 'duliday_interview_precheck',
-        args: { jobId: 528682 },
-        result: {
-          success: true,
-          nextAction: 'household_rejected',
-          job: {
-            jobId: 528682,
-            jobName: '果蔬好-天津乐提港店-收银员-小时工',
-            brandName: '果蔬好',
-            storeName: '天津乐提港店',
-          },
-          ageBoundary: { severity: 'pass', candidateAge: 39, requiredMin: 25, requiredMax: 40 },
-        },
-        status: 'ok',
-      },
-    ] as never;
-
-    const bookingRejected = [
-      {
-        toolName: 'duliday_interview_booking',
-        args: { jobId: 528683 },
-        result: {
-          success: false,
-          errorType: 'booking.rejected',
-          _outcome: '预约失败（候选人与岗位内部硬性条件冲突）',
-        },
-        status: 'ok',
-      },
-    ] as never;
-
-    it('flags the reversal verbatim from the badcase（确认有误+条件符合+承诺预约被拒岗位）', () => {
-      const result = service.check({
-        replyText:
-          '不是年龄问题，39岁符合的，果蔬好要求25-40岁。刚才是我这边确认有误，抱歉哈。资料收到了，我帮你预约果蔬好收银员。',
-        toolCalls: householdRejectedPrecheck,
-        userMessage: '是年龄不合适吗？',
-      });
-
-      expect(result.contradictions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            ruleId: 'screening_rejection_override',
-            action: GUARDRAIL_ACTION.REVISE,
-            currentReplySendable: false,
-          }),
-        ]),
-      );
-    });
-
-    it('flags "你的条件是符合的" reversal after booking.rejected', () => {
-      const result = service.check({
-        replyText: '抱歉，是我这边确认有误，你的条件是符合的。我重新帮你确认下预约信息。',
-        toolCalls: bookingRejected,
-        userMessage: '这个岗位也不合适吗？',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
-    });
-
-    it('flags a continued booking promise after booking.rejected even without reversal wording', () => {
-      const result = service.check({
-        replyText: '没关系，我继续帮你预约这个岗位，稍后把结果发你。',
-        toolCalls: bookingRejected,
-        userMessage: '这个岗位也不合适吗？',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
-    });
-
-    it('allows a neutral mismatch relay after booking.rejected when no booking is promised', () => {
-      const result = service.check({
-        replyText: '刚确认了下，这个岗位目前暂不匹配，我再帮你看看其他合适的岗位。',
-        toolCalls: bookingRejected,
-        userMessage: '这个岗位也不合适吗？',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'screening_rejection_override',
-      );
-    });
-
-    it('allows reporting a different booking that succeeded later in the same turn', () => {
-      const result = service.check({
-        replyText: '第一家暂不匹配，另一家已经帮你预约成功了。',
-        toolCalls: [
-          ...bookingRejected,
-          {
-            toolName: 'duliday_interview_booking',
-            args: { jobId: 528684 },
-            result: { success: true, workOrderId: 'wo-1' },
-            status: 'ok',
-          },
-        ] as never,
-        userMessage: '两家都帮我试试',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'screening_rejection_override',
-      );
-    });
-
-    it('allows the neutral mismatch relay with a pivot to another brand', () => {
-      const result = service.check({
-        replyText:
-          '刚帮你确认了下，果蔬好这家店暂时不太匹配，我帮你看看其他合适的。肯德基（滨津店）晚班服务员离你0.5km，我帮你约这家的面试？',
-        toolCalls: householdRejectedPrecheck,
-        userMessage: '好的',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'screening_rejection_override',
-      );
-    });
-
-    it('does not flag reversal wording without any rejection evidence this turn', () => {
-      const result = service.check({
-        replyText: '抱歉，刚才是我这边确认有误，这家的班次其实是三选一，不用全部出勤。',
-        toolCalls: [],
-        userMessage: '班次是不是都要上？',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'screening_rejection_override',
-      );
-    });
-
-    it('allows "条件是符合的" said about a different pivot job（评审 874 实证假阳回归）', () => {
-      const result = service.check({
-        replyText:
-          '果蔬好这边暂时不太匹配，先不推进了。不过肯德基金运店这家你条件是符合的，要不要帮你预约这家？',
-        toolCalls: householdRejectedPrecheck,
-        userMessage: '那还有别的吗？',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).not.toContain(
-        'screening_rejection_override',
-      );
-    });
-
-    it('still flags "条件是符合的" when the sentence names the rejected job', () => {
-      const result = service.check({
-        replyText: '重新看了下，果蔬好这家你条件是符合的，我帮你继续推进。',
-        toolCalls: householdRejectedPrecheck,
-        userMessage: '真的不行吗？',
-      });
-
-      expect(result.contradictions.map((c) => c.ruleId)).toContain('screening_rejection_override');
-    });
-  });
-
   describe('service basics', () => {
     it('does not throw when reply is empty', () => {
       const result = service.check({ replyText: '', toolCalls: [] });
@@ -2993,7 +2676,7 @@ describe('HardRulesService', () => {
       ).toBeDefined();
     });
 
-    it('does not flag persona leakage but still requires real handoff for 同事 follow-up', () => {
+    it('does not treat teammate follow-up phrasing as persona leakage', () => {
       const result = service.check({
         replyText: '这个我帮你问下负责的同事，稍后回复你哈。',
         toolCalls: [],
@@ -3003,9 +2686,6 @@ describe('HardRulesService', () => {
       expect(
         result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak'),
       ).toBeUndefined();
-      expect(
-        result.contradictions.find((c) => c.ruleId === 'handoff_promise_without_handoff'),
-      ).toBeDefined();
     });
 
     // 2026-07-22 扩词（badcase chat 6a5dedb2ce406a6aeee1ea62：Agent 自称"李娜"，
@@ -3043,10 +2723,7 @@ describe('HardRulesService', () => {
       ).toBeDefined();
     });
 
-    // 2026-08-04 审计 P1-5（trace …_1785743845189）：无升级动作时反馈若仍教
-    // "改成'我帮你问下同事'"，处方逐字就是 handoff_promise 的违规要件——repair 照做
-    // 被二审 P0 打死成沉默。反馈必须按本轮有无真实升级动作分叉。
-    it('feedback forbids promise substitution when no escalation happened (deadlock fix)', () => {
+    it('feedback only corrects persona wording without inferring escalation state', () => {
       const result = service.check({
         replyText: '看到啦，我这边帮你人工确认下承揽协议的状态，弄好了跟你说哈。',
         toolCalls: [{ toolName: 'save_image_description', args: {}, result: { success: true } }],
@@ -3054,20 +2731,8 @@ describe('HardRulesService', () => {
       });
 
       const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
-      expect(hit?.feedbackToGenerator).toContain('不得');
-      expect(hit?.feedbackToGenerator).not.toContain('只把露馅措辞改成人设内口径');
-    });
-
-    it('feedback keeps the 同事 rephrase when a real escalation happened this turn', () => {
-      const result = service.check({
-        replyText: '我这边帮你人工确认下面试安排，稍等哈。',
-        toolCalls: [{ toolName: 'raise_risk_alert', args: {}, result: { accepted: true } }],
-        chatId: 'chat-1',
-      });
-
-      const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
+      expect(hit?.feedbackToGenerator).toContain('只把露馅措辞改成人设内口径');
       expect(hit?.feedbackToGenerator).toContain('我帮你问下同事');
-      expect(hit?.feedbackToGenerator).not.toContain('不得');
     });
 
     it('does not flag incidental 人工 substring across word boundaries', () => {
@@ -3083,388 +2748,8 @@ describe('HardRulesService', () => {
     });
   });
 
-  describe('handoff_promise_without_handoff (production trace batch_6a54b296…)', () => {
-    const productionReply =
-      '这边暂时没约上，这家目前报名人数比较多，我让同事帮你确认下名额和后续安排，稍后给你答复哈';
-
-    it('requires a rewrite when the reply promises colleague follow-up without request_handoff', () => {
-      // 2026-07-27 发牌收尾：replan → revise。rewrite 修法唯一（删完成时态承诺、只陈述
-      // 已确认事实），P0 保证 rewrite 失败即 block；补执行 handoff 属 §2.4 条件项。
-      const result = service.check({
-        replyText: productionReply,
-        toolCalls: [
-          {
-            toolName: 'duliday_interview_booking',
-            args: { jobId: 528499 },
-            result: { success: false, errorType: 'booking.rejected' },
-          },
-        ],
-        chatId: '6a54b296ce406a6aeede64e5',
-      });
-
-      const hit = result.contradictions.find(
-        (item) => item.ruleId === 'handoff_promise_without_handoff',
-      );
-      expect(hit).toMatchObject({
-        action: 'revise',
-        severity: 'P0',
-        currentReplySendable: false,
-        repairMode: 'rewrite',
-        repairToolNames: [],
-      });
-    });
-
-    it('requires a rewrite when the reply promises a colleague will send materials without handoff', () => {
-      const result = service.check({
-        replyText:
-          '办理费用一般 100 元左右，需要自费办理，公司不报销哈。具体办理地点我让同事发你一份门店认可的机构清单，稍等～',
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee',
-      });
-
-      expect(
-        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
-      ).toMatchObject({
-        action: 'revise',
-        severity: 'P0',
-        currentReplySendable: false,
-        repairMode: 'rewrite',
-      });
-    });
-
-    it('requires a rewrite for a self-promised material lookup that cannot finish this turn', () => {
-      const result = service.check({
-        replyText:
-          '健康证办理费用一般100元左右，需要自费办理哈。具体办理地点要看门店认可的机构，我这边确认下有没有清单材料，有的话发你。',
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee-self-follow-up',
-      });
-
-      expect(
-        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
-      ).toMatchObject({
-        action: 'revise',
-        severity: 'P0',
-        currentReplySendable: false,
-        repairMode: 'rewrite',
-      });
-    });
-
-    it('requires a rewrite for a future material send promise without a committed action', () => {
-      const result = service.check({
-        replyText:
-          '健康证办理费用一般100元左右，需要自费办理，公司不报销。具体办理地点以门店认可的机构清单为准，到时候我会把清单发你。',
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee-future-send',
-      });
-
-      expect(
-        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
-      ).toMatchObject({
-        action: 'revise',
-        severity: 'P0',
-        currentReplySendable: false,
-        repairMode: 'rewrite',
-      });
-    });
-
-    it('requires a rewrite for a subjectless future material notice promise', () => {
-      const result = service.check({
-        replyText:
-          '健康证办理费用一般100元左右，需要自费办理，公司不报销。具体去哪里办以门店认可的机构清单为准，到时候会告诉你认可哪些体检点。',
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee-future-notice',
-      });
-
-      expect(
-        result.contradictions.find((item) => item.ruleId === 'handoff_promise_without_handoff'),
-      ).toMatchObject({
-        action: 'revise',
-        severity: 'P0',
-        currentReplySendable: false,
-        repairMode: 'rewrite',
-      });
-    });
-
-    it('allows a grounded boundary statement without promising a later send', () => {
-      const result = service.check({
-        replyText:
-          '健康证办理费用一般100元左右，需要自费办理。具体办理地点以门店认可的机构清单为准。',
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee-grounded',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it.each([
-      '我不能承诺到时候把清单发你，具体以门店认可的机构清单为准。',
-      '我不承诺到时候把清单发你，具体以门店认可的机构清单为准。',
-      '到时候不会把清单发你，请直接向门店确认认可机构。',
-      '到时候不能把清单发你，请直接向门店确认认可机构。',
-      '“到时候我会把清单发你”这种承诺不能说，具体以门店认可清单为准。',
-      '稍后如果你拿到清单，可以告诉你朋友办理地点。',
-      '稍后拿到清单，可以告诉你的朋友办理地点。',
-      '到时候有资料的话，可以发给你的同事。',
-      '晚点拿到链接后发给你朋友就行。',
-      '稍后不会告诉你认可机构。',
-      '到时候不能跟你说办理地点。',
-      '我不会承诺到时候把清单发你。',
-      '不能指望我到时候把清单发你。',
-      '回头看，相关资料我已经发给你了。',
-      '稍后我不一定会把清单发你，请以门店为准。',
-      '稍后可能会把清单发给你，请以门店为准。',
-      '清单可能会发给你，请以门店为准。',
-      '到时候不一定告诉你认可机构。',
-      '稍后我不保证会把清单发你。',
-      '到时候不承诺把资料发你。',
-      '稍后我不一定能把清单发你。',
-      '稍后如果有资料，可以发给你的老师。',
-      '稍后拿到材料后回复你的主管。',
-      '资料昨天发给你了。',
-      '资料上周发给你了。',
-      '不会忘记提醒同事不要把清单发给你。',
-      '稍后拿到资料后发给你室友即可。',
-      '回头看，相关资料昨晚发给你了。',
-      '到时候也许没法把清单发你。',
-      '之后的材料上周发给你了。',
-      '回头看，相关资料昨晚发给你。',
-      '到时候可能没办法把清单发你。',
-      '稍后不见得能把资料发给你。',
-      '稍后我把资料发给你家长。',
-      '晚点我把清单发给你爱人。',
-      '稍后我把清单发一份给你的同事。',
-      '到时候我会把清单发过去给你朋友。',
-    ])('allows an explicit denial of a future material promise: %s', (replyText) => {
-      const result = service.check({
-        replyText,
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee-denied-follow-up',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it.each([
-      '到时候我不会忘记把清单发给你。',
-      '到时候清单不会漏发给你。',
-      '稍后我不会忘了把资料发你。',
-      '我这边拿到机构清单后发你。',
-      '我查到机构清单就发你。',
-      '清单我晚点发你。',
-      '稍后你提醒我，我会把清单发你。',
-      '到时候你再问我，我把资料发给你。',
-      '晚点你联系我，我会告诉你认可机构。',
-      '稍后如果你需要，我会把清单发你。',
-      '我拿到你要的机构清单后发你。',
-      '我查到你需要的资料后发给你。',
-      '稍后我把之前确认好的清单发给你。',
-      '稍后我把刚才整理的资料发给你。',
-      '稍后我已经整理好的资料会发给你。',
-      '之后我已经拿到清单了，会发给你。',
-      '晚点已经准备好的清单我发你。',
-      '我确认好清单就发你。',
-      '我核实好后发你。',
-      '我问清楚了告诉你。',
-      '我有清单了就发你。',
-      '有清单的话我再发你。',
-      '清单等我确认好了发你。',
-      '我拿到清单马上发你。',
-      '晚点没有问题的话我把清单发你。',
-      '不用你提醒我也会把清单发你。',
-      '稍后发给你的是门店认可的机构清单。',
-      '晚点告诉你的是具体办理地点。',
-      '我确认好后给你发。',
-      '有清单了我再给你发。',
-      '晚点我给你发清单。',
-      '我查清楚后通知你。',
-      '有结果了我通知你。',
-      '我问好了就告诉你。',
-      '我查清楚以后把资料发你。',
-      '资料等我核实完就发你。',
-      '我一有清单就发你。',
-      '等有了清单我就发你。',
-      '结果出来后我告诉你。',
-      '我查到结果后回复你。',
-      '我问清楚后回复你。',
-      '我帮你问问，有消息了马上通知你。',
-      '我帮你问问，有消息通知你。',
-      '我确认后回复你。',
-      '等门店确认后我回复你。',
-      '稍后我给你发同事整理的资料。',
-      '稍后我把清单发一份给你。',
-      '清单会发给你。',
-      '到时候你会收到我发的清单。',
-      '到时候我会把清单发过去给你。',
-    ])('still flags a semantically positive self follow-up promise: %s', (replyText) => {
-      const result = service.check({
-        replyText,
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee-positive-self-follow-up',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it('still flags a real future promise after an unrelated denial clause', () => {
-      const result = service.check({
-        replyText: '我不能承诺具体发送时间，但到时候我会把门店认可的机构清单发你。',
-        toolCalls: [],
-        chatId: 'release-v10.38.0-health-fee-positive-after-denial',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it('allows the promise when request_handoff was actually dispatched', () => {
-      const result = service.check({
-        replyText: productionReply,
-        toolCalls: [
-          {
-            toolName: 'request_handoff',
-            args: { reasonCode: 'system_blocked', reason: '报名失败需人工确认' },
-            result: { dispatched: true, shortCircuited: true },
-          },
-        ],
-        chatId: 'chat-handoff-ok',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it('does not accept a failed request_handoff as grounding', () => {
-      const result = service.check({
-        replyText: '我已经让负责的同事跟进处理，稍后联系你。',
-        toolCalls: [
-          {
-            toolName: 'request_handoff',
-            args: { reasonCode: 'system_blocked' },
-            result: { dispatched: false, shortCircuited: false },
-          },
-        ],
-        chatId: 'chat-handoff-failed',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it('allows the promise when raise_risk_alert committed a human escalation (badcase batch_6a66f559…)', () => {
-      // 面试官缺席场景：raise_risk_alert 已生效 = 暂停托管 + 飞书告警 + 下一轮人工
-      // 接手，"让同事确认"是真承诺；只认 request_handoff 曾把这条正确回复判成
-      // P0 空头承诺，无工具 rewrite 幻觉出"面试是明天"劝退了正在等面的候选人。
-      const result = service.check({
-        replyText:
-          '理解哈，等了这么久确实让人着急。我让同事帮你确认下面试那边的情况，稍等一会儿，你先别关页面。',
-        toolCalls: [
-          {
-            toolName: 'raise_risk_alert',
-            args: { riskType: 'escalation', reason: '候选人等待面试官超 20 分钟未入会' },
-            result: { accepted: true },
-          },
-        ],
-        chatId: '6a66f559ce406a6aee97d7ed',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it('does not accept a failed raise_risk_alert as grounding', () => {
-      const result = service.check({
-        replyText: '我让同事帮你确认下面试那边的情况，稍等一会儿。',
-        toolCalls: [
-          {
-            toolName: 'raise_risk_alert',
-            args: { riskType: 'escalation', reason: '缺少 chatId' },
-            result: { accepted: false, error: true },
-          },
-        ],
-        chatId: 'chat-risk-alert-failed',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it('also replans collective promises phrased with 我们', () => {
-      const result = service.check({
-        replyText: '我们这边会让门店负责人核实一下，晚点回复你。',
-        toolCalls: [],
-        chatId: 'chat-collective-handoff-promise',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it.each([
-      '看到了，这个提示是平台审核没通过抢单资格。我帮你转人工核实下具体原因，稍等哈～',
-      '现在帮你转人工同事确认下还有没有合适你的岗位，你稍等。',
-      '我帮你转人工登记一下，稍后同事会联系你确认。',
-    ])(
-      'replans 转人工-style promise without request_handoff (badcase chat 6a5f4549): %s',
-      (replyText) => {
-        const result = service.check({ replyText, toolCalls: [], chatId: 'chat-zhuanrengong' });
-
-        const ruleIds = result.contradictions.map((item) => item.ruleId);
-        expect(ruleIds).toContain('handoff_promise_without_handoff');
-        // 人设露馅由 human_service_phrase_leak 同步命中，两规则叠加按更重的 replan 收敛
-        expect(ruleIds).toContain('human_service_phrase_leak');
-      },
-    );
-
-    it('allows 转人工 promise when request_handoff was actually dispatched', () => {
-      const result = service.check({
-        replyText: '我帮你转人工核实下具体原因，稍等哈～',
-        toolCalls: [
-          {
-            toolName: 'request_handoff',
-            args: { reasonCode: 'system_blocked', reason: '抢单资格审核需人工核实' },
-            result: { dispatched: true, shortCircuited: true },
-          },
-        ],
-        chatId: 'chat-zhuanrengong-ok',
-      });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-
-    it.each([
-      '这个岗位的具体安排以门店同事确认结果为准。',
-      '你可以联系门店负责人咨询具体排班。',
-      '我确认后不会回复你，请直接咨询门店。',
-      '我确认后已经回复你了。',
-      '门店确认后回复你。',
-      '系统确认后会自动通知你。',
-      '我确认后回复你的主管。',
-    ])('does not flag a boundary statement without an agent follow-up promise: %s', (replyText) => {
-      const result = service.check({ replyText, toolCalls: [], chatId: 'chat-boundary' });
-
-      expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
-        'handoff_promise_without_handoff',
-      );
-    });
-  });
-
   describe('repeated_reply (badcase recvlmGXDwMZrz / recvlsYa5SSOn9 / 6a5df7e7)', () => {
-    it('verbatim duplicate escalates to revise (badcase 6a5df7e7 全等复读辱骂流失)', () => {
+    it('verbatim duplicate is observe-only after deterministic delivery-shaped pruning', () => {
       const jobDetail =
         '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.2公里，感兴趣可以帮你报名。';
       const result = service.check({
@@ -3476,8 +2761,8 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply_verbatim');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
-      expect(hit?.feedbackToGenerator).toContain('换一种表述');
+      expect(hit?.action).toBe('observe');
+      expect(hit?.currentReplySendable).toBe(true);
       expect(result.contradictions.find((c) => c.ruleId === 'repeated_reply')).toBeUndefined();
     });
 
@@ -3491,10 +2776,10 @@ describe('HardRulesService', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'repeated_reply_verbatim');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
+      expect(hit?.action).toBe('observe');
     });
 
-    it('near-duplicate (≥0.9 but not verbatim) stays observe-only', () => {
+    it('near-duplicate (≥0.85 but not verbatim) stays observe-only', () => {
       const result = service.check({
         replyText:
           '为你推荐肯德基静安寺店，时薪24元，班次晚班18:00-23:00，距离你1.3公里，感兴趣可以帮你报名。',

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -80,7 +81,7 @@ export class LlmEvaluationService {
 
       return evaluation;
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`LLM 评估失败: ${evaluationId}, 错误: ${errorMsg}`);
 
       // 返回默认失败结果

@@ -1,5 +1,6 @@
 import { GeneratorAgent } from '@agent/generator/generator.agent';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
+import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
 
 /**
  * attachTurnEnd 闭包契约：deferTurnEnd 时暴露的 runTurnEnd 必须透传
@@ -21,7 +22,7 @@ describe('GeneratorAgent attachTurnEnd (runTurnEnd contract)', () => {
     sessionId: 's1',
     botImId: 'bot-1',
     normalizedMessages: [],
-    turnState: { candidatePool: undefined },
+    ledger: createTurnLedger(),
   };
 
   const attach = (service: GeneratorAgent, result: GeneratorRunResult) => {
@@ -68,6 +69,17 @@ describe('GeneratorAgent attachTurnEnd (runTurnEnd contract)', () => {
 
     expect(onTurnEnd).toHaveBeenCalledTimes(1);
     expect(onTurnEnd.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it('assistantTextOverride projects the deterministic text actually delivered', async () => {
+    const onTurnEnd = jest.fn().mockResolvedValue(undefined);
+    const service = makeService(onTurnEnd);
+    const result = makeResult();
+    attach(service, result);
+
+    await result.runTurnEnd?.({ assistantTextOverride: '删除复读段后的真实回复' });
+
+    expect(onTurnEnd.mock.calls[0][1]).toBe('删除复读段后的真实回复');
   });
 
   it('runTurnEnd is consumed once — second call is a no-op', async () => {

@@ -1,4 +1,5 @@
 import { formatLocalDate } from '@infra/utils/date.util';
+import { asArray, asRecord, type UnknownRecord } from '@infra/utils/object.util';
 import { JobDetail } from '@sponge/sponge.types';
 import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 
@@ -85,18 +86,11 @@ export function isOfflineInterviewMethod(method: string | null | undefined): boo
   return /线下|到店|现场|当面|门店面试/u.test(method);
 }
 
-type UnknownRecord = Record<string, unknown>;
-
 function hasValue(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
   if (Array.isArray(value)) return value.length > 0;
   return true;
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as UnknownRecord;
 }
 
 function asString(value: unknown): string | null {
@@ -105,10 +99,6 @@ function asString(value: unknown): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' ? value : null;
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 /**

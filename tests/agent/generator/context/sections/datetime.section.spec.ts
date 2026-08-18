@@ -1,4 +1,7 @@
-import { DateTimeSection } from '@/agent/generator/context/sections/datetime.section';
+import {
+  buildDateTimeGroundingLines,
+  DateTimeSection,
+} from '@/agent/generator/context/sections/datetime.section';
 
 describe('DateTimeSection', () => {
   beforeEach(() => {
@@ -20,6 +23,15 @@ describe('DateTimeSection', () => {
     expect(output).toContain('明天：2026-04-30 星期四');
     expect(output).toContain('后天：2026-05-01 星期五');
     expect(output).toContain('大后天：2026-05-02 星期六');
+  });
+
+  it('uses one YYYY-MM-DD date format across all grounding lines', () => {
+    const lines = buildDateTimeGroundingLines();
+
+    for (const line of lines) {
+      expect(line).toMatch(/\d{4}-\d{2}-\d{2}/);
+      expect(line).not.toMatch(/[年月日/]/);
+    }
   });
 
   it('uses provided currentTimeText when available without changing relative dates', () => {

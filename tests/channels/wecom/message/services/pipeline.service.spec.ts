@@ -368,7 +368,6 @@ describe('MessagePipelineService', () => {
             : [{ role: 'user', content: '[系统主动跟进]' }],
         toolMode: req.toolMode ?? (req.trigger.kind === 'proactive' ? 'readonly' : 'scenario'),
         proactiveDirective: req.trigger.kind === 'proactive' ? req.trigger.directive : undefined,
-        deferTurnEnd: true,
         scenario: req.context?.scenario,
         imageUrls: req.trigger.kind === 'inbound' ? req.trigger.images : undefined,
         imageMessageIds: req.context?.imageMessageIds,

@@ -1,7 +1,7 @@
 /**
  * 把 duliday 工具返回字段值里的「独立日」统一替换为「独立客」。
  *
- * 迁移自 tools/utils/sanitize-brand-name.util.ts（逻辑不变，只换居所，§5.1）：
+ * 迁移自 tools/utils/sanitize-brand-name.util.ts（逻辑不变，只换居所，§1）：
  * 它治理的是本公司对外称谓（历史名"独立日"→"独立客"）而非候选人品牌，
  * 归入品牌域取"文本品牌治理同居所"的宽口径；非泛化的品牌错名修正。
  *

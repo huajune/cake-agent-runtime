@@ -1,6 +1,6 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { decideLaborFormIntent } from '@memory/facts/labor-form';
+import { decideLaborFormIntent } from '@resolution/labor-form';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 

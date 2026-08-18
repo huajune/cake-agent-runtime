@@ -2,11 +2,11 @@ import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
   collectLaborFormAnomalies,
-  filterJobsByRequestedCategories,
   filterJobsExcludingBrands,
   filterJobsToAppliedBrands,
   formatScheduleConstraintLabel,
   haversineDistance,
+  rankJobsByRequestedCategories,
   scoreJobAgainstRequestedCategories,
   stripGenericPositionUmbrella,
 } from '@tools/duliday/job-list/search.util';
@@ -96,17 +96,37 @@ describe('job-list search util', () => {
     expect(distance).toBeLessThan(8);
   });
 
-  it('scores requested categories against category/name/nickname/content and filters by relevance', () => {
+  describe('rankJobsByRequestedCategories（意向工种本地软排序，仅排序不过滤）', () => {
     const service = makeJob(1, '服务员', '前厅服务员', '餐厅服务', '负责前台点餐');
     const cashier = makeJob(2, '收银员', '门店收银', '收银', '负责收银');
     const warehouse = makeJob(3, '分拣员', '仓库分拣', '仓储', '理货上架');
 
-    expect(scoreJobAgainstRequestedCategories(service, ['服务员'])).toBeGreaterThan(
-      scoreJobAgainstRequestedCategories(cashier, ['服务员']),
-    );
-    expect(filterJobsByRequestedCategories([cashier, warehouse, service], ['服务员'])).toEqual([
-      service,
-    ]);
+    it('scores requested categories against category/name/nickname/content', () => {
+      expect(scoreJobAgainstRequestedCategories(service, ['服务员'])).toBeGreaterThan(
+        scoreJobAgainstRequestedCategories(cashier, ['服务员']),
+      );
+    });
+
+    it('moves matched jobs to the front without dropping any, keeping in-group order', () => {
+      const result = rankJobsByRequestedCategories([cashier, warehouse, service], ['服务员']);
+      expect(result.applied).toBe(true);
+      expect(result.matchedCount).toBe(1);
+      // 匹配的排前，未匹配的保持原相对顺序（稳定分区），一条不剔
+      expect(result.jobs).toEqual([service, cashier, warehouse]);
+    });
+
+    it('keeps the original list when no job matches (no filtering, disclosure by caller)', () => {
+      const result = rankJobsByRequestedCategories([cashier, warehouse], ['美甲师']);
+      expect(result.applied).toBe(true);
+      expect(result.matchedCount).toBe(0);
+      expect(result.jobs).toEqual([cashier, warehouse]);
+    });
+
+    it('is a no-op when no category keywords are requested', () => {
+      const result = rankJobsByRequestedCategories([cashier, service], []);
+      expect(result.applied).toBe(false);
+      expect(result.jobs).toEqual([cashier, service]);
+    });
   });
 
   it('formats candidate schedule constraints into a compact label', () => {

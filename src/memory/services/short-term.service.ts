@@ -1,7 +1,9 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
+import { appendTimeContext } from '@resolution/signal/markers';
+import { formatCurrentTime } from '@infra/utils/date.util';
 import { MemoryConfig } from '../memory.config';
 import type { ShortTermMessage } from '../types/short-term.types';
 import {
@@ -69,7 +71,7 @@ export class ShortTermService {
 
       return this.trimByChars(this.injectTimeContext(rawHistory));
     } catch (error) {
-      this.lastLoadError = error instanceof Error ? error.message : String(error);
+      this.lastLoadError = toErrorMessage(error);
       this.logger.error(`获取短期记忆失败 [${chatId}]:`, error);
       return [];
     }
@@ -88,7 +90,7 @@ export class ShortTermService {
   ): ShortTermMessage[] {
     return messages.map((msg) => ({
       role: msg.role,
-      content: MessageParser.injectTimeContext(msg.content, msg.timestamp),
+      content: appendTimeContext(msg.content, formatCurrentTime(msg.timestamp)),
       source: msg.source,
       messageType: msg.messageType,
       isSelf: msg.isSelf,

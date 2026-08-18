@@ -7,6 +7,7 @@ import {
   SystemConfig,
   AgentReplyConfig,
   DEFAULT_AGENT_REPLY_CONFIG,
+  type HardRuleOverrides,
 } from '../types/hosting-config.types';
 import { GroupTaskConfig, DEFAULT_GROUP_TASK_CONFIG } from '@biz/group-task/group-task.types';
 
@@ -163,6 +164,7 @@ export class SystemConfigService {
         typeof config?.outputGuardrailSemanticShadowEnabled === 'boolean'
           ? config.outputGuardrailSemanticShadowEnabled
           : this.configService.get('OUTPUT_GUARDRAIL_SEMANTIC_SHADOW_ENABLED', 'false') === 'true',
+      hardRuleOverrides: this.sanitizeHardRuleOverrides(config?.hardRuleOverrides),
       // 复聊开关同守卫开关：DB 未持久化过时回退环境变量（bootstrap 默认），页面保存后以 DB 为准
       reengagementEnabled:
         typeof config?.reengagementEnabled === 'boolean'
@@ -207,6 +209,22 @@ export class SystemConfigService {
     for (const [key, raw] of Object.entries(value)) {
       if (typeof raw === 'boolean') {
         result[key] = raw;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 配置层只承认 off/observe，脏值直接丢弃，绝不把任意字符串解释成更高权限。
+   * ruleId 是否存在由硬规则 catalog 在消费端校验，避免 hosting-config 反向依赖 agent。
+   */
+  private sanitizeHardRuleOverrides(value: unknown): HardRuleOverrides {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+    const result: HardRuleOverrides = {};
+    for (const [ruleId, mode] of Object.entries(value)) {
+      const normalizedRuleId = ruleId.trim();
+      if (normalizedRuleId && (mode === 'off' || mode === 'observe')) {
+        result[normalizedRuleId] = mode;
       }
     }
     return result;

@@ -12,16 +12,18 @@
  * 导出 buildJobListTool 供注册表使用
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
-import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
-import { isValidLaborForm, stripLaborFormFromCategories } from '@memory/facts/labor-form';
+import type { RecommendedJobSummary } from '@resolution/job/types';
+import { isValidLaborForm, stripLaborFormFromCategories } from '@resolution/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import { isRecord } from '@infra/utils/object.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import {
   buildNoMatchScript,
@@ -29,6 +31,7 @@ import {
 } from '@tools/duliday/job-list/no-match-script.util';
 import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+import { buildScreeningCriteria } from '@tools/duliday/precheck/screening-criteria.util';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
@@ -37,6 +40,7 @@ import {
   normalizeSpongeCityFilters,
 } from '@tools/duliday/job-list/sponge-area-filter.util';
 import { detectGeoSignalConflict } from '@resolution/geo';
+import { getRuleFactValue } from '@resolution/evidence/merge';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
@@ -46,11 +50,11 @@ import {
   applyScheduleConstraint,
   applyStudentIdentityConstraint,
   collectLaborFormAnomalies,
-  filterJobsByRequestedCategories,
   filterJobsExcludingBrands,
   filterJobsToAppliedBrands,
   formatScheduleConstraintLabel,
   haversineDistance,
+  rankJobsByRequestedCategories,
   stripGenericPositionUmbrella,
 } from '@tools/duliday/job-list/search.util';
 import {
@@ -85,6 +89,10 @@ import {
   parseCandidateAge,
   type AgeScreeningSignal,
 } from '@tools/duliday/precheck/age.util';
+import {
+  buildProvidedFieldLabels,
+  detectPendingCollectionJobDetailFollowup,
+} from '@tools/duliday/precheck/collection-strategy.util';
 
 // ==================== 常量 ====================
 
@@ -199,7 +207,7 @@ const inputSchema = z.object({
     .optional()
     .default([])
     .describe(
-      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。\n【默认留空】这是一个会大幅收窄结果的强过滤，默认不要填——优先靠城市/区域 + 品牌(brandIdList/brandAliasList)召回。只有候选人**明确点名某个具体工种**(如"我只做收银""想干分拣")时才填。\n禁止：不要从品类/行业词或品牌意向反推工种(如"咖啡""奶茶"是品类，指相关品牌，不要转成"咖啡师"；说某品牌不代表只做某工种)。\n也不要填"店员""员工""工作人员"等泛化统称——它们不是具体工种(商超/连锁的真实工种是收银员/理货员/促销员/保洁员…)，作类目过滤只会误伤把在招岗位查成空；候选人只说"想应聘店员"时靠品牌+城市/坐标召回即可。\n严禁填入"全职"、"兼职"、"小时工"、"寒假工"、"暑假工"、"临时工"等用工形式词——用工形式是岗位的 laborForm 属性、不是岗位工种，按工具的用工形式过滤处理（候选人意向已从会话事实自动读取），不要塞进 jobCategoryList。若召回为空，先清空 jobCategoryList 放宽重查。',
+      '候选人明确点名的意向工种关键词（如"收银员""分拣员""骑手"）。**仅用于把 岗位名称/岗位类型/工作内容 匹配的岗位排到结果前面并标注，不做过滤、不会减少召回结果**——召回范围始终由城市/区域/坐标 + 品牌决定。只有候选人**明确点名具体工种**(如"我只做收银""想干分拣")时才填；没点名就留空。\n不要填：品类/行业词("咖啡""奶茶"是品牌意向，走品牌参数)；"全职""兼职""小时工""暑假工"等用工形式词(是岗位 laborForm 属性，已按会话事实自动硬过滤)。',
     ),
   brandIdList: z
     .array(z.number().int())
@@ -344,6 +352,7 @@ function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
           ? healthCertificateRequirement
           : null,
       studentRequirement: inferStudentRequirement(policy),
+      resumeRequired: Boolean(buildScreeningCriteria(policy).resume),
       distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
       welfareFacts: welfare
         ? {
@@ -360,25 +369,18 @@ function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
   });
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 function readFactValue(value: unknown): unknown {
   if (isRecord(value) && 'value' in value) return value.value;
   return value;
 }
 
-function readHighConfidenceFactValue(value: unknown): unknown {
-  if (!isRecord(value)) return null;
-  return value.confidence === 'high' ? value.value : null;
-}
-
 function resolveCandidateAge(context: ToolBuildContext): number | null {
   const sources = [
-    readHighConfidenceFactValue(context.highConfidenceFacts?.interview_info?.age),
-    readFactValue(context.sessionFacts?.interview_info?.age),
-    context.profile?.age,
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.age', {
+      minConfidence: 'high',
+    }),
+    readFactValue(context.archive.sessionFacts?.interview_info?.age),
+    context.archive.profile?.age,
   ];
 
   for (const source of sources) {
@@ -389,15 +391,17 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
 }
 
 /**
- * 解析候选人是否学生（高置信线索优先，其次会话事实；不依赖 LLM 入参）。
+ * 解析候选人是否学生（本轮规则解析结果优先，其次会话事实；不依赖 LLM 入参）。
  *
  * 只用于学生身份硬过滤：仅 true（候选人明确自报学生）触发；false 有抽取
  * 污染史（badcase 6a673402 凭空落 false），调用方不得据 false 做过滤。
  */
 function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
   const sources = [
-    readHighConfidenceFactValue(context.highConfidenceFacts?.interview_info?.is_student),
-    readFactValue(context.sessionFacts?.interview_info?.is_student),
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.is_student', {
+      minConfidence: 'high',
+    }),
+    readFactValue(context.archive.sessionFacts?.interview_info?.is_student),
   ];
   for (const source of sources) {
     if (typeof source === 'boolean') return source;
@@ -408,24 +412,26 @@ function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
 /**
  * 解析候选人想要的用工形式。
  *
- * 只从已确定性提取的会话事实读取（高置信线索优先，其次会话事实），
+ * 只从确定性解析结果与会话事实读取（本轮规则解析结果优先，其次会话事实），
  * 不依赖 LLM 入参——保证用工形式过滤始终生效，避免模型忘传。
  * 返回合法用工形式（全职/兼职/小时工/寒假工/暑假工）；"正式工/临时工" 等
  * 不同轴噪音词视为无效。
  */
 function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
   const sources = [
-    readHighConfidenceFactValue(context.highConfidenceFacts?.preferences?.labor_form),
-    readFactValue(context.sessionFacts?.preferences?.labor_form),
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'preferences.labor_form', {
+      minConfidence: 'high',
+    }),
+    readFactValue(context.archive.sessionFacts?.preferences?.labor_form),
   ];
-  if (context.currentLaborFormIntent?.kind === 'set') {
-    return context.currentLaborFormIntent.value;
+  if (context.turnInput.currentLaborFormIntent?.kind === 'set') {
+    return context.turnInput.currentLaborFormIntent.value;
   }
   for (const source of sources) {
     if (typeof source !== 'string' || !isValidLaborForm(source)) continue;
     if (
-      context.currentLaborFormIntent?.kind === 'clear' &&
-      context.currentLaborFormIntent.clearedValues.some((value) => value === source)
+      context.turnInput.currentLaborFormIntent?.kind === 'clear' &&
+      context.turnInput.currentLaborFormIntent.clearedValues.some((value) => value === source)
     ) {
       return null;
     }
@@ -556,7 +562,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 | 用户场景 | 标准查询路径 |
 | --- | --- |
 | 问某具体岗位详情 | 优先 jobIdList 直查，不叠加其他 filter |
-| 问"某区域有什么" / 候选人说自己在某区（"我在浦东""浦东这边"） | **默认按就近处理**：把区/县名传给 geocode 拿坐标 → 走 location 距离召回（这样能召回跨区但更近的门店，不会被区级边界卡掉）；未确认城市时你有高置信通识就把 city 一起传，没把握就 city 留空让工具按 unique/ambiguous 三态判定，不要先反问候选人。**只有**候选人明确要"只在某区内"的硬约束时，才用 cityNameList + regionNameList 精确过滤，按需补 jobCategoryList / brandIdList |
+| 问"某区域有什么" / 候选人说自己在某区（"我在浦东""浦东这边"） | **默认按就近处理**：把区/县名传给 geocode 拿坐标 → 走 location 距离召回（这样能召回跨区但更近的门店，不会被区级边界卡掉）；未确认城市时你有高置信通识就把 city 一起传，没把握就 city 留空让工具按 unique/ambiguous 三态判定，不要先反问候选人。**只有**候选人明确要"只在某区内"的硬约束时，才用 cityNameList + regionNameList 精确过滤，按需补 brandIdList |
 | 问"附近有什么" / 给了商圈/地标 | 先 geocode 拿坐标 → 传 location 半径；若结果 ≤ 1 条**必须**去掉 location 重查全市 |
 | 用户接受了某门店但要换条件 | **先在 [会话记忆] 里查这门店所在的 region**，用 regionNameList 重查；不要直接拿口语门店名传 storeNameList |
 | 用户问"还有别的品牌吗" | **不带 brandIdList 重查**当前区域，对比之前已展示的 brand 集合，告诉用户除了已推过的还有什么 |
@@ -584,7 +590,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
   - **乡镇/街道/新镇/新城/片区级地名（川沙、周浦、九亭、航头、唐镇、曹路、安亭、马陆 等）绝对不能直接塞进 regionNameList**——它们不是区级行政区名，精确匹配必然返回 0 条，而这绝不代表该片区没岗。必须先用 geocode 把它解析成"区级 district + 经纬度"，再用返回的 district 填 regionNameList，或用返回坐标走 location
   - 商圈/地标/街道门牌/详细地址（人民广场、陆家嘴、XX路123号 等）同理：**不得**直接当 regionNameList，先 geocode 或用位置分享坐标
   - 候选人只给了区名简称（"浦东""静安"）时，可先 geocode 拿到规范全称（浦东新区）再查，避免简称对不上后端区级实名
-- **未确认城市禁默认**：[本轮高置信线索] 与 [会话记忆] 都未给出城市时，禁止默认任何城市做查岗或品牌承诺；候选人明确品牌但未给城市时，必须先简短确认"您想找哪个城市的岗位"，避免出现把"北京必胜客"默认按上海查的事故
+- **未确认城市禁默认**：[本轮解析线索] 与 [会话记忆] 都未给出城市时，禁止默认任何城市做查岗或品牌承诺；候选人明确品牌但未给城市时，必须先简短确认"您想找哪个城市的岗位"，避免出现把"北京必胜客"默认按上海查的事故
 
 ## 按候选人当前问题精确开启数据开关（不要全部打开）
 
@@ -600,13 +606,14 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 ## 回复展示要求
 - 推荐 2 个及以上岗位时，每个岗位必须单独成行或成段，至少保留门店/岗位、核心薪资、**工作班次时间**、关键要求；禁止把多个岗位压缩在同一句中用顿号、逗号或"。、"串起来
 - 多个岗位同品牌时，必须用门店名、区域/地址或距离把它们区分开；不能只说"有奥乐齐/肯德基"让候选人分不清是哪家
-- **薪资必须主动展示**：本轮要做具体岗位推荐时，每条岗位都必须带上薪资数字/范围；工具返回阶梯薪资字段时，必须保留基础薪资 + 阶梯规则原文（如"基础 25/小时，做满 4 小时再加 5"），禁止简化为"约 X 元"或只说基础时薪。候选人没问也要给薪资，不主动给薪资容易让候选人转去竞品
+- **薪资必须主动展示**：本轮要做具体岗位推荐时，每条岗位都必须带上薪资数字/范围；工具返回阶梯薪资字段时，必须保留基础薪资 + 阶梯规则原文（如"基础 A/小时，做满 N 小时再加 B"），禁止简化为"约 X 元"或只说基础时薪。候选人没问也要给薪资，不主动给薪资容易让候选人转去竞品
 - **工作班次时间必须主动展示**：本轮要做具体岗位推荐时，每条岗位都必须带上**具体上班时间段**（如"早班 7:30-9:30 / 中班 11:30-14:30"、"上班时间 09:00-18:00"），不得只用"早班/晚班/开档/前厅/后厨"等岗位名或时段名替代，也不得把"面试时间"误当成"上班班次"。**严禁**反问"距离和班次能不能接受？""你看这班次方便吗？"自己却没把班次时间说出来。工具返回的工作时间字段缺失/为空时，必须如实告知"班次门店再确认"，不得编造
 - **福利信息主动展示**：本轮要做具体岗位推荐时，必须开 includeWelfare=true；工具返回的普通福利字段（员工餐/包吃住/餐补/补贴/转正机会/节假日加薪等，**不含保险/社保/五险一金**）若非空，必须在岗位介绍中按工具原文展示。候选人没问也要给——这些是候选人决策的重要因素，藏着等候选人问才答的"偷懒式介绍"会显著降低报名率。**保险/社保/五险一金属于敏感政策，主动推荐和福利介绍时严禁提及；只有候选人主动问到保险/社保时，才按工具返回字段如实回答，且不得把意外险/雇主责任险含糊说成社保或五险。** 福利字段为空时按"空头承诺禁忌"如实说"这个我再确认"
 - **挑选式开场禁忌**：直接展示 1~2 个最匹配岗位的完整详情，不要先发"有 A/B/C 三个岗位/门店你想看哪个"再等候选人选；候选人挑选式开场容易直接放弃
 - **岗位卡片必须紧凑**：单个岗位的"门店名/距离/薪资/班次/要求/工作内容"应**集中在 1-2 段**内描述（行内可用顿号/逗号/空格分隔），不要把同一岗位的各字段用"段间空行（即两个连续换行符）"拆成 5-8 个独立段落——后置的消息切分器（MessageSplitter）按段间空行拆成独立微信消息发出，会导致候选人几秒内连续收到 6-8 条同岗位碎片消息，体验"轰炸式人机"
 - **薪资字段必须带单位**：所有薪资数字必须明示单位（如"元/小时""元/月""元/单"）；**严禁**把月薪和时薪并排展示而不带单位（反例：把"X 元/月"和"X 元/小时"写成"X、X"形式，候选人会误读单位）。多岗位混合展示时，所有岗位的薪资单位都要一并标出
 - **同会话内同岗位不重复介绍**：同一会话内已经介绍过的岗位（同 jobId 或同门店名），后续轮**不要**重复发"薪资 X 元/班次 X 时间"等已说过的字段；后续轮只补新信息或推进流程，候选人追问某具体字段时再单独答
+- **工作内容只能引用岗位详情字段**：回答“具体做什么/工作内容是什么”前必须读取本轮岗位详情里的工作内容；不得根据岗位名（如“外卖员/店员/通岗”）或品牌常识自行预判职责。详情未返回工作内容时按缺字段规则补查，仍为空就如实说明需确认
 - 工作内容里出现"清洗灶台/打荷/收档/拖盘/出货"等行业短语时，必须用一句口语化解释展开，让候选人明白具体做什么；不要原样复读简短关键词
 
 ## 硬规则
@@ -622,7 +629,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **同品牌按距离最近优先**：候选人有 brand intent 时（明确说出品牌名 / 反复指代某品牌），先看 queryMeta.brandNearestStores 同品牌最近门店列表；同品牌返回多家时，必须按 brandNearestStores 的距离升序展示，不得跳过更近的同品牌门店转推更远的同品牌门店
 - **明确品牌意向时不静默换品牌**：候选人明确说出"找成都你六姐 / 我想去肯德基"时，brand 必须进 brandIdList；**不得**主动反问"看看其他品牌吗"，更不得默默换成其他品牌推荐。本工具会在 brandAliasList 非空时硬过滤结果到该品牌；如果你想跨品牌推就别把 brandAliasList 填上去——但候选人明确品牌意向时禁止省略该字段
 - **点名品牌豁免距离上限——0 条时先放宽距离复查再下结论**：候选人主动点名的品牌不受 max_recommend_distance_km（约 10km）约束（该阈值只约束 Agent 主动推荐）。按候选人位置在距离上限内查该品牌得 **0 条**时，**禁止**直接说"暂时没有 X 品牌的岗位"或拉群收口，必须**对该品牌放宽距离再查一次**（去掉 location.range 或放大到 30000，仅保留 brand 过滤 + 城市/坐标）：
-  - 放宽后查到较远门店 → 如实告知最近门店大致距离让候选人决定（"X 最近的门店离你大概 14 公里，稍远，能接受吗"），**严禁**把"超距离"说成"没有/暂无在招"——候选人常在 BOSS 等平台已看到该品牌，谎称没有会直接流失
+  - 放宽后查到较远门店 → 如实告知最近门店大致距离让候选人决定（"X 最近的门店离你大概 Y 公里，稍远，能接受吗"），**严禁**把"超距离"说成"没有/暂无在招"——候选人常在 BOSS 等平台已看到该品牌，谎称没有会直接流失
   - 只有放宽后该品牌在**整个城市**仍 0 条，才告知"X 品牌目前你所在城市暂无在招"，再按"无岗时的动作链"收口
 - **缺位置不要直接返回 0 条**：调本工具前必须确认候选人位置（cityNameList 或 location 坐标）。**禁止**在候选人没明示位置时直接把工具结果当"无岗"收口拉群——候选人的真实意图可能是"还没说位置"而不是"没岗"。无位置上下文时先回复一句中性询问"请问您方便面试的城市/区域是哪里？"再决定下一步，不要把"工具 0 条"等同于"候选人无意向"
 - **跨城市无岗禁反问扩张**：当候选人所在城市的结果为 0 条时，按 noMatchScript 原文照念给候选人，**严禁**反问"那看看其他城市吗 / 北京没有看看上海吗"等扩张式追问；候选人未来主动提其他城市才重查，否则一律走拉群兜底
@@ -638,16 +645,16 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
    3. 严禁继续反问候选人"那别的区域 / 别的品牌 / 别的城市看看吗"；候选人主动表达扩张意愿前不再继续扩查，否则会陷入"反复问位置→反复无岗"的空转
    4. **候选人主动追问"别的地区有吗 / 别的品牌呢 / 还有其他吗"时本规则同样适用**——必须基于本轮工具结果直接告知"该品牌/城市暂时无岗 + 拉群维护"，不得借候选人的追问继续展开"其他品牌可以吗 / 看看长沙吗 / 上海杭州看看"等扩张推荐
    5. **历史轨迹打破**：即使 [会话记忆] 或对话历史里 Agent 自己上一轮提议过"换品牌/换地区/看看其他城市"，本轮一旦工具结果证实无岗，也必须打破这条轨迹直接收口，不得顺承延续旧的反问思路
-   6. **结果非空但全部不匹配**：返回的岗位全部与候选人当前硬约束冲突（如候选人要白天班但结果全是夜班、候选人年龄对所有结果都是 ageBoundary.severity="hard_reject"），视同"0 条有效结果"，必须至少放宽一个维度（优先清空 jobCategoryList）重查一次；仅在放宽后仍无有效匹配时，才走上面的兜底路径。年龄判断必须沿用 precheck 弹性口径：超岗位上限 ≤3 岁、或低于下限 ≤2 岁且候选人 ≥23 岁，属于 boundary，可继续推进；例如候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位，不得说"没有一个接受 52 岁"、不得按无岗拉群，后续用 duliday_interview_precheck 复核
+   6. **结果非空但全部不匹配**：返回的岗位全部与候选人当前硬约束冲突（如候选人要白天班但结果全是夜班、候选人年龄对所有结果都是 ageBoundary.severity="hard_reject"），视同"0 条有效结果"，必须至少放宽一个维度（如放宽距离范围、清空 regionNameList、需要放宽品牌时显式传 brandFilterMode='clear'）重查一次；仅在放宽后仍无有效匹配时，才走上面的兜底路径。年龄判断必须沿用 precheck 弹性口径：超岗位上限 ≤3 岁、或低于下限 ≤2 岁且候选人 ≥23 岁，属于 boundary，可继续推进；例如候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位，不得说"没有一个接受 52 岁"、不得按无岗拉群，后续用 duliday_interview_precheck 复核
    7. **回看候选岗位池**：新搜索无有效匹配时，必须回看 [会话记忆] 的「上轮候选岗位池」，检查是否有之前未推荐但可能匹配候选人新约束的岗位（如岗位名含"早班/晚班/开档"等班次关键词、年龄范围更宽的岗位）；候选池中有潜在匹配时，用 jobIdList 精确查询这些岗位的详情再推荐，不得仅凭本轮搜索结果就判定"附近无合适岗位"
 - **包餐/工作餐/餐补硬偏好**：候选人说"没饭吃不去了 / 拉倒了 / 不考虑 / 必须包饭"等，视为硬性拒绝或强偏好；不要安慰成"附近吃饭方便"，也不要继续收面试资料。若要继续推荐，必须本轮调用本工具且带 includeWelfare=true 查包餐/餐补/福利信息；没有匹配就说明暂时没有合适的包餐岗位，并调用 invite_to_group 维护
 - **面试相关字段**：推进面试时优先读工具结果中的「约面重点」；工具没明确时间不得编造；相对当前时间已过期的日期限制视为历史备注，不得当作当前规则输出
 
 ## 空头承诺禁忌
 - 工具未返回某福利字段（工作餐/包餐/餐补/班车/补贴等）时，不得说"有 / 没有 该福利"；候选人追问该福利、需要这个答案才能决定时，当轮按 request_handoff（reasonCode="salary_admin_inquiry"）转人工确认——这是岗位数据缺口，不要说"帮你确认下"却不转
-- 阶梯薪资必须保留基础时薪 + 阶梯规则原文（例如"基础 25/小时，做满 4 小时再加 5"），禁止简化为"约 X 元"或"固定 X 元/小时"
-- **阶梯薪资的累计周期禁止说成"永久累计"**：阶梯档位（如"满 40 小时 26 元、满 80 小时 28 元"）的工时累计是**按月结算、每个自然月清零重新累计**，不是一次升档以后就永远按最高档。候选人问"是一直累计吗 / 下个月也按最高档吗 / 后面一直 28 吗"时，必须明确告知"每月重新累计、次月从基础档起算"，**严禁**回答"对，以后一直按 28"或含糊成"看门店、有的按月有的按季度"——按月清零是平台口径，说错会导致候选人结算时工资对不上
-- **阶梯薪资的计算基数不得自行推断**：工具只返回阶梯门槛与对应单价（如"满 80 累计工作小时→17.8 元/时 / 满 180 累计工作小时→18.7 元/时"），**不包含**"升档后是当月全部工时按新档结算、还是只有超出门槛的部分按新档结算"这一口径。候选人问"那我一个月所有时薪都按最高档算吗 / 是分段算还是全部按新档 / 只有超出的部分才涨吗"时，**严禁**按个税式分段模型自行作答（如"前 80 小时按基础档、80-180 按 17.8、超过 180 的部分才按 18.7"），也**严禁**反向断言"全部按最高档算"——两种口径都不在岗位数据里，说错会导致候选人结算时工资对不上。只能复述工具给出的门槛与单价原文，并当轮按 request_handoff（reasonCode="salary_admin_inquiry"）转人工确认具体结算方式
+- 阶梯薪资必须保留基础时薪 + 阶梯规则原文（例如"基础 A/小时，做满 N 小时再加 B"），禁止简化为"约 X 元"或"固定 X 元/小时"
+- **阶梯薪资的累计周期禁止说成"永久累计"**：阶梯档位（如"满 N 小时 A 元、满 M 小时 B 元"）的工时累计是**按月结算、每个自然月清零重新累计**，不是一次升档以后就永远按最高档。候选人问"是一直累计吗 / 下个月也按最高档吗 / 后面一直按最高档吗"时，必须明确告知"每月重新累计、次月从基础档起算"，**严禁**回答"对，以后一直按最高档"或含糊成"看门店、有的按月有的按季度"——按月清零是平台口径，说错会导致候选人结算时工资对不上
+- **阶梯薪资的计算基数不得自行推断**：工具只返回阶梯门槛与对应单价（如"满 N 累计工作小时→A 元/时 / 满 M 累计工作小时→B 元/时"），**不包含**"升档后是当月全部工时按新档结算、还是只有超出门槛的部分按新档结算"这一口径。候选人问"那我一个月所有时薪都按最高档算吗 / 是分段算还是全部按新档 / 只有超出的部分才涨吗"时，**严禁**按个税式分段模型自行作答（如"前 N 小时按基础档、N-M 小时按中间档、超过 M 小时的部分按最高档"），也**严禁**反向断言"全部按最高档算"——两种口径都不在岗位数据里，说错会导致候选人结算时工资对不上。只能复述工具给出的门槛与单价原文，并当轮按 request_handoff（reasonCode="salary_admin_inquiry"）转人工确认具体结算方式
 - **健康证口径必须两段一起给，不得只说"面试不需要"**：岗位数据把健康证要求区分成「面试前须持证」与「入职前须办妥（面试时可没有）」两档。属于后者时，回答"面试要不要健康证"**必须同时说明入职/正式上班前仍须办妥**（如"面试当天没有也能去，但入职前要办好食品健康证"），**严禁**只回一句"面试不需要健康证"就结束——候选人会以为整个流程都不用办，到入职环节才发现要现办，是既有投诉形态。具体时点一律以本轮工具返回的健康证字段为准，不得自行加"试工/培训"等数据里没有的环节口径
 - 历史助手回复说过的门店事实不能当本轮事实复述；本轮要给候选人新的具体推荐时，必须以本轮工具结果为准；只有 [当前焦点岗位] 等记忆字段是稳定的，可以直接承接
 - **工具未返回的业务事实禁止用训练知识/通识补充**：候选人追问"日结具体哪天到账 / 这家面试是线上还是线下 / 同品牌能不能跨店 / 全职岗还是兼职岗 / 排班是固定还是灵活 / 试用期多久 / 经验要求"等业务规则时，若本轮工具结果没明示该字段，必须当轮按 request_handoff（reasonCode="salary_admin_inquiry"）转人工，**严禁**用"一般日结当天结 / 同品牌跨店没问题 / 应该是全职"等通识/经验性回答，也不要说"帮你确认下"却不转
@@ -701,16 +708,16 @@ export function buildJobListTool(
           .filter(Boolean);
         // B7 二次无岗升级（badcase 6a5df7e7）：本会话已发过无岗话术时，noMatchScript 出二档
         // 文案并禁止逐字复读，四个无岗出口共用同一判定。
-        const priorNoMatchReplySent = hasPriorNoMatchReply(context.messages ?? []);
+        const priorNoMatchReplySent = hasPriorNoMatchReply(context.turnInput.messages ?? []);
 
         // jobIdList provenance 闸门（badcase 6a6c4c13：候选人全程只聊东莞长安晚班兼职，
         // 模型却在收尾轮凭空查 jobIdList=[53035]+新白鹿+上海——预训练知识幻觉成查询参数，
         // 还经无岗脚本把"新白鹿在上海"说给了候选人）。与 precheck/booking 的同名闸门同口径：
         // 按 jobId 精查只能用本会话真实召回过的 jobId；幻觉参数直接拦截，不打接口。
-        if (jobIdList.length > 0 && context.isRecalledJobId) {
-          const unrecalledJobIds = jobIdList.filter((id) => !context.isRecalledJobId!(id));
+        if (jobIdList.length > 0 && context.archive.isRecalledJobId) {
+          const unrecalledJobIds = jobIdList.filter((id) => !context.archive.isRecalledJobId!(id));
           if (unrecalledJobIds.length > 0) {
-            const recalled = context.recalledJobIds ?? [];
+            const recalled = context.archive.recalledJobIds ?? [];
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.JOB_LIST_JOBID_NO_PROVENANCE,
               outcome: '查询拦截（jobIdList 含无召回出处的 jobId）',
@@ -733,17 +740,13 @@ export function buildJobListTool(
         try {
           brandCatalog = await spongeService.fetchBrandList();
         } catch (error) {
-          logger.warn(
-            `品牌目录拉取失败，入口标准化按空目录降级: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
+          logger.warn(`品牌目录拉取失败，入口标准化按空目录降级: ${toErrorMessage(error)}`);
         }
         const brandPlan = buildBrandQueryPlan({
           brandAliasList: brandAliasListInput,
           brandIdList: brandIdListInput,
           brandFilterMode,
-          sessionBrandState: context.sessionBrandState ?? null,
+          sessionBrandState: context.archive.sessionBrandState ?? null,
           catalog: brandCatalog,
         });
 
@@ -765,8 +768,8 @@ export function buildJobListTool(
         if (brandPlan.allRejected) {
           const rejectedInputs = brandPlan.rejected.map((item) => item.input);
           const fuzzySuggestions =
-            (context.recentBrandPool?.length ?? 0) > 0
-              ? findBrandFuzzyMatches(rejectedInputs, context.recentBrandPool ?? [])
+            (context.archive.recentBrandPool?.length ?? 0) > 0
+              ? findBrandFuzzyMatches(rejectedInputs, context.archive.recentBrandPool ?? [])
               : [];
           return buildBrandRejectedResult({
             brandPlan,
@@ -807,7 +810,8 @@ export function buildJobListTool(
         // 是候选人原话的高置信沉淀，须与模型入参逐字段合并：模型显式传的字段保留
         // （本轮新信息优先），漏传的字段由持久化约束补齐；空对象 {} 视同未传
         // （{} 是 truthy，不显式排除会绕过兜底）。
-        const persistedConstraint = context.sessionFacts?.preferences?.schedule_constraint ?? null;
+        const persistedConstraint =
+          context.archive.sessionFacts?.preferences?.schedule_constraint ?? null;
         if (persistedConstraint) {
           const persistedInput = {
             ...(persistedConstraint.onlyWeekends && { onlyWeekends: true }),
@@ -857,12 +861,11 @@ export function buildJobListTool(
           });
         }
 
-        // 兜底 1：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
-        // 用工形式是岗位 laborForm 属性，不是岗位工种，不应作为 category 查询条件。
+        // jobCategoryList 只做本地软排序信号、不下传 API；两道确定性剥离保住排序信号纯净度：
+        // 1）用工形式词（兼职/全职/小时工/寒假工/暑假工 等）——是岗位 laborForm 属性，已有独立硬过滤；
+        // 2）「店员/员工/工作人员」等泛化统称——不是真实工种名的子串，必然 0 命中，
+        //    会触发「无明确匹配工种」披露误导模型说"没有店员岗"（历史 badcase：果蔬好·天津 chat 6a66d888）。
         const laborFormStrip = stripLaborFormFromCategories(jobCategoryList);
-        // 兜底 2：剔除「店员/员工/工作人员」等泛化统称——它们不是 sponge 岗位分类轴上的具体工种，
-        // 作精确类目过滤几乎必然 0 命中（真实工种是收银员/理货员/促销员…），会把同品牌同商圈的
-        // 在招岗位误判为「查无」（生产 badcase：果蔬好·天津 chat 6a66d888）。
         const umbrellaStrip = stripGenericPositionUmbrella(laborFormStrip.cleaned);
         const sanitizedJobCategoryList = umbrellaStrip.cleaned;
         const removedCategoryWords = laborFormStrip.removed;
@@ -894,7 +897,7 @@ export function buildJobListTool(
         // 兜底：传了 lng/lat 但漏传 range 时，从业务阈值 max_recommend_distance_km 派生。
         // 上游 API 在 location.longitude/latitude 存在而 range 缺失时返回 code=10000，
         // 必须在请求前补齐，避免静默退化为 total=0。
-        const maxKmThreshold = context.thresholds?.find(
+        const maxKmThreshold = context.runtime.thresholds?.find(
           (t) => t.flag === 'max_recommend_distance_km',
         );
         const effectiveLocation =
@@ -935,6 +938,9 @@ export function buildJobListTool(
         }
         const regionNameListForQuery = regionDroppedForCoords ? [] : normalizedQueryRegionNameList;
 
+        // jobCategoryList 有意不进查询参数：模型猜的工种词与海绵类目字典对不上，API 精确
+        // 匹配基本落空（"传了基本出不来岗位"）。工种意向改为召回后本地软排序 + 知情披露，
+        // 见下方 rankJobsByRequestedCategories。
         let fetchBaseParams = {
           cityNameList: cityFilterNormalization.cityNameList,
           regionNameList: regionNameListForQuery,
@@ -944,7 +950,6 @@ export function buildJobListTool(
           projectIdList,
           storeNameList,
           searchJobName: searchJobName?.trim() || undefined,
-          jobCategoryList: sanitizedJobCategoryList,
           jobIdList,
           salaryPeriodNameList: settlementPeriodList.map((p) => p.trim()).filter(Boolean),
           location: effectiveLocation,
@@ -952,7 +957,6 @@ export function buildJobListTool(
         };
         try {
           let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
-          let jobCategoryMatchStrategy: 'api_exact' | 'local_keyword_match' = 'api_exact';
           let distanceScanPages = 1;
           let distanceScanTruncated = false;
           // 观测：区级兜底是否尝试过（命中触发条件并跑了 geocode/距离召回），
@@ -995,27 +999,29 @@ export function buildJobListTool(
             projectIdList: fetchBaseParams.projectIdList,
             storeNameList: fetchBaseParams.storeNameList,
             searchJobName: fetchBaseParams.searchJobName,
-            jobCategoryList: fetchBaseParams.jobCategoryList,
+            // 类目词不再进查询参数（本地软排序信号），但仍入签名：换工种关键词重查时
+            // 排序/披露会变，不应被跨轮重复查询检测误拦。
+            jobCategoryList: sanitizedJobCategoryList,
             jobIdList: fetchBaseParams.jobIdList,
             salaryPeriodNameList: fetchBaseParams.salaryPeriodNameList,
             location: fetchBaseParams.location ?? null,
             candidateScheduleConstraint: candidateScheduleConstraint ?? null,
             candidateLaborForm,
           });
-          const previousQuery = context.lastJobListQuery ?? null;
+          const previousQuery = context.archive.lastJobListQuery ?? null;
           const isRepeatQuery = Boolean(
             previousQuery &&
               previousQuery.signature === querySignature &&
-              previousQuery.turnId !== (context.turnId ?? null),
+              previousQuery.turnId !== (context.session.turnId ?? null),
           );
 
           // 首次请求
           let { jobs, total } = await fetchJobs(fetchBaseParams);
-          context.onJobListQueryExecuted?.({ signature: querySignature });
+          context.ledger.recordJobListQuery({ signature: querySignature });
           // 本轮已产出查岗结论：invite_to_group 的时机 gate 据此判断"是否突兀拉群"
           //（回合内直写，同 bookingSucceeded 模式）。放在请求返回后而非入口，
           // 是因为"发过请求但抛异常"不构成可告知候选人的查岗结论。
-          context.jobListExecutedThisTurn = true;
+          context.ledger.jobs.jobListExecuted = true;
 
           // 县级市行政层级兜底（生产 badcase 6a4f83a5ce406a6aeeeab4b2）：
           // 候选人说“延吉市铁南”，确定性提取曾把“延吉”强制放进 cityNameList；但海绵
@@ -1048,7 +1054,7 @@ export function buildJobListTool(
                 );
               }
             } catch (error: unknown) {
-              const reason = error instanceof Error ? error.message : String(error);
+              const reason = toErrorMessage(error);
               logger.warn(`城市层级过滤兜底查询失败，保留原始 0 条结果: ${reason}`);
             }
           }
@@ -1072,24 +1078,6 @@ export function buildJobListTool(
                 jobs = filtered;
                 total = filtered.length;
               }
-            }
-          }
-
-          // 岗位类型本地兜底：当 API 对岗位类型检索不稳定时，退回到同条件宽查后，
-          // 仅基于真实岗位字段做本地匹配，不依赖手写别名字典。
-          if (jobs.length === 0 && sanitizedJobCategoryList.length > 0) {
-            // 必须复用已经过县级市映射、坐标/区域归一化的基础请求，只放宽岗位类型。
-            // 重新从原始 city/region 组装会让“延吉 → 延边州 + 延吉市”等映射失效。
-            const fallback = await fetchJobs({ ...fetchBaseParams, jobCategoryList: [] });
-
-            const filtered = filterJobsByRequestedCategories(
-              fallback.jobs,
-              sanitizedJobCategoryList,
-            );
-            if (filtered.length > 0) {
-              jobCategoryMatchStrategy = 'local_keyword_match';
-              jobs = filtered;
-              total = filtered.length;
             }
           }
 
@@ -1168,7 +1156,7 @@ export function buildJobListTool(
           // 3) 其余（位置分享 / POI 级 geocode）→ poi 精确口径。
           const matchedGeocodeAnchor =
             locationLatitude != null && locationLongitude != null
-              ? (context.geocodeResolvedAnchors ?? []).find(
+              ? (context.ledger.geo.anchors ?? []).find(
                   (anchor) =>
                     Math.abs(anchor.longitude - locationLongitude) <=
                       GEOCODE_ANCHOR_COORD_TOLERANCE &&
@@ -1188,7 +1176,7 @@ export function buildJobListTool(
           // - model_supplied：本轮有 geocode 锚点，但坐标与所有锚点偏差 >1km——模型自编坐标；
           // - unreferenced：本轮无 geocode 锚点（改半径复查未重新 geocode / 位置分享转抄），
           //   无确定性参照，仅记量作为后续 enforce 决策依据。
-          const turnAnchors = context.geocodeResolvedAnchors ?? [];
+          const turnAnchors = context.ledger.geo.anchors ?? [];
           let coordsProvenance: 'turn_geocode' | 'model_supplied' | 'unreferenced' | null = null;
           let coordsDeviationKm: number | null = null;
           if (hasUserCoords) {
@@ -1220,7 +1208,7 @@ export function buildJobListTool(
               coordsProvenance = 'unreferenced';
             }
           }
-          const distanceThreshold = context.thresholds?.find(
+          const distanceThreshold = context.runtime.thresholds?.find(
             (t) => t.flag === 'max_recommend_distance_km',
           );
           const maxKm = distanceThreshold?.max;
@@ -1397,12 +1385,12 @@ export function buildJobListTool(
             const hadBrandCondition =
               brandPlan.filterMode === 'enforce' && brandPlan.applied.length > 0;
             const fuzzySuggestions =
-              hadBrandCondition && (context.recentBrandPool?.length ?? 0) > 0
+              hadBrandCondition && (context.archive.recentBrandPool?.length ?? 0) > 0
                 ? findBrandFuzzyMatches(
                     brandAliasListInput.length > 0
                       ? brandAliasListInput
                       : brandPlan.applied.map((brand) => brand.canonicalName),
-                    context.recentBrandPool ?? [],
+                    context.archive.recentBrandPool ?? [],
                   )
                 : [];
 
@@ -1650,6 +1638,20 @@ export function buildJobListTool(
             }
           }
 
+          // 意向工种本地软排序（不下传 API、不过滤）：明确匹配的岗位稳定分区排前
+          //（组内保持距离序），匹配情况经头部 notice 向模型知情披露，由模型按
+          // 岗位名称/工作内容自行判断相近岗位并如实告知候选人。
+          const jobCategoryRank = rankJobsByRequestedCategories(jobs, sanitizedJobCategoryList);
+          jobs = jobCategoryRank.jobs;
+          let jobCategoryNotice: string | null = null;
+          if (jobCategoryRank.applied) {
+            const requestedLabel = sanitizedJobCategoryList.join('、');
+            jobCategoryNotice =
+              jobCategoryRank.matchedCount > 0
+                ? `ℹ️ 候选人意向工种「${requestedLabel}」：已把 岗位名称/岗位类型/工作内容 明确匹配的 ${jobCategoryRank.matchedCount} 个岗位排在最前（仅排序，未过滤，其余岗位仍在列表后段）。介绍时按每个岗位的真实名称/内容说明，不得把其他工种包装成「${requestedLabel}」。`
+                : `⚠️ 本轮召回中没有 岗位名称/岗位类型/工作内容 明确匹配「${requestedLabel}」的岗位；以下为同范围其他在招岗位（工具未做工种过滤）。请先如实告知候选人"附近暂时没有明确的${requestedLabel}岗位"，再逐条按岗位名称/工作内容判断是否相近、介绍给候选人自行决定；不得把其他工种包装成「${requestedLabel}」，也不得据此直接判定无岗拉群。`;
+          }
+
           const flags: ProgressiveDisclosureFlags = {
             includeBasicInfo,
             includeJobSalary,
@@ -1661,6 +1663,16 @@ export function buildJobListTool(
 
           const formatSet = new Set(responseFormat);
           const result: Record<string, unknown> = {};
+          const collectionFollowup = detectPendingCollectionJobDetailFollowup(
+            context.turnInput.messages,
+            buildProvidedFieldLabels({
+              collectedFields: context.ledger.facts.collectedFields,
+              sessionInterviewInfo: context.archive.sessionFacts?.interview_info as
+                | Record<string, unknown>
+                | null
+                | undefined,
+            }),
+          );
           const ageScreeningSummary = includeHiringRequirement
             ? buildJobAgeScreeningSummary(jobs, resolveCandidateAge(context))
             : null;
@@ -1689,11 +1701,15 @@ export function buildJobListTool(
               distanceAnchor,
             );
             const markdownSections = [
+              collectionFollowup
+                ? `⚠️ 候选人正在上一张收资表之后追问岗位细节。先回答本轮问题；答完只能简短催缺口：“${collectionFollowup.reminder}”。禁止重发整张资料表。`
+                : null,
               isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               summerWorkerStrictNotice,
               laborFormRelaxNotice,
               studentFilterNotice,
+              jobCategoryNotice,
               ageScreeningSummary?.markdown,
               jobsMarkdown,
             ].filter((section): section is string => Boolean(section));
@@ -1705,14 +1721,33 @@ export function buildJobListTool(
           if (brandFilterNotice) {
             result.brandFilterNotice = brandFilterNotice;
           }
+          if (collectionFollowup) {
+            result.collectionFollowup = {
+              mode: 'missing_only',
+              missingFields: collectionFollowup.missingFields,
+              reminder: collectionFollowup.reminder,
+            };
+            result._replyInstruction =
+              `候选人是在刚发的收资表后追问岗位细节。先按本轮岗位结果回答问题；` +
+              `答完只用“${collectionFollowup.reminder}”催填缺口，禁止逐字或改写重发整张资料表。`;
+          }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;
-          const knownCityFactValue = readFactValue(context.sessionFacts?.preferences?.city);
+          const knownCityFactValue = readFactValue(context.archive.sessionFacts?.preferences?.city);
           const knownCityForConflict =
             typeof knownCityFactValue === 'string' ? knownCityFactValue : null;
           result.queryMeta = {
             storeMatchStrategy,
-            jobCategoryMatchStrategy,
+            // 意向工种本地软排序观测（取代 API 直传时代的 jobCategoryMatchStrategy）：
+            // requested=剥离后实际参与排序的关键词，matchedCount=明确匹配数，用于评估
+            // "靠岗位名称/内容理解工种意向"的效果
+            jobCategoryRank: jobCategoryRank.applied
+              ? {
+                  requested: sanitizedJobCategoryList,
+                  matchedCount: jobCategoryRank.matchedCount,
+                  totalCount: jobs.length,
+                }
+              : null,
             // 泛化统称（店员/员工…）被确定性剥离出 jobCategoryList 的记录，供排障对账
             jobCategoryUmbrellaStripped:
               removedUmbrellaCategoryWords.length > 0 ? removedUmbrellaCategoryWords : null,
@@ -1728,7 +1763,9 @@ export function buildJobListTool(
             cityFilterRecovery,
             usedDistanceFiltering: hasUserCoords,
             // 距离锚点精度（方案 16.1 GeoQueryMeta.anchor 的 B-1 先行子集）：
-            // 区级锚点查询占比与 district_level_distance_claim 拦截量的对账口径。
+            // 区级锚点查询占比的观测口径。⚠️ 原设计的对账对象是守卫规则，但那条规则
+            // 早已下线，不存在"拦截量趋零"这个验收项——距离渲染层（distance-render.util）
+            // 是这条链路的唯一防线，验收看渲染覆盖率（详见 §7 第 4 条）。
             anchor: {
               source:
                 regionRelaxedToLocation || matchedGeocodeAnchor
@@ -1745,12 +1782,14 @@ export function buildJobListTool(
             },
             // 地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）：会话事实的多个
             // 地理信号指向不同城市时记录"本应 ambiguous"案例，仅观测不干预——
-            // 现行先命中先赢行为不变；enforce 需 shadow 观测 1~2 周后人工决策（§17.4）。
+            // 现行先命中先赢行为不变；enforce 已于 2026-08-14 终审 no-go（3 周 25 样本
+            // 真冲突 0 起，见 docs/architecture/geo-resolution.md §9.3），本字段今后
+            // 只作排障线索，无定时观测者，勿再当"待决策 shadow"推动。
             // 传已确立会话城市做候选裁决：命中即打 adjudicatedByKnownCity，标记为
-            // 同形地名一类噪音而非真冲突（§17.4.1），让 shadow 累计能分开两者。
+            // 同形地名一类噪音而非真冲突，让累计统计能分开两者。
             geoSignalConflictShadow: detectGeoSignalConflict(
-              context.sessionFacts?.preferences?.district ?? null,
-              context.sessionFacts?.preferences?.location ?? null,
+              context.archive.sessionFacts?.preferences?.district ?? null,
+              context.archive.sessionFacts?.preferences?.location ?? null,
               { knownCity: knownCityForConflict },
             ),
             distanceThresholdKm: maxKm ?? null,
@@ -1817,24 +1856,22 @@ export function buildJobListTool(
           };
 
           // 通知调用方已获取岗位数据
-          if (context.onJobsFetched && jobs.length > 0) {
-            await context.onJobsFetched(mapJobsToSummaries(jobs));
-          }
+          if (jobs.length > 0) context.ledger.recordFetchedJobs(mapJobsToSummaries(jobs));
 
           // job.recommended：候选人本轮被推过岗位 → 记一次。fire-and-forget。
           // 幂等键按「本轮 turn」而非「每候选人一次」：daily_ops_report 是当天事件数，
           // 若用 userId 终身键，同一候选人后续天数再次推荐会被压成 0。turnId 缺省（test/debug）回退时间戳。
           if (jobs.length > 0) {
-            const turnId = context.turnId ?? Date.now().toString();
+            const turnId = context.session.turnId ?? Date.now().toString();
             void opsEventsRecorder.recordEvent({
-              corpId: context.corpId,
+              corpId: context.session.corpId,
               eventName: 'job.recommended',
-              idempotencyKey: `${context.sessionId}:job_recommend:${turnId}`,
-              botImId: context.botImId,
-              managerName: context.botUserId,
+              idempotencyKey: `${context.session.sessionId}:job_recommend:${turnId}`,
+              botImId: context.session.botImId,
+              managerName: context.session.botUserId,
               sourceChannel: 'unknown',
-              userId: context.userId,
-              chatId: context.sessionId,
+              userId: context.session.userId,
+              chatId: context.session.sessionId,
             });
           }
 
@@ -1851,7 +1888,7 @@ export function buildJobListTool(
                   '先用招募者口吻说明需要再确认暑假工岗位，必要时调用 request_handoff 转人工。'
                 : '岗位查询接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻安抚"这边稍等下"，' +
                   '基于 [会话记忆] 已展示岗位维持上下文，必要时调用 request_handoff 转人工。',
-            details: { reason: err instanceof Error ? err.message : '未知错误' },
+            details: { reason: toErrorMessage(err) || '未知错误' },
           });
         }
       },

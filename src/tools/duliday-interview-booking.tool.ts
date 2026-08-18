@@ -22,12 +22,14 @@ import {
   type SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { findLatestExplicitIdentityEvidence } from '@tools/shared/identity-statement.util';
+import { findLatestExplicitIdentityEvidence } from '@resolution/candidate/student-identity';
+import { stripTimeContextSuffix } from '@resolution/candidate/name';
+import { stripQuotedBlocks } from '@resolution/signal/markers';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
-import type { ActiveBooking } from '@memory/types/long-term.types';
+import type { ActiveBookingEntry } from '@memory/types/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/booking/job-booking.contract';
@@ -42,15 +44,23 @@ import {
 } from '@tools/duliday/booking/booking-reply-format.util';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { countRealNameAsks } from '@resolution/evidence/producers/name-confirmation';
 import {
-  countRealNameAsks,
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
-} from '@tools/shared/precheck-core';
-import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
-import { extractCandidateTexts } from '@memory/facts/candidate/adjudication-runner';
-import { computeCandidateMessageWatermark } from '@memory/facts/candidate/precheck-snapshot.types';
-import { evaluateSnapshotGate } from '@tools/duliday/booking/snapshot-gate.util';
+} from '@resolution/evidence/identity-gates';
+import { getRuleFactValue } from '@resolution/evidence/merge';
+import {
+  extractCandidateTexts,
+  extractCandidateTextsFromCorpus,
+} from '@resolution/signal/self-report';
+import {
+  BOOKING_CRITICAL_FIELDS,
+  computeCandidateMessageWatermark,
+} from '@resolution/evidence/snapshot';
+import { candidateValuesEquivalent } from '@resolution/evidence/normalize';
+import { evaluateSnapshotGate } from '@resolution/evidence/snapshot-gate';
+import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import type { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import type { AgentEvent } from '@/observability/observer.interface';
 
@@ -68,7 +78,7 @@ function markBookingFailed<T extends Record<string, unknown>>(
   context: ToolBuildContext,
   result: T,
 ): T {
-  context.bookingSucceeded = false;
+  context.ledger.jobs.bookingSucceeded = false;
   return result;
 }
 
@@ -88,12 +98,12 @@ function pauseUserHostingAsync(
     });
 }
 
-function isRecentBooking(booking: ActiveBooking, now = Date.now()): boolean {
+function isRecentBooking(booking: ActiveBookingEntry, now = Date.now()): boolean {
   const linkedAtMs = Date.parse(booking.linked_at);
   return Number.isFinite(linkedAtMs) && now - linkedAtMs < BOOKING_DEDUP_WINDOW_MS;
 }
 
-function isSameBookingTarget(booking: ActiveBooking, jobId: number): boolean {
+function isSameBookingTarget(booking: ActiveBookingEntry, jobId: number): boolean {
   // 旧数据没有 job_id，无法判断是否同岗位；保守按重复处理，避免部署前遗留指针导致
   // 同一候选人短时间 Bull 重试穿透。新写入的数据会带 job_id，可支持多岗位报名。
   if (booking.job_id == null) return true;
@@ -108,6 +118,44 @@ function normalizePhoneDigits(value: string | null | undefined): string {
 interface BookingAuthorityFailure {
   missingEvidenceFields: string[];
   conflictingFields: string[];
+}
+
+/**
+ * 代报豁免轨（core-flow-review 议题 8-1）。
+ *
+ * 事故（badcase chat 6a4229f2，2026-08-14）：中介联系人一轮给两个人报同一岗位，
+ * 第一人成功、第二人被姓名/电话一致性闸门拒——闸门以**会话级单一身份**做比对，
+ * 单人档案装不下第二人。产品裁定：同时服务多人是应该有的能力，不建子档案，
+ * 只把报名链路上"假设单一身份"的闸门改为**按调用自包含验证**。
+ *
+ * 防臆造保护不降级，只是把验证源从"会话档案单一身份"换成"候选人消息文本逐字锚定"：
+ * 姓名与手机号**都能**在本会话候选人消息里逐字找到，才按 candidate_quote 证据放行。
+ * 这正是 candidate_quote 证据的本义——对粘贴表单场景比档案匹配更强（档案只有一个人，
+ * 表单里两个人的姓名手机号都在原文里）。任一项找不到 → 回落原有会话档案一致性闸，
+ * 张冠李戴/示例回声防线原样保留。
+ */
+function isProxyBookingAnchoredInCandidateText(
+  context: ToolBuildContext,
+  payload: { name: string; phone: string },
+): boolean {
+  const name = payload.name?.trim() ?? '';
+  const phoneDigits = normalizePhoneDigits(payload.phone);
+  // 单字姓名/短号会把任意句子吸成"逐字命中"，不给豁免。
+  if (name.length < 2 || phoneDigits.length < 7) return false;
+
+  const candidateTexts = context.turnInput.corpusBlocks
+    ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks)
+    : extractCandidateTexts(context.turnInput.messages);
+  // 与既有 quote 验证同口径：剥引用块与消息时间后缀，防止把引用的经理名当自陈。
+  const normalizedTexts = candidateTexts.map((text) =>
+    stripQuotedBlocks(stripTimeContextSuffix(text)),
+  );
+
+  const nameAnchored = normalizedTexts.some((text) => text.includes(name));
+  const phoneAnchored = normalizedTexts.some((text) =>
+    normalizePhoneDigits(text).includes(phoneDigits),
+  );
+  return nameAnchored && phoneAnchored;
 }
 
 function validateBookingCandidateAuthority(
@@ -125,9 +173,13 @@ function validateBookingCandidateAuthority(
   },
 ): BookingAuthorityFailure | null {
   // 生产 generator 始终注入该权威视图；直接工具单测/旧 debug 调用未注入时保持兼容。
-  if (context.bookingCandidateFacts === undefined) return null;
+  if (context.archive.bookingCandidateFacts === undefined) return null;
 
-  const facts = context.bookingCandidateFacts;
+  // 代报豁免轨优先：payload 的姓名与手机号都能在候选人消息文本中逐字找到，
+  // 说明本次调用自包含了这个人的身份证据，不需要它与会话单一身份一致。
+  if (isProxyBookingAnchoredInCandidateText(context, payload)) return null;
+
+  const facts = context.archive.bookingCandidateFacts;
   const missingEvidenceFields: string[] = [];
   const conflictingFields: string[] = [];
   const checks: Array<{ field: string; expected: unknown; actual: unknown; required: boolean }> = [
@@ -172,7 +224,9 @@ function normalizeBookingAuthorityValue(field: string, value: unknown): string {
 const supplementAnswersSchema = z
   .record(z.string(), z.string())
   .optional()
-  .describe('岗位补充标签回答，key 必须是标签名，例如 爱好、身份。标准字段对应标签会自动回填');
+  .describe(
+    '岗位补充标签回答，key 必须逐字使用本岗位 precheck 返回的标签原文。标准字段对应标签会自动回填',
+  );
 
 const DESCRIPTION = `预约面试。真正调用面试预约接口，提交面试时间 + 候选人信息。入参必须与 supplier/entryUser 契约保持一致。
 
@@ -359,7 +413,7 @@ export function buildInterviewBookingTool(
       }) => {
         // 测试链路 PII 白名单闸门：booking 真调海绵生产网关，测试重放必须用
         // 假身份（2026-07-27 误建真实工单 453264 事故后固化为系统校验）。
-        if (context.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
+        if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
           return markBookingFailed(
             context,
             buildToolError({
@@ -434,20 +488,20 @@ export function buildInterviewBookingTool(
         // 不在本会话真实召回集时必是凭空生成或"召回 A 岗另编真实 B 岗 jobId"。precheck 已拦一次，
         // 但模型可能伪造 prechecked 直接进 booking，故这里再拦一道——避免"臆造/串改 jobId 命中真岗位
         // → 用假身份给真岗位下真预约"的 P0。
-        if (context.isRecalledJobId && !context.isRecalledJobId(jobId)) {
+        if (context.archive.isRecalledJobId && !context.archive.isRecalledJobId(jobId)) {
           return markBookingFailed(context, {
             ...buildToolError({
               errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED,
               outcome: '预约拦截（jobId 无召回出处）',
               replyInstruction:
                 'runtime 已短路本轮，禁止继续生成回复或调用其他工具；该会话需要人工确认 jobId 来源。' +
-                ((context.recalledJobIds ?? []).length === 0
+                ((context.archive.recalledJobIds ?? []).length === 0
                   ? '本会话还没有通过 duliday_job_list 召回过任何岗位，当前 jobId 没有合法来源，禁止凭空 booking。'
                   : `当前 jobId=${jobId} 不在本会话召回过的岗位里（合法的只有：${(
-                      context.recalledJobIds ?? []
+                      context.archive.recalledJobIds ?? []
                     ).join('、')}），禁止凭空 booking。`) +
                 '先调 duliday_job_list 召回岗位拿真实 jobId，再走 duliday_interview_precheck，nextAction=ready_to_book 后才能调本工具。',
-              details: { jobId, recalledJobIds: context.recalledJobIds ?? [] },
+              details: { jobId, recalledJobIds: context.archive.recalledJobIds ?? [] },
             }),
             shortCircuited: true,
             gateRejected: true,
@@ -489,14 +543,54 @@ export function buildInterviewBookingTool(
           );
         }
 
+        // 预检裁决快照先载入：姓名闸门的「quote 作证」与报名级确认级判据都读它。
+        // 载不到按 fail open 走既有闸门；下方对账闸复用同一份，不重复 IO。
+        const precheckSnapshot =
+          precheckId && adjudicationDeps?.snapshots
+            ? await adjudicationDeps.snapshots
+                .load(context.session.corpId, context.session.userId, precheckId)
+                .catch((error: unknown) => {
+                  logger.warn(
+                    `[booking] 预检快照载入异常（fail open）: ${
+                      error instanceof Error ? error.message : String(error)
+                    }`,
+                  );
+                  return null;
+                })
+            : null;
+        const enforcing = adjudicationDeps?.mode === 'enforce';
+        const evidenceMessages = context.turnInput.corpusBlocks
+          ? selectEvidenceDialogueMessages(context.turnInput.corpusBlocks)
+          : (context.turnInput.messages ?? []);
+        // E2 quote 作证收紧为确认级：confirmedFields 只含 operation=confirm /
+        // context_confirmation 的 accepted claim（precheck 快照构造处即该口径），
+        // acceptedClaimId 判据排除 session 基线（基线无 claimId）。候选人本人确认过的
+        // 名字可压过打招呼语负向结论（P11 终审条款）；statement 级 claim 不解锁负向证据。
+        const nameConfirmAttested =
+          Boolean(precheckSnapshot?.confirmedFields.includes('name')) &&
+          precheckSnapshot?.effectiveProfile.fields.name?.status === 'accepted' &&
+          precheckSnapshot.effectiveProfile.fields.name.acceptedClaimId != null &&
+          candidateValuesEquivalent(
+            'name',
+            precheckSnapshot.effectiveProfile.fields.name.value,
+            name,
+          );
+
         // HC-2 姓名权威闸门（booking 侧 defense-in-depth，负向证据）：name 在原文里仅以
         // "我是X"打招呼语昵称出现时拒——这是 runBookingGuards.checkRealName 纯形态校验拦不住的
         // 缺口（2-4 字昵称形态合法但只是微信打招呼昵称）。先确认真名再约，不得拿昵称下真预约。
-        const nameGate = evaluateBookingNameGate(name, context.messages ?? []);
+        const nameGate = evaluateBookingNameGate(name, evidenceMessages, {
+          // shadow 零行为：作证放行 enforce 起生效；shadow 期解锁由 legacy 正则承担（偏离⑥）。
+          // 拆除判据（2026-08-17 改写）：原判据挂在「候选人事实裁决 §10 灰度进度」上，而
+          // enforce 开关语义已被收资表单状态机取代（docs/todo/label-driven-collection-refactor.md
+          // §2.8）——不再有独立的 enforce 切换点可等。本并跑随标签制重启批一并处置，勿单独拆。
+          attestedByClaim: enforcing && nameConfirmAttested,
+          allowLegacyConfirmRegex: !enforcing,
+        });
         if (nameGate.decision === 'reject_collect') {
           // 同题限问（badcase g4ytra23：重复索名 4 遍）：已问过 ≥2 次仍未通过校验时，
           // 不再让模型继续追问，改走 request_handoff 由真人核实，避免死循环消耗候选人耐心。
-          const nameAskCount = countRealNameAsks(context.messages ?? []);
+          const nameAskCount = countRealNameAsks(evidenceMessages);
           const replyInstruction =
             nameAskCount >= 2
               ? `${nameGate.reason}。你已就"真实姓名"向候选人索要过 ${nameAskCount} 次，禁止再重复索要。` +
@@ -518,7 +612,7 @@ export function buildInterviewBookingTool(
         // B4 手机号溯源闸门（正向证据）：手机号必须能在候选人原文里找到出处。抽取示例回声
         // 臆造的档案曾经"沿用"洗白后带编造手机号直达 booking（badcase 6e9ar9gd 簇），姓名之外
         // 错误代价最高的字段是手机号——门店按它联系候选人，错号=预约作废+候选人失联。
-        const phoneGate = evaluateBookingPhoneGate(phone, context.messages ?? []);
+        const phoneGate = evaluateBookingPhoneGate(phone, evidenceMessages);
         if (phoneGate.decision === 'reject_collect') {
           return markBookingFailed(
             context,
@@ -529,6 +623,37 @@ export function buildInterviewBookingTool(
                 `${phoneGate.reason}。请用"方便留个联系电话吗，门店面试前会联系你"等自然话术向候选人索要手机号，` +
                 '拿到候选人亲口发的号码后再调 duliday_interview_precheck/本工具；禁止沿用记忆档案或历史记录里来源不明的号码。',
               details: { suspiciousPhone: phone },
+            }),
+          );
+        }
+
+        // D3 报名级确认级终审网：公证三问全过也不等于值对——「我姐今年24」引文真实、
+        // 形状合法、不回声，三问一路绿灯。姓名/电话已各有出处闸门（上方两道），年龄
+        // 此前一道都没有，这里补齐。shadow 期只记不拦。
+        const unconfirmedCriticalFields = precheckSnapshot
+          ? BOOKING_CRITICAL_FIELDS.filter(
+              (field) =>
+                !precheckSnapshot.confirmedFields.includes(field) &&
+                // 姓名/电话的直接自陈出处已由上方两道闸门逐字验过（原文里找得到号码、
+                // 找不到打招呼语昵称/引用前缀名），走到这里即视为已有等效证据。年龄没有
+                // 任何出处闸门——"24"这两个字在原文里一定找得到，找到了也证明不了它是
+                // 候选人的年龄——所以它只认候选人本人的一次明确表态。
+                field === 'age',
+            )
+          : [];
+        if (enforcing && unconfirmedCriticalFields.length > 0) {
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS,
+              outcome: '预约失败（报名级字段未经候选人确认）',
+              replyInstruction:
+                `${unconfirmedCriticalFields.join('、')} 尚未由候选人本人确认过。` +
+                '请把该字段随收资表复述一次让候选人过目（如"年龄24，对吧？如有误请改"），' +
+                '候选人认可后，用 duliday_interview_precheck 的 candidateClaims 以 operation="confirm" ' +
+                '提交这条确认对答（quote 填候选人的应答原话，agentQuestionQuote 填你的复述问句），' +
+                '拿到新的 precheckId 后再调本工具。禁止跳过确认直接重试。',
+              details: { unconfirmedCriticalFields },
             }),
           );
         }
@@ -643,7 +768,7 @@ export function buildInterviewBookingTool(
         });
         if (authorityFailure) {
           logger.warn(
-            `[booking] 候选人字段权威性校验拒绝: chatId=${context.sessionId}, ` +
+            `[booking] 候选人字段权威性校验拒绝: chatId=${context.session.sessionId}, ` +
               `missing=${authorityFailure.missingEvidenceFields.join('|') || '-'}, ` +
               `conflict=${authorityFailure.conflictingFields.join('|') || '-'}`,
           );
@@ -667,30 +792,28 @@ export function buildInterviewBookingTool(
         // 放行（Redis 抖动/TTL 过期不得阻断报名）。
         if (precheckId && adjudicationDeps?.snapshots) {
           try {
-            const snapshot = await adjudicationDeps.snapshots.load(
-              context.corpId,
-              context.userId,
-              precheckId,
-            );
+            const snapshot = precheckSnapshot;
             if (snapshot) {
               const gate = evaluateSnapshotGate({
                 snapshot,
                 payload: { name, phone, age, genderId, height, weight, hasHealthCertificate },
                 jobId,
                 currentMessageWatermark: computeCandidateMessageWatermark(
-                  extractCandidateTexts(context.messages),
+                  context.turnInput.corpusBlocks
+                    ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks)
+                    : extractCandidateTexts(context.turnInput.messages),
                 ),
               });
               if (gate.mismatchedFields.length > 0) {
                 logger.warn(
-                  `[booking] 快照对账不一致(${adjudicationDeps.mode}): chatId=${context.sessionId}, ` +
+                  `[booking] 快照对账不一致(${adjudicationDeps.mode}): chatId=${context.session.sessionId}, ` +
                     `precheckId=${precheckId}, mismatch=${gate.mismatchedFields.join('|')}`,
                 );
                 adjudicationDeps.observer?.emit({
                   type: 'fact_adjudication',
                   stage: 'booking_gate',
                   mode: adjudicationDeps.mode,
-                  userId: context.userId,
+                  userId: context.session.userId,
                   precheckId,
                   factsVersion: snapshot.factsVersion,
                   decisions: [],
@@ -765,7 +888,7 @@ export function buildInterviewBookingTool(
           const job = jobs[0];
           if (!job?.basicInfo) {
             // 与 precheck 同口径：岗位已失效，同步从会话记忆剔除，避免下一轮重试死岗位。
-            context.onJobInvalidated?.(jobId);
+            context.ledger.markJobInvalidated?.(jobId);
             return markBookingFailed(
               context,
               buildToolError({
@@ -814,9 +937,11 @@ export function buildInterviewBookingTool(
             candidateGenderId: genderId,
             candidateHasHealthCertificate: hasHealthCertificate,
             candidateHealthCertificateFact:
-              unwrapHighConfidenceValue(
-                context.highConfidenceFacts?.interview_info.has_health_certificate,
-              ) ?? context.sessionFacts?.interview_info.has_health_certificate,
+              getRuleFactValue<string>(
+                context.ledger.facts.ruleFacts,
+                'interview_info.has_health_certificate',
+                { minConfidence: 'high' },
+              ) ?? context.archive.sessionFacts?.interview_info.has_health_certificate,
             candidateIsStudent: resolveCandidateIsStudentForBooking(context),
             candidateHouseholdProvinceId: householdRegisterProvinceId,
           });
@@ -944,20 +1069,25 @@ export function buildInterviewBookingTool(
             logId,
           };
 
-          // 提交前软查重：recruitment_cases 废弃后，重复预约主要靠海绵约束 + active_booking
+          // 提交前软查重：重复预约主要靠海绵约束 + active_booking
           // 指针体现。这里补一道本地兜底——仅当候选人窗口内已有「同岗位」active_booking
           // 时拦截，避免 Bull 重试 / Agent 同会话重复调用生成第二张同岗位工单。
           // 不同岗位不拦截，支持候选人同时报名多个岗位。
           const activeBookings = await longTermService
-            .getActiveBookings(context.corpId, context.userId)
+            .getActiveBookings(context.session.corpId, context.session.userId)
             .catch(() => null);
           const recentSameJobBooking = (activeBookings ?? []).find(
             (booking) => isRecentBooking(booking) && isSameBookingTarget(booking, jobId),
           );
           // 软查重按「企微联系人 + 岗位」定位，但一个企微号可能先后给不同的人报同一岗位
-          // （工单 448367→448402 事故：罗欣宇约成功后，同会话给许颖约同岗位被误判重复）。
-          // 命中指针后再用 work_order_id 反查工单上的手机号：手机号不同 = 不同候选人，放行；
-          // 只有同手机号（或查不到工单手机号时保守处理）才判定为真正的重复提交。
+          // （工单 448367→448402 事故：第一人约成功后，同会话给第二人约同岗位被误判重复）。
+          // 命中指针后再用 work_order_id 反查工单上的手机号：手机号不同 = 不同候选人，放行。
+          //
+          // 议题 8-2（用户 8-14 裁定）：**查不到既有工单手机号时也放行**，交海绵仲裁。
+          // 原"查不到就保守判重"分支在 badcase chat 6a4229f2 里击穿了这条修复本身——
+          // 刚创建 8 分钟的工单海绵侧查不到手机号，手机号明确不同的第二位候选人被误拦，
+          // 模型还据此向候选人编造了拒绝理由。真重复由海绵服务端同手机号同岗位约束兜底
+          // （Bull 重试必然同 phone，海绵会拒），不因放行而产生重复工单。
           let duplicateBooking = recentSameJobBooking;
           if (recentSameJobBooking?.work_order_id != null) {
             const existingWorkOrder = await spongeService
@@ -965,20 +1095,26 @@ export function buildInterviewBookingTool(
               .catch(() => null);
             const existingPhone = normalizePhoneDigits(existingWorkOrder?.phone);
             const currentPhone = normalizePhoneDigits(phone);
-            if (existingPhone && currentPhone && existingPhone !== currentPhone) {
+            if (!existingPhone) {
+              logger.log(
+                `[booking] 近期同岗位 active_booking 查不到工单手机号，放行交海绵仲裁: ` +
+                  `chatId=${context.session.sessionId}, jobId=${jobId}, workOrderId=${recentSameJobBooking.work_order_id}`,
+              );
+              duplicateBooking = undefined;
+            } else if (currentPhone && existingPhone !== currentPhone) {
               logger.log(
                 `[booking] 近期同岗位 active_booking 手机号与本次不同，判定为不同候选人，放行: ` +
-                  `chatId=${context.sessionId}, jobId=${jobId}, workOrderId=${recentSameJobBooking.work_order_id}`,
+                  `chatId=${context.session.sessionId}, jobId=${jobId}, workOrderId=${recentSameJobBooking.work_order_id}`,
               );
               duplicateBooking = undefined;
             }
           }
           if (duplicateBooking?.work_order_id != null) {
             logger.warn(
-              `[booking] 命中近期同岗位 active_booking 软查重，跳过重复提交: chatId=${context.sessionId}, jobId=${jobId}, workOrderId=${duplicateBooking.work_order_id}`,
+              `[booking] 命中近期同岗位 active_booking 软查重，跳过重复提交: chatId=${context.session.sessionId}, jobId=${jobId}, workOrderId=${duplicateBooking.work_order_id}`,
             );
             // 候选人确已预约 → bookingSucceeded 置 true（不阻断后续拉群等流程）。
-            context.bookingSucceeded = true;
+            context.ledger.jobs.bookingSucceeded = true;
             // 候选人在预约成功后才补发简历的场景：工单已存在、系统没有补挂附件的接口，
             // 若按普通 already_booked 收口，这份真简历会被静默丢弃（工单 438358 事故的
             // 第二段）。识别到"本轮新收到简历"时改走人工补传指引。
@@ -994,7 +1130,11 @@ export function buildInterviewBookingTool(
                   'request_handoff(reasonCode="system_blocked")，reason 写明"候选人预约后补发简历，' +
                   `需人工将简历补传到工单 ${duplicateBooking.work_order_id}"。` +
                   '对候选人只说简历已收到、会帮他跟进，不要说简历已提交成功。'
-                : '该候选人近期已成功预约过这个岗位，不要对同一岗位重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；若候选人明确要报名另一个不同岗位，可以继续对新岗位走 precheck/booking。',
+                : '该候选人近期已成功预约过这个岗位，不要对同一岗位重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；若候选人明确要报名另一个不同岗位，可以继续对新岗位走 precheck/booking。' +
+                  '⚠️ 向候选人说明时只能说"系统显示近期已有一笔该岗位的报名记录"，' +
+                  '**不得自行推断或声称**手机号相同、该号已报过名、是同一个人等具体原因——' +
+                  '本工具只告诉你存在一笔既有工单（existingWorkOrderId），没有告诉你它属于谁、用的哪个手机号。' +
+                  '候选人质疑时调 request_handoff 转人工核实，不要坚持解释。',
               details: {
                 existingWorkOrderId: duplicateBooking.work_order_id,
                 ...(freshResumeThisTurn
@@ -1006,9 +1146,9 @@ export function buildInterviewBookingTool(
 
           // 最后提交闸门：Agent 生成可能持续数分钟，期间候选人会补发或更正报名资料。
           // 真正调用海绵前检查本轮输入是否已过期；命中后不创建工单，交给渠道合并新消息 replay。
-          if (context.hasNewerUserInput && (await context.hasNewerUserInput())) {
+          if (context.runtime.hasNewerUserInput && (await context.runtime.hasNewerUserInput())) {
             logger.warn(
-              `[booking] 提交前检测到候选人新消息，短路旧输入: chatId=${context.sessionId}, jobId=${jobId}`,
+              `[booking] 提交前检测到候选人新消息，短路旧输入: chatId=${context.session.sessionId}, jobId=${jobId}`,
             );
             return markBookingFailed(context, {
               ...buildToolError({
@@ -1048,17 +1188,17 @@ export function buildInterviewBookingTool(
             spongeTokenContext,
           );
 
-          context.bookingSucceeded = result.success;
+          context.ledger.jobs.bookingSucceeded = result.success;
 
           if (!result.success) {
             void opsEventsRecorder.recordEvent({
-              corpId: context.corpId,
+              corpId: context.session.corpId,
               eventName: 'booking.failed',
-              idempotencyKey: `${context.sessionId}:booking_fail:${jobId}:${interviewTime ?? 'wait_notice'}`,
-              botImId: context.botImId,
-              managerName: context.botUserId,
-              userId: context.userId,
-              chatId: context.sessionId,
+              idempotencyKey: `${context.session.sessionId}:booking_fail:${jobId}:${interviewTime ?? 'wait_notice'}`,
+              botImId: context.session.botImId,
+              managerName: context.session.botUserId,
+              userId: context.session.userId,
+              chatId: context.session.sessionId,
               payload: {
                 job_id: jobId,
                 interview_time: interviewTime ?? null,
@@ -1068,8 +1208,8 @@ export function buildInterviewBookingTool(
 
             pauseUserHostingAsync(
               userHostingService,
-              context.sessionId,
-              `[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`,
+              context.session.sessionId,
+              `[自动暂停] 预约失败，已暂停托管: chatId=${context.session.sessionId}`,
             );
           } else {
             const workOrderId = result.workOrderId ?? null;
@@ -1077,7 +1217,7 @@ export function buildInterviewBookingTool(
             // Path A: 预约成功 → 将高置信度候选人信息写入长期记忆 Profile。
             // 报名数据是候选人自主填写并经 precheck 校验的，是所有来源中置信度最高的。
             void longTermService
-              .writeFromBooking(context.corpId, context.userId, {
+              .writeFromBooking(context.session.corpId, context.session.userId, {
                 name,
                 phone,
                 age,
@@ -1099,11 +1239,11 @@ export function buildInterviewBookingTool(
             const bookingSuccessKey =
               workOrderId != null
                 ? String(workOrderId)
-                : `${context.sessionId}:booking_success:${jobId}:${interviewTime ?? 'wait_notice'}`;
+                : `${context.session.sessionId}:booking_success:${jobId}:${interviewTime ?? 'wait_notice'}`;
 
             if (workOrderId != null) {
               void longTermService
-                .setActiveBooking(context.corpId, context.userId, workOrderId, {
+                .setActiveBooking(context.session.corpId, context.session.userId, workOrderId, {
                   job_id: jobId,
                 })
                 .catch((err: unknown) => {
@@ -1118,13 +1258,13 @@ export function buildInterviewBookingTool(
             }
 
             void opsEventsRecorder.recordEvent({
-              corpId: context.corpId,
+              corpId: context.session.corpId,
               eventName: 'booking.succeeded',
               idempotencyKey: bookingSuccessKey,
-              botImId: context.botImId,
-              managerName: context.botUserId,
-              userId: context.userId,
-              chatId: context.sessionId,
+              botImId: context.session.botImId,
+              managerName: context.session.botUserId,
+              userId: context.session.userId,
+              chatId: context.session.sessionId,
               payload: {
                 work_order_id: workOrderId,
                 candidate_name: name,
@@ -1220,7 +1360,7 @@ export function buildInterviewBookingTool(
                         workOrderId: result.workOrderId ?? null,
                         jobId,
                         idempotencyKey:
-                          `${context.sessionId}:interview_group_invite:` +
+                          `${context.session.sessionId}:interview_group_invite:` +
                           `${result.workOrderId ?? `${jobId}:${interviewTime ?? 'wait_notice'}`}`,
                         recordHandoff: true,
                       },
@@ -1247,11 +1387,8 @@ export function buildInterviewBookingTool(
                     apiMessage: result.message ?? null,
                   },
                 }),
-                // 上方 !result.success 分支已触发 pauseUserHostingAsync（自动暂停托管→飞书告警→真人接管）。
-                // 显式打标供出站守卫对账：replyInstruction 指示的"让同事确认"衔接语在本
-                // 形态下是如实陈述，handoff_promise_without_handoff 不应再判空头承诺
-                // （2026-08-04 守卫审计：…740343589/…748484273 假阳 × 有害重写）。
-                // pause 是 fire-and-forget，极小概率失败仅落 error 日志，此处按已触发计。
+                // 本分支已自行暂停托管并发运营通知；该标记供承诺-动作对账规则识别
+                // 「升级动作已发生」，避免同一失败再补一次 handoff（双告警双底账）。
                 hostingPaused: true,
               };
 
@@ -1262,7 +1399,7 @@ export function buildInterviewBookingTool(
             void sendInterviewBookingNotification(
               {
                 candidateName: name,
-                contactName: context.contactName,
+                contactName: context.session.contactName,
                 phone,
                 genderLabel,
                 ageText,
@@ -1272,9 +1409,9 @@ export function buildInterviewBookingTool(
                 storeName: resolvedStoreName,
                 jobName: resolvedJobName,
                 jobId,
-                botUserName: context.botUserId,
+                botUserName: context.session.botUserId,
                 toolOutput: toolResult,
-                botImId: context.botImId,
+                botImId: context.session.botImId,
               },
               privateChatNotifier,
             );
@@ -1283,19 +1420,19 @@ export function buildInterviewBookingTool(
           return toolResult;
         } catch (err) {
           logger.error('预约面试失败', err);
-          context.bookingSucceeded = false;
+          context.ledger.jobs.bookingSucceeded = false;
 
           // 幂等键与上面「result.success===false」路径保持一致（去掉 :err 后缀）：
           // 同一 (session, job, interviewTime) 预约无论走「海绵返回失败」还是「抛异常」，
           // 都共用同一 key，Bull 重试多次失败只计一次 booking.failed，不重复 +1。
           void opsEventsRecorder.recordEvent({
-            corpId: context.corpId,
+            corpId: context.session.corpId,
             eventName: 'booking.failed',
-            idempotencyKey: `${context.sessionId}:booking_fail:${jobId}:${interviewTime ?? 'wait_notice'}`,
-            botImId: context.botImId,
-            managerName: context.botUserId,
-            userId: context.userId,
-            chatId: context.sessionId,
+            idempotencyKey: `${context.session.sessionId}:booking_fail:${jobId}:${interviewTime ?? 'wait_notice'}`,
+            botImId: context.session.botImId,
+            managerName: context.session.botUserId,
+            userId: context.session.userId,
+            chatId: context.session.sessionId,
             payload: {
               job_id: jobId,
               interview_time: interviewTime ?? null,
@@ -1305,8 +1442,8 @@ export function buildInterviewBookingTool(
 
           pauseUserHostingAsync(
             userHostingService,
-            context.sessionId,
-            `[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`,
+            context.session.sessionId,
+            `[自动暂停] 预约异常，已暂停托管: chatId=${context.session.sessionId}`,
           );
 
           const toolResult = {
@@ -1320,15 +1457,14 @@ export function buildInterviewBookingTool(
                 reason: err instanceof Error ? err.message : '未知错误',
               },
             }),
-            // 同上方 BOOKING_REJECTED 分支：本分支同样触发自动暂停托管+真人接管，
-            // 打标供 handoff_promise_without_handoff 对账（2026-08-04 守卫审计）。
+            // 同上「海绵拒绝」分支：已自暂停，供承诺-动作对账规则免重复补动作。
             hostingPaused: true,
           };
 
           void sendInterviewBookingNotification(
             {
               candidateName: name,
-              contactName: context.contactName,
+              contactName: context.session.contactName,
               phone,
               genderLabel,
               ageText,
@@ -1338,9 +1474,9 @@ export function buildInterviewBookingTool(
               storeName,
               jobName,
               jobId,
-              botUserName: context.botUserId,
+              botUserName: context.session.botUserId,
               toolOutput: toolResult,
-              botImId: context.botImId,
+              botImId: context.session.botImId,
             },
             privateChatNotifier,
           );
@@ -1458,18 +1594,20 @@ function normalizeResumeValue(value: unknown): string | undefined {
 
 /** 本轮高置信识别出的简历（候选人当轮刚发的文件/链接），仅当前轮有效。 */
 function getCurrentTurnResume(context: ToolBuildContext): string | undefined {
-  const currentTurnResume = context.highConfidenceFacts?.interview_info.upload_resume;
-  if (currentTurnResume && typeof currentTurnResume === 'object' && 'value' in currentTurnResume) {
-    return normalizeResumeValue(currentTurnResume.value);
-  }
-  return undefined;
+  return normalizeResumeValue(
+    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
+      minConfidence: 'high',
+    }),
+  );
 }
 
 function resolveUploadResume(uploadResume: unknown, context: ToolBuildContext): string | undefined {
   const explicit = normalizeResumeValue(uploadResume);
   if (explicit) return explicit;
 
-  const sessionResume = normalizeResumeValue(context.sessionFacts?.interview_info.upload_resume);
+  const sessionResume = normalizeResumeValue(
+    context.archive.sessionFacts?.interview_info.upload_resume,
+  );
   if (sessionResume) return sessionResume;
 
   return getCurrentTurnResume(context);
@@ -1503,7 +1641,7 @@ function resolveUploadResumeFileName(
   uploadResume: string,
   context: ToolBuildContext,
 ): string | undefined {
-  const content = collectTextParts(context.messages).join('\n');
+  const content = collectTextParts(context.turnInput.messages).join('\n');
   for (const match of content.matchAll(
     /\[文件消息\]\s*文件名\s*[：:]\s*([^；;\n\r]+)[；;]\s*文件地址\s*[：:]\s*([^；;\n\r]+)/gu,
   )) {
@@ -1518,20 +1656,22 @@ function resolveCandidateIsStudentForBooking(context: ToolBuildContext): boolean
   // 统一走共享识别器（只读候选人 user 消息、剥引用块/时间戳、子句级锚定）。
   // 不得对"全窗口拼接文本"做子串测试：Agent 模板"身份（学生还是社会人士）："
   // 自带"社会人士"子串，任何出现过该模板的会话都会被误判为非学生。
-  const currentUserEntry = context.currentUserMessage
-    ? [{ role: 'user', content: context.currentUserMessage }]
+  const currentUserEntry = context.turnInput.currentUserMessage
+    ? [{ role: 'user', content: context.turnInput.currentUserMessage }]
     : [];
   const latestIdentityEvidence = findLatestExplicitIdentityEvidence([
-    ...(Array.isArray(context.messages) ? context.messages : []),
+    ...(Array.isArray(context.turnInput.messages) ? context.turnInput.messages : []),
     ...currentUserEntry,
   ]);
   const latestIdentity = latestIdentityEvidence?.identity ?? null;
   if (latestIdentity === '学生') return true;
   if (latestIdentity === '社会人士') return false;
 
-  const sessionIdentity = context.sessionFacts?.interview_info?.is_student;
+  const sessionIdentity = context.archive.sessionFacts?.interview_info?.is_student;
   if (typeof sessionIdentity === 'boolean') return sessionIdentity;
-  return typeof context.profile?.is_student === 'boolean' ? context.profile.is_student : undefined;
+  return typeof context.archive.profile?.is_student === 'boolean'
+    ? context.archive.profile.is_student
+    : undefined;
 }
 
 function collectTextParts(value: unknown, depth = 0): string[] {

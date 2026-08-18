@@ -1,5 +1,5 @@
 /**
- * duliday_job_list 品牌查询计划（§8.1 组合规则 + §8.2 入口标准化的工具侧消费层）。
+ * duliday_job_list 品牌查询计划（§6.1 组合规则 + §6.2 入口标准化的工具侧消费层）。
  *
  * 职责：把「模型原始品牌参数 + brandFilterMode + 会话品牌状态」归一成一个可执行、
  * 可审计的查询计划。品牌识别/归一化本身全部委托 resolution/brand（单一居所），
@@ -30,14 +30,14 @@ export interface BrandQueryPlan {
   /** 实际应用的品牌条件（enforce=按此查询；exclude=按此排除）。 */
   applied: BrandCandidate[];
   rejected: NormalizedBrandQueryMeta['rejected'];
-  /** 传给上游 API 的品牌条件（可得 ID 的品牌优先走 brandIdList，§8.2.3）。 */
+  /** 传给上游 API 的品牌条件（可得 ID 的品牌优先走 brandIdList，§6.2）。 */
   queryBrandIdList: number[];
   queryBrandAliasList: string[];
-  /** exclude 模式的本地后过滤目标（上游接口无品牌排除参数，§8.1）。 */
+  /** exclude 模式的本地后过滤目标（上游接口无品牌排除参数，§6.1）。 */
   excludeBrands: BrandCandidate[];
   /** 模型传了品牌但全部被拒（未命中/歧义）：不得静默降级为无品牌查询。 */
   allRejected: boolean;
-  /** 品类展开减去会话 excludedBrands 时被移除的品牌名（结果披露用，§6.2）。 */
+  /** 品类展开减去会话 excludedBrands 时被移除的品牌名（结果披露用，§3.2）。 */
   categoryExcludedRemoved: string[];
   /** 兜底/裁剪需向模型披露的说明（拼进工具结果）；null=无需披露。 */
   disclosure: string | null;
@@ -50,7 +50,7 @@ function isSameBrand(a: { canonicalName: string; brandId: number | null }, b: Se
   return a.canonicalName === b.canonicalName;
 }
 
-/** 组装 queryMeta.brand 小节（§11 类型化接口）。 */
+/** 组装 queryMeta.brand 小节（§9 类型化接口）。 */
 export function toBrandQueryMeta(
   plan: BrandQueryPlan,
   fuzzySuggestions?: NormalizedBrandQueryMeta['fuzzySuggestions'],
@@ -91,11 +91,11 @@ export function buildBrandQueryPlan(input: {
     error: null,
   };
 
-  // 入口标准化（§8.2）：别名 → 唯一标准品牌；冲突/未命中进 rejected。
+  // 入口标准化（§6.2）：别名 → 唯一标准品牌；冲突/未命中进 rejected。
   const aliasOutcome = resolveBrandAliasInputs(input.brandAliasList, catalog);
   basePlan.rejected = aliasOutcome.rejected;
 
-  // 品类展开出的查询品牌列表须先减去会话 excludedBrands（§6.2）；显式点名的品牌不减
+  // 品类展开出的查询品牌列表须先减去会话 excludedBrands（§3.2）；显式点名的品牌不减
   // （显式正向表达优先级最高，且状态层的"反悔即赦免"会在收尾解除排斥）。
   const excludedRefs = input.sessionBrandState?.excludedBrands ?? [];
   const applied = aliasOutcome.applied.filter((brand) => {
@@ -158,7 +158,7 @@ export function buildBrandQueryPlan(input: {
       brandSource: 'model_input',
       applied: merged,
       queryBrandIdList: Array.from(new Set([...modelIds, ...idsFromApplied])),
-      // 可得 ID 时优先生成 brandIdList；没有 ID 才保留标准品牌名（§8.2.3/8.2.4）
+      // 可得 ID 时优先生成 brandIdList；没有 ID 才保留标准品牌名（§6.2/8.2.4）
       queryBrandAliasList: applied
         .filter((brand) => brand.brandId == null)
         .map((brand) => brand.canonicalName),
@@ -169,7 +169,7 @@ export function buildBrandQueryPlan(input: {
     };
   }
 
-  // 列表空 + mode 未传：会话品牌兜底（§8.1，仅 currentBrand 一档——只补跨轮遗忘）。
+  // 列表空 + mode 未传：会话品牌兜底（§6.1，仅 currentBrand 一档——只补跨轮遗忘）。
   const currentBrand = input.sessionBrandState?.currentBrand ?? null;
   if (currentBrand) {
     return {

@@ -4,6 +4,7 @@ import type {
   ConversionMetricMode,
 } from '@/api/types/conversion-analytics.types';
 import heroArt from '@/assets/images/conversion-growth-hero.png';
+import { formatLocaleNumber, formatPercent } from '@/utils/format';
 import MetricModeTabs from '../MetricModeTabs';
 import type { BotSortKey, SortDirection } from '../../types';
 import styles from '../../styles/index.module.scss';
@@ -176,7 +177,7 @@ function renderCell(bot: ConversionBotRow, type: ColumnType, key: BotSortKey) {
   const value = metricValue(bot, key);
   return (
     <span className={joinClasses(styles.metricCount, value === 0 && styles.metricZero)}>
-      {value.toLocaleString('zh-CN')}
+      {formatLocaleNumber(value, 'zh-CN')}
     </span>
   );
 }
@@ -463,8 +464,4 @@ function statusLabel(status: ConversionBotRow['status']) {
   if (status === 'good') return '健康';
   if (status === 'warning') return '观察';
   return '偏低';
-}
-
-function formatPercent(value?: number) {
-  return `${((value ?? 0) * 100).toFixed(1)}%`;
 }

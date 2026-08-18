@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { exponentialBackoffMs } from '@infra/utils/async.util';
 import { RegistryService } from './registry.service';
 import { DEFAULT_RELIABLE_CONFIG, ErrorCategory, ReliableConfig } from './types';
 
@@ -94,7 +95,6 @@ export class ReliableService {
     }
 
     // 指数退避: base * 2^(attempt-1), capped at max
-    const backoff = cfg.baseBackoffMs * Math.pow(2, attempt - 1);
-    return Math.min(backoff, cfg.maxBackoffMs);
+    return exponentialBackoffMs(attempt, cfg.baseBackoffMs, cfg.maxBackoffMs);
   }
 }

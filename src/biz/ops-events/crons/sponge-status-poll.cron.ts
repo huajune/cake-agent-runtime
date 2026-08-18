@@ -1,3 +1,4 @@
+import { toErrorStack } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -45,7 +46,7 @@ export class SpongeStatusPollService {
     try {
       await this.runOnce();
     } catch (error) {
-      this.logger.error('海绵状态轮询失败', error instanceof Error ? error.stack : String(error));
+      this.logger.error('海绵状态轮询失败', toErrorStack(error));
     } finally {
       this.running = false;
     }

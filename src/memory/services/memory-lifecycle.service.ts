@@ -3,10 +3,9 @@ import { MessageProcessingService } from '@biz/message/services/message-processi
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
 import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-types/tracking.types';
-import type { CityAttestation } from '@shared-types/tool.types';
+import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import { BrandStateService } from './brand-state.service';
 import { LongTermService } from './long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
@@ -14,7 +13,7 @@ import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
-import { extractHighConfidenceFacts, stripQuotedBlocks } from '../facts/high-confidence-facts';
+import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import type {
   LongTermPreferenceFacts,
@@ -23,11 +22,10 @@ import type {
 } from '../types/long-term.types';
 import { isUserProfileFactValue } from '../types/long-term.types';
 import type { ShortTermMessage } from '../types/short-term.types';
-import {
-  type HighConfidenceFacts,
-  type RecommendedJobSummary,
-  type WeworkSessionState,
-} from '../types/session-facts.types';
+import type { WeworkSessionState } from '../types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 
 export interface MemoryLifecycleTurnContext {
   corpId: string;
@@ -45,13 +43,19 @@ export interface MemoryLifecycleTurnContext {
   contactName?: string;
   /** 本轮图片描述的品牌解析结果（save_image_description execute 内同步产出，§10.2）。 */
   imageBrandResolutions?: BrandResolution[] | null;
-  /** 本轮 geocode unique 解析确权的城市；回合结束写入 pref.city（source='tool'）。 */
+  /** 本轮 geocode unique 解析确权的城市；回合结束写入 pref.city（source='system'）。 */
   cityAttestation?: CityAttestation | null;
   /**
    * 本轮工具判定失效（海绵查不到）的 jobId；回合结束从会话岗位记忆剔除，
    * 避免下一轮模型又从记忆取到死岗位重试 precheck（badcase chat 6a685393）。
    */
   invalidatedJobIds?: number[] | null;
+  /** prep 时刻唯一一次规则轨判定；轮末直接消费，禁止重跑。 */
+  ruleFacts: RuleFactClaims | null;
+  /** prep 时刻规则轨的 labor-form 三态判定；轮末只消费、不重跑。 */
+  laborFormIntent: LaborFormIntentDecision;
+  /** 本轮账本中与事实抽取有关的只读工具摘要。 */
+  extractionToolFacts?: TurnExtractionToolFacts;
 }
 
 interface StepOutcome<T = void> {
@@ -117,6 +121,8 @@ export class MemoryLifecycleService {
        * 提供时触发 MemoryEnrichmentService。
        */
       enrichmentIdentity?: CandidateIdentityHint;
+      /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
+      ruleFacts?: RuleFactClaims | null;
     },
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
@@ -145,7 +151,7 @@ export class MemoryLifecycleService {
       sessionId,
     );
 
-    const highConfidenceFacts = await this.detectHighConfidenceFacts(currentUserMessage);
+    const ruleFacts = options?.ruleFacts ?? null;
     const warnings: string[] = [];
     if (includeShortTerm && this.shortTerm.lastLoadError) {
       warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
@@ -166,7 +172,7 @@ export class MemoryLifecycleService {
       },
       ...(warnings.length > 0 ? { _warnings: warnings } : {}),
       sessionMemory: hasOwnSessionMemory ? sessionState : null,
-      highConfidenceFacts,
+      ruleFacts,
       procedural: proceduralState,
       longTerm: {
         profile,
@@ -414,20 +420,6 @@ export class MemoryLifecycleService {
     );
   }
 
-  private async detectHighConfidenceFacts(
-    currentUserMessage?: string,
-  ): Promise<HighConfidenceFacts | null> {
-    const trimmed = currentUserMessage?.trim();
-    if (!trimmed) return null;
-
-    const brandData = await this.sponge.fetchBrandList();
-    const highConfidenceFacts = extractHighConfidenceFacts([trimmed], brandData);
-    if (!highConfidenceFacts) return null;
-
-    this.logger.debug(`前置高置信识别命中: ${highConfidenceFacts.reasoning}`);
-    return highConfidenceFacts;
-  }
-
   private async runSessionTurnEndSteps(
     ctx: MemoryLifecycleTurnContext,
     lastUserText: string,
@@ -521,7 +513,15 @@ export class MemoryLifecycleService {
       content: this.extractTextFromContent(m.content),
     }));
     const extractFactsResult = await this.runMeasuredStep('extract_facts', async () => {
-      return await this.session.extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages);
+      return await this.session.extractAndSave(
+        ctx.corpId,
+        ctx.userId,
+        ctx.sessionId,
+        flatMessages,
+        ctx.ruleFacts,
+        ctx.laborFormIntent,
+        ctx.extractionToolFacts,
+      );
     });
     // LLM 提取降级（fallback 空值）若被吞掉、step 仍标 success，提取实际成功率
     // 不可观测。这里把降级显式标成 failure step，使整轮落 completed_with_errors。
@@ -597,7 +597,7 @@ export class MemoryLifecycleService {
       const message = messages[i];
       if (message.role !== 'user') break;
       const text = stripQuotedBlocks(
-        MessageParser.stripTimeContext(this.extractTextFromContent(message.content)),
+        stripTimeContext(this.extractTextFromContent(message.content)),
       ).trim();
       if (text) texts.unshift(text);
     }

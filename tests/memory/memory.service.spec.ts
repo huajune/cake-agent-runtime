@@ -32,7 +32,7 @@ describe('MemoryService', () => {
       mockLifecycle.onTurnStart.mockResolvedValue({
         shortTerm: { messageWindow: [{ role: 'user', content: 'hello' }] },
         sessionMemory: null,
-        highConfidenceFacts: null,
+        ruleFacts: null,
         procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { profile: null },
       });
@@ -76,7 +76,7 @@ describe('MemoryService', () => {
           ],
         },
         sessionMemory: null,
-        highConfidenceFacts: null,
+        ruleFacts: null,
         procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { profile: null },
       });
@@ -103,7 +103,7 @@ describe('MemoryService', () => {
           ],
         },
         sessionMemory: null,
-        highConfidenceFacts: null,
+        ruleFacts: null,
         procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { profile: null },
       });

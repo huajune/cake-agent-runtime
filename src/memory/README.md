@@ -15,7 +15,7 @@
 
 另外还有一个旁路能力：
 
-- `highConfidenceFacts`
+- `ruleFacts`
   这是基于“当前轮新消息”的前置高置信识别结果。
   它当前会在 `memory.onTurnStart()` 中被计算出来并返回，但：
   - 会作为 prompt sidecar 注入 Agent
@@ -24,7 +24,7 @@
 
 所以它目前不是正式记忆层，更像当前轮的 sidecar 解析结果。
 
-完整端到端数据流见：[记忆与线索数据流](../../docs/architecture/memory-and-hints-data-flow.md)。
+完整端到端数据流见：[记忆与线索数据流](../../docs/architecture/memory-architecture.md)。
 
 ## 模块目标
 
@@ -192,7 +192,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 ## 字段置信度与来源
 
-`highConfidenceFacts`、`sessionFacts`、长期 `profile_facts` 都使用字段级 fact wrapper。字段值本身必须解释“有多可信”和“从哪里来”。
+`ruleFacts`、`sessionFacts`、长期 `profile_facts` 都使用字段级 fact wrapper。字段值本身必须解释“有多可信”和“从哪里来”。
 
 置信度：
 
@@ -207,25 +207,21 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 | 值 | 含义 |
 |----|------|
-| `candidate` | 候选人直接明示的结构化输入，且写入链路保留了候选人来源 |
-| `llm` | LLM 根据对话做的结构化提取 |
+| `candidate_quote` | 候选人原话背书且已复算，或答问绑定确认 |
 | `rule` | 确定性规则、正则、白名单或别名表匹配得到 |
+| `model` | LLM 根据对话做的结构化提取或模型工具入参 |
 | `system` | 外部系统或平台接口补充得到 |
-| `memory` | 历史记忆或旧结构兼容迁移得到 |
-| `derived` | 由其他字段推导得到，例如由区/地标白名单反推出城市 |
-| `booking` | 预约/报名成功后写入长期档案，是长期画像的最高质量来源 |
-| `extraction` | 会话沉淀时从 sessionFacts 抽取后写入长期档案；原 sessionFact 来源会记录在 evidence 中 |
-| `enrichment` | 外部画像补全链路写入，例如客户详情接口补充性别 |
-| `tool` | 本会话工具执行结果确权（geocode、定位分享逆解析、地图截图确权等外生出处，非模型自报） |
+| `manual` | 真人经理带外拍板（预留） |
+| `archive` | 历史记忆或跨会话档案回放得到 |
 
 注意：
 
 - `source` 说明字段产生路径，不等同于置信度；最终能否进入工具判断看 `confidence`
-- `highConfidenceFacts` 当前只会出现 `source=rule/system`，且不持久化
-- `sessionFacts` 主要出现 `source=llm/rule/system/memory/derived/tool/candidate`
-- 长期 `profile_facts` 主要出现 `source=booking/extraction/enrichment`
+- `ruleFacts` 当前只会出现 `source=rule/system`，且不持久化
+- `sessionFacts` 与长期 `profile_facts` 共用上述六章；沉淀透传 session 事实的原章
+- booking 与 enrichment 都归 `system`，质量差别由 `confidence` 表达
 
-来源声明置信度升级：LLM 可输出 `explicit_provenance{field, quote}`，quote 经候选人原文验证（phone 还加格式校验）后，把 medium 升为 high/candidate；仅限白名单 `EXPLICIT_UPGRADE_FIELDS`（排除 `name` 与 `applied_store`/`interview_time` 等事务字段）。
+来源声明置信度升级：LLM 可输出 `explicit_provenance{field, quote}`，quote 经候选人原文验证（phone 还加格式校验）后，把 medium 升为 high/candidate_quote；仅限白名单 `EXPLICIT_UPGRADE_FIELDS`（排除 `name` 与 `applied_store`/`interview_time` 等事务字段）。
 
 ## 回合开始：onTurnStart
 
@@ -245,14 +241,14 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 - `shortTerm.messageWindow`
 - `sessionMemory`
-- `highConfidenceFacts`
+- `ruleFacts`
 - `procedural`
 - `longTerm.profile` / `longTerm.preferences`
 - `longTerm.origin`（可选；`{ fromOtherConversation: true }` 时渲染层加"来自此前会话"口径）
 
 注意：
 
-- `highConfidenceFacts` 只看当前轮新消息
+- `ruleFacts` 只看当前轮新消息
 - 没拿到当前轮消息时，不会 fallback 到历史窗口
 - 当前实现里，它会进入 prompt sidecar，但不属于持久化记忆
 
@@ -274,7 +270,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 - `shortTerm.messageWindow`
 - `sessionMemory`
-- `highConfidenceFacts`
+- `ruleFacts`
 - `procedural.currentStage`
 - `longTerm.profile` / `longTerm.preferences`
 - `longTerm.origin`
@@ -285,7 +281,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `[用户档案]`
 - `[历史求职意向]`（来自 `longTerm.preferences`）
 - `[会话记忆]`
-- `[本轮高置信线索]`
+- `[本轮解析线索]`
 - `[本轮待确认线索]`
 
 其中 `longTerm.profile` 在内存中是 `profile_facts` 结构。Prompt 会展示所有字段及其置信度；进入工具上下文时会统一 unwrap，只让高置信字段参与程序化判断。
@@ -310,7 +306,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 入口：[SessionService.projectAssistantTurn()](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/session.service.ts)
 
-内部依赖：[session-job-matching.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/session-job-matching.ts)
+岗位指代解析器：[resolution/job](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/resolution/job/index.ts)
 
 做两件事：
 
@@ -340,13 +336,13 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 8. 构造 extraction prompt（注入 `[当前时间]` 要求绝对日期、`[已确认事实]`，提取原则为增量式而非累积式）
 9. 调 extract 模型输出结构化对象
 10. LLM 输出的 `brand_intents` 经 `validateBrandIntents` 目录验证（回声/回流闸）后随 lifecycle 返回，由回合收尾的 `brand_state` reducer 统一归并；facts 内 `preferences.brands` 恒置 null
-11. 用 `mergeRuleAndLlmFacts()` 单遍合并规则与 LLM 事实（替代原两层合并），共享原语在 `facts/fact-merge.util.ts`
+11. 用 `mergeRuleAndLlmFacts()` 单遍合并规则与 LLM 事实（替代原两层合并），合并策略与原语在 `@resolution/evidence/merge`（Record 按字段穷尽）
 12. `saveFacts()` 经 `mergeFactsWithConfidenceGuard()` 深度合并回 Redis：跨轮低置信不覆盖高置信
 
 这里的关键点：
 
 - 后置提取是事实落库主路径
-- `onTurnStart` 的 `highConfidenceFacts` 对象本身不落库
+- `onTurnStart` 的 `ruleFacts` 对象本身不落库
 - `onTurnEnd` 会重新跑同类规则抽取，并把可保存的结果写入 `sessionFacts`
 - 每个字段写入时打 `extractedAt` 时间锚；evidence 入库经 `truncateEvidence()` 截断 `MAX_FACT_EVIDENCE_CHARS=200` 字
 
@@ -438,12 +434,17 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `services/settlement.service.ts`
   - 会话结束后的长期沉淀
 
-- `facts/high-confidence-facts.ts`
-  - 当前轮文本的前置高置信识别（规则层）
-  - 当前不属于主记忆读写链路
+- `services/candidate-snapshot.service.ts`
+  - precheck → booking 的候选人裁决快照存取
 
-- `facts/fact-merge.util.ts`
-  - 规则事实与 LLM 事实合并、跨轮置信度守卫的共享原语
+- `services/brand-state.service.ts`
+  - 品牌状态的持锁读写；状态迁移语义在 `resolution/evidence/brand.ts`
+
+- `services/session-key.ts`
+  - 会话 Redis hash key 的唯一构造函数
+
+候选人字段判断不再位于 memory：规则 producer、准入链、合并策略与冲突裁决统一在
+`src/resolution/candidate/`、`src/resolution/evidence/`、`src/resolution/labor-form/`。
 
 ## 设计边界
 
@@ -461,4 +462,4 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - 回合结束：写回会话态并触发后置提取
 - 会话闲置结束：沉淀到长期记忆
 
-而 `highConfidenceFacts` 目前只是“当前轮前置解析 sidecar”，不是正式记忆层；它会辅助 prompt 理解。回合结束时系统会重新跑规则识别，把可保存的字段经 `sessionFacts` 链路落到 Redis。
+而 `ruleFacts` 目前只是“当前轮前置解析 sidecar”，不是正式记忆层；它会辅助 prompt 理解。回合结束时系统会重新跑规则识别，把可保存的字段经 `sessionFacts` 链路落到 Redis。

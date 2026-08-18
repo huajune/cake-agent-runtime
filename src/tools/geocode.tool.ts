@@ -9,6 +9,7 @@
  *     - 0 条 → GEOCODE_UNRESOLVED_ADDRESS（无法识别该地名）
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -26,12 +27,11 @@ import {
   normalizeCityName,
   normalizeDistrictForLookup,
 } from '@resolution/geo';
-import type {
-  GeocodeLocationAnchor,
-  ToolBuildContext,
-  ToolBuilder,
-} from '@shared-types/tool.types';
+import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
+import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
+import { extractUserTexts } from '@resolution/signal/dialogue';
 
 const logger = new Logger('geocode');
 
@@ -64,7 +64,7 @@ const DESCRIPTION = `将地名或地址解析为标准化的省/市/区/镇层�
 ## 参数
 - address 必传；当你判断该地点是地铁站时（如"七莘路"实指地铁站），传"X站"/"X地铁站"而非裸路名——裸路名会被当成整条道路、坐标可能锚到远端
 - city 可选；按以下优先级判断要不要填：
-  1. 候选人当前明示城市 / [本轮查询硬约束] 的城市 / [本轮高置信线索] 的城市 / [会话记忆] 任一存在 → 直接填入（哪怕本工具的 address 是商圈/地标，也要带上这个已知城市）
+  1. 候选人当前明示城市 / [本轮查询硬约束] 的城市 / [本轮解析线索] 的城市 / [会话记忆] 任一存在 → 直接填入（哪怕本工具的 address 是商圈/地标，也要带上这个已知城市）
   2. 上面都没有，但你判断"地名→城市"是公认唯一对应（如"马陆"→上海嘉定、"光谷"→武汉、"中关村"→北京、"漕宝路地铁站"→上海），且地名**不**命中下面的"通用后缀黑名单" → 允许凭通识填城市
   3. 既无明示也无高置信通识，或地名命中黑名单 → city 留空（不传或传 null），由工具判定
 - 不要为了 city 反复反问候选人——拿不准就留空让工具自己处理
@@ -186,7 +186,7 @@ function buildSessionCityConflictNotice(
   context: ToolBuildContext,
   c: GeocodeCandidate,
 ): string | null {
-  const sessionCityRaw = context.sessionFacts?.preferences?.city?.value ?? null;
+  const sessionCityRaw = context.archive.sessionFacts?.preferences?.city?.value ?? null;
   const sessionCity = normalizeCityName(sessionCityRaw);
   const resolvedCity = normalizeCityName(c.city);
   if (!sessionCity || !resolvedCity || sessionCity === resolvedCity) return null;
@@ -201,6 +201,36 @@ function buildSessionCityConflictNotice(
 }
 
 /**
+ * geocode.city 与 invite.city 共用一套出处门：模型参数本身不构成城市证据。
+ * 无出处/与会话事实冲突时不报错、不采信，降级为 city=null 让 geocode 三态裁决。
+ */
+function resolveProvenancedCity(
+  context: ToolBuildContext,
+  requestedCity: string | null,
+): string | null {
+  if (!requestedCity) return null;
+  const cityFact = context.archive.sessionFacts?.preferences?.city;
+  const sessionCity =
+    typeof cityFact === 'string'
+      ? cityFact
+      : cityFact && typeof cityFact === 'object' && 'value' in cityFact
+        ? String(cityFact.value ?? '') || null
+        : null;
+  const verdict = evaluateInviteCityGate({
+    requestedCity,
+    sessionCity,
+    userTexts: extractUserTexts(context.turnInput.messages),
+    geoSignalCities: context.ledger.geo.signalCities,
+    turnResolvedCities: [
+      ...context.ledger.geo.anchors.map((anchor) => anchor.city),
+      context.turnInput.geocodeLocationAnchor?.city ?? '',
+    ].filter(Boolean),
+    turnVisualSheets: context.ledger.visual.factSheets,
+  });
+  return verdict.decision === 'allow' ? requestedCity : null;
+}
+
+/**
  * unique 解析结果的统一出口：记录回合锚点（11.3）+ 前置城市披露（11.4）。
  * `_cityConfirmed` 必须是返回对象的第一个字段——序列化后模型最先读到城市结论。
  */
@@ -211,6 +241,16 @@ function buildUniqueResult(params: {
   extra?: Record<string, unknown>;
 }) {
   const { context, candidate, queryAddress, extra } = params;
+  if (candidate.confidence !== 'high' && !candidateEchoesQuery(candidate, queryAddress)) {
+    return {
+      resolution: 'needs_confirmation' as const,
+      candidateLabel: candidate.poiName?.trim() || candidate.formattedAddress,
+      _replyInstruction:
+        `“${queryAddress}”与解析结果“${candidate.poiName?.trim() || candidate.formattedAddress}”不是逐字同一地点。` +
+        '先把解析到的标准地点回显给候选人确认；确认前禁止采用坐标查岗。候选人确认后再按该标准地点重调 geocode。',
+      ...(extra ?? {}),
+    };
+  }
   recordResolvedAnchor(context, candidate, queryAddress);
   const conflictNotice = buildSessionCityConflictNotice(context, candidate);
   return {
@@ -220,6 +260,16 @@ function buildUniqueResult(params: {
     result: toResultPayload(candidate, queryAddress),
     ...(extra ?? {}),
   };
+}
+
+/** 查询原文须被返回的结构化地址/POI 逐字承接；纠错改字必须先让候选人确认。 */
+function candidateEchoesQuery(candidate: GeocodeCandidate, queryAddress: string): boolean {
+  const query = normalizeReferenceText(queryAddress);
+  if (!query) return false;
+  return [candidate.poiName, candidate.township, candidate.district, candidate.formattedAddress]
+    .map(normalizeReferenceText)
+    .filter((value) => value.length >= 2)
+    .some((value) => value.includes(query) || query.includes(value));
 }
 
 /**
@@ -234,24 +284,20 @@ function recordResolvedAnchor(
 ): void {
   if (!Number.isFinite(c.longitude) || !Number.isFinite(c.latitude)) return;
   const { areaLevelQuery, areaName } = resolveAreaLevelAnchor(queryAddress, c);
-  (context.geocodeResolvedAnchors ??= []).push({
+  // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
+  // unique 解析即城市确认，暂存 ledger 供回合收尾写 pref.city，让 invite 城市门
+  // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
+  // anchor 与 attestation 的成对写入由 recordGeoResolution 统一维护（议题 4-1）。
+  context.ledger.recordGeoResolution({
     longitude: c.longitude,
     latitude: c.latitude,
     areaLevelQuery,
     areaName,
     city: c.city || null,
+    district: c.district ?? null,
+    evidence: `geocode 唯一解析：${c.formattedAddress?.trim() || queryAddress?.trim() || c.city?.trim() || ''}`,
+    source: 'geocode_unique',
   });
-  // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
-  // unique 解析即城市确认，暂存 turnState 供回合收尾写 pref.city，让 invite 城市门
-  // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
-  if (c.city?.trim()) {
-    context.onCityResolved?.({
-      city: c.city.trim(),
-      district: c.district?.trim() || null,
-      evidence: `geocode 唯一解析：${c.formattedAddress?.trim() || queryAddress?.trim() || c.city.trim()}`,
-      source: 'geocode_unique',
-    });
-  }
 }
 
 function normalizeReferenceText(value: string): string {
@@ -267,9 +313,14 @@ function candidateMatchesAnchor(
   if (expectedCity && (!resolvedCity || resolvedCity !== expectedCity)) return false;
 
   if (anchor.districts.length === 0) return true;
-  if (!candidate.district?.trim()) return false;
+  const returnedAdministrativeAreas = [candidate.district, candidate.township].filter(
+    (value): value is string => Boolean(value?.trim()),
+  );
+  if (returnedAdministrativeAreas.length === 0) return false;
   return anchor.districts.some((district) =>
-    candidateDistrictMatchesAddress([normalizeDistrictForLookup(district)], candidate.district),
+    returnedAdministrativeAreas.some((returnedArea) =>
+      candidateDistrictMatchesAddress([normalizeDistrictForLookup(district)], returnedArea),
+    ),
   );
 }
 
@@ -348,7 +399,8 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
       inputSchema,
       execute: async ({ address, city }) => {
         const trimmedAddress = address?.trim() ?? '';
-        const normalizedCity = city?.trim() || null;
+        const requestedCity = city?.trim() || null;
+        const normalizedCity = resolveProvenancedCity(context, requestedCity);
 
         if (!trimmedAddress) {
           return buildToolError({
@@ -376,7 +428,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             normalizedCity,
           );
 
-          const locationAnchor = context.geocodeLocationAnchor;
+          const locationAnchor = context.turnInput.geocodeLocationAnchor;
           const applicableAnchor =
             locationAnchor && queryMatchesAnchorReference(trimmedAddress, locationAnchor)
               ? locationAnchor
@@ -499,7 +551,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             replyInstruction:
               '地理编码接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻说"这边稍等下"，' +
               '可先基于已知城市/区域用 duliday_job_list 兜底，或调用 request_handoff 转人工。',
-            details: { reason: err instanceof Error ? err.message : '未知错误' },
+            details: { reason: toErrorMessage(err) || '未知错误' },
           });
         }
       },

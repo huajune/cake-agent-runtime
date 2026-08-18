@@ -1,6 +1,30 @@
 import { buildJobListTool } from '@tools/duliday-job-list.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
+import { COLLECTION_FLOW_DEDUP_6A75AAB3 } from '../../biz/test-suite/fixtures/collection-flow-dedup.curated';
+
+type JobListTestContext = ToolBuildContext & {
+  turnId?: string;
+  contactName?: string;
+  sessionFacts?: ToolBuildContext['archive']['sessionFacts'];
+  sessionBrandState?: ToolBuildContext['archive']['sessionBrandState'];
+  recalledJobIds?: number[];
+  isRecalledJobId?: (jobId: number) => boolean;
+  lastJobListQuery?: ToolBuildContext['archive']['lastJobListQuery'];
+  recentBrandPool?: string[];
+  messages?: unknown[];
+  currentUserMessage?: string;
+  currentLaborFormIntent?: ToolBuildContext['turnInput']['currentLaborFormIntent'];
+  contactBrandAliases?: string[];
+  thresholds?: ToolBuildContext['runtime']['thresholds'];
+  ruleFacts?: TurnLedger['facts']['ruleFacts'];
+  geocodeAnchors?: TurnLedger['geo']['anchors'];
+  recordFetchedJobs?: TurnLedger['recordFetchedJobs'];
+  recordJobListQuery?: TurnLedger['recordJobListQuery'];
+};
 
 describe('buildJobListTool', () => {
   const mockSpongeService = {
@@ -19,12 +43,60 @@ describe('buildJobListTool', () => {
     { name: '史伟莎', aliases: [] },
   ];
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-1',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-    messages: [],
-  };
+  const mockContext: JobListTestContext = createToolContext({
+    session: { userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1' },
+  });
+
+  const normalizeContext = (context: JobListTestContext): ToolBuildContext =>
+    mergeToolContext(context, {
+      session: {
+        ...(context.turnId === undefined ? {} : { turnId: context.turnId }),
+        ...(context.contactName === undefined ? {} : { contactName: context.contactName }),
+      },
+      archive: {
+        ...(context.sessionFacts === undefined ? {} : { sessionFacts: context.sessionFacts }),
+        ...(context.sessionBrandState === undefined
+          ? {}
+          : { sessionBrandState: context.sessionBrandState }),
+        ...(context.recalledJobIds === undefined ? {} : { recalledJobIds: context.recalledJobIds }),
+        ...(context.isRecalledJobId === undefined
+          ? {}
+          : { isRecalledJobId: context.isRecalledJobId }),
+        ...(context.lastJobListQuery === undefined
+          ? {}
+          : { lastJobListQuery: context.lastJobListQuery }),
+        ...(context.recentBrandPool === undefined
+          ? {}
+          : { recentBrandPool: context.recentBrandPool }),
+      },
+      turnInput: {
+        ...(context.messages === undefined ? {} : { messages: context.messages }),
+        ...(context.currentUserMessage === undefined
+          ? {}
+          : { currentUserMessage: context.currentUserMessage }),
+        ...(context.currentLaborFormIntent === undefined
+          ? {}
+          : { currentLaborFormIntent: context.currentLaborFormIntent }),
+        ...(context.contactBrandAliases === undefined
+          ? {}
+          : { contactBrandAliases: context.contactBrandAliases }),
+      },
+      ledger: {
+        facts: {
+          ...(context.ruleFacts === undefined ? {} : { ruleFacts: context.ruleFacts }),
+        },
+        geo: {
+          ...(context.geocodeAnchors === undefined ? {} : { anchors: context.geocodeAnchors }),
+        },
+        ...(context.recordFetchedJobs === undefined
+          ? {}
+          : { recordFetchedJobs: context.recordFetchedJobs }),
+        ...(context.recordJobListQuery === undefined
+          ? {}
+          : { recordJobListQuery: context.recordJobListQuery }),
+      },
+      runtime: context.thresholds === undefined ? {} : { thresholds: context.thresholds },
+    });
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const makeJobData = (overrides: any = {}) => ({
@@ -89,13 +161,13 @@ describe('buildJobListTool', () => {
   afterEach(() => jest.useRealTimers());
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const executeTool = async (ctx: ToolBuildContext = mockContext, input = defaultInput) => {
+  const executeTool = async (ctx: JobListTestContext = mockContext, input = defaultInput) => {
     const builder = buildJobListTool(
       mockSpongeService as never,
       { recordEvent: jest.fn() } as never,
       { geocode: jest.fn().mockResolvedValue(null) } as never,
     );
-    const builtTool = builder(ctx);
+    const builtTool = builder(normalizeContext(ctx));
     return builtTool.execute(input as any, {
       toolCallId: 'test',
       context: {},
@@ -126,9 +198,46 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('综合薪资的“元/月”');
   });
 
+  it('should answer a post-form job-detail follow-up and expose only a missing-field reminder', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJobData({
+          welfare: { mealInfo: '提供员工餐' },
+          workTime: { workDuration: '8小时，休息1小时' },
+        }),
+      ],
+      total: 1,
+    });
+    const context: JobListTestContext = {
+      ...mockContext,
+      messages: [
+        ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
+        { role: 'user', content: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage },
+      ],
+      currentUserMessage: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage,
+    };
+
+    const result = await executeTool(context, {
+      ...defaultInput,
+      jobIdList: [1],
+      includeWelfare: true,
+      includeWorkTime: true,
+    });
+
+    expect(result.collectionFollowup).toEqual(
+      expect.objectContaining({
+        mode: 'missing_only',
+        missingFields: ['姓名', '联系电话', '学历', '健康证情况', '学信网学籍状态'],
+      }),
+    );
+    expect(result._replyInstruction).toContain('先按本轮岗位结果回答问题');
+    expect(result._replyInstruction).toContain('禁止逐字或改写重发整张资料表');
+    expect(result.markdown).toContain('答完只能简短催缺口');
+  });
+
   it('writes formal and supplemental settlement facts into compact job memory', async () => {
-    const onJobsFetched = jest.fn().mockResolvedValue(undefined);
-    const context: ToolBuildContext = { ...mockContext, onJobsFetched };
+    const recordFetchedJobs = jest.fn().mockResolvedValue(undefined);
+    const context: JobListTestContext = { ...mockContext, recordFetchedJobs };
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJobData({
@@ -157,7 +266,7 @@ describe('buildJobListTool', () => {
 
     await executeTool(context, { ...defaultInput, includeJobSalary: true });
 
-    expect(onJobsFetched).toHaveBeenCalledWith([
+    expect(recordFetchedJobs).toHaveBeenCalledWith([
       expect.objectContaining({
         salaryDesc: '2000-4000 元/月',
         settlementSummary:
@@ -208,7 +317,9 @@ describe('buildJobListTool', () => {
     const result = await executeTool(
       {
         ...mockContext,
-        sessionFacts: { interview_info: { age: '52' } } as ToolBuildContext['sessionFacts'],
+        sessionFacts: {
+          interview_info: { age: '52' },
+        } as ToolBuildContext['archive']['sessionFacts'],
       },
       {
         ...defaultInput,
@@ -258,7 +369,9 @@ describe('buildJobListTool', () => {
     const result = await executeTool(
       {
         ...mockContext,
-        sessionFacts: { interview_info: { age: '20' } } as ToolBuildContext['sessionFacts'],
+        sessionFacts: {
+          interview_info: { age: '20' },
+        } as ToolBuildContext['archive']['sessionFacts'],
       },
       {
         ...defaultInput,
@@ -276,10 +389,10 @@ describe('buildJobListTool', () => {
       const recorded: Array<{ signature: string }> = [];
 
       // 第一轮：记录签名
-      const firstCtx: ToolBuildContext = {
+      const firstCtx: JobListTestContext = {
         ...mockContext,
         turnId: 'turn-1',
-        onJobListQueryExecuted: (q) => recorded.push(q),
+        recordJobListQuery: (q) => recorded.push(q),
       };
       const first = await executeTool(firstCtx, { ...defaultInput, cityNameList: ['北京'] });
       expect(first.markdown).not.toContain('重复查询提醒');
@@ -287,7 +400,7 @@ describe('buildJobListTool', () => {
       expect(recorded).toHaveLength(1);
 
       // 第二轮：同参 + 上一轮签名注入 → 提醒
-      const secondCtx: ToolBuildContext = {
+      const secondCtx: JobListTestContext = {
         ...mockContext,
         turnId: 'turn-2',
         lastJobListQuery: { signature: recorded[0].signature, turnId: 'turn-1' },
@@ -302,7 +415,7 @@ describe('buildJobListTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
       const recorded: Array<{ signature: string }> = [];
       await executeTool(
-        { ...mockContext, turnId: 'turn-1', onJobListQueryExecuted: (q) => recorded.push(q) },
+        { ...mockContext, turnId: 'turn-1', recordJobListQuery: (q) => recorded.push(q) },
         { ...defaultInput, cityNameList: ['北京'], regionNameList: ['朝阳区'] },
       );
 
@@ -323,7 +436,7 @@ describe('buildJobListTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
       const recorded: Array<{ signature: string }> = [];
       await executeTool(
-        { ...mockContext, turnId: 'turn-1', onJobListQueryExecuted: (q) => recorded.push(q) },
+        { ...mockContext, turnId: 'turn-1', recordJobListQuery: (q) => recorded.push(q) },
         { ...defaultInput, cityNameList: ['北京'] },
       );
 
@@ -371,7 +484,7 @@ describe('buildJobListTool', () => {
           interview_info: {},
           preferences: { brand_ids: [10239] },
           reasoning: '',
-        } as ToolBuildContext['sessionFacts'],
+        } as ToolBuildContext['archive']['sessionFacts'],
       },
       {
         ...defaultInput,
@@ -496,7 +609,7 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.brand.brandSource).toBe('model_input');
   });
 
-  it('剥离泛化统称"店员"后再查（badcase 6a66d888：果蔬好·天津有岗却因"店员"精确类目过滤查空）', async () => {
+  it('剥离泛化统称"店员"，排序信号与披露都不受污染（badcase 6a66d888 同源防线）', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJobData({
@@ -516,12 +629,12 @@ describe('buildJobListTool', () => {
       jobCategoryList: ['店员'],
     });
 
-    // 送往上游的类目参数里不再含"店员"（剥离后为空），避免精确类目过滤把在招岗位查空
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      expect.objectContaining({ jobCategoryList: [] }),
-    );
+    // jobCategoryList 已彻底不下传 API（本地软排序信号）
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).not.toHaveProperty('jobCategoryList');
     // 观测：被剥离的泛化词落在 queryMeta 上，供排障对账
     expect(result.queryMeta.jobCategoryUmbrellaStripped).toEqual(['店员']);
+    // "店员"剥离后无剩余关键词：不触发排序也不注入"无明确匹配工种"披露，避免误导模型说"没有店员岗"
+    expect(result.queryMeta.jobCategoryRank).toBeNull();
     // 结果非空：候选人拿到该品牌在招岗位，而非"查无"
     expect(result.resultCount).toBe(1);
   });
@@ -637,7 +750,7 @@ describe('buildJobListTool', () => {
       ],
       total: 1,
     });
-    const contextWithThreshold: ToolBuildContext = {
+    const contextWithThreshold: JobListTestContext = {
       ...mockContext,
       thresholds: [
         {
@@ -712,7 +825,7 @@ describe('buildJobListTool', () => {
 
   it('should derive location.range from max_recommend_distance_km when caller omits range', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
-    const ctx: ToolBuildContext = {
+    const ctx: JobListTestContext = {
       ...mockContext,
       thresholds: [
         {
@@ -740,7 +853,7 @@ describe('buildJobListTool', () => {
 
   it('should keep explicit location.range untouched even when threshold exists', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
-    const ctx: ToolBuildContext = {
+    const ctx: JobListTestContext = {
       ...mockContext,
       thresholds: [
         {
@@ -808,7 +921,7 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.cityFilterRecovery).toBeNull();
   });
 
-  it('keeps county-level city normalization in the job-category local fallback', async () => {
+  it('意向工种不下传 API 也不触发额外重查，县级市映射照常生效', async () => {
     const yanjiJob = makeJobData({
       basicInfo: {
         jobId: 528177,
@@ -823,9 +936,7 @@ describe('buildJobListTool', () => {
         },
       },
     });
-    mockSpongeService.fetchJobs
-      .mockResolvedValueOnce({ jobs: [], total: 0 })
-      .mockResolvedValueOnce({ jobs: [yanjiJob], total: 1 });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [yanjiJob], total: 1 });
 
     const result = await executeTool(mockContext, {
       ...defaultInput,
@@ -833,16 +944,79 @@ describe('buildJobListTool', () => {
       jobCategoryList: ['服务员'],
     });
 
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
-    expect(mockSpongeService.fetchJobs.mock.calls[1][0]).toEqual(
+    // 单次请求即召回：不存在"类目过滤查空 → 二次放宽重查"的额外 API 往返
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         cityNameList: ['延边朝鲜族自治州'],
         regionNameList: ['延吉市'],
-        jobCategoryList: [],
       }),
     );
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).not.toHaveProperty('jobCategoryList');
     expect(result.resultCount).toBe(1);
-    expect(result.queryMeta.jobCategoryMatchStrategy).toBe('local_keyword_match');
+    expect(result.queryMeta.jobCategoryRank).toEqual({
+      requested: ['服务员'],
+      matchedCount: 1,
+      totalCount: 1,
+    });
+  });
+
+  it('意向工种匹配岗位稳定分区排最前并注入 ℹ️ 排序披露（仅排序不过滤）', async () => {
+    const serviceJob = makeJobData({
+      basicInfo: {
+        jobId: 11,
+        jobName: 'KFC-朝阳店-服务员-小时工',
+        jobCategoryName: '服务员',
+        jobContent: '前台点餐',
+      },
+    });
+    const cashierJob = makeJobData({
+      basicInfo: {
+        jobId: 12,
+        jobName: 'KFC-朝阳店-收银员-小时工',
+        jobCategoryName: '收银员',
+        jobContent: '负责收银',
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [serviceJob, cashierJob], total: 2 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['北京'],
+      jobCategoryList: ['收银员'],
+    });
+
+    // 未过滤：两条岗位都在
+    expect(result.resultCount).toBe(2);
+    expect(result.queryMeta.jobCategoryRank).toEqual({
+      requested: ['收银员'],
+      matchedCount: 1,
+      totalCount: 2,
+    });
+    expect(result.markdown).toContain('明确匹配的 1 个岗位排在最前');
+    // 匹配的收银员岗位排在服务员岗位之前
+    expect(result.markdown.indexOf('收银员-小时工')).toBeLessThan(
+      result.markdown.indexOf('服务员-小时工'),
+    );
+  });
+
+  it('意向工种无明确匹配时一条不剔，注入 ⚠️ 披露引导按岗位名称/内容判断', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['北京'],
+      jobCategoryList: ['美甲师'],
+    });
+
+    // 岗位全部保留：不再出现"工种过滤查成空"
+    expect(result.resultCount).toBe(1);
+    expect(result.queryMeta.jobCategoryRank).toEqual({
+      requested: ['美甲师'],
+      matchedCount: 0,
+      totalCount: 1,
+    });
+    expect(result.markdown).toContain('没有 岗位名称/岗位类型/工作内容 明确匹配「美甲师」');
   });
 
   it('recovers an unmapped county-level city from coordinates without adopting neighboring cities', async () => {
@@ -915,7 +1089,7 @@ describe('buildJobListTool', () => {
     });
   });
 
-  it('should call onJobsFetched callback', async () => {
+  it('should call recordFetchedJobs callback', async () => {
     const job = makeJobData({
       jobSalary: {
         salaryScenarioList: [
@@ -931,12 +1105,12 @@ describe('buildJobListTool', () => {
     });
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
 
-    const onJobsFetched = jest.fn();
-    const contextWithCallback = { ...mockContext, onJobsFetched };
+    const recordFetchedJobs = jest.fn();
+    const contextWithCallback = { ...mockContext, recordFetchedJobs };
 
     await executeTool(contextWithCallback);
 
-    expect(onJobsFetched).toHaveBeenCalledWith([
+    expect(recordFetchedJobs).toHaveBeenCalledWith([
       expect.objectContaining({
         jobId: 1,
         brandName: 'KFC',
@@ -945,7 +1119,7 @@ describe('buildJobListTool', () => {
     ]);
   });
 
-  it('should include distance, store address and booking constraints in onJobsFetched summary', async () => {
+  it('should include distance, store address and booking constraints in recordFetchedJobs summary', async () => {
     const job = makeJobData({
       basicInfo: {
         storeInfo: {
@@ -960,15 +1134,15 @@ describe('buildJobListTool', () => {
       hiringRequirement: {
         basicPersonalRequirements: { minAge: 18, maxAge: 35 },
         certificate: { education: '本科', healthCertificate: '需健康证' },
-        remark: '不招学生',
+        remark: '不招学生，需上传简历',
       },
     });
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
 
-    const onJobsFetched = jest.fn();
+    const recordFetchedJobs = jest.fn();
     const contextWithCallback = {
       ...mockContext,
-      onJobsFetched,
+      recordFetchedJobs,
       thresholds: [
         {
           flag: 'max_recommend_distance_km',
@@ -988,7 +1162,7 @@ describe('buildJobListTool', () => {
       },
     });
 
-    expect(onJobsFetched).toHaveBeenCalledWith([
+    expect(recordFetchedJobs).toHaveBeenCalledWith([
       expect.objectContaining({
         jobId: 1,
         storeAddress: '北京市朝阳区xx路',
@@ -996,6 +1170,7 @@ describe('buildJobListTool', () => {
         educationRequirement: '本科',
         healthCertificateRequirement: '需健康证',
         studentRequirement: '不接受学生',
+        resumeRequired: true,
         distanceKm: expect.any(Number),
       }),
     ]);
@@ -1003,7 +1178,7 @@ describe('buildJobListTool', () => {
 
   describe('jobIdList provenance gate (badcase 6a6c4c13 幻觉参数查询)', () => {
     it('blocks jobIdList entries never recalled in this session', async () => {
-      const gatedContext: ToolBuildContext = {
+      const gatedContext: JobListTestContext = {
         ...mockContext,
         isRecalledJobId: (jobId: number) => jobId === 528697,
         recalledJobIds: [528697],
@@ -1023,7 +1198,7 @@ describe('buildJobListTool', () => {
     });
 
     it('blocks with zero-recall wording when session has no recalled jobs', async () => {
-      const gatedContext: ToolBuildContext = {
+      const gatedContext: JobListTestContext = {
         ...mockContext,
         isRecalledJobId: () => false,
         recalledJobIds: [],
@@ -1040,7 +1215,7 @@ describe('buildJobListTool', () => {
 
     it('allows re-querying a legitimately recalled jobId', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
-      const gatedContext: ToolBuildContext = {
+      const gatedContext: JobListTestContext = {
         ...mockContext,
         isRecalledJobId: (jobId: number) => jobId === 1,
         recalledJobIds: [1],
@@ -1071,7 +1246,7 @@ describe('buildJobListTool', () => {
       ...mockContext,
       sessionFacts: {
         interview_info: { is_student: true },
-      } as ToolBuildContext['sessionFacts'],
+      } as ToolBuildContext['archive']['sessionFacts'],
     };
 
     it('excludes 不接受学生 jobs for a known student and discloses the filtering', async () => {
@@ -1114,7 +1289,7 @@ describe('buildJobListTool', () => {
         ...mockContext,
         sessionFacts: {
           interview_info: { is_student: false },
-        } as ToolBuildContext['sessionFacts'],
+        } as ToolBuildContext['archive']['sessionFacts'],
       };
       const filtered = await executeTool(falseContext, { ...defaultInput });
       expect(filtered.markdown).toContain('拉瓦萨');
@@ -1162,10 +1337,13 @@ describe('buildJobListTool', () => {
     });
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
 
-    const onJobsFetched = jest.fn();
-    await executeTool({ ...mockContext, onJobsFetched }, { ...defaultInput, includeWelfare: true });
+    const recordFetchedJobs = jest.fn();
+    await executeTool(
+      { ...mockContext, recordFetchedJobs },
+      { ...defaultInput, includeWelfare: true },
+    );
 
-    expect(onJobsFetched).toHaveBeenCalledWith([
+    expect(recordFetchedJobs).toHaveBeenCalledWith([
       expect.objectContaining({
         jobId: 1,
         welfareFacts: {
@@ -1197,7 +1375,7 @@ describe('buildJobListTool', () => {
       sessionFacts: {
         interview_info: {},
         preferences: { labor_form: '暑假工' },
-      } as ToolBuildContext['sessionFacts'],
+      } as ToolBuildContext['archive']['sessionFacts'],
     });
 
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
@@ -1550,7 +1728,7 @@ describe('buildJobListTool', () => {
         total: 40,
       });
 
-    const contextWithThresholds: ToolBuildContext = {
+    const contextWithThresholds: JobListTestContext = {
       ...mockContext,
       thresholds: [
         {
@@ -1726,7 +1904,7 @@ describe('buildJobListTool', () => {
     it('high confidence 单一匹配：候选人说"刘姐妹"实指上轮"成都你六姐"，工具回指并指示直接沿用', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
-      const ctxWithRecentBrands: ToolBuildContext = {
+      const ctxWithRecentBrands: JobListTestContext = {
         ...mockContext,
         recentBrandPool: ['成都你六姐', '奥乐齐'],
       };
@@ -1754,7 +1932,7 @@ describe('buildJobListTool', () => {
 
       // "肯德" 同时对"肯德基"和"肯德乐"得满分（共享[肯,德]+共享拼音[ken,de]）
       // → 两个候选 score 都=1，margin=0 < 0.15 → low confidence
-      const ctxWithAmbiguousBrands: ToolBuildContext = {
+      const ctxWithAmbiguousBrands: JobListTestContext = {
         ...mockContext,
         recentBrandPool: ['肯德基', '肯德乐'],
       };
@@ -1776,7 +1954,7 @@ describe('buildJobListTool', () => {
     it('no fuzzy match：候选人输入与最近推荐品牌完全无关，回退到 noMatchScript 拉群', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
-      const ctxWithUnrelatedBrand: ToolBuildContext = {
+      const ctxWithUnrelatedBrand: JobListTestContext = {
         ...mockContext,
         recentBrandPool: ['奥乐齐'],
       };
@@ -1865,7 +2043,7 @@ describe('buildJobListTool', () => {
   describe('sessionFacts 班次约束逐字段合并 (badcase batch_6a4e430dce406a6aee7a3421)', () => {
     // 候选人要"周六的兼职"（facts 已沉淀 onlyWeekends），模型却传 {onlyEvenings:true}
     // 把周末约束弄丢——持久化约束必须补齐模型漏传的字段，而不是被整体覆盖
-    const contextWithWeekendFact = (): ToolBuildContext => ({
+    const contextWithWeekendFact = (): JobListTestContext => ({
       ...mockContext,
       sessionFacts: {
         interview_info: {},
@@ -1877,7 +2055,7 @@ describe('buildJobListTool', () => {
             maxDaysPerWeek: null,
           },
         },
-      } as ToolBuildContext['sessionFacts'],
+      } as ToolBuildContext['archive']['sessionFacts'],
     });
 
     it('模型传了不含 onlyWeekends 的约束时由持久化事实补齐，不整体覆盖', async () => {
@@ -1978,12 +2156,12 @@ describe('buildJobListTool', () => {
   });
 
   describe('用工形式家族放宽提示 laborFormRelaxNotice', () => {
-    const contextWithLaborForm = (laborForm: string): ToolBuildContext => ({
+    const contextWithLaborForm = (laborForm: string): JobListTestContext => ({
       ...mockContext,
       sessionFacts: {
         interview_info: {},
         preferences: { labor_form: laborForm },
-      } as ToolBuildContext['sessionFacts'],
+      } as ToolBuildContext['archive']['sessionFacts'],
     });
 
     it('严格匹配为空、按兼职家族放宽命中：markdown 注入强制提示且 metadata 带 relaxedToFamily', async () => {
@@ -2211,16 +2389,9 @@ describe('buildJobListTool', () => {
 
       const result = await executeTool({
         ...contextWithLaborForm('兼职'),
-        highConfidenceFacts: {
-          preferences: {
-            labor_form: {
-              value: '暑假工',
-              confidence: 'high',
-              source: 'rule',
-              evidence: '用工形式识别：暑假工',
-            },
-          },
-        } as ToolBuildContext['highConfidenceFacts'],
+        ruleFacts: testRuleFacts(
+          testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+        ),
       });
 
       expect(result.resultCount).toBe(1);
@@ -2238,11 +2409,11 @@ describe('buildJobListTool', () => {
   describe('地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）', () => {
     it('会话事实多信号指向不同城市 → queryMeta.geoSignalConflictShadow 记录候选，行为不变', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
-      const ctx: ToolBuildContext = {
+      const ctx: JobListTestContext = {
         ...mockContext,
         sessionFacts: {
           preferences: { district: ['静安区'], location: ['光谷'] },
-        } as unknown as ToolBuildContext['sessionFacts'],
+        } as unknown as ToolBuildContext['archive']['sessionFacts'],
       };
 
       const result = await executeTool(ctx, { ...defaultInput, cityNameList: ['北京'] });
@@ -2285,9 +2456,9 @@ describe('buildJobListTool', () => {
 
     it('本轮坐标命中 geocode 区级锚点 → 距离带"约/按XX估算"标记 + 头部精度声明 + queryMeta.anchor', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
-      const ctx: ToolBuildContext = {
+      const ctx: JobListTestContext = {
         ...mockContext,
-        geocodeResolvedAnchors: [
+        geocodeAnchors: [
           {
             longitude: 116.29,
             latitude: 39.95,
@@ -2323,9 +2494,9 @@ describe('buildJobListTool', () => {
 
     it('POI 级 geocode 锚点 → 保持精确距离口径，无头部声明', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
-      const ctx: ToolBuildContext = {
+      const ctx: JobListTestContext = {
         ...mockContext,
-        geocodeResolvedAnchors: [
+        geocodeAnchors: [
           {
             longitude: 116.29,
             latitude: 39.95,
@@ -2357,9 +2528,9 @@ describe('buildJobListTool', () => {
 
     it('坐标与本轮 geocode 锚点偏差>1km → shadow 记 model_supplied，不干预查询与渲染（方案 11.3 v3.2）', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
-      const ctx: ToolBuildContext = {
+      const ctx: JobListTestContext = {
         ...mockContext,
-        geocodeResolvedAnchors: [
+        geocodeAnchors: [
           {
             longitude: 121.47,
             latitude: 31.23,
@@ -2392,9 +2563,9 @@ describe('buildJobListTool', () => {
 
     it('坐标偏离锚点 ≤1km（超出 0.005° 严格容差）→ 仍按 turn_geocode 记录偏差，不误报自编', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
-      const ctx: ToolBuildContext = {
+      const ctx: JobListTestContext = {
         ...mockContext,
-        geocodeResolvedAnchors: [
+        geocodeAnchors: [
           {
             longitude: 116.29,
             latitude: 39.95,
@@ -2422,7 +2593,7 @@ describe('buildJobListTool', () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [haidianStoreJob()], total: 1 });
 
       const result = await executeTool(
-        { ...mockContext, geocodeResolvedAnchors: [] },
+        { ...mockContext, geocodeAnchors: [] },
         {
           ...defaultInput,
           cityNameList: ['北京'],
@@ -2450,7 +2621,7 @@ describe('buildJobListTool', () => {
         { recordEvent: jest.fn() } as never,
         { geocode: geocodeMock } as never,
       );
-      const ctx: ToolBuildContext = {
+      const ctx: JobListTestContext = {
         ...mockContext,
         thresholds: [
           {
@@ -2462,7 +2633,7 @@ describe('buildJobListTool', () => {
           },
         ],
       };
-      const builtTool = builder(ctx);
+      const builtTool = builder(normalizeContext(ctx));
 
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const result = (await builtTool.execute(

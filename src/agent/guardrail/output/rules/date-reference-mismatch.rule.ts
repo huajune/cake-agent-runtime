@@ -1,5 +1,7 @@
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
+import type { AgentToolCall } from '@agent/generator/generator.types';
+import { asRecord } from '../output-rule.types';
 
 /**
  * 相对日词与具体日期的一致性对账规则。
@@ -10,7 +12,7 @@ import type { RuleContradiction } from '../output-rule.types';
  * 同族 b4echyzh：今天下午的面试被说成明天下午。
  *
  * 职责：回复中出现"今天/明天/后天 + (M月D日)"连用时，按当前日期（Asia/Shanghai）
- * 确定性对账；日期与相对日词不符即拦截（REVISE）。
+ * 确定性对账；按新规则发牌纪律先以 OBSERVE 入场。
  *
  * 不负责：
  * - 不猜没有具体日期的相对日词（"明天面试"无从对账，交语义层）；
@@ -49,6 +51,7 @@ function addDays(date: Date, days: number): Date {
 export function detectDateReferenceMismatch(
   text: string,
   now: Date = new Date(),
+  toolCalls: readonly AgentToolCall[] = [],
 ): RuleContradiction | null {
   for (const match of text.matchAll(RELATIVE_DATE_PATTERN)) {
     const word = match[1];
@@ -65,8 +68,62 @@ export function detectDateReferenceMismatch(
         `回复把 ${month} 月 ${day} 日说成"${word}"，但今天是 ${today.month} 月 ${today.day} 日，` +
         `"${word}"应为 ${expected.month} 月 ${expected.day} 日。日期错乱会误导候选人错过或空等面试，` +
         '必须按真实日历改正相对日词或具体日期',
-      action: GUARDRAIL_ACTION.REVISE,
+      action: GUARDRAIL_ACTION.OBSERVE,
     };
   }
+
+  const interviewTime = readGroundedInterviewTime(toolCalls);
+  if (!interviewTime) return null;
+  const relativeWords = Object.keys(RELATIVE_OFFSET).filter((word) => text.includes(word));
+  if (relativeWords.length !== 1) return null;
+  const interviewDate = parseStructuredDate(interviewTime);
+  if (!interviewDate) return null;
+  const word = relativeWords[0];
+  const expected = cstYmd(addDays(now, RELATIVE_OFFSET[word] ?? 0));
+  if (expected.month === interviewDate.month && expected.day === interviewDate.day) return null;
+  return {
+    ruleId: 'date_reference_mismatch',
+    label:
+      `回复使用“${word}”，但本轮结构化工单/预约时间是 ${interviewTime}；` +
+      `按消息发送日换算“${word}”应为 ${expected.month} 月 ${expected.day} 日，先观察该错配形态`,
+    action: GUARDRAIL_ACTION.OBSERVE,
+  };
+}
+
+const INTERVIEW_TIME_CONTAINER_KEYS = [
+  'duplicateBookingGuard',
+  'sameJobActiveOrder',
+  'workOrder',
+  'booking',
+] as const;
+
+function readGroundedInterviewTime(toolCalls: readonly AgentToolCall[]): string | null {
+  for (const call of [...toolCalls].reverse()) {
+    if (
+      call.toolName !== 'duliday_interview_precheck' &&
+      call.toolName !== 'duliday_interview_booking' &&
+      call.toolName !== 'duliday_modify_interview_time'
+    ) {
+      continue;
+    }
+    const result = asRecord(call.result);
+    for (const key of INTERVIEW_TIME_CONTAINER_KEYS) {
+      const nested = asRecord(result?.[key]);
+      const value = nested?.interviewTime;
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    const resultValue = result?.interviewTime;
+    if (typeof resultValue === 'string' && resultValue.trim()) return resultValue.trim();
+    const argValue = call.args.interviewTime;
+    if (typeof argValue === 'string' && argValue.trim()) return argValue.trim();
+  }
   return null;
+}
+
+function parseStructuredDate(value: string): { month: number; day: number } | null {
+  const datePart = value.trim().replace('T', ' ').split(' ')[0];
+  const parts = datePart.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part))) return null;
+  const [, month, day] = parts;
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? { month, day } : null;
 }

@@ -16,9 +16,14 @@ Recall（记忆召回+上下文准备 preparation）
   → Finalize（TurnFinalizer 统一沉淀副作用）
 ```
 
-Repair 分两种模式且**只允许一次**（防止修复循环烧钱烧时延）：
-- `revise`（文本问题）→ 走**独立的 ReplyRewriteService**：按违规项 + 已知事实重写文本，不重新跑 Agent
-- `replan`（事实/计划问题）→ 复用 Agent generator 做**只读重查**（不允许再产生副作用）
+Repair 只有一种模式且**只允许一次**（防止修复循环烧钱烧时延）：走**独立的 ReplyRepairAgent**
+（`src/agent/reply-repair/reply-repair.agent.ts`），按违规项 + 已知事实重写文本，不重新跑 Agent、
+不给工具。
+
+> 曾经还有一档 `replan`（事实/计划问题 → 复用 generator 带工具只读重查）：2026-07-27 退役
+> （三期审计里全部"已投递伤害"都出自该路径），2026-08-13 从类型层清理。缺事实类违规现在
+> 一律降 observe 交事后环根修，不在投递路径上补救——见
+> [guardrail-quality-system.md §2.4](../architecture/guardrail-quality-system.md)。
 
 修复后还有兜底检查：重写产物为空、或产出"悬空检查话术"（dangling reply，比如"我确认一下"这种没有下文的话）时按 revise_empty / revise_dangling 处置，不会把半成品发给用户。
 

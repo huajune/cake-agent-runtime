@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
@@ -83,7 +84,7 @@ export class FeedbackSourceTraceService {
       if (!selected?.messageId) return null;
       return (await this.safeGetMessageProcessingRecord(selected.messageId)) ?? selected;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(`[Feedback] 查询 chatId=${feedback.chatId} 处理流水失败: ${errorMessage}`);
       return null;
     }
@@ -95,7 +96,7 @@ export class FeedbackSourceTraceService {
     try {
       return await this.messageProcessingService.getMessageProcessingRecordById(messageId);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(`[Feedback] 查询 messageId=${messageId} 处理流水失败: ${errorMessage}`);
       return null;
     }

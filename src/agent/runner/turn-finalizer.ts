@@ -1,7 +1,7 @@
 /**
  * 回合记忆收尾句柄（agent 层）。
  *
- * 封装 `deferTurnEnd` 闭包的编排不变式，使调用方（渠道）只需上报**投递结局**这一个它本就
+ * 封装 turn-end 闭包的编排不变式，使调用方（渠道）只需上报**投递结局**这一个它本就
  * 负责的事实，不必懂记忆领域的规则：「未送达不投影助手轮次 / replay 丢弃首版 / 处理锁
  * 释放前 await 落盘」。这些规则散落在渠道编排里就是分层泄漏，统一收口在此。
  *
@@ -25,7 +25,7 @@ export class TurnFinalizer {
   }
 
   /**
-   * 包装 runner 暴露的 `runTurnEnd` 闭包（`deferTurnEnd` 时存在；否则返回一个空操作句柄）。
+   * 包装 runner 暴露的 `runTurnEnd` 闭包（生成路径必然存在；已被上游接管时返回空操作句柄）。
    */
   static from(
     run: ((opts?: { includeAssistantText?: boolean }) => Promise<void>) | undefined,

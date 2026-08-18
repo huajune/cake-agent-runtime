@@ -337,9 +337,8 @@ export interface InterviewBookingResult {
   /**
    * 海绵工单 ID（预约成功时返回）。
    *
-   * ⚠️ 历史 bug：旧 schema 未解析 `data.workOrder`，导致 recruitment_cases.booking_id
-   * 全部为 NULL、本地状态与海绵脱节。修复后这里携带真正的 workOrderId，
-   * 供 active_booking 指针与 ops_events(booking.succeeded) 使用。
+   * 这里携带真正的 workOrderId，供 active_booking 指针与
+   * ops_events(booking.succeeded) 使用。
    */
   workOrderId?: number | null;
   /**
@@ -528,13 +527,59 @@ export interface SignupWorkOrderItem {
   jobId?: number | null;
   jobBasicInfoId?: number | null;
   jobName?: string | null;
-  /** 当前状态中文：约面待确认/约面失败/约面取消/约面成功/面试失败/面试成功/上岗失败/上岗成功/已离职 */
+  /** 当前状态中文；全集与语义子集见 SIGNUP_WORK_ORDER_STATUSES。 */
   currentStatus?: string | null;
   workOrderStatus?: number | string | null;
   salary?: number | string | null;
   salaryUnit?: string | null;
   salaryPeriod?: string | null;
 }
+
+/**
+ * 报名工单 `currentStatus` 中文全集（海绵领域语言，9 态）。
+ *
+ * 状态词是海绵的领域语言，唯一权威在此。此前全集只存在于 SignupWorkOrderItem 的行注释里，
+ * 而"活跃约面"与"不可自助取消"两个语义子集在 precheck / oob-work-order /
+ * follow-up.processor / cancel-work-order 各有一份字面副本（core-flow-review 议题 3-1）。
+ *
+ * ⚠️ 各消费点的比较预处理（precheck 的 normalizePolicyText、oob 的 trim）**各自保留**，
+ * 本常量只统一集合成员，不统一比较函数——统一比较属于行为变更。
+ */
+export const SIGNUP_WORK_ORDER_STATUSES = [
+  '约面待确认',
+  '约面失败',
+  '约面取消',
+  '约面成功',
+  '面试失败',
+  '面试成功',
+  '上岗失败',
+  '上岗成功',
+  '已离职',
+] as const;
+
+export type SignupWorkOrderStatus = (typeof SIGNUP_WORK_ORDER_STATUSES)[number];
+
+/**
+ * 仍处于约面阶段（流程未终结）的工单状态。
+ *
+ * 其余状态都说明报名已失败/取消，或面试结果、后续结果已产生——复聊不再提醒或追问，
+ * precheck 在途工单探测也只认这两态。
+ */
+export const ACTIVE_INTERVIEW_WORK_ORDER_STATUSES: ReadonlySet<string> = new Set<string>([
+  '约面待确认',
+  '约面成功',
+]);
+
+/**
+ * 不可由 Agent 自助取消的工单状态（badcase j8ed80tk：面试面完了还取消工单）。
+ * 面试已通过或已进入入职推进流程，只能转人工。
+ */
+export const SELF_CANCEL_BLOCKED_STATUSES: ReadonlySet<string> = new Set<string>([
+  '面试成功',
+  '上岗失败',
+  '上岗成功',
+  '已离职',
+]);
 
 /** 候选人维度的工单查询结果。 */
 export interface SignupWorkOrdersResult {

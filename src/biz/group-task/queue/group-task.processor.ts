@@ -1,3 +1,5 @@
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
@@ -505,7 +507,7 @@ export class GroupTaskProcessor implements OnModuleInit {
 
       this.logger.log(`[send] ✅ ${group.groupName}`);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`[send] ❌ ${group.groupName}: ${errorMsg}`);
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
@@ -573,12 +575,12 @@ export class GroupTaskProcessor implements OnModuleInit {
     await this.delay(remainingMs);
   }
 
-  private async releaseBotDispatchLock(lockKey: string, lockOwner: string): Promise<void> {
-    await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [lockKey], [lockOwner]);
+  private delay(ms: number): Promise<void> {
+    return sleep(ms);
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private async releaseBotDispatchLock(lockKey: string, lockOwner: string): Promise<void> {
+    await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [lockKey], [lockOwner]);
   }
 
   // ==================== Summarize ====================
@@ -615,7 +617,7 @@ export class GroupTaskProcessor implements OnModuleInit {
     try {
       await this.notificationSender.reportToFeishu(result, dryRun);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toErrorMessage(error);
       this.logger.error(`[summarize] 飞书汇总失败 exec=${execId}: ${errorMsg}`);
       this.exceptionNotifier?.notifyAsync({
         source: {

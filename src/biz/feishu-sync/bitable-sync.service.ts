@@ -1,13 +1,6 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { MessageProcessingService } from '@biz/message/services/message-processing.service';
-import { MessageProcessingRecord } from '@shared-types/tracking.types';
-import {
-  FeishuBitableApiService,
-  BatchCreateRequest,
-} from '@infra/feishu/services/bitable-api.service';
-import { AlertLevel } from '@enums/alert.enum';
-import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { FeedbackSourceTraceService } from './feedback-source-trace.service';
 import {
   BadcaseEvidenceUpdate,
@@ -70,9 +63,10 @@ export type BadcaseDerivedStatus = '处理中' | '待验证' | '已解决';
 /**
  * 飞书多维表格同步服务
  *
- * 职责：
- * - 每日同步聊天记录到飞书
- * - 写入 Agent 测试反馈
+ * 职责：写入 Agent 测试反馈 + BadCase 样本池状态回写与治理文档同步。
+ * 「聊天记录」表的每日同步不在这里——由 ChatRecordSyncService 负责同步完整会话；
+ * 本服务原有的 message_processing_records 片段同步入口已于 2026-08-17 删除
+ *（零调用方，且片段数据会覆盖/重复写入 chat 表）。
  */
 @Injectable()
 export class FeishuBitableSyncService {
@@ -212,80 +206,11 @@ export class FeishuBitableSyncService {
   ] as const;
 
   constructor(
-    private readonly messageProcessingService: MessageProcessingService,
     private readonly bitableApi: FeishuBitableApiService,
     private readonly feedbackSourceTraceService: FeedbackSourceTraceService,
     @Optional()
-    private readonly configService?: ConfigService,
-    @Optional()
-    private readonly exceptionNotifier?: IncidentReporterService,
-    @Optional()
     private readonly governanceDocumentService?: BadcaseGovernanceDocumentService,
   ) {}
-
-  /**
-   * 旧版消息处理片段同步，仅保留为手动维护入口。
-   *
-   * 当前飞书「聊天记录」表由 ChatRecordSyncService 负责每日同步完整会话；
-   * 这里不再注册 cron，避免用 message_processing_records 的片段数据覆盖/重复写入 chat 表。
-   */
-  async syncYesterday(): Promise<void> {
-    if (this.isReadOnlyPreview()) return;
-
-    const chatConfig = this.bitableApi.getTableConfig('chat');
-    if (!chatConfig.appToken || !chatConfig.tableId) {
-      this.logger.warn('[FeishuSync] 未配置完整的飞书表格参数，跳过同步');
-      return;
-    }
-
-    // 从数据库读取最近记录（限定 1000 条）
-    const result = await this.messageProcessingService.getRecordsByTimestamps({
-      limit: 1000,
-    });
-    const allRecords = result.records as unknown as MessageProcessingRecord[];
-
-    if (!allRecords || allRecords.length === 0) {
-      this.logger.warn('[FeishuSync] 未找到记录，跳过同步');
-      return;
-    }
-
-    const window = this.getYesterdayWindow();
-    const rows = (allRecords || [])
-      .filter((r) => r.receivedAt >= window.start && r.receivedAt < window.end)
-      .map((r) => this.buildFeishuRecord(r))
-      .filter((item): item is BatchCreateRequest => !!item);
-
-    if (rows.length === 0) {
-      this.logger.log(
-        `[FeishuSync] 前一日无可同步数据 (${new Date(window.start).toISOString()} ~ ${new Date(window.end).toISOString()})`,
-      );
-      return;
-    }
-
-    try {
-      const result = await this.bitableApi.batchCreateRecords(
-        chatConfig.appToken,
-        chatConfig.tableId,
-        rows,
-      );
-      this.logger.log(`[FeishuSync] 同步完成，成功: ${result.created}，失败: ${result.failed}`);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[FeishuSync] 同步失败: ${errorMessage}`);
-      this.exceptionNotifier?.notifyAsync({
-        source: {
-          subsystem: 'feishu-sync',
-          component: 'BitableSyncService',
-          action: 'syncPreviousDayFeedback',
-          trigger: 'cron',
-        },
-        code: 'cron.job_failed',
-        summary: '飞书多维表格同步失败',
-        error,
-        severity: AlertLevel.ERROR,
-      });
-    }
-  }
 
   /**
    * 写入 Agent 测试反馈到飞书多维表格
@@ -456,7 +381,7 @@ export class FeishuBitableSyncService {
       this.logger.log(`[Feedback] 成功写入 ${feedback.type} 反馈, recordId: ${result.recordId}`);
       return { success: true, recordId: result.recordId };
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[Feedback] 写入异常: ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
@@ -552,7 +477,7 @@ export class FeishuBitableSyncService {
       conversationBatchIdsField = resolve(this.feedbackFieldAliases.conversationBatchIds);
       reviewerSourcesField = resolve(this.feedbackFieldAliases.reviewerSources);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[BadcaseStatus] 读取 badcase 表字段失败: ${errorMessage}`);
       return { success: 0, failed: items.length, errors: [errorMessage] };
     }
@@ -715,7 +640,7 @@ export class FeishuBitableSyncService {
           errors.push(`${recordId}: ${result.error || '未知错误'}`);
         }
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         failed += 1;
         errors.push(`${recordId}: ${errorMessage}`);
       }
@@ -733,9 +658,7 @@ export class FeishuBitableSyncService {
         items: documentItems,
         summaryCounts: await this.countOpenBadcases().catch((error: unknown) => {
           this.logger.warn(
-            `[BadcaseStatus] 未解决数统计失败，本次跳过治理文档数字刷新: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `[BadcaseStatus] 未解决数统计失败，本次跳过治理文档数字刷新: ${toErrorMessage(error)}`,
           );
           return undefined;
         }),
@@ -894,7 +817,7 @@ export class FeishuBitableSyncService {
           FIELD_TYPE_ATTACHMENT,
         );
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(`[Feedback] 自动创建附件字段失败: ${errorMessage}`);
         remarkParts.push(`含 ${screenshots.length} 张截图，附件字段创建失败未能上传`);
         return;
@@ -918,7 +841,7 @@ export class FeishuBitableSyncService {
         );
         fileTokens.push(fileToken);
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `[Feedback] 截图上传失败 (${i + 1}/${screenshots.length}): ${errorMessage}`,
         );
@@ -1043,37 +966,6 @@ export class FeishuBitableSyncService {
     }
   }
 
-  private buildFeishuRecord(record: MessageProcessingRecord): BatchCreateRequest | null {
-    const userName = record.userName || record.userId;
-    if (!userName) {
-      return null;
-    }
-
-    const chatLogParts: string[] = [];
-    if (record.messagePreview) chatLogParts.push(`[用户] ${record.messagePreview}`);
-    if (record.replyPreview) chatLogParts.push(`[机器人] ${record.replyPreview}`);
-    const chatLog = this.bitableApi.truncateText(chatLogParts.join('\n'), 2000);
-
-    return {
-      fields: {
-        候选人微信昵称: userName,
-        招募经理姓名: record.managerName || '未知招募经理',
-        咨询时间: new Date(record.receivedAt).toISOString(),
-        聊天记录: chatLog || '[空消息]',
-        message_id: record.messageId,
-        test_type: '对话验证',
-      },
-    };
-  }
-
-  private getYesterdayWindow(): { start: number; end: number } {
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
-    const start = new Date(end);
-    start.setDate(start.getDate() - 1);
-    return { start: start.getTime(), end: end.getTime() };
-  }
-
   private generateFeedbackId(): string {
     return Math.random().toString(36).substring(2, 10);
   }
@@ -1134,9 +1026,5 @@ export class FeishuBitableSyncService {
       .trim();
 
     return normalized || undefined;
-  }
-
-  private isReadOnlyPreview(): boolean {
-    return this.configService?.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 }

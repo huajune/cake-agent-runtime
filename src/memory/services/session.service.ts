@@ -1,6 +1,6 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { CityAttestation } from '@shared-types/tool.types';
-import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -16,11 +16,9 @@ import {
   ExplicitProvenanceEntrySchema,
   type ExplicitProvenanceEntry,
   LLMEntityExtractionResultSchema,
+  LaborFormIntentExtractionSchema,
+  type LaborFormIntentExtraction,
   type EntityExtractionResult,
-  type HighConfidenceFacts,
-  type HighConfidenceValue,
-  type RecommendedJobSummary,
-  RecommendedJobSummarySchema,
   type ScheduleConstraintFact,
   type InvitedGroupRecord,
   InvitedGroupRecordSchema,
@@ -29,7 +27,6 @@ import {
   SessionFactsSchema,
   SessionFactsRedisContentSchema,
   type SessionFacts,
-  type SessionFactSource,
   type SessionFactValue,
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
@@ -40,79 +37,86 @@ import {
   toSessionFacts,
   truncateEvidence,
   unwrapSessionFactValue,
-  INTERVIEW_INFO_FIELD_KEYS,
-  PREFERENCE_FIELD_KEYS,
 } from '../types/session-facts.types';
-import {
-  detectScalarFanoutValues,
-  isPlausibleAgeValue,
-  isPlausibleCityValue,
-  SCALAR_FANOUT_FIELD_THRESHOLD,
-} from '../facts/fact-shape-gates';
+import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
 import type {
-  AuthoritativeSessionState,
+  ReengagementSessionState,
   CollectedField,
-  FieldProvenance,
-} from '../types/authoritative-session-state.types';
-import { parseCandidateFieldsFromText } from '@tools/shared/candidate-field-parser';
-import { isNameAnsweredToRealNameAsk, isNameOnlyQuotedSpeaker } from '@tools/shared/precheck-core';
-import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
+} from '../types/reengagement-session-state.types';
+import { parseCandidateFieldsFromText } from '@resolution/candidate';
+import { isStorableCandidatePhone } from '@resolution/candidate/phone';
+import { isNameAnsweredToRealNameAsk } from '@resolution/evidence/producers/name-confirmation';
 import {
+  buildExtractionIdentityProvenanceCorpus,
   buildSessionExtractionPrompt,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
 import {
   detectBrandAliasHints,
-  extractHighConfidenceFacts,
+  produceRuleFactClaims,
   stripQuotedBlocks,
-  filterHighConfidenceFacts,
-  unwrapHighConfidenceFacts,
-} from '../facts/high-confidence-facts';
-import { resolveBrands } from '@resolution/brand/brand-matcher';
-import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
-import { isAssistantEchoUtterance, isSystemTextReflow } from '@resolution/brand/llm-intent-guards';
+} from '@resolution/evidence/producers/rule-track';
+import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import type { BrandItem } from '@/sponge/sponge.types';
+import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
+import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
+import { normalizedIncludes } from '@resolution/evidence/normalize';
+import {
+  EXPLICIT_EXTRACTION_UPGRADE_FIELDS,
+  extractionQuoteSupportsCurrentValue,
+  IDENTITY_FIRST_WRITE_FIELDS,
+} from '@resolution/evidence/policies';
 import {
   detectGeoSignalConflict,
   isRecognizedCityName,
+  normalizeCityName,
   resolveCityFromGeoSignals,
 } from '@resolution/geo';
-import { decideLaborFormIntent } from '../facts/labor-form';
-import { resolveConfirmedCityFact } from '../facts/confirmation-facts';
-import { parseLocationShareCoords } from '../facts/location-share';
-import { sanitizeInterviewName } from '../facts/name-guard';
+import {
+  adjudicateCityClaims,
+  cityClaimFromFact,
+  createCityClaim,
+} from '@resolution/evidence/producers/city';
+import { decideLaborFormIntent, type LaborFormIntentDecision } from '@resolution/labor-form';
+import { resolveConfirmedCityFact } from '@resolution/evidence/producers/city-confirmation';
+import { applyEvidenceAdmission, sanitizeInterviewName } from '@resolution/evidence/admission';
 import {
   assertExtractionIdentityProvenance,
   assertNoExtractionExampleEcho,
-  hasFieldProvenanceInWindow,
-  hasHealthCertificateTopicEvidence,
-  hasIsStudentTopicEvidence,
-  isStorableCandidatePhone,
-} from '../facts/placeholder-identity';
-import { hasSelfReportedPhoneProvenance, isDigitsOnlyName } from '../facts/visual-description';
+} from '@resolution/evidence/admission-gates';
 import {
-  fieldValues,
   isSelfReportedVisualMessage,
-  isVisualDescriptionText,
   parseStoredVisualFactSheet,
   type FinalizedVisualFactSheet,
-} from '@resolution/visual';
-import { stripTimeContextSuffix } from '../facts/name-guard';
+} from '@resolution/signal/visual';
+import { mapLocationCityCandidates } from '@resolution/evidence/admission';
+import { stripTimeContextSuffix } from '@resolution/candidate/name';
+import {
+  isVisualDescriptionText,
+  parseTimeContextAt,
+  stripTimeContext,
+} from '@resolution/signal/markers';
+import { formatCurrentTime } from '@infra/utils/date.util';
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { buildSessionFactsHashKey } from './session-key';
 import {
   hasMeaningfulValue,
+  fieldsWithMergePolicy,
+  getRuleFact,
   isSameFactValue,
-  mergeNullableStringArrays,
+  mergeNullableArrays,
+  projectRuleFactClaims,
+  resolveRuleFactClaims,
+  type ResolvedRuleFact,
   shouldAdoptRuleMeta,
-} from '../facts/fact-merge.util';
+} from '@resolution/evidence/merge';
 import {
   extractPresentedJobs,
   resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
-} from './session-job-matching';
+} from '@resolution/job';
 
 /**
  * 会话记忆服务
@@ -143,8 +147,6 @@ export class SessionService {
     @Optional()
     private readonly tracer?: AgentTracerService,
     @Optional()
-    private readonly geocoding?: GeocodingService,
-    @Optional()
     private readonly chatSession?: ChatSessionService,
   ) {}
 
@@ -170,7 +172,7 @@ export class SessionService {
     sessionId: string,
   ): Promise<WeworkSessionState> {
     // 这里统一返回完整的空态，避免调用方反复处理 null/undefined 的分支。
-    const hashKey = this.buildHashKey(corpId, userId, sessionId);
+    const hashKey = buildSessionFactsHashKey(corpId, userId, sessionId);
     const legacyKey = this.buildKey(corpId, userId, sessionId);
     const hashFields = await this.redisStore.getHash(hashKey);
 
@@ -189,44 +191,55 @@ export class SessionService {
     if (!hashFields && !legacyContent) return { ...EMPTY_SESSION_STATE };
 
     const combined = hashFields ?? legacyContent ?? {};
-    const parsed = SessionFactsRedisContentSchema.safeParse(combined);
-    if (!parsed.success) {
-      this.logger.warn(
-        `[getSessionState] Invalid session facts entry ignored: ${parsed.error.issues
-          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
-          .join('; ')}`,
-      );
-      return { ...EMPTY_SESSION_STATE };
-    }
-    const content = parsed.data as Partial<WeworkSessionState>;
+    const content = this.parseSessionStateFields(combined);
 
-    return this.retireBrandsField({
+    return {
       ...EMPTY_SESSION_STATE,
       ...content,
       lastCandidatePool: content.lastCandidatePool ?? null,
       presentedJobs: content.presentedJobs ?? null,
       currentFocusJob: content.currentFocusJob ?? null,
-    });
+    };
   }
 
   /**
-   * preferences.brands 字段退役墓碑（§19.6，2026-07-22 取代原只读投影）。
+   * 逐字段校验读出：坏字段丢弃并 warn，其余字段照常返回。
    *
-   * 品牌唯一真相是 brand_state；需要展示品牌的消费方一律直读 brand_state
-   * （提示词硬约束段、fact-lines 的 currentBrandName 选项、settlement 快照均已迁）。
-   * 存储里的旧 brands 值在读边界统一抹平——deepMerge 的"null 不覆盖"语义会让
-   * 收口前写入的旧值在长活跃会话里无限存续（如 6a1e42a5），逐个读方防御不如
-   * 一处截断。schema 保留该字段仅为解析兼容，禁止任何读写复活。
+   * 为什么不是整份 safeParse：Redis 是 facts / terminal / brand_state 的唯一事实源，
+   * 整份校验会把任一字段的 schema 漂移（跨版本词表不一致、脏写）放大成「整份会话状态
+   * 归空」——终态一并丢失后，复聊会继续触达已约面/已转人工的候选人。降级粒度必须是字段。
+   * 存储形态本就是按字段的 Redis hash（旧 blob 的 top-level 键同名），逐字段校验与之同构。
    */
-  private retireBrandsField(state: WeworkSessionState): WeworkSessionState {
-    if (!state.facts || state.facts.preferences.brands == null) return state;
-    return {
-      ...state,
-      facts: {
-        ...state.facts,
-        preferences: { ...state.facts.preferences, brands: null },
-      },
-    };
+  private parseSessionStateFields(combined: Record<string, unknown>): Partial<WeworkSessionState> {
+    const fieldSchemas = SessionFactsRedisContentSchema.shape as Record<string, z.ZodType>;
+    const content: Record<string, unknown> = {};
+    const invalidIssues: string[] = [];
+
+    for (const [field, rawValue] of Object.entries(combined)) {
+      const fieldSchema = fieldSchemas[field];
+      // 未注册字段：与整份 parse 的 strip 行为一致，静默丢弃。
+      if (!fieldSchema) continue;
+
+      const parsed = fieldSchema.safeParse(rawValue);
+      if (!parsed.success) {
+        invalidIssues.push(
+          ...parsed.error.issues.map(
+            (issue) =>
+              `${[field, ...issue.path.map((segment) => String(segment))].join('.')}: ${issue.message}`,
+          ),
+        );
+        continue;
+      }
+      if (parsed.data !== undefined) content[field] = parsed.data;
+    }
+
+    if (invalidIssues.length > 0) {
+      this.logger.warn(
+        `[getSessionState] Invalid session facts field(s) dropped: ${invalidIssues.join('; ')}`,
+      );
+    }
+
+    return content as Partial<WeworkSessionState>;
   }
 
   /**
@@ -241,7 +254,7 @@ export class SessionService {
   ): Promise<void> {
     const validated = this.serializeStateContent(patch) as Record<string, unknown>;
     await this.redisStore.patchHash(
-      this.buildHashKey(corpId, userId, sessionId),
+      buildSessionFactsHashKey(corpId, userId, sessionId),
       validated,
       this.config.sessionTtl,
     );
@@ -258,14 +271,14 @@ export class SessionService {
       await this.redisStore.del(legacyKey);
       this.logger.log(`[getSessionState] 旧版 session blob 已迁移为 hash: ${legacyKey}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.warn(`[getSessionState] 旧版 session blob 迁移失败（下次读取重试）: ${message}`);
     }
   }
 
   async clearSessionState(corpId: string, userId: string, sessionId: string): Promise<boolean> {
     const [hashDeleted, legacyDeleted] = await Promise.all([
-      this.redisStore.del(this.buildHashKey(corpId, userId, sessionId)),
+      this.redisStore.del(buildSessionFactsHashKey(corpId, userId, sessionId)),
       this.redisStore.del(this.buildKey(corpId, userId, sessionId)),
     ]);
     return hashDeleted || legacyDeleted;
@@ -276,14 +289,14 @@ export class SessionService {
     return state.facts;
   }
 
-  async getAuthoritativeState(
+  async getReengagementState(
     corpId: string,
     userId: string,
     sessionId: string,
     options?: { currentUserMessages?: readonly string[]; now?: number },
-  ): Promise<AuthoritativeSessionState> {
+  ): Promise<ReengagementSessionState> {
     const state = await this.getSessionState(corpId, userId, sessionId);
-    return this.deriveAuthoritativeState(state, options);
+    return this.deriveReengagementState(state, options);
   }
 
   /**
@@ -325,7 +338,7 @@ export class SessionService {
   /**
    * 工具确权城市入档（候选人资料证据化 A1，badcase 6a671722 沈阳 / 6a618a6e 上海浦东）。
    *
-   * geocode unique 解析出的城市写入 pref.city（source='tool'，confidence=high），
+   * geocode unique 解析出的城市写入 pref.city（source='system'，confidence=high），
    * 让 invite 城市门的 session_fact 档与 [兼职群资源] 段不再依赖候选人字面报城市名。
    * 证据是外生工具结果（amap 解析），不是模型自报，不违背 HC-2「模型参数不自证」。
    *
@@ -341,34 +354,21 @@ export class SessionService {
     sessionId: string,
     attestation: CityAttestation,
   ): Promise<'written' | 'skipped_same_city' | 'skipped_city_conflict' | 'skipped_invalid'> {
-    const normalized = attestation.city.trim().replace(/市$/, '');
+    const normalized = normalizeCityName(attestation.city);
     if (!normalized) return 'skipped_invalid';
 
     const state = await this.getSessionState(corpId, userId, sessionId);
     const prev = state.facts?.preferences?.city ?? null;
-    if (prev && typeof prev.value === 'string' && prev.value.trim()) {
-      const prevNormalized = prev.value.trim().replace(/市$/, '');
-      if (prevNormalized === normalized) return 'skipped_same_city';
-      // 既有值不是可认领的城市名时，"冲突"是抽取污染伪造的，让位于工具确权。
-      // 不这样兜，高置信垃圾城市会把 geocode 真实确权的城市永久挡在门外（存量自愈）。
-      if (!isRecognizedCityName(prevNormalized)) {
-        this.logger.warn(
-          `[saveToolAttestedCity] 既有城市「${prev.value}」非合法城市名（抽取污染残留），` +
-            `由本轮工具确权 ${normalized} 覆盖`,
-        );
-      } else if (sessionFactConfidenceRank(prev.confidence) >= sessionFactConfidenceRank('high')) {
-        this.logger.log(
-          `[saveToolAttestedCity] 城市冲突不覆盖：既有 ${prev.value}（${prev.confidence}/${prev.source}），` +
-            `本轮工具确权 ${normalized}；等待候选人亲证后再切换`,
-        );
-        return 'skipped_city_conflict';
-      }
-    }
+    const incoming = createCityClaim(normalized, 'system', attestation.evidence);
+    const adjudication = adjudicateCityClaims(cityClaimFromFact(prev), incoming);
+    if (adjudication.decision === 'reject_invalid') return 'skipped_invalid';
+    if (adjudication.decision === 'same_value') return 'skipped_same_city';
+    if (adjudication.decision !== 'adopt') return 'skipped_city_conflict';
 
     const cityFact: SessionFactValue<string> = {
       value: normalized,
       confidence: 'high',
-      source: 'tool',
+      source: 'system',
       evidence: truncateEvidence(attestation.evidence),
       extractedAt: new Date().toISOString(),
     };
@@ -381,7 +381,7 @@ export class SessionService {
     }) as SessionFacts;
     await this.saveFacts(corpId, userId, sessionId, facts);
     this.logger.log(
-      `[saveToolAttestedCity] pref.city=${normalized} 已入档（source=tool, ${attestation.source}）`,
+      `[saveToolAttestedCity] pref.city=${normalized} 已入档（source=system, ${attestation.source}）`,
     );
     return 'written';
   }
@@ -433,6 +433,16 @@ export class SessionService {
   private mergeFactsWithConfidenceGuard(prev: SessionFacts, incoming: SessionFacts): SessionFacts {
     const merged = deepMerge(prev, incoming) as SessionFacts;
 
+    // 性别来源策略：candidate > system。系统标签只补空，因此正常 enrichment 不会在
+    // 已有性别时再产出 system 写入；这里再做跨轮防御，保证旧 candidate 档不会被任何
+    // system 兜底反向覆盖，而后续 candidate 自陈可凭 high 覆盖既有 low/system。
+    const previousGenderSource = unwrapSessionFactValue(prev.interview_info.gender_source);
+    const incomingGenderSource = unwrapSessionFactValue(incoming.interview_info.gender_source);
+    if (previousGenderSource === 'candidate' && incomingGenderSource === 'system') {
+      merged.interview_info.gender = prev.interview_info.gender;
+      merged.interview_info.gender_source = prev.interview_info.gender_source;
+    }
+
     for (const group of ['interview_info', 'preferences'] as const) {
       const prevGroup = prev[group] as unknown as Record<string, unknown>;
       const incomingGroup = incoming[group] as unknown as Record<string, unknown>;
@@ -461,10 +471,10 @@ export class SessionService {
     return merged;
   }
 
-  private deriveAuthoritativeState(
+  private deriveReengagementState(
     state: WeworkSessionState,
     options?: { currentUserMessages?: readonly string[]; now?: number },
-  ): AuthoritativeSessionState {
+  ): ReengagementSessionState {
     const recalledJobIds = new Set<number>();
     for (const job of [
       ...(state.presentedJobs ?? []),
@@ -474,7 +484,7 @@ export class SessionService {
       if (Number.isFinite(job.jobId)) recalledJobIds.add(job.jobId);
     }
 
-    // HC-2：当前轮候选人原文经 parser 解析为 user_text provenance；持久化 session facts
+    // HC-2：当前轮候选人原文经 parser 解析为 candidate_quote；持久化 session facts
     // 仅用于跨轮状态判断（如 booking_incomplete 复聊停止条件），不作为模型工具参数自证。
     const persistedCollectedFields = this.projectCollectedFieldsFromSessionFacts(
       state.facts,
@@ -512,9 +522,9 @@ export class SessionService {
   private projectCollectedFieldsFromSessionFacts(
     facts: SessionFacts | null | undefined,
     now: number,
-  ): AuthoritativeSessionState['collectedFields'] {
+  ): ReengagementSessionState['collectedFields'] {
     if (!facts) return {};
-    const collectedFields: AuthoritativeSessionState['collectedFields'] = {};
+    const collectedFields: ReengagementSessionState['collectedFields'] = {};
     for (const key of ['name', 'phone', 'age', 'gender'] as const) {
       const fact = facts.interview_info[key];
       const value = unwrapSessionFactValue(fact);
@@ -523,20 +533,12 @@ export class SessionService {
         isSessionFactValue(fact) && fact.extractedAt ? Date.parse(fact.extractedAt) : NaN;
       collectedFields[key] = {
         value: String(value),
-        provenance: this.toCollectedFieldProvenance(
-          isSessionFactValue(fact) ? fact.source : undefined,
-        ),
+        producer: isSessionFactValue(fact) ? fact.source : 'archive',
         evidence: isSessionFactValue(fact) ? fact.evidence : undefined,
         at: Number.isFinite(extractedAt) ? extractedAt : now,
       } satisfies CollectedField;
     }
     return collectedFields;
-  }
-
-  private toCollectedFieldProvenance(source?: SessionFactSource): FieldProvenance {
-    if (source === 'candidate' || source === 'rule') return 'user_text';
-    if (source === 'system') return 'booking_writeback';
-    return 'llm_extract';
   }
 
   async saveLastCandidatePool(
@@ -669,7 +671,7 @@ export class SessionService {
     corpId: string,
     userId: string,
     sessionId: string,
-    terminal: AuthoritativeSessionState['terminal'],
+    terminal: ReengagementSessionState['terminal'],
   ): Promise<void> {
     await this.patchSessionState(corpId, userId, sessionId, { terminal: terminal ?? null });
     this.logger.log(
@@ -761,6 +763,12 @@ export class SessionService {
     userId: string,
     sessionId: string,
     messages: { role: string; content: string }[],
+    /** prep 时刻规则轨产物；与本轮 debounce 合并后的 user 输入同源。 */
+    ruleFacts: RuleFactClaims | null = null,
+    /** prep 时刻唯一一次 labor-form 规则轨判定；生产链路传入，直调兼容时才本地补算。 */
+    preparedLaborFormIntent?: LaborFormIntentDecision,
+    /** 本轮账本的岗位/视觉只读摘要；只增强指代承接，不参与身份出处自证。 */
+    extractionToolFacts?: TurnExtractionToolFacts,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
@@ -805,9 +813,7 @@ export class SessionService {
         if (map.size > 0) visualSheetsByContent = map;
       } catch (error) {
         this.logger.warn(
-          `[extractFacts] 视觉事实拉取失败（回落文本前缀判定）: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[extractFacts] 视觉事实拉取失败（回落文本前缀判定）: ${toErrorMessage(error)}`,
         );
       }
     }
@@ -818,13 +824,15 @@ export class SessionService {
     // `[引用 店长：…电话138…]` 引用块携带经理原文——不剥则经理号码被当自陈出处，
     // foreignPhone 门失效，P0 经引用向量复现。被引用内容的合法证据来源是
     // assistantTexts（原始助手消息本就在其中），从自陈语料剥除不损失证据。
+    // 时间后缀一并剥除（PR #1000 评审 P0-7）：`[消息发送时间：…]` 恒贡献约 20 个
+    // 有效字符，不剥则下方空轮短路门的 `<4` 永不成立，且时间数字会进 phone 出处流。
     const typedOrSelfMaterialMessages = userMessages
       .filter((m) => {
         const key = visualKey(m);
         if (!isVisualDescriptionText(key)) return true;
         return isSelfReportedVisualMessage(key, sheetOf(m));
       })
-      .map((m) => stripQuotedBlocks(m));
+      .map((m) => stripQuotedBlocks(stripTimeContextSuffix(m)));
 
     const previousFacts = await this.getFacts(corpId, userId, sessionId);
     // 事实提取每轮都会触发，但不是每轮都全量重算：
@@ -847,15 +855,13 @@ export class SessionService {
         `(token saving: ${savingPercent}%)`,
     );
 
-    const brandData = await this.sponge.fetchBrandList();
-
     // 纯应答闸门：已有 facts、本轮最后一条用户消息是纯应答词（"好的/嗯嗯/谢谢"）、
     // 且对该消息的规则提取零命中时，跳过本轮 LLM 提取——这类轮次没有新事实，
     // 却要支付完整的提取调用（品牌列表 + 规则线索 + 历史，数千 tokens）。
     // 信息不会永久丢失：下一轮非应答消息的增量窗口仍覆盖本轮上下文（含助手
     // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
-    const lastUserText = MessageParser.stripTimeContext(userMessages.at(-1) ?? '').trim();
-    const currentLaborFormIntent = decideLaborFormIntent(lastUserText);
+    const lastUserText = stripTimeContext(userMessages.at(-1) ?? '').trim();
+    const currentLaborFormIntent = preparedLaborFormIntent ?? decideLaborFormIntent(lastUserText);
 
     // 确认问答裁决（候选人资料证据化 P1，badcase 6a671722："是在沈阳市对吧？"→"好的"）：
     // 必须在纯应答闸门之前算——确认应答（"好的/对/嗯"）恰恰是纯应答词，走闸门
@@ -865,7 +871,7 @@ export class SessionService {
       ? {
           value: confirmedCity.city,
           confidence: 'high',
-          source: 'candidate',
+          source: 'candidate_quote',
           evidence: truncateEvidence(
             `确认应答：「${confirmedCity.question}」→「${confirmedCity.reply}」`,
           ),
@@ -873,11 +879,30 @@ export class SessionService {
         }
       : null;
 
+    // P0 止血：首轮没有任何既有档案、候选人有效文本不足 4 字且没有图片时，不把
+    // "我是." 之类空壳消息送进抽取模型。规则轨若确有命中仍会在下方单独落档；纯空轮
+    // 直接返回，既省一次调用，也从入口消除弱模型"为了交卷补整套档案"的机会。
+    const effectiveCandidateTextLength = typedOrSelfMaterialMessages
+      .join('')
+      .normalize('NFKC')
+      .replace(/[\s\p{P}\p{S}]+/gu, '').length;
+    const hasVisualMessage = userMessages.some((message) =>
+      isVisualDescriptionText(visualKey(message)),
+    );
+    const skipLowInformationFirstTurn =
+      !previousFacts &&
+      effectiveCandidateTextLength < 4 &&
+      !hasVisualMessage &&
+      this.isLowInformationFirstTurnText(lastUserText);
+    if (skipLowInformationFirstTurn && !ruleFacts && !confirmedCityFact) {
+      this.logger.log(
+        `[extractFacts] 首轮有效文本不足 4 字且无图片，跳过 LLM 提取：「${lastUserText}」`,
+      );
+      return { llmDegraded: false, brandIntents: [] };
+    }
+
     if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
-      const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData, {
-        visualSheetsByContent,
-      });
-      if (!currentTurnRuleHits) {
+      if (!ruleFacts) {
         // 纯应答轮唯一可能携带的新事实就是确认裁决：有则单写 city 后再早退
         if (confirmedCityFact) {
           const cityOnlyFacts = SessionFactsSchema.parse({
@@ -896,27 +921,85 @@ export class SessionService {
       }
     }
 
-    // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
-    const aliasHints = detectBrandAliasHints(userMessages, brandData);
-    const ruleFacts = extractHighConfidenceFacts(userMessages, brandData, {
+    const brandData = await this.sponge.fetchBrandList();
+
+    // 轮末规则轨重扫（PR #1000 评审 P0-1，develop 行为回归）：prep 期规则轨只吃原始
+    // 回调 DTO 的本轮拼接文本——图片消息在那一刻只有 [图片消息] 占位，sheet 授权域
+    //（简历/证件身份准入、R2 发布方剔除）永远够不着；重启/timeout 丢轮的规则事实也
+    // 无从自愈。这里对当前会话段逐条 user 消息带 visualSheetsByContent 重扫，作为
+    // 落档合并与提取 prompt 的规则轨输入；prep 产物仍服务轮内工具与上方纯应答闸门。
+    // enrichment 注入的 system 补充 claim（客户详情性别）不在会话文本里，重扫覆盖
+    // 不到，从入参 ruleFacts 原样保留。
+    const rescannedRuleFacts = produceRuleFactClaims(userMessages, brandData, {
       visualSheetsByContent,
     });
-    const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
-    const prompt = buildSessionExtractionPrompt(
-      brandData,
+    const supplementalSystemClaims =
+      ruleFacts?.claims.filter((claim) => claim.producer === 'system') ?? [];
+    const effectiveRuleFacts: RuleFactClaims | null =
+      rescannedRuleFacts || supplementalSystemClaims.length > 0
+        ? {
+            claims: [...(rescannedRuleFacts?.claims ?? []), ...supplementalSystemClaims],
+            reasoning: [
+              rescannedRuleFacts?.reasoning?.trim(),
+              ...supplementalSystemClaims.map((claim) => claim.reasoning),
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          }
+        : null;
+
+    // 品牌线索：引用块剥离在 detectBrandAliasHints 入口内完成（§19.2），此处传原始消息。
+    const aliasHints = detectBrandAliasHints(userMessages, brandData);
+    const prompt = skipLowInformationFirstTurn
+      ? ''
+      : buildSessionExtractionPrompt(
+          brandData,
+          currentMessage,
+          messagesToProcess,
+          aliasHints,
+          effectiveRuleFacts,
+          formatCurrentTime(),
+          previousFacts,
+          extractionToolFacts ?? null,
+        );
+    const identityProvenanceCorpus = buildExtractionIdentityProvenanceCorpus(
       currentMessage,
       messagesToProcess,
-      aliasHints,
-      ruleFacts,
-      MessageParser.formatCurrentTime(),
       previousFacts,
     );
     const {
       facts: llmRaw,
       explicitProvenance,
       brandIntents: rawBrandIntents,
+      laborFormIntent: extractedLaborFormIntent,
       degraded: llmDegraded,
-    } = await this.callLLM(prompt);
+      modelId: extractionModelId,
+      rawOutput: rawExtractionOutput,
+    } = skipLowInformationFirstTurn
+      ? {
+          facts: FALLBACK_EXTRACTION,
+          explicitProvenance: [],
+          brandIntents: [],
+          laborFormIntent: null,
+          degraded: false,
+          modelId: 'not_invoked',
+          rawOutput: null,
+        }
+      : await this.callLLM(prompt, identityProvenanceCorpus);
+    if (skipLowInformationFirstTurn) {
+      this.logger.log(
+        `[extractFacts] 首轮有效文本不足 4 字且无图片，仅处理规则事实，跳过 LLM 提取`,
+      );
+    }
+    this.emitLaborFormSemanticTrackDiff({
+      corpId,
+      userId,
+      sessionId,
+      ruleDecision: currentLaborFormIntent,
+      extractionDecision: extractedLaborFormIntent,
+      degraded: llmDegraded,
+    });
+    const extractionDrops: Array<{ field: string; reason: string }> = [];
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位。
     // 真名索取问答豁免（badcase 2026-08-06 chat 6a7446eb）：候选人开场"我是张丽鑫"命中
     // 打招呼语判据，但 Agent 随后明确问真名、她单独回了"张丽鑫"——被问之后给出的名字是
@@ -937,6 +1020,8 @@ export class SessionService {
           ? `丢弃称谓/商号形态的姓名"${droppedName}"（称谓后缀结尾，非本人姓名）`
           : `丢弃来自"我是xx"打招呼语的昵称"${droppedName}"`;
       this.logger.log(`[extractFacts] ${reasonText}，不写入 interview_info.name`);
+      const reason = droppedReason ?? 'auto_greeting_nickname';
+      extractionDrops.push({ field: 'name', reason });
       // 该丢弃此前只有日志、无观测档，同案排障只能靠"快照里 name 恒为 null"反推。
       this.tracer?.emit({
         type: 'extraction_field_dropped',
@@ -945,299 +1030,143 @@ export class SessionService {
         chatId: sessionId,
         field: 'name',
         droppedValue: droppedName,
-        reason: droppedReason ?? 'auto_greeting_nickname',
+        reason,
+        modelId: extractionModelId,
       });
     }
-    const newFacts = this.applyExplicitProvenanceUpgrade(
-      this.mergeRuleAndLlmFacts(sanitizedLlm, highConfidenceRuleFacts),
+    const provenanceAdmission = this.applyExtractionProvenance(
+      this.mergeRuleAndLlmFacts(sanitizedLlm, effectiveRuleFacts),
       explicitProvenance,
-      userMessages,
+      typedOrSelfMaterialMessages,
+      previousFacts,
     );
+    let newFacts = provenanceAdmission.facts;
+    for (const item of provenanceAdmission.dropped) {
+      this.logger.warn(
+        `[extractFacts] 丢弃无候选人出处的首写字段 ${item.field}=${String(item.droppedValue)}`,
+      );
+      extractionDrops.push({ field: item.field, reason: 'no_candidate_provenance' });
+      this.tracer?.emit({
+        type: 'extraction_field_dropped',
+        corpId,
+        userId,
+        chatId: sessionId,
+        field: item.field,
+        droppedValue: String(item.droppedValue),
+        reason: 'no_candidate_provenance',
+        modelId: extractionModelId,
+      });
+    }
 
-    // 定位分享城市证据化（候选人资料证据化 A2，badcase 6a618a6e 上海浦东）：
-    // GPS 坐标是候选人给出的最强位置证据，但渲染文本常无城市名（"黎明村98号楼"），
-    // 规则/LLM 轨都抽不出 → 坐标逆解后按 source='tool' 入档。
-    // 本轮文本已抽出高置信城市时让位（T1 亲证 > T2 工具确权）。
     const currentTurnUserTexts: string[] = [];
     for (let i = scopedMessages.length - 1; i >= 0 && scopedMessages[i].role === 'user'; i--) {
       currentTurnUserTexts.unshift(scopedMessages[i].content);
     }
-    const locationCityFact = await this.buildLocationShareCityFact(
-      currentTurnUserTexts,
-      newFacts.preferences.city,
-    );
-    if (locationCityFact) {
-      newFacts.preferences.city = locationCityFact;
-    }
-
     // 地图截图城市确权（visual-fact-structuring R3，badcase oaz6inzf / x3pdj7qh）：
     // 本轮末尾连续 user 块里的 map_location sheet，其 city/address 字段经 geo 白名单
-    // 确权后按 source='tool' 入档——与定位分享（A2）同级证据、同让位规则：
+    // 确权后按 source='system' 入档——与定位分享（A2）同级证据、同让位规则：
     // 本轮文本已产出高置信城市时让位（T1 亲证 > T2 工具确权）。
-    if (
-      visualSheetsByContent &&
-      !(newFacts.preferences.city && newFacts.preferences.city.confidence === 'high')
-    ) {
+    if (visualSheetsByContent) {
       outer: for (const text of currentTurnUserTexts) {
         const sheet = sheetOf(text);
-        if (!sheet || sheet.kind !== 'map_location') continue;
-        const candidates = [
-          ...fieldValues(sheet, 'city'),
-          ...fieldValues(sheet, 'address'),
-          ...fieldValues(sheet, 'candidate_address'),
-        ];
-        for (const candidate of candidates) {
+        if (!sheet) continue;
+        for (const candidate of mapLocationCityCandidates(sheet)) {
           const scan = scanGeoSignalsFromText(candidate);
-          const city = scan.city?.value?.trim().replace(/市$/, '');
+          const city = normalizeCityName(scan.city?.value);
           if (!city) continue;
-          newFacts.preferences.city = {
+          const mapFact: SessionFactValue<string> = {
             value: city,
             confidence: 'high',
-            source: 'tool',
+            source: 'system',
             evidence: truncateEvidence(`地图截图城市确权：${candidate}`),
             extractedAt: new Date().toISOString(),
           };
-          this.logger.log(`[extractFacts] 地图截图城市确权入档: pref.city=${city}（source=tool）`);
+          const decision = adjudicateCityClaims(
+            cityClaimFromFact(newFacts.preferences.city),
+            createCityClaim(city, 'system', mapFact.evidence, mapFact.extractedAt),
+          );
+          if (decision.decision !== 'adopt') continue;
+          newFacts.preferences.city = mapFact;
+          this.logger.log(
+            `[extractFacts] 地图截图城市确权入档: pref.city=${city}（source=system）`,
+          );
           break outer;
         }
       }
     }
 
-    // is_student 首写证据门（badcase 2026-07-28 chat 6a673402…）：抽取模型可在零身份
-    // 语境下凭空发明布尔身份（该案候选人只说过"川沙"，evidence 自证"未提及，不填"
-    // 仍输出 false），随后经 [已确认事实] 逐轮延续，毒化身份守卫第 4 档与展示层。
-    // 字段级丢弃而非整轮判失败——同轮其它字段可能是合法提取（该案同轮 city=上海
-    // 即合法），name/phone 的 throw 全轮策略在此会连坐。
+    // 「不限地区」清空对本轮**全部** user 消息判定（PR #1000 评审 P2-5）：debounce
+    // 合并轮里「区域不限」常不是最后一条（后面跟着「工资多少」），只看 lastUserText
+    // 永不清空。
+    const geoPreferenceClear = currentTurnUserTexts
+      .map((text) => decideGeoPreferenceClear(stripTimeContext(text).trim()))
+      .reduce(
+        (merged, decision) => ({
+          district: merged.district || decision.district,
+          location: merged.location || decision.location,
+        }),
+        { district: false, location: false },
+      );
+    if (geoPreferenceClear.district) newFacts.preferences.district = null;
+    if (geoPreferenceClear.location) newFacts.preferences.location = null;
+
     const assistantTexts = scopedMessages
-      .filter((m) => m.role === 'assistant')
-      .map((m) => m.content);
-    const previousIsStudent = unwrapSessionFactValue(previousFacts?.interview_info.is_student);
-    const extractedIsStudent = unwrapSessionFactValue(newFacts.interview_info.is_student);
-    if (
-      typeof previousIsStudent !== 'boolean' &&
-      typeof extractedIsStudent === 'boolean' &&
-      !hasIsStudentTopicEvidence(typedOrSelfMaterialMessages, assistantTexts)
-    ) {
-      newFacts.interview_info.is_student = null;
-      this.logger.warn(
-        `[extractFacts] is_student 首写无会话身份语境，丢弃臆造值 ${extractedIsStudent}`,
-      );
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.content);
+    const admission = applyEvidenceAdmission({
+      facts: newFacts,
+      previousFacts,
+      messages: scopedMessages,
+      userMessages,
+      selfReportedUserTexts: typedOrSelfMaterialMessages,
+      assistantTexts,
+    });
+    newFacts = admission.facts;
+    const { droppedQuotedSpeakerName, droppedDigitsName, droppedPhone, droppedCity } =
+      admission.flags;
+    for (const item of admission.dropped) {
+      this.logger.warn('[extractFacts] ' + item.message);
+      extractionDrops.push({ field: item.field, reason: item.reason });
       this.tracer?.emit({
         type: 'extraction_field_dropped',
         corpId,
         userId,
         chatId: sessionId,
-        field: 'is_student',
-        droppedValue: String(extractedIsStudent),
-        reason: 'first_write_no_identity_context',
+        field: item.field,
+        droppedValue: String(item.droppedValue),
+        reason: item.reason,
+        modelId: extractionModelId,
       });
     }
-
-    // 明示型字段臆造门（badcase 2026-07-29 chat 6a69674e… / 6a69790b…）：抽取模型在
-    // reasoning 自证"用户没有提供其它信息，所有字段均省略"的同一次输出里，写下了整套
-    // 臆造档案（phone="18"/"100％"、has_health_certificate="有"、applied_store="人民广场店"、
-    // 户籍"江苏"…），随后经 [已确认事实] 全程沿用。三道门按字段自身的可推断性分工，
-    // 都做字段级丢弃（与 is_student 门同策略，避免 throw 连坐同轮合法字段）。
-    const provenanceContext = [...userMessages, ...assistantTexts];
-    const dropInterviewField = (
-      field: keyof SessionFacts['interview_info'],
-      droppedValue: unknown,
-      reason: string,
-      logMessage: string,
-    ): void => {
-      (newFacts.interview_info as unknown as Record<string, unknown>)[field] = null;
-      this.logger.warn(logMessage);
+    if (extractionDrops.length >= 3 && rawExtractionOutput !== null) {
       this.tracer?.emit({
-        type: 'extraction_field_dropped',
+        type: 'extraction_raw_output_sampled',
         corpId,
         userId,
         chatId: sessionId,
-        field,
-        droppedValue: String(droppedValue),
-        reason,
+        modelId: extractionModelId,
+        dropCount: extractionDrops.length,
+        droppedFields: extractionDrops.map((item) => item.field),
+        rawOutput: this.serializeRawExtractionOutput(rawExtractionOutput),
       });
-    };
-
-    // 引用发言人姓名门（badcase or9d6viv，chat 6a6c4e4e：interview.name 被写成经理显示名
-    // "辛瑜琦"——它只以"[引用 辛瑜琦：…]"前缀出现在候选人消息里，7-21 的 booking 预填闸
-    // 拦得住预填、拦不住抽取首写）。名字只以引用前缀发言人身份出现=极可能是经理名，字段级丢弃。
-    const extractedName = unwrapSessionFactValue(newFacts.interview_info.name);
-    const droppedQuotedSpeakerName =
-      typeof extractedName === 'string' && isNameOnlyQuotedSpeaker(extractedName, scopedMessages);
-    if (droppedQuotedSpeakerName) {
-      dropInterviewField(
-        'name',
-        extractedName,
-        'quoted_speaker_name',
-        `[extractFacts] name 只以引用前缀发言人身份出现（极可能是经理名），丢弃「${extractedName}」`,
-      );
-    }
-
-    // 姓名形态门（badcase 2026-08-04 vkikct39，同案）：同一次抽取把手机号写进了 name
-    // （evidence 原文："**name / phone**：沿用已确认事实 13788930869"）。
-    // sanitizeInterviewName 只拦"我是XX"打招呼语昵称，纯数字值直接穿透，随后被当真名
-    // 预填进收资表。与上面的经理名门同属 name 字段，共用 extractedName。
-    const droppedDigitsName =
-      !droppedQuotedSpeakerName &&
-      typeof extractedName === 'string' &&
-      isDigitsOnlyName(extractedName);
-    if (droppedDigitsName) {
-      dropInterviewField(
-        'name',
-        extractedName,
-        'digits_only_name',
-        `[extractFacts] name 为纯数字形态（疑似手机号错填姓名），丢弃「${extractedName}」`,
-      );
-    }
-
-    // 手机号形态门：非 11 位手机号形态一律丢（出处门只管 ≥7 位数字流，短垃圾值绕过）。
-    const extractedPhone = unwrapSessionFactValue(newFacts.interview_info.phone);
-    const invalidPhoneShape =
-      typeof extractedPhone === 'string' && !isStorableCandidatePhone(extractedPhone);
-    if (invalidPhoneShape) {
-      dropInterviewField(
-        'phone',
-        extractedPhone,
-        'invalid_phone_shape',
-        `[extractFacts] phone 非 11 位手机号形态，丢弃臆造值「${extractedPhone}」`,
-      );
-    }
-
-    // 第三方截图夺号门（badcase 2026-08-04 vkikct39，chat 6a714c00…，P0）：
-    // assertExtractionIdentityProvenance 的出处门认整个提取 prompt，**包含图片描述**，
-    // 于是候选人转发的 BOSS 直聘岗位截图里**发布方**的手机号，形态合法（11 位）、
-    // 出处也"找得到"，一路落进 interview_info.phone，最后被提交进真实报名 ——
-    // AI 面试短信发到了招募经理手机上。号码必须是候选人自己敲出来的（或来自他本人的
-    // 简历图片），只在与旧值不同时校验，已确立的号码沿用不受影响。
-    const previousPhone = unwrapSessionFactValue(previousFacts?.interview_info.phone);
-    const foreignPhone =
-      !invalidPhoneShape &&
-      typeof extractedPhone === 'string' &&
-      extractedPhone !== previousPhone &&
-      !hasSelfReportedPhoneProvenance(extractedPhone, typedOrSelfMaterialMessages, {
-        prefiltered: true,
-      });
-    if (foreignPhone) {
-      dropInterviewField(
-        'phone',
-        extractedPhone,
-        'phone_not_self_reported',
-        `[extractFacts] phone 只出现在图片描述等第三方内容中，丢弃非自陈号码「${extractedPhone}」`,
-      );
-    }
-    const droppedPhone = invalidPhoneShape || foreignPhone;
-
-    // 门店/户籍窗口出处门：两字段规则均已声明只能来自明示，值必是对话里出现过的串；
-    // 只在"与旧值不同"时校验，已确立的旧值沿用不受影响。
-    for (const field of ['applied_store', 'household_register_province'] as const) {
-      const extracted = unwrapSessionFactValue(newFacts.interview_info[field]);
-      const previous = unwrapSessionFactValue(previousFacts?.interview_info[field]);
-      if (
-        typeof extracted === 'string' &&
-        extracted !== previous &&
-        !hasFieldProvenanceInWindow(extracted, provenanceContext)
-      ) {
-        dropInterviewField(
-          field,
-          extracted,
-          'no_provenance_in_window',
-          `[extractFacts] ${field} 在会话窗口无出处，丢弃臆造值「${extracted}」`,
-        );
-      }
-    }
-
-    // 健康证首写证据门：值域是短词无法做子串出处校验，改用话题词证据门（同 is_student）。
-    // 该字段直接放行 booking 有证 gate，是本组臆造字段里后果最重的一个。
-    const previousHealthCert = unwrapSessionFactValue(
-      previousFacts?.interview_info.has_health_certificate,
-    );
-    const extractedHealthCert = unwrapSessionFactValue(
-      newFacts.interview_info.has_health_certificate,
-    );
-    if (
-      previousHealthCert == null &&
-      extractedHealthCert != null &&
-      !hasHealthCertificateTopicEvidence(typedOrSelfMaterialMessages, assistantTexts)
-    ) {
-      dropInterviewField(
-        'has_health_certificate',
-        extractedHealthCert,
-        'first_write_no_health_cert_context',
-        `[extractFacts] has_health_certificate 首写无健康证语境，丢弃臆造值「${String(extractedHealthCert)}」`,
-      );
-    }
-
-    // 标量扇出熔断（badcase 6a6c4c13：整句"晚上才可以，有吗？"同轮写进 city/salary/age，
-    // 2026-08-03 抽样 12% 会话中招）：同一非空字符串被同轮抽取写进 ≥3 个字段，必是提取
-    // 输出错位/裸标量广播。该值的所有字段整组丢弃（字段级，不连坐同轮其它合法字段）。
-    const fanoutScan: Record<string, unknown> = {};
-    for (const field of INTERVIEW_INFO_FIELD_KEYS) {
-      fanoutScan[`interview_info.${field}`] = unwrapSessionFactValue(
-        newFacts.interview_info[field] as never,
-      );
-    }
-    for (const field of PREFERENCE_FIELD_KEYS) {
-      fanoutScan[`preferences.${field}`] = unwrapSessionFactValue(
-        (newFacts.preferences as unknown as Record<string, unknown>)[field] as never,
-      );
-    }
-    const fanoutValues = detectScalarFanoutValues(fanoutScan);
-    if (fanoutValues.size > 0) {
-      for (const [fieldPath, value] of Object.entries(fanoutScan)) {
-        if (typeof value !== 'string' || !fanoutValues.has(value.trim())) continue;
-        const [group, field] = fieldPath.split('.') as ['interview_info' | 'preferences', string];
-        (newFacts[group] as unknown as Record<string, unknown>)[field] = null;
-        this.logger.warn(
-          `[extractFacts] 标量扇出熔断：${fieldPath} 与 ≥${SCALAR_FANOUT_FIELD_THRESHOLD - 1} 个其他字段同值，丢弃「${value}」`,
-        );
-        this.tracer?.emit({
-          type: 'extraction_field_dropped',
-          corpId,
-          userId,
-          chatId: sessionId,
-          field,
-          droppedValue: String(value),
-          reason: 'scalar_fanout',
-        });
-      }
-    }
-
-    // 城市/年龄形状门（同案）：垃圾城市曾被归一化抬成 high/explicit_city，还会压制
-    // 下方确认问答裁决的真实城市，必须在裁决前清掉。
-    const shapeGateCity = unwrapSessionFactValue(newFacts.preferences.city);
-    let droppedCity = false;
-    if (typeof shapeGateCity === 'string' && !isPlausibleCityValue(shapeGateCity)) {
-      newFacts.preferences.city = null;
-      droppedCity = true;
-      this.logger.warn(`[extractFacts] pref.city 形状非法，丢弃臆造值「${shapeGateCity}」`);
-      this.tracer?.emit({
-        type: 'extraction_field_dropped',
-        corpId,
-        userId,
-        chatId: sessionId,
-        field: 'city',
-        droppedValue: shapeGateCity,
-        reason: 'invalid_city_shape',
-      });
-    }
-    const shapeGateAge = unwrapSessionFactValue(newFacts.interview_info.age);
-    if (shapeGateAge != null && !isPlausibleAgeValue(shapeGateAge)) {
-      dropInterviewField(
-        'age',
-        shapeGateAge,
-        'invalid_age_shape',
-        `[extractFacts] age 形状非法（须为 14-70 单一数字），丢弃臆造值「${String(shapeGateAge)}」`,
-      );
     }
 
     // 确认问答裁决（非纯应答轮路径，如"好的，我25岁"带出其他事实时）：
     // 本轮文本/定位已产出高置信城市则让位（显式线索优先于确认推断）。
-    if (
-      confirmedCityFact &&
-      !(newFacts.preferences.city && newFacts.preferences.city.confidence === 'high')
-    ) {
-      newFacts.preferences.city = confirmedCityFact;
-      this.logger.log(`[extractFacts] 确认问答裁决入档: pref.city=${confirmedCityFact.value}`);
+    if (confirmedCityFact) {
+      const decision = adjudicateCityClaims(
+        cityClaimFromFact(newFacts.preferences.city),
+        createCityClaim(
+          confirmedCityFact.value,
+          'candidate_quote',
+          confirmedCityFact.evidence,
+          confirmedCityFact.extractedAt,
+        ),
+      );
+      if (decision.decision === 'adopt') {
+        newFacts.preferences.city = confirmedCityFact;
+        this.logger.log(`[extractFacts] 确认问答裁决入档: pref.city=${confirmedCityFact.value}`);
+      }
     }
 
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
@@ -1263,6 +1192,8 @@ export class SessionService {
     // 存量脏值继续留在档案里，下一轮又被 [已确认事实] 喂回抽取，污染永不出清。
     const forceNullPreferenceFields: (keyof EntityExtractionResult['preferences'])[] = [];
     if (laborFormExplicitlyCleared) forceNullPreferenceFields.push('labor_form');
+    if (geoPreferenceClear.district) forceNullPreferenceFields.push('district');
+    if (geoPreferenceClear.location) forceNullPreferenceFields.push('location');
     // 必须看本轮末态而非丢弃那一刻：上方确认问答裁决可能在丢弃之后又写回一个合法城市
     // （丢弃把 city 清空，恰恰让那条裁决的"本轮已有高置信城市则让位"守卫放行）。
     // 只按 droppedCity 强清会把刚裁定的城市在合并后抹掉。
@@ -1279,85 +1210,36 @@ export class SessionService {
         forceNullPreferenceFields.length > 0 ? forceNullPreferenceFields : undefined,
     });
 
+    const brandOutcome = produceValidatedBrandIntents(
+      rawBrandIntents,
+      brandData,
+      scopedMessages
+        .filter((message) => message.role === 'assistant')
+        .map((message) => message.content),
+    );
+    for (const rejected of brandOutcome.rejected) {
+      this.logger.warn(
+        `[extractFacts] LLM 品牌意图被 producer 拒绝: reason=${rejected.reason}, brand=${rejected.brand ?? '<empty>'}`,
+      );
+    }
     return {
       llmDegraded,
-      brandIntents: this.validateBrandIntents(
-        rawBrandIntents,
-        brandData,
-        scopedMessages.filter((m) => m.role === 'assistant').map((m) => m.content),
-      ),
+      brandIntents: brandOutcome.accepted,
     };
   }
 
-  /**
-   * LLM 极性轨输出验证（§6.3.1）：品牌名必须经品牌库标准化验证，未命中即整条丢弃，
-   * 不允许 LLM 创造标准品牌；极性沿用 LLM 判断（指代链接后的品牌名同样过目录验证）。
-   *
-   * 2026-07-27 追加两道确定性输入闸（llm-intent-guards）：系统文本回流与助手话术
-   * 回声整条丢弃——brand 字段被塞进整句时包含匹配仍能过目录验证，但说话人不是候选人
-   * （2026-07-24 chat 6a633590 Agent 找店话术凭空立主品牌塔可贝尔）。
-   */
-  private validateBrandIntents(
-    intents: BrandIntentEntry[],
-    brandData: BrandItem[],
-    assistantTexts: string[] = [],
-  ): BrandResolution[] {
-    const normalizedAssistantTexts = assistantTexts.map(normalizeForBrandMatch).filter(Boolean);
-    const out: BrandResolution[] = [];
-    for (const intent of intents) {
-      const brand = intent.brand?.trim();
-      if (!brand) {
-        // 品牌为空只对排斥/不限有意义（"换个品牌"/"这个不考虑"链接失败时的裸排斥）
-        if (intent.polarity === 'negative' || intent.polarity === 'browse_all') {
-          out.push({
-            canonicalName: null,
-            brandId: null,
-            matchedText: null,
-            // 裸排斥来自 LLM 结构化意图而非文本命中，没有可归因的原文片段
-            sourceText: null,
-            source: 'user_text',
-            matchType: null,
-            intentPolarity: intent.polarity,
-            confidence: 0.9,
-            ambiguous: false,
-          });
-        }
-        continue;
-      }
-      if (isSystemTextReflow(brand)) {
-        this.logger.warn(`[extractFacts] LLM 品牌意图为系统文本回流，整条丢弃：「${brand}」`);
-        continue;
-      }
-      const resolutions = resolveBrands(brand, 'user_text', brandData).filter(
-        (r) => !r.ambiguous && r.canonicalName !== null,
-      );
-      if (resolutions.length === 0) {
-        this.logger.debug(`[extractFacts] LLM 品牌意图未过目录验证，整条丢弃：「${brand}」`);
-        continue;
-      }
-      if (
-        isAssistantEchoUtterance({
-          normalizedBrandField: normalizeForBrandMatch(brand),
-          normalizedMatchedTexts: resolutions.map((r) =>
-            normalizeForBrandMatch(r.matchedText ?? ''),
-          ),
-          normalizedAssistantTexts,
-        })
-      ) {
-        this.logger.warn(`[extractFacts] LLM 品牌意图为助手话术回声，整条丢弃：「${brand}」`);
-        continue;
-      }
-      for (const resolution of resolutions) {
-        out.push({ ...resolution, intentPolarity: intent.polarity });
-      }
-    }
-    return out;
-  }
-
-  private async callLLM(prompt: string): Promise<{
+  private async callLLM(
+    prompt: string,
+    identityProvenanceCorpus: string,
+  ): Promise<{
     facts: EntityExtractionResult;
     explicitProvenance: ExplicitProvenanceEntry[];
     brandIntents: BrandIntentEntry[];
+    laborFormIntent: LaborFormIntentExtraction | null;
+    /** 经 fallback 后真正成功产出该响应的模型。 */
+    modelId: string;
+    /** 仅供“同轮多字段丢弃”抽样，调用侧不得持久化 prompt。 */
+    rawOutput: unknown | null;
     /** true = LLM 调用或 schema 解析失败，已降级为空提取（本轮新事实丢失，旧值不受影响）。 */
     degraded: boolean;
   }> {
@@ -1375,16 +1257,21 @@ export class SessionService {
         //（badcase 2026-07-22 张三/13800138000 假身份成单）。命中即判本次生成
         // 失败，走与 API 错误相同的重试/降级，绝不让占位身份落进事实层。
         // 身份出处门（badcase 2026-07-24 赵堤/18833669895 新造身份穿透示例名单）：
-        // name/phone 必须能在提取 prompt（消息窗口 + 已确认事实 + 图片描述）里找到，
+        // name/phone 必须能在消息窗口 + 已确认事实 + 图片描述的专用语料里找到，
+        // system prompt、规则线索与工具事实不进入搜索范围，避免示例/旁路值自证，
         // 找不到即臆造，同样判本次生成失败。
         validateOutput: (output) => {
           assertNoExtractionExampleEcho(output);
-          assertExtractionIdentityProvenance(output, prompt);
+          assertExtractionIdentityProvenance(output, identityProvenanceCorpus);
         },
       });
 
       // explicit_provenance / brand_intents 不属于存储态 schema，归一化前单独取出。
-      const rawOutput = result.output as { explicit_provenance?: unknown; brand_intents?: unknown };
+      const rawOutput = result.output as {
+        explicit_provenance?: unknown;
+        brand_intents?: unknown;
+        labor_form_intent?: unknown;
+      };
       const provenanceParse = z
         .array(ExplicitProvenanceEntrySchema)
         .nullable()
@@ -1397,6 +1284,12 @@ export class SessionService {
         .optional()
         .safeParse(rawOutput?.brand_intents);
       const brandIntents = brandIntentsParse.success ? (brandIntentsParse.data ?? []) : [];
+      const laborFormIntentParse = LaborFormIntentExtractionSchema.nullable()
+        .optional()
+        .safeParse(rawOutput?.labor_form_intent);
+      const laborFormIntent = laborFormIntentParse.success
+        ? (laborFormIntentParse.data ?? null)
+        : null;
 
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
       const parsed = EntityExtractionResultSchema.parse(result.output);
@@ -1404,7 +1297,10 @@ export class SessionService {
         facts: this.backfillCityFromWhitelist(parsed),
         explicitProvenance,
         brandIntents,
+        laborFormIntent,
         degraded: false,
+        modelId: result.modelId,
+        rawOutput: result.output,
       };
     } catch (err) {
       // 降级影响：本轮新事实丢失（下一轮增量窗口可自然补回），旧 facts 经
@@ -1415,136 +1311,214 @@ export class SessionService {
         facts: FALLBACK_EXTRACTION,
         explicitProvenance: [],
         brandIntents: [],
+        laborFormIntent: null,
         degraded: true,
+        modelId: 'unavailable',
+        rawOutput: null,
       };
     }
   }
 
-  /**
-   * 候选人明确提供的字段，置信度可由 LLM 来源声明升级到 high 的白名单。
-   *
-   * 刻意排除：
-   * - name：报名真名校验红线，升级通道仍只走规则的结构化姓名识别；
-   * - applied_store / applied_position / interview_time：事务字段升 high 后，
-   *   候选人改约时新一轮 medium 提取会被置信度守卫拒绝覆盖，反而制造新 bug。
-   */
-  private static readonly EXPLICIT_UPGRADE_FIELDS = new Set([
-    'phone',
-    'gender',
-    'age',
-    'education',
-    'has_health_certificate',
-    'experience',
-    'height',
-    'weight',
-    'is_student',
-    'household_register_province',
-  ]);
+  /** JSON 化抽取原始输出并按 UTF-8 字节数封顶 8KB；请求 prompt 永不进入该事件。 */
+  private serializeRawExtractionOutput(output: unknown): string {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(output);
+    } catch {
+      serialized = String(output);
+    }
+    const maxBytes = 8 * 1024;
+    if (Buffer.byteLength(serialized, 'utf8') <= maxBytes) return serialized;
+
+    let low = 0;
+    let high = serialized.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (Buffer.byteLength(serialized.slice(0, middle), 'utf8') <= maxBytes) low = middle;
+      else high = middle - 1;
+    }
+    return serialized.slice(0, low);
+  }
+
+  /** 仅记录 labor-form 双轨分歧；规则轨继续是唯一生效判定。 */
+  private emitLaborFormSemanticTrackDiff(params: {
+    corpId: string;
+    userId: string;
+    sessionId: string;
+    ruleDecision: LaborFormIntentDecision;
+    extractionDecision: LaborFormIntentExtraction | null;
+    degraded: boolean;
+  }): void {
+    if (params.degraded || !params.extractionDecision) return;
+
+    const ruleTrack =
+      params.ruleDecision.kind === 'set'
+        ? { intent: 'set' as const, laborForm: params.ruleDecision.value }
+        : params.ruleDecision.kind === 'clear'
+          ? { intent: 'clear' as const, laborForms: params.ruleDecision.clearedValues }
+          : { intent: 'ignore' as const };
+    const extractionTrack = {
+      intent: params.extractionDecision.intent,
+      ...(params.extractionDecision.labor_form
+        ? { laborForm: params.extractionDecision.labor_form }
+        : {}),
+    };
+    const sameIntent = ruleTrack.intent === extractionTrack.intent;
+    const sameValue =
+      !sameIntent ||
+      extractionTrack.intent === 'ignore' ||
+      (extractionTrack.intent === 'set' &&
+        ruleTrack.intent === 'set' &&
+        extractionTrack.laborForm === ruleTrack.laborForm) ||
+      (extractionTrack.intent === 'clear' &&
+        ruleTrack.intent === 'clear' &&
+        (!extractionTrack.laborForm || ruleTrack.laborForms.includes(extractionTrack.laborForm)));
+    if (sameIntent && sameValue) return;
+
+    this.tracer?.emit({
+      type: 'semantic_track_diff',
+      corpId: params.corpId,
+      userId: params.userId,
+      chatId: params.sessionId,
+      semantic: 'labor_form_intent',
+      ruleTrack,
+      extractionTrack,
+      quote: params.extractionDecision.quote,
+    });
+  }
 
   /**
-   * 按 LLM 的来源声明升级置信度：candidate_explicit（表单回填/直接自陈）→ high/candidate。
+   * 两道确定性升档：先验证 LLM 来源声明，再以严格候选人原文补探针。
    *
    * 背景：LLM 提取整组统一打 medium，候选人在收资表单明确回填的字段（仅因规则正则
    * 没接住）也被一刀切成 medium，工具预填（只信 high）拿不到 → 重复收资。
    * 防 LLM 高报：声明必须附逐字 quote，且 quote 能在候选人消息原文中找到才生效；
-   * phone 额外做手机号格式校验。
+   * 原文探针另行排除数字值、短值、引用块和视觉描述，且不为 name/phone 自动升档。
    */
-  private applyExplicitProvenanceUpgrade(
+  private applyExtractionProvenance(
     facts: SessionFacts,
     provenance: ExplicitProvenanceEntry[],
-    userMessages: string[],
-  ): SessionFacts {
-    if (provenance.length === 0) return facts;
-
+    /**
+     * 候选人自陈语料：手打文本 + 自有材料（简历/证件）视觉描述，引用块/时间后缀
+     * 已剥（extractFacts 的 typedOrSelfMaterialMessages）。PR #1000 评审 P0-2：
+     * 此前一刀切剔除全部视觉文本，简历/证件图携带的 age/gender/education 等六个
+     * 首写字段每轮找不到出处被置空 → 每轮重问。
+     */
+    selfReportedMessages: string[],
+    previousFacts: SessionFacts | null,
+  ): {
+    facts: SessionFacts;
+    dropped: Array<{ field: string; droppedValue: unknown }>;
+  } {
     const result: SessionFacts = {
       ...facts,
       interview_info: { ...facts.interview_info },
     };
     const target = result.interview_info as unknown as Record<string, unknown>;
+    const strictCandidateCorpus = selfReportedMessages
+      .map((message) => stripQuotedBlocks(stripTimeContextSuffix(message)).trim())
+      .filter((message) => message.length > 0);
+    const provenanceFields = new Set<string>();
+
+    const applyValidatedEvidence = (
+      field: string,
+      current: SessionFactValue<unknown>,
+      quote: string,
+      basis: ExplicitProvenanceEntry['basis'],
+    ): void => {
+      provenanceFields.add(field);
+      const evidence = truncateEvidence(quote);
+      const canUpgrade =
+        basis === 'stated' && field !== 'phone' && EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has(field);
+      if (
+        canUpgrade &&
+        sessionFactConfidenceRank(current.confidence) < sessionFactConfidenceRank('high')
+      ) {
+        const meta = {
+          confidence: 'high' as const,
+          source: 'candidate_quote' as const,
+          evidence,
+          extractedAt: new Date().toISOString(),
+        };
+        target[field] = { ...current, ...meta };
+        if (field === 'gender') {
+          target.gender_source = sessionFactValue('candidate' as const, meta);
+        }
+        this.logger.log(
+          `[extractFacts] 来源声明升级：${field} medium→high（候选人明确提供，quote 已复算）`,
+        );
+        return;
+      }
+      // inferred 只提供可复算证据；phone 按纠错口径永久锁 medium，不自动升档。
+      target[field] = { ...current, evidence };
+    };
 
     for (const entry of provenance) {
       // 容忍 "interview_info.phone" 与 "phone" 两种写法
       const field = entry.field.includes('.') ? entry.field.split('.').pop()! : entry.field;
-      if (!SessionService.EXPLICIT_UPGRADE_FIELDS.has(field)) continue;
+      if (!EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has(field)) continue;
 
       const quote = entry.quote?.trim();
       if (!quote || quote.length < 2) continue;
-      // 裁决 B3：phone 的升级 quote 只认候选人手打文本——证件/简历图描述里的号码
-      // quote 不得作为升 high 依据（medium 锁定，须经确认问答升级）。其余字段照旧。
-      const quoteCorpus =
-        field === 'phone'
-          ? userMessages
-              .filter((message) => !isVisualDescriptionText(stripTimeContextSuffix(message).trim()))
-              .map((message) => stripQuotedBlocks(message))
-          : userMessages;
-      if (!quoteCorpus.some((message) => message.includes(quote))) {
+      if (!strictCandidateCorpus.some((message) => normalizedIncludes(message, quote))) {
         this.logger.debug(
-          `[extractFacts] explicit_provenance quote 未在候选人消息中找到，拒绝升级 ${field}`,
+          `[extractFacts] explicit_provenance quote 未在候选人手打语料中找到，拒绝 ${field}`,
         );
         continue;
       }
 
       const current = target[field];
       if (!isSessionFactValue(current)) continue;
-      if (sessionFactConfidenceRank(current.confidence) >= sessionFactConfidenceRank('high')) {
-        continue;
-      }
-      if (field === 'phone' && !/^1\d{10}$/.test(String(current.value))) continue;
-
-      const meta = {
-        confidence: 'high' as const,
-        source: 'candidate' as const,
-        evidence: truncateEvidence(`候选人明确提供："${quote}"`),
-        extractedAt: new Date().toISOString(),
-      };
-      target[field] = { ...current, ...meta };
-      if (field === 'gender') {
-        target.gender_source = sessionFactValue('candidate' as const, meta);
-      }
-      this.logger.log(
-        `[extractFacts] 来源声明升级：${field} medium→high（候选人明确提供，quote 已验证）`,
-      );
+      if (field === 'phone' && !isStorableCandidatePhone(String(current.value))) continue;
+      if (!extractionQuoteSupportsCurrentValue(field, quote, current.value)) continue;
+      applyValidatedEvidence(field, current, quote, entry.basis);
     }
 
-    return result;
+    // 模型漏报/错报摘录时，以候选人手打原文做第二条确定性通路。与旧的字符串包含
+    // 探针不同，这里必须能用字段解析器从原话复算到当前值；数字与单字值因此也可安全采信。
+    for (const field of EXPLICIT_EXTRACTION_UPGRADE_FIELDS) {
+      if (field === 'phone') continue;
+      const current = target[field];
+      if (!isSessionFactValue(current)) continue;
+      if (current.confidence !== 'medium' || current.source !== 'model') continue;
+      if (provenanceFields.has(field)) continue;
+      const isIdentityFirstWriteField = IDENTITY_FIRST_WRITE_FIELDS.has(field);
+      const matchedMessage = strictCandidateCorpus.find((message) => {
+        if (isIdentityFirstWriteField) {
+          return extractionQuoteSupportsCurrentValue(field, message, current.value);
+        }
+        if (typeof current.value !== 'string') return false;
+        const value = current.value.trim();
+        return (
+          value.length >= 2 &&
+          !/^\d+$/u.test(value.normalize('NFKC')) &&
+          normalizedIncludes(message, value)
+        );
+      });
+      if (!matchedMessage) continue;
+      applyValidatedEvidence(field, current, matchedMessage, 'stated');
+      this.logger.log(`[extractFacts] 原文探针复算命中：${field}`);
+    }
+
+    const dropped: Array<{ field: string; droppedValue: unknown }> = [];
+    const previousInfo = previousFacts?.interview_info as unknown as
+      | Record<string, unknown>
+      | undefined;
+    for (const field of IDENTITY_FIRST_WRITE_FIELDS) {
+      const current = target[field];
+      if (!isSessionFactValue(current) || current.source !== 'model') continue;
+      if (previousInfo && hasMeaningfulValue(unwrapSessionFactValue(previousInfo[field]))) continue;
+      if (provenanceFields.has(field)) continue;
+      dropped.push({ field, droppedValue: current.value });
+      target[field] = null;
+      if (field === 'gender') target.gender_source = null;
+    }
+
+    return { facts: result, dropped };
   }
 
   private ensureSessionFacts(facts: EntityExtractionResult | SessionFacts): SessionFacts {
     return SessionFactsSchema.parse(facts) as SessionFacts;
-  }
-
-  /**
-   * 本轮候选人定位分享 → 逆地理编码 → 城市事实（A2）。
-   *
-   * 只扫当前 user 消息块（尾部连续 user 段）；坐标解析（含引用块剥离、多条取最新）
-   * 收拢在 parseLocationShareCoords（preparation 轮内锚点与本方法共用同一份约定）。
-   * 逆解失败/服务缺失静默跳过。
-   */
-  private async buildLocationShareCityFact(
-    currentTurnUserTexts: readonly string[],
-    existingCity: SessionFacts['preferences']['city'],
-  ): Promise<SessionFactValue<string> | null> {
-    if (!this.geocoding) return null;
-    if (existingCity && existingCity.confidence === 'high') return null;
-
-    const coords = parseLocationShareCoords(currentTurnUserTexts);
-    if (!coords) return null;
-
-    const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
-    if (!regeo?.city?.trim()) return null;
-    const city = regeo.city.trim().replace(/市$/, '');
-    if (!city) return null;
-
-    this.logger.log(`[extractFacts] 定位分享逆解析城市入档: ${city}（source=tool）`);
-    return {
-      value: city,
-      confidence: 'high',
-      source: 'tool',
-      evidence: truncateEvidence(
-        `定位分享逆解析：${regeo.formattedAddress || `${regeo.province}${regeo.city}${regeo.district}`}`,
-      ),
-      extractedAt: new Date().toISOString(),
-    };
   }
 
   /**
@@ -1560,11 +1534,15 @@ export class SessionService {
     return pattern.test(text);
   }
 
-  private buildLlmFactEvidence(reasoning: string | null | undefined): string {
-    const trimmed = reasoning?.trim();
-    // evidence 只服务排障，入库前截断；reasoning 全文曾把每个字段的 evidence 撑到
-    // 600+ 字并经沉淀永久污染长期画像、重复注入 prompt。
-    return trimmed ? truncateEvidence(`LLM 结构化提取：${trimmed}`) : 'LLM 结构化提取';
+  /** 短文本里只有寒暄/应答或未完成的“我是…”开场才属于低信息，单字性别等有效值不跳。 */
+  private isLowInformationFirstTurnText(text: string): boolean {
+    return this.isPureAcknowledgment(text) || /^我是[.。…]*$/u.test(text);
+  }
+
+  private buildLlmFactEvidence(_reasoning: string | null | undefined): string {
+    // reasoning 是模型叙事，可能包含"从简历文件中提取"之类不可验证的自证；它只留在
+    // facts.reasoning 排障位，不再扇出为每个字段的 evidence。字段证据由出处摘录覆盖。
+    return 'LLM 结构化提取';
   }
 
   /**
@@ -1590,12 +1568,7 @@ export class SessionService {
 
   /** 解析 `[消息发送时间：2026-06-03 12:11 星期三]` 后缀（北京时间）为毫秒时间戳。 */
   private parseMessageSentAt(content: string): number | null {
-    const match = /\[消息发送时间：(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(content);
-    if (!match) return null;
-    const parsed = Date.parse(
-      `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00+08:00`,
-    );
-    return Number.isFinite(parsed) ? parsed : null;
+    return parseTimeContextAt(content);
   }
 
   /**
@@ -1618,12 +1591,22 @@ export class SessionService {
    */
   private mergeRuleAndLlmFacts(
     llmFacts: EntityExtractionResult,
-    ruleFacts: HighConfidenceFacts | null,
+    ruleFacts: RuleFactClaims | null,
   ): SessionFacts {
-    if (!ruleFacts) {
+    const ruleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
+    // 外部客户详情性别保持 low/system，不能因全局 high admission 门而丢档；它只在
+    // enrichment 已确认档案为空时进入本轮 claim 流，并在此走 gender 专用落档策略。
+    // 低置信语义继续保留，工具侧仍不会把系统标签当作候选人亲证使用。
+    const supplementalGender = getRuleFact(ruleFacts, 'interview_info.gender');
+    const supplementalGenderSource = getRuleFact(ruleFacts, 'interview_info.gender_source');
+    const hasSystemGenderFallback =
+      supplementalGender?.producer === 'system' &&
+      supplementalGenderSource?.producer === 'system' &&
+      supplementalGenderSource.value === 'system';
+    if (!ruleValues && !hasSystemGenderFallback) {
       return toSessionFacts(llmFacts, {
         confidence: 'medium',
-        source: 'llm',
+        source: 'model',
         evidence: this.buildLlmFactEvidence(llmFacts.reasoning),
         extractedAt: new Date().toISOString(),
       });
@@ -1636,23 +1619,20 @@ export class SessionService {
     };
     const infoMerge = merged.interview_info as unknown as Record<string, unknown>;
     const prefMerge = merged.preferences as unknown as Record<string, unknown>;
-    const ruleInfo = ruleFacts.interview_info as unknown as Record<
-      string,
-      HighConfidenceValue<unknown> | null
-    >;
-    const rulePref = ruleFacts.preferences as unknown as Record<
-      string,
-      HighConfidenceValue<unknown> | null
-    >;
+    const ruleInfo = (ruleValues?.interview_info ?? {}) as unknown as Record<string, unknown>;
+    const rulePref = (ruleValues?.preferences ?? {}) as unknown as Record<string, unknown>;
+    const resolvedRuleFacts = new Map<RuleFactFieldPath, ResolvedRuleFact>(
+      resolveRuleFactClaims(ruleFacts, { minConfidence: 'high' }).map((fact) => [fact.field, fact]),
+    );
 
     // 收集最终应采用 rule 高置信元数据的字段：`{group}.{field}` → rule 事实。
-    const ruleMetaFields = new Map<string, HighConfidenceValue<unknown>>();
+    const ruleMetaFields = new Map<string, ResolvedRuleFact>();
     const noteRuleMeta = (
       groupKey: 'interview_info' | 'preferences',
       field: string,
-      ruleFact: HighConfidenceValue<unknown> | null,
       currentValue: unknown,
     ): void => {
+      const ruleFact = resolvedRuleFacts.get(`${groupKey}.${field}` as RuleFactFieldPath);
       if (ruleFact && shouldAdoptRuleMeta(currentValue, ruleFact.value)) {
         ruleMetaFields.set(`${groupKey}.${field}`, ruleFact);
       }
@@ -1663,58 +1643,58 @@ export class SessionService {
       ['interview_info', infoMerge, ruleInfo],
       ['preferences', prefMerge, rulePref],
     ] as const) {
-      const fields =
-        groupKey === 'interview_info'
-          ? SessionService.SCALAR_INFO_FIELDS
-          : SessionService.SCALAR_PREF_FIELDS;
+      const fields = fieldsWithMergePolicy(groupKey, 'scalar-first');
       for (const field of fields) {
-        const ruleFact = ruleGroup[field];
-        const shouldRuleOverride =
-          groupKey === 'interview_info' &&
-          field === 'has_health_certificate' &&
-          ruleFact &&
-          hasMeaningfulValue(ruleFact.value);
-        if (
-          shouldRuleOverride ||
-          (!hasMeaningfulValue(target[field]) && ruleFact && hasMeaningfulValue(ruleFact.value))
-        ) {
-          target[field] = ruleFact.value;
+        const ruleValue = ruleGroup[field];
+        if (!hasMeaningfulValue(target[field]) && hasMeaningfulValue(ruleValue)) {
+          target[field] = ruleValue;
         }
-        noteRuleMeta(groupKey, field, ruleFact, target[field]);
+        noteRuleMeta(groupKey, field, target[field]);
       }
     }
 
+    for (const field of fieldsWithMergePolicy('interview_info', 'rule-overrides')) {
+      const ruleValue = ruleInfo[field];
+      if (hasMeaningfulValue(ruleValue)) infoMerge[field] = ruleValue;
+      noteRuleMeta('interview_info', field, infoMerge[field]);
+    }
+
     // ── 数组字段：LLM 与 rule 累积去重 ──
-    for (const field of SessionService.ARRAY_PREF_FIELDS) {
-      const ruleFact = rulePref[field];
-      const mergedArray = mergeNullableStringArrays(
-        prefMerge[field] as string[] | null,
-        ruleFact && hasMeaningfulValue(ruleFact.value) ? (ruleFact.value as string[]) : null,
+    for (const field of fieldsWithMergePolicy('preferences', 'array-union')) {
+      const ruleValue = rulePref[field];
+      const mergedArray = mergeNullableArrays(
+        prefMerge[field] as unknown[] | null,
+        hasMeaningfulValue(ruleValue) ? (ruleValue as unknown[]) : null,
       );
       prefMerge[field] = mergedArray;
-      noteRuleMeta('preferences', field, ruleFact, mergedArray);
+      noteRuleMeta('preferences', field, mergedArray);
     }
 
     // ── gender + gender_source：联动补位（注册表单字段模型表达不了） ──
     const ruleGender = ruleInfo.gender;
-    if (!merged.interview_info.gender && ruleGender && hasMeaningfulValue(ruleGender.value)) {
-      merged.interview_info.gender = ruleGender.value as string;
-      merged.interview_info.gender_source =
-        (ruleInfo.gender_source?.value as 'candidate' | 'system' | undefined) ??
-        merged.interview_info.gender_source;
+    if (hasMeaningfulValue(ruleGender)) {
+      if (!merged.interview_info.gender) {
+        merged.interview_info.gender = ruleGender as string;
+        merged.interview_info.gender_source =
+          (ruleInfo.gender_source as 'candidate' | 'system' | undefined) ??
+          merged.interview_info.gender_source;
+      }
+    } else if (hasSystemGenderFallback && !merged.interview_info.gender) {
+      // system 兜底只补空（与上方 rule 分支同守卫，PR #1000 评审 P2-4）：本轮 LLM
+      // 已抽到候选人自陈时不得被系统标签覆盖。它以 low/system 元数据入档，
+      // 后续候选人自陈会以 high/candidate 正常覆盖。
+      merged.interview_info.gender = supplementalGender.value as string;
+      merged.interview_info.gender_source = 'system';
+      ruleMetaFields.set('interview_info.gender', supplementalGender);
+      ruleMetaFields.set('interview_info.gender_source', supplementalGenderSource);
     }
-    noteRuleMeta('interview_info', 'gender', ruleGender, merged.interview_info.gender);
-    noteRuleMeta(
-      'interview_info',
-      'gender_source',
-      ruleInfo.gender_source,
-      merged.interview_info.gender_source,
-    );
+    noteRuleMeta('interview_info', 'gender', merged.interview_info.gender);
+    noteRuleMeta('interview_info', 'gender_source', merged.interview_info.gender_source);
 
     // ── schedule_constraint：逐子字段 ?? 合并（LLM 优先，rule 补缺） ──
     const ruleConstraint = rulePref.schedule_constraint;
-    if (ruleConstraint && ruleConstraint.value) {
-      const r = ruleConstraint.value as ScheduleConstraintFact;
+    if (ruleConstraint) {
+      const r = ruleConstraint as ScheduleConstraintFact;
       const llmConstraint = merged.preferences.schedule_constraint;
       merged.preferences.schedule_constraint = {
         onlyWeekends: llmConstraint?.onlyWeekends ?? r.onlyWeekends ?? null,
@@ -1723,19 +1703,14 @@ export class SessionService {
         maxDaysPerWeek: llmConstraint?.maxDaysPerWeek ?? r.maxDaysPerWeek ?? null,
       };
     }
-    noteRuleMeta(
-      'preferences',
-      'schedule_constraint',
-      ruleConstraint,
-      merged.preferences.schedule_constraint,
-    );
+    noteRuleMeta('preferences', 'schedule_constraint', merged.preferences.schedule_constraint);
 
     // ── city：CityFact 值合并（LLM 空时 rule 补位），元数据按 city 字符串比较 ──
     const ruleCity = rulePref.city;
-    if (!merged.preferences.city && ruleCity && hasMeaningfulValue(ruleCity.value)) {
-      merged.preferences.city = unwrapHighConfidenceFacts(ruleFacts)?.preferences.city ?? null;
+    if (!merged.preferences.city && ruleCity) {
+      merged.preferences.city = ruleCity as EntityExtractionResult['preferences']['city'];
     }
-    noteRuleMeta('preferences', 'city', ruleCity, merged.preferences.city?.value ?? null);
+    noteRuleMeta('preferences', 'city', merged.preferences.city?.value ?? null);
 
     // reasoning：追加规则参考线索（同时作为 LLM 取胜字段的 evidence）。
     const ruleReasoning = ruleFacts.reasoning?.trim();
@@ -1745,57 +1720,20 @@ export class SessionService {
         .join('\n');
     }
 
-    // 先整体打 medium/llm，再把 rule 取胜字段重打 high/rule。
+    // 先整体打 medium/model，再把 rule 取胜字段重打 high/rule。
     const sessionFacts = toSessionFacts(merged, {
       confidence: 'medium',
-      source: 'llm',
+      source: 'model',
       evidence: this.buildLlmFactEvidence(merged.reasoning),
       extractedAt: new Date().toISOString(),
     });
     return this.stampRuleMetadata(sessionFacts, ruleMetaFields);
   }
 
-  /** interview_info 下走「先到先得」标量合并的字段（gender/gender_source 因联动单列）。 */
-  private static readonly SCALAR_INFO_FIELDS: readonly string[] = [
-    'name',
-    'phone',
-    'age',
-    'applied_store',
-    'applied_position',
-    'interview_time',
-    'is_student',
-    'education',
-    'has_health_certificate',
-    'experience',
-    'upload_resume',
-    'height',
-    'weight',
-    'household_register_province',
-  ];
-
-  /** preferences 下走「先到先得」标量合并的字段（city/schedule_constraint 单列）。 */
-  private static readonly SCALAR_PREF_FIELDS: readonly string[] = [
-    'salary',
-    'schedule',
-    'labor_form',
-    'delayed_intent',
-    'short_term',
-    'open_position',
-    'available_after',
-  ];
-
-  /** preferences 下走「累积去重」数组合并的字段（brands 已收口到 brand_state，不再参与并集）。 */
-  private static readonly ARRAY_PREF_FIELDS: readonly string[] = [
-    'position',
-    'district',
-    'location',
-    'time_windows',
-  ];
-
-  /** 把 ruleMetaFields 列出的字段从 medium/llm 重打为 rule 的 high/rule 元数据。 */
+  /** 把 ruleMetaFields 列出的字段从 medium/model 重打为 rule 的 high/rule 元数据。 */
   private stampRuleMetadata(
     sessionFacts: SessionFacts,
-    ruleMetaFields: Map<string, HighConfidenceValue<unknown>>,
+    ruleMetaFields: Map<string, ResolvedRuleFact>,
   ): SessionFacts {
     if (ruleMetaFields.size === 0) return sessionFacts;
 
@@ -1815,14 +1753,14 @@ export class SessionService {
       const current = unwrapSessionFactValue(
         target[field] as SessionFactValue<unknown> | unknown | null,
       );
-      // 防御：medium/llm 重打前再校验一次值未被偏移（与旧 applyHighConfidenceField 一致）。
+      // 防御：medium/llm 重打前再校验一次值未被偏移（与旧信封合并行为一致）。
       if (!hasMeaningfulValue(ruleFact.value)) continue;
       if (hasMeaningfulValue(current) && !isSameFactValue(current, ruleFact.value)) continue;
 
       target[field] = sessionFactValue(ruleFact.value, {
         confidence: ruleFact.confidence,
-        source: ruleFact.source,
-        evidence: truncateEvidence(ruleFact.evidence),
+        source: ruleFact.producer,
+        evidence: truncateEvidence(ruleFact.evidence.code ?? ruleFact.evidence.label),
         extractedAt: new Date().toISOString(),
       });
     }
@@ -1880,11 +1818,6 @@ export class SessionService {
   /** 旧版单 blob key（只读 + 迁移删除，禁止新写入）。 */
   private buildKey(corpId: string, userId: string, sessionId: string): string {
     return `facts:${corpId}:${userId}:${sessionId}`;
-  }
-
-  /** hash 形态的 session state key（所有写入的唯一目标）。 */
-  private buildHashKey(corpId: string, userId: string, sessionId: string): string {
-    return `factsv2:${corpId}:${userId}:${sessionId}`;
   }
 
   private serializeStateContent(content: Partial<WeworkSessionState>): Partial<WeworkSessionState> {

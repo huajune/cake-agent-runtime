@@ -1,4 +1,5 @@
 import type { InterviewWindow } from '@tools/utils/job-policy-parser';
+import { formatShanghaiDate, formatShanghaiTime } from '@tools/duliday/precheck/date.util';
 
 export function normalizeHm(value?: string): string | null {
   if (!value) return null;
@@ -141,27 +142,4 @@ export function findSameDayCutoffViolation(
     reason: `已超过 ${interviewDate} 的报名截止时间（最晚 ${latestDeadline}），不能再以今日为面试日期提交`,
     latestDeadline,
   };
-}
-
-function formatShanghaiDate(date: Date): string {
-  const fmt = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  // zh-CN 默认输出 "2026/04/29"，归一化成 "2026-04-29"
-  return fmt
-    .format(date)
-    .replace(/\//g, '-')
-    .replace(/-(\d)(?=-|$)/g, '-0$1');
-}
-
-function formatShanghaiTime(date: Date): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Shanghai',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date);
 }

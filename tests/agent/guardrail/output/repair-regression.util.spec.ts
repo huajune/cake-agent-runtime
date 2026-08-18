@@ -88,27 +88,7 @@ describe('detectRepairRegression', () => {
     ).toBeNull();
   });
 
-  // 2026-07-31：本轮**根本没调**查岗工具时 jobEvidenceAvailable 是 undefined，逃生口够不着，
-  // 修复版会被 structure_collapsed 回退，把 07-29 那次整单编造投递原样复现一遍。
-  // 零证据类规则触发是这种情况下唯一有效的判据（07-30 建议动作 1 的前半句）。
-  it('accepts deleting ungrounded job cards when a zero-evidence rule fired (no job lookup at all)', () => {
-    const first = [
-      '必胜客保利大都汇，日结当天发薪',
-      '班次 07:00-15:00、11:00-20:00、15:00-23:00',
-      '基础 22 元/小时，要求 18-45 岁',
-    ].join('\n');
-    const revised = '这个我还没查过，暂时没查到在招的岗位信息，我先帮你查一下再回复你。';
-
-    expect(
-      detectRepairRegression(first, revised, {
-        // 本轮零查岗 → undefined，而非 false
-        jobEvidenceAvailable: undefined,
-        triggeredRuleIds: ['job_facts_without_any_lookup'],
-      }),
-    ).toBeNull();
-  });
-
-  it('keeps rejecting structure collapse when no zero-evidence rule fired', () => {
+  it('keeps rejecting structure collapse without explicit empty-job evidence', () => {
     const first = [
       '必胜客保利大都汇，日结当天发薪',
       '班次 07:00-15:00、11:00-20:00、15:00-23:00',
@@ -282,20 +262,17 @@ describe('detectRepairRegression', () => {
     const first =
       '我是高雅琪，负责这边岗位对接的招聘经理\n\n你说的15:30这个时间，我这边让同事帮你确认下能不能改，稍等';
     const revised = '我是高雅琪，负责这边岗位对接的招聘经理。\n\n你说的15:30这个时间没问题。';
-    const promiseRule = { triggeredRuleIds: ['handoff_promise_without_handoff'] };
+    const promiseRule = { triggeredRuleIds: ['dangling_reply_promise'] };
 
     it('detects the production promise→false-confirmation upgrade', () => {
       expect(detectRepairRegression(first, revised, promiseRule)).toBe('commitment_upgraded');
     });
 
-    it.each(['dangling_reply_promise', 'application_record_update_promise'])(
-      '同族承诺规则 %s 一并生效',
-      (ruleId) => {
-        expect(detectRepairRegression(first, revised, { triggeredRuleIds: [ruleId] })).toBe(
-          'commitment_upgraded',
-        );
-      },
-    );
+    it.each(['application_record_update_promise'])('同族承诺规则 %s 一并生效', (ruleId) => {
+      expect(detectRepairRegression(first, revised, { triggeredRuleIds: [ruleId] })).toBe(
+        'commitment_upgraded',
+      );
+    });
 
     it('承诺类规则未触发时不判——正常轮次的"没问题"是合法应答', () => {
       expect(

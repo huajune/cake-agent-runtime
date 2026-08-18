@@ -10,7 +10,7 @@ import {
  */
 const base = (over: Partial<InviteTimingGateInput> = {}): InviteTimingGateInput => ({
   requestedCity: '深圳',
-  jobListExecutedThisTurn: true,
+  jobListExecuted: true,
   invitedGroups: [],
   currentUserMessage: '好的',
   ...over,
@@ -19,7 +19,7 @@ const base = (over: Partial<InviteTimingGateInput> = {}): InviteTimingGateInput 
 describe('evaluateInviteTimingGate', () => {
   describe('突兀拉群档（no_job_result_this_turn）', () => {
     it('生产复现：本轮没跑过 job_list 就拉群被拒', () => {
-      expect(evaluateInviteTimingGate(base({ jobListExecutedThisTurn: false }))).toEqual({
+      expect(evaluateInviteTimingGate(base({ jobListExecuted: false }))).toEqual({
         decision: 'reject',
         reason: 'no_job_result_this_turn',
       });
@@ -32,7 +32,7 @@ describe('evaluateInviteTimingGate', () => {
     it('预约成功后拉群（场景 1）豁免本档', () => {
       expect(
         evaluateInviteTimingGate(
-          base({ jobListExecutedThisTurn: false, bookingSucceeded: true }),
+          base({ jobListExecuted: false, bookingSucceeded: true }),
         ),
       ).toEqual({ decision: 'allow' });
     });

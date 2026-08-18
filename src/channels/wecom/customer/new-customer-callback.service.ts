@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { NewCustomerCallbackPayload } from './dto/new-customer-callback.dto';
@@ -72,7 +73,7 @@ export class NewCustomerCallbackService {
         `[新增客户回调] friend.added ${inserted ? '已记录' : '幂等跳过'} imContactId=${imContactId} botImId=${botImId ?? '-'}`,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(
         `[新增客户回调] 记录 friend.added 失败 imContactId=${imContactId}: ${message}`,
       );

@@ -85,10 +85,10 @@ export function buildRaiseRiskAlertTool(): ToolBuilder {
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ riskType, reason, summary }) => {
-        const chatId = context.chatId ?? context.sessionId;
+        const chatId = context.session.chatId ?? context.session.sessionId;
 
         if (!chatId) {
-          logger.warn(`raise_risk_alert 缺少 chatId (user=${context.userId})`);
+          logger.warn(`raise_risk_alert 缺少 chatId (user=${context.session.userId})`);
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.MISSING_CHAT_ID,
             outcome: '缺少 chatId，无法发起风险告警',
@@ -98,7 +98,9 @@ export function buildRaiseRiskAlertTool(): ToolBuilder {
           });
         }
 
-        const currentMessageContent = extractLatestUserMessageFromToolContext(context.messages);
+        const currentMessageContent = extractLatestUserMessageFromToolContext(
+          context.turnInput.messages,
+        );
         const finalRiskType = riskType as ToolRiskType;
 
         return {

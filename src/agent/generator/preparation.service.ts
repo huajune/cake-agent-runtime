@@ -2,33 +2,29 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { decideLaborFormIntent } from '@memory/facts/labor-form';
-import { parseLocationShareCoords } from '@memory/facts/location-share';
+import { decideLaborFormIntent } from '@resolution/labor-form';
+import { parseLocationShareCoordinates } from '@resolution/signal/markers';
+import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
+import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import { BrandStateService, type TurnBrandContext } from '@memory/services/brand-state.service';
 import { LongTermService } from '@memory/services/long-term.service';
-import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import type { FinalizedVisualFactSheet } from '@resolution/visual';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
-import type { CityAttestation } from '@shared-types/tool.types';
-import {
-  type RecommendedJobSummary,
-  type WeworkSessionState,
-} from '@memory/types/session-facts.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import type { WeworkSessionState } from '@memory/types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { ContextService } from './context/context.service';
 import { PromptInjectionService } from '../guardrail/input/prompt-injection.service';
-import {
-  type GeneratorInputMessage,
-  type GeneratorInvokeParams,
-  type AgentMemorySnapshot,
-} from '../generator/generator.types';
+import { type GeneratorInvokeParams, type AgentMemorySnapshot } from '../generator/generator.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { CRITICAL_TURN_GUARD_RULES } from './preparation-utils/critical-turn-guard.rules';
 import {
@@ -38,21 +34,26 @@ import {
   type TurnStartMemory,
 } from './preparation-utils/memory-block.formatter';
 import {
-  normalizeConversation,
+  extractTextFromContent,
+  normalizeConversationWithCorpus,
   trailingUserContent,
+  trailingUserMessages,
   truncateToCharBudget,
 } from './preparation-utils/conversation-normalizer';
-import {
-  buildProactiveDirective,
-  buildReviseNotice,
-  buildReviseUserDirective,
-} from './preparation-utils/revise-directives';
+import { buildProactiveDirective } from './preparation-utils/revise-directives';
 import { resolveToolsForMode, wrapToolsWithTiming } from './preparation-utils/tool-set.util';
 import { buildToolContext } from './preparation-utils/tool-context.builder';
+import { createTurnLedger } from './preparation-utils/turn-ledger';
+import { renderPromptBlocks } from './context/sections/section.interface';
+import type { CorpusBlock, PromptCorpusBlock } from '@shared-types/corpus.types';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
+  /** finalPrompt 降维前的结构化分域块，供审计确认教学/证据/工具结果边界。 */
+  promptBlocks: PromptCorpusBlock[];
   normalizedMessages: ModelMessage[];
+  /** 对话语料的结构化旁路；transport role 不再决定事实出处资格。 */
+  conversationCorpusBlocks: CorpusBlock[];
   memoryLoadWarning?: string;
   tools: ToolSet;
   corpId: string;
@@ -63,20 +64,8 @@ export interface PreparedAgentContext {
   maxSteps: number;
   /** 本轮入口阶段：procedural currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
   entryStage: string | null;
-  /** 本轮临时状态；回合结束时统一交给 memory lifecycle。 */
-  turnState: {
-    candidatePool: RecommendedJobSummary[] | null;
-    /** save_image_description 落描述时同步解析出的图片品牌（§10.2 回合上下文）。 */
-    imageBrandResolutions: BrandResolution[];
-    /** 本轮视觉事实 sheet（visual-fact-structuring，同轮工具与回合收尾消费）。 */
-    visualFactSheets: Array<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
-    /** 本轮 duliday_job_list 查询签名（跨轮重复查询检测，回合收尾落会话记忆）。 */
-    jobListQuerySignature: string | null;
-    /** 本轮 geocode unique 解析确权的城市（回合收尾写 pref.city，source='tool'）。 */
-    cityAttestation: CityAttestation | null;
-    /** 本轮被工具判定失效（海绵查不到）的 jobId；回合收尾从会话记忆剔除，防跨轮重试死岗位。 */
-    invalidatedJobIds: number[];
-  };
+  /** 本轮唯一回合账本；回合结束时 drain 快照统一交给 memory lifecycle。 */
+  ledger: TurnLedger;
   /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
   contactName?: string;
   /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
@@ -95,7 +84,7 @@ export interface PreparedAgentContext {
  * 工具集构建 → 观测快照。
  *
  * 纯函数辅助层按职责拆在 preparation-utils/ 子目录：memory-block.formatter（记忆渲染）、
- * conversation-normalizer（消息归一化）、revise-directives（HC-1/主动回合指令）、
+ * conversation-normalizer（消息归一化）、revise-directives（主动回合指令）、
  * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）、
  * critical-turn-guard.rules（动态硬禁令规则表）。本类只保留需要 IO/DI 的编排逻辑。
  */
@@ -123,7 +112,7 @@ export class PreparationService {
 
   /**
    * 定位分享轮内锚点（候选人资料证据化，badcase 6a6846e2）：候选人本轮发定位时，
-   * prep 阶段就逆解析坐标并 seed 进 geocodeResolvedAnchors——A2 的落档在轮末，
+   * prep 阶段就逆解析坐标并 seed 进回合账本——A2 的落档在轮末，
    * 若本轮 job_list 直接吃坐标、不调 geocode，invite 城市门四档出处全空仍会误拒。
    * 逆解析走 30 天 Redis 缓存（与 extractFacts A2 同 key，全轮至多一次真实请求）；
    * 失败/服务缺失静默跳过，仅维持既有行为。
@@ -133,17 +122,20 @@ export class PreparationService {
     currentUserMessage: string | undefined,
   ): Promise<void> {
     if (!this.geocoding || !currentUserMessage) return;
-    const coords = parseLocationShareCoords([currentUserMessage]);
+    const coords = parseLocationShareCoordinates([currentUserMessage]);
     if (!coords) return;
     try {
       const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
       if (!regeo?.city?.trim()) return;
-      (toolContext.geocodeResolvedAnchors ??= []).push({
+      toolContext.ledger.recordGeoResolution({
         longitude: coords.longitude,
         latitude: coords.latitude,
         areaLevelQuery: false,
         areaName: null,
         city: regeo.city.trim(),
+        district: regeo.district?.trim() || null,
+        evidence: `定位分享逆解析：${regeo.formattedAddress || `${regeo.province}${regeo.city}${regeo.district}`}`,
+        source: 'location_share',
       });
       this.logger.log(
         `[prepare] 定位分享轮内锚点: city=${regeo.city}（invite 城市门 turn_geocode 档可用）`,
@@ -182,14 +174,24 @@ export class PreparationService {
     const currentUserMessage = trailingUserContent(truncatedMessages);
     const currentLaborFormIntent = decideLaborFormIntent(currentUserMessage);
 
+    // 规则轨在 prep 时刻运行一次，供轮内工具与提取闸门消费（轮末落档前 extractFacts
+    // 会带视觉 sheet 对会话段重扫）。输入必须是逐条消息数组（PR #1000 评审 P0-1）：
+    // 预 join 会让 `[图片消息]` 占位把整批消息拖进 identity:false 授权域、并击穿
+    // 疑问号门等逐消息锚定判据。
+    const currentTurnTexts = trailingUserMessages(truncatedMessages);
+    const ruleFactsPromise = this.detectRuleFacts(currentTurnTexts);
+
     // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
     const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
-      this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
-        includeShortTerm: callerKind === CallerKind.WECOM,
-        shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-        enrichmentIdentity: this.buildEnrichmentIdentity(params),
-      }),
-      // [当前预约信息] 改由 active_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
+      ruleFactsPromise.then((ruleFacts) =>
+        this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
+          includeShortTerm: callerKind === CallerKind.WECOM,
+          shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+          enrichmentIdentity: this.buildEnrichmentIdentity(params),
+          ruleFacts,
+        }),
+      ),
+      // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
       this.loadBookingContext(
         corpId,
         userId,
@@ -201,15 +203,16 @@ export class PreparationService {
     ]);
 
     // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
-    const normalizedMessages = normalizeConversation({
-      callerKind,
-      memoryWindow: memory.shortTerm.messageWindow,
-      passedMessages: truncatedMessages,
-      enableVision: options?.enableVision ?? false,
-      imageUrls: params.imageUrls,
-      imageMessageIds: params.imageMessageIds,
-      visualMessageTypes: params.visualMessageTypes,
-    });
+    const { messages: normalizedMessages, corpusBlocks: conversationCorpusBlocks } =
+      normalizeConversationWithCorpus({
+        callerKind,
+        memoryWindow: memory.shortTerm.messageWindow,
+        passedMessages: truncatedMessages,
+        enableVision: options?.enableVision ?? false,
+        imageUrls: params.imageUrls,
+        imageMessageIds: params.imageMessageIds,
+        visualMessageTypes: params.visualMessageTypes,
+      });
 
     // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
     const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
@@ -222,7 +225,7 @@ export class PreparationService {
     const contactBrandAliases = turnBrandContext.nicknameBrands;
 
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
-    // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
+    // 不由任何本地 case 状态推导 onboard_followup）。
     const memoryBlock = buildMemoryBlock(
       memory,
       bookingContext.block,
@@ -242,12 +245,18 @@ export class PreparationService {
     const stageFromResolver = persistedStage ?? returningUserStage;
 
     // System prompt 组装（委托 ContextService.compose）
-    const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
+    const {
+      systemPrompt,
+      promptBlocks: composedPromptBlocks,
+      stageGoals,
+      thresholds,
+    } = await this.context.compose({
       scenario,
       currentStage: stageFromResolver ?? undefined,
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
-      highConfidenceFacts: memory.highConfidenceFacts,
+      ruleFacts: memory.ruleFacts,
+      currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState: turnBrandContext.state,
       accountIdentity: {
@@ -272,22 +281,26 @@ export class PreparationService {
     }
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
-    const turnState: PreparedAgentContext['turnState'] = {
-      candidatePool: null,
-      imageBrandResolutions: [],
-      visualFactSheets: [],
-      jobListQuerySignature: null,
-      cityAttestation: null,
-      invalidatedJobIds: [],
-    };
+    const candidateTexts = extractCandidateTextsFromCorpus(conversationCorpusBlocks);
+    const ledger = createTurnLedger({
+      ruleFacts: memory.ruleFacts,
+      laborFormIntent: currentLaborFormIntent,
+      collectedFields: parseCandidateFieldsFromText(
+        currentUserMessage ? [currentUserMessage] : [],
+        Date.now(),
+      ),
+      geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
+      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+    });
     const toolContext = buildToolContext({
       params,
       memory,
       normalizedMessages,
+      conversationCorpusBlocks,
       entryStage,
       stageGoals,
       thresholds,
-      turnState,
+      ledger,
       contactBrandAliases,
       sessionBrandState: turnBrandContext.state,
       currentUserMessage,
@@ -304,23 +317,28 @@ export class PreparationService {
     );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
-    const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
-    const reviseNotice = buildReviseNotice(params);
+    const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, normalizedMessages);
     const proactiveDirective = buildProactiveDirective(params);
 
-    // HC-1 repair/revise 回合：重写指令同时追加为对话末尾的 user 消息。
-    // 只拼在超长 system 末尾时弱模型会无视它、把本轮当新对话重新规划任务
-    // （badcase batch_6a4790c7ce406a6aeee9c102：repair 模型重新计划查岗、
-    // 想调 geocode，工具已被物理移除，最终只发出一句悬空的"我帮你查下"）。
-    const reviseUserDirective = buildReviseUserDirective(params);
-    if (reviseUserDirective) {
-      normalizedMessages.push({ role: 'user', content: reviseUserDirective });
-    }
+    // 测试替身/旧调用方可能只返回 systemPrompt；生产 ContextService 始终给出逐块标签。
+    const basePromptBlocks =
+      composedPromptBlocks?.length > 0
+        ? composedPromptBlocks
+        : [this.createTeachingPromptBlock('system-prompt', systemPrompt)];
+    const promptBlocks = [
+      ...basePromptBlocks,
+      ...[
+        this.createTeachingPromptBlock('input-guard', guardSuffix),
+        this.createTeachingPromptBlock('critical-turn-guard', criticalTurnGuard),
+        this.createTeachingPromptBlock('proactive-directive', proactiveDirective),
+      ].filter((block) => block.content.length > 0),
+    ];
 
     return {
-      finalPrompt:
-        systemPrompt + guardSuffix + criticalTurnGuard + reviseNotice + proactiveDirective,
+      finalPrompt: renderPromptBlocks(promptBlocks),
+      promptBlocks,
       normalizedMessages,
+      conversationCorpusBlocks,
       memoryLoadWarning: memory._warnings?.join('; '),
       tools,
       corpId,
@@ -329,11 +347,25 @@ export class PreparationService {
       botImId: params.botImId,
       maxSteps,
       entryStage,
-      turnState,
+      ledger,
       contactName: params.contactName,
       memorySnapshot,
       toolExecutionTimings,
     };
+  }
+
+  private createTeachingPromptBlock(id: string, content: string): PromptCorpusBlock {
+    return { id, domain: 'teaching', role: 'system', content: content.trim() };
+  }
+
+  /** 当前轮规则 producer（prep 运行点）：产物随 ledger 穿过工具与轮末收编。 */
+  private async detectRuleFacts(currentUserMessages: string[]) {
+    const texts = currentUserMessages.map((text) => text.trim()).filter(Boolean);
+    if (texts.length === 0) return null;
+    const brandData = await this.spongeService.fetchBrandList();
+    const facts = produceRuleFactClaims(texts, brandData);
+    if (facts) this.logger.debug(`前置规则识别命中: ${facts.reasoning}`);
+    return facts;
   }
 
   /**
@@ -342,15 +374,26 @@ export class PreparationService {
    * 这些规则不是替代主 prompt，而是把“当前消息已经命中”的禁令放到最后，
    * 避免模型在长上下文里先承认规则、最后又被阶段策略带回收资或预约。
    * 规则本体（badcase 驱动的正则 + 禁令文案）维护在 critical-turn-guard.rules.ts。
+   *
+   * `combined` 的近邻窗口取 **normalizedMessages**（含短期记忆窗口）而非 params.messages：
+   * WECOM 生产路径 runner 只构造一条当前 user 消息，完整历史由 memory 层加载进
+   * normalizedMessages——用 params.messages 时 combined ≡ current，4 条 target='combined'
+   * 的规则（health_cert_is_not_major / post_interview_no_rebook /
+   * salary_account_no_fabricated_policy / location_reference_needs_grounding）在生产只剩
+   * "候选人单轮消息内命中全部 patterns"一种触发方式，其文案自证依赖的跨轮场景
+   * （"即使历史助手说过专业不符"、"近邻上下文显示候选人已在面试"）全部漏过，
+   * 而 test-suite/debug 传完整历史时按设计工作——测试覆盖的语义 ≠ 生产语义
+   * （core-flow-review 议题 6-1）。test-suite/debug 行为不变：其 normalizedMessages
+   * 与 params.messages 同源。
    */
   private buildCriticalTurnGuard(
     currentUserMessage: string | undefined,
-    messages: GeneratorInputMessage[],
+    messages: readonly ModelMessage[],
   ): string {
     const current = currentUserMessage ?? '';
     const recent = messages
       .slice(-12)
-      .map((message) => `${message.role}: ${message.content ?? ''}`)
+      .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
       .join('\n');
     const combined = `${recent}\n${current}`;
 

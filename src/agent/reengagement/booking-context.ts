@@ -2,6 +2,7 @@ import type { LongTermService } from '@memory/services/long-term.service';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { JobDetail, SignupWorkOrderItem } from '@sponge/sponge.types';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+import { asRecord } from '@infra/utils/object.util';
 import { parseInterviewTimestamp } from './scenario-registry';
 
 export interface ReengagementBookingContext {
@@ -60,7 +61,7 @@ export async function resolveReengagementBookingContext(
   const jobId = normalizePositiveInteger(workOrder.jobId);
   const job = jobId != null ? await loadJobDetail(sponge, jobId, input.botImId) : null;
   const jobPolicy = job ? buildJobPolicyAnalysis(job) : null;
-  const storeInfo = asRecord(job?.basicInfo?.storeInfo);
+  const storeInfo = asRecord(job?.basicInfo?.storeInfo) ?? undefined;
 
   return compact({
     workOrderId,
@@ -117,12 +118,6 @@ function normalizePositiveInteger(value: unknown): number | undefined {
 
 function normalizeText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 function compact<T extends Record<string, unknown>>(value: T): T {

@@ -1,6 +1,6 @@
 # Biz 分层边界规范
 
-更新时间：2026-07-03
+更新时间：2026-08-12（分层规范，无版本性内容；已核实 ESLint no-restricted-imports 仍在强制）
 
 本文约束 `src/biz/**` 的 Controller / Service / Repository 分层，避免业务约束、DB 访问和 HTTP 适配逻辑混在一起。
 

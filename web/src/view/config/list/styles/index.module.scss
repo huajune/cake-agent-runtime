@@ -61,7 +61,10 @@
   color: $text-secondary;
   white-space: nowrap;
   cursor: pointer;
-  transition: background $transition-fast, color $transition-fast, box-shadow $transition-fast;
+  transition:
+    background $transition-fast,
+    color $transition-fast,
+    box-shadow $transition-fast;
 
   &:hover {
     color: $text-primary;
@@ -147,7 +150,9 @@
   min-width: 0;
   padding: 13px $spacing-md;
   border-bottom: 1px solid $border;
-  transition: background $transition-fast, box-shadow $transition-fast;
+  transition:
+    background $transition-fast,
+    box-shadow $transition-fast;
 
   &:hover {
     background: $bg-secondary;
@@ -366,7 +371,10 @@
   color: $text-primary;
   text-align: right;
   font-size: $font-size-xs;
-  transition: border-color $transition-fast, box-shadow $transition-fast, background $transition-fast;
+  transition:
+    border-color $transition-fast,
+    box-shadow $transition-fast,
+    background $transition-fast;
 
   &:hover {
     background: $bg-card;
@@ -389,7 +397,10 @@
   background: $bg-primary;
   color: $text-primary;
   font-size: $font-size-sm;
-  transition: border-color $transition-fast, box-shadow $transition-fast, background $transition-fast;
+  transition:
+    border-color $transition-fast,
+    box-shadow $transition-fast,
+    background $transition-fast;
 
   &:hover {
     background: $bg-card;
@@ -406,6 +417,72 @@
     cursor: not-allowed;
     opacity: 0.7;
   }
+}
+
+.hardRuleOverrideEditor {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  min-width: 0;
+}
+
+.hardRuleOverrideRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 52px;
+  gap: $spacing-xs;
+  align-items: center;
+}
+
+.hardRuleOverrideId,
+.hardRuleOverrideInput,
+.hardRuleOverrideSelect {
+  min-width: 0;
+  padding: $spacing-xs $spacing-sm;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  background: $bg-primary;
+  color: $text-primary;
+  font-size: $font-size-xs;
+}
+
+.hardRuleOverrideId {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hardRuleOverrideInput,
+.hardRuleOverrideSelect {
+  min-height: 36px;
+
+  &:focus {
+    outline: none;
+    border-color: $primary;
+    box-shadow: 0 0 0 3px $primary-12;
+  }
+}
+
+.hardRuleOverrideAdd,
+.hardRuleOverrideRemove {
+  min-height: 36px;
+  padding: 0 $spacing-xs;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 11px;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.hardRuleOverrideAdd {
+  border-color: $primary;
+  background: $primary-soft;
+  color: $primary;
 }
 
 .switch {
@@ -445,7 +522,9 @@
   background: $border;
   border: 1px solid $border-hover;
   border-radius: $radius-full;
-  transition: background $transition-normal, border-color $transition-normal;
+  transition:
+    background $transition-normal,
+    border-color $transition-normal;
   display: flex;
   align-items: center;
 }
@@ -458,7 +537,9 @@
   background: $bg-primary;
   border-radius: 50%;
   box-shadow: $shadow-sm;
-  transition: transform $transition-normal, box-shadow $transition-normal;
+  transition:
+    transform $transition-normal,
+    box-shadow $transition-normal;
 }
 
 .scenarioPanel {
@@ -509,8 +590,11 @@
   font-size: 16px;
   line-height: 1;
   color: $text-secondary;
-  transition: transform $transition-fast, background $transition-fast,
-    border-color $transition-fast, color $transition-fast;
+  transition:
+    transform $transition-fast,
+    background $transition-fast,
+    border-color $transition-fast,
+    color $transition-fast;
 }
 
 .scenarioPanelHint {
@@ -538,7 +622,10 @@
   color: $text-muted;
   white-space: nowrap;
   cursor: pointer;
-  transition: background $transition-fast, color $transition-fast, box-shadow $transition-fast;
+  transition:
+    background $transition-fast,
+    color $transition-fast,
+    box-shadow $transition-fast;
 
   &:hover:not(:disabled) {
     color: $text-primary;

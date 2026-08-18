@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { BOT_ACCOUNT_PROVIDER, type BotAccountProvider } from '../providers/bot-account.provider';
 
@@ -180,9 +181,7 @@ export class BotGroupResolverService {
         this.dynamicMapLoaded = true;
       }
     } catch (error) {
-      this.logger.warn(
-        `刷新动态 bot→组 映射失败，沿用兜底表: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`刷新动态 bot→组 映射失败，沿用兜底表: ${toErrorMessage(error)}`);
     } finally {
       this.refreshing = false;
     }

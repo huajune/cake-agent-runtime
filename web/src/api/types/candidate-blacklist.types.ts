@@ -1,3 +1,4 @@
+// 同源：src/biz/candidate-blacklist/entities/candidate-blacklist.entity.ts —— 改动必须同步。
 /**
  * 候选人黑名单类型（独立业务表 candidate_blacklist，与 system_config 黑名单无关）
  */

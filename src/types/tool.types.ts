@@ -1,266 +1,78 @@
 import { Tool, ToolSet } from 'ai';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
-import type {
-  EntityExtractionResult,
-  HighConfidenceFacts,
-  RecommendedJobSummary,
-} from '@memory/types/session-facts.types';
+import type { CandidatePrefillHints } from '@resolution/candidate/types';
+import type { EntityExtractionResult } from '@memory/types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { UserProfile } from '@memory/types/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
-import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
-import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
-import type { FinalizedVisualFactSheet } from '@resolution/visual';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
+import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
+import type { GeocodeLocationAnchor, TurnLedger } from './turn.types';
+import type { CorpusBlock } from './corpus.types';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
 
-/**
- * 本轮 geocode 成功解析的锚点记录（工具间回合内通信：geocode 写入、
- * duliday_job_list 读取）。用于确定性判定岗位查询坐标的锚点精度——
- * areaLevelQuery=true 表示锚点是行政区代表点（候选人只报了区/市名），
- * 距离必须按估算口径渲染（方案 11.3）。不依赖模型转抄 areaLevelQuery 参数。
- */
-export interface GeocodeResolvedAnchor {
-  longitude: number;
-  latitude: number;
-  /** 查询词只是区/县/市级行政区名，锚点为行政区代表点。 */
-  areaLevelQuery: boolean;
-  /** 区级锚点的行政区名（如"海淀区"/"常州"），非区级锚点为 null。 */
-  areaName: string | null;
-  city: string | null;
-}
-
-/**
- * 本轮工具确权的候选人城市（候选人资料证据化：证据渠道 T2「工具确权」）。
- *
- * 背景（badcase 6a671722 沈阳 / 6a618a6e 上海浦东）：geocode 已 unique 解析出城市
- * 并按该城市查完岗位，但结论只活在工具结果文本里，没有写入 sessionFacts.pref.city，
- * 导致 invite 城市门反复要求候选人重报城市。该结构把确权结果穿线到 turn-finalizer，
- * 回合收尾统一落会话事实（source='tool'）。
- */
-export interface CityAttestation {
-  /** 解析出的城市名（可带"市"后缀，落库时归一化为裸名）。 */
-  city: string;
-  district?: string | null;
-  /** 人类可读证据（如 formattedAddress），入库前截断，仅服务排障。 */
-  evidence: string;
-  /**
-   * 证据渠道。本类型专用于 geocode 唯一解析产出的确权；其余 T2 工具确权渠道
-   * （定位分享逆解析、地图截图城市确权）不复用本类型，直接写 sessionFacts。
-   */
-  source: 'geocode_unique';
-}
-
-/** geocode 用的本轮可信位置锚点；只来自候选人高置信事实或真人招募经理最近确认。 */
-export interface GeocodeLocationAnchor {
-  city?: string;
-  districts: string[];
-  source: 'current_user' | 'human_agent' | 'session_memory';
-  /** 锚点来源原文/结构化地点摘要，用于确认模型 geocode query 确实在回指同一地点。 */
-  referenceText?: string;
-  /** 排障证据，禁止直接展示给候选人。 */
-  evidence: string;
-}
-
-/**
- * 每轮工具共享的上下文。
- *
- * 这层上下文只描述“本轮执行时工具需要知道什么”，
- * 不承载跨轮持久化状态。真正的记忆读写仍由 memory 模块负责。
- */
-export interface ToolBuildContext {
-  /** 用户 ID */
+export interface ToolSessionContext {
   userId: string;
-  /** 企业 ID */
   corpId: string;
-  /** 会话 ID（chatId） */
   sessionId: string;
-  /** 对话消息 */
-  messages: unknown[];
-  /** 当前轮末尾的候选人原话；供工具区分“用户明说”与“模型从昵称臆测”。 */
-  currentUserMessage?: string;
-  /** 当前轮对用工形式偏好的明确变更；用于让工具覆盖或撤销跨轮旧事实。 */
-  currentLaborFormIntent?: LaborFormIntentDecision;
-  /** 记录本轮工具查到的岗位候选池；回合结束后再统一写入会话记忆。 */
-  onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
-  /**
-   * 上一轮 duliday_job_list 的查询签名（会话记忆持久化）。
-   * 工具用它检测"本轮查询与上一轮无实质差异"：签名相同即结果必然相同，
-   * 结果头部注入重复查询提醒，要求模型实质调整查询或按既有拉群优先阶梯兜底
-   * （badcase 6a5dc7c4ce406a6aee57bf6d：连续三轮同参查询复读"没有"激怒候选人）。
-   */
-  lastJobListQuery?: { signature: string; turnId: string | null } | null;
-  /** 记录本轮 duliday_job_list 查询签名；回合结束后统一写入会话记忆。 */
-  onJobListQueryExecuted?: (query: { signature: string }) => void;
-  /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */
-  bookingSucceeded?: boolean;
-  /**
-   * 本轮是否已执行过 duliday_job_list（即已有可告知候选人的查岗结论）。
-   * 由 duliday_job_list 写入，invite_to_group 的时机 gate 读取，用于拦"突兀拉群"
-   * （badcase 63eefu6c：查岗结论出来前 1 分钟就发了群邀请）。
-   */
-  jobListExecutedThisTurn?: boolean;
-  /**
-   * 本轮工具实时解析出的工单号。用于处理“海绵已存在工单，但工单挂在另一微信联系人，
-   * 或当前用户的 active_booking 尚未写入”的情况：改约工具拿到有效工单后写入
-   * （取消工具要求 LLM 显式传 workOrderId，不写本字段），
-   * request_handoff 可据此关联正确工单并避免误判首次约面。
-   */
-  runtimeWorkOrderId?: number;
-  /** 业务阈值（策略配置） */
-  thresholds?: Threshold[];
-  /** 图片/表情消息 ID 列表（当前轮次包含视觉消息时传入，供 save_image_description 工具使用） */
-  imageMessageIds?: string[];
-  /**
-   * 与 imageMessageIds 一一对应的图片/表情 URL（优先原图 artworkUrl）。
-   * 供 save_image_description 在识别到简历图片时回写 "简历附件：URL" 行。
-   */
-  imageUrls?: string[];
-  /**
-   * messageId → 视觉消息类型映射。
-   * 用于 save_image_description 工具按类型选用 `[图片消息]` / `[表情消息]` 前缀；
-   * 缺省条目视为 IMAGE。
-   */
-  visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
-  /** 本轮入口阶段；来自程序记忆中的持久化 currentStage。 */
-  currentStage?: string | null;
-  /** 当前策略里允许使用的合法阶段标识；供 advance_stage 做合法性校验。 */
-  availableStages?: string[];
-  /** 当前策略的完整阶段配置；供 advance_stage 返回目标阶段的策略快照。 */
-  stageGoals?: Record<string, StageGoalConfig>;
-  /** 当前与候选人聊天的托管账号企微 userId（企业级 addMember 的 botUserId） */
-  botUserId?: string;
-  /** 当前候选人微信昵称（企微回调中的 contactName） */
-  contactName?: string;
-  /**
-   * 从企微名称备注里解析出的目标品牌标准名（运营常把「城市+品牌+门店」备注进名称，
-   * 标记这位候选人冲着哪个品牌来）。prep 阶段用品牌词典匹配 contactName 得到。
-   *
-   * 用途：品牌入口标准化后，duliday_job_list 已不读本字段兜底（会话品牌兜底只读
-   * SessionBrandState.currentBrand，旧 contact_remark 兜底档已废除）；本字段现仅用于
-   * 拼装提示词里的品牌提示文本（见 memory-block.formatter）。
-   */
-  contactBrandAliases?: string[];
-  /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */
-  botImId?: string;
-  /** 当前消息所属小组 ID（企业级回调有值时用于账号级配置兜底） */
-  groupId?: string;
-  /** 策略来源：testing 链路默认禁用外部副作用工具（如真实拉群）。 */
-  strategySource?: 'released' | 'testing';
-  /** 长期记忆中的用户档案（姓名/电话/性别/年龄/学历/健康证） */
-  profile?: UserProfile | null;
-  /** 当前会话已提取事实（用于工具判断已知/缺失字段） */
-  sessionFacts?: EntityExtractionResult | null;
-  /**
-   * 本轮生效的会话品牌状态（§9）：已持久化状态，或首轮由昵称/旧数组 seed 出的初始状态。
-   * duliday_job_list 的会话品牌兜底只读 currentBrand（§8.1）；状态存在即旧昵称兜底档禁用。
-   */
-  sessionBrandState?: SessionBrandState | null;
-  /**
-   * save_image_description 落描述时同步解析出的图片品牌（§10.2）。
-   * 解析结果挂回合上下文，供 turn-finalizer 统一写 brand_state；不干预本轮查询。
-   */
-  onImageBrandResolved?: (resolutions: BrandResolution[], meta: { messageId: string }) => void;
-  /**
-   * save_image_description 落描述时同步产出的视觉事实 sheet（visual-fact-structuring，
-   * 镜像 onImageBrandResolved）。挂回合上下文供同轮工具（invite 城市门）与
-   * turn-finalizer 消费；不干预本轮查询。
-   */
-  onVisualFactsResolved?: (sheet: FinalizedVisualFactSheet, meta: { messageId: string }) => void;
-  /** 本轮已产出的视觉事实（同轮消费读取口，与 onVisualFactsResolved 配对）。 */
-  turnVisualFactSheets?: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
-  /** 本轮前置高置信识别结果（含字段级置信度/证据），仅当前轮有效。 */
-  highConfidenceFacts?: HighConfidenceFacts | null;
-  /**
-   * 本轮“附近/这边”等回指查询所依赖的可信位置锚点。
-   * geocode 的 unique 结果若与锚点区县冲突，必须带完整上下文重查或要求澄清，
-   * 不能把错区坐标继续交给岗位查询。
-   */
-  geocodeLocationAnchor?: GeocodeLocationAnchor;
-  /**
-   * 本轮 geocode 成功解析的锚点列表；由 geocode 工具在每次 unique 解析后追加，
-   * duliday_job_list 按坐标匹配判定本轮距离锚点精度（方案 11.3 的确定性传递通道，
-   * 同 bookingSucceeded 的回合内直写模式）。
-   */
-  geocodeResolvedAnchors?: GeocodeResolvedAnchor[];
-  /**
-   * geocode unique 解析出城市时的确权回调（同 onJobsFetched 的回合内直写模式）：
-   * 暂存到 turnState，回合收尾由 memory lifecycle 写入 sessionFacts.pref.city
-   * （source='tool'）。同轮多次解析后到覆盖先到（以最新解析为准）。
-   */
-  onCityResolved?: (attestation: CityAttestation) => void;
-  /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
-  currentFocusJob?: RecommendedJobSummary | null;
-  /**
-   * 当前仍在进行中的预约工单所属 jobId。
-   * 定位工具用它区分“普通咨询工作门店”与“已约面后去哪里面试”：
-   * 后者在面试地址与门店地址不同时必须优先面试地址。
-   */
-  activeBookingJobIds?: number[];
-  /**
-   * 本会话是否召回/展示过任何岗位（turn-start 的 presentedJobs ∪ lastCandidatePool ∪
-   * currentFocusJob，并实时并入本轮 onJobsFetched 抓取的候选池——故自救闭环里"先 job_list
-   * 再 precheck"的二次调用能看到本轮刚召回的岗位）。
-   *
-   * 用途：duliday_interview_precheck / duliday_interview_booking 的 jobId provenance 闸门。
-   * **成员判定**（非"是否召回过任意岗位"的布尔）：传入 jobId 是否出自本会话真实召回集。
-   * 返回 false 时该 jobId 无合法来源——典型幻觉簇：空会话候选人只发"应聘"模型凭空编 jobId；
-   * 或"召回了 A 岗位、模型另编一个恰好真实的 B 岗位 jobId"绕过（P0）。工具直接拒绝并要求先 job_list。
-   * 缺省（test/debug 链路未注入）时工具跳过该闸门，保持向后兼容。
-   */
-  isRecalledJobId?: (jobId: number) => boolean;
-  /**
-   * 本会话已召回过的 jobId 列表（与 isRecalledJobId 同源）。
-   * 仅供出处闸门在拒绝时把「有哪些合法 jobId」写进 replyInstruction——
-   * 否则模型只被告知"这个不对"、拿不到对的，只能再猜一个。
-   */
-  recalledJobIds?: number[];
-  /**
-   * 工具确认岗位在海绵已查不到（下架/满员/失效）时回调。
-   * 回合收尾由 memory lifecycle 把该 jobId 从会话记忆（lastCandidatePool /
-   * presentedJobs / currentFocusJob）剔除。
-   *
-   * 背景（badcase chat 6a685393，jobId 528572 M Stand 中大天地店）：岗位失效后仍留在
-   * 会话记忆里，模型每轮都从记忆取到它重试 precheck，连撞 3 轮才转人工——工具层
-   * 已判死的岗位必须同步从记忆里移除，否则下一轮又被喂回去。
-   */
-  onJobInvalidated?: (jobId: number) => void;
-  /**
-   * 本会话最近推荐过的品牌名集合（去重）。
-   *
-   * 来源：sessionMemory.presentedJobs ∪ sessionMemory.lastCandidatePool 的 brandName。
-   * 用途：duliday_job_list 在 brandAliasList 命中 0 时做同音/字形回指模糊匹配，
-   * 识别"刘姐妹"实指上轮推过的"成都你六姐"这类候选人口误，避免直接判 0 拉群。
-   */
-  recentBrandPool?: string[];
-  /** 当前聊天会话的企业级 token（供需要主动发消息的工具使用） */
-  token?: string;
-  /** 当前聊天对象的系统 wxid（私聊时使用） */
-  imContactId?: string;
-  /** 当前群聊的系统 wxid（群聊时使用） */
-  imRoomId?: string;
-  /** 当前聊天会话 ID；wecom 场景下与 sessionId 相同，但保留单独字段便于工具直接发送消息 */
   chatId?: string;
-  /** 当前消息发送链路使用的 API 类型 */
+  token?: string;
+  imContactId?: string;
+  imRoomId?: string;
   apiType?: 'enterprise' | 'group';
-  /**
-   * 本轮稳定 trace/turn ID（= 触发本轮的企微 messageId 或聚合 batchId）。
-   *
-   * 同一批输入重跑（Bull 重试）会得到相同值，故可作运营事件「单次事件」幂等键的稳定种子：
-   * 既能区分同一候选人不同轮次/不同天的重复事件（不再被压成每候选人一次），
-   * 又能在重试时去重（不会重复 +1）。缺省（test/debug 链路）时由工具回退到时间戳。
-   */
+  botUserId?: string;
+  botImId?: string;
+  groupId?: string;
   turnId?: string;
-  /**
-   * 不可逆工具提交前的输入新鲜度检查。
-   * 返回 true 表示 Agent 运行期间候选人又发了消息，当前工具入参已经过期。
-   */
-  hasNewerUserInput?: () => Promise<boolean>;
-  /**
-   * 本轮可用于真实报名的候选人字段权威视图：高置信会话事实与当前轮确定性自报合并结果。
-   * booking 用它核对最终 API payload，防止模型绕过 precheck 重新塞入旧记忆。
-   */
+  contactName?: string;
+}
+
+export interface ToolArchiveContext {
+  profile?: UserProfile | null;
+  sessionFacts?: EntityExtractionResult | null;
+  /** medium/system 值的只读确认视图；不得当作已确权事实消费。 */
+  candidatePrefillHints?: CandidatePrefillHints;
+  sessionBrandState?: SessionBrandState | null;
+  currentStage?: string | null;
+  availableStages?: string[];
+  stageGoals?: Record<string, StageGoalConfig>;
+  recalledJobIds?: number[];
+  isRecalledJobId?: (jobId: number) => boolean;
+  lastJobListQuery?: { signature: string; turnId: string | null } | null;
+  activeBookingJobIds?: number[];
+  currentFocusJob?: RecommendedJobSummary | null;
+  recentBrandPool?: string[];
   bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;
+}
+
+export interface ToolTurnInputContext {
+  messages: unknown[];
+  /** 事实相关消费方优先用此结构化旁路；messages 仅保留给对话语义判定与模型 transport。 */
+  corpusBlocks?: CorpusBlock[];
+  currentUserMessage?: string;
+  currentLaborFormIntent?: LaborFormIntentDecision;
+  imageMessageIds?: string[];
+  imageUrls?: string[];
+  visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
+  contactBrandAliases?: string[];
+  geocodeLocationAnchor?: GeocodeLocationAnchor;
+}
+
+export interface ToolRuntimeContext {
+  hasNewerUserInput?: () => Promise<boolean>;
+  strategySource?: 'released' | 'testing';
+  thresholds?: Threshold[];
+}
+
+/** 工具输入工作包：档案、原始输入、回合账本和运行探针分组显式。 */
+export interface ToolBuildContext {
+  session: ToolSessionContext;
+  archive: ToolArchiveContext;
+  turnInput: ToolTurnInputContext;
+  ledger: TurnLedger;
+  runtime: ToolRuntimeContext;
 }
 
 /** 工具构建函数。 */

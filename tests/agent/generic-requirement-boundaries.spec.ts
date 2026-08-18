@@ -38,4 +38,13 @@ describe('generic job-requirement boundaries', () => {
       '删除“大部分 / 少数 / 极少数在面试前、录用后或入职前办理”等无证据比例结论',
     );
   });
+
+  it('keeps weak gender evidence and post-form detail questions on the deduplicated collection path', () => {
+    const candidatePrompt = readPrompt('candidate-consultation.md');
+
+    expect(candidatePrompt).toContain('无论岗位是否限制性别，都严禁拆成单独确认问题');
+    expect(candidatePrompt).toContain('性别：男/女（如有误请改）');
+    expect(candidatePrompt).toContain('发过收资表后插问岗位细节，不重发表');
+    expect(candidatePrompt).toContain('答完只用“还差 X、Y 两项哈”');
+  });
 });

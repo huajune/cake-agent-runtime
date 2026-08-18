@@ -9,6 +9,8 @@
  * Agent 看到结构化字段就会照实复述，不依赖 prompt 文字约束。
  */
 
+import { WEEKDAY_LABELS_SHORT } from '@infra/utils/chinese-numeral.util';
+
 /**
  * 把 "YYYY-MM-DD HH:mm:ss" 格式的 interviewTime 转成候选人能直接读的自然时间。
  *
@@ -21,8 +23,7 @@ export function formatInterviewTimeForReply(interviewTime: string): string {
   if (!match) return interviewTime;
   const [, , mm, dd, hh, min] = match;
   const date = new Date(interviewTime.replace(' ', 'T'));
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const weekday = Number.isNaN(date.getDay()) ? '' : `（${weekdays[date.getDay()]}）`;
+  const weekday = Number.isNaN(date.getDay()) ? '' : `（${WEEKDAY_LABELS_SHORT[date.getDay()]}）`;
   return `${Number(mm)}月${Number(dd)}日${weekday}${hh}:${min}`;
 }
 

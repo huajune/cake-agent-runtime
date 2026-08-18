@@ -1,10 +1,19 @@
 import { useState } from 'react';
 import { useUserTrend } from '@/hooks/user/useUsers';
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+} from 'recharts';
 import { IconUsers, IconBarChart, IconFlame, IconTrend, IconEmpty, IconInfo } from '../Icons';
 import { THEME_COLORS } from '@/constants';
 import { USER_RANGE_OPTIONS } from '../../constants';
 import { buildRecentBusinessDateRange } from '@/utils/date-range';
+import { formatLocaleNumber } from '@/utils/format';
 import styles from './index.module.scss';
 
 type ChartDataItem = {
@@ -73,10 +82,10 @@ export default function UserTrendChart({
   // 计算统计数据
   const totalUserOccurrences = chartData.reduce((sum, item) => sum + item.用户数, 0);
   const avgUsers = chartData.length > 0 ? Math.round(totalUserOccurrences / chartData.length) : 0;
-  const maxUsers = chartData.length > 0 ? Math.max(...chartData.map(item => item.用户数)) : 0;
+  const maxUsers = chartData.length > 0 ? Math.max(...chartData.map((item) => item.用户数)) : 0;
   const totalMessages = chartData.reduce((sum, item) => sum + item.消息数, 0);
   const avgMessages = chartData.length > 0 ? Math.round(totalMessages / chartData.length) : 0;
-  const maxMessages = chartData.length > 0 ? Math.max(...chartData.map(item => item.消息数)) : 0;
+  const maxMessages = chartData.length > 0 ? Math.max(...chartData.map((item) => item.消息数)) : 0;
 
   const metricBoards: MetricBoard[] = [
     {
@@ -106,7 +115,10 @@ export default function UserTrendChart({
 
   return (
     <section className={styles.section}>
-      <div className={`${styles.sectionHeader} ${isExpanded ? styles.expanded : ''}`} onClick={() => setIsExpanded(!isExpanded)}>
+      <div
+        className={`${styles.sectionHeader} ${isExpanded ? styles.expanded : ''}`}
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
             <h3>
@@ -165,30 +177,45 @@ export default function UserTrendChart({
           {/* 统计卡片 */}
           <div className={styles.statsCards}>
             <div className={`${styles.statCard} ${styles.cardPrimary}`}>
-              <div className={styles.statIcon} style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+              <div
+                className={styles.statIcon}
+                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              >
                 <IconUsers style={{ color: 'white' }} />
               </div>
               <div className={styles.statInfo}>
                 <div className={styles.statLabel}>累计托管人次</div>
-                <div className={styles.statValue}>{totalUserOccurrences} <span className={styles.unit}>人次</span></div>
+                <div className={styles.statValue}>
+                  {totalUserOccurrences} <span className={styles.unit}>人次</span>
+                </div>
               </div>
             </div>
             <div className={`${styles.statCard} ${styles.cardSecondary}`}>
-              <div className={styles.statIcon} style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+              <div
+                className={styles.statIcon}
+                style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}
+              >
                 <IconBarChart style={{ color: 'white' }} />
               </div>
               <div className={styles.statInfo}>
                 <div className={styles.statLabel}>累计消息数</div>
-                <div className={styles.statValue}>{totalMessages} <span className={styles.unit}>条</span></div>
+                <div className={styles.statValue}>
+                  {totalMessages} <span className={styles.unit}>条</span>
+                </div>
               </div>
             </div>
             <div className={`${styles.statCard} ${styles.cardAccent}`}>
-              <div className={styles.statIcon} style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
+              <div
+                className={styles.statIcon}
+                style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}
+              >
                 <IconFlame style={{ color: 'white' }} />
               </div>
               <div className={styles.statInfo}>
                 <div className={styles.statLabel}>单日用户最高</div>
-                <div className={styles.statValue}>{maxUsers} <span className={styles.unit}>人</span></div>
+                <div className={styles.statValue}>
+                  {maxUsers} <span className={styles.unit}>人</span>
+                </div>
               </div>
             </div>
           </div>
@@ -196,13 +223,15 @@ export default function UserTrendChart({
           {/* 数据说明 */}
           <div className={styles.dataNote}>
             <IconInfo width="16" height="16" />
-            <span>趋势图已剔除周六、周日；用户数按当日托管独立用户统计，累计托管人次为各日用户数求和，跨天会重复计数；消息数按用户实际发送条数统计。</span>
+            <span>
+              趋势图已剔除周六、周日；用户数按当日托管独立用户统计，累计托管人次为各日用户数求和，跨天会重复计数；消息数按用户实际发送条数统计。
+            </span>
           </div>
 
           {/* 图表区域 */}
           {chartData.length > 0 ? (
             <div className={styles.chartBoards}>
-              {metricBoards.map(board => (
+              {metricBoards.map((board) => (
                 <div className={styles.chartBoard} key={board.dataKey}>
                   <div className={styles.chartBoardHeader}>
                     <div>
@@ -210,16 +239,26 @@ export default function UserTrendChart({
                       <p>{board.subtitle}</p>
                     </div>
                     <div className={styles.boardPeak} style={{ color: board.color }}>
-                      峰值 {board.peak}{board.unit}
+                      峰值 {board.peak}
+                      {board.unit}
                     </div>
                   </div>
                   <div className={styles.boardStats}>
-                    <span>{selectedRange.totalLabel} <strong>{board.total}</strong>{board.totalUnit || board.unit}</span>
-                    <span>日均 <strong>{board.average}</strong>{board.unit}</span>
+                    <span>
+                      {selectedRange.totalLabel} <strong>{board.total}</strong>
+                      {board.totalUnit || board.unit}
+                    </span>
+                    <span>
+                      日均 <strong>{board.average}</strong>
+                      {board.unit}
+                    </span>
                   </div>
                   <div className={styles.chartContainer}>
                     <ResponsiveContainer width="100%" height={260}>
-                      <AreaChart data={chartData} margin={{ top: 12, right: 24, left: -6, bottom: 0 }}>
+                      <AreaChart
+                        data={chartData}
+                        margin={{ top: 12, right: 24, left: -6, bottom: 0 }}
+                      >
                         <defs>
                           <linearGradient id={board.gradientId} x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor={board.color} stopOpacity={0.28} />
@@ -248,18 +287,21 @@ export default function UserTrendChart({
                             border: 'none',
                             borderRadius: '12px',
                             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                            padding: '12px 16px'
+                            padding: '12px 16px',
                           }}
                           labelStyle={{
                             color: '#1f2937',
                             fontWeight: 600,
-                            marginBottom: '8px'
+                            marginBottom: '8px',
                           }}
                           itemStyle={{
                             color: '#6b7280',
-                            fontSize: '13px'
+                            fontSize: '13px',
                           }}
-                          formatter={(value) => [`${Number(value).toLocaleString()} ${board.unit}`, board.dataKey]}
+                          formatter={(value) => [
+                            `${formatLocaleNumber(Number(value))} ${board.unit}`,
+                            board.dataKey,
+                          ]}
                           labelFormatter={(label, payload) => {
                             if (payload && payload[0]) {
                               return (payload[0].payload as { fullDate: string }).fullDate;

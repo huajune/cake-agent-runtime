@@ -1,7 +1,7 @@
 /**
  * 品牌名同音降权模糊匹配（0 结果同音回指）。
  *
- * 迁移自 tools/duliday/job-list/brand-fuzzy-match.util.ts（逻辑不变，只换居所，§8.3）。
+ * 迁移自 tools/duliday/job-list/brand-fuzzy-match.util.ts（逻辑不变，只换居所，§6.3）。
  * 它与 resolve() 是并列的独立管线：候选集只有会话最近推荐过的品牌池、产出必须经候选人
  * 确认才作数、由"查询命中 0 结果"事件触发——不并入解析主链路。
  *

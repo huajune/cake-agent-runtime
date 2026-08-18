@@ -565,7 +565,7 @@ Shadow 数 / 已投递数：
 
 ## 14. 相关资料
 
-- [二次主动回复实现方案](../architecture/reliability/agent-reengagement-design.md)：早期技术设计与实现背景，部分描述已被当前实现演进替代。
+- [二次主动回复流水线](../architecture/reengagement-pipeline.md)：技术侧现状架构（触发/停止条件/幂等/观测）。
 - [复聊独立生成链路](../knowledge-base/09-复聊独立生成链路.md)：独立生成链路的架构经验总结。
 
 本文档为复聊功能的当前产品与运营口径。

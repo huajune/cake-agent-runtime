@@ -9,7 +9,6 @@ describe('FeishuBitableSyncService', () => {
   let mockBitableApi: jest.Mocked<FeishuBitableApiService>;
   let mockMessageProcessingService: jest.Mocked<MessageProcessingService>;
 
-  const chatTableConfig = { appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb', tableId: 'tblKNwN8aquh2JAy' };
   const badcaseTableConfig = {
     appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
     tableId: 'tbllFuw1BVwpvyrI',
@@ -51,7 +50,6 @@ describe('FeishuBitableSyncService', () => {
           { field_name: '处理流水ID' },
           { field_name: '来源TraceID' },
         ]),
-      batchCreateRecords: jest.fn(),
       createRecord: jest.fn(),
       createField: jest.fn().mockResolvedValue({ fieldId: 'fld_new' }),
       uploadMedia: jest.fn().mockResolvedValue({ fileToken: 'file_token_1' }),
@@ -60,10 +58,10 @@ describe('FeishuBitableSyncService', () => {
       ),
     } as unknown as jest.Mocked<FeishuBitableApiService>;
 
-    const getRecordsByTimestamps = jest.fn();
+    // MessageProcessingService 只为 FeedbackSourceTraceService 的来源回溯而注入，
+    // FeishuBitableSyncService 本身已不再依赖它（旧版片段同步入口已删）。
     mockMessageProcessingService = {
-      getRecordsByTimestamps,
-      getMessageProcessingRecords: getRecordsByTimestamps,
+      getMessageProcessingRecords: jest.fn(),
       getMessageProcessingRecordById: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<MessageProcessingService>;
 
@@ -81,106 +79,6 @@ describe('FeishuBitableSyncService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
-  });
-
-  describe('syncYesterday', () => {
-    it('should skip sync when chat config is incomplete (no appToken)', async () => {
-      mockBitableApi.getTableConfig.mockReturnValue({ appToken: '', tableId: 'tbl_001' });
-
-      await service.syncYesterday();
-
-      expect(mockMessageProcessingService.getMessageProcessingRecords).not.toHaveBeenCalled();
-    });
-
-    it('should skip sync when chat config is incomplete (no tableId)', async () => {
-      mockBitableApi.getTableConfig.mockReturnValue({ appToken: 'app_001', tableId: '' });
-
-      await service.syncYesterday();
-
-      expect(mockMessageProcessingService.getMessageProcessingRecords).not.toHaveBeenCalled();
-    });
-
-    it('should skip sync when no records found', async () => {
-      mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
-        records: [],
-        total: 0,
-      } as any);
-
-      await service.syncYesterday();
-
-      expect(mockBitableApi.batchCreateRecords).not.toHaveBeenCalled();
-    });
-
-    it('should sync records within yesterday time window', async () => {
-      mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-
-      // Create a record that falls in yesterday's window
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      yesterday.setHours(12, 0, 0, 0);
-
-      const records = [
-        {
-          messageId: 'msg_001',
-          userId: 'user_001',
-          userName: '张三',
-          managerName: '李经理',
-          receivedAt: yesterday.getTime(),
-          messagePreview: '你好',
-          replyPreview: '您好！',
-        },
-      ];
-
-      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
-        records,
-        total: 1,
-      } as any);
-      mockBitableApi.batchCreateRecords.mockResolvedValue({ created: 1, failed: 0 });
-
-      await service.syncYesterday();
-
-      expect(mockBitableApi.batchCreateRecords).toHaveBeenCalled();
-    });
-
-    it('should skip records outside yesterday window', async () => {
-      mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-
-      // Record from 2 days ago - outside yesterday's window
-      const twoDaysAgo = new Date();
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-      twoDaysAgo.setHours(12, 0, 0, 0);
-
-      const records = [
-        {
-          messageId: 'msg_001',
-          userId: 'user_001',
-          userName: '张三',
-          receivedAt: twoDaysAgo.getTime(),
-          messagePreview: '你好',
-          replyPreview: '您好！',
-        },
-      ];
-
-      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
-        records,
-        total: 1,
-      } as any);
-
-      await service.syncYesterday();
-
-      expect(mockBitableApi.batchCreateRecords).not.toHaveBeenCalled();
-    });
-
-    it('should propagate error from getMessageProcessingRecords (not caught by syncYesterday)', async () => {
-      mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockMessageProcessingService.getMessageProcessingRecords.mockRejectedValue(
-        new Error('DB error'),
-      );
-
-      // syncYesterday does not catch errors from getMessageProcessingRecords
-      await expect(service.syncYesterday()).rejects.toThrow('DB error');
-    });
   });
 
   describe('writeAgentTestFeedback', () => {
