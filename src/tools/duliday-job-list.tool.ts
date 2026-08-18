@@ -1763,9 +1763,9 @@ export function buildJobListTool(
             cityFilterRecovery,
             usedDistanceFiltering: hasUserCoords,
             // 距离锚点精度（方案 16.1 GeoQueryMeta.anchor 的 B-1 先行子集）：
-            // 区级锚点查询占比的观测口径。注意原设计里的对账对象
-            // district_level_distance_claim 规则**已于 2026-07-10 #499 删除**，
-            // 不存在"拦截量趋零"这个验收项，渲染层是唯一防线（见 §7 第 4 条）。
+            // 区级锚点查询占比的观测口径。⚠️ 原设计的对账对象是守卫规则，但那条规则
+            // 早已下线，不存在"拦截量趋零"这个验收项——距离渲染层（distance-render.util）
+            // 是这条链路的唯一防线，验收看渲染覆盖率（详见 §7 第 4 条）。
             anchor: {
               source:
                 regionRelaxedToLocation || matchedGeocodeAnchor
