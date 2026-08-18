@@ -1,9 +1,20 @@
-# 收资表单状态机 · 实施蓝图（代码架构级）
+# BookingCollectionForm · 实施蓝图（代码架构级 v2）
+
+> **v2（2026-08-18）**：实体定名 BookingCollectionForm；按全量生产实测（总纲 §2.5-v2）修订——
+> ①身份核已标签化（姓名769/手机号770/年龄687/性别771，468/468），SlotKey 统一为 labelId 单形态，
+> identity 适配器按这四个全局 labelId 挂接；candidateRef = 标签 770 的槽位值（归一 11 位）；
+> ②适配器注册表改双层：labelId 精确表（13/2/4/50/49/769/770/687/771 等头部稳定项）+
+> **标题语义族兜底**（学生族/学信网族/专业族——生产实测同义标签分裂 12 个 labelId 且持续新增，
+> 纯 labelId 表接不住）；③披露策略兜底注册表随 v1 必须交付（契约无披露字段而敏感标签实存：
+> 籍贯3/专业544,659/学信网族）；④年龄岗位边界仍走既有岗位数据解析（687 无值域）；
+> ⑤FILE 标签(49 上传简历)的 value 生产者=简历工具 v4 output；
+> ⑥required 无标志——按「契约返回即须收」处理；筛选=答案命中 rejectedOptions 即不合格、
+> 命中 acceptedOptions 通过、映射不出即求证。
+> **挂起已解除，全部 9 步可执行。**
 
 > 设计权威：`label-driven-collection-refactor.md`（总纲）§2.8 五条构造性质 + 披露策略。
 > 本文是它的实施展开：代码树、类型、签名、接线点、实现顺序、退役批、验收。
-> **阻塞条件**：海绵统一契约接口落地（重启入口=复测 100 岗覆盖度探针，总纲 §6-1'）。
-> 阻塞解除前可先行：§8 实现顺序的 1-4 步（纯逻辑+适配器，对契约只依赖类型形状）。
+> 契约已生产兑现（总纲 §2.5-v2 全量实测），无阻塞。
 
 ## 1. 代码树
 
@@ -70,7 +81,7 @@ interface FormSlot { key: SlotKey; state: SlotState; value?: SlotValue;
   confirmAttempts: number;                 // 熔断计数（≥2 未办结 → escalated）
   history: SlotEvent[]; }                  // 槽位级审计（失效/改口/服务端拒绝全留痕）
 
-interface CollectionForm { formId: string; candidateRef: CandidateRef; jobId: number;
+interface BookingCollectionForm { formId: string; candidateRef: CandidateRef; jobId: number;
   version: number;                          // 乐观锁
   slots: Record<string, FormSlot>;
   jobVerdict: 'collecting'|'disqualified'|'ready'|'submitted';
@@ -90,7 +101,7 @@ type FormEvent =
 
 ```ts
 // form-machine.ts —— 全系统唯一裁决点，纯函数，转移表穷尽（Record 穷尽纪律）
-applyEvent(form: CollectionForm, event: FormEvent, guards: WriteGuardSet): CollectionForm
+applyEvent(form: BookingCollectionForm, event: FormEvent, guards: WriteGuardSet): BookingCollectionForm
 // 不变量（写成断言测试）：confirmed 槽位仅接受 corrected/invalidated；
 // affirmed 只作用于 pendingRecap 在案槽位；confirmAttempts>=2 → escalated。
 
