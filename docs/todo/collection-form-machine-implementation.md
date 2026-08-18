@@ -2,8 +2,8 @@
 
 > **v3-lean（2026-08-18）**：用户裁定"设计太重"成立，v2 瘦身重写。**砍掉的每一项都回查过
 > 它当初防的 badcase——防线一条没少，少的是仪式、副本和没有数据支撑的子系统。**
-> 仍然有效的既有裁定：身份核标签化（姓名769/手机号770/年龄687/性别771，SlotKey=labelId
-> 单形态）；**收资判决单源=标签接口**（0818 与后端约定，岗位详情接口回归展示域）；
+> 仍然有效的既有裁定：身份核标签化（SlotKey=labelId 单形态；身份槽按契约 systemField
+> 语义标记识别——**0818 裁定代码禁止硬编码外系统 labelId**，诉求 #3 已重写）；**收资判决单源=标签接口**（0818 与后端约定，岗位详情接口回归展示域）；
 > 标签**零缓存实时查询**；D1 phone 作人键；漏斗优先；披露红线唯一不降级；
 > FILE 标签 value 生产者=简历工具 v4；required 无标志期按「返回即须收」。
 >
@@ -43,9 +43,11 @@ src/
 │   ├── option-matching.ts                  自然语言 → optionCode 确定性直配（词表复用既有
 │   │                                         解析器；含糊→null 交模型作证，产物仍过公证）
 │   ├── adapters/
-│   │   ├── adapter.registry.ts             labelId 精确表 + 标题语义族兜底（学生族/学信网族/
+│   │   ├── adapter.registry.ts             语义识别为主（标题语义族+fieldType）；labelId 锚点
+│   │   │                                     一律走环境级配置非代码字面量（学生族/学信网族/
 │   │   │                                     专业族生产实测 12 id 分裂）；未知走 fieldType 通用道
-│   │   ├── identity-core.adapter.ts        769/770/687/771：包装真名闸/手机号出处闸/年龄边界
+│   │   ├── identity-core.adapter.ts        身份四槽（按契约 systemField 识别，禁硬编码 ID）：
+│   │   │                                     包装真名闸/手机号出处闸/年龄边界
 │   │   │                                     （detectAgeBoundary 弹性保留，min/max 判据改读契约）
 │   │   ├── education.adapter.ts            normalizeEducationToId × acceptedOptions 成员判定
 │   │   └── health-certificate.adapter.ts   包装 resolveLocalHealthCertificateEligibility
@@ -74,7 +76,11 @@ LLM 只在 tools 层（选项含糊时模型作证选 optionCode，产物过公�
 ## 2. 核心类型（form.types.ts）
 
 ```ts
-const IDENTITY_LABEL_IDS = { name: 769, phone: 770, age: 687, gender: 771 } as const;
+// 身份槽位识别：读契约语义标记 systemField（诉求 #3 重写版），代码禁止硬编码 labelId——
+// 769/770/687/771 是生产实测值，只出现在诉求单作核对基准，不出现在代码里。
+// 契约标记缺席期的兜底：环境级配置映射 + 每轮拿实时契约核验 labelTitle，核验不过
+// 告警并降为普通槽位（身份闸门不挂、人键回退 session，漏斗优先不卡报名）。
+type IdentityKey = 'name' | 'phone' | 'age' | 'gender';
 
 type SlotState = 'empty' | 'filled' | 'disqualified';        // 封闭集（§0 纪律）
 
@@ -89,7 +95,7 @@ interface FormSlot {
 }
 
 interface BookingCollectionForm {
-  candidateRef: string;              // phone 归一 11 位（D1）；未知期 'session'，到达即 rebind
+  candidateRef: string;              // phone 标签槽位值归一 11 位（D1）；未知期 'session'，到达即 rebind
   jobId: number;
   slots: Record<number, FormSlot>;
   workOrderId?: number;              // 提交成功的外部事实（不可从槽位推导）
@@ -117,7 +123,7 @@ function verdictOf(form: BookingCollectionForm): Verdict {
 // 值写入（公证内联，一次同轮完成）：
 //   ①sourceText 逐字回查本轮全文 ②值可由 sourceText 经既有解析器推导 ③归属/形态门
 //   ④置信按证据形态查表授予 ⑤命中 rejectedOptions → 该槽 disqualified（先筛后收在此发生）
-//   身份槽位（IDENTITY_LABEL_IDS）额外挂真名闸/手机号出处闸/年龄边界（判据读契约 min/max）
+//   身份槽位（按契约 systemField 识别）额外挂真名闸/手机号出处闸/年龄边界（判据读契约 min/max）
 proposeValue(form, contract: ContractFieldDef, proposal: RawProposal): BookingCollectionForm
 
 // 提交前复述的结果回写："认" → 放行提交；"改某格" → 该格重开（state=empty, askCount 不清零）
@@ -172,6 +178,10 @@ labelList[{labelId, optionCodes|value}] 承载（身份核即 769/770/687/771 �
   多人（新姓名+新手机号对）→ escalatedReason 转人工。
 - **D2 errorList 映射**：优先契约回传 labelId（契约诉求 #2）；只有展示名时按 labelTitle
   匹配，失配 → escalatedReason，不静默。
+- **D4（0818 用户裁定）禁止硬编码外系统 ID**：labelId/optionCode 是海绵数据库主键，
+  不是语义。语义锚点（身份核/敏感披露）一律要求契约标记（诉求 #3/#6）；确需 ID 锚点
+  的场景（适配器加速表等）走环境级配置 + 每轮实时契约核验 labelTitle，核验不过
+  告警+降通用道。测试/生产环境 ID 可能不同是硬约束。
 - **D3 复述节流**：全程只在提交前复述一次，覆盖全部 filled 槽位；escalated 话术复用
   转人工既有口径（禁暴露 AI 身份纪律）。
 
@@ -224,4 +234,6 @@ S5 复述文案与回复分段/拟人化投递兼容（\n\n 分段协议）。
 - fixtures 一律假身份（兮兮/18271421690）；生产探针只读+限速；
 - 并发会话纪律：动文件先查占用，commit pathspec；
 - SlotState/Verdict 封闭集纪律（§0）：加值先答"既有值为何覆盖不了"；
+- 禁止硬编码外系统 ID（D4）：labelId/optionCode 字面量不进代码，语义走契约标记、
+  ID 锚点走环境级配置+运行时核验；
 - 审计事件落 agent_execution_events，不落库=没做。
