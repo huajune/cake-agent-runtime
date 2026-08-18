@@ -90,6 +90,12 @@ AI 据此静默执行筛选（拒因不外泄、走换岗承接），缺标记�
 现状 22 处使用、语义未定义（给候选人看的补充说明？还是给 AI 的收集指引？）。
 建议拆分或在文档中定义：`candidateHint`（随问题展示给候选人）/ `aiGuidance`（仅 AI 消费）。
 
+### 10.5 同一 labelId 的 fieldType 全库锁定
+
+实测 561「意向岗位」24 岗配 TEXT、2 岗配 SINGLE_OPTION——同 id 跨岗类型不一致。
+消费方按 labelId 沉淀与复用候选人答案时，类型分裂会使历史答案与当前岗位形态不兼容。
+建议：labelId 创建时锁定 fieldType，岗位引用不得改型（需要不同类型=新建标签）。
+
 ### 10. optionCode 稳定性承诺
 
 文档写明：同一 labelId 下 optionCode 一经发布不复用、不改含义（AI 侧按 code 沉淀
