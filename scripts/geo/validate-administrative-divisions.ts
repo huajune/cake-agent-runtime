@@ -9,10 +9,14 @@
  *  5. 策展县级市表与全国生成表父级一致（供应商口径差异须走 VENDOR_NAME_OVERRIDES 登记）；
  *  6. 区名表键的全国唯一性：对照 areas.json，跨城重名键必须在
  *     BUSINESS_BIASED_SUBDIVISION_ALIASES 登记（业务偏置显式化，防静默误判）；
- *  7. 余姚防线：全国显式城市表中属于业务城市辖下的县级市，必须已补录县级市映射
- *     或在 DEFERRED_COUNTY_BACKFILL 登记（登记冗余同样报错，防补录后忘清）；
- *  8. 脏别名排除表守门：DIRTY_ALIAS_EXCLUSIONS 登记的键不得出现在区名表/地标表
- *     （跨层级同形与泛词，areas.json 只到区县级看不见，靠人工登记 + 本项防回填）。
+ *  7. 脏别名排除表守门：DIRTY_ALIAS_EXCLUSIONS 登记的键不得出现在区名表/地标表
+ *     （跨层级同形与泛词，areas.json 只到区县级看不见，靠人工登记 + 本项防回填）；
+ *  8. **地标表键的全国唯一性**（2026-08-14 新增）：地标表命中会直接判定城市，
+ *     此前却只有区名表受检查项 6 保护，跨城重名地标可以静默混入（「襄城」即例）。
+ *     本项把同一把尺子量到 UNIQUE_PLACE_ALIAS_TO_CITY 上，豁免口径与检查项 6 一致。
+ *
+ * 已下线：原检查项 7「余姚防线」（DEFERRED_COUNTY_BACKFILL 登记）——登记表与全国
+ * 生成表重复、三周生产零命中，2026-08-14 连同登记表一并移除，见 overrides.ts 注释。
  */
 
 import { readFileSync } from 'fs';
@@ -24,11 +28,9 @@ import {
 import { NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE } from '../../src/resolution/geo/administrative-division.generated';
 import {
   BUSINESS_BIASED_SUBDIVISION_ALIASES,
-  DEFERRED_COUNTY_BACKFILL,
   DIRTY_ALIAS_EXCLUSIONS,
   VENDOR_NAME_OVERRIDES,
 } from '../../src/resolution/geo/administrative-division.overrides';
-import { NATIONAL_CITY_SUFFIX_TO_CITY } from '../../src/resolution/geo/explicit-city.data';
 import { UNIQUE_PLACE_ALIAS_TO_CITY } from '../../src/resolution/geo/place-alias.data';
 import {
   normalizeDistrictForLookup,
@@ -154,26 +156,7 @@ for (const key of BUSINESS_BIASED_SUBDIVISION_ALIASES) {
   );
 }
 
-// 7. 余姚防线：业务城市辖下县级市须已补录或登记搁置
-const businessCities = new Set(
-  Object.values(UNIQUE_SUBDIVISION_TO_CITY).map((city) => normalizeCityName(city)),
-);
-for (const [countyWithSuffix, parent] of Object.entries(NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE)) {
-  if (!(countyWithSuffix in NATIONAL_CITY_SUFFIX_TO_CITY)) continue;
-  if (!businessCities.has(normalizeCityName(parent))) continue;
-  const backfilled = countyWithSuffix in COUNTY_LEVEL_CITY_TO_PREFECTURE;
-  const deferred = DEFERRED_COUNTY_BACKFILL.has(countyWithSuffix);
-  check(
-    backfilled || deferred,
-    `余姚防线：「${countyWithSuffix}」属业务城市 ${parent} 辖下且在全国显式城市表，但县级市映射未补录也未登记 DEFERRED_COUNTY_BACKFILL`,
-  );
-  check(
-    !(backfilled && deferred),
-    `DEFERRED_COUNTY_BACKFILL 冗余登记：「${countyWithSuffix}」已补录，请从搁置表移除`,
-  );
-}
-
-// 8. 脏别名排除表守门：登记为"刻意不收"的键不得被回填进区名表/地标表
+// 7. 脏别名排除表守门：登记为"刻意不收"的键不得被回填进区名表/地标表
 for (const [alias, reason] of DIRTY_ALIAS_EXCLUSIONS) {
   check(
     !(alias in UNIQUE_SUBDIVISION_TO_CITY),
@@ -182,6 +165,28 @@ for (const [alias, reason] of DIRTY_ALIAS_EXCLUSIONS) {
   check(
     !(alias in UNIQUE_PLACE_ALIAS_TO_CITY),
     `脏别名「${alias}」已登记 DIRTY_ALIAS_EXCLUSIONS（刻意不收）但出现在 UNIQUE_PLACE_ALIAS_TO_CITY：${reason}`,
+  );
+}
+
+// 8. 地标表键全国唯一性（与检查项 6 同一把尺子，2026-08-14 补齐）
+//
+// 地标表命中即判定城市（evidence=hotspot_alias），危害与区名表同级，此前却无机械守门：
+// 「襄城」同时是许昌襄城县与襄阳襄城区，只因它恰好也在区名表里才被检查项 6 拦下。
+// 只存在于地标表的跨城重名（如商圈名撞外地区名）此前可以静默混入。
+// 注：areas.json 只到区县级，纯商圈/通名（国贸/世纪公园/九方）本项看不见，
+// 那一类仍靠 DIRTY_ALIAS_EXCLUSIONS 人工登记 + 检查项 7 防回填。
+for (const key of Object.keys(UNIQUE_PLACE_ALIAS_TO_CITY)) {
+  const parentCityCodes = new Set<string>();
+  const parentCityNames = new Set<string>();
+  for (const area of areas) {
+    if (area.name === key || normalizeDistrictForLookup(area.name) === key) {
+      parentCityCodes.add(area.cityCode);
+      parentCityNames.add(cityNameByCode.get(area.cityCode) ?? area.cityCode);
+    }
+  }
+  check(
+    parentCityCodes.size <= 1 || BUSINESS_BIASED_SUBDIVISION_ALIASES.has(key),
+    `地标「${key}」与全国跨城重名行政区同名（${[...parentCityNames].join('/')}）但未登记 BUSINESS_BIASED_SUBDIVISION_ALIASES——地标表命中会直接判定城市，须显式化业务偏置或移入 DIRTY_ALIAS_EXCLUSIONS`,
   );
 }
 

@@ -166,11 +166,23 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
       });
     });
 
-    it('地标轮不开拒绝：陆家嘴/五道口后接通名仍应命中', () => {
+    it('地标轮不开拒绝：陆家嘴/望京后接通名仍应命中', () => {
       expect(scanGeoSignalsFromText('陆家嘴广场').city).toEqual({
         value: '上海',
         evidence: 'hotspot_alias',
       });
+      expect(scanGeoSignalsFromText('望京站').city).toEqual({
+        value: '北京',
+        evidence: 'hotspot_alias',
+      });
+    });
+
+    it('地标表收紧批（2026-08-14）：通名/连锁品牌不再解析出城市', () => {
+      // 三周 shadow 实证的四个泛名 + 同类不变式违反项，一律移入 DIRTY_ALIAS_EXCLUSIONS。
+      // 期望是"解析不出城市"（交上游澄清），而不是"解析成别的城市"。
+      for (const text of ['国贸', '五道口', '王家湾', '瑶湖', '世纪公园', '临港', '九方']) {
+        expect(scanGeoSignalsFromText(text).city).toBeNull();
+      }
     });
   });
 });
