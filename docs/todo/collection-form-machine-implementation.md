@@ -67,8 +67,10 @@ LLM 只在 tools 层（选项含糊时模型作证选 optionCode，产物过 wri
 ## 2. 核心类型（form.types.ts）
 
 ```ts
-type SlotKey = { kind: 'identity'; field: 'name'|'phone'|'age'|'gender' }
-             | { kind: 'label'; labelId: number };
+// v2：身份核已标签化（769/770/687/771），SlotKey 统一为 labelId 单形态；
+// IDENTITY_LABEL_IDS 常量表标记身份核槽位（写守卫挂身份闸门用）
+type SlotKey = { labelId: number };
+const IDENTITY_LABEL_IDS = { name: 769, phone: 770, age: 687, gender: 771 } as const;
 
 type SlotState = 'empty' | 'pending_confirm' | 'confirmed' | 'disqualified' | 'escalated';
 
