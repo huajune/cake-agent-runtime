@@ -156,6 +156,21 @@ labelList[{labelId, optionCodes|value}] 承载（身份核即 769/770/687/771 �
 0818 新版契约无一等身份参数）→ entryUser → workOrder 落 submitted /
 errorList 逐条 serverRejected。
 
+**筛选判据三源与优先级（0818 对齐，GPT 勿自行取舍）**：
+1. **标签契约**（accepted/rejectedOptions）——收什么与选项类筛选的唯一权威，
+   命中 rejected 即 disqualified。
+2. **岗位结构化字段**（basicPersonalRequirements.minAge/maxAge、genderRequirement，
+   经 job-policy-parser，该族存活不动）——值域类筛选判据继续从这里来（687 无值域是
+   契约缺口，valueSpec=契约建议 #5 落地后判据迁契约）。`detectAgeBoundary` 含弹性
+   边界（23 floor / 下限-2 / 上限+3）整体保留，从每轮 checklist 散判**重挂为 687
+   槽位写守卫**：写入时判一次、结果落槽位状态、办结不再重判。性别同挂 771 槽位。
+   注意现链路数字→"25-50岁"文本→age.util 正则再解析回数字的两跳可趁重挂消除
+   （写守卫直读 minAge/maxAge 数值）。
+3. **岗位自由文本解析**（firstInterviewDesc/processDesc/remark 轨）——标签已覆盖
+   该属性的岗（健康证13、学生身份 607/608/609 等）**标签赢、文本轨退出筛选**，
+   禁止双源打架；标签未配而文本有要求的岗按漏斗优先照收照报（不因文本轨拦报名），
+   随标签补配自然消亡。
+
 ## 7. 同批退役删除（总纲 §4 清单的执行面）
 
 checklist.util 的 FIELD_ORDER 大部/buildKnownFieldMap/missingFields 字面过滤；
