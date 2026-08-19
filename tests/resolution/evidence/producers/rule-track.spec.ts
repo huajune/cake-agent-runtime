@@ -144,14 +144,9 @@ describe('extractRuleFacts', () => {
   });
 
   it('should extract work experience for booking supplement backfill', () => {
-    const result = extractRuleFacts(
-      ['肯德基服务员4个多月', '河南烤肉自助服务员3个月'],
-      brandData,
-    );
+    const result = extractRuleFacts(['肯德基服务员4个多月', '河南烤肉自助服务员3个月'], brandData);
 
-    expect(readProjectedValue(result?.interview_info.experience)).toBe(
-      '肯德基服务员4个多月',
-    );
+    expect(readProjectedValue(result?.interview_info.experience)).toBe('肯德基服务员4个多月');
   });
 
   describe('工作经历不得跨行吞掉手机号（badcase 2026-08-06 chat 6a1e42c5）', () => {
@@ -299,9 +294,7 @@ describe('extractRuleFacts', () => {
     ).toEqual(['有', '无']);
     expect(readProjectedValue(projectRuleFactClaims(produced)?.interview_info.age)).toBe('25');
     expect(
-      readProjectedValue(
-        projectRuleFactClaims(produced)?.interview_info.has_health_certificate,
-      ),
+      readProjectedValue(projectRuleFactClaims(produced)?.interview_info.has_health_certificate),
     ).toBe('无');
     expect(readProjectedValue(projectRuleFactClaims(produced)?.preferences.labor_form)).toBe(
       '寒假工',
@@ -378,21 +371,15 @@ describe('extractRuleFacts', () => {
     ).toBe('每周最多两天');
 
     expect(
-      readProjectedValue(
-        extractRuleFacts(['我只能做一休一'], brandData)?.preferences.schedule,
-      ),
+      readProjectedValue(extractRuleFacts(['我只能做一休一'], brandData)?.preferences.schedule),
     ).toBe('做一休一');
 
     expect(
-      readProjectedValue(
-        extractRuleFacts(['有没有不上夜班的'], brandData)?.preferences.schedule,
-      ),
+      readProjectedValue(extractRuleFacts(['有没有不上夜班的'], brandData)?.preferences.schedule),
     ).toBe('夜班、不上夜班');
 
     expect(
-      readProjectedValue(
-        extractRuleFacts(['我今天六点才能下班'], brandData)?.preferences.schedule,
-      ),
+      readProjectedValue(extractRuleFacts(['我今天六点才能下班'], brandData)?.preferences.schedule),
     ).toBe('下班后');
   });
 
@@ -417,8 +404,8 @@ describe('extractRuleFacts', () => {
     });
 
     it('extracts maxDaysPerWeek=2 from "每周最多两天"', () => {
-      const constraint = extractRuleFacts(['每周最多也就能干两天'], brandData)
-        ?.preferences.schedule_constraint;
+      const constraint = extractRuleFacts(['每周最多也就能干两天'], brandData)?.preferences
+        .schedule_constraint;
       expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(2);
     });
 
@@ -453,8 +440,8 @@ describe('extractRuleFacts', () => {
     });
 
     it('extracts onlyWeekends from "只能星期六"', () => {
-      const constraint = extractRuleFacts(['我只能星期六过来上班'], brandData)
-        ?.preferences.schedule_constraint;
+      const constraint = extractRuleFacts(['我只能星期六过来上班'], brandData)?.preferences
+        .schedule_constraint;
       expect(readProjectedValue(constraint)?.onlyWeekends).toBe(true);
     });
 
@@ -465,8 +452,8 @@ describe('extractRuleFacts', () => {
     });
 
     it('does not treat 周六面试时间安排 as weekend constraint', () => {
-      const constraint = extractRuleFacts(['周六下午过来面试可以吗'], brandData)
-        ?.preferences.schedule_constraint;
+      const constraint = extractRuleFacts(['周六下午过来面试可以吗'], brandData)?.preferences
+        .schedule_constraint;
       expect(readProjectedValue(constraint)?.onlyWeekends ?? null).toBeNull();
     });
   });
@@ -480,8 +467,7 @@ describe('extractRuleFacts', () => {
     });
 
     it('extracts明确日期"5月1日之后" → next future date', () => {
-      const aa = extractRuleFacts(['5月1日之后才能来面试'], brandData)?.preferences
-        .available_after;
+      const aa = extractRuleFacts(['5月1日之后才能来面试'], brandData)?.preferences.available_after;
       expect(readProjectedValue(aa)?.date).toBe('2026-05-01');
       expect(readProjectedValue(aa)?.raw).toContain('5月1日');
     });
@@ -493,8 +479,7 @@ describe('extractRuleFacts', () => {
     });
 
     it('rolls over to next year when month-day already passed', () => {
-      const aa = extractRuleFacts(['3月10日之后联系'], brandData)?.preferences
-        .available_after;
+      const aa = extractRuleFacts(['3月10日之后联系'], brandData)?.preferences.available_after;
       // 当前 2026-04-20，3月10日已过 → 2027-03-10
       expect(readProjectedValue(aa)?.date).toBe('2027-03-10');
     });
@@ -522,8 +507,7 @@ describe('extractRuleFacts', () => {
 
   it('裸类型词仅被提及不算持有（需持有动词或完成表述）', () => {
     expect(
-      extractRuleFacts(['上岗前需要食品健康证'], brandData)?.interview_info
-        .has_health_certificate,
+      extractRuleFacts(['上岗前需要食品健康证'], brandData)?.interview_info.has_health_certificate,
     ).toBeUndefined();
     expect(
       readProjectedValue(
@@ -536,26 +520,22 @@ describe('extractRuleFacts', () => {
   it('should distinguish health certificate type from missing certificate wording', () => {
     expect(
       readProjectedValue(
-        extractRuleFacts(['我有食品类健康证'], brandData)?.interview_info
-          .has_health_certificate,
+        extractRuleFacts(['我有食品类健康证'], brandData)?.interview_info.has_health_certificate,
       ),
     ).toBe('有');
     expect(
       readProjectedValue(
-        extractRuleFacts(['健康证不是本地的'], brandData)?.interview_info
-          .has_health_certificate,
+        extractRuleFacts(['健康证不是本地的'], brandData)?.interview_info.has_health_certificate,
       ),
     ).toBe('非本地健康证');
     expect(
       readProjectedValue(
-        extractRuleFacts(['我有上海本地健康证'], brandData)?.interview_info
-          .has_health_certificate,
+        extractRuleFacts(['我有上海本地健康证'], brandData)?.interview_info.has_health_certificate,
       ),
     ).toBe('有');
     expect(
       readProjectedValue(
-        extractRuleFacts(['我没有食品健康证'], brandData)?.interview_info
-          .has_health_certificate,
+        extractRuleFacts(['我没有食品健康证'], brandData)?.interview_info.has_health_certificate,
       ),
     ).toBe('无');
   });
@@ -698,10 +678,7 @@ describe('extractRuleFacts', () => {
   });
 
   it('should treat admitted or enrolled graduate students as student identity', () => {
-    const admitted = extractRuleFacts(
-      ['我去年毕业了但是今年考上研究生了能行吗'],
-      brandData,
-    );
+    const admitted = extractRuleFacts(['我去年毕业了但是今年考上研究生了能行吗'], brandData);
     expect(readProjectedValue(admitted?.interview_info.is_student)).toBe(true);
     expect(readProjectedValue(admitted?.interview_info.education)).toBe('硕士');
 
@@ -859,9 +836,7 @@ describe('extractRuleFacts', () => {
   it('区名唯一映射在查询路径生效（黄埔案，2026-07-28 收编）："黄埔区"→广州、"宝安"→深圳', () => {
     // 此前 黄埔→广州 只存在于 invite 城市门私表，提取路径不认——候选人报"黄埔区"
     // 仍被追问城市。统一到 UNIQUE_SUBDIVISION_TO_CITY 后提取层直接推导，补录只改一处。
-    expect(
-      extractRuleFacts(['我在黄埔区这边找工作'], brandData)?.preferences.city,
-    ).toEqual({
+    expect(extractRuleFacts(['我在黄埔区这边找工作'], brandData)?.preferences.city).toEqual({
       value: '广州',
       confidence: 'high',
       evidence: 'unique_district_alias',
@@ -917,9 +892,7 @@ describe('extractRuleFacts', () => {
       confidence: 'high',
       evidence: 'unique_district_alias',
     });
-    expect(readProjectedValue(district_plus_town?.preferences.district)).toContain(
-      '浦东新区',
-    );
+    expect(readProjectedValue(district_plus_town?.preferences.district)).toContain('浦东新区');
 
     // 同模式的另一种表达：区 + 街道
     const district_plus_street = extractRuleFacts(['徐汇区漕河泾街道'], brandData);
@@ -929,9 +902,7 @@ describe('extractRuleFacts', () => {
     // 同模式的另一种城市：海淀 + 镇
     const beijing_district_plus_town = extractRuleFacts(['海淀区清河镇'], brandData);
     expect(readProjectedValue(beijing_district_plus_town?.preferences.city)).toBe('北京');
-    expect(readProjectedValue(beijing_district_plus_town?.preferences.district)).toContain(
-      '海淀',
-    );
+    expect(readProjectedValue(beijing_district_plus_town?.preferences.district)).toContain('海淀');
   });
 
   it('should prefer the longest whitelist district when multiple keys could prefix match', () => {
@@ -1054,10 +1025,7 @@ describe('extractRuleFacts', () => {
   });
 
   it('should extract structured name via extractRuleFacts', () => {
-    const result = extractRuleFacts(
-      ['姓名：赵堤\n联系电话：18800001111\n年龄：24'],
-      brandData,
-    );
+    const result = extractRuleFacts(['姓名：赵堤\n联系电话：18800001111\n年龄：24'], brandData);
     expect(readProjectedValue(result?.interview_info.name)).toBe('赵堤');
     expect(readProjectedValue(result?.interview_info.phone)).toBe('18800001111');
     expect(readProjectedValue(result?.interview_info.age)).toBe('24');
@@ -1081,10 +1049,7 @@ describe('extractRuleFacts', () => {
     });
 
     it('should take first name when multiple messages contain structured names', () => {
-      const result = extractRuleFacts(
-        ['姓名：张三\n年龄：25', '姓名：李四\n年龄：30'],
-        brandData,
-      );
+      const result = extractRuleFacts(['姓名：张三\n年龄：25', '姓名：李四\n年龄：30'], brandData);
       expect(readProjectedValue(result?.interview_info.name)).toBe('张三');
     });
 

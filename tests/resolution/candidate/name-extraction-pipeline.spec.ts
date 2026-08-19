@@ -54,16 +54,10 @@ describe('姓名提取完整数据流 (15 cases)', () => {
         '姓名：赵堤\n联系电话：18800001111\n年龄：24\n性别：男',
       ]);
 
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('赵堤'),
-      );
-      expect(ruleFacts?.interview_info.phone).toEqual(
-        highRuleValue('18800001111'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('赵堤'));
+      expect(ruleFacts?.interview_info.phone).toEqual(highRuleValue('18800001111'));
       expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('24'));
-      expect(ruleFacts?.interview_info.gender).toEqual(
-        highRuleValue('男'),
-      );
+      expect(ruleFacts?.interview_info.gender).toEqual(highRuleValue('男'));
       expect(prompt).toContain('姓名：赵堤');
       expect(prompt).toContain('联系方式: 18800001111');
     });
@@ -71,30 +65,22 @@ describe('姓名提取完整数据流 (15 cases)', () => {
     it('Case 2: 名字 key (名字：李思远)', () => {
       const { ruleFacts, prompt } = pipeline(['名字：李思远\n电话：13900139000\n年龄：22']);
 
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('李思远'),
-      );
-      expect(ruleFacts?.interview_info.phone).toEqual(
-        highRuleValue('13900139000'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('李思远'));
+      expect(ruleFacts?.interview_info.phone).toEqual(highRuleValue('13900139000'));
       expect(prompt).toContain('姓名: 李思远');
     });
 
     it('Case 3: 少数民族姓名 (姓名：布买日也木)', () => {
       const { ruleFacts, prompt } = pipeline(['姓名：布买日也木\n年龄：20\n性别：男']);
 
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('布买日也木'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('布买日也木'));
       expect(prompt).toContain('姓名：布买日也木');
     });
 
     it('Case 4: 空格分隔符 (姓名 王小明)', () => {
       const { ruleFacts, prompt } = pipeline(['姓名 王小明\n年龄 25\n电话 13700137000']);
 
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('王小明'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('王小明'));
       expect(prompt).toContain('姓名: 王小明');
     });
   });
@@ -111,9 +97,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       const { ruleFacts, prompt } = pipeline(messages);
 
       // 高置信层应提取结构化表单中的赵堤，不受昵称干扰
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('赵堤'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('赵堤'));
       expect(prompt).toContain('姓名：赵堤');
 
       // sanitizer 验证：LLM 也提取了赵堤 → 不应被 drop
@@ -135,9 +119,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       ];
       const { ruleFacts } = pipeline(messages);
 
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('赵堤'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('赵堤'));
 
       // sanitizer：打招呼语"我是赵堤"命中 → 但结构化表单确认 → 应保留
       const llmFacts: EntityExtractionResult = {
@@ -210,9 +192,7 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       ];
       const { ruleFacts, prompt } = pipeline(messages);
 
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('张伟'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('张伟'));
       expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('28'));
       expect(prompt).toContain('姓名：张伟');
     });
@@ -230,18 +210,10 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       expect(ruleFacts?.preferences.city?.value).toEqual(highRuleValue('上海'));
       expect(readProjectedValue(ruleFacts?.preferences.district)).toContain('浦东');
       expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('25'));
-      expect(ruleFacts?.interview_info.gender).toEqual(
-        highRuleValue('男'),
-      );
-      expect(ruleFacts?.interview_info.is_student).toEqual(
-        highRuleValue(true),
-      );
-      expect(ruleFacts?.interview_info.education).toEqual(
-        highRuleValue('本科'),
-      );
-      expect(ruleFacts?.interview_info.has_health_certificate).toEqual(
-        highRuleValue('有'),
-      );
+      expect(ruleFacts?.interview_info.gender).toEqual(highRuleValue('男'));
+      expect(ruleFacts?.interview_info.is_student).toEqual(highRuleValue(true));
+      expect(ruleFacts?.interview_info.education).toEqual(highRuleValue('本科'));
+      expect(ruleFacts?.interview_info.has_health_certificate).toEqual(highRuleValue('有'));
       expect(readProjectedValue(ruleFacts?.preferences.position)).toContain('服务员');
       expect(readProjectedValue(ruleFacts?.preferences.schedule)).toContain('周末');
 
@@ -309,12 +281,8 @@ describe('姓名提取完整数据流 (15 cases)', () => {
       // 跨消息累积
       expect(ruleFacts?.preferences.city?.value).toEqual(highRuleValue('上海'));
       expect(readProjectedValue(ruleFacts?.preferences.district)).toContain('浦东');
-      expect(ruleFacts?.interview_info.name).toEqual(
-        highRuleValue('陈晓华'),
-      );
-      expect(ruleFacts?.interview_info.phone).toEqual(
-        highRuleValue('15000150000'),
-      );
+      expect(ruleFacts?.interview_info.name).toEqual(highRuleValue('陈晓华'));
+      expect(ruleFacts?.interview_info.phone).toEqual(highRuleValue('15000150000'));
       expect(ruleFacts?.interview_info.age).toEqual(highRuleValue('30'));
 
       // prompt 应包含所有累积字段

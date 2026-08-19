@@ -360,11 +360,7 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
         { jobId: 100 },
         {
           context: {
-            messages: [
-              { role: 'user', content: teachingContent },
-              ...evidenceNoise,
-              evidenceForm,
-            ],
+            messages: [{ role: 'user', content: teachingContent }, ...evidenceNoise, evidenceForm],
             corpusBlocks: [
               { id: 'revise-1', domain: 'teaching', role: 'system', content: teachingContent },
               ...[...evidenceNoise, evidenceForm].map((message, index) => ({
@@ -514,7 +510,9 @@ describe('precheck 候选人事实裁决权（P11 工序 A3/C6/D1/E1）', () => 
       expect(savedSnapshots.at(-1)?.effectiveProfile.fields.height).toEqual(
         expect.objectContaining({ status: 'accepted', source: 'session' }),
       );
-      expect(savedSnapshots.at(-1)?.effectiveProfile.fields.height?.acceptedClaimId).toBeUndefined();
+      expect(
+        savedSnapshots.at(-1)?.effectiveProfile.fields.height?.acceptedClaimId,
+      ).toBeUndefined();
     });
   });
 });

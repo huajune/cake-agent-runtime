@@ -7,7 +7,9 @@ import {
 describe('precheck-snapshot 消息水位与版本', () => {
   it('同批消息水位稳定（Bull 重试幂等的基石）', () => {
     const texts = ['我叫王玥', '13900000002'];
-    expect(computeCandidateMessageWatermark(texts)).toBe(computeCandidateMessageWatermark([...texts]));
+    expect(computeCandidateMessageWatermark(texts)).toBe(
+      computeCandidateMessageWatermark([...texts]),
+    );
   });
 
   it('新消息追加后水位必变（快照失效判据）', () => {

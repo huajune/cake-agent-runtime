@@ -630,7 +630,6 @@ describe('buildInterviewPrecheckTool', () => {
           },
           preferences: {
             ...FALLBACK_EXTRACTION.preferences,
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2921,7 +2920,6 @@ describe('buildInterviewPrecheckTool', () => {
           },
           preferences: {
             ...FALLBACK_EXTRACTION.preferences,
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -3389,8 +3387,7 @@ describe('buildInterviewPrecheckTool', () => {
           { role: 'user', content: '[图片消息]' },
           {
             role: 'user',
-            content:
-              '[引用 招聘经理：资料发我]\n简历也给你了\n[消息发送时间：2026-08-13 10:24:32]',
+            content: '[引用 招聘经理：资料发我]\n简历也给你了\n[消息发送时间：2026-08-13 10:24:32]',
           },
         ],
       },

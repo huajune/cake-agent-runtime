@@ -16,12 +16,15 @@ describe('candidate-fact-claim.types', () => {
 
   it('CandidateClaimInputSchema：quote 必填非空、operation 可缺省', () => {
     expect(
-      CandidateClaimInputSchema.safeParse({ field: 'height', value: 163, quote: '我一米六三' }).success,
+      CandidateClaimInputSchema.safeParse({ field: 'height', value: 163, quote: '我一米六三' })
+        .success,
     ).toBe(true);
-    expect(CandidateClaimInputSchema.safeParse({ field: 'height', value: 163, quote: '' }).success).toBe(
+    expect(
+      CandidateClaimInputSchema.safeParse({ field: 'height', value: 163, quote: '' }).success,
+    ).toBe(false);
+    expect(CandidateClaimInputSchema.safeParse({ field: 'height', value: 163 }).success).toBe(
       false,
     );
-    expect(CandidateClaimInputSchema.safeParse({ field: 'height', value: 163 }).success).toBe(false);
   });
 
   it('CandidateClaimInputSchema：clear 允许 value 为 null；未知字段拒绝', () => {
@@ -34,7 +37,8 @@ describe('candidate-fact-claim.types', () => {
       }).success,
     ).toBe(true);
     expect(
-      CandidateClaimInputSchema.safeParse({ field: 'salary', value: '20', quote: '20一小时' }).success,
+      CandidateClaimInputSchema.safeParse({ field: 'salary', value: '20', quote: '20一小时' })
+        .success,
     ).toBe(false);
   });
 });

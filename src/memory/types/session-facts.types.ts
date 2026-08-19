@@ -160,7 +160,8 @@ const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default
  * 兼容性：所有新字段均 nullable + default(null)，旧 Redis 数据缺字段时解析为 null。
  */
 export const PreferencesSchema = z.object({
-  brands: z.array(z.string()).nullable().describe('意向品牌'),
+  // brands 字段已删（2026-08-19 记忆审计 S9）：品牌唯一真相是 brand_state，
+  // 写入只经 reducer；本字段的存储值在收口后恒 null，模型填了也当场丢弃。
   brand_ids: z
     .array(z.number().int())
     .nullable()
@@ -205,7 +206,8 @@ export const PreferencesSchema = z.object({
  * LLM 返回后，service 层再通过 EntityExtractionResultSchema.parse 归一化为 CityFact。
  */
 export const LLMPreferencesSchema = z.object({
-  brands: z.array(z.string()).nullable().describe('意向品牌'),
+  // brands 已删（S9）：本轮品牌意图统一走 brand_intents（带极性与指代链接），
+  // 再让模型填一个当场被丢弃的 brands 只是多一条会打架的通道。
   brand_ids: z
     .array(z.number().int())
     .nullable()
@@ -383,7 +385,6 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
 ] as const satisfies readonly (keyof InterviewInfo)[];
 
 export const PREFERENCE_FIELD_KEYS = [
-  'brands',
   'brand_ids',
   'salary',
   'position',
@@ -492,7 +493,6 @@ export interface SessionInterviewInfo {
 }
 
 export interface SessionPreferences {
-  brands: SessionFactMaybeValue<string[]>;
   brand_ids?: SessionFactMaybeValue<number[]>;
   salary: SessionFactMaybeValue<string>;
   position: SessionFactMaybeValue<string[]>;
@@ -524,53 +524,51 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   });
 
 /**
- * 裸值兼容信封。
+ * 旧 city 字符串的兼容信封。
  *
- * ⚠️ 拆除判据已失效，勿再按原判据删（2026-08-17 复扫结论）：
- * 原判据是「unknown/memory 旧档计数归零后删除」。数据侧确实归零——全量复扫 443 份生产
- * factsv2、13733 个字段槽位，全部是信封或 null，裸标量与 unknown/archive 旧档均为 0。
- * 但本信封已不只是旧数据兼容层：`saveFacts(facts: EntityExtractionResult | SessionFacts)`
- * 经 `ensureSessionFacts` 走同一个 SessionFactsSchema，而 `EntityExtractionResult` 的字段
- * 就是裸标量——`MemoryFixtureService.seed()`（test-suite 用例种子，生产 Dashboard 在跑）
- * 正是这么调的。删掉裸值分支后该调用会直接 Zod 抛错（已实测）。
+ * 沿革（2026-08-19 记忆审计 S9）：这里原是**通用**裸值信封，任何字段的裸标量都能经它
+ * 悄悄落成 unknown/archive。0817 复扫时数据侧已归零（443 份生产 factsv2、13733 个字段
+ * 槽位，全是信封或 null），但当时删不掉——`saveFacts` 还收裸 `EntityExtractionResult`，
+ * `MemoryFixtureService.seed()`（生产 Dashboard 在跑的 test-suite 种子）正是这么调的，
+ * 那条路径就是靠本信封默默生成置信度签名的「无守卫写入」。
  *
- * 真正的拆除前置条件：先把 saveFacts 的入参收成 SessionFacts 单一形态
- *（调用方显式经 toSessionFacts 带上 confidence/source/evidence），届时本信封才成为纯死码。
- * 那是 saveFacts 契约变更，不属于残留清理范围。
+ * S9 把 saveFacts 入参收成 `SessionFacts` 单形态、夹具改经 `toSessionFacts` 显式署名后，
+ * 通用裸值分支随之删除。**只剩 city 一路**：`NullableSessionCityFactSchema` 的
+ * 字符串/CityFact 分支服务的是旧 Redis 记录（其存量计数尚未复扫归零，见 NullableCityFactSchema
+ * 的拆除判据），不是活跃写入方——保留是为了不让一条陈年记录的 pref.city 被逐字段校验静默丢掉。
  */
-function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValue<T> {
-  return {
-    value,
-    confidence: 'unknown',
-    source: 'archive',
-    evidence: evidence ?? '旧 sessionFacts 兼容迁移：字段缺少置信度元数据',
-  };
+function legacyCityFactValue<T>(value: T, evidence: string): SessionFactValue<T> {
+  return { value, confidence: 'unknown', source: 'archive', evidence };
 }
 
+/**
+ * 落盘字段的信封 schema。
+ *
+ * **只收信封或 null**（S9）：裸标量不再被接受——它意味着一个没人为其置信度签名负责的值。
+ * 写入方必须显式经 `toSessionFacts` 或自己构造 `SessionFactValue`。
+ */
 const NullableSessionFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   z
-    .union([SessionFactValueSchema(valueSchema), valueSchema, z.null()])
-    .transform((value): SessionFactValue<z.infer<T>> | null => {
-      if (value === null) return null;
-      return isSessionFactValue(value)
-        ? (value as SessionFactValue<z.infer<T>>)
-        : legacySessionFactValue(value as z.infer<T>);
-    });
+    .union([SessionFactValueSchema(valueSchema), z.null()])
+    .transform((value): SessionFactValue<z.infer<T>> | null =>
+      value === null ? null : (value as SessionFactValue<z.infer<T>>),
+    );
 
 function cityEvidenceToString(evidence: CityFactEvidence): string {
   return evidence;
 }
 
-// CityFact 分支不是兼容层：extractFacts 的白名单回填产出的就是 CityFact（无 source），
-// 落盘时经这里升成信封。字符串分支同上——EntityExtractionResult 侧 city 可为裸串，
-// 与 legacySessionFactValue 同一个存活理由，勿单独拆。
+// city 的两条非信封分支（CityFact / 裸字符串）保留为**旧 Redis 记录**兼容层：
+// 活跃写入方都已显式带信封（toSessionFacts 对 city 有专门分支），但旧记录的存量计数
+// 尚未复扫归零（拆除判据见上方 NullableCityFactSchema）。删早了的代价是逐字段校验
+// 把一条陈年记录的 pref.city 静默丢掉，收益只是少十行——不划算，留着。
 const NullableSessionCityFactSchema = z
   .union([SessionFactValueSchema(z.string()), CityFactSchema, z.string(), z.null()])
   .transform((value): SessionFactValue<string> | null => {
     if (value === null) return null;
     if (typeof value === 'string') {
       const city = value.trim().replace(/市$/, '');
-      return city ? legacySessionFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
+      return city ? legacyCityFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
     }
     if (isSessionFactValue(value)) return value as SessionFactValue<string>;
     const cityFact = value as CityFact;
@@ -602,7 +600,6 @@ export const SessionInterviewInfoSchema = z.object({
 });
 
 export const SessionPreferencesSchema = z.object({
-  brands: NullableSessionFactSchema(z.array(z.string())),
   brand_ids: NullableSessionFactSchema(z.array(z.number().int())).optional(),
   salary: NullableSessionFactSchema(z.string()),
   position: NullableSessionFactSchema(z.array(z.string())),
@@ -915,8 +912,8 @@ export interface WeworkSessionState {
   /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
    * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
-   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6）——写入侧在
-   * saveSessionFacts 恒折成 null，禁止任何读写复活（存量 2026-08-17 复扫已归零，读边界墓碑已拆）。
+   * applyLateImageResolutions 两个时机）；preferences.brands 字段已于 2026-08-19（S9）
+   * 从 schema 整体删除——它此前恒折成 null，是纯样板（存量 2026-08-17 复扫已归零）。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;

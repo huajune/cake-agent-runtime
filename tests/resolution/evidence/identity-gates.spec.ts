@@ -1,6 +1,15 @@
 import { extractQuotedSpeakers, extractUserTexts } from '@resolution/signal/dialogue';
-import { countRealNameAsks, isNameConfirmedInDialogue, isNameProvidedAfterAsk } from '@resolution/evidence/producers/name-confirmation';
-import { evaluateBookingNameGate, evaluateBookingPhoneGate, isNameAuthoritative, isNameOnlyQuotedSpeaker } from '@resolution/evidence/identity-gates';
+import {
+  countRealNameAsks,
+  isNameConfirmedInDialogue,
+  isNameProvidedAfterAsk,
+} from '@resolution/evidence/producers/name-confirmation';
+import {
+  evaluateBookingNameGate,
+  evaluateBookingPhoneGate,
+  isNameAuthoritative,
+  isNameOnlyQuotedSpeaker,
+} from '@resolution/evidence/identity-gates';
 
 const userMsg = (content: unknown) => ({ role: 'user', content });
 const asstMsg = (text: string) => ({ role: 'assistant', content: text });

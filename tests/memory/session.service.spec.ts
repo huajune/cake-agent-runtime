@@ -2,7 +2,11 @@ import { Logger } from '@nestjs/common';
 import { SessionService } from '@memory/services/session.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
-import { FALLBACK_EXTRACTION, SessionFactsSchema } from '@memory/types/session-facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  SessionFactsSchema,
+  toSessionFacts,
+} from '@memory/types/session-facts.types';
 import {
   mergeSupplementalGenderClaims,
   produceRuleFactClaims,
@@ -18,6 +22,25 @@ function mockStructured(obj: unknown) {
 
 function factValue<T>(value: T, extra: Record<string, unknown> = {}) {
   return expect.objectContaining({ value, ...extra });
+}
+
+/**
+ * 建落盘态 SessionFacts。
+ *
+ * saveFacts 入参已收成 SessionFacts 单形态（记忆审计 S9）：裸 EntityExtractionResult
+ * 不再被接受——那条路靠 schema 的裸值兼容信封默默生成 unknown/archive 签名，是无守卫
+ * 写入。测试与生产写入方同口径，显式经 toSessionFacts 署名。
+ */
+function sessionFacts(
+  extraction: EntityExtractionResult,
+  meta: Partial<Parameters<typeof toSessionFacts>[1]> = {},
+) {
+  return toSessionFacts(extraction, {
+    confidence: 'unknown',
+    source: 'archive',
+    evidence: 'spec fixture',
+    ...meta,
+  });
 }
 
 const mockSystemConfig = {
@@ -161,10 +184,10 @@ describe('SessionService', () => {
     it('should return stored session state', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
-          facts: {
+          facts: sessionFacts({
             ...FALLBACK_EXTRACTION,
             interview_info: { ...FALLBACK_EXTRACTION.interview_info, age: '24' },
-          },
+          }),
           lastCandidatePool: [],
           presentedJobs: [],
           currentFocusJob: null,
@@ -268,7 +291,7 @@ describe('SessionService', () => {
       };
       mockRedisStore.get.mockResolvedValue({
         content: {
-          facts: existing,
+          facts: sessionFacts(existing),
           lastCandidatePool: null,
           presentedJobs: null,
           currentFocusJob: null,
@@ -280,7 +303,7 @@ describe('SessionService', () => {
         interview_info: { ...FALLBACK_EXTRACTION.interview_info, phone: '13800138000' },
       };
 
-      await service.saveFacts('corp1', 'user1', 'session1', newFacts);
+      await service.saveFacts('corp1', 'user1', 'session1', sessionFacts(newFacts));
 
       expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
@@ -316,7 +339,7 @@ describe('SessionService', () => {
         },
       };
 
-      await service.saveFacts('corp1', 'user1', 'session1', newFacts);
+      await service.saveFacts('corp1', 'user1', 'session1', sessionFacts(newFacts));
 
       expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
         expect.stringContaining('corp1:user1:session1'),
@@ -349,7 +372,7 @@ describe('SessionService', () => {
       };
       mockRedisStore.get.mockResolvedValue({
         content: {
-          facts: existing,
+          facts: sessionFacts(existing),
           lastCandidatePool: null,
           presentedJobs: null,
           currentFocusJob: null,
@@ -361,7 +384,7 @@ describe('SessionService', () => {
         interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: null },
       };
 
-      await service.saveFacts('corp1', 'user1', 'session1', newFacts, {
+      await service.saveFacts('corp1', 'user1', 'session1', sessionFacts(newFacts), {
         forceNullFields: ['name'],
       });
 
@@ -389,14 +412,14 @@ describe('SessionService', () => {
       };
       mockRedisStore.get.mockResolvedValue({
         content: {
-          facts: existing,
+          facts: sessionFacts(existing),
           lastCandidatePool: null,
           presentedJobs: null,
           currentFocusJob: null,
         },
       });
 
-      await service.saveFacts('corp1', 'user1', 'session1', FALLBACK_EXTRACTION, {
+      await service.saveFacts('corp1', 'user1', 'session1', sessionFacts(FALLBACK_EXTRACTION), {
         forceNullPreferenceFields: ['labor_form'],
       });
 
@@ -516,10 +539,10 @@ describe('SessionService', () => {
     it('projects persisted session facts into collectedFields for cross-turn stop checks', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
-          facts: {
+          facts: sessionFacts({
             ...FALLBACK_EXTRACTION,
             interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三', age: '24' },
-          },
+          }),
           lastCandidatePool: null,
           presentedJobs: null,
           currentFocusJob: null,
@@ -640,8 +663,8 @@ describe('SessionService', () => {
     const stateWithCity = (city: Record<string, unknown> | null) => ({
       content: {
         facts: {
-          ...FALLBACK_EXTRACTION,
-          preferences: { ...FALLBACK_EXTRACTION.preferences, city },
+          ...sessionFacts(FALLBACK_EXTRACTION),
+          preferences: { ...sessionFacts(FALLBACK_EXTRACTION).preferences, city },
         },
         lastCandidatePool: null,
         presentedJobs: null,
@@ -761,7 +784,7 @@ describe('SessionService', () => {
   describe('确认问答裁决入档（P1 confirmation）', () => {
     const factsState = () => ({
       content: {
-        facts: { ...FALLBACK_EXTRACTION },
+        facts: sessionFacts(FALLBACK_EXTRACTION),
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: null,
@@ -831,10 +854,10 @@ describe('SessionService', () => {
   describe('pure-acknowledgment gate', () => {
     const existingFactsState = () => ({
       content: {
-        facts: {
+        facts: sessionFacts({
           ...FALLBACK_EXTRACTION,
           interview_info: { ...FALLBACK_EXTRACTION.interview_info, age: '25' },
-        },
+        }),
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: null,
@@ -1789,7 +1812,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -1833,11 +1855,10 @@ describe('SessionService', () => {
     it('should use INCREMENTAL_MESSAGES window on cache hit', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
-          facts: {
+          facts: sessionFacts({
             ...FALLBACK_EXTRACTION,
             interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
-            reasoning: 'prev',
-          },
+          }),
         },
       });
       mockLlm.generateStructured.mockResolvedValue(
@@ -1855,7 +1876,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2121,7 +2141,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2170,7 +2189,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2248,7 +2266,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2287,7 +2304,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2344,7 +2360,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2368,17 +2383,11 @@ describe('SessionService', () => {
       // 品牌写入收口（§9.2）：提取路径不再把品牌写进 preferences.brands
       //（品牌真相只在 brand_state，由 turn-finalizer 的 reducer 统一写入），
       // 归一化线索仍进提取 prompt（上方断言）。
-      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          facts: expect.objectContaining({
-            preferences: expect.objectContaining({
-              brands: null,
-            }),
-          }),
-        }),
-        86400,
-      );
+      // preferences.brands 字段已随记忆审计 S9 删除；断言"落盘态里没有这个键"。
+      const savedPreferences = (
+        mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as { facts: { preferences: object } }
+      ).facts.preferences;
+      expect(savedPreferences).not.toHaveProperty('brands');
     });
 
     it('should not misclassify generic phrases that merely contain alias text', async () => {
@@ -2398,7 +2407,6 @@ describe('SessionService', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -2415,17 +2423,11 @@ describe('SessionService', () => {
         { role: 'user', content: '给我来一份工作' },
       ]);
 
-      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          facts: expect.objectContaining({
-            preferences: expect.objectContaining({
-              brands: null,
-            }),
-          }),
-        }),
-        86400,
-      );
+      // preferences.brands 字段已随记忆审计 S9 删除；断言"落盘态里没有这个键"。
+      const savedPreferences = (
+        mockRedisStore.patchHash.mock.calls.at(-1)?.[1] as { facts: { preferences: object } }
+      ).facts.preferences;
+      expect(savedPreferences).not.toHaveProperty('brands');
     });
   });
 });

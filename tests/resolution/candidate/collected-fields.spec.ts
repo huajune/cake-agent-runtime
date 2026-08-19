@@ -176,7 +176,9 @@ describe('candidate-field-parser', () => {
       expect(PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has('model')).toBe(false);
     });
     it('hasPersistableFieldProvenance rejects model and rule drafts', () => {
-      expect(hasPersistableFieldProvenance({ value: '小王', producer: 'model', at: 1 })).toBe(false);
+      expect(hasPersistableFieldProvenance({ value: '小王', producer: 'model', at: 1 })).toBe(
+        false,
+      );
       expect(hasPersistableFieldProvenance({ value: '小王', producer: 'rule', at: 1 })).toBe(false);
       expect(
         hasPersistableFieldProvenance({ value: '王建国', producer: 'candidate_quote', at: 1 }),

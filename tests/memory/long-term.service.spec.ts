@@ -260,7 +260,6 @@ describe('LongTermService', () => {
           preferences: {
             ...FALLBACK_EXTRACTION.preferences,
             // 收口前的旧存储残留：不得再被沉淀（§19.6）
-            brands: ['肯德基', '必胜客'],
             position: ['后厨'],
             schedule: '下午',
             city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },

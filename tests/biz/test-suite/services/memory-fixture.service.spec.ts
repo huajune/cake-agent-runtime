@@ -63,12 +63,27 @@ describe('MemoryFixtureService', () => {
       'corp-1',
       'user-1',
       'session-1',
+      // 夹具落档已显式署名（记忆审计 S9 关闭 P4 无守卫路径）：saveFacts 只收
+      // SessionFacts 单形态，每个值带 confidence/source/evidence，不再靠裸值信封
+      // 默默折成 unknown/archive。evidence 写实话——夹具是测试用例回放的档案。
       expect.objectContaining({
-        interview_info: expect.objectContaining({ name: '张三' }),
-        preferences: expect.objectContaining({
-          city: { value: '上海', confidence: 'medium', evidence: 'explicit_city' },
+        interview_info: expect.objectContaining({
+          name: {
+            value: '张三',
+            confidence: 'unknown',
+            source: 'archive',
+            evidence: 'test-suite 记忆夹具预置',
+          },
         }),
-        reasoning: 'badcase-context-backfill: 想找静安附近的兼职',
+        preferences: expect.objectContaining({
+          // city 自带 CityFact 的 confidence/evidence，经 toSessionFacts 的 city 专用分支保留。
+          city: {
+            value: '上海',
+            confidence: 'medium',
+            evidence: 'explicit_city',
+            source: 'archive',
+          },
+        }),
       }),
     );
     expect(mockSessionService.savePresentedJobs).toHaveBeenCalledWith(
@@ -140,15 +155,25 @@ describe('MemoryFixtureService', () => {
       expect.objectContaining({
         interview_info: expect.objectContaining({
           name: null,
-          phone: '13800000000',
+          phone: {
+            value: '13800000000',
+            confidence: 'unknown',
+            source: 'archive',
+            evidence: 'test-suite 记忆夹具预置',
+          },
         }),
         preferences: expect.objectContaining({
-          city: { value: '北京', confidence: 'medium', evidence: 'explicit_city' },
-          brands: null,
+          city: {
+            value: '北京',
+            confidence: 'medium',
+            evidence: 'explicit_city',
+            source: 'archive',
+          },
         }),
-        reasoning: 'curated fixture',
       }),
     );
+    // preferences.brands 字段已随记忆审计 S9 删除。
+    expect(mockSessionService.saveFacts.mock.calls[0][3].preferences).not.toHaveProperty('brands');
   });
 
   it('should derive the previous job-list query fingerprint from query params', async () => {

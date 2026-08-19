@@ -1,4 +1,7 @@
-import { isNameAnsweredToRealNameAsk, resolveNameAnsweredToRealNameAsk } from '@resolution/evidence/producers/name-confirmation';
+import {
+  isNameAnsweredToRealNameAsk,
+  resolveNameAnsweredToRealNameAsk,
+} from '@resolution/evidence/producers/name-confirmation';
 import { evaluateBookingNameGate } from '@resolution/evidence/identity-gates';
 import { runCandidateFactAdjudication } from '@resolution/evidence/adjudicate';
 

@@ -1800,9 +1800,7 @@ describe('buildInterviewBookingTool', () => {
       const result = await executeTool(
         { ...validInput, name: '兮兮', phone: '18271421690' },
         {
-          messages: [
-            { role: 'user', content: '[引用 兮兮：帮我报名]\n我手机号18271421690' },
-          ],
+          messages: [{ role: 'user', content: '[引用 兮兮：帮我报名]\n我手机号18271421690' }],
           bookingCandidateFacts: {
             ...FALLBACK_EXTRACTION.interview_info,
             name: '王五',
@@ -1817,5 +1815,4 @@ describe('buildInterviewBookingTool', () => {
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
   });
-
 });

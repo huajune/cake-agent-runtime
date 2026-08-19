@@ -1,9 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import {
-  VERDICT_SITE_AUTHORITIES,
-  VERDICT_SITE_REGISTRY,
-} from '@resolution/verdict-site.registry';
+import { VERDICT_SITE_AUTHORITIES, VERDICT_SITE_REGISTRY } from '@resolution/verdict-site.registry';
 
 describe('VERDICT_SITE_REGISTRY', () => {
   const expectedSiteIds = [
@@ -34,12 +31,7 @@ describe('VERDICT_SITE_REGISTRY', () => {
   });
 
   it('admits only the four P11 authority classes and no semantic verdict class', () => {
-    expect(VERDICT_SITE_AUTHORITIES).toEqual([
-      'structural_gate',
-      'closed_form',
-      'notary',
-      'hint',
-    ]);
+    expect(VERDICT_SITE_AUTHORITIES).toEqual(['structural_gate', 'closed_form', 'notary', 'hint']);
     for (const site of VERDICT_SITE_REGISTRY) {
       expect(VERDICT_SITE_AUTHORITIES).toContain(site.authority);
       expect(site.authority).not.toBe('semantic_verdict');

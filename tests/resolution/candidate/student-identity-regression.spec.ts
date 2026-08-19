@@ -207,9 +207,9 @@ describe('hasIsStudentTopicEvidence（is_student 首写证据门，badcase 6a673
   });
 
   it('时间戳后缀不干扰词汇识别', () => {
-    expect(hasIsStudentTopicEvidence(['不是学生\n[消息发送时间：2026-07-27 18:49 星期一]'], [])).toBe(
-      true,
-    );
+    expect(
+      hasIsStudentTopicEvidence(['不是学生\n[消息发送时间：2026-07-27 18:49 星期一]'], []),
+    ).toBe(true);
   });
 });
 

@@ -36,7 +36,10 @@ describe('confirmation-facts（确认问答裁决，候选人资料证据化 P1�
 
     it('识别「你现在是在上海对吧？」→「嗯嗯」（badcase 6a618a6e 上海浦东案，白名单裸名城市）', () => {
       const fact = resolveConfirmedCityFact([
-        { role: 'assistant', content: '了解哈，方便确认下你现在是在上海对吧？确认后我拉你进当地的兼职群' },
+        {
+          role: 'assistant',
+          content: '了解哈，方便确认下你现在是在上海对吧？确认后我拉你进当地的兼职群',
+        },
         { role: 'user', content: '嗯嗯' },
       ]);
       expect(fact).toMatchObject({ city: '上海' });
@@ -44,7 +47,10 @@ describe('confirmation-facts（确认问答裁决，候选人资料证据化 P1�
 
     it('剥离消息时间后缀后仍能识别（时间戳后缀击穿锚定识别器的历史坑）', () => {
       const fact = resolveConfirmedCityFact([
-        { role: 'assistant', content: '你是在武汉这边找工作对吧？[消息发送时间：2026-07-28 10:00]' },
+        {
+          role: 'assistant',
+          content: '你是在武汉这边找工作对吧？[消息发送时间：2026-07-28 10:00]',
+        },
         { role: 'user', content: '对 [消息发送时间：2026-07-28 10:01]' },
       ]);
       expect(fact).toMatchObject({ city: '武汉', reply: '对' });

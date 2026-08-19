@@ -38,31 +38,16 @@ describe('formatExtractionFactLines', () => {
     ]);
   });
 
-  it('should render brand from currentBrandName option, never from retired preferences.brands (§19.6)', () => {
+  it('should render brand from currentBrandName option only (§19.6)', () => {
     // 品牌唯一真相是 brand_state，由调用方经 options 显式注入；
-    // facts 里即使残留旧存储值（收口前写入）也不得渲染。
-    const lines = formatExtractionFactLines(
-      {
-        ...FALLBACK_EXTRACTION,
-        preferences: {
-          ...FALLBACK_EXTRACTION.preferences,
-          brands: ['旧存储残留品牌'],
-        },
-      },
-      { currentBrandName: '来伊份' },
-    );
+    // facts 侧已无 brands 字段可读（记忆审计 S9 删除）。
+    const lines = formatExtractionFactLines(FALLBACK_EXTRACTION, { currentBrandName: '来伊份' });
 
     expect(lines).toEqual(['- 意向品牌: 来伊份（来源: 会话品牌状态）']);
   });
 
   it('should render no brand line when currentBrandName is absent', () => {
-    const lines = formatExtractionFactLines({
-      ...FALLBACK_EXTRACTION,
-      preferences: {
-        ...FALLBACK_EXTRACTION.preferences,
-        brands: ['旧存储残留品牌'],
-      },
-    });
+    const lines = formatExtractionFactLines(FALLBACK_EXTRACTION);
 
     expect(lines).toEqual([]);
   });

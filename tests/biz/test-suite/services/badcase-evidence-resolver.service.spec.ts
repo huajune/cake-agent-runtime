@@ -77,7 +77,11 @@ describe('BadcaseEvidenceResolverService', () => {
 
     expect(ledgers.get('recA')?.overallStatus).toBe('passed');
     expect(ledgers.get('recA')?.scenario[0]).toEqual(
-      expect.objectContaining({ batchId: 'batch-s1', assetIds: ['case-1'], reviewStatus: 'passed' }),
+      expect.objectContaining({
+        batchId: 'batch-s1',
+        assetIds: ['case-1'],
+        reviewStatus: 'passed',
+      }),
     );
     expect(ledgers.get('recA')?.conversation[0]).toEqual(
       expect.objectContaining({ batchId: 'batch-c1', reviewStatus: 'passed' }),

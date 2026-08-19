@@ -1,9 +1,5 @@
 import { isGenderConfirmedInline } from '@resolution/evidence/producers/gender-confirmation';
-import {
-  assistantMsg,
-  userMsg,
-  withTimeSuffix,
-} from '../../../helpers/production-message.fixture';
+import { assistantMsg, userMsg, withTimeSuffix } from '../../../helpers/production-message.fixture';
 
 describe('isGenderConfirmedInline（性别表内确认，PR #1000 评审 P0-4）', () => {
   const inlineAskForm = assistantMsg(
@@ -11,9 +7,9 @@ describe('isGenderConfirmedInline（性别表内确认，PR #1000 评审 P0-4）
   );
 
   it('肯定应答（都对的）清除确认位', () => {
-    expect(
-      isGenderConfirmedInline('女', [inlineAskForm, userMsg(withTimeSuffix('都对的'))]),
-    ).toBe(true);
+    expect(isGenderConfirmedInline('女', [inlineAskForm, userMsg(withTimeSuffix('都对的'))])).toBe(
+      true,
+    );
   });
 
   it('同值复打按确认处理，反值复打是纠正', () => {

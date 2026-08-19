@@ -310,13 +310,7 @@ describe('MemoryLifecycleService', () => {
       { role: 'user', content: '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空' },
     ]);
     mockSessionService.getSessionState.mockResolvedValue({
-      facts: {
-        ...FALLBACK_EXTRACTION,
-        preferences: {
-          ...FALLBACK_EXTRACTION.preferences,
-          brands: ['来伊份'],
-        },
-      },
+      facts: FALLBACK_EXTRACTION,
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
@@ -334,7 +328,8 @@ describe('MemoryLifecycleService', () => {
       ruleFacts: await prepRuleFacts(text),
     });
 
-    expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
+    // preferences.brands 字段已删（记忆审计 S9）：品牌唯一真相是 brand_state。
+    expect(ctx.sessionMemory?.facts?.preferences).not.toHaveProperty('brands');
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
     expect(getRuleFact(ctx.ruleFacts, 'preferences.city')).toEqual(
       expect.objectContaining({

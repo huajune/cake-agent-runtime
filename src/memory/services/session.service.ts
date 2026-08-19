@@ -309,19 +309,25 @@ export class SessionService {
    * 背景：badcase `batch_69e9bba2536c9654026522da_*` —— deepMerge 的 "null 不
    * 覆盖" 语义让 sanitizer 的 null 输出无法清除已污染的 name。新增该参数作为
    * 显式覆盖出口，sanitizer 命中时传 `['name']`。
+   *
+   * 入参收敛为 `SessionFacts` 单形态（2026-08-19 记忆审计 S9）：此前还收裸
+   * `EntityExtractionResult`，靠 schema 的裸值兼容信封把每个字段悄悄折成
+   * unknown/archive——那是一条**无守卫写入路径**（唯一使用者是 test-suite 夹具）。
+   * 调用方现在必须显式经 `toSessionFacts` 带上 confidence/source/evidence，
+   * 置信度签名不再有默默生成的出口。
    */
   async saveFacts(
     corpId: string,
     userId: string,
     sessionId: string,
-    facts: EntityExtractionResult | SessionFacts,
+    facts: SessionFacts,
     options?: {
       forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[];
       forceNullPreferenceFields?: readonly (keyof EntityExtractionResult['preferences'])[];
     },
   ): Promise<void> {
     const state = await this.getSessionState(corpId, userId, sessionId);
-    const sessionFacts = this.ensureSessionFacts(facts);
+    const sessionFacts = SessionFactsSchema.parse(facts) as SessionFacts;
     const baseMerge = state.facts
       ? this.mergeFactsWithConfidenceGuard(state.facts, sessionFacts)
       : sessionFacts;
@@ -1196,13 +1202,10 @@ export class SessionService {
     // （丢弃把 city 清空，恰恰让那条裁决的"本轮已有高置信城市则让位"守卫放行）。
     // 只按 droppedCity 强清会把刚裁定的城市在合并后抹掉。
     if (droppedCity && !newFacts.preferences.city) forceNullPreferenceFields.push('city');
-    // 品牌写入收口（§9.2 三处之一）：LLM 抽出的品牌不再直接落 preferences.brands——
-    // 经品牌库验证 + 极性判定转成 BrandResolution 后，与其它来源一起走 brand_state reducer。
-    const factsForSave: SessionFacts = {
-      ...newFacts,
-      preferences: { ...newFacts.preferences, brands: null },
-    };
-    await this.saveFacts(corpId, userId, sessionId, factsForSave, {
+    // 品牌写入收口（§9.2 三处之一）：品牌不经 sessionFacts——经品牌库验证 + 极性判定
+    // 转成 BrandResolution 后，与其它来源一起走 brand_state reducer。原先在这里把
+    // preferences.brands 折成 null 的那一手，随该字段 2026-08-19（S9）整体删除而消失。
+    await this.saveFacts(corpId, userId, sessionId, newFacts, {
       forceNullFields: forceNullInterviewFields.length > 0 ? forceNullInterviewFields : undefined,
       forceNullPreferenceFields:
         forceNullPreferenceFields.length > 0 ? forceNullPreferenceFields : undefined,
@@ -1513,10 +1516,6 @@ export class SessionService {
     }
 
     return { facts: result, dropped };
-  }
-
-  private ensureSessionFacts(facts: EntityExtractionResult | SessionFacts): SessionFacts {
-    return SessionFactsSchema.parse(facts) as SessionFacts;
   }
 
   /**

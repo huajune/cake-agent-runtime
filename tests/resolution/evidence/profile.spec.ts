@@ -1,12 +1,13 @@
-import {
-  buildEffectiveProfile,
-  pickAcceptedValues,
-} from '@resolution/evidence/profile';
+import { buildEffectiveProfile, pickAcceptedValues } from '@resolution/evidence/profile';
 import type { AdjudicatedClaim } from '@resolution/evidence/claim.types';
 
 const NOW = new Date('2026-08-05T10:00:00+08:00');
 
-function accepted(field: 'name' | 'phone' | 'age', value: string | number, claimId = `c_${field}`): AdjudicatedClaim {
+function accepted(
+  field: 'name' | 'phone' | 'age',
+  value: string | number,
+  claimId = `c_${field}`,
+): AdjudicatedClaim {
   return {
     decision: 'accepted',
     claim: {
@@ -32,7 +33,11 @@ describe('buildEffectiveProfile 四态视图', () => {
       factsVersion: 1,
       now: NOW,
     });
-    expect(profile.fields.name).toMatchObject({ value: '王玥', status: 'accepted', source: 'rule' });
+    expect(profile.fields.name).toMatchObject({
+      value: '王玥',
+      status: 'accepted',
+      source: 'rule',
+    });
   });
 
   it('clear 使字段 missing 且屏蔽画像线索复活', () => {
@@ -70,7 +75,10 @@ describe('buildEffectiveProfile 四态视图', () => {
       now: NOW,
     });
     expect(profile.fields.name).toMatchObject({ status: 'accepted', source: 'session' });
-    expect(profile.fields.age).toMatchObject({ status: 'historical_unconfirmed', source: 'profile' });
+    expect(profile.fields.age).toMatchObject({
+      status: 'historical_unconfirmed',
+      source: 'profile',
+    });
   });
 
   it('conflicting_evidence 的字段转候选人终审（工序 C2）', () => {

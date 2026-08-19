@@ -113,7 +113,7 @@ preferences（意向信息）:
 - 用户提到的品牌名可能是别称（如"KFC"→"肯德基"），必须通过[可用品牌信息]的别称列表映射为标准品牌名
 - 用户转发/粘贴 Boss 岗位标题中出现形如 "[10239]" 的方括号纯数字时，直接提取 brand_ids: [10239]；即使标题里的品牌名/客户公司没有匹配到[可用品牌信息]，brand_ids 仍可作为高稳定主键保留
 - 如果 [品牌别名命中提示] 中给出了“用户原话 → 标准品牌”的命中结果，可将其视为高置信品牌归一化线索
-- brands 字段只能填写[可用品牌信息]中存在的标准品牌名
+- 品牌名只能填写[可用品牌信息]中存在的标准品牌名（brand_intents 的 brand 字段同此约束）
 - 如果用户提到的品牌在列表中找不到匹配，保留用户原话
 
 ## 品牌意图极性（brand_intents）
@@ -181,7 +181,7 @@ function formatBrandSection(brandData: BrandItem[], aliasHints: BrandAliasHint[]
   }
   if (namesOnly.length > 0) {
     parts.push(
-      `其余合作品牌（仅名称，brands 字段只能填这些标准名或上面的命中品牌）：${namesOnly.join('、')}`,
+      `其余合作品牌（仅名称，brand_intents 的 brand 只能填这些标准名或上面的命中品牌）：${namesOnly.join('、')}`,
     );
   }
   return parts.join('\n');

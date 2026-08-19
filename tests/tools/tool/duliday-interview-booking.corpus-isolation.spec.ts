@@ -86,7 +86,7 @@ describe('booking identity 闸门 corpus 证据域隔离', () => {
       {
         writeFromBooking: jest.fn().mockResolvedValue(undefined),
         setActiveBooking: jest.fn().mockResolvedValue(undefined),
-        
+
         getActiveBookings: jest.fn().mockResolvedValue([]),
       } as never,
       { recordEvent: jest.fn().mockResolvedValue(undefined) } as never,

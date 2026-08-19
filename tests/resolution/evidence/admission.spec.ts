@@ -55,8 +55,15 @@ describe('evidence admission chain', () => {
         preferences: { city: '上海' },
       },
       previousFacts: null,
-      messages: [{ role: 'user', content: '我叫王建国，电话13912345678，已毕业，没健康证可以办，28岁，籍贯四川省，在上海' }],
-      userMessages: ['我叫王建国，电话13912345678，已毕业，没健康证可以办，28岁，籍贯四川省，在上海'],
+      messages: [
+        {
+          role: 'user',
+          content: '我叫王建国，电话13912345678，已毕业，没健康证可以办，28岁，籍贯四川省，在上海',
+        },
+      ],
+      userMessages: [
+        '我叫王建国，电话13912345678，已毕业，没健康证可以办，28岁，籍贯四川省，在上海',
+      ],
       selfReportedUserTexts: [
         '我叫王建国，电话13912345678，已毕业，没健康证可以办，28岁，籍贯四川省，在上海',
       ],

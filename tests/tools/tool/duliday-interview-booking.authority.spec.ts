@@ -14,9 +14,7 @@ import { createToolContext } from '../../helpers/tool-context.fixture';
 
 const TIME_SUFFIX = '[消息发送时间：2026-08-12 10:00:00]';
 /** 候选人自陈原文：手机号出处闸门（正向证据）与快照水位都基于它。 */
-const CANDIDATE_MESSAGES = [
-  { role: 'user', content: `我叫王玥，电话13812345678 ${TIME_SUFFIX}` },
-];
+const CANDIDATE_MESSAGES = [{ role: 'user', content: `我叫王玥，电话13812345678 ${TIME_SUFFIX}` }];
 const WATERMARK = computeCandidateMessageWatermark(['我叫王玥，电话13812345678']);
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -106,7 +104,7 @@ describe('booking 报名级字段终审与姓名作证（P11 工序 D3/E2）', (
       {
         writeFromBooking: jest.fn().mockResolvedValue(undefined),
         setActiveBooking: jest.fn().mockResolvedValue(undefined),
-        
+
         getActiveBookings: jest.fn().mockResolvedValue([]),
       } as never,
       { recordEvent: jest.fn().mockResolvedValue(undefined) } as never,
