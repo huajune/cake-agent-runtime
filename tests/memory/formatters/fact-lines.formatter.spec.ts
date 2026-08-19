@@ -153,9 +153,7 @@ describe('formatExtractionFactLines', () => {
     it('truncates long quotes instead of re-injecting the whole message per field', () => {
       const long = '我'.repeat(200);
       const [line] = formatRuleFactClaimLines(
-        testRuleFacts(
-          testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: long }),
-        ),
+        testRuleFacts(testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: long })),
         { includeEvidence: true, includeQuote: true, currentTurnTexts: ['另一条消息', '再一条'] },
       );
 

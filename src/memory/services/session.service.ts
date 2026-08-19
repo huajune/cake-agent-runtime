@@ -377,7 +377,6 @@ export class SessionService {
     const facts = SessionFactsSchema.parse({
       ...FALLBACK_EXTRACTION,
       preferences: { ...FALLBACK_EXTRACTION.preferences, city: cityFact },
-      reasoning: '工具确权城市入档（geocode 唯一解析）',
     }) as SessionFacts;
     await this.saveFacts(corpId, userId, sessionId, facts);
     this.logger.log(
@@ -908,7 +907,6 @@ export class SessionService {
           const cityOnlyFacts = SessionFactsSchema.parse({
             ...FALLBACK_EXTRACTION,
             preferences: { ...FALLBACK_EXTRACTION.preferences, city: confirmedCityFact },
-            reasoning: '确认问答裁决入档（纯应答轮）',
           }) as SessionFacts;
           await this.saveFacts(corpId, userId, sessionId, cityOnlyFacts);
           this.logger.log(
@@ -1539,9 +1537,14 @@ export class SessionService {
     return this.isPureAcknowledgment(text) || /^我是[.。…]*$/u.test(text);
   }
 
-  private buildLlmFactEvidence(_reasoning: string | null | undefined): string {
-    // reasoning 是模型叙事，可能包含"从简历文件中提取"之类不可验证的自证；它只留在
-    // facts.reasoning 排障位，不再扇出为每个字段的 evidence。字段证据由出处摘录覆盖。
+  /**
+   * LLM 轨字段的 evidence 常量。
+   *
+   * 刻意是常量而非模型叙事：reasoning 可能包含"从简历文件中提取"之类不可验证的自证，
+   * 扇出成每个字段的 evidence 就是把模型的自我背书当证据。字段证据由出处摘录覆盖。
+   * 2026-08-19（S8）连形参一起摘掉——它此前已被忽略，留着只会让读者以为还在用。
+   */
+  private buildLlmFactEvidence(): string {
     return 'LLM 结构化提取';
   }
 
@@ -1587,7 +1590,8 @@ export class SessionService {
    * （CityFact 值合并 + 经 toSessionFacts 的 derived/CityFact 归一化）行为难以套进
    * 统一标量/数组形态，保留为下方手写分支；它们仍共用同一套「rule 元数据归属」判定。
    *
-   * reasoning：追加规则参考线索，并作为 LLM 取胜字段的 evidence。
+   * 规则轨的 reasoning 不再并进 merged（S8）：合并结果只经 toSessionFacts 落盘，
+   * 而落盘态已不持有 reasoning，evidence 也早已是常量——拼出来无人读。
    */
   private mergeRuleAndLlmFacts(
     llmFacts: EntityExtractionResult,
@@ -1607,7 +1611,7 @@ export class SessionService {
       return toSessionFacts(llmFacts, {
         confidence: 'medium',
         source: 'model',
-        evidence: this.buildLlmFactEvidence(llmFacts.reasoning),
+        evidence: this.buildLlmFactEvidence(),
         extractedAt: new Date().toISOString(),
       });
     }
@@ -1712,19 +1716,11 @@ export class SessionService {
     }
     noteRuleMeta('preferences', 'city', merged.preferences.city?.value ?? null);
 
-    // reasoning：追加规则参考线索（同时作为 LLM 取胜字段的 evidence）。
-    const ruleReasoning = ruleFacts.reasoning?.trim();
-    if (ruleReasoning) {
-      merged.reasoning = [merged.reasoning?.trim(), `规则模式匹配参考线索：\n${ruleReasoning}`]
-        .filter(Boolean)
-        .join('\n');
-    }
-
     // 先整体打 medium/model，再把 rule 取胜字段重打 high/rule。
     const sessionFacts = toSessionFacts(merged, {
       confidence: 'medium',
       source: 'model',
-      evidence: this.buildLlmFactEvidence(merged.reasoning),
+      evidence: this.buildLlmFactEvidence(),
       extractedAt: new Date().toISOString(),
     });
     return this.stampRuleMetadata(sessionFacts, ruleMetaFields);

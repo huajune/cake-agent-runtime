@@ -25,7 +25,10 @@ describe('CandidateSnapshotService', () => {
       set: jest.fn().mockResolvedValue(undefined),
       ...overrides,
     };
-    return { service: new CandidateSnapshotService(redisStore as unknown as RedisStore), redisStore };
+    return {
+      service: new CandidateSnapshotService(redisStore as unknown as RedisStore),
+      redisStore,
+    };
   }
 
   it('save：key 按 corp/user/precheckId 隔离，TTL 用快照常量', async () => {

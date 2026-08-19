@@ -251,8 +251,13 @@ describe('SessionService', () => {
 
       const state = await service.getSessionState('corp1', 'user1', 'session1');
 
-      // Should parse successfully — legacy field stripped, known fields intact
-      expect(state.facts).toEqual(FALLBACK_EXTRACTION);
+      // Should parse successfully — legacy field stripped, known fields intact.
+      // reasoning 不在落盘态里（S8 拆除）：它同样被 zod 当未注册键静默剥掉。
+      expect(state.facts).toEqual({
+        interview_info: FALLBACK_EXTRACTION.interview_info,
+        preferences: FALLBACK_EXTRACTION.preferences,
+      });
+      expect(state.facts).not.toHaveProperty('reasoning');
       expect(state).not.toHaveProperty('lastSessionActiveAt');
     });
 
@@ -1889,11 +1894,13 @@ describe('SessionService', () => {
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
-            reasoning: '实体提取失败，使用空值降级',
+            interview_info: expect.objectContaining({ name: null, phone: null }),
           }),
         }),
         86400,
       );
+      // 降级说明不再落盘（S8）：它零读消费者，排障看日志与 agent_invocation。
+      expect(mockRedisStore.patchHash.mock.calls[0][1].facts).not.toHaveProperty('reasoning');
     });
 
     it('should still save high-confidence rule facts when LLM extraction fails', async () => {
@@ -1911,11 +1918,12 @@ describe('SessionService', () => {
             interview_info: expect.objectContaining({
               phone: factValue('13800138000', { confidence: 'high', source: 'rule' }),
             }),
-            reasoning: expect.stringContaining('规则模式匹配参考线索'),
           }),
         }),
         86400,
       );
+      // 「规则模式匹配参考线索」拼接随 S8 删除：它只喂 reasoning，而 reasoning 不再落盘。
+      expect(mockRedisStore.patchHash.mock.calls[0][1].facts).not.toHaveProperty('reasoning');
     });
 
     it('should let LLM output take precedence over conflicting rule facts', async () => {
@@ -1959,11 +1967,12 @@ describe('SessionService', () => {
                 { confidence: 'high', source: 'rule' },
               ),
             }),
-            reasoning: expect.stringContaining('规则模式匹配参考线索'),
           }),
         }),
         86400,
       );
+      // 「规则模式匹配参考线索」拼接随 S8 删除：它只喂 reasoning，而 reasoning 不再落盘。
+      expect(mockRedisStore.patchHash.mock.calls[0][1].facts).not.toHaveProperty('reasoning');
     });
 
     it('should let the current-turn health-certificate rule override a lossy LLM value', async () => {
@@ -2203,11 +2212,13 @@ describe('SessionService', () => {
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
-            reasoning: '实体提取失败，使用空值降级',
+            interview_info: expect.objectContaining({ name: null, phone: null }),
           }),
         }),
         86400,
       );
+      // 降级说明不再落盘（S8）：它零读消费者，排障看日志与 agent_invocation。
+      expect(mockRedisStore.patchHash.mock.calls[0][1].facts).not.toHaveProperty('reasoning');
     });
 
     it('should validate persisted candidate pool shape before saving', async () => {

@@ -619,10 +619,21 @@ export const SessionPreferencesSchema = z.object({
   available_after: NullableSessionFactSchema(AvailableAfterFactSchema),
 });
 
+/**
+ * Redis 落盘的会话事实形态。
+ *
+ * ⚠️ 刻意**不含 `reasoning`**（2026-08-19 记忆审计 S8 拆除）：它曾随每次 saveFacts
+ * 落盘，但全库零读消费者——`buildLlmFactEvidence` 收下它却返回常量，
+ * `unwrapSessionFacts` 的下游（settlement / tool-context / memory-block / context）
+ * 一个都不读它。仓库外亦无消费：`memory_snapshot.sessionFacts` 由
+ * `flattenSessionFacts` 生成，只收 interview_info 与 preferences 两组；
+ * `extraction_accuracy_report_fn` 只读 `interview.name/phone/age/gender`。
+ * 模型叙事仍留在 `EntityExtractionResult.reasoning`（提取提示词要求模型交代来源，
+ * 是本轮 LLM 调用内部的反臆造装置），只是不再进 Redis。
+ */
 export const SessionFactsSchema = z.object({
   interview_info: SessionInterviewInfoSchema,
   preferences: SessionPreferencesSchema,
-  reasoning: z.string(),
 });
 
 /** 由字段清单生成"逐字段 null"对象（所有字段 schema 均 nullable，null 是合法降级值）。 */
@@ -794,7 +805,8 @@ export function unwrapSessionFacts(
           : null
         : city,
     },
-    reasoning: facts.reasoning,
+    // 落盘态不再持有 reasoning（S8）；回程只为满足 EntityExtractionResult 的形状。
+    reasoning: '',
   });
 }
 
@@ -837,7 +849,6 @@ export function toSessionFacts(
           })
         : null,
     },
-    reasoning: facts.reasoning,
   }) as SessionFacts;
 }
 

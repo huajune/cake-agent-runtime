@@ -330,22 +330,18 @@ describe('MemoryLifecycleService', () => {
     mockLongTerm.getProfile.mockResolvedValue(null);
 
     const text = '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空';
-    const ctx = await service.onTurnStart(
-      'corp-1',
-      'user-1',
-      'sess-1',
-      text,
-      { ruleFacts: await prepRuleFacts(text) },
-    );
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', text, {
+      ruleFacts: await prepRuleFacts(text),
+    });
 
     expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
     expect(getRuleFact(ctx.ruleFacts, 'preferences.city')).toEqual(
       expect.objectContaining({
-      value: '上海',
-      confidence: 'high',
-      producer: 'rule',
-      evidence: expect.objectContaining({ code: 'municipality_compact' }),
+        value: '上海',
+        confidence: 'high',
+        producer: 'rule',
+        evidence: expect.objectContaining({ code: 'municipality_compact' }),
       }),
     );
     expect(getRuleFact(ctx.ruleFacts, 'preferences.district')?.value).toEqual(['杨浦']);
@@ -375,13 +371,9 @@ describe('MemoryLifecycleService', () => {
     mockLongTerm.getProfile.mockResolvedValue(null);
 
     const text = '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有';
-    const ctx = await service.onTurnStart(
-      'corp-1',
-      'user-1',
-      'sess-1',
-      text,
-      { ruleFacts: await prepRuleFacts(text) },
-    );
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', text, {
+      ruleFacts: await prepRuleFacts(text),
+    });
 
     expect(getRuleFact(ctx.ruleFacts, 'interview_info.name')?.value).toBe('张琰');
     expect(getRuleFact(ctx.ruleFacts, 'interview_info.phone')?.value).toBe('19986247174');
