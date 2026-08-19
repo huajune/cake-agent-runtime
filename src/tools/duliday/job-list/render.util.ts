@@ -29,7 +29,7 @@ import {
 import {
   containsSensitiveScreeningText,
   SENSITIVE_SCREENING_RENDER_NOTICE,
-} from '@tools/utils/sensitive-screening.util';
+} from '@resolution/collection/sensitive-screening';
 import {
   cleanNumber,
   cleanSingleLineText,

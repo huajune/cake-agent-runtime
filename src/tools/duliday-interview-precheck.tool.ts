@@ -24,7 +24,7 @@ import { matchesLaborForm } from '@resolution/labor-form';
 import {
   containsSensitiveScreeningText,
   SENSITIVE_SCREENING_CRITERIA_NOTICE,
-} from '@tools/utils/sensitive-screening.util';
+} from '@resolution/collection/sensitive-screening';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import {
   classifySupplementLabel,
@@ -54,14 +54,11 @@ import {
   normalizeIdentityText,
   normalizeNumberText,
 } from '@tools/duliday/precheck/field-normalize.util';
-import { resolveLocalHealthCertificateEligibility } from '@tools/duliday/precheck/health-certificate-policy.util';
+import { resolveLocalHealthCertificateEligibility } from '@resolution/candidate/health-cert-eligibility';
 
 // Phase 1.A 拆分：辅助函数全部下沉到 duliday/precheck/* 子目录，0 逻辑改动。
-import {
-  detectAgeBoundary,
-  parseAgeRange,
-  parseCandidateAge,
-} from '@tools/duliday/precheck/age.util';
+import { parseAgeRange, parseCandidateAge } from '@tools/duliday/precheck/age.util';
+import { detectAgeBoundary } from '@resolution/candidate/age';
 import { normalizeRequestedDate } from '@tools/duliday/precheck/date.util';
 import {
   buildChecklistTemplate,
@@ -120,14 +117,13 @@ import type { CandidateSnapshotService } from '@memory/services/candidate-snapsh
 import type { AgentEvent } from '@/observability/observer.interface';
 
 // 保留 age util 的符号 re-export，兼容 tests/tools/tool/duliday-interview-precheck.age-boundary.spec
+export { parseAgeRange, parseCandidateAge } from '@tools/duliday/precheck/age.util';
 export {
   AGE_BOUNDARY_HANDOFF_FLOOR,
   AGE_BOUNDARY_LOWER_TOLERANCE_YEARS,
   AGE_BOUNDARY_UPPER_TOLERANCE_YEARS,
   detectAgeBoundary,
-  parseAgeRange,
-  parseCandidateAge,
-} from '@tools/duliday/precheck/age.util';
+} from '@resolution/candidate/age';
 
 const logger = new Logger('duliday_interview_precheck');
 

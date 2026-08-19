@@ -1,4 +1,4 @@
-import { containsSensitiveScreeningText } from '@tools/utils/sensitive-screening.util';
+import { containsSensitiveScreeningText } from '@resolution/collection/sensitive-screening';
 
 describe('sensitive-screening util', () => {
   it('detects direct mentions of household/native-place/ethnicity keywords', () => {

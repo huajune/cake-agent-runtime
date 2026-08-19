@@ -13,12 +13,19 @@
  * 口径说明：这是**宽口径**检测——岗位自由文本里出现户籍/民族等关键词几乎必然是
  * 筛选条件；误报的代价只是多一行内部提示，对候选人不可见，宁滥勿漏。
  * 出站回复侧（discrimination-leaks 硬规则）需要窄口径规则避免误伤合规收资话术，不复用本 pattern。
+ *
+ * 居所（2026-08-19）：原在 `tools/utils/sensitive-screening.util.ts`，随收资表单状态机
+ * 迁入 resolution/collection。动机是**红线词表唯一居所**：收资披露策略
+ * （`disclosure-policy.ts`）要拿同一份判据决定某个标签的拒绝理由能不能对候选人明说，
+ * 而 `.eslintrc.js` 禁止 resolution 依赖 @tools/*——判据留在 tools 层则披露策略只能
+ * 另抄一份，蓝图 §11「禁说词表禁止另立副本」明令禁止。消费方向不变：
+ * tools（岗位渲染 / precheck）与 guardrail（discrimination-leaks）继续读本文件。
  */
 
 /**
  * “专业”后的形容词用法后缀（“专业培训 / 专业带教 / 专业人士”），跟这些后缀时“专业”
- * 不是学科筛选语义。岗位数据侧（本文件）与出站守卫侧（discrimination-leaks）共用
- * 同一份清单，防止两处各自维护漂移——守卫侧曾从上线起就漏了 人员/人士/师傅 三个
+ * 不是学科筛选语义。岗位数据侧、收资披露策略侧与出站守卫侧（discrimination-leaks）
+ * 共用同一份清单，防止各处自维护漂移——守卫侧曾从上线起就漏了 人员/人士/师傅 三个
  * 后缀（2026-07-06 review）。
  */
 export const PROFESSIONAL_ADJECTIVE_SUFFIXES = '培训|带教|指导|团队|老师|课程|人员|人士|师傅';

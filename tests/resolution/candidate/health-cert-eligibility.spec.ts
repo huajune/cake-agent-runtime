@@ -1,4 +1,4 @@
-import { resolveLocalHealthCertificateEligibility } from '@tools/duliday/precheck/health-certificate-policy.util';
+import { resolveLocalHealthCertificateEligibility } from '@resolution/candidate/health-cert-eligibility';
 import { normalizeHealthCertificateValue } from '@tools/duliday/precheck/field-normalize.util';
 
 describe('resolveLocalHealthCertificateEligibility', () => {
