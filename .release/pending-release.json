@@ -395,6 +395,33 @@
         "新增 4 个单测：range=20000 保留 15km 门店 / 超出 20km 仍过滤且话术按 20km / range=50000 截断到 30km 并披露 / 未传 range 走阈值兜底不变",
         "`duliday-job-list.tool.spec.ts` 92/92 通过；`tsc --noEmit`、changed-files ESLint（--max-warnings=0）、prettier check 均绿"
       ]
+    },
+    {
+      "number": "1010",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1010",
+      "title": "补 handoff 承诺对账两处生产真阳词形",
+      "author": "huajune",
+      "mergedAt": "2026-08-19",
+      "businessUpdates": [
+        "补 handoff 承诺对账两处生产真阳词形"
+      ],
+      "summary": [
+        "补 handoff 承诺对账两处生产真阳词形"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补 handoff 承诺对账两处生产真阳词形"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "12 条生产真阳全部接住（含上述两形 + 原有 10 形）",
+        "12 条假阳防线不回归：边界声明（\"具体以门店确认为准\"）、条件否定（\"如果同事没联系你\"）、会通知类（已裁定 OK）、同事主语、建议候选人自己问、报名后衔接话术、\"我同意\"/\"我跟你说\"歧义形",
+        "spec 补 4 组用例；`promise-reconciliation` 18/18、`hard-rules.service` 393/393、`turn-outcome-promise-reconciliation` 2/2",
+        "本地 `ci:check` 全绿（455 套件 / 7286 测试）"
+      ]
     }
   ],
   "lastRelease": {
