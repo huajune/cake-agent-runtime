@@ -25,6 +25,28 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "1019",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1019",
+      "title": "修正 v10.44.0 底账「无前端改动」的事实错误",
+      "author": "huajune",
+      "mergedAt": "2026-08-19",
+      "businessUpdates": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
+      "summary": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
+      "features": [],
+      "fixes": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
