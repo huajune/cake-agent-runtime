@@ -68,6 +68,43 @@ describe('handoff 承诺-动作对账（议题 7-1）', () => {
   });
 
   // 沿用已下线规则的排除设计：边界声明不是升级承诺。
+  // 生产真阳词形（batch_6a842ee0）：旧规则 handoff_promise_without_handoff 拦得住，
+  // 退役后须由本规则接住——"跟/同 + 升级对象连写"与副词槽"需要/得/要"。
+  it('flags 跟门店确认 word form from production (batch_6a842ee0)', () => {
+    expect(
+      detectHandoffPromiseWithoutAction('不过试岗期具体多久，我这边需要跟门店确认下，稍后回复你', []),
+    ).toMatchObject({ ruleId: 'handoff_promise_reconciliation' });
+    expect(detectHandoffPromiseWithoutAction('这个我会跟店长确认下再回复你', [])).toMatchObject({
+      ruleId: 'handoff_promise_reconciliation',
+    });
+  });
+
+  // 生产真阳词形（batch_6a7d7c2a）：第一人称帮扶承诺后换分句才点名升级对象。
+  it('flags clause-separated escalation promise (batch_6a7d7c2a)', () => {
+    expect(
+      detectHandoffPromiseWithoutAction(
+        '我帮你跟进一下这个情况，让同事确认下AI面试结果和门店那边的安排',
+        [],
+      ),
+    ).toMatchObject({ ruleId: 'handoff_promise_reconciliation' });
+  });
+
+  it('does not flag ambiguous 同/跟 usages that are not escalation promises', () => {
+    expect(
+      detectHandoffPromiseWithoutAction('我同意你说的，这家门店确实安排得不好', []),
+    ).toBeNull();
+    expect(
+      detectHandoffPromiseWithoutAction('我跟你说，这家门店安排的班次挺好的', []),
+    ).toBeNull();
+    expect(
+      detectHandoffPromiseWithoutAction('我建议你直接跟店长确认下时间安排', []),
+    ).toBeNull();
+    // 报名后正常衔接话术：门店/店长类对象在从句分隔式里不收，避免误伤。
+    expect(
+      detectHandoffPromiseWithoutAction('我帮你约好了，让门店安排面试时间', []),
+    ).toBeNull();
+  });
+
   it('does not flag a boundary statement about who has the final say', () => {
     expect(
       detectHandoffPromiseWithoutAction('这个具体以门店确认为准哈，我这边看到的是30元/小时', []),
